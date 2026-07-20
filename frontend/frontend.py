@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.1
+MiSTer Custom Frontend - v1.2
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.2:
+  - "MiSTer"-Logo und Systemname jetzt weiss statt gelb
+  - Kategorien-Spalte breiter auf kleinen Aufloesungen (CRT) ->
+    "PlayStation", "Master System" etc. passen jetzt komplett
+  - Dezente Scanlines (Retro-Touch) im linken Panel
 
 Neu in v1.1:
   - Im Spiel: START+SELECT ca. 1 Sekunde gemeinsam halten
@@ -167,7 +173,7 @@ C_ACCENT = (66, 133, 244)
 C_ACCENT2= (40, 70, 120)
 C_TEXT   = (220, 224, 232)
 C_DIM    = (120, 126, 140)
-C_TITLE  = (255, 200, 60)
+C_TITLE  = (255, 255, 255)   # Logo/Systemname: weiss (Retro-Look)
 
 # ----------------------------------------------------------------------------
 # 8x8 BITMAP-FONT (Public Domain, IBM VGA / Marcel Sondaar / Daniel Hepper)
@@ -219,6 +225,11 @@ class Framebuffer:
         r, g, b = rgb
         return bytes((b, g, r, 0))
 
+    @staticmethod
+    def _darken(rgb, factor=0.82):
+        r, g, b = rgb
+        return (int(r*factor), int(g*factor), int(b*factor))
+
     def clear(self, rgb):
         key = ("bg", rgb, self.width, self.height)
         bg = self._rowcache.get(key)
@@ -229,7 +240,9 @@ class Framebuffer:
             self._rowcache[key] = bg
         self.buf[:] = bg
 
-    def rect(self, x, y, w, h, rgb):
+    def rect(self, x, y, w, h, rgb, scanlines=False):
+        """scanlines=True: jede 2. Zeile dezent abgedunkelt (Retro-Look) -
+        nur fuer reine Hintergrundflaechen, nicht fuer Markierungsbalken."""
         x = max(0, x); y = max(0, y)
         w = min(w, self.width - x); h = min(h, self.height - y)
         if w <= 0 or h <= 0:
@@ -239,9 +252,17 @@ class Framebuffer:
         if row is None:
             row = self.px(rgb) * w
             self._rowcache[key] = row
+        row_dark = None
+        if scanlines:
+            key2 = (rgb, w, "dark")
+            row_dark = self._rowcache.get(key2)
+            if row_dark is None:
+                row_dark = self.px(self._darken(rgb)) * w
+                self._rowcache[key2] = row_dark
         for yy in range(y, y + h):
             off = yy * self.stride + x * 4
-            self.buf[off:off + w * 4] = row
+            use_row = row_dark if (scanlines and yy % 2) else row
+            self.buf[off:off + w * 4] = use_row
 
     def _glyph_row(self, bits, scale, fg, bg):
         key = (bits, scale, fg, bg)
@@ -1039,7 +1060,7 @@ class Frontend:
         L = {
             "s": s, "ox": ox, "oy": oy,
             # Panelbreite: laengster Kategoriename + Rand, gedeckelt auf 1/3
-            "panel_w": self._panel_width(W - 2 * ox, s),
+            "panel_w": self._panel_width(W, s),
             "rowh":    15 * s,
             "cat_rowh": 20 * s,
             "margin":  10 * s,
@@ -1052,7 +1073,8 @@ class Frontend:
     def _panel_width(self, W, s):
         longest = max((len(n) for n, _i, _sk in self.cats), default=8)
         want = longest * 8 * s + 14 * s
-        return min(max(72, want), W // 3)
+        limit = int(W * 0.40) if W < 500 else W // 3
+        return min(max(72, want), limit)
 
     def draw(self, message=None):
         fb = self.fb
@@ -1067,7 +1089,7 @@ class Frontend:
             fb.buf[:] = self._cur_bg
         else:
             fb.clear(C_BG)
-        fb.rect(0, 0, ox + L["panel_w"], H, C_PANEL)
+        fb.rect(0, 0, ox + L["panel_w"], H, C_PANEL, scanlines=True)
         fb.text(ox + 6 * s, oy + 10 * s, "MiSTer", 2 * s, C_TITLE, C_PANEL)
 
         # Kategorien links (mit eigenem Scrollfenster)
