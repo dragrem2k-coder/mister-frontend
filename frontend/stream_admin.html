@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MiSTer Stream - Backend</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Segoe UI",system-ui,Arial,sans-serif;background:#0d0f14;
+    color:#eef1f7;padding:24px;line-height:1.4}
+  h1{font-size:20px;margin-bottom:4px}
+  .sub{color:#9aa3b2;font-size:13px;margin-bottom:20px}
+  .wrap{display:grid;grid-template-columns:340px 1fr;gap:24px;
+    max-width:1100px;align-items:start}
+  @media(max-width:800px){.wrap{grid-template-columns:1fr}}
+  .panel{background:#161a22;border:1px solid #232936;border-radius:12px;
+    padding:18px}
+  .row{display:flex;justify-content:space-between;align-items:center;
+    padding:9px 0;border-bottom:1px solid #1e2431;gap:12px}
+  .row:last-child{border-bottom:none}
+  label{font-size:14px;color:#c7cedb}
+  input[type=text],select{background:#0d0f14;color:#eef1f7;border:1px solid #2a3140;
+    border-radius:7px;padding:6px 8px;font-size:14px}
+  input[type=text]{width:150px}
+  input[type=color]{width:42px;height:28px;border:none;background:none;cursor:pointer}
+  input[type=range]{width:150px}
+  .sw{position:relative;width:44px;height:24px;flex:none}
+  .sw input{opacity:0;width:0;height:0}
+  .sl{position:absolute;inset:0;background:#2a3140;border-radius:24px;
+    cursor:pointer;transition:.2s}
+  .sl::before{content:"";position:absolute;width:18px;height:18px;left:3px;top:3px;
+    background:#fff;border-radius:50%;transition:.2s}
+  .sw input:checked + .sl{background:#e0b64a}
+  .sw input:checked + .sl::before{transform:translateX(20px)}
+  .preview{background:#161a22;border:1px solid #232936;border-radius:12px;
+    overflow:hidden}
+  .preview .bar{padding:10px 14px;font-size:13px;color:#9aa3b2;
+    border-bottom:1px solid #232936;display:flex;justify-content:space-between}
+  iframe{width:100%;height:420px;border:0;display:block;
+    background:repeating-conic-gradient(#20242e 0 25%,#171b23 0 50%) 0/32px 32px}
+  code{background:#0d0f14;border:1px solid #2a3140;border-radius:6px;
+    padding:2px 7px;font-size:13px;color:#e0b64a}
+  .hint{color:#9aa3b2;font-size:12px;margin-top:14px}
+  .obs{margin-top:16px;font-size:13px;color:#c7cedb}
+</style>
+</head>
+<body>
+  <h1>MiSTer Stream &ndash; Backend</h1>
+  <div class="sub">Aussehen des OBS-Overlays einstellen. Aenderungen sind
+    sofort live.</div>
+  <div class="wrap">
+    <div class="panel" id="form">
+      <div class="row"><label>Branding-Text</label>
+        <input type="text" id="title" placeholder="z.B. Dennsen86"></div>
+      <div class="row"><label>Akzentfarbe</label>
+        <input type="color" id="accent"></div>
+      <div class="row"><label>Hintergrundfarbe</label>
+        <input type="color" id="bg"></div>
+      <div class="row"><label>Hintergrund transparent</label>
+        <span class="sw"><input type="checkbox" id="transparent"><span class="sl"></span></span></div>
+      <div class="row"><label>Cover anzeigen</label>
+        <span class="sw"><input type="checkbox" id="show_boxart"><span class="sl"></span></span></div>
+      <div class="row"><label>System-Badge</label>
+        <span class="sw"><input type="checkbox" id="show_system"><span class="sl"></span></span></div>
+      <div class="row"><label>Vorschau-Liste</label>
+        <span class="sw"><input type="checkbox" id="show_list"><span class="sl"></span></span></div>
+      <div class="row"><label>Now-Playing (Musik)</label>
+        <span class="sw"><input type="checkbox" id="show_nowplaying"><span class="sl"></span></span></div>
+      <div class="row"><label>Ecke</label>
+        <select id="corner">
+          <option value="bottom-left">unten links</option>
+          <option value="bottom-right">unten rechts</option>
+          <option value="top-left">oben links</option>
+          <option value="top-right">oben rechts</option>
+        </select></div>
+      <div class="row"><label>Groesse <span id="scaleval">100%</span></label>
+        <input type="range" id="scale" min="50" max="150" step="5"></div>
+      <div class="obs">OBS Browser Source URL:<br><code id="obsurl">/</code></div>
+      <div class="hint">Als "Browser"-Quelle in OBS hinzufuegen, Breite/Hoehe
+        auf deine Canvas-Groesse (z.B. 1920&times;1080). Der Rest bleibt
+        transparent.</div>
+    </div>
+    <div class="preview">
+      <div class="bar"><span>Live-Vorschau</span><span id="pvstate"></span></div>
+      <iframe id="pv" src="/"></iframe>
+    </div>
+  </div>
+<script>
+const F = ["title","accent","bg","transparent","show_boxart","show_system",
+           "show_list","show_nowplaying","corner","scale"];
+const $ = id => document.getElementById(id);
+let cfg = {};
+
+function fillForm(c){
+  cfg = c;
+  $("title").value = c.title||"";
+  $("accent").value = c.accent||"#e0b64a";
+  $("bg").value = c.bg||"#0d0f14";
+  $("transparent").checked = c.transparent!==false;
+  $("show_boxart").checked = c.show_boxart!==false;
+  $("show_system").checked = c.show_system!==false;
+  $("show_list").checked = c.show_list!==false;
+  $("show_nowplaying").checked = c.show_nowplaying!==false;
+  $("corner").value = c.corner||"bottom-left";
+  $("scale").value = c.scale||100;
+  $("scaleval").textContent = ($("scale").value)+"%";
+}
+
+function collect(){
+  return {
+    title:$("title").value, accent:$("accent").value, bg:$("bg").value,
+    transparent:$("transparent").checked, show_boxart:$("show_boxart").checked,
+    show_system:$("show_system").checked, show_list:$("show_list").checked,
+    show_nowplaying:$("show_nowplaying").checked, corner:$("corner").value,
+    scale:parseInt($("scale").value,10)
+  };
+}
+
+let t=null;
+function save(){
+  clearTimeout(t);
+  t=setTimeout(()=>{
+    fetch("/config",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(collect())});
+  },120);
+}
+
+F.forEach(id=>{
+  $(id).addEventListener("input",()=>{
+    if(id==="scale") $("scaleval").textContent=$("scale").value+"%";
+    save();
+  });
+});
+
+$("obsurl").textContent = location.origin + "/";
+fetch("/config").then(r=>r.json()).then(fillForm);
+
+// kleine State-Anzeige in der Vorschau-Leiste
+const es = new EventSource("/events");
+es.addEventListener("state", e=>{
+  const s = JSON.parse(e.data);
+  $("pvstate").textContent = s.name ? (s.category+" \u2022 "+s.name) : "";
+});
+</script>
+</body>
+</html>

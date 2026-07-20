@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Vom Frontend zur Laufzeit erzeugte Dateien - gehoeren nicht ins Repo
+games_cache.json
+music_enabled
+language
+keymap_custom.json
+curated_only
+stream_enabled
+stream_config.json
+frontend.lock
+frontend.log
+frontend_bootanim_played
+
+# Betriebssystem-/Editor-Muell
+.DS_Store
+Thumbs.db
+*.swp
+
+# Lokale Test-/Debug-Rueckstaende
+test/
+test_*/
+debug_*.png
+preview_*.png
