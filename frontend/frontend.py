@@ -1,9 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.3
+MiSTer Custom Frontend - v1.4
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.4:
+  - BUGFIX Nachlauf-Scrollen: normale Tastatur-Pfeiltasten nutzten
+    bisher die unkontrollierte Auto-Wiederholung der Tastatur selbst
+    (jedes einzelne Event = ein voller Bildschirmaufbau -> nach
+    laengerem Halten staute sich das und lief nach Loslassen noch
+    Sekunden nach). Jetzt laufen auch normale Tasten ueber unsere
+    eigene kontrollierte, beschleunigende Wiederholung wie beim
+    Gamepad - reagiert sofort auf Loslassen.
+  - Layout: Spieletitel werden nur noch OBERHALB des Boxart-Blocks
+    angezeigt. Im Boxart-Bereich selbst steht links neben dem Cover
+    jetzt Titel + Spieler/Jahr/Genre des ausgewaehlten Spiels.
 
 Neu in v1.3:
   - Layout Variante A: Boxart+Infos sitzen jetzt als kompakter
@@ -475,8 +487,22 @@ class InputManager:
                 if value == 0:
                     self._release(key_id)
                 return None
-            if value in (1, 2):       # Tastatur wiederholt selbst (value 2)
-                return KEYMAP.get(code)
+            act = KEYMAP.get(code)
+            key_id = (dev.path, "key", code)
+            if act in REPEAT_ACTIONS:
+                # Wiederholbare Aktionen (Navigation) laufen über unsere
+                # EIGENE kontrollierte, beschleunigende Wiederholung -
+                # die Auto-Wiederholung der Tastatur selbst (value==2)
+                # wird ignoriert, sonst staut sich das bei ARM-Tempo
+                # und laeuft nach dem Loslassen noch Sekunden nach.
+                if value == 1:
+                    self._hold(key_id, act)
+                    return act
+                if value == 0:
+                    self._release(key_id)
+                return None
+            if value == 1:
+                return act
             return None
         if etype == EV_ABS and code in dev.axis:
             amin, amax = dev.axis[code]
@@ -1189,21 +1215,20 @@ class Frontend:
         fb.text(ox + 6 * s, H - oy - 13 * s, foot, s, C_DIM, C_PANEL)
         fb.flip()
 
-    def _row_right(self, y_top, y_bot):
-        """Rechte Grenze fuer eine Listenzeile: schmaler nur dort, wo
-        sie mit dem Boxart-Block unten rechts ueberlappt (Variante A)."""
+    def _row_hidden(self, y_top, y_bot):
+        """True wenn diese Zeile mit dem Boxart-Block unten ueberlappt -
+        dort wird kein Listentext mehr gezeigt (Titel+Infos stehen
+        stattdessen im Boxart-Block selbst)."""
         v = self.view
-        art_x0 = v.get("art_x0")
         art_y0 = v.get("art_y0")
-        if art_x0 is not None and y_bot > art_y0:
-            return art_x0 - 6 * v["L"]["s"]
-        return v["list_right"]
+        return art_y0 is not None and y_bot > art_y0
 
     def draw_list_row(self, idx):
         """Eine Listenzeile zeichnen. Die markierte Zeile zeigt bei
         Ueberlaenge einen Laufschrift-Ausschnitt des vollen Namens.
-        Zeilen, die mit dem Boxart-Block unten rechts ueberlappen,
-        werden automatisch schmaler (Variante A)."""
+        Zeilen, die mit dem Boxart-Block unten ueberlappen, werden
+        NICHT gezeichnet - der Block zeigt Titel+Infos stattdessen
+        selbst an."""
         fb = self.fb
         v = self.view
         L = v["L"]; s = L["s"]
@@ -1211,7 +1236,9 @@ class Frontend:
         y = L["list_y"] + row * L["rowh"]
         y_top = y - 3 * s
         y_bot = y_top + L["rowh"] - 2 * s
-        list_right = self._row_right(y_top, y_bot)
+        if self._row_hidden(y_top, y_bot):
+            return y
+        list_right = v["list_right"]
 
         sel = (idx == self.item_i)
         bg = (C_ACCENT if self.focus == 1 else C_ACCENT2) if sel else C_BG
@@ -1262,17 +1289,15 @@ class Frontend:
         L = v["L"]; s = L["s"]
         row = self.item_i - self.scroll
         y = L["list_y"] + row * L["rowh"]
-        list_right = self._row_right(y - 3*s, y - 3*s + L["rowh"] - 2*s)
-        maxc = (list_right - L["list_x"] - 8 * s) // (8 * s)
+        if self._row_hidden(y - 3*s, y - 3*s + L["rowh"] - 2*s):
+            return False    # Zeile ist verdeckt - keine Laufschrift noetig
+        maxc = (v["list_right"] - L["list_x"] - 8 * s) // (8 * s)
         return len(v["items"][self.item_i][0]) > maxc
 
     def marquee_tick(self):
         v = self.view
         L = v["L"]; s = L["s"]
-        row = self.item_i - self.scroll
-        y = L["list_y"] + row * L["rowh"]
-        list_right = self._row_right(y - 3*s, y - 3*s + L["rowh"] - 2*s)
-        maxc = (list_right - L["list_x"] - 8 * s) // (8 * s)
+        maxc = (v["list_right"] - L["list_x"] - 8 * s) // (8 * s)
         full = v["items"][self.item_i][0]
         max_off = len(full) - maxc
         if self.mq_pause > 0:
@@ -1303,20 +1328,26 @@ class Frontend:
             self.marquee_tick()
 
     def draw_art_panel(self, x0, w, y0, h, syskey, item, L):
-        """Boxart + Metadaten als kompakter Block unten rechts
-        (Variante A) - nicht mehr die ganze rechte Spalte."""
+        """Boxart-Block unten: links Titel+Infos, rechts das Cover.
+        x0/w hier bezeichnen NUR die Cover-Spalte (rechter Teil);
+        der Infobereich links davon nutzt den Platz bis L["list_x"]."""
         fb = self.fb
         s = L["s"]
-        H = fb.height
+        H, W = fb.height, fb.width
         name = item[0]
         if w < 20 or h < 20:
             return
-        fb.rect(x0 - 4 * s, y0 - 4 * s, w + 8 * s, h + 8 * s, C_PANEL)
+
+        info_x0 = L["list_x"] - 4 * s
+        block_x0 = info_x0
+        block_w = (x0 + w) - info_x0
+        fb.rect(block_x0, y0 - 4 * s, block_w + 4 * s, h + 8 * s, C_PANEL)
+
+        # ---- Cover rechts ----
         pad = 4 * s
-        y = y0 + pad
+        cy = y0 + pad
         avail_w = w - 2 * pad
-        # Cover bekommt ca. 65% der Blockhoehe, Rest fuer Textzeilen
-        avail_h = max(30, int(h * 0.62))
+        avail_h = h - 2 * pad
         art = None
         if H >= 720:
             hd = os.path.join(ART_HD, syskey, name + ".art")
@@ -1326,20 +1357,30 @@ class Frontend:
         if art:
             aw, ah, pix = art
             ax = x0 + pad + max(0, (avail_w - aw) // 2)
-            self.blit(ax, y, aw, ah, pix)
-            y += ah + 4 * s
+            ay = cy + max(0, (avail_h - ah) // 2)
+            self.blit(ax, ay, aw, ah, pix)
         else:
-            ph = avail_h
-            fb.rect(x0 + pad, y, avail_w, ph, C_ACCENT2)
-            fb.text(x0 + pad + 2 * s, y + ph // 2 - 4 * s, "kein", s,
+            fb.rect(x0 + pad, cy, avail_w, avail_h, C_ACCENT2)
+            fb.text(x0 + pad + 2 * s, cy + avail_h // 2 - 4 * s, "kein", s,
                     C_DIM, C_ACCENT2)
-            fb.text(x0 + pad + 2 * s, y + ph // 2 + 5 * s, "Artwork", s,
+            fb.text(x0 + pad + 2 * s, cy + avail_h // 2 + 5 * s, "Artwork", s,
                     C_DIM, C_ACCENT2)
-            y += ph + 4 * s
+
+        # ---- Titel + Infos links neben dem Cover ----
+        info_w = x0 - info_x0 - 2 * pad
+        if info_w < 30:
+            return
         if syskey == "ARCADE":
             meta = mra_meta(item[2])
         else:
             meta = get_meta(syskey, name)
+        maxc = info_w // (8 * s)
+        iy = y0 + pad
+        title = display_name(name)
+        if len(title) > maxc:
+            title = title[:max(1, maxc - 1)] + "~"
+        fb.text(info_x0 + pad, iy, title, s, C_TITLE, C_PANEL)
+        iy += 12 * s
         lines = []
         if meta.get("players"):
             lines.append("Spieler: %s" % meta["players"])
@@ -1347,13 +1388,14 @@ class Frontend:
             lines.append("Jahr: %s" % meta["year"])
         if meta.get("genre"):
             lines.append(str(meta["genre"]))
-        maxc = avail_w // (8 * s)
+        if meta.get("manufacturer"):
+            lines.append(str(meta["manufacturer"]))
         y_max = y0 + h - 2 * s
         for ln in lines:
-            if y + 9 * s > y_max:
+            if iy + 9 * s > y_max:
                 break
-            fb.text(x0 + pad, y, ln[:maxc], s, C_TEXT, C_PANEL)
-            y += 10 * s
+            fb.text(info_x0 + pad, iy, ln[:maxc], s, C_TEXT, C_PANEL)
+            iy += 11 * s
 
     def blit(self, x, y, w, h, pix):
         """Vordekodierte BGRA-Pixel zeilenweise in den Puffer kopieren.
