@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.4
+MiSTer Custom Frontend - v1.5
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.5:
+  - BUGFIX: Die Auswahlmarkierung konnte beim Scrollen hinter den
+    Boxart-Block "verschwinden" (Zeile lag im ausgeblendeten Bereich).
+    Jetzt scrollt die Liste so, dass die Markierung IMMER oberhalb
+    des Boxart-Blocks sichtbar bleibt - der nutzbare Sichtbereich
+    endet effektiv kurz vor dem Block, nicht erst am Bildschirmrand.
 
 Neu in v1.4:
   - BUGFIX Nachlauf-Scrollen: normale Tastatur-Pfeiltasten nutzten
@@ -1177,10 +1184,20 @@ class Frontend:
             art_x0 = full_right
             art_y0 = H
 
+        # Effektive sichtbare Zeilenzahl: nur der Bereich OBERHALB des
+        # Boxart-Blocks zaehlt als nutzbarer Sichtbereich. So scrollt
+        # die Liste immer so, dass die Markierung sichtbar bleibt,
+        # statt hinter dem Block zu "verschwinden".
+        if syskey and total:
+            eff_visible = max(1, (art_y0 - L["list_y"] - 2 * s) // L["rowh"])
+            eff_visible = min(eff_visible, L["visible"])
+        else:
+            eff_visible = L["visible"]
+
         if self.item_i < self.scroll:
             self.scroll = self.item_i
-        if self.item_i >= self.scroll + L["visible"]:
-            self.scroll = self.item_i - L["visible"] + 1
+        if self.item_i >= self.scroll + eff_visible:
+            self.scroll = self.item_i - eff_visible + 1
 
         if H >= 400:
             fb.text(L["list_x"], oy + 12 * s, name.upper(), 2 * s, C_TITLE)
@@ -1199,7 +1216,7 @@ class Frontend:
         # entscheiden ob sie mit dem Boxart-Block ueberlappt.
         self.view = {"L": L, "list_right": full_right, "items": items,
                     "art_x0": art_x0, "art_y0": art_y0}
-        end = min(self.scroll + L["visible"], total)
+        end = min(self.scroll + eff_visible, total)
         for row, idx in enumerate(range(self.scroll, end)):
             self.draw_list_row(idx)
 
