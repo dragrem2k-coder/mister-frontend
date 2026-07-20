@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.5
+MiSTer Custom Frontend - v1.6
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.6:
+  - Boxart-Block umgestaltet: Cover jetzt oben, Titel+Infos darunter
+    ueber die VOLLE Blockbreite (statt in einer schmalen Spalte
+    links vom Cover mit nur ~5 Zeichen Platz). Auf CRT jetzt ca.
+    17 Zeichen pro Zeile statt 5. Der Titel bricht bei Bedarf auf
+    eine zweite Zeile um, statt abgeschnitten zu werden.
 
 Neu in v1.5:
   - BUGFIX: Die Auswahlmarkierung konnte beim Scrollen hinter den
@@ -1344,10 +1351,38 @@ class Frontend:
                 return act
             self.marquee_tick()
 
+    @staticmethod
+    def _wrap(text, maxc, max_lines=2):
+        """Text wortweise auf max_lines Zeilen umbrechen. Die letzte
+        Zeile wird mit '~' abgeschnitten, falls immer noch zu lang."""
+        words = text.split(" ")
+        lines, cur = [], ""
+        for word in words:
+            trial = (cur + " " + word).strip()
+            if len(trial) <= maxc:
+                cur = trial
+            else:
+                if cur:
+                    lines.append(cur)
+                cur = word
+                if len(lines) >= max_lines - 1:
+                    break
+        if cur:
+            lines.append(cur)
+        if len(lines) > max_lines:
+            lines = lines[:max_lines]
+        if lines and len(lines[-1]) > maxc:
+            lines[-1] = lines[-1][:max(1, maxc - 1)] + "~"
+        # Falls Woerter selbst laenger als maxc sind (z.B. lange
+        # zusammengeschriebene Titel), hart kappen als Sicherheitsnetz
+        lines = [ln if len(ln) <= maxc else ln[:max(1, maxc-1)] + "~"
+                for ln in lines]
+        return lines
+
     def draw_art_panel(self, x0, w, y0, h, syskey, item, L):
-        """Boxart-Block unten: links Titel+Infos, rechts das Cover.
-        x0/w hier bezeichnen NUR die Cover-Spalte (rechter Teil);
-        der Infobereich links davon nutzt den Platz bis L["list_x"]."""
+        """Boxart-Block unten: Cover OBEN, Titel+Infos DARUNTER ueber
+        die volle Blockbreite - deutlich mehr Platz zum Lesen als eine
+        schmale Spalte neben dem Cover."""
         fb = self.fb
         s = L["s"]
         H, W = fb.height, fb.width
@@ -1355,49 +1390,49 @@ class Frontend:
         if w < 20 or h < 20:
             return
 
-        info_x0 = L["list_x"] - 4 * s
-        block_x0 = info_x0
-        block_w = (x0 + w) - info_x0
+        block_x0 = L["list_x"] - 4 * s
+        block_w = (x0 + w) - block_x0
         fb.rect(block_x0, y0 - 4 * s, block_w + 4 * s, h + 8 * s, C_PANEL)
-
-        # ---- Cover rechts ----
         pad = 4 * s
+        avail_w = block_w - 2 * pad
+        maxc = max(4, avail_w // (8 * s))
+
+        # ---- Cover oben, zentriert ----
+        cover_h = max(20, int(h * 0.55))
         cy = y0 + pad
-        avail_w = w - 2 * pad
-        avail_h = h - 2 * pad
         art = None
         if H >= 720:
             hd = os.path.join(ART_HD, syskey, name + ".art")
-            art = ART.get_scaled(hd, avail_w, avail_h)
+            art = ART.get_scaled(hd, avail_w, cover_h)
         if art is None:
-            art = ART.get_scaled(art_path(syskey, name), avail_w, avail_h)
+            art = ART.get_scaled(art_path(syskey, name), avail_w, cover_h)
         if art:
             aw, ah, pix = art
-            ax = x0 + pad + max(0, (avail_w - aw) // 2)
-            ay = cy + max(0, (avail_h - ah) // 2)
+            ax = block_x0 + pad + max(0, (avail_w - aw) // 2)
+            ay = cy + max(0, (cover_h - ah) // 2)
             self.blit(ax, ay, aw, ah, pix)
         else:
-            fb.rect(x0 + pad, cy, avail_w, avail_h, C_ACCENT2)
-            fb.text(x0 + pad + 2 * s, cy + avail_h // 2 - 4 * s, "kein", s,
-                    C_DIM, C_ACCENT2)
-            fb.text(x0 + pad + 2 * s, cy + avail_h // 2 + 5 * s, "Artwork", s,
-                    C_DIM, C_ACCENT2)
+            fb.rect(block_x0 + pad, cy, avail_w, cover_h, C_ACCENT2)
+            fb.text(block_x0 + pad + 2 * s, cy + cover_h // 2 - 4 * s,
+                    "kein", s, C_DIM, C_ACCENT2)
+            fb.text(block_x0 + pad + 2 * s, cy + cover_h // 2 + 5 * s,
+                    "Artwork", s, C_DIM, C_ACCENT2)
 
-        # ---- Titel + Infos links neben dem Cover ----
-        info_w = x0 - info_x0 - 2 * pad
-        if info_w < 30:
-            return
+        # ---- Titel + Infos darunter, volle Breite ----
         if syskey == "ARCADE":
             meta = mra_meta(item[2])
         else:
             meta = get_meta(syskey, name)
-        maxc = info_w // (8 * s)
-        iy = y0 + pad
+        iy = cy + cover_h + 4 * s
+        y_max = y0 + h - 2 * s
+
         title = display_name(name)
-        if len(title) > maxc:
-            title = title[:max(1, maxc - 1)] + "~"
-        fb.text(info_x0 + pad, iy, title, s, C_TITLE, C_PANEL)
-        iy += 12 * s
+        for ln in self._wrap(title, maxc, max_lines=2):
+            if iy + 9 * s > y_max:
+                break
+            fb.text(block_x0 + pad, iy, ln, s, C_TITLE, C_PANEL)
+            iy += 11 * s
+
         lines = []
         if meta.get("players"):
             lines.append("Spieler: %s" % meta["players"])
@@ -1407,12 +1442,14 @@ class Frontend:
             lines.append(str(meta["genre"]))
         if meta.get("manufacturer"):
             lines.append(str(meta["manufacturer"]))
-        y_max = y0 + h - 2 * s
         for ln in lines:
             if iy + 9 * s > y_max:
                 break
-            fb.text(info_x0 + pad, iy, ln[:maxc], s, C_TEXT, C_PANEL)
-            iy += 11 * s
+            for wrapped in self._wrap(ln, maxc, max_lines=1):
+                if iy + 9 * s > y_max:
+                    break
+                fb.text(block_x0 + pad, iy, wrapped, s, C_TEXT, C_PANEL)
+                iy += 11 * s
 
     def blit(self, x, y, w, h, pix):
         """Vordekodierte BGRA-Pixel zeilenweise in den Puffer kopieren.
