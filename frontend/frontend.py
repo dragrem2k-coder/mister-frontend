@@ -1,9 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.2
+MiSTer Custom Frontend - v1.3
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.3:
+  - Layout Variante A: Boxart+Infos sitzen jetzt als kompakter
+    Block unten rechts statt die ganze rechte Spalte einzunehmen.
+    Die Spieleliste ist dadurch fast ueber die volle Breite lesbar -
+    nur die unteren Zeilen (dort wo der Boxart-Block liegt) sind
+    schmaler. Laengere Spieletitel passen dadurch komplett rein.
+  - blit() zusaetzlich defensiv abgesichert (schreibt nie eine
+    andere Byte-Anzahl als angefordert - reine Vorsichtsmassnahme,
+    aendert am Verhalten nichts).
 
 Neu in v1.2:
   - "MiSTer"-Logo und Systemname jetzt weiss statt gelb
@@ -1122,12 +1132,25 @@ class Frontend:
                 label = label[:max(1, maxc - 1)] + "~"
             fb.text(ox + 6 * s, y, label, s, C_TEXT if sel else C_DIM, bg)
 
-        # Eintraege rechts
+        # Eintraege: Liste nutzt (fast) die volle Breite. Das Boxart+
+        # Info-Panel sitzt als kompakter Block unten rechts (Variante A) -
+        # nur die Zeilen, die mit diesem Block ueberlappen, werden
+        # schmaler; alle Zeilen darueber laufen ueber die volle Breite.
         name, items, syskey = self.cats[self.cat_i]
         total = len(items)
-        # Bei Spiele-Kategorien rechts Platz fuer das Art-Panel lassen
-        art_w = int(W * 0.34) if syskey else 0
-        list_right = W - art_w - L["ox"]
+        full_right = W - L["ox"]
+
+        if syskey and total:
+            art_w = min(int(W * 0.30), 200)
+            art_h = min(int((H - L["list_y"] - L["oy"] - 16*s) * 0.55),
+                        art_w + 60 * s)
+            art_x0 = full_right - art_w
+            art_y0 = H - L["oy"] - 16 * s - art_h
+        else:
+            art_w = art_h = 0
+            art_x0 = full_right
+            art_y0 = H
+
         if self.item_i < self.scroll:
             self.scroll = self.item_i
         if self.item_i >= self.scroll + L["visible"]:
@@ -1145,15 +1168,18 @@ class Frontend:
                         L["list_x"] + (len(head) + 1) * 8 * s),
                     oy + 12 * s, cnt, s, C_DIM)
 
-        # Ansichts-Zustand fuer Zeilen-Neuzeichnung (Laufschrift) merken
-        self.view = {"L": L, "list_right": list_right, "items": items}
+        # Ansichts-Zustand fuer Zeilen-Neuzeichnung (Laufschrift) merken.
+        # art_x0/art_y0 erlauben es draw_list_row(), pro Zeile zu
+        # entscheiden ob sie mit dem Boxart-Block ueberlappt.
+        self.view = {"L": L, "list_right": full_right, "items": items,
+                    "art_x0": art_x0, "art_y0": art_y0}
         end = min(self.scroll + L["visible"], total)
         for row, idx in enumerate(range(self.scroll, end)):
             self.draw_list_row(idx)
 
-        # Art-Panel rechts (Boxart + Metadaten des markierten Spiels)
+        # Boxart+Info-Block unten rechts
         if syskey and total:
-            self.draw_art_panel(list_right, art_w, syskey,
+            self.draw_art_panel(art_x0, art_w, art_y0, art_h, syskey,
                                 items[self.item_i], L)
 
         # Fusszeile
@@ -1163,36 +1189,62 @@ class Frontend:
         fb.text(ox + 6 * s, H - oy - 13 * s, foot, s, C_DIM, C_PANEL)
         fb.flip()
 
+    def _row_right(self, y_top, y_bot):
+        """Rechte Grenze fuer eine Listenzeile: schmaler nur dort, wo
+        sie mit dem Boxart-Block unten rechts ueberlappt (Variante A)."""
+        v = self.view
+        art_x0 = v.get("art_x0")
+        art_y0 = v.get("art_y0")
+        if art_x0 is not None and y_bot > art_y0:
+            return art_x0 - 6 * v["L"]["s"]
+        return v["list_right"]
+
     def draw_list_row(self, idx):
         """Eine Listenzeile zeichnen. Die markierte Zeile zeigt bei
-        Ueberlaenge einen Laufschrift-Ausschnitt des vollen Namens."""
+        Ueberlaenge einen Laufschrift-Ausschnitt des vollen Namens.
+        Zeilen, die mit dem Boxart-Block unten rechts ueberlappen,
+        werden automatisch schmaler (Variante A)."""
         fb = self.fb
         v = self.view
         L = v["L"]; s = L["s"]
         row = idx - self.scroll
         y = L["list_y"] + row * L["rowh"]
+        y_top = y - 3 * s
+        y_bot = y_top + L["rowh"] - 2 * s
+        list_right = self._row_right(y_top, y_bot)
+
         sel = (idx == self.item_i)
         bg = (C_ACCENT if self.focus == 1 else C_ACCENT2) if sel else C_BG
         x0 = L["list_x"] - 4 * s
-        rw = v["list_right"] - L["list_x"] - 2 * s
+        rw = max(4, list_right - L["list_x"] - 2 * s)
+        need = rw * 4
         cur_bg = getattr(self, "_cur_bg", None)
         if cur_bg is not None:
-            # Listenstreifen aus dem Hintergrundbild wiederherstellen
-            for yy in range(max(0, y - 3 * s),
-                            min(fb.height, y - 3 * s + L["rowh"] - 2 * s)):
+            # Listenstreifen aus dem Hintergrundbild wiederherstellen -
+            # hart abgesichert: nie eine falsche Byte-Anzahl schreiben,
+            # sonst verschiebt sich der GESAMTE Framebuffer-Puffer.
+            buflen = len(fb.buf)
+            cur_bg_len = len(cur_bg)
+            for yy in range(max(0, y_top), min(fb.height, y_bot)):
                 off = yy * fb.stride + x0 * 4
-                fb.buf[off:off + rw * 4] = cur_bg[off:off + rw * 4]
+                end = off + need
+                if end > buflen or end > cur_bg_len or off < 0:
+                    continue
+                chunk = cur_bg[off:end]
+                if len(chunk) != need:
+                    continue
+                fb.buf[off:end] = chunk
             if sel:
-                fb.rect(x0, y - 3 * s, rw, L["rowh"] - 2 * s, bg)
+                fb.rect(x0, y_top, rw, L["rowh"] - 2 * s, bg)
         else:
-            fb.rect(x0, y - 3 * s, rw, L["rowh"] - 2 * s,
+            fb.rect(x0, y_top, rw, L["rowh"] - 2 * s,
                     bg if sel else C_BG)
         full = v["items"][idx][0]
-        maxc = (v["list_right"] - L["list_x"] - 8 * s) // (8 * s)
+        maxc = (list_right - L["list_x"] - 8 * s) // (8 * s)
         if sel:
             # Markierte Zeile: voller Name, bei Bedarf als Laufschrift
             if len(full) > maxc:
-                off = min(self.mq_off, len(full) - maxc)
+                off = min(self.mq_off, max(0, len(full) - maxc))
                 label = full[off:off + maxc]
             else:
                 label = full
@@ -1208,13 +1260,19 @@ class Frontend:
         if not v or self.focus != 1 or not v["items"]:
             return False
         L = v["L"]; s = L["s"]
-        maxc = (v["list_right"] - L["list_x"] - 8 * s) // (8 * s)
+        row = self.item_i - self.scroll
+        y = L["list_y"] + row * L["rowh"]
+        list_right = self._row_right(y - 3*s, y - 3*s + L["rowh"] - 2*s)
+        maxc = (list_right - L["list_x"] - 8 * s) // (8 * s)
         return len(v["items"][self.item_i][0]) > maxc
 
     def marquee_tick(self):
         v = self.view
         L = v["L"]; s = L["s"]
-        maxc = (v["list_right"] - L["list_x"] - 8 * s) // (8 * s)
+        row = self.item_i - self.scroll
+        y = L["list_y"] + row * L["rowh"]
+        list_right = self._row_right(y - 3*s, y - 3*s + L["rowh"] - 2*s)
+        maxc = (list_right - L["list_x"] - 8 * s) // (8 * s)
         full = v["items"][self.item_i][0]
         max_off = len(full) - maxc
         if self.mq_pause > 0:
@@ -1244,20 +1302,21 @@ class Frontend:
                 return act
             self.marquee_tick()
 
-    def draw_art_panel(self, x0, w, syskey, item, L):
-        """Boxart + Metadaten rechts neben der Spieleliste."""
+    def draw_art_panel(self, x0, w, y0, h, syskey, item, L):
+        """Boxart + Metadaten als kompakter Block unten rechts
+        (Variante A) - nicht mehr die ganze rechte Spalte."""
         fb = self.fb
         s = L["s"]
         H = fb.height
         name = item[0]
-        fb.rect(x0, 0, self.fb.width - x0, H, C_PANEL)
-        w = w  # Inhaltbreite (rechter Overscan liegt ausserhalb von w)
-        pad = 6 * s
-        y = L["list_y"]
+        if w < 20 or h < 20:
+            return
+        fb.rect(x0 - 4 * s, y0 - 4 * s, w + 8 * s, h + 8 * s, C_PANEL)
+        pad = 4 * s
+        y = y0 + pad
         avail_w = w - 2 * pad
-        avail_h = max(40, (H - y) * 3 // 5)
-        # Auf grossen Aufloesungen zuerst die scharfe hd-Variante versuchen,
-        # sonst die sd-Version ganzzahlig hochskalieren
+        # Cover bekommt ca. 65% der Blockhoehe, Rest fuer Textzeilen
+        avail_h = max(30, int(h * 0.62))
         art = None
         if H >= 720:
             hd = os.path.join(ART_HD, syskey, name + ".art")
@@ -1266,17 +1325,17 @@ class Frontend:
             art = ART.get_scaled(art_path(syskey, name), avail_w, avail_h)
         if art:
             aw, ah, pix = art
-            ax = x0 + max(0, (w - aw) // 2)
+            ax = x0 + pad + max(0, (avail_w - aw) // 2)
             self.blit(ax, y, aw, ah, pix)
-            y += ah + 6 * s
+            y += ah + 4 * s
         else:
-            ph = min(int(w * 1.2), H // 2)
-            fb.rect(x0 + pad, y, w - 2 * pad, ph, C_ACCENT2)
+            ph = avail_h
+            fb.rect(x0 + pad, y, avail_w, ph, C_ACCENT2)
             fb.text(x0 + pad + 2 * s, y + ph // 2 - 4 * s, "kein", s,
                     C_DIM, C_ACCENT2)
             fb.text(x0 + pad + 2 * s, y + ph // 2 + 5 * s, "Artwork", s,
                     C_DIM, C_ACCENT2)
-            y += ph + 6 * s
+            y += ph + 4 * s
         if syskey == "ARCADE":
             meta = mra_meta(item[2])
         else:
@@ -1288,26 +1347,35 @@ class Frontend:
             lines.append("Jahr: %s" % meta["year"])
         if meta.get("genre"):
             lines.append(str(meta["genre"]))
-        if meta.get("manufacturer"):
-            lines.append(str(meta["manufacturer"]))
-        maxc = (w - 2 * pad) // (8 * s)
+        maxc = avail_w // (8 * s)
+        y_max = y0 + h - 2 * s
         for ln in lines:
-            if y + 9 * s > H - 16 * s:
+            if y + 9 * s > y_max:
                 break
             fb.text(x0 + pad, y, ln[:maxc], s, C_TEXT, C_PANEL)
-            y += 11 * s
+            y += 10 * s
 
     def blit(self, x, y, w, h, pix):
-        """Vordekodierte BGRA-Pixel zeilenweise in den Puffer kopieren."""
+        """Vordekodierte BGRA-Pixel zeilenweise in den Puffer kopieren.
+        Schreibt nie eine andere Byte-Anzahl als angefordert - eine
+        zu-kurze Quelle wuerde sonst (bytearray-Verhalten) den ganzen
+        Puffer verkuerzen und verschieben."""
         fb = self.fb
-        if x >= fb.width or y >= fb.height:
+        if x < 0 or y < 0 or x >= fb.width or y >= fb.height:
             return
         cw = min(w, fb.width - x)
         ch = min(h, fb.height - y)
+        need = cw * 4
+        buflen = len(fb.buf)
         for row in range(ch):
             src_off = row * w * 4
             dst_off = (y + row) * fb.stride + x * 4
-            fb.buf[dst_off:dst_off + cw * 4] = pix[src_off:src_off + cw * 4]
+            if dst_off + need > buflen:
+                continue
+            chunk = pix[src_off:src_off + need]
+            if len(chunk) != need:
+                continue
+            fb.buf[dst_off:dst_off + need] = chunk
 
     # ------------------------------------------------------------------
     # Aktionen
