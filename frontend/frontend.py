@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.19
+MiSTer Custom Frontend - v1.21
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.21 (Zusammenfuehrung Boot-Animation + Stream-Overlay):
+  - Boot-Animation (aus v1.20) und Stream-Overlay fuer OBS (dieser
+    Merge) liefen als getrennte Zweige auseinander - hier
+    zusammengefuehrt: beide Features sind jetzt gemeinsam aktiv.
 
 Neu in v1.19 (Now-Playing als Laufschrift, Position korrigiert):
   - Now-Playing ueberlappte auf der Kategorien-Seite mit dem Beginn
@@ -402,6 +407,16 @@ GAMES_BASES = (["/media/fat/games"]
                + ["/media/usb%d" % i for i in range(6)])
 ART_BASE    = "/media/fat/frontend/art"
 ART_HD      = "/media/fat/frontend/art_hd"
+
+# --- Stream-Overlay (optional, siehe stream_server.py) -----------------
+STREAM_ENABLED_FILE = "/media/fat/frontend/stream_enabled"
+STREAM_CONFIG_FILE  = "/media/fat/frontend/stream_config.json"
+STREAM_PORT = 8080
+
+try:
+    from stream_server import StreamServer
+except Exception:
+    StreamServer = None
 BG_BASE     = "/media/fat/frontend/bg"
 META_BASE   = "/media/fat/frontend/meta"
 MGL_TMP     = "/tmp/frontend_launch.mgl"
@@ -411,6 +426,8 @@ MUSIC_DIR   = "/media/fat/music"
 MUSIC_ENABLED_FILE = "/media/fat/frontend/music_enabled"
 LANGUAGE_FILE = "/media/fat/frontend/language"
 KEYMAP_CUSTOM_FILE = "/media/fat/frontend/keymap_custom.json"
+BOOTANIM_DIR = "/media/fat/frontend/bootanim"
+BOOTANIM_PLAYED_MARKER = "/tmp/frontend_bootanim_played"
 MPG123_BIN  = "/usr/bin/mpg123"
 CORENAME    = "/tmp/CORENAME"
 FBDEV       = "/dev/fb0"
@@ -1745,6 +1762,20 @@ class Frontend:
         self.cat_i = 0
         self.cat_scroll = 0
         self.item_i = self.scroll = 0
+
+        # Optionaler Stream-Overlay-Server (nur wenn Freigabe-Datei da ist)
+        self.stream = None
+        self._stream_sig = None
+        if StreamServer and os.path.exists(STREAM_ENABLED_FILE):
+            try:
+                self.stream = StreamServer(ART_BASE, port=STREAM_PORT,
+                                           config_path=STREAM_CONFIG_FILE,
+                                           log=LOG)
+                if not self.stream.start():
+                    self.stream = None
+            except Exception as e:
+                LOG("Stream-Server-Start fehlgeschlagen: %s" % e)
+                self.stream = None
         self.mq_off = 0            # Laufschrift-Versatz (Zeichen)
         self.mq_pause = 0          # Pausen-Ticks an den Enden
         # Laufschrift fuer den aktuell spielenden Songtitel - eigener,
@@ -2513,10 +2544,100 @@ class Frontend:
     # Hauptschleife
     # ------------------------------------------------------------------
 
+    def stream_state(self):
+        """Aktuelle Auswahl als Dict fuer das Web-Overlay."""
+        name, items, syskey = self.cats[self.cat_i]
+        total = len(items)
+        sel = items[self.item_i][0] if 0 <= self.item_i < total else ""
+        lo = max(0, self.item_i - 2)
+        hi = min(total, lo + 5)
+        window = [items[i][0] for i in range(lo, hi)]
+        return {
+            "category": name,
+            "system": name,                 # lesbarer Name fuers Badge
+            "syskey": syskey or "",         # Key fuer die Cover-URL (/art)
+            "name": sel,
+            "index": self.item_i,
+            "total": total,
+            "nowplaying": self.music.current_track_name()
+                          if hasattr(self, "music") else None,
+            "list": window,
+            "list_index": self.item_i - lo,
+        }
+
+    def _publish_stream(self):
+        if not self.stream:
+            return
+        try:
+            st = self.stream_state()
+        except Exception:
+            return
+        sig = (st["category"], st["name"], st["nowplaying"],
+               st["index"], st["total"])
+        if sig != self._stream_sig:
+            self._stream_sig = sig
+            self.stream.publish(st)
+
+    def play_boot_animation(self):
+        """Spielt eine Bildsequenz aus BOOTANIM_DIR ab (frame_0001.art,
+        frame_0002.art, ...), einmal pro MiSTer-Boot, bevor das normale
+        Menue erscheint. Jedes Bild wird formatfuellend (letterboxed,
+        keine Verzerrung) zentriert gezeigt. Fehlt der Ordner, ist er
+        leer, oder wurde die Animation in diesem Boot schon gezeigt,
+        passiert einfach nichts - kein Fehler, direkt weiter ins Menue."""
+        if os.path.exists(BOOTANIM_PLAYED_MARKER):
+            return
+        try:
+            frames = sorted(f for f in os.listdir(BOOTANIM_DIR)
+                            if f.lower().endswith(".art"))
+        except OSError:
+            frames = []
+        if not frames:
+            return
+
+        # Optionale Zeitsteuerung: bootanim.json neben den Frames kann
+        # {"fps": 12} enthalten - Standard 10 fps, falls nichts angegeben.
+        fps = 10
+        try:
+            meta = json.load(open(os.path.join(BOOTANIM_DIR, "bootanim.json")))
+            fps = max(1, min(30, int(meta.get("fps", fps))))
+        except (OSError, ValueError, TypeError):
+            pass
+        frame_time = 1.0 / fps
+
+        fb = self.fb
+        W, H = fb.width, fb.height
+        LOG("play_boot_animation: %d Frames bei %d fps" % (len(frames), fps))
+        try:
+            for fn in frames:
+                t0 = time.time()
+                path = os.path.join(BOOTANIM_DIR, fn)
+                art = ART.get_scaled(path, W, H)
+                fb.clear((0, 0, 0))
+                if art:
+                    aw, ah, pix = art
+                    ax = max(0, (W - aw) // 2)
+                    ay = max(0, (H - ah) // 2)
+                    self.blit(ax, ay, aw, ah, pix)
+                fb.flip()
+                # ESC oder ein beliebiger Tastendruck ueberspringt den Rest
+                if self.inp.read_action(timeout=max(0.0,
+                        frame_time - (time.time() - t0))) is not None:
+                    LOG("play_boot_animation: uebersprungen")
+                    break
+        except Exception:
+            LOG("play_boot_animation CRASH:\n" + traceback.format_exc())
+        try:
+            with open(BOOTANIM_PLAYED_MARKER, "w") as f:
+                f.write("1")
+        except OSError:
+            pass
+
     def run(self):
         self.enter_console_mode()
         self.set_cursor_blink(False)
         self.inp.grab(True)
+        self.play_boot_animation()
         self.draw()
         try:
             move_streak = 0     # zaehlt gehaltene hoch/runter-Wiederholungen
@@ -2525,6 +2646,7 @@ class Frontend:
             page_last = None    # fuer den Turbo-Sprung (seitenweise)
             while True:
                 act = self.next_action()
+                self._publish_stream()
                 LOG("aktion: %s (Seite %d, confirm=%s)"
                     % (act, self.page, self.confirm_quit))
 
@@ -2689,6 +2811,8 @@ class Frontend:
                             time.sleep(1.0)
                 self.draw()
         finally:
+            if self.stream:
+                self.stream.stop()
             self.music.shutdown()
             self.set_cursor_blink(True)
             self.fb.clear((0, 0, 0))
