@@ -1,9 +1,216 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.6
+MiSTer Custom Frontend - v1.19
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.19 (Now-Playing als Laufschrift, Position korrigiert):
+  - Now-Playing ueberlappte auf der Kategorien-Seite mit dem Beginn
+    der Liste. Steht jetzt rechts neben dem "MiSTer"-Logo, in eigener
+    Zeile daneben statt darunter.
+  - Kein "Now playing:"-Label mehr - stattdessen laeuft der volle
+    Songtitel als Laufschrift durch (wie bei langen Spieletiteln in
+    der Liste), an beiden Stellen (neben dem Logo UND unter den
+    Spielinfos im Boxart-Block). Vorher wurde der Titel bei zu
+    langen Dateinamen einfach abgeschnitten/lief ins Leere.
+
+Neu in v1.18 (Now-Playing-Anzeige + Bugfix Tastenbelegung):
+  - BUGFIX: Der Tastenbelegungs-Assistent blieb bei "Hoch" haengen,
+    wenn das Pad sein D-Pad als Analogachse meldet (die meisten
+    Pads tun das) - der Assistent wartete auf ein reines Tasten-
+    Event (EV_KEY) und ignorierte Achsen-Events komplett. Erkennt
+    jetzt einen klaren Analogausschlag in die passende Richtung als
+    "funktioniert schon nativ" und springt automatisch zur naechsten
+    Abfrage, statt endlos zu warten.
+  - Neu: Anzeige des aktuell spielenden Songs. Oben links auf der
+    Kategorien-Uebersicht, und unterhalb der Spielinfos im Boxart-
+    Block auf der Kategorie-Ansicht. Aktualisiert sich sofort beim
+    manuellen Ueberspringen (Y-Taste).
+
+Neu in v1.17 (Sprachumschaltung + eigene Tastenbelegung):
+  - Sprachumschaltung Deutsch/Englisch fuer alle sichtbaren Texte im
+    Frontend (Kopf-/Fusszeilen, System-Menue, Beenden-Dialog, Boxart-
+    Infos, "no artwork"). Umschaltbar im System-Menue, Auswahl bleibt
+    ueber Neustarts erhalten (/media/fat/frontend/language).
+  - Eigene Tastenbelegung: neuer Menuepunkt "Configure buttons" im
+    System-Menue startet einen Assistenten, der nacheinander nach
+    jeder Kernaktion (Hoch/Runter/Links/Rechts/OK/Zurueck/Menue)
+    fragt und den naechsten tatsaechlichen Tastendruck (Tastatur
+    ODER Pad, egal welches Geraet) als Belegung uebernimmt. Wird in
+    /media/fat/frontend/keymap_custom.json gespeichert und beim
+    naechsten Start automatisch bevorzugt (vor der Standardbelegung).
+    "Reset to default buttons" setzt sie wieder zurueck.
+
+Neu in v1.16 (Hintergrundmusik):
+  - MP3-Hintergrundmusik per mpg123 (extern, kein eigener Decoder
+    noetig). Playlist aus /media/fat/music/*.mp3, zufaellig gemischt
+    beim Start, naechster Song automatisch sobald einer zu Ende ist.
+  - Musik pausiert automatisch beim Start eines Spiels/Cores und
+    laeuft beim Zurueckkehren ins Frontend automatisch weiter.
+  - Neuer Menuepunkt im System-Menue: Music On/Off. Status wird in
+    /media/fat/frontend/music_enabled gespeichert (bleibt ueber
+    Neustarts hinweg erhalten).
+  - Y-Taste im Frontend: naechster Song (manueller Songwechsel).
+  - UI-Texte auf Englisch, passend zum Rest seit v1.13.
+
+Neu in v1.15 (Boxart-Spalte nutzt die volle Hoehe):
+  - Die Boxart-Spalte begann bisher auf Hoehe der Liste (list_y), nicht
+    auf Hoehe der Kopfzeile (oy) - der Header nutzt aber nur den linken
+    Teil der Zeile (Kategorie-Name + Anzahl), rechts daneben blieb ein
+    ungenutzter Streifen bis zur Liste stehen. Die Spalte beginnt jetzt
+    auf Hoehe der Kopfzeile, das Cover bekommt dadurch spuerbar mehr
+    Platz (rund 20-25% mehr Hoehe, je nach Aufloesung).
+
+Neu in v1.14 (Footer aufgeraeumt):
+  - BUGFIX: Der Footer-Text wird nicht umgebrochen, sondern bricht beim
+    Erreichen des Bildschirmrands einfach ab (Framebuffer.text()) - auf
+    schmalen Aufloesungen (z.B. CRT) fehlte dadurch oft das Wichtigste
+    am Ende ("ESC:Quit"). Beide Footer haben jetzt eine dritte,
+    kompakte Stufe fuer schmale Bildschirme, die garantiert komplett
+    ins Bild passt.
+  - Die "^ more"/"v more"-Scroll-Hinweise im Hauptmenue sind weg -
+    unnoetiger Text, der Platz weg genommen hat.
+  - Im Spiele-Menue faellt in den kompakten Footer-Stufen das
+    ueberfluessige, alleinstehende "Nav" weg - "A:Start"/"B:Back"
+    ruecken dadurch weiter nach links.
+
+Neu in v1.13 (Uebersetzung ins Englische):
+  - Alle Texte, die im Frontend auf dem Bildschirm erscheinen, sind
+    jetzt auf Englisch statt Deutsch - fuer ein internationales
+    Publikum. Betrifft: Kopfzeilen, Fusszeilen-Hinweise, Zaehler
+    ("X categories"/"X entries"), Scroll-Pfeile, den System-Menue
+    (Open MiSTer OSD, Rescan game list, Restart MiSTer, Quit frontend,
+    ...), die Beenden-Bestaetigung (Quit the frontend? / Yes / No),
+    Boxart-Infos (Players/Year) und den "no artwork"-Platzhalter.
+  - Code-Kommentare und die Versionshistorie in diesem Docstring
+    bleiben bewusst auf Deutsch (reine Entwickler-Dokumentation, nicht
+    im laufenden Frontend sichtbar). Bei Bedarf auch das noch
+    uebersetzbar.
+
+Neu in v1.12 (Kleinkram am Beenden-Dialog):
+  - Labels von "Abbrechen/Beenden" auf "Ja/Nein" umgestellt. "Nein"
+    ist die Standardauswahl und steht rechts (Links waehlt weiterhin
+    Ja, Rechts Nein).
+  - BUGFIX Flackern beim Umschalten zwischen den beiden Optionen: Beim
+    Neuzeichnen wurde vorher erst die Seite dahinter OHNE Dialog
+    geflippt (fb.flip()) und direkt danach nochmal MIT Dialog drueber -
+    der erste Flip war fuer einen Frame sichtbar und sorgte fuer das
+    kurze Aufblitzen. draw_page_cats()/draw_page_items() bekommen jetzt
+    einen flip-Parameter und lassen den Flip aus, wenn direkt danach
+    noch der Dialog draufkommt - geflippt wird dann nur noch einmal,
+    ganz am Ende.
+
+Neu in v1.11 (Steuerung neu geordnet + Beenden-Bestaetigung):
+  - Klarere, schlankere Belegung: Enter/A oeffnet ein Menue bzw. startet
+    ein Spiel - die einzige Aktion dafuer. ESC/B geht eine Ebene
+    zurueck; im Hauptmenue (Kategorien-Uebersicht) loest ESC/B jetzt
+    eine BESTAETIGUNG aus statt sofort zu beenden.
+  - Beenden-Bestaetigung: kleiner Dialog "Frontend wirklich beenden?"
+    mit den Optionen Ja/Nein (Nein vorausgewaehlt, rechts). Links
+    waehlt Ja, Rechts waehlt Nein, Enter bestaetigt die Auswahl. ESC/B
+    im Dialog bricht sofort ab (sicherer Standard gegen Vertipper). Gilt
+    fuer ESC, den B-Button, den 3x-Select-Kurzbefehl per Pad UND den
+    Menuepunkt "Frontend beenden" im System-Menue - alle vier Wege
+    fragen jetzt nach, keiner schliesst mehr sofort.
+  - Hoch/Runter navigiert weiterhin einzelne Positionen (mit
+    Turbo-Beschleunigung beim Halten, seit v1.10).
+  - NEU: Links/Rechts springt jetzt seitenweise (eine sichtbare
+    Bildschirmseite pro Druck) statt wie bisher nur "eine Ebene
+    zurueck"/"Kategorie oeffnen". Wird die Taste gehalten, wachsen auch
+    hier die Spruenge (1 -> 2 -> 3 -> 5 Bildschirmseiten pro Tick).
+    Funktioniert auf beiden Seiten (Kategorien und Spieleliste).
+  - Bild-auf/-ab, Pos1 und Ende sind komplett raus - dafuer springen
+    jetzt L/R an der Schultertaste ebenfalls seitenweise (wie D-Pad
+    links/rechts), statt einer eigenen Buchstabensprung-Logik zu
+    folgen.
+  - Der Buchstaben-Direktsprung per Tastatur (A-Z, seit v1.10) bleibt
+    unveraendert bestehen - der nutzt eigene Tasten und kollidiert
+    nicht mit der neuen Links/Rechts-Belegung.
+
+Neu in v1.10 (Navigation deutlich beschleunigt):
+  - BUGFIX/Feature: Die Spieleliste (Seite 2) sprang bisher am ersten
+    bzw. letzten Eintrag einfach nicht weiter - man musste die komplette
+    Liste durchscrollen, um z.B. von "#" zu "Z" zu kommen. Jetzt springt
+    "runter" vom letzten Eintrag zum ersten und umgekehrt, genau wie es
+    bei der Kategorienliste schon funktioniert hat.
+  - Turbo-Sprung: Haelt man die Richtungstaste laenger gedrueckt, wird
+    nicht nur schneller getickt (das gab es schon), sondern die
+    Schrittweite waechst zusaetzlich mit (1 -> 2 -> 4 -> 10 Eintraege
+    pro Tick). Bei sehr langen Listen kommt man dadurch in derselben
+    Haltezeit deutlich weiter.
+  - L/R bzw. Bild-auf/-ab (Sprung zum naechsten Anfangsbuchstaben-Block)
+    liessen sich bisher nur einzeln druecken. Jetzt sind sie wie die
+    Richtungstasten wiederholbar - gehalten hangelt man sich am Stueck
+    durchs Alphabet.
+  - Neu: Direktsprung per Tastatur. Eine Buchstabentaste (A-Z, Q-P-Reihe
+    des QWERTY-Layouts) springt zum naechsten Eintrag mit diesem
+    Anfangsbuchstaben, erneutes Druecken springt zyklisch zum
+    naechsten Treffer - wie die Sprungsuche in klassischen
+    Datei-Browsern. Funktioniert auf beiden Seiten (Kategorien und
+    Spieleliste).
+  - Neu: Pos1/Ende-Tasten springen direkt zum ersten bzw. letzten
+    Eintrag der aktuellen Liste.
+
+Neu in v1.9 (Cover nutzt den verfuegbaren Platz voll aus):
+  - Die Cover-Hoehe war bisher fest auf 55% der Boxart-Spalte gedeckelt,
+    egal wie viel oder wenig Text (Titel + Spieler/Jahr/Genre) tatsaechlich
+    da war. Fehlten Spiele-Infos (z.B. mister_gameinfo.py noch nicht
+    gelaufen), blieb darunter viel ungenutzter Platz. Jetzt wird zuerst
+    die tatsaechlich benoetigte Texthoehe berechnet, das Cover bekommt
+    danach den kompletten Rest (gedeckelt auf 35-85% der Spaltenhoehe,
+    damit weder ein winziges Cover bei viel Text noch ein den Text
+    verdraengendes Cover bei wenig/keinem Text entsteht).
+  - Die kuenstliche 4x-Deckelung beim Hochskalieren kleiner Cover ist weg
+    (jetzt 10x) - ein Relikt aus dem alten, viel kleineren Boxart-Block
+    von v1.7. Dadurch fuellen kleine Cover die ihnen zustehende Flaeche
+    jetzt tatsaechlich aus, statt klein und von Leerraum umgeben zu
+    wirken.
+
+Neu in v1.8.1 (Bugfix):
+  - BUGFIX Boxart ueberlappte den Info-Text: Cover, die groesser als
+    der fuer sie reservierte Platz waren (z.B. auf CRT-Aufloesungen mit
+    wenig Platz in der Boxart-Spalte), wurden bisher NICHT verkleinert,
+    sondern in Originalgroesse gezeichnet - dadurch ragten sie in den
+    Bereich mit Spieler/Jahr/Genre hinein. ArtCache.get_scaled()
+    verkleinert zu grosse Cover jetzt per Nearest-Neighbor passend in
+    die Box. Zusaetzlich richtet sich die Textposition zur Sicherheit
+    nach der tatsaechlich gezeichneten Bildhoehe statt nur nach dem
+    reservierten Platz - so kann es auch bei sehr schmalen/kleinen
+    Boxart-Spalten nicht mehr zur Ueberlappung kommen.
+
+Neu in v1.8 (Zweiseitige Navigation):
+  - Das Frontend zeigt jetzt zwei getrennte Seiten statt einer geteilten
+    Ansicht. Seite 1 (Start): nur die Kategorien (Systeme, Arcade,
+    Scripts, System) als grosse Liste ueber die volle Breite. Enter/A
+    oeffnet die gewaehlte Kategorie auf Seite 2.
+  - Seite 2 (Kategorie-Ansicht): Spieleliste links, bei Spiele- und
+    Arcade-Systemen daneben eine eigene, breite Boxart+Info-Spalte -
+    nicht mehr ein kleiner Block unten rechts, der Listenzeilen
+    ueberlappt und diese ausblenden musste. Dadurch ist jetzt mehr
+    Platz fuer Cover UND fuer die Titelzeilen der Liste gleichzeitig.
+  - Navigation: B-Taste bzw. Pfeil links geht von der Kategorie-Ansicht
+    zurueck ins Hauptmenue; ESC macht auf Seite 2 dasselbe, erst auf
+    Seite 1 beendet ESC das Frontend. Enter/A auf Seite 1 oeffnet die
+    Kategorie, auf Seite 2 startet es den markierten Eintrag - wie
+    gehabt.
+  - "Spieleliste neu einlesen" springt danach zurueck ins Hauptmenue,
+    da sich Kategorien dabei geaendert haben koennen.
+
+Neu in v1.7 (Fixes):
+  - Single-Instance-Lock (/tmp/frontend.lock) - verhindert doppelte
+    Instanzen, die um Framebuffer/Eingaben streiten. War in der
+    README beschrieben, aber bisher nicht implementiert.
+  - MGL-Shortcuts: Ordner mit .mgl-Dateien (z.B. das "Recently
+    Played"-Skript) erscheinen jetzt im Frontend und sind startbar.
+  - Game Boy Color als eigenes System (.gbc) - GBC-Cover/Metadaten
+    werden jetzt gefunden statt doppelt geladen und ignoriert.
+  - MiSTer.ini wird atomar geschrieben (Temp + rename) - ein Abbruch
+    beim CRT/HDMI-Umschalten kann die Config nicht mehr zerstoeren.
+  - Core-Start robuster: wartet auf den echten Core statt fixe 15s;
+    langsam ladende CHDs werfen das Frontend nicht mehr ins Menue.
+  - flip() ohne bytes()-Zwischenkopie (spart pro Frame eine ~8-MB-
+    Allokation auf 1080p); "MiSTer neu starten" macht vorher sync.
 
 Neu in v1.6:
   - Boxart-Block umgestaltet: Cover jetzt oben, Titel+Infos darunter
@@ -127,7 +334,7 @@ Start auf dem MiSTer (per SSH oder als Startscript):
   python3 /media/fat/frontend/frontend.py
 """
 
-import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib, json
+import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib, json, random
 
 LOGFILE = "/tmp/frontend.log"
 
@@ -135,6 +342,51 @@ def LOG(msg):
     try:
         with open(LOGFILE, "a") as f:
             f.write("%s  %s\n" % (time.strftime("%H:%M:%S"), msg))
+    except OSError:
+        pass
+
+# ----------------------------------------------------------------------------
+# SINGLE-INSTANCE-LOCK
+# Verhindert, dass zwei Instanzen gleichzeitig /dev/fb0 mappen und die
+# Eingabegeraete grabben. Die Lock-Datei enthaelt die PID, damit sie -
+# wie in der README beschrieben - per "kill $(cat /tmp/frontend.lock)"
+# beendet werden kann. pkill/pgrep gibt es auf dem MiSTer nicht.
+# ----------------------------------------------------------------------------
+
+LOCKFILE = "/tmp/frontend.lock"
+
+def _pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+def acquire_single_instance():
+    """True, wenn wir die einzige Instanz sind (Lock gesetzt). False,
+    wenn bereits eine LEBENDE Instanz laeuft. Eine verwaiste Lock-Datei
+    (Prozess existiert nicht mehr, z.B. nach Absturz) wird uebernommen."""
+    try:
+        with open(LOCKFILE) as f:
+            old = f.read().strip()
+        if old.isdigit() and _pid_alive(int(old)):
+            LOG("Bereits aktive Instanz (PID %s) - Abbruch." % old)
+            return False
+    except OSError:
+        pass
+    try:
+        with open(LOCKFILE, "w") as f:
+            f.write(str(os.getpid()))
+    except OSError as e:
+        LOG("Lock-Datei nicht schreibbar: %s" % e)
+    return True
+
+def release_single_instance():
+    try:
+        with open(LOCKFILE) as f:
+            mine = f.read().strip() == str(os.getpid())
+        if mine:
+            os.remove(LOCKFILE)
     except OSError:
         pass
 
@@ -155,16 +407,21 @@ META_BASE   = "/media/fat/frontend/meta"
 MGL_TMP     = "/tmp/frontend_launch.mgl"
 GAMES_CACHE = "/media/fat/frontend/games_cache.json"
 MISTER_CMD  = "/dev/MiSTer_cmd"
+MUSIC_DIR   = "/media/fat/music"
+MUSIC_ENABLED_FILE = "/media/fat/frontend/music_enabled"
+LANGUAGE_FILE = "/media/fat/frontend/language"
+KEYMAP_CUSTOM_FILE = "/media/fat/frontend/keymap_custom.json"
+MPG123_BIN  = "/usr/bin/mpg123"
 CORENAME    = "/tmp/CORENAME"
 FBDEV       = "/dev/fb0"
 
 # Ordner, die bei der automatischen Kategorie-Suche uebersprungen werden
 SKIP_DIRS = {"_Scripts"}
 
-# Huebschere Anzeigenamen fuer bekannte Ordner
+# Freundliche Anzeigenamen fuer bekannte Ordner
 NICE_NAMES = {
-    "Arcade": "Arcade", "Console": "Konsolen", "Computer": "Computer",
-    "Other": "Sonstige", "Utility": "Werkzeuge", "RA_Cores": "RA Cores",
+    "Arcade": "Arcade", "Console": "Consoles", "Computer": "Computer",
+    "Other": "Other", "Utility": "Utilities", "RA_Cores": "RA Cores",
 }
 
 # Spielesysteme: (Anzeigename, Systemkey, ROM-Ordner, Core-RBF,
@@ -182,7 +439,9 @@ GAME_SYSTEMS = [
     ("PlayStation",   "PSX",     ["PSX"],                  "_Console/PSX",
         {".chd": (1, "s", 1), ".cue": (1, "s", 1)}),
     ("Game Boy",      "GAMEBOY", ["GAMEBOY"],              "_Console/Gameboy",
-        {".gb": (2, "f", 1), ".gbc": (2, "f", 1)}),
+        {".gb": (2, "f", 1)}),
+    ("Game Boy Color","GBC",     ["GAMEBOY"],              "_Console/Gameboy",
+        {".gbc": (2, "f", 1)}),
     ("GBA",           "GBA",     ["GBA"],                  "_Console/GBA",
         {".gba": (2, "f", 1)}),
     ("Master System", "SMS",     ["SMS"],                  "_Console/SMS",
@@ -331,8 +590,9 @@ class Framebuffer:
                     self.buf[off:off + cw * 4] = row
 
     def flip(self):
-        self.mm.seek(0)
-        self.mm.write(bytes(self.buf))
+        # Direkte Slice-Zuweisung: mmap nimmt das bytearray ohne die
+        # teure bytes()-Zwischenkopie (auf 1080p ~8 MB pro Frame).
+        self.mm[:] = self.buf
 
     def flip_rows(self, y, h):
         """Nur einen Zeilenbereich auf den Schirm bringen (Laufschrift)."""
@@ -341,8 +601,8 @@ class Framebuffer:
         if y1 <= y0:
             return
         off = y0 * self.stride
-        self.mm.seek(off)
-        self.mm.write(bytes(self.buf[off:y1 * self.stride]))
+        end = y1 * self.stride
+        self.mm[off:end] = self.buf[off:end]
 
     def close(self):
         try:
@@ -360,10 +620,10 @@ EVIOCGRAB = 0x40044590
 EV_SYN, EV_KEY, EV_ABS = 0, 1, 3
 KEY_ESC, KEY_ENTER = 1, 28
 KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT = 103, 108, 105, 106
-KEY_PGUP, KEY_PGDN = 104, 109
 KEY_F9, KEY_F10, KEY_F12 = 67, 68, 88
 # Gamepad-Buttons (Linux-Standardcodes)
 BTN_A, BTN_B, BTN_X, BTN_Y = 304, 305, 307, 308
+KEY_Y = 21                   # Y key on keyboard
 BTN_TL, BTN_TR = 310, 311
 BTN_SELECT, BTN_START, BTN_MODE = 314, 315, 316
 BTN_DPAD_UP, BTN_DPAD_DOWN, BTN_DPAD_LEFT, BTN_DPAD_RIGHT = 544, 545, 546, 547
@@ -372,20 +632,56 @@ ABS_X, ABS_Y, ABS_HAT0X, ABS_HAT0Y = 0, 1, 16, 17
 EVENT_FMT  = "llHHi"
 EVENT_SIZE = struct.calcsize(EVENT_FMT)
 
+# Standard-evdev-Scancodes der Buchstabentasten (QWERTY-Zeilen) - fuer
+# den Direktsprung per Tastatur: A druecken -> naechster Eintrag mit A.
+LETTER_KEYS = {
+    16: "Q", 17: "W", 18: "E", 19: "R", 20: "T", 21: "Y", 22: "U",
+    23: "I", 24: "O", 25: "P",
+    30: "A", 31: "S", 32: "D", 33: "F", 34: "G", 35: "H", 36: "J",
+    37: "K", 38: "L",
+    44: "Z", 45: "X", 46: "C", 47: "V", 48: "B", 49: "N", 50: "M",
+}
+
 # Tasten/Buttons -> logische Aktionen des Frontends
+# Seit v1.11 bewusst schlank gehalten: Enter oeffnet/startet, ESC/B geht
+# eine Ebene zurueck (bzw. fragt im Hauptmenue nach), hoch/runter
+# navigiert einzeln, links/rechts springt seitenweise. Bild auf/ab und
+# Pos1/Ende gibt es dafuer nicht mehr - die Schultertasten L/R sind
+# jetzt einfach ein zweiter Weg fuer den Seitensprung (wie D-Pad
+# links/rechts), statt eine eigene Buchstabensprung-Logik zu haben.
 KEYMAP = {
     KEY_UP: "up", KEY_DOWN: "down", KEY_LEFT: "left", KEY_RIGHT: "right",
-    KEY_ENTER: "ok", KEY_ESC: "exit", KEY_PGUP: "pgup", KEY_PGDN: "pgdn",
+    KEY_ENTER: "ok", KEY_ESC: "exit",
     KEY_F12: "osd", KEY_F10: "back_fe", KEY_F9: None,
     BTN_A: "ok", BTN_START: "ok",
     BTN_B: "back", BTN_X: "back_fe",
-    BTN_TL: "pgup", BTN_TR: "pgdn",
+    BTN_Y: "music_next", KEY_Y: "music_next",
+    BTN_TL: "left", BTN_TR: "right",
     BTN_MODE: "osd", BTN_SELECT: "select",
     BTN_DPAD_UP: "up", BTN_DPAD_DOWN: "down",
     BTN_DPAD_LEFT: "left", BTN_DPAD_RIGHT: "right",
 }
+for _code, _ch in LETTER_KEYS.items():
+    KEYMAP[_code] = "letter:" + _ch
 
-# Richtungs-Aktionen, die beim Halten wiederholt werden
+# Schnappschuss der Standardbelegung (fuer "Auf Standard zuruecksetzen")
+DEFAULT_KEYMAP = dict(KEYMAP)
+
+def _load_custom_keymap():
+    """Eigene Tastenbelegung laden und in KEYMAP einmischen (ueberschreibt
+    einzelne Eintraege, der Rest bleibt Standard)."""
+    try:
+        data = json.load(open(KEYMAP_CUSTOM_FILE))
+        for k, v in data.items():
+            KEYMAP[int(k)] = v
+    except (OSError, ValueError, TypeError):
+        pass
+
+_load_custom_keymap()
+
+# Richtungs-Aktionen, die beim Halten wiederholt werden - sowohl
+# hoch/runter (einzelne Position) als auch links/rechts (Seitensprung)
+# beschleunigen beim Halten.
 REPEAT_ACTIONS = {"up", "down", "left", "right"}
 REPEAT_DELAY    = 0.40      # Sekunden bis zur ersten Wiederholung
 REPEAT_INTERVAL = 0.14      # Start-Intervall, beschleunigt bis 0.05
@@ -591,6 +887,64 @@ class InputManager:
             if deadline is not None and time.time() >= deadline:
                 return None
 
+    def read_raw_key(self, timeout=None, allow_axis_skip=False):
+        """Blockierend auf den naechsten PHYSISCHEN Tastendruck warten
+        und dessen rohen evdev-Code liefern - ignoriert KEYMAP. Fuer den
+        Tastenbelegungs-Assistenten: so kann auch eine bisher unbelegte
+        oder anders belegte Taste erfasst werden.
+
+        allow_axis_skip=True: ein klarer Analogstick-/D-Pad-Ausschlag
+        (egal in welche Richtung) wird als "diese Aktion funktioniert
+        schon nativ ueber die Achse" gewertet und liefert die spezielle
+        Rueckgabe "AXIS" statt eines Codes - der Aufrufer soll dann
+        einfach zur naechsten Abfrage weitergehen, ohne etwas zu
+        ueberschreiben. Ohne diese Erkennung wuerde der Assistent bei
+        Pads, deren D-Pad als Achse (nicht als Taste) ankommt, bei der
+        allerersten Abfrage endlos haengen bleiben."""
+        deadline = None if timeout is None else time.time() + timeout
+        while True:
+            now = time.time()
+            if now - self.last_scan > self.RESCAN_EVERY:
+                self.rescan()
+            wait = self.RESCAN_EVERY
+            if deadline is not None:
+                wait = min(wait, max(0.0, deadline - now))
+            fds = {d.fd: d for d in self.devices.values()}
+            if not fds:
+                time.sleep(0.3)
+            else:
+                try:
+                    r, _, _ = select.select(list(fds), [], [], wait)
+                except OSError:
+                    self.rescan()
+                    continue
+                for fd in r:
+                    dev = fds.get(fd)
+                    if not dev:
+                        continue
+                    try:
+                        data = os.read(fd, EVENT_SIZE)
+                    except OSError:
+                        self.rescan()
+                        continue
+                    if len(data) < EVENT_SIZE:
+                        continue
+                    _, _, etype, code, value = struct.unpack(EVENT_FMT, data)
+                    if etype == EV_KEY and value == 1:
+                        return code
+                    if allow_axis_skip and etype == EV_ABS and code in dev.axis:
+                        amin, amax = dev.axis[code]
+                        if code in (ABS_HAT0X, ABS_HAT0Y):
+                            direction = -1 if value < 0 else (1 if value > 0 else 0)
+                        else:
+                            span = max(1, amax - amin)
+                            rel = (value - amin) / span
+                            direction = -1 if rel < 0.30 else (1 if rel > 0.70 else 0)
+                        if direction != 0:
+                            return "AXIS"
+            if deadline is not None and time.time() >= deadline:
+                return None
+
     COMBO_HOLD = 0.8          # Sekunden Start+Select halten
 
     def wait_game_exit(self):
@@ -723,38 +1077,82 @@ class ArtCache:
 
     SCALED_LIMIT = 10
 
-    def get_scaled(self, path, max_w, max_h):
-        """Bild ganzzahlig auf den verfuegbaren Platz hochskalieren."""
-        base = self.get(path)
-        if not base:
-            return None
-        w, h, pix = base
-        scale = max(1, min(max_w // w, max_h // h, 4))
-        if scale == 1:
-            return base
-        key = (path, scale)
+    def _scaled_cache_put(self, key, result):
         if not hasattr(self, "scaled"):
             self.scaled = {}
             self.scaled_order = []
-        if key in self.scaled:
-            return self.scaled[key]
-        sw, sh = w * scale, h * scale
-        out = bytearray(sw * sh * 4)
-        row_out = sw * 4
-        for y in range(h):
-            o = y * w * 4
-            row = b"".join(pix[o + x*4:o + x*4 + 4] * scale
-                           for x in range(w))
-            base_off = y * scale * row_out
-            for rep in range(scale):
-                off = base_off + rep * row_out
-                out[off:off + row_out] = row
-        result = (sw, sh, bytes(out))
         self.scaled[key] = result
         self.scaled_order.append(key)
         if len(self.scaled_order) > self.SCALED_LIMIT:
             old = self.scaled_order.pop(0)
             self.scaled.pop(old, None)
+
+    def get_scaled(self, path, max_w, max_h):
+        """Bild in die verfuegbare Flaeche einpassen. Kleine Cover werden
+        ganzzahlig hochskaliert (Pixel-Look). Cover, die groesser als die
+        Box sind, werden seit v1.8.1 per Nearest-Neighbor VERKLEINERT statt
+        unskaliert zu bleiben - sonst ragen sie ueber den reservierten
+        Platz hinaus und ueberlappen den Info-Text darunter."""
+        base = self.get(path)
+        if not base:
+            return None
+        w, h, pix = base
+        if max_w <= 0 or max_h <= 0:
+            return None
+        if not hasattr(self, "scaled"):
+            self.scaled = {}
+            self.scaled_order = []
+
+        if w <= max_w and h <= max_h:
+            # Kein hartes Limit mehr wie in v1.8.1 (dort noch 4x) - seit
+            # v1.9 hat die Boxart-Spalte deutlich mehr Platz, ein Deckel
+            # von 4x liess kleine Cover unnoetig klein und von Leerraum
+            # umgeben wirken. 10x ist grosszuegig genug, um jede Box zu
+            # fuellen, aber immer noch klein genug, um den Speicher- und
+            # Rechenaufwand des Nearest-Neighbor-Upscales im Rahmen zu
+            # halten (Cache haelt ohnehin nur SCALED_LIMIT Bilder).
+            scale = max(1, min(max_w // w, max_h // h, 10))
+            if scale == 1:
+                return base
+            key = (path, "up", scale)
+            if key in self.scaled:
+                return self.scaled[key]
+            sw, sh = w * scale, h * scale
+            out = bytearray(sw * sh * 4)
+            row_out = sw * 4
+            for y in range(h):
+                o = y * w * 4
+                row = b"".join(pix[o + x*4:o + x*4 + 4] * scale
+                               for x in range(w))
+                base_off = y * scale * row_out
+                for rep in range(scale):
+                    off = base_off + rep * row_out
+                    out[off:off + row_out] = row
+            result = (sw, sh, bytes(out))
+            self._scaled_cache_put(key, result)
+            return result
+
+        # Bild ist in mindestens einer Richtung groesser als die Box -
+        # verkleinern statt es unskaliert ueberstehen zu lassen.
+        scale = min(max_w / w, max_h / h)
+        tw = max(1, int(w * scale))
+        th = max(1, int(h * scale))
+        key = (path, "down", tw, th)
+        if key in self.scaled:
+            return self.scaled[key]
+        xmap = [min(w - 1, int(x / scale)) * 4 for x in range(tw)]
+        out = bytearray(tw * th * 4)
+        row_out = tw * 4
+        for ty in range(th):
+            sy = min(h - 1, int(ty / scale))
+            srow = pix[sy * w * 4:(sy + 1) * w * 4]
+            o = ty * row_out
+            for tx in range(tw):
+                sx = xmap[tx]
+                out[o:o + 4] = srow[sx:sx + 4]
+                o += 4
+        result = (tw, th, bytes(out))
+        self._scaled_cache_put(key, result)
         return result
 
 ART = ArtCache()
@@ -868,8 +1266,12 @@ def scan_cores():
         if not os.path.isdir(d) or os.path.basename(d) in SKIP_DIRS:
             continue
         items = []
+        # .mgl mit aufnehmen: so tauchen MGL-Shortcut-Ordner (z.B. das
+        # "Recently Played"-Skript) auf und sind direkt startbar - der
+        # Start-Pfad (load_core) verarbeitet .mgl genauso wie .rbf/.mra.
         for f in sorted(glob.glob(os.path.join(d, "*.mra")) +
-                        glob.glob(os.path.join(d, "*.rbf"))):
+                        glob.glob(os.path.join(d, "*.rbf")) +
+                        glob.glob(os.path.join(d, "*.mgl"))):
             name = os.path.splitext(os.path.basename(f))[0]
             name = re.sub(r"_\d{8}[a-zA-Z]?$", "", name)
             items.append((name, "core", f))
@@ -1018,20 +1420,276 @@ def toggle_crt_menu():
     else:
         ini = ini.rstrip() + "\n" + CRT_MENU_BLOCK
         active = True
-    open(MISTER_INI, "w").write(ini)
+    # Atomar schreiben: erst in eine Temp-Datei, dann umbenennen. Sonst
+    # kann ein Abbruch mitten im Schreiben die MiSTer.ini leeren/zerstoeren.
+    tmp = MISTER_INI + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            f.write(ini)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, MISTER_INI)
+    except OSError:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return None
     return active
 
-def system_items():
+# ----------------------------------------------------------------------------
+# BACKGROUND MUSIC (mpg123, extern - no own MP3 decoder needed)
+# ----------------------------------------------------------------------------
+
+class MusicPlayer:
+    """Plays MP3s from MUSIC_DIR in random order in the background.
+    Uses the external mpg123 command-line player (present on MiSTer)
+    instead of decoding audio ourselves. Non-blocking: the current
+    track runs via subprocess.Popen, the switch to the next track
+    happens whenever tick() is called from the main loop."""
+
+    def __init__(self):
+        self.enabled = self._load_enabled()
+        self.playlist = []
+        self.pos = 0
+        self.proc = None
+        self.paused_for_core = False
+        self._rescan()
+
+    @staticmethod
+    def _load_enabled():
+        try:
+            return open(MUSIC_ENABLED_FILE).read().strip() != "0"
+        except OSError:
+            return True    # default: on, until toggled once
+
+    def _save_enabled(self):
+        try:
+            os.makedirs(os.path.dirname(MUSIC_ENABLED_FILE), exist_ok=True)
+            with open(MUSIC_ENABLED_FILE, "w") as f:
+                f.write("1" if self.enabled else "0")
+        except OSError:
+            pass
+
+    def _rescan(self):
+        try:
+            files = [os.path.join(MUSIC_DIR, f)
+                    for f in os.listdir(MUSIC_DIR)
+                    if f.lower().endswith(".mp3")]
+        except OSError:
+            files = []
+        random.shuffle(files)
+        self.playlist = files
+        self.pos = 0
+
+    def available(self):
+        return bool(self.playlist) and os.path.exists(MPG123_BIN)
+
+    def _proc_alive(self):
+        return self.proc is not None and self.proc.poll() is None
+
+    def _start_current(self):
+        if not self.playlist:
+            return
+        path = self.playlist[self.pos]
+        try:
+            self.proc = subprocess.Popen(
+                [MPG123_BIN, "-q", path],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL)
+            LOG("Music: playing %s" % os.path.basename(path))
+        except OSError as e:
+            LOG("Music: failed to start mpg123: %s" % e)
+            self.proc = None
+
+    def _stop_current(self):
+        if self.proc is not None:
+            try:
+                self.proc.terminate()
+                self.proc.wait(timeout=2)
+            except Exception:
+                try:
+                    self.proc.kill()
+                except Exception:
+                    pass
+            self.proc = None
+
+    def _advance(self):
+        if not self.playlist:
+            return
+        self.pos += 1
+        if self.pos >= len(self.playlist):
+            random.shuffle(self.playlist)   # new round, reshuffled
+            self.pos = 0
+
+    def current_track_name(self):
+        """Anzeigename des aktuell (bzw. zuletzt gestarteten) Songs,
+        ohne Pfad und Dateiendung - oder None, wenn gerade nichts
+        gespielt wird/werden soll."""
+        if not self.enabled or self.paused_for_core or not self.playlist:
+            return None
+        path = self.playlist[self.pos]
+        return os.path.splitext(os.path.basename(path))[0]
+
+    def tick(self):
+        """Call regularly from the main loop. Starts playback if
+        needed, automatically advances to the next track once the
+        current one has ended."""
+        if not self.enabled or self.paused_for_core:
+            return
+        if not self.playlist:
+            return
+        if not self._proc_alive():
+            if self.proc is not None:
+                self._advance()   # previous track has ended
+            self._start_current()
+
+    def next_track(self):
+        """Manual track skip (Y button)."""
+        if not self.playlist:
+            return
+        self._stop_current()
+        self._advance()
+        if self.enabled and not self.paused_for_core:
+            self._start_current()
+
+    def toggle(self):
+        self.enabled = not self.enabled
+        self._save_enabled()
+        if self.enabled:
+            if not self.paused_for_core:
+                self.tick()
+        else:
+            self._stop_current()
+
+    def pause_for_core(self):
+        """Before starting a core/game: stop music so it doesn't mix
+        with the game's own audio."""
+        self.paused_for_core = True
+        self._stop_current()
+
+    def resume_after_core(self):
+        """After returning to the frontend: resume music automatically
+        if it's enabled."""
+        self.paused_for_core = False
+        if self.enabled:
+            self.tick()
+
+    def shutdown(self):
+        self._stop_current()
+
+
+# ----------------------------------------------------------------------------
+# LANGUAGE / TRANSLATIONS
+# ----------------------------------------------------------------------------
+
+TRANSLATIONS = {
+    "categories":      {"en": "%d categories",  "de": "%d Kategorien"},
+    "entries":         {"en": "%d entries",      "de": "%d Eintraege"},
+    "footer_cats_wide":   {"en": "Up/Down:Nav  Left/Right:Page  Enter:Open  ESC:Quit",
+                           "de": "Hoch/Runter:Nav  Links/Rechts:Seite  Enter:Oeffnen  ESC:Beenden"},
+    "footer_cats_mid":    {"en": "Nav  Page  Enter:Open  ESC:Quit",
+                           "de": "Nav  Seite  Enter:Oeffnen  ESC:Beenden"},
+    "footer_cats_narrow": {"en": "Enter:Open  ESC:Quit",
+                           "de": "Enter:Oeffnen  ESC:Beenden"},
+    "footer_items_wide":   {"en": "Up/Down:Nav  Left/Right:Page  Enter/A:Start  ESC/B:Back",
+                            "de": "Hoch/Runter:Nav  Links/Rechts:Seite  Enter/A:Start  ESC/B:Zurueck"},
+    "footer_items_mid":    {"en": "L/R:Page  Enter/A:Start  ESC/B:Back",
+                            "de": "L/R:Seite  Enter/A:Start  ESC/B:Zurueck"},
+    "footer_items_narrow": {"en": "A:Start  B:Back", "de": "A:Start  B:Zurueck"},
+    "quit_confirm":    {"en": "Quit the frontend?", "de": "Frontend wirklich beenden?"},
+    "yes":             {"en": "Yes", "de": "Ja"},
+    "no":              {"en": "No",  "de": "Nein"},
+    "players":         {"en": "Players: %s", "de": "Spieler: %s"},
+    "year":            {"en": "Year: %s",    "de": "Jahr: %s"},
+    "no_artwork_1":    {"en": "no",      "de": "kein"},
+    "no_artwork_2":    {"en": "artwork", "de": "Artwork"},
+    "sys_osd":         {"en": "Open MiSTer OSD (Settings/Buttons)",
+                        "de": "MiSTer-OSD oeffnen (Settings/Buttons)"},
+    "sys_video_crt":   {"en": "Menu video: CRT -> switch to HDMI",
+                        "de": "Menue-Video: CRT -> auf HDMI wechseln"},
+    "sys_video_hdmi":  {"en": "Menu video: HDMI -> switch to CRT",
+                        "de": "Menue-Video: HDMI -> auf CRT wechseln"},
+    "sys_video_suffix":{"en": " (reboot)", "de": " (Neustart)"},
+    "sys_music_on":    {"en": "Music: On -> turn off", "de": "Musik: an -> ausschalten"},
+    "sys_music_off":   {"en": "Music: Off -> turn on", "de": "Musik: aus -> einschalten"},
+    "sys_language":    {"en": "Language: English -> switch to German",
+                        "de": "Sprache: Deutsch -> auf Englisch wechseln"},
+    "sys_configure_buttons": {"en": "Configure buttons",
+                              "de": "Tastenbelegung anpassen"},
+    "sys_reset_buttons":     {"en": "Reset to default buttons",
+                              "de": "Auf Standardbelegung zuruecksetzen"},
+    "sys_rescan":      {"en": "Rescan game list", "de": "Spieleliste neu einlesen"},
+    "sys_redraw":      {"en": "Redraw display",   "de": "Anzeige neu aufbauen"},
+    "sys_reboot":      {"en": "Restart MiSTer",   "de": "MiSTer neu starten"},
+    "sys_quit":        {"en": "Quit frontend",    "de": "Frontend beenden"},
+    "remap_prompt":    {"en": "Press a button for: %s",
+                        "de": "Taste druecken fuer: %s"},
+    "remap_action_up":     {"en": "Up",     "de": "Hoch"},
+    "remap_action_down":   {"en": "Down",   "de": "Runter"},
+    "remap_action_left":   {"en": "Left",   "de": "Links"},
+    "remap_action_right":  {"en": "Right",  "de": "Rechts"},
+    "remap_action_ok":     {"en": "OK / Start", "de": "OK / Start"},
+    "remap_action_back":   {"en": "Back",   "de": "Zurueck"},
+    "remap_action_osd":    {"en": "Open MiSTer menu", "de": "MiSTer-Menue oeffnen"},
+    "remap_done":      {"en": "Button mapping saved!",
+                        "de": "Tastenbelegung gespeichert!"},
+    "remap_cancelled": {"en": "Cancelled - keeping previous mapping",
+                        "de": "Abgebrochen - alte Belegung bleibt aktiv"},
+    "remap_esc_hint":  {"en": "(ESC to cancel)", "de": "(ESC zum Abbrechen)"},
+    "now_playing":     {"en": "Now playing: %s", "de": "Es laeuft: %s"},
+}
+
+def _load_language():
+    try:
+        lang = open(LANGUAGE_FILE).read().strip()
+        return lang if lang in ("en", "de") else "en"
+    except OSError:
+        return "en"
+
+CURRENT_LANG = _load_language()
+
+def set_language(lang):
+    global CURRENT_LANG
+    CURRENT_LANG = lang
+    try:
+        os.makedirs(os.path.dirname(LANGUAGE_FILE), exist_ok=True)
+        with open(LANGUAGE_FILE, "w") as f:
+            f.write(lang)
+    except OSError:
+        pass
+
+def t(key, *fmt_args):
+    """Uebersetzten Text fuer den aktuellen Sprachstand liefern.
+    Faellt bei fehlendem Schluessel/fehlender Sprache auf Englisch
+    bzw. den Schluessel selbst zurueck, statt abzustuerzen."""
+    entry = TRANSLATIONS.get(key)
+    if entry is None:
+        return key
+    text = entry.get(CURRENT_LANG, entry.get("en", key))
+    if fmt_args:
+        try:
+            return text % fmt_args
+        except (TypeError, ValueError):
+            return text
+    return text
+
+
+def system_items(music_enabled=None):
     crt = crt_menu_active()
-    video = ("Menue-Video: CRT -> auf HDMI wechseln" if crt
-             else "Menue-Video: HDMI -> auf CRT wechseln")
+    video = t("sys_video_crt") if crt else t("sys_video_hdmi")
+    music_label = t("sys_music_on") if music_enabled else t("sys_music_off")
     return [
-        ("MiSTer-OSD oeffnen (Settings/Buttons)", "osd",     None),
-        (video + " (Neustart)",                   "crtmenu", None),
-        ("Spieleliste neu einlesen",              "rescan",  None),
-        ("Anzeige neu aufbauen",                  "redraw",  None),
-        ("MiSTer neu starten",                    "reboot",  None),
-        ("Frontend beenden",                      "quit",    None),
+        (t("sys_osd"),                             "osd",       None),
+        (video + t("sys_video_suffix"),             "crtmenu",   None),
+        (music_label,                                "music",     None),
+        (t("sys_language"),                          "language",  None),
+        (t("sys_configure_buttons"),                 "remap",     None),
+        (t("sys_reset_buttons"),                     "remap_reset", None),
+        (t("sys_rescan"),                            "rescan",    None),
+        (t("sys_redraw"),                            "redraw",    None),
+        (t("sys_reboot"),                            "reboot",    None),
+        (t("sys_quit"),                              "quit",      None),
     ]
 
 def _letter_of(name):
@@ -1040,29 +1698,19 @@ def _letter_of(name):
             return ch.upper()
     return "#"
 
-def letter_jump(items, i, direction):
-    """Index des naechsten/vorherigen Anfangsbuchstaben-Blocks."""
-    if not items:
-        return i
-    cur = _letter_of(items[i][0])
-    j = i
-    if direction > 0:
-        while j < len(items) - 1:
-            j += 1
-            if _letter_of(items[j][0]) != cur:
-                break
-    else:
-        start = j
-        while start > 0 and _letter_of(items[start - 1][0]) == cur:
-            start -= 1
-        if start != j:
-            return start          # erst zum Anfang des eigenen Blocks
-        if start > 0:
-            j = start - 1
-            prev = _letter_of(items[j][0])
-            while j > 0 and _letter_of(items[j - 1][0]) == prev:
-                j -= 1
-    return j
+def jump_to_letter(names, cur_i, ch):
+    """Index des naechsten Eintrags (zyklisch, ab cur_i+1 gesucht),
+    dessen Anfangsbuchstabe ch entspricht. Mehrfaches Druecken derselben
+    Taste springt dadurch der Reihe nach durch alle Treffer - wie die
+    Direktsprung-Suche in klassischen Dateibrowsern."""
+    n = len(names)
+    if n == 0:
+        return cur_i
+    for step in range(1, n + 1):
+        idx = (cur_i + step) % n
+        if _letter_of(names[idx]) == ch:
+            return idx
+    return cur_i
 
 def current_core():
     try:
@@ -1079,15 +1727,44 @@ def launch_core(path):
 # ----------------------------------------------------------------------------
 
 class Frontend:
+    """
+    Seit v1.8 zweiseitig:
+      Seite 0 - Hauptmenue: nur die Kategorien (Systeme, Arcade, Scripts,
+                System) als grosse, gut lesbare Liste ueber die volle Breite.
+      Seite 1 - Kategorie-Ansicht: Liste links, bei Spiele-/Arcade-Systemen
+                daneben eine eigene, breite Boxart+Info-Spalte (statt eines
+                kleinen ueberlappenden Blocks unten rechts wie in v1.7).
+    """
+
     def __init__(self):
         self.fb = Framebuffer()
         self.inp = InputManager()
+        self.music = MusicPlayer()
         self.build_categories()
-        self.cat_i = self.item_i = self.scroll = 0
+        self.page = 0              # 0 = Kategorien-Menue, 1 = Kategorie-Ansicht
+        self.cat_i = 0
         self.cat_scroll = 0
-        self.focus = 0
+        self.item_i = self.scroll = 0
         self.mq_off = 0            # Laufschrift-Versatz (Zeichen)
         self.mq_pause = 0          # Pausen-Ticks an den Enden
+        # Laufschrift fuer den aktuell spielenden Songtitel - eigener,
+        # unabhaengiger Zustand, weil sie an zwei verschiedenen Stellen
+        # (neben dem Logo UND im Boxart-Block) gleichzeitig laufen kann.
+        self.track_mq_off = 0
+        self.track_mq_pause = 0
+        self._track_mq_name = None
+        self._track_tick_next = 0.0
+        # Seit v1.11: Seitensprung-Groesse (links/rechts) = sichtbare
+        # Zeilenzahl der jeweiligen Liste - wird beim Zeichnen aktuell
+        # gehalten, damit der Sprung immer genau einen Bildschirm
+        # weiterspringt, egal welche Aufloesung/Layout gerade aktiv ist.
+        self.cats_visible = 5
+        self.items_visible = 5
+        # Beenden-Bestaetigung (ESC/B im Hauptmenue)
+        self.confirm_quit = False
+        self.confirm_choice = 1    # 0 = Ja, 1 = Nein (Standard)
+        if self.music.available():
+            self.music.tick()      # start playback right away
 
     def build_categories(self, force_rescan=False):
         # Reihenfolge: Spiele-Systeme, dann Core-Ordner, Scripts, System
@@ -1096,178 +1773,271 @@ class Frontend:
         scripts = scan_scripts()
         if scripts:
             self.cats.append(("Scripts", scripts, None))
-        self.cats.append(("System", system_items(), None))
+        self.cats.append(("System", system_items(self.music.enabled), None))
+
+    def _go_back_or_confirm_quit(self):
+        """ESC/B (und der 3x-Select-Kurzbefehl): auf Seite 1 einfach
+        eine Ebene zurueck; im Hauptmenue (Seite 0) stattdessen die
+        Beenden-Bestaetigung einblenden statt sofort zu schliessen."""
+        if self.page == 1:
+            self.page = 0
+        else:
+            self.confirm_quit = True
+            self.confirm_choice = 1    # Nein vorausgewaehlt
+        self.draw()
+
+    def _confirm_quit_dialog(self):
+        """Der explizite Menuepunkt 'Frontend beenden' im System-Menue -
+        zeigt immer die Bestaetigung, unabhaengig von der Seite."""
+        self.confirm_quit = True
+        self.confirm_choice = 1    # Nein vorausgewaehlt
+        self.draw()
+
+    def _enter_category(self):
+        """Von Seite 0 (Kategorien-Menue) in Seite 1 (Liste der
+        aktuellen Kategorie) wechseln."""
+        _name, items, _sk = self.cats[self.cat_i]
+        if not items:
+            return
+        self.page = 1
+        self.item_i = 0
+        self.scroll = 0
+        self.marquee_reset()
 
     # ------------------------------------------------------------------
     # Adaptives Layout: alles wird aus der Framebuffer-Hoehe abgeleitet.
     # 1080p -> Schrift 3x, 720p -> 2x, 480p -> 1x
     # ------------------------------------------------------------------
-    def layout(self):
+    def layout_cats(self):
+        """Layout fuer Seite 0 - die volle Breite gehoert der Kategorienliste,
+        kein Boxart-Block noetig."""
         W, H = self.fb.width, self.fb.height
-        s  = max(1, H // 360)            # Basisschrift-Skalierung
+        s = max(1, H // 360)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
-        L = {
-            "s": s, "ox": ox, "oy": oy,
-            # Panelbreite: laengster Kategoriename + Rand, gedeckelt auf 1/3
-            "panel_w": self._panel_width(W, s),
-            "rowh":    15 * s,
-            "cat_rowh": 20 * s,
-            "margin":  10 * s,
-        }
-        L["list_x"] = ox + L["panel_w"] + 12 * s
-        L["list_y"] = oy + (44 if H >= 400 else 28) * s
-        L["visible"] = max(3, (H - L["list_y"] - 20 * s - oy) // L["rowh"])
-        return L
+        rowh = 22 * s
+        y0 = oy + 40 * s
+        visible = max(3, (H - y0 - oy - 20 * s) // rowh)
+        return {"s": s, "ox": ox, "oy": oy, "rowh": rowh,
+                "y0": y0, "visible": visible}
 
-    def _panel_width(self, W, s):
-        longest = max((len(n) for n, _i, _sk in self.cats), default=8)
-        want = longest * 8 * s + 14 * s
-        limit = int(W * 0.40) if W < 500 else W // 3
-        return min(max(72, want), limit)
+    def layout_items(self, has_art):
+        """Layout fuer Seite 1. Bei Systemen mit Boxart teilt sich der
+        Platz in eine Listenspalte links und eine Boxart-Spalte rechts;
+        ohne Boxart (Scripts/System/Core-Ordner) nutzt die Liste die
+        volle Breite."""
+        W, H = self.fb.width, self.fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        list_y = oy + 40 * s
+        footer_y = H - oy - 13 * s
+        rowh = 15 * s
+        avail_w = W - 2 * ox
+        list_w = int(avail_w * 0.52) if has_art else avail_w
+        list_x = ox
+        list_right = list_x + list_w
+        visible = max(3, (footer_y - 6 * s - list_y) // rowh)
+        return {"s": s, "ox": ox, "oy": oy, "list_x": list_x,
+                "list_y": list_y, "list_right": list_right,
+                "rowh": rowh, "footer_y": footer_y, "visible": visible}
 
     def draw(self, message=None):
+        self._sync_track_marquee()
+        # Wenn der Bestaetigungsdialog kommt, soll die Seite dahinter
+        # NICHT extra geflippt werden - sonst blitzt fuer einen Frame
+        # der Hintergrund ohne Dialog auf, bevor der Dialog erscheint
+        # (genau das war das Flackern beim Wechseln zwischen den
+        # Optionen).  Nur der letzte Zeichenschritt flippt.
+        if self.page == 0:
+            self.draw_page_cats(message, flip=not self.confirm_quit)
+        else:
+            self.draw_page_items(message, flip=not self.confirm_quit)
+        if self.confirm_quit:
+            self.draw_confirm_dialog()
+
+    # ------------------------------------------------------------------
+    # Seite 0: Kategorien-Menue
+    # ------------------------------------------------------------------
+    def draw_page_cats(self, message=None, flip=True):
         fb = self.fb
         W, H = fb.width, fb.height
-        L = self.layout()
-        s = L["s"]
+        L = self.layout_cats()
+        s, ox, oy = L["s"], L["ox"], L["oy"]
+        rowh, y0, visible = L["rowh"], L["y0"], L["visible"]
+        self.cats_visible = visible
 
-        ox, oy = L["ox"], L["oy"]
-        _n, _i, _sk = self.cats[self.cat_i]
-        self._cur_bg = BG.get(_sk, fb) if _sk else None
+        fb.clear(C_BG)
+        fb.text(ox, oy, "MiSTer", 3 * s, C_TITLE, C_BG)
+        fb.text(ox, oy + 28 * s, t("categories", len(self.cats)), s, C_DIM, C_BG)
+
+        # Songtitel als Laufschrift NEBEN dem Logo (nicht darunter,
+        # sonst ueberschneidet er sich mit dem Listenbeginn).
+        logo_w = len("MiSTer") * 8 * 3 * s
+        track_x = ox + logo_w + 16 * s
+        track_maxc = max(0, (W - ox - track_x) // (8 * s))
+        if track_maxc >= 6:
+            track_text = self.track_marquee_text(track_maxc)
+            if track_text:
+                fb.text(track_x, oy + 8 * s, track_text, s, C_DIM, C_BG)
+
+        if self.cat_i < self.cat_scroll:
+            self.cat_scroll = self.cat_i
+        if self.cat_i >= self.cat_scroll + visible:
+            self.cat_scroll = self.cat_i - visible + 1
+        self.cat_scroll = max(0, min(self.cat_scroll,
+                                     max(0, len(self.cats) - visible)))
+        end = min(self.cat_scroll + visible, len(self.cats))
+
+        list_right = W - ox
+        for row, i in enumerate(range(self.cat_scroll, end)):
+            name, items, _sk = self.cats[i]
+            y = y0 + row * rowh
+            sel = (i == self.cat_i)
+            bg = C_ACCENT if sel else C_BG
+            if sel:
+                fb.rect(ox - 4 * s, y - 4 * s, list_right - ox + 8 * s,
+                        rowh - 4 * s, bg)
+            fb.text(ox, y, name, 2 * s, C_TITLE if sel else C_TEXT, bg)
+            cnt = str(len(items))
+            ccw = len(cnt) * 8 * s
+            fb.text(list_right - ccw, y + 4 * s, cnt,
+                    s, C_TEXT if sel else C_DIM, bg)
+
+        foot = message or (
+            t("footer_cats_wide") if W >= 700 else
+            t("footer_cats_mid") if W >= 560 else
+            t("footer_cats_narrow"))
+        fb.text(ox, H - oy - 13 * s, foot, s, C_DIM, C_BG)
+        if flip:
+            fb.flip()
+
+    # ------------------------------------------------------------------
+    # Seite 1: Liste + (falls vorhanden) grosse Boxart-Spalte
+    # ------------------------------------------------------------------
+    def draw_page_items(self, message=None, flip=True):
+        fb = self.fb
+        W, H = fb.width, fb.height
+        name, items, syskey = self.cats[self.cat_i]
+        total = len(items)
+        has_art = bool(syskey) and total > 0
+
+        L = self.layout_items(has_art)
+        s, ox, oy = L["s"], L["ox"], L["oy"]
+        list_x, list_y = L["list_x"], L["list_y"]
+        list_right, rowh = L["list_right"], L["rowh"]
+        footer_y, visible = L["footer_y"], L["visible"]
+        self.items_visible = visible
+
+        self._cur_bg = BG.get(syskey, fb) if syskey else None
         if self._cur_bg is not None:
             fb.buf[:] = self._cur_bg
         else:
             fb.clear(C_BG)
-        fb.rect(0, 0, ox + L["panel_w"], H, C_PANEL, scanlines=True)
-        fb.text(ox + 6 * s, oy + 10 * s, "MiSTer", 2 * s, C_TITLE, C_PANEL)
 
-        # Kategorien links (mit eigenem Scrollfenster)
-        cat_y0 = oy + 34 * s
-        cat_vis = max(2, (H - cat_y0 - oy - 18 * s) // L["cat_rowh"])
-        if self.cat_i < self.cat_scroll:
-            self.cat_scroll = self.cat_i
-        if self.cat_i >= self.cat_scroll + cat_vis:
-            self.cat_scroll = self.cat_i - cat_vis + 1
-        self.cat_scroll = max(0, min(self.cat_scroll,
-                                     max(0, len(self.cats) - cat_vis)))
-        cat_end = min(self.cat_scroll + cat_vis, len(self.cats))
-        if self.cat_scroll > 0:
-            fb.text(ox + L["panel_w"] // 2 - 4 * s, cat_y0 - 11 * s,
-                    "^", s, C_DIM, C_PANEL)
-        if cat_end < len(self.cats):
-            fb.text(ox + L["panel_w"] // 2 - 4 * s,
-                    cat_y0 + cat_vis * L["cat_rowh"] - 2 * s,
-                    "v", s, C_DIM, C_PANEL)
-        for row, i in enumerate(range(self.cat_scroll, cat_end)):
-            name, items, _sk = self.cats[i]
-            y = cat_y0 + row * L["cat_rowh"]
-            sel = (i == self.cat_i)
-            bg = (C_ACCENT if self.focus == 0 else C_ACCENT2) if sel else C_PANEL
-            if sel:
-                fb.rect(ox + 2 * s, y - 3 * s, L["panel_w"] - 4 * s, 14 * s, bg)
-            label = name
-            maxc = (L["panel_w"] - 10 * s) // (8 * s)
-            if len(label) > maxc:
-                label = label[:max(1, maxc - 1)] + "~"
-            fb.text(ox + 6 * s, y, label, s, C_TEXT if sel else C_DIM, bg)
+        fb.text(ox, oy, name.upper(), 2 * s, C_TITLE)
+        fb.text(ox, oy + 22 * s, t("entries", total), s, C_DIM)
 
-        # Eintraege: Liste nutzt (fast) die volle Breite. Das Boxart+
-        # Info-Panel sitzt als kompakter Block unten rechts (Variante A) -
-        # nur die Zeilen, die mit diesem Block ueberlappen, werden
-        # schmaler; alle Zeilen darueber laufen ueber die volle Breite.
-        name, items, syskey = self.cats[self.cat_i]
-        total = len(items)
-        full_right = W - L["ox"]
-
-        if syskey and total:
-            art_w = min(int(W * 0.30), 200)
-            art_h = min(int((H - L["list_y"] - L["oy"] - 16*s) * 0.55),
-                        art_w + 60 * s)
-            art_x0 = full_right - art_w
-            art_y0 = H - L["oy"] - 16 * s - art_h
-        else:
-            art_w = art_h = 0
-            art_x0 = full_right
-            art_y0 = H
-
-        # Effektive sichtbare Zeilenzahl: nur der Bereich OBERHALB des
-        # Boxart-Blocks zaehlt als nutzbarer Sichtbereich. So scrollt
-        # die Liste immer so, dass die Markierung sichtbar bleibt,
-        # statt hinter dem Block zu "verschwinden".
-        if syskey and total:
-            eff_visible = max(1, (art_y0 - L["list_y"] - 2 * s) // L["rowh"])
-            eff_visible = min(eff_visible, L["visible"])
-        else:
-            eff_visible = L["visible"]
+        self.view = {"list_x": list_x, "list_y": list_y,
+                    "list_right": list_right, "rowh": rowh, "s": s,
+                    "items": items}
 
         if self.item_i < self.scroll:
             self.scroll = self.item_i
-        if self.item_i >= self.scroll + eff_visible:
-            self.scroll = self.item_i - eff_visible + 1
-
-        if H >= 400:
-            fb.text(L["list_x"], oy + 12 * s, name.upper(), 2 * s, C_TITLE)
-            fb.text(L["list_x"], oy + 32 * s, "%d Eintraege" % total, s, C_DIM)
-        else:
-            # niedrige CRT-Aufloesung: einzeilig, Platz sparen
-            head = name.upper()
-            fb.text(L["list_x"], oy + 12 * s, head, s, C_TITLE)
-            cnt = "(%d)" % total
-            fb.text(min(W - ox - len(cnt) * 8 * s,
-                        L["list_x"] + (len(head) + 1) * 8 * s),
-                    oy + 12 * s, cnt, s, C_DIM)
-
-        # Ansichts-Zustand fuer Zeilen-Neuzeichnung (Laufschrift) merken.
-        # art_x0/art_y0 erlauben es draw_list_row(), pro Zeile zu
-        # entscheiden ob sie mit dem Boxart-Block ueberlappt.
-        self.view = {"L": L, "list_right": full_right, "items": items,
-                    "art_x0": art_x0, "art_y0": art_y0}
-        end = min(self.scroll + eff_visible, total)
-        for row, idx in enumerate(range(self.scroll, end)):
+        if self.item_i >= self.scroll + visible:
+            self.scroll = self.item_i - visible + 1
+        self.scroll = max(0, min(self.scroll, max(0, total - visible)))
+        end = min(self.scroll + visible, total)
+        for idx in range(self.scroll, end):
             self.draw_list_row(idx)
 
-        # Boxart+Info-Block unten rechts
-        if syskey and total:
-            self.draw_art_panel(art_x0, art_w, art_y0, art_h, syskey,
-                                items[self.item_i], L)
+        if has_art:
+            # Die Spalte beginnt jetzt auf Hoehe der Kopfzeile (oy) statt
+            # erst auf Hoehe der Liste (list_y) - der Header nutzt nur
+            # den linken Teil der Zeile, rechts daneben blieb bisher ein
+            # ungenutzter Streifen bis zur Liste. Das Cover bekommt so
+            # spuerbar mehr Platz nach oben.
+            art_x0 = list_right + 14 * s
+            art_y0 = oy
+            art_w = (W - ox) - art_x0
+            art_h = footer_y - 8 * s - art_y0
+            if art_w > 20 and art_h > 20:
+                self.draw_art_panel(art_x0, art_w, art_y0, art_h,
+                                    syskey, items[self.item_i], s)
 
-        # Fusszeile
         foot = message or (
-            "Pfeile/D-Pad:Nav  Enter/A:Start  F12/Guide:OSD  ESC:Ende"
-            if W >= 560 else "Nav:Pfeile  A:Start  F12:OSD")
-        fb.text(ox + 6 * s, H - oy - 13 * s, foot, s, C_DIM, C_PANEL)
-        fb.flip()
+            t("footer_items_wide") if W >= 700 else
+            t("footer_items_mid") if W >= 560 else
+            t("footer_items_narrow"))
+        fb.text(ox, footer_y, foot, s, C_DIM)
+        if flip:
+            fb.flip()
 
-    def _row_hidden(self, y_top, y_bot):
-        """True wenn diese Zeile mit dem Boxart-Block unten ueberlappt -
-        dort wird kein Listentext mehr gezeigt (Titel+Infos stehen
-        stattdessen im Boxart-Block selbst)."""
-        v = self.view
-        art_y0 = v.get("art_y0")
-        return art_y0 is not None and y_bot > art_y0
+    def draw_confirm_dialog(self):
+        """Beenden-Bestaetigung: ueberlagert die aktuelle Seite mit
+        einem kleinen Dialog. Links waehlt 'Ja', Rechts waehlt 'Nein'
+        (Standardauswahl), Enter bestaetigt die Auswahl. ESC/B im
+        Dialog bricht sofort ab (sicherer Standard)."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        msg = t("quit_confirm")
+        maxc = max(10, (W - 40 * s) // (8 * s))
+        lines = self._wrap(msg, maxc, max_lines=2)
+        labels = [t("yes"), t("no")]
+
+        line_h = 12 * s
+        btn_h = 16 * s
+        btn_w = max(len(l) for l in labels) * 8 * s + 16 * s
+        gap = 14 * s
+        pad = 12 * s
+
+        text_w = max(len(ln) for ln in lines) * 8 * s
+        buttons_w = btn_w * 2 + gap
+        box_w = min(W - 16 * s, max(text_w, buttons_w) + 2 * pad)
+        box_h = pad + len(lines) * line_h + gap + btn_h + pad
+        x0 = (W - box_w) // 2
+        y0 = (H - box_h) // 2
+
+        fb.rect(x0, y0, box_w, 2 * s, C_ACCENT)
+        fb.rect(x0, y0 + 2 * s, box_w, box_h - 2 * s, C_PANEL)
+
+        ty = y0 + pad
+        for ln in lines:
+            tw = len(ln) * 8 * s
+            fb.text(x0 + (box_w - tw) // 2, ty, ln, s, C_TITLE, C_PANEL)
+            ty += line_h
+
+        bx = x0 + (box_w - buttons_w) // 2
+        by = y0 + box_h - pad - btn_h
+        for i, label in enumerate(labels):
+            sel = (self.confirm_choice == i)
+            bg = C_ACCENT if sel else C_ACCENT2
+            fb.rect(bx, by, btn_w, btn_h, bg)
+            tw = len(label) * 8 * s
+            fb.text(bx + (btn_w - tw) // 2, by + 4 * s, label,
+                    s, C_TITLE if sel else C_TEXT, bg)
+            bx += btn_w + gap
+        fb.flip()
 
     def draw_list_row(self, idx):
         """Eine Listenzeile zeichnen. Die markierte Zeile zeigt bei
         Ueberlaenge einen Laufschrift-Ausschnitt des vollen Namens.
-        Zeilen, die mit dem Boxart-Block unten ueberlappen, werden
-        NICHT gezeichnet - der Block zeigt Titel+Infos stattdessen
-        selbst an."""
+        Die Boxart-Spalte liegt seit v1.8 NEBEN der Liste statt darueber,
+        darum muss hier keine Zeile mehr wegen Ueberlappung ausgeblendet
+        werden."""
         fb = self.fb
         v = self.view
-        L = v["L"]; s = L["s"]
+        list_x, list_right = v["list_x"], v["list_right"]
+        rowh, s = v["rowh"], v["s"]
         row = idx - self.scroll
-        y = L["list_y"] + row * L["rowh"]
+        y = v["list_y"] + row * rowh
         y_top = y - 3 * s
-        y_bot = y_top + L["rowh"] - 2 * s
-        if self._row_hidden(y_top, y_bot):
-            return y
-        list_right = v["list_right"]
 
         sel = (idx == self.item_i)
-        bg = (C_ACCENT if self.focus == 1 else C_ACCENT2) if sel else C_BG
-        x0 = L["list_x"] - 4 * s
-        rw = max(4, list_right - L["list_x"] - 2 * s)
+        bg = C_ACCENT if sel else C_BG
+        x0 = list_x - 4 * s
+        rw = max(4, list_right - list_x - 2 * s)
         need = rw * 4
         cur_bg = getattr(self, "_cur_bg", None)
         if cur_bg is not None:
@@ -1276,7 +2046,7 @@ class Frontend:
             # sonst verschiebt sich der GESAMTE Framebuffer-Puffer.
             buflen = len(fb.buf)
             cur_bg_len = len(cur_bg)
-            for yy in range(max(0, y_top), min(fb.height, y_bot)):
+            for yy in range(max(0, y_top), min(fb.height, y_top + rowh - 2 * s)):
                 off = yy * fb.stride + x0 * 4
                 end = off + need
                 if end > buflen or end > cur_bg_len or off < 0:
@@ -1286,12 +2056,12 @@ class Frontend:
                     continue
                 fb.buf[off:end] = chunk
             if sel:
-                fb.rect(x0, y_top, rw, L["rowh"] - 2 * s, bg)
+                fb.rect(x0, y_top, rw, rowh - 2 * s, bg)
         else:
-            fb.rect(x0, y_top, rw, L["rowh"] - 2 * s,
-                    bg if sel else C_BG)
+            fb.rect(x0, y_top, rw, rowh - 2 * s, bg if sel else C_BG)
+
         full = v["items"][idx][0]
-        maxc = (list_right - L["list_x"] - 8 * s) // (8 * s)
+        maxc = (list_right - list_x - 8 * s) // (8 * s)
         if sel:
             # Markierte Zeile: voller Name, bei Bedarf als Laufschrift
             if len(full) > maxc:
@@ -1303,25 +2073,21 @@ class Frontend:
             label = display_name(full)
             if len(label) > maxc:
                 label = label[:max(1, maxc - 1)] + "~"
-        fb.text(L["list_x"], y, label, s, C_TEXT if sel else C_DIM, bg)
+        fb.text(list_x, y, label, s, C_TEXT if sel else C_DIM, bg)
         return y
 
     def marquee_needed(self):
         v = getattr(self, "view", None)
-        if not v or self.focus != 1 or not v["items"]:
+        if not v or self.page != 1 or not v["items"]:
             return False
-        L = v["L"]; s = L["s"]
-        row = self.item_i - self.scroll
-        y = L["list_y"] + row * L["rowh"]
-        if self._row_hidden(y - 3*s, y - 3*s + L["rowh"] - 2*s):
-            return False    # Zeile ist verdeckt - keine Laufschrift noetig
-        maxc = (v["list_right"] - L["list_x"] - 8 * s) // (8 * s)
+        s = v["s"]
+        maxc = (v["list_right"] - v["list_x"] - 8 * s) // (8 * s)
         return len(v["items"][self.item_i][0]) > maxc
 
     def marquee_tick(self):
         v = self.view
-        L = v["L"]; s = L["s"]
-        maxc = (v["list_right"] - L["list_x"] - 8 * s) // (8 * s)
+        s = v["s"]
+        maxc = (v["list_right"] - v["list_x"] - 8 * s) // (8 * s)
         full = v["items"][self.item_i][0]
         max_off = len(full) - maxc
         if self.mq_pause > 0:
@@ -1334,22 +2100,84 @@ class Frontend:
             if self.mq_off >= max_off:
                 self.mq_pause = 6          # am Ende kurz stehenbleiben
         y = self.draw_list_row(self.item_i)
-        self.fb.flip_rows(y - 3 * L["s"], L["rowh"])
+        self.fb.flip_rows(y - 3 * v["s"], v["rowh"])
 
     def marquee_reset(self):
         self.mq_off = 0
         self.mq_pause = 4
 
+    def _sync_track_marquee(self):
+        """Bei Songwechsel den Laufschrift-Zustand des Titels
+        zuruecksetzen - wird vor jedem Zeichnen aufgerufen."""
+        name = self.music.current_track_name() if hasattr(self, "music") \
+            else None
+        if name != self._track_mq_name:
+            self._track_mq_name = name
+            self.track_mq_off = 0
+            self.track_mq_pause = 4
+
+    def track_marquee_text(self, maxc):
+        """Ausschnitt des aktuellen Songtitels fuer die gegebene
+        Zeichenbreite - voller Titel, falls er passt."""
+        name = self._track_mq_name
+        if not name:
+            return None
+        if len(name) <= maxc:
+            return name
+        off = min(self.track_mq_off, len(name) - maxc)
+        return name[off:off + maxc]
+
+    def _track_marquee_needs_scroll(self, maxc):
+        name = self._track_mq_name
+        return bool(name) and len(name) > maxc
+
+    def _track_marquee_tick(self, maxc):
+        """Versatz um einen Schritt weiterschieben (mit Pause an den
+        Enden) - gedrosselt ueber _track_tick_next, damit nicht bei
+        jedem next_action()-Aufruf ein komplettes Neuzeichnen noetig
+        wird, sondern nur alle ~0.35s."""
+        now = time.time()
+        if now < self._track_tick_next:
+            return False
+        self._track_tick_next = now + 0.35
+        name = self._track_mq_name
+        max_off = max(0, len(name) - maxc)
+        if self.track_mq_pause > 0:
+            self.track_mq_pause -= 1
+            if self.track_mq_pause == 0 and self.track_mq_off >= max_off:
+                self.track_mq_off = 0
+                self.track_mq_pause = 4
+        elif self.track_mq_off < max_off:
+            self.track_mq_off += 1
+            if self.track_mq_off >= max_off:
+                self.track_mq_pause = 6
+        return True
+
     def next_action(self):
-        """Wie read_action, treibt aber nebenbei die Laufschrift an."""
+        """Wie read_action, treibt aber nebenbei die Laufschrift(en) UND
+        die Musikwiedergabe (naechster Song bei Bedarf) an. Blockiert
+        nie unbegrenzt, damit Musik und Laufschrift auch ohne
+        Tasteneingabe rechtzeitig weiterlaufen."""
         while True:
-            if not self.marquee_needed():
-                return self.inp.read_action()
-            act = self.inp.read_action(timeout=0.18)
+            self._sync_track_marquee()
+            # Grobe, aber ausreichende Breitenschaetzung fuer die
+            # Track-Laufschrift (echte Spaltenbreite kennt erst
+            # draw()) - reicht, um zu wissen ob ueberhaupt gescrollt
+            # werden muss.
+            track_needs = self._track_marquee_needs_scroll(24)
+            need_mq = self.marquee_needed()
+            timeout = 0.18 if (need_mq or track_needs) else 1.0
+            act = self.inp.read_action(timeout=timeout)
             if act is not None:
-                self.marquee_reset()
+                if need_mq:
+                    self.marquee_reset()
                 return act
-            self.marquee_tick()
+            if need_mq:
+                self.marquee_tick()
+            if track_needs:
+                if self._track_marquee_tick(24):
+                    self.draw()
+            self.music.tick()
 
     @staticmethod
     def _wrap(text, maxc, max_lines=2):
@@ -1379,27 +2207,72 @@ class Frontend:
                 for ln in lines]
         return lines
 
-    def draw_art_panel(self, x0, w, y0, h, syskey, item, L):
-        """Boxart-Block unten: Cover OBEN, Titel+Infos DARUNTER ueber
-        die volle Blockbreite - deutlich mehr Platz zum Lesen als eine
-        schmale Spalte neben dem Cover."""
+    def draw_art_panel(self, x0, w, y0, h, syskey, item, s):
+        """Eigene Boxart+Info-Spalte rechts neben der Liste (seit v1.8
+        deutlich groesser als der alte Block unten rechts, weil sie sich
+        keinen Platz mehr mit der Liste teilen muss).
+
+        Seit v1.9 wird die Text-Hoehe ZUERST anhand des tatsaechlichen
+        Titels und der vorhandenen Spiele-Infos berechnet - das Cover
+        bekommt danach den kompletten restlichen Platz. Vorher war fest
+        55% fuer das Cover reserviert; fehlten Spiele-Infos (z.B. noch
+        nicht mit mister_gameinfo.py geladen), blieb darunter viel Platz
+        ungenutzt, statt dem Cover zugute zu kommen."""
         fb = self.fb
-        s = L["s"]
-        H, W = fb.height, fb.width
+        H = fb.height
         name = item[0]
         if w < 20 or h < 20:
             return
 
-        block_x0 = L["list_x"] - 4 * s
-        block_w = (x0 + w) - block_x0
-        fb.rect(block_x0, y0 - 4 * s, block_w + 4 * s, h + 8 * s, C_PANEL)
-        pad = 4 * s
-        avail_w = block_w - 2 * pad
+        pad = 6 * s
+        fb.rect(x0 - pad, y0 - pad, w + 2 * pad, h + 2 * pad, C_PANEL)
+        avail_w = w - 2 * pad
         maxc = max(4, avail_w // (8 * s))
 
+        if syskey == "ARCADE":
+            meta = mra_meta(item[2])
+        else:
+            meta = get_meta(syskey, name)
+
+        title = display_name(name)
+        title_lines = self._wrap(title, maxc, max_lines=3)
+
+        info_src = []
+        if meta.get("players"):
+            info_src.append(t("players", meta["players"]))
+        if meta.get("year"):
+            info_src.append(t("year", meta["year"]))
+        if meta.get("genre"):
+            info_src.append(str(meta["genre"]))
+        if meta.get("manufacturer"):
+            info_src.append(str(meta["manufacturer"]))
+        info_lines = []
+        for ln in info_src:
+            info_lines.extend(self._wrap(ln, maxc, max_lines=1))
+
+        # Songtitel als Laufschrift (voller Titel, kein Label-Text
+        # mehr davor) - passt sich exakt der hier bekannten Spaltenbreite
+        # an, laeuft bei Bedarf durch statt abgeschnitten zu werden.
+        track_display = self.track_marquee_text(maxc)
+        track_lines = [track_display] if track_display else []
+
+        line_h = 12 * s
+        text_h = len(title_lines) * line_h
+        if info_lines:
+            text_h += 4 * s + len(info_lines) * line_h
+        if track_lines:
+            text_h += 4 * s + len(track_lines) * line_h
+
+        # Cover bekommt den nach dem Text uebrig bleibenden Platz -
+        # zwischen 35% und 85% der Spaltenhoehe gedeckelt, damit weder
+        # ein winziges Cover (sehr viel Text) noch ein den Text
+        # verdraengendes Cover (kaum/kein Text) entsteht.
+        cover_h = h - text_h - 8 * s
+        cover_h = max(int(h * 0.35), min(cover_h, int(h * 0.85)))
+        cover_h = max(20, cover_h)
+
         # ---- Cover oben, zentriert ----
-        cover_h = max(20, int(h * 0.55))
-        cy = y0 + pad
+        cy = y0
         art = None
         if H >= 720:
             hd = os.path.join(ART_HD, syskey, name + ".art")
@@ -1408,48 +2281,47 @@ class Frontend:
             art = ART.get_scaled(art_path(syskey, name), avail_w, cover_h)
         if art:
             aw, ah, pix = art
-            ax = block_x0 + pad + max(0, (avail_w - aw) // 2)
+            ax = x0 + max(0, (avail_w - aw) // 2)
             ay = cy + max(0, (cover_h - ah) // 2)
             self.blit(ax, ay, aw, ah, pix)
+            art_bottom = ay + ah
         else:
-            fb.rect(block_x0 + pad, cy, avail_w, cover_h, C_ACCENT2)
-            fb.text(block_x0 + pad + 2 * s, cy + cover_h // 2 - 4 * s,
-                    "kein", s, C_DIM, C_ACCENT2)
-            fb.text(block_x0 + pad + 2 * s, cy + cover_h // 2 + 5 * s,
-                    "Artwork", s, C_DIM, C_ACCENT2)
+            fb.rect(x0, cy, avail_w, cover_h, C_ACCENT2)
+            fb.text(x0 + 4 * s, cy + cover_h // 2 - 4 * s,
+                    t("no_artwork_1"), s, C_DIM, C_ACCENT2)
+            fb.text(x0 + 4 * s, cy + cover_h // 2 + 5 * s,
+                    t("no_artwork_2"), s, C_DIM, C_ACCENT2)
+            art_bottom = cy + cover_h
 
-        # ---- Titel + Infos darunter, volle Breite ----
-        if syskey == "ARCADE":
-            meta = mra_meta(item[2])
-        else:
-            meta = get_meta(syskey, name)
-        iy = cy + cover_h + 4 * s
+        # ---- Titel + Infos darunter, volle Spaltenbreite ----
+        # Text startet erst UNTER dem tatsaechlich gezeichneten Cover -
+        # falls das Bild (z.B. wegen krummer Rundung) doch groesser als
+        # cover_h ausfaellt, verhindert das trotzdem zuverlaessig eine
+        # Ueberlappung mit den Infos.
+        iy = max(cy + cover_h, art_bottom) + 6 * s
         y_max = y0 + h - 2 * s
 
-        title = display_name(name)
-        for ln in self._wrap(title, maxc, max_lines=2):
+        for ln in title_lines:
             if iy + 9 * s > y_max:
                 break
-            fb.text(block_x0 + pad, iy, ln, s, C_TITLE, C_PANEL)
-            iy += 11 * s
+            fb.text(x0, iy, ln, s, C_TITLE, C_PANEL)
+            iy += line_h
 
-        lines = []
-        if meta.get("players"):
-            lines.append("Spieler: %s" % meta["players"])
-        if meta.get("year"):
-            lines.append("Jahr: %s" % meta["year"])
-        if meta.get("genre"):
-            lines.append(str(meta["genre"]))
-        if meta.get("manufacturer"):
-            lines.append(str(meta["manufacturer"]))
-        for ln in lines:
-            if iy + 9 * s > y_max:
-                break
-            for wrapped in self._wrap(ln, maxc, max_lines=1):
+        if info_lines:
+            iy += 4 * s
+            for ln in info_lines:
                 if iy + 9 * s > y_max:
                     break
-                fb.text(block_x0 + pad, iy, wrapped, s, C_TEXT, C_PANEL)
-                iy += 11 * s
+                fb.text(x0, iy, ln, s, C_TEXT, C_PANEL)
+                iy += line_h
+
+        if track_lines:
+            iy += 4 * s
+            for ln in track_lines:
+                if iy + 9 * s > y_max:
+                    break
+                fb.text(x0, iy, ln, s, C_DIM, C_PANEL)
+                iy += line_h
 
     def blit(self, x, y, w, h, pix):
         """Vordekodierte BGRA-Pixel zeilenweise in den Puffer kopieren.
@@ -1478,11 +2350,27 @@ class Frontend:
     # ------------------------------------------------------------------
 
     def run_core(self, path):
+        self.music.pause_for_core()
         self.inp.grab(False)
         launch_core(path)
         t0 = time.time()
-        while current_core() in ("", "MENU") and time.time() - t0 < 15:
-            time.sleep(0.5)
+        started = False
+        # Auf den tatsaechlichen Core-Start warten (nicht mehr Menue).
+        # Grosse CHDs auf langsamer SD brauchen laenger - deshalb 30s.
+        while time.time() - t0 < 30:
+            if current_core() not in ("", "MENU"):
+                started = True
+                break
+            time.sleep(0.3)
+        if not started:
+            # Core kam nie hoch (fehlendes RBF/ROM o.ae.). Nicht
+            # faelschlich "Spiel beendet" annehmen, sondern zurueck -
+            # sonst kehrt das Frontend bei langsamen Ladevorgaengen
+            # oder Fehlstarts sofort ins Menue zurueck.
+            LOG("run_core: Core nicht gestartet: %s" % path)
+            self.music.resume_after_core()
+            self.back_to_frontend()
+            return
         while current_core() != "MENU":
             res = self.inp.wait_game_exit()
             if res == "combo":
@@ -1492,10 +2380,12 @@ class Frontend:
                 while current_core() != "MENU" and time.time() - t1 < 10:
                     time.sleep(0.3)
         time.sleep(1.0)
+        self.music.resume_after_core()
         self.back_to_frontend()
 
     def run_script(self, path):
         """Script auf der Konsole (tty1) laufen lassen, danach zurueck."""
+        self.music.pause_for_core()
         self.inp.grab(False)
         self.set_cursor_blink(True)
         try:
@@ -1510,20 +2400,21 @@ class Frontend:
                                 stdin=tty, stdout=tty, stderr=tty,
                                 env=dict(os.environ, TERM="linux",
                                          HOME="/root"))
-                tty.write(b"\n-- Script beendet, Taste druecken --\n")
+                tty.write(b"\n-- Script finished, press any key --\n")
             else:
                 subprocess.call(["/bin/bash", path])
         finally:
             if tty:
                 tty.close()
         self.inp.read_action()                    # auf Eingabe warten
+        self.music.resume_after_core()
         self.back_to_frontend()
 
     def open_osd(self):
         """Echtes MiSTer-OSD oeffnen (fuer Joystick-Definition, Settings).
         Rueckkehr ins Frontend mit F10."""
         LOG("open_osd: Start")
-        self.draw("MiSTer-OSD aktiv - F10 oder X-Button = zurueck")
+        self.draw("MiSTer OSD active - F10 or X button = back")
         self.inp.grab(False)
         time.sleep(0.2)
         self.inp.inject(KEY_F12)
@@ -1535,6 +2426,62 @@ class Frontend:
                 break
         LOG("open_osd: Rueckkehr")
         self.back_to_frontend()
+
+    def configure_buttons(self):
+        """Tastenbelegungs-Assistent: fragt nacheinander nach jeder
+        Kernaktion und uebernimmt den naechsten tatsaechlichen
+        Tastendruck (Tastatur ODER Pad) als Belegung. ESC bricht ab
+        und behaelt die vorherige Belegung.
+
+        Bei den vier Richtungsaktionen wird ein Analogstick-/D-Pad-
+        Ausschlag als "funktioniert schon nativ" akzeptiert und
+        automatisch uebersprungen - sonst wuerde der Assistent bei
+        Pads, deren D-Pad als Achse ankommt, bei "Hoch" haengen
+        bleiben, weil dort kein reines Tasten-Event eintrifft."""
+        DIRECTIONAL = {"up", "down", "left", "right"}
+        actions = [
+            ("up", "remap_action_up"), ("down", "remap_action_down"),
+            ("left", "remap_action_left"), ("right", "remap_action_right"),
+            ("ok", "remap_action_ok"), ("back", "remap_action_back"),
+            ("osd", "remap_action_osd"),
+        ]
+        self.inp.grab(False)
+        new_map = {}
+        cancelled = False
+        for act_name, label_key in actions:
+            msg = "%s   %s" % (t("remap_prompt", t(label_key)),
+                                t("remap_esc_hint"))
+            self.draw(msg)
+            is_dir = act_name in DIRECTIONAL
+            code = self.inp.read_raw_key(allow_axis_skip=is_dir)
+            if code is None or code == KEY_ESC:
+                cancelled = True
+                break
+            if code == "AXIS":
+                # D-Pad/Analogstick deckt diese Richtung schon nativ ab -
+                # nichts zu ueberschreiben, einfach weiter zur naechsten Abfrage
+                LOG("configure_buttons: %s per Achse erkannt, uebersprungen"
+                    % act_name)
+                continue
+            new_map[code] = act_name
+        self.inp.flush()
+        self.inp.grab(True)
+        if cancelled:
+            LOG("configure_buttons: abgebrochen")
+            self.draw(t("remap_cancelled"))
+        else:
+            KEYMAP.update(new_map)
+            try:
+                os.makedirs(os.path.dirname(KEYMAP_CUSTOM_FILE),
+                            exist_ok=True)
+                with open(KEYMAP_CUSTOM_FILE, "w") as f:
+                    json.dump({str(k): v for k, v in new_map.items()}, f)
+                LOG("configure_buttons: gespeichert: %s" % new_map)
+            except OSError as e:
+                LOG("configure_buttons: Speichern fehlgeschlagen: %s" % e)
+            self.draw(t("remap_done"))
+        time.sleep(1.2)
+        self.draw()
 
     def enter_console_mode(self):
         """MiSTer per F9 in den Konsolenmodus schalten - sonst uebermalt
@@ -1572,45 +2519,119 @@ class Frontend:
         self.inp.grab(True)
         self.draw()
         try:
-            select_count = 0
+            move_streak = 0     # zaehlt gehaltene hoch/runter-Wiederholungen
+            move_last = None    # fuer den Turbo-Sprung (einzelne Position)
+            page_streak = 0     # zaehlt gehaltene links/rechts-Wiederholungen
+            page_last = None    # fuer den Turbo-Sprung (seitenweise)
             while True:
                 act = self.next_action()
-                LOG("aktion: %s" % act)
-                name, items, _syskey = self.cats[self.cat_i]
-                if act == "select":
-                    select_count += 1
-                    if select_count >= 3:      # 3x Select = Beenden per Pad
-                        break
+                LOG("aktion: %s (Seite %d, confirm=%s)"
+                    % (act, self.page, self.confirm_quit))
+
+                # ---- Beenden-Bestaetigung hat Vorrang vor allem anderen ----
+                if self.confirm_quit:
+                    if act == "left":
+                        self.confirm_choice = 0    # Ja
+                    elif act == "right":
+                        self.confirm_choice = 1    # Nein
+                    elif act == "ok":
+                        if self.confirm_choice == 0:
+                            break                   # Ja bestaetigt
+                        self.confirm_quit = False    # Nein
+                    elif act in ("exit", "back"):
+                        self.confirm_quit = False    # ESC/B im Dialog = Nein
+                    self.draw()
                     continue
-                select_count = 0
-                if act == "exit":
-                    break
+
+                name, items, _syskey = self.cats[self.cat_i]
+
+                # Turbo-Sprung hoch/runter: je laenger gehalten, desto
+                # groesser die Schrittweite (1 -> 2 -> 4 -> 10). Das
+                # beschleunigende Wiederholungs-Intervall aus dem
+                # InputManager laesst die Tick-Rate schon steigen; hier
+                # kommt zusaetzlich eine steigende Sprungweite dazu.
+                if act in ("up", "down"):
+                    move_streak = move_streak + 1 if act == move_last else 1
+                    move_last = act
+                else:
+                    move_streak = 0
+                    move_last = None
+                move_step = (10 if move_streak > 40 else
+                            4 if move_streak > 20 else
+                            2 if move_streak > 8 else 1)
+
+                # Turbo-Sprung links/rechts: Grundschritt ist eine volle
+                # Bildschirmseite, waechst beim Halten auf mehrere Seiten.
+                if act in ("left", "right"):
+                    page_streak = page_streak + 1 if act == page_last else 1
+                    page_last = act
+                else:
+                    page_streak = 0
+                    page_last = None
+                page_mult = (5 if page_streak > 40 else
+                            3 if page_streak > 20 else
+                            2 if page_streak > 8 else 1)
+                base_page = self.cats_visible if self.page == 0 \
+                    else self.items_visible
+                page_step = max(1, base_page) * page_mult
+
+                if act == "select":
+                    # 3x Select = Beenden-Kurzbefehl per Pad, laeuft ueber
+                    # dieselbe Bestaetigung wie ESC/B.
+                    move_streak = page_streak = 0
+                    self._go_back_or_confirm_quit()
+                    continue
+                if act == "exit" or act == "back":
+                    self._go_back_or_confirm_quit()
+                    continue
                 elif act == "osd":
                     self.open_osd()
                     continue
-                elif act in ("back", "left"):
-                    self.focus = 0
-                elif act == "right":
-                    self.focus = 1
+                elif act == "music_next":
+                    self.music.next_track()
+                    self.draw()   # Anzeige des neuen Songs sofort aktualisieren
+                    continue
                 elif act == "up":
-                    if self.focus == 0:
-                        self.cat_i = (self.cat_i - 1) % len(self.cats)
-                        self.item_i = self.scroll = 0
-                    else:
-                        self.item_i = max(0, self.item_i - 1)
+                    # Rundum-Navigation: vom ersten Eintrag nach oben
+                    # geht's zum letzten - erspart langes Zurueckscrollen.
+                    if self.page == 0:
+                        self.cat_i = (self.cat_i - move_step) % len(self.cats)
+                    elif items:
+                        self.item_i = (self.item_i - move_step) % len(items)
+                        self.marquee_reset()
                 elif act == "down":
-                    if self.focus == 0:
-                        self.cat_i = (self.cat_i + 1) % len(self.cats)
-                        self.item_i = self.scroll = 0
-                    else:
-                        self.item_i = min(len(items) - 1, self.item_i + 1)
-                elif act == "pgup" and self.focus == 1:
-                    self.item_i = letter_jump(items, self.item_i, -1)
-                elif act == "pgdn" and self.focus == 1:
-                    self.item_i = letter_jump(items, self.item_i, +1)
+                    if self.page == 0:
+                        self.cat_i = (self.cat_i + move_step) % len(self.cats)
+                    elif items:
+                        self.item_i = (self.item_i + move_step) % len(items)
+                        self.marquee_reset()
+                elif act == "left":
+                    if self.page == 0:
+                        self.cat_i = (self.cat_i - page_step) % len(self.cats)
+                    elif items:
+                        self.item_i = (self.item_i - page_step) % len(items)
+                        self.marquee_reset()
+                elif act == "right":
+                    if self.page == 0:
+                        self.cat_i = (self.cat_i + page_step) % len(self.cats)
+                    elif items:
+                        self.item_i = (self.item_i + page_step) % len(items)
+                        self.marquee_reset()
+                elif act.startswith("letter:"):
+                    # Direktsprung per Tastatur: Buchstabentaste druecken
+                    # springt zum naechsten passenden Eintrag, erneutes
+                    # Druecken zum uebernaechsten (zyklisch).
+                    ch = act.split(":", 1)[1]
+                    if self.page == 0:
+                        self.cat_i = jump_to_letter(
+                            [c[0] for c in self.cats], self.cat_i, ch)
+                    elif items:
+                        self.item_i = jump_to_letter(
+                            [it[0] for it in items], self.item_i, ch)
+                        self.marquee_reset()
                 elif act == "ok":
-                    if self.focus == 0:
-                        self.focus = 1
+                    if self.page == 0:
+                        self._enter_category()
                     else:
                         label, kind, arg = items[self.item_i]
                         if kind == "core":
@@ -1631,22 +2652,44 @@ class Frontend:
                         elif kind == "redraw":
                             self.fb.refresh_geometry()
                         elif kind == "rescan":
-                            self.draw("Lese Spieleliste neu ein ...")
+                            self.draw("Rescanning game list ...")
                             self.build_categories(force_rescan=True)
                             self.cat_i = self.item_i = 0
                             self.scroll = self.cat_scroll = 0
+                            self.page = 0        # Kategorien koennten sich geaendert haben
                         elif kind == "crtmenu":
-                            self.draw("Schalte Menue-Video um, Neustart ...")
+                            self.draw("Switching menu video, rebooting ...")
                             if toggle_crt_menu() is not None:
                                 os.system("sync; reboot")
                                 return
                         elif kind == "reboot":
-                            os.system("reboot")
+                            os.system("sync; reboot")
                             return
                         elif kind == "quit":
-                            break
+                            self._confirm_quit_dialog()
+                            continue
+                        elif kind == "music":
+                            self.music.toggle()
+                            self.build_categories()   # refresh menu label
+                        elif kind == "language":
+                            set_language("de" if CURRENT_LANG == "en" else "en")
+                            self.build_categories()
+                            self.page = 0
+                        elif kind == "remap":
+                            self.configure_buttons()
+                            continue
+                        elif kind == "remap_reset":
+                            KEYMAP.clear()
+                            KEYMAP.update(DEFAULT_KEYMAP)
+                            try:
+                                os.remove(KEYMAP_CUSTOM_FILE)
+                            except OSError:
+                                pass
+                            self.draw(t("remap_done"))
+                            time.sleep(1.0)
                 self.draw()
         finally:
+            self.music.shutdown()
             self.set_cursor_blink(True)
             self.fb.clear((0, 0, 0))
             self.fb.flip()
@@ -1664,8 +2707,12 @@ class Frontend:
 
 if __name__ == "__main__":
     LOG("==== Frontend-Start ====")
+    if not acquire_single_instance():
+        sys.exit(0)
     try:
         Frontend().run()
     except Exception:
         LOG("CRASH:\n" + traceback.format_exc())
         raise
+    finally:
+        release_single_instance()
