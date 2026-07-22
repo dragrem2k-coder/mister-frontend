@@ -1,9 +1,77 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.21
+MiSTer Custom Frontend - v1.26
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.26 (BUGFIX Mehrteiler + Overlay-Politur):
+  - KRITISCH: Die Region-Dedupe aus v1.23 fasste auch Disc-/CD-Marker
+    zusammen - "Spiel (Disc 1)" und "Spiel (Disc 2)" landeten auf
+    demselben Schluessel, wodurch Disc 2+ komplett aus der Liste fiel
+    und nicht mehr startbar war (betraf PSX/Saturn/MegaCD). Der
+    kanonische Schluessel behaelt Disc-/CD-/Side-/Part-Marker jetzt
+    bei; Mehrfach-Regionen werden weiterhin zusammengefasst. Dieselbe
+    Korrektur in mister_boxart.py, mister_gameinfo.py und
+    boxart_fetch.py, damit auch Disc 2+ Cover/Metadaten bekommt.
+  - display_name() zeigt den Disc-Marker mit an, sonst waeren
+    mehrteilige Spiele in der Liste nicht auseinanderzuhalten.
+  - Stream-Overlay: im Kategorien-Menue (Seite 0) wird jetzt die
+    markierte Kategorie gezeigt statt eines veralteten Spieltitels aus
+    der zuletzt geoeffneten Liste. Titel im Overlay ohne Klammer-Tags
+    (Cover wird weiter ueber den echten Dateinamen geladen).
+
+Neu in v1.25 (Musik-Pause beim echten OSD, F10-Grenze dokumentiert):
+  - BUGFIX: open_osd() pausierte die Musik nie - beim Oeffnen des
+    echten MiSTer-OSD (F12) lief die Wiedergabe einfach weiter. Jetzt
+    pausiert/setzt sie fort wie bei run_core()/run_script().
+  - Per direktem Geraetetest bestaetigt (cat /dev/input/eventX waehrend
+    ein Core laeuft liefert 0 Bytes, unabhaengig von der gedrueckten
+    Taste): MiSTer beansprucht die Tastatur waehrend eines laufenden
+    Spiels exklusiv. F10 und die Start+Select-Kombo koennen deshalb
+    NIE waehrend des Spiels selbst ankommen - das ist eine echte
+    Plattformgrenze, kein Frontend-Bug. Der einzige zuverlaessige Weg
+    zurueck: MiSTer's eigenes Menue per F12/Menue-Taste oeffnen, dort
+    "Exit to Menu Core" waehlen - das erkennt das Frontend automatisch
+    (current_core()=="MENU"-Abfrage, unabhaengig von F10/Kombo). Die
+    F10/Kombo-Erkennung in wait_game_exit() bleibt als harmloser
+    Fallback im Code, falls sich das MiSTer-Verhalten je aendert.
+
+Neu in v1.24 (BUGFIX: F10 im Spiel tat nichts):
+  - Die README versprach seit langem "F10 im Spiel -> zurueck ins
+    Frontend" als zuverlaessigen Weg (im Gegensatz zu Start+Select am
+    Pad, das per FPGA-Routing nicht immer ankommt) - tatsaechlich
+    wurde F10 in wait_game_exit() aber nie abgefragt, nur die Start+
+    Select-Kombo und der Core-Wechsel selbst. F10 auf der Tastatur
+    waehrend eines laufenden Spiels tat also schlicht nichts.
+    wait_game_exit() erkennt F10 jetzt genauso wie die Kombo und
+    kehrt sofort ins Menue zurueck.
+
+Neu in v1.23 (Zusammenfuehrung: Scan-Bereinigung + Curated-List):
+  - Aus einem parallel gewachsenen Zweig uebernommen (dortige v1.23-25):
+    Spiele-Scan geht jetzt beliebig tief (nicht mehr nur 2 Ordner-
+    ebenen), bekannte Boot-/Test-Dateien (IGNORE_ROM_BASENAMES) sowie
+    Beta/Proto/Demo/Hack/Bad-Dump-Tags (JUNK_TAGS) werden ausgefiltert,
+    und Mehrfach-Regionen desselben Spiels werden zu einem Eintrag
+    zusammengefasst (beste Region gewinnt). Neuer Menuepunkt "Curated
+    list (DB-matched only)" zeigt optional nur Spiele mit Datenbank-
+    Treffer (mister_gameinfo.py) - mit Sicherheitsnetz: Systeme ganz
+    ohne Metadaten werden nicht gefiltert. Boot-Animation, Stream-
+    Overlay und System-Artbox (aus diesem Zweig) sind unveraendert
+    erhalten geblieben - die Hauptmenue-Einschraenkung auf nur
+    Konsolen+Arcade aus dem parallelen Zweig wurde bewusst NICHT
+    uebernommen, damit die Scripts-Kategorie (Boxart-/Musik-/Stream-
+    Werkzeuge) weiterhin im Frontend selbst erreichbar bleibt.
+  - Dieselbe Bereinigung (JUNK_TAGS + Region-Dedupe) steckt jetzt auch
+    in mister_boxart.py, mister_gameinfo.py und boxart_fetch.py.
+
+Neu in v1.22 (System-Artbox im Kategorien-Menue):
+  - Kategorienamen jetzt kleiner geschrieben (Platz gespart).
+  - Rechts neben der Liste erscheint eine Artbox mit dem Logo/
+    Cover des gerade markierten Systems (aus /media/fat/frontend/
+    sysart/<Systemkey>.art) - wechselt live beim Hoch/Runter-
+    Scrollen durch die Kategorien. Ohne passende Datei erscheint
+    ein dezenter Platzhalter statt eines Fehlers.
 
 Neu in v1.21 (Zusammenfuehrung Boot-Animation + Stream-Overlay):
   - Boot-Animation (aus v1.20) und Stream-Overlay fuer OBS (dieser
@@ -418,6 +486,7 @@ try:
 except Exception:
     StreamServer = None
 BG_BASE     = "/media/fat/frontend/bg"
+SYSART_BASE = "/media/fat/frontend/sysart"
 META_BASE   = "/media/fat/frontend/meta"
 MGL_TMP     = "/tmp/frontend_launch.mgl"
 GAMES_CACHE = "/media/fat/frontend/games_cache.json"
@@ -966,8 +1035,8 @@ class InputManager:
 
     def wait_game_exit(self):
         """Waehrend ein Core laeuft: warten, bis MiSTer zurueck im
-        Menue ist ODER Start+Select lange genug gehalten werden.
-        Rueckgabe: "menu" oder "combo"."""
+        Menue ist, F10 gedrueckt wird, ODER Start+Select lange genug
+        gehalten werden. Rueckgabe: "menu", "f10" oder "combo"."""
         down = set()              # (geraetepfad, code) gedrueckter Tasten
         combo_since = None
         last_core_check = 0.0
@@ -1001,6 +1070,8 @@ class InputManager:
                 if len(data) < EVENT_SIZE:
                     continue
                 _, _, etype, code, value = struct.unpack(EVENT_FMT, data)
+                if etype == EV_KEY and code == KEY_F10 and value == 1:
+                    return "f10"
                 if etype == EV_KEY and code in (BTN_START, BTN_SELECT):
                     key = (dev.path, code)
                     if value == 1:
@@ -1267,10 +1338,66 @@ def get_meta(syskey, rom_basename):
 
 _TAGS = re.compile(r"\s*[\(\[][^\)\]]*[\)\]]")
 
+# Datentraeger-Marker (Disc 1/2, CD 2, Side B, Part 3 ...). Diese Klammer-
+# Zusaetze duerfen NICHT wie Regions-Tags behandelt werden: sie
+# unterscheiden echte, eigenstaendige Eintraege desselben Spiels. Ohne
+# diese Ausnahme faenden "Spiel (Disc 1)" und "Spiel (Disc 2)" auf
+# demselben Dedupe-Schluessel zusammen - Disc 2+ waere aus der Liste
+# verschwunden und nicht mehr startbar.
+_DISC = re.compile(r"[\(\[]\s*(?:disc|disk|cd|side|part|tape|track)\s*"
+                   r"[0-9a-z]+\s*[\)\]]", re.I)
+
 def display_name(full):
-    """Klammer-Zusaetze fuer die Anzeige entfernen."""
+    """Klammer-Zusaetze fuer die Anzeige entfernen - Disc-/CD-Marker
+    bleiben aber stehen, sonst waeren mehrteilige Spiele in der Liste
+    nicht auseinanderzuhalten."""
     short = _TAGS.sub("", full).strip()
+    m = _DISC.search(full)
+    if m and short:
+        short += " " + m.group(0).strip()
     return short if short else full
+
+# Region-Prioritaet fuer die Dedupe-Logik beim Scannen - dieselbe
+# Reihenfolge wie in mister_boxart.py/mister_gameinfo.py bei der
+# Boxart-/Info-Zuordnung, damit alles konsistent dieselbe Region
+# bevorzugt.
+REGION_PRIORITY = ["(germany)", "(europe)", "(world)", "(usa)", "(japan)"]
+
+def _region_rank(name):
+    low = name.lower()
+    for i, tag in enumerate(REGION_PRIORITY):
+        if tag in low:
+            return i
+    return len(REGION_PRIORITY)
+
+def _canonical_key(name):
+    """Name ohne Klammer-Zusaetze, kleingeschrieben - fuer die Erkennung
+    von Mehrfach-Regionen desselben Spiels ("Spiel (USA)" und
+    "Spiel (Europe)" landen auf demselben Schluessel).
+
+    Ausnahme: ein Disc-/CD-/Side-Marker bleibt Teil des Schluessels,
+    damit mehrteilige Spiele (Disc 1/2/3) NICHT zusammengefasst und
+    dadurch unerreichbar werden."""
+    key = _TAGS.sub("", name).strip().lower()
+    m = _DISC.search(name)
+    if m:
+        key += " " + re.sub(r"\s+", "", m.group(0).lower())
+    return key
+
+# Tags, die ein ROM als Beta/Prototyp/Demo/Hack/defekten Dump o.ae.
+# kennzeichnen - werden beim Scannen ausgefiltert.
+JUNK_TAGS = ("(beta", "(proto", "(demo", "(sample", "(unl)", "[b]",
+            "(pirate", "(program", "(test", "(kiosk", "(hack")
+
+def _is_junk(name):
+    low = name.lower()
+    return any(tag in low for tag in JUNK_TAGS)
+
+# Bekannte Boot-/Test-/Demo-Dateien, die manche MiSTer-Verteilungen
+# direkt in die ROM-Ordner legen (fuer den Hardware-Selbsttest). Haben
+# zufaellig die richtige Endung (z.B. .chd/.gb/.gba) und wuerden sonst
+# faelschlich als "Spiel" in der Liste auftauchen.
+IGNORE_ROM_BASENAMES = {"boot", "boot1", "boot2", "mister-boot", "mister-demo"}
 
 def nice_name(dirname):
     raw = dirname.lstrip("_")
@@ -1352,11 +1479,20 @@ def scan_games(force=False):
     return cats
 
 def _scan_games_disk():
-    """Fuer jedes bekannte System die ROMs einsammeln (Tiefensuche).
-    Rueckgabe: Liste (Anzeigename, Items, Systemkey)."""
+    """Fuer jedes bekannte System die ROMs einsammeln. Rueckgabe: Liste
+    (Anzeigename, Items, Systemkey).
+
+    Geht beliebig tief (keine Ordnerebenen-Begrenzung mehr) - die
+    eigene Ordnerstruktur/Sortierung bleibt dabei komplett unangetastet.
+    Bekannte Boot-/Testdateien (IGNORE_ROM_BASENAMES) sowie Beta/Proto/
+    Demo/Hack/Bad-Dump-Tags (JUNK_TAGS) werden ausgefiltert. Mehrfach-
+    Regionen desselben Spiels ("Spiel (USA)", "Spiel (Europe)", ...)
+    werden zu EINEM Eintrag zusammengefasst (beste Region gewinnt,
+    REGION_PRIORITY) - bei sehr grossen, mehrfach-region-vollstaendigen
+    Sammlungen kann das die Listengroesse spuerbar reduzieren."""
     cats = []
     for disp, syskey, folders, rbf, extmap in GAME_SYSTEMS:
-        items = []
+        raw = []
         seen_roots = set()
         for base in GAMES_BASES:
             if not os.path.isdir(base):
@@ -1367,22 +1503,31 @@ def _scan_games_disk():
                 if not os.path.isdir(root) or real in seen_roots:
                     continue
                 seen_roots.add(real)
-                base_depth = root.rstrip("/").count("/")
                 for dirpath, dirnames, filenames in os.walk(root):
-                    # max. 2 Ebenen tief, versteckte Ordner auslassen
-                    if dirpath.count("/") - base_depth >= 2:
-                        dirnames[:] = []
-                        continue
                     dirnames[:] = [d for d in dirnames
                                    if not d.startswith(".")]
                     for fn in filenames:
+                        name = os.path.splitext(fn)[0]
+                        if name.lower() in IGNORE_ROM_BASENAMES:
+                            continue
+                        if _is_junk(name):
+                            continue
                         ext = os.path.splitext(fn)[1].lower()
                         if ext in extmap:
-                            name = os.path.splitext(fn)[0]
-                            items.append((name, "game",
-                                          (os.path.join(dirpath, fn), ext,
-                                           syskey, rbf, extmap[ext])))
-        if items:
+                            raw.append((name, "game",
+                                        (os.path.join(dirpath, fn), ext,
+                                         syskey, rbf, extmap[ext])))
+        if raw:
+            # Pro kanonischem Namen (ohne Region-/Versions-Tags) nur
+            # die Kopie mit der besten Region behalten.
+            best = {}
+            for entry in raw:
+                key = _canonical_key(entry[0])
+                rank = _region_rank(entry[0])
+                cur = best.get(key)
+                if cur is None or rank < cur[0]:
+                    best[key] = (rank, entry)
+            items = [entry for _rank, entry in best.values()]
             items.sort(key=lambda t: t[0].lower())
             cats.append((disp, items, syskey))
     return cats
@@ -1636,6 +1781,10 @@ TRANSLATIONS = {
                               "de": "Tastenbelegung anpassen"},
     "sys_reset_buttons":     {"en": "Reset to default buttons",
                               "de": "Auf Standardbelegung zuruecksetzen"},
+    "sys_curated_on":  {"en": "Curated list (DB-matched only): ON -> turn off",
+                        "de": "Kuratierte Liste (nur DB-Treffer): AN -> ausschalten"},
+    "sys_curated_off": {"en": "Curated list (DB-matched only): OFF -> turn on",
+                        "de": "Kuratierte Liste (nur DB-Treffer): AUS -> einschalten"},
     "sys_rescan":      {"en": "Rescan game list", "de": "Spieleliste neu einlesen"},
     "sys_redraw":      {"en": "Redraw display",   "de": "Anzeige neu aufbauen"},
     "sys_reboot":      {"en": "Restart MiSTer",   "de": "MiSTer neu starten"},
@@ -1696,6 +1845,8 @@ def system_items(music_enabled=None):
     crt = crt_menu_active()
     video = t("sys_video_crt") if crt else t("sys_video_hdmi")
     music_label = t("sys_music_on") if music_enabled else t("sys_music_off")
+    curated_label = t("sys_curated_on") if curated_only_active() \
+        else t("sys_curated_off")
     return [
         (t("sys_osd"),                             "osd",       None),
         (video + t("sys_video_suffix"),             "crtmenu",   None),
@@ -1703,11 +1854,63 @@ def system_items(music_enabled=None):
         (t("sys_language"),                          "language",  None),
         (t("sys_configure_buttons"),                 "remap",     None),
         (t("sys_reset_buttons"),                     "remap_reset", None),
+        (curated_label,                              "curated",   None),
         (t("sys_rescan"),                            "rescan",    None),
         (t("sys_redraw"),                            "redraw",    None),
         (t("sys_reboot"),                            "reboot",    None),
         (t("sys_quit"),                              "quit",      None),
     ]
+
+def filter_curated(name, items, syskey):
+    """Wenn der 'Nur katalogisierte Spiele'-Schalter aktiv ist (System-
+    Menue), auf Eintraege einschraenken, die einen Treffer in der
+    libretro-Datenbank haben (von mister_gameinfo.py geladen,
+    meta/<System>.json bzw. fuer Arcade die MRA-Datei selbst) - das ist
+    die "Source of Authority", die Hyperspin frueher mit seinen
+    XML-Datenbanken pro System bereitgestellt hat: nur tatsaechlich
+    katalogisierte, offiziell erschienene Spiele, keine Hacks/Homebrew/
+    unbekannten Dumps.
+
+    Sicherheitsnetz: Hat ein System UEBERHAUPT keine Metadaten (z.B.
+    weil mister_gameinfo.py dafuer noch nie gelaufen ist), wird NICHT
+    gefiltert - sonst wuerde die Liste faelschlich komplett leer
+    werden, nur weil noch keine Datenbank geladen wurde."""
+    if not syskey or not items:
+        return (name, items, syskey)
+    kept = []
+    any_meta = False
+    for it in items:
+        label, kind, arg = it
+        if syskey == "ARCADE":
+            meta = mra_meta(arg) if kind == "core" else {}
+        else:
+            meta = get_meta(syskey, label)
+        if meta:
+            any_meta = True
+            kept.append(it)
+    if not any_meta:
+        return (name, items, syskey)
+    return (name, kept, syskey)
+
+CURATED_FLAG = "/media/fat/frontend/curated_only"
+
+def curated_only_active():
+    return os.path.exists(CURATED_FLAG)
+
+def toggle_curated_only():
+    if os.path.exists(CURATED_FLAG):
+        try:
+            os.remove(CURATED_FLAG)
+        except OSError:
+            pass
+    else:
+        try:
+            dirname = os.path.dirname(CURATED_FLAG)
+            if dirname:
+                os.makedirs(dirname, exist_ok=True)
+            open(CURATED_FLAG, "w").close()
+        except OSError:
+            pass
 
 def _letter_of(name):
     for ch in name:
@@ -1805,6 +2008,11 @@ class Frontend:
         if scripts:
             self.cats.append(("Scripts", scripts, None))
         self.cats.append(("System", system_items(self.music.enabled), None))
+        if curated_only_active():
+            # filter_curated() laesst Kategorien ohne syskey (Scripts,
+            # System, Core-Ordner) unveraendert - nur echte Spiele-
+            # Systeme werden eingeschraenkt.
+            self.cats = [filter_curated(n, it, sk) for n, it, sk in self.cats]
 
     def _go_back_or_confirm_quit(self):
         """ESC/B (und der 3x-Select-Kurzbefehl): auf Seite 1 einfach
@@ -1840,8 +2048,9 @@ class Frontend:
     # 1080p -> Schrift 3x, 720p -> 2x, 480p -> 1x
     # ------------------------------------------------------------------
     def layout_cats(self):
-        """Layout fuer Seite 0 - die volle Breite gehoert der Kategorienliste,
-        kein Boxart-Block noetig."""
+        """Layout fuer Seite 0. Rechts wird eine Artbox-Spalte reserviert,
+        die das Logo/Cover des gerade markierten Systems zeigt - der
+        Rest der Breite gehoert der Kategorienliste."""
         W, H = self.fb.width, self.fb.height
         s = max(1, H // 360)
         ox = W * OVERSCAN_X // 100
@@ -1849,8 +2058,11 @@ class Frontend:
         rowh = 22 * s
         y0 = oy + 40 * s
         visible = max(3, (H - y0 - oy - 20 * s) // rowh)
+        art_w = min(int(W * 0.34), 340)
+        list_right = W - ox - art_w - 12 * s
         return {"s": s, "ox": ox, "oy": oy, "rowh": rowh,
-                "y0": y0, "visible": visible}
+                "y0": y0, "visible": visible,
+                "art_w": art_w, "list_right": list_right}
 
     def layout_items(self, has_art):
         """Layout fuer Seite 1. Bei Systemen mit Boxart teilt sich der
@@ -1920,7 +2132,8 @@ class Frontend:
                                      max(0, len(self.cats) - visible)))
         end = min(self.cat_scroll + visible, len(self.cats))
 
-        list_right = W - ox
+        list_right = L["list_right"]
+        maxc = max(4, (list_right - ox - 40 * s) // (8 * s))
         for row, i in enumerate(range(self.cat_scroll, end)):
             name, items, _sk = self.cats[i]
             y = y0 + row * rowh
@@ -1929,11 +2142,15 @@ class Frontend:
             if sel:
                 fb.rect(ox - 4 * s, y - 4 * s, list_right - ox + 8 * s,
                         rowh - 4 * s, bg)
-            fb.text(ox, y, name, 2 * s, C_TITLE if sel else C_TEXT, bg)
+            label = name if len(name) <= maxc else name[:max(1, maxc-1)] + "~"
+            fb.text(ox, y, label, s, C_TITLE if sel else C_TEXT, bg)
             cnt = str(len(items))
             ccw = len(cnt) * 8 * s
             fb.text(list_right - ccw, y + 4 * s, cnt,
                     s, C_TEXT if sel else C_DIM, bg)
+
+        # Artbox rechts: Logo/Cover des gerade markierten Systems
+        self._draw_cat_artbox(L)
 
         foot = message or (
             t("footer_cats_wide") if W >= 700 else
@@ -1942,6 +2159,37 @@ class Frontend:
         fb.text(ox, H - oy - 13 * s, foot, s, C_DIM, C_BG)
         if flip:
             fb.flip()
+
+    def _draw_cat_artbox(self, L):
+        """Zeigt rechts neben der Kategorienliste ein Logo/Cover fuer
+        das gerade markierte System (aus SYSART_BASE/<Systemkey>.art).
+        Ohne passende Datei erscheint ein dezenter Platzhalter statt
+        eines Fehlers."""
+        fb = self.fb
+        s = L["s"]
+        W, H = fb.width, fb.height
+        ox, oy = L["ox"], L["oy"]
+        art_w = L["art_w"]
+        x0 = W - ox - art_w
+        y0 = L["y0"]
+        y_max = H - oy - 20 * s
+        box_h = max(20, y_max - y0)
+        pad = 6 * s
+
+        name, _items, syskey = self.cats[self.cat_i]
+        art = ART.get_scaled(os.path.join(SYSART_BASE, "%s.art" % syskey),
+                             art_w - 2 * pad, box_h) if syskey else None
+        if art:
+            aw, ah, pix = art
+            ax = x0 + pad + max(0, (art_w - 2 * pad - aw) // 2)
+            ay = y0 + max(0, (box_h - ah) // 2)
+            self.blit(ax, ay, aw, ah, pix)
+        else:
+            fb.rect(x0 + pad, y0, art_w - 2 * pad, box_h, C_ACCENT2)
+            fb.text(x0 + pad + 4 * s, y0 + box_h // 2 - 4 * s,
+                    t("no_artwork_1"), s, C_DIM, C_ACCENT2)
+            fb.text(x0 + pad + 4 * s, y0 + box_h // 2 + 5 * s,
+                    t("no_artwork_2"), s, C_DIM, C_ACCENT2)
 
     # ------------------------------------------------------------------
     # Seite 1: Liste + (falls vorhanden) grosse Boxart-Spalte
@@ -2404,8 +2652,9 @@ class Frontend:
             return
         while current_core() != "MENU":
             res = self.inp.wait_game_exit()
-            if res == "combo":
-                LOG("Start+Select erkannt - zurueck ins Menue")
+            if res in ("combo", "f10"):
+                LOG("Start+Select bzw. F10 erkannt - zurueck ins Menue"
+                    if res == "combo" else "F10 erkannt - zurueck ins Menue")
                 launch_core("/media/fat/menu.rbf")
                 t1 = time.time()
                 while current_core() != "MENU" and time.time() - t1 < 10:
@@ -2445,6 +2694,7 @@ class Frontend:
         """Echtes MiSTer-OSD oeffnen (fuer Joystick-Definition, Settings).
         Rueckkehr ins Frontend mit F10."""
         LOG("open_osd: Start")
+        self.music.pause_for_core()
         self.draw("MiSTer OSD active - F10 or X button = back")
         self.inp.grab(False)
         time.sleep(0.2)
@@ -2456,6 +2706,7 @@ class Frontend:
             if act == "back_fe":
                 break
         LOG("open_osd: Rueckkehr")
+        self.music.resume_after_core()
         self.back_to_frontend()
 
     def configure_buttons(self):
@@ -2547,20 +2798,42 @@ class Frontend:
     def stream_state(self):
         """Aktuelle Auswahl als Dict fuer das Web-Overlay."""
         name, items, syskey = self.cats[self.cat_i]
+        nowplaying = (self.music.current_track_name()
+                      if hasattr(self, "music") else None)
+
+        if self.page == 0:
+            # Kategorien-Menue: der Zuschauer sieht, durch welche
+            # Systeme geblaettert wird. self.item_i gehoert hier noch
+            # zur zuletzt geoeffneten Kategorie und waere irrefuehrend.
+            total = len(self.cats)
+            lo = max(0, self.cat_i - 2)
+            hi = min(total, lo + 5)
+            return {
+                "category": "",
+                "system": "",
+                "syskey": "",           # kein Cover im Kategorien-Menue
+                "name": name,
+                "index": self.cat_i,
+                "total": total,
+                "nowplaying": nowplaying,
+                "list": [self.cats[i][0] for i in range(lo, hi)],
+                "list_index": self.cat_i - lo,
+            }
+
         total = len(items)
         sel = items[self.item_i][0] if 0 <= self.item_i < total else ""
         lo = max(0, self.item_i - 2)
         hi = min(total, lo + 5)
-        window = [items[i][0] for i in range(lo, hi)]
+        window = [display_name(items[i][0]) for i in range(lo, hi)]
         return {
             "category": name,
             "system": name,                 # lesbarer Name fuers Badge
             "syskey": syskey or "",         # Key fuer die Cover-URL (/art)
-            "name": sel,
+            "name": display_name(sel),
+            "art_name": sel,                # echter Dateiname fuers Cover
             "index": self.item_i,
             "total": total,
-            "nowplaying": self.music.current_track_name()
-                          if hasattr(self, "music") else None,
+            "nowplaying": nowplaying,
             "list": window,
             "list_index": self.item_i - lo,
         }
@@ -2809,6 +3082,11 @@ class Frontend:
                                 pass
                             self.draw(t("remap_done"))
                             time.sleep(1.0)
+                        elif kind == "curated":
+                            toggle_curated_only()
+                            self.build_categories()
+                            self.scroll = self.cat_scroll = 0
+                            self.page = 0
                 self.draw()
         finally:
             if self.stream:
