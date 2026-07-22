@@ -26,15 +26,21 @@ if [ -f "$LOGFILE" ]; then
     fi
 fi
 
-# Warten, bis MiSTer hochgefahren und im Menue ist (max. 60 s)
-for i in $(seq 1 60); do
+# Warten, bis MiSTer hochgefahren und im Menue ist (max. 60 s).
+# Alle 0.2s statt jede volle Sekunde pruefen, damit wir nicht bis zu
+# fast einer ganzen Sekunde unnoetig verlieren, sobald MENU bereit ist.
+i=0
+while [ "$i" -lt 300 ]; do
     CORE=$(tr -d '\0' < /tmp/CORENAME 2>/dev/null)
     [ "$CORE" = "MENU" ] && break
-    sleep 1
+    sleep 0.2
+    i=$((i + 1))
 done
 
-# Dem MiSTer-Hauptprogramm noch einen Moment geben
-sleep 2
+# Kurzer Puffer, damit MiSTer's Hauptprogramm den Menue-Wechsel wirklich
+# abgeschlossen hat (vorher pauschal 2s - 1s reicht in der Praxis und
+# spart eine Sekunde beim Start).
+sleep 1
 
 exec /usr/bin/python3 /media/fat/frontend/frontend.py \
     >> /tmp/frontend.log 2>&1
