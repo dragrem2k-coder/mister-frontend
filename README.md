@@ -1,4 +1,4 @@
-# MiSTer Custom Frontend v1.26 - Komplettbuild (Stand: 2026-07-22)
+# MiSTer Custom Frontend v1.28 - Komplettbuild (Stand: 2026-07-23)
 
 **Ersteller: Dragrem2K**
 
@@ -31,7 +31,7 @@ eine einzige externe Abhaengigkeit auf dem MiSTer selbst.
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.26) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.28) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (laeuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (laeuft auf dem MiSTer) |
@@ -99,6 +99,7 @@ steht und rechts bei Spiele-Systemen eine breite Boxart+Info-Spalte.
 | F12 / Guide-Button                 | Echtes MiSTer-OSD oeffnen (Joystick-Belegung, ini-Settings) |
 | F10 / X-Button                     | Aus dem OSD zurueck ins Frontend |
 | Y-Taste                            | Naechster Song (manueller Musik-Wechsel) |
+| F11                                 | Zufaelliges Spiel/Kategorie ("weiss nicht was ich spielen soll") |
 | 3x Select nacheinander (Pad)       | Beenden-Bestaetigung (wie ESC) |
 | Im laufenden Spiel: F12 -> "Exit to Menu Core" | Zurueck ins Frontend (siehe Hinweis unten) |
 
@@ -341,7 +342,9 @@ Authentifizierung. Technische Details fuer Weiterentwicklung:
 - Notaus bei Autostart-Problemen: `touch /media/fat/frontend/disable`
   und neu starten (Reaktivieren: Datei wieder loeschen).
 - Diagnose: `/tmp/frontend.log` protokolliert Geraete, Aktionen und
-  Fehler:
+  Fehler (begrenzt sich seit v1.27 automatisch auf max. ~512 KB, damit
+  der (meist RAM-basierte) `/tmp`-Speicher nicht mit der Zeit
+  vollaeuft):
   ```bash
   tail -50 /tmp/frontend.log
   ```
