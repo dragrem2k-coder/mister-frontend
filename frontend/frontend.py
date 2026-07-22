@@ -1,9 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.27
+MiSTer Custom Frontend - v1.28
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.28 (Zufalls-Taste):
+  - Neue Aktion "random": springt zu einem zufaelligen Eintrag - in
+    der Spieleliste (Seite 2) zu einem zufaelligen Spiel, im
+    Kategorien-Menue (Seite 1) zu einer zufaelligen Kategorie. Wird
+    nie zweimal hintereinander derselbe Eintrag (bei mehr als einem
+    vorhandenen). Standardmaessig auf die R-Taste gelegt, ueber
+    "Configure buttons" auf eine beliebige andere Taste umlegbar.
 
 Neu in v1.27 (Log-Datei-Begrenzung):
   - /tmp/frontend.log wuchs bisher unbegrenzt - bei laengerer Laufzeit
@@ -750,7 +758,7 @@ EVIOCGRAB = 0x40044590
 EV_SYN, EV_KEY, EV_ABS = 0, 1, 3
 KEY_ESC, KEY_ENTER = 1, 28
 KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT = 103, 108, 105, 106
-KEY_F9, KEY_F10, KEY_F12 = 67, 68, 88
+KEY_F9, KEY_F10, KEY_F11, KEY_F12 = 67, 68, 87, 88
 # Gamepad-Buttons (Linux-Standardcodes)
 BTN_A, BTN_B, BTN_X, BTN_Y = 304, 305, 307, 308
 KEY_Y = 21                   # Y key on keyboard
@@ -782,7 +790,7 @@ LETTER_KEYS = {
 KEYMAP = {
     KEY_UP: "up", KEY_DOWN: "down", KEY_LEFT: "left", KEY_RIGHT: "right",
     KEY_ENTER: "ok", KEY_ESC: "exit",
-    KEY_F12: "osd", KEY_F10: "back_fe", KEY_F9: None,
+    KEY_F12: "osd", KEY_F10: "back_fe", KEY_F9: None, KEY_F11: "random",
     BTN_A: "ok", BTN_START: "ok",
     BTN_B: "back", BTN_X: "back_fe",
     BTN_Y: "music_next", KEY_Y: "music_next",
@@ -1842,6 +1850,7 @@ TRANSLATIONS = {
     "remap_action_ok":     {"en": "OK / Start", "de": "OK / Start"},
     "remap_action_back":   {"en": "Back",   "de": "Zurueck"},
     "remap_action_osd":    {"en": "Open MiSTer menu", "de": "MiSTer-Menue oeffnen"},
+    "remap_action_random": {"en": "Random game", "de": "Zufaelliges Spiel"},
     "remap_done":      {"en": "Button mapping saved!",
                         "de": "Tastenbelegung gespeichert!"},
     "remap_cancelled": {"en": "Cancelled - keeping previous mapping",
@@ -2769,7 +2778,7 @@ class Frontend:
             ("up", "remap_action_up"), ("down", "remap_action_down"),
             ("left", "remap_action_left"), ("right", "remap_action_right"),
             ("ok", "remap_action_ok"), ("back", "remap_action_back"),
-            ("osd", "remap_action_osd"),
+            ("osd", "remap_action_osd"), ("random", "remap_action_random"),
         ]
         self.inp.grab(False)
         new_map = {}
@@ -3067,6 +3076,22 @@ class Frontend:
                     elif items:
                         self.item_i = jump_to_letter(
                             [it[0] for it in items], self.item_i, ch)
+                        self.marquee_reset()
+                elif act == "random":
+                    # "Weiss nicht was ich spielen soll" - springt zu
+                    # einem zufaelligen Eintrag, nie zweimal hinter-
+                    # einander demselben (falls mehr als einer da ist).
+                    move_streak = page_streak = 0
+                    if self.page == 0:
+                        if len(self.cats) > 1:
+                            choices = [i for i in range(len(self.cats))
+                                      if i != self.cat_i]
+                            self.cat_i = random.choice(choices)
+                            self.cat_scroll = 0
+                    elif items and len(items) > 1:
+                        choices = [i for i in range(len(items))
+                                  if i != self.item_i]
+                        self.item_i = random.choice(choices)
                         self.marquee_reset()
                 elif act == "ok":
                     if self.page == 0:
