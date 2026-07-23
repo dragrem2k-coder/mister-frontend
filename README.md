@@ -1,4 +1,4 @@
-# MiSTer Custom Frontend v1.30 - Komplettbuild (Stand: 2026-07-23)
+# MiSTer Custom Frontend v1.31 - Komplettbuild (Stand: 2026-07-23)
 
 **Ersteller: Dragrem2K**
 
@@ -42,7 +42,7 @@ Platzhalter, die Systemlogos in der linken Spalte sind echt.
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.30) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.31) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (laeuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (laeuft auf dem MiSTer) |
@@ -72,6 +72,24 @@ Platzhalter, die Systemlogos in der linken Spalte sind echt.
 
 ## 3. Installation Schritt fuer Schritt
 
+### Option A: Automatisch (empfohlen, besonders ohne Vorkenntnisse)
+
+Ein einziger Befehl per SSH auf dem MiSTer laedt alles direkt von
+GitHub, kopiert es an die richtige Stelle und richtet den Autostart
+ein:
+```bash
+curl -Ls https://raw.githubusercontent.com/dragrem2k-coder/mister-frontend/main/install.sh | bash
+```
+(Falls `curl` fehlt, geht auch `wget -qO- ... | bash` - das Skript
+sagt dir Bescheid, falls beides fehlt.)
+
+Kann jederzeit erneut ausgefuehrt werden (z.B. fuer ein Update) -
+eigene Daten (Musik, Boxart, Einstellungen) bleiben dabei unangetastet,
+nur die Programmdateien werden ersetzt. MiSTer braucht dafuer
+Internetzugang (im Heimnetzwerk normalerweise automatisch vorhanden).
+
+### Option B: Manuell per WinSCP
+
 1. Auf dem MiSTer per WinSCP anlegen: `/media/fat/frontend/`
 2. Alle Dateien aus dem Ordner `frontend/` dorthin kopieren.
 3. Alle Dateien aus dem Ordner `Scripts/` nach `/media/fat/Scripts/`
@@ -85,13 +103,15 @@ Platzhalter, die Systemlogos in der linken Spalte sind echt.
 5. MiSTer einmal neu starten - das Frontend sollte automatisch
    erscheinen.
 
+### Nach der Installation (beide Wege)
+
 Manueller Start (z.B. zum Testen, ohne neu zu booten), per SSH:
 ```bash
 python3 /media/fat/frontend/frontend.py
 ```
 
 Oder jederzeit aus dem echten MiSTer-OSD heraus: Hauptmenue -> Scripts
--> `start_frontend` (das Skript aus Schritt 3 macht das moeglich - MiSTer
+-> `start_frontend` (die Scripts-Dateien machen das moeglich - MiSTer
 listet automatisch jedes `.sh`-Skript in `/media/fat/Scripts/` im OSD).
 
 ## 4. Bedienung

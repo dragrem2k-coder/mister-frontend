@@ -1584,10 +1584,14 @@ def scan_cores():
     return cats
 
 def _games_signature():
-    """Schneller Fingerabdruck der ROM-Ordner (ohne Tiefensuche):
-    existierende Wurzeln + deren mtime. Aendert sich der Inhalt einer
-    Wurzel direkt, aendert sich die Signatur; bei Aenderungen tief in
-    Unterordnern hilft der System-Eintrag 'Spieleliste neu einlesen'."""
+    """Fingerabdruck der ROM-Ordner INKLUSIVE aller Unterordner (nur
+    Verzeichnis-mtimes, keine einzelnen Dateien - deutlich billiger als
+    der eigentliche Scan, aber empfindlich genug fuer Aenderungen in
+    tief verschachtelten Sammlungen wie 'Favoriten'- oder 'Top 100'-
+    Unterordnern). Frueher wurde nur die oberste Ebene geprueft -
+    Aenderungen/Loeschungen in Unterordnern blieben dadurch unbemerkt,
+    der Cache zeigte dann veraltete Eintraege bzw. Boxarts fuer nicht
+    mehr vorhandene Spiele."""
     sig = []
     for base in GAMES_BASES:
         if not os.path.isdir(base):
@@ -1598,7 +1602,15 @@ def _games_signature():
                 try:
                     sig.append((root, int(os.path.getmtime(root))))
                 except OSError:
-                    pass
+                    continue
+                for dirpath, dirnames, _filenames in os.walk(root):
+                    dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+                    for d in dirnames:
+                        sub = os.path.join(dirpath, d)
+                        try:
+                            sig.append((sub, int(os.path.getmtime(sub))))
+                        except OSError:
+                            pass
     return sig
 
 def _cats_to_json(cats):
@@ -1811,11 +1823,14 @@ class MusicPlayer:
     track runs via subprocess.Popen, the switch to the next track
     happens whenever tick() is called from the main loop."""
 
+    MAX_TRACK_SECONDS = 20 * 60   # Sicherheitsnetz, siehe tick()
+
     def __init__(self):
         self.enabled = self._load_enabled()
         self.playlist = []
         self.pos = 0
         self.proc = None
+        self._track_started_at = None
         self.paused_for_core = False
         self._rescan()
 
@@ -1860,6 +1875,7 @@ class MusicPlayer:
                 [MPG123_BIN, "-q", path],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 stdin=subprocess.DEVNULL)
+            self._track_started_at = time.time()
             LOG("Music: playing %s" % os.path.basename(path))
         except OSError as e:
             LOG("Music: failed to start mpg123: %s" % e)
@@ -1897,14 +1913,31 @@ class MusicPlayer:
     def tick(self):
         """Call regularly from the main loop. Starts playback if
         needed, automatically advances to the next track once the
-        current one has ended."""
+        current one has ended.
+
+        Sicherheitsnetz: manche MP3-Dateien (beschaedigte/unuebliche
+        Tags) koennen mpg123 nach dem eigentlichen Ende haengen lassen,
+        statt sauber zu beenden - poll() wuerde dann faelschlich
+        weiterhin 'laeuft noch' melden. Nach MAX_TRACK_SECONDS wird
+        deshalb trotzdem zum naechsten Song gewechselt."""
         if not self.enabled or self.paused_for_core:
             return
         if not self.playlist:
             return
-        if not self._proc_alive():
-            if self.proc is not None:
-                self._advance()   # previous track has ended
+        alive = self._proc_alive()
+        had_proc = self.proc is not None  # VOR _stop_current() merken -
+                                          # das setzt self.proc selbst auf None
+        if alive and self._track_started_at is not None and \
+           time.time() - self._track_started_at > self.MAX_TRACK_SECONDS:
+            LOG("Music: Sicherheitsnetz ausgeloest (Song laeuft laenger "
+                "als %d Minuten) - erzwinge Wechsel"
+                % (self.MAX_TRACK_SECONDS // 60))
+            self._stop_current()
+            alive = False
+        if not alive:
+            if had_proc:
+                LOG("Music: Song beendet, wechsle weiter")
+                self._advance()
             self._start_current()
 
     def next_track(self):
@@ -2400,10 +2433,7 @@ class Frontend:
         end = min(self.cat_scroll + visible, len(self.cats))
 
         list_right = L["list_right"]
-        icon_w = 18 * s
-        icon_h = 12 * s
-        text_x = ox + icon_w + 6 * s
-        maxc = max(4, (list_right - text_x - 32 * s) // (8 * s))
+        maxc = max(4, (list_right - ox - 40 * s) // (8 * s))
         for row, i in enumerate(range(self.cat_scroll, end)):
             name, items, _sk = self.cats[i]
             y = y0 + row * rowh
@@ -2419,20 +2449,8 @@ class Frontend:
                     p = (ring + 1) * 2 * s
                     fb.glow_border_fast(gx - p, gy - p, gw + 2 * p, gh + 2 * p,
                                         C_BG, accent, a, thickness=2 * s)
-            # Mini-Icon aus der vorhandenen Artbox-Grafik (stark
-            # verkleinert) - fehlt eine Datei fuer das System, bleibt
-            # die Spalte einfach leer statt eines Fehlers, Ausrichtung
-            # der Namen bleibt trotzdem konsistent.
-            if _sk:
-                icon = ART.get_scaled(
-                    os.path.join(SYSART_BASE, "%s.art" % _sk), icon_w, icon_h)
-                if icon:
-                    iw, ih, pix = icon
-                    ix = ox + max(0, (icon_w - iw) // 2)
-                    iy = y + max(0, (icon_h - ih) // 2) - 1 * s
-                    self.blit(ix, iy, iw, ih, pix)
             label = name if len(name) <= maxc else name[:max(1, maxc-1)] + "~"
-            fb.text(text_x, y, label, s, C_TITLE if sel else C_TEXT, bg)
+            fb.text(ox, y, label, s, C_TITLE if sel else C_TEXT, bg)
             cnt = str(len(items))
             ccw = len(cnt) * 8 * s
             fb.text(list_right - ccw, y + 4 * s, cnt,
