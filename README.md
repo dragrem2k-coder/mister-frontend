@@ -1,4 +1,4 @@
-# MiSTer Custom Frontend v1.28 - Komplettbuild (Stand: 2026-07-23)
+# MiSTer Custom Frontend v1.30 - Komplettbuild (Stand: 2026-07-23)
 
 **Ersteller: Dragrem2K**
 
@@ -7,6 +7,17 @@ mit Boxart und Spielinfos, Gamepad- und Tastatursteuerung, Hintergrundmusik,
 Sprachumschaltung Deutsch/Englisch, eigene Tastenbelegung, CRT- und
 HDMI-Unterstuetzung, Autostart - komplett in reinem Standard-Python, ohne
 eine einzige externe Abhaengigkeit auf dem MiSTer selbst.
+
+**Hinweis zu den Screenshots unten:** direkt aus dem echten Programmcode
+gerendert (keine Fotomontage) - Boxart und Musiktitel im Beispiel sind
+Platzhalter, die Systemlogos in der linken Spalte sind echt.
+
+<p align="center">
+  <img src="screenshots/screenshot_1_kategorien.png" width="420" alt="Kategorien-Menue mit Mini-Icons und Now-Playing">
+  &nbsp;&nbsp;
+  <img src="screenshots/screenshot_2_spieleliste.png" width="420" alt="Spieleliste mit Boxart, Akzentfarbe und Glow-Effekt">
+</p>
+<p align="center"><sub>Links: Kategorien-Menue mit Mini-Icons, Akzentfarbe und Now-Playing-Anzeige &nbsp;|&nbsp; Rechts: Spieleliste mit Boxart, Glow-Effekt und Schlagschatten</sub></p>
 
 ## Inhaltsverzeichnis
 
@@ -31,7 +42,7 @@ eine einzige externe Abhaengigkeit auf dem MiSTer selbst.
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.28) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.30) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (laeuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (laeuft auf dem MiSTer) |
@@ -39,6 +50,7 @@ eine einzige externe Abhaengigkeit auf dem MiSTer selbst.
 | frontend/stream_overlay.html    | /media/fat/frontend/             | OBS-Browser-Quelle (optional) |
 | frontend/stream_admin.html      | /media/fat/frontend/             | Stream-Overlay-Konfiguration (optional) |
 | Scripts/start_frontend.sh       | /media/fat/Scripts/              | Frontend manuell aus dem MiSTer-OSD starten |
+| Scripts/update_frontend.sh      | /media/fat/Scripts/              | Nach einem Datei-Update sauber neu starten (1 statt mehrerer Befehle) |
 | Scripts/boxart_download.sh      | /media/fat/Scripts/              | Boxart-Download aus OSD/Frontend starten |
 | Scripts/gameinfo_download.sh    | /media/fat/Scripts/              | Spielinfo-Download aus OSD/Frontend starten |
 | Scripts/stream_toggle.sh        | /media/fat/Scripts/              | Stream-Overlay an/aus schalten (optional) |
@@ -244,6 +256,41 @@ Menue ist daher ENTWEDER auf dem CRT ODER auf HDMI sichtbar (Spiele
 selbst laufen weiterhin auf beiden Ausgaengen gleichzeitig,
 unabhaengig vom Menue).
 
+## 8c. Zuletzt gespielt, Mini-Icons, Lade-Fortschritt (seit v1.30)
+
+Automatisch aktiv, keine Einrichtung noetig:
+- **"Zuletzt gespielt"**: neue Kategorie ganz oben im Hauptmenue,
+  sobald du das erste Spiel gestartet hast - bis zu 15 Eintraege,
+  neuestes zuerst. Erscheint automatisch erst NACH dem ersten
+  Spielstart (vorher unsichtbar, keine leere Kategorie).
+- **Mini-Icons**: kleine Vorschaubilder aus den bereits vorhandenen
+  `sysart/`-Logos vor jedem Kategorienamen. Fehlt fuer ein System die
+  Datei, bleibt die Spalte einfach leer statt eines Fehlers.
+- **Lade-Fortschritt**: zeigt einen Fortschrittsbalken, falls die
+  Spieleliste tatsaechlich neu von der Platte eingelesen werden muss
+  (erster Start oder nach Aenderungen an den ROM-Ordnern). Beim
+  normalen, schnellen Cache-Treffer (der ueblichste Fall) erscheint
+  gar nichts davon - kein Tempoverlust im Alltag.
+
+## 8b. Optische Verfeinerungen (seit v1.29)
+
+Automatisch aktiv, keine Einrichtung noetig:
+- **Pro-System-Akzentfarbe**: Markierung, Boxart-Rahmen und Artbox-
+  Rahmen faerben sich passend zum aktuellen System (NES-Rot,
+  Sega-Blau, SNES-Lila usw.) statt immer Standard-Blau zu zeigen.
+- **Pulsierende Markierung**: dezentes, bewusst LANGSAMES Aufhellen/
+  Abdunkeln der Auswahl (mehrere Sekunden pro Zyklus).
+- **Glow-Effekt** um die Markierung, **Schlagschatten** unter dem
+  Boxart-Cover.
+- **Equalizer-Balken** neben der Now-Playing-Anzeige, solange Musik
+  laeuft (rein animiert, keine echte Lautstaerke-Messung).
+
+Falls das auf deinem Setup zu unruhig wirkt: alle vier Effekte lassen
+sich einzeln im Code abschalten (`accent_for()`/`_pulsed()`/
+`glow_border_fast()`/`_draw_equalizer()` jeweils durch die alte feste
+Farbe ersetzen) - sag Bescheid, falls du dafuer einen eigenen
+Menueschalter haben moechtest.
+
 ## 9. Sprache umschalten
 
 System -> "Language: English -> switch to German" (bzw. umgekehrt auf
@@ -334,6 +381,11 @@ Authentifizierung. Technische Details fuer Weiterentwicklung:
 
 ## 13. Fehlerbehebung
 
+- **Nach einem Datei-Update** (neue Version installiert): einfach
+  `/media/fat/Scripts/update_frontend.sh` ausfuehren (per SSH oder aus
+  dem MiSTer-OSD unter Scripts) - beendet die alte Instanz sauber und
+  startet automatisch neu. Ersetzt den manuellen
+  `kill`/`rm`/`python3`-Dreischritt durch einen einzigen Befehl.
 - Frontend startet nicht / reagiert nicht: Pruefen, ob schon eine
   Instanz laeuft: `cat /tmp/frontend.lock`. Beenden mit
   `kill $(cat /tmp/frontend.lock)`, dann `rm -f /tmp/frontend.lock`.

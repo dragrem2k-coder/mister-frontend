@@ -1,9 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.28
+MiSTer Custom Frontend - v1.29
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.29 (optische Verfeinerungen):
+  - Pro-System-Akzentfarbe: Markierung, Boxart-Rahmen und Artbox-Rahmen
+    faerben sich jetzt passend zum aktuellen System ein (NES-Rot,
+    Sega-Blau, SNES-Lila usw.) statt immer Standard-Blau.
+  - Pulsierende Markierung: dezentes, LANGSAMES Aufhellen/Abdunkeln
+    der Auswahl (mehrere Sekunden pro Zyklus, bewusst selten aktualisiert
+    - siehe Hinweis zu Bildschirmriss-Vermeidung in frueheren Versionen).
+  - Glow-Effekt um die Markierung, Schlagschatten unter dem Boxart-
+    Cover - ueber einen neuen Alpha-Blend-Helfer in der Framebuffer-
+    Klasse (mischt vorhandene Pixel mit einer Farbe, statt sie zu
+    ueberschreiben).
+  - Equalizer-Balken neben der Now-Playing-Anzeige, solange Musik
+    laeuft (rein animiert, keine echte Lautstaerke-Messung noetig).
 
 Neu in v1.28 (Zufalls-Taste):
   - Neue Aktion "random": springt zu einem zufaelligen Eintrag - in
@@ -424,7 +438,7 @@ Start auf dem MiSTer (per SSH oder als Startscript):
   python3 /media/fat/frontend/frontend.py
 """
 
-import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib, json, random
+import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib, json, random, math
 
 LOGFILE = "/tmp/frontend.log"
 LOG_MAX_BYTES = 512 * 1024      # ab dieser Groesse wird gekuerzt
@@ -542,6 +556,8 @@ SYSART_BASE = "/media/fat/frontend/sysart"
 META_BASE   = "/media/fat/frontend/meta"
 MGL_TMP     = "/tmp/frontend_launch.mgl"
 GAMES_CACHE = "/media/fat/frontend/games_cache.json"
+RECENT_FILE = "/media/fat/frontend/recently_played.json"
+RECENT_MAX = 15
 MISTER_CMD  = "/dev/MiSTer_cmd"
 MUSIC_DIR   = "/media/fat/music"
 MUSIC_ENABLED_FILE = "/media/fat/frontend/music_enabled"
@@ -604,6 +620,32 @@ C_BG     = (16, 18, 24)
 C_PANEL  = (28, 32, 44)
 C_ACCENT = (66, 133, 244)
 C_ACCENT2= (40, 70, 120)
+
+# Pro-System-Akzentfarbe: Markierung/Rahmen faerben sich passend zum
+# aktuellen System ein statt immer Standard-Blau zu zeigen. Kategorien
+# ohne Systemkey (Scripts, System, Core-Ordner) behalten C_ACCENT.
+SYSTEM_ACCENT = {
+    "NES":     (210, 70, 70),
+    "SNES":    (140, 120, 220),
+    "Genesis": (60, 150, 255),
+    "N64":     (70, 160, 100),
+    "PSX":     (130, 140, 190),
+    "GAMEBOY": (150, 180, 100),
+    "GBC":     (230, 185, 60),
+    "GBA":     (175, 120, 225),
+    "SMS":     (230, 90, 90),
+    "TGFX16":  (240, 150, 50),
+    "MegaCD":  (90, 175, 205),
+    "Saturn":  (200, 200, 215),
+    "NEOGEO":  (220, 70, 70),
+    "ARCADE":  (255, 185, 50),
+}
+
+def accent_for(syskey):
+    """Akzentfarbe fuer ein System - faellt auf den Standard zurueck,
+    wenn kein syskey vorhanden ist (Scripts/System/Core-Ordner) oder
+    das System nicht in SYSTEM_ACCENT gelistet ist."""
+    return SYSTEM_ACCENT.get(syskey, C_ACCENT)
 C_TEXT   = (220, 224, 232)
 C_DIM    = (120, 126, 140)
 C_TITLE  = (255, 255, 255)   # Logo/Systemname: weiss (Retro-Look)
@@ -672,6 +714,69 @@ class Framebuffer:
             bg = (row + pad) * self.height
             self._rowcache[key] = bg
         self.buf[:] = bg
+
+    def blend_rect(self, x, y, w, h, rgb, alpha):
+        """Rechteck mit einer Farbe UEBERBLENDEN statt zu ueberschreiben -
+        fuer Glow-/Schatten-Effekte. alpha=0..1 (0=keine Wirkung, 1=wie
+        rect()). Kann NICHT gecacht werden (haengt vom vorhandenen
+        Bildinhalt ab) - deshalb bewusst nur fuer kleine Bereiche
+        (Glow-Ringe, Schatten), nicht fuer grosse Flaechen. Wie bei
+        allen anderen Zeichenmethoden: schreibt nie mehr/weniger Bytes
+        als der Zielbereich hat, um den Puffer nicht zu verschieben."""
+        x = max(0, x); y = max(0, y)
+        w = min(w, self.width - x); h = min(h, self.height - y)
+        if w <= 0 or h <= 0 or alpha <= 0:
+            return
+        alpha = min(1.0, alpha)
+        nb, ng, nr = rgb[2], rgb[1], rgb[0]  # BGRA-Reihenfolge im Puffer
+        buflen = len(self.buf)
+        need = w * 4
+        for yy in range(y, y + h):
+            off = yy * self.stride + x * 4
+            end = off + need
+            if end > buflen:
+                continue
+            row = bytearray(self.buf[off:end])
+            for i in range(0, need, 4):
+                row[i]   = int(row[i]   + (nb - row[i])   * alpha)
+                row[i+1] = int(row[i+1] + (ng - row[i+1]) * alpha)
+                row[i+2] = int(row[i+2] + (nr - row[i+2]) * alpha)
+            if len(row) == need:
+                self.buf[off:end] = row
+
+    def blend_border(self, x, y, w, h, rgb, alpha, thickness=2):
+        """Nur den RAND eines Rechtecks ueberblenden (vier duenne
+        Streifen) statt der ganzen Flaeche - fuer Glow-Ringe deutlich
+        billiger als blend_rect() auf die volle Flaeche, da nur der
+        Umfang statt die Flaeche skaliert. Fuer KLEINE, bildschirm-
+        unabhaengige Bereiche gedacht (z.B. Boxart-Rahmen/Schatten) -
+        fuer breite, bildschirmfuellende Streifen (Listenmarkierung auf
+        HDMI) stattdessen glow_border_fast() nutzen, siehe dort."""
+        t = max(1, thickness)
+        self.blend_rect(x, y, w, t, rgb, alpha)                    # oben
+        self.blend_rect(x, y + h - t, w, t, rgb, alpha)             # unten
+        self.blend_rect(x, y, t, h, rgb, alpha)                     # links
+        self.blend_rect(x + w - t, y, t, h, rgb, alpha)             # rechts
+
+    def glow_border_fast(self, x, y, w, h, base_bg, accent, alpha, thickness):
+        """Schnelle Glow-Ring-Variante: statt jedes Pixel einzeln mit
+        dem VORHANDENEN Bildinhalt zu mischen (blend_border, teuer bei
+        breiten Bereichen), wird die Zielfarbe VORAB einmal berechnet
+        (Grundfarbe + Akzent bei gegebenem Alpha) und dann ueber das
+        normale, gecachte rect() gezeichnet. Auf breiten HDMI-Zeilen
+        um ein Vielfaches schneller, weil rect() dieselbe Zeile fuer
+        gleiche Breite wiederverwendet statt sie jedes Mal neu
+        durchzurechnen. Nimmt an, dass der Hintergrund unter dem Ring
+        etwa base_bg entspricht - bei aktivem Hintergrundbild kann die
+        Farbe dadurch minimal abweichen, bewusster Kompromiss fuer
+        Geschwindigkeit."""
+        mixed = tuple(int(bg + (ac - bg) * alpha)
+                      for bg, ac in zip(base_bg, accent))
+        t = max(1, thickness)
+        self.rect(x, y, w, t, mixed)
+        self.rect(x, y + h - t, w, t, mixed)
+        self.rect(x, y, t, h, mixed)
+        self.rect(x + w - t, y, t, h, mixed)
 
     def rect(self, x, y, w, h, rgb, scanlines=False):
         """scanlines=True: jede 2. Zeile dezent abgedunkelt (Retro-Look) -
@@ -1508,8 +1613,46 @@ def _cats_from_json(data):
         cats.append((n, items, sk))
     return cats
 
-def scan_games(force=False):
-    """ROM-Listen laden - aus dem Cache, wenn er noch passt."""
+def load_recent():
+    """Liste der zuletzt gespielten Spiele laden - Rueckgabe im
+    gleichen (label, kind, arg)-Format wie normale Kategorie-Eintraege,
+    direkt startbar. Leere Liste, wenn noch nie etwas gestartet wurde
+    oder die Datei fehlt/beschaedigt ist."""
+    try:
+        with open(RECENT_FILE) as f:
+            data = json.load(f)
+        return [(e["label"], "game", e["arg"]) for e in data]
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+
+def record_recent(label, arg):
+    """Ein gestartetes Spiel oben in die 'Zuletzt gespielt'-Liste
+    einreihen (Duplikate werden nach oben verschoben statt doppelt zu
+    erscheinen - Erkennung ueber den Namen, nicht ueber arg: nach
+    einer JSON-Speicherrunde werden verschachtelte Tupel zu Listen,
+    ein direkter Tupel-Vergleich wuerde also nie zutreffen), auf
+    RECENT_MAX Eintraege gekappt."""
+    try:
+        with open(RECENT_FILE) as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        data = []
+    data = [e for e in data if e.get("label") != label]
+    data.insert(0, {"label": label, "arg": list(arg)})
+    data = data[:RECENT_MAX]
+    try:
+        os.makedirs(os.path.dirname(RECENT_FILE), exist_ok=True)
+        with open(RECENT_FILE, "w") as f:
+            json.dump(data, f)
+    except OSError:
+        pass
+
+def scan_games(force=False, progress_cb=None):
+    """ROM-Listen laden - aus dem Cache, wenn er noch passt.
+    progress_cb(i, total, name): wird NUR beim tatsaechlichen Scannen
+    von der Platte aufgerufen (nicht beim schnellen Cache-Treffer) -
+    normale Boots (Cache passt) bleiben also unveraendert schnell,
+    nur der seltene "erster Start"/"ROMs geaendert"-Fall zeigt Fortschritt."""
     sig = _games_signature()
     if not force:
         try:
@@ -1521,7 +1664,7 @@ def scan_games(force=False):
                 return _cats_from_json(data["cats"])
         except (OSError, ValueError, KeyError, IndexError, TypeError):
             pass
-    cats = _scan_games_disk()
+    cats = _scan_games_disk(progress_cb)
     try:
         with open(GAMES_CACHE, "w") as f:
             json.dump({"sig": [list(s) for s in sig],
@@ -1530,7 +1673,7 @@ def scan_games(force=False):
         pass
     return cats
 
-def _scan_games_disk():
+def _scan_games_disk(progress_cb=None):
     """Fuer jedes bekannte System die ROMs einsammeln. Rueckgabe: Liste
     (Anzeigename, Items, Systemkey).
 
@@ -1543,7 +1686,13 @@ def _scan_games_disk():
     REGION_PRIORITY) - bei sehr grossen, mehrfach-region-vollstaendigen
     Sammlungen kann das die Listengroesse spuerbar reduzieren."""
     cats = []
-    for disp, syskey, folders, rbf, extmap in GAME_SYSTEMS:
+    total_sys = len(GAME_SYSTEMS)
+    for sys_idx, (disp, syskey, folders, rbf, extmap) in enumerate(GAME_SYSTEMS):
+        if progress_cb:
+            try:
+                progress_cb(sys_idx, total_sys, disp)
+            except Exception:
+                pass
         raw = []
         seen_roots = set()
         for base in GAMES_BASES:
@@ -1837,6 +1986,8 @@ TRANSLATIONS = {
                         "de": "Kuratierte Liste (nur DB-Treffer): AN -> ausschalten"},
     "sys_curated_off": {"en": "Curated list (DB-matched only): OFF -> turn on",
                         "de": "Kuratierte Liste (nur DB-Treffer): AUS -> einschalten"},
+    "scanning":  {"en": "Scanning: %s", "de": "Durchsuche: %s"},
+    "recent_cat": {"en": "Recently Played", "de": "Zuletzt gespielt"},
     "sys_rescan":      {"en": "Rescan game list", "de": "Spieleliste neu einlesen"},
     "sys_redraw":      {"en": "Redraw display",   "de": "Anzeige neu aufbauen"},
     "sys_reboot":      {"en": "Restart MiSTer",   "de": "MiSTer neu starten"},
@@ -2041,6 +2192,13 @@ class Frontend:
         self.track_mq_pause = 0
         self._track_mq_name = None
         self._track_tick_next = 0.0
+        # Pulsierende Markierung: bewusst LANGSAM (mehrere Sekunden pro
+        # Zyklus) und selten aktualisiert (~1x/Sekunde), um die
+        # Zeichenhaeufigkeit nicht spuerbar zu erhoehen - frueh in
+        # diesem Projekt gab es eine lange Bildschirmriss-Geschichte,
+        # die u.a. durch haeufige komplette Neuzeichnungen entstand.
+        self._pulse_tick_next = 0.0
+        self._pulse_t0 = time.time()
         # Seit v1.11: Seitensprung-Groesse (links/rechts) = sichtbare
         # Zeilenzahl der jeweiligen Liste - wird beim Zeichnen aktuell
         # gehalten, damit der Sprung immer genau einen Bildschirm
@@ -2053,9 +2211,58 @@ class Frontend:
         if self.music.available():
             self.music.tick()      # start playback right away
 
+    def _item_syskey(self, item, fallback):
+        """Bevorzugt den im Eintrag SELBST gespeicherten Systemkey -
+        wichtig fuer 'Zuletzt gespielt', wo Eintraege aus verschiedenen
+        Systemen gemischt sind (die Kategorie selbst hat dort
+        syskey=None). Bei normalen Kategorien liefert das denselben
+        Wert wie der Kategorie-Systemkey, aendert dort also nichts."""
+        try:
+            if item[1] == "game" and item[2] and len(item[2]) >= 3:
+                return item[2][2]
+        except (IndexError, TypeError):
+            pass
+        return fallback
+
+    def _draw_scan_progress(self, i, total, name):
+        """Einfacher Lade-Fortschritt waehrend des (seltenen)
+        tatsaechlichen Plattenscans (erster Start oder ROM-Aenderungen)
+        - unabhaengig von der normalen Seiten-Infrastruktur, da
+        self.cats zu diesem Zeitpunkt noch nicht existiert. Wird beim
+        normalen Boot (Cache passt) gar nicht aufgerufen."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        fb.clear(C_BG)
+        fb.text(ox, oy, "MiSTer", 3 * s, C_TITLE, C_BG)
+        msg = t("scanning", name)
+        maxc = max(4, (W - 2 * ox) // (8 * s))
+        if len(msg) > maxc:
+            msg = msg[:max(1, maxc - 1)] + "~"
+        fb.text(ox, oy + 50 * s, msg, s, C_TEXT, C_BG)
+        bar_w = min(W - 2 * ox, 300 * s)
+        bar_h = 10 * s
+        by = oy + 70 * s
+        fb.rect(ox, by, bar_w, bar_h, C_PANEL)
+        filled = int(bar_w * (i + 1) / max(1, total))
+        fb.rect(ox, by, filled, bar_h, C_ACCENT)
+        fb.text(ox, by + 16 * s, "%d / %d" % (i + 1, total), s, C_DIM, C_BG)
+        fb.flip()
+
     def build_categories(self, force_rescan=False):
         # Reihenfolge: Spiele-Systeme, dann Core-Ordner, Scripts, System
-        self.cats = scan_games(force=force_rescan)
+        self.cats = scan_games(force=force_rescan,
+                               progress_cb=self._draw_scan_progress)
+        recent_items = load_recent()
+        if recent_items:
+            # Ganz vorne, damit sie ohne Scrollen erreichbar ist.
+            # syskey=None (wie Scripts/System), da die Liste mehrere
+            # Systeme mischt - jeder Eintrag traegt seinen eigenen
+            # Systemkey in arg[2], der beim Zeichnen bevorzugt wird
+            # (siehe _item_syskey()).
+            self.cats.insert(0, (t("recent_cat"), recent_items, None))
         self.cats.extend(scan_cores())
         scripts = scan_scripts()
         if scripts:
@@ -2168,9 +2375,16 @@ class Frontend:
         fb.text(ox, oy + 28 * s, t("categories", len(self.cats)), s, C_DIM, C_BG)
 
         # Songtitel als Laufschrift NEBEN dem Logo (nicht darunter,
-        # sonst ueberschneidet er sich mit dem Listenbeginn).
+        # sonst ueberschneidet er sich mit dem Listenbeginn). Davor
+        # ein paar kleine animierte Balken (rein dekorativ, keine
+        # echte Lautstaerke-Messung) als visueller "hier laeuft was"-
+        # Hinweis.
         logo_w = len("MiSTer") * 8 * 3 * s
-        track_x = ox + logo_w + 16 * s
+        eq_w = 0
+        if self._track_mq_name:
+            self._draw_equalizer(ox + logo_w + 10 * s, oy + 8 * s, s)
+            eq_w = 4 * (3 * s + 2 * s) + 10 * s
+        track_x = ox + logo_w + eq_w + 16 * s
         track_maxc = max(0, (W - ox - track_x) // (8 * s))
         if track_maxc >= 6:
             track_text = self.track_marquee_text(track_maxc)
@@ -2186,17 +2400,39 @@ class Frontend:
         end = min(self.cat_scroll + visible, len(self.cats))
 
         list_right = L["list_right"]
-        maxc = max(4, (list_right - ox - 40 * s) // (8 * s))
+        icon_w = 18 * s
+        icon_h = 12 * s
+        text_x = ox + icon_w + 6 * s
+        maxc = max(4, (list_right - text_x - 32 * s) // (8 * s))
         for row, i in enumerate(range(self.cat_scroll, end)):
             name, items, _sk = self.cats[i]
             y = y0 + row * rowh
             sel = (i == self.cat_i)
-            bg = C_ACCENT if sel else C_BG
+            accent = accent_for(_sk)
+            bg = self._pulsed(accent) if sel else C_BG
             if sel:
                 fb.rect(ox - 4 * s, y - 4 * s, list_right - ox + 8 * s,
                         rowh - 4 * s, bg)
+                gx, gy = ox - 4 * s, y - 4 * s
+                gw, gh = list_right - ox + 8 * s, rowh - 4 * s
+                for ring, a in enumerate((0.22, 0.13, 0.06)):
+                    p = (ring + 1) * 2 * s
+                    fb.glow_border_fast(gx - p, gy - p, gw + 2 * p, gh + 2 * p,
+                                        C_BG, accent, a, thickness=2 * s)
+            # Mini-Icon aus der vorhandenen Artbox-Grafik (stark
+            # verkleinert) - fehlt eine Datei fuer das System, bleibt
+            # die Spalte einfach leer statt eines Fehlers, Ausrichtung
+            # der Namen bleibt trotzdem konsistent.
+            if _sk:
+                icon = ART.get_scaled(
+                    os.path.join(SYSART_BASE, "%s.art" % _sk), icon_w, icon_h)
+                if icon:
+                    iw, ih, pix = icon
+                    ix = ox + max(0, (icon_w - iw) // 2)
+                    iy = y + max(0, (icon_h - ih) // 2) - 1 * s
+                    self.blit(ix, iy, iw, ih, pix)
             label = name if len(name) <= maxc else name[:max(1, maxc-1)] + "~"
-            fb.text(ox, y, label, s, C_TITLE if sel else C_TEXT, bg)
+            fb.text(text_x, y, label, s, C_TITLE if sel else C_TEXT, bg)
             cnt = str(len(items))
             ccw = len(cnt) * 8 * s
             fb.text(list_right - ccw, y + 4 * s, cnt,
@@ -2230,13 +2466,20 @@ class Frontend:
         pad = 6 * s
 
         name, _items, syskey = self.cats[self.cat_i]
+        accent = accent_for(syskey)
         art = ART.get_scaled(os.path.join(SYSART_BASE, "%s.art" % syskey),
                              art_w - 2 * pad, box_h) if syskey else None
         if art:
             aw, ah, pix = art
             ax = x0 + pad + max(0, (art_w - 2 * pad - aw) // 2)
             ay = y0 + max(0, (box_h - ah) // 2)
+            fb.blend_rect(ax + 3 * s, ay + ah - 4 * s, aw, 10 * s,
+                         (0, 0, 0), 0.35)
             self.blit(ax, ay, aw, ah, pix)
+            fb.rect(ax - 2 * s, ay - 2 * s, aw + 4 * s, 2 * s, accent)
+            fb.rect(ax - 2 * s, ay + ah, aw + 4 * s, 2 * s, accent)
+            fb.rect(ax - 2 * s, ay - 2 * s, 2 * s, ah + 4 * s, accent)
+            fb.rect(ax + aw, ay - 2 * s, 2 * s, ah + 4 * s, accent)
         else:
             fb.rect(x0 + pad, y0, art_w - 2 * pad, box_h, C_ACCENT2)
             fb.text(x0 + pad + 4 * s, y0 + box_h // 2 - 4 * s,
@@ -2252,7 +2495,12 @@ class Frontend:
         W, H = fb.width, fb.height
         name, items, syskey = self.cats[self.cat_i]
         total = len(items)
-        has_art = bool(syskey) and total > 0
+        # Bei "Zuletzt gespielt" ist der Kategorie-Systemkey None (die
+        # Liste mischt mehrere Systeme) - trotzdem soll die Boxart-
+        # Spalte erscheinen, da jeder einzelne Eintrag seinen eigenen
+        # Systemkey mitbringt (siehe _item_syskey()).
+        has_art = total > 0 and (bool(syskey) or
+                                 (items and items[0][1] == "game"))
 
         L = self.layout_items(has_art)
         s, ox, oy = L["s"], L["ox"], L["oy"]
@@ -2272,7 +2520,7 @@ class Frontend:
 
         self.view = {"list_x": list_x, "list_y": list_y,
                     "list_right": list_right, "rowh": rowh, "s": s,
-                    "items": items}
+                    "items": items, "syskey": syskey}
 
         if self.item_i < self.scroll:
             self.scroll = self.item_i
@@ -2294,8 +2542,9 @@ class Frontend:
             art_w = (W - ox) - art_x0
             art_h = footer_y - 8 * s - art_y0
             if art_w > 20 and art_h > 20:
+                item_syskey = self._item_syskey(items[self.item_i], syskey)
                 self.draw_art_panel(art_x0, art_w, art_y0, art_h,
-                                    syskey, items[self.item_i], s)
+                                    item_syskey, items[self.item_i], s)
 
         foot = message or (
             t("footer_items_wide") if W >= 700 else
@@ -2367,7 +2616,9 @@ class Frontend:
         y_top = y - 3 * s
 
         sel = (idx == self.item_i)
-        bg = C_ACCENT if sel else C_BG
+        item_syskey = self._item_syskey(v["items"][idx], v.get("syskey"))
+        accent = accent_for(item_syskey)
+        bg = self._pulsed(accent) if sel else C_BG
         x0 = list_x - 4 * s
         rw = max(4, list_right - list_x - 2 * s)
         need = rw * 4
@@ -2391,6 +2642,13 @@ class Frontend:
                 fb.rect(x0, y_top, rw, rowh - 2 * s, bg)
         else:
             fb.rect(x0, y_top, rw, rowh - 2 * s, bg if sel else C_BG)
+
+        if sel:
+            for ring, a in enumerate((0.20, 0.11, 0.05)):
+                p = (ring + 1) * 2 * s
+                fb.glow_border_fast(x0 - p, y_top - p, rw + 2 * p,
+                                    rowh - 2 * s + 2 * p, C_BG, accent, a,
+                                    thickness=2 * s)
 
         full = v["items"][idx][0]
         maxc = (list_right - list_x - 8 * s) // (8 * s)
@@ -2485,6 +2743,50 @@ class Frontend:
                 self.track_mq_pause = 6
         return True
 
+    def _pulse_factor(self):
+        """Aktueller Helligkeits-Multiplikator (0.90..1.0) fuer die
+        pulsierende Markierung - sinusfoermig, langsamer Zyklus
+        (~3.2 Sekunden), bewusst dezent."""
+        elapsed = time.time() - self._pulse_t0
+        return 0.90 + 0.10 * (0.5 + 0.5 * math.sin(elapsed * 2 * math.pi / 3.2))
+
+    def _pulsed(self, rgb):
+        f = self._pulse_factor()
+        return tuple(min(255, int(c * f)) for c in rgb)
+
+    def _pulse_tick(self):
+        """True, wenn seit dem letzten Aufruf genug Zeit vergangen ist,
+        um eine neue Pulsier-Stufe zu zeigen - bewusst selten (~alle
+        0.9s), damit KEINE zusaetzlichen haeufigen Neuzeichnungen
+        entstehen. Nutzt das ohnehin vorhandene ~1s-Idle-Aufwachen in
+        next_action() mit, statt eigene schnellere Abfragen zu
+        erzwingen."""
+        now = time.time()
+        if now < self._pulse_tick_next:
+            return False
+        self._pulse_tick_next = now + 0.9
+        return True
+
+    def _draw_equalizer(self, x, y, s):
+        """Kleine animierte Balken neben der Now-Playing-Anzeige - rein
+        dekorativ (mpg123 liefert uns keine echte Lautstaerke), nutzt
+        eine Zeit-basierte Sinuskurve pro Balken statt Zufallszahlen
+        (deterministisch, kein eigener Zustand noetig). Bewegt sich nur
+        dann sichtbar, wenn ohnehin gerade neu gezeichnet wird (ueber
+        den Pulsier-Tick) - keine zusaetzlichen Redraws dafuer noetig."""
+        fb = self.fb
+        now = time.time()
+        bar_w = 3 * s
+        gap = 2 * s
+        h_max = 10 * s
+        col = (224, 182, 74)
+        for i in range(4):
+            phase = now * 2.2 + i * 1.7
+            frac = 0.35 + 0.65 * (0.5 + 0.5 * math.sin(phase))
+            bh = max(2 * s, int(h_max * frac))
+            bx = x + i * (bar_w + gap)
+            fb.rect(bx, y + h_max - bh, bar_w, bh, col)
+
     def next_action(self):
         """Wie read_action, treibt aber nebenbei die Laufschrift(en) UND
         die Musikwiedergabe (naechster Song bei Bedarf) an. Blockiert
@@ -2509,6 +2811,10 @@ class Frontend:
             if track_needs:
                 if self._track_marquee_tick(24):
                     self.draw()
+            elif self._pulse_tick():
+                # Nur neu zeichnen, wenn nicht ohnehin schon durch die
+                # Track-Laufschrift ein Redraw passiert (sonst doppelt).
+                self.draw()
             self.music.tick()
 
     @staticmethod
@@ -2605,6 +2911,7 @@ class Frontend:
 
         # ---- Cover oben, zentriert ----
         cy = y0
+        accent = accent_for(syskey)
         art = None
         if H >= 720:
             hd = os.path.join(ART_HD, syskey, name + ".art")
@@ -2615,7 +2922,15 @@ class Frontend:
             aw, ah, pix = art
             ax = x0 + max(0, (avail_w - aw) // 2)
             ay = cy + max(0, (cover_h - ah) // 2)
+            # Schlagschatten: dunkler, leicht versetzter Bereich UNTER
+            # dem Cover, VOR dem eigentlichen Bild gezeichnet.
+            fb.blend_rect(ax + 3 * s, ay + ah - 4 * s, aw, 10 * s,
+                         (0, 0, 0), 0.35)
             self.blit(ax, ay, aw, ah, pix)
+            fb.rect(ax - 2 * s, ay - 2 * s, aw + 4 * s, 2 * s, accent)
+            fb.rect(ax - 2 * s, ay + ah, aw + 4 * s, 2 * s, accent)
+            fb.rect(ax - 2 * s, ay - 2 * s, 2 * s, ah + 4 * s, accent)
+            fb.rect(ax + aw, ay - 2 * s, 2 * s, ah + 4 * s, accent)
             art_bottom = ay + ah
         else:
             fb.rect(x0, cy, avail_w, cover_h, C_ACCENT2)
@@ -3104,6 +3419,7 @@ class Frontend:
                         elif kind == "game":
                             rom, ext, syskey, rbf, (dl, ft, ix) = arg
                             LOG("Spielstart: %s (%s)" % (label, syskey))
+                            record_recent(label, arg)
                             mgl = write_mgl(rbf, rom, dl, ft, ix)
                             self.run_core(mgl)
                             continue
