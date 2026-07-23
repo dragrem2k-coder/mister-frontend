@@ -37,7 +37,7 @@ Hinweis: Die PNG-Dekodierung in reinem Python braucht ein paar
 Sekunden pro Bild. Grosse Sammlungen laufen am besten ueber Nacht.
 """
 
-import difflib, html, json, os, re, ssl, struct, sys, time, zlib
+import re, difflib, html, json, os, re, ssl, struct, sys, time, zlib
 import urllib.request, urllib.parse
 
 GAMES_BASES = (["/media/fat/games"]
@@ -59,6 +59,14 @@ IGNORE_ROM_BASENAMES = {"boot", "boot1", "boot2", "mister-boot", "mister-demo"}
 # (identisch zur gleichnamigen Konstante in frontend.py).
 JUNK_TAGS = ("(beta", "(proto", "(demo", "(sample", "(unl)", "[b]",
             "(pirate", "(program", "(test", "(kiosk", "(hack")
+
+# Rein japanische ROMs ausblenden (identisch zur gleichnamigen Logik
+# in frontend.py) - Mehrfach-Region-Tags wie "(Japan, USA)" bleiben
+# erhalten, da diese Version auch USA/Europa abdeckt.
+_JAPAN_ONLY = re.compile(r"[\(\[]\s*(?:japan|j)\s*[\)\]]", re.I)
+
+def _is_japan_only(name):
+    return bool(_JAPAN_ONLY.search(name))
 
 # syskey: (ROM-Ordner, ROM-Endungen, libretro-Thumbnail-Name)
 # Wichtig: GAMEBOY und GBC teilen sich den Ordner "GAMEBOY", werden aber
@@ -406,6 +414,8 @@ def collect_roms(folders, exts):
                         continue
                     low = b.lower()
                     if any(tag in low for tag in JUNK_TAGS):
+                        continue
+                    if _is_japan_only(b):
                         continue
                     if ext.lower() in exts:
                         raw.append(b)

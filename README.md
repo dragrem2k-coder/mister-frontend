@@ -1,4 +1,4 @@
-# MiSTer Custom Frontend v1.31 - Komplettbuild (Stand: 2026-07-23)
+# MiSTer Custom Frontend v1.36 - Komplettbuild (Stand: 2026-07-24)
 
 **Ersteller: Dragrem2K**
 
@@ -42,7 +42,7 @@ Platzhalter, die Systemlogos in der linken Spalte sind echt.
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.31) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.36) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (laeuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (laeuft auf dem MiSTer) |
@@ -214,6 +214,13 @@ Ordnerstruktur anzutasten:
   vollstaendigen No-Intro-Sets kann das die Listengroesse deutlich
   reduzieren und verhindert doppelte Boxart-Downloads fuer dasselbe
   Spiel.
+- **Rein japanische ROMs werden seit v1.35 komplett ausgeblendet**
+  (nicht nur bei Mehrfach-Regionen zusammengefasst, sondern generell
+  ausgefiltert) - erkennt "(Japan)"/"[Japan]" und die abgekuerzte
+  Variante "(J)". Mehrfach-Region-Tags wie "(Japan, USA)" bleiben
+  erhalten, da diese Version auch USA/Europa abdeckt. Gilt fuer den
+  Frontend-Scan UND alle drei Boxart-/Info-Downloader-Tools
+  einheitlich.
 
 Zusaetzlich optional im System-Menue: **"Curated list (DB-matched
 only)"** zeigt nur Spiele mit einem Treffer in der libretro-Datenbank
@@ -337,27 +344,37 @@ bevor das normale Menue erscheint - kein echtes Videoformat (der MiSTer
 hat keinen Video-Player), sondern ein "Daumenkino" aus Einzelbildern im
 selben `.art`-Format wie Boxart und Hintergrundbilder.
 
+**Seit v1.36 automatische Modus-Erkennung:** Das Frontend erkennt beim
+Start selbst, ob gerade CRT- oder HDMI-Menuemodus aktiv ist, und
+spielt die passende Animation ab - du kannst also fuer beide Modi
+unterschiedliche Videos/Bilder hinterlegen (z.B. eine hochaufgeloeste
+Version fuers HDMI, eine kleinere fuer die Roehre).
+
 1. Auf dem PC (`pip install Pillow`, fuer Video-Quellen zusaetzlich
-   ffmpeg im PATH):
+   ffmpeg im PATH), EINMAL PRO MODUS:
    ```
-   # Aus einem Video (braucht ffmpeg):
-   python video_to_bootanim.py --video intro.mp4 --out bootanim_out ^
+   # CRT-Variante:
+   python video_to_bootanim.py --video intro.mp4 --out bootanim_crt ^
        --fps 10 --duration 3 --size 320x240
 
-   # Aus bereits vorliegenden Einzelbildern:
-   python video_to_bootanim.py --frames-dir meine_frames --out bootanim_out ^
-       --fps 12 --size 1920x1080
+   # HDMI-Variante (kann ein anderes Video/Ausschnitt sein):
+   python video_to_bootanim.py --video intro.mp4 --out bootanim_hdmi ^
+       --fps 10 --duration 3 --size 1920x1080
    ```
-   `--size` an dein Menue anpassen: `320x240` fuer CRT, `1920x1080`
-   fuer HDMI (siehe Abschnitt 8).
-2. Den kompletten Inhalt von `bootanim_out` per WinSCP nach
-   `/media/fat/frontend/bootanim/` kopieren.
-3. Fertig - beim naechsten Boot erscheint die Animation automatisch
-   einmal, danach wie gewohnt das Menue.
+2. Die beiden Ordner per WinSCP nach
+   `/media/fat/frontend/bootanim_crt/` bzw.
+   `/media/fat/frontend/bootanim_hdmi/` kopieren (Ordnernamen exakt so,
+   mit Unterstrich-Suffix).
+3. Fertig - beim naechsten Boot erscheint automatisch die zum
+   aktuellen Modus passende Animation.
+
+**Nur einen Modus einrichten?** Reicht auch - fehlt der
+modusspezifische Ordner, wird ersatzweise `bootanim/` (ohne Suffix,
+die alte Struktur aus fruoheren Versionen) verwendet, falls vorhanden.
 
 Ein beliebiger Tastendruck waehrend der Wiedergabe ueberspringt den
-Rest sofort. Fehlt der Ordner oder ist er leer, passiert einfach
-nichts - kein Fehler.
+Rest sofort. Fehlt jeder passende Ordner oder ist er leer, passiert
+einfach nichts - kein Fehler.
 
 **Bewusst kurz halten:** Jedes Bild wird auf dem MiSTer in reinem
 Python dekodiert - fuer ein paar Sekunden Animation problemlos
@@ -428,7 +445,15 @@ Authentifizierung. Technische Details fuer Weiterentwicklung:
 ## 14. Bekannte Grenzen
 
 - ROMs in ZIP-Archiven werden aktuell nicht gelistet.
-- ROM-Suche geht maximal 2 Ordnerebenen tief (bewusst, fuer Tempo).
+- ROM-Suche geht beliebig tief (seit v1.23, keine Ebenen-Begrenzung
+  mehr) - die Erkennung, OB neu gescannt werden muss, prueft aus
+  Tempogruenden aber weiterhin nur die oberste ROM-Ordnerebene pro
+  System. Wenn du also nur Dateien TIEF in einem Unterordner
+  hinzufuegst/loeschst/umbenennst (z.B. in einer "Favoriten"-Sammlung),
+  merkt das Frontend das moeglicherweise nicht von selbst - dann
+  einmal manuell System -> "Rescan game list" ausfuehren. Aenderungen
+  direkt im obersten Systemordner (z.B. `SNES/`) werden dagegen immer
+  automatisch erkannt.
 - Arcade zeigt Infos aus den MRA-Dateien, aber noch keine eigene Boxart.
 - Menue nur auf einem Video-Ausgang gleichzeitig sichtbar (technische
   Grenze des MiSTer-Scalers, keine Frontend-Einschraenkung).

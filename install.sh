@@ -32,9 +32,9 @@ echo ""
 
 # --- Download-Werkzeug pruefen ---
 if command -v curl >/dev/null 2>&1; then
-    DL="curl -Ls -o"
+    TOOL=curl
 elif command -v wget >/dev/null 2>&1; then
-    DL="wget -q -O"
+    TOOL=wget
 else
     echo "FEHLER: Weder curl noch wget gefunden."
     echo "Bitte die Dateien stattdessen manuell per WinSCP kopieren -"
@@ -63,12 +63,52 @@ fi
 mkdir -p "$TMP_DIR"
 cd "$TMP_DIR"
 echo "Lade aktuellen Build herunter..."
-if ! $DL build.zip "$REPO_ZIP"; then
-    echo "FEHLER: Download fehlgeschlagen. Hat der MiSTer Internetzugang?"
-    echo "Test: ping -c 2 github.com"
+
+download_ok=0
+if [ "$TOOL" = "curl" ]; then
+    curl -L --fail --show-error -o build.zip "$REPO_ZIP" 2>dl_err.txt \
+        && download_ok=1
+else
+    wget -O build.zip "$REPO_ZIP" 2>dl_err.txt && download_ok=1
+fi
+
+if [ "$download_ok" != "1" ]; then
+    echo ""
+    echo "Erster Versuch fehlgeschlagen, genaue Fehlermeldung:"
+    echo "----------------------------------------"
+    cat dl_err.txt
+    echo "----------------------------------------"
+    echo ""
+    echo "Versuche es erneut OHNE SSL-Zertifikatspruefung (auf manchen"
+    echo "MiSTer-Installationen sind die mitgelieferten Zertifikate"
+    echo "veraltet - das ist ein bekanntes, haeufiges Problem)..."
+    if [ "$TOOL" = "curl" ]; then
+        curl -L --fail --show-error -k -o build.zip "$REPO_ZIP" 2>dl_err2.txt \
+            && download_ok=1
+    else
+        wget --no-check-certificate -O build.zip "$REPO_ZIP" 2>dl_err2.txt \
+            && download_ok=1
+    fi
+fi
+
+if [ "$download_ok" != "1" ]; then
+    echo ""
+    echo "FEHLER: Download auch im zweiten Versuch fehlgeschlagen."
+    if [ -f dl_err2.txt ]; then
+        echo "----------------------------------------"
+        cat dl_err2.txt
+        echo "----------------------------------------"
+    fi
+    echo ""
+    echo "Naechste Schritte zum Selbst-Pruefen:"
+    echo "  1. Internetzugang testen:   ping -c 2 github.com"
+    echo "  2. Direkter Testaufruf:     $TOOL -v \"$REPO_ZIP\""
+    echo "  3. Falls beides fehlschlaegt: Dateien stattdessen manuell"
+    echo "     per WinSCP kopieren, siehe README.md Abschnitt 3."
     rm -rf "$TMP_DIR"
     exit 1
 fi
+echo "Download erfolgreich."
 
 echo "Entpacke..."
 if command -v unzip >/dev/null 2>&1; then

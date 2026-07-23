@@ -32,7 +32,7 @@ zwischengespeichert; ohne --refresh werden sie wiederverwendet.
 Der Lauf ist schnell (reine Textverarbeitung, keine Bilder).
 """
 
-import difflib, json, os, re, ssl, sys, time
+import re, difflib, json, os, re, ssl, sys, time
 import urllib.request, urllib.parse
 
 GAMES_BASES = (["/media/fat/games"]
@@ -54,6 +54,14 @@ IGNORE_ROM_BASENAMES = {"boot", "boot1", "boot2", "mister-boot", "mister-demo"}
 # gleichnamigen Konstante in frontend.py).
 JUNK_TAGS = ("(beta", "(proto", "(demo", "(sample", "(unl)", "[b]",
             "(pirate", "(program", "(test", "(kiosk", "(hack")
+
+# Rein japanische ROMs ausblenden (identisch zur gleichnamigen Logik
+# in frontend.py) - Mehrfach-Region-Tags wie "(Japan, USA)" bleiben
+# erhalten, da diese Version auch USA/Europa abdeckt.
+_JAPAN_ONLY = re.compile(r"[\(\[]\s*(?:japan|j)\s*[\)\]]", re.I)
+
+def _is_japan_only(name):
+    return bool(_JAPAN_ONLY.search(name))
 
 # syskey: (ROM-Ordner, ROM-Endungen, libretro-DB-Name)
 # GAMEBOY und GBC teilen sich den Ordner "GAMEBOY", werden aber ueber die
@@ -236,6 +244,8 @@ def collect_roms(folders, exts):
                         continue
                     low = b.lower()
                     if any(tag in low for tag in JUNK_TAGS):
+                        continue
+                    if _is_japan_only(b):
                         continue
                     if ext.lower() in exts:
                         raw.append(b)

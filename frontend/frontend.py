@@ -778,6 +778,23 @@ class Framebuffer:
         self.rect(x, y, t, h, mixed)
         self.rect(x + w - t, y, t, h, mixed)
 
+    def blend_rect_fast(self, x, y, w, h, base_bg, color, alpha):
+        """Wie blend_rect(), aber mit vorgemischter FESTER Farbe statt
+        echter Pixel-fuer-Pixel-Mischung - fuer FLAECHEN (z.B. den
+        Boxart-Schatten). Derselbe Trick wie glow_border_fast(): die
+        Zielfarbe wird EINMAL berechnet statt pro Pixel, dann ueber
+        das gecachte rect() gezeichnet. Wichtig bei groesseren
+        Flaechen (z.B. schattenbreite = Cover-Breite) - echtes
+        Pixel-Blending kostete hier auf HDMI bei einem Boxart-Schatten
+        gemessen ueber 60% der gesamten Zeichenzeit einer Navigation
+        (per cProfile bestaetigt), obwohl der Schatten selbst klein
+        wirkt. Nimmt an, dass der Untergrund etwa base_bg entspricht -
+        bei aktivem Hintergrundbild kann die Farbe dadurch leicht
+        abweichen, bewusster Kompromiss fuer Geschwindigkeit."""
+        mixed = tuple(int(bg + (c - bg) * alpha)
+                      for bg, c in zip(base_bg, color))
+        self.rect(x, y, w, h, mixed)
+
     def rect(self, x, y, w, h, rgb, scanlines=False):
         """scanlines=True: jede 2. Zeile dezent abgedunkelt (Retro-Look) -
         nur fuer reine Hintergrundflaechen, nicht fuer Markierungsbalken."""
@@ -1550,6 +1567,17 @@ def _is_junk(name):
     low = name.lower()
     return any(tag in low for tag in JUNK_TAGS)
 
+# Rein japanische ROMs ausblenden (auf Wunsch - EU/USA reicht den
+# meisten). Erkennt "(Japan)"/"[Japan]" und die abgekuerzte Variante
+# "(J)" aus aelteren ROM-Sets. WICHTIG: Mehrfach-Region-Tags wie
+# "(Japan, USA)" oder "(USA, Japan)" bleiben erhalten, da diese Version
+# auch USA/Europa abdeckt - das Muster verlangt eine direkt schliessende
+# Klammer OHNE weiteren Text/Komma dazwischen.
+_JAPAN_ONLY = re.compile(r"[\(\[]\s*(?:japan|j)\s*[\)\]]", re.I)
+
+def _is_japan_only(name):
+    return bool(_JAPAN_ONLY.search(name))
+
 # Bekannte Boot-/Test-/Demo-Dateien, die manche MiSTer-Verteilungen
 # direkt in die ROM-Ordner legen (fuer den Hardware-Selbsttest). Haben
 # zufaellig die richtige Endung (z.B. .chd/.gb/.gba) und wuerden sonst
@@ -1584,14 +1612,23 @@ def scan_cores():
     return cats
 
 def _games_signature():
-    """Fingerabdruck der ROM-Ordner INKLUSIVE aller Unterordner (nur
-    Verzeichnis-mtimes, keine einzelnen Dateien - deutlich billiger als
-    der eigentliche Scan, aber empfindlich genug fuer Aenderungen in
-    tief verschachtelten Sammlungen wie 'Favoriten'- oder 'Top 100'-
-    Unterordnern). Frueher wurde nur die oberste Ebene geprueft -
-    Aenderungen/Loeschungen in Unterordnern blieben dadurch unbemerkt,
-    der Cache zeigte dann veraltete Eintraege bzw. Boxarts fuer nicht
-    mehr vorhandene Spiele."""
+    """Schneller Fingerabdruck der ROM-Ordner (ohne Tiefensuche):
+    existierende Wurzeln + deren mtime. Aendert sich der Inhalt einer
+    Wurzel direkt, aendert sich die Signatur; bei Aenderungen tief in
+    Unterordnern hilft der System-Eintrag 'Spieleliste neu einlesen'.
+
+    HINWEIS (v1.32 zurueckgerollt): Ein Zwischenstand hat versucht,
+    hierfuer ALLE Unterordner rekursiv mit einzubeziehen, um Aende-
+    rungen tief in Sammlungen (z.B. 'Favoriten') automatisch zu
+    erkennen. Das hat sich bei einer echten, grossen Sammlung (v.a.
+    ueber USB mit hoeherer Zugriffszeit als ein schneller lokaler
+    Datentraeger) als deutlich zu langsam herausgestellt - der
+    komplette Ordnerbaum wurde dadurch bei JEDEM Boot durchlaufen,
+    bevor der Bildschirm ueberhaupt wechselt (Musik lief bereits,
+    das Frontend blieb aber minutenlang unsichtbar). Zurueck auf die
+    schnelle, nur-oberste-Ebene-Pruefung - das war der urspruengliche,
+    bewusste Kompromiss: schneller Boot immer, dafuer Aenderungen tief
+    in Unterordnern nur per manuellem Rescan erkannt."""
     sig = []
     for base in GAMES_BASES:
         if not os.path.isdir(base):
@@ -1602,15 +1639,7 @@ def _games_signature():
                 try:
                     sig.append((root, int(os.path.getmtime(root))))
                 except OSError:
-                    continue
-                for dirpath, dirnames, _filenames in os.walk(root):
-                    dirnames[:] = [d for d in dirnames if not d.startswith(".")]
-                    for d in dirnames:
-                        sub = os.path.join(dirpath, d)
-                        try:
-                            sig.append((sub, int(os.path.getmtime(sub))))
-                        except OSError:
-                            pass
+                    pass
     return sig
 
 def _cats_to_json(cats):
@@ -1724,6 +1753,8 @@ def _scan_games_disk(progress_cb=None):
                         if name.lower() in IGNORE_ROM_BASENAMES:
                             continue
                         if _is_junk(name):
+                            continue
+                        if _is_japan_only(name):
                             continue
                         ext = os.path.splitext(fn)[1].lower()
                         if ext in extmap:
@@ -2232,6 +2263,12 @@ class Frontend:
         # die u.a. durch haeufige komplette Neuzeichnungen entstand.
         self._pulse_tick_next = 0.0
         self._pulse_t0 = time.time()
+        # Equalizer-Balken: eigener, etwas schnellerer Takt als das
+        # Pulsieren (0.35s statt 0.9s) fuer fluessigere Bewegung, aber
+        # bewusst deutlich langsamer als die Laufschrift (0.18s) - ein
+        # Kompromiss, da haeufigeres Neuzeichnen auf HDMI spuerbar mehr
+        # Rechenzeit kostet (siehe Performance-Hinweis in next_action()).
+        self._eq_tick_next = 0.0
         # Seit v1.11: Seitensprung-Groesse (links/rechts) = sichtbare
         # Zeilenzahl der jeweiligen Liste - wird beim Zeichnen aktuell
         # gehalten, damit der Sprung immer genau einen Bildschirm
@@ -2459,11 +2496,8 @@ class Frontend:
         # Artbox rechts: Logo/Cover des gerade markierten Systems
         self._draw_cat_artbox(L)
 
-        foot = message or (
-            t("footer_cats_wide") if W >= 700 else
-            t("footer_cats_mid") if W >= 560 else
-            t("footer_cats_narrow"))
-        fb.text(ox, H - oy - 13 * s, foot, s, C_DIM, C_BG)
+        if message:
+            fb.text(ox, H - oy - 13 * s, message, s, C_DIM, C_BG)
         if flip:
             fb.flip()
 
@@ -2491,8 +2525,8 @@ class Frontend:
             aw, ah, pix = art
             ax = x0 + pad + max(0, (art_w - 2 * pad - aw) // 2)
             ay = y0 + max(0, (box_h - ah) // 2)
-            fb.blend_rect(ax + 3 * s, ay + ah - 4 * s, aw, 10 * s,
-                         (0, 0, 0), 0.35)
+            fb.blend_rect_fast(ax + 3 * s, ay + ah - 4 * s, aw, 10 * s,
+                              C_BG, (0, 0, 0), 0.35)
             self.blit(ax, ay, aw, ah, pix)
             fb.rect(ax - 2 * s, ay - 2 * s, aw + 4 * s, 2 * s, accent)
             fb.rect(ax - 2 * s, ay + ah, aw + 4 * s, 2 * s, accent)
@@ -2533,7 +2567,11 @@ class Frontend:
         else:
             fb.clear(C_BG)
 
-        fb.text(ox, oy, name.upper(), 2 * s, C_TITLE)
+        header = name.upper()
+        header_maxc = max(4, (list_right - ox) // (16 * s))
+        if len(header) > header_maxc:
+            header = header[:max(1, header_maxc - 1)] + "~"
+        fb.text(ox, oy, header, 2 * s, C_TITLE)
         fb.text(ox, oy + 22 * s, t("entries", total), s, C_DIM)
 
         self.view = {"list_x": list_x, "list_y": list_y,
@@ -2564,11 +2602,17 @@ class Frontend:
                 self.draw_art_panel(art_x0, art_w, art_y0, art_h,
                                     item_syskey, items[self.item_i], s)
 
-        foot = message or (
-            t("footer_items_wide") if W >= 700 else
-            t("footer_items_mid") if W >= 560 else
-            t("footer_items_narrow"))
-        fb.text(ox, footer_y, foot, s, C_DIM)
+        if message:
+            fb.text(ox, footer_y, message, s, C_DIM)
+        else:
+            # Songtitel als Laufschrift in der Fusszeile - bleibt so
+            # an derselben Stelle sichtbar, egal ob/wie viel Platz das
+            # Boxart-Panel gerade braucht.
+            foot_maxc = max(0, (W - 2 * ox) // (8 * s))
+            if foot_maxc >= 6:
+                track_display = self.track_marquee_text(foot_maxc)
+                if track_display:
+                    fb.text(ox, footer_y, track_display, s, C_DIM)
         if flip:
             fb.flip()
 
@@ -2770,6 +2814,18 @@ class Frontend:
 
     def _pulsed(self, rgb):
         f = self._pulse_factor()
+        # Auf 20 feste Stufen runden statt eines fein-kontinuierlichen
+        # Wertes - sonst erzeugt praktisch jeder Aufruf eine LEICHT
+        # andere Farbe. Der Glyphen-Cache der Framebuffer-Klasse
+        # schluesselt ueber die Hintergrundfarbe (siehe _glyph_row) -
+        # bei einer staendig neuen Farbe traf der Cache nie, die
+        # markierte Zeile wurde bei JEDER Navigation komplett neu
+        # gerendert (auf HDMI wegen der groesseren Glyphen spuerbar
+        # langsamer) UND der Cache wuchs dabei unbegrenzt weiter, da
+        # alte Farbvarianten nie wiederverwendet wurden. 20 Stufen sind
+        # fuers Auge weiterhin ein sanftes Pulsieren, treffen den Cache
+        # aber wieder zuverlaessig.
+        f = round(f * 20) / 20
         return tuple(min(255, int(c * f)) for c in rgb)
 
     def _pulse_tick(self):
@@ -2783,6 +2839,16 @@ class Frontend:
         if now < self._pulse_tick_next:
             return False
         self._pulse_tick_next = now + 0.9
+        return True
+
+    def _eq_tick(self):
+        """Wie _pulse_tick(), aber fuer die Equalizer-Balken - etwas
+        schnellerer Takt (0.35s) fuer fluessigere Bewegung, ohne so
+        oft wie die Laufschrift (0.18s) neu zu zeichnen."""
+        now = time.time()
+        if now < self._eq_tick_next:
+            return False
+        self._eq_tick_next = now + 0.35
         return True
 
     def _draw_equalizer(self, x, y, s):
@@ -2818,7 +2884,17 @@ class Frontend:
             # werden muss.
             track_needs = self._track_marquee_needs_scroll(24)
             need_mq = self.marquee_needed()
-            timeout = 0.18 if (need_mq or track_needs) else 1.0
+            # Bei laufender Musik etwas oefter aufwachen (0.35s statt
+            # 1.0s), damit die Equalizer-Balken fluessiger wirken -
+            # bewusst nicht so haeufig wie die Laufschrift (0.18s), da
+            # jedes Aufwachen ein volles Neuzeichnen kostet (auf HDMI
+            # spuerbar teurer als auf CRT).
+            if need_mq or track_needs:
+                timeout = 0.18
+            elif self._track_mq_name:
+                timeout = 0.35
+            else:
+                timeout = 1.0
             act = self.inp.read_action(timeout=timeout)
             if act is not None:
                 if need_mq:
@@ -2829,6 +2905,8 @@ class Frontend:
             if track_needs:
                 if self._track_marquee_tick(24):
                     self.draw()
+            elif self._track_mq_name and self._eq_tick():
+                self.draw()
             elif self._pulse_tick():
                 # Nur neu zeichnen, wenn nicht ohnehin schon durch die
                 # Track-Laufschrift ein Redraw passiert (sonst doppelt).
@@ -2906,18 +2984,15 @@ class Frontend:
         for ln in info_src:
             info_lines.extend(self._wrap(ln, maxc, max_lines=1))
 
-        # Songtitel als Laufschrift (voller Titel, kein Label-Text
-        # mehr davor) - passt sich exakt der hier bekannten Spaltenbreite
-        # an, laeuft bei Bedarf durch statt abgeschnitten zu werden.
-        track_display = self.track_marquee_text(maxc)
-        track_lines = [track_display] if track_display else []
+        # Songtitel steht jetzt in der Fusszeile (siehe draw_page_items),
+        # nicht mehr hier im Boxart-Block - macht mehr Platz fuers Cover
+        # frei und ist an einer Stelle sichtbar, die bei jedem System
+        # gleich bleibt (auch wenn kein Cover/keine Infos vorhanden sind).
 
         line_h = 12 * s
         text_h = len(title_lines) * line_h
         if info_lines:
             text_h += 4 * s + len(info_lines) * line_h
-        if track_lines:
-            text_h += 4 * s + len(track_lines) * line_h
 
         # Cover bekommt den nach dem Text uebrig bleibenden Platz -
         # zwischen 35% und 85% der Spaltenhoehe gedeckelt, damit weder
@@ -2942,8 +3017,8 @@ class Frontend:
             ay = cy + max(0, (cover_h - ah) // 2)
             # Schlagschatten: dunkler, leicht versetzter Bereich UNTER
             # dem Cover, VOR dem eigentlichen Bild gezeichnet.
-            fb.blend_rect(ax + 3 * s, ay + ah - 4 * s, aw, 10 * s,
-                         (0, 0, 0), 0.35)
+            fb.blend_rect_fast(ax + 3 * s, ay + ah - 4 * s, aw, 10 * s,
+                              C_BG, (0, 0, 0), 0.35)
             self.blit(ax, ay, aw, ah, pix)
             fb.rect(ax - 2 * s, ay - 2 * s, aw + 4 * s, 2 * s, accent)
             fb.rect(ax - 2 * s, ay + ah, aw + 4 * s, 2 * s, accent)
@@ -2978,14 +3053,6 @@ class Frontend:
                 if iy + 9 * s > y_max:
                     break
                 fb.text(x0, iy, ln, s, C_TEXT, C_PANEL)
-                iy += line_h
-
-        if track_lines:
-            iy += 4 * s
-            for ln in track_lines:
-                if iy + 9 * s > y_max:
-                    break
-                fb.text(x0, iy, ln, s, C_DIM, C_PANEL)
                 iy += line_h
 
     def blit(self, x, y, w, h, pix):
@@ -3238,16 +3305,26 @@ class Frontend:
             self.stream.publish(st)
 
     def play_boot_animation(self):
-        """Spielt eine Bildsequenz aus BOOTANIM_DIR ab (frame_0001.art,
-        frame_0002.art, ...), einmal pro MiSTer-Boot, bevor das normale
-        Menue erscheint. Jedes Bild wird formatfuellend (letterboxed,
-        keine Verzerrung) zentriert gezeigt. Fehlt der Ordner, ist er
+        """Spielt eine Bildsequenz ab (frame_0001.art, frame_0002.art,
+        ...), einmal pro MiSTer-Boot, bevor das normale Menue
+        erscheint. Erkennt automatisch, ob CRT- oder HDMI-Menuemodus
+        aktiv ist, und sucht zuerst in BOOTANIM_DIR_crt/ bzw.
+        BOOTANIM_DIR_hdmi/ - fehlt dieser modusspezifische Ordner
+        (z.B. bei einer Installation von vor dieser Funktion), wird
+        ersatzweise BOOTANIM_DIR/ ohne Suffix verwendet (alte,
+        ungeteilte Struktur bleibt so weiterhin nutzbar). Jedes Bild
+        wird formatfuellend (letterboxed, keine Verzerrung) zentriert
+        gezeigt. Fehlt am Ende trotzdem jeder passende Ordner, ist er
         leer, oder wurde die Animation in diesem Boot schon gezeigt,
         passiert einfach nichts - kein Fehler, direkt weiter ins Menue."""
         if os.path.exists(BOOTANIM_PLAYED_MARKER):
             return
+        mode = "crt" if crt_menu_active() else "hdmi"
+        bootanim_dir = BOOTANIM_DIR + "_" + mode
+        if not os.path.isdir(bootanim_dir):
+            bootanim_dir = BOOTANIM_DIR   # Rueckwaerts-kompatibel
         try:
-            frames = sorted(f for f in os.listdir(BOOTANIM_DIR)
+            frames = sorted(f for f in os.listdir(bootanim_dir)
                             if f.lower().endswith(".art"))
         except OSError:
             frames = []
@@ -3258,7 +3335,7 @@ class Frontend:
         # {"fps": 12} enthalten - Standard 10 fps, falls nichts angegeben.
         fps = 10
         try:
-            meta = json.load(open(os.path.join(BOOTANIM_DIR, "bootanim.json")))
+            meta = json.load(open(os.path.join(bootanim_dir, "bootanim.json")))
             fps = max(1, min(30, int(meta.get("fps", fps))))
         except (OSError, ValueError, TypeError):
             pass
@@ -3266,11 +3343,12 @@ class Frontend:
 
         fb = self.fb
         W, H = fb.width, fb.height
-        LOG("play_boot_animation: %d Frames bei %d fps" % (len(frames), fps))
+        LOG("play_boot_animation: %s-Modus, %d Frames bei %d fps aus %s"
+           % (mode.upper(), len(frames), fps, bootanim_dir))
         try:
             for fn in frames:
                 t0 = time.time()
-                path = os.path.join(BOOTANIM_DIR, fn)
+                path = os.path.join(bootanim_dir, fn)
                 art = ART.get_scaled(path, W, H)
                 fb.clear((0, 0, 0))
                 if art:
