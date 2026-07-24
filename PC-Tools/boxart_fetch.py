@@ -41,6 +41,7 @@ Danach den Inhalt von art_out\\ per WinSCP nach
 
 import argparse, difflib, html, json, os, re, struct, sys, time, zlib
 import urllib.request, urllib.parse
+import concurrent.futures
 
 try:
     from PIL import Image
@@ -295,6 +296,30 @@ def collect_roms(base, folders, exts):
             best[key] = (rank, name)
     return sorted(name for _rank, name in best.values())
 
+def process_one_rom(rom, sysname, idx_exact, idx_strip, all_norms,
+                    out_dir, cache_dir, box, force):
+    """Ein einzelnes ROM verarbeiten: Cover suchen, herunterladen (falls
+    noch nicht im Cache), konvertieren. Sicher aus mehreren Threads
+    gleichzeitig aufrufbar - jedes ROM schreibt eine eigene Datei."""
+    art_out = os.path.join(out_dir, rom + ".art")
+    if os.path.exists(art_out) and not force:
+        return (rom, "already_ok", None)
+    cover, how = match_rom(rom, idx_exact, idx_strip, all_norms)
+    if not cover:
+        return (rom, "missing", None)
+    png = os.path.join(cache_dir, cover)
+    if not os.path.exists(png):
+        if not download_cover(sysname, cover, png):
+            return (rom, "dl_failed", cover)
+    try:
+        convert(png, art_out, box)
+        return (rom, "ok", (how, cover))
+    except Exception as e:
+        return (rom, "convert_error", str(e))
+
+DOWNLOAD_WORKERS = 6   # gleichzeitige Downloads - genug fuer spuerbare
+                       # Beschleunigung, ohne den Server zu ueberlasten
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--roms-base", required=True,
@@ -333,33 +358,45 @@ def main():
         os.makedirs(cache_dir, exist_ok=True)
 
         missing = []
-        for rom in roms:
-            gesamt["roms"] += 1
-            art_out = os.path.join(out_dir, rom + ".art")
-            if os.path.exists(art_out) and not args.force:
-                gesamt["ok"] += 1
-                continue
-            cover, how = match_rom(rom, idx_exact, idx_strip, all_norms)
-            if not cover:
-                missing.append(rom)
-                gesamt["fehlend"] += 1
-                continue
-            png = os.path.join(cache_dir, cover)
-            if not os.path.exists(png):
-                if not download_cover(sysname, cover, png):
-                    print("  Download fehlgeschlagen: %s" % cover)
-                    missing.append(rom)
-                    gesamt["fehlend"] += 1
-                    continue
-                time.sleep(0.2)          # Server nicht fluten
+        done = 0
+        with concurrent.futures.ThreadPoolExecutor(
+                max_workers=DOWNLOAD_WORKERS) as executor:
+            futures = {
+                executor.submit(process_one_rom, rom, sysname, idx_exact,
+                               idx_strip, all_norms, out_dir, cache_dir,
+                               box, args.force): rom
+                for rom in roms
+            }
             try:
-                convert(png, art_out, box)
-                gesamt["ok"] += 1
-                if how != "exakt":
-                    print("  [%s] %s  ->  %s" % (how, rom, cover))
-            except Exception as e:
-                print("  Konvertierung fehlgeschlagen %s: %s" % (rom, e))
-                missing.append(rom)
+                for future in concurrent.futures.as_completed(futures):
+                    rom = futures[future]
+                    gesamt["roms"] += 1
+                    done += 1
+                    try:
+                        _, status, info = future.result()
+                    except Exception as e:
+                        status, info = "error", str(e)
+                    if status in ("ok", "already_ok"):
+                        gesamt["ok"] += 1
+                        if status == "ok":
+                            how, cover = info
+                            if how != "exakt":
+                                print("  [%s] %s  ->  %s" % (how, rom, cover))
+                    elif status == "missing":
+                        missing.append(rom)
+                        gesamt["fehlend"] += 1
+                    elif status == "dl_failed":
+                        print("  Download fehlgeschlagen: %s" % info)
+                        missing.append(rom)
+                        gesamt["fehlend"] += 1
+                    else:
+                        print("  Konvertierung fehlgeschlagen %s: %s" % (rom, info))
+                        missing.append(rom)
+                        gesamt["fehlend"] += 1
+            except KeyboardInterrupt:
+                print("\nAbgebrochen - breche laufende Downloads ab...")
+                executor.shutdown(wait=False, cancel_futures=True)
+                raise
                 gesamt["fehlend"] += 1
 
         if missing:

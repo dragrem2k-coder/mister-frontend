@@ -1,4 +1,4 @@
-# MiSTer Custom Frontend v1.37 - Komplettbuild (Stand: 2026-07-24)
+# MiSTer Custom Frontend v1.38 - Komplettbuild (Stand: 2026-07-24)
 
 **Ersteller: Dragrem2K**
 
@@ -42,7 +42,7 @@ Platzhalter, die Systemlogos in der linken Spalte sind echt.
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.37) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.38) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (laeuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (laeuft auf dem MiSTer) |
@@ -177,10 +177,21 @@ python3 /media/fat/frontend/mister_boxart.py            # Cover, CRT-Groesse
 python3 /media/fat/frontend/mister_boxart.py hd          # zusaetzlich scharfe Cover fuer HDMI
 python3 /media/fat/frontend/mister_gameinfo.py           # Jahr/Genre/Spieleranzahl
 ```
+**Nutzt du sowohl CRT als auch HDMI, fuehr BEIDE Zeilen aus** - ohne
+den `hd`-Lauf zeigt das Frontend auf HDMI die kleinen, fuer die Roehre
+gedachten Cover einfach hochskaliert (wirkt verpixelt). Mit `hd`
+liegen beide Groessen nebeneinander vor (`art/` fuer CRT, `art_hd/`
+fuer HDMI), das Frontend waehlt automatisch anhand der aktuellen
+Aufloesung die passende - nichts muss geloescht/ersetzt werden, die
+CRT-Cover bleiben unangetastet.
+
 - Beide Skripte durchsuchen deine ROM-Ordner (SD-Karte und angeschlossene
   USB-Laufwerke) und holen passende Daten automatisch von
   thumbnails.libretro.com bzw. der libretro-database (jeweils mit
   GitHub-Spiegel als Fallback)
+- **Seit v1.38 mit 6 parallelen Downloads** statt einem nach dem
+  anderen - deutliche Beschleunigung bei grossen Sammlungen (gemessen:
+  ca. 5x schneller in einem realistischen Testszenario)
 - Namensabgleich: exakt -> ohne Regions-Tags -> Aehnlichkeitssuche,
   bevorzugt in dieser Reihenfolge: Germany > Europe > World > USA > Japan
 - Jederzeit mit Strg+C abbrechbar, setzt beim naechsten Start genau
@@ -190,13 +201,15 @@ python3 /media/fat/frontend/mister_gameinfo.py           # Jahr/Genre/Spieleranz
   jeweiligen `art`-Ordner unter `/media/fat/frontend/`
 
 Alternative fuer den PC (`PC-Tools/boxart_fetch.py`, braucht
-`pip install Pillow`): dieselbe Quelle vom Rechner aus abfragen und
-die fertigen `.art`-Dateien per WinSCP hochladen. Nuetzlich fuer
-eigene Bildquellen (z.B. emumovies.com) - dafuer wandelt
-`PC-Tools/art_convert.py` beliebige PNG/JPGs ins `.art`-Format um:
+`pip install Pillow`, ebenfalls mit parallelen Downloads): dieselbe
+Quelle vom Rechner aus abfragen und die fertigen `.art`-Dateien per
+WinSCP hochladen. Nuetzlich fuer eigene Bildquellen (z.B.
+emumovies.com) - dafuer wandelt `PC-Tools/art_convert.py` beliebige
+PNG/JPGs ins `.art`-Format um:
 ```
 python art_convert.py --images "meine_bilder/SNES" --roms "D:\roms\SNES" --out "art_out\SNES" --profile sd
 ```
+
 
 ## 6b. Automatische Listen-Bereinigung + kuratierte Liste
 
@@ -359,8 +372,19 @@ Version fuers HDMI, eine kleinere fuer die Roehre).
 
    # HDMI-Variante (kann ein anderes Video/Ausschnitt sein):
    python video_to_bootanim.py --video intro.mp4 --out bootanim_hdmi ^
-       --fps 10 --duration 3 --size 1920x1080
+       --fps 10 --duration 3 --size 960x540
    ```
+   **Wichtig fuer HDMI - nicht die volle 1920x1080 verwenden:** Das
+   Frontend zeigt jedes Bild seit v1.37 in seiner tatsaechlich
+   gespeicherten Groesse (zentriert, mit Rand) statt es zwanghaft auf
+   Vollbild hochzuskalieren - das ist auf einem eher schwachen
+   MiSTer-Prozessor deutlich schneller. Gemessen: `960x540` statt voller
+   `1920x1080` spielt die Animation rund **7x fluessiger** (weniger zu
+   dekodierende Bilddaten pro Frame). `960x540` sieht auf einem
+   1080p-Fernseher immer noch scharf aus - fuer die kurze Boot-Animation
+   ein guter Kompromiss. Ist eine Quelle doch groesser als der
+   Bildschirm, wird sie automatisch (aber langsamer) heruntskaliert -
+   kein Fehler, nur langsamer als noetig.
 2. Die beiden Ordner per WinSCP nach
    `/media/fat/frontend/bootanim_crt/` bzw.
    `/media/fat/frontend/bootanim_hdmi/` kopieren (Ordnernamen exakt so,

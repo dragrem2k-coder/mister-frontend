@@ -39,6 +39,7 @@ Sekunden pro Bild. Grosse Sammlungen laufen am besten ueber Nacht.
 
 import re, difflib, html, json, os, re, ssl, struct, sys, time, zlib
 import urllib.request, urllib.parse
+import concurrent.futures
 
 GAMES_BASES = (["/media/fat/games"]
                + ["/media/usb%d/games" % i for i in range(6)]
@@ -428,6 +429,31 @@ def collect_roms(folders, exts):
             best[key] = (rank, name)
     return sorted(name for _rank, name in best.values())
 
+def process_one_rom(rom, sysname, idx_exact, idx_strip, all_norms,
+                    out_dir, box):
+    """Ein einzelnes ROM verarbeiten: Cover suchen, herunterladen,
+    skalieren, speichern. Nebenwirkungsfrei bis auf das Schreiben der
+    eigenen Ausgabedatei (jedes ROM schreibt eine andere Datei) -
+    sicher aus mehreren Threads gleichzeitig aufrufbar."""
+    cover, how = match_rom(rom, idx_exact, idx_strip, all_norms)
+    if not cover:
+        return (rom, "missing", None)
+    png = download_cover(sysname, cover)
+    if not png:
+        return (rom, "dl_failed", cover)
+    try:
+        w, h, rgb = decode_png(png)
+        tw, th, small = scale_to_box(w, h, rgb, box[0], box[1])
+        art = rgb_to_art(tw, th, small)
+        with open(os.path.join(out_dir, rom + ".art"), "wb") as f:
+            f.write(art)
+        return (rom, "ok", (how, cover))
+    except PngError as e:
+        return (rom, "png_error", str(e))
+
+DOWNLOAD_WORKERS = 6   # gleichzeitige Downloads - genug fuer spuerbare
+                       # Beschleunigung, ohne den Server zu ueberlasten
+
 def main():
     args = [a for a in sys.argv[1:]]
     profile = "sd"
@@ -467,34 +493,43 @@ def main():
         all_norms = list(idx_strip.keys())
 
         missing = []
-        for nr, rom in enumerate(todo, 1):
-            cover, how = match_rom(rom, idx_exact, idx_strip, all_norms)
-            if not cover:
-                missing.append(rom)
-                gesamt["fehlend"] += 1
-                continue
-            png = download_cover(sysname, cover)
-            if not png:
-                print("  [%3d/%3d] Download fehlgeschlagen: %s"
-                      % (nr, len(todo), cover))
-                missing.append(rom)
-                gesamt["fehlend"] += 1
-                continue
+        done = 0
+        with concurrent.futures.ThreadPoolExecutor(
+                max_workers=DOWNLOAD_WORKERS) as executor:
+            futures = {
+                executor.submit(process_one_rom, rom, sysname, idx_exact,
+                               idx_strip, all_norms, out_dir, box): rom
+                for rom in todo
+            }
             try:
-                w, h, rgb = decode_png(png)
-                tw, th, small = scale_to_box(w, h, rgb, box[0], box[1])
-                art = rgb_to_art(tw, th, small)
-                with open(os.path.join(out_dir, rom + ".art"), "wb") as f:
-                    f.write(art)
-                gesamt["neu"] += 1
-                note = "" if how == "exakt" else "  [%s: %s]" % (how, cover)
-                print("  [%3d/%3d] %s%s" % (nr, len(todo), rom, note))
-            except PngError as e:
-                print("  [%3d/%3d] PNG nicht dekodierbar (%s): %s"
-                      % (nr, len(todo), e, rom))
-                missing.append(rom)
-                gesamt["fehlend"] += 1
-            time.sleep(0.2)
+                for future in concurrent.futures.as_completed(futures):
+                    rom = futures[future]
+                    done += 1
+                    try:
+                        _, status, info = future.result()
+                    except Exception as e:
+                        status, info = "error", str(e)
+                    if status == "ok":
+                        gesamt["neu"] += 1
+                        how, cover = info
+                        note = "" if how == "exakt" else "  [%s: %s]" % (how, cover)
+                        print("  [%3d/%3d] %s%s" % (done, len(todo), rom, note))
+                    elif status == "missing":
+                        missing.append(rom)
+                        gesamt["fehlend"] += 1
+                    elif status == "png_error":
+                        print("  [%3d/%3d] PNG nicht dekodierbar (%s): %s"
+                              % (done, len(todo), info, rom))
+                        missing.append(rom)
+                        gesamt["fehlend"] += 1
+                    else:
+                        print("  [%3d/%3d] Fehlgeschlagen: %s" % (done, len(todo), rom))
+                        missing.append(rom)
+                        gesamt["fehlend"] += 1
+            except KeyboardInterrupt:
+                print("\nAbgebrochen - breche laufende Downloads ab...")
+                executor.shutdown(wait=False, cancel_futures=True)
+                raise
 
         if missing:
             mf = os.path.join(art_base, "fehlend_%s.txt" % syskey)
