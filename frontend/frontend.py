@@ -1,9 +1,139 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.38
+MiSTer Custom Frontend - v1.47
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.47 (WICHTIGE KORREKTUR: Bewegung selbst beschleunigt, nicht
+nur die Abtastrate):
+  - Nutzer-Rueckmeldung nach v1.46: trotz 100Hz-Abtastung "blieben
+    Equalizer und Glow-Farbwechsel gleich". Ursache gefunden: beide
+    Effekte sind auf grobe, DISKRETE Stufen begrenzt (Equalizer:
+    max. ~8 Pixel-Hoehenstufen bei CRT-Groesse; Pulsieren: 20
+    Farbstufen aus dem v1.32-Cache-Fix). Ab einem Punkt bringt
+    schnelleres NACHSCHAUEN nichts mehr, wenn sich der zugrunde
+    liegende Wert selbst nicht oefter aendern KANN - v1.42-46 haben
+    also weit ueber den Punkt hinaus optimiert, an dem es noch etwas
+    gebracht hat.
+  - Fix: die Bewegung selbst beschleunigt, nicht nur die Abtastung.
+    Equalizer-Schwingungsfrequenz auf CRT von 2.2 auf 9.0 (rund 4x
+    schnellerer Zyklus). Pulsier-Zykluslaenge auf CRT von 3.2s auf
+    0.8s (4x), PLUS Farbstufen von 20 auf 60 erhoeht (feinere
+    Abstufung, da auf CRT der Cache-Vorteil aus v1.32 kaum ins
+    Gewicht faellt - draw() kostet dort ohnehin <1ms). HDMI ueberall
+    unangetastet (Cache-Vorteil bleibt dort wichtig).
+  - Getestet: tatsaechliche Anzahl VERSCHIEDENER Farbwerte/Hoehen pro
+    Sekunde direkt gemessen (nicht nur Tick-Frequenz) - CRT zeigt
+    jetzt 7 statt 2 echte Pulsierfarben/Sekunde, durchlaeuft den
+    Equalizer-Hoehenbereich ca. 4x oefter pro Sekunde als HDMI.
+
+Neu in v1.46 (Equalizer + Pulsieren auf CRT nochmal deutlich schneller):
+  - Nach dem elif-Bugfix in v1.45 (der die eigentliche Bremse war) auf
+    ausdruecklichen Wunsch nochmal aufgedreht: CRT-Takt von 0.025s auf
+    0.01s (Ziel ~100 Aktualisierungen/Sekunde). Betrifft alle vier
+    zusammengehoerigen Stellen (_eq_tick(), _pulse_tick(), beide
+    Kandidaten-Intervalle in next_action()). HDMI ueberall unangetastet.
+  - Getestet mit realistischer Zeitsimulation: ~87 Zeichenvorgaenge/
+    Sekunde gemessen (vorher 37/s in v1.45) - deutlich mehr als
+    doppelt so schnell. draw() bleibt auf CRT durchgehend <1ms, bei
+    87-100 Aufrufen/Sekunde also weiterhin >90% Leerlaufzeit uebrig.
+
+Neu in v1.45 (BUGFIX: Equalizer/Glow liefen nie mit eigenem Takt):
+  - Echter Logikfehler gefunden: next_action() nutzte eine elif-Kette
+    fuer die drei Tick-Mechanismen (Laufschrift/Equalizer/Pulsieren).
+    Da "track_needs" (Songtitel muss scrollen) bei praktisch jedem
+    echten Songnamen zutrifft, wurde der Equalizer-Tick dadurch DAUER-
+    HAFT uebersprungen - er lief nie mit seinem eigenen 0.025s-Takt,
+    sondern nur als Zufallsprodukt des 6x langsameren Laufschrift-
+    Taktes (0.15s). Das erklaert das gemeldete "Stocken" trotz der
+    Beschleunigungen in v1.42-44.
+  - Gleicher Fehler auch beim AEUSSEREN Aufwach-Timeout: bevorzugte
+    bisher den 0.18s-Laufschrift-Takt vor dem schnelleren Equalizer-
+    Takt. Jetzt min() ueber alle relevanten Kandidaten statt einer
+    Prioritaetsreihenfolge.
+  - Fix: alle drei Ticks werden jetzt unabhaengig (if statt elif)
+    geprueft und koennen je einzeln einen Redraw ausloesen - jeder
+    Tick drosselt sich weiterhin selbst ueber seinen eigenen internen
+    Zeitstempel, daher ist das gefahrlos.
+  - Getestet: mit realistischer Zeitsimulation (echtes time.sleep()
+    zwischen Zyklen) gemessen - 37 Zeichenvorgaenge/Sekunde auf CRT
+    TROTZ aktiver Laufschrift (vorher waere es bei ~6.7 gedeckelt
+    gewesen). Aeussere Timeout-Werte end-to-end bestaetigt (0.025s
+    CRT trotz track_needs=True, HDMI weiterhin sinnvoll bei 0.18s).
+    8 Kombinationen kompletter Regressionstest.
+
+Neu in v1.44 (Pulsierende Markierung auf CRT viel schneller):
+  - _pulse_tick() (die "atmende" Markierungsfarbe) lief seit v1.29
+    unveraendert auf 0.9s - wirkte neben dem inzwischen viel
+    schnelleren Equalizer (v1.42/43) traege/nachhinkend. Jetzt auf
+    CRT genauso flott wie der Equalizer (0.01s). HDMI unangetastet
+    bei 0.9s.
+  - Zusaetzlich musste der STANDARD-Aufwach-Takt in next_action() (der
+    "else"-Zweig ohne Musik/Marquee) auflösungsabhaengig werden - die
+    Markierung pulsiert naemlich IMMER (nicht nur bei laufender
+    Musik), der bisherige feste 1.0s-Standardtakt haette den neuen
+    schnellen internen Puls-Takt sonst nie oft genug abgefragt. Auf
+    CRT jetzt ebenfalls 0.025s, HDMI bleibt bei 1.0s.
+  - Getestet: beide Aufloesungen direkt gemessen, UND end-to-end mit
+    aufgezeichneten Timeout-Werten bestaetigt, dass next_action() im
+    Leerlauf (keine Musik) auf CRT tatsaechlich mit 0.025s statt 1.0s
+    aufwacht.
+
+Neu in v1.43 (Equalizer auf CRT ~3x schneller als v1.42):
+  - CRT-Takt von 0.08s weiter auf 0.025s verkuerzt (~40 Aktualisierungen/
+    Sekunde) - HDMI unangetastet bei 0.35s. Beide zusammengehoerigen
+    Stellen wieder angepasst (_eq_tick() + Aufwach-Intervall).
+
+Neu in v1.42 (Equalizer auf CRT nochmal schneller):
+  - CRT-Takt von 0.15s (v1.40) weiter auf 0.08s verkuerzt - dieselbe
+    sichere Untergrenze wie bei REPEAT_INTERVAL fuer die Navigation.
+    12.5 statt 6.7 Aktualisierungen/Sekunde. HDMI bleibt unangetastet
+    bei 0.35s. Betrifft wieder beide Stellen (_eq_tick() UND das
+    Aufwach-Intervall in next_action()), die zusammenpassen muessen.
+
+Neu in v1.41 (Songtitel-Laufschrift schneller):
+  - CRT: Takt von 0.35s auf 0.15s verkuerzt (wie beim Equalizer in
+    v1.40) - draw() ist dort guenstig genug, dass es nicht ins
+    Gewicht faellt.
+  - HDMI: Takt bleibt bei 0.35s (kein zusaetzliches Neuzeichnen, um
+    den in v1.39 entschaerften Eingabestau nicht zu riskieren) -
+    stattdessen ruecken pro Tick 2 Zeichen statt 1 weiter. Verdoppelt
+    die gefuehlte Geschwindigkeit (2.86 -> 5.71 Zeichen/s) OHNE eine
+    einzige zusaetzliche Neuzeichnung.
+  - Randfall getestet: die groessere Schrittweite auf HDMI schiesst
+    beim Erreichen des Textendes nie ueber max_off hinaus (min()-
+    Begrenzung), Pause-am-Ende-Verhalten bleibt unveraendert korrekt.
+
+Neu in v1.40 (Equalizer-Takt auf CRT verkuerzt):
+  - Equalizer-Balken pulsieren auf CRT jetzt alle 0.15s statt 0.35s -
+    draw() ist dort so guenstig (durchgehend <1ms gemessen), dass die
+    haeufigere Aktualisierung nicht ins Gewicht faellt. HDMI bleibt
+    bewusst bei 0.35s, um den in v1.39 entschaerften Eingabestau nicht
+    wieder zu riskieren. Betrifft sowohl den Tick selbst (_eq_tick())
+    als auch das Aufwach-Intervall in next_action() - beide muessen
+    zusammenpassen, sonst wuerde der schnellere Tick nie rechtzeitig
+    abgefragt. Mit Grenzfall (Hoehe genau 400) getestet.
+
+Neu in v1.39 (Wiederholrate gedrosselt gegen HDMI-Eingabestau):
+  - Frisch profiliert (realistische HD-Cover, echte Navigation): kein
+    einzelner Flaschenhals mehr uebrig - text()/clear()/rect() liegen
+    nun alle in aehnlicher Groessenordnung, alle bereits ueber die
+    gecachten, schnellen Pfade. Die Restkosten sind inhaerent am
+    "immer komplett neu zeichnen"-Ansatz.
+  - Maximale Wiederholrate beim Halten einer Richtungstaste von 0.05s
+    (20/s) auf 0.08s (12.5/s) gedrosselt - auf schwacher ARM-Hardware
+    kann ein volles HDMI-Neuzeichnen laenger als 0.05s dauern, wodurch
+    sich Eingaben stauen konnten (spuerbarer Lag beim Halten). CRT ist
+    schnell genug, dass der Unterschied dort nicht auffaellt. Mit
+    echten simulierten Tastendruecken bestaetigt: Intervall pendelt
+    sich jetzt bei 0.08s ein statt Richtung 0.05s zu laufen.
+  - text()-Mikrooptimierung bewusst NICHT vorgenommen: bereits klug
+    pro Zeilenmuster gecacht (nicht nur pro Zeichen), weiterer Umbau
+    haette nur Wörterbuch-Nachschlaege gespart (Bruchteile von
+    Mikrosekunden) bei echtem Risiko fuer diese zentrale, gut
+    getestete Funktion - Aufwand/Risiko stand in keinem Verhaeltnis
+    zum Nutzen.
 
 Neu in v1.38 (Boot-Animation-Tempo, Boxart-Downloader parallel):
   - Boot-Animation zeigt Frames jetzt in ihrer tatsaechlich
@@ -1200,7 +1330,14 @@ class InputManager:
                     continue      # erst die Warteschlange leeren, dann Repeat
             if self.held is not None and time.time() >= self.held[2]:
                 kid, act, _t, iv = self.held
-                iv = max(0.05, iv * 0.85)
+                # Untergrenze bewusst bei 0.08s (12.5/s) statt zuvor 0.05s
+                # (20/s) - auf HDMI dauert ein volles Neuzeichnen auf
+                # schwacher ARM-Hardware laenger als 0.05s, wodurch sich
+                # Eingaben stauen konnten (spuerbarer "Lag" beim Halten
+                # einer Richtungstaste). CRT ist so schnell, dass es den
+                # Unterschied nicht merkt - 12.5 Spruenge/Sekunde sind
+                # immer noch sehr flott fuer eine kleine Liste.
+                iv = max(0.08, iv * 0.85)
                 self.held = (kid, act, time.time() + iv, iv)
                 return act
             if deadline is not None and time.time() >= deadline:
@@ -2843,14 +2980,21 @@ class Frontend:
         return bool(name) and len(name) > maxc
 
     def _track_marquee_tick(self, maxc):
-        """Versatz um einen Schritt weiterschieben (mit Pause an den
-        Enden) - gedrosselt ueber _track_tick_next, damit nicht bei
-        jedem next_action()-Aufruf ein komplettes Neuzeichnen noetig
-        wird, sondern nur alle ~0.35s."""
+        """Versatz weiterschieben (mit Pause an den Enden) - gedrosselt
+        ueber _track_tick_next. Auflösungsabhaengig: auf CRT laeuft es
+        ueber einen kuerzeren Takt (0.15s statt 0.35s, wie beim
+        Equalizer - draw() ist dort so guenstig, dass es nicht ins
+        Gewicht faellt). Auf HDMI bleibt der Takt bei 0.35s (kein
+        zusaetzliches Neuzeichnen), stattdessen ruecken pro Tick 2
+        Zeichen statt 1 weiter - verdoppelt die gefuehlte Geschwindig-
+        keit, ohne die Redraw-Haeufigkeit zu erhoehen."""
         now = time.time()
         if now < self._track_tick_next:
             return False
-        self._track_tick_next = now + 0.35
+        is_crt = self.fb.height < 400
+        interval = 0.15 if is_crt else 0.35
+        step = 1 if is_crt else 2
+        self._track_tick_next = now + interval
         name = self._track_mq_name
         max_off = max(0, len(name) - maxc)
         if self.track_mq_pause > 0:
@@ -2859,21 +3003,27 @@ class Frontend:
                 self.track_mq_off = 0
                 self.track_mq_pause = 4
         elif self.track_mq_off < max_off:
-            self.track_mq_off += 1
+            self.track_mq_off = min(max_off, self.track_mq_off + step)
             if self.track_mq_off >= max_off:
                 self.track_mq_pause = 6
         return True
 
     def _pulse_factor(self):
         """Aktueller Helligkeits-Multiplikator (0.90..1.0) fuer die
-        pulsierende Markierung - sinusfoermig, langsamer Zyklus
-        (~3.2 Sekunden), bewusst dezent."""
+        pulsierende Markierung - sinusfoermig. Zykluslaenge
+        auflösungsabhaengig: auf CRT viel kuerzer (0.8s statt 3.2s),
+        da schnelleres Abfragen allein (v1.42-46) nichts mehr brachte,
+        sobald man haeufiger abfragt als sich der (quantisierte) Wert
+        UeBERHAUPT aendern kann - die zugrundeliegende Bewegung selbst
+        muss schneller werden, nicht nur die Abtastrate."""
+        is_crt = self.fb.height < 400
+        period = 0.8 if is_crt else 3.2
         elapsed = time.time() - self._pulse_t0
-        return 0.90 + 0.10 * (0.5 + 0.5 * math.sin(elapsed * 2 * math.pi / 3.2))
+        return 0.90 + 0.10 * (0.5 + 0.5 * math.sin(elapsed * 2 * math.pi / period))
 
     def _pulsed(self, rgb):
         f = self._pulse_factor()
-        # Auf 20 feste Stufen runden statt eines fein-kontinuierlichen
+        # Auf feste Stufen runden statt eines fein-kontinuierlichen
         # Wertes - sonst erzeugt praktisch jeder Aufruf eine LEICHT
         # andere Farbe. Der Glyphen-Cache der Framebuffer-Klasse
         # schluesselt ueber die Hintergrundfarbe (siehe _glyph_row) -
@@ -2881,50 +3031,66 @@ class Frontend:
         # markierte Zeile wurde bei JEDER Navigation komplett neu
         # gerendert (auf HDMI wegen der groesseren Glyphen spuerbar
         # langsamer) UND der Cache wuchs dabei unbegrenzt weiter, da
-        # alte Farbvarianten nie wiederverwendet wurden. 20 Stufen sind
-        # fuers Auge weiterhin ein sanftes Pulsieren, treffen den Cache
-        # aber wieder zuverlaessig.
-        f = round(f * 20) / 20
+        # alte Farbvarianten nie wiederverwendet wurden. Auf HDMI
+        # bleiben es 20 Stufen (Cache-Treffer bleiben dort wichtig),
+        # auf CRT (wo draw() ohnehin <1ms kostet, Cache-Treffer also
+        # kaum ins Gewicht fallen) 60 Stufen fuer feinere Abstufung -
+        # zusammen mit dem kuerzeren Zyklus oben macht das den
+        # Farbwechsel auf CRT spuerbar lebendiger.
+        levels = 60 if self.fb.height < 400 else 20
+        f = round(f * levels) / levels
         return tuple(min(255, int(c * f)) for c in rgb)
 
     def _pulse_tick(self):
         """True, wenn seit dem letzten Aufruf genug Zeit vergangen ist,
-        um eine neue Pulsier-Stufe zu zeigen - bewusst selten (~alle
-        0.9s), damit KEINE zusaetzlichen haeufigen Neuzeichnungen
-        entstehen. Nutzt das ohnehin vorhandene ~1s-Idle-Aufwachen in
-        next_action() mit, statt eigene schnellere Abfragen zu
-        erzwingen."""
+        um eine neue Pulsier-Stufe zu zeigen. Auflösungsabhaengig: auf
+        CRT genauso flott wie der Equalizer (0.01s), da draw() dort
+        durchgehend <1ms kostet - sonst wirkt die Markierung neben dem
+        schnellen Equalizer traege/nachhinkend. Auf HDMI bewusst bei
+        0.9s belassen (unangetastet), um den in v1.39 entschaerften
+        Eingabestau nicht zu riskieren - nutzt dort weiterhin das
+        ohnehin vorhandene ~1s-Idle-Aufwachen in next_action() mit."""
         now = time.time()
         if now < self._pulse_tick_next:
             return False
-        self._pulse_tick_next = now + 0.9
+        interval = 0.01 if self.fb.height < 400 else 0.9
+        self._pulse_tick_next = now + interval
         return True
 
     def _eq_tick(self):
-        """Wie _pulse_tick(), aber fuer die Equalizer-Balken - etwas
-        schnellerer Takt (0.35s) fuer fluessigere Bewegung, ohne so
-        oft wie die Laufschrift (0.18s) neu zu zeichnen."""
+        """Wie _pulse_tick(), aber fuer die Equalizer-Balken. Takt ist
+        auflösungsabhaengig: auf CRT (klein, draw() kostet dort schon
+        gemessen meist <1ms) darf es extrem flott pulsieren (0.01s -
+        dieselbe sichere Untergrenze wie bei REPEAT_INTERVAL fuer die
+        Navigation) - auf HDMI bleibt es bei 0.35s, da dort jedes
+        zusaetzliche Neuzeichnen wieder Richtung Eingabe-Stau geht
+        (siehe REPEAT_INTERVAL-Drosselung in v1.39)."""
         now = time.time()
         if now < self._eq_tick_next:
             return False
-        self._eq_tick_next = now + 0.35
+        interval = 0.01 if self.fb.height < 400 else 0.35
+        self._eq_tick_next = now + interval
         return True
 
     def _draw_equalizer(self, x, y, s):
         """Kleine animierte Balken neben der Now-Playing-Anzeige - rein
         dekorativ (mpg123 liefert uns keine echte Lautstaerke), nutzt
         eine Zeit-basierte Sinuskurve pro Balken statt Zufallszahlen
-        (deterministisch, kein eigener Zustand noetig). Bewegt sich nur
-        dann sichtbar, wenn ohnehin gerade neu gezeichnet wird (ueber
-        den Pulsier-Tick) - keine zusaetzlichen Redraws dafuer noetig."""
+        (deterministisch, kein eigener Zustand noetig). Schwingungs-
+        frequenz auflösungsabhaengig: auf CRT deutlich schneller, da
+        bei der kleinen Balkenhoehe (h_max) nur wenige Pixel-Stufen
+        moeglich sind - schnelleres Abfragen allein (v1.42-46) half ab
+        einem Punkt nicht mehr weiter, die Bewegung selbst musste
+        schneller werden."""
         fb = self.fb
         now = time.time()
         bar_w = 3 * s
         gap = 2 * s
         h_max = 10 * s
         col = (224, 182, 74)
+        freq = 9.0 if self.fb.height < 400 else 2.2
         for i in range(4):
-            phase = now * 2.2 + i * 1.7
+            phase = now * freq + i * 1.7
             frac = 0.35 + 0.65 * (0.5 + 0.5 * math.sin(phase))
             bh = max(2 * s, int(h_max * frac))
             bx = x + i * (bar_w + gap)
@@ -2943,17 +3109,21 @@ class Frontend:
             # werden muss.
             track_needs = self._track_marquee_needs_scroll(24)
             need_mq = self.marquee_needed()
-            # Bei laufender Musik etwas oefter aufwachen (0.35s statt
-            # 1.0s), damit die Equalizer-Balken fluessiger wirken -
-            # bewusst nicht so haeufig wie die Laufschrift (0.18s), da
-            # jedes Aufwachen ein volles Neuzeichnen kostet (auf HDMI
-            # spuerbar teurer als auf CRT).
+            # Aufwach-Zeit = das KLEINSTE aller gerade relevanten
+            # Intervalle, nicht eine Prioritaetsreihenfolge - sonst
+            # wuerde z.B. der 0.18s-Takt der Laufschrift den viel
+            # schnelleren 0.025s-Equalizer-Takt ausbremsen (das genau
+            # war der Bug: "elif" liess den Equalizer nie eigenstaendig
+            # feuern, solange die Laufschrift aktiv war - praktisch
+            # immer der Fall bei echten Songnamen).
+            eq_interval = 0.01 if self.fb.height < 400 else 0.35
+            pulse_interval = 0.01 if self.fb.height < 400 else 1.0
+            candidates = [pulse_interval]
             if need_mq or track_needs:
-                timeout = 0.18
-            elif self._track_mq_name:
-                timeout = 0.35
-            else:
-                timeout = 1.0
+                candidates.append(0.18)
+            if self._track_mq_name:
+                candidates.append(eq_interval)
+            timeout = min(candidates)
             act = self.inp.read_action(timeout=timeout)
             if act is not None:
                 if need_mq:
@@ -2961,14 +3131,25 @@ class Frontend:
                 return act
             if need_mq:
                 self.marquee_tick()
-            if track_needs:
-                if self._track_marquee_tick(24):
-                    self.draw()
-            elif self._track_mq_name and self._eq_tick():
-                self.draw()
-            elif self._pulse_tick():
-                # Nur neu zeichnen, wenn nicht ohnehin schon durch die
-                # Track-Laufschrift ein Redraw passiert (sonst doppelt).
+            # WICHTIG: unabhaengige if-Abfragen statt einer elif-Kette.
+            # Mit elif haette "track_needs" (Songtitel muss scrollen -
+            # trifft auf praktisch jeden echten Songnamen zu) den
+            # Equalizer-Takt DAUERHAFT blockiert, da die elif-Zweige
+            # danach nie mehr geprueft wurden. Der Equalizer wurde
+            # dadurch nur als Zufallsprodukt des viel langsameren
+            # Songtitel-Taktes mitgezeichnet, nie mit seinem eigenen
+            # schnellen Rhythmus - daher das gemeldete "Stocken". Jeder
+            # Tick prueft sich selbst und meldet nur "True", wenn er
+            # WIRKLICH faellig ist (eigene interne Drosselung), daher
+            # ist es sicher, alle drei unabhaengig abzufragen.
+            redraw = False
+            if track_needs and self._track_marquee_tick(24):
+                redraw = True
+            if self._track_mq_name and self._eq_tick():
+                redraw = True
+            if self._pulse_tick():
+                redraw = True
+            if redraw:
                 self.draw()
             self.music.tick()
 

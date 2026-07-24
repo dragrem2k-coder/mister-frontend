@@ -1,4 +1,4 @@
-# MiSTer Custom Frontend v1.38 - Komplettbuild (Stand: 2026-07-24)
+# MiSTer Custom Frontend v1.47 - Komplettbuild (Stand: 2026-07-25)
 
 **Ersteller: Dragrem2K**
 
@@ -42,7 +42,7 @@ Platzhalter, die Systemlogos in der linken Spalte sind echt.
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.38) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.47) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (laeuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (laeuft auf dem MiSTer) |
