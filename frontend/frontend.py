@@ -1,9 +1,52 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.29
+MiSTer Custom Frontend - v1.37
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.37 (KORREKTUREN_fuer_Dragrem.md - vier Fixes):
+  - BUGFIX (schwerwiegend): kill sendet SIGTERM, das Python ohne
+    Handler OHNE jeden finally-Block beendet - der Aufraeum-Code in
+    run() (Bildschirm loeschen, Eingaben freigeben, F12 zurueck ins
+    MiSTer-Menue) lief deshalb nie, wenn update_frontend.sh/install.sh
+    eine laufende Instanz per kill beendet hat. Bildschirm blieb im
+    letzten Frontend-Zustand haengen. Neuer SIGTERM-Handler wandelt
+    das Signal in SystemExit um, die bestehenden finally-Bloecke
+    laufen jetzt normal durch. Mit echtem Prozess + echtem kill
+    bestaetigt.
+  - BUGFIX: install.sh's sysart-Kopierlogik (cp -rf) hat bei jedem
+    erneuten Lauf (z.B. Update) ALLE Logos ueberschrieben, auch selbst
+    ersetzte. Jetzt cp -rn (no-clobber) - nur fehlende Dateien werden
+    ergaenzt, vorhandene (Standard ODER eigene) bleiben unangetastet.
+  - Diese Versionszeile + die Changelog-Eintraege v1.30-v1.36 waren im
+    Git-Repository nicht nachgezogen worden (nur in der separaten
+    Build-Kopie aktualisiert) - hiermit nachgeholt.
+  - Fehlender Shebang ergaenzt (siehe KORREKTUREN_fuer_Dragrem.md fuer
+    Details, welche Datei betroffen war).
+
+Neu in v1.30-v1.36 (nachtraeglich ergaenzt, siehe Git-Commit-Historie
+fuer die vollstaendigen Einzelbeschreibungen):
+  - v1.30: "Zuletzt gespielt"-Kategorie, Mini-Icons (spaeter auf
+    Nutzerwunsch wieder entfernt), Lade-Fortschrittsbalken beim
+    tatsaechlichen Scan (nicht beim Cache-Treffer).
+  - v1.31: Musik-Sicherheitsnetz gegen haengenden mpg123, Cache-
+    Signatur-Fix (spaeter in v1.33 wegen Boot-Regression zurueckgerollt),
+    install.sh (Erstversion).
+  - v1.32: Standard-Fusszeile entfernt, Header-Ueberlappung bei langen
+    Systemnamen behoben, Glyphen-Cache-Fix gegen HDMI-Lag (Pulsierfarbe
+    auf 20 Stufen gerundet).
+  - v1.33: Boot-Regression von v1.31 zurueckgerollt (Cache-Signatur
+    wieder auf schnelle Nur-oberste-Ebene-Pruefung).
+  - v1.34: Boxart-Schlagschatten von echtem Pixel-Blending auf
+    vorgemischte, gecachte Farbe umgestellt - Hauptursache fuer
+    verbliebenen HDMI-Lag, vierfache Beschleunigung.
+  - v1.35: Now-Playing-Anzeige in die Fusszeile verschoben, rein
+    japanische ROM-Titel werden ausgefiltert (Mehrfach-Region-Tags
+    bleiben erhalten).
+  - v1.36: Boot-Animation erkennt automatisch CRT/HDMI-Modus,
+    install.sh zeigt echte Fehlermeldungen + automatischer Fallback
+    ohne SSL-Zertifikatspruefung.
 
 Neu in v1.29 (optische Verfeinerungen):
   - Pro-System-Akzentfarbe: Markierung, Boxart-Rahmen und Artbox-Rahmen
@@ -438,7 +481,7 @@ Start auf dem MiSTer (per SSH oder als Startscript):
   python3 /media/fat/frontend/frontend.py
 """
 
-import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib, json, random, math
+import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib, json, random, math, signal
 
 LOGFILE = "/tmp/frontend.log"
 LOG_MAX_BYTES = 512 * 1024      # ab dieser Groesse wird gekuerzt
@@ -3587,6 +3630,20 @@ class Frontend:
                 LOG("Exit-Injection fehlgeschlagen: %s" % e)
             self.inp.close()
             LOG("Exit: fertig")
+
+def _handle_sigterm(signum, frame):
+    """kill sendet standardmaessig SIGTERM - Python fuehrt dabei OHNE
+    diesen Handler KEINE finally-Bloecke aus, das Aufraeumen in
+    Frontend.run() (Bildschirm loeschen, Eingaben freigeben, zurueck
+    ins MiSTer-Menue per F12) wuerde also nie laufen und der Bildschirm
+    bliebe eingefroren im letzten Frontend-Zustand haengen - genau das
+    Verhalten, das update_frontend.sh/install.sh beim Neustarten einer
+    laufenden Instanz ausgeloest hat. SystemExit sorgt dafuer, dass die
+    bestehenden try/finally-Bloecke ganz normal durchlaufen werden."""
+    LOG("SIGTERM empfangen - fahre sauber herunter")
+    raise SystemExit(0)
+
+signal.signal(signal.SIGTERM, _handle_sigterm)
 
 if __name__ == "__main__":
     LOG("==== Frontend-Start ====")

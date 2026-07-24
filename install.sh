@@ -133,7 +133,14 @@ mkdir -p "$FRONTEND_DIR" "$SCRIPTS_DIR" "$FRONTEND_DIR/music"
 cp -f "$SRC_DIR"/frontend/*.py "$FRONTEND_DIR/" 2>/dev/null || true
 cp -f "$SRC_DIR"/frontend/*.sh "$FRONTEND_DIR/" 2>/dev/null || true
 cp -f "$SRC_DIR"/frontend/*.html "$FRONTEND_DIR/" 2>/dev/null || true
-[ -d "$SRC_DIR/frontend/sysart" ] && cp -rf "$SRC_DIR/frontend/sysart" "$FRONTEND_DIR/"
+if [ -d "$SRC_DIR/frontend/sysart" ]; then
+    # NUR fehlende Dateien ergaenzen (kein Ueberschreiben!) - sonst
+    # wuerden eigene, per Hand ersetzte Logos bei jedem erneuten Lauf
+    # (z.B. fuer ein Update) wieder auf die Standard-Bilder aus dem
+    # Repo zurueckgesetzt.
+    mkdir -p "$FRONTEND_DIR/sysart"
+    cp -rn "$SRC_DIR/frontend/sysart/." "$FRONTEND_DIR/sysart/" 2>/dev/null || true
+fi
 cp -f "$SRC_DIR"/Scripts/*.sh "$SCRIPTS_DIR/" 2>/dev/null || true
 chmod +x "$FRONTEND_DIR"/*.sh "$SCRIPTS_DIR"/*.sh 2>/dev/null || true
 

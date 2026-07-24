@@ -1,4 +1,4 @@
-# MiSTer Custom Frontend v1.36 - Komplettbuild (Stand: 2026-07-24)
+# MiSTer Custom Frontend v1.37 - Komplettbuild (Stand: 2026-07-24)
 
 **Ersteller: Dragrem2K**
 
@@ -42,7 +42,7 @@ Platzhalter, die Systemlogos in der linken Spalte sind echt.
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.36) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.37) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (laeuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (laeuft auf dem MiSTer) |
@@ -413,8 +413,9 @@ Laeuft komplett ueber Standard-Python (`http.server` + Server-Sent-
 Events), keine externen Pakete, als eigener Hintergrund-Thread neben
 der normalen Frontend-Schleife - bindet auf Port 8080 im lokalen
 Netzwerk. **Nicht** ins Internet weiterleiten, es gibt keine
-Authentifizierung. Technische Details fuer Weiterentwicklung:
-`STREAM_fuer_Dennsen.md` (Einrichtung) und `STREAM_fuer_Dragrem.md` (Technik).
+Authentifizierung. Komplette Einrichtung Schritt fuer Schritt (auch
+fuer Nicht-Techniker): `ANLEITUNG_fuer_Dennsen.md`. Technische Details
+fuer Weiterentwicklung: `STREAM_fuer_Dragrem.md`.
 
 ## 13. Fehlerbehebung
 
