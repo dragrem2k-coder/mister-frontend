@@ -13,11 +13,11 @@ gerendert (keine Fotomontage) - Boxart und Musiktitel im Beispiel sind
 Platzhalter, die Systemlogos in der linken Spalte sind echt.
 
 <p align="center">
-  <img src="screenshots/screenshot_1_kategorien.png" width="420" alt="Kategorien-Menue mit Mini-Icons und Now-Playing">
+  <img src="screenshots/screenshot_1_kategorien.png" width="420" alt="Kategorien-Menue mit Akzentfarbe, Glow und Now-Playing">
   &nbsp;&nbsp;
   <img src="screenshots/screenshot_2_spieleliste.png" width="420" alt="Spieleliste mit Boxart, Akzentfarbe und Glow-Effekt">
 </p>
-<p align="center"><sub>Links: Kategorien-Menue mit Mini-Icons, Akzentfarbe und Now-Playing-Anzeige &nbsp;|&nbsp; Rechts: Spieleliste mit Boxart, Glow-Effekt und Schlagschatten</sub></p>
+<p align="center"><sub>Links: Kategorien-Menue mit Akzentfarbe, pulsierender Markierung und Now-Playing-Anzeige &nbsp;|&nbsp; Rechts: Spieleliste mit Boxart, Glow-Effekt und Schlagschatten (Now-Playing in der Fusszeile)</sub></p>
 
 ## Inhaltsverzeichnis
 
