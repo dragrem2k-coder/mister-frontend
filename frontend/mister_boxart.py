@@ -37,10 +37,11 @@ Hinweis: Die PNG-Dekodierung in reinem Python braucht ein paar
 Sekunden pro Bild. Grosse Sammlungen laufen am besten ueber Nacht.
 """
 
-import re, difflib, html, json, os, re, ssl, struct, sys, time, zlib
+import re, difflib, glob, html, json, os, re, ssl, struct, sys, time, zlib
 import urllib.request, urllib.parse
 import concurrent.futures
 
+BASE = "/media/fat"   # fuer die Arcade-Ordnersuche (_Arcade liegt direkt hier)
 GAMES_BASES = (["/media/fat/games"]
                + ["/media/usb%d/games" % i for i in range(6)]
                + ["/media/usb%d" % i for i in range(6)])
@@ -429,6 +430,49 @@ def collect_roms(folders, exts):
             best[key] = (rank, name)
     return sorted(name for _rank, name in best.values())
 
+# Datum-Suffix, das MiSTer-Updater an manche RBF/MRA-Dateien anhaengt
+# (z.B. "Pac-Man_20230115.mra") - identisch zu scan_cores() im
+# Frontend selbst (frontend.py), damit der hier verwendete Name exakt
+# dem entspricht, unter dem das Frontend spaeter nach dem Cover sucht.
+_CORE_DATE_SUFFIX = re.compile(r"_\d{8}[a-zA-Z]?$")
+
+def find_arcade_folders():
+    """Alle /media/fat/_*-Ordner, deren Name 'arcade' enthaelt - exakt
+    dieselbe Erkennung wie scan_cores() im Frontend, damit hier
+    gefundene und dort erwartete Ordner uebereinstimmen."""
+    found = []
+    for d in sorted(glob.glob(os.path.join(BASE, "_*"))):
+        if not os.path.isdir(d):
+            continue
+        base = os.path.basename(d).lstrip("_").lower()
+        if "arcade" in base:
+            found.append(d)
+    return found
+
+def collect_arcade_names():
+    """Wie collect_roms(), aber fuer Arcade: sammelt .mra-Dateinamen
+    (ohne Endung, ohne das Datum-Suffix) statt ROM-Dateien mit fester
+    Endungsliste - der MRA-Dateiname ist bei MiSTer-Arcade-Sammlungen
+    ueblicherweise bereits der Spieletitel, genau das, was auch das
+    Frontend selbst als Anzeigename verwendet (siehe scan_cores())."""
+    raw = []
+    for root in find_arcade_folders():
+        for dirpath, dirnames, files in os.walk(root):
+            dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+            for fn in files:
+                if not fn.lower().endswith(".mra"):
+                    continue
+                name = os.path.splitext(fn)[0]
+                name = _CORE_DATE_SUFFIX.sub("", name)
+                raw.append(name)
+    seen = set()
+    result = []
+    for n in sorted(raw):
+        if n not in seen:
+            seen.add(n)
+            result.append(n)
+    return result
+
 def process_one_rom(rom, sysname, idx_exact, idx_strip, all_norms,
                     out_dir, box):
     """Ein einzelnes ROM verarbeiten: Cover suchen, herunterladen,
@@ -467,12 +511,14 @@ def main():
 
     gesamt = {"roms": 0, "neu": 0, "vorhanden": 0, "fehlend": 0}
     t_start = time.time()
-    for syskey, (folders, exts, sysname) in SYSTEMS.items():
-        if only and syskey not in only:
-            continue
-        roms = collect_roms(folders, exts)
+    def process_system(syskey, roms, sysname):
+        """Ein System komplett abarbeiten (Cover suchen, herunterladen,
+        speichern) - fuer normale ROM-Systeme UND fuer Arcade (dort
+        roms = MRA-Dateinamen statt ROM-Dateinamen, sysname='MAME')
+        identisch nutzbar, da ab hier alles nur noch mit Namen und dem
+        libretro-thumbnails-Repo-Namen arbeitet."""
         if not roms:
-            continue
+            return
         out_dir = os.path.join(art_base, syskey)
         os.makedirs(out_dir, exist_ok=True)
 
@@ -480,14 +526,14 @@ def main():
                 if not os.path.exists(os.path.join(out_dir, r + ".art"))]
         gesamt["roms"] += len(roms)
         gesamt["vorhanden"] += len(roms) - len(todo)
-        print("== %s: %d ROMs, %d ohne .art" % (syskey, len(roms), len(todo)))
+        print("== %s: %d Eintraege, %d ohne .art" % (syskey, len(roms), len(todo)))
         if not todo:
-            continue
+            return
 
         covers, quelle = list_covers(sysname)
         if not covers:
             gesamt["fehlend"] += len(todo)
-            continue
+            return
         print("  %d Cover verfuegbar (%s)" % (len(covers), quelle))
         idx_exact, idx_strip = build_index(covers)
         all_norms = list(idx_strip.keys())
@@ -536,6 +582,22 @@ def main():
             with open(mf, "w") as f:
                 f.write("\n".join(missing))
             print("  %d ohne Cover -> %s" % (len(missing), mf))
+
+    for syskey, (folders, exts, sysname) in SYSTEMS.items():
+        if only and syskey not in only:
+            continue
+        process_system(syskey, collect_roms(folders, exts), sysname)
+
+    # Arcade separat: MRA-Dateinamen statt ROM-Dateien mit fester
+    # Endungsliste, Cover kommen aus libretro-thumbnails/MAME (dieselbe
+    # Named_Boxarts-Konvention wie bei allen anderen Systemen, deshalb
+    # funktionieren list_covers()/download_cover()/match_rom() unveraendert).
+    if not only or "ARCADE" in only:
+        arcade_names = collect_arcade_names()
+        if arcade_names:
+            process_system("ARCADE", arcade_names, "MAME")
+        elif not find_arcade_folders():
+            print("== ARCADE: kein _Arcade-Ordner gefunden, uebersprungen")
 
     mins = (time.time() - t_start) / 60
     print("\nFertig: %(roms)d ROMs, %(neu)d neu erstellt, "

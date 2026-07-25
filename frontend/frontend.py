@@ -1,9 +1,33 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.55
+MiSTer Custom Frontend - v1.56
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.56 (Arcade-Boxart - NEU, kein Code in frontend.py selbst
+geaendert):
+  - Bisher: Arcade zeigte Infos aus den MRA-Dateien (mra_meta() liest
+    Jahr/Hersteller/Genre/Spieler direkt aus der MRA, kein Download
+    noetig), aber NIE ein Cover - der Boxart-Downloader (mister_boxart.py)
+    kannte Arcade schlicht nicht.
+  - mister_boxart.py um vollstaendige Arcade-Unterstuetzung erweitert:
+    findet alle _Arcade-Ordner (gleiche Erkennung wie scan_cores() im
+    Frontend), sammelt MRA-Dateinamen (Datum-Suffix entfernt, identisch
+    zum Anzeigenamen im Frontend), lädt passende Cover von
+    libretro-thumbnails/MAME (Named_Boxarts-Konvention, wie alle
+    anderen Systeme - list_covers()/download_cover()/match_rom() dafuer
+    UNVERAENDERT wiederverwendet, keine neue Download-Logik noetig).
+  - Kein einziger Code in frontend.py selbst musste sich aendern - die
+    Anzeige-Logik (draw_art_panel(), art_path()) war schon immer bereit,
+    es fehlten nur die Dateien auf der Platte.
+  - Aufruf identisch zu vorher: python3 mister_boxart.py (bzw. hd),
+    Arcade laeuft automatisch mit, keine Extra-Option noetig.
+  - Getestet: MRA-Sammlung inkl. Datum-Suffix-Entfernung, kompletter
+    Downloadlauf mit gefaelschtem Netzwerk (Treffer + echter Fehl-
+    treffer), End-to-End-Anzeige im Frontend mit dem exakt vom
+    Downloader erzeugten Dateinamen (Pixel-Analyse bestaetigt),
+    bestehende Konsolen-Sammellogik per Gegenprobe unveraendert korrekt.
 
 Neu in v1.55 (HDMI nochmal aufgedreht, Uhrzeit+Netzwerksymbol im
 Hauptmenue):
