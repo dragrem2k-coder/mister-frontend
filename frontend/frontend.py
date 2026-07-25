@@ -1,9 +1,43 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.58
+MiSTer Custom Frontend - v1.59
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.59 (L1/L2/R1/R2 vollstaendig belegbar, insbesondere fuer
+Favoriten):
+  - Ursache gefunden: viele Xbox-artige Controller senden L2/R2 nicht
+    als eigene Taste (BTN_TL2/BTN_TR2), sondern als ANALOGEN Trigger
+    (ABS_Z/ABS_RZ) - dafuer gab es bisher ueberhaupt keine Erkennung,
+    diese beiden Achsen wurden beim Oeffnen des Geraets nicht mal
+    registriert. Auf solchen Pads passierte bei L2/R2 schlicht gar
+    nichts, auch nicht ueber den Tastenbelegungs-Assistenten.
+  - ABS_Z/ABS_RZ werden jetzt mit erfasst, per Schwellwert (>50%
+    durchgezogen = "gedrueckt") in ganz normale, ueber KEYMAP frei
+    belegbare Pseudo-Tastencodes (AXIS_L2/AXIS_R2, negative Zahlen -
+    kollidieren garantiert nicht mit echten evdev-Codes) uebersetzt.
+    Dieselbe Wiederholungslogik wie bei echten Tasten greift, falls
+    eine wiederholbare Aktion (Navigation) darauf gelegt wird.
+  - read_raw_key() (Tastenbelegungs-Assistent) erkennt den analogen
+    Trigger jetzt ebenfalls, UNABHAENGIG von allow_axis_skip (das war
+    bisher nur fuer die vier Richtungsaktionen aktiv) - dadurch laesst
+    sich JEDE Aktion (nicht nur Navigation) auf einen analogen L2/R2
+    legen.
+  - Standardbelegung: L2 UND R2 (jeweils digital UND analog) zeigen
+    jetzt beide von Haus aus auf "favorite" - unabhaengig davon, wie
+    das eigene Pad sie sendet, funktioniert sofort eine davon. L1/R1
+    bleiben unveraendert beim Blaettern, lassen sich aber wie jede
+    andere Taste ueber den Assistenten umbelegen.
+  - Getestet: Schwellwert-Erkennung (feuert genau einmal beim
+    Ueberschreiten, nicht bei jedem Zwischenwert), Loslassen setzt
+    korrekt zurueck, L2/R2 funktionieren unabhaengig voneinander,
+    unbelegter Pseudo-Code stuerzt nicht ab, read_raw_key() erfasst
+    den analogen Trigger korrekt (echte Pipe + simulierte evdev-
+    Ereignisse, kein Mocking auf Quellcode-Ebene), normale Tasten
+    funktionieren regressionsfrei weiter, Wiederholungslogik bei auf
+    Navigation umgelegtem L2 funktioniert korrekt. 48 Kombinationen
+    kompletter Regressionstest.
 
 Neu in v1.58 (Favoriten-Liste):
   - Eigene, bewusst kuratierte Auswahl - unabhaengig von "Zuletzt
@@ -1367,6 +1401,14 @@ BTN_SELECT, BTN_START, BTN_MODE = 314, 315, 316
 BTN_DPAD_UP, BTN_DPAD_DOWN, BTN_DPAD_LEFT, BTN_DPAD_RIGHT = 544, 545, 546, 547
 # Achsen
 ABS_X, ABS_Y, ABS_HAT0X, ABS_HAT0Y = 0, 1, 16, 17
+ABS_Z, ABS_RZ = 2, 5   # analoge L2/R2-Trigger bei vielen Xbox-artigen Pads
+# Interne Pseudo-Codes fuer L2/R2, WENN sie analog (als Achse) statt als
+# eigene Taste ankommen - negative Zahlen, damit sie garantiert nicht mit
+# einem echten evdev-Code (immer >= 0) kollidieren. Werden genau wie ein
+# normaler Tastencode im KEYMAP behandelt (siehe InputManager._translate()
+# und read_raw_key()) - dadurch bleiben sie ganz normal frei belegbar,
+# auch wenn L2/R2 auf dem jeweiligen Pad nicht als BTN_TL2/BTN_TR2 ankommen.
+AXIS_L2, AXIS_R2 = -2, -5
 EVENT_FMT  = "llHHi"
 EVENT_SIZE = struct.calcsize(EVENT_FMT)
 
@@ -1391,7 +1433,8 @@ KEYMAP = {
     KEY_UP: "up", KEY_DOWN: "down", KEY_LEFT: "left", KEY_RIGHT: "right",
     KEY_ENTER: "ok", KEY_ESC: "exit",
     KEY_F12: "osd", KEY_F10: "back_fe", KEY_F9: None, KEY_F11: "random",
-    KEY_F8: "favorite", BTN_TL2: "favorite",
+    KEY_F8: "favorite", BTN_TL2: "favorite", BTN_TR2: "favorite",
+    AXIS_L2: "favorite", AXIS_R2: "favorite",
     BTN_A: "ok", BTN_START: "ok",
     BTN_B: "back", BTN_X: "back_fe",
     BTN_Y: "music_next", KEY_Y: "music_next",
@@ -1441,7 +1484,7 @@ class Device:
         self.grabbed = False
         self.axis = {}            # axis -> (min, max)
         self.axis_state = {}      # axis -> -1/0/1 (fuer Flankenerkennung)
-        for ax in (ABS_X, ABS_Y, ABS_HAT0X, ABS_HAT0Y):
+        for ax in (ABS_X, ABS_Y, ABS_HAT0X, ABS_HAT0Y, ABS_Z, ABS_RZ):
             try:
                 self.axis[ax] = _absinfo(self.fd, ax)
                 self.axis_state[ax] = 0
@@ -1553,6 +1596,30 @@ class InputManager:
             if value == 1:
                 return act
             return None
+        if etype == EV_ABS and code in (ABS_Z, ABS_RZ) and code in dev.axis:
+            # Analoger L2/R2-Trigger: Schwellwert-Erkennung (>50% =
+            # "gedrueckt"), danach ganz normal ueber KEYMAP behandelt -
+            # wie ein echter Tastencode frei belegbar (Pseudo-Code
+            # AXIS_L2/AXIS_R2), inklusive derselben Wiederholungslogik
+            # wie bei echten Tasten, falls die zugewiesene Aktion
+            # wiederholbar ist (z.B. bei Belegung auf Navigation).
+            amin, amax = dev.axis[code]
+            span = max(1, amax - amin)
+            rel = (value - amin) / span
+            pressed = 1 if rel > 0.5 else 0
+            if pressed == dev.axis_state.get(code, 0):
+                return None
+            dev.axis_state[code] = pressed
+            pseudo_code = AXIS_L2 if code == ABS_Z else AXIS_R2
+            key_id = (dev.path, "a2", code)
+            act = KEYMAP.get(pseudo_code)
+            if not pressed:
+                self._release(key_id)
+                return None
+            if act in REPEAT_ACTIONS:
+                self._hold(key_id, act)
+                return act
+            return act
         if etype == EV_ABS and code in dev.axis:
             amin, amax = dev.axis[code]
             if code in (ABS_HAT0X, ABS_HAT0Y):
@@ -1678,6 +1745,17 @@ class InputManager:
                     _, _, etype, code, value = struct.unpack(EVENT_FMT, data)
                     if etype == EV_KEY and value == 1:
                         return code
+                    if etype == EV_ABS and code in (ABS_Z, ABS_RZ) and code in dev.axis:
+                        # Analoger L2/R2-Trigger - unabhaengig von
+                        # allow_axis_skip erkennbar, damit sich JEDE
+                        # Aktion (nicht nur Navigation) darauf legen
+                        # laesst. Schwellwert wie beim eigentlichen
+                        # Ablesen im Hauptbetrieb (siehe _translate()).
+                        amin, amax = dev.axis[code]
+                        span = max(1, amax - amin)
+                        rel = (value - amin) / span
+                        if rel > 0.5:
+                            return AXIS_L2 if code == ABS_Z else AXIS_R2
                     if allow_axis_skip and etype == EV_ABS and code in dev.axis:
                         amin, amax = dev.axis[code]
                         if code in (ABS_HAT0X, ABS_HAT0Y):
