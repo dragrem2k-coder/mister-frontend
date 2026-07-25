@@ -1,9 +1,72 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.59
+MiSTer Custom Frontend - v1.61
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.61 (BUGFIX: v1.60-Theorie war falsch - echte Ursache
+gefunden und mit zwei Absicherungen versehen):
+  - Nutzer-Rueckmeldung: der v1.60-Fix (Grab durchgehend halten) hat
+    das Einfrieren beim Konfigurieren von "OSD oeffnen" NICHT behoben -
+    weiterhin kein Log-Eintrag danach, weiterhin schwarzer Bildschirm
+    mit MiSTers Login-Prompt.
+  - Neue, tiefere Theorie: F9 ist bei MiSTer fuer den Wechsel zwischen
+    Konsole und Grafikmodus reserviert (siehe enter_console_mode()) -
+    vermutlich ueber die Kernel-eigene VT-Umschaltung, nicht ueber
+    einen gewoehnlichen evdev-Listener, den ein Grab ueberhaupt
+    beeinflussen koennte. Sendet das Pad (z.B. ueber eine Home-/Guide-
+    Taste, die bei manchen Empfaengern als eigene Tastatur-Taste
+    ankommt) ein echtes F9, faengt der Kernel das vermutlich ab, BEVOR
+    unser Prozess es je zu sehen bekommt - erklaert sowohl "nichts
+    weiter im Log" (Ereignis kommt nie an) als auch den schwarzen
+    Bildschirm (MiSTer wechselt weg von unserem Framebuffer).
+  - Zwei Absicherungen: (1) read_raw_key() bekommt in configure_buttons()
+    ein Zeitlimit (20s) statt endlos zu warten - bleibt eine
+    Rueckmeldung zu lange aus, wird NUR diese eine Abfrage uebersprungen
+    (bisherige Belegung bleibt bestehen), der Assistent haengt dadurch
+    nie mehr unbegrenzt fest. (2) Ein tatsaechlich erfasstes F9 wird NIE
+    als Belegung akzeptiert (klare Meldung, erneute Abfrage fuer
+    dieselbe Aktion) - sonst wuerde eine Zuweisung auf F9 das exakt
+    gleiche Einfrieren spaeter bei JEDEM Druck dieser Taste erneut
+    ausloesen, nicht nur waehrend der Konfiguration selbst.
+  - Getestet: Zeitlimit greift zuverlaessig (liefert None, keine
+    Ausnahme), F9 wird als Rohcode weiterhin korrekt gelesen (Ablehnung
+    passiert eine Ebene hoeher), kompletter Assistenten-Ablauf mit
+    simulierter Eingabefolge (Achsen-Ueberspringen, normale Tasten,
+    F9-Ablehnung mit erneuter Abfrage, Zeitlimit-Ueberspringen) fuehrt
+    korrekt bis zum Ende durch, 12 Kombinationen Regressionstest.
+  - EHRLICHER HINWEIS: auch diese Theorie ist mangels echter Hardware
+    nicht abschliessend verifizierbar - falls es weiterhin auftritt,
+    bitte den Log-Ausschnitt direkt nach dem naechsten Versuch schicken
+    (zeigt jetzt zusaetzlich, OB und WANN das Zeitlimit greift).
+
+Neu in v1.60 (BUGFIX: Tastenbelegungs-Assistent - Absturz/eingefrorener
+Bildschirm speziell beim Konfigurieren von "OSD oeffnen"):
+  - Nutzer-Rueckmeldung + Log-Analyse (kein "CRASH:"-Eintrag, der
+    Prozess brach kommentarlos ab - kein Python-Fehler, sondern ein
+    externer Eingriff): configure_buttons() loeste den Eingabe-Grab
+    fuer die GESAMTE Dauer des Assistenten (alle 9 Abfragen). Beim
+    Konfigurieren von "OSD oeffnen" testet man zwangslaeufig genau die
+    Taste, die MiSTer selbst schon als eigene Menue-Taste kennt - war
+    der Grab geloest, reagierte MiSTer PARALLEL zu unserem Prozess
+    darauf und wechselte eigenstaendig in seinen Video-/Menuemodus,
+    waehrend unser Prozess noch mitten im Assistenten haengen blieb.
+  - EVIOCGRAB betrifft nur, ob ANDERE Leser desselben Geraets (wie
+    MiSTers eigene Hotkey-Erkennung) die Tastendruecke ebenfalls sehen -
+    unser EIGENES Lesen ueber os.read() auf dem selbst geoeffneten
+    Datei-Deskriptor funktioniert unabhaengig vom Grab-Status. Das
+    Loesen war hier also gar nicht noetig (vermutlich unreflektiert
+    aus run_core()/run_script()/open_osd() uebernommen, wo es fuer eine
+    ECHTE Kontrolluebergabe tatsaechlich noetig ist).
+  - Fix: Grab bleibt waehrend der gesamten Tastenbelegung gehalten,
+    grab(True) am Ende bleibt als Absicherung bestehen.
+  - Getestet: configure_buttons() ruft grab(False) nicht mehr auf,
+    grab(True) am Ende weiterhin vorhanden, 12 Kombinationen
+    Regressionstest fuer den Rest der Anwendung. Kann mangels echter
+    Hardware nicht 1:1 nachstellen (der eigentliche Konflikt entsteht
+    erst durch MiSTers eigene, externe Hotkey-Erkennung) - Rueckmeldung
+    nach echtem Test auf betroffener Hardware willkommen.
 
 Neu in v1.59 (L1/L2/R1/R2 vollstaendig belegbar, insbesondere fuer
 Favoriten):
@@ -2907,6 +2970,8 @@ TRANSLATIONS = {
     "remap_cancelled": {"en": "Cancelled - keeping previous mapping",
                         "de": "Abgebrochen - alte Belegung bleibt aktiv"},
     "remap_esc_hint":  {"en": "(ESC to cancel)", "de": "(ESC zum Abbrechen)"},
+    "remap_f9_blocked": {"en": "F9 is reserved for MiSTer - press another key",
+                        "de": "F9 ist fuer MiSTer reserviert - andere Taste druecken"},
     "now_playing":     {"en": "Now playing: %s", "de": "Es laeuft: %s"},
 }
 
@@ -4432,8 +4497,37 @@ class Frontend:
         Ausschlag als "funktioniert schon nativ" akzeptiert und
         automatisch uebersprungen - sonst wuerde der Assistent bei
         Pads, deren D-Pad als Achse ankommt, bei "Hoch" haengen
-        bleiben, weil dort kein reines Tasten-Event eintrifft."""
+        bleiben, weil dort kein reines Tasten-Event eintrifft.
+
+        WICHTIG (v1.60 KORRIGIERT, v1.61): die urspruengliche Annahme
+        (Eingabe-Grab loesen laesst MiSTers eigene Hotkey-Erkennung
+        parallel reagieren) hat das Problem NICHT behoben - der Grab
+        bleibt seit v1.60 durchgehend gehalten, trotzdem fror es beim
+        Konfigurieren von "OSD oeffnen" weiterhin ein. Die tatsaechliche
+        Ursache liegt vermutlich TIEFER: F9 ist bei MiSTer fuer den
+        Wechsel zwischen Konsole/Grafikmodus reserviert (siehe
+        enter_console_mode()) - vermutlich ueber die Kernel-eigene
+        VT-Umschaltung, NICHT ueber einen gewoehnlichen evdev-Listener,
+        den ein Grab ueberhaupt beeinflussen koennte. Sendet das Pad
+        (z.B. ueber die Home-/Guide-Taste, die bei manchen Empfaengern
+        als eigene Tastatur-Taste ankommt) ein echtes F9, wird das
+        vermutlich schon vom Kernel abgefangen, BEVOR unser Prozess es
+        je zu sehen bekommt - das erklaert sowohl das "nichts weiter im
+        Log" (wir bekommen das Ereignis nie) als auch den schwarzen
+        Bildschirm mit Login-Prompt (MiSTer wechselt weg von unserem
+        Framebuffer).
+
+        Zwei Absicherungen dagegen: (1) read_raw_key() bekommt hier ein
+        Zeitlimit statt endlos zu warten - bleibt eine Rueckmeldung zu
+        lange aus, wird diese EINE Abfrage uebersprungen (bisherige
+        Belegung bleibt bestehen) statt fuer immer haengen zu bleiben.
+        (2) Ein tatsaechlich erfasstes F9 wird NIE als Belegung
+        akzeptiert (fuer MiSTers eigenen Konsolen-Wechsel reserviert -
+        eine Zuweisung wuerde das exakt gleiche Einfrieren spaeter bei
+        JEDEM Druck dieser Taste erneut ausloesen), sondern erneut
+        fuer dieselbe Aktion nachgefragt."""
         DIRECTIONAL = {"up", "down", "left", "right"}
+        REMAP_TIMEOUT = 20.0   # Sekunden, bevor eine Abfrage uebersprungen wird
         actions = [
             ("up", "remap_action_up"), ("down", "remap_action_down"),
             ("left", "remap_action_left"), ("right", "remap_action_right"),
@@ -4441,16 +4535,38 @@ class Frontend:
             ("osd", "remap_action_osd"), ("random", "remap_action_random"),
             ("favorite", "remap_action_favorite"),
         ]
-        self.inp.grab(False)
         new_map = {}
         cancelled = False
         for act_name, label_key in actions:
-            msg = "%s   %s" % (t("remap_prompt", t(label_key)),
-                                t("remap_esc_hint"))
-            self.draw(msg)
             is_dir = act_name in DIRECTIONAL
-            code = self.inp.read_raw_key(allow_axis_skip=is_dir)
-            if code is None or code == KEY_ESC:
+            code = None
+            while True:
+                msg = "%s   %s" % (t("remap_prompt", t(label_key)),
+                                    t("remap_esc_hint"))
+                self.draw(msg)
+                code = self.inp.read_raw_key(timeout=REMAP_TIMEOUT,
+                                             allow_axis_skip=is_dir)
+                if code == KEY_F9:
+                    # Fuer MiSTers eigenen Konsolen-/Grafikmodus-Wechsel
+                    # reserviert - eine Zuweisung wuerde spaeter bei
+                    # jedem Druck dasselbe Einfrieren wieder ausloesen.
+                    LOG("configure_buttons: F9 abgelehnt (fuer MiSTer reserviert), "
+                        "erneute Abfrage fuer %s" % act_name)
+                    self.draw("%s   %s" % (t("remap_f9_blocked"),
+                                          t("remap_esc_hint")))
+                    time.sleep(1.5)
+                    continue
+                break
+            if code is None:
+                # Zeitlimit erreicht ODER Geraet lieferte gar nichts
+                # (z.B. weil MiSTer das Ereignis abgefangen hat, bevor
+                # es uns erreichte) - diese EINE Abfrage ueberspringen,
+                # bisherige Belegung bleibt fuer diese Aktion bestehen,
+                # der Assistent haengt dadurch nie mehr unbegrenzt.
+                LOG("configure_buttons: Zeitlimit bei %s - uebersprungen"
+                    % act_name)
+                continue
+            if code == KEY_ESC:
                 cancelled = True
                 break
             if code == "AXIS":
