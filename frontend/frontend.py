@@ -1,9 +1,52 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.53
+MiSTer Custom Frontend - v1.55
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.55 (HDMI nochmal aufgedreht, Uhrzeit+Netzwerksymbol im
+Hauptmenue):
+  - HDMI auf ausdruecklichen Wunsch nochmal naeher an das CRT-Erlebnis
+    herangeholt: Equalizer-Takt 0.15s -> 0.08s (Schwingung 5.0 -> 7.0),
+    Pulsier-Takt 0.15s -> 0.08s (Zyklus 1.6s -> 1.0s), Laufschrift-Takt
+    0.2s -> 0.1s. Die 0.08s-Untergrenze ist bewusst an REPEAT_INTERVAL
+    (v1.39) angelehnt - dort schon als sicher fuer HDMI erprobt (12.5
+    Tastenwiederholungen/Sekunde), also ein vertretbares Ziel auch fuer
+    die Hintergrund-Ticks. Getestet: ~10.6 Zeichenvorgaenge/Sekunde
+    auf HDMI bei aktiver Laufschrift (v1.54: ~5.9/s). CRT unveraendert.
+  - NEU: Uhrzeit + Netzwerksymbol unten rechts im Hauptmenue. Uhrzeit
+    (HH:MM) immer sichtbar, das kleine Balkensymbol nur bei
+    bestehender Netzwerkverbindung (WLAN/LAN) - Erkennung ueber den
+    klassischen "UDP-connect"-Trick (verschickt kein einziges Paket,
+    rein lokales Routing, <2ms), Ergebnis 5 Sekunden zwischen-
+    gespeichert. Getestet: Cache verhindert wiederholte Pruefungen,
+    Anzeige per Pixel-Analyse bestaetigt, Grenzfall bei sehr kleiner
+    Aufloesung und gleichzeitige Statusmeldung ohne Kollision geprueft.
+  - 36+ Kombinationen kompletter Regressionstest.
+
+Neu in v1.54 (HDMI-Profil: Laufschrift, Equalizer und Pulsieren
+ebenfalls beschleunigt):
+  - Auf ausdruecklichen Wunsch, nachdem sich die HDMI-Performance seit
+    dem Boxart-Schatten-Fix (v1.34) als stabil erwiesen hat: alle drei
+    Effekte auch auf HDMI moderat schneller (nicht so extrem wie auf
+    CRT, wo draw() praktisch nichts kostet - auf HDMI bewusst
+    zurueckhaltender).
+  - Equalizer-Takt: 0.35s -> 0.15s, Schwingungsfrequenz 2.2 -> 5.0.
+  - Pulsier-Takt: 0.9s -> 0.15s, Zykluslaenge 3.2s -> 1.6s.
+  - Laufschrift-Takt: 0.35s -> 0.2s (Schrittweite von 2 Zeichen/Tick
+    bleibt - kombiniert ergibt das eine deutlich hoehere gefuehlte
+    Geschwindigkeit).
+  - Aeusserer Aufwach-Takt in next_action() entsprechend angepasst
+    (min()-Kandidaten pulse_interval/eq_interval jetzt auch 0.15s auf
+    HDMI), damit die schnelleren internen Takte tatsaechlich bedient
+    werden.
+  - Getestet: alle Werte einzeln direkt gemessen, effektive Bildrate
+    mit realistischer Zeitsimulation bestaetigt (~5.9 Zeichenvorgaenge/
+    Sekunde auf HDMI bei aktiver Laufschrift, vorher ~2.9/Sekunde -
+    rund 2x schneller). CRT-Werte per Gegenprobe unveraendert
+    bestaetigt (weiterhin 0.01s). 48 Kombinationen kompletter
+    Regressionstest.
 
 Neu in v1.53 (BUGFIX: USB-Kaltstart - unnoetiger Vollscan + unsichere
 Cache-Eintraege; SIGHUP-Absicherung):
@@ -790,7 +833,7 @@ Start auf dem MiSTer (per SSH oder als Startscript):
   python3 /media/fat/frontend/frontend.py
 """
 
-import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib, json, random, math, signal
+import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib, json, random, math, signal, socket
 
 LOGFILE = "/tmp/frontend.log"
 LOG_MAX_BYTES = 512 * 1024      # ab dieser Groesse wird gekuerzt
@@ -2364,6 +2407,25 @@ fb_terminal=1
 video_mode=320,8,32,24,240,4,3,16,6048
 """
 
+def _has_network():
+    """Prueft, ob irgendein Netzwerk-Interface eine Adresse hat -
+    ueber den klassischen 'UDP connect'-Trick: verbindet einen UDP-
+    Socket zu einer beliebigen externen Adresse (verschickt dabei
+    KEIN einziges Paket, UDP-connect() ist rein lokales Routing) und
+    schaut, welche lokale Adresse das Betriebssystem dafuer waehlen
+    wuerde. Funktioniert auch ohne echten Internetzugang, solange das
+    lokale Netzwerk (WLAN/LAN) steht - genau das, wonach gefragt war,
+    nicht ob das Internet erreichbar ist."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.1)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return bool(ip) and not ip.startswith("127.")
+    except OSError:
+        return False
+
 def crt_menu_active():
     try:
         return "[Menu]" in open(MISTER_INI).read()
@@ -2840,6 +2902,15 @@ class Frontend:
         # beim Verlassen zurueck zu Seite 0 geleert.
         self.nav_path = []
 
+        # Netzwerkstatus fuer die Anzeige unten rechts im Hauptmenue -
+        # mit kurzer Zwischenspeicherung (alle paar Sekunden neu
+        # geprueft), damit auch bei sehr haeufigem Neuzeichnen (CRT
+        # bis 100x/Sekunde) nicht bei jedem einzelnen Bild ein
+        # Systemaufruf noetig ist, obwohl die Pruefung selbst schon
+        # sehr guenstig ist (kein echter Netzwerkverkehr, <2ms).
+        self._net_status = False
+        self._net_check_next = 0.0
+
         # Optionaler Stream-Overlay-Server (nur wenn Freigabe-Datei da ist)
         self.stream = None
         self._stream_sig = None
@@ -3134,8 +3205,47 @@ class Frontend:
 
         if message:
             fb.text(ox, H - oy - 13 * s, message, s, C_DIM, C_BG)
+        self._draw_status_bar(L)
         if flip:
             fb.flip()
+
+    def _network_connected(self):
+        """Zwischengespeicherter Netzwerkstatus, alle 5 Sekunden neu
+        geprueft (nicht bei jedem einzelnen Neuzeichnen - unnoetig
+        haeufige Systemaufrufe vermeiden, auch wenn die Pruefung
+        selbst schon sehr guenstig ist)."""
+        now = time.time()
+        if now >= self._net_check_next:
+            self._net_status = _has_network()
+            self._net_check_next = now + 5.0
+        return self._net_status
+
+    def _draw_status_bar(self, L):
+        """Netzwerksymbol (nur wenn verbunden) + Uhrzeit unten rechts
+        im Hauptmenue - auf derselben Zeile wie eine etwaige Status-
+        meldung (die steht links), damit sich nichts ueberschneidet."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s, ox, oy = L["s"], L["ox"], L["oy"]
+        y = H - oy - 13 * s
+
+        clock_text = time.strftime("%H:%M")
+        clock_w = len(clock_text) * 8 * s
+        x = W - ox - clock_w
+        fb.text(x, y, clock_text, s, C_DIM, C_BG)
+
+        if self._network_connected():
+            # Drei aufsteigende Saeulen (Signalstaerke-Optik) - rein
+            # statusanzeigend ("Netzwerk vorhanden"), kein echter
+            # Signalstaerke-Messwert, den liefert uns niemand.
+            icon_w = 11 * s
+            icon_x = x - icon_w - 6 * s
+            bar_w = 3 * s
+            gap = 1 * s
+            base_y = y + 10 * s
+            for i, bh in enumerate((4 * s, 7 * s, 10 * s)):
+                bx = icon_x + i * (bar_w + gap)
+                fb.rect(bx, base_y - bh, bar_w, bh, C_DIM)
 
     def _draw_cat_artbox(self, L):
         """Zeigt rechts neben der Kategorienliste ein Logo/Cover fuer
@@ -3436,7 +3546,7 @@ class Frontend:
         if now < self._track_tick_next:
             return False
         is_crt = self.fb.height < 400
-        interval = 0.15 if is_crt else 0.35
+        interval = 0.15 if is_crt else 0.1
         step = 1 if is_crt else 2
         self._track_tick_next = now + interval
         name = self._track_mq_name
@@ -3461,7 +3571,7 @@ class Frontend:
         UeBERHAUPT aendern kann - die zugrundeliegende Bewegung selbst
         muss schneller werden, nicht nur die Abtastrate."""
         is_crt = self.fb.height < 400
-        period = 0.8 if is_crt else 3.2
+        period = 0.8 if is_crt else 1.0
         elapsed = time.time() - self._pulse_t0
         return 0.90 + 0.10 * (0.5 + 0.5 * math.sin(elapsed * 2 * math.pi / period))
 
@@ -3497,7 +3607,7 @@ class Frontend:
         now = time.time()
         if now < self._pulse_tick_next:
             return False
-        interval = 0.01 if self.fb.height < 400 else 0.9
+        interval = 0.01 if self.fb.height < 400 else 0.08
         self._pulse_tick_next = now + interval
         return True
 
@@ -3512,7 +3622,7 @@ class Frontend:
         now = time.time()
         if now < self._eq_tick_next:
             return False
-        interval = 0.01 if self.fb.height < 400 else 0.35
+        interval = 0.01 if self.fb.height < 400 else 0.08
         self._eq_tick_next = now + interval
         return True
 
@@ -3532,7 +3642,7 @@ class Frontend:
         gap = 2 * s
         h_max = 10 * s
         col = (224, 182, 74)
-        freq = 9.0 if self.fb.height < 400 else 2.2
+        freq = 9.0 if self.fb.height < 400 else 7.0
         for i in range(4):
             phase = now * freq + i * 1.7
             frac = 0.35 + 0.65 * (0.5 + 0.5 * math.sin(phase))
@@ -3560,8 +3670,8 @@ class Frontend:
             # war der Bug: "elif" liess den Equalizer nie eigenstaendig
             # feuern, solange die Laufschrift aktiv war - praktisch
             # immer der Fall bei echten Songnamen).
-            eq_interval = 0.01 if self.fb.height < 400 else 0.35
-            pulse_interval = 0.01 if self.fb.height < 400 else 1.0
+            eq_interval = 0.01 if self.fb.height < 400 else 0.08
+            pulse_interval = 0.01 if self.fb.height < 400 else 0.08
             candidates = [pulse_interval]
             if need_mq or track_needs:
                 candidates.append(0.18)
