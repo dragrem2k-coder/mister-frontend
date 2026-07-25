@@ -1,4 +1,4 @@
-# MiSTer Custom Frontend v1.47 - Komplettbuild (Stand: 2026-07-25)
+# MiSTer Custom Frontend v1.53 - Komplettbuild (Stand: 2026-07-25)
 
 **Ersteller: Dragrem2K**
 
@@ -42,13 +42,15 @@ Platzhalter, die Systemlogos in der linken Spalte sind echt.
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.47) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.53) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (laeuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (laeuft auf dem MiSTer) |
 | frontend/stream_server.py       | /media/fat/frontend/             | Web-Server fuers Stream-Overlay (optional) |
 | frontend/stream_overlay.html    | /media/fat/frontend/             | OBS-Browser-Quelle (optional) |
 | frontend/stream_admin.html      | /media/fat/frontend/             | Stream-Overlay-Konfiguration (optional) |
+| install.sh                      | bleibt im Paket (Installer)      | Installation mit Internetzugang (laedt von GitHub) |
+| install_offline.sh              | bleibt im Paket (Installer)      | Installation ohne Internetzugang (aus diesem Paket) |
 | Scripts/start_frontend.sh       | /media/fat/Scripts/              | Frontend manuell aus dem MiSTer-OSD starten |
 | Scripts/update_frontend.sh      | /media/fat/Scripts/              | Nach einem Datei-Update sauber neu starten (1 statt mehrerer Befehle) |
 | Scripts/boxart_download.sh      | /media/fat/Scripts/              | Boxart-Download aus OSD/Frontend starten |
@@ -57,6 +59,8 @@ Platzhalter, die Systemlogos in der linken Spalte sind echt.
 | PC-Tools/art_convert.py         | bleibt auf dem PC (Python+Pillow) | Bilder -> .art-Format, inkl. Hintergrundbilder |
 | PC-Tools/boxart_fetch.py        | bleibt auf dem PC (optional)      | Alternative: Boxart-Download am PC statt MiSTer |
 | PC-Tools/video_to_bootanim.py   | bleibt auf dem PC (Python+Pillow) | Video/Bildfolge -> Boot-Animation |
+| PC-Tools/obs_setup.py           | bleibt auf dem PC (optional)      | Lokale OBS-Overlay-Datei mit fest eingetragener MiSTer-IP anlegen |
+| PC-Tools/OBS_Setup_starten.bat  | bleibt auf dem PC (optional)      | Windows-Doppelklick-Starter fuer obs_setup.py |
 | music/                          | (nur als Hinweis, Inhalt egal)    | Zielordner fuer deine eigenen MP3s |
 
 ## 2. Voraussetzungen
@@ -88,7 +92,28 @@ eigene Daten (Musik, Boxart, Einstellungen) bleiben dabei unangetastet,
 nur die Programmdateien werden ersetzt. MiSTer braucht dafuer
 Internetzugang (im Heimnetzwerk normalerweise automatisch vorhanden).
 
-### Option B: Manuell per WinSCP
+### Option B: Ohne Internet (offline aus dem Paket)
+
+Falls der MiSTer keinen Internetzugang hat, eine bestimmte Version
+installiert werden soll, oder Option A an veralteten SSL-Zertifikaten
+scheitert: das komplette Paket per WinSCP auf den MiSTer kopieren,
+dann per SSH oder aus dem OSD unter Scripts:
+```bash
+cd /media/fat/MiSTer_Frontend   # Ordner, in den du das Paket kopiert hast
+./install_offline.sh
+```
+Fragt interaktiv nach Autostart und Stream-Overlay. Ohne Rueckfragen:
+```bash
+./install_offline.sh --yes                # Autostart an, Overlay aus
+./install_offline.sh --yes --stream        # zusaetzlich Overlay an
+./install_offline.sh --yes --no-autostart  # ohne Autostart
+```
+Erneutes Ausfuehren ist gefahrlos (z.B. fuer ein Update): eigene
+Boxart, Metadaten, Musik, selbst ersetzte System-Logos und
+Einstellungen bleiben unangetastet, die bisherigen Programmdateien
+werden vorher automatisch gesichert (`frontend/backup_<Datum>/`).
+
+### Option C: Manuell per WinSCP (Schritt fuer Schritt von Hand)
 
 1. Auf dem MiSTer per WinSCP anlegen: `/media/fat/frontend/`
 2. Alle Dateien aus dem Ordner `frontend/` dorthin kopieren.
@@ -103,7 +128,7 @@ Internetzugang (im Heimnetzwerk normalerweise automatisch vorhanden).
 5. MiSTer einmal neu starten - das Frontend sollte automatisch
    erscheinen.
 
-### Nach der Installation (beide Wege)
+### Nach der Installation (alle drei Wege)
 
 Manueller Start (z.B. zum Testen, ohne neu zu booten), per SSH:
 ```bash
@@ -121,12 +146,23 @@ Kategorien (Systeme, Arcade, Scripts, System) als grosse Liste; Enter/A
 oeffnet eine Kategorie auf Seite 2, wo links die Spiele-/Eintragsliste
 steht und rechts bei Spiele-Systemen eine breite Boxart+Info-Spalte.
 
+**Seit v1.49: eigene Ordnerstruktur wird 1:1 uebernommen.** Hast du
+deine ROMs in Unterordnern organisiert (z.B. "1 US-A-E", "2 Beliebt"),
+zeigt das Frontend diese Ordner als eigene, anklickbare Eintraege -
+beliebig tief verschachtelt, genau wie auf dem Datentraeger abgelegt.
+Enter/A auf einem Ordner wechselt hinein, ESC/B geht eine Ordnerebene
+nach oben (erst wenn du ganz oben bist, geht's zurueck zu den
+Kategorien). Ordner erscheinen immer zuerst in der Liste, danach die
+Spiele - beides alphabetisch sortiert. Systeme ohne Unterordner (ROMs
+liegen direkt im Systemordner) zeigen weiterhin sofort die normale
+Liste, ganz ohne diesen Zwischenschritt.
+
 | Eingabe                          | Funktion |
 |-------------------------------------|----------|
 | Hoch/Runter                        | Einzelne Position navigieren (beschleunigt beim Halten: 1->2->4->10) |
 | Links/Rechts                       | Seitenweise blaettern (waechst beim Halten: 1->2->3->5 Bildschirmseiten) |
-| Enter/A                            | Kategorie oeffnen bzw. Spiel/Script starten |
-| ESC/B                              | Eine Ebene zurueck; im Hauptmenue: Beenden-Bestaetigung |
+| Enter/A                            | Kategorie/Ordner oeffnen bzw. Spiel/Script starten |
+| ESC/B                              | Eine Ordner-/Menueebene zurueck; im Hauptmenue: Beenden-Bestaetigung |
 | Ein Buchstabe (Tastatur, A-Z)      | Direktsprung zum naechsten Eintrag mit diesem Anfangsbuchstaben |
 | F12 / Guide-Button                 | Echtes MiSTer-OSD oeffnen (Joystick-Belegung, ini-Settings) |
 | F10 / X-Button                     | Aus dem OSD zurueck ins Frontend |
@@ -296,21 +332,24 @@ Menue ist daher ENTWEDER auf dem CRT ODER auf HDMI sichtbar (Spiele
 selbst laufen weiterhin auf beiden Ausgaengen gleichzeitig,
 unabhaengig vom Menue).
 
-## 8c. Zuletzt gespielt, Mini-Icons, Lade-Fortschritt (seit v1.30)
+## 8c. Zuletzt gespielt, Lade-Fortschritt (seit v1.30)
 
 Automatisch aktiv, keine Einrichtung noetig:
 - **"Zuletzt gespielt"**: neue Kategorie ganz oben im Hauptmenue,
   sobald du das erste Spiel gestartet hast - bis zu 15 Eintraege,
   neuestes zuerst. Erscheint automatisch erst NACH dem ersten
   Spielstart (vorher unsichtbar, keine leere Kategorie).
-- **Mini-Icons**: kleine Vorschaubilder aus den bereits vorhandenen
-  `sysart/`-Logos vor jedem Kategorienamen. Fehlt fuer ein System die
-  Datei, bleibt die Spalte einfach leer statt eines Fehlers.
 - **Lade-Fortschritt**: zeigt einen Fortschrittsbalken, falls die
   Spieleliste tatsaechlich neu von der Platte eingelesen werden muss
   (erster Start oder nach Aenderungen an den ROM-Ordnern). Beim
   normalen, schnellen Cache-Treffer (der ueblichste Fall) erscheint
   gar nichts davon - kein Tempoverlust im Alltag.
+- **Seit v1.49:** Vor einem tatsaechlichen Scan wartet das Frontend
+  kurz (bis zu 4 Sekunden), falls USB-Laufwerke gerade erst nach
+  einem Kaltstart einhaengen - verhindert, dass ein zu frueh
+  gestarteter Scan faelschlich weniger Spiele findet (und das dann
+  auch noch zwischenspeichert). Betrifft nur den seltenen tatsaechlichen
+  Scan-Fall, nicht den schnellen Alltags-Cache-Treffer.
 
 ## 8b. Optische Verfeinerungen (seit v1.29)
 
@@ -428,6 +467,15 @@ ins Bild gesetzt.
 3. In OBS eine **Browser-Quelle** hinzufuegen mit der Adresse
    `http://<MiSTer-IP>:8080/` (Breite/Hoehe auf deine Stream-Canvas
    einstellen, z.B. 1920x1080 - der Rest bleibt transparent).
+
+   **Komfort-Alternative:** `PC-Tools/obs_setup.py` (unter Windows per
+   Doppelklick auf `OBS_Setup_starten.bat`) fragt nach der MiSTer-IP,
+   prueft die Verbindung und legt eine lokale Overlay-Datei mit fest
+   eingetragener Adresse an - dann in OBS statt der URL einfach diese
+   Datei als "Lokale Datei" auswaehlen. Praktisch, wenn du die Optik
+   per eigenem CSS anpassen oder die Quelle unabhaengig vom MiSTer
+   laden moechtest. Volloptional, die normale URL funktioniert genauso
+   gut.
 4. Aussehen anpassen (Position, Farben, was angezeigt wird) unter
    `http://<MiSTer-IP>:8080/admin` im Browser - Aenderungen wirken
    sofort, ganz ohne Neustart.
@@ -453,6 +501,12 @@ fuer Weiterentwicklung: `STREAM_fuer_Dragrem.md`.
   `kill $(cat /tmp/frontend.lock)`, dann `rm -f /tmp/frontend.lock`.
   (Hinweis: `pkill`/`pgrep` gibt es auf dem MiSTer NICHT - immer den
   `kill $(cat ...)`-Weg nutzen.)
+- Bildschirm bleibt beim Booten im MiSTer-OSD haengen, Musik laeuft
+  aber bereits: seit v1.48 behoben (der Bildschirmwechsel passierte
+  vorher NACH einem moeglicherweise langsamen Scan statt davor - z.B.
+  wenn ein USB-Laufwerk nach laengerem vollstaendigem Ausschalten
+  verzoegert bereit wird). Tritt das trotzdem noch auf, hilft
+  `/tmp/frontend.log` (siehe Diagnose unten) bei der weiteren Suche.
 - Notaus bei Autostart-Problemen: `touch /media/fat/frontend/disable`
   und neu starten (Reaktivieren: Datei wieder loeschen).
 - Diagnose: `/tmp/frontend.log` protokolliert Geraete, Aktionen und

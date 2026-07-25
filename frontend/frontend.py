@@ -1,9 +1,172 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.47
+MiSTer Custom Frontend - v1.53
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.53 (BUGFIX: USB-Kaltstart - unnoetiger Vollscan + unsichere
+Cache-Eintraege; SIGHUP-Absicherung):
+  - Ein externer Vergleichslauf (vom Nutzer hochgeladen, unabhaengig
+    selbst verifiziert und NEU implementiert, nicht blind uebernommen)
+    deckte zwei tiefere USB-Probleme auf, die trotz v1.49-v1.52
+    bestehen blieben:
+  - (a) SIGNATUR-INSTABILITAET: _games_signature() nutzte bisher den
+    ABSOLUTEN Pfad jedes Systemordners. Mountet eine USB-Platte nach
+    einem Kaltstart nicht immer unter derselben Nummer (mal
+    /media/usb0, mal /media/usb1), aendert sich die Signatur bei
+    JEDEM Boot, obwohl sich am Inhalt nichts geaendert hat -> jedes
+    Mal unnoetiger kompletter Neuscan. Jetzt nur noch eine Ort-
+    Kennung ("usb:"/"fat:") + relativer Ordnername + mtime, sortiert.
+    Mit vertauschtem Mountpunkt bei identischem Inhalt getestet:
+    Signatur bleibt jetzt stabil.
+  - (b) VOLLSCAN TROTZ KURZER VERZOEGERUNG: der erste Cache-Vergleich
+    lief VOR _wait_for_usb_stable() - bei einem Kaltstart, wo USB im
+    Moment der Signatur-Bildung noch nicht gemountet ist, fuehrte das
+    IMMER zu einem Mismatch und kompletten Neuscan, selbst wenn sich
+    am Inhalt gar nichts geaendert hatte. scan_games() prueft jetzt:
+    erwartet der Cache USB, sehen wir aber noch keines, wird erst
+    gewartet und NEU verglichen, bevor komplett neu gescannt wird.
+    Getestet: Kaltstart mit 0.5s verzoegertem Mount nutzt jetzt den
+    Cache (~1.5s statt Vollscan).
+  - _wait_for_usb_stable() liefert jetzt drei Zustaende (True=stabil,
+    None=kein USB im Spiel, False=USB da aber nicht rechtzeitig
+    stabil) statt nur True/False - scan_games() cached das Ergebnis
+    bei False NICHT mehr, damit eine moeglicherweise unvollstaendige
+    Liste nicht dauerhaft haengen bleibt (naechster Boot scannt dann
+    einfach erneut). Alle drei Zustaende einzeln getestet, dazu ein
+    deterministischer Test der Kernlogik ohne Threading (ein erster
+    Thread-basierter Test hatte ein GIL-Zeitplanungsproblem, das sich
+    als Testartefakt herausstellte, kein echter Bug).
+  - SIGHUP-Handler ergaenzt (nutzt denselben, bereits getesteten
+    Handler wie SIGTERM aus v1.37) - schuetzt vor eingefrorenem
+    Bildschirm, wenn die SSH-Sitzung waehrend eines manuellen Tests
+    (der in der README empfohlene Weg: "python3 frontend.py" direkt
+    per SSH) getrennt wird.
+  - Neu im Paket: install_offline.sh (Offline-Gegenstueck zu
+    install.sh, mit automatischer Sicherung der alten Version vor
+    jedem Update) und PC-Tools/obs_setup.py + OBS_Setup_starten.bat
+    (legt eine lokale OBS-Overlay-Kopie mit fest eingetragener
+    MiSTer-IP an) - beide unabhaengig getestet (install_offline.sh:
+    Neuinstallation und Update-Fall inkl. Erhalt eigener Anpassungen
+    und Backup-Erstellung; obs_setup.py: IP-Validierung und HTML-
+    Generierung gegen die echte aktuelle stream_overlay.html).
+  - 48 Kombinationen kompletter Regressionstest weiterhin bestanden.
+
+Neu in v1.52 (Boxart schon auf Ordner-Ebene, wenn der Ordner ein
+Spiel ist):
+  - Manche Sammlungen (haeufig bei PSX mit Mehrfach-CD-Spielen) legen
+    pro Spiel einen eigenen Unterordner mit den Disc-Dateien an - der
+    Ordnername entspricht dann dem Spieletitel. Bisher zeigte das
+    Frontend fuer JEDEN Ordner-Eintrag "kein Artwork", auch wenn der
+    Ordner eigentlich ein einzelnes, katalogisiertes Spiel ist.
+  - draw_art_panel() nutzt fuer Ordner-Eintraege jetzt den reinen
+    Ordnernamen (ohne den anzeigenden Schraegstrich-Suffix) fuer die
+    Cover-/Metadaten-Suche - findet sich ein Treffer (z.B. weil der
+    Ordner "Final Fantasy VII" heisst und dafuer ein Cover vorliegt),
+    wird er genauso angezeigt wie bei einem normalen Spiele-Eintrag.
+    Der Titel behaelt den Schraegstrich, bleibt also weiterhin klar
+    als Ordner erkennbar. Reine Organisations-Ordner (z.B.
+    "1 US-A-E") ohne passenden Datenbank-Treffer zeigen unveraendert
+    "kein Artwork" statt eines Fehlers.
+  - Getestet: Ordner mit passendem Spielenamen zeigt Cover+Infos
+    korrekt (Pixel-Analyse bestaetigt), Organisations-Ordner ohne
+    Treffer zeigt weiterhin sauber "kein Artwork" ohne Absturz,
+    48 Kombinationen kompletter Regressionstest.
+
+Neu in v1.51 (BUGFIX: USB-Absicherung aus v1.49 griff nicht zuverlaessig):
+  - Nutzer-Rueckmeldung: nach einem Kaltstart tauchten immer noch
+    nicht alle Spiele auf. Ursache: die v1.49-Pruefung testete nur, OB
+    der USB-Mountpunkt EXISTIERT - bei einer langsam hochlaufenden
+    Festplatte kann der Ordner selbst aber schon da sein, WAEHREND
+    die Dateiliste dahinter noch nachzieht. "Existiert" war also kein
+    verlaesslicher Hinweis auf "wirklich fertig".
+  - Fix: prueft jetzt die TATSAECHLICHE Anzahl an Eintraegen in jedem
+    USB-Basisordner (os.listdir), nicht nur dessen Existenz. Ein
+    vorhandener, aber noch LEERER Ordner zaehlt bewusst NICHT als
+    stabil. Verlangt ausserdem zwei aufeinanderfolgende gleiche
+    Messungen (statt nur einer) - robuster gegen zufaellige Treffer
+    beim Abtasten. Zeitlimit grosszuegiger (10s statt 4s).
+  - Dabei einen echten, noch ungetesteten Fehler in der eigenen
+    Zwischenversion gefunden UND behoben, bevor er auslieferte: eine
+    verwaiste Codezeile haette bei jedem Aufruf einen Laufzeitfehler
+    (NameError) ausgeloest.
+  - Getestet: 5 Szenarien - Ordner existiert sofort aber Inhalt kommt
+    langsam nach (wartet jetzt korrekt bis zur echten Stabilisierung,
+    vorher haette es faelschlich sofort "fertig" gemeldet), kein USB
+    konfiguriert, Ordner bleibt dauerhaft leer, USB schon vollstaendig
+    bereit, Inhalt aendert sich staendig (Zeitlimit greift zuverlaessig).
+
+Neu in v1.50 (Anzahl-Anzeige in der Kategorienliste entfernt):
+  - Die Zahl neben jedem Kategorienamen (z.B. "NES  7631") ist auf
+    Nutzerwunsch entfernt - der freiwerdende Platz kommt jetzt dem
+    Kategorienamen selbst zugute (maxc-Berechnung entsprechend
+    erweitert, keine unnoetig kurze Abschneidung mehr).
+
+Neu in v1.49 (Ordnerstruktur-Navigation, USB-Timing-Absicherung):
+  - GROSSER UMBAU: Spiele-Systeme werden nicht mehr flach aufgelistet,
+    sondern als Baumstruktur ({"folders":{...}, "items":[...]})
+    gescannt und angezeigt - die eigene Ordnerstruktur (beliebig tief
+    verschachtelt) wird 1:1 im Frontend nachgebildet. Ordner erscheinen
+    als eigene, anklickbare Eintraege (immer zuerst in der Liste, dann
+    die Spiele, je alphabetisch sortiert). Enter/A wechselt in einen
+    Ordner hinein, ESC/B geht eine Ordnerebene nach oben (erst danach
+    zurueck zu den Kategorien). Kopfzeile zeigt den Pfad als Breadcrumb
+    ("SNES / 1 US-A-E"). Systeme ohne Unterordner ueberspringen diesen
+    Zwischenschritt automatisch.
+  - Region-Dedup laeuft jetzt PRO ORDNER statt global ueber das ganze
+    System - verhindert, dass alphabetisch/regional aufgeteilte
+    Sammlungen faelschlich ueber Ordnergrenzen hinweg zusammengemischt
+    werden.
+  - Alle anderen Kategorien (Zuletzt gespielt/Cores/Scripts/System)
+    werden einheitlich als "flache" Baumknoten (ohne Unterordner)
+    dargestellt - der komplette Rendering-/Navigations-Code behandelt
+    dadurch alle Kategorien gleich.
+  - games_cache.json-Speicherformat auf die Baumstruktur umgestellt
+    (rekursive Serialisierung). "Nur katalogisierte Spiele"-Filter
+    arbeitet jetzt rekursiv, leer gefilterte Unterordner fallen weg.
+  - BUGFIX: Scan lief manchmal, bevor USB-Laufwerke nach einem
+    Kaltstart fertig eingehaengt waren (moeglich seit v1.48s vor-
+    gezogenem Bildschirmwechsel) - fehlende Spiele wurden dann noch
+    dazu gecacht. Neue _wait_for_usb_stable(): wartet bis zu 4s,
+    aber NUR beim seltenen tatsaechlichen Scan-Fall, nie beim
+    schnellen Cache-Treffer-Normalfall.
+  - Getestet: rekursiver Scan mit realistischer mehrstufiger Struktur,
+    Region-Dedup pro Ordner, Mehrfach-Laufwerk-Zusammenfuehrung,
+    JSON-Rundlauf mit tiefer Verschachtelung, rekursive Curated-
+    Filterung (inkl. Ordner-Bereinigung), komplette Navigation
+    (rein/verschachtelt/schrittweise raus), Spielstart aus 2 Ebenen
+    Tiefe (Pfad/RBF/Zuletzt-gespielt korrekt), USB-Wartelogik mit 4
+    Szenarien, 48 Kombinationen kompletter Regressionstest.
+
+Neu in v1.48 (BUGFIX: Frontend blieb manchmal beim Booten im MiSTer-OSD
+haengen, Musik lief aber schon):
+  - Strukturfehler gefunden: enter_console_mode() (schaltet MiSTer per
+    F9-Injektion ueberhaupt erst auf UNSEREN Framebuffer um - vorher
+    ueberdeckt MiSTers eigenes Wallpaper alles permanent) passierte
+    bisher in run(), also NACH dem kompletten build_categories()-Scan
+    in __init__(). War der Scan aus irgendeinem Grund langsam (z.B.
+    ein USB-Laufwerk, das nach laengerem vollstaendigem Ausschalten
+    erst noch verzoegert bereit wird, oder ein tatsaechlicher Neu-
+    Scan), blieb der Bildschirm bis dahin im MiSTer-OSD haengen -
+    Musik lief bereits (MusicPlayer startet noch frueher), das
+    eigentliche Frontend blieb aber unsichtbar. Exakt das gemeldete
+    Verhalten.
+  - Fix: enter_console_mode()/set_cursor_blink()/inp.grab() jetzt ganz
+    am Anfang von __init__(), VOR dem Scan. Der Lade-Fortschrittsbalken
+    (_draw_scan_progress(), seit v1.30 vorhanden) wird dadurch jetzt
+    auch tatsaechlich sichtbar, egal wie lange der Scan braucht -
+    vorher zeichnete er auf einen Framebuffer, der noch gar nicht der
+    aktive Bildschirm war.
+  - EHRLICHER HINWEIS: __init__() selbst kann in der Sandbox nicht
+    automatisiert durchlaufen werden (braucht echte /dev/fb0, echte
+    Eingabegeraete - war waehrend des gesamten Projekts nie moeglich,
+    alle Tests nutzen Frontend.__new__() und ueberspringen __init__).
+    Die neue Reihenfolge wurde daher per sorgfaeltiger Code-Durchsicht
+    verifiziert (keine Abhaengigkeit auf self.music/self.cats vor deren
+    Definition), nicht per automatisiertem Test der echten Boot-
+    Sequenz. Rueckmeldung nach dem naechsten echten Kaltstart (nach
+    laengerem vollstaendigem Ausschalten) willkommen.
 
 Neu in v1.47 (WICHTIGE KORREKTUR: Bewegung selbst beschleunigt, nicht
 nur die Abtastrate):
@@ -1824,31 +1987,53 @@ def _games_signature():
     das Frontend blieb aber minutenlang unsichtbar). Zurueck auf die
     schnelle, nur-oberste-Ebene-Pruefung - das war der urspruengliche,
     bewusste Kompromiss: schneller Boot immer, dafuer Aenderungen tief
-    in Unterordnern nur per manuellem Rescan erkannt."""
+    in Unterordnern nur per manuellem Rescan erkannt.
+
+    WICHTIG (v1.53): statt des ABSOLUTEN Pfads geht nur eine Ort-
+    Kennung ("usb:" oder "fat:") + der relative Ordnername in die
+    Signatur ein. Eine USB-Platte mountet nach einem Kaltstart nicht
+    immer unter derselben Nummer (mal /media/usb0, mal /media/usb1) -
+    mit dem absoluten Pfad haette sich die Signatur dadurch bei jedem
+    Boot geaendert, obwohl sich am Inhalt nichts geaendert hat, und
+    jedes Mal einen unnoetigen kompletten Neuscan ausgeloest. Sortiert,
+    damit auch die Reihenfolge der Basispfade die Signatur nicht
+    veraendert."""
     sig = []
     for base in GAMES_BASES:
         if not os.path.isdir(base):
             continue
+        tag = "usb:" if "/media/usb" in base else "fat:"
         for _d, _sk, folders, _r, _e in GAME_SYSTEMS:
             for folder in folders:
                 root = os.path.join(base, folder)
                 try:
-                    sig.append((root, int(os.path.getmtime(root))))
+                    mtime = int(os.path.getmtime(root))
                 except OSError:
-                    pass
+                    continue
+                sig.append((tag + folder, mtime))
+    sig.sort()
     return sig
 
+def _sig_expects_usb(sig):
+    """True, wenn eine Signatur mindestens einen USB-Ordner enthaelt -
+    genutzt, um zu entscheiden, ob sich das Warten auf einen USB-Mount
+    ueberhaupt lohnt (siehe scan_games())."""
+    return any(entry[0].startswith("usb:") for entry in sig)
+
+def _node_to_json(node):
+    return {"folders": {k: _node_to_json(v) for k, v in node["folders"].items()},
+            "items": [[i0, i1, list(i2[:4]) + [list(i2[4])]] for i0, i1, i2 in node["items"]]}
+
+def _node_from_json(data):
+    return {"folders": {k: _node_from_json(v) for k, v in data["folders"].items()},
+            "items": [(i0, i1, (i2[0], i2[1], i2[2], i2[3], tuple(i2[4])))
+                     for i0, i1, i2 in data["items"]]}
+
 def _cats_to_json(cats):
-    return [[n, [[i0, i1, list(i2[:4]) + [list(i2[4])]] for i0, i1, i2 in it], sk]
-            for n, it, sk in cats]
+    return [[n, _node_to_json(node), sk] for n, node, sk in cats]
 
 def _cats_from_json(data):
-    cats = []
-    for n, it, sk in data:
-        items = [(i0, i1, (i2[0], i2[1], i2[2], i2[3], tuple(i2[4])))
-                 for i0, i1, i2 in it]
-        cats.append((n, items, sk))
-    return cats
+    return [(n, _node_from_json(node), sk) for n, node, sk in data]
 
 def load_recent():
     """Liste der zuletzt gespielten Spiele laden - Rueckgabe im
@@ -1884,6 +2069,83 @@ def record_recent(label, arg):
     except OSError:
         pass
 
+def _wait_for_usb_stable(max_wait=10.0, poll=0.5, min_wait_if_none=3.0):
+    """Kurz warten, falls USB-Laufwerke gerade erst einhaengen - nur
+    relevant fuer den (seltenen) tatsaechlichen Scan-Fall, verzoegert
+    NICHT den schnellen Cache-Treffer-Normalfall.
+
+    Prueft nicht nur, OB der Mountpunkt existiert (das kann bei einer
+    langsam hochlaufenden Festplatte schon der Fall sein, WAEHREND die
+    Dateiliste dahinter noch nachzieht) - sondern die tatsaechliche
+    Anzahl an Eintraegen in jedem USB-Basisordner (os.listdir). Erst
+    wenn sich diese Anzahl zwischen zwei Abfragen nicht mehr aendert,
+    gilt das Laufwerk als wirklich fertig eingehaengt.
+
+    Rueckgabe (v1.53): drei moegliche Zustaende, damit der Aufrufer
+    weiss, ob das Ergebnis vertrauenswuerdig genug zum Zwischen-
+    speichern ist:
+    - True  = mindestens ein USB-Pfad gefunden UND stabil - Ergebnis
+      vollstaendig, cachen ist sicher.
+    - None  = ueberhaupt kein USB im Spiel (Setup ohne USB-Laufwerk) -
+      Ergebnis vollstaendig, cachen ist sicher.
+    - False = ein USB-Mountpunkt wurde gesehen, ist aber bis zum
+      Zeitlimit nicht stabil geworden - das Scan-Ergebnis KOENNTE
+      unvollstaendig sein, cachen ist NICHT sicher (siehe scan_games()).
+
+    Hintergrund: seit v1.48 passiert der Bildschirmwechsel VOR dem
+    Scan (behebt das Haengenbleiben im MiSTer-OSD) - das aendert aber
+    nichts daran, WANN der Scan selbst startet. Laeuft er, bevor ein
+    USB-Laufwerk nach einem Kaltstart wirklich fertig eingehaengt ist,
+    fehlen dessen Spiele im Ergebnis."""
+    usb_candidates = [b for b in GAMES_BASES if "/media/usb" in b]
+    if not usb_candidates:
+        return None
+
+    def snapshot():
+        found = False
+        total = 0
+        for b in usb_candidates:
+            if os.path.isdir(b):
+                found = True
+                try:
+                    total += len(os.listdir(b))
+                except OSError:
+                    pass
+        return found, total
+
+    t0 = time.time()
+    last_total = None
+    stable_streak = 0
+    while True:
+        elapsed = time.time() - t0
+        found, total = snapshot()
+        # Ein VORHANDENER, aber noch LEERER Ordner zaehlt NICHT als
+        # stabil - genau der Fall, wo der Mountpunkt schon existiert,
+        # der Inhalt aber noch nachzieht. Erst echter (nicht-leerer)
+        # Inhalt, der sich zwischen zwei Abfragen nicht mehr aendert,
+        # gilt als fertig.
+        has_content = found and total > 0
+        if elapsed >= max_wait:
+            LOG("_wait_for_usb_stable: Zeitlimit (%.1fs) erreicht, fahre trotzdem fort"
+               % max_wait)
+            # Beim Zeitlimit unterscheiden: ist ueberhaupt ein
+            # Mountpunkt da? Wenn ja, ist er evtl. nur noch nicht
+            # stabil - trotzdem unsicher, also nicht cachen (False).
+            # Wenn gar keiner kam, ist es ein Setup ohne USB (None).
+            return False if found else None
+        if has_content and total == last_total:
+            stable_streak += 1
+            if stable_streak >= 2:
+                LOG("_wait_for_usb_stable: USB-Inhalt stabil (%d Eintraege) nach %.1fs"
+                   % (total, elapsed))
+                return True
+        else:
+            stable_streak = 0
+        if not found and elapsed >= min_wait_if_none:
+            return None
+        last_total = total if has_content else None
+        time.sleep(poll)
+
 def scan_games(force=False, progress_cb=None):
     """ROM-Listen laden - aus dem Cache, wenn er noch passt.
     progress_cb(i, total, name): wird NUR beim tatsaechlichen Scannen
@@ -1891,17 +2153,59 @@ def scan_games(force=False, progress_cb=None):
     normale Boots (Cache passt) bleiben also unveraendert schnell,
     nur der seltene "erster Start"/"ROMs geaendert"-Fall zeigt Fortschritt."""
     sig = _games_signature()
+    cached_sig = None
+    data = None
     if not force:
         try:
             with open(GAMES_CACHE) as f:
                 data = json.load(f)
-            if data.get("sig") == [list(s) for s in sig]:
+            cached_sig = [tuple(s) for s in data["sig"]]
+            if cached_sig == sig:
                 LOG("Spieleliste aus Cache (%d Systeme)"
                     % len(data["cats"]))
                 return _cats_from_json(data["cats"])
         except (OSError, ValueError, KeyError, IndexError, TypeError):
-            pass
+            cached_sig = None
+            data = None
+
+    usb_ready = None
+    waited_already = False
+    # Cache passt (noch) nicht. Haeufigster Grund bei einem KALTSTART:
+    # die USB-Platte war in dem Moment, in dem die Signatur oben
+    # gebildet wurde, schlicht noch nicht gemountet - die aktuelle
+    # Signatur hat dann keine USB-Ordner, der Cache (vom letzten Scan
+    # MIT USB) aber schon. Nur in genau diesem Fall lohnt sich das
+    # Warten VOR einem kompletten Neuscan: erwartet der Cache USB,
+    # sehen wir aber noch keines, dann warten und erneut vergleichen.
+    # SD-only-Systeme (Cache ohne USB) und warme Boots (Signatur passt
+    # sofort) warten hier gar nicht.
+    if (not force and cached_sig is not None
+            and _sig_expects_usb(cached_sig) and not _sig_expects_usb(sig)):
+        LOG("scan_games: Cache erwartet USB, noch nicht gemountet - warte")
+        usb_ready = _wait_for_usb_stable()
+        waited_already = True
+        sig = _games_signature()
+        if cached_sig == sig:
+            LOG("Spieleliste aus Cache nach USB-Mount (%d Systeme)"
+                % len(data["cats"]))
+            return _cats_from_json(data["cats"])
+
+    if not waited_already:
+        usb_ready = _wait_for_usb_stable()
     cats = _scan_games_disk(progress_cb)
+
+    # usb_ready: True = USB sauber eingehaengt, None = gar kein USB im
+    # Spiel (beides -> Ergebnis vollstaendig, cachen ok). False = ein
+    # USB-Mountpunkt war da, wurde aber nicht rechtzeitig stabil - das
+    # Ergebnis KOENNTE unvollstaendig sein. Dann NICHT cachen, sonst
+    # bliebe eine Luecke dauerhaft bestehen (der Cache passt beim
+    # naechsten Boot ja wieder) - ohne Cache scannt der naechste Boot
+    # einfach erneut, bis die Platte einmal rechtzeitig bereit war.
+    if usb_ready is False:
+        LOG("scan_games: USB nicht sicher bereit - Ergebnis wird NICHT gecacht")
+        return cats
+
+    sig = _games_signature()
     try:
         with open(GAMES_CACHE, "w") as f:
             json.dump({"sig": [list(s) for s in sig],
@@ -1910,18 +2214,104 @@ def scan_games(force=False, progress_cb=None):
         pass
     return cats
 
+def _wrap_flat(items_list):
+    """Eine bestehende flache Liste (Scripts/System/Cores/Zuletzt
+    gespielt) als Baumknoten ohne Unterordner einwickeln - macht alle
+    Kategorien einheitlich zu Baumknoten, der Rest des Codes muss
+    dadurch nicht zwischen 'flacher Liste' und 'Baum' unterscheiden."""
+    return {"folders": {}, "items": items_list}
+
+def _empty_node():
+    """Leerer Baumknoten: {'folders': {Name: Knoten, ...}, 'items':
+    [(label,kind,arg), ...]}. Wird fuer ALLE Kategorien einheitlich
+    genutzt - auch fuer Scripts/System/Cores/Zuletzt-gespielt, die
+    einfach 'folders'={} bekommen (flach, wie bisher)."""
+    return {"folders": {}, "items": []}
+
+def _merge_node(dst, src):
+    """src-Knoten in dst hineinmischen - noetig, falls derselbe
+    Systemordner (z.B. 'SNES') von mehreren GAMES_BASES aus existiert
+    (SD-Karte UND ein USB-Laufwerk)."""
+    for name, sub in src["folders"].items():
+        if name in dst["folders"]:
+            _merge_node(dst["folders"][name], sub)
+        else:
+            dst["folders"][name] = sub
+    dst["items"].extend(src["items"])
+
+def _dedupe_items(raw_items):
+    """Pro kanonischem Namen (ohne Region-/Versions-Tags) nur die
+    Kopie mit der besten Region behalten (Germany > Europe > World >
+    USA > Japan). Wird PRO ORDNER angewendet (nicht global ueber das
+    ganze System), damit typische nach Anfangsbuchstabe/Region
+    aufgeteilte Sammlungen nicht faelschlich ueber Ordnergrenzen
+    hinweg zusammengemischt werden."""
+    best = {}
+    for entry in raw_items:
+        key = _canonical_key(entry[0])
+        rank = _region_rank(entry[0])
+        cur = best.get(key)
+        if cur is None or rank < cur[0]:
+            best[key] = (rank, entry)
+    items = [entry for _rank, entry in best.values()]
+    items.sort(key=lambda t: t[0].lower())
+    return items
+
+def _node_count(node):
+    """Rekursive Gesamtzahl aller Eintraege (inkl. aller Unterordner)
+    fuer die Anzeige in der Kategorienliste."""
+    n = len(node["items"])
+    for sub in node["folders"].values():
+        n += _node_count(sub)
+    return n
+
+def _scan_folder_tree(path, syskey, rbf, extmap):
+    """Rekursiv EINEN Ordner scannen, gibt einen Baumknoten zurueck -
+    beliebig tief verschachtelt, spiegelt die eigene Ordnerstruktur/
+    Sortierung 1:1 wider. Bekannte Boot-/Testdateien, Beta/Proto/Hack-
+    Tags und rein japanische Titel werden wie bisher ausgefiltert."""
+    node = _empty_node()
+    try:
+        entries = sorted(os.listdir(path), key=str.lower)
+    except OSError:
+        return node
+    raw_items = []
+    for entry in entries:
+        if entry.startswith("."):
+            continue
+        full = os.path.join(path, entry)
+        if os.path.isdir(full):
+            sub = _scan_folder_tree(full, syskey, rbf, extmap)
+            if sub["folders"] or sub["items"]:
+                node["folders"][entry] = sub
+        else:
+            name, ext = os.path.splitext(entry)
+            ext = ext.lower()
+            if name.lower() in IGNORE_ROM_BASENAMES:
+                continue
+            if _is_junk(name):
+                continue
+            if _is_japan_only(name):
+                continue
+            if ext in extmap:
+                raw_items.append((name, "game",
+                                  (full, ext, syskey, rbf, extmap[ext])))
+    node["items"] = _dedupe_items(raw_items)
+    return node
+
 def _scan_games_disk(progress_cb=None):
     """Fuer jedes bekannte System die ROMs einsammeln. Rueckgabe: Liste
-    (Anzeigename, Items, Systemkey).
+    (Anzeigename, Baumknoten, Systemkey) - der Baumknoten spiegelt die
+    eigene Ordnerstruktur 1:1 wider (beliebig tief verschachtelt),
+    statt wie bisher alles in eine flache Liste zu quetschen. Das
+    Frontend zeigt Unterordner als eigene Eintraege, die man oeffnen
+    kann - genau wie auf dem Datentraeger abgelegt.
 
-    Geht beliebig tief (keine Ordnerebenen-Begrenzung mehr) - die
-    eigene Ordnerstruktur/Sortierung bleibt dabei komplett unangetastet.
     Bekannte Boot-/Testdateien (IGNORE_ROM_BASENAMES) sowie Beta/Proto/
     Demo/Hack/Bad-Dump-Tags (JUNK_TAGS) werden ausgefiltert. Mehrfach-
-    Regionen desselben Spiels ("Spiel (USA)", "Spiel (Europe)", ...)
-    werden zu EINEM Eintrag zusammengefasst (beste Region gewinnt,
-    REGION_PRIORITY) - bei sehr grossen, mehrfach-region-vollstaendigen
-    Sammlungen kann das die Listengroesse spuerbar reduzieren."""
+    Regionen desselben Spiels werden INNERHALB jedes einzelnen Ordners
+    zu EINEM Eintrag zusammengefasst (beste Region gewinnt,
+    REGION_PRIORITY)."""
     cats = []
     total_sys = len(GAME_SYSTEMS)
     for sys_idx, (disp, syskey, folders, rbf, extmap) in enumerate(GAME_SYSTEMS):
@@ -1930,7 +2320,7 @@ def _scan_games_disk(progress_cb=None):
                 progress_cb(sys_idx, total_sys, disp)
             except Exception:
                 pass
-        raw = []
+        sys_node = _empty_node()
         seen_roots = set()
         for base in GAMES_BASES:
             if not os.path.isdir(base):
@@ -1941,35 +2331,10 @@ def _scan_games_disk(progress_cb=None):
                 if not os.path.isdir(root) or real in seen_roots:
                     continue
                 seen_roots.add(real)
-                for dirpath, dirnames, filenames in os.walk(root):
-                    dirnames[:] = [d for d in dirnames
-                                   if not d.startswith(".")]
-                    for fn in filenames:
-                        name = os.path.splitext(fn)[0]
-                        if name.lower() in IGNORE_ROM_BASENAMES:
-                            continue
-                        if _is_junk(name):
-                            continue
-                        if _is_japan_only(name):
-                            continue
-                        ext = os.path.splitext(fn)[1].lower()
-                        if ext in extmap:
-                            raw.append((name, "game",
-                                        (os.path.join(dirpath, fn), ext,
-                                         syskey, rbf, extmap[ext])))
-        if raw:
-            # Pro kanonischem Namen (ohne Region-/Versions-Tags) nur
-            # die Kopie mit der besten Region behalten.
-            best = {}
-            for entry in raw:
-                key = _canonical_key(entry[0])
-                rank = _region_rank(entry[0])
-                cur = best.get(key)
-                if cur is None or rank < cur[0]:
-                    best[key] = (rank, entry)
-            items = [entry for _rank, entry in best.values()]
-            items.sort(key=lambda t: t[0].lower())
-            cats.append((disp, items, syskey))
+                sub_node = _scan_folder_tree(root, syskey, rbf, extmap)
+                _merge_node(sys_node, sub_node)
+        if sys_node["folders"] or sys_node["items"]:
+            cats.append((disp, sys_node, syskey))
     return cats
 
 def write_mgl(rbf, rom_path, delay, ftype, index):
@@ -2325,7 +2690,40 @@ def system_items(music_enabled=None):
         (t("sys_quit"),                              "quit",      None),
     ]
 
-def filter_curated(name, items, syskey):
+def _node_has_any_meta(node, syskey):
+    """Rekursiv prüfen, ob IRGENDWO im Baum ein Eintrag Metadaten hat -
+    entscheidet, ob das Sicherheitsnetz (kein Filtern bei komplett
+    fehlender Datenbank) greift."""
+    for it in node["items"]:
+        label, kind, arg = it
+        meta = mra_meta(arg) if (syskey == "ARCADE" and kind == "core") \
+              else ({} if syskey == "ARCADE" else get_meta(syskey, label))
+        if meta:
+            return True
+    for sub in node["folders"].values():
+        if _node_has_any_meta(sub, syskey):
+            return True
+    return False
+
+def _filter_node_curated(node, syskey):
+    """Rekursiv jeden Knoten auf katalogisierte Eintraege einschraenken.
+    Ordner, die dadurch komplett leer werden (keine Items, keine
+    nicht-leeren Unterordner), fallen ganz weg."""
+    kept_items = []
+    for it in node["items"]:
+        label, kind, arg = it
+        meta = mra_meta(arg) if (syskey == "ARCADE" and kind == "core") \
+              else ({} if syskey == "ARCADE" else get_meta(syskey, label))
+        if meta:
+            kept_items.append(it)
+    kept_folders = {}
+    for fname, sub in node["folders"].items():
+        filtered_sub = _filter_node_curated(sub, syskey)
+        if filtered_sub["folders"] or filtered_sub["items"]:
+            kept_folders[fname] = filtered_sub
+    return {"folders": kept_folders, "items": kept_items}
+
+def filter_curated(name, node, syskey):
     """Wenn der 'Nur katalogisierte Spiele'-Schalter aktiv ist (System-
     Menue), auf Eintraege einschraenken, die einen Treffer in der
     libretro-Datenbank haben (von mister_gameinfo.py geladen,
@@ -2333,28 +2731,18 @@ def filter_curated(name, items, syskey):
     die "Source of Authority", die Hyperspin frueher mit seinen
     XML-Datenbanken pro System bereitgestellt hat: nur tatsaechlich
     katalogisierte, offiziell erschienene Spiele, keine Hacks/Homebrew/
-    unbekannten Dumps.
+    unbekannten Dumps. Arbeitet rekursiv ueber die komplette
+    Ordnerstruktur - leer gewordene Unterordner fallen weg.
 
     Sicherheitsnetz: Hat ein System UEBERHAUPT keine Metadaten (z.B.
     weil mister_gameinfo.py dafuer noch nie gelaufen ist), wird NICHT
     gefiltert - sonst wuerde die Liste faelschlich komplett leer
     werden, nur weil noch keine Datenbank geladen wurde."""
-    if not syskey or not items:
-        return (name, items, syskey)
-    kept = []
-    any_meta = False
-    for it in items:
-        label, kind, arg = it
-        if syskey == "ARCADE":
-            meta = mra_meta(arg) if kind == "core" else {}
-        else:
-            meta = get_meta(syskey, label)
-        if meta:
-            any_meta = True
-            kept.append(it)
-    if not any_meta:
-        return (name, items, syskey)
-    return (name, kept, syskey)
+    if not syskey or not (node["folders"] or node["items"]):
+        return (name, node, syskey)
+    if not _node_has_any_meta(node, syskey):
+        return (name, node, syskey)
+    return (name, _filter_node_curated(node, syskey), syskey)
 
 CURATED_FLAG = "/media/fat/frontend/curated_only"
 
@@ -2423,12 +2811,34 @@ class Frontend:
     def __init__(self):
         self.fb = Framebuffer()
         self.inp = InputManager()
+        # WICHTIG: Erst auf unseren eigenen Bildschirm umschalten (F9),
+        # DANACH erst den (potenziell langsamen) Scan starten - vorher
+        # passierte das in umgekehrter Reihenfolge (in run(), also nach
+        # __init__ komplett durchgelaufen war). Wenn build_categories()
+        # aus irgendeinem Grund laenger braucht (z.B. ein USB-Laufwerk,
+        # das nach laengerem Ausschalten erst noch verzoegert bereit
+        # wird, oder ein tatsaechlicher Neu-Scan), blieb der Bildschirm
+        # bis dahin im MiSTer-OSD haengen - Musik lief bereits (die
+        # startet noch frueher), das eigentliche Frontend blieb aber
+        # unsichtbar. Jetzt sieht man sofort unseren Bildschirm samt
+        # Lade-Fortschrittsbalken (siehe _draw_scan_progress()), auch
+        # wenn der Scan mal laenger dauert.
+        self.enter_console_mode()
+        self.set_cursor_blink(False)
+        self.inp.grab(True)
+        self.fb.clear((16, 18, 24))
+        self.fb.flip()
         self.music = MusicPlayer()
         self.build_categories()
         self.page = 0              # 0 = Kategorien-Menue, 1 = Kategorie-Ansicht
         self.cat_i = 0
         self.cat_scroll = 0
         self.item_i = self.scroll = 0
+        # Wie tief man gerade in die Ordnerstruktur der aktuellen
+        # Kategorie navigiert ist (Liste von Ordnernamen, leer = auf
+        # der obersten Ebene). Wird beim Wechsel der Kategorie und
+        # beim Verlassen zurueck zu Seite 0 geleert.
+        self.nav_path = []
 
         # Optionaler Stream-Overlay-Server (nur wenn Freigabe-Datei da ist)
         self.stream = None
@@ -2519,6 +2929,11 @@ class Frontend:
 
     def build_categories(self, force_rescan=False):
         # Reihenfolge: Spiele-Systeme, dann Core-Ordner, Scripts, System
+        # ALLE Kategorien werden einheitlich als Baumknoten dargestellt
+        # ({"folders":{...}, "items":[...]}) - Spiele-Systeme koennen
+        # echte Unterordner haben, alle anderen bekommen einfach
+        # folders={} (flach, wie bisher) - dadurch kann der Rest des
+        # Codes (Rendering, Navigation) alle Kategorien gleich behandeln.
         self.cats = scan_games(force=force_rescan,
                                progress_cb=self._draw_scan_progress)
         recent_items = load_recent()
@@ -2528,12 +2943,12 @@ class Frontend:
             # Systeme mischt - jeder Eintrag traegt seinen eigenen
             # Systemkey in arg[2], der beim Zeichnen bevorzugt wird
             # (siehe _item_syskey()).
-            self.cats.insert(0, (t("recent_cat"), recent_items, None))
-        self.cats.extend(scan_cores())
+            self.cats.insert(0, (t("recent_cat"), _wrap_flat(recent_items), None))
+        self.cats.extend((n, _wrap_flat(it), sk) for n, it, sk in scan_cores())
         scripts = scan_scripts()
         if scripts:
-            self.cats.append(("Scripts", scripts, None))
-        self.cats.append(("System", system_items(self.music.enabled), None))
+            self.cats.append(("Scripts", _wrap_flat(scripts), None))
+        self.cats.append(("System", _wrap_flat(system_items(self.music.enabled)), None))
         if curated_only_active():
             # filter_curated() laesst Kategorien ohne syskey (Scripts,
             # System, Core-Ordner) unveraendert - nur echte Spiele-
@@ -2541,11 +2956,19 @@ class Frontend:
             self.cats = [filter_curated(n, it, sk) for n, it, sk in self.cats]
 
     def _go_back_or_confirm_quit(self):
-        """ESC/B (und der 3x-Select-Kurzbefehl): auf Seite 1 einfach
-        eine Ebene zurueck; im Hauptmenue (Seite 0) stattdessen die
-        Beenden-Bestaetigung einblenden statt sofort zu schliessen."""
+        """ESC/B (und der 3x-Select-Kurzbefehl): auf Seite 1 zuerst
+        eine Ordnerebene hoch (falls man in einem Unterordner ist),
+        erst danach zurueck zu den Kategorien; im Hauptmenue (Seite 0)
+        stattdessen die Beenden-Bestaetigung einblenden statt sofort
+        zu schliessen."""
         if self.page == 1:
-            self.page = 0
+            if self.nav_path:
+                self.nav_path.pop()
+                self.item_i = 0
+                self.scroll = 0
+                self.marquee_reset()
+            else:
+                self.page = 0
         else:
             self.confirm_quit = True
             self.confirm_choice = 1    # Nein vorausgewaehlt
@@ -2560,14 +2983,35 @@ class Frontend:
 
     def _enter_category(self):
         """Von Seite 0 (Kategorien-Menue) in Seite 1 (Liste der
-        aktuellen Kategorie) wechseln."""
-        _name, items, _sk = self.cats[self.cat_i]
-        if not items:
+        aktuellen Kategorie, oberste Ordnerebene) wechseln."""
+        _name, node, _sk = self.cats[self.cat_i]
+        if not node["folders"] and not node["items"]:
             return
         self.page = 1
+        self.nav_path = []
         self.item_i = 0
         self.scroll = 0
         self.marquee_reset()
+
+    def _current_node(self):
+        """Baumknoten, der der aktuellen Navigationstiefe (nav_path)
+        innerhalb der gewaehlten Kategorie entspricht."""
+        node = self.cats[self.cat_i][1]
+        for folder_name in self.nav_path:
+            node = node["folders"].get(folder_name, _empty_node())
+        return node
+
+    def _display_items(self):
+        """Aktuell anzuzeigende flache Liste fuer Seite 1: erst
+        Unterordner (kind='folder', anklickbar zum Reinwechseln), dann
+        die Eintraege des aktuellen Knotens - alphabetisch sortiert
+        innerhalb jeder Gruppe. Ordner-Eintraege tragen als arg den
+        reinen Ordnernamen (zum Nachschlagen beim Reinwechseln)."""
+        node = self._current_node()
+        folder_names = sorted(node["folders"].keys(), key=str.lower)
+        folder_entries = [(fname + "/", "folder", fname)
+                          for fname in folder_names]
+        return folder_entries + node["items"]
 
     # ------------------------------------------------------------------
     # Adaptives Layout: alles wird aus der Framebuffer-Hoehe abgeleitet.
@@ -2666,9 +3110,9 @@ class Frontend:
         end = min(self.cat_scroll + visible, len(self.cats))
 
         list_right = L["list_right"]
-        maxc = max(4, (list_right - ox - 40 * s) // (8 * s))
+        maxc = max(4, (list_right - ox) // (8 * s))
         for row, i in enumerate(range(self.cat_scroll, end)):
-            name, items, _sk = self.cats[i]
+            name, node, _sk = self.cats[i]
             y = y0 + row * rowh
             sel = (i == self.cat_i)
             accent = accent_for(_sk)
@@ -2684,10 +3128,6 @@ class Frontend:
                                         C_BG, accent, a, thickness=2 * s)
             label = name if len(name) <= maxc else name[:max(1, maxc-1)] + "~"
             fb.text(ox, y, label, s, C_TITLE if sel else C_TEXT, bg)
-            cnt = str(len(items))
-            ccw = len(cnt) * 8 * s
-            fb.text(list_right - ccw, y + 4 * s, cnt,
-                    s, C_TEXT if sel else C_DIM, bg)
 
         # Artbox rechts: Logo/Cover des gerade markierten Systems
         self._draw_cat_artbox(L)
@@ -2741,7 +3181,8 @@ class Frontend:
     def draw_page_items(self, message=None, flip=True):
         fb = self.fb
         W, H = fb.width, fb.height
-        name, items, syskey = self.cats[self.cat_i]
+        name, _root_node, syskey = self.cats[self.cat_i]
+        items = self._display_items()
         total = len(items)
         # Bei "Zuletzt gespielt" ist der Kategorie-Systemkey None (die
         # Liste mischt mehrere Systeme) - trotzdem soll die Boxart-
@@ -2763,7 +3204,10 @@ class Frontend:
         else:
             fb.clear(C_BG)
 
-        header = name.upper()
+        # Breadcrumb: Kategorie + aktueller Ordnerpfad (falls in einen
+        # Unterordner gewechselt wurde), z.B. "SNES / 1 US-A-E".
+        header = name if not self.nav_path else name + " / " + " / ".join(self.nav_path)
+        header = header.upper()
         header_maxc = max(4, (list_right - ox) // (16 * s))
         if len(header) > header_maxc:
             header = header[:max(1, header_maxc - 1)] + "~"
@@ -3195,6 +3639,16 @@ class Frontend:
         fb = self.fb
         H = fb.height
         name = item[0]
+        # Bei einem Ordner-Eintrag (kind='folder') fuer die Cover-/
+        # Metadaten-Suche den REINEN Ordnernamen nutzen (ohne den
+        # anzeigenden Schraegstrich-Suffix aus item[0]) - wichtig z.B.
+        # bei PSX-Sammlungen, wo jedes Spiel einen eigenen Unterordner
+        # mit seinen Disc-Dateien hat: der Ordnername entspricht dann
+        # dem Spieletitel, und Cover/Infos lassen sich genauso finden
+        # wie bei einem normalen Spiele-Eintrag. Der Titel zeigt
+        # weiterhin den Schraegstrich, damit klar bleibt, dass es sich
+        # um einen anklickbaren Ordner handelt.
+        lookup_name = item[2] if item[1] == "folder" else name
         if w < 20 or h < 20:
             return
 
@@ -3204,9 +3658,9 @@ class Frontend:
         maxc = max(4, avail_w // (8 * s))
 
         if syskey == "ARCADE":
-            meta = mra_meta(item[2])
+            meta = mra_meta(item[2]) if item[1] == "core" else {}
         else:
-            meta = get_meta(syskey, name)
+            meta = get_meta(syskey, lookup_name)
 
         title = display_name(name)
         title_lines = self._wrap(title, maxc, max_lines=3)
@@ -3247,10 +3701,10 @@ class Frontend:
         accent = accent_for(syskey)
         art = None
         if H >= 720:
-            hd = os.path.join(ART_HD, syskey, name + ".art")
+            hd = os.path.join(ART_HD, syskey, lookup_name + ".art")
             art = ART.get_scaled(hd, avail_w, cover_h)
         if art is None:
-            art = ART.get_scaled(art_path(syskey, name), avail_w, cover_h)
+            art = ART.get_scaled(art_path(syskey, lookup_name), avail_w, cover_h)
         if art:
             aw, ah, pix = art
             ax = x0 + max(0, (avail_w - aw) // 2)
@@ -3490,7 +3944,8 @@ class Frontend:
 
     def stream_state(self):
         """Aktuelle Auswahl als Dict fuer das Web-Overlay."""
-        name, items, syskey = self.cats[self.cat_i]
+        name, _root_node, syskey = self.cats[self.cat_i]
+        items = self._display_items() if self.page == 1 else []
         nowplaying = (self.music.current_track_name()
                       if hasattr(self, "music") else None)
 
@@ -3621,9 +4076,8 @@ class Frontend:
             pass
 
     def run(self):
-        self.enter_console_mode()
-        self.set_cursor_blink(False)
-        self.inp.grab(True)
+        # enter_console_mode()/set_cursor_blink()/inp.grab() passieren
+        # jetzt schon in __init__(), VOR dem Scan - siehe Kommentar dort.
         self.play_boot_animation()
         self.draw()
         try:
@@ -3652,7 +4106,8 @@ class Frontend:
                     self.draw()
                     continue
 
-                name, items, _syskey = self.cats[self.cat_i]
+                name, _root_node, _syskey = self.cats[self.cat_i]
+                items = self._display_items() if self.page == 1 else []
 
                 # Turbo-Sprung hoch/runter: je laenger gehalten, desto
                 # groesser die Schrittweite (1 -> 2 -> 4 -> 10). Das
@@ -3759,7 +4214,12 @@ class Frontend:
                         self._enter_category()
                     else:
                         label, kind, arg = items[self.item_i]
-                        if kind == "core":
+                        if kind == "folder":
+                            self.nav_path.append(arg)
+                            self.item_i = 0
+                            self.scroll = 0
+                            self.marquee_reset()
+                        elif kind == "core":
                             self.run_core(arg)
                             continue
                         elif kind == "game":
@@ -3847,10 +4307,21 @@ def _handle_sigterm(signum, frame):
     Verhalten, das update_frontend.sh/install.sh beim Neustarten einer
     laufenden Instanz ausgeloest hat. SystemExit sorgt dafuer, dass die
     bestehenden try/finally-Bloecke ganz normal durchlaufen werden."""
-    LOG("SIGTERM empfangen - fahre sauber herunter")
+    LOG("Signal %d empfangen - fahre sauber herunter" % signum)
     raise SystemExit(0)
 
 signal.signal(signal.SIGTERM, _handle_sigterm)
+try:
+    # SIGHUP: wird geschickt, wenn die kontrollierende SSH-Sitzung
+    # getrennt wird, WAEHREND das Frontend manuell im Vordergrund laeuft
+    # (genau der in der README empfohlene Testweg: "python3 frontend.py"
+    # direkt per SSH, ohne es in den Hintergrund zu legen). Ohne diesen
+    # Handler traf das Frontend derselbe Fehler wie bei SIGTERM vor
+    # v1.37 - Bildschirm bleibt eingefroren, kein Aufraeumen. Nutzt
+    # denselben, bereits getesteten Handler wie SIGTERM.
+    signal.signal(signal.SIGHUP, _handle_sigterm)
+except (AttributeError, ValueError, OSError):
+    pass   # SIGHUP nicht verfuegbar (z.B. andere Plattform) - kein Problem
 
 if __name__ == "__main__":
     LOG("==== Frontend-Start ====")
