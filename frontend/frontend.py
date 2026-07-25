@@ -1,9 +1,66 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.56
+MiSTer Custom Frontend - v1.58
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.58 (Favoriten-Liste):
+  - Eigene, bewusst kuratierte Auswahl - unabhaengig von "Zuletzt
+    gespielt" (automatische Verlaufsliste). F8 (Tastatur) bzw. L2
+    (Gamepad, neue Konstanten BTN_TL2/BTN_TR2) schaltet den
+    Favoritenstatus des markierten Spiels um, nur bei echten Spiele-
+    Eintraegen. Kleines "*" vor dem Namen in der Liste zeigt bereits
+    favorisierte Spiele.
+  - Neue Kategorie "Favoriten" (direkt nach "Zuletzt gespielt"),
+    erscheint/verschwindet automatisch je nachdem ob Favoriten
+    vorhanden sind - OHNE build_categories() aufzurufen (das wuerde
+    unnoetig einen Scan/Cache-Check aller Spiele-Systeme anstossen,
+    nur um ein einzelnes Flag zu aktualisieren). Neue schlanke
+    _sync_favorites_category(): haelt die aktuell betrachtete
+    Kategorie ueber Name+Systemkey identifiziert, damit sich die
+    Auswahl nicht verschiebt, wenn Favoriten weiter oben eingefuegt
+    wird oder verschwindet.
+  - WICHTIG (Performance-Vorsicht): is_favorite() liest bei jedem
+    Aufruf die Datei - das waere im Zeichenpfad (draw_list_row(),
+    bis zu 100x/Sekunde auf CRT) ein echtes Performance-Problem
+    gewesen. Stattdessen self._favorites_set (Set im Speicher, O(1)-
+    Abfrage), nur bei tatsaechlichen Aenderungen aktualisiert, nie
+    erneut aus der Datei gelesen.
+  - Getestet: Speicherfunktionen isoliert (Hinzufuegen/Entfernen,
+    mehrere Favoriten parallel), _sync_favorites_category() mit allen
+    kritischen Grenzfaellen (Favorit hinzufuegen waehrend man eine
+    ANDERE Kategorie betrachtet - Position bleibt korrekt; einen von
+    mehreren Favoriten entfernen waehrend man Favoriten betrachtet -
+    bleibt dort; LETZTEN Favoriten entfernen waehrend man Favoriten
+    betrachtet - wechselt korrekt zurueck zu Seite 0), visuelle
+    Markierung per Differenzvergleich bestaetigt, 48 Kombinationen
+    kompletter Regressionstest.
+
+Neu in v1.57 (Attract-Modus/Bildschirmschoner - Code bereits
+vorhanden, jetzt gruendlich geprueft und dokumentiert):
+  - Der komplette Attract-Modus (_attract_games_pool(), draw_attract(),
+    _enter_attract_mode(), _advance_attract(), next_action()-
+    Integration, System-Menue-Eintrag zum An/Aus-Schalten) war im Code
+    bereits vollstaendig und sauber umgesetzt, aber nirgends
+    dokumentiert und ohne erkennbaren eigenen Test-Nachweis. Da ich
+    keine eigene Erinnerung an diese Arbeit hatte, wurde der gesamte
+    Mechanismus wie neuer Fremdcode gruendlich nachgeprueft, statt ihm
+    blind zu vertrauen.
+  - Getestet: attract_enabled()/toggle_attract_mode() (Standard: AN),
+    _attract_games_pool() sammelt rekursiv ueber Ordnerstrukturen,
+    schliesst syskey=None-Kategorien (Zuletzt gespielt/Scripts/System)
+    korrekt aus, draw_attract() mit und ohne ausgewaehltes Spiel auf
+    CRT und HDMI ohne Absturz, Start bei Leerlauf, Wechsel zwischen
+    mehreren Spielen (vermeidet Wiederholung), UND der wichtige
+    Grenzfall: startet korrekt NICHT bei komplett leerer Sammlung
+    (kein Absturz, Leerlauf-Uhr wird stattdessen zurueckgesetzt).
+    48 Kombinationen kompletter Regressionstest weiterhin bestanden.
+  - Verhalten: nach 45 Sekunden ohne Eingabe erscheint automatisch ein
+    zufaelliges Spiel grossflaechig mit Cover, wechselt alle 6 Sekunden
+    weiter - jede Taste beendet es sofort wieder (wird NICHT zusaetzlich
+    als normale Navigation verarbeitet). Ueber System-Menue an/aus
+    schaltbar, Standard ist AN.
 
 Neu in v1.56 (Arcade-Boxart - NEU, kein Code in frontend.py selbst
 geaendert):
@@ -977,6 +1034,7 @@ MGL_TMP     = "/tmp/frontend_launch.mgl"
 GAMES_CACHE = "/media/fat/frontend/games_cache.json"
 RECENT_FILE = "/media/fat/frontend/recently_played.json"
 RECENT_MAX = 15
+FAVORITES_FILE = "/media/fat/frontend/favorites.json"
 MISTER_CMD  = "/dev/MiSTer_cmd"
 MUSIC_DIR   = "/media/fat/music"
 MUSIC_ENABLED_FILE = "/media/fat/frontend/music_enabled"
@@ -1299,11 +1357,12 @@ EVIOCGRAB = 0x40044590
 EV_SYN, EV_KEY, EV_ABS = 0, 1, 3
 KEY_ESC, KEY_ENTER = 1, 28
 KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT = 103, 108, 105, 106
-KEY_F9, KEY_F10, KEY_F11, KEY_F12 = 67, 68, 87, 88
+KEY_F8, KEY_F9, KEY_F10, KEY_F11, KEY_F12 = 66, 67, 68, 87, 88
 # Gamepad-Buttons (Linux-Standardcodes)
 BTN_A, BTN_B, BTN_X, BTN_Y = 304, 305, 307, 308
 KEY_Y = 21                   # Y key on keyboard
 BTN_TL, BTN_TR = 310, 311
+BTN_TL2, BTN_TR2 = 312, 313  # zusaetzliche Schultertasten (L2/R2), sofern vorhanden
 BTN_SELECT, BTN_START, BTN_MODE = 314, 315, 316
 BTN_DPAD_UP, BTN_DPAD_DOWN, BTN_DPAD_LEFT, BTN_DPAD_RIGHT = 544, 545, 546, 547
 # Achsen
@@ -1332,6 +1391,7 @@ KEYMAP = {
     KEY_UP: "up", KEY_DOWN: "down", KEY_LEFT: "left", KEY_RIGHT: "right",
     KEY_ENTER: "ok", KEY_ESC: "exit",
     KEY_F12: "osd", KEY_F10: "back_fe", KEY_F9: None, KEY_F11: "random",
+    KEY_F8: "favorite", BTN_TL2: "favorite",
     BTN_A: "ok", BTN_START: "ok",
     BTN_B: "back", BTN_X: "back_fe",
     BTN_Y: "music_next", KEY_Y: "music_next",
@@ -2136,6 +2196,47 @@ def record_recent(label, arg):
     except OSError:
         pass
 
+def _load_favorites_raw():
+    try:
+        with open(FAVORITES_FILE) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return []
+
+def load_favorites():
+    """Favoriten laden - selbes (label, kind, arg)-Format wie
+    load_recent(), direkt als eigene Kategorie nutzbar. Reihenfolge:
+    zuletzt hinzugefuegt zuerst (wie bei 'Zuletzt gespielt'), aber OHNE
+    Obergrenze - Favoriten sind eine bewusste, dauerhafte Auswahl,
+    keine automatische Verlaufsliste."""
+    return [(e["label"], "game", e["arg"]) for e in _load_favorites_raw()
+            if "label" in e and "arg" in e]
+
+def is_favorite(label):
+    """Ob ein Spiel (per Name) aktuell als Favorit markiert ist - fuer
+    die kleine Markierung in der Liste."""
+    return any(e.get("label") == label for e in _load_favorites_raw())
+
+def toggle_favorite(label, arg):
+    """Favoritenstatus eines Spiels umschalten (per Name erkannt,
+    genau wie bei 'Zuletzt gespielt' - aus demselben Grund: nach dem
+    Speichern sind es Listen, kein direkter Tupel-Vergleich moeglich).
+    Rueckgabe: True, wenn jetzt Favorit ist, sonst False."""
+    data = _load_favorites_raw()
+    if any(e.get("label") == label for e in data):
+        data = [e for e in data if e.get("label") != label]
+        now_fav = False
+    else:
+        data.insert(0, {"label": label, "arg": list(arg)})
+        now_fav = True
+    try:
+        os.makedirs(os.path.dirname(FAVORITES_FILE), exist_ok=True)
+        with open(FAVORITES_FILE, "w") as f:
+            json.dump(data, f)
+    except OSError:
+        pass
+    return now_fav
+
 def _wait_for_usb_stable(max_wait=10.0, poll=0.5, min_wait_if_none=3.0):
     """Kurz warten, falls USB-Laufwerke gerade erst einhaengen - nur
     relevant fuer den (seltenen) tatsaechlichen Scan-Fall, verzoegert
@@ -2697,8 +2798,17 @@ TRANSLATIONS = {
                         "de": "Kuratierte Liste (nur DB-Treffer): AN -> ausschalten"},
     "sys_curated_off": {"en": "Curated list (DB-matched only): OFF -> turn on",
                         "de": "Kuratierte Liste (nur DB-Treffer): AUS -> einschalten"},
+    "sys_attract_on":  {"en": "Attract mode (screensaver): ON -> turn off",
+                        "de": "Attract-Modus (Bildschirmschoner): AN -> ausschalten"},
+    "sys_attract_off": {"en": "Attract mode (screensaver): OFF -> turn on",
+                        "de": "Attract-Modus (Bildschirmschoner): AUS -> einschalten"},
+    "attract_hint": {"en": "Press any button to continue",
+                     "de": "Beliebige Taste zum Fortfahren"},
     "scanning":  {"en": "Scanning: %s", "de": "Durchsuche: %s"},
     "recent_cat": {"en": "Recently Played", "de": "Zuletzt gespielt"},
+    "favorites_cat": {"en": "Favorites", "de": "Favoriten"},
+    "favorite_added": {"en": "Added to favorites", "de": "Zu Favoriten hinzugefuegt"},
+    "favorite_removed": {"en": "Removed from favorites", "de": "Aus Favoriten entfernt"},
     "sys_rescan":      {"en": "Rescan game list", "de": "Spieleliste neu einlesen"},
     "sys_redraw":      {"en": "Redraw display",   "de": "Anzeige neu aufbauen"},
     "sys_reboot":      {"en": "Restart MiSTer",   "de": "MiSTer neu starten"},
@@ -2713,6 +2823,7 @@ TRANSLATIONS = {
     "remap_action_back":   {"en": "Back",   "de": "Zurueck"},
     "remap_action_osd":    {"en": "Open MiSTer menu", "de": "MiSTer-Menue oeffnen"},
     "remap_action_random": {"en": "Random game", "de": "Zufaelliges Spiel"},
+    "remap_action_favorite": {"en": "Toggle favorite", "de": "Favorit umschalten"},
     "remap_done":      {"en": "Button mapping saved!",
                         "de": "Tastenbelegung gespeichert!"},
     "remap_cancelled": {"en": "Cancelled - keeping previous mapping",
@@ -2762,6 +2873,8 @@ def system_items(music_enabled=None):
     music_label = t("sys_music_on") if music_enabled else t("sys_music_off")
     curated_label = t("sys_curated_on") if curated_only_active() \
         else t("sys_curated_off")
+    attract_label = t("sys_attract_on") if attract_enabled() \
+        else t("sys_attract_off")
     return [
         (t("sys_osd"),                             "osd",       None),
         (video + t("sys_video_suffix"),             "crtmenu",   None),
@@ -2770,6 +2883,7 @@ def system_items(music_enabled=None):
         (t("sys_configure_buttons"),                 "remap",     None),
         (t("sys_reset_buttons"),                     "remap_reset", None),
         (curated_label,                              "curated",   None),
+        (attract_label,                               "attract",   None),
         (t("sys_rescan"),                            "rescan",    None),
         (t("sys_redraw"),                            "redraw",    None),
         (t("sys_reboot"),                            "reboot",    None),
@@ -2831,6 +2945,31 @@ def filter_curated(name, node, syskey):
     return (name, _filter_node_curated(node, syskey), syskey)
 
 CURATED_FLAG = "/media/fat/frontend/curated_only"
+ATTRACT_DISABLED_FLAG = "/media/fat/frontend/attract_disabled"
+ATTRACT_IDLE_SECONDS = 45   # so lange ohne Eingabe, bevor der Attract-
+                            # Modus (Bildschirmschoner) automatisch startet
+ATTRACT_CHANGE_SECONDS = 6  # wie lange ein Spiel im Attract-Modus gezeigt wird
+
+def attract_enabled():
+    """Standardmaessig AN (im Gegensatz zu curated_only_active(), das
+    standardmaessig AUS ist) - die Datei bedeutet hier 'abgeschaltet',
+    nicht 'aktiviert'."""
+    return not os.path.exists(ATTRACT_DISABLED_FLAG)
+
+def toggle_attract_mode():
+    if os.path.exists(ATTRACT_DISABLED_FLAG):
+        try:
+            os.remove(ATTRACT_DISABLED_FLAG)
+        except OSError:
+            pass
+    else:
+        try:
+            dirname = os.path.dirname(ATTRACT_DISABLED_FLAG)
+            if dirname:
+                os.makedirs(dirname, exist_ok=True)
+            open(ATTRACT_DISABLED_FLAG, "w").close()
+        except OSError:
+            pass
 
 def curated_only_active():
     return os.path.exists(CURATED_FLAG)
@@ -2935,6 +3074,25 @@ class Frontend:
         self._net_status = False
         self._net_check_next = 0.0
 
+        # Favoriten-Namen im Speicher gehalten (Set fuer O(1)-Abfrage
+        # beim Zeichnen) - NUR bei tatsaechlichen Aenderungen ueber
+        # toggle_favorite() aktualisiert, nie durch erneutes Einlesen
+        # der Datei bei jedem Neuzeichnen (das waere bei bis zu
+        # 100 Bildern/Sekunde auf CRT ein spuerbares Performance-
+        # Problem - genau das haben wir an anderer Stelle in diesem
+        # Projekt schon mehrfach gefunden und behoben).
+        self._favorites_set = set(
+            e.get("label") for e in _load_favorites_raw() if "label" in e)
+
+        # Attract-Modus (Bildschirmschoner): blaettert nach einer
+        # Weile ohne Eingabe von selbst durch zufaellige Spiele mit
+        # Boxart - siehe next_action()/draw_attract().
+        self.attract_mode = False
+        self._last_input_time = time.time()
+        self._attract_game = None
+        self._attract_change_next = 0.0
+        self._attract_pool = None   # zwischengespeicherte flache Spieleliste
+
         # Optionaler Stream-Overlay-Server (nur wenn Freigabe-Datei da ist)
         self.stream = None
         self._stream_sig = None
@@ -3023,6 +3181,10 @@ class Frontend:
         fb.flip()
 
     def build_categories(self, force_rescan=False):
+        # Zwischengespeicherte Attract-Modus-Spieleliste verwerfen -
+        # nach einem Rescan koennten sich neue Spiele dazugesellt oder
+        # welche entfernt worden sein.
+        self._attract_pool = None
         # Reihenfolge: Spiele-Systeme, dann Core-Ordner, Scripts, System
         # ALLE Kategorien werden einheitlich als Baumknoten dargestellt
         # ({"folders":{...}, "items":[...]}) - Spiele-Systeme koennen
@@ -3039,6 +3201,13 @@ class Frontend:
             # Systemkey in arg[2], der beim Zeichnen bevorzugt wird
             # (siehe _item_syskey()).
             self.cats.insert(0, (t("recent_cat"), _wrap_flat(recent_items), None))
+        favorite_items = load_favorites()
+        if favorite_items:
+            # Direkt nach "Zuletzt gespielt" (falls vorhanden, sonst
+            # ganz vorne) - eigene, bewusst kuratierte Auswahl, im
+            # Gegensatz zur automatischen Verlaufsliste.
+            pos = 1 if recent_items else 0
+            self.cats.insert(pos, (t("favorites_cat"), _wrap_flat(favorite_items), None))
         self.cats.extend((n, _wrap_flat(it), sk) for n, it, sk in scan_cores())
         scripts = scan_scripts()
         if scripts:
@@ -3076,6 +3245,47 @@ class Frontend:
         self.confirm_choice = 1    # Nein vorausgewaehlt
         self.draw()
 
+    def _sync_favorites_category(self):
+        """Nach toggle_favorite() die 'Favoriten'-Kategorie in
+        self.cats aktuell halten - OHNE build_categories() aufzurufen
+        (das wuerde unnoetig einen Scan/Cache-Check aller Spiele-
+        Systeme mit anstossen, nur um ein einzelnes Flag zu
+        aktualisieren). Haelt die aktuell betrachtete Kategorie ueber
+        Namen+Systemkey identifiziert, damit sich die Auswahl nicht
+        verschiebt, wenn Favoriten weiter oben in der Liste erscheint
+        oder verschwindet."""
+        current_ref = self.cats[self.cat_i][0], self.cats[self.cat_i][2] \
+            if self.cats else None
+
+        favs = load_favorites()
+        fav_name = t("favorites_cat")
+        self.cats = [c for c in self.cats
+                    if not (c[0] == fav_name and c[2] is None)]
+        if favs:
+            recent_name = t("recent_cat")
+            pos = 1 if (self.cats and self.cats[0][0] == recent_name) else 0
+            self.cats.insert(pos, (fav_name, _wrap_flat(favs), None))
+
+        if current_ref is not None:
+            for i, c in enumerate(self.cats):
+                if (c[0], c[2]) == current_ref:
+                    self.cat_i = i
+                    break
+            else:
+                # Die Kategorie, die wir gerade betrachtet haben, gibt
+                # es nicht mehr (Favoriten wurde gerade komplett leer
+                # und wir waren genau dort) - zurueck zu den
+                # Kategorien statt auf eine falsche Liste zu zeigen.
+                self.cat_i = min(self.cat_i, len(self.cats) - 1) if self.cats else 0
+                if self.page == 1:
+                    self.page = 0
+                    self.nav_path = []
+
+        if self.page == 1:
+            display = self._display_items()
+            if self.item_i >= len(display):
+                self.item_i = max(0, len(display) - 1)
+
     def _enter_category(self):
         """Von Seite 0 (Kategorien-Menue) in Seite 1 (Liste der
         aktuellen Kategorie, oberste Ordnerebene) wechseln."""
@@ -3107,6 +3317,31 @@ class Frontend:
         folder_entries = [(fname + "/", "folder", fname)
                           for fname in folder_names]
         return folder_entries + node["items"]
+
+    def _attract_games_pool(self):
+        """Flache Liste ALLER Spiele (kind='game') ueber alle echten
+        Spiele-Systeme hinweg (Scripts/System/Zuletzt-gespielt bleiben
+        aussen vor, da syskey=None) - fuer den Attract-Modus. Wird
+        einmal gebaut und zwischengespeichert, nicht bei jedem
+        Wechsel neu durchsucht."""
+        if self._attract_pool is not None:
+            return self._attract_pool
+
+        def walk(node, syskey):
+            found = []
+            for it in node["items"]:
+                if it[1] == "game":
+                    found.append((it[0], syskey, it[2]))
+            for sub in node["folders"].values():
+                found.extend(walk(sub, syskey))
+            return found
+
+        pool = []
+        for _name, node, syskey in self.cats:
+            if syskey:
+                pool.extend(walk(node, syskey))
+        self._attract_pool = pool
+        return pool
 
     # ------------------------------------------------------------------
     # Adaptives Layout: alles wird aus der Framebuffer-Hoehe abgeleitet.
@@ -3152,6 +3387,9 @@ class Frontend:
 
     def draw(self, message=None):
         self._sync_track_marquee()
+        if self.attract_mode:
+            self.draw_attract()
+            return
         # Wenn der Bestaetigungsdialog kommt, soll die Seite dahinter
         # NICHT extra geflippt werden - sonst blitzt fuer einen Frame
         # der Hintergrund ohne Dialog auf, bevor der Dialog erscheint
@@ -3163,6 +3401,59 @@ class Frontend:
             self.draw_page_items(message, flip=not self.confirm_quit)
         if self.confirm_quit:
             self.draw_confirm_dialog()
+
+    def draw_attract(self):
+        """Attract-Modus (Bildschirmschoner): zeigt grossflaechig ein
+        zufaelliges Spiel mit Cover - startet automatisch nach
+        laengerer Untaetigkeit (siehe next_action()), jede Eingabe
+        beendet ihn sofort wieder (siehe run())."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        fb.clear((0, 0, 0))
+        game = self._attract_game
+        if game is None:
+            fb.flip()
+            return
+        name, syskey, _arg = game
+        accent = accent_for(syskey)
+
+        cover_max_w = int(W * 0.5)
+        cover_max_h = int(H * 0.72)
+        art = None
+        if H >= 720:
+            hd = os.path.join(ART_HD, syskey, name + ".art")
+            art = ART.get_scaled(hd, cover_max_w, cover_max_h)
+        if art is None:
+            art = ART.get_scaled(art_path(syskey, name), cover_max_w, cover_max_h)
+
+        if art:
+            aw, ah, pix = art
+            ax = (W - aw) // 2
+            ay = int(H * 0.06)
+            pad = 6 * s
+            fb.rect(ax - pad, ay - pad, aw + 2 * pad, ah + 2 * pad, accent)
+            fb.blend_rect_fast(ax + 3 * s, ay + ah - 4 * s, aw, 10 * s,
+                              (0, 0, 0), (0, 0, 0), 0.35)
+            self.blit(ax, ay, aw, ah, pix)
+            title_y = ay + ah + pad + 14 * s
+        else:
+            title_y = int(H * 0.4)
+
+        title = name
+        maxc = max(4, (W - 40 * s) // (16 * s))
+        if len(title) > maxc:
+            title = title[:max(1, maxc - 1)] + "~"
+        title_w = len(title) * 16 * s
+        fb.text(max(0, (W - title_w) // 2), title_y, title, 2 * s, C_TITLE, (0, 0, 0))
+
+        sysname_w = len(syskey) * 8 * s
+        fb.text(max(0, (W - sysname_w) // 2), title_y + 30 * s, syskey, s, accent, (0, 0, 0))
+
+        hint = t("attract_hint")
+        hint_w = len(hint) * 8 * s
+        fb.text(max(0, (W - hint_w) // 2), H - 24 * s, hint, s, C_DIM, (0, 0, 0))
+        fb.flip()
 
     # ------------------------------------------------------------------
     # Seite 0: Kategorien-Menue
@@ -3487,7 +3778,14 @@ class Frontend:
                                     thickness=2 * s)
 
         full = v["items"][idx][0]
-        maxc = (list_right - list_x - 8 * s) // (8 * s)
+        item_kind = v["items"][idx][1]
+        # Markierung nur bei echten Spielen, per Namen im bereits
+        # geladenen Speicher-Cache nachgeschlagen (kein Datei-Zugriff
+        # hier - das waere bei haeufigem Neuzeichnen ein echtes
+        # Performance-Problem).
+        is_fav = item_kind == "game" and full in self._favorites_set
+        prefix = "* " if is_fav else ""
+        maxc = (list_right - list_x - 8 * s) // (8 * s) - len(prefix)
         if sel:
             # Markierte Zeile: voller Name, bei Bedarf als Laufschrift
             if len(full) > maxc:
@@ -3499,6 +3797,7 @@ class Frontend:
             label = display_name(full)
             if len(label) > maxc:
                 label = label[:max(1, maxc - 1)] + "~"
+        label = prefix + label
         fb.text(list_x, y, label, s, C_TEXT if sel else C_DIM, bg)
         return y
 
@@ -3507,8 +3806,10 @@ class Frontend:
         if not v or self.page != 1 or not v["items"]:
             return False
         s = v["s"]
-        maxc = (v["list_right"] - v["list_x"] - 8 * s) // (8 * s)
-        return len(v["items"][self.item_i][0]) > maxc
+        label, kind, _arg = v["items"][self.item_i]
+        prefix_len = 2 if (kind == "game" and label in self._favorites_set) else 0
+        maxc = (v["list_right"] - v["list_x"] - 8 * s) // (8 * s) - prefix_len
+        return len(label) > maxc
 
     def marquee_tick(self):
         v = self.view
@@ -3674,6 +3975,35 @@ class Frontend:
             bx = x + i * (bar_w + gap)
             fb.rect(bx, y + h_max - bh, bar_w, bh, col)
 
+    def _enter_attract_mode(self):
+        """Attract-Modus starten - waehlt ein zufaelliges Spiel. Findet
+        sich gar kein Spiel (z.B. komplett leere Sammlung), wird die
+        Leerlauf-Uhr zurueckgesetzt, statt bei jedem Tick erneut
+        erfolglos zu versuchen."""
+        pool = self._attract_games_pool()
+        if not pool:
+            self._last_input_time = time.time()
+            return
+        self.attract_mode = True
+        self._attract_game = random.choice(pool)
+        self._attract_change_next = time.time() + ATTRACT_CHANGE_SECONDS
+        self.draw()
+
+    def _advance_attract(self):
+        """Naechstes zufaelliges Spiel im Attract-Modus - vermeidet,
+        wenn moeglich, direkt zweimal hintereinander dasselbe."""
+        pool = self._attract_games_pool()
+        if not pool:
+            self.attract_mode = False
+            return
+        if len(pool) > 1:
+            choices = [g for g in pool if g != self._attract_game]
+            self._attract_game = random.choice(choices) if choices else pool[0]
+        else:
+            self._attract_game = pool[0]
+        self._attract_change_next = time.time() + ATTRACT_CHANGE_SECONDS
+        self.draw()
+
     def next_action(self):
         """Wie read_action, treibt aber nebenbei die Laufschrift(en) UND
         die Musikwiedergabe (naechster Song bei Bedarf) an. Blockiert
@@ -3696,39 +4026,63 @@ class Frontend:
             # immer der Fall bei echten Songnamen).
             eq_interval = 0.01 if self.fb.height < 400 else 0.08
             pulse_interval = 0.01 if self.fb.height < 400 else 0.08
-            candidates = [pulse_interval]
-            if need_mq or track_needs:
-                candidates.append(0.18)
-            if self._track_mq_name:
-                candidates.append(eq_interval)
-            timeout = min(candidates)
+            if self.attract_mode:
+                # Im Attract-Modus reicht ein grobes ~1s-Aufwachen,
+                # um rechtzeitig das naechste Spiel zu zeigen.
+                timeout = 1.0
+            else:
+                candidates = [pulse_interval]
+                if need_mq or track_needs:
+                    candidates.append(0.18)
+                if self._track_mq_name:
+                    candidates.append(eq_interval)
+                timeout = min(candidates)
             act = self.inp.read_action(timeout=timeout)
             if act is not None:
+                if self.attract_mode:
+                    # Erste Eingabe beendet NUR den Attract-Modus -
+                    # wird nicht zusaetzlich als normale Navigation
+                    # verarbeitet (uebliches Bildschirmschoner-
+                    # Verhalten: aufwecken statt gleich handeln).
+                    self.attract_mode = False
+                    self._last_input_time = time.time()
+                    self.draw()
+                    self.music.tick()
+                    continue
+                self._last_input_time = time.time()
                 if need_mq:
                     self.marquee_reset()
                 return act
-            if need_mq:
-                self.marquee_tick()
-            # WICHTIG: unabhaengige if-Abfragen statt einer elif-Kette.
-            # Mit elif haette "track_needs" (Songtitel muss scrollen -
-            # trifft auf praktisch jeden echten Songnamen zu) den
-            # Equalizer-Takt DAUERHAFT blockiert, da die elif-Zweige
-            # danach nie mehr geprueft wurden. Der Equalizer wurde
-            # dadurch nur als Zufallsprodukt des viel langsameren
-            # Songtitel-Taktes mitgezeichnet, nie mit seinem eigenen
-            # schnellen Rhythmus - daher das gemeldete "Stocken". Jeder
-            # Tick prueft sich selbst und meldet nur "True", wenn er
-            # WIRKLICH faellig ist (eigene interne Drosselung), daher
-            # ist es sicher, alle drei unabhaengig abzufragen.
-            redraw = False
-            if track_needs and self._track_marquee_tick(24):
-                redraw = True
-            if self._track_mq_name and self._eq_tick():
-                redraw = True
-            if self._pulse_tick():
-                redraw = True
-            if redraw:
-                self.draw()
+
+            if self.attract_mode:
+                if time.time() >= self._attract_change_next:
+                    self._advance_attract()
+            elif (attract_enabled()
+                  and time.time() - self._last_input_time > ATTRACT_IDLE_SECONDS):
+                self._enter_attract_mode()
+            else:
+                if need_mq:
+                    self.marquee_tick()
+                # WICHTIG: unabhaengige if-Abfragen statt einer elif-Kette.
+                # Mit elif haette "track_needs" (Songtitel muss scrollen -
+                # trifft auf praktisch jeden echten Songnamen zu) den
+                # Equalizer-Takt DAUERHAFT blockiert, da die elif-Zweige
+                # danach nie mehr geprueft wurden. Der Equalizer wurde
+                # dadurch nur als Zufallsprodukt des viel langsameren
+                # Songtitel-Taktes mitgezeichnet, nie mit seinem eigenen
+                # schnellen Rhythmus - daher das gemeldete "Stocken". Jeder
+                # Tick prueft sich selbst und meldet nur "True", wenn er
+                # WIRKLICH faellig ist (eigene interne Drosselung), daher
+                # ist es sicher, alle drei unabhaengig abzufragen.
+                redraw = False
+                if track_needs and self._track_marquee_tick(24):
+                    redraw = True
+                if self._track_mq_name and self._eq_tick():
+                    redraw = True
+                if self._pulse_tick():
+                    redraw = True
+                if redraw:
+                    self.draw()
             self.music.tick()
 
     @staticmethod
@@ -4007,6 +4361,7 @@ class Frontend:
             ("left", "remap_action_left"), ("right", "remap_action_right"),
             ("ok", "remap_action_ok"), ("back", "remap_action_back"),
             ("osd", "remap_action_osd"), ("random", "remap_action_random"),
+            ("favorite", "remap_action_favorite"),
         ]
         self.inp.grab(False)
         new_map = {}
@@ -4343,6 +4698,23 @@ class Frontend:
                                   if i != self.item_i]
                         self.item_i = random.choice(choices)
                         self.marquee_reset()
+                elif act == "favorite":
+                    # Favoritenstatus des markierten Spiels umschalten
+                    # - nur bei einem echten Spiele-Eintrag sinnvoll
+                    # (nicht bei Ordnern/Cores/Scripts/System).
+                    if self.page == 1 and items:
+                        label, kind, arg = items[self.item_i]
+                        if kind == "game":
+                            now_fav = toggle_favorite(label, arg)
+                            if now_fav:
+                                self._favorites_set.add(label)
+                            else:
+                                self._favorites_set.discard(label)
+                            self._sync_favorites_category()
+                            msg = t("favorite_added") if now_fav \
+                                else t("favorite_removed")
+                            self.draw(message=msg)
+                            continue
                 elif act == "ok":
                     if self.page == 0:
                         self._enter_category()
@@ -4412,6 +4784,8 @@ class Frontend:
                             self.build_categories()
                             self.scroll = self.cat_scroll = 0
                             self.page = 0
+                        elif kind == "attract":
+                            toggle_attract_mode()
                 self.draw()
         finally:
             if self.stream:

@@ -1,4 +1,4 @@
-# MiSTer Custom Frontend v1.53 - Komplettbuild (Stand: 2026-07-25)
+# MiSTer Custom Frontend v1.58 - Komplettbuild (Stand: 2026-07-25)
 
 **Ersteller: Dragrem2K**
 
@@ -10,14 +10,57 @@ eine einzige externe Abhaengigkeit auf dem MiSTer selbst.
 
 **Hinweis zu den Screenshots unten:** direkt aus dem echten Programmcode
 gerendert (keine Fotomontage) - Boxart und Musiktitel im Beispiel sind
-Platzhalter, die Systemlogos in der linken Spalte sind echt.
+Platzhalter, die Systemlogos in der linken Spalte sind echt. Eine
+kompakte Feature-Uebersicht steht zusaetzlich in `VORSCHAU.md`.
 
 <p align="center">
-  <img src="screenshots/screenshot_1_kategorien.png" width="420" alt="Kategorien-Menue mit Akzentfarbe, Glow und Now-Playing">
+  <img src="screenshots/preview_1_kategorien.png" width="420" alt="Kategorien-Menue mit Uhrzeit und Netzwerksymbol">
   &nbsp;&nbsp;
-  <img src="screenshots/screenshot_2_spieleliste.png" width="420" alt="Spieleliste mit Boxart, Akzentfarbe und Glow-Effekt">
+  <img src="screenshots/preview_2_spieleliste.png" width="420" alt="Spieleliste mit Boxart, Akzentfarbe und Glow-Effekt">
 </p>
-<p align="center"><sub>Links: Kategorien-Menue mit Akzentfarbe, pulsierender Markierung und Now-Playing-Anzeige &nbsp;|&nbsp; Rechts: Spieleliste mit Boxart, Glow-Effekt und Schlagschatten (Now-Playing in der Fusszeile)</sub></p>
+<p align="center">
+  <img src="screenshots/preview_3_ordner.png" width="420" alt="Ordner-Navigation bei Mehrfach-CD-Spielen">
+</p>
+<p align="center"><sub>Links: Hauptmenue mit Uhrzeit, Netzwerksymbol, Akzentfarbe und pulsierender Markierung &nbsp;|&nbsp; Mitte: Spieleliste mit Boxart, Glow-Effekt und Schlagschatten &nbsp;|&nbsp; Rechts: Ordner-Navigation - Boxart erscheint auch auf Ordner-Ebene bei Mehrfach-CD-Spielen</sub></p>
+
+## Warum ein eigenes Frontend?
+
+In der MiSTer-Community wird seit Jahren diskutiert, ob ein grafisches
+Frontend ueberhaupt sinnvoll ist - die Hauptsorge dabei ist immer
+Performance: MiSTer hat keine GPU, ein schwergewichtiges Menue auf der
+Linux-Seite koennte die ohnehin schon ausgelastete ARM-CPU zusaetzlich
+belasten und im schlimmsten Fall wichtige Core-Ereignisse verpassen.
+Das ist eine berechtigte Sorge, und genau da liegt der Schwerpunkt
+dieses Projekts: der grosse Teil der Entwicklungszeit floss nicht in
+neue Features, sondern in gezielte Performance-Arbeit (u.a. ein
+Boxart-Schlagschatten, der allein 60% der Zeichenzeit auf HDMI
+gekostet hat, gefunden und auf ein Bruchteil reduziert) - mit dem
+Ziel, dass das Menue nicht spuerbar ist, wenn man es nicht gerade
+aktiv benutzt.
+
+Mit **Zaparoo Frontend** gibt es inzwischen auch ein aktiv
+entwickeltes, eigenstaendiges Projekt mit vergleichbarer Zielsetzung
+fuer MiSTer (Bibliothek durchsuchen, Boxart, Zuletzt gespielt, dazu
+NFC-Tag-Unterstuetzung) - wer eine groessere, von mehreren Personen
+getragene Loesung sucht, sollte sich das ebenfalls ansehen.
+
+Was dieses Projekt hier anders macht:
+- **Keine einzige externe Abhaengigkeit** - reines Python aus der
+  Standardbibliothek, laeuft auf einem unveraenderten MiSTer ohne ein
+  einziges zusaetzliches Paket zu installieren.
+- **Beide Bildausgaenge gleichwertig unterstuetzt** - CRT (15 kHz) und
+  HDMI mit jeweils eigens abgestimmter Optik und Geschwindigkeit, nicht
+  nur "HDMI mit CRT-Kompatibilitaet als Nebeneffekt".
+- **Sehr klein und nachvollziehbar** - eine einzelne Python-Datei fuer
+  das eigentliche Frontend, keine Abstraktionsschichten, leicht lesbar
+  fuer alle, die selbst etwas anpassen wollen.
+
+Ehrlich dazu: das hier ist ein **Ein-Personen-Hobbyprojekt**, kein
+von einem Team getragenes Produkt. Das bedeutet weniger unterschiedlich
+getestete Setups als bei einem groesseren Community-Projekt, dafuer
+sehr genau auf reale, taeglich genutzte Hardware abgestimmt - inklusive
+einer sehr ausfuehrlichen, oeffentlich nachvollziehbaren Entwicklungs-
+und Testhistorie (siehe `CHANGELOG.md`).
 
 ## Inhaltsverzeichnis
 
@@ -42,7 +85,7 @@ Platzhalter, die Systemlogos in der linken Spalte sind echt.
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.53) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.58) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (laeuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (laeuft auf dem MiSTer) |
@@ -51,6 +94,7 @@ Platzhalter, die Systemlogos in der linken Spalte sind echt.
 | frontend/stream_admin.html      | /media/fat/frontend/             | Stream-Overlay-Konfiguration (optional) |
 | install.sh                      | bleibt im Paket (Installer)      | Installation mit Internetzugang (laedt von GitHub) |
 | install_offline.sh              | bleibt im Paket (Installer)      | Installation ohne Internetzugang (aus diesem Paket) |
+| uninstall.sh                     | bleibt im Paket (Deinstallation) | Alles wieder sauber entfernen, eigene Daten optional behalten |
 | Scripts/start_frontend.sh       | /media/fat/Scripts/              | Frontend manuell aus dem MiSTer-OSD starten |
 | Scripts/update_frontend.sh      | /media/fat/Scripts/              | Nach einem Datei-Update sauber neu starten (1 statt mehrerer Befehle) |
 | Scripts/boxart_download.sh      | /media/fat/Scripts/              | Boxart-Download aus OSD/Frontend starten |
@@ -139,6 +183,13 @@ Oder jederzeit aus dem echten MiSTer-OSD heraus: Hauptmenue -> Scripts
 -> `start_frontend` (die Scripts-Dateien machen das moeglich - MiSTer
 listet automatisch jedes `.sh`-Skript in `/media/fat/Scripts/` im OSD).
 
+**Wieder entfernen:** `./uninstall.sh` (im Paketordner) macht alles
+rueckgaengig - Autostart, Scripts, optional auch die Programmdateien
+selbst. Fragt nach, ob eigene Boxart/Musik/Einstellungen dabei
+erhalten bleiben sollen (`./uninstall.sh --yes` fuer "alles weg" ohne
+Rueckfrage, `./uninstall.sh --keep-data` fuer "nur Programmdateien
+weg" ohne Rueckfrage).
+
 ## 4. Bedienung
 
 Das Frontend hat zwei Seiten: Seite 1 (Hauptmenue) zeigt nur die
@@ -157,6 +208,14 @@ Spiele - beides alphabetisch sortiert. Systeme ohne Unterordner (ROMs
 liegen direkt im Systemordner) zeigen weiterhin sofort die normale
 Liste, ganz ohne diesen Zwischenschritt.
 
+**Seit v1.55: Uhrzeit + Netzwerksymbol unten rechts im Hauptmenue.**
+Die Uhrzeit (HH:MM) steht immer da; das kleine Balkensymbol daneben
+erscheint nur, wenn ein Netzwerk (WLAN/LAN) verbunden ist - sonst
+bleibt die Stelle leer. Reine Statusanzeige ("Netzwerk vorhanden"),
+keine echte Signalstaerke, die liefert das Betriebssystem nicht ohne
+Weiteres. Wird alle 5 Sekunden neu geprueft, ohne echten
+Netzwerkverkehr zu erzeugen.
+
 | Eingabe                          | Funktion |
 |-------------------------------------|----------|
 | Hoch/Runter                        | Einzelne Position navigieren (beschleunigt beim Halten: 1->2->4->10) |
@@ -168,6 +227,7 @@ Liste, ganz ohne diesen Zwischenschritt.
 | F10 / X-Button                     | Aus dem OSD zurueck ins Frontend |
 | Y-Taste                            | Naechster Song (manueller Musik-Wechsel) |
 | F11                                 | Zufaelliges Spiel/Kategorie ("weiss nicht was ich spielen soll") |
+| F8 / L2-Taste                       | Favorit umschalten (nur bei Spiele-Eintraegen) |
 | 3x Select nacheinander (Pad)       | Beenden-Bestaetigung (wie ESC) |
 | Im laufenden Spiel: F12 -> "Exit to Menu Core" | Zurueck ins Frontend (siehe Hinweis unten) |
 
@@ -220,6 +280,14 @@ liegen beide Groessen nebeneinander vor (`art/` fuer CRT, `art_hd/`
 fuer HDMI), das Frontend waehlt automatisch anhand der aktuellen
 Aufloesung die passende - nichts muss geloescht/ersetzt werden, die
 CRT-Cover bleiben unangetastet.
+
+**Seit v1.56 auch fuer Arcade** - laeuft automatisch mit, keine
+eigene Option noetig. Findet alle `_Arcade`-Ordner, sammelt die
+MRA-Dateinamen (das ist bei MiSTer-Sammlungen ueblicherweise schon
+der Spieletitel) und laedt passende Cover von
+`libretro-thumbnails/MAME`. Spiele ohne Datenbank-Treffer (z.B. sehr
+seltene oder selbst erstellte MRAs) bleiben wie bei den Konsolen ohne
+Cover, landen aber in `fehlend_ARCADE.txt`.
 
 - Beide Skripte durchsuchen deine ROM-Ordner (SD-Karte und angeschlossene
   USB-Laufwerke) und holen passende Daten automatisch von
@@ -369,6 +437,42 @@ sich einzeln im Code abschalten (`accent_for()`/`_pulsed()`/
 `glow_border_fast()`/`_draw_equalizer()` jeweils durch die alte feste
 Farbe ersetzen) - sag Bescheid, falls du dafuer einen eigenen
 Menueschalter haben moechtest.
+
+## 8d. Attract-Modus / Bildschirmschoner
+
+Nach 45 Sekunden ohne Eingabe erscheint automatisch ein zufaelliges
+Spiel grossflaechig mit Cover, Titel und Systemname - wechselt danach
+alle 6 Sekunden weiter zum naechsten (vermeidet dabei Wiederholungen,
+solange mehr als ein Spiel vorhanden ist). Jede beliebige Taste beendet
+den Attract-Modus sofort wieder und bringt dich genau dorthin zurueck,
+wo du vorher warst - die Taste selbst loest dabei KEINE zusaetzliche
+Aktion aus (erstes Druecken weckt nur auf, wie bei einem echten
+Bildschirmschoner).
+
+Praktisch fuer Vorfuehrungen/Streams: laeuft das Menue eine Weile im
+Hintergrund, zeigt es von selbst eine Art Diashow der eigenen
+Sammlung, statt einfach nur still dazustehen.
+
+Ueber System-Menue an-/ausschaltbar (Standard: an). Betroffene
+Kategorien: nur echte Spiele-Systeme (Zuletzt gespielt/Scripts/System
+bleiben aussen vor).
+
+## 8e. Favoriten (seit v1.58)
+
+Eigene, bewusst kuratierte Auswahl - unabhaengig von "Zuletzt
+gespielt" (das fuellt sich automatisch, Favoriten nur durch dich
+selbst). F8 (Tastatur) bzw. die L2-Taste (Gamepad, sofern vorhanden)
+schaltet den Favoritenstatus des gerade markierten Spiels um -
+funktioniert nur bei echten Spiele-Eintraegen, nicht bei Ordnern,
+Scripts oder Cores. Favorisierte Spiele zeigen ein kleines "*" vor
+dem Namen in der Liste.
+
+Erscheint als eigene Kategorie "Favoriten" direkt nach "Zuletzt
+gespielt" (bzw. ganz vorne, falls es keine "Zuletzt gespielt"-Eintraege
+gibt) - und verschwindet automatisch wieder, sobald keine Favoriten
+mehr vorhanden sind. Beide Tasten lassen sich ueber den
+Tastenbelegungs-Assistenten (Abschnitt 10) auf eine andere Taste legen,
+falls F8/L2 bei deinem Setup unpraktisch liegt.
 
 ## 9. Sprache umschalten
 
@@ -533,7 +637,9 @@ fuer Weiterentwicklung: `STREAM_fuer_Dragrem.md`.
   einmal manuell System -> "Rescan game list" ausfuehren. Aenderungen
   direkt im obersten Systemordner (z.B. `SNES/`) werden dagegen immer
   automatisch erkannt.
-- Arcade zeigt Infos aus den MRA-Dateien, aber noch keine eigene Boxart.
+- Arcade zeigt Infos aus den MRA-Dateien; Boxart seit v1.56 ebenfalls
+  moeglich (siehe Abschnitt 6, mister_boxart.py laedt sie automatisch
+  mit).
 - Menue nur auf einem Video-Ausgang gleichzeitig sichtbar (technische
   Grenze des MiSTer-Scalers, keine Frontend-Einschraenkung).
 - Start+Select UND F10 funktionieren waehrend eines laufenden Spiels
@@ -567,4 +673,6 @@ Standardbelegung zusammengefuehrt wird.
 
 ---
 
-Erstellt von **Dragrem2K**.
+Erstellt von **Dragrem2K**. Lizenziert unter der MIT-Lizenz (siehe
+`LICENSE`) - frei nutzbar, veraenderbar und weitergebbar. Was sich
+zwischen den Versionen getan hat: siehe `CHANGELOG.md`.
