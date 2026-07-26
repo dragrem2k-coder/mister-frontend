@@ -4,6 +4,120 @@ Alle nennenswerten Änderungen am MiSTer Custom Frontend. Kompakt
 gehalten — für die volle technische Historie siehe die Git-Commits
 bzw. den Kopfkommentar in `frontend/frontend.py`.
 
+## v1.76 (2026-07-26)
+- Notausstieg vereinfacht: reines Esc (statt Strg+Alt+Esc) auslösen —
+  Haltezeit dafür bewusst auf 0,6s erhöht, damit ein normaler kurzer
+  Esc-Druck in einem spiel-eigenen Pause-Menü nicht versehentlich
+  auslöst. Pad-basierter Ausstieg (Start+Select) bleibt vorerst offen —
+  beim getesteten 8BitDo-Controller kommt während des Spiels über
+  keinen bekannten Kanal etwas durch.
+
+## v1.75 (2026-07-26)
+- NEUES FEATURE: Notausstieg per Strg+Alt+Esc während eines laufenden
+  Spiels — über die rohe HID-Ebene (`/dev/hidrawX`), da die normale
+  evdev-Ebene während eines Cores von MiSTer gesperrt wird (per gezielter
+  Diagnose bestätigt: der bisherige F10-/Start+Select-Ausstieg konnte
+  dadurch vermutlich nie tatsächlich auslösen). Tastatur wird dynamisch
+  gefunden, Kombination muss 0,3s gehalten werden. Bestehender Pfad
+  bleibt zusätzlich als Absicherung bestehen.
+
+## v1.74 (2026-07-26)
+- BUGFIX: der v1.73-Fix für den Attract-Modus-Schalter war selbst noch
+  fehlerhaft — er suchte die "System"-Kategorie über "syskey ist None",
+  aber "Zuletzt gespielt", "Favoriten" und "Scripts" nutzen das
+  ebenfalls und stehen davor in der Liste. Dadurch wurde die falsche
+  Kategorie aktualisiert, "System" blieb weiterhin eingefroren. Jetzt
+  eindeutig über den Kategorienamen gefunden. Zusätzlich Protokollierung
+  ergänzt für den Fall weiterer Probleme.
+
+## v1.73 (2026-07-26)
+- BUGFIX: Attract-Modus ließ sich im System-Menü scheinbar nicht
+  umschalten — die angezeigte Beschriftung aktualisierte sich nie,
+  obwohl die Einstellung selbst korrekt griff. Jetzt behoben.
+- BUGFIX: "Zurück" aus einem Unterordner sprang immer auf Position 0
+  der übergeordneten Ebene statt zur vorherigen Position zurück (z. B.
+  bei einer alphabetischen PSX-Sammlung immer zu "A" statt "Q"). Jetzt
+  wird die Position beim Betreten gemerkt und beim Zurückgehen
+  wiederhergestellt — auch über mehrere Ebenen hinweg.
+- Boxart-Problem (verpixeltes Cover beim Scrollen) weiterhin in
+  Untersuchung.
+
+## v1.72 (2026-07-26)
+- BUGFIX: fehlendes Boxart bei manchen Titeln, erscheint aber später.
+  ArtCache.get() cachte jeden fehlgeschlagenen Ladeversuch dauerhaft —
+  auch bei einer beschädigten oder noch unvollständigen Cover-Datei
+  (z. B. während eines laufenden Kopiervorgangs). Jetzt: nur "Datei
+  existiert nicht" bleibt dauerhaft gecacht, ein Format-/Dekomprimierungs-
+  fehler (möglicherweise vorübergehend) wird nicht gecacht — der nächste
+  Zugriff versucht es einfach erneut. Zusätzlich zwei bisher nicht
+  abgefangene Fehlerarten ergänzt, die sonst zum Absturz geführt hätten.
+
+## v1.71 (2026-07-26)
+- Leichter Zeichenpfad jetzt auch für echte Navigation (nicht nur
+  Hintergrund-Ticks): ein einzelner hoch/runter-Schritt ohne Scrollen
+  (der häufigste Fall beim Durchbrowsen) aktualisiert nur die
+  betroffenen Zeilen + Boxart-Panel statt der kompletten Seite. Fällt
+  bei Scrollen/Ordnerwechsel automatisch auf den vollen Aufbau zurück.
+  51 % weniger Zeit pro Navigationsschritt (73ms → 36ms) bei einem
+  realistischen HD-Cover. Pixelgenau gegen den vollen Aufbau geprüft
+  (18 Sprungkombinationen, inkl. Favoriten-Markierung und
+  Hintergrundbild) sowie über einen echten Durchlauf durch die
+  Hauptschleife bestätigt.
+
+## v1.70 (2026-07-26)
+- WICHTIGER FUND: Ein Log-Ausschnitt zeigte Zeitstempel ab "00:00:11" —
+  MiSTer hat offenbar keine batteriegepufferte Uhr, die per NTP
+  nachträglich korrigiert wird, mitunter als plötzlicher Sprung um
+  Stunden. Das ist höchstwahrscheinlich die eigentliche Ursache für den
+  zu früh startenden Attract-Modus: der Leerlauf-Zähler nutzte die
+  Systemuhr, ein Sprung sah sofort wie "90 Sekunden Leerlauf" aus.
+  Fix: alle Zeitdauer-Messungen (42 Stellen) auf time.monotonic()
+  umgestellt — eine Uhr, die nie springt. Echte Uhrzeit-Anzeige bleibt
+  unverändert bei time.strftime().
+
+## v1.69 (2026-07-26)
+- GROSSER Fund: die Cover-Verkleinerung (für HD-Cover, die größer als
+  der verfügbare Platz sind — der Normalfall) machte pro Ziel-Pixel
+  eine einzelne Zuweisung statt zeilenweise zu arbeiten. Kostete rund
+  90ms **pro Navigation** zu einem neuen Spiel — eine andere, bisher
+  unentdeckte Kategorie von Verzögerung als die bisherigen Tick-
+  Optimierungen. Jetzt 69 % schneller (89,65ms → 27,81ms), pixelgenau
+  identisch zum alten Ergebnis. Außerdem: Logging für den Attract-
+  Modus-Start ergänzt, um die tatsächliche Leerlaufzeit zu sehen.
+
+## v1.68 (2026-07-26)
+- BUGFIX: Namens-Laufschrift bei langen Spieletiteln lief auf CRT viel
+  zu schnell (bis zu 100 Zeichen/Sekunde statt beabsichtigter ~5,5).
+  Ursache: keine eigene Zeitbremse — solange das Zeichnen teuer war
+  (vor v1.62/63), bremste das automatisch aus; seit die Ticks viel
+  billiger sind, lief die Schleife auf CRT nahe ihrem theoretischen
+  Maximum. Jetzt mit derselben Zeitbremse wie Equalizer/Pulsieren.
+
+## v1.67 (2026-07-26)
+- Absicherung gegen unbegrenzt wachsenden Zeichen-Cache: die
+  meistgenutzte Zeichenfunktion (rect()) cachte ohne Obergrenze nach
+  Farbe+exakter Breite — bei leicht wechselnden Breiten über viele
+  Navigationen sammelten sich nie wieder verwendete Einträge an.
+  Jetzt mit Obergrenze (150 Einträge), eigener Cache getrennt von
+  clear()s Hintergrundmustern. Ehrlicher Hinweis: ob das den
+  gemeldeten Lag zusätzlich verbessert, war in der Sandbox nicht
+  eindeutig messbar — die Absicherung selbst ist trotzdem sinnvoll.
+
+## v1.66 (2026-07-26)
+- Attract-Modus: Leerlauf-Schwelle von 45 auf 90 Sekunden erhöht
+  (großzügigerer Puffer), zusätzlich attract_enabled() jetzt
+  zwischengespeichert statt bei jedem Leerlauf-Durchlauf erneut die
+  Datei zu prüfen.
+
+## v1.65 (2026-07-25)
+- Attract-Modus startete manchmal sehr schnell nach dem Neustart (der
+  Leerlauf-Zähler lief schon während Scan/Boot-Animation mit) — jetzt
+  erst danach zurückgesetzt.
+- Cursor sprang gelegentlich zwei Zeilen statt einer beim Klicken durch
+  das Menü — der Turbo-Sprung-Zähler unterschied nicht zwischen echtem
+  Tastenhalten und mehreren schnellen Einzelklicks. Jetzt zeitbasiert
+  abgesichert.
+
 ## v1.64 (2026-07-25) — KRITISCHER BUGFIX
 - Frontend stürzte kurz nach dem Boot ab (Boot-Animation spielt,
   dann zurück ins MiSTer-OSD), sobald der erste Equalizer-/Laufschrift-
