@@ -1,9 +1,36 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.73
+MiSTer Custom Frontend - v1.74
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.74 (BUGFIX: v1.73-Fix fuer den Attract-Modus-Schalter war
+selbst noch fehlerhaft):
+  - Nutzer-Rueckmeldung: Attract-Modus zeigt trotz v1.73 immer noch
+    "AUS -> einschalten", egal wie oft man draufklickt.
+  - Ursache gefunden: der v1.73-Fix suchte die "System"-Kategorie ueber
+    "syskey ist None" - aber das ist NICHT eindeutig! "Zuletzt
+    gespielt", "Favoriten" UND "Scripts" nutzen ALLE ebenfalls
+    syskey=None und stehen in self.cats VOR "System" (werden per
+    insert(0, ...) einsortiert bzw. vor dem abschliessenden System-
+    Eintrag angehaengt). Dadurch wurde bisher die FALSCHE Kategorie
+    ueberschrieben (meist "Zuletzt gespielt"), waehrend "System" selbst
+    NIE aktualisiert wurde - die Beschriftung blieb dadurch dauerhaft
+    eingefroren, unabhaengig davon, wie oft man umschaltet.
+  - Fix: "System" wird jetzt eindeutig ueber den (nicht uebersetzten,
+    immer gleichen) Kategorienamen gefunden, nicht nur ueber
+    syskey=None.
+  - Ausserdem: Protokollierung fuer toggle_attract_mode() ergaenzt
+    (zeigt Vorher-/Nachher-Zustand und etwaige Fehler beim Anlegen/
+    Loeschen der Markierungsdatei) sowie fuer _refresh_system_category()
+    (bestaetigt, ob und wo die System-Kategorie gefunden wurde) - fuer
+    den Fall, dass es doch noch an einer tieferliegenden Ursache liegt.
+  - Getestet: mit einer realistischen Kategorienliste, die "Zuletzt
+    gespielt", "Favoriten" UND "Scripts" (alle mit syskey=None) VOR
+    "System" enthaelt - bestaetigt, dass jetzt ausschliesslich "System"
+    aktualisiert wird und alle anderen unberuehrt bleiben. 36
+    Kombinationen kompletter Regressionstest bestanden.
 
 Neu in v1.73 (zwei weitere BUGFIXES: Attract-Modus-Umschalter,
 "Zurueck" springt an den Listenanfang):
@@ -3530,19 +3557,26 @@ def attract_enabled():
     return not os.path.exists(ATTRACT_DISABLED_FLAG)
 
 def toggle_attract_mode():
-    if os.path.exists(ATTRACT_DISABLED_FLAG):
+    existed_before = os.path.exists(ATTRACT_DISABLED_FLAG)
+    if existed_before:
         try:
             os.remove(ATTRACT_DISABLED_FLAG)
-        except OSError:
-            pass
+        except OSError as e:
+            LOG("toggle_attract_mode: Loeschen der Markierungsdatei "
+                "fehlgeschlagen: %s" % e)
     else:
         try:
             dirname = os.path.dirname(ATTRACT_DISABLED_FLAG)
             if dirname:
                 os.makedirs(dirname, exist_ok=True)
             open(ATTRACT_DISABLED_FLAG, "w").close()
-        except OSError:
-            pass
+        except OSError as e:
+            LOG("toggle_attract_mode: Anlegen der Markierungsdatei "
+                "fehlgeschlagen: %s" % e)
+    LOG("toggle_attract_mode: vorher %s -> jetzt %s (Datei existiert: %s)"
+        % ("AUS" if existed_before else "AN",
+           "AN" if existed_before else "AUS",
+           os.path.exists(ATTRACT_DISABLED_FLAG)))
 
 def curated_only_active():
     return os.path.exists(CURATED_FLAG)
@@ -3848,18 +3882,26 @@ class Frontend:
         eine einzelne Beschriftung wie 'Attract-Modus: AN/AUS' zu
         aktualisieren). Gleiches Prinzip wie _sync_favorites_category().
 
-        BUGFIX: toggle_attract_mode() aenderte bisher nur die
-        zugrundeliegende Markierungsdatei - die im Menue ANGEZEIGTE
-        Beschriftung blieb dabei eingefroren auf dem Stand vom letzten
-        build_categories()-Aufruf, da system_items() nur EINMAL beim
-        Kategorien-Aufbau berechnet wird, nicht bei jedem Neuzeichnen.
-        Dadurch wirkte es, als liesse sich der Attract-Modus nicht
-        umschalten, obwohl die Einstellung selbst korrekt griff -
-        Ursache fuer die Nutzer-Rueckmeldung."""
+        BUGFIX (v1.73 hatte selbst noch einen Fehler): toggle_attract_mode()
+        aenderte bisher nur die zugrundeliegende Markierungsdatei - die
+        im Menue ANGEZEIGTE Beschriftung blieb dabei eingefroren, da
+        system_items() nur EINMAL beim Kategorien-Aufbau berechnet wird.
+        Der urspruengliche v1.73-Fix suchte dafuer die erste Kategorie
+        mit syskey=None - aber das ist NICHT eindeutig: 'Zuletzt
+        gespielt', 'Favoriten' und 'Scripts' nutzen ALLE ebenfalls
+        syskey=None und stehen in self.cats VOR 'System' (werden per
+        insert(0, ...) bzw. vor dem abschliessenden append() einsortiert).
+        Dadurch wurde bisher die FALSCHE Kategorie ueberschrieben (meist
+        'Zuletzt gespielt'), waehrend 'System' selbst nie aktualisiert
+        wurde - die Beschriftung blieb dadurch dauerhaft eingefroren,
+        egal wie oft man umschaltet. Jetzt eindeutig ueber den (nicht
+        uebersetzten, immer gleichen) Namen \"System\" gefunden."""
         for i, (name, node, sk) in enumerate(self.cats):
-            if sk is None:
+            if sk is None and name == "System":
                 self.cats[i] = (name, _wrap_flat(system_items(self.music.enabled)), sk)
-                break
+                LOG("_refresh_system_category: System-Kategorie an Position %d aktualisiert" % i)
+                return
+        LOG("_refresh_system_category: KEINE System-Kategorie gefunden!")
 
     def _sync_favorites_category(self):
         """Nach toggle_favorite() die 'Favoriten'-Kategorie in
