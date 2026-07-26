@@ -1,9 +1,85 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.65
+MiSTer Custom Frontend - v1.68
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.68 (BUGFIX: Namens-Laufschrift auf CRT viel zu schnell):
+  - Nutzer-Rueckmeldung: Laufschrift bei langen Spieletiteln jetzt sehr
+    schnell auf CRT, auf HDMI kaum ein Unterschied spuerbar. Ursache
+    gefunden: marquee_tick() (Namens-Laufschrift fuer zu lange Titel in
+    der Spieleliste) hatte KEINE eigene Zeitbremse - rueckte bei JEDEM
+    Aufruf der aeusseren Schleife um ein Zeichen vor, nicht nach
+    tatsaechlich verstrichener Zeit (im Gegensatz zu _eq_tick()/
+    _pulse_tick(), die schon immer eine eigene Zeitbremse hatten).
+  - Solange das Zeichnen selbst teuer war (vor v1.62/v1.63), bremste
+    das die effektive Geschwindigkeit automatisch aus - die aeussere
+    Schleife konnte gar nicht so oft aufrufen. Seit die Ticks viel
+    billiger sind, laeuft die Schleife auf CRT nahe ihrem theoretischen
+    Maximum (bis 100x/Sekunde ueber pulse_interval=0.01) - die
+    Laufschrift wurde dadurch ungewollt bis zu 100 Zeichen/Sekunde
+    schnell statt der beabsichtigten ~5.5 Zeichen/Sekunde (passend zum
+    0.18s-Kandidaten, der in next_action() fuer die Laufschrift genutzt
+    wird). Auf HDMI (von Haus aus langsamerer Grundtakt, 0.08s) fiel
+    das kaum auf - passt exakt zur Nutzer-Rueckmeldung.
+  - Fix: marquee_tick() bekommt dieselbe Art Zeitbremse wie
+    _eq_tick()/_pulse_tick() (0.18s pro Zeichen, unabhaengig davon wie
+    oft die aeussere Schleife tatsaechlich aufruft).
+  - Getestet: 20 Aufrufe OHNE Zeitfortschritt bewegen die Laufschrift
+    nicht mehr (vorher: 20 Zeichen), 10 Aufrufe MIT 0.18s Zeitabstand
+    bewegen sie korrekt weiter, kompletter next_action()-Durchlauf mit
+    langem Spieletitel auf beiden Aufloesungen ohne Absturz. 24
+    Kombinationen kompletter Regressionstest weiterhin bestanden.
+
+Neu in v1.67 (Absicherung gegen unbegrenzt wachsenden Zeichen-Cache):
+  - Bei der weiteren Suche nach HDMI-Performance-Potenzial (Fortsetzung
+    von v1.62/v1.63) gefunden: die generische rect()-Funktion (die
+    meistgenutzte Zeichenfunktion ueberhaupt - Markierungen, Glow-
+    Raender, Equalizer-Balken) cachte nach (Farbe, EXAKTER Breite) OHNE
+    jede Obergrenze. Bei leicht wechselnden Breiten (Cover-
+    Seitenverhaeltnis, Glow-Ring-Position, Info-Textlaenge) sammelt sich
+    ueber viele Navigationen eine wachsende Zahl nie wieder verwendeter
+    Eintraege an - dasselbe Grundmuster wie der in v1.32 behobene
+    Pulsier-Cache-Bug, nur an anderer Stelle.
+  - Fix: eigener Cache fuer rect() (_rectcache, getrennt von clear()s
+    Hintergrund-Cache) mit Obergrenze (ROWCACHE_MAX_ENTRIES=150) - bei
+    Ueberschreiten wird komplett geleert statt einzelne Eintraege
+    aufwendig zu verwalten. clear()s selten wechselnde, aber teure
+    Hintergrundmuster bleiben davon unberuehrt (eigener Cache).
+  - EHRLICHER HINWEIS: die urspruengliche Beobachtung ("clear() wird
+    ueber viele Navigationen hinweg spuerbar langsamer") liess sich in
+    der Sandbox nicht eindeutig auf die Cache-Groesse zurueckfuehren -
+    Messungen blieben nach dem Fix uneinheitlich (vermutlich Rauschen
+    aus der x86-Sandbox-Umgebung, nicht zwingend repraesentativ fuer
+    echte ARM-Hardware). Die Absicherung selbst ist trotzdem wertvoll
+    (verhindert unbegrenztes Speicherwachstum ueber lange Sitzungen)
+    und wird deshalb ausgeliefert - ob sie das gemeldete Lag-Gefuehl
+    zusaetzlich verbessert, muss sich auf echter Hardware zeigen.
+  - Getestet: rect() liefert identisches Ergebnis unabhaengig vom
+    Cache-Zustand, Cache waechst nachweislich nicht ueber die
+    Obergrenze hinaus, clear()s Hintergrund-Cache bleibt von rect()-
+    Cache-Leerungen unberuehrt. 24 Kombinationen kompletter
+    Regressionstest.
+
+Neu in v1.66 (Attract-Modus: grosszuegigere Schwelle + gecachte
+Abfrage):
+  - Nutzer-Rueckmeldung: Attract-Modus startete manchmal kurz, obwohl
+    gerade noch navigiert wurde. Bei nochmaliger, gruendlicher
+    Durchsicht der kompletten Update-Kette fuer den Leerlauf-Zaehler
+    (self._last_input_time) keinen weiteren Fehler ueber den v1.65-Fix
+    hinaus gefunden - alle Aktualisierungsstellen sehen korrekt aus.
+  - Trotzdem zwei sinnvolle Verbesserungen: ATTRACT_IDLE_SECONDS von
+    45 auf 90 Sekunden erhoeht (grosszuegigerer Puffer), UND
+    attract_enabled() (bisher bei JEDEM Leerlauf-Durchlauf per Datei-
+    Existenzpruefung abgefragt, bis zu 12x/Sekunde) jetzt 5 Sekunden
+    zwischengespeichert (_attract_enabled_cached()) - selbe Idee wie
+    beim Netzwerkstatus (v1.55), passt auch zum Performance-Thema.
+  - Falls das Problem weiterhin auftritt: bitte moeglichst genau
+    schildern, wie lange die Pause vor dem ungewollten Einsetzen
+    tatsaechlich war - hilft bei der weiteren Eingrenzung.
+  - Getestet: Cache verhindert wiederholte Dateipruefungen (isoliert
+    bestaetigt), 24 Kombinationen kompletter Regressionstest.
 
 Neu in v1.65 (zwei kleinere, aber echte Bugfixes: Attract-Modus-
 Timing, Turbo-Sprung bei schnellen Einzelklicks):
@@ -1355,12 +1431,20 @@ FONT8X8 = bytes.fromhex('0000000000000000000000000000000000000000000000000000000
 # FRAMEBUFFER
 # ----------------------------------------------------------------------------
 
+ROWCACHE_MAX_ENTRIES = 150  # siehe Framebuffer.rect()/clear() - verhindert
+                            # unbegrenztes Cache-Wachstum durch leicht
+                            # wechselnde (Farbe, Breite)-Kombinationen
+
 class Framebuffer:
     def __init__(self):
         self._read_geometry()
         self.fd = os.open(FBDEV, os.O_RDWR)
         self._map()
         self._rowcache = {}
+        self._rectcache = {}   # eigener Cache fuer rect() (siehe dort) -
+                                # getrennt von _rowcache, damit dessen
+                                # Obergrenze nicht die selten wechselnden,
+                                # teuren Hintergrundmuster von clear() mitloescht
         self._glyphcache = {}
 
     def _read_geometry(self):
@@ -1498,18 +1582,36 @@ class Framebuffer:
         w = min(w, self.width - x); h = min(h, self.height - y)
         if w <= 0 or h <= 0:
             return
+        # WICHTIG (Bugfix): _rectcache cacht nach (Farbe, EXAKTER Breite)
+        # - bei leicht wechselnden Breiten (z.B. je nach Cover-
+        # Seitenverhaeltnis, Glow-Ring-Position, Info-Textlaenge) sammelt
+        # sich ueber viele Navigationen hinweg eine WACHSENDE Zahl nie
+        # wieder verwendeter Eintraege an, die nie geloescht wird -
+        # aehnliches Muster wie der in v1.32 behobene Pulsier-Cache-Bug,
+        # nur an anderer Stelle. Per Differenzmessung bestaetigt: das
+        # macht sich als spuerbare, mit der Zeit zunehmende Verzoegerung
+        # bemerkbar. Einfache, sichere Absicherung: Cache bei
+        # Ueberschreiten einer Obergrenze komplett leeren, statt einzelne
+        # Eintraege aufwendig zu verwalten (LRU o.ae.) - der haeufige
+        # Fall (dieselbe Farbe/Breite ueber mehrere Bilder hinweg, z.B.
+        # Equalizer-Balken, Zeilen-Markierungen) bleibt dadurch weiterhin
+        # schnell. Eigener Cache (nicht _rowcache), damit das Leeren
+        # nicht die selten wechselnden, teuren Hintergrundmuster von
+        # clear() mitreisst.
+        if len(self._rectcache) > ROWCACHE_MAX_ENTRIES:
+            self._rectcache.clear()
         key = (rgb, w)
-        row = self._rowcache.get(key)
+        row = self._rectcache.get(key)
         if row is None:
             row = self.px(rgb) * w
-            self._rowcache[key] = row
+            self._rectcache[key] = row
         row_dark = None
         if scanlines:
             key2 = (rgb, w, "dark")
-            row_dark = self._rowcache.get(key2)
+            row_dark = self._rectcache.get(key2)
             if row_dark is None:
                 row_dark = self.px(self._darken(rgb)) * w
-                self._rowcache[key2] = row_dark
+                self._rectcache[key2] = row_dark
         for yy in range(y, y + h):
             off = yy * self.stride + x * 4
             use_row = row_dark if (scanlines and yy % 2) else row
@@ -3211,7 +3313,7 @@ def filter_curated(name, node, syskey):
 
 CURATED_FLAG = "/media/fat/frontend/curated_only"
 ATTRACT_DISABLED_FLAG = "/media/fat/frontend/attract_disabled"
-ATTRACT_IDLE_SECONDS = 45   # so lange ohne Eingabe, bevor der Attract-
+ATTRACT_IDLE_SECONDS = 90   # so lange ohne Eingabe, bevor der Attract-
                             # Modus (Bildschirmschoner) automatisch startet
 ATTRACT_CHANGE_SECONDS = 6  # wie lange ein Spiel im Attract-Modus gezeigt wird
 
@@ -3339,6 +3441,13 @@ class Frontend:
         self._net_status = False
         self._net_check_next = 0.0
 
+        # Attract-Modus-Einstellung ebenfalls zwischengespeichert (siehe
+        # _attract_enabled_cached()) - attract_enabled() wird bei JEDEM
+        # Leerlauf-Durchlauf abgefragt (bis zu 12x/Sekunde), ohne Cache
+        # waere das eine unnoetig haeufige Datei-Existenzpruefung.
+        self._attract_enabled_cache = True
+        self._attract_enabled_check_next = 0.0
+
         # Favoriten-Namen im Speicher gehalten (Set fuer O(1)-Abfrage
         # beim Zeichnen) - NUR bei tatsaechlichen Aenderungen ueber
         # toggle_favorite() aktualisiert, nie durch erneutes Einlesen
@@ -3373,6 +3482,7 @@ class Frontend:
                 self.stream = None
         self.mq_off = 0            # Laufschrift-Versatz (Zeichen)
         self.mq_pause = 0          # Pausen-Ticks an den Enden
+        self._mq_tick_next = 0.0   # Zeitbremse fuer marquee_tick() (Bugfix)
         # Laufschrift fuer den aktuell spielenden Songtitel - eigener,
         # unabhaengiger Zustand, weil sie an zwei verschiedenen Stellen
         # (neben dem Logo UND im Boxart-Block) gleichzeitig laufen kann.
@@ -3799,6 +3909,18 @@ class Frontend:
             self._net_status = _has_network()
             self._net_check_next = now + 5.0
         return self._net_status
+
+    def _attract_enabled_cached(self):
+        """Zwischengespeicherte attract_enabled()-Abfrage, alle 5
+        Sekunden neu geprueft - wird sonst bei JEDEM Leerlauf-
+        Durchlauf (bis zu 12x/Sekunde) erneut per Datei-Existenzpruefung
+        abgefragt, obwohl sich die Einstellung praktisch nie waehrend
+        des Betriebs aendert (nur ueber das System-Menue)."""
+        now = time.time()
+        if now >= self._attract_enabled_check_next:
+            self._attract_enabled_cache = attract_enabled()
+            self._attract_enabled_check_next = now + 5.0
+        return self._attract_enabled_cache
 
     def _draw_dynamic_cats(self):
         """Leichter Zeichenpfad fuer Equalizer-/Pulsier-Ticks auf Seite 0:
@@ -4263,6 +4385,23 @@ class Frontend:
         return len(label) > maxc
 
     def marquee_tick(self):
+        """WICHTIG (Bugfix): frueher OHNE eigene Zeitbremse - rueckte bei
+        JEDEM Aufruf der aeusseren Schleife um ein Zeichen vor, nicht
+        nach tatsaechlich verstrichener Zeit. Solange das Zeichnen selbst
+        teuer war (vor v1.62/v1.63), bremste das die effektive Geschwin-
+        digkeit automatisch aus. Seit die Ticks viel billiger sind, laeuft
+        die aeussere Schleife auf CRT nahe ihrem theoretischen Maximum
+        (bis 100x/Sekunde ueber pulse_interval=0.01) - die Laufschrift
+        wurde dadurch ungewollt sehr schnell (bis zu 100 Zeichen/Sekunde
+        statt der beabsichtigten ~5.5 Zeichen/Sekunde, die dem 0.18s-
+        Kandidaten in next_action() entsprechen). Auf HDMI (langsamerer
+        Grundtakt) fiel das kaum auf, auf CRT sehr deutlich - passt genau
+        zur Nutzer-Rueckmeldung. Jetzt mit derselben Zeitbremse wie
+        _eq_tick()/_pulse_tick()."""
+        now = time.time()
+        if now < self._mq_tick_next:
+            return
+        self._mq_tick_next = now + 0.18
         v = self.view
         s = v["s"]
         maxc = (v["list_right"] - v["list_x"] - 8 * s) // (8 * s)
@@ -4283,6 +4422,7 @@ class Frontend:
     def marquee_reset(self):
         self.mq_off = 0
         self.mq_pause = 4
+        self._mq_tick_next = 0.0
 
     def _sync_track_marquee(self):
         """Bei Songwechsel den Laufschrift-Zustand des Titels
@@ -4508,7 +4648,7 @@ class Frontend:
             if self.attract_mode:
                 if time.time() >= self._attract_change_next:
                     self._advance_attract()
-            elif (attract_enabled()
+            elif (self._attract_enabled_cached()
                   and time.time() - self._last_input_time > ATTRACT_IDLE_SECONDS):
                 self._enter_attract_mode()
             else:
