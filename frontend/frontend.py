@@ -1,9 +1,45 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.72
+MiSTer Custom Frontend - v1.73
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.73 (zwei weitere BUGFIXES: Attract-Modus-Umschalter,
+"Zurueck" springt an den Listenanfang):
+  - BUGFIX 1: Attract-Modus liess sich im System-Menue scheinbar nicht
+    ein-/ausschalten. Ursache: toggle_attract_mode() aenderte nur die
+    zugrundeliegende Markierungsdatei - die im Menue ANGEZEIGTE
+    Beschriftung ("Attract-Modus: AN/AUS") blieb eingefroren auf dem
+    Stand vom letzten build_categories()-Aufruf, da system_items() nur
+    EINMAL beim Kategorien-Aufbau berechnet wird. Der Vergleichsfall
+    "kuratiert" macht es richtig (ruft danach build_categories() auf),
+    "attract" tat das nicht. Fix: neue schlanke
+    _refresh_system_category() (nach demselben Prinzip wie
+    _sync_favorites_category() - aktualisiert NUR die System-Kategorie,
+    ohne die teure komplette Neuerstellung/den Spiele-Scan anzustossen).
+  - BUGFIX 2: "Zurueck" aus einem Unterordner sprang immer auf Position
+    0 der uebergeordneten Ebene, z.B. bei einer alphabetisch sortierten
+    PSX-Sammlung immer zurueck zu "A", statt zu der Stelle, wo man vor
+    dem Betreten des Unterordners stand (z.B. bei "Q"). Fix: Position
+    (Auswahl + Scroll-Stand) wird beim Betreten eines Unterordners auf
+    einem Stapel gemerkt (self._nav_position_stack) und beim
+    Zurueckgehen wiederhergestellt - funktioniert auch ueber mehrere
+    verschachtelte Ebenen hinweg.
+  - Boxart-Problem (verpixeltes Cover beim Scrollen, HD-Cover danach)
+    weiterhin in Untersuchung - der Fallback-Mechanismus (HD nicht
+    gefunden -> CRT-Cover als Ersatz statt gar nichts) funktioniert wie
+    vorgesehen; die eigentliche Frage ist, WARUM die HD-Suche bei
+    bestimmten Titeln zunaechst fehlschlaegt. Bei Mehrfach-CD-Spielen
+    (haeufig als Ordner organisiert) nutzt die Cover-Suche den
+    Ordnernamen statt des Anzeigenamens - ein moeglicher Ansatzpunkt,
+    aber ohne Zugriff auf die tatsaechlichen Dateien nicht abschliessend
+    zu verifizieren.
+  - Getestet: Attract-Beschriftung aktualisiert sich nachweislich nach
+    dem Umschalten, andere Kategorien bleiben unberuehrt. Positions-
+    Wiederherstellung fuer einzelne UND mehrfach verschachtelte
+    Ordnerebenen bestaetigt. 24 Kombinationen kompletter
+    Regressionstest weiterhin bestanden.
 
 Neu in v1.72 (BUGFIX: fehlendes Boxart bei manchen Titeln bis zum
 naechsten Blick):
@@ -3601,6 +3637,7 @@ class Frontend:
         # der obersten Ebene). Wird beim Wechsel der Kategorie und
         # beim Verlassen zurueck zu Seite 0 geleert.
         self.nav_path = []
+        self._nav_position_stack = []   # merkt Position je Ordnerebene fuer "Zurueck"
 
         # Netzwerkstatus fuer die Anzeige unten rechts im Hauptmenue -
         # mit kurzer Zwischenspeicherung (alle paar Sekunden neu
@@ -3769,12 +3806,24 @@ class Frontend:
         eine Ordnerebene hoch (falls man in einem Unterordner ist),
         erst danach zurueck zu den Kategorien; im Hauptmenue (Seite 0)
         stattdessen die Beenden-Bestaetigung einblenden statt sofort
-        zu schliessen."""
+        zu schliessen.
+
+        BUGFIX: sprang bisher beim Zurueckgehen IMMER auf Position 0
+        der uebergeordneten Ebene, unabhaengig davon, wo man vor dem
+        Betreten des Unterordners stand - z.B. aus einem alphabetisch
+        sortierten Unterordner "Q" zurueck landete man wieder ganz oben
+        bei "A" statt bei "Q", wo man weiterbrowsen wollte. Jetzt wird
+        die Position beim Betreten eines Unterordners auf einem Stapel
+        gemerkt (siehe self._nav_position_stack) und beim Zurueckgehen
+        wiederhergestellt."""
         if self.page == 1:
             if self.nav_path:
                 self.nav_path.pop()
-                self.item_i = 0
-                self.scroll = 0
+                if self._nav_position_stack:
+                    self.item_i, self.scroll = self._nav_position_stack.pop()
+                else:
+                    self.item_i = 0
+                    self.scroll = 0
                 self.marquee_reset()
             else:
                 self.page = 0
@@ -3789,6 +3838,28 @@ class Frontend:
         self.confirm_quit = True
         self.confirm_choice = 1    # Nein vorausgewaehlt
         self.draw()
+
+    def _refresh_system_category(self):
+        """Nach dem Umschalten einer System-Menue-Einstellung (z.B.
+        Attract-Modus) die 'System'-Kategorie in self.cats mit frisch
+        berechneten Beschriftungen aktualisieren - OHNE die teure
+        komplette build_categories() aufzurufen (die wuerde unnoetig
+        einen Scan/Cache-Check aller Spiele-Systeme anstossen, nur um
+        eine einzelne Beschriftung wie 'Attract-Modus: AN/AUS' zu
+        aktualisieren). Gleiches Prinzip wie _sync_favorites_category().
+
+        BUGFIX: toggle_attract_mode() aenderte bisher nur die
+        zugrundeliegende Markierungsdatei - die im Menue ANGEZEIGTE
+        Beschriftung blieb dabei eingefroren auf dem Stand vom letzten
+        build_categories()-Aufruf, da system_items() nur EINMAL beim
+        Kategorien-Aufbau berechnet wird, nicht bei jedem Neuzeichnen.
+        Dadurch wirkte es, als liesse sich der Attract-Modus nicht
+        umschalten, obwohl die Einstellung selbst korrekt griff -
+        Ursache fuer die Nutzer-Rueckmeldung."""
+        for i, (name, node, sk) in enumerate(self.cats):
+            if sk is None:
+                self.cats[i] = (name, _wrap_flat(system_items(self.music.enabled)), sk)
+                break
 
     def _sync_favorites_category(self):
         """Nach toggle_favorite() die 'Favoriten'-Kategorie in
@@ -3825,6 +3896,7 @@ class Frontend:
                 if self.page == 1:
                     self.page = 0
                     self.nav_path = []
+                    self._nav_position_stack = []
 
         if self.page == 1:
             display = self._display_items()
@@ -3839,6 +3911,7 @@ class Frontend:
             return
         self.page = 1
         self.nav_path = []
+        self._nav_position_stack = []
         self.item_i = 0
         self.scroll = 0
         self.marquee_reset()
@@ -5685,6 +5758,7 @@ class Frontend:
                     else:
                         label, kind, arg = items[self.item_i]
                         if kind == "folder":
+                            self._nav_position_stack.append((self.item_i, self.scroll))
                             self.nav_path.append(arg)
                             self.item_i = 0
                             self.scroll = 0
@@ -5750,6 +5824,7 @@ class Frontend:
                             self.page = 0
                         elif kind == "attract":
                             toggle_attract_mode()
+                            self._refresh_system_category()
                 # Bei einem einzelnen hoch/runter-Schritt (kein Scrollen,
                 # keine Seite/Kategorie gewechselt) reicht der leichte
                 # Navigations-Zeichenpfad - deutlich billiger als die
