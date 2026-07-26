@@ -1,9 +1,54 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.74
+MiSTer Custom Frontend - v1.75
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.75 (NEUES FEATURE: Notausstieg per Strg+Alt+Esc waehrend
+eines laufenden Spiels, ueber die rohe HID-Ebene):
+  - Hintergrund: der bestehende F10-/Start+Select-Ausstieg in
+    wait_game_exit() liest ueber die normale evdev-Ebene
+    (/dev/input/eventX) - die wird von MiSTer waehrend eines laufenden
+    Cores exklusiv gesperrt. Per gezielter Nutzer-Diagnose bestaetigt
+    (eigens dafuer geschriebenes Testwerkzeug, parallel zu einem
+    laufenden Spiel mitgelesen): `cat /dev/input/eventX` liefert dabei
+    0 Bytes - der bestehende Ausstieg konnte dadurch in der Praxis
+    vermutlich nie tatsaechlich ausgeloest werden. Die ROHE HID-Ebene
+    (/dev/hidrawX) liegt darunter und blieb bei einer angeschlossenen
+    TASTATUR nachweislich lesbar (beim getesteten 8BitDo-Controller-
+    Empfaenger dagegen nicht - dessen Tasten laufen offenbar ueber
+    einen anderen, ebenfalls gesperrten Kanal).
+  - Neu: _find_keyboard_hidraw() findet die Tastatur dynamisch unter
+    /dev/hidraw* (ueber den HID-Namen, nicht fest verdrahtet - die
+    hidraw-Nummerierung haengt von der Anschlussreihenfolge ab und kann
+    sich zwischen Boots verschieben). _hid_report_has_ctrl_alt_esc()
+    erkennt Strg+Alt+Esc im rohen HID-Report (Modifikator 0x05 +
+    Escape-Keycode 0x29, geprueft in zwei moeglichen Report-Layouts -
+    mit und ohne vorangestelltes Report-ID-Byte, je nach Tastatur).
+  - wait_game_exit() ueberwacht jetzt zusaetzlich diese hidraw-Ebene
+    (KBD_COMBO_HOLD=0.3s Haltezeit, analog zum bestehenden
+    COMBO_HOLD=0.8s fuer Start+Select) und liefert bei Erkennung
+    "hid_combo" - run_core() behandelt das identisch zu "combo"/"f10"
+    (zurueck ins Menue). Der bestehende evdev-basierte Pfad bleibt
+    unveraendert als Absicherung bestehen (falls er auf anderen MiSTer-
+    Konfigurationen doch funktioniert).
+  - Getestet: _hid_report_has_ctrl_alt_esc() erkennt die Kombination
+    exakt bei den echten, vom Nutzer per Diagnose ermittelten Bytes
+    (sowohl mit als auch ohne Report-ID-Praefix), loest NICHT bei
+    normalen Tastendruecken faelschlich aus. _find_keyboard_hidraw()
+    findet unter mehreren Geraeten (Maus, Empfaenger, Controller)
+    korrekt nur die Tastatur. wait_game_exit() end-to-end mit einer
+    simulierten Tastatur (named pipe) getestet: zu kurzes Halten (0.1s)
+    loest NICHT aus, ausreichend langes Halten (>0.3s) loest zuverlaessig
+    "hid_combo" aus, bestehende Menue-Erkennung und der Fall "keine
+    Tastatur gefunden" funktionieren unveraendert korrekt. 36
+    Kombinationen kompletter Regressionstest weiterhin bestanden.
+  - EHRLICHER HINWEIS: das HID-Report-Format ist geraeteabhaengig - bei
+    Tastaturen mit einem anderen Format als den beiden hier
+    beruecksichtigten Varianten muesste _hid_report_has_ctrl_alt_esc()
+    ggf. angepasst werden (z.B. mit hid_probe.py das tatsaechliche
+    Format ermitteln).
 
 Neu in v1.74 (BUGFIX: v1.73-Fix fuer den Attract-Modus-Schalter war
 selbst noch fehlerhaft):
@@ -1535,6 +1580,57 @@ RECENT_FILE = "/media/fat/frontend/recently_played.json"
 RECENT_MAX = 15
 FAVORITES_FILE = "/media/fat/frontend/favorites.json"
 MISTER_CMD  = "/dev/MiSTer_cmd"
+
+# ----------------------------------------------------------------------------
+# NOTAUSSTIEG WAEHREND EINES LAUFENDEN CORES (Strg+Alt+Esc ueber die
+# rohe HID-Ebene)
+#
+# MiSTer sperrt die normale evdev-Ebene (/dev/input/eventX) exklusiv,
+# sobald ein Core laeuft - ein einfaches `cat /dev/input/eventX` liefert
+# dann 0 Bytes. Der bisherige F10-/Start+Select-Ausstieg in
+# wait_game_exit() liest genau darueber und konnte dadurch vermutlich
+# nie tatsaechlich ausgeloest werden. Per gezielter Diagnose (eigens
+# dafuer geschriebenes Testwerkzeug, das ein Nutzer waehrend eines
+# laufenden Spiels mitlaufen liess) bestaetigt: die ROHE HID-Ebene
+# (/dev/hidrawX) liegt darunter und bleibt bei einer angeschlossenen
+# TASTATUR lesbar (bei manchen Controller-Empfaengern dagegen nicht -
+# deren Tasten laufen offenbar ueber einen anderen, ebenfalls
+# gesperrten Kanal). Deshalb: Strg+Alt+Esc ueber die Tastatur als
+# zusaetzlicher, zuverlaesslicherer Ausstiegsweg.
+def _find_keyboard_hidraw():
+    """Sucht unter /dev/hidraw* nach einem Geraet, dessen HID-Name
+    'keyboard' enthaelt. Bewusst dynamisch (nicht fest verdrahtet) -
+    die hidraw-Nummerierung haengt von Anschlussreihenfolge/USB-Bus ab
+    und kann sich zwischen Boots verschieben."""
+    for path in sorted(glob.glob("/dev/hidraw*")):
+        base = os.path.basename(path)
+        uevent = "/sys/class/hidraw/%s/device/uevent" % base
+        try:
+            with open(uevent) as f:
+                for line in f:
+                    if line.startswith("HID_NAME=") and \
+                            "keyboard" in line.lower():
+                        return path
+        except OSError:
+            continue
+    return None
+
+def _hid_report_has_ctrl_alt_esc(data):
+    """Prueft einen rohen HID-Tastatur-Report auf Strg+Alt+Esc (USB-HID-
+    Bootprotokoll: Modifikator-Byte 0x05 = LeftCtrl+LeftAlt, Escape-
+    Keycode 0x29). Manche Geraete stellen dem eigentlichen Bootprotokoll-
+    Report noch ein Report-ID-Byte voran (bei Tests bestaetigt: z.B.
+    Logitech-Empfaenger mit '01' als erstem Byte) - deshalb werden
+    BEIDE moeglichen Ausrichtungen geprueft. Nicht jede Tastatur
+    verwendet exakt dieses Format; funktioniert es bei einer bestimmten
+    Tastatur nicht, kann man mit hid_probe.py (falls vorhanden) das
+    tatsaechliche Format ermitteln."""
+    if len(data) >= 3 and data[0] == 0x01 and data[1] == 0x05 and data[2] == 0x29:
+        return True     # mit Report-ID-Praefix (bestaetigtes Format)
+    if len(data) >= 2 and data[0] == 0x05 and 0x29 in data[2:8]:
+        return True     # reines Bootprotokoll ohne Praefix
+    return False
+
 MUSIC_DIR   = "/media/fat/music"
 MUSIC_ENABLED_FILE = "/media/fat/frontend/music_enabled"
 LANGUAGE_FILE = "/media/fat/frontend/language"
@@ -2262,61 +2358,113 @@ class InputManager:
 
     COMBO_HOLD = 0.8          # Sekunden Start+Select halten
 
+    KBD_COMBO_HOLD = 0.3      # Sekunden Strg+Alt+Esc halten (hidraw-Notausstieg)
+
     def wait_game_exit(self):
         """Waehrend ein Core laeuft: warten, bis MiSTer zurueck im
-        Menue ist, F10 gedrueckt wird, ODER Start+Select lange genug
-        gehalten werden. Rueckgabe: "menu", "f10" oder "combo"."""
+        Menue ist, F10 gedrueckt wird, Start+Select lange genug
+        gehalten werden, ODER (neu) Strg+Alt+Esc auf der Tastatur ueber
+        die rohe HID-Ebene erkannt wird. Rueckgabe: "menu", "f10",
+        "combo" oder "hid_combo".
+
+        WICHTIG: F10/Start+Select werden ueber die normale evdev-Ebene
+        gelesen, die MiSTer waehrend eines laufenden Cores exklusiv
+        sperrt - vermutlich hat dieser Zweig dadurch in der Praxis nie
+        tatsaechlich ausgeloest (durch eine gezielte Nutzer-Diagnose
+        aufgedeckt: `cat /dev/input/eventX` liefert waehrend eines
+        Spiels 0 Bytes). Bleibt trotzdem als Absicherung bestehen (fuer
+        MiSTer-Konfigurationen, bei denen das evtl. doch durchkommt).
+        Strg+Alt+Esc laeuft stattdessen ueber /dev/hidrawX (siehe
+        _find_keyboard_hidraw()), das bei einer angeschlossenen
+        Tastatur bestaetigt auch waehrend eines laufenden Cores lesbar
+        bleibt."""
         down = set()              # (geraetepfad, code) gedrueckter Tasten
         combo_since = None
         last_core_check = 0.0
-        while True:
-            now = time.monotonic()
-            if now - self.last_scan > self.RESCAN_EVERY:
-                self.rescan()
-                down = {k for k in down if k[0] in self.devices}
-            if now - last_core_check > 0.7:
-                last_core_check = now
-                if current_core() == "MENU":
-                    return "menu"
-            if combo_since is not None and now - combo_since >= self.COMBO_HOLD:
-                return "combo"
-            fds = {d.fd: d for d in self.devices.values()}
-            if not fds:
-                time.sleep(0.5)
-                continue
+        kbd_path = _find_keyboard_hidraw()
+        kbd_fd = None
+        if kbd_path:
             try:
-                r, _, _ = select.select(list(fds), [], [], 0.2)
+                kbd_fd = os.open(kbd_path, os.O_RDONLY | os.O_NONBLOCK)
             except OSError:
-                self.rescan()
-                continue
-            for fd in r:
-                dev = fds.get(fd)
+                kbd_fd = None
+        kbd_combo_since = None
+        try:
+            while True:
+                now = time.monotonic()
+                if now - self.last_scan > self.RESCAN_EVERY:
+                    self.rescan()
+                    down = {k for k in down if k[0] in self.devices}
+                if now - last_core_check > 0.7:
+                    last_core_check = now
+                    if current_core() == "MENU":
+                        return "menu"
+                if combo_since is not None and now - combo_since >= self.COMBO_HOLD:
+                    return "combo"
+                if (kbd_combo_since is not None
+                        and now - kbd_combo_since >= self.KBD_COMBO_HOLD):
+                    return "hid_combo"
+                fds = {d.fd: d for d in self.devices.values()}
+                if kbd_fd is not None:
+                    fds[kbd_fd] = None
+                if not fds:
+                    time.sleep(0.5)
+                    continue
                 try:
-                    data = os.read(fd, EVENT_SIZE)
+                    r, _, _ = select.select(list(fds), [], [], 0.2)
                 except OSError:
                     self.rescan()
                     continue
-                if len(data) < EVENT_SIZE:
-                    continue
-                _, _, etype, code, value = struct.unpack(EVENT_FMT, data)
-                if etype == EV_KEY and code == KEY_F10 and value == 1:
-                    return "f10"
-                if etype == EV_KEY and code in (BTN_START, BTN_SELECT):
-                    key = (dev.path, code)
-                    if value == 1:
-                        down.add(key)
-                    elif value == 0:
-                        down.discard(key)
-                    # Kombo: Start UND Select am selben Geraet gedrueckt?
-                    active = False
-                    for path in set(p for p, _c in down):
-                        codes = {c for p, c in down if p == path}
-                        if BTN_START in codes and BTN_SELECT in codes:
-                            active = True
-                    if active and combo_since is None:
-                        combo_since = time.monotonic()
-                    elif not active:
-                        combo_since = None
+                for fd in r:
+                    if fd == kbd_fd:
+                        try:
+                            data = os.read(fd, 64)
+                        except OSError:
+                            try:
+                                os.close(kbd_fd)
+                            except OSError:
+                                pass
+                            kbd_fd = None
+                            continue
+                        if _hid_report_has_ctrl_alt_esc(data):
+                            if kbd_combo_since is None:
+                                kbd_combo_since = time.monotonic()
+                        else:
+                            kbd_combo_since = None
+                        continue
+                    dev = fds.get(fd)
+                    try:
+                        data = os.read(fd, EVENT_SIZE)
+                    except OSError:
+                        self.rescan()
+                        continue
+                    if len(data) < EVENT_SIZE:
+                        continue
+                    _, _, etype, code, value = struct.unpack(EVENT_FMT, data)
+                    if etype == EV_KEY and code == KEY_F10 and value == 1:
+                        return "f10"
+                    if etype == EV_KEY and code in (BTN_START, BTN_SELECT):
+                        key = (dev.path, code)
+                        if value == 1:
+                            down.add(key)
+                        elif value == 0:
+                            down.discard(key)
+                        # Kombo: Start UND Select am selben Geraet gedrueckt?
+                        active = False
+                        for path in set(p for p, _c in down):
+                            codes = {c for p, c in down if p == path}
+                            if BTN_START in codes and BTN_SELECT in codes:
+                                active = True
+                        if active and combo_since is None:
+                            combo_since = time.monotonic()
+                        elif not active:
+                            combo_since = None
+        finally:
+            if kbd_fd is not None:
+                try:
+                    os.close(kbd_fd)
+                except OSError:
+                    pass
 
     def flush(self):
         for d in self.devices.values():
@@ -5276,9 +5424,11 @@ class Frontend:
             return
         while current_core() != "MENU":
             res = self.inp.wait_game_exit()
-            if res in ("combo", "f10"):
-                LOG("Start+Select bzw. F10 erkannt - zurueck ins Menue"
-                    if res == "combo" else "F10 erkannt - zurueck ins Menue")
+            if res in ("combo", "f10", "hid_combo"):
+                LOG({"combo": "Start+Select erkannt - zurueck ins Menue",
+                     "f10": "F10 erkannt - zurueck ins Menue",
+                     "hid_combo": "Strg+Alt+Esc (HID-Notausstieg) erkannt - "
+                                  "zurueck ins Menue"}[res])
                 launch_core("/media/fat/menu.rbf")
                 t1 = time.monotonic()
                 while current_core() != "MENU" and time.monotonic() - t1 < 10:
