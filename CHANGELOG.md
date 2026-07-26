@@ -4,6 +4,14 @@ Alle nennenswerten Änderungen am MiSTer Custom Frontend. Kompakt
 gehalten — für die volle technische Historie siehe die Git-Commits
 bzw. den Kopfkommentar in `frontend/frontend.py`.
 
+## v1.64 (2026-07-25) — KRITISCHER BUGFIX
+- Frontend stürzte kurz nach dem Boot ab (Boot-Animation spielt,
+  dann zurück ins MiSTer-OSD), sobald der erste Equalizer-/Laufschrift-
+  Tick fällig wurde (praktisch bei jedem mit aktivierter Musik).
+  Ursache: ein beim Einfügen einer v1.63-Funktion versehentlich
+  verrutschter Codeblock. Behoben und mit einem echten Testlauf durch
+  die Hauptschleife (nicht nur Pixel-Vergleiche) abgesichert.
+
 ## v1.63 (2026-07-25)
 - Performance-Verbesserung fortgesetzt: auch die Songtitel-Laufschrift
   nutzt jetzt den leichten Zeichenpfad statt eines vollen Aufbaus

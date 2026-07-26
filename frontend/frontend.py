@@ -1,9 +1,43 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.63
+MiSTer Custom Frontend - v1.64
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.64 (KRITISCHER BUGFIX: Absturz kurz nach dem Boot bei
+aktivierter Musik):
+  - Nutzer-Rueckmeldung: Frontend spielt die Boot-Animation ab und
+    wechselt danach zurueck ins MiSTer-OSD. Direkt nachgestellt (echtes
+    next_action() ueber mehrere Durchlaeufe mit simulierter "keine
+    Eingabe"-Situation, genau wie kurz nach dem Boot) - reproduzierte
+    den Absturz sofort: NameError in _draw_dynamic_track_marquee()
+    (aus v1.63), sobald der erste Equalizer-/Laufschrift-Tick faellig
+    wurde. Ursache: beim Einfuegen dieser Funktion ist versehentlich
+    ein Codeblock aus _draw_dynamic_items() (der dortige flip_rows()-
+    Aufruf samt Bereichsberechnung) an ihr Ende hineingerutscht -
+    referenzierte dort nicht existierende Variablen.
+  - Zweiter, stiller Fehler dabei gefunden: durch dieses Verrutschen
+    hatte _draw_dynamic_items() selbst KEINEN flip_rows()-Aufruf mehr -
+    die markierte Zeile waere zwar korrekt neu gezeichnet, aber nie
+    auf den echten Bildschirm uebertragen worden (kein Absturz, aber
+    ein eingefrorenes Bild).
+  - Beide Codebloecke an die richtige Stelle zurueckgesetzt.
+  - LEHRE FUER KUENFTIGE AENDERUNGEN: der pixelgenaue Differenzvergleich
+    (der beim Bauen dieser Funktionen verwendet wurde) prueft nur die
+    KORREKTHEIT der Ausgabe, wenn die Funktion durchlaeuft - er haette
+    diesen Fehler nicht gefangen, wenn der fehlerhafte Code zufaellig
+    VOR dem eigentlichen Rueckgabepunkt gelandet waere. Ab jetzt
+    zusaetzlich: ein direkter Testlauf durch next_action() selbst
+    (mit simulierter Zeit, wie hier geschehen), um sicherzustellen,
+    dass der komplette Ablauf durch den echten Code tatsaechlich
+    fehlerfrei durchlaeuft, nicht nur die Bildausgabe stimmt.
+  - Getestet: next_action() laeuft jetzt ueber mehrere Sekunden
+    simulierter Zeit (mit echtem Sleep, wie eine reale Wartesituation)
+    ohne Absturz auf beiden Seiten und beiden Aufloesungen. Beide
+    betroffenen Funktionen erneut per pixelgenauem Vergleich bestaetigt
+    (16 bzw. 6 Kombinationen). 48 Kombinationen kompletter
+    Regressionstest weiterhin bestanden.
 
 Neu in v1.63 (Performance-Verbesserung fortgesetzt: Songtitel-
 Laufschrift jetzt ebenfalls ueber den leichten Pfad):
@@ -3851,6 +3885,14 @@ class Frontend:
         self.draw_list_row(self.item_i)
         if has_next:
             self.draw_list_row(self.item_i + 1)
+        # Grosszuegiger Bereich, der die tatsaechlich aufgefrischten
+        # Zeilen (markierte Zeile + evtl. Nachbarn) komplett abdeckt -
+        # ein paar zusaetzliche Pixel zu flippen kostet kaum etwas,
+        # verglichen mit dem Risiko, eine aufgefrischte Nachbarzeile
+        # nur teilweise auf den Schirm zu bringen.
+        flip_y0 = y_top - (rowh if has_prev else max_p)
+        flip_y1 = y_top + rowh - 2 * s + max_p + (rowh if has_next else 0)
+        fb.flip_rows(flip_y0, flip_y1 - flip_y0)
 
     def _draw_dynamic_track_marquee(self):
         """Leichter Zeichenpfad fuer die Songtitel-Laufschrift: erneuert
@@ -3911,14 +3953,6 @@ class Frontend:
             if track_display:
                 fb.text(ox, footer_y, track_display, s, C_DIM)
             fb.flip_rows(footer_y, h)
-        # Grosszuegiger Bereich, der die tatsaechlich aufgefrischten
-        # Zeilen (markierte Zeile + evtl. Nachbarn) komplett abdeckt -
-        # ein paar zusaetzliche Pixel zu flippen kostet kaum etwas,
-        # verglichen mit dem Risiko, eine aufgefrischte Nachbarzeile
-        # nur teilweise auf den Schirm zu bringen.
-        flip_y0 = y_top - (rowh if has_prev else max_p)
-        flip_y1 = y_top + rowh - 2 * s + max_p + (rowh if has_next else 0)
-        fb.flip_rows(flip_y0, flip_y1 - flip_y0)
 
     def _draw_status_bar(self, L):
         """Netzwerksymbol (nur wenn verbunden) + Uhrzeit unten rechts
