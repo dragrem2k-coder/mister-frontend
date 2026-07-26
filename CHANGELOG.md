@@ -4,6 +4,41 @@ Alle nennenswerten Änderungen am MiSTer Custom Frontend. Kompakt
 gehalten — für die volle technische Historie siehe die Git-Commits
 bzw. den Kopfkommentar in `frontend/frontend.py`.
 
+## v1.63 (2026-07-25)
+- Performance-Verbesserung fortgesetzt: auch die Songtitel-Laufschrift
+  nutzt jetzt den leichten Zeichenpfad statt eines vollen Aufbaus
+  (3,88ms → praktisch nicht mehr messbar), kombinierbar mit dem
+  Equalizer-/Pulsier-Pfad aus v1.62.
+
+## v1.62 (2026-07-25)
+- GROSSE Performance-Verbesserung: jeder Equalizer-/Pulsier-Tick löste
+  bisher einen kompletten Bildschirmaufbau aus, obwohl sich nur eine
+  Zeile und ein paar Balken ändern. Neue leichte Zeichenpfade sparen
+  90–92 % der Zeit pro Tick (gemessen: 5,15ms → 0,42ms auf HDMI) — die
+  wahrscheinliche Hauptursache für das gemeldete HDMI-Lag-Gefühl.
+
+## v1.61 (2026-07-25)
+- BUGFIX (Fortsetzung von v1.60): der Grab-Fix hat das Einfrieren beim
+  Konfigurieren von "OSD öffnen" nicht behoben. Neue Theorie: F9 ist
+  bei MiSTer für den Konsolen-/Grafikmodus-Wechsel reserviert, vermutlich
+  auf Kernel-Ebene — ein echtes F9 vom Pad käme nie bei unserem Prozess
+  an. Zwei Absicherungen: Zeitlimit (20s) statt endlosem Warten, F9 wird
+  nie als Belegung akzeptiert.
+
+## v1.60 (2026-07-25)
+- BUGFIX: Tastenbelegungs-Assistent löste den Eingabe-Grab für die
+  gesamte Dauer, wodurch MiSTers eigene Menü-Taste beim Konfigurieren
+  von "OSD öffnen" parallel reagieren konnte (Bildschirm fror ein /
+  wurde schwarz mit Login-Prompt). Grab bleibt jetzt durchgehend
+  gehalten — für das eigene Auslesen der Tasten nie nötig gewesen.
+
+## v1.59 (2026-07-25)
+- L1/L2/R1/R2 vollständig belegbar: viele Xbox-artige Controller
+  senden L2/R2 als analogen Trigger statt als eigene Taste — das wurde
+  bisher gar nicht erkannt. Jetzt per Schwellwert erfasst und wie eine
+  normale Taste frei belegbar. L2 und R2 zeigen beide (digital und
+  analog) standardmäßig auf "Favorit umschalten".
+
 ## v1.58 (2026-07-25)
 - Favoriten-Liste: F8/L2 markiert ein Spiel als Favorit (unabhängig
   von "Zuletzt gespielt"), eigene Kategorie, kleines "*" in der Liste.

@@ -1,4 +1,4 @@
-# MiSTer Custom Frontend v1.58 - Komplettbuild (Stand: 2026-07-25)
+# MiSTer Custom Frontend v1.63 - Komplettbuild (Stand: 2026-07-25)
 
 **Ersteller: Dragrem2K**
 
@@ -85,7 +85,7 @@ und Testhistorie (siehe `CHANGELOG.md`).
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.58) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.63) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (laeuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (laeuft auf dem MiSTer) |
@@ -227,7 +227,7 @@ Netzwerkverkehr zu erzeugen.
 | F10 / X-Button                     | Aus dem OSD zurueck ins Frontend |
 | Y-Taste                            | Naechster Song (manueller Musik-Wechsel) |
 | F11                                 | Zufaelliges Spiel/Kategorie ("weiss nicht was ich spielen soll") |
-| F8 / L2-Taste                       | Favorit umschalten (nur bei Spiele-Eintraegen) |
+| F8 / L2- oder R2-Taste               | Favorit umschalten (nur bei Spiele-Eintraegen) |
 | 3x Select nacheinander (Pad)       | Beenden-Bestaetigung (wie ESC) |
 | Im laufenden Spiel: F12 -> "Exit to Menu Core" | Zurueck ins Frontend (siehe Hinweis unten) |
 
@@ -461,18 +461,26 @@ bleiben aussen vor).
 
 Eigene, bewusst kuratierte Auswahl - unabhaengig von "Zuletzt
 gespielt" (das fuellt sich automatisch, Favoriten nur durch dich
-selbst). F8 (Tastatur) bzw. die L2-Taste (Gamepad, sofern vorhanden)
-schaltet den Favoritenstatus des gerade markierten Spiels um -
-funktioniert nur bei echten Spiele-Eintraegen, nicht bei Ordnern,
-Scripts oder Cores. Favorisierte Spiele zeigen ein kleines "*" vor
-dem Namen in der Liste.
+selbst). F8 (Tastatur) bzw. **L2 oder R2** (Gamepad) schaltet den
+Favoritenstatus des gerade markierten Spiels um - funktioniert nur bei
+echten Spiele-Eintraegen, nicht bei Ordnern, Scripts oder Cores.
+Favorisierte Spiele zeigen ein kleines "*" vor dem Namen in der Liste.
+
+**Seit v1.59: L2/R2 funktionieren unabhaengig davon, ob dein Pad sie
+als eigene Taste oder als analogen Trigger sendet** (bei vielen
+Xbox-artigen Controllern ueblich) - beides wird erkannt (Schwelle:
+ueber 50% durchgezogen = "gedrueckt"). L1/R1 bleiben unveraendert fuer
+das Blaettern zustaendig, lassen sich aber genau wie jede andere Taste
+ueber den Assistenten (Abschnitt 10) umbelegen, falls du sie lieber
+fuers Favorisieren nutzen moechtest.
 
 Erscheint als eigene Kategorie "Favoriten" direkt nach "Zuletzt
 gespielt" (bzw. ganz vorne, falls es keine "Zuletzt gespielt"-Eintraege
 gibt) - und verschwindet automatisch wieder, sobald keine Favoriten
-mehr vorhanden sind. Beide Tasten lassen sich ueber den
-Tastenbelegungs-Assistenten (Abschnitt 10) auf eine andere Taste legen,
-falls F8/L2 bei deinem Setup unpraktisch liegt.
+mehr vorhanden sind. Alle vier Schultertasten (L1/L2/R1/R2) lassen
+sich ueber den Tastenbelegungs-Assistenten (Abschnitt 10) frei auf
+jede Aktion legen, falls die Standardbelegung bei deinem Setup
+unpraktisch liegt.
 
 ## 9. Sprache umschalten
 
@@ -595,6 +603,16 @@ fuer Weiterentwicklung: `STREAM_fuer_Dragrem.md`.
 
 ## 13. Fehlerbehebung
 
+- **Tastenbelegungs-Assistent friert beim Konfigurieren von "OSD
+  oeffnen" ein / Bildschirm wird schwarz mit Login-Prompt**: der
+  v1.60-Versuch (Eingabe-Grab durchgehend halten) hat das nicht
+  behoben. Seit v1.61: F9 ist bei MiSTer fuer den Wechsel zwischen
+  Konsole und Grafikmodus reserviert - sendet dein Pad (z.B. ueber
+  eine Home-/Guide-Taste) ein echtes F9, faengt vermutlich schon der
+  Kernel das ab, bevor unser Prozess es sieht. Der Assistent hat jetzt
+  ein Zeitlimit (20s, ueberspringt die Abfrage statt endlos zu warten)
+  und lehnt ein erfasstes F9 grundsaetzlich als Belegung ab. Tritt es
+  trotzdem noch auf: `tail -60 /tmp/frontend.log` direkt danach teilen.
 - **Nach einem Datei-Update** (neue Version installiert): einfach
   `/media/fat/Scripts/update_frontend.sh` ausfuehren (per SSH oder aus
   dem MiSTer-OSD unter Scripts) - beendet die alte Instanz sauber und
