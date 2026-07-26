@@ -1,9 +1,34 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.75
+MiSTer Custom Frontend - v1.76
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.76 (Notausstieg vereinfacht: reines Esc statt Strg+Alt+Esc):
+  - Nutzerwunsch: nur die Esc-Taste statt der Dreifach-Kombination.
+    _hid_report_has_esc() (vormals _hid_report_has_ctrl_alt_esc())
+    prueft jetzt ausschliesslich auf den Escape-Keycode (0x29),
+    unabhaengig von Modifikatortasten - und sucht ihn irgendwo im
+    Report statt an einer festen Byte-Position (robuster gegenueber
+    unterschiedlichen Report-Layouts).
+  - Haltezeit (KBD_COMBO_HOLD) bewusst von 0.3s auf 0.6s erhoeht: ein
+    einzelnes Esc wird leichter mal kurz in einem spiel-eigenen Pause-
+    Menue gedrueckt als eine Dreifach-Kombination - die laengere
+    Haltezeit verhindert, dass ein normaler, kurzer Esc-Druck im Spiel
+    versehentlich den Ausstieg auslöst.
+  - Pad-Anfrage (Start+Select am Joypad soll denselben Effekt haben):
+    nach der eigenen Diagnose des Nutzers kam beim eingesetzten 8BitDo-
+    Controller waehrend eines laufenden Spiels UEBER KEINEN der beiden
+    gepruefen Kanaele (evdev gesperrt, hidraw liefert dort nichts)
+    ueberhaupt etwas durch - dafuer gibt es aktuell keinen bestaetigten
+    Lesepfad, daher (noch) nicht umgesetzt.
+  - Getestet: reines Esc (mit und ohne gehaltene Modifikatoren) wird
+    erkannt, andere Tasten loesen nicht aus. Ende-zu-Ende mit
+    simulierter Tastatur: laenger gehaltenes Esc (>0.6s) loest
+    zuverlaessig aus, ein kurzer Antipp (0.15s, wie im Spielmenue)
+    loest NICHT aus. 36 Kombinationen kompletter Regressionstest
+    weiterhin bestanden.
 
 Neu in v1.75 (NEUES FEATURE: Notausstieg per Strg+Alt+Esc waehrend
 eines laufenden Spiels, ueber die rohe HID-Ebene):
@@ -1582,8 +1607,8 @@ FAVORITES_FILE = "/media/fat/frontend/favorites.json"
 MISTER_CMD  = "/dev/MiSTer_cmd"
 
 # ----------------------------------------------------------------------------
-# NOTAUSSTIEG WAEHREND EINES LAUFENDEN CORES (Strg+Alt+Esc ueber die
-# rohe HID-Ebene)
+# NOTAUSSTIEG WAEHREND EINES LAUFENDEN CORES (Esc laenger halten, ueber
+# die rohe HID-Ebene)
 #
 # MiSTer sperrt die normale evdev-Ebene (/dev/input/eventX) exklusiv,
 # sobald ein Core laeuft - ein einfaches `cat /dev/input/eventX` liefert
@@ -1595,8 +1620,9 @@ MISTER_CMD  = "/dev/MiSTer_cmd"
 # (/dev/hidrawX) liegt darunter und bleibt bei einer angeschlossenen
 # TASTATUR lesbar (bei manchen Controller-Empfaengern dagegen nicht -
 # deren Tasten laufen offenbar ueber einen anderen, ebenfalls
-# gesperrten Kanal). Deshalb: Strg+Alt+Esc ueber die Tastatur als
-# zusaetzlicher, zuverlaesslicherer Ausstiegsweg.
+# gesperrten Kanal). Deshalb: Esc laenger halten ueber die Tastatur als
+# zusaetzlicher, zuverlaesslicherer Ausstiegsweg (urspruenglich
+# Strg+Alt+Esc, auf Nutzerwunsch vereinfacht).
 def _find_keyboard_hidraw():
     """Sucht unter /dev/hidraw* nach einem Geraet, dessen HID-Name
     'keyboard' enthaelt. Bewusst dynamisch (nicht fest verdrahtet) -
@@ -1615,21 +1641,24 @@ def _find_keyboard_hidraw():
             continue
     return None
 
-def _hid_report_has_ctrl_alt_esc(data):
-    """Prueft einen rohen HID-Tastatur-Report auf Strg+Alt+Esc (USB-HID-
-    Bootprotokoll: Modifikator-Byte 0x05 = LeftCtrl+LeftAlt, Escape-
-    Keycode 0x29). Manche Geraete stellen dem eigentlichen Bootprotokoll-
-    Report noch ein Report-ID-Byte voran (bei Tests bestaetigt: z.B.
-    Logitech-Empfaenger mit '01' als erstem Byte) - deshalb werden
-    BEIDE moeglichen Ausrichtungen geprueft. Nicht jede Tastatur
-    verwendet exakt dieses Format; funktioniert es bei einer bestimmten
-    Tastatur nicht, kann man mit hid_probe.py (falls vorhanden) das
-    tatsaechliche Format ermitteln."""
-    if len(data) >= 3 and data[0] == 0x01 and data[1] == 0x05 and data[2] == 0x29:
-        return True     # mit Report-ID-Praefix (bestaetigtes Format)
-    if len(data) >= 2 and data[0] == 0x05 and 0x29 in data[2:8]:
-        return True     # reines Bootprotokoll ohne Praefix
-    return False
+def _hid_report_has_esc(data):
+    """Prueft einen rohen HID-Tastatur-Report auf die Escape-Taste
+    (USB-HID-Keycode 0x29) - UNABHAENGIG von Modifikatortasten (frueher
+    Strg+Alt+Esc, auf Nutzerwunsch auf reines Esc vereinfacht, da
+    einfacher zu druecken).
+
+    WICHTIG: viele Spiele nutzen Esc selbst schon fuer eigene Pause-/
+    Menue-Funktionen - deshalb bleibt die Haltezeit (KBD_COMBO_HOLD,
+    siehe wait_game_exit()) als Sicherung bestehen. Ein kurzer,
+    normaler Esc-Druck im Spiel loest dadurch NICHT versehentlich den
+    Ausstieg aus - nur ein bewusst LAENGER GEHALTENES Esc tut das.
+
+    Der Keycode wird IRGENDWO im Report gesucht, nicht an einer festen
+    Position - robuster gegenueber unterschiedlichen Report-Layouts
+    (manche Geraete stellen ein Report-ID-Byte voran) als eine feste
+    Byte-Position anzunehmen."""
+    return 0x29 in data
+
 
 MUSIC_DIR   = "/media/fat/music"
 MUSIC_ENABLED_FILE = "/media/fat/frontend/music_enabled"
@@ -2358,14 +2387,18 @@ class InputManager:
 
     COMBO_HOLD = 0.8          # Sekunden Start+Select halten
 
-    KBD_COMBO_HOLD = 0.3      # Sekunden Strg+Alt+Esc halten (hidraw-Notausstieg)
+    KBD_COMBO_HOLD = 0.6      # Sekunden Esc halten (hidraw-Notausstieg) -
+                              # bewusst laenger als bei Strg+Alt+Esc, da
+                              # ein einzelnes Esc leichter mal kurz in
+                              # einem spiel-eigenen Pause-Menue gedrueckt
+                              # wird als eine Dreifach-Kombination
 
     def wait_game_exit(self):
         """Waehrend ein Core laeuft: warten, bis MiSTer zurueck im
         Menue ist, F10 gedrueckt wird, Start+Select lange genug
-        gehalten werden, ODER (neu) Strg+Alt+Esc auf der Tastatur ueber
-        die rohe HID-Ebene erkannt wird. Rueckgabe: "menu", "f10",
-        "combo" oder "hid_combo".
+        gehalten werden, ODER (neu) Esc auf der Tastatur laenger
+        gehalten wird - erkannt ueber die rohe HID-Ebene. Rueckgabe:
+        "menu", "f10", "combo" oder "hid_combo".
 
         WICHTIG: F10/Start+Select werden ueber die normale evdev-Ebene
         gelesen, die MiSTer waehrend eines laufenden Cores exklusiv
@@ -2374,10 +2407,13 @@ class InputManager:
         aufgedeckt: `cat /dev/input/eventX` liefert waehrend eines
         Spiels 0 Bytes). Bleibt trotzdem als Absicherung bestehen (fuer
         MiSTer-Konfigurationen, bei denen das evtl. doch durchkommt).
-        Strg+Alt+Esc laeuft stattdessen ueber /dev/hidrawX (siehe
+        Esc laeuft stattdessen ueber /dev/hidrawX (siehe
         _find_keyboard_hidraw()), das bei einer angeschlossenen
         Tastatur bestaetigt auch waehrend eines laufenden Cores lesbar
-        bleibt."""
+        bleibt. Urspruenglich Strg+Alt+Esc, auf Nutzerwunsch auf reines
+        Esc vereinfacht (mit laengerer Haltezeit als Sicherung gegen
+        normale Esc-Nutzung innerhalb eines Spiels, siehe
+        KBD_COMBO_HOLD)."""
         down = set()              # (geraetepfad, code) gedrueckter Tasten
         combo_since = None
         last_core_check = 0.0
@@ -2426,7 +2462,7 @@ class InputManager:
                                 pass
                             kbd_fd = None
                             continue
-                        if _hid_report_has_ctrl_alt_esc(data):
+                        if _hid_report_has_esc(data):
                             if kbd_combo_since is None:
                                 kbd_combo_since = time.monotonic()
                         else:
@@ -5427,7 +5463,7 @@ class Frontend:
             if res in ("combo", "f10", "hid_combo"):
                 LOG({"combo": "Start+Select erkannt - zurueck ins Menue",
                      "f10": "F10 erkannt - zurueck ins Menue",
-                     "hid_combo": "Strg+Alt+Esc (HID-Notausstieg) erkannt - "
+                     "hid_combo": "Esc (HID-Notausstieg) erkannt - "
                                   "zurueck ins Menue"}[res])
                 launch_core("/media/fat/menu.rbf")
                 t1 = time.monotonic()
