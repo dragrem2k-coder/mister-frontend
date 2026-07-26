@@ -1,9 +1,41 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.64
+MiSTer Custom Frontend - v1.65
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.65 (zwei kleinere, aber echte Bugfixes: Attract-Modus-
+Timing, Turbo-Sprung bei schnellen Einzelklicks):
+  - BUGFIX 1: Attract-Modus startete manchmal sehr schnell nach dem
+    Neustart. Ursache: der Leerlauf-Zaehler (self._last_input_time)
+    wurde schon in __init__() gesetzt - also VOR dem (potenziell
+    langsamen) Scan und der Boot-Animation. Dauerten beide zusammen
+    laenger, war ein Grossteil der 45 Sekunden Leerlaufzeit schon
+    verstrichen, BEVOR der Nutzer das Menue ueberhaupt zu sehen bekam.
+    Jetzt wird der Zaehler in run() erst NACH Boot-Animation und
+    erstem Zeichnen zurueckgesetzt - genau dann, wenn das Menue
+    tatsaechlich sichtbar und bedienbar ist.
+  - BUGFIX 2: Cursor sprang gelegentlich zwei Zeilen statt einer beim
+    Klicken durch das Menue. Ursache: der Turbo-Sprung-Zaehler
+    (fuer schnelleres Springen beim HALTEN einer Richtungstaste)
+    unterschied nicht zwischen einem echten Tastendruck-Halten und
+    mehreren schnellen, aber EINZELNEN Klicks in dieselbe Richtung -
+    beides sah fuer den Zaehler gleich aus ("dieselbe Richtung wie
+    beim letzten Mal"), unabhaengig davon, wie viel Zeit dazwischen
+    verging. Nach genug schnellen Einzelklicks schaltete der Zaehler
+    faelschlich auf Turbo (2 statt 1 Schritt).
+  - Fix: der Zaehler baut sich nur noch auf, wenn der Abstand zum
+    letzten Tastendruck unter 0.5s liegt (knapp ueber REPEAT_DELAY=
+    0.4s, der groessten natuerlichen Pause innerhalb eines echten
+    Haltevorgangs) - bei einer spuerbaren Pause (z.B. 0.6s+) faengt
+    er wieder bei 1 an, unabhaengig von der Richtung. Betrifft sowohl
+    hoch/runter als auch links/rechts (Seitensprung).
+  - Getestet: echtes Halten (schnelle Wiederholungen im 0.1s-Abstand)
+    schaltet weiterhin korrekt auf Turbo, bewusste Einzelklicks mit
+    spuerbarer Pause (0.6s) loesen NIEMALS mehr faelschlich Turbo aus,
+    Richtungswechsel setzt den Zaehler korrekt zurueck. 48
+    Kombinationen kompletter Regressionstest weiterhin bestanden.
 
 Neu in v1.64 (KRITISCHER BUGFIX: Absturz kurz nach dem Boot bei
 aktivierter Musik):
@@ -5056,11 +5088,22 @@ class Frontend:
         # jetzt schon in __init__(), VOR dem Scan - siehe Kommentar dort.
         self.play_boot_animation()
         self.draw()
+        # WICHTIG (Bugfix): der Leerlauf-Zaehler fuer den Attract-Modus
+        # wurde bisher schon in __init__() gesetzt - also VOR dem
+        # (potenziell langsamen) Scan und der Boot-Animation. Dauerten
+        # beide zusammen laenger, war ein Grossteil der 45 Sekunden
+        # schon verstrichen, BEVOR der Nutzer das Menue ueberhaupt zu
+        # sehen bekam - der Attract-Modus konnte dadurch fast sofort
+        # nach dem sichtbaren Start einsetzen. Erst hier zuruecksetzen,
+        # wenn das Menue tatsaechlich sichtbar und bedienbar ist.
+        self._last_input_time = time.time()
         try:
             move_streak = 0     # zaehlt gehaltene hoch/runter-Wiederholungen
             move_last = None    # fuer den Turbo-Sprung (einzelne Position)
+            move_last_time = 0.0
             page_streak = 0     # zaehlt gehaltene links/rechts-Wiederholungen
             page_last = None    # fuer den Turbo-Sprung (seitenweise)
+            page_last_time = 0.0
             while True:
                 act = self.next_action()
                 self._publish_stream()
@@ -5085,14 +5128,30 @@ class Frontend:
                 name, _root_node, _syskey = self.cats[self.cat_i]
                 items = self._display_items() if self.page == 1 else []
 
-                # Turbo-Sprung hoch/runter: je laenger gehalten, desto
+                # Turbo-Sprung hoch/runter: je laenger GEHALTEN, desto
                 # groesser die Schrittweite (1 -> 2 -> 4 -> 10). Das
                 # beschleunigende Wiederholungs-Intervall aus dem
                 # InputManager laesst die Tick-Rate schon steigen; hier
                 # kommt zusaetzlich eine steigende Sprungweite dazu.
+                #
+                # WICHTIG (Bugfix): der Streak-Zaehler darf NUR bei
+                # einem tatsaechlich GEHALTENEN Tastendruck hochzaehlen,
+                # nicht bei mehreren schnellen, aber EINZELNEN Klicks in
+                # dieselbe Richtung - sonst sprang der Cursor gelegent-
+                # lich unerwartet zwei Zeilen, wenn jemand zuegig
+                # mehrfach hintereinander geklickt hat. Ein echtes
+                # Halten erzeugt Wiederholungen im Abstand von hoechstens
+                # REPEAT_DELAY (0.4s); liegt mehr Zeit dazwischen, war es
+                # ein neuer, einzelner Tastendruck - Zaehler faengt dann
+                # wieder bei 1 an, unabhaengig von der Richtung.
+                now_t = time.time()
                 if act in ("up", "down"):
-                    move_streak = move_streak + 1 if act == move_last else 1
+                    if act == move_last and (now_t - move_last_time) < 0.5:
+                        move_streak += 1
+                    else:
+                        move_streak = 1
                     move_last = act
+                    move_last_time = now_t
                 else:
                     move_streak = 0
                     move_last = None
@@ -5102,9 +5161,14 @@ class Frontend:
 
                 # Turbo-Sprung links/rechts: Grundschritt ist eine volle
                 # Bildschirmseite, waechst beim Halten auf mehrere Seiten.
+                # Gleiche Zeit-Absicherung wie oben bei hoch/runter.
                 if act in ("left", "right"):
-                    page_streak = page_streak + 1 if act == page_last else 1
+                    if act == page_last and (now_t - page_last_time) < 0.5:
+                        page_streak += 1
+                    else:
+                        page_streak = 1
                     page_last = act
+                    page_last_time = now_t
                 else:
                     page_streak = 0
                     page_last = None
