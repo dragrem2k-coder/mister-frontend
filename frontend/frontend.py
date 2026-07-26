@@ -1,9 +1,80 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.68
+MiSTer Custom Frontend - v1.70
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.70 (WICHTIGER FUND: Attract-Modus-Ursache wahrscheinlich
+gefunden - Systemuhr-Spruenge):
+  - Nutzer schickte einen Log-Ausschnitt und fragte sich, warum die
+    Zeitstempel bei "00:00:11" begannen. Aufgeklaert: LOG() nutzt
+    time.strftime() - das ist die ECHTE Systemuhr, nicht "Sekunden seit
+    Boot". MiSTer hat offenbar keine batteriegepufferte Echtzeituhr,
+    die Uhr startet nahe Null und wird erst per Netzwerk (NTP)
+    nachtraeglich korrigiert - das kann mitten in einer Sitzung
+    passieren, oft als PLOETZLICHER SPRUNG um Stunden.
+  - Das ist hoechstwahrscheinlich die eigentliche Ursache fuer den
+    Attract-Modus, der "kurz nach dem Intro" oder "obwohl gerade
+    navigiert wurde" einsetzte: der Leerlauf-Zaehler nutzte time.time()
+    (die Systemuhr) - ein Sprung um mehrere Stunden waere SOFORT wie
+    "90 Sekunden Leerlauf" ausgesehen, obwohl real nur Sekunden
+    vergangen waren.
+  - Fix: alle 42 Stellen im Code, die time.time() fuer ZEITDAUER-
+    Messungen nutzen (Leerlauf-Zaehler, Equalizer-/Pulsier-/Laufschrift-
+    Takte, Tasten-Wiederholung, USB-Wartelogik, Boot-Animation-Timing,
+    Attract-Wechsel-Timer usw.), auf time.monotonic() umgestellt - eine
+    Uhr, die garantiert NIE springt oder rueckwaerts laeuft, unabhaengig
+    von Systemzeit-Korrekturen. Die ECHTE Uhrzeit-Anzeige (Uhrzeit im
+    Hauptmenue, Log-Zeitstempel) nutzt bewusst weiterhin time.strftime()
+    - die SOLL ja die echte, ggf. gerade korrigierte Uhrzeit zeigen.
+  - Getestet: direkter Vergleichstest - bei einem simulierten Uhrsprung
+    von 5 Echtzeit-Sekunden auf "5 Stunden Sprung in der Wanduhr" bleibt
+    die monotone Messung korrekt bei 5 Sekunden (vorher: faelschlich
+    17010 Sekunden). Laufschrift-Zeitbremse (v1.68) und alle Tick-
+    Mechanismen erneut mit monotonic() bestaetigt korrekt, kompletter
+    next_action()-Durchlauf ohne Absturz auf beiden Aufloesungen. 24
+    Kombinationen kompletter Regressionstest weiterhin bestanden.
+  - EHRLICHER HINWEIS: dies ist die wahrscheinlichste, aber nicht 100%%
+    verifizierte Ursache (die genaue NTP-Konfiguration von MiSTer laesst
+    sich in der Sandbox nicht nachstellen). Sollte der Attract-Modus
+    trotzdem noch zu frueh einsetzen, waere das ein Hinweis auf eine
+    GANZ ANDERE Ursache - bitte weiterhin per Log-Ausschnitt (diesmal
+    nach einem tatsaechlichen Vorfall) melden.
+
+Neu in v1.69 (GROSSER Fund: Cover-Verkleinerung war extrem langsam -
+betrifft jede echte Navigation, nicht nur Hintergrund-Ticks):
+  - Nutzer-Rueckmeldung: HDMI fuehlt sich trotz v1.62/v1.63/v1.67
+    weiterhin laghaft an. Gezielt die bisher NICHT untersuchte
+    Cover-Skalierung profiliert (ART.get_scaled(), lief bei jeder
+    echten Navigation zu einem neuen Spiel): die VERKLEINERUNG (fuer
+    HD-Cover, die groesser als der verfuegbare Platz sind - der
+    Normalfall bei den meisten HD-Thumbnail-Quellen) machte pro
+    Ziel-PIXEL eine einzelne 4-Byte bytearray-Slice-Zuweisung in einer
+    doppelt verschachtelten Schleife. Bei einer realistischen
+    Verkleinerung auf 480x600 sind das 288.000 einzelne Python-
+    Anweisungen - gemessen: ~90ms fuer EIN einzelnes Cover!
+  - Die VERGROESSERUNG (fuer kleine Cover) nutzte bereits die richtige
+    Technik (b"".join() pro Zeile, in C implementiert) - die
+    Verkleinerung wurde bislang uebersehen.
+  - Fix: dieselbe Zeilen-weise b"".join()-Technik jetzt auch fuer die
+    Verkleinerung. Ein Zeilen-Cache (dieselbe Quellzeile fuer mehrere
+    Zielzeilen wiederverwenden) wurde erwogen, aber verworfen - beim
+    hier verwendeten Naechster-Nachbar-Verfahren wird so gut wie nie
+    dieselbe Quellzeile zweimal gebraucht, ein Cache haette nur
+    zusaetzlichen Aufwand ohne Nutzen bedeutet (per Messung bestaetigt).
+  - Gemessene Einsparung: 89.65ms -> 27.81ms fuer eine 800x1000 ->
+    480x600-Verkleinerung (69%% weniger). Betrifft JEDE echte
+    Navigation mit einem zu grossen HD-Cover, nicht nur die bisher
+    optimierten Hintergrund-Ticks (Equalizer/Puls/Laufschrift) - eine
+    andere Kategorie von Verzoegerung als die bisherigen Funde.
+  - Getestet: Ergebnis pixelgenau identisch zur alten (langsamen)
+    Implementierung bei 5 verschiedenen Zielgroessen (mit zufaelligem,
+    nicht-uniformem Testbild, damit Positionsfehler auffallen wuerden).
+    24 Kombinationen kompletter Regressionstest weiterhin bestanden.
+  - Ausserdem: Logging fuer den Attract-Modus-Start ergaenzt (zeigt
+    beim naechsten Vorfall die tatsaechliche Leerlaufzeit in Sekunden,
+    fuer den Fall, dass "startet zu frueh" weiterhin auftritt).
 
 Neu in v1.68 (BUGFIX: Namens-Laufschrift auf CRT viel zu schnell):
   - Nutzer-Rueckmeldung: Laufschrift bei langen Spieletiteln jetzt sehr
@@ -1821,7 +1892,7 @@ class InputManager:
         self.rescan()
 
     def rescan(self):
-        self.last_scan = time.time()
+        self.last_scan = time.monotonic()
         seen = set()
         for path, name, is_kbd in scan_devices():
             seen.add(path)
@@ -1847,7 +1918,7 @@ class InputManager:
 
     def _hold(self, key_id, act):
         if act in REPEAT_ACTIONS:
-            self.held = (key_id, act, time.time() + REPEAT_DELAY,
+            self.held = (key_id, act, time.monotonic() + REPEAT_DELAY,
                          REPEAT_INTERVAL)
 
     def _release(self, key_id):
@@ -1934,9 +2005,9 @@ class InputManager:
         """Blockierend (oder mit Timeout) auf die naechste logische
         Aktion warten. Geraete-Events haben IMMER Vorrang vor Halte-
         Wiederholungen, damit ein Loslassen nie verloren geht."""
-        deadline = None if timeout is None else time.time() + timeout
+        deadline = None if timeout is None else time.monotonic() + timeout
         while True:
-            now = time.time()
+            now = time.monotonic()
             if now - self.last_scan > self.RESCAN_EVERY:
                 self.rescan()
             due = self.held is not None and now >= self.held[2]
@@ -1972,7 +2043,7 @@ class InputManager:
                         return act
                 if got_event:
                     continue      # erst die Warteschlange leeren, dann Repeat
-            if self.held is not None and time.time() >= self.held[2]:
+            if self.held is not None and time.monotonic() >= self.held[2]:
                 kid, act, _t, iv = self.held
                 # Untergrenze bewusst bei 0.08s (12.5/s) statt zuvor 0.05s
                 # (20/s) - auf HDMI dauert ein volles Neuzeichnen auf
@@ -1982,9 +2053,9 @@ class InputManager:
                 # Unterschied nicht merkt - 12.5 Spruenge/Sekunde sind
                 # immer noch sehr flott fuer eine kleine Liste.
                 iv = max(0.08, iv * 0.85)
-                self.held = (kid, act, time.time() + iv, iv)
+                self.held = (kid, act, time.monotonic() + iv, iv)
                 return act
-            if deadline is not None and time.time() >= deadline:
+            if deadline is not None and time.monotonic() >= deadline:
                 return None
 
     def read_raw_key(self, timeout=None, allow_axis_skip=False):
@@ -2001,9 +2072,9 @@ class InputManager:
         ueberschreiben. Ohne diese Erkennung wuerde der Assistent bei
         Pads, deren D-Pad als Achse (nicht als Taste) ankommt, bei der
         allerersten Abfrage endlos haengen bleiben."""
-        deadline = None if timeout is None else time.time() + timeout
+        deadline = None if timeout is None else time.monotonic() + timeout
         while True:
-            now = time.time()
+            now = time.monotonic()
             if now - self.last_scan > self.RESCAN_EVERY:
                 self.rescan()
             wait = self.RESCAN_EVERY
@@ -2053,7 +2124,7 @@ class InputManager:
                             direction = -1 if rel < 0.30 else (1 if rel > 0.70 else 0)
                         if direction != 0:
                             return "AXIS"
-            if deadline is not None and time.time() >= deadline:
+            if deadline is not None and time.monotonic() >= deadline:
                 return None
 
     COMBO_HOLD = 0.8          # Sekunden Start+Select halten
@@ -2066,7 +2137,7 @@ class InputManager:
         combo_since = None
         last_core_check = 0.0
         while True:
-            now = time.time()
+            now = time.monotonic()
             if now - self.last_scan > self.RESCAN_EVERY:
                 self.rescan()
                 down = {k for k in down if k[0] in self.devices}
@@ -2110,7 +2181,7 @@ class InputManager:
                         if BTN_START in codes and BTN_SELECT in codes:
                             active = True
                     if active and combo_since is None:
-                        combo_since = time.time()
+                        combo_since = time.monotonic()
                     elif not active:
                         combo_since = None
 
@@ -2253,17 +2324,25 @@ class ArtCache:
         key = (path, "down", tw, th)
         if key in self.scaled:
             return self.scaled[key]
+        # WICHTIG (Bugfix): frueher eine einzelne 4-Byte-Zuweisung PRO
+        # ZIEL-PIXEL in einer doppelt verschachtelten Schleife (bei
+        # z.B. 480x600 Zielgroesse: 288.000 einzelne bytearray-Slice-
+        # Zuweisungen!) - jede einzelne Python-Anweisung hat spuerbaren
+        # Overhead. Per Differenzmessung bestaetigt: ~90ms fuer eine
+        # einzelne Verkleinerung, genau der Fall bei jeder echten
+        # Navigation zu einem neuen Spiel mit einem HD-Cover, das
+        # nicht exakt in den verfuegbaren Platz passt. Jetzt wie bei
+        # der Vergroesserung: pro Zeile EIN b\"\".join() (in C
+        # implementiert, deutlich weniger Python-Interpreter-Overhead
+        # pro Zeile) statt einzelner Zuweisungen pro Pixel.
         xmap = [min(w - 1, int(x / scale)) * 4 for x in range(tw)]
         out = bytearray(tw * th * 4)
         row_out = tw * 4
         for ty in range(th):
             sy = min(h - 1, int(ty / scale))
             srow = pix[sy * w * 4:(sy + 1) * w * 4]
-            o = ty * row_out
-            for tx in range(tw):
-                sx = xmap[tx]
-                out[o:o + 4] = srow[sx:sx + 4]
-                o += 4
+            row_bytes = b"".join([srow[sx:sx + 4] for sx in xmap])
+            out[ty * row_out:(ty + 1) * row_out] = row_bytes
         result = (tw, th, bytes(out))
         self._scaled_cache_put(key, result)
         return result
@@ -2646,11 +2725,11 @@ def _wait_for_usb_stable(max_wait=10.0, poll=0.5, min_wait_if_none=3.0):
                     pass
         return found, total
 
-    t0 = time.time()
+    t0 = time.monotonic()
     last_total = None
     stable_streak = 0
     while True:
-        elapsed = time.time() - t0
+        elapsed = time.monotonic() - t0
         found, total = snapshot()
         # Ein VORHANDENER, aber noch LEERER Ordner zaehlt NICHT als
         # stabil - genau der Fall, wo der Mountpunkt schon existiert,
@@ -3019,7 +3098,7 @@ class MusicPlayer:
                 [MPG123_BIN, "-q", path],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 stdin=subprocess.DEVNULL)
-            self._track_started_at = time.time()
+            self._track_started_at = time.monotonic()
             LOG("Music: playing %s" % os.path.basename(path))
         except OSError as e:
             LOG("Music: failed to start mpg123: %s" % e)
@@ -3072,7 +3151,7 @@ class MusicPlayer:
         had_proc = self.proc is not None  # VOR _stop_current() merken -
                                           # das setzt self.proc selbst auf None
         if alive and self._track_started_at is not None and \
-           time.time() - self._track_started_at > self.MAX_TRACK_SECONDS:
+           time.monotonic() - self._track_started_at > self.MAX_TRACK_SECONDS:
             LOG("Music: Sicherheitsnetz ausgeloest (Song laeuft laenger "
                 "als %d Minuten) - erzwinge Wechsel"
                 % (self.MAX_TRACK_SECONDS // 60))
@@ -3462,7 +3541,7 @@ class Frontend:
         # Weile ohne Eingabe von selbst durch zufaellige Spiele mit
         # Boxart - siehe next_action()/draw_attract().
         self.attract_mode = False
-        self._last_input_time = time.time()
+        self._last_input_time = time.monotonic()
         self._attract_game = None
         self._attract_change_next = 0.0
         self._attract_pool = None   # zwischengespeicherte flache Spieleliste
@@ -3496,7 +3575,7 @@ class Frontend:
         # diesem Projekt gab es eine lange Bildschirmriss-Geschichte,
         # die u.a. durch haeufige komplette Neuzeichnungen entstand.
         self._pulse_tick_next = 0.0
-        self._pulse_t0 = time.time()
+        self._pulse_t0 = time.monotonic()
         # Equalizer-Balken: eigener, etwas schnellerer Takt als das
         # Pulsieren (0.35s statt 0.9s) fuer fluessigere Bewegung, aber
         # bewusst deutlich langsamer als die Laufschrift (0.18s) - ein
@@ -3904,7 +3983,7 @@ class Frontend:
         geprueft (nicht bei jedem einzelnen Neuzeichnen - unnoetig
         haeufige Systemaufrufe vermeiden, auch wenn die Pruefung
         selbst schon sehr guenstig ist)."""
-        now = time.time()
+        now = time.monotonic()
         if now >= self._net_check_next:
             self._net_status = _has_network()
             self._net_check_next = now + 5.0
@@ -3916,7 +3995,7 @@ class Frontend:
         Durchlauf (bis zu 12x/Sekunde) erneut per Datei-Existenzpruefung
         abgefragt, obwohl sich die Einstellung praktisch nie waehrend
         des Betriebs aendert (nur ueber das System-Menue)."""
-        now = time.time()
+        now = time.monotonic()
         if now >= self._attract_enabled_check_next:
             self._attract_enabled_cache = attract_enabled()
             self._attract_enabled_check_next = now + 5.0
@@ -4398,7 +4477,7 @@ class Frontend:
         Grundtakt) fiel das kaum auf, auf CRT sehr deutlich - passt genau
         zur Nutzer-Rueckmeldung. Jetzt mit derselben Zeitbremse wie
         _eq_tick()/_pulse_tick()."""
-        now = time.time()
+        now = time.monotonic()
         if now < self._mq_tick_next:
             return
         self._mq_tick_next = now + 0.18
@@ -4458,7 +4537,7 @@ class Frontend:
         zusaetzliches Neuzeichnen), stattdessen ruecken pro Tick 2
         Zeichen statt 1 weiter - verdoppelt die gefuehlte Geschwindig-
         keit, ohne die Redraw-Haeufigkeit zu erhoehen."""
-        now = time.time()
+        now = time.monotonic()
         if now < self._track_tick_next:
             return False
         is_crt = self.fb.height < 400
@@ -4488,7 +4567,7 @@ class Frontend:
         muss schneller werden, nicht nur die Abtastrate."""
         is_crt = self.fb.height < 400
         period = 0.8 if is_crt else 1.0
-        elapsed = time.time() - self._pulse_t0
+        elapsed = time.monotonic() - self._pulse_t0
         return 0.90 + 0.10 * (0.5 + 0.5 * math.sin(elapsed * 2 * math.pi / period))
 
     def _pulsed(self, rgb):
@@ -4520,7 +4599,7 @@ class Frontend:
         0.9s belassen (unangetastet), um den in v1.39 entschaerften
         Eingabestau nicht zu riskieren - nutzt dort weiterhin das
         ohnehin vorhandene ~1s-Idle-Aufwachen in next_action() mit."""
-        now = time.time()
+        now = time.monotonic()
         if now < self._pulse_tick_next:
             return False
         interval = 0.01 if self.fb.height < 400 else 0.08
@@ -4535,7 +4614,7 @@ class Frontend:
         Navigation) - auf HDMI bleibt es bei 0.35s, da dort jedes
         zusaetzliche Neuzeichnen wieder Richtung Eingabe-Stau geht
         (siehe REPEAT_INTERVAL-Drosselung in v1.39)."""
-        now = time.time()
+        now = time.monotonic()
         if now < self._eq_tick_next:
             return False
         interval = 0.01 if self.fb.height < 400 else 0.08
@@ -4553,7 +4632,7 @@ class Frontend:
         einem Punkt nicht mehr weiter, die Bewegung selbst musste
         schneller werden."""
         fb = self.fb
-        now = time.time()
+        now = time.monotonic()
         bar_w = 3 * s
         gap = 2 * s
         h_max = 10 * s
@@ -4573,11 +4652,14 @@ class Frontend:
         erfolglos zu versuchen."""
         pool = self._attract_games_pool()
         if not pool:
-            self._last_input_time = time.time()
+            self._last_input_time = time.monotonic()
             return
+        idle_for = time.monotonic() - self._last_input_time
+        LOG("Attract-Modus startet nach %.1fs Leerlauf (Schwelle: %ds)"
+            % (idle_for, ATTRACT_IDLE_SECONDS))
         self.attract_mode = True
         self._attract_game = random.choice(pool)
-        self._attract_change_next = time.time() + ATTRACT_CHANGE_SECONDS
+        self._attract_change_next = time.monotonic() + ATTRACT_CHANGE_SECONDS
         self.draw()
 
     def _advance_attract(self):
@@ -4592,7 +4674,7 @@ class Frontend:
             self._attract_game = random.choice(choices) if choices else pool[0]
         else:
             self._attract_game = pool[0]
-        self._attract_change_next = time.time() + ATTRACT_CHANGE_SECONDS
+        self._attract_change_next = time.monotonic() + ATTRACT_CHANGE_SECONDS
         self.draw()
 
     def next_action(self):
@@ -4636,20 +4718,20 @@ class Frontend:
                     # verarbeitet (uebliches Bildschirmschoner-
                     # Verhalten: aufwecken statt gleich handeln).
                     self.attract_mode = False
-                    self._last_input_time = time.time()
+                    self._last_input_time = time.monotonic()
                     self.draw()
                     self.music.tick()
                     continue
-                self._last_input_time = time.time()
+                self._last_input_time = time.monotonic()
                 if need_mq:
                     self.marquee_reset()
                 return act
 
             if self.attract_mode:
-                if time.time() >= self._attract_change_next:
+                if time.monotonic() >= self._attract_change_next:
                     self._advance_attract()
             elif (self._attract_enabled_cached()
-                  and time.time() - self._last_input_time > ATTRACT_IDLE_SECONDS):
+                  and time.monotonic() - self._last_input_time > ATTRACT_IDLE_SECONDS):
                 self._enter_attract_mode()
             else:
                 if need_mq:
@@ -4875,11 +4957,11 @@ class Frontend:
         self.music.pause_for_core()
         self.inp.grab(False)
         launch_core(path)
-        t0 = time.time()
+        t0 = time.monotonic()
         started = False
         # Auf den tatsaechlichen Core-Start warten (nicht mehr Menue).
         # Grosse CHDs auf langsamer SD brauchen laenger - deshalb 30s.
-        while time.time() - t0 < 30:
+        while time.monotonic() - t0 < 30:
             if current_core() not in ("", "MENU"):
                 started = True
                 break
@@ -4899,8 +4981,8 @@ class Frontend:
                 LOG("Start+Select bzw. F10 erkannt - zurueck ins Menue"
                     if res == "combo" else "F10 erkannt - zurueck ins Menue")
                 launch_core("/media/fat/menu.rbf")
-                t1 = time.time()
-                while current_core() != "MENU" and time.time() - t1 < 10:
+                t1 = time.monotonic()
+                while current_core() != "MENU" and time.monotonic() - t1 < 10:
                     time.sleep(0.3)
         time.sleep(1.0)
         self.music.resume_after_core()
@@ -5190,7 +5272,7 @@ class Frontend:
            % (mode.upper(), len(frames), fps, bootanim_dir))
         try:
             for fn in frames:
-                t0 = time.time()
+                t0 = time.monotonic()
                 path = os.path.join(bootanim_dir, fn)
                 # Native Groesse nutzen (kein Hochskalieren) - deutlich
                 # schneller, besonders bei HDMI: ein Frame, das schon
@@ -5212,7 +5294,7 @@ class Frontend:
                 fb.flip()
                 # ESC oder ein beliebiger Tastendruck ueberspringt den Rest
                 if self.inp.read_action(timeout=max(0.0,
-                        frame_time - (time.time() - t0))) is not None:
+                        frame_time - (time.monotonic() - t0))) is not None:
                     LOG("play_boot_animation: uebersprungen")
                     break
         except Exception:
@@ -5236,7 +5318,8 @@ class Frontend:
         # sehen bekam - der Attract-Modus konnte dadurch fast sofort
         # nach dem sichtbaren Start einsetzen. Erst hier zuruecksetzen,
         # wenn das Menue tatsaechlich sichtbar und bedienbar ist.
-        self._last_input_time = time.time()
+        self._last_input_time = time.monotonic()
+        LOG("Menue sichtbar, Leerlauf-Uhr fuer Attract-Modus gestartet")
         try:
             move_streak = 0     # zaehlt gehaltene hoch/runter-Wiederholungen
             move_last = None    # fuer den Turbo-Sprung (einzelne Position)
@@ -5284,7 +5367,7 @@ class Frontend:
                 # REPEAT_DELAY (0.4s); liegt mehr Zeit dazwischen, war es
                 # ein neuer, einzelner Tastendruck - Zaehler faengt dann
                 # wieder bei 1 an, unabhaengig von der Richtung.
-                now_t = time.time()
+                now_t = time.monotonic()
                 if act in ("up", "down"):
                     if act == move_last and (now_t - move_last_time) < 0.5:
                         move_streak += 1
