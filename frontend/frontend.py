@@ -1,9 +1,43 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.71
+MiSTer Custom Frontend - v1.72
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.72 (BUGFIX: fehlendes Boxart bei manchen Titeln bis zum
+naechsten Blick):
+  - Nutzer-Rueckmeldung: beim Durchscrollen der PS1-Spiele fehlt bei
+    manchen Titeln (z.B. Battle Arena Toshinden) die Boxart, wird aber
+    sichtbar, sobald man spaeter erneut darauf schaut - bei mehreren
+    Titeln so.
+  - Ursache gefunden: ArtCache.get() cachte JEDEN fehlgeschlagenen
+    Ladeversuch dauerhaft (auch bei einer beschaedigten oder noch
+    UNVOLLSTAENDIGEN Cover-Datei, z.B. waehrend eines noch laufenden
+    Kopier-/Downloadvorgangs) - kein erneuter Versuch, ausser der
+    Eintrag wird durch den 40-Bilder-Cache-Grenzwert irgendwann wieder
+    verdraengt (was das beobachtete "geht spaeter doch" erklaert).
+    Ausserdem faengt "except OSError" allein weder struct.error (bei
+    abgeschnittenem Header) noch zlib.error (bei unvollstaendigen
+    komprimierten Daten) ab - waere bei einer wirklich mitten im
+    Schreiben erwischten Datei ein Absturz gewesen.
+  - Fix: "Datei existiert nicht" (stabiler Fall) bleibt weiterhin
+    dauerhaft gecacht. Ein Format-/Dekomprimierungsfehler (moeglicher-
+    weise voruebergehend) wird jetzt NICHT gecacht - der naechste
+    Zugriff versucht es einfach erneut, ohne auf eine Cache-Verdraengung
+    warten zu muessen.
+  - EHRLICHER HINWEIS: dies ist die wahrscheinlichste Erklaerung basierend
+    auf dem beschriebenen Verhalten (fehlt zunaechst, erscheint spaeter),
+    liess sich aber ohne Zugriff auf die tatsaechlichen Cover-Dateien
+    nicht 1:1 nachstellen. Sollte es weiterhin auftreten, waere der
+    genaue Dateiname/Pfad der betroffenen Cover hilfreich, um eine
+    moegliche Namensabweichung separat zu pruefen.
+  - Getestet: Datei-nicht-vorhanden bleibt korrekt dauerhaft gecacht,
+    gueltige Datei wird korrekt geladen und gecacht, eine beschaedigte/
+    unvollstaendige Datei wird NICHT gecacht und ein spaeterer Versuch
+    nach "Reparatur" laedt sie korrekt (der eigentliche Bugfix-Fall),
+    ein abgeschnittener Header fuehrt zu keinem Absturz mehr. 24
+    Kombinationen kompletter Regressionstest weiterhin bestanden.
 
 Neu in v1.71 (Leichter Zeichenpfad jetzt auch fuer echte Navigation,
 nicht nur Hintergrund-Ticks):
@@ -2278,7 +2312,22 @@ class ArtCache:
     def get(self, path):
         if path in self.cache:
             return self.cache[path]
+        # WICHTIG (Bugfix): "Datei existiert nicht" (FileNotFoundError,
+        # eine OSError-Unterklasse) ist ein STABILER Fall - sicher
+        # dauerhaft zu cachen, da sich das waehrend der Sitzung normal-
+        # erweise nicht mehr aendert. Eine BESCHAEDIGTE oder noch
+        # UNVOLLSTAENDIGE Datei (z.B. waehrend eines noch laufenden
+        # Kopier-/Downloadvorgangs) ist dagegen ein moeglicherweise
+        # VORUEBERGEHENDER Zustand - struct.error/zlib.error traten
+        # bisher NICHT gefangen ("except OSError" allein deckt das
+        # nicht ab, waere sonst ein Absturz gewesen) und wurden trotzdem
+        # als "nicht gefunden" dauerhaft gecacht, was ein spaeteres
+        # erneutes Laden verhinderte, selbst wenn die Datei danach
+        # vollstaendig und gueltig vorlag. Deshalb: bei einem
+        # unerwarteten Format-/Dekomprimierungsfehler NICHT cachen -
+        # naechster Zugriff versucht es einfach erneut.
         art = None
+        cache_result = True
         try:
             with open(path, "rb") as f:
                 if f.read(4) == b"ART1":
@@ -2286,8 +2335,14 @@ class ArtCache:
                     pix = zlib.decompress(f.read())
                     if len(pix) == w * h * 4:
                         art = (w, h, pix)
+        except FileNotFoundError:
+            pass                     # stabil - Cache-Eintrag bleibt bestehen
         except OSError:
-            pass
+            cache_result = False    # z.B. Berechtigung/IO-Fehler - lieber erneut versuchen
+        except (struct.error, zlib.error, ValueError):
+            cache_result = False    # unvollstaendige/beschaedigte Datei - erneut versuchen
+        if not cache_result:
+            return art
         self.cache[path] = art
         self.order.append(path)
         if len(self.order) > self.LIMIT:
