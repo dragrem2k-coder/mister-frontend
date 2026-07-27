@@ -1,4 +1,4 @@
-# MiSTer Custom Frontend v1.86 - Komplettbuild (Stand: 2026-07-27)
+# MiSTer Custom Frontend v1.85 - Komplettbuild (Stand: 2026-07-27)
 
 **Von Dragrem2K**, mit tatkräftiger Unterstützung von **TheRealSuTefan**
 beim Testen und Gegenchecken.
@@ -96,7 +96,7 @@ Nachlesen (`CHANGELOG.md`).
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.86) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.85) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (läuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (läuft auf dem MiSTer) |
@@ -106,6 +106,7 @@ Nachlesen (`CHANGELOG.md`).
 | install.sh                      | bleibt im Paket (Installer)      | Installation mit Internetzugang (lädt von GitHub) |
 | install_offline.sh              | bleibt im Paket (Installer)      | Installation ohne Internetzugang (aus diesem Paket) |
 | uninstall.sh                     | bleibt im Paket (Deinstallation) | Alles wieder sauber entfernen, eigene Daten optional behalten |
+| Scripts/install_frontend.sh     | /media/fat/Scripts/              | Installation/Update direkt aus dem MiSTer-Menü (Option A) |
 | Scripts/start_frontend.sh       | /media/fat/Scripts/              | Frontend manuell aus dem MiSTer-OSD starten |
 | Scripts/update_frontend.sh      | /media/fat/Scripts/              | Nach einem Datei-Update sauber neu starten (1 statt mehrerer Befehle) |
 | Scripts/boxart_download.sh      | /media/fat/Scripts/              | Boxart-Download aus OSD/Frontend starten |
@@ -131,25 +132,42 @@ Nachlesen (`CHANGELOG.md`).
 
 ## 3. Installation Schritt für Schritt
 
-### Option A: Automatisch (empfohlen)
+### Option A: Eine Datei, direkt aus dem MiSTer-Menü (am einfachsten)
 
-Ein Befehl per SSH lädt alles direkt von GitHub, kopiert es an die
-richtige Stelle und richtet den Autostart ein:
+Kein SSH/Terminal nötig - nur eine einzige, kleine Datei einmalig
+per WinSCP kopieren:
+
+1. [`Scripts/install_frontend.sh`](https://raw.githubusercontent.com/dragrem2k-coder/mister-frontend/main/Scripts/install_frontend.sh)
+   herunterladen (Rechtsklick -> Speichern unter, bzw. Browser-Download).
+2. Die Datei per WinSCP nach `/media/fat/Scripts/` kopieren.
+3. Im MiSTer-OSD: **Scripts -> "install frontend"** antippen.
+
+Der Rest läuft von selbst - herunterladen, einrichten, Autostart. Am
+Ende kurz eine Taste drücken, um zurück ins Menü zu kommen. Danach
+einmal neu starten, fertig.
+
+Lässt sich jederzeit erneut ausführen (z.B. für ein Update) - eigene
+Daten (Musik, Boxart, Einstellungen) bleiben dabei unangetastet, nur
+die Programmdateien werden ersetzt. Braucht Internetzugang auf dem
+MiSTer (im Heimnetz meist automatisch vorhanden).
+
+### Option B: Per SSH, ein Befehl
+
+Falls du sowieso schon eine SSH-Sitzung offen hast:
 ```bash
 curl -Ls https://raw.githubusercontent.com/dragrem2k-coder/mister-frontend/main/install.sh | bash
 ```
 (Falls `curl` fehlt, geht auch `wget -qO- ... | bash` - das Skript
 sagt dir Bescheid, falls beides fehlt.)
 
-Lässt sich jederzeit erneut ausführen, z.B. für ein Update - eigene
-Daten (Musik, Boxart, Einstellungen) bleiben dabei unangetastet, nur
-die Programmdateien werden ersetzt. Der MiSTer braucht dafür
-Internetzugang (im Heimnetz meist automatisch vorhanden).
+Macht inhaltlich genau dasselbe wie Option A, nur eben per Terminal
+statt aus dem MiSTer-Menü. Lässt sich ebenfalls jederzeit erneut
+ausführen, eigene Daten bleiben unangetastet.
 
-### Option B: Ohne Internet (offline aus dem Paket)
+### Option C: Ohne Internet (offline aus dem Paket)
 
 Falls der MiSTer keinen Internetzugang hat, eine bestimmte Version
-gewünscht ist, oder Option A an veralteten SSL-Zertifikaten scheitert:
+gewünscht ist, oder Option A/B an veralteten SSL-Zertifikaten scheitern:
 das komplette Paket per WinSCP auf den MiSTer kopieren, dann per SSH
 oder aus dem OSD unter Scripts:
 ```bash
@@ -167,7 +185,7 @@ selbst ersetzte System-Logos und Einstellungen bleiben unangetastet,
 die bisherigen Programmdateien werden vorher automatisch gesichert
 (`frontend/backup_<Datum>/`).
 
-### Option C: Manuell per WinSCP
+### Option D: Manuell per WinSCP
 
 1. Auf dem MiSTer per WinSCP anlegen: `/media/fat/frontend/`
 2. Alle Dateien aus dem Ordner `frontend/` dorthin kopieren.

@@ -4,6 +4,12 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## Installation vereinfacht
+Neues Skript `Scripts/install_frontend.sh` - eine einzige Datei
+einmalig per WinSCP kopieren, danach reicht im MiSTer-Menü selbst
+"Scripts -> install frontend" antippen. Kein SSH/Terminal mehr nötig
+für die Erstinstallation oder ein Update.
+
 ## v1.86
 Beim Betreten eines Systems (z. B. SNES) jetzt wählbar, ob der normale
 Core oder ein RetroAchievements-Core geladen wird - falls einer über
