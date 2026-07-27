@@ -1,9 +1,45 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.84
+MiSTer Custom Frontend - v1.85
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.85 (KRITISCHER BUGFIX: Frontend blieb auf manchen Setups
+dauerhaft im MiSTer-OSD haengen):
+  - Nutzer-Rueckmeldung: nach Installation auf einem MiSTer mit einem
+    Sony/PlayStation-artigen Controller startete das Frontend zwar
+    (kein Absturz, Log sah normal aus, "Menue sichtbar" wurde
+    protokolliert), der Bildschirm blieb aber dauerhaft im MiSTer-
+    eigenen Menue haengen - auch bei manuellem Start per SSH, nicht
+    nur beim Autostart.
+  - Ursache: inject() (fuer den F9-Tastendruck, der MiSTer in den
+    Konsolenmodus schaltet) waehlt bislang einfach das ERSTE Geraet
+    mit is_kbd=True - und is_kbd basiert nur darauf, ob der Linux-
+    Kernel IRGENDEINEN "kbd"-Handler an das Geraet gehaengt hat (siehe
+    scan_devices(), "kbd" in b). Das trifft auch auf die "Consumer
+    Control"- bzw. "System Control"-Nebenschnittstellen eines Sony-
+    Controllers zu (Medien-/Systemtasten) - landen diese in der
+    Geraete-Aufzaehlung VOR der echten Tastatur (wie beim meldenden
+    Nutzer), ging das injizierte F9 dorthin und damit ins Leere.
+  - Fix: inject() sucht jetzt ZUERST gezielt nach einem Geraet, das
+    "keyboard" im NAMEN traegt (deutlich zuverlaessigeres Signal) -
+    nur wenn keins gefunden wird, faellt es auf die bisherige
+    is_kbd-Heuristik zurueck (Rueckwaertskompatibilitaet fuer Setups
+    ohne eine im Namen erkennbare Tastatur). Genau dasselbe Muster
+    wird bereits von _find_keyboard_hidraw() (Esc-Notausstieg, v1.75)
+    genutzt - dort war es von Anfang an richtig geloest.
+  - Getestet: mit der EXAKTEN vom Nutzer gemeldeten Geraete-
+    Konstellation (Sony-Controller mit zwei Nebenschnittstellen VOR
+    der echten Logitech-Tastatur) nachgestellt - injiziert jetzt
+    nachweislich in die echte Tastatur statt die Nebenschnittstelle.
+    Rueckfallebenen einzeln bestaetigt: kein Geraet mit "Keyboard" im
+    Namen faellt korrekt auf die alte Heuristik zurueck; keine Geraete
+    vorhanden stuerzt nicht ab; bestehende, bereits funktionierende
+    Setups (Tastatur zuerst in der Liste) aendern ihr Verhalten NICHT;
+    Gross-/Kleinschreibung im Geraetenamen spielt keine Rolle. Keine
+    weitere Fundstelle desselben is_kbd-Musters im restlichen Code
+    gefunden. 36 Kombinationen kompletter Regressionstest bestanden.
 
 Neu in v1.84 (BUGFIX: Soundeffekte stoerten die Musik und stapelten
 sich bei schneller Navigation):
@@ -3118,12 +3154,34 @@ class InputManager:
 
     def inject(self, keycode):
         """Tasten-Event einspeisen (bevorzugt ueber die Tastatur).
-        Funktioniert nur bei geloestem Grab."""
+        Funktioniert nur bei geloestem Grab.
+
+        BUGFIX (Nutzer-Rueckmeldung): auf MiSTer-Setups mit einem
+        Sony/PlayStation-artigen Controller wurde bisher IMMER dessen
+        "Consumer Control"- bzw. "System Control"-Nebenschnittstelle
+        getroffen statt der tatsaechlichen Tastatur - is_kbd basiert
+        nur darauf, ob der Linux-Kernel IRGENDEINEN "kbd"-Handler an
+        das Geraet gehaengt hat (siehe scan_devices()), was bei
+        Controller-Nebenschnittstellen mit Medien-/Systemtasten
+        ebenfalls zutrifft. Landete diese Nebenschnittstelle in der
+        Aufzaehlung VOR der echten Tastatur, ging das injizierte F9
+        (fuer den Wechsel in den Konsolenmodus) ins Leere - MiSTer
+        blieb dauerhaft im eigenen Menue haengen, ohne dass unser Code
+        abstuerzte (schwer zu finden, weil das Log ganz normal
+        aussah). Deshalb jetzt ZUERST gezielt nach einem Geraet
+        suchen, das "keyboard" im NAMEN traegt (deutlich zuverlaessigeres
+        Signal als der generische Kernel-Handler) - nur wenn keins
+        gefunden wird, auf die bisherige is_kbd-Heuristik zurueckfallen."""
         target = None
         for d in self.devices.values():
-            if d.is_kbd:
+            if "keyboard" in d.name.lower():
                 target = d
                 break
+        if target is None:
+            for d in self.devices.values():
+                if d.is_kbd:
+                    target = d
+                    break
         if target is None and self.devices:
             target = next(iter(self.devices.values()))
         if target is None:

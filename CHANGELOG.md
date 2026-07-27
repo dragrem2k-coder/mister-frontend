@@ -4,6 +4,17 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v1.85 — wichtiger Fix
+Auf MiSTern mit einem Sony/PlayStation-artigen Controller blieb der
+Bildschirm dauerhaft im MiSTer-eigenen Menü hängen, auch bei
+manuellem Neustart. Der Grund: unsere Injektion des F9-Tastendrucks
+(schaltet MiSTer in den Konsolenmodus) hat versehentlich die
+"Consumer Control"-Nebenschnittstelle des Controllers getroffen statt
+der echten Tastatur - beide meldet der Kernel als "Tastatur", nur
+eine davon ist es wirklich. Sucht jetzt zuerst gezielt nach "Keyboard"
+im Gerätenamen, bevor es auf die alte, ungenauere Erkennung
+zurückfällt.
+
 ## v1.84
 Die Soundeffekte haben teilweise die Musik gestört und sich bei
 schneller Navigation gestapelt - kam davon, dass `aplay` offenbar auf
