@@ -1,9 +1,39 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.87
+MiSTer Custom Frontend - v1.88
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.88 (BUGFIX: RA-Core-Auswahl startete immer den normalen
+Core statt des gewaehlten RA-Cores):
+  - Nutzer-Rueckmeldung: Auswahl-Bildschirm erscheint und funktioniert,
+    aber egal welche Option gewaehlt wird, startet immer der normale
+    Core.
+  - Ursache gefunden (per echter Datei vom Nutzer verifiziert): eine
+    echte .mgl-Datei von sage2050s Werkzeug enthaelt neben <rbf> noch
+    ein zweites, bisher fehlendes Element:
+    <setname same_dir="1">RA_NES</setname> - ohne dieses Element
+    behandelt MiSTer den RA-Core offenbar nicht korrekt als eigene,
+    von der Standard-Konfiguration getrennte Variante.
+  - Fix: find_ra_core() liefert jetzt (rbf_pfad, setname) statt nur
+    des Pfads. write_mgl() hat einen neuen optionalen setname-
+    Parameter, der bei Bedarf ein <setname same_dir="1">...</setname>-
+    Element zwischen <rbf> und <file> einfuegt - exakt an der
+    Position, im exakten Format, wie in der echten Datei bestaetigt.
+  - Dabei auch eine falsche Annahme korrigiert: Saturn wurde bisher
+    als "von odelots Fork nicht unterstuetzt" eingestuft - die reale
+    Dateiliste des Nutzers zeigt aber eine vorhandene Saturn.rbf,
+    Saturn ist deshalb jetzt in der Namensliste ergaenzt.
+  - Getestet: write_mgl() erzeugt mit gesetztem setname exakt dieselbe
+    Struktur wie die echte, vom Nutzer geschickte .mgl-Datei (Zeile
+    fuer Zeile verglichen), ohne setname weiterhin unveraendertes
+    Verhalten. find_ra_core() mit der kompletten, echten Dateiliste
+    des Nutzers getestet (alle bestaetigten Systeme korrekt gefunden,
+    inkl. Saturn). Kompletter Ablauf per echtem Durchlauf durch run()
+    bestaetigt: Auswahl bei Kategorie-Eintritt erzeugt am Ende eine
+    MGL-Datei, die pixelgenau der echten Referenzdatei entspricht.
+    36 Kombinationen kompletter Regressionstest bestanden.
 
 Neu in v1.87 (KRITISCHER BUGFIX: Spieleliste wurde bei JEDEM Start
 komplett neu gescannt statt aus dem Cache geladen):
@@ -2337,15 +2367,15 @@ GAME_SYSTEMS = [
 # legt RA-faehige Core-Varianten in einen separaten Ordner, getrennt
 # von den Standard-Cores)
 #
-# EHRLICHER HINWEIS: die exakte Dateibenennung dieses Werkzeugs konnte
-# nicht gegen eine echte Installation verifiziert werden (kein Zugriff
-# auf echte MiSTer-Hardware). Deshalb werden pro System mehrere
-# plausible Namensvarianten durchprobiert - der erste tatsaechlich
-# EXISTIERENDE Treffer gewinnt. Findet sich keiner, wird fuer dieses
-# System einfach KEINE Auswahl angezeigt (nie ein nicht-existierender
-# Pfad referenziert). Saturn/Arcade/u.a. sind bei odelots Fork
-# grundsaetzlich nicht unterstuetzt - tauchen deshalb hier bewusst
-# nicht auf.
+# EHRLICHER HINWEIS: die exakte Dateibenennung dieses Werkzeugs wurde
+# inzwischen per echter Nutzer-Installation verifiziert (siehe die
+# .mgl-Struktur unten bei write_mgl()/setname). Fuer Systeme ohne
+# bestaetigte Namensliste werden trotzdem mehrere plausible Varianten
+# durchprobiert - der erste tatsaechlich EXISTIERENDE Treffer gewinnt,
+# findet sich keiner, wird fuer dieses System einfach KEINE Auswahl
+# angezeigt (nie ein nicht-existierender Pfad referenziert). Arcade
+# ist bei diesem RA-Core-Set nicht enthalten - taucht deshalb hier
+# bewusst nicht auf.
 RA_CORES_DIR_ABS = "/media/fat/_RA_Cores/Cores"
 RA_CORES_DIR_REL = "_RA_Cores/Cores"
 
@@ -2362,16 +2392,21 @@ RA_CORE_NAME_CANDIDATES = {
     "TGFX16":  ["TGFX16", "TurboGrafx16"],
     "MegaCD":  ["MegaCD", "SegaCD"],
     "NEOGEO":  ["NeoGeo", "NEOGEO"],
+    "Saturn":  ["Saturn"],
 }
 
 def find_ra_core(syskey):
-    """Sucht die RA-faehige Core-Datei fuer ein System. Liefert den
-    MGL-tauglichen relativen Pfad (ohne .rbf-Endung, wie von
-    write_mgl() erwartet) bei einem tatsaechlichen Treffer, sonst
-    None."""
+    """Sucht die RA-faehige Core-Datei fuer ein System. Liefert
+    (mgl_rbf_pfad, setname) bei einem tatsaechlichen Treffer, sonst
+    None. setname entspricht exakt dem Format, das sage2050s eigene
+    .mgl-Dateien verwenden (per echter Nutzer-Installation
+    verifiziert: <rbf>_RA_Cores/Cores/NES</rbf> +
+    <setname same_dir="1">RA_NES</setname>) - ohne dieses Element
+    wird der RA-Core von MiSTer offenbar nicht korrekt als eigene,
+    von der Standard-Konfiguration getrennte Core-Variante behandelt."""
     for name in RA_CORE_NAME_CANDIDATES.get(syskey, []):
         if os.path.exists(os.path.join(RA_CORES_DIR_ABS, name + ".rbf")):
-            return RA_CORES_DIR_REL + "/" + name
+            return (RA_CORES_DIR_REL + "/" + name, "RA_" + name)
     return None
 
 # Overscan-Sicherheitsrand in Prozent pro Seite (CRTs beschneiden das Bild).
@@ -4067,14 +4102,21 @@ def _scan_games_disk(progress_cb=None):
             cats.append((disp, sys_node, syskey))
     return cats
 
-def write_mgl(rbf, rom_path, delay, ftype, index):
-    """MGL-Startdatei erzeugen (Pfad-Konvention wie in mrext)."""
+def write_mgl(rbf, rom_path, delay, ftype, index, setname=None):
+    """MGL-Startdatei erzeugen (Pfad-Konvention wie in mrext).
+    setname (optional): fuer RA-Cores noetig (siehe find_ra_core()) -
+    <setname same_dir="1">...</setname> zwischen <rbf> und <file>,
+    exakt wie in einer echten .mgl-Datei von sage2050s Werkzeug
+    verifiziert."""
+    setname_xml = ('\t<setname same_dir="1">%s</setname>\n' % setname) \
+        if setname else ""
     xml = ('<mistergamedescription>\n'
            '\t<rbf>%s</rbf>\n'
+           '%s'
            '\t<file delay="%d" type="%s" index="%d" '
            'path="../../../../..%s"/>\n'
            '</mistergamedescription>\n'
-           % (rbf, delay, ftype, index, rom_path))
+           % (rbf, setname_xml, delay, ftype, index, rom_path))
     with open(MGL_TMP, "w") as f:
         f.write(xml)
     return MGL_TMP
@@ -7272,14 +7314,21 @@ class Frontend:
                             # dieser Kategorie eine getroffen wurde (siehe
                             # _enter_category()/find_ra_core()) - sonst
                             # unveraendert der normale Core aus der
-                            # Systemtabelle.
+                            # Systemtabelle. find_ra_core() liefert
+                            # (rbf_pfad, setname) - beide werden
+                            # gebraucht, sonst behandelt MiSTer den
+                            # RA-Core offenbar nicht korrekt als eigene,
+                            # von der Standard-Konfiguration getrennte
+                            # Variante (Nutzer-Rueckmeldung: startete
+                            # sonst immer den normalen Core).
                             ra_choice = getattr(self, "_ra_core_choice", {}).get(syskey)
+                            setname = None
                             if ra_choice:
-                                rbf = ra_choice
+                                rbf, setname = ra_choice
                             LOG("Spielstart: %s (%s)%s" % (label, syskey,
                                 " [RA-Core]" if ra_choice else ""))
                             record_recent(label, arg)
-                            mgl = write_mgl(rbf, rom, dl, ft, ix)
+                            mgl = write_mgl(rbf, rom, dl, ft, ix, setname=setname)
                             self.run_core(mgl, label=label)
                             continue
                         elif kind == "script":

@@ -4,6 +4,16 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v1.88 — wichtiger Fix
+Die RA-Core-Auswahl aus v1.86 hat immer den normalen Core gestartet,
+egal was man ausgewählt hat. Fehlender Baustein: eine echte `.mgl`-
+Datei von sage2050s Werkzeug enthält neben dem Core-Pfad noch ein
+zweites Element (`<setname same_dir="1">RA_NAME</setname>`) - ohne
+das behandelt MiSTer den RA-Core offenbar nicht als eigene Variante.
+Jetzt anhand einer echten, vom Nutzer geschickten Datei korrekt
+nachgebaut. Dabei auch Saturn als unterstütztes System ergänzt (war
+fälschlich als nicht unterstützt eingestuft).
+
 ## v1.87 — wichtiger Fix
 Die Spieleliste wurde bei jedem Start komplett neu gescannt statt aus
 dem Cache geladen. Grund: MiSTer legt oft leere `/media/usb0`-
