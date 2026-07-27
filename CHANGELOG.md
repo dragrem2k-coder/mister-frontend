@@ -4,6 +4,13 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v1.86
+Beim Betreten eines Systems (z. B. SNES) jetzt wählbar, ob der normale
+Core oder ein RetroAchievements-Core geladen wird - falls einer über
+sage2050s "MiSTer_RetroAchievements"-Werkzeug installiert ist. Findet
+sich für ein System kein passender RA-Core, taucht die Frage dort gar
+nicht erst auf.
+
 ## v1.85 — wichtiger Fix
 Auf MiSTern mit einem Sony/PlayStation-artigen Controller blieb der
 Bildschirm dauerhaft im MiSTer-eigenen Menü hängen, auch bei

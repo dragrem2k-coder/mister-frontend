@@ -1,4 +1,4 @@
-# MiSTer Custom Frontend v1.85 - Komplettbuild (Stand: 2026-07-27)
+# MiSTer Custom Frontend v1.86 - Komplettbuild (Stand: 2026-07-27)
 
 **Von Dragrem2K**, mit tatkräftiger Unterstützung von **TheRealSuTefan**
 beim Testen und Gegenchecken.
@@ -82,6 +82,7 @@ Nachlesen (`CHANGELOG.md`).
    - 8i. Spielzeit-Tracker
    - 8j. Top-10-Listen
    - 8k. RetroAchievements-Fortschritt
+   - 8l. Standard- oder RA-Core wählen
 9. Sprache umschalten
 10. Eigene Tastenbelegung
 11. Boot-Animation (Startvideo)
@@ -95,7 +96,7 @@ Nachlesen (`CHANGELOG.md`).
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.85) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.86) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (läuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (läuft auf dem MiSTer) |
@@ -526,6 +527,27 @@ Spiele nichts an. Der Abgleich läuft über den Spieletitel (RA liefert
 keine Dateipfade) - bewusst vorsichtig: passt der Name oder das
 System nicht eindeutig, wird lieber nichts angezeigt als ein
 möglicherweise falscher Treffer.
+
+## 8l. Standard- oder RA-Core wählen
+
+Nutzt du **sage2050s "MiSTer_RetroAchievements"-Werkzeug** (separater
+`_RA_Cores`-Ordner, RA-Core liegt neben dem normalen Core statt ihn zu
+ersetzen): beim Betreten eines Systems, für das eine RA-Core-Variante
+gefunden wird, fragt das Frontend kurz, ob der normale oder der
+RA-Core geladen werden soll. Hoch/Runter wählt, OK bestätigt, ESC
+wählt sicherheitshalber den normalen Core. Die Wahl gilt für die
+laufende Sitzung, bis du die Kategorie erneut betrittst.
+
+Findet sich für ein System keine passende RA-Core-Datei (oder hast du
+das Werkzeug nicht installiert), taucht die Frage dort gar nicht erst
+auf - keine Unterbrechung für alle anderen Systeme/Nutzer.
+
+**Ehrlich dazu:** Die genaue Dateibenennung dieses
+Drittanbieter-Werkzeugs konnte ich nicht gegen eine echte Installation
+verifizieren - das Frontend probiert deshalb pro System mehrere
+plausible Namen durch. Taucht die Auswahl bei einem System nicht auf,
+obwohl du einen RA-Core dafür installiert hast, sag Bescheid, dann
+ergänzen wir die passende Namensvariante.
 
 ## 9. Sprache umschalten
 

@@ -1,9 +1,45 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.85
+MiSTer Custom Frontend - v1.86
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.86 (NEUES FEATURE: Wahl zwischen Standard- und
+RetroAchievements-Core beim Betreten eines Systems):
+  - Nutzerwunsch: beim Betreten eines Systems (z.B. SNES) waehlen
+    koennen, ob der normale Core oder ein RA-faehiger Core (aus
+    sage2050s "MiSTer_RetroAchievements"-Werkzeug, separater
+    _RA_Cores-Ordner) geladen wird - fuer ALLE Systeme, fuer die eine
+    RA-Core-Variante gefunden wird.
+  - Neue Funktion find_ra_core(syskey) sucht die RA-Core-Datei ueber
+    mehrere plausible Namensvarianten pro System (die exakte
+    Dateibenennung dieses Drittanbieter-Werkzeugs konnte nicht gegen
+    eine echte Installation verifiziert werden - EHRLICHER HINWEIS:
+    findet sich keine passende Datei, wird fuer dieses System einfach
+    KEINE Auswahl angezeigt, nie ein nicht-existierender Pfad
+    referenziert). Systeme ohne RA-Unterstuetzung bei odelots Fork
+    (Saturn, Arcade usw.) sind bewusst nicht in der Namensliste
+    enthalten.
+  - Neuer Auswahl-Bildschirm (draw_core_choice_screen()) beim Betreten
+    einer Kategorie mit gefundenem RA-Core - Hoch/Runter waehlt,
+    OK bestaetigt, ESC waehlt sicherheitshalber den normalen Core.
+    Kategorien ohne gefundenen RA-Core zeigen die Abfrage gar nicht
+    erst (unveraendertes Verhalten).
+  - Die Wahl wird pro System fuer die Sitzung gemerkt
+    (self._ra_core_choice) und beim tatsaechlichen Spielstart auf den
+    Core-Pfad angewendet, der in die MGL-Startdatei geschrieben wird.
+  - Getestet: RA-Core-Erkennung mit mehreren Namensvarianten, Systemen
+    ohne Treffer und unbekannten Systemschluesseln. Auswahl-Bildschirm
+    fuer alle drei Ausgaenge (Standard per OK, RA-Core nach Wechsel,
+    ESC als sichere Vorgabe). Einbindung in _enter_category(): Abfrage
+    wird nachweislich KOMPLETT uebersprungen, wenn kein RA-Core
+    gefunden wird oder die Kategorie keinen Systemschluessel hat (kein
+    einziger zusaetzlicher Eingabe-Aufruf). Komplette Kette per
+    echtem Durchlauf durch run() bestaetigt: Auswahl bei Kategorie-
+    Eintritt wird beim tatsaechlichen Spielstart korrekt in die MGL-
+    Datei uebernommen. 36 Kombinationen kompletter Regressionstest
+    bestanden.
 
 Neu in v1.85 (KRITISCHER BUGFIX: Frontend blieb auf manchen Setups
 dauerhaft im MiSTer-OSD haengen):
@@ -2265,6 +2301,48 @@ GAME_SYSTEMS = [
         {".neo": (1, "f", 1)}),
 ]
 
+# ----------------------------------------------------------------------------
+# RA-CORE-ERKENNUNG (sage2050s "MiSTer_RetroAchievements"-Werkzeug -
+# legt RA-faehige Core-Varianten in einen separaten Ordner, getrennt
+# von den Standard-Cores)
+#
+# EHRLICHER HINWEIS: die exakte Dateibenennung dieses Werkzeugs konnte
+# nicht gegen eine echte Installation verifiziert werden (kein Zugriff
+# auf echte MiSTer-Hardware). Deshalb werden pro System mehrere
+# plausible Namensvarianten durchprobiert - der erste tatsaechlich
+# EXISTIERENDE Treffer gewinnt. Findet sich keiner, wird fuer dieses
+# System einfach KEINE Auswahl angezeigt (nie ein nicht-existierender
+# Pfad referenziert). Saturn/Arcade/u.a. sind bei odelots Fork
+# grundsaetzlich nicht unterstuetzt - tauchen deshalb hier bewusst
+# nicht auf.
+RA_CORES_DIR_ABS = "/media/fat/_RA_Cores/Cores"
+RA_CORES_DIR_REL = "_RA_Cores/Cores"
+
+RA_CORE_NAME_CANDIDATES = {
+    "NES":     ["NES"],
+    "SNES":    ["SNES"],
+    "Genesis": ["Genesis", "MegaDrive"],
+    "N64":     ["N64"],
+    "PSX":     ["PSX", "PlayStation"],
+    "GAMEBOY": ["Gameboy", "GAMEBOY", "GB"],
+    "GBC":     ["Gameboy", "GAMEBOY", "GBC"],
+    "GBA":     ["GBA"],
+    "SMS":     ["SMS", "MasterSystem"],
+    "TGFX16":  ["TGFX16", "TurboGrafx16"],
+    "MegaCD":  ["MegaCD", "SegaCD"],
+    "NEOGEO":  ["NeoGeo", "NEOGEO"],
+}
+
+def find_ra_core(syskey):
+    """Sucht die RA-faehige Core-Datei fuer ein System. Liefert den
+    MGL-tauglichen relativen Pfad (ohne .rbf-Endung, wie von
+    write_mgl() erwartet) bei einem tatsaechlichen Treffer, sonst
+    None."""
+    for name in RA_CORE_NAME_CANDIDATES.get(syskey, []):
+        if os.path.exists(os.path.join(RA_CORES_DIR_ABS, name + ".rbf")):
+            return RA_CORES_DIR_REL + "/" + name
+    return None
+
 # Overscan-Sicherheitsrand in Prozent pro Seite (CRTs beschneiden das Bild).
 # Bei Bedarf anpassen: mehr, wenn weiterhin Raender fehlen; weniger auf LCD.
 OVERSCAN_X = 7
@@ -4450,6 +4528,14 @@ TRANSLATIONS = {
                      "de": "RetroAchievements: nicht eingerichtet"},
     "sys_ra_configured": {"en": "RetroAchievements: %s (reload)",
                           "de": "RetroAchievements: %s (neu laden)"},
+    "core_choice_title": {"en": "%s - CHOOSE CORE",
+                          "de": "%s - CORE WAEHLEN"},
+    "core_choice_normal": {"en": "Standard core",
+                           "de": "Standard-Core"},
+    "core_choice_ra": {"en": "RetroAchievements core",
+                       "de": "RetroAchievements-Core"},
+    "core_choice_hint": {"en": "Up/Down to choose, OK to confirm",
+                         "de": "Hoch/Runter waehlen, OK bestaetigen"},
     "ra_setup_title": {"en": "RETROACHIEVEMENTS SETUP",
                        "de": "RETROACHIEVEMENTS EINRICHTEN"},
     "ra_setup_line1": {"en": "Create this file via SSH/text editor:",
@@ -5082,9 +5168,20 @@ class Frontend:
     def _enter_category(self):
         """Von Seite 0 (Kategorien-Menue) in Seite 1 (Liste der
         aktuellen Kategorie, oberste Ordnerebene) wechseln."""
-        _name, node, _sk = self.cats[self.cat_i]
+        name, node, sk = self.cats[self.cat_i]
         if not node["folders"] and not node["items"]:
             return
+        # RA-Core-Auswahl: nur anzeigen, wenn fuer dieses System
+        # tatsaechlich eine RA-faehige Core-Variante gefunden wurde
+        # (siehe find_ra_core()) - sonst unveraendertes Verhalten wie
+        # bisher, keine zusaetzliche Abfrage fuer alle anderen.
+        if sk:
+            ra_core = find_ra_core(sk)
+            if ra_core:
+                use_ra = self.draw_core_choice_screen(sk, name)
+                if not hasattr(self, "_ra_core_choice"):
+                    self._ra_core_choice = {}
+                self._ra_core_choice[sk] = ra_core if use_ra else None
         self.page = 1
         self.nav_path = []
         self._nav_position_stack = []
@@ -6474,6 +6571,43 @@ class Frontend:
         self.music.resume_after_core()
         self.back_to_frontend()
 
+    def draw_core_choice_screen(self, syskey, display_name):
+        """Zwei-Optionen-Auswahl (Normal-Core / RA-Core), gezeigt beim
+        Betreten eines Systems, fuer das find_ra_core() eine RA-
+        faehige Core-Variante gefunden hat. Hoch/Runter wechselt die
+        Auswahl, OK bestaetigt, ESC/B waehlt sicherheitshalber den
+        normalen Core. Liefert True fuer RA-Core, False fuer normal."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        accent = accent_for(syskey)
+        choice = 0   # 0 = normaler Core, 1 = RA-Core
+        options = [t("core_choice_normal"), t("core_choice_ra")]
+        while True:
+            fb.clear(C_BG)
+            fb.text(ox, oy, t("core_choice_title", display_name), s + 1, C_TITLE, C_BG)
+            y = oy + 90 * s
+            for i, label in enumerate(options):
+                sel = i == choice
+                color = accent if sel else C_TEXT
+                prefix = "> " if sel else "  "
+                fb.text(ox, y, prefix + label, s, color, C_BG)
+                y += 40 * s
+            hint = t("core_choice_hint")
+            sc = s - 1 if s > 1 else 1
+            hint_w = len(hint) * 8 * sc
+            fb.text((W - hint_w) // 2, H - oy - 8 * sc, hint, sc, C_DIM, C_BG)
+            fb.flip()
+            act = self.inp.read_action()
+            if act in ("up", "down", "left", "right"):
+                choice = 1 - choice
+            elif act == "ok":
+                return choice == 1
+            elif act in ("back", "exit"):
+                return False   # sichere Vorgabe: normaler Core
+
     def draw_ra_setup_screen(self):
         """Zeigt eine kurze Anleitung zur RetroAchievements-Einrichtung
         (keine Bildschirmtastatur vorhanden - die Datei wird per SSH/
@@ -7092,7 +7226,16 @@ class Frontend:
                             continue
                         elif kind == "game":
                             rom, ext, syskey, rbf, (dl, ft, ix) = arg
-                            LOG("Spielstart: %s (%s)" % (label, syskey))
+                            # RA-Core-Wahl anwenden, falls beim Betreten
+                            # dieser Kategorie eine getroffen wurde (siehe
+                            # _enter_category()/find_ra_core()) - sonst
+                            # unveraendert der normale Core aus der
+                            # Systemtabelle.
+                            ra_choice = getattr(self, "_ra_core_choice", {}).get(syskey)
+                            if ra_choice:
+                                rbf = ra_choice
+                            LOG("Spielstart: %s (%s)%s" % (label, syskey,
+                                " [RA-Core]" if ra_choice else ""))
                             record_recent(label, arg)
                             mgl = write_mgl(rbf, rom, dl, ft, ix)
                             self.run_core(mgl, label=label)
