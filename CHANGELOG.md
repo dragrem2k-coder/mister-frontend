@@ -4,6 +4,14 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v1.87 — wichtiger Fix
+Die Spieleliste wurde bei jedem Start komplett neu gescannt statt aus
+dem Cache geladen. Grund: MiSTer legt oft leere `/media/usb0`-
+Platzhalterordner an, auch ganz ohne angeschlossenes Laufwerk - unsere
+USB-Bereitschaftsprüfung hat einen durchgehend leeren Ordner nie als
+"fertig" erkannt und dadurch nie gecacht. Erkennt jetzt auch eine
+stabil-leere USB-Situation korrekt als unbedenklich.
+
 ## Installation vereinfacht
 Neues Skript `Scripts/install_frontend.sh` - eine einzige Datei
 einmalig per WinSCP kopieren, danach reicht im MiSTer-Menü selbst

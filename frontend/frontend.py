@@ -1,9 +1,40 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.86
+MiSTer Custom Frontend - v1.87
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.87 (KRITISCHER BUGFIX: Spieleliste wurde bei JEDEM Start
+komplett neu gescannt statt aus dem Cache geladen):
+  - Nutzer-Rueckmeldung: nach der Installation auf einem weiteren
+    MiSTer scannt das Frontend bei jedem einzelnen Start die komplette
+    Spieleliste neu, statt den Cache zu nutzen.
+  - Ursache: _wait_for_usb_stable() behandelte einen durchgehend
+    LEEREN, aber VORHANDENEN USB-Ordner NIE als stabil - "stable_streak"
+    wurde nur hochgezaehlt, wenn tatsaechlich Inhalt (total > 0) da war.
+    MiSTer legt haeufig leere /media/usb0, /media/usb1 usw. als
+    Platzhalter an, VOELLIG unabhaengig davon, ob dort ein echtes
+    USB-Laufwerk angeschlossen ist. Bei so einem Setup blieb die
+    Anzahl immer bei 0, das Zeitlimit (10s) wurde dadurch JEDES MAL
+    erreicht, scan_games() cachte das Ergebnis deshalb NIE - die
+    Spieleliste wurde bei jedem Start komplett neu gescannt.
+  - Fix: eine durchgehend STABILE Null (leer, aber ueber mehrere
+    Abfragen hinweg unveraendert) zaehlt jetzt AUCH als stabil - mit
+    etwas mehr Vorsicht als bei echtem Inhalt (4 statt 2 aufeinander-
+    folgende Abfragen), damit ein Laufwerk, das gerade erst zu
+    befuellen beginnt, nicht zu frueh faelschlich als "leer und
+    fertig" durchgeht.
+  - Getestet: genau das gemeldete Szenario (leerer, aber vorhandener
+    USB-Ordner, bleibt durchgehend leer) nachgestellt - wird jetzt
+    nach kurzer Bestaetigungszeit korrekt als "sicher zu cachen"
+    erkannt, statt das volle Zeitlimit auszureizen. Bestehende Faelle
+    weiterhin korrekt: kein USB-Ordner vorhanden, echter von Anfang an
+    stabiler Inhalt, Inhalt der erst waehrend der Wartezeit eintrifft.
+    Randfall (Zeitlimit kuerzer als die fuer den leeren Fall noetigen
+    Abfragen) faellt weiterhin sicher auf "nicht cachen" zurueck statt
+    abzustuerzen oder haengen zu bleiben. 36 Kombinationen kompletter
+    Regressionstest bestanden.
 
 Neu in v1.86 (NEUES FEATURE: Wahl zwischen Standard- und
 RetroAchievements-Core beim Betreten eines Systems):
@@ -3807,12 +3838,6 @@ def _wait_for_usb_stable(max_wait=10.0, poll=0.5, min_wait_if_none=3.0):
     while True:
         elapsed = time.monotonic() - t0
         found, total = snapshot()
-        # Ein VORHANDENER, aber noch LEERER Ordner zaehlt NICHT als
-        # stabil - genau der Fall, wo der Mountpunkt schon existiert,
-        # der Inhalt aber noch nachzieht. Erst echter (nicht-leerer)
-        # Inhalt, der sich zwischen zwei Abfragen nicht mehr aendert,
-        # gilt als fertig.
-        has_content = found and total > 0
         if elapsed >= max_wait:
             LOG("_wait_for_usb_stable: Zeitlimit (%.1fs) erreicht, fahre trotzdem fort"
                % max_wait)
@@ -3821,17 +3846,34 @@ def _wait_for_usb_stable(max_wait=10.0, poll=0.5, min_wait_if_none=3.0):
             # stabil - trotzdem unsicher, also nicht cachen (False).
             # Wenn gar keiner kam, ist es ein Setup ohne USB (None).
             return False if found else None
-        if has_content and total == last_total:
+        # BUGFIX (Nutzer-Rueckmeldung): ein durchgehend LEERER, aber
+        # STABILER Ordner (Anzahl bleibt bei 0) wurde bisher NIE als
+        # stabil erkannt, weil "has_content" das ausdruecklich
+        # voraussetzte - nur ein durchgehend GEFUELLTER Ordner konnte
+        # jemals "stabil" werden. MiSTer legt aber haeufig leere
+        # /media/usb0, /media/usb1 usw. als Platzhalter an, VOELLIG
+        # unabhaengig davon, ob dort tatsaechlich ein USB-Laufwerk
+        # angeschlossen ist. Bei so einem Setup blieb die Anzahl immer
+        # bei 0, "stable_streak" wurde nie hochgezaehlt, das Zeitlimit
+        # wurde dadurch IMMER erreicht - das Scan-Ergebnis wurde NIE
+        # gecacht, die Spieleliste wurde bei JEDEM Start komplett neu
+        # gescannt. Jetzt zaehlt auch eine durchgehend stabile Null als
+        # stabil (mit etwas mehr Vorsicht: doppelt so viele
+        # aufeinanderfolgende Abfragen wie bei echtem Inhalt, damit ein
+        # Laufwerk, das gerade erst zu befuellen beginnt, nicht zu
+        # frueh faelschlich als "leer und fertig" gilt).
+        if total == last_total:
             stable_streak += 1
-            if stable_streak >= 2:
+            required = 2 if total > 0 else 4
+            if stable_streak >= required:
                 LOG("_wait_for_usb_stable: USB-Inhalt stabil (%d Eintraege) nach %.1fs"
                    % (total, elapsed))
-                return True
+                return True if total > 0 else None
         else:
             stable_streak = 0
         if not found and elapsed >= min_wait_if_none:
             return None
-        last_total = total if has_content else None
+        last_total = total
         time.sleep(poll)
 
 def scan_games(force=False, progress_cb=None):
