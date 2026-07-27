@@ -102,9 +102,12 @@ nichts auslöst, geh ins System-Menü auf **"Configure buttons"** und
 leg die gewünschte Aktion neu auf eine Taste deiner Wahl.
 
 **Während ein Spiel läuft:** Die Tastatur gehört dann exklusiv dem
-Core, unser Frontend bekommt nichts mehr mit. Zurück geht's nur über
-die echte MiSTer-Menü-Taste (F12 bzw. deine Pad-Menü-Taste) → dort
-**"Exit to Menu Core"** wählen.
+Core, unser Frontend bekommt normalerweise nichts mehr mit. Ausnahme:
+Esc auf der Tastatur etwas länger gedrückt halten (~0,6s) bringt dich
+trotzdem direkt zurück ins Frontend — funktioniert über einen Umweg,
+den wir extra dafür gebaut haben. Klappt das mal nicht, geht's immer
+noch über die echte MiSTer-Menü-Taste (F12 bzw. deine Pad-Menü-Taste)
+→ dort **"Exit to Menu Core"** wählen.
 
 ### 6. Boxart laden
 
@@ -219,9 +222,9 @@ und Frontend neu starten.
 
 5. **Frontend hängt/reagiert während eines Spiels nicht auf eine
    Rückkehr-Taste.**
-   → Erwartetes Verhalten, keine Störung: Während ein Spiel läuft,
-   gehört die Tastatur exklusiv dem Core. Immer über die echte
-   MiSTer-Menü-Taste (F12) → "Exit to Menu Core" zurückkehren.
+   → Esc auf der Tastatur probieren, etwas länger halten (~0,6s).
+   Klappt das nicht, über die echte MiSTer-Menü-Taste (F12) →
+   "Exit to Menu Core" zurückkehren — das funktioniert immer.
 
 6. **Liste zeigt doppelte oder längst gelöschte Spiele.**
    → System-Menü → "Rescan game list" einmal manuell ausführen (bei
@@ -236,4 +239,5 @@ und Frontend neu starten.
 ---
 
 Bei allem, was hier nicht weiterhilft: Dragrem fragen, mit möglichst
-genauer Fehlermeldung und was du zuletzt gemacht hast.
+genauer Fehlermeldung und was du zuletzt gemacht hast. Danke übrigens
+an Sutefan, der beim Testen ordentlich mitgeholfen hat.

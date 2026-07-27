@@ -1,9 +1,245 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.76
+MiSTer Custom Frontend - v1.83
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.83 (OBS-Stream-Overlay verfeinert: Genre/Jahr, Spielzeit,
+RetroAchievements-Fortschritt, Favoriten-Stern):
+  - stream_state() liefert jetzt zusaetzlich genre/year (dieselbe
+    Quelle wie der Info-Bereich im Frontend, inkl. Arcade-Sonderfall
+    ueber mra_meta()), playtime (formatiert, aus self._playtime_cache),
+    ra_progress (aus self._ra_lookup, nur bei Treffer) und favorite
+    (aus self._favorites_set).
+  - _publish_stream()s Aenderungserkennung um diese neuen Felder
+    erweitert - sonst haette sich z.B. eine gerade aktualisierte
+    Spielzeit nicht sofort im Overlay gezeigt, solange man auf
+    demselben Spiel stehen bleibt.
+  - stream_overlay.html: neue Fakten-Zeile (Genre, Jahr, Spielzeit,
+    RA-Fortschritt), jede einzeln nur sichtbar bei vorhandener Angabe;
+    Favoriten-Stern neben dem Titel. Vier neue Konfigurationsschalter
+    (show_genre, show_playtime, show_ra, show_favorite) in
+    stream_admin.html UND im Server (DEFAULT_CONFIG in
+    stream_server.py, sonst haette der Server sie beim Speichern
+    verworfen).
+  - Getestet: Python-Seite (stream_state()) mit realistischen Daten
+    inkl. Randfaellen (leere Liste, fehlende Cache-Attribute,
+    Kategorien-Seite, Arcade-System, JSON-Serialisierbarkeit).
+    HTML/JS-Seite mit jsdom (echte Browser-DOM-Engine, keine reine
+    Simulation) - 20 Tests: alle vier neuen Anzeigen mit/ohne Daten,
+    alle vier Konfigurationsschalter einzeln geprueft. Server-seitige
+    Konfigurationsfilterung ebenfalls getestet. 36 Kombinationen
+    kompletter Python-Regressionstest bestanden.
+  - EHRLICHER HINWEIS: kein echter Browser zum visuellen Rendern in
+    dieser Umgebung verfuegbar - die CSS-Gestaltung folgt eng den
+    bestehenden Mustern der Datei, ein tatsaechlicher Blick im Browser/
+    OBS bleibt sinnvoll.
+
+Neu in v1.82 (NEUES FEATURE: RetroAchievements-Fortschritt anzeigen -
+komplett unsichtbar/kostenlos, solange nicht eingerichtet):
+  - Einrichtung per SSH/Texteditor (retroachievements.cfg, zwei Zeilen:
+    Benutzername + RA-Web-API-Schluessel) - KEINE Bildschirmtastatur
+    im Frontend noetig/vorhanden.
+  - Abfrage ueber die OFFIZIELLE, oeffentliche RA-API
+    (API_GetUserCompletionProgress, ein Aufruf fuer die komplette
+    Fortschrittsliste) - komplett UNABHAENGIG von einer speziellen
+    RA-faehigen MiSTer-Version (odelots Fork); zeigt entsprechend nur
+    dann etwas, wenn tatsaechlich schon Achievements erreicht wurden
+    (ueber odelots Fork ODER weil dasselbe Spiel schon anderswo
+    RA-getrackt gespielt wurde).
+  - Abruf zeitlich begrenzt (gleiches Prinzip wie die NTP-
+    Zeitsynchronisierung, Hintergrund-Thread mit hartem Zeitlimit) -
+    Nutzer OHNE Einrichtung bekommen NULL Verzoegerung beim Start.
+  - Namensabgleich (RA liefert keine Dateipfade) ueber einen
+    normalisierten Titel + System, bewusst KONSERVATIV: fehlt fuer
+    unser System eine bekannte RA-Entsprechung oder passt der Name
+    nicht exakt, wird NICHTS angezeigt statt eines potenziell falschen
+    Treffers.
+  - Anzeige im Info-Bereich ("RA: 20/50"), nur bei tatsaechlichem
+    Treffer. Neuer Menuepunkt im System-Menue zeigt den Status
+    ("nicht eingerichtet" mit Anleitung, oder "eingeloggt als NAME
+    (neu laden)").
+  - EHRLICHER HINWEIS: die genauen Feldnamen der RA-Antwort sowie die
+    RA-Konsolennamen (RA_CONSOLE_MAP) wurden anhand der oeffentlichen
+    Dokumentation nachgebaut, aber NICHT gegen den echten Server
+    verifiziert - beides so gestaltet, dass eine Abweichung zu KEINER
+    Anzeige fuehrt statt zu einer falschen oder einem Absturz.
+  - Getestet, Schritt fuer Schritt, jeder Baustein einzeln BEVOR er
+    mit dem naechsten verbunden wurde: Konfigurationsdatei-Erkennung
+    (5 Randfaelle), API-Abfrage (3 Antwortformate + 5 Fehlerfaelle +
+    URL-Konstruktion), zeitlich begrenzter Abruf (4 Faelle inkl.
+    haengender Verbindung), Namensabgleich (7 Normalisierungs-Faelle +
+    bewusst simulierter Fehltreffer zur Bestaetigung der sicheren
+    Ausweichlogik), komplette Einbindung (Start ohne Verzoegerung fuer
+    normale Nutzer, Anzeige mit/ohne Treffer, Anleitungs-Bildschirm in
+    beiden Aufloesungen/Sprachen, Menue-Beschriftung in beiden
+    Zustaenden/Sprachen, Refresh-Aktion erfolgreich/fehlgeschlagen).
+    36 Kombinationen kompletter Regressionstest bestanden. Visuell
+    ueberprueft (Info-Bereich mit RA-Zeile, Anleitungs-Bildschirm).
+
+Neu in v1.81 (Ueberpruefung der letzten 5 Versionen v1.76-v1.80 auf
+Bugs und Performance):
+  - Systematisch alle Aufrufstellen der neuen Funktionen aus v1.76-
+    v1.80 darauf geprueft, ob versehentlich etwas Teures (Datei-I/O,
+    Cache-Invalidierung) in einem haeufig durchlaufenen Pfad
+    (Navigation, Neuzeichnen) gelandet ist.
+  - ECHTER FUND: play_sfx() (v1.78) pruefte die Ein/Aus-Markierungsdatei
+    VOR der guenstigen, rein im Speicher liegenden Drossel-Pruefung -
+    bei einem Turbo-Sprung (gehaltene Richtungstaste) waere dadurch bei
+    JEDEM einzelnen Navigationsschritt eine Datei-Existenzpruefung
+    noetig gewesen, obwohl die meisten dieser Aufrufe ohnehin gedrosselt
+    (verworfen) werden. Fix: Drossel-Pruefung zuerst, zusaetzlich die
+    Ein/Aus-Abfrage selbst per _sfx_enabled_cached() 5 Sekunden
+    zwischengespeichert (gleiches Prinzip wie Netzwerkstatus/Attract-
+    Modus).
+  - VERDACHT GEPRUEFT UND ENTKRAEFTET: eine erste, grobe Messung liess
+    vermuten, die neue Spielzeit-Anzeige im Info-Bereich (v1.79) koennte
+    die Navigation um bis zu 65ms verlangsamen (durch eine minimal
+    andere Cover-Zielgroesse wegen der zusaetzlichen Textzeile). Ein
+    sauberer, kontrollierter Vergleich (jeweils 10 Wiederholungen mit
+    komplett frischem Cover-Cache, abwechselnde Reihenfolge) zeigte
+    dagegen KEINEN nennenswerten Unterschied (46,98ms vs. 50,50ms,
+    innerhalb der normalen Messschwankung) - die urspruengliche grosse
+    Differenz war ein Mess-Artefakt durch Datei-System-Caching-Effekte
+    in der Sandbox-Umgebung (aehnliches Muster wie schon bei der
+    clear()-Untersuchung in v1.67 gesehen), keine echte Verlangsamung
+    im Code selbst.
+  - Alle anderen Aufrufstellen (current_theme_name(),
+    _find_keyboard_hidraw(), top_played_games()) liegen ausschliesslich
+    in seltenen, nutzerausgeloesten Pfaden (Menue oeffnen, Spiel
+    beenden), nicht in einer haeufig durchlaufenen Schleife - keine
+    weiteren Performance-Funde.
+  - Getestet: play_sfx()-Umstellung erneut end-to-end bestaetigt (20
+    schnelle Aufrufe loesen nur 1x tatsaechlich aus UND nur 1x eine
+    Datei-Existenzpruefung, statt 20x; Ein-/Ausschalten funktioniert
+    weiterhin korrekt). 36 Kombinationen kompletter Regressionstest
+    bestanden.
+
+Neu in v1.80 (NEUES FEATURE: zwei Top-10-Listen im System-Menue):
+  - "Top 10: meistgespielt" und "Top 10: meistgestartet" - zeigen die
+    10 Spiele mit der laengsten Gesamtspielzeit bzw. den meisten
+    Starts als Vollbild-Liste (rein informativ, keine beliebige Taste
+    startet sie direkt - druecken einer Taste kehrt zurueck ins
+    System-Menue).
+  - Dafuer die Spielzeit-Datenstruktur erweitert: playtime.json
+    speichert jetzt pro Spiel {"seconds": X, "launches": N} statt nur
+    einer reinen Zahl - RUECKWAERTSKOMPATIBEL zum alten v1.79-Format
+    (eine reine Zahl wird beim Laden transparent zu {"seconds": Zahl,
+    "launches": 0} umgewandelt, bisherige Spielzeit geht dadurch NICHT
+    verloren).
+  - Neue Funktion top_played_games(by="seconds"|"launches", n=10) -
+    liefert die n Spiele mit dem hoechsten Wert in der gewaehlten
+    Kategorie, absteigend sortiert; Spiele mit 0 in dieser Kategorie
+    werden ausgelassen.
+  - Getestet: Sekunden UND Start-Zaehler werden korrekt gemeinsam
+    aufaddiert. Altes v1.79-Format (reine Zahl) wird beim Laden korrekt
+    migriert, bisherige Zeit bleibt erhalten, danach normal weiter
+    nutzbar. Sortierung fuer beide Kategorien unabhaengig voneinander
+    korrekt (unterschiedliche Rangfolgen je nach Kategorie bestaetigt).
+    Leere Statistik liefert korrekt eine leere Liste. Anzeige-Bildschirm
+    stuerzt in keinem Fall ab (mit Daten, ohne Daten, mit sehr langem
+    Spieletitel als Kuerzungstest, beide Aufloesungen, beide
+    Kategorien) - visuell ueberprueft. Menuepunkte in beiden Sprachen
+    korrekt beschriftet. 36 Kombinationen kompletter Regressionstest
+    bestanden.
+
+Neu in v1.79 (NEUES FEATURE: automatischer Spielzeit-Tracker):
+  - Neue Funktionen load_playtime()/record_playtime()/format_playtime()
+    - Spielzeit wird pro Spiel (identifiziert ueber denselben Namen wie
+    "Zuletzt gespielt"/Favoriten) in playtime.json aufaddiert.
+  - run_core() nimmt jetzt einen optionalen label-Parameter entgegen
+    und misst NUR die Zeit vom bestaetigten Core-Start bis zur
+    Rueckkehr ins Menue - Ladezeiten und fehlgeschlagene Starts
+    (Core kam nie hoch) zaehlen bewusst NICHT mit.
+  - Anzeige im Info-Bereich (Boxart-Panel): "Gespielt: 2h 15min" o.ae.,
+    direkt neben Spieleranzahl/Jahr/Genre - ueber einen Speicher-Cache
+    (self._playtime_cache, gleiches Prinzip wie der Favoriten-Cache)
+    ohne Datei-Lesevorgang bei jedem Neuzeichnen, wird nach jedem
+    Spielaufruf aktualisiert.
+  - Getestet: Spielzeiten werden korrekt pro Spiel aufaddiert (nicht
+    ueberschrieben), andere Eintraege bleiben unberuehrt, ungueltige
+    Eingaben (kein Name, 0/negative Sekunden) werden korrekt ignoriert.
+    Formatierung fuer alle Faelle (< 1 Minute, Minuten, Stunden+Minuten,
+    glatte Stunden) korrekt. End-to-End mit simuliertem Core-Start:
+    erfolgreicher Spielverlauf zeichnet die Zeit korrekt auf, ein
+    fehlgeschlagener Start (Core startet nie) zeichnet NICHTS auf.
+    Anzeige im Info-Bereich stuerzt nicht ab (mit Eintrag, ohne
+    Eintrag, sogar ganz ohne Cache-Attribut als Testfall) und setzt
+    den Text nachweislich korrekt zusammen. 36 Kombinationen
+    kompletter Regressionstest bestanden.
+
+Neu in v1.78 (NEUES FEATURE: Navigations-Soundeffekte):
+  - Kurze, selbst synthetisierte Sinuston-WAVs (kein Download noetig,
+    passt zu unserem "keine Abhaengigkeiten"-Grundsatz) fuer Bewegen
+    (move), Bestaetigen (confirm) und Zurueck (back) - werden beim
+    ersten Start einmalig erzeugt (_ensure_sfx_files()) und unter
+    SFX_DIR abgelegt.
+  - Abspielen ueber `aplay` (Teil von alsa-utils, auf MiSTer bereits
+    vorhanden), "fire and forget" per subprocess.Popen() - jeder
+    Fehler (aplay fehlt, Soundkarte gerade durch die Hintergrundmusik
+    belegt) wird still ignoriert, nie eine Ausnahme nach aussen.
+  - Gedrosselt (SFX_MIN_GAP=0.07s) - sonst wuerden beim Halten einer
+    Richtungstaste mit Turbo-Beschleunigung zu viele aplay-Prozesse
+    pro Sekunde entstehen.
+  - Zentral an EINER Stelle in der Aktionsverarbeitung ausgeloest
+    (nicht in jedem der vielen Aktions-Zweige einzeln) - deckt dadurch
+    automatisch jeden Kontext ab (Hauptliste, Beenden-Dialog,
+    Buchstaben-Sprung usw.).
+  - Neuer Menuepunkt "Navigations-Soundeffekte" im System-Menue zum
+    Ein-/Ausschalten (Standard: AN).
+  - Getestet: erzeugte WAV-Datei mit Pythons eigenem wave-Modul
+    verifiziert (gueltiges Format, kein Knacksen durch das Ein-/Aus-
+    blenden, keine Uebersteuerung). Dateien werden nur einmalig erzeugt
+    (zweiter Aufruf ueberschreibt nicht unnoetig). Drossel verhindert
+    nachweislich eine Ueberflutung bei schnell aufeinanderfolgenden
+    Aufrufen, laesst aber nach Ablauf der Drosselzeit wieder korrekt
+    durch. play_sfx() stuerzt nachweislich nicht ab, auch wenn aplay
+    fehlt. Menue-Beschriftung aktualisiert sich korrekt nach dem
+    Umschalten. Echter Durchlauf durch run() mit einer Folge
+    tatsaechlicher Aktionen bestaetigt: Soundeffekte werden in der
+    richtigen Reihenfolge (move/move/move/back) ausgeloest. 36
+    Kombinationen kompletter Regressionstest bestanden.
+
+Neu in v1.77 (NTP-Zeitsynchronisierung + Themes/Farbschemata):
+  - NTP-ZEITSYNCHRONISIERUNG: MiSTer hat keine batteriegepufferte
+    Echtzeituhr - die Systemuhr startet nahe Null (siehe v1.70: Log-
+    Zeitstempel begannen bei "00:00:11") und wird sonst erst spaet
+    (falls ueberhaupt) per Netzwerk korrigiert, oft als ploetzlicher
+    Sprung mitten in der Sitzung. Neu: _ntp_time()/
+    sync_system_clock_from_ntp() - reines SNTP ueber socket/struct
+    (keine externe Bibliothek), laeuft ganz am Anfang, noch vor dem
+    allerersten Log-Eintrag. Ueber einen Hintergrund-Thread mit hartem
+    Zeitlimit abgesichert, damit eine haengende DNS-Aufloesung (die
+    socket.settimeout() nicht zuverlaessig erfasst) den Start niemals
+    unkontrolliert lange blockieren kann. Ohne lokales Netzwerk wird
+    gar nicht erst versucht.
+  - THEMES/FARBSCHEMATA: drei umschaltbare Farbschemata (Dunkel/
+    Standard, Hell, Retro-Gruen) ueber einen neuen Menuepunkt im
+    System-Menue. Technisch einfach gehalten: die "Chrome"-Farben
+    (C_BG/C_TEXT/C_PANEL/C_TITLE/C_ACCENT) werden beim Wechseln direkt
+    neu belegt - kein Umbau an den hunderten Stellen im Code noetig,
+    die diese Namen bereits verwenden. SYSTEM_ACCENT (pro-System-
+    Farben) bleibt bewusst themaunabhaengig (eigene visuelle Sprache).
+  - Dabei einen echten Python-Fallstrick gefunden und behoben:
+    text()s Parameter-Vorgabewert (fg=C_TEXT) haette sich bei einem
+    spaeteren Themenwechsel NICHT aktualisiert, da Python Vorgabewerte
+    nur EINMAL beim Definieren der Funktion auswertet, nicht bei jedem
+    Aufruf - auf denselben Sentinel-Musterstil wie bg=None umgestellt.
+  - Getestet: NTP - Zeitstempel-Dekodierung exakt (< 10ms Abweichung
+    im Roundtrip-Test), kein Netzwerk fuehrt zu sofortigem Abbruch ohne
+    Wartezeit, ein haengender Server blockiert den Start dennoch nicht
+    laenger als das Zeitlimit, Plausibilitaetspruefung filtert
+    unsinnige Zeitstempel, Systemuhr-Befehl wird korrekt aufgerufen.
+    Themes - zyklisches Durchschalten, Speichern/Laden, Menue-
+    Beschriftung in beiden Sprachen, der Parameter-Vorgabewert-Fix
+    direkt verifiziert (Text nutzt nach einem Wechsel nachweislich die
+    NEUE statt der eingefrorenen Farbe). Alle drei Themes visuell
+    ueberprueft. 108 Kombinationen kompletter Regressionstest (alle
+    drei Themes x beide Aufloesungen x mehrere Seiten/Kategorien)
+    bestanden. Dabei einen eigenen Fehler beim Bearbeiten gefunden und
+    behoben (eine Funktionsdefinition ging bei einer Einfuegung
+    verloren) - durch den Regressionstest aufgefallen.
 
 Neu in v1.76 (Notausstieg vereinfacht: reines Esc statt Strg+Alt+Esc):
   - Nutzerwunsch: nur die Esc-Taste statt der Dreifach-Kombination.
@@ -1604,6 +1840,257 @@ GAMES_CACHE = "/media/fat/frontend/games_cache.json"
 RECENT_FILE = "/media/fat/frontend/recently_played.json"
 RECENT_MAX = 15
 FAVORITES_FILE = "/media/fat/frontend/favorites.json"
+PLAYTIME_FILE = "/media/fat/frontend/playtime.json"
+
+# ----------------------------------------------------------------------------
+# RETROACHIEVEMENTS (optional - komplett unsichtbar, solange nicht
+# eingerichtet)
+#
+# Einrichtung per SSH/Texteditor (keine Bildschirmtastatur im Frontend -
+# ein API-Schluessel waere per Steuerkreuz kaum eintippbar): Datei mit
+# zwei Zeilen, erste der RA-Benutzername, zweite der Web-API-Schluessel
+# (aus dem eigenen RA-Kontrollbereich, Abschnitt "Keys").
+RA_CONFIG_FILE = "/media/fat/frontend/retroachievements.cfg"
+
+def load_ra_config():
+    """Liest Benutzername + API-Schluessel aus RA_CONFIG_FILE. Liefert
+    (benutzername, schluessel) oder (None, None), wenn die Datei fehlt,
+    leer ist oder nicht mindestens zwei nicht-leere Zeilen enthaelt -
+    JEDER Fehlerfall wird als "nicht eingerichtet" behandelt, nie als
+    Absturz. Das ist bewusst die EINZIGE Stelle, die entscheidet, ob
+    RetroAchievements ueberhaupt aktiv ist - alle anderen RA-Funktionen
+    bauen darauf auf."""
+    try:
+        with open(RA_CONFIG_FILE) as f:
+            lines = [ln.strip() for ln in f.readlines()]
+    except OSError:
+        return None, None
+    lines = [ln for ln in lines if ln]   # leere Zeilen ueberspringen
+    if len(lines) < 2:
+        return None, None
+    return lines[0], lines[1]
+
+def ra_enabled():
+    """Kurzform: ist RetroAchievements ueberhaupt eingerichtet?"""
+    u, k = load_ra_config()
+    return u is not None and k is not None
+
+RA_API_URL = "https://retroachievements.org/API/API_GetUserCompletionProgress.php"
+
+def fetch_ra_progress(username, api_key, timeout=5.0):
+    """Fragt bei RetroAchievements die komplette Fortschrittsliste des
+    Nutzers ab (ein Aufruf fuer ALLE Spiele, mit denen er je zu tun
+    hatte). Liefert eine Liste von (titel, systemname, erreicht,
+    moeglich)-Tupeln, oder None bei JEDEM Fehler (kein Internet,
+    falscher Schluessel, Zeitueberschreitung, unerwartete Antwort) -
+    NIE eine Ausnahme nach aussen, das ruft aus einem Hintergrund-
+    Thread heraus auf (siehe Schritt 3) und darf den Rest des
+    Frontends unter keinen Umstaenden beeintraechtigen.
+
+    EHRLICHER HINWEIS: die genauen Feldnamen der Antwort sind anhand
+    der oeffentlichen RA-API-Dokumentation nachgebaut, aber NICHT gegen
+    den echten Server verifiziert (in dieser Umgebung nicht moeglich).
+    Deshalb werden mehrere plausible Feldnamen-Varianten akzeptiert und
+    JEDES fehlende/anders benannte Feld fuehrt zu einem stillen
+    Auslassen dieses EINEN Eintrags statt einem Abbruch - falls sich
+    beim ersten echten Test ein Feldname als falsch herausstellt,
+    liefert die Funktion einfach eine leere oder unvollstaendige Liste
+    statt abzustuerzen."""
+    try:
+        params = urllib.parse.urlencode({"u": username, "y": api_key})
+        url = RA_API_URL + "?" + params
+        req = urllib.request.Request(url, headers={"User-Agent": "MiSTerFrontend/1.0"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if resp.status != 200:
+                LOG("fetch_ra_progress: HTTP-Status %d" % resp.status)
+                return None
+            raw = resp.read()
+        data = json.loads(raw)
+    except (urllib.error.URLError, TimeoutError, ValueError, OSError) as e:
+        LOG("fetch_ra_progress: fehlgeschlagen: %s" % e)
+        return None
+
+    # Die Ergebnisliste kann je nach Antwortform direkt eine Liste sein
+    # ODER unter einem Schluessel wie "Results" liegen - beides
+    # abdecken.
+    if isinstance(data, dict):
+        entries = data.get("Results") or data.get("results") or []
+    elif isinstance(data, list):
+        entries = data
+    else:
+        entries = []
+
+    out = []
+    for e in entries:
+        if not isinstance(e, dict):
+            continue
+        title = e.get("Title") or e.get("title")
+        system = e.get("ConsoleName") or e.get("consoleName") or e.get("console")
+        total = e.get("MaxPossible") or e.get("maxPossible") or e.get("NumAchievements")
+        earned = e.get("NumAwarded") or e.get("numAwarded") or e.get("NumAwardedHardcore")
+        if not title or not total:
+            continue   # Eintrag ohne verwertbare Kernangaben - auslassen statt raten
+        try:
+            total = int(total)
+            earned = int(earned) if earned is not None else 0
+        except (TypeError, ValueError):
+            continue
+        if total <= 0:
+            continue
+        out.append((str(title), str(system) if system else "", earned, total))
+    return out
+
+def fetch_ra_progress_bounded(timeout=5.0):
+    """Holt die RA-Fortschrittsliste, FALLS eingerichtet und ein
+    lokales Netzwerk vorhanden ist - in einem separaten Thread mit
+    hartem Zeitlimit, exakt dasselbe Prinzip wie
+    sync_system_clock_from_ntp() (siehe dort fuer die Begruendung:
+    haengende DNS-Aufloesung wird von urlopen()s eigenem timeout NICHT
+    zuverlaessig erfasst). Liefert None, wenn nicht eingerichtet, kein
+    Netzwerk vorhanden ist, oder die Abfrage fehlschlaegt/zu lange
+    braucht - NIE eine Ausnahme, NIE eine Verzoegerung ueber `timeout`
+    Sekunden hinaus."""
+    username, api_key = load_ra_config()
+    if username is None:
+        return None
+    if not _has_network():
+        return None
+    result = {"data": None}
+    def worker():
+        result["data"] = fetch_ra_progress(username, api_key, timeout=timeout)
+    th = threading.Thread(target=worker, daemon=True)
+    th.start()
+    th.join(timeout=timeout + 0.5)
+    return result["data"]
+
+# ----------------------------------------------------------------------------
+# NAMENS-/SYSTEM-ABGLEICH
+#
+# RA liefert Spieltitel + Systemnamen, keine Dateipfade - der Abgleich
+# mit unserer Bibliothek laeuft ueber einen NORMALISIERTEN Namen
+# (Region-/Versionsangaben, Satzzeichen, Gross-/Kleinschreibung werden
+# ignoriert), zusaetzlich ueber das System abgesichert. Bewusst
+# KONSERVATIV: fehlt fuer unser System eine bekannte RA-Entsprechung,
+# wird lieber GAR NICHTS angezeigt als ein potenziell falscher Treffer.
+def _ra_normalize_name(name):
+    """Normalisiert einen Titel fuer den Abgleich."""
+    n = name.lower()
+    n = re.sub(r"\([^)]*\)", " ", n)    # (USA), (Europe), (Rev 1) usw.
+    n = re.sub(r"\[[^\]]*\]", " ", n)   # [T-En] usw.
+    n = re.sub(r"[^a-z0-9 ]", " ", n)   # Satzzeichen -> Leerzeichen
+    n = re.sub(r"\s+", " ", n).strip()
+    return n
+
+# Bekannte Entsprechungen unserer Systemschluessel zu RA-Konsolennamen.
+# EHRLICHER HINWEIS: anhand allgemeiner Kenntnis von RAs Namensgebung
+# zusammengestellt, nicht gegen die echte API verifiziert - fehlt ein
+# System hier oder stimmt eine Zuordnung nicht, fuehrt das zu KEINER
+# Anzeige fuer dieses System (sicherer Fehlerfall), nie zu einer
+# falschen.
+RA_CONSOLE_MAP = {
+    "NES": "nes", "SNES": "snes", "Genesis": "genesis mega drive",
+    "GB": "game boy", "GBC": "game boy color", "GBA": "game boy advance",
+    "PSX": "playstation", "N64": "nintendo 64", "ARCADE": "arcade",
+    "SMS": "master system", "TGFX16": "pc engine", "PCE": "pc engine",
+    "NEOGEO": "neo geo", "AtariLynx": "atari lynx",
+    "Atari2600": "atari 2600", "MegaCD": "sega cd", "S32X": "32x",
+}
+
+def build_ra_lookup(ra_entries):
+    """Baut aus der RA-Fortschrittsliste ein Nachschlage-Woerterbuch
+    (normalisierter_titel, normalisiertes_system) -> (erreicht,
+    moeglich). Bei einem Namens-Duplikat gewinnt der Eintrag mit den
+    meisten erreichten Achievements."""
+    lookup = {}
+    for title, system, earned, total in ra_entries or []:
+        key = (_ra_normalize_name(title), _ra_normalize_name(system))
+        if key in lookup and lookup[key][0] >= earned:
+            continue
+        lookup[key] = (earned, total)
+    return lookup
+
+def lookup_ra_progress(lookup, our_name, our_syskey):
+    """Sucht den RA-Fortschritt fuer ein Spiel aus unserer Bibliothek.
+    Liefert (erreicht, moeglich) oder None, wenn kein Treffer - auch
+    wenn fuer our_syskey keine bekannte RA-Entsprechung existiert
+    (bewusst KEIN Rateversuch)."""
+    console_name = RA_CONSOLE_MAP.get(our_syskey)
+    if not console_name:
+        return None
+    key = (_ra_normalize_name(our_name), _ra_normalize_name(console_name))
+    return lookup.get(key)
+
+def load_playtime():
+    """Laedt die Spielzeit-/Start-Statistik. JEDER Eintrag wird auf das
+    Format {"seconds": X, "launches": N} normalisiert - fruehere
+    Versionen (v1.79) speicherten pro Spiel nur eine reine Zahl
+    (Sekunden), ohne Start-Zaehler. Diese alten Eintraege werden beim
+    Laden transparent umgewandelt (launches=0, da dafuer keine
+    historischen Daten existieren), damit ein Update nicht die
+    bisherige Spielzeit verwirft."""
+    try:
+        with open(PLAYTIME_FILE) as f:
+            raw = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    data = {}
+    for label, val in raw.items():
+        if isinstance(val, dict):
+            data[label] = {"seconds": val.get("seconds", 0),
+                          "launches": val.get("launches", 0)}
+        else:
+            data[label] = {"seconds": val, "launches": 0}
+    return data
+
+def record_playtime(label, seconds):
+    """Addiert die gespielte Zeit (in Sekunden) UND zaehlt einen
+    weiteren Start fuer dieses Spiel hoch (identifiziert ueber den
+    Namen - gleiche Konvention wie record_recent()/Favoriten). Wird
+    ganz am Ende von run_core() aufgerufen, NUR mit der Zeit vom
+    bestaetigten Core-Start bis zur Rueckkehr ins Menue - Ladezeiten
+    und fehlgeschlagene Starts zaehlen bewusst nicht mit (und werden
+    dementsprechend auch nicht als Start gezaehlt - run_core() ruft
+    diese Funktion nur bei einem TATSAECHLICH bestaetigten Start auf)."""
+    if not label or seconds <= 0:
+        return
+    data = load_playtime()
+    entry = data.get(label, {"seconds": 0, "launches": 0})
+    entry["seconds"] += seconds
+    entry["launches"] += 1
+    data[label] = entry
+    try:
+        os.makedirs(os.path.dirname(PLAYTIME_FILE), exist_ok=True)
+        with open(PLAYTIME_FILE, "w") as f:
+            json.dump(data, f)
+    except OSError:
+        pass
+
+def top_played_games(by="seconds", n=10):
+    """Liefert die n Spiele mit dem hoechsten Wert fuer "seconds"
+    (Gesamtspielzeit) oder "launches" (Anzahl Starts), absteigend
+    sortiert, als Liste von (label, seconds, launches)-Tupeln. Spiele
+    mit 0 in der gesuchten Kategorie werden ausgelassen (kein Sinn,
+    "Platz 7: 0 Starts" anzuzeigen)."""
+    data = load_playtime()
+    items = [(label, e["seconds"], e["launches"])
+             for label, e in data.items() if e.get(by, 0) > 0]
+    idx = 1 if by == "seconds" else 2
+    items.sort(key=lambda t: -t[idx])
+    return items[:n]
+
+def format_playtime(seconds):
+    """Formatiert eine Sekundenzahl fuer die Anzeige - z.B. "2h 15min"
+    oder "5min" oder "< 1min"."""
+    if seconds is None or seconds <= 0:
+        return None
+    mins = int(seconds // 60)
+    if mins < 1:
+        return None   # unter einer Minute - noch nichts Sinnvolles zu zeigen
+    h, m = divmod(mins, 60)
+    if h > 0:
+        return "%dh %dmin" % (h, m) if m else "%dh" % h
+    return "%dmin" % m
+
 MISTER_CMD  = "/dev/MiSTer_cmd"
 
 # ----------------------------------------------------------------------------
@@ -1750,6 +2237,84 @@ def accent_for(syskey):
 C_TEXT   = (220, 224, 232)
 C_DIM    = (120, 126, 140)
 C_TITLE  = (255, 255, 255)   # Logo/Systemname: weiss (Retro-Look)
+
+# ----------------------------------------------------------------------------
+# THEMES/FARBSCHEMATA
+#
+# Die "Chrome"-Farben (Hintergrund, Text, Panel, Standard-Akzent) lassen
+# sich umschalten - SYSTEM_ACCENT (pro-System-Farben) bleibt bewusst
+# THEMA-UNABHAENGIG bestehen (eigene visuelle Sprache zur Unterscheidung
+# der Systeme, kein Teil der "Chrome"). Technisch simpel gehalten: die
+# globalen Variablen (C_BG, C_TEXT, ...) werden beim Wechseln einfach
+# NEU BELEGT (siehe apply_theme()) - dadurch muss an den hunderten
+# Stellen im Code, die diese Namen direkt verwenden, NICHTS geaendert
+# werden.
+THEME_FILE = "/media/fat/frontend/theme"
+
+THEMES = {
+    "dark": {   # Standard (unveraendertes Erscheinungsbild von vorher)
+        "C_BG": (16, 18, 24), "C_PANEL": (28, 32, 44),
+        "C_TEXT": (220, 224, 232), "C_DIM": (120, 126, 140),
+        "C_TITLE": (255, 255, 255), "C_ACCENT": (66, 133, 244),
+    },
+    "light": {  # Hell-Modus
+        "C_BG": (238, 240, 244), "C_PANEL": (218, 221, 228),
+        "C_TEXT": (28, 30, 36), "C_DIM": (100, 104, 114),
+        "C_TITLE": (10, 10, 14), "C_ACCENT": (20, 90, 210),
+    },
+    "green": {  # Retro-Gruen (CRT-Phosphor-Look)
+        "C_BG": (6, 16, 9), "C_PANEL": (11, 28, 15),
+        "C_TEXT": (150, 255, 165), "C_DIM": (60, 140, 80),
+        "C_TITLE": (205, 255, 215), "C_ACCENT": (80, 255, 120),
+    },
+}
+THEME_ORDER = ["dark", "light", "green"]
+THEME_NAMES_DE = {"dark": "Dunkel (Standard)", "light": "Hell",
+                  "green": "Retro-Gruen"}
+THEME_NAMES_EN = {"dark": "Dark (default)", "light": "Light",
+                  "green": "Retro Green"}
+
+def current_theme_name():
+    try:
+        name = open(THEME_FILE).read().strip()
+        if name in THEMES:
+            return name
+    except OSError:
+        pass
+    return "dark"
+
+def apply_theme(name):
+    """Aktiviert ein Farbschema - schreibt direkt in die gleichnamigen
+    globalen Variablen, die im gesamten restlichen Code bereits
+    verwendet werden (kein Umbau an anderer Stelle noetig)."""
+    global C_BG, C_PANEL, C_TEXT, C_DIM, C_TITLE, C_ACCENT
+    theme = THEMES.get(name, THEMES["dark"])
+    C_BG = theme["C_BG"]
+    C_PANEL = theme["C_PANEL"]
+    C_TEXT = theme["C_TEXT"]
+    C_DIM = theme["C_DIM"]
+    C_TITLE = theme["C_TITLE"]
+    C_ACCENT = theme["C_ACCENT"]
+
+def cycle_theme():
+    """Zum naechsten Farbschema wechseln (der Reihe nach), speichert
+    die Wahl UND wendet sie sofort an. Gibt den neuen Themennamen
+    zurueck."""
+    cur = current_theme_name()
+    idx = THEME_ORDER.index(cur) if cur in THEME_ORDER else 0
+    new_name = THEME_ORDER[(idx + 1) % len(THEME_ORDER)]
+    try:
+        dirname = os.path.dirname(THEME_FILE)
+        if dirname:
+            os.makedirs(dirname, exist_ok=True)
+        with open(THEME_FILE, "w") as f:
+            f.write(new_name)
+    except OSError:
+        pass
+    apply_theme(new_name)
+    return new_name
+
+apply_theme(current_theme_name())   # beim Laden des Moduls sofort anwenden
 
 # ----------------------------------------------------------------------------
 # 8x8 BITMAP-FONT (Public Domain, IBM VGA / Marcel Sondaar / Daniel Hepper)
@@ -1955,7 +2520,9 @@ class Framebuffer:
             self._glyphcache[key] = row
         return row
 
-    def text(self, x, y, s, scale=2, fg=C_TEXT, bg=None):
+    def text(self, x, y, s, scale=2, fg=None, bg=None):
+        if fg is None:
+            fg = C_TEXT
         if bg is None:
             bg = C_BG
         cw = 8 * scale
@@ -2002,6 +2569,10 @@ class Framebuffer:
 # ----------------------------------------------------------------------------
 
 import select
+import threading
+import urllib.request
+import urllib.parse
+import urllib.error
 
 EVIOCGRAB = 0x40044590
 EV_SYN, EV_KEY, EV_ABS = 0, 1, 3
@@ -3333,6 +3904,79 @@ def _has_network():
     except OSError:
         return False
 
+# ----------------------------------------------------------------------------
+# NTP-ZEITSYNCHRONISIERUNG BEIM START
+#
+# MiSTer hat keine batteriegepufferte Echtzeituhr - die Systemuhr startet
+# beim Booten nahe Null (siehe v1.70: Log-Zeitstempel begannen bei
+# "00:00:11") und wird sonst erst spaet (falls ueberhaupt) per NTP
+# korrigiert, oft mitten in der Sitzung als ploetzlicher Sprung. Deshalb
+# holt das Frontend die Uhrzeit selbst, EINMALIG und MOEGLICHST FRUEH
+# beim Start (noch vor dem ersten Log-Eintrag), per einfacher SNTP-
+# Abfrage (RFC 5905, reines socket/struct - keine externe Bibliothek).
+NTP_SERVER = "pool.ntp.org"
+NTP_EPOCH_OFFSET = 2208988800   # Sekunden zwischen 1.1.1900 (NTP) und 1.1.1970 (Unix)
+
+def _ntp_time(server=NTP_SERVER, timeout=2.0):
+    """Fragt die aktuelle Unix-Zeit per SNTP ab. Liefert None bei jedem
+    Fehler (kein Internet, Zeitueberschreitung, unplausible Antwort) -
+    wird NIE eine Ausnahme nach aussen weiterreichen, damit ein
+    Zeitserver-Problem den Start niemals blockieren oder zum Absturz
+    fuehren kann."""
+    s = None
+    try:
+        packet = bytearray(48)
+        packet[0] = 0x1B   # LI=0, VN=3 (NTPv3), Mode=3 (Client)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(timeout)
+        s.sendto(bytes(packet), (server, 123))
+        data, _ = s.recvfrom(48)
+        if len(data) < 48:
+            return None
+        secs = struct.unpack("!I", data[40:44])[0]
+        frac = struct.unpack("!I", data[44:48])[0]
+        unix_time = secs - NTP_EPOCH_OFFSET + frac / 2**32
+        # Grobe Plausibilitaetspruefung (nach 2020, vor 2100) - schuetzt
+        # vor einer kaputten Antwort, die die Uhr auf einen abwegigen
+        # Wert setzen wuerde.
+        if unix_time < 1577836800 or unix_time > 4102444800:
+            return None
+        return unix_time
+    except (OSError, struct.error, socket.gaierror):
+        return None
+    finally:
+        if s is not None:
+            try:
+                s.close()
+            except OSError:
+                pass
+
+def sync_system_clock_from_ntp(timeout=2.5):
+    """Setzt die Systemuhr per NTP, FALLS ein lokales Netzwerk vorhanden
+    ist - in einem separaten Thread mit hartem Zeitlimit, damit eine
+    haengende DNS-Aufloesung (die von socket.settimeout() NICHT
+    zuverlaessig erfasst wird) den Start niemals um mehr als `timeout`
+    Sekunden verzoegert. Der Thread laeuft im schlimmsten Fall im
+    Hintergrund weiter, blockiert dabei aber nichts mehr (Daemon-Thread) -
+    sein Ergebnis wird dann einfach verworfen. Ohne lokales Netzwerk wird
+    gar nicht erst versucht (spart die Wartezeit komplett)."""
+    if not _has_network():
+        return False
+    result = {"t": None}
+    def worker():
+        result["t"] = _ntp_time(timeout=timeout)
+    th = threading.Thread(target=worker, daemon=True)
+    th.start()
+    th.join(timeout=timeout + 0.5)
+    unix_time = result["t"]
+    if unix_time is None:
+        return False
+    try:
+        ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(unix_time))
+        subprocess.run(["date", "-s", ts], capture_output=True, timeout=2.0)
+        return True
+    except (OSError, subprocess.SubprocessError):
+        return False
 def crt_menu_active():
     try:
         return "[Menu]" in open(MISTER_INI).read()
@@ -3372,6 +4016,138 @@ def toggle_crt_menu():
             pass
         return None
     return active
+
+# ----------------------------------------------------------------------------
+# NAVIGATIONS-SOUNDEFFEKTE (selbst erzeugte Sinuston-WAVs, aplay)
+#
+# Kein Download noetig - die kurzen Toene werden beim ersten Start
+# einmalig selbst synthetisiert (reines math/struct) und unter
+# SFX_DIR abgelegt. Abgespielt wird "fire and forget" ueber `aplay`
+# (Teil von alsa-utils, auf MiSTer bereits vorhanden) - laeuft parallel
+# zur Hintergrundmusik; ist die Soundkarte gerade belegt ("device
+# busy"), wird der Effekt einfach uebersprungen statt etwas zu stoeren.
+# Eine Drossel verhindert, dass beim Halten einer Richtungstaste (mit
+# Turbo-Beschleunigung) zu viele Prozesse pro Sekunde losgehen.
+SFX_DIR = "/media/fat/frontend/sfx"
+SFX_ENABLED_FLAG_FILE = "/media/fat/frontend/sfx_disabled"
+SFX_MIN_GAP = 0.07   # Sekunden zwischen zwei Soundeffekten (Drossel)
+
+def sfx_enabled_flag():
+    return not os.path.exists(SFX_ENABLED_FLAG_FILE)
+
+def toggle_sfx():
+    if os.path.exists(SFX_ENABLED_FLAG_FILE):
+        try:
+            os.remove(SFX_ENABLED_FLAG_FILE)
+        except OSError:
+            pass
+    else:
+        try:
+            dirname = os.path.dirname(SFX_ENABLED_FLAG_FILE)
+            if dirname:
+                os.makedirs(dirname, exist_ok=True)
+            open(SFX_ENABLED_FLAG_FILE, "w").close()
+        except OSError:
+            pass
+
+def _write_wav_tone(path, freq_start, freq_end, duration_ms,
+                    volume=0.35, sample_rate=22050):
+    """Erzeugt eine kurze Mono-WAV-Datei mit einem Sinuston (linearer
+    Frequenz-Sweep von freq_start zu freq_end, kurzes Ein-/Ausblenden
+    gegen Knackser). Kumulative Phase statt sin(2*pi*freq*t) mit
+    wechselndem freq - sonst wuerden bei einem Sweep hoerbare Spruenge
+    entstehen."""
+    n = max(1, int(sample_rate * duration_ms / 1000))
+    fade = max(1, n // 8)
+    samples = bytearray(n * 2)
+    phase = 0.0
+    for i in range(n):
+        freq = freq_start + (freq_end - freq_start) * (i / max(1, n - 1))
+        phase += 2 * math.pi * freq / sample_rate
+        env = 1.0
+        if i < fade:
+            env = i / fade
+        elif i > n - fade:
+            env = (n - i) / fade
+        val = int(math.sin(phase) * volume * env * 32767)
+        val = max(-32768, min(32767, val))
+        struct.pack_into("<h", samples, i * 2, val)
+    data = bytes(samples)
+    byte_rate = sample_rate * 2
+    header = (b"RIFF" + struct.pack("<I", 36 + len(data)) + b"WAVE"
+             + b"fmt " + struct.pack("<IHHIIHH", 16, 1, 1, sample_rate,
+                                     byte_rate, 2, 16)
+             + b"data" + struct.pack("<I", len(data)))
+    with open(path, "wb") as f:
+        f.write(header + data)
+
+SFX_DEFS = {
+    "move":    (760, 900, 30),
+    "confirm": (600, 1100, 70),
+    "back":    (700, 420, 55),
+}
+
+def _ensure_sfx_files():
+    """Erzeugt die WAV-Dateien einmalig, falls sie noch fehlen (erster
+    Start bzw. nach einem Update)."""
+    try:
+        os.makedirs(SFX_DIR, exist_ok=True)
+    except OSError:
+        return
+    for name, (f0, f1, dur) in SFX_DEFS.items():
+        path = os.path.join(SFX_DIR, name + ".wav")
+        if not os.path.exists(path):
+            try:
+                _write_wav_tone(path, f0, f1, dur)
+            except OSError:
+                pass
+
+_last_sfx_time = 0.0
+_sfx_enabled_cache = True
+_sfx_enabled_check_next = 0.0
+
+def _sfx_enabled_cached():
+    """Zwischengespeicherte sfx_enabled_flag()-Abfrage, alle 5 Sekunden
+    neu geprueft - selbes Prinzip wie beim Netzwerkstatus/Attract-Modus
+    (siehe _network_connected()/_attract_enabled_cached()). Wird von
+    play_sfx() genutzt, damit nicht bei jedem einzelnen Aufruf eine
+    Datei-Existenzpruefung noetig ist."""
+    global _sfx_enabled_cache, _sfx_enabled_check_next
+    now = time.monotonic()
+    if now >= _sfx_enabled_check_next:
+        _sfx_enabled_cache = sfx_enabled_flag()
+        _sfx_enabled_check_next = now + 5.0
+    return _sfx_enabled_cache
+
+def play_sfx(name):
+    """Spielt einen Soundeffekt ab, falls aktiviert - "fire and forget",
+    jeder Fehler (aplay fehlt, Soundkarte belegt, Datei fehlt) wird
+    still ignoriert. Nie eine Ausnahme nach aussen. Gedrosselt
+    (SFX_MIN_GAP) - sonst wuerden beim Halten einer Richtungstaste mit
+    Turbo-Beschleunigung zu viele aplay-Prozesse pro Sekunde entstehen.
+
+    WICHTIG (Performance-Fund bei der Ueberpruefung der letzten 5
+    Versionen): die guenstige, rein im Speicher liegende Drossel-
+    Pruefung muss VOR der (Datei-basierten) Ein/Aus-Pruefung passieren,
+    nicht danach - sonst waere bei jedem einzelnen Navigations-Schritt
+    waehrend eines Turbo-Sprungs eine Datei-Existenzpruefung noetig
+    gewesen, obwohl die meisten dieser Aufrufe ohnehin gedrosselt
+    (verworfen) werden. Zusaetzlich per _sfx_enabled_cached() auf 5s
+    zwischengespeichert, falls doch mal viele Aufrufe die Drossel
+    ueberstehen."""
+    global _last_sfx_time
+    now = time.monotonic()
+    if now - _last_sfx_time < SFX_MIN_GAP:
+        return
+    if not _sfx_enabled_cached():
+        return
+    _last_sfx_time = now
+    path = os.path.join(SFX_DIR, name + ".wav")
+    try:
+        subprocess.Popen(["aplay", "-q", path],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        pass
 
 # ----------------------------------------------------------------------------
 # BACKGROUND MUSIC (mpg123, extern - no own MP3 decoder needed)
@@ -3559,6 +4335,37 @@ TRANSLATIONS = {
     "no":              {"en": "No",  "de": "Nein"},
     "players":         {"en": "Players: %s", "de": "Spieler: %s"},
     "year":            {"en": "Year: %s",    "de": "Jahr: %s"},
+    "playtime_shown":  {"en": "Played: %s",  "de": "Gespielt: %s"},
+    "ra_progress_shown": {"en": "RA: %d/%d", "de": "RA: %d/%d"},
+    "sys_ra_setup": {"en": "RetroAchievements: not set up",
+                     "de": "RetroAchievements: nicht eingerichtet"},
+    "sys_ra_configured": {"en": "RetroAchievements: %s (reload)",
+                          "de": "RetroAchievements: %s (neu laden)"},
+    "ra_setup_title": {"en": "RETROACHIEVEMENTS SETUP",
+                       "de": "RETROACHIEVEMENTS EINRICHTEN"},
+    "ra_setup_line1": {"en": "Create this file via SSH/text editor:",
+                       "de": "Diese Datei per SSH/Texteditor anlegen:"},
+    "ra_setup_line2": {"en": "Line 1: your RA username",
+                       "de": "Zeile 1: dein RA-Benutzername"},
+    "ra_setup_line3": {"en": "Line 2: your RA web API key (from your",
+                       "de": "Zeile 2: dein RA-Web-API-Schluessel (aus"},
+    "ra_setup_line4": {"en": "RA control panel, section \"Keys\")",
+                       "de": "deinem RA-Kontrollbereich, Abschnitt \"Keys\")"},
+    "ra_reload_done": {"en": "RetroAchievements: %d games matched",
+                       "de": "RetroAchievements: %d Spiele zugeordnet"},
+    "ra_reload_failed": {"en": "RetroAchievements: could not reach server",
+                         "de": "RetroAchievements: Server nicht erreichbar"},
+    "top10_time_action": {"en": "Top 10: most played",
+                          "de": "Top 10: meistgespielt"},
+    "top10_launches_action": {"en": "Top 10: most launched",
+                              "de": "Top 10: meistgestartet"},
+    "top10_time_title": {"en": "TOP 10 - MOST PLAYED",
+                         "de": "TOP 10 - MEISTGESPIELT"},
+    "top10_launches_title": {"en": "TOP 10 - MOST LAUNCHED",
+                             "de": "TOP 10 - MEISTGESTARTET"},
+    "top10_empty": {"en": "No games played yet",
+                    "de": "Noch keine Spiele gespielt"},
+    "top10_launches_count": {"en": "%dx", "de": "%dx"},
     "no_artwork_1":    {"en": "no",      "de": "kein"},
     "no_artwork_2":    {"en": "artwork", "de": "Artwork"},
     "sys_osd":         {"en": "Open MiSTer OSD (Settings/Buttons)",
@@ -3584,6 +4391,12 @@ TRANSLATIONS = {
                         "de": "Attract-Modus (Bildschirmschoner): AN -> ausschalten"},
     "sys_attract_off": {"en": "Attract mode (screensaver): OFF -> turn on",
                         "de": "Attract-Modus (Bildschirmschoner): AUS -> einschalten"},
+    "sys_theme": {"en": "Color theme: %s -> next",
+                  "de": "Farbschema: %s -> naechstes"},
+    "sys_sfx_on": {"en": "Navigation sounds: ON -> turn off",
+                   "de": "Navigations-Soundeffekte: AN -> ausschalten"},
+    "sys_sfx_off": {"en": "Navigation sounds: OFF -> turn on",
+                    "de": "Navigations-Soundeffekte: AUS -> einschalten"},
     "attract_hint": {"en": "Press any button to continue",
                      "de": "Beliebige Taste zum Fortfahren"},
     "scanning":  {"en": "Scanning: %s", "de": "Durchsuche: %s"},
@@ -3659,6 +4472,11 @@ def system_items(music_enabled=None):
         else t("sys_curated_off")
     attract_label = t("sys_attract_on") if attract_enabled() \
         else t("sys_attract_off")
+    theme_names = THEME_NAMES_DE if CURRENT_LANG == "de" else THEME_NAMES_EN
+    theme_label = t("sys_theme", theme_names.get(current_theme_name(), "?"))
+    sfx_label = t("sys_sfx_on") if sfx_enabled_flag() else t("sys_sfx_off")
+    ra_user, _ra_key = load_ra_config()
+    ra_label = t("sys_ra_configured", ra_user) if ra_user else t("sys_ra_setup")
     return [
         (t("sys_osd"),                             "osd",       None),
         (video + t("sys_video_suffix"),             "crtmenu",   None),
@@ -3668,6 +4486,11 @@ def system_items(music_enabled=None):
         (t("sys_reset_buttons"),                     "remap_reset", None),
         (curated_label,                              "curated",   None),
         (attract_label,                               "attract",   None),
+        (theme_label,                                 "theme",     None),
+        (sfx_label,                                   "sfx",       None),
+        (t("top10_time_action"),                     "top10_time", None),
+        (t("top10_launches_action"),                 "top10_launches", None),
+        (ra_label,                                    "ra_status", None),
         (t("sys_rescan"),                            "rescan",    None),
         (t("sys_redraw"),                            "redraw",    None),
         (t("sys_reboot"),                            "reboot",    None),
@@ -3882,6 +4705,24 @@ class Frontend:
         # Projekt schon mehrfach gefunden und behoben).
         self._favorites_set = set(
             e.get("label") for e in _load_favorites_raw() if "label" in e)
+
+        # Spielzeiten ebenfalls im Speicher gehalten - gleicher Grund
+        # wie beim Favoriten-Cache (keine Datei-Lesevorgaenge bei jedem
+        # Neuzeichnen). Wird nach jedem run_core()-Aufruf aktualisiert,
+        # damit die gerade gespielte Zeit sofort sichtbar wird.
+        self._playtime_cache = load_playtime()
+
+        # RetroAchievements - komplett unsichtbar/kostenlos, solange
+        # nicht eingerichtet (ra_enabled() prueft nur eine Datei,
+        # sofortiger Rueckweg). Nur FALLS eingerichtet, zeitlich
+        # begrenzter Abruf (siehe fetch_ra_progress_bounded()) - blockiert
+        # den Start dadurch nie unkontrolliert lange, selbst wenn RA
+        # gerade langsam/nicht erreichbar ist.
+        self._ra_lookup = {}
+        if ra_enabled():
+            ra_data = fetch_ra_progress_bounded(timeout=3.0)
+            if ra_data:
+                self._ra_lookup = build_ra_lookup(ra_data)
 
         # Attract-Modus (Bildschirmschoner): blaettert nach einer
         # Weile ohne Eingabe von selbst durch zufaellige Spiele mit
@@ -5335,6 +6176,23 @@ class Frontend:
             info_src.append(str(meta["genre"]))
         if meta.get("manufacturer"):
             info_src.append(str(meta["manufacturer"]))
+        # Spielzeit - mit demselben Namen (item[0], inkl. Schraegstrich-
+        # Suffix bei Ordnern) nachgeschlagen, mit dem run_core() sie
+        # aufgezeichnet hat (siehe record_playtime()) - NICHT
+        # lookup_name, das waere bei Ordnern ein anderer String.
+        played_entry = self._playtime_cache.get(name) \
+            if hasattr(self, "_playtime_cache") else None
+        played = format_playtime(played_entry.get("seconds") if played_entry else None)
+        if played:
+            info_src.append(t("playtime_shown", played))
+        # RetroAchievements - nur sichtbar, wenn ein Treffer gefunden
+        # wurde (kein Treffer = keine Zeile, kein Unterschied zu vorher
+        # fuer alle, die RA nicht eingerichtet haben, siehe
+        # lookup_ra_progress()).
+        ra_progress = lookup_ra_progress(self._ra_lookup, name, syskey) \
+            if hasattr(self, "_ra_lookup") and self._ra_lookup else None
+        if ra_progress:
+            info_src.append(t("ra_progress_shown", ra_progress[0], ra_progress[1]))
         info_lines = []
         for ln in info_src:
             info_lines.extend(self._wrap(ln, maxc, max_lines=1))
@@ -5436,7 +6294,11 @@ class Frontend:
     # Aktionen
     # ------------------------------------------------------------------
 
-    def run_core(self, path):
+    def run_core(self, path, label=None):
+        """label (optional): Anzeigename fuer die Spielzeit-Aufzeichnung
+        (siehe record_playtime()) - nur die Zeit vom bestaetigten Core-
+        Start bis zur Rueckkehr ins Menue zaehlt, Ladezeiten und
+        fehlgeschlagene Starts NICHT."""
         self.music.pause_for_core()
         self.inp.grab(False)
         launch_core(path)
@@ -5458,6 +6320,7 @@ class Frontend:
             self.music.resume_after_core()
             self.back_to_frontend()
             return
+        play_start = time.monotonic()
         while current_core() != "MENU":
             res = self.inp.wait_game_exit()
             if res in ("combo", "f10", "hid_combo"):
@@ -5469,6 +6332,8 @@ class Frontend:
                 t1 = time.monotonic()
                 while current_core() != "MENU" and time.monotonic() - t1 < 10:
                     time.sleep(0.3)
+        record_playtime(label, time.monotonic() - play_start)
+        self._playtime_cache = load_playtime()
         time.sleep(1.0)
         self.music.resume_after_core()
         self.back_to_frontend()
@@ -5499,6 +6364,77 @@ class Frontend:
         self.inp.read_action()                    # auf Eingabe warten
         self.music.resume_after_core()
         self.back_to_frontend()
+
+    def draw_ra_setup_screen(self):
+        """Zeigt eine kurze Anleitung zur RetroAchievements-Einrichtung
+        (keine Bildschirmtastatur vorhanden - die Datei wird per SSH/
+        Texteditor angelegt). Beliebige Taste kehrt zurueck."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        fb.clear(C_BG)
+        fb.text(ox, oy, t("ra_setup_title"), s + 1, C_TITLE, C_BG)
+        y = oy + 70 * s // 2 + 20 * s
+        fb.text(ox, y, t("ra_setup_line1"), s, C_TEXT, C_BG)
+        y += 34 * s
+        fb.text(ox, y, RA_CONFIG_FILE, s, accent_for(None), C_BG)
+        y += 50 * s
+        for key in ("ra_setup_line2", "ra_setup_line3", "ra_setup_line4"):
+            fb.text(ox, y, t(key), s - 1 if s > 1 else 1, C_DIM, C_BG)
+            y += 28 * s
+        hint = t("attract_hint")
+        hint_w = len(hint) * 8 * (s - 1 if s > 1 else 1)
+        fb.text((W - hint_w) // 2, H - oy - 8 * (s - 1 if s > 1 else 1),
+                hint, s - 1 if s > 1 else 1, C_DIM, C_BG)
+        fb.flip()
+        while True:
+            act = self.inp.read_action()
+            if act is not None:
+                break
+
+    def draw_top10_screen(self, by):
+        """Zeigt eine Vollbild-Liste der 10 meistgespielten (by=
+        "seconds") oder meistgestarteten (by="launches") Spiele.
+        Rein informativ (kein direktes Starten von hier aus) - eine
+        beliebige Taste kehrt zurueck ins System-Menue."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        fb.clear(C_BG)
+        title = t("top10_time_title") if by == "seconds" \
+            else t("top10_launches_title")
+        fb.text(ox, oy, title, s + 1, C_TITLE, C_BG)
+        rows = top_played_games(by=by, n=10)
+        y = oy + 56 * s // 2 + 20 * s
+        rowh = 26 * s
+        maxc = max(8, (W - 2 * ox - 90 * s) // (8 * s))
+        if not rows:
+            fb.text(ox, y, t("top10_empty"), s, C_DIM, C_BG)
+        for i, (label, seconds, launches) in enumerate(rows):
+            rank = "%2d." % (i + 1)
+            fb.text(ox, y, rank, s, C_DIM, C_BG)
+            name = label if len(label) <= maxc else label[:maxc - 1] + "~"
+            fb.text(ox + 44 * s, y, name, s, C_TEXT, C_BG)
+            if by == "seconds":
+                stat = format_playtime(seconds) or "-"
+            else:
+                stat = t("top10_launches_count", launches)
+            stat_w = len(stat) * 8 * s
+            fb.text(W - ox - stat_w, y, stat, s, accent_for(None), C_BG)
+            y += rowh
+        hint = t("attract_hint")
+        hint_w = len(hint) * 8 * (s - 1 if s > 1 else 1)
+        fb.text((W - hint_w) // 2, H - oy - 8 * (s - 1 if s > 1 else 1),
+                hint, s - 1 if s > 1 else 1, C_DIM, C_BG)
+        fb.flip()
+        while True:
+            act = self.inp.read_action()
+            if act is not None:
+                break
 
     def open_osd(self):
         """Echtes MiSTer-OSD oeffnen (fuer Joystick-Definition, Settings).
@@ -5684,10 +6620,39 @@ class Frontend:
             }
 
         total = len(items)
-        sel = items[self.item_i][0] if 0 <= self.item_i < total else ""
+        sel_item = items[self.item_i] if 0 <= self.item_i < total else None
+        sel = sel_item[0] if sel_item else ""
         lo = max(0, self.item_i - 2)
         hi = min(total, lo + 5)
         window = [display_name(items[i][0]) for i in range(lo, hi)]
+
+        # Zusaetzliche Angaben fuers Overlay - dieselben Quellen, die
+        # auch der Info-Bereich im Frontend selbst nutzt (siehe
+        # draw_art_panel()), damit Zuschauer dieselben Infos sehen wie
+        # der Spieler vor Ort.
+        genre = year = None
+        playtime_str = None
+        ra_str = None
+        is_favorite = False
+        if sel_item:
+            item_kind = sel_item[1]
+            lookup_name = sel_item[2] if item_kind == "folder" else sel
+            if syskey == "ARCADE":
+                meta = mra_meta(sel_item[2]) if item_kind == "core" else {}
+            else:
+                meta = get_meta(syskey, lookup_name) if syskey else {}
+            genre = meta.get("genre")
+            year = meta.get("year")
+            if hasattr(self, "_playtime_cache"):
+                entry = self._playtime_cache.get(sel)
+                playtime_str = format_playtime(entry.get("seconds")) if entry else None
+            if hasattr(self, "_ra_lookup") and self._ra_lookup:
+                ra = lookup_ra_progress(self._ra_lookup, sel, syskey)
+                if ra:
+                    ra_str = "%d/%d" % ra
+            is_favorite = item_kind == "game" and hasattr(self, "_favorites_set") \
+                and sel in self._favorites_set
+
         return {
             "category": name,
             "system": name,                 # lesbarer Name fuers Badge
@@ -5699,6 +6664,11 @@ class Frontend:
             "nowplaying": nowplaying,
             "list": window,
             "list_index": self.item_i - lo,
+            "genre": genre,
+            "year": year,
+            "playtime": playtime_str,
+            "ra_progress": ra_str,
+            "favorite": is_favorite,
         }
 
     def _publish_stream(self):
@@ -5709,7 +6679,8 @@ class Frontend:
         except Exception:
             return
         sig = (st["category"], st["name"], st["nowplaying"],
-               st["index"], st["total"])
+               st["index"], st["total"], st.get("playtime"),
+               st.get("ra_progress"), st.get("favorite"))
         if sig != self._stream_sig:
             self._stream_sig = sig
             self.stream.publish(st)
@@ -5823,6 +6794,18 @@ class Frontend:
                 # der kompletten Aktionsverarbeitung).
                 pre_page = self.page
                 pre_item_i = self.item_i
+
+                # Soundeffekt zentral an EINER Stelle ausloesen, statt
+                # in jedem einzelnen der vielen Aktions-Zweige weiter
+                # unten - deckt dadurch automatisch jeden Kontext ab
+                # (Hauptliste, Beenden-Dialog, Buchstaben-Sprung usw.),
+                # ohne an vielen Stellen Code duplizieren zu muessen.
+                if act in ("up", "down", "left", "right"):
+                    play_sfx("move")
+                elif act == "ok":
+                    play_sfx("confirm")
+                elif act in ("back", "exit"):
+                    play_sfx("back")
 
                 # ---- Beenden-Bestaetigung hat Vorrang vor allem anderen ----
                 if self.confirm_quit:
@@ -5992,14 +6975,14 @@ class Frontend:
                             self.scroll = 0
                             self.marquee_reset()
                         elif kind == "core":
-                            self.run_core(arg)
+                            self.run_core(arg, label=label)
                             continue
                         elif kind == "game":
                             rom, ext, syskey, rbf, (dl, ft, ix) = arg
                             LOG("Spielstart: %s (%s)" % (label, syskey))
                             record_recent(label, arg)
                             mgl = write_mgl(rbf, rom, dl, ft, ix)
-                            self.run_core(mgl)
+                            self.run_core(mgl, label=label)
                             continue
                         elif kind == "script":
                             self.run_script(arg)
@@ -6053,6 +7036,35 @@ class Frontend:
                         elif kind == "attract":
                             toggle_attract_mode()
                             self._refresh_system_category()
+                        elif kind == "theme":
+                            cycle_theme()
+                            self._refresh_system_category()
+                            self.fb._rowcache.clear()
+                            self.fb._rectcache.clear()
+                        elif kind == "sfx":
+                            toggle_sfx()
+                            self._refresh_system_category()
+                        elif kind == "top10_time":
+                            self.draw_top10_screen("seconds")
+                            self.draw()
+                        elif kind == "top10_launches":
+                            self.draw_top10_screen("launches")
+                            self.draw()
+                        elif kind == "ra_status":
+                            ra_user, _ra_key = load_ra_config()
+                            if ra_user is None:
+                                self.draw_ra_setup_screen()
+                            else:
+                                ra_data = fetch_ra_progress_bounded(timeout=5.0)
+                                if ra_data is not None:
+                                    self._ra_lookup = build_ra_lookup(ra_data)
+                                    msg = t("ra_reload_done", len(self._ra_lookup))
+                                else:
+                                    msg = t("ra_reload_failed")
+                                self._refresh_system_category()
+                                self.draw(message=msg)
+                                time.sleep(1.5)
+                            self.draw()
                 # Bei einem einzelnen hoch/runter-Schritt (kein Scrollen,
                 # keine Seite/Kategorie gewechselt) reicht der leichte
                 # Navigations-Zeichenpfad - deutlich billiger als die
@@ -6113,7 +7125,15 @@ except (AttributeError, ValueError, OSError):
     pass   # SIGHUP nicht verfuegbar (z.B. andere Plattform) - kein Problem
 
 if __name__ == "__main__":
+    # Systemuhr per NTP synchronisieren, BEVOR ueberhaupt der erste
+    # Log-Eintrag geschrieben wird - MiSTer hat keine batteriegepufferte
+    # Echtzeituhr, ohne das wuerden alle folgenden Zeitstempel (Log,
+    # Uhrzeit im Hauptmenue) zunaechst falsch sein (siehe v1.70).
+    # Zeitlich begrenzt (siehe sync_system_clock_from_ntp()) - blockiert
+    # den Start dadurch nie unkontrolliert lange.
+    sync_system_clock_from_ntp()
     LOG("==== Frontend-Start ====")
+    _ensure_sfx_files()   # Sound-WAVs einmalig erzeugen, falls noch nicht vorhanden
     if not acquire_single_instance():
         sys.exit(0)
     try:

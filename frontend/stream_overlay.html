@@ -50,7 +50,18 @@
   .cat{font-size:calc(14px*var(--scale));color:var(--dim);font-weight:600}
   .title{font-size:calc(30px*var(--scale));font-weight:800;line-height:1.1;
     text-shadow:0 calc(2px*var(--scale)) calc(6px*var(--scale)) rgba(0,0,0,.6);
-    overflow-wrap:anywhere}
+    overflow-wrap:anywhere;display:flex;align-items:center;
+    gap:calc(10px*var(--scale))}
+  .star{color:var(--accent);font-size:calc(22px*var(--scale));
+    display:none;flex:none}
+  .star.on{display:inline}
+  .facts{display:flex;flex-wrap:wrap;gap:calc(6px*var(--scale))
+    calc(14px*var(--scale));margin-top:calc(2px*var(--scale))}
+  .facts.hidden{display:none}
+  .facts .fact{font-size:calc(13px*var(--scale));color:var(--dim);
+    white-space:nowrap}
+  .facts .fact.hidden{display:none}
+  .facts .fact.ra{color:var(--accent);font-weight:700}
   .list{display:flex;flex-direction:column;gap:calc(3px*var(--scale));
     margin-top:calc(4px*var(--scale))}
   .list.hidden{display:none}
@@ -79,7 +90,13 @@
       <div id="brand" class="brand"></div>
       <span id="sys" class="sys hidden"></span>
       <div id="cat" class="cat"></div>
-      <div id="title" class="title">-</div>
+      <div id="title" class="title"><span id="star" class="star">&#9733;</span><span id="titletext">-</span></div>
+      <div id="facts" class="facts hidden">
+        <span id="fact_genre" class="fact hidden"></span>
+        <span id="fact_year" class="fact hidden"></span>
+        <span id="fact_playtime" class="fact hidden"></span>
+        <span id="fact_ra" class="fact ra hidden"></span>
+      </div>
       <div id="list" class="list hidden"></div>
       <div id="np" class="np hidden"><span class="dot"></span><span id="npname"></span></div>
     </div>
@@ -104,7 +121,12 @@ function applyConfig(c){
 function applyState(s){
   const card = $('card');
   $('cat').textContent = '';
-  $('title').textContent = s.name || '-';
+  $('titletext').textContent = s.name || '-';
+
+  const star = $('star');
+  if(cfg.show_favorite!==false && s.favorite){
+    star.classList.add('on');
+  } else star.classList.remove('on');
 
   const sysEl = $('sys');
   if(cfg.show_system!==false && s.system){
@@ -121,6 +143,23 @@ function applyState(s){
     art.onload  = () => art.classList.remove('hidden');
     art.src = url;
   } else art.classList.add('hidden');
+
+  // Fakten-Zeile: Genre, Jahr, Spielzeit, RetroAchievements - jede
+  // einzeln nur sichtbar, wenn die Angabe tatsaechlich vorhanden ist
+  // (z.B. RA nur, wenn im Frontend eingerichtet UND ein Treffer
+  // gefunden wurde - siehe lookup_ra_progress() auf der Python-Seite).
+  const facts = $('facts');
+  let anyFact = false;
+  const setFact = (id, show, text) => {
+    const el = $(id);
+    if(show){ el.textContent = text; el.classList.remove('hidden'); anyFact = true; }
+    else el.classList.add('hidden');
+  };
+  setFact('fact_genre', cfg.show_genre!==false && !!s.genre, s.genre);
+  setFact('fact_year', cfg.show_genre!==false && !!s.year, s.year);
+  setFact('fact_playtime', cfg.show_playtime!==false && !!s.playtime, '\u23F1 ' + s.playtime);
+  setFact('fact_ra', cfg.show_ra!==false && !!s.ra_progress, '\u2B50 ' + s.ra_progress);
+  facts.classList.toggle('hidden', !anyFact);
 
   const list = $('list');
   if(cfg.show_list!==false && Array.isArray(s.list) && s.list.length){

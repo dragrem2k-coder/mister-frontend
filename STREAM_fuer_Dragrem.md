@@ -104,12 +104,17 @@ BGRA→RGBA (mit PIL gegengeprüft), Config-POST + atomare Persistenz,
 kompilieren. Nicht testbar ohne Hardware: Server-Thread auf echtem ARM
 (erwartet unkritisch) und das OBS-Zusammenspiel.
 
-## Saubere nächste Schritte (bewusst offen gelassen)
+## Was seither noch dazugekommen ist
+
+- **Metadaten im Overlay** (Genre/Jahr/Spielzeit/RA-Fortschritt/
+  Favoriten-Stern) — erledigt in v1.83, `stream_state()` liefert die
+  Felder jetzt mit, Overlay zeigt sie in einer eigenen Fakten-Zeile,
+  jedes einzeln über `/admin` an-/abschaltbar.
+
+## Noch offen
 
 - **System-Menü-Umschalter** analog zu „Music On/Off": Server im Betrieb
   starten/stoppen. `start()`/`stop()` sind dafür ausgelegt; es braucht nur
   einen Menüpunkt + Handler in der Schleife. Wollte ich ohne Hardware-Test
   nicht blind einbauen.
-- **Metadaten im Overlay** (Jahr/Genre/Spieler): `stream_state()` um die
-  `meta/*.json`-Felder erweitern, Overlay rendert sie unter dem Titel.
 - **Mehrere Layouts/Themes** im Backend, falls gewünscht.

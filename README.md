@@ -1,17 +1,18 @@
-# MiSTer Custom Frontend v1.76 - Komplettbuild (Stand: 2026-07-26)
+# MiSTer Custom Frontend v1.83 - Komplettbuild (Stand: 2026-07-26)
 
-**Ersteller: Dragrem2K**
+**Von Dragrem2K**, mit tatkräftiger Unterstützung von **TheRealSutefan**
+beim Testen und Gegenchecken.
 
-Ein selbstgebautes grafisches Frontend fuer den MiSTer FPGA: Spiele-Browser
-mit Boxart und Spielinfos, Gamepad- und Tastatursteuerung, Hintergrundmusik,
-Sprachumschaltung Deutsch/Englisch, eigene Tastenbelegung, CRT- und
-HDMI-Unterstuetzung, Autostart - komplett in reinem Standard-Python, ohne
-eine einzige externe Abhaengigkeit auf dem MiSTer selbst.
+Mein selbstgebautes Frontend für den MiSTer FPGA: Spiele-Browser mit
+Boxart und Spielinfos, Gamepad- und Tastatursteuerung, Hintergrundmusik,
+Deutsch/Englisch umschaltbar, eigene Tastenbelegung, CRT- und
+HDMI-Unterstützung, Autostart - alles in reinem Standard-Python, keine
+einzige externe Abhängigkeit auf dem MiSTer selbst nötig.
 
-**Hinweis zu den Screenshots unten:** direkt aus dem echten Programmcode
-gerendert (keine Fotomontage) - Boxart und Musiktitel im Beispiel sind
-Platzhalter, die Systemlogos in der linken Spalte sind echt. Eine
-kompakte Feature-Uebersicht steht zusaetzlich in `VORSCHAU.md`.
+**Zu den Screenshots unten:** direkt aus dem echten Programmcode
+gerendert, keine Fotomontage - Boxart und Musiktitel sind Platzhalter,
+die Systemlogos links sind echt. Kompakter Überblick zusätzlich in
+`VORSCHAU.md`.
 
 <p align="center">
   <img src="screenshots/preview_1_kategorien.png" width="420" alt="Kategorien-Menue mit Uhrzeit und Netzwerksymbol">
@@ -25,53 +26,62 @@ kompakte Feature-Uebersicht steht zusaetzlich in `VORSCHAU.md`.
 
 ## Warum ein eigenes Frontend?
 
-In der MiSTer-Community wird seit Jahren diskutiert, ob ein grafisches
-Frontend ueberhaupt sinnvoll ist - die Hauptsorge dabei ist immer
-Performance: MiSTer hat keine GPU, ein schwergewichtiges Menue auf der
-Linux-Seite koennte die ohnehin schon ausgelastete ARM-CPU zusaetzlich
-belasten und im schlimmsten Fall wichtige Core-Ereignisse verpassen.
-Das ist eine berechtigte Sorge, und genau da liegt der Schwerpunkt
-dieses Projekts: der grosse Teil der Entwicklungszeit floss nicht in
-neue Features, sondern in gezielte Performance-Arbeit (u.a. ein
-Boxart-Schlagschatten, der allein 60% der Zeichenzeit auf HDMI
-gekostet hat, gefunden und auf ein Bruchteil reduziert) - mit dem
-Ziel, dass das Menue nicht spuerbar ist, wenn man es nicht gerade
-aktiv benutzt.
+In der MiSTer-Community wird immer wieder diskutiert, ob ein
+grafisches Frontend überhaupt Sinn macht - die Sorge ist meistens
+Performance: MiSTer hat keine GPU, und ein schwergewichtiges Menü auf
+der Linux-Seite könnte die ohnehin ausgelastete ARM-CPU zusätzlich
+belasten. Berechtigte Sorge, und genau da lag mein Schwerpunkt beim
+Bauen: der größte Teil der Zeit floss nicht in neue Features, sondern
+in gezielte Performance-Arbeit (unter anderem ein Boxart-Schlagschatten,
+der allein 60% der Zeichenzeit auf HDMI gefressen hat - gefunden und
+auf einen Bruchteil reduziert). Ziel war, dass man das Menü im Alltag
+nicht spürt, wenn man's gerade nicht aktiv benutzt.
 
-Mit **Zaparoo Frontend** gibt es inzwischen auch ein aktiv
-entwickeltes, eigenstaendiges Projekt mit vergleichbarer Zielsetzung
-fuer MiSTer (Bibliothek durchsuchen, Boxart, Zuletzt gespielt, dazu
-NFC-Tag-Unterstuetzung) - wer eine groessere, von mehreren Personen
-getragene Loesung sucht, sollte sich das ebenfalls ansehen.
+Mit **Zaparoo Frontend** gibt's inzwischen auch ein aktiv entwickeltes
+Community-Projekt mit ähnlicher Zielsetzung für MiSTer (Bibliothek
+durchsuchen, Boxart, Zuletzt gespielt, dazu NFC-Tags) - wer eine
+größere, von mehreren Leuten getragene Lösung sucht, sollte sich das
+anschauen.
 
-Was dieses Projekt hier anders macht:
-- **Keine einzige externe Abhaengigkeit** - reines Python aus der
-  Standardbibliothek, laeuft auf einem unveraenderten MiSTer ohne ein
-  einziges zusaetzliches Paket zu installieren.
-- **Beide Bildausgaenge gleichwertig unterstuetzt** - CRT (15 kHz) und
-  HDMI mit jeweils eigens abgestimmter Optik und Geschwindigkeit, nicht
-  nur "HDMI mit CRT-Kompatibilitaet als Nebeneffekt".
-- **Sehr klein und nachvollziehbar** - eine einzelne Python-Datei fuer
-  das eigentliche Frontend, keine Abstraktionsschichten, leicht lesbar
-  fuer alle, die selbst etwas anpassen wollen.
+Was hier anders ist:
+- **Keine externe Abhängigkeit** - reines Python aus der
+  Standardbibliothek, läuft auf einem unveränderten MiSTer ohne ein
+  einziges zusätzliches Paket.
+- **CRT und HDMI gleichwertig** - beide mit eigens abgestimmter Optik
+  und Geschwindigkeit, nicht nur "HDMI mit CRT-Kompatibilität als
+  Nebeneffekt".
+- **Klein und nachvollziehbar** - eine einzelne Python-Datei fürs
+  eigentliche Frontend, keine Abstraktionsschichten, gut lesbar für
+  alle, die selbst was anpassen wollen.
 
-Ehrlich dazu: das hier ist ein **Ein-Personen-Hobbyprojekt**, kein
-von einem Team getragenes Produkt. Das bedeutet weniger unterschiedlich
-getestete Setups als bei einem groesseren Community-Projekt, dafuer
-sehr genau auf reale, taeglich genutzte Hardware abgestimmt - inklusive
-einer sehr ausfuehrlichen, oeffentlich nachvollziehbaren Entwicklungs-
-und Testhistorie (siehe `CHANGELOG.md`).
+Ehrlich gesagt: das hier ist ein Hobbyprojekt, kein Team-Produkt.
+Weniger durchgetestete Setups als bei einem großen Community-Projekt,
+dafür sehr genau auf die eigene, täglich genutzte Hardware abgestimmt
+- inklusive einer ziemlich ausführlichen Entwicklungshistorie zum
+Nachlesen (`CHANGELOG.md`).
 
 ## Inhaltsverzeichnis
 
 1. Paketinhalt
 2. Voraussetzungen
-3. Installation Schritt fuer Schritt
+3. Installation Schritt für Schritt
 4. Bedienung
 5. Hintergrundmusik einrichten
 6. Boxart und Spielinfos laden
+   - 6b. Automatische Listen-Bereinigung + kuratierte Liste
 7. System-Hintergrundbilder (optional)
+   - 7b. System-Artbox im Kategorien-Menü
 8. CRT-Bildschirme (15 kHz) einrichten
+   - 8b. Optische Verfeinerungen
+   - 8c. Zuletzt gespielt, Lade-Fortschritt
+   - 8d. Attract-Modus / Bildschirmschoner
+   - 8e. Favoriten
+   - 8f. Uhrzeit-Synchronisierung
+   - 8g. Themes/Farbschemata
+   - 8h. Navigations-Soundeffekte
+   - 8i. Spielzeit-Tracker
+   - 8j. Top-10-Listen
+   - 8k. RetroAchievements-Fortschritt
 9. Sprache umschalten
 10. Eigene Tastenbelegung
 11. Boot-Animation (Startvideo)
@@ -85,14 +95,14 @@ und Testhistorie (siehe `CHANGELOG.md`).
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.76) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.83) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
-| frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (laeuft auf dem MiSTer) |
-| frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (laeuft auf dem MiSTer) |
-| frontend/stream_server.py       | /media/fat/frontend/             | Web-Server fuers Stream-Overlay (optional) |
+| frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (läuft auf dem MiSTer) |
+| frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (läuft auf dem MiSTer) |
+| frontend/stream_server.py       | /media/fat/frontend/             | Web-Server fürs Stream-Overlay (optional) |
 | frontend/stream_overlay.html    | /media/fat/frontend/             | OBS-Browser-Quelle (optional) |
 | frontend/stream_admin.html      | /media/fat/frontend/             | Stream-Overlay-Konfiguration (optional) |
-| install.sh                      | bleibt im Paket (Installer)      | Installation mit Internetzugang (laedt von GitHub) |
+| install.sh                      | bleibt im Paket (Installer)      | Installation mit Internetzugang (lädt von GitHub) |
 | install_offline.sh              | bleibt im Paket (Installer)      | Installation ohne Internetzugang (aus diesem Paket) |
 | uninstall.sh                     | bleibt im Paket (Deinstallation) | Alles wieder sauber entfernen, eigene Daten optional behalten |
 | Scripts/start_frontend.sh       | /media/fat/Scripts/              | Frontend manuell aus dem MiSTer-OSD starten |
@@ -104,60 +114,59 @@ und Testhistorie (siehe `CHANGELOG.md`).
 | PC-Tools/boxart_fetch.py        | bleibt auf dem PC (optional)      | Alternative: Boxart-Download am PC statt MiSTer |
 | PC-Tools/video_to_bootanim.py   | bleibt auf dem PC (Python+Pillow) | Video/Bildfolge -> Boot-Animation |
 | PC-Tools/obs_setup.py           | bleibt auf dem PC (optional)      | Lokale OBS-Overlay-Datei mit fest eingetragener MiSTer-IP anlegen |
-| PC-Tools/OBS_Setup_starten.bat  | bleibt auf dem PC (optional)      | Windows-Doppelklick-Starter fuer obs_setup.py |
-| music/                          | (nur als Hinweis, Inhalt egal)    | Zielordner fuer deine eigenen MP3s |
+| PC-Tools/OBS_Setup_starten.bat  | bleibt auf dem PC (optional)      | Windows-Doppelklick-Starter für obs_setup.py |
+| music/                          | (nur als Hinweis, Inhalt egal)    | Zielordner für deine eigenen MP3s |
 
 ## 2. Voraussetzungen
 
-- Ein MiSTer FPGA mit aktueller Firmware (Python 3 ist immer
-  vorinstalliert)
-- Netzwerkzugriff per SSH (`ssh root@<MiSTer-IP>`) und WinSCP (oder ein
-  anderer SFTP-Client) zum Kopieren der Dateien
-- Fuer Hintergrundmusik: `mpg123` muss auf dem MiSTer vorhanden sein.
-  Pruefen per SSH: `which mpg123` - liefert es einen Pfad zurueck
-  (z.B. `/usr/bin/mpg123`), ist alles bereit.
-- Fuer die PC-Tools (optional): Python 3 und `pip install Pillow`
+- Ein MiSTer FPGA mit aktueller Firmware (Python 3 ist immer schon
+  drauf)
+- Netzwerkzugriff per SSH (`ssh root@<MiSTer-IP>`) und WinSCP (oder
+  ein anderer SFTP-Client) zum Kopieren der Dateien
+- Für Hintergrundmusik: `mpg123` muss auf dem MiSTer vorhanden sein.
+  Prüfen per SSH: `which mpg123` - kommt ein Pfad zurück (z.B.
+  `/usr/bin/mpg123`), passt alles.
+- Für die PC-Tools (optional): Python 3 und `pip install Pillow`
 
-## 3. Installation Schritt fuer Schritt
+## 3. Installation Schritt für Schritt
 
-### Option A: Automatisch (empfohlen, besonders ohne Vorkenntnisse)
+### Option A: Automatisch (empfohlen)
 
-Ein einziger Befehl per SSH auf dem MiSTer laedt alles direkt von
-GitHub, kopiert es an die richtige Stelle und richtet den Autostart
-ein:
+Ein Befehl per SSH lädt alles direkt von GitHub, kopiert es an die
+richtige Stelle und richtet den Autostart ein:
 ```bash
 curl -Ls https://raw.githubusercontent.com/dragrem2k-coder/mister-frontend/main/install.sh | bash
 ```
 (Falls `curl` fehlt, geht auch `wget -qO- ... | bash` - das Skript
 sagt dir Bescheid, falls beides fehlt.)
 
-Kann jederzeit erneut ausgefuehrt werden (z.B. fuer ein Update) -
-eigene Daten (Musik, Boxart, Einstellungen) bleiben dabei unangetastet,
-nur die Programmdateien werden ersetzt. MiSTer braucht dafuer
-Internetzugang (im Heimnetzwerk normalerweise automatisch vorhanden).
+Lässt sich jederzeit erneut ausführen, z.B. für ein Update - eigene
+Daten (Musik, Boxart, Einstellungen) bleiben dabei unangetastet, nur
+die Programmdateien werden ersetzt. Der MiSTer braucht dafür
+Internetzugang (im Heimnetz meist automatisch vorhanden).
 
 ### Option B: Ohne Internet (offline aus dem Paket)
 
 Falls der MiSTer keinen Internetzugang hat, eine bestimmte Version
-installiert werden soll, oder Option A an veralteten SSL-Zertifikaten
-scheitert: das komplette Paket per WinSCP auf den MiSTer kopieren,
-dann per SSH oder aus dem OSD unter Scripts:
+gewünscht ist, oder Option A an veralteten SSL-Zertifikaten scheitert:
+das komplette Paket per WinSCP auf den MiSTer kopieren, dann per SSH
+oder aus dem OSD unter Scripts:
 ```bash
 cd /media/fat/MiSTer_Frontend   # Ordner, in den du das Paket kopiert hast
 ./install_offline.sh
 ```
-Fragt interaktiv nach Autostart und Stream-Overlay. Ohne Rueckfragen:
+Fragt interaktiv nach Autostart und Stream-Overlay. Ohne Rückfragen:
 ```bash
 ./install_offline.sh --yes                # Autostart an, Overlay aus
-./install_offline.sh --yes --stream        # zusaetzlich Overlay an
+./install_offline.sh --yes --stream        # zusätzlich Overlay an
 ./install_offline.sh --yes --no-autostart  # ohne Autostart
 ```
-Erneutes Ausfuehren ist gefahrlos (z.B. fuer ein Update): eigene
-Boxart, Metadaten, Musik, selbst ersetzte System-Logos und
-Einstellungen bleiben unangetastet, die bisherigen Programmdateien
-werden vorher automatisch gesichert (`frontend/backup_<Datum>/`).
+Erneutes Ausführen ist gefahrlos: eigene Boxart, Metadaten, Musik,
+selbst ersetzte System-Logos und Einstellungen bleiben unangetastet,
+die bisherigen Programmdateien werden vorher automatisch gesichert
+(`frontend/backup_<Datum>/`).
 
-### Option C: Manuell per WinSCP (Schritt fuer Schritt von Hand)
+### Option C: Manuell per WinSCP
 
 1. Auf dem MiSTer per WinSCP anlegen: `/media/fat/frontend/`
 2. Alle Dateien aus dem Ordner `frontend/` dorthin kopieren.
@@ -179,214 +188,203 @@ Manueller Start (z.B. zum Testen, ohne neu zu booten), per SSH:
 python3 /media/fat/frontend/frontend.py
 ```
 
-Oder jederzeit aus dem echten MiSTer-OSD heraus: Hauptmenue -> Scripts
--> `start_frontend` (die Scripts-Dateien machen das moeglich - MiSTer
-listet automatisch jedes `.sh`-Skript in `/media/fat/Scripts/` im OSD).
+Oder aus dem echten MiSTer-OSD heraus: Hauptmenü -> Scripts ->
+`start_frontend` (MiSTer listet automatisch jedes `.sh`-Skript in
+`/media/fat/Scripts/` im OSD).
 
 **Wieder entfernen:** `./uninstall.sh` (im Paketordner) macht alles
-rueckgaengig - Autostart, Scripts, optional auch die Programmdateien
-selbst. Fragt nach, ob eigene Boxart/Musik/Einstellungen dabei
-erhalten bleiben sollen (`./uninstall.sh --yes` fuer "alles weg" ohne
-Rueckfrage, `./uninstall.sh --keep-data` fuer "nur Programmdateien
-weg" ohne Rueckfrage).
+rückgängig - Autostart, Scripts, optional auch die Programmdateien
+selbst. Fragt nach, ob eigene Boxart/Musik/Einstellungen erhalten
+bleiben sollen (`./uninstall.sh --yes` für "alles weg" ohne
+Rückfrage, `./uninstall.sh --keep-data` für "nur Programmdateien weg"
+ohne Rückfrage).
 
 ## 4. Bedienung
 
-Das Frontend hat zwei Seiten: Seite 1 (Hauptmenue) zeigt nur die
-Kategorien (Systeme, Arcade, Scripts, System) als grosse Liste; Enter/A
-oeffnet eine Kategorie auf Seite 2, wo links die Spiele-/Eintragsliste
-steht und rechts bei Spiele-Systemen eine breite Boxart+Info-Spalte.
+Zwei Seiten: Seite 1 (Hauptmenü) zeigt nur die Kategorien (Systeme,
+Arcade, Scripts, System) als große Liste; Enter/A öffnet eine
+Kategorie auf Seite 2, wo links die Spieleliste steht und rechts bei
+Spiele-Systemen eine breite Boxart+Info-Spalte.
 
-**Seit v1.49: eigene Ordnerstruktur wird 1:1 uebernommen.** Hast du
-deine ROMs in Unterordnern organisiert (z.B. "1 US-A-E", "2 Beliebt"),
-zeigt das Frontend diese Ordner als eigene, anklickbare Eintraege -
-beliebig tief verschachtelt, genau wie auf dem Datentraeger abgelegt.
-Enter/A auf einem Ordner wechselt hinein, ESC/B geht eine Ordnerebene
-nach oben (erst wenn du ganz oben bist, geht's zurueck zu den
-Kategorien). Ordner erscheinen immer zuerst in der Liste, danach die
-Spiele - beides alphabetisch sortiert. Systeme ohne Unterordner (ROMs
-liegen direkt im Systemordner) zeigen weiterhin sofort die normale
-Liste, ganz ohne diesen Zwischenschritt.
+**Eigene Ordnerstruktur wird 1:1 übernommen.** Hast du deine ROMs in
+Unterordnern organisiert (z.B. "1 US-A-E", "2 Beliebt"), zeigt das
+Frontend diese Ordner als eigene, anklickbare Einträge - beliebig
+tief verschachtelt, genau wie auf dem Datenträger abgelegt. Enter/A
+auf einem Ordner wechselt hinein, ESC/B geht eine Ebene nach oben
+(erst ganz oben geht's zurück zu den Kategorien). Ordner erscheinen
+immer zuerst in der Liste, danach die Spiele - beides alphabetisch.
+Systeme ohne Unterordner zeigen weiterhin sofort die normale Liste.
 
-**Seit v1.55: Uhrzeit + Netzwerksymbol unten rechts im Hauptmenue.**
-Die Uhrzeit (HH:MM) steht immer da; das kleine Balkensymbol daneben
-erscheint nur, wenn ein Netzwerk (WLAN/LAN) verbunden ist - sonst
-bleibt die Stelle leer. Reine Statusanzeige ("Netzwerk vorhanden"),
-keine echte Signalstaerke, die liefert das Betriebssystem nicht ohne
-Weiteres. Wird alle 5 Sekunden neu geprueft, ohne echten
-Netzwerkverkehr zu erzeugen.
+**Uhrzeit + Netzwerksymbol unten rechts im Hauptmenü.** Die Uhrzeit
+(HH:MM) steht immer da; das kleine Balkensymbol daneben erscheint nur,
+wenn ein Netzwerk verbunden ist. Reine Statusanzeige ("Netzwerk
+vorhanden"), keine echte Signalstärke. Wird alle 5 Sekunden neu
+geprüft, ohne echten Netzwerkverkehr zu erzeugen.
 
 | Eingabe                          | Funktion |
 |-------------------------------------|----------|
 | Hoch/Runter                        | Einzelne Position navigieren (beschleunigt beim Halten: 1->2->4->10) |
-| Links/Rechts                       | Seitenweise blaettern (waechst beim Halten: 1->2->3->5 Bildschirmseiten) |
-| Enter/A                            | Kategorie/Ordner oeffnen bzw. Spiel/Script starten |
-| ESC/B                              | Eine Ordner-/Menueebene zurueck; im Hauptmenue: Beenden-Bestaetigung |
-| Ein Buchstabe (Tastatur, A-Z)      | Direktsprung zum naechsten Eintrag mit diesem Anfangsbuchstaben |
-| F12 / Guide-Button                 | Echtes MiSTer-OSD oeffnen (Joystick-Belegung, ini-Settings) |
-| F10 / X-Button                     | Aus dem OSD zurueck ins Frontend |
-| Y-Taste                            | Naechster Song (manueller Musik-Wechsel) |
-| F11                                 | Zufaelliges Spiel/Kategorie ("weiss nicht was ich spielen soll") |
-| F8 / L2- oder R2-Taste               | Favorit umschalten (nur bei Spiele-Eintraegen) |
-| 3x Select nacheinander (Pad)       | Beenden-Bestaetigung (wie ESC) |
-| Im laufenden Spiel: F12 -> "Exit to Menu Core" | Zurueck ins Frontend (siehe Hinweis unten) |
+| Links/Rechts                       | Seitenweise blättern (wächst beim Halten: 1->2->3->5 Bildschirmseiten) |
+| Enter/A                            | Kategorie/Ordner öffnen bzw. Spiel/Script starten |
+| ESC/B                              | Eine Ordner-/Menüebene zurück; im Hauptmenü: Beenden-Bestätigung |
+| Ein Buchstabe (Tastatur, A-Z)      | Direktsprung zum nächsten Eintrag mit diesem Anfangsbuchstaben |
+| F12 / Guide-Button                 | Echtes MiSTer-OSD öffnen (Joystick-Belegung, ini-Settings) |
+| F10 / X-Button                     | Aus dem OSD zurück ins Frontend |
+| Y-Taste                            | Nächster Song (manueller Musik-Wechsel) |
+| F11                                 | Zufälliges Spiel/Kategorie ("weiß nicht was ich spielen soll") |
+| F8 / L2- oder R2-Taste               | Favorit umschalten (nur bei Spiele-Einträgen) |
+| 3x Select nacheinander (Pad)       | Beenden-Bestätigung (wie ESC) |
+| Im laufenden Spiel: Esc auf der Tastatur, ~0,6s halten | Direkt zurück ins Frontend, ohne Umweg über MiSTers OSD |
+| Im laufenden Spiel: F12 -> "Exit to Menu Core" | Alternative über MiSTers eigenes Menü |
 
-Wichtiger Hinweis zum Zurueckkehren aus einem laufenden Spiel: Sobald
-ein Core laeuft, beansprucht MiSTer die Tastatur exklusiv auf
-Kernel-Ebene - das haben wir mit einem direkten, vom Frontend
-unabhaengigen Test bestaetigt (`cat /dev/input/eventX` liefert waehrend
-des Spiels 0 Bytes, egal welche Taste gedrueckt wird). Weder F10 noch
-eine Start+Select-Kombo koennen deshalb JEMALS waehrend des Spiels
-selbst abgefangen werden - das ist eine Plattformgrenze, kein
-Frontend-Bug. Der einzige zuverlaessige Weg: die echte MiSTer-Menue-
-Taste (Standard F12, oder die Menue-Taste an deinem Pad) oeffnet
-MiSTer's eigenes On-Screen-Menue ueber dem laufenden Spiel - das kann
-MiSTer trotz der Tastatursperre, weil es die eigene Firmware ist. Dort
-"Exit to Menu Core" waehlen; sobald MiSTer wirklich ins Menue
-wechselt, erkennt das Frontend das automatisch und uebernimmt wieder.
+**Zum Zurückkehren aus einem laufenden Spiel:** Sobald ein Core läuft,
+sperrt MiSTer die normale Tastatur-/Pad-Ebene komplett (selbst
+nachgeprüft: `cat /dev/input/eventX` liefert während des Spiels 0
+Bytes, egal was man drückt) - Start+Select oder F10 kommen dadurch
+während des Spiels selbst nie an, das ist eine Plattformgrenze, kein
+Bug im Frontend. Es gibt aber einen Weg drumherum: die *rohe*
+HID-Ebene einer angeschlossenen Tastatur bleibt auch während eines
+laufenden Spiels lesbar. Esc etwas länger gedrückt halten (die
+Haltezeit ist bewusst so gewählt, dass ein normaler kurzer
+Esc-Druck in einem spieleigenen Pausemenü nicht aus Versehen den
+Ausstieg auslöst) bringt dich deshalb direkt zurück ins Frontend.
+Klappt das aus irgendeinem Grund nicht (z.B. keine Tastatur
+angeschlossen), bleibt der Weg über MiSTers eigenes Menü: F12/
+Menü-Taste am Pad öffnet MiSTers On-Screen-Menü über dem laufenden
+Spiel, dort "Exit to Menu Core" wählen - sobald MiSTer wirklich ins
+Menü wechselt, übernimmt das Frontend automatisch wieder.
 
 ## 5. Hintergrundmusik einrichten
 
 1. Eigene MP3-Dateien nach `/media/fat/music/` kopieren (Ordner ggf.
    selbst anlegen).
-2. Frontend neu starten - die Wiedergabe beginnt automatisch, zufaellig
+2. Frontend neu starten - die Wiedergabe beginnt automatisch, zufällig
    gemischt.
 3. Steuerung:
-   - Y-Taste: naechster Song
+   - Y-Taste: nächster Song
    - System -> "Music: On/Off": Musik komplett ein-/ausschalten
-     (Status bleibt ueber Neustarts erhalten)
+     (Status bleibt über Neustarts erhalten)
    - Musik pausiert automatisch, sobald ein Spiel oder Script startet,
-     und laeuft automatisch weiter, sobald du zurueck im Frontend bist
-4. Der aktuell spielende Titel laeuft als Laufschrift oben neben dem
-   "MiSTer"-Logo (Hauptmenue) und unterhalb der Spielinfos im
+     und läuft automatisch weiter, sobald du zurück im Frontend bist
+4. Der aktuell spielende Titel läuft als Laufschrift oben neben dem
+   "MiSTer"-Logo (Hauptmenü) und unterhalb der Spielinfos im
    Boxart-Block (Kategorie-Ansicht).
 
 Ohne MP3s im Ordner oder ohne `mpg123` bleibt das Frontend einfach
-stumm - es gibt keine Fehlermeldung, es laeuft nur ohne Musik weiter.
+stumm - keine Fehlermeldung, läuft nur ohne Musik weiter.
 
 ## 6. Boxart und Spielinfos laden
 
-Direkt auf dem MiSTer, kein PC noetig (auch aus der Scripts-Kategorie
+Direkt auf dem MiSTer, kein PC nötig (auch aus der Scripts-Kategorie
 im Frontend selbst startbar):
 ```bash
 python3 /media/fat/frontend/mister_boxart.py            # Cover, CRT-Groesse
-python3 /media/fat/frontend/mister_boxart.py hd          # zusaetzlich scharfe Cover fuer HDMI
+python3 /media/fat/frontend/mister_boxart.py hd          # zusätzlich scharfe Cover für HDMI
 python3 /media/fat/frontend/mister_gameinfo.py           # Jahr/Genre/Spieleranzahl
 ```
-**Nutzt du sowohl CRT als auch HDMI, fuehr BEIDE Zeilen aus** - ohne
-den `hd`-Lauf zeigt das Frontend auf HDMI die kleinen, fuer die Roehre
-gedachten Cover einfach hochskaliert (wirkt verpixelt). Mit `hd`
-liegen beide Groessen nebeneinander vor (`art/` fuer CRT, `art_hd/`
-fuer HDMI), das Frontend waehlt automatisch anhand der aktuellen
-Aufloesung die passende - nichts muss geloescht/ersetzt werden, die
-CRT-Cover bleiben unangetastet.
+**Nutzt du sowohl CRT als auch HDMI, führ beide Zeilen aus** - ohne den
+`hd`-Lauf zeigt das Frontend auf HDMI die kleinen, für die Röhre
+gedachten Cover einfach hochskaliert (wirkt verpixelt). Mit `hd` liegen
+beide Größen nebeneinander vor (`art/` für CRT, `art_hd/` für HDMI),
+das Frontend wählt automatisch die passende - nichts muss
+gelöscht/ersetzt werden.
 
-**Seit v1.56 auch fuer Arcade** - laeuft automatisch mit, keine
-eigene Option noetig. Findet alle `_Arcade`-Ordner, sammelt die
-MRA-Dateinamen (das ist bei MiSTer-Sammlungen ueblicherweise schon
-der Spieletitel) und laedt passende Cover von
-`libretro-thumbnails/MAME`. Spiele ohne Datenbank-Treffer (z.B. sehr
-seltene oder selbst erstellte MRAs) bleiben wie bei den Konsolen ohne
-Cover, landen aber in `fehlend_ARCADE.txt`.
+**Auch für Arcade** - läuft automatisch mit, keine eigene Option
+nötig. Findet alle `_Arcade`-Ordner, sammelt die MRA-Dateinamen (das
+ist bei MiSTer-Sammlungen üblicherweise schon der Spieletitel) und
+lädt passende Cover von `libretro-thumbnails/MAME`. Spiele ohne
+Datenbank-Treffer bleiben wie bei den Konsolen ohne Cover, landen aber
+in `fehlend_ARCADE.txt`.
 
-- Beide Skripte durchsuchen deine ROM-Ordner (SD-Karte und angeschlossene
-  USB-Laufwerke) und holen passende Daten automatisch von
-  thumbnails.libretro.com bzw. der libretro-database (jeweils mit
+- Beide Skripte durchsuchen deine ROM-Ordner (SD-Karte und
+  angeschlossene USB-Laufwerke) und holen passende Daten automatisch
+  von thumbnails.libretro.com bzw. der libretro-database (jeweils mit
   GitHub-Spiegel als Fallback)
-- **Seit v1.38 mit 6 parallelen Downloads** statt einem nach dem
-  anderen - deutliche Beschleunigung bei grossen Sammlungen (gemessen:
-  ca. 5x schneller in einem realistischen Testszenario)
-- Namensabgleich: exakt -> ohne Regions-Tags -> Aehnlichkeitssuche,
+- Läuft mit mehreren parallelen Downloads statt einem nach dem
+  anderen - macht bei großen Sammlungen einen spürbaren Unterschied
+- Namensabgleich: exakt -> ohne Regions-Tags -> Ähnlichkeitssuche,
   bevorzugt in dieser Reihenfolge: Germany > Europe > World > USA > Japan
-- Jederzeit mit Strg+C abbrechbar, setzt beim naechsten Start genau
-  dort fort, wo es aufgehoert hat (vorhandene Dateien werden
-  uebersprungen)
+- Jederzeit mit Strg+C abbrechbar, setzt beim nächsten Start genau
+  dort fort, wo es aufgehört hat
 - ROMs ohne gefundenes Cover landen in `fehlend_<System>.txt` im
   jeweiligen `art`-Ordner unter `/media/fat/frontend/`
 
-Alternative fuer den PC (`PC-Tools/boxart_fetch.py`, braucht
+Alternative für den PC (`PC-Tools/boxart_fetch.py`, braucht
 `pip install Pillow`, ebenfalls mit parallelen Downloads): dieselbe
 Quelle vom Rechner aus abfragen und die fertigen `.art`-Dateien per
-WinSCP hochladen. Nuetzlich fuer eigene Bildquellen (z.B.
-emumovies.com) - dafuer wandelt `PC-Tools/art_convert.py` beliebige
+WinSCP hochladen. Nützlich für eigene Bildquellen (z.B.
+emumovies.com) - dafür wandelt `PC-Tools/art_convert.py` beliebige
 PNG/JPGs ins `.art`-Format um:
 ```
 python art_convert.py --images "meine_bilder/SNES" --roms "D:\roms\SNES" --out "art_out\SNES" --profile sd
 ```
 
-
 ## 6b. Automatische Listen-Bereinigung + kuratierte Liste
 
-Der Spiele-Scan raeumt seit v1.23 automatisch auf, ohne deine eigene
+Der Spiele-Scan räumt automatisch auf, ohne deine eigene
 Ordnerstruktur anzutasten:
-- Geht beliebig tief (nicht mehr nur 2 Ordnerebenen) - eigene
-  Sortierungen wie "1 TOP 100/Unterordner/Spiel.chd" werden vollstaendig
-  gefunden.
+- Geht beliebig tief - eigene Sortierungen wie "1 TOP 100/Unterordner/
+  Spiel.chd" werden vollständig gefunden.
 - Bekannte Boot-/Test-Dateien (`boot.rom`, `mister-boot.*` usw.) werden
   ausgeblendet.
 - Beta/Proto/Demo/Hack/Bad-Dump-Tags werden ausgefiltert.
-- Mehrfach-Regionen desselben Spiels ("Spiel (USA)", "Spiel (Europe)",
-  "Spiel (Germany)") werden zu EINEM Eintrag zusammengefasst - beste
-  Region gewinnt (Germany > Europe > World > USA > Japan). Bei
-  vollstaendigen No-Intro-Sets kann das die Listengroesse deutlich
-  reduzieren und verhindert doppelte Boxart-Downloads fuer dasselbe
-  Spiel.
-- **Rein japanische ROMs werden seit v1.35 komplett ausgeblendet**
-  (nicht nur bei Mehrfach-Regionen zusammengefasst, sondern generell
-  ausgefiltert) - erkennt "(Japan)"/"[Japan]" und die abgekuerzte
-  Variante "(J)". Mehrfach-Region-Tags wie "(Japan, USA)" bleiben
-  erhalten, da diese Version auch USA/Europa abdeckt. Gilt fuer den
-  Frontend-Scan UND alle drei Boxart-/Info-Downloader-Tools
+- Mehrfach-Regionen desselben Spiels ("Spiel (USA)", "Spiel (Europe)")
+  werden zu einem Eintrag zusammengefasst - beste Region gewinnt
+  (Germany > Europe > World > USA > Japan). Bei vollständigen
+  No-Intro-Sets kann das die Listengröße spürbar reduzieren.
+- **Rein japanische ROMs werden komplett ausgeblendet** (nicht nur
+  zusammengefasst, sondern generell rausgefiltert) - erkennt
+  "(Japan)"/"[Japan]" und "(J)". Mehrfach-Region-Tags wie "(Japan,
+  USA)" bleiben erhalten, da diese Version auch USA/Europa abdeckt.
+  Gilt für den Frontend-Scan UND alle drei Boxart-/Info-Tools
   einheitlich.
 
-Zusaetzlich optional im System-Menue: **"Curated list (DB-matched
+Zusätzlich optional im System-Menü: **"Curated list (DB-matched
 only)"** zeigt nur Spiele mit einem Treffer in der libretro-Datenbank
-(siehe Abschnitt 6) - so wie frueher bei Hyperspin die XML-Datenbank
-pro System. Hat ein System noch gar keine Metadaten geladen, wird es
-NICHT gefiltert (kein Risiko einer leeren Liste). Wirkt sofort, ohne
-Neustart.
+- so wie früher bei Hyperspin die XML-Datenbank pro System. Hat ein
+System noch gar keine Metadaten geladen, wird es NICHT gefiltert
+(kein Risiko einer leeren Liste). Wirkt sofort, ohne Neustart.
 
 ## 7. System-Hintergrundbilder (optional)
 
-Fuer ein Konsolenfoto als abgedunkelten Hintergrund pro System:
-gemeinfreie Fotos von Evan Amos (Wikimedia Commons, Suche nach
-"Vanamo Online Game Museum") eignen sich hervorragend.
+Für ein Konsolenfoto als abgedunkelten Hintergrund pro System: gute
+Quelle sind die gemeinfreien Fotos von Evan Amos auf Wikimedia
+Commons (Suche nach "Vanamo Online Game Museum").
 ```
 python art_convert.py --bg --images nes.jpg --out NES_320x240.art --size 320x240 --darken 0.25
 ```
 Nach `/media/fat/frontend/bg/` kopieren. Systemkeys: NES, SNES, Genesis,
 N64, PSX, GAMEBOY, GBA, SMS, TGFX16, MegaCD, Saturn, NEOGEO, ARCADE.
 
-## 7b. System-Artbox im Kategorien-Menue
+## 7b. System-Artbox im Kategorien-Menü
 
-Im Kategorien-Hauptmenue (Seite 1) erscheint rechts neben der Liste
+Im Kategorien-Hauptmenü (Seite 1) erscheint rechts neben der Liste
 eine Artbox mit dem Logo/Cover des gerade markierten Systems - wechselt
-live beim Hoch/Runter-Blaettern durch die Kategorien.
+live beim Hoch/Runter-Blättern durch die Kategorien.
 
-**Bereits im Build enthalten** (liegt in `frontend/sysart/`, muss nicht
-mehr selbst erzeugt werden): alle 13 aktuell unterstuetzten Systeme
-(NES, SNES, Genesis, N64, PSX, GAMEBOY, GBC, GBA, SMS, TGFX16, MegaCD,
-Saturn, NEOGEO) haben ein echtes Logo hinterlegt. Im Unterordner
-`frontend/sysart/_weitere_systeme_noch_nicht_unterstuetzt/` liegen
-ausserdem fertige Logos fuer neun Systeme, die aktuell noch nicht in
-GAME_SYSTEMS eingetragen sind (Atari 5200/7800/Jaguar, ColecoVision,
-Philips CD-i, Pico-8, Sega 32X, Super Game Boy, TurboGrafx-CD) -
-bereit fuer den Tag, an dem diese Systeme ergaenzt werden.
+**Bereits im Build enthalten** (liegt in `frontend/sysart/`, muss
+nicht mehr selbst erzeugt werden): alle 13 aktuell unterstützten
+Systeme (NES, SNES, Genesis, N64, PSX, GAMEBOY, GBC, GBA, SMS, TGFX16,
+MegaCD, Saturn, NEOGEO) haben ein echtes Logo hinterlegt. Im
+Unterordner `frontend/sysart/_weitere_systeme_noch_nicht_unterstuetzt/`
+liegen außerdem fertige Logos für neun weitere Systeme (Atari
+5200/7800/Jaguar, ColecoVision, Philips CD-i, Pico-8, Sega 32X, Super
+Game Boy, TurboGrafx-CD) - für den Tag, an dem die mal ergänzt werden.
 
-Eigene/weitere Bilder erzeugen (derselbe Konverter wie fuer Boxart,
-kein Hintergrund-Modus noetig):
+Eigene/weitere Bilder erzeugen (derselbe Konverter wie für Boxart,
+kein Hintergrund-Modus nötig):
 ```
 python art_convert.py --images konsolen_logo.png --out SMS.art --profile hd
 ```
 Datei nach `/media/fat/frontend/sysart/<Systemkey>.art` kopieren (z.B.
 `sysart/SMS.art`, `sysart/NES.art`). Ohne passende Datei erscheint ein
 dezenter Platzhalter statt eines Fehlers - kann also nach und nach
-befuellt werden.
+befüllt werden.
 
 ## 8. CRT-Bildschirme (15 kHz) einrichten
 
-Fuer das Menue/Frontend auf einem 15-kHz-Roehrenbildschirm sorgt dieser
-Block am Ende der `/media/fat/MiSTer.ini` (wird ueber System ->
+Fürs Menü/Frontend auf einem 15-kHz-Röhrenbildschirm sorgt dieser
+Block am Ende der `/media/fat/MiSTer.ini` (wird über System ->
 "Menu video: HDMI -> switch to CRT" im Frontend automatisch verwaltet,
 muss also normalerweise nicht von Hand eingetragen werden):
 ```ini
@@ -395,127 +393,172 @@ vga_scaler=1
 fb_terminal=1
 video_mode=320,8,32,24,240,4,3,16,6048
 ```
-Wichtig zu wissen: Der Scaler kann nur EINEN Modus gleichzeitig - das
-Menue ist daher ENTWEDER auf dem CRT ODER auf HDMI sichtbar (Spiele
-selbst laufen weiterhin auf beiden Ausgaengen gleichzeitig,
-unabhaengig vom Menue).
+Der Scaler kann nur einen Modus gleichzeitig - das Menü ist daher
+entweder auf dem CRT oder auf HDMI sichtbar (Spiele selbst laufen
+weiterhin auf beiden Ausgängen gleichzeitig, unabhängig vom Menü).
 
-## 8c. Zuletzt gespielt, Lade-Fortschritt (seit v1.30)
+## 8c. Zuletzt gespielt, Lade-Fortschritt
 
-Automatisch aktiv, keine Einrichtung noetig:
-- **"Zuletzt gespielt"**: neue Kategorie ganz oben im Hauptmenue,
-  sobald du das erste Spiel gestartet hast - bis zu 15 Eintraege,
-  neuestes zuerst. Erscheint automatisch erst NACH dem ersten
-  Spielstart (vorher unsichtbar, keine leere Kategorie).
+Automatisch aktiv, keine Einrichtung nötig:
+- **"Zuletzt gespielt"**: neue Kategorie ganz oben im Hauptmenü,
+  sobald du das erste Spiel gestartet hast - bis zu 15 Einträge,
+  neuestes zuerst. Erscheint erst nach dem ersten Spielstart.
 - **Lade-Fortschritt**: zeigt einen Fortschrittsbalken, falls die
-  Spieleliste tatsaechlich neu von der Platte eingelesen werden muss
-  (erster Start oder nach Aenderungen an den ROM-Ordnern). Beim
-  normalen, schnellen Cache-Treffer (der ueblichste Fall) erscheint
-  gar nichts davon - kein Tempoverlust im Alltag.
-- **Seit v1.49:** Vor einem tatsaechlichen Scan wartet das Frontend
-  kurz (bis zu 4 Sekunden), falls USB-Laufwerke gerade erst nach
-  einem Kaltstart einhaengen - verhindert, dass ein zu frueh
-  gestarteter Scan faelschlich weniger Spiele findet (und das dann
-  auch noch zwischenspeichert). Betrifft nur den seltenen tatsaechlichen
-  Scan-Fall, nicht den schnellen Alltags-Cache-Treffer.
+  Spieleliste tatsächlich neu von der Platte eingelesen werden muss.
+  Beim normalen, schnellen Cache-Treffer erscheint gar nichts davon.
+- Vor einem tatsächlichen Scan wartet das Frontend kurz (bis zu 4
+  Sekunden), falls USB-Laufwerke gerade erst nach einem Kaltstart
+  einhängen - verhindert, dass ein zu früh gestarteter Scan
+  fälschlich weniger Spiele findet.
 
-## 8b. Optische Verfeinerungen (seit v1.29)
+## 8b. Optische Verfeinerungen
 
-Automatisch aktiv, keine Einrichtung noetig:
-- **Pro-System-Akzentfarbe**: Markierung, Boxart-Rahmen und Artbox-
-  Rahmen faerben sich passend zum aktuellen System (NES-Rot,
-  Sega-Blau, SNES-Lila usw.) statt immer Standard-Blau zu zeigen.
-- **Pulsierende Markierung**: dezentes, bewusst LANGSAMES Aufhellen/
-  Abdunkeln der Auswahl (mehrere Sekunden pro Zyklus).
+Automatisch aktiv, keine Einrichtung nötig:
+- **Pro-System-Akzentfarbe**: Markierung, Boxart-Rahmen und
+  Artbox-Rahmen färben sich passend zum aktuellen System (NES-Rot,
+  Sega-Blau, SNES-Lila usw.).
+- **Pulsierende Markierung**: dezentes, bewusst langsames
+  Aufhellen/Abdunkeln der Auswahl.
 - **Glow-Effekt** um die Markierung, **Schlagschatten** unter dem
   Boxart-Cover.
 - **Equalizer-Balken** neben der Now-Playing-Anzeige, solange Musik
-  laeuft (rein animiert, keine echte Lautstaerke-Messung).
+  läuft (rein animiert, keine echte Lautstärke-Messung).
 
-Falls das auf deinem Setup zu unruhig wirkt: alle vier Effekte lassen
-sich einzeln im Code abschalten (`accent_for()`/`_pulsed()`/
-`glow_border_fast()`/`_draw_equalizer()` jeweils durch die alte feste
-Farbe ersetzen) - sag Bescheid, falls du dafuer einen eigenen
-Menueschalter haben moechtest.
+Falls dir das zu unruhig ist: alle vier Effekte lassen sich einzeln
+im Code abschalten - sag Bescheid, falls du dafür lieber einen
+Menüschalter hättest.
 
 ## 8d. Attract-Modus / Bildschirmschoner
 
-Nach 45 Sekunden ohne Eingabe erscheint automatisch ein zufaelliges
-Spiel grossflaechig mit Cover, Titel und Systemname - wechselt danach
-alle 6 Sekunden weiter zum naechsten (vermeidet dabei Wiederholungen,
-solange mehr als ein Spiel vorhanden ist). Jede beliebige Taste beendet
-den Attract-Modus sofort wieder und bringt dich genau dorthin zurueck,
-wo du vorher warst - die Taste selbst loest dabei KEINE zusaetzliche
-Aktion aus (erstes Druecken weckt nur auf, wie bei einem echten
-Bildschirmschoner).
+Nach 45 Sekunden ohne Eingabe erscheint automatisch ein zufälliges
+Spiel großflächig mit Cover, Titel und Systemname - wechselt danach
+alle 6 Sekunden weiter (vermeidet dabei Wiederholungen, solange mehr
+als ein Spiel vorhanden ist). Jede beliebige Taste beendet den
+Attract-Modus sofort und bringt dich genau dorthin zurück, wo du
+vorher warst - die Taste selbst löst dabei nichts Zusätzliches aus.
 
-Praktisch fuer Vorfuehrungen/Streams: laeuft das Menue eine Weile im
-Hintergrund, zeigt es von selbst eine Art Diashow der eigenen
-Sammlung, statt einfach nur still dazustehen.
+Praktisch für Vorführungen/Streams: läuft das Menü eine Weile im
+Hintergrund, zeigt's von selbst eine Art Diashow der eigenen Sammlung.
 
-Ueber System-Menue an-/ausschaltbar (Standard: an). Betroffene
-Kategorien: nur echte Spiele-Systeme (Zuletzt gespielt/Scripts/System
-bleiben aussen vor).
+Über System-Menü an-/ausschaltbar (Standard: an). Betroffen sind nur
+echte Spiele-Systeme (Zuletzt gespielt/Scripts/System bleiben außen
+vor).
 
-## 8e. Favoriten (seit v1.58)
+## 8e. Favoriten
 
-Eigene, bewusst kuratierte Auswahl - unabhaengig von "Zuletzt
-gespielt" (das fuellt sich automatisch, Favoriten nur durch dich
+Eigene, bewusst kuratierte Auswahl - unabhängig von "Zuletzt
+gespielt" (das füllt sich automatisch, Favoriten nur durch dich
 selbst). F8 (Tastatur) bzw. **L2 oder R2** (Gamepad) schaltet den
 Favoritenstatus des gerade markierten Spiels um - funktioniert nur bei
-echten Spiele-Eintraegen, nicht bei Ordnern, Scripts oder Cores.
-Favorisierte Spiele zeigen ein kleines "*" vor dem Namen in der Liste.
+echten Spiele-Einträgen, nicht bei Ordnern, Scripts oder Cores.
+Favorisierte Spiele zeigen ein kleines "*" vor dem Namen.
 
-**Seit v1.59: L2/R2 funktionieren unabhaengig davon, ob dein Pad sie
-als eigene Taste oder als analogen Trigger sendet** (bei vielen
-Xbox-artigen Controllern ueblich) - beides wird erkannt (Schwelle:
-ueber 50% durchgezogen = "gedrueckt"). L1/R1 bleiben unveraendert fuer
-das Blaettern zustaendig, lassen sich aber genau wie jede andere Taste
-ueber den Assistenten (Abschnitt 10) umbelegen, falls du sie lieber
-fuers Favorisieren nutzen moechtest.
+L2/R2 funktionieren dabei unabhängig davon, ob dein Pad sie als
+eigene Taste oder als analogen Trigger sendet (bei vielen
+Xbox-artigen Controllern üblich) - beides wird erkannt. L1/R1 bleiben
+unverändert fürs Blättern zuständig, lassen sich aber genau wie jede
+andere Taste über den Assistenten (Abschnitt 10) umbelegen.
 
 Erscheint als eigene Kategorie "Favoriten" direkt nach "Zuletzt
-gespielt" (bzw. ganz vorne, falls es keine "Zuletzt gespielt"-Eintraege
-gibt) - und verschwindet automatisch wieder, sobald keine Favoriten
-mehr vorhanden sind. Alle vier Schultertasten (L1/L2/R1/R2) lassen
-sich ueber den Tastenbelegungs-Assistenten (Abschnitt 10) frei auf
-jede Aktion legen, falls die Standardbelegung bei deinem Setup
-unpraktisch liegt.
+gespielt" und verschwindet automatisch wieder, sobald keine Favoriten
+mehr vorhanden sind.
+
+## 8f. Uhrzeit-Synchronisierung
+
+MiSTer hat keine batteriegepufferte Echtzeituhr - die Systemuhr
+startet bei jedem Neustart nahe Null. Das Frontend holt sich die
+aktuelle Uhrzeit deshalb selbst per Internet (SNTP), gleich am Anfang
+- vorausgesetzt, ein Netzwerk ist vorhanden. Ohne Netzwerk wird gar
+nichts versucht, mit Netzwerk aber ohne Antwort vom Zeitserver bricht
+der Versuch nach kurzer Zeit von selbst ab.
+
+## 8g. Themes/Farbschemata
+
+Im System-Menü: "Farbschema" schaltet der Reihe nach zwischen drei
+Farbschemata um - Dunkel (Standard), Hell und Retro-Grün. Die
+Pro-System-Akzentfarben bleiben dabei bewusst unverändert, nur
+Hintergrund/Text/Panel wechseln.
+
+## 8h. Navigations-Soundeffekte
+
+Im System-Menü: "Navigations-Soundeffekte" schaltet kurze Klicktöne
+beim Bewegen/Bestätigen/Zurückgehen ein oder aus (Standard: AN). Die
+Töne werden beim ersten Start selbst erzeugt (keine Downloads nötig)
+und laufen parallel zur Hintergrundmusik.
+
+## 8i. Spielzeit-Tracker
+
+Ganz automatisch, ohne etwas einzustellen: das Frontend merkt sich pro
+Spiel, wie lange tatsächlich gespielt wurde (Ladezeiten und ein
+fehlgeschlagener Start zählen nicht mit). Sichtbar im Info-Bereich
+neben Boxart/Spieleranzahl/Jahr/Genre, z.B. "Gespielt: 2h 15min".
+Gespeichert in `playtime.json` im `frontend`-Ordner.
+
+## 8j. Top-10-Listen
+
+Im System-Menü: "Top 10: meistgespielt" und "Top 10: meistgestartet"
+zeigen eine Vollbild-Übersicht der 10 Spiele mit der längsten
+Gesamtspielzeit bzw. den meisten Starts. Rein informativ - eine
+beliebige Taste kehrt zurück ins Menü.
+
+## 8k. RetroAchievements-Fortschritt
+
+Zeigt im Info-Bereich, wie viele Achievements du bei einem Spiel
+schon erreicht hast ("RA: 20/50") - komplett unsichtbar, solange
+nicht eingerichtet, ohne jede Verzögerung beim Start.
+
+**Einrichtung:** Datei `/media/fat/frontend/retroachievements.cfg`
+per SSH/Texteditor anlegen, zwei Zeilen:
+```
+DeinRABenutzername
+DeinRAWebApiSchluessel
+```
+Den Web-API-Schlüssel findest du in deinem RA-Kontrollbereich unter
+"Keys". Danach im System-Menü "RetroAchievements: DeinName (neu
+laden)" antippen, um den Abgleich anzustoßen.
+
+Das zeigt nur etwas an, wenn du für ein Spiel tatsächlich schon
+Achievements erreicht hast - entweder über eine RA-fähige
+MiSTer-Sonderversion (odelots Fork, separat zu installieren), oder
+weil du dasselbe Spiel schon mal anderswo RA-getrackt gespielt hast.
+Bei ganz normalem MiSTer ohne Zusatz-Version zeigt's für die meisten
+Spiele nichts an. Der Abgleich läuft über den Spieletitel (RA liefert
+keine Dateipfade) - bewusst vorsichtig: passt der Name oder das
+System nicht eindeutig, wird lieber nichts angezeigt als ein
+möglicherweise falscher Treffer.
 
 ## 9. Sprache umschalten
 
 System -> "Language: English -> switch to German" (bzw. umgekehrt auf
 Deutsch) schaltet alle sichtbaren Texte im Frontend um - Kopf-/
-Fusszeilen, System-Menue, Beenden-Dialog, Boxart-Infos, Now-Playing.
-Der gewaehlte Stand bleibt ueber Neustarts erhalten.
+Fußzeilen, System-Menü, Beenden-Dialog, Boxart-Infos, Now-Playing. Der
+gewählte Stand bleibt über Neustarts erhalten.
 
 ## 10. Eigene Tastenbelegung
 
 System -> "Configure buttons" startet einen Assistenten: er fragt
-nacheinander nach Hoch, Runter, Links, Rechts, OK/Start, Zurueck,
-MiSTer-Menue oeffnen - einfach die gewuenschte Taste druecken
-(Tastatur oder Gamepad, egal welches Geraet). Meldet dein Pad das
-D-Pad als Analogachse (die meisten tun das), wird das automatisch
-erkannt und uebersprungen, da diese Richtung dann schon nativ
-funktioniert. ESC bricht jederzeit ab, ohne die bisherige Belegung
-zu aendern. System -> "Reset to default buttons" setzt alles wieder
-auf die Werkseinstellung zurueck.
+nacheinander nach Hoch, Runter, Links, Rechts, OK/Start, Zurück,
+MiSTer-Menü öffnen - einfach die gewünschte Taste drücken (Tastatur
+oder Gamepad, egal welches Gerät). Meldet dein Pad das D-Pad als
+Analogachse (die meisten tun das), wird das automatisch erkannt und
+übersprungen, da diese Richtung dann schon nativ funktioniert. ESC
+bricht jederzeit ab, ohne die bisherige Belegung zu ändern. System ->
+"Reset to default buttons" setzt alles wieder auf die
+Werkseinstellung zurück.
 
 ## 11. Boot-Animation (Startvideo)
 
 Eine kleine Bildsequenz, die einmal pro MiSTer-Boot abgespielt wird,
-bevor das normale Menue erscheint - kein echtes Videoformat (der MiSTer
-hat keinen Video-Player), sondern ein "Daumenkino" aus Einzelbildern im
-selben `.art`-Format wie Boxart und Hintergrundbilder.
+bevor das normale Menü erscheint - kein echtes Videoformat (der
+MiSTer hat keinen Video-Player), sondern ein Daumenkino aus
+Einzelbildern im selben `.art`-Format wie Boxart und Hintergrundbilder.
 
-**Seit v1.36 automatische Modus-Erkennung:** Das Frontend erkennt beim
-Start selbst, ob gerade CRT- oder HDMI-Menuemodus aktiv ist, und
-spielt die passende Animation ab - du kannst also fuer beide Modi
-unterschiedliche Videos/Bilder hinterlegen (z.B. eine hochaufgeloeste
-Version fuers HDMI, eine kleinere fuer die Roehre).
+Das Frontend erkennt beim Start selbst, ob gerade CRT- oder
+HDMI-Menümodus aktiv ist, und spielt die passende Animation ab - du
+kannst also für beide Modi unterschiedliche Videos/Bilder hinterlegen.
 
-1. Auf dem PC (`pip install Pillow`, fuer Video-Quellen zusaetzlich
-   ffmpeg im PATH), EINMAL PRO MODUS:
+1. Auf dem PC (`pip install Pillow`, für Video-Quellen zusätzlich
+   ffmpeg im PATH), einmal pro Modus:
    ```
    # CRT-Variante:
    python video_to_bootanim.py --video intro.mp4 --out bootanim_crt ^
@@ -525,47 +568,45 @@ Version fuers HDMI, eine kleinere fuer die Roehre).
    python video_to_bootanim.py --video intro.mp4 --out bootanim_hdmi ^
        --fps 10 --duration 3 --size 960x540
    ```
-   **Wichtig fuer HDMI - nicht die volle 1920x1080 verwenden:** Das
-   Frontend zeigt jedes Bild seit v1.37 in seiner tatsaechlich
-   gespeicherten Groesse (zentriert, mit Rand) statt es zwanghaft auf
-   Vollbild hochzuskalieren - das ist auf einem eher schwachen
-   MiSTer-Prozessor deutlich schneller. Gemessen: `960x540` statt voller
-   `1920x1080` spielt die Animation rund **7x fluessiger** (weniger zu
-   dekodierende Bilddaten pro Frame). `960x540` sieht auf einem
-   1080p-Fernseher immer noch scharf aus - fuer die kurze Boot-Animation
-   ein guter Kompromiss. Ist eine Quelle doch groesser als der
-   Bildschirm, wird sie automatisch (aber langsamer) heruntskaliert -
-   kein Fehler, nur langsamer als noetig.
+   **Für HDMI lieber nicht die volle 1920x1080 nehmen:** das Frontend
+   zeigt jedes Bild in seiner tatsächlich gespeicherten Größe
+   (zentriert, mit Rand) statt es zwanghaft aufs Vollbild
+   hochzuskalieren - auf dem eher schwachen MiSTer-Prozessor deutlich
+   schneller. `960x540` statt voller `1920x1080` spielt die Animation
+   rund 7x flüssiger und sieht auf einem 1080p-Fernseher immer noch
+   scharf aus. Ist eine Quelle doch größer als der Bildschirm, wird
+   sie automatisch (aber langsamer) heruntergerechnet.
 2. Die beiden Ordner per WinSCP nach
    `/media/fat/frontend/bootanim_crt/` bzw.
-   `/media/fat/frontend/bootanim_hdmi/` kopieren (Ordnernamen exakt so,
-   mit Unterstrich-Suffix).
-3. Fertig - beim naechsten Boot erscheint automatisch die zum
+   `/media/fat/frontend/bootanim_hdmi/` kopieren (Ordnernamen exakt
+   so, mit Unterstrich-Suffix).
+3. Fertig - beim nächsten Boot erscheint automatisch die zum
    aktuellen Modus passende Animation.
 
 **Nur einen Modus einrichten?** Reicht auch - fehlt der
 modusspezifische Ordner, wird ersatzweise `bootanim/` (ohne Suffix,
-die alte Struktur aus fruoheren Versionen) verwendet, falls vorhanden.
+die alte Struktur) verwendet, falls vorhanden.
 
-Ein beliebiger Tastendruck waehrend der Wiedergabe ueberspringt den
+Ein beliebiger Tastendruck während der Wiedergabe überspringt den
 Rest sofort. Fehlt jeder passende Ordner oder ist er leer, passiert
-einfach nichts - kein Fehler.
+einfach nichts.
 
 **Bewusst kurz halten:** Jedes Bild wird auf dem MiSTer in reinem
-Python dekodiert - fuer ein paar Sekunden Animation problemlos
-schnell genug, aber keine Videowiedergabe im eigentlichen Sinn.
-Empfehlung: 2-4 Sekunden, 8-12 Bilder/Sekunde (also ca. 20-40
-Einzelbilder insgesamt). Laenger geht, verlaengert dann aber auch
-den Bootvorgang entsprechend.
+Python dekodiert - für ein paar Sekunden Animation problemlos schnell
+genug, aber keine echte Videowiedergabe. Empfehlung: 2-4 Sekunden,
+8-12 Bilder/Sekunde. Länger geht, verlängert dann aber auch den
+Bootvorgang.
 
 ## 12. Stream-Overlay für OBS (optional)
 
 Ein Web-Overlay zeigt im Stream in Echtzeit, was gerade im Frontend
-ausgewaehlt ist (Cover, Titel, System, Now-Playing) - unabhaengig vom
-Video-Ausgang des MiSTers, also ohne die CRT/HDMI-Scaler-Grenze aus
-Abschnitt 8. Die "Menue-Ansicht" fuer den Stream kommt dabei nicht aus
-dem Videoausgang, sondern wird direkt im Browser gerendert und von OBS
-ins Bild gesetzt.
+ausgewählt ist (Cover, Titel, System, Now-Playing, Genre/Jahr,
+Spielzeit, RetroAchievements-Fortschritt, Favoriten-Stern) -
+unabhängig vom Video-Ausgang des MiSTers, also ohne die CRT/HDMI-
+Scaler-Grenze aus Abschnitt 8. Die "Menü-Ansicht" für den Stream
+kommt dabei nicht aus dem Videoausgang, sondern wird direkt im
+Browser gerendert und von OBS ins Bild gesetzt. Jede einzelne Anzeige
+lässt sich über die Backend-Oberfläche getrennt ein-/ausschalten.
 
 **Einrichtung:**
 1. Einschalten per SSH:
@@ -574,71 +615,65 @@ ins Bild gesetzt.
    ```
    (legt nur eine Freigabe-Datei an - ohne sie startet der Web-Server
    gar nicht erst, bestehende Nutzer merken also nichts davon)
-2. Frontend neu starten (siehe Abschnitt 11 - Fehlerbehebung fuer den
-   sauberen Neustart-Ablauf).
-3. In OBS eine **Browser-Quelle** hinzufuegen mit der Adresse
-   `http://<MiSTer-IP>:8080/` (Breite/Hoehe auf deine Stream-Canvas
+2. Frontend neu starten (siehe Abschnitt 13 für den sauberen
+   Neustart-Ablauf).
+3. In OBS eine **Browser-Quelle** hinzufügen mit der Adresse
+   `http://<MiSTer-IP>:8080/` (Breite/Höhe auf deine Stream-Canvas
    einstellen, z.B. 1920x1080 - der Rest bleibt transparent).
 
    **Komfort-Alternative:** `PC-Tools/obs_setup.py` (unter Windows per
    Doppelklick auf `OBS_Setup_starten.bat`) fragt nach der MiSTer-IP,
-   prueft die Verbindung und legt eine lokale Overlay-Datei mit fest
+   prüft die Verbindung und legt eine lokale Overlay-Datei mit fest
    eingetragener Adresse an - dann in OBS statt der URL einfach diese
-   Datei als "Lokale Datei" auswaehlen. Praktisch, wenn du die Optik
-   per eigenem CSS anpassen oder die Quelle unabhaengig vom MiSTer
-   laden moechtest. Volloptional, die normale URL funktioniert genauso
-   gut.
+   Datei als "Lokale Datei" auswählen. Praktisch, wenn du die Optik
+   per eigenem CSS anpassen möchtest. Komplett optional, die normale
+   URL funktioniert genauso gut.
 4. Aussehen anpassen (Position, Farben, was angezeigt wird) unter
-   `http://<MiSTer-IP>:8080/admin` im Browser - Aenderungen wirken
-   sofort, ganz ohne Neustart.
+   `http://<MiSTer-IP>:8080/admin` im Browser - wirkt sofort, ohne
+   Neustart.
 5. Wieder ausschalten: `stream_toggle.sh off` + Frontend neu starten.
 
-Laeuft komplett ueber Standard-Python (`http.server` + Server-Sent-
+Läuft komplett über Standard-Python (`http.server` + Server-Sent-
 Events), keine externen Pakete, als eigener Hintergrund-Thread neben
 der normalen Frontend-Schleife - bindet auf Port 8080 im lokalen
 Netzwerk. **Nicht** ins Internet weiterleiten, es gibt keine
-Authentifizierung. Komplette Einrichtung Schritt fuer Schritt (auch
-fuer Nicht-Techniker): `ANLEITUNG_fuer_Dennsen.md`. Technische Details
-fuer Weiterentwicklung: `STREAM_fuer_Dragrem.md`.
+Authentifizierung. Ausführliche Einrichtung Schritt für Schritt (auch
+für Nicht-Techniker): `ANLEITUNG_fuer_Dennsen.md`. Technische Details:
+`STREAM_fuer_Dragrem.md`.
 
 ## 13. Fehlerbehebung
 
 - **Tastenbelegungs-Assistent friert beim Konfigurieren von "OSD
-  oeffnen" ein / Bildschirm wird schwarz mit Login-Prompt**: der
-  v1.60-Versuch (Eingabe-Grab durchgehend halten) hat das nicht
-  behoben. Seit v1.61: F9 ist bei MiSTer fuer den Wechsel zwischen
-  Konsole und Grafikmodus reserviert - sendet dein Pad (z.B. ueber
-  eine Home-/Guide-Taste) ein echtes F9, faengt vermutlich schon der
-  Kernel das ab, bevor unser Prozess es sieht. Der Assistent hat jetzt
-  ein Zeitlimit (20s, ueberspringt die Abfrage statt endlos zu warten)
-  und lehnt ein erfasstes F9 grundsaetzlich als Belegung ab. Tritt es
-  trotzdem noch auf: `tail -60 /tmp/frontend.log` direkt danach teilen.
+  öffnen" ein / Bildschirm wird schwarz mit Login-Prompt**: F9 ist
+  bei MiSTer für den Wechsel zwischen Konsole und Grafikmodus
+  reserviert - sendet dein Pad (z.B. über eine Home-/Guide-Taste) ein
+  echtes F9, fängt vermutlich schon der Kernel das ab, bevor unser
+  Prozess es sieht. Der Assistent hat deshalb ein Zeitlimit (20s,
+  überspringt die Abfrage statt endlos zu warten) und lehnt ein
+  erfasstes F9 grundsätzlich als Belegung ab. Tritt es trotzdem noch
+  auf: `tail -60 /tmp/frontend.log` direkt danach teilen.
 - **Nach einem Datei-Update** (neue Version installiert): einfach
-  `/media/fat/Scripts/update_frontend.sh` ausfuehren (per SSH oder aus
+  `/media/fat/Scripts/update_frontend.sh` ausführen (per SSH oder aus
   dem MiSTer-OSD unter Scripts) - beendet die alte Instanz sauber und
-  startet automatisch neu. Ersetzt den manuellen
-  `kill`/`rm`/`python3`-Dreischritt durch einen einzigen Befehl.
-- Frontend startet nicht / reagiert nicht: Pruefen, ob schon eine
-  Instanz laeuft: `cat /tmp/frontend.lock`. Beenden mit
+  startet automatisch neu.
+- Frontend startet nicht / reagiert nicht: Prüfen, ob schon eine
+  Instanz läuft: `cat /tmp/frontend.lock`. Beenden mit
   `kill $(cat /tmp/frontend.lock)`, dann `rm -f /tmp/frontend.lock`.
-  (Hinweis: `pkill`/`pgrep` gibt es auf dem MiSTer NICHT - immer den
+  (Auf dem MiSTer gibt's kein `pkill`/`pgrep` - immer den
   `kill $(cat ...)`-Weg nutzen.)
-- Bildschirm bleibt beim Booten im MiSTer-OSD haengen, Musik laeuft
-  aber bereits: seit v1.48 behoben (der Bildschirmwechsel passierte
-  vorher NACH einem moeglicherweise langsamen Scan statt davor - z.B.
-  wenn ein USB-Laufwerk nach laengerem vollstaendigem Ausschalten
-  verzoegert bereit wird). Tritt das trotzdem noch auf, hilft
-  `/tmp/frontend.log` (siehe Diagnose unten) bei der weiteren Suche.
+- Bildschirm bleibt beim Booten im MiSTer-OSD hängen, Musik läuft
+  aber bereits: sollte behoben sein (der Bildschirmwechsel passierte
+  früher nach einem möglicherweise langsamen Scan statt davor). Tritt
+  das trotzdem noch auf, hilft `/tmp/frontend.log` bei der Suche.
 - Notaus bei Autostart-Problemen: `touch /media/fat/frontend/disable`
-  und neu starten (Reaktivieren: Datei wieder loeschen).
-- Diagnose: `/tmp/frontend.log` protokolliert Geraete, Aktionen und
-  Fehler (begrenzt sich seit v1.27 automatisch auf max. ~512 KB, damit
-  der (meist RAM-basierte) `/tmp`-Speicher nicht mit der Zeit
-  vollaeuft):
+  und neu starten (Reaktivieren: Datei wieder löschen).
+- Diagnose: `/tmp/frontend.log` protokolliert Geräte, Aktionen und
+  Fehler (begrenzt sich automatisch auf max. ~512 KB, damit der
+  meist RAM-basierte `/tmp`-Speicher nicht vollläuft):
   ```bash
   tail -50 /tmp/frontend.log
   ```
-- Niemals ueber die WinSCP-Kommandozeile lange Programme starten (die
+- Niemals über die WinSCP-Kommandozeile lange Programme starten (die
   Konsole meldet nach 15s "keine Daten mehr" und der Abbrechen-Knopf
   killt den Prozess) - immer eine echte SSH-Sitzung nutzen
   (`ssh root@<MiSTer-IP>`).
@@ -646,29 +681,28 @@ fuer Weiterentwicklung: `STREAM_fuer_Dragrem.md`.
 ## 14. Bekannte Grenzen
 
 - ROMs in ZIP-Archiven werden aktuell nicht gelistet.
-- ROM-Suche geht beliebig tief (seit v1.23, keine Ebenen-Begrenzung
-  mehr) - die Erkennung, OB neu gescannt werden muss, prueft aus
-  Tempogruenden aber weiterhin nur die oberste ROM-Ordnerebene pro
-  System. Wenn du also nur Dateien TIEF in einem Unterordner
-  hinzufuegst/loeschst/umbenennst (z.B. in einer "Favoriten"-Sammlung),
-  merkt das Frontend das moeglicherweise nicht von selbst - dann
-  einmal manuell System -> "Rescan game list" ausfuehren. Aenderungen
-  direkt im obersten Systemordner (z.B. `SNES/`) werden dagegen immer
-  automatisch erkannt.
-- Arcade zeigt Infos aus den MRA-Dateien; Boxart seit v1.56 ebenfalls
-  moeglich (siehe Abschnitt 6, mister_boxart.py laedt sie automatisch
-  mit).
-- Menue nur auf einem Video-Ausgang gleichzeitig sichtbar (technische
-  Grenze des MiSTer-Scalers, keine Frontend-Einschraenkung).
-- Start+Select UND F10 funktionieren waehrend eines laufenden Spiels
-  grundsaetzlich nicht - MiSTer beansprucht die Tastatur exklusiv,
-  sobald ein Core laeuft (bestaetigt per direktem Geraetetest, siehe
-  Abschnitt 4). Der einzige Weg zurueck: MiSTer's eigenes Menue per
-  F12/Menue-Taste oeffnen, dort "Exit to Menu Core" waehlen.
-- Die eigene Tastenbelegung erfasst nur diskrete Tasten (Tastatur-Tasten
-  und Gamepad-Buttons); ein D-Pad, das als Analogachse ankommt,
-  funktioniert bereits nativ und wird beim Assistenten automatisch
-  uebersprungen statt umbelegt.
+- ROM-Suche geht beliebig tief, keine Ebenen-Begrenzung - die
+  Erkennung, ob neu gescannt werden muss, prüft aus Tempogründen aber
+  weiterhin nur die oberste ROM-Ordnerebene pro System. Änderst du
+  also nur Dateien tief in einem Unterordner, merkt das Frontend das
+  möglicherweise nicht von selbst - dann einmal manuell System ->
+  "Rescan game list" ausführen. Änderungen direkt im obersten
+  Systemordner werden dagegen immer automatisch erkannt.
+- Arcade zeigt Infos aus den MRA-Dateien; Boxart geht ebenfalls (siehe
+  Abschnitt 6, mister_boxart.py lädt sie automatisch mit).
+- Menü nur auf einem Video-Ausgang gleichzeitig sichtbar (technische
+  Grenze des MiSTer-Scalers, keine Frontend-Einschränkung).
+- Start+Select und F10 funktionieren während eines laufenden Spiels
+  grundsätzlich nicht - MiSTer beansprucht die normale Eingabe-Ebene
+  exklusiv, sobald ein Core läuft (siehe Abschnitt 4). Der Esc-Weg
+  über die rohe HID-Ebene der Tastatur funktioniert dagegen; ein
+  Pad-basierter Ausstieg konnte bisher nicht zuverlässig eingebaut
+  werden (kommt beim getesteten Controller während des Spiels über
+  keinen bekannten Kanal durch).
+- Die eigene Tastenbelegung erfasst nur diskrete Tasten (Tastatur-
+  Tasten und Gamepad-Buttons); ein D-Pad, das als Analogachse
+  ankommt, funktioniert bereits nativ und wird beim Assistenten
+  automatisch übersprungen statt umbelegt.
 
 ---
 
@@ -676,21 +710,22 @@ fuer Weiterentwicklung: `STREAM_fuer_Dragrem.md`.
 
 Python 3 (nur Standardbibliothek) zeichnet direkt in den Framebuffer
 `/dev/fb0` (mmap), liest Eingaben roh aus `/dev/input/event*` (mit
-exklusivem Grab und Event-Injection fuer F9/F12), startet Cores und
-Spiele ueber `/dev/MiSTer_cmd` bzw. generierte MGL-Dateien (Parameter
-aus der mrext-Systemdatenbank) und erkennt die Rueckkehr ins Menue ueber
+exklusivem Grab und Event-Injection für F9/F12), startet Cores und
+Spiele über `/dev/MiSTer_cmd` bzw. generierte MGL-Dateien (Parameter
+aus der mrext-Systemdatenbank) und erkennt die Rückkehr ins Menü über
 `/tmp/CORENAME`. Bilder liegen im eigenen `.art`-Format
 (zlib-komprimierte BGRA-Rohpixel), das ohne Bildbibliothek direkt
-geblittet werden kann; der Boxart-Downloader dekodiert PNGs dafuer mit
+geblittet werden kann; der Boxart-Downloader dekodiert PNGs dafür mit
 einem eigenen, in reinem Python geschriebenen Dekoder. Hintergrundmusik
-laeuft ueber das externe `mpg123`-Kommandozeilenprogramm im Hintergrund
-(subprocess), Sprachumschaltung ueber ein zentrales Uebersetzungs-
-Woerterbuch, eigene Tastenbelegung ueber eine editierbare
+läuft über das externe `mpg123`-Kommandozeilenprogramm im Hintergrund
+(subprocess), Sprachumschaltung über ein zentrales Übersetzungs-
+Wörterbuch, eigene Tastenbelegung über eine editierbare
 Codes-zu-Aktionen-Zuordnung, die beim Start geladen und mit der
-Standardbelegung zusammengefuehrt wird.
+Standardbelegung zusammengeführt wird.
 
 ---
 
-Erstellt von **Dragrem2K**. Lizenziert unter der MIT-Lizenz (siehe
-`LICENSE`) - frei nutzbar, veraenderbar und weitergebbar. Was sich
-zwischen den Versionen getan hat: siehe `CHANGELOG.md`.
+Erstellt von **Dragrem2K**, mit Unterstützung von **TheRealSuTefan**
+beim Testen. Lizenziert unter der MIT-Lizenz (siehe `LICENSE`) - frei
+nutzbar, veränderbar und weitergebbar. Was sich zwischen den
+Versionen getan hat: siehe `CHANGELOG.md`.

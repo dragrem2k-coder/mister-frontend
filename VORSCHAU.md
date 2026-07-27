@@ -1,8 +1,8 @@
-# MiSTer Custom Frontend — Vorschau (Stand v1.56)
+# MiSTer Custom Frontend — Vorschau (Stand v1.83)
 
-Ein selbstgebautes grafisches Frontend für den MiSTer FPGA, komplett in
-purem Standard-Python — keine einzige externe Abhängigkeit auf dem
-MiSTer selbst.
+Mein selbstgebautes Frontend für den MiSTer FPGA, komplett in purem
+Standard-Python — keine einzige externe Abhängigkeit auf dem MiSTer
+selbst. Gebaut von Dragrem2K, mit Sutefan als Testpartner.
 
 <p align="center">
   <img src="screenshots/preview_1_kategorien.png" width="420" alt="Kategorien-Menü">
@@ -42,10 +42,21 @@ Fotomontage.*
   eigens abgestimmter Optik und Geschwindigkeit
 - Akzentfarben pro System, pulsierende Auswahl-Markierung mit
   Glow-Effekt, animierter Equalizer bei laufender Musik
-- Uhrzeit + Netzwerksymbol im Hauptmenü
+- Uhrzeit + Netzwerksymbol im Hauptmenü, per Internet synchronisiert
+  (MiSTer hat ja keine eigene Batterie-Uhr)
 - Sprache umschaltbar (Deutsch/Englisch)
+- Drei Farbschemata zur Auswahl (Dunkel, Hell, Retro-Grün)
+- Kurze Soundeffekte beim Navigieren (selbst erzeugt, kein Download)
 - Eigene Tastenbelegung per Assistent (erkennt automatisch, welche
   Taste gedrückt wird)
+- Notausstieg aus einem laufenden Spiel per Esc-Taste, ganz ohne
+  Umweg über MiSTers eigenes Menü
+
+### Spielzeit & Achievements
+- Merkt sich automatisch, wie lang jedes Spiel tatsächlich gespielt
+  wurde, dazu zwei Top-10-Listen (meistgespielt, meistgestartet)
+- RetroAchievements-Fortschritt anzeigbar, wer's eingerichtet hat -
+  für alle anderen komplett unsichtbar
 
 ### Boxart & Spielinfos
 - Automatischer Download für alle unterstützten Konsolen **und
@@ -63,7 +74,8 @@ Fotomontage.*
   MiSTer-Menü/OSD
 - Boot-Animation (eigene Bildfolge), erkennt automatisch CRT/HDMI und
   zeigt die passende Version
-- Stream-Overlay für OBS (Cover, Titel, Now-Playing im Browser),
+- Stream-Overlay für OBS (Cover, Titel, Now-Playing, Genre/Jahr,
+  Spielzeit, RetroAchievements, Favoriten-Stern im Browser),
   inklusive PC-Komfort-Werkzeug für die Einrichtung
 
 ### Installation & Pflege
@@ -78,14 +90,14 @@ Fotomontage.*
 ## Warum ein eigenes Frontend?
 
 MiSTer hat keine GPU — ein schwergewichtiges Menü kann die ARM-CPU
-spürbar belasten. Genau da liegt der Schwerpunkt hier: der größte
-Teil der Entwicklungszeit floss in gezielte Performance-Arbeit (u. a.
-ein einzelner Effekt, der 60 % der Zeichenzeit auf HDMI kostete,
-gefunden und auf einen Bruchteil reduziert), nicht in immer neue
-Features. Keine externen Abhängigkeiten, beide Bildausgänge (CRT und
-HDMI) gleichwertig unterstützt, eine einzelne, nachvollziehbare
-Python-Datei. Ein Ein-Personen-Hobbyprojekt, kein Team-Produkt —
-dafür sehr genau auf real genutzte Hardware abgestimmt.
+spürbar belasten. Genau da lag mein Schwerpunkt: der größte Teil der
+Zeit floss in gezielte Performance-Arbeit (u. a. ein einzelner
+Effekt, der 60 % der Zeichenzeit auf HDMI gekostet hat - gefunden und
+auf einen Bruchteil reduziert), nicht in immer neue Features. Keine
+externen Abhängigkeiten, beide Bildausgänge (CRT und HDMI) gleichwertig
+unterstützt, eine einzelne, nachvollziehbare Python-Datei. Ein
+Hobbyprojekt, kein Team-Produkt - dafür sehr genau auf real genutzte
+Hardware abgestimmt.
 
 ---
 

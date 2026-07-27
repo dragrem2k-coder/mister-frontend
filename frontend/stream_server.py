@@ -44,6 +44,10 @@ DEFAULT_CONFIG = {
     "show_system": True,
     "show_list": True,           # kleine Vorschau-Liste um die Auswahl
     "show_nowplaying": True,
+    "show_genre": True,          # Genre/Jahr in der Fakten-Zeile
+    "show_playtime": True,       # Spielzeit in der Fakten-Zeile
+    "show_ra": True,             # RetroAchievements-Fortschritt (falls eingerichtet)
+    "show_favorite": True,       # Favoriten-Stern neben dem Titel
     "scale": 100,                # Prozent
     "corner": "bottom-left",     # bottom-left|bottom-right|top-left|top-right
 }

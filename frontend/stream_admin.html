@@ -66,6 +66,14 @@
         <span class="sw"><input type="checkbox" id="show_list"><span class="sl"></span></span></div>
       <div class="row"><label>Now-Playing (Musik)</label>
         <span class="sw"><input type="checkbox" id="show_nowplaying"><span class="sl"></span></span></div>
+      <div class="row"><label>Genre/Jahr</label>
+        <span class="sw"><input type="checkbox" id="show_genre"><span class="sl"></span></span></div>
+      <div class="row"><label>Spielzeit</label>
+        <span class="sw"><input type="checkbox" id="show_playtime"><span class="sl"></span></span></div>
+      <div class="row"><label>RetroAchievements</label>
+        <span class="sw"><input type="checkbox" id="show_ra"><span class="sl"></span></span></div>
+      <div class="row"><label>Favoriten-Stern</label>
+        <span class="sw"><input type="checkbox" id="show_favorite"><span class="sl"></span></span></div>
       <div class="row"><label>Ecke</label>
         <select id="corner">
           <option value="bottom-left">unten links</option>
@@ -87,7 +95,8 @@
   </div>
 <script>
 const F = ["title","accent","bg","transparent","show_boxart","show_system",
-           "show_list","show_nowplaying","corner","scale"];
+           "show_list","show_nowplaying","show_genre","show_playtime",
+           "show_ra","show_favorite","corner","scale"];
 const $ = id => document.getElementById(id);
 let cfg = {};
 
@@ -101,6 +110,10 @@ function fillForm(c){
   $("show_system").checked = c.show_system!==false;
   $("show_list").checked = c.show_list!==false;
   $("show_nowplaying").checked = c.show_nowplaying!==false;
+  $("show_genre").checked = c.show_genre!==false;
+  $("show_playtime").checked = c.show_playtime!==false;
+  $("show_ra").checked = c.show_ra!==false;
+  $("show_favorite").checked = c.show_favorite!==false;
   $("corner").value = c.corner||"bottom-left";
   $("scale").value = c.scale||100;
   $("scaleval").textContent = ($("scale").value)+"%";
@@ -111,7 +124,10 @@ function collect(){
     title:$("title").value, accent:$("accent").value, bg:$("bg").value,
     transparent:$("transparent").checked, show_boxart:$("show_boxart").checked,
     show_system:$("show_system").checked, show_list:$("show_list").checked,
-    show_nowplaying:$("show_nowplaying").checked, corner:$("corner").value,
+    show_nowplaying:$("show_nowplaying").checked,
+    show_genre:$("show_genre").checked, show_playtime:$("show_playtime").checked,
+    show_ra:$("show_ra").checked, show_favorite:$("show_favorite").checked,
+    corner:$("corner").value,
     scale:parseInt($("scale").value,10)
   };
 }
