@@ -4,6 +4,13 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v1.84
+Die Soundeffekte haben teilweise die Musik gestört und sich bei
+schneller Navigation gestapelt - kam davon, dass `aplay` offenbar auf
+dieselbe Soundkarte wartete wie `mpg123`. Jetzt zwei Bremsen: kein
+neuer Ton, solange der vorherige noch läuft, und während die Musik
+tatsächlich gerade spielt, wird gar nicht erst versucht.
+
 ## v1.83
 OBS-Overlay aufgehübscht: Genre/Jahr, Spielzeit, RetroAchievements-
 Fortschritt und ein kleiner Stern für Favoriten sind jetzt mit im

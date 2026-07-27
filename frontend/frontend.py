@@ -1,9 +1,40 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.83
+MiSTer Custom Frontend - v1.84
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.84 (BUGFIX: Soundeffekte stoerten die Musik und stapelten
+sich bei schneller Navigation):
+  - Nutzer-Rueckmeldung: kurze Aussetzer in der Musik, sobald
+    Soundeffekte spielen, und Toene, die verzoegert oder mehrfach
+    nacheinander kommen, obwohl der Cursor schon wieder stillsteht.
+  - Ursache: die reine Zeit-Drossel (SFX_MIN_GAP) hat nicht verhindert,
+    dass sich mehrere aplay-Prozesse ueberlappen, wenn ein einzelner
+    Aufruf laenger braucht als die Drosselzeit, bis er tatsaechlich
+    fertig ist - vermutlich, weil aplay auf die Soundkarte warten
+    musste, die gleichzeitig von mpg123 fuer die Hintergrundmusik
+    belegt ist. Ergebnis: ein wachsender Rueckstau, der noch Toene
+    abspielte, lange nachdem der Cursor schon stillstand, UND dabei
+    offenbar kurze Aussetzer in der Musik verursachte.
+  - Fix, zwei Absicherungen: (1) play_sfx() startet keinen neuen Ton
+    mehr, solange der vorherige aplay-Prozess noch laeuft (per
+    Popen.poll() geprueft) - hoechstens EIN Ton gleichzeitig
+    unterwegs, kein Rueckstau moeglich. (2) Solange Musik TATSAECHLICH
+    gerade spielt (self.music._proc_alive(), nicht nur "Musik ist
+    eingeschaltet"), wird gar nicht erst versucht, einen Soundeffekt
+    abzuspielen - vermeidet die Geraete-Ueberschneidung von vornherein.
+  - Getestet: music_playing=True verhindert das Abspielen komplett;
+    ohne laufende Musik spielt es normal weiter. Der genaue gemeldete
+    Fall direkt nachgestellt - 10 schnelle Navigationsschritte, bei
+    denen der vorherige Ton NIE fertig wird (Worst Case): nur noch 1
+    tatsaechlicher aplay-Aufruf statt 10, kein Rueckstau mehr. Nach
+    Fertigstellung des vorherigen Tons spielt der naechste wieder
+    normal. Echter Durchlauf durch run() mit aktiv laufender Musik
+    bestaetigt: music_playing wird korrekt aus self.music._proc_alive()
+    ermittelt und bei jedem Aufruf durchgereicht. 36 Kombinationen
+    kompletter Regressionstest bestanden.
 
 Neu in v1.83 (OBS-Stream-Overlay verfeinert: Genre/Jahr, Spielzeit,
 RetroAchievements-Fortschritt, Favoriten-Stern):
@@ -4105,6 +4136,7 @@ def _ensure_sfx_files():
 _last_sfx_time = 0.0
 _sfx_enabled_cache = True
 _sfx_enabled_check_next = 0.0
+_sfx_proc = None   # laufender aplay-Prozess (oder None) - siehe play_sfx()
 
 def _sfx_enabled_cached():
     """Zwischengespeicherte sfx_enabled_flag()-Abfrage, alle 5 Sekunden
@@ -4119,32 +4151,51 @@ def _sfx_enabled_cached():
         _sfx_enabled_check_next = now + 5.0
     return _sfx_enabled_cache
 
-def play_sfx(name):
+def play_sfx(name, music_playing=False):
     """Spielt einen Soundeffekt ab, falls aktiviert - "fire and forget",
     jeder Fehler (aplay fehlt, Soundkarte belegt, Datei fehlt) wird
     still ignoriert. Nie eine Ausnahme nach aussen. Gedrosselt
     (SFX_MIN_GAP) - sonst wuerden beim Halten einer Richtungstaste mit
     Turbo-Beschleunigung zu viele aplay-Prozesse pro Sekunde entstehen.
 
-    WICHTIG (Performance-Fund bei der Ueberpruefung der letzten 5
-    Versionen): die guenstige, rein im Speicher liegende Drossel-
-    Pruefung muss VOR der (Datei-basierten) Ein/Aus-Pruefung passieren,
-    nicht danach - sonst waere bei jedem einzelnen Navigations-Schritt
+    BUGFIX (Nutzer-Rueckmeldung): die reine Zeit-Drossel allein hat
+    NICHT verhindert, dass sich bei schneller Navigation mehrere
+    aplay-Prozesse ueberlappen - jeder einzelne Aufruf brauchte
+    laenger als die Drosselzeit, bis er tatsaechlich fertig war
+    (vermutlich, weil aplay auf die Soundkarte warten musste, die
+    gleichzeitig von mpg123 fuer die Hintergrundmusik belegt ist).
+    Ergebnis: ein wachsender Rueckstau, der noch Toene abspielte, lange
+    nachdem der Cursor schon wieder stillstand - UND dabei offenbar
+    kurze Aussetzer in der Musik verursachte, weil beide Programme sich
+    dieselbe Audioausgabe streitig machten. Zwei Absicherungen dagegen:
+    (1) ein neuer Ton wird NICHT gestartet, solange der vorherige
+    aplay-Prozess noch laeuft (kein Rueckstau moeglich, hoechstens
+    EIN Ton gleichzeitig unterwegs). (2) Solange Musik TATSAECHLICH
+    gerade spielt (music_playing=True, vom Aufrufer per
+    self.music._proc_alive() ermittelt), wird gar nicht erst
+    versucht - vermeidet die Geraete-Ueberschneidung von vornherein,
+    statt nur ihre Folgen abzumildern.
+
+    WICHTIG: die guenstige, rein im Speicher liegende Drossel-Pruefung
+    muss VOR der (Datei-basierten) Ein/Aus-Pruefung passieren, nicht
+    danach - sonst waere bei jedem einzelnen Navigations-Schritt
     waehrend eines Turbo-Sprungs eine Datei-Existenzpruefung noetig
-    gewesen, obwohl die meisten dieser Aufrufe ohnehin gedrosselt
-    (verworfen) werden. Zusaetzlich per _sfx_enabled_cached() auf 5s
-    zwischengespeichert, falls doch mal viele Aufrufe die Drossel
-    ueberstehen."""
-    global _last_sfx_time
+    gewesen. Zusaetzlich per _sfx_enabled_cached() auf 5s
+    zwischengespeichert."""
+    global _last_sfx_time, _sfx_proc
     now = time.monotonic()
     if now - _last_sfx_time < SFX_MIN_GAP:
         return
+    if music_playing:
+        return
+    if _sfx_proc is not None and _sfx_proc.poll() is None:
+        return   # voriger Ton laeuft noch - lieber auslassen als stapeln
     if not _sfx_enabled_cached():
         return
     _last_sfx_time = now
     path = os.path.join(SFX_DIR, name + ".wav")
     try:
-        subprocess.Popen(["aplay", "-q", path],
+        _sfx_proc = subprocess.Popen(["aplay", "-q", path],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except OSError:
         pass
@@ -6800,12 +6851,16 @@ class Frontend:
                 # unten - deckt dadurch automatisch jeden Kontext ab
                 # (Hauptliste, Beenden-Dialog, Buchstaben-Sprung usw.),
                 # ohne an vielen Stellen Code duplizieren zu muessen.
+                # music_playing: TATSAECHLICH gerade laufender mpg123-
+                # Prozess (nicht nur "Musik ist eingeschaltet") - siehe
+                # play_sfx() fuer den Grund (Geraete-Ueberschneidung).
+                music_playing = self.music._proc_alive()
                 if act in ("up", "down", "left", "right"):
-                    play_sfx("move")
+                    play_sfx("move", music_playing)
                 elif act == "ok":
-                    play_sfx("confirm")
+                    play_sfx("confirm", music_playing)
                 elif act in ("back", "exit"):
-                    play_sfx("back")
+                    play_sfx("back", music_playing)
 
                 # ---- Beenden-Bestaetigung hat Vorrang vor allem anderen ----
                 if self.confirm_quit:

@@ -1,6 +1,6 @@
-# MiSTer Custom Frontend v1.83 - Komplettbuild (Stand: 2026-07-26)
+# MiSTer Custom Frontend v1.84 - Komplettbuild (Stand: 2026-07-27)
 
-**Von Dragrem2K**, mit tatkräftiger Unterstützung von **TheRealSutefan**
+**Von Dragrem2K**, mit tatkräftiger Unterstützung von **TheRealSuTefan**
 beim Testen und Gegenchecken.
 
 Mein selbstgebautes Frontend für den MiSTer FPGA: Spiele-Browser mit
@@ -95,7 +95,7 @@ Nachlesen (`CHANGELOG.md`).
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.83) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.84) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (läuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (läuft auf dem MiSTer) |
