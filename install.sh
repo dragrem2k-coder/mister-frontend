@@ -4,7 +4,7 @@
 #
 # Fuer Leute ohne Vorkenntnisse: laedt den kompletten Build direkt
 # von GitHub, kopiert alles an die richtige Stelle und richtet den
-# Autostart ein - EIN Befehl statt vieler manueller Kopierschritte.
+# Autostart ein - EIN Befehl statt vieler manueller WinSCP-Schritte.
 #
 # Aufruf (per SSH auf dem MiSTer):
 #
@@ -37,7 +37,7 @@ elif command -v wget >/dev/null 2>&1; then
     TOOL=wget
 else
     echo "FEHLER: Weder curl noch wget gefunden."
-    echo "Bitte die Dateien stattdessen manuell kopieren -"
+    echo "Bitte die Dateien stattdessen manuell per WinSCP kopieren -"
     echo "siehe README.md, Abschnitt 3 (Installation Schritt fuer Schritt)."
     exit 1
 fi
@@ -104,7 +104,7 @@ if [ "$download_ok" != "1" ]; then
     echo "  1. Internetzugang testen:   ping -c 2 github.com"
     echo "  2. Direkter Testaufruf:     $TOOL -v \"$REPO_ZIP\""
     echo "  3. Falls beides fehlschlaegt: Dateien stattdessen manuell"
-    echo "     kopieren (Netzwerkfreigabe/SD-Karte), siehe README.md Abschnitt 3."
+    echo "     per WinSCP kopieren, siehe README.md Abschnitt 3."
     rm -rf "$TMP_DIR"
     exit 1
 fi
@@ -155,6 +155,19 @@ else
 fi
 
 rm -rf "$TMP_DIR"
+
+echo ""
+if command -v mpg123 >/dev/null 2>&1; then
+    echo "mpg123 gefunden:  Hintergrundmusik ist nutzbar"
+else
+    echo "mpg123 fehlt:     Frontend laeuft normal, nur ohne Musik"
+    echo "                  mpg123 gehoert eigentlich zur MiSTer-Firmware"
+    echo "                  selbst (kein separates Paket) - falls es fehlt,"
+    echo "                  hilft meist ein einmaliges 'Update All' im"
+    echo "                  MiSTer-OSD (komplette Firmware auf den"
+    echo "                  neuesten Stand bringen). Danach per SSH"
+    echo "                  pruefen:  which mpg123"
+fi
 
 echo ""
 echo "=== Fertig! ==="

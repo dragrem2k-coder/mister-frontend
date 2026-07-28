@@ -35,7 +35,7 @@ Aufruf-Beispiele (PowerShell):
   python video_to_bootanim.py --frames-dir meine_frames --out bootanim_out ^
       --fps 12 --size 1920x1080
 
-Ergebnis (den KOMPLETTEN Inhalt von bootanim_out) ueber die Netzwerkfreigabe (oder SD-Karte am PC) nach
+Ergebnis (den KOMPLETTEN Inhalt von bootanim_out) per WinSCP nach
 /media/fat/frontend/bootanim/ kopieren.
 """
 
@@ -143,7 +143,7 @@ def main():
 
         print("\nFertig: %d Frames, %.1f MB gesamt, %.1f Sekunden Laufzeit"
               % (len(frames), total_bytes / (1024 * 1024), len(frames) / args.fps))
-        print("Naechster Schritt: kompletten Ordner '%s' ueber die Netzwerkfreigabe (oder SD-Karte am PC) nach"
+        print("Naechster Schritt: kompletten Ordner '%s' per WinSCP nach"
               % args.out)
         print("/media/fat/frontend/bootanim/ auf den MiSTer kopieren.")
     finally:

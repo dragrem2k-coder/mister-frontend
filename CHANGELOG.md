@@ -4,6 +4,47 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## mpg123-Diagnose verbessert
+Alle drei Installationswege (online, offline, aus dem MiSTer-Menü)
+sagen jetzt nicht mehr nur "mpg123 fehlt", sondern auch, dass es
+eigentlich zur MiSTer-Firmware gehört (kein separates Paket) und dass
+meist ein "Update All" im MiSTer-OSD hilft.
+
+## v1.91
+Zweiter Patch von TheRealSutefan übernommen - diesmal vor allem
+Performance und Overlay. Größter Einzelposten: ein Text-Zeilen-Cache,
+der ganze Beschriftungen als fertigen Streifen zwischenspeichert statt
+sie bei jedem Zeichnen neu zusammenzusetzen (byte-identisch zur alten
+Ausgabe geprüft). Dazu: Cover, die beim schnellen Scrollen noch nicht
+bereitstehen, werden übersprungen statt zu ruckeln und kurz danach
+nachgeladen; eine überflüssige Zeilen-Wiederherstellung nach vollem
+Neuzeichnen entfällt; das Scannen der Eingabegeräte prüft erst günstig,
+ob sich überhaupt was geändert hat. Admin-Oberfläche des Overlays:
+Schalter waren nicht klickbar (falsches HTML-Element), jetzt behoben,
+wirken außerdem sofort statt erst beim nächsten Zustandswechsel. Das
+Overlay durchsucht jetzt auch HD-Cover, und ein bisher unbemerkter
+Fehler ist behoben: Cover waren im Browser eigentlich komplett
+durchsichtig (fehlender Alpha-Kanal in unseren eigenen Cover-Dateien).
+
+## v1.90
+Ein Nutzer hat unabhängig einen eigenen Patch gebaut und eingereicht -
+sieben Verbesserungen daraus übernommen, jede einzeln geprüft und auf
+den aktuellen Stand angepasst: Admin-Oberfläche des Overlays reagierte
+nicht auf Checkboxen, Boot-Skript las die Core-Datei nicht robust
+genug, Cover mit führender Nummer im Dateinamen (kuratierte Sets)
+wurden nicht gefunden, Overlay blieb während des Spiels leer, Cover-
+Caches etwas vergrößert, deutlichere Startmeldungen (vor allem beim
+"läuft schon"-Fall), Offline-Installer findet sein Paket jetzt
+zuverlässiger.
+
+## v1.89
+Zwei neue Sachen, die zusammengehören: ein "Durchgespielt"-Status pro
+Spiel (F7, wie Favorisieren) und ein eigenes, komplett lokales
+Achievement-System - unabhängig von RetroAchievements, nur auf
+unseren eigenen Daten basierend (Spielzeit, Starts, verschiedene
+Systeme ausprobiert, durchgespielte Spiele). 15 Meilensteine, neuer
+Anzeige-Bildschirm "Meine Erfolge" im System-Menü.
+
 ## v1.88 — wichtiger Fix
 Die RA-Core-Auswahl aus v1.86 hat immer den normalen Core gestartet,
 egal was man ausgewählt hat. Fehlender Baustein: eine echte `.mgl`-
@@ -24,7 +65,7 @@ stabil-leere USB-Situation korrekt als unbedenklich.
 
 ## Installation vereinfacht
 Neues Skript `Scripts/install_frontend.sh` - eine einzige Datei
-einmalig kopieren (Netzwerkfreigabe/SD-Karte), danach reicht im MiSTer-Menü selbst
+einmalig per WinSCP kopieren, danach reicht im MiSTer-Menü selbst
 "Scripts -> install frontend" antippen. Kein SSH/Terminal mehr nötig
 für die Erstinstallation oder ein Update.
 

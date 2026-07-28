@@ -32,7 +32,7 @@
   .corner-top-right{right:calc(40px*var(--scale));top:calc(40px*var(--scale))}
   .boxart{
     width:calc(150px*var(--scale));height:calc(210px*var(--scale));
-    flex:none;border-radius:calc(8px*var(--scale));object-fit:cover;
+    flex:none;border-radius:calc(8px*var(--scale));object-fit:contain;
     background:#1a1e27;border:1px solid rgba(255,255,255,.10);
     box-shadow:0 calc(6px*var(--scale)) calc(18px*var(--scale)) rgba(0,0,0,.5)}
   .boxart.hidden{display:none}
@@ -106,6 +106,7 @@
 const $ = id => document.getElementById(id);
 const root = document.documentElement.style;
 let cfg = {};
+let lastState = null;
 
 function applyConfig(c){
   cfg = c || {};
@@ -116,9 +117,14 @@ function applyConfig(c){
   card.className = 'card corner-' + (cfg.corner||'bottom-left') +
                   (cfg.transparent===false ? ' solid' : '');
   $('brand').textContent = cfg.title || '';
+  // Die show_*-Schalter wirken erst in applyState() - damit sie SOFORT
+  // greifen (nicht erst beim naechsten Zustandswechsel am MiSTer), den
+  // zuletzt bekannten Zustand jetzt gleich neu rendern.
+  if(lastState) applyState(lastState);
 }
 
 function applyState(s){
+  lastState = s;
   const card = $('card');
   $('cat').textContent = '';
   $('titletext').textContent = s.name || '-';
@@ -136,7 +142,9 @@ function applyState(s){
   const hasArt = !!s.syskey;
   const art = $('boxart');
   const artName = s.art_name || s.name;
-  if(cfg.show_boxart!==false && hasArt && artName){
+  // Ordner (Name endet auf '/') haben kein Cover - gar nicht erst anfragen.
+  const isFolder = !!artName && artName.slice(-1) === '/';
+  if(cfg.show_boxart!==false && hasArt && artName && !isFolder){
     const url = '/art?sys=' + encodeURIComponent(s.syskey) +
                 '&name=' + encodeURIComponent(artName);
     art.onerror = () => art.classList.add('hidden');

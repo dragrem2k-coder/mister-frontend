@@ -56,13 +56,16 @@ DEFAULT_CONFIG = {
 
 class StreamServer:
     def __init__(self, art_base, port=8080, host="0.0.0.0",
-                 config_path=None, log=lambda *_: None):
+                 config_path=None, art_hd=None, log=lambda *_: None):
         self.art_base = art_base
-        self._art_idx_cache = {}
         self.port = port
         self.host = host
         self.config_path = config_path
         self.log = log
+        # Cover-Ordner in Suchreihenfolge - genau wie das Frontend: erst
+        # HD, dann Standard. So findet das Overlay dieselben Cover.
+        self._art_bases = [b for b in (art_hd, art_base) if b]
+        self._art_idx_cache = {}
 
         self._lock = threading.Lock()
         self._clients = set()            # set[queue.Queue]
@@ -148,32 +151,44 @@ class StreamServer:
                     pass
 
     # -- .art -> PNG ------------------------------------------------------
-    def _art_dir_index(self, syskey):
-        """Wie im Frontend: Name ohne 'NNN '-Prefix -> Dateiname, damit
-        Cover aus nummerierten Sets gefunden werden. Pro System gecacht."""
-        idx = self._art_idx_cache.get(syskey)
+    def _art_dir_index(self, base, syskey):
+        """Wie im Frontend: Name ohne "NNN "-Praefix -> Dateiname, damit
+        Cover aus nummerierten Sets gefunden werden. Pro (Ordner, System)
+        gecacht."""
+        key = (base, syskey)
+        idx = self._art_idx_cache.get(key)
         if idx is None:
             idx = {}
             try:
-                for fn in os.listdir(os.path.join(self.art_base, syskey)):
+                for fn in os.listdir(os.path.join(base, syskey)):
                     if not fn.endswith(".art"):
                         continue
-                    base = fn[:-4]
-                    stripped = re.sub(r"^\d+\s+", "", base)
-                    if stripped != base and stripped not in idx:
+                    b = fn[:-4]
+                    stripped = re.sub(r"^\d+\s+", "", b)
+                    if stripped != b and stripped not in idx:
                         idx[stripped] = fn
             except OSError:
                 pass
-            self._art_idx_cache[syskey] = idx
+            self._art_idx_cache[key] = idx
         return idx
 
-    def _art_png(self, syskey, name):
-        path = os.path.join(self.art_base, syskey, name + ".art")
-        if not os.path.exists(path):
-            # Fallback: Cover aus einem nummerierten Set tolerant finden.
-            fn = self._art_dir_index(syskey).get(name)
+    def _find_art(self, syskey, name):
+        """Cover-Datei suchen - genau wie das Frontend: erst der HD-Ordner
+        (art_hd), dann der Standard (art); in jedem erst exakter Name,
+        sonst tolerant (fuehrende "NNN "-Nummer ignoriert)."""
+        for base in self._art_bases:
+            exact = os.path.join(base, syskey, name + ".art")
+            if os.path.exists(exact):
+                return exact
+            fn = self._art_dir_index(base, syskey).get(name)
             if fn:
-                path = os.path.join(self.art_base, syskey, fn)
+                return os.path.join(base, syskey, fn)
+        return None
+
+    def _art_png(self, syskey, name):
+        path = self._find_art(syskey, name)
+        if not path:
+            return None
         try:
             with open(path, "rb") as f:
                 if f.read(4) != b"ART1":
@@ -184,10 +199,17 @@ class StreamServer:
             return None
         if len(pix) != w * h * 4:
             return None
-        # .art ist BGRA -> RGBA
+        # .art ist BGRA -> RGBA; Alpha deckend setzen. Die von unseren
+        # eigenen Werkzeugen (mister_boxart.py/art_convert.py) erzeugten
+        # ART1-Pixel haben durchgehend Alpha=0 (der bytearray-Puffer wird
+        # nie explizit gesetzt) - der MiSTer-Framebuffer ignoriert Alpha
+        # sowieso, ein Browser aber nicht: ohne diese Zeile waere JEDES
+        # Cover im Overlay komplett durchsichtig/schwarz erschienen.
         b = bytearray(pix)
         b[0::4], b[2::4] = b[2::4], b[0::4]
+        b[3::4] = b"\xff" * (len(b) // 4)
         return _encode_png(w, h, bytes(b))
+
 
     # -- HTTP handler -----------------------------------------------------
     def _make_handler(server):

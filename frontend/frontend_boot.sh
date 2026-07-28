@@ -31,10 +31,10 @@ fi
 # fast einer ganzen Sekunde unnoetig verlieren, sobald MENU bereit ist.
 i=0
 while [ "$i" -lt 300 ]; do
-    # Genauso robust lesen wie current_core() im Frontend
-    # (strip "\x00 \n\r\t") - sonst matcht "MENU" bei Firmware, die ein
-    # Leerzeichen oder CR anhaengt, NIE, und es wird sinnlos bis zum
-    # 60s-Limit gewartet.
+    # Genauso robust lesen wie current_core() im Frontend selbst
+    # (strip \x00, Leerzeichen, \n, \r, \t) - sonst matcht "MENU" bei
+    # Firmware, die zusaetzlich ein Leerzeichen/CR anhaengt, NIE, und es
+    # wird sinnlos bis zum 60s-Limit gewartet.
     CORE=$(tr -d '\000\r\n\t ' < /tmp/CORENAME 2>/dev/null)
     [ "$CORE" = "MENU" ] && break
     sleep 0.2

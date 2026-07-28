@@ -1,65 +1,182 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.90
+MiSTer Custom Frontend - v1.91
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
-Neu in v1.90 (Deutlich detaillierteres Start-Logging):
-  - Ziel: Soft-Reboot startet das Frontend bisher nicht zuverlaessig
-    (Kaltstart funktioniert), Ursache noch nicht gefunden - der
-    Boot-Wrapper (frontend_boot.sh o.ae.) liegt noch nicht vor. Um
-    trotzdem gezielt eingrenzen zu koennen, WO es haengt/abbricht,
-    ist die komplette Startsequenz jetzt lueckenlos protokolliert:
-      * Framebuffer.__init__: Geometrie lesen, Geraet oeffnen, mmap -
-        jeder Schritt einzeln, inkl. gelesener Aufloesung/bpp/stride.
-      * InputManager.__init__/rescan: Anzahl gefundener Geraete in
-        /proc/bus/input/devices VOR dem Verarbeiten, nicht erst danach.
-      * Frontend.__init__: jeder Initialisierungsschritt einzeln
-        (Framebuffer, InputManager, enter_console_mode, grab,
-        MusicPlayer, build_categories) mit Vorher/Nachher-Meldung.
-      * _wait_for_usb_stable(): protokolliert jetzt JEDE einzelne
-        Abfrage (Zeitstempel, Eintragszahl pro Pfad, stable_streak),
-        nicht mehr nur das Endergebnis - genau hier lag der
-        wahrscheinlichste Verdacht (USB-Mount-Timing unterscheidet
-        sich zwischen Kalt- und Soft-Reboot).
-      * scan_games(): loggt jetzt Start, Signatur-Groesse, ob USB
-        erwartet wird, und explizit WARUM ein Cache-Vergleich
-        fehlschlaegt (nicht lesbar vs. Signatur-Mismatch).
-  - Mit gezielten Tests verifiziert: _wait_for_usb_stable() zeigt bei
-    einer simulierten, verzoegert befuellten Platte jede einzelne
-    Abfrage einzeln im Log (Sprung von 0 auf 5 Eintraegen sichtbar,
-    inkl. Zeitstempel) statt nur des Endresultats.
-  - Naechster Schritt bleibt: Inhalt von frontend_boot.sh/
-    user-startup.sh noch offen - ohne den lassen sich reine
-    Boot-Reihenfolge-Probleme (wann/ob das Skript nach einem Soft-
-    Reboot ueberhaupt gestartet wird) nicht abschliessend ausschliessen.
+Neu in v1.91 (Zweiter Patch von TheRealSutefan uebernommen -
+Admin-Oberflaeche, Overlay-Cover, grosser Performance-Schub):
+  - TheRealSutefan (nicht Dennsen selbst, der ist nur Tester/Streamer)
+    hat einen zweiten, umfangreicheren Patch eingereicht. Wieder jede
+    einzelne Aenderung verifiziert und auf unseren aktuellen Stand
+    uebertragen, nichts blind uebernommen.
+  - Admin-Schalter (stream_admin.html): waren <span>-Elemente um die
+    Checkbox - nicht klickbar ausserhalb der winzigen echten Checkbox-
+    Flaeche. Jetzt <label>, macht den ganzen sichtbaren Schalter
+    klickbar (Browser-Standardverhalten). Dazu 16:9-Vorschau statt
+    fester Pixelhoehe.
+  - Overlay (stream_overlay.html): applyConfig() rendert jetzt den
+    zuletzt bekannten Zustand sofort neu - Schalter wirken dadurch
+    SOFORT statt erst beim naechsten Zustandswechsel am MiSTer. Ordner
+    (Name endet auf "/") fragen kein Cover mehr an (vorher unnoetige
+    404). object-fit von cover auf contain - Cover werden nicht mehr
+    beschnitten.
+  - Overlay-Server durchsucht jetzt ART_HD UND ART_BASE (vorher nur
+    SD) - findet dieselben HD-Cover wie das Frontend selbst.
+  - Alpha-Kanal-Fix im Overlay-Server: ECHTER, bisher unbemerkter
+    Fehler bestaetigt - rgb_to_art() (mister_boxart.py) und
+    art_convert.py setzen den Alpha-Kanal beim Erzeugen von .art-
+    Dateien NIE explizit (bytearray startet bei 0), der MiSTer-
+    Framebuffer ignoriert Alpha ohnehin - ein Browser aber nicht. Jedes
+    Cover waere im Overlay komplett durchsichtig/schwarz erschienen.
+    Fix direkt vor der PNG-Kodierung (Alpha auf 255 setzen), betrifft
+    dadurch auch laengst vorhandene .art-Dateien, ohne sie neu
+    erzeugen zu muessen.
+  - Input-Rescan-Optimierung: guenstiger stat("/dev/input")-Check statt
+    des teuren /proc/bus/input/devices-Parsens bei jedem Intervall,
+    wenn sich nichts geaendert hat. Hotplug wird weiterhin zuverlaessig
+    erkannt.
+  - Text-Zeilen-Cache in Framebuffer.text() - GROESSTER Hebel bei den
+    reinen Zeichenkosten: ganze Textstreifen (Schluessel: Text+Groesse+
+    Farben) werden als fertiger Pixel-Streifen gecacht und nur noch
+    geblittet, statt bei jedem Aufruf Buchstabe fuer Buchstabe neu
+    zusammenzusetzen. Byte-identisch zur alten Ausgabe verifiziert.
+  - Aufgeschobenes Cover-Laden beim Scrollen: waehrend aktiv navigiert
+    wird (< COVER_SETTLE=150ms seit der letzten Eingabe), werden noch
+    nicht dekodierte Cover uebersprungen statt den Scroll-Pfad zu
+    ruckeln - ~150ms nach dem letzten Tastendruck laedt ein einmaliger
+    Nachlade-Redraw sie nach.
+  - bg_fresh-Optimierung in draw_list_row(): direkt nach einem vollen
+    Redraw (Puffer wurde gerade komplett aus dem Hintergrundbild
+    kopiert) entfaellt die redundante Zeile-fuer-Zeile-Wiederherstellung
+    - der Puffer entspricht an der Stelle ja bereits dem Hintergrund.
+    NUR am einen Aufruf innerhalb des vollen Redraws aktiviert, alle
+    anderen Aufrufstellen (Puls-Takt, Laufschrift, Einzelschritt-
+    Navigation) bleiben unveraendert beim sicheren Standardwert False.
+  - PERF-Log-Zeilen (bg/rows/art/flip-Aufschluesselung, einzelne
+    Cover-Ladezeiten, draw_page_items-Gesamtzeit) bewusst mit
+    uebernommen, nur bei ueberschrittener Schwelle aktiv - zum
+    Nachmessen auf echter Hardware, spaeter wieder entfernbar.
+  - Getestet: Admin-Label-Fix mit jsdom (Klick auf den Schalter-Bereich
+    schaltet jetzt um). Overlay: object-fit, applyConfig-Sofort-
+    Rendering, Ordner-ohne-Coveranfrage (mit Gegentest fuer normale
+    Spiele) einzeln bestaetigt. HD+SD-Suche im Overlay-Server mit
+    Vorrang-Test. Alpha-Fix direkt am uebergebenen RGBA-Puffer
+    verifiziert (durchgehend 255 trotz Quelle mit 0). Input-Rescan:
+    kein erneuter teurer Scan bei unveraenderter mtime, force=True
+    erzwingt trotzdem, echte Aenderung wird weiterhin erkannt. Text-
+    Cache: 252 Faelle (3 Aufloesungen x 7 Texte x 3 Skalierungen x 4
+    Positionen) byte-identisch zur alten Implementierung bestaetigt,
+    dazu Cache-Wiederverwendung/Obergrenze/negative-x-Absicherung
+    einzeln. Defer-Logik: uebersprungen wenn noch nicht dekodiert UND
+    Defer aktiv, normal dekodiert sonst, bereits dekodierte Cover
+    trotz aktivem Defer weiterhin angezeigt. bg_fresh: Bytevergleich
+    zeigt IDENTISCHES Ergebnis zu False bei ausgewaehlter UND nicht
+    ausgewaehlter Zeile (Voraussetzung: Puffer entspricht bereits dem
+    Hintergrund), zusaetzlich 2.1x Geschwindigkeitsmessung bestaetigt.
+    Settle-Nachladen: genau ein zusaetzlicher draw_page_items()-Aufruf
+    nach Ablauf von COVER_SETTLE, Defer korrekt deaktiviert, KEIN
+    wiederholtes Nachladen bei mehreren Leerlauf-Durchlaeufen
+    hintereinander. 36 Kombinationen kompletter Regressionstest
+    bestanden.
 
-Neu in v1.89 (Sichtbares Start-Logging):
-  - Nutzer-Rueckmeldung: Programm gestartet, aber "es passiert gar
-    nichts" - landet sofort wieder auf der Kommandozeile, ohne jede
-    sichtbare Meldung.
-  - Ursache: acquire_single_instance() schrieb den Abbruchgrund
-    bisher NUR in die Log-Datei (LOG()), nicht auf die Konsole. Laeuft
-    bereits eine LEBENDE Instanz (z.B. durch Autostart beim Booten),
-    beendet sich das Programm dadurch komplett lautlos per
-    "sys.exit(0)" - sieht exakt wie ein lautloser Absturz/Nichtstun
-    aus, ist aber die bestehende, korrekte Schutzfunktion gegen zwei
-    gleichzeitig um Framebuffer/Eingaben konkurrierende Instanzen.
-  - Fix: __main__ gibt jetzt bei jeder Startphase eine sichtbare
-    Konsolenmeldung aus (NTP-Sync, Sound-Dateien, Instanz-Pruefung,
-    Frontend-Start). Blockiert eine andere Instanz den Start, wird
-    jetzt DIREKT auf der Konsole die PID dieser Instanz UND ein
-    fertiger Befehl zum Beenden angezeigt ("kill <PID> ; rm -f
-    /tmp/frontend.lock"), statt nur einen stillen Eintrag in die
-    Log-Datei zu schreiben. NTP-Sync und Sound-Datei-Erzeugung sind
-    jetzt zusaetzlich einzeln try/except-abgesichert mit eigener
-    Warnmeldung, falls dort mal etwas schiefgeht (beides unkritisch,
-    Start laeuft trotzdem weiter).
-  - Mit zwei Testlaeufen verifiziert: normaler Start zeigt jetzt
-    Fortschrittsmeldungen bis zum Framebuffer-Zugriff; ein Lauf mit
-    kuenstlich blockierender Lock-Datei zeigt sofort die erwartete,
-    klare Diagnosemeldung inkl. PID und Kill-Befehl.
+Neu in v1.90 (Sieben Verbesserungen aus Dennsens Test-Patch
+uebernommen, geprueft und auf unseren Stand angepasst):
+  - Ein Nutzer hat unabhaengig einen eigenen Patch gebaut (basierend
+    auf einem aelteren Zwischenstand vor dem Durchgespielt-/
+    Achievement-System aus v1.89) und als ZIP eingereicht. Jede
+    einzelne Aenderung wurde erst verifiziert (Diff gegen unseren
+    Stand, Ursache nachvollzogen), dann sauber auf den AKTUELLEN Stand
+    uebertragen und neu getestet - nichts wurde blind uebernommen.
+  - Admin-Oberflaeche des Stream-Overlays: Checkboxen und das Ecke-
+    Auswahlfeld reagierten nicht (nur Text/Farbe/Regler funktionierten) -
+    es wurde nur auf "input" gelauscht, Checkboxen/Auswahlfelder feuern
+    aber "change". Jetzt beides.
+  - frontend_boot.sh robuster: las /tmp/CORENAME bisher nur mit
+    Nullbyte-Bereinigung, anders als current_core() im Python-Code
+    (das zusaetzlich Leerzeichen/CR/LF/Tab entfernt) - bei Firmware,
+    die dort etwas anhaengt, matchte "MENU" nie, das Skript wartete
+    dadurch sinnlos bis zum 60s-Limit.
+  - Tolerante Cover-Suche: Cover aus kuratierten Sets mit fuehrender
+    Nummer ("007 Super Mario Kart (USA).art") wurden nicht gefunden,
+    weil das Spiel intern ohne Nummer heisst. Erst exakter Name, dann
+    Fallback ueber einen Index (fuehrende "NNN "-Nummer ignoriert) -
+    wirkt jetzt in Frontend UND Overlay UND fuer HD-Cover (Erweiterung
+    gegenueber der eingereichten Fassung, die nur SD-Cover im Frontend
+    abdeckte - koennte auch das aeltere "Beyond the Beyond"-Problem
+    mitloesen).
+  - Overlay zeigt jetzt den laufenden Titel waehrend eines Spiels
+    (vorher blieb es leer/veraltet, da die Hauptschleife waehrend des
+    Spiels blockiert ist) - wird direkt vor dem Core-Start und nach
+    der Rueckkehr zwangsweise aktualisiert.
+  - Cover-Caches moderat vergroessert (roh 40->60, skaliert 10->20) -
+    nimmt den Ruckler beim Hin-und-Herscrollen, den die jetzt
+    gefundenen (vorher fehlenden) Cover verursachten. BEWUSST
+    vorsichtiger als der eingereichte Wert (40->90/10->48) - bei
+    grossen HD-Covern (~4MB/Bild unkomprimiert) waere das ein
+    spuerbarer RAM-Batzen auf einem MiSTer mit typischerweise ~1GB RAM.
+  - Sichtbare Konsolenausgabe bei jeder Startphase - vor allem der
+    Fall "es laeuft schon eine Instanz" (z.B. durch Autostart) endete
+    bisher KOMPLETT LAUTLOS per sys.exit(0), wirkte wie ein stiller
+    Absturz. Zeigt jetzt direkt einen fertigen Kill-Befehl an.
+  - install_offline.sh findet sein Paket jetzt zuverlaessig - aus dem
+    Paketordner selbst, dessen Scripts/-Unterordner, oder als Kopie in
+    /media/fat/Scripts/ (OSD-Aufruf) - und verwechselt das bereits
+    installierte Frontend nicht mit der Quelle (Unterscheidung ueber
+    das Vorhandensein von install_offline.sh selbst neben
+    frontend/frontend.py).
+  - Getestet: Admin-Fix mit jsdom (Checkbox/Auswahlfeld ueber "change"
+    bestaetigt ausgeloest, Text-Eingabe ueber "input" weiterhin ohne
+    Regression). Boot-Skript mit sieben verschiedenen problematischen
+    Dateiinhalten (Nullbyte/Leerzeichen/CR/Tab/Kombination) UND einem
+    Gegentest (anderer Core darf nicht als MENU durchgehen). Tolerante
+    Cover-Suche: exakter Name hat Vorrang, Fallback ueber Index,
+    Dubletten-Fall, Cache-Verhalten (kein wiederholtes listdir) - fuer
+    Frontend UND Overlay-Server einzeln bestaetigt. Overlay-Update:
+    genau 2x aufgerufen (vor Start, nach Rueckkehr) mit erzwungenem
+    Signatur-Reset, UND korrekt gar nicht aufgerufen, wenn kein Overlay
+    aktiv ist. Cache-Obergrenzen direkt verifiziert. Start-Diagnose:
+    normaler Start, "laeuft schon"-Fall mit korrekter PID/Kill-Befehl,
+    try/except-Absicherung um NTP/Sound-Erzeugung. Offline-Installer:
+    drei realistische Aufruf-Orte (Paketordner, dessen Scripts/, OSD-
+    Kopie) UND ein Negativtest (gar kein Paket vorhanden) bestaetigt,
+    kompletter End-zu-Ende-Installationslauf gegen eine simulierte
+    SD-Struktur erfolgreich. 36 Kombinationen kompletter Python-
+    Regressionstest bestanden.
+
+Neu in v1.89 (NEUE FEATURES: Durchgespielt-Status + eigenes,
+lokales Achievement-System):
+  - "Durchgespielt"-Status: F7 (Tastatur, auch im Belegungs-Assistenten
+    umbelegbar) markiert das aktuelle Spiel als durchgespielt/wieder
+    zurueck - eigene Speicherdatei (completed.json), Markierung in der
+    Liste ("V ", kombinierbar mit dem Favoriten-Stern), Anzeige im
+    Info-Bereich.
+  - Spielzeit-Daten um das System erweitert (record_playtime() nimmt
+    jetzt optional syskey entgegen, run_core() reicht es durch) -
+    rueckwaertskompatibel zu beiden aelteren Datenformaten (v1.79
+    reine Zahl, v1.80 ohne syskey-Feld).
+  - Eigenes, komplett lokales Achievement-System (unabhaengig von
+    RetroAchievements, nur auf unseren eigenen Daten basierend): 15
+    Meilensteine ueber vier Kategorien (Spielzeit 1/10/50/100h, Starts
+    10/50/100/500, Entdecker 3/5/10 verschiedene Systeme, Durchgespielt
+    1/5/10/25 Spiele). Werte werden bei jedem Aufruf LIVE aus den
+    vorhandenen Daten berechnet (kein separater Fortschritts-Zustand,
+    der aus dem Ruder laufen koennte).
+  - Neuer Anzeige-Bildschirm ("Meine Erfolge" im System-Menue) - zeigt
+    alle Meilensteine, erreichte hervorgehoben, offene mit
+    Fortschrittsangabe.
+  - Getestet: Durchgespielt-Speicherlogik (mehrere Eintraege, Abwaehlen,
+    leere/kaputte Datei, fehlender Name). Listen-Markierung fuer alle
+    vier Kombinationen (Favorit/Durchgespielt/beides/keins), visuell
+    ueberprueft. Spielzeit-Erweiterung mit allen drei Datenformaten
+    (neu mit syskey, v1.80 ohne syskey-Feld, v1.79 reine Zahl)
+    rueckwaertskompatibel bestaetigt - top_played_games() weiterhin
+    ohne Regression. Meilenstein-Berechnung mit realistischen Daten
+    fuer alle vier Kategorien einzeln bestaetigt. Anzeige-Bildschirm
+    mit leerem und vollem Zustand, beiden Aufloesungen getestet, kein
+    Absturz - visuell ueberprueft. 36 Kombinationen kompletter
+    Regressionstest bestanden.
 
 Neu in v1.88 (BUGFIX: RA-Core-Auswahl startete immer den normalen
 Core statt des gewaehlten RA-Cores):
@@ -2061,6 +2178,37 @@ RECENT_FILE = "/media/fat/frontend/recently_played.json"
 RECENT_MAX = 15
 FAVORITES_FILE = "/media/fat/frontend/favorites.json"
 PLAYTIME_FILE = "/media/fat/frontend/playtime.json"
+COMPLETED_FILE = "/media/fat/frontend/completed.json"
+
+def _load_completed_raw():
+    """Menge der als 'durchgespielt' markierten Spiele (per Name,
+    gleiche Konvention wie Favoriten/Zuletzt gespielt)."""
+    try:
+        with open(COMPLETED_FILE) as f:
+            data = json.load(f)
+            return set(data) if isinstance(data, list) else set()
+    except (OSError, ValueError):
+        return set()
+
+def toggle_completed(label):
+    """Durchgespielt-Status umschalten. Rueckgabe: True, wenn jetzt
+    als durchgespielt markiert, sonst False."""
+    if not label:
+        return False
+    data = _load_completed_raw()
+    if label in data:
+        data.discard(label)
+        now_completed = False
+    else:
+        data.add(label)
+        now_completed = True
+    try:
+        os.makedirs(os.path.dirname(COMPLETED_FILE), exist_ok=True)
+        with open(COMPLETED_FILE, "w") as f:
+            json.dump(sorted(data), f)
+    except OSError:
+        pass
+    return now_completed
 
 # ----------------------------------------------------------------------------
 # RETROACHIEVEMENTS (optional - komplett unsichtbar, solange nicht
@@ -2242,12 +2390,12 @@ def lookup_ra_progress(lookup, our_name, our_syskey):
 
 def load_playtime():
     """Laedt die Spielzeit-/Start-Statistik. JEDER Eintrag wird auf das
-    Format {"seconds": X, "launches": N} normalisiert - fruehere
-    Versionen (v1.79) speicherten pro Spiel nur eine reine Zahl
-    (Sekunden), ohne Start-Zaehler. Diese alten Eintraege werden beim
-    Laden transparent umgewandelt (launches=0, da dafuer keine
-    historischen Daten existieren), damit ein Update nicht die
-    bisherige Spielzeit verwirft."""
+    Format {"seconds": X, "launches": N, "syskey": S} normalisiert -
+    frueher (v1.79/v1.80) fehlte "syskey" komplett bzw. war es nur
+    eine reine Zahl ohne Start-Zaehler. Diese alten Eintraege werden
+    beim Laden transparent umgewandelt (launches=0/syskey=None, da
+    dafuer keine historischen Daten existieren), damit ein Update
+    nicht die bisherige Spielzeit verwirft."""
     try:
         with open(PLAYTIME_FILE) as f:
             raw = json.load(f)
@@ -2257,12 +2405,13 @@ def load_playtime():
     for label, val in raw.items():
         if isinstance(val, dict):
             data[label] = {"seconds": val.get("seconds", 0),
-                          "launches": val.get("launches", 0)}
+                          "launches": val.get("launches", 0),
+                          "syskey": val.get("syskey")}
         else:
-            data[label] = {"seconds": val, "launches": 0}
+            data[label] = {"seconds": val, "launches": 0, "syskey": None}
     return data
 
-def record_playtime(label, seconds):
+def record_playtime(label, seconds, syskey=None):
     """Addiert die gespielte Zeit (in Sekunden) UND zaehlt einen
     weiteren Start fuer dieses Spiel hoch (identifiziert ueber den
     Namen - gleiche Konvention wie record_recent()/Favoriten). Wird
@@ -2270,13 +2419,19 @@ def record_playtime(label, seconds):
     bestaetigten Core-Start bis zur Rueckkehr ins Menue - Ladezeiten
     und fehlgeschlagene Starts zaehlen bewusst nicht mit (und werden
     dementsprechend auch nicht als Start gezaehlt - run_core() ruft
-    diese Funktion nur bei einem TATSAECHLICH bestaetigten Start auf)."""
+    diese Funktion nur bei einem TATSAECHLICH bestaetigten Start auf).
+    syskey (optional, seit v1.89): fuers "Entdecker"-Achievement
+    (verschiedene Systeme ausprobiert) - wird bei jedem Aufruf
+    aktualisiert (falls mitgegeben), falls sich der Systemschluessel
+    fuer denselben Namen mal aendern sollte."""
     if not label or seconds <= 0:
         return
     data = load_playtime()
-    entry = data.get(label, {"seconds": 0, "launches": 0})
+    entry = data.get(label, {"seconds": 0, "launches": 0, "syskey": None})
     entry["seconds"] += seconds
     entry["launches"] += 1
+    if syskey:
+        entry["syskey"] = syskey
     data[label] = entry
     try:
         os.makedirs(os.path.dirname(PLAYTIME_FILE), exist_ok=True)
@@ -2284,6 +2439,59 @@ def record_playtime(label, seconds):
             json.dump(data, f)
     except OSError:
         pass
+
+# ----------------------------------------------------------------------------
+# EIGENES, LOKALES ACHIEVEMENT-SYSTEM
+#
+# Komplett unabhaengig von RetroAchievements - basiert nur auf unseren
+# eigenen, laengst vorhandenen Daten (Spielzeit-Tracker, Start-Zaehler,
+# Durchgespielt-Markierung). Schwellenwerte werden bei jedem Aufruf
+# LIVE aus den aktuellen Daten berechnet (kein separater "erreicht am
+# ..."-Zustand, der aus dem Ruder laufen koennte) - simpler und
+# robuster als ein eigenes Fortschritts-Tracking zu pflegen.
+MILESTONE_DEFS = [
+    ("playtime_seconds", 3600,   "milestone_playtime_1h"),
+    ("playtime_seconds", 36000,  "milestone_playtime_10h"),
+    ("playtime_seconds", 180000, "milestone_playtime_50h"),
+    ("playtime_seconds", 360000, "milestone_playtime_100h"),
+    ("launches", 10,  "milestone_launches_10"),
+    ("launches", 50,  "milestone_launches_50"),
+    ("launches", 100, "milestone_launches_100"),
+    ("launches", 500, "milestone_launches_500"),
+    ("systems", 3,  "milestone_systems_3"),
+    ("systems", 5,  "milestone_systems_5"),
+    ("systems", 10, "milestone_systems_10"),
+    ("completed", 1,  "milestone_completed_1"),
+    ("completed", 5,  "milestone_completed_5"),
+    ("completed", 10, "milestone_completed_10"),
+    ("completed", 25, "milestone_completed_25"),
+]
+
+def compute_milestone_progress():
+    """Aktuelle Werte fuer alle Meilenstein-Kategorien, aus den
+    bereits vorhandenen Daten berechnet (kein zusaetzlicher Scan)."""
+    playtime = load_playtime()
+    total_seconds = sum(e.get("seconds", 0) for e in playtime.values())
+    total_launches = sum(e.get("launches", 0) for e in playtime.values())
+    distinct_systems = len(set(
+        e["syskey"] for e in playtime.values() if e.get("syskey")))
+    completed_count = len(_load_completed_raw())
+    return {
+        "playtime_seconds": total_seconds,
+        "launches": total_launches,
+        "systems": distinct_systems,
+        "completed": completed_count,
+    }
+
+def get_milestones():
+    """Liste aller Meilensteine als (label_key, erreicht, aktueller_wert,
+    schwellenwert)-Tupel, in der definierten Reihenfolge."""
+    progress = compute_milestone_progress()
+    out = []
+    for kind, threshold, label_key in MILESTONE_DEFS:
+        current = progress.get(kind, 0)
+        out.append((label_key, current >= threshold, current, threshold))
+    return out
 
 def top_played_games(by="seconds", n=10):
     """Liefert die n Spiele mit dem hoechsten Wert fuer "seconds"
@@ -2598,22 +2806,19 @@ ROWCACHE_MAX_ENTRIES = 150  # siehe Framebuffer.rect()/clear() - verhindert
 
 class Framebuffer:
     def __init__(self):
-        LOG("Framebuffer: lese Geometrie (/sys/class/graphics/fb0/...) ...")
         self._read_geometry()
-        LOG("Framebuffer: Geometrie %dx%d, %dbpp, stride=%d"
-            % (self.width, self.height, self.bpp, self.stride))
-        LOG("Framebuffer: oeffne %s ..." % FBDEV)
         self.fd = os.open(FBDEV, os.O_RDWR)
-        LOG("Framebuffer: %s offen (fd=%d), mmap (%d Bytes) ..."
-            % (FBDEV, self.fd, self.size))
         self._map()
-        LOG("Framebuffer: mmap erfolgreich, Initialisierung fertig")
         self._rowcache = {}
         self._rectcache = {}   # eigener Cache fuer rect() (siehe dort) -
                                 # getrennt von _rowcache, damit dessen
                                 # Obergrenze nicht die selten wechselnden,
                                 # teuren Hintergrundmuster von clear() mitloescht
         self._glyphcache = {}
+        self._textcache = {}          # (text, scale, fg, bg) -> Liste von Byte-Zeilen
+        self._textcache_order = []
+        self._TEXTCACHE_LIMIT = 400   # ~12MB bei typischen Labellaengen -
+                                      # vertretbar auf einem MiSTer mit ~1GB RAM
 
     def _read_geometry(self):
         w, h = open("/sys/class/graphics/fb0/virtual_size").read().split(",")
@@ -2800,22 +3005,49 @@ class Framebuffer:
         if bg is None:
             bg = C_BG
         cw = 8 * scale
-        if y + 8 * scale > self.height or y < 0:
+        if y + 8 * scale > self.height or y < 0 or x < 0:
             return
-        for ci, ch in enumerate(s):
-            code = ord(ch)
-            if code > 127:
-                code = ord("?")
-            gx = x + ci * cw
-            if gx + cw > self.width:
-                break
-            for gy in range(8):
-                bits = FONT8X8[code * 8 + gy]
-                row = self._glyph_row(bits, scale, fg, bg)
-                base = (y + gy * scale) * self.stride + gx * 4
-                for rep in range(scale):
-                    off = base + rep * self.stride
-                    self.buf[off:off + cw * 4] = row
+        # Nur so viele Zeichen wie auf den Schirm passen - identischer
+        # Abschneidepunkt wie die alte, zeichenweise Fassung (die bei
+        # gx + cw > self.width abgebrochen hat), nur vorab statt
+        # mitten in der Schleife berechnet.
+        maxch = (self.width - x) // cw
+        if maxch <= 0:
+            return
+        if len(s) > maxch:
+            s = s[:maxch]
+        if not s:
+            return
+        # Ganze Text-Zeile cachen: Beim Scrollen/Neuzeichnen sind die
+        # meisten Labels bereits bekannt (Spieltitel, Menuepunkte usw.)
+        # - dann reicht ein fertiger Streifen zum Blitten, statt jedes
+        # Mal wieder Buchstabe fuer Buchstabe (und Zeile fuer Zeile pro
+        # Buchstabe) zusammenzusetzen. Groesster Hebel bei den reinen
+        # Zeichenkosten, siehe Kopfkommentar-Changelog.
+        key = (s, scale, fg, bg)
+        strip = self._textcache.get(key)
+        if strip is None:
+            w4 = len(s) * cw * 4
+            rows = [bytearray(w4) for _ in range(8 * scale)]
+            for ci, ch in enumerate(s):
+                code = ord(ch)
+                if code > 127:
+                    code = ord("?")
+                xo = ci * cw * 4
+                for gy in range(8):
+                    grow = self._glyph_row(FONT8X8[code * 8 + gy], scale, fg, bg)
+                    for rep in range(scale):
+                        rows[gy * scale + rep][xo:xo + cw * 4] = grow
+            strip = [bytes(r) for r in rows]
+            self._textcache[key] = strip
+            self._textcache_order.append(key)
+            if len(self._textcache_order) > self._TEXTCACHE_LIMIT:
+                self._textcache.pop(self._textcache_order.pop(0), None)
+        w4 = len(strip[0])
+        xo = x * 4
+        for i, row in enumerate(strip):
+            off = (y + i) * self.stride + xo
+            self.buf[off:off + w4] = row
 
     def flip(self):
         # Direkte Slice-Zuweisung: mmap nimmt das bytearray ohne die
@@ -2852,6 +3084,7 @@ EVIOCGRAB = 0x40044590
 EV_SYN, EV_KEY, EV_ABS = 0, 1, 3
 KEY_ESC, KEY_ENTER = 1, 28
 KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT = 103, 108, 105, 106
+KEY_F7 = 65
 KEY_F8, KEY_F9, KEY_F10, KEY_F11, KEY_F12 = 66, 67, 68, 87, 88
 # Gamepad-Buttons (Linux-Standardcodes)
 BTN_A, BTN_B, BTN_X, BTN_Y = 304, 305, 307, 308
@@ -2896,6 +3129,7 @@ KEYMAP = {
     KEY_F12: "osd", KEY_F10: "back_fe", KEY_F9: None, KEY_F11: "random",
     KEY_F8: "favorite", BTN_TL2: "favorite", BTN_TR2: "favorite",
     AXIS_L2: "favorite", AXIS_R2: "favorite",
+    KEY_F7: "completed",
     BTN_A: "ok", BTN_START: "ok",
     BTN_B: "back", BTN_X: "back_fe",
     BTN_Y: "music_next", KEY_Y: "music_next",
@@ -2971,8 +3205,7 @@ def scan_devices():
     devs = []
     try:
         blocks = open("/proc/bus/input/devices").read().split("\n\n")
-    except OSError as e:
-        LOG("scan_devices: /proc/bus/input/devices nicht lesbar: %s" % e)
+    except OSError:
         return devs
     for b in blocks:
         if "event" not in b or "MiSTer virtual" in b:
@@ -2989,21 +3222,31 @@ class InputManager:
     RESCAN_EVERY = 3.0            # Sekunden - fuer Hotplug neuer Pads
 
     def __init__(self):
-        LOG("InputManager: initialisiere, erster Geraete-Scan ...")
         self.devices = {}
         self.want_grab = False
         self.last_scan = 0.0
         self.held = None          # (key_id, aktion, naechste_zeit, intervall)
-        self.rescan()
-        LOG("InputManager: bereit, %d Geraet(e) aktiv" % len(self.devices))
+        self._last_input_mtime = None
+        self.rescan(force=True)
 
-    def rescan(self):
+    def rescan(self, force=False):
+        # Billiger Schnellcheck: aendert sich /dev/input ueberhaupt? Neue
+        # oder entfernte Geraete aendern die mtime des Ordners. Solange
+        # die gleich bleibt (im Menue-Alltag praktisch immer), sparen wir
+        # uns das teure Parsen von /proc/bus/input/devices - nur ein
+        # einziger stat()-Syscall alle RESCAN_EVERY Sekunden statt
+        # unnoetiger Dauerlast auf der eher schwachen CPU. Hotplug wird
+        # weiterhin zuverlaessig erkannt, nur eben nicht teurer als noetig.
         self.last_scan = time.monotonic()
+        try:
+            mt = os.stat("/dev/input").st_mtime
+        except OSError:
+            mt = 0.0
+        if not force and mt == self._last_input_mtime:
+            return
+        self._last_input_mtime = mt
         seen = set()
-        found = scan_devices()
-        LOG("InputManager.rescan: %d Geraet(e) in /proc/bus/input/devices gefunden"
-            % len(found))
-        for path, name, is_kbd in found:
+        for path, name, is_kbd in scan_devices():
             seen.add(path)
             if path not in self.devices:
                 try:
@@ -3423,11 +3666,24 @@ class InputManager:
 # ----------------------------------------------------------------------------
 
 class ArtCache:
-    LIMIT = 90                       # max. Bilder im Speicher halten
+    LIMIT = 60                       # max. Bilder im Speicher halten - moderat
+                                      # erhoeht (vorher 40): die tolerante
+                                      # Cover-Suche findet jetzt mehr Cover als
+                                      # zuvor, wodurch der alte Wert beim Hin-
+                                      # und-Herscrollen zu haeufigem erneuten
+                                      # Dekodieren fuehrte. Bewusst NICHT so
+                                      # stark erhoeht wie urspruenglich
+                                      # vorgeschlagen (90) - bei grossen HD-
+                                      # Covern (~4MB/Bild unkomprimiert) waere
+                                      # das ein spuerbarer RAM-Batzen auf einem
+                                      # MiSTer mit typischerweise ~1GB RAM.
 
     def __init__(self):
         self.cache = {}              # pfad -> (w, h, pixelbytes) oder None
         self.order = []
+        self._defer_uncached = False # beim schnellen Scrollen: noch nicht
+                                     # dekodierte Cover ueberspringen (siehe
+                                     # get_scaled()/COVER_SETTLE)
 
     def get(self, path):
         if path in self.cache:
@@ -3470,7 +3726,7 @@ class ArtCache:
             self.cache.pop(old, None)
         return art
 
-    SCALED_LIMIT = 48
+    SCALED_LIMIT = 20   # moderat erhoeht (vorher 10), gleicher Grund wie LIMIT
 
     def _scaled_cache_put(self, key, result):
         if not hasattr(self, "scaled"):
@@ -3483,11 +3739,26 @@ class ArtCache:
             self.scaled.pop(old, None)
 
     def get_scaled(self, path, max_w, max_h):
+        _t0 = time.monotonic()
+        r = self._get_scaled_impl(path, max_w, max_h)
+        _dt = time.monotonic() - _t0
+        if _dt > 0.025:
+            LOG("PERF cover: %.0f ms (%s)" % (_dt * 1000, os.path.basename(path)))
+        return r
+
+    def _get_scaled_impl(self, path, max_w, max_h):
         """Bild in die verfuegbare Flaeche einpassen. Kleine Cover werden
         ganzzahlig hochskaliert (Pixel-Look). Cover, die groesser als die
         Box sind, werden seit v1.8.1 per Nearest-Neighbor VERKLEINERT statt
         unskaliert zu bleiben - sonst ragen sie ueber den reservierten
         Platz hinaus und ueberlappen den Info-Text darunter."""
+        # Waehrend aktiv gescrollt wird: ein noch nicht dekodiertes Cover
+        # NICHT hier (im Zeichen-/Scroll-Pfad) dekodieren - das ruckelt auf
+        # der schwachen CPU. Stattdessen ueberspringen; kurz nach dem
+        # letzten Tastendruck laedt die Idle-Nachzeichnung es nach (siehe
+        # COVER_SETTLE in der Hauptschleife).
+        if self._defer_uncached and path not in self.cache:
+            return None
         base = self.get(path)
         if not base:
             return None
@@ -3608,18 +3879,22 @@ class BgCache:
 
 BG = BgCache()
 
-_art_index_cache = {}   # syskey -> {Name ohne 'NNN '-Prefix: Dateiname}
+_art_index_cache = {}   # (basis_ordner, syskey) -> {Name ohne "NNN "-Praefix: Dateiname}
 
-def _art_index(syskey):
-    """Index fuer art/<System>: Name OHNE fuehrende 'NNN '-Nummer ->
-    tatsaechlicher Dateiname. Ermoeglicht Cover aus nummerierten
-    (kuratierten) Sets wie '007 Super Mario Kart (USA).art', obwohl das
-    Spiel intern nur 'Super Mario Kart (USA)' heisst. Pro System gecacht."""
-    idx = _art_index_cache.get(syskey)
+def _art_index(base_dir, syskey):
+    """Index fuer <base_dir>/<syskey>: Name OHNE fuehrende "NNN "-Nummer
+    -> tatsaechlicher Dateiname. Ermoeglicht Cover aus nummerierten
+    (kuratierten) Sets wie "007 Super Mario Kart (USA).art", obwohl
+    das Spiel intern nur "Super Mario Kart (USA)" heisst. Pro
+    (Ordner, System) gecacht - wird nur beim ERSTEN Cache-Fehltreffer
+    fuer ein System ueberhaupt aufgebaut (siehe art_path()), nicht bei
+    jedem Cover-Aufruf."""
+    key = (base_dir, syskey)
+    idx = _art_index_cache.get(key)
     if idx is None:
         idx = {}
         try:
-            for fn in os.listdir(os.path.join(ART_BASE, syskey)):
+            for fn in os.listdir(os.path.join(base_dir, syskey)):
                 if not fn.endswith(".art"):
                     continue
                 base = fn[:-4]
@@ -3628,18 +3903,26 @@ def _art_index(syskey):
                     idx[stripped] = fn
         except OSError:
             pass
-        _art_index_cache[syskey] = idx
+        _art_index_cache[key] = idx
     return idx
 
-
-def art_path(syskey, rom_basename):
-    exact = os.path.join(ART_BASE, syskey, rom_basename + ".art")
+def _art_path_in(base_dir, syskey, rom_basename):
+    """Cover-Pfad innerhalb eines bestimmten Basisordners (ART_BASE
+    oder ART_HD) - erst der exakte Name, sonst wird eine fuehrende
+    "NNN "-Nummer im tatsaechlichen Dateinamen ignoriert (siehe
+    _art_index()). Liefert IMMER einen Pfad zurueck (auch wenn er
+    nicht existiert) - der Aufrufer prueft ohnehin schon selbst auf
+    Existenz, hier nur der BESSERE Pfad-Kandidat."""
+    exact = os.path.join(base_dir, syskey, rom_basename + ".art")
     if os.path.exists(exact):
         return exact
-    fn = _art_index(syskey).get(rom_basename)
+    fn = _art_index(base_dir, syskey).get(rom_basename)
     if fn:
-        return os.path.join(ART_BASE, syskey, fn)
+        return os.path.join(base_dir, syskey, fn)
     return exact
+
+def art_path(syskey, rom_basename):
+    return _art_path_in(ART_BASE, syskey, rom_basename)
 
 _meta_cache = {}
 _mra_cache = {}
@@ -3952,38 +4235,26 @@ def _wait_for_usb_stable(max_wait=10.0, poll=0.5, min_wait_if_none=3.0):
     fehlen dessen Spiele im Ergebnis."""
     usb_candidates = [b for b in GAMES_BASES if "/media/usb" in b]
     if not usb_candidates:
-        LOG("_wait_for_usb_stable: keine USB-Pfade in GAMES_BASES konfiguriert, ueberspringe")
         return None
-    LOG("_wait_for_usb_stable: pruefe %d USB-Kandidat(en): %s"
-        % (len(usb_candidates), usb_candidates))
 
     def snapshot():
         found = False
         total = 0
-        per_path = []
         for b in usb_candidates:
             if os.path.isdir(b):
                 found = True
                 try:
-                    n = len(os.listdir(b))
-                    total += n
-                    per_path.append("%s=%d" % (b, n))
-                except OSError as e:
-                    per_path.append("%s=Fehler(%s)" % (b, e))
-            else:
-                per_path.append("%s=fehlt" % b)
-        return found, total, per_path
+                    total += len(os.listdir(b))
+                except OSError:
+                    pass
+        return found, total
 
     t0 = time.monotonic()
     last_total = None
     stable_streak = 0
-    poll_nr = 0
     while True:
         elapsed = time.monotonic() - t0
-        found, total, per_path = snapshot()
-        poll_nr += 1
-        LOG("_wait_for_usb_stable: Abfrage #%d (%.1fs): %s (stable_streak=%d)"
-            % (poll_nr, elapsed, ", ".join(per_path), stable_streak))
+        found, total = snapshot()
         if elapsed >= max_wait:
             LOG("_wait_for_usb_stable: Zeitlimit (%.1fs) erreicht, fahre trotzdem fort"
                % max_wait)
@@ -4018,8 +4289,6 @@ def _wait_for_usb_stable(max_wait=10.0, poll=0.5, min_wait_if_none=3.0):
         else:
             stable_streak = 0
         if not found and elapsed >= min_wait_if_none:
-            LOG("_wait_for_usb_stable: kein USB-Mountpunkt nach %.1fs gefunden - "
-                "gehe von Setup ohne USB aus" % elapsed)
             return None
         last_total = total
         time.sleep(poll)
@@ -4030,10 +4299,7 @@ def scan_games(force=False, progress_cb=None):
     von der Platte aufgerufen (nicht beim schnellen Cache-Treffer) -
     normale Boots (Cache passt) bleiben also unveraendert schnell,
     nur der seltene "erster Start"/"ROMs geaendert"-Fall zeigt Fortschritt."""
-    LOG("scan_games: Start (force=%s)" % force)
     sig = _games_signature()
-    LOG("scan_games: aktuelle Signatur hat %d Eintraege, erwartet USB=%s"
-        % (len(sig), _sig_expects_usb(sig)))
     cached_sig = None
     data = None
     if not force:
@@ -4045,11 +4311,7 @@ def scan_games(force=False, progress_cb=None):
                 LOG("Spieleliste aus Cache (%d Systeme)"
                     % len(data["cats"]))
                 return _cats_from_json(data["cats"])
-            LOG("scan_games: Cache-Signatur passt NICHT (Cache: %d Eintraege, "
-                "erwartet USB=%s) - weiter pruefen"
-                % (len(cached_sig), _sig_expects_usb(cached_sig)))
-        except (OSError, ValueError, KeyError, IndexError, TypeError) as e:
-            LOG("scan_games: Cache nicht lesbar/gueltig (%s) - Neuscan noetig" % e)
+        except (OSError, ValueError, KeyError, IndexError, TypeError):
             cached_sig = None
             data = None
 
@@ -4322,6 +4584,11 @@ def _ntp_time(server=NTP_SERVER, timeout=2.0):
             except OSError:
                 pass
 
+NTP_SYNC_OK = False   # von sync_system_clock_from_ntp() bei jedem Aufruf
+                      # aktuell gehalten - ermoeglicht spaeteren Code (z.B.
+                      # dem RA-Neuversuch) zu pruefen, ob die Systemuhr
+                      # zum jetzigen Zeitpunkt als verlaesslich gilt.
+
 def sync_system_clock_from_ntp(timeout=2.5):
     """Setzt die Systemuhr per NTP, FALLS ein lokales Netzwerk vorhanden
     ist - in einem separaten Thread mit hartem Zeitlimit, damit eine
@@ -4330,7 +4597,13 @@ def sync_system_clock_from_ntp(timeout=2.5):
     Sekunden verzoegert. Der Thread laeuft im schlimmsten Fall im
     Hintergrund weiter, blockiert dabei aber nichts mehr (Daemon-Thread) -
     sein Ergebnis wird dann einfach verworfen. Ohne lokales Netzwerk wird
-    gar nicht erst versucht (spart die Wartezeit komplett)."""
+    gar nicht erst versucht (spart die Wartezeit komplett).
+
+    Haelt NTP_SYNC_OK bei jedem Aufruf aktuell (auch bei spaeteren
+    Neuversuchen, siehe Frontend._maybe_retry_ra()) - andere Code-
+    Stellen koennen darueber pruefen, ob die Systemuhr aktuell als
+    verlaesslich gilt, ohne selbst NTP abfragen zu muessen."""
+    global NTP_SYNC_OK
     if not _has_network():
         return False
     result = {"t": None}
@@ -4341,12 +4614,15 @@ def sync_system_clock_from_ntp(timeout=2.5):
     th.join(timeout=timeout + 0.5)
     unix_time = result["t"]
     if unix_time is None:
+        NTP_SYNC_OK = False
         return False
     try:
         ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(unix_time))
         subprocess.run(["date", "-s", ts], capture_output=True, timeout=2.0)
+        NTP_SYNC_OK = True
         return True
     except (OSError, subprocess.SubprocessError):
+        NTP_SYNC_OK = False
         return False
 def crt_menu_active():
     try:
@@ -4728,6 +5004,25 @@ TRANSLATIONS = {
     "year":            {"en": "Year: %s",    "de": "Jahr: %s"},
     "playtime_shown":  {"en": "Played: %s",  "de": "Gespielt: %s"},
     "ra_progress_shown": {"en": "RA: %d/%d", "de": "RA: %d/%d"},
+    "completed_shown": {"en": "Completed", "de": "Durchgespielt"},
+    "milestone_playtime_1h": {"en": "Played 1 hour total", "de": "Insgesamt 1 Stunde gespielt"},
+    "milestone_playtime_10h": {"en": "Played 10 hours total", "de": "Insgesamt 10 Stunden gespielt"},
+    "milestone_playtime_50h": {"en": "Played 50 hours total", "de": "Insgesamt 50 Stunden gespielt"},
+    "milestone_playtime_100h": {"en": "Played 100 hours total", "de": "Insgesamt 100 Stunden gespielt"},
+    "milestone_launches_10": {"en": "Launched 10 games", "de": "10 Spiele gestartet"},
+    "milestone_launches_50": {"en": "Launched 50 games", "de": "50 Spiele gestartet"},
+    "milestone_launches_100": {"en": "Launched 100 games", "de": "100 Spiele gestartet"},
+    "milestone_launches_500": {"en": "Launched 500 games", "de": "500 Spiele gestartet"},
+    "milestone_systems_3": {"en": "Explorer: 3 different systems", "de": "Entdecker: 3 verschiedene Systeme"},
+    "milestone_systems_5": {"en": "Explorer: 5 different systems", "de": "Entdecker: 5 verschiedene Systeme"},
+    "milestone_systems_10": {"en": "Explorer: 10 different systems", "de": "Entdecker: 10 verschiedene Systeme"},
+    "milestone_completed_1": {"en": "First game completed", "de": "Erstes Spiel durchgespielt"},
+    "milestone_completed_5": {"en": "5 games completed", "de": "5 Spiele durchgespielt"},
+    "milestone_completed_10": {"en": "10 games completed", "de": "10 Spiele durchgespielt"},
+    "milestone_completed_25": {"en": "25 games completed", "de": "25 Spiele durchgespielt"},
+    "milestones_title": {"en": "MY ACHIEVEMENTS", "de": "MEINE ERFOLGE"},
+    "milestones_summary": {"en": "%d of %d unlocked", "de": "%d von %d freigeschaltet"},
+    "sys_milestones_action": {"en": "My achievements", "de": "Meine Erfolge"},
     "sys_ra_setup": {"en": "RetroAchievements: not set up",
                      "de": "RetroAchievements: nicht eingerichtet"},
     "sys_ra_configured": {"en": "RetroAchievements: %s (reload)",
@@ -4803,6 +5098,8 @@ TRANSLATIONS = {
     "favorites_cat": {"en": "Favorites", "de": "Favoriten"},
     "favorite_added": {"en": "Added to favorites", "de": "Zu Favoriten hinzugefuegt"},
     "favorite_removed": {"en": "Removed from favorites", "de": "Aus Favoriten entfernt"},
+    "completed_added": {"en": "Marked as completed", "de": "Als durchgespielt markiert"},
+    "completed_removed": {"en": "Completed mark removed", "de": "Durchgespielt-Markierung entfernt"},
     "sys_rescan":      {"en": "Rescan game list", "de": "Spieleliste neu einlesen"},
     "sys_redraw":      {"en": "Redraw display",   "de": "Anzeige neu aufbauen"},
     "sys_reboot":      {"en": "Restart MiSTer",   "de": "MiSTer neu starten"},
@@ -4818,6 +5115,7 @@ TRANSLATIONS = {
     "remap_action_osd":    {"en": "Open MiSTer menu", "de": "MiSTer-Menue oeffnen"},
     "remap_action_random": {"en": "Random game", "de": "Zufaelliges Spiel"},
     "remap_action_favorite": {"en": "Toggle favorite", "de": "Favorit umschalten"},
+    "remap_action_completed": {"en": "Toggle completed", "de": "Durchgespielt umschalten"},
     "remap_done":      {"en": "Button mapping saved!",
                         "de": "Tastenbelegung gespeichert!"},
     "remap_cancelled": {"en": "Cancelled - keeping previous mapping",
@@ -4889,6 +5187,7 @@ def system_items(music_enabled=None):
         (sfx_label,                                   "sfx",       None),
         (t("top10_time_action"),                     "top10_time", None),
         (t("top10_launches_action"),                 "top10_launches", None),
+        (t("sys_milestones_action"),                 "milestones", None),
         (ra_label,                                    "ra_status", None),
         (t("sys_rescan"),                            "rescan",    None),
         (t("sys_redraw"),                            "redraw",    None),
@@ -4955,6 +5254,9 @@ ATTRACT_DISABLED_FLAG = "/media/fat/frontend/attract_disabled"
 ATTRACT_IDLE_SECONDS = 90   # so lange ohne Eingabe, bevor der Attract-
                             # Modus (Bildschirmschoner) automatisch startet
 ATTRACT_CHANGE_SECONDS = 6  # wie lange ein Spiel im Attract-Modus gezeigt wird
+COVER_SETTLE = 0.15         # s nach letzter Eingabe, bis waehrend des
+                            # Scrollens uebersprungene Cover nachgeladen
+                            # werden (haelt das Scrollen selbst fluessig)
 
 def attract_enabled():
     """Standardmaessig AN (im Gegensatz zu curated_only_active(), das
@@ -5047,9 +5349,7 @@ class Frontend:
     """
 
     def __init__(self):
-        LOG("Frontend.__init__: erstelle Framebuffer ...")
         self.fb = Framebuffer()
-        LOG("Frontend.__init__: erstelle InputManager ...")
         self.inp = InputManager()
         # WICHTIG: Erst auf unseren eigenen Bildschirm umschalten (F9),
         # DANACH erst den (potenziell langsamen) Scan starten - vorher
@@ -5063,21 +5363,13 @@ class Frontend:
         # unsichtbar. Jetzt sieht man sofort unseren Bildschirm samt
         # Lade-Fortschrittsbalken (siehe _draw_scan_progress()), auch
         # wenn der Scan mal laenger dauert.
-        LOG("Frontend.__init__: enter_console_mode() (F9-Injektion) ...")
         self.enter_console_mode()
-        LOG("Frontend.__init__: enter_console_mode() zurueck")
         self.set_cursor_blink(False)
-        LOG("Frontend.__init__: grab(True) ...")
         self.inp.grab(True)
-        LOG("Frontend.__init__: grab(True) zurueck, zeichne ersten Bildschirm")
         self.fb.clear((16, 18, 24))
         self.fb.flip()
-        LOG("Frontend.__init__: erstelle MusicPlayer ...")
         self.music = MusicPlayer()
-        LOG("Frontend.__init__: MusicPlayer bereit, starte build_categories() ...")
         self.build_categories()
-        LOG("Frontend.__init__: build_categories() fertig, %d Kategorien"
-            % len(getattr(self, "cats", [])))
         self.page = 0              # 0 = Kategorien-Menue, 1 = Kategorie-Ansicht
         self.cat_i = 0
         self.cat_scroll = 0
@@ -5115,6 +5407,10 @@ class Frontend:
         self._favorites_set = set(
             e.get("label") for e in _load_favorites_raw() if "label" in e)
 
+        # Durchgespielt-Status ebenfalls im Speicher gehalten - gleicher
+        # Grund wie beim Favoriten-Cache.
+        self._completed_set = _load_completed_raw()
+
         # Spielzeiten ebenfalls im Speicher gehalten - gleicher Grund
         # wie beim Favoriten-Cache (keine Datei-Lesevorgaenge bei jedem
         # Neuzeichnen). Wird nach jedem run_core()-Aufruf aktualisiert,
@@ -5128,16 +5424,33 @@ class Frontend:
         # den Start dadurch nie unkontrolliert lange, selbst wenn RA
         # gerade langsam/nicht erreichbar ist.
         self._ra_lookup = {}
+        self._ra_fetch_ok = False   # eigenstaendig von "hat Treffer" - auch
+                                    # eine leere, aber ERFOLGREICH abgerufene
+                                    # Liste zaehlt als Erfolg. Grundlage fuer
+                                    # den Neuversuch in _maybe_retry_ra().
+        self._ra_retry_next = 0.0
+        self._ra_retry_count = 0
         if ra_enabled():
             ra_data = fetch_ra_progress_bounded(timeout=3.0)
-            if ra_data:
+            if ra_data is not None:
                 self._ra_lookup = build_ra_lookup(ra_data)
+                self._ra_fetch_ok = True
+            elif not NTP_SYNC_OK:
+                # Wahrscheinlichste Erklaerung fuer einen fehlgeschlagenen
+                # Abruf direkt beim Start: die Systemuhr war noch falsch
+                # (MiSTer hat keine batteriegepufferte Uhr), wodurch die
+                # HTTPS-Zertifikatspruefung fehlschlaegt - unabhaengig
+                # davon, ob der RA-Server eigentlich erreichbar waere.
+                # Neuversuch, sobald die Zeit sich (per _maybe_retry_ra())
+                # doch noch synchronisiert.
+                self._ra_retry_next = time.monotonic() + 30.0
 
         # Attract-Modus (Bildschirmschoner): blaettert nach einer
         # Weile ohne Eingabe von selbst durch zufaellige Spiele mit
         # Boxart - siehe next_action()/draw_attract().
         self.attract_mode = False
         self._last_input_time = time.monotonic()
+        self._settled_redrawn = True   # Cover-Nachladen erst nach Bewegung
         self._attract_game = None
         self._attract_change_next = 0.0
         self._attract_pool = None   # zwischengespeicherte flache Spieleliste
@@ -5149,6 +5462,7 @@ class Frontend:
             try:
                 self.stream = StreamServer(ART_BASE, port=STREAM_PORT,
                                            config_path=STREAM_CONFIG_FILE,
+                                           art_hd=ART_HD,
                                            log=LOG)
                 if not self.stream.start():
                     self.stream = None
@@ -5492,6 +5806,7 @@ class Frontend:
 
     def draw(self, message=None):
         self._sync_track_marquee()
+        self._maybe_retry_ra()
         if self.attract_mode:
             self.draw_attract()
             return
@@ -5527,7 +5842,7 @@ class Frontend:
         cover_max_h = int(H * 0.72)
         art = None
         if H >= 720:
-            hd = os.path.join(ART_HD, syskey, name + ".art")
+            hd = _art_path_in(ART_HD, syskey, name)
             art = ART.get_scaled(hd, cover_max_w, cover_max_h)
         if art is None:
             art = ART.get_scaled(art_path(syskey, name), cover_max_w, cover_max_h)
@@ -5639,6 +5954,38 @@ class Frontend:
             self._net_status = _has_network()
             self._net_check_next = now + 5.0
         return self._net_status
+
+    def _maybe_retry_ra(self):
+        """Periodisch (aus draw(), wie _network_connected()) geprueft:
+        falls RA eingerichtet ist, der letzte Abrufversuch aber
+        fehlgeschlagen ist - moeglicherweise wegen einer beim Start noch
+        falschen Systemuhr, siehe __init__() - wird in wachsenden
+        Abstaenden (30s, 60s, 120s, 240s, gedeckelt bei 300s) ein
+        Neuversuch unternommen. Netzwerk-Aufrufe laufen dabei in einem
+        Hintergrund-Thread, damit die Navigation nie blockiert wird.
+        Hoert nach 5 Versuchen von selbst auf (kein endloses Nachfragen,
+        falls RA dauerhaft nicht erreichbar ist)."""
+        if self._ra_fetch_ok or self._ra_retry_count >= 5:
+            return
+        if not ra_enabled():
+            return
+        now = time.monotonic()
+        if now < self._ra_retry_next:
+            return
+        self._ra_retry_count += 1
+        backoff = min(30.0 * (2 ** (self._ra_retry_count - 1)), 300.0)
+        self._ra_retry_next = now + backoff
+        need_ntp_first = not NTP_SYNC_OK
+        def worker():
+            if need_ntp_first:
+                sync_system_clock_from_ntp()
+                if not NTP_SYNC_OK:
+                    return   # weiterhin keine verlaessliche Uhr - beim naechsten Mal wieder
+            ra_data = fetch_ra_progress_bounded(timeout=5.0)
+            if ra_data is not None:
+                self._ra_lookup = build_ra_lookup(ra_data)
+                self._ra_fetch_ok = True
+        threading.Thread(target=worker, daemon=True).start()
 
     def _attract_enabled_cached(self):
         """Zwischengespeicherte attract_enabled()-Abfrage, alle 5
@@ -6000,6 +6347,14 @@ class Frontend:
     # Seite 1: Liste + (falls vorhanden) grosse Boxart-Spalte
     # ------------------------------------------------------------------
     def draw_page_items(self, message=None, flip=True):
+        _t0 = time.monotonic()
+        r = self._draw_page_items_impl(message=message, flip=flip)
+        _dt = time.monotonic() - _t0
+        if _dt > 0.040:
+            LOG("PERF draw_page_items: %.0f ms" % (_dt * 1000))
+        return r
+
+    def _draw_page_items_impl(self, message=None, flip=True):
         fb = self.fb
         W, H = fb.width, fb.height
         name, _root_node, syskey = self.cats[self.cat_i]
@@ -6020,10 +6375,12 @@ class Frontend:
         self.items_visible = visible
 
         self._cur_bg = BG.get(syskey, fb) if syskey else None
+        _tb = time.monotonic()
         if self._cur_bg is not None:
             fb.buf[:] = self._cur_bg
         else:
             fb.clear(C_BG)
+        self._perf_bg = time.monotonic() - _tb
 
         # Breadcrumb: Kategorie + aktueller Ordnerpfad (falls in einen
         # Unterordner gewechselt wurde), z.B. "SNES / 1 US-A-E".
@@ -6045,8 +6402,11 @@ class Frontend:
             self.scroll = self.item_i - visible + 1
         self.scroll = max(0, min(self.scroll, max(0, total - visible)))
         end = min(self.scroll + visible, total)
+        _tr = time.monotonic()
         for idx in range(self.scroll, end):
-            self.draw_list_row(idx)
+            self.draw_list_row(idx, bg_fresh=self._cur_bg is not None)
+        self._perf_rows = time.monotonic() - _tr
+        self._perf_nrows = end - self.scroll
 
         if has_art:
             # Die Spalte beginnt jetzt auf Hoehe der Kopfzeile (oy) statt
@@ -6060,8 +6420,10 @@ class Frontend:
             art_h = footer_y - 8 * s - art_y0
             if art_w > 20 and art_h > 20:
                 item_syskey = self._item_syskey(items[self.item_i], syskey)
+                _ta = time.monotonic()
                 self.draw_art_panel(art_x0, art_w, art_y0, art_h,
                                     item_syskey, items[self.item_i], s)
+                self._perf_art = time.monotonic() - _ta
 
         if message:
             fb.text(ox, footer_y, message, s, C_DIM)
@@ -6075,7 +6437,17 @@ class Frontend:
                 if track_display:
                     fb.text(ox, footer_y, track_display, s, C_DIM)
         if flip:
+            _tf = time.monotonic()
             fb.flip()
+            _fdt = time.monotonic() - _tf
+        else:
+            _fdt = 0.0
+        _bg = getattr(self, "_perf_bg", 0); _rw = getattr(self, "_perf_rows", 0)
+        _ar = getattr(self, "_perf_art", 0); _nr = getattr(self, "_perf_nrows", 0)
+        if (_bg + _rw + _ar + _fdt) > 0.1:
+            LOG("PERF split: bg=%.0f rows=%.0f(%d) art=%.0f flip=%.0f ms"
+                % (_bg * 1000, _rw * 1000, _nr, _ar * 1000, _fdt * 1000))
+        self._perf_art = 0
 
     def draw_confirm_dialog(self):
         """Beenden-Bestaetigung: ueberlagert die aktuelle Seite mit
@@ -6124,12 +6496,20 @@ class Frontend:
             bx += btn_w + gap
         fb.flip()
 
-    def draw_list_row(self, idx):
+    def draw_list_row(self, idx, bg_fresh=False):
         """Eine Listenzeile zeichnen. Die markierte Zeile zeigt bei
         Ueberlaenge einen Laufschrift-Ausschnitt des vollen Namens.
         Die Boxart-Spalte liegt seit v1.8 NEBEN der Liste statt darueber,
         darum muss hier keine Zeile mehr wegen Ueberlappung ausgeblendet
-        werden."""
+        werden.
+
+        bg_fresh=True NUR, wenn direkt zuvor der GESAMTE Puffer frisch aus
+        dem Hintergrundbild kopiert wurde (siehe _draw_page_items_impl())
+        - dann steht an dieser Stelle ohnehin schon der Hintergrund, die
+        Wiederherstellung darunter waere reine Verschwendung. Bei jeder
+        Teil-Neuzeichnung (Puls-Takt, Laufschrift, Einzelschritt-
+        Navigation) bleibt es beim Standardwert False, da der Puffer dort
+        noch Reste vom letzten Zeichenschritt enthalten kann."""
         fb = self.fb
         v = self.view
         list_x, list_right = v["list_x"], v["list_right"]
@@ -6146,7 +6526,14 @@ class Frontend:
         rw = max(4, list_right - list_x - 2 * s)
         need = rw * 4
         cur_bg = getattr(self, "_cur_bg", None)
-        if cur_bg is not None:
+        if bg_fresh and cur_bg is not None:
+            # Voller Redraw: der Hintergrund wurde gerade erst komplett in
+            # den Puffer kopiert - die Zeile NICHT nochmal Zeile-fuer-Zeile
+            # wiederherstellen (das war der teure, hier redundante Teil).
+            # Nur die Auswahl braucht noch ihr farbiges Feld obendrauf.
+            if sel:
+                fb.rect(x0, y_top, rw, rowh - 2 * s, bg)
+        elif cur_bg is not None:
             # Listenstreifen aus dem Hintergrundbild wiederherstellen -
             # hart abgesichert: nie eine falsche Byte-Anzahl schreiben,
             # sonst verschiebt sich der GESAMTE Framebuffer-Puffer.
@@ -6180,7 +6567,9 @@ class Frontend:
         # hier - das waere bei haeufigem Neuzeichnen ein echtes
         # Performance-Problem).
         is_fav = item_kind == "game" and full in self._favorites_set
-        prefix = "* " if is_fav else ""
+        is_done = item_kind == "game" and hasattr(self, "_completed_set") \
+            and full in self._completed_set
+        prefix = ("* " if is_fav else "") + ("V " if is_done else "")
         maxc = (list_right - list_x - 8 * s) // (8 * s) - len(prefix)
         if sel:
             # Markierte Zeile: voller Name, bei Bedarf als Laufschrift
@@ -6203,7 +6592,10 @@ class Frontend:
             return False
         s = v["s"]
         label, kind, _arg = v["items"][self.item_i]
-        prefix_len = 2 if (kind == "game" and label in self._favorites_set) else 0
+        is_fav = kind == "game" and label in self._favorites_set
+        is_done = kind == "game" and hasattr(self, "_completed_set") \
+            and label in self._completed_set
+        prefix_len = (2 if is_fav else 0) + (2 if is_done else 0)
         maxc = (v["list_right"] - v["list_x"] - 8 * s) // (8 * s) - prefix_len
         return len(label) > maxc
 
@@ -6467,6 +6859,7 @@ class Frontend:
                     self.music.tick()
                     continue
                 self._last_input_time = time.monotonic()
+                self._settled_redrawn = False
                 if need_mq:
                     self.marquee_reset()
                 return act
@@ -6478,8 +6871,24 @@ class Frontend:
                   and time.monotonic() - self._last_input_time > ATTRACT_IDLE_SECONDS):
                 self._enter_attract_mode()
             else:
+                # Beim schnellen Scrollen (kurz nach einer Eingabe) noch
+                # nicht dekodierte Cover ueberspringen - sie wuerden sonst
+                # den Scroll-Pfad ruckeln lassen. Zentral hier gesetzt,
+                # damit ALLE Zeichenpfade es sehen; nach dem Settle laedt
+                # die Idle-Schleife unten sie einmalig nach.
+                ART._defer_uncached = (time.monotonic() - self._last_input_time
+                                       < COVER_SETTLE)
                 if need_mq:
                     self.marquee_tick()
+                # Beim schnellen Scrollen uebersprungene Cover ~COVER_SETTLE
+                # nach dem letzten Tastendruck EINMAL nachladen (voller
+                # Aufbau der Listenseite - defer ist dann aus, also werden
+                # sie jetzt dekodiert). Passiert nur einmal pro Stillstand,
+                # nicht bei jedem Schleifendurchlauf.
+                if (not self._settled_redrawn and self.page == 1 and
+                        time.monotonic() - self._last_input_time >= COVER_SETTLE):
+                    self.draw_page_items()
+                    self._settled_redrawn = True
                 # WICHTIG: unabhaengige if-Abfragen statt einer elif-Kette.
                 # Mit elif haette "track_needs" (Songtitel muss scrollen -
                 # trifft auf praktisch jeden echten Songnamen zu) den
@@ -6613,6 +7022,8 @@ class Frontend:
             if hasattr(self, "_ra_lookup") and self._ra_lookup else None
         if ra_progress:
             info_src.append(t("ra_progress_shown", ra_progress[0], ra_progress[1]))
+        if hasattr(self, "_completed_set") and name in self._completed_set:
+            info_src.append(t("completed_shown"))
         info_lines = []
         for ln in info_src:
             info_lines.extend(self._wrap(ln, maxc, max_lines=1))
@@ -6640,7 +7051,7 @@ class Frontend:
         accent = accent_for(syskey)
         art = None
         if H >= 720:
-            hd = os.path.join(ART_HD, syskey, lookup_name + ".art")
+            hd = _art_path_in(ART_HD, syskey, lookup_name)
             art = ART.get_scaled(hd, avail_w, cover_h)
         if art is None:
             art = ART.get_scaled(art_path(syskey, lookup_name), avail_w, cover_h)
@@ -6714,13 +7125,23 @@ class Frontend:
     # Aktionen
     # ------------------------------------------------------------------
 
-    def run_core(self, path, label=None):
+    def run_core(self, path, label=None, syskey=None):
         """label (optional): Anzeigename fuer die Spielzeit-Aufzeichnung
         (siehe record_playtime()) - nur die Zeit vom bestaetigten Core-
         Start bis zur Rueckkehr ins Menue zaehlt, Ladezeiten und
-        fehlgeschlagene Starts NICHT."""
+        fehlgeschlagene Starts NICHT. syskey (optional): fuers
+        "Entdecker"-Achievement (verschiedene Systeme ausprobiert)."""
         self.music.pause_for_core()
         self.inp.grab(False)
+        # Overlay: den gerade gestarteten Titel noch zeigen, BEVOR wir
+        # in die blockierende Warteschleife gehen - waehrend das Spiel
+        # laeuft, aktualisiert sich das Overlay sonst gar nicht mehr
+        # (die Hauptschleife, die es normalerweise anstoesst, steht ja
+        # still), es wuerde also einfach auf dem letzten Zwischenstand
+        # haengen bleiben oder leer wirken.
+        if hasattr(self, "stream") and self.stream:
+            self._stream_sig = None
+            self._publish_stream()
         launch_core(path)
         t0 = time.monotonic()
         started = False
@@ -6741,10 +7162,6 @@ class Frontend:
             self.back_to_frontend()
             return
         play_start = time.monotonic()
-        # Overlay: laufenden Titel anzeigen (Hauptschleife ist waehrend
-        # des Spiels blockiert und aktualisiert sonst nicht).
-        self._stream_sig = None
-        self._publish_stream()
         while current_core() != "MENU":
             res = self.inp.wait_game_exit()
             if res in ("combo", "f10", "hid_combo"):
@@ -6756,14 +7173,16 @@ class Frontend:
                 t1 = time.monotonic()
                 while current_core() != "MENU" and time.monotonic() - t1 < 10:
                     time.sleep(0.3)
-        record_playtime(label, time.monotonic() - play_start)
+        record_playtime(label, time.monotonic() - play_start, syskey=syskey)
         self._playtime_cache = load_playtime()
         time.sleep(1.0)
         self.music.resume_after_core()
+        # Overlay wieder auf den (jetzt evtl. veraenderten, z.B. neue
+        # Spielzeit) Menue-Stand auffrischen.
+        if hasattr(self, "stream") and self.stream:
+            self._stream_sig = None
+            self._publish_stream()
         self.back_to_frontend()
-        # Overlay wieder auf den Menue-Stand auffrischen.
-        self._stream_sig = None
-        self._publish_stream()
 
     def run_script(self, path):
         """Script auf der Konsole (tty1) laufen lassen, danach zurueck."""
@@ -6852,6 +7271,49 @@ class Frontend:
         hint_w = len(hint) * 8 * (s - 1 if s > 1 else 1)
         fb.text((W - hint_w) // 2, H - oy - 8 * (s - 1 if s > 1 else 1),
                 hint, s - 1 if s > 1 else 1, C_DIM, C_BG)
+        fb.flip()
+        while True:
+            act = self.inp.read_action()
+            if act is not None:
+                break
+
+    def draw_milestones_screen(self):
+        """Vollbild-Uebersicht aller eigenen, lokalen Erfolge - erreichte
+        hervorgehoben, offene gedimmt mit Fortschrittsangabe. Rein
+        informativ, beliebige Taste kehrt zurueck."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        fb.clear(C_BG)
+        milestones = get_milestones()
+        unlocked = sum(1 for m in milestones if m[1])
+        fb.text(ox, oy, t("milestones_title"), s + 1, C_TITLE, C_BG)
+        y = oy + 56 * s // 2 + 16 * s
+        fb.text(ox, y, t("milestones_summary", unlocked, len(milestones)),
+                s, accent_for(None), C_BG)
+        y += 44 * s
+        rowh = 24 * s
+        maxc = max(8, (W - 2 * ox - 60 * s) // (8 * s))
+        for label_key, achieved, current, threshold in milestones:
+            mark = "[x] " if achieved else "[ ] "
+            label = mark + t(label_key)
+            color = C_TEXT if achieved else C_DIM
+            if len(label) > maxc:
+                label = label[:maxc - 1] + "~"
+            fb.text(ox, y, label, s, color, C_BG)
+            if not achieved:
+                prog = "%d/%d" % (current, threshold)
+                prog_w = len(prog) * 8 * s
+                fb.text(W - ox - prog_w, y, prog, s, C_DIM, C_BG)
+            y += rowh
+            if y > H - oy - 24 * s:
+                break   # Sicherheitsnetz auf sehr kleinen Bildschirmen
+        hint = t("attract_hint")
+        sc = s - 1 if s > 1 else 1
+        hint_w = len(hint) * 8 * sc
+        fb.text((W - hint_w) // 2, H - oy - 8 * sc, hint, sc, C_DIM, C_BG)
         fb.flip()
         while True:
             act = self.inp.read_action()
@@ -6966,6 +7428,7 @@ class Frontend:
             ("ok", "remap_action_ok"), ("back", "remap_action_back"),
             ("osd", "remap_action_osd"), ("random", "remap_action_random"),
             ("favorite", "remap_action_favorite"),
+            ("completed", "remap_action_completed"),
         ]
         new_map = {}
         cancelled = False
@@ -7431,6 +7894,22 @@ class Frontend:
                                 else t("favorite_removed")
                             self.draw(message=msg)
                             continue
+                elif act == "completed":
+                    # Durchgespielt-Status umschalten - genau wie bei
+                    # "favorite", nur ohne eigene Kategorie (rein
+                    # informativ, keine Navigationsliste dafuer).
+                    if self.page == 1 and items:
+                        label, kind, arg = items[self.item_i]
+                        if kind == "game":
+                            now_completed = toggle_completed(label)
+                            if now_completed:
+                                self._completed_set.add(label)
+                            else:
+                                self._completed_set.discard(label)
+                            msg = t("completed_added") if now_completed \
+                                else t("completed_removed")
+                            self.draw(message=msg)
+                            continue
                 elif act == "ok":
                     if self.page == 0:
                         self._enter_category()
@@ -7466,7 +7945,7 @@ class Frontend:
                                 " [RA-Core]" if ra_choice else ""))
                             record_recent(label, arg)
                             mgl = write_mgl(rbf, rom, dl, ft, ix, setname=setname)
-                            self.run_core(mgl, label=label)
+                            self.run_core(mgl, label=label, syskey=syskey)
                             continue
                         elif kind == "script":
                             self.run_script(arg)
@@ -7533,6 +8012,9 @@ class Frontend:
                             self.draw()
                         elif kind == "top10_launches":
                             self.draw_top10_screen("launches")
+                            self.draw()
+                        elif kind == "milestones":
+                            self.draw_milestones_screen()
                             self.draw()
                         elif kind == "ra_status":
                             ra_user, _ra_key = load_ra_config()
@@ -7609,37 +8091,38 @@ except (AttributeError, ValueError, OSError):
     pass   # SIGHUP nicht verfuegbar (z.B. andere Plattform) - kein Problem
 
 if __name__ == "__main__":
+    # BUGFIX (Nutzer-Rueckmeldung, uebernommen aus einem Community-
+    # Patch): startet man das Frontend manuell per SSH, waehrend
+    # bereits eine Instanz laeuft (z.B. durch Autostart), beendete es
+    # sich bisher KOMPLETT LAUTLOS ueber sys.exit(0) - der Abbruchgrund
+    # stand nur in der Log-Datei, nicht auf der Konsole. Das wirkt wie
+    # ein lautloser Absturz/Nichtstun, obwohl es die korrekte
+    # Schutzfunktion gegen zwei gleichzeitig um Framebuffer/Eingaben
+    # konkurrierende Instanzen ist. Jetzt gibt jede Startphase eine
+    # sichtbare Meldung aus, und der Sperr-Fall zeigt direkt einen
+    # fertigen Befehl zum Beenden der alten Instanz.
     print("Frontend-Start: initialisiere ...")
-
     # Systemuhr per NTP synchronisieren, BEVOR ueberhaupt der erste
     # Log-Eintrag geschrieben wird - MiSTer hat keine batteriegepufferte
     # Echtzeituhr, ohne das wuerden alle folgenden Zeitstempel (Log,
     # Uhrzeit im Hauptmenue) zunaechst falsch sein (siehe v1.70).
     # Zeitlich begrenzt (siehe sync_system_clock_from_ntp()) - blockiert
-    # den Start dadurch nie unkontrolliert lange.
+    # den Start dadurch nie unkontrolliert lange. Zusaetzlich try/except-
+    # abgesichert: unkritisch, falls doch mal etwas schiefgeht, der Start
+    # soll deswegen nicht komplett abbrechen.
     try:
         sync_system_clock_from_ntp()
     except Exception:
-        print("WARNUNG: NTP-Zeitsync ist fehlgeschlagen (nicht kritisch):")
+        print("WARNUNG: NTP-Zeitsync fehlgeschlagen (nicht kritisch):")
         traceback.print_exc()
-
     LOG("==== Frontend-Start ====")
     print("Log-Datei: %s (dort stehen alle weiteren Details)" % LOGFILE)
-
     try:
         _ensure_sfx_files()   # Sound-WAVs einmalig erzeugen, falls noch nicht vorhanden
     except Exception:
         print("WARNUNG: Sound-Dateien konnten nicht erzeugt werden (nicht kritisch):")
         traceback.print_exc()
-
     if not acquire_single_instance():
-        # Haeufigster Grund fuer "Programm startet, aber es passiert
-        # rein gar nichts": es laeuft schon eine Instanz (z.B. durch
-        # Autostart beim Booten). acquire_single_instance() hat das
-        # bereits in die Log-Datei geschrieben, aber OHNE sichtbare
-        # Konsolenausgabe wirkt das wie ein lautloser Absturz. Hier
-        # daher zusaetzlich direkt auf der Konsole ausgeben, inklusive
-        # eines fertigen Befehls zum Beenden der alten Instanz.
         try:
             with open(LOCKFILE) as f:
                 old_pid = f.read().strip()
@@ -7647,13 +8130,12 @@ if __name__ == "__main__":
             old_pid = "?"
         print("")
         print("Abbruch: Es laeuft bereits eine Instanz des Frontends (PID %s)." % old_pid)
-        print("Das ist wahrscheinlich der Grund, warum 'nichts passiert' -")
+        print("Das ist wahrscheinlich der Grund, warum \"nichts passiert\" -")
         print("das Frontend laeuft schon (z.B. per Autostart beim Booten)")
         print("und blockiert auf dem Framebuffer/den Eingabegeraeten.")
         print("Falls das NICHT stimmen sollte (verwaiste Lock-Datei):")
         print("  kill %s ; rm -f %s" % (old_pid, LOCKFILE))
         sys.exit(0)
-
     print("Keine andere Instanz aktiv - starte Framebuffer/Eingaben ...")
     try:
         Frontend().run()

@@ -2,8 +2,7 @@
 # ============================================================
 # MiSTer Custom Frontend - Installation direkt aus dem MiSTer-Menue
 #
-# Diese EINE Datei einmalig (per Netzwerkfreigabe oder SD-Karte) nach
-# /media/fat/Scripts/
+# Diese EINE Datei einmalig per WinSCP nach /media/fat/Scripts/
 # kopieren. Danach im MiSTer-OSD: Scripts -> "install frontend"
 # antippen - der komplette Rest (Herunterladen, Einrichten,
 # Autostart) laeuft von selbst, ganz ohne SSH/Terminal.
@@ -38,7 +37,7 @@ elif command -v wget >/dev/null 2>&1; then
     TOOL=wget
 else
     echo "FEHLER: Weder curl noch wget gefunden."
-    echo "Bitte die Dateien stattdessen manuell kopieren -"
+    echo "Bitte die Dateien stattdessen manuell per WinSCP kopieren -"
     echo "siehe README.md, Abschnitt 3."
     pause_before_exit
     exit 1
@@ -94,8 +93,8 @@ if [ "$download_ok" != "1" ]; then
     echo "FEHLER: Download fehlgeschlagen. Pruefe, ob der MiSTer"
     echo "gerade Internetzugang hat (WLAN/LAN-Kabel), und versuch es"
     echo "danach nochmal. Falls es weiterhin nicht klappt: per SSH"
-    echo "'ping -c 2 github.com' testen, oder die Dateien manuell"
-    echo "kopieren (README.md, Abschnitt 3)."
+    echo "'ping -c 2 github.com' testen, oder die Dateien manuell per"
+    echo "WinSCP kopieren (README.md, Abschnitt 3)."
     rm -rf "$TMP_DIR"
     pause_before_exit
     exit 1
@@ -148,6 +147,19 @@ else
 fi
 
 rm -rf "$TMP_DIR"
+
+echo ""
+if command -v mpg123 >/dev/null 2>&1; then
+    echo "mpg123 gefunden:  Hintergrundmusik ist nutzbar"
+else
+    echo "mpg123 fehlt:     Frontend laeuft normal, nur ohne Musik"
+    echo "                  mpg123 gehoert eigentlich zur MiSTer-Firmware"
+    echo "                  selbst (kein separates Paket) - falls es fehlt,"
+    echo "                  hilft meist ein einmaliges 'Update All' im"
+    echo "                  MiSTer-OSD (komplette Firmware auf den"
+    echo "                  neuesten Stand bringen). Danach per SSH"
+    echo "                  pruefen:  which mpg123"
+fi
 
 echo ""
 echo "=== Fertig! ==="

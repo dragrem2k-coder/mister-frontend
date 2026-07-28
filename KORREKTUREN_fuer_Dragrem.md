@@ -45,7 +45,7 @@ einem der obigen Fixes.
 ---
 
 **Beigelegt:** `install.sh` (Offline-Fallback bereits vorhanden über
-die manuelle Anleitung in der README) und `stream_server.py` +
+die manuelle WinSCP-Anleitung in der README) und `stream_server.py` +
 zugehörige Dateien (OBS-Overlay, unverändert, Technik-Details weiterhin
 in `STREAM_fuer_Dragrem.md`).
 

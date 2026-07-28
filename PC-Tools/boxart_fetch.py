@@ -35,7 +35,7 @@ Aufruf-Beispiele (PowerShell):
   # Nur bestimmte Systeme:
   python boxart_fetch.py --roms-base "D:\\roms" --out "art_out" --systems SNES,NES
 
-Danach den Inhalt von art_out\\ ueber die Netzwerkfreigabe (oder SD-Karte am PC) nach
+Danach den Inhalt von art_out\\ per WinSCP nach
 /media/fat/frontend/art/  kopieren (Ordnernamen muessen erhalten bleiben).
 """
 

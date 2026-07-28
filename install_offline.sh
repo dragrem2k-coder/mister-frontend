@@ -14,9 +14,8 @@
 # bestimmte (z.B. getestete) Fassung installiert werden soll oder
 # wenn der Download an alten SSL-Zertifikaten scheitert.
 #
-# Aufruf: das Paket auf den MiSTer kopieren (ganz ohne Zusatzprogramm
-# - ueber die Netzwerkfreigabe des MiSTer im Explorer/Finder oder die
-# microSD-Karte am PC), dann per SSH oder aus dem OSD unter "Scripts":
+# Aufruf: das Paket per WinSCP auf den MiSTer kopieren, dann
+# per SSH oder aus dem OSD unter "Scripts":
 #
 #     ./install_offline.sh
 #
@@ -45,21 +44,22 @@ LOCKFILE="/tmp/frontend.lock"
 
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Ein PAKET-Ordner enthaelt sowohl frontend/frontend.py als auch dieses
-# install_offline.sh daneben. Daran laesst es sich zuverlaessig vom
+# Ein Paket-Ordner enthaelt sowohl frontend/frontend.py als auch dieses
+# install_offline.sh daneben - daran laesst er sich zuverlaessig vom
 # bereits INSTALLIERTEN Frontend unterscheiden (/media/fat/frontend hat
-# kein install_offline.sh daneben liegen).
+# kein install_offline.sh daneben liegen, nur die Programmdateien selbst).
 _is_pkg() { [ -f "$1/frontend/frontend.py" ] && [ -f "$1/install_offline.sh" ]; }
 
 # Quellpaket robust finden - egal ob dieses Skript aus dem Paketordner
 # selbst, aus dessen Scripts/-Unterordner oder als Kopie in
-# /media/fat/Scripts/ (OSD) gestartet wurde:
+# /media/fat/Scripts/ (OSD-Aufruf) gestartet wurde:
 _find_src() {
     local d
     for d in "$SELF_DIR" "$SELF_DIR/.." \
              "$MISTER_ROOT"/MiSTer_Frontend* \
              "$MISTER_ROOT"/mister-frontend* \
              "$MISTER_ROOT"/*[Ff]rontend*; do
+        [ -d "$d" ] || continue
         if _is_pkg "$d"; then (cd "$d" && pwd); return 0; fi
     done
     return 1
@@ -125,6 +125,12 @@ if command -v mpg123 >/dev/null 2>&1; then
     say "mpg123 gefunden:  Hintergrundmusik ist nutzbar"
 else
     say "mpg123 fehlt:     Frontend laeuft normal, nur ohne Musik"
+    say "                  mpg123 gehoert eigentlich zur MiSTer-Firmware"
+    say "                  selbst (kein separates Paket) - falls es fehlt,"
+    say "                  hilft meist ein einmaliges 'Update All' im"
+    say "                  MiSTer-OSD (komplette Firmware auf den"
+    say "                  neuesten Stand bringen). Danach per SSH"
+    say "                  pruefen:  which mpg123"
 fi
 
 MODE="Neuinstallation"

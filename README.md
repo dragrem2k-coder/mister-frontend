@@ -1,4 +1,4 @@
-# MiSTer Custom Frontend v1.88 - Komplettbuild (Stand: 2026-07-27)
+# MiSTer Custom Frontend v1.91 - Komplettbuild (Stand: 2026-07-28)
 
 **Von Dragrem2K**, mit tatkräftiger Unterstützung von **TheRealSuTefan**
 beim Testen und Gegenchecken.
@@ -83,6 +83,7 @@ Nachlesen (`CHANGELOG.md`).
    - 8j. Top-10-Listen
    - 8k. RetroAchievements-Fortschritt
    - 8l. Standard- oder RA-Core wählen
+   - 8m. Durchgespielt-Status + eigene Erfolge
 9. Sprache umschalten
 10. Eigene Tastenbelegung
 11. Boot-Animation (Startvideo)
@@ -96,7 +97,7 @@ Nachlesen (`CHANGELOG.md`).
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.88) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.91) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (läuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (läuft auf dem MiSTer) |
@@ -123,12 +124,16 @@ Nachlesen (`CHANGELOG.md`).
 
 - Ein MiSTer FPGA mit aktueller Firmware (Python 3 ist immer schon
   drauf)
-- Netzwerkzugriff per SSH (`ssh root@<MiSTer-IP>`). Zum Kopieren der
-  Dateien genügt die Netzwerkfreigabe des MiSTer (im Explorer/Finder)
-  oder die microSD-Karte am PC — ein SFTP-Client wird nicht benötigt
+- Netzwerkzugriff per SSH (`ssh root@<MiSTer-IP>`) und WinSCP (oder
+  ein anderer SFTP-Client) zum Kopieren der Dateien
 - Für Hintergrundmusik: `mpg123` muss auf dem MiSTer vorhanden sein.
   Prüfen per SSH: `which mpg123` - kommt ein Pfad zurück (z.B.
-  `/usr/bin/mpg123`), passt alles.
+  `/usr/bin/mpg123`), passt alles. **Fehlt es:** `mpg123` gehört
+  eigentlich zur MiSTer-Firmware selbst, ist also kein separat zu
+  installierendes Paket - hilft meist ein einmaliges "Update All" im
+  MiSTer-OSD (komplette Firmware auf den neuesten Stand bringen),
+  danach nochmal prüfen. Bleibt es trotzdem leer: läuft das Frontend
+  ganz normal weiter, einfach ohne Musik.
 - Für die PC-Tools (optional): Python 3 und `pip install Pillow`
 
 ## 3. Installation Schritt für Schritt
@@ -136,12 +141,11 @@ Nachlesen (`CHANGELOG.md`).
 ### Option A: Eine Datei, direkt aus dem MiSTer-Menü (am einfachsten)
 
 Kein SSH/Terminal nötig - nur eine einzige, kleine Datei einmalig
-kopieren (über die Netzwerkfreigabe des MiSTer oder die SD-Karte am PC):
+per WinSCP kopieren:
 
 1. [`Scripts/install_frontend.sh`](https://raw.githubusercontent.com/dragrem2k-coder/mister-frontend/main/Scripts/install_frontend.sh)
    herunterladen (Rechtsklick -> Speichern unter, bzw. Browser-Download).
-2. Die Datei nach `/media/fat/Scripts/` kopieren (über die
-   Netzwerkfreigabe oder die SD-Karte am PC).
+2. Die Datei per WinSCP nach `/media/fat/Scripts/` kopieren.
 3. Im MiSTer-OSD: **Scripts -> "install frontend"** antippen.
 
 Der Rest läuft von selbst - herunterladen, einrichten, Autostart. Am
@@ -170,8 +174,8 @@ ausführen, eigene Daten bleiben unangetastet.
 
 Falls der MiSTer keinen Internetzugang hat, eine bestimmte Version
 gewünscht ist, oder Option A/B an veralteten SSL-Zertifikaten scheitern:
-das komplette Paket auf den MiSTer kopieren (über die Netzwerkfreigabe
-oder die SD-Karte am PC), dann per SSH oder aus dem OSD unter Scripts:
+das komplette Paket per WinSCP auf den MiSTer kopieren, dann per SSH
+oder aus dem OSD unter Scripts:
 ```bash
 cd /media/fat/MiSTer_Frontend   # Ordner, in den du das Paket kopiert hast
 ./install_offline.sh
@@ -187,10 +191,9 @@ selbst ersetzte System-Logos und Einstellungen bleiben unangetastet,
 die bisherigen Programmdateien werden vorher automatisch gesichert
 (`frontend/backup_<Datum>/`).
 
-### Option D: Manuell (ohne Installer)
+### Option D: Manuell per WinSCP
 
-1. Auf dem MiSTer den Ordner `/media/fat/frontend/` anlegen (über die
-   Netzwerkfreigabe oder die SD-Karte am PC)
+1. Auf dem MiSTer per WinSCP anlegen: `/media/fat/frontend/`
 2. Alle Dateien aus dem Ordner `frontend/` dorthin kopieren.
 3. Alle Dateien aus dem Ordner `Scripts/` nach `/media/fat/Scripts/`
    kopieren.
@@ -255,6 +258,7 @@ geprüft, ohne echten Netzwerkverkehr zu erzeugen.
 | Y-Taste                            | Nächster Song (manueller Musik-Wechsel) |
 | F11                                 | Zufälliges Spiel/Kategorie ("weiß nicht was ich spielen soll") |
 | F8 / L2- oder R2-Taste               | Favorit umschalten (nur bei Spiele-Einträgen) |
+| F7                                  | Durchgespielt-Status umschalten (nur bei Spiele-Einträgen) |
 | 3x Select nacheinander (Pad)       | Beenden-Bestätigung (wie ESC) |
 | Im laufenden Spiel: Esc auf der Tastatur, ~0,6s halten | Direkt zurück ins Frontend, ohne Umweg über MiSTers OSD |
 | Im laufenden Spiel: F12 -> "Exit to Menu Core" | Alternative über MiSTers eigenes Menü |
@@ -333,8 +337,8 @@ in `fehlend_ARCADE.txt`.
 
 Alternative für den PC (`PC-Tools/boxart_fetch.py`, braucht
 `pip install Pillow`, ebenfalls mit parallelen Downloads): dieselbe
-Quelle vom Rechner aus abfragen und die fertigen `.art`-Dateien über
-die Netzwerkfreigabe (oder SD-Karte am PC) hochladen. Nützlich für eigene Bildquellen (z.B.
+Quelle vom Rechner aus abfragen und die fertigen `.art`-Dateien per
+WinSCP hochladen. Nützlich für eigene Bildquellen (z.B.
 emumovies.com) - dafür wandelt `PC-Tools/art_convert.py` beliebige
 PNG/JPGs ins `.art`-Format um:
 ```
@@ -570,6 +574,21 @@ plausible Namen durch. Taucht die Auswahl bei einem System nicht auf,
 obwohl du einen RA-Core dafür installiert hast, sag Bescheid, dann
 ergänzen wir die passende Namensvariante.
 
+## 8m. Durchgespielt-Status + eigene Erfolge
+
+**Durchgespielt-Status:** F7 markiert das aktuelle Spiel als
+durchgespielt (nochmal drücken schaltet es wieder ab) - eigene,
+kombinierbare Markierung neben dem Favoriten-Stern in der Liste ("V "
+bzw. "* V " bei beidem), zusätzlich im Info-Bereich sichtbar.
+
+**Eigene, lokale Erfolge:** Komplett unabhängig von RetroAchievements
+- basiert nur auf unseren eigenen Daten (Spielzeit, Starts,
+ausprobierte Systeme, durchgespielte Spiele). Im System-Menü "Meine
+Erfolge" zeigt eine Übersicht aller 15 Meilensteine (Spielzeit-,
+Start-, Entdecker- und Durchgespielt-Stufen), erreichte hervorgehoben,
+offene mit Fortschrittsangabe. Läuft komplett automatisch mit, keine
+Einrichtung nötig.
+
 ## 9. Sprache umschalten
 
 System -> "Language: English -> switch to German" (bzw. umgekehrt auf
@@ -619,7 +638,7 @@ kannst also für beide Modi unterschiedliche Videos/Bilder hinterlegen.
    rund 7x flüssiger und sieht auf einem 1080p-Fernseher immer noch
    scharf aus. Ist eine Quelle doch größer als der Bildschirm, wird
    sie automatisch (aber langsamer) heruntergerechnet.
-2. Die beiden Ordner über die Netzwerkfreigabe (oder SD-Karte am PC) nach
+2. Die beiden Ordner per WinSCP nach
    `/media/fat/frontend/bootanim_crt/` bzw.
    `/media/fat/frontend/bootanim_hdmi/` kopieren (Ordnernamen exakt
    so, mit Unterstrich-Suffix).
@@ -716,7 +735,7 @@ für Nicht-Techniker): `ANLEITUNG_fuer_Dennsen.md`. Technische Details:
   ```bash
   tail -50 /tmp/frontend.log
   ```
-- Niemals über die eingebaute Konsole eines Datei-Transfer-Tools lange Programme starten (die
+- Niemals über die WinSCP-Kommandozeile lange Programme starten (die
   Konsole meldet nach 15s "keine Daten mehr" und der Abbrechen-Knopf
   killt den Prozess) - immer eine echte SSH-Sitzung nutzen
   (`ssh root@<MiSTer-IP>`).
