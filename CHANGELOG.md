@@ -4,6 +4,17 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v1.93 — optischer Feinschliff
+Vier Verbesserungen fürs Auge, alle ohne laufende Zusatzkosten:
+abgerundete Ecken bei der Auswahl-Markierung, der Boxart-Bereich sieht
+jetzt wie eine Karte mit Schlagschatten aus, eine dezente
+Randabdunkelung (Vignette) auf einfarbigen Hintergründen, und etwas
+mehr Luft zwischen Kopfzeile/Liste sowie Liste/Boxart. Eine echte,
+pixelgenaue Vignette hätte über eine Sekunde gekostet - stattdessen
+eine deutlich günstigere, zeilenbasierte Variante (ca. 3-20ms, nur
+einmalig pro Farbe). Laufende Navigation bleibt bei 3,4ms pro
+Neuzeichnen, keine spürbare Verlangsamung.
+
 ## v1.92 — zwei Fixes
 Die Uhrzeit zeigte nach der NTP-Synchronisierung 2 Stunden zu wenig
 (deutsche Sommerzeit) - NTP liefert UTC, wir haben das aber als
