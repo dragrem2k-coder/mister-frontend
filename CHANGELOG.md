@@ -4,6 +4,16 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v1.94 — RA-Fortschritt für weitere Systeme repariert
+Nach dem letzten Fix (Game Boy/Saturn) fehlte RA-Fortschritt immer
+noch bei NES, SNES und anderen Systemen. Grund: RetroAchievements nennt
+manche Konsolen anders, als wir angenommen hatten - "SNES/Super
+Famicom" statt nur "SNES", "Mega Drive" statt "Genesis Mega Drive".
+Der Abgleich verlangte bisher eine exakte Übereinstimmung. Jetzt wird
+geprüft, ob unsere Bezeichnung als zusammenhängende Wortfolge in RAs
+tatsächlichem Namen vorkommt - wortgrenzen-bewusst, damit "NES" nicht
+aus Versehen jedes SNES-Spiel mittrifft.
+
 ## v1.93 — optischer Feinschliff
 Vier Verbesserungen fürs Auge, alle ohne laufende Zusatzkosten:
 abgerundete Ecken bei der Auswahl-Markierung, der Boxart-Bereich sieht

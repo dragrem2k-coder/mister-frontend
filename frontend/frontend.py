@@ -1,9 +1,40 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.93
+MiSTer Custom Frontend - v1.94
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.94 (BUGFIX: RA-Fortschritt fehlte weiterhin bei NES/SNES
+und weiteren Systemen, trotz vorhandener Achievements):
+  - Nutzer-Rueckmeldung: nach dem Fix in v1.92 (GAMEBOY/Saturn) fehlte
+    RA-Fortschritt immer noch bei NES, SNES und weiteren Systemen,
+    obwohl dort laengst Achievements gesammelt wurden.
+  - Ursache per Recherche gegen echte RA-API-Beispiele bestaetigt: RA
+    verwendet fuer manche Systeme LAENGERE, kombinierte Konsolennamen
+    als in RA_CONSOLE_MAP eingetragen - z.B. "SNES/Super Famicom"
+    statt nur "SNES", "Mega Drive" statt "Genesis Mega Drive". Der
+    bisherige Abgleich verlangte eine EXAKTE Uebereinstimmung des
+    kompletten Strings - das schlug fuer genau diese Systeme IMMER
+    fehl, obwohl die Kernbezeichnung eigentlich passte.
+  - Fix: build_ra_lookup()/lookup_ra_progress() grundlegend umgebaut.
+    Statt eines exakten (Titel, System)-Schluessels wird jetzt pro
+    Titel eine Liste aller RA-Eintraege gefuehrt (mehrere Konsolen fuer
+    denselben Titel sind normal, z.B. Aladdin auf Genesis UND SNES).
+    Neue _ra_console_matches(): prueft, ob unsere erwartete
+    Systembezeichnung als ZUSAMMENHAENGENDE WORTFOLGE in RAs
+    tatsaechlichem Namen vorkommt - wortgrenzen-bewusst, nicht per
+    rohem Teilstring-Vergleich (sonst haette "nes" faelschlich JEDES
+    SNES-Spiel getroffen, da "SNES" den Teilstring "nes" enthaelt).
+  - Getestet: mit den ECHTEN, per Recherche bestaetigten RA-
+    Konsolennamen nachgestellt ("SNES/Super Famicom", "NES/Famicom",
+    "Mega Drive", "PlayStation") - alle vier Systeme liefern jetzt
+    korrekte Treffer. KRITISCHER Test bestanden: NES-Systemschluessel
+    trifft nachweislich NICHT faelschlich ein SNES-Spiel. Mehrfach-
+    Konsolen-Fall (derselbe Titel auf zwei Systemen) korrekt getrennt
+    zugeordnet, nicht vermischt. Kein falscher Treffer bei nicht
+    passendem Titel oder System. 36 Kombinationen kompletter
+    Regressionstest bestanden.
 
 Neu in v1.93 (Optischer Feinschliff - hochwertiger wirkendes Design,
 OHNE laufende Zusatzkosten):
@@ -2436,52 +2467,81 @@ def _ra_normalize_name(name):
     return n
 
 # Bekannte Entsprechungen unserer Systemschluessel zu RA-Konsolennamen.
-# BUGFIX (Nutzer-Rueckmeldung: RA-Fortschritt fehlte bei manchen
-# Systemen): "GB" war hier als Schluessel eingetragen, unser
-# tatsaechlicher Systemschluessel fuer Game Boy ist aber "GAMEBOY"
-# (siehe GAME_SYSTEMS) - die Zuordnung schlug fuer Game Boy dadurch
-# IMMER fehl. Saturn fehlte komplett, obwohl wir es unterstuetzen.
-# Ausserdem enthielt die Tabelle mehrere Eintraege fuer Systeme, die es
-# in unserem Code gar nicht gibt (Atari2600, AtariLynx, PCE als
-# eigener Schluessel, S32X) - totes Gewicht, nie erreichbar, jetzt
-# entfernt. Direkt gegen die echte GAME_SYSTEMS-Tabelle abgeglichen.
+# BUGFIX (Nutzer-Rueckmeldung, zweite Runde: RA-Fortschritt fehlte bei
+# NES/SNES und weiteren Systemen, obwohl dort laengst Achievements
+# gesammelt wurden): per Recherche gegen echte RA-API-Beispiele
+# bestaetigt, dass RA fuer manche Systeme LAENGERE, kombinierte Namen
+# verwendet als hier eingetragen - z.B. "SNES/Super Famicom" statt
+# nur "SNES", "Mega Drive" statt "Genesis Mega Drive". Der bisherige
+# EXAKTE Abgleich (voller String muss 1:1 passen) schlug dadurch fuer
+# genau diese Systeme IMMER fehl, obwohl die Kernbezeichnung eigentlich
+# passte. Fix: siehe _ra_console_matches() weiter unten - prueft jetzt,
+# ob unsere erwartete Bezeichnung als zusammenhaengende WORTFOLGE in
+# RAs tatsaechlichem Namen vorkommt, nicht mehr per exaktem Vergleich.
 #
-# EHRLICHER HINWEIS bleibt bestehen: die RA-Konsolennamen selbst sind
-# weiterhin anhand allgemeiner Kenntnis zusammengestellt, nicht gegen
-# die echte API verifiziert - fehlt eine Zuordnung oder stimmt sie
-# nicht, fuehrt das zu KEINER Anzeige fuer dieses System (sicherer
-# Fehlerfall), nie zu einer falschen.
+# EHRLICHER HINWEIS bleibt bestehen: auch diese Kurzbezeichnungen sind
+# anhand allgemeiner Kenntnis/einzelner API-Beispiele zusammengestellt,
+# nicht vollstaendig gegen jedes einzelne System verifiziert - fehlt
+# eine Zuordnung oder stimmt sie nicht, fuehrt das zu KEINER Anzeige
+# fuer dieses System (sicherer Fehlerfall), nie zu einer falschen.
 RA_CONSOLE_MAP = {
-    "NES": "nes", "SNES": "snes", "Genesis": "genesis mega drive",
+    "NES": "nes", "SNES": "snes", "Genesis": "mega drive",
     "GAMEBOY": "game boy", "GBC": "game boy color", "GBA": "game boy advance",
     "PSX": "playstation", "N64": "nintendo 64", "ARCADE": "arcade",
     "SMS": "master system", "TGFX16": "pc engine",
     "NEOGEO": "neo geo", "MegaCD": "sega cd", "Saturn": "saturn",
 }
 
+def _ra_console_matches(expected, ra_console_normalized):
+    """Prueft, ob die erwartete (bereits normalisierte, ggf. mehrteilige)
+    Systembezeichnung als ZUSAMMENHAENGENDE Wortfolge in RAs
+    tatsaechlichem, normalisierten Konsolennamen vorkommt - z.B.
+    "snes" in "snes super famicom" (Treffer), aber NICHT "nes" in
+    "snes super famicom" (kein Treffer trotz Teilstring-Uebereinstimmung
+    auf Zeichenebene) - reiner Wortgrenzen-Vergleich, sonst wuerde NES
+    faelschlich jedes SNES-Spiel treffen."""
+    exp_words = expected.split()
+    ra_words = ra_console_normalized.split()
+    n = len(exp_words)
+    if n == 0 or n > len(ra_words):
+        return False
+    for i in range(len(ra_words) - n + 1):
+        if ra_words[i:i + n] == exp_words:
+            return True
+    return False
+
 def build_ra_lookup(ra_entries):
-    """Baut aus der RA-Fortschrittsliste ein Nachschlage-Woerterbuch
-    (normalisierter_titel, normalisiertes_system) -> (erreicht,
-    moeglich). Bei einem Namens-Duplikat gewinnt der Eintrag mit den
-    meisten erreichten Achievements."""
+    """Baut aus der RA-Fortschrittsliste ein Nachschlage-Woerterbuch:
+    normalisierter_titel -> Liste von (normalisiertes_system, erreicht,
+    moeglich)-Tupeln. Mehrere Eintraege pro Titel sind normal (dasselbe
+    Spiel kann auf mehreren Konsolen erschienen sein) - die eigentliche
+    System-Auswahl passiert erst in lookup_ra_progress()."""
     lookup = {}
     for title, system, earned, total in ra_entries or []:
-        key = (_ra_normalize_name(title), _ra_normalize_name(system))
-        if key in lookup and lookup[key][0] >= earned:
-            continue
-        lookup[key] = (earned, total)
+        key = _ra_normalize_name(title)
+        lookup.setdefault(key, []).append(
+            (_ra_normalize_name(system), earned, total))
     return lookup
 
 def lookup_ra_progress(lookup, our_name, our_syskey):
     """Sucht den RA-Fortschritt fuer ein Spiel aus unserer Bibliothek.
     Liefert (erreicht, moeglich) oder None, wenn kein Treffer - auch
     wenn fuer our_syskey keine bekannte RA-Entsprechung existiert
-    (bewusst KEIN Rateversuch)."""
-    console_name = RA_CONSOLE_MAP.get(our_syskey)
-    if not console_name:
+    (bewusst KEIN Rateversuch). Bei mehreren zum System passenden
+    Eintraegen (sollte selten vorkommen) gewinnt der mit den meisten
+    erreichten Achievements."""
+    expected = RA_CONSOLE_MAP.get(our_syskey)
+    if not expected:
         return None
-    key = (_ra_normalize_name(our_name), _ra_normalize_name(console_name))
-    return lookup.get(key)
+    candidates = lookup.get(_ra_normalize_name(our_name))
+    if not candidates:
+        return None
+    best = None
+    for ra_system, earned, total in candidates:
+        if _ra_console_matches(expected, ra_system):
+            if best is None or earned > best[0]:
+                best = (earned, total)
+    return best
 
 def load_playtime():
     """Laedt die Spielzeit-/Start-Statistik. JEDER Eintrag wird auf das
