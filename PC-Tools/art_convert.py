@@ -20,7 +20,7 @@ Aufruf-Beispiele (PowerShell):
   python art_convert.py --images "D:\\boxart\\SNES" --roms "D:\\roms\\SNES" ^
       --out "out\\art\\SNES" --profile hd
 
-Der Inhalt von out\\art\\ wird danach per WinSCP nach
+Der Inhalt von out\\art\\ wird danach ueber die Netzwerkfreigabe (oder SD-Karte am PC) nach
 /media/fat/frontend/art/ kopiert (Ordnername = Systemkey,
 z.B. art/SNES/, art/NES/, art/PSX/ ...).
 

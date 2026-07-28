@@ -123,8 +123,9 @@ Nachlesen (`CHANGELOG.md`).
 
 - Ein MiSTer FPGA mit aktueller Firmware (Python 3 ist immer schon
   drauf)
-- Netzwerkzugriff per SSH (`ssh root@<MiSTer-IP>`) und WinSCP (oder
-  ein anderer SFTP-Client) zum Kopieren der Dateien
+- Netzwerkzugriff per SSH (`ssh root@<MiSTer-IP>`). Zum Kopieren der
+  Dateien genügt die Netzwerkfreigabe des MiSTer (im Explorer/Finder)
+  oder die microSD-Karte am PC — ein SFTP-Client wird nicht benötigt
 - Für Hintergrundmusik: `mpg123` muss auf dem MiSTer vorhanden sein.
   Prüfen per SSH: `which mpg123` - kommt ein Pfad zurück (z.B.
   `/usr/bin/mpg123`), passt alles.
@@ -135,11 +136,12 @@ Nachlesen (`CHANGELOG.md`).
 ### Option A: Eine Datei, direkt aus dem MiSTer-Menü (am einfachsten)
 
 Kein SSH/Terminal nötig - nur eine einzige, kleine Datei einmalig
-per WinSCP kopieren:
+kopieren (über die Netzwerkfreigabe des MiSTer oder die SD-Karte am PC):
 
 1. [`Scripts/install_frontend.sh`](https://raw.githubusercontent.com/dragrem2k-coder/mister-frontend/main/Scripts/install_frontend.sh)
    herunterladen (Rechtsklick -> Speichern unter, bzw. Browser-Download).
-2. Die Datei per WinSCP nach `/media/fat/Scripts/` kopieren.
+2. Die Datei nach `/media/fat/Scripts/` kopieren (über die
+   Netzwerkfreigabe oder die SD-Karte am PC).
 3. Im MiSTer-OSD: **Scripts -> "install frontend"** antippen.
 
 Der Rest läuft von selbst - herunterladen, einrichten, Autostart. Am
@@ -168,8 +170,8 @@ ausführen, eigene Daten bleiben unangetastet.
 
 Falls der MiSTer keinen Internetzugang hat, eine bestimmte Version
 gewünscht ist, oder Option A/B an veralteten SSL-Zertifikaten scheitern:
-das komplette Paket per WinSCP auf den MiSTer kopieren, dann per SSH
-oder aus dem OSD unter Scripts:
+das komplette Paket auf den MiSTer kopieren (über die Netzwerkfreigabe
+oder die SD-Karte am PC), dann per SSH oder aus dem OSD unter Scripts:
 ```bash
 cd /media/fat/MiSTer_Frontend   # Ordner, in den du das Paket kopiert hast
 ./install_offline.sh
@@ -185,9 +187,10 @@ selbst ersetzte System-Logos und Einstellungen bleiben unangetastet,
 die bisherigen Programmdateien werden vorher automatisch gesichert
 (`frontend/backup_<Datum>/`).
 
-### Option D: Manuell per WinSCP
+### Option D: Manuell (ohne Installer)
 
-1. Auf dem MiSTer per WinSCP anlegen: `/media/fat/frontend/`
+1. Auf dem MiSTer den Ordner `/media/fat/frontend/` anlegen (über die
+   Netzwerkfreigabe oder die SD-Karte am PC)
 2. Alle Dateien aus dem Ordner `frontend/` dorthin kopieren.
 3. Alle Dateien aus dem Ordner `Scripts/` nach `/media/fat/Scripts/`
    kopieren.
@@ -330,8 +333,8 @@ in `fehlend_ARCADE.txt`.
 
 Alternative für den PC (`PC-Tools/boxart_fetch.py`, braucht
 `pip install Pillow`, ebenfalls mit parallelen Downloads): dieselbe
-Quelle vom Rechner aus abfragen und die fertigen `.art`-Dateien per
-WinSCP hochladen. Nützlich für eigene Bildquellen (z.B.
+Quelle vom Rechner aus abfragen und die fertigen `.art`-Dateien über
+die Netzwerkfreigabe (oder SD-Karte am PC) hochladen. Nützlich für eigene Bildquellen (z.B.
 emumovies.com) - dafür wandelt `PC-Tools/art_convert.py` beliebige
 PNG/JPGs ins `.art`-Format um:
 ```
@@ -616,7 +619,7 @@ kannst also für beide Modi unterschiedliche Videos/Bilder hinterlegen.
    rund 7x flüssiger und sieht auf einem 1080p-Fernseher immer noch
    scharf aus. Ist eine Quelle doch größer als der Bildschirm, wird
    sie automatisch (aber langsamer) heruntergerechnet.
-2. Die beiden Ordner per WinSCP nach
+2. Die beiden Ordner über die Netzwerkfreigabe (oder SD-Karte am PC) nach
    `/media/fat/frontend/bootanim_crt/` bzw.
    `/media/fat/frontend/bootanim_hdmi/` kopieren (Ordnernamen exakt
    so, mit Unterstrich-Suffix).
@@ -713,7 +716,7 @@ für Nicht-Techniker): `ANLEITUNG_fuer_Dennsen.md`. Technische Details:
   ```bash
   tail -50 /tmp/frontend.log
   ```
-- Niemals über die WinSCP-Kommandozeile lange Programme starten (die
+- Niemals über die eingebaute Konsole eines Datei-Transfer-Tools lange Programme starten (die
   Konsole meldet nach 15s "keine Daten mehr" und der Abbrechen-Knopf
   killt den Prozess) - immer eine echte SSH-Sitzung nutzen
   (`ssh root@<MiSTer-IP>`).

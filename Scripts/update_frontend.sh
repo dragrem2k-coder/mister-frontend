@@ -3,7 +3,7 @@
 # Frontend nach einem Datei-Update sauber neu starten
 #
 # Ablauf fuer ein Update:
-#   1. Neue Dateien (frontend.py usw.) per WinSCP nach
+#   1. Neue Dateien (frontend.py usw.) per Netzwerkfreigabe/SD-Karte nach
 #      /media/fat/frontend/ kopieren (alte ueberschreiben)
 #   2. DANACH dieses Skript ausfuehren - per SSH oder aus dem
 #      MiSTer-OSD (Hauptmenue -> Scripts -> update_frontend)

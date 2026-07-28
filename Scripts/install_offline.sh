@@ -14,8 +14,9 @@
 # bestimmte (z.B. getestete) Fassung installiert werden soll oder
 # wenn der Download an alten SSL-Zertifikaten scheitert.
 #
-# Aufruf: das Paket per WinSCP auf den MiSTer kopieren, dann
-# per SSH oder aus dem OSD unter "Scripts":
+# Aufruf: das Paket auf den MiSTer kopieren (ganz ohne Zusatzprogramm
+# - ueber die Netzwerkfreigabe des MiSTer im Explorer/Finder oder die
+# microSD-Karte am PC), dann per SSH oder aus dem OSD unter "Scripts":
 #
 #     ./install_offline.sh
 #
@@ -42,7 +43,28 @@ SCRIPTS_DIR="$MISTER_ROOT/Scripts"
 STARTUP="$MISTER_ROOT/linux/user-startup.sh"
 LOCKFILE="/tmp/frontend.lock"
 
-SRC="$(cd "$(dirname "$0")" && pwd)"
+SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Ein PAKET-Ordner enthaelt sowohl frontend/frontend.py als auch dieses
+# install_offline.sh daneben. Daran laesst es sich zuverlaessig vom
+# bereits INSTALLIERTEN Frontend unterscheiden (/media/fat/frontend hat
+# kein install_offline.sh daneben liegen).
+_is_pkg() { [ -f "$1/frontend/frontend.py" ] && [ -f "$1/install_offline.sh" ]; }
+
+# Quellpaket robust finden - egal ob dieses Skript aus dem Paketordner
+# selbst, aus dessen Scripts/-Unterordner oder als Kopie in
+# /media/fat/Scripts/ (OSD) gestartet wurde:
+_find_src() {
+    local d
+    for d in "$SELF_DIR" "$SELF_DIR/.." \
+             "$MISTER_ROOT"/MiSTer_Frontend* \
+             "$MISTER_ROOT"/mister-frontend* \
+             "$MISTER_ROOT"/*[Ff]rontend*; do
+        if _is_pkg "$d"; then (cd "$d" && pwd); return 0; fi
+    done
+    return 1
+}
+SRC="$(_find_src)" || SRC=""
 
 WANT_AUTOSTART=1
 WANT_STREAM=0
@@ -73,10 +95,13 @@ say " MiSTer Custom Frontend - Installation"
 say " (offline, aus diesem Paket)"
 say "============================================"
 
-if [ ! -f "$SRC/frontend/frontend.py" ]; then
-    echo "FEHLER: '$SRC/frontend/frontend.py' nicht gefunden."
-    echo "Dieses Skript muss im entpackten Paket liegen - also neben"
-    echo "den Ordnern 'frontend/' und 'Scripts/'."
+if [ -z "$SRC" ]; then
+    echo "FEHLER: Das Frontend-Paket wurde nicht gefunden (gesucht wird ein"
+    echo "Ordner mit 'frontend/frontend.py' UND 'install_offline.sh' darin)."
+    echo
+    echo "Bitte den ENTPACKTEN Paketordner als Ganzes auf die SD-Karte"
+    echo "kopieren - z.B. nach /media/fat/MiSTer_Frontend/ - und dieses"
+    echo "Skript daraus starten (per SSH oder aus dem OSD unter Scripts)."
     exit 1
 fi
 

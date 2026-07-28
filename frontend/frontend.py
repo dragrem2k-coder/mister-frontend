@@ -1,9 +1,65 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.88
+MiSTer Custom Frontend - v1.90
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.90 (Deutlich detaillierteres Start-Logging):
+  - Ziel: Soft-Reboot startet das Frontend bisher nicht zuverlaessig
+    (Kaltstart funktioniert), Ursache noch nicht gefunden - der
+    Boot-Wrapper (frontend_boot.sh o.ae.) liegt noch nicht vor. Um
+    trotzdem gezielt eingrenzen zu koennen, WO es haengt/abbricht,
+    ist die komplette Startsequenz jetzt lueckenlos protokolliert:
+      * Framebuffer.__init__: Geometrie lesen, Geraet oeffnen, mmap -
+        jeder Schritt einzeln, inkl. gelesener Aufloesung/bpp/stride.
+      * InputManager.__init__/rescan: Anzahl gefundener Geraete in
+        /proc/bus/input/devices VOR dem Verarbeiten, nicht erst danach.
+      * Frontend.__init__: jeder Initialisierungsschritt einzeln
+        (Framebuffer, InputManager, enter_console_mode, grab,
+        MusicPlayer, build_categories) mit Vorher/Nachher-Meldung.
+      * _wait_for_usb_stable(): protokolliert jetzt JEDE einzelne
+        Abfrage (Zeitstempel, Eintragszahl pro Pfad, stable_streak),
+        nicht mehr nur das Endergebnis - genau hier lag der
+        wahrscheinlichste Verdacht (USB-Mount-Timing unterscheidet
+        sich zwischen Kalt- und Soft-Reboot).
+      * scan_games(): loggt jetzt Start, Signatur-Groesse, ob USB
+        erwartet wird, und explizit WARUM ein Cache-Vergleich
+        fehlschlaegt (nicht lesbar vs. Signatur-Mismatch).
+  - Mit gezielten Tests verifiziert: _wait_for_usb_stable() zeigt bei
+    einer simulierten, verzoegert befuellten Platte jede einzelne
+    Abfrage einzeln im Log (Sprung von 0 auf 5 Eintraegen sichtbar,
+    inkl. Zeitstempel) statt nur des Endresultats.
+  - Naechster Schritt bleibt: Inhalt von frontend_boot.sh/
+    user-startup.sh noch offen - ohne den lassen sich reine
+    Boot-Reihenfolge-Probleme (wann/ob das Skript nach einem Soft-
+    Reboot ueberhaupt gestartet wird) nicht abschliessend ausschliessen.
+
+Neu in v1.89 (Sichtbares Start-Logging):
+  - Nutzer-Rueckmeldung: Programm gestartet, aber "es passiert gar
+    nichts" - landet sofort wieder auf der Kommandozeile, ohne jede
+    sichtbare Meldung.
+  - Ursache: acquire_single_instance() schrieb den Abbruchgrund
+    bisher NUR in die Log-Datei (LOG()), nicht auf die Konsole. Laeuft
+    bereits eine LEBENDE Instanz (z.B. durch Autostart beim Booten),
+    beendet sich das Programm dadurch komplett lautlos per
+    "sys.exit(0)" - sieht exakt wie ein lautloser Absturz/Nichtstun
+    aus, ist aber die bestehende, korrekte Schutzfunktion gegen zwei
+    gleichzeitig um Framebuffer/Eingaben konkurrierende Instanzen.
+  - Fix: __main__ gibt jetzt bei jeder Startphase eine sichtbare
+    Konsolenmeldung aus (NTP-Sync, Sound-Dateien, Instanz-Pruefung,
+    Frontend-Start). Blockiert eine andere Instanz den Start, wird
+    jetzt DIREKT auf der Konsole die PID dieser Instanz UND ein
+    fertiger Befehl zum Beenden angezeigt ("kill <PID> ; rm -f
+    /tmp/frontend.lock"), statt nur einen stillen Eintrag in die
+    Log-Datei zu schreiben. NTP-Sync und Sound-Datei-Erzeugung sind
+    jetzt zusaetzlich einzeln try/except-abgesichert mit eigener
+    Warnmeldung, falls dort mal etwas schiefgeht (beides unkritisch,
+    Start laeuft trotzdem weiter).
+  - Mit zwei Testlaeufen verifiziert: normaler Start zeigt jetzt
+    Fortschrittsmeldungen bis zum Framebuffer-Zugriff; ein Lauf mit
+    kuenstlich blockierender Lock-Datei zeigt sofort die erwartete,
+    klare Diagnosemeldung inkl. PID und Kill-Befehl.
 
 Neu in v1.88 (BUGFIX: RA-Core-Auswahl startete immer den normalen
 Core statt des gewaehlten RA-Cores):
@@ -2542,9 +2598,16 @@ ROWCACHE_MAX_ENTRIES = 150  # siehe Framebuffer.rect()/clear() - verhindert
 
 class Framebuffer:
     def __init__(self):
+        LOG("Framebuffer: lese Geometrie (/sys/class/graphics/fb0/...) ...")
         self._read_geometry()
+        LOG("Framebuffer: Geometrie %dx%d, %dbpp, stride=%d"
+            % (self.width, self.height, self.bpp, self.stride))
+        LOG("Framebuffer: oeffne %s ..." % FBDEV)
         self.fd = os.open(FBDEV, os.O_RDWR)
+        LOG("Framebuffer: %s offen (fd=%d), mmap (%d Bytes) ..."
+            % (FBDEV, self.fd, self.size))
         self._map()
+        LOG("Framebuffer: mmap erfolgreich, Initialisierung fertig")
         self._rowcache = {}
         self._rectcache = {}   # eigener Cache fuer rect() (siehe dort) -
                                 # getrennt von _rowcache, damit dessen
@@ -2908,7 +2971,8 @@ def scan_devices():
     devs = []
     try:
         blocks = open("/proc/bus/input/devices").read().split("\n\n")
-    except OSError:
+    except OSError as e:
+        LOG("scan_devices: /proc/bus/input/devices nicht lesbar: %s" % e)
         return devs
     for b in blocks:
         if "event" not in b or "MiSTer virtual" in b:
@@ -2925,16 +2989,21 @@ class InputManager:
     RESCAN_EVERY = 3.0            # Sekunden - fuer Hotplug neuer Pads
 
     def __init__(self):
+        LOG("InputManager: initialisiere, erster Geraete-Scan ...")
         self.devices = {}
         self.want_grab = False
         self.last_scan = 0.0
         self.held = None          # (key_id, aktion, naechste_zeit, intervall)
         self.rescan()
+        LOG("InputManager: bereit, %d Geraet(e) aktiv" % len(self.devices))
 
     def rescan(self):
         self.last_scan = time.monotonic()
         seen = set()
-        for path, name, is_kbd in scan_devices():
+        found = scan_devices()
+        LOG("InputManager.rescan: %d Geraet(e) in /proc/bus/input/devices gefunden"
+            % len(found))
+        for path, name, is_kbd in found:
             seen.add(path)
             if path not in self.devices:
                 try:
@@ -3354,7 +3423,7 @@ class InputManager:
 # ----------------------------------------------------------------------------
 
 class ArtCache:
-    LIMIT = 40                       # max. Bilder im Speicher halten
+    LIMIT = 90                       # max. Bilder im Speicher halten
 
     def __init__(self):
         self.cache = {}              # pfad -> (w, h, pixelbytes) oder None
@@ -3401,7 +3470,7 @@ class ArtCache:
             self.cache.pop(old, None)
         return art
 
-    SCALED_LIMIT = 10
+    SCALED_LIMIT = 48
 
     def _scaled_cache_put(self, key, result):
         if not hasattr(self, "scaled"):
@@ -3539,8 +3608,38 @@ class BgCache:
 
 BG = BgCache()
 
+_art_index_cache = {}   # syskey -> {Name ohne 'NNN '-Prefix: Dateiname}
+
+def _art_index(syskey):
+    """Index fuer art/<System>: Name OHNE fuehrende 'NNN '-Nummer ->
+    tatsaechlicher Dateiname. Ermoeglicht Cover aus nummerierten
+    (kuratierten) Sets wie '007 Super Mario Kart (USA).art', obwohl das
+    Spiel intern nur 'Super Mario Kart (USA)' heisst. Pro System gecacht."""
+    idx = _art_index_cache.get(syskey)
+    if idx is None:
+        idx = {}
+        try:
+            for fn in os.listdir(os.path.join(ART_BASE, syskey)):
+                if not fn.endswith(".art"):
+                    continue
+                base = fn[:-4]
+                stripped = re.sub(r"^\d+\s+", "", base)
+                if stripped != base and stripped not in idx:
+                    idx[stripped] = fn
+        except OSError:
+            pass
+        _art_index_cache[syskey] = idx
+    return idx
+
+
 def art_path(syskey, rom_basename):
-    return os.path.join(ART_BASE, syskey, rom_basename + ".art")
+    exact = os.path.join(ART_BASE, syskey, rom_basename + ".art")
+    if os.path.exists(exact):
+        return exact
+    fn = _art_index(syskey).get(rom_basename)
+    if fn:
+        return os.path.join(ART_BASE, syskey, fn)
+    return exact
 
 _meta_cache = {}
 _mra_cache = {}
@@ -3853,26 +3952,38 @@ def _wait_for_usb_stable(max_wait=10.0, poll=0.5, min_wait_if_none=3.0):
     fehlen dessen Spiele im Ergebnis."""
     usb_candidates = [b for b in GAMES_BASES if "/media/usb" in b]
     if not usb_candidates:
+        LOG("_wait_for_usb_stable: keine USB-Pfade in GAMES_BASES konfiguriert, ueberspringe")
         return None
+    LOG("_wait_for_usb_stable: pruefe %d USB-Kandidat(en): %s"
+        % (len(usb_candidates), usb_candidates))
 
     def snapshot():
         found = False
         total = 0
+        per_path = []
         for b in usb_candidates:
             if os.path.isdir(b):
                 found = True
                 try:
-                    total += len(os.listdir(b))
-                except OSError:
-                    pass
-        return found, total
+                    n = len(os.listdir(b))
+                    total += n
+                    per_path.append("%s=%d" % (b, n))
+                except OSError as e:
+                    per_path.append("%s=Fehler(%s)" % (b, e))
+            else:
+                per_path.append("%s=fehlt" % b)
+        return found, total, per_path
 
     t0 = time.monotonic()
     last_total = None
     stable_streak = 0
+    poll_nr = 0
     while True:
         elapsed = time.monotonic() - t0
-        found, total = snapshot()
+        found, total, per_path = snapshot()
+        poll_nr += 1
+        LOG("_wait_for_usb_stable: Abfrage #%d (%.1fs): %s (stable_streak=%d)"
+            % (poll_nr, elapsed, ", ".join(per_path), stable_streak))
         if elapsed >= max_wait:
             LOG("_wait_for_usb_stable: Zeitlimit (%.1fs) erreicht, fahre trotzdem fort"
                % max_wait)
@@ -3907,6 +4018,8 @@ def _wait_for_usb_stable(max_wait=10.0, poll=0.5, min_wait_if_none=3.0):
         else:
             stable_streak = 0
         if not found and elapsed >= min_wait_if_none:
+            LOG("_wait_for_usb_stable: kein USB-Mountpunkt nach %.1fs gefunden - "
+                "gehe von Setup ohne USB aus" % elapsed)
             return None
         last_total = total
         time.sleep(poll)
@@ -3917,7 +4030,10 @@ def scan_games(force=False, progress_cb=None):
     von der Platte aufgerufen (nicht beim schnellen Cache-Treffer) -
     normale Boots (Cache passt) bleiben also unveraendert schnell,
     nur der seltene "erster Start"/"ROMs geaendert"-Fall zeigt Fortschritt."""
+    LOG("scan_games: Start (force=%s)" % force)
     sig = _games_signature()
+    LOG("scan_games: aktuelle Signatur hat %d Eintraege, erwartet USB=%s"
+        % (len(sig), _sig_expects_usb(sig)))
     cached_sig = None
     data = None
     if not force:
@@ -3929,7 +4045,11 @@ def scan_games(force=False, progress_cb=None):
                 LOG("Spieleliste aus Cache (%d Systeme)"
                     % len(data["cats"]))
                 return _cats_from_json(data["cats"])
-        except (OSError, ValueError, KeyError, IndexError, TypeError):
+            LOG("scan_games: Cache-Signatur passt NICHT (Cache: %d Eintraege, "
+                "erwartet USB=%s) - weiter pruefen"
+                % (len(cached_sig), _sig_expects_usb(cached_sig)))
+        except (OSError, ValueError, KeyError, IndexError, TypeError) as e:
+            LOG("scan_games: Cache nicht lesbar/gueltig (%s) - Neuscan noetig" % e)
             cached_sig = None
             data = None
 
@@ -4927,7 +5047,9 @@ class Frontend:
     """
 
     def __init__(self):
+        LOG("Frontend.__init__: erstelle Framebuffer ...")
         self.fb = Framebuffer()
+        LOG("Frontend.__init__: erstelle InputManager ...")
         self.inp = InputManager()
         # WICHTIG: Erst auf unseren eigenen Bildschirm umschalten (F9),
         # DANACH erst den (potenziell langsamen) Scan starten - vorher
@@ -4941,13 +5063,21 @@ class Frontend:
         # unsichtbar. Jetzt sieht man sofort unseren Bildschirm samt
         # Lade-Fortschrittsbalken (siehe _draw_scan_progress()), auch
         # wenn der Scan mal laenger dauert.
+        LOG("Frontend.__init__: enter_console_mode() (F9-Injektion) ...")
         self.enter_console_mode()
+        LOG("Frontend.__init__: enter_console_mode() zurueck")
         self.set_cursor_blink(False)
+        LOG("Frontend.__init__: grab(True) ...")
         self.inp.grab(True)
+        LOG("Frontend.__init__: grab(True) zurueck, zeichne ersten Bildschirm")
         self.fb.clear((16, 18, 24))
         self.fb.flip()
+        LOG("Frontend.__init__: erstelle MusicPlayer ...")
         self.music = MusicPlayer()
+        LOG("Frontend.__init__: MusicPlayer bereit, starte build_categories() ...")
         self.build_categories()
+        LOG("Frontend.__init__: build_categories() fertig, %d Kategorien"
+            % len(getattr(self, "cats", [])))
         self.page = 0              # 0 = Kategorien-Menue, 1 = Kategorie-Ansicht
         self.cat_i = 0
         self.cat_scroll = 0
@@ -6611,6 +6741,10 @@ class Frontend:
             self.back_to_frontend()
             return
         play_start = time.monotonic()
+        # Overlay: laufenden Titel anzeigen (Hauptschleife ist waehrend
+        # des Spiels blockiert und aktualisiert sonst nicht).
+        self._stream_sig = None
+        self._publish_stream()
         while current_core() != "MENU":
             res = self.inp.wait_game_exit()
             if res in ("combo", "f10", "hid_combo"):
@@ -6627,6 +6761,9 @@ class Frontend:
         time.sleep(1.0)
         self.music.resume_after_core()
         self.back_to_frontend()
+        # Overlay wieder auf den Menue-Stand auffrischen.
+        self._stream_sig = None
+        self._publish_stream()
 
     def run_script(self, path):
         """Script auf der Konsole (tty1) laufen lassen, danach zurueck."""
@@ -7472,21 +7609,58 @@ except (AttributeError, ValueError, OSError):
     pass   # SIGHUP nicht verfuegbar (z.B. andere Plattform) - kein Problem
 
 if __name__ == "__main__":
+    print("Frontend-Start: initialisiere ...")
+
     # Systemuhr per NTP synchronisieren, BEVOR ueberhaupt der erste
     # Log-Eintrag geschrieben wird - MiSTer hat keine batteriegepufferte
     # Echtzeituhr, ohne das wuerden alle folgenden Zeitstempel (Log,
     # Uhrzeit im Hauptmenue) zunaechst falsch sein (siehe v1.70).
     # Zeitlich begrenzt (siehe sync_system_clock_from_ntp()) - blockiert
     # den Start dadurch nie unkontrolliert lange.
-    sync_system_clock_from_ntp()
+    try:
+        sync_system_clock_from_ntp()
+    except Exception:
+        print("WARNUNG: NTP-Zeitsync ist fehlgeschlagen (nicht kritisch):")
+        traceback.print_exc()
+
     LOG("==== Frontend-Start ====")
-    _ensure_sfx_files()   # Sound-WAVs einmalig erzeugen, falls noch nicht vorhanden
+    print("Log-Datei: %s (dort stehen alle weiteren Details)" % LOGFILE)
+
+    try:
+        _ensure_sfx_files()   # Sound-WAVs einmalig erzeugen, falls noch nicht vorhanden
+    except Exception:
+        print("WARNUNG: Sound-Dateien konnten nicht erzeugt werden (nicht kritisch):")
+        traceback.print_exc()
+
     if not acquire_single_instance():
+        # Haeufigster Grund fuer "Programm startet, aber es passiert
+        # rein gar nichts": es laeuft schon eine Instanz (z.B. durch
+        # Autostart beim Booten). acquire_single_instance() hat das
+        # bereits in die Log-Datei geschrieben, aber OHNE sichtbare
+        # Konsolenausgabe wirkt das wie ein lautloser Absturz. Hier
+        # daher zusaetzlich direkt auf der Konsole ausgeben, inklusive
+        # eines fertigen Befehls zum Beenden der alten Instanz.
+        try:
+            with open(LOCKFILE) as f:
+                old_pid = f.read().strip()
+        except OSError:
+            old_pid = "?"
+        print("")
+        print("Abbruch: Es laeuft bereits eine Instanz des Frontends (PID %s)." % old_pid)
+        print("Das ist wahrscheinlich der Grund, warum 'nichts passiert' -")
+        print("das Frontend laeuft schon (z.B. per Autostart beim Booten)")
+        print("und blockiert auf dem Framebuffer/den Eingabegeraeten.")
+        print("Falls das NICHT stimmen sollte (verwaiste Lock-Datei):")
+        print("  kill %s ; rm -f %s" % (old_pid, LOCKFILE))
         sys.exit(0)
+
+    print("Keine andere Instanz aktiv - starte Framebuffer/Eingaben ...")
     try:
         Frontend().run()
     except Exception:
         LOG("CRASH:\n" + traceback.format_exc())
+        print("")
+        print("ABSTURZ - Details siehe oben und in %s" % LOGFILE)
         raise
     finally:
         release_single_instance()

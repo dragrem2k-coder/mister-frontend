@@ -142,10 +142,15 @@ function save(){
 }
 
 F.forEach(id=>{
-  $(id).addEventListener("input",()=>{
+  const h = ()=>{
     if(id==="scale") $("scaleval").textContent=$("scale").value+"%";
     save();
-  });
+  };
+  // 'input' fuer Text/Farbe/Regler, 'change' fuer Checkboxen und das
+  // Auswahlfeld (die feuern nicht zuverlaessig 'input') - sonst liessen
+  // sich die Schalter zwar umlegen, wurden aber nie gespeichert.
+  $(id).addEventListener("input", h);
+  $(id).addEventListener("change", h);
 });
 
 $("obsurl").textContent = location.origin + "/";

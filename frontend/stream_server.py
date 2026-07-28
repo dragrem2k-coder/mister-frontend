@@ -26,6 +26,7 @@
 import json
 import os
 import queue
+import re
 import struct
 import threading
 import time
@@ -57,6 +58,7 @@ class StreamServer:
     def __init__(self, art_base, port=8080, host="0.0.0.0",
                  config_path=None, log=lambda *_: None):
         self.art_base = art_base
+        self._art_idx_cache = {}
         self.port = port
         self.host = host
         self.config_path = config_path
@@ -146,8 +148,32 @@ class StreamServer:
                     pass
 
     # -- .art -> PNG ------------------------------------------------------
+    def _art_dir_index(self, syskey):
+        """Wie im Frontend: Name ohne 'NNN '-Prefix -> Dateiname, damit
+        Cover aus nummerierten Sets gefunden werden. Pro System gecacht."""
+        idx = self._art_idx_cache.get(syskey)
+        if idx is None:
+            idx = {}
+            try:
+                for fn in os.listdir(os.path.join(self.art_base, syskey)):
+                    if not fn.endswith(".art"):
+                        continue
+                    base = fn[:-4]
+                    stripped = re.sub(r"^\d+\s+", "", base)
+                    if stripped != base and stripped not in idx:
+                        idx[stripped] = fn
+            except OSError:
+                pass
+            self._art_idx_cache[syskey] = idx
+        return idx
+
     def _art_png(self, syskey, name):
         path = os.path.join(self.art_base, syskey, name + ".art")
+        if not os.path.exists(path):
+            # Fallback: Cover aus einem nummerierten Set tolerant finden.
+            fn = self._art_dir_index(syskey).get(name)
+            if fn:
+                path = os.path.join(self.art_base, syskey, fn)
         try:
             with open(path, "rb") as f:
                 if f.read(4) != b"ART1":

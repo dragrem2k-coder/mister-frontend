@@ -24,7 +24,7 @@ stabil-leere USB-Situation korrekt als unbedenklich.
 
 ## Installation vereinfacht
 Neues Skript `Scripts/install_frontend.sh` - eine einzige Datei
-einmalig per WinSCP kopieren, danach reicht im MiSTer-Menü selbst
+einmalig kopieren (Netzwerkfreigabe/SD-Karte), danach reicht im MiSTer-Menü selbst
 "Scripts -> install frontend" antippen. Kein SSH/Terminal mehr nötig
 für die Erstinstallation oder ein Update.
 

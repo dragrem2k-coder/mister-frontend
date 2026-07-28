@@ -54,23 +54,24 @@ Schritt 3.
 
 ### 3. Installation — ohne Internetzugang
 
-Falls dein MiSTer keinen Internetzugang hat:
+Falls dein MiSTer keinen Internetzugang hat (oder du eine bestimmte,
+getestete Fassung installieren willst):
 
 1. Lade dir den kompletten Build als ZIP herunter (von GitHub oder von
-   Dragrem direkt)
-2. Öffne [WinSCP](https://winscp.net/), verbinde dich mit derselben
-   Adresse/Passwort wie oben
-   - **Erste Verbindung:** *"Continue connecting and add host key to
-     cache?"* → **Ja**
-3. Lege auf dem MiSTer den Ordner `/media/fat/frontend/` an
-4. Kopiere den kompletten Inhalt von `frontend/` dort hinein
-5. Kopiere den kompletten Inhalt von `Scripts/` nach
-   `/media/fat/Scripts/`
-6. Zurück in der SSH-Sitzung, Autostart einrichten:
+   Dragrem direkt) und entpacke ihn auf dem PC.
+2. Kopiere den **kompletten entpackten Ordner** auf den MiSTer — ganz
+   ohne Zusatzprogramm: über die Netzwerkfreigabe des MiSTer (im
+   Windows-Explorer `\\<MiSTer-IP>\` öffnen, am Mac `smb://<MiSTer-IP>/`)
+   oder die microSD-Karte direkt am PC. Zum Beispiel nach
+   `/media/fat/MiSTer_Frontend/`.
+3. Den Offline-Installer ausführen — er legt die Ordner an, kopiert
+   alles an die richtige Stelle und richtet den Autostart selbst ein.
+   Per SSH aus dem kopierten Paket heraus:
    ```
-   chmod +x /media/fat/frontend/frontend_boot.sh
-   echo '/media/fat/frontend/frontend_boot.sh &' >> /media/fat/linux/user-startup.sh
+   cd /media/fat/MiSTer_Frontend
+   bash install_offline.sh
    ```
+   Kein Anlegen von Ordnern, kein WinSCP.
 
 ### 4. Erster Start
 
@@ -135,8 +136,8 @@ Datenbank-Treffer gibt.
 
 ### 8. Musik hinzufügen
 
-MP3-Dateien einfach nach `/media/fat/music/` kopieren (per WinSCP),
-Frontend neu starten — Wiedergabe beginnt automatisch, zufällig
+MP3-Dateien einfach nach `/media/fat/music/` kopieren (über die
+Netzwerkfreigabe oder die SD-Karte am PC), Frontend neu starten — Wiedergabe beginnt automatisch, zufällig
 gemischt.
 
 ### 9. Später aktualisieren
@@ -213,7 +214,8 @@ und Frontend neu starten.
    → Steht die genaue Ursache direkt im Skript-Output. Meist ein
    Zertifikatsproblem (wird automatisch ein zweites Mal ohne
    Zertifikatsprüfung versucht) oder fehlender Internetzugang — dann
-   Weg über Teil 1, Schritt 3 (WinSCP) nutzen.
+   den Offline-Weg aus Abschnitt 3 nutzen (Paket kopieren,
+   `install_offline.sh`).
 
 4. **Keine Boxart/Musik sichtbar.**
    → Boxart: Schritt 6 einmal laufen lassen. Musik: liegt was in
