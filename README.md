@@ -1,4 +1,4 @@
-# MiSTer Custom Frontend v1.91 - Komplettbuild (Stand: 2026-07-28)
+# MiSTer Custom Frontend v1.92 - Komplettbuild (Stand: 2026-07-28)
 
 **Von Dragrem2K**, mit tatkräftiger Unterstützung von **TheRealSuTefan**
 beim Testen und Gegenchecken.
@@ -97,7 +97,7 @@ Nachlesen (`CHANGELOG.md`).
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.91) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.92) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (läuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (läuft auf dem MiSTer) |
@@ -497,6 +497,14 @@ aktuelle Uhrzeit deshalb selbst per Internet (SNTP), gleich am Anfang
 - vorausgesetzt, ein Netzwerk ist vorhanden. Ohne Netzwerk wird gar
 nichts versucht, mit Netzwerk aber ohne Antwort vom Zeitserver bricht
 der Versuch nach kurzer Zeit von selbst ab.
+
+**Zeitzone:** Der Zeitserver liefert grundsätzlich UTC - da MiSTer
+keine eigene Zeitzonen-Datenbank hat, muss der Versatz zur eigenen
+Ortszeit einmalig manuell eingestellt werden. Im System-Menü:
+"Zeitzone: UTC±X -> nächste" schaltet in 0,5-Stunden-Schritten durch
+(z.B. UTC+2 für deutsche Sommerzeit, UTC+1 für Winterzeit). Nach dem
+Umschalten wird die Uhr sofort neu synchronisiert, kein Neustart nötig
+(vorausgesetzt, gerade Netzwerk vorhanden). Ohne Einstellung: UTC.
 
 ## 8g. Themes/Farbschemata
 

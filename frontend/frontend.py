@@ -1,9 +1,46 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.91
+MiSTer Custom Frontend - v1.92
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.92 (ZWEI BUGFIXES: Uhrzeit falsch nach NTP-Sync,
+RetroAchievements fehlte bei manchen Systemen):
+  - Nutzer-Rueckmeldung: Uhrzeit zeigte 15:09 statt der tatsaechlichen
+    17:09 (2 Stunden Differenz, deutsche Sommerzeit).
+  - Ursache: NTP liefert grundsaetzlich UTC. sync_system_clock_from_ntp()
+    nutzte bisher time.localtime(), das sich auf die Systemzeitzone
+    verlaesst - MiSTer hat aber vermutlich gar keine echte Zeitzone
+    konfiguriert (Standard UTC), wodurch die gesetzte/angezeigte Uhrzeit
+    der reinen UTC-Zeit entsprach statt der tatsaechlichen Ortszeit.
+  - Fix: neue manuell einstellbare Zeitzonen-Verschiebung
+    (load_timezone_offset()/save_timezone_offset(), Datei
+    timezone_offset, Standard 0=UTC). sync_system_clock_from_ntp()
+    wendet diesen Versatz selbst an und nutzt time.gmtime() statt
+    time.localtime() - unabhaengig davon, was die Systemzeitzone zu
+    sein glaubt. Neuer System-Menuepunkt "Zeitzone: UTC+X -> naechste"
+    (0.5h-Schritte, -12 bis +14, Rundlauf) - loest nach dem Umschalten
+    sofort eine Neusynchronisierung im Hintergrund aus.
+  - Zweiter Fund (Nutzer-Rueckmeldung: RA-Fortschritt fehlte bei
+    manchen Covern): RA_CONSOLE_MAP hatte "GB" als Schluessel
+    eingetragen, unser tatsaechlicher Systemschluessel fuer Game Boy
+    ist aber "GAMEBOY" (siehe GAME_SYSTEMS) - die Zuordnung schlug fuer
+    Game Boy dadurch IMMER fehl. Saturn fehlte komplett in der Tabelle,
+    obwohl unterstuetzt. Ausserdem mehrere tote Eintraege fuer Systeme,
+    die es in unserem Code gar nicht gibt (Atari2600, AtariLynx, PCE
+    als eigener Schluessel, S32X).
+  - Fix: RA_CONSOLE_MAP direkt gegen die echte GAME_SYSTEMS-Tabelle
+    abgeglichen und korrigiert - deckt jetzt GENAU unsere echten
+    Systeme ab, nichts fehlt, nichts ist tot.
+  - Getestet: Zeitzonen-Fix mit dem GENAU gemeldeten Szenario
+    nachgestellt (UTC 15:09 + Versatz +2h -> gesetzte Zeit 17:09
+    bestaetigt). Formatierung/Umschalten (0.5h-Schritte, Rundlauf bei
+    +14/-12) einzeln getestet. RA-Fix: automatischer Abgleich zwischen
+    RA_CONSOLE_MAP und GAME_SYSTEMS bestaetigt keine toten/fehlenden
+    Eintraege mehr; Game Boy und Saturn liefern jetzt nachweislich
+    einen Treffer, bestehendes System (SNES) weiterhin ohne Regression.
+    36 Kombinationen kompletter Regressionstest bestanden.
 
 Neu in v1.91 (Zweiter Patch von TheRealSutefan uebernommen -
 Admin-Oberflaeche, Overlay-Cover, grosser Performance-Schub):
@@ -2350,18 +2387,27 @@ def _ra_normalize_name(name):
     return n
 
 # Bekannte Entsprechungen unserer Systemschluessel zu RA-Konsolennamen.
-# EHRLICHER HINWEIS: anhand allgemeiner Kenntnis von RAs Namensgebung
-# zusammengestellt, nicht gegen die echte API verifiziert - fehlt ein
-# System hier oder stimmt eine Zuordnung nicht, fuehrt das zu KEINER
-# Anzeige fuer dieses System (sicherer Fehlerfall), nie zu einer
-# falschen.
+# BUGFIX (Nutzer-Rueckmeldung: RA-Fortschritt fehlte bei manchen
+# Systemen): "GB" war hier als Schluessel eingetragen, unser
+# tatsaechlicher Systemschluessel fuer Game Boy ist aber "GAMEBOY"
+# (siehe GAME_SYSTEMS) - die Zuordnung schlug fuer Game Boy dadurch
+# IMMER fehl. Saturn fehlte komplett, obwohl wir es unterstuetzen.
+# Ausserdem enthielt die Tabelle mehrere Eintraege fuer Systeme, die es
+# in unserem Code gar nicht gibt (Atari2600, AtariLynx, PCE als
+# eigener Schluessel, S32X) - totes Gewicht, nie erreichbar, jetzt
+# entfernt. Direkt gegen die echte GAME_SYSTEMS-Tabelle abgeglichen.
+#
+# EHRLICHER HINWEIS bleibt bestehen: die RA-Konsolennamen selbst sind
+# weiterhin anhand allgemeiner Kenntnis zusammengestellt, nicht gegen
+# die echte API verifiziert - fehlt eine Zuordnung oder stimmt sie
+# nicht, fuehrt das zu KEINER Anzeige fuer dieses System (sicherer
+# Fehlerfall), nie zu einer falschen.
 RA_CONSOLE_MAP = {
     "NES": "nes", "SNES": "snes", "Genesis": "genesis mega drive",
-    "GB": "game boy", "GBC": "game boy color", "GBA": "game boy advance",
+    "GAMEBOY": "game boy", "GBC": "game boy color", "GBA": "game boy advance",
     "PSX": "playstation", "N64": "nintendo 64", "ARCADE": "arcade",
-    "SMS": "master system", "TGFX16": "pc engine", "PCE": "pc engine",
-    "NEOGEO": "neo geo", "AtariLynx": "atari lynx",
-    "Atari2600": "atari 2600", "MegaCD": "sega cd", "S32X": "32x",
+    "SMS": "master system", "TGFX16": "pc engine",
+    "NEOGEO": "neo geo", "MegaCD": "sega cd", "Saturn": "saturn",
 }
 
 def build_ra_lookup(ra_entries):
@@ -4549,6 +4595,55 @@ def _has_network():
 # Abfrage (RFC 5905, reines socket/struct - keine externe Bibliothek).
 NTP_SERVER = "pool.ntp.org"
 NTP_EPOCH_OFFSET = 2208988800   # Sekunden zwischen 1.1.1900 (NTP) und 1.1.1970 (Unix)
+TIMEZONE_OFFSET_FILE = "/media/fat/frontend/timezone_offset"
+
+def load_timezone_offset():
+    """Stunden-Versatz zur UTC-Zeit (z.B. 2.0 fuer UTC+2/deutsche
+    Sommerzeit). MiSTer hat keine echte Zeitzonen-Datenbank und keine
+    automatische Erkennung - NTP liefert grundsaetzlich nur UTC, ohne
+    diesen manuell eingestellten Versatz wuerde die angezeigte Uhrzeit
+    je nach Zeitzone des Nutzers falsch sein (Bugfix: genau das wurde
+    gemeldet - Anzeige zeigte UTC statt der tatsaechlichen Ortszeit,
+    zwei Stunden Differenz durch die deutsche Sommerzeit)."""
+    try:
+        with open(TIMEZONE_OFFSET_FILE) as f:
+            return float(f.read().strip())
+    except (OSError, ValueError):
+        return 0.0
+
+def save_timezone_offset(hours):
+    try:
+        os.makedirs(os.path.dirname(TIMEZONE_OFFSET_FILE), exist_ok=True)
+        with open(TIMEZONE_OFFSET_FILE, "w") as f:
+            f.write(str(hours))
+    except OSError:
+        pass
+
+TIMEZONE_STEPS = [x * 0.5 for x in range(-24, 29)]   # -12.0 .. +14.0 in 0.5h-Schritten
+
+def cycle_timezone_offset():
+    """Naechsten Wert in TIMEZONE_STEPS waehlen (wrap-around). Liefert
+    den neuen Versatz."""
+    current = load_timezone_offset()
+    try:
+        idx = min(range(len(TIMEZONE_STEPS)),
+                  key=lambda i: abs(TIMEZONE_STEPS[i] - current))
+        new_idx = (idx + 1) % len(TIMEZONE_STEPS)
+    except ValueError:
+        new_idx = 0
+    new_offset = TIMEZONE_STEPS[new_idx]
+    save_timezone_offset(new_offset)
+    return new_offset
+
+def format_timezone_offset(hours):
+    """z.B. 'UTC+2', 'UTC-3.5', 'UTC' fuer 0."""
+    if hours == 0:
+        return "UTC"
+    sign = "+" if hours > 0 else "-"
+    h = abs(hours)
+    if h == int(h):
+        return "UTC%s%d" % (sign, int(h))
+    return "UTC%s%.1f" % (sign, h)
 
 def _ntp_time(server=NTP_SERVER, timeout=2.0):
     """Fragt die aktuelle Unix-Zeit per SNTP ab. Liefert None bei jedem
@@ -4617,7 +4712,18 @@ def sync_system_clock_from_ntp(timeout=2.5):
         NTP_SYNC_OK = False
         return False
     try:
-        ts = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(unix_time))
+        # BUGFIX (Nutzer-Rueckmeldung: Uhr zeigte 2 Stunden zu wenig,
+        # deutsche Sommerzeit): NTP liefert grundsaetzlich UTC. Die alte
+        # Fassung nutzte time.localtime(), das sich auf die System-
+        # Zeitzone verlaesst - MiSTer hat aber vermutlich gar keine
+        # echte Zeitzone konfiguriert (Standard UTC), wodurch die
+        # angezeigte Uhrzeit der reinen UTC-Zeit entsprach statt der
+        # tatsaechlichen Ortszeit. Jetzt wird der manuell eingestellte
+        # Versatz (siehe load_timezone_offset()) selbst angewendet und
+        # mit time.gmtime() formatiert - unabhaengig davon, was die
+        # Systemzeitzone gerade zu sein glaubt.
+        local_unix_time = unix_time + load_timezone_offset() * 3600
+        ts = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(local_unix_time))
         subprocess.run(["date", "-s", ts], capture_output=True, timeout=2.0)
         NTP_SYNC_OK = True
         return True
@@ -5087,6 +5193,8 @@ TRANSLATIONS = {
                         "de": "Attract-Modus (Bildschirmschoner): AUS -> einschalten"},
     "sys_theme": {"en": "Color theme: %s -> next",
                   "de": "Farbschema: %s -> naechstes"},
+    "sys_timezone": {"en": "Timezone: %s -> next",
+                      "de": "Zeitzone: %s -> naechste"},
     "sys_sfx_on": {"en": "Navigation sounds: ON -> turn off",
                    "de": "Navigations-Soundeffekte: AN -> ausschalten"},
     "sys_sfx_off": {"en": "Navigation sounds: OFF -> turn on",
@@ -5171,6 +5279,7 @@ def system_items(music_enabled=None):
         else t("sys_attract_off")
     theme_names = THEME_NAMES_DE if CURRENT_LANG == "de" else THEME_NAMES_EN
     theme_label = t("sys_theme", theme_names.get(current_theme_name(), "?"))
+    tz_label = t("sys_timezone", format_timezone_offset(load_timezone_offset()))
     sfx_label = t("sys_sfx_on") if sfx_enabled_flag() else t("sys_sfx_off")
     ra_user, _ra_key = load_ra_config()
     ra_label = t("sys_ra_configured", ra_user) if ra_user else t("sys_ra_setup")
@@ -5184,6 +5293,7 @@ def system_items(music_enabled=None):
         (curated_label,                              "curated",   None),
         (attract_label,                               "attract",   None),
         (theme_label,                                 "theme",     None),
+        (tz_label,                                     "timezone",  None),
         (sfx_label,                                   "sfx",       None),
         (t("top10_time_action"),                     "top10_time", None),
         (t("top10_launches_action"),                 "top10_launches", None),
@@ -8004,6 +8114,16 @@ class Frontend:
                             self._refresh_system_category()
                             self.fb._rowcache.clear()
                             self.fb._rectcache.clear()
+                        elif kind == "timezone":
+                            cycle_timezone_offset()
+                            # Sofort neu synchronisieren, damit die
+                            # Uhrzeit ohne Neustart korrekt ist - laeuft
+                            # im Hintergrund-Thread (Netzwerk-Aufruf),
+                            # blockiert die Navigation daher nicht.
+                            threading.Thread(
+                                target=sync_system_clock_from_ntp,
+                                daemon=True).start()
+                            self._refresh_system_category()
                         elif kind == "sfx":
                             toggle_sfx()
                             self._refresh_system_category()

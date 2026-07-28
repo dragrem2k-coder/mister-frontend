@@ -4,6 +4,15 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v1.92 — zwei Fixes
+Die Uhrzeit zeigte nach der NTP-Synchronisierung 2 Stunden zu wenig
+(deutsche Sommerzeit) - NTP liefert UTC, wir haben das aber als
+Ortszeit übernommen, weil MiSTer selbst keine Zeitzone kennt. Neue,
+manuell einstellbare Zeitzone im System-Menü (0,5h-Schritte). Zweitens:
+RetroAchievements-Fortschritt fehlte bei Game Boy und Saturn komplett
+- falscher bzw. fehlender Systemschlüssel in der internen Zuordnung,
+jetzt korrigiert und gegen die echte Systemliste abgeglichen.
+
 ## mpg123-Diagnose verbessert
 Alle drei Installationswege (online, offline, aus dem MiSTer-Menü)
 sagen jetzt nicht mehr nur "mpg123 fehlt", sondern auch, dass es
