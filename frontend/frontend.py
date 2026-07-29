@@ -1,17 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.95
+MiSTer Custom Frontend - v1.94
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
-
-Neu in v1.95 (BUGFIX: Overlay-Zustand hing einen Schritt hinterher):
-  - Der Stream-Zustand wurde in der Hauptschleife direkt NACH
-    next_action() veroeffentlicht, also noch VOR der Verarbeitung der
-    Taste - dadurch zeigte das OBS-Overlay stets die VORHERIGE Auswahl
-    ("vorheriges Spiel", teils "haengend"). _publish_stream() steht jetzt
-    am Schleifenanfang (vor next_action) und spiegelt die aktuell
-    angezeigte Auswahl. Reiner Reihenfolge-Fix, keine Logikaenderung.
 
 Neu in v1.94 (BUGFIX: RA-Fortschritt fehlte weiterhin bei NES/SNES
 und weiteren Systemen, trotz vorhandener Achievements):
@@ -8067,12 +8059,8 @@ class Frontend:
             page_last = None    # fuer den Turbo-Sprung (seitenweise)
             page_last_time = 0.0
             while True:
-                # Zustand VOR dem Blockieren veroeffentlichen - spiegelt die
-                # aktuell ANGEZEIGTE Auswahl (Ergebnis der vorigen Aktion).
-                # Frueher direkt NACH next_action(), also vor der Verarbeitung
-                # -> Overlay hing einen Schritt hinterher ("vorheriges Spiel").
-                self._publish_stream()
                 act = self.next_action()
+                self._publish_stream()
                 LOG("aktion: %s (Seite %d, confirm=%s)"
                     % (act, self.page, self.confirm_quit))
                 # Zustand VOR der Aktion merken - fuer die Entscheidung,
