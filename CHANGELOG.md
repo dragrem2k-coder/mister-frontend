@@ -4,6 +4,15 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v1.95
+Die Spielzeit-Meilensteine zeigten rohe Sekunden statt einer lesbaren
+Zeit (z. B. "198/3600" statt "3min/1h") - behoben. Dazu fünf neue
+versteckte Erfolge, die als "???" erscheinen, bis sie erreicht sind:
+Nachteule (zwischen 0-5 Uhr gespielt), Marathon (eine Sitzung über 3
+Stunden am Stück), Sammlerin (10 Favoriten gleichzeitig), Stammspieler
+(ein Spiel 20+ mal gestartet), Legende (alle höchsten Meilensteine
+gleichzeitig erreicht).
+
 ## v1.94 — RA-Fortschritt für weitere Systeme repariert
 Nach dem letzten Fix (Game Boy/Saturn) fehlte RA-Fortschritt immer
 noch bei NES, SNES und anderen Systemen. Grund: RetroAchievements nennt

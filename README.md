@@ -1,4 +1,4 @@
-# MiSTer Custom Frontend v1.94 - Komplettbuild (Stand: 2026-07-28)
+# MiSTer Custom Frontend v1.95 - Komplettbuild (Stand: 2026-07-28)
 
 **Von Dragrem2K**, mit tatkräftiger Unterstützung von **TheRealSuTefan**
 beim Testen und Gegenchecken.
@@ -97,7 +97,7 @@ Nachlesen (`CHANGELOG.md`).
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.94) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.95) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (läuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (läuft auf dem MiSTer) |
@@ -596,6 +596,10 @@ Erfolge" zeigt eine Übersicht aller 15 Meilensteine (Spielzeit-,
 Start-, Entdecker- und Durchgespielt-Stufen), erreichte hervorgehoben,
 offene mit Fortschrittsangabe. Läuft komplett automatisch mit, keine
 Einrichtung nötig.
+
+Dazu **fünf versteckte Erfolge** - erscheinen als "???", bis sie
+erreicht sind, danach wird aufgedeckt, worum es ging. Kein Spoiler
+hier, einfach ausprobieren.
 
 ## 9. Sprache umschalten
 

@@ -1,9 +1,44 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.94
+MiSTer Custom Frontend - v1.95
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.95 (BUGFIX: Spielzeit-Fortschritt zeigte rohe Sekunden;
+NEUES FEATURE: fuenf versteckte Erfolge):
+  - Nutzer-Rueckmeldung: "warum steht da 198/3600" - die Meilenstein-
+    Anzeige zeigte bei Spielzeit-Kategorien die rohe Sekundenzahl statt
+    einer lesbaren Zeit. Neue _format_seconds_short() (wie
+    format_playtime(), aber liefert IMMER einen Text, auch unter einer
+    Minute). get_milestones() liefert jetzt zusaetzlich "kind" mit,
+    damit draw_milestones_screen() Spielzeit-Werte als "3min"/"1h"
+    statt als rohe Zahl anzeigt.
+  - Nutzerwunsch: ein paar versteckte Erfolge. Fuenf neue, in zwei
+    Arten: EREIGNIS-basiert (Nachteule: Spiel zwischen 0-5 Uhr
+    gestartet; Marathon: eine Sitzung 3+ Stunden am Stueck) - haengen
+    von einem bestimmten Moment ab, brauchen eine eigene dauerhafte
+    Freischalt-Markierung (HIDDEN_UNLOCKED_FILE), geprueft in
+    run_core() nach jeder Sitzung. LIVE-berechnet (Sammlerin: 10
+    Favoriten gleichzeitig; Stammspieler: ein Spiel 20+ mal gestartet;
+    Legende: alle vier hoechsten Meilensteine gleichzeitig erreicht) -
+    wie die normalen Meilensteine bei jedem Aufruf neu aus dem
+    aktuellen Datenstand berechnet. Werden im Erfolge-Bildschirm als
+    "???" gezeigt, bis sie erreicht sind - Name/Beschreibung bleibt
+    bis dahin verborgen.
+  - Getestet: Formatierung fuer alle Groessenordnungen (Sekunden,
+    Minuten, Stunden) sowie genau den gemeldeten Fall (198 Sekunden).
+    Versteckte Erfolge einzeln: Freischalten/Wiederholtes-Freischalten,
+    Sammlerin exakt bei 10 Favoriten, Stammspieler exakt bei 20 Starts
+    EINES Spiels, Legende nur wenn ALLE vier Bedingungen gleichzeitig
+    erfuellt sind. Ereignis-basierte Pruefung: Marathon loest bei 3+
+    Stunden aus, NICHT bei kurzen Sitzungen; Nachteule loest bei einem
+    Start zwischen 0-5 Uhr aus, NICHT tagsueber. Einbindung in
+    run_core() bestaetigt (echte Wanduhrzeit UND tatsaechliche
+    Sitzungsdauer werden korrekt uebergeben). Visuelle Ueberpruefung
+    des Erfolge-Bildschirms mit teils freigeschalteten, teils noch
+    versteckten Eintraegen, kein Absturz. 36 Kombinationen kompletter
+    Regressionstest bestanden.
 
 Neu in v1.94 (BUGFIX: RA-Fortschritt fehlte weiterhin bei NES/SNES
 und weiteren Systemen, trotz vorhandener Achievements):
@@ -2638,15 +2673,110 @@ def compute_milestone_progress():
         "completed": completed_count,
     }
 
+def _format_seconds_short(seconds):
+    """Wie format_playtime(), liefert aber IMMER einen Text (auch unter
+    einer Minute) - fuer die Meilenstein-Anzeige, wo bei jedem
+    Fortschrittswert etwas Lesbares stehen soll, nicht nur ab einer
+    bestimmten Groessenordnung."""
+    seconds = max(0, int(seconds))
+    mins = seconds // 60
+    h, m = divmod(mins, 60)
+    if h > 0:
+        return "%dh %dmin" % (h, m) if m else "%dh" % h
+    if m > 0:
+        return "%dmin" % m
+    return "%ds" % seconds
+
 def get_milestones():
     """Liste aller Meilensteine als (label_key, erreicht, aktueller_wert,
-    schwellenwert)-Tupel, in der definierten Reihenfolge."""
+    schwellenwert, kind)-Tupel, in der definierten Reihenfolge. kind
+    wird fuer die richtige Anzeige-Formatierung gebraucht (Sekunden
+    lesbar als "3min"/"2h 15min" statt roher Zahl, siehe
+    draw_milestones_screen())."""
     progress = compute_milestone_progress()
     out = []
     for kind, threshold, label_key in MILESTONE_DEFS:
         current = progress.get(kind, 0)
-        out.append((label_key, current >= threshold, current, threshold))
+        out.append((label_key, current >= threshold, current, threshold, kind))
     return out
+
+# ----------------------------------------------------------------------------
+# VERSTECKTE ERFOLGE - Name/Beschreibung bleibt verborgen ("???"), bis
+# sie erreicht sind (siehe draw_milestones_screen()). Zwei Arten:
+#
+# EREIGNIS-basiert (night_owl, marathon): haengen von EINEM bestimmten
+# Moment ab (wann ein Spiel gestartet wurde, wie lange eine einzelne
+# Sitzung dauerte) - lassen sich NICHT aus dem aktuellen Datenstand neu
+# berechnen, brauchen deshalb eine eigene, dauerhafte "freigeschaltet"-
+# Markierung (siehe HIDDEN_UNLOCKED_FILE). Wird in run_core() geprueft.
+#
+# LIVE-berechnet (collector, completionist, legend): wie die normalen
+# Meilensteine einfach aus dem aktuellen Datenstand abgeleitet, jedes
+# Mal neu - keine eigene Speicherung noetig.
+HIDDEN_UNLOCKED_FILE = "/media/fat/frontend/hidden_achievements.json"
+
+def _load_hidden_unlocked():
+    """Menge der IDs bereits freigeschalteter, EREIGNIS-basierter
+    versteckter Erfolge."""
+    try:
+        with open(HIDDEN_UNLOCKED_FILE) as f:
+            data = json.load(f)
+            return set(data) if isinstance(data, list) else set()
+    except (OSError, ValueError):
+        return set()
+
+def _unlock_hidden(achievement_id):
+    """Schaltet einen ereignis-basierten versteckten Erfolg frei
+    (dauerhaft gespeichert). Rueckgabe: True, wenn er JETZT neu
+    freigeschaltet wurde, False, wenn er es schon vorher war."""
+    data = _load_hidden_unlocked()
+    if achievement_id in data:
+        return False
+    data.add(achievement_id)
+    try:
+        os.makedirs(os.path.dirname(HIDDEN_UNLOCKED_FILE), exist_ok=True)
+        with open(HIDDEN_UNLOCKED_FILE, "w") as f:
+            json.dump(sorted(data), f)
+    except OSError:
+        pass
+    return True
+
+def check_hidden_session_achievements(session_start_walltime, elapsed_seconds):
+    """Nach einer gespielten Sitzung (siehe run_core()) pruefen, ob
+    dadurch ein ereignis-basierter versteckter Erfolg freigeschaltet
+    wird. session_start_walltime: echte Wanduhrzeit (time.time()) beim
+    Sitzungsbeginn - NICHT die monotone Zeit, die fuer die
+    Dauer-Berechnung genutzt wird (die ist unempfindlich gegen
+    Uhr-Korrekturen, sagt aber nichts ueber die Tageszeit aus)."""
+    try:
+        hour = time.localtime(session_start_walltime).tm_hour
+        if 0 <= hour < 5:
+            _unlock_hidden("night_owl")
+    except Exception:
+        pass
+    if elapsed_seconds >= 3 * 3600:
+        _unlock_hidden("marathon")
+
+def get_hidden_achievements():
+    """Liste (id, label_key, freigeschaltet)-Tupel fuer alle
+    versteckten Erfolge."""
+    unlocked_events = _load_hidden_unlocked()
+    favorites_count = len(_load_favorites_raw())
+    playtime = load_playtime()
+    max_launches = max((e.get("launches", 0) for e in playtime.values()),
+                       default=0)
+    progress = compute_milestone_progress()
+    legend_unlocked = (progress["playtime_seconds"] >= 360000 and
+                       progress["launches"] >= 500 and
+                       progress["systems"] >= 10 and
+                       progress["completed"] >= 25)
+    return [
+        ("night_owl", "hidden_night_owl", "night_owl" in unlocked_events),
+        ("marathon", "hidden_marathon", "marathon" in unlocked_events),
+        ("collector", "hidden_collector", favorites_count >= 10),
+        ("completionist", "hidden_completionist", max_launches >= 20),
+        ("legend", "hidden_legend", legend_unlocked),
+    ]
 
 def top_played_games(by="seconds", n=10):
     """Liefert die n Spiele mit dem hoechsten Wert fuer "seconds"
@@ -5353,6 +5483,20 @@ TRANSLATIONS = {
     "milestone_completed_25": {"en": "25 games completed", "de": "25 Spiele durchgespielt"},
     "milestones_title": {"en": "MY ACHIEVEMENTS", "de": "MEINE ERFOLGE"},
     "milestones_summary": {"en": "%d of %d unlocked", "de": "%d von %d freigeschaltet"},
+    "hidden_section_title": {"en": "Hidden achievements (%d/%d)",
+                             "de": "Versteckte Erfolge (%d/%d)"},
+    "hidden_mystery": {"en": "??? (keep playing to find out)",
+                       "de": "??? (einfach weiterspielen)"},
+    "hidden_night_owl": {"en": "Night Owl: played between midnight and 5am",
+                         "de": "Nachteule: zwischen 0 und 5 Uhr gespielt"},
+    "hidden_marathon": {"en": "Marathon: a single session over 3 hours",
+                        "de": "Marathon: eine Sitzung ueber 3 Stunden am Stueck"},
+    "hidden_collector": {"en": "Collector: 10 favorites at once",
+                         "de": "Sammlerin: 10 Favoriten gleichzeitig"},
+    "hidden_completionist": {"en": "Regular: one game launched 20+ times",
+                             "de": "Stammspieler: ein Spiel 20+ mal gestartet"},
+    "hidden_legend": {"en": "Legend: reached every top-tier milestone at once",
+                      "de": "Legende: alle hoechsten Meilensteine gleichzeitig erreicht"},
     "sys_milestones_action": {"en": "My achievements", "de": "Meine Erfolge"},
     "sys_ra_setup": {"en": "RetroAchievements: not set up",
                      "de": "RetroAchievements: nicht eingerichtet"},
@@ -7510,6 +7654,11 @@ class Frontend:
             self.back_to_frontend()
             return
         play_start = time.monotonic()
+        play_start_wall = time.time()   # fuer die Nachteule-Pruefung (Tageszeit) -
+                                        # play_start selbst ist absichtlich
+                                        # monotonic (unempfindlich gegen
+                                        # Uhr-Korrekturen waehrend des Spiels),
+                                        # sagt aber nichts ueber die Uhrzeit aus
         while current_core() != "MENU":
             res = self.inp.wait_game_exit()
             if res in ("combo", "f10", "hid_combo"):
@@ -7522,6 +7671,7 @@ class Frontend:
                 while current_core() != "MENU" and time.monotonic() - t1 < 10:
                     time.sleep(0.3)
         record_playtime(label, time.monotonic() - play_start, syskey=syskey)
+        check_hidden_session_achievements(play_start_wall, time.monotonic() - play_start)
         self._playtime_cache = load_playtime()
         time.sleep(1.0)
         self.music.resume_after_core()
@@ -7644,7 +7794,7 @@ class Frontend:
         y += 44 * s
         rowh = 24 * s
         maxc = max(8, (W - 2 * ox - 60 * s) // (8 * s))
-        for label_key, achieved, current, threshold in milestones:
+        for label_key, achieved, current, threshold, kind in milestones:
             mark = "[x] " if achieved else "[ ] "
             label = mark + t(label_key)
             color = C_TEXT if achieved else C_DIM
@@ -7652,12 +7802,33 @@ class Frontend:
                 label = label[:maxc - 1] + "~"
             fb.text(ox, y, label, s, color, C_BG)
             if not achieved:
-                prog = "%d/%d" % (current, threshold)
+                if kind == "playtime_seconds":
+                    prog = "%s/%s" % (_format_seconds_short(current),
+                                      _format_seconds_short(threshold))
+                else:
+                    prog = "%d/%d" % (current, threshold)
                 prog_w = len(prog) * 8 * s
                 fb.text(W - ox - prog_w, y, prog, s, C_DIM, C_BG)
             y += rowh
             if y > H - oy - 24 * s:
                 break   # Sicherheitsnetz auf sehr kleinen Bildschirmen
+        y += 14 * s
+        hidden = get_hidden_achievements()
+        hidden_unlocked = sum(1 for h in hidden if h[2])
+        if y < H - oy - 2 * rowh:
+            fb.text(ox, y, t("hidden_section_title", hidden_unlocked, len(hidden)),
+                    s, accent_for(None), C_BG)
+            y += rowh
+            for hid, label_key, unlocked in hidden:
+                if y > H - oy - 24 * s:
+                    break
+                mark = "[x] " if unlocked else "[ ] "
+                label = mark + (t(label_key) if unlocked else t("hidden_mystery"))
+                color = C_TEXT if unlocked else C_DIM
+                if len(label) > maxc:
+                    label = label[:maxc - 1] + "~"
+                fb.text(ox, y, label, s, color, C_BG)
+                y += rowh
         hint = t("attract_hint")
         sc = s - 1 if s > 1 else 1
         hint_w = len(hint) * 8 * sc
