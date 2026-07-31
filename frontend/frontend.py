@@ -1,9 +1,60 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.95
+MiSTer Custom Frontend - v1.96
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v1.96 (Drittes Paket von TheRealSutefan uebernommen + vier
+direkt gemeldete Bugfixes):
+  - Marker-Mechanismus (RECENT_MARKER=".frontend_recent"): ein
+    externes Skript (TheRealSutefans separates, noch in Arbeit
+    befindliches "Recently Played"-Skript) kann einen _*-Ordner als
+    "Zuletzt gespielt"-Quelle kennzeichnen - dann nach Aktualitaet
+    (Datei-mtime) sortiert, korrekte Cores inkl. RA-Varianten, kein
+    Doppel-Listing (der markierte Ordner wird aus scan_cores()
+    ausgeschlossen). OHNE ein solches Skript (Normalfall) unveraendert.
+  - Boot-Ueberwachung (_active_vt()/_boot_watch()): reine Diagnose fuer
+    das Soft-Reboot-Problem (manchmal OSD statt Frontend nach einem
+    Neustart) - protokolliert 30s lang VT+CORENAME, um ein moegliches
+    Timing-Rennen sichtbar zu machen. Aendert selbst nichts am
+    Verhalten.
+  - Overlay-Timing-Fix: _publish_stream() wird jetzt VOR dem
+    blockierenden next_action() aufgerufen statt danach - vorher hing
+    das Overlay einen Schritt hinterher (zeigte das vorherige Spiel,
+    bis die naechste Eingabe kam).
+  - BUGFIX (Nutzer-Rueckmeldung, ernst): aus der RA-Core-Auswahl kam
+    man mit KEINER Taste zurueck. Ursache: draw_core_choice_screen()
+    lieferte bei ESC/back IMMER False ("normaler Core") zurueck - der
+    Aufrufer (_enter_category()) konnte das nicht von einer bewussten
+    OK-Bestaetigung fuer "normal" unterscheiden und ist deshalb IMMER
+    in die Kategorie gewechselt, auch bei ESC. Fix: ESC liefert jetzt
+    explizit None, und NUR das bricht das Betreten der Kategorie
+    wirklich ab (Seite 0 bleibt bestehen).
+  - BUGFIX (Nutzer-Rueckmeldung): auf CRT passten bei beiden Top-10-
+    Listen und beim Erfolge-Bildschirm nur ein Bruchteil der Zeilen auf
+    den Bildschirm (fb.text() bricht bei Ueberlaenge still ab) - der
+    Rest war schlicht nicht erreichbar. Beide Bildschirme scrollen
+    jetzt mit Hoch/Runter, wenn noetig (Scroll-Hinweis statt des
+    normalen Bedienhinweises), mit sauberer Grenzpruefung.
+  - BUGFIX (Nutzer-Rueckmeldung): der Titel "TOP 10 - MEISTGESTARTET"
+    (23 Zeichen) war bei der festen CRT-Skalierung breiter als der
+    Bildschirm und wurde abgeschnitten. Neue _fit_scale(): waehlt die
+    groesste Skalierung, mit der ein Text noch in die verfuegbare
+    Breite passt - auf beide Top-10-Titel UND den Erfolge-Titel
+    angewendet.
+  - Getestet: Marker-Mechanismus mit und ohne Marker (unveraendertes
+    Verhalten ohne, korrekte Sortierung/kein Doppel-Listing mit).
+    Boot-Watch: Drosselung, 30s-Fenster. Core-Auswahl-Fix: alle drei
+    Faelle (ESC bricht wirklich ab, explizite Normal-Wahl, explizite
+    RA-Wahl) einzeln bestaetigt. _fit_scale() mit dem exakt gemeldeten
+    Titel getestet. Scrollen: CRT-Sichtbarkeit direkt nachgerechnet (5
+    von 10 bzw. 4 von 21 Zeilen sichtbar - Scrollen tatsaechlich
+    noetig), Grenzpruefung bei deutlich zu vielen Tastendruecken in
+    beide Richtungen, HDMI (kein Scrollen noetig) funktioniert
+    weiterhin mit einem einzelnen Tastendruck. Visuelle Ueberpruefung
+    des CRT-Top-10-Bildschirms. 36 Kombinationen kompletter
+    Regressionstest bestanden.
 
 Neu in v1.95 (BUGFIX: Spielzeit-Fortschritt zeigte rohe Sekunden;
 NEUES FEATURE: fuenf versteckte Erfolge):
@@ -4443,22 +4494,67 @@ def nice_name(dirname):
     raw = dirname.lstrip("_")
     return NICE_NAMES.get(raw, raw.replace("_", " "))
 
-def scan_cores():
-    """Alle /media/fat/_*-Ordner nach .rbf/.mra durchsuchen."""
+RECENT_MARKER = ".frontend_recent"   # Marker-Datei, mit der ein externes
+                            # Skript (z.B. TheRealSutefans "Recently
+                            # Played"-Skript) einen _*-Ordner als Quelle
+                            # kennzeichnet - siehe find_marked_recent_dir().
+
+def _folder_items(d, by_mtime=False):
+    """Startbare Items (.mra/.rbf/.mgl) eines _*-Ordners - wie scan_cores
+    sie baut. Ausgelagert, damit auch der markierte Recently-Ordner
+    dieselbe Logik nutzt.
+
+    by_mtime=True sortiert nach Datei-mtime absteigend (neueste zuerst) -
+    fuer den markierten "Zuletzt gespielt"-Ordner, dessen Skript die
+    mtimes auf die jeweilige Spielzeit stempelt. Bei gleichen mtimes
+    (Skript ohne Zeitstempel) faellt es auf alphabetisch zurueck."""
+    files = (glob.glob(os.path.join(d, "*.mra")) +
+             glob.glob(os.path.join(d, "*.rbf")) +
+             glob.glob(os.path.join(d, "*.mgl")))
+    if by_mtime:
+        def _key(f):
+            try:
+                mt = os.path.getmtime(f)
+            except OSError:
+                mt = 0
+            return (-mt, os.path.basename(f).lower())
+        files = sorted(files, key=_key)
+    else:
+        files = sorted(files)
+    items = []
+    for f in files:
+        name = os.path.splitext(os.path.basename(f))[0]
+        name = re.sub(r"_\d{8}[a-zA-Z]?$", "", name)
+        items.append((name, "core", f))
+    return items
+
+def find_marked_recent_dir():
+    """Den _*-Ordner suchen, den ein externes Skript per RECENT_MARKER
+    als Zuletzt-gespielt-Quelle kennzeichnet. Gibt den Pfad zurueck oder
+    None. Ueber den Marker unabhaengig vom Ordnernamen - der ist im
+    externen Skript frei konfigurierbar. Ohne ein solches Skript
+    (Normalfall) existiert kein Marker irgendwo - diese Funktion liefert
+    dann einfach None, und alles verhaelt sich wie bisher."""
+    for d in sorted(glob.glob(os.path.join(BASE, "_*"))):
+        if os.path.isdir(d) and os.path.exists(os.path.join(d, RECENT_MARKER)):
+            return d
+    return None
+
+def scan_cores(skip_dir=None):
+    """Alle /media/fat/_*-Ordner nach .rbf/.mra/.mgl durchsuchen.
+    skip_dir wird ausgelassen (der markierte Recently-Ordner, der bereits
+    separat als "Zuletzt gespielt" gefuehrt wird - sonst doppelt)."""
     cats = []
+    skip_real = os.path.realpath(skip_dir) if skip_dir else None
     for d in sorted(glob.glob(os.path.join(BASE, "_*"))):
         if not os.path.isdir(d) or os.path.basename(d) in SKIP_DIRS:
             continue
-        items = []
+        if skip_real and os.path.realpath(d) == skip_real:
+            continue
         # .mgl mit aufnehmen: so tauchen MGL-Shortcut-Ordner (z.B. das
         # "Recently Played"-Skript) auf und sind direkt startbar - der
         # Start-Pfad (load_core) verarbeitet .mgl genauso wie .rbf/.mra.
-        for f in sorted(glob.glob(os.path.join(d, "*.mra")) +
-                        glob.glob(os.path.join(d, "*.rbf")) +
-                        glob.glob(os.path.join(d, "*.mgl"))):
-            name = os.path.splitext(os.path.basename(f))[0]
-            name = re.sub(r"_\d{8}[a-zA-Z]?$", "", name)
-            items.append((name, "core", f))
+        items = _folder_items(d)
         if items:
             # Arcade-Ordner bekommen ein Info-Panel (MRA-Metadaten)
             base = os.path.basename(d).lstrip("_").lower()
@@ -5535,6 +5631,8 @@ TRANSLATIONS = {
     "top10_empty": {"en": "No games played yet",
                     "de": "Noch keine Spiele gespielt"},
     "top10_launches_count": {"en": "%dx", "de": "%dx"},
+    "top10_scroll_hint": {"en": "%d-%d of %d - Up/Down to scroll",
+                          "de": "%d-%d von %d - Hoch/Runter zum Scrollen"},
     "no_artwork_1":    {"en": "no",      "de": "kein"},
     "no_artwork_2":    {"en": "artwork", "de": "Artwork"},
     "sys_osd":         {"en": "Open MiSTer OSD (Settings/Buttons)",
@@ -5933,6 +6031,16 @@ class Frontend:
         self._attract_game = None
         self._attract_change_next = 0.0
         self._attract_pool = None   # zwischengespeicherte flache Spieleliste
+        # Boot-Ueberwachung (Diagnose fuer das Soft-Reboot-Problem: manchmal
+        # landet man nach einem Neustart im MiSTer-OSD statt im Frontend). In
+        # den ersten Sekunden nach dem Start kann der noch hochfahrende
+        # MiSTer die Anzeige zurueckholen (Wallpaper ueber unserem
+        # Framebuffer). Wir protokollieren dazu die aktive VT + CORENAME, um
+        # ein Timing-Rennen sichtbar zu machen.
+        self._boot_time = time.monotonic()
+        self._last_vt_check = 0.0
+        self._last_bootstate = None
+        self._last_snapshot = 0.0
 
         # Optionaler Stream-Overlay-Server (nur wenn Freigabe-Datei da ist)
         self.stream = None
@@ -6036,7 +6144,18 @@ class Frontend:
         # Codes (Rendering, Navigation) alle Kategorien gleich behandeln.
         self.cats = scan_games(force=force_rescan,
                                progress_cb=self._draw_scan_progress)
-        recent_items = load_recent()
+        # "Zuletzt gespielt": hat ein externes Skript einen _*-Ordner per
+        # RECENT_MARKER gekennzeichnet, ist DER die Quelle (korrekte
+        # Cores inklusive RA-Varianten, nach Spielzeit sortiert) und
+        # unsere eingebaute JSON-Liste bleibt aus - sonst genau eine
+        # Liste statt zweier unterschiedlicher. Ohne ein solches Skript
+        # (Normalfall) liefert find_marked_recent_dir() None, und alles
+        # verhaelt sich exakt wie bisher.
+        marked_recent = find_marked_recent_dir()
+        if marked_recent:
+            recent_items = _folder_items(marked_recent, by_mtime=True)
+        else:
+            recent_items = load_recent()
         if recent_items:
             # Ganz vorne, damit sie ohne Scrollen erreichbar ist.
             # syskey=None (wie Scripts/System), da die Liste mehrere
@@ -6051,7 +6170,8 @@ class Frontend:
             # Gegensatz zur automatischen Verlaufsliste.
             pos = 1 if recent_items else 0
             self.cats.insert(pos, (t("favorites_cat"), _wrap_flat(favorite_items), None))
-        self.cats.extend((n, _wrap_flat(it), sk) for n, it, sk in scan_cores())
+        self.cats.extend((n, _wrap_flat(it), sk)
+                         for n, it, sk in scan_cores(skip_dir=marked_recent))
         scripts = scan_scripts()
         if scripts:
             self.cats.append(("Scripts", _wrap_flat(scripts), None))
@@ -6186,6 +6306,8 @@ class Frontend:
             ra_core = find_ra_core(sk)
             if ra_core:
                 use_ra = self.draw_core_choice_screen(sk, name)
+                if use_ra is None:
+                    return   # ESC/back - Kategorie NICHT betreten, Seite 0 bleibt
                 if not hasattr(self, "_ra_core_choice"):
                     self._ra_core_choice = {}
                 self._ra_core_choice[sk] = ra_core if use_ra else None
@@ -7372,6 +7494,7 @@ class Frontend:
                         time.monotonic() - self._last_input_time >= COVER_SETTLE):
                     self.draw_page_items()
                     self._settled_redrawn = True
+                self._boot_watch()   # Diagnose: Anzeige-Zustand nach dem Boot
                 # WICHTIG: unabhaengige if-Abfragen statt einer elif-Kette.
                 # Mit elif haette "track_needs" (Songtitel muss scrollen -
                 # trifft auf praktisch jeden echten Songnamen zu) den
@@ -7713,8 +7836,18 @@ class Frontend:
         """Zwei-Optionen-Auswahl (Normal-Core / RA-Core), gezeigt beim
         Betreten eines Systems, fuer das find_ra_core() eine RA-
         faehige Core-Variante gefunden hat. Hoch/Runter wechselt die
-        Auswahl, OK bestaetigt, ESC/B waehlt sicherheitshalber den
-        normalen Core. Liefert True fuer RA-Core, False fuer normal."""
+        Auswahl, OK bestaetigt. Liefert True fuer RA-Core, False fuer
+        normal (jeweils ueber OK bestaetigt), oder None bei ESC/back -
+        NUR dann bricht der Aufrufer das Betreten der Kategorie
+        komplett ab (siehe _enter_category()).
+
+        BUGFIX (Nutzer-Rueckmeldung): ESC lieferte bisher IMMER False
+        zurueck ("normaler Core") - der Aufrufer konnte das nicht von
+        einer bewussten OK-Bestaetigung fuer "normal" unterscheiden und
+        ist deshalb IMMER in die Kategorie gewechselt, selbst bei ESC.
+        Das fuehlte sich fuer den Nutzer an, als koenne man aus diesem
+        Bildschirm ueberhaupt nicht mehr zurueck. Jetzt liefert ESC
+        explizit None, und NUR das bricht wirklich ab."""
         fb = self.fb
         W, H = fb.width, fb.height
         s = max(1, H // 360)
@@ -7744,7 +7877,7 @@ class Frontend:
             elif act == "ok":
                 return choice == 1
             elif act in ("back", "exit"):
-                return False   # sichere Vorgabe: normaler Core
+                return None   # Abbruch - Kategorie wird NICHT betreten
 
     def draw_ra_setup_screen(self):
         """Zeigt eine kurze Anleitung zur RetroAchievements-Einrichtung
@@ -7775,109 +7908,211 @@ class Frontend:
             if act is not None:
                 break
 
+    def _active_vt(self):
+        try:
+            return open("/sys/class/tty/tty0/active").read().strip()
+        except OSError:
+            return "?"
+
+    def _boot_watch(self):
+        """Reine Diagnose: die ersten 30s nach dem Start den Anzeige-
+        Zustand (aktive VT + CORENAME) protokollieren. Im Erfolgsfall
+        bleibt die VT auf tty1 (Konsolenmodus, Frontend sichtbar). Holt
+        der bootende MiSTer die Anzeige zurueck, taucht das hier als
+        VT-Wechsel auf - genau die Signatur, die fuer eine gezielte
+        Diagnose des Soft-Reboot-Problems gebraucht wird. Aendert selbst
+        nichts am Verhalten, protokolliert nur."""
+        el = time.monotonic() - self._boot_time
+        if el > 30.0:
+            return
+        now = time.monotonic()
+        if now - self._last_vt_check < 1.0:
+            return
+        self._last_vt_check = now
+        vt = self._active_vt()
+        try:
+            core = open(CORENAME).read().strip("\x00 \n\r\t")
+        except OSError:
+            core = "?"
+        state = (vt, core)
+        changed = state != self._last_bootstate
+        if changed or now - self._last_snapshot > 5.0:
+            LOG("boot-watch +%02.0fs: VT=%s CORENAME=%s%s"
+                % (el, vt, core, "   <-- AENDERUNG" if changed else ""))
+            self._last_bootstate = state
+            self._last_snapshot = now
+
     def draw_milestones_screen(self):
         """Vollbild-Uebersicht aller eigenen, lokalen Erfolge - erreichte
-        hervorgehoben, offene gedimmt mit Fortschrittsangabe. Rein
-        informativ, beliebige Taste kehrt zurueck."""
+        hervorgehoben, offene gedimmt mit Fortschrittsangabe. Hoch/Runter
+        scrollt, falls nicht alles auf den Bildschirm passt (v.a. auf
+        CRT relevant, siehe draw_top10_screen() fuer denselben Fix) -
+        OK/ESC kehrt zurueck ins System-Menue.
+
+        Baut sich eine einzige, gemischte Liste aus Meilenstein-Zeilen,
+        Abschnitts-Ueberschriften und versteckten Erfolgen zusammen und
+        scrollt darin wie in einer normalen Liste - einfacher als zwei
+        getrennte Scroll-Bereiche zu verwalten."""
         fb = self.fb
         W, H = fb.width, fb.height
         s = max(1, H // 360)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
-        fb.clear(C_BG)
+        title = t("milestones_title")
+        title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
         milestones = get_milestones()
         unlocked = sum(1 for m in milestones if m[1])
-        fb.text(ox, oy, t("milestones_title"), s + 1, C_TITLE, C_BG)
-        y = oy + 56 * s // 2 + 16 * s
-        fb.text(ox, y, t("milestones_summary", unlocked, len(milestones)),
-                s, accent_for(None), C_BG)
-        y += 44 * s
-        rowh = 24 * s
-        maxc = max(8, (W - 2 * ox - 60 * s) // (8 * s))
-        for label_key, achieved, current, threshold, kind in milestones:
-            mark = "[x] " if achieved else "[ ] "
-            label = mark + t(label_key)
-            color = C_TEXT if achieved else C_DIM
-            if len(label) > maxc:
-                label = label[:maxc - 1] + "~"
-            fb.text(ox, y, label, s, color, C_BG)
-            if not achieved:
-                if kind == "playtime_seconds":
-                    prog = "%s/%s" % (_format_seconds_short(current),
-                                      _format_seconds_short(threshold))
-                else:
-                    prog = "%d/%d" % (current, threshold)
-                prog_w = len(prog) * 8 * s
-                fb.text(W - ox - prog_w, y, prog, s, C_DIM, C_BG)
-            y += rowh
-            if y > H - oy - 24 * s:
-                break   # Sicherheitsnetz auf sehr kleinen Bildschirmen
-        y += 14 * s
         hidden = get_hidden_achievements()
         hidden_unlocked = sum(1 for h in hidden if h[2])
-        if y < H - oy - 2 * rowh:
-            fb.text(ox, y, t("hidden_section_title", hidden_unlocked, len(hidden)),
-                    s, accent_for(None), C_BG)
-            y += rowh
-            for hid, label_key, unlocked in hidden:
-                if y > H - oy - 24 * s:
-                    break
-                mark = "[x] " if unlocked else "[ ] "
-                label = mark + (t(label_key) if unlocked else t("hidden_mystery"))
-                color = C_TEXT if unlocked else C_DIM
-                if len(label) > maxc:
-                    label = label[:maxc - 1] + "~"
-                fb.text(ox, y, label, s, color, C_BG)
-                y += rowh
-        hint = t("attract_hint")
-        sc = s - 1 if s > 1 else 1
-        hint_w = len(hint) * 8 * sc
-        fb.text((W - hint_w) // 2, H - oy - 8 * sc, hint, sc, C_DIM, C_BG)
-        fb.flip()
+        maxc = max(8, (W - 2 * ox - 60 * s) // (8 * s))
+
+        rows = []
+        for label_key, achieved, current, threshold, kind in milestones:
+            rows.append(("milestone", label_key, achieved, current, threshold, kind))
+        rows.append(("header", t("hidden_section_title", hidden_unlocked, len(hidden))))
+        for hid, label_key, hunlocked in hidden:
+            rows.append(("hidden", label_key, hunlocked))
+
+        rowh = 24 * s
+        list_y0 = oy + 56 * s // 2 + 16 * s + 44 * s
+        hint_scale = s - 1 if s > 1 else 1
+        list_y1 = H - oy - 8 * hint_scale - 6 * s
+        visible = max(1, (list_y1 - list_y0) // rowh)
+        scroll = 0
+        max_scroll = max(0, len(rows) - visible)
         while True:
+            fb.clear(C_BG)
+            fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+            y = oy + 56 * s // 2 + 16 * s
+            fb.text(ox, y, t("milestones_summary", unlocked, len(milestones)),
+                    s, accent_for(None), C_BG)
+            y = list_y0
+            for row in rows[scroll:scroll + visible]:
+                if row[0] == "header":
+                    fb.text(ox, y, row[1], s, accent_for(None), C_BG)
+                elif row[0] == "milestone":
+                    _, label_key, achieved, current, threshold, kind = row
+                    mark = "[x] " if achieved else "[ ] "
+                    label = mark + t(label_key)
+                    color = C_TEXT if achieved else C_DIM
+                    if len(label) > maxc:
+                        label = label[:maxc - 1] + "~"
+                    fb.text(ox, y, label, s, color, C_BG)
+                    if not achieved:
+                        if kind == "playtime_seconds":
+                            prog = "%s/%s" % (_format_seconds_short(current),
+                                              _format_seconds_short(threshold))
+                        else:
+                            prog = "%d/%d" % (current, threshold)
+                        prog_w = len(prog) * 8 * s
+                        fb.text(W - ox - prog_w, y, prog, s, C_DIM, C_BG)
+                else:   # "hidden"
+                    _, label_key, hunlocked = row
+                    mark = "[x] " if hunlocked else "[ ] "
+                    label = mark + (t(label_key) if hunlocked else t("hidden_mystery"))
+                    color = C_TEXT if hunlocked else C_DIM
+                    if len(label) > maxc:
+                        label = label[:maxc - 1] + "~"
+                    fb.text(ox, y, label, s, color, C_BG)
+                y += rowh
+            if max_scroll > 0:
+                scroll_hint = t("top10_scroll_hint", scroll + 1,
+                                min(scroll + visible, len(rows)), len(rows))
+                hint_w = len(scroll_hint) * 8 * hint_scale
+                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                        scroll_hint, hint_scale, C_DIM, C_BG)
+            else:
+                hint = t("attract_hint")
+                hint_w = len(hint) * 8 * hint_scale
+                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                        hint, hint_scale, C_DIM, C_BG)
+            fb.flip()
             act = self.inp.read_action()
+            if act in ("up", "down") and max_scroll > 0:
+                scroll = max(0, min(max_scroll, scroll + (1 if act == "down" else -1)))
+                continue
             if act is not None:
                 break
 
+    def _fit_scale(self, text, max_width, max_scale):
+        """Groesste Skalierung (mindestens 1), mit der `text` noch in
+        max_width Pixel passt - fuer Titelzeilen, die auf CRT (320px
+        breit) bei fester grosser Skalierung sonst abgeschnitten
+        werden (z.B. "TOP 10 - MEISTGESTARTET" bei 23 Zeichen)."""
+        for scale in range(max_scale, 0, -1):
+            if len(text) * 8 * scale <= max_width:
+                return scale
+        return 1
+
     def draw_top10_screen(self, by):
         """Zeigt eine Vollbild-Liste der 10 meistgespielten (by=
-        "seconds") oder meistgestarteten (by="launches") Spiele.
-        Rein informativ (kein direktes Starten von hier aus) - eine
-        beliebige Taste kehrt zurueck ins System-Menue."""
+        "seconds") oder meistgestarteten (by="launches") Spiele. Rein
+        informativ (kein direktes Starten von hier aus). Hoch/Runter
+        scrollt, falls nicht alle Eintraege auf den Bildschirm passen
+        (v.a. auf CRT relevant) - OK/ESC kehrt zurueck ins System-Menue.
+
+        BUGFIX (Nutzer-Rueckmeldung): auf CRT passten rechnerisch nur
+        ca. 6 von 10 Zeilen auf den Bildschirm, der Rest wurde einfach
+        nicht gezeichnet (fb.text() bricht bei ueberschrittener Hoehe
+        still ab) - ohne jede Moeglichkeit, den Rest zu sehen. Ausserdem
+        war der Titel ("TOP 10 - MEISTGESTARTET", 23 Zeichen) bei der
+        festen Skalierung auf CRT breiter als der Bildschirm und wurde
+        abgeschnitten - siehe _fit_scale()."""
         fb = self.fb
         W, H = fb.width, fb.height
         s = max(1, H // 360)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
-        fb.clear(C_BG)
         title = t("top10_time_title") if by == "seconds" \
             else t("top10_launches_title")
-        fb.text(ox, oy, title, s + 1, C_TITLE, C_BG)
+        title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
         rows = top_played_games(by=by, n=10)
-        y = oy + 56 * s // 2 + 20 * s
         rowh = 26 * s
+        list_y0 = oy + 56 * s // 2 + 20 * s
+        hint_scale = s - 1 if s > 1 else 1
+        list_y1 = H - oy - 8 * hint_scale - 6 * s
+        visible = max(1, (list_y1 - list_y0) // rowh)
         maxc = max(8, (W - 2 * ox - 90 * s) // (8 * s))
-        if not rows:
-            fb.text(ox, y, t("top10_empty"), s, C_DIM, C_BG)
-        for i, (label, seconds, launches) in enumerate(rows):
-            rank = "%2d." % (i + 1)
-            fb.text(ox, y, rank, s, C_DIM, C_BG)
-            name = label if len(label) <= maxc else label[:maxc - 1] + "~"
-            fb.text(ox + 44 * s, y, name, s, C_TEXT, C_BG)
-            if by == "seconds":
-                stat = format_playtime(seconds) or "-"
-            else:
-                stat = t("top10_launches_count", launches)
-            stat_w = len(stat) * 8 * s
-            fb.text(W - ox - stat_w, y, stat, s, accent_for(None), C_BG)
-            y += rowh
-        hint = t("attract_hint")
-        hint_w = len(hint) * 8 * (s - 1 if s > 1 else 1)
-        fb.text((W - hint_w) // 2, H - oy - 8 * (s - 1 if s > 1 else 1),
-                hint, s - 1 if s > 1 else 1, C_DIM, C_BG)
-        fb.flip()
+        scroll = 0
+        max_scroll = max(0, len(rows) - visible)
         while True:
+            fb.clear(C_BG)
+            fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+            y = list_y0
+            if not rows:
+                fb.text(ox, y, t("top10_empty"), s, C_DIM, C_BG)
+            for i in range(scroll, min(scroll + visible, len(rows))):
+                label, seconds, launches = rows[i]
+                rank = "%2d." % (i + 1)
+                fb.text(ox, y, rank, s, C_DIM, C_BG)
+                name = label if len(label) <= maxc else label[:maxc - 1] + "~"
+                fb.text(ox + 44 * s, y, name, s, C_TEXT, C_BG)
+                if by == "seconds":
+                    stat = format_playtime(seconds) or "-"
+                else:
+                    stat = t("top10_launches_count", launches)
+                stat_w = len(stat) * 8 * s
+                fb.text(W - ox - stat_w, y, stat, s, accent_for(None), C_BG)
+                y += rowh
+            if max_scroll > 0:
+                # Scroll-Hinweis statt des normalen Bedienhinweises -
+                # zeigt zugleich, dass/wie weit noch mehr Eintraege
+                # folgen.
+                scroll_hint = t("top10_scroll_hint", scroll + 1,
+                                min(scroll + visible, len(rows)), len(rows))
+                hint_w = len(scroll_hint) * 8 * hint_scale
+                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                        scroll_hint, hint_scale, C_DIM, C_BG)
+            else:
+                hint = t("attract_hint")
+                hint_w = len(hint) * 8 * hint_scale
+                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                        hint, hint_scale, C_DIM, C_BG)
+            fb.flip()
             act = self.inp.read_action()
+            if act in ("up", "down") and max_scroll > 0:
+                scroll = max(0, min(max_scroll, scroll + (1 if act == "down" else -1)))
+                continue
             if act is not None:
                 break
 
@@ -8230,8 +8465,14 @@ class Frontend:
             page_last = None    # fuer den Turbo-Sprung (seitenweise)
             page_last_time = 0.0
             while True:
-                act = self.next_action()
+                # Zustand VOR dem Blockieren veroeffentlichen - spiegelt
+                # die aktuell ANGEZEIGTE Auswahl (Ergebnis der vorigen
+                # Aktion). Vorher direkt NACH next_action(), also VOR der
+                # Verarbeitung dieser neuen Aktion - dadurch hing das
+                # Overlay einen Schritt hinterher (zeigte noch das
+                # "vorherige Spiel", bis die naechste Eingabe kam).
                 self._publish_stream()
+                act = self.next_action()
                 LOG("aktion: %s (Seite %d, confirm=%s)"
                     % (act, self.page, self.confirm_quit))
                 # Zustand VOR der Aktion merken - fuer die Entscheidung,

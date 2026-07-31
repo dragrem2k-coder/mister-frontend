@@ -4,6 +4,18 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v1.96
+Drittes Paket von TheRealSutefan übernommen: ein Marker-Mechanismus
+für sein separates "Recently Played"-Skript (aktuell inaktiv, bis das
+fertig ist), Boot-Diagnose-Logging für das Soft-Reboot-Rätsel, und ein
+Timing-Fix beim Overlay. Dazu vier gemeldete Fehler behoben - der
+wichtigste: aus der RA-Core-Auswahl kam man mit keiner Taste zurück
+(ESC hat fälschlich "normaler Core" gewählt und ist trotzdem in die
+Kategorie gewechselt, statt wirklich abzubrechen). Außerdem: beide
+Top-10-Listen und der Erfolge-Bildschirm scrollen jetzt auf CRT, wenn
+nicht alles auf den Bildschirm passt, und der Titel "TOP 10 -
+MEISTGESTARTET" wird nicht mehr abgeschnitten.
+
 ## v1.95
 Die Spielzeit-Meilensteine zeigten rohe Sekunden statt einer lesbaren
 Zeit (z. B. "198/3600" statt "3min/1h") - behoben. Dazu fünf neue
