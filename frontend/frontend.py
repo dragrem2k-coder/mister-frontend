@@ -1,9 +1,143 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v1.96
+MiSTer Custom Frontend - v2.0
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+Neu in v2.0 (NEUES FEATURE: "Trophaeenraum" - persoenlicher
+Profil-Bildschirm):
+  - Nutzerwunsch: ein zentraler Screen mit grossem Cover des
+    meistgespielten Spiels, Akzentfarbe des Lieblingssystems, Erfolgs-
+    Zaehler, kurze "Das bin ich als Retro-Spieler"-Zusammenfassung.
+    Baut komplett auf Daten auf, die wir ohnehin schon sammeln - keine
+    neue Datenquelle, reine Zusammenfassung.
+  - Neue compute_profile_stats(): meistgespieltes Spiel (top_played_
+    games()), Lieblingssystem (Summe der Spielzeit PRO System, nicht
+    nur das einzelne meistgespielte Spiel - ein System mit mehreren
+    mittelmaessig gespielten Titeln kann so vor einem System mit nur
+    einem Blockbuster gewinnen), Erfolgs-Zaehler (normale Meilensteine
+    + versteckte Erfolge zusammen, 20 insgesamt).
+  - Neue system_display_name(): Anzeigename zu einem Systemschluessel
+    (z.B. "Genesis" -> "Mega Drive") aus GAME_SYSTEMS abgeleitet.
+  - Neuer Bildschirm draw_trophy_room_screen() - Cover mit Akzent-
+    rahmen links (gleiches Muster wie draw_attract()), Statistik-Text
+    rechts, kurze Zusammenfassung unten. Alle Werte auch bei komplett
+    leerer Historie sicher (kein Fehler, sinnvolle Platzhalter). Neuer
+    Menuepunkt "Mein Trophaeenraum" im System-Menue.
+  - Getestet: compute_profile_stats() leerer Zustand (alles sicher auf
+    0/None) UND mit Daten (Lieblingssystem korrekt anhand der
+    GESAMTEN Spielzeit pro System ermittelt, nicht nur des einzelnen
+    Spiels). system_display_name() fuer bekannte/unbekannte/fehlende
+    Schluessel. Bildschirm in allen vier Kombinationen (leer/mit
+    Daten x CRT/HDMI) ohne Absturz bestaetigt, visuell ueberprueft.
+    42 Kombinationen kompletter Regressionstest bestanden.
+
+Neu in v1.99 (NEUES FEATURE: "Weiterspielen" - intelligenter
+Vorschlag ganz oben im Hauptmenue):
+  - Nutzerwunsch: statt nur eine chronologische "Zuletzt gespielt"-
+    Liste zu zeigen, ein hervorgehobener Vorschlag ganz oben, der
+    gezielt das Spiel vorschlaegt, das zuletzt gestartet, aber noch
+    NICHT als durchgespielt markiert wurde - "genau hier bist du
+    stehengeblieben".
+  - Neue find_continue_game(): geht die "Zuletzt gespielt"-Liste
+    (neuestes zuerst) durch und liefert den ERSTEN Eintrag, der noch
+    nicht durchgespielt ist. None, wenn nichts passt (z.B. alles
+    bereits durchgespielt, oder noch nie etwas gestartet) - dann
+    taucht die Kategorie einfach gar nicht auf, kein leerer Eintrag.
+    Nutzt bewusst NICHT die ueber RECENT_MARKER eingebundene externe
+    Liste (TheRealSutefans separates Skript) - die Durchgespielt-
+    Markierung ist eine rein eigene Funktion, die nur zur EIGENEN
+    "Zuletzt gespielt"-Aufzeichnung sauber passt.
+  - Neue Kategorie "Weiterspielen" (enthaelt genau diesen einen
+    Vorschlag) erscheint ganz oben im Hauptmenue, VOR "Zuletzt
+    gespielt" - Reihenfolge jetzt: Weiterspielen, Zuletzt gespielt,
+    Favoriten, jeweils nur wenn tatsaechlich vorhanden.
+  - Getestet: kein Vorschlag ohne Spielhistorie, korrekter Vorschlag
+    bei einem offenen Spiel, korrekte Reihenfolge aller drei
+    Spezialkategorien zusammen, Vorschlag verschwindet nachweislich
+    wieder, sobald das betreffende Spiel als durchgespielt markiert
+    wird (naechstaelteres offenes Spiel wird dann korrekt vorgeschlagen,
+    getestet). Komplette Kategorien-Aufbau-Logik mit vier verschiedenen
+    Datenkombinationen einzeln bestaetigt. 42 Kombinationen kompletter
+    Regressionstest bestanden (36 Standard + 6 neue mit der
+    "Weiterspielen"-Kategorie).
+
+Neu in v1.98 (Start-Beschleunigung durch NTP-Entkopplung + BUGFIX:
+Cursor ueberspringt gelegentlich beim Scrollen):
+  - Nutzerwunsch (Start-Geschwindigkeit): sync_system_clock_from_ntp()
+    wartete bisher immer bis zu ~3s (Thread-Join), BEVOR das Menue
+    ueberhaupt aufgebaut wurde. Neuer blocking-Parameter (Standard
+    weiterhin True, unveraendertes Verhalten fuer alle anderen
+    Aufrufstellen) - der Programmstart nutzt jetzt blocking=False:
+    die Synchronisierung laeuft komplett im Hintergrund weiter, das
+    Menue erscheint sofort. Kein Stabilitaetsrisiko: der bestehende
+    RA-Neuversuch-Mechanismus faengt den Fall "Uhr war beim
+    allerersten RA-Abruf noch nicht fertig" schon ab (genau wie
+    vorher bei einem regulaeren Timeout). Logik in _apply_ntp_result()
+    ausgelagert, damit blockierender und nicht-blockierender Modus
+    dieselbe Kernlogik nutzen.
+  - BUGFIX (Nutzer-Rueckmeldung: Cursor "ueberspringt" beim Scrollen
+    gelegentlich etwas): die Bedingung fuer den leichten Navigations-
+    Zeichenpfad (_draw_navigate_items(), fuer EINEN Schritt gebaut)
+    pruefte bisher nur die Tastenrichtung (up/down), NICHT ob der
+    Schritt durch einen Turbo-Sprung (gehaltene Richtungstaste,
+    move_step > 1) tatsaechlich groesser als 1 Position war. Bei
+    einem Turbo-Sprung aktualisierte der leichte Pfad nur die
+    unmittelbare Umgebung der ALTEN und NEUEN Position, nicht die
+    dazwischenliegenden Zeilen - sichtbar als scheinbar uebersprungene
+    Zeilen. Fix: der leichte Pfad wird jetzt nur noch bei echtem
+    Einzelschritt (move_step == 1) versucht, sonst korrekt der volle,
+    immer richtige Aufbau.
+  - Getestet: NTP blocking=True (Standard) weiterhin unveraendert,
+    blocking=False kehrt nachweislich sofort zurueck (< 0.05s) UND
+    setzt die Uhr trotzdem zuverlaessig im Hintergrund. Cursor-Fix:
+    echter Durchlauf durch run() mit simuliertem Turbo-Sprung (15x
+    schnelles "down") bestaetigt mehrfachen Ruecksprung auf den vollen
+    Aufbau; Gegentest mit echten Einzelschritten (deutlicher Abstand
+    zwischen den Tastendruecken, kein Turbo-Streak) bestaetigt: der
+    leichte Pfad wird weiterhin korrekt genutzt, keine Regression.
+    36 Kombinationen kompletter Regressionstest bestanden.
+
+Neu in v1.97 (NEUES FEATURE: Pop-up-Benachrichtigung bei neu
+erreichten Erfolgen, mit eigenem Erfolgston):
+  - Nutzerwunsch: kurze, dezente Einblendung + Ton, wenn ein Erfolg
+    (normaler Meilenstein ODER versteckter Erfolg) neu erreicht wird.
+  - Tonerzeugung erweitert: _write_wav_tone()/neue _write_wav_chime()
+    teilen sich jetzt einen gemeinsamen Kern (_synth_tone_samples()/
+    _write_wav()) - Mehrton-Faehigkeit fuer einen kurzen aufsteigenden
+    Doppelklang (SFX_CHIME_DEFS["achievement"]), deutlich von den
+    einfachen Sweeps (move/confirm/back) abgesetzt.
+  - Neue check_new_achievements(): vergleicht den aktuellen (live
+    berechneten) Erfolgs-Stand gegen eine dauerhafte "bereits gezeigt"-
+    Liste (ACHIEVEMENTS_SEEN_FILE), liefert nur ECHT NEUE zurueck.
+    WICHTIGER Erstlauf-Sonderfall: existiert die Datei noch gar nicht
+    (z.B. jemand mit laengerer Spielhistorie nach diesem Update),
+    werden bereits erreichte Erfolge NUR stillschweigend markiert,
+    OHNE dafuer ein Pop-up auszuloesen - sonst gaebe es beim ersten
+    Start eine ganze Flut von Meldungen fuer laengst Erreichtes.
+  - _check_achievement_popup()/_notify_new_achievements(): erstere
+    liefert bei einem Treffer die fertige Meldung (spielt dabei den
+    Ton ab) und laesst den Aufrufer entscheiden, wie er sie anzeigt -
+    bei Favorit/Durchgespielt-Umschalten ERSETZT sie die normale
+    Standardmeldung ("Favorit hinzugefuegt"), bei der Rueckkehr aus
+    einem Spiel (keine eigene Standardmeldung vorhanden) wird direkt
+    angezeigt.
+  - Eingebunden an drei Stellen: nach jeder Spielsitzung (run_core(),
+    NACH back_to_frontend() - damit die Einblendung dessen normalen
+    Redraw ueberschreibt statt sofort zu verschwinden), beim Favorit-
+    Umschalten, beim Durchgespielt-Umschalten.
+  - Getestet: Tonerzeugung byte-identisch fuer die bestehenden Sweeps
+    (Regressionscheck der Umstrukturierung), neue Mehrton-Datei mit
+    korrekter kombinierter Laenge, _ensure_sfx_files() erzeugt jetzt
+    alle vier Toene inkl. des neuen. KRITISCHER Erstlauf-Test:
+    simulierter Nutzer mit bereits erreichten Erfolgen (100h+
+    Spielzeit, durchgespieltes Spiel) loest beim allerersten Aufruf
+    NACHWEISLICH keine Pop-ups aus, Datei wird trotzdem angelegt.
+    Danach: genau ein Pop-up fuer einen neu erreichten Erfolg, kein
+    wiederholtes Pop-up bei erneuter Pruefung ohne Aenderung. Ton wird
+    nur bei einem echten neuen Erfolg abgespielt, nie sonst. 36
+    Kombinationen kompletter Regressionstest bestanden.
 
 Neu in v1.96 (Drittes Paket von TheRealSutefan uebernommen + vier
 direkt gemeldete Bugfixes):
@@ -2829,6 +2963,108 @@ def get_hidden_achievements():
         ("legend", "hidden_legend", legend_unlocked),
     ]
 
+# ----------------------------------------------------------------------------
+# POP-UP BEI NEU ERREICHTEN ERFOLGEN - vergleicht den aktuellen Stand
+# (normale Meilensteine UND versteckte Erfolge, jeweils live berechnet)
+# gegen eine dauerhafte Liste "das wurde dem Nutzer schon gezeigt", damit
+# nach einem Neustart nicht ploetzlich alle laengst erreichten Erfolge
+# erneut aufploppen - nur ECHT NEUE loesen ein Pop-up aus.
+ACHIEVEMENTS_SEEN_FILE = "/media/fat/frontend/achievements_seen.json"
+
+def _load_achievements_seen():
+    try:
+        with open(ACHIEVEMENTS_SEEN_FILE) as f:
+            data = json.load(f)
+            return set(data) if isinstance(data, list) else set()
+    except (OSError, ValueError):
+        return set()
+
+def _save_achievements_seen(seen):
+    try:
+        os.makedirs(os.path.dirname(ACHIEVEMENTS_SEEN_FILE), exist_ok=True)
+        with open(ACHIEVEMENTS_SEEN_FILE, "w") as f:
+            json.dump(sorted(seen), f)
+    except OSError:
+        pass
+
+def check_new_achievements():
+    """Vergleicht den aktuellen Erfolgs-Stand gegen die bereits gezeigten
+    - liefert eine Liste der NEU erreichten label_keys (in der
+    Reihenfolge: normale Meilensteine, dann versteckte Erfolge) und
+    merkt sie SOFORT als gezeigt, damit derselbe Erfolg nicht ein
+    zweites Mal ein Pop-up ausloest. Leere Liste, wenn nichts Neues
+    dazugekommen ist - der haeufigste Fall, entsprechend guenstig
+    (nur Mengen-Operationen, kein Datei-Schreiben ohne Aenderung).
+
+    WICHTIG (Erstlauf-Sonderfall): existiert ACHIEVEMENTS_SEEN_FILE
+    noch gar nicht (allererster Aufruf ueberhaupt, z.B. nach diesem
+    Update bei jemandem mit laengerer Spielhistorie), werden bereits
+    erreichte Erfolge NUR als "gezeigt" markiert, OHNE dafuer ein
+    Pop-up auszuloesen - sonst wuerde jemand mit vielen laengst
+    erreichten Erfolgen bei der ersten Pruefung mit einer ganzen Flut
+    von Pop-ups ueberschuettet."""
+    first_run = not os.path.exists(ACHIEVEMENTS_SEEN_FILE)
+    seen = _load_achievements_seen()
+    newly = []
+    for label_key, achieved, _current, _threshold, _kind in get_milestones():
+        if achieved and label_key not in seen:
+            if not first_run:
+                newly.append(label_key)
+            seen.add(label_key)
+    for hid, label_key, unlocked in get_hidden_achievements():
+        if unlocked and hid not in seen:
+            if not first_run:
+                newly.append(label_key)
+            seen.add(hid)
+    if first_run or newly:
+        _save_achievements_seen(seen)
+    return newly
+
+
+# ----------------------------------------------------------------------------
+# TROPHAEENRAUM - persoenlicher Profil-Bildschirm: meistgespieltes Spiel,
+# Lieblingssystem, Erfolgs-Zaehler, kurze Zusammenfassung. Baut komplett
+# auf Daten auf, die wir ohnehin schon sammeln (Spielzeit-Tracker,
+# Meilensteine) - reine Zusammenfassung, keine neue Datenquelle.
+def compute_profile_stats():
+    """Sammelt die Kennzahlen fuer den Trophaeenraum-Bildschirm.
+    Liefert ein dict - alle Werte auch bei komplett leerer Historie
+    sicher (0/None statt eines Fehlers), damit der Bildschirm auch
+    fuer jemanden ohne jede Spielzeit sinnvoll etwas anzeigen kann."""
+    playtime = load_playtime()
+    total_seconds = sum(e.get("seconds", 0) for e in playtime.values())
+    total_launches = sum(e.get("launches", 0) for e in playtime.values())
+
+    top = top_played_games(by="seconds", n=1)
+    top_game = top[0] if top else None   # (label, seconds, launches)
+
+    # Lieblingssystem: Summe der Spielzeit pro System (nur Eintraege mit
+    # bekanntem syskey - siehe record_playtime()/v1.92).
+    system_seconds = {}
+    for e in playtime.values():
+        sk = e.get("syskey")
+        if sk:
+            system_seconds[sk] = system_seconds.get(sk, 0) + e.get("seconds", 0)
+    favorite_system = (max(system_seconds, key=system_seconds.get)
+                       if system_seconds else None)
+
+    milestones = get_milestones()
+    hidden = get_hidden_achievements()
+    unlocked = (sum(1 for m in milestones if m[1])
+               + sum(1 for h in hidden if h[2]))
+    total_achievements = len(milestones) + len(hidden)
+
+    return {
+        "total_seconds": total_seconds,
+        "total_launches": total_launches,
+        "top_game": top_game,
+        "favorite_system": favorite_system,
+        "distinct_systems": len(system_seconds),
+        "unlocked": unlocked,
+        "total_achievements": total_achievements,
+    }
+
+
 def top_played_games(by="seconds", n=10):
     """Liefert die n Spiele mit dem hoechsten Wert fuer "seconds"
     (Gesamtspielzeit) oder "launches" (Anzahl Starts), absteigend
@@ -2961,6 +3197,15 @@ GAME_SYSTEMS = [
     ("Neo Geo",       "NEOGEO",  ["NEOGEO"],               "_Console/NeoGeo",
         {".neo": (1, "f", 1)}),
 ]
+
+def system_display_name(syskey):
+    """Anzeigename zu einem Systemschluessel (z.B. "Genesis" ->
+    "Mega Drive") - fuer Stellen, die einen menschenlesbaren Namen
+    statt des internen Schluessels brauchen (siehe Trophaeenraum)."""
+    for disp, sk, *_ in GAME_SYSTEMS:
+        if sk == syskey:
+            return disp
+    return syskey or "?"
 
 # ----------------------------------------------------------------------------
 # RA-CORE-ERKENNUNG (sage2050s "MiSTer_RetroAchievements"-Werkzeug -
@@ -4639,6 +4884,26 @@ def load_recent():
     except (OSError, ValueError, KeyError, TypeError):
         return []
 
+def find_continue_game():
+    """Sucht das zuletzt gespielte Spiel, das noch NICHT als
+    durchgespielt markiert ist - fuer die "Weiterspielen"-Vorschlag
+    ganz oben im Hauptmenue (Nutzerwunsch: "genau hier bist du stehen-
+    geblieben" statt nur eine chronologische Liste). Geht die "Zuletzt
+    gespielt"-Liste (neuestes zuerst) durch und liefert den ERSTEN
+    Eintrag, der noch nicht durchgespielt ist - (label, "game", arg)
+    wie load_recent(), oder None, wenn nichts passt (z.B. alles
+    bereits durchgespielt markiert, oder noch nie etwas gestartet).
+    Nutzt bewusst NICHT die ueber RECENT_MARKER eingebundene externe
+    Liste (siehe find_marked_recent_dir()) - die Durchgespielt-
+    Markierung ist eine rein eigene Funktion, die nur zu unserer
+    EIGENEN "Zuletzt gespielt"-Aufzeichnung sauber passt."""
+    completed = _load_completed_raw()
+    for entry in load_recent():
+        label = entry[0]
+        if label not in completed:
+            return entry
+    return None
+
 def record_recent(label, arg):
     """Ein gestartetes Spiel oben in die 'Zuletzt gespielt'-Liste
     einreihen (Duplikate werden nach oben verschoben statt doppelt zu
@@ -5135,30 +5400,13 @@ NTP_SYNC_OK = False   # von sync_system_clock_from_ntp() bei jedem Aufruf
                       # dem RA-Neuversuch) zu pruefen, ob die Systemuhr
                       # zum jetzigen Zeitpunkt als verlaesslich gilt.
 
-def sync_system_clock_from_ntp(timeout=2.5):
-    """Setzt die Systemuhr per NTP, FALLS ein lokales Netzwerk vorhanden
-    ist - in einem separaten Thread mit hartem Zeitlimit, damit eine
-    haengende DNS-Aufloesung (die von socket.settimeout() NICHT
-    zuverlaessig erfasst wird) den Start niemals um mehr als `timeout`
-    Sekunden verzoegert. Der Thread laeuft im schlimmsten Fall im
-    Hintergrund weiter, blockiert dabei aber nichts mehr (Daemon-Thread) -
-    sein Ergebnis wird dann einfach verworfen. Ohne lokales Netzwerk wird
-    gar nicht erst versucht (spart die Wartezeit komplett).
-
-    Haelt NTP_SYNC_OK bei jedem Aufruf aktuell (auch bei spaeteren
-    Neuversuchen, siehe Frontend._maybe_retry_ra()) - andere Code-
-    Stellen koennen darueber pruefen, ob die Systemuhr aktuell als
-    verlaesslich gilt, ohne selbst NTP abfragen zu muessen."""
+def _apply_ntp_result(unix_time):
+    """Setzt die Systemuhr anhand eines per NTP ermittelten UTC-
+    Zeitstempels (oder None bei Fehlschlag) und haelt NTP_SYNC_OK
+    aktuell. Ausgelagert, damit sowohl der blockierende als auch der
+    nicht-blockierende Modus von sync_system_clock_from_ntp() dieselbe
+    Logik nutzen (siehe dort)."""
     global NTP_SYNC_OK
-    if not _has_network():
-        return False
-    result = {"t": None}
-    def worker():
-        result["t"] = _ntp_time(timeout=timeout)
-    th = threading.Thread(target=worker, daemon=True)
-    th.start()
-    th.join(timeout=timeout + 0.5)
-    unix_time = result["t"]
     if unix_time is None:
         NTP_SYNC_OK = False
         return False
@@ -5181,6 +5429,46 @@ def sync_system_clock_from_ntp(timeout=2.5):
     except (OSError, subprocess.SubprocessError):
         NTP_SYNC_OK = False
         return False
+
+def sync_system_clock_from_ntp(timeout=2.5, blocking=True):
+    """Setzt die Systemuhr per NTP, FALLS ein lokales Netzwerk vorhanden
+    ist - in einem separaten Thread mit hartem Zeitlimit, damit eine
+    haengende DNS-Aufloesung (die von socket.settimeout() NICHT
+    zuverlaessig erfasst wird) den Start niemals um mehr als `timeout`
+    Sekunden verzoegert. Der Thread laeuft im schlimmsten Fall im
+    Hintergrund weiter, blockiert dabei aber nichts mehr (Daemon-Thread) -
+    sein Ergebnis wird dann einfach verworfen. Ohne lokales Netzwerk wird
+    gar nicht erst versucht (spart die Wartezeit komplett).
+
+    blocking=False (Nutzerwunsch: schnellerer Programmstart): startet
+    die Synchronisierung nur im Hintergrund und kehrt SOFORT zurueck
+    (Rueckgabewert dann None - das Ergebnis steht ja noch nicht fest),
+    ohne auf das Ergebnis zu warten. Der Hintergrund-Thread setzt die
+    Uhr trotzdem zuverlaessig, sobald er fertig ist - der bestehende
+    RA-Neuversuch-Mechanismus (Frontend._maybe_retry_ra()) faengt den
+    Fall "Uhr war beim allerersten RA-Abruf noch nicht fertig" schon
+    ab, dafuer aendert sich durch blocking=False nichts.
+
+    Haelt NTP_SYNC_OK bei jedem Aufruf aktuell (auch bei spaeteren
+    Neuversuchen) - andere Code-Stellen koennen darueber pruefen, ob
+    die Systemuhr aktuell als verlaesslich gilt, ohne selbst NTP
+    abfragen zu muessen."""
+    if not _has_network():
+        return False
+    result = {"t": None}
+    def worker():
+        result["t"] = _ntp_time(timeout=timeout)
+        if not blocking:
+            # Niemand wartet auf dieses Ergebnis - der Hintergrund-
+            # Thread muss die Uhr deshalb selbst setzen.
+            _apply_ntp_result(result["t"])
+    th = threading.Thread(target=worker, daemon=True)
+    th.start()
+    if not blocking:
+        return None   # Ergebnis noch nicht bekannt, laeuft im Hintergrund weiter
+    th.join(timeout=timeout + 0.5)
+    return _apply_ntp_result(result["t"])
+
 def crt_menu_active():
     try:
         return "[Menu]" in open(MISTER_INI).read()
@@ -5254,13 +5542,11 @@ def toggle_sfx():
         except OSError:
             pass
 
-def _write_wav_tone(path, freq_start, freq_end, duration_ms,
-                    volume=0.35, sample_rate=22050):
-    """Erzeugt eine kurze Mono-WAV-Datei mit einem Sinuston (linearer
-    Frequenz-Sweep von freq_start zu freq_end, kurzes Ein-/Ausblenden
-    gegen Knackser). Kumulative Phase statt sin(2*pi*freq*t) mit
-    wechselndem freq - sonst wuerden bei einem Sweep hoerbare Spruenge
-    entstehen."""
+def _synth_tone_samples(freq_start, freq_end, duration_ms, volume, sample_rate):
+    """Erzeugt die rohen 16-Bit-Samples fuer EINEN Frequenz-Sweep
+    (kumulative Phase statt sin(2*pi*freq*t) mit wechselndem freq -
+    sonst wuerden bei einem Sweep hoerbare Spruenge entstehen). Kern
+    von _write_wav_tone()/_write_wav_chime()."""
     n = max(1, int(sample_rate * duration_ms / 1000))
     fade = max(1, n // 8)
     samples = bytearray(n * 2)
@@ -5276,7 +5562,10 @@ def _write_wav_tone(path, freq_start, freq_end, duration_ms,
         val = int(math.sin(phase) * volume * env * 32767)
         val = max(-32768, min(32767, val))
         struct.pack_into("<h", samples, i * 2, val)
-    data = bytes(samples)
+    return samples
+
+def _write_wav(path, data, sample_rate=22050):
+    """Schreibt fertige 16-Bit-Mono-Samples als WAV-Datei."""
     byte_rate = sample_rate * 2
     header = (b"RIFF" + struct.pack("<I", 36 + len(data)) + b"WAVE"
              + b"fmt " + struct.pack("<IHHIIHH", 16, 1, 1, sample_rate,
@@ -5285,10 +5574,34 @@ def _write_wav_tone(path, freq_start, freq_end, duration_ms,
     with open(path, "wb") as f:
         f.write(header + data)
 
+def _write_wav_tone(path, freq_start, freq_end, duration_ms,
+                    volume=0.35, sample_rate=22050):
+    """Erzeugt eine kurze Mono-WAV-Datei mit einem einzelnen Sinuston
+    (linearer Frequenz-Sweep von freq_start zu freq_end)."""
+    samples = _synth_tone_samples(freq_start, freq_end, duration_ms,
+                                  volume, sample_rate)
+    _write_wav(path, bytes(samples), sample_rate)
+
+def _write_wav_chime(path, segments, volume=0.35, sample_rate=22050):
+    """Wie _write_wav_tone(), aber fuer mehrere Toene HINTEREINANDER -
+    segments: Liste von (freq_start, freq_end, duration_ms)-Tupeln.
+    Fuer den Erfolgs-Sound (kurzer aufsteigender Doppelklang), der mit
+    einem einzelnen Sweep nicht "erfolgreich" genug klingt."""
+    all_samples = bytearray()
+    for freq_start, freq_end, duration_ms in segments:
+        all_samples += _synth_tone_samples(freq_start, freq_end, duration_ms,
+                                           volume, sample_rate)
+    _write_wav(path, bytes(all_samples), sample_rate)
+
 SFX_DEFS = {
     "move":    (760, 900, 30),
     "confirm": (600, 1100, 70),
     "back":    (700, 420, 55),
+}
+SFX_CHIME_DEFS = {
+    # Kurzer aufsteigender Doppelklang - deutlich von den einfachen
+    # Sweeps oben abgesetzt, fuer den Erfolgs-Sound.
+    "achievement": [(600, 900, 60), (950, 1400, 90)],
 }
 
 def _ensure_sfx_files():
@@ -5303,6 +5616,13 @@ def _ensure_sfx_files():
         if not os.path.exists(path):
             try:
                 _write_wav_tone(path, f0, f1, dur)
+            except OSError:
+                pass
+    for name, segments in SFX_CHIME_DEFS.items():
+        path = os.path.join(SFX_DIR, name + ".wav")
+        if not os.path.exists(path):
+            try:
+                _write_wav_chime(path, segments)
             except OSError:
                 pass
 
@@ -5593,6 +5913,24 @@ TRANSLATIONS = {
                              "de": "Stammspieler: ein Spiel 20+ mal gestartet"},
     "hidden_legend": {"en": "Legend: reached every top-tier milestone at once",
                       "de": "Legende: alle hoechsten Meilensteine gleichzeitig erreicht"},
+    "achievement_popup": {"en": "Achievement unlocked: %s",
+                          "de": "Erfolg freigeschaltet: %s"},
+    "achievement_popup_multi": {"en": "%d achievements unlocked!",
+                                "de": "%d Erfolge freigeschaltet!"},
+    "trophy_room_title": {"en": "TROPHY ROOM", "de": "TROPHAEENRAUM"},
+    "trophy_favorite_system": {"en": "Favorite system: %s",
+                               "de": "Lieblingssystem: %s"},
+    "trophy_top_game": {"en": "Most played: %s", "de": "Meistgespielt: %s"},
+    "trophy_total_playtime": {"en": "Total playtime: %s",
+                              "de": "Insgesamt gespielt: %s"},
+    "trophy_launches": {"en": "Games launched: %d", "de": "Spiele gestartet: %d"},
+    "trophy_systems": {"en": "Systems explored: %d",
+                       "de": "Systeme ausprobiert: %d"},
+    "trophy_achievements": {"en": "Achievements: %d of %d",
+                            "de": "Erfolge: %d von %d"},
+    "trophy_summary": {"en": "A retro gamer on %d systems, %d of %d achievements unlocked.",
+                       "de": "Retro-Spieler(in) auf %d Systemen, %d von %d Erfolgen freigeschaltet."},
+    "sys_trophy_action": {"en": "My trophy room", "de": "Mein Trophaeenraum"},
     "sys_milestones_action": {"en": "My achievements", "de": "Meine Erfolge"},
     "sys_ra_setup": {"en": "RetroAchievements: not set up",
                      "de": "RetroAchievements: nicht eingerichtet"},
@@ -5670,6 +6008,7 @@ TRANSLATIONS = {
                      "de": "Beliebige Taste zum Fortfahren"},
     "scanning":  {"en": "Scanning: %s", "de": "Durchsuche: %s"},
     "recent_cat": {"en": "Recently Played", "de": "Zuletzt gespielt"},
+    "continue_cat": {"en": "Continue Playing", "de": "Weiterspielen"},
     "favorites_cat": {"en": "Favorites", "de": "Favoriten"},
     "favorite_added": {"en": "Added to favorites", "de": "Zu Favoriten hinzugefuegt"},
     "favorite_removed": {"en": "Removed from favorites", "de": "Aus Favoriten entfernt"},
@@ -5765,6 +6104,7 @@ def system_items(music_enabled=None):
         (t("top10_time_action"),                     "top10_time", None),
         (t("top10_launches_action"),                 "top10_launches", None),
         (t("sys_milestones_action"),                 "milestones", None),
+        (t("sys_trophy_action"),                      "trophy_room", None),
         (ra_label,                                    "ra_status", None),
         (t("sys_rescan"),                            "rescan",    None),
         (t("sys_redraw"),                            "redraw",    None),
@@ -6144,6 +6484,16 @@ class Frontend:
         # Codes (Rendering, Navigation) alle Kategorien gleich behandeln.
         self.cats = scan_games(force=force_rescan,
                                progress_cb=self._draw_scan_progress)
+        # "Weiterspielen" (Nutzerwunsch): ganz oben ein einzelner,
+        # hervorgehobener Vorschlag - das zuletzt gespielte Spiel, das
+        # noch NICHT als durchgespielt markiert ist. Faellt weg, wenn
+        # nichts passt (siehe find_continue_game()) - kein leerer
+        # Eintrag fuer niemanden, der die Durchgespielt-Markierung gar
+        # nicht nutzt oder gerade alles durch hat.
+        continue_game = find_continue_game()
+        if continue_game:
+            self.cats.insert(0, (t("continue_cat"), _wrap_flat([continue_game]), None))
+
         # "Zuletzt gespielt": hat ein externes Skript einen _*-Ordner per
         # RECENT_MARKER gekennzeichnet, ist DER die Quelle (korrekte
         # Cores inklusive RA-Varianten, nach Spielzeit sortiert) und
@@ -6157,18 +6507,20 @@ class Frontend:
         else:
             recent_items = load_recent()
         if recent_items:
-            # Ganz vorne, damit sie ohne Scrollen erreichbar ist.
+            # Direkt nach "Weiterspielen" (falls vorhanden, sonst ganz
+            # vorne), damit sie ohne Scrollen erreichbar ist.
             # syskey=None (wie Scripts/System), da die Liste mehrere
             # Systeme mischt - jeder Eintrag traegt seinen eigenen
             # Systemkey in arg[2], der beim Zeichnen bevorzugt wird
             # (siehe _item_syskey()).
-            self.cats.insert(0, (t("recent_cat"), _wrap_flat(recent_items), None))
+            pos = 1 if continue_game else 0
+            self.cats.insert(pos, (t("recent_cat"), _wrap_flat(recent_items), None))
         favorite_items = load_favorites()
         if favorite_items:
-            # Direkt nach "Zuletzt gespielt" (falls vorhanden, sonst
-            # ganz vorne) - eigene, bewusst kuratierte Auswahl, im
-            # Gegensatz zur automatischen Verlaufsliste.
-            pos = 1 if recent_items else 0
+            # Direkt nach "Zuletzt gespielt"/"Weiterspielen" (je
+            # nachdem, was vorhanden ist) - eigene, bewusst kuratierte
+            # Auswahl, im Gegensatz zur automatischen Verlaufsliste.
+            pos = (1 if continue_game else 0) + (1 if recent_items else 0)
             self.cats.insert(pos, (t("favorites_cat"), _wrap_flat(favorite_items), None))
         self.cats.extend((n, _wrap_flat(it), sk)
                          for n, it, sk in scan_cores(skip_dir=marked_recent))
@@ -7804,6 +8156,10 @@ class Frontend:
             self._stream_sig = None
             self._publish_stream()
         self.back_to_frontend()
+        # NACH back_to_frontend() (das mit einem normalen draw() endet),
+        # damit die Einblendung diesen Redraw ueberschreibt statt sofort
+        # wieder zu verschwinden.
+        self._notify_new_achievements()
 
     def run_script(self, path):
         """Script auf der Konsole (tty1) laufen lassen, danach zurueck."""
@@ -7941,6 +8297,123 @@ class Frontend:
                 % (el, vt, core, "   <-- AENDERUNG" if changed else ""))
             self._last_bootstate = state
             self._last_snapshot = now
+
+    def _check_achievement_popup(self):
+        """Prueft auf neu erreichte Erfolge und liefert bei einem
+        Treffer die fertige Popup-Nachricht (spielt dabei den
+        Erfolgston ab) - sonst None. Aufrufer entscheiden selbst, ob/
+        wie sie das anzeigen (z.B. anstelle ihrer eigenen
+        Standardmeldung wie "Favorit hinzugefuegt")."""
+        newly = check_new_achievements()
+        if not newly:
+            return None
+        play_sfx("achievement", music_playing=self.music._proc_alive())
+        if len(newly) == 1:
+            return t("achievement_popup", t(newly[0]))
+        return t("achievement_popup_multi", len(newly))
+
+    def _notify_new_achievements(self):
+        """Wie _check_achievement_popup(), zeigt eine gefundene
+        Meldung aber direkt an - fuer Stellen ohne eigene
+        Standardmeldung (z.B. nach der Rueckkehr aus einem Spiel)."""
+        msg = self._check_achievement_popup()
+        if msg:
+            self.draw(message=msg)
+
+    def draw_trophy_room_screen(self):
+        """Persoenlicher Profil-Bildschirm ("Trophaeenraum") - grosses
+        Cover des meistgespielten Spiels, Lieblingssystem (meiste
+        Gesamtspielzeit), Erfolgs-Zaehler, kurze Zusammenfassung. Baut
+        komplett auf Daten auf, die wir ohnehin schon sammeln (siehe
+        compute_profile_stats()). Rein informativ, beliebige Taste
+        kehrt zurueck."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        fb.clear(C_BG)
+
+        stats = compute_profile_stats()
+        title = t("trophy_room_title")
+        title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
+        fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+
+        accent = accent_for(stats["favorite_system"])
+        top_y = oy + 44 * s
+
+        # Cover links, falls ein meistgespieltes Spiel bekannt ist -
+        # gleiches Muster wie draw_attract() (grosses Cover mit
+        # Akzentrahmen), nur kleiner (Platz fuer die Statistik daneben).
+        cover_w = int(W * 0.36)
+        cover_h = int(H * 0.60)
+        art = None
+        top_label = None
+        if stats["top_game"]:
+            top_label = stats["top_game"][0]
+            top_syskey = load_playtime().get(top_label, {}).get("syskey")
+            if top_syskey:
+                if H >= 720:
+                    hd = _art_path_in(ART_HD, top_syskey, top_label)
+                    art = ART.get_scaled(hd, cover_w, cover_h)
+                if art is None:
+                    art = ART.get_scaled(art_path(top_syskey, top_label),
+                                         cover_w, cover_h)
+        pad = 5 * s
+        if art:
+            aw, ah, pix = art
+            ax = ox + (cover_w - aw) // 2
+            ay = top_y
+            fb.rect_rounded(ax - pad, ay - pad, aw + 2 * pad, ah + 2 * pad,
+                            accent, 4 * s)
+            self.blit(ax, ay, aw, ah, pix)
+        else:
+            fb.rect_rounded(ox, top_y, cover_w, cover_h, C_PANEL, 4 * s)
+            no_art = t("no_artwork")
+            fb.text(ox + 10 * s, top_y + 10 * s, no_art, s, C_DIM, C_PANEL)
+
+        # Statistik rechts neben dem Cover.
+        text_x = ox + cover_w + 24 * s
+        y = top_y
+        line_h = 28 * s
+        maxc = max(8, (W - text_x - ox) // (8 * s))
+
+        def stat_line(txt, color=C_TEXT):
+            nonlocal y
+            if len(txt) > maxc:
+                txt = txt[:maxc - 1] + "~"
+            fb.text(text_x, y, txt, s, color, C_BG)
+            y += line_h
+
+        if stats["favorite_system"]:
+            stat_line(t("trophy_favorite_system",
+                       system_display_name(stats["favorite_system"])), accent)
+        if top_label:
+            stat_line(t("trophy_top_game", top_label))
+        played_str = format_playtime(stats["total_seconds"]) or "0min"
+        stat_line(t("trophy_total_playtime", played_str))
+        stat_line(t("trophy_launches", stats["total_launches"]))
+        stat_line(t("trophy_systems", stats["distinct_systems"]))
+        stat_line(t("trophy_achievements", stats["unlocked"],
+                   stats["total_achievements"]))
+
+        # Kurze, personalisierte Zusammenfassung ganz unten.
+        summary = t("trophy_summary", stats["distinct_systems"],
+                    stats["unlocked"], stats["total_achievements"])
+        sum_scale = self._fit_scale(summary, W - 2 * ox, s)
+        sum_y = H - oy - 34 * (s - 1 if s > 1 else 1) - 16 * s
+        fb.text(ox, sum_y, summary, sum_scale, C_DIM, C_BG)
+
+        hint = t("attract_hint")
+        hint_scale = s - 1 if s > 1 else 1
+        hint_w = len(hint) * 8 * hint_scale
+        fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                hint, hint_scale, C_DIM, C_BG)
+        fb.flip()
+        while True:
+            act = self.inp.read_action()
+            if act is not None:
+                break
 
     def draw_milestones_screen(self):
         """Vollbild-Uebersicht aller eigenen, lokalen Erfolge - erreichte
@@ -8650,8 +9123,9 @@ class Frontend:
                             else:
                                 self._favorites_set.discard(label)
                             self._sync_favorites_category()
-                            msg = t("favorite_added") if now_fav \
-                                else t("favorite_removed")
+                            msg = self._check_achievement_popup() or (
+                                t("favorite_added") if now_fav
+                                else t("favorite_removed"))
                             self.draw(message=msg)
                             continue
                 elif act == "completed":
@@ -8666,8 +9140,9 @@ class Frontend:
                                 self._completed_set.add(label)
                             else:
                                 self._completed_set.discard(label)
-                            msg = t("completed_added") if now_completed \
-                                else t("completed_removed")
+                            msg = self._check_achievement_popup() or (
+                                t("completed_added") if now_completed
+                                else t("completed_removed"))
                             self.draw(message=msg)
                             continue
                 elif act == "ok":
@@ -8786,6 +9261,9 @@ class Frontend:
                         elif kind == "milestones":
                             self.draw_milestones_screen()
                             self.draw()
+                        elif kind == "trophy_room":
+                            self.draw_trophy_room_screen()
+                            self.draw()
                         elif kind == "ra_status":
                             ra_user, _ra_key = load_ra_config()
                             if ra_user is None:
@@ -8811,7 +9289,22 @@ class Frontend:
                 # bleiben beim vollen, bewaehrten Aufbau) - _draw_navigate_items()
                 # gibt in diesen Faellen False zurueck und faellt selbst
                 # auf den vollen draw() zurueck.
-                if (act in ("up", "down") and self.page == 1
+                #
+                # BUGFIX (Nutzer-Rueckmeldung: der Cursor "ueberspringt"
+                # beim Scrollen gelegentlich etwas): move_step > 1
+                # (Turbo-Sprung beim gehaltenen Hoch/Runter, siehe oben)
+                # wurde hier bisher NICHT geprueft - die Bedingung liess
+                # den leichten Pfad fuer JEDE hoch/runter-Aktion zu,
+                # obwohl _draw_navigate_items() laut eigener Beschreibung
+                # nur fuer EINEN Schritt ausgelegt ist. Bei einem
+                # Turbo-Sprung (item_i springt z.B. um 4 oder 10 Position-
+                # en) aktualisierte der leichte Pfad nur die unmittelbare
+                # Umgebung der ALTEN und NEUEN Position, nicht die
+                # dazwischenliegenden Zeilen - sichtbar als Cursor, der
+                # scheinbar Zeilen ueberspringt/nicht sauber nachzieht.
+                # Jetzt nur noch bei echtem Einzelschritt (move_step==1)
+                # versucht, sonst korrekt der volle, immer richtige Aufbau.
+                if (act in ("up", "down") and move_step == 1 and self.page == 1
                         and pre_page == 1 and not self.confirm_quit
                         and self._draw_navigate_items(pre_item_i)):
                     continue
@@ -8872,16 +9365,21 @@ if __name__ == "__main__":
     # sichtbare Meldung aus, und der Sperr-Fall zeigt direkt einen
     # fertigen Befehl zum Beenden der alten Instanz.
     print("Frontend-Start: initialisiere ...")
-    # Systemuhr per NTP synchronisieren, BEVOR ueberhaupt der erste
-    # Log-Eintrag geschrieben wird - MiSTer hat keine batteriegepufferte
-    # Echtzeituhr, ohne das wuerden alle folgenden Zeitstempel (Log,
-    # Uhrzeit im Hauptmenue) zunaechst falsch sein (siehe v1.70).
-    # Zeitlich begrenzt (siehe sync_system_clock_from_ntp()) - blockiert
-    # den Start dadurch nie unkontrolliert lange. Zusaetzlich try/except-
-    # abgesichert: unkritisch, falls doch mal etwas schiefgeht, der Start
-    # soll deswegen nicht komplett abbrechen.
+    # Systemuhr per NTP synchronisieren - MiSTer hat keine batterie-
+    # gepufferte Echtzeituhr, ohne das waeren Log-Zeitstempel und die
+    # Uhrzeit im Hauptmenue zunaechst falsch (siehe v1.70).
+    #
+    # NUTZERWUNSCH (schnellerer Start): laeuft seit v1.98 komplett im
+    # Hintergrund (blocking=False) - der Start wartet NICHT mehr
+    # darauf, das Menue erscheint dadurch schneller. Betrifft nur die
+    # allerersten Log-Zeilen/die Uhrzeitanzeige, die fuer die paar
+    # Sekunden bis der Hintergrund-Thread fertig ist, noch nicht
+    # korrekt sein koennten - kein Stabilitaetsrisiko: der bestehende
+    # RA-Neuversuch-Mechanismus (Frontend._maybe_retry_ra()) faengt
+    # den Fall "Uhr war beim allerersten RA-Abruf noch nicht fertig"
+    # bereits ab, genau wie vorher schon bei einem regulaeren Timeout.
     try:
-        sync_system_clock_from_ntp()
+        sync_system_clock_from_ntp(blocking=False)
     except Exception:
         print("WARNUNG: NTP-Zeitsync fehlgeschlagen (nicht kritisch):")
         traceback.print_exc()

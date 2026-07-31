@@ -4,6 +4,40 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v2.0
+Neuer Bildschirm "Trophäenraum" (System-Menü → "Mein Trophäenraum") -
+ein persönlicher Profil-Screen statt trockener Zahlen: großes Cover
+deines meistgespielten Spiels, dein Lieblingssystem (anhand der
+gesamten Spielzeit dort, nicht nur des einzelnen Top-Spiels), Erfolgs-
+Zähler und eine kurze Zusammenfassung. Baut komplett auf Daten auf,
+die wir längst sammeln - keine neue Einrichtung nötig.
+
+## v1.99
+Neue Kategorie "Weiterspielen" ganz oben im Hauptmenü - schlägt gezielt
+das Spiel vor, das du zuletzt gestartet, aber noch nicht als
+durchgespielt markiert hast. Verschwindet von selbst, sobald nichts
+mehr offen ist (oder wenn du noch nie etwas gespielt hast) - kein
+leerer Eintrag für niemanden, der die Durchgespielt-Markierung nicht
+nutzt.
+
+## v1.98
+Zwei Dinge: Der Start wartet nicht mehr auf die Zeitsynchronisierung -
+die läuft jetzt komplett im Hintergrund weiter, das Menü erscheint
+sofort (die Uhr stellt sich trotzdem zuverlässig, nur eben ohne dass
+der Start darauf wartet). Und: der gemeldete Cursor-Sprung beim
+Scrollen ist behoben - bei einem beschleunigten Turbo-Sprung (Taste
+gehalten) hat der schnelle Zeichenpfad nicht alle dazwischenliegenden
+Zeilen aufgefrischt, wodurch die Markierung sichtbar "sprang". Läuft
+jetzt bei Turbo-Sprüngen korrekt über den vollständigen Aufbau.
+
+## v1.97
+Kurze Einblendung samt eigenem Erfolgston, wenn ein Erfolg (normaler
+Meilenstein oder versteckter) neu erreicht wird - beim Zurückkehren
+aus einem Spiel, beim Favorisieren oder beim Markieren als
+durchgespielt. Wer schon länger spielt und beim Update bereits einige
+Erfolge erreicht hat, bekommt beim allerersten Start keine Flut von
+Pop-ups für längst Erreichtes - nur echt Neues löst eine Meldung aus.
+
 ## v1.96
 Drittes Paket von TheRealSutefan übernommen: ein Marker-Mechanismus
 für sein separates "Recently Played"-Skript (aktuell inaktiv, bis das

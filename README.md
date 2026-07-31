@@ -1,4 +1,4 @@
-# MiSTer Custom Frontend v1.96 - Komplettbuild (Stand: 2026-07-30)
+# MiSTer Custom Frontend v2.0 - Komplettbuild (Stand: 2026-07-30)
 
 **Von Dragrem2K**, mit tatkräftiger Unterstützung von **TheRealSuTefan**
 beim Testen und Gegenchecken.
@@ -97,7 +97,7 @@ Nachlesen (`CHANGELOG.md`).
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v1.96) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v2.0) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (läuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (läuft auf dem MiSTer) |
@@ -230,6 +230,11 @@ Zwei Seiten: Seite 1 (Hauptmenü) zeigt nur die Kategorien (Systeme,
 Arcade, Scripts, System) als große Liste; Enter/A öffnet eine
 Kategorie auf Seite 2, wo links die Spieleliste steht und rechts bei
 Spiele-Systemen eine breite Boxart+Info-Spalte.
+
+**"Weiterspielen" ganz oben im Hauptmenü** (falls vorhanden): schlägt
+gezielt das Spiel vor, das du zuletzt gestartet, aber noch nicht als
+durchgespielt markiert hast (F7, siehe Abschnitt 8m). Verschwindet von
+selbst, sobald nichts mehr offen ist.
 
 **Eigene Ordnerstruktur wird 1:1 übernommen.** Hast du deine ROMs in
 Unterordnern organisiert (z.B. "1 US-A-E", "2 Beliebt"), zeigt das
@@ -600,6 +605,17 @@ Einrichtung nötig.
 Dazu **fünf versteckte Erfolge** - erscheinen als "???", bis sie
 erreicht sind, danach wird aufgedeckt, worum es ging. Kein Spoiler
 hier, einfach ausprobieren.
+
+Wird ein Erfolg neu erreicht (egal ob normaler Meilenstein oder
+versteckt), gibt's eine kurze Einblendung mit eigenem Erfolgston -
+beim Zurückkehren aus einem Spiel, beim Favorisieren oder beim
+Markieren als durchgespielt.
+
+**Trophäenraum:** Im System-Menü "Mein Trophäenraum" - ein
+persönlicher Profil-Bildschirm statt trockener Zahlen: großes Cover
+deines meistgespielten Spiels, dein Lieblingssystem (anhand der
+gesamten dort verbrachten Spielzeit, nicht nur des einzelnen
+Top-Spiels), Erfolgs-Zähler und eine kurze Zusammenfassung.
 
 ## 9. Sprache umschalten
 
