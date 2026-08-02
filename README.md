@@ -420,9 +420,15 @@ System noch gar keine Metadaten geladen, wird es NICHT gefiltert
 
 ## 7. System-Hintergrundbilder (optional)
 
-Für ein Konsolenfoto als abgedunkelten Hintergrund pro System: gute
-Quelle sind die gemeinfreien Fotos von Evan Amos auf Wikimedia
-Commons (Suche nach "Vanamo Online Game Museum").
+**Bereits im Build enthalten** (liegt in `frontend/bg/`, muss nicht
+mehr selbst erzeugt werden): 12 Systeme (NES, SNES, Genesis, N64, PSX,
+GAMEBOY, GBC, SMS, TGFX16, MegaCD, Saturn, NEOGEO) haben ein
+abgedunkeltes Konsolenfoto als Hintergrund hinterlegt, jeweils in
+beiden Auflösungen (CRT 320×240 und HDMI 1920×1080) - Quelle sind die
+gemeinfreien Fotos von Evan Amos auf Wikimedia Commons ("Vanamo
+Online Game Museum").
+
+Eigene/weitere Bilder erzeugen (z.B. für GBA oder ARCADE):
 ```
 python art_convert.py --bg --images nes.jpg --out NES_320x240.art --size 320x240 --darken 0.25
 ```
