@@ -1,4 +1,4 @@
-# MiSTer Custom Frontend v3.0
+# MiSTer Custom Frontend v3.1
 
 **Von Dragrem2K**, mit Beiträgen von **TheRealSuTefan**, **Dfense**
 und **Dennsen**.
@@ -124,7 +124,7 @@ Nachlesen (`CHANGELOG.md`).
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v3.0) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v3.1) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (läuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (läuft auf dem MiSTer) |

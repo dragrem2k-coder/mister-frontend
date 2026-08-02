@@ -4,6 +4,21 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v3.1 — KRITISCHER BUGFIX
+Direkt nach dem v3.0-Update auf echter Hardware gemeldet: Bildschirm
+bleibt nach dem Start schwarz, nichts passiert mehr. Vermutete Ursache
+(kein Log verfügbar, per Analyse hergeleitet): die neue
+Standard-Boot-Animation ruft `flip()` viel früher als je zuvor auf,
+möglicherweise während MiSTer selbst noch mitten im Übergang steckt —
+der eingebaute VSync-Wartemechanismus (`ioctl`) könnte in diesem
+fragilen Fenster hängen bleiben statt schnell fehlzuschlagen. Fix:
+diese eine Animation umgeht den VSync-Wartemechanismus komplett und
+schreibt direkt in den Bildschirmspeicher. Ein winziges
+Tearing-Risiko bei einer derart kurzen Animation ist ein deutlich
+kleineres Übel als ein möglicher kompletter Stillstand. **Wichtig:**
+begründete Vermutung, keine bestätigte Diagnose — aber risikoarmer,
+in jedem Fall sinnvoller Fix.
+
 ## Versionsnummerierung neu geregelt (ab v3.0)
 
 Bis einschließlich v5.2 wurde die Versionsnummer für praktisch jede
