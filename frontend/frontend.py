@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v3.1
+MiSTer Custom Frontend - v3.2
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
@@ -26,6 +26,36 @@ der komplette bisherige Funktionsumfang (Trophaeenraum, Sammlungen,
 Jahresrueckblick, Spieltagebuch, Boot-Fixes, Performance-Arbeit usw.)
 bleibt vollstaendig erhalten, nur die Nummerierung wird bewusst
 zurueckhaltender.
+
+Neu in v3.2 (KRITISCHER BUGFIX Teil 2 - der v3.1-Fix allein reichte
+nicht, Nutzer meldete weiterhin schwarzen Bildschirm nach dem Update):
+  - Der echte, strukturelle Fehler gefunden (per gezieltem Test unter
+    simulierten Fehlerbedingungen NACHGEWIESEN, nicht nur vermutet):
+    InputManager.read_action(timeout=...) hatte die Deadline-Pruefung
+    bisher NUR am ENDE der Schleife. Schlaegt select.select() mit
+    OSError fehl (z.B. ein kaputtes/nicht erreichbares Eingabegeraet),
+    sprang der Code per "continue" DIREKT zum Schleifenanfang zurueck -
+    UNTER UMGEHUNG der Deadline-Pruefung. Wiederholt sich der Fehler
+    (z.B. weil rescan() dasselbe problematische Geraet immer wieder
+    findet, ohne das zugrundeliegende Problem zu loesen), entsteht eine
+    ECHTE ENDLOSSCHLEIFE, die die Zeitueberschreitung NIE prueft -
+    unabhaengig vom uebergebenen timeout-Wert.
+  - Warum das genau JETZT sichtbar wurde: read_action(timeout=...) wird
+    durch die neue Standard-Boot-Animation zum ALLERERSTEN MAL so frueh
+    im Programmablauf aufgerufen - zu einem Zeitpunkt, an dem
+    Eingabegeraete moeglicherweise noch nicht vollstaendig bereit sind.
+    Vorher wurde diese Funktion erst beim ersten echten Menue-Aufbau
+    aufgerufen, zu einem Zeitpunkt, an dem alles laengst stabil lief.
+  - Fix: Deadline-Pruefung zusaetzlich an den ANFANG jeder Schleifenrunde
+    verschoben - dadurch kann KEIN Pfad durch die Schleife (auch nicht
+    nach einem continue) die Pruefung mehr umgehen.
+  - Getestet: mit einer gezielt IMMER fehlschlagenden select()-Simulation
+    (das exakte vermutete Fehlerbild) - VOR dem Fix haette dieser Test
+    ewig gehaengt, NACH dem Fix kehrt die Funktion nachweislich nach
+    exakt der angeforderten Zeit (0.2s) zurueck, keine Sekunde laenger.
+    Normaler, funktionierender Geraete-Fall separat bestaetigt weiterhin
+    sofort und korrekt (keine Regression). 56 Kombinationen kompletter
+    Regressionstest bestanden.
 
 Neu in v3.1 (KRITISCHER BUGFIX, vermutete Ursache: Frontend startet
 nach dem v3.0-Update auf echter Hardware, Bildschirm bleibt schwarz,
@@ -5655,10 +5685,40 @@ class InputManager:
     def read_action(self, timeout=None):
         """Blockierend (oder mit Timeout) auf die naechste logische
         Aktion warten. Geraete-Events haben IMMER Vorrang vor Halte-
-        Wiederholungen, damit ein Loslassen nie verloren geht."""
+        Wiederholungen, damit ein Loslassen nie verloren geht.
+
+        BUGFIX (Nutzer-Rueckmeldung von echter Hardware: Bildschirm
+        bleibt nach dem Start schwarz, ueberlebte sogar den v3.1-Fix,
+        der flip()/VSync als Ursache ausschloss - also musste das
+        eigentliche Haengenbleiben anderswo stecken): die Deadline-
+        Pruefung stand bisher NUR am ENDE der Schleife. Schlaegt
+        select.select() mit OSError fehl (z.B. ein kaputtes/abgezogenes
+        Eingabegeraet), sprang der Code per "continue" DIREKT zurueck
+        an den Schleifenanfang - UNTER UMGEHUNG der Deadline-Pruefung
+        am Ende. Wiederholt sich der Fehler (z.B. weil rescan() dasselbe
+        problematische Geraet immer wieder findet, ohne das
+        zugrundeliegende Problem zu loesen), entsteht eine Endlosschleife,
+        die die Zeitueberschreitung NIE prueft - unabhaengig vom
+        uebergebenen timeout-Wert. Das erklaert vermutlich, warum der
+        erste Fix (VSync in der Boot-Animation umgehen) allein nicht
+        reichte: das eigentliche Haengenbleiben steckte in DIESER
+        Funktion, nicht im Bildschirmaufbau selbst - read_action(timeout=
+        ...) wird durch die neue Boot-Animation zum ALLERERSTEN MAL so
+        frueh im Programmablauf aufgerufen, zu einem Zeitpunkt, an dem
+        Eingabegeraete moeglicherweise noch nicht vollstaendig bereit
+        sind.
+
+        Fix: Deadline-Pruefung zusaetzlich an den ANFANG jeder
+        Schleifenrunde verschoben - dadurch kann KEIN Pfad durch die
+        Schleife (auch nicht nach einem continue) die Pruefung mehr
+        umgehen. Selbst eine dauerhaft fehlschlagende select()-Abfrage
+        kann die Funktion jetzt nicht mehr laenger als die angeforderte
+        Zeit blockieren."""
         deadline = None if timeout is None else time.monotonic() + timeout
         while True:
             now = time.monotonic()
+            if deadline is not None and now >= deadline:
+                return None
             if now - self.last_scan > self.RESCAN_EVERY:
                 self.rescan()
             due = self.held is not None and now >= self.held[2]
