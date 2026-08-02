@@ -1,13 +1,38 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v5.2
+MiSTer Custom Frontend - v3.0
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
-Neu in v5.2 (NEUES FEATURE: Standard-Boot-Animation - D-Pad-Symbol,
-das flackernd "zum Leben erwacht", statt eines direkten Sprungs ins
-Menue):
+VERSIONIERUNG NEU GEREGELT (Nutzer-Feedback, hier dokumentiert statt
+nur "gemerkt": "die Spruenge pro Aenderung sind einfach zu viel" - die
+Versionsnummer war zuletzt (v4.0 bis v5.2) fuer praktisch JEDE
+einzelne Aenderung hochgezaehlt worden, auch fuer kleine Bugfixes und
+Dokumentations-Politur. Das ergab eine zerfledderte, schwer lesbare
+Versionshistorie und keine verlaessliche Aussage mehr darueber, wie
+GROSS eine Aenderung tatsaechlich war.
+
+Ab hier gilt (Vereinbarung, kein Vorschlag): die Versionsnummer zaehlt
+NUR noch bei einem tatsaechlich in sich abgeschlossenen, spuerbaren
+Funktionsumfang hoch - neue Faehigkeit, echter Bugfix mit spuerbarer
+Auswirkung, oder eine bewusst gebuendelte Sammlung mehrerer kleiner
+Aenderungen, die zusammen ausgeliefert werden. Reine interne Politur,
+Kommentar-/Dokumentations-Korrekturen oder Testergaenzungen OHNE
+Verhaltensaenderung bekommen KEINE eigene Versionsnummer mehr, sondern
+werden im laufenden CHANGELOG-Eintrag der aktuellen Version mit
+aufgefuehrt. Diese Datei beginnt technisch bei v3.0 neu zu zaehlen -
+der komplette bisherige Funktionsumfang (Trophaeenraum, Sammlungen,
+Jahresrueckblick, Spieltagebuch, Boot-Fixes, Performance-Arbeit usw.)
+bleibt vollstaendig erhalten, nur die Nummerierung wird bewusst
+zurueckhaltender.
+
+Neu in v3.0 (Versions-Neuordnung, siehe oben - kein neues Feature.
+Enthaelt inhaltlich das, was zuvor als v5.2 gezaehlt haette):
+
+- NEUES FEATURE: Standard-Boot-Animation - D-Pad-Symbol, das
+  flackernd "zum Leben erwacht", statt eines direkten Sprungs ins
+  Menue.
   - Nutzerwunsch: standardmaessig eine kurze Boot-Anzeige dabei haben,
     nicht nur fuer Leute, die sich per video_to_bootanim.py eine
     eigene Animation bauen. Bisher passierte ohne eigenes Boot-

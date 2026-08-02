@@ -4,7 +4,26 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
-## v5.2
+## Versionsnummerierung neu geregelt (ab v3.0)
+
+Bis einschließlich v5.2 wurde die Versionsnummer für praktisch jede
+einzelne Änderung hochgezählt, auch kleine Bugfixes und
+Dokumentations-Politur — das ergab zu viele Sprünge pro Änderung. Ab
+hier zählt die Nummer nur noch bei einem tatsächlich spürbaren,
+abgeschlossenen Funktionsumfang hoch; reine Politur ohne
+Verhaltensänderung wird künftig im laufenden Eintrag der aktuellen
+Version mitgeführt statt eine eigene Nummer zu bekommen. Der komplette
+bisherige Funktionsumfang bleibt vollständig erhalten — nur die
+Zählung beginnt bewusst zurückhaltender neu bei v3.0. Die Einträge
+unterhalb (v1.0 bis v5.2) sind die unveränderte, echte Historie bis zu
+diesem Punkt.
+
+## v3.0
+Enthält inhaltlich das, was zuvor als v5.2 gezählt hätte — siehe
+dortigen Eintrag unten für die Details zur neuen Standard-Boot-
+Animation.
+
+## v5.2 (letzte Version vor der Neuordnung)
 Neue Standard-Boot-Animation: ein D-Pad-Symbol, das flackernd "zum
 Leben erwacht", statt eines direkten Sprungs ins Menü. Bisher
 passierte ohne eigene, selbst erstellte Boot-Animation gar nichts
