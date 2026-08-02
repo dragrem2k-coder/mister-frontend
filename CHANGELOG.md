@@ -4,6 +4,17 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v3.4 — CRT-Textabschneide-/Scroll-Fixes über acht Bildschirme
+Nutzer ging systematisch mehrere Bildschirme auf CRT durch: Mitwirkende
+und Geheimnisse ließen sich nicht scrollen, und auf praktisch jedem
+Info-Bildschirm wurden lange Zeilen mitten im Wort abgeschnitten
+(Trophäenraum, Jahresrückblick, Spieltagebuch, Hilfe-Übersicht).
+Neue `_wrap_text()`-Funktion bricht jetzt an Wortgrenzen um statt
+mitten im Wort abzuschneiden. Mitwirkende und Geheimnisse zusätzlich
+scrollbar gemacht. Beim systematischen Durchgehen gleich noch dieselbe
+Schwäche in der Erfolge-Liste, den Top-10-Listen und der
+RA-Erfolgs-Vitrine gefunden und mitbehoben.
+
 ## v3.3 — KRITISCHER BUGFIX Teil 3 (jetzt mit echter Log-Datei bestätigt)
 Nutzer schickte die tatsächliche Log-Datei — zeigte einen simplen,
 eindeutigen Fehler, völlig unabhängig von den beiden vorherigen

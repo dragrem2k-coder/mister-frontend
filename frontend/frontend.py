@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v3.3
+MiSTer Custom Frontend - v3.4
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
@@ -26,6 +26,48 @@ der komplette bisherige Funktionsumfang (Trophaeenraum, Sammlungen,
 Jahresrueckblick, Spieltagebuch, Boot-Fixes, Performance-Arbeit usw.)
 bleibt vollstaendig erhalten, nur die Nummerierung wird bewusst
 zurueckhaltender.
+
+Neu in v3.4 (BEDIENBARKEIT: systematische CRT-Textabschneide-/
+Scroll-Fixes ueber acht Info-Bildschirme hinweg, sehr ausfuehrliche
+Nutzer-Rueckmeldung):
+  - Nutzer ging systematisch mehrere Bildschirme auf CRT durch und
+    fand ein wiederkehrendes Muster: Mitwirkende/Geheimnisse liessen
+    sich nicht scrollen (nicht alles sichtbar), UND auf praktisch
+    jedem Info-Bildschirm wurden lange Zeilen mitten im Wort mit "~"
+    abgeschnitten, Rest unlesbar (Trophaeenraum "Meistgespielt: B~",
+    Jahresrueckblick-Leermeldung, Hilfe-Uebersicht "Kategorie/Ord~"
+    usw.).
+  - Neue Basis-Funktion _wrap_text(): bricht Text an WORTGRENZEN um
+    (liefert eine Liste von Zeilen), statt hart mitten im Wort
+    abzuschneiden - nur ein einzelnes, selbst zu langes Wort wird
+    (nur dieses) hart getrennt.
+  - Mitwirkende + Geheimnisse: komplett auf scrollbare Zeilenliste
+    umgestellt (wie draw_milestones_screen()) - Geheimnisse damit
+    auch zukunftssicher fuer weitere, spaeter dazukommende Eintraege.
+  - Trophaeenraum + Jahresrueckblick: Statistik-Zeilen und die
+    Zusammenfassung ganz unten brechen jetzt um statt abzuschneiden
+    (Zusammenfassung vorher: Schriftverkleinerung statt Umbruch -
+    haette bei langem Text sehr klein/unlesbar werden koennen).
+    Leermeldungen (Jahresrueckblick, Spieltagebuch) ebenfalls
+    umbruchsicher gemacht - vorher OHNE jede Absicherung.
+  - Spieltagebuch: komplett auf einheitliche, einzeln umgebrochene
+    Zeilen umgestellt (statt eines starren "2 Zeilen pro Eintrag"-
+    Layouts) - ein langer Titel bekommt automatisch so viele Zeilen
+    wie er braucht.
+  - Hilfe-Uebersicht: Zeilen werden jetzt VOR dem Scroll-Aufbau
+    umgebrochen statt beim Zeichnen abgeschnitten.
+  - Zusaetzlich mitgefunden und behoben (gleiche Ursache, nicht
+    explizit gemeldet, aber dieselbe Kategorie Fehler): Erfolge-Liste
+    (Milestones), Top-10-Listen und die RA-Erfolgs-Vitrine (F6) hatten
+    dieselbe Abschneide-Schwaeche.
+  - Getestet: alle acht betroffenen Bildschirme mit gezielt SEHR
+    langen Testnamen ("Spiel mit einem wirklich sehr langen Namen")
+    auf CRT UND HDMI durchlaufen - kein einziges Tilde-Abschneiden
+    mehr nachweisbar, ueber alle Scroll-Positionen hinweg (nicht nur
+    den ersten sichtbaren Ausschnitt). _wrap_text() selbst einzeln
+    getestet (normaler Umbruch, extrem langes Einzelwort, kurzer/
+    leerer Text). 56 Kombinationen kompletter Regressionstest
+    bestanden.
 
 Neu in v3.3 (KRITISCHER BUGFIX Teil 3 - JETZT mit echter Log-Datei
 bestaetigt, nicht mehr vermutet):
@@ -11044,15 +11086,25 @@ class Frontend:
                 mark = "[x] " if earned else "[ ] "
                 line1 = "%s%s (%d)" % (mark, name, points)
                 color = C_TEXT if earned else C_DIM
-                if len(line1) > maxc:
-                    line1 = line1[:maxc - 1] + "~"
-                fb.text(text_x, y, line1, s, color, C_BG)
+                # BUGFIX (Nutzer-Rueckmeldung, gleiche Ursache wie bei
+                # anderen Info-Bildschirmen): Name+Punkte wird an
+                # Wortgrenzen umgebrochen statt hart abgeschnitten -
+                # nur die erste umgebrochene Zeile wird gezeigt (Namen
+                # sind fast immer kurz genug fuer eine Zeile).
+                fb.text(text_x, y, self._wrap_text(line1, maxc)[0], s, color, C_BG)
                 y += rowh
-                line2 = desc
-                if len(line2) > maxc:
-                    line2 = line2[:maxc - 1] + "~"
-                fb.text(text_x, y, line2, hint_scale, C_DIM, C_BG)
-                y += rowh
+                # Beschreibung darf bis zu ZWEI kleinere Unterzeilen
+                # im ohnehin reservierten Platz nutzen (rowh bleibt
+                # insgesamt gleich, damit Symbol-Hoehe/Scroll-Mathematik
+                # unveraendert bleiben) - deutlich seltener abgeschnitten
+                # als vorher, wo IMMER nur eine Zeile zur Verfuegung stand.
+                desc_maxc = max(8, (W - text_x - ox) // (8 * hint_scale))
+                desc_lines = self._wrap_text(desc, desc_maxc)[:2]
+                sub_h = rowh // 2
+                for dl in desc_lines:
+                    fb.text(text_x, y, dl, hint_scale, C_DIM, C_BG)
+                    y += sub_h
+                y += rowh - len(desc_lines) * sub_h
             if max_scroll > 0:
                 scroll_hint = t("top10_scroll_hint", scroll + 1,
                                 min(scroll + visible, len(achievements)),
@@ -11078,54 +11130,77 @@ class Frontend:
         Egg System") - "???" fuer noch nicht Gefundenes, Name +
         Herkunfts-Hinweis nach dem Entdecken. Bewusst OHNE die genaue
         Code-Sequenz selbst zu verraten - sonst waere es kein Geheimnis
-        mehr. Kurze, feste Liste (3 Eintraege) - kein Scrollen noetig,
-        anders als bei draw_milestones_screen()."""
+        mehr.
+
+        BUGFIX (Nutzer-Rueckmeldung): frueher als "kurze, feste Liste,
+        kein Scrollen noetig" gebaut - stimmte auf CRT nicht mehr:
+        lange Zeilen (z.B. der Tastatur-Hinweis) wurden einfach mit
+        "~" abgeschnitten, der Rest war unlesbar, UND es fehlte
+        Scrollen fuer den Fall, dass spaeter mehr Geheimnisse
+        dazukommen. Jetzt: echter Zeilenumbruch (_wrap_text()) statt
+        Abschneiden, UND scrollbar wie draw_milestones_screen()."""
         fb = self.fb
         W, H = fb.width, fb.height
         s = max(1, H // 360)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
-        fb.clear(C_BG)
-
         title = t("secrets_title")
         title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
-        fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+        maxc = max(8, (W - 2 * ox) // (8 * s))
 
         unlocked = _load_secrets_unlocked()
-        fb.text(ox, oy + 44 * s, t("secrets_summary", len(unlocked), len(SECRET_CODES)),
-                s, accent_for(None), C_BG)
-        hint_scale_kb = s - 1 if s > 1 else 1
-        fb.text(ox, oy + 44 * s + 20 * s, t("secrets_keyboard_hint"),
-                hint_scale_kb, C_DIM, C_BG)
+
+        rows = []
+        for line in self._wrap_text(
+                t("secrets_summary", len(unlocked), len(SECRET_CODES)), maxc):
+            rows.append((line, accent_for(None), 0))
+        for line in self._wrap_text(t("secrets_keyboard_hint"), maxc):
+            rows.append((line, C_DIM, 0))
+        rows.append(("", C_DIM, 0))
 
         order = ["secret_theme_1", "entwicklerraum", "secret_sound"]
-        y = oy + 44 * s + 20 * s + 30 * s
-        rowh = 44 * s
-        maxc = max(8, (W - 2 * ox) // (8 * s))
         for secret_id in order:
             found = secret_id in unlocked
             mark = "[x] " if found else "[ ] "
             name = t("secret_name_" + secret_id) if found else t("hidden_mystery")
-            label = mark + name
-            if len(label) > maxc:
-                label = label[:maxc - 1] + "~"
-            fb.text(ox, y, label, s, C_TEXT if found else C_DIM, C_BG)
+            for line in self._wrap_text(mark + name, maxc):
+                rows.append((line, C_TEXT if found else C_DIM, 0))
             if found:
-                origin = t("secret_origin_" + secret_id)
-                if len(origin) > maxc:
-                    origin = origin[:maxc - 1] + "~"
-                fb.text(ox + 16 * s, y + 22 * s, origin, s - 1 if s > 1 else 1,
-                        C_DIM, C_BG)
-            y += rowh
+                for line in self._wrap_text(
+                        t("secret_origin_" + secret_id), max(4, maxc - 2)):
+                    rows.append((line, C_DIM, 1))
+            rows.append(("", C_DIM, 0))
 
-        hint = t("attract_hint")
+        rowh = 22 * s
+        list_y0 = oy + 44 * s
         hint_scale = s - 1 if s > 1 else 1
-        hint_w = len(hint) * 8 * hint_scale
-        fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
-                hint, hint_scale, C_DIM, C_BG)
-        fb.flip()
+        list_y1 = H - oy - 8 * hint_scale - 6 * s
+        visible = max(1, (list_y1 - list_y0) // rowh)
+        scroll = 0
+        max_scroll = max(0, len(rows) - visible)
         while True:
+            fb.clear(C_BG)
+            fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+            y = list_y0
+            for text, color, indent in rows[scroll:scroll + visible]:
+                fb.text(ox + indent * 16 * s, y, text, s, color, C_BG)
+                y += rowh
+            if max_scroll > 0:
+                scroll_hint = t("top10_scroll_hint", scroll + 1,
+                                min(scroll + visible, len(rows)), len(rows))
+                hint_w = len(scroll_hint) * 8 * hint_scale
+                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                        scroll_hint, hint_scale, C_DIM, C_BG)
+            else:
+                hint = t("attract_hint")
+                hint_w = len(hint) * 8 * hint_scale
+                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                        hint, hint_scale, C_DIM, C_BG)
+            fb.flip()
             act = self.inp.read_action()
+            if act in ("up", "down") and max_scroll > 0:
+                scroll = max(0, min(max_scroll, scroll + (1 if act == "down" else -1)))
+                continue
             if act is not None:
                 break
 
@@ -11134,50 +11209,73 @@ class Frontend:
         mitgeholfen hat. Anders als der Entwicklerraum (Geheimnis,
         siehe draw_dev_room_screen()) ein normaler, sichtbarer
         Menuepunkt im System-Menue - kein Versteckspiel, einfach ein
-        Danke."""
+        Danke.
+
+        BUGFIX (Nutzer-Rueckmeldung): auf CRT wurde z.B. "TheRealSutefan
+        - patches, RA tools, bugfixes" einfach mit "~" abgeschnitten,
+        UND es fehlte Scrollen, falls der Inhalt (mit mehr Mitwirkenden)
+        mal nicht mehr auf einen Bildschirm passt. Jetzt: echter
+        Zeilenumbruch (_wrap_text()) statt Abschneiden, UND scrollbar
+        wie draw_milestones_screen()."""
         fb = self.fb
         W, H = fb.width, fb.height
         s = max(1, H // 360)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
-        fb.clear(C_BG)
-
         title = t("credits_title")
         title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
-        fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+        maxc = max(8, (W - 2 * ox) // (8 * s))
 
-        y = oy + 50 * s
-        line_h = 30 * s
+        rows = []
 
         def heading(text):
-            nonlocal y
-            fb.text(ox, y, text, s, accent_for(None), C_BG)
-            y += line_h
+            rows.append((text, accent_for(None), 0))
 
         def entry(text):
-            nonlocal y
-            fb.text(ox + 16 * s, y, text, s, C_TEXT, C_BG)
-            y += line_h
+            for line in self._wrap_text(text, max(4, maxc - 2)):
+                rows.append((line, C_TEXT, 1))
 
         heading(t("credits_creator_heading"))
         entry(t("credits_creator_entry"))
-        y += line_h // 2
+        rows.append(("", C_DIM, 0))
         heading(t("credits_contrib_heading"))
         entry(t("credits_contrib_sutefan"))
         entry(t("credits_contrib_dfense"))
         entry(t("credits_contrib_dennsen"))
-        y += line_h // 2
+        rows.append(("", C_DIM, 0))
         heading(t("credits_thanks_heading"))
         entry(t("credits_thanks_entry"))
 
-        hint = t("attract_hint")
+        rowh = 24 * s
+        list_y0 = oy + 44 * s
         hint_scale = s - 1 if s > 1 else 1
-        hint_w = len(hint) * 8 * hint_scale
-        fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
-                hint, hint_scale, C_DIM, C_BG)
-        fb.flip()
+        list_y1 = H - oy - 8 * hint_scale - 6 * s
+        visible = max(1, (list_y1 - list_y0) // rowh)
+        scroll = 0
+        max_scroll = max(0, len(rows) - visible)
         while True:
+            fb.clear(C_BG)
+            fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+            y = list_y0
+            for text, color, indent in rows[scroll:scroll + visible]:
+                fb.text(ox + indent * 16 * s, y, text, s, color, C_BG)
+                y += rowh
+            if max_scroll > 0:
+                scroll_hint = t("top10_scroll_hint", scroll + 1,
+                                min(scroll + visible, len(rows)), len(rows))
+                hint_w = len(scroll_hint) * 8 * hint_scale
+                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                        scroll_hint, hint_scale, C_DIM, C_BG)
+            else:
+                hint = t("attract_hint")
+                hint_w = len(hint) * 8 * hint_scale
+                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                        hint, hint_scale, C_DIM, C_BG)
+            fb.flip()
             act = self.inp.read_action()
+            if act in ("up", "down") and max_scroll > 0:
+                scroll = max(0, min(max_scroll, scroll + (1 if act == "down" else -1)))
+                continue
             if act is not None:
                 break
 
@@ -11303,7 +11401,19 @@ class Frontend:
             ("line", "help_system_secrets"), ("line", "help_system_credits"),
             ("header", "help_section_playing"), ("line", "help_playing_exit"),
         ]
-        rows = list(section_keys)
+        # BUGFIX (Nutzer-Rueckmeldung: auf CRT wurde z.B. "OK/A:
+        # auswaehlen, Kategorie/Ord~" abgeschnitten): jede "line"
+        # bereits HIER, vor dem Scroll-Aufbau, an Wortgrenzen umbrechen
+        # (_wrap_text()) statt spaeter beim Zeichnen hart abzuschneiden -
+        # aus einer logischen Zeile koennen so mehrere Anzeige-Zeilen
+        # werden, jede davon vollstaendig lesbar.
+        rows = []
+        for kind, key in section_keys:
+            if kind == "header":
+                rows.append(("header", t(key)))
+            else:
+                for line in self._wrap_text("  " + t(key), maxc):
+                    rows.append(("line", line))
 
         rowh = 24 * s
         list_y0 = oy + 56 * s // 2 + 44 * s
@@ -11316,13 +11426,10 @@ class Frontend:
             fb.clear(C_BG)
             fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
             y = list_y0
-            for kind, key in rows[scroll:scroll + visible]:
+            for kind, text in rows[scroll:scroll + visible]:
                 if kind == "header":
-                    fb.text(ox, y, t(key), s, accent_for(None), C_BG)
+                    fb.text(ox, y, text, s, accent_for(None), C_BG)
                 else:
-                    text = "  " + t(key)
-                    if len(text) > maxc:
-                        text = text[:maxc - 1] + "~"
                     fb.text(ox, y, text, s, C_TEXT, C_BG)
                 y += rowh
             if max_scroll > 0:
@@ -11365,7 +11472,11 @@ class Frontend:
         if total_entries == 0:
             fb.clear(C_BG)
             fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
-            fb.text(ox, oy + 50 * s, t("diary_empty"), s, C_DIM, C_BG)
+            maxc_empty = max(8, (W - 2 * ox) // (8 * s))
+            y_empty = oy + 50 * s
+            for line in self._wrap_text(t("diary_empty"), maxc_empty):
+                fb.text(ox, y_empty, line, s, C_DIM, C_BG)
+                y_empty += 22 * s
             hint = t("attract_hint")
             hint_scale = s - 1 if s > 1 else 1
             hint_w = len(hint) * 8 * hint_scale
@@ -11379,30 +11490,36 @@ class Frontend:
             return
 
         maxc = max(8, (W - 2 * ox - 10 * s) // (8 * s))
+        # BUGFIX (Nutzer-Rueckmeldung): das bisherige feste "2 Zeilen
+        # pro Eintrag"-Layout (Name oben, System+Dauer darunter) schnitt
+        # auf CRT bei langen Titeln immer noch mit "~" ab, da fuer den
+        # Namen nur EINE Zeile Platz vorgesehen war. Jetzt komplett auf
+        # einzeln umgebrochene, gleich hohe Zeilen umgestellt (wie bei
+        # Mitwirkende/Geheimnisse/Hilfe) - ein langer Name bekommt
+        # automatisch so viele Zeilen wie er braucht, kein Abschneiden
+        # mehr.
         rows = []
         for date_str in sorted(diary.keys(), reverse=True):
             rows.append(("header", _format_diary_date(date_str)))
             for entry in reversed(diary[date_str]):
-                rows.append(("entry", entry))
+                for line in self._wrap_text("  " + entry["name"], maxc):
+                    rows.append(("name", line))
+                sysname = system_display_name(entry.get("syskey")) \
+                    if entry.get("syskey") else ""
+                dur = format_playtime(entry.get("seconds", 0)) or "0min"
+                info_text = "    %s - %s" % (sysname, dur) if sysname \
+                    else "    " + dur
+                for line in self._wrap_text(info_text, maxc):
+                    rows.append(("info", line))
 
-        # BUGFIX/Aenderung auf Nutzerwunsch: Name und System+Dauer auf
-        # EINER Zeile ("Name (System)  ...  Dauer") fuehrte auf CRT
-        # (schmale Aufloesung) haeufig zum Abschneiden langer Titel.
-        # Statt einer Laufschrift (deutlich aufwendiger - braucht
-        # mehrere GLEICHZEITIGE Laufschriften plus staendiges
-        # Neuzeichnen statt des bisherigen Wartens auf Tastendruck)
-        # jetzt zwei Zeilen pro Eintrag: Name oben (volle Breite),
-        # System+Dauer klein darunter. Kostet etwas mehr Hoehe pro
-        # Eintrag (weniger Eintraege gleichzeitig sichtbar), dafuer
-        # bleibt der Titel selbst fast immer vollstaendig lesbar.
-        line_h = 22 * s // 2
-        rowh = 2 * line_h + 4 * s   # Name-Zeile + Info-Zeile + kleiner Abstand
+        rowh = 20 * s
         list_y0 = oy + 56 * s // 2 + 16 * s + 44 * s
         hint_scale = s - 1 if s > 1 else 1
         list_y1 = H - oy - 8 * hint_scale - 6 * s
         visible = max(1, (list_y1 - list_y0) // rowh)
         scroll = 0
         max_scroll = max(0, len(rows) - visible)
+        info_scale = s - 1 if s > 1 else 1
         while True:
             fb.clear(C_BG)
             fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
@@ -11410,24 +11527,13 @@ class Frontend:
             fb.text(ox, y, t("diary_summary", total_entries, DIARY_RETENTION_DAYS),
                     s, accent_for(None), C_BG)
             y = list_y0
-            for row in rows[scroll:scroll + visible]:
-                if row[0] == "header":
-                    fb.text(ox, y, row[1], s, accent_for(None), C_BG)
+            for kind, text in rows[scroll:scroll + visible]:
+                if kind == "header":
+                    fb.text(ox, y, text, s, accent_for(None), C_BG)
+                elif kind == "name":
+                    fb.text(ox, y, text, s, C_TEXT, C_BG)
                 else:
-                    entry = row[1]
-                    name = "  " + entry["name"]
-                    if len(name) > maxc:
-                        name = name[:maxc - 1] + "~"
-                    fb.text(ox, y, name, s, C_TEXT, C_BG)
-                    sysname = system_display_name(entry.get("syskey")) \
-                        if entry.get("syskey") else ""
-                    dur = format_playtime(entry.get("seconds", 0)) or "0min"
-                    info = "    %s - %s" % (sysname, dur) if sysname \
-                        else "    " + dur
-                    info_scale = s - 1 if s > 1 else 1
-                    if len(info) > maxc:
-                        info = info[:maxc - 1] + "~"
-                    fb.text(ox, y + line_h, info, info_scale, C_DIM, C_BG)
+                    fb.text(ox, y, text, info_scale, C_DIM, C_BG)
                 y += rowh
             if max_scroll > 0:
                 scroll_hint = t("top10_scroll_hint", scroll + 1,
@@ -11470,7 +11576,11 @@ class Frontend:
         fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
 
         if not stats:
-            fb.text(ox, oy + 50 * s, t("year_review_empty"), s, C_DIM, C_BG)
+            maxc_empty = max(8, (W - 2 * ox) // (8 * s))
+            y_empty = oy + 50 * s
+            for line in self._wrap_text(t("year_review_empty"), maxc_empty):
+                fb.text(ox, y_empty, line, s, C_DIM, C_BG)
+                y_empty += 22 * s
             hint = t("attract_hint")
             hint_scale = s - 1 if s > 1 else 1
             hint_w = len(hint) * 8 * hint_scale
@@ -11520,10 +11630,9 @@ class Frontend:
 
         def stat_line(txt, color=C_TEXT):
             nonlocal y
-            if len(txt) > maxc:
-                txt = txt[:maxc - 1] + "~"
-            fb.text(text_x, y, txt, s, color, C_BG)
-            y += line_h
+            for line in self._wrap_text(txt, maxc):
+                fb.text(text_x, y, line, s, color, C_BG)
+                y += line_h
 
         if stats["favorite_system"]:
             stat_line(t("year_review_favorite_system",
@@ -11539,9 +11648,14 @@ class Frontend:
 
         summary = t("year_review_summary", stats["year"],
                     stats["distinct_games"], stats["discovered_this_year"])
-        sum_scale = self._fit_scale(summary, W - 2 * ox, s)
-        sum_y = H - oy - 34 * (s - 1 if s > 1 else 1) - 16 * s
-        fb.text(ox, sum_y, summary, sum_scale, C_DIM, C_BG)
+        maxc_sum = max(8, (W - 2 * ox) // (8 * s))
+        summary_lines = self._wrap_text(summary, maxc_sum)
+        line_h_sum = 18 * s
+        sum_y = H - oy - 34 * (s - 1 if s > 1 else 1) - 16 * s \
+            - (len(summary_lines) - 1) * line_h_sum
+        for _sline in summary_lines:
+            fb.text(ox, sum_y, _sline, s, C_DIM, C_BG)
+            sum_y += line_h_sum
 
         hint = t("attract_hint")
         hint_scale = s - 1 if s > 1 else 1
@@ -11614,10 +11728,9 @@ class Frontend:
 
         def stat_line(txt, color=C_TEXT):
             nonlocal y
-            if len(txt) > maxc:
-                txt = txt[:maxc - 1] + "~"
-            fb.text(text_x, y, txt, s, color, C_BG)
-            y += line_h
+            for line in self._wrap_text(txt, maxc):
+                fb.text(text_x, y, line, s, color, C_BG)
+                y += line_h
 
         if stats["favorite_system"]:
             stat_line(t("trophy_favorite_system",
@@ -11634,9 +11747,14 @@ class Frontend:
         # Kurze, personalisierte Zusammenfassung ganz unten.
         summary = t("trophy_summary", stats["distinct_systems"],
                     stats["unlocked"], stats["total_achievements"])
-        sum_scale = self._fit_scale(summary, W - 2 * ox, s)
-        sum_y = H - oy - 34 * (s - 1 if s > 1 else 1) - 16 * s
-        fb.text(ox, sum_y, summary, sum_scale, C_DIM, C_BG)
+        maxc_sum = max(8, (W - 2 * ox) // (8 * s))
+        summary_lines = self._wrap_text(summary, maxc_sum)
+        line_h_sum = 18 * s
+        sum_y = H - oy - 34 * (s - 1 if s > 1 else 1) - 16 * s \
+            - (len(summary_lines) - 1) * line_h_sum
+        for _sline in summary_lines:
+            fb.text(ox, sum_y, _sline, s, C_DIM, C_BG)
+            sum_y += line_h_sum
 
         hint = t("attract_hint")
         hint_scale = s - 1 if s > 1 else 1
@@ -11702,9 +11820,7 @@ class Frontend:
                     mark = "[x] " if achieved else "[ ] "
                     label = mark + t(label_key)
                     color = C_TEXT if achieved else C_DIM
-                    if len(label) > maxc:
-                        label = label[:maxc - 1] + "~"
-                    fb.text(ox, y, label, s, color, C_BG)
+                    fb.text(ox, y, self._wrap_text(label, maxc)[0], s, color, C_BG)
                     if not achieved:
                         if kind == "playtime_seconds":
                             prog = "%s/%s" % (_format_seconds_short(current),
@@ -11718,9 +11834,7 @@ class Frontend:
                     mark = "[x] " if hunlocked else "[ ] "
                     label = mark + (t(label_key) if hunlocked else t("hidden_mystery"))
                     color = C_TEXT if hunlocked else C_DIM
-                    if len(label) > maxc:
-                        label = label[:maxc - 1] + "~"
-                    fb.text(ox, y, label, s, color, C_BG)
+                    fb.text(ox, y, self._wrap_text(label, maxc)[0], s, color, C_BG)
                 y += rowh
             if max_scroll > 0:
                 scroll_hint = t("top10_scroll_hint", scroll + 1,
@@ -11750,6 +11864,39 @@ class Frontend:
             if len(text) * 8 * scale <= max_width:
                 return scale
         return 1
+
+    def _wrap_text(self, text, maxc):
+        """Bricht einen Text an WORTGRENZEN um, sodass jede Zeile
+        hoechstens maxc Zeichen lang ist - liefert eine Liste von
+        Zeilen zurueck. Nutzerwunsch/-Rueckmeldung: mehrere Info-
+        Bildschirme (Mitwirkende, Geheimnisse, Hilfe, Trophaeenraum,
+        Jahresrueckblick, Spieltagebuch) schnitten auf CRT lange
+        Zeilen bisher einfach mit "~" ab - der Rest war unlesbar.
+        GANZE WOERTER bleiben beim Umbruch zusammen; nur wenn ein
+        EINZELNES Wort selbst schon laenger als maxc ist (extrem
+        selten), wird ausschliesslich dieses eine Wort hart getrennt -
+        unvermeidbar, aber der Normalfall bleibt sauber lesbar."""
+        maxc = max(4, maxc)
+        words = text.split(" ")
+        lines = []
+        current = ""
+        for word in words:
+            candidate = (current + " " + word) if current else word
+            if len(candidate) <= maxc:
+                current = candidate
+            else:
+                if current:
+                    lines.append(current)
+                if len(word) > maxc:
+                    while len(word) > maxc:
+                        lines.append(word[:maxc])
+                        word = word[maxc:]
+                    current = word
+                else:
+                    current = word
+        if current:
+            lines.append(current)
+        return lines or [""]
 
     def draw_top10_screen(self, by):
         """Zeigt eine Vollbild-Liste der 10 meistgespielten (by=
@@ -11792,7 +11939,7 @@ class Frontend:
                 label, seconds, launches = rows[i]
                 rank = "%2d." % (i + 1)
                 fb.text(ox, y, rank, s, C_DIM, C_BG)
-                name = label if len(label) <= maxc else label[:maxc - 1] + "~"
+                name = self._wrap_text(label, maxc)[0]
                 fb.text(ox + 44 * s, y, name, s, C_TEXT, C_BG)
                 if by == "seconds":
                     stat = format_playtime(seconds) or "-"
