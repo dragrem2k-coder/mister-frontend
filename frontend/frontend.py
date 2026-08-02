@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v3.4
+MiSTer Custom Frontend - v3.5
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
@@ -26,6 +26,52 @@ der komplette bisherige Funktionsumfang (Trophaeenraum, Sammlungen,
 Jahresrueckblick, Spieltagebuch, Boot-Fixes, Performance-Arbeit usw.)
 bleibt vollstaendig erhalten, nur die Nummerierung wird bewusst
 zurueckhaltender.
+
+Neu in v3.5 (vier Bugfixes anhand echter CRT-Fotos, plus Klaerung
+zum geheimen Sound):
+  - "??? (einfach" und dann nichts mehr: die v3.4-Fassung zeigte bei
+    versteckten Erfolgen nur die ERSTE umgebrochene Zeile
+    (_wrap_text()[0]), der Rest wurde STILLSCHWEIGEND VERWORFEN -
+    schlimmer als das urspruengliche Tilde-Problem, weil hier echte
+    Information (der komplette Hinweistext) verloren ging. Fix: volle
+    Mehrzeilen-Darstellung fuer "hidden"-Zeilen (keine Kollision mit
+    einer Fortschrittsanzeige wie bei "milestone"-Zeilen). ZUSAETZLICH
+    dabei gefunden: die maxc-Berechnung fuer "hidden"-Zeilen teilte
+    sich bisher die (fuer Fortschrittsanzeigen stark eingeschraenkte)
+    Breite mit "milestone"-Zeilen, obwohl "hidden"-Zeilen gar keine
+    Fortschrittsanzeige haben - eigene, breitere Berechnung ergaenzt.
+  - Zeitanzeige bei Fortschrittswerten (Foto zeigte "14min/100h" -
+    Aktuell-/Zielwert in unterschiedlichen Einheiten nebeneinander,
+    schwer vergleichbar): _format_seconds_short() zeigt jetzt
+    durchgaengig "Stunden dann Minuten" (z.B. "0h 14min/100h 0min"),
+    reservierter Platz dafuer entsprechend vergroessert.
+  - Trophaeenraum: Text lief quer durchs Boxart-Cover (Foto). Ursache:
+    auf CRT reicht die Bildschirmhoehe nicht fuer Cover + alle
+    Statistik-Zeilen + Zusammenfassung gleichzeitig - das vorherige
+    "nach oben wachsen lassen" der Zusammenfassung verschob das
+    Problem nur. Jetzt: Cover bleibt an fester Position, Statistik +
+    Zusammenfassung sind eine gemeinsame SCROLLBARE Liste (Nutzer-
+    Vorschlag direkt umgesetzt).
+  - Geheimcode-Popup erschien links unten am Bildschirmrand statt
+    zentriert - an beiden Stellen, wo Popups erscheinen (Kategorien-
+    und Spieleliste), jetzt horizontal zentriert.
+  - Geklaert (kein Bugfix): der geheime Sound existiert tatsaechlich
+    (verspielter, vierstufiger Klang) - vermutlich unhoerbar geblieben,
+    weil Soundeffekte grundsaetzlich unterdrueckt werden, solange
+    Musik laeuft (bewusste Absicherung gegen Audio-Geraete-Konflikte).
+  - Getestet: "weiterspielen)" nachweislich vollstaendig sichtbar (DE
+    UND EN, CRT UND HDMI, mit ausreichend Scroll-Puffer). Zeitformat
+    isoliert bestaetigt. Trophaeenraum: "Batman Returns" vollstaendig
+    sichtbar bei CRT UND HDMI, kein Absturz. Popup-Zentrierung per
+    Positionsvergleich bestaetigt (erwartete vs. tatsaechliche X-
+    Position). 56 Kombinationen kompletter Regressionstest bestanden.
+
+  BEIM TESTEN GEFUNDEN UND KORRIGIERT (zwei falsche Testannahmen
+  meinerseits, kein Code-Fehler): mein erster Testlauf schlug fehl,
+  weil das Testmodul standardmaessig auf Englisch laeuft (nicht
+  Deutsch) - nach Sprachkorrektur zeigte sich EIN WEITERER, echter
+  Fehler (die geteilte maxc-Berechnung oben), der ohne den zweiten,
+  genauen Testdurchlauf unentdeckt geblieben waere.
 
 Neu in v3.4 (BEDIENBARKEIT: systematische CRT-Textabschneide-/
 Scroll-Fixes ueber acht Info-Bildschirme hinweg, sehr ausfuehrliche
@@ -4340,15 +4386,19 @@ def _format_seconds_short(seconds):
     """Wie format_playtime(), liefert aber IMMER einen Text (auch unter
     einer Minute) - fuer die Meilenstein-Anzeige, wo bei jedem
     Fortschrittswert etwas Lesbares stehen soll, nicht nur ab einer
-    bestimmten Groessenordnung."""
+    bestimmten Groessenordnung.
+
+    BUGFIX (Nutzer-Rueckmeldung anhand eines CRT-Fotos: Fortschritts-
+    anzeige zeigte z.B. "14min/100h" - Aktuell- und Zielwert in
+    UNTERSCHIEDLICHEN Einheiten nebeneinander, schwer auf einen Blick
+    vergleichbar): zeigt jetzt IMMER konsequent "Stunden dann Minuten"
+    (auch "0h"), damit beide Seiten des Bruchs im selben Format stehen -
+    z.B. "0h 14min/100h 0min" statt des vorherigen Mix aus "14min" und
+    "100h"."""
     seconds = max(0, int(seconds))
     mins = seconds // 60
     h, m = divmod(mins, 60)
-    if h > 0:
-        return "%dh %dmin" % (h, m) if m else "%dh" % h
-    if m > 0:
-        return "%dmin" % m
-    return "%ds" % seconds
+    return "%dh %dmin" % (h, m)
 
 def get_milestones():
     """Liste aller Meilensteine als (label_key, erreicht, aktueller_wert,
@@ -9307,7 +9357,14 @@ class Frontend:
         self._draw_cat_artbox(L)
 
         if message:
-            fb.text(ox, H - oy - 13 * s, message, s, C_DIM, C_BG)
+            # BUGFIX (Nutzer-Rueckmeldung: Geheimcode-Popup erschien
+            # links unten am Bildschirmrand statt zentriert): text
+            # jetzt horizontal zentriert statt am linken Rand (ox)
+            # ausgerichtet - deutlich auffaelliger/besser lesbar,
+            # gerade fuer kurze, wichtige Meldungen wie dieses Popup.
+            msg_scale = self._fit_scale(message, W - 2 * ox, s)
+            msg_w = len(message) * 8 * msg_scale
+            fb.text((W - msg_w) // 2, H - oy - 13 * s, message, msg_scale, C_DIM, C_BG)
         self._draw_status_bar(L)
         if flip:
             fb.flip()
@@ -9936,7 +9993,12 @@ class Frontend:
                 self._perf_art = time.monotonic() - _ta
 
         if message:
-            fb.text(ox, footer_y, message, s, C_DIM)
+            # BUGFIX (Nutzer-Rueckmeldung: Geheimcode-Popup erschien
+            # links unten am Bildschirmrand statt zentriert) - gleicher
+            # Fix wie in draw_page_cats().
+            msg_scale = self._fit_scale(message, W - 2 * ox, s)
+            msg_w = len(message) * 8 * msg_scale
+            fb.text((W - msg_w) // 2, footer_y, message, msg_scale, C_DIM)
         else:
             # Songtitel als Laufschrift in der Fusszeile - bleibt so
             # an derselben Stelle sichtbar, egal ob/wie viel Platz das
@@ -11674,25 +11736,32 @@ class Frontend:
         Gesamtspielzeit), Erfolgs-Zaehler, kurze Zusammenfassung. Baut
         komplett auf Daten auf, die wir ohnehin schon sammeln (siehe
         compute_profile_stats()). Rein informativ, beliebige Taste
-        kehrt zurueck."""
+        kehrt zurueck.
+
+        BUGFIX (Nutzer-Rueckmeldung anhand eines CRT-Fotos: die
+        Zusammenfassung ganz unten lief quer durch das Boxart-Bild):
+        auf CRT reicht die Bildschirmhoehe schlicht nicht fuer Cover +
+        alle Statistik-Zeilen + Zusammenfassung gleichzeitig - das
+        vorherige "nach oben wachsen lassen" der Zusammenfassung
+        verschob das Ueberlappungsproblem nur, statt es zu loesen.
+        Jetzt: Cover bleibt an fester Position, die Statistik-Zeilen UND
+        die Zusammenfassung werden zu EINER gemeinsamen, scrollbaren
+        Liste zusammengefasst (wie bei draw_milestones_screen()) - passt
+        auf CRT nicht alles gleichzeitig hin, kann man es durchscrollen,
+        statt dass sich Text und Bild gegenseitig ueberlagern."""
         fb = self.fb
         W, H = fb.width, fb.height
         s = max(1, H // 360)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
-        fb.clear(C_BG)
 
         stats = compute_profile_stats()
         title = t("trophy_room_title")
         title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
-        fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
 
         accent = accent_for(stats["favorite_system"])
         top_y = oy + 44 * s
 
-        # Cover links, falls ein meistgespieltes Spiel bekannt ist -
-        # gleiches Muster wie draw_attract() (grosses Cover mit
-        # Akzentrahmen), nur kleiner (Platz fuer die Statistik daneben).
         cover_w = int(W * 0.36)
         cover_h = int(H * 0.60)
         art = None
@@ -11708,62 +11777,77 @@ class Frontend:
                     art = ART.get_scaled(art_path(top_syskey, top_label),
                                          cover_w, cover_h)
         pad = 5 * s
-        if art:
-            aw, ah, pix = art
-            ax = ox + (cover_w - aw) // 2
-            ay = top_y
-            fb.rect_rounded(ax - pad, ay - pad, aw + 2 * pad, ah + 2 * pad,
-                            accent, 4 * s)
-            self.blit(ax, ay, aw, ah, pix)
-        else:
-            fb.rect_rounded(ox, top_y, cover_w, cover_h, C_PANEL, 4 * s)
-            no_art = t("no_artwork_1") + " " + t("no_artwork_2")
-            fb.text(ox + 10 * s, top_y + 10 * s, no_art, s, C_DIM, C_PANEL)
 
-        # Statistik rechts neben dem Cover.
         text_x = ox + cover_w + 24 * s
-        y = top_y
-        line_h = 28 * s
         maxc = max(8, (W - text_x - ox) // (8 * s))
 
-        def stat_line(txt, color=C_TEXT):
-            nonlocal y
-            for line in self._wrap_text(txt, maxc):
-                fb.text(text_x, y, line, s, color, C_BG)
-                y += line_h
-
+        rows = []
         if stats["favorite_system"]:
-            stat_line(t("trophy_favorite_system",
-                       system_display_name(stats["favorite_system"])), accent)
+            for line in self._wrap_text(t("trophy_favorite_system",
+                    system_display_name(stats["favorite_system"])), maxc):
+                rows.append((line, accent))
         if top_label:
-            stat_line(t("trophy_top_game", top_label))
+            for line in self._wrap_text(t("trophy_top_game", top_label), maxc):
+                rows.append((line, C_TEXT))
         played_str = format_playtime(stats["total_seconds"]) or "0min"
-        stat_line(t("trophy_total_playtime", played_str))
-        stat_line(t("trophy_launches", stats["total_launches"]))
-        stat_line(t("trophy_systems", stats["distinct_systems"]))
-        stat_line(t("trophy_achievements", stats["unlocked"],
-                   stats["total_achievements"]))
-
-        # Kurze, personalisierte Zusammenfassung ganz unten.
+        for line in self._wrap_text(t("trophy_total_playtime", played_str), maxc):
+            rows.append((line, C_TEXT))
+        for line in self._wrap_text(t("trophy_launches", stats["total_launches"]), maxc):
+            rows.append((line, C_TEXT))
+        for line in self._wrap_text(t("trophy_systems", stats["distinct_systems"]), maxc):
+            rows.append((line, C_TEXT))
+        for line in self._wrap_text(t("trophy_achievements", stats["unlocked"],
+                   stats["total_achievements"]), maxc):
+            rows.append((line, C_TEXT))
+        rows.append(("", C_DIM))
         summary = t("trophy_summary", stats["distinct_systems"],
                     stats["unlocked"], stats["total_achievements"])
-        maxc_sum = max(8, (W - 2 * ox) // (8 * s))
-        summary_lines = self._wrap_text(summary, maxc_sum)
-        line_h_sum = 18 * s
-        sum_y = H - oy - 34 * (s - 1 if s > 1 else 1) - 16 * s \
-            - (len(summary_lines) - 1) * line_h_sum
-        for _sline in summary_lines:
-            fb.text(ox, sum_y, _sline, s, C_DIM, C_BG)
-            sum_y += line_h_sum
+        for line in self._wrap_text(summary, maxc):
+            rows.append((line, C_DIM))
 
-        hint = t("attract_hint")
+        line_h = 22 * s
         hint_scale = s - 1 if s > 1 else 1
-        hint_w = len(hint) * 8 * hint_scale
-        fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
-                hint, hint_scale, C_DIM, C_BG)
-        fb.flip()
+        list_y1 = H - oy - 8 * hint_scale - 6 * s
+        visible = max(1, (list_y1 - top_y) // line_h)
+        scroll = 0
+        max_scroll = max(0, len(rows) - visible)
         while True:
+            fb.clear(C_BG)
+            fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+
+            if art:
+                aw, ah, pix = art
+                ax = ox + (cover_w - aw) // 2
+                ay = top_y
+                fb.rect_rounded(ax - pad, ay - pad, aw + 2 * pad, ah + 2 * pad,
+                                accent, 4 * s)
+                self.blit(ax, ay, aw, ah, pix)
+            else:
+                fb.rect_rounded(ox, top_y, cover_w, cover_h, C_PANEL, 4 * s)
+                no_art = t("no_artwork_1") + " " + t("no_artwork_2")
+                fb.text(ox + 10 * s, top_y + 10 * s, no_art, s, C_DIM, C_PANEL)
+
+            y = top_y
+            for text, color in rows[scroll:scroll + visible]:
+                fb.text(text_x, y, text, s, color, C_BG)
+                y += line_h
+
+            if max_scroll > 0:
+                scroll_hint = t("top10_scroll_hint", scroll + 1,
+                                min(scroll + visible, len(rows)), len(rows))
+                hint_w = len(scroll_hint) * 8 * hint_scale
+                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                        scroll_hint, hint_scale, C_DIM, C_BG)
+            else:
+                hint = t("attract_hint")
+                hint_w = len(hint) * 8 * hint_scale
+                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                        hint, hint_scale, C_DIM, C_BG)
+            fb.flip()
             act = self.inp.read_action()
+            if act in ("up", "down") and max_scroll > 0:
+                scroll = max(0, min(max_scroll, scroll + (1 if act == "down" else -1)))
+                continue
             if act is not None:
                 break
 
@@ -11789,14 +11873,33 @@ class Frontend:
         unlocked = sum(1 for m in milestones if m[1])
         hidden = get_hidden_achievements()
         hidden_unlocked = sum(1 for h in hidden if h[2])
-        maxc = max(8, (W - 2 * ox - 60 * s) // (8 * s))
+        # BUGFIX: reservierter Platz fuer die Fortschrittsanzeige rechts
+        # von 60*s auf 170*s erhoeht - das neue durchgaengige "Stunden
+        # dann Minuten"-Format (siehe _format_seconds_short()) ist
+        # laenger als das alte gemischte Format, hier passend erweitert
+        # damit Beschriftung und Fortschrittswert nicht ueberlappen.
+        maxc = max(8, (W - 2 * ox - 170 * s) // (8 * s))
 
         rows = []
         for label_key, achieved, current, threshold, kind in milestones:
             rows.append(("milestone", label_key, achieved, current, threshold, kind))
         rows.append(("header", t("hidden_section_title", hidden_unlocked, len(hidden))))
+        # BUGFIX (Nutzer-Rueckmeldung, Foto von echter CRT-Hardware:
+        # "??? (einfach" und dann nichts mehr): die vorige Version
+        # nutzte fuer "hidden"-Zeilen dieselbe (schmale) maxc wie fuer
+        # "milestone"-Zeilen, die extra Platz fuer eine Fortschritts-
+        # anzeige rechts reserviert (170*s) - "hidden"-Zeilen haben
+        # aber GAR KEINE Fortschrittsanzeige und wurden dadurch
+        # unnoetig eingeengt (nur ~13 Zeichen auf CRT statt der vollen
+        # verfuegbaren Breite), wodurch selbst "weiterspielen)" schon
+        # als "zu langes Einzelwort" hart getrennt wurde. Jetzt eigene,
+        # breitere Berechnung nur fuer "hidden"-Zeilen.
+        maxc_hidden = max(8, (W - 2 * ox) // (8 * s))
         for hid, label_key, hunlocked in hidden:
-            rows.append(("hidden", label_key, hunlocked))
+            mark = "[x] " if hunlocked else "[ ] "
+            label = mark + (t(label_key) if hunlocked else t("hidden_mystery"))
+            for line in self._wrap_text(label, maxc_hidden):
+                rows.append(("hidden_line", line, hunlocked))
 
         rowh = 24 * s
         list_y0 = oy + 56 * s // 2 + 16 * s + 44 * s
@@ -11829,12 +11932,10 @@ class Frontend:
                             prog = "%d/%d" % (current, threshold)
                         prog_w = len(prog) * 8 * s
                         fb.text(W - ox - prog_w, y, prog, s, C_DIM, C_BG)
-                else:   # "hidden"
-                    _, label_key, hunlocked = row
-                    mark = "[x] " if hunlocked else "[ ] "
-                    label = mark + (t(label_key) if hunlocked else t("hidden_mystery"))
+                else:   # "hidden_line" - bereits fertig umgebrochene Zeile
+                    _, text, hunlocked = row
                     color = C_TEXT if hunlocked else C_DIM
-                    fb.text(ox, y, self._wrap_text(label, maxc)[0], s, color, C_BG)
+                    fb.text(ox, y, text, s, color, C_BG)
                 y += rowh
             if max_scroll > 0:
                 scroll_hint = t("top10_scroll_hint", scroll + 1,
