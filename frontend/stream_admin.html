@@ -72,6 +72,8 @@
         <label class="sw"><input type="checkbox" id="show_playtime"><span class="sl"></span></label></div>
       <div class="row"><label>RetroAchievements</label>
         <label class="sw"><input type="checkbox" id="show_ra"><span class="sl"></span></label></div>
+      <div class="row"><label>Erfolgs-Einblendung</label>
+        <label class="sw"><input type="checkbox" id="show_ra_badges"><span class="sl"></span></label></div>
       <div class="row"><label>Favoriten-Stern</label>
         <label class="sw"><input type="checkbox" id="show_favorite"><span class="sl"></span></label></div>
       <div class="row"><label>Ecke</label>
@@ -96,7 +98,7 @@
 <script>
 const F = ["title","accent","bg","transparent","show_boxart","show_system",
            "show_list","show_nowplaying","show_genre","show_playtime",
-           "show_ra","show_favorite","corner","scale"];
+           "show_ra","show_ra_badges","show_favorite","corner","scale"];
 const $ = id => document.getElementById(id);
 let cfg = {};
 
@@ -113,6 +115,7 @@ function fillForm(c){
   $("show_genre").checked = c.show_genre!==false;
   $("show_playtime").checked = c.show_playtime!==false;
   $("show_ra").checked = c.show_ra!==false;
+  $("show_ra_badges").checked = c.show_ra_badges!==false;
   $("show_favorite").checked = c.show_favorite!==false;
   $("corner").value = c.corner||"bottom-left";
   $("scale").value = c.scale||100;
@@ -126,7 +129,8 @@ function collect(){
     show_system:$("show_system").checked, show_list:$("show_list").checked,
     show_nowplaying:$("show_nowplaying").checked,
     show_genre:$("show_genre").checked, show_playtime:$("show_playtime").checked,
-    show_ra:$("show_ra").checked, show_favorite:$("show_favorite").checked,
+    show_ra:$("show_ra").checked, show_ra_badges:$("show_ra_badges").checked,
+    show_favorite:$("show_favorite").checked,
     corner:$("corner").value,
     scale:parseInt($("scale").value,10)
   };

@@ -1,9 +1,984 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v2.0
+MiSTer Custom Frontend - v3.0
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
+
+VERSIONIERUNG NEU GEREGELT (Nutzer-Feedback, hier dokumentiert statt
+nur "gemerkt": "die Spruenge pro Aenderung sind einfach zu viel" - die
+Versionsnummer war zuletzt (v4.0 bis v5.2) fuer praktisch JEDE
+einzelne Aenderung hochgezaehlt worden, auch fuer kleine Bugfixes und
+Dokumentations-Politur. Das ergab eine zerfledderte, schwer lesbare
+Versionshistorie und keine verlaessliche Aussage mehr darueber, wie
+GROSS eine Aenderung tatsaechlich war.
+
+Ab hier gilt (Vereinbarung, kein Vorschlag): die Versionsnummer zaehlt
+NUR noch bei einem tatsaechlich in sich abgeschlossenen, spuerbaren
+Funktionsumfang hoch - neue Faehigkeit, echter Bugfix mit spuerbarer
+Auswirkung, oder eine bewusst gebuendelte Sammlung mehrerer kleiner
+Aenderungen, die zusammen ausgeliefert werden. Reine interne Politur,
+Kommentar-/Dokumentations-Korrekturen oder Testergaenzungen OHNE
+Verhaltensaenderung bekommen KEINE eigene Versionsnummer mehr, sondern
+werden im laufenden CHANGELOG-Eintrag der aktuellen Version mit
+aufgefuehrt. Diese Datei beginnt technisch bei v3.0 neu zu zaehlen -
+der komplette bisherige Funktionsumfang (Trophaeenraum, Sammlungen,
+Jahresrueckblick, Spieltagebuch, Boot-Fixes, Performance-Arbeit usw.)
+bleibt vollstaendig erhalten, nur die Nummerierung wird bewusst
+zurueckhaltender.
+
+Neu in v3.0 (Versions-Neuordnung, siehe oben - kein neues Feature.
+Enthaelt inhaltlich das, was zuvor als v5.2 gezaehlt haette):
+
+- NEUES FEATURE: Standard-Boot-Animation - D-Pad-Symbol, das
+  flackernd "zum Leben erwacht", statt eines direkten Sprungs ins
+  Menue.
+  - Nutzerwunsch: standardmaessig eine kurze Boot-Anzeige dabei haben,
+    nicht nur fuer Leute, die sich per video_to_bootanim.py eine
+    eigene Animation bauen. Bisher passierte ohne eigenes Boot-
+    Animation-Verzeichnis (der Normalfall) gar nichts Sichtbares -
+    play_boot_animation() kehrte sofort zurueck.
+  - Neue _draw_default_boot_icon(): D-Pad-Kreuz aus nur zwei sich
+    ueberlappenden rect()-Aufrufen (kein Pixel-Bitmap noetig), Flacker-
+    Sequenz (dunkel -> aus -> mittel -> aus -> voll) simuliert eine
+    alte Roehre, die "warm wird". Komplett aus unseren eigenen,
+    laengst vorhandenen Zeichen-Mitteln gebaut, kein Bild/Video-Codec.
+    Bewusst EIGENSTAENDIG gestaltet, keine Anlehnung an ein echtes
+    Konsolen-Boot-Logo (gleiche Vorsicht wie beim Soundthema).
+  - Eingebunden als Fallback in play_boot_animation(): laeuft NUR, wenn
+    kein eigenes Boot-Animation-Verzeichnis mit Frames existiert. Bei
+    vorhandener eigener Animation bleibt die bestehende Funktion
+    komplett unveraendert.
+  - PERFORMANCE: das Vorwaermen aus v5.0 (Vignetten-Cache vor der
+    Boot-Animation) um Schwarz (0,0,0) erweitert, da die neue
+    Animation auf einer ANDEREN Farbe als C_BG zeichnet - ohne diese
+    Erweiterung waere derselbe einmalige Ruck (~98ms bei 1080p in
+    dieser Sandbox), den v5.0 fuer C_BG behoben hatte, hier fuer
+    Schwarz erneut aufgetreten.
+  - BUGFIX (beim eigenen Testen gefunden, vor jeder Auslieferung
+    behoben): die erste Fassung schrieb im Fallback-Pfad die
+    "schon gezeigt"-Markierungsdatei NICHT (fruehes return ueberspringt
+    den Code dafuer) - die Standard-Animation haette dadurch bei JEDEM
+    Frontend-Start erneut abgespielt, nicht nur einmal pro Boot.
+  - Getestet: komplette Sequenz ohne Absturz bei CRT UND HDMI.
+    Unterbrechung per Tastendruck funktioniert sofort. Markierungsdatei
+    wird jetzt nachweislich korrekt geschrieben, zweiter Aufruf im
+    selben Boot laesst die Animation korrekt aus. Bei vorhandener
+    eigener Animation greift das Standard-Icon nachweislich NICHT ein
+    (bestehende Funktion unveraendert). Performance-Erweiterung
+    verifiziert: komplette 7-Frame-Sequenz nach Vorwaermen in ~5ms
+    statt eines einzelnen ~98ms-Rucklers. 56 Kombinationen kompletter
+    Regressionstest bestanden.
+
+Neu in v5.1 (VERMUTETER BUGFIX: Soft-Reset bringt das Frontend nicht
+zurueck, MiSTer bleibt im eigenen OSD - ohne jede Log-Zeile):
+  - Nutzer-Rueckmeldung (kein Log verfuegbar, daher per Analyse
+    hergeleitet): nach einem "Soft Reset" (vermutlich OHNE echten
+    Linux-Kernel-Neustart, im Gegensatz zu einem echten Stromzyklus)
+    kommt das Frontend manchmal nicht wieder. Kein Absturz, keine
+    Logzeile - genau das Bild, das ein STILLSCHWEIGEND VERWEIGERTER
+    Start hinterlassen wuerde.
+  - Hypothese: ueberlebt "/tmp" einen Soft-Reset (kein echter Kernel-
+    Neustart, /tmp waere sonst als RAM-Dateisystem garantiert leer),
+    bleibt auch unsere Sperrdatei (/tmp/frontend.lock) von der
+    vorherigen Sitzung bestehen. Die bisherige Pruefung (_pid_alive())
+    verifizierte nur, DASS die darin gespeicherte PID-Nummer noch
+    existiert - nicht, DASS es sich dabei tatsaechlich noch um unseren
+    eigenen frontend.py-Prozess handelt. Linux vergibt PID-Nummern nach
+    einer Weile wieder neu - ein voellig unabhaengiger, neuer Prozess
+    koennte zufaellig dieselbe Nummer wie der laengst beendete alte
+    Frontend-Prozess bekommen haben. Die Sperrdatei-Pruefung haette das
+    faelschlicherweise als "laeuft noch" gewertet und den Neustart
+    kommentarlos verweigert.
+  - Fix: _pid_alive() prueft jetzt zusaetzlich /proc/<pid>/cmdline -
+    nur wenn dort tatsaechlich "frontend.py" drin steht, gilt die PID
+    als "unser eigener, noch laufender Prozess". Ist /proc aus
+    irgendeinem Grund nicht lesbar, faellt die Funktion sicherheitshalber
+    auf das alte Verhalten zurueck (PID existiert -> als lebendig
+    werten), statt einen falschen Negativ-Befund zu riskieren.
+  - WICHTIG: dies ist eine begruendete Vermutung, keine bestaetigte
+    Diagnose (keine Log-Datei verfuegbar) - der Fix ist aber in jedem
+    Fall eine echte Verbesserung der Robustheit gegen PID-
+    Wiederverwendung, unabhaengig davon, ob er die GENAUE Ursache
+    dieses konkreten Falls trifft.
+  - Getestet: PID existiert nicht -> weiterhin korrekt False. PID
+    existiert, gehoert aber nachweislich zu einem VOELLIG ANDEREN
+    Prozess (nicht frontend.py) -> jetzt korrekt False (vorher waere
+    das faelschlich True gewesen - der eigentliche Fix). PID existiert
+    UND ist tatsaechlich ein frontend.py-Prozess -> weiterhin korrekt
+    True (keine Regression, mit einem echten Subprozess bestaetigt).
+    acquire_single_instance() end-to-end mit genau dem vermuteten
+    Szenario (veraltete Sperrdatei, fremde aber lebende PID) bestaetigt:
+    das Frontend startet jetzt korrekt trotzdem. 56 Kombinationen
+    kompletter Regressionstest bestanden.
+
+Neu in v5.0 (PERFORMANCE: einmaliger Vignetten-Berechnungs-Ruck
+hinter die Boot-Animation versteckt):
+  - Nutzer-Nachfrage nach der ehrlichen Performance-Lage (Sorge: "war
+    die ganze Arbeit umsonst?") fuehrte zu einer gezielten Messung des
+    kompletten angesammelten Funktionsumfangs bei einer grossen (2000
+    Spiele) Bibliothek. Dabei gefunden: der ALLERERSTE Bildschirmaufbau
+    einer Sitzung war deutlich langsamer als alle folgenden (HDMI 1080p:
+    bis zu ~890ms in dieser - schnelleren - Sandbox, auf echter MiSTer-
+    Hardware vermutlich eher mehr).
+  - Ursache (kein neuer Bug, sondern eine bereits bewusst dokumentierte
+    Kompromiss-Entscheidung aus frueherer Arbeit, per cProfile bestaetigt):
+    clear() berechnet die zeilenbasierte Vignette (_apply_vignette_rows(),
+    siehe dortiger Kommentar - ein echter radialer Verlauf wurde direkt
+    gemessen mit "ueber 1 Sekunde" verworfen) beim ALLERERSTEN Aufruf fuer
+    eine Farbe+Aufloesung frisch, cached das Ergebnis dann aber
+    (self._rowcache) - alle folgenden Aufrufe sind praktisch kostenlos.
+    Das Problem: dieser einmalige Ruck traf bisher ausgerechnet den
+    allerersten ECHTEN Menue-Aufbau, den der Nutzer zu sehen bekommt.
+  - Fix: run() ruft jetzt einmal fb.clear(C_BG) auf, BEVOR
+    play_boot_animation() startet - waermt den Cache waehrend die
+    Boot-Animation laeuft (die bei JEDEM MiSTer-Neustart erneut
+    abgespielt wird, Marker liegt in /tmp) auf, statt beim ersten
+    echten Menue sichtbar zu ruckeln. Try/except drumherum: selbst ein
+    Fehlschlag beim Vorwaermen darf den eigentlichen Start nicht
+    verhindern.
+  - Getestet: ohne Vorwaermen vs. mit Vorwaermen direkt verglichen -
+    der erste ECHTE Menue-Aufbau danach ist nachweislich ~20x schneller
+    (der teure Anteil ist jetzt VOR der Animation, nicht mehr danach).
+    Ausnahme-Sicherheit bestaetigt (ein Fehlschlag beim Vorwaermen
+    wuerde den Start nicht verhindern). 56 Kombinationen kompletter
+    Regressionstest weiterhin bestanden.
+
+Neu in v4.9 (Bedienbarkeit: Brotkrumen-Kopfzeile schneidet nicht
+mehr mitten im Wort ab):
+  - Nutzer-Rueckmeldung beim weiteren Durchsehen der Bedienoberflaeche:
+    die Kopfzeile ("Kategorie / Unterordner") schnitt bei langen Pfaden
+    mitten im Wort ab (z.B. "SAMMLUNGEN / DIESES JAHR ~"). Seit die
+    Kategorienamen selbst eine Anzahl in Klammern tragen (siehe v4.8,
+    _count_tree_items()), sind die Pfade im Schnitt laenger geworden,
+    das Problem also haeufiger sichtbar.
+  - Fix: passt der VOLLE Pfad nicht, wird jetzt statt eines mitten
+    abgeschnittenen Textes nur noch der AKTUELLE (tiefste) Ordnername
+    gezeigt - weniger Kontext, aber lesbar statt kryptisch abgehackt.
+    Nur wenn selbst dieser einzelne Name noch zu lang ist, wird
+    weiterhin gekuerzt (unvermeidbar, aber seltener als vorher).
+  - Getestet: kurzer Pfad, der passt -> unveraendert vollstaendig
+    gezeigt (Regression). Langer Pfad, der nicht passt, aber dessen
+    tiefster Ordnername allein passt -> zeigt sauber nur den
+    Ordnernamen, kein Abschneiden mitten im Wort mehr. Extrem langer
+    einzelner Ordnername -> wird weiterhin sinnvoll gekuerzt. Keine
+    Unterordner -> unveraendert der reine Kategoriename (Regression).
+    56 Kombinationen kompletter Regressionstest bestanden.
+
+Neu in v4.8 (Bedienbarkeit: Gesamtanzahl direkt im Kategorienamen -
+kein blindes Reingehen mehr noetig):
+  - Nutzerwunsch: an der Bedienoberflaeche weiter feilen. Gefunden:
+    "Sammlungen" und "RA-Erfolgsjaeger" erschienen im Hauptmenue ohne
+    jede Anzahl, obwohl ihre eigenen Unterordner (z.B. "Dieses Jahr
+    entdeckt (3)") laengst Zaehlungen zeigen - inkonsistent, und man
+    musste erst reingehen, nur um zu sehen, ob ueberhaupt was drin ist.
+  - Neue _count_tree_items(): zaehlt rekursiv alle Eintraege in einem
+    Baumknoten, auch durch verschachtelte Unterordner hindurch. Nur
+    fuer die kleinen, abgeleiteten Kategorien gedacht (wenige Dutzend
+    Eintraege) - fuer die grossen ROM-Kategorien bewusst NICHT
+    eingesetzt (zu teuer).
+  - "Sammlungen"/"RA-Erfolgsjaeger" zeigen jetzt "(N)" direkt im
+    Hauptmenue-Namen, wie es die Unterordner schon lange tun.
+  - Getestet: _count_tree_items() an flacher Liste, verschachtelter
+    Struktur, leerem Baum UND einer echten build_collections_category()-
+    Ausgabe bestaetigt korrekt. Format der neuen Beschriftung
+    ("Name (N)") bestaetigt. 56 Kombinationen kompletter
+    Regressionstest bestanden.
+
+Neu in v4.7 (NEUES FEATURE: Hilfe-Uebersicht im System-Menue):
+  - Nutzerwunsch: eine zentrale Stelle, die zeigt, was das Frontend
+    alles kann - ueber die Versionen ist so viel angesammelt (Weiter-
+    spielen, Sammlungen, Trophaeenraum, Jahresrueckblick, Spiel-
+    tagebuch, Erfolgsjaeger, Geheimnisse, Buchstaben-Sprung, F6/F7/F8-
+    Tasten), dass selbst beim Aufzaehlen leicht was vergessen wird.
+  - Neuer Bildschirm draw_help_screen() (System-Menue -> Info ->
+    "Hilfe / Uebersicht", an erster Stelle in der Info-Gruppe):
+    Navigation, Tasten in der Spieleliste (F6/F7/F8), besondere
+    Hauptmenue-Eintraege (Weiterspielen/Sammlungen/RA-Erfolgsjaeger),
+    System-Menue-Ueberblick, Verhalten waehrend des Spielens. Gleiche
+    Scroll-Logik wie draw_diary_screen()/draw_milestones_screen(),
+    statischer Inhalt statt echter Daten.
+  - Erwaehnt bewusst NUR, DASS es Geheimnisse gibt (der Menuepunkt
+    "Geheimnisse" ist ohnehin fuer jeden sichtbar) - nicht WELCHE das
+    sind, konsistent mit der bestehenden Entscheidung, die Codes
+    selbst nirgends in der oeffentlichen Doku zu verraten.
+  - Getestet: alle wichtigen Begriffe (F6/F7/F8, Weiterspielen,
+    Sammlungen, Erfolgsjaeger, Geheimnisse, Mitwirkende, Esc)
+    nachweislich vorhanden bei BEIDEN Aufloesungen nach komplettem
+    Durchscrollen. Explizit bestaetigt: KEINE Erwaehnung der konkreten
+    Geheimcode-Namen (Konami/Capcom/Ikari). 56 Kombinationen
+    kompletter Regressionstest bestanden.
+
+Neu in v4.6 (Spieltagebuch: Zwei-Zeilen-Darstellung statt einer
+Zeile, gegen abgeschnittene Titel auf CRT):
+  - Nutzer-Nachfrage: lange Spieletitel wurden auf CRT (schmale
+    Aufloesung) haeufig abgeschnitten, da Name und System+Dauer sich
+    bisher EINE Zeile teilten. Laufschrift als Alternative erwogen,
+    aber bewusst NICHT gewaehlt (Nutzerentscheidung) - haette mehrere
+    GLEICHZEITIGE Laufschriften UND eine Umstellung von "wartet auf
+    Tastendruck" auf staendiges Neuzeichnen gebraucht, spuerbarer
+    Mehraufwand fuer einen Bildschirm, den man eher kurz reinschaut.
+  - Stattdessen: Name bekommt jetzt eine EIGENE Zeile mit voller
+    Breite, System+Dauer stehen klein darunter. Kostet etwas mehr
+    Hoehe pro Eintrag (weniger gleichzeitig sichtbar), dafuer bleibt
+    der Titel selbst fast immer vollstaendig lesbar.
+  - Getestet: langer Testname (56 Zeichen) auf CRT (320px) - vorher
+    waeren nur ca. 13 Zeichen auf der gemeinsamen Zeile moeglich
+    gewesen, jetzt passen ca. 34 Zeichen auf die eigene Namenszeile,
+    bevor abgeschnitten wird - deutliche Verbesserung. Ausgiebiges
+    Scrollen (45 Eintraege, CRT UND HDMI) mit der neuen Zwei-Zeilen-
+    Hoehe weiterhin ohne Absturz bestaetigt. 56 Kombinationen
+    kompletter Regressionstest bestanden.
+
+Neu in v4.5 (NEUES FEATURE: Spieltagebuch - kleine, rollierende
+Version, letzter Baustein des "digitales Retro-Wohnzimmer"-Konzepts
+fuer jetzt):
+  - Nutzerwunsch: kleine Version zunaechst ("schauen wie es ankommt"),
+    volle Version mit Archivierung bewusst zurueckgestellt fuer
+    spaeter. Rollierendes Protokoll der letzten DIARY_RETENTION_DAYS
+    (30) Tage - raeumt sich bei JEDEM Schreibvorgang automatisch
+    selbst auf, waechst dadurch nie unbegrenzt.
+  - Neue diary.json (komplett eigenstaendig, aendert nichts an
+    record_playtime()/record_yearly_playtime(), wird immer zusaetzlich
+    aufgerufen): {datum_str: [{"name","syskey","seconds"}, ...]} -
+    mehrere Sitzungen desselben Spiels am selben Tag bleiben bewusst
+    als SEPARATE Eintraege erhalten (anders als playtime_yearly.json),
+    damit der zeitliche Ablauf im Tagebuch sichtbar bleibt.
+  - _prune_diary(): vergleicht ueber epoch-Sekunden statt reinem
+    String-Vergleich, damit Monats-/Jahresgrenzen korrekt behandelt
+    werden.
+  - Eigene, sprachabhaengige Monatsnamen (MONTH_NAMES_DE/EN) statt
+    strftime("%B") - das haengt von der SYSTEM-Locale ab (typischerweise
+    Englisch auf einem frischen MiSTer), nicht von unserem eigenen
+    CURRENT_LANG-Umschalter.
+  - Neuer Bildschirm draw_diary_screen() (System-Menue -> Statistiken
+    & Erfolge -> "Spieltagebuch"): "Heute"/"Gestern" fuer die letzten
+    beiden Tage, sonst "Tag. Monatsname". Gleiche Scroll-Logik wie
+    draw_milestones_screen() - eine gemischte Liste aus Datums-
+    Ueberschriften und Sitzungs-Zeilen.
+  - Getestet: mehrere Sitzungen am selben Tag bleiben nachweislich
+    getrennt. Automatische Bereinigung bestaetigt (40 Tage alter
+    Eintrag verschwindet beim naechsten Schreibvorgang, aktueller Tag
+    bleibt), inkl. Monatsgrenzen-Fall (20. Januar -> 25. Februar, 36
+    Tage). Datumsformatierung: Heute/Gestern korrekt, aeltere Daten
+    mit sprachabhaengigen Monatsnamen (DE UND EN geprueft), auch der
+    Jahreswechsel-Fall (31. Dezember). Bildschirm: leerer Zustand,
+    mehrere Tage/Sitzungen, UND ausgiebiges Scrollen (auch ueber die
+    Grenzen hinaus) bei 45 Eintraegen auf CRT-Aufloesung (320x240) UND
+    HDMI (1920x1080) ohne Absturz. 56 Kombinationen kompletter
+    Regressionstest bestanden.
+
+Neu in v4.4 (BUGFIX: "1 von 10 Faellen startet nicht richtig, bleibt
+im OSD" - Race Condition beim Booten behoben):
+  - Nutzer-Rueckmeldung (ueber einen Freund weitergegeben): das
+    Frontend startet gelegentlich nicht, MiSTer bleibt im eigenen OSD
+    haengen. Ursache gefunden: frontend_boot.sh wartete bisher max.
+    60s auf MiSTer's eigenes /tmp/CORENAME == "MENU", startete danach
+    aber IMMER weiter - ob das Warten erfolgreich war oder einfach
+    aufgab. Auf Systemen, deren Boot-Zeit knapp um diese Marke
+    schwankt (langsamere SD-Karte, grosse ROM-Sammlung), fuehrte ein
+    Timeout dazu, dass der Framebuffer geoeffnet wurde, WAEHREND
+    MiSTer selbst noch mitten im Uebergang steckte - das Frontend
+    stuerzte dann sauber geloggt, aber sichtbar folgenlos ab (das alte
+    OSD blieb einfach stehen).
+  - Fix Teil 1 (frontend_boot.sh): Wartezeit auf 120s verdoppelt, plus
+    Diagnose-Log-Eintrag bei tatsaechlichem Timeout. WICHTIG: verlangsamt
+    niemanden, der schon vorher zuverlaessig startete - die Schleife
+    bricht immer SOFORT ab, sobald CORENAME wirklich "MENU" meldet,
+    unabhaengig von der Obergrenze. Nur der Ausnahmefall (der genau
+    diesen Bug ausloest) ist betroffen, und fuer den ist ein spaeterer,
+    aber zuverlaessiger Start eindeutig besser als ein schneller, aber
+    unzuverlaessiger.
+  - Fix Teil 2 (Framebuffer.__init__()): zusaetzliches Sicherheitsnetz -
+    bis zu 5 Versuche mit 0.5s Pause, falls das Oeffnen des Framebuffers
+    trotzdem noch fehlschlaegt (max. 2.5s zusaetzliche Wartezeit, NUR im
+    Fehlerfall). Beim ueblichen, sofort erfolgreichen ersten Versuch
+    entsteht keinerlei zusaetzliche Verzoegerung.
+  - Getestet: Wartschleifen-Logik isoliert simuliert (Normalfall,
+    Grenzfall knapp unter 120s, Extremfall nie erreicht) - alle drei
+    Faelle verhalten sich korrekt, Diagnose-Log erscheint nur im
+    tatsaechlichen Timeout-Fall. Framebuffer-Neuversuch: sofortiger
+    Erfolg -> nachweislich KEINE Verzoegerung; Erfolg nach 2
+    Fehlschlaegen -> genau 2x gewartet/geloggt; alle 5 Versuche
+    scheitern -> Fehler korrekt weitergereicht. 56 Kombinationen
+    kompletter Regressionstest bestanden.
+
+Neu in v4.3 (NEUES FEATURE: "Sammlungen"-Kategorie - automatische,
+kuratierte Gruppierungen, naechster Baustein des "digitales Retro-
+Wohnzimmer"-Konzepts):
+  - Nutzerwunsch: kuratierte Sammlungen wie beim Attract-Modus, aber
+    dauerhaft im Hauptmenue erreichbar statt nur als Leerlauf-
+    Diashow. Zwei automatische Sammlungen, komplett aus bereits
+    vorhandenen Daten abgeleitet, kein neues Tracking noetig:
+    "Dieses Jahr entdeckt" (v4.1-Fundament, first_played.json) und
+    "Kurzweilige Spiele" (kurze durchschnittliche Sitzungsdauer,
+    bestehender Spielzeit-Tracker).
+  - Neue build_collections_category(): wiederverwendet die normale
+    Ordner-Navigation, gleiches Prinzip wie build_ra_hunter_category()
+    - kein neuer Navigationsmechanismus. Liefert None, wenn beide
+    Sammlungen leer sind (Kategorie taucht dann gar nicht auf).
+    "Kurzweilige Spiele": mindestens 2 Starts noetig (sonst zu wenig
+    Aussagekraft), Schwelle 15 Minuten durchschnittliche Sitzung.
+    Beide Sammlungen filtern korrekt gegen die AKTUELLE Bibliothek
+    (_attract_games_pool()) - ein Spiel, das seit dem letzten Scan
+    entfernt/umbenannt wurde, taucht nicht mehr auf, auch wenn noch
+    alte Statistik-Eintraege dafuer existieren.
+  - Eingebunden in build_categories() direkt vor dem RA-Erfolgsjaeger.
+  - Getestet: leerer Zustand liefert sauber None. "Dieses Jahr
+    entdeckt" zeigt nachweislich nur Spiele aus dem RICHTIGEN Jahr
+    (ein Spiel aus einem anderen Jahr wird korrekt ausgeschlossen).
+    "Kurzweilige Spiele": lange Spiele korrekt ausgeschlossen,
+    Einzelstarts (zu wenig Aussagekraft) korrekt ausgeschlossen,
+    Spiele ausserhalb der aktuellen Bibliothek korrekt ausgeschlossen.
+    56 Kombinationen kompletter Regressionstest bestanden.
+
+Neu in v4.2 (NEUES FEATURE: Jahresrueckblick - baut auf dem v4.1-
+Fundament auf, Teil des "digitales Retro-Wohnzimmer"-Konzepts):
+  - Nutzerwunsch: der eigentliche Anzeige-Bildschirm fuer die in v4.1
+    gelegte Jahres-Buendelung. Performance vorab gemessen: die
+    zusaetzliche Aufzeichnung kostet ca. 0.55ms PRO SPIELENDE (nicht
+    pro Frame/Tick) - vernachlaessigbar.
+  - Neue compute_year_review_stats(year=None): Spielzeit/Starts/
+    verschiedene Spiele/verschiedene Systeme/meistgespielt/
+    Lieblingssystem/"dieses Jahr entdeckt" fuer ein Kalenderjahr
+    (Standard: aktuelles Jahr). Liefert None ohne Daten fuer das Jahr
+    (z.B. frisch installiert) - der Bildschirm zeigt dann eine
+    freundliche Meldung statt leerer/irrefuehrender Werte.
+  - Neuer Bildschirm draw_year_review_screen() (System-Menue ->
+    Statistiken & Erfolge -> "Jahresrueckblick"): gleicher Aufbau wie
+    der Trophaeenraum (Cover + Statistik + Zusammenfassung), aber
+    eingegrenzt auf das laufende Jahr statt "seit Aufzeichnungsbeginn".
+  - Getestet: compute_year_review_stats() - alle Kennzahlen korrekt
+    berechnet (inkl. mehrerer Sitzungen desselben Spiels korrekt
+    aufaddiert), Grenzfall "in einem Vorjahr entdeckt, dieses Jahr
+    weitergespielt" zaehlt nachweislich NICHT als "dieses Jahr
+    entdeckt". Bildschirm: leerer Zustand (freundliche Meldung) UND
+    mit Daten (alle Werte korrekt sichtbar, per Einzelverfolgung der
+    gezeichneten Texte bestaetigt) bei beiden Aufloesungen ohne
+    Absturz. 56 Kombinationen kompletter Regressionstest bestanden.
+
+Neu in v4.1 (FUNDAMENT: Spielzeit zusaetzlich nach Kalenderjahr
+gebuendelt - erster Baustein fuer "digitales Retro-Wohnzimmer"):
+  - Nutzerwunsch: Jahresrueckblick, Spieltagebuch, kuratierte
+    Sammlungen und aehnliche "die eigene Sammlung lebendig wirken
+    lassen"-Funktionen. Erkenntnis dabei: unser bisheriges Tracking
+    (record_playtime()) kennt nur KUMULIERTE Gesamtwerte pro Spiel,
+    keine Kalenderjahr-Zuordnung - ein "Jahresrueckblick 2026" waere
+    damit technisch gar kein echter Jahresrueckblick gewesen. Dieser
+    Baustein legt das noetige Fundament, BEVOR die eigentlichen
+    Anzeige-Bildschirme gebaut werden.
+  - Neue, KOMPLETT EIGENSTAENDIGE Funktionen (playtime_yearly.json,
+    first_played.json) - aendern NICHTS an record_playtime()/
+    load_playtime() selbst, kein Risiko fuer bestehende Funktionen,
+    die auf die kumulierten Gesamtwerte angewiesen sind (Trophaeenraum,
+    Top-10-Listen, eigene Erfolge bleiben komplett unberuehrt). Werden
+    IMMER ZUSAETZLICH zu record_playtime() aufgerufen, nie stattdessen.
+  - record_yearly_playtime(): buendelt Spielzeit/Starts pro Kalenderjahr,
+    zusaetzlich aufgeschluesselt nach Spiel UND nach System - genug
+    Grundlage fuer "meistgespielt dieses Jahr", "Lieblingssystem dieses
+    Jahr", "X Stunden in 2026" etc.
+  - _record_first_played(): merkt sich das Jahr des allerersten Starts
+    pro Spiel (bleibt beim urspruenglichen Jahr, auch wenn spaeter in
+    einem Folgejahr weitergespielt wird) - Grundlage fuer eine
+    spaetere "dieses Jahr entdeckt"-Sammlung.
+  - Getestet: Spielzeit/Starts/Spiele/Systeme korrekt pro Jahr
+    gebuendelt (inkl. mehrerer Sitzungen desselben Spiels korrekt
+    aufaddiert). Unterschiedliche Jahre bleiben sauber getrennt, ein
+    neues Jahr ueberschreibt kein bestehendes. "Erstmals gespielt"
+    bleibt nachweislich beim ORIGINAL-Jahr, auch nach erneutem Spielen
+    in einem Folgejahr. WICHTIGSTE PRUEFUNG: record_playtime()/
+    load_playtime() liefern nachweislich EXAKT dieselben Werte wie vor
+    dieser Aenderung - komplett unbeeintraechtigt. 56 Kombinationen
+    kompletter Regressionstest bestanden.
+
+Neu in v4.0 (System-Menue in 7 thematische Untergruppen aufgeteilt
+statt 23 flacher Eintraege):
+  - Nutzerwunsch: die "System"-Kategorie war ueber viele Versionen
+    hinweg auf 23 flache Eintraege angewachsen (RA-Status, beide Top-
+    10-Listen, Erfolge, Trophaeenraum, Geheimnisse, Mitwirkende, CRT-
+    Testbild, Theme, Zeitzone, NAS-Option, Soundeffekte, Sprache,
+    Tastenbelegung x2, Attract-Modus, Musik, Nur-Kuratiert, OSD,
+    Rescan, Neu zeichnen, Neustart, Beenden) - kaum noch ueberschaubar.
+  - Neue Gruppierung in system_items(): liefert jetzt direkt eine
+    Baumstruktur mit 7 Unterordnern (RetroAchievements, Statistiken &
+    Erfolge, Anzeige & Sound, Verhalten, Eingabe & Sprache, Info,
+    Wartung) statt einer flachen Liste - nutzt DIESELBE Ordner-
+    Navigation wie eigene ROM-Unterordner und die RA-Erfolgsjaeger-
+    Kategorie, kein neuer Navigations-Code noetig. Die Aktions-"kind"-
+    Werte jedes Eintrags bleiben UNVERAENDERT (siehe Aktions-Dispatch
+    in run()) - nur die Gruppierung/Anzeige aendert sich, kein
+    bestehendes Verhalten.
+  - Beide Aufrufstellen (Erstaufbau in build_categories(), Refresh in
+    _refresh_system_category()) angepasst - system_items() liefert
+    jetzt direkt den fertigen Baum, kein _wrap_flat() mehr noetig.
+  - Getestet: alle 24 urspruenglichen Aktionen nachweislich vollstaendig
+    vorhanden (automatisierter Soll-Ist-Abgleich gegen die alte Liste),
+    keine Duplikate, keine verloren gegangen. Verbleib in der
+    Untergruppe nach dem Umschalten einer Einstellung bestaetigt (z.B.
+    Musik an/aus aus der "Verhalten"-Gruppe heraus - man wird NICHT
+    auf die oberste Ebene zurueckgeworfen). Beschriftungs-Aktualisierung
+    innerhalb der Untergruppe nach dem Umschalten bestaetigt. 56
+    Kombinationen kompletter Regressionstest bestanden (42 Standard +
+    14 neue mit der System-Menue-Umstrukturierung).
+
+Neu in v3.9 (Credits angepasst: Dfense als Mitwirkender ergaenzt):
+  - Nutzerwunsch: "Erstellt von" knapper halten, dafuer Dfense
+    bei den Beitraegen ergaenzen.
+  - Angepasst in draw_credits_screen() (sichtbarer Menuepunkt) UND im
+    Entwicklerraum (draw_dev_room_screen(), Geheimnis) - fuer
+    Konsistenz an beiden Stellen gleichermassen aktualisiert.
+  - Getestet: "Dfense" ist nachweislich enthalten, alle anderen Namen
+    (Dragrem, TheRealSutefan, Dennsen) bleiben unveraendert vorhanden.
+    42 Kombinationen kompletter Regressionstest bestanden.
+
+Neu in v3.8 (NEUES FEATURE: Credits-Bildschirm im System-Menue):
+  - Nutzerwunsch: kleiner Credits-Teil im System-Menue - Ersteller,
+    wer mitgeholfen hat. Anders als der Entwicklerraum (Geheimnis)
+    bewusst ein normaler, sichtbarer Menuepunkt.
+  - Neuer Bildschirm draw_credits_screen() (System-Menue -> "Mit-
+    wirkende"): Ersteller (Dragrem), Beitraege (TheRealSutefan -
+    Patches/RA-Werkzeuge/Bugfixes, Dennsen - Streaming und Testen),
+    und ein Dank an alle Spieler.
+  - Getestet: beide Aufloesungen ohne Absturz, alle Namen nachweislich
+    im Text enthalten. 42 Kombinationen kompletter Regressionstest
+    bestanden.
+
+Neu in v3.7 (Geheimcodes auf Nutzerwunsch auf reine Tastatur-
+Eingabe umgestellt):
+  - Nutzer-Nachfrage: wie gibt man das ueberhaupt am Joypad ein? Beim
+    Nachschauen: die v3.6-Loesung hatte auf manchen Pads (gerade
+    SNES-Nachbauten ohne L2/R2, bei MiSTer-Nutzern verbreitet)
+    praktisch KEINE Taste mehr frei, die garantiert wirkungslos ist.
+  - Nutzerentscheidung: Codes bewusst NUR per Tastatur eingebbar -
+    Pfeiltasten fuer die Richtungen, echte Buchstabentasten fuer die
+    Bestaetigungs-Positionen.
+  - Dabei ein Gewinn entdeckt: die bestehende Buchstaben-Sprung-Aktion
+    ("letter:X", siehe LETTER_KEYS/jump_to_letter()) ist im Hauptmenue
+    GENAUSO sicher wie hoch/runter/links/rechts (nur ein harmloser
+    Kategorien-Sprung, kein Seitenwechsel, kein Dialog).
+  - Neuer Hinweistext auf dem Geheimnisse-Bildschirm: "Codes
+    funktionieren nur per Tastatur, nicht per Gamepad" - ehrliche
+    Kommunikation der Einschraenkung statt sie zu verschweigen.
+  - Getestet: alle Codes end-to-end ueber die echte Hauptschleife -
+    waehrend der GESAMTEN Eingabe nachweislich kein Seitenwechsel,
+    kein confirm_quit=True. Alle loesen weiterhin korrekt ihre
+    jeweilige Aktion aus. Hinweistext auf dem Geheimnisse-Bildschirm
+    bestaetigt sichtbar. 42 Kombinationen kompletter Regressionstest
+    bestanden.
+
+Neu in v3.6 (ECHTER DESIGNFEHLER behoben: Geheimcodes konnten mit
+"ok"/"back" gar nicht vollstaendig eingegeben werden):
+  - Scharfe Nutzer-Nachfrage nach der Joypad-Eingabe deckte auf: "ok"
+    loest im Hauptmenue IMMER das Betreten der markierten Kategorie
+    aus, "back" IMMER die Beenden-Bestaetigung
+    (_go_back_or_confirm_quit()) - unabhaengig davon, ob gerade ein
+    Geheimcode eingegeben wird. Einer der (kurzen) Codes haette
+    dadurch NIE vollstaendig eingegeben werden koennen: der allererste
+    Druck auf "ok" haette sofort die Seite gewechselt, wodurch die (an
+    Seite 0 gebundene, siehe v3.5) Code-Erkennung sofort abgebrochen
+    waere. Weitere Codes waren durch dieselbe Ursache ebenso
+    betroffen.
+  - Fix: "ok"/"back" durch "favorite" (F8) und "completed" (F7)
+    ersetzt - beide nachweislich WIRKUNGSLOS im Hauptmenue (die
+    jeweiligen Handler pruefen "nur bei einem echten Spiele-Eintrag
+    auf Seite 1"), koennen also gefahrlos als Tastendruck "verbraucht"
+    werden, ohne jemals eine Navigation oder einen Dialog auszuloesen.
+  - Getestet: alle Codes end-to-end ueber die ECHTE Hauptschleife
+    bestaetigt - UND waehrend der GESAMTEN Eingabe nachweislich KEIN
+    einziger Seitenwechsel, KEIN einziges Mal confirm_quit=True (per
+    Beobachtung von self.page/self.confirm_quit nach JEDER einzelnen
+    Aktion der Sequenz, nicht nur am Ende). Alle Codes loesen
+    weiterhin korrekt ihre jeweilige Aktion aus - jetzt aber
+    tatsaechlich VOLLSTAENDIG eingebbar. REGRESSION bestaetigt: ein
+    normales, einzelnes "ok" (kein Code) betritt weiterhin ganz normal
+    die Kategorie, ein normales "back" zeigt weiterhin ganz normal den
+    Beenden-Dialog. 42 Kombinationen kompletter Regressionstest
+    bestanden.
+
+Neu in v3.5 (BUGFIX: Geheimcodes konnten ausserhalb des Hauptmenues
+ungewollt ausgeloest werden):
+  - Auf Nutzer-Nachfrage ("ist auch wirklich alles bug- und
+    fehlerfrei?") nochmal eine gruendliche Endpruefung gemacht - dabei
+    gefunden: die Geheimcode-Erkennung (siehe v3.3) prüfte den
+    Aktions-Puffer auf JEDER Seite, nicht nur im Hauptmenue (Seite 0)
+    wie eigentlich vorgesehen und dem Nutzer auch so kommuniziert.
+  - Konkretes Risiko: einer der (kurzen) Codes haette dadurch
+    potenziell auch waehrend ganz normaler Navigation in einer
+    Spieleliste ungewollt ausloesbar sein koennen - eine Aktion haette
+    unerwartet ausgeloest, im schlimmeren Fall waere ein voller
+    Bildschirm mitten im Browsen aufgepoppt.
+  - Fix: die Pruefung ist jetzt an self.page == 0 gebunden. Auf anderen
+    Seiten wird der Puffer aktiv geleert statt "angehalten" - ein
+    Seitenwechsel mitten in einer Code-Eingabe bricht den Versuch damit
+    sauber ab, statt ihn spaeter im Hauptmenue ueberraschend
+    fortzusetzen.
+  - Getestet: gezielt nachgestellt (Seite 1, Spieleliste, exakte
+    Tastenfolge eines Codes als normale Navigation) - loeste vor dem
+    Fix nachweislich aus, danach nachweislich NICHT mehr. Im
+    Hauptmenue (Seite 0) funktionieren alle Codes weiterhin
+    unveraendert korrekt (Regressionscheck). Zusaetzlich:
+    automatisierte Duplikat-/Ungenutzt-Pruefung (AST-Analyse) und
+    Uebersetzungsschluessel-Abgleich liefen erneut sauber durch, keine
+    weiteren Funde. 42 Kombinationen kompletter Regressionstest
+    bestanden.
+
+Neu in v3.4 (NEUES FEATURE: Max-Level-Boot-Effekt - letzter Teil des
+"Easter Egg System"):
+  - Nutzerwunsch: kurze zusaetzliche Einblendung beim Booten, sobald
+    das Frontend-Level das Maximum (5) erreicht hat. Eine komplett
+    alternative Boot-Animation waere deutlich aufwendiger gewesen
+    (eigene Gestaltung + eigene CRT/HDMI-Performance-Abstimmung, siehe
+    Erklaerung im Gespraech) - bewusst zurueckgestellt, dieser Teil
+    ist der leichtere, sofort machbare Baustein.
+  - Neue Frontend._show_max_level_boot_effect(): eigenstaendige,
+    separate Methode - ruehrt die performance-kritische Bildsequenz-
+    Schleife in play_boot_animation() bewusst NICHT an (dort wurde
+    bereits mehrfach gezielt auf Geschwindigkeit optimiert). Anders
+    als die Bildsequenz selbst NICHT durch einen "einmal pro Boot"-
+    Marker begrenzt - erscheint bei JEDEM Boot, solange das Level
+    gehalten wird.
+  - Getestet: unter Max-Level kein Effekt, kein einziger flip()-Aufruf
+    (keine verschwendete Zeit). Bei tatsaechlich erreichtem Level 5
+    (ueber echten Spielfortschritt: 100h+, 25 durchgespielt, 10
+    Systeme, 500 Starts - "legend"-Bedingung) genau EIN flip()-Aufruf
+    und ueberspringbare Wartezeit bestaetigt. 42 Kombinationen
+    kompletter Regressionstest bestanden.
+
+Neu in v3.3 (NEUES FEATURE: "Easter Egg System" - Frontend-Level +
+geheime Cheat-Codes mit echten, wirksamen Freischaltungen):
+  - Nutzerwunsch: das Frontend-Level-System (compute_frontend_level(),
+    baut komplett auf vorhandenen Daten auf - Spielzeit/Starts/
+    versteckte Erfolge, kein neuer Speicherbedarf) UND ein paar
+    geheime Cheat-Code-Sequenzen (auf unser Aktions-Vokabular
+    uebertragen), jede schaltet ein anderes Geheimnis frei. Details zu
+    den einzelnen Codes/Zuordnungen bewusst NICHT hier im Kopfkommentar
+    dokumentiert (siehe SECRET_CODES) - sonst waere es kein Geheimnis
+    mehr, siehe auch draw_secrets_screen().
+  - WICHTIG: Codes sind wiederholbar wie echte Cheat-Codes - jede
+    Eingabe loest die Aktion erneut aus, die "neu freigeschaltet"-
+    Meldung erscheint aber nur beim allerersten Mal.
+  - Neuer Bildschirm draw_secrets_screen() (System-Menue -> "Geheim-
+    nisse"): "???" fuer noch nicht Gefundenes, Name + Herkunfts-Hinweis
+    nach dem Entdecken - verraet bewusst NIE die genaue Code-Sequenz
+    selbst.
+  - Getestet: alle 5 Level-Schwellen einzeln an jeder Grenze bestaetigt
+    (inkl. "legend" ueberstimmt alles). Alle Codes einzeln erkannt,
+    falsche/kurze Sequenzen loesen nichts aus. Kompletter Ablauf ueber
+    die ECHTE Hauptschleife bestaetigt: jeder Code loest tatsaechlich
+    seine zugehoerige Aktion aus. Wiederholbarkeit bestaetigt (zweite
+    Eingabe loest die Aktion erneut aus, aber ohne erneute "neu"-
+    Meldung). Geheimnisse-Bildschirm: ohne Freischaltung ueberall
+    "???", nach Freischaltung Name+Herkunft korrekt sichtbar, Rest
+    bleibt "???". 42 Kombinationen kompletter Regressionstest
+    bestanden.
+
+Neu in v3.2 (UEBERNOMMEN aus einer parallelen Entwicklungslinie:
+Flackern beim Scrollen + dauerhafte Zeilen-Ueberlappung behoben):
+  - Der Nutzer hat in einer separaten Sitzung, ausgehend von unserem
+    gemeinsamen v2.0-Stand, denselben Scroll-/Anzeigefehler ueber vier
+    Iterationen (dortige v2.1-v2.4) diagnostiziert und behoben, waehrend
+    wir hier parallel mit anderen Funktionen weitergemacht haben
+    (Weiterspielen-Feintuning, NAS-Option, Erfolgsjaeger, Trophaeenraum-
+    Bugfix, RA-Vitrine mit Icons, PNG-Decoder). Diese Version ueberfuehrt
+    die dortige, sehr sorgfaeltig diagnostizierte und mit echten
+    Regressionstests abgesicherte Fehlerbehebung in unseren aktuellen
+    Stand, unter Beibehaltung aller seither entstandenen Funktionen.
+  - Ursache (dreistufig diagnostiziert):
+    1. Mehrere getrennte flip_rows()-Aufrufe direkt hintereinander beim
+       Navigieren (alte Zeile, neue Zeile, Boxart-Panel) - ohne echtes
+       Doppelpuffern konnte die Hardware zwischen den Teil-Updates einen
+       inkonsistenten Zwischenzustand einlesen (leichtes Flackern).
+    2. Der eigentliche Kern: die markierte Zeile hat einen absichtlich
+       ueber die eigene Zeile hinausragenden Leucht-Rand. Wurde die
+       Zeile DARUEBER vor der Markierung selbst gezeichnet (aufsteigende
+       Reihenfolge), blieb der Glow-Bleed auf dem oberen Nachbarn
+       DAUERHAFT sichtbar - nichts hat ihn hinterher uebermalt. Nach
+       unten fiel das nie auf, weil die naechste Zeile ohnehin danach
+       gezeichnet wurde.
+    3. Sonderfall: Markierung auf der allerersten sichtbaren Zeile - der
+       Bleed geht dann in die Kopfzeile ("X categories") statt in eine
+       Listenzeile.
+  - Fix, an allen betroffenen Zeichenpfaden konsistent angewendet:
+    - Framebuffer: neue VSync-Wartefunktion (_wait_vsync(), einmalig
+      getestet, dauerhaft deaktiviert falls nicht unterstuetzt - kostet
+      dann nichts mehr) vor flip()/flip_rows().
+    - draw_page_cats()/_draw_dynamic_cats(): Zeilen-Zeichenlogik in neue
+      _draw_cat_row() ausgelagert, Zeile ueber der Markierung (bzw. die
+      Kopfzeile im Sonderfall) wird nach dem Hauptdurchlauf zusaetzlich
+      sauber neu gezeichnet.
+    - _draw_page_items_impl(): analoge Korrektur fuer die Spieleliste.
+    - _draw_dynamic_items(): Zeichenreihenfolge korrigiert - markierte
+      Zeile jetzt IMMER zuerst, Nachbarn danach (uebermalen damit
+      zuverlaessig). Neuer flip-Parameter (Standard True, unveraendert
+      fuer bestehende Aufrufer) fuer gebuendeltes Flippen.
+    - _draw_navigate_items(): sammelt jetzt alle Teil-Updates im
+      Speicherpuffer und bringt sie in EINEM gemeinsamen flip_rows()-
+      Aufruf auf den Schirm statt bis zu drei einzelnen.
+  - Getestet: kompletter Regressionstest (42 Kombinationen) nach der
+    Uebernahme weiterhin bestanden - nichts von unseren seither
+    entstandenen Funktionen (Erfolgsjaeger, RA-Vitrine, Trophaeenraum
+    usw.) wurde beeintraechtigt. VSync-Fallback direkt geprueft (erster
+    Fehlschlag korrekt vermerkt, danach nie wieder versucht). Neue
+    Zeichenreihenfolge in _draw_navigate_items() gezielt nachgewiesen:
+    genau EIN gebuendelter flip_rows()-Aufruf statt bis zu drei, die
+    NEUE Markierung steht innerhalb ihres Blocks nachweislich VOR ihren
+    Nachbarn. Kopfzeilen-Sonderfall (Markierung auf erster sichtbarer
+    Zeile) bestaetigt: Kopfzeile wird korrekt erneut gezeichnet.
+
+Neu in v3.1 (Abschliessende Fehlerpruefung vor dem Gesamtpaket -
+ein echter Bug gefunden und behoben):
+  - Systematische Endpruefung: Syntax aller Dateitypen, kompletter
+    Regressionstest, Suche nach doppelten Definitionen/Debug-Resten/
+    ungenutzten Funktionen (automatisiert per AST-Analyse), und ein
+    Abgleich ALLER t()-Aufrufe gegen die tatsaechlich definierten
+    Uebersetzungs-Schluessel.
+  - Dabei gefunden: draw_trophy_room_screen() rief bei fehlendem Cover
+    t("no_artwork") auf - dieser Schluessel existiert gar nicht (die
+    bestehende Konvention nutzt zwei getrennte Schluessel
+    "no_artwork_1"/"no_artwork_2", siehe draw_art_panel()). t() selbst
+    stuerzt bei einem fehlenden Schluessel zwar nicht ab (faellt auf
+    den Schluesselnamen selbst zurueck), aber der interne Bezeichner
+    "no_artwork" waere dadurch woertlich auf dem Bildschirm erschienen
+    statt eines uebersetzten Texts.
+  - Fix: nutzt jetzt dieselben, bereits vorhandenen Schluessel wie
+    draw_art_panel() ("no_artwork_1"+"no_artwork_2") statt eines
+    nicht existierenden dritten.
+  - Nebenbei aufgeraeumt: ein paar aus frueheren Testsitzungen liegen
+    gebliebene, nie eingecheckte Debug-/Vorschau-Dateien im Arbeits-
+    verzeichnis entfernt (waren nie in Git oder in ausgelieferten
+    Paketen enthalten, rein kosmetisch).
+  - Getestet: Fix direkt bestaetigt (liefert jetzt "kein Artwork"
+    statt des internen Schluesselnamens). Stichprobe der vom
+    automatisierten Abgleich als "unbenutzt" gemeldeten Schluessel
+    bestaetigt: alle tatsaechlich per Variable (nicht woertlich)
+    verwendet, keine echten Karteileichen - nur eine Grenze des
+    Pruef-Skripts selbst. 42 Kombinationen kompletter Regressionstest
+    nach dem Fix erneut bestanden. Git-Arbeitsverzeichnis final
+    "clean" bestaetigt, Build-Ordner exakt deckungsgleich mit dem
+    Repo-Stand.
+
+Neu in v3.0 (NEUES FEATURE: eigener PNG-Decoder + echte RA-Erfolgs-
+Icons direkt im Frontend - Abschluss der "separaten Option" aus v2.7-
+2.9):
+  - Nutzerwunsch: RA-Erfolgs-Icons nicht nur im Browser-Overlay
+    (der PNG von selbst versteht), sondern auch direkt am MiSTer-
+    Bildschirm in der Erfolgs-Vitrine (F6).
+  - Neuer, kompletter PNG-Decoder (decode_png()): Chunk-Parsing,
+    zlib-Dekompression (Standardbibliothek), volle Zeilen-
+    ENTFILTERUNG (alle 5 PNG-Filtertypen inkl. Paeth-Praediktor - der
+    eigentlich aufwendige Teil an einem PNG-Decoder), Vereinheit-
+    lichung aller unterstuetzten Farbtypen (Graustufen, RGB, Palette+
+    Transparenz, Graustufen+Alpha, RGBA) zu einem gemeinsamen RGBA-
+    Format. Bewusst eingeschraenkt (lieber None als ein falsches
+    Ergebnis): nur 8-Bit-Tiefe, nicht interlaced - deckt praktisch
+    jedes uebliche kleine Icon-Bild ab.
+  - Neue BadgeCache-Klasse: laedt/dekodiert/cacht RA-Erfolgs-Icons
+    fuers Frontend selbst, gleiches Grundprinzip wie ArtCache
+    (dauerhafter Datei-Cache + begrenzter Speicher-Cache).
+  - draw_ra_showcase_screen() (F6) zeigt jetzt echte Icons neben jedem
+    Erfolg - vorab geladen waehrend der "Laedt..."-Anzeige (haelt das
+    spaetere Scrollen frei von Netzwerkzugriffen), einfache naechste-
+    Nachbar-Skalierung auf einheitliche Groesse, nicht freigeschaltete
+    Erfolge dezent abgedunkelt statt komplett auszublenden.
+  - Getestet: decode_png() gegen Pillow (Referenz-Bibliothek) bei
+    ECHTEN, tool-erzeugten PNG-Dateien byte-identisch bestaetigt (RGBA
+    mit Zufallsrauschen, RGB, Palette, Graustufen). Alle 5 Filtertypen
+    einzeln mit einem eigenen Test-Encoder verifiziert. Alle Farbtypen
+    (inkl. Palette+tRNS-Transparenz) korrekt zu RGBA vereinheitlicht.
+    Fehlerfaelle robust (falsche Signatur, kaputte/zufaellige Daten,
+    16-Bit, Interlacing, unrealistische Groesse -> alle liefern None,
+    nie eine Ausnahme). BadgeCache: Sicherheitspruefung, Download+
+    Dekodierung+Speicherung, Speicher-Cache-Treffer, persistenter
+    Datei-Cache nach simuliertem Neustart (kein erneuter Download).
+    Vitrine mit echten Icons bei CRT UND HDMI ohne Absturz (inkl.
+    Skalierung, Abdunklung, Fall "kein Icon vorhanden"). 42
+    Kombinationen kompletter Regressionstest bestanden.
+
+Neu in v2.9 (NEUES FEATURE: RA-Erfolgs-Einblendung im Streamer-
+Overlay in Echtzeit - Fortsetzung der Vitrine aus v2.7/2.8):
+  - Nutzerwunsch: Zuschauer sollen einen RA-Erfolg SOFORT sehen, wenn
+    er passiert - nicht erst, wenn das Frontend nach dem Spiel wieder
+    sichtbar ist (unsere Hauptschleife steht waehrend des Spielens
+    ja still).
+  - Neue Frontend._watch_ra_achievements_during_play(): Hintergrund-
+    Thread, gestartet in run_core() NUR wenn das Streamer-Overlay
+    aktiv ist UND fuer das gestartete Spiel eine RA-GameID bekannt ist
+    (kein unnoetiger Netzwerk-/API-Aufwand fuer alle anderen). Fragt
+    alle 25s RAs Erfolgsliste fuer GENAU DIESES Spiel ab (nutzt die
+    schon vorhandene fetch_ra_game_achievements_bounded()). Erster
+    Abruf legt nur die Baseline fest (bereits vorher freigeschaltete
+    Erfolge werden NICHT faelschlich als neu gemeldet) - gleiches
+    Prinzip wie bei unseren eigenen Erfolgen. Wird beim Spielende
+    sauber gestoppt.
+  - Overlay-Server (stream_server.py): neue _badge_png() - laedt RAs
+    Erfolgs-Icons (schon fertige PNGs, KEINE Formatumwandlung noetig)
+    einmalig herunter und speichert sie DAUERHAFT lokal (Icons
+    aendern sich nie mehr, sobald ein Erfolg veroeffentlicht ist).
+    Abgesichert gegen Pfad-Tricks im Badge-Namen. Neuer /badge-
+    Endpunkt, mit langer Browser-Cache-Zeit (anders als /art oder
+    /state). Nebenbei einen Bug in _send() gefunden und behoben: das
+    Standard-"no-store" wurde bisher IMMER gesetzt, auch wenn per
+    extra-Parameter ein anderer Cache-Control-Wert gewuenscht war -
+    zwei widerspruechliche Header waeren gleichzeitig gesendet worden.
+  - Neue StreamServer.publish_achievement(): eigener SSE-Event-Typ
+    ("achievement"), unabhaengig vom normalen Auswahl-State.
+  - stream_overlay.html: neue Einblendung oben rechts (kollidiert nie
+    mit der normalen Auswahl-Karte, egal welche Ecke dort eingestellt
+    ist) - Icon, Titel, Beschreibung, Punkte, blendet nach 8s
+    automatisch aus. Neuer Admin-Schalter "Erfolgs-Einblendung".
+  - Getestet: Badge-Cache (Sicherheitspruefung, Download+Cache, Cache-
+    Treffer ohne erneuten Download, Netzwerkfehler abgefangen).
+    _send()-Fix: genau EIN Cache-Control-Header in beiden Faellen statt
+    zwei widerspruechlichen. Hintergrund-Beobachtung: Baseline-Erfolg
+    wird NICHT gemeldet, waehrend der Sitzung neu erreichter Erfolg
+    GENAU EINMAL, keine Wiederholung bei unveraendertem Zustand, kein
+    Absturz bei Abfragefehlern. Overlay-Anzeige mit jsdom bestaetigt
+    (alle Daten korrekt, Konfigurationsschalter respektiert). Admin-
+    Schalter mit jsdom bestaetigt (klickbar, Zustand korrekt
+    uebernommen). 42 Kombinationen kompletter Python-Regressionstest
+    bestanden.
+
+Neu in v2.8 (F6 (RA-Erfolgs-Vitrine) zeigte ohne RA-Einrichtung
+gar keine Rueckmeldung):
+  - Nutzer-Nachfrage: F6 ohne RA-Einrichtung wirkte wie eine tote
+    Taste - kein Hinweis, nichts passiert sichtbar.
+  - Fix: neue Unterscheidung im Handler - "RetroAchievements nicht
+    eingerichtet" (ra_showcase_not_setup), wenn ueberhaupt keine
+    RA-Konfigurationsdatei existiert, weiterhin getrennt von
+    "Keine RetroAchievements-Daten fuer dieses Spiel"
+    (ra_showcase_none), wenn RA zwar eingerichtet ist, aber genau
+    dieses Spiel keine RA-Daten hat - zwei unterschiedliche, klare
+    Meldungen statt einer stillen nichts-passiert-Taste.
+  - Getestet: alle drei Faelle einzeln bestaetigt (nicht eingerichtet
+    -> klare Meldung; eingerichtet aber kein Treffer -> die ANDERE,
+    weiterhin korrekt unterschiedene Meldung; normaler Erfolgsfall
+    mit echten RA-Daten -> Vitrine oeffnet sich weiterhin unveraendert
+    korrekt, Regressionscheck bestanden). 42 Kombinationen kompletter
+    Regressionstest bestanden.
+
+Neu in v2.7 (NEUES FEATURE, bewusst als SEPARATE Option gebaut: RA-
+Erfolgs-Vitrine - komplette Erfolgsliste eines Spiels statt nur der
+Zahl neben dem Cover):
+  - Nutzerwunsch: eine "schicke Pokal-Vitrine" statt nur "X von Y" -
+    Name, Beschreibung, Punkte, freigeschaltet/nicht pro Erfolg. Text-
+    Fassung zuerst (ohne Icons - dafuer braeuchten wir einen eigenen
+    PNG-Decoder, den wir noch nicht haben, siehe unten).
+  - Fundament: fetch_ra_progress()/build_ra_lookup() erweitert, um
+    zusaetzlich die RA-GameID zu erfassen (war in der Antwort schon
+    immer enthalten, wurde bisher nur nicht ausgelesen) - GEGEN DIE
+    ECHTE, RECHERCHIERTE API-Antwortform verifiziert. WICHTIG:
+    lookup_ra_progress()s bestehende Rueckgabe bleibt UNVERAENDERT
+    (weiterhin nur (erreicht, moeglich) oder None) - keine bestehende
+    Aufrufstelle musste sich anpassen. Neue, separate
+    lookup_ra_game_id() fuer die GameID.
+  - Neue fetch_ra_game_achievements()/_bounded(): ruft einen ANDEREN
+    RA-Endpunkt auf (Erfolgsdetails zu EINEM Spiel per GameID statt
+    der Sammelliste ueber alle Spiele) - komplett eigenstaendig,
+    aendert nichts an der bestehenden Fortschrittsabfrage. Feldnamen
+    ebenfalls gegen die recherchierte, echte API-Antwortform
+    verifiziert (Achievements-Dict mit Title/Description/Points/
+    BadgeName/DateEarned).
+  - Neuer Bildschirm draw_ra_showcase_screen() - scrollt wie Top-10/
+    Erfolge, zwei Zeilen pro Erfolg (Name+Punkte, darunter
+    Beschreibung gedimmt). NEUE, eigene Taste F6 -> Aktion
+    "ra_showcase", ausgeloest beim Betrachten eines Spiels mit RA-
+    Unterstuetzung - komplett getrennt von den bestehenden RA-
+    Anzeigen (Cover-Fortschritt/Erfolgsjaeger/Trophaeenraum bleiben
+    unangetastet).
+  - Naechster Schritt (noch nicht in dieser Version): Overlay-
+    Anbindung mit den Erfolgs-Icons - braucht KEINEN eigenen PNG-
+    Decoder (der Browser decodiert PNGs selbst), nur Icons cachen und
+    ausliefern wie bei den Boxart-Covers.
+  - Getestet: GameID-Extraktion gegen die echte API-Antwortform,
+    bestehende lookup_ra_progress()-Logik nachweislich UNVERAENDERT
+    (Regressionscheck: NES trifft weiterhin nicht SNES, korrekte
+    Treffer bleiben korrekt). Neue lookup_ra_game_id() liefert
+    korrekte GameIDs. fetch_ra_game_achievements(): Parsing mit der
+    recherchierten echten Datenstruktur (Sortierung nach RAs eigener
+    Reihenfolge, freigeschaltet-Status korrekt anhand DateEarned),
+    fehlerhafter Einzeleintrag wird uebersprungen statt die ganze
+    Liste abzubrechen, kein RA eingerichtet -> kein Netzwerkversuch,
+    Netzwerkfehler sauber abgefangen. draw_ra_showcase_screen(): alle
+    Zustaende (Fehler/leer/viele Eintraege+Scrollen) bei CRT UND HDMI
+    ohne Absturz. Vollstaendige Aktions-Einbindung (F6 -> korrekter
+    Aufruf mit Name+GameID) end-to-end bestaetigt. 42 Kombinationen
+    kompletter Regressionstest bestanden.
+
+Neu in v2.6 (System-Jingles (v2.5) auf Nutzerwunsch wieder
+entfernt):
+  - Nutzer-Rueckmeldung nach dem Anhoeren: gefielen nicht. Komplett
+    zurueckgebaut - SYSTEM_JINGLE_DEFS, _jingle_path(),
+    play_system_jingle() entfernt, Aufruf in _enter_category() und
+    die Vorab-Erzeugung in _ensure_sfx_files() ebenfalls entfernt.
+    Der CRT-Testbild-Bildschirm (ebenfalls aus v2.5) bleibt bestehen -
+    davon war nicht die Rede.
+  - Getestet: keine Code-Reste mehr (weder SYSTEM_JINGLE_DEFS noch
+    play_system_jingle existieren noch), Systemeinstieg funktioniert
+    weiterhin unveraendert ohne jede Jingle-Funktion. 42 Kombinationen
+    kompletter Regressionstest bestanden.
+
+Neu in v2.5 (ZWEI NEUE FEATURES: System-Jingles beim Betreten eines
+Systems + CRT-Testbild im System-Menue):
+  - Nutzerwunsch: kurzer, eigener Klang beim Betreten jedes Systems -
+    "fuehlt sich wie eine echte Konsole an". BEWUSST eigene, erfundene
+    Klaenge (SYSTEM_JINGLE_DEFS, 14 Systeme) - KEINE Nachbildung
+    echter Konsolen-Startsounds (Urheberrecht). Spielt NUR beim
+    Betreten einer System-Kategorie im Menue, VOR jedem moeglichen
+    Core-/Spielstart - kollidiert dadurch grundsaetzlich nicht mit
+    einem etwaigen Intro-Video (das erst beim tatsaechlichen
+    Spielstart liefe).
+  - Neue play_system_jingle(): erzeugt die WAV-Datei bei Bedarf
+    einmalig, nutzt danach die BESTEHENDE play_sfx()-Logik unveraendert
+    (Pfad wird dort schon aus SFX_DIR+Name gebaut - "jingle_SNES"
+    passt genauso wie "move"/"confirm") - respektiert automatisch
+    denselben SFX-An/Aus-Schalter und dieselbe "nicht ueber Musik/
+    nicht stapeln"-Absicherung, ohne Code-Duplizierung. In
+    _ensure_sfx_files() mit vorab-generiert (kein Erzeugungs-Delay
+    beim allerersten Betreten eines Systems).
+  - Neuer CRT-Testbild-Bildschirm (draw_crt_test_pattern_screen(),
+    System-Menue -> "CRT-Testbild"): Geometrie-Rahmen am Bildrand,
+    Raster fuer Linearitaet, Zentrierkreuz, Farbbalken - wie das alte
+    Servicemenue echter Roehren-Monitore. Bewusst OHNE Overscan-
+    Ausgleich - das Testbild soll ja gerade zeigen, wie der Bildschirm
+    den vollen Bereich darstellt.
+  - Getestet: Jingle-Erzeugung fuer alle 14 Systeme bestaetigt, kein
+    Fehler bei unbekanntem/fehlendem Systemschluessel. _enter_category()
+    loest den Jingle nachweislich NUR bei echten Systemen aus (nicht
+    bei Weiterspielen/Favoriten/Zuletzt gespielt/Scripts/System, die
+    alle sk=None haben). _ensure_sfx_files() erzeugt alle Jingles
+    korrekt vorab. CRT-Testbild bei beiden Aufloesungen (CRT/HDMI)
+    ohne Absturz, visuell ueberprueft. 42 Kombinationen kompletter
+    Regressionstest bestanden.
+
+Neu in v2.4 (BUGFIX: Erfolgs-Pop-up blieb beim ersten tatsaechlich
+neu erreichten Erfolg aus):
+  - Nutzer-Rueckmeldung: 3 verschiedene Systeme gestartet, der
+    "Entdecker"-Erfolg wurde korrekt in "Meine Erfolge" als erreicht
+    angezeigt - aber beim Zurueckkehren aus dem Spiel kam KEIN Pop-up/
+    Ton.
+  - Ursache: die Erstlauf-Sonderbehandlung (verhindert eine Pop-up-
+    Flut bei laengerer Spielhistorie nach einem Update) sass bisher
+    DIREKT in check_new_achievements() und griff beim allerersten
+    Aufruf dieser Funktion ueberhaupt. Das konnte aber zufaellig GENAU
+    der Moment sein, in dem ein Erfolg WIRKLICH neu erreicht wurde
+    (z.B. die allererste jemals gespielte Sitzung, bei der zugleich
+    das dritte System erreicht wird) - der Erfolg wurde dadurch
+    faelschlich als "schon vorher da gewesen" behandelt.
+  - Fix: neue _ensure_achievements_seen_initialized(), explizit in
+    Frontend.__init__() aufgerufen - initialisiert die "bereits
+    gezeigt"-Baseline GLEICH BEIM START, VOR jeder moeglichen
+    Nutzeraktion. check_new_achievements() selbst braucht dadurch
+    keine eigene Erstlauf-Sonderbehandlung mehr und meldet
+    zuverlaessig JEDEN Erfolg, der NACH dem Start neu erreicht wird -
+    auch wenn das schon waehrend der allerersten Sitzung passiert.
+  - Getestet: genau das gemeldete Szenario nachgestellt (Frontend-
+    Start mit leerem Zustand, direkt in der ERSTEN Sitzung das dritte
+    System erreicht) - Pop-up wird jetzt nachweislich korrekt
+    ausgeloest. Der urspruengliche Flut-Schutz bleibt bestaetigt
+    erhalten: nach einem Update mit bereits laengerer Spielhistorie
+    (100h+ Spielzeit, durchgespieltes Spiel, 10 Favoriten) loest der
+    Start weiterhin KEINE Pop-ups fuer laengst Erreichtes aus, echte
+    neue Fortschritte danach werden aber zuverlaessig gemeldet. 42
+    Kombinationen kompletter Regressionstest bestanden.
+
+Neu in v2.3 (NEUES FEATURE: "RA-Erfolgsjaeger" - Spiele mit
+ungenutzten RetroAchievements-Erfolgen):
+  - Nutzerwunsch: alle Spiele in der Sammlung finden, die RA-
+    Erfolge haben, bei denen aber noch NICHTS freigeschaltet wurde -
+    "hier warten unbenutzte Erfolge". Design-Entscheidung des Nutzers:
+    als eigene Ordnerstruktur (System-Ordner -> Spieleliste darin,
+    komplett statt auf eine Anzahl begrenzt), NICHT im System-Menue,
+    sondern als eigene Kategorie direkt vor "Scripts" einsortiert.
+  - Neue Frontend.build_ra_hunter_category(): geht per
+    _attract_games_pool() (bestehende rekursive Sammel-Funktion,
+    schon fuer den Attract-Modus da) einmal durch die komplette
+    Sammlung, prueft fuer jedes Spiel lookup_ra_progress() - landet in
+    der Liste, wenn RA-Daten existieren (total > 0) UND noch nichts
+    erreicht wurde (earned == 0). Gruppiert nach System (Ordner-Label
+    "<Anzeigename> (<Anzahl>)"), pro System nach Erfolgsanzahl
+    absteigend sortiert (die groessten Gelegenheiten zuerst). Liefert
+    None (Kategorie taucht dann gar nicht auf), wenn RA nicht
+    eingerichtet ist oder nichts passt.
+  - Wiederverwendet komplett die BESTEHENDE Ordner-Navigation (wie bei
+    eigenen ROM-Unterordnern) - kein neuer Navigationsmechanismus
+    noetig, dadurch auch kein zusaetzliches Testrisiko fuer die
+    Navigation selbst.
+  - Getestet: RA nicht eingerichtet -> keine Kategorie. Mit Daten:
+    korrekte Gruppierung nach System (Anzeigename, nicht Systemkey,
+    im Ordner-Label), Spiele mit BEREITS erreichten Erfolgen UND
+    Spiele OHNE jede RA-Daten werden nachweislich korrekt
+    ausgeschlossen. Sortierung nach Erfolgsanzahl absteigend
+    bestaetigt. "Alles schon angefangen" -> keine Kategorie bestaetigt.
+    Komplette Navigation (Kategorie betreten, Systemordner oeffnen,
+    Spiele sehen) im Regressionstest ueberprueft. 64 Kombinationen
+    kompletter Regressionstest bestanden (42 Standard + 22 neue mit
+    der Erfolgsjaeger-Kategorie und ihrer Ordner-Navigation).
+
+Neu in v2.2 (NEUE OPTION: beim Start auf NAS/Netzwerk warten -
+Nutzerwunsch fuer ROMs auf Netzlaufwerk):
+  - Nutzer-Hinweis: liegen ROMs auf einem NAS (ueber CIFS/SMB oder NFS
+    eingebunden - MiSTer haengt das typischerweise unter /media/fat/
+    cifs ein bzw. blendet es direkt in die games-Ordner ein, siehe
+    cifs_mount.sh), kann der Scan starten, BEVOR die Verbindung wirklich
+    steht. Das Mount-Skript laeuft zeitlich unabhaengig von unserem
+    Frontend-Start - echtes Rennen-Risiko beim Booten. Das Ergebnis
+    (leer/unvollstaendig) wuerde sogar dauerhaft gecacht werden.
+  - Neue Option (Standard AUS - die meisten Nutzer haben SD-Karte/USB,
+    fuer die das nur unnoetig verzoegern wuerde): network_wait_enabled()/
+    save_network_wait(), Datei network_wait. Neuer Menuepunkt "Beim
+    Start auf NAS/Netzwerk warten" im System-Menue.
+  - Neue _wait_for_network_ready(): NUR aktiv, wenn eingeschaltet -
+    wartet erst auf eine grundlegende Netzwerkverbindung, dann darauf,
+    dass sich der Inhalt ALLER GAMES_BASES-Pfade zwischen zwei
+    Abfragen nicht mehr aendert. Gleiches Prinzip wie das bestehende
+    _wait_for_usb_stable() (inkl. derselben Vorsicht bei einem
+    durchgehend leeren, aber stabilen Ergebnis), bewusst NICHT auf
+    USB-Pfade beschraenkt, damit auch CIFS/NFS-Einhaengungen erfasst
+    werden, unabhaengig vom genauen Mount-Punkt. Eigenstaendige,
+    separate Funktion - kein Regressionsrisiko fuer den etablierten
+    USB-Fall (_wait_for_usb_stable() selbst unveraendert).
+  - Getestet: Standardwert AUS, Speichern/Laden. KRITISCHER Test: bei
+    ausgeschalteter Option (Regelfall) kehrt die Wartefunktion
+    NACHWEISLICH sofort zurueck (< 0.05s), keinerlei Verzoegerung fuer
+    SD-Karte/USB-Nutzer. Bei eingeschalteter Option: kein Netzwerk ->
+    wartet bis zum Zeitlimit; Netzwerk da + leerer aber stabiler
+    Ordner -> schnell erkannt; Netzwerk da + waehrend der Wartezeit
+    befuellter Ordner (simuliert langsam einhaengende NAS) -> wartet
+    nachweislich bis zur tatsaechlichen Stabilisierung, nicht nur bis
+    zur ersten Pruefung. Menue-Umschalter getestet. 42 Kombinationen
+    kompletter Regressionstest bestanden.
+
+Neu in v2.1 ("Weiterspielen" abgestimmt auf TheRealSutefans neues
+"ra_lastplayed.sh"-Skript):
+  - Nutzeranalyse: TheRealSutefan hat ein neues, ausgereiftes "Last
+    Played"-Skript gebaut (ra_lastplayed.sh, nutzt MiSTers eigene
+    *_recent_1.cfg-Dateien - erfasst dadurch JEDEN Spielstart, egal ob
+    ueber unser Frontend, MiSTers eigenes Menue oder ein anderes Tool)
+    und bindet es ueber unseren RECENT_MARKER-Mechanismus (v1.96) ein.
+  - Erkannte Reibung: find_continue_game() nutzte bisher IMMER unsere
+    eigene, schmalere load_recent()-Liste (nur was ueber UNSER
+    Frontend gestartet wurde) - waere zunehmend veraltet/inkonsistent
+    gegenueber der darunter angezeigten "Zuletzt gespielt"-Liste,
+    sobald ein Marker-Skript wie seines aktiv ist und DIE zeigt.
+  - Fix: find_continue_game() bevorzugt jetzt die ueber RECENT_MARKER
+    eingebundene externe Liste, FALLS vorhanden (genauere, umfassendere
+    Quelle) - ohne aktiven Marker unveraendert unsere eigene Liste.
+  - Zweite erkannte Reibung: externe Labels haben ein Core-/RA-Praefix
+    (z.B. "RA SNES - Chrono Trigger"), unsere Durchgespielt-Markierung
+    speichert aber den REINEN Spielnamen ("Chrono Trigger") - ein
+    direkter Abgleich haette nie getroffen, "Weiterspielen" haette
+    laengst durchgespielte Titel weiter vorgeschlagen. Neue
+    _bare_game_name(): loest den reinen Spielnamen NACH dem ERSTEN
+    " - " heraus (nicht dem letzten - ein Bindestrich IM Spielnamen
+    selbst, z.B. bei einem Untertitel, bleibt so korrekt erhalten).
+  - Getestet: _bare_game_name() fuer alle Praefix-Formen (RA-Core,
+    Test-Core, kein Praefix) UND den Sonderfall Bindestrich im
+    Spielnamen selbst. find_continue_game() Ende-zu-Ende: ohne Marker
+    unveraendert, mit Marker wird die externe Liste bevorzugt
+    (neuestes zuerst bestaetigt), und der Praefix-Abgleich funktioniert
+    nachweislich (unsere reine Namensmarkierung trifft korrekt auf das
+    praefixierte externe Label). 42 Kombinationen kompletter
+    Regressionstest bestanden.
 
 Neu in v2.0 (NEUES FEATURE: "Trophaeenraum" - persoenlicher
 Profil-Bildschirm):
@@ -2450,11 +3425,37 @@ def LOG(msg):
 LOCKFILE = "/tmp/frontend.lock"
 
 def _pid_alive(pid):
+    """True, wenn die PID existiert UND es sich nachweislich um unseren
+    eigenen frontend.py-Prozess handelt - nicht nur irgendeinen
+    Prozess, der zufaellig dieselbe Nummer hat.
+
+    BUGFIX (Nutzer-Rueckmeldung: nach einem "Soft Reset" - vermutlich
+    OHNE echten Linux-Kernel-Neustart, im Gegensatz zu einem echten
+    Stromzyklus - kommt das Frontend manchmal nicht wieder, MiSTer
+    bleibt im eigenen OSD haengen, OHNE jede Log-Zeile): reine "existiert
+    die PID"-Pruefung (os.kill(pid, 0)) reicht nicht aus, wenn /tmp
+    (und damit unsere Lock-Datei) einen Soft-Reset UEBERLEBT - Linux
+    vergibt PID-Nummern nach einer Weile wieder neu, ein voellig
+    unabhaengiger, neuer Prozess koennte zufaellig dieselbe Nummer wie
+    der alte (laengst beendete) Frontend-Prozess bekommen haben. Die
+    Sperrdatei-Pruefung haette das dann faelschlicherweise als "laeuft
+    noch" gewertet und den Neustart stillschweigend verweigert - kein
+    Absturz, keine Logzeile, einfach nichts (passt zum gemeldeten Bild).
+    Fix: zusaetzlich pruefen, ob /proc/<pid>/cmdline tatsaechlich
+    "frontend.py" enthaelt. Ist /proc nicht lesbar (sollte auf MiSTer
+    nicht vorkommen), faellt die Funktion sicherheitshalber auf das
+    alte Verhalten zurueck (PID existiert -> als lebendig werten),
+    statt einen falschen Negativ-Befund zu riskieren."""
     try:
         os.kill(pid, 0)
     except OSError:
         return False
-    return True
+    try:
+        with open("/proc/%d/cmdline" % pid, "rb") as f:
+            cmdline = f.read()
+    except OSError:
+        return True   # /proc nicht lesbar - alte, vorsichtige Annahme beibehalten
+    return b"frontend.py" in cmdline
 
 def acquire_single_instance():
     """True, wenn wir die einzige Instanz sind (Lock gesetzt). False,
@@ -2633,16 +3634,18 @@ def fetch_ra_progress(username, api_key, timeout=5.0):
         system = e.get("ConsoleName") or e.get("consoleName") or e.get("console")
         total = e.get("MaxPossible") or e.get("maxPossible") or e.get("NumAchievements")
         earned = e.get("NumAwarded") or e.get("numAwarded") or e.get("NumAwardedHardcore")
+        game_id = e.get("GameID") or e.get("gameId") or e.get("ID")
         if not title or not total:
             continue   # Eintrag ohne verwertbare Kernangaben - auslassen statt raten
         try:
             total = int(total)
             earned = int(earned) if earned is not None else 0
+            game_id = int(game_id) if game_id is not None else None
         except (TypeError, ValueError):
             continue
         if total <= 0:
             continue
-        out.append((str(title), str(system) if system else "", earned, total))
+        out.append((str(title), str(system) if system else "", earned, total, game_id))
     return out
 
 def fetch_ra_progress_bounded(timeout=5.0):
@@ -2663,6 +3666,89 @@ def fetch_ra_progress_bounded(timeout=5.0):
     result = {"data": None}
     def worker():
         result["data"] = fetch_ra_progress(username, api_key, timeout=timeout)
+    th = threading.Thread(target=worker, daemon=True)
+    th.start()
+    th.join(timeout=timeout + 0.5)
+    return result["data"]
+
+# ----------------------------------------------------------------------------
+# EINZELNE ERFOLGSLISTE EINES SPIELS (Nutzerwunsch: "Trophaeen-Vitrine")
+#
+# Bewusst als EIGENSTAENDIGE, separate Funktion aufgebaut - nutzt zwar
+# dieselben Grundbausteine (load_ra_config(), _has_network(), dasselbe
+# Zeitlimit-Prinzip) wie die bestehende Fortschrittsabfrage, aendert
+# aber NICHTS an ihr. Ruft einen ANDEREN RA-Endpunkt auf (Erfolgsdetails
+# zu EINEM Spiel statt der Sammelliste ueber alle Spiele).
+RA_GAME_API_URL = "https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php"
+
+def fetch_ra_game_achievements(game_id, timeout=5.0):
+    """Fragt bei RetroAchievements die komplette Erfolgsliste EINES
+    Spiels ab (Name, Beschreibung, Punkte, Badge-Name, freigeschaltet/
+    wann). Liefert eine Liste von (titel, beschreibung, punkte,
+    badge_name, freigeschaltet, datum)-Tupeln, sortiert nach RAs
+    eigener Anzeigereihenfolge, oder None bei JEDEM Fehler - NIE eine
+    Ausnahme nach aussen.
+
+    EHRLICHER HINWEIS: wie bei fetch_ra_progress() sind die genauen
+    Feldnamen anhand der oeffentlichen API-Dokumentation nachgebaut,
+    nicht gegen den echten Server verifiziert. Mehrere plausible
+    Feldnamen-Varianten werden akzeptiert, ein einzelner fehlerhafter
+    Erfolgs-Eintrag wird stillschweigend ausgelassen statt die ganze
+    Liste abzubrechen."""
+    username, api_key = load_ra_config()
+    if username is None:
+        return None
+    try:
+        params = urllib.parse.urlencode({"u": username, "y": api_key, "g": game_id})
+        url = RA_GAME_API_URL + "?" + params
+        req = urllib.request.Request(url, headers={"User-Agent": "MiSTerFrontend/1.0"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if resp.status != 200:
+                LOG("fetch_ra_game_achievements: HTTP-Status %d" % resp.status)
+                return None
+            raw = resp.read()
+        data = json.loads(raw)
+    except (urllib.error.URLError, TimeoutError, ValueError, OSError) as e:
+        LOG("fetch_ra_game_achievements: fehlgeschlagen: %s" % e)
+        return None
+    if not isinstance(data, dict):
+        return None
+    achievements = data.get("Achievements") or data.get("achievements")
+    if not isinstance(achievements, dict):
+        return None
+
+    out = []
+    for ach in achievements.values():
+        if not isinstance(ach, dict):
+            continue
+        title = ach.get("Title") or ach.get("title")
+        desc = ach.get("Description") or ach.get("description") or ""
+        points = ach.get("Points") or ach.get("points")
+        badge = ach.get("BadgeName") or ach.get("badgeName")
+        order = ach.get("DisplayOrder") or ach.get("displayOrder") or 0
+        date_earned = (ach.get("DateEarned") or ach.get("dateEarned")
+                       or ach.get("DateEarnedHardcore") or ach.get("dateEarnedHardcore"))
+        if not title:
+            continue
+        try:
+            points = int(points) if points is not None else 0
+            order = int(order) if order is not None else 0
+        except (TypeError, ValueError):
+            points, order = 0, 0
+        out.append((str(title), str(desc), points, str(badge) if badge else None,
+                    bool(date_earned), str(date_earned) if date_earned else None, order))
+    out.sort(key=lambda a: a[6])   # RAs eigene Anzeigereihenfolge
+    return [a[:6] for a in out]
+
+def fetch_ra_game_achievements_bounded(game_id, timeout=5.0):
+    """Wie fetch_ra_game_achievements(), aber zeitlich hart begrenzt in
+    einem separaten Thread - exakt dasselbe Prinzip wie
+    fetch_ra_progress_bounded() (siehe dort fuer die Begruendung)."""
+    if not _has_network():
+        return None
+    result = {"data": None}
+    def worker():
+        result["data"] = fetch_ra_game_achievements(game_id, timeout=timeout)
     th = threading.Thread(target=worker, daemon=True)
     th.start()
     th.join(timeout=timeout + 0.5)
@@ -2733,14 +3819,14 @@ def _ra_console_matches(expected, ra_console_normalized):
 def build_ra_lookup(ra_entries):
     """Baut aus der RA-Fortschrittsliste ein Nachschlage-Woerterbuch:
     normalisierter_titel -> Liste von (normalisiertes_system, erreicht,
-    moeglich)-Tupeln. Mehrere Eintraege pro Titel sind normal (dasselbe
-    Spiel kann auf mehreren Konsolen erschienen sein) - die eigentliche
-    System-Auswahl passiert erst in lookup_ra_progress()."""
+    moeglich, game_id)-Tupeln. Mehrere Eintraege pro Titel sind normal
+    (dasselbe Spiel kann auf mehreren Konsolen erschienen sein) - die
+    eigentliche System-Auswahl passiert erst in lookup_ra_progress()."""
     lookup = {}
-    for title, system, earned, total in ra_entries or []:
+    for title, system, earned, total, game_id in ra_entries or []:
         key = _ra_normalize_name(title)
         lookup.setdefault(key, []).append(
-            (_ra_normalize_name(system), earned, total))
+            (_ra_normalize_name(system), earned, total, game_id))
     return lookup
 
 def lookup_ra_progress(lookup, our_name, our_syskey):
@@ -2749,7 +3835,28 @@ def lookup_ra_progress(lookup, our_name, our_syskey):
     wenn fuer our_syskey keine bekannte RA-Entsprechung existiert
     (bewusst KEIN Rateversuch). Bei mehreren zum System passenden
     Eintraegen (sollte selten vorkommen) gewinnt der mit den meisten
-    erreichten Achievements."""
+    erreichten Achievements.
+
+    UNVERAENDERTE Rueckgabe (nur (erreicht, moeglich) oder None) trotz
+    jetzt zusaetzlich gespeicherter GameID - keine bestehende
+    Aufrufstelle soll sich anpassen muessen. Fuer die GameID selbst
+    siehe die separate lookup_ra_game_id()."""
+    best = _lookup_ra_candidate(lookup, our_name, our_syskey)
+    return (best[0], best[1]) if best else None
+
+def lookup_ra_game_id(lookup, our_name, our_syskey):
+    """Wie lookup_ra_progress(), liefert aber die RA-GameID des
+    Treffers (fuer die Erfolgsdetails, siehe fetch_ra_game_achievements())
+    statt des Fortschritts - oder None, wenn kein Treffer oder keine
+    GameID bekannt ist (z.B. bei aelteren zwischengespeicherten Daten
+    ohne dieses Feld)."""
+    best = _lookup_ra_candidate(lookup, our_name, our_syskey)
+    return best[2] if best else None
+
+def _lookup_ra_candidate(lookup, our_name, our_syskey):
+    """Gemeinsamer Kern von lookup_ra_progress()/lookup_ra_game_id():
+    liefert (erreicht, moeglich, game_id) des besten Treffers oder
+    None."""
     expected = RA_CONSOLE_MAP.get(our_syskey)
     if not expected:
         return None
@@ -2757,10 +3864,10 @@ def lookup_ra_progress(lookup, our_name, our_syskey):
     if not candidates:
         return None
     best = None
-    for ra_system, earned, total in candidates:
+    for ra_system, earned, total, game_id in candidates:
         if _ra_console_matches(expected, ra_system):
             if best is None or earned > best[0]:
-                best = (earned, total)
+                best = (earned, total, game_id)
     return best
 
 def load_playtime():
@@ -2814,6 +3921,231 @@ def record_playtime(label, seconds, syskey=None):
             json.dump(data, f)
     except OSError:
         pass
+
+# ----------------------------------------------------------------------------
+# JAHRES-BUENDELUNG DER SPIELZEIT (Fundament fuer einen spaeteren
+# echten Jahresrueckblick, Nutzerwunsch: "digitales Retro-Wohnzimmer").
+# Unser bisheriges Tracking (record_playtime() oben) kennt nur
+# KUMULIERTE Gesamtwerte pro Spiel, keine Kalenderjahr-Zuordnung - ein
+# "Jahresrueckblick 2026" waere damit technisch gar kein echter
+# Jahresrueckblick, sondern ein "seit Aufzeichnungsbeginn"-Rueckblick.
+#
+# Bewusst als KOMPLETT EIGENSTAENDIGE, separate Datei/Funktionen gebaut
+# - aendert NICHTS an record_playtime()/load_playtime() selbst, kein
+# Risiko fuer bestehende Funktionen, die auf die kumulierten
+# Gesamtwerte angewiesen sind (Trophaeenraum, Top-10-Listen, eigene
+# Erfolge usw. bleiben komplett unberuehrt). Wird IMMER ZUSAETZLICH zu
+# record_playtime() aufgerufen, nie stattdessen.
+PLAYTIME_YEARLY_FILE = "/media/fat/frontend/playtime_yearly.json"
+FIRST_PLAYED_FILE = "/media/fat/frontend/first_played.json"
+
+def _current_year():
+    """Aktuelles Jahr als String - eigene kleine Funktion (statt
+    ueberall einzeln time.localtime() aufzurufen), damit Tests den
+    Jahreswechsel leicht simulieren koennen (siehe Tests: einfach
+    ersetzen statt die Systemzeit zu verstellen)."""
+    return str(time.localtime().tm_year)
+
+def load_playtime_yearly():
+    """Laedt die nach Kalenderjahr gebuendelte Spielzeit-Statistik.
+    Struktur: {jahr_als_string: {"seconds": X, "launches": N,
+    "games": {name: sekunden}, "systems": {syskey: sekunden}}}."""
+    try:
+        with open(PLAYTIME_YEARLY_FILE) as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+def _load_first_played():
+    """Jahr des allerersten Starts pro Spiel (als String) - fuer eine
+    spaetere 'dieses Jahr entdeckt'-Sammlung. Eigene, winzige Datei
+    statt Teil von playtime_yearly.json, damit ein einzelner
+    fehlerhafter Schreibvorgang nicht die Jahres-Hauptstatistik
+    gefaehrdet."""
+    try:
+        with open(FIRST_PLAYED_FILE) as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+def _record_first_played(label, year):
+    """Merkt sich das Jahr des allerersten Starts eines Spiels - wird
+    NUR beim allerersten Mal fuer dieses Spiel gesetzt, ein spaeterer
+    Aufruf fuer dasselbe Spiel aendert nichts mehr (das reine
+    Vorhandensein des Eintrags zaehlt als 'schon gesehen')."""
+    data = _load_first_played()
+    if label in data:
+        return
+    data[label] = year
+    try:
+        os.makedirs(os.path.dirname(FIRST_PLAYED_FILE), exist_ok=True)
+        with open(FIRST_PLAYED_FILE, "w") as f:
+            json.dump(data, f)
+    except OSError:
+        pass
+
+def record_yearly_playtime(label, seconds, syskey=None):
+    """Wie record_playtime(), aber zusaetzlich nach Kalenderjahr
+    gebuendelt - siehe Modul-Kommentar oben fuer die Begruendung.
+    Aktualisiert nebenbei _record_first_played()."""
+    if not label or seconds <= 0:
+        return
+    year = _current_year()
+    data = load_playtime_yearly()
+    entry = data.get(year, {"seconds": 0, "launches": 0, "games": {}, "systems": {}})
+    entry["seconds"] = entry.get("seconds", 0) + seconds
+    entry["launches"] = entry.get("launches", 0) + 1
+    games = entry.setdefault("games", {})
+    games[label] = games.get(label, 0) + seconds
+    if syskey:
+        systems = entry.setdefault("systems", {})
+        systems[syskey] = systems.get(syskey, 0) + seconds
+    data[year] = entry
+    try:
+        os.makedirs(os.path.dirname(PLAYTIME_YEARLY_FILE), exist_ok=True)
+        with open(PLAYTIME_YEARLY_FILE, "w") as f:
+            json.dump(data, f)
+    except OSError:
+        pass
+    _record_first_played(label, year)
+
+def compute_year_review_stats(year=None):
+    """Berechnet die Kennzahlen fuer den Jahresrueckblick (Nutzerwunsch:
+    "digitales Retro-Wohnzimmer") - baut auf load_playtime_yearly()/
+    _load_first_played() auf (siehe v4.1-Fundament oben). year=None
+    verwendet das aktuelle Kalenderjahr. Liefert None, wenn fuer das
+    gewaehlte Jahr noch gar keine Daten vorliegen (z.B. frisch
+    installiert oder der Jahreswechsel ist gerade erst passiert) -
+    der Aufrufer zeigt dann eine freundliche "noch nichts hier"-
+    Meldung statt leerer/falscher Werte."""
+    year = year or _current_year()
+    yearly = load_playtime_yearly()
+    entry = yearly.get(year)
+    if not entry or entry.get("seconds", 0) <= 0:
+        return None
+
+    games = entry.get("games", {})
+    systems = entry.get("systems", {})
+    top_game = max(games, key=games.get) if games else None
+    favorite_system = max(systems, key=systems.get) if systems else None
+
+    first_played = _load_first_played()
+    discovered_this_year = sum(1 for g in games if first_played.get(g) == year)
+
+    return {
+        "year": year,
+        "total_seconds": entry.get("seconds", 0),
+        "total_launches": entry.get("launches", 0),
+        "distinct_games": len(games),
+        "distinct_systems": len(systems),
+        "top_game": top_game,
+        "top_game_seconds": games.get(top_game, 0) if top_game else 0,
+        "favorite_system": favorite_system,
+        "discovered_this_year": discovered_this_year,
+    }
+
+# ----------------------------------------------------------------------------
+# SPIELTAGEBUCH (Nutzerwunsch: "digitales Retro-Wohnzimmer" - kleine
+# Version zunaechst, "schauen wie es ankommt", volle dauerhafte Version
+# mit Archivierung bewusst zurueckgestellt). Rollierendes Protokoll der
+# letzten DIARY_RETENTION_DAYS Tage - raeumt sich bei jedem Schreib-
+# vorgang automatisch selbst auf, waechst dadurch NIE unbegrenzt (im
+# Gegensatz zu playtime_yearly.json/first_played.json, die bewusst
+# dauerhaft wachsen duerfen, weil sie nur wenige Bytes pro Spiel/Jahr
+# kosten - ein taegliches Sitzungsprotokoll waere das nicht).
+#
+# Komplett EIGENSTAENDIG - aendert nichts an record_playtime()/
+# record_yearly_playtime(), wird IMMER zusaetzlich zu beiden
+# aufgerufen, nie stattdessen.
+DIARY_FILE = "/media/fat/frontend/diary.json"
+DIARY_RETENTION_DAYS = 30
+
+def _current_date_str():
+    """Heutiges Datum als 'YYYY-MM-DD' - eigene kleine Funktion (wie
+    _current_year()), damit Tests einen Tageswechsel leicht simulieren
+    koennen, statt die Systemzeit zu verstellen."""
+    return time.strftime("%Y-%m-%d", time.localtime())
+
+def load_diary():
+    """Laedt das Spieltagebuch. Struktur: {datum_str: [{"name":...,
+    "syskey":..., "seconds":...}, ...]} - ein Eintrag pro tatsaechlich
+    beendeter Spielsitzung, mehrere Sitzungen desselben Spiels am
+    selben Tag bleiben als SEPARATE Eintraege erhalten (anders als bei
+    playtime_yearly.json, wo sie aufaddiert werden) - im Tagebuch soll
+    ja der zeitliche Ablauf sichtbar bleiben, nicht nur die Summe."""
+    try:
+        with open(DIARY_FILE) as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+def _prune_diary(data):
+    """Entfernt Tage, die aelter als DIARY_RETENTION_DAYS sind - haelt
+    die Datei dauerhaft klein. Vergleicht ueber epoch-Sekunden statt
+    reinem String-Vergleich, damit Monats-/Jahresgrenzen (z.B. Ende
+    Januar -> Anfang Februar) korrekt behandelt werden. Ungueltige
+    Datumsschluessel (z.B. durch Handbearbeitung entstanden) werden
+    still verworfen statt einen Absturz auszuloesen."""
+    cutoff = time.time() - DIARY_RETENTION_DAYS * 86400
+    kept = {}
+    for date_str, entries in data.items():
+        try:
+            day_epoch = time.mktime(time.strptime(date_str, "%Y-%m-%d"))
+        except ValueError:
+            continue
+        if day_epoch >= cutoff:
+            kept[date_str] = entries
+    return kept
+
+def record_diary_entry(label, seconds, syskey=None):
+    """Traegt eine beendete Spielsitzung ins Tagebuch ein - IMMER
+    zusaetzlich zu record_playtime()/record_yearly_playtime()
+    aufgerufen (gleicher Aufrufpunkt in run_core()), komplett
+    eigenstaendig. Raeumt bei jedem Aufruf automatisch alte Eintraege
+    auf (siehe _prune_diary())."""
+    if not label or seconds <= 0:
+        return
+    date_str = _current_date_str()
+    data = load_diary()
+    data = _prune_diary(data)
+    day_entries = data.setdefault(date_str, [])
+    day_entries.append({"name": label, "syskey": syskey, "seconds": seconds})
+    try:
+        os.makedirs(os.path.dirname(DIARY_FILE), exist_ok=True)
+        with open(DIARY_FILE, "w") as f:
+            json.dump(data, f)
+    except OSError:
+        pass
+
+# Eigene, sprachabhaengige Monatsnamen statt strftime("%B") - das
+# haengt von der SYSTEM-Locale ab (typischerweise Englisch auf einem
+# frischen MiSTer), nicht von unserem eigenen CURRENT_LANG-Umschalter.
+MONTH_NAMES_DE = ["Januar", "Februar", "Maerz", "April", "Mai", "Juni",
+                  "Juli", "August", "September", "Oktober", "November",
+                  "Dezember"]
+MONTH_NAMES_EN = ["January", "February", "March", "April", "May", "June",
+                  "July", "August", "September", "October", "November",
+                  "December"]
+
+def _format_diary_date(date_str):
+    """Formatiert ein 'YYYY-MM-DD'-Datum fuer die Anzeige im Tagebuch -
+    "Heute"/"Gestern" fuer die letzten beiden Tage, sonst "Tag.
+    Monatsname" (eigene, sprachabhaengige Monatsnamen, siehe oben)."""
+    try:
+        parsed = time.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        return date_str
+    today = _current_date_str()
+    yesterday = time.strftime("%Y-%m-%d", time.localtime(time.time() - 86400))
+    if date_str == today:
+        return t("diary_today")
+    if date_str == yesterday:
+        return t("diary_yesterday")
+    names = MONTH_NAMES_DE if CURRENT_LANG == "de" else MONTH_NAMES_EN
+    return "%d. %s" % (parsed.tm_mday, names[parsed.tm_mon - 1])
 
 # ----------------------------------------------------------------------------
 # EIGENES, LOKALES ACHIEVEMENT-SYSTEM
@@ -2987,6 +4319,42 @@ def _save_achievements_seen(seen):
     except OSError:
         pass
 
+def _ensure_achievements_seen_initialized():
+    """Initialisiert ACHIEVEMENTS_SEEN_FILE einmalig GLEICH BEIM START
+    (Frontend.__init__()), falls sie noch nicht existiert - markiert
+    alle zu DIESEM Zeitpunkt bereits erreichten Erfolge als "gezeigt",
+    OHNE dafuer ein Pop-up auszuloesen (sonst gaebe es bei jemandem mit
+    laengerer Spielhistorie eine Flut von Meldungen fuer laengst
+    Erreichtes).
+
+    BUGFIX (Nutzer-Rueckmeldung): 3 verschiedene Systeme gestartet,
+    "Entdecker"-Erfolg korrekt in "Meine Erfolge" als erreicht
+    angezeigt - aber KEIN Pop-up/Ton beim Zurueckkehren aus dem Spiel.
+    Ursache: die Erstlauf-Sonderbehandlung sass bisher direkt IN
+    check_new_achievements() und griff beim ALLERERSTEN Aufruf dieser
+    Funktion ueberhaupt - der aber zufaellig GENAU in dem Moment
+    passieren konnte, in dem der Erfolg WIRKLICH neu erreicht wurde
+    (z.B. die erste jemals gespielte Sitzung, bei der zugleich das
+    dritte System erreicht wird). Der Erfolg wurde dadurch faelschlich
+    als "schon vorher da gewesen" behandelt und sein Pop-up
+    unterdrueckt. Fix: die Baseline wird jetzt explizit VOR jeder
+    moeglichen Nutzeraktion initialisiert (siehe Frontend.__init__()),
+    dadurch ist die Datei bei JEDEM tatsaechlichen Ereignis-Aufruf
+    (Sitzungsende, Favorit/Durchgespielt umschalten) bereits vorhanden
+    - check_new_achievements() selbst braucht dadurch keine Erstlauf-
+    Sonderbehandlung mehr und meldet zuverlaessig jeden Erfolg, der
+    NACH dem Start neu erreicht wird."""
+    if os.path.exists(ACHIEVEMENTS_SEEN_FILE):
+        return
+    seen = set()
+    for label_key, achieved, _current, _threshold, _kind in get_milestones():
+        if achieved:
+            seen.add(label_key)
+    for hid, _label_key, unlocked in get_hidden_achievements():
+        if unlocked:
+            seen.add(hid)
+    _save_achievements_seen(seen)
+
 def check_new_achievements():
     """Vergleicht den aktuellen Erfolgs-Stand gegen die bereits gezeigten
     - liefert eine Liste der NEU erreichten label_keys (in der
@@ -2996,27 +4364,21 @@ def check_new_achievements():
     dazugekommen ist - der haeufigste Fall, entsprechend guenstig
     (nur Mengen-Operationen, kein Datei-Schreiben ohne Aenderung).
 
-    WICHTIG (Erstlauf-Sonderfall): existiert ACHIEVEMENTS_SEEN_FILE
-    noch gar nicht (allererster Aufruf ueberhaupt, z.B. nach diesem
-    Update bei jemandem mit laengerer Spielhistorie), werden bereits
-    erreichte Erfolge NUR als "gezeigt" markiert, OHNE dafuer ein
-    Pop-up auszuloesen - sonst wuerde jemand mit vielen laengst
-    erreichten Erfolgen bei der ersten Pruefung mit einer ganzen Flut
-    von Pop-ups ueberschuettet."""
-    first_run = not os.path.exists(ACHIEVEMENTS_SEEN_FILE)
+    Setzt voraus, dass _ensure_achievements_seen_initialized() bereits
+    beim Start gelaufen ist (siehe Frontend.__init__()) - deshalb hier
+    KEINE eigene Erstlauf-Sonderbehandlung mehr noetig (siehe dort fuer
+    die Begruendung/den Bugfix)."""
     seen = _load_achievements_seen()
     newly = []
     for label_key, achieved, _current, _threshold, _kind in get_milestones():
         if achieved and label_key not in seen:
-            if not first_run:
-                newly.append(label_key)
+            newly.append(label_key)
             seen.add(label_key)
     for hid, label_key, unlocked in get_hidden_achievements():
         if unlocked and hid not in seen:
-            if not first_run:
-                newly.append(label_key)
+            newly.append(label_key)
             seen.add(hid)
-    if first_run or newly:
+    if newly:
         _save_achievements_seen(seen)
     return newly
 
@@ -3063,6 +4425,121 @@ def compute_profile_stats():
         "unlocked": unlocked,
         "total_achievements": total_achievements,
     }
+
+# ----------------------------------------------------------------------------
+# FRONTEND-LEVEL (Nutzerwunsch: "das Menue sammelt Erfahrungspunkte,
+# nicht der Spieler") - rein abgeleitet aus Werten, die wir ohnehin
+# schon dauerhaft speichern (Spielzeit, Starts, versteckte Erfolge).
+# Kein zusaetzlicher Speicherbedarf, kann bei jedem Aufruf frisch
+# berechnet werden - und ist von Natur aus monoton (kann nie sinken,
+# da die zugrunde liegenden Werte nur wachsen koennen).
+FRONTEND_LEVEL_MAX = 5
+
+def compute_frontend_level():
+    """Liefert das aktuelle Frontend-Level (1-5). Stufen bewusst grosszuegig
+    UND ueber mehrere Wege erreichbar (Spielzeit ODER Starts ODER
+    versteckte Erfolge) - niemand soll sich durch eine einzelne, enge
+    Anforderung ausgeschlossen fuehlen."""
+    stats = compute_profile_stats()
+    hours = stats["total_seconds"] / 3600.0
+    launches = stats["total_launches"]
+    hidden = get_hidden_achievements()
+    hidden_count = sum(1 for h in hidden if h[2])
+    legend_unlocked = any(h[0] == "legend" and h[2] for h in hidden)
+
+    if legend_unlocked:
+        return 5
+    if hours >= 50 or hidden_count >= 3:
+        return 4
+    if hours >= 20 or launches >= 50:
+        return 3
+    if hours >= 5 or launches >= 20:
+        return 2
+    return 1
+
+# ----------------------------------------------------------------------------
+# GEHEIME CODES (Nutzerwunsch: "Easter Egg System" - ein paar
+# Cheat-Code-Sequenzen, jede schaltet ein anderes Geheimnis frei). Auf
+# unser Aktions-Vokabular uebertragen. Absichtlich KEINE ausfuehrliche
+# Erklaerung hier im Kommentar, welche Codes das sind oder woher sie
+# stammen - das darf sich jede/r selbst erspielen, siehe
+# draw_secrets_screen().
+#
+# WICHTIG (Nutzer-Nachfrage, Design zweimal korrigiert):
+#   1. Versuch: "ok"/"back" fuer die Bestaetigungs-Positionen - FALSCH,
+#      beide loesen im Hauptmenue IMMER eine echte Wirkung aus
+#      (Kategorie betreten bzw. Beenden-Bestaetigung, siehe
+#      _go_back_or_confirm_quit()), auch waehrend einer laufenden
+#      Code-Eingabe. Einer der Codes haette dadurch NIE vollstaendig
+#      eingegeben werden koennen.
+#   2. Versuch: "favorite"/"completed" (F7/F8) statt ok/back - beide
+#      nachweislich wirkungslos, ABER: "completed" hat GAR KEINE
+#      Joypad-Taste (nur Tastatur F7), und "favorite" liegt auf L2/R2 -
+#      auf SNES-Nachbau-Pads (bei MiSTer-Nutzern verbreitet) oft gar
+#      nicht vorhanden. Auf einem einfachen Pad war praktisch KEINE
+#      Taste mehr frei, die garantiert wirkungslos ist.
+#   FINALE LOESUNG (auf Nutzerwunsch): Codes werden bewusst NUR per
+#   TASTATUR eingegeben - Pfeiltasten fuer die Richtungen, echte
+#   Buchstabentasten fuer die Bestaetigungs-Positionen. Buchstabentasten
+#   loesen im Hauptmenue nur einen harmlosen Buchstaben-Sprung in der
+#   Kategorienliste aus (siehe LETTER_KEYS/"letter:"-Aktion,
+#   jump_to_letter()) - GENAUSO sicher wie hoch/runter/links/rechts,
+#   kein Seitenwechsel, kein Dialog. Per Joypad sind diese Codes damit
+#   bewusst NICHT eingebbar - siehe Hinweistext auf dem Geheimnisse-
+#   Bildschirm.
+SECRETS_FILE = "/media/fat/frontend/secrets_unlocked.json"
+
+SECRET_CODES = {
+    # Schaltet das erste geheime Theme frei. Nur per Tastatur eingebbar.
+    "secret_theme_1": ["up", "up", "down", "down", "left", "right",
+                       "left", "right", "letter:B", "letter:A"],
+    # Schaltet den Entwicklerraum frei. Nur per Tastatur eingebbar.
+    "entwicklerraum": ["down", "letter:R", "up", "letter:L",
+                      "letter:Y", "letter:B"],
+    # Schaltet einen geheimen Sound frei. Nur per Tastatur eingebbar.
+    "secret_sound": ["letter:A", "letter:B", "letter:B", "letter:A"],
+}
+SECRET_CODE_MAXLEN = max(len(seq) for seq in SECRET_CODES.values())
+
+def _load_secrets_unlocked():
+    """Menge der IDs bereits per Geheimcode freigeschalteter
+    Geheimnisse - gleiches Speicherprinzip wie bei den versteckten
+    Erfolgen (siehe _load_hidden_unlocked())."""
+    try:
+        with open(SECRETS_FILE) as f:
+            data = json.load(f)
+            return set(data) if isinstance(data, list) else set()
+    except (OSError, ValueError):
+        return set()
+
+def _unlock_secret(secret_id):
+    """Schaltet ein Geheimnis dauerhaft frei. Rueckgabe: True, wenn es
+    JETZT neu freigeschaltet wurde, False, wenn es das schon vorher
+    war (z.B. Code versehentlich zweimal eingegeben)."""
+    data = _load_secrets_unlocked()
+    if secret_id in data:
+        return False
+    data.add(secret_id)
+    try:
+        os.makedirs(os.path.dirname(SECRETS_FILE), exist_ok=True)
+        with open(SECRETS_FILE, "w") as f:
+            json.dump(sorted(data), f)
+    except OSError:
+        pass
+    return True
+
+def check_secret_code(buffer):
+    """Prueft, ob der Schluss des Aktions-Puffers (Liste der zuletzt
+    gedrueckten Aktionen, neueste zuletzt) exakt einem der bekannten
+    Geheim-Codes entspricht. Liefert die passende secret_id oder None.
+    Reine Vergleichsfunktion ohne Seiteneffekt - das eigentliche
+    Freischalten uebernimmt der Aufrufer (siehe Frontend._check_secret_
+    codes())."""
+    for secret_id, seq in SECRET_CODES.items():
+        n = len(seq)
+        if len(buffer) >= n and list(buffer[-n:]) == seq:
+            return secret_id
+    return None
 
 
 def top_played_games(by="seconds", n=10):
@@ -3323,12 +4800,31 @@ THEMES = {
         "C_TEXT": (150, 255, 165), "C_DIM": (60, 140, 80),
         "C_TITLE": (205, 255, 215), "C_ACCENT": (80, 255, 120),
     },
+    "secret_gold": {   # Geheimes Theme (Nutzerwunsch: "Easter Egg
+        # System") - Gold/Violett, angelehnt an klassische
+        # Arcade-Automaten-Kunst statt an ein reales Spiel (Urheberrecht).
+        # Nur ueber cycle_theme() erreichbar, wenn "secret_theme_1"
+        # freigeschaltet ist (siehe _available_theme_order()) - taucht
+        # sonst nicht in der normalen Durchschalt-Reihenfolge auf.
+        "C_BG": (18, 8, 26), "C_PANEL": (38, 18, 50),
+        "C_TEXT": (255, 224, 130), "C_DIM": (150, 110, 170),
+        "C_TITLE": (255, 200, 60), "C_ACCENT": (255, 170, 30),
+    },
 }
 THEME_ORDER = ["dark", "light", "green"]
 THEME_NAMES_DE = {"dark": "Dunkel (Standard)", "light": "Hell",
-                  "green": "Retro-Gruen"}
+                  "green": "Retro-Gruen", "secret_gold": "??? Geheim ???"}
 THEME_NAMES_EN = {"dark": "Dark (default)", "light": "Light",
-                  "green": "Retro Green"}
+                  "green": "Retro Green", "secret_gold": "??? Secret ???"}
+
+def _available_theme_order():
+    """THEME_ORDER, erweitert um freigeschaltete Geheim-Themes - so
+    bleiben sie in der normalen Durchschalt-Reihenfolge (cycle_theme())
+    unsichtbar, bis der zugehoerige Geheimcode gefunden wurde."""
+    order = list(THEME_ORDER)
+    if "secret_theme_1" in _load_secrets_unlocked():
+        order.append("secret_gold")
+    return order
 
 def current_theme_name():
     try:
@@ -3355,10 +4851,12 @@ def apply_theme(name):
 def cycle_theme():
     """Zum naechsten Farbschema wechseln (der Reihe nach), speichert
     die Wahl UND wendet sie sofort an. Gibt den neuen Themennamen
-    zurueck."""
+    zurueck. Nutzt _available_theme_order() statt THEME_ORDER direkt,
+    damit freigeschaltete Geheim-Themes automatisch mit durchlaufen."""
     cur = current_theme_name()
-    idx = THEME_ORDER.index(cur) if cur in THEME_ORDER else 0
-    new_name = THEME_ORDER[(idx + 1) % len(THEME_ORDER)]
+    order = _available_theme_order()
+    idx = order.index(cur) if cur in order else 0
+    new_name = order[(idx + 1) % len(order)]
     try:
         dirname = os.path.dirname(THEME_FILE)
         if dirname:
@@ -3390,9 +4888,48 @@ VIGNETTE_ENABLED = True    # dezente Randabdunkelung auf einfarbigen
                             # beim eigentlichen Zeichnen
 
 class Framebuffer:
+    # FBIO_WAITFORVSYNC (siehe linux/fb.h: _IOW('F', 0x20, __u32)) - wartet
+    # auf den naechsten vertikalen Bildwechsel der Anzeige-Hardware, BEVOR
+    # in den Framebuffer geschrieben wird. Ohne das kann ein Schreibvorgang
+    # (egal ob flip() oder flip_rows()) mitten in einem laufenden Scanvorgang
+    # der Hardware landen - der Bildschirm zeigt dann fuer einen Sekundenbruch-
+    # teil einen Mix aus altem und neuem Bildinhalt ("Tearing"). Sichtbar wird
+    # das z.B. als leicht verschobener, "doppelt belichtet" wirkender Text bei
+    # der markierten Zeile (Nutzer-Rueckmeldung: Text ueberlappt beim
+    # Scrollen). Je groesser der Schreibvorgang (volle Seite vs. einzelne
+    # Zeile), desto laenger dauert er und desto wahrscheinlicher ein
+    # sichtbarer Treffer mitten im Scan.
+    FBIO_WAITFORVSYNC = 0x40044620
+
     def __init__(self):
-        self._read_geometry()
-        self.fd = os.open(FBDEV, os.O_RDWR)
+        # BUGFIX Teil 2 (Nutzer-Rueckmeldung: "1 von 10 Faellen startet
+        # nicht richtig, bleibt im OSD" - siehe frontend_boot.sh fuer
+        # Teil 1/die volle Herleitung): selbst mit der grosszuegigeren
+        # 120s-Wartezeit in frontend_boot.sh kann es in seltenen Faellen
+        # noch vorkommen, dass MiSTer's eigener Uebergang vom OSD zum
+        # Framebuffer im exakt falschen Sekundenbruchteil noch nicht
+        # ganz abgeschlossen ist, wenn wir hier ankommen - das Oeffnen
+        # des Geraets (oder das Lesen seiner Geometrie) schlaegt dann
+        # kurzzeitig fehl, obwohl eine Sekunde spaeter alles bereit
+        # waere. Bisher fuehrte das zu einem sofortigen, harten Absturz
+        # (sauber geloggt, aber das Frontend erschien nie - das alte
+        # OSD blieb einfach stehen). Fix: bis zu 5 Versuche mit 0.5s
+        # Pause dazwischen (insgesamt max. 2.5s zusaetzliche Wartezeit,
+        # nur im Fehlerfall - beim ERSTEN, ueblichen erfolgreichen
+        # Versuch entsteht KEINE zusaetzliche Verzoegerung).
+        last_error = None
+        for attempt in range(5):
+            try:
+                self._read_geometry()
+                self.fd = os.open(FBDEV, os.O_RDWR)
+                break
+            except OSError as e:
+                last_error = e
+                LOG("Framebuffer-Oeffnen fehlgeschlagen (Versuch %d/5): %s"
+                    % (attempt + 1, e))
+                time.sleep(0.5)
+        else:
+            raise last_error
         self._map()
         self._rowcache = {}
         self._rectcache = {}   # eigener Cache fuer rect() (siehe dort) -
@@ -3404,6 +4941,25 @@ class Framebuffer:
         self._textcache_order = []
         self._TEXTCACHE_LIMIT = 400   # ~12MB bei typischen Labellaengen -
                                       # vertretbar auf einem MiSTer mit ~1GB RAM
+        # None = noch nicht getestet, True/False = Ergebnis des ersten
+        # Versuchs. Wird nur EINMAL probiert - unterstuetzt der Treiber es
+        # nicht (ENOTTY/EINVAL o.ae.), schalten wir dauerhaft ab, statt bei
+        # JEDEM Frame erneut einen fehlschlagenden ioctl-Aufruf zu riskieren.
+        self._vsync_supported = None
+
+    def _wait_vsync(self):
+        """Wartet, falls moeglich, auf den naechsten vertikalen Bildwechsel -
+        siehe FBIO_WAITFORVSYNC oben. Schlaegt der ioctl fehl (Treiber
+        unterstuetzt es nicht), wird das dauerhaft vermerkt und nie wieder
+        versucht - kostet dann nichts mehr, faellt einfach auf das bisherige
+        Verhalten (ohne Vsync-Wartezeit) zurueck."""
+        if self._vsync_supported is False:
+            return
+        try:
+            fcntl.ioctl(self.fd, self.FBIO_WAITFORVSYNC, struct.pack("I", 0))
+            self._vsync_supported = True
+        except (OSError, AttributeError):
+            self._vsync_supported = False
 
     def _read_geometry(self):
         w, h = open("/sys/class/graphics/fb0/virtual_size").read().split(",")
@@ -3747,6 +5303,9 @@ class Framebuffer:
             self.buf[off:off + w4] = row
 
     def flip(self):
+        # Erst auf den Vertical-Blank warten (falls unterstuetzt), DANN
+        # schreiben - vermeidet Tearing bei der grossen Vollbild-Kopie.
+        self._wait_vsync()
         # Direkte Slice-Zuweisung: mmap nimmt das bytearray ohne die
         # teure bytes()-Zwischenkopie (auf 1080p ~8 MB pro Frame).
         self.mm[:] = self.buf
@@ -3757,6 +5316,7 @@ class Framebuffer:
         y1 = min(self.height, y + h)
         if y1 <= y0:
             return
+        self._wait_vsync()
         off = y0 * self.stride
         end = y1 * self.stride
         self.mm[off:end] = self.buf[off:end]
@@ -3782,6 +5342,7 @@ EV_SYN, EV_KEY, EV_ABS = 0, 1, 3
 KEY_ESC, KEY_ENTER = 1, 28
 KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT = 103, 108, 105, 106
 KEY_F7 = 65
+KEY_F6 = 64
 KEY_F8, KEY_F9, KEY_F10, KEY_F11, KEY_F12 = 66, 67, 68, 87, 88
 # Gamepad-Buttons (Linux-Standardcodes)
 BTN_A, BTN_B, BTN_X, BTN_Y = 304, 305, 307, 308
@@ -3827,6 +5388,7 @@ KEYMAP = {
     KEY_F8: "favorite", BTN_TL2: "favorite", BTN_TR2: "favorite",
     AXIS_L2: "favorite", AXIS_R2: "favorite",
     KEY_F7: "completed",
+    KEY_F6: "ra_showcase",
     BTN_A: "ok", BTN_START: "ok",
     BTN_B: "back", BTN_X: "back_fe",
     BTN_Y: "music_next", KEY_Y: "music_next",
@@ -4354,6 +5916,234 @@ class InputManager:
         for d in self.devices.values():
             d.close()
         self.devices = {}
+
+# ----------------------------------------------------------------------------
+# PNG-DECODER (Nutzerwunsch: RA-Erfolgs-Icons direkt im Frontend zeigen,
+# nicht nur im Browser-Overlay, das PNGs von selbst versteht). Reines
+# Standard-Python (zlib fuer die eigentliche Kompression - das macht der
+# schwierige Teil bereits selbst), die PNG-eigene ZEILENFILTERUNG muss
+# aber von Hand rekonstruiert werden - das ist der eigentliche Aufwand
+# an einem PNG-Decoder.
+#
+# BEWUSST EINGESCHRAENKT (lieber None als ein falsches/kaputtes Bild):
+# nur 8-Bit Farbtiefe, nicht interlaced, Farbtypen 0/2/3/4/6 - deckt
+# praktisch jedes uebliche kleine Web-/Icon-Bild ab (fuer RA-Badges
+# also die ueberwiegende Mehrheit der Faelle), NICHT aber 16-Bit-Tiefe,
+# Adam7-Interlacing oder 1/2/4-Bit-Farbtiefen. Chunk-CRCs werden NICHT
+# geprueft (vertrauenswuerdige Quelle: RAs eigenes CDN, keine
+# Nutzereingabe) - das spart Aufwand, ohne die eigentliche Bild-
+# Rekonstruktion zu beeintraechtigen.
+def _paeth_predictor(a, b, c):
+    """PNG-Paeth-Praediktor (siehe PNG-Spezifikation) - waehlt von den
+    drei Nachbarn (links/oben/oben-links) den, der dem linearen
+    Schaetzwert am naechsten liegt."""
+    p = a + b - c
+    pa = abs(p - a)
+    pb = abs(p - b)
+    pc = abs(p - c)
+    if pa <= pb and pa <= pc:
+        return a
+    if pb <= pc:
+        return b
+    return c
+
+def _png_unfilter(raw, width, height, bpp):
+    """Entfernt die PNG-Zeilenfilterung - jede Zeile im entpackten
+    IDAT-Strom beginnt mit einem Filtertyp-Byte (0-4), gefolgt von den
+    GEFILTERTEN (nicht den echten) Pixel-Bytes dieser Zeile. Liefert
+    die rekonstruierten Rohpixel OHNE die Filter-Byte-Praefixe, oder
+    None bei einem unbekannten Filtertyp oder zu kurzen Daten.
+    bpp: Bytes pro Pixel (fuer den Filter-Rueckbezug - z.B. 4 bei
+    RGBA/8-Bit, 1 bei Graustufen/8-Bit)."""
+    stride = width * bpp
+    row_len = stride + 1
+    if len(raw) < row_len * height:
+        return None
+    out = bytearray(stride * height)
+    prev_row = bytearray(stride)
+    for y in range(height):
+        off = y * row_len
+        ftype = raw[off]
+        line = raw[off + 1:off + 1 + stride]
+        cur = bytearray(stride)
+        if ftype == 0:      # None - unveraendert
+            cur[:] = line
+        elif ftype == 1:    # Sub - relativ zum Pixel LINKS
+            for i in range(stride):
+                a = cur[i - bpp] if i >= bpp else 0
+                cur[i] = (line[i] + a) & 0xff
+        elif ftype == 2:    # Up - relativ zum Pixel DARUEBER
+            for i in range(stride):
+                cur[i] = (line[i] + prev_row[i]) & 0xff
+        elif ftype == 3:    # Average - Mittelwert aus links+oben
+            for i in range(stride):
+                a = cur[i - bpp] if i >= bpp else 0
+                cur[i] = (line[i] + ((a + prev_row[i]) // 2)) & 0xff
+        elif ftype == 4:    # Paeth - siehe _paeth_predictor()
+            for i in range(stride):
+                a = cur[i - bpp] if i >= bpp else 0
+                c = prev_row[i - bpp] if i >= bpp else 0
+                cur[i] = (line[i] + _paeth_predictor(a, prev_row[i], c)) & 0xff
+        else:
+            return None   # unbekannter Filtertyp - lieber abbrechen als raten
+        out[y * stride:(y + 1) * stride] = cur
+        prev_row = cur
+    return bytes(out)
+
+def decode_png(data):
+    """Dekodiert eine PNG-Bilddatei (Bytes) zu (breite, hoehe,
+    rgba_bytes) - fuer RA-Erfolgs-Icons direkt im Frontend. Liefert
+    None bei JEDEM nicht unterstuetzten oder fehlerhaften Fall - NIE
+    eine Ausnahme nach aussen (siehe Modul-Kopfkommentar fuer die
+    bewussten Einschraenkungen)."""
+    try:
+        if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+            return None
+        pos = 8
+        width = height = bitdepth = colortype = None
+        palette = None
+        trns = None
+        idat_parts = []
+        n = len(data)
+        while pos + 8 <= n:
+            length = struct.unpack(">I", data[pos:pos + 4])[0]
+            ctype = data[pos + 4:pos + 8]
+            cstart = pos + 8
+            cdata = data[cstart:cstart + length]
+            pos = cstart + length + 4   # +4 = CRC, bewusst nicht geprueft
+            if ctype == b"IHDR":
+                if len(cdata) != 13:
+                    return None
+                (width, height, bitdepth, colortype,
+                 comp, filt, interlace) = struct.unpack(">IIBBBBB", cdata)
+                if comp != 0 or filt != 0 or interlace != 0:
+                    return None   # Interlacing/exotische Kompression: nicht unterstuetzt
+                if bitdepth != 8:
+                    return None   # nur 8-Bit-Tiefe unterstuetzt
+                if width <= 0 or height <= 0 or width * height > 4_000_000:
+                    return None   # Groessen-Notbremse gegen kaputte/boesartige Header
+            elif ctype == b"PLTE":
+                palette = cdata
+            elif ctype == b"tRNS":
+                trns = cdata
+            elif ctype == b"IDAT":
+                idat_parts.append(cdata)
+            elif ctype == b"IEND":
+                break
+        if width is None or not idat_parts:
+            return None
+        if colortype not in (0, 2, 3, 4, 6):
+            return None
+
+        channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[colortype]
+        raw = zlib.decompress(b"".join(idat_parts))
+        pixels = _png_unfilter(raw, width, height, channels)
+        if pixels is None:
+            return None
+
+        # Zu RGBA vereinheitlichen, unabhaengig vom Quell-Farbtyp - so
+        # muss der Rest des Frontends (blit() usw.) nur EIN Format
+        # kennen, egal welcher PNG-Farbtyp reinkam.
+        n_px = width * height
+        out = bytearray(n_px * 4)
+        if colortype == 6:      # RGBA schon direkt passend
+            out[:] = pixels
+        elif colortype == 2:    # RGB -> RGBA (Alpha immer deckend)
+            for i in range(n_px):
+                out[i * 4:i * 4 + 3] = pixels[i * 3:i * 3 + 3]
+                out[i * 4 + 3] = 255
+        elif colortype == 0:    # Graustufen -> RGBA
+            for i in range(n_px):
+                g = pixels[i]
+                out[i * 4] = out[i * 4 + 1] = out[i * 4 + 2] = g
+                out[i * 4 + 3] = 255
+        elif colortype == 4:    # Graustufen+Alpha -> RGBA
+            for i in range(n_px):
+                g = pixels[i * 2]
+                out[i * 4] = out[i * 4 + 1] = out[i * 4 + 2] = g
+                out[i * 4 + 3] = pixels[i * 2 + 1]
+        elif colortype == 3:    # Palette -> RGBA
+            if not palette:
+                return None
+            for i in range(n_px):
+                idx = pixels[i]
+                p = idx * 3
+                if p + 3 > len(palette):
+                    return None
+                out[i * 4:i * 4 + 3] = palette[p:p + 3]
+                out[i * 4 + 3] = (trns[idx] if trns and idx < len(trns) else 255)
+        return (width, height, bytes(out))
+    except (struct.error, zlib.error, IndexError, ValueError):
+        return None
+
+# ----------------------------------------------------------------------------
+# RA-ERFOLGS-ICONS (Badges) FUERS FRONTEND SELBST - baut auf decode_png()
+# auf (siehe oben). Gleiches Grundprinzip wie ArtCache: dauerhaft als
+# rohe PNG-Bytes lokal zwischengespeichert (Icons aendern sich nie mehr,
+# sobald ein Erfolg veroeffentlicht ist), zusaetzlich die BEREITS
+# DEKODIERTEN Bilder im Speicher gehalten (begrenzt, wie bei ArtCache).
+# ----------------------------------------------------------------------------
+BADGE_DIR = "/media/fat/frontend/ra_badges"
+RA_BADGE_URL = "https://media.retroachievements.org/Badge/%s.png"
+
+class BadgeCache:
+    LIMIT = 60   # gleicher Gedanke wie ArtCache - Icons sind winzig,
+                # koennte durchaus hoeher, aber kein Grund zur Eile
+
+    def __init__(self):
+        self.cache = {}   # badge_name -> (w, h, rgba) oder None
+        self.order = []
+
+    def get(self, badge_name):
+        """Liefert (breite, hoehe, rgba) fuer ein RA-Badge, oder None,
+        wenn der Name unbrauchbar ist oder das Icon nicht geladen/
+        dekodiert werden konnte. Laedt/dekodiert bei Bedarf, danach
+        aus dem Speicher-Cache."""
+        if not badge_name or not re.match(r"^[A-Za-z0-9_-]+$", badge_name):
+            return None   # kein Pfad-Trick moeglich, siehe _load_bytes()
+        if badge_name in self.cache:
+            return self.cache[badge_name]
+        data = self._load_bytes(badge_name)
+        result = decode_png(data) if data else None
+        self.cache[badge_name] = result
+        self.order.append(badge_name)
+        if len(self.order) > self.LIMIT:
+            old = self.order.pop(0)
+            self.cache.pop(old, None)
+        return result
+
+    def _load_bytes(self, badge_name):
+        """Rohe PNG-Bytes eines Badges - aus dem lokalen Dauer-Cache,
+        falls vorhanden, sonst live von RA heruntergeladen und
+        gespeichert. NIE eine Ausnahme nach aussen."""
+        try:
+            os.makedirs(BADGE_DIR, exist_ok=True)
+        except OSError:
+            pass
+        path = os.path.join(BADGE_DIR, badge_name + ".png")
+        try:
+            with open(path, "rb") as f:
+                return f.read()
+        except OSError:
+            pass
+        try:
+            req = urllib.request.Request(
+                RA_BADGE_URL % badge_name,
+                headers={"User-Agent": "MiSTerFrontend/1.0"})
+            with urllib.request.urlopen(req, timeout=5.0) as resp:
+                if resp.status != 200:
+                    return None
+                data = resp.read()
+        except (urllib.error.URLError, OSError, TimeoutError):
+            return None
+        try:
+            with open(path, "wb") as f:
+                f.write(data)
+        except OSError:
+            pass
+        return data
+
+BADGES = BadgeCache()
 
 # ----------------------------------------------------------------------------
 # ARTWORK (.art) UND METADATEN
@@ -4884,20 +6674,47 @@ def load_recent():
     except (OSError, ValueError, KeyError, TypeError):
         return []
 
+def _bare_game_name(label):
+    """Loest aus einer Zuletzt-gespielt-Beschriftung den reinen
+    Spielnamen heraus - fuer externe Listen (siehe find_marked_recent_
+    dir()), deren Eintraege ein Core-/RA-Praefix vorne dran haben
+    (z.B. TheRealSutefans "RA SNES - Chrono Trigger", Format
+    "<Anzeige> - <Spielname>" mit dem Spielnamen NACH dem ERSTEN
+    " - "). Ohne " - " im Label wird das Label unveraendert
+    zurueckgegeben (unsere eigene load_recent()-Liste hat kein
+    Praefix, braucht diese Behandlung also nicht)."""
+    return label.split(" - ", 1)[1] if " - " in label else label
+
 def find_continue_game():
     """Sucht das zuletzt gespielte Spiel, das noch NICHT als
     durchgespielt markiert ist - fuer die "Weiterspielen"-Vorschlag
     ganz oben im Hauptmenue (Nutzerwunsch: "genau hier bist du stehen-
-    geblieben" statt nur eine chronologische Liste). Geht die "Zuletzt
-    gespielt"-Liste (neuestes zuerst) durch und liefert den ERSTEN
-    Eintrag, der noch nicht durchgespielt ist - (label, "game", arg)
-    wie load_recent(), oder None, wenn nichts passt (z.B. alles
+    geblieben" statt nur eine chronologische Liste). Liefert (label,
+    "game"/"core", arg) oder None, wenn nichts passt (z.B. alles
     bereits durchgespielt markiert, oder noch nie etwas gestartet).
-    Nutzt bewusst NICHT die ueber RECENT_MARKER eingebundene externe
-    Liste (siehe find_marked_recent_dir()) - die Durchgespielt-
-    Markierung ist eine rein eigene Funktion, die nur zu unserer
-    EIGENEN "Zuletzt gespielt"-Aufzeichnung sauber passt."""
+
+    Bevorzugt die ueber RECENT_MARKER eingebundene externe Liste
+    (TheRealSutefans "Last Played"-Skript), FALLS vorhanden - MiSTers
+    eigene *_recent_1.cfg-Dateien erfassen JEDEN Spielstart, egal ob
+    ueber unser Frontend, MiSTers eigenes Menue oder ein anderes Tool.
+    Unsere eigene load_recent()-Liste kennt dagegen nur, was ueber
+    UNSER Frontend gestartet wurde - waere sonst zunehmend veraltet
+    gegenueber der darunter angezeigten "Zuletzt gespielt"-Liste,
+    sobald ein solches externes Skript aktiv ist.
+
+    WICHTIG beim Abgleich gegen die Durchgespielt-Markierung: die
+    externe Liste hat Core-/RA-Praefixe im Label (z.B. "RA SNES -
+    Chrono Trigger"), unsere Markierung speichert aber den REINEN
+    Spielnamen ("Chrono Trigger") - ein direkter Vergleich wuerde nie
+    treffen. Siehe _bare_game_name() fuer die Praefix-Behandlung.
+    Ohne aktiven Marker unveraendert unsere eigene load_recent()."""
     completed = _load_completed_raw()
+    marked_recent = find_marked_recent_dir()
+    if marked_recent:
+        for entry in _folder_items(marked_recent, by_mtime=True):
+            if _bare_game_name(entry[0]) not in completed:
+                return entry
+        return None
     for entry in load_recent():
         label = entry[0]
         if label not in completed:
@@ -5055,6 +6872,89 @@ def _wait_for_usb_stable(max_wait=10.0, poll=0.5, min_wait_if_none=3.0):
         last_total = total
         time.sleep(poll)
 
+# ----------------------------------------------------------------------------
+# NETZWERK/NAS-WARTEOPTION (Nutzerwunsch): liegen die ROMs auf einem
+# Netzlaufwerk (NAS, ueber CIFS/SMB oder NFS eingebunden - MiSTer haengt
+# das typischerweise unter /media/fat/cifs ein bzw. blendet es direkt in
+# die games-Ordner ein, siehe cifs_mount.sh), kann der Scan starten,
+# BEVOR die Verbindung wirklich steht - das Ergebnis (leer oder
+# unvollstaendig) wuerde dann sogar dauerhaft gecacht werden. Standard
+# AUS (die meisten Nutzer haben SD-Karte/USB, fuer die das nur unnoetig
+# verzoegern wuerde) - NUR fuer NAS-Nutzer per Option einschaltbar.
+NETWORK_WAIT_FILE = "/media/fat/frontend/network_wait"
+
+def network_wait_enabled():
+    """Liest die Einstellung "beim Start auf Netzwerk/NAS warten" -
+    Standard NEIN."""
+    try:
+        with open(NETWORK_WAIT_FILE) as f:
+            return f.read().strip().lower() in ("yes", "1", "ja", "true")
+    except OSError:
+        return False
+
+def save_network_wait(enabled):
+    try:
+        os.makedirs(os.path.dirname(NETWORK_WAIT_FILE), exist_ok=True)
+        with open(NETWORK_WAIT_FILE, "w") as f:
+            f.write("yes" if enabled else "no")
+    except OSError:
+        pass
+
+def _wait_for_network_ready(max_wait=20.0, poll=0.5):
+    """NUR aktiv, wenn network_wait_enabled() - sonst sofortige
+    Rueckkehr (kein Einfluss auf den ganz ueberwiegenden Regelfall SD-
+    Karte/USB). Wartet zuerst auf eine grundlegende Netzwerkverbindung,
+    dann darauf, dass sich der Inhalt ALLER GAMES_BASES-Pfade zwischen
+    zwei Abfragen nicht mehr aendert - gleiches Prinzip wie
+    _wait_for_usb_stable() (inkl. derselben Vorsicht bei einem
+    durchgehend leeren, aber stabilen Ergebnis), bewusst NICHT auf
+    USB-Pfade beschraenkt, damit es auch CIFS/NFS-Einhaengungen
+    erfasst, unabhaengig vom genauen Mount-Punkt. Eigenstaendige,
+    separate Funktion (keine Aenderung an _wait_for_usb_stable() selbst)
+    - kein Regressionsrisiko fuer den etablierten USB-Fall."""
+    if not network_wait_enabled():
+        return
+    t0 = time.monotonic()
+    while True:
+        if _has_network():
+            break
+        if time.monotonic() - t0 >= max_wait:
+            LOG("_wait_for_network_ready: keine Netzwerkverbindung nach %.0fs - fahre trotzdem fort"
+               % max_wait)
+            return
+        time.sleep(poll)
+
+    def snapshot():
+        total = 0
+        for b in GAMES_BASES:
+            if os.path.isdir(b):
+                try:
+                    total += len(os.listdir(b))
+                except OSError:
+                    pass
+        return total
+
+    last_total = None
+    stable_streak = 0
+    while True:
+        elapsed = time.monotonic() - t0
+        total = snapshot()
+        if elapsed >= max_wait:
+            LOG("_wait_for_network_ready: Zeitlimit (%.0fs) erreicht, fahre trotzdem fort"
+               % max_wait)
+            return
+        if total == last_total:
+            stable_streak += 1
+            required = 2 if total > 0 else 4   # bei leer vorsichtiger, siehe _wait_for_usb_stable()
+            if stable_streak >= required:
+                LOG("_wait_for_network_ready: Inhalt stabil (%d Eintraege) nach %.1fs"
+                   % (total, elapsed))
+                return
+        else:
+            stable_streak = 0
+        last_total = total
+        time.sleep(poll)
+
 def scan_games(force=False, progress_cb=None):
     """ROM-Listen laden - aus dem Cache, wenn er noch passt.
     progress_cb(i, total, name): wird NUR beim tatsaechlichen Scannen
@@ -5129,6 +7029,20 @@ def _wrap_flat(items_list):
     Kategorien einheitlich zu Baumknoten, der Rest des Codes muss
     dadurch nicht zwischen 'flacher Liste' und 'Baum' unterscheiden."""
     return {"folders": {}, "items": items_list}
+
+def _count_tree_items(node):
+    """Zaehlt rekursiv alle Eintraege in einem Baumknoten - auch in
+    verschachtelten Unterordnern (Nutzerwunsch: die Kategorien
+    "Sammlungen"/"RA-Erfolgsjaeger" zeigten im Hauptmenue selbst keine
+    Anzahl, man musste erst reingehen um zu sehen ob ueberhaupt was
+    drinsteckt). Nur fuer die kleinen, abgeleiteten Kategorien gedacht
+    (Sammlungen/RA-Erfolgsjaeger haben wenige Dutzend Eintraege) - fuer
+    die grossen ROM-Kategorien waere das zu teuer, dort zaehlen wir
+    bewusst nicht."""
+    total = len(node.get("items", ()))
+    for sub in node.get("folders", {}).values():
+        total += _count_tree_items(sub)
+    return total
 
 def _empty_node():
     """Leerer Baumknoten: {'folders': {Name: Knoten, ...}, 'items':
@@ -5602,6 +7516,10 @@ SFX_CHIME_DEFS = {
     # Kurzer aufsteigender Doppelklang - deutlich von den einfachen
     # Sweeps oben abgesetzt, fuer den Erfolgs-Sound.
     "achievement": [(600, 900, 60), (950, 1400, 90)],
+    # Geheimer Sound (Nutzerwunsch: "Easter Egg System") -
+    # verspielter, mehrstufiger Klang, bewusst deutlich anders
+    # als die anderen Sounds (auffaelliger "Fund"-Charakter).
+    "secret_found": [(300, 600, 50), (600, 450, 40), (450, 900, 70), (900, 700, 90)],
 }
 
 def _ensure_sfx_files():
@@ -5917,6 +7835,44 @@ TRANSLATIONS = {
                           "de": "Erfolg freigeschaltet: %s"},
     "achievement_popup_multi": {"en": "%d achievements unlocked!",
                                 "de": "%d Erfolge freigeschaltet!"},
+    "secret_unlocked": {"en": "Secret unlocked: %s", "de": "Geheimnis freigeschaltet: %s"},
+    "secret_sound_replay": {"en": "\u2669 secret sound \u2669", "de": "\u2669 geheimer Sound \u2669"},
+    "secrets_title": {"en": "SECRETS", "de": "GEHEIMNISSE"},
+    "secrets_summary": {"en": "%d of %d found", "de": "%d von %d gefunden"},
+    "secrets_keyboard_hint": {"en": "Codes only work via keyboard, not gamepad",
+                              "de": "Codes funktionieren nur per Tastatur, nicht per Gamepad"},
+    "secret_origin_secret_theme_1": {"en": "Origin: the Konami Code (Contra, Gradius, ...)",
+                                     "de": "Herkunft: der Konami-Code (Contra, Gradius, ...)"},
+    "secret_origin_entwicklerraum": {"en": "Origin: the Capcom Code (Street Fighter II)",
+                                     "de": "Herkunft: der Capcom-Code (Street Fighter II)"},
+    "secret_origin_secret_sound": {"en": "Origin: the Ikari Warriors continue code",
+                                   "de": "Herkunft: der Ikari-Warriors-Weiterspielen-Code"},
+    "max_level_boot_effect": {"en": "FRONTEND LEVEL MAX", "de": "FRONTEND-LEVEL MAX"},
+    "secret_name_secret_theme_1": {"en": "hidden theme", "de": "geheimes Theme"},
+    "secret_name_entwicklerraum": {"en": "developer room", "de": "Entwicklerraum"},
+    "secret_name_secret_sound": {"en": "hidden sound", "de": "geheimer Sound"},
+    "dev_room_title": {"en": "DEVELOPER ROOM", "de": "ENTWICKLERRAUM"},
+    "dev_room_level": {"en": "Frontend level: %d of %d", "de": "Frontend-Level: %d von %d"},
+    "dev_room_secrets": {"en": "Secrets found: %d of %d", "de": "Geheimnisse gefunden: %d von %d"},
+    "dev_room_credits_1": {"en": "Built by Dragrem.",
+                           "de": "Gebaut von Dragrem."},
+    "dev_room_credits_2": {"en": "With contributions from TheRealSutefan and Dfense.",
+                           "de": "Mit Beitraegen von TheRealSutefan und Dfense."},
+    "dev_room_thanks": {"en": "Thanks for playing around with hidden things.",
+                        "de": "Danke, dass du an geheimen Dingen herumprobierst."},
+    "credits_title": {"en": "CREDITS", "de": "MITWIRKENDE"},
+    "credits_creator_heading": {"en": "Created by", "de": "Erstellt von"},
+    "credits_creator_entry": {"en": "Dragrem", "de": "Dragrem"},
+    "credits_contrib_heading": {"en": "Contributions", "de": "Beitraege"},
+    "credits_contrib_sutefan": {"en": "TheRealSutefan - patches, RA tools, bugfixes",
+                                "de": "TheRealSutefan - Patches, RA-Werkzeuge, Bugfixes"},
+    "credits_contrib_dfense": {"en": "Dfense - contributions",
+                               "de": "Dfense - Mitwirkung"},
+    "credits_contrib_dennsen": {"en": "Dennsen - streaming and testing",
+                                "de": "Dennsen - Streaming und Testen"},
+    "credits_thanks_heading": {"en": "Thanks", "de": "Danke"},
+    "credits_thanks_entry": {"en": "To everyone playing, testing and reporting bugs.",
+                             "de": "An alle, die spielen, testen und Fehler melden."},
     "trophy_room_title": {"en": "TROPHY ROOM", "de": "TROPHAEENRAUM"},
     "trophy_favorite_system": {"en": "Favorite system: %s",
                                "de": "Lieblingssystem: %s"},
@@ -5930,7 +7886,83 @@ TRANSLATIONS = {
                             "de": "Erfolge: %d von %d"},
     "trophy_summary": {"en": "A retro gamer on %d systems, %d of %d achievements unlocked.",
                        "de": "Retro-Spieler(in) auf %d Systemen, %d von %d Erfolgen freigeschaltet."},
+    "year_review_title": {"en": "YEAR IN REVIEW %s", "de": "JAHRESRUECKBLICK %s"},
+    "year_review_empty": {"en": "Nothing recorded for this year yet - keep playing!",
+                          "de": "Fuer dieses Jahr noch nichts aufgezeichnet - einfach weiterspielen!"},
+    "year_review_favorite_system": {"en": "Favorite system this year: %s",
+                                    "de": "Lieblingssystem dieses Jahr: %s"},
+    "year_review_top_game": {"en": "Most played this year: %s",
+                             "de": "Meistgespielt dieses Jahr: %s"},
+    "year_review_total_playtime": {"en": "Played this year: %s",
+                                   "de": "Dieses Jahr gespielt: %s"},
+    "year_review_launches": {"en": "Games launched: %d", "de": "Spiele gestartet: %d"},
+    "year_review_games": {"en": "Different games: %d", "de": "Verschiedene Spiele: %d"},
+    "year_review_systems": {"en": "Systems used: %d", "de": "Genutzte Systeme: %d"},
+    "year_review_discovered": {"en": "Discovered this year: %d",
+                               "de": "Dieses Jahr entdeckt: %d"},
+    "year_review_summary": {"en": "Your %s: %d games, %d of them brand new discoveries.",
+                            "de": "Dein %s: %d Spiele, davon %d ganz neu entdeckt."},
+    "diary_title": {"en": "GAME DIARY", "de": "SPIELTAGEBUCH"},
+    "diary_summary": {"en": "%d sessions in the last %d days",
+                      "de": "%d Sitzungen in den letzten %d Tagen"},
+    "diary_empty": {"en": "Nothing recorded yet - keep playing!",
+                    "de": "Noch nichts aufgezeichnet - einfach weiterspielen!"},
+    "diary_today": {"en": "Today", "de": "Heute"},
+    "diary_yesterday": {"en": "Yesterday", "de": "Gestern"},
+    "sys_diary_action": {"en": "Game diary", "de": "Spieltagebuch"},
+    "sys_help_action": {"en": "Help / Overview", "de": "Hilfe / Uebersicht"},
+    "boot_default_title": {"en": "MISTER FRONTEND", "de": "MISTER FRONTEND"},
+    "help_title": {"en": "HELP / OVERVIEW", "de": "HILFE / UEBERSICHT"},
+    "help_section_nav": {"en": "Navigation", "de": "Navigation"},
+    "help_nav_move": {"en": "Arrow keys: move around",
+                      "de": "Pfeiltasten: bewegen"},
+    "help_nav_ok": {"en": "OK/A: select, enter category/folder",
+                    "de": "OK/A: auswaehlen, Kategorie/Ordner betreten"},
+    "help_nav_back": {"en": "Back/B: one level back, at the top: exit dialog",
+                      "de": "Zurueck/B: eine Ebene zurueck, ganz oben: Beenden-Dialog"},
+    "help_nav_letter": {"en": "Letter key (keyboard): jump to next entry with that letter",
+                        "de": "Buchstabentaste (Tastatur): springt zum naechsten Eintrag mit diesem Buchstaben"},
+    "help_section_list": {"en": "In the game list", "de": "In der Spieleliste"},
+    "help_list_completed": {"en": "F7: toggle completed status",
+                            "de": "F7: Durchgespielt-Status umschalten"},
+    "help_list_favorite": {"en": "F8 / L2 or R2: toggle favorite",
+                           "de": "F8 / L2 oder R2: Favorit umschalten"},
+    "help_list_showcase": {"en": "F6: RA achievement showcase for the selected game",
+                           "de": "F6: RA-Erfolgs-Vitrine fuer das markierte Spiel"},
+    "help_section_menu": {"en": "Special entries in the main menu",
+                          "de": "Besondere Eintraege im Hauptmenue"},
+    "help_menu_continue": {"en": "Continue playing: your last unfinished game",
+                           "de": "Weiterspielen: dein zuletzt offenes Spiel"},
+    "help_menu_collections": {"en": "Collections: automatic groupings",
+                              "de": "Sammlungen: automatische Gruppierungen"},
+    "help_menu_hunter": {"en": "RA Achievement Hunter: open RetroAchievements in your library",
+                         "de": "RA-Erfolgsjaeger: offene RetroAchievements in deiner Bibliothek"},
+    "help_section_system": {"en": "System menu", "de": "System-Menue"},
+    "help_system_stats": {"en": "Statistics & achievements: top-10 lists, trophy room, year in review, diary",
+                          "de": "Statistiken & Erfolge: Top-10-Listen, Trophaeenraum, Jahresrueckblick, Spieltagebuch"},
+    "help_system_secrets": {"en": "Secrets: hidden things to discover for yourself",
+                            "de": "Geheimnisse: Verstecktes, das du selbst entdecken kannst"},
+    "help_system_credits": {"en": "Credits: who made this",
+                            "de": "Mitwirkende: wer das gebaut hat"},
+    "help_section_playing": {"en": "While playing", "de": "Waehrend des Spielens"},
+    "help_playing_exit": {"en": "Esc: back to the menu immediately",
+                          "de": "Esc: sofort zurueck ins Menue"},
     "sys_trophy_action": {"en": "My trophy room", "de": "Mein Trophaeenraum"},
+    "sys_year_review_action": {"en": "Year in review", "de": "Jahresrueckblick"},
+    "sys_secrets_action": {"en": "Secrets", "de": "Geheimnisse"},
+    "sys_credits_action": {"en": "Credits", "de": "Mitwirkende"},
+    "sys_crt_test_action": {"en": "CRT test pattern", "de": "CRT-Testbild"},
+    "ra_showcase_title": {"en": "RA ACHIEVEMENTS - %s", "de": "RA-ERFOLGE - %s"},
+    "ra_showcase_loading": {"en": "Loading achievements ...",
+                            "de": "Erfolge werden geladen ..."},
+    "ra_showcase_error": {"en": "Could not load achievements (no network/timeout)",
+                          "de": "Erfolge konnten nicht geladen werden (kein Netz/Zeitlimit)"},
+    "ra_showcase_empty": {"en": "No achievements found for this game",
+                          "de": "Keine Erfolge fuer dieses Spiel gefunden"},
+    "ra_showcase_none": {"en": "No RetroAchievements data for this game",
+                         "de": "Keine RetroAchievements-Daten fuer dieses Spiel"},
+    "ra_showcase_not_setup": {"en": "RetroAchievements not set up (see README)",
+                              "de": "RetroAchievements nicht eingerichtet (siehe README)"},
     "sys_milestones_action": {"en": "My achievements", "de": "Meine Erfolge"},
     "sys_ra_setup": {"en": "RetroAchievements: not set up",
                      "de": "RetroAchievements: nicht eingerichtet"},
@@ -5973,6 +8005,13 @@ TRANSLATIONS = {
                           "de": "%d-%d von %d - Hoch/Runter zum Scrollen"},
     "no_artwork_1":    {"en": "no",      "de": "kein"},
     "no_artwork_2":    {"en": "artwork", "de": "Artwork"},
+    "sys_group_ra": {"en": "RetroAchievements", "de": "RetroAchievements"},
+    "sys_group_stats": {"en": "Statistics & achievements", "de": "Statistiken & Erfolge"},
+    "sys_group_display": {"en": "Display & sound", "de": "Anzeige & Sound"},
+    "sys_group_behavior": {"en": "Behavior", "de": "Verhalten"},
+    "sys_group_input": {"en": "Input & language", "de": "Eingabe & Sprache"},
+    "sys_group_info": {"en": "Info", "de": "Info"},
+    "sys_group_maintenance": {"en": "Maintenance", "de": "Wartung"},
     "sys_osd":         {"en": "Open MiSTer OSD (Settings/Buttons)",
                         "de": "MiSTer-OSD oeffnen (Settings/Buttons)"},
     "sys_video_crt":   {"en": "Menu video: CRT -> switch to HDMI",
@@ -6000,6 +8039,10 @@ TRANSLATIONS = {
                   "de": "Farbschema: %s -> naechstes"},
     "sys_timezone": {"en": "Timezone: %s -> next",
                       "de": "Zeitzone: %s -> naechste"},
+    "sys_network_wait_off": {"en": "Wait for NAS/network at boot: OFF -> turn on",
+                             "de": "Beim Start auf NAS/Netzwerk warten: AUS -> einschalten"},
+    "sys_network_wait_on": {"en": "Wait for NAS/network at boot: ON -> turn off",
+                            "de": "Beim Start auf NAS/Netzwerk warten: AN -> ausschalten"},
     "sys_sfx_on": {"en": "Navigation sounds: ON -> turn off",
                    "de": "Navigations-Soundeffekte: AN -> ausschalten"},
     "sys_sfx_off": {"en": "Navigation sounds: OFF -> turn on",
@@ -6009,6 +8052,10 @@ TRANSLATIONS = {
     "scanning":  {"en": "Scanning: %s", "de": "Durchsuche: %s"},
     "recent_cat": {"en": "Recently Played", "de": "Zuletzt gespielt"},
     "continue_cat": {"en": "Continue Playing", "de": "Weiterspielen"},
+    "ra_hunter_cat": {"en": "RA Achievement Hunter", "de": "RA-Erfolgsjaeger"},
+    "collections_cat": {"en": "Collections", "de": "Sammlungen"},
+    "collection_discovered_this_year": {"en": "Discovered in %s", "de": "%s entdeckt"},
+    "collection_quick_games": {"en": "Quick games", "de": "Kurzweilige Spiele"},
     "favorites_cat": {"en": "Favorites", "de": "Favoriten"},
     "favorite_added": {"en": "Added to favorites", "de": "Zu Favoriten hinzugefuegt"},
     "favorite_removed": {"en": "Removed from favorites", "de": "Aus Favoriten entfernt"},
@@ -6076,6 +8123,13 @@ def t(key, *fmt_args):
 
 
 def system_items(music_enabled=None):
+    """Liefert die Inhalte der 'System'-Kategorie als Baumknoten mit
+    thematischen Unterordnern (Nutzerwunsch: die Liste war auf 23
+    flache Eintraege angewachsen, kaum noch ueberschaubar) - nutzt
+    dieselbe Ordner-Navigation wie eigene ROM-Unterordner, kein neuer
+    Code-Pfad noetig. Die Aktions-"kind"-Werte in jedem Eintrag bleiben
+    UNVERAENDERT (siehe Aktions-Dispatch in run()) - nur die
+    Gruppierung/Anzeige aendert sich, kein bestehendes Verhalten."""
     crt = crt_menu_active()
     video = t("sys_video_crt") if crt else t("sys_video_hdmi")
     music_label = t("sys_music_on") if music_enabled else t("sys_music_off")
@@ -6086,31 +8140,62 @@ def system_items(music_enabled=None):
     theme_names = THEME_NAMES_DE if CURRENT_LANG == "de" else THEME_NAMES_EN
     theme_label = t("sys_theme", theme_names.get(current_theme_name(), "?"))
     tz_label = t("sys_timezone", format_timezone_offset(load_timezone_offset()))
+    netwait_label = t("sys_network_wait_on" if network_wait_enabled()
+                      else "sys_network_wait_off")
     sfx_label = t("sys_sfx_on") if sfx_enabled_flag() else t("sys_sfx_off")
     ra_user, _ra_key = load_ra_config()
     ra_label = t("sys_ra_configured", ra_user) if ra_user else t("sys_ra_setup")
-    return [
-        (t("sys_osd"),                             "osd",       None),
-        (video + t("sys_video_suffix"),             "crtmenu",   None),
-        (music_label,                                "music",     None),
-        (t("sys_language"),                          "language",  None),
-        (t("sys_configure_buttons"),                 "remap",     None),
-        (t("sys_reset_buttons"),                     "remap_reset", None),
-        (curated_label,                              "curated",   None),
-        (attract_label,                               "attract",   None),
-        (theme_label,                                 "theme",     None),
-        (tz_label,                                     "timezone",  None),
-        (sfx_label,                                   "sfx",       None),
-        (t("top10_time_action"),                     "top10_time", None),
-        (t("top10_launches_action"),                 "top10_launches", None),
-        (t("sys_milestones_action"),                 "milestones", None),
-        (t("sys_trophy_action"),                      "trophy_room", None),
-        (ra_label,                                    "ra_status", None),
-        (t("sys_rescan"),                            "rescan",    None),
-        (t("sys_redraw"),                            "redraw",    None),
-        (t("sys_reboot"),                            "reboot",    None),
-        (t("sys_quit"),                              "quit",      None),
-    ]
+
+    def folder(*items):
+        return {"folders": {}, "items": list(items)}
+
+    return {
+        "folders": {
+            t("sys_group_ra"): folder(
+                (ra_label, "ra_status", None),
+            ),
+            t("sys_group_stats"): folder(
+                (t("top10_time_action"), "top10_time", None),
+                (t("top10_launches_action"), "top10_launches", None),
+                (t("sys_milestones_action"), "milestones", None),
+                (t("sys_trophy_action"), "trophy_room", None),
+                (t("sys_year_review_action"), "year_review", None),
+                (t("sys_diary_action"), "diary", None),
+            ),
+            t("sys_group_display"): folder(
+                (video + t("sys_video_suffix"), "crtmenu", None),
+                (theme_label, "theme", None),
+                (t("sys_crt_test_action"), "crt_test", None),
+                (sfx_label, "sfx", None),
+            ),
+            t("sys_group_behavior"): folder(
+                (music_label, "music", None),
+                (curated_label, "curated", None),
+                (attract_label, "attract", None),
+                (tz_label, "timezone", None),
+                (netwait_label, "network_wait", None),
+            ),
+            t("sys_group_input"): folder(
+                (t("sys_language"), "language", None),
+                (t("sys_configure_buttons"), "remap", None),
+                (t("sys_reset_buttons"), "remap_reset", None),
+            ),
+            t("sys_group_info"): folder(
+                (t("sys_help_action"), "help", None),
+                (t("sys_secrets_action"), "secrets", None),
+                (t("sys_credits_action"), "credits", None),
+            ),
+            t("sys_group_maintenance"): folder(
+                (t("sys_osd"), "osd", None),
+                (t("sys_rescan"), "rescan", None),
+                (t("sys_redraw"), "redraw", None),
+                (t("sys_reboot"), "reboot", None),
+                (t("sys_quit"), "quit", None),
+            ),
+        },
+        "items": [],
+    }
+
 
 def _node_has_any_meta(node, syskey):
     """Rekursiv prüfen, ob IRGENDWO im Baum ein Eintrag Metadaten hat -
@@ -6362,6 +8447,20 @@ class Frontend:
                 # doch noch synchronisiert.
                 self._ra_retry_next = time.monotonic() + 30.0
 
+        # BUGFIX (Nutzer-Rueckmeldung: Erfolgs-Pop-up blieb beim ersten
+        # tatsaechlich neu erreichten Erfolg aus): die "bereits gezeigt"-
+        # Baseline fuer Erfolgs-Pop-ups muss VOR jeder moeglichen
+        # Nutzeraktion feststehen, nicht erst beim ersten tatsaechlichen
+        # Ereignis (siehe _ensure_achievements_seen_initialized() fuer
+        # die volle Begruendung). Tut nichts, wenn die Datei schon
+        # existiert (Normalfall nach dem ersten Start).
+        _ensure_achievements_seen_initialized()
+
+        # Geheimcode-Puffer (siehe check_secret_
+        # code()) - reine Liste, kein deque noetig fuer die paar
+        # Eintraege. Wird in run() nach jeder Aktion befuellt/geprueft.
+        self._secret_buffer = []
+
         # Attract-Modus (Bildschirmschoner): blaettert nach einer
         # Weile ohne Eingabe von selbst durch zufaellige Spiele mit
         # Boxart - siehe next_action()/draw_attract().
@@ -6524,10 +8623,20 @@ class Frontend:
             self.cats.insert(pos, (t("favorites_cat"), _wrap_flat(favorite_items), None))
         self.cats.extend((n, _wrap_flat(it), sk)
                          for n, it, sk in scan_cores(skip_dir=marked_recent))
+        collections = self.build_collections_category()
+        if collections:
+            count = _count_tree_items(collections)
+            self.cats.append(("%s (%d)" % (t("collections_cat"), count),
+                              collections, None))
+        ra_hunter = self.build_ra_hunter_category()
+        if ra_hunter:
+            count = _count_tree_items(ra_hunter)
+            self.cats.append(("%s (%d)" % (t("ra_hunter_cat"), count),
+                              ra_hunter, None))
         scripts = scan_scripts()
         if scripts:
             self.cats.append(("Scripts", _wrap_flat(scripts), None))
-        self.cats.append(("System", _wrap_flat(system_items(self.music.enabled)), None))
+        self.cats.append(("System", system_items(self.music.enabled), None))
         if curated_only_active():
             # filter_curated() laesst Kategorien ohne syskey (Scripts,
             # System, Core-Ordner) unveraendert - nur echte Spiele-
@@ -6597,7 +8706,7 @@ class Frontend:
         uebersetzten, immer gleichen) Namen \"System\" gefunden."""
         for i, (name, node, sk) in enumerate(self.cats):
             if sk is None and name == "System":
-                self.cats[i] = (name, _wrap_flat(system_items(self.music.enabled)), sk)
+                self.cats[i] = (name, system_items(self.music.enabled), sk)
                 LOG("_refresh_system_category: System-Kategorie an Position %d aktualisiert" % i)
                 return
         LOG("_refresh_system_category: KEINE System-Kategorie gefunden!")
@@ -6689,6 +8798,99 @@ class Frontend:
         folder_entries = [(fname + "/", "folder", fname)
                           for fname in folder_names]
         return folder_entries + node["items"]
+
+    QUICK_GAME_MIN_LAUNCHES = 2       # mindestens 2 Starts, sonst zu
+                                      # wenig Aussagekraft
+    QUICK_GAME_MAX_AVG_SECONDS = 900  # 15 Minuten durchschnittliche
+                                      # Sitzungsdauer als Schwelle
+
+    def build_collections_category(self):
+        """Baut die "Sammlungen"-Kategorie (Nutzerwunsch: "digitales
+        Retro-Wohnzimmer") - automatische, aus bereits vorhandenen
+        Daten abgeleitete Gruppierungen. Aktuell zwei: "Dieses Jahr
+        entdeckt" (baut auf dem v4.1-Fundament auf, siehe
+        _load_first_played()) und "Kurzweilige Spiele" (kurze
+        durchschnittliche Sitzungsdauer, aus dem bestehenden
+        Spielzeit-Tracker). Wiederverwendet die normale Ordner-
+        Navigation, gleiches Prinzip wie build_ra_hunter_category().
+        Liefert None, wenn beide Sammlungen leer sind (Kategorie
+        taucht dann gar nicht auf, siehe build_categories())."""
+        self._attract_pool = None   # sicherstellen, dass der frische
+                                    # Kategorienstand gescannt wird
+        pool = self._attract_games_pool()
+        pool_by_name = {}
+        for name, _syskey, arg in pool:
+            pool_by_name.setdefault(name, arg)   # erster Treffer
+                                                 # gewinnt bei
+                                                 # Namenskollisionen
+
+        folders = {}
+
+        # --- "Dieses Jahr entdeckt" ---
+        year = _current_year()
+        first_played = _load_first_played()
+        discovered = sorted(name for name, y in first_played.items()
+                            if y == year and name in pool_by_name)
+        if discovered:
+            items = [(name, "game", pool_by_name[name]) for name in discovered]
+            label = t("collection_discovered_this_year", year) + " (%d)" % len(items)
+            folders[label] = {"folders": {}, "items": items}
+
+        # --- "Kurzweilige Spiele" (kurze durchschnittliche Sitzung) ---
+        playtime = load_playtime()
+        quick = []
+        for name, e in playtime.items():
+            launches = e.get("launches", 0)
+            seconds = e.get("seconds", 0)
+            # Mindestens QUICK_GAME_MIN_LAUNCHES Starts noetig, sonst
+            # zu wenig Aussagekraft (ein einzelner kurzer Testlauf
+            # soll nicht sofort als "kurzweiliges Spiel" gelten).
+            if launches >= self.QUICK_GAME_MIN_LAUNCHES and name in pool_by_name:
+                avg = seconds / launches
+                if avg <= self.QUICK_GAME_MAX_AVG_SECONDS:
+                    quick.append((name, avg))
+        if quick:
+            quick.sort(key=lambda g: g[1])   # kuerzeste zuerst
+            items = [(name, "game", pool_by_name[name]) for name, _avg in quick]
+            label = t("collection_quick_games") + " (%d)" % len(items)
+            folders[label] = {"folders": {}, "items": items}
+
+        if not folders:
+            return None
+        return {"folders": folders, "items": []}
+
+    def build_ra_hunter_category(self):
+        """Baut die "RA-Erfolgsjaeger"-Kategorie: ein Ordner pro
+        System, das mindestens ein Spiel mit RA-Erfolgen aber noch
+        KEINEM einzigen freigeschalteten enthaelt - "hier warten
+        unbenutzte Erfolge". Wiederverwendet die normale Ordner-
+        Navigation (wie bei eigenen ROM-Unterordnern) - kein neuer
+        Navigationsmechanismus noetig. Liefert None, wenn RA nicht
+        eingerichtet ist oder nichts passt (Kategorie taucht dann gar
+        nicht auf, siehe build_categories())."""
+        if not ra_enabled() or not self._ra_lookup:
+            return None
+        self._attract_pool = None   # sicherstellen, dass der frische
+                                    # Kategorienstand gescannt wird,
+                                    # nicht ein evtl. veralteter Cache
+        pool = self._attract_games_pool()
+        by_system = {}
+        for name, syskey, arg in pool:
+            result = lookup_ra_progress(self._ra_lookup, name, syskey)
+            if result is None:
+                continue
+            earned, total = result
+            if total > 0 and earned == 0:
+                by_system.setdefault(syskey, []).append((name, total, arg))
+        if not by_system:
+            return None
+        folders = {}
+        for syskey, games in by_system.items():
+            games.sort(key=lambda g: -g[1])   # meiste Erfolge zuerst
+            items = [(name, "game", arg) for name, total, arg in games]
+            label = "%s (%d)" % (system_display_name(syskey), len(games))
+            folders[label] = {"folders": {}, "items": items}
+        return {"folders": folders, "items": []}
 
     def _attract_games_pool(self):
         """Flache Liste ALLER Spiele (kind='game') ueber alle echten
@@ -6871,22 +9073,38 @@ class Frontend:
         list_right = L["list_right"]
         maxc = max(4, (list_right - ox) // (8 * s))
         for row, i in enumerate(range(self.cat_scroll, end)):
-            name, node, _sk = self.cats[i]
-            y = y0 + row * rowh
-            sel = (i == self.cat_i)
-            accent = accent_for(_sk)
-            bg = self._pulsed(accent) if sel else C_BG
-            if sel:
-                fb.rect(ox - 4 * s, y - 4 * s, list_right - ox + 8 * s,
-                        rowh - 4 * s, bg)
-                gx, gy = ox - 4 * s, y - 4 * s
-                gw, gh = list_right - ox + 8 * s, rowh - 4 * s
-                for ring, a in enumerate((0.22, 0.13, 0.06)):
-                    p = (ring + 1) * 2 * s
-                    fb.glow_border_fast(gx - p, gy - p, gw + 2 * p, gh + 2 * p,
-                                        C_BG, accent, a, thickness=2 * s)
-            label = name if len(name) <= maxc else name[:max(1, maxc-1)] + "~"
-            fb.text(ox, y, label, s, C_TITLE if sel else C_TEXT, bg)
+            self._draw_cat_row(i, row, L, maxc)
+        # BUGFIX (uebernommen aus einer parallelen Fehlerdiagnose - siehe
+        # Kopfkommentar-Changelog fuer die volle Herleitung): die
+        # markierte Zeile hat einen Leucht-Rand (glow_border_fast()), der
+        # ABSICHTLICH etwas ueber die eigene Zeile hinausragt. Beim obigen
+        # Durchlauf in AUFSTEIGENDER Reihenfolge wird die Zeile DARUEBER
+        # zuerst gezeichnet, die Markierung danach - ihr Glow blutet dabei
+        # auf den bereits fertigen oberen Nachbarn, ohne dass ihn danach
+        # etwas uebermalt (nach unten faellt das nie auf, da die naechste
+        # Zeile im selben Durchlauf ohnehin erst DANACH kommt). Zeile
+        # direkt darueber (falls sichtbar) hier einmal sauber neu zeichnen.
+        if (self.cat_scroll <= self.cat_i - 1 < end
+                and self.cat_scroll <= self.cat_i < end):
+            self._draw_cat_row(self.cat_i - 1, self.cat_i - 1 - self.cat_scroll,
+                               L, maxc)
+        # BUGFIX (Sonderfall, von der Korrektur oben nicht abgedeckt):
+        # steht die Markierung auf der ALLERERSTEN sichtbaren Zeile, gibt
+        # es keine Listenzeile darueber, die den Bleed auffangen koennte -
+        # der Glow blutet stattdessen nach oben in die Kopfzeile hinein
+        # ("X categories"-Text). Der Glow-Rand ist ein Streifen ueber die
+        # VOLLE Zeilenbreite, nicht nur ueber die Textbreite - deshalb
+        # zuerst ein rect() ueber die volle Breite (aber nur ueber die vom
+        # Glow tatsaechlich erreichte Hoehe), dann der Text neu.
+        if self.cat_i == self.cat_scroll:
+            max_p = 3 * 2 * s
+            gx = ox - 4 * s
+            gw = list_right - ox + 8 * s
+            clear_top = y0 - 4 * s - max_p
+            clear_bot = y0 - 4 * s
+            fb.rect(gx, clear_top, gw, clear_bot - clear_top, C_BG)
+            fb.text(ox, oy + 28 * s, t("categories", len(self.cats)),
+                    s, C_DIM, C_BG)
 
         # Artbox rechts: Logo/Cover des gerade markierten Systems
         self._draw_cat_artbox(L)
@@ -6896,6 +9114,36 @@ class Frontend:
         self._draw_status_bar(L)
         if flip:
             fb.flip()
+
+    def _draw_cat_row(self, i, row, L, maxc):
+        """Eine einzelne Zeile der Kategorienliste (Seite 0) zeichnen -
+        aus draw_page_cats() ausgelagert, damit dieselbe Zeichenlogik
+        sowohl im Hauptdurchlauf als auch fuer die nachtraegliche
+        Bleed-Korrektur (siehe dort) genutzt werden kann, ohne Code zu
+        duplizieren."""
+        fb = self.fb
+        s, ox = L["s"], L["ox"]
+        rowh, y0 = L["rowh"], L["y0"]
+        list_right = L["list_right"]
+        name, _node, sk = self.cats[i]
+        y = y0 + row * rowh
+        sel = (i == self.cat_i)
+        accent = accent_for(sk)
+        bg = self._pulsed(accent) if sel else C_BG
+        if not sel:
+            fb.rect(ox - 4 * s, y - 4 * s, list_right - ox + 8 * s,
+                    rowh - 4 * s, C_BG)
+        else:
+            fb.rect(ox - 4 * s, y - 4 * s, list_right - ox + 8 * s,
+                    rowh - 4 * s, bg)
+            gx, gy = ox - 4 * s, y - 4 * s
+            gw, gh = list_right - ox + 8 * s, rowh - 4 * s
+            for ring, a in enumerate((0.22, 0.13, 0.06)):
+                p = (ring + 1) * 2 * s
+                fb.glow_border_fast(gx - p, gy - p, gw + 2 * p, gh + 2 * p,
+                                    C_BG, accent, a, thickness=2 * s)
+        label = name if len(name) <= maxc else name[:max(1, maxc-1)] + "~"
+        fb.text(ox, y, label, s, C_TITLE if sel else C_TEXT, bg)
 
     def _network_connected(self):
         """Zwischengespeicherter Netzwerkstatus, alle 5 Sekunden neu
@@ -7003,6 +9251,37 @@ class Frontend:
             fb.text(ox, y, label, s, C_TITLE, bg)
             y_min = min(y_min, gy - max_p)
             y_max = max(y_max, gy - max_p + gh + 2 * max_p)
+            # BUGFIX (uebernommen aus einer parallelen Fehlerdiagnose,
+            # siehe draw_page_cats()/_draw_dynamic_items()): die breite
+            # Randloeschung oben (max_p, wegen des ueber die eigene Zeile
+            # hinausragenden Glow-Rands) reicht bisher bis in die Zeile
+            # DARUEBER hinein - und NICHTS hat sie danach wieder
+            # aufgefrischt. Bei bis zu 12.5 Ticks/Sekunde waere der obere
+            # Nachbar dadurch praktisch dauerhaft teilweise geloescht
+            # geblieben. Zeile darueber (falls sichtbar) bzw. die
+            # Kopfzeile (falls die Markierung ganz oben steht) hier
+            # ebenfalls wieder sauber zeichnen.
+            prev_row = row - 1
+            if prev_row >= 0:
+                self._draw_cat_row(self.cat_i - 1, prev_row, L, maxc)
+                prev_y = y0 + prev_row * rowh
+                y_min = min(y_min, prev_y - 4 * s)
+                y_max = max(y_max, prev_y - 4 * s + rowh - 4 * s)
+            else:
+                # Keine Listenzeile darueber vorhanden - der Glow blutet
+                # stattdessen in die Kopfzeile ("X categories"-Text)
+                # hinein. Glow-Rand ist ein Streifen ueber die VOLLE
+                # Zeilenbreite (siehe ausfuehrliche Begruendung in
+                # draw_page_cats()) - deshalb erst ein rect() ueber die
+                # volle Breite (nur ueber die vom Glow tatsaechlich
+                # erreichte Hoehe), dann der Text neu.
+                clear_top = y0 - 4 * s - max_p
+                clear_bot = y0 - 4 * s
+                fb.rect(gx, clear_top, gw, clear_bot - clear_top, C_BG)
+                fb.text(ox, oy + 28 * s, t("categories", len(self.cats)),
+                        s, C_DIM, C_BG)
+                y_min = min(y_min, clear_top)
+                y_max = max(y_max, oy + 36 * s)
 
         if y_max > y_min:
             fb.flip_rows(y_min, y_max - y_min)
@@ -7042,12 +9321,33 @@ class Frontend:
         # Nachbarn zusammen, wird er von _draw_dynamic_items() direkt
         # danach ohnehin nochmal in der dafuer richtigen Reihenfolge
         # gezeichnet - harmlos.
+        #
+        # BUGFIX (uebernommen aus einer parallelen Fehlerdiagnose, siehe
+        # Kopfkommentar-Changelog: leichtes Flackern beim Scrollen,
+        # Zeilen wirken teilweise ueberlappend): dieser Pfad schrieb
+        # bisher bis zu DREI getrennte flip_rows()-Aufrufe direkt
+        # hintereinander in den echten Framebuffer (alte Zeile, neue
+        # Zeile ueber _draw_dynamic_items(), Boxart-Panel). Da hier
+        # direkt in /dev/fb0 geschrieben wird, konnte die Anzeige-
+        # Hardware zwischen diesen einzelnen Teil-Updates kurz einen
+        # inkonsistenten Zwischenzustand einlesen (alte Zeile schon
+        # geloescht, neue Markierung noch nicht gezeichnet) - genau das
+        # erklaert sowohl das gemeldete leichte Flackern als auch die
+        # scheinbar ueberlappenden Eintraege. Fix: alle drei Teil-
+        # Updates werden jetzt nur noch in den Speicherpuffer gezeichnet,
+        # OHNE zwischendurch zu flippen (flip=False), und erst ganz am
+        # Ende in EINEM einzigen zusammengefassten flip_rows()-Aufruf auf
+        # den Bildschirm gebracht - fuer den Nutzer sieht der komplette
+        # Schritt dadurch als ein einziges, atomares Update aus. (Die
+        # jetzt zusaetzliche Vsync-Wartezeit in flip_rows() selbst, siehe
+        # Framebuffer._wait_vsync(), verstaerkt diesen Effekt weiter.)
         fb = self.fb
         total = len(v["items"])
         old_has_prev = old_item_i > self.scroll
         old_has_next = (old_item_i + 1 < self.scroll + visible
                         and old_item_i + 1 < total)
         old_y_top, old_max_p = self._clear_row_glow_margin(old_item_i)
+        regions = []
         if old_y_top is not None:
             if old_has_prev:
                 self.draw_list_row(old_item_i - 1)
@@ -7058,9 +9358,11 @@ class Frontend:
             flip_y0 = old_y_top - (rowh if old_has_prev else old_max_p)
             flip_y1 = (old_y_top + rowh - 2 * s + old_max_p
                       + (rowh if old_has_next else 0))
-            fb.flip_rows(flip_y0, flip_y1 - flip_y0)
+            regions.append((flip_y0, flip_y1))
 
-        self._draw_dynamic_items()
+        new_y0, new_y1 = self._draw_dynamic_items(flip=False)
+        if new_y0 is not None:
+            regions.append((new_y0, new_y1))
 
         # Boxart-Panel fuer die neue Auswahl - zeichnet seinen
         # Hintergrund selbst (siehe draw_art_panel()), daher genuegt
@@ -7080,7 +9382,12 @@ class Frontend:
                 item_syskey = self._item_syskey(v["items"][new_item_i], syskey)
                 self.draw_art_panel(art_x0, art_w, art_y0, art_h,
                                     item_syskey, v["items"][new_item_i], s)
-                self.fb.flip_rows(art_y0, art_h)
+                regions.append((art_y0, art_y0 + art_h))
+
+        if regions:
+            y0 = min(r[0] for r in regions)
+            y1 = max(r[1] for r in regions)
+            fb.flip_rows(y0, y1 - y0)
         return True
 
     def _clear_row_glow_margin(self, item_i):
@@ -7120,7 +9427,7 @@ class Frontend:
                     fb.buf[off:end] = chunk
         return y_top, max_p
 
-    def _draw_dynamic_items(self):
+    def _draw_dynamic_items(self, flip=True):
         """Leichter Zeichenpfad fuer Pulsier-Ticks auf Seite 1: zeichnet
         NUR die markierte Zeile (plus direkte Nachbarn) neu, statt die
         komplette Spieleliste + Boxart-Panel neu aufzubauen.
@@ -7133,33 +9440,49 @@ class Frontend:
         Zeile neu gezeichnet, bleibt der obere Rand des Nachbar-Textes
         teilweise geloescht zurueck. Deshalb werden Zeile davor/danach
         (falls sichtbar) im selben Zug mit aufgefrischt - kostet kaum
-        mehr (kein Glow dort), verhindert das Artefakt aber zuverlaessig."""
+        mehr (kein Glow dort), verhindert das Artefakt aber zuverlaessig.
+
+        BUGFIX (uebernommen aus einer parallelen Fehlerdiagnose - siehe
+        Kopfkommentar-Changelog: "der obere Eintrag wird vom aktuell
+        angezeigten ein wenig ueberlappt", dauerhaft sichtbar, nicht nur
+        waehrend eines Uebergangs): die Zeile VOR der Markierung wurde
+        bisher VOR der markierten Zeile selbst gezeichnet (um angeblich
+        exakt dasselbe Ergebnis wie der volle Aufbau zu liefern) - der
+        Glow-Rand der danach gezeichneten Markierung blieb dadurch
+        dauerhaft sichtbar auf dem oberen Nachbarn liegen, da NICHTS ihn
+        hinterher wieder uebermalt hat. Nach unten fiel das nie auf, weil
+        die naechste Zeile ohnehin bereits danach gezeichnet wurde. Der
+        volle Aufbau hatte GENAU dasselbe Problem - "byte-identisch"
+        hiess bisher also "byte-identisch fehlerhaft". Fix: die markierte
+        Zeile (samt Glow) wird jetzt IMMER ZUERST gezeichnet, beide
+        Nachbarn (falls sichtbar) danach - so uebermalt der obere Nachbar
+        einen eventuellen Bleed zuverlaessig mit seinem eigenen, korrekten
+        Inhalt. Siehe auch die analoge Korrektur in
+        _draw_page_items_impl() fuer den vollen Aufbau.
+
+        flip=False (siehe _draw_navigate_items()/BUGFIX Flackern beim
+        Scrollen): zeichnet nur in den Speicherpuffer, OHNE selbst zu
+        flippen - der Aufrufer sammelt dann mehrere Teil-Updates ein und
+        bringt sie in EINEM gemeinsamen flip_rows()-Aufruf auf den
+        Bildschirm, statt mehrerer sichtbarer Einzelschritte. Rueckgabe
+        immer (y0, y1) des betroffenen Bereichs, oder (None, None), wenn
+        nichts zu zeichnen war."""
         v = getattr(self, "view", None)
         if not v or not v["items"]:
-            return
+            return None, None
         s, rowh = v["s"], v["rowh"]
         row = self.item_i - self.scroll
         if not (0 <= row < self.items_visible):
-            return
+            return None, None
         fb = self.fb
-        list_x, list_right = v["list_x"], v["list_right"]
         total = len(v["items"])
         y_top, max_p = self._clear_row_glow_margin(self.item_i)
-        # Reihenfolge WICHTIG: beim vollen Aufbau werden die Zeilen in
-        # AUFSTEIGENDER Reihenfolge gezeichnet (Index 0, 1, 2, ...) -
-        # der Glow-Rand der markierten Zeile ueberlappt dadurch je nach
-        # Position unterschiedlich: in eine VORHERIGE Zeile bleibt der
-        # Glow sichtbar (die markierte Zeile wird SPAETER gezeichnet,
-        # also obenauf), in eine NACHFOLGENDE Zeile wird der Glow vom
-        # spaeter gezeichneten Nachbarn wieder begrenzt. Das muss hier
-        # exakt in derselben Reihenfolge nachgebildet werden, sonst
-        # bleiben Bildreste zurueck (per Differenzvergleich gefunden).
         has_prev = self.item_i > self.scroll
         has_next = (self.item_i + 1 < self.scroll + self.items_visible
                     and self.item_i + 1 < total)
+        self.draw_list_row(self.item_i)
         if has_prev:
             self.draw_list_row(self.item_i - 1)
-        self.draw_list_row(self.item_i)
         if has_next:
             self.draw_list_row(self.item_i + 1)
         # Grosszuegiger Bereich, der die tatsaechlich aufgefrischten
@@ -7169,7 +9492,9 @@ class Frontend:
         # nur teilweise auf den Schirm zu bringen.
         flip_y0 = y_top - (rowh if has_prev else max_p)
         flip_y1 = y_top + rowh - 2 * s + max_p + (rowh if has_next else 0)
-        fb.flip_rows(flip_y0, flip_y1 - flip_y0)
+        if flip:
+            fb.flip_rows(flip_y0, flip_y1 - flip_y0)
+        return flip_y0, flip_y1
 
     def _draw_dynamic_track_marquee(self):
         """Leichter Zeichenpfad fuer die Songtitel-Laufschrift: erneuert
@@ -7337,11 +9662,27 @@ class Frontend:
 
         # Breadcrumb: Kategorie + aktueller Ordnerpfad (falls in einen
         # Unterordner gewechselt wurde), z.B. "SNES / 1 US-A-E".
-        header = name if not self.nav_path else name + " / " + " / ".join(self.nav_path)
-        header = header.upper()
+        #
+        # BUGFIX (Nutzer-Rueckmeldung: Kopfzeile schnitt bei langen
+        # Pfaden mitten im Wort ab, z.B. "SAMMLUNGEN / DIESES JAHR ~" -
+        # seit die Kategorienamen selbst eine Anzahl in Klammern tragen
+        # (siehe _count_tree_items()), sind die Pfade im Schnitt laenger
+        # geworden, das Problem also haeufiger sichtbar): passt der
+        # VOLLE Pfad nicht, wird jetzt statt eines mitten abgeschnittenen
+        # Textes nur noch der AKTUELLE (tiefste) Ordnername gezeigt -
+        # weniger Kontext, aber lesbar statt kryptisch abgehackt. Nur
+        # wenn selbst dieser einzelne Name noch zu lang ist, wird
+        # (jetzt an einer sinnvolleren Stelle) doch noch gekuerzt.
+        full_header = name if not self.nav_path else name + " / " + " / ".join(self.nav_path)
+        full_header = full_header.upper()
         header_maxc = max(4, (list_right - ox) // (16 * s))
-        if len(header) > header_maxc:
-            header = header[:max(1, header_maxc - 1)] + "~"
+        if len(full_header) <= header_maxc:
+            header = full_header
+        else:
+            leaf = (self.nav_path[-1] if self.nav_path else name).upper()
+            if len(leaf) > header_maxc:
+                leaf = leaf[:max(1, header_maxc - 1)] + "~"
+            header = leaf
         fb.text(ox, oy, header, 2 * s, C_TITLE)
         fb.text(ox, oy + 22 * s, t("entries", total), s, C_DIM)
 
@@ -7358,6 +9699,25 @@ class Frontend:
         _tr = time.monotonic()
         for idx in range(self.scroll, end):
             self.draw_list_row(idx, bg_fresh=self._cur_bg is not None)
+        # BUGFIX (uebernommen aus einer parallelen Fehlerdiagnose - siehe
+        # Kopfkommentar-Changelog): der obige Durchlauf zeichnet die
+        # Zeilen in AUFSTEIGENDER Reihenfolge - die markierte Zeile (samt
+        # ihrem absichtlich etwas ueber die eigene Zeile hinausragenden
+        # Glow-Rand, siehe draw_list_row()/glow_border_fast()) wird dabei
+        # NACH ihrem oberen Nachbarn gezeichnet. Der Glow blendet dabei
+        # direkt auf den bereits fertigen oberen Nachbarn - und NICHTS
+        # zeichnet ihn danach nochmal darueber, der Bleed bleibt also
+        # dauerhaft sichtbar (nicht nur kurz waehrend eines Redraws).
+        # Nach unten faellt das nie auf, weil die jeweils naechste Zeile
+        # im selben Durchlauf ohnehin erst DANACH gezeichnet wird und
+        # den Bleed automatisch uebermalt. Fix: die Zeile direkt UEBER
+        # der Markierung (falls sichtbar) wird hier einmal mit vollem
+        # Hintergrund-Restore (bg_fresh=False) neu gezeichnet - malt
+        # einen eventuellen Bleed zuverlaessig weg, ohne den schnellen
+        # bg_fresh-Pfad fuer alle anderen Zeilen im Hauptdurchlauf zu
+        # verlangsamen.
+        if self.scroll <= self.item_i - 1 < end and self.scroll <= self.item_i < end:
+            self.draw_list_row(self.item_i - 1, bg_fresh=False)
         self._perf_rows = time.monotonic() - _tr
         self._perf_nrows = end - self.scroll
 
@@ -8092,6 +10452,48 @@ class Frontend:
     # Aktionen
     # ------------------------------------------------------------------
 
+    RA_WATCH_POLL_INTERVAL = 25.0   # Sekunden zwischen zwei Abfragen -
+                                    # bewusst nicht zu haeufig (RAs API
+                                    # nicht unnoetig belasten), aber kurz
+                                    # genug, dass sich ein Erfolg fuer
+                                    # Zuschauer noch "frisch" anfuehlt
+
+    def _watch_ra_achievements_during_play(self, game_id, stop_event):
+        """Laeuft als Hintergrund-Thread WAEHREND ein Spiel laeuft
+        (siehe run_core()) - fragt periodisch RAs Erfolgsliste fuer
+        GENAU DIESES Spiel ab und pusht neu freigeschaltete Erfolge
+        sofort ans Overlay (siehe StreamServer.publish_achievement()),
+        damit Zuschauer sie in Echtzeit sehen - nicht erst, wenn das
+        Frontend nach dem Spiel wieder sichtbar ist (unsere Haupt-
+        schleife steht waehrend des Spiels ja still).
+
+        Der ERSTE Abruf legt nur die Baseline fest (welche Erfolge
+        waren schon VOR dieser Beobachtung frei) - genau wie bei
+        _ensure_achievements_seen_initialized() fuer unsere eigenen
+        Erfolge, sonst wuerden bereits laengst freigeschaltete Erfolge
+        beim Sitzungsstart faelschlich als "neu" gemeldet."""
+        seen_titles = None
+        while not stop_event.is_set():
+            achievements = fetch_ra_game_achievements_bounded(game_id, timeout=5.0)
+            if achievements:
+                earned_now = set(a[0] for a in achievements if a[4])
+                if seen_titles is None:
+                    seen_titles = earned_now
+                else:
+                    new_ones = earned_now - seen_titles
+                    if new_ones and self.stream:
+                        for name, desc, points, badge, earned, date in achievements:
+                            if name in new_ones:
+                                try:
+                                    self.stream.publish_achievement({
+                                        "title": name, "description": desc,
+                                        "points": points, "badge": badge,
+                                    })
+                                except Exception:
+                                    pass   # Overlay-Push ist nie kritisch
+                    seen_titles = earned_now
+            stop_event.wait(self.RA_WATCH_POLL_INTERVAL)
+
     def run_core(self, path, label=None, syskey=None):
         """label (optional): Anzeigename fuer die Spielzeit-Aufzeichnung
         (siehe record_playtime()) - nur die Zeit vom bestaetigten Core-
@@ -8134,6 +10536,20 @@ class Frontend:
                                         # monotonic (unempfindlich gegen
                                         # Uhr-Korrekturen waehrend des Spiels),
                                         # sagt aber nichts ueber die Uhrzeit aus
+        # RA-Erfolge WAEHREND des Spielens beobachten (Nutzerwunsch:
+        # Zuschauer sollen einen Erfolg SOFORT sehen, nicht erst wenn
+        # das Frontend wieder sichtbar ist) - NUR wenn das Overlay
+        # ueberhaupt laeuft (sonst pollt niemand zu, unnoetiger
+        # Netzwerk-/API-Aufwand) UND fuer dieses Spiel eine RA-GameID
+        # bekannt ist. Siehe _watch_ra_achievements_during_play().
+        ra_watch_stop = None
+        if self.stream and self._ra_lookup and label:
+            game_id = lookup_ra_game_id(self._ra_lookup, label, syskey)
+            if game_id:
+                ra_watch_stop = threading.Event()
+                threading.Thread(
+                    target=self._watch_ra_achievements_during_play,
+                    args=(game_id, ra_watch_stop), daemon=True).start()
         while current_core() != "MENU":
             res = self.inp.wait_game_exit()
             if res in ("combo", "f10", "hid_combo"):
@@ -8145,7 +10561,12 @@ class Frontend:
                 t1 = time.monotonic()
                 while current_core() != "MENU" and time.monotonic() - t1 < 10:
                     time.sleep(0.3)
-        record_playtime(label, time.monotonic() - play_start, syskey=syskey)
+        if ra_watch_stop:
+            ra_watch_stop.set()
+        played_seconds = time.monotonic() - play_start
+        record_playtime(label, played_seconds, syskey=syskey)
+        record_yearly_playtime(label, played_seconds, syskey=syskey)
+        record_diary_entry(label, played_seconds, syskey=syskey)
         check_hidden_session_achievements(play_start_wall, time.monotonic() - play_start)
         self._playtime_cache = load_playtime()
         time.sleep(1.0)
@@ -8298,6 +10719,36 @@ class Frontend:
             self._last_bootstate = state
             self._last_snapshot = now
 
+    def _on_secret_triggered(self, secret_id, is_new):
+        """Wird aufgerufen, sobald ein Geheimcode
+        erfolgreich erkannt wurde (siehe run()) - fuehrt die eigentliche
+        Aktion aus (Theme wechseln/Entwicklerraum oeffnen/Sound
+        abspielen), JEDES MAL wenn der Code eingegeben wird, nicht nur
+        beim allerersten Mal - passend zum Vorbild echter Cheat-Codes,
+        die man beliebig oft eingeben kann. Die "neu freigeschaltet"-
+        Meldung erscheint dagegen nur einmalig (is_new)."""
+        if is_new:
+            play_sfx("achievement", music_playing=self.music._proc_alive())
+            self.draw(message=t("secret_unlocked", t("secret_name_" + secret_id)))
+        if secret_id == "secret_theme_1":
+            apply_theme("secret_gold")
+            try:
+                dirname = os.path.dirname(THEME_FILE)
+                if dirname:
+                    os.makedirs(dirname, exist_ok=True)
+                with open(THEME_FILE, "w") as f:
+                    f.write("secret_gold")
+            except OSError:
+                pass
+            self.draw()
+        elif secret_id == "entwicklerraum":
+            self.draw_dev_room_screen()
+            self.draw()
+        elif secret_id == "secret_sound":
+            play_sfx("secret_found", music_playing=self.music._proc_alive())
+            if not is_new:
+                self.draw(message=t("secret_sound_replay"))
+
     def _check_achievement_popup(self):
         """Prueft auf neu erreichte Erfolge und liefert bei einem
         Treffer die fertige Popup-Nachricht (spielt dabei den
@@ -8319,6 +10770,634 @@ class Frontend:
         msg = self._check_achievement_popup()
         if msg:
             self.draw(message=msg)
+
+    def draw_ra_showcase_screen(self, game_name, game_id):
+        """RA-Erfolgs-Vitrine (Nutzerwunsch, BEWUSST als separate,
+        eigenstaendige Option von der bisherigen RA-Anzeige gebaut -
+        aendert nichts an Cover-Fortschritt/Erfolgsjaeger/Trophaeenraum)
+        - komplette Erfolgsliste EINES Spiels (Name, Beschreibung,
+        Punkte, freigeschaltet/nicht). Holt die Daten live bei jedem
+        Aufruf (bounded, kein eigener Cache in dieser ersten Fassung -
+        das kann spaeter ergaenzt werden, sobald sich das Format in
+        der Praxis bewaehrt hat). Scrollt wie die anderen Vollbild-
+        Listen (Top-10/Erfolge), falls nicht alles passt."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        hint_scale = s - 1 if s > 1 else 1
+        title = t("ra_showcase_title", game_name)
+        title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
+        list_y0 = oy + 56 * s // 2 + 30 * s
+
+        fb.clear(C_BG)
+        fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+        fb.text(ox, list_y0, t("ra_showcase_loading"), s, C_DIM, C_BG)
+        fb.flip()
+
+        achievements = fetch_ra_game_achievements_bounded(game_id, timeout=5.0)
+
+        def wait_any_key():
+            while True:
+                act = self.inp.read_action()
+                if act is not None:
+                    return
+
+        if achievements is None:
+            fb.clear(C_BG)
+            fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+            fb.text(ox, list_y0, t("ra_showcase_error"), s, C_DIM, C_BG)
+            fb.flip()
+            wait_any_key()
+            return
+        if not achievements:
+            fb.clear(C_BG)
+            fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+            fb.text(ox, list_y0, t("ra_showcase_empty"), s, C_DIM, C_BG)
+            fb.flip()
+            wait_any_key()
+            return
+
+        # Icons VOR der eigentlichen Anzeige-Schleife laden/dekodieren
+        # (waehrend noch "Laedt..." zu sehen ist) - haelt das spaetere
+        # Scrollen selbst frei von Netzwerkzugriffen, kein Ruckeln beim
+        # ersten Sichtbarwerden eines neuen Eintrags. BadgeCache cacht
+        # ohnehin pro Name, ein doppelter Abruf fuer dasselbe Badge
+        # (z.B. mehrere Erfolge mit identischem Icon) kostet dadurch
+        # praktisch nichts.
+        for name, desc, points, badge, earned, date in achievements:
+            if badge:
+                BADGES.get(badge)
+
+        list_y1 = H - oy - 8 * hint_scale - 6 * s
+        rowh = 22 * s
+        icon_size = 2 * rowh - 4 * s
+        text_x = ox + icon_size + 10 * s
+        maxc = max(8, (W - text_x - ox) // (8 * s))
+        visible = max(1, (list_y1 - list_y0) // (rowh * 2))
+        scroll = 0
+        max_scroll = max(0, len(achievements) - visible)
+        # BUGFIX (beim Erstellen von Beispiel-Screenshots aufgefallen):
+        # die Icon-Aufbereitung (Kanaltausch RGBA->BGRA, Abdunklung fuer
+        # nicht freigeschaltete Erfolge, Skalierung) lief bisher bei
+        # JEDEM einzelnen Neuzeichnen neu - auch beim blossen Scrollen,
+        # obwohl sich am Icon selbst nichts aendert. Gemessen: ca. 11ms
+        # allein dafuer bei 4 sichtbaren Icons UND EINEM Neuzeichnen -
+        # bei jedem Scroll-Schritt, auf einer eher schwachen CPU
+        # potenziell noch deutlich mehr. Fix: fertig aufbereitete Icons
+        # pro (Badge, freigeschaltet, Groesse) zwischenspeichern - exakt
+        # dieselbe Cache-Philosophie wie ArtCache/BadgeCache im Rest des
+        # Projekts, hier nur lokal fuer die Dauer dieses Bildschirms.
+        processed_cache = {}
+        def get_processed_icon(badge, earned):
+            key = (badge, earned)
+            if key in processed_cache:
+                return processed_cache[key]
+            icon = BADGES.get(badge) if badge else None
+            if not icon:
+                processed_cache[key] = None
+                return None
+            iw, ih, rgba = icon
+            bgra = bytearray(rgba)
+            bgra[0::4], bgra[2::4] = bgra[2::4], bgra[0::4]
+            if not earned:
+                for k in range(0, len(bgra), 4):
+                    bgra[k] = bgra[k] * 2 // 5
+                    bgra[k + 1] = bgra[k + 1] * 2 // 5
+                    bgra[k + 2] = bgra[k + 2] * 2 // 5
+            scaled = bytearray(icon_size * icon_size * 4)
+            for py in range(icon_size):
+                sy = py * ih // icon_size
+                for px in range(icon_size):
+                    sx = px * iw // icon_size
+                    so = (sy * iw + sx) * 4
+                    do = (py * icon_size + px) * 4
+                    scaled[do:do + 4] = bgra[so:so + 4]
+            result = bytes(scaled)
+            processed_cache[key] = result
+            return result
+        while True:
+            fb.clear(C_BG)
+            fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+            y = list_y0
+            for i in range(scroll, min(scroll + visible, len(achievements))):
+                name, desc, points, badge, earned, date = achievements[i]
+                scaled_icon = get_processed_icon(badge, earned)
+                if scaled_icon:
+                    self.blit(ox, y, icon_size, icon_size, scaled_icon)
+                mark = "[x] " if earned else "[ ] "
+                line1 = "%s%s (%d)" % (mark, name, points)
+                color = C_TEXT if earned else C_DIM
+                if len(line1) > maxc:
+                    line1 = line1[:maxc - 1] + "~"
+                fb.text(text_x, y, line1, s, color, C_BG)
+                y += rowh
+                line2 = desc
+                if len(line2) > maxc:
+                    line2 = line2[:maxc - 1] + "~"
+                fb.text(text_x, y, line2, hint_scale, C_DIM, C_BG)
+                y += rowh
+            if max_scroll > 0:
+                scroll_hint = t("top10_scroll_hint", scroll + 1,
+                                min(scroll + visible, len(achievements)),
+                                len(achievements))
+                hint_w = len(scroll_hint) * 8 * hint_scale
+                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                        scroll_hint, hint_scale, C_DIM, C_BG)
+            else:
+                hint = t("attract_hint")
+                hint_w = len(hint) * 8 * hint_scale
+                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                        hint, hint_scale, C_DIM, C_BG)
+            fb.flip()
+            act = self.inp.read_action()
+            if act in ("up", "down") and max_scroll > 0:
+                scroll = max(0, min(max_scroll, scroll + (1 if act == "down" else -1)))
+                continue
+            if act is not None:
+                break
+
+    def draw_secrets_screen(self):
+        """Uebersicht aller bekannten Geheimnisse (Nutzerwunsch: "Easter
+        Egg System") - "???" fuer noch nicht Gefundenes, Name +
+        Herkunfts-Hinweis nach dem Entdecken. Bewusst OHNE die genaue
+        Code-Sequenz selbst zu verraten - sonst waere es kein Geheimnis
+        mehr. Kurze, feste Liste (3 Eintraege) - kein Scrollen noetig,
+        anders als bei draw_milestones_screen()."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        fb.clear(C_BG)
+
+        title = t("secrets_title")
+        title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
+        fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+
+        unlocked = _load_secrets_unlocked()
+        fb.text(ox, oy + 44 * s, t("secrets_summary", len(unlocked), len(SECRET_CODES)),
+                s, accent_for(None), C_BG)
+        hint_scale_kb = s - 1 if s > 1 else 1
+        fb.text(ox, oy + 44 * s + 20 * s, t("secrets_keyboard_hint"),
+                hint_scale_kb, C_DIM, C_BG)
+
+        order = ["secret_theme_1", "entwicklerraum", "secret_sound"]
+        y = oy + 44 * s + 20 * s + 30 * s
+        rowh = 44 * s
+        maxc = max(8, (W - 2 * ox) // (8 * s))
+        for secret_id in order:
+            found = secret_id in unlocked
+            mark = "[x] " if found else "[ ] "
+            name = t("secret_name_" + secret_id) if found else t("hidden_mystery")
+            label = mark + name
+            if len(label) > maxc:
+                label = label[:maxc - 1] + "~"
+            fb.text(ox, y, label, s, C_TEXT if found else C_DIM, C_BG)
+            if found:
+                origin = t("secret_origin_" + secret_id)
+                if len(origin) > maxc:
+                    origin = origin[:maxc - 1] + "~"
+                fb.text(ox + 16 * s, y + 22 * s, origin, s - 1 if s > 1 else 1,
+                        C_DIM, C_BG)
+            y += rowh
+
+        hint = t("attract_hint")
+        hint_scale = s - 1 if s > 1 else 1
+        hint_w = len(hint) * 8 * hint_scale
+        fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                hint, hint_scale, C_DIM, C_BG)
+        fb.flip()
+        while True:
+            act = self.inp.read_action()
+            if act is not None:
+                break
+
+    def draw_credits_screen(self):
+        """Credits (Nutzerwunsch) - wer das Frontend gebaut hat und wer
+        mitgeholfen hat. Anders als der Entwicklerraum (Geheimnis,
+        siehe draw_dev_room_screen()) ein normaler, sichtbarer
+        Menuepunkt im System-Menue - kein Versteckspiel, einfach ein
+        Danke."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        fb.clear(C_BG)
+
+        title = t("credits_title")
+        title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
+        fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+
+        y = oy + 50 * s
+        line_h = 30 * s
+
+        def heading(text):
+            nonlocal y
+            fb.text(ox, y, text, s, accent_for(None), C_BG)
+            y += line_h
+
+        def entry(text):
+            nonlocal y
+            fb.text(ox + 16 * s, y, text, s, C_TEXT, C_BG)
+            y += line_h
+
+        heading(t("credits_creator_heading"))
+        entry(t("credits_creator_entry"))
+        y += line_h // 2
+        heading(t("credits_contrib_heading"))
+        entry(t("credits_contrib_sutefan"))
+        entry(t("credits_contrib_dfense"))
+        entry(t("credits_contrib_dennsen"))
+        y += line_h // 2
+        heading(t("credits_thanks_heading"))
+        entry(t("credits_thanks_entry"))
+
+        hint = t("attract_hint")
+        hint_scale = s - 1 if s > 1 else 1
+        hint_w = len(hint) * 8 * hint_scale
+        fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                hint, hint_scale, C_DIM, C_BG)
+        fb.flip()
+        while True:
+            act = self.inp.read_action()
+            if act is not None:
+                break
+
+    def draw_dev_room_screen(self):
+        """Entwicklerraum (Nutzerwunsch: "Easter Egg System") - Geheimnis,
+        ausgeloest durch einen Geheimcode (siehe SECRET_CODES). Rein
+        informativ/persoenlich, beliebige Taste kehrt zurueck. Zeigt
+        einige "hinter den Kulissen"-Angaben, die sich aus bereits
+        vorhandenen Daten ergeben (Frontend-Level, gefundene Geheimnisse)
+        - keine neue Datenquelle noetig."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        fb.clear(C_BG)
+
+        title = t("dev_room_title")
+        title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
+        fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+
+        level = compute_frontend_level()
+        secrets = _load_secrets_unlocked()
+
+        y = oy + 50 * s
+        line_h = 26 * s
+
+        def line(text, color=C_TEXT):
+            nonlocal y
+            fb.text(ox, y, text, s, color, C_BG)
+            y += line_h
+
+        line(t("dev_room_level", level, FRONTEND_LEVEL_MAX), C_ACCENT)
+        line(t("dev_room_secrets", len(secrets), len(SECRET_CODES)), C_ACCENT)
+        y += line_h // 2
+        line(t("dev_room_credits_1"), C_DIM)
+        line(t("dev_room_credits_2"), C_DIM)
+        y += line_h
+        line(t("dev_room_thanks"), C_TEXT)
+
+        hint = t("attract_hint")
+        hint_scale = s - 1 if s > 1 else 1
+        hint_w = len(hint) * 8 * hint_scale
+        fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                hint, hint_scale, C_DIM, C_BG)
+        fb.flip()
+        while True:
+            act = self.inp.read_action()
+            if act is not None:
+                break
+
+    def draw_crt_test_pattern_screen(self):
+        """Testbild zur CRT-Kalibrierung (Nutzerwunsch) - Geometrie-
+        Rahmen, Raster (Linearitaet), Farbbalken (Farbabgleich),
+        Zentrierkreuz. Wie beim alten Servicemenue echter Roehren-
+        Monitore. Rein informativ, beliebige Taste kehrt zurueck.
+        Bewusst OHNE Text/Overscan-Ausgleich - das Testbild soll ja
+        gerade zeigen, WIE der Bildschirm den vollen Bereich darstellt,
+        ein Text-Rand wuerde das verfaelschen."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        line_c = (0, 200, 60)
+        # Aeusserer Rahmen - exakt am Bildrand, zeigt Ueberscan/
+        # Geometrie-Abschneidung.
+        fb.rect(0, 0, W, 2, line_c)
+        fb.rect(0, H - 2, W, 2, line_c)
+        fb.rect(0, 0, 2, H, line_c)
+        fb.rect(W - 2, 0, 2, H, line_c)
+        # Raster (Linearitaet) - gleichmaessig verteilte Linien.
+        cols, rows = 8, 6
+        for i in range(1, cols):
+            x = i * W // cols
+            fb.rect(x, 0, 1, H, line_c)
+        for i in range(1, rows):
+            y = i * H // rows
+            fb.rect(0, y, W, 1, line_c)
+        # Zentrierkreuz.
+        cx, cy = W // 2, H // 2
+        fb.rect(cx - 20, cy, 40, 2, (255, 255, 255))
+        fb.rect(cx, cy - 20, 2, 40, (255, 255, 255))
+        # Farbbalken (Farbabgleich) - unterer Bildstreifen.
+        bars = [(255, 255, 255), (255, 0, 0), (0, 255, 0), (0, 0, 255),
+               (0, 255, 255), (255, 0, 255), (255, 255, 0), (0, 0, 0)]
+        bar_h = max(20, H // 8)
+        bar_y = H - bar_h
+        bar_w = W // len(bars)
+        for i, color in enumerate(bars):
+            fb.rect(i * bar_w, bar_y, bar_w, bar_h, color)
+        fb.flip()
+        while True:
+            act = self.inp.read_action()
+            if act is not None:
+                break
+
+    def draw_help_screen(self):
+        """Hilfe-Uebersicht (Nutzerwunsch: "so viel angesammelt, dass
+        selbst ich beim Aufzaehlen kurz ueberlegen musste" - eine
+        zentrale Stelle, die zeigt, was das Frontend alles kann).
+        Statischer Inhalt (im Gegensatz zum Spieltagebuch, das echte
+        Daten anzeigt), gleiche Scroll-Logik wie draw_milestones_
+        screen()/draw_diary_screen(). Erwaehnt bewusst NUR, DASS es
+        Geheimnisse gibt (der System-Menue-Eintrag "Geheimnisse" ist
+        ohnehin fuer jeden sichtbar) - nicht WELCHE das sind, siehe
+        SECRET_CODES-Kommentar fuer die volle Begruendung."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        title = t("help_title")
+        title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
+        maxc = max(8, (W - 2 * ox) // (8 * s))
+
+        section_keys = [
+            ("header", "help_section_nav"), ("line", "help_nav_move"),
+            ("line", "help_nav_ok"), ("line", "help_nav_back"),
+            ("line", "help_nav_letter"),
+            ("header", "help_section_list"), ("line", "help_list_completed"),
+            ("line", "help_list_favorite"), ("line", "help_list_showcase"),
+            ("header", "help_section_menu"), ("line", "help_menu_continue"),
+            ("line", "help_menu_collections"), ("line", "help_menu_hunter"),
+            ("header", "help_section_system"), ("line", "help_system_stats"),
+            ("line", "help_system_secrets"), ("line", "help_system_credits"),
+            ("header", "help_section_playing"), ("line", "help_playing_exit"),
+        ]
+        rows = list(section_keys)
+
+        rowh = 24 * s
+        list_y0 = oy + 56 * s // 2 + 44 * s
+        hint_scale = s - 1 if s > 1 else 1
+        list_y1 = H - oy - 8 * hint_scale - 6 * s
+        visible = max(1, (list_y1 - list_y0) // rowh)
+        scroll = 0
+        max_scroll = max(0, len(rows) - visible)
+        while True:
+            fb.clear(C_BG)
+            fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+            y = list_y0
+            for kind, key in rows[scroll:scroll + visible]:
+                if kind == "header":
+                    fb.text(ox, y, t(key), s, accent_for(None), C_BG)
+                else:
+                    text = "  " + t(key)
+                    if len(text) > maxc:
+                        text = text[:maxc - 1] + "~"
+                    fb.text(ox, y, text, s, C_TEXT, C_BG)
+                y += rowh
+            if max_scroll > 0:
+                scroll_hint = t("top10_scroll_hint", scroll + 1,
+                                min(scroll + visible, len(rows)), len(rows))
+                hint_w = len(scroll_hint) * 8 * hint_scale
+                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                        scroll_hint, hint_scale, C_DIM, C_BG)
+            else:
+                hint = t("attract_hint")
+                hint_w = len(hint) * 8 * hint_scale
+                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                        hint, hint_scale, C_DIM, C_BG)
+            fb.flip()
+            act = self.inp.read_action()
+            if act in ("up", "down") and max_scroll > 0:
+                scroll = max(0, min(max_scroll, scroll + (1 if act == "down" else -1)))
+                continue
+            if act is not None:
+                break
+
+    def draw_diary_screen(self):
+        """Spieltagebuch (Nutzerwunsch: "digitales Retro-Wohnzimmer",
+        kleine rollierende Version - siehe Modul-Kommentar bei
+        DIARY_FILE fuer die Begruendung). Gleiche Scroll-Logik wie
+        draw_milestones_screen() - baut eine einzige gemischte Liste
+        aus Datums-Ueberschriften und Sitzungs-Zeilen und scrollt
+        darin wie in einer normalen Liste."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        title = t("diary_title")
+        title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
+
+        diary = load_diary()
+        total_entries = sum(len(v) for v in diary.values())
+
+        if total_entries == 0:
+            fb.clear(C_BG)
+            fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+            fb.text(ox, oy + 50 * s, t("diary_empty"), s, C_DIM, C_BG)
+            hint = t("attract_hint")
+            hint_scale = s - 1 if s > 1 else 1
+            hint_w = len(hint) * 8 * hint_scale
+            fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                    hint, hint_scale, C_DIM, C_BG)
+            fb.flip()
+            while True:
+                act = self.inp.read_action()
+                if act is not None:
+                    break
+            return
+
+        maxc = max(8, (W - 2 * ox - 10 * s) // (8 * s))
+        rows = []
+        for date_str in sorted(diary.keys(), reverse=True):
+            rows.append(("header", _format_diary_date(date_str)))
+            for entry in reversed(diary[date_str]):
+                rows.append(("entry", entry))
+
+        # BUGFIX/Aenderung auf Nutzerwunsch: Name und System+Dauer auf
+        # EINER Zeile ("Name (System)  ...  Dauer") fuehrte auf CRT
+        # (schmale Aufloesung) haeufig zum Abschneiden langer Titel.
+        # Statt einer Laufschrift (deutlich aufwendiger - braucht
+        # mehrere GLEICHZEITIGE Laufschriften plus staendiges
+        # Neuzeichnen statt des bisherigen Wartens auf Tastendruck)
+        # jetzt zwei Zeilen pro Eintrag: Name oben (volle Breite),
+        # System+Dauer klein darunter. Kostet etwas mehr Hoehe pro
+        # Eintrag (weniger Eintraege gleichzeitig sichtbar), dafuer
+        # bleibt der Titel selbst fast immer vollstaendig lesbar.
+        line_h = 22 * s // 2
+        rowh = 2 * line_h + 4 * s   # Name-Zeile + Info-Zeile + kleiner Abstand
+        list_y0 = oy + 56 * s // 2 + 16 * s + 44 * s
+        hint_scale = s - 1 if s > 1 else 1
+        list_y1 = H - oy - 8 * hint_scale - 6 * s
+        visible = max(1, (list_y1 - list_y0) // rowh)
+        scroll = 0
+        max_scroll = max(0, len(rows) - visible)
+        while True:
+            fb.clear(C_BG)
+            fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+            y = oy + 56 * s // 2 + 16 * s
+            fb.text(ox, y, t("diary_summary", total_entries, DIARY_RETENTION_DAYS),
+                    s, accent_for(None), C_BG)
+            y = list_y0
+            for row in rows[scroll:scroll + visible]:
+                if row[0] == "header":
+                    fb.text(ox, y, row[1], s, accent_for(None), C_BG)
+                else:
+                    entry = row[1]
+                    name = "  " + entry["name"]
+                    if len(name) > maxc:
+                        name = name[:maxc - 1] + "~"
+                    fb.text(ox, y, name, s, C_TEXT, C_BG)
+                    sysname = system_display_name(entry.get("syskey")) \
+                        if entry.get("syskey") else ""
+                    dur = format_playtime(entry.get("seconds", 0)) or "0min"
+                    info = "    %s - %s" % (sysname, dur) if sysname \
+                        else "    " + dur
+                    info_scale = s - 1 if s > 1 else 1
+                    if len(info) > maxc:
+                        info = info[:maxc - 1] + "~"
+                    fb.text(ox, y + line_h, info, info_scale, C_DIM, C_BG)
+                y += rowh
+            if max_scroll > 0:
+                scroll_hint = t("top10_scroll_hint", scroll + 1,
+                                min(scroll + visible, len(rows)), len(rows))
+                hint_w = len(scroll_hint) * 8 * hint_scale
+                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                        scroll_hint, hint_scale, C_DIM, C_BG)
+            else:
+                hint = t("attract_hint")
+                hint_w = len(hint) * 8 * hint_scale
+                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                        hint, hint_scale, C_DIM, C_BG)
+            fb.flip()
+            act = self.inp.read_action()
+            if act in ("up", "down") and max_scroll > 0:
+                scroll = max(0, min(max_scroll, scroll + (1 if act == "down" else -1)))
+                continue
+            if act is not None:
+                break
+
+    def draw_year_review_screen(self):
+        """Jahresrueckblick (Nutzerwunsch: "digitales Retro-Wohnzimmer")
+        - baut auf compute_year_review_stats() auf (v4.1-Fundament:
+        Spielzeit zusaetzlich nach Kalenderjahr gebuendelt). Gleicher
+        Aufbau wie der Trophaeenraum (Cover + Statistik + Zusammen-
+        fassung), aber eingegrenzt auf das aktuelle Jahr statt "seit
+        Aufzeichnungsbeginn". Zeigt eine freundliche Meldung, wenn fuer
+        das laufende Jahr noch keine Daten vorliegen, statt leerer/
+        irrefuehrender Werte."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        fb.clear(C_BG)
+
+        stats = compute_year_review_stats()
+        title = t("year_review_title", _current_year())
+        title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
+        fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+
+        if not stats:
+            fb.text(ox, oy + 50 * s, t("year_review_empty"), s, C_DIM, C_BG)
+            hint = t("attract_hint")
+            hint_scale = s - 1 if s > 1 else 1
+            hint_w = len(hint) * 8 * hint_scale
+            fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                    hint, hint_scale, C_DIM, C_BG)
+            fb.flip()
+            while True:
+                act = self.inp.read_action()
+                if act is not None:
+                    break
+            return
+
+        accent = accent_for(stats["favorite_system"])
+        top_y = oy + 44 * s
+
+        # Cover links, gleiches Muster wie draw_trophy_room_screen().
+        cover_w = int(W * 0.36)
+        cover_h = int(H * 0.60)
+        art = None
+        top_label = stats["top_game"]
+        if top_label:
+            top_syskey = load_playtime().get(top_label, {}).get("syskey")
+            if top_syskey:
+                if H >= 720:
+                    hd = _art_path_in(ART_HD, top_syskey, top_label)
+                    art = ART.get_scaled(hd, cover_w, cover_h)
+                if art is None:
+                    art = ART.get_scaled(art_path(top_syskey, top_label),
+                                         cover_w, cover_h)
+        pad = 5 * s
+        if art:
+            aw, ah, pix = art
+            ax = ox + (cover_w - aw) // 2
+            ay = top_y
+            fb.rect_rounded(ax - pad, ay - pad, aw + 2 * pad, ah + 2 * pad,
+                            accent, 4 * s)
+            self.blit(ax, ay, aw, ah, pix)
+        else:
+            fb.rect_rounded(ox, top_y, cover_w, cover_h, C_PANEL, 4 * s)
+            no_art = t("no_artwork_1") + " " + t("no_artwork_2")
+            fb.text(ox + 10 * s, top_y + 10 * s, no_art, s, C_DIM, C_PANEL)
+
+        text_x = ox + cover_w + 24 * s
+        y = top_y
+        line_h = 28 * s
+        maxc = max(8, (W - text_x - ox) // (8 * s))
+
+        def stat_line(txt, color=C_TEXT):
+            nonlocal y
+            if len(txt) > maxc:
+                txt = txt[:maxc - 1] + "~"
+            fb.text(text_x, y, txt, s, color, C_BG)
+            y += line_h
+
+        if stats["favorite_system"]:
+            stat_line(t("year_review_favorite_system",
+                       system_display_name(stats["favorite_system"])), accent)
+        if top_label:
+            stat_line(t("year_review_top_game", top_label))
+        played_str = format_playtime(stats["total_seconds"]) or "0min"
+        stat_line(t("year_review_total_playtime", played_str))
+        stat_line(t("year_review_launches", stats["total_launches"]))
+        stat_line(t("year_review_games", stats["distinct_games"]))
+        stat_line(t("year_review_systems", stats["distinct_systems"]))
+        stat_line(t("year_review_discovered", stats["discovered_this_year"]))
+
+        summary = t("year_review_summary", stats["year"],
+                    stats["distinct_games"], stats["discovered_this_year"])
+        sum_scale = self._fit_scale(summary, W - 2 * ox, s)
+        sum_y = H - oy - 34 * (s - 1 if s > 1 else 1) - 16 * s
+        fb.text(ox, sum_y, summary, sum_scale, C_DIM, C_BG)
+
+        hint = t("attract_hint")
+        hint_scale = s - 1 if s > 1 else 1
+        hint_w = len(hint) * 8 * hint_scale
+        fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                hint, hint_scale, C_DIM, C_BG)
+        fb.flip()
+        while True:
+            act = self.inp.read_action()
+            if act is not None:
+                break
 
     def draw_trophy_room_screen(self):
         """Persoenlicher Profil-Bildschirm ("Trophaeenraum") - grosses
@@ -8369,7 +11448,7 @@ class Frontend:
             self.blit(ax, ay, aw, ah, pix)
         else:
             fb.rect_rounded(ox, top_y, cover_w, cover_h, C_PANEL, 4 * s)
-            no_art = t("no_artwork")
+            no_art = t("no_artwork_1") + " " + t("no_artwork_2")
             fb.text(ox + 10 * s, top_y + 10 * s, no_art, s, C_DIM, C_PANEL)
 
         # Statistik rechts neben dem Cover.
@@ -8839,6 +11918,89 @@ class Frontend:
             self._stream_sig = sig
             self.stream.publish(st)
 
+    def _show_max_level_boot_effect(self):
+        """Kurzer Extra-Effekt beim Booten, NUR wenn das Frontend-Level
+        das Maximum erreicht hat (Nutzerwunsch: "Easter Egg System",
+        Frontend-Level-Teil). Bewusst als EIGENSTAENDIGE, separate
+        Methode gebaut - ruehrt die performance-kritische Bildsequenz-
+        Schleife in play_boot_animation() nicht an (dort wurde bereits
+        mehrfach gezielt auf Geschwindigkeit optimiert, ein Umbau dort
+        haette dieses Risiko unnoetig wieder aufgemacht). Anders als die
+        Bildsequenz selbst NICHT durch einen "einmal pro Boot"-Marker
+        begrenzt - bewusst bei JEDEM Boot sichtbar, solange das Level
+        gehalten wird (kurz genug, um nicht zu stoeren, wuerdigt den
+        erreichten Stand aber jedes Mal aufs Neue)."""
+        if compute_frontend_level() < FRONTEND_LEVEL_MAX:
+            return
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        accent = THEMES.get(current_theme_name(), THEMES["dark"])["C_ACCENT"]
+        msg = t("max_level_boot_effect")
+        msg_scale = self._fit_scale(msg, W - 40 * s, s + 1)
+        msg_w = len(msg) * 8 * msg_scale
+        fb.clear((0, 0, 0))
+        fb.text((W - msg_w) // 2, (H - 8 * msg_scale) // 2, msg, msg_scale,
+                accent, (0, 0, 0))
+        fb.flip()
+        self.inp.read_action(timeout=1.2)   # ueberspringbar wie die Bildsequenz
+
+    def _draw_default_boot_icon(self):
+        """Zeigt eine kurze, selbst gezeichnete Standard-Boot-Animation
+        (D-Pad-Symbol, das flackernd "zum Leben erwacht"), wenn KEIN
+        eigenes Boot-Animation-Verzeichnis vorhanden ist - der
+        Normalfall, die meisten Nutzer erstellen sich nie eine eigene
+        Animation ueber video_to_bootanim.py. Nutzerwunsch: "standard-
+        maessig was dabei haben". Bisher passierte in diesem Fall gar
+        nichts Sichtbares (play_boot_animation() kehrte sofort zurueck,
+        direkter Sprung ins Menue).
+
+        Komplett aus unseren eigenen, laengst vorhandenen Zeichen-
+        Mitteln gebaut (nur rect()/text(), kein Bild/Video-Codec noetig)
+        - passt zur "keine zusaetzliche Last"-Philosophie. Das D-Pad-
+        Kreuz besteht aus nur zwei sich ueberlappenden Rechtecken -
+        bewusst simpel gehalten statt eines Pixel-Bitmaps, damit jeder
+        Frame nur zwei billige rect()-Aufrufe kostet. Bewusst
+        EIGENSTAENDIG gestaltet, keine Anlehnung an ein echtes
+        Konsolen-Boot-Logo (gleiche Vorsicht wie beim Soundthema)."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        cx, cy = W // 2, H // 2 - 20 * s
+        arm = 10 * s       # Balkenbreite des Kreuzes
+        length = 34 * s    # Gesamtlaenge je Achse
+
+        def draw_dpad(color):
+            fb.rect(cx - arm // 2, cy - length // 2, arm, length, color)
+            fb.rect(cx - length // 2, cy - arm // 2, length, arm, color)
+
+        accent = accent_for(None)
+        dim = tuple(c // 4 for c in accent)
+        mid = tuple(c // 2 for c in accent)
+
+        # Flacker-Sequenz: dunkel -> aus -> mittel -> aus -> voll, dann
+        # kurz halten - simuliert eine alte Roehre, die "warm wird".
+        # (Farbe, Wartezeit in Sekunden) - None = kurz schwarz (Flackern).
+        sequence = [
+            (dim, 0.10), (None, 0.05), (mid, 0.10), (None, 0.05),
+            (accent, 0.10), (mid, 0.06), (accent, 0.55),
+        ]
+        title = t("boot_default_title")
+        title_scale = self._fit_scale(title, W - 40 * s, s)
+        title_w = len(title) * 8 * title_scale
+        title_y = cy + length // 2 + 20 * s
+
+        for color, hold in sequence:
+            fb.clear((0, 0, 0))
+            if color is not None:
+                draw_dpad(color)
+                if color == accent:
+                    fb.text((W - title_w) // 2, title_y, title,
+                            title_scale, accent, (0, 0, 0))
+            fb.flip()
+            if self.inp.read_action(timeout=hold) is not None:
+                return   # ESC/beliebige Taste ueberspringt den Rest
+
     def play_boot_animation(self):
         """Spielt eine Bildsequenz ab (frame_0001.art, frame_0002.art,
         ...), einmal pro MiSTer-Boot, bevor das normale Menue
@@ -8864,6 +12026,24 @@ class Frontend:
         except OSError:
             frames = []
         if not frames:
+            # Kein eigenes Boot-Animation-Verzeichnis vorhanden (der
+            # Normalfall) - Standard-Animation zeigen statt direkt ins
+            # Menue zu springen (siehe _draw_default_boot_icon()).
+            try:
+                self._draw_default_boot_icon()
+            except Exception:
+                LOG("_draw_default_boot_icon CRASH:\n" + traceback.format_exc())
+            # BUGFIX (beim eigenen Testen gefunden, noch vor jeder
+            # Auslieferung): ohne dies wuerde die Markierungsdatei hier
+            # NIE geschrieben (das passiert normalerweise erst ganz am
+            # Ende der Funktion, den dieser fruehe Ruecksprung ueberspringt)
+            # - die Standard-Animation liefe dann bei JEDEM Aufruf erneut,
+            # nicht nur einmal pro Boot wie die eigene Animation.
+            try:
+                with open(BOOTANIM_PLAYED_MARKER, "w") as f:
+                    f.write("1")
+            except OSError:
+                pass
             return
 
         # Optionale Zeitsteuerung: bootanim.json neben den Frames kann
@@ -8918,7 +12098,37 @@ class Frontend:
     def run(self):
         # enter_console_mode()/set_cursor_blink()/inp.grab() passieren
         # jetzt schon in __init__(), VOR dem Scan - siehe Kommentar dort.
+        #
+        # BUGFIX (Performance-Nachfrage des Nutzers, gezielt nachgemessen):
+        # clear() berechnet die zeilenbasierte Vignette (siehe
+        # _apply_vignette_rows()) beim ALLERERSTEN Aufruf fuer eine
+        # bestimmte Hintergrundfarbe+Aufloesung frisch (~370ms bei 1080p
+        # in dieser Sandbox, auf der schwaecheren MiSTer-CPU vermutlich
+        # eher mehr) - alle folgenden Aufrufe mit derselben Farbe/
+        # Aufloesung sind dann durch den Cache (self._rowcache) praktisch
+        # kostenlos. Ohne Vorwaermen traf dieser einmalige Ruck bisher
+        # ausgerechnet den ALLERERSTEN echten Menue-Aufbau - also genau
+        # den Moment, in dem der Nutzer zum ersten Mal hinschaut. Da die
+        # Boot-Animation (siehe play_boot_animation()) bei JEDEM MiSTer-
+        # Neustart erneut abgespielt wird (Marker liegt in /tmp, das bei
+        # jedem Reboot geleert wird), ist das der ideale Ort, den Ruck zu
+        # verstecken: einmal clear() mit der normalen Hintergrundfarbe
+        # aufrufen, BEVOR die Animation beginnt - waehrend der Nutzer
+        # ohnehin auf die Animation schaut, nicht auf das eigentliche Menue.
+        #
+        # ERWEITERT fuer die neue Standard-Boot-Animation (siehe
+        # _draw_default_boot_icon()): die zeichnet auf reinem Schwarz
+        # (0,0,0), einer ANDEREN Farbe als C_BG - ohne separates
+        # Vorwaermen haette genau dieselbe Art Ruckler dort erneut
+        # zugeschlagen, direkt am Anfang der neuen Animation.
+        try:
+            self.fb.clear(C_BG)
+            self.fb.clear((0, 0, 0))
+        except Exception:
+            pass   # rein vorsorglich - selbst ein Fehlschlag hier darf
+                   # den eigentlichen Start nicht verhindern
         self.play_boot_animation()
+        self._show_max_level_boot_effect()
         self.draw()
         # WICHTIG (Bugfix): der Leerlauf-Zaehler fuer den Attract-Modus
         # wurde bisher schon in __init__() gesetzt - also VOR dem
@@ -8948,6 +12158,41 @@ class Frontend:
                 act = self.next_action()
                 LOG("aktion: %s (Seite %d, confirm=%s)"
                     % (act, self.page, self.confirm_quit))
+
+                # Geheimcode-Erkennung (siehe
+                # check_secret_code()) - beobachtet nur, greift nie in
+                # die normale Verarbeitung ein. Absichtlich VOR jeder
+                # Reaktion auf die Aktion selbst, damit z.B. "ok" am
+                # Ende eines Codes nicht zuerst schon etwas anderes
+                # ausloest (z.B. ein Spiel startet), bevor der Code
+                # erkannt wird.
+                #
+                # BUGFIX (beim abschliessenden Durchcheck gefunden): die
+                # Pruefung lief bisher auf JEDER Seite, nicht nur im
+                # Hauptmenue (Seite 0) wie eigentlich vorgesehen und
+                # kommuniziert. Einer der (kurzen) Codes waere dadurch
+                # potenziell auch waehrend ganz normaler Navigation in
+                # einer Spieleliste ungewollt ausloesbar gewesen (z.B.
+                # einen Ordner betreten+verlassen+etwas bestaetigen).
+                # Jetzt nur noch aktiv, wenn self.page == 0 - der Puffer
+                # wird auf den anderen Seiten auch nicht weiter befuellt,
+                # damit ein Seitenwechsel mitten in einer Eingabe den Code
+                # sauber
+                # abbricht statt ihn "anzuhalten" und spaeter im
+                # Hauptmenue ueberraschend fortzusetzen.
+                if act is not None and self.page == 0:
+                    self._secret_buffer.append(act)
+                    if len(self._secret_buffer) > SECRET_CODE_MAXLEN:
+                        self._secret_buffer.pop(0)
+                    secret_id = check_secret_code(self._secret_buffer)
+                    if secret_id:
+                        self._secret_buffer = []  # verhindert Doppel-Treffer
+                        is_new = _unlock_secret(secret_id)
+                        self._on_secret_triggered(secret_id, is_new)
+                        continue
+                elif act is not None:
+                    self._secret_buffer = []
+
                 # Zustand VOR der Aktion merken - fuer die Entscheidung,
                 # ob nach einem einzelnen hoch/runter-Schritt der leichte
                 # Navigations-Zeichenpfad ausreicht (siehe unten, nach
@@ -9145,6 +12390,33 @@ class Frontend:
                                 else t("completed_removed"))
                             self.draw(message=msg)
                             continue
+                elif act == "ra_showcase":
+                    # RA-Erfolgs-Vitrine (Nutzerwunsch, separate Option) -
+                    # zeigt bei einem Spiel mit RA-Unterstuetzung die
+                    # komplette Erfolgsliste statt nur der Zahl neben
+                    # dem Cover.
+                    if self.page == 1 and items:
+                        label, kind, arg = items[self.item_i]
+                        if kind == "game":
+                            if not ra_enabled():
+                                # Unterscheidet sich bewusst von
+                                # "ra_showcase_none" (RA ist eingerichtet,
+                                # aber GENAU DIESES Spiel hat keine
+                                # RA-Daten) - sonst wirkt F6 ohne
+                                # RA-Einrichtung wie eine tote Taste.
+                                self.draw(message=t("ra_showcase_not_setup"))
+                                continue
+                            if self._ra_lookup:
+                                item_syskey = self._item_syskey(
+                                    items[self.item_i], self.cats[self.cat_i][2])
+                                game_id = lookup_ra_game_id(
+                                    self._ra_lookup, label, item_syskey)
+                                if game_id:
+                                    self.draw_ra_showcase_screen(label, game_id)
+                                    self.draw()
+                                    continue
+                            self.draw(message=t("ra_showcase_none"))
+                            continue
                 elif act == "ok":
                     if self.page == 0:
                         self._enter_category()
@@ -9249,6 +12521,9 @@ class Frontend:
                                 target=sync_system_clock_from_ntp,
                                 daemon=True).start()
                             self._refresh_system_category()
+                        elif kind == "network_wait":
+                            save_network_wait(not network_wait_enabled())
+                            self._refresh_system_category()
                         elif kind == "sfx":
                             toggle_sfx()
                             self._refresh_system_category()
@@ -9263,6 +12538,24 @@ class Frontend:
                             self.draw()
                         elif kind == "trophy_room":
                             self.draw_trophy_room_screen()
+                            self.draw()
+                        elif kind == "year_review":
+                            self.draw_year_review_screen()
+                            self.draw()
+                        elif kind == "diary":
+                            self.draw_diary_screen()
+                            self.draw()
+                        elif kind == "help":
+                            self.draw_help_screen()
+                            self.draw()
+                        elif kind == "secrets":
+                            self.draw_secrets_screen()
+                            self.draw()
+                        elif kind == "credits":
+                            self.draw_credits_screen()
+                            self.draw()
+                        elif kind == "crt_test":
+                            self.draw_crt_test_pattern_screen()
                             self.draw()
                         elif kind == "ra_status":
                             ra_user, _ra_key = load_ra_config()
@@ -9390,6 +12683,20 @@ if __name__ == "__main__":
     except Exception:
         print("WARNUNG: Sound-Dateien konnten nicht erzeugt werden (nicht kritisch):")
         traceback.print_exc()
+    # Nutzeroption fuer NAS-Nutzer (Standard AUS, siehe network_wait_
+    # enabled()): erst weiter, wenn Netzwerk + ROM-Ordner-Inhalt stabil
+    # sind - sonst koennte beim Booten eine noch nicht fertig
+    # eingehaengte Netzwerkfreigabe zu einer leeren/unvollstaendigen,
+    # dauerhaft gecachten Spieleliste fuehren. Bewusst NUR aktiv, wenn
+    # explizit eingeschaltet - fuer SD-Karte/USB (die meisten Faelle)
+    # keinerlei zusaetzliche Wartezeit.
+    if network_wait_enabled():
+        print("Netzwerk-Warteoption aktiv: warte auf Verbindung + stabilen ROM-Ordner ...")
+        try:
+            _wait_for_network_ready()
+        except Exception:
+            print("WARNUNG: Netzwerk-Wartelogik fehlgeschlagen (nicht kritisch):")
+            traceback.print_exc()
     if not acquire_single_instance():
         try:
             with open(LOCKFILE) as f:

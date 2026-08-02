@@ -1,7 +1,7 @@
-# MiSTer Custom Frontend v2.0 - Komplettbuild (Stand: 2026-07-30)
+# MiSTer Custom Frontend v3.0
 
-**Von Dragrem2K**, mit tatkräftiger Unterstützung von **TheRealSuTefan**
-beim Testen und Gegenchecken.
+**Von Dragrem2K**, mit Beiträgen von **TheRealSuTefan**, **Dfense**
+und **Dennsen**.
 
 Mein selbstgebautes Frontend für den MiSTer FPGA: Spiele-Browser mit
 Boxart und Spielinfos, Gamepad- und Tastatursteuerung, Hintergrundmusik,
@@ -24,6 +24,17 @@ die Systemlogos links sind echt. Kompakter Überblick zusätzlich in
 </p>
 <p align="center"><sub>Links: Hauptmenue mit Uhrzeit, Netzwerksymbol, Akzentfarbe und pulsierender Markierung &nbsp;|&nbsp; Mitte: Spieleliste mit Boxart, Glow-Effekt und Schlagschatten &nbsp;|&nbsp; Rechts: Ordner-Navigation - Boxart erscheint auch auf Ordner-Ebene bei Mehrfach-CD-Spielen</sub></p>
 
+**Nicht nur eine Spieleliste** - der eigentliche Kern der Idee sind
+Bildschirme wie diese, die die eigene Sammlung persönlich machen statt
+nur durchsuchbar:
+
+<p align="center">
+  <img src="screenshots/preview_5_trophaeenraum.png" width="420" alt="Trophaeenraum - persoenlicher Profil-Bildschirm">
+  &nbsp;&nbsp;
+  <img src="screenshots/preview_6_jahresrueckblick.png" width="420" alt="Jahresrueckblick - Statistik fuer das laufende Kalenderjahr">
+</p>
+<p align="center"><sub>Links: Trophäenraum - Cover des meistgespielten Spiels, Lieblingssystem, Erfolgs-Zähler &nbsp;|&nbsp; Rechts: Jahresrückblick - eingegrenzt auf das laufende Kalenderjahr, nicht "seit Aufzeichnungsbeginn"</sub></p>
+
 ## Warum ein eigenes Frontend?
 
 In der MiSTer-Community wird immer wieder diskutiert, ob ein
@@ -40,19 +51,31 @@ nicht spürt, wenn man's gerade nicht aktiv benutzt.
 Mit **Zaparoo Frontend** gibt's inzwischen auch ein aktiv entwickeltes
 Community-Projekt mit ähnlicher Zielsetzung für MiSTer (Bibliothek
 durchsuchen, Boxart, Zuletzt gespielt, dazu NFC-Tags) - wer eine
-größere, von mehreren Leuten getragene Lösung sucht, sollte sich das
-anschauen.
+größere, von mehreren Leuten getragene Lösung sucht, oder wer NFC-
+Karten zum Spiele-Starten will, sollte sich das anschauen. Genauso
+gibt's mit **Taki Udons Console Mode** inzwischen eine sehr
+zugängliche, komplett per Controller bedienbare Lösung (an die
+SuperStation One gekoppelt, funktioniert aber auf jedem MiSTer).
 
 Was hier anders ist:
+- **Keine Systemänderung, jederzeit rückgängig** - das hier ist ein
+  einzelnes Python-Skript, das auf einem völlig unveränderten MiSTer
+  läuft. Kein Austausch von Kernel/Linux-Image, keine zusätzliche
+  Hardware nötig. Ausprobieren ohne Risiko: ein Befehl deinstalliert
+  wieder rückstandslos (siehe `uninstall.sh`), dein MiSTer ist danach
+  exakt wie vorher.
 - **Keine externe Abhängigkeit** - reines Python aus der
-  Standardbibliothek, läuft auf einem unveränderten MiSTer ohne ein
-  einziges zusätzliches Paket.
+  Standardbibliothek, läuft ohne ein einziges zusätzliches Paket.
 - **CRT und HDMI gleichwertig** - beide mit eigens abgestimmter Optik
   und Geschwindigkeit, nicht nur "HDMI mit CRT-Kompatibilität als
   Nebeneffekt".
 - **Klein und nachvollziehbar** - eine einzelne Python-Datei fürs
   eigentliche Frontend, keine Abstraktionsschichten, gut lesbar für
   alle, die selbst was anpassen wollen.
+- **Die eigene Sammlung soll sich lebendig anfühlen, nicht nur schnell
+  bedienbar** - Trophäenraum, Jahresrückblick, Spieltagebuch,
+  Sammlungen und ein kleines Easter-Egg-System sind hier kein
+  Beiwerk, sondern der eigentliche Kern der Idee.
 
 Ehrlich gesagt: das hier ist ein Hobbyprojekt, kein Team-Produkt.
 Weniger durchgetestete Setups als bei einem großen Community-Projekt,
@@ -77,6 +100,7 @@ Nachlesen (`CHANGELOG.md`).
    - 8d. Attract-Modus / Bildschirmschoner
    - 8e. Favoriten
    - 8f. Uhrzeit-Synchronisierung
+   - 8f-2. ROMs auf einem NAS/Netzlaufwerk
    - 8g. Themes/Farbschemata
    - 8h. Navigations-Soundeffekte
    - 8i. Spielzeit-Tracker
@@ -84,6 +108,9 @@ Nachlesen (`CHANGELOG.md`).
    - 8k. RetroAchievements-Fortschritt
    - 8l. Standard- oder RA-Core wählen
    - 8m. Durchgespielt-Status + eigene Erfolge
+   - 8n. Easter-Egg-System (Geheimnisse) + Frontend-Level
+   - 8o. CRT-Testbild
+   - 8p. Mitwirkende
 9. Sprache umschalten
 10. Eigene Tastenbelegung
 11. Boot-Animation (Startvideo)
@@ -97,7 +124,7 @@ Nachlesen (`CHANGELOG.md`).
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v2.0) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v3.0) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (läuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (läuft auf dem MiSTer) |
@@ -231,10 +258,25 @@ Arcade, Scripts, System) als große Liste; Enter/A öffnet eine
 Kategorie auf Seite 2, wo links die Spieleliste steht und rechts bei
 Spiele-Systemen eine breite Boxart+Info-Spalte.
 
+**Die "System"-Kategorie ist in 7 thematische Gruppen unterteilt**
+(RetroAchievements, Statistiken & Erfolge, Anzeige & Sound, Verhalten,
+Eingabe & Sprache, Info, Wartung) - genau wie bei eigenen ROM-
+Unterordnern einmal reinklicken, dann die gewünschte Einstellung
+auswählen. Alle einzelnen Funktionen weiter unten in dieser README
+("System-Menü -> ...") sind dadurch einen Klick tiefer als früher,
+sonst unverändert.
+
 **"Weiterspielen" ganz oben im Hauptmenü** (falls vorhanden): schlägt
 gezielt das Spiel vor, das du zuletzt gestartet, aber noch nicht als
 durchgespielt markiert hast (F7, siehe Abschnitt 8m). Verschwindet von
 selbst, sobald nichts mehr offen ist.
+
+**"Sammlungen"** (falls vorhanden): automatische, kuratierte
+Gruppierungen aus deiner Bibliothek - aktuell "Dieses Jahr entdeckt"
+(Spiele, die du im laufenden Kalenderjahr zum ersten Mal gestartet
+hast) und "Kurzweilige Spiele" (Spiele mit kurzer durchschnittlicher
+Sitzungsdauer, mindestens 2 Starts nötig). Erscheint nur, wenn
+tatsächlich etwas reinpasst.
 
 **Eigene Ordnerstruktur wird 1:1 übernommen.** Hast du deine ROMs in
 Unterordnern organisiert (z.B. "1 US-A-E", "2 Beliebt"), zeigt das
@@ -511,6 +553,20 @@ Ortszeit einmalig manuell eingestellt werden. Im System-Menü:
 Umschalten wird die Uhr sofort neu synchronisiert, kein Neustart nötig
 (vorausgesetzt, gerade Netzwerk vorhanden). Ohne Einstellung: UTC.
 
+## 8f-2. ROMs auf einem NAS/Netzlaufwerk
+
+Liegen deine ROMs über CIFS/SMB oder NFS auf einem Netzlaufwerk statt
+auf SD-Karte/USB, kann es beim Booten passieren, dass unser Scan
+startet, bevor die Verbindung wirklich steht - die dann leere oder
+unvollständige Spieleliste würde sogar dauerhaft gecacht werden.
+
+Dafür gibt's im System-Menü die Option **"Beim Start auf NAS/Netzwerk
+warten"** (Standard AUS). Eingeschaltet wartet das Frontend beim Start
+erst auf eine Netzwerkverbindung und darauf, dass sich der Inhalt der
+ROM-Ordner nicht mehr ändert, bevor gescannt wird. Für SD-Karte/USB
+(die meisten Nutzer) lass die Option einfach aus - sie würde dort nur
+unnötig verzögern.
+
 ## 8g. Themes/Farbschemata
 
 Im System-Menü: "Farbschema" schaltet der Reihe nach zwischen drei
@@ -566,6 +622,15 @@ keine Dateipfade) - bewusst vorsichtig: passt der Name oder das
 System nicht eindeutig, wird lieber nichts angezeigt als ein
 möglicherweise falscher Treffer.
 
+**RA-Erfolgs-Vitrine (Taste F6):** Bei einem Spiel mit RA-Fortschritt
+zeigt F6 die komplette Erfolgsliste - Icon, Name, Beschreibung,
+Punkte, freigeschaltet oder nicht - statt nur der Zahl neben dem
+Cover. Holt die Daten live bei jedem Aufruf, Icons werden dabei
+einmalig heruntergeladen und dauerhaft lokal zwischengespeichert
+(eigener PNG-Decoder, direkt im Frontend gebaut). Komplett
+eigenständig - falls hier mal etwas nicht passt, ist die normale
+Fortschrittsanzeige davon unberührt.
+
 ## 8l. Standard- oder RA-Core wählen
 
 Nutzt du **sage2050s "MiSTer_RetroAchievements"-Werkzeug** (separater
@@ -573,8 +638,9 @@ Nutzt du **sage2050s "MiSTer_RetroAchievements"-Werkzeug** (separater
 ersetzen): beim Betreten eines Systems, für das eine RA-Core-Variante
 gefunden wird, fragt das Frontend kurz, ob der normale oder der
 RA-Core geladen werden soll. Hoch/Runter wählt, OK bestätigt, ESC
-wählt sicherheitshalber den normalen Core. Die Wahl gilt für die
-laufende Sitzung, bis du die Kategorie erneut betrittst.
+bricht ab und du bleibst auf der Systemliste (betritt die Kategorie
+dann NICHT). Die Wahl gilt für die laufende Sitzung, bis du die
+Kategorie erneut betrittst.
 
 Findet sich für ein System keine passende RA-Core-Datei (oder hast du
 das Werkzeug nicht installiert), taucht die Frage dort gar nicht erst
@@ -586,6 +652,14 @@ verifizieren - das Frontend probiert deshalb pro System mehrere
 plausible Namen durch. Taucht die Auswahl bei einem System nicht auf,
 obwohl du einen RA-Core dafür installiert hast, sag Bescheid, dann
 ergänzen wir die passende Namensvariante.
+
+**RA-Erfolgsjäger:** Eigene Kategorie im Hauptmenü (direkt vor
+"Scripts") - zeigt alle Spiele in deiner Sammlung, die RA-Erfolge
+haben, bei denen du aber noch nichts freigeschaltet hast. Nach System
+sortiert wie deine eigenen ROM-Unterordner, pro System nach Anzahl
+verfügbarer Erfolge (die größten Gelegenheiten zuerst). Taucht nur
+auf, wenn RetroAchievements eingerichtet ist und tatsächlich etwas
+gefunden wird.
 
 ## 8m. Durchgespielt-Status + eigene Erfolge
 
@@ -616,6 +690,63 @@ persönlicher Profil-Bildschirm statt trockener Zahlen: großes Cover
 deines meistgespielten Spiels, dein Lieblingssystem (anhand der
 gesamten dort verbrachten Spielzeit, nicht nur des einzelnen
 Top-Spiels), Erfolgs-Zähler und eine kurze Zusammenfassung.
+
+**Jahresrückblick:** Im System-Menü "Jahresrückblick" - wie der
+Trophäenraum, aber eingegrenzt auf das laufende Kalenderjahr statt
+"seit Aufzeichnungsbeginn": Spielzeit dieses Jahr, meistgespieltes
+Spiel dieses Jahr, Lieblingssystem dieses Jahr, und wie viele Spiele
+du dieses Jahr zum ersten Mal entdeckt hast. Zeigt eine freundliche
+Meldung, wenn für das laufende Jahr noch nichts aufgezeichnet wurde.
+
+**Spieltagebuch:** Im System-Menü "Spieltagebuch" - ein rollierendes
+Protokoll der letzten 30 Tage, "Heute"/"Gestern" und dann das Datum,
+darunter jede einzelne Sitzung mit System und Dauer. Räumt sich
+automatisch selbst auf, wächst also nie unbegrenzt. (Aktuell bewusst
+eine kleine Version - eine dauerhafte Variante mit Archivierung ist
+für später denkbar.)
+
+## 8n. Easter-Egg-System (Geheimnisse) + Frontend-Level
+
+Das Frontend selbst sammelt "Erfahrung" - abgeleitet aus Spielzeit,
+Starts und Erfolgen, kein zusätzliches Einrichten nötig. Im System-
+Menü "Geheimnisse" siehst du deinen Fortschritt: Level 1 bis 5,
+höhere Stufen erreichst du über mehrere Wege (Spielzeit ODER Starts
+ODER versteckte Erfolge - kein enger Zwangspfad).
+
+Zusätzlich gibt's ein paar **geheime Cheat-Codes** - bewusst **nur per
+Tastatur** eingebbar (nicht per Gamepad, siehe unten warum), im
+**Hauptmenü** eingegeben (nicht in einer Spieleliste). Welche Codes es
+genau sind und was sie freischalten, wird hier absichtlich nicht
+verraten - das darfst du selbst herausfinden. Ein Code kann beliebig
+oft wiederholt eingegeben werden, genau wie ein echter Cheat-Code -
+nicht nur einmalig.
+
+**Warum nur Tastatur, nicht Gamepad:** Im Hauptmenü haben "OK" und
+"Zurück" auf einem Gamepad immer eine echte Wirkung (Kategorie
+betreten bzw. Beenden-Dialog) - ein Code könnte dadurch nie
+vollständig eingegeben werden. Bestimmte andere Tasten lösen dagegen
+nur einen harmlosen Sprung in der Liste aus, völlig ungefährlich
+mitten in einer Code-Eingabe. Ohne angeschlossene Tastatur bleiben die
+Codes leider unerreichbar - das Level-System selbst braucht aber
+keine Tastatur, das läuft automatisch mit.
+
+Die Geheimnisse-Übersicht zeigt "???" für noch nicht Gefundenes, nach
+dem Entdecken wird aufgedeckt, worum es ging - kein Spoiler hier,
+einfach ausprobieren.
+
+## 8o. CRT-Testbild
+
+System-Menü -> "CRT-Testbild" - ein klassisches Servicemenü-Testbild
+wie bei echten Röhren-Monitoren: Geometrie-Rahmen am Bildrand, ein
+Raster zur Prüfung der Linearität, ein Zentrierkreuz und Farbbalken
+zum Farbabgleich. Nützlich beim Einstellen eines 15kHz-CRT-Setups
+(siehe Abschnitt 8). Beliebige Taste kehrt zurück ins Menü.
+
+## 8p. Mitwirkende
+
+System-Menü -> "Mitwirkende" - wer das Frontend gebaut hat und wer
+mitgeholfen hat. Ein kleines Dankeschön, kein Geheimnis wie der
+Entwicklerraum aus Abschnitt 8n.
 
 ## 9. Sprache umschalten
 
@@ -697,6 +828,12 @@ Scaler-Grenze aus Abschnitt 8. Die "Menü-Ansicht" für den Stream
 kommt dabei nicht aus dem Videoausgang, sondern wird direkt im
 Browser gerendert und von OBS ins Bild gesetzt. Jede einzelne Anzeige
 lässt sich über die Backend-Oberfläche getrennt ein-/ausschalten.
+
+**RA-Erfolge in Echtzeit:** Wird während des Spielens ein
+RetroAchievements-Erfolg freigeschaltet, zeigt das Overlay das direkt
+an - Icon, Titel, Beschreibung, Punkte, oben rechts eingeblendet, nach
+8 Sekunden automatisch wieder weg. Kein Warten bis zur Rückkehr ins
+Menü nötig. Eigener Admin-Schalter, falls nicht gewünscht.
 
 **Einrichtung:**
 1. Einschalten per SSH:
@@ -793,6 +930,11 @@ für Nicht-Techniker): `ANLEITUNG_fuer_Dennsen.md`. Technische Details:
   Tasten und Gamepad-Buttons); ein D-Pad, das als Analogachse
   ankommt, funktioniert bereits nativ und wird beim Assistenten
   automatisch übersprungen statt umbelegt.
+- Die drei geheimen Cheat-Codes (Abschnitt 8n) funktionieren bewusst
+  nur per angeschlossener Tastatur, nicht per Gamepad - im Hauptmenü
+  haben "OK"/"Zurück" auf einem Pad immer eine echte Wirkung
+  (Kategorie betreten bzw. Beenden-Dialog), ein Code könnte dadurch
+  nie vollständig eingegeben werden.
 
 ---
 
@@ -815,7 +957,7 @@ Standardbelegung zusammengeführt wird.
 
 ---
 
-Erstellt von **Dragrem2K**, mit Unterstützung von **TheRealSuTefan**
-beim Testen. Lizenziert unter der MIT-Lizenz (siehe `LICENSE`) - frei
-nutzbar, veränderbar und weitergebbar. Was sich zwischen den
-Versionen getan hat: siehe `CHANGELOG.md`.
+Erstellt von **Dragrem2K**, mit Beiträgen von **TheRealSuTefan**,
+**Dfense** und **Dennsen**. Lizenziert unter der MIT-Lizenz (siehe
+`LICENSE`) - frei nutzbar, veränderbar und weitergebbar. Was sich
+zwischen den Versionen getan hat: siehe `CHANGELOG.md`.

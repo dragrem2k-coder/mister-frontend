@@ -80,6 +80,41 @@
   .flash{animation:flash .4s ease}
   @keyframes flash{from{transform:translateY(calc(6px*var(--scale)));opacity:.55}
     to{transform:translateY(0);opacity:1}}
+
+  /* Erfolgs-Einblendung: eigener Toast, immer oben rechts - unabhaengig
+     von der "corner"-Einstellung der normalen Auswahl-Karte, damit sich
+     beide nie ueberschneiden koennen, egal welche Ecke dort gewaehlt ist. */
+  #achievement-toast{
+    position:absolute;top:calc(30px*var(--scale));right:calc(30px*var(--scale));
+    display:flex;gap:calc(14px*var(--scale));align-items:center;
+    padding:calc(14px*var(--scale)) calc(18px*var(--scale));
+    background:linear-gradient(135deg,rgba(13,15,20,.95),rgba(13,15,20,.80));
+    border:1px solid rgba(255,255,255,.10);
+    border-right:calc(4px*var(--scale)) solid #ffd452;
+    border-radius:calc(12px*var(--scale));
+    box-shadow:0 calc(14px*var(--scale)) calc(40px*var(--scale)) rgba(0,0,0,.6);
+    max-width:calc(420px*var(--scale));
+    opacity:0;transform:translateX(calc(20px*var(--scale)));
+    transition:opacity .4s ease, transform .4s ease;
+    pointer-events:none;
+  }
+  #achievement-toast.show{opacity:1;transform:translateX(0)}
+  #achievement-toast .badge{
+    width:calc(56px*var(--scale));height:calc(56px*var(--scale));
+    flex:none;border-radius:calc(8px*var(--scale));
+    background:#1a1e27;border:1px solid rgba(255,255,255,.12)}
+  #achievement-toast .badge.hidden{display:none}
+  #achievement-toast .achievement-meta{display:flex;flex-direction:column;
+    gap:calc(4px*var(--scale));min-width:0}
+  #achievement-toast .achievement-label{font-size:calc(11px*var(--scale));
+    letter-spacing:.12em;text-transform:uppercase;color:#ffd452;font-weight:700}
+  #achievement-toast .achievement-title{font-size:calc(16px*var(--scale));
+    font-weight:700;color:var(--fg);white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis}
+  #achievement-toast .achievement-desc{font-size:calc(12px*var(--scale));
+    color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #achievement-toast .achievement-points{font-size:calc(11px*var(--scale));
+    color:#ffd452;font-weight:600}
 </style>
 </head>
 <body>
@@ -101,12 +136,44 @@
       <div id="np" class="np hidden"><span class="dot"></span><span id="npname"></span></div>
     </div>
   </div>
+  <div id="achievement-toast">
+    <img id="achievement-badge" class="badge hidden" alt="">
+    <div class="achievement-meta">
+      <div class="achievement-label">Erfolg freigeschaltet</div>
+      <div id="achievement-title" class="achievement-title"></div>
+      <div id="achievement-desc" class="achievement-desc"></div>
+      <div id="achievement-points" class="achievement-points"></div>
+    </div>
+  </div>
 </div>
 <script>
 const $ = id => document.getElementById(id);
 const root = document.documentElement.style;
 let cfg = {};
 let lastState = null;
+let achievementTimer = null;
+
+function showAchievementToast(data){
+  // Respektiert den Admin-Schalter "show_ra_badges" - Standard AN,
+  // wie bei den anderen show_*-Optionen (fehlend/undefined = an).
+  if(cfg.show_ra_badges === false) return;
+  $('achievement-title').textContent = data.title || '';
+  $('achievement-desc').textContent = data.description || '';
+  $('achievement-points').textContent = data.points ? (data.points + ' Punkte') : '';
+  const badge = $('achievement-badge');
+  if(data.badge){
+    badge.src = '/badge?name=' + encodeURIComponent(data.badge);
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
+  const toast = $('achievement-toast');
+  toast.classList.add('show');
+  if(achievementTimer) clearTimeout(achievementTimer);
+  achievementTimer = setTimeout(() => {
+    toast.classList.remove('show');
+  }, 8000);
+}
 
 function applyConfig(c){
   cfg = c || {};
@@ -194,6 +261,7 @@ function connect(){
   const es = new EventSource('/events');
   es.addEventListener('config', e => applyConfig(JSON.parse(e.data)));
   es.addEventListener('state',  e => applyState(JSON.parse(e.data)));
+  es.addEventListener('achievement', e => showAchievementToast(JSON.parse(e.data)));
   es.onerror = () => { es.close(); setTimeout(connect, 2000); };
 }
 connect();

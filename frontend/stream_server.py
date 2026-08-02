@@ -30,6 +30,8 @@ import re
 import struct
 import threading
 import time
+import urllib.error
+import urllib.request
 import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, unquote
@@ -48,6 +50,7 @@ DEFAULT_CONFIG = {
     "show_genre": True,          # Genre/Jahr in der Fakten-Zeile
     "show_playtime": True,       # Spielzeit in der Fakten-Zeile
     "show_ra": True,             # RetroAchievements-Fortschritt (falls eingerichtet)
+    "show_ra_badges": True,      # Erfolgs-Einblendung mit Icon bei neuem Erfolg
     "show_favorite": True,       # Favoriten-Stern neben dem Titel
     "scale": 100,                # Prozent
     "corner": "bottom-left",     # bottom-left|bottom-right|top-left|top-right
@@ -56,12 +59,18 @@ DEFAULT_CONFIG = {
 
 class StreamServer:
     def __init__(self, art_base, port=8080, host="0.0.0.0",
-                 config_path=None, art_hd=None, log=lambda *_: None):
+                 config_path=None, art_hd=None, badge_cache_dir=None,
+                 log=lambda *_: None):
         self.art_base = art_base
         self.port = port
         self.host = host
         self.config_path = config_path
         self.log = log
+        # Erfolgs-Icons (RA-Badges) werden dauerhaft hier zwischen-
+        # gespeichert - ohne Angabe direkt neben dem Cover-Ordner, damit
+        # nichts zusaetzlich konfiguriert werden muss.
+        self.badge_cache_dir = badge_cache_dir or os.path.join(
+            os.path.dirname(art_base.rstrip("/")) or ".", "ra_badges")
         # Cover-Ordner in Suchreihenfolge - genau wie das Frontend: erst
         # HD, dann Standard. So findet das Overlay dieselben Cover.
         self._art_bases = [b for b in (art_hd, art_base) if b]
@@ -131,6 +140,24 @@ class StreamServer:
             self._state = dict(state)
             msg = ("event: state\ndata: " +
                    json.dumps(self._state) + "\n\n")
+            dead = []
+            for q in self._clients:
+                try:
+                    q.put_nowait(msg)
+                except queue.Full:
+                    dead.append(q)
+            for q in dead:
+                self._clients.discard(q)
+
+    def publish_achievement(self, achievement):
+        """Pusht ein "gerade freigeschaltet"-Ereignis an alle
+        verbundenen Overlays - eigener SSE-Event-Typ ("achievement"),
+        unabhaengig vom normalen Auswahl-State (siehe publish()).
+        achievement: dict mit title/description/points/badge (Badge-
+        Name, wird im Overlay ueber /badge?name=... geladen)."""
+        with self._lock:
+            msg = ("event: achievement\ndata: " +
+                   json.dumps(achievement) + "\n\n")
             dead = []
             for q in self._clients:
                 try:
@@ -210,6 +237,46 @@ class StreamServer:
         b[3::4] = b"\xff" * (len(b) // 4)
         return _encode_png(w, h, bytes(b))
 
+    RA_BADGE_URL = "https://media.retroachievements.org/Badge/%s.png"
+
+    def _badge_png(self, badge_name):
+        """Liefert das Erfolgs-Icon (PNG) zu einem RA-Badge-Namen - aus
+        dem lokalen Cache, falls schon einmal geladen, sonst live von
+        RA heruntergeladen und DAUERHAFT zwischengespeichert (Icons
+        aendern sich nicht mehr, sobald ein Erfolg einmal
+        veroeffentlicht ist - anders als Cover also kein "koennte sich
+        aendern"-Fall). Anders als bei unseren eigenen .art-Dateien ist
+        HIER keine Formatumwandlung noetig - RAs Badges sind schon PNG,
+        wir reichen die Originalbytes 1:1 weiter."""
+        if not badge_name or not re.match(r"^[A-Za-z0-9_-]+$", badge_name):
+            return None   # nur unbedenkliche Namen - kein Pfad-Trick moeglich
+        try:
+            os.makedirs(self.badge_cache_dir, exist_ok=True)
+        except OSError:
+            pass
+        path = os.path.join(self.badge_cache_dir, badge_name + ".png")
+        try:
+            with open(path, "rb") as f:
+                return f.read()
+        except OSError:
+            pass
+        try:
+            req = urllib.request.Request(
+                self.RA_BADGE_URL % badge_name,
+                headers={"User-Agent": "MiSTerFrontend/1.0"})
+            with urllib.request.urlopen(req, timeout=5.0) as resp:
+                if resp.status != 200:
+                    return None
+                data = resp.read()
+        except (urllib.error.URLError, OSError, TimeoutError):
+            return None
+        try:
+            with open(path, "wb") as f:
+                f.write(data)
+        except OSError:
+            pass
+        return data
+
 
     # -- HTTP handler -----------------------------------------------------
     def _make_handler(server):
@@ -220,12 +287,14 @@ class StreamServer:
                 pass  # keine Konsolen-Spam
 
             def _send(self, code, ctype, body, extra=None):
+                extra = extra or {}
                 self.send_response(code)
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Length", str(len(body)))
                 self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header("Cache-Control", "no-store")
-                for k, v in (extra or {}).items():
+                if "Cache-Control" not in extra:
+                    self.send_header("Cache-Control", "no-store")
+                for k, v in extra.items():
                     self.send_header(k, v)
                 self.end_headers()
                 self.wfile.write(body)
@@ -261,6 +330,18 @@ class StreamServer:
                         self._send(200, "image/png", png)
                     else:
                         self._send(404, "text/plain", b"no art")
+                elif p == "/badge":
+                    q = parse_qs(u.query)
+                    badge_name = unquote((q.get("name") or [""])[0])
+                    png = srv._badge_png(badge_name) if badge_name else None
+                    if png:
+                        # Badges aendern sich nie mehr - der Browser
+                        # darf das lange cachen (anders als /art oder
+                        # /state, die bewusst no-store sind).
+                        self._send(200, "image/png", png,
+                                  {"Cache-Control": "public, max-age=604800"})
+                    else:
+                        self._send(404, "text/plain", b"no badge")
                 elif p == "/events":
                     self._events()
                 else:

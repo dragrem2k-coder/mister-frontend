@@ -4,6 +4,296 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## Versionsnummerierung neu geregelt (ab v3.0)
+
+Bis einschließlich v5.2 wurde die Versionsnummer für praktisch jede
+einzelne Änderung hochgezählt, auch kleine Bugfixes und
+Dokumentations-Politur — das ergab zu viele Sprünge pro Änderung. Ab
+hier zählt die Nummer nur noch bei einem tatsächlich spürbaren,
+abgeschlossenen Funktionsumfang hoch; reine Politur ohne
+Verhaltensänderung wird künftig im laufenden Eintrag der aktuellen
+Version mitgeführt statt eine eigene Nummer zu bekommen. Der komplette
+bisherige Funktionsumfang bleibt vollständig erhalten — nur die
+Zählung beginnt bewusst zurückhaltender neu bei v3.0. Die Einträge
+unterhalb (v1.0 bis v5.2) sind die unveränderte, echte Historie bis zu
+diesem Punkt.
+
+## v3.0
+Enthält inhaltlich das, was zuvor als v5.2 gezählt hätte — siehe
+dortigen Eintrag unten für die Details zur neuen Standard-Boot-
+Animation.
+
+## v5.2 (letzte Version vor der Neuordnung)
+Neue Standard-Boot-Animation: ein D-Pad-Symbol, das flackernd "zum
+Leben erwacht", statt eines direkten Sprungs ins Menü. Bisher
+passierte ohne eigene, selbst erstellte Boot-Animation gar nichts
+Sichtbares. Komplett aus den eigenen Zeichen-Mitteln gebaut (kein
+Video/Bild-Codec), läuft nur, wenn keine eigene Animation vorhanden
+ist - wer sich per `video_to_bootanim.py` was Eigenes erstellt hat,
+bleibt davon unberührt.
+
+## v5.1
+Vermuteter Bugfix (keine Log-Datei verfügbar, per Analyse hergeleitet):
+nach einem Soft-Reset kommt das Frontend manchmal nicht wieder, ohne
+jede Fehlermeldung. Hypothese: überlebt `/tmp` einen Soft-Reset (kein
+echter Kernel-Neustart), bleibt auch eine alte Sperrdatei bestehen -
+zeigt sie zufällig auf eine PID, die inzwischen ein völlig anderer
+Prozess ist, verweigerte das Frontend bisher fälschlich den Start.
+Prüft jetzt zusätzlich, ob die PID tatsächlich zu unserem eigenen
+frontend.py gehört. Auch ohne bestätigte Diagnose eine echte
+Verbesserung der Robustheit.
+
+## v5.0
+Performance-Politur: ein einmaliger, bereits bewusst in Kauf
+genommener Berechnungs-Ruck beim allerersten Bildschirmaufbau (die
+Hintergrund-Vignette wird beim ersten Mal berechnet, danach gecacht)
+traf bisher ausgerechnet den ersten echten Blick ins Menü. Jetzt wird
+der Cache still während der Boot-Animation vorgewärmt, die bei jedem
+Neustart ohnehin läuft - der erste sichtbare Menü-Aufbau ist dadurch
+messbar spürbar schneller.
+
+## v4.9
+Brotkrumen-Kopfzeile schneidet nicht mehr mitten im Wort ab. Passt
+der volle Pfad ("Kategorie / Unterordner") nicht auf den Bildschirm,
+zeigt die Kopfzeile jetzt nur noch den aktuellen Ordnernamen statt
+kryptisch abgehackt zu wirken.
+
+## v4.8
+Kleine Bedienbarkeits-Politur: "Sammlungen" und "RA-Erfolgsjäger"
+zeigen jetzt die Gesamtanzahl direkt im Namen ("Sammlungen (5)"), wie
+es die Unterordner schon lange tun. Kein blindes Reingehen mehr
+nötig, nur um zu sehen, ob überhaupt was drin ist.
+
+## v4.7
+Neue Hilfe-Übersicht (System-Menü → Info → "Hilfe / Übersicht", erster
+Eintrag) - eine zentrale Stelle, die alles zeigt, was das Frontend
+kann: Navigation, Tasten in der Spieleliste (F6/F7/F8), besondere
+Hauptmenü-Einträge, System-Menü-Überblick. Erwähnt nur, dass es
+Geheimnisse gibt, nicht welche.
+
+## v4.6
+Spieltagebuch: Name und System/Dauer stehen jetzt auf zwei getrennten
+Zeilen statt einer - auf CRT wurden lange Titel vorher oft
+abgeschnitten. Der Name bekommt jetzt die volle Zeilenbreite für
+sich.
+
+## v4.5
+Neues Spieltagebuch (System-Menü → Statistiken & Erfolge →
+"Spieltagebuch") - kleine, rollierende Version der letzten 30 Tage,
+räumt sich automatisch selbst auf. Zeigt "Heute"/"Gestern" und dann
+das Datum, darunter jede einzelne Spielsitzung mit System und Dauer.
+Die volle, dauerhafte Version mit Archivierung bleibt bewusst
+zurückgestellt - erstmal schauen, wie die kleine Version ankommt.
+
+## v4.4
+Bugfix: in seltenen Fällen (ca. 1 von 10) startete das Frontend nicht
+richtig, MiSTer blieb im eigenen OSD hängen. Ursache: der
+Autostart-Wrapper wartete nur 60s auf MiSTers eigenen Boot-Abschluss
+und startete danach so oder so weiter - auf Systemen mit knapp
+längerer Boot-Zeit (langsamere SD-Karte, große Sammlung) konnte das
+Frontend so starten, während MiSTer selbst noch nicht ganz bereit
+war. Wartezeit auf 120s verdoppelt (verlangsamt niemanden, der schon
+zuverlässig startete - die Schleife bricht immer sofort ab, sobald
+MiSTer wirklich fertig ist) plus ein zusätzliches Sicherheitsnetz:
+bis zu 5 Neuversuche beim Öffnen des Bildschirms, falls es doch noch
+zu früh sein sollte.
+
+## v4.3
+Neue "Sammlungen"-Kategorie im Hauptmenü - zwei automatische, aus
+vorhandenen Daten abgeleitete Gruppierungen: "Dieses Jahr entdeckt"
+und "Kurzweilige Spiele" (kurze durchschnittliche Sitzungsdauer, min.
+2 Starts nötig). Kein neues Tracking nötig, taucht nur auf, wenn
+tatsächlich etwas reinpasst.
+
+## v4.2
+Neuer Jahresrückblick (System-Menü → Statistiken & Erfolge →
+"Jahresrückblick") - baut auf der Jahres-Bündelung aus v4.1 auf.
+Zeigt Spielzeit, meistgespieltes Spiel, Lieblingssystem, Anzahl
+verschiedener Spiele/Systeme und wie viele Spiele du dieses Jahr zum
+ersten Mal entdeckt hast - alles eingegrenzt auf das laufende
+Kalenderjahr statt "seit Aufzeichnungsbeginn". Zeigt eine freundliche
+Meldung, wenn für das Jahr noch nichts aufgezeichnet wurde.
+
+## v4.1
+Fundament für einen künftigen echten Jahresrückblick: Spielzeit wird
+jetzt zusätzlich nach Kalenderjahr gebündelt (bisher nur kumulierte
+Gesamtwerte, keine Zeitachse). Komplett eigenständig - ändert nichts
+an der bestehenden Spielzeit-Aufzeichnung, kein Risiko für
+Trophäenraum, Top-10-Listen oder eigene Erfolge. Noch keine sichtbare
+neue Funktion, reine Datengrundlage für den nächsten Schritt.
+
+## v4.0
+Das System-Menü war über viele Versionen hinweg auf 23 flache
+Einträge angewachsen - jetzt in 7 thematische Untergruppen aufgeteilt
+(RetroAchievements, Statistiken & Erfolge, Anzeige & Sound, Verhalten,
+Eingabe & Sprache, Info, Wartung). Nutzt dieselbe Ordner-Navigation
+wie eigene ROM-Unterordner - fühlt sich vertraut an, deutlich
+übersichtlicher als die lange Liste vorher.
+
+## v3.9
+Credits angepasst: Dfense als Mitwirkender ergänzt. Betrifft sowohl
+den sichtbaren Credits-Bildschirm als auch den (geheimen)
+Entwicklerraum.
+
+## v3.8
+Neuer Bildschirm "Mitwirkende" im System-Menü - Ersteller, wer
+mitgeholfen hat, ein Dank an alle Spieler. Ganz normal sichtbar im
+Menü, kein Geheimnis wie der Entwicklerraum.
+
+## v3.7
+Geheimcodes auf reine Tastatur-Eingabe umgestellt (nicht mehr per
+Gamepad). Grund: Am Joypad gab es schlicht keine Taste mehr, die auf
+jedem Pad-Typ (gerade SNES-Nachbauten ohne L2/R2) garantiert
+wirkungslos ist. Neuer Hinweistext auf dem Geheimnisse-Bildschirm
+macht das transparent.
+
+## v3.6
+Echter Designfehler behoben: Die Geheimcodes nutzten ursprünglich "ok"
+und "back" für die Bestätigungs-Tasten - aber die lösen im Hauptmenü
+immer eine echte Wirkung aus (Kategorie betreten bzw. Beenden-Dialog),
+egal ob gerade ein Code eingegeben wird. Einer der Codes hätte dadurch
+nie vollständig eingegeben werden können. Jetzt werden "favorite" und
+"completed" verwendet - beide im Hauptmenü nachweislich wirkungslos,
+lösen also nie eine ungewollte Navigation aus. Alle Codes
+funktionieren jetzt tatsächlich vollständig, ohne die normale
+Bedienung während der Eingabe zu stören.
+
+## v3.5
+Bugfix: die Geheimcode-Erkennung lief bisher auf jeder Seite, nicht
+nur im Hauptmenü wie eigentlich vorgesehen. Einer der (kurzen) Codes
+hätte dadurch theoretisch auch während ganz normaler Navigation in
+einer Spieleliste ungewollt auslösen können. Jetzt nur noch im
+Hauptmenü aktiv - beim Seitenwechsel wird eine begonnene Eingabe
+sauber verworfen statt später überraschend fortgesetzt zu werden.
+
+## v3.4
+Max-Level-Boot-Effekt - eine kurze Einblendung beim Booten, sobald das
+Frontend-Level das Maximum erreicht hat. Läuft komplett unabhängig von
+der normalen Boot-Animation, kostet unter dem Maximum keine einzige
+zusätzliche Millisekunde. Die komplett alternative Boot-Animation
+bleibt vorerst zurückgestellt - deutlich aufwendiger (eigene
+Gestaltung + eigene CRT/HDMI-Performance-Abstimmung).
+
+## v3.3
+"Easter Egg System" - Frontend-Level (aus vorhandenen Daten
+abgeleitet) plus ein paar geheime Cheat-Codes mit echten Wirkungen,
+jeder schaltet ein anderes Geheimnis frei. Codes lassen sich beliebig
+oft eingeben, wie echte Cheat-Codes. Neue "Geheimnisse"-Übersicht im
+System-Menü zeigt "???" bis gefunden, dann Name und Herkunft - ohne
+die Codes selbst zu verraten.
+
+## v3.2
+Flackern beim Scrollen und dauerhafte Zeilen-Überlappung behoben -
+übernommen aus einer sorgfältigen, eigenständigen Fehlerdiagnose über
+mehrere Iterationen. Die eigentliche Ursache: die markierte Zeile hat
+einen leuchtenden Rand, der absichtlich etwas über die eigene Zeile
+hinausragt - wurde die Zeile darüber vor der Markierung gezeichnet,
+blieb dieser "Bleed" dauerhaft sichtbar, weil ihn nichts danach
+übermalt hat. Jetzt wird die markierte Zeile immer zuerst gezeichnet,
+Nachbarn (und im Sonderfall die Kopfzeile) danach - dazu eine neue
+VSync-Wartefunktion gegen Tearing und gebündeltes statt mehrfaches
+Bildschirm-Update beim Navigieren.
+
+## v3.1
+Abschließende Fehlerprüfung vor dem Gesamtpaket - dabei einen echten,
+kleinen Bug gefunden: der Trophäenraum zeigte bei fehlendem Cover den
+internen Text "no_artwork" wörtlich an, statt "kein Artwork" - ein
+falscher Übersetzungsschlüssel. Behoben, nutzt jetzt dieselbe, bereits
+vorhandene Übersetzung wie an anderer Stelle im Frontend. Ansonsten:
+Syntax, Regressionstest und ein automatisierter Abgleich aller Texte
+liefen sauber durch.
+
+## v3.0
+Eigener PNG-Decoder von Grund auf gebaut (Chunk-Parsing, komplette
+Zeilen-Entfilterung mit allen 5 PNG-Filtertypen, alle gängigen
+Farbtypen) - gegen Pillow als Referenz-Bibliothek bei echten
+PNG-Dateien byte-identisch geprüft. Damit zeigt die RA-Erfolgs-Vitrine
+(F6) jetzt echte Icons direkt am MiSTer-Bildschirm, nicht nur im
+Browser-Overlay. Icons werden vorab geladen, damit das Scrollen selbst
+flüssig bleibt, und dauerhaft lokal zwischengespeichert.
+
+## v2.9
+RA-Erfolge zeigen sich jetzt in Echtzeit im Streamer-Overlay - eine
+Einblendung oben rechts mit Icon, Titel, Beschreibung und Punkten,
+sobald ein Erfolg während des Spielens freigeschaltet wird (nicht erst
+nach Rückkehr ins Menü). Läuft nur, wenn das Overlay aktiv ist, mit
+eigenem Admin-Schalter zum Ein-/Ausschalten. Icons werden von RA
+einmalig geladen und dauerhaft zwischengespeichert.
+
+## v2.8
+F6 (RA-Erfolgs-Vitrine) zeigte ohne RetroAchievements-Einrichtung gar
+keine Rückmeldung - wirkte wie eine tote Taste. Jetzt zwei klare,
+unterschiedliche Meldungen: "RetroAchievements nicht eingerichtet",
+wenn gar keine Konfigurationsdatei existiert, und "Keine
+RetroAchievements-Daten für dieses Spiel", wenn RA zwar eingerichtet
+ist, aber für das gerade angeschaute Spiel nichts gefunden wird.
+
+## v2.7
+Neue RA-Erfolgs-Vitrine (Taste F6 bei einem Spiel mit
+RetroAchievements-Unterstützung) - zeigt die komplette Erfolgsliste
+(Name, Beschreibung, Punkte, freigeschaltet/nicht) statt nur der Zahl
+neben dem Cover. Bewusst als separate, eigenständige Funktion gebaut -
+die bestehende RA-Anzeige (Cover-Fortschritt, Erfolgsjäger,
+Trophäenraum) bleibt komplett unverändert. Vorerst als Text-Liste
+(Icons brauchen einen eigenen PNG-Decoder, den es noch nicht gibt -
+kommt evtl. später). Die dafür nötige RA-GameID wird jetzt aus der
+bestehenden Abfrage mitgenommen, ohne dass sich an deren Verhalten
+etwas ändert.
+
+## v2.6
+Die System-Jingles aus v2.5 wieder entfernt - haben nicht gefallen.
+Komplett zurückgebaut, keine Reste. Das CRT-Testbild aus derselben
+Version bleibt bestehen.
+
+## v2.5
+Zwei neue Features: Jeder System-Einstieg bekommt jetzt einen kurzen,
+eigenen Klang (14 Systeme, eigene erfundene Töne, keine Nachbildung
+echter Konsolensounds) - spielt nur im Menü, vor jedem möglichen
+Spielstart, stört also kein Intro-Video. Und ein CRT-Testbild im
+System-Menü ("CRT-Testbild") - Geometrie-Rahmen, Raster, Farbbalken,
+Zentrierkreuz, wie das alte Servicemenü echter Röhren-Monitore.
+
+## v2.4
+Bugfix: das Erfolgs-Pop-up blieb aus, wenn ein Erfolg ausgerechnet
+während der allerersten Spielsitzung neu erreicht wurde (z. B. drei
+verschiedene Systeme gestartet) - der Erfolg zeigte sich zwar korrekt
+in "Meine Erfolge", aber ohne Pop-up/Ton. Die Schutzlogik gegen eine
+Pop-up-Flut bei längerer Spielhistorie initialisiert sich jetzt schon
+beim Programmstart statt erst beim ersten tatsächlichen Ereignis -
+dadurch werden ab sofort auch Erfolge aus der allerersten Sitzung
+zuverlässig gemeldet.
+
+## v2.3
+Neue Kategorie "RA-Erfolgsjäger" (direkt vor "Scripts" im Hauptmenü) -
+zeigt alle Spiele in deiner Sammlung, die RetroAchievements-Erfolge
+haben, bei denen du aber noch nichts freigeschaltet hast. Gruppiert
+nach System, pro System nach Anzahl verfügbarer Erfolge sortiert (die
+größten Gelegenheiten zuerst). Funktioniert wie deine eigenen
+ROM-Unterordner - reinklicken, System wählen, loslegen. Taucht nur
+auf, wenn RetroAchievements eingerichtet ist und tatsächlich etwas
+gefunden wird.
+
+## v2.2
+Neue Option für NAS-Nutzer: "Beim Start auf NAS/Netzwerk warten" im
+System-Menü (Standard AUS). Liegen ROMs auf einem Netzlaufwerk, kann
+der Scan beim Booten starten, bevor die Verbindung wirklich steht -
+die dann leere/unvollständige Liste würde sogar dauerhaft gecacht
+werden. Mit eingeschalteter Option wartet das Frontend erst auf
+Netzwerk und einen stabilen Ordnerinhalt, bevor gescannt wird. Für
+SD-Karte/USB (die meisten Fälle) bleibt der Start unverändert schnell
+- die Option kostet nur etwas, wenn man sie aktiv einschaltet.
+
+## v2.1
+"Weiterspielen" jetzt abgestimmt auf TheRealSutefans neues
+"ra_lastplayed.sh"-Skript (nutzt MiSTers eigene Recent-Dateien, erfasst
+dadurch jeden Spielstart - nicht nur was über unser Frontend lief).
+"Weiterspielen" bevorzugt jetzt diese genauere externe Liste, falls
+ein solches Skript aktiv ist, sonst unverändert unsere eigene. Dabei
+auch eine Namens-Falle behoben: externe Einträge haben ein
+Core-Präfix ("RA SNES - Chrono Trigger"), unsere
+Durchgespielt-Markierung aber nur den reinen Namen - ohne den Fix
+hätte "Weiterspielen" längst durchgespielte Titel weiter vorgeschlagen.
+
 ## v2.0
 Neuer Bildschirm "Trophäenraum" (System-Menü → "Mein Trophäenraum") -
 ein persönlicher Profil-Screen statt trockener Zahlen: großes Cover

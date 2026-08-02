@@ -25,3 +25,20 @@ test/
 test_*/
 debug_*.png
 preview_*.png
+pv_*/
+pv_music_enabled
+screenshot_art/
+screenshot_meta/
+screenshot_bg/
+screenshot_music/
+screenshot_music_enabled
+bench*/
+*_test/
+install_offline_test/
+uninstall_test/
+
+# Ausnahme: die ECHTEN, fuer README/VORSCHAU bestimmten Screenshots -
+# die obige preview_*.png-Regel (gedacht fuer temporaere Debug-Renders
+# waehrend der Entwicklung) hat diese bislang versehentlich mit
+# ausgeschlossen, obwohl sie bewusst eingecheckt werden sollen.
+!screenshots/preview_*.png
