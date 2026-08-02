@@ -4,6 +4,20 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v3.2 — KRITISCHER BUGFIX Teil 2
+Der v3.1-Fix allein reichte nicht — Bildschirm blieb weiterhin
+schwarz. Diesmal den echten, strukturellen Fehler gefunden und per
+gezieltem Test unter simulierten Fehlerbedingungen **nachgewiesen**,
+nicht nur vermutet: `read_action(timeout=...)` prüfte die
+Zeitüberschreitung nur am Ende der Schleife. Schlägt die
+Geräteabfrage mit einem Systemfehler fehl, sprang der Code direkt
+zum Schleifenanfang zurück — unter Umgehung der Zeitprüfung.
+Wiederholt sich der Fehler, entsteht eine echte Endlosschleife, die
+die Zeitüberschreitung nie mehr erreicht. Das wurde erst durch die
+neue Boot-Animation sichtbar, da sie diese Funktion so früh im
+Programmablauf aufruft wie nie zuvor. Fix: Zeitprüfung zusätzlich an
+den Schleifenanfang verschoben — kein Pfad kann sie mehr umgehen.
+
 ## v3.1 — KRITISCHER BUGFIX
 Direkt nach dem v3.0-Update auf echter Hardware gemeldet: Bildschirm
 bleibt nach dem Start schwarz, nichts passiert mehr. Vermutete Ursache
