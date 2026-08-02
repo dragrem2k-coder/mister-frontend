@@ -1,4 +1,4 @@
-# MiSTer Custom Frontend v3.0 - Komplettbuild (Stand: 2026-08-02)
+# MiSTer Custom Frontend v3.0
 
 **Von Dragrem2K**, mit Beiträgen von **TheRealSuTefan**, **Dfense**
 und **Dennsen**.
