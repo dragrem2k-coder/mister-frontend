@@ -4,6 +4,15 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v5.2
+Neue Standard-Boot-Animation: ein D-Pad-Symbol, das flackernd "zum
+Leben erwacht", statt eines direkten Sprungs ins Menü. Bisher
+passierte ohne eigene, selbst erstellte Boot-Animation gar nichts
+Sichtbares. Komplett aus den eigenen Zeichen-Mitteln gebaut (kein
+Video/Bild-Codec), läuft nur, wenn keine eigene Animation vorhanden
+ist - wer sich per `video_to_bootanim.py` was Eigenes erstellt hat,
+bleibt davon unberührt.
+
 ## v5.1
 Vermuteter Bugfix (keine Log-Datei verfügbar, per Analyse hergeleitet):
 nach einem Soft-Reset kommt das Frontend manchmal nicht wieder, ohne
