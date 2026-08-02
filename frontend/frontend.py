@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v3.0
+MiSTer Custom Frontend - v3.1
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
@@ -26,6 +26,46 @@ der komplette bisherige Funktionsumfang (Trophaeenraum, Sammlungen,
 Jahresrueckblick, Spieltagebuch, Boot-Fixes, Performance-Arbeit usw.)
 bleibt vollstaendig erhalten, nur die Nummerierung wird bewusst
 zurueckhaltender.
+
+Neu in v3.1 (KRITISCHER BUGFIX, vermutete Ursache: Frontend startet
+nach dem v3.0-Update auf echter Hardware, Bildschirm bleibt schwarz,
+nichts passiert mehr):
+  - Nutzer-Rueckmeldung DIREKT nach dem Update auf echter Hardware
+    (kein Log verfuegbar): Bildschirm wird schwarz, dann komplett
+    still - genau das Bild eines HAENGENDEN Aufrufs, nicht eines
+    Absturzes (ein Absturz waere geloggt und haette die alte
+    Bildschirmanzeige stehen lassen, kein neues Schwarz gezeigt).
+  - Wahrscheinlichste Ursache (per Analyse hergeleitet, da meine
+    eigenen Regressionstests flip() immer nur als Attrappe simulieren
+    und einen echten Hardware-Hang NIE haetten auffangen koennen -
+    siehe Vereinbarung "mehr Hardware-Gegenprobe als Selbst-
+    Regressionstests"): die neue Standard-Boot-Animation
+    (_draw_default_boot_icon(), zuvor als v5.2 gezaehlt) ruft flip()
+    jetzt viel FRUEHER auf als je zuvor - direkt nach dem Systemstart,
+    moeglicherweise waehrend MiSTer selbst noch mitten im Uebergang
+    steckt. flip() wartet per ioctl (FBIO_WAITFORVSYNC) auf den
+    naechsten Bildwechsel, BEVOR geschrieben wird. Schlaegt dieser
+    ioctl in diesem fragilen Fenster nicht schnell fehl, sondern
+    HAENGT er, waere das exakt das gemeldete Bild - und kein try/except
+    haette das retten koennen, da ein haengender ioctl-Aufruf sich
+    nicht per Python-Exception unterbrechen laesst.
+  - Fix: _draw_default_boot_icon() umgeht flip() (und damit den
+    VSync-Wartemechanismus) komplett, schreibt stattdessen direkt in
+    den Framebuffer-Speicher. Fuer eine derart kurze, wenige Mal
+    flackernde Animation ist ein winziges Tearing-Risiko ein deutlich
+    kleineres Uebel als ein moeglicher kompletter Stillstand des
+    gesamten Frontends.
+  - WICHTIG: dies ist eine begruendete Vermutung, keine bestaetigte
+    Diagnose (keine Log-Datei verfuegbar) - der Fix ist aber in jedem
+    Fall risikoarm (nur diese eine, sehr kurze Animation betroffen)
+    und behebt das wahrscheinlichste Szenario.
+  - Getestet: komplette Sequenz mit simuliertem echten mmap-Objekt
+    (statt der bisherigen reinen No-Op-Attrappe) - kein Absturz bei
+    CRT UND HDMI, Speicher wird nachweislich korrekt synchronisiert.
+    Faellt-durch-Logik (Markierungsdatei, Ueberspringen per Taste,
+    keine Einmischung bei eigener Animation) erneut bestaetigt,
+    unveraendert korrekt. 56 Kombinationen kompletter Regressionstest
+    bestanden.
 
 Neu in v3.0 (Versions-Neuordnung, siehe oben - kein neues Feature.
 Enthaelt inhaltlich das, was zuvor als v5.2 gezaehlt haette):
@@ -11997,7 +12037,28 @@ class Frontend:
                 if color == accent:
                     fb.text((W - title_w) // 2, title_y, title,
                             title_scale, accent, (0, 0, 0))
-            fb.flip()
+            # BUGFIX (Nutzer-Rueckmeldung von echter Hardware: nach dem
+            # Update bleibt der Bildschirm schwarz, nichts passiert mehr -
+            # per Analyse hergeleitet, da keine Log-Datei half): normales
+            # flip() wartet per ioctl (FBIO_WAITFORVSYNC) auf den naechsten
+            # Bildwechsel, BEVOR geschrieben wird - bisher war das immer
+            # sicher, WEIL flip() erst beim allerersten ECHTEN Menue-Aufbau
+            # aufgerufen wurde, zu einem Zeitpunkt, an dem das System
+            # laengst stabil laeuft. Diese neue Standard-Animation ruft
+            # flip() jetzt aber viel FRUEHER auf, direkt nach dem
+            # Systemstart, moeglicherweise waehrend MiSTer selbst noch
+            # mitten im Uebergang steckt. Schlaegt der ioctl in diesem
+            # fragilen Fenster nicht sauber und schnell fehl, sondern
+            # HAENGT er (statt einen Fehler zu werfen), wuerde das
+            # exakt zum gemeldeten Bild passen - und ein try/except haette
+            # das NICHT retten koennen, da ein haengender ioctl-Aufruf sich
+            # nicht per Python-Exception unterbrechen laesst. Deshalb hier
+            # bewusst der VSync-Wartemechanismus komplett umgangen (direkter
+            # Speicherschreibvorgang) - fuer eine derart kurze, wenige Mal
+            # flackernde Animation ist ein winziges Tearing-Risiko ein
+            # deutlich kleineres Uebel als ein moeglicher kompletter
+            # Stillstand des gesamten Frontends.
+            fb.mm[:] = fb.buf
             if self.inp.read_action(timeout=hold) is not None:
                 return   # ESC/beliebige Taste ueberspringt den Rest
 
