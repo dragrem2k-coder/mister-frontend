@@ -4,6 +4,19 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v3.5 — vier Bugfixes anhand echter CRT-Fotos
+- "??? (einfach" und dann nichts mehr: der v3.4-Fix zeigte bei
+  versteckten Erfolgen nur die erste umgebrochene Zeile, der Rest
+  verschwand komplett. Jetzt vollständige Mehrzeilen-Darstellung.
+- Zeitanzeige bei Fortschrittswerten jetzt durchgängig "Stunden dann
+  Minuten" statt eines Farbmixes aus Minuten und Stunden.
+- Trophäenraum: Text lief quer durchs Boxart-Cover auf CRT. Cover
+  bleibt jetzt fest, Statistik + Zusammenfassung sind eine gemeinsame
+  scrollbare Liste.
+- Geheimcode-Popup erscheint jetzt zentriert statt links unten am Rand.
+- Geklärt: der geheime Sound existiert, war vermutlich nur unhörbar,
+  weil Soundeffekte unterdrückt werden, solange Musik läuft.
+
 ## v3.4 — CRT-Textabschneide-/Scroll-Fixes über acht Bildschirme
 Nutzer ging systematisch mehrere Bildschirme auf CRT durch: Mitwirkende
 und Geheimnisse ließen sich nicht scrollen, und auf praktisch jedem
