@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v3.5
+MiSTer Custom Frontend - v3.2
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
@@ -27,591 +27,93 @@ Jahresrueckblick, Spieltagebuch, Boot-Fixes, Performance-Arbeit usw.)
 bleibt vollstaendig erhalten, nur die Nummerierung wird bewusst
 zurueckhaltender.
 
-Neu in v3.5 (vier Bugfixes anhand echter CRT-Fotos, plus Klaerung
-zum geheimen Sound):
-  - "??? (einfach" und dann nichts mehr: die v3.4-Fassung zeigte bei
-    versteckten Erfolgen nur die ERSTE umgebrochene Zeile
-    (_wrap_text()[0]), der Rest wurde STILLSCHWEIGEND VERWORFEN -
-    schlimmer als das urspruengliche Tilde-Problem, weil hier echte
-    Information (der komplette Hinweistext) verloren ging. Fix: volle
-    Mehrzeilen-Darstellung fuer "hidden"-Zeilen (keine Kollision mit
-    einer Fortschrittsanzeige wie bei "milestone"-Zeilen). ZUSAETZLICH
-    dabei gefunden: die maxc-Berechnung fuer "hidden"-Zeilen teilte
-    sich bisher die (fuer Fortschrittsanzeigen stark eingeschraenkte)
-    Breite mit "milestone"-Zeilen, obwohl "hidden"-Zeilen gar keine
-    Fortschrittsanzeige haben - eigene, breitere Berechnung ergaenzt.
-  - Zeitanzeige bei Fortschrittswerten (Foto zeigte "14min/100h" -
-    Aktuell-/Zielwert in unterschiedlichen Einheiten nebeneinander,
-    schwer vergleichbar): _format_seconds_short() zeigt jetzt
-    durchgaengig "Stunden dann Minuten" (z.B. "0h 14min/100h 0min"),
-    reservierter Platz dafuer entsprechend vergroessert.
-  - Trophaeenraum: Text lief quer durchs Boxart-Cover (Foto). Ursache:
-    auf CRT reicht die Bildschirmhoehe nicht fuer Cover + alle
-    Statistik-Zeilen + Zusammenfassung gleichzeitig - das vorherige
-    "nach oben wachsen lassen" der Zusammenfassung verschob das
-    Problem nur. Jetzt: Cover bleibt an fester Position, Statistik +
-    Zusammenfassung sind eine gemeinsame SCROLLBARE Liste (Nutzer-
-    Vorschlag direkt umgesetzt).
-  - Geheimcode-Popup erschien links unten am Bildschirmrand statt
-    zentriert - an beiden Stellen, wo Popups erscheinen (Kategorien-
-    und Spieleliste), jetzt horizontal zentriert.
-  - Geklaert (kein Bugfix): der geheime Sound existiert tatsaechlich
-    (verspielter, vierstufiger Klang) - vermutlich unhoerbar geblieben,
-    weil Soundeffekte grundsaetzlich unterdrueckt werden, solange
-    Musik laeuft (bewusste Absicherung gegen Audio-Geraete-Konflikte).
-  - Getestet: "weiterspielen)" nachweislich vollstaendig sichtbar (DE
-    UND EN, CRT UND HDMI, mit ausreichend Scroll-Puffer). Zeitformat
-    isoliert bestaetigt. Trophaeenraum: "Batman Returns" vollstaendig
-    sichtbar bei CRT UND HDMI, kein Absturz. Popup-Zentrierung per
-    Positionsvergleich bestaetigt (erwartete vs. tatsaechliche X-
-    Position). 56 Kombinationen kompletter Regressionstest bestanden.
+ZWEITE KONSOLIDIERUNGSRUNDE: trotz der neuen Regelung waren zwischen
+v3.0 und v3.5 in kurzer Zeit sechs Versionsnummern entstanden (vor
+allem, weil ein kritischer Bug drei Anlaeufe brauchte, bis die echte
+Ursache gefunden war). Nutzerwunsch: "bitte alles was ab v3.1 gekommen
+ist zusammenfuehren auf v3.2, nicht wieder dieses schnelle
+Hochzaehlen". Alles inhaltlich Passierte (Boot-Animation, drei
+Bugfix-Anlaeufe, CRT-Textumbruch-Fixes, RA-Vitrine-Cache) bleibt
+vollstaendig erhalten - nur als EIN gebuendelter v3.2-Eintrag statt
+sechs einzelner.
 
-  BEIM TESTEN GEFUNDEN UND KORRIGIERT (zwei falsche Testannahmen
-  meinerseits, kein Code-Fehler): mein erster Testlauf schlug fehl,
-  weil das Testmodul standardmaessig auf Englisch laeuft (nicht
-  Deutsch) - nach Sprachkorrektur zeigte sich EIN WEITERER, echter
-  Fehler (die geteilte maxc-Berechnung oben), der ohne den zweiten,
-  genauen Testdurchlauf unentdeckt geblieben waere.
+Neu in v3.2 (Nutzerwunsch: "bitte alles was ab v3.1 gekommen ist
+zusammenfuehren auf v3.2, nicht wieder dieses schnelle Hochzaehlen" -
+konsolidierte Zusammenfassung von allem, was zwischen dem Start bei
+v3.0 und hier passiert ist):
 
-Neu in v3.4 (BEDIENBARKEIT: systematische CRT-Textabschneide-/
-Scroll-Fixes ueber acht Info-Bildschirme hinweg, sehr ausfuehrliche
-Nutzer-Rueckmeldung):
-  - Nutzer ging systematisch mehrere Bildschirme auf CRT durch und
-    fand ein wiederkehrendes Muster: Mitwirkende/Geheimnisse liessen
-    sich nicht scrollen (nicht alles sichtbar), UND auf praktisch
-    jedem Info-Bildschirm wurden lange Zeilen mitten im Wort mit "~"
-    abgeschnitten, Rest unlesbar (Trophaeenraum "Meistgespielt: B~",
-    Jahresrueckblick-Leermeldung, Hilfe-Uebersicht "Kategorie/Ord~"
-    usw.).
-  - Neue Basis-Funktion _wrap_text(): bricht Text an WORTGRENZEN um
-    (liefert eine Liste von Zeilen), statt hart mitten im Wort
-    abzuschneiden - nur ein einzelnes, selbst zu langes Wort wird
-    (nur dieses) hart getrennt.
-  - Mitwirkende + Geheimnisse: komplett auf scrollbare Zeilenliste
-    umgestellt (wie draw_milestones_screen()) - Geheimnisse damit
-    auch zukunftssicher fuer weitere, spaeter dazukommende Eintraege.
-  - Trophaeenraum + Jahresrueckblick: Statistik-Zeilen und die
-    Zusammenfassung ganz unten brechen jetzt um statt abzuschneiden
-    (Zusammenfassung vorher: Schriftverkleinerung statt Umbruch -
-    haette bei langem Text sehr klein/unlesbar werden koennen).
-    Leermeldungen (Jahresrueckblick, Spieltagebuch) ebenfalls
-    umbruchsicher gemacht - vorher OHNE jede Absicherung.
-  - Spieltagebuch: komplett auf einheitliche, einzeln umgebrochene
-    Zeilen umgestellt (statt eines starren "2 Zeilen pro Eintrag"-
-    Layouts) - ein langer Titel bekommt automatisch so viele Zeilen
-    wie er braucht.
-  - Hilfe-Uebersicht: Zeilen werden jetzt VOR dem Scroll-Aufbau
-    umgebrochen statt beim Zeichnen abgeschnitten.
-  - Zusaetzlich mitgefunden und behoben (gleiche Ursache, nicht
-    explizit gemeldet, aber dieselbe Kategorie Fehler): Erfolge-Liste
-    (Milestones), Top-10-Listen und die RA-Erfolgs-Vitrine (F6) hatten
-    dieselbe Abschneide-Schwaeche.
-  - Getestet: alle acht betroffenen Bildschirme mit gezielt SEHR
-    langen Testnamen ("Spiel mit einem wirklich sehr langen Namen")
-    auf CRT UND HDMI durchlaufen - kein einziges Tilde-Abschneiden
-    mehr nachweisbar, ueber alle Scroll-Positionen hinweg (nicht nur
-    den ersten sichtbaren Ausschnitt). _wrap_text() selbst einzeln
-    getestet (normaler Umbruch, extrem langes Einzelwort, kurzer/
-    leerer Text). 56 Kombinationen kompletter Regressionstest
-    bestanden.
+  STANDARD-BOOT-ANIMATION: D-Pad-Symbol, das flackernd "zum Leben
+  erwacht", statt eines direkten Sprungs ins Menue, wenn keine eigene
+  Boot-Animation existiert (der Normalfall). Komplett aus eigenen
+  Zeichen-Mitteln gebaut, bewusst eigenstaendig gestaltet.
 
-Neu in v3.3 (KRITISCHER BUGFIX Teil 3 - JETZT mit echter Log-Datei
-bestaetigt, nicht mehr vermutet):
-  - Nutzer schickte diesmal die tatsaechliche /tmp/frontend.log -
-    zeigte einen simplen, eindeutigen Programmierfehler, VOELLIG
-    unabhaengig von den beiden vorherigen Vermutungen (VSync/flip()
-    und read_action()-Deadline): AttributeError: 'Frontend' object
-    has no attribute '_ra_lookup', in build_ra_hunter_category(),
-    aufgerufen aus build_categories(), aufgerufen aus __init__().
-  - Der Fehler: self.build_categories() wurde in __init__() aufgerufen,
-    BEVOR self._ra_lookup ueberhaupt gesetzt wurde (der RA-Setup-Block
-    stand weiter unten in derselben Funktion). Reiner Reihenfolge-
-    Fehler. Betraf NUR Nutzer mit tatsaechlich eingerichtetem
-    RetroAchievements (ra_enabled() muss True liefern, damit Python
-    ueberhaupt bis zum zweiten "or"-Operanden auswertet, der den
-    fehlenden Attributzugriff ausloest) - erklaert vermutlich, warum
-    das nicht schon frueher jedem aufgefallen ist.
-  - WARUM DIE EIGENEN REGRESSIONSTESTS DAS NIE GEFANGEN HABEN (wichtige
-    Lehre): JEDER einzelne Test in dieser Datei setzt "f._ra_lookup = {}"
-    von Hand als Standard-Testaufbau, bevor draw()/build_categories()
-    aufgerufen wird - das hat diesen Reihenfolge-Fehler die ganze Zeit
-    ueberdeckt, da der echte Frontend()-Konstruktor nie end-to-end
-    durchlaufen wurde. Erst der tatsaechliche Absturz-Log von echter
-    Hardware hat den wahren Fehler gezeigt.
-  - Fix: kompletter RA-Setup-Block (self._ra_lookup und zugehoerige
-    Attribute, inklusive des zeitlich begrenzten Abrufs) VOR
-    self.build_categories() verschoben.
-  - Getestet: DIESMAL durch den ECHTEN Frontend()-Konstruktor (nicht
-    nur mit manuell vorgesetztem _ra_lookup wie bisher ueberall in
-    dieser Datei) - sowohl mit ra_enabled()=False als auch =True
-    (inkl. erfolgreichem, aber leerem Abruf) bestaetigt: kein
-    AttributeError mehr, self._ra_lookup korrekt gesetzt bevor
-    build_categories() darauf zugreift. 56 Kombinationen kompletter
-    Regressionstest weiterhin bestanden.
+  DREI AUFEINANDERFOLGENDE VERSUCHE, EINEN KRITISCHEN BUGFIX ZU FINDEN
+  (Nutzer-Rueckmeldung von echter Hardware: nach dem Update auf die
+  neue Boot-Animation blieb der Bildschirm schwarz, nichts passierte
+  mehr):
+  - Versuch 1 (vermutet): flip()/VSync in der neuen Boot-Animation
+    koennte so frueh im Programmablauf haengen bleiben - umgangen,
+    reichte allein aber nicht.
+  - Versuch 2 (vermutet, dann per Test bewiesen): read_action(timeout=
+    ...) pruefte die Zeitueberschreitung nur am Schleifenende - ein
+    wiederholt fehlschlagender Geraete-Abruf konnte diese Pruefung
+    umgehen und die Funktion fuer immer blockieren. Per gezieltem Test
+    mit einer dauerhaft fehlschlagenden Simulation nachgewiesen und
+    behoben.
+  - Versuch 3 (JETZT MIT ECHTER LOG-DATEI BESTAETIGT, die eigentliche
+    Ursache): AttributeError: 'Frontend' object has no attribute
+    '_ra_lookup' - build_categories() wurde in __init__() aufgerufen,
+    BEVOR der RA-Setup-Block das Attribut gesetzt hatte. Reiner
+    Reihenfolge-Fehler, betraf nur Nutzer mit eingerichtetem
+    RetroAchievements. Keiner der eigenen Regressionstests hatte das
+    gefangen, weil sie alle _ra_lookup manuell vorab setzten statt den
+    echten Konstruktor zu durchlaufen - jetzt auch DURCH den echten
+    Konstruktor getestet.
 
-Neu in v3.2 (KRITISCHER BUGFIX Teil 2 - der v3.1-Fix allein reichte
-nicht, Nutzer meldete weiterhin schwarzen Bildschirm nach dem Update):
-  - Der echte, strukturelle Fehler gefunden (per gezieltem Test unter
-    simulierten Fehlerbedingungen NACHGEWIESEN, nicht nur vermutet):
-    InputManager.read_action(timeout=...) hatte die Deadline-Pruefung
-    bisher NUR am ENDE der Schleife. Schlaegt select.select() mit
-    OSError fehl (z.B. ein kaputtes/nicht erreichbares Eingabegeraet),
-    sprang der Code per "continue" DIREKT zum Schleifenanfang zurueck -
-    UNTER UMGEHUNG der Deadline-Pruefung. Wiederholt sich der Fehler
-    (z.B. weil rescan() dasselbe problematische Geraet immer wieder
-    findet, ohne das zugrundeliegende Problem zu loesen), entsteht eine
-    ECHTE ENDLOSSCHLEIFE, die die Zeitueberschreitung NIE prueft -
-    unabhaengig vom uebergebenen timeout-Wert.
-  - Warum das genau JETZT sichtbar wurde: read_action(timeout=...) wird
-    durch die neue Standard-Boot-Animation zum ALLERERSTEN MAL so frueh
-    im Programmablauf aufgerufen - zu einem Zeitpunkt, an dem
-    Eingabegeraete moeglicherweise noch nicht vollstaendig bereit sind.
-    Vorher wurde diese Funktion erst beim ersten echten Menue-Aufbau
-    aufgerufen, zu einem Zeitpunkt, an dem alles laengst stabil lief.
-  - Fix: Deadline-Pruefung zusaetzlich an den ANFANG jeder Schleifenrunde
-    verschoben - dadurch kann KEIN Pfad durch die Schleife (auch nicht
-    nach einem continue) die Pruefung mehr umgehen.
-  - Getestet: mit einer gezielt IMMER fehlschlagenden select()-Simulation
-    (das exakte vermutete Fehlerbild) - VOR dem Fix haette dieser Test
-    ewig gehaengt, NACH dem Fix kehrt die Funktion nachweislich nach
-    exakt der angeforderten Zeit (0.2s) zurueck, keine Sekunde laenger.
-    Normaler, funktionierender Geraete-Fall separat bestaetigt weiterhin
-    sofort und korrekt (keine Regression). 56 Kombinationen kompletter
-    Regressionstest bestanden.
+  CRT-TEXTABSCHNEIDE-/SCROLL-FIXES UEBER NEUN INFO-BILDSCHIRME
+  (mehrere Runden Nutzer-Rueckmeldungen, teils mit echten CRT-Fotos):
+  - Neue _wrap_text(): bricht Text an WORTGRENZEN um statt hart mitten
+    im Wort mit "~" abzuschneiden.
+  - Mitwirkende + Geheimnisse: komplett auf scrollbare Liste
+    umgestellt (vorher weder scrollbar noch umbruchsicher).
+  - Trophaeenraum: Text lief auf CRT quer durchs Boxart-Cover (zu
+    wenig Vertikalraum fuer Cover+Statistik+Zusammenfassung
+    gleichzeitig). Jetzt: Cover bleibt fest, Statistik+Zusammenfassung
+    sind eine gemeinsame SCROLLBARE Liste.
+    Zusaetzlicher Bugfix dabei: eine erste Umbruch-Fassung zeigte bei
+    versteckten Erfolgen nur die erste umgebrochene Zeile, der Rest
+    verschwand STILLSCHWEIGEND - schlimmer als das urspruengliche
+    Tilde-Problem. Behoben mit vollstaendiger Mehrzeilen-Darstellung
+    UND einer eigenen, breiteren maxc-Berechnung (die vorige Fassung
+    teilte sich die fuer Fortschrittsanzeigen eingeschraenkte Breite
+    mit Zeilen, die gar keine Fortschrittsanzeige haben).
+  - Jahresrueckblick, Spieltagebuch, Hilfe-Uebersicht: Leermeldungen
+    und Zeilen ebenfalls umbruchsicher statt abgeschnitten/verloren.
+  - Gleiche Schwaeche zusaetzlich in Erfolge-Liste, Top-10-Listen und
+    RA-Erfolgs-Vitrine gefunden und mitbehoben.
+  - Zeitanzeige bei Fortschrittswerten (war z.B. "14min/100h" -
+    unterschiedliche Einheiten nebeneinander): jetzt durchgaengig
+    "Stunden dann Minuten" (z.B. "0h 14min/100h 0min").
+  - Geheimcode-Popup erschien links unten am Rand statt zentriert -
+    jetzt an beiden Anzeigestellen horizontal zentriert.
+  - Geklaert (kein Bug): der geheime Sound existiert (vierstufiger
+    Klang) - vermutlich nur unhoerbar geblieben, weil Soundeffekte
+    grundsaetzlich unterdrueckt werden, solange Musik laeuft.
 
-Neu in v3.1 (KRITISCHER BUGFIX, vermutete Ursache: Frontend startet
-nach dem v3.0-Update auf echter Hardware, Bildschirm bleibt schwarz,
-nichts passiert mehr):
-  - Nutzer-Rueckmeldung DIREKT nach dem Update auf echter Hardware
-    (kein Log verfuegbar): Bildschirm wird schwarz, dann komplett
-    still - genau das Bild eines HAENGENDEN Aufrufs, nicht eines
-    Absturzes (ein Absturz waere geloggt und haette die alte
-    Bildschirmanzeige stehen lassen, kein neues Schwarz gezeigt).
-  - Wahrscheinlichste Ursache (per Analyse hergeleitet, da meine
-    eigenen Regressionstests flip() immer nur als Attrappe simulieren
-    und einen echten Hardware-Hang NIE haetten auffangen koennen -
-    siehe Vereinbarung "mehr Hardware-Gegenprobe als Selbst-
-    Regressionstests"): die neue Standard-Boot-Animation
-    (_draw_default_boot_icon(), zuvor als v5.2 gezaehlt) ruft flip()
-    jetzt viel FRUEHER auf als je zuvor - direkt nach dem Systemstart,
-    moeglicherweise waehrend MiSTer selbst noch mitten im Uebergang
-    steckt. flip() wartet per ioctl (FBIO_WAITFORVSYNC) auf den
-    naechsten Bildwechsel, BEVOR geschrieben wird. Schlaegt dieser
-    ioctl in diesem fragilen Fenster nicht schnell fehl, sondern
-    HAENGT er, waere das exakt das gemeldete Bild - und kein try/except
-    haette das retten koennen, da ein haengender ioctl-Aufruf sich
-    nicht per Python-Exception unterbrechen laesst.
-  - Fix: _draw_default_boot_icon() umgeht flip() (und damit den
-    VSync-Wartemechanismus) komplett, schreibt stattdessen direkt in
-    den Framebuffer-Speicher. Fuer eine derart kurze, wenige Mal
-    flackernde Animation ist ein winziges Tearing-Risiko ein deutlich
-    kleineres Uebel als ein moeglicher kompletter Stillstand des
-    gesamten Frontends.
-  - WICHTIG: dies ist eine begruendete Vermutung, keine bestaetigte
-    Diagnose (keine Log-Datei verfuegbar) - der Fix ist aber in jedem
-    Fall risikoarm (nur diese eine, sehr kurze Animation betroffen)
-    und behebt das wahrscheinlichste Szenario.
-  - Getestet: komplette Sequenz mit simuliertem echten mmap-Objekt
-    (statt der bisherigen reinen No-Op-Attrappe) - kein Absturz bei
-    CRT UND HDMI, Speicher wird nachweislich korrekt synchronisiert.
-    Faellt-durch-Logik (Markierungsdatei, Ueberspringen per Taste,
-    keine Einmischung bei eigener Animation) erneut bestaetigt,
-    unveraendert korrekt. 56 Kombinationen kompletter Regressionstest
-    bestanden.
+  NEUES FEATURE: kurzlebiger Cache (15 Minuten) fuer die F6-RA-
+  Erfolgs-Vitrine (Nutzerwunsch: "dauert ganz schoen bis die Erfolge
+  angezeigt werden, kann man das speichern/beschleunigen?"). Bewusst
+  NUR fuer die Vitrine (einmaliges Ansehen eines beendeten Spiels) -
+  der separate Hintergrund-Watcher, der waehrend des Spielens auf neu
+  verdiente Erfolge lauscht, bleibt bewusst UNGECACHT, damit neue
+  Erfolge zeitnah erkannt werden.
 
-Neu in v3.0 (Versions-Neuordnung, siehe oben - kein neues Feature.
-Enthaelt inhaltlich das, was zuvor als v5.2 gezaehlt haette):
-
-- NEUES FEATURE: Standard-Boot-Animation - D-Pad-Symbol, das
-  flackernd "zum Leben erwacht", statt eines direkten Sprungs ins
-  Menue.
-  - Nutzerwunsch: standardmaessig eine kurze Boot-Anzeige dabei haben,
-    nicht nur fuer Leute, die sich per video_to_bootanim.py eine
-    eigene Animation bauen. Bisher passierte ohne eigenes Boot-
-    Animation-Verzeichnis (der Normalfall) gar nichts Sichtbares -
-    play_boot_animation() kehrte sofort zurueck.
-  - Neue _draw_default_boot_icon(): D-Pad-Kreuz aus nur zwei sich
-    ueberlappenden rect()-Aufrufen (kein Pixel-Bitmap noetig), Flacker-
-    Sequenz (dunkel -> aus -> mittel -> aus -> voll) simuliert eine
-    alte Roehre, die "warm wird". Komplett aus unseren eigenen,
-    laengst vorhandenen Zeichen-Mitteln gebaut, kein Bild/Video-Codec.
-    Bewusst EIGENSTAENDIG gestaltet, keine Anlehnung an ein echtes
-    Konsolen-Boot-Logo (gleiche Vorsicht wie beim Soundthema).
-  - Eingebunden als Fallback in play_boot_animation(): laeuft NUR, wenn
-    kein eigenes Boot-Animation-Verzeichnis mit Frames existiert. Bei
-    vorhandener eigener Animation bleibt die bestehende Funktion
-    komplett unveraendert.
-  - PERFORMANCE: das Vorwaermen aus v5.0 (Vignetten-Cache vor der
-    Boot-Animation) um Schwarz (0,0,0) erweitert, da die neue
-    Animation auf einer ANDEREN Farbe als C_BG zeichnet - ohne diese
-    Erweiterung waere derselbe einmalige Ruck (~98ms bei 1080p in
-    dieser Sandbox), den v5.0 fuer C_BG behoben hatte, hier fuer
-    Schwarz erneut aufgetreten.
-  - BUGFIX (beim eigenen Testen gefunden, vor jeder Auslieferung
-    behoben): die erste Fassung schrieb im Fallback-Pfad die
-    "schon gezeigt"-Markierungsdatei NICHT (fruehes return ueberspringt
-    den Code dafuer) - die Standard-Animation haette dadurch bei JEDEM
-    Frontend-Start erneut abgespielt, nicht nur einmal pro Boot.
-  - Getestet: komplette Sequenz ohne Absturz bei CRT UND HDMI.
-    Unterbrechung per Tastendruck funktioniert sofort. Markierungsdatei
-    wird jetzt nachweislich korrekt geschrieben, zweiter Aufruf im
-    selben Boot laesst die Animation korrekt aus. Bei vorhandener
-    eigener Animation greift das Standard-Icon nachweislich NICHT ein
-    (bestehende Funktion unveraendert). Performance-Erweiterung
-    verifiziert: komplette 7-Frame-Sequenz nach Vorwaermen in ~5ms
-    statt eines einzelnen ~98ms-Rucklers. 56 Kombinationen kompletter
-    Regressionstest bestanden.
-
-Neu in v5.1 (VERMUTETER BUGFIX: Soft-Reset bringt das Frontend nicht
-zurueck, MiSTer bleibt im eigenen OSD - ohne jede Log-Zeile):
-  - Nutzer-Rueckmeldung (kein Log verfuegbar, daher per Analyse
-    hergeleitet): nach einem "Soft Reset" (vermutlich OHNE echten
-    Linux-Kernel-Neustart, im Gegensatz zu einem echten Stromzyklus)
-    kommt das Frontend manchmal nicht wieder. Kein Absturz, keine
-    Logzeile - genau das Bild, das ein STILLSCHWEIGEND VERWEIGERTER
-    Start hinterlassen wuerde.
-  - Hypothese: ueberlebt "/tmp" einen Soft-Reset (kein echter Kernel-
-    Neustart, /tmp waere sonst als RAM-Dateisystem garantiert leer),
-    bleibt auch unsere Sperrdatei (/tmp/frontend.lock) von der
-    vorherigen Sitzung bestehen. Die bisherige Pruefung (_pid_alive())
-    verifizierte nur, DASS die darin gespeicherte PID-Nummer noch
-    existiert - nicht, DASS es sich dabei tatsaechlich noch um unseren
-    eigenen frontend.py-Prozess handelt. Linux vergibt PID-Nummern nach
-    einer Weile wieder neu - ein voellig unabhaengiger, neuer Prozess
-    koennte zufaellig dieselbe Nummer wie der laengst beendete alte
-    Frontend-Prozess bekommen haben. Die Sperrdatei-Pruefung haette das
-    faelschlicherweise als "laeuft noch" gewertet und den Neustart
-    kommentarlos verweigert.
-  - Fix: _pid_alive() prueft jetzt zusaetzlich /proc/<pid>/cmdline -
-    nur wenn dort tatsaechlich "frontend.py" drin steht, gilt die PID
-    als "unser eigener, noch laufender Prozess". Ist /proc aus
-    irgendeinem Grund nicht lesbar, faellt die Funktion sicherheitshalber
-    auf das alte Verhalten zurueck (PID existiert -> als lebendig
-    werten), statt einen falschen Negativ-Befund zu riskieren.
-  - WICHTIG: dies ist eine begruendete Vermutung, keine bestaetigte
-    Diagnose (keine Log-Datei verfuegbar) - der Fix ist aber in jedem
-    Fall eine echte Verbesserung der Robustheit gegen PID-
-    Wiederverwendung, unabhaengig davon, ob er die GENAUE Ursache
-    dieses konkreten Falls trifft.
-  - Getestet: PID existiert nicht -> weiterhin korrekt False. PID
-    existiert, gehoert aber nachweislich zu einem VOELLIG ANDEREN
-    Prozess (nicht frontend.py) -> jetzt korrekt False (vorher waere
-    das faelschlich True gewesen - der eigentliche Fix). PID existiert
-    UND ist tatsaechlich ein frontend.py-Prozess -> weiterhin korrekt
-    True (keine Regression, mit einem echten Subprozess bestaetigt).
-    acquire_single_instance() end-to-end mit genau dem vermuteten
-    Szenario (veraltete Sperrdatei, fremde aber lebende PID) bestaetigt:
-    das Frontend startet jetzt korrekt trotzdem. 56 Kombinationen
-    kompletter Regressionstest bestanden.
-
-Neu in v5.0 (PERFORMANCE: einmaliger Vignetten-Berechnungs-Ruck
-hinter die Boot-Animation versteckt):
-  - Nutzer-Nachfrage nach der ehrlichen Performance-Lage (Sorge: "war
-    die ganze Arbeit umsonst?") fuehrte zu einer gezielten Messung des
-    kompletten angesammelten Funktionsumfangs bei einer grossen (2000
-    Spiele) Bibliothek. Dabei gefunden: der ALLERERSTE Bildschirmaufbau
-    einer Sitzung war deutlich langsamer als alle folgenden (HDMI 1080p:
-    bis zu ~890ms in dieser - schnelleren - Sandbox, auf echter MiSTer-
-    Hardware vermutlich eher mehr).
-  - Ursache (kein neuer Bug, sondern eine bereits bewusst dokumentierte
-    Kompromiss-Entscheidung aus frueherer Arbeit, per cProfile bestaetigt):
-    clear() berechnet die zeilenbasierte Vignette (_apply_vignette_rows(),
-    siehe dortiger Kommentar - ein echter radialer Verlauf wurde direkt
-    gemessen mit "ueber 1 Sekunde" verworfen) beim ALLERERSTEN Aufruf fuer
-    eine Farbe+Aufloesung frisch, cached das Ergebnis dann aber
-    (self._rowcache) - alle folgenden Aufrufe sind praktisch kostenlos.
-    Das Problem: dieser einmalige Ruck traf bisher ausgerechnet den
-    allerersten ECHTEN Menue-Aufbau, den der Nutzer zu sehen bekommt.
-  - Fix: run() ruft jetzt einmal fb.clear(C_BG) auf, BEVOR
-    play_boot_animation() startet - waermt den Cache waehrend die
-    Boot-Animation laeuft (die bei JEDEM MiSTer-Neustart erneut
-    abgespielt wird, Marker liegt in /tmp) auf, statt beim ersten
-    echten Menue sichtbar zu ruckeln. Try/except drumherum: selbst ein
-    Fehlschlag beim Vorwaermen darf den eigentlichen Start nicht
-    verhindern.
-  - Getestet: ohne Vorwaermen vs. mit Vorwaermen direkt verglichen -
-    der erste ECHTE Menue-Aufbau danach ist nachweislich ~20x schneller
-    (der teure Anteil ist jetzt VOR der Animation, nicht mehr danach).
-    Ausnahme-Sicherheit bestaetigt (ein Fehlschlag beim Vorwaermen
-    wuerde den Start nicht verhindern). 56 Kombinationen kompletter
-    Regressionstest weiterhin bestanden.
-
-Neu in v4.9 (Bedienbarkeit: Brotkrumen-Kopfzeile schneidet nicht
-mehr mitten im Wort ab):
-  - Nutzer-Rueckmeldung beim weiteren Durchsehen der Bedienoberflaeche:
-    die Kopfzeile ("Kategorie / Unterordner") schnitt bei langen Pfaden
-    mitten im Wort ab (z.B. "SAMMLUNGEN / DIESES JAHR ~"). Seit die
-    Kategorienamen selbst eine Anzahl in Klammern tragen (siehe v4.8,
-    _count_tree_items()), sind die Pfade im Schnitt laenger geworden,
-    das Problem also haeufiger sichtbar.
-  - Fix: passt der VOLLE Pfad nicht, wird jetzt statt eines mitten
-    abgeschnittenen Textes nur noch der AKTUELLE (tiefste) Ordnername
-    gezeigt - weniger Kontext, aber lesbar statt kryptisch abgehackt.
-    Nur wenn selbst dieser einzelne Name noch zu lang ist, wird
-    weiterhin gekuerzt (unvermeidbar, aber seltener als vorher).
-  - Getestet: kurzer Pfad, der passt -> unveraendert vollstaendig
-    gezeigt (Regression). Langer Pfad, der nicht passt, aber dessen
-    tiefster Ordnername allein passt -> zeigt sauber nur den
-    Ordnernamen, kein Abschneiden mitten im Wort mehr. Extrem langer
-    einzelner Ordnername -> wird weiterhin sinnvoll gekuerzt. Keine
-    Unterordner -> unveraendert der reine Kategoriename (Regression).
-    56 Kombinationen kompletter Regressionstest bestanden.
-
-Neu in v4.8 (Bedienbarkeit: Gesamtanzahl direkt im Kategorienamen -
-kein blindes Reingehen mehr noetig):
-  - Nutzerwunsch: an der Bedienoberflaeche weiter feilen. Gefunden:
-    "Sammlungen" und "RA-Erfolgsjaeger" erschienen im Hauptmenue ohne
-    jede Anzahl, obwohl ihre eigenen Unterordner (z.B. "Dieses Jahr
-    entdeckt (3)") laengst Zaehlungen zeigen - inkonsistent, und man
-    musste erst reingehen, nur um zu sehen, ob ueberhaupt was drin ist.
-  - Neue _count_tree_items(): zaehlt rekursiv alle Eintraege in einem
-    Baumknoten, auch durch verschachtelte Unterordner hindurch. Nur
-    fuer die kleinen, abgeleiteten Kategorien gedacht (wenige Dutzend
-    Eintraege) - fuer die grossen ROM-Kategorien bewusst NICHT
-    eingesetzt (zu teuer).
-  - "Sammlungen"/"RA-Erfolgsjaeger" zeigen jetzt "(N)" direkt im
-    Hauptmenue-Namen, wie es die Unterordner schon lange tun.
-  - Getestet: _count_tree_items() an flacher Liste, verschachtelter
-    Struktur, leerem Baum UND einer echten build_collections_category()-
-    Ausgabe bestaetigt korrekt. Format der neuen Beschriftung
-    ("Name (N)") bestaetigt. 56 Kombinationen kompletter
-    Regressionstest bestanden.
-
-Neu in v4.7 (NEUES FEATURE: Hilfe-Uebersicht im System-Menue):
-  - Nutzerwunsch: eine zentrale Stelle, die zeigt, was das Frontend
-    alles kann - ueber die Versionen ist so viel angesammelt (Weiter-
-    spielen, Sammlungen, Trophaeenraum, Jahresrueckblick, Spiel-
-    tagebuch, Erfolgsjaeger, Geheimnisse, Buchstaben-Sprung, F6/F7/F8-
-    Tasten), dass selbst beim Aufzaehlen leicht was vergessen wird.
-  - Neuer Bildschirm draw_help_screen() (System-Menue -> Info ->
-    "Hilfe / Uebersicht", an erster Stelle in der Info-Gruppe):
-    Navigation, Tasten in der Spieleliste (F6/F7/F8), besondere
-    Hauptmenue-Eintraege (Weiterspielen/Sammlungen/RA-Erfolgsjaeger),
-    System-Menue-Ueberblick, Verhalten waehrend des Spielens. Gleiche
-    Scroll-Logik wie draw_diary_screen()/draw_milestones_screen(),
-    statischer Inhalt statt echter Daten.
-  - Erwaehnt bewusst NUR, DASS es Geheimnisse gibt (der Menuepunkt
-    "Geheimnisse" ist ohnehin fuer jeden sichtbar) - nicht WELCHE das
-    sind, konsistent mit der bestehenden Entscheidung, die Codes
-    selbst nirgends in der oeffentlichen Doku zu verraten.
-  - Getestet: alle wichtigen Begriffe (F6/F7/F8, Weiterspielen,
-    Sammlungen, Erfolgsjaeger, Geheimnisse, Mitwirkende, Esc)
-    nachweislich vorhanden bei BEIDEN Aufloesungen nach komplettem
-    Durchscrollen. Explizit bestaetigt: KEINE Erwaehnung der konkreten
-    Geheimcode-Namen (Konami/Capcom/Ikari). 56 Kombinationen
-    kompletter Regressionstest bestanden.
-
-Neu in v4.6 (Spieltagebuch: Zwei-Zeilen-Darstellung statt einer
-Zeile, gegen abgeschnittene Titel auf CRT):
-  - Nutzer-Nachfrage: lange Spieletitel wurden auf CRT (schmale
-    Aufloesung) haeufig abgeschnitten, da Name und System+Dauer sich
-    bisher EINE Zeile teilten. Laufschrift als Alternative erwogen,
-    aber bewusst NICHT gewaehlt (Nutzerentscheidung) - haette mehrere
-    GLEICHZEITIGE Laufschriften UND eine Umstellung von "wartet auf
-    Tastendruck" auf staendiges Neuzeichnen gebraucht, spuerbarer
-    Mehraufwand fuer einen Bildschirm, den man eher kurz reinschaut.
-  - Stattdessen: Name bekommt jetzt eine EIGENE Zeile mit voller
-    Breite, System+Dauer stehen klein darunter. Kostet etwas mehr
-    Hoehe pro Eintrag (weniger gleichzeitig sichtbar), dafuer bleibt
-    der Titel selbst fast immer vollstaendig lesbar.
-  - Getestet: langer Testname (56 Zeichen) auf CRT (320px) - vorher
-    waeren nur ca. 13 Zeichen auf der gemeinsamen Zeile moeglich
-    gewesen, jetzt passen ca. 34 Zeichen auf die eigene Namenszeile,
-    bevor abgeschnitten wird - deutliche Verbesserung. Ausgiebiges
-    Scrollen (45 Eintraege, CRT UND HDMI) mit der neuen Zwei-Zeilen-
-    Hoehe weiterhin ohne Absturz bestaetigt. 56 Kombinationen
-    kompletter Regressionstest bestanden.
-
-Neu in v4.5 (NEUES FEATURE: Spieltagebuch - kleine, rollierende
-Version, letzter Baustein des "digitales Retro-Wohnzimmer"-Konzepts
-fuer jetzt):
-  - Nutzerwunsch: kleine Version zunaechst ("schauen wie es ankommt"),
-    volle Version mit Archivierung bewusst zurueckgestellt fuer
-    spaeter. Rollierendes Protokoll der letzten DIARY_RETENTION_DAYS
-    (30) Tage - raeumt sich bei JEDEM Schreibvorgang automatisch
-    selbst auf, waechst dadurch nie unbegrenzt.
-  - Neue diary.json (komplett eigenstaendig, aendert nichts an
-    record_playtime()/record_yearly_playtime(), wird immer zusaetzlich
-    aufgerufen): {datum_str: [{"name","syskey","seconds"}, ...]} -
-    mehrere Sitzungen desselben Spiels am selben Tag bleiben bewusst
-    als SEPARATE Eintraege erhalten (anders als playtime_yearly.json),
-    damit der zeitliche Ablauf im Tagebuch sichtbar bleibt.
-  - _prune_diary(): vergleicht ueber epoch-Sekunden statt reinem
-    String-Vergleich, damit Monats-/Jahresgrenzen korrekt behandelt
-    werden.
-  - Eigene, sprachabhaengige Monatsnamen (MONTH_NAMES_DE/EN) statt
-    strftime("%B") - das haengt von der SYSTEM-Locale ab (typischerweise
-    Englisch auf einem frischen MiSTer), nicht von unserem eigenen
-    CURRENT_LANG-Umschalter.
-  - Neuer Bildschirm draw_diary_screen() (System-Menue -> Statistiken
-    & Erfolge -> "Spieltagebuch"): "Heute"/"Gestern" fuer die letzten
-    beiden Tage, sonst "Tag. Monatsname". Gleiche Scroll-Logik wie
-    draw_milestones_screen() - eine gemischte Liste aus Datums-
-    Ueberschriften und Sitzungs-Zeilen.
-  - Getestet: mehrere Sitzungen am selben Tag bleiben nachweislich
-    getrennt. Automatische Bereinigung bestaetigt (40 Tage alter
-    Eintrag verschwindet beim naechsten Schreibvorgang, aktueller Tag
-    bleibt), inkl. Monatsgrenzen-Fall (20. Januar -> 25. Februar, 36
-    Tage). Datumsformatierung: Heute/Gestern korrekt, aeltere Daten
-    mit sprachabhaengigen Monatsnamen (DE UND EN geprueft), auch der
-    Jahreswechsel-Fall (31. Dezember). Bildschirm: leerer Zustand,
-    mehrere Tage/Sitzungen, UND ausgiebiges Scrollen (auch ueber die
-    Grenzen hinaus) bei 45 Eintraegen auf CRT-Aufloesung (320x240) UND
-    HDMI (1920x1080) ohne Absturz. 56 Kombinationen kompletter
-    Regressionstest bestanden.
-
-Neu in v4.4 (BUGFIX: "1 von 10 Faellen startet nicht richtig, bleibt
-im OSD" - Race Condition beim Booten behoben):
-  - Nutzer-Rueckmeldung (ueber einen Freund weitergegeben): das
-    Frontend startet gelegentlich nicht, MiSTer bleibt im eigenen OSD
-    haengen. Ursache gefunden: frontend_boot.sh wartete bisher max.
-    60s auf MiSTer's eigenes /tmp/CORENAME == "MENU", startete danach
-    aber IMMER weiter - ob das Warten erfolgreich war oder einfach
-    aufgab. Auf Systemen, deren Boot-Zeit knapp um diese Marke
-    schwankt (langsamere SD-Karte, grosse ROM-Sammlung), fuehrte ein
-    Timeout dazu, dass der Framebuffer geoeffnet wurde, WAEHREND
-    MiSTer selbst noch mitten im Uebergang steckte - das Frontend
-    stuerzte dann sauber geloggt, aber sichtbar folgenlos ab (das alte
-    OSD blieb einfach stehen).
-  - Fix Teil 1 (frontend_boot.sh): Wartezeit auf 120s verdoppelt, plus
-    Diagnose-Log-Eintrag bei tatsaechlichem Timeout. WICHTIG: verlangsamt
-    niemanden, der schon vorher zuverlaessig startete - die Schleife
-    bricht immer SOFORT ab, sobald CORENAME wirklich "MENU" meldet,
-    unabhaengig von der Obergrenze. Nur der Ausnahmefall (der genau
-    diesen Bug ausloest) ist betroffen, und fuer den ist ein spaeterer,
-    aber zuverlaessiger Start eindeutig besser als ein schneller, aber
-    unzuverlaessiger.
-  - Fix Teil 2 (Framebuffer.__init__()): zusaetzliches Sicherheitsnetz -
-    bis zu 5 Versuche mit 0.5s Pause, falls das Oeffnen des Framebuffers
-    trotzdem noch fehlschlaegt (max. 2.5s zusaetzliche Wartezeit, NUR im
-    Fehlerfall). Beim ueblichen, sofort erfolgreichen ersten Versuch
-    entsteht keinerlei zusaetzliche Verzoegerung.
-  - Getestet: Wartschleifen-Logik isoliert simuliert (Normalfall,
-    Grenzfall knapp unter 120s, Extremfall nie erreicht) - alle drei
-    Faelle verhalten sich korrekt, Diagnose-Log erscheint nur im
-    tatsaechlichen Timeout-Fall. Framebuffer-Neuversuch: sofortiger
-    Erfolg -> nachweislich KEINE Verzoegerung; Erfolg nach 2
-    Fehlschlaegen -> genau 2x gewartet/geloggt; alle 5 Versuche
-    scheitern -> Fehler korrekt weitergereicht. 56 Kombinationen
-    kompletter Regressionstest bestanden.
-
-Neu in v4.3 (NEUES FEATURE: "Sammlungen"-Kategorie - automatische,
-kuratierte Gruppierungen, naechster Baustein des "digitales Retro-
-Wohnzimmer"-Konzepts):
-  - Nutzerwunsch: kuratierte Sammlungen wie beim Attract-Modus, aber
-    dauerhaft im Hauptmenue erreichbar statt nur als Leerlauf-
-    Diashow. Zwei automatische Sammlungen, komplett aus bereits
-    vorhandenen Daten abgeleitet, kein neues Tracking noetig:
-    "Dieses Jahr entdeckt" (v4.1-Fundament, first_played.json) und
-    "Kurzweilige Spiele" (kurze durchschnittliche Sitzungsdauer,
-    bestehender Spielzeit-Tracker).
-  - Neue build_collections_category(): wiederverwendet die normale
-    Ordner-Navigation, gleiches Prinzip wie build_ra_hunter_category()
-    - kein neuer Navigationsmechanismus. Liefert None, wenn beide
-    Sammlungen leer sind (Kategorie taucht dann gar nicht auf).
-    "Kurzweilige Spiele": mindestens 2 Starts noetig (sonst zu wenig
-    Aussagekraft), Schwelle 15 Minuten durchschnittliche Sitzung.
-    Beide Sammlungen filtern korrekt gegen die AKTUELLE Bibliothek
-    (_attract_games_pool()) - ein Spiel, das seit dem letzten Scan
-    entfernt/umbenannt wurde, taucht nicht mehr auf, auch wenn noch
-    alte Statistik-Eintraege dafuer existieren.
-  - Eingebunden in build_categories() direkt vor dem RA-Erfolgsjaeger.
-  - Getestet: leerer Zustand liefert sauber None. "Dieses Jahr
-    entdeckt" zeigt nachweislich nur Spiele aus dem RICHTIGEN Jahr
-    (ein Spiel aus einem anderen Jahr wird korrekt ausgeschlossen).
-    "Kurzweilige Spiele": lange Spiele korrekt ausgeschlossen,
-    Einzelstarts (zu wenig Aussagekraft) korrekt ausgeschlossen,
-    Spiele ausserhalb der aktuellen Bibliothek korrekt ausgeschlossen.
-    56 Kombinationen kompletter Regressionstest bestanden.
-
-Neu in v4.2 (NEUES FEATURE: Jahresrueckblick - baut auf dem v4.1-
-Fundament auf, Teil des "digitales Retro-Wohnzimmer"-Konzepts):
-  - Nutzerwunsch: der eigentliche Anzeige-Bildschirm fuer die in v4.1
-    gelegte Jahres-Buendelung. Performance vorab gemessen: die
-    zusaetzliche Aufzeichnung kostet ca. 0.55ms PRO SPIELENDE (nicht
-    pro Frame/Tick) - vernachlaessigbar.
-  - Neue compute_year_review_stats(year=None): Spielzeit/Starts/
-    verschiedene Spiele/verschiedene Systeme/meistgespielt/
-    Lieblingssystem/"dieses Jahr entdeckt" fuer ein Kalenderjahr
-    (Standard: aktuelles Jahr). Liefert None ohne Daten fuer das Jahr
-    (z.B. frisch installiert) - der Bildschirm zeigt dann eine
-    freundliche Meldung statt leerer/irrefuehrender Werte.
-  - Neuer Bildschirm draw_year_review_screen() (System-Menue ->
-    Statistiken & Erfolge -> "Jahresrueckblick"): gleicher Aufbau wie
-    der Trophaeenraum (Cover + Statistik + Zusammenfassung), aber
-    eingegrenzt auf das laufende Jahr statt "seit Aufzeichnungsbeginn".
-  - Getestet: compute_year_review_stats() - alle Kennzahlen korrekt
-    berechnet (inkl. mehrerer Sitzungen desselben Spiels korrekt
-    aufaddiert), Grenzfall "in einem Vorjahr entdeckt, dieses Jahr
-    weitergespielt" zaehlt nachweislich NICHT als "dieses Jahr
-    entdeckt". Bildschirm: leerer Zustand (freundliche Meldung) UND
-    mit Daten (alle Werte korrekt sichtbar, per Einzelverfolgung der
-    gezeichneten Texte bestaetigt) bei beiden Aufloesungen ohne
-    Absturz. 56 Kombinationen kompletter Regressionstest bestanden.
-
-Neu in v4.1 (FUNDAMENT: Spielzeit zusaetzlich nach Kalenderjahr
-gebuendelt - erster Baustein fuer "digitales Retro-Wohnzimmer"):
-  - Nutzerwunsch: Jahresrueckblick, Spieltagebuch, kuratierte
-    Sammlungen und aehnliche "die eigene Sammlung lebendig wirken
-    lassen"-Funktionen. Erkenntnis dabei: unser bisheriges Tracking
-    (record_playtime()) kennt nur KUMULIERTE Gesamtwerte pro Spiel,
-    keine Kalenderjahr-Zuordnung - ein "Jahresrueckblick 2026" waere
-    damit technisch gar kein echter Jahresrueckblick gewesen. Dieser
-    Baustein legt das noetige Fundament, BEVOR die eigentlichen
-    Anzeige-Bildschirme gebaut werden.
-  - Neue, KOMPLETT EIGENSTAENDIGE Funktionen (playtime_yearly.json,
-    first_played.json) - aendern NICHTS an record_playtime()/
-    load_playtime() selbst, kein Risiko fuer bestehende Funktionen,
-    die auf die kumulierten Gesamtwerte angewiesen sind (Trophaeenraum,
-    Top-10-Listen, eigene Erfolge bleiben komplett unberuehrt). Werden
-    IMMER ZUSAETZLICH zu record_playtime() aufgerufen, nie stattdessen.
-  - record_yearly_playtime(): buendelt Spielzeit/Starts pro Kalenderjahr,
-    zusaetzlich aufgeschluesselt nach Spiel UND nach System - genug
-    Grundlage fuer "meistgespielt dieses Jahr", "Lieblingssystem dieses
-    Jahr", "X Stunden in 2026" etc.
-  - _record_first_played(): merkt sich das Jahr des allerersten Starts
-    pro Spiel (bleibt beim urspruenglichen Jahr, auch wenn spaeter in
-    einem Folgejahr weitergespielt wird) - Grundlage fuer eine
-    spaetere "dieses Jahr entdeckt"-Sammlung.
-  - Getestet: Spielzeit/Starts/Spiele/Systeme korrekt pro Jahr
-    gebuendelt (inkl. mehrerer Sitzungen desselben Spiels korrekt
-    aufaddiert). Unterschiedliche Jahre bleiben sauber getrennt, ein
-    neues Jahr ueberschreibt kein bestehendes. "Erstmals gespielt"
-    bleibt nachweislich beim ORIGINAL-Jahr, auch nach erneutem Spielen
-    in einem Folgejahr. WICHTIGSTE PRUEFUNG: record_playtime()/
-    load_playtime() liefern nachweislich EXAKT dieselben Werte wie vor
-    dieser Aenderung - komplett unbeeintraechtigt. 56 Kombinationen
-    kompletter Regressionstest bestanden.
-
-Neu in v4.0 (System-Menue in 7 thematische Untergruppen aufgeteilt
-statt 23 flacher Eintraege):
-  - Nutzerwunsch: die "System"-Kategorie war ueber viele Versionen
-    hinweg auf 23 flache Eintraege angewachsen (RA-Status, beide Top-
-    10-Listen, Erfolge, Trophaeenraum, Geheimnisse, Mitwirkende, CRT-
-    Testbild, Theme, Zeitzone, NAS-Option, Soundeffekte, Sprache,
-    Tastenbelegung x2, Attract-Modus, Musik, Nur-Kuratiert, OSD,
-    Rescan, Neu zeichnen, Neustart, Beenden) - kaum noch ueberschaubar.
-  - Neue Gruppierung in system_items(): liefert jetzt direkt eine
-    Baumstruktur mit 7 Unterordnern (RetroAchievements, Statistiken &
-    Erfolge, Anzeige & Sound, Verhalten, Eingabe & Sprache, Info,
-    Wartung) statt einer flachen Liste - nutzt DIESELBE Ordner-
-    Navigation wie eigene ROM-Unterordner und die RA-Erfolgsjaeger-
-    Kategorie, kein neuer Navigations-Code noetig. Die Aktions-"kind"-
-    Werte jedes Eintrags bleiben UNVERAENDERT (siehe Aktions-Dispatch
-    in run()) - nur die Gruppierung/Anzeige aendert sich, kein
-    bestehendes Verhalten.
-  - Beide Aufrufstellen (Erstaufbau in build_categories(), Refresh in
-    _refresh_system_category()) angepasst - system_items() liefert
-    jetzt direkt den fertigen Baum, kein _wrap_flat() mehr noetig.
-  - Getestet: alle 24 urspruenglichen Aktionen nachweislich vollstaendig
-    vorhanden (automatisierter Soll-Ist-Abgleich gegen die alte Liste),
-    keine Duplikate, keine verloren gegangen. Verbleib in der
-    Untergruppe nach dem Umschalten einer Einstellung bestaetigt (z.B.
-    Musik an/aus aus der "Verhalten"-Gruppe heraus - man wird NICHT
-    auf die oberste Ebene zurueckgeworfen). Beschriftungs-Aktualisierung
-    innerhalb der Untergruppe nach dem Umschalten bestaetigt. 56
-    Kombinationen kompletter Regressionstest bestanden (42 Standard +
-    14 neue mit der System-Menue-Umstrukturierung).
+  Getestet: durchgaengig mit Regressionstests (56 Kombinationen je
+  Zwischenschritt), gezielten Simulationen fuer die schwer
+  reproduzierbaren Faelle (dauerhaft fehlschlagende Geraeteabfrage,
+  echter Frontend()-Konstruktor-Durchlauf), und Positionsvergleichen
+  fuer visuelle Fixes (Popup-Zentrierung). Cache-Logik einzeln fuer
+  Treffer/Fehltreffer/Ablauf bestaetigt.
 
 Neu in v3.9 (Credits angepasst: Dfense als Mitwirkender ergaenzt):
   - Nutzerwunsch: "Erstellt von" knapper halten, dafuer Dfense
@@ -3945,6 +3447,56 @@ def fetch_ra_game_achievements_bounded(game_id, timeout=5.0):
     th.start()
     th.join(timeout=timeout + 0.5)
     return result["data"]
+
+# BUGFIX/NEUES FEATURE (Nutzerwunsch: F6-Erfolgsliste dauert "ganz
+# schoen" lang, laesst sich das speichern/beschleunigen?): bisher
+# holte draw_ra_showcase_screen() die komplette Erfolgsliste bei
+# JEDEM Aufruf frisch aus dem Netz (bis zu 5s Zeitlimit), auch wenn
+# man kurz zuvor schon dasselbe Spiel angesehen hatte - kein eigener
+# Cache in der ersten Fassung (siehe damaliger Kommentar: "kann
+# spaeter ergaenzt werden, sobald sich das Format in der Praxis
+# bewaehrt hat" - hat es jetzt). Kurzlebiger, dateibasierter Cache
+# (15 Minuten) nach demselben Prinzip wie BadgeCache/ArtCache: kurz
+# genug, dass frisch verdiente Erfolge zeitnah als "freigeschaltet"
+# auftauchen, lang genug, um wiederholtes Ansehen desselben Spiels
+# (z.B. waehrend einer Session mehrfach F6 druecken) spuerbar zu
+# beschleunigen.
+RA_ACHIEVEMENTS_CACHE_FILE = "/media/fat/frontend/ra_achievements_cache.json"
+RA_ACHIEVEMENTS_CACHE_TTL = 900   # 15 Minuten
+
+def _load_ra_achievements_cache():
+    try:
+        with open(RA_ACHIEVEMENTS_CACHE_FILE) as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+def _save_ra_achievements_cache(cache):
+    try:
+        os.makedirs(os.path.dirname(RA_ACHIEVEMENTS_CACHE_FILE), exist_ok=True)
+        with open(RA_ACHIEVEMENTS_CACHE_FILE, "w") as f:
+            json.dump(cache, f)
+    except OSError:
+        pass
+
+def fetch_ra_game_achievements_cached(game_id, timeout=5.0):
+    """Wie fetch_ra_game_achievements_bounded(), aber mit kurzlebigem
+    Cache - siehe Modul-Kommentar oben fuer die Begruendung. Ein
+    Cache-Treffer liefert die Daten praktisch verzoegerungsfrei
+    (nur ein Datei-Lesevorgang), statt jedes Mal auf einen
+    Netzwerkabruf zu warten."""
+    cache = _load_ra_achievements_cache()
+    key = str(game_id)
+    entry = cache.get(key)
+    now = time.time()
+    if entry and (now - entry.get("ts", 0)) < RA_ACHIEVEMENTS_CACHE_TTL:
+        return entry.get("data")
+    data = fetch_ra_game_achievements_bounded(game_id, timeout=timeout)
+    if data is not None:
+        cache[key] = {"ts": now, "data": data}
+        _save_ra_achievements_cache(cache)
+    return data
 
 # ----------------------------------------------------------------------------
 # NAMENS-/SYSTEM-ABGLEICH
@@ -11055,7 +10607,15 @@ class Frontend:
         fb.text(ox, list_y0, t("ra_showcase_loading"), s, C_DIM, C_BG)
         fb.flip()
 
-        achievements = fetch_ra_game_achievements_bounded(game_id, timeout=5.0)
+        # NEUES FEATURE (Nutzerwunsch: "dauert ganz schoen bis die
+        # Erfolge angezeigt werden, kann man das speichern?"): hier
+        # (im Gegensatz zum Hintergrund-Watcher weiter oben in dieser
+        # Datei, der bewusst UNGECACHT bleibt, um neu verdiente Erfolge
+        # waehrend des Spielens zeitnah zu erkennen) macht ein Cache
+        # Sinn - man sieht sich hier ein SCHON BEENDETES Spiel an,
+        # wiederholtes F6 fuer dasselbe Spiel muss nicht jedes Mal neu
+        # ueber das Netz gehen.
+        achievements = fetch_ra_game_achievements_cached(game_id, timeout=5.0)
 
         def wait_any_key():
             while True:

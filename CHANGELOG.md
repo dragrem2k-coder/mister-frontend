@@ -4,90 +4,42 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
-## v3.5 — vier Bugfixes anhand echter CRT-Fotos
-- "??? (einfach" und dann nichts mehr: der v3.4-Fix zeigte bei
-  versteckten Erfolgen nur die erste umgebrochene Zeile, der Rest
-  verschwand komplett. Jetzt vollständige Mehrzeilen-Darstellung.
-- Zeitanzeige bei Fortschrittswerten jetzt durchgängig "Stunden dann
-  Minuten" statt eines Farbmixes aus Minuten und Stunden.
-- Trophäenraum: Text lief quer durchs Boxart-Cover auf CRT. Cover
-  bleibt jetzt fest, Statistik + Zusammenfassung sind eine gemeinsame
-  scrollbare Liste.
-- Geheimcode-Popup erscheint jetzt zentriert statt links unten am Rand.
-- Geklärt: der geheime Sound existiert, war vermutlich nur unhörbar,
-  weil Soundeffekte unterdrückt werden, solange Musik läuft.
+## v3.2 — konsolidiert (Nutzerwunsch: nicht wieder so viele Versionen in kurzer Zeit)
+Zwischen v3.0 und v3.5 waren in kurzer Zeit sechs Versionsnummern
+entstanden — vor allem, weil ein kritischer Bug drei Anläufe brauchte,
+bis die echte Ursache gefunden war. Alles Passierte bleibt inhaltlich
+vollständig erhalten, hier als ein gebündelter Eintrag:
 
-## v3.4 — CRT-Textabschneide-/Scroll-Fixes über acht Bildschirme
-Nutzer ging systematisch mehrere Bildschirme auf CRT durch: Mitwirkende
-und Geheimnisse ließen sich nicht scrollen, und auf praktisch jedem
-Info-Bildschirm wurden lange Zeilen mitten im Wort abgeschnitten
-(Trophäenraum, Jahresrückblick, Spieltagebuch, Hilfe-Übersicht).
-Neue `_wrap_text()`-Funktion bricht jetzt an Wortgrenzen um statt
-mitten im Wort abzuschneiden. Mitwirkende und Geheimnisse zusätzlich
-scrollbar gemacht. Beim systematischen Durchgehen gleich noch dieselbe
-Schwäche in der Erfolge-Liste, den Top-10-Listen und der
-RA-Erfolgs-Vitrine gefunden und mitbehoben.
+**Standard-Boot-Animation:** ein D-Pad-Symbol, das flackernd "zum
+Leben erwacht", statt eines direkten Sprungs ins Menü, wenn keine
+eigene Boot-Animation existiert.
 
-## v3.3 — KRITISCHER BUGFIX Teil 3 (jetzt mit echter Log-Datei bestätigt)
-Nutzer schickte die tatsächliche Log-Datei — zeigte einen simplen,
-eindeutigen Fehler, völlig unabhängig von den beiden vorherigen
-Vermutungen: `AttributeError: 'Frontend' object has no attribute
-'_ra_lookup'`. Ursache: `build_categories()` wurde in `__init__()`
-aufgerufen, bevor `_ra_lookup` gesetzt wurde — ein reiner
-Reihenfolge-Fehler, der nur Nutzer mit eingerichtetem
-RetroAchievements traf. Alle bisherigen Regressionstests hatten das
-nie gefangen, weil sie `_ra_lookup` immer manuell vorab setzten,
-statt den echten Konstruktor zu durchlaufen. Fix: RA-Setup-Block vor
-`build_categories()` verschoben, diesmal durch den echten
-`Frontend()`-Konstruktor getestet.
+**Drei Anläufe für einen kritischen Bugfix** (Bildschirm blieb nach
+dem Update schwarz, nichts passierte mehr): Versuch 1 (vermutet)
+umging einen möglichen VSync-Hänger in der neuen Boot-Animation —
+reichte allein nicht. Versuch 2 (vermutet, dann per Test bewiesen)
+behob eine Zeitüberschreitungs-Prüfung, die bei wiederholt
+fehlschlagender Geräteabfrage übersprungen werden konnte. Versuch 3
+(mit einer echten Log-Datei endlich bestätigt) behob die eigentliche
+Ursache: ein Reihenfolge-Fehler beim Programmstart
+(`AttributeError: '_ra_lookup'`), der nur Nutzer mit eingerichtetem
+RetroAchievements traf.
 
-## v3.2 — KRITISCHER BUGFIX Teil 2
-Der v3.1-Fix allein reichte nicht — Bildschirm blieb weiterhin
-schwarz. Diesmal den echten, strukturellen Fehler gefunden und per
-gezieltem Test unter simulierten Fehlerbedingungen **nachgewiesen**,
-nicht nur vermutet: `read_action(timeout=...)` prüfte die
-Zeitüberschreitung nur am Ende der Schleife. Schlägt die
-Geräteabfrage mit einem Systemfehler fehl, sprang der Code direkt
-zum Schleifenanfang zurück — unter Umgehung der Zeitprüfung.
-Wiederholt sich der Fehler, entsteht eine echte Endlosschleife, die
-die Zeitüberschreitung nie mehr erreicht. Das wurde erst durch die
-neue Boot-Animation sichtbar, da sie diese Funktion so früh im
-Programmablauf aufruft wie nie zuvor. Fix: Zeitprüfung zusätzlich an
-den Schleifenanfang verschoben — kein Pfad kann sie mehr umgehen.
+**CRT-Textabschneide-/Scroll-Fixes über neun Info-Bildschirme**
+(mehrere Runden Rückmeldungen, teils mit echten CRT-Fotos): neue
+Zeilenumbruch-Funktion (an Wortgrenzen statt mitten im Wort mit "~"
+abzuschneiden), Mitwirkende und Geheimnisse scrollbar gemacht,
+Trophäenraum komplett umgebaut (Cover bleibt fest, Statistik +
+Zusammenfassung scrollen gemeinsam — vorher lief der Text quer durchs
+Boxart), Zeitanzeige bei Fortschrittswerten vereinheitlicht ("Stunden
+dann Minuten"), Geheimcode-Popup zentriert statt links unten am Rand.
+Geklärt: der geheime Sound existiert, war vermutlich nur unhörbar,
+weil Soundeffekte unterdrückt werden, solange Musik läuft.
 
-## v3.1 — KRITISCHER BUGFIX
-Direkt nach dem v3.0-Update auf echter Hardware gemeldet: Bildschirm
-bleibt nach dem Start schwarz, nichts passiert mehr. Vermutete Ursache
-(kein Log verfügbar, per Analyse hergeleitet): die neue
-Standard-Boot-Animation ruft `flip()` viel früher als je zuvor auf,
-möglicherweise während MiSTer selbst noch mitten im Übergang steckt —
-der eingebaute VSync-Wartemechanismus (`ioctl`) könnte in diesem
-fragilen Fenster hängen bleiben statt schnell fehlzuschlagen. Fix:
-diese eine Animation umgeht den VSync-Wartemechanismus komplett und
-schreibt direkt in den Bildschirmspeicher. Ein winziges
-Tearing-Risiko bei einer derart kurzen Animation ist ein deutlich
-kleineres Übel als ein möglicher kompletter Stillstand. **Wichtig:**
-begründete Vermutung, keine bestätigte Diagnose — aber risikoarmer,
-in jedem Fall sinnvoller Fix.
-
-## Versionsnummerierung neu geregelt (ab v3.0)
-
-Bis einschließlich v5.2 wurde die Versionsnummer für praktisch jede
-einzelne Änderung hochgezählt, auch kleine Bugfixes und
-Dokumentations-Politur — das ergab zu viele Sprünge pro Änderung. Ab
-hier zählt die Nummer nur noch bei einem tatsächlich spürbaren,
-abgeschlossenen Funktionsumfang hoch; reine Politur ohne
-Verhaltensänderung wird künftig im laufenden Eintrag der aktuellen
-Version mitgeführt statt eine eigene Nummer zu bekommen. Der komplette
-bisherige Funktionsumfang bleibt vollständig erhalten — nur die
-Zählung beginnt bewusst zurückhaltender neu bei v3.0. Die Einträge
-unterhalb (v1.0 bis v5.2) sind die unveränderte, echte Historie bis zu
-diesem Punkt.
-
-## v3.0
-Enthält inhaltlich das, was zuvor als v5.2 gezählt hätte — siehe
-dortigen Eintrag unten für die Details zur neuen Standard-Boot-
-Animation.
+**RA-Erfolgs-Vitrine (F6) beschleunigt:** kurzlebiger Cache (15
+Minuten) für wiederholtes Ansehen desselben, bereits gespielten
+Spiels — der separate Hintergrund-Watcher für neu verdiente Erfolge
+während des Spielens bleibt bewusst ungecacht.
 
 ## v5.2 (letzte Version vor der Neuordnung)
 Neue Standard-Boot-Animation: ein D-Pad-Symbol, das flackernd "zum
