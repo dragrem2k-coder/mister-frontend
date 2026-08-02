@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>MiSTer Stream Overlay</title>
+<style>
+  :root{
+    --accent:#e0b64a; --bg:#0d0f14; --fg:#f4f6fb; --dim:#9aa3b2;
+    --scale:1;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:100%;height:100%;background:transparent;overflow:hidden;
+    font-family:"Segoe UI",system-ui,Arial,sans-serif;color:var(--fg)}
+  #stage{position:fixed;inset:0;pointer-events:none}
+  .card{
+    position:absolute;display:flex;gap:calc(20px*var(--scale));
+    align-items:flex-end;
+    padding:calc(18px*var(--scale)) calc(22px*var(--scale));
+    background:linear-gradient(135deg,rgba(13,15,20,.92),rgba(13,15,20,.72));
+    border:1px solid rgba(255,255,255,.08);
+    border-left:calc(4px*var(--scale)) solid var(--accent);
+    border-radius:calc(14px*var(--scale));
+    box-shadow:0 calc(18px*var(--scale)) calc(50px*var(--scale)) rgba(0,0,0,.55);
+    backdrop-filter:blur(6px);
+    transform:translateY(0);transition:opacity .35s ease, transform .35s ease;
+    max-width:min(46vw,calc(560px*var(--scale)));
+  }
+  .card.solid{background:var(--bg)}
+  .corner-bottom-left{left:calc(40px*var(--scale));bottom:calc(40px*var(--scale))}
+  .corner-bottom-right{right:calc(40px*var(--scale));bottom:calc(40px*var(--scale))}
+  .corner-top-left{left:calc(40px*var(--scale));top:calc(40px*var(--scale))}
+  .corner-top-right{right:calc(40px*var(--scale));top:calc(40px*var(--scale))}
+  .boxart{
+    width:calc(150px*var(--scale));height:calc(210px*var(--scale));
+    flex:none;border-radius:calc(8px*var(--scale));object-fit:contain;
+    background:#1a1e27;border:1px solid rgba(255,255,255,.10);
+    box-shadow:0 calc(6px*var(--scale)) calc(18px*var(--scale)) rgba(0,0,0,.5)}
+  .boxart.hidden{display:none}
+  .meta{display:flex;flex-direction:column;gap:calc(8px*var(--scale));
+    padding-bottom:calc(4px*var(--scale));min-width:0}
+  .brand{font-size:calc(13px*var(--scale));letter-spacing:.14em;
+    text-transform:uppercase;color:var(--accent);font-weight:700}
+  .brand:empty{display:none}
+  .sys{align-self:flex-start;font-size:calc(13px*var(--scale));
+    letter-spacing:.06em;text-transform:uppercase;color:#0d0f14;
+    background:var(--accent);font-weight:700;
+    padding:calc(3px*var(--scale)) calc(10px*var(--scale));
+    border-radius:calc(20px*var(--scale))}
+  .sys.hidden{display:none}
+  .cat{font-size:calc(14px*var(--scale));color:var(--dim);font-weight:600}
+  .title{font-size:calc(30px*var(--scale));font-weight:800;line-height:1.1;
+    text-shadow:0 calc(2px*var(--scale)) calc(6px*var(--scale)) rgba(0,0,0,.6);
+    overflow-wrap:anywhere;display:flex;align-items:center;
+    gap:calc(10px*var(--scale))}
+  .star{color:var(--accent);font-size:calc(22px*var(--scale));
+    display:none;flex:none}
+  .star.on{display:inline}
+  .facts{display:flex;flex-wrap:wrap;gap:calc(6px*var(--scale))
+    calc(14px*var(--scale));margin-top:calc(2px*var(--scale))}
+  .facts.hidden{display:none}
+  .facts .fact{font-size:calc(13px*var(--scale));color:var(--dim);
+    white-space:nowrap}
+  .facts .fact.hidden{display:none}
+  .facts .fact.ra{color:var(--accent);font-weight:700}
+  .list{display:flex;flex-direction:column;gap:calc(3px*var(--scale));
+    margin-top:calc(4px*var(--scale))}
+  .list.hidden{display:none}
+  .list .row{font-size:calc(14px*var(--scale));color:var(--dim);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.7}
+  .list .row.cur{color:var(--fg);opacity:1;font-weight:700}
+  .list .row.cur::before{content:"\25B8  ";color:var(--accent)}
+  .np{display:flex;align-items:center;gap:calc(8px*var(--scale));
+    font-size:calc(14px*var(--scale));color:var(--dim);
+    margin-top:calc(6px*var(--scale))}
+  .np.hidden{display:none}
+  .np .dot{width:calc(8px*var(--scale));height:calc(8px*var(--scale));
+    border-radius:50%;background:var(--accent);flex:none;
+    animation:pulse 1.6s infinite ease-in-out}
+  @keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
+  .flash{animation:flash .4s ease}
+  @keyframes flash{from{transform:translateY(calc(6px*var(--scale)));opacity:.55}
+    to{transform:translateY(0);opacity:1}}
+
+  /* Erfolgs-Einblendung: eigener Toast, immer oben rechts - unabhaengig
+     von der "corner"-Einstellung der normalen Auswahl-Karte, damit sich
+     beide nie ueberschneiden koennen, egal welche Ecke dort gewaehlt ist. */
+  #achievement-toast{
+    position:absolute;top:calc(30px*var(--scale));right:calc(30px*var(--scale));
+    display:flex;gap:calc(14px*var(--scale));align-items:center;
+    padding:calc(14px*var(--scale)) calc(18px*var(--scale));
+    background:linear-gradient(135deg,rgba(13,15,20,.95),rgba(13,15,20,.80));
+    border:1px solid rgba(255,255,255,.10);
+    border-right:calc(4px*var(--scale)) solid #ffd452;
+    border-radius:calc(12px*var(--scale));
+    box-shadow:0 calc(14px*var(--scale)) calc(40px*var(--scale)) rgba(0,0,0,.6);
+    max-width:calc(420px*var(--scale));
+    opacity:0;transform:translateX(calc(20px*var(--scale)));
+    transition:opacity .4s ease, transform .4s ease;
+    pointer-events:none;
+  }
+  #achievement-toast.show{opacity:1;transform:translateX(0)}
+  #achievement-toast .badge{
+    width:calc(56px*var(--scale));height:calc(56px*var(--scale));
+    flex:none;border-radius:calc(8px*var(--scale));
+    background:#1a1e27;border:1px solid rgba(255,255,255,.12)}
+  #achievement-toast .badge.hidden{display:none}
+  #achievement-toast .achievement-meta{display:flex;flex-direction:column;
+    gap:calc(4px*var(--scale));min-width:0}
+  #achievement-toast .achievement-label{font-size:calc(11px*var(--scale));
+    letter-spacing:.12em;text-transform:uppercase;color:#ffd452;font-weight:700}
+  #achievement-toast .achievement-title{font-size:calc(16px*var(--scale));
+    font-weight:700;color:var(--fg);white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis}
+  #achievement-toast .achievement-desc{font-size:calc(12px*var(--scale));
+    color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #achievement-toast .achievement-points{font-size:calc(11px*var(--scale));
+    color:#ffd452;font-weight:600}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="card" class="card corner-bottom-left">
+    <img id="boxart" class="boxart hidden" alt="">
+    <div class="meta">
+      <div id="brand" class="brand"></div>
+      <span id="sys" class="sys hidden"></span>
+      <div id="cat" class="cat"></div>
+      <div id="title" class="title"><span id="star" class="star">&#9733;</span><span id="titletext">-</span></div>
+      <div id="facts" class="facts hidden">
+        <span id="fact_genre" class="fact hidden"></span>
+        <span id="fact_year" class="fact hidden"></span>
+        <span id="fact_playtime" class="fact hidden"></span>
+        <span id="fact_ra" class="fact ra hidden"></span>
+      </div>
+      <div id="list" class="list hidden"></div>
+      <div id="np" class="np hidden"><span class="dot"></span><span id="npname"></span></div>
+    </div>
+  </div>
+  <div id="achievement-toast">
+    <img id="achievement-badge" class="badge hidden" alt="">
+    <div class="achievement-meta">
+      <div class="achievement-label">Erfolg freigeschaltet</div>
+      <div id="achievement-title" class="achievement-title"></div>
+      <div id="achievement-desc" class="achievement-desc"></div>
+      <div id="achievement-points" class="achievement-points"></div>
+    </div>
+  </div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const root = document.documentElement.style;
+let cfg = {};
+let lastState = null;
+let achievementTimer = null;
+
+function showAchievementToast(data){
+  // Respektiert den Admin-Schalter "show_ra_badges" - Standard AN,
+  // wie bei den anderen show_*-Optionen (fehlend/undefined = an).
+  if(cfg.show_ra_badges === false) return;
+  $('achievement-title').textContent = data.title || '';
+  $('achievement-desc').textContent = data.description || '';
+  $('achievement-points').textContent = data.points ? (data.points + ' Punkte') : '';
+  const badge = $('achievement-badge');
+  if(data.badge){
+    badge.src = '/badge?name=' + encodeURIComponent(data.badge);
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
+  const toast = $('achievement-toast');
+  toast.classList.add('show');
+  if(achievementTimer) clearTimeout(achievementTimer);
+  achievementTimer = setTimeout(() => {
+    toast.classList.remove('show');
+  }, 8000);
+}
+
+function applyConfig(c){
+  cfg = c || {};
+  if(cfg.accent) root.setProperty('--accent', cfg.accent);
+  if(cfg.bg) root.setProperty('--bg', cfg.bg);
+  root.setProperty('--scale', ((cfg.scale||100)/100).toString());
+  const card = $('card');
+  card.className = 'card corner-' + (cfg.corner||'bottom-left') +
+                  (cfg.transparent===false ? ' solid' : '');
+  $('brand').textContent = cfg.title || '';
+  // Die show_*-Schalter wirken erst in applyState() - damit sie SOFORT
+  // greifen (nicht erst beim naechsten Zustandswechsel am MiSTer), den
+  // zuletzt bekannten Zustand jetzt gleich neu rendern.
+  if(lastState) applyState(lastState);
+}
+
+function applyState(s){
+  lastState = s;
+  const card = $('card');
+  $('cat').textContent = '';
+  $('titletext').textContent = s.name || '-';
+
+  const star = $('star');
+  if(cfg.show_favorite!==false && s.favorite){
+    star.classList.add('on');
+  } else star.classList.remove('on');
+
+  const sysEl = $('sys');
+  if(cfg.show_system!==false && s.system){
+    sysEl.textContent = s.system; sysEl.classList.remove('hidden');
+  } else sysEl.classList.add('hidden');
+
+  const hasArt = !!s.syskey;
+  const art = $('boxart');
+  const artName = s.art_name || s.name;
+  // Ordner (Name endet auf '/') haben kein Cover - gar nicht erst anfragen.
+  const isFolder = !!artName && artName.slice(-1) === '/';
+  if(cfg.show_boxart!==false && hasArt && artName && !isFolder){
+    const url = '/art?sys=' + encodeURIComponent(s.syskey) +
+                '&name=' + encodeURIComponent(artName);
+    art.onerror = () => art.classList.add('hidden');
+    art.onload  = () => art.classList.remove('hidden');
+    art.src = url;
+  } else art.classList.add('hidden');
+
+  // Fakten-Zeile: Genre, Jahr, Spielzeit, RetroAchievements - jede
+  // einzeln nur sichtbar, wenn die Angabe tatsaechlich vorhanden ist
+  // (z.B. RA nur, wenn im Frontend eingerichtet UND ein Treffer
+  // gefunden wurde - siehe lookup_ra_progress() auf der Python-Seite).
+  const facts = $('facts');
+  let anyFact = false;
+  const setFact = (id, show, text) => {
+    const el = $(id);
+    if(show){ el.textContent = text; el.classList.remove('hidden'); anyFact = true; }
+    else el.classList.add('hidden');
+  };
+  setFact('fact_genre', cfg.show_genre!==false && !!s.genre, s.genre);
+  setFact('fact_year', cfg.show_genre!==false && !!s.year, s.year);
+  setFact('fact_playtime', cfg.show_playtime!==false && !!s.playtime, '\u23F1 ' + s.playtime);
+  setFact('fact_ra', cfg.show_ra!==false && !!s.ra_progress, '\u2B50 ' + s.ra_progress);
+  facts.classList.toggle('hidden', !anyFact);
+
+  const list = $('list');
+  if(cfg.show_list!==false && Array.isArray(s.list) && s.list.length){
+    list.innerHTML = '';
+    s.list.forEach((row,i)=>{
+      const d = document.createElement('div');
+      d.className = 'row' + (i===s.list_index ? ' cur':'');
+      d.textContent = row;
+      list.appendChild(d);
+    });
+    list.classList.remove('hidden');
+  } else list.classList.add('hidden');
+
+  const np = $('np');
+  if(cfg.show_nowplaying!==false && s.nowplaying){
+    $('npname').textContent = '\u266A ' + s.nowplaying;
+    np.classList.remove('hidden');
+  } else np.classList.add('hidden');
+
+  card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash');
+}
+
+function connect(){
+  const es = new EventSource('/events');
+  es.addEventListener('config', e => applyConfig(JSON.parse(e.data)));
+  es.addEventListener('state',  e => applyState(JSON.parse(e.data)));
+  es.addEventListener('achievement', e => showAchievementToast(JSON.parse(e.data)));
+  es.onerror = () => { es.close(); setTimeout(connect, 2000); };
+}
+connect();
+</script>
+</body>
+</html>

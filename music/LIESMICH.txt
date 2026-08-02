@@ -1,0 +1,2 @@
+# Lege hier deine MP3-Dateien ab - sie werden beim Frontend-Start
+# automatisch gefunden, gemischt und nacheinander abgespielt.

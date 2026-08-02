@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Vom Frontend zur Laufzeit erzeugte Dateien - gehoeren nicht ins Repo
+games_cache.json
+music_enabled
+language
+keymap_custom.json
+curated_only
+stream_enabled
+stream_config.json
+frontend.lock
+frontend.log
+frontend_bootanim_played
+
+# Betriebssystem-/Editor-Muell
+.DS_Store
+Thumbs.db
+*.swp
+
+# Lokale Test-/Debug-Rueckstaende
+test/
+test_*/
+debug_*.png
+preview_*.png
+pv_*/
+pv_music_enabled
+screenshot_art/
+screenshot_meta/
+screenshot_bg/
+screenshot_music/
+screenshot_music_enabled
+bench*/
+*_test/
+install_offline_test/
+uninstall_test/
+
+# Ausnahme: die ECHTEN, fuer README/VORSCHAU bestimmten Screenshots -
+# die obige preview_*.png-Regel (gedacht fuer temporaere Debug-Renders
+# waehrend der Entwicklung) hat diese bislang versehentlich mit
+# ausgeschlossen, obwohl sie bewusst eingecheckt werden sollen.
+!screenshots/preview_*.png
