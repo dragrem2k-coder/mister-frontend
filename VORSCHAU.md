@@ -1,4 +1,4 @@
-# MiSTer Custom Frontend — Vorschau (Stand v3.0)
+# MiSTer Custom Frontend — Vorschau (Stand v3.2)
 
 Mein selbstgebautes Frontend für den MiSTer FPGA, komplett in purem
 Standard-Python — keine einzige externe Abhängigkeit auf dem MiSTer
