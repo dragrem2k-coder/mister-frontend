@@ -4,6 +4,19 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v3.3 — KRITISCHER BUGFIX Teil 3 (jetzt mit echter Log-Datei bestätigt)
+Nutzer schickte die tatsächliche Log-Datei — zeigte einen simplen,
+eindeutigen Fehler, völlig unabhängig von den beiden vorherigen
+Vermutungen: `AttributeError: 'Frontend' object has no attribute
+'_ra_lookup'`. Ursache: `build_categories()` wurde in `__init__()`
+aufgerufen, bevor `_ra_lookup` gesetzt wurde — ein reiner
+Reihenfolge-Fehler, der nur Nutzer mit eingerichtetem
+RetroAchievements traf. Alle bisherigen Regressionstests hatten das
+nie gefangen, weil sie `_ra_lookup` immer manuell vorab setzten,
+statt den echten Konstruktor zu durchlaufen. Fix: RA-Setup-Block vor
+`build_categories()` verschoben, diesmal durch den echten
+`Frontend()`-Konstruktor getestet.
+
 ## v3.2 — KRITISCHER BUGFIX Teil 2
 Der v3.1-Fix allein reichte nicht — Bildschirm blieb weiterhin
 schwarz. Diesmal den echten, strukturellen Fehler gefunden und per

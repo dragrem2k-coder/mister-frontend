@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v3.2
+MiSTer Custom Frontend - v3.3
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
@@ -26,6 +26,40 @@ der komplette bisherige Funktionsumfang (Trophaeenraum, Sammlungen,
 Jahresrueckblick, Spieltagebuch, Boot-Fixes, Performance-Arbeit usw.)
 bleibt vollstaendig erhalten, nur die Nummerierung wird bewusst
 zurueckhaltender.
+
+Neu in v3.3 (KRITISCHER BUGFIX Teil 3 - JETZT mit echter Log-Datei
+bestaetigt, nicht mehr vermutet):
+  - Nutzer schickte diesmal die tatsaechliche /tmp/frontend.log -
+    zeigte einen simplen, eindeutigen Programmierfehler, VOELLIG
+    unabhaengig von den beiden vorherigen Vermutungen (VSync/flip()
+    und read_action()-Deadline): AttributeError: 'Frontend' object
+    has no attribute '_ra_lookup', in build_ra_hunter_category(),
+    aufgerufen aus build_categories(), aufgerufen aus __init__().
+  - Der Fehler: self.build_categories() wurde in __init__() aufgerufen,
+    BEVOR self._ra_lookup ueberhaupt gesetzt wurde (der RA-Setup-Block
+    stand weiter unten in derselben Funktion). Reiner Reihenfolge-
+    Fehler. Betraf NUR Nutzer mit tatsaechlich eingerichtetem
+    RetroAchievements (ra_enabled() muss True liefern, damit Python
+    ueberhaupt bis zum zweiten "or"-Operanden auswertet, der den
+    fehlenden Attributzugriff ausloest) - erklaert vermutlich, warum
+    das nicht schon frueher jedem aufgefallen ist.
+  - WARUM DIE EIGENEN REGRESSIONSTESTS DAS NIE GEFANGEN HABEN (wichtige
+    Lehre): JEDER einzelne Test in dieser Datei setzt "f._ra_lookup = {}"
+    von Hand als Standard-Testaufbau, bevor draw()/build_categories()
+    aufgerufen wird - das hat diesen Reihenfolge-Fehler die ganze Zeit
+    ueberdeckt, da der echte Frontend()-Konstruktor nie end-to-end
+    durchlaufen wurde. Erst der tatsaechliche Absturz-Log von echter
+    Hardware hat den wahren Fehler gezeigt.
+  - Fix: kompletter RA-Setup-Block (self._ra_lookup und zugehoerige
+    Attribute, inklusive des zeitlich begrenzten Abrufs) VOR
+    self.build_categories() verschoben.
+  - Getestet: DIESMAL durch den ECHTEN Frontend()-Konstruktor (nicht
+    nur mit manuell vorgesetztem _ra_lookup wie bisher ueberall in
+    dieser Datei) - sowohl mit ra_enabled()=False als auch =True
+    (inkl. erfolgreichem, aber leerem Abruf) bestaetigt: kein
+    AttributeError mehr, self._ra_lookup korrekt gesetzt bevor
+    build_categories() darauf zugreift. 56 Kombinationen kompletter
+    Regressionstest weiterhin bestanden.
 
 Neu in v3.2 (KRITISCHER BUGFIX Teil 2 - der v3.1-Fix allein reichte
 nicht, Nutzer meldete weiterhin schwarzen Bildschirm nach dem Update):
@@ -8471,6 +8505,55 @@ class Frontend:
         self.fb.clear((16, 18, 24))
         self.fb.flip()
         self.music = MusicPlayer()
+
+        # BUGFIX (KRITISCH - Nutzer-Rueckmeldung von echter Hardware:
+        # Frontend startet, Bildschirm bleibt schwarz, Absturz laut Log
+        # in build_ra_hunter_category(): "'Frontend' object has no
+        # attribute '_ra_lookup'"): dieser komplette RA-Setup-Block
+        # stand bisher WEITER UNTEN in __init__(), NACH dem Aufruf von
+        # self.build_categories() - build_categories() ruft aber intern
+        # build_ra_hunter_category() auf, die self._ra_lookup bereits
+        # braucht. Reihenfolge-Fehler: das Attribut existierte zum
+        # Zeitpunkt des Zugriffs schlicht noch nicht.
+        #
+        # Warum meine eigenen Regressionstests das nie gefangen haben:
+        # jeder einzelne Test in dieser Datei setzt "f._ra_lookup = {}"
+        # als Standard-Testaufbau von Hand, BEVOR draw()/build_categories()
+        # aufgerufen wird - das hat genau diesen Reihenfolge-Fehler die
+        # ganze Zeit ueberdeckt, da der echte Frontend()-Konstruktor nie
+        # end-to-end durchlaufen wurde. Erst der echte Absturz-Log von
+        # echter Hardware hat den tatsaechlichen Fehler gezeigt (siehe
+        # Vereinbarung "mehr Hardware-Gegenprobe als Selbst-
+        # Regressionstests").
+        #
+        # RetroAchievements - komplett unsichtbar/kostenlos, solange
+        # nicht eingerichtet (ra_enabled() prueft nur eine Datei,
+        # sofortiger Rueckweg). Nur FALLS eingerichtet, zeitlich
+        # begrenzter Abruf (siehe fetch_ra_progress_bounded()) - blockiert
+        # den Start dadurch nie unkontrolliert lange, selbst wenn RA
+        # gerade langsam/nicht erreichbar ist.
+        self._ra_lookup = {}
+        self._ra_fetch_ok = False   # eigenstaendig von "hat Treffer" - auch
+                                    # eine leere, aber ERFOLGREICH abgerufene
+                                    # Liste zaehlt als Erfolg. Grundlage fuer
+                                    # den Neuversuch in _maybe_retry_ra().
+        self._ra_retry_next = 0.0
+        self._ra_retry_count = 0
+        if ra_enabled():
+            ra_data = fetch_ra_progress_bounded(timeout=3.0)
+            if ra_data is not None:
+                self._ra_lookup = build_ra_lookup(ra_data)
+                self._ra_fetch_ok = True
+            elif not NTP_SYNC_OK:
+                # Wahrscheinlichste Erklaerung fuer einen fehlgeschlagenen
+                # Abruf direkt beim Start: die Systemuhr war noch falsch
+                # (MiSTer hat keine batteriegepufferte Uhr), wodurch die
+                # HTTPS-Zertifikatspruefung fehlschlaegt - unabhaengig
+                # davon, ob der RA-Server eigentlich erreichbar waere.
+                # Neuversuch, sobald die Zeit sich (per _maybe_retry_ra())
+                # doch noch synchronisiert.
+                self._ra_retry_next = time.monotonic() + 30.0
+
         self.build_categories()
         self.page = 0              # 0 = Kategorien-Menue, 1 = Kategorie-Ansicht
         self.cat_i = 0
@@ -8518,34 +8601,6 @@ class Frontend:
         # Neuzeichnen). Wird nach jedem run_core()-Aufruf aktualisiert,
         # damit die gerade gespielte Zeit sofort sichtbar wird.
         self._playtime_cache = load_playtime()
-
-        # RetroAchievements - komplett unsichtbar/kostenlos, solange
-        # nicht eingerichtet (ra_enabled() prueft nur eine Datei,
-        # sofortiger Rueckweg). Nur FALLS eingerichtet, zeitlich
-        # begrenzter Abruf (siehe fetch_ra_progress_bounded()) - blockiert
-        # den Start dadurch nie unkontrolliert lange, selbst wenn RA
-        # gerade langsam/nicht erreichbar ist.
-        self._ra_lookup = {}
-        self._ra_fetch_ok = False   # eigenstaendig von "hat Treffer" - auch
-                                    # eine leere, aber ERFOLGREICH abgerufene
-                                    # Liste zaehlt als Erfolg. Grundlage fuer
-                                    # den Neuversuch in _maybe_retry_ra().
-        self._ra_retry_next = 0.0
-        self._ra_retry_count = 0
-        if ra_enabled():
-            ra_data = fetch_ra_progress_bounded(timeout=3.0)
-            if ra_data is not None:
-                self._ra_lookup = build_ra_lookup(ra_data)
-                self._ra_fetch_ok = True
-            elif not NTP_SYNC_OK:
-                # Wahrscheinlichste Erklaerung fuer einen fehlgeschlagenen
-                # Abruf direkt beim Start: die Systemuhr war noch falsch
-                # (MiSTer hat keine batteriegepufferte Uhr), wodurch die
-                # HTTPS-Zertifikatspruefung fehlschlaegt - unabhaengig
-                # davon, ob der RA-Server eigentlich erreichbar waere.
-                # Neuversuch, sobald die Zeit sich (per _maybe_retry_ra())
-                # doch noch synchronisiert.
-                self._ra_retry_next = time.monotonic() + 30.0
 
         # BUGFIX (Nutzer-Rueckmeldung: Erfolgs-Pop-up blieb beim ersten
         # tatsaechlich neu erreichten Erfolg aus): die "bereits gezeigt"-
