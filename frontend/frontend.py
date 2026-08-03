@@ -1,16 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v3.2
+MiSTer Custom Frontend - v4.1
 =======================================
-+ VORSCHLAG (noch nicht offiziell nummeriert): Rainwave-Internetradio als
-  zweite Musikquelle (Modul rainwave.py + Menuepunkt "Musik-Quelle").
-  Von TheRealSutefan, auf echter Hardware getestet, zum Uebernehmen.
-  Aendert nichts am Bestehenden, solange die Quelle auf "MP3" bleibt (Default).
-+ Release-Linie bleibt v3.2. Dragrems ESC-/HID-Ausstieg-Arbeit (von ihm
-  intern als v3.3-v3.6 gefuehrt, siehe Changelog) ist hier eingebracht.
-+ VORSCHLAG: Lautstaerke-Regler (Menuepunkt "Lautstaerke: X%"). Ein Regler
-  fuer Musik (mpg123 -f) UND Menue-Sounds (WAVs mit skalierter Amplitude).
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
 VERSIONIERUNG NEU GEREGELT (Nutzer-Feedback, hier dokumentiert statt
@@ -44,6 +36,168 @@ Hochzaehlen". Alles inhaltlich Passierte (Boot-Animation, drei
 Bugfix-Anlaeufe, CRT-Textumbruch-Fixes, RA-Vitrine-Cache) bleibt
 vollstaendig erhalten - nur als EIN gebuendelter v3.2-Eintrag statt
 sechs einzelner.
+
+Neu in v4.1 (NEUES FEATURE: Lautstaerke-Regler, uebernommen aus
+einem separat vorbereiteten, auf echter MiSTer-Hardware getesteten
+Vorschlag von TheRealSutefan - siehe CHANGES_VOLUME.md):
+  - Regler fuer Musik UND Menue-Sounds gemeinsam, Stufen 0/20/40/60/
+    80/100%, neuer Menuepunkt "Lautstaerke: X%" in "Anzeige & Sound"
+    (direkt nach der Musik-Quelle - Nutzerwunsch, dort einsortiert).
+  - Zwei unterschiedliche Mechanismen, da Musik und Menue-Sounds
+    technisch verschieden abgespielt werden: Musik laeuft ueber
+    mpg123, bekommt den eingebauten Skalierungsfaktor -f (0..32768,
+    fuer MP3-Wiedergabe UND Rainwave-Radio). Menue-Sounds sind selbst
+    erzeugte WAVs ueber aplay - aplay hat KEINEN Lautstaerke-Schalter,
+    die Lautstaerke steckt deshalb in der AMPLITUDE der erzeugten WAV-
+    Datei selbst (wird bei einer Aenderung neu erzeugt statt nur neu
+    abgespielt).
+  - SFX-Neuerzeugung + Musik-Neustart laufen bewusst im Hintergrund-
+    Thread (_apply_volume_async(), mit Lock gegen schnelle Mehrfach-
+    Druecke) - beides ist auf dem MiSTer traege/blockierend, sollte
+    den Menue-Thread nicht einfrieren lassen.
+  - Getestet: _mpg_scale() fuer 0/50/100% bestaetigt. Kompletter Zyklus
+    (100->0->20->40->60->80->100->0) bestaetigt, inkl. Persistenz.
+    mpg123-Aufruf enthaelt nachweislich den korrekten -f-Faktor.
+    Menuepunkt sitzt korrekt in "Anzeige & Sound" mit korrekter
+    Prozent-Anzeige. 70 Kombinationen kompletter Regressionstest
+    bestanden.
+
+Neu in v4.0 (mehrere Aenderungen/Bugfixes aus einer weiteren
+Sammel-Rueckmeldung):
+  - AENDERUNG: F11 ("Zufallssprung") springt nicht mehr nur zu einem
+    zufaelligen Eintrag, sondern waehlt jetzt ein zufaelliges Spiel
+    ueber ALLE Systeme hinweg und STARTET es direkt - inklusive der
+    RA-Core-Abfrage, falls das getroffene System eine RA-faehige
+    Core-Variante hat (dieselbe Abfrage wie beim normalen Betreten
+    einer Kategorie).
+  - GEPRUEFT (keine Aenderung noetig): "nur Systeme mit vorhandenen
+    ROMs anzeigen" ist bereits so - _scan_games_disk() fuegt ein
+    System nur hinzu, wenn tatsaechlich Inhalte gefunden wurden.
+  - BUGFIX: Core-Auswahl-Titel ("Mega Drive - Core waehlen") lief auf
+    CRT ohne jede Breitenpruefung ueber den Rand, das Wort "waehlen"
+    verschwand dadurch unsichtbar. Jetzt mit Schriftanpassung
+    abgesichert.
+  - BUGFIX: Kopfzeile in der Spieleliste schnitt bei langen
+    Systemnamen mitten im Wort ab (z.B. "MEGA DR~"). Wird jetzt
+    verkleinert statt abgeschnitten.
+  - NEUES FEATURE: Attract-Modus-Verzoegerung einstellbar (vorher fest
+    auf 90 Sekunden) - neuer Menuepunkt zyklisch durch 30s bis 15min.
+  - AENDERUNG: System-Menue umsortiert - Musik-Eintraege (An/Aus,
+    Quelle) sind jetzt unter "Anzeige & Sound" zu finden, CRT-Testbild
+    ist jetzt unter dem ehemaligen "Verhalten"-Ordner (jetzt
+    "Optionen" genannt).
+  - BUGFIX: Scripts, die aus dem Frontend gestartet wurden, liefen
+    ohne den Wechsel in MiSTers Konsolenmodus (enter_console_mode(),
+    sendet F9) - der eigene Framebuffer blieb dadurch vermutlich ueber
+    der Text-Konsole liegen, obwohl das Script korrekt auf tty1
+    schrieb. run_core()/back_to_frontend() machten diesen Wechsel
+    bereits an vergleichbarer Stelle, run_script() bisher nicht.
+  - OFFENE FRAGE: "Lautstaerke"-Regelung wurde als zu verschiebender
+    Menuepunkt genannt, existiert aber noch gar nicht als Feature
+    (nur unabhaengige Kommentare zu Equalizer-Anzeigen gefunden) -
+    keine Aenderung vorgenommen, braucht Klaerung, ob das als neues
+    Feature gewuenscht ist (Anbindung an MiSTers Audiosystem noetig).
+  - Getestet: Core-Auswahl-Titel bleibt komplett im Bild, Kopfzeile
+    schneidet nicht mehr ab, neue Attract-Verzoegerung kompletter
+    Zyklus + Formatierung + Persistenz bestaetigt, neue Menuestruktur
+    (Ordnernamen + Eintrags-Zuordnung) bestaetigt, run_script()-
+    Aufrufreihenfolge (enter_console_mode() vor dem eigentlichen
+    Start) bestaetigt. 70 Kombinationen kompletter Regressionstest
+    bestanden (56 Basis + 2 neue Ordnerpfade).
+
+Neu in v3.9 (mehrere Bugfixes/Aenderungen aus einer groesseren
+Sammel-Rueckmeldung):
+  - BUGFIX: "Spiele ausser von /media/fat/games werden nicht
+    angezeigt" - GAMES_BASES deckte nur usb0 bis usb5 fest ab.
+    _discover_games_bases() erkennt jetzt zusaetzlich dynamisch alles,
+    was tatsaechlich unter /media eingehaengt ist (Netzlaufwerke,
+    hoehere USB-Nummern usw.), die feste Liste bleibt als Ruecksicht-
+    nahme zusaetzlich bestehen.
+  - AENDERUNG: ROM-Hacks (und aehnlich getaggte Randomizer-Ausgaben)
+    wurden bisher als "Junk" komplett ausgefiltert (gleiche Liste wie
+    Beta/Proto/Demo). Anders als diese sind Hacks vollstaendige,
+    spielbare Inhalte - "(hack" aus JUNK_TAGS entfernt.
+  - AENDERUNG: Regions-Entdopplung entfernt - frueher wurde pro Spiel
+    nur die "beste" Region behalten (Germany > Europe > World > USA >
+    Japan), alle anderen Versionen (PAL/NTSC/etc.) verschwanden
+    komplett. Jetzt bleiben alle gefundenen Versionen erhalten und
+    waehlbar.
+  - BUGFIX: F10 zum Verlassen eines Spiels funktionierte praktisch nie
+    (lief bisher ueber dieselbe waehrend des Spielens gesperrte evdev-
+    Ebene wie zuvor schon Start+Select). _hid_report_has_esc() ->
+    _hid_report_has_exit_key(), prueft jetzt auf Esc UND F10 ueber den
+    bereits bestaetigt funktionierenden HID-Weg.
+  - GEKLAERT (kein Bug): F11 ("springe zu zufaelligem Eintrag", seit
+    v1.28) startet nichts von selbst, sondern bewegt nur die Auswahl -
+    im Code bestaetigt. Vermutlich wurde danach noch OK gedrueckt.
+  - Neue boxart_download.sh uebernommen (interaktive Profilauswahl SD/
+    HD statt fest auf SD, zusaetzlich per SSH-Argument aufrufbar).
+  - OFFENE PUNKTE (noch keine Aenderung, brauchen mehr Informationen
+    vom Nutzer, bevor blind etwas geaendert wird): "SNES Tracker"-Core
+    fehlt in der Kategorienliste (unklar, welche Datei-Endung/welcher
+    Core genau gemeint ist); kuratierte Liste "zeigt nicht immer
+    korrekt" (vermutlich exakter Namensabgleich gegen die Datenbank,
+    braucht ein konkretes Beispiel); Esc-Ausstieg bei Sutefan weiterhin
+    ungeklaert (Diagnose zeigt wiederholt NUR das vermutete Status-
+    Signal einer Schnittstelle, nichts von den anderen beiden -
+    braucht weitere Untersuchung).
+  - Getestet: dynamische Geraete-Erkennung mit simuliertem Netzlauf-
+    werk UND einer USB-Nummer ausserhalb 0-5 bestaetigt. Kompletter
+    Scan-Test bestaetigt: mehrere Regionsversionen bleiben alle
+    erhalten, ROM-Hack bleibt erhalten, Beta/Proto werden weiterhin
+    korrekt ausgefiltert. Esc- UND F10-Erkennung ueber HID einzeln
+    bestaetigt. 56 Kombinationen kompletter Regressionstest bestanden.
+
+Neu in v3.8 (NEUES FEATURE: Rainwave-Internetradio als zweite
+Musikquelle, uebernommen aus einem separat vorbereiteten, auf echter
+MiSTer-Hardware getesteten Vorschlag - siehe CHANGES_RAINWAVE.md):
+  - Neues eigenstaendiges Modul frontend/rainwave.py (reines stdlib,
+    passend zur "keine externen Abhaengigkeiten"-Linie): Stationstabelle
+    (Game/OCReMix/Covers/Chiptune/All), stream_url(), RainwaveRadio mit
+    tick() (pollt alle 15s), now_playing(), set_station(). mpg123 spielt
+    den Stream direkt (http, kein https - mpg123 kann das nicht), der
+    Titel wird anonym ueber die oeffentliche api4/info-Schnittstelle
+    geholt (kein Login noetig).
+  - MusicPlayer erweitert: neue Quelle "radio" neben der bisherigen
+    "mp3" - cycle_source() schaltet MP3 -> Radio(Game..All) -> MP3 um,
+    laesst den bestehenden An/Aus-Zustand unberuehrt. Now-Playing-Titel
+    fliesst automatisch ins bestehende Stream-Overlay (kein Overlay-
+    Code geaendert).
+  - Neuer Menuepunkt "Musik-Quelle" im System-Menue (Verhalten-Ordner,
+    direkt unter "Musik").
+  - ZUSAETZLICHE ABSICHERUNG gegenueber der uebernommenen Fassung: der
+    Import von rainwave steht jetzt in einem try/except (gleiches
+    Muster wie beim bestehenden, ebenfalls optionalen stream_server) -
+    sollte die Datei beim Kopieren mal fehlen oder aus einem anderen
+    Grund nicht laden, bleibt die normale MP3-Wiedergabe unveraendert
+    nutzbar statt abzustuerzen; "Musik-Quelle" wird dann zu einem
+    stillen No-Op.
+  - Getestet: kompletter Quellen-Zyklus MP3 -> alle 5 Sender -> MP3
+    bestaetigt, Quelle+Sender bleiben ueber einen Neustart hinweg
+    korrekt gespeichert. Menuepunkt-Beschriftung fuer beide Quellen
+    ("MP3" bzw. "Radio - <Sender>") bestaetigt. Verhalten OHNE
+    geladenes rainwave-Modul einzeln bestaetigt (kein Absturz, no-op).
+    56 Kombinationen kompletter Regressionstest bestanden.
+
+Neu in v3.7 (DIAGNOSE-VERSION Teil 2, IMMER NOCH KEIN Fix - der
+v3.6-Diagnoseansatz hatte selbst einen Fehler):
+  - Sutefans Log zeigte: alle 30 protokollierten Reports kamen von
+    hidraw2, mit einem regelmaessig wechselnden Muster (sieht nach
+    einem periodischen Status-/Heartbeat-Signal aus, NICHT nach
+    Tastendruecken) - hidraw0 und hidraw1, die vermutlich
+    tatsaechlichen Tastatur-Schnittstellen, kamen dabei nie zu Wort.
+  - Ursache: das Diagnose-Budget aus v3.6 war ein GEMEINSAMES Budget
+    ueber alle Schnittstellen hinweg - eine "gespraechige"
+    Schnittstelle (hidraw2) konnte dadurch die anderen komplett
+    verdraengen, bevor diese ueberhaupt einmal gemeldet wurden.
+  - Fix: eigenes Budget PRO Schnittstelle (je 10 statt 30 gemeinsam) -
+    jede der drei Schnittstellen bekommt jetzt garantiert ihre eigenen
+    Log-Zeilen, unabhaengig davon, wie oft die anderen sich melden.
+  - Getestet: genau das beobachtete Muster nachgebaut (eine sehr
+    gespraechige Schnittstelle plus eine seltene, aber wichtige) -
+    bestaetigt, dass die seltene Schnittstelle jetzt zuverlaessig im
+    Log auftaucht, trotz der gespraechigen Konkurrenz. 56
+    Kombinationen kompletter Regressionstest bestanden.
 
 Neu in v3.6 (DIAGNOSE-VERSION, KEIN Fix - Esc-Ausstieg funktioniert
 trotz v3.5 (korrekt gefundene UND ueberwachte Schnittstellen) bei
@@ -3309,10 +3463,46 @@ def release_single_instance():
 
 BASE        = "/media/fat"
 SCRIPTS_DIR = "/media/fat/Scripts"
-# Alle Orte, an denen ROMs liegen koennen (SD + USB-Laufwerke)
-GAMES_BASES = (["/media/fat/games"]
-               + ["/media/usb%d/games" % i for i in range(6)]
-               + ["/media/usb%d" % i for i in range(6)])
+
+def _discover_games_bases():
+    """Alle Orte, an denen ROMs liegen koennen (SD + USB-Laufwerke).
+
+    BUGFIX (Nutzer-Rueckmeldung: "Spiele ausser von /media/fat/games
+    werden nicht angezeigt"): die feste Liste deckte nur usb0 bis
+    usb5 ab - Speicherorte ausserhalb dieses festen Musters (z.B. ein
+    Netzlaufwerk unter einem anderen Namen, oder ein USB-Geraet mit
+    hoeherer Nummer) wurden dadurch nie gefunden, komplett unabhaengig
+    davon, was tatsaechlich am MiSTer angeschlossen ist. Jetzt
+    zusaetzlich dynamisch: alles, was tatsaechlich unter /media
+    eingehaengt ist (ausser "fat" selbst, das schon feststeht), wird
+    automatisch mit aufgenommen - deckt damit auch Faelle ab, die die
+    feste Liste nicht vorgesehen hatte. Die urspruengliche feste Liste
+    bleibt zusaetzlich bestehen (Vorhersagbarkeit/Ruecksichtigung auf
+    den ueblichen Fall, auch wenn /media aus irgendeinem Grund gerade
+    nicht lesbar sein sollte)."""
+    bases = ["/media/fat/games"]
+    bases += ["/media/usb%d/games" % i for i in range(6)]
+    bases += ["/media/usb%d" % i for i in range(6)]
+    try:
+        for entry in sorted(os.listdir("/media")):
+            if entry == "fat":
+                continue   # schon oben abgedeckt
+            path = "/media/" + entry
+            if not os.path.isdir(path):
+                continue
+            games_sub = os.path.join(path, "games")
+            if games_sub not in bases:
+                bases.append(games_sub)
+            if path not in bases:
+                bases.append(path)
+    except OSError:
+        pass   # /media nicht lesbar - bei der festen Liste bleiben
+    return bases
+
+# Bewusst als Funktionsergebnis statt als literale Liste - siehe
+# _discover_games_bases() oben fuer die Begruendung (dynamische
+# Erkennung zusaetzlich zur festen Liste).
+GAMES_BASES = _discover_games_bases()
 ART_BASE    = "/media/fat/frontend/art"
 ART_HD      = "/media/fat/frontend/art_hd"
 
@@ -4580,30 +4770,51 @@ def _find_keyboard_hidraws():
         "Esc-Ausstieg wird nicht funktionieren.")
     return []
 
-def _hid_report_has_esc(data):
-    """Prueft einen rohen HID-Tastatur-Report auf die Escape-Taste
-    (USB-HID-Keycode 0x29) - UNABHAENGIG von Modifikatortasten (frueher
-    Strg+Alt+Esc, auf Nutzerwunsch auf reines Esc vereinfacht, da
-    einfacher zu druecken).
+def _hid_report_has_exit_key(data):
+    """Prueft einen rohen HID-Tastatur-Report auf Escape (0x29) ODER
+    F10 (0x44) - UNABHAENGIG von Modifikatortasten (frueher Strg+Alt+
+    Esc, auf Nutzerwunsch auf reines Esc vereinfacht, da einfacher zu
+    druecken).
+
+    ERWEITERT (Nutzer-Rueckmeldung: "F10 funktioniert nicht"): F10 war
+    bisher NUR ueber die normale evdev-Ebene abgefragt
+    (KEY_F10-Vergleich in wait_game_exit()) - die MiSTer waehrend
+    eines laufenden Cores exklusiv sperrt (dasselbe bereits bekannte
+    Problem wie beim Start+Select-Kombo, siehe dortiger Kommentar).
+    F10 haette dadurch praktisch nie tatsaechlich ausgeloest. Jetzt
+    laeuft F10 ueber denselben bereits bestaetigt funktionierenden
+    HID-Weg wie Esc - zwei gleichwertige Ausstiegs-Tasten statt einer,
+    beide ueber den zuverlaessigen Pfad.
 
     WICHTIG: viele Spiele nutzen Esc selbst schon fuer eigene Pause-/
     Menue-Funktionen - deshalb bleibt die Haltezeit (KBD_COMBO_HOLD,
     siehe wait_game_exit()) als Sicherung bestehen. Ein kurzer,
-    normaler Esc-Druck im Spiel loest dadurch NICHT versehentlich den
-    Ausstieg aus - nur ein bewusst LAENGER GEHALTENES Esc tut das.
+    normaler Tastendruck im Spiel loest dadurch NICHT versehentlich
+    den Ausstieg aus - nur ein bewusst LAENGER GEHALTENES Esc oder F10
+    tut das.
 
     Der Keycode wird IRGENDWO im Report gesucht, nicht an einer festen
     Position - robuster gegenueber unterschiedlichen Report-Layouts
     (manche Geraete stellen ein Report-ID-Byte voran) als eine feste
     Byte-Position anzunehmen."""
-    return 0x29 in data
+    return 0x29 in data or 0x44 in data
 
 
 MUSIC_DIR   = "/media/fat/music"
 MUSIC_ENABLED_FILE = "/media/fat/frontend/music_enabled"
 MUSIC_SOURCE_FILE  = "/media/fat/frontend/music_source"   # "mp3"/"radio" + Stations-sid
-VOLUME_FILE        = "/media/fat/frontend/volume"         # Lautstaerke 0-100 (Musik + Menue-Sounds)
+VOLUME_FILE = "/media/fat/frontend/volume"   # Lautstaerke 0-100 (Musik + Menue-Sounds)
 
+# NEUES FEATURE (Nutzerwunsch: Lautstaerke-Regler fuer Musik UND
+# Menue-Sounds, uebernommen aus einem separat vorbereiteten, auf
+# echter MiSTer-Hardware getesteten Vorschlag - siehe
+# CHANGES_VOLUME.md). Zwei unterschiedliche Mechanismen, weil Musik
+# und Menue-Sounds technisch verschieden abgespielt werden: Musik
+# laeuft ueber mpg123, das einen eingebauten Skalierungsfaktor
+# (-f 0..32768) hat. Menue-Sounds sind selbst erzeugte WAVs, abgespielt
+# ueber aplay - aplay hat KEINEN Lautstaerke-Schalter, deshalb steckt
+# die Lautstaerke dort in der AMPLITUDE der erzeugten WAV-Datei selbst
+# (werden bei einer Aenderung neu erzeugt statt nur neu abgespielt).
 def _load_volume():
     try:
         return max(0, min(100, int(open(VOLUME_FILE).read().strip())))
@@ -4651,11 +4862,25 @@ def _apply_volume_async(player):
                 player._stop_current()
                 player._start_current()
     threading.Thread(target=_worker, daemon=True).start()
+
 LANGUAGE_FILE = "/media/fat/frontend/language"
 KEYMAP_CUSTOM_FILE = "/media/fat/frontend/keymap_custom.json"
 BOOTANIM_DIR = "/media/fat/frontend/bootanim"
 BOOTANIM_PLAYED_MARKER = "/tmp/frontend_bootanim_played"
 MPG123_BIN  = "/usr/bin/mpg123"
+
+# NEUES FEATURE (Nutzerwunsch: Rainwave-Internetradio als zweite
+# Musikquelle neben den lokalen MP3s, uebernommen aus einem separat
+# vorbereiteten, auf echter MiSTer-Hardware getesteten Vorschlag -
+# siehe CHANGES_RAINWAVE.md). Eigenstaendiges stdlib-Modul
+# (frontend/rainwave.py, neben frontend.py) - komplett optional, damit
+# die MP3-Wiedergabe unveraendert weiterlaeuft, selbst falls die Datei
+# beim Kopieren mal fehlen sollte (gleiches defensives Muster wie
+# stream_server oben).
+try:
+    import rainwave
+except Exception:
+    rainwave = None
 CORENAME    = "/tmp/CORENAME"
 FBDEV       = "/dev/fb0"
 
@@ -5361,7 +5586,6 @@ import threading
 import urllib.request
 import urllib.parse
 import urllib.error
-import rainwave   # Rainwave-Internetradio (Modul neben frontend.py)
 
 EVIOCGRAB = 0x40044590
 EV_SYN, EV_KEY, EV_ABS = 0, 1, 3
@@ -5852,7 +6076,17 @@ class InputManager:
         # sonst koennte eine sehr "gespraechige" Schnittstelle das Log
         # fluten) - zeigt beim naechsten Testlauf schwarz auf weiss, wie
         # ein Tastendruck auf DIESER Tastatur tatsaechlich aussieht.
-        kbd_diag_budget = [30]
+        #
+        # BUGFIX (per echter Diagnose-Ausgabe von Sutefan bestaetigt):
+        # ein GEMEINSAMES Budget ueber alle Schnittstellen hinweg war
+        # ein Fehler - hidraw2 sendete ALLE 30 protokollierten Reports
+        # (regelmaessig wechselndes Muster, sieht nach einem periodischen
+        # Status-/Heartbeat-Signal aus, NICHT nach Tastendruecken), noch
+        # bevor hidraw0/hidraw1 - die vermutlich tatsaechlichen
+        # Tastatur-Schnittstellen - ueberhaupt einmal zu Wort kamen.
+        # Jetzt: eigenes Budget PRO Schnittstelle, damit eine
+        # "gespraechige" Schnittstelle die anderen nicht mehr verdraengt.
+        kbd_diag_budget = {fd: 10 for fd in kbd_fds}
         kbd_combo_since = None
         try:
             while True:
@@ -5890,12 +6124,13 @@ class InputManager:
                             except OSError:
                                 pass
                             kbd_fds.pop(fd, None)
+                            kbd_diag_budget.pop(fd, None)
                             continue
-                        if kbd_diag_budget[0] > 0:
-                            kbd_diag_budget[0] -= 1
+                        if kbd_diag_budget.get(fd, 0) > 0:
+                            kbd_diag_budget[fd] -= 1
                             LOG("wait_game_exit DIAGNOSE (%s): %s"
                                 % (kbd_fd_paths.get(fd, "?"), data.hex()))
-                        kbd_fds[fd] = _hid_report_has_esc(data)
+                        kbd_fds[fd] = _hid_report_has_exit_key(data)
                         any_held = any(kbd_fds.values())
                         if any_held and kbd_combo_since is None:
                             kbd_combo_since = time.monotonic()
@@ -6583,7 +6818,15 @@ def _canonical_key(name):
 # Tags, die ein ROM als Beta/Prototyp/Demo/Hack/defekten Dump o.ae.
 # kennzeichnen - werden beim Scannen ausgefiltert.
 JUNK_TAGS = ("(beta", "(proto", "(demo", "(sample", "(unl)", "[b]",
-            "(pirate", "(program", "(test", "(kiosk", "(hack")
+            "(pirate", "(program", "(test", "(kiosk")
+# BUGFIX/AENDERUNG (Nutzerwunsch: "Was ist mit ROM Hacks und Zelda
+# Randomizer" - Spielhacks und Randomizer-Ausgaben wurden bisher
+# GAR NICHT angezeigt): "(hack" stand bisher in dieser Liste und
+# wurde damit komplett ausgefiltert, genau wie unfertige Beta-/Proto-
+# Dumps. Anders als diese sind Hacks (und Randomizer-Ausgaben, die
+# haeufig aehnlich getaggt werden) aber vollstaendige, spielbare
+# Inhalte, die viele Nutzer bewusst suchen - keine unfertigen/
+# kaputten Dumps. Deshalb aus der Ausschlussliste entfernt.
 
 def _is_junk(name):
     low = name.lower()
@@ -7144,20 +7387,19 @@ def _merge_node(dst, src):
     dst["items"].extend(src["items"])
 
 def _dedupe_items(raw_items):
-    """Pro kanonischem Namen (ohne Region-/Versions-Tags) nur die
+    """BUGFIX/AENDERUNG (Nutzerwunsch: "mehrere Spielversionen muessen
+    auch im Menue zur Auswahl stehen, PAL/NTSC etcpp"): frueher wurde
+    hier pro kanonischem Namen (ohne Region-/Versions-Tags) NUR die
     Kopie mit der besten Region behalten (Germany > Europe > World >
-    USA > Japan). Wird PRO ORDNER angewendet (nicht global ueber das
-    ganze System), damit typische nach Anfangsbuchstabe/Region
-    aufgeteilte Sammlungen nicht faelschlich ueber Ordnergrenzen
-    hinweg zusammengemischt werden."""
-    best = {}
-    for entry in raw_items:
-        key = _canonical_key(entry[0])
-        rank = _region_rank(entry[0])
-        cur = best.get(key)
-        if cur is None or rank < cur[0]:
-            best[key] = (rank, entry)
-    items = [entry for _rank, entry in best.values()]
+    USA > Japan, siehe REGION_PRIORITY), alle anderen Versionen
+    verschwanden komplett aus der Liste - nicht mehr auswaehlbar,
+    unabhaengig davon, ob man gezielt die PAL- oder NTSC-Fassung
+    wollte. Jetzt bleiben ALLE gefundenen Versionen erhalten, nur
+    alphabetisch sortiert - REGION_PRIORITY/_region_rank() bleiben im
+    Code bestehen (werden an anderer Stelle noch fuer die Boxart-/
+    Info-Zuordnung gebraucht), wirken sich hier aber nicht mehr
+    aus."""
+    items = list(raw_items)
     items.sort(key=lambda t: t[0].lower())
     return items
 
@@ -7605,7 +7847,9 @@ SFX_CHIME_DEFS = {
 
 def _ensure_sfx_files():
     """Erzeugt die WAV-Dateien einmalig, falls sie noch fehlen (erster
-    Start bzw. nach einem Update)."""
+    Start bzw. nach einem Update). Amplitude skaliert mit der
+    eingestellten Lautstaerke (VOLUME) - aplay hat selbst keinen
+    Lautstaerke-Schalter, siehe _regenerate_sfx()."""
     try:
         os.makedirs(SFX_DIR, exist_ok=True)
     except OSError:
@@ -7708,7 +7952,8 @@ class MusicPlayer:
     def __init__(self):
         self.enabled = self._load_enabled()
         self.source, _radio_sid = self._load_source()   # "mp3" oder "radio" + sid
-        self.radio = rainwave.RainwaveRadio(sid=_radio_sid, log=LOG)
+        self.radio = rainwave.RainwaveRadio(sid=_radio_sid, log=LOG) \
+            if rainwave is not None else None
         self.playlist = []
         self.pos = 0
         self.proc = None
@@ -7733,7 +7978,13 @@ class MusicPlayer:
 
     @staticmethod
     def _load_source():
-        """(quelle, sid) aus MUSIC_SOURCE_FILE - Default ("mp3", 1)."""
+        """(quelle, sid) aus MUSIC_SOURCE_FILE - Default ("mp3", 1).
+        Faellt zusaetzlich auf "mp3" zurueck, falls das rainwave-Modul
+        nicht geladen werden konnte (siehe Import-Absicherung oben) -
+        eine gespeicherte "radio"-Quelle darf dann nicht blind
+        uebernommen werden, sonst gaebe es keine Musik mehr."""
+        if rainwave is None:
+            return "mp3", 1
         try:
             parts = open(MUSIC_SOURCE_FILE).read().split()
             src = parts[0] if parts and parts[0] in ("mp3", "radio") else "mp3"
@@ -7745,6 +7996,8 @@ class MusicPlayer:
             return "mp3", 1
 
     def _save_source(self):
+        if self.radio is None:
+            return
         try:
             os.makedirs(os.path.dirname(MUSIC_SOURCE_FILE), exist_ok=True)
             with open(MUSIC_SOURCE_FILE, "w") as f:
@@ -7765,7 +8018,7 @@ class MusicPlayer:
 
     def available(self):
         if self.source == "radio":
-            return os.path.exists(MPG123_BIN)
+            return self.radio is not None and os.path.exists(MPG123_BIN)
         return bool(self.playlist) and os.path.exists(MPG123_BIN)
 
     def _proc_alive(self):
@@ -7773,6 +8026,8 @@ class MusicPlayer:
 
     def _start_current(self):
         if self.source == "radio":
+            if self.radio is None:
+                return
             url = self.radio.stream_url()
             if not url:
                 return
@@ -7828,7 +8083,10 @@ class MusicPlayer:
         if not self.enabled or self.paused_for_core:
             return None
         if self.source == "radio":
-            return self.radio.now_playing() or ("Radio: %s" % rainwave.station_name(self.radio.sid))
+            if self.radio is None:
+                return None
+            return self.radio.now_playing() or \
+                ("Radio: %s" % rainwave.station_name(self.radio.sid))
         if not self.playlist:
             return None
         path = self.playlist[self.pos]
@@ -7847,6 +8105,8 @@ class MusicPlayer:
         if not self.enabled or self.paused_for_core:
             return
         if self.source == "radio":
+            if self.radio is None:
+                return
             self.radio.tick()                 # Now-Playing aktuell halten (nur alle 15s)
             if not self._proc_alive():
                 # (neu) verbinden - kleiner Backoff gegen Haemmern bei Netzausfall
@@ -7883,13 +8143,21 @@ class MusicPlayer:
 
     def toggle(self):
         self.enabled = not self.enabled
-        self._save_enabled()                # An/Aus ueber Neustarts merken
-        if not self.enabled:
-            self._stop_current()            # sofort stoppen - wichtig fuers Radio (Endlos-Stream)
+        self._save_enabled()
+        if self.enabled:
+            if not self.paused_for_core:
+                self.tick()
+        else:
+            self._stop_current()
 
     def cycle_source(self):
         """Musik-Quelle umschalten: MP3 -> Radio(Game..All) -> zurueck zu MP3.
-        Laesst den An/Aus-Zustand (self.enabled) bewusst unberuehrt."""
+        Laesst den An/Aus-Zustand (self.enabled) bewusst unberuehrt.
+        Ohne geladenes rainwave-Modul (siehe Import-Absicherung oben)
+        bleibt das ein no-op - es gaebe nichts, wohin man umschalten
+        koennte."""
+        if self.radio is None:
+            return
         stations = sorted(rainwave.RAINWAVE_STATIONS)
         self._stop_current()   # laufende Quelle stoppen; tick() startet die neue
         if self.source == "mp3":
@@ -7903,6 +8171,11 @@ class MusicPlayer:
                 self.source = "mp3"
         self._track_started_at = None
         self._save_source()
+        if self.enabled:
+            if not self.paused_for_core:
+                self.tick()
+        else:
+            self._stop_current()
 
     def cycle_volume(self):
         """Lautstaerke 0->20->...->100->0 (Musik UND Menue-Sounds)."""
@@ -7912,12 +8185,6 @@ class MusicPlayer:
         VOLUME = levels[(idx + 1) % len(levels)]
         _save_volume(VOLUME)
         _apply_volume_async(self)   # SFX-Regen + Musik-Neustart im Hintergrund
-        self._save_enabled()
-        if self.enabled:
-            if not self.paused_for_core:
-                self.tick()
-        else:
-            self._stop_current()
 
     def pause_for_core(self):
         """Before starting a core/game: stop music so it doesn't mix
@@ -8170,7 +8437,7 @@ TRANSLATIONS = {
     "sys_group_ra": {"en": "RetroAchievements", "de": "RetroAchievements"},
     "sys_group_stats": {"en": "Statistics & achievements", "de": "Statistiken & Erfolge"},
     "sys_group_display": {"en": "Display & sound", "de": "Anzeige & Sound"},
-    "sys_group_behavior": {"en": "Behavior", "de": "Verhalten"},
+    "sys_group_behavior": {"en": "Options", "de": "Optionen"},
     "sys_group_input": {"en": "Input & language", "de": "Eingabe & Sprache"},
     "sys_group_info": {"en": "Info", "de": "Info"},
     "sys_group_maintenance": {"en": "Maintenance", "de": "Wartung"},
@@ -8182,9 +8449,9 @@ TRANSLATIONS = {
                         "de": "Menue-Video: HDMI -> auf CRT wechseln"},
     "sys_video_suffix":{"en": " (reboot)", "de": " (Neustart)"},
     "sys_music_on":    {"en": "Music: On -> turn off", "de": "Musik: an -> ausschalten"},
+    "sys_music_off":   {"en": "Music: Off -> turn on", "de": "Musik: aus -> einschalten"},
     "sys_music_source": {"en": "Music source: %s", "de": "Musik-Quelle: %s"},
     "sys_volume": {"en": "Volume: %d%%", "de": "Lautstaerke: %d%%"},
-    "sys_music_off":   {"en": "Music: Off -> turn on", "de": "Musik: aus -> einschalten"},
     "sys_language":    {"en": "Language: English -> switch to German",
                         "de": "Sprache: Deutsch -> auf Englisch wechseln"},
     "sys_configure_buttons": {"en": "Configure buttons",
@@ -8199,6 +8466,8 @@ TRANSLATIONS = {
                         "de": "Attract-Modus (Bildschirmschoner): AN -> ausschalten"},
     "sys_attract_off": {"en": "Attract mode (screensaver): OFF -> turn on",
                         "de": "Attract-Modus (Bildschirmschoner): AUS -> einschalten"},
+    "sys_attract_delay": {"en": "Attract mode delay: %s -> next",
+                          "de": "Attract-Modus Verzoegerung: %s -> naechste"},
     "sys_theme": {"en": "Color theme: %s -> next",
                   "de": "Farbschema: %s -> naechstes"},
     "sys_timezone": {"en": "Timezone: %s -> next",
@@ -8293,7 +8562,11 @@ def system_items(music_enabled=None, music_source="mp3", music_station=""):
     dieselbe Ordner-Navigation wie eigene ROM-Unterordner, kein neuer
     Code-Pfad noetig. Die Aktions-"kind"-Werte in jedem Eintrag bleiben
     UNVERAENDERT (siehe Aktions-Dispatch in run()) - nur die
-    Gruppierung/Anzeige aendert sich, kein bestehendes Verhalten."""
+    Gruppierung/Anzeige aendert sich, kein bestehendes Verhalten.
+
+    music_source/music_station (neu, Nutzerwunsch: Rainwave-
+    Internetradio als zweite Musikquelle, siehe CHANGES_RAINWAVE.md):
+    fuer die Beschriftung des neuen "Musik-Quelle"-Eintrags."""
     crt = crt_menu_active()
     video = t("sys_video_crt") if crt else t("sys_video_hdmi")
     music_label = t("sys_music_on") if music_enabled else t("sys_music_off")
@@ -8304,6 +8577,7 @@ def system_items(music_enabled=None, music_source="mp3", music_station=""):
         else t("sys_curated_off")
     attract_label = t("sys_attract_on") if attract_enabled() \
         else t("sys_attract_off")
+    attract_delay_label = t("sys_attract_delay", format_attract_delay(load_attract_delay()))
     theme_names = THEME_NAMES_DE if CURRENT_LANG == "de" else THEME_NAMES_EN
     theme_label = t("sys_theme", theme_names.get(current_theme_name(), "?"))
     tz_label = t("sys_timezone", format_timezone_offset(load_timezone_offset()))
@@ -8332,15 +8606,16 @@ def system_items(music_enabled=None, music_source="mp3", music_station=""):
             t("sys_group_display"): folder(
                 (video + t("sys_video_suffix"), "crtmenu", None),
                 (theme_label, "theme", None),
-                (t("sys_crt_test_action"), "crt_test", None),
                 (sfx_label, "sfx", None),
-            ),
-            t("sys_group_behavior"): folder(
                 (music_label, "music", None),
                 (music_src_label, "music_source", None),
                 (volume_label, "volume", None),
+            ),
+            t("sys_group_behavior"): folder(
+                (t("sys_crt_test_action"), "crt_test", None),
                 (curated_label, "curated", None),
                 (attract_label, "attract", None),
+                (attract_delay_label, "attract_delay", None),
                 (tz_label, "timezone", None),
                 (netwait_label, "network_wait", None),
             ),
@@ -8422,8 +8697,59 @@ def filter_curated(name, node, syskey):
 
 CURATED_FLAG = "/media/fat/frontend/curated_only"
 ATTRACT_DISABLED_FLAG = "/media/fat/frontend/attract_disabled"
+ATTRACT_DELAY_FILE = "/media/fat/frontend/attract_delay"
+# NEUES FEATURE (Nutzerwunsch: "fuer denn attract Modus eventuell aus
+# nur an und aus zu machen noch eine Einstellung dabei damit man sich
+# selber aussuchen kann ab wieviel Minuten der anfaengt"): bisher war
+# die Verzoegerung mit ATTRACT_IDLE_SECONDS = 90 fest verdrahtet, nur
+# AN/AUS liess sich einstellen (siehe attract_enabled()). Jetzt
+# zusaetzlich einstellbar - gleiches Muster wie die bestehende
+# Zeitzonen-Einstellung (load/save/cycle-Dreiklang mit einer festen
+# Schrittliste).
+ATTRACT_DELAY_STEPS = [30, 60, 90, 120, 180, 300, 600, 900]   # Sekunden
+
+def load_attract_delay():
+    try:
+        with open(ATTRACT_DELAY_FILE) as f:
+            val = int(f.read().strip())
+            return val if val in ATTRACT_DELAY_STEPS else 90
+    except (OSError, ValueError):
+        return 90   # bisheriger fester Standardwert bleibt der Default
+
+def save_attract_delay(seconds):
+    try:
+        os.makedirs(os.path.dirname(ATTRACT_DELAY_FILE), exist_ok=True)
+        with open(ATTRACT_DELAY_FILE, "w") as f:
+            f.write(str(seconds))
+    except OSError:
+        pass
+
+def cycle_attract_delay():
+    """Naechsten Wert in ATTRACT_DELAY_STEPS waehlen (wrap-around).
+    Liefert den neuen Wert in Sekunden."""
+    current = load_attract_delay()
+    try:
+        idx = ATTRACT_DELAY_STEPS.index(current)
+    except ValueError:
+        idx = -1
+    new_val = ATTRACT_DELAY_STEPS[(idx + 1) % len(ATTRACT_DELAY_STEPS)]
+    save_attract_delay(new_val)
+    return new_val
+
+def format_attract_delay(seconds):
+    """z.B. '30s', '2min', '10min' - fuer die Menu-Beschriftung."""
+    if seconds < 60:
+        return "%ds" % seconds
+    if seconds % 60 == 0:
+        return "%dmin" % (seconds // 60)
+    return "%.1fmin" % (seconds / 60)
+
 ATTRACT_IDLE_SECONDS = 90   # so lange ohne Eingabe, bevor der Attract-
                             # Modus (Bildschirmschoner) automatisch startet
+                            # - BLEIBT als Standardwert/Sicherheitsnetz
+                            # bestehen (siehe load_attract_delay()), wird
+                            # aber nicht mehr direkt fuer den eigentlichen
+                            # Check verwendet (siehe next_action()).
 ATTRACT_CHANGE_SECONDS = 6  # wie lange ein Spiel im Attract-Modus gezeigt wird
 COVER_SETTLE = 0.15         # s nach letzter Eingabe, bis waehrend des
                             # Scrollens uebersprungene Cover nachgeladen
@@ -8616,6 +8942,13 @@ class Frontend:
         # waere das eine unnoetig haeufige Datei-Existenzpruefung.
         self._attract_enabled_cache = True
         self._attract_enabled_check_next = 0.0
+
+        # Gleiches Caching-Muster fuer die neue, einstellbare Attract-
+        # Verzoegerung (siehe cycle_attract_delay()) - genauso haeufig
+        # abgefragt wie attract_enabled(), braucht denselben Schutz vor
+        # zu haeufigen Datei-Lesevorgaengen.
+        self._attract_delay_cache = ATTRACT_IDLE_SECONDS
+        self._attract_delay_check_next = 0.0
 
         # Favoriten-Namen im Speicher gehalten (Set fuer O(1)-Abfrage
         # beim Zeichnen) - NUR bei tatsaechlichen Aenderungen ueber
@@ -8826,7 +9159,10 @@ class Frontend:
         scripts = scan_scripts()
         if scripts:
             self.cats.append(("Scripts", _wrap_flat(scripts), None))
-        self.cats.append(("System", system_items(self.music.enabled, self.music.source, rainwave.station_name(self.music.radio.sid)), None))
+        self.cats.append(("System", system_items(
+            self.music.enabled, self.music.source,
+            rainwave.station_name(self.music.radio.sid) if self.music.radio else ""
+        ), None))
         if curated_only_active():
             # filter_curated() laesst Kategorien ohne syskey (Scripts,
             # System, Core-Ordner) unveraendert - nur echte Spiele-
@@ -8896,7 +9232,10 @@ class Frontend:
         uebersetzten, immer gleichen) Namen \"System\" gefunden."""
         for i, (name, node, sk) in enumerate(self.cats):
             if sk is None and name == "System":
-                self.cats[i] = (name, system_items(self.music.enabled, self.music.source, rainwave.station_name(self.music.radio.sid)), sk)
+                self.cats[i] = (name, system_items(
+                    self.music.enabled, self.music.source,
+                    rainwave.station_name(self.music.radio.sid) if self.music.radio else ""
+                ), sk)
                 LOG("_refresh_system_category: System-Kategorie an Position %d aktualisiert" % i)
                 return
         LOG("_refresh_system_category: KEINE System-Kategorie gefunden!")
@@ -9397,6 +9736,15 @@ class Frontend:
             self._attract_enabled_check_next = now + 5.0
         return self._attract_enabled_cache
 
+    def _attract_delay_cached(self):
+        """Zwischengespeicherte load_attract_delay()-Abfrage - gleiches
+        Muster/gleiche Begruendung wie _attract_enabled_cached()."""
+        now = time.monotonic()
+        if now >= self._attract_delay_check_next:
+            self._attract_delay_cache = load_attract_delay()
+            self._attract_delay_check_next = now + 5.0
+        return self._attract_delay_cache
+
     def _draw_dynamic_cats(self):
         """Leichter Zeichenpfad fuer Equalizer-/Pulsier-Ticks auf Seite 0:
         aktualisiert NUR den Equalizer-Bereich und die markierte Zeile
@@ -9873,14 +10221,25 @@ class Frontend:
         full_header = name if not self.nav_path else name + " / " + " / ".join(self.nav_path)
         full_header = full_header.upper()
         header_maxc = max(4, (list_right - ox) // (16 * s))
+        header_scale = 2 * s
         if len(full_header) <= header_maxc:
             header = full_header
         else:
+            # BUGFIX (Nutzer-Rueckmeldung: selbst der einzelne, tiefste
+            # Ordnername war auf CRT manchmal noch zu lang, z.B. "MEGA
+            # DRIVE" -> "MEGA DR~" - kaum noch lesbar): statt weiter
+            # mitten im Wort abzuschneiden, wird die Schriftgroesse
+            # jetzt so weit verkleinert, dass der komplette Name passt -
+            # konsistent mit der Loesung bei anderen Titeln (z.B.
+            # draw_core_choice_screen()). Eine vollwertige Laufschrift
+            # waere hier ebenfalls denkbar (Nutzerwunsch geaeussert),
+            # ist aber ein groesserer, eigener Umbau (neuer Tick-
+            # Zustand, Reset bei jeder Navigation) - bewusst nicht in
+            # dieser Sammel-Aenderung mit erledigt.
             leaf = (self.nav_path[-1] if self.nav_path else name).upper()
-            if len(leaf) > header_maxc:
-                leaf = leaf[:max(1, header_maxc - 1)] + "~"
             header = leaf
-        fb.text(ox, oy, header, 2 * s, C_TITLE)
+            header_scale = self._fit_scale(leaf, list_right - ox, 2 * s)
+        fb.text(ox, oy, header, header_scale, C_TITLE)
         fb.text(ox, oy + 22 * s, t("entries", total), s, C_DIM)
 
         self.view = {"list_x": list_x, "list_y": list_y,
@@ -10311,7 +10670,7 @@ class Frontend:
             return
         idle_for = time.monotonic() - self._last_input_time
         LOG("Attract-Modus startet nach %.1fs Leerlauf (Schwelle: %ds)"
-            % (idle_for, ATTRACT_IDLE_SECONDS))
+            % (idle_for, self._attract_delay_cached()))
         self.attract_mode = True
         self._attract_game = random.choice(pool)
         self._attract_change_next = time.monotonic() + ATTRACT_CHANGE_SECONDS
@@ -10387,7 +10746,7 @@ class Frontend:
                 if time.monotonic() >= self._attract_change_next:
                     self._advance_attract()
             elif (self._attract_enabled_cached()
-                  and time.monotonic() - self._last_input_time > ATTRACT_IDLE_SECONDS):
+                  and time.monotonic() - self._last_input_time > self._attract_delay_cached()):
                 self._enter_attract_mode()
             else:
                 # Beim schnellen Scrollen (kurz nach einer Eingabe) noch
@@ -10785,9 +11144,22 @@ class Frontend:
         self._notify_new_achievements()
 
     def run_script(self, path):
-        """Script auf der Konsole (tty1) laufen lassen, danach zurueck."""
+        """Script auf der Konsole (tty1) laufen lassen, danach zurueck.
+
+        BUGFIX (Nutzer-Rueckmeldung: "Scripts werden wenn sie im
+        frontend gestartet werden nicht sauber ausgefuehrt"): bisher
+        wurde hier NUR self.inp.grab(False) aufgerufen, MiSTer aber nie
+        per F9 in den Konsolenmodus geschaltet (siehe
+        enter_console_mode() - "sonst uebermalt das MiSTer-Wallpaper
+        unseren Framebuffer permanent", hier greift das Gegenteil: OHNE
+        diesen Wechsel bleibt vermutlich unser eigener, zuletzt
+        gezeichneter Framebuffer ueber der Text-Konsole liegen, das
+        Skript schreibt zwar korrekt auf tty1, aber sichtbar/nutzbar
+        ist das dadurch nicht sauber. run_core()/back_to_frontend()
+        machen diesen Wechsel bereits an vergleichbarer Stelle -
+        run_script() hatte ihn bisher NICHT."""
         self.music.pause_for_core()
-        self.inp.grab(False)
+        self.enter_console_mode()
         self.set_cursor_blink(True)
         try:
             tty = open("/dev/tty1", "r+b", buffering=0)
@@ -10837,7 +11209,9 @@ class Frontend:
         options = [t("core_choice_normal"), t("core_choice_ra")]
         while True:
             fb.clear(C_BG)
-            fb.text(ox, oy, t("core_choice_title", display_name), s + 1, C_TITLE, C_BG)
+            title = t("core_choice_title", display_name)
+            title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
+            fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
             y = oy + 90 * s
             for i, label in enumerate(options):
                 sel = i == choice
@@ -12715,21 +13089,42 @@ class Frontend:
                             [it[0] for it in items], self.item_i, ch)
                         self.marquee_reset()
                 elif act == "random":
-                    # "Weiss nicht was ich spielen soll" - springt zu
-                    # einem zufaelligen Eintrag, nie zweimal hinter-
-                    # einander demselben (falls mehr als einer da ist).
+                    # AENDERUNG (Nutzerwunsch): bisher sprang diese
+                    # Aktion nur zu einem zufaelligen EINTRAG in der
+                    # aktuellen Ansicht (Kategorie oder Spieleliste),
+                    # startete aber nichts von selbst - dokumentiertes,
+                    # beabsichtigtes Verhalten seit v1.28. Der Nutzer
+                    # hatte das anders erwartet ("F11 druecken, irgend-
+                    # ein Spiel wird gestartet") - jetzt tatsaechlich
+                    # so umgesetzt: waehlt ein zufaelliges Spiel ueber
+                    # ALLE Systeme hinweg (_attract_games_pool(), die
+                    # gleiche Sammlung, die auch der Attract-Modus
+                    # nutzt) und startet es direkt - inklusive derselben
+                    # RA-Core-Abfrage, die auch beim normalen Betreten
+                    # einer Kategorie mit RA-faehigem Core erscheint
+                    # (siehe _enter_category()), falls das zufaellig
+                    # getroffene System eine hat.
                     move_streak = page_streak = 0
-                    if self.page == 0:
-                        if len(self.cats) > 1:
-                            choices = [i for i in range(len(self.cats))
-                                      if i != self.cat_i]
-                            self.cat_i = random.choice(choices)
-                            self.cat_scroll = 0
-                    elif items and len(items) > 1:
-                        choices = [i for i in range(len(items))
-                                  if i != self.item_i]
-                        self.item_i = random.choice(choices)
-                        self.marquee_reset()
+                    pool = self._attract_games_pool()
+                    if pool:
+                        name, syskey, rand_arg = random.choice(pool)
+                        ra_core = find_ra_core(syskey)
+                        ra_choice = None
+                        if ra_core:
+                            use_ra = self.draw_core_choice_screen(syskey, name)
+                            if use_ra is None:
+                                continue   # ESC/back - Zufallsstart abgebrochen
+                            ra_choice = ra_core if use_ra else None
+                        rom, ext, _sk, rbf, (dl, ft, ix) = rand_arg
+                        setname = None
+                        if ra_choice:
+                            rbf, setname = ra_choice
+                        LOG("Zufallsstart (F11): %s (%s)%s"
+                            % (name, syskey, " [RA-Core]" if ra_choice else ""))
+                        record_recent(name, rand_arg)
+                        mgl = write_mgl(rbf, rom, dl, ft, ix, setname=setname)
+                        self.run_core(mgl, label=name, syskey=syskey)
+                    continue
                 elif act == "favorite":
                     # Favoritenstatus des markierten Spiels umschalten
                     # - nur bei einem echten Spiele-Eintrag sinnvoll
@@ -12859,10 +13254,10 @@ class Frontend:
                             self.build_categories()   # refresh menu label
                         elif kind == "music_source":
                             self.music.cycle_source()
-                            self.build_categories()
+                            self.build_categories()   # refresh menu label
                         elif kind == "volume":
                             self.music.cycle_volume()
-                            self._refresh_system_category()
+                            self.build_categories()   # refresh menu label
                         elif kind == "language":
                             set_language("de" if CURRENT_LANG == "en" else "en")
                             self.build_categories()
@@ -12886,6 +13281,10 @@ class Frontend:
                             self.page = 0
                         elif kind == "attract":
                             toggle_attract_mode()
+                            self._refresh_system_category()
+                        elif kind == "attract_delay":
+                            cycle_attract_delay()
+                            self._attract_delay_check_next = 0.0   # sofort neu einlesen
                             self._refresh_system_category()
                         elif kind == "theme":
                             cycle_theme()

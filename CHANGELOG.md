@@ -4,6 +4,109 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v4.1 — Neues Feature: Lautstärke-Regler
+Übernommen aus einem separat vorbereiteten, auf echter Hardware
+getesteten Vorschlag von TheRealSutefan. Regler für Musik und
+Menü-Sounds gemeinsam (0/20/40/60/80/100%), neuer Menüpunkt
+"Lautstärke: X%" in "Anzeige & Sound". Musik läuft über mpg123 und
+bekommt den eingebauten Lautstärke-Faktor (gilt für MP3 UND
+Rainwave-Radio). Menü-Sounds sind selbst erzeugte WAVs ohne eigenen
+Lautstärke-Schalter — die Lautstärke steckt dort in der Amplitude der
+Datei selbst, die bei einer Änderung neu erzeugt wird. Läuft im
+Hintergrund, damit das Menü dabei nicht einfriert.
+
+## v4.0 — mehrere Änderungen aus einer weiteren Sammel-Rückmeldung
+- F11 ("Zufallssprung") startet jetzt tatsächlich ein zufälliges
+  Spiel über alle Systeme hinweg, statt nur die Auswahl zu bewegen —
+  inklusive RA-Core-Abfrage, falls zutreffend.
+- Core-Auswahl-Titel und die Kopfzeile in der Spieleliste schneiden
+  auf CRT nicht mehr ab, sondern verkleinern sich bei Bedarf.
+- Neue einstellbare Attract-Modus-Verzögerung (30s bis 15min statt
+  fest auf 90 Sekunden).
+- System-Menü umsortiert: Musik-Einträge jetzt unter "Anzeige &
+  Sound", CRT-Testbild jetzt unter dem umbenannten "Optionen"-Ordner
+  (vorher "Verhalten").
+- Scripts aus dem Frontend liefen ohne Wechsel in MiSTers
+  Konsolenmodus — behoben.
+
+## v3.9 — mehrere Bugfixes aus einer Sammel-Rückmeldung
+- Spiele außerhalb von `/media/fat/games` (Netzlaufwerke, USB-Nummern
+  über 5) werden jetzt zusätzlich dynamisch erkannt statt nur der
+  festen Liste usb0–5.
+- ROM-Hacks (und ähnlich getaggte Randomizer-Ausgaben) werden nicht
+  mehr als "Junk" ausgefiltert.
+- Mehrere Regionsversionen desselben Spiels (PAL/NTSC/etc.) bleiben
+  jetzt alle erhalten und wählbar, statt nur die "beste" Region zu
+  behalten.
+- F10 zum Verlassen eines Spiels funktioniert jetzt zuverlässig über
+  denselben HID-Weg wie Esc (lief vorher über die während des
+  Spielens gesperrte normale Ebene).
+- Geklärt: F11 ("Zufallssprung") startet nichts von selbst, bewegt
+  nur die Auswahl — kein Bug.
+- Neue `boxart_download.sh` mit interaktiver Profilauswahl übernommen.
+
+## v3.8 — Neues Feature: Rainwave-Internetradio
+Zweite Musikquelle neben den lokalen MP3s, übernommen aus einem
+separat vorbereiteten, auf echter MiSTer-Hardware getesteten
+Vorschlag. Neues eigenständiges Modul `frontend/rainwave.py` (reines
+stdlib) spielt einen von fünf Rainwave-Sendern (Game, OCReMix,
+Covers, Chiptune, All) über mpg123 ab und holt den aktuellen Titel
+anonym über die öffentliche Rainwave-Schnittstelle. Neuer Menüpunkt
+"Musik-Quelle" schaltet durch: MP3 → Radio (alle 5 Sender) → zurück
+zu MP3. Der Titel fließt automatisch ins bestehende Stream-Overlay.
+Zusätzlich abgesichert: fehlt `rainwave.py` doch mal, bleibt die
+normale MP3-Wiedergabe unverändert nutzbar statt abzustürzen.
+
+## v3.7 — Diagnose-Version Teil 2, immer noch kein Fix
+Der v3.6-Diagnoseansatz hatte selbst einen Fehler: das Log-Budget war
+über alle drei Schnittstellen gemeinsam begrenzt. Eine "geschwätzige"
+Schnittstelle (periodisches Status-Signal, sieht nicht nach echten
+Tastendrücken aus) hat dadurch alle 30 Log-Zeilen belegt, bevor die
+anderen beiden Schnittstellen überhaupt einmal zu Wort kamen. Fix:
+eigenes Budget pro Schnittstelle - jede bekommt jetzt garantiert
+eigene Log-Zeilen.
+
+## v3.6 — Diagnose-Version, KEIN Fix
+Esc-Ausstieg funktioniert bei Sutefan trotz v3.5 (Schnittstellen
+werden nachweislich korrekt gefunden und überwacht) weiterhin nicht.
+Vermutung: das Report-*Format* ist das Problem, nicht mehr die
+Schnittstellen-Auswahl — manche NKRO-Tastaturen senden Tastendrücke
+als Bitmaske statt als einfachen Byte-Wert. Bewusst kein weiterer
+Rateversuch diesmal: stattdessen zeichnet diese Version die rohen
+Bytes der ersten 30 tatsächlich empfangenen Reports auf, damit der
+nächste Fix auf echten Daten aufbaut.
+
+## v3.5 — Bugfix Runde 3: echte Ursache per Log-Datei gefunden
+Nutzer schickte die tatsächliche Diagnose-Zeile: eine mechanische
+Custom-Tastatur (KBDFans Tiger80) legt gleichzeitig drei HID-
+Schnittstellen mit identischem Namen an. Die Erkennung wählte bisher
+immer nur eine davon — aber die tatsächlichen Tastendrücke liefen
+über eine andere. Fix: statt einer einzelnen Schnittstelle werden
+jetzt alle Schnittstellen mit demselben Tastaturnamen gleichzeitig
+überwacht — welche davon die Tasten sendet, muss nicht mehr erraten
+werden.
+
+## v3.4 — Bugfix Runde 2: Esc-Ausstieg funktionierte weiterhin nicht
+Der v3.3-Fix reichte nicht — der dortige Rückfall (USB-Boot-Protokoll)
+ist im Standard zwar definiert, aber optional. Viele Tastaturen (v.a.
+kabellose über einen Funk-Dongle) implementieren das gar nicht. Neue
+dritte Erkennungsstufe: der HID-Report-Deskriptor selbst, der für
+jedes HID-Gerät verpflichtend ist. Zusätzlich protokolliert die
+Erkennung jetzt jeden Schritt — bisher war sie komplett stumm, was
+jede Ferndiagnose zum Raten gemacht hat.
+
+## v3.3 — Bugfix: Esc-Ausstieg funktionierte bei manchen Nutzern gar nicht
+Esc-Ausstieg aus dem Spiel lief bei einem Nutzer zuverlässig, bei
+zwei anderen mit angeschlossener Tastatur überhaupt nicht. Ursache:
+die Tastatur-Erkennung suchte nur nach dem Wort "keyboard" im
+selbstgemeldeten Gerätenamen — funktioniert nur bei Herstellern, die
+dieses Wort tatsächlich verwenden. Andere Tastaturen wurden dadurch
+komplett übersehen, lautlos (kein Fehler im Log). Neue zweite
+Erkennungsstufe: der USB-HID-Standard selbst definiert eine
+herstellerunabhängige Kennung für Tastaturen (bInterfaceProtocol==1) —
+darüber werden jetzt auch Tastaturen erkannt, die "keyboard" nicht im
+Namen tragen.
+
 ## v3.2 — konsolidiert (Nutzerwunsch: nicht wieder so viele Versionen in kurzer Zeit)
 Zwischen v3.0 und v3.5 waren in kurzer Zeit sechs Versionsnummern
 entstanden — vor allem, weil ein kritischer Bug drei Anläufe brauchte,
