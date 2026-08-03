@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v3.6
+MiSTer Custom Frontend - v3.7
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
@@ -36,6 +36,26 @@ Hochzaehlen". Alles inhaltlich Passierte (Boot-Animation, drei
 Bugfix-Anlaeufe, CRT-Textumbruch-Fixes, RA-Vitrine-Cache) bleibt
 vollstaendig erhalten - nur als EIN gebuendelter v3.2-Eintrag statt
 sechs einzelner.
+
+Neu in v3.7 (DIAGNOSE-VERSION Teil 2, IMMER NOCH KEIN Fix - der
+v3.6-Diagnoseansatz hatte selbst einen Fehler):
+  - Sutefans Log zeigte: alle 30 protokollierten Reports kamen von
+    hidraw2, mit einem regelmaessig wechselnden Muster (sieht nach
+    einem periodischen Status-/Heartbeat-Signal aus, NICHT nach
+    Tastendruecken) - hidraw0 und hidraw1, die vermutlich
+    tatsaechlichen Tastatur-Schnittstellen, kamen dabei nie zu Wort.
+  - Ursache: das Diagnose-Budget aus v3.6 war ein GEMEINSAMES Budget
+    ueber alle Schnittstellen hinweg - eine "gespraechige"
+    Schnittstelle (hidraw2) konnte dadurch die anderen komplett
+    verdraengen, bevor diese ueberhaupt einmal gemeldet wurden.
+  - Fix: eigenes Budget PRO Schnittstelle (je 10 statt 30 gemeinsam) -
+    jede der drei Schnittstellen bekommt jetzt garantiert ihre eigenen
+    Log-Zeilen, unabhaengig davon, wie oft die anderen sich melden.
+  - Getestet: genau das beobachtete Muster nachgebaut (eine sehr
+    gespraechige Schnittstelle plus eine seltene, aber wichtige) -
+    bestaetigt, dass die seltene Schnittstelle jetzt zuverlaessig im
+    Log auftaucht, trotz der gespraechigen Konkurrenz. 56
+    Kombinationen kompletter Regressionstest bestanden.
 
 Neu in v3.6 (DIAGNOSE-VERSION, KEIN Fix - Esc-Ausstieg funktioniert
 trotz v3.5 (korrekt gefundene UND ueberwachte Schnittstellen) bei
@@ -5793,7 +5813,17 @@ class InputManager:
         # sonst koennte eine sehr "gespraechige" Schnittstelle das Log
         # fluten) - zeigt beim naechsten Testlauf schwarz auf weiss, wie
         # ein Tastendruck auf DIESER Tastatur tatsaechlich aussieht.
-        kbd_diag_budget = [30]
+        #
+        # BUGFIX (per echter Diagnose-Ausgabe von Sutefan bestaetigt):
+        # ein GEMEINSAMES Budget ueber alle Schnittstellen hinweg war
+        # ein Fehler - hidraw2 sendete ALLE 30 protokollierten Reports
+        # (regelmaessig wechselndes Muster, sieht nach einem periodischen
+        # Status-/Heartbeat-Signal aus, NICHT nach Tastendruecken), noch
+        # bevor hidraw0/hidraw1 - die vermutlich tatsaechlichen
+        # Tastatur-Schnittstellen - ueberhaupt einmal zu Wort kamen.
+        # Jetzt: eigenes Budget PRO Schnittstelle, damit eine
+        # "gespraechige" Schnittstelle die anderen nicht mehr verdraengt.
+        kbd_diag_budget = {fd: 10 for fd in kbd_fds}
         kbd_combo_since = None
         try:
             while True:
@@ -5831,9 +5861,10 @@ class InputManager:
                             except OSError:
                                 pass
                             kbd_fds.pop(fd, None)
+                            kbd_diag_budget.pop(fd, None)
                             continue
-                        if kbd_diag_budget[0] > 0:
-                            kbd_diag_budget[0] -= 1
+                        if kbd_diag_budget.get(fd, 0) > 0:
+                            kbd_diag_budget[fd] -= 1
                             LOG("wait_game_exit DIAGNOSE (%s): %s"
                                 % (kbd_fd_paths.get(fd, "?"), data.hex()))
                         kbd_fds[fd] = _hid_report_has_esc(data)

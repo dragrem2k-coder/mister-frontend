@@ -4,6 +4,15 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v3.7 — Diagnose-Version Teil 2, immer noch kein Fix
+Der v3.6-Diagnoseansatz hatte selbst einen Fehler: das Log-Budget war
+über alle drei Schnittstellen gemeinsam begrenzt. Eine "geschwätzige"
+Schnittstelle (periodisches Status-Signal, sieht nicht nach echten
+Tastendrücken aus) hat dadurch alle 30 Log-Zeilen belegt, bevor die
+anderen beiden Schnittstellen überhaupt einmal zu Wort kamen. Fix:
+eigenes Budget pro Schnittstelle - jede bekommt jetzt garantiert
+eigene Log-Zeilen.
+
 ## v3.6 — Diagnose-Version, KEIN Fix
 Esc-Ausstieg funktioniert bei Sutefan trotz v3.5 (Schnittstellen
 werden nachweislich korrekt gefunden und überwacht) weiterhin nicht.
