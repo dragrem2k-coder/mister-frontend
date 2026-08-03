@@ -4,6 +4,16 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v3.5 — Bugfix Runde 3: echte Ursache per Log-Datei gefunden
+Nutzer schickte die tatsächliche Diagnose-Zeile: eine mechanische
+Custom-Tastatur (KBDFans Tiger80) legt gleichzeitig drei HID-
+Schnittstellen mit identischem Namen an. Die Erkennung wählte bisher
+immer nur eine davon — aber die tatsächlichen Tastendrücke liefen
+über eine andere. Fix: statt einer einzelnen Schnittstelle werden
+jetzt alle Schnittstellen mit demselben Tastaturnamen gleichzeitig
+überwacht — welche davon die Tasten sendet, muss nicht mehr erraten
+werden.
+
 ## v3.4 — Bugfix Runde 2: Esc-Ausstieg funktionierte weiterhin nicht
 Der v3.3-Fix reichte nicht — der dortige Rückfall (USB-Boot-Protokoll)
 ist im Standard zwar definiert, aber optional. Viele Tastaturen (v.a.

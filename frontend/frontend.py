@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v3.4
+MiSTer Custom Frontend - v3.5
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
@@ -36,6 +36,32 @@ Hochzaehlen". Alles inhaltlich Passierte (Boot-Animation, drei
 Bugfix-Anlaeufe, CRT-Textumbruch-Fixes, RA-Vitrine-Cache) bleibt
 vollstaendig erhalten - nur als EIN gebuendelter v3.2-Eintrag statt
 sechs einzelner.
+
+Neu in v3.5 (BUGFIX Runde 3: Esc-Ausstieg endlich per ECHTER Log-
+Datei auf die tatsaechliche Ursache zurueckgefuehrt):
+  - Nutzer schickte die tatsaechliche Diagnose-Log-Zeile (aus dem
+    v3.4-Logging): 4 HID-Kandidaten, davon DREI mit IDENTISCHEM Namen
+    "KBDFans Tiger80" (eine hochwertige mechanische Custom-Tastatur),
+    nur EINER davon mit bInterfaceProtocol==1. Die Funktion waehlte
+    genau diese eine "Boot"-Schnittstelle - aber bei Tastaturen mit
+    NKRO/Rollover-Unterstuetzung koennen die TATSAECHLICHEN
+    Tastendruecke ueber eine der ANDEREN, gleichnamigen Schnittstellen
+    laufen, nicht ueber die zuerst erkannte.
+  - Fix: _find_keyboard_hidraw() -> _find_keyboard_hidraws() (Mehrzahl!)
+    - identifiziert weiterhin dreistufig, WELCHE Tastatur angeschlossen
+    ist, sammelt dann aber ALLE hidraw-Schnittstellen mit demselben
+    HID-Namen und gibt sie ALLE zurueck. wait_game_exit() ueberwacht
+    jetzt alle gleichzeitig (kbd_fds statt kbd_fd) - welche der
+    mehreren Schnittstellen tatsaechlich die Tasten sendet, muss
+    dadurch nicht mehr erraten werden.
+  - Getestet: das EXAKTE gemeldete Szenario nachgebaut (3x identischer
+    Name, nur einer mit Boot-Protokoll, plus ein irrelevantes viertes
+    Geraet) - liefert nachweislich alle drei passenden Schnittstellen,
+    schliesst das irrelevante Geraet korrekt aus. wait_game_exit()
+    zusaetzlich end-to-end getestet: Esc wird nachweislich erkannt,
+    wenn es ueber die ZWEITE (nicht die zuerst identifizierte)
+    Schnittstelle ankommt - genau der Kern des gemeldeten Problems.
+    56 Kombinationen kompletter Regressionstest bestanden.
 
 Neu in v3.4 (BUGFIX Runde 2: Esc-Ausstieg funktionierte bei
 denselben zwei Nutzern WEITERHIN nicht, trotz des v3.3-Fixes):
@@ -4398,47 +4424,52 @@ MISTER_CMD  = "/dev/MiSTer_cmd"
 # gesperrten Kanal). Deshalb: Esc laenger halten ueber die Tastatur als
 # zusaetzlicher, zuverlaesslicherer Ausstiegsweg (urspruenglich
 # Strg+Alt+Esc, auf Nutzerwunsch vereinfacht).
-def _find_keyboard_hidraw():
-    """Sucht unter /dev/hidraw* nach einem Tastatur-Geraet - DREISTUFIG.
+def _find_keyboard_hidraws():
+    """Sucht unter /dev/hidraw* nach ALLEN Schnittstellen einer
+    Tastatur - DREISTUFIGE Erkennung, um die Tastatur ueberhaupt zu
+    IDENTIFIZIEREN, dann werden ALLE hidraw-Geraete mit demselben
+    HID-Namen mit zurueckgegeben (Mehrzahl! - siehe BUGFIX Runde 3).
 
-    BUGFIX Runde 1 (Nutzer-Rueckmeldung: Esc-Ausstieg funktioniert bei
-    einem Nutzer zuverlaessig, bei zwei anderen trotz nachweislich
-    angeschlossener Tastatur ueberhaupt nicht): die urspruengliche
-    Fassung suchte NUR nach einem Geraet, dessen selbstgemeldeter
-    HID-Name das Wort "keyboard" enthaelt - funktioniert nur, wenn
-    Hersteller/Modell das Wort tatsaechlich im Namen fuehren.
+    BUGFIX Runde 1: die urspruengliche Fassung suchte NUR nach einem
+    Geraet, dessen selbstgemeldeter HID-Name das Wort "keyboard"
+    enthaelt - funktioniert nur, wenn Hersteller/Modell das Wort
+    tatsaechlich im Namen fuehren.
 
-    BUGFIX Runde 2 (derselbe Fehler bestand bei denselben zwei Nutzern
-    WEITERHIN, nachdem Runde 1 - der bInterfaceProtocol==1-Rueckfall -
-    ausgeliefert war): bInterfaceProtocol ist im USB-HID-Standard zwar
-    definiert, aber OPTIONAL - viele Tastaturen (v.a. kabellose ueber
-    einen Funk-Dongle, oder Gaming-/Multimedia-Tastaturen mit N-Key-
-    Rollover) implementieren das sogenannte "Boot Protocol" gar nicht
-    und melden stattdessen bInterfaceProtocol=0 ("None"), verlassen
-    sich komplett auf ihren HID-Report-Deskriptor. Runde 1 haette also
-    bei genau dieser Art Tastatur ERNEUT nichts gefunden - was exakt
-    zum wiederholt gemeldeten Fehlschlag passt.
+    BUGFIX Runde 2: bInterfaceProtocol==1 ("Boot Protocol") ist im
+    USB-HID-Standard zwar definiert, aber OPTIONAL - viele Tastaturen
+    implementieren das gar nicht. Dritte Stufe ergaenzt: der HID-
+    Report-Deskriptor selbst (VERPFLICHTEND fuer jedes HID-Geraet).
 
-    Fix: dritte Stufe - der HID-Report-Deskriptor selbst (im Gegensatz
-    zu bInterfaceProtocol VERPFLICHTEND fuer jedes HID-Geraet, keine
-    optionale Zusatzangabe). Sucht nach der Byte-Sequenz fuer "Usage
-    Page: Generic Desktop (0x05 0x01)" gefolgt von "Usage: Keyboard
-    (0x09 0x06)" - eine sehr verbreitete, gut erkennbare Signatur fuer
-    Tastatur-HID-Deskriptoren.
+    BUGFIX Runde 3 (per echter Nutzer-Log-Datei bestaetigt - siehe
+    Diagnose-Ausgabe: "4 Kandidaten", davon DREI mit identischem Namen
+    "KBDFans Tiger80", nur EINER mit bInterfaceProtocol==1): manche
+    Tastaturen (v.a. hochwertige mechanische Custom-Boards mit NKRO/
+    Rollover-Unterstuetzung) legen GLEICHZEITIG MEHRERE hidraw-
+    Schnittstellen unter demselben Namen an - eine "Boot"-Schnittstelle
+    (6-Tasten-Rollover, kompatibel, oft die einzige mit
+    bInterfaceProtocol==1) UND eine oder mehrere weitere fuer den
+    eigentlichen NKRO-Betrieb. Die TATSAECHLICHEN Tastendruecke koennen
+    ueber eine DIESER ANDEREN Schnittstellen laufen, nicht ueber die,
+    die zufaellig als Erste die Erkennungskriterien erfuellt. Bisher
+    wurde IMMER NUR EINE Schnittstelle zurueckgegeben und ueberwacht -
+    war das die falsche der mehreren gleichnamigen, blieb Esc trotz
+    korrekt erkannter Tastatur wirkungslos.
 
-    ZUSAETZLICH (aus der Erfahrung mit den ersten beiden gescheiterten
-    Rueckfaellen): ab jetzt wird jede Stufe protokolliert (LOG()) -
-    welche Kandidaten gefunden wurden, welche Stufe (falls ueberhaupt)
-    angeschlagen hat. Bisher war die Funktion komplett stumm, was jede
-    Ferndiagnose zu einem Ratespiel gemacht hat. Sollte auch diese
-    dritte Stufe noch nicht reichen, zeigt das Log wenigstens genau,
-    was tatsaechlich an HID-Geraeten vorhanden war.
+    Fix: sobald EINE Schnittstelle als Tastatur identifiziert ist,
+    werden ZUSAETZLICH alle anderen hidraw-Geraete mit EXAKT demselben
+    HID-Namen gesammelt und ALLE gemeinsam zurueckgegeben - der
+    Aufrufer (wait_game_exit()) ueberwacht sie dann gleichzeitig, die
+    Ambiguitaet "welche der mehreren Schnittstellen ist die richtige"
+    muss dadurch gar nicht mehr aufgeloest werden.
+
+    Protokolliert jede Stufe (LOG()) - bisher war die Funktion komplett
+    stumm, was jede Ferndiagnose zu einem Ratespiel gemacht hat.
 
     Bewusst dynamisch (nicht fest verdrahtet) - die hidraw-
     Nummerierung haengt von Anschlussreihenfolge/USB-Bus ab und kann
     sich zwischen Boots verschieben."""
     candidates = sorted(glob.glob("/dev/hidraw*"))
-    LOG("_find_keyboard_hidraw: %d Kandidat(en): %s" % (len(candidates), candidates))
+    LOG("_find_keyboard_hidraws: %d Kandidat(en): %s" % (len(candidates), candidates))
 
     def read_uevent_name(base):
         uevent = "/sys/class/hidraw/%s/device/uevent" % base
@@ -4454,13 +4485,23 @@ def _find_keyboard_hidraw():
     names = {}
     for path in candidates:
         names[path] = read_uevent_name(os.path.basename(path))
-    LOG("_find_keyboard_hidraw: Namen: %s" % names)
+    LOG("_find_keyboard_hidraws: Namen: %s" % names)
+
+    def siblings_with_same_name(found_path):
+        """Alle Geraete (inkl. found_path selbst) mit demselben Namen."""
+        found_name = names.get(found_path)
+        if not found_name:
+            return [found_path]
+        result = [p for p, n in names.items() if n == found_name]
+        LOG("_find_keyboard_hidraws: %d Schnittstelle(n) mit demselben "
+            "Namen (%r): %s" % (len(result), found_name, result))
+        return sorted(result)
 
     # Stufe 1: Name enthaelt "keyboard" (schnell, funktioniert oft).
     for path, name in names.items():
         if name and "keyboard" in name.lower():
-            LOG("_find_keyboard_hidraw: Stufe 1 (Name) Treffer: %s (%r)" % (path, name))
-            return path
+            LOG("_find_keyboard_hidraws: Stufe 1 (Name) Treffer: %s (%r)" % (path, name))
+            return siblings_with_same_name(path)
 
     # Stufe 2 (Rueckfall): USB-HID-Boot-Protokoll, sofern vorhanden -
     # optional, deshalb kein Treffer bei vielen Tastaturen.
@@ -4478,9 +4519,9 @@ def _find_keyboard_hidraw():
             try:
                 with open(proto_file) as f:
                     if f.read().strip() == "01":
-                        LOG("_find_keyboard_hidraw: Stufe 2 (Boot-Protokoll) "
+                        LOG("_find_keyboard_hidraws: Stufe 2 (Boot-Protokoll) "
                             "Treffer: %s" % path)
-                        return path
+                        return siblings_with_same_name(path)
             except OSError:
                 continue
 
@@ -4496,13 +4537,13 @@ def _find_keyboard_hidraw():
         except OSError:
             continue
         if sig in data:
-            LOG("_find_keyboard_hidraw: Stufe 3 (Report-Deskriptor) "
+            LOG("_find_keyboard_hidraws: Stufe 3 (Report-Deskriptor) "
                 "Treffer: %s" % path)
-            return path
+            return siblings_with_same_name(path)
 
-    LOG("_find_keyboard_hidraw: KEIN Treffer in allen drei Stufen - "
+    LOG("_find_keyboard_hidraws: KEIN Treffer in allen drei Stufen - "
         "Esc-Ausstieg wird nicht funktionieren.")
-    return None
+    return []
 
 def _hid_report_has_esc(data):
     """Prueft einen rohen HID-Tastatur-Report auf die Escape-Taste
@@ -5678,34 +5719,37 @@ class InputManager:
     def wait_game_exit(self):
         """Waehrend ein Core laeuft: warten, bis MiSTer zurueck im
         Menue ist, F10 gedrueckt wird, Start+Select lange genug
-        gehalten werden, ODER (neu) Esc auf der Tastatur laenger
-        gehalten wird - erkannt ueber die rohe HID-Ebene. Rueckgabe:
-        "menu", "f10", "combo" oder "hid_combo".
+        gehalten werden, ODER Esc auf der Tastatur laenger gehalten
+        wird - erkannt ueber die rohe HID-Ebene. Rueckgabe: "menu",
+        "f10", "combo" oder "hid_combo".
 
         WICHTIG: F10/Start+Select werden ueber die normale evdev-Ebene
         gelesen, die MiSTer waehrend eines laufenden Cores exklusiv
         sperrt - vermutlich hat dieser Zweig dadurch in der Praxis nie
-        tatsaechlich ausgeloest (durch eine gezielte Nutzer-Diagnose
-        aufgedeckt: `cat /dev/input/eventX` liefert waehrend eines
-        Spiels 0 Bytes). Bleibt trotzdem als Absicherung bestehen (fuer
-        MiSTer-Konfigurationen, bei denen das evtl. doch durchkommt).
-        Esc laeuft stattdessen ueber /dev/hidrawX (siehe
-        _find_keyboard_hidraw()), das bei einer angeschlossenen
-        Tastatur bestaetigt auch waehrend eines laufenden Cores lesbar
-        bleibt. Urspruenglich Strg+Alt+Esc, auf Nutzerwunsch auf reines
-        Esc vereinfacht (mit laengerer Haltezeit als Sicherung gegen
-        normale Esc-Nutzung innerhalb eines Spiels, siehe
-        KBD_COMBO_HOLD)."""
+        tatsaechlich ausgeloest. Bleibt trotzdem als Absicherung
+        bestehen. Esc laeuft stattdessen ueber /dev/hidrawX (siehe
+        _find_keyboard_hidraws()).
+
+        BUGFIX Runde 3 (per echter Nutzer-Log-Datei bestaetigt: manche
+        Tastaturen legen MEHRERE hidraw-Schnittstellen unter demselben
+        Namen an, z.B. eine "Boot"- und eine NKRO-Schnittstelle - die
+        tatsaechlichen Tastendruecke koennen ueber eine ANDERE
+        Schnittstelle laufen als die zuerst erkannte): _find_keyboard_
+        hidraws() liefert jetzt eine LISTE aller Schnittstellen
+        desselben Tastatur-Namens, ALLE werden hier gleichzeitig
+        ueberwacht (kbd_fds statt kbd_fd) - welche davon tatsaechlich
+        die Tasten sendet, muss dadurch nicht mehr erraten werden."""
         down = set()              # (geraetepfad, code) gedrueckter Tasten
         combo_since = None
         last_core_check = 0.0
-        kbd_path = _find_keyboard_hidraw()
-        kbd_fd = None
-        if kbd_path:
+        kbd_paths = _find_keyboard_hidraws()
+        kbd_fds = {}               # fd -> True/False (Esc gerade gehalten?)
+        for kp in kbd_paths:
             try:
-                kbd_fd = os.open(kbd_path, os.O_RDONLY | os.O_NONBLOCK)
+                fd = os.open(kp, os.O_RDONLY | os.O_NONBLOCK)
+                kbd_fds[fd] = False
             except OSError:
-                kbd_fd = None
+                continue
         kbd_combo_since = None
         try:
             while True:
@@ -5723,8 +5767,8 @@ class InputManager:
                         and now - kbd_combo_since >= self.KBD_COMBO_HOLD):
                     return "hid_combo"
                 fds = {d.fd: d for d in self.devices.values()}
-                if kbd_fd is not None:
-                    fds[kbd_fd] = None
+                for kfd in kbd_fds:
+                    fds[kfd] = None
                 if not fds:
                     time.sleep(0.5)
                     continue
@@ -5734,20 +5778,21 @@ class InputManager:
                     self.rescan()
                     continue
                 for fd in r:
-                    if fd == kbd_fd:
+                    if fd in kbd_fds:
                         try:
                             data = os.read(fd, 64)
                         except OSError:
                             try:
-                                os.close(kbd_fd)
+                                os.close(fd)
                             except OSError:
                                 pass
-                            kbd_fd = None
+                            kbd_fds.pop(fd, None)
                             continue
-                        if _hid_report_has_esc(data):
-                            if kbd_combo_since is None:
-                                kbd_combo_since = time.monotonic()
-                        else:
+                        kbd_fds[fd] = _hid_report_has_esc(data)
+                        any_held = any(kbd_fds.values())
+                        if any_held and kbd_combo_since is None:
+                            kbd_combo_since = time.monotonic()
+                        elif not any_held:
                             kbd_combo_since = None
                         continue
                     dev = fds.get(fd)
@@ -5778,9 +5823,9 @@ class InputManager:
                         elif not active:
                             combo_since = None
         finally:
-            if kbd_fd is not None:
+            for fd in kbd_fds:
                 try:
-                    os.close(kbd_fd)
+                    os.close(fd)
                 except OSError:
                     pass
 
