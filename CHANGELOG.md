@@ -4,6 +4,17 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v4.1 — Neues Feature: Lautstärke-Regler
+Übernommen aus einem separat vorbereiteten, auf echter Hardware
+getesteten Vorschlag von TheRealSutefan. Regler für Musik und
+Menü-Sounds gemeinsam (0/20/40/60/80/100%), neuer Menüpunkt
+"Lautstärke: X%" in "Anzeige & Sound". Musik läuft über mpg123 und
+bekommt den eingebauten Lautstärke-Faktor (gilt für MP3 UND
+Rainwave-Radio). Menü-Sounds sind selbst erzeugte WAVs ohne eigenen
+Lautstärke-Schalter — die Lautstärke steckt dort in der Amplitude der
+Datei selbst, die bei einer Änderung neu erzeugt wird. Läuft im
+Hintergrund, damit das Menü dabei nicht einfriert.
+
 ## v4.0 — mehrere Änderungen aus einer weiteren Sammel-Rückmeldung
 - F11 ("Zufallssprung") startet jetzt tatsächlich ein zufälliges
   Spiel über alle Systeme hinweg, statt nur die Auswahl zu bewegen —

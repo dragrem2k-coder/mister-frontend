@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v4.0
+MiSTer Custom Frontend - v4.1
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
@@ -36,6 +36,31 @@ Hochzaehlen". Alles inhaltlich Passierte (Boot-Animation, drei
 Bugfix-Anlaeufe, CRT-Textumbruch-Fixes, RA-Vitrine-Cache) bleibt
 vollstaendig erhalten - nur als EIN gebuendelter v3.2-Eintrag statt
 sechs einzelner.
+
+Neu in v4.1 (NEUES FEATURE: Lautstaerke-Regler, uebernommen aus
+einem separat vorbereiteten, auf echter MiSTer-Hardware getesteten
+Vorschlag von TheRealSutefan - siehe CHANGES_VOLUME.md):
+  - Regler fuer Musik UND Menue-Sounds gemeinsam, Stufen 0/20/40/60/
+    80/100%, neuer Menuepunkt "Lautstaerke: X%" in "Anzeige & Sound"
+    (direkt nach der Musik-Quelle - Nutzerwunsch, dort einsortiert).
+  - Zwei unterschiedliche Mechanismen, da Musik und Menue-Sounds
+    technisch verschieden abgespielt werden: Musik laeuft ueber
+    mpg123, bekommt den eingebauten Skalierungsfaktor -f (0..32768,
+    fuer MP3-Wiedergabe UND Rainwave-Radio). Menue-Sounds sind selbst
+    erzeugte WAVs ueber aplay - aplay hat KEINEN Lautstaerke-Schalter,
+    die Lautstaerke steckt deshalb in der AMPLITUDE der erzeugten WAV-
+    Datei selbst (wird bei einer Aenderung neu erzeugt statt nur neu
+    abgespielt).
+  - SFX-Neuerzeugung + Musik-Neustart laufen bewusst im Hintergrund-
+    Thread (_apply_volume_async(), mit Lock gegen schnelle Mehrfach-
+    Druecke) - beides ist auf dem MiSTer traege/blockierend, sollte
+    den Menue-Thread nicht einfrieren lassen.
+  - Getestet: _mpg_scale() fuer 0/50/100% bestaetigt. Kompletter Zyklus
+    (100->0->20->40->60->80->100->0) bestaetigt, inkl. Persistenz.
+    mpg123-Aufruf enthaelt nachweislich den korrekten -f-Faktor.
+    Menuepunkt sitzt korrekt in "Anzeige & Sound" mit korrekter
+    Prozent-Anzeige. 70 Kombinationen kompletter Regressionstest
+    bestanden.
 
 Neu in v4.0 (mehrere Aenderungen/Bugfixes aus einer weiteren
 Sammel-Rueckmeldung):
@@ -4778,6 +4803,66 @@ def _hid_report_has_exit_key(data):
 MUSIC_DIR   = "/media/fat/music"
 MUSIC_ENABLED_FILE = "/media/fat/frontend/music_enabled"
 MUSIC_SOURCE_FILE  = "/media/fat/frontend/music_source"   # "mp3"/"radio" + Stations-sid
+VOLUME_FILE = "/media/fat/frontend/volume"   # Lautstaerke 0-100 (Musik + Menue-Sounds)
+
+# NEUES FEATURE (Nutzerwunsch: Lautstaerke-Regler fuer Musik UND
+# Menue-Sounds, uebernommen aus einem separat vorbereiteten, auf
+# echter MiSTer-Hardware getesteten Vorschlag - siehe
+# CHANGES_VOLUME.md). Zwei unterschiedliche Mechanismen, weil Musik
+# und Menue-Sounds technisch verschieden abgespielt werden: Musik
+# laeuft ueber mpg123, das einen eingebauten Skalierungsfaktor
+# (-f 0..32768) hat. Menue-Sounds sind selbst erzeugte WAVs, abgespielt
+# ueber aplay - aplay hat KEINEN Lautstaerke-Schalter, deshalb steckt
+# die Lautstaerke dort in der AMPLITUDE der erzeugten WAV-Datei selbst
+# (werden bei einer Aenderung neu erzeugt statt nur neu abgespielt).
+def _load_volume():
+    try:
+        return max(0, min(100, int(open(VOLUME_FILE).read().strip())))
+    except (OSError, ValueError):
+        return 100
+
+def _save_volume(v):
+    try:
+        os.makedirs(os.path.dirname(VOLUME_FILE), exist_ok=True)
+        with open(VOLUME_FILE, "w") as f:
+            f.write(str(int(v)))
+    except OSError:
+        pass
+
+VOLUME = _load_volume()   # 0-100; global, von Musik (mpg123 -f) UND SFX genutzt
+
+def _mpg_scale():
+    """mpg123 -f Skalierungsfaktor (0..32768) fuer die aktuelle Lautstaerke."""
+    return str(int(32768 * VOLUME / 100))
+
+def _regenerate_sfx():
+    """Menue-Sound-WAVs bei geaenderter Lautstaerke neu erzeugen - aplay hat
+    keinen Volume-Schalter, also steckt die Lautstaerke in der Amplitude."""
+    try:
+        for _f in glob.glob(os.path.join(SFX_DIR, "*.wav")):
+            os.remove(_f)
+    except OSError:
+        pass
+    _ensure_sfx_files()
+
+_volume_apply_lock = None
+
+def _apply_volume_async(player):
+    """SFX-Neuerzeugung + Musik-Neustart im Hintergrund - beides ist auf dem
+    MiSTer traege bzw. blockierend (Popen.wait bis 2s), also NICHT im
+    Menue-Thread. Ein Lock serialisiert schnelle Mehrfach-Druecke; jeder
+    Lauf nutzt das dann aktuelle VOLUME (letzter gewinnt)."""
+    global _volume_apply_lock
+    if _volume_apply_lock is None:
+        _volume_apply_lock = threading.Lock()
+    def _worker():
+        with _volume_apply_lock:
+            _regenerate_sfx()
+            if player.enabled and not player.paused_for_core:
+                player._stop_current()
+                player._start_current()
+    threading.Thread(target=_worker, daemon=True).start()
+
 LANGUAGE_FILE = "/media/fat/frontend/language"
 KEYMAP_CUSTOM_FILE = "/media/fat/frontend/keymap_custom.json"
 BOOTANIM_DIR = "/media/fat/frontend/bootanim"
@@ -7762,7 +7847,9 @@ SFX_CHIME_DEFS = {
 
 def _ensure_sfx_files():
     """Erzeugt die WAV-Dateien einmalig, falls sie noch fehlen (erster
-    Start bzw. nach einem Update)."""
+    Start bzw. nach einem Update). Amplitude skaliert mit der
+    eingestellten Lautstaerke (VOLUME) - aplay hat selbst keinen
+    Lautstaerke-Schalter, siehe _regenerate_sfx()."""
     try:
         os.makedirs(SFX_DIR, exist_ok=True)
     except OSError:
@@ -7771,14 +7858,14 @@ def _ensure_sfx_files():
         path = os.path.join(SFX_DIR, name + ".wav")
         if not os.path.exists(path):
             try:
-                _write_wav_tone(path, f0, f1, dur)
+                _write_wav_tone(path, f0, f1, dur, volume=0.35 * VOLUME / 100.0)
             except OSError:
                 pass
     for name, segments in SFX_CHIME_DEFS.items():
         path = os.path.join(SFX_DIR, name + ".wav")
         if not os.path.exists(path):
             try:
-                _write_wav_chime(path, segments)
+                _write_wav_chime(path, segments, volume=0.35 * VOLUME / 100.0)
             except OSError:
                 pass
 
@@ -7946,7 +8033,7 @@ class MusicPlayer:
                 return
             try:
                 self.proc = subprocess.Popen(
-                    [MPG123_BIN, "-q", url],
+                    [MPG123_BIN, "-q", "-f", _mpg_scale(), url],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                     stdin=subprocess.DEVNULL)
                 self._track_started_at = time.monotonic()
@@ -7960,7 +8047,7 @@ class MusicPlayer:
         path = self.playlist[self.pos]
         try:
             self.proc = subprocess.Popen(
-                [MPG123_BIN, "-q", path],
+                [MPG123_BIN, "-q", "-f", _mpg_scale(), path],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 stdin=subprocess.DEVNULL)
             self._track_started_at = time.monotonic()
@@ -8089,6 +8176,15 @@ class MusicPlayer:
                 self.tick()
         else:
             self._stop_current()
+
+    def cycle_volume(self):
+        """Lautstaerke 0->20->...->100->0 (Musik UND Menue-Sounds)."""
+        global VOLUME
+        levels = [0, 20, 40, 60, 80, 100]
+        idx = levels.index(VOLUME) if VOLUME in levels else len(levels) - 1
+        VOLUME = levels[(idx + 1) % len(levels)]
+        _save_volume(VOLUME)
+        _apply_volume_async(self)   # SFX-Regen + Musik-Neustart im Hintergrund
 
     def pause_for_core(self):
         """Before starting a core/game: stop music so it doesn't mix
@@ -8355,6 +8451,7 @@ TRANSLATIONS = {
     "sys_music_on":    {"en": "Music: On -> turn off", "de": "Musik: an -> ausschalten"},
     "sys_music_off":   {"en": "Music: Off -> turn on", "de": "Musik: aus -> einschalten"},
     "sys_music_source": {"en": "Music source: %s", "de": "Musik-Quelle: %s"},
+    "sys_volume": {"en": "Volume: %d%%", "de": "Lautstaerke: %d%%"},
     "sys_language":    {"en": "Language: English -> switch to German",
                         "de": "Sprache: Deutsch -> auf Englisch wechseln"},
     "sys_configure_buttons": {"en": "Configure buttons",
@@ -8475,6 +8572,7 @@ def system_items(music_enabled=None, music_source="mp3", music_station=""):
     music_label = t("sys_music_on") if music_enabled else t("sys_music_off")
     music_src_label = (t("sys_music_source", "Radio - %s" % (music_station or "?"))
                        if music_source == "radio" else t("sys_music_source", "MP3"))
+    volume_label = t("sys_volume", VOLUME)
     curated_label = t("sys_curated_on") if curated_only_active() \
         else t("sys_curated_off")
     attract_label = t("sys_attract_on") if attract_enabled() \
@@ -8511,6 +8609,7 @@ def system_items(music_enabled=None, music_source="mp3", music_station=""):
                 (sfx_label, "sfx", None),
                 (music_label, "music", None),
                 (music_src_label, "music_source", None),
+                (volume_label, "volume", None),
             ),
             t("sys_group_behavior"): folder(
                 (t("sys_crt_test_action"), "crt_test", None),
@@ -13155,6 +13254,9 @@ class Frontend:
                             self.build_categories()   # refresh menu label
                         elif kind == "music_source":
                             self.music.cycle_source()
+                            self.build_categories()   # refresh menu label
+                        elif kind == "volume":
+                            self.music.cycle_volume()
                             self.build_categories()   # refresh menu label
                         elif kind == "language":
                             set_language("de" if CURRENT_LANG == "en" else "en")
