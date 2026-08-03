@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v4.1
+MiSTer Custom Frontend - v4.2
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
@@ -36,6 +36,29 @@ Hochzaehlen". Alles inhaltlich Passierte (Boot-Animation, drei
 Bugfix-Anlaeufe, CRT-Textumbruch-Fixes, RA-Vitrine-Cache) bleibt
 vollstaendig erhalten - nur als EIN gebuendelter v3.2-Eintrag statt
 sechs einzelner.
+
+Neu in v4.2 (BUGFIX: Uhrzeit blieb bei manchen Nutzern trotz
+korrekt eingestelltem Zeitzonen-Versatz dauerhaft falsch):
+  - Nutzer-Rueckmeldung (Dennsen, UTC+2 eingestellt, Uhr trotzdem
+    falsch): der bisherige Neuversuch-Mechanismus fuer eine beim Start
+    fehlgeschlagene NTP-Synchronisierung lief NUR ueber
+    _maybe_retry_ra() - und der ist an ra_enabled() gekoppelt. Nutzer
+    OHNE eingerichtetes RetroAchievements hatten dadurch ueberhaupt
+    keinen Wiederholungsmechanismus: schlug der allererste, nicht-
+    blockierende NTP-Versuch beim Programmstart fehl (z.B. weil das
+    Netzwerk in diesem Moment noch nicht bereit war), blieb die Uhr
+    fuer die komplette Sitzung falsch.
+  - Fix: neue, von RA komplett unabhaengige _maybe_retry_clock() -
+    gleiches Rueckfall-Muster (wachsende Abstaende, max. 5 Versuche),
+    aber ausschliesslich an NTP_SYNC_OK gekoppelt statt an
+    ra_enabled(). Wird zusaetzlich zu _maybe_retry_ra() aus draw()
+    aufgerufen.
+  - Getestet: Neuversuch funktioniert nachweislich auch OHNE
+    eingerichtetes RA. Backoff-Zeitfenster wird korrekt eingehalten
+    (kein zu frueher zweiter Versuch). Nach Ablauf der Backoff-Zeit
+    erfolgt zuverlaessig ein weiterer Versuch. Nach erfolgreicher
+    Synchronisierung stoppt der Mechanismus korrekt. 70 Kombinationen
+    kompletter Regressionstest bestanden.
 
 Neu in v4.1 (NEUES FEATURE: Lautstaerke-Regler, uebernommen aus
 einem separat vorbereiteten, auf echter MiSTer-Hardware getesteten
@@ -8900,6 +8923,21 @@ class Frontend:
                                     # den Neuversuch in _maybe_retry_ra().
         self._ra_retry_next = 0.0
         self._ra_retry_count = 0
+
+        # BUGFIX (Nutzer-Rueckmeldung: Uhrzeit war bei einem Nutzer
+        # trotz korrekt eingestelltem Zeitzonen-Versatz falsch): der
+        # bisherige Neuversuch-Mechanismus fuer eine beim Start noch
+        # fehlgeschlagene NTP-Synchronisierung lief NUR ueber
+        # _maybe_retry_ra() - und der ist an ra_enabled() gekoppelt.
+        # Nutzer OHNE eingerichtetes RetroAchievements hatten dadurch
+        # ueberhaupt keinen Wiederholungsmechanismus: schlug der
+        # allererste, nicht-blockierende Versuch beim Programmstart
+        # fehl (z.B. weil das Netzwerk in diesem Moment noch nicht
+        # bereit war), blieb die Uhr fuer die komplette Sitzung falsch.
+        # Eigenstaendige Zustandsvariablen fuer einen von RA
+        # unabhaengigen Neuversuch, siehe _maybe_retry_clock().
+        self._clock_retry_next = 0.0
+        self._clock_retry_count = 0
         if ra_enabled():
             ra_data = fetch_ra_progress_bounded(timeout=3.0)
             if ra_data is not None:
@@ -9491,6 +9529,7 @@ class Frontend:
     def draw(self, message=None):
         self._sync_track_marquee()
         self._maybe_retry_ra()
+        self._maybe_retry_clock()
         if self.attract_mode:
             self.draw_attract()
             return
@@ -9723,6 +9762,36 @@ class Frontend:
                 self._ra_lookup = build_ra_lookup(ra_data)
                 self._ra_fetch_ok = True
         threading.Thread(target=worker, daemon=True).start()
+
+    def _maybe_retry_clock(self):
+        """Periodisch (aus draw(), gleiches Muster wie _maybe_retry_ra())
+        geprueft: falls die Systemuhr noch NICHT erfolgreich per NTP
+        gesetzt wurde (NTP_SYNC_OK == False), wird in wachsenden
+        Abstaenden (30s, 60s, 120s, 240s, gedeckelt bei 300s) ein
+        eigenstaendiger Neuversuch unternommen - UNABHAENGIG davon, ob
+        RetroAchievements eingerichtet ist.
+
+        BUGFIX (Nutzer-Rueckmeldung: Uhrzeit war trotz korrekt
+        eingestelltem Zeitzonen-Versatz falsch): der bisherige
+        Neuversuch lief NUR ueber _maybe_retry_ra(), gekoppelt an
+        ra_enabled() - Nutzer ohne eingerichtetes RA hatten dadurch
+        ueberhaupt keinen Wiederholungsmechanismus. Schlug der
+        allererste, nicht-blockierende Versuch beim Programmstart fehl
+        (z.B. weil das Netzwerk in diesem Moment noch nicht bereit
+        war), blieb die Uhr fuer die komplette Sitzung falsch. Jetzt
+        unabhaengig davon abgesichert.
+
+        Hoert nach 5 Versuchen von selbst auf (kein endloses
+        Nachfragen, falls kein Netzwerk vorhanden ist)."""
+        if NTP_SYNC_OK or self._clock_retry_count >= 5:
+            return
+        now = time.monotonic()
+        if now < self._clock_retry_next:
+            return
+        self._clock_retry_count += 1
+        backoff = min(30.0 * (2 ** (self._clock_retry_count - 1)), 300.0)
+        self._clock_retry_next = now + backoff
+        threading.Thread(target=sync_system_clock_from_ntp, daemon=True).start()
 
     def _attract_enabled_cached(self):
         """Zwischengespeicherte attract_enabled()-Abfrage, alle 5

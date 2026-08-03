@@ -4,6 +4,16 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v4.2 — Bugfix: Uhrzeit blieb bei manchen Nutzern dauerhaft falsch
+Der bisherige Neuversuch für eine beim Start fehlgeschlagene
+Zeit-Synchronisierung lief nur über den RetroAchievements-Mechanismus
+— Nutzer ohne eingerichtetes RA hatten dadurch überhaupt keine
+Wiederholung. Schlug der allererste, im Hintergrund laufende Versuch
+beim Programmstart fehl (z. B. weil das Netzwerk noch nicht bereit
+war), blieb die Uhr für die ganze Sitzung falsch, egal welcher
+Zeitzonen-Versatz eingestellt war. Neuer, von RA komplett
+unabhängiger Wiederholungsmechanismus behebt das.
+
 ## v4.1 — Neues Feature: Lautstärke-Regler
 Übernommen aus einem separat vorbereiteten, auf echter Hardware
 getesteten Vorschlag von TheRealSutefan. Regler für Musik und
