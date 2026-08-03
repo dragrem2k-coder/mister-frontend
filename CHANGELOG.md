@@ -4,6 +4,15 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v3.4 — Bugfix Runde 2: Esc-Ausstieg funktionierte weiterhin nicht
+Der v3.3-Fix reichte nicht — der dortige Rückfall (USB-Boot-Protokoll)
+ist im Standard zwar definiert, aber optional. Viele Tastaturen (v.a.
+kabellose über einen Funk-Dongle) implementieren das gar nicht. Neue
+dritte Erkennungsstufe: der HID-Report-Deskriptor selbst, der für
+jedes HID-Gerät verpflichtend ist. Zusätzlich protokolliert die
+Erkennung jetzt jeden Schritt — bisher war sie komplett stumm, was
+jede Ferndiagnose zum Raten gemacht hat.
+
 ## v3.3 — Bugfix: Esc-Ausstieg funktionierte bei manchen Nutzern gar nicht
 Esc-Ausstieg aus dem Spiel lief bei einem Nutzer zuverlässig, bei
 zwei anderen mit angeschlossener Tastatur überhaupt nicht. Ursache:

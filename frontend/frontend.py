@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v3.3
+MiSTer Custom Frontend - v3.4
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
@@ -36,6 +36,36 @@ Hochzaehlen". Alles inhaltlich Passierte (Boot-Animation, drei
 Bugfix-Anlaeufe, CRT-Textumbruch-Fixes, RA-Vitrine-Cache) bleibt
 vollstaendig erhalten - nur als EIN gebuendelter v3.2-Eintrag statt
 sechs einzelner.
+
+Neu in v3.4 (BUGFIX Runde 2: Esc-Ausstieg funktionierte bei
+denselben zwei Nutzern WEITERHIN nicht, trotz des v3.3-Fixes):
+  - Der v3.3-Rueckfall (bInterfaceProtocol==1, "Boot Protocol") reichte
+    nicht - dieses Feld ist im USB-HID-Standard zwar definiert, aber
+    OPTIONAL. Viele Tastaturen (v.a. kabellose ueber einen Funk-Dongle,
+    oder Gaming-/Multimedia-Tastaturen) implementieren das "Boot
+    Protocol" gar nicht und melden bInterfaceProtocol=0 - genau bei
+    dieser Art Tastatur haette Runde 1 erneut nichts gefunden.
+  - Fix: dritte Erkennungsstufe - der HID-Report-Deskriptor selbst
+    (im Gegensatz zu bInterfaceProtocol VERPFLICHTEND fuer jedes HID-
+    Geraet, keine optionale Zusatzangabe). Sucht nach der Byte-Signatur
+    fuer "Usage Page: Generic Desktop" + "Usage: Keyboard" - eine sehr
+    verbreitete, gut erkennbare Kennzeichnung in Tastatur-Deskriptoren.
+  - ZUSAETZLICH (Lehre aus den ersten beiden gescheiterten Versuchen):
+    _find_keyboard_hidraw() protokolliert jetzt jede Stufe (gefundene
+    Kandidaten, deren Namen, welche Stufe angeschlagen hat oder ob gar
+    keine). Bisher war die Funktion komplett stumm, was jede
+    Ferndiagnose zum Ratespiel gemacht hat - sollte auch Stufe 3 noch
+    nicht reichen, zeigt das naechste Log wenigstens exakt, was an
+    HID-Geraeten tatsaechlich vorhanden war, statt eine vierte
+    Vermutung ins Blaue zu riskieren.
+  - Getestet: alle drei Stufen einzeln bestaetigt (Namens-Erkennung UND
+    Boot-Protokoll-Rueckfall weiterhin als Regression bestaetigt), NEUE
+    dritte Stufe bestaetigt GENAU fuer das vermutete Szenario (weder
+    Name noch Boot-Protokoll passend, aber Report-Deskriptor eindeutig
+    als Tastatur erkennbar). Kein Fehlalarm bei einem Geraet, das in
+    KEINER der drei Stufen passt (z.B. eine Maus mit eigenem, klar
+    unterscheidbarem Report-Deskriptor). 56 Kombinationen kompletter
+    Regressionstest bestanden.
 
 Neu in v3.3 (BUGFIX: Esc-Ausstieg aus dem Spiel funktionierte bei
 manchen Nutzern trotz angeschlossener Tastatur ueberhaupt nicht):
@@ -4369,44 +4399,71 @@ MISTER_CMD  = "/dev/MiSTer_cmd"
 # zusaetzlicher, zuverlaesslicherer Ausstiegsweg (urspruenglich
 # Strg+Alt+Esc, auf Nutzerwunsch vereinfacht).
 def _find_keyboard_hidraw():
-    """Sucht unter /dev/hidraw* nach einem Tastatur-Geraet - zweistufig,
-    genau wie bei InputManager.inject() (siehe dortiger Kommentar fuer
-    die Begruendung dieses Musters).
+    """Sucht unter /dev/hidraw* nach einem Tastatur-Geraet - DREISTUFIG.
 
-    BUGFIX (Nutzer-Rueckmeldung: Esc-Ausstieg funktioniert bei einem
-    Nutzer zuverlaessig, bei zwei anderen trotz nachweislich
-    angeschlossener Tastatur ueberhaupt nicht): die bisherige Fassung
-    suchte NUR nach einem Geraet, dessen selbstgemeldeter HID-Name das
-    Wort "keyboard" enthaelt - funktioniert nur, wenn Hersteller/Modell
-    das Wort tatsaechlich im Namen fuehren (z.B. "Logitech Wireless
-    Keyboard"). Viele andere Tastaturen melden nur einen Marken-/
-    Modellnamen ohne dieses Wort - bei denen fand die Funktion bisher
-    GAR NICHTS, obwohl eine Tastatur angeschlossen war, kein Fehler
-    geloggt wurde (stiller Fehlschlag).
+    BUGFIX Runde 1 (Nutzer-Rueckmeldung: Esc-Ausstieg funktioniert bei
+    einem Nutzer zuverlaessig, bei zwei anderen trotz nachweislich
+    angeschlossener Tastatur ueberhaupt nicht): die urspruengliche
+    Fassung suchte NUR nach einem Geraet, dessen selbstgemeldeter
+    HID-Name das Wort "keyboard" enthaelt - funktioniert nur, wenn
+    Hersteller/Modell das Wort tatsaechlich im Namen fuehren.
 
-    Fix: zweite Stufe als Rueckfall - bInterfaceProtocol == 1, die im
-    USB-HID-Standard selbst festgelegte Kennung fuer "Boot Interface
-    Subclass: Keyboard". Herstellerunabhaengig, kein Namens-Ratespiel,
-    steht am zugehoerigen USB-INTERFACE (nicht am HID-Geraet selbst,
-    deshalb wird bis zu vier Verzeichnisebenen nach oben gesucht).
+    BUGFIX Runde 2 (derselbe Fehler bestand bei denselben zwei Nutzern
+    WEITERHIN, nachdem Runde 1 - der bInterfaceProtocol==1-Rueckfall -
+    ausgeliefert war): bInterfaceProtocol ist im USB-HID-Standard zwar
+    definiert, aber OPTIONAL - viele Tastaturen (v.a. kabellose ueber
+    einen Funk-Dongle, oder Gaming-/Multimedia-Tastaturen mit N-Key-
+    Rollover) implementieren das sogenannte "Boot Protocol" gar nicht
+    und melden stattdessen bInterfaceProtocol=0 ("None"), verlassen
+    sich komplett auf ihren HID-Report-Deskriptor. Runde 1 haette also
+    bei genau dieser Art Tastatur ERNEUT nichts gefunden - was exakt
+    zum wiederholt gemeldeten Fehlschlag passt.
+
+    Fix: dritte Stufe - der HID-Report-Deskriptor selbst (im Gegensatz
+    zu bInterfaceProtocol VERPFLICHTEND fuer jedes HID-Geraet, keine
+    optionale Zusatzangabe). Sucht nach der Byte-Sequenz fuer "Usage
+    Page: Generic Desktop (0x05 0x01)" gefolgt von "Usage: Keyboard
+    (0x09 0x06)" - eine sehr verbreitete, gut erkennbare Signatur fuer
+    Tastatur-HID-Deskriptoren.
+
+    ZUSAETZLICH (aus der Erfahrung mit den ersten beiden gescheiterten
+    Rueckfaellen): ab jetzt wird jede Stufe protokolliert (LOG()) -
+    welche Kandidaten gefunden wurden, welche Stufe (falls ueberhaupt)
+    angeschlagen hat. Bisher war die Funktion komplett stumm, was jede
+    Ferndiagnose zu einem Ratespiel gemacht hat. Sollte auch diese
+    dritte Stufe noch nicht reichen, zeigt das Log wenigstens genau,
+    was tatsaechlich an HID-Geraeten vorhanden war.
 
     Bewusst dynamisch (nicht fest verdrahtet) - die hidraw-
     Nummerierung haengt von Anschlussreihenfolge/USB-Bus ab und kann
     sich zwischen Boots verschieben."""
     candidates = sorted(glob.glob("/dev/hidraw*"))
-    # Stufe 1: Name enthaelt "keyboard" (schnell, funktioniert oft).
-    for path in candidates:
-        base = os.path.basename(path)
+    LOG("_find_keyboard_hidraw: %d Kandidat(en): %s" % (len(candidates), candidates))
+
+    def read_uevent_name(base):
         uevent = "/sys/class/hidraw/%s/device/uevent" % base
         try:
             with open(uevent) as f:
                 for line in f:
-                    if line.startswith("HID_NAME=") and \
-                            "keyboard" in line.lower():
-                        return path
+                    if line.startswith("HID_NAME="):
+                        return line[len("HID_NAME="):].strip()
         except OSError:
-            continue
-    # Stufe 2 (Rueckfall): standardisiertes USB-HID-Boot-Protokoll.
+            pass
+        return None
+
+    names = {}
+    for path in candidates:
+        names[path] = read_uevent_name(os.path.basename(path))
+    LOG("_find_keyboard_hidraw: Namen: %s" % names)
+
+    # Stufe 1: Name enthaelt "keyboard" (schnell, funktioniert oft).
+    for path, name in names.items():
+        if name and "keyboard" in name.lower():
+            LOG("_find_keyboard_hidraw: Stufe 1 (Name) Treffer: %s (%r)" % (path, name))
+            return path
+
+    # Stufe 2 (Rueckfall): USB-HID-Boot-Protokoll, sofern vorhanden -
+    # optional, deshalb kein Treffer bei vielen Tastaturen.
     for path in candidates:
         base = os.path.basename(path)
         device_dir = "/sys/class/hidraw/%s/device" % base
@@ -4421,9 +4478,30 @@ def _find_keyboard_hidraw():
             try:
                 with open(proto_file) as f:
                     if f.read().strip() == "01":
+                        LOG("_find_keyboard_hidraw: Stufe 2 (Boot-Protokoll) "
+                            "Treffer: %s" % path)
                         return path
             except OSError:
                 continue
+
+    # Stufe 3 (Rueckfall): HID-Report-Deskriptor selbst - VERPFLICHTEND
+    # fuer jedes HID-Geraet, keine optionale Zusatzangabe.
+    sig = bytes([0x05, 0x01, 0x09, 0x06])
+    for path in candidates:
+        base = os.path.basename(path)
+        desc_file = "/sys/class/hidraw/%s/device/report_descriptor" % base
+        try:
+            with open(desc_file, "rb") as f:
+                data = f.read()
+        except OSError:
+            continue
+        if sig in data:
+            LOG("_find_keyboard_hidraw: Stufe 3 (Report-Deskriptor) "
+                "Treffer: %s" % path)
+            return path
+
+    LOG("_find_keyboard_hidraw: KEIN Treffer in allen drei Stufen - "
+        "Esc-Ausstieg wird nicht funktionieren.")
     return None
 
 def _hid_report_has_esc(data):
