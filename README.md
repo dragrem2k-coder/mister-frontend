@@ -1,4 +1,4 @@
-# MiSTer Custom Frontend v3.3
+# MiSTer Custom Frontend v3.2
 
 **Von Dragrem2K**, mit Beiträgen von **TheRealSuTefan**, **Dfense**
 und **Dennsen**.
@@ -90,6 +90,7 @@ Nachlesen (`CHANGELOG.md`).
 3. Installation Schritt für Schritt
 4. Bedienung
 5. Hintergrundmusik einrichten
+   - 5b. Internetradio (Rainwave)
 6. Boxart und Spielinfos laden
    - 6b. Automatische Listen-Bereinigung + kuratierte Liste
 7. System-Hintergrundbilder (optional)
@@ -124,7 +125,7 @@ Nachlesen (`CHANGELOG.md`).
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v3.3) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v3.2) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (läuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (läuft auf dem MiSTer) |
@@ -346,6 +347,34 @@ Menü wechselt, übernimmt das Frontend automatisch wieder.
 Ohne MP3s im Ordner oder ohne `mpg123` bleibt das Frontend einfach
 stumm - keine Fehlermeldung, läuft nur ohne Musik weiter.
 
+## 5b. Internetradio (Rainwave)
+
+Neben eigenen MP3s kann als Hintergrundmusik auch ein Internetradio
+laufen: **Rainwave** (rainwave.cc), ein kostenloser Sender fuer
+Videospielmusik - mit fuenf Kanaelen (Game, OCReMix, Covers, Chiptune,
+All). Laeuft ueber dasselbe `mpg123` wie die MP3-Wiedergabe, braucht
+also keine zusaetzliche Software - nur eine Internetverbindung.
+
+**Umschalten:** Im System-Menue unter **Verhalten -> "Musik-Quelle"**.
+Der Eintrag schaltet der Reihe nach durch: MP3 (lokale Dateien) ->
+Radio: Game -> OCReMix -> Covers -> Chiptune -> All -> zurueck zu MP3.
+Die getroffene Wahl bleibt ueber Neustarts erhalten.
+
+Der An/Aus-Schalter ("Musik: an/aus") bleibt davon unberuehrt - er
+regelt nur, *ob* Musik laeuft; die Quelle waehlst du getrennt.
+
+**Now-Playing:** Im Radio-Modus zeigt die Laufschrift den echten aktuell
+laufenden Titel des Senders (Interpret - Titel) statt eines Dateinamens
+- dieselbe Anzeige wie bei MP3s, oben neben dem "MiSTer"-Logo und im
+Boxart-Block. Fuer Streamer besonders praktisch: der Titel laeuft
+automatisch auch im OBS-Overlay mit (Abschnitt 12), ganz ohne
+Extra-Einrichtung.
+
+Ohne Internetverbindung oder wenn der Stream kurz abreisst, versucht das
+Frontend automatisch, die Verbindung wieder aufzubauen. Rainwave ist ein
+kostenloser Dienst - wir hoeren hier nur passiv mit (anonym, kein Login
+noetig).
+
 ## 6. Boxart und Spielinfos laden
 
 Direkt auf dem MiSTer, kein PC nötig (auch aus der Scripts-Kategorie
@@ -420,15 +449,9 @@ System noch gar keine Metadaten geladen, wird es NICHT gefiltert
 
 ## 7. System-Hintergrundbilder (optional)
 
-**Bereits im Build enthalten** (liegt in `frontend/bg/`, muss nicht
-mehr selbst erzeugt werden): 12 Systeme (NES, SNES, Genesis, N64, PSX,
-GAMEBOY, GBC, SMS, TGFX16, MegaCD, Saturn, NEOGEO) haben ein
-abgedunkeltes Konsolenfoto als Hintergrund hinterlegt, jeweils in
-beiden Auflösungen (CRT 320×240 und HDMI 1920×1080) - Quelle sind die
-gemeinfreien Fotos von Evan Amos auf Wikimedia Commons ("Vanamo
-Online Game Museum").
-
-Eigene/weitere Bilder erzeugen (z.B. für GBA oder ARCADE):
+Für ein Konsolenfoto als abgedunkelten Hintergrund pro System: gute
+Quelle sind die gemeinfreien Fotos von Evan Amos auf Wikimedia
+Commons (Suche nach "Vanamo Online Game Museum").
 ```
 python art_convert.py --bg --images nes.jpg --out NES_320x240.art --size 320x240 --darken 0.25
 ```

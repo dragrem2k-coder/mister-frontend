@@ -1,8 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v3.3
+MiSTer Custom Frontend - v3.2
 =======================================
++ VORSCHLAG (noch nicht offiziell nummeriert): Rainwave-Internetradio als
+  zweite Musikquelle (Modul rainwave.py + Menuepunkt "Musik-Quelle").
+  Von TheRealSutefan, auf echter Hardware getestet, zum Uebernehmen.
+  Aendert nichts am Bestehenden, solange die Quelle auf "MP3" bleibt (Default).
++ Release-Linie bleibt v3.2. Dragrems ESC-/HID-Ausstieg-Arbeit (von ihm
+  intern als v3.3-v3.6 gefuehrt, siehe Changelog) ist hier eingebracht.
++ VORSCHLAG: Lautstaerke-Regler (Menuepunkt "Lautstaerke: X%"). Ein Regler
+  fuer Musik (mpg123 -f) UND Menue-Sounds (WAVs mit skalierter Amplitude).
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
 VERSIONIERUNG NEU GEREGELT (Nutzer-Feedback, hier dokumentiert statt
@@ -36,6 +44,89 @@ Hochzaehlen". Alles inhaltlich Passierte (Boot-Animation, drei
 Bugfix-Anlaeufe, CRT-Textumbruch-Fixes, RA-Vitrine-Cache) bleibt
 vollstaendig erhalten - nur als EIN gebuendelter v3.2-Eintrag statt
 sechs einzelner.
+
+Neu in v3.6 (DIAGNOSE-VERSION, KEIN Fix - Esc-Ausstieg funktioniert
+trotz v3.5 (korrekt gefundene UND ueberwachte Schnittstellen) bei
+Sutefans Tastatur weiterhin nicht):
+  - Per Log bestaetigt: alle drei Tiger80-Schnittstellen werden
+    korrekt gefunden und ueberwacht (v3.5 arbeitet wie gedacht) - das
+    Problem liegt also vermutlich NICHT mehr an der Schnittstellen-
+    Auswahl, sondern am REPORT-FORMAT selbst. Vermutung: manche NKRO-
+    faehigen Tastaturen senden Tastendruecke als BITMASKE statt als
+    Byte-Array von Tastencodes - _hid_report_has_esc() sucht aber nach
+    dem blossen Byte-WERT 0x29 irgendwo im Report, was bei einer
+    Bitmaske nie zutrifft.
+  - Bewusst KEIN weiterer Rate-Versuch diesmal: stattdessen
+    Diagnose-Protokollierung ergaenzt, die beim naechsten Testlauf die
+    ROHEN BYTES zeigt, die tatsaechlich ankommen, wenn eine Taste
+    gedrueckt wird - damit der naechste Fix auf echten Daten statt auf
+    einer weiteren Vermutung aufbaut.
+  - Protokolliert: welche Schnittstellen erfolgreich geoeffnet wurden
+    (falls os.open() fuer eine davon fehlschlagen sollte, war das
+    bisher komplett unsichtbar), sowie die rohen Hex-Bytes der ersten
+    30 tatsaechlich empfangenen Reports (Budget bewusst ueber ALLE
+    Schnittstellen zusammen begrenzt, nicht pro Schnittstelle - sonst
+    koennte eine sehr "gespraechige" Schnittstelle das Log fluten).
+  - Getestet: Budget-Begrenzung bestaetigt (exakt 30 Diagnose-Zeilen
+    trotz 50 simulierter Lesevorgaenge, keine Log-Flut). Oeffnungs-
+    Protokollierung bestaetigt. 56 Kombinationen kompletter
+    Regressionstest bestanden.
+
+Neu in v3.5 (BUGFIX Runde 3: Esc-Ausstieg endlich per ECHTER Log-
+Datei auf die tatsaechliche Ursache zurueckgefuehrt):
+  - Nutzer schickte die tatsaechliche Diagnose-Log-Zeile (aus dem
+    v3.4-Logging): 4 HID-Kandidaten, davon DREI mit IDENTISCHEM Namen
+    "KBDFans Tiger80" (eine hochwertige mechanische Custom-Tastatur),
+    nur EINER davon mit bInterfaceProtocol==1. Die Funktion waehlte
+    genau diese eine "Boot"-Schnittstelle - aber bei Tastaturen mit
+    NKRO/Rollover-Unterstuetzung koennen die TATSAECHLICHEN
+    Tastendruecke ueber eine der ANDEREN, gleichnamigen Schnittstellen
+    laufen, nicht ueber die zuerst erkannte.
+  - Fix: _find_keyboard_hidraw() -> _find_keyboard_hidraws() (Mehrzahl!)
+    - identifiziert weiterhin dreistufig, WELCHE Tastatur angeschlossen
+    ist, sammelt dann aber ALLE hidraw-Schnittstellen mit demselben
+    HID-Namen und gibt sie ALLE zurueck. wait_game_exit() ueberwacht
+    jetzt alle gleichzeitig (kbd_fds statt kbd_fd) - welche der
+    mehreren Schnittstellen tatsaechlich die Tasten sendet, muss
+    dadurch nicht mehr erraten werden.
+  - Getestet: das EXAKTE gemeldete Szenario nachgebaut (3x identischer
+    Name, nur einer mit Boot-Protokoll, plus ein irrelevantes viertes
+    Geraet) - liefert nachweislich alle drei passenden Schnittstellen,
+    schliesst das irrelevante Geraet korrekt aus. wait_game_exit()
+    zusaetzlich end-to-end getestet: Esc wird nachweislich erkannt,
+    wenn es ueber die ZWEITE (nicht die zuerst identifizierte)
+    Schnittstelle ankommt - genau der Kern des gemeldeten Problems.
+    56 Kombinationen kompletter Regressionstest bestanden.
+
+Neu in v3.4 (BUGFIX Runde 2: Esc-Ausstieg funktionierte bei
+denselben zwei Nutzern WEITERHIN nicht, trotz des v3.3-Fixes):
+  - Der v3.3-Rueckfall (bInterfaceProtocol==1, "Boot Protocol") reichte
+    nicht - dieses Feld ist im USB-HID-Standard zwar definiert, aber
+    OPTIONAL. Viele Tastaturen (v.a. kabellose ueber einen Funk-Dongle,
+    oder Gaming-/Multimedia-Tastaturen) implementieren das "Boot
+    Protocol" gar nicht und melden bInterfaceProtocol=0 - genau bei
+    dieser Art Tastatur haette Runde 1 erneut nichts gefunden.
+  - Fix: dritte Erkennungsstufe - der HID-Report-Deskriptor selbst
+    (im Gegensatz zu bInterfaceProtocol VERPFLICHTEND fuer jedes HID-
+    Geraet, keine optionale Zusatzangabe). Sucht nach der Byte-Signatur
+    fuer "Usage Page: Generic Desktop" + "Usage: Keyboard" - eine sehr
+    verbreitete, gut erkennbare Kennzeichnung in Tastatur-Deskriptoren.
+  - ZUSAETZLICH (Lehre aus den ersten beiden gescheiterten Versuchen):
+    _find_keyboard_hidraw() protokolliert jetzt jede Stufe (gefundene
+    Kandidaten, deren Namen, welche Stufe angeschlagen hat oder ob gar
+    keine). Bisher war die Funktion komplett stumm, was jede
+    Ferndiagnose zum Ratespiel gemacht hat - sollte auch Stufe 3 noch
+    nicht reichen, zeigt das naechste Log wenigstens exakt, was an
+    HID-Geraeten tatsaechlich vorhanden war, statt eine vierte
+    Vermutung ins Blaue zu riskieren.
+  - Getestet: alle drei Stufen einzeln bestaetigt (Namens-Erkennung UND
+    Boot-Protokoll-Rueckfall weiterhin als Regression bestaetigt), NEUE
+    dritte Stufe bestaetigt GENAU fuer das vermutete Szenario (weder
+    Name noch Boot-Protokoll passend, aber Report-Deskriptor eindeutig
+    als Tastatur erkennbar). Kein Fehlalarm bei einem Geraet, das in
+    KEINER der drei Stufen passt (z.B. eine Maus mit eigenem, klar
+    unterscheidbarem Report-Deskriptor). 56 Kombinationen kompletter
+    Regressionstest bestanden.
 
 Neu in v3.3 (BUGFIX: Esc-Ausstieg aus dem Spiel funktionierte bei
 manchen Nutzern trotz angeschlossener Tastatur ueberhaupt nicht):
@@ -4368,45 +4459,87 @@ MISTER_CMD  = "/dev/MiSTer_cmd"
 # gesperrten Kanal). Deshalb: Esc laenger halten ueber die Tastatur als
 # zusaetzlicher, zuverlaesslicherer Ausstiegsweg (urspruenglich
 # Strg+Alt+Esc, auf Nutzerwunsch vereinfacht).
-def _find_keyboard_hidraw():
-    """Sucht unter /dev/hidraw* nach einem Tastatur-Geraet - zweistufig,
-    genau wie bei InputManager.inject() (siehe dortiger Kommentar fuer
-    die Begruendung dieses Musters).
+def _find_keyboard_hidraws():
+    """Sucht unter /dev/hidraw* nach ALLEN Schnittstellen einer
+    Tastatur - DREISTUFIGE Erkennung, um die Tastatur ueberhaupt zu
+    IDENTIFIZIEREN, dann werden ALLE hidraw-Geraete mit demselben
+    HID-Namen mit zurueckgegeben (Mehrzahl! - siehe BUGFIX Runde 3).
 
-    BUGFIX (Nutzer-Rueckmeldung: Esc-Ausstieg funktioniert bei einem
-    Nutzer zuverlaessig, bei zwei anderen trotz nachweislich
-    angeschlossener Tastatur ueberhaupt nicht): die bisherige Fassung
-    suchte NUR nach einem Geraet, dessen selbstgemeldeter HID-Name das
-    Wort "keyboard" enthaelt - funktioniert nur, wenn Hersteller/Modell
-    das Wort tatsaechlich im Namen fuehren (z.B. "Logitech Wireless
-    Keyboard"). Viele andere Tastaturen melden nur einen Marken-/
-    Modellnamen ohne dieses Wort - bei denen fand die Funktion bisher
-    GAR NICHTS, obwohl eine Tastatur angeschlossen war, kein Fehler
-    geloggt wurde (stiller Fehlschlag).
+    BUGFIX Runde 1: die urspruengliche Fassung suchte NUR nach einem
+    Geraet, dessen selbstgemeldeter HID-Name das Wort "keyboard"
+    enthaelt - funktioniert nur, wenn Hersteller/Modell das Wort
+    tatsaechlich im Namen fuehren.
 
-    Fix: zweite Stufe als Rueckfall - bInterfaceProtocol == 1, die im
-    USB-HID-Standard selbst festgelegte Kennung fuer "Boot Interface
-    Subclass: Keyboard". Herstellerunabhaengig, kein Namens-Ratespiel,
-    steht am zugehoerigen USB-INTERFACE (nicht am HID-Geraet selbst,
-    deshalb wird bis zu vier Verzeichnisebenen nach oben gesucht).
+    BUGFIX Runde 2: bInterfaceProtocol==1 ("Boot Protocol") ist im
+    USB-HID-Standard zwar definiert, aber OPTIONAL - viele Tastaturen
+    implementieren das gar nicht. Dritte Stufe ergaenzt: der HID-
+    Report-Deskriptor selbst (VERPFLICHTEND fuer jedes HID-Geraet).
+
+    BUGFIX Runde 3 (per echter Nutzer-Log-Datei bestaetigt - siehe
+    Diagnose-Ausgabe: "4 Kandidaten", davon DREI mit identischem Namen
+    "KBDFans Tiger80", nur EINER mit bInterfaceProtocol==1): manche
+    Tastaturen (v.a. hochwertige mechanische Custom-Boards mit NKRO/
+    Rollover-Unterstuetzung) legen GLEICHZEITIG MEHRERE hidraw-
+    Schnittstellen unter demselben Namen an - eine "Boot"-Schnittstelle
+    (6-Tasten-Rollover, kompatibel, oft die einzige mit
+    bInterfaceProtocol==1) UND eine oder mehrere weitere fuer den
+    eigentlichen NKRO-Betrieb. Die TATSAECHLICHEN Tastendruecke koennen
+    ueber eine DIESER ANDEREN Schnittstellen laufen, nicht ueber die,
+    die zufaellig als Erste die Erkennungskriterien erfuellt. Bisher
+    wurde IMMER NUR EINE Schnittstelle zurueckgegeben und ueberwacht -
+    war das die falsche der mehreren gleichnamigen, blieb Esc trotz
+    korrekt erkannter Tastatur wirkungslos.
+
+    Fix: sobald EINE Schnittstelle als Tastatur identifiziert ist,
+    werden ZUSAETZLICH alle anderen hidraw-Geraete mit EXAKT demselben
+    HID-Namen gesammelt und ALLE gemeinsam zurueckgegeben - der
+    Aufrufer (wait_game_exit()) ueberwacht sie dann gleichzeitig, die
+    Ambiguitaet "welche der mehreren Schnittstellen ist die richtige"
+    muss dadurch gar nicht mehr aufgeloest werden.
+
+    Protokolliert jede Stufe (LOG()) - bisher war die Funktion komplett
+    stumm, was jede Ferndiagnose zu einem Ratespiel gemacht hat.
 
     Bewusst dynamisch (nicht fest verdrahtet) - die hidraw-
     Nummerierung haengt von Anschlussreihenfolge/USB-Bus ab und kann
     sich zwischen Boots verschieben."""
     candidates = sorted(glob.glob("/dev/hidraw*"))
-    # Stufe 1: Name enthaelt "keyboard" (schnell, funktioniert oft).
-    for path in candidates:
-        base = os.path.basename(path)
+    LOG("_find_keyboard_hidraws: %d Kandidat(en): %s" % (len(candidates), candidates))
+
+    def read_uevent_name(base):
         uevent = "/sys/class/hidraw/%s/device/uevent" % base
         try:
             with open(uevent) as f:
                 for line in f:
-                    if line.startswith("HID_NAME=") and \
-                            "keyboard" in line.lower():
-                        return path
+                    if line.startswith("HID_NAME="):
+                        return line[len("HID_NAME="):].strip()
         except OSError:
-            continue
-    # Stufe 2 (Rueckfall): standardisiertes USB-HID-Boot-Protokoll.
+            pass
+        return None
+
+    names = {}
+    for path in candidates:
+        names[path] = read_uevent_name(os.path.basename(path))
+    LOG("_find_keyboard_hidraws: Namen: %s" % names)
+
+    def siblings_with_same_name(found_path):
+        """Alle Geraete (inkl. found_path selbst) mit demselben Namen."""
+        found_name = names.get(found_path)
+        if not found_name:
+            return [found_path]
+        result = [p for p, n in names.items() if n == found_name]
+        LOG("_find_keyboard_hidraws: %d Schnittstelle(n) mit demselben "
+            "Namen (%r): %s" % (len(result), found_name, result))
+        return sorted(result)
+
+    # Stufe 1: Name enthaelt "keyboard" (schnell, funktioniert oft).
+    for path, name in names.items():
+        if name and "keyboard" in name.lower():
+            LOG("_find_keyboard_hidraws: Stufe 1 (Name) Treffer: %s (%r)" % (path, name))
+            return siblings_with_same_name(path)
+
+    # Stufe 2 (Rueckfall): USB-HID-Boot-Protokoll, sofern vorhanden -
+    # optional, deshalb kein Treffer bei vielen Tastaturen.
     for path in candidates:
         base = os.path.basename(path)
         device_dir = "/sys/class/hidraw/%s/device" % base
@@ -4421,10 +4554,31 @@ def _find_keyboard_hidraw():
             try:
                 with open(proto_file) as f:
                     if f.read().strip() == "01":
-                        return path
+                        LOG("_find_keyboard_hidraws: Stufe 2 (Boot-Protokoll) "
+                            "Treffer: %s" % path)
+                        return siblings_with_same_name(path)
             except OSError:
                 continue
-    return None
+
+    # Stufe 3 (Rueckfall): HID-Report-Deskriptor selbst - VERPFLICHTEND
+    # fuer jedes HID-Geraet, keine optionale Zusatzangabe.
+    sig = bytes([0x05, 0x01, 0x09, 0x06])
+    for path in candidates:
+        base = os.path.basename(path)
+        desc_file = "/sys/class/hidraw/%s/device/report_descriptor" % base
+        try:
+            with open(desc_file, "rb") as f:
+                data = f.read()
+        except OSError:
+            continue
+        if sig in data:
+            LOG("_find_keyboard_hidraws: Stufe 3 (Report-Deskriptor) "
+                "Treffer: %s" % path)
+            return siblings_with_same_name(path)
+
+    LOG("_find_keyboard_hidraws: KEIN Treffer in allen drei Stufen - "
+        "Esc-Ausstieg wird nicht funktionieren.")
+    return []
 
 def _hid_report_has_esc(data):
     """Prueft einen rohen HID-Tastatur-Report auf die Escape-Taste
@@ -4447,6 +4601,56 @@ def _hid_report_has_esc(data):
 
 MUSIC_DIR   = "/media/fat/music"
 MUSIC_ENABLED_FILE = "/media/fat/frontend/music_enabled"
+MUSIC_SOURCE_FILE  = "/media/fat/frontend/music_source"   # "mp3"/"radio" + Stations-sid
+VOLUME_FILE        = "/media/fat/frontend/volume"         # Lautstaerke 0-100 (Musik + Menue-Sounds)
+
+def _load_volume():
+    try:
+        return max(0, min(100, int(open(VOLUME_FILE).read().strip())))
+    except (OSError, ValueError):
+        return 100
+
+def _save_volume(v):
+    try:
+        os.makedirs(os.path.dirname(VOLUME_FILE), exist_ok=True)
+        with open(VOLUME_FILE, "w") as f:
+            f.write(str(int(v)))
+    except OSError:
+        pass
+
+VOLUME = _load_volume()   # 0-100; global, von Musik (mpg123 -f) UND SFX genutzt
+
+def _mpg_scale():
+    """mpg123 -f Skalierungsfaktor (0..32768) fuer die aktuelle Lautstaerke."""
+    return str(int(32768 * VOLUME / 100))
+
+def _regenerate_sfx():
+    """Menue-Sound-WAVs bei geaenderter Lautstaerke neu erzeugen - aplay hat
+    keinen Volume-Schalter, also steckt die Lautstaerke in der Amplitude."""
+    try:
+        for _f in glob.glob(os.path.join(SFX_DIR, "*.wav")):
+            os.remove(_f)
+    except OSError:
+        pass
+    _ensure_sfx_files()
+
+_volume_apply_lock = None
+
+def _apply_volume_async(player):
+    """SFX-Neuerzeugung + Musik-Neustart im Hintergrund - beides ist auf dem
+    MiSTer traege bzw. blockierend (Popen.wait bis 2s), also NICHT im
+    Menue-Thread. Ein Lock serialisiert schnelle Mehrfach-Druecke; jeder
+    Lauf nutzt das dann aktuelle VOLUME (letzter gewinnt)."""
+    global _volume_apply_lock
+    if _volume_apply_lock is None:
+        _volume_apply_lock = threading.Lock()
+    def _worker():
+        with _volume_apply_lock:
+            _regenerate_sfx()
+            if player.enabled and not player.paused_for_core:
+                player._stop_current()
+                player._start_current()
+    threading.Thread(target=_worker, daemon=True).start()
 LANGUAGE_FILE = "/media/fat/frontend/language"
 KEYMAP_CUSTOM_FILE = "/media/fat/frontend/keymap_custom.json"
 BOOTANIM_DIR = "/media/fat/frontend/bootanim"
@@ -5157,6 +5361,7 @@ import threading
 import urllib.request
 import urllib.parse
 import urllib.error
+import rainwave   # Rainwave-Internetradio (Modul neben frontend.py)
 
 EVIOCGRAB = 0x40044590
 EV_SYN, EV_KEY, EV_ABS = 0, 1, 3
@@ -5600,34 +5805,54 @@ class InputManager:
     def wait_game_exit(self):
         """Waehrend ein Core laeuft: warten, bis MiSTer zurueck im
         Menue ist, F10 gedrueckt wird, Start+Select lange genug
-        gehalten werden, ODER (neu) Esc auf der Tastatur laenger
-        gehalten wird - erkannt ueber die rohe HID-Ebene. Rueckgabe:
-        "menu", "f10", "combo" oder "hid_combo".
+        gehalten werden, ODER Esc auf der Tastatur laenger gehalten
+        wird - erkannt ueber die rohe HID-Ebene. Rueckgabe: "menu",
+        "f10", "combo" oder "hid_combo".
 
         WICHTIG: F10/Start+Select werden ueber die normale evdev-Ebene
         gelesen, die MiSTer waehrend eines laufenden Cores exklusiv
         sperrt - vermutlich hat dieser Zweig dadurch in der Praxis nie
-        tatsaechlich ausgeloest (durch eine gezielte Nutzer-Diagnose
-        aufgedeckt: `cat /dev/input/eventX` liefert waehrend eines
-        Spiels 0 Bytes). Bleibt trotzdem als Absicherung bestehen (fuer
-        MiSTer-Konfigurationen, bei denen das evtl. doch durchkommt).
-        Esc laeuft stattdessen ueber /dev/hidrawX (siehe
-        _find_keyboard_hidraw()), das bei einer angeschlossenen
-        Tastatur bestaetigt auch waehrend eines laufenden Cores lesbar
-        bleibt. Urspruenglich Strg+Alt+Esc, auf Nutzerwunsch auf reines
-        Esc vereinfacht (mit laengerer Haltezeit als Sicherung gegen
-        normale Esc-Nutzung innerhalb eines Spiels, siehe
-        KBD_COMBO_HOLD)."""
+        tatsaechlich ausgeloest. Bleibt trotzdem als Absicherung
+        bestehen. Esc laeuft stattdessen ueber /dev/hidrawX (siehe
+        _find_keyboard_hidraws()).
+
+        BUGFIX Runde 3 (per echter Nutzer-Log-Datei bestaetigt: manche
+        Tastaturen legen MEHRERE hidraw-Schnittstellen unter demselben
+        Namen an, z.B. eine "Boot"- und eine NKRO-Schnittstelle - die
+        tatsaechlichen Tastendruecke koennen ueber eine ANDERE
+        Schnittstelle laufen als die zuerst erkannte): _find_keyboard_
+        hidraws() liefert jetzt eine LISTE aller Schnittstellen
+        desselben Tastatur-Namens, ALLE werden hier gleichzeitig
+        ueberwacht (kbd_fds statt kbd_fd) - welche davon tatsaechlich
+        die Tasten sendet, muss dadurch nicht mehr erraten werden."""
         down = set()              # (geraetepfad, code) gedrueckter Tasten
         combo_since = None
         last_core_check = 0.0
-        kbd_path = _find_keyboard_hidraw()
-        kbd_fd = None
-        if kbd_path:
+        kbd_paths = _find_keyboard_hidraws()
+        kbd_fds = {}               # fd -> True/False (Esc gerade gehalten?)
+        kbd_fd_paths = {}          # fd -> Pfad (nur fuers Diagnose-Log)
+        for kp in kbd_paths:
             try:
-                kbd_fd = os.open(kbd_path, os.O_RDONLY | os.O_NONBLOCK)
-            except OSError:
-                kbd_fd = None
+                fd = os.open(kp, os.O_RDONLY | os.O_NONBLOCK)
+                kbd_fds[fd] = False
+                kbd_fd_paths[fd] = kp
+            except OSError as e:
+                LOG("wait_game_exit: Oeffnen fehlgeschlagen fuer %s: %s" % (kp, e))
+        LOG("wait_game_exit: %d von %d Schnittstelle(n) erfolgreich geoeffnet: %s"
+            % (len(kbd_fds), len(kbd_paths), list(kbd_fd_paths.values())))
+        # DIAGNOSE (Nutzerwunsch: Esc wird trotz korrekt gefundener und
+        # geoeffneter Schnittstellen weiterhin nicht erkannt - naechster
+        # Verdacht: das Report-FORMAT selbst, nicht mehr die Schnittstellen-
+        # Auswahl. Manche NKRO-faehigen Tastaturen senden Tastendruecke als
+        # BITMASKE statt als Byte-Array von Tastencodes - _hid_report_
+        # has_esc() sucht aber nach dem blossen Byte-WERT 0x29 irgendwo im
+        # Report, was bei einer Bitmaske nie zutrifft). Protokolliert die
+        # rohen Bytes der ersten 30 tatsaechlich empfangenen Reports (ueber
+        # alle Schnittstellen zusammen begrenzt, nicht pro Schnittstelle -
+        # sonst koennte eine sehr "gespraechige" Schnittstelle das Log
+        # fluten) - zeigt beim naechsten Testlauf schwarz auf weiss, wie
+        # ein Tastendruck auf DIESER Tastatur tatsaechlich aussieht.
+        kbd_diag_budget = [30]
         kbd_combo_since = None
         try:
             while True:
@@ -5645,8 +5870,8 @@ class InputManager:
                         and now - kbd_combo_since >= self.KBD_COMBO_HOLD):
                     return "hid_combo"
                 fds = {d.fd: d for d in self.devices.values()}
-                if kbd_fd is not None:
-                    fds[kbd_fd] = None
+                for kfd in kbd_fds:
+                    fds[kfd] = None
                 if not fds:
                     time.sleep(0.5)
                     continue
@@ -5656,20 +5881,25 @@ class InputManager:
                     self.rescan()
                     continue
                 for fd in r:
-                    if fd == kbd_fd:
+                    if fd in kbd_fds:
                         try:
                             data = os.read(fd, 64)
                         except OSError:
                             try:
-                                os.close(kbd_fd)
+                                os.close(fd)
                             except OSError:
                                 pass
-                            kbd_fd = None
+                            kbd_fds.pop(fd, None)
                             continue
-                        if _hid_report_has_esc(data):
-                            if kbd_combo_since is None:
-                                kbd_combo_since = time.monotonic()
-                        else:
+                        if kbd_diag_budget[0] > 0:
+                            kbd_diag_budget[0] -= 1
+                            LOG("wait_game_exit DIAGNOSE (%s): %s"
+                                % (kbd_fd_paths.get(fd, "?"), data.hex()))
+                        kbd_fds[fd] = _hid_report_has_esc(data)
+                        any_held = any(kbd_fds.values())
+                        if any_held and kbd_combo_since is None:
+                            kbd_combo_since = time.monotonic()
+                        elif not any_held:
                             kbd_combo_since = None
                         continue
                     dev = fds.get(fd)
@@ -5700,9 +5930,9 @@ class InputManager:
                         elif not active:
                             combo_since = None
         finally:
-            if kbd_fd is not None:
+            for fd in kbd_fds:
                 try:
-                    os.close(kbd_fd)
+                    os.close(fd)
                 except OSError:
                     pass
 
@@ -7384,14 +7614,14 @@ def _ensure_sfx_files():
         path = os.path.join(SFX_DIR, name + ".wav")
         if not os.path.exists(path):
             try:
-                _write_wav_tone(path, f0, f1, dur)
+                _write_wav_tone(path, f0, f1, dur, volume=0.35 * VOLUME / 100.0)
             except OSError:
                 pass
     for name, segments in SFX_CHIME_DEFS.items():
         path = os.path.join(SFX_DIR, name + ".wav")
         if not os.path.exists(path):
             try:
-                _write_wav_chime(path, segments)
+                _write_wav_chime(path, segments, volume=0.35 * VOLUME / 100.0)
             except OSError:
                 pass
 
@@ -7477,6 +7707,8 @@ class MusicPlayer:
 
     def __init__(self):
         self.enabled = self._load_enabled()
+        self.source, _radio_sid = self._load_source()   # "mp3" oder "radio" + sid
+        self.radio = rainwave.RainwaveRadio(sid=_radio_sid, log=LOG)
         self.playlist = []
         self.pos = 0
         self.proc = None
@@ -7499,6 +7731,27 @@ class MusicPlayer:
         except OSError:
             pass
 
+    @staticmethod
+    def _load_source():
+        """(quelle, sid) aus MUSIC_SOURCE_FILE - Default ("mp3", 1)."""
+        try:
+            parts = open(MUSIC_SOURCE_FILE).read().split()
+            src = parts[0] if parts and parts[0] in ("mp3", "radio") else "mp3"
+            sid = int(parts[1]) if len(parts) > 1 else 1
+            if sid not in rainwave.RAINWAVE_STATIONS:
+                sid = 1
+            return src, sid
+        except (OSError, ValueError):
+            return "mp3", 1
+
+    def _save_source(self):
+        try:
+            os.makedirs(os.path.dirname(MUSIC_SOURCE_FILE), exist_ok=True)
+            with open(MUSIC_SOURCE_FILE, "w") as f:
+                f.write("%s %d" % (self.source, self.radio.sid))
+        except OSError:
+            pass
+
     def _rescan(self):
         try:
             files = [os.path.join(MUSIC_DIR, f)
@@ -7511,18 +7764,35 @@ class MusicPlayer:
         self.pos = 0
 
     def available(self):
+        if self.source == "radio":
+            return os.path.exists(MPG123_BIN)
         return bool(self.playlist) and os.path.exists(MPG123_BIN)
 
     def _proc_alive(self):
         return self.proc is not None and self.proc.poll() is None
 
     def _start_current(self):
+        if self.source == "radio":
+            url = self.radio.stream_url()
+            if not url:
+                return
+            try:
+                self.proc = subprocess.Popen(
+                    [MPG123_BIN, "-q", "-f", _mpg_scale(), url],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    stdin=subprocess.DEVNULL)
+                self._track_started_at = time.monotonic()
+                LOG("Radio: %s -> %s" % (rainwave.station_name(self.radio.sid), url))
+            except OSError as e:
+                LOG("Radio: mpg123-Start fehlgeschlagen: %s" % e)
+                self.proc = None
+            return
         if not self.playlist:
             return
         path = self.playlist[self.pos]
         try:
             self.proc = subprocess.Popen(
-                [MPG123_BIN, "-q", path],
+                [MPG123_BIN, "-q", "-f", _mpg_scale(), path],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 stdin=subprocess.DEVNULL)
             self._track_started_at = time.monotonic()
@@ -7555,7 +7825,11 @@ class MusicPlayer:
         """Anzeigename des aktuell (bzw. zuletzt gestarteten) Songs,
         ohne Pfad und Dateiendung - oder None, wenn gerade nichts
         gespielt wird/werden soll."""
-        if not self.enabled or self.paused_for_core or not self.playlist:
+        if not self.enabled or self.paused_for_core:
+            return None
+        if self.source == "radio":
+            return self.radio.now_playing() or ("Radio: %s" % rainwave.station_name(self.radio.sid))
+        if not self.playlist:
             return None
         path = self.playlist[self.pos]
         return os.path.splitext(os.path.basename(path))[0]
@@ -7571,6 +7845,14 @@ class MusicPlayer:
         weiterhin 'laeuft noch' melden. Nach MAX_TRACK_SECONDS wird
         deshalb trotzdem zum naechsten Song gewechselt."""
         if not self.enabled or self.paused_for_core:
+            return
+        if self.source == "radio":
+            self.radio.tick()                 # Now-Playing aktuell halten (nur alle 15s)
+            if not self._proc_alive():
+                # (neu) verbinden - kleiner Backoff gegen Haemmern bei Netzausfall
+                if self._track_started_at is None or \
+                   time.monotonic() - self._track_started_at > 3:
+                    self._start_current()
             return
         if not self.playlist:
             return
@@ -7601,6 +7883,35 @@ class MusicPlayer:
 
     def toggle(self):
         self.enabled = not self.enabled
+        self._save_enabled()                # An/Aus ueber Neustarts merken
+        if not self.enabled:
+            self._stop_current()            # sofort stoppen - wichtig fuers Radio (Endlos-Stream)
+
+    def cycle_source(self):
+        """Musik-Quelle umschalten: MP3 -> Radio(Game..All) -> zurueck zu MP3.
+        Laesst den An/Aus-Zustand (self.enabled) bewusst unberuehrt."""
+        stations = sorted(rainwave.RAINWAVE_STATIONS)
+        self._stop_current()   # laufende Quelle stoppen; tick() startet die neue
+        if self.source == "mp3":
+            self.source = "radio"
+            self.radio.set_station(stations[0])
+        else:
+            idx = stations.index(self.radio.sid) if self.radio.sid in stations else -1
+            if idx + 1 < len(stations):
+                self.radio.set_station(stations[idx + 1])
+            else:
+                self.source = "mp3"
+        self._track_started_at = None
+        self._save_source()
+
+    def cycle_volume(self):
+        """Lautstaerke 0->20->...->100->0 (Musik UND Menue-Sounds)."""
+        global VOLUME
+        levels = [0, 20, 40, 60, 80, 100]
+        idx = levels.index(VOLUME) if VOLUME in levels else len(levels) - 1
+        VOLUME = levels[(idx + 1) % len(levels)]
+        _save_volume(VOLUME)
+        _apply_volume_async(self)   # SFX-Regen + Musik-Neustart im Hintergrund
         self._save_enabled()
         if self.enabled:
             if not self.paused_for_core:
@@ -7871,6 +8182,8 @@ TRANSLATIONS = {
                         "de": "Menue-Video: HDMI -> auf CRT wechseln"},
     "sys_video_suffix":{"en": " (reboot)", "de": " (Neustart)"},
     "sys_music_on":    {"en": "Music: On -> turn off", "de": "Musik: an -> ausschalten"},
+    "sys_music_source": {"en": "Music source: %s", "de": "Musik-Quelle: %s"},
+    "sys_volume": {"en": "Volume: %d%%", "de": "Lautstaerke: %d%%"},
     "sys_music_off":   {"en": "Music: Off -> turn on", "de": "Musik: aus -> einschalten"},
     "sys_language":    {"en": "Language: English -> switch to German",
                         "de": "Sprache: Deutsch -> auf Englisch wechseln"},
@@ -7973,7 +8286,7 @@ def t(key, *fmt_args):
     return text
 
 
-def system_items(music_enabled=None):
+def system_items(music_enabled=None, music_source="mp3", music_station=""):
     """Liefert die Inhalte der 'System'-Kategorie als Baumknoten mit
     thematischen Unterordnern (Nutzerwunsch: die Liste war auf 23
     flache Eintraege angewachsen, kaum noch ueberschaubar) - nutzt
@@ -7984,6 +8297,9 @@ def system_items(music_enabled=None):
     crt = crt_menu_active()
     video = t("sys_video_crt") if crt else t("sys_video_hdmi")
     music_label = t("sys_music_on") if music_enabled else t("sys_music_off")
+    music_src_label = (t("sys_music_source", "Radio - %s" % (music_station or "?"))
+                       if music_source == "radio" else t("sys_music_source", "MP3"))
+    volume_label = t("sys_volume", VOLUME)
     curated_label = t("sys_curated_on") if curated_only_active() \
         else t("sys_curated_off")
     attract_label = t("sys_attract_on") if attract_enabled() \
@@ -8021,6 +8337,8 @@ def system_items(music_enabled=None):
             ),
             t("sys_group_behavior"): folder(
                 (music_label, "music", None),
+                (music_src_label, "music_source", None),
+                (volume_label, "volume", None),
                 (curated_label, "curated", None),
                 (attract_label, "attract", None),
                 (tz_label, "timezone", None),
@@ -8508,7 +8826,7 @@ class Frontend:
         scripts = scan_scripts()
         if scripts:
             self.cats.append(("Scripts", _wrap_flat(scripts), None))
-        self.cats.append(("System", system_items(self.music.enabled), None))
+        self.cats.append(("System", system_items(self.music.enabled, self.music.source, rainwave.station_name(self.music.radio.sid)), None))
         if curated_only_active():
             # filter_curated() laesst Kategorien ohne syskey (Scripts,
             # System, Core-Ordner) unveraendert - nur echte Spiele-
@@ -8578,7 +8896,7 @@ class Frontend:
         uebersetzten, immer gleichen) Namen \"System\" gefunden."""
         for i, (name, node, sk) in enumerate(self.cats):
             if sk is None and name == "System":
-                self.cats[i] = (name, system_items(self.music.enabled), sk)
+                self.cats[i] = (name, system_items(self.music.enabled, self.music.source, rainwave.station_name(self.music.radio.sid)), sk)
                 LOG("_refresh_system_category: System-Kategorie an Position %d aktualisiert" % i)
                 return
         LOG("_refresh_system_category: KEINE System-Kategorie gefunden!")
@@ -12539,6 +12857,12 @@ class Frontend:
                         elif kind == "music":
                             self.music.toggle()
                             self.build_categories()   # refresh menu label
+                        elif kind == "music_source":
+                            self.music.cycle_source()
+                            self.build_categories()
+                        elif kind == "volume":
+                            self.music.cycle_volume()
+                            self._refresh_system_category()
                         elif kind == "language":
                             set_language("de" if CURRENT_LANG == "en" else "en")
                             self.build_categories()
