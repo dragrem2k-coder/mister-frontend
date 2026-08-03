@@ -4,6 +4,18 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v3.3 — Bugfix: Esc-Ausstieg funktionierte bei manchen Nutzern gar nicht
+Esc-Ausstieg aus dem Spiel lief bei einem Nutzer zuverlässig, bei
+zwei anderen mit angeschlossener Tastatur überhaupt nicht. Ursache:
+die Tastatur-Erkennung suchte nur nach dem Wort "keyboard" im
+selbstgemeldeten Gerätenamen — funktioniert nur bei Herstellern, die
+dieses Wort tatsächlich verwenden. Andere Tastaturen wurden dadurch
+komplett übersehen, lautlos (kein Fehler im Log). Neue zweite
+Erkennungsstufe: der USB-HID-Standard selbst definiert eine
+herstellerunabhängige Kennung für Tastaturen (bInterfaceProtocol==1) —
+darüber werden jetzt auch Tastaturen erkannt, die "keyboard" nicht im
+Namen tragen.
+
 ## v3.2 — konsolidiert (Nutzerwunsch: nicht wieder so viele Versionen in kurzer Zeit)
 Zwischen v3.0 und v3.5 waren in kurzer Zeit sechs Versionsnummern
 entstanden — vor allem, weil ein kritischer Bug drei Anläufe brauchte,
