@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v3.7
+MiSTer Custom Frontend - v3.8
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
@@ -36,6 +36,37 @@ Hochzaehlen". Alles inhaltlich Passierte (Boot-Animation, drei
 Bugfix-Anlaeufe, CRT-Textumbruch-Fixes, RA-Vitrine-Cache) bleibt
 vollstaendig erhalten - nur als EIN gebuendelter v3.2-Eintrag statt
 sechs einzelner.
+
+Neu in v3.8 (NEUES FEATURE: Rainwave-Internetradio als zweite
+Musikquelle, uebernommen aus einem separat vorbereiteten, auf echter
+MiSTer-Hardware getesteten Vorschlag - siehe CHANGES_RAINWAVE.md):
+  - Neues eigenstaendiges Modul frontend/rainwave.py (reines stdlib,
+    passend zur "keine externen Abhaengigkeiten"-Linie): Stationstabelle
+    (Game/OCReMix/Covers/Chiptune/All), stream_url(), RainwaveRadio mit
+    tick() (pollt alle 15s), now_playing(), set_station(). mpg123 spielt
+    den Stream direkt (http, kein https - mpg123 kann das nicht), der
+    Titel wird anonym ueber die oeffentliche api4/info-Schnittstelle
+    geholt (kein Login noetig).
+  - MusicPlayer erweitert: neue Quelle "radio" neben der bisherigen
+    "mp3" - cycle_source() schaltet MP3 -> Radio(Game..All) -> MP3 um,
+    laesst den bestehenden An/Aus-Zustand unberuehrt. Now-Playing-Titel
+    fliesst automatisch ins bestehende Stream-Overlay (kein Overlay-
+    Code geaendert).
+  - Neuer Menuepunkt "Musik-Quelle" im System-Menue (Verhalten-Ordner,
+    direkt unter "Musik").
+  - ZUSAETZLICHE ABSICHERUNG gegenueber der uebernommenen Fassung: der
+    Import von rainwave steht jetzt in einem try/except (gleiches
+    Muster wie beim bestehenden, ebenfalls optionalen stream_server) -
+    sollte die Datei beim Kopieren mal fehlen oder aus einem anderen
+    Grund nicht laden, bleibt die normale MP3-Wiedergabe unveraendert
+    nutzbar statt abzustuerzen; "Musik-Quelle" wird dann zu einem
+    stillen No-Op.
+  - Getestet: kompletter Quellen-Zyklus MP3 -> alle 5 Sender -> MP3
+    bestaetigt, Quelle+Sender bleiben ueber einen Neustart hinweg
+    korrekt gespeichert. Menuepunkt-Beschriftung fuer beide Quellen
+    ("MP3" bzw. "Radio - <Sender>") bestaetigt. Verhalten OHNE
+    geladenes rainwave-Modul einzeln bestaetigt (kein Absturz, no-op).
+    56 Kombinationen kompletter Regressionstest bestanden.
 
 Neu in v3.7 (DIAGNOSE-VERSION Teil 2, IMMER NOCH KEIN Fix - der
 v3.6-Diagnoseansatz hatte selbst einen Fehler):
@@ -4613,11 +4644,25 @@ def _hid_report_has_esc(data):
 
 MUSIC_DIR   = "/media/fat/music"
 MUSIC_ENABLED_FILE = "/media/fat/frontend/music_enabled"
+MUSIC_SOURCE_FILE  = "/media/fat/frontend/music_source"   # "mp3"/"radio" + Stations-sid
 LANGUAGE_FILE = "/media/fat/frontend/language"
 KEYMAP_CUSTOM_FILE = "/media/fat/frontend/keymap_custom.json"
 BOOTANIM_DIR = "/media/fat/frontend/bootanim"
 BOOTANIM_PLAYED_MARKER = "/tmp/frontend_bootanim_played"
 MPG123_BIN  = "/usr/bin/mpg123"
+
+# NEUES FEATURE (Nutzerwunsch: Rainwave-Internetradio als zweite
+# Musikquelle neben den lokalen MP3s, uebernommen aus einem separat
+# vorbereiteten, auf echter MiSTer-Hardware getesteten Vorschlag -
+# siehe CHANGES_RAINWAVE.md). Eigenstaendiges stdlib-Modul
+# (frontend/rainwave.py, neben frontend.py) - komplett optional, damit
+# die MP3-Wiedergabe unveraendert weiterlaeuft, selbst falls die Datei
+# beim Kopieren mal fehlen sollte (gleiches defensives Muster wie
+# stream_server oben).
+try:
+    import rainwave
+except Exception:
+    rainwave = None
 CORENAME    = "/tmp/CORENAME"
 FBDEV       = "/dev/fb0"
 
@@ -7679,6 +7724,9 @@ class MusicPlayer:
 
     def __init__(self):
         self.enabled = self._load_enabled()
+        self.source, _radio_sid = self._load_source()   # "mp3" oder "radio" + sid
+        self.radio = rainwave.RainwaveRadio(sid=_radio_sid, log=LOG) \
+            if rainwave is not None else None
         self.playlist = []
         self.pos = 0
         self.proc = None
@@ -7701,6 +7749,35 @@ class MusicPlayer:
         except OSError:
             pass
 
+    @staticmethod
+    def _load_source():
+        """(quelle, sid) aus MUSIC_SOURCE_FILE - Default ("mp3", 1).
+        Faellt zusaetzlich auf "mp3" zurueck, falls das rainwave-Modul
+        nicht geladen werden konnte (siehe Import-Absicherung oben) -
+        eine gespeicherte "radio"-Quelle darf dann nicht blind
+        uebernommen werden, sonst gaebe es keine Musik mehr."""
+        if rainwave is None:
+            return "mp3", 1
+        try:
+            parts = open(MUSIC_SOURCE_FILE).read().split()
+            src = parts[0] if parts and parts[0] in ("mp3", "radio") else "mp3"
+            sid = int(parts[1]) if len(parts) > 1 else 1
+            if sid not in rainwave.RAINWAVE_STATIONS:
+                sid = 1
+            return src, sid
+        except (OSError, ValueError):
+            return "mp3", 1
+
+    def _save_source(self):
+        if self.radio is None:
+            return
+        try:
+            os.makedirs(os.path.dirname(MUSIC_SOURCE_FILE), exist_ok=True)
+            with open(MUSIC_SOURCE_FILE, "w") as f:
+                f.write("%s %d" % (self.source, self.radio.sid))
+        except OSError:
+            pass
+
     def _rescan(self):
         try:
             files = [os.path.join(MUSIC_DIR, f)
@@ -7713,12 +7790,31 @@ class MusicPlayer:
         self.pos = 0
 
     def available(self):
+        if self.source == "radio":
+            return self.radio is not None and os.path.exists(MPG123_BIN)
         return bool(self.playlist) and os.path.exists(MPG123_BIN)
 
     def _proc_alive(self):
         return self.proc is not None and self.proc.poll() is None
 
     def _start_current(self):
+        if self.source == "radio":
+            if self.radio is None:
+                return
+            url = self.radio.stream_url()
+            if not url:
+                return
+            try:
+                self.proc = subprocess.Popen(
+                    [MPG123_BIN, "-q", url],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    stdin=subprocess.DEVNULL)
+                self._track_started_at = time.monotonic()
+                LOG("Radio: %s -> %s" % (rainwave.station_name(self.radio.sid), url))
+            except OSError as e:
+                LOG("Radio: mpg123-Start fehlgeschlagen: %s" % e)
+                self.proc = None
+            return
         if not self.playlist:
             return
         path = self.playlist[self.pos]
@@ -7757,7 +7853,14 @@ class MusicPlayer:
         """Anzeigename des aktuell (bzw. zuletzt gestarteten) Songs,
         ohne Pfad und Dateiendung - oder None, wenn gerade nichts
         gespielt wird/werden soll."""
-        if not self.enabled or self.paused_for_core or not self.playlist:
+        if not self.enabled or self.paused_for_core:
+            return None
+        if self.source == "radio":
+            if self.radio is None:
+                return None
+            return self.radio.now_playing() or \
+                ("Radio: %s" % rainwave.station_name(self.radio.sid))
+        if not self.playlist:
             return None
         path = self.playlist[self.pos]
         return os.path.splitext(os.path.basename(path))[0]
@@ -7773,6 +7876,16 @@ class MusicPlayer:
         weiterhin 'laeuft noch' melden. Nach MAX_TRACK_SECONDS wird
         deshalb trotzdem zum naechsten Song gewechselt."""
         if not self.enabled or self.paused_for_core:
+            return
+        if self.source == "radio":
+            if self.radio is None:
+                return
+            self.radio.tick()                 # Now-Playing aktuell halten (nur alle 15s)
+            if not self._proc_alive():
+                # (neu) verbinden - kleiner Backoff gegen Haemmern bei Netzausfall
+                if self._track_started_at is None or \
+                   time.monotonic() - self._track_started_at > 3:
+                    self._start_current()
             return
         if not self.playlist:
             return
@@ -7804,6 +7917,33 @@ class MusicPlayer:
     def toggle(self):
         self.enabled = not self.enabled
         self._save_enabled()
+        if self.enabled:
+            if not self.paused_for_core:
+                self.tick()
+        else:
+            self._stop_current()
+
+    def cycle_source(self):
+        """Musik-Quelle umschalten: MP3 -> Radio(Game..All) -> zurueck zu MP3.
+        Laesst den An/Aus-Zustand (self.enabled) bewusst unberuehrt.
+        Ohne geladenes rainwave-Modul (siehe Import-Absicherung oben)
+        bleibt das ein no-op - es gaebe nichts, wohin man umschalten
+        koennte."""
+        if self.radio is None:
+            return
+        stations = sorted(rainwave.RAINWAVE_STATIONS)
+        self._stop_current()   # laufende Quelle stoppen; tick() startet die neue
+        if self.source == "mp3":
+            self.source = "radio"
+            self.radio.set_station(stations[0])
+        else:
+            idx = stations.index(self.radio.sid) if self.radio.sid in stations else -1
+            if idx + 1 < len(stations):
+                self.radio.set_station(stations[idx + 1])
+            else:
+                self.source = "mp3"
+        self._track_started_at = None
+        self._save_source()
         if self.enabled:
             if not self.paused_for_core:
                 self.tick()
@@ -8074,6 +8214,7 @@ TRANSLATIONS = {
     "sys_video_suffix":{"en": " (reboot)", "de": " (Neustart)"},
     "sys_music_on":    {"en": "Music: On -> turn off", "de": "Musik: an -> ausschalten"},
     "sys_music_off":   {"en": "Music: Off -> turn on", "de": "Musik: aus -> einschalten"},
+    "sys_music_source": {"en": "Music source: %s", "de": "Musik-Quelle: %s"},
     "sys_language":    {"en": "Language: English -> switch to German",
                         "de": "Sprache: Deutsch -> auf Englisch wechseln"},
     "sys_configure_buttons": {"en": "Configure buttons",
@@ -8175,17 +8316,23 @@ def t(key, *fmt_args):
     return text
 
 
-def system_items(music_enabled=None):
+def system_items(music_enabled=None, music_source="mp3", music_station=""):
     """Liefert die Inhalte der 'System'-Kategorie als Baumknoten mit
     thematischen Unterordnern (Nutzerwunsch: die Liste war auf 23
     flache Eintraege angewachsen, kaum noch ueberschaubar) - nutzt
     dieselbe Ordner-Navigation wie eigene ROM-Unterordner, kein neuer
     Code-Pfad noetig. Die Aktions-"kind"-Werte in jedem Eintrag bleiben
     UNVERAENDERT (siehe Aktions-Dispatch in run()) - nur die
-    Gruppierung/Anzeige aendert sich, kein bestehendes Verhalten."""
+    Gruppierung/Anzeige aendert sich, kein bestehendes Verhalten.
+
+    music_source/music_station (neu, Nutzerwunsch: Rainwave-
+    Internetradio als zweite Musikquelle, siehe CHANGES_RAINWAVE.md):
+    fuer die Beschriftung des neuen "Musik-Quelle"-Eintrags."""
     crt = crt_menu_active()
     video = t("sys_video_crt") if crt else t("sys_video_hdmi")
     music_label = t("sys_music_on") if music_enabled else t("sys_music_off")
+    music_src_label = (t("sys_music_source", "Radio - %s" % (music_station or "?"))
+                       if music_source == "radio" else t("sys_music_source", "MP3"))
     curated_label = t("sys_curated_on") if curated_only_active() \
         else t("sys_curated_off")
     attract_label = t("sys_attract_on") if attract_enabled() \
@@ -8223,6 +8370,7 @@ def system_items(music_enabled=None):
             ),
             t("sys_group_behavior"): folder(
                 (music_label, "music", None),
+                (music_src_label, "music_source", None),
                 (curated_label, "curated", None),
                 (attract_label, "attract", None),
                 (tz_label, "timezone", None),
@@ -8710,7 +8858,10 @@ class Frontend:
         scripts = scan_scripts()
         if scripts:
             self.cats.append(("Scripts", _wrap_flat(scripts), None))
-        self.cats.append(("System", system_items(self.music.enabled), None))
+        self.cats.append(("System", system_items(
+            self.music.enabled, self.music.source,
+            rainwave.station_name(self.music.radio.sid) if self.music.radio else ""
+        ), None))
         if curated_only_active():
             # filter_curated() laesst Kategorien ohne syskey (Scripts,
             # System, Core-Ordner) unveraendert - nur echte Spiele-
@@ -8780,7 +8931,10 @@ class Frontend:
         uebersetzten, immer gleichen) Namen \"System\" gefunden."""
         for i, (name, node, sk) in enumerate(self.cats):
             if sk is None and name == "System":
-                self.cats[i] = (name, system_items(self.music.enabled), sk)
+                self.cats[i] = (name, system_items(
+                    self.music.enabled, self.music.source,
+                    rainwave.station_name(self.music.radio.sid) if self.music.radio else ""
+                ), sk)
                 LOG("_refresh_system_category: System-Kategorie an Position %d aktualisiert" % i)
                 return
         LOG("_refresh_system_category: KEINE System-Kategorie gefunden!")
@@ -12740,6 +12894,9 @@ class Frontend:
                             continue
                         elif kind == "music":
                             self.music.toggle()
+                            self.build_categories()   # refresh menu label
+                        elif kind == "music_source":
+                            self.music.cycle_source()
                             self.build_categories()   # refresh menu label
                         elif kind == "language":
                             set_language("de" if CURRENT_LANG == "en" else "en")

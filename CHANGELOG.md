@@ -4,6 +4,18 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v3.8 — Neues Feature: Rainwave-Internetradio
+Zweite Musikquelle neben den lokalen MP3s, übernommen aus einem
+separat vorbereiteten, auf echter MiSTer-Hardware getesteten
+Vorschlag. Neues eigenständiges Modul `frontend/rainwave.py` (reines
+stdlib) spielt einen von fünf Rainwave-Sendern (Game, OCReMix,
+Covers, Chiptune, All) über mpg123 ab und holt den aktuellen Titel
+anonym über die öffentliche Rainwave-Schnittstelle. Neuer Menüpunkt
+"Musik-Quelle" schaltet durch: MP3 → Radio (alle 5 Sender) → zurück
+zu MP3. Der Titel fließt automatisch ins bestehende Stream-Overlay.
+Zusätzlich abgesichert: fehlt `rainwave.py` doch mal, bleibt die
+normale MP3-Wiedergabe unverändert nutzbar statt abzustürzen.
+
 ## v3.7 — Diagnose-Version Teil 2, immer noch kein Fix
 Der v3.6-Diagnoseansatz hatte selbst einen Fehler: das Log-Budget war
 über alle drei Schnittstellen gemeinsam begrenzt. Eine "geschwätzige"
