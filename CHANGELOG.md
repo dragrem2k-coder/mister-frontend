@@ -4,6 +4,20 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v4.0 — mehrere Änderungen aus einer weiteren Sammel-Rückmeldung
+- F11 ("Zufallssprung") startet jetzt tatsächlich ein zufälliges
+  Spiel über alle Systeme hinweg, statt nur die Auswahl zu bewegen —
+  inklusive RA-Core-Abfrage, falls zutreffend.
+- Core-Auswahl-Titel und die Kopfzeile in der Spieleliste schneiden
+  auf CRT nicht mehr ab, sondern verkleinern sich bei Bedarf.
+- Neue einstellbare Attract-Modus-Verzögerung (30s bis 15min statt
+  fest auf 90 Sekunden).
+- System-Menü umsortiert: Musik-Einträge jetzt unter "Anzeige &
+  Sound", CRT-Testbild jetzt unter dem umbenannten "Optionen"-Ordner
+  (vorher "Verhalten").
+- Scripts aus dem Frontend liefen ohne Wechsel in MiSTers
+  Konsolenmodus — behoben.
+
 ## v3.9 — mehrere Bugfixes aus einer Sammel-Rückmeldung
 - Spiele außerhalb von `/media/fat/games` (Netzlaufwerke, USB-Nummern
   über 5) werden jetzt zusätzlich dynamisch erkannt statt nur der

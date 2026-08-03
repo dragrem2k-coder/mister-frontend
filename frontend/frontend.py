@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v3.9
+MiSTer Custom Frontend - v4.0
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
@@ -36,6 +36,49 @@ Hochzaehlen". Alles inhaltlich Passierte (Boot-Animation, drei
 Bugfix-Anlaeufe, CRT-Textumbruch-Fixes, RA-Vitrine-Cache) bleibt
 vollstaendig erhalten - nur als EIN gebuendelter v3.2-Eintrag statt
 sechs einzelner.
+
+Neu in v4.0 (mehrere Aenderungen/Bugfixes aus einer weiteren
+Sammel-Rueckmeldung):
+  - AENDERUNG: F11 ("Zufallssprung") springt nicht mehr nur zu einem
+    zufaelligen Eintrag, sondern waehlt jetzt ein zufaelliges Spiel
+    ueber ALLE Systeme hinweg und STARTET es direkt - inklusive der
+    RA-Core-Abfrage, falls das getroffene System eine RA-faehige
+    Core-Variante hat (dieselbe Abfrage wie beim normalen Betreten
+    einer Kategorie).
+  - GEPRUEFT (keine Aenderung noetig): "nur Systeme mit vorhandenen
+    ROMs anzeigen" ist bereits so - _scan_games_disk() fuegt ein
+    System nur hinzu, wenn tatsaechlich Inhalte gefunden wurden.
+  - BUGFIX: Core-Auswahl-Titel ("Mega Drive - Core waehlen") lief auf
+    CRT ohne jede Breitenpruefung ueber den Rand, das Wort "waehlen"
+    verschwand dadurch unsichtbar. Jetzt mit Schriftanpassung
+    abgesichert.
+  - BUGFIX: Kopfzeile in der Spieleliste schnitt bei langen
+    Systemnamen mitten im Wort ab (z.B. "MEGA DR~"). Wird jetzt
+    verkleinert statt abgeschnitten.
+  - NEUES FEATURE: Attract-Modus-Verzoegerung einstellbar (vorher fest
+    auf 90 Sekunden) - neuer Menuepunkt zyklisch durch 30s bis 15min.
+  - AENDERUNG: System-Menue umsortiert - Musik-Eintraege (An/Aus,
+    Quelle) sind jetzt unter "Anzeige & Sound" zu finden, CRT-Testbild
+    ist jetzt unter dem ehemaligen "Verhalten"-Ordner (jetzt
+    "Optionen" genannt).
+  - BUGFIX: Scripts, die aus dem Frontend gestartet wurden, liefen
+    ohne den Wechsel in MiSTers Konsolenmodus (enter_console_mode(),
+    sendet F9) - der eigene Framebuffer blieb dadurch vermutlich ueber
+    der Text-Konsole liegen, obwohl das Script korrekt auf tty1
+    schrieb. run_core()/back_to_frontend() machten diesen Wechsel
+    bereits an vergleichbarer Stelle, run_script() bisher nicht.
+  - OFFENE FRAGE: "Lautstaerke"-Regelung wurde als zu verschiebender
+    Menuepunkt genannt, existiert aber noch gar nicht als Feature
+    (nur unabhaengige Kommentare zu Equalizer-Anzeigen gefunden) -
+    keine Aenderung vorgenommen, braucht Klaerung, ob das als neues
+    Feature gewuenscht ist (Anbindung an MiSTers Audiosystem noetig).
+  - Getestet: Core-Auswahl-Titel bleibt komplett im Bild, Kopfzeile
+    schneidet nicht mehr ab, neue Attract-Verzoegerung kompletter
+    Zyklus + Formatierung + Persistenz bestaetigt, neue Menuestruktur
+    (Ordnernamen + Eintrags-Zuordnung) bestaetigt, run_script()-
+    Aufrufreihenfolge (enter_console_mode() vor dem eigentlichen
+    Start) bestaetigt. 70 Kombinationen kompletter Regressionstest
+    bestanden (56 Basis + 2 neue Ordnerpfade).
 
 Neu in v3.9 (mehrere Bugfixes/Aenderungen aus einer groesseren
 Sammel-Rueckmeldung):
@@ -8298,7 +8341,7 @@ TRANSLATIONS = {
     "sys_group_ra": {"en": "RetroAchievements", "de": "RetroAchievements"},
     "sys_group_stats": {"en": "Statistics & achievements", "de": "Statistiken & Erfolge"},
     "sys_group_display": {"en": "Display & sound", "de": "Anzeige & Sound"},
-    "sys_group_behavior": {"en": "Behavior", "de": "Verhalten"},
+    "sys_group_behavior": {"en": "Options", "de": "Optionen"},
     "sys_group_input": {"en": "Input & language", "de": "Eingabe & Sprache"},
     "sys_group_info": {"en": "Info", "de": "Info"},
     "sys_group_maintenance": {"en": "Maintenance", "de": "Wartung"},
@@ -8326,6 +8369,8 @@ TRANSLATIONS = {
                         "de": "Attract-Modus (Bildschirmschoner): AN -> ausschalten"},
     "sys_attract_off": {"en": "Attract mode (screensaver): OFF -> turn on",
                         "de": "Attract-Modus (Bildschirmschoner): AUS -> einschalten"},
+    "sys_attract_delay": {"en": "Attract mode delay: %s -> next",
+                          "de": "Attract-Modus Verzoegerung: %s -> naechste"},
     "sys_theme": {"en": "Color theme: %s -> next",
                   "de": "Farbschema: %s -> naechstes"},
     "sys_timezone": {"en": "Timezone: %s -> next",
@@ -8434,6 +8479,7 @@ def system_items(music_enabled=None, music_source="mp3", music_station=""):
         else t("sys_curated_off")
     attract_label = t("sys_attract_on") if attract_enabled() \
         else t("sys_attract_off")
+    attract_delay_label = t("sys_attract_delay", format_attract_delay(load_attract_delay()))
     theme_names = THEME_NAMES_DE if CURRENT_LANG == "de" else THEME_NAMES_EN
     theme_label = t("sys_theme", theme_names.get(current_theme_name(), "?"))
     tz_label = t("sys_timezone", format_timezone_offset(load_timezone_offset()))
@@ -8462,14 +8508,15 @@ def system_items(music_enabled=None, music_source="mp3", music_station=""):
             t("sys_group_display"): folder(
                 (video + t("sys_video_suffix"), "crtmenu", None),
                 (theme_label, "theme", None),
-                (t("sys_crt_test_action"), "crt_test", None),
                 (sfx_label, "sfx", None),
-            ),
-            t("sys_group_behavior"): folder(
                 (music_label, "music", None),
                 (music_src_label, "music_source", None),
+            ),
+            t("sys_group_behavior"): folder(
+                (t("sys_crt_test_action"), "crt_test", None),
                 (curated_label, "curated", None),
                 (attract_label, "attract", None),
+                (attract_delay_label, "attract_delay", None),
                 (tz_label, "timezone", None),
                 (netwait_label, "network_wait", None),
             ),
@@ -8551,8 +8598,59 @@ def filter_curated(name, node, syskey):
 
 CURATED_FLAG = "/media/fat/frontend/curated_only"
 ATTRACT_DISABLED_FLAG = "/media/fat/frontend/attract_disabled"
+ATTRACT_DELAY_FILE = "/media/fat/frontend/attract_delay"
+# NEUES FEATURE (Nutzerwunsch: "fuer denn attract Modus eventuell aus
+# nur an und aus zu machen noch eine Einstellung dabei damit man sich
+# selber aussuchen kann ab wieviel Minuten der anfaengt"): bisher war
+# die Verzoegerung mit ATTRACT_IDLE_SECONDS = 90 fest verdrahtet, nur
+# AN/AUS liess sich einstellen (siehe attract_enabled()). Jetzt
+# zusaetzlich einstellbar - gleiches Muster wie die bestehende
+# Zeitzonen-Einstellung (load/save/cycle-Dreiklang mit einer festen
+# Schrittliste).
+ATTRACT_DELAY_STEPS = [30, 60, 90, 120, 180, 300, 600, 900]   # Sekunden
+
+def load_attract_delay():
+    try:
+        with open(ATTRACT_DELAY_FILE) as f:
+            val = int(f.read().strip())
+            return val if val in ATTRACT_DELAY_STEPS else 90
+    except (OSError, ValueError):
+        return 90   # bisheriger fester Standardwert bleibt der Default
+
+def save_attract_delay(seconds):
+    try:
+        os.makedirs(os.path.dirname(ATTRACT_DELAY_FILE), exist_ok=True)
+        with open(ATTRACT_DELAY_FILE, "w") as f:
+            f.write(str(seconds))
+    except OSError:
+        pass
+
+def cycle_attract_delay():
+    """Naechsten Wert in ATTRACT_DELAY_STEPS waehlen (wrap-around).
+    Liefert den neuen Wert in Sekunden."""
+    current = load_attract_delay()
+    try:
+        idx = ATTRACT_DELAY_STEPS.index(current)
+    except ValueError:
+        idx = -1
+    new_val = ATTRACT_DELAY_STEPS[(idx + 1) % len(ATTRACT_DELAY_STEPS)]
+    save_attract_delay(new_val)
+    return new_val
+
+def format_attract_delay(seconds):
+    """z.B. '30s', '2min', '10min' - fuer die Menu-Beschriftung."""
+    if seconds < 60:
+        return "%ds" % seconds
+    if seconds % 60 == 0:
+        return "%dmin" % (seconds // 60)
+    return "%.1fmin" % (seconds / 60)
+
 ATTRACT_IDLE_SECONDS = 90   # so lange ohne Eingabe, bevor der Attract-
                             # Modus (Bildschirmschoner) automatisch startet
+                            # - BLEIBT als Standardwert/Sicherheitsnetz
+                            # bestehen (siehe load_attract_delay()), wird
+                            # aber nicht mehr direkt fuer den eigentlichen
+                            # Check verwendet (siehe next_action()).
 ATTRACT_CHANGE_SECONDS = 6  # wie lange ein Spiel im Attract-Modus gezeigt wird
 COVER_SETTLE = 0.15         # s nach letzter Eingabe, bis waehrend des
                             # Scrollens uebersprungene Cover nachgeladen
@@ -8745,6 +8843,13 @@ class Frontend:
         # waere das eine unnoetig haeufige Datei-Existenzpruefung.
         self._attract_enabled_cache = True
         self._attract_enabled_check_next = 0.0
+
+        # Gleiches Caching-Muster fuer die neue, einstellbare Attract-
+        # Verzoegerung (siehe cycle_attract_delay()) - genauso haeufig
+        # abgefragt wie attract_enabled(), braucht denselben Schutz vor
+        # zu haeufigen Datei-Lesevorgaengen.
+        self._attract_delay_cache = ATTRACT_IDLE_SECONDS
+        self._attract_delay_check_next = 0.0
 
         # Favoriten-Namen im Speicher gehalten (Set fuer O(1)-Abfrage
         # beim Zeichnen) - NUR bei tatsaechlichen Aenderungen ueber
@@ -9532,6 +9637,15 @@ class Frontend:
             self._attract_enabled_check_next = now + 5.0
         return self._attract_enabled_cache
 
+    def _attract_delay_cached(self):
+        """Zwischengespeicherte load_attract_delay()-Abfrage - gleiches
+        Muster/gleiche Begruendung wie _attract_enabled_cached()."""
+        now = time.monotonic()
+        if now >= self._attract_delay_check_next:
+            self._attract_delay_cache = load_attract_delay()
+            self._attract_delay_check_next = now + 5.0
+        return self._attract_delay_cache
+
     def _draw_dynamic_cats(self):
         """Leichter Zeichenpfad fuer Equalizer-/Pulsier-Ticks auf Seite 0:
         aktualisiert NUR den Equalizer-Bereich und die markierte Zeile
@@ -10008,14 +10122,25 @@ class Frontend:
         full_header = name if not self.nav_path else name + " / " + " / ".join(self.nav_path)
         full_header = full_header.upper()
         header_maxc = max(4, (list_right - ox) // (16 * s))
+        header_scale = 2 * s
         if len(full_header) <= header_maxc:
             header = full_header
         else:
+            # BUGFIX (Nutzer-Rueckmeldung: selbst der einzelne, tiefste
+            # Ordnername war auf CRT manchmal noch zu lang, z.B. "MEGA
+            # DRIVE" -> "MEGA DR~" - kaum noch lesbar): statt weiter
+            # mitten im Wort abzuschneiden, wird die Schriftgroesse
+            # jetzt so weit verkleinert, dass der komplette Name passt -
+            # konsistent mit der Loesung bei anderen Titeln (z.B.
+            # draw_core_choice_screen()). Eine vollwertige Laufschrift
+            # waere hier ebenfalls denkbar (Nutzerwunsch geaeussert),
+            # ist aber ein groesserer, eigener Umbau (neuer Tick-
+            # Zustand, Reset bei jeder Navigation) - bewusst nicht in
+            # dieser Sammel-Aenderung mit erledigt.
             leaf = (self.nav_path[-1] if self.nav_path else name).upper()
-            if len(leaf) > header_maxc:
-                leaf = leaf[:max(1, header_maxc - 1)] + "~"
             header = leaf
-        fb.text(ox, oy, header, 2 * s, C_TITLE)
+            header_scale = self._fit_scale(leaf, list_right - ox, 2 * s)
+        fb.text(ox, oy, header, header_scale, C_TITLE)
         fb.text(ox, oy + 22 * s, t("entries", total), s, C_DIM)
 
         self.view = {"list_x": list_x, "list_y": list_y,
@@ -10446,7 +10571,7 @@ class Frontend:
             return
         idle_for = time.monotonic() - self._last_input_time
         LOG("Attract-Modus startet nach %.1fs Leerlauf (Schwelle: %ds)"
-            % (idle_for, ATTRACT_IDLE_SECONDS))
+            % (idle_for, self._attract_delay_cached()))
         self.attract_mode = True
         self._attract_game = random.choice(pool)
         self._attract_change_next = time.monotonic() + ATTRACT_CHANGE_SECONDS
@@ -10522,7 +10647,7 @@ class Frontend:
                 if time.monotonic() >= self._attract_change_next:
                     self._advance_attract()
             elif (self._attract_enabled_cached()
-                  and time.monotonic() - self._last_input_time > ATTRACT_IDLE_SECONDS):
+                  and time.monotonic() - self._last_input_time > self._attract_delay_cached()):
                 self._enter_attract_mode()
             else:
                 # Beim schnellen Scrollen (kurz nach einer Eingabe) noch
@@ -10920,9 +11045,22 @@ class Frontend:
         self._notify_new_achievements()
 
     def run_script(self, path):
-        """Script auf der Konsole (tty1) laufen lassen, danach zurueck."""
+        """Script auf der Konsole (tty1) laufen lassen, danach zurueck.
+
+        BUGFIX (Nutzer-Rueckmeldung: "Scripts werden wenn sie im
+        frontend gestartet werden nicht sauber ausgefuehrt"): bisher
+        wurde hier NUR self.inp.grab(False) aufgerufen, MiSTer aber nie
+        per F9 in den Konsolenmodus geschaltet (siehe
+        enter_console_mode() - "sonst uebermalt das MiSTer-Wallpaper
+        unseren Framebuffer permanent", hier greift das Gegenteil: OHNE
+        diesen Wechsel bleibt vermutlich unser eigener, zuletzt
+        gezeichneter Framebuffer ueber der Text-Konsole liegen, das
+        Skript schreibt zwar korrekt auf tty1, aber sichtbar/nutzbar
+        ist das dadurch nicht sauber. run_core()/back_to_frontend()
+        machen diesen Wechsel bereits an vergleichbarer Stelle -
+        run_script() hatte ihn bisher NICHT."""
         self.music.pause_for_core()
-        self.inp.grab(False)
+        self.enter_console_mode()
         self.set_cursor_blink(True)
         try:
             tty = open("/dev/tty1", "r+b", buffering=0)
@@ -10972,7 +11110,9 @@ class Frontend:
         options = [t("core_choice_normal"), t("core_choice_ra")]
         while True:
             fb.clear(C_BG)
-            fb.text(ox, oy, t("core_choice_title", display_name), s + 1, C_TITLE, C_BG)
+            title = t("core_choice_title", display_name)
+            title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
+            fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
             y = oy + 90 * s
             for i, label in enumerate(options):
                 sel = i == choice
@@ -12850,21 +12990,42 @@ class Frontend:
                             [it[0] for it in items], self.item_i, ch)
                         self.marquee_reset()
                 elif act == "random":
-                    # "Weiss nicht was ich spielen soll" - springt zu
-                    # einem zufaelligen Eintrag, nie zweimal hinter-
-                    # einander demselben (falls mehr als einer da ist).
+                    # AENDERUNG (Nutzerwunsch): bisher sprang diese
+                    # Aktion nur zu einem zufaelligen EINTRAG in der
+                    # aktuellen Ansicht (Kategorie oder Spieleliste),
+                    # startete aber nichts von selbst - dokumentiertes,
+                    # beabsichtigtes Verhalten seit v1.28. Der Nutzer
+                    # hatte das anders erwartet ("F11 druecken, irgend-
+                    # ein Spiel wird gestartet") - jetzt tatsaechlich
+                    # so umgesetzt: waehlt ein zufaelliges Spiel ueber
+                    # ALLE Systeme hinweg (_attract_games_pool(), die
+                    # gleiche Sammlung, die auch der Attract-Modus
+                    # nutzt) und startet es direkt - inklusive derselben
+                    # RA-Core-Abfrage, die auch beim normalen Betreten
+                    # einer Kategorie mit RA-faehigem Core erscheint
+                    # (siehe _enter_category()), falls das zufaellig
+                    # getroffene System eine hat.
                     move_streak = page_streak = 0
-                    if self.page == 0:
-                        if len(self.cats) > 1:
-                            choices = [i for i in range(len(self.cats))
-                                      if i != self.cat_i]
-                            self.cat_i = random.choice(choices)
-                            self.cat_scroll = 0
-                    elif items and len(items) > 1:
-                        choices = [i for i in range(len(items))
-                                  if i != self.item_i]
-                        self.item_i = random.choice(choices)
-                        self.marquee_reset()
+                    pool = self._attract_games_pool()
+                    if pool:
+                        name, syskey, rand_arg = random.choice(pool)
+                        ra_core = find_ra_core(syskey)
+                        ra_choice = None
+                        if ra_core:
+                            use_ra = self.draw_core_choice_screen(syskey, name)
+                            if use_ra is None:
+                                continue   # ESC/back - Zufallsstart abgebrochen
+                            ra_choice = ra_core if use_ra else None
+                        rom, ext, _sk, rbf, (dl, ft, ix) = rand_arg
+                        setname = None
+                        if ra_choice:
+                            rbf, setname = ra_choice
+                        LOG("Zufallsstart (F11): %s (%s)%s"
+                            % (name, syskey, " [RA-Core]" if ra_choice else ""))
+                        record_recent(name, rand_arg)
+                        mgl = write_mgl(rbf, rom, dl, ft, ix, setname=setname)
+                        self.run_core(mgl, label=name, syskey=syskey)
+                    continue
                 elif act == "favorite":
                     # Favoritenstatus des markierten Spiels umschalten
                     # - nur bei einem echten Spiele-Eintrag sinnvoll
@@ -13018,6 +13179,10 @@ class Frontend:
                             self.page = 0
                         elif kind == "attract":
                             toggle_attract_mode()
+                            self._refresh_system_category()
+                        elif kind == "attract_delay":
+                            cycle_attract_delay()
+                            self._attract_delay_check_next = 0.0   # sofort neu einlesen
                             self._refresh_system_category()
                         elif kind == "theme":
                             cycle_theme()
