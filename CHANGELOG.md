@@ -4,6 +4,16 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v3.6 — Diagnose-Version, KEIN Fix
+Esc-Ausstieg funktioniert bei Sutefan trotz v3.5 (Schnittstellen
+werden nachweislich korrekt gefunden und überwacht) weiterhin nicht.
+Vermutung: das Report-*Format* ist das Problem, nicht mehr die
+Schnittstellen-Auswahl — manche NKRO-Tastaturen senden Tastendrücke
+als Bitmaske statt als einfachen Byte-Wert. Bewusst kein weiterer
+Rateversuch diesmal: stattdessen zeichnet diese Version die rohen
+Bytes der ersten 30 tatsächlich empfangenen Reports auf, damit der
+nächste Fix auf echten Daten aufbaut.
+
 ## v3.5 — Bugfix Runde 3: echte Ursache per Log-Datei gefunden
 Nutzer schickte die tatsächliche Diagnose-Zeile: eine mechanische
 Custom-Tastatur (KBDFans Tiger80) legt gleichzeitig drei HID-

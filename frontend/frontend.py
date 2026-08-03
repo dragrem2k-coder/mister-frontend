@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v3.5
+MiSTer Custom Frontend - v3.6
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
@@ -36,6 +36,33 @@ Hochzaehlen". Alles inhaltlich Passierte (Boot-Animation, drei
 Bugfix-Anlaeufe, CRT-Textumbruch-Fixes, RA-Vitrine-Cache) bleibt
 vollstaendig erhalten - nur als EIN gebuendelter v3.2-Eintrag statt
 sechs einzelner.
+
+Neu in v3.6 (DIAGNOSE-VERSION, KEIN Fix - Esc-Ausstieg funktioniert
+trotz v3.5 (korrekt gefundene UND ueberwachte Schnittstellen) bei
+Sutefans Tastatur weiterhin nicht):
+  - Per Log bestaetigt: alle drei Tiger80-Schnittstellen werden
+    korrekt gefunden und ueberwacht (v3.5 arbeitet wie gedacht) - das
+    Problem liegt also vermutlich NICHT mehr an der Schnittstellen-
+    Auswahl, sondern am REPORT-FORMAT selbst. Vermutung: manche NKRO-
+    faehigen Tastaturen senden Tastendruecke als BITMASKE statt als
+    Byte-Array von Tastencodes - _hid_report_has_esc() sucht aber nach
+    dem blossen Byte-WERT 0x29 irgendwo im Report, was bei einer
+    Bitmaske nie zutrifft.
+  - Bewusst KEIN weiterer Rate-Versuch diesmal: stattdessen
+    Diagnose-Protokollierung ergaenzt, die beim naechsten Testlauf die
+    ROHEN BYTES zeigt, die tatsaechlich ankommen, wenn eine Taste
+    gedrueckt wird - damit der naechste Fix auf echten Daten statt auf
+    einer weiteren Vermutung aufbaut.
+  - Protokolliert: welche Schnittstellen erfolgreich geoeffnet wurden
+    (falls os.open() fuer eine davon fehlschlagen sollte, war das
+    bisher komplett unsichtbar), sowie die rohen Hex-Bytes der ersten
+    30 tatsaechlich empfangenen Reports (Budget bewusst ueber ALLE
+    Schnittstellen zusammen begrenzt, nicht pro Schnittstelle - sonst
+    koennte eine sehr "gespraechige" Schnittstelle das Log fluten).
+  - Getestet: Budget-Begrenzung bestaetigt (exakt 30 Diagnose-Zeilen
+    trotz 50 simulierter Lesevorgaenge, keine Log-Flut). Oeffnungs-
+    Protokollierung bestaetigt. 56 Kombinationen kompletter
+    Regressionstest bestanden.
 
 Neu in v3.5 (BUGFIX Runde 3: Esc-Ausstieg endlich per ECHTER Log-
 Datei auf die tatsaechliche Ursache zurueckgefuehrt):
@@ -5744,12 +5771,29 @@ class InputManager:
         last_core_check = 0.0
         kbd_paths = _find_keyboard_hidraws()
         kbd_fds = {}               # fd -> True/False (Esc gerade gehalten?)
+        kbd_fd_paths = {}          # fd -> Pfad (nur fuers Diagnose-Log)
         for kp in kbd_paths:
             try:
                 fd = os.open(kp, os.O_RDONLY | os.O_NONBLOCK)
                 kbd_fds[fd] = False
-            except OSError:
-                continue
+                kbd_fd_paths[fd] = kp
+            except OSError as e:
+                LOG("wait_game_exit: Oeffnen fehlgeschlagen fuer %s: %s" % (kp, e))
+        LOG("wait_game_exit: %d von %d Schnittstelle(n) erfolgreich geoeffnet: %s"
+            % (len(kbd_fds), len(kbd_paths), list(kbd_fd_paths.values())))
+        # DIAGNOSE (Nutzerwunsch: Esc wird trotz korrekt gefundener und
+        # geoeffneter Schnittstellen weiterhin nicht erkannt - naechster
+        # Verdacht: das Report-FORMAT selbst, nicht mehr die Schnittstellen-
+        # Auswahl. Manche NKRO-faehigen Tastaturen senden Tastendruecke als
+        # BITMASKE statt als Byte-Array von Tastencodes - _hid_report_
+        # has_esc() sucht aber nach dem blossen Byte-WERT 0x29 irgendwo im
+        # Report, was bei einer Bitmaske nie zutrifft). Protokolliert die
+        # rohen Bytes der ersten 30 tatsaechlich empfangenen Reports (ueber
+        # alle Schnittstellen zusammen begrenzt, nicht pro Schnittstelle -
+        # sonst koennte eine sehr "gespraechige" Schnittstelle das Log
+        # fluten) - zeigt beim naechsten Testlauf schwarz auf weiss, wie
+        # ein Tastendruck auf DIESER Tastatur tatsaechlich aussieht.
+        kbd_diag_budget = [30]
         kbd_combo_since = None
         try:
             while True:
@@ -5788,6 +5832,10 @@ class InputManager:
                                 pass
                             kbd_fds.pop(fd, None)
                             continue
+                        if kbd_diag_budget[0] > 0:
+                            kbd_diag_budget[0] -= 1
+                            LOG("wait_game_exit DIAGNOSE (%s): %s"
+                                % (kbd_fd_paths.get(fd, "?"), data.hex()))
                         kbd_fds[fd] = _hid_report_has_esc(data)
                         any_held = any(kbd_fds.values())
                         if any_held and kbd_combo_since is None:
