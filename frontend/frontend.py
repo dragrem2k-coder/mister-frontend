@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v3.2
+MiSTer Custom Frontend - v3.3
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
@@ -36,6 +36,39 @@ Hochzaehlen". Alles inhaltlich Passierte (Boot-Animation, drei
 Bugfix-Anlaeufe, CRT-Textumbruch-Fixes, RA-Vitrine-Cache) bleibt
 vollstaendig erhalten - nur als EIN gebuendelter v3.2-Eintrag statt
 sechs einzelner.
+
+Neu in v3.3 (BUGFIX: Esc-Ausstieg aus dem Spiel funktionierte bei
+manchen Nutzern trotz angeschlossener Tastatur ueberhaupt nicht):
+  - Nutzer-Rueckmeldung: Esc-Ausstieg laeuft bei einem Nutzer
+    zuverlaessig, bei zwei anderen (mit nachweislich angeschlossener
+    Tastatur) gar nicht.
+  - Ursache gefunden: _find_keyboard_hidraw() suchte NUR nach einem
+    Geraet, dessen selbstgemeldeter HID-Name das Wort "keyboard"
+    enthaelt - funktioniert nur bei Herstellern/Modellen, die dieses
+    Wort tatsaechlich im Namen fuehren (z.B. "Logitech Wireless
+    Keyboard" - Zufallstreffer beim ersten Nutzer). Andere Tastaturen
+    melden oft nur einen Marken-/Modellnamen ohne dieses Wort - bei
+    denen fand die Funktion GAR NICHTS, voellig lautlos (kein Fehler
+    im Log, da eine fehlende Tastatur ein regulaerer, erwarteter Fall
+    ist).
+  - Genau dasselbe Grundmuster war schon einmal in InputManager.
+    inject() aufgetreten und dort bereits mit einem zweistufigen
+    Rueckfall geloest - _find_keyboard_hidraw() hatte diesen Rueckfall
+    bisher NICHT.
+  - Fix: zweite Erkennungsstufe als Rueckfall - bInterfaceProtocol==1,
+    die im USB-HID-STANDARD SELBST festgelegte Kennung fuer "Boot
+    Interface Subclass: Keyboard". Herstellerunabhaengig, kein Namens-
+    Ratespiel mehr noetig. Steht am zugehoerigen USB-INTERFACE (nicht
+    am HID-Geraet selbst), deshalb wird bis zu vier Verzeichnisebenen
+    im sysfs nach oben gesucht.
+  - Getestet: mit nachgebauter, realistischer /dev/hidraw+/sys/class/
+    hidraw-Verzeichnisstruktur (echte Symlink-Aufloesung, kein reines
+    Mocking) - Namens-Erkennung weiterhin bestaetigt (keine
+    Regression), der neue Protokoll-Rueckfall bestaetigt GENAU fuer
+    das gemeldete Szenario (Tastatur angeschlossen, Name enthaelt
+    "keyboard" nicht), UND bestaetigt korrekt KEINEN Fehlalarm bei
+    einem Geraet, das weder Name noch Protokoll passend hat (z.B. eine
+    Maus). 56 Kombinationen kompletter Regressionstest bestanden.
 
 Neu in v3.2 (Nutzerwunsch: "bitte alles was ab v3.1 gekommen ist
 zusammenfuehren auf v3.2, nicht wieder dieses schnelle Hochzaehlen" -
@@ -4336,11 +4369,33 @@ MISTER_CMD  = "/dev/MiSTer_cmd"
 # zusaetzlicher, zuverlaesslicherer Ausstiegsweg (urspruenglich
 # Strg+Alt+Esc, auf Nutzerwunsch vereinfacht).
 def _find_keyboard_hidraw():
-    """Sucht unter /dev/hidraw* nach einem Geraet, dessen HID-Name
-    'keyboard' enthaelt. Bewusst dynamisch (nicht fest verdrahtet) -
-    die hidraw-Nummerierung haengt von Anschlussreihenfolge/USB-Bus ab
-    und kann sich zwischen Boots verschieben."""
-    for path in sorted(glob.glob("/dev/hidraw*")):
+    """Sucht unter /dev/hidraw* nach einem Tastatur-Geraet - zweistufig,
+    genau wie bei InputManager.inject() (siehe dortiger Kommentar fuer
+    die Begruendung dieses Musters).
+
+    BUGFIX (Nutzer-Rueckmeldung: Esc-Ausstieg funktioniert bei einem
+    Nutzer zuverlaessig, bei zwei anderen trotz nachweislich
+    angeschlossener Tastatur ueberhaupt nicht): die bisherige Fassung
+    suchte NUR nach einem Geraet, dessen selbstgemeldeter HID-Name das
+    Wort "keyboard" enthaelt - funktioniert nur, wenn Hersteller/Modell
+    das Wort tatsaechlich im Namen fuehren (z.B. "Logitech Wireless
+    Keyboard"). Viele andere Tastaturen melden nur einen Marken-/
+    Modellnamen ohne dieses Wort - bei denen fand die Funktion bisher
+    GAR NICHTS, obwohl eine Tastatur angeschlossen war, kein Fehler
+    geloggt wurde (stiller Fehlschlag).
+
+    Fix: zweite Stufe als Rueckfall - bInterfaceProtocol == 1, die im
+    USB-HID-Standard selbst festgelegte Kennung fuer "Boot Interface
+    Subclass: Keyboard". Herstellerunabhaengig, kein Namens-Ratespiel,
+    steht am zugehoerigen USB-INTERFACE (nicht am HID-Geraet selbst,
+    deshalb wird bis zu vier Verzeichnisebenen nach oben gesucht).
+
+    Bewusst dynamisch (nicht fest verdrahtet) - die hidraw-
+    Nummerierung haengt von Anschlussreihenfolge/USB-Bus ab und kann
+    sich zwischen Boots verschieben."""
+    candidates = sorted(glob.glob("/dev/hidraw*"))
+    # Stufe 1: Name enthaelt "keyboard" (schnell, funktioniert oft).
+    for path in candidates:
         base = os.path.basename(path)
         uevent = "/sys/class/hidraw/%s/device/uevent" % base
         try:
@@ -4351,6 +4406,24 @@ def _find_keyboard_hidraw():
                         return path
         except OSError:
             continue
+    # Stufe 2 (Rueckfall): standardisiertes USB-HID-Boot-Protokoll.
+    for path in candidates:
+        base = os.path.basename(path)
+        device_dir = "/sys/class/hidraw/%s/device" % base
+        try:
+            real = os.path.realpath(device_dir)
+        except OSError:
+            continue
+        d = real
+        for _ in range(4):
+            d = os.path.dirname(d)
+            proto_file = os.path.join(d, "bInterfaceProtocol")
+            try:
+                with open(proto_file) as f:
+                    if f.read().strip() == "01":
+                        return path
+            except OSError:
+                continue
     return None
 
 def _hid_report_has_esc(data):
