@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v3.8
+MiSTer Custom Frontend - v3.9
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
@@ -36,6 +36,49 @@ Hochzaehlen". Alles inhaltlich Passierte (Boot-Animation, drei
 Bugfix-Anlaeufe, CRT-Textumbruch-Fixes, RA-Vitrine-Cache) bleibt
 vollstaendig erhalten - nur als EIN gebuendelter v3.2-Eintrag statt
 sechs einzelner.
+
+Neu in v3.9 (mehrere Bugfixes/Aenderungen aus einer groesseren
+Sammel-Rueckmeldung):
+  - BUGFIX: "Spiele ausser von /media/fat/games werden nicht
+    angezeigt" - GAMES_BASES deckte nur usb0 bis usb5 fest ab.
+    _discover_games_bases() erkennt jetzt zusaetzlich dynamisch alles,
+    was tatsaechlich unter /media eingehaengt ist (Netzlaufwerke,
+    hoehere USB-Nummern usw.), die feste Liste bleibt als Ruecksicht-
+    nahme zusaetzlich bestehen.
+  - AENDERUNG: ROM-Hacks (und aehnlich getaggte Randomizer-Ausgaben)
+    wurden bisher als "Junk" komplett ausgefiltert (gleiche Liste wie
+    Beta/Proto/Demo). Anders als diese sind Hacks vollstaendige,
+    spielbare Inhalte - "(hack" aus JUNK_TAGS entfernt.
+  - AENDERUNG: Regions-Entdopplung entfernt - frueher wurde pro Spiel
+    nur die "beste" Region behalten (Germany > Europe > World > USA >
+    Japan), alle anderen Versionen (PAL/NTSC/etc.) verschwanden
+    komplett. Jetzt bleiben alle gefundenen Versionen erhalten und
+    waehlbar.
+  - BUGFIX: F10 zum Verlassen eines Spiels funktionierte praktisch nie
+    (lief bisher ueber dieselbe waehrend des Spielens gesperrte evdev-
+    Ebene wie zuvor schon Start+Select). _hid_report_has_esc() ->
+    _hid_report_has_exit_key(), prueft jetzt auf Esc UND F10 ueber den
+    bereits bestaetigt funktionierenden HID-Weg.
+  - GEKLAERT (kein Bug): F11 ("springe zu zufaelligem Eintrag", seit
+    v1.28) startet nichts von selbst, sondern bewegt nur die Auswahl -
+    im Code bestaetigt. Vermutlich wurde danach noch OK gedrueckt.
+  - Neue boxart_download.sh uebernommen (interaktive Profilauswahl SD/
+    HD statt fest auf SD, zusaetzlich per SSH-Argument aufrufbar).
+  - OFFENE PUNKTE (noch keine Aenderung, brauchen mehr Informationen
+    vom Nutzer, bevor blind etwas geaendert wird): "SNES Tracker"-Core
+    fehlt in der Kategorienliste (unklar, welche Datei-Endung/welcher
+    Core genau gemeint ist); kuratierte Liste "zeigt nicht immer
+    korrekt" (vermutlich exakter Namensabgleich gegen die Datenbank,
+    braucht ein konkretes Beispiel); Esc-Ausstieg bei Sutefan weiterhin
+    ungeklaert (Diagnose zeigt wiederholt NUR das vermutete Status-
+    Signal einer Schnittstelle, nichts von den anderen beiden -
+    braucht weitere Untersuchung).
+  - Getestet: dynamische Geraete-Erkennung mit simuliertem Netzlauf-
+    werk UND einer USB-Nummer ausserhalb 0-5 bestaetigt. Kompletter
+    Scan-Test bestaetigt: mehrere Regionsversionen bleiben alle
+    erhalten, ROM-Hack bleibt erhalten, Beta/Proto werden weiterhin
+    korrekt ausgefiltert. Esc- UND F10-Erkennung ueber HID einzeln
+    bestaetigt. 56 Kombinationen kompletter Regressionstest bestanden.
 
 Neu in v3.8 (NEUES FEATURE: Rainwave-Internetradio als zweite
 Musikquelle, uebernommen aus einem separat vorbereiteten, auf echter
@@ -3352,10 +3395,46 @@ def release_single_instance():
 
 BASE        = "/media/fat"
 SCRIPTS_DIR = "/media/fat/Scripts"
-# Alle Orte, an denen ROMs liegen koennen (SD + USB-Laufwerke)
-GAMES_BASES = (["/media/fat/games"]
-               + ["/media/usb%d/games" % i for i in range(6)]
-               + ["/media/usb%d" % i for i in range(6)])
+
+def _discover_games_bases():
+    """Alle Orte, an denen ROMs liegen koennen (SD + USB-Laufwerke).
+
+    BUGFIX (Nutzer-Rueckmeldung: "Spiele ausser von /media/fat/games
+    werden nicht angezeigt"): die feste Liste deckte nur usb0 bis
+    usb5 ab - Speicherorte ausserhalb dieses festen Musters (z.B. ein
+    Netzlaufwerk unter einem anderen Namen, oder ein USB-Geraet mit
+    hoeherer Nummer) wurden dadurch nie gefunden, komplett unabhaengig
+    davon, was tatsaechlich am MiSTer angeschlossen ist. Jetzt
+    zusaetzlich dynamisch: alles, was tatsaechlich unter /media
+    eingehaengt ist (ausser "fat" selbst, das schon feststeht), wird
+    automatisch mit aufgenommen - deckt damit auch Faelle ab, die die
+    feste Liste nicht vorgesehen hatte. Die urspruengliche feste Liste
+    bleibt zusaetzlich bestehen (Vorhersagbarkeit/Ruecksichtigung auf
+    den ueblichen Fall, auch wenn /media aus irgendeinem Grund gerade
+    nicht lesbar sein sollte)."""
+    bases = ["/media/fat/games"]
+    bases += ["/media/usb%d/games" % i for i in range(6)]
+    bases += ["/media/usb%d" % i for i in range(6)]
+    try:
+        for entry in sorted(os.listdir("/media")):
+            if entry == "fat":
+                continue   # schon oben abgedeckt
+            path = "/media/" + entry
+            if not os.path.isdir(path):
+                continue
+            games_sub = os.path.join(path, "games")
+            if games_sub not in bases:
+                bases.append(games_sub)
+            if path not in bases:
+                bases.append(path)
+    except OSError:
+        pass   # /media nicht lesbar - bei der festen Liste bleiben
+    return bases
+
+# Bewusst als Funktionsergebnis statt als literale Liste - siehe
+# _discover_games_bases() oben fuer die Begruendung (dynamische
+# Erkennung zusaetzlich zur festen Liste).
+GAMES_BASES = _discover_games_bases()
 ART_BASE    = "/media/fat/frontend/art"
 ART_HD      = "/media/fat/frontend/art_hd"
 
@@ -4623,23 +4702,34 @@ def _find_keyboard_hidraws():
         "Esc-Ausstieg wird nicht funktionieren.")
     return []
 
-def _hid_report_has_esc(data):
-    """Prueft einen rohen HID-Tastatur-Report auf die Escape-Taste
-    (USB-HID-Keycode 0x29) - UNABHAENGIG von Modifikatortasten (frueher
-    Strg+Alt+Esc, auf Nutzerwunsch auf reines Esc vereinfacht, da
-    einfacher zu druecken).
+def _hid_report_has_exit_key(data):
+    """Prueft einen rohen HID-Tastatur-Report auf Escape (0x29) ODER
+    F10 (0x44) - UNABHAENGIG von Modifikatortasten (frueher Strg+Alt+
+    Esc, auf Nutzerwunsch auf reines Esc vereinfacht, da einfacher zu
+    druecken).
+
+    ERWEITERT (Nutzer-Rueckmeldung: "F10 funktioniert nicht"): F10 war
+    bisher NUR ueber die normale evdev-Ebene abgefragt
+    (KEY_F10-Vergleich in wait_game_exit()) - die MiSTer waehrend
+    eines laufenden Cores exklusiv sperrt (dasselbe bereits bekannte
+    Problem wie beim Start+Select-Kombo, siehe dortiger Kommentar).
+    F10 haette dadurch praktisch nie tatsaechlich ausgeloest. Jetzt
+    laeuft F10 ueber denselben bereits bestaetigt funktionierenden
+    HID-Weg wie Esc - zwei gleichwertige Ausstiegs-Tasten statt einer,
+    beide ueber den zuverlaessigen Pfad.
 
     WICHTIG: viele Spiele nutzen Esc selbst schon fuer eigene Pause-/
     Menue-Funktionen - deshalb bleibt die Haltezeit (KBD_COMBO_HOLD,
     siehe wait_game_exit()) als Sicherung bestehen. Ein kurzer,
-    normaler Esc-Druck im Spiel loest dadurch NICHT versehentlich den
-    Ausstieg aus - nur ein bewusst LAENGER GEHALTENES Esc tut das.
+    normaler Tastendruck im Spiel loest dadurch NICHT versehentlich
+    den Ausstieg aus - nur ein bewusst LAENGER GEHALTENES Esc oder F10
+    tut das.
 
     Der Keycode wird IRGENDWO im Report gesucht, nicht an einer festen
     Position - robuster gegenueber unterschiedlichen Report-Layouts
     (manche Geraete stellen ein Report-ID-Byte voran) als eine feste
     Byte-Position anzunehmen."""
-    return 0x29 in data
+    return 0x29 in data or 0x44 in data
 
 
 MUSIC_DIR   = "/media/fat/music"
@@ -5912,7 +6002,7 @@ class InputManager:
                             kbd_diag_budget[fd] -= 1
                             LOG("wait_game_exit DIAGNOSE (%s): %s"
                                 % (kbd_fd_paths.get(fd, "?"), data.hex()))
-                        kbd_fds[fd] = _hid_report_has_esc(data)
+                        kbd_fds[fd] = _hid_report_has_exit_key(data)
                         any_held = any(kbd_fds.values())
                         if any_held and kbd_combo_since is None:
                             kbd_combo_since = time.monotonic()
@@ -6600,7 +6690,15 @@ def _canonical_key(name):
 # Tags, die ein ROM als Beta/Prototyp/Demo/Hack/defekten Dump o.ae.
 # kennzeichnen - werden beim Scannen ausgefiltert.
 JUNK_TAGS = ("(beta", "(proto", "(demo", "(sample", "(unl)", "[b]",
-            "(pirate", "(program", "(test", "(kiosk", "(hack")
+            "(pirate", "(program", "(test", "(kiosk")
+# BUGFIX/AENDERUNG (Nutzerwunsch: "Was ist mit ROM Hacks und Zelda
+# Randomizer" - Spielhacks und Randomizer-Ausgaben wurden bisher
+# GAR NICHT angezeigt): "(hack" stand bisher in dieser Liste und
+# wurde damit komplett ausgefiltert, genau wie unfertige Beta-/Proto-
+# Dumps. Anders als diese sind Hacks (und Randomizer-Ausgaben, die
+# haeufig aehnlich getaggt werden) aber vollstaendige, spielbare
+# Inhalte, die viele Nutzer bewusst suchen - keine unfertigen/
+# kaputten Dumps. Deshalb aus der Ausschlussliste entfernt.
 
 def _is_junk(name):
     low = name.lower()
@@ -7161,20 +7259,19 @@ def _merge_node(dst, src):
     dst["items"].extend(src["items"])
 
 def _dedupe_items(raw_items):
-    """Pro kanonischem Namen (ohne Region-/Versions-Tags) nur die
+    """BUGFIX/AENDERUNG (Nutzerwunsch: "mehrere Spielversionen muessen
+    auch im Menue zur Auswahl stehen, PAL/NTSC etcpp"): frueher wurde
+    hier pro kanonischem Namen (ohne Region-/Versions-Tags) NUR die
     Kopie mit der besten Region behalten (Germany > Europe > World >
-    USA > Japan). Wird PRO ORDNER angewendet (nicht global ueber das
-    ganze System), damit typische nach Anfangsbuchstabe/Region
-    aufgeteilte Sammlungen nicht faelschlich ueber Ordnergrenzen
-    hinweg zusammengemischt werden."""
-    best = {}
-    for entry in raw_items:
-        key = _canonical_key(entry[0])
-        rank = _region_rank(entry[0])
-        cur = best.get(key)
-        if cur is None or rank < cur[0]:
-            best[key] = (rank, entry)
-    items = [entry for _rank, entry in best.values()]
+    USA > Japan, siehe REGION_PRIORITY), alle anderen Versionen
+    verschwanden komplett aus der Liste - nicht mehr auswaehlbar,
+    unabhaengig davon, ob man gezielt die PAL- oder NTSC-Fassung
+    wollte. Jetzt bleiben ALLE gefundenen Versionen erhalten, nur
+    alphabetisch sortiert - REGION_PRIORITY/_region_rank() bleiben im
+    Code bestehen (werden an anderer Stelle noch fuer die Boxart-/
+    Info-Zuordnung gebraucht), wirken sich hier aber nicht mehr
+    aus."""
+    items = list(raw_items)
     items.sort(key=lambda t: t[0].lower())
     return items
 

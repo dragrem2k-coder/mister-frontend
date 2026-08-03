@@ -4,6 +4,22 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v3.9 — mehrere Bugfixes aus einer Sammel-Rückmeldung
+- Spiele außerhalb von `/media/fat/games` (Netzlaufwerke, USB-Nummern
+  über 5) werden jetzt zusätzlich dynamisch erkannt statt nur der
+  festen Liste usb0–5.
+- ROM-Hacks (und ähnlich getaggte Randomizer-Ausgaben) werden nicht
+  mehr als "Junk" ausgefiltert.
+- Mehrere Regionsversionen desselben Spiels (PAL/NTSC/etc.) bleiben
+  jetzt alle erhalten und wählbar, statt nur die "beste" Region zu
+  behalten.
+- F10 zum Verlassen eines Spiels funktioniert jetzt zuverlässig über
+  denselben HID-Weg wie Esc (lief vorher über die während des
+  Spielens gesperrte normale Ebene).
+- Geklärt: F11 ("Zufallssprung") startet nichts von selbst, bewegt
+  nur die Auswahl — kein Bug.
+- Neue `boxart_download.sh` mit interaktiver Profilauswahl übernommen.
+
 ## v3.8 — Neues Feature: Rainwave-Internetradio
 Zweite Musikquelle neben den lokalen MP3s, übernommen aus einem
 separat vorbereiteten, auf echter MiSTer-Hardware getesteten
