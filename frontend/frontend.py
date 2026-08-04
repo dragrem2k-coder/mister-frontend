@@ -4911,6 +4911,24 @@ BOOTANIM_DIR = "/media/fat/frontend/bootanim"
 BOOTANIM_PLAYED_MARKER = "/tmp/frontend_bootanim_played"
 MPG123_BIN  = "/usr/bin/mpg123"
 
+# NEUES FEATURE (Nutzerwunsch: vereinfachte Installation, ein
+# Ersteinrichtungs-Assistent, der einmalig durch alle wichtigen
+# Schritte fuehrt): anders als BOOTANIM_PLAYED_MARKER (liegt in /tmp,
+# wird bei JEDEM Neustart neu abgespielt) liegt diese Markierung
+# bewusst auf der SD-Karte (/media/fat/...) - der Assistent soll nur
+# EINMAL im Leben automatisch erscheinen, nicht bei jedem Boot.
+SETUP_WIZARD_DONE_FILE = "/media/fat/frontend/setup_wizard_done"
+
+def setup_wizard_done():
+    return os.path.exists(SETUP_WIZARD_DONE_FILE)
+
+def mark_setup_wizard_done():
+    try:
+        os.makedirs(os.path.dirname(SETUP_WIZARD_DONE_FILE), exist_ok=True)
+        open(SETUP_WIZARD_DONE_FILE, "w").close()
+    except OSError:
+        pass
+
 # NEUES FEATURE (Nutzerwunsch: Rainwave-Internetradio als zweite
 # Musikquelle neben den lokalen MP3s, uebernommen aus einem separat
 # vorbereiteten, auf echter MiSTer-Hardware getesteten Vorschlag -
@@ -8479,6 +8497,45 @@ TRANSLATIONS = {
                        "de": "Zeile 2: dein RA-Web-API-Schluessel (aus"},
     "ra_setup_line4": {"en": "RA control panel, section \"Keys\")",
                        "de": "deinem RA-Kontrollbereich, Abschnitt \"Keys\")"},
+
+    # Ersteinrichtungs-Assistent (Nutzerwunsch: vereinfachte
+    # Installation, einmalig durch alle wichtigen Schritte fuehren).
+    "wizard_step_title": {"en": "Setup %d/%d - %s", "de": "Einrichtung %d/%d - %s"},
+    "wizard_step_language": {"en": "Language", "de": "Sprache"},
+    "wizard_step_video": {"en": "Display", "de": "Bildschirm"},
+    "wizard_step_timezone": {"en": "Time zone", "de": "Zeitzone"},
+    "wizard_step_ra": {"en": "RetroAchievements", "de": "RetroAchievements"},
+    "wizard_step_boxart": {"en": "Box art", "de": "Boxart"},
+    "wizard_step_gameinfo": {"en": "Game info", "de": "Gameinfos"},
+    "wizard_step_scan": {"en": "Finding your games", "de": "Spiele werden gesucht"},
+    "wizard_step_esc_hint": {"en": "Good to know", "de": "Gut zu wissen"},
+    "wizard_choice_hint": {"en": "Up/Down: select   OK: confirm   ESC: cancel setup",
+                           "de": "Hoch/Runter: waehlen   OK: bestaetigen   ESC: Einrichtung abbrechen"},
+    "wizard_skip_hint": {"en": "OK: continue   ESC: skip this step",
+                         "de": "OK: weiter   ESC: diesen Schritt ueberspringen"},
+    "wizard_continue_hint": {"en": "Any key: continue", "de": "Beliebige Taste: weiter"},
+    "wizard_video_reboot_note": {
+        "en": "Saved - takes effect after the next restart. Setup continues now.",
+        "de": "Gespeichert - wird erst nach dem naechsten Neustart aktiv. Die Einrichtung geht jetzt weiter."},
+    "wizard_timezone_current": {"en": "Current: %s -> change", "de": "Aktuell: %s -> aendern"},
+    "wizard_continue_option": {"en": "Continue", "de": "Weiter"},
+    "wizard_download_now": {"en": "Download now", "de": "Jetzt herunterladen"},
+    "wizard_download_skip": {"en": "Skip (can be done later from Scripts)",
+                             "de": "Ueberspringen (spaeter jederzeit ueber Scripts moeglich)"},
+    "wizard_scan_patience": {
+        "en": "If you have a lot of ROMs, this can take a while - that's normal, not frozen.",
+        "de": "Bei vielen ROMs kann das etwas dauern - das ist normal, kein Einfrieren."},
+    "wizard_scan_progress": {"en": "%d/%d - %s", "de": "%d/%d - %s"},
+    "wizard_scan_done": {"en": "Done: %d systems, %d games found.",
+                         "de": "Fertig: %d Systeme, %d Spiele gefunden."},
+    "wizard_esc_hint_1": {
+        "en": "To exit a running game, hold Esc on a connected keyboard.",
+        "de": "Um ein laufendes Spiel zu verlassen: Esc auf einer angeschlossenen Tastatur halten."},
+    "wizard_esc_hint_2": {
+        "en": "Needs a keyboard - a gamepad alone can't do this.",
+        "de": "Braucht eine Tastatur - mit einem Controller allein geht das nicht."},
+    "sys_setup_wizard": {"en": "Run setup wizard again", "de": "Einrichtung erneut starten"},
+
     "ra_reload_done": {"en": "RetroAchievements: %d games matched",
                        "de": "RetroAchievements: %d Spiele zugeordnet"},
     "ra_reload_failed": {"en": "RetroAchievements: could not reach server",
@@ -8690,6 +8747,7 @@ def system_items(music_enabled=None, music_source="mp3", music_station=""):
             ),
             t("sys_group_info"): folder(
                 (t("sys_help_action"), "help", None),
+                (t("sys_setup_wizard"), "setup_wizard", None),
                 (t("sys_secrets_action"), "secrets", None),
                 (t("sys_credits_action"), "credits", None),
             ),
@@ -11253,8 +11311,13 @@ class Frontend:
         # wieder zu verschwinden.
         self._notify_new_achievements()
 
-    def run_script(self, path):
+    def run_script(self, path, args=None):
         """Script auf der Konsole (tty1) laufen lassen, danach zurueck.
+        args (neu, fuer den Ersteinrichtungs-Assistenten): optionale
+        Zusatzargumente, z.B. das im Assistenten bereits gewaehlte
+        CRT/HDMI-Profil direkt an boxart_download.sh durchreichen,
+        statt es dort ein zweites Mal abzufragen. Bestehende Aufrufe
+        ohne args bleiben unveraendert (Rueckwaertskompatibel).
 
         BUGFIX (Nutzer-Rueckmeldung: "Scripts werden wenn sie im
         frontend gestartet werden nicht sauber ausgefuehrt"): bisher
@@ -11275,17 +11338,18 @@ class Frontend:
             tty = open("/dev/tty1", "r+b", buffering=0)
         except OSError:
             tty = None
+        cmd = ["/bin/bash", path] + (list(args) if args else [])
         # Bildschirm dem Script ueberlassen
         try:
             if tty:
                 tty.write(b"\x1b[2J\x1b[H")     # Konsole loeschen
-                subprocess.call(["/bin/bash", path],
+                subprocess.call(cmd,
                                 stdin=tty, stdout=tty, stderr=tty,
                                 env=dict(os.environ, TERM="linux",
                                          HOME="/root"))
                 tty.write(b"\n-- Script finished, press any key --\n")
             else:
-                subprocess.call(["/bin/bash", path])
+                subprocess.call(cmd)
         finally:
             if tty:
                 tty.close()
@@ -11370,6 +11434,226 @@ class Frontend:
             act = self.inp.read_action()
             if act is not None:
                 break
+
+    # ------------------------------------------------------------------
+    # ERSTEINRICHTUNGS-ASSISTENT (Nutzerwunsch: vereinfachte Installation,
+    # einmalig durch alle wichtigen Schritte fuehren) - siehe
+    # run_setup_wizard() fuer den Gesamtablauf. Zwei generische
+    # Bausteine (Auswahl-Bildschirm, Info-Bildschirm) werden fuer alle
+    # acht Schritte wiederverwendet, statt fuer jeden Schritt eigenen
+    # Zeichencode zu duplizieren.
+    # ------------------------------------------------------------------
+
+    def _wizard_choice(self, title, options, initial=0):
+        """Generische Ein-aus-N-Auswahl (gleiches Muster wie
+        draw_core_choice_screen()). Hoch/Runter wechselt, OK liefert
+        den gewaehlten Index. ESC/back bricht den KOMPLETTEN
+        Assistenten ab (liefert None) - der Aufrufer (run_setup_
+        wizard()) muss darauf mit einem sofortigen Ruecksprung
+        reagieren, OHNE die "erledigt"-Markierung zu setzen."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        accent = accent_for(None)
+        choice = initial
+        while True:
+            fb.clear(C_BG)
+            title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
+            fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+            y = oy + 70 * s
+            for i, label in enumerate(options):
+                sel = i == choice
+                color = accent if sel else C_TEXT
+                prefix = "> " if sel else "  "
+                fb.text(ox, y, prefix + label, s, color, C_BG)
+                y += 36 * s
+            hint = t("wizard_choice_hint")
+            sc = s - 1 if s > 1 else 1
+            hint_w = len(hint) * 8 * sc
+            fb.text((W - hint_w) // 2, H - oy - 8 * sc, hint, sc, C_DIM, C_BG)
+            fb.flip()
+            act = self.inp.read_action()
+            if act in ("up", "left"):
+                choice = (choice - 1) % len(options)
+            elif act in ("down", "right"):
+                choice = (choice + 1) % len(options)
+            elif act == "ok":
+                return choice
+            elif act in ("back", "exit"):
+                return None
+
+    def _wizard_info(self, title, lines, skippable=True):
+        """Generischer Info-Bildschirm: Text (an Wortgrenzen umgebrochen,
+        siehe _wrap_text()) + OK bestaetigt/fahrt fort (True). Bei
+        skippable=True kann zusaetzlich mit ESC uebersprungen werden
+        (liefert dann False statt True) - der Aufrufer entscheidet
+        selbst, ob True/False fuer diesen Schritt ueberhaupt einen
+        Unterschied macht (z.B. bei reinen Hinweis-Bildschirmen wie
+        dem Esc-Ausstieg-Hinweis egal, bei Download-Bestaetigungen
+        wichtig)."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        fb.clear(C_BG)
+        title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
+        fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+        y = oy + 60 * s
+        maxc = max(8, (W - 2 * ox) // (8 * s))
+        for line in lines:
+            for wrapped in self._wrap_text(line, maxc):
+                fb.text(ox, y, wrapped, s, C_TEXT, C_BG)
+                y += 24 * s
+            y += 10 * s
+        hint = t("wizard_skip_hint") if skippable else t("wizard_continue_hint")
+        sc = s - 1 if s > 1 else 1
+        hint_w = len(hint) * 8 * sc
+        fb.text((W - hint_w) // 2, H - oy - 8 * sc, hint, sc, C_DIM, C_BG)
+        fb.flip()
+        while True:
+            act = self.inp.read_action()
+            if act == "ok":
+                return True
+            if act in ("back", "exit") and skippable:
+                return False
+            if act is not None and not skippable:
+                return True
+
+    def _wizard_scanning_step(self, title):
+        """Schritt 7: Spiele suchen (erzwungener Neu-Scan, mit
+        Fortschrittsanzeige). Nutzerwunsch: Hinweis, dass es bei
+        vielen ROMs etwas dauern kann, damit niemand meint, das
+        Frontend sei abgestuerzt/eingefroren."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+
+        def progress_cb(i, total, name):
+            fb.clear(C_BG)
+            title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
+            fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+            y = oy + 60 * s
+            maxc = max(8, (W - 2 * ox) // (8 * s))
+            for wrapped in self._wrap_text(t("wizard_scan_patience"), maxc):
+                fb.text(ox, y, wrapped, s, C_DIM, C_BG)
+                y += 24 * s
+            y += 16 * s
+            fb.text(ox, y, t("wizard_scan_progress", i, total, name), s, C_TEXT, C_BG)
+            fb.flip()
+
+        self.cats = scan_games(force=True, progress_cb=progress_cb)
+        n_sys = len(self.cats)
+        n_games = sum(_count_tree_items(node) for _n, node, _sk in self.cats
+                     if isinstance(node, dict))
+        self._wizard_info(
+            title, [t("wizard_scan_done", n_sys, n_games)], skippable=False)
+
+    def run_setup_wizard(self):
+        """Ersteinrichtungs-Assistent - fuehrt (automatisch beim
+        allerersten Start, danach jederzeit ueber das System-Menue
+        erneut aufrufbar) durch acht Schritte: Sprache, CRT/HDMI,
+        Zeitzone, RetroAchievements (Info), Boxart-Download,
+        Gameinfo-Download, Spiele-Suche, Esc-Ausstieg-Hinweis.
+
+        Bricht bei einem bewussten ESC auf einem AUSWAHL-Bildschirm
+        sofort und vollstaendig ab (kein Schritt danach, KEINE
+        "erledigt"-Markierung gesetzt - erscheint dann beim naechsten
+        Start erneut). Reine Info-/Download-Schritte lassen sich
+        dagegen einzeln ueberspringen, ohne den ganzen Assistenten
+        abzubrechen."""
+        total = 8
+
+        # Schritt 1: Sprache
+        lang_options = ["Deutsch", "English"]
+        idx = 0 if CURRENT_LANG == "de" else 1
+        choice = self._wizard_choice(
+            t("wizard_step_title", 1, total, t("wizard_step_language")),
+            lang_options, initial=idx)
+        if choice is None:
+            return
+        set_language("de" if choice == 0 else "en")
+
+        # Schritt 2: CRT/HDMI (Aenderung braucht einen Neustart - wird
+        # angewendet, der Assistent laeuft aber in der AKTUELLEN
+        # Aufloesung zu Ende, statt eine komplexe "Assistent nach
+        # Neustart fortsetzen"-Logik zu bauen).
+        video_options = [t("sys_video_hdmi"), t("sys_video_crt")]
+        idx2 = 1 if crt_menu_active() else 0
+        choice2 = self._wizard_choice(
+            t("wizard_step_title", 2, total, t("wizard_step_video")),
+            video_options, initial=idx2)
+        if choice2 is None:
+            return
+        want_crt = (choice2 == 1)
+        if want_crt != crt_menu_active():
+            toggle_crt_menu()
+            self._wizard_info(
+                t("wizard_step_title", 2, total, t("wizard_step_video")),
+                [t("wizard_video_reboot_note")], skippable=False)
+
+        # Schritt 3: Zeitzone (wiederholbar zyklisch, wie im System-
+        # Menue - "Weiter" als eigene, zweite Option in dieser
+        # Auswahl statt einer neuen Interaktionsart).
+        while True:
+            tz_label = format_timezone_offset(load_timezone_offset())
+            choice3 = self._wizard_choice(
+                t("wizard_step_title", 3, total, t("wizard_step_timezone")),
+                [t("wizard_timezone_current", tz_label),
+                 t("wizard_continue_option")], initial=1)
+            if choice3 is None:
+                return
+            if choice3 == 0:
+                cycle_timezone_offset()
+                continue
+            break
+        threading.Thread(target=sync_system_clock_from_ntp, daemon=True).start()
+
+        # Schritt 4: RetroAchievements - reiner Info-Bildschirm (keine
+        # Bildschirmtastatur, Einrichtung passiert extern per SSH) -
+        # der bereits bestehende draw_ra_setup_screen() wird direkt
+        # wiederverwendet statt eines eigenen, aehnlichen Bildschirms.
+        self.draw_ra_setup_screen()
+
+        # Schritt 5: Boxart-Download - optional, ueberspringbar.
+        do_boxart = self._wizard_choice(
+            t("wizard_step_title", 5, total, t("wizard_step_boxart")),
+            [t("wizard_download_now"), t("wizard_download_skip")], initial=0)
+        if do_boxart is None:
+            return
+        if do_boxart == 0:
+            profile = "sd" if want_crt else "hd"
+            self.run_script(os.path.join(SCRIPTS_DIR, "boxart_download.sh"),
+                            args=[profile])
+
+        # Schritt 6: Gameinfo-Download - optional, ueberspringbar.
+        do_gameinfo = self._wizard_choice(
+            t("wizard_step_title", 6, total, t("wizard_step_gameinfo")),
+            [t("wizard_download_now"), t("wizard_download_skip")], initial=0)
+        if do_gameinfo is None:
+            return
+        if do_gameinfo == 0:
+            self.run_script(os.path.join(SCRIPTS_DIR, "gameinfo_download.sh"))
+
+        # Schritt 7: Spiele suchen (erzwungener Neu-Scan mit Fortschritt).
+        self._wizard_scanning_step(
+            t("wizard_step_title", 7, total, t("wizard_step_scan")))
+
+        # Schritt 8: Esc-Ausstieg-Hinweis (reiner Hinweis, ESC hier
+        # bedeutet "verstanden, weiter" statt "abbrechen" - skippable=
+        # True, aber run_setup_wizard() behandelt False identisch zu
+        # True, da es hier nichts zu ueberspringen gibt ausser dem
+        # Lesen selbst).
+        self._wizard_info(
+            t("wizard_step_title", 8, total, t("wizard_step_esc_hint")),
+            [t("wizard_esc_hint_1"), t("wizard_esc_hint_2")], skippable=True)
+
+        mark_setup_wizard_done()
+        self.build_categories()   # Sprache/Video koennten sich geaendert haben
 
     def _active_vt(self):
         try:
@@ -12989,6 +13273,22 @@ class Frontend:
         self.play_boot_animation()
         self._show_max_level_boot_effect()
         self.draw()
+        # NEUES FEATURE (Nutzerwunsch: vereinfachte Installation, ein
+        # Ersteinrichtungs-Assistent) - erscheint automatisch NUR beim
+        # allerersten Start (SETUP_WIZARD_DONE_FILE liegt auf der SD-
+        # Karte, nicht in /tmp - bleibt also auch nach einem Neustart
+        # bestehen). Danach jederzeit ueber das System-Menue erneut
+        # aufrufbar (kind == "setup_wizard"). Laeuft NACH dem ersten
+        # draw() (damit im Hintergrund schon ein normales Menue zu
+        # sehen ist, kein leerer/schwarzer Uebergang) und VOR dem
+        # Zuruecksetzen der Leerlauf-Uhr (der Assistent selbst soll
+        # nicht schon vom Attract-Modus unterbrochen werden koennen).
+        if not setup_wizard_done():
+            try:
+                self.run_setup_wizard()
+            except Exception:
+                LOG("run_setup_wizard CRASH:\n" + traceback.format_exc())
+            self.draw()
         # WICHTIG (Bugfix): der Leerlauf-Zaehler fuer den Attract-Modus
         # wurde bisher schon in __init__() gesetzt - also VOR dem
         # (potenziell langsamen) Scan und der Boot-Animation. Dauerten
@@ -13437,6 +13737,9 @@ class Frontend:
                             self.draw()
                         elif kind == "help":
                             self.draw_help_screen()
+                            self.draw()
+                        elif kind == "setup_wizard":
+                            self.run_setup_wizard()
                             self.draw()
                         elif kind == "secrets":
                             self.draw_secrets_screen()
