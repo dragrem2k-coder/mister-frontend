@@ -6875,10 +6875,10 @@ def _canonical_key(name):
         key += " " + re.sub(r"\s+", "", m.group(0).lower())
     return key
 
-# Tags, die ein ROM als Beta/Prototyp/Demo/Hack/defekten Dump o.ae.
+# Tags, die ein ROM als Beta/Prototyp/Demo/defekten Dump o.ae.
 # kennzeichnen - werden beim Scannen ausgefiltert.
-JUNK_TAGS = ("(beta", "(proto", "(demo", "(sample", "(unl)", "[b]",
-            "(pirate", "(program", "(test", "(kiosk")
+JUNK_TAGS = ("(beta", "(proto", "(demo", "(sample", "[b]",
+            "(program", "(test", "(kiosk")
 # BUGFIX/AENDERUNG (Nutzerwunsch: "Was ist mit ROM Hacks und Zelda
 # Randomizer" - Spielhacks und Randomizer-Ausgaben wurden bisher
 # GAR NICHT angezeigt): "(hack" stand bisher in dieser Liste und
@@ -6887,6 +6887,20 @@ JUNK_TAGS = ("(beta", "(proto", "(demo", "(sample", "(unl)", "[b]",
 # haeufig aehnlich getaggt werden) aber vollstaendige, spielbare
 # Inhalte, die viele Nutzer bewusst suchen - keine unfertigen/
 # kaputten Dumps. Deshalb aus der Ausschlussliste entfernt.
+#
+# BUGFIX Runde 2 (Nutzer-Rueckmeldung anhand eines echten Datei-
+# Screenshots: "NES-Ordner zeigt nur 2 ROMs an, sind aber viel mehr"):
+# "(unl)" und "(pirate" standen ebenfalls noch in dieser Liste - die
+# Screenshot-Dateiliste zeigte, dass ein GROSSER TEIL einer typischen
+# NES-Sammlung aus genau diesen Tags besteht (unzaehlige beliebte,
+# VOLLSTAENDIGE Mehrfach-Cartridges/unlizenzierte Spiele, gerade im
+# asiatischen Raum sehr verbreitet und kommerziell verkauft) - wurden
+# bisher komplett wie kaputte Dumps behandelt und ausgeblendet, obwohl
+# es sich um voll spielbare, oft gesuchte Inhalte handelt. Aus der
+# Ausschlussliste entfernt, gleiche Begruendung wie bei "(hack" oben.
+# "[b]" (explizit als fehlerhafter Dump markiert) bleibt bewusst
+# bestehen - das ist ein echter Qualitaetsmangel, kein blosser
+# Lizenzstatus.
 
 def _is_junk(name):
     low = name.lower()
