@@ -155,6 +155,26 @@ def norm(name):
 def strip_tags(name):
     return re.sub(r"[\(\[][^\)\]]*[\)\]]", "", name).strip()
 
+_ARTICLE_RE = re.compile(r"^(.*),\s+(the|a|an)$", re.I)
+def _canon_article(name):
+    """No-Intro-Artikel am Ende ('Zelda, The') nach vorne ziehen, damit es
+    zur DB-Schreibweise passt - und umgekehrt (beide Seiten gleich)."""
+    m = _ARTICLE_RE.match(name.strip())
+    return "%s %s" % (m.group(2), m.group(1)) if m else name
+
+def norm2(name):
+    """BUGFIX (uebernommen aus separat vorbereitetem Vorschlag, siehe
+    CHANGES_v4.2_FIXES.md - Nutzerwunsch: kuratierte Liste blendete
+    katalogisierte Spiele faelschlich aus): staerkere Normalisierung
+    als norm()/strip_tags() - Region-Tags weg, Artikel kanonisiert
+    ('Zelda, The' <-> 'The Zelda'), '&' -> 'and'. Faengt Namens-
+    konventions-Unterschiede zwischen ROM-Satz und libretro-DB ab
+    (v.a. Artikel-Stellung und '&' vs 'and'), OHNE Fuzzy-Falschtreffer -
+    bleibt eine EXAKTE Match-Stufe, nur auf staerker normalisierten
+    Namen."""
+    t = _canon_article(strip_tags(name)).replace("&", " and ")
+    return re.sub(r"[^a-z0-9]", "", t.lower())
+
 REGION_PRIORITY = ["(germany)", "(europe)", "(world)", "(usa)", "(japan)"]
 
 def region_rank(name):
@@ -167,22 +187,27 @@ def region_rank(name):
 def build_index(names):
     idx_exact = {}
     idx_strip = {}
+    idx_norm2 = {}
     buckets = {}
     for n in names:
         idx_exact.setdefault(norm(n), []).append(n)
         ns = norm(strip_tags(n))
         idx_strip.setdefault(ns, []).append(n)
+        idx_norm2.setdefault(norm2(n), []).append(n)
         if ns:
             buckets.setdefault(ns[0], []).append(ns)
-    return idx_exact, idx_strip, buckets
+    return idx_exact, idx_strip, idx_norm2, buckets
 
-def match_name(rom_base, idx_exact, idx_strip, buckets):
+def match_name(rom_base, idx_exact, idx_strip, idx_norm2, buckets):
     n = norm(rom_base)
     if n in idx_exact:
         return sorted(idx_exact[n], key=region_rank)[0]
     ns = norm(strip_tags(rom_base))
     if ns in idx_strip:
         return sorted(idx_strip[ns], key=region_rank)[0]
+    n2 = norm2(rom_base)
+    if n2 in idx_norm2:
+        return sorted(idx_norm2[n2], key=region_rank)[0]
     if not ns:
         return None
     # Aehnlichkeitssuche nur im kleinen Kandidatenkreis:
@@ -287,7 +312,7 @@ def main():
             continue
         print("  Datenbank: %d Spiele" % len(db), flush=True)
 
-        idx_exact, idx_strip, buckets = build_index(db.keys())
+        idx_exact, idx_strip, idx_norm2, buckets = build_index(db.keys())
 
         meta = {}
         for nr, rom in enumerate(roms, 1):
@@ -295,7 +320,7 @@ def main():
             if nr % 200 == 0:
                 print("  ... %d/%d verarbeitet (%d Treffer)"
                       % (nr, len(roms), len(meta)), flush=True)
-            hit = match_name(rom, idx_exact, idx_strip, buckets)
+            hit = match_name(rom, idx_exact, idx_strip, idx_norm2, buckets)
             if hit:
                 m = dict(db[hit])
                 # "2 Spieler" lesbarer machen: users=1 -> "1", users=2 -> "1-2"
