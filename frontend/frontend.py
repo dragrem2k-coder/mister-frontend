@@ -4885,7 +4885,16 @@ def _apply_volume_async(player):
     """SFX-Neuerzeugung + Musik-Neustart im Hintergrund - beides ist auf dem
     MiSTer traege bzw. blockierend (Popen.wait bis 2s), also NICHT im
     Menue-Thread. Ein Lock serialisiert schnelle Mehrfach-Druecke; jeder
-    Lauf nutzt das dann aktuelle VOLUME (letzter gewinnt)."""
+    Lauf nutzt das dann aktuelle VOLUME (letzter gewinnt).
+
+    BUGFIX (uebernommen aus separat vorbereitetem Vorschlag, siehe
+    CHANGES_v4.2_FIXES.md): rief bisher player._stop_current() und
+    player._start_current() als ZWEI getrennte Aufrufe auf - dazwischen
+    konnte tick() (aus dem Menue-Thread) ebenfalls einen Start ausloesen,
+    zwei mpg123-Prozesse liefen dann gleichzeitig (doppelter/verzerrter
+    Radio-Stream). _start_current() beendet jetzt selbst, unter
+    _proc_lock, zuerst den alten Prozess, bevor der neue startet - ein
+    einziger, atomarer Aufruf reicht."""
     global _volume_apply_lock
     if _volume_apply_lock is None:
         _volume_apply_lock = threading.Lock()
@@ -4893,7 +4902,6 @@ def _apply_volume_async(player):
         with _volume_apply_lock:
             _regenerate_sfx()
             if player.enabled and not player.paused_for_core:
-                player._stop_current()
                 player._start_current()
     threading.Thread(target=_worker, daemon=True).start()
 
@@ -7992,6 +8000,15 @@ class MusicPlayer:
         self.pos = 0
         self.proc = None
         self._track_started_at = None
+        self._proc_lock = threading.Lock()   # BUGFIX (uebernommen aus separat
+                                              # vorbereitetem Vorschlag, siehe
+                                              # CHANGES_v4.2_FIXES.md): verhindert
+                                              # doppelte mpg123-Prozesse - der
+                                              # Lautstaerke-Hintergrund-Thread und
+                                              # tick() konnten bisher gleichzeitig
+                                              # einen Start ausloesen, zwei mpg123
+                                              # gleichzeitig fuehrten zu doppeltem/
+                                              # verzerrtem Radio-Stream.
         self.paused_for_core = False
         self._rescan()
 
@@ -8059,6 +8076,14 @@ class MusicPlayer:
         return self.proc is not None and self.proc.poll() is None
 
     def _start_current(self):
+        """Startet die aktuelle Quelle (MP3/Radio). Lock + 'vorher
+        alten Prozess beenden' -> nie zwei mpg123 gleichzeitig (siehe
+        _proc_lock-Kommentar im __init__)."""
+        with self._proc_lock:
+            self._kill_proc()
+            self._start_current_impl()
+
+    def _start_current_impl(self):
         if self.source == "radio":
             if self.radio is None:
                 return
@@ -8090,7 +8115,8 @@ class MusicPlayer:
             LOG("Music: failed to start mpg123: %s" % e)
             self.proc = None
 
-    def _stop_current(self):
+    def _kill_proc(self):
+        """Beendet den laufenden mpg123-Prozess. Aufrufer haelt _proc_lock."""
         if self.proc is not None:
             try:
                 self.proc.terminate()
@@ -8101,6 +8127,10 @@ class MusicPlayer:
                 except Exception:
                     pass
             self.proc = None
+
+    def _stop_current(self):
+        with self._proc_lock:
+            self._kill_proc()
 
     def _advance(self):
         if not self.playlist:
