@@ -6875,10 +6875,10 @@ def _canonical_key(name):
         key += " " + re.sub(r"\s+", "", m.group(0).lower())
     return key
 
-# Tags, die ein ROM als Beta/Prototyp/Demo/Hack/defekten Dump o.ae.
+# Tags, die ein ROM als Beta/Prototyp/Demo/defekten Dump o.ae.
 # kennzeichnen - werden beim Scannen ausgefiltert.
-JUNK_TAGS = ("(beta", "(proto", "(demo", "(sample", "(unl)", "[b]",
-            "(pirate", "(program", "(test", "(kiosk")
+JUNK_TAGS = ("(beta", "(proto", "(demo", "(sample", "[b]",
+            "(program", "(test", "(kiosk")
 # BUGFIX/AENDERUNG (Nutzerwunsch: "Was ist mit ROM Hacks und Zelda
 # Randomizer" - Spielhacks und Randomizer-Ausgaben wurden bisher
 # GAR NICHT angezeigt): "(hack" stand bisher in dieser Liste und
@@ -6887,6 +6887,20 @@ JUNK_TAGS = ("(beta", "(proto", "(demo", "(sample", "(unl)", "[b]",
 # haeufig aehnlich getaggt werden) aber vollstaendige, spielbare
 # Inhalte, die viele Nutzer bewusst suchen - keine unfertigen/
 # kaputten Dumps. Deshalb aus der Ausschlussliste entfernt.
+#
+# BUGFIX Runde 2 (Nutzer-Rueckmeldung anhand eines echten Datei-
+# Screenshots: "NES-Ordner zeigt nur 2 ROMs an, sind aber viel mehr"):
+# "(unl)" und "(pirate" standen ebenfalls noch in dieser Liste - die
+# Screenshot-Dateiliste zeigte, dass ein GROSSER TEIL einer typischen
+# NES-Sammlung aus genau diesen Tags besteht (unzaehlige beliebte,
+# VOLLSTAENDIGE Mehrfach-Cartridges/unlizenzierte Spiele, gerade im
+# asiatischen Raum sehr verbreitet und kommerziell verkauft) - wurden
+# bisher komplett wie kaputte Dumps behandelt und ausgeblendet, obwohl
+# es sich um voll spielbare, oft gesuchte Inhalte handelt. Aus der
+# Ausschlussliste entfernt, gleiche Begruendung wie bei "(hack" oben.
+# "[b]" (explizit als fehlerhafter Dump markiert) bleibt bewusst
+# bestehen - das ist ein echter Qualitaetsmangel, kein blosser
+# Lizenzstatus.
 
 def _is_junk(name):
     low = name.lower()
@@ -6981,6 +6995,24 @@ def scan_cores(skip_dir=None):
             cats.append((nice_name(os.path.basename(d)), items, syskey))
     return cats
 
+# BUGFIX (Nutzer-Rueckmeldung anhand einer echten Verzeichnisliste mit
+# 3202 Dateien: "es werden immer noch nur zwei Spiele angezeigt" - TROTZ
+# des vorherigen (unl)/(pirate)-Fixes): _games_signature() (siehe unten)
+# ist bewusst NUR ein schneller Fingerabdruck basierend auf Ordner-
+# Aenderungszeiten, keine Tiefensuche (Performance-Grund, siehe
+# Kommentar dort). Aendert sich NUR unsere FILTER-LOGIK im Code (z.B.
+# JUNK_TAGS), nicht aber die Dateien selbst, bleibt die Ordner-mtime
+# UNVERAENDERT - der alte, noch mit der alten Logik erzeugte
+# Cache-Eintrag wurde dadurch munter weiterverwendet, obwohl der Code
+# laengst repariert war. Nur ein manueller Rescan (System -> Wartung)
+# half bisher, JEDE zukuenftige Filter-Logik-Aenderung haette denselben
+# Effekt gehabt. Fix: eine eigene Versionsnummer, die bei jeder
+# Aenderung an der FILTER-/DEDUPE-Logik selbst (nicht bei jedem Code-
+# Release) von Hand hochgezaehlt wird - fliesst mit in die Signatur
+# ein, macht den Cache dadurch automatisch ungueltig, sobald sich die
+# Auswertung selbst geaendert hat, ganz unabhaengig von Datei-mtimes.
+SCAN_LOGIC_VERSION = 2   # 1 = Basis, 2 = "(unl)"/"(pirate)" nicht mehr Junk
+
 def _games_signature():
     """Schneller Fingerabdruck der ROM-Ordner (ohne Tiefensuche):
     existierende Wurzeln + deren mtime. Aendert sich der Inhalt einer
@@ -7023,6 +7055,7 @@ def _games_signature():
                     continue
                 sig.append((tag + folder, mtime))
     sig.sort()
+    sig.append(("__scan_logic_version__", SCAN_LOGIC_VERSION))
     return sig
 
 def _sig_expects_usb(sig):
