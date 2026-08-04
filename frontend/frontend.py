@@ -3365,6 +3365,17 @@ Start auf dem MiSTer (per SSH oder als Startscript):
 
 import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib, json, random, math, signal, socket
 
+# EINZIGE QUELLE DER WAHRHEIT fuer die Versionsnummer (Vereinbarung,
+# da mehrere Leute an derselben Codebasis arbeiten - siehe Nutzer-
+# Vorgabe zur Versionierung). Muss mit dem Header-Kommentar oben,
+# README, CHANGELOG und der VERSION-Datei (frontend/VERSION)
+# UEBEREINSTIMMEN. Wird NUR bei einem ausdruecklich angewiesenen
+# Release-Bump geaendert - niemals von sich aus hochgezaehlt, auch
+# nicht bei Zwischenstaenden/Diagnose-Builds/Bugfix-Versuchen (die
+# bekommen hoechstens einen Zusatz wie "4.2-test3", nie eine neue
+# Nummer hier).
+FRONTEND_VERSION = "4.2"
+
 LOGFILE = "/tmp/frontend.log"
 LOG_MAX_BYTES = 512 * 1024      # ab dieser Groesse wird gekuerzt
 LOG_KEEP_BYTES = 256 * 1024     # so viel vom Ende bleibt erhalten
