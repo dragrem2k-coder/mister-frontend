@@ -3363,7 +3363,7 @@ Start auf dem MiSTer (per SSH oder als Startscript):
   python3 /media/fat/frontend/frontend.py
 """
 
-import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib, json, random, math, signal, socket
+import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib, json, random, math, signal, socket, threading
 
 # EINZIGE QUELLE DER WAHRHEIT fuer die Versionsnummer (Vereinbarung,
 # da mehrere Leute an derselben Codebasis arbeiten - siehe Nutzer-
@@ -3828,17 +3828,57 @@ def _save_ra_achievements_cache(cache):
     except OSError:
         pass
 
+# NEUES FEATURE (Nutzerwunsch: F6-Erfolgsvitrine soll "schneller
+# einblenden" - bisher blockierte draw_ra_showcase_screen() bei
+# abgelaufenem/fehlendem Cache-Eintrag bis zu 5s auf den Netzwerkabruf,
+# bevor ueberhaupt eine Erfolgsliste zu sehen war): Stale-while-
+# revalidate - IST bereits ein (auch veralteter) Cache-Eintrag da,
+# wird der SOFORT zurueckgegeben (kein Warten), waehrend im
+# Hintergrund-Thread ein frischer Abruf angestossen wird, der den
+# Cache fuer den NAECHSTEN F6-Aufruf desselben Spiels aktualisiert.
+# Nur beim ALLERERSTEN Ansehen eines Spiels (noch gar kein Cache-
+# Eintrag vorhanden) bleibt ein einmaliger, kurzer synchroner Abruf
+# noetig - da gibt es schlicht noch nichts Vorhandenes zum Anzeigen.
+# _ra_achievements_refresh_inflight verhindert parallele Mehrfach-
+# abrufe fuer dasselbe Spiel bei schnell wiederholtem F6-Druecken.
+_ra_achievements_refresh_inflight = set()
+_ra_achievements_refresh_lock = threading.Lock()
+
+def _refresh_ra_achievements_background(game_id, timeout=5.0):
+    key = str(game_id)
+    with _ra_achievements_refresh_lock:
+        if key in _ra_achievements_refresh_inflight:
+            return
+        _ra_achievements_refresh_inflight.add(key)
+    try:
+        data = fetch_ra_game_achievements_bounded(game_id, timeout=timeout)
+        if data is not None:
+            cache = _load_ra_achievements_cache()
+            cache[key] = {"ts": time.time(), "data": data}
+            _save_ra_achievements_cache(cache)
+    finally:
+        with _ra_achievements_refresh_lock:
+            _ra_achievements_refresh_inflight.discard(key)
+
 def fetch_ra_game_achievements_cached(game_id, timeout=5.0):
     """Wie fetch_ra_game_achievements_bounded(), aber mit kurzlebigem
-    Cache - siehe Modul-Kommentar oben fuer die Begruendung. Ein
-    Cache-Treffer liefert die Daten praktisch verzoegerungsfrei
-    (nur ein Datei-Lesevorgang), statt jedes Mal auf einen
-    Netzwerkabruf zu warten."""
+    Cache nach dem Stale-while-revalidate-Prinzip (siehe Kommentar
+    oben): ein VORHANDENER Cache-Eintrag wird IMMER sofort
+    zurueckgegeben, auch wenn er aelter als RA_ACHIEVEMENTS_CACHE_TTL
+    ist - in dem Fall wird zusaetzlich, nicht-blockierend, ein
+    Hintergrund-Abruf gestartet, der den Cache fuer naechstes Mal
+    aktualisiert. Nur wenn NOCH GAR NICHTS im Cache steht (allererster
+    Blick auf dieses Spiel), erfolgt ein einmaliger synchroner Abruf."""
     cache = _load_ra_achievements_cache()
     key = str(game_id)
     entry = cache.get(key)
     now = time.time()
-    if entry and (now - entry.get("ts", 0)) < RA_ACHIEVEMENTS_CACHE_TTL:
+    if entry:
+        if (now - entry.get("ts", 0)) >= RA_ACHIEVEMENTS_CACHE_TTL:
+            threading.Thread(
+                target=_refresh_ra_achievements_background,
+                args=(game_id,), kwargs={"timeout": timeout},
+                daemon=True).start()
         return entry.get("data")
     data = fetch_ra_game_achievements_bounded(game_id, timeout=timeout)
     if data is not None:
@@ -4830,8 +4870,20 @@ def _hid_report_has_exit_key(data):
     Der Keycode wird IRGENDWO im Report gesucht, nicht an einer festen
     Position - robuster gegenueber unterschiedlichen Report-Layouts
     (manche Geraete stellen ein Report-ID-Byte voran) als eine feste
-    Byte-Position anzunehmen."""
-    return 0x29 in data or 0x44 in data
+    Byte-Position anzunehmen.
+
+    ERWEITERT (uebernommener Vorschlag): NKRO-Bitmap-Report (z.B.
+    KBDFans Tiger80 im N-Key-Rollover-Modus) - Tasten kommen dort als
+    BITS, nicht als normale Keycodes, die obige Prüfung faengt das
+    nicht ab. Report-ID 0x06, dann ein Modifier-Byte, dann die Bitmap.
+    Esc = HID-Usage 0x29 -> Bitmap-Byte 5, Bit 1 -> Report-Byte 7,
+    Maske 0x02 (auf echter Hardware bestaetigt). Eindeutig Esc (jede
+    Taste hat ihr eigenes Bit) - kein Fehl-Trigger."""
+    if 0x29 in data or 0x44 in data:
+        return True
+    if len(data) > 7 and data[0] == 0x06 and (data[7] & 0x02):
+        return True
+    return False
 
 
 MUSIC_DIR   = "/media/fat/music"
@@ -7317,33 +7369,56 @@ def save_network_wait(enabled):
     except OSError:
         pass
 
-def _wait_for_network_ready(max_wait=20.0, poll=0.5):
+def _has_network_mount():
+    """True, wenn eine Netzwerk-Freigabe (CIFS/NFS) gemountet ist - das
+    eigentliche Signal, dass das NAS jetzt wirklich da ist. Uebernommener
+    Vorschlag - siehe _wait_for_network_ready()."""
+    try:
+        with open("/proc/mounts") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 3 and parts[2] in (
+                        "cifs", "smb3", "smbfs", "nfs", "nfs4"):
+                    return True
+    except OSError:
+        pass
+    return False
+
+def _wait_for_network_ready(max_wait=45.0, poll=0.5):
     """NUR aktiv, wenn network_wait_enabled() - sonst sofortige
     Rueckkehr (kein Einfluss auf den ganz ueberwiegenden Regelfall SD-
-    Karte/USB). Wartet zuerst auf eine grundlegende Netzwerkverbindung,
-    dann darauf, dass sich der Inhalt ALLER GAMES_BASES-Pfade zwischen
-    zwei Abfragen nicht mehr aendert - gleiches Prinzip wie
-    _wait_for_usb_stable() (inkl. derselben Vorsicht bei einem
-    durchgehend leeren, aber stabilen Ergebnis), bewusst NICHT auf
-    USB-Pfade beschraenkt, damit es auch CIFS/NFS-Einhaengungen
-    erfasst, unabhaengig vom genauen Mount-Punkt. Eigenstaendige,
-    separate Funktion (keine Aenderung an _wait_for_usb_stable() selbst)
-    - kein Regressionsrisiko fuer den etablierten USB-Fall."""
+    Karte/USB).
+
+    ERWEITERT (uebernommener Vorschlag - loest eine Luecke der
+    urspruenglichen Fassung): die vorherige Version wartete nur auf
+    "irgendeine Netzwerkverbindung" und dann auf einen stabilen Inhalt
+    von GAMES_BASES - GAMES_BASES war aber beim Modul-Import bereits
+    (leer) eingefroren, BEVOR das NAS ueberhaupt gemountet war, und ein
+    schon stabiler, aber rein LOKALER Ordner (nur Cores, kein NAS)
+    konnte das Warten faelschlich vorzeitig beenden lassen. Jetzt wird
+    zusaetzlich echt geprueft, ob eine CIFS/NFS-Freigabe TATSAECHLICH
+    gemountet ist (_has_network_mount()) - erst NACHDEM das gesehen
+    wurde, zaehlt ein stabiler Inhalt. GAMES_BASES wird ausserdem bei
+    jeder Pruefung sowie am Ende neu ermittelt (_discover_games_bases()),
+    damit ein erst waehrend der Wartezeit erscheinendes NAS-Mount auch
+    tatsaechlich erfasst wird."""
     if not network_wait_enabled():
         return
+    global GAMES_BASES
     t0 = time.monotonic()
-    while True:
-        if _has_network():
-            break
+    while not _has_network():
         if time.monotonic() - t0 >= max_wait:
             LOG("_wait_for_network_ready: keine Netzwerkverbindung nach %.0fs - fahre trotzdem fort"
                % max_wait)
+            GAMES_BASES = _discover_games_bases()
             return
         time.sleep(poll)
 
     def snapshot():
+        # Wurzeln JEDES Mal neu ermitteln - erfasst ein erst jetzt
+        # erscheinendes NFS/CIFS-Mount (GAMES_BASES ist eingefroren).
         total = 0
-        for b in GAMES_BASES:
+        for b in _discover_games_bases():
             if os.path.isdir(b):
                 try:
                     total += len(os.listdir(b))
@@ -7353,24 +7428,31 @@ def _wait_for_network_ready(max_wait=20.0, poll=0.5):
 
     last_total = None
     stable_streak = 0
+    saw_mount = False
     while True:
         elapsed = time.monotonic() - t0
-        total = snapshot()
         if elapsed >= max_wait:
             LOG("_wait_for_network_ready: Zeitlimit (%.0fs) erreicht, fahre trotzdem fort"
                % max_wait)
-            return
-        if total == last_total:
+            break
+        if _has_network_mount():
+            saw_mount = True
+        total = snapshot()
+        # Erst als fertig gelten, wenn das NAS-Mount GESEHEN wurde - sonst
+        # bricht der schon stabile LOKALE Ordner (nur Cores) das Warten ab,
+        # bevor das NAS ueberhaupt gemountet ist.
+        if saw_mount and total == last_total:
             stable_streak += 1
             required = 2 if total > 0 else 4   # bei leer vorsichtiger, siehe _wait_for_usb_stable()
             if stable_streak >= required:
-                LOG("_wait_for_network_ready: Inhalt stabil (%d Eintraege) nach %.1fs"
+                LOG("_wait_for_network_ready: NAS gemountet, Inhalt stabil (%d Eintraege) nach %.1fs"
                    % (total, elapsed))
-                return
+                break
         else:
             stable_streak = 0
         last_total = total
         time.sleep(poll)
+    GAMES_BASES = _discover_games_bases()
 
 def scan_games(force=False, progress_cb=None):
     """ROM-Listen laden - aus dem Cache, wenn er noch passt.
@@ -8458,39 +8540,70 @@ TRANSLATIONS = {
     "boot_default_title": {"en": "MISTER FRONTEND", "de": "MISTER FRONTEND"},
     "help_title": {"en": "HELP / OVERVIEW", "de": "HILFE / UEBERSICHT"},
     "help_section_nav": {"en": "Navigation", "de": "Navigation"},
-    "help_nav_move": {"en": "Arrow keys: move around",
-                      "de": "Pfeiltasten: bewegen"},
-    "help_nav_ok": {"en": "OK/A: select, enter category/folder",
-                    "de": "OK/A: auswaehlen, Kategorie/Ordner betreten"},
-    "help_nav_back": {"en": "Back/B: one level back, at the top: exit dialog",
-                      "de": "Zurueck/B: eine Ebene zurueck, ganz oben: Beenden-Dialog"},
-    "help_nav_letter": {"en": "Letter key (keyboard): jump to next entry with that letter",
-                        "de": "Buchstabentaste (Tastatur): springt zum naechsten Eintrag mit diesem Buchstaben"},
+    "help_nav_move_key": {"en": "Arrow keys", "de": "Pfeiltasten"},
+    "help_nav_move_desc": {"en": "Move around", "de": "Bewegen"},
+    "help_nav_ok_key": {"en": "OK / A", "de": "OK / A"},
+    "help_nav_ok_desc": {"en": "Select, enter category/folder",
+                         "de": "Auswaehlen, Kategorie/Ordner betreten"},
+    "help_nav_back_key": {"en": "Back / B", "de": "Zurueck / B"},
+    "help_nav_back_desc": {"en": "One level back, at the top: exit dialog",
+                           "de": "Eine Ebene zurueck, ganz oben: Beenden-Dialog"},
+    "help_nav_letter_key": {"en": "Letter key (keyboard)",
+                            "de": "Buchstabentaste (Tastatur)"},
+    "help_nav_letter_desc": {"en": "Jump to next entry with that letter",
+                             "de": "Springt zum naechsten Eintrag mit diesem Buchstaben"},
     "help_section_list": {"en": "In the game list", "de": "In der Spieleliste"},
-    "help_list_completed": {"en": "F7: toggle completed status",
-                            "de": "F7: Durchgespielt-Status umschalten"},
-    "help_list_favorite": {"en": "F8 / L2 or R2: toggle favorite",
-                           "de": "F8 / L2 oder R2: Favorit umschalten"},
-    "help_list_showcase": {"en": "F6: RA achievement showcase for the selected game",
-                           "de": "F6: RA-Erfolgs-Vitrine fuer das markierte Spiel"},
+    "help_list_showcase_key": {"en": "F6", "de": "F6"},
+    "help_list_showcase_desc": {"en": "RA achievement showcase for the selected game",
+                                "de": "RA-Erfolgs-Vitrine fuer das markierte Spiel"},
+    "help_list_completed_key": {"en": "F7", "de": "F7"},
+    "help_list_completed_desc": {"en": "Toggle completed status",
+                                 "de": "Durchgespielt-Status umschalten"},
+    "help_list_favorite_key": {"en": "F8 / L2 or R2", "de": "F8 / L2 oder R2"},
+    "help_list_favorite_desc": {"en": "Toggle favorite", "de": "Favorit umschalten"},
+    "help_list_random_key": {"en": "F11", "de": "F11"},
+    "help_list_random_desc": {"en": "Start a random game across all systems",
+                              "de": "Zufaelliges Spiel ueber alle Systeme starten"},
     "help_section_menu": {"en": "Special entries in the main menu",
                           "de": "Besondere Eintraege im Hauptmenue"},
-    "help_menu_continue": {"en": "Continue playing: your last unfinished game",
-                           "de": "Weiterspielen: dein zuletzt offenes Spiel"},
-    "help_menu_collections": {"en": "Collections: automatic groupings",
-                              "de": "Sammlungen: automatische Gruppierungen"},
-    "help_menu_hunter": {"en": "RA Achievement Hunter: open RetroAchievements in your library",
-                         "de": "RA-Erfolgsjaeger: offene RetroAchievements in deiner Bibliothek"},
+    "help_menu_continue_key": {"en": "Continue playing", "de": "Weiterspielen"},
+    "help_menu_continue_desc": {"en": "Your last unfinished game",
+                                "de": "Dein zuletzt offenes Spiel"},
+    "help_menu_collections_key": {"en": "Collections", "de": "Sammlungen"},
+    "help_menu_collections_desc": {"en": "Automatic groupings",
+                                   "de": "Automatische Gruppierungen"},
+    "help_menu_hunter_key": {"en": "RA Achievement Hunter", "de": "RA-Erfolgsjaeger"},
+    "help_menu_hunter_desc": {"en": "Open achievements in your library",
+                              "de": "Offene Erfolge in deiner Bibliothek"},
     "help_section_system": {"en": "System menu", "de": "System-Menue"},
-    "help_system_stats": {"en": "Statistics & achievements: top-10 lists, trophy room, year in review, diary",
-                          "de": "Statistiken & Erfolge: Top-10-Listen, Trophaeenraum, Jahresrueckblick, Spieltagebuch"},
-    "help_system_secrets": {"en": "Secrets: hidden things to discover for yourself",
-                            "de": "Geheimnisse: Verstecktes, das du selbst entdecken kannst"},
-    "help_system_credits": {"en": "Credits: who made this",
-                            "de": "Mitwirkende: wer das gebaut hat"},
+    "help_system_stats_key": {"en": "Statistics & achievements",
+                              "de": "Statistiken & Erfolge"},
+    "help_system_stats_desc": {"en": "Top-10 lists, trophy room, year in review, diary",
+                               "de": "Top-10-Listen, Trophaeenraum, Jahresrueckblick, Spieltagebuch"},
+    "help_system_secrets_key": {"en": "Secrets", "de": "Geheimnisse"},
+    "help_system_secrets_desc": {"en": "Hidden things to discover for yourself",
+                                 "de": "Verstecktes, das du selbst entdecken kannst"},
+    "help_system_credits_key": {"en": "Credits", "de": "Mitwirkende"},
+    "help_system_credits_desc": {"en": "Who made this", "de": "Wer das gebaut hat"},
     "help_section_playing": {"en": "While playing", "de": "Waehrend des Spielens"},
-    "help_playing_exit": {"en": "Esc: back to the menu immediately",
-                          "de": "Esc: sofort zurueck ins Menue"},
+    "help_playing_exit_key": {"en": "Esc or F10 (hold ~0.6s)",
+                              "de": "Esc oder F10 (ca. 0,6s halten)"},
+    "help_playing_exit_desc": {"en": "Back to the menu immediately",
+                               "de": "Sofort zurueck ins Menue"},
+    "help_playing_exit_pad_key": {"en": "Start + Select (pad, hold ~0.8s)",
+                                  "de": "Start + Select (Pad, ca. 0,8s halten)"},
+    "help_playing_exit_pad_desc": {"en": "Back to the menu immediately",
+                                   "de": "Sofort zurueck ins Menue"},
+    "help_playing_music_key": {"en": "Y", "de": "Y"},
+    "help_playing_music_desc": {"en": "Next music track",
+                                "de": "Naechster Musiktitel"},
+    "help_section_general": {"en": "Anywhere", "de": "Ueberall"},
+    "help_general_osd_key": {"en": "F12 / Mode (pad)", "de": "F12 / Mode-Taste (Pad)"},
+    "help_general_osd_desc": {"en": "Open the MiSTer OSD (joystick setup, settings)",
+                              "de": "MiSTer-OSD oeffnen (Joystick-Definition, Einstellungen)"},
+    "help_general_osd_back_key": {"en": "F10 / X (pad)", "de": "F10 / X (Pad)"},
+    "help_general_osd_back_desc": {"en": "Back to the frontend from the OSD",
+                                   "de": "Zurueck ins Frontend aus dem OSD"},
     "sys_trophy_action": {"en": "My trophy room", "de": "Mein Trophaeenraum"},
     "sys_year_review_action": {"en": "Year in review", "de": "Jahresrueckblick"},
     "sys_secrets_action": {"en": "Secrets", "de": "Geheimnisse"},
@@ -12193,7 +12306,35 @@ class Frontend:
         screen()/draw_diary_screen(). Erwaehnt bewusst NUR, DASS es
         Geheimnisse gibt (der System-Menue-Eintrag "Geheimnisse" ist
         ohnehin fuer jeden sichtbar) - nicht WELCHE das sind, siehe
-        SECRET_CODES-Kommentar fuer die volle Begruendung."""
+        SECRET_CODES-Kommentar fuer die volle Begruendung.
+
+        UEBERARBEITET (Nutzerwunsch: bessere, gerade auf CRT gut
+        erkennbare Darstellung, welche Taste was bewirkt): bisher ein
+        einziger Fliesstext-Satz pro Zeile ("F7: Durchgespielt-Status
+        umschalten") - auf einem 320x240-CRT bei Schriftgroesse 1
+        muehsam am Stueck zu lesen, und die eigentliche Taste ging im
+        Satz unter. Jetzt Taste/Menuepunkt GROSS UND HELL (C_TITLE,
+        gleiche Farbe wie Ueberschriften/Logo - bewusst der hoechste
+        Kontrast im ganzen Farbschema) farblich abgesetzt von der
+        Wirkung in normaler Textfarbe - dadurch laesst sich die Liste
+        an den hellen Tasten-Namen entlang "scannen", ohne jede Zeile
+        ganz lesen zu muessen.
+
+        Zwei Layout-Varianten je Eintrag, je nachdem ob genug Platz
+        ist: KURZE Tasten (z.B. "F6", "OK / A") bleiben zusammen mit
+        der Wirkung auf EINER Zeile (spart Scroll-Laenge gegenueber
+        durchgehend zweizeilig) - nur die paar wirklich LANGEN
+        Bezeichnungen (z.B. die Esc/F10-Haltezeit, die Pad-Kombo)
+        bekommen weiterhin eine eigene Zeile fuer sich, mit der
+        Wirkung darunter eingerueckt, da sie sonst kaum noch Platz
+        fuer die Wirkung daneben liessen. Lange Wirkungstexte duerfen
+        in beiden Faellen ueber mehrere eingerueckte Zeilen umbrechen,
+        ohne dass die Taste selbst irgendwo mitten im Text verschwindet.
+
+        Ausserdem ergaenzt um bisher gar nicht aufgefuehrte, aber
+        real vorhandene Tasten (beim Durchgehen der KEYMAP aufgefallen:
+        F11/F12/F10/Y/Start+Select existierten, waren in der Hilfe
+        aber nirgends erwaehnt)."""
         fb = self.fb
         W, H = fb.width, fb.height
         s = max(1, H // 360)
@@ -12201,35 +12342,64 @@ class Frontend:
         oy = H * OVERSCAN_Y // 100
         title = t("help_title")
         title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
-        maxc = max(8, (W - 2 * ox) // (8 * s))
+        stack_indent = 14 * s
+        maxc_key = max(8, (W - 2 * ox) // (8 * s))
+        maxc_desc_stacked = max(8, (W - 2 * ox - stack_indent) // (8 * s))
+        gap_chars = 2   # Abstand (in Zeichen) zwischen Taste und Wirkung bei einzeiligem Layout
+        min_inline_chars = 10   # unter diesem Rest-Platz lohnt sich Inline nicht mehr - stapeln
 
         section_keys = [
-            ("header", "help_section_nav"), ("line", "help_nav_move"),
-            ("line", "help_nav_ok"), ("line", "help_nav_back"),
-            ("line", "help_nav_letter"),
-            ("header", "help_section_list"), ("line", "help_list_completed"),
-            ("line", "help_list_favorite"), ("line", "help_list_showcase"),
-            ("header", "help_section_menu"), ("line", "help_menu_continue"),
-            ("line", "help_menu_collections"), ("line", "help_menu_hunter"),
-            ("header", "help_section_system"), ("line", "help_system_stats"),
-            ("line", "help_system_secrets"), ("line", "help_system_credits"),
-            ("header", "help_section_playing"), ("line", "help_playing_exit"),
+            ("header", "help_section_nav"), ("item", "help_nav_move"),
+            ("item", "help_nav_ok"), ("item", "help_nav_back"),
+            ("item", "help_nav_letter"),
+            ("header", "help_section_list"), ("item", "help_list_showcase"),
+            ("item", "help_list_completed"), ("item", "help_list_favorite"),
+            ("item", "help_list_random"),
+            ("header", "help_section_menu"), ("item", "help_menu_continue"),
+            ("item", "help_menu_collections"), ("item", "help_menu_hunter"),
+            ("header", "help_section_system"), ("item", "help_system_stats"),
+            ("item", "help_system_secrets"), ("item", "help_system_credits"),
+            ("header", "help_section_playing"), ("item", "help_playing_exit"),
+            ("item", "help_playing_exit_pad"), ("item", "help_playing_music"),
+            ("header", "help_section_general"), ("item", "help_general_osd"),
+            ("item", "help_general_osd_back"),
         ]
         # BUGFIX (Nutzer-Rueckmeldung: auf CRT wurde z.B. "OK/A:
-        # auswaehlen, Kategorie/Ord~" abgeschnitten): jede "line"
+        # auswaehlen, Kategorie/Ord~" abgeschnitten): jede Zeile
         # bereits HIER, vor dem Scroll-Aufbau, an Wortgrenzen umbrechen
-        # (_wrap_text()) statt spaeter beim Zeichnen hart abzuschneiden -
-        # aus einer logischen Zeile koennen so mehrere Anzeige-Zeilen
-        # werden, jede davon vollstaendig lesbar.
+        # (_wrap_text()) statt spaeter beim Zeichnen hart abzuschneiden.
+        # Zeilenarten: "header" (Abschnittsueberschrift), "inline"
+        # (Taste + erster Wirkungsteil auf einer Zeile, Taste bei x=ox,
+        # Wirkung bei x=ox+desc_indent), "key"/"desc" (gestapeltes
+        # Layout fuer lange Tasten-Bezeichnungen).
         rows = []
         for kind, key in section_keys:
             if kind == "header":
-                rows.append(("header", t(key)))
+                rows.append(("header", t(key), None))
+                continue
+            key_text = t(key + "_key")
+            desc_text = t(key + "_desc")
+            desc_indent_chars = len(key_text) + gap_chars
+            desc_width = maxc_key - desc_indent_chars
+            longest_word = max((len(w) for w in desc_text.split(" ")), default=0)
+            # Inline NUR, wenn daneben genug Platz ist, UND das laengste
+            # einzelne Wort der Wirkung dort auch OHNE harten Wortumbruch
+            # hineinpasst - sonst reisst _wrap_text() lange Woerter (z.B.
+            # "Trophaeenraum,") haesslich mitten durch. In dem Fall lieber
+            # auf das gestapelte Layout ausweichen, das deutlich mehr
+            # Breite fuer die Wirkung hat.
+            if desc_width >= min_inline_chars and desc_width >= longest_word:
+                desc_lines = self._wrap_text(desc_text, desc_width) or [""]
+                rows.append(("inline", key_text, desc_lines[0], desc_indent_chars))
+                for extra in desc_lines[1:]:
+                    rows.append(("desc", extra, desc_indent_chars))
             else:
-                for line in self._wrap_text("  " + t(key), maxc):
-                    rows.append(("line", line))
+                for line in self._wrap_text(key_text, maxc_key):
+                    rows.append(("key", line, None))
+                for line in self._wrap_text(desc_text, maxc_desc_stacked):
+                    rows.append(("desc", line, stack_indent // (8 * s)))
 
-        rowh = 24 * s
+        rowh = 22 * s
         list_y0 = oy + 56 * s // 2 + 44 * s
         hint_scale = s - 1 if s > 1 else 1
         list_y1 = H - oy - 8 * hint_scale - 6 * s
@@ -12240,11 +12410,19 @@ class Frontend:
             fb.clear(C_BG)
             fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
             y = list_y0
-            for kind, text in rows[scroll:scroll + visible]:
+            for row in rows[scroll:scroll + visible]:
+                kind = row[0]
                 if kind == "header":
-                    fb.text(ox, y, text, s, accent_for(None), C_BG)
-                else:
-                    fb.text(ox, y, text, s, C_TEXT, C_BG)
+                    fb.text(ox, y, row[1], s, accent_for(None), C_BG)
+                elif kind == "key":
+                    fb.text(ox, y, row[1], s, C_TITLE, C_BG)
+                elif kind == "desc":
+                    _, text, indent_chars = row
+                    fb.text(ox + indent_chars * 8 * s, y, text, s, C_TEXT, C_BG)
+                else:   # "inline": Taste hell, Wirkung daneben in Normalfarbe
+                    _, key_text, desc_first, desc_indent_chars = row
+                    fb.text(ox, y, key_text, s, C_TITLE, C_BG)
+                    fb.text(ox + desc_indent_chars * 8 * s, y, desc_first, s, C_TEXT, C_BG)
                 y += rowh
             if max_scroll > 0:
                 scroll_hint = t("top10_scroll_hint", scroll + 1,
@@ -13556,6 +13734,22 @@ class Frontend:
                         if ra_core:
                             use_ra = self.draw_core_choice_screen(syskey, name)
                             if use_ra is None:
+                                # BUGFIX (Nutzer-Rueckmeldung: nach F11 +
+                                # "Zurueck" am Core-Auswahlbildschirm baute
+                                # sich das Hauptmenue nicht mehr richtig
+                                # auf): draw_core_choice_screen() zeichnet
+                                # sein eigenes Bild direkt ins Framebuffer
+                                # (fb.flip()), voellig unabhaengig von
+                                # self.draw(). Beim normalen Betreten einer
+                                # Kategorie (_enter_category()) faengt das
+                                # nachfolgende, allgemeine self.draw() am
+                                # Ende der Hauptschleife das automatisch
+                                # wieder auf - hier aber nicht, weil dieser
+                                # Zweig IMMER mit "continue" endet (auch im
+                                # Erfolgsfall, siehe unten) und diesen
+                                # Aufbau-Schritt dadurch ueberspringt. Erst
+                                # explizit draw(), DANN abbrechen.
+                                self.draw()
                                 continue   # ESC/back - Zufallsstart abgebrochen
                             ra_choice = ra_core if use_ra else None
                         rom, ext, _sk, rbf, (dl, ft, ix) = rand_arg
