@@ -8539,11 +8539,30 @@ class MusicPlayer:
         Laesst den An/Aus-Zustand (self.enabled) bewusst unberuehrt.
         Ohne geladenes rainwave-Modul (siehe Import-Absicherung oben)
         bleibt das ein no-op - es gaebe nichts, wohin man umschalten
-        koennte."""
+        koennte.
+
+        BUGFIX (Nutzer-Rueckmeldung: "wenn ich die Musikquelle
+        wechsel nimmt das Frontend ein paar Sekunden lang KEINE
+        Eingabe an, dann ziehen alle auf einmal nach"): rief bisher
+        SYNCHRON in der Hauptschleife self._stop_current() auf, was
+        intern terminate()+wait(timeout=2) auf den alten mpg123-
+        Prozess macht - bei einem gerade haengenden Netzwerk-Stream
+        (Radio reagiert nicht sofort auf SIGTERM) blockierte das
+        spuerbar die GESAMTE Eingabeverarbeitung, da beides im selben
+        Haupt-Thread lief. Jetzt wie bei cycle_volume()/
+        _apply_volume_async() (siehe dortiger Kommentar, gleicher
+        Grund) in einem Hintergrund-Thread erledigt: state (Quelle/
+        Sender) wird weiterhin SOFORT synchron aktualisiert (billig,
+        die Menue-Beschriftung stimmt sofort), nur das eigentliche
+        Stoppen+Starten von mpg123 laeuft asynchron - weiterhin ueber
+        denselben _proc_lock serialisiert wie tick()/die Lautstaerke-
+        Anpassung, also weiterhin GARANTIERT kein doppelter mpg123
+        gleichzeitig (der urspruengliche Grund fuer den bisherigen
+        synchronen Ablauf bleibt gewahrt, nur eben nicht mehr
+        blockierend fuer die Hauptschleife)."""
         if self.radio is None:
             return
         stations = sorted(rainwave.RAINWAVE_STATIONS)
-        self._stop_current()   # laufende Quelle stoppen; tick() startet die neue
         if self.source == "mp3":
             self.source = "radio"
             self.radio.set_station(stations[0])
@@ -8555,11 +8574,10 @@ class MusicPlayer:
                 self.source = "mp3"
         self._track_started_at = None
         self._save_source()
-        if self.enabled:
-            if not self.paused_for_core:
-                self.tick()
+        if self.enabled and not self.paused_for_core:
+            threading.Thread(target=self._start_current, daemon=True).start()
         else:
-            self._stop_current()
+            threading.Thread(target=self._stop_current, daemon=True).start()
 
     def cycle_volume(self):
         """Lautstaerke 0->20->...->100->0 (Musik UND Menue-Sounds)."""
@@ -12201,6 +12219,47 @@ class Frontend:
             self._last_bootstate = state
             self._last_snapshot = now
 
+    def _play_secret_sound(self):
+        """Nutzerwunsch: "sobald einer den geheimen Sound aktiviert
+        muss der hoerbar sein" - bisher lief das ueber das normale
+        play_sfx(), das den Sound STUMM uebersprang, sobald entweder
+        Musik gerade lief ODER die normalen Navigations-Soundeffekte
+        deaktiviert waren. Sinnvoll fuer haeufige Klick-Toene, aber
+        nicht fuer ein bewusst eingegebenes Easter Egg, das ja gerade
+        DESHALB eingegeben wird, um es zu hoeren.
+
+        Umgehen beide Ausschlussgruende bewusst NUR hier: die SFX-Ein/
+        Aus-Einstellung wird ignoriert (eigener Pfad statt play_sfx()),
+        und laeuft Musik, wird sie kurz pausiert - dieselbe Geraete-
+        Ueberschneidung wie bei normalen SFX gilt genauso hier (der
+        geheime Sound ist jetzt ein echter MP3-Track, kein kurzer
+        synthetischer Klang mehr), also nicht einfach gleichzeitig
+        abspielen, sondern kurz Platz machen und danach automatisch
+        wieder fortsetzen. Laeuft komplett in einem Hintergrund-Thread
+        (nicht-blockierend, gleiches Prinzip wie cycle_source() oben)."""
+        path = os.path.join(SFX_DIR, "secret_found.mp3")
+        if not os.path.exists(path) or not os.path.exists(MPG123_BIN):
+            play_sfx("secret_found", music_playing=False)   # Rueckfall: alter Klang
+            return
+        music = self.music
+        was_playing = music._proc_alive() and not music.paused_for_core
+
+        def _worker():
+            if was_playing:
+                music._stop_current()
+            try:
+                proc = subprocess.Popen(
+                    [MPG123_BIN, "-q", "-f", _mpg_scale(), path],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    stdin=subprocess.DEVNULL)
+                proc.wait()
+            except OSError:
+                pass
+            if was_playing and music.enabled and not music.paused_for_core:
+                music._start_current()
+
+        threading.Thread(target=_worker, daemon=True).start()
+
     def _on_secret_triggered(self, secret_id, is_new):
         """Wird aufgerufen, sobald ein Geheimcode
         erfolgreich erkannt wurde (siehe run()) - fuehrt die eigentliche
@@ -12227,7 +12286,7 @@ class Frontend:
             self.draw_dev_room_screen()
             self.draw()
         elif secret_id == "secret_sound":
-            play_sfx("secret_found", music_playing=self.music._proc_alive())
+            self._play_secret_sound()
             if not is_new:
                 self.draw(message=t("secret_sound_replay"))
 
