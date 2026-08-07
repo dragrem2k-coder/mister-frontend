@@ -3376,6 +3376,77 @@ import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib
 # Nummer hier).
 FRONTEND_VERSION = "4.2"
 
+# NEUES FEATURE (Nutzerwunsch: "wenn es ein Update gibt, einmal eine
+# Info anzeigen" - das eigentliche Herunterladen/Installieren bleibt
+# bewusst manuell ueber install_frontend.sh, hier geht es NUR um die
+# Benachrichtigung). Die VERSION-Datei liegt im Repo bereits neben
+# frontend.py - ein Rohtext-Abruf dieser EINEN Datei via
+# raw.githubusercontent.com reicht als Versionspruefung, kein API-
+# Rate-Limit, keine JSON-Antwort noetig.
+UPDATE_CHECK_URL = ("https://raw.githubusercontent.com/dragrem2k-coder/"
+                    "mister-frontend/main/frontend/VERSION")
+UPDATE_CHECK_STATE_FILE = "/media/fat/frontend/update_check_state.json"
+UPDATE_CHECK_DISABLED_FLAG_FILE = "/media/fat/frontend/update_check_disabled"
+
+def update_check_enabled():
+    return not os.path.exists(UPDATE_CHECK_DISABLED_FLAG_FILE)
+
+def toggle_update_check():
+    if os.path.exists(UPDATE_CHECK_DISABLED_FLAG_FILE):
+        try:
+            os.remove(UPDATE_CHECK_DISABLED_FLAG_FILE)
+        except OSError:
+            pass
+    else:
+        try:
+            dirname = os.path.dirname(UPDATE_CHECK_DISABLED_FLAG_FILE)
+            if dirname:
+                os.makedirs(dirname, exist_ok=True)
+            open(UPDATE_CHECK_DISABLED_FLAG_FILE, "w").close()
+        except OSError:
+            pass
+
+def load_update_state():
+    try:
+        with open(UPDATE_CHECK_STATE_FILE) as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+def save_update_state(state):
+    try:
+        os.makedirs(os.path.dirname(UPDATE_CHECK_STATE_FILE), exist_ok=True)
+        with open(UPDATE_CHECK_STATE_FILE, "w") as f:
+            json.dump(state, f)
+    except OSError:
+        pass
+
+def _parse_version(s):
+    """"4.2" -> (4, 2), "4.10-test3" -> (4, 10) - nur die fuehrenden
+    Zahlenteile zaehlen fuer den Vergleich, ein Zusatz wie "-test3"
+    (siehe Versionierungsregeln oben) wird ignoriert."""
+    parts = []
+    for chunk in s.strip().split("."):
+        num = ""
+        for ch in chunk:
+            if ch.isdigit():
+                num += ch
+            else:
+                break
+        if not num:
+            break
+        parts.append(int(num))
+    return tuple(parts)
+
+def _version_newer(remote, local):
+    """True, wenn remote (String) eine tatsaechlich hoehere Version als
+    local (String) ist - reiner Zahlenvergleich, siehe _parse_version()."""
+    try:
+        return _parse_version(remote) > _parse_version(local)
+    except (ValueError, AttributeError):
+        return False
+
 LOGFILE = "/tmp/frontend.log"
 LOG_MAX_BYTES = 512 * 1024      # ab dieser Groesse wird gekuerzt
 LOG_KEEP_BYTES = 256 * 1024     # so viel vom Ende bleibt erhalten
@@ -8010,6 +8081,20 @@ def _apply_ntp_result(unix_time):
         NTP_SYNC_OK = False
         return False
 
+def check_for_update(timeout=5.0):
+    """Fragt die aktuell auf GitHub liegende VERSION-Datei ab (reiner
+    Rohtext-Abruf, kein API-Rate-Limit). Gibt den Versions-String
+    zurueck (z.B. "4.3") oder None bei jedem Fehler (kein Internet,
+    DNS-Problem, Zeitueberschreitung, Repo umbenannt usw.) - ein
+    fehlgeschlagener Update-Check darf niemals irgendetwas anderes
+    stoeren, deshalb ein einzelnes breites except."""
+    try:
+        with urllib.request.urlopen(UPDATE_CHECK_URL, timeout=timeout) as resp:
+            text = resp.read(200).decode("utf-8", "ignore").strip()
+        return text if text else None
+    except Exception:
+        return None
+
 def sync_system_clock_from_ntp(timeout=2.5, blocking=True):
     """Setzt die Systemuhr per NTP, FALLS ein lokales Netzwerk vorhanden
     ist - in einem separaten Thread mit hartem Zeitlimit, damit eine
@@ -9009,6 +9094,14 @@ TRANSLATIONS = {
                    "de": "Navigations-Soundeffekte: AN -> ausschalten"},
     "sys_sfx_off": {"en": "Navigation sounds: OFF -> turn on",
                     "de": "Navigations-Soundeffekte: AUS -> einschalten"},
+    "sys_update_on": {"en": "Check for updates: ON -> turn off",
+                      "de": "Auf Updates pruefen: AN -> ausschalten"},
+    "sys_update_off": {"en": "Check for updates: OFF -> turn on",
+                       "de": "Auf Updates pruefen: AUS -> einschalten"},
+    "sys_update_available": {"en": "Update available: v%s! -> turn check off",
+                             "de": "Update verfuegbar: v%s! -> Pruefung ausschalten"},
+    "update_available_popup": {"en": "Update v%s!",
+                               "de": "Update v%s!"},
     "attract_hint": {"en": "Press any button to continue",
                      "de": "Beliebige Taste zum Fortfahren"},
     "scanning":  {"en": "Scanning: %s", "de": "Durchsuche: %s"},
@@ -9131,6 +9224,14 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     netwait_label = t("sys_network_wait_on" if network_wait_enabled()
                       else "sys_network_wait_off")
     sfx_label = t("sys_sfx_on") if sfx_enabled_flag() else t("sys_sfx_off")
+    if not update_check_enabled():
+        update_label = t("sys_update_off")
+    else:
+        _remote_v = load_update_state().get("remote_version")
+        if _remote_v and _version_newer(_remote_v, FRONTEND_VERSION):
+            update_label = t("sys_update_available", _remote_v)
+        else:
+            update_label = t("sys_update_on")
     ra_user, _ra_key = load_ra_config()
     ra_label = t("sys_ra_configured", ra_user) if ra_user else t("sys_ra_setup")
 
@@ -9175,6 +9276,7 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             (t("sys_setup_wizard"), "setup_wizard", None),
             (t("sys_secrets_action"), "secrets", None),
             (t("sys_credits_action"), "credits", None),
+            (update_label, "update_check", None),
         ),
         t("sys_group_maintenance"): folder(
             (t("sys_osd"), "osd", None),
@@ -10144,6 +10246,31 @@ class Frontend:
             time.sleep(self.RA_PREWARM_THROTTLE_SECONDS)
         LOG("RA-Hintergrund-Vorwaermen: fertig (%d von %d tatsaechlich abgerufen)"
             % (warmed, len(candidates)))
+
+    def _check_for_update_background(self):
+        """Laeuft in einem eigenen Hintergrund-Thread (Nutzerwunsch:
+        "wenn es ein Update gibt, einmal eine Info anzeigen" - das
+        eigentliche Herunterladen/Installieren bleibt bewusst manuell
+        ueber install_frontend.sh, hier geht es NUR um die
+        Benachrichtigung). EIN einzelner, leiser Abruf pro Sitzung -
+        schlaegt er fehl (kein Internet, DNS-Problem), wird es beim
+        naechsten Neustart einfach wieder versucht, kein Wiederholungs-
+        Loop und keine Fehlermeldung, die stoert.
+
+        self._update_popup_pending wird NUR gesetzt (nicht selbst
+        gezeichnet - Framebuffer-Zugriff bleibt dem Haupt-Thread
+        vorbehalten) und von next_action() im Haupt-Thread konsumiert,
+        siehe dortiger Kommentar."""
+        remote = check_for_update()
+        if not remote:
+            return
+        state = load_update_state()
+        state["remote_version"] = remote
+        state["last_checked"] = time.time()
+        if _version_newer(remote, FRONTEND_VERSION) and state.get("notified_version") != remote:
+            state["notified_version"] = remote
+            self._update_popup_pending = remote
+        save_update_state(state)
 
     # ------------------------------------------------------------------
     # Adaptives Layout: alles wird aus der Framebuffer-Hoehe abgeleitet.
@@ -11500,6 +11627,21 @@ class Frontend:
                 self._ra_prewarm_started = True
                 threading.Thread(target=self._prewarm_ra_achievements,
                                  daemon=True).start()
+
+            # Update-Pruefung (Nutzerwunsch, siehe
+            # _check_for_update_background()): gleiches Ein-mal-pro-
+            # Sitzung-Muster wie das RA-Vorwaermen oben - EIN einzelner
+            # Abruf, sobald wirklich Leerlauf herrscht.
+            if (not getattr(self, "_update_check_started", False)
+                    and update_check_enabled()
+                    and time.monotonic() - self._last_input_time > self._attract_delay_cached()):
+                self._update_check_started = True
+                threading.Thread(target=self._check_for_update_background,
+                                 daemon=True).start()
+            pending_update = getattr(self, "_update_popup_pending", None)
+            if pending_update:
+                self._update_popup_pending = None
+                self.draw(message=t("update_available_popup", pending_update))
 
             if self.attract_mode:
                 if time.monotonic() >= self._attract_change_next:
@@ -14490,6 +14632,9 @@ class Frontend:
                             self._refresh_system_category()
                         elif kind == "sfx":
                             toggle_sfx()
+                            self._refresh_system_category()
+                        elif kind == "update_check":
+                            toggle_update_check()
                             self._refresh_system_category()
                         elif kind == "top10_time":
                             self.draw_top10_screen("seconds")
