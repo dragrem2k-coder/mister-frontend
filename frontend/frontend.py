@@ -3557,6 +3557,7 @@ GAMES_CACHE = "/media/fat/frontend/games_cache.json"
 RECENT_FILE = "/media/fat/frontend/recently_played.json"
 RECENT_MAX = 15
 FAVORITES_FILE = "/media/fat/frontend/favorites.json"
+LAST_CORE_CHOICE_FILE = "/media/fat/frontend/last_core_choice.json"
 PLAYTIME_FILE = "/media/fat/frontend/playtime.json"
 COMPLETED_FILE = "/media/fat/frontend/completed.json"
 
@@ -5035,13 +5036,50 @@ GAME_SYSTEMS = [
         {".chd": (1, "s", 0), ".cue": (1, "s", 0)}),
     ("Neo Geo",       "NEOGEO",  ["NEOGEO"],               "_Console/NeoGeo",
         {".neo": (1, "f", 1)}),
+    # SMW Hacks (Nutzerwunsch): eigenes System im Hauptmenue, LAEUFT
+    # ABER mit dem ganz normalen SNES-Core (rbf-Pfad identisch zu
+    # "SNES" oben) - eigener Systemschluessel nur fuer eigene
+    # Akzentfarbe/eigenes Sysart (siehe SYSTEM_ACCENT), NICHT weil ein
+    # eigener Core noetig waere. ROMs liegen unter games/SNES/SMW_HACKS
+    # (wird per claimed_subfolders aus der regulaeren SNES-Kategorie
+    # ausgeschlossen, siehe _scan_games_disk() - sonst Doppel-Anzeige).
+    ("SMW Hacks",     "SMW_HACKS", ["SNES/SMW_HACKS"],      "_Console/SNES",
+        {".sfc": (2, "f", 0), ".smc": (2, "f", 0)}),
+]
+
+# OPTIONALE Systeme (Nutzerwunsch): wie GAME_SYSTEMS oben, aber
+# zusaetzlich mit einer echten Core-Datei-Praesenzpruefung
+# (core_check_path) - erscheinen NUR, wenn diese exakte Datei
+# tatsaechlich auf der SD-Karte liegt, sonst komplett unsichtbar
+# (nicht einmal ein leerer/deaktivierter Eintrag). Anders als die
+# Standardsysteme oben, deren offizielle Cores praktisch immer
+# vorhanden sind und deshalb nie geprueft wurden - hier handelt es
+# sich um einen einzelnen, von Hand installierten Custom-Core
+# (kein versionierter, datumsgestempelter Ordner wie bei den
+# offiziellen Cores, sondern eine einzelne feste Datei direkt in
+# _Console - vom Nutzer bestaetigt: "SNES_Tracker.rbf", Ordner
+# "_Console").
+#
+# Feld-Reihenfolge identisch zu GAME_SYSTEMS (Anzeigename, Systemschluessel,
+# ROM-Unterordner-Liste relativ zu GAMES_BASES, rbf-Pfad OHNE Endung fuer
+# die .mgl-Datei, Dateiendungen-Map), plus fuenftes Feld core_check_path
+# (absoluter Pfad zur tatsaechlichen .rbf-Datei fuer die Praesenzpruefung).
+OPTIONAL_GAME_SYSTEMS = [
+    ("SNES ALTTP Tracker", "SNES_ALTTP_TRACKER", ["SNES/ZELDA_MSU"],
+        "_Console/SNES_Tracker",
+        {".sfc": (2, "f", 0), ".smc": (2, "f", 0)},
+        "/media/fat/_Console/SNES_Tracker.rbf"),
 ]
 
 def system_display_name(syskey):
     """Anzeigename zu einem Systemschluessel (z.B. "Genesis" ->
     "Mega Drive") - fuer Stellen, die einen menschenlesbaren Namen
-    statt des internen Schluessels brauchen (siehe Trophaeenraum)."""
+    statt des internen Schluessels brauchen (siehe Trophaeenraum).
+    Prueft auch OPTIONAL_GAME_SYSTEMS mit."""
     for disp, sk, *_ in GAME_SYSTEMS:
+        if sk == syskey:
+            return disp
+    for disp, sk, *_ in OPTIONAL_GAME_SYSTEMS:
         if sk == syskey:
             return disp
     return syskey or "?"
@@ -5077,6 +5115,7 @@ RA_CORE_NAME_CANDIDATES = {
     "MegaCD":  ["MegaCD", "SegaCD"],
     "NEOGEO":  ["NeoGeo", "NEOGEO"],
     "Saturn":  ["Saturn"],
+    "SMW_HACKS": ["SNES"],   # laeuft mit dem normalen SNES-(RA-)Core, siehe GAME_SYSTEMS-Kommentar
 }
 
 def find_ra_core(syskey):
@@ -5122,6 +5161,8 @@ SYSTEM_ACCENT = {
     "Saturn":  (200, 200, 215),
     "NEOGEO":  (220, 70, 70),
     "ARCADE":  (255, 185, 50),
+    "SNES_ALTTP_TRACKER": (210, 175, 70),   # Gold, angelehnt an das Triforce-Logo
+    "SMW_HACKS": (225, 100, 40),            # Mario-Rot/Orange, abgesetzt von SNES-Lila
 }
 
 def accent_for(syskey):
@@ -7063,7 +7104,9 @@ def scan_cores(skip_dir=None):
 # Release) von Hand hochgezaehlt wird - fliesst mit in die Signatur
 # ein, macht den Cache dadurch automatisch ungueltig, sobald sich die
 # Auswertung selbst geaendert hat, ganz unabhaengig von Datei-mtimes.
-SCAN_LOGIC_VERSION = 2   # 1 = Basis, 2 = "(unl)"/"(pirate)" nicht mehr Junk
+SCAN_LOGIC_VERSION = 4   # 1 = Basis, 2 = "(unl)"/"(pirate)" nicht mehr Junk,
+                         # 3 = OPTIONAL_GAME_SYSTEMS (SNES_Tracker-Core),
+                         # 4 = SMW Hacks (games/SNES/SMW_HACKS)
 
 def _games_signature():
     """Schneller Fingerabdruck der ROM-Ordner (ohne Tiefensuche):
@@ -7106,7 +7149,26 @@ def _games_signature():
                 except OSError:
                     continue
                 sig.append((tag + folder, mtime))
-    sig.sort()
+        for _d, _sk, folders, _r, _e, _core in OPTIONAL_GAME_SYSTEMS:
+            for folder in folders:
+                root = os.path.join(base, folder)
+                try:
+                    mtime = int(os.path.getmtime(root))
+                except OSError:
+                    continue
+                sig.append((tag + folder, mtime))
+    # Core-Datei der optionalen Systeme selbst mit in die Signatur
+    # aufnehmen (nicht nur den ROM-Ordner oben) - sonst wuerde ein
+    # nachtraeglich installierter/entfernter SNES_Tracker-Core NICHT
+    # erkannt, solange sich am ROM-Ordner nichts aendert, und die neue
+    # Kategorie bliebe bis zum naechsten manuellen Rescan unsichtbar.
+    for _d, _sk, _f, _r, _e, core_check_path in OPTIONAL_GAME_SYSTEMS:
+        try:
+            sig.append(("core:" + core_check_path,
+                       int(os.path.getmtime(core_check_path))))
+        except OSError:
+            sig.append(("core:" + core_check_path, None))
+    sig.sort(key=lambda t: (t[0], t[1] is None, t[1]))
     sig.append(("__scan_logic_version__", SCAN_LOGIC_VERSION))
     return sig
 
@@ -7252,6 +7314,56 @@ def toggle_favorite(label, arg):
     except OSError:
         pass
     return now_fav
+
+# NEUES FEATURE (Nutzer-Rueckfrage: "werden bei Weiterspielen und
+# Zuletzt gespielt auch die richtigen Cores fuer die Spiele verwendet,
+# womit sie zuletzt gestartet wurden?"): Antwort war NEIN - die
+# bisherige Core-Wahl (Standard/RA) wurde nur SITZUNGS-lokal in
+# self._ra_core_choice gemerkt, und zwar pro SYSTEM (z.B. "SNES"),
+# nicht pro einzelnem Spiel, UND nur, wenn die echte Kategorie in
+# DERSELBEN Sitzung schon einmal betreten wurde - startete man ein
+# Spiel direkt aus "Weiterspielen"/"Zuletzt gespielt" heraus, griff
+# das oft gar nicht, es lief still (und ohne Nachfrage) der
+# Standard-Core, selbst wenn das Spiel zuletzt mit RA gestartet wurde.
+#
+# Fix: zusaetzlich zur bestehenden Sitzungs-Erinnerung eine
+# PERSISTIERTE, pro einzelnem Spiel (nach Name) gespeicherte "zuletzt
+# tatsaechlich verwendete Core-Wahl" - ueberlebt einen Neustart. Wird
+# in der Hauptschleife als Rueckfallebene genutzt, wenn fuer das
+# aktuelle System in DIESER Sitzung noch keine frische Wahl getroffen
+# wurde (siehe Kommentar dort). Favoriten fragen bewusst IMMER neu
+# (siehe dort) und nutzen diese Datei nur zum Schreiben, nicht zum
+# Lesen.
+def load_last_core_choice(label):
+    """(rbf, setname) oder None - die zuletzt fuer GENAU DIESES Spiel
+    (nach Namen) tatsaechlich verwendete Core-Wahl. None bedeutet
+    sowohl "noch nie erfasst" als auch "zuletzt bewusst Standard-Core
+    gewaehlt" - in beiden Faellen ist das Ergebnis (Standard-Core
+    verwenden) identisch, die Unterscheidung waere ohne Nutzen."""
+    try:
+        with open(LAST_CORE_CHOICE_FILE) as f:
+            data = json.load(f)
+        v = data.get(label)
+        return tuple(v) if v else None
+    except (OSError, ValueError, AttributeError, TypeError):
+        return None
+
+def record_core_choice(label, ra_choice):
+    """Speichert, welche Core-Wahl (ra_choice: (rbf, setname) oder
+    None fuer Standard) beim letzten tatsaechlichen Start dieses
+    Spiels verwendet wurde."""
+    try:
+        with open(LAST_CORE_CHOICE_FILE) as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        data = {}
+    data[label] = list(ra_choice) if ra_choice else None
+    try:
+        os.makedirs(os.path.dirname(LAST_CORE_CHOICE_FILE), exist_ok=True)
+        with open(LAST_CORE_CHOICE_FILE, "w") as f:
+            json.dump(data, f)
+    except OSError:
+        pass
 
 def _wait_for_usb_stable(max_wait=10.0, poll=0.5, min_wait_if_none=3.0):
     """Kurz warten, falls USB-Laufwerke gerade erst einhaengen - nur
@@ -7634,13 +7746,69 @@ def _scan_games_disk(progress_cb=None):
     zu EINEM Eintrag zusammengefasst (beste Region gewinnt,
     REGION_PRIORITY)."""
     cats = []
-    total_sys = len(GAME_SYSTEMS)
+    total_sys = len(GAME_SYSTEMS) + len(OPTIONAL_GAME_SYSTEMS)
+    # Unterordner, die ein ANDERER Eintrag (egal ob GAME_SYSTEMS oder
+    # OPTIONAL_GAME_SYSTEMS) exklusiv fuer sich beansprucht (z.B.
+    # "ZELDA_MSU" oder "SMW_HACKS" unter "SNES"), muessen aus der
+    # REGULAEREN Kategorie desselben Basisordners ausgeschlossen werden -
+    # sonst wuerden dieselben ROMs zusaetzlich unter der normalen SNES-
+    # Kategorie auftauchen und liessen sich dort versehentlich mit dem
+    # falschen Core statt dem dafuer vorgesehenen starten. Nur EIN
+    # Ordner tief beruecksichtigt (passend zu den bisherigen
+    # Anwendungsfaellen) - Schluessel ist der oberste Ordnername (z.B.
+    # "SNES"), Wert die Menge auszuschliessender direkter
+    # Unterordnernamen (z.B. {"ZELDA_MSU", "SMW_HACKS"}).
+    claimed_subfolders = {}
+    for _d, _sk, sub_folders, _r, _e in GAME_SYSTEMS:
+        for f in sub_folders:
+            if "/" in f:
+                top, sub = f.split("/", 1)
+                claimed_subfolders.setdefault(top, set()).add(sub.split("/", 1)[0])
+    for _d, _sk, opt_folders, _r, _e, _core in OPTIONAL_GAME_SYSTEMS:
+        for f in opt_folders:
+            if "/" in f:
+                top, sub = f.split("/", 1)
+                claimed_subfolders.setdefault(top, set()).add(sub.split("/", 1)[0])
     for sys_idx, (disp, syskey, folders, rbf, extmap) in enumerate(GAME_SYSTEMS):
         if progress_cb:
             try:
                 progress_cb(sys_idx, total_sys, disp)
             except Exception:
                 pass
+        sys_node = _empty_node()
+        seen_roots = set()
+        for base in GAMES_BASES:
+            if not os.path.isdir(base):
+                continue
+            for folder in folders:
+                root = os.path.join(base, folder)
+                real = os.path.realpath(root)
+                if not os.path.isdir(root) or real in seen_roots:
+                    continue
+                seen_roots.add(real)
+                sub_node = _scan_folder_tree(root, syskey, rbf, extmap)
+                _merge_node(sys_node, sub_node)
+            for excluded in claimed_subfolders.get(folder, ()):
+                sys_node["folders"].pop(excluded, None)
+        if sys_node["folders"] or sys_node["items"]:
+            cats.append((disp, sys_node, syskey))
+
+    # OPTIONALE Systeme (Nutzerwunsch: SNES_Tracker-Core "wie ein
+    # eigenes System behandeln, falls installiert - falls NICHT
+    # installiert darf das auch nicht mit angezeigt werden"): exakt
+    # dieselbe Scan-Logik wie oben, aber zusaetzlich VORAB die
+    # core_check_path-Datei pruefen - fehlt sie, wird gar nicht erst
+    # gescannt, das System taucht dann so auf, als gaebe es den
+    # Eintrag nicht (kein leerer/ausgegrauter Platzhalter).
+    for opt_idx, (disp, syskey, folders, rbf, extmap, core_check_path) \
+            in enumerate(OPTIONAL_GAME_SYSTEMS):
+        if progress_cb:
+            try:
+                progress_cb(len(GAME_SYSTEMS) + opt_idx, total_sys, disp)
+            except Exception:
+                pass
+        if not os.path.isfile(core_check_path):
+            continue
         sys_node = _empty_node()
         seen_roots = set()
         for base in GAMES_BASES:
@@ -8482,8 +8650,8 @@ TRANSLATIONS = {
     "dev_room_secrets": {"en": "Secrets found: %d of %d", "de": "Geheimnisse gefunden: %d von %d"},
     "dev_room_credits_1": {"en": "Built by Dragrem.",
                            "de": "Gebaut von Dragrem."},
-    "dev_room_credits_2": {"en": "With contributions from TheRealSutefan and Dfense.",
-                           "de": "Mit Beitraegen von TheRealSutefan und Dfense."},
+    "dev_room_credits_2": {"en": "With contributions from TheRealSutefan and Dfense1980.",
+                           "de": "Mit Beitraegen von TheRealSutefan und Dfense1980."},
     "dev_room_thanks": {"en": "Thanks for playing around with hidden things.",
                         "de": "Danke, dass du an geheimen Dingen herumprobierst."},
     "credits_title": {"en": "CREDITS", "de": "MITWIRKENDE"},
@@ -8492,10 +8660,10 @@ TRANSLATIONS = {
     "credits_contrib_heading": {"en": "Contributions", "de": "Beitraege"},
     "credits_contrib_sutefan": {"en": "TheRealSutefan - patches, RA tools, bugfixes",
                                 "de": "TheRealSutefan - Patches, RA-Werkzeuge, Bugfixes"},
-    "credits_contrib_dfense": {"en": "Dfense - contributions",
-                               "de": "Dfense - Mitwirkung"},
-    "credits_contrib_dennsen": {"en": "Dennsen - streaming and testing",
-                                "de": "Dennsen - Streaming und Testen"},
+    "credits_contrib_dfense": {"en": "Dfense1980 - contributions",
+                               "de": "Dfense1980 - Mitwirkung"},
+    "credits_contrib_dennsen": {"en": "Dennsen86 - streaming and testing",
+                                "de": "Dennsen86 - Streaming und Testen"},
     "credits_thanks_heading": {"en": "Thanks", "de": "Danke"},
     "credits_thanks_entry": {"en": "To everyone playing, testing and reporting bugs.",
                              "de": "An alle, die spielen, testen und Fehler melden."},
@@ -13840,24 +14008,67 @@ class Frontend:
                             continue
                         elif kind == "game":
                             rom, ext, syskey, rbf, (dl, ft, ix) = arg
-                            # RA-Core-Wahl anwenden, falls beim Betreten
-                            # dieser Kategorie eine getroffen wurde (siehe
-                            # _enter_category()/find_ra_core()) - sonst
-                            # unveraendert der normale Core aus der
-                            # Systemtabelle. find_ra_core() liefert
-                            # (rbf_pfad, setname) - beide werden
-                            # gebraucht, sonst behandelt MiSTer den
-                            # RA-Core offenbar nicht korrekt als eigene,
-                            # von der Standard-Konfiguration getrennte
-                            # Variante (Nutzer-Rueckmeldung: startete
-                            # sonst immer den normalen Core).
-                            ra_choice = getattr(self, "_ra_core_choice", {}).get(syskey)
+                            ra_core = find_ra_core(syskey) if syskey else None
+                            # Nutzerwunsch: bei FAVORITEN jedes Mal erneut
+                            # fragen, welcher Core gestartet werden soll -
+                            # unabhaengig von Sitzungs- oder gespeichertem
+                            # Verlauf (bewusste, wiederkehrende Auswahl,
+                            # anders als Weiterspielen/Zuletzt gespielt
+                            # unten, die automatisch den zuletzt
+                            # genutzten Core uebernehmen).
+                            in_favorites = self.cats[self.cat_i][0] == t("favorites_cat")
+                            if in_favorites and ra_core:
+                                use_ra = self.draw_core_choice_screen(syskey, label)
+                                if use_ra is None:
+                                    # Siehe F11-Bugfix (gleicher Grund):
+                                    # draw_core_choice_screen() zeichnet
+                                    # eigenstaendig - nach Abbruch explizit
+                                    # neu zeichnen, sonst bleibt der
+                                    # Auswahlbildschirm haengen.
+                                    self.draw()
+                                    continue
+                                ra_choice = ra_core if use_ra else None
+                            else:
+                                # RA-Core-Wahl anwenden, falls beim Betreten
+                                # dieser Kategorie eine getroffen wurde (siehe
+                                # _enter_category()/find_ra_core()) - sonst
+                                # unveraendert der normale Core aus der
+                                # Systemtabelle. find_ra_core() liefert
+                                # (rbf_pfad, setname) - beide werden
+                                # gebraucht, sonst behandelt MiSTer den
+                                # RA-Core offenbar nicht korrekt als eigene,
+                                # von der Standard-Konfiguration getrennte
+                                # Variante (Nutzer-Rueckmeldung: startete
+                                # sonst immer den normalen Core).
+                                #
+                                # BUGFIX (Nutzer-Rueckfrage: "werden bei
+                                # Weiterspielen/Zuletzt gespielt auch die
+                                # richtigen Cores verwendet?"): war bisher
+                                # NICHT der Fall, wenn die echte Kategorie
+                                # in DIESER Sitzung noch nie betreten wurde -
+                                # ra_dict.get(syskey) lieferte dann still
+                                # None (= Standard-Core), selbst wenn das
+                                # Spiel zuletzt mit RA gestartet wurde. Erst
+                                # ra_dict PRUEFEN (key vorhanden? -> frischer,
+                                # expliziter Sitzungs-Stand hat immer Vorrang,
+                                # auch wenn er "Standard" bedeutet), sonst
+                                # auf die zuletzt fuer GENAU DIESES Spiel
+                                # tatsaechlich verwendete, persistierte Wahl
+                                # zurueckfallen.
+                                ra_dict = getattr(self, "_ra_core_choice", {})
+                                if syskey in ra_dict:
+                                    ra_choice = ra_dict[syskey]
+                                elif ra_core:
+                                    ra_choice = load_last_core_choice(label)
+                                else:
+                                    ra_choice = None
                             setname = None
                             if ra_choice:
                                 rbf, setname = ra_choice
                             LOG("Spielstart: %s (%s)%s" % (label, syskey,
                                 " [RA-Core]" if ra_choice else ""))
                             record_recent(label, arg)
+                            record_core_choice(label, ra_choice)
                             mgl = write_mgl(rbf, rom, dl, ft, ix, setname=setname)
                             self.run_core(mgl, label=label, syskey=syskey)
                             continue
