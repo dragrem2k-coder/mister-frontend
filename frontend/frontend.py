@@ -8081,10 +8081,17 @@ def _apply_ntp_result(unix_time):
     Zeitstempels (oder None bei Fehlschlag) und haelt NTP_SYNC_OK
     aktuell. Ausgelagert, damit sowohl der blockierende als auch der
     nicht-blockierende Modus von sync_system_clock_from_ntp() dieselbe
-    Logik nutzen (siehe dort)."""
+    Logik nutzen (siehe dort).
+
+    NACHGEBESSERT (Nutzer-Rueckmeldung: Uhrzeit trotz korrekt
+    eingestelltem UTC+2-Versatz falsch, aber im Log stand dazu
+    RUEBERHAUPT NICHTS - weder Erfolg noch Fehlschlag): die komplette
+    NTP-Kette war bisher vollstaendig stumm, dadurch nicht
+    diagnostizierbar, ob ueberhaupt versucht wurde zu synchronisieren."""
     global NTP_SYNC_OK
     if unix_time is None:
         NTP_SYNC_OK = False
+        LOG("NTP-Sync fehlgeschlagen (kein Zeitserver erreichbar/Zeitueberschreitung)")
         return False
     try:
         # BUGFIX (Nutzer-Rueckmeldung: Uhr zeigte 2 Stunden zu wenig,
@@ -8097,13 +8104,16 @@ def _apply_ntp_result(unix_time):
         # Versatz (siehe load_timezone_offset()) selbst angewendet und
         # mit time.gmtime() formatiert - unabhaengig davon, was die
         # Systemzeitzone gerade zu sein glaubt.
-        local_unix_time = unix_time + load_timezone_offset() * 3600
+        offset_h = load_timezone_offset()
+        local_unix_time = unix_time + offset_h * 3600
         ts = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(local_unix_time))
         subprocess.run(["date", "-s", ts], capture_output=True, timeout=2.0)
         NTP_SYNC_OK = True
+        LOG("NTP-Sync erfolgreich: Systemuhr auf %s gesetzt (UTC%+d)" % (ts, offset_h))
         return True
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError) as e:
         NTP_SYNC_OK = False
+        LOG("NTP-Sync: Systemuhr setzen fehlgeschlagen: %s" % e)
         return False
 
 def check_for_update(timeout=5.0):
@@ -8112,12 +8122,19 @@ def check_for_update(timeout=5.0):
     zurueck (z.B. "4.3") oder None bei jedem Fehler (kein Internet,
     DNS-Problem, Zeitueberschreitung, Repo umbenannt usw.) - ein
     fehlgeschlagener Update-Check darf niemals irgendetwas anderes
-    stoeren, deshalb ein einzelnes breites except."""
+    stoeren, deshalb ein einzelnes breites except.
+
+    NACHGEBESSERT (Nutzer-Rueckmeldung: "es kommt keine Info, dass ein
+    Update verfuegbar ist" - ohne jede Log-Ausgabe war das bisher gar
+    nicht diagnostizierbar: lief der Check ueberhaupt, schlug er fehl,
+    oder gibt es schlicht (noch) keine neuere Version auf GitHub?)."""
     try:
         with urllib.request.urlopen(UPDATE_CHECK_URL, timeout=timeout) as resp:
             text = resp.read(200).decode("utf-8", "ignore").strip()
+        LOG("Update-Check: GitHub meldet Version %r (lokal: %r)" % (text, FRONTEND_VERSION))
         return text if text else None
-    except Exception:
+    except Exception as e:
+        LOG("Update-Check fehlgeschlagen: %s" % e)
         return None
 
 def sync_system_clock_from_ntp(timeout=2.5, blocking=True):
@@ -8144,6 +8161,7 @@ def sync_system_clock_from_ntp(timeout=2.5, blocking=True):
     die Systemuhr aktuell als verlaesslich gilt, ohne selbst NTP
     abfragen zu muessen."""
     if not _has_network():
+        LOG("NTP-Sync uebersprungen: kein Netzwerk erkannt")
         return False
     result = {"t": None}
     def worker():
@@ -10291,6 +10309,7 @@ class Frontend:
         gezeichnet - Framebuffer-Zugriff bleibt dem Haupt-Thread
         vorbehalten) und von next_action() im Haupt-Thread konsumiert,
         siehe dortiger Kommentar."""
+        LOG("Update-Check gestartet (Leerlauf erkannt)")
         remote = check_for_update()
         if not remote:
             return
@@ -10609,6 +10628,7 @@ class Frontend:
         self._clock_retry_count += 1
         backoff = min(30.0 * (2 ** (self._clock_retry_count - 1)), 300.0)
         self._clock_retry_next = now + backoff
+        LOG("NTP-Neuversuch %d/5" % self._clock_retry_count)
         threading.Thread(target=sync_system_clock_from_ntp, daemon=True).start()
 
     def _attract_enabled_cached(self):
