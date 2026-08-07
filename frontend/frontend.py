@@ -8320,7 +8320,18 @@ class MusicPlayer:
         self.pos = 0
         self.proc = None
         self._track_started_at = None
-        self._proc_lock = threading.Lock()   # BUGFIX (uebernommen aus separat
+        # RLock (nicht Lock): tick() unten haelt die Sperre waehrend des
+        # gesamten Durchlaufs (siehe dortiger Kommentar) und ruft dabei
+        # selbst _start_current()/_stop_current() auf, die die Sperre
+        # INTERN ebenfalls holen - mit einem normalen Lock waere das
+        # ein Deadlock (derselbe Thread wartet auf sich selbst). RLock
+        # erlaubt genau das (derselbe Thread darf mehrfach verschachtelt
+        # zugreifen), verhindert aber weiterhin zuverlaessig, dass ZWEI
+        # VERSCHIEDENE Threads (z.B. Haupt-Thread/tick() und ein
+        # Hintergrund-Thread fuer Musikquellenwechsel/geheimen Sound)
+        # gleichzeitig an mpg123 herumschrauben - der urspruengliche
+        # Grund fuer dieses Schloss (siehe Kommentar direkt darunter).
+        self._proc_lock = threading.RLock()   # BUGFIX (uebernommen aus separat
                                               # vorbereitetem Vorschlag, siehe
                                               # CHANGES_v4.2_FIXES.md): verhindert
                                               # doppelte mpg123-Prozesse - der
@@ -8330,6 +8341,20 @@ class MusicPlayer:
                                               # gleichzeitig fuehrten zu doppeltem/
                                               # verzerrtem Radio-Stream.
         self.paused_for_core = False
+        self.paused_for_secret = False   # NEU (Nutzerwunsch: geheimer Sound
+                                          # ueberschnitt sich mit der Musik,
+                                          # "man hoert nur Gestotter") - siehe
+                                          # Frontend._play_secret_sound(): waehrend
+                                          # der geheime Sound abgespielt wird, muss
+                                          # tick() unten das Wieder-Anspringen der
+                                          # Musik unterdruecken, sonst startet tick()
+                                          # (laeuft staendig im Haupt-Loop) die Musik
+                                          # noch WAEHREND der geheime Sound laeuft
+                                          # automatisch neu, sobald es merkt, dass
+                                          # nichts mehr laeuft - GENAU dasselbe
+                                          # Prinzip wie paused_for_core, nur ein
+                                          # eigenes Flag, um mit einem gerade
+                                          # laufenden Core nicht zu kollidieren.
         self._rescan()
 
     @staticmethod
@@ -8485,54 +8510,86 @@ class MusicPlayer:
         Tags) koennen mpg123 nach dem eigentlichen Ende haengen lassen,
         statt sauber zu beenden - poll() wuerde dann faelschlich
         weiterhin 'laeuft noch' melden. Nach MAX_TRACK_SECONDS wird
-        deshalb trotzdem zum naechsten Song gewechselt."""
-        if not self.enabled or self.paused_for_core:
+        deshalb trotzdem zum naechsten Song gewechselt.
+
+        BUGFIX (Nutzer-Rueckmeldung: geheimer Sound ueberschnitt sich
+        mit der Musik/"nur Gestotter", UND der Musikquellenwechsel
+        blockierte trotz des vorherigen Hintergrund-Thread-Fixes immer
+        noch kurz die Eingabe): zwei zusammenhaengende Ursachen.
+        (1) tick() laeuft SEHR haeufig im Haupt-Loop und wusste bisher
+        nichts von einer bewusst pausierten Musik fuer den geheimen
+        Sound - startete sie mitten drin automatisch neu, sobald es
+        "nichts laeuft" sah (paused_for_secret unten behebt das,
+        gleiches Prinzip wie paused_for_core). (2) _start_current()/
+        _stop_current() holen sich INTERN dieselbe Sperre wie ein
+        Hintergrund-Thread (Musikquellenwechsel/geheimer Sound) - lief
+        gerade so ein Hintergrund-Thread, wartete tick() im Haupt-
+        Thread bisher BLOCKIEREND auf dieselbe Sperre, was trotz des
+        Hintergrund-Threads selbst wieder die gesamte Eingabe-
+        verarbeitung anhielt. Jetzt versucht tick() die Sperre nur noch
+        NICHT-BLOCKIEREND zu holen - ist sie gerade belegt, macht
+        tick() diesmal einfach nichts und versucht es beim naechsten
+        Durchlauf (kommt sehr bald wieder) erneut, statt zu warten."""
+        if not self.enabled or self.paused_for_core or self.paused_for_secret:
             return
-        if self.source == "radio":
-            if self.radio is None:
+        if not self._proc_lock.acquire(blocking=False):
+            return   # gerade anderweitig beschaeftigt - naechstes Mal wieder versuchen
+        try:
+            if self.source == "radio":
+                if self.radio is None:
+                    return
+                self.radio.tick()                 # Now-Playing aktuell halten (nur alle 15s)
+                if not self._proc_alive():
+                    # (neu) verbinden - kleiner Backoff gegen Haemmern bei Netzausfall
+                    if self._track_started_at is None or \
+                       time.monotonic() - self._track_started_at > 3:
+                        self._start_current()
                 return
-            self.radio.tick()                 # Now-Playing aktuell halten (nur alle 15s)
-            if not self._proc_alive():
-                # (neu) verbinden - kleiner Backoff gegen Haemmern bei Netzausfall
-                if self._track_started_at is None or \
-                   time.monotonic() - self._track_started_at > 3:
-                    self._start_current()
-            return
-        if not self.playlist:
-            return
-        alive = self._proc_alive()
-        had_proc = self.proc is not None  # VOR _stop_current() merken -
-                                          # das setzt self.proc selbst auf None
-        if alive and self._track_started_at is not None and \
-           time.monotonic() - self._track_started_at > self.MAX_TRACK_SECONDS:
-            LOG("Music: Sicherheitsnetz ausgeloest (Song laeuft laenger "
-                "als %d Minuten) - erzwinge Wechsel"
-                % (self.MAX_TRACK_SECONDS // 60))
-            self._stop_current()
-            alive = False
-        if not alive:
-            if had_proc:
-                LOG("Music: Song beendet, wechsle weiter")
-                self._advance()
-            self._start_current()
+            if not self.playlist:
+                return
+            alive = self._proc_alive()
+            had_proc = self.proc is not None  # VOR _stop_current() merken -
+                                              # das setzt self.proc selbst auf None
+            if alive and self._track_started_at is not None and \
+               time.monotonic() - self._track_started_at > self.MAX_TRACK_SECONDS:
+                LOG("Music: Sicherheitsnetz ausgeloest (Song laeuft laenger "
+                    "als %d Minuten) - erzwinge Wechsel"
+                    % (self.MAX_TRACK_SECONDS // 60))
+                self._stop_current()
+                alive = False
+            if not alive:
+                if had_proc:
+                    LOG("Music: Song beendet, wechsle weiter")
+                    self._advance()
+                self._start_current()
+        finally:
+            self._proc_lock.release()
 
     def next_track(self):
-        """Manual track skip (Y button)."""
+        """Manual track skip (Y button). Nicht-blockierend (gleicher
+        Grund wie cycle_source(), siehe dortiger Kommentar) - laeuft
+        direkt in der Hauptschleife, das Stoppen/Starten von mpg123
+        darf sie deshalb nicht aufhalten."""
         if not self.playlist:
             return
-        self._stop_current()
         self._advance()
-        if self.enabled and not self.paused_for_core:
-            self._start_current()
+
+        def _worker():
+            self._stop_current()
+            if self.enabled and not self.paused_for_core:
+                self._start_current()
+        threading.Thread(target=_worker, daemon=True).start()
 
     def toggle(self):
+        """Musik an/aus (gleicher Nicht-blockierend-Grund wie
+        cycle_source()/next_track() oben)."""
         self.enabled = not self.enabled
         self._save_enabled()
         if self.enabled:
             if not self.paused_for_core:
-                self.tick()
+                threading.Thread(target=self.tick, daemon=True).start()
         else:
-            self._stop_current()
+            threading.Thread(target=self._stop_current, daemon=True).start()
 
     def cycle_source(self):
         """Musik-Quelle umschalten: MP3 -> Radio(Game..All) -> zurueck zu MP3.
@@ -12245,18 +12302,28 @@ class Frontend:
         was_playing = music._proc_alive() and not music.paused_for_core
 
         def _worker():
-            if was_playing:
-                music._stop_current()
+            # paused_for_secret UEBER die gesamte Dauer gesetzt (nicht
+            # erst kurz vor dem eigentlichen Abspielen) - tick() laeuft
+            # staendig im Haupt-Loop und wuerde sonst genau in der
+            # Luecke zwischen dem Stoppen der Musik und dem Start des
+            # geheimen Sounds (oder danach, vor dem eigenen Wieder-
+            # Anspringen) selbst versuchen, die Musik neu zu starten.
+            music.paused_for_secret = True
             try:
-                proc = subprocess.Popen(
-                    [MPG123_BIN, "-q", "-f", _mpg_scale(), path],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    stdin=subprocess.DEVNULL)
-                proc.wait()
-            except OSError:
-                pass
-            if was_playing and music.enabled and not music.paused_for_core:
-                music._start_current()
+                if was_playing:
+                    music._stop_current()
+                try:
+                    proc = subprocess.Popen(
+                        [MPG123_BIN, "-q", "-f", _mpg_scale(), path],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        stdin=subprocess.DEVNULL)
+                    proc.wait()
+                except OSError:
+                    pass
+                if was_playing and music.enabled and not music.paused_for_core:
+                    music._start_current()
+            finally:
+                music.paused_for_secret = False
 
         threading.Thread(target=_worker, daemon=True).start()
 
