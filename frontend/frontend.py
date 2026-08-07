@@ -9897,6 +9897,85 @@ class Frontend:
         self._attract_pool = pool
         return pool
 
+    # NEUES FEATURE (Nutzerwunsch: "im Leerlauf/Attract-Modus nach und
+    # nach die ganze Bibliothek im Hintergrund vorladen, damit wirklich
+    # JEDES Spiel beim ersten F6-Druck schon sofort da ist" - Ausbau
+    # des Stale-while-revalidate-Fixes von vorhin, der nur EINZELNE,
+    # bereits einmal angesehene Spiele beschleunigt hat). Kostet KEINE
+    # zusaetzliche RA-Abfrage fuer die Kandidatenliste selbst - welche
+    # Bibliotheksspiele ueberhaupt eine RA-GameID haben, steht schon
+    # aus dem einen Sammel-Abruf beim Programmstart bereit
+    # (self._ra_lookup, siehe __init__ und lookup_ra_game_id()).
+    RA_PREWARM_STALE_SECONDS = 6 * 3600   # deutlich grosszuegiger als die
+                                          # 15-Minuten-Frische beim aktiven
+                                          # Ansehen (F6) - ein Spiel, das
+                                          # innerhalb der letzten 6 Stunden
+                                          # vorgewaermt wurde, wird bei
+                                          # laengerem Leerlauf NICHT gleich
+                                          # wieder angefasst, sonst wuerde
+                                          # eine grosse Bibliothek bei jedem
+                                          # laengeren Leerlauf komplett neu
+                                          # abgefragt.
+    RA_PREWARM_THROTTLE_SECONDS = 4.0     # Pause zwischen zwei Abrufen -
+                                          # schont RA-API und Netzwerk,
+                                          # kein Sturm auf einmal.
+
+    def _ra_prewarm_candidates(self):
+        """Geordnete Kandidatenliste fuers Vorwaermen: alle Bibliotheks-
+        Spiele mit bekannter RA-GameID, Favoriten und zuletzt Gespielte
+        zuerst (die schaut man sich ohnehin am ehesten mit F6 an -
+        sollen deshalb als erstes fertig sein), Rest danach."""
+        pool = self._attract_games_pool()
+        fav_names = {e[0] for e in load_favorites()}
+        recent_names = {e[0] for e in load_recent()}
+        seen = set()
+        scored = []
+        for name, syskey, arg in pool:
+            if name in seen:
+                continue
+            game_id = lookup_ra_game_id(self._ra_lookup, name, syskey)
+            if not game_id:
+                continue
+            seen.add(name)
+            prio = 0 if name in fav_names else (1 if name in recent_names else 2)
+            scored.append((prio, name, game_id))
+        scored.sort(key=lambda t: t[0])
+        return [(name, game_id) for _prio, name, game_id in scored]
+
+    def _prewarm_ra_achievements(self):
+        """Laeuft in einem eigenen Hintergrund-Thread, EIN einmaliger
+        Durchlauf pro Sitzung (kein endloses Wiederholen). Pausiert bei
+        jeder Nutzer-Eingabe (wartet dann einfach weiter statt
+        abzubrechen), ueberspringt bereits ausreichend frische
+        Eintraege (RA_PREWARM_STALE_SECONDS), und nutzt fuer den
+        eigentlichen Abruf dieselbe Sperren-geschuetzte
+        _refresh_ra_achievements_background() wie der F6-Bildschirm
+        selbst - kein Doppel-Abruf moeglich, falls der Nutzer
+        waehrenddessen zufaellig genau dasselbe Spiel per F6 ansieht.
+        Wird synchron (nicht als weiterer Thread pro Spiel) innerhalb
+        DIESES einen Hintergrund-Threads aufgerufen, damit die
+        Drosselung (Pause zwischen Abrufen) auch wirklich greift."""
+        candidates = self._ra_prewarm_candidates()
+        if not candidates:
+            return
+        LOG("RA-Hintergrund-Vorwaermen: %d Kandidat(en)" % len(candidates))
+        warmed = 0
+        for name, game_id in candidates:
+            while True:
+                idle_for = time.monotonic() - self._last_input_time
+                if idle_for > self._attract_delay_cached():
+                    break
+                time.sleep(2.0)
+            cache = _load_ra_achievements_cache()
+            entry = cache.get(str(game_id))
+            if entry and (time.time() - entry.get("ts", 0)) < self.RA_PREWARM_STALE_SECONDS:
+                continue
+            _refresh_ra_achievements_background(game_id, timeout=5.0)
+            warmed += 1
+            time.sleep(self.RA_PREWARM_THROTTLE_SECONDS)
+        LOG("RA-Hintergrund-Vorwaermen: fertig (%d von %d tatsaechlich abgerufen)"
+            % (warmed, len(candidates)))
+
     # ------------------------------------------------------------------
     # Adaptives Layout: alles wird aus der Framebuffer-Hoehe abgeleitet.
     # 1080p -> Schrift 3x, 720p -> 2x, 480p -> 1x
@@ -11223,6 +11302,23 @@ class Frontend:
                 if need_mq:
                     self.marquee_reset()
                 return act
+
+            # RA-Hintergrund-Vorwaermen (Nutzerwunsch, siehe
+            # _prewarm_ra_achievements()): EINMAL pro Sitzung starten,
+            # sobald wirklich Leerlauf herrscht - bewusst UNABHAENGIG
+            # davon, ob der visuelle Attract-Modus selbst eingeschaltet
+            # ist (self._attract_enabled_cached()), da es hier nur um
+            # Leerlauf-Erkennung geht, nicht um die Diashow. getattr()-
+            # Ein-mal-Schalter statt einer neuen __init__-Zuweisung -
+            # gleiches, bereits etablierte Muster wie bei
+            # self._ra_core_choice (siehe dortiger Kommentar zur
+            # Reihenfolge-Lehre).
+            if (not getattr(self, "_ra_prewarm_started", False)
+                    and ra_enabled() and self._ra_lookup
+                    and time.monotonic() - self._last_input_time > self._attract_delay_cached()):
+                self._ra_prewarm_started = True
+                threading.Thread(target=self._prewarm_ra_achievements,
+                                 daemon=True).start()
 
             if self.attract_mode:
                 if time.monotonic() >= self._attract_change_next:
