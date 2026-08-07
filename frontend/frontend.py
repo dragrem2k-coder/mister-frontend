@@ -3363,7 +3363,7 @@ Start auf dem MiSTer (per SSH oder als Startscript):
   python3 /media/fat/frontend/frontend.py
 """
 
-import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib, json, random, math, signal, socket, threading
+import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib, json, random, math, signal, socket, threading, termios
 
 # EINZIGE QUELLE DER WAHRHEIT fuer die Versionsnummer (Vereinbarung,
 # da mehrere Leute an derselben Codebasis arbeiten - siehe Nutzer-
@@ -12123,12 +12123,24 @@ class Frontend:
             tty = open("/dev/tty1", "r+b", buffering=0)
         except OSError:
             tty = None
+        # UEBERNOMMENER VORSCHLAG (TheRealSutefan): tty1 zum STEUERNDEN
+        # Terminal des Scripts machen (neuer Session-Leader + TIOCSCTTY).
+        # Erst dann laufen dialog/whiptail und alles, was /dev/tty
+        # DIREKT oeffnet, sauber - genau wie beim Start aus MiSTers OSD.
+        # Ohne das leitet subprocess nur stdin/out/err um, das Script hat
+        # aber kein steuerndes Terminal -> interaktive Scripts scheitern.
+        def _ctty():
+            os.setsid()
+            try:
+                fcntl.ioctl(0, termios.TIOCSCTTY, 1)
+            except OSError:
+                pass
         cmd = ["/bin/bash", path] + (list(args) if args else [])
         # Bildschirm dem Script ueberlassen
         try:
             if tty:
                 tty.write(b"\x1b[2J\x1b[H")     # Konsole loeschen
-                subprocess.call(cmd,
+                subprocess.call(cmd, preexec_fn=_ctty,
                                 stdin=tty, stdout=tty, stderr=tty,
                                 env=dict(os.environ, TERM="linux",
                                          HOME="/root"))
