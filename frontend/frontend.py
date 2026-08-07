@@ -8260,7 +8260,17 @@ def play_sfx(name, music_playing=False):
     danach - sonst waere bei jedem einzelnen Navigations-Schritt
     waehrend eines Turbo-Sprungs eine Datei-Existenzpruefung noetig
     gewesen. Zusaetzlich per _sfx_enabled_cached() auf 5s
-    zwischengespeichert."""
+    zwischengespeichert.
+
+    ERWEITERT (Nutzerwunsch: eigener, echter Sound statt des
+    synthetischen Klangs fuer den geheimen Ikari-Warriors-Code):
+    liegt eine <name>.mp3 in SFX_DIR, wird DIE bevorzugt abgespielt
+    (per mpg123, das ohnehin schon fuer die Hintergrundmusik im
+    Einsatz ist - aplay selbst kann keine MP3s dekodieren). Die
+    <name>.wav bleibt als automatisch erzeugte Rueckfallebene
+    bestehen (siehe _ensure_sfx_files()), falls keine eigene MP3
+    hinterlegt ist - dadurch bricht nichts, wenn z.B. jemand die
+    sfx-mp3-Datei versehentlich loescht."""
     global _last_sfx_time, _sfx_proc
     now = time.monotonic()
     if now - _last_sfx_time < SFX_MIN_GAP:
@@ -8272,6 +8282,15 @@ def play_sfx(name, music_playing=False):
     if not _sfx_enabled_cached():
         return
     _last_sfx_time = now
+    mp3_path = os.path.join(SFX_DIR, name + ".mp3")
+    if os.path.exists(mp3_path) and os.path.exists(MPG123_BIN):
+        try:
+            _sfx_proc = subprocess.Popen(
+                [MPG123_BIN, "-q", "-f", _mpg_scale(), mp3_path],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            pass
+        return
     path = os.path.join(SFX_DIR, name + ".wav")
     try:
         _sfx_proc = subprocess.Popen(["aplay", "-q", path],
