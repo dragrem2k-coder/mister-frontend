@@ -6951,6 +6951,31 @@ def _art_path_in(base_dir, syskey, rom_basename):
 def art_path(syskey, rom_basename):
     return _art_path_in(ART_BASE, syskey, rom_basename)
 
+def _category_art_key(name, syskey):
+    """Kuenstlicher Schluessel NUR fuer die Sysart-/Hintergrundsuche
+    (BG_BASE/SYSART_BASE) - fuer echte Systeme identisch mit syskey.
+
+    NEU (Nutzerwunsch: eigenes Artwork fuer "Weiterspielen" und
+    "Zuletzt gespielt"): diese beiden Kategorien mischen mehrere
+    Systeme und haben deshalb bewusst syskey=None (siehe
+    build_categories()) - das darf NICHT geaendert werden, da mehrere
+    andere Stellen (z.B. filter_curated(), das Kategorien ohne syskey
+    unangetastet laesst) genau daran erkennen, dass es sich um eine
+    gemischte Spezialkategorie statt eines echten Spielesystems
+    handelt. Stattdessen wird hier - NUR fuer die Kunstwerk-Suche -
+    ueber den (uebersetzten) Kategorienamen ein fester, aber
+    sprachunabhaengiger Ersatzschluessel ermittelt, exakt nach dem
+    bereits bewaehrten Muster aus dem Core-Auswahl-Fix fuer Favoriten
+    (Vergleich gegen t(...) zur Laufzeit statt eines gespeicherten
+    festen Strings)."""
+    if syskey:
+        return syskey
+    if name == t("continue_cat"):
+        return "CONTINUE"
+    if name == t("recent_cat"):
+        return "RECENT"
+    return None
+
 _meta_cache = {}
 _mra_cache = {}
 
@@ -9860,12 +9885,15 @@ class Frontend:
         # "Consoles", "Console (autoboot)" und "RA Cores" wandern
         # gemeinsam in einen neuen "Cores"-Unterordner im System-Menue
         # (als je eigener Unter-Unterordner darin - bleiben
-        # unterscheidbar). "Utilities", "Other" UND "Scripts" werden
-        # komplett ausgelassen ("die brauchen wir im Frontend nicht,
-        # die kann man ueber das OSD starten wenn man sie braucht") -
-        # weder Top-Level-Kategorie noch System-Unterordner. ALLES
-        # ANDERE (z.B. Arcade) bleibt unveraendert eine Top-Level-
-        # Kategorie.
+        # unterscheidbar). "Utilities"/"Other" werden komplett
+        # ausgelassen ("die brauchen wir im Frontend nicht, die kann
+        # man ueber das OSD starten wenn man sie braucht") - weder
+        # Top-Level-Kategorie noch System-Unterordner. ALLES ANDERE
+        # (z.B. Arcade) bleibt unveraendert eine Top-Level-Kategorie.
+        # "Scripts" wurde aus demselben Grund zunaechst ebenfalls
+        # ausgelassen, auf spaeteren Wunsch aber wieder als eigener
+        # Unterordner im System-Menue ergaenzt (siehe scripts_items
+        # unten) - NICHT als Top-Level-Kategorie.
         top_level_core_cats, cores_subcats = self._partition_core_cats(marked_recent)
         self.cats.extend((n, _wrap_flat(it), sk) for n, it, sk in top_level_core_cats)
         collections = self.build_collections_category()
@@ -9882,6 +9910,7 @@ class Frontend:
             self.music.enabled, self.music.source,
             rainwave.station_name(self.music.radio.sid) if self.music.radio else "",
             cores_subcats=cores_subcats,
+            scripts_items=scan_scripts(),
         ), None))
         if curated_only_active():
             # filter_curated() laesst Kategorien ohne syskey (Scripts,
@@ -9957,6 +9986,7 @@ class Frontend:
                     self.music.enabled, self.music.source,
                     rainwave.station_name(self.music.radio.sid) if self.music.radio else "",
                     cores_subcats=cores_subcats,
+                    scripts_items=scan_scripts(),
                 ), sk)
                 LOG("_refresh_system_category: System-Kategorie an Position %d aktualisiert" % i)
                 return
@@ -11003,8 +11033,9 @@ class Frontend:
 
         name, _items, syskey = self.cats[self.cat_i]
         accent = accent_for(syskey)
-        art = ART.get_scaled(os.path.join(SYSART_BASE, "%s.art" % syskey),
-                             art_w - 2 * pad, box_h) if syskey else None
+        art_key = _category_art_key(name, syskey)
+        art = ART.get_scaled(os.path.join(SYSART_BASE, "%s.art" % art_key),
+                             art_w - 2 * pad, box_h) if art_key else None
         if art:
             aw, ah, pix = art
             ax = x0 + pad + max(0, (art_w - 2 * pad - aw) // 2)
@@ -11054,7 +11085,8 @@ class Frontend:
         footer_y, visible = L["footer_y"], L["visible"]
         self.items_visible = visible
 
-        self._cur_bg = BG.get(syskey, fb) if syskey else None
+        art_key = _category_art_key(name, syskey)
+        self._cur_bg = BG.get(art_key, fb) if art_key else None
         _tb = time.monotonic()
         if self._cur_bg is not None:
             fb.buf[:] = self._cur_bg
