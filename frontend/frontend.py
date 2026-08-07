@@ -9668,13 +9668,14 @@ class Frontend:
         fb.flip()
 
     # Nutzerwunsch (Hauptmenue aufraeumen, "zu viele Eintraege"):
-    # bestimmte Core-Ordner-Kategorien wandern ins System-Menue statt
-    # eigene Top-Level-Eintraege zu sein - "Consoles", "Console
-    # (autoboot)" und "RA Cores" gemeinsam in einen neuen "Cores"-
-    # Unterordner (als je eigener Unter-Unterordner darin - bleiben
-    # unterscheidbar), "Utilities"/"Other" je einen eigenen Unterordner
-    # direkt im System-Menue. ALLES ANDERE (z.B. Arcade) bleibt
-    # unveraendert eine Top-Level-Kategorie.
+    # "Consoles", "Console (autoboot)" und "RA Cores" wandern gemeinsam
+    # in einen neuen "Cores"-Unterordner im System-Menue (als je
+    # eigener Unter-Unterordner darin - bleiben unterscheidbar).
+    # "Utilities"/"Other" (spaeter ebenfalls Nutzerwunsch: "die
+    # brauchen wir im Frontend nicht, die kann man ueber das OSD
+    # starten wenn man sie braucht") werden komplett ausgelassen -
+    # weder Top-Level-Kategorie noch System-Unterordner. ALLES ANDERE
+    # (z.B. Arcade) bleibt unveraendert eine Top-Level-Kategorie.
     #
     # Ausgelagert in eine EIGENE Methode statt die Partitionierung
     # direkt in build_categories() zu belassen: _refresh_system_category()
@@ -9684,23 +9685,23 @@ class Frontend:
     # jedem solchen Toggle wieder verschwinden (im Testrendering
     # bemerkt, noch vor der Auslieferung korrigiert).
     MOVE_TO_CORES_FOLDER = {"Consoles", "Console (autoboot)", "RA Cores"}
-    MOVE_TO_SYSTEM_STANDALONE = {"Utilities", "Other"}
+    DROP_ENTIRELY = {"Utilities", "Other"}
 
     def _partition_core_cats(self, marked_recent=None):
-        """scan_cores() einmal auswerten und in drei Gruppen aufteilen:
-        (top_level_core_cats, cores_subcats, standalone_for_system) -
-        siehe Klassenkommentar oben fuer die Zuordnung."""
+        """scan_cores() einmal auswerten und aufteilen in
+        (top_level_core_cats, cores_subcats) - siehe Klassenkommentar
+        oben fuer die Zuordnung. DROP_ENTIRELY-Eintraege landen in
+        keiner der beiden Listen (bewusst verworfen)."""
         top_level = []
         cores_subcats = []
-        standalone = {}
         for n, it, sk in scan_cores(skip_dir=marked_recent):
             if n in self.MOVE_TO_CORES_FOLDER:
                 cores_subcats.append((n, it))
-            elif n in self.MOVE_TO_SYSTEM_STANDALONE:
-                standalone[n] = it
+            elif n in self.DROP_ENTIRELY:
+                continue
             else:
                 top_level.append((n, it, sk))
-        return top_level, cores_subcats, standalone
+        return top_level, cores_subcats
 
     def build_categories(self, force_rescan=False):
         # Zwischengespeicherte Attract-Modus-Spieleliste verwerfen -
@@ -9754,16 +9755,16 @@ class Frontend:
             pos = (1 if continue_game else 0) + (1 if recent_items else 0)
             self.cats.insert(pos, (t("favorites_cat"), _wrap_flat(favorite_items), None))
         # Nutzerwunsch (Hauptmenue aufraeumen, "zu viele Eintraege"):
-        # bestimmte Core-Ordner-Kategorien wandern ins System-Menue
-        # statt eigene Top-Level-Eintraege zu sein. "Consoles",
-        # "Console (autoboot)" und "RA Cores" gemeinsam in einen neuen
-        # "Cores"-Unterordner (als je eigener Unter-Unterordner darin -
-        # bleiben unterscheidbar), "Utilities"/"Other" je einen eigenen
-        # Unterordner direkt im System-Menue. ALLES ANDERE (z.B.
-        # Arcade) bleibt unveraendert eine Top-Level-Kategorie - nur
-        # die explizit genannten wandern.
-        top_level_core_cats, cores_subcats, standalone_for_system = \
-            self._partition_core_cats(marked_recent)
+        # "Consoles", "Console (autoboot)" und "RA Cores" wandern
+        # gemeinsam in einen neuen "Cores"-Unterordner im System-Menue
+        # (als je eigener Unter-Unterordner darin - bleiben
+        # unterscheidbar). "Utilities", "Other" UND "Scripts" werden
+        # komplett ausgelassen ("die brauchen wir im Frontend nicht,
+        # die kann man ueber das OSD starten wenn man sie braucht") -
+        # weder Top-Level-Kategorie noch System-Unterordner. ALLES
+        # ANDERE (z.B. Arcade) bleibt unveraendert eine Top-Level-
+        # Kategorie.
+        top_level_core_cats, cores_subcats = self._partition_core_cats(marked_recent)
         self.cats.extend((n, _wrap_flat(it), sk) for n, it, sk in top_level_core_cats)
         collections = self.build_collections_category()
         if collections:
@@ -9775,16 +9776,10 @@ class Frontend:
             count = _count_tree_items(ra_hunter)
             self.cats.append(("%s (%d)" % (t("ra_hunter_cat"), count),
                               ra_hunter, None))
-        # Scripts (ebenfalls Nutzerwunsch): nicht mehr eigene Top-
-        # Level-Kategorie, sondern eigener Unterordner im System-Menue
-        # (scripts_items unten an system_items() weitergereicht).
-        scripts = scan_scripts()
         self.cats.append(("System", system_items(
             self.music.enabled, self.music.source,
             rainwave.station_name(self.music.radio.sid) if self.music.radio else "",
             cores_subcats=cores_subcats,
-            standalone_items=standalone_for_system,
-            scripts_items=scripts,
         ), None))
         if curated_only_active():
             # filter_curated() laesst Kategorien ohne syskey (Scripts,
@@ -9855,14 +9850,11 @@ class Frontend:
         uebersetzten, immer gleichen) Namen \"System\" gefunden."""
         for i, (name, node, sk) in enumerate(self.cats):
             if sk is None and name == "System":
-                _top, cores_subcats, standalone_for_system = \
-                    self._partition_core_cats(find_marked_recent_dir())
+                _top, cores_subcats = self._partition_core_cats(find_marked_recent_dir())
                 self.cats[i] = (name, system_items(
                     self.music.enabled, self.music.source,
                     rainwave.station_name(self.music.radio.sid) if self.music.radio else "",
                     cores_subcats=cores_subcats,
-                    standalone_items=standalone_for_system,
-                    scripts_items=scan_scripts(),
                 ), sk)
                 LOG("_refresh_system_category: System-Kategorie an Position %d aktualisiert" % i)
                 return
@@ -11178,6 +11170,18 @@ class Frontend:
 
         full = v["items"][idx][0]
         item_kind = v["items"][idx][1]
+        # Nutzerwunsch: der abschliessende "/" bei Ordner-Eintraegen
+        # (z.B. "Anzeige & Sound/") sieht in der Liste unschoen aus -
+        # NUR hier fuers Zeichnen entfernt (lokale Kopie von full,
+        # NICHT der zugrundeliegende Wert in v["items"]/_display_items()
+        # selbst) - das Stream-Overlay (stream_state()) und der
+        # Favoriten-/Durchgespielt-Abgleich weiter unten nutzen
+        # weiterhin die unveraenderten Rohdaten mit "/", da das
+        # Overlay per "endet auf /" erkennt, dass ein Eintrag ein
+        # Ordner ist und dafuer kein Cover anfragt (siehe Kommentar
+        # bei stream_overlay.html im Aenderungsprotokoll).
+        if item_kind == "folder" and full.endswith("/"):
+            full = full[:-1]
         # Markierung nur bei echten Spielen, per Namen im bereits
         # geladenen Speicher-Cache nachgeschlagen (kein Datei-Zugriff
         # hier - das waere bei haeufigem Neuzeichnen ein echtes
