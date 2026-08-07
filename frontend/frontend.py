@@ -9009,7 +9009,8 @@ def t(key, *fmt_args):
     return text
 
 
-def system_items(music_enabled=None, music_source="mp3", music_station=""):
+def system_items(music_enabled=None, music_source="mp3", music_station="",
+                 cores_subcats=None, standalone_items=None, scripts_items=None):
     """Liefert die Inhalte der 'System'-Kategorie als Baumknoten mit
     thematischen Unterordnern (Nutzerwunsch: die Liste war auf 23
     flache Eintraege angewachsen, kaum noch ueberschaubar) - nutzt
@@ -9020,7 +9021,24 @@ def system_items(music_enabled=None, music_source="mp3", music_station=""):
 
     music_source/music_station (neu, Nutzerwunsch: Rainwave-
     Internetradio als zweite Musikquelle, siehe CHANGES_RAINWAVE.md):
-    fuer die Beschriftung des neuen "Musik-Quelle"-Eintrags."""
+    fuer die Beschriftung des neuen "Musik-Quelle"-Eintrags.
+
+    ERWEITERT (Nutzerwunsch: Hauptmenue aufraeumen, "zu viele
+    Eintraege" - Utilities/Other/Scripts sowie Consoles/
+    Console (autoboot)/RA Cores waren bisher eigene Top-Level-
+    Kategorien): cores_subcats - Liste von (Anzeigename, Items) fuer
+    die vormals eigenstaendigen Core-Ordner-Kategorien (Consoles,
+    Console (autoboot), RA Cores), die hier gemeinsam unter einem
+    NEUEN "Cores"-Unterordner landen (als je EIGENER Unter-Unterordner
+    darunter - bleiben so weiterhin unterscheidbar, nur eine Ebene
+    tiefer verschachtelt, nicht zu einer einzigen Liste vermischt).
+    standalone_items - dict Anzeigename -> Items fuer Kategorien, die
+    je einen EIGENEN Unterordner direkt im System-Menue bekommen
+    (Utilities, Other). scripts_items - Items fuer einen neuen
+    "Scripts"-Unterordner (ehemals eigene Top-Level-Kategorie). Alle
+    drei bewusst optional (None/leer = Verhalten unveraendert wie vor
+    dieser Erweiterung) - betrifft nur, ob der jeweilige Ordner
+    ueberhaupt auftaucht, keine bestehende Logik wird angefasst."""
     crt = crt_menu_active()
     video = t("sys_video_crt") if crt else t("sys_video_hdmi")
     music_label = t("sys_music_on") if music_enabled else t("sys_music_off")
@@ -9044,56 +9062,67 @@ def system_items(music_enabled=None, music_source="mp3", music_station=""):
     def folder(*items):
         return {"folders": {}, "items": list(items)}
 
-    return {
-        "folders": {
-            t("sys_group_ra"): folder(
-                (ra_label, "ra_status", None),
-            ),
-            t("sys_group_stats"): folder(
-                (t("top10_time_action"), "top10_time", None),
-                (t("top10_launches_action"), "top10_launches", None),
-                (t("sys_milestones_action"), "milestones", None),
-                (t("sys_trophy_action"), "trophy_room", None),
-                (t("sys_year_review_action"), "year_review", None),
-                (t("sys_diary_action"), "diary", None),
-            ),
-            t("sys_group_display"): folder(
-                (video + t("sys_video_suffix"), "crtmenu", None),
-                (theme_label, "theme", None),
-                (sfx_label, "sfx", None),
-                (music_label, "music", None),
-                (music_src_label, "music_source", None),
-                (volume_label, "volume", None),
-            ),
-            t("sys_group_behavior"): folder(
-                (t("sys_crt_test_action"), "crt_test", None),
-                (curated_label, "curated", None),
-                (attract_label, "attract", None),
-                (attract_delay_label, "attract_delay", None),
-                (tz_label, "timezone", None),
-                (netwait_label, "network_wait", None),
-            ),
-            t("sys_group_input"): folder(
-                (t("sys_language"), "language", None),
-                (t("sys_configure_buttons"), "remap", None),
-                (t("sys_reset_buttons"), "remap_reset", None),
-            ),
-            t("sys_group_info"): folder(
-                (t("sys_help_action"), "help", None),
-                (t("sys_setup_wizard"), "setup_wizard", None),
-                (t("sys_secrets_action"), "secrets", None),
-                (t("sys_credits_action"), "credits", None),
-            ),
-            t("sys_group_maintenance"): folder(
-                (t("sys_osd"), "osd", None),
-                (t("sys_rescan"), "rescan", None),
-                (t("sys_redraw"), "redraw", None),
-                (t("sys_reboot"), "reboot", None),
-                (t("sys_quit"), "quit", None),
-            ),
-        },
-        "items": [],
+    groups = {
+        t("sys_group_ra"): folder(
+            (ra_label, "ra_status", None),
+        ),
+        t("sys_group_stats"): folder(
+            (t("top10_time_action"), "top10_time", None),
+            (t("top10_launches_action"), "top10_launches", None),
+            (t("sys_milestones_action"), "milestones", None),
+            (t("sys_trophy_action"), "trophy_room", None),
+            (t("sys_year_review_action"), "year_review", None),
+            (t("sys_diary_action"), "diary", None),
+        ),
+        t("sys_group_display"): folder(
+            (video + t("sys_video_suffix"), "crtmenu", None),
+            (theme_label, "theme", None),
+            (sfx_label, "sfx", None),
+            (music_label, "music", None),
+            (music_src_label, "music_source", None),
+            (volume_label, "volume", None),
+        ),
+        t("sys_group_behavior"): folder(
+            (t("sys_crt_test_action"), "crt_test", None),
+            (curated_label, "curated", None),
+            (attract_label, "attract", None),
+            (attract_delay_label, "attract_delay", None),
+            (tz_label, "timezone", None),
+            (netwait_label, "network_wait", None),
+        ),
+        t("sys_group_input"): folder(
+            (t("sys_language"), "language", None),
+            (t("sys_configure_buttons"), "remap", None),
+            (t("sys_reset_buttons"), "remap_reset", None),
+        ),
+        t("sys_group_info"): folder(
+            (t("sys_help_action"), "help", None),
+            (t("sys_setup_wizard"), "setup_wizard", None),
+            (t("sys_secrets_action"), "secrets", None),
+            (t("sys_credits_action"), "credits", None),
+        ),
+        t("sys_group_maintenance"): folder(
+            (t("sys_osd"), "osd", None),
+            (t("sys_rescan"), "rescan", None),
+            (t("sys_redraw"), "redraw", None),
+            (t("sys_reboot"), "reboot", None),
+            (t("sys_quit"), "quit", None),
+        ),
     }
+
+    if cores_subcats:
+        groups["Cores"] = {
+            "folders": {name: folder(*items) for name, items in cores_subcats if items},
+            "items": [],
+        }
+    if standalone_items:
+        for name, items in standalone_items.items():
+            if items:
+                groups[name] = folder(*items)
+    if scripts_items:
+        groups["Scripts"] = folder(*scripts_items)
+
+    return {"folders": groups, "items": []}
 
 
 def _node_has_any_meta(node, syskey):
@@ -9563,6 +9592,41 @@ class Frontend:
         fb.text(ox, by + 16 * s, "%d / %d" % (i + 1, total), s, C_DIM, C_BG)
         fb.flip()
 
+    # Nutzerwunsch (Hauptmenue aufraeumen, "zu viele Eintraege"):
+    # bestimmte Core-Ordner-Kategorien wandern ins System-Menue statt
+    # eigene Top-Level-Eintraege zu sein - "Consoles", "Console
+    # (autoboot)" und "RA Cores" gemeinsam in einen neuen "Cores"-
+    # Unterordner (als je eigener Unter-Unterordner darin - bleiben
+    # unterscheidbar), "Utilities"/"Other" je einen eigenen Unterordner
+    # direkt im System-Menue. ALLES ANDERE (z.B. Arcade) bleibt
+    # unveraendert eine Top-Level-Kategorie.
+    #
+    # Ausgelagert in eine EIGENE Methode statt die Partitionierung
+    # direkt in build_categories() zu belassen: _refresh_system_category()
+    # (fuer kleine Live-Updates wie Attract-Modus umschalten) baut
+    # system_items() UNABHAENGIG davon neu auf und braucht exakt
+    # dasselbe Ergebnis - sonst wuerden die verschobenen Ordner nach
+    # jedem solchen Toggle wieder verschwinden (im Testrendering
+    # bemerkt, noch vor der Auslieferung korrigiert).
+    MOVE_TO_CORES_FOLDER = {"Consoles", "Console (autoboot)", "RA Cores"}
+    MOVE_TO_SYSTEM_STANDALONE = {"Utilities", "Other"}
+
+    def _partition_core_cats(self, marked_recent=None):
+        """scan_cores() einmal auswerten und in drei Gruppen aufteilen:
+        (top_level_core_cats, cores_subcats, standalone_for_system) -
+        siehe Klassenkommentar oben fuer die Zuordnung."""
+        top_level = []
+        cores_subcats = []
+        standalone = {}
+        for n, it, sk in scan_cores(skip_dir=marked_recent):
+            if n in self.MOVE_TO_CORES_FOLDER:
+                cores_subcats.append((n, it))
+            elif n in self.MOVE_TO_SYSTEM_STANDALONE:
+                standalone[n] = it
+            else:
+                top_level.append((n, it, sk))
+        return top_level, cores_subcats, standalone
+
     def build_categories(self, force_rescan=False):
         # Zwischengespeicherte Attract-Modus-Spieleliste verwerfen -
         # nach einem Rescan koennten sich neue Spiele dazugesellt oder
@@ -9614,8 +9678,18 @@ class Frontend:
             # Auswahl, im Gegensatz zur automatischen Verlaufsliste.
             pos = (1 if continue_game else 0) + (1 if recent_items else 0)
             self.cats.insert(pos, (t("favorites_cat"), _wrap_flat(favorite_items), None))
-        self.cats.extend((n, _wrap_flat(it), sk)
-                         for n, it, sk in scan_cores(skip_dir=marked_recent))
+        # Nutzerwunsch (Hauptmenue aufraeumen, "zu viele Eintraege"):
+        # bestimmte Core-Ordner-Kategorien wandern ins System-Menue
+        # statt eigene Top-Level-Eintraege zu sein. "Consoles",
+        # "Console (autoboot)" und "RA Cores" gemeinsam in einen neuen
+        # "Cores"-Unterordner (als je eigener Unter-Unterordner darin -
+        # bleiben unterscheidbar), "Utilities"/"Other" je einen eigenen
+        # Unterordner direkt im System-Menue. ALLES ANDERE (z.B.
+        # Arcade) bleibt unveraendert eine Top-Level-Kategorie - nur
+        # die explizit genannten wandern.
+        top_level_core_cats, cores_subcats, standalone_for_system = \
+            self._partition_core_cats(marked_recent)
+        self.cats.extend((n, _wrap_flat(it), sk) for n, it, sk in top_level_core_cats)
         collections = self.build_collections_category()
         if collections:
             count = _count_tree_items(collections)
@@ -9626,12 +9700,16 @@ class Frontend:
             count = _count_tree_items(ra_hunter)
             self.cats.append(("%s (%d)" % (t("ra_hunter_cat"), count),
                               ra_hunter, None))
+        # Scripts (ebenfalls Nutzerwunsch): nicht mehr eigene Top-
+        # Level-Kategorie, sondern eigener Unterordner im System-Menue
+        # (scripts_items unten an system_items() weitergereicht).
         scripts = scan_scripts()
-        if scripts:
-            self.cats.append(("Scripts", _wrap_flat(scripts), None))
         self.cats.append(("System", system_items(
             self.music.enabled, self.music.source,
-            rainwave.station_name(self.music.radio.sid) if self.music.radio else ""
+            rainwave.station_name(self.music.radio.sid) if self.music.radio else "",
+            cores_subcats=cores_subcats,
+            standalone_items=standalone_for_system,
+            scripts_items=scripts,
         ), None))
         if curated_only_active():
             # filter_curated() laesst Kategorien ohne syskey (Scripts,
@@ -9702,9 +9780,14 @@ class Frontend:
         uebersetzten, immer gleichen) Namen \"System\" gefunden."""
         for i, (name, node, sk) in enumerate(self.cats):
             if sk is None and name == "System":
+                _top, cores_subcats, standalone_for_system = \
+                    self._partition_core_cats(find_marked_recent_dir())
                 self.cats[i] = (name, system_items(
                     self.music.enabled, self.music.source,
-                    rainwave.station_name(self.music.radio.sid) if self.music.radio else ""
+                    rainwave.station_name(self.music.radio.sid) if self.music.radio else "",
+                    cores_subcats=cores_subcats,
+                    standalone_items=standalone_for_system,
+                    scripts_items=scan_scripts(),
                 ), sk)
                 LOG("_refresh_system_category: System-Kategorie an Position %d aktualisiert" % i)
                 return
