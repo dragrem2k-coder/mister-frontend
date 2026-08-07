@@ -14009,15 +14009,27 @@ class Frontend:
                         elif kind == "game":
                             rom, ext, syskey, rbf, (dl, ft, ix) = arg
                             ra_core = find_ra_core(syskey) if syskey else None
-                            # Nutzerwunsch: bei FAVORITEN jedes Mal erneut
-                            # fragen, welcher Core gestartet werden soll -
-                            # unabhaengig von Sitzungs- oder gespeichertem
-                            # Verlauf (bewusste, wiederkehrende Auswahl,
-                            # anders als Weiterspielen/Zuletzt gespielt
-                            # unten, die automatisch den zuletzt
-                            # genutzten Core uebernehmen).
-                            in_favorites = self.cats[self.cat_i][0] == t("favorites_cat")
-                            if in_favorites and ra_core:
+                            # Nutzerwunsch (nach Rueckmeldung praezisiert:
+                            # "es wird das Spiel wieder geladen ohne
+                            # Abfrage welcher Core benutzt werden soll" -
+                            # eine STILLE automatische Wiederverwendung
+                            # des zuletzt genutzten Cores, wie in einer
+                            # frueheren Fassung gebaut, war NICHT das
+                            # Gewuenschte): in WEITERSPIELEN, ZULETZT
+                            # GESPIELT und FAVORITEN wird jetzt bei JEDEM
+                            # Start aktiv gefragt, welcher Core verwendet
+                            # werden soll (sofern fuer das jeweilige
+                            # System ueberhaupt eine RA-Variante existiert) -
+                            # in allen drei Faellen aus demselben Grund:
+                            # es handelt sich um flache Listen aus
+                            # UNTERSCHIEDLICHEN Systemen (Kategorie selbst
+                            # hat syskey=None), bei denen die normale,
+                            # EINMALIGE Abfrage beim Kategorie-Eintritt
+                            # (_enter_category(), nur fuer echte
+                            # Ein-System-Kategorien sinnvoll) nicht greift.
+                            always_ask_core = self.cats[self.cat_i][0] in (
+                                t("favorites_cat"), t("recent_cat"), t("continue_cat"))
+                            if always_ask_core and ra_core:
                                 use_ra = self.draw_core_choice_screen(syskey, label)
                                 if use_ra is None:
                                     # Siehe F11-Bugfix (gleicher Grund):
@@ -14030,7 +14042,8 @@ class Frontend:
                                 ra_choice = ra_core if use_ra else None
                             else:
                                 # RA-Core-Wahl anwenden, falls beim Betreten
-                                # dieser Kategorie eine getroffen wurde (siehe
+                                # dieser (normalen Ein-System-)Kategorie
+                                # eine getroffen wurde (siehe
                                 # _enter_category()/find_ra_core()) - sonst
                                 # unveraendert der normale Core aus der
                                 # Systemtabelle. find_ra_core() liefert
@@ -14039,22 +14052,17 @@ class Frontend:
                                 # RA-Core offenbar nicht korrekt als eigene,
                                 # von der Standard-Konfiguration getrennte
                                 # Variante (Nutzer-Rueckmeldung: startete
-                                # sonst immer den normalen Core).
-                                #
-                                # BUGFIX (Nutzer-Rueckfrage: "werden bei
-                                # Weiterspielen/Zuletzt gespielt auch die
-                                # richtigen Cores verwendet?"): war bisher
-                                # NICHT der Fall, wenn die echte Kategorie
-                                # in DIESER Sitzung noch nie betreten wurde -
-                                # ra_dict.get(syskey) lieferte dann still
-                                # None (= Standard-Core), selbst wenn das
-                                # Spiel zuletzt mit RA gestartet wurde. Erst
-                                # ra_dict PRUEFEN (key vorhanden? -> frischer,
-                                # expliziter Sitzungs-Stand hat immer Vorrang,
-                                # auch wenn er "Standard" bedeutet), sonst
-                                # auf die zuletzt fuer GENAU DIESES Spiel
-                                # tatsaechlich verwendete, persistierte Wahl
-                                # zurueckfallen.
+                                # sonst immer den normalen Core). Trifft
+                                # z.B. noch auf RA-Erfolgsjaeger/Sammlungen
+                                # zu (ebenfalls flache Mehr-System-Listen,
+                                # aber vom Nutzer nicht als "jedes Mal
+                                # fragen" gewuenscht) - dort weiterhin
+                                # Rueckfall auf die zuletzt fuer GENAU
+                                # DIESES Spiel tatsaechlich verwendete,
+                                # persistierte Wahl (siehe
+                                # load_last_core_choice()), falls in
+                                # dieser Sitzung noch keine echte Kategorie
+                                # betreten wurde.
                                 ra_dict = getattr(self, "_ra_core_choice", {})
                                 if syskey in ra_dict:
                                     ra_choice = ra_dict[syskey]
