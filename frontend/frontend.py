@@ -3363,7 +3363,7 @@ Start auf dem MiSTer (per SSH oder als Startscript):
   python3 /media/fat/frontend/frontend.py
 """
 
-import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib, json, random, math, signal, socket, threading, termios
+import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib, json, random, math, signal, socket, threading, termios, csv, difflib, unicodedata
 
 # EINZIGE QUELLE DER WAHRHEIT fuer die Versionsnummer (Vereinbarung,
 # da mehrere Leute an derselben Codebasis arbeiten - siehe Nutzer-
@@ -5364,6 +5364,166 @@ def system_display_name(syskey):
         if sk == syskey:
             return disp
     return syskey or "?"
+
+# ----------------------------------------------------------------------------
+# WONNE ODER TONNE (Dennsens eigenes Bewertungs-Format: zufaellig ein noch
+# nicht gespieltes NES/SNES-Spiel ziehen, aus seiner eigenen CSV-
+# Bewertungsliste). Uebernommen aus einem separat vorbereiteten Vorschlag
+# (wonne_oder_tonne.py) - Kernlogik direkt portiert, aber an unseren
+# Codestil angepasst (keine dataclasses/pathlib/moderne Typ-Hints, da im
+# restlichen Projekt nicht verwendet) und die ROM-Suche auf unsere
+# bestehende GAMES_BASES-Mehrfachpfad-Erkennung umgestellt (statt eines
+# einzelnen fest vorgegebenen ROM-Ordners).
+#
+# GETROFFENE ANNAHMEN (aus dem Vorschlag uebernommen, siehe dort fuer die
+# Begruendung): die CSV bleibt READ-ONLY - eine Ziehung markiert das Spiel
+# NICHT automatisch als gespielt. Kein ROM-Treffer -> ueberspringen und neu
+# ziehen (mit Log-Warnung), kein Fehlerabbruch. Menuepunkt nur sichtbar,
+# wenn WOT_CSV_FILE tatsaechlich existiert (siehe build_categories()).
+WOT_CSV_FILE = "/media/fat/frontend/wot_games.csv"
+WOT_ALIASES_FILE = "/media/fat/frontend/wot_aliases.json"
+WOT_SYSTEMS = ["NES", "SNES"]
+WOT_MATCH_THRESHOLD = 0.72   # difflib-Aehnlichkeit, ab der ein ROM-Treffer akzeptiert wird
+WOT_TAG_PATTERN = re.compile(r"[\(\[][^\)\]]*[\)\]]")
+WOT_ALL_ARTICLES = ["Das", "Die", "Der", "The"]
+
+def _wot_strip_accents(s):
+    nfkd = unicodedata.normalize("NFKD", s)
+    return "".join(c for c in nfkd if not unicodedata.combining(c))
+
+def wot_normalize_title(raw):
+    """Bringt CSV-Anzeigename oder ROM-Dateiname auf eine vergleichbare
+    Form: Klammer-Tags (Region/Sprache/Rev) weg, Artikel-Inversion
+    aufgeloest ("X, The" <-> "The X", genauso De/Die/Der), Satzzeichen/
+    Mehrfach-Leerzeichen normalisiert, Kleinschreibung, keine Akzente."""
+    s = raw.strip()
+    s = WOT_TAG_PATTERN.sub("", s)
+    s = s.strip()
+    m = re.match(r"^(.*),\s*(Das|Die|Der|The)$", s, flags=re.IGNORECASE)
+    if m:
+        s = "%s %s" % (m.group(2), m.group(1))
+    s = _wot_strip_accents(s)
+    s = s.lower()
+    s = re.sub(r"[^a-z0-9]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    for art in WOT_ALL_ARTICLES:
+        prefix = art.lower() + " "
+        if s.startswith(prefix):
+            s = s[len(prefix):]
+            break
+    return s
+
+def wot_load_pool():
+    """Laedt WOT_CSV_FILE, liefert die Liste noch nicht gespielter Spiele
+    als (system, title, genre)-Tupel. Regel: Spalte "Erstes Mal" leer ->
+    noch nicht gespielt -> Teil des Pools; befuellt (JA/NEIN) -> schon
+    gespielt -> ausgeschlossen."""
+    pool = []
+    try:
+        with open(WOT_CSV_FILE, encoding="utf-8-sig", newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                system = (row.get("Konsole") or "").strip()
+                if system not in WOT_SYSTEMS:
+                    continue
+                if (row.get("Erstes Mal") or "").strip() != "":
+                    continue   # schon gespielt -> raus
+                title = (row.get("Spiel") or "").strip()
+                if not title:
+                    continue
+                genre = (row.get("Genre") or "").strip()
+                pool.append((system, title, genre))
+    except (OSError, csv.Error):
+        return []
+    return pool
+
+def wot_load_aliases():
+    """Optionale manuelle Uebersetzungstabelle CSV-Titel -> ROM-Dateiname
+    (fuer Faelle wie 'Action in New York' -> 'S.C.A.T. - Special
+    Cybernetic Attack Team (USA)', die per Fuzzy-Matching nicht
+    zuverlaessig zu finden sind)."""
+    try:
+        with open(WOT_ALIASES_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+def wot_list_rom_files(syskey):
+    """ROM-Dateien fuer ein System - nutzt dieselbe GAMES_BASES-
+    Mehrfachpfad-Erkennung wie der normale Scan (nicht nur einen
+    einzelnen fest vorgegebenen Ordner, wie im urspruenglichen
+    Vorschlag), inkl. Unterordnern (os.walk, gleiche Logik wie
+    _scan_folder_tree())."""
+    sysdef = next((s for s in GAME_SYSTEMS if s[1] == syskey), None)
+    if not sysdef:
+        return []
+    _disp, _sk, folders, _rbf, extmap = sysdef
+    exts = tuple(extmap.keys())
+    files = []
+    seen_roots = set()
+    for base in GAMES_BASES:
+        for folder in folders:
+            root = os.path.join(base, folder)
+            try:
+                real = os.path.realpath(root)
+            except OSError:
+                continue
+            if not os.path.isdir(root) or real in seen_roots:
+                continue
+            seen_roots.add(real)
+            for dirpath, _dirnames, filenames in os.walk(root):
+                for fn in filenames:
+                    if os.path.splitext(fn)[1].lower() in exts:
+                        files.append(os.path.join(dirpath, fn))
+    return files
+
+def wot_find_rom(title, rom_files, aliases):
+    """Sucht die beste ROM-Datei fuer einen Titel. Gibt (Pfad, Score)
+    zurueck, Pfad ist None wenn nichts ueber dem Schwellwert liegt."""
+    if title in aliases:
+        alias_target = wot_normalize_title(aliases[title])
+        for rom in rom_files:
+            stem = os.path.splitext(os.path.basename(rom))[0]
+            if wot_normalize_title(stem) == alias_target:
+                return rom, 1.0
+    target = wot_normalize_title(title)
+    if not rom_files:
+        return None, 0.0
+    best_rom, best_score = None, 0.0
+    for rom in rom_files:
+        stem = os.path.splitext(os.path.basename(rom))[0]
+        score = difflib.SequenceMatcher(None, target, wot_normalize_title(stem)).ratio()
+        if score > best_score:
+            best_rom, best_score = rom, score
+    if best_score >= WOT_MATCH_THRESHOLD:
+        return best_rom, best_score
+    return None, best_score
+
+def wot_draw_with_rom(pool, aliases, max_attempts=20):
+    """Zieht Spiele, bis eins mit passendem ROM gefunden wird (kein
+    Treffer -> ueberspringen + neu ziehen, mit Log-Warnung statt
+    Fehlerabbruch), oder gibt None nach max_attempts auf (Pool
+    erschoepft / keine passenden ROMs gefunden). Liefert
+    (system, title, genre, rom_path, score) oder None."""
+    tried = set()
+    roms_by_system = {}
+    candidates = list(pool)
+    for _ in range(max_attempts):
+        remaining = [g for g in candidates if g[1] not in tried]
+        if not remaining:
+            return None
+        system, title, genre = random.choice(remaining)
+        tried.add(title)
+        if system not in roms_by_system:
+            roms_by_system[system] = wot_list_rom_files(system)
+        rom_files = roms_by_system[system]
+        rom, score = wot_find_rom(title, rom_files, aliases)
+        if rom is not None:
+            return system, title, genre, rom, score
+        LOG("Wonne oder Tonne: kein ROM-Treffer fuer '%s' (Score %.2f) - neu ziehen"
+            % (title, score))
+    return None
 
 # ----------------------------------------------------------------------------
 # RA-CORE-ERKENNUNG (sage2050s "MiSTer_RetroAchievements"-Werkzeug -
@@ -9277,6 +9437,17 @@ TRANSLATIONS = {
                        "de": "RetroAchievements-Core"},
     "core_choice_hint": {"en": "Up/Down to choose, OK to confirm",
                          "de": "Hoch/Runter waehlen, OK bestaetigen"},
+    "wot_title": {"en": "WONNE OR TONNE", "de": "WONNE ODER TONNE"},
+    "wot_pool_empty": {
+        "en": "No unplayed game left in the list - everything has been rated!",
+        "de": "Kein noch nicht bewertetes Spiel mehr in der Liste - alles durchgespielt!"},
+    "wot_no_rom_match": {
+        "en": "Drew several games but found no matching ROM file for any of them.",
+        "de": "Mehrere Spiele gezogen, aber fuer keins eine passende ROM-Datei gefunden."},
+    "wot_option_start": {"en": "Start", "de": "Starten"},
+    "wot_option_redraw": {"en": "Draw again", "de": "Neu ziehen"},
+    "wot_option_back": {"en": "Back", "de": "Zurueck"},
+    "sys_wot_action": {"en": "Wonne or Tonne - draw a game", "de": "Wonne oder Tonne - Spiel ziehen"},
     "ra_setup_title": {"en": "RETROACHIEVEMENTS SETUP",
                        "de": "RETROACHIEVEMENTS EINRICHTEN"},
     "ra_setup_line1": {"en": "Create this file via SSH/text editor:",
@@ -10216,6 +10387,17 @@ class Frontend:
             count = _count_tree_items(ra_hunter)
             self.cats.append(("%s (%d)" % (t("ra_hunter_cat"), count),
                               ra_hunter, None))
+        # NEUES FEATURE (Dennsens "Wonne oder Tonne"-Format, uebernommen
+        # aus einem separat vorbereiteten Vorschlag): eigene Kategorie,
+        # gleiches Prinzip wie RA-Erfolgsjaeger direkt darueber - taucht
+        # NUR auf, wenn WOT_CSV_FILE tatsaechlich existiert (kein
+        # Rueckwaerts-Kaputtmachen fuer alle, die dieses Format nicht
+        # nutzen). Nur EIN Eintrag ("Spiel ziehen"), kein Ordnerbaum -
+        # das Ziehen selbst passiert im Bildschirm (draw_wot_screen()),
+        # nicht ueber Navigation.
+        if os.path.exists(WOT_CSV_FILE):
+            self.cats.append((t("wot_title"), _wrap_flat(
+                [(t("sys_wot_action"), "wot_draw", None)]), None))
         self.cats.append(("System", system_items(
             self.music.enabled, self.music.source,
             rainwave.station_name(self.music.radio.sid) if self.music.radio else "",
@@ -12616,6 +12798,82 @@ class Frontend:
                 return choice == 1
             elif act in ("back", "exit"):
                 return None   # Abbruch - Kategorie wird NICHT betreten
+
+    def draw_wot_screen(self):
+        """'Wonne oder Tonne' (Dennsens Format): zieht ein zufaelliges,
+        noch nicht bewertetes NES/SNES-Spiel aus seiner CSV-Liste,
+        sucht die passende ROM-Datei und zeigt Titel/System/Genre mit
+        drei Optionen: Starten, Neu ziehen, Zurueck. Zieht bei
+        fehlendem ROM-Treffer automatisch neu (siehe
+        wot_draw_with_rom()) - der Nutzer sieht davon nichts, nur das
+        Endergebnis oder eine ehrliche Fehlermeldung, falls gar nichts
+        passt."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        aliases = wot_load_aliases()
+
+        while True:
+            pool = wot_load_pool()
+            if not pool:
+                self._wizard_info(t("wot_title"), [t("wot_pool_empty")], skippable=False)
+                return
+            result = wot_draw_with_rom(pool, aliases)
+            if result is None:
+                self._wizard_info(t("wot_title"), [t("wot_no_rom_match")], skippable=False)
+                return
+            system, title, genre, rom_path, score = result
+            accent = accent_for(system)
+            choice = 0
+            options = [t("wot_option_start"), t("wot_option_redraw"), t("wot_option_back")]
+            redraw = False
+            while True:
+                fb.clear(C_BG)
+                title_scale = self._fit_scale(t("wot_title"), W - 2 * ox, s + 1)
+                fb.text(ox, oy, t("wot_title"), title_scale, C_TITLE, C_BG)
+                y = oy + 70 * s
+                game_title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
+                fb.text(ox, y, title, game_title_scale, accent, C_BG)
+                y += 50 * s
+                fb.text(ox, y, "%s - %s" % (system_display_name(system), genre or "?"), s, C_DIM, C_BG)
+                y += 70 * s
+                for i, label in enumerate(options):
+                    sel = i == choice
+                    color = accent if sel else C_TEXT
+                    prefix = "> " if sel else "  "
+                    fb.text(ox, y, prefix + label, s, color, C_BG)
+                    y += 40 * s
+                hint = t("wizard_choice_hint")
+                sc = s - 1 if s > 1 else 1
+                hint_w = len(hint) * 8 * sc
+                fb.text((W - hint_w) // 2, H - oy - 8 * sc, hint, sc, C_DIM, C_BG)
+                fb.flip()
+                act = self.inp.read_action()
+                if act in ("up", "down"):
+                    choice = (choice + 1) % len(options)
+                elif act == "ok":
+                    if choice == 0:      # Starten
+                        sysdef = next((sd for sd in GAME_SYSTEMS if sd[1] == system), None)
+                        if sysdef:
+                            rbf = sysdef[3]
+                            ext = os.path.splitext(rom_path)[1].lower()
+                            dl, ftype, idx = sysdef[4].get(ext, (2, "f", 0))
+                            LOG("Wonne oder Tonne: gestartet - %s (%s)" % (title, rom_path))
+                            record_recent(title, (rom_path, ext, system, rbf, (dl, ftype, idx)))
+                            mgl = write_mgl(rbf, rom_path, dl, ftype, idx)
+                            self.run_core(mgl, label=title, syskey=system)
+                        return
+                    elif choice == 1:    # Neu ziehen
+                        redraw = True
+                        break
+                    else:                # Zurueck
+                        return
+                elif act in ("back", "exit"):
+                    return
+            if not redraw:
+                return
 
     def draw_ra_setup_screen(self):
         """Zeigt eine kurze Anleitung zur RetroAchievements-Einrichtung
@@ -15217,6 +15475,9 @@ class Frontend:
                             self.draw()
                         elif kind == "setup_wizard":
                             self.run_setup_wizard()
+                            self.draw()
+                        elif kind == "wot_draw":
+                            self.draw_wot_screen()
                             self.draw()
                         elif kind == "secrets":
                             self.draw_secrets_screen()
