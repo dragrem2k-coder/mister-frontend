@@ -12053,6 +12053,23 @@ class Frontend:
             pending_update = getattr(self, "_update_popup_pending", None)
             if pending_update:
                 self._update_popup_pending = None
+                # BUGFIX (Nutzer-Rueckmeldung: "keine Info, dass ein
+                # Update verfuegbar ist"): draw(message=...) verwirft
+                # die Meldung komplett, wenn self.attract_mode gerade
+                # aktiv ist (siehe draw(): "if self.attract_mode:
+                # self.draw_attract(); return" - message wird dabei nie
+                # erreicht). Update-Check UND Attract-Modus loesen beide
+                # bei EXAKT demselben Leerlauf-Schwellenwert aus - da der
+                # Update-Check ein Netzwerkaufruf im Hintergrund ist
+                # (braucht Zeit bis zum Ergebnis), ist der Attract-Modus
+                # so gut wie immer schon aktiv, BEVOR das Ergebnis
+                # ueberhaupt vorliegt. Fix: Attract-Modus hier explizit
+                # verlassen (wie durch eine echte Eingabe), bevor die
+                # Meldung gezeichnet wird - sonst kam sie nie sichtbar
+                # an, obwohl der Check laengst erfolgreich war.
+                if self.attract_mode:
+                    self.attract_mode = False
+                self._last_input_time = time.monotonic()
                 self.draw(message=t("update_available_popup", pending_update))
 
             # "Auf diesen Tag vor X Jahren" (Nutzerwunsch): rein lokale
@@ -12067,6 +12084,12 @@ class Frontend:
                 hint = find_on_this_day_hint()
                 if hint:
                     label, years_ago = hint
+                    # Gleicher Bugfix wie beim Update-Hinweis oben -
+                    # dieselbe Ursache (Attract-Modus verschluckt die
+                    # Meldung sonst lautlos).
+                    if self.attract_mode:
+                        self.attract_mode = False
+                    self._last_input_time = time.monotonic()
                     self.draw(message=t("on_this_day_popup", years_ago, label))
 
             if self.attract_mode:
