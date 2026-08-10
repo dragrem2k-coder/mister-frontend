@@ -3363,7 +3363,7 @@ Start auf dem MiSTer (per SSH oder als Startscript):
   python3 /media/fat/frontend/frontend.py
 """
 
-import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib, json, random, math, signal, socket, threading, termios, csv, difflib, unicodedata
+import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib, json, random, math, signal, socket, threading, termios, csv, difflib, unicodedata, wave
 
 # EINZIGE QUELLE DER WAHRHEIT fuer die Versionsnummer (Vereinbarung,
 # da mehrere Leute an derselben Codebasis arbeiten - siehe Nutzer-
@@ -8685,6 +8685,56 @@ def _write_wav_chime(path, segments, volume=0.35, sample_rate=22050):
                                            volume, sample_rate)
     _write_wav(path, bytes(all_samples), sample_rate)
 
+# NEUES FEATURE (Nutzerwunsch: einen echten, selbst aufgenommenen/
+# gewaehlten Sound statt des prozedural erzeugten Doppelklangs fuer
+# Erfolge UND Popup-Benachrichtigungen verwenden - beide nutzen
+# denselben SFX-Schluessel "achievement", siehe SFX_CHIME_DEFS unten
+# und die play_sfx()-Aufrufe an mehreren Stellen). Die eigentliche
+# Ton-QUELLE liegt als WAV-Datei bei (22050Hz/Mono/16-Bit, damit sie
+# zum Rest des SFX-Systems passt - vom urspruenglich hochgeladenen
+# FLAC per ffmpeg konvertiert), wird aber bei JEDER Erzeugung/
+# Lautstaerke-Aenderung frisch mit der aktuellen VOLUME-Einstellung
+# skaliert eingelesen - genau wie bei den prozedural erzeugten Toenen,
+# nur dass hier eine echte Aufnahme statt eines Sinuston-Sweeps als
+# Ausgangsmaterial dient.
+ACHIEVEMENT_SFX_SOURCE = "/media/fat/frontend/sfx_source/achievement.wav"
+
+def _write_wav_from_source(source_path, dest_path, volume=1.0):
+    """Liest eine vorhandene WAV-Datei ein, skaliert die Amplitude mit
+    volume (0.0-1.0+) und schreibt sie unter dest_path neu heraus -
+    gleiches Prinzip wie bei den prozedural erzeugten Toenen
+    (_write_wav_tone()/_write_wav_chime()), nur mit echtem
+    Audiomaterial als Quelle statt eines berechneten Sinuston-Sweeps.
+    Faengt JEDEN Fehler ab und liefert False statt einer Ausnahme -
+    Aufrufer soll bei Fehlschlag auf die prozedurale Erzeugung
+    zurueckfallen (siehe _ensure_sfx_files())."""
+    try:
+        with wave.open(source_path, "rb") as wf:
+            n_channels = wf.getnchannels()
+            sampwidth = wf.getsampwidth()
+            framerate = wf.getframerate()
+            raw = wf.readframes(wf.getnframes())
+    except (wave.Error, OSError):
+        return False
+    if sampwidth != 2:
+        return False   # nur 16-Bit-PCM unterstuetzt, Quelle wurde so konvertiert
+    n_samples = len(raw) // 2
+    scaled = bytearray(len(raw))
+    for i in range(n_samples):
+        val = struct.unpack_from("<h", raw, i * 2)[0]
+        val = int(val * volume)
+        val = max(-32768, min(32767, val))
+        struct.pack_into("<h", scaled, i * 2, val)
+    try:
+        with wave.open(dest_path, "wb") as wf_out:
+            wf_out.setnchannels(n_channels)
+            wf_out.setsampwidth(2)
+            wf_out.setframerate(framerate)
+            wf_out.writeframes(bytes(scaled))
+    except (wave.Error, OSError):
+        return False
+    return True
+
 SFX_DEFS = {
     "move":    (760, 900, 30),
     "confirm": (600, 1100, 70),
@@ -8725,7 +8775,18 @@ def _ensure_sfx_files():
         path = os.path.join(SFX_DIR, name + ".wav")
         if not os.path.exists(path):
             try:
-                _write_wav_chime(path, segments, volume=0.35 * VOLUME / 100.0)
+                if name == "achievement" and os.path.exists(ACHIEVEMENT_SFX_SOURCE):
+                    # NEUES FEATURE (Nutzerwunsch): echte Audiodatei statt
+                    # prozedural erzeugtem Doppelklang - faellt bei jedem
+                    # Fehler (Datei fehlt/kaputt/falsches Format) sauber
+                    # auf den bisherigen, garantiert funktionierenden
+                    # Klang zurueck, statt komplett stumm zu bleiben.
+                    ok = _write_wav_from_source(ACHIEVEMENT_SFX_SOURCE, path,
+                                                volume=VOLUME / 100.0)
+                    if not ok:
+                        _write_wav_chime(path, segments, volume=0.35 * VOLUME / 100.0)
+                else:
+                    _write_wav_chime(path, segments, volume=0.35 * VOLUME / 100.0)
             except OSError:
                 pass
 
