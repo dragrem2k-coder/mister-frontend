@@ -5415,9 +5415,13 @@ def wot_normalize_title(raw):
 
 def wot_load_pool():
     """Laedt WOT_CSV_FILE, liefert die Liste noch nicht gespielter Spiele
-    als (system, title, genre)-Tupel. Regel: Spalte "Erstes Mal" leer ->
-    noch nicht gespielt -> Teil des Pools; befuellt (JA/NEIN) -> schon
-    gespielt -> ausgeschlossen."""
+    als (system, title, genre, ra_id)-Tupel. Regel: Spalte "Erstes Mal"
+    leer -> noch nicht bewertet -> Teil des Pools; befuellt (JA/NEIN) ->
+    schon bewertet -> ausgeschlossen. ZUSAETZLICH (uebernommen aus
+    Sutefans eigener Weiterentwicklung): eine eigene Spalte "Gespielt"
+    (vom Frontend selbst gesetzt, siehe wot_mark_played()) - "JA" dort
+    bedeutet "wurde bereits ueber diesen Bildschirm gestartet", auch
+    wenn noch keine Bewertung eingetragen wurde."""
     pool = []
     try:
         with open(WOT_CSV_FILE, encoding="utf-8-sig", newline="") as f:
@@ -5427,12 +5431,15 @@ def wot_load_pool():
                 if system not in WOT_SYSTEMS:
                     continue
                 if (row.get("Erstes Mal") or "").strip() != "":
-                    continue   # schon gespielt -> raus
+                    continue   # schon bewertet -> raus
+                if (row.get("Gespielt") or "").strip().upper() == "JA":
+                    continue   # vom Frontend als gespielt markiert -> raus
                 title = (row.get("Spiel") or "").strip()
                 if not title:
                     continue
                 genre = (row.get("Genre") or "").strip()
-                pool.append((system, title, genre))
+                ra_id = (row.get("RA_ID") or "").strip()
+                pool.append((system, title, genre, ra_id))
     except (OSError, csv.Error):
         return []
     return pool
@@ -5448,6 +5455,54 @@ def wot_load_aliases():
             return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         return {}
+
+def wot_mark_played(system, title):
+    """Markiert ein Spiel in der WoT-CSV als gespielt (eigene Spalte
+    'Gespielt' = JA), damit es nicht mehr gezogen wird - unabhaengig
+    von der eigentlichen Bewertung ('Erstes Mal'), die weiterhin von
+    Dennsen selbst von Hand eingetragen wird (CSV bleibt fuer DIESE
+    Spalte weiterhin read-only). Legt EINMALIG ein Backup (.bak) an,
+    schreibt alle anderen Zeilen/Spalten unveraendert + atomar zurueck
+    (erst .tmp schreiben, dann os.replace() - kein halb geschriebener
+    Zustand bei einem Absturz mittendrin). Fehler werden nur geloggt,
+    nie geworfen - ein CSV-Problem darf den Spielstart nicht stoeren."""
+    try:
+        with open(WOT_CSV_FILE, encoding="utf-8-sig", newline="") as f:
+            reader = csv.DictReader(f)
+            fields = list(reader.fieldnames or [])
+            rows = list(reader)
+    except (OSError, csv.Error) as e:
+        LOG("wot_mark_played: CSV nicht lesbar: %s" % e)
+        return
+    if "Gespielt" not in fields:
+        fields.append("Gespielt")
+    changed = False
+    for row in rows:
+        if ((row.get("Konsole") or "").strip() == system and
+                (row.get("Spiel") or "").strip() == title):
+            if (row.get("Gespielt") or "").strip().upper() != "JA":
+                row["Gespielt"] = "JA"
+                changed = True
+            break
+    if not changed:
+        return
+    try:
+        if not os.path.exists(WOT_CSV_FILE + ".bak"):
+            with open(WOT_CSV_FILE, "rb") as src, open(WOT_CSV_FILE + ".bak", "wb") as dst:
+                dst.write(src.read())
+    except OSError as e:
+        LOG("wot_mark_played: Backup fehlgeschlagen: %s" % e)
+    try:
+        tmp = WOT_CSV_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8-sig", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
+            w.writeheader()
+            for row in rows:
+                w.writerow({k: (row.get(k) or "") for k in fields})
+        os.replace(tmp, WOT_CSV_FILE)
+        LOG("wot_mark_played: '%s' (%s) als gespielt markiert" % (title, system))
+    except OSError as e:
+        LOG("wot_mark_played: Schreiben fehlgeschlagen: %s" % e)
 
 def wot_list_rom_files(syskey):
     """ROM-Dateien fuer ein System - nutzt dieselbe GAMES_BASES-
@@ -5478,22 +5533,61 @@ def wot_list_rom_files(syskey):
                         files.append(os.path.join(dirpath, fn))
     return files
 
-def wot_find_rom(title, rom_files, aliases):
-    """Sucht die beste ROM-Datei fuer einen Titel. Gibt (Pfad, Score)
-    zurueck, Pfad ist None wenn nichts ueber dem Schwellwert liegt."""
-    if title in aliases:
-        alias_target = wot_normalize_title(aliases[title])
-        for rom in rom_files:
-            stem = os.path.splitext(os.path.basename(rom))[0]
-            if wot_normalize_title(stem) == alias_target:
-                return rom, 1.0
-    target = wot_normalize_title(title)
-    if not rom_files:
-        return None, 0.0
-    best_rom, best_score = None, 0.0
+def _wot_region_rank(rom):
+    """Kleiner = bevorzugt. US zuerst (fuer RetroAchievements zaehlt i.d.R.
+    die US-Version - ein Treffer mit falscher Region wuerde dort keine
+    Erfolge tracken), dann World, Europe, Japan, Rest. So wird bei
+    mehreren vorhandenen Versionen gezielt die US-Version gewaehlt statt
+    der zufaellig ersten in der Ordner-Reihenfolge."""
+    n = os.path.basename(rom).lower()
+    if "usa" in n or re.search(r"\(u[,)]", n):
+        return 0
+    if "world" in n:
+        return 1
+    if "europe" in n or re.search(r"\(e[,)]", n):
+        return 2
+    if "japan" in n or re.search(r"\(j[,)]", n):
+        return 3
+    return 4
+
+def wot_build_index(rom_files):
+    """Baut aus einer ROM-Dateiliste einmalig eine normalisierte
+    Zuordnung (Sofort-Treffer, bei mehreren Versionen mit US-Vorzug) +
+    vor-normalisierte Paare fuer die difflib-Suche (ebenfalls US
+    zuerst). Spart beim Ziehen/Neuziehen das erneute Scannen des
+    Ordners UND das Neu-Normalisieren jeder einzelnen Datei."""
+    best = {}     # norm -> (region_rank, rom)
+    pairs = []
     for rom in rom_files:
         stem = os.path.splitext(os.path.basename(rom))[0]
-        score = difflib.SequenceMatcher(None, target, wot_normalize_title(stem)).ratio()
+        n = wot_normalize_title(stem)
+        pairs.append((n, rom))
+        rank = _wot_region_rank(rom)
+        cur = best.get(n)
+        if cur is None or rank < cur[0]:
+            best[n] = (rank, rom)
+    exact = {n: rm for n, (rk, rm) in best.items()}
+    pairs.sort(key=lambda pr: _wot_region_rank(pr[1]))   # Fuzzy-Ties: US zuerst
+    return exact, pairs
+
+def wot_find_rom(title, index, aliases):
+    """Sucht die beste ROM-Datei fuer einen Titel. index = (exact_map,
+    norm_pairs) aus wot_build_index(). Exakte (normalisierte) Treffer
+    sofort, difflib nur als Rueckfall. Gibt (Pfad, Score) zurueck,
+    Pfad ist None wenn nichts ueber dem Schwellwert liegt."""
+    exact, pairs = index
+    if title in aliases:
+        alias_target = wot_normalize_title(aliases[title])
+        if alias_target in exact:
+            return exact[alias_target], 1.0
+    target = wot_normalize_title(title)
+    if target in exact:
+        return exact[target], 1.0
+    if not pairs:
+        return None, 0.0
+    best_rom, best_score = None, 0.0
+    for norm, rom in pairs:
+        score = difflib.SequenceMatcher(None, target, norm).ratio()
         if score > best_score:
             best_rom, best_score = rom, score
     if best_score >= WOT_MATCH_THRESHOLD:
@@ -5505,22 +5599,21 @@ def wot_draw_with_rom(pool, aliases, max_attempts=20):
     Treffer -> ueberspringen + neu ziehen, mit Log-Warnung statt
     Fehlerabbruch), oder gibt None nach max_attempts auf (Pool
     erschoepft / keine passenden ROMs gefunden). Liefert
-    (system, title, genre, rom_path, score) oder None."""
+    (system, title, genre, ra_id, rom_path, score) oder None."""
     tried = set()
-    roms_by_system = {}
+    index_by_system = {}
     candidates = list(pool)
     for _ in range(max_attempts):
         remaining = [g for g in candidates if g[1] not in tried]
         if not remaining:
             return None
-        system, title, genre = random.choice(remaining)
+        system, title, genre, ra_id = random.choice(remaining)
         tried.add(title)
-        if system not in roms_by_system:
-            roms_by_system[system] = wot_list_rom_files(system)
-        rom_files = roms_by_system[system]
-        rom, score = wot_find_rom(title, rom_files, aliases)
+        if system not in index_by_system:
+            index_by_system[system] = wot_build_index(wot_list_rom_files(system))
+        rom, score = wot_find_rom(title, index_by_system[system], aliases)
         if rom is not None:
-            return system, title, genre, rom, score
+            return system, title, genre, ra_id, rom, score
         LOG("Wonne oder Tonne: kein ROM-Treffer fuer '%s' (Score %.2f) - neu ziehen"
             % (title, score))
     return None
@@ -9499,6 +9592,8 @@ TRANSLATIONS = {
     "core_choice_hint": {"en": "Up/Down to choose, OK to confirm",
                          "de": "Hoch/Runter waehlen, OK bestaetigen"},
     "wot_title": {"en": "WONNE OR TONNE", "de": "WONNE ODER TONNE"},
+    "wot_hint": {"en": "Up/Down: select   OK: confirm   ESC: back",
+                 "de": "Hoch/Runter: waehlen   OK: bestaetigen   ESC: zurueck"},
     "wot_pool_empty": {
         "en": "No unplayed game left in the list - everything has been rated!",
         "de": "Kein noch nicht bewertetes Spiel mehr in der Liste - alles durchgespielt!"},
@@ -12868,7 +12963,15 @@ class Frontend:
         fehlendem ROM-Treffer automatisch neu (siehe
         wot_draw_with_rom()) - der Nutzer sieht davon nichts, nur das
         Endergebnis oder eine ehrliche Fehlermeldung, falls gar nichts
-        passt."""
+        passt.
+
+        BUGFIX (Nutzer-Rueckmeldung: RA-ID wurde zwar angezeigt, aber
+        beim Starten nie tatsaechlich verwendet - der Core startete
+        IMMER normal, nie mit RetroAchievements): fragt jetzt, genau
+        wie beim normalen Betreten einer Kategorie und beim F11-
+        Zufallsstart, per find_ra_core()/draw_core_choice_screen()
+        nach, falls fuer das System ein RA-faehiger Core existiert,
+        und reicht dessen setname korrekt an write_mgl() durch."""
         fb = self.fb
         W, H = fb.width, fb.height
         s = max(1, H // 360)
@@ -12885,7 +12988,7 @@ class Frontend:
             if result is None:
                 self._wizard_info(t("wot_title"), [t("wot_no_rom_match")], skippable=False)
                 return
-            system, title, genre, rom_path, score = result
+            system, title, genre, ra_id, rom_path, score = result
             accent = accent_for(system)
             choice = 0
             options = [t("wot_option_start"), t("wot_option_redraw"), t("wot_option_back")]
@@ -12899,6 +13002,9 @@ class Frontend:
                 fb.text(ox, y, title, game_title_scale, accent, C_BG)
                 y += 50 * s
                 fb.text(ox, y, "%s - %s" % (system_display_name(system), genre or "?"), s, C_DIM, C_BG)
+                if ra_id:
+                    y += 45 * s
+                    fb.text(ox, y, "RetroAchievements-ID: %s" % ra_id, s, C_DIM, C_BG)
                 y += 70 * s
                 for i, label in enumerate(options):
                     sel = i == choice
@@ -12906,7 +13012,7 @@ class Frontend:
                     prefix = "> " if sel else "  "
                     fb.text(ox, y, prefix + label, s, color, C_BG)
                     y += 40 * s
-                hint = t("wizard_choice_hint")
+                hint = t("wot_hint")
                 sc = s - 1 if s > 1 else 1
                 hint_w = len(hint) * 8 * sc
                 fb.text((W - hint_w) // 2, H - oy - 8 * sc, hint, sc, C_DIM, C_BG)
@@ -12921,9 +13027,20 @@ class Frontend:
                             rbf = sysdef[3]
                             ext = os.path.splitext(rom_path)[1].lower()
                             dl, ftype, idx = sysdef[4].get(ext, (2, "f", 0))
-                            LOG("Wonne oder Tonne: gestartet - %s (%s)" % (title, rom_path))
+                            setname = None
+                            ra_core = find_ra_core(system)
+                            if ra_core:
+                                use_ra = self.draw_core_choice_screen(system, title)
+                                if use_ra is None:
+                                    self.draw()
+                                    return   # ESC/back auf der Core-Auswahl - kompletter Abbruch
+                                if use_ra:
+                                    rbf, setname = ra_core
+                            LOG("Wonne oder Tonne: gestartet - %s (%s)%s"
+                                % (title, rom_path, " [RA-Core]" if setname else ""))
                             record_recent(title, (rom_path, ext, system, rbf, (dl, ftype, idx)))
-                            mgl = write_mgl(rbf, rom_path, dl, ftype, idx)
+                            mgl = write_mgl(rbf, rom_path, dl, ftype, idx, setname=setname)
+                            wot_mark_played(system, title)   # dauerhaft aus dem Pool nehmen
                             self.run_core(mgl, label=title, syskey=system)
                         return
                     elif choice == 1:    # Neu ziehen
