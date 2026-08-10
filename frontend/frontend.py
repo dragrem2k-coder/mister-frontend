@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v4.2
+MiSTer Custom Frontend - v4.3
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
@@ -3374,7 +3374,7 @@ import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib
 # nicht bei Zwischenstaenden/Diagnose-Builds/Bugfix-Versuchen (die
 # bekommen hoechstens einen Zusatz wie "4.2-test3", nie eine neue
 # Nummer hier).
-FRONTEND_VERSION = "4.2"
+FRONTEND_VERSION = "4.3"
 
 # NEUES FEATURE (Nutzerwunsch: "wenn es ein Update gibt, einmal eine
 # Info anzeigen" - das eigentliche Herunterladen/Installieren bleibt

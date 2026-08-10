@@ -4,6 +4,43 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v4.3 — großes Sammel-Release (staging → main)
+
+Alles, was sich seit v4.2 angesammelt hat, jetzt offiziell gebündelt.
+Ausführlich als `v4.3-alpha1` getestet, bevor es hierher gemergt wurde.
+
+**Neue Features:**
+- Rainwave-Internetradio als zweite Musikquelle neben MP3
+- Lautstärke-Regler für Musik und Menü-Sounds gemeinsam
+- Ersteinrichtungs-Assistent (8 Schritte, automatisch beim ersten
+  Start, jederzeit über System → Info erneut aufrufbar)
+- SNES Tracker als optionale Kategorie (nur sichtbar, wenn der Core
+  tatsächlich installiert ist) und SMW Hacks als eigene Kategorie
+- GitHub-Update-Benachrichtigung, asynchroner RA-Fortschritts-Abruf
+- Mehr versteckte Erfolge, Jubiläums-Hinweise, saisonale
+  Dekorationen, weitere Ostereier
+- "Wonne oder Tonne" (Dennsens Bewertungs-Format): zieht ein
+  zufälliges, noch nicht bewertetes NES/SNES-Spiel, mit korrekter
+  RetroAchievements-Core-Abfrage beim Start
+- Echter, selbst gewählter Sound für Erfolge und Popup-Benachrichtigungen
+- `FRONTEND_VERSION`-Konstante und `VERSION`-Datei als zusätzliche,
+  verbindliche Versions-Quellen
+
+**Bugfixes:**
+- (Unl)/(Pirate)-getaggte ROMs wurden fälschlich als Junk gefiltert
+- Veralteter Scan-Cache überlebte Änderungen an der Filterlogik
+- Doppelter Radio-Stream durch eine Wettlaufsituation beim
+  Lautstärke-Wechsel
+- Kuratierte Liste erkannte Namenskonventions-Unterschiede nicht
+  (Artikel-Stellung, "&" vs. "and")
+- Uhrzeit blieb bei fehlgeschlagener Erst-Synchronisierung dauerhaft
+  falsch, wenn kein RetroAchievements eingerichtet war
+- Update- und Jubiläums-Hinweis wurden vom Attract-Modus lautlos
+  verschluckt
+- Scripts aus dem Frontend liefen ohne steuerndes Terminal (setsid +
+  TIOCSCTTY), interaktive dialog-Scripts scheiterten dadurch
+- Boxart-Download über beide Kerne parallelisiert (spürbar schneller)
+
 ## v4.2 — Bugfix: Uhrzeit blieb bei manchen Nutzern dauerhaft falsch
 Der bisherige Neuversuch für eine beim Start fehlgeschlagene
 Zeit-Synchronisierung lief nur über den RetroAchievements-Mechanismus
