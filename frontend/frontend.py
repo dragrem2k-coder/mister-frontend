@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v4.2
+MiSTer Custom Frontend - v4.3
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
@@ -3363,7 +3363,7 @@ Start auf dem MiSTer (per SSH oder als Startscript):
   python3 /media/fat/frontend/frontend.py
 """
 
-import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib, json, random, math, signal, socket, threading, termios
+import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib, json, random, math, signal, socket, threading, termios, csv, difflib, unicodedata, wave, pickle
 
 # EINZIGE QUELLE DER WAHRHEIT fuer die Versionsnummer (Vereinbarung,
 # da mehrere Leute an derselben Codebasis arbeiten - siehe Nutzer-
@@ -3374,7 +3374,7 @@ import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib
 # nicht bei Zwischenstaenden/Diagnose-Builds/Bugfix-Versuchen (die
 # bekommen hoechstens einen Zusatz wie "4.2-test3", nie eine neue
 # Nummer hier).
-FRONTEND_VERSION = "4.2"
+FRONTEND_VERSION = "4.3"
 
 # NEUES FEATURE (Nutzerwunsch: "wenn es ein Update gibt, einmal eine
 # Info anzeigen" - das eigentliche Herunterladen/Installieren bleibt
@@ -3624,7 +3624,11 @@ BG_BASE     = "/media/fat/frontend/bg"
 SYSART_BASE = "/media/fat/frontend/sysart"
 META_BASE   = "/media/fat/frontend/meta"
 MGL_TMP     = "/tmp/frontend_launch.mgl"
-GAMES_CACHE = "/media/fat/frontend/games_cache.json"
+GAMES_CACHE = "/media/fat/frontend/games_cache.pkl"
+GAMES_CACHE_OLD_JSON = "/media/fat/frontend/games_cache.json"   # fuer die
+        # einmalige Aufraeumung einer Cache-Datei aus der Zeit vor dem
+        # Wechsel auf Pickle (siehe scan_games()) - wird nie neu
+        # geschrieben, nur einmalig geloescht, falls noch vorhanden.
 RECENT_FILE = "/media/fat/frontend/recently_played.json"
 RECENT_MAX = 15
 FAVORITES_FILE = "/media/fat/frontend/favorites.json"
@@ -4020,17 +4024,35 @@ def _ra_console_matches(expected, ra_console_normalized):
             return True
     return False
 
+RA_PROGRESS_SUMMARY_FILE = "/media/fat/frontend/ra_progress_summary.json"
+
 def build_ra_lookup(ra_entries):
     """Baut aus der RA-Fortschrittsliste ein Nachschlage-Woerterbuch:
     normalisierter_titel -> Liste von (normalisiertes_system, erreicht,
     moeglich, game_id)-Tupeln. Mehrere Eintraege pro Titel sind normal
     (dasselbe Spiel kann auf mehreren Konsolen erschienen sein) - die
-    eigentliche System-Auswahl passiert erst in lookup_ra_progress()."""
+    eigentliche System-Auswahl passiert erst in lookup_ra_progress().
+
+    NEU (Nutzerwunsch: 'Perfektionist'-Erfolg fuer 100% RA-Abschluss):
+    persistiert nebenbei eine winzige Zusammenfassung (nur ein
+    Wahrheitswert), damit auch reine Anzeige-Funktionen ohne Zugriff
+    auf die lebende self._ra_lookup (z.B. get_hidden_achievements(),
+    ueberall als einfache Modulfunktion aufgerufen) wissen, ob
+    mindestens ein Spiel zu 100% abgeschlossen ist - OHNE selbst RA
+    abfragen zu muessen. Nur geschrieben, wenn tatsaechlich Eintraege
+    da waren (ein leerer/fehlgeschlagener Abruf darf einen bereits
+    bekannten 100%-Abschluss nicht faelschlich wieder loeschen)."""
     lookup = {}
+    any_100pct = False
     for title, system, earned, total, game_id in ra_entries or []:
         key = _ra_normalize_name(title)
         lookup.setdefault(key, []).append(
             (_ra_normalize_name(system), earned, total, game_id))
+        if total and total > 0 and earned >= total:
+            any_100pct = True
+    if ra_entries:
+        _save_json_dict(RA_PROGRESS_SUMMARY_FILE,
+                        {"any_100pct": any_100pct, "ts": time.time()})
     return lookup
 
 def lookup_ra_progress(lookup, our_name, our_syskey):
@@ -4174,15 +4196,19 @@ def _load_first_played():
     except (OSError, ValueError):
         return {}
 
-def _record_first_played(label, year):
-    """Merkt sich das Jahr des allerersten Starts eines Spiels - wird
+def _record_first_played(label, date_str):
+    """Merkt sich das Datum des allerersten Starts eines Spiels - wird
     NUR beim allerersten Mal fuer dieses Spiel gesetzt, ein spaeterer
     Aufruf fuer dasselbe Spiel aendert nichts mehr (das reine
-    Vorhandensein des Eintrags zaehlt als 'schon gesehen')."""
+    Vorhandensein des Eintrags zaehlt als 'schon gesehen').
+
+    date_str: seit dem "Auf diesen Tag vor X Jahren"-Feature das VOLLE
+    Datum ("2026-03-15") statt nur des Jahres - siehe Aufrufer
+    record_yearly_playtime()."""
     data = _load_first_played()
     if label in data:
         return
-    data[label] = year
+    data[label] = date_str
     try:
         os.makedirs(os.path.dirname(FIRST_PLAYED_FILE), exist_ok=True)
         with open(FIRST_PLAYED_FILE, "w") as f:
@@ -4190,10 +4216,55 @@ def _record_first_played(label, year):
     except OSError:
         pass
 
+def find_on_this_day_hint():
+    """Nutzerwunsch ('Auf diesen Tag vor X Jahren'): sucht in
+    first_played.json ein Spiel, dessen allererster Start-TAG (Monat+
+    Tag) auf HEUTE faellt, aber aus einem VERGANGENEN Jahr stammt.
+    Liefert (spielname, jahre_her) oder None, wenn nichts passt (der
+    haeufigste Fall - an den allermeisten Tagen wird hier nichts
+    gefunden, das ist normal und kein Fehler).
+
+    Rein lokale Dateiabfrage, KEIN Netzwerkzugriff - kann deshalb
+    synchron und ohne Hintergrund-Thread aufgerufen werden, anders als
+    z.B. der Update-Check.
+
+    Alte Eintraege, die noch aus der Zeit VOR diesem Feature stammen
+    und nur eine reine Jahreszahl enthalten (4 Zeichen, kein '-'),
+    werden sauber uebersprungen - ohne Tag/Monat gibt es dafuer schlicht
+    keine sinnvolle Antwort, kein Rateversuch."""
+    first_played = _load_first_played()
+    if not first_played:
+        return None
+    today = time.localtime()
+    today_md = time.strftime("%m-%d", today)
+    this_year = today.tm_year
+    matches = []
+    for label, date_str in first_played.items():
+        if not isinstance(date_str, str) or len(date_str) != 10:
+            continue   # kein volles YYYY-MM-DD (z.B. alte reine Jahreszahl)
+        parts = date_str.split("-")
+        if len(parts) != 3:
+            continue
+        y, m, d = parts
+        try:
+            y_int = int(y)
+        except ValueError:
+            continue
+        if m + "-" + d == today_md and y_int < this_year:
+            matches.append((label, this_year - y_int))
+    if not matches:
+        return None
+    matches.sort(key=lambda mtch: -mtch[1])   # am laengsten zurueckliegend zuerst
+    return matches[0]
+
 def record_yearly_playtime(label, seconds, syskey=None):
     """Wie record_playtime(), aber zusaetzlich nach Kalenderjahr
     gebuendelt - siehe Modul-Kommentar oben fuer die Begruendung.
-    Aktualisiert nebenbei _record_first_played()."""
+    Aktualisiert nebenbei _record_first_played().
+
+    NEU (Nutzerwunsch: "Auf diesen Tag vor X Jahren"-Hinweis): uebergibt
+    jetzt das VOLLE heutige Datum statt nur des Jahres - rueckwaerts-
+    kompatibel, siehe _record_first_played()/find_on_this_day_hint()."""
     if not label or seconds <= 0:
         return
     year = _current_year()
@@ -4213,7 +4284,7 @@ def record_yearly_playtime(label, seconds, syskey=None):
             json.dump(data, f)
     except OSError:
         pass
-    _record_first_played(label, year)
+    _record_first_played(label, time.strftime("%Y-%m-%d", time.localtime()))
 
 def compute_year_review_stats(year=None):
     """Berechnet die Kennzahlen fuer den Jahresrueckblick (Nutzerwunsch:
@@ -4237,6 +4308,13 @@ def compute_year_review_stats(year=None):
 
     first_played = _load_first_played()
     discovered_this_year = sum(1 for g in games if first_played.get(g) == year)
+    # BUGFIX/Kompatibilitaet: first_played.json speichert seit dem
+    # "Auf diesen Tag"-Feature das VOLLE Datum ("2026-03-15") statt nur
+    # des Jahres ("2026") - der Vergleich braucht deshalb jetzt die
+    # ersten 4 Zeichen. Funktioniert unveraendert fuer alte, noch aus
+    # reinen Jahreszahlen bestehende Eintraege (ein 4-Zeichen-String
+    # liefert bei [:4] sich selbst zurueck) - keine Migration noetig.
+    discovered_this_year = sum(1 for g in games if first_played.get(g, "")[:4] == year)
 
     return {
         "year": year,
@@ -4466,21 +4544,128 @@ def _unlock_hidden(achievement_id):
         pass
     return True
 
-def check_hidden_session_achievements(session_start_walltime, elapsed_seconds):
+# NEU (Nutzerwunsch: weitere versteckte Erfolge): drei zusaetzliche
+# kleine Tracker-Dateien, alle nach demselben Muster wie
+# HIDDEN_UNLOCKED_FILE - defensiv (fehlende/kaputte Datei = leerer
+# Anfangszustand, nie ein Absturz).
+WEEKEND_TRACKER_FILE = "/media/fat/frontend/weekend_tracker.json"
+LAST_PLAYED_FILE = "/media/fat/frontend/last_played.json"
+DAILY_SYSTEMS_FILE = "/media/fat/frontend/daily_systems.json"
+
+def _load_json_dict(path):
+    try:
+        with open(path) as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+def _save_json_dict(path, data):
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            json.dump(data, f)
+    except OSError:
+        pass
+
+def _check_weekend_warrior(session_start_walltime, local_time):
+    """'Wochenend-Krieger': an Samstag UND Sonntag DERSELBEN ISO-Woche
+    gespielt. tm_wday: Montag=0 ... Sonntag=6, Samstag=5. Nur ein
+    winziger Eintrag pro Woche (max. ~52/Jahr) - kein Aufraeumen
+    noetig, das waechst ueber Jahre hinweg vernachlaessigbar."""
+    wday = local_time.tm_wday
+    if wday not in (5, 6):
+        return
+    week_key = time.strftime("%G-W%V", local_time)
+    tracker = _load_json_dict(WEEKEND_TRACKER_FILE)
+    days = set(tracker.get(week_key, []))
+    days.add(wday)
+    tracker[week_key] = sorted(days)
+    _save_json_dict(WEEKEND_TRACKER_FILE, tracker)
+    if 5 in days and 6 in days:
+        _unlock_hidden("weekend_warrior")
+
+def _check_comeback(label, session_start_walltime):
+    """'Comeback': dasselbe Spiel nach 6+ Monaten Pause wieder
+    gestartet. Vergleicht den ZULETZT gespeicherten Zeitstempel GEGEN
+    JETZT, BEVOR er mit dem neuen Wert ueberschrieben wird - Pruefung
+    und Aktualisierung bewusst in EINER Funktion, damit die Reihenfolge
+    nie versehentlich vertauscht werden kann."""
+    if not label:
+        return
+    data = _load_json_dict(LAST_PLAYED_FILE)
+    old_ts = data.get(label)
+    if old_ts is not None:
+        try:
+            if session_start_walltime - float(old_ts) >= 180 * 24 * 3600:
+                _unlock_hidden("comeback")
+        except (TypeError, ValueError):
+            pass
+    data[label] = session_start_walltime
+    _save_json_dict(LAST_PLAYED_FILE, data)
+
+def _check_versatile(syskey, session_start_walltime, local_time):
+    """'Vielseitig': an einem Tag Spiele aus 4+ verschiedenen Systemen
+    gestartet. Taeglich zurueckgesetzt (Datumsvergleich)."""
+    if not syskey:
+        return
+    today = time.strftime("%Y-%m-%d", local_time)
+    data = _load_json_dict(DAILY_SYSTEMS_FILE)
+    if data.get("date") != today:
+        data = {"date": today, "systems": []}
+    systems = set(data.get("systems", []))
+    systems.add(syskey)
+    data["systems"] = sorted(systems)
+    _save_json_dict(DAILY_SYSTEMS_FILE, data)
+    if len(systems) >= 4:
+        _unlock_hidden("versatile")
+
+def check_hidden_session_achievements(session_start_walltime, elapsed_seconds,
+                                      label=None, syskey=None):
     """Nach einer gespielten Sitzung (siehe run_core()) pruefen, ob
     dadurch ein ereignis-basierter versteckter Erfolg freigeschaltet
     wird. session_start_walltime: echte Wanduhrzeit (time.time()) beim
     Sitzungsbeginn - NICHT die monotone Zeit, die fuer die
     Dauer-Berechnung genutzt wird (die ist unempfindlich gegen
-    Uhr-Korrekturen, sagt aber nichts ueber die Tageszeit aus)."""
+    Uhr-Korrekturen, sagt aber nichts ueber die Tageszeit aus).
+
+    label/syskey (neu, optional - Rueckwaertskompatibel, bislang
+    einziger Aufrufer ist run_core()): fuer 'Comeback' (dasselbe Spiel
+    nach langer Pause) und 'Vielseitig' (mehrere Systeme an einem Tag)
+    zusaetzlich zu den bereits bestehenden Nachteule/Marathon-Pruefungen
+    noetig. Alles einzeln try/except-abgesichert - ein Problem bei
+    einer Pruefung darf niemals eine andere verhindern."""
     try:
-        hour = time.localtime(session_start_walltime).tm_hour
+        lt = time.localtime(session_start_walltime)
+        hour = lt.tm_hour
         if 0 <= hour < 5:
             _unlock_hidden("night_owl")
+        elif 5 <= hour < 7:
+            _unlock_hidden("early_bird")
+        _check_weekend_warrior(session_start_walltime, lt)
     except Exception:
         pass
     if elapsed_seconds >= 3 * 3600:
         _unlock_hidden("marathon")
+    try:
+        _check_comeback(label, session_start_walltime)
+    except Exception:
+        pass
+    try:
+        _check_versatile(syskey, session_start_walltime,
+                         time.localtime(session_start_walltime))
+    except Exception:
+        pass
+
+def _ra_100pct_achieved():
+    """'Perfektionist': mindestens ein Spiel zu 100% bei RetroAchievements
+    abgeschlossen. Liest eine kleine, separat gepflegte Zusammenfassung
+    (siehe build_ra_lookup()) statt selbst RA abzufragen - diese Funktion
+    ist eine reine, synchrone Anzeige-Hilfsfunktion (wird u.a. beim
+    Zeichnen des Trophaeenraums aufgerufen) und darf niemals selbst
+    Netzwerkzugriffe ausloesen."""
+    data = _load_json_dict(RA_PROGRESS_SUMMARY_FILE)
+    return bool(data.get("any_100pct"))
 
 def get_hidden_achievements():
     """Liste (id, label_key, freigeschaltet)-Tupel fuer alle
@@ -4501,6 +4686,11 @@ def get_hidden_achievements():
         ("collector", "hidden_collector", favorites_count >= 10),
         ("completionist", "hidden_completionist", max_launches >= 20),
         ("legend", "hidden_legend", legend_unlocked),
+        ("early_bird", "hidden_early_bird", "early_bird" in unlocked_events),
+        ("weekend_warrior", "hidden_weekend_warrior", "weekend_warrior" in unlocked_events),
+        ("comeback", "hidden_comeback", "comeback" in unlocked_events),
+        ("versatile", "hidden_versatile", "versatile" in unlocked_events),
+        ("perfectionist", "hidden_perfectionist", _ra_100pct_achieved()),
     ]
 
 # ----------------------------------------------------------------------------
@@ -4706,8 +4896,33 @@ SECRET_CODES = {
                       "letter:Y", "letter:B"],
     # Schaltet einen geheimen Sound frei. Nur per Tastatur eingebbar.
     "secret_sound": ["letter:A", "letter:B", "letter:B", "letter:A"],
+    # NEU (Nutzerwunsch, Easter Egg): faerbt den Auswahl-Cursor im
+    # Hauptmenue fuer eine Weile in Regenbogenfarben. Nur per Tastatur
+    # eingebbar, wie alle anderen Codes.
+    "rainbow_cursor": ["letter:R", "letter:A", "letter:I", "letter:N",
+                       "letter:B", "letter:O", "letter:W"],
+    # NEU (Nutzerwunsch, Easter Egg): spielt einen kurzen 8-Bit-Chiptune-
+    # Jingle ab (ueber denselben gedaempften Weg wie der geheime Sound/
+    # die Erfolgs-Jingles - siehe _play_ducked_sfx()). Nur per Tastatur.
+    "chiptune_sound": ["letter:C", "letter:H", "letter:I", "letter:P"],
 }
 SECRET_CODE_MAXLEN = max(len(seq) for seq in SECRET_CODES.values())
+
+# NEU (Nutzerwunsch: "ein Geheimnis im Geheimnis"): BEWUSST NICHT Teil
+# von SECRET_CODES/check_secret_code() - jene Pruefung laeuft nur auf
+# Seite 0 (Hauptmenue, siehe run()) und wuerde diesen Code sonst AUCH
+# dort ausloesen. draw_dev_room_screen() prueft diese eigene, kurze
+# Sequenz komplett unabhaengig, in einem eigenen kleinen Puffer -
+# dadurch nur WAEHREND man sich tatsaechlich bereits im Entwicklerraum
+# befindet eingebbar. Trotzdem ueber dieselbe _unlock_secret()/
+# _load_secrets_unlocked()-Speicherung wie die "echten" Geheimnisse
+# (die validieren nicht gegen SECRET_CODES, reine ID-Menge) - zaehlt
+# deshalb ganz normal mit, siehe die beiden "+1"-Stellen bei den
+# X-von-Y-Anzeigen unten.
+DEV_ROOM_BONUS_ID = "dev_room_bonus"
+DEV_ROOM_BONUS_CODE = ["letter:E", "letter:G", "letter:G"]
+
+RAINBOW_CURSOR_SECONDS = 120   # wie lange der Regenbogen-Cursor-Effekt anhaelt
 
 def _load_secrets_unlocked():
     """Menge der IDs bereits per Geheimcode freigeschalteter
@@ -5035,6 +5250,35 @@ BOOTANIM_DIR = "/media/fat/frontend/bootanim"
 BOOTANIM_PLAYED_MARKER = "/tmp/frontend_bootanim_played"
 MPG123_BIN  = "/usr/bin/mpg123"
 
+# NEUES FEATURE (Nutzerwunsch: eigenes Logo beim Start zeigen, statt
+# des bisherigen generischen D-Pad-Symbols - mit demselben Flacker-
+# Effekt wie vorher). Liegt als vorbereitete .art-Datei bei (siehe
+# frontend/boot_logo/), wird NUR gezeigt, wenn KEIN eigenes Boot-
+# Animation-Verzeichnis (BOOTANIM_DIR) existiert - genau wie beim
+# bisherigen D-Pad-Symbol auch. Per Menuepunkt (System -> Anzeige &
+# Sound) abschaltbar - dann erscheint wieder das alte, neutrale
+# D-Pad-Symbol statt des personalisierten Logos (fuer alle, die das
+# nicht wollen, z.B. TheRealSutefan/Dennsen/Dfense mit eigenem Namen
+# an der Sache).
+DRAGEND_LOGO_FILE = "/media/fat/frontend/boot_logo/dragend_logo.art"
+DRAGEND_LOGO_DISABLED_FLAG = "/media/fat/frontend/dragend_logo_disabled"
+
+def dragend_logo_enabled():
+    return not os.path.exists(DRAGEND_LOGO_DISABLED_FLAG)
+
+def toggle_dragend_logo():
+    if dragend_logo_enabled():
+        try:
+            os.makedirs(os.path.dirname(DRAGEND_LOGO_DISABLED_FLAG), exist_ok=True)
+            open(DRAGEND_LOGO_DISABLED_FLAG, "w").close()
+        except OSError:
+            pass
+    else:
+        try:
+            os.remove(DRAGEND_LOGO_DISABLED_FLAG)
+        except OSError:
+            pass
+
 # NEUES FEATURE (Nutzerwunsch: vereinfachte Installation, ein
 # Ersteinrichtungs-Assistent, der einmalig durch alle wichtigen
 # Schritte fuehrt): anders als BOOTANIM_PLAYED_MARKER (liegt in /tmp,
@@ -5156,6 +5400,259 @@ def system_display_name(syskey):
     return syskey or "?"
 
 # ----------------------------------------------------------------------------
+# WONNE ODER TONNE (Dennsens eigenes Bewertungs-Format: zufaellig ein noch
+# nicht gespieltes NES/SNES-Spiel ziehen, aus seiner eigenen CSV-
+# Bewertungsliste). Uebernommen aus einem separat vorbereiteten Vorschlag
+# (wonne_oder_tonne.py) - Kernlogik direkt portiert, aber an unseren
+# Codestil angepasst (keine dataclasses/pathlib/moderne Typ-Hints, da im
+# restlichen Projekt nicht verwendet) und die ROM-Suche auf unsere
+# bestehende GAMES_BASES-Mehrfachpfad-Erkennung umgestellt (statt eines
+# einzelnen fest vorgegebenen ROM-Ordners).
+#
+# GETROFFENE ANNAHMEN (aus dem Vorschlag uebernommen, siehe dort fuer die
+# Begruendung): die CSV bleibt READ-ONLY - eine Ziehung markiert das Spiel
+# NICHT automatisch als gespielt. Kein ROM-Treffer -> ueberspringen und neu
+# ziehen (mit Log-Warnung), kein Fehlerabbruch. Menuepunkt nur sichtbar,
+# wenn WOT_CSV_FILE tatsaechlich existiert (siehe build_categories()).
+WOT_CSV_FILE = "/media/fat/frontend/wot_games.csv"
+WOT_ALIASES_FILE = "/media/fat/frontend/wot_aliases.json"
+WOT_SYSTEMS = ["NES", "SNES"]
+WOT_MATCH_THRESHOLD = 0.72   # difflib-Aehnlichkeit, ab der ein ROM-Treffer akzeptiert wird
+WOT_TAG_PATTERN = re.compile(r"[\(\[][^\)\]]*[\)\]]")
+WOT_ALL_ARTICLES = ["Das", "Die", "Der", "The"]
+
+def _wot_strip_accents(s):
+    nfkd = unicodedata.normalize("NFKD", s)
+    return "".join(c for c in nfkd if not unicodedata.combining(c))
+
+def wot_normalize_title(raw):
+    """Bringt CSV-Anzeigename oder ROM-Dateiname auf eine vergleichbare
+    Form: Klammer-Tags (Region/Sprache/Rev) weg, Artikel-Inversion
+    aufgeloest ("X, The" <-> "The X", genauso De/Die/Der), Satzzeichen/
+    Mehrfach-Leerzeichen normalisiert, Kleinschreibung, keine Akzente."""
+    s = raw.strip()
+    s = WOT_TAG_PATTERN.sub("", s)
+    s = s.strip()
+    m = re.match(r"^(.*),\s*(Das|Die|Der|The)$", s, flags=re.IGNORECASE)
+    if m:
+        s = "%s %s" % (m.group(2), m.group(1))
+    s = _wot_strip_accents(s)
+    s = s.lower()
+    s = re.sub(r"[^a-z0-9]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    for art in WOT_ALL_ARTICLES:
+        prefix = art.lower() + " "
+        if s.startswith(prefix):
+            s = s[len(prefix):]
+            break
+    return s
+
+def wot_load_pool():
+    """Laedt WOT_CSV_FILE, liefert die Liste noch nicht gespielter Spiele
+    als (system, title, genre, ra_id)-Tupel. Regel: Spalte "Erstes Mal"
+    leer -> noch nicht bewertet -> Teil des Pools; befuellt (JA/NEIN) ->
+    schon bewertet -> ausgeschlossen. ZUSAETZLICH (uebernommen aus
+    Sutefans eigener Weiterentwicklung): eine eigene Spalte "Gespielt"
+    (vom Frontend selbst gesetzt, siehe wot_mark_played()) - "JA" dort
+    bedeutet "wurde bereits ueber diesen Bildschirm gestartet", auch
+    wenn noch keine Bewertung eingetragen wurde."""
+    pool = []
+    try:
+        with open(WOT_CSV_FILE, encoding="utf-8-sig", newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                system = (row.get("Konsole") or "").strip()
+                if system not in WOT_SYSTEMS:
+                    continue
+                if (row.get("Erstes Mal") or "").strip() != "":
+                    continue   # schon bewertet -> raus
+                if (row.get("Gespielt") or "").strip().upper() == "JA":
+                    continue   # vom Frontend als gespielt markiert -> raus
+                title = (row.get("Spiel") or "").strip()
+                if not title:
+                    continue
+                genre = (row.get("Genre") or "").strip()
+                ra_id = (row.get("RA_ID") or "").strip()
+                pool.append((system, title, genre, ra_id))
+    except (OSError, csv.Error):
+        return []
+    return pool
+
+def wot_load_aliases():
+    """Optionale manuelle Uebersetzungstabelle CSV-Titel -> ROM-Dateiname
+    (fuer Faelle wie 'Action in New York' -> 'S.C.A.T. - Special
+    Cybernetic Attack Team (USA)', die per Fuzzy-Matching nicht
+    zuverlaessig zu finden sind)."""
+    try:
+        with open(WOT_ALIASES_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+def wot_mark_played(system, title):
+    """Markiert ein Spiel in der WoT-CSV als gespielt (eigene Spalte
+    'Gespielt' = JA), damit es nicht mehr gezogen wird - unabhaengig
+    von der eigentlichen Bewertung ('Erstes Mal'), die weiterhin von
+    Dennsen selbst von Hand eingetragen wird (CSV bleibt fuer DIESE
+    Spalte weiterhin read-only). Legt EINMALIG ein Backup (.bak) an,
+    schreibt alle anderen Zeilen/Spalten unveraendert + atomar zurueck
+    (erst .tmp schreiben, dann os.replace() - kein halb geschriebener
+    Zustand bei einem Absturz mittendrin). Fehler werden nur geloggt,
+    nie geworfen - ein CSV-Problem darf den Spielstart nicht stoeren."""
+    try:
+        with open(WOT_CSV_FILE, encoding="utf-8-sig", newline="") as f:
+            reader = csv.DictReader(f)
+            fields = list(reader.fieldnames or [])
+            rows = list(reader)
+    except (OSError, csv.Error) as e:
+        LOG("wot_mark_played: CSV nicht lesbar: %s" % e)
+        return
+    if "Gespielt" not in fields:
+        fields.append("Gespielt")
+    changed = False
+    for row in rows:
+        if ((row.get("Konsole") or "").strip() == system and
+                (row.get("Spiel") or "").strip() == title):
+            if (row.get("Gespielt") or "").strip().upper() != "JA":
+                row["Gespielt"] = "JA"
+                changed = True
+            break
+    if not changed:
+        return
+    try:
+        if not os.path.exists(WOT_CSV_FILE + ".bak"):
+            with open(WOT_CSV_FILE, "rb") as src, open(WOT_CSV_FILE + ".bak", "wb") as dst:
+                dst.write(src.read())
+    except OSError as e:
+        LOG("wot_mark_played: Backup fehlgeschlagen: %s" % e)
+    try:
+        tmp = WOT_CSV_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8-sig", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
+            w.writeheader()
+            for row in rows:
+                w.writerow({k: (row.get(k) or "") for k in fields})
+        os.replace(tmp, WOT_CSV_FILE)
+        LOG("wot_mark_played: '%s' (%s) als gespielt markiert" % (title, system))
+    except OSError as e:
+        LOG("wot_mark_played: Schreiben fehlgeschlagen: %s" % e)
+
+def wot_list_rom_files(syskey):
+    """ROM-Dateien fuer ein System - nutzt dieselbe GAMES_BASES-
+    Mehrfachpfad-Erkennung wie der normale Scan (nicht nur einen
+    einzelnen fest vorgegebenen Ordner, wie im urspruenglichen
+    Vorschlag), inkl. Unterordnern (os.walk, gleiche Logik wie
+    _scan_folder_tree())."""
+    sysdef = next((s for s in GAME_SYSTEMS if s[1] == syskey), None)
+    if not sysdef:
+        return []
+    _disp, _sk, folders, _rbf, extmap = sysdef
+    exts = tuple(extmap.keys())
+    files = []
+    seen_roots = set()
+    for base in GAMES_BASES:
+        for folder in folders:
+            root = os.path.join(base, folder)
+            try:
+                real = os.path.realpath(root)
+            except OSError:
+                continue
+            if not os.path.isdir(root) or real in seen_roots:
+                continue
+            seen_roots.add(real)
+            for dirpath, _dirnames, filenames in os.walk(root):
+                for fn in filenames:
+                    if os.path.splitext(fn)[1].lower() in exts:
+                        files.append(os.path.join(dirpath, fn))
+    return files
+
+def _wot_region_rank(rom):
+    """Kleiner = bevorzugt. US zuerst (fuer RetroAchievements zaehlt i.d.R.
+    die US-Version - ein Treffer mit falscher Region wuerde dort keine
+    Erfolge tracken), dann World, Europe, Japan, Rest. So wird bei
+    mehreren vorhandenen Versionen gezielt die US-Version gewaehlt statt
+    der zufaellig ersten in der Ordner-Reihenfolge."""
+    n = os.path.basename(rom).lower()
+    if "usa" in n or re.search(r"\(u[,)]", n):
+        return 0
+    if "world" in n:
+        return 1
+    if "europe" in n or re.search(r"\(e[,)]", n):
+        return 2
+    if "japan" in n or re.search(r"\(j[,)]", n):
+        return 3
+    return 4
+
+def wot_build_index(rom_files):
+    """Baut aus einer ROM-Dateiliste einmalig eine normalisierte
+    Zuordnung (Sofort-Treffer, bei mehreren Versionen mit US-Vorzug) +
+    vor-normalisierte Paare fuer die difflib-Suche (ebenfalls US
+    zuerst). Spart beim Ziehen/Neuziehen das erneute Scannen des
+    Ordners UND das Neu-Normalisieren jeder einzelnen Datei."""
+    best = {}     # norm -> (region_rank, rom)
+    pairs = []
+    for rom in rom_files:
+        stem = os.path.splitext(os.path.basename(rom))[0]
+        n = wot_normalize_title(stem)
+        pairs.append((n, rom))
+        rank = _wot_region_rank(rom)
+        cur = best.get(n)
+        if cur is None or rank < cur[0]:
+            best[n] = (rank, rom)
+    exact = {n: rm for n, (rk, rm) in best.items()}
+    pairs.sort(key=lambda pr: _wot_region_rank(pr[1]))   # Fuzzy-Ties: US zuerst
+    return exact, pairs
+
+def wot_find_rom(title, index, aliases):
+    """Sucht die beste ROM-Datei fuer einen Titel. index = (exact_map,
+    norm_pairs) aus wot_build_index(). Exakte (normalisierte) Treffer
+    sofort, difflib nur als Rueckfall. Gibt (Pfad, Score) zurueck,
+    Pfad ist None wenn nichts ueber dem Schwellwert liegt."""
+    exact, pairs = index
+    if title in aliases:
+        alias_target = wot_normalize_title(aliases[title])
+        if alias_target in exact:
+            return exact[alias_target], 1.0
+    target = wot_normalize_title(title)
+    if target in exact:
+        return exact[target], 1.0
+    if not pairs:
+        return None, 0.0
+    best_rom, best_score = None, 0.0
+    for norm, rom in pairs:
+        score = difflib.SequenceMatcher(None, target, norm).ratio()
+        if score > best_score:
+            best_rom, best_score = rom, score
+    if best_score >= WOT_MATCH_THRESHOLD:
+        return best_rom, best_score
+    return None, best_score
+
+def wot_draw_with_rom(pool, aliases, max_attempts=20):
+    """Zieht Spiele, bis eins mit passendem ROM gefunden wird (kein
+    Treffer -> ueberspringen + neu ziehen, mit Log-Warnung statt
+    Fehlerabbruch), oder gibt None nach max_attempts auf (Pool
+    erschoepft / keine passenden ROMs gefunden). Liefert
+    (system, title, genre, ra_id, rom_path, score) oder None."""
+    tried = set()
+    index_by_system = {}
+    candidates = list(pool)
+    for _ in range(max_attempts):
+        remaining = [g for g in candidates if g[1] not in tried]
+        if not remaining:
+            return None
+        system, title, genre, ra_id = random.choice(remaining)
+        tried.add(title)
+        if system not in index_by_system:
+            index_by_system[system] = wot_build_index(wot_list_rom_files(system))
+        rom, score = wot_find_rom(title, index_by_system[system], aliases)
+        if rom is not None:
+            return system, title, genre, ra_id, rom, score
+        LOG("Wonne oder Tonne: kein ROM-Treffer fuer '%s' (Score %.2f) - neu ziehen"
+            % (title, score))
+    return None
+
+# ----------------------------------------------------------------------------
 # RA-CORE-ERKENNUNG (sage2050s "MiSTer_RetroAchievements"-Werkzeug -
 # legt RA-faehige Core-Varianten in einen separaten Ordner, getrennt
 # von den Standard-Cores)
@@ -5236,14 +5733,42 @@ SYSTEM_ACCENT = {
     "SMW_HACKS": (225, 100, 40),            # Mario-Rot/Orange, abgesetzt von SNES-Lila
 }
 
+def seasonal_decoration():
+    """Easter Egg (Nutzerwunsch): kleine, rein optische Jahreszeiten-
+    Deko am 24.12. und 31.12. - liefert (text, farbe) oder None an
+    jedem anderen Tag. Schaltet sich dadurch von selbst wieder ab,
+    kein Freischalt-/Speicherzustand noetig, reiner Datumsvergleich
+    bei jedem Zeichnen (vernachlaessigbare Kosten, wie die Uhrzeit in
+    der Statuszeile)."""
+    lt = time.localtime()
+    if lt.tm_mon == 12 and lt.tm_mday == 24:
+        return (t("seasonal_xmas"), (210, 70, 70))
+    if lt.tm_mon == 12 and lt.tm_mday == 31:
+        return (t("seasonal_nye"), (210, 175, 70))
+    return None
+
 def accent_for(syskey):
     """Akzentfarbe fuer ein System - faellt auf den Standard zurueck,
     wenn kein syskey vorhanden ist (Scripts/System/Core-Ordner) oder
-    das System nicht in SYSTEM_ACCENT gelistet ist."""
-    return SYSTEM_ACCENT.get(syskey, C_ACCENT)
+    das System nicht in SYSTEM_ACCENT gelistet ist.
+
+    Im monochromen Theme (aktuell: Retro-Gruen) wird die bunte System-
+    Farbe zu 70% Richtung Theme-Akzentfarbe abgemischt statt pur
+    durchzuschlagen - auf einem echten monochromen Gruen-Bildschirm
+    haette es ohnehin nie unterschiedliche Farbtoene gegeben, eine
+    z.B. pure SNES-Lila-Markierung riss bisher komplett aus dem
+    Phosphor-Look raus. Bewusst nicht 100% Theme-Farbe (0% System-
+    Farbe) - ein leichter Farbstich bleibt erhalten, genug um
+    Systeme im Zweifel noch unterscheiden zu koennen."""
+    color = SYSTEM_ACCENT.get(syskey, C_ACCENT)
+    if CURRENT_THEME_MONOCHROME and syskey is not None:
+        mix = 0.7
+        color = tuple(int(c * (1 - mix) + a * mix) for c, a in zip(color, C_ACCENT))
+    return color
 C_TEXT   = (220, 224, 232)
 C_DIM    = (120, 126, 140)
 C_TITLE  = (255, 255, 255)   # Logo/Systemname: weiss (Retro-Look)
+CURRENT_THEME_MONOCHROME = False   # von apply_theme() gesetzt, siehe accent_for()
 
 # ----------------------------------------------------------------------------
 # THEMES/FARBSCHEMATA
@@ -5273,6 +5798,17 @@ THEMES = {
         "C_BG": (6, 16, 9), "C_PANEL": (11, 28, 15),
         "C_TEXT": (150, 255, 165), "C_DIM": (60, 140, 80),
         "C_TITLE": (205, 255, 215), "C_ACCENT": (80, 255, 120),
+        # NEU (Nutzer-Rueckmeldung anhand eines Screenshots: die pro-
+        # System-Akzentfarbe - z.B. SNES-Lila - riss hier komplett aus
+        # dem monochromen Phosphor-Look raus): "monochrome" = True
+        # sorgt dafuer, dass accent_for() hier NICHT die bunte System-
+        # Farbe direkt verwendet, sondern zum Theme-eigenen Gruenton
+        # HIN abblendet (siehe accent_for()) - genau wie ein echter
+        # monochromer Gruen-Bildschirm, auf dem es ohnehin nie
+        # unterschiedliche Farbtoene gegeben haette. Andere Themes
+        # (dark/light/secret_gold) sind bewusst NICHT monochrom
+        # angelegt, dort bleibt die Systemfarbe unveraendert bunt.
+        "monochrome": True,
     },
     "secret_gold": {   # Geheimes Theme (Nutzerwunsch: "Easter Egg
         # System") - Gold/Violett, angelehnt an klassische
@@ -5313,7 +5849,7 @@ def apply_theme(name):
     """Aktiviert ein Farbschema - schreibt direkt in die gleichnamigen
     globalen Variablen, die im gesamten restlichen Code bereits
     verwendet werden (kein Umbau an anderer Stelle noetig)."""
-    global C_BG, C_PANEL, C_TEXT, C_DIM, C_TITLE, C_ACCENT
+    global C_BG, C_PANEL, C_TEXT, C_DIM, C_TITLE, C_ACCENT, CURRENT_THEME_MONOCHROME
     theme = THEMES.get(name, THEMES["dark"])
     C_BG = theme["C_BG"]
     C_PANEL = theme["C_PANEL"]
@@ -5321,6 +5857,7 @@ def apply_theme(name):
     C_DIM = theme["C_DIM"]
     C_TITLE = theme["C_TITLE"]
     C_ACCENT = theme["C_ACCENT"]
+    CURRENT_THEME_MONOCHROME = theme.get("monochrome", False)
 
 def cycle_theme():
     """Zum naechsten Farbschema wechseln (der Reihe nach), speichert
@@ -5520,6 +6057,24 @@ class Framebuffer:
             off = run_start * stride
             block = row_variants[lvl] * run_len
             out[off:off + len(block)] = block
+
+    @staticmethod
+    def _scale_brightness(pix, factor):
+        """Skaliert die Helligkeit eines kompletten BGRA-Pixelpuffers
+        (siehe blit()) um factor (0.0-1.0+) - per bytes.translate() mit
+        vorberechneter 256-Werte-Tabelle, deutlich schneller als eine
+        Python-Schleife pro Byte. Der Alpha-Kanal wird zwar mit
+        skaliert (translate() kennt keine Kanaele, wirkt gleichmaessig
+        auf JEDES Byte), das ist aber unschaedlich: blit() kopiert
+        Pixel direkt ohne Alpha-Blending, der Alpha-Wert wird beim
+        Zeichnen also nie ausgewertet. Fuer den Logo-Flacker-Effekt
+        beim Start (siehe _draw_dragend_logo_boot()) - dieselbe
+        Wirkung wie das bisherige dunkel/mittel/voll beim generischen
+        D-Pad-Symbol, nur auf ein echtes Bild statt auf einfache
+        Rechtecke angewendet."""
+        factor = max(0.0, min(1.0, factor))
+        lut = bytes(min(255, int(i * factor)) for i in range(256))
+        return pix.translate(lut)
 
     @staticmethod
     def px(rgb):
@@ -7667,20 +8222,31 @@ def scan_games(force=False, progress_cb=None):
     progress_cb(i, total, name): wird NUR beim tatsaechlichen Scannen
     von der Platte aufgerufen (nicht beim schnellen Cache-Treffer) -
     normale Boots (Cache passt) bleiben also unveraendert schnell,
-    nur der seltene "erster Start"/"ROMs geaendert"-Fall zeigt Fortschritt."""
+    nur der seltene "erster Start"/"ROMs geaendert"-Fall zeigt Fortschritt.
+
+    PERFORMANCE (Nutzerwunsch: "performance-technisch noch was
+    rausholen"): Cache-Datei laeuft seit hier auf Pickle statt JSON -
+    bei einer grossen Sammlung (getestet mit ~4700 Spielen, angelehnt
+    an eine echte Nutzer-Sammlung) ca. 9x schnelleres Schreiben, ca.
+    2.7x schnelleres Lesen, UND kleinere Datei. Pickle erhaelt Tupel
+    nativ, dadurch entfaellt zusaetzlich der komplette Umweg ueber
+    _cats_to_json()/_cats_from_json() (Tupel<->Liste-Konvertierung
+    fuer JEDES einzelne Spiel) - das war selbst schon ein spuerbarer
+    Teil der Kosten, nicht nur die reine Serialisierung."""
     sig = _games_signature()
     cached_sig = None
     data = None
     if not force:
         try:
-            with open(GAMES_CACHE) as f:
-                data = json.load(f)
-            cached_sig = [tuple(s) for s in data["sig"]]
+            with open(GAMES_CACHE, "rb") as f:
+                data = pickle.load(f)
+            cached_sig = data["sig"]
             if cached_sig == sig:
                 LOG("Spieleliste aus Cache (%d Systeme)"
                     % len(data["cats"]))
-                return _cats_from_json(data["cats"])
-        except (OSError, ValueError, KeyError, IndexError, TypeError):
+                return data["cats"]
+        except (OSError, ValueError, KeyError, IndexError, TypeError,
+                pickle.UnpicklingError, EOFError, AttributeError):
             cached_sig = None
             data = None
 
@@ -7704,7 +8270,7 @@ def scan_games(force=False, progress_cb=None):
         if cached_sig == sig:
             LOG("Spieleliste aus Cache nach USB-Mount (%d Systeme)"
                 % len(data["cats"]))
-            return _cats_from_json(data["cats"])
+            return data["cats"]
 
     if not waited_already:
         usb_ready = _wait_for_usb_stable()
@@ -7723,9 +8289,17 @@ def scan_games(force=False, progress_cb=None):
 
     sig = _games_signature()
     try:
-        with open(GAMES_CACHE, "w") as f:
-            json.dump({"sig": [list(s) for s in sig],
-                       "cats": _cats_to_json(cats)}, f)
+        with open(GAMES_CACHE, "wb") as f:
+            pickle.dump({"sig": sig, "cats": cats}, f, protocol=pickle.HIGHEST_PROTOCOL)
+        # Einmalige Aufraeumung: eine alte JSON-Cache-Datei aus der Zeit
+        # vor dem Pickle-Wechsel wuerde sonst nutzlos auf der SD-Karte
+        # liegen bleiben (wird nie wieder gelesen, seit GAMES_CACHE auf
+        # .pkl zeigt) - einfach mit entfernen, kein Fehler wenn nicht
+        # vorhanden.
+        try:
+            os.remove(GAMES_CACHE_OLD_JSON)
+        except OSError:
+            pass
     except OSError:
         pass
     return cats
@@ -8301,6 +8875,56 @@ def _write_wav_chime(path, segments, volume=0.35, sample_rate=22050):
                                            volume, sample_rate)
     _write_wav(path, bytes(all_samples), sample_rate)
 
+# NEUES FEATURE (Nutzerwunsch: einen echten, selbst aufgenommenen/
+# gewaehlten Sound statt des prozedural erzeugten Doppelklangs fuer
+# Erfolge UND Popup-Benachrichtigungen verwenden - beide nutzen
+# denselben SFX-Schluessel "achievement", siehe SFX_CHIME_DEFS unten
+# und die play_sfx()-Aufrufe an mehreren Stellen). Die eigentliche
+# Ton-QUELLE liegt als WAV-Datei bei (22050Hz/Mono/16-Bit, damit sie
+# zum Rest des SFX-Systems passt - vom urspruenglich hochgeladenen
+# FLAC per ffmpeg konvertiert), wird aber bei JEDER Erzeugung/
+# Lautstaerke-Aenderung frisch mit der aktuellen VOLUME-Einstellung
+# skaliert eingelesen - genau wie bei den prozedural erzeugten Toenen,
+# nur dass hier eine echte Aufnahme statt eines Sinuston-Sweeps als
+# Ausgangsmaterial dient.
+ACHIEVEMENT_SFX_SOURCE = "/media/fat/frontend/sfx_source/achievement.wav"
+
+def _write_wav_from_source(source_path, dest_path, volume=1.0):
+    """Liest eine vorhandene WAV-Datei ein, skaliert die Amplitude mit
+    volume (0.0-1.0+) und schreibt sie unter dest_path neu heraus -
+    gleiches Prinzip wie bei den prozedural erzeugten Toenen
+    (_write_wav_tone()/_write_wav_chime()), nur mit echtem
+    Audiomaterial als Quelle statt eines berechneten Sinuston-Sweeps.
+    Faengt JEDEN Fehler ab und liefert False statt einer Ausnahme -
+    Aufrufer soll bei Fehlschlag auf die prozedurale Erzeugung
+    zurueckfallen (siehe _ensure_sfx_files())."""
+    try:
+        with wave.open(source_path, "rb") as wf:
+            n_channels = wf.getnchannels()
+            sampwidth = wf.getsampwidth()
+            framerate = wf.getframerate()
+            raw = wf.readframes(wf.getnframes())
+    except (wave.Error, OSError):
+        return False
+    if sampwidth != 2:
+        return False   # nur 16-Bit-PCM unterstuetzt, Quelle wurde so konvertiert
+    n_samples = len(raw) // 2
+    scaled = bytearray(len(raw))
+    for i in range(n_samples):
+        val = struct.unpack_from("<h", raw, i * 2)[0]
+        val = int(val * volume)
+        val = max(-32768, min(32767, val))
+        struct.pack_into("<h", scaled, i * 2, val)
+    try:
+        with wave.open(dest_path, "wb") as wf_out:
+            wf_out.setnchannels(n_channels)
+            wf_out.setsampwidth(2)
+            wf_out.setframerate(framerate)
+            wf_out.writeframes(bytes(scaled))
+    except (wave.Error, OSError):
+        return False
+    return True
+
 SFX_DEFS = {
     "move":    (760, 900, 30),
     "confirm": (600, 1100, 70),
@@ -8314,6 +8938,11 @@ SFX_CHIME_DEFS = {
     # verspielter, mehrstufiger Klang, bewusst deutlich anders
     # als die anderen Sounds (auffaelliger "Fund"-Charakter).
     "secret_found": [(300, 600, 50), (600, 450, 40), (450, 900, 70), (900, 700, 90)],
+    # Chiptune-Easter-Egg (Nutzerwunsch): kurze, FLACHE Toene (Start-
+    # und Zielfrequenz gleich, kein Sweep/Gleiten) statt der weichen
+    # Sweeps oben - klingt dadurch "blippiger", naeher an einem
+    # klassischen 8-Bit-Arpeggio (A-C#-E-A).
+    "chiptune": [(440, 440, 45), (554, 554, 45), (659, 659, 45), (880, 880, 70)],
 }
 
 def _ensure_sfx_files():
@@ -8337,6 +8966,18 @@ def _ensure_sfx_files():
         if not os.path.exists(path):
             try:
                 _write_wav_chime(path, segments, volume=0.35 * VOLUME / 100.0)
+                if name == "achievement" and os.path.exists(ACHIEVEMENT_SFX_SOURCE):
+                    # NEUES FEATURE (Nutzerwunsch): echte Audiodatei statt
+                    # prozedural erzeugtem Doppelklang - faellt bei jedem
+                    # Fehler (Datei fehlt/kaputt/falsches Format) sauber
+                    # auf den bisherigen, garantiert funktionierenden
+                    # Klang zurueck, statt komplett stumm zu bleiben.
+                    ok = _write_wav_from_source(ACHIEVEMENT_SFX_SOURCE, path,
+                                                volume=VOLUME / 100.0)
+                    if not ok:
+                        _write_wav_chime(path, segments, volume=0.35 * VOLUME / 100.0)
+                else:
+                    _write_wav_chime(path, segments, volume=0.35 * VOLUME / 100.0)
             except OSError:
                 pass
 
@@ -8469,19 +9110,18 @@ class MusicPlayer:
                                               # gleichzeitig fuehrten zu doppeltem/
                                               # verzerrtem Radio-Stream.
         self.paused_for_core = False
-        self.paused_for_secret = False   # NEU (Nutzerwunsch: geheimer Sound
-                                          # ueberschnitt sich mit der Musik,
-                                          # "man hoert nur Gestotter") - siehe
-                                          # Frontend._play_secret_sound(): waehrend
-                                          # der geheime Sound abgespielt wird, muss
-                                          # tick() unten das Wieder-Anspringen der
-                                          # Musik unterdruecken, sonst startet tick()
-                                          # (laeuft staendig im Haupt-Loop) die Musik
-                                          # noch WAEHREND der geheime Sound laeuft
-                                          # automatisch neu, sobald es merkt, dass
-                                          # nichts mehr laeuft - GENAU dasselbe
-                                          # Prinzip wie paused_for_core, nur ein
-                                          # eigenes Flag, um mit einem gerade
+        self.paused_for_jingle = False   # NEU (Nutzerwunsch: Erfolgs-Pop-ups sollen
+                                          # jetzt GENAUSO einen Jingle bekommen wie
+                                          # der geheime Sound - EIN Flag jetzt
+                                          # fuer JEDEN gedaempften Soundeffekt
+                                          # verwendet, nicht mehr nur fuer den einen
+                                          # Spezialfall). Ohne dieses Flag wuerde
+                                          # tick() (laeuft staendig im Haupt-Loop)
+                                          # die Musik WAEHREND ein solcher Sound noch
+                                          # laeuft automatisch neu starten, sobald es
+                                          # merkt, dass "nichts mehr laeuft" -
+                                          # GENAU dasselbe Prinzip wie paused_for_core,
+                                          # nur ein eigenes Flag, um mit einem gerade
                                           # laufenden Core nicht zu kollidieren.
         self._rescan()
 
@@ -8645,20 +9285,21 @@ class MusicPlayer:
         blockierte trotz des vorherigen Hintergrund-Thread-Fixes immer
         noch kurz die Eingabe): zwei zusammenhaengende Ursachen.
         (1) tick() laeuft SEHR haeufig im Haupt-Loop und wusste bisher
-        nichts von einer bewusst pausierten Musik fuer den geheimen
-        Sound - startete sie mitten drin automatisch neu, sobald es
-        "nichts laeuft" sah (paused_for_secret unten behebt das,
-        gleiches Prinzip wie paused_for_core). (2) _start_current()/
-        _stop_current() holen sich INTERN dieselbe Sperre wie ein
-        Hintergrund-Thread (Musikquellenwechsel/geheimer Sound) - lief
-        gerade so ein Hintergrund-Thread, wartete tick() im Haupt-
-        Thread bisher BLOCKIEREND auf dieselbe Sperre, was trotz des
-        Hintergrund-Threads selbst wieder die gesamte Eingabe-
-        verarbeitung anhielt. Jetzt versucht tick() die Sperre nur noch
-        NICHT-BLOCKIEREND zu holen - ist sie gerade belegt, macht
-        tick() diesmal einfach nichts und versucht es beim naechsten
-        Durchlauf (kommt sehr bald wieder) erneut, statt zu warten."""
-        if not self.enabled or self.paused_for_core or self.paused_for_secret:
+        nichts von einer bewusst pausierten Musik fuer einen gedaempften
+        Soundeffekt (geheimer Sound, Erfolgs-Jingle) - startete sie
+        mitten drin automatisch neu, sobald es "nichts laeuft" sah
+        (paused_for_jingle unten behebt das, gleiches Prinzip wie
+        paused_for_core). (2) _start_current()/_stop_current() holen
+        sich INTERN dieselbe Sperre wie ein Hintergrund-Thread
+        (Musikquellenwechsel/gedaempfter Soundeffekt) - lief gerade so
+        ein Hintergrund-Thread, wartete tick() im Haupt-Thread bisher
+        BLOCKIEREND auf dieselbe Sperre, was trotz des Hintergrund-
+        Threads selbst wieder die gesamte Eingabeverarbeitung anhielt.
+        Jetzt versucht tick() die Sperre nur noch NICHT-BLOCKIEREND zu
+        holen - ist sie gerade belegt, macht tick() diesmal einfach
+        nichts und versucht es beim naechsten Durchlauf (kommt sehr
+        bald wieder) erneut, statt zu warten."""
+        if not self.enabled or self.paused_for_core or self.paused_for_jingle:
             return
         if not self._proc_lock.acquire(blocking=False):
             return   # gerade anderweitig beschaeftigt - naechstes Mal wieder versuchen
@@ -8847,6 +9488,16 @@ TRANSLATIONS = {
                              "de": "Stammspieler: ein Spiel 20+ mal gestartet"},
     "hidden_legend": {"en": "Legend: reached every top-tier milestone at once",
                       "de": "Legende: alle hoechsten Meilensteine gleichzeitig erreicht"},
+    "hidden_early_bird": {"en": "Early Bird: played between 5am and 7am",
+                          "de": "Fruehaufsteher: zwischen 5 und 7 Uhr gespielt"},
+    "hidden_weekend_warrior": {"en": "Weekend Warrior: played both Saturday and Sunday of the same week",
+                               "de": "Wochenend-Krieger: an Samstag UND Sonntag derselben Woche gespielt"},
+    "hidden_comeback": {"en": "Comeback: returned to a game after 6+ months away",
+                        "de": "Comeback: ein Spiel nach 6+ Monaten Pause wieder gestartet"},
+    "hidden_versatile": {"en": "Versatile: 4+ different systems in a single day",
+                         "de": "Vielseitig: an einem Tag Spiele aus 4+ verschiedenen Systemen gestartet"},
+    "hidden_perfectionist": {"en": "Perfectionist: 100% RetroAchievements completion on a game",
+                             "de": "Perfektionist: ein Spiel zu 100% bei RetroAchievements abgeschlossen"},
     "achievement_popup": {"en": "Achievement unlocked: %s",
                           "de": "Erfolg freigeschaltet: %s"},
     "achievement_popup_multi": {"en": "%d achievements unlocked!",
@@ -8863,10 +9514,19 @@ TRANSLATIONS = {
                                      "de": "Herkunft: der Capcom-Code (Street Fighter II)"},
     "secret_origin_secret_sound": {"en": "Origin: the Ikari Warriors continue code",
                                    "de": "Herkunft: der Ikari-Warriors-Weiterspielen-Code"},
+    "secret_origin_dev_room_bonus": {"en": "Origin: found by trying things inside a secret itself",
+                                     "de": "Herkunft: gefunden, indem im Geheimnis selbst weiterprobiert wurde"},
+    "secret_origin_rainbow_cursor": {"en": "Origin: just spell it out",
+                                     "de": "Herkunft: einfach buchstabieren"},
+    "secret_origin_chiptune_sound": {"en": "Origin: an 8-bit state of mind",
+                                     "de": "Herkunft: eine 8-Bit-Geisteshaltung"},
     "max_level_boot_effect": {"en": "FRONTEND LEVEL MAX", "de": "FRONTEND-LEVEL MAX"},
     "secret_name_secret_theme_1": {"en": "hidden theme", "de": "geheimes Theme"},
     "secret_name_entwicklerraum": {"en": "developer room", "de": "Entwicklerraum"},
     "secret_name_secret_sound": {"en": "hidden sound", "de": "geheimer Sound"},
+    "secret_name_dev_room_bonus": {"en": "a secret within a secret", "de": "ein Geheimnis im Geheimnis"},
+    "secret_name_rainbow_cursor": {"en": "rainbow cursor", "de": "Regenbogen-Cursor"},
+    "secret_name_chiptune_sound": {"en": "chiptune jingle", "de": "Chiptune-Jingle"},
     "dev_room_title": {"en": "DEVELOPER ROOM", "de": "ENTWICKLERRAUM"},
     "dev_room_level": {"en": "Frontend level: %d of %d", "de": "Frontend-Level: %d von %d"},
     "dev_room_secrets": {"en": "Secrets found: %d of %d", "de": "Geheimnisse gefunden: %d von %d"},
@@ -8876,6 +9536,11 @@ TRANSLATIONS = {
                            "de": "Mit Beitraegen von TheRealSutefan und Dfense1980."},
     "dev_room_thanks": {"en": "Thanks for playing around with hidden things.",
                         "de": "Danke, dass du an geheimen Dingen herumprobierst."},
+    "dev_room_bonus_message": {
+        "en": "Thanks for looking closely!",
+        "de": "Danke fuers genaue Hinschauen!"},
+    "seasonal_xmas": {"en": "* Merry Christmas! *", "de": "* Frohe Weihnachten! *"},
+    "seasonal_nye": {"en": "* Happy New Year! *", "de": "* Guten Rutsch! *"},
     "credits_title": {"en": "CREDITS", "de": "MITWIRKENDE"},
     "credits_creator_heading": {"en": "Created by", "de": "Erstellt von"},
     "credits_creator_entry": {"en": "Dragrem", "de": "Dragrem"},
@@ -9023,6 +9688,19 @@ TRANSLATIONS = {
                        "de": "RetroAchievements-Core"},
     "core_choice_hint": {"en": "Up/Down to choose, OK to confirm",
                          "de": "Hoch/Runter waehlen, OK bestaetigen"},
+    "wot_title": {"en": "WONNE OR TONNE", "de": "WONNE ODER TONNE"},
+    "wot_hint": {"en": "Up/Down: select   OK: confirm   ESC: back",
+                 "de": "Hoch/Runter: waehlen   OK: bestaetigen   ESC: zurueck"},
+    "wot_pool_empty": {
+        "en": "No unplayed game left in the list - everything has been rated!",
+        "de": "Kein noch nicht bewertetes Spiel mehr in der Liste - alles durchgespielt!"},
+    "wot_no_rom_match": {
+        "en": "Drew several games but found no matching ROM file for any of them.",
+        "de": "Mehrere Spiele gezogen, aber fuer keins eine passende ROM-Datei gefunden."},
+    "wot_option_start": {"en": "Start", "de": "Starten"},
+    "wot_option_redraw": {"en": "Draw again", "de": "Neu ziehen"},
+    "wot_option_back": {"en": "Back", "de": "Zurueck"},
+    "sys_wot_action": {"en": "Wonne or Tonne - draw a game", "de": "Wonne oder Tonne - Spiel ziehen"},
     "ra_setup_title": {"en": "RETROACHIEVEMENTS SETUP",
                        "de": "RETROACHIEVEMENTS EINRICHTEN"},
     "ra_setup_line1": {"en": "Create this file via SSH/text editor:",
@@ -9137,6 +9815,10 @@ TRANSLATIONS = {
                    "de": "Navigations-Soundeffekte: AN -> ausschalten"},
     "sys_sfx_off": {"en": "Navigation sounds: OFF -> turn on",
                     "de": "Navigations-Soundeffekte: AUS -> einschalten"},
+    "sys_dragend_logo_on": {"en": "Boot logo: Dragend -> switch to plain",
+                            "de": "Boot-Logo: Dragend -> auf neutral wechseln"},
+    "sys_dragend_logo_off": {"en": "Boot logo: plain -> switch to Dragend",
+                             "de": "Boot-Logo: neutral -> auf Dragend wechseln"},
     "sys_update_on": {"en": "Check for updates: ON -> turn off",
                       "de": "Auf Updates pruefen: AN -> ausschalten"},
     "sys_update_off": {"en": "Check for updates: OFF -> turn on",
@@ -9145,12 +9827,15 @@ TRANSLATIONS = {
                              "de": "Update verfuegbar: v%s! -> Pruefung ausschalten"},
     "update_available_popup": {"en": "Update v%s!",
                                "de": "Update v%s!"},
+    "on_this_day_popup": {"en": "%d years ago today, you first started %s",
+                          "de": "Vor %d Jahren hast du an diesem Tag zum ersten Mal %s gestartet"},
     "attract_hint": {"en": "Press any button to continue",
                      "de": "Beliebige Taste zum Fortfahren"},
     "scanning":  {"en": "Scanning: %s", "de": "Durchsuche: %s"},
     "recent_cat": {"en": "Recently Played", "de": "Zuletzt gespielt"},
     "continue_cat": {"en": "Continue Playing", "de": "Weiterspielen"},
     "ra_hunter_cat": {"en": "RA Achievement Hunter", "de": "RA-Erfolgsjaeger"},
+    "ra_almost_done_cat": {"en": "Almost there", "de": "Fast geschafft"},
     "collections_cat": {"en": "Collections", "de": "Sammlungen"},
     "collection_discovered_this_year": {"en": "Discovered in %s", "de": "%s entdeckt"},
     "collection_quick_games": {"en": "Quick games", "de": "Kurzweilige Spiele"},
@@ -9267,6 +9952,8 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     netwait_label = t("sys_network_wait_on" if network_wait_enabled()
                       else "sys_network_wait_off")
     sfx_label = t("sys_sfx_on") if sfx_enabled_flag() else t("sys_sfx_off")
+    dragend_logo_label = t("sys_dragend_logo_on") if dragend_logo_enabled() \
+        else t("sys_dragend_logo_off")
     if not update_check_enabled():
         update_label = t("sys_update_off")
     else:
@@ -9297,6 +9984,7 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             (video + t("sys_video_suffix"), "crtmenu", None),
             (theme_label, "theme", None),
             (sfx_label, "sfx", None),
+            (dragend_logo_label, "dragend_logo", None),
             (music_label, "music", None),
             (music_src_label, "music_source", None),
             (volume_label, "volume", None),
@@ -9633,6 +10321,55 @@ class Frontend:
                 # Neuversuch, sobald die Zeit sich (per _maybe_retry_ra())
                 # doch noch synchronisiert.
                 self._ra_retry_next = time.monotonic() + 30.0
+        # PERFORMANCE (Nutzerwunsch: "mehr Performance rausholen", darf
+        # dabei nichts kaputt machen): der RA-Fortschritts-Abruf
+        # blockierte bisher SYNCHRON genau hier bis zu 3,5 Sekunden
+        # (siehe fetch_ra_progress_bounded()s eigener join()-Timeout,
+        # timeout=3.0 + 0.5 Sicherheitsspanne) - der Bildschirm zeigte
+        # in der Zeit nur den leeren dunklen Screen von oben, noch
+        # bevor ueberhaupt build_categories() mit dem eigentlichen
+        # Lade-Fortschrittsbalken lief.
+        #
+        # Jetzt genau nach demselben, bereits bewaehrten Muster wie
+        # der bestehende _maybe_retry_ra() (siehe dort) ein Hintergrund-
+        # Thread: self.build_categories() unten laeuft sofort weiter,
+        # self._ra_lookup bleibt fuer diesen allerersten Moment leer -
+        # build_ra_hunter_category() liefert dafuer sicher None (siehe
+        # dort), also KEIN Absturz, die RA-Erfolgsjaeger-Kategorie
+        # taucht in diesem Fall schlicht noch nicht auf. Sobald die
+        # Daten eintreffen, uebernimmt sie _maybe_apply_pending_ra_data()
+        # (aus draw() periodisch geprueft, wie _maybe_retry_ra() selbst) -
+        # baut die Kategorienliste aber bewusst NUR dann neu auf, wenn
+        # der Nutzer seit dem Start noch GAR NICHT navigiert hat, um
+        # self.cat_i/self.page niemals unter dem Nutzer wegzuziehen
+        # (siehe dortiger Kommentar - "es darf nichts kaputt gehen"
+        # hat hier Vorrang vor "RA-Kategorie garantiert sofort da").
+        self._ra_pending_result = None
+        if ra_enabled():
+            # _ra_retry_next hochsetzen, BEVOR der Hintergrund-Thread
+            # gestartet wird - verhindert, dass _maybe_retry_ra() (das
+            # unabhaengig davon periodisch aus draw() geprueft wird)
+            # sofort einen ZWEITEN, ueberlappenden Abruf lostritt, noch
+            # bevor der erste ueberhaupt eine Chance hatte zu antworten.
+            self._ra_retry_next = time.monotonic() + 4.0
+
+            def _initial_ra_fetch():
+                ra_data = fetch_ra_progress_bounded(timeout=3.0)
+                if ra_data is not None:
+                    self._ra_pending_result = (build_ra_lookup(ra_data), True)
+                else:
+                    self._ra_pending_result = (None, False)
+                    if not NTP_SYNC_OK:
+                        # Wahrscheinlichste Erklaerung fuer einen
+                        # fehlgeschlagenen Abruf direkt beim Start: die
+                        # Systemuhr war noch falsch (MiSTer hat keine
+                        # batteriegepufferte Uhr), wodurch die HTTPS-
+                        # Zertifikatspruefung fehlschlaegt - unabhaengig
+                        # davon, ob der RA-Server eigentlich erreichbar
+                        # waere. Neuversuch, sobald die Zeit sich (per
+                        # _maybe_retry_ra()) doch noch synchronisiert.
+                        self._ra_retry_next = time.monotonic() + 30.0
+            threading.Thread(target=_initial_ra_fetch, daemon=True).start()
 
         self.build_categories()
         self.page = 0              # 0 = Kategorien-Menue, 1 = Kategorie-Ansicht
@@ -9924,6 +10661,17 @@ class Frontend:
             count = _count_tree_items(ra_hunter)
             self.cats.append(("%s (%d)" % (t("ra_hunter_cat"), count),
                               ra_hunter, None))
+        # NEUES FEATURE (Dennsens "Wonne oder Tonne"-Format, uebernommen
+        # aus einem separat vorbereiteten Vorschlag): eigene Kategorie,
+        # gleiches Prinzip wie RA-Erfolgsjaeger direkt darueber - taucht
+        # NUR auf, wenn WOT_CSV_FILE tatsaechlich existiert (kein
+        # Rueckwaerts-Kaputtmachen fuer alle, die dieses Format nicht
+        # nutzen). Nur EIN Eintrag ("Spiel ziehen"), kein Ordnerbaum -
+        # das Ziehen selbst passiert im Bildschirm (draw_wot_screen()),
+        # nicht ueber Navigation.
+        if os.path.exists(WOT_CSV_FILE):
+            self.cats.append((t("wot_title"), _wrap_flat(
+                [(t("sys_wot_action"), "wot_draw", None)]), None))
         self.cats.append(("System", system_items(
             self.music.enabled, self.music.source,
             rainwave.station_name(self.music.radio.sid) if self.music.radio else "",
@@ -10130,6 +10878,11 @@ class Frontend:
         first_played = _load_first_played()
         discovered = sorted(name for name, y in first_played.items()
                             if y == year and name in pool_by_name)
+        # Gleicher Kompatibilitaets-Grund wie in compute_year_review_stats():
+        # first_played.json speichert jetzt volle Datumsangaben statt nur
+        # Jahreszahlen - [:4] funktioniert fuer beide Formate.
+        discovered = sorted(name for name, y in first_played.items()
+                            if y[:4] == year and name in pool_by_name)
         if discovered:
             items = [(name, "game", pool_by_name[name]) for name in discovered]
             label = t("collection_discovered_this_year", year) + " (%d)" % len(items)
@@ -10166,7 +10919,16 @@ class Frontend:
         Navigation (wie bei eigenen ROM-Unterordnern) - kein neuer
         Navigationsmechanismus noetig. Liefert None, wenn RA nicht
         eingerichtet ist oder nichts passt (Kategorie taucht dann gar
-        nicht auf, siehe build_categories())."""
+        nicht auf, siehe build_categories()).
+
+        ERWEITERT (Nutzerwunsch: Erfolgsjaeger um eine "Fast geschafft"-
+        Gruppe erweitern): zusaetzlicher, EIGENER Unterordner (ueber
+        alle Systeme hinweg, nicht nach System aufgeteilt - meist nur
+        eine Handvoll Spiele, eine zusaetzliche Aufteilung waere hier
+        eher unuebersichtlich als hilfreich) fuer Spiele, bei denen nur
+        noch WENIGE Erfolge fehlen (<=3) - sortiert nach am wenigsten
+        Fehlendem zuerst, damit das naechste erreichbare Ziel immer
+        oben steht."""
         if not ra_enabled() or not self._ra_lookup:
             return None
         self._attract_pool = None   # sicherstellen, dass der frische
@@ -10174,6 +10936,7 @@ class Frontend:
                                     # nicht ein evtl. veralteter Cache
         pool = self._attract_games_pool()
         by_system = {}
+        almost_done = []   # (name, fehlend, total, arg) - systemuebergreifend
         for name, syskey, arg in pool:
             result = lookup_ra_progress(self._ra_lookup, name, syskey)
             if result is None:
@@ -10181,9 +10944,16 @@ class Frontend:
             earned, total = result
             if total > 0 and earned == 0:
                 by_system.setdefault(syskey, []).append((name, total, arg))
-        if not by_system:
+            elif total > 0 and 0 < earned < total and (total - earned) <= 3:
+                almost_done.append((name, total - earned, arg))
+        if not by_system and not almost_done:
             return None
         folders = {}
+        if almost_done:
+            almost_done.sort(key=lambda g: g[1])   # am wenigsten fehlend zuerst
+            items = [(name, "game", arg) for name, remaining, arg in almost_done]
+            label = "%s (%d)" % (t("ra_almost_done_cat"), len(almost_done))
+            folders[label] = {"folders": {}, "items": items}
         for syskey, games in by_system.items():
             games.sort(key=lambda g: -g[1])   # meiste Erfolge zuerst
             items = [(name, "game", arg) for name, total, arg in games]
@@ -10364,6 +11134,7 @@ class Frontend:
                 "rowh": rowh, "footer_y": footer_y, "visible": visible}
 
     def draw(self, message=None):
+        self._maybe_apply_pending_ra_data()
         self._sync_track_marquee()
         self._maybe_retry_ra()
         self._maybe_retry_clock()
@@ -10449,6 +11220,17 @@ class Frontend:
         fb.clear(C_BG)
         fb.text(ox, oy, "MiSTer", 3 * s, C_TITLE, C_BG)
         fb.text(ox, oy + 28 * s, t("categories", len(self.cats)), s, C_DIM, C_BG)
+
+        # Easter Egg (Nutzerwunsch): kleine Jahreszeiten-Deko oben rechts,
+        # nur am 24.12./31.12. (siehe seasonal_decoration()) - rein
+        # optisch, keine Interaktion, kollidiert mit nichts anderem hier
+        # oben (Kategorienliste ist links, Sysart-Box weiter unten).
+        deco = seasonal_decoration()
+        if deco:
+            deco_text, deco_color = deco
+            deco_w = len(deco_text) * 8 * s
+            if deco_w <= W - 2 * ox:
+                fb.text(W - ox - deco_w, oy, deco_text, s, deco_color, C_BG)
 
         # Songtitel als Laufschrift NEBEN dem Logo (nicht darunter,
         # sonst ueberschneidet er sich mit dem Listenbeginn). Davor
@@ -10541,6 +11323,14 @@ class Frontend:
         y = y0 + row * rowh
         sel = (i == self.cat_i)
         accent = accent_for(sk)
+        # Easter Egg (Nutzerwunsch: Regenbogen-Cursor) - nur fuer die
+        # AUSGEWAEHLTE Zeile und nur solange der Effekt noch aktiv ist
+        # (siehe _on_secret_triggered()), sonst ganz normal die System-
+        # Akzentfarbe wie immer.
+        if sel and time.monotonic() < getattr(self, "_rainbow_cursor_until", 0):
+            accent = self._rainbow_color(time.monotonic() * 2)
+        else:
+            accent = accent_for(sk)
         bg = self._pulsed(accent) if sel else C_BG
         if not sel:
             fb.rect(ox - 4 * s, y - 4 * s, list_right - ox + 8 * s,
@@ -10567,6 +11357,35 @@ class Frontend:
             self._net_status = _has_network()
             self._net_check_next = now + 5.0
         return self._net_status
+
+    def _maybe_apply_pending_ra_data(self):
+        """Uebernimmt das Ergebnis des asynchronen RA-Start-Abrufs aus
+        __init__() (siehe dortiger Kommentar), sobald es eingetroffen
+        ist - periodisch aus draw() geprueft, als ALLERERSTES (noch
+        vor jeder eigentlichen Zeichenarbeit), damit ein frisch
+        aufgebautes self.cats sofort in DIESEM Durchlauf mitgezeichnet
+        wird, ohne draw() rekursiv erneut aufzurufen.
+
+        Baut die Kategorienliste bewusst NUR dann neu auf, wenn der
+        Nutzer seit dem Programmstart noch GAR NICHT navigiert hat
+        (Seite 0, erste Kategorie, keine Ordnertiefe) - sonst wuerden
+        self.cat_i/self.page/self.scroll ploetzlich auf eine andere
+        Kategorie zeigen als die, die der Nutzer gerade tatsaechlich
+        vor sich hat. In dem selteneren Fall (Nutzer navigiert
+        innerhalb der ersten Sekunden schneller als der Netzwerk-Abruf
+        braucht) taucht die RA-Erfolgsjaeger-Kategorie einfach erst
+        beim naechsten regulaeren Rescan auf - Stabilitaet hat hier
+        bewusst Vorrang vor Vollstaendigkeit."""
+        pending = self._ra_pending_result
+        if pending is None:
+            return
+        self._ra_pending_result = None
+        lookup, fetch_ok = pending
+        if lookup is not None:
+            self._ra_lookup = lookup
+            self._ra_fetch_ok = True
+            if self.page == 0 and self.cat_i == 0 and not self.nav_path:
+                self.build_categories()
 
     def _maybe_retry_ra(self):
         """Periodisch (aus draw(), wie _network_connected()) geprueft:
@@ -11380,7 +12199,21 @@ class Frontend:
         else:
             label = display_name(full)
             if len(label) > maxc:
-                label = label[:max(1, maxc - 1)] + "~"
+                # BUGFIX (Nutzer-Rueckmeldung anhand eines Screenshots:
+                # "The Legend of Zelda - A Link to t~" - mitten im Wort
+                # abgeschnitten): schneidet jetzt an der letzten
+                # Wortgrenze VOR der Grenze, statt stur bei maxc-1 zu
+                # kappen - "A Link to t~" wird so zu "A Link~" statt
+                # ein Wortfragment stehen zu lassen. Nur wenn sich
+                # dadurch nicht MEHR als 40% der verfuegbaren Breite
+                # verschenken wuerde (sehr kurze erste Woerter bei
+                # extrem schmaler Spalte) - sonst lieber die alte,
+                # einfache Zeichen-Grenze als Rueckfall.
+                cut = maxc - 1
+                space_pos = label.rfind(" ", 0, cut)
+                if space_pos > cut * 0.6:
+                    cut = space_pos
+                label = label[:max(1, cut)] + "~"
         label = prefix + label
         fb.text(list_x, y, label, s, C_TEXT if sel else C_DIM, bg)
         return y
@@ -11695,6 +12528,45 @@ class Frontend:
                 self._update_popup_pending = None
                 self.draw(message=t("update_available_popup", pending_update))
 
+                # BUGFIX (Nutzer-Rueckmeldung: "keine Info, dass ein
+                # Update verfuegbar ist"): draw(message=...) verwirft
+                # die Meldung komplett, wenn self.attract_mode gerade
+                # aktiv ist (siehe draw(): "if self.attract_mode:
+                # self.draw_attract(); return" - message wird dabei nie
+                # erreicht). Update-Check UND Attract-Modus loesen beide
+                # bei EXAKT demselben Leerlauf-Schwellenwert aus - da der
+                # Update-Check ein Netzwerkaufruf im Hintergrund ist
+                # (braucht Zeit bis zum Ergebnis), ist der Attract-Modus
+                # so gut wie immer schon aktiv, BEVOR das Ergebnis
+                # ueberhaupt vorliegt. Fix: Attract-Modus hier explizit
+                # verlassen (wie durch eine echte Eingabe), bevor die
+                # Meldung gezeichnet wird - sonst kam sie nie sichtbar
+                # an, obwohl der Check laengst erfolgreich war.
+                if self.attract_mode:
+                    self.attract_mode = False
+                self._last_input_time = time.monotonic()
+                self.draw(message=t("update_available_popup", pending_update))
+
+            # "Auf diesen Tag vor X Jahren" (Nutzerwunsch): rein lokale
+            # Dateiabfrage, kein Netzwerk - trotzdem bewusst genauso wie
+            # RA-Vorwaermen/Update-Check erst im echten Leerlauf gezeigt
+            # (nicht sofort beim Start), damit es niemanden mitten in
+            # der Navigation unterbricht. Kein Hintergrund-Thread noetig
+            # (siehe find_on_this_day_hint()), einfacher direkter Aufruf.
+            if (not getattr(self, "_on_this_day_checked", False)
+                    and time.monotonic() - self._last_input_time > self._attract_delay_cached()):
+                self._on_this_day_checked = True
+                hint = find_on_this_day_hint()
+                if hint:
+                    label, years_ago = hint
+                    # Gleicher Bugfix wie beim Update-Hinweis oben -
+                    # dieselbe Ursache (Attract-Modus verschluckt die
+                    # Meldung sonst lautlos).
+                    if self.attract_mode:
+                        self.attract_mode = False
+                    self._last_input_time = time.monotonic()
+                    self.draw(message=t("on_this_day_popup", years_ago, label))
+
             if self.attract_mode:
                 if time.monotonic() >= self._attract_change_next:
                     self._advance_attract()
@@ -11909,14 +12781,60 @@ class Frontend:
             fb.rect(ax - 2 * s, ay + ah, aw + 4 * s, 2 * s, accent)
             fb.rect(ax - 2 * s, ay - 2 * s, 2 * s, ah + 4 * s, accent)
             fb.rect(ax + aw, ay - 2 * s, 2 * s, ah + 4 * s, accent)
+            # NEU (Nutzerwunsch: "100%-Trophaeen-Icon auf dem Cover"):
+            # kleines goldenes Abzeichen oben rechts auf dem Cover,
+            # NUR wenn dieses Spiel bei RetroAchievements zu 100%
+            # abgeschlossen ist. ra_progress ist bereits weiter oben in
+            # dieser Funktion ermittelt (siehe info_lines) - hier nur
+            # noch die Bedingung pruefen, kein zusaetzlicher Nachschlag.
+            # Dieselbe Gold-Farbe wie beim SNES-ALTTP-Tracker-Akzent
+            # (SYSTEM_ACCENT), damit keine neue, willkuerliche Farbe in
+            # den Code kommt.
+            if ra_progress and ra_progress[1] > 0 and ra_progress[0] >= ra_progress[1]:
+                badge_w, badge_h = 34 * s, 12 * s
+                bx = min(ax + aw - badge_w - 2 * s, fb.width - badge_w - 2 * s)
+                by = ay + 2 * s
+                gold = (210, 175, 70)
+                fb.rect_rounded(bx, by, badge_w, badge_h, gold)
+                fb.text(bx + 3 * s, by + 2 * s, "100%", s, (10, 10, 14), gold)
             art_bottom = ay + ah
         else:
-            fb.rect(x0, cy, avail_w, cover_h, C_ACCENT2)
-            fb.text(x0 + 4 * s, cy + cover_h // 2 - 4 * s,
-                    t("no_artwork_1"), s, C_DIM, C_ACCENT2)
-            fb.text(x0 + 4 * s, cy + cover_h // 2 + 5 * s,
-                    t("no_artwork_2"), s, C_DIM, C_ACCENT2)
-            art_bottom = cy + cover_h
+            # NEU (Nutzerwunsch): statt der reinen Textmeldung erst
+            # versuchen, das SYSTEM-Hintergrundbild (dasselbe wie im
+            # Hintergrund der Spieleliste, siehe BG_BASE/BgCache) klein
+            # als Cover-Ersatz zu zeigen - deutlich weniger "leer" als
+            # eine reine Farbflaeche, und zeigt trotzdem sofort, um
+            # welches System es sich handelt. Nutzt dieselbe Aufloesungs-
+            # bewusste Namenskonvention wie BgCache.get() (erst die zur
+            # aktuellen Aufloesung passende Variante, dann die
+            # allgemeine). Nur wenn GAR KEIN Hintergrundbild fuer dieses
+            # System existiert (z.B. ein sehr seltenes/eigenes System
+            # ohne mitgeliefertes BG), bleibt der reine Textplatzhalter
+            # als letzter Rueckfall bestehen.
+            bg_fallback = None
+            if syskey:
+                for fn in ("%s_%dx%d.art" % (syskey, fb.width, fb.height),
+                          "%s.art" % syskey):
+                    bg_fallback = ART.get_scaled(os.path.join(BG_BASE, fn), avail_w, cover_h)
+                    if bg_fallback:
+                        break
+            if bg_fallback:
+                aw, ah, pix = bg_fallback
+                ax = x0 + max(0, (avail_w - aw) // 2)
+                ay = cy + max(0, (cover_h - ah) // 2)
+                self.blit(ax, ay, aw, ah, pix)
+                fb.rect(ax - 2 * s, ay - 2 * s, aw + 4 * s, 2 * s, accent)
+                fb.rect(ax - 2 * s, ay + ah, aw + 4 * s, 2 * s, accent)
+                fb.rect(ax - 2 * s, ay - 2 * s, 2 * s, ah + 4 * s, accent)
+                fb.rect(ax + aw, ay - 2 * s, 2 * s, ah + 4 * s, accent)
+                art_bottom = ay + ah
+            else:
+                fb.rect(x0, cy, avail_w, cover_h, C_ACCENT2)
+                fb.text(x0 + 4 * s, cy + cover_h // 2 - 4 * s,
+                        t("no_artwork_1"), s, C_DIM, C_ACCENT2)
+                fb.text(x0 + 4 * s, cy + cover_h // 2 + 5 * s,
+                        t("no_artwork_2"), s, C_DIM, C_ACCENT2)
+                art_bottom = cy + cover_h
 
         # ---- Titel + Infos darunter, volle Spaltenbreite ----
         # Text startet erst UNTER dem tatsaechlich gezeichneten Cover -
@@ -12082,6 +13000,8 @@ class Frontend:
         record_yearly_playtime(label, played_seconds, syskey=syskey)
         record_diary_entry(label, played_seconds, syskey=syskey)
         check_hidden_session_achievements(play_start_wall, time.monotonic() - play_start)
+        check_hidden_session_achievements(play_start_wall, time.monotonic() - play_start,
+                                          label=label, syskey=syskey)
         self._playtime_cache = load_playtime()
         time.sleep(1.0)
         self.music.resume_after_core()
@@ -12202,6 +13122,104 @@ class Frontend:
                 return choice == 1
             elif act in ("back", "exit"):
                 return None   # Abbruch - Kategorie wird NICHT betreten
+
+    def draw_wot_screen(self):
+        """'Wonne oder Tonne' (Dennsens Format): zieht ein zufaelliges,
+        noch nicht bewertetes NES/SNES-Spiel aus seiner CSV-Liste,
+        sucht die passende ROM-Datei und zeigt Titel/System/Genre mit
+        drei Optionen: Starten, Neu ziehen, Zurueck. Zieht bei
+        fehlendem ROM-Treffer automatisch neu (siehe
+        wot_draw_with_rom()) - der Nutzer sieht davon nichts, nur das
+        Endergebnis oder eine ehrliche Fehlermeldung, falls gar nichts
+        passt.
+
+        BUGFIX (Nutzer-Rueckmeldung: RA-ID wurde zwar angezeigt, aber
+        beim Starten nie tatsaechlich verwendet - der Core startete
+        IMMER normal, nie mit RetroAchievements): fragt jetzt, genau
+        wie beim normalen Betreten einer Kategorie und beim F11-
+        Zufallsstart, per find_ra_core()/draw_core_choice_screen()
+        nach, falls fuer das System ein RA-faehiger Core existiert,
+        und reicht dessen setname korrekt an write_mgl() durch."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        aliases = wot_load_aliases()
+
+        while True:
+            pool = wot_load_pool()
+            if not pool:
+                self._wizard_info(t("wot_title"), [t("wot_pool_empty")], skippable=False)
+                return
+            result = wot_draw_with_rom(pool, aliases)
+            if result is None:
+                self._wizard_info(t("wot_title"), [t("wot_no_rom_match")], skippable=False)
+                return
+            system, title, genre, ra_id, rom_path, score = result
+            accent = accent_for(system)
+            choice = 0
+            options = [t("wot_option_start"), t("wot_option_redraw"), t("wot_option_back")]
+            redraw = False
+            while True:
+                fb.clear(C_BG)
+                title_scale = self._fit_scale(t("wot_title"), W - 2 * ox, s + 1)
+                fb.text(ox, oy, t("wot_title"), title_scale, C_TITLE, C_BG)
+                y = oy + 70 * s
+                game_title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
+                fb.text(ox, y, title, game_title_scale, accent, C_BG)
+                y += 50 * s
+                fb.text(ox, y, "%s - %s" % (system_display_name(system), genre or "?"), s, C_DIM, C_BG)
+                if ra_id:
+                    y += 45 * s
+                    fb.text(ox, y, "RetroAchievements-ID: %s" % ra_id, s, C_DIM, C_BG)
+                y += 70 * s
+                for i, label in enumerate(options):
+                    sel = i == choice
+                    color = accent if sel else C_TEXT
+                    prefix = "> " if sel else "  "
+                    fb.text(ox, y, prefix + label, s, color, C_BG)
+                    y += 40 * s
+                hint = t("wot_hint")
+                sc = s - 1 if s > 1 else 1
+                hint_w = len(hint) * 8 * sc
+                fb.text((W - hint_w) // 2, H - oy - 8 * sc, hint, sc, C_DIM, C_BG)
+                fb.flip()
+                act = self.inp.read_action()
+                if act in ("up", "down"):
+                    choice = (choice + 1) % len(options)
+                elif act == "ok":
+                    if choice == 0:      # Starten
+                        sysdef = next((sd for sd in GAME_SYSTEMS if sd[1] == system), None)
+                        if sysdef:
+                            rbf = sysdef[3]
+                            ext = os.path.splitext(rom_path)[1].lower()
+                            dl, ftype, idx = sysdef[4].get(ext, (2, "f", 0))
+                            setname = None
+                            ra_core = find_ra_core(system)
+                            if ra_core:
+                                use_ra = self.draw_core_choice_screen(system, title)
+                                if use_ra is None:
+                                    self.draw()
+                                    return   # ESC/back auf der Core-Auswahl - kompletter Abbruch
+                                if use_ra:
+                                    rbf, setname = ra_core
+                            LOG("Wonne oder Tonne: gestartet - %s (%s)%s"
+                                % (title, rom_path, " [RA-Core]" if setname else ""))
+                            record_recent(title, (rom_path, ext, system, rbf, (dl, ftype, idx)))
+                            mgl = write_mgl(rbf, rom_path, dl, ftype, idx, setname=setname)
+                            wot_mark_played(system, title)   # dauerhaft aus dem Pool nehmen
+                            self.run_core(mgl, label=title, syskey=system)
+                        return
+                    elif choice == 1:    # Neu ziehen
+                        redraw = True
+                        break
+                    else:                # Zurueck
+                        return
+                elif act in ("back", "exit"):
+                    return
+            if not redraw:
+                return
 
     def draw_ra_setup_screen(self):
         """Zeigt eine kurze Anleitung zur RetroAchievements-Einrichtung
@@ -12486,46 +13504,54 @@ class Frontend:
             self._last_bootstate = state
             self._last_snapshot = now
 
-    def _play_secret_sound(self):
-        """Nutzerwunsch: "sobald einer den geheimen Sound aktiviert
-        muss der hoerbar sein" - bisher lief das ueber das normale
-        play_sfx(), das den Sound STUMM uebersprang, sobald entweder
-        Musik gerade lief ODER die normalen Navigations-Soundeffekte
-        deaktiviert waren. Sinnvoll fuer haeufige Klick-Toene, aber
-        nicht fuer ein bewusst eingegebenes Easter Egg, das ja gerade
-        DESHALB eingegeben wird, um es zu hoeren.
+    def _play_ducked_sfx(self, name):
+        """Spielt EINEN Soundeffekt (SFX_DIR/<name>.mp3 bevorzugt, sonst
+        <name>.wav) GARANTIERT hoerbar ab - unabhaengig von der SFX-Ein/
+        Aus-Einstellung und unabhaengig davon, ob gerade Musik laeuft
+        (wird in dem Fall kurz gedaempft/gestoppt und danach automatisch
+        fortgesetzt). Gedacht fuer bewusste, seltene Benachrichtigungen
+        (geheimer Sound, Erfolgs-Jingle) - NICHT fuer haeufige
+        Navigations-Klicks, dafuer bleibt weiterhin das normale
+        play_sfx() mit seiner Drossel/Ein-Aus-Pruefung zustaendig.
 
-        Umgehen beide Ausschlussgruende bewusst NUR hier: die SFX-Ein/
-        Aus-Einstellung wird ignoriert (eigener Pfad statt play_sfx()),
-        und laeuft Musik, wird sie kurz pausiert - dieselbe Geraete-
-        Ueberschneidung wie bei normalen SFX gilt genauso hier (der
-        geheime Sound ist jetzt ein echter MP3-Track, kein kurzer
-        synthetischer Klang mehr), also nicht einfach gleichzeitig
-        abspielen, sondern kurz Platz machen und danach automatisch
-        wieder fortsetzen. Laeuft komplett in einem Hintergrund-Thread
-        (nicht-blockierend, gleiches Prinzip wie cycle_source() oben)."""
-        path = os.path.join(SFX_DIR, "secret_found.mp3")
-        if not os.path.exists(path) or not os.path.exists(MPG123_BIN):
-            play_sfx("secret_found", music_playing=False)   # Rueckfall: alter Klang
-            return
+        Verallgemeinert aus der urspruenglich nur fuer den geheimen
+        Sound gebauten Fassung (Nutzerwunsch: "sobald einer den
+        geheimen Sound aktiviert muss der hoerbar sein" - bisher lief
+        das ueber das normale play_sfx(), das den Sound STUMM
+        uebersprang, sobald entweder Musik lief ODER die normalen
+        Navigations-Soundeffekte deaktiviert waren). Jetzt genauso fuer
+        Erfolgs-Pop-ups genutzt (Nutzerwunsch: "dazu einen Jingle
+        abspielen, andere Sachen wie MP3/Radio muessten kurz
+        verstummen").
+
+        Laeuft komplett in einem Hintergrund-Thread (nicht-blockierend,
+        gleiches Prinzip wie cycle_source())."""
+        mp3_path = os.path.join(SFX_DIR, name + ".mp3")
+        wav_path = os.path.join(SFX_DIR, name + ".wav")
+        use_mp3 = os.path.exists(mp3_path) and os.path.exists(MPG123_BIN)
+        if not use_mp3 and not os.path.exists(wav_path):
+            return   # kein Sound fuer diesen Namen hinterlegt
         music = self.music
         was_playing = music._proc_alive() and not music.paused_for_core
 
         def _worker():
-            # paused_for_secret UEBER die gesamte Dauer gesetzt (nicht
+            # paused_for_jingle UEBER die gesamte Dauer gesetzt (nicht
             # erst kurz vor dem eigentlichen Abspielen) - tick() laeuft
             # staendig im Haupt-Loop und wuerde sonst genau in der
-            # Luecke zwischen dem Stoppen der Musik und dem Start des
-            # geheimen Sounds (oder danach, vor dem eigenen Wieder-
+            # Luecke zwischen dem Stoppen der Musik und dem Start
+            # dieses Sounds (oder danach, vor dem eigenen Wieder-
             # Anspringen) selbst versuchen, die Musik neu zu starten.
-            music.paused_for_secret = True
+            music.paused_for_jingle = True
             try:
                 if was_playing:
                     music._stop_current()
                 try:
+                    if use_mp3:
+                        cmd = [MPG123_BIN, "-q", "-f", _mpg_scale(), mp3_path]
+                    else:
+                        cmd = ["aplay", "-q", wav_path]
                     proc = subprocess.Popen(
-                        [MPG123_BIN, "-q", "-f", _mpg_scale(), path],
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                         stdin=subprocess.DEVNULL)
                     proc.wait()
                 except OSError:
@@ -12533,9 +13559,14 @@ class Frontend:
                 if was_playing and music.enabled and not music.paused_for_core:
                     music._start_current()
             finally:
-                music.paused_for_secret = False
+                music.paused_for_jingle = False
 
         threading.Thread(target=_worker, daemon=True).start()
+
+    def _play_secret_sound(self):
+        """Duenner, namensgleicher Wrapper um _play_ducked_sfx() - alle
+        Aufrufstellen (siehe _on_secret_triggered()) bleiben unveraendert."""
+        self._play_ducked_sfx("secret_found")
 
     def _on_secret_triggered(self, secret_id, is_new):
         """Wird aufgerufen, sobald ein Geheimcode
@@ -12547,6 +13578,7 @@ class Frontend:
         Meldung erscheint dagegen nur einmalig (is_new)."""
         if is_new:
             play_sfx("achievement", music_playing=self.music._proc_alive())
+            self._play_ducked_sfx("achievement")
             self.draw(message=t("secret_unlocked", t("secret_name_" + secret_id)))
         if secret_id == "secret_theme_1":
             apply_theme("secret_gold")
@@ -12566,6 +13598,28 @@ class Frontend:
             self._play_secret_sound()
             if not is_new:
                 self.draw(message=t("secret_sound_replay"))
+        elif secret_id == "rainbow_cursor":
+            # Faerbt den Auswahl-Cursor im Hauptmenue (_draw_cat_row())
+            # fuer eine begrenzte Zeit in Regenbogenfarben statt der
+            # System-Akzentfarbe - siehe dort fuer die genaue Anwendung.
+            # Bewusst NUR die Kategorien-Auswahl betroffen, nicht die
+            # ganze Oberflaeche (Cover-Raender, Statistik-Bildschirme
+            # usw. bleiben unveraendert) - kleineres, klar abgegrenztes
+            # Risiko als eine globale Farbaenderung.
+            self._rainbow_cursor_until = time.monotonic() + RAINBOW_CURSOR_SECONDS
+            self.draw()
+        elif secret_id == "chiptune_sound":
+            self._play_ducked_sfx("chiptune")
+
+    def _rainbow_color(self, phase):
+        """Leichte Regenbogenfarbe ohne zusaetzliche Abhaengigkeit -
+        drei um 120 Grad phasenverschobene Sinuswellen (klassischer,
+        billiger Trick fuer weiche RGB-Uebergaenge). phase in Sekunden,
+        z.B. time.monotonic()."""
+        r = int(127 + 127 * math.sin(phase))
+        g = int(127 + 127 * math.sin(phase + 2.0944))    # +120 Grad
+        b = int(127 + 127 * math.sin(phase + 4.1888))    # +240 Grad
+        return (max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b)))
 
     def _check_achievement_popup(self):
         """Prueft auf neu erreichte Erfolge und liefert bei einem
@@ -12577,6 +13631,7 @@ class Frontend:
         if not newly:
             return None
         play_sfx("achievement", music_playing=self.music._proc_alive())
+        self._play_ducked_sfx("achievement")
         if len(newly) == 1:
             return t("achievement_popup", t(newly[0]))
         return t("achievement_popup_multi", len(newly))
@@ -12781,13 +13836,15 @@ class Frontend:
 
         rows = []
         for line in self._wrap_text(
-                t("secrets_summary", len(unlocked), len(SECRET_CODES)), maxc):
+                t("secrets_summary", len(unlocked), len(SECRET_CODES) + 1), maxc):
             rows.append((line, accent_for(None), 0))
         for line in self._wrap_text(t("secrets_keyboard_hint"), maxc):
             rows.append((line, C_DIM, 0))
         rows.append(("", C_DIM, 0))
 
         order = ["secret_theme_1", "entwicklerraum", "secret_sound"]
+        order = ["secret_theme_1", "entwicklerraum", "secret_sound",
+                 "rainbow_cursor", "chiptune_sound", DEV_ROOM_BONUS_ID]
         for secret_id in order:
             found = secret_id in unlocked
             mark = "[x] " if found else "[ ] "
@@ -12914,7 +13971,18 @@ class Frontend:
         informativ/persoenlich, beliebige Taste kehrt zurueck. Zeigt
         einige "hinter den Kulissen"-Angaben, die sich aus bereits
         vorhandenen Daten ergeben (Frontend-Level, gefundene Geheimnisse)
-        - keine neue Datenquelle noetig."""
+        - keine neue Datenquelle noetig.
+
+        ERWEITERT (Nutzerwunsch: "ein Geheimnis im Geheimnis"): waehrend
+        man sich HIER befindet, wird zusaetzlich ein eigener, kurzer
+        Tasten-Puffer gefuehrt (DEV_ROOM_BONUS_CODE) - komplett getrennt
+        vom Hauptmenue-Mechanismus (der laeuft nur auf Seite 0, siehe
+        run(), und erreicht diesen Bildschirm gar nicht). Passt die
+        Eingabe zum Bonus-Code, bleibt der Bildschirm STEHEN (neu
+        gezeichnet, jetzt mit der Bonus-Zeile) statt wie sonst bei jeder
+        Taste sofort zu verlassen - jede ANDERE Eingabe, die keine
+        gueltige Teilsequenz des Bonus-Codes ist, verlaesst weiterhin
+        wie bisher sofort den Raum."""
         fb = self.fb
         W, H = fb.width, fb.height
         s = max(1, H // 360)
@@ -12955,6 +14023,74 @@ class Frontend:
             act = self.inp.read_action()
             if act is not None:
                 break
+        maxc = max(8, (W - 2 * ox) // (8 * s))
+
+        def render():
+            fb.clear(C_BG)
+            title = t("dev_room_title")
+            title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
+            fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+
+            level = compute_frontend_level()
+            secrets = _load_secrets_unlocked()
+            bonus_shown = DEV_ROOM_BONUS_ID in secrets
+
+            y = oy + 50 * s
+            line_h = 26 * s
+            # BUGFIX (beim Testen auf CRT-Aufloesung gefunden, noch vor
+            # der Auslieferung): die urspruengliche, grosszuegige
+            # Zeilenhoehe liess die zusaetzliche Bonus-Zeile auf 320x240
+            # unterhalb des sichtbaren Bereichs verschwinden bzw. mit der
+            # "Beliebige Taste"-Fusszeile kollidieren. Sobald die Bonus-
+            # Zeile dazukommt, werden die Luecken zwischen den
+            # Abschnitten kompakter (die Zeilen selbst bleiben gleich
+            # gross/lesbar) - genug Platz gespart, um sicher zu passen.
+            gap_half = 3 * s if bonus_shown else (line_h // 2)
+            gap_full = 5 * s if bonus_shown else line_h
+
+            def line(text, color=C_TEXT):
+                nonlocal y
+                fb.text(ox, y, text, s, color, C_BG)
+                y += line_h
+
+            line(t("dev_room_level", level, FRONTEND_LEVEL_MAX), C_ACCENT)
+            line(t("dev_room_secrets", len(secrets), len(SECRET_CODES) + 1), C_ACCENT)
+            y += gap_half
+            line(t("dev_room_credits_1"), C_DIM)
+            line(t("dev_room_credits_2"), C_DIM)
+            y += gap_full
+            line(t("dev_room_thanks"), C_TEXT)
+            if bonus_shown:
+                y += gap_half
+                for bl in self._wrap_text(t("dev_room_bonus_message"), maxc):
+                    line(bl, C_ACCENT)
+
+            hint = t("attract_hint")
+            hint_scale = s - 1 if s > 1 else 1
+            hint_w = len(hint) * 8 * hint_scale
+            fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                    hint, hint_scale, C_DIM, C_BG)
+            fb.flip()
+
+        render()
+        nested_buffer = []
+        while True:
+            act = self.inp.read_action()
+            if act is None:
+                continue
+            nested_buffer.append(act)
+            if len(nested_buffer) > len(DEV_ROOM_BONUS_CODE):
+                nested_buffer.pop(0)
+            if nested_buffer == DEV_ROOM_BONUS_CODE:
+                is_new = _unlock_secret(DEV_ROOM_BONUS_ID)
+                if is_new:
+                    self._play_ducked_sfx("achievement")
+                nested_buffer = []
+                render()
+                continue
+            if nested_buffer == DEV_ROOM_BONUS_CODE[:len(nested_buffer)]:
+                continue   # koennte noch werden - nicht verlassen
+            break
 
     def draw_crt_test_pattern_screen(self):
         """Testbild zur CRT-Kalibrierung (Nutzerwunsch) - Geometrie-
@@ -13980,6 +15116,67 @@ class Frontend:
         fb.flip()
         self.inp.read_action(timeout=1.2)   # ueberspringbar wie die Bildsequenz
 
+    def _draw_dragend_logo_boot(self):
+        """Eigenes Logo beim Start (Nutzerwunsch: 'mein eigenes Logo
+        beim Startup anzeigen lassen und gegen das alte ersetzen'),
+        mit demselben Flacker-Effekt wie zuvor beim generischen D-Pad-
+        Symbol - nur auf ein echtes Bild angewendet statt auf simple
+        Rechtecke (siehe Framebuffer._scale_brightness()). Wird NUR
+        aufgerufen, wenn dragend_logo_enabled() zutrifft (Menuepunkt
+        System -> Anzeige & Sound) UND die Logo-Datei tatsaechlich
+        existiert - beide Bedingungen bereits vom Aufrufer geprueft
+        (_draw_default_boot_icon() bleibt als Rueckfall bestehen, falls
+        eine der beiden nicht zutrifft)."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        art = ART.get(DRAGEND_LOGO_FILE)
+        if not art:
+            self._draw_default_boot_icon()
+            return
+        lw, lh, pix = art
+        # In den verfuegbaren Platz einpassen (max. 70% der kleineren
+        # Bildschirmseite) - genug Rand ringsum, passt auf CRT genauso
+        # wie auf HDMI, ohne eigene Fallunterscheidung noetig.
+        max_dim = int(min(W, H) * 0.7)
+        scale = min(1.0, max_dim / max(lw, lh))
+        dw, dh = max(1, int(lw * scale)), max(1, int(lh * scale))
+        if scale < 1.0:
+            scaled = ART.get_scaled(DRAGEND_LOGO_FILE, dw, dh)
+            if scaled:
+                dw, dh, pix = scaled
+        ax = (W - dw) // 2
+        ay = (H - dh) // 2 - 10 * max(1, H // 360)
+
+        # Gleiche Flacker-Sequenz (Helligkeitsstufe, Wartezeit) wie
+        # beim bisherigen D-Pad-Symbol - simuliert eine alte Roehre,
+        # die "warm wird". Bild wird bei jeder Stufe frisch aus dem
+        # ORIGINAL skaliert (nicht kumulativ nachgedunkelt), damit
+        # Rundungsfehler sich nicht ueber mehrere Stufen aufsummieren.
+        sequence = [0.06, 0.0, 0.35, 0.0, 0.7, 0.45, 1.0]
+        holds =    [0.10, 0.05, 0.10, 0.05, 0.10, 0.06, 0.55]
+        title = t("boot_default_title")
+        s = max(1, H // 360)
+        title_scale = self._fit_scale(title, W - 40 * s, s)
+        title_w = len(title) * 8 * title_scale
+        title_y = ay + dh + 14 * s
+
+        for factor, hold in zip(sequence, holds):
+            fb.clear((0, 0, 0))
+            if factor > 0:
+                frame = pix if factor >= 1.0 else fb._scale_brightness(pix, factor)
+                self.blit(ax, ay, dw, dh, frame)
+                if factor >= 1.0:
+                    accent = accent_for(None)
+                    fb.text((W - title_w) // 2, title_y, title,
+                            title_scale, accent, (0, 0, 0))
+            # Gleicher VSync-Umgehungs-Bugfix wie beim D-Pad-Symbol
+            # (siehe dortiger Kommentar) - direkter Speicherschreib-
+            # vorgang statt flip(), da dieser fruehe Boot-Zeitpunkt
+            # einen haengenden ioctl-Aufruf ausloesen kann.
+            fb.mm[:] = fb.buf
+            if self.inp.read_action(timeout=hold) is not None:
+                return
+
     def _draw_default_boot_icon(self):
         """Zeigt eine kurze, selbst gezeichnete Standard-Boot-Animation
         (D-Pad-Symbol, das flackernd "zum Leben erwacht"), wenn KEIN
@@ -14085,8 +15282,15 @@ class Frontend:
             # Kein eigenes Boot-Animation-Verzeichnis vorhanden (der
             # Normalfall) - Standard-Animation zeigen statt direkt ins
             # Menue zu springen (siehe _draw_default_boot_icon()).
+            # NEU: bevorzugt das Dragend-Logo (eigener Flacker-Effekt,
+            # siehe _draw_dragend_logo_boot()) - abschaltbar ueber
+            # System -> Anzeige & Sound, faellt dann auf das alte,
+            # neutrale D-Pad-Symbol zurueck.
             try:
-                self._draw_default_boot_icon()
+                if dragend_logo_enabled() and os.path.exists(DRAGEND_LOGO_FILE):
+                    self._draw_dragend_logo_boot()
+                else:
+                    self._draw_default_boot_icon()
             except Exception:
                 LOG("_draw_default_boot_icon CRASH:\n" + traceback.format_exc())
             # BUGFIX (beim eigenen Testen gefunden, noch vor jeder
@@ -14697,6 +15901,9 @@ class Frontend:
                         elif kind == "sfx":
                             toggle_sfx()
                             self._refresh_system_category()
+                        elif kind == "dragend_logo":
+                            toggle_dragend_logo()
+                            self._refresh_system_category()
                         elif kind == "update_check":
                             toggle_update_check()
                             self._refresh_system_category()
@@ -14723,6 +15930,9 @@ class Frontend:
                             self.draw()
                         elif kind == "setup_wizard":
                             self.run_setup_wizard()
+                            self.draw()
+                        elif kind == "wot_draw":
+                            self.draw_wot_screen()
                             self.draw()
                         elif kind == "secrets":
                             self.draw_secrets_screen()

@@ -141,6 +141,19 @@ if [ -d "$SRC_DIR/frontend/sysart" ]; then
     mkdir -p "$FRONTEND_DIR/sysart"
     cp -rn "$SRC_DIR/frontend/sysart/." "$FRONTEND_DIR/sysart/" 2>/dev/null || true
 fi
+if [ -d "$SRC_DIR/frontend/sfx_source" ]; then
+    # Quelldatei(en) fuer echte (statt prozedural erzeugte) SFX-Klaenge
+    # (z.B. achievement.wav) - gleiches "nicht ueberschreiben"-Prinzip
+    # wie bei sysart oben, falls jemand eine eigene Datei eingesetzt hat.
+    mkdir -p "$FRONTEND_DIR/sfx_source"
+    cp -rn "$SRC_DIR/frontend/sfx_source/." "$FRONTEND_DIR/sfx_source/" 2>/dev/null || true
+fi
+if [ -d "$SRC_DIR/frontend/boot_logo" ]; then
+    # Boot-Logo (dragend_logo.art) - gleiches Prinzip, eigene Datei
+    # wird nicht ueberschrieben.
+    mkdir -p "$FRONTEND_DIR/boot_logo"
+    cp -rn "$SRC_DIR/frontend/boot_logo/." "$FRONTEND_DIR/boot_logo/" 2>/dev/null || true
+fi
 cp -f "$SRC_DIR"/Scripts/*.sh "$SCRIPTS_DIR/" 2>/dev/null || true
 chmod +x "$FRONTEND_DIR"/*.sh "$SCRIPTS_DIR"/*.sh 2>/dev/null || true
 
