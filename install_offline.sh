@@ -219,6 +219,23 @@ if [ -d "$SRC/frontend/sysart" ]; then
     say "  $NEW neu, $KEPT vorhandene behalten"
 fi
 
+# SFX-Quelldateien (echte Klaenge statt prozedural erzeugter Toene,
+# z.B. achievement.wav): gleiches "nur fehlende ergaenzen"-Prinzip.
+if [ -d "$SRC/frontend/sfx_source" ]; then
+    step "SFX-Quelldateien (sfx_source)"
+    mkdir -p "$FRONTEND_DIR/sfx_source"
+    NEW=0; KEPT=0
+    for f in "$SRC/frontend/sfx_source/"*.wav; do
+        [ -e "$f" ] || continue
+        base="$(basename "$f")"
+        if [ -f "$FRONTEND_DIR/sfx_source/$base" ]; then
+            KEPT=$((KEPT+1))
+        else
+            cp -f "$f" "$FRONTEND_DIR/sfx_source/" && NEW=$((NEW+1))
+        fi
+    done
+    say "  $NEW neu, $KEPT vorhandene behalten"
+fi
 # ------------------------------------------------------------
 # 5. Scripts fuer das MiSTer-OSD
 # ------------------------------------------------------------
