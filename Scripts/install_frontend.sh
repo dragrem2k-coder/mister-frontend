@@ -137,13 +137,10 @@ if [ -d "$SRC_DIR/frontend/sfx_source" ]; then
     mkdir -p "$FRONTEND_DIR/sfx_source"
     cp -rn "$SRC_DIR/frontend/sfx_source/." "$FRONTEND_DIR/sfx_source/" 2>/dev/null || true
 fi
-<<<<<<< HEAD
 if [ -d "$SRC_DIR/frontend/boot_logo" ]; then
     mkdir -p "$FRONTEND_DIR/boot_logo"
     cp -rn "$SRC_DIR/frontend/boot_logo/." "$FRONTEND_DIR/boot_logo/" 2>/dev/null || true
 fi
-=======
->>>>>>> b4fc94aac3d38e8d0a9c6fc7ec9447683a5999a9
 cp -f "$SRC_DIR"/Scripts/*.sh "$SCRIPTS_DIR/" 2>/dev/null || true
 chmod +x "$FRONTEND_DIR"/*.sh "$SCRIPTS_DIR"/*.sh 2>/dev/null || true
 
