@@ -1,5 +1,4 @@
-# MiSTer Custom Frontend v4.2
-
+# MiSTer Custom Frontend v4.3
 **Von Dragrem2K**, mit Beiträgen von **TheRealSuTefan**, **Dfense**
 und **Dennsen**.
 
@@ -124,8 +123,7 @@ Nachlesen (`CHANGELOG.md`).
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v4.2) |
-| frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v4.3) || frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (läuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (läuft auf dem MiSTer) |
 | frontend/stream_server.py       | /media/fat/frontend/             | Web-Server fürs Stream-Overlay (optional) |

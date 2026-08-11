@@ -133,6 +133,10 @@ if [ -d "$SRC_DIR/frontend/sysart" ]; then
     mkdir -p "$FRONTEND_DIR/sysart"
     cp -rn "$SRC_DIR/frontend/sysart/." "$FRONTEND_DIR/sysart/" 2>/dev/null || true
 fi
+if [ -d "$SRC_DIR/frontend/sfx_source" ]; then
+    mkdir -p "$FRONTEND_DIR/sfx_source"
+    cp -rn "$SRC_DIR/frontend/sfx_source/." "$FRONTEND_DIR/sfx_source/" 2>/dev/null || true
+fi
 cp -f "$SRC_DIR"/Scripts/*.sh "$SCRIPTS_DIR/" 2>/dev/null || true
 chmod +x "$FRONTEND_DIR"/*.sh "$SCRIPTS_DIR"/*.sh 2>/dev/null || true
 
