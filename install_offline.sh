@@ -236,6 +236,7 @@ if [ -d "$SRC/frontend/sfx_source" ]; then
     done
     say "  $NEW neu, $KEPT vorhandene behalten"
 fi
+<<<<<<< HEAD
 
 # Boot-Logo (dragend_logo.art): gleiches Prinzip.
 if [ -d "$SRC/frontend/boot_logo" ]; then
@@ -253,6 +254,8 @@ if [ -d "$SRC/frontend/boot_logo" ]; then
     done
     say "  $NEW neu, $KEPT vorhandene behalten"
 fi
+=======
+>>>>>>> b4fc94aac3d38e8d0a9c6fc7ec9447683a5999a9
 # ------------------------------------------------------------
 # 5. Scripts fuer das MiSTer-OSD
 # ------------------------------------------------------------

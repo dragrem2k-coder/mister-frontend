@@ -3363,7 +3363,12 @@ Start auf dem MiSTer (per SSH oder als Startscript):
   python3 /media/fat/frontend/frontend.py
 """
 
+<<<<<<< HEAD
 import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib, json, random, math, signal, socket, threading, termios, csv, difflib, unicodedata, wave, pickle
+=======
+import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib, json, random, math, signal, socket, threading, termios
+import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib, json, random, math, signal, socket, threading, termios, csv, difflib, unicodedata, wave
+>>>>>>> b4fc94aac3d38e8d0a9c6fc7ec9447683a5999a9
 
 # EINZIGE QUELLE DER WAHRHEIT fuer die Versionsnummer (Vereinbarung,
 # da mehrere Leute an derselben Codebasis arbeiten - siehe Nutzer-
