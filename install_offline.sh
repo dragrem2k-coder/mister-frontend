@@ -178,6 +178,7 @@ if [ "$MODE" = "Aktualisierung" ]; then
     for f in "$FRONTEND_DIR"/*.py "$FRONTEND_DIR"/*.sh "$FRONTEND_DIR"/*.html; do
         [ -e "$f" ] && cp -p "$f" "$BACKUP/" 2>/dev/null
     done
+    [ -d "$FRONTEND_DIR/fe" ] && cp -rp "$FRONTEND_DIR/fe" "$BACKUP/" 2>/dev/null
     say "Gesichert nach: $BACKUP"
 fi
 
@@ -253,8 +254,23 @@ if [ -d "$SRC/frontend/boot_logo" ]; then
     done
     say "  $NEW neu, $KEPT vorhandene behalten"
 fi
-# ------------------------------------------------------------
-# 5. Scripts fuer das MiSTer-OSD
+
+# fe/-Paket (modulare Logik, nur bei der modularen Variante vorhanden) -
+# komplettes Verzeichnis, MIT Ueberschreiben (Code-Update, nicht
+# nutzer-anpassbar wie sysart/). Fehlt es bei einer modularen
+# Installation, bricht der Start mit "ModuleNotFoundError: No module
+# named 'fe'" ab - genau das Problem, das ohne diesen Block hier
+# entstehen wuerde.
+if [ -d "$SRC/frontend/fe" ]; then
+    step "Modul-Paket (fe/)"
+    mkdir -p "$FRONTEND_DIR/fe"
+    FE=0
+    for f in "$SRC/frontend/fe/"*.py; do
+        [ -e "$f" ] || continue
+        cp -f "$f" "$FRONTEND_DIR/fe/" && FE=$((FE+1))
+    done
+    say "  $FE Modul(e) kopiert."
+fi
 # ------------------------------------------------------------
 step "Hilfsskripte nach $SCRIPTS_DIR"
 mkdir -p "$SCRIPTS_DIR"
@@ -281,6 +297,15 @@ done
 # Ausfuehrbar setzen - auf exFAT/FAT32 ohne Wirkung, das ist ok
 chmod +x "$FRONTEND_DIR"/*.sh 2>/dev/null
 chmod +x "$SCRIPTS_DIR"/*.sh 2>/dev/null
+
+# Sicherheitsnetz gegen Windows-Zeilenenden (CRLF): kopierte Shell-Skripte
+# auf Unix-LF normalisieren. Kommen die Dateien uebers Netz/Windows mit
+# CR-Zeichen an, scheitert bash sonst mit "syntax error near unexpected
+# token" an den \r. Bereinigt die bereits kopierten .sh im Zielordner.
+for s in "$FRONTEND_DIR"/*.sh "$SCRIPTS_DIR"/*.sh; do
+    [ -f "$s" ] || continue
+    tr -d '\r' < "$s" > "$s.__nl__" 2>/dev/null && mv "$s.__nl__" "$s" 2>/dev/null || true
+done
 
 # ------------------------------------------------------------
 # 7. Autostart

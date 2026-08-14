@@ -141,8 +141,24 @@ if [ -d "$SRC_DIR/frontend/boot_logo" ]; then
     mkdir -p "$FRONTEND_DIR/boot_logo"
     cp -rn "$SRC_DIR/frontend/boot_logo/." "$FRONTEND_DIR/boot_logo/" 2>/dev/null || true
 fi
+# fe/-Paket (modulare Logik, nur bei der modularen Variante vorhanden) -
+# komplettes Verzeichnis, MIT Ueberschreiben (Code-Update). Fehlt es bei
+# einer modularen Installation, bricht der Start mit "ModuleNotFoundError:
+# No module named 'fe'" ab - genau das Problem, das ohne diesen Block
+# hier entstehen wuerde.
+if [ -d "$SRC_DIR/frontend/fe" ]; then
+    mkdir -p "$FRONTEND_DIR/fe"
+    cp -f "$SRC_DIR"/frontend/fe/*.py "$FRONTEND_DIR/fe/" 2>/dev/null || true
+fi
 cp -f "$SRC_DIR"/Scripts/*.sh "$SCRIPTS_DIR/" 2>/dev/null || true
 chmod +x "$FRONTEND_DIR"/*.sh "$SCRIPTS_DIR"/*.sh 2>/dev/null || true
+# Sicherheitsnetz gegen Windows-Zeilenenden (CRLF): kopierte Shell-Skripte
+# auf Unix-LF normalisieren - sonst scheitert bash mit "syntax error near
+# unexpected token" an den \r.
+for s in "$FRONTEND_DIR"/*.sh "$SCRIPTS_DIR"/*.sh; do
+    [ -f "$s" ] || continue
+    tr -d '\r' < "$s" > "$s.__nl__" 2>/dev/null && mv "$s.__nl__" "$s" 2>/dev/null || true
+done
 
 # --- Autostart einrichten (nur falls noch nicht vorhanden) ---
 STARTUP_FILE="/media/fat/linux/user-startup.sh"

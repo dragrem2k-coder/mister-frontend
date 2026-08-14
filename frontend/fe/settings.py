@@ -1,0 +1,262 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Verstreute kleine Ein/Aus-Einstellungen: eigenes Boot-Logo, Setup-
+Assistent-Erledigt-Markierung, CRT-Menue-Modus (MiSTer.ini), kuratierte
+Filterung (nur Spiele mit Metadaten anzeigen), Attract-Modus
+(Verzoegerung/Ein-Aus). Ausgelagert aus frontend.py (Modularisierung,
+Git-Branch 'modular-refactor') - mehrere ehemals ueber die Datei
+verstreute kleine Bloecke hier sinnvoll zusammengefuehrt.
+"""
+import os, glob, time
+from fe.log import LOG
+from fe.art import get_meta, mra_meta
+
+DRAGEND_LOGO_FILE = "/media/fat/frontend/boot_logo/dragend_logo.art"
+DRAGEND_LOGO_DISABLED_FLAG = "/media/fat/frontend/dragend_logo_disabled"
+
+def dragend_logo_enabled():
+    return not os.path.exists(DRAGEND_LOGO_DISABLED_FLAG)
+
+def toggle_dragend_logo():
+    if dragend_logo_enabled():
+        try:
+            os.makedirs(os.path.dirname(DRAGEND_LOGO_DISABLED_FLAG), exist_ok=True)
+            open(DRAGEND_LOGO_DISABLED_FLAG, "w").close()
+        except OSError:
+            pass
+    else:
+        try:
+            os.remove(DRAGEND_LOGO_DISABLED_FLAG)
+        except OSError:
+            pass
+
+# NEUES FEATURE (Nutzerwunsch: vereinfachte Installation, ein
+# Ersteinrichtungs-Assistent, der einmalig durch alle wichtigen
+# Schritte fuehrt): anders als BOOTANIM_PLAYED_MARKER (liegt in /tmp,
+# wird bei JEDEM Neustart neu abgespielt) liegt diese Markierung
+# bewusst auf der SD-Karte (/media/fat/...) - der Assistent soll nur
+# EINMAL im Leben automatisch erscheinen, nicht bei jedem Boot.
+SETUP_WIZARD_DONE_FILE = "/media/fat/frontend/setup_wizard_done"
+
+def setup_wizard_done():
+    return os.path.exists(SETUP_WIZARD_DONE_FILE)
+
+def mark_setup_wizard_done():
+    try:
+        os.makedirs(os.path.dirname(SETUP_WIZARD_DONE_FILE), exist_ok=True)
+        open(SETUP_WIZARD_DONE_FILE, "w").close()
+    except OSError:
+        pass
+
+MISTER_INI = "/media/fat/MiSTer.ini"
+CRT_MENU_BLOCK = """
+[Menu]
+vga_scaler=1
+fb_terminal=1
+video_mode=320,8,32,24,240,4,3,16,6048
+"""
+
+def crt_menu_active():
+    try:
+        return "[Menu]" in open(MISTER_INI).read()
+    except OSError:
+        return False
+
+def toggle_crt_menu():
+    """[Menu]-Block in der MiSTer.ini setzen/entfernen.
+    Rueckgabe: True wenn danach CRT-Modus aktiv ist."""
+    try:
+        ini = open(MISTER_INI).read()
+    except OSError:
+        return None
+    if "[Menu]" in ini:
+        # Block entfernen: von der [Menu]-Zeile bis zur naechsten
+        # Sektion oder zum Dateiende
+        i = ini.index("[Menu]")
+        j = ini.find("\n[", i + 1)
+        ini = ini[:i].rstrip() + "\n" + (ini[j + 1:] if j != -1 else "")
+        active = False
+    else:
+        ini = ini.rstrip() + "\n" + CRT_MENU_BLOCK
+        active = True
+    # Atomar schreiben: erst in eine Temp-Datei, dann umbenennen. Sonst
+    # kann ein Abbruch mitten im Schreiben die MiSTer.ini leeren/zerstoeren.
+    tmp = MISTER_INI + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            f.write(ini)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, MISTER_INI)
+    except OSError:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return None
+    return active
+
+
+
+# ----------------------------------------------------------------------------
+
+def _node_has_any_meta(node, syskey):
+    """Rekursiv prüfen, ob IRGENDWO im Baum ein Eintrag Metadaten hat -
+    entscheidet, ob das Sicherheitsnetz (kein Filtern bei komplett
+    fehlender Datenbank) greift."""
+    for it in node["items"]:
+        label, kind, arg = it
+        meta = mra_meta(arg) if (syskey == "ARCADE" and kind == "core") \
+              else ({} if syskey == "ARCADE" else get_meta(syskey, label))
+        if meta:
+            return True
+    for sub in node["folders"].values():
+        if _node_has_any_meta(sub, syskey):
+            return True
+    return False
+
+def _filter_node_curated(node, syskey):
+    """Rekursiv jeden Knoten auf katalogisierte Eintraege einschraenken.
+    Ordner, die dadurch komplett leer werden (keine Items, keine
+    nicht-leeren Unterordner), fallen ganz weg."""
+    kept_items = []
+    for it in node["items"]:
+        label, kind, arg = it
+        meta = mra_meta(arg) if (syskey == "ARCADE" and kind == "core") \
+              else ({} if syskey == "ARCADE" else get_meta(syskey, label))
+        if meta:
+            kept_items.append(it)
+    kept_folders = {}
+    for fname, sub in node["folders"].items():
+        filtered_sub = _filter_node_curated(sub, syskey)
+        if filtered_sub["folders"] or filtered_sub["items"]:
+            kept_folders[fname] = filtered_sub
+    return {"folders": kept_folders, "items": kept_items}
+
+def filter_curated(name, node, syskey):
+    """Wenn der 'Nur katalogisierte Spiele'-Schalter aktiv ist (System-
+    Menue), auf Eintraege einschraenken, die einen Treffer in der
+    libretro-Datenbank haben (von mister_gameinfo.py geladen,
+    meta/<System>.json bzw. fuer Arcade die MRA-Datei selbst) - das ist
+    die "Source of Authority", die Hyperspin frueher mit seinen
+    XML-Datenbanken pro System bereitgestellt hat: nur tatsaechlich
+    katalogisierte, offiziell erschienene Spiele, keine Hacks/Homebrew/
+    unbekannten Dumps. Arbeitet rekursiv ueber die komplette
+    Ordnerstruktur - leer gewordene Unterordner fallen weg.
+
+    Sicherheitsnetz: Hat ein System UEBERHAUPT keine Metadaten (z.B.
+    weil mister_gameinfo.py dafuer noch nie gelaufen ist), wird NICHT
+    gefiltert - sonst wuerde die Liste faelschlich komplett leer
+    werden, nur weil noch keine Datenbank geladen wurde."""
+    if not syskey or not (node["folders"] or node["items"]):
+        return (name, node, syskey)
+    if not _node_has_any_meta(node, syskey):
+        return (name, node, syskey)
+    return (name, _filter_node_curated(node, syskey), syskey)
+
+CURATED_FLAG = "/media/fat/frontend/curated_only"
+ATTRACT_DISABLED_FLAG = "/media/fat/frontend/attract_disabled"
+ATTRACT_DELAY_FILE = "/media/fat/frontend/attract_delay"
+# NEUES FEATURE (Nutzerwunsch: "fuer denn attract Modus eventuell aus
+# nur an und aus zu machen noch eine Einstellung dabei damit man sich
+# selber aussuchen kann ab wieviel Minuten der anfaengt"): bisher war
+# die Verzoegerung mit ATTRACT_IDLE_SECONDS = 90 fest verdrahtet, nur
+# AN/AUS liess sich einstellen (siehe attract_enabled()). Jetzt
+# zusaetzlich einstellbar - gleiches Muster wie die bestehende
+# Zeitzonen-Einstellung (load/save/cycle-Dreiklang mit einer festen
+# Schrittliste).
+ATTRACT_DELAY_STEPS = [30, 60, 90, 120, 180, 300, 600, 900]   # Sekunden
+
+def load_attract_delay():
+    try:
+        with open(ATTRACT_DELAY_FILE) as f:
+            val = int(f.read().strip())
+            return val if val in ATTRACT_DELAY_STEPS else 90
+    except (OSError, ValueError):
+        return 90   # bisheriger fester Standardwert bleibt der Default
+
+def save_attract_delay(seconds):
+    try:
+        os.makedirs(os.path.dirname(ATTRACT_DELAY_FILE), exist_ok=True)
+        with open(ATTRACT_DELAY_FILE, "w") as f:
+            f.write(str(seconds))
+    except OSError:
+        pass
+
+def cycle_attract_delay():
+    """Naechsten Wert in ATTRACT_DELAY_STEPS waehlen (wrap-around).
+    Liefert den neuen Wert in Sekunden."""
+    current = load_attract_delay()
+    try:
+        idx = ATTRACT_DELAY_STEPS.index(current)
+    except ValueError:
+        idx = -1
+    new_val = ATTRACT_DELAY_STEPS[(idx + 1) % len(ATTRACT_DELAY_STEPS)]
+    save_attract_delay(new_val)
+    return new_val
+
+def format_attract_delay(seconds):
+    """z.B. '30s', '2min', '10min' - fuer die Menu-Beschriftung."""
+    if seconds < 60:
+        return "%ds" % seconds
+    if seconds % 60 == 0:
+        return "%dmin" % (seconds // 60)
+    return "%.1fmin" % (seconds / 60)
+
+ATTRACT_IDLE_SECONDS = 90   # so lange ohne Eingabe, bevor der Attract-
+                            # Modus (Bildschirmschoner) automatisch startet
+                            # - BLEIBT als Standardwert/Sicherheitsnetz
+                            # bestehen (siehe load_attract_delay()), wird
+                            # aber nicht mehr direkt fuer den eigentlichen
+                            # Check verwendet (siehe next_action()).
+ATTRACT_CHANGE_SECONDS = 6  # wie lange ein Spiel im Attract-Modus gezeigt wird
+COVER_SETTLE = 0.15         # s nach letzter Eingabe, bis waehrend des
+                            # Scrollens uebersprungene Cover nachgeladen
+                            # werden (haelt das Scrollen selbst fluessig)
+
+def attract_enabled():
+    """Standardmaessig AN (im Gegensatz zu curated_only_active(), das
+    standardmaessig AUS ist) - die Datei bedeutet hier 'abgeschaltet',
+    nicht 'aktiviert'."""
+    return not os.path.exists(ATTRACT_DISABLED_FLAG)
+
+def toggle_attract_mode():
+    existed_before = os.path.exists(ATTRACT_DISABLED_FLAG)
+    if existed_before:
+        try:
+            os.remove(ATTRACT_DISABLED_FLAG)
+        except OSError as e:
+            LOG("toggle_attract_mode: Loeschen der Markierungsdatei "
+                "fehlgeschlagen: %s" % e)
+    else:
+        try:
+            dirname = os.path.dirname(ATTRACT_DISABLED_FLAG)
+            if dirname:
+                os.makedirs(dirname, exist_ok=True)
+            open(ATTRACT_DISABLED_FLAG, "w").close()
+        except OSError as e:
+            LOG("toggle_attract_mode: Anlegen der Markierungsdatei "
+                "fehlgeschlagen: %s" % e)
+    LOG("toggle_attract_mode: vorher %s -> jetzt %s (Datei existiert: %s)"
+        % ("AUS" if existed_before else "AN",
+           "AN" if existed_before else "AUS",
+           os.path.exists(ATTRACT_DISABLED_FLAG)))
+
+def curated_only_active():
+    return os.path.exists(CURATED_FLAG)
+
+def toggle_curated_only():
+    if os.path.exists(CURATED_FLAG):
+        try:
+            os.remove(CURATED_FLAG)
+        except OSError:
+            pass
+    else:
+        try:
+            dirname = os.path.dirname(CURATED_FLAG)
+            if dirname:
+                os.makedirs(dirname, exist_ok=True)
+            open(CURATED_FLAG, "w").close()
+        except OSError:
+            pass

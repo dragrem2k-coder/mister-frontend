@@ -3365,6 +3365,15 @@ Start auf dem MiSTer (per SSH oder als Startscript):
 
 import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib, json, random, math, signal, socket, threading, termios, csv, difflib, unicodedata, wave, pickle
 
+# MODULARISIERUNG (Git-Branch 'modular-refactor'): eigenen Ordner
+# explizit in sys.path aufnehmen, damit "import fe.xyz" zuverlaessig
+# funktioniert - EGAL ob frontend.py direkt als Skript gestartet wird
+# (dann macht Python das automatisch) ODER ueber importlib als Modul
+# geladen wird (z.B. tools/regression_test.py) - dort passiert das
+# NICHT automatisch, ohne diese Zeile wuerde "ModuleNotFoundError:
+# No module named 'fe'" auftreten.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 # EINZIGE QUELLE DER WAHRHEIT fuer die Versionsnummer (Vereinbarung,
 # da mehrere Leute an derselben Codebasis arbeiten - siehe Nutzer-
 # Vorgabe zur Versionierung). Muss mit dem Header-Kommentar oben,
@@ -3383,184 +3392,10 @@ FRONTEND_VERSION = "4.3"
 # frontend.py - ein Rohtext-Abruf dieser EINEN Datei via
 # raw.githubusercontent.com reicht als Versionspruefung, kein API-
 # Rate-Limit, keine JSON-Antwort noetig.
-UPDATE_CHECK_URL = ("https://raw.githubusercontent.com/dragrem2k-coder/"
-                    "mister-frontend/main/frontend/VERSION")
-UPDATE_CHECK_STATE_FILE = "/media/fat/frontend/update_check_state.json"
-UPDATE_CHECK_DISABLED_FLAG_FILE = "/media/fat/frontend/update_check_disabled"
 
-def update_check_enabled():
-    return not os.path.exists(UPDATE_CHECK_DISABLED_FLAG_FILE)
+from fe.log import LOGFILE, LOG
 
-def toggle_update_check():
-    if os.path.exists(UPDATE_CHECK_DISABLED_FLAG_FILE):
-        try:
-            os.remove(UPDATE_CHECK_DISABLED_FLAG_FILE)
-        except OSError:
-            pass
-    else:
-        try:
-            dirname = os.path.dirname(UPDATE_CHECK_DISABLED_FLAG_FILE)
-            if dirname:
-                os.makedirs(dirname, exist_ok=True)
-            open(UPDATE_CHECK_DISABLED_FLAG_FILE, "w").close()
-        except OSError:
-            pass
-
-def load_update_state():
-    try:
-        with open(UPDATE_CHECK_STATE_FILE) as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
-
-def save_update_state(state):
-    try:
-        os.makedirs(os.path.dirname(UPDATE_CHECK_STATE_FILE), exist_ok=True)
-        with open(UPDATE_CHECK_STATE_FILE, "w") as f:
-            json.dump(state, f)
-    except OSError:
-        pass
-
-def _parse_version(s):
-    """"4.2" -> (4, 2), "4.10-test3" -> (4, 10) - nur die fuehrenden
-    Zahlenteile zaehlen fuer den Vergleich, ein Zusatz wie "-test3"
-    (siehe Versionierungsregeln oben) wird ignoriert."""
-    parts = []
-    for chunk in s.strip().split("."):
-        num = ""
-        for ch in chunk:
-            if ch.isdigit():
-                num += ch
-            else:
-                break
-        if not num:
-            break
-        parts.append(int(num))
-    return tuple(parts)
-
-def _version_newer(remote, local):
-    """True, wenn remote (String) eine tatsaechlich hoehere Version als
-    local (String) ist - reiner Zahlenvergleich, siehe _parse_version()."""
-    try:
-        return _parse_version(remote) > _parse_version(local)
-    except (ValueError, AttributeError):
-        return False
-
-LOGFILE = "/tmp/frontend.log"
-LOG_MAX_BYTES = 512 * 1024      # ab dieser Groesse wird gekuerzt
-LOG_KEEP_BYTES = 256 * 1024     # so viel vom Ende bleibt erhalten
-_log_call_count = 0
-
-def _trim_log_if_needed():
-    """Log-Datei kuerzen, falls sie zu gross geworden ist - behaelt nur
-    das juengste Ende. Wird nicht bei jedem LOG()-Aufruf geprueft
-    (Dateigroesse abfragen kostet Zeit), sondern nur gelegentlich -
-    das Log waechst nicht so schnell, dass es dazwischen aus dem
-    Ruder laeuft."""
-    try:
-        size = os.path.getsize(LOGFILE)
-    except OSError:
-        return
-    if size <= LOG_MAX_BYTES:
-        return
-    try:
-        with open(LOGFILE, "rb") as f:
-            f.seek(-LOG_KEEP_BYTES, os.SEEK_END)
-            tail = f.read()
-        # Am ersten Zeilenumbruch abschneiden, damit keine abgeschnittene
-        # Zeile am Anfang des gekuerzten Logs steht.
-        nl = tail.find(b"\n")
-        if nl >= 0:
-            tail = tail[nl + 1:]
-        with open(LOGFILE, "wb") as f:
-            f.write(("--- Log gekuerzt (war > %d KB) ---\n"
-                     % (LOG_MAX_BYTES // 1024)).encode())
-            f.write(tail)
-    except OSError:
-        pass
-
-def LOG(msg):
-    global _log_call_count
-    try:
-        _log_call_count += 1
-        if _log_call_count % 50 == 0:
-            _trim_log_if_needed()
-        with open(LOGFILE, "a") as f:
-            f.write("%s  %s\n" % (time.strftime("%H:%M:%S"), msg))
-    except OSError:
-        pass
-
-# ----------------------------------------------------------------------------
-# SINGLE-INSTANCE-LOCK
-# Verhindert, dass zwei Instanzen gleichzeitig /dev/fb0 mappen und die
-# Eingabegeraete grabben. Die Lock-Datei enthaelt die PID, damit sie -
-# wie in der README beschrieben - per "kill $(cat /tmp/frontend.lock)"
-# beendet werden kann. pkill/pgrep gibt es auf dem MiSTer nicht.
-# ----------------------------------------------------------------------------
-
-LOCKFILE = "/tmp/frontend.lock"
-
-def _pid_alive(pid):
-    """True, wenn die PID existiert UND es sich nachweislich um unseren
-    eigenen frontend.py-Prozess handelt - nicht nur irgendeinen
-    Prozess, der zufaellig dieselbe Nummer hat.
-
-    BUGFIX (Nutzer-Rueckmeldung: nach einem "Soft Reset" - vermutlich
-    OHNE echten Linux-Kernel-Neustart, im Gegensatz zu einem echten
-    Stromzyklus - kommt das Frontend manchmal nicht wieder, MiSTer
-    bleibt im eigenen OSD haengen, OHNE jede Log-Zeile): reine "existiert
-    die PID"-Pruefung (os.kill(pid, 0)) reicht nicht aus, wenn /tmp
-    (und damit unsere Lock-Datei) einen Soft-Reset UEBERLEBT - Linux
-    vergibt PID-Nummern nach einer Weile wieder neu, ein voellig
-    unabhaengiger, neuer Prozess koennte zufaellig dieselbe Nummer wie
-    der alte (laengst beendete) Frontend-Prozess bekommen haben. Die
-    Sperrdatei-Pruefung haette das dann faelschlicherweise als "laeuft
-    noch" gewertet und den Neustart stillschweigend verweigert - kein
-    Absturz, keine Logzeile, einfach nichts (passt zum gemeldeten Bild).
-    Fix: zusaetzlich pruefen, ob /proc/<pid>/cmdline tatsaechlich
-    "frontend.py" enthaelt. Ist /proc nicht lesbar (sollte auf MiSTer
-    nicht vorkommen), faellt die Funktion sicherheitshalber auf das
-    alte Verhalten zurueck (PID existiert -> als lebendig werten),
-    statt einen falschen Negativ-Befund zu riskieren."""
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return False
-    try:
-        with open("/proc/%d/cmdline" % pid, "rb") as f:
-            cmdline = f.read()
-    except OSError:
-        return True   # /proc nicht lesbar - alte, vorsichtige Annahme beibehalten
-    return b"frontend.py" in cmdline
-
-def acquire_single_instance():
-    """True, wenn wir die einzige Instanz sind (Lock gesetzt). False,
-    wenn bereits eine LEBENDE Instanz laeuft. Eine verwaiste Lock-Datei
-    (Prozess existiert nicht mehr, z.B. nach Absturz) wird uebernommen."""
-    try:
-        with open(LOCKFILE) as f:
-            old = f.read().strip()
-        if old.isdigit() and _pid_alive(int(old)):
-            LOG("Bereits aktive Instanz (PID %s) - Abbruch." % old)
-            return False
-    except OSError:
-        pass
-    try:
-        with open(LOCKFILE, "w") as f:
-            f.write(str(os.getpid()))
-    except OSError as e:
-        LOG("Lock-Datei nicht schreibbar: %s" % e)
-    return True
-
-def release_single_instance():
-    try:
-        with open(LOCKFILE) as f:
-            mine = f.read().strip() == str(os.getpid())
-        if mine:
-            os.remove(LOCKFILE)
-    except OSError:
-        pass
+from fe.single_instance import LOCKFILE, _pid_alive, acquire_single_instance, release_single_instance
 
 # ----------------------------------------------------------------------------
 # KONFIGURATION
@@ -3569,47 +3404,6 @@ def release_single_instance():
 BASE        = "/media/fat"
 SCRIPTS_DIR = "/media/fat/Scripts"
 
-def _discover_games_bases():
-    """Alle Orte, an denen ROMs liegen koennen (SD + USB-Laufwerke).
-
-    BUGFIX (Nutzer-Rueckmeldung: "Spiele ausser von /media/fat/games
-    werden nicht angezeigt"): die feste Liste deckte nur usb0 bis
-    usb5 ab - Speicherorte ausserhalb dieses festen Musters (z.B. ein
-    Netzlaufwerk unter einem anderen Namen, oder ein USB-Geraet mit
-    hoeherer Nummer) wurden dadurch nie gefunden, komplett unabhaengig
-    davon, was tatsaechlich am MiSTer angeschlossen ist. Jetzt
-    zusaetzlich dynamisch: alles, was tatsaechlich unter /media
-    eingehaengt ist (ausser "fat" selbst, das schon feststeht), wird
-    automatisch mit aufgenommen - deckt damit auch Faelle ab, die die
-    feste Liste nicht vorgesehen hatte. Die urspruengliche feste Liste
-    bleibt zusaetzlich bestehen (Vorhersagbarkeit/Ruecksichtigung auf
-    den ueblichen Fall, auch wenn /media aus irgendeinem Grund gerade
-    nicht lesbar sein sollte)."""
-    bases = ["/media/fat/games"]
-    bases += ["/media/usb%d/games" % i for i in range(6)]
-    bases += ["/media/usb%d" % i for i in range(6)]
-    try:
-        for entry in sorted(os.listdir("/media")):
-            if entry == "fat":
-                continue   # schon oben abgedeckt
-            path = "/media/" + entry
-            if not os.path.isdir(path):
-                continue
-            games_sub = os.path.join(path, "games")
-            if games_sub not in bases:
-                bases.append(games_sub)
-            if path not in bases:
-                bases.append(path)
-    except OSError:
-        pass   # /media nicht lesbar - bei der festen Liste bleiben
-    return bases
-
-# Bewusst als Funktionsergebnis statt als literale Liste - siehe
-# _discover_games_bases() oben fuer die Begruendung (dynamische
-# Erkennung zusaetzlich zur festen Liste).
-GAMES_BASES = _discover_games_bases()
-ART_BASE    = "/media/fat/frontend/art"
-ART_HD      = "/media/fat/frontend/art_hd"
 
 # --- Stream-Overlay (optional, siehe stream_server.py) -----------------
 STREAM_ENABLED_FILE = "/media/fat/frontend/stream_enabled"
@@ -3620,9 +3414,6 @@ try:
     from stream_server import StreamServer
 except Exception:
     StreamServer = None
-BG_BASE     = "/media/fat/frontend/bg"
-SYSART_BASE = "/media/fat/frontend/sysart"
-META_BASE   = "/media/fat/frontend/meta"
 MGL_TMP     = "/tmp/frontend_launch.mgl"
 GAMES_CACHE = "/media/fat/frontend/games_cache.pkl"
 GAMES_CACHE_OLD_JSON = "/media/fat/frontend/games_cache.json"   # fuer die
@@ -3634,874 +3425,33 @@ RECENT_MAX = 15
 FAVORITES_FILE = "/media/fat/frontend/favorites.json"
 LAST_CORE_CHOICE_FILE = "/media/fat/frontend/last_core_choice.json"
 PLAYTIME_FILE = "/media/fat/frontend/playtime.json"
-COMPLETED_FILE = "/media/fat/frontend/completed.json"
-
-def _load_completed_raw():
-    """Menge der als 'durchgespielt' markierten Spiele (per Name,
-    gleiche Konvention wie Favoriten/Zuletzt gespielt)."""
-    try:
-        with open(COMPLETED_FILE) as f:
-            data = json.load(f)
-            return set(data) if isinstance(data, list) else set()
-    except (OSError, ValueError):
-        return set()
-
-def toggle_completed(label):
-    """Durchgespielt-Status umschalten. Rueckgabe: True, wenn jetzt
-    als durchgespielt markiert, sonst False."""
-    if not label:
-        return False
-    data = _load_completed_raw()
-    if label in data:
-        data.discard(label)
-        now_completed = False
-    else:
-        data.add(label)
-        now_completed = True
-    try:
-        os.makedirs(os.path.dirname(COMPLETED_FILE), exist_ok=True)
-        with open(COMPLETED_FILE, "w") as f:
-            json.dump(sorted(data), f)
-    except OSError:
-        pass
-    return now_completed
+from fe.game_state import (
+    COMPLETED_FILE, FAVORITES_FILE, LAST_CORE_CHOICE_FILE, RECENT_FILE,
+    RECENT_MARKER, RECENT_MAX, _bare_game_name, _folder_items,
+    _load_completed_raw, _load_favorites_raw, find_continue_game, find_marked_recent_dir,
+    is_favorite, load_favorites, load_last_core_choice, load_recent,
+    record_core_choice, record_recent, toggle_completed, toggle_favorite,
+)
 
 # ----------------------------------------------------------------------------
-# RETROACHIEVEMENTS (optional - komplett unsichtbar, solange nicht
-# eingerichtet)
-#
-# Einrichtung per SSH/Texteditor (keine Bildschirmtastatur im Frontend -
-# ein API-Schluessel waere per Steuerkreuz kaum eintippbar): Datei mit
-# zwei Zeilen, erste der RA-Benutzername, zweite der Web-API-Schluessel
-# (aus dem eigenen RA-Kontrollbereich, Abschnitt "Keys").
-RA_CONFIG_FILE = "/media/fat/frontend/retroachievements.cfg"
-
-def load_ra_config():
-    """Liest Benutzername + API-Schluessel aus RA_CONFIG_FILE. Liefert
-    (benutzername, schluessel) oder (None, None), wenn die Datei fehlt,
-    leer ist oder nicht mindestens zwei nicht-leere Zeilen enthaelt -
-    JEDER Fehlerfall wird als "nicht eingerichtet" behandelt, nie als
-    Absturz. Das ist bewusst die EINZIGE Stelle, die entscheidet, ob
-    RetroAchievements ueberhaupt aktiv ist - alle anderen RA-Funktionen
-    bauen darauf auf."""
-    try:
-        with open(RA_CONFIG_FILE) as f:
-            lines = [ln.strip() for ln in f.readlines()]
-    except OSError:
-        return None, None
-    lines = [ln for ln in lines if ln]   # leere Zeilen ueberspringen
-    if len(lines) < 2:
-        return None, None
-    return lines[0], lines[1]
-
-def ra_enabled():
-    """Kurzform: ist RetroAchievements ueberhaupt eingerichtet?"""
-    u, k = load_ra_config()
-    return u is not None and k is not None
-
-RA_API_URL = "https://retroachievements.org/API/API_GetUserCompletionProgress.php"
-
-def fetch_ra_progress(username, api_key, timeout=5.0):
-    """Fragt bei RetroAchievements die komplette Fortschrittsliste des
-    Nutzers ab (ein Aufruf fuer ALLE Spiele, mit denen er je zu tun
-    hatte). Liefert eine Liste von (titel, systemname, erreicht,
-    moeglich)-Tupeln, oder None bei JEDEM Fehler (kein Internet,
-    falscher Schluessel, Zeitueberschreitung, unerwartete Antwort) -
-    NIE eine Ausnahme nach aussen, das ruft aus einem Hintergrund-
-    Thread heraus auf (siehe Schritt 3) und darf den Rest des
-    Frontends unter keinen Umstaenden beeintraechtigen.
-
-    EHRLICHER HINWEIS: die genauen Feldnamen der Antwort sind anhand
-    der oeffentlichen RA-API-Dokumentation nachgebaut, aber NICHT gegen
-    den echten Server verifiziert (in dieser Umgebung nicht moeglich).
-    Deshalb werden mehrere plausible Feldnamen-Varianten akzeptiert und
-    JEDES fehlende/anders benannte Feld fuehrt zu einem stillen
-    Auslassen dieses EINEN Eintrags statt einem Abbruch - falls sich
-    beim ersten echten Test ein Feldname als falsch herausstellt,
-    liefert die Funktion einfach eine leere oder unvollstaendige Liste
-    statt abzustuerzen."""
-    try:
-        params = urllib.parse.urlencode({"u": username, "y": api_key})
-        url = RA_API_URL + "?" + params
-        req = urllib.request.Request(url, headers={"User-Agent": "MiSTerFrontend/1.0"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            if resp.status != 200:
-                LOG("fetch_ra_progress: HTTP-Status %d" % resp.status)
-                return None
-            raw = resp.read()
-        data = json.loads(raw)
-    except (urllib.error.URLError, TimeoutError, ValueError, OSError) as e:
-        LOG("fetch_ra_progress: fehlgeschlagen: %s" % e)
-        return None
-
-    # Die Ergebnisliste kann je nach Antwortform direkt eine Liste sein
-    # ODER unter einem Schluessel wie "Results" liegen - beides
-    # abdecken.
-    if isinstance(data, dict):
-        entries = data.get("Results") or data.get("results") or []
-    elif isinstance(data, list):
-        entries = data
-    else:
-        entries = []
-
-    out = []
-    for e in entries:
-        if not isinstance(e, dict):
-            continue
-        title = e.get("Title") or e.get("title")
-        system = e.get("ConsoleName") or e.get("consoleName") or e.get("console")
-        total = e.get("MaxPossible") or e.get("maxPossible") or e.get("NumAchievements")
-        earned = e.get("NumAwarded") or e.get("numAwarded") or e.get("NumAwardedHardcore")
-        game_id = e.get("GameID") or e.get("gameId") or e.get("ID")
-        if not title or not total:
-            continue   # Eintrag ohne verwertbare Kernangaben - auslassen statt raten
-        try:
-            total = int(total)
-            earned = int(earned) if earned is not None else 0
-            game_id = int(game_id) if game_id is not None else None
-        except (TypeError, ValueError):
-            continue
-        if total <= 0:
-            continue
-        out.append((str(title), str(system) if system else "", earned, total, game_id))
-    return out
-
-def fetch_ra_progress_bounded(timeout=5.0):
-    """Holt die RA-Fortschrittsliste, FALLS eingerichtet und ein
-    lokales Netzwerk vorhanden ist - in einem separaten Thread mit
-    hartem Zeitlimit, exakt dasselbe Prinzip wie
-    sync_system_clock_from_ntp() (siehe dort fuer die Begruendung:
-    haengende DNS-Aufloesung wird von urlopen()s eigenem timeout NICHT
-    zuverlaessig erfasst). Liefert None, wenn nicht eingerichtet, kein
-    Netzwerk vorhanden ist, oder die Abfrage fehlschlaegt/zu lange
-    braucht - NIE eine Ausnahme, NIE eine Verzoegerung ueber `timeout`
-    Sekunden hinaus."""
-    username, api_key = load_ra_config()
-    if username is None:
-        return None
-    if not _has_network():
-        return None
-    result = {"data": None}
-    def worker():
-        result["data"] = fetch_ra_progress(username, api_key, timeout=timeout)
-    th = threading.Thread(target=worker, daemon=True)
-    th.start()
-    th.join(timeout=timeout + 0.5)
-    return result["data"]
-
-# ----------------------------------------------------------------------------
-# EINZELNE ERFOLGSLISTE EINES SPIELS (Nutzerwunsch: "Trophaeen-Vitrine")
-#
-# Bewusst als EIGENSTAENDIGE, separate Funktion aufgebaut - nutzt zwar
-# dieselben Grundbausteine (load_ra_config(), _has_network(), dasselbe
-# Zeitlimit-Prinzip) wie die bestehende Fortschrittsabfrage, aendert
-# aber NICHTS an ihr. Ruft einen ANDEREN RA-Endpunkt auf (Erfolgsdetails
-# zu EINEM Spiel statt der Sammelliste ueber alle Spiele).
-RA_GAME_API_URL = "https://retroachievements.org/API/API_GetGameInfoAndUserProgress.php"
-
-def fetch_ra_game_achievements(game_id, timeout=5.0):
-    """Fragt bei RetroAchievements die komplette Erfolgsliste EINES
-    Spiels ab (Name, Beschreibung, Punkte, Badge-Name, freigeschaltet/
-    wann). Liefert eine Liste von (titel, beschreibung, punkte,
-    badge_name, freigeschaltet, datum)-Tupeln, sortiert nach RAs
-    eigener Anzeigereihenfolge, oder None bei JEDEM Fehler - NIE eine
-    Ausnahme nach aussen.
-
-    EHRLICHER HINWEIS: wie bei fetch_ra_progress() sind die genauen
-    Feldnamen anhand der oeffentlichen API-Dokumentation nachgebaut,
-    nicht gegen den echten Server verifiziert. Mehrere plausible
-    Feldnamen-Varianten werden akzeptiert, ein einzelner fehlerhafter
-    Erfolgs-Eintrag wird stillschweigend ausgelassen statt die ganze
-    Liste abzubrechen."""
-    username, api_key = load_ra_config()
-    if username is None:
-        return None
-    try:
-        params = urllib.parse.urlencode({"u": username, "y": api_key, "g": game_id})
-        url = RA_GAME_API_URL + "?" + params
-        req = urllib.request.Request(url, headers={"User-Agent": "MiSTerFrontend/1.0"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            if resp.status != 200:
-                LOG("fetch_ra_game_achievements: HTTP-Status %d" % resp.status)
-                return None
-            raw = resp.read()
-        data = json.loads(raw)
-    except (urllib.error.URLError, TimeoutError, ValueError, OSError) as e:
-        LOG("fetch_ra_game_achievements: fehlgeschlagen: %s" % e)
-        return None
-    if not isinstance(data, dict):
-        return None
-    achievements = data.get("Achievements") or data.get("achievements")
-    if not isinstance(achievements, dict):
-        return None
-
-    out = []
-    for ach in achievements.values():
-        if not isinstance(ach, dict):
-            continue
-        title = ach.get("Title") or ach.get("title")
-        desc = ach.get("Description") or ach.get("description") or ""
-        points = ach.get("Points") or ach.get("points")
-        badge = ach.get("BadgeName") or ach.get("badgeName")
-        order = ach.get("DisplayOrder") or ach.get("displayOrder") or 0
-        date_earned = (ach.get("DateEarned") or ach.get("dateEarned")
-                       or ach.get("DateEarnedHardcore") or ach.get("dateEarnedHardcore"))
-        if not title:
-            continue
-        try:
-            points = int(points) if points is not None else 0
-            order = int(order) if order is not None else 0
-        except (TypeError, ValueError):
-            points, order = 0, 0
-        out.append((str(title), str(desc), points, str(badge) if badge else None,
-                    bool(date_earned), str(date_earned) if date_earned else None, order))
-    out.sort(key=lambda a: a[6])   # RAs eigene Anzeigereihenfolge
-    return [a[:6] for a in out]
-
-def fetch_ra_game_achievements_bounded(game_id, timeout=5.0):
-    """Wie fetch_ra_game_achievements(), aber zeitlich hart begrenzt in
-    einem separaten Thread - exakt dasselbe Prinzip wie
-    fetch_ra_progress_bounded() (siehe dort fuer die Begruendung)."""
-    if not _has_network():
-        return None
-    result = {"data": None}
-    def worker():
-        result["data"] = fetch_ra_game_achievements(game_id, timeout=timeout)
-    th = threading.Thread(target=worker, daemon=True)
-    th.start()
-    th.join(timeout=timeout + 0.5)
-    return result["data"]
-
-# BUGFIX/NEUES FEATURE (Nutzerwunsch: F6-Erfolgsliste dauert "ganz
-# schoen" lang, laesst sich das speichern/beschleunigen?): bisher
-# holte draw_ra_showcase_screen() die komplette Erfolgsliste bei
-# JEDEM Aufruf frisch aus dem Netz (bis zu 5s Zeitlimit), auch wenn
-# man kurz zuvor schon dasselbe Spiel angesehen hatte - kein eigener
-# Cache in der ersten Fassung (siehe damaliger Kommentar: "kann
-# spaeter ergaenzt werden, sobald sich das Format in der Praxis
-# bewaehrt hat" - hat es jetzt). Kurzlebiger, dateibasierter Cache
-# (15 Minuten) nach demselben Prinzip wie BadgeCache/ArtCache: kurz
-# genug, dass frisch verdiente Erfolge zeitnah als "freigeschaltet"
-# auftauchen, lang genug, um wiederholtes Ansehen desselben Spiels
-# (z.B. waehrend einer Session mehrfach F6 druecken) spuerbar zu
-# beschleunigen.
-RA_ACHIEVEMENTS_CACHE_FILE = "/media/fat/frontend/ra_achievements_cache.json"
-RA_ACHIEVEMENTS_CACHE_TTL = 900   # 15 Minuten
-
-def _load_ra_achievements_cache():
-    try:
-        with open(RA_ACHIEVEMENTS_CACHE_FILE) as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
-
-def _save_ra_achievements_cache(cache):
-    try:
-        os.makedirs(os.path.dirname(RA_ACHIEVEMENTS_CACHE_FILE), exist_ok=True)
-        with open(RA_ACHIEVEMENTS_CACHE_FILE, "w") as f:
-            json.dump(cache, f)
-    except OSError:
-        pass
-
-# NEUES FEATURE (Nutzerwunsch: F6-Erfolgsvitrine soll "schneller
-# einblenden" - bisher blockierte draw_ra_showcase_screen() bei
-# abgelaufenem/fehlendem Cache-Eintrag bis zu 5s auf den Netzwerkabruf,
-# bevor ueberhaupt eine Erfolgsliste zu sehen war): Stale-while-
-# revalidate - IST bereits ein (auch veralteter) Cache-Eintrag da,
-# wird der SOFORT zurueckgegeben (kein Warten), waehrend im
-# Hintergrund-Thread ein frischer Abruf angestossen wird, der den
-# Cache fuer den NAECHSTEN F6-Aufruf desselben Spiels aktualisiert.
-# Nur beim ALLERERSTEN Ansehen eines Spiels (noch gar kein Cache-
-# Eintrag vorhanden) bleibt ein einmaliger, kurzer synchroner Abruf
-# noetig - da gibt es schlicht noch nichts Vorhandenes zum Anzeigen.
-# _ra_achievements_refresh_inflight verhindert parallele Mehrfach-
-# abrufe fuer dasselbe Spiel bei schnell wiederholtem F6-Druecken.
-_ra_achievements_refresh_inflight = set()
-_ra_achievements_refresh_lock = threading.Lock()
-
-def _refresh_ra_achievements_background(game_id, timeout=5.0):
-    key = str(game_id)
-    with _ra_achievements_refresh_lock:
-        if key in _ra_achievements_refresh_inflight:
-            return
-        _ra_achievements_refresh_inflight.add(key)
-    try:
-        data = fetch_ra_game_achievements_bounded(game_id, timeout=timeout)
-        if data is not None:
-            cache = _load_ra_achievements_cache()
-            cache[key] = {"ts": time.time(), "data": data}
-            _save_ra_achievements_cache(cache)
-    finally:
-        with _ra_achievements_refresh_lock:
-            _ra_achievements_refresh_inflight.discard(key)
-
-def fetch_ra_game_achievements_cached(game_id, timeout=5.0):
-    """Wie fetch_ra_game_achievements_bounded(), aber mit kurzlebigem
-    Cache nach dem Stale-while-revalidate-Prinzip (siehe Kommentar
-    oben): ein VORHANDENER Cache-Eintrag wird IMMER sofort
-    zurueckgegeben, auch wenn er aelter als RA_ACHIEVEMENTS_CACHE_TTL
-    ist - in dem Fall wird zusaetzlich, nicht-blockierend, ein
-    Hintergrund-Abruf gestartet, der den Cache fuer naechstes Mal
-    aktualisiert. Nur wenn NOCH GAR NICHTS im Cache steht (allererster
-    Blick auf dieses Spiel), erfolgt ein einmaliger synchroner Abruf."""
-    cache = _load_ra_achievements_cache()
-    key = str(game_id)
-    entry = cache.get(key)
-    now = time.time()
-    if entry:
-        if (now - entry.get("ts", 0)) >= RA_ACHIEVEMENTS_CACHE_TTL:
-            threading.Thread(
-                target=_refresh_ra_achievements_background,
-                args=(game_id,), kwargs={"timeout": timeout},
-                daemon=True).start()
-        return entry.get("data")
-    data = fetch_ra_game_achievements_bounded(game_id, timeout=timeout)
-    if data is not None:
-        cache[key] = {"ts": now, "data": data}
-        _save_ra_achievements_cache(cache)
-    return data
-
-# ----------------------------------------------------------------------------
-# NAMENS-/SYSTEM-ABGLEICH
-#
-# RA liefert Spieltitel + Systemnamen, keine Dateipfade - der Abgleich
-# mit unserer Bibliothek laeuft ueber einen NORMALISIERTEN Namen
-# (Region-/Versionsangaben, Satzzeichen, Gross-/Kleinschreibung werden
-# ignoriert), zusaetzlich ueber das System abgesichert. Bewusst
-# KONSERVATIV: fehlt fuer unser System eine bekannte RA-Entsprechung,
-# wird lieber GAR NICHTS angezeigt als ein potenziell falscher Treffer.
-def _ra_normalize_name(name):
-    """Normalisiert einen Titel fuer den Abgleich."""
-    n = name.lower()
-    n = re.sub(r"\([^)]*\)", " ", n)    # (USA), (Europe), (Rev 1) usw.
-    n = re.sub(r"\[[^\]]*\]", " ", n)   # [T-En] usw.
-    n = re.sub(r"[^a-z0-9 ]", " ", n)   # Satzzeichen -> Leerzeichen
-    n = re.sub(r"\s+", " ", n).strip()
-    return n
-
-# Bekannte Entsprechungen unserer Systemschluessel zu RA-Konsolennamen.
-# BUGFIX (Nutzer-Rueckmeldung, zweite Runde: RA-Fortschritt fehlte bei
-# NES/SNES und weiteren Systemen, obwohl dort laengst Achievements
-# gesammelt wurden): per Recherche gegen echte RA-API-Beispiele
-# bestaetigt, dass RA fuer manche Systeme LAENGERE, kombinierte Namen
-# verwendet als hier eingetragen - z.B. "SNES/Super Famicom" statt
-# nur "SNES", "Mega Drive" statt "Genesis Mega Drive". Der bisherige
-# EXAKTE Abgleich (voller String muss 1:1 passen) schlug dadurch fuer
-# genau diese Systeme IMMER fehl, obwohl die Kernbezeichnung eigentlich
-# passte. Fix: siehe _ra_console_matches() weiter unten - prueft jetzt,
-# ob unsere erwartete Bezeichnung als zusammenhaengende WORTFOLGE in
-# RAs tatsaechlichem Namen vorkommt, nicht mehr per exaktem Vergleich.
-#
-# EHRLICHER HINWEIS bleibt bestehen: auch diese Kurzbezeichnungen sind
-# anhand allgemeiner Kenntnis/einzelner API-Beispiele zusammengestellt,
-# nicht vollstaendig gegen jedes einzelne System verifiziert - fehlt
-# eine Zuordnung oder stimmt sie nicht, fuehrt das zu KEINER Anzeige
-# fuer dieses System (sicherer Fehlerfall), nie zu einer falschen.
-RA_CONSOLE_MAP = {
-    "NES": "nes", "SNES": "snes", "Genesis": "mega drive",
-    "GAMEBOY": "game boy", "GBC": "game boy color", "GBA": "game boy advance",
-    "PSX": "playstation", "N64": "nintendo 64", "ARCADE": "arcade",
-    "SMS": "master system", "TGFX16": "pc engine",
-    "NEOGEO": "neo geo", "MegaCD": "sega cd", "Saturn": "saturn",
-}
-
-def _ra_console_matches(expected, ra_console_normalized):
-    """Prueft, ob die erwartete (bereits normalisierte, ggf. mehrteilige)
-    Systembezeichnung als ZUSAMMENHAENGENDE Wortfolge in RAs
-    tatsaechlichem, normalisierten Konsolennamen vorkommt - z.B.
-    "snes" in "snes super famicom" (Treffer), aber NICHT "nes" in
-    "snes super famicom" (kein Treffer trotz Teilstring-Uebereinstimmung
-    auf Zeichenebene) - reiner Wortgrenzen-Vergleich, sonst wuerde NES
-    faelschlich jedes SNES-Spiel treffen."""
-    exp_words = expected.split()
-    ra_words = ra_console_normalized.split()
-    n = len(exp_words)
-    if n == 0 or n > len(ra_words):
-        return False
-    for i in range(len(ra_words) - n + 1):
-        if ra_words[i:i + n] == exp_words:
-            return True
-    return False
-
-RA_PROGRESS_SUMMARY_FILE = "/media/fat/frontend/ra_progress_summary.json"
-
-def build_ra_lookup(ra_entries):
-    """Baut aus der RA-Fortschrittsliste ein Nachschlage-Woerterbuch:
-    normalisierter_titel -> Liste von (normalisiertes_system, erreicht,
-    moeglich, game_id)-Tupeln. Mehrere Eintraege pro Titel sind normal
-    (dasselbe Spiel kann auf mehreren Konsolen erschienen sein) - die
-    eigentliche System-Auswahl passiert erst in lookup_ra_progress().
-
-    NEU (Nutzerwunsch: 'Perfektionist'-Erfolg fuer 100% RA-Abschluss):
-    persistiert nebenbei eine winzige Zusammenfassung (nur ein
-    Wahrheitswert), damit auch reine Anzeige-Funktionen ohne Zugriff
-    auf die lebende self._ra_lookup (z.B. get_hidden_achievements(),
-    ueberall als einfache Modulfunktion aufgerufen) wissen, ob
-    mindestens ein Spiel zu 100% abgeschlossen ist - OHNE selbst RA
-    abfragen zu muessen. Nur geschrieben, wenn tatsaechlich Eintraege
-    da waren (ein leerer/fehlgeschlagener Abruf darf einen bereits
-    bekannten 100%-Abschluss nicht faelschlich wieder loeschen)."""
-    lookup = {}
-    any_100pct = False
-    for title, system, earned, total, game_id in ra_entries or []:
-        key = _ra_normalize_name(title)
-        lookup.setdefault(key, []).append(
-            (_ra_normalize_name(system), earned, total, game_id))
-        if total and total > 0 and earned >= total:
-            any_100pct = True
-    if ra_entries:
-        _save_json_dict(RA_PROGRESS_SUMMARY_FILE,
-                        {"any_100pct": any_100pct, "ts": time.time()})
-    return lookup
-
-def lookup_ra_progress(lookup, our_name, our_syskey):
-    """Sucht den RA-Fortschritt fuer ein Spiel aus unserer Bibliothek.
-    Liefert (erreicht, moeglich) oder None, wenn kein Treffer - auch
-    wenn fuer our_syskey keine bekannte RA-Entsprechung existiert
-    (bewusst KEIN Rateversuch). Bei mehreren zum System passenden
-    Eintraegen (sollte selten vorkommen) gewinnt der mit den meisten
-    erreichten Achievements.
-
-    UNVERAENDERTE Rueckgabe (nur (erreicht, moeglich) oder None) trotz
-    jetzt zusaetzlich gespeicherter GameID - keine bestehende
-    Aufrufstelle soll sich anpassen muessen. Fuer die GameID selbst
-    siehe die separate lookup_ra_game_id()."""
-    best = _lookup_ra_candidate(lookup, our_name, our_syskey)
-    return (best[0], best[1]) if best else None
-
-def lookup_ra_game_id(lookup, our_name, our_syskey):
-    """Wie lookup_ra_progress(), liefert aber die RA-GameID des
-    Treffers (fuer die Erfolgsdetails, siehe fetch_ra_game_achievements())
-    statt des Fortschritts - oder None, wenn kein Treffer oder keine
-    GameID bekannt ist (z.B. bei aelteren zwischengespeicherten Daten
-    ohne dieses Feld)."""
-    best = _lookup_ra_candidate(lookup, our_name, our_syskey)
-    return best[2] if best else None
-
-def _lookup_ra_candidate(lookup, our_name, our_syskey):
-    """Gemeinsamer Kern von lookup_ra_progress()/lookup_ra_game_id():
-    liefert (erreicht, moeglich, game_id) des besten Treffers oder
-    None."""
-    expected = RA_CONSOLE_MAP.get(our_syskey)
-    if not expected:
-        return None
-    candidates = lookup.get(_ra_normalize_name(our_name))
-    if not candidates:
-        return None
-    best = None
-    for ra_system, earned, total, game_id in candidates:
-        if _ra_console_matches(expected, ra_system):
-            if best is None or earned > best[0]:
-                best = (earned, total, game_id)
-    return best
-
-def load_playtime():
-    """Laedt die Spielzeit-/Start-Statistik. JEDER Eintrag wird auf das
-    Format {"seconds": X, "launches": N, "syskey": S} normalisiert -
-    frueher (v1.79/v1.80) fehlte "syskey" komplett bzw. war es nur
-    eine reine Zahl ohne Start-Zaehler. Diese alten Eintraege werden
-    beim Laden transparent umgewandelt (launches=0/syskey=None, da
-    dafuer keine historischen Daten existieren), damit ein Update
-    nicht die bisherige Spielzeit verwirft."""
-    try:
-        with open(PLAYTIME_FILE) as f:
-            raw = json.load(f)
-    except (OSError, ValueError):
-        return {}
-    data = {}
-    for label, val in raw.items():
-        if isinstance(val, dict):
-            data[label] = {"seconds": val.get("seconds", 0),
-                          "launches": val.get("launches", 0),
-                          "syskey": val.get("syskey")}
-        else:
-            data[label] = {"seconds": val, "launches": 0, "syskey": None}
-    return data
-
-def record_playtime(label, seconds, syskey=None):
-    """Addiert die gespielte Zeit (in Sekunden) UND zaehlt einen
-    weiteren Start fuer dieses Spiel hoch (identifiziert ueber den
-    Namen - gleiche Konvention wie record_recent()/Favoriten). Wird
-    ganz am Ende von run_core() aufgerufen, NUR mit der Zeit vom
-    bestaetigten Core-Start bis zur Rueckkehr ins Menue - Ladezeiten
-    und fehlgeschlagene Starts zaehlen bewusst nicht mit (und werden
-    dementsprechend auch nicht als Start gezaehlt - run_core() ruft
-    diese Funktion nur bei einem TATSAECHLICH bestaetigten Start auf).
-    syskey (optional, seit v1.89): fuers "Entdecker"-Achievement
-    (verschiedene Systeme ausprobiert) - wird bei jedem Aufruf
-    aktualisiert (falls mitgegeben), falls sich der Systemschluessel
-    fuer denselben Namen mal aendern sollte."""
-    if not label or seconds <= 0:
-        return
-    data = load_playtime()
-    entry = data.get(label, {"seconds": 0, "launches": 0, "syskey": None})
-    entry["seconds"] += seconds
-    entry["launches"] += 1
-    if syskey:
-        entry["syskey"] = syskey
-    data[label] = entry
-    try:
-        os.makedirs(os.path.dirname(PLAYTIME_FILE), exist_ok=True)
-        with open(PLAYTIME_FILE, "w") as f:
-            json.dump(data, f)
-    except OSError:
-        pass
-
-# ----------------------------------------------------------------------------
-# JAHRES-BUENDELUNG DER SPIELZEIT (Fundament fuer einen spaeteren
-# echten Jahresrueckblick, Nutzerwunsch: "digitales Retro-Wohnzimmer").
-# Unser bisheriges Tracking (record_playtime() oben) kennt nur
-# KUMULIERTE Gesamtwerte pro Spiel, keine Kalenderjahr-Zuordnung - ein
-# "Jahresrueckblick 2026" waere damit technisch gar kein echter
-# Jahresrueckblick, sondern ein "seit Aufzeichnungsbeginn"-Rueckblick.
-#
-# Bewusst als KOMPLETT EIGENSTAENDIGE, separate Datei/Funktionen gebaut
-# - aendert NICHTS an record_playtime()/load_playtime() selbst, kein
-# Risiko fuer bestehende Funktionen, die auf die kumulierten
-# Gesamtwerte angewiesen sind (Trophaeenraum, Top-10-Listen, eigene
-# Erfolge usw. bleiben komplett unberuehrt). Wird IMMER ZUSAETZLICH zu
-# record_playtime() aufgerufen, nie stattdessen.
-PLAYTIME_YEARLY_FILE = "/media/fat/frontend/playtime_yearly.json"
-FIRST_PLAYED_FILE = "/media/fat/frontend/first_played.json"
-
-def _current_year():
-    """Aktuelles Jahr als String - eigene kleine Funktion (statt
-    ueberall einzeln time.localtime() aufzurufen), damit Tests den
-    Jahreswechsel leicht simulieren koennen (siehe Tests: einfach
-    ersetzen statt die Systemzeit zu verstellen)."""
-    return str(time.localtime().tm_year)
-
-def load_playtime_yearly():
-    """Laedt die nach Kalenderjahr gebuendelte Spielzeit-Statistik.
-    Struktur: {jahr_als_string: {"seconds": X, "launches": N,
-    "games": {name: sekunden}, "systems": {syskey: sekunden}}}."""
-    try:
-        with open(PLAYTIME_YEARLY_FILE) as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
-
-def _load_first_played():
-    """Jahr des allerersten Starts pro Spiel (als String) - fuer eine
-    spaetere 'dieses Jahr entdeckt'-Sammlung. Eigene, winzige Datei
-    statt Teil von playtime_yearly.json, damit ein einzelner
-    fehlerhafter Schreibvorgang nicht die Jahres-Hauptstatistik
-    gefaehrdet."""
-    try:
-        with open(FIRST_PLAYED_FILE) as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
-
-def _record_first_played(label, date_str):
-    """Merkt sich das Datum des allerersten Starts eines Spiels - wird
-    NUR beim allerersten Mal fuer dieses Spiel gesetzt, ein spaeterer
-    Aufruf fuer dasselbe Spiel aendert nichts mehr (das reine
-    Vorhandensein des Eintrags zaehlt als 'schon gesehen').
-
-    date_str: seit dem "Auf diesen Tag vor X Jahren"-Feature das VOLLE
-    Datum ("2026-03-15") statt nur des Jahres - siehe Aufrufer
-    record_yearly_playtime()."""
-    data = _load_first_played()
-    if label in data:
-        return
-    data[label] = date_str
-    try:
-        os.makedirs(os.path.dirname(FIRST_PLAYED_FILE), exist_ok=True)
-        with open(FIRST_PLAYED_FILE, "w") as f:
-            json.dump(data, f)
-    except OSError:
-        pass
-
-def find_on_this_day_hint():
-    """Nutzerwunsch ('Auf diesen Tag vor X Jahren'): sucht in
-    first_played.json ein Spiel, dessen allererster Start-TAG (Monat+
-    Tag) auf HEUTE faellt, aber aus einem VERGANGENEN Jahr stammt.
-    Liefert (spielname, jahre_her) oder None, wenn nichts passt (der
-    haeufigste Fall - an den allermeisten Tagen wird hier nichts
-    gefunden, das ist normal und kein Fehler).
-
-    Rein lokale Dateiabfrage, KEIN Netzwerkzugriff - kann deshalb
-    synchron und ohne Hintergrund-Thread aufgerufen werden, anders als
-    z.B. der Update-Check.
-
-    Alte Eintraege, die noch aus der Zeit VOR diesem Feature stammen
-    und nur eine reine Jahreszahl enthalten (4 Zeichen, kein '-'),
-    werden sauber uebersprungen - ohne Tag/Monat gibt es dafuer schlicht
-    keine sinnvolle Antwort, kein Rateversuch."""
-    first_played = _load_first_played()
-    if not first_played:
-        return None
-    today = time.localtime()
-    today_md = time.strftime("%m-%d", today)
-    this_year = today.tm_year
-    matches = []
-    for label, date_str in first_played.items():
-        if not isinstance(date_str, str) or len(date_str) != 10:
-            continue   # kein volles YYYY-MM-DD (z.B. alte reine Jahreszahl)
-        parts = date_str.split("-")
-        if len(parts) != 3:
-            continue
-        y, m, d = parts
-        try:
-            y_int = int(y)
-        except ValueError:
-            continue
-        if m + "-" + d == today_md and y_int < this_year:
-            matches.append((label, this_year - y_int))
-    if not matches:
-        return None
-    matches.sort(key=lambda mtch: -mtch[1])   # am laengsten zurueckliegend zuerst
-    return matches[0]
-
-def record_yearly_playtime(label, seconds, syskey=None):
-    """Wie record_playtime(), aber zusaetzlich nach Kalenderjahr
-    gebuendelt - siehe Modul-Kommentar oben fuer die Begruendung.
-    Aktualisiert nebenbei _record_first_played().
-
-    NEU (Nutzerwunsch: "Auf diesen Tag vor X Jahren"-Hinweis): uebergibt
-    jetzt das VOLLE heutige Datum statt nur des Jahres - rueckwaerts-
-    kompatibel, siehe _record_first_played()/find_on_this_day_hint()."""
-    if not label or seconds <= 0:
-        return
-    year = _current_year()
-    data = load_playtime_yearly()
-    entry = data.get(year, {"seconds": 0, "launches": 0, "games": {}, "systems": {}})
-    entry["seconds"] = entry.get("seconds", 0) + seconds
-    entry["launches"] = entry.get("launches", 0) + 1
-    games = entry.setdefault("games", {})
-    games[label] = games.get(label, 0) + seconds
-    if syskey:
-        systems = entry.setdefault("systems", {})
-        systems[syskey] = systems.get(syskey, 0) + seconds
-    data[year] = entry
-    try:
-        os.makedirs(os.path.dirname(PLAYTIME_YEARLY_FILE), exist_ok=True)
-        with open(PLAYTIME_YEARLY_FILE, "w") as f:
-            json.dump(data, f)
-    except OSError:
-        pass
-    _record_first_played(label, time.strftime("%Y-%m-%d", time.localtime()))
-
-def compute_year_review_stats(year=None):
-    """Berechnet die Kennzahlen fuer den Jahresrueckblick (Nutzerwunsch:
-    "digitales Retro-Wohnzimmer") - baut auf load_playtime_yearly()/
-    _load_first_played() auf (siehe v4.1-Fundament oben). year=None
-    verwendet das aktuelle Kalenderjahr. Liefert None, wenn fuer das
-    gewaehlte Jahr noch gar keine Daten vorliegen (z.B. frisch
-    installiert oder der Jahreswechsel ist gerade erst passiert) -
-    der Aufrufer zeigt dann eine freundliche "noch nichts hier"-
-    Meldung statt leerer/falscher Werte."""
-    year = year or _current_year()
-    yearly = load_playtime_yearly()
-    entry = yearly.get(year)
-    if not entry or entry.get("seconds", 0) <= 0:
-        return None
-
-    games = entry.get("games", {})
-    systems = entry.get("systems", {})
-    top_game = max(games, key=games.get) if games else None
-    favorite_system = max(systems, key=systems.get) if systems else None
-
-    first_played = _load_first_played()
-    discovered_this_year = sum(1 for g in games if first_played.get(g) == year)
-    # BUGFIX/Kompatibilitaet: first_played.json speichert seit dem
-    # "Auf diesen Tag"-Feature das VOLLE Datum ("2026-03-15") statt nur
-    # des Jahres ("2026") - der Vergleich braucht deshalb jetzt die
-    # ersten 4 Zeichen. Funktioniert unveraendert fuer alte, noch aus
-    # reinen Jahreszahlen bestehende Eintraege (ein 4-Zeichen-String
-    # liefert bei [:4] sich selbst zurueck) - keine Migration noetig.
-    discovered_this_year = sum(1 for g in games if first_played.get(g, "")[:4] == year)
-
-    return {
-        "year": year,
-        "total_seconds": entry.get("seconds", 0),
-        "total_launches": entry.get("launches", 0),
-        "distinct_games": len(games),
-        "distinct_systems": len(systems),
-        "top_game": top_game,
-        "top_game_seconds": games.get(top_game, 0) if top_game else 0,
-        "favorite_system": favorite_system,
-        "discovered_this_year": discovered_this_year,
-    }
-
-# ----------------------------------------------------------------------------
-# SPIELTAGEBUCH (Nutzerwunsch: "digitales Retro-Wohnzimmer" - kleine
-# Version zunaechst, "schauen wie es ankommt", volle dauerhafte Version
-# mit Archivierung bewusst zurueckgestellt). Rollierendes Protokoll der
-# letzten DIARY_RETENTION_DAYS Tage - raeumt sich bei jedem Schreib-
-# vorgang automatisch selbst auf, waechst dadurch NIE unbegrenzt (im
-# Gegensatz zu playtime_yearly.json/first_played.json, die bewusst
-# dauerhaft wachsen duerfen, weil sie nur wenige Bytes pro Spiel/Jahr
-# kosten - ein taegliches Sitzungsprotokoll waere das nicht).
-#
-# Komplett EIGENSTAENDIG - aendert nichts an record_playtime()/
-# record_yearly_playtime(), wird IMMER zusaetzlich zu beiden
-# aufgerufen, nie stattdessen.
-DIARY_FILE = "/media/fat/frontend/diary.json"
-DIARY_RETENTION_DAYS = 30
-
-def _current_date_str():
-    """Heutiges Datum als 'YYYY-MM-DD' - eigene kleine Funktion (wie
-    _current_year()), damit Tests einen Tageswechsel leicht simulieren
-    koennen, statt die Systemzeit zu verstellen."""
-    return time.strftime("%Y-%m-%d", time.localtime())
-
-def load_diary():
-    """Laedt das Spieltagebuch. Struktur: {datum_str: [{"name":...,
-    "syskey":..., "seconds":...}, ...]} - ein Eintrag pro tatsaechlich
-    beendeter Spielsitzung, mehrere Sitzungen desselben Spiels am
-    selben Tag bleiben als SEPARATE Eintraege erhalten (anders als bei
-    playtime_yearly.json, wo sie aufaddiert werden) - im Tagebuch soll
-    ja der zeitliche Ablauf sichtbar bleiben, nicht nur die Summe."""
-    try:
-        with open(DIARY_FILE) as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
-
-def _prune_diary(data):
-    """Entfernt Tage, die aelter als DIARY_RETENTION_DAYS sind - haelt
-    die Datei dauerhaft klein. Vergleicht ueber epoch-Sekunden statt
-    reinem String-Vergleich, damit Monats-/Jahresgrenzen (z.B. Ende
-    Januar -> Anfang Februar) korrekt behandelt werden. Ungueltige
-    Datumsschluessel (z.B. durch Handbearbeitung entstanden) werden
-    still verworfen statt einen Absturz auszuloesen."""
-    cutoff = time.time() - DIARY_RETENTION_DAYS * 86400
-    kept = {}
-    for date_str, entries in data.items():
-        try:
-            day_epoch = time.mktime(time.strptime(date_str, "%Y-%m-%d"))
-        except ValueError:
-            continue
-        if day_epoch >= cutoff:
-            kept[date_str] = entries
-    return kept
-
-def record_diary_entry(label, seconds, syskey=None):
-    """Traegt eine beendete Spielsitzung ins Tagebuch ein - IMMER
-    zusaetzlich zu record_playtime()/record_yearly_playtime()
-    aufgerufen (gleicher Aufrufpunkt in run_core()), komplett
-    eigenstaendig. Raeumt bei jedem Aufruf automatisch alte Eintraege
-    auf (siehe _prune_diary())."""
-    if not label or seconds <= 0:
-        return
-    date_str = _current_date_str()
-    data = load_diary()
-    data = _prune_diary(data)
-    day_entries = data.setdefault(date_str, [])
-    day_entries.append({"name": label, "syskey": syskey, "seconds": seconds})
-    try:
-        os.makedirs(os.path.dirname(DIARY_FILE), exist_ok=True)
-        with open(DIARY_FILE, "w") as f:
-            json.dump(data, f)
-    except OSError:
-        pass
-
-# Eigene, sprachabhaengige Monatsnamen statt strftime("%B") - das
-# haengt von der SYSTEM-Locale ab (typischerweise Englisch auf einem
-# frischen MiSTer), nicht von unserem eigenen CURRENT_LANG-Umschalter.
-MONTH_NAMES_DE = ["Januar", "Februar", "Maerz", "April", "Mai", "Juni",
-                  "Juli", "August", "September", "Oktober", "November",
-                  "Dezember"]
-MONTH_NAMES_EN = ["January", "February", "March", "April", "May", "June",
-                  "July", "August", "September", "October", "November",
-                  "December"]
-
-def _format_diary_date(date_str):
-    """Formatiert ein 'YYYY-MM-DD'-Datum fuer die Anzeige im Tagebuch -
-    "Heute"/"Gestern" fuer die letzten beiden Tage, sonst "Tag.
-    Monatsname" (eigene, sprachabhaengige Monatsnamen, siehe oben)."""
-    try:
-        parsed = time.strptime(date_str, "%Y-%m-%d")
-    except ValueError:
-        return date_str
-    today = _current_date_str()
-    yesterday = time.strftime("%Y-%m-%d", time.localtime(time.time() - 86400))
-    if date_str == today:
-        return t("diary_today")
-    if date_str == yesterday:
-        return t("diary_yesterday")
-    names = MONTH_NAMES_DE if CURRENT_LANG == "de" else MONTH_NAMES_EN
-    return "%d. %s" % (parsed.tm_mday, names[parsed.tm_mon - 1])
-
-# ----------------------------------------------------------------------------
-# EIGENES, LOKALES ACHIEVEMENT-SYSTEM
-#
-# Komplett unabhaengig von RetroAchievements - basiert nur auf unseren
-# eigenen, laengst vorhandenen Daten (Spielzeit-Tracker, Start-Zaehler,
-# Durchgespielt-Markierung). Schwellenwerte werden bei jedem Aufruf
-# LIVE aus den aktuellen Daten berechnet (kein separater "erreicht am
-# ..."-Zustand, der aus dem Ruder laufen koennte) - simpler und
-# robuster als ein eigenes Fortschritts-Tracking zu pflegen.
-MILESTONE_DEFS = [
-    ("playtime_seconds", 3600,   "milestone_playtime_1h"),
-    ("playtime_seconds", 36000,  "milestone_playtime_10h"),
-    ("playtime_seconds", 180000, "milestone_playtime_50h"),
-    ("playtime_seconds", 360000, "milestone_playtime_100h"),
-    ("launches", 10,  "milestone_launches_10"),
-    ("launches", 50,  "milestone_launches_50"),
-    ("launches", 100, "milestone_launches_100"),
-    ("launches", 500, "milestone_launches_500"),
-    ("systems", 3,  "milestone_systems_3"),
-    ("systems", 5,  "milestone_systems_5"),
-    ("systems", 10, "milestone_systems_10"),
-    ("completed", 1,  "milestone_completed_1"),
-    ("completed", 5,  "milestone_completed_5"),
-    ("completed", 10, "milestone_completed_10"),
-    ("completed", 25, "milestone_completed_25"),
-]
-
-def compute_milestone_progress():
-    """Aktuelle Werte fuer alle Meilenstein-Kategorien, aus den
-    bereits vorhandenen Daten berechnet (kein zusaetzlicher Scan)."""
-    playtime = load_playtime()
-    total_seconds = sum(e.get("seconds", 0) for e in playtime.values())
-    total_launches = sum(e.get("launches", 0) for e in playtime.values())
-    distinct_systems = len(set(
-        e["syskey"] for e in playtime.values() if e.get("syskey")))
-    completed_count = len(_load_completed_raw())
-    return {
-        "playtime_seconds": total_seconds,
-        "launches": total_launches,
-        "systems": distinct_systems,
-        "completed": completed_count,
-    }
-
-def _format_seconds_short(seconds):
-    """Wie format_playtime(), liefert aber IMMER einen Text (auch unter
-    einer Minute) - fuer die Meilenstein-Anzeige, wo bei jedem
-    Fortschrittswert etwas Lesbares stehen soll, nicht nur ab einer
-    bestimmten Groessenordnung.
-
-    BUGFIX (Nutzer-Rueckmeldung anhand eines CRT-Fotos: Fortschritts-
-    anzeige zeigte z.B. "14min/100h" - Aktuell- und Zielwert in
-    UNTERSCHIEDLICHEN Einheiten nebeneinander, schwer auf einen Blick
-    vergleichbar): zeigt jetzt IMMER konsequent "Stunden dann Minuten"
-    (auch "0h"), damit beide Seiten des Bruchs im selben Format stehen -
-    z.B. "0h 14min/100h 0min" statt des vorherigen Mix aus "14min" und
-    "100h"."""
-    seconds = max(0, int(seconds))
-    mins = seconds // 60
-    h, m = divmod(mins, 60)
-    return "%dh %dmin" % (h, m)
-
-def get_milestones():
-    """Liste aller Meilensteine als (label_key, erreicht, aktueller_wert,
-    schwellenwert, kind)-Tupel, in der definierten Reihenfolge. kind
-    wird fuer die richtige Anzeige-Formatierung gebraucht (Sekunden
-    lesbar als "3min"/"2h 15min" statt roher Zahl, siehe
-    draw_milestones_screen())."""
-    progress = compute_milestone_progress()
-    out = []
-    for kind, threshold, label_key in MILESTONE_DEFS:
-        current = progress.get(kind, 0)
-        out.append((label_key, current >= threshold, current, threshold, kind))
-    return out
+from fe.retroachievements import (
+    RA_ACHIEVEMENTS_CACHE_FILE, RA_ACHIEVEMENTS_CACHE_TTL, RA_API_URL,
+    RA_CONFIG_FILE, RA_CONSOLE_MAP, RA_GAME_API_URL,
+    RA_PROGRESS_SUMMARY_FILE, _load_ra_achievements_cache, _lookup_ra_candidate,
+    _ra_console_matches, _ra_normalize_name, _refresh_ra_achievements_background,
+    _save_ra_achievements_cache, build_ra_lookup, fetch_ra_game_achievements,
+    fetch_ra_game_achievements_bounded, fetch_ra_game_achievements_cached, fetch_ra_progress,
+    fetch_ra_progress_bounded, load_ra_config, lookup_ra_game_id,
+    lookup_ra_progress, ra_enabled,
+)
+from fe.playtime import (
+    DIARY_FILE, DIARY_RETENTION_DAYS, FIRST_PLAYED_FILE, MILESTONE_DEFS,
+    MONTH_NAMES_DE, MONTH_NAMES_EN, PLAYTIME_YEARLY_FILE, _current_date_str,
+    _current_year, _format_diary_date, _format_seconds_short, _load_first_played,
+    _prune_diary, _record_first_played, compute_milestone_progress, compute_year_review_stats,
+    find_on_this_day_hint, get_milestones, load_diary, load_playtime,
+    load_playtime_yearly, record_diary_entry, record_playtime, record_yearly_playtime,
+)
 
 # ----------------------------------------------------------------------------
 # VERSTECKTE ERFOLGE - Name/Beschreibung bleibt verborgen ("???"), bis
@@ -4516,739 +3466,35 @@ def get_milestones():
 # LIVE-berechnet (collector, completionist, legend): wie die normalen
 # Meilensteine einfach aus dem aktuellen Datenstand abgeleitet, jedes
 # Mal neu - keine eigene Speicherung noetig.
-HIDDEN_UNLOCKED_FILE = "/media/fat/frontend/hidden_achievements.json"
-
-def _load_hidden_unlocked():
-    """Menge der IDs bereits freigeschalteter, EREIGNIS-basierter
-    versteckter Erfolge."""
-    try:
-        with open(HIDDEN_UNLOCKED_FILE) as f:
-            data = json.load(f)
-            return set(data) if isinstance(data, list) else set()
-    except (OSError, ValueError):
-        return set()
-
-def _unlock_hidden(achievement_id):
-    """Schaltet einen ereignis-basierten versteckten Erfolg frei
-    (dauerhaft gespeichert). Rueckgabe: True, wenn er JETZT neu
-    freigeschaltet wurde, False, wenn er es schon vorher war."""
-    data = _load_hidden_unlocked()
-    if achievement_id in data:
-        return False
-    data.add(achievement_id)
-    try:
-        os.makedirs(os.path.dirname(HIDDEN_UNLOCKED_FILE), exist_ok=True)
-        with open(HIDDEN_UNLOCKED_FILE, "w") as f:
-            json.dump(sorted(data), f)
-    except OSError:
-        pass
-    return True
-
-# NEU (Nutzerwunsch: weitere versteckte Erfolge): drei zusaetzliche
-# kleine Tracker-Dateien, alle nach demselben Muster wie
-# HIDDEN_UNLOCKED_FILE - defensiv (fehlende/kaputte Datei = leerer
-# Anfangszustand, nie ein Absturz).
-WEEKEND_TRACKER_FILE = "/media/fat/frontend/weekend_tracker.json"
-LAST_PLAYED_FILE = "/media/fat/frontend/last_played.json"
-DAILY_SYSTEMS_FILE = "/media/fat/frontend/daily_systems.json"
-
-def _load_json_dict(path):
-    try:
-        with open(path) as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
-
-def _save_json_dict(path, data):
-    try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w") as f:
-            json.dump(data, f)
-    except OSError:
-        pass
-
-def _check_weekend_warrior(session_start_walltime, local_time):
-    """'Wochenend-Krieger': an Samstag UND Sonntag DERSELBEN ISO-Woche
-    gespielt. tm_wday: Montag=0 ... Sonntag=6, Samstag=5. Nur ein
-    winziger Eintrag pro Woche (max. ~52/Jahr) - kein Aufraeumen
-    noetig, das waechst ueber Jahre hinweg vernachlaessigbar."""
-    wday = local_time.tm_wday
-    if wday not in (5, 6):
-        return
-    week_key = time.strftime("%G-W%V", local_time)
-    tracker = _load_json_dict(WEEKEND_TRACKER_FILE)
-    days = set(tracker.get(week_key, []))
-    days.add(wday)
-    tracker[week_key] = sorted(days)
-    _save_json_dict(WEEKEND_TRACKER_FILE, tracker)
-    if 5 in days and 6 in days:
-        _unlock_hidden("weekend_warrior")
-
-def _check_comeback(label, session_start_walltime):
-    """'Comeback': dasselbe Spiel nach 6+ Monaten Pause wieder
-    gestartet. Vergleicht den ZULETZT gespeicherten Zeitstempel GEGEN
-    JETZT, BEVOR er mit dem neuen Wert ueberschrieben wird - Pruefung
-    und Aktualisierung bewusst in EINER Funktion, damit die Reihenfolge
-    nie versehentlich vertauscht werden kann."""
-    if not label:
-        return
-    data = _load_json_dict(LAST_PLAYED_FILE)
-    old_ts = data.get(label)
-    if old_ts is not None:
-        try:
-            if session_start_walltime - float(old_ts) >= 180 * 24 * 3600:
-                _unlock_hidden("comeback")
-        except (TypeError, ValueError):
-            pass
-    data[label] = session_start_walltime
-    _save_json_dict(LAST_PLAYED_FILE, data)
-
-def _check_versatile(syskey, session_start_walltime, local_time):
-    """'Vielseitig': an einem Tag Spiele aus 4+ verschiedenen Systemen
-    gestartet. Taeglich zurueckgesetzt (Datumsvergleich)."""
-    if not syskey:
-        return
-    today = time.strftime("%Y-%m-%d", local_time)
-    data = _load_json_dict(DAILY_SYSTEMS_FILE)
-    if data.get("date") != today:
-        data = {"date": today, "systems": []}
-    systems = set(data.get("systems", []))
-    systems.add(syskey)
-    data["systems"] = sorted(systems)
-    _save_json_dict(DAILY_SYSTEMS_FILE, data)
-    if len(systems) >= 4:
-        _unlock_hidden("versatile")
-
-def check_hidden_session_achievements(session_start_walltime, elapsed_seconds,
-                                      label=None, syskey=None):
-    """Nach einer gespielten Sitzung (siehe run_core()) pruefen, ob
-    dadurch ein ereignis-basierter versteckter Erfolg freigeschaltet
-    wird. session_start_walltime: echte Wanduhrzeit (time.time()) beim
-    Sitzungsbeginn - NICHT die monotone Zeit, die fuer die
-    Dauer-Berechnung genutzt wird (die ist unempfindlich gegen
-    Uhr-Korrekturen, sagt aber nichts ueber die Tageszeit aus).
-
-    label/syskey (neu, optional - Rueckwaertskompatibel, bislang
-    einziger Aufrufer ist run_core()): fuer 'Comeback' (dasselbe Spiel
-    nach langer Pause) und 'Vielseitig' (mehrere Systeme an einem Tag)
-    zusaetzlich zu den bereits bestehenden Nachteule/Marathon-Pruefungen
-    noetig. Alles einzeln try/except-abgesichert - ein Problem bei
-    einer Pruefung darf niemals eine andere verhindern."""
-    try:
-        lt = time.localtime(session_start_walltime)
-        hour = lt.tm_hour
-        if 0 <= hour < 5:
-            _unlock_hidden("night_owl")
-        elif 5 <= hour < 7:
-            _unlock_hidden("early_bird")
-        _check_weekend_warrior(session_start_walltime, lt)
-    except Exception:
-        pass
-    if elapsed_seconds >= 3 * 3600:
-        _unlock_hidden("marathon")
-    try:
-        _check_comeback(label, session_start_walltime)
-    except Exception:
-        pass
-    try:
-        _check_versatile(syskey, session_start_walltime,
-                         time.localtime(session_start_walltime))
-    except Exception:
-        pass
-
-def _ra_100pct_achieved():
-    """'Perfektionist': mindestens ein Spiel zu 100% bei RetroAchievements
-    abgeschlossen. Liest eine kleine, separat gepflegte Zusammenfassung
-    (siehe build_ra_lookup()) statt selbst RA abzufragen - diese Funktion
-    ist eine reine, synchrone Anzeige-Hilfsfunktion (wird u.a. beim
-    Zeichnen des Trophaeenraums aufgerufen) und darf niemals selbst
-    Netzwerkzugriffe ausloesen."""
-    data = _load_json_dict(RA_PROGRESS_SUMMARY_FILE)
-    return bool(data.get("any_100pct"))
-
-def get_hidden_achievements():
-    """Liste (id, label_key, freigeschaltet)-Tupel fuer alle
-    versteckten Erfolge."""
-    unlocked_events = _load_hidden_unlocked()
-    favorites_count = len(_load_favorites_raw())
-    playtime = load_playtime()
-    max_launches = max((e.get("launches", 0) for e in playtime.values()),
-                       default=0)
-    progress = compute_milestone_progress()
-    legend_unlocked = (progress["playtime_seconds"] >= 360000 and
-                       progress["launches"] >= 500 and
-                       progress["systems"] >= 10 and
-                       progress["completed"] >= 25)
-    return [
-        ("night_owl", "hidden_night_owl", "night_owl" in unlocked_events),
-        ("marathon", "hidden_marathon", "marathon" in unlocked_events),
-        ("collector", "hidden_collector", favorites_count >= 10),
-        ("completionist", "hidden_completionist", max_launches >= 20),
-        ("legend", "hidden_legend", legend_unlocked),
-        ("early_bird", "hidden_early_bird", "early_bird" in unlocked_events),
-        ("weekend_warrior", "hidden_weekend_warrior", "weekend_warrior" in unlocked_events),
-        ("comeback", "hidden_comeback", "comeback" in unlocked_events),
-        ("versatile", "hidden_versatile", "versatile" in unlocked_events),
-        ("perfectionist", "hidden_perfectionist", _ra_100pct_achieved()),
-    ]
-
-# ----------------------------------------------------------------------------
-# POP-UP BEI NEU ERREICHTEN ERFOLGEN - vergleicht den aktuellen Stand
-# (normale Meilensteine UND versteckte Erfolge, jeweils live berechnet)
-# gegen eine dauerhafte Liste "das wurde dem Nutzer schon gezeigt", damit
-# nach einem Neustart nicht ploetzlich alle laengst erreichten Erfolge
-# erneut aufploppen - nur ECHT NEUE loesen ein Pop-up aus.
-ACHIEVEMENTS_SEEN_FILE = "/media/fat/frontend/achievements_seen.json"
-
-def _load_achievements_seen():
-    try:
-        with open(ACHIEVEMENTS_SEEN_FILE) as f:
-            data = json.load(f)
-            return set(data) if isinstance(data, list) else set()
-    except (OSError, ValueError):
-        return set()
-
-def _save_achievements_seen(seen):
-    try:
-        os.makedirs(os.path.dirname(ACHIEVEMENTS_SEEN_FILE), exist_ok=True)
-        with open(ACHIEVEMENTS_SEEN_FILE, "w") as f:
-            json.dump(sorted(seen), f)
-    except OSError:
-        pass
-
-def _ensure_achievements_seen_initialized():
-    """Initialisiert ACHIEVEMENTS_SEEN_FILE einmalig GLEICH BEIM START
-    (Frontend.__init__()), falls sie noch nicht existiert - markiert
-    alle zu DIESEM Zeitpunkt bereits erreichten Erfolge als "gezeigt",
-    OHNE dafuer ein Pop-up auszuloesen (sonst gaebe es bei jemandem mit
-    laengerer Spielhistorie eine Flut von Meldungen fuer laengst
-    Erreichtes).
-
-    BUGFIX (Nutzer-Rueckmeldung): 3 verschiedene Systeme gestartet,
-    "Entdecker"-Erfolg korrekt in "Meine Erfolge" als erreicht
-    angezeigt - aber KEIN Pop-up/Ton beim Zurueckkehren aus dem Spiel.
-    Ursache: die Erstlauf-Sonderbehandlung sass bisher direkt IN
-    check_new_achievements() und griff beim ALLERERSTEN Aufruf dieser
-    Funktion ueberhaupt - der aber zufaellig GENAU in dem Moment
-    passieren konnte, in dem der Erfolg WIRKLICH neu erreicht wurde
-    (z.B. die erste jemals gespielte Sitzung, bei der zugleich das
-    dritte System erreicht wird). Der Erfolg wurde dadurch faelschlich
-    als "schon vorher da gewesen" behandelt und sein Pop-up
-    unterdrueckt. Fix: die Baseline wird jetzt explizit VOR jeder
-    moeglichen Nutzeraktion initialisiert (siehe Frontend.__init__()),
-    dadurch ist die Datei bei JEDEM tatsaechlichen Ereignis-Aufruf
-    (Sitzungsende, Favorit/Durchgespielt umschalten) bereits vorhanden
-    - check_new_achievements() selbst braucht dadurch keine Erstlauf-
-    Sonderbehandlung mehr und meldet zuverlaessig jeden Erfolg, der
-    NACH dem Start neu erreicht wird."""
-    if os.path.exists(ACHIEVEMENTS_SEEN_FILE):
-        return
-    seen = set()
-    for label_key, achieved, _current, _threshold, _kind in get_milestones():
-        if achieved:
-            seen.add(label_key)
-    for hid, _label_key, unlocked in get_hidden_achievements():
-        if unlocked:
-            seen.add(hid)
-    _save_achievements_seen(seen)
-
-def check_new_achievements():
-    """Vergleicht den aktuellen Erfolgs-Stand gegen die bereits gezeigten
-    - liefert eine Liste der NEU erreichten label_keys (in der
-    Reihenfolge: normale Meilensteine, dann versteckte Erfolge) und
-    merkt sie SOFORT als gezeigt, damit derselbe Erfolg nicht ein
-    zweites Mal ein Pop-up ausloest. Leere Liste, wenn nichts Neues
-    dazugekommen ist - der haeufigste Fall, entsprechend guenstig
-    (nur Mengen-Operationen, kein Datei-Schreiben ohne Aenderung).
-
-    Setzt voraus, dass _ensure_achievements_seen_initialized() bereits
-    beim Start gelaufen ist (siehe Frontend.__init__()) - deshalb hier
-    KEINE eigene Erstlauf-Sonderbehandlung mehr noetig (siehe dort fuer
-    die Begruendung/den Bugfix)."""
-    seen = _load_achievements_seen()
-    newly = []
-    for label_key, achieved, _current, _threshold, _kind in get_milestones():
-        if achieved and label_key not in seen:
-            newly.append(label_key)
-            seen.add(label_key)
-    for hid, label_key, unlocked in get_hidden_achievements():
-        if unlocked and hid not in seen:
-            newly.append(label_key)
-            seen.add(hid)
-    if newly:
-        _save_achievements_seen(seen)
-    return newly
-
-
-# ----------------------------------------------------------------------------
-# TROPHAEENRAUM - persoenlicher Profil-Bildschirm: meistgespieltes Spiel,
-# Lieblingssystem, Erfolgs-Zaehler, kurze Zusammenfassung. Baut komplett
-# auf Daten auf, die wir ohnehin schon sammeln (Spielzeit-Tracker,
-# Meilensteine) - reine Zusammenfassung, keine neue Datenquelle.
-def compute_profile_stats():
-    """Sammelt die Kennzahlen fuer den Trophaeenraum-Bildschirm.
-    Liefert ein dict - alle Werte auch bei komplett leerer Historie
-    sicher (0/None statt eines Fehlers), damit der Bildschirm auch
-    fuer jemanden ohne jede Spielzeit sinnvoll etwas anzeigen kann."""
-    playtime = load_playtime()
-    total_seconds = sum(e.get("seconds", 0) for e in playtime.values())
-    total_launches = sum(e.get("launches", 0) for e in playtime.values())
-
-    top = top_played_games(by="seconds", n=1)
-    top_game = top[0] if top else None   # (label, seconds, launches)
-
-    # Lieblingssystem: Summe der Spielzeit pro System (nur Eintraege mit
-    # bekanntem syskey - siehe record_playtime()/v1.92).
-    system_seconds = {}
-    for e in playtime.values():
-        sk = e.get("syskey")
-        if sk:
-            system_seconds[sk] = system_seconds.get(sk, 0) + e.get("seconds", 0)
-    favorite_system = (max(system_seconds, key=system_seconds.get)
-                       if system_seconds else None)
-
-    milestones = get_milestones()
-    hidden = get_hidden_achievements()
-    unlocked = (sum(1 for m in milestones if m[1])
-               + sum(1 for h in hidden if h[2]))
-    total_achievements = len(milestones) + len(hidden)
-
-    return {
-        "total_seconds": total_seconds,
-        "total_launches": total_launches,
-        "top_game": top_game,
-        "favorite_system": favorite_system,
-        "distinct_systems": len(system_seconds),
-        "unlocked": unlocked,
-        "total_achievements": total_achievements,
-    }
-
-# ----------------------------------------------------------------------------
-# FRONTEND-LEVEL (Nutzerwunsch: "das Menue sammelt Erfahrungspunkte,
-# nicht der Spieler") - rein abgeleitet aus Werten, die wir ohnehin
-# schon dauerhaft speichern (Spielzeit, Starts, versteckte Erfolge).
-# Kein zusaetzlicher Speicherbedarf, kann bei jedem Aufruf frisch
-# berechnet werden - und ist von Natur aus monoton (kann nie sinken,
-# da die zugrunde liegenden Werte nur wachsen koennen).
-FRONTEND_LEVEL_MAX = 5
-
-def compute_frontend_level():
-    """Liefert das aktuelle Frontend-Level (1-5). Stufen bewusst grosszuegig
-    UND ueber mehrere Wege erreichbar (Spielzeit ODER Starts ODER
-    versteckte Erfolge) - niemand soll sich durch eine einzelne, enge
-    Anforderung ausgeschlossen fuehlen."""
-    stats = compute_profile_stats()
-    hours = stats["total_seconds"] / 3600.0
-    launches = stats["total_launches"]
-    hidden = get_hidden_achievements()
-    hidden_count = sum(1 for h in hidden if h[2])
-    legend_unlocked = any(h[0] == "legend" and h[2] for h in hidden)
-
-    if legend_unlocked:
-        return 5
-    if hours >= 50 or hidden_count >= 3:
-        return 4
-    if hours >= 20 or launches >= 50:
-        return 3
-    if hours >= 5 or launches >= 20:
-        return 2
-    return 1
-
-# ----------------------------------------------------------------------------
-# GEHEIME CODES (Nutzerwunsch: "Easter Egg System" - ein paar
-# Cheat-Code-Sequenzen, jede schaltet ein anderes Geheimnis frei). Auf
-# unser Aktions-Vokabular uebertragen. Absichtlich KEINE ausfuehrliche
-# Erklaerung hier im Kommentar, welche Codes das sind oder woher sie
-# stammen - das darf sich jede/r selbst erspielen, siehe
-# draw_secrets_screen().
-#
-# WICHTIG (Nutzer-Nachfrage, Design zweimal korrigiert):
-#   1. Versuch: "ok"/"back" fuer die Bestaetigungs-Positionen - FALSCH,
-#      beide loesen im Hauptmenue IMMER eine echte Wirkung aus
-#      (Kategorie betreten bzw. Beenden-Bestaetigung, siehe
-#      _go_back_or_confirm_quit()), auch waehrend einer laufenden
-#      Code-Eingabe. Einer der Codes haette dadurch NIE vollstaendig
-#      eingegeben werden koennen.
-#   2. Versuch: "favorite"/"completed" (F7/F8) statt ok/back - beide
-#      nachweislich wirkungslos, ABER: "completed" hat GAR KEINE
-#      Joypad-Taste (nur Tastatur F7), und "favorite" liegt auf L2/R2 -
-#      auf SNES-Nachbau-Pads (bei MiSTer-Nutzern verbreitet) oft gar
-#      nicht vorhanden. Auf einem einfachen Pad war praktisch KEINE
-#      Taste mehr frei, die garantiert wirkungslos ist.
-#   FINALE LOESUNG (auf Nutzerwunsch): Codes werden bewusst NUR per
-#   TASTATUR eingegeben - Pfeiltasten fuer die Richtungen, echte
-#   Buchstabentasten fuer die Bestaetigungs-Positionen. Buchstabentasten
-#   loesen im Hauptmenue nur einen harmlosen Buchstaben-Sprung in der
-#   Kategorienliste aus (siehe LETTER_KEYS/"letter:"-Aktion,
-#   jump_to_letter()) - GENAUSO sicher wie hoch/runter/links/rechts,
-#   kein Seitenwechsel, kein Dialog. Per Joypad sind diese Codes damit
-#   bewusst NICHT eingebbar - siehe Hinweistext auf dem Geheimnisse-
-#   Bildschirm.
-SECRETS_FILE = "/media/fat/frontend/secrets_unlocked.json"
-
-SECRET_CODES = {
-    # Schaltet das erste geheime Theme frei. Nur per Tastatur eingebbar.
-    "secret_theme_1": ["up", "up", "down", "down", "left", "right",
-                       "left", "right", "letter:B", "letter:A"],
-    # Schaltet den Entwicklerraum frei. Nur per Tastatur eingebbar.
-    "entwicklerraum": ["down", "letter:R", "up", "letter:L",
-                      "letter:Y", "letter:B"],
-    # Schaltet einen geheimen Sound frei. Nur per Tastatur eingebbar.
-    "secret_sound": ["letter:A", "letter:B", "letter:B", "letter:A"],
-    # NEU (Nutzerwunsch, Easter Egg): faerbt den Auswahl-Cursor im
-    # Hauptmenue fuer eine Weile in Regenbogenfarben. Nur per Tastatur
-    # eingebbar, wie alle anderen Codes.
-    "rainbow_cursor": ["letter:R", "letter:A", "letter:I", "letter:N",
-                       "letter:B", "letter:O", "letter:W"],
-    # NEU (Nutzerwunsch, Easter Egg): spielt einen kurzen 8-Bit-Chiptune-
-    # Jingle ab (ueber denselben gedaempften Weg wie der geheime Sound/
-    # die Erfolgs-Jingles - siehe _play_ducked_sfx()). Nur per Tastatur.
-    "chiptune_sound": ["letter:C", "letter:H", "letter:I", "letter:P"],
-}
-SECRET_CODE_MAXLEN = max(len(seq) for seq in SECRET_CODES.values())
-
-# NEU (Nutzerwunsch: "ein Geheimnis im Geheimnis"): BEWUSST NICHT Teil
-# von SECRET_CODES/check_secret_code() - jene Pruefung laeuft nur auf
-# Seite 0 (Hauptmenue, siehe run()) und wuerde diesen Code sonst AUCH
-# dort ausloesen. draw_dev_room_screen() prueft diese eigene, kurze
-# Sequenz komplett unabhaengig, in einem eigenen kleinen Puffer -
-# dadurch nur WAEHREND man sich tatsaechlich bereits im Entwicklerraum
-# befindet eingebbar. Trotzdem ueber dieselbe _unlock_secret()/
-# _load_secrets_unlocked()-Speicherung wie die "echten" Geheimnisse
-# (die validieren nicht gegen SECRET_CODES, reine ID-Menge) - zaehlt
-# deshalb ganz normal mit, siehe die beiden "+1"-Stellen bei den
-# X-von-Y-Anzeigen unten.
-DEV_ROOM_BONUS_ID = "dev_room_bonus"
-DEV_ROOM_BONUS_CODE = ["letter:E", "letter:G", "letter:G"]
-
-RAINBOW_CURSOR_SECONDS = 120   # wie lange der Regenbogen-Cursor-Effekt anhaelt
-
-def _load_secrets_unlocked():
-    """Menge der IDs bereits per Geheimcode freigeschalteter
-    Geheimnisse - gleiches Speicherprinzip wie bei den versteckten
-    Erfolgen (siehe _load_hidden_unlocked())."""
-    try:
-        with open(SECRETS_FILE) as f:
-            data = json.load(f)
-            return set(data) if isinstance(data, list) else set()
-    except (OSError, ValueError):
-        return set()
-
-def _unlock_secret(secret_id):
-    """Schaltet ein Geheimnis dauerhaft frei. Rueckgabe: True, wenn es
-    JETZT neu freigeschaltet wurde, False, wenn es das schon vorher
-    war (z.B. Code versehentlich zweimal eingegeben)."""
-    data = _load_secrets_unlocked()
-    if secret_id in data:
-        return False
-    data.add(secret_id)
-    try:
-        os.makedirs(os.path.dirname(SECRETS_FILE), exist_ok=True)
-        with open(SECRETS_FILE, "w") as f:
-            json.dump(sorted(data), f)
-    except OSError:
-        pass
-    return True
-
-def check_secret_code(buffer):
-    """Prueft, ob der Schluss des Aktions-Puffers (Liste der zuletzt
-    gedrueckten Aktionen, neueste zuletzt) exakt einem der bekannten
-    Geheim-Codes entspricht. Liefert die passende secret_id oder None.
-    Reine Vergleichsfunktion ohne Seiteneffekt - das eigentliche
-    Freischalten uebernimmt der Aufrufer (siehe Frontend._check_secret_
-    codes())."""
-    for secret_id, seq in SECRET_CODES.items():
-        n = len(seq)
-        if len(buffer) >= n and list(buffer[-n:]) == seq:
-            return secret_id
-    return None
-
-
-def top_played_games(by="seconds", n=10):
-    """Liefert die n Spiele mit dem hoechsten Wert fuer "seconds"
-    (Gesamtspielzeit) oder "launches" (Anzahl Starts), absteigend
-    sortiert, als Liste von (label, seconds, launches)-Tupeln. Spiele
-    mit 0 in der gesuchten Kategorie werden ausgelassen (kein Sinn,
-    "Platz 7: 0 Starts" anzuzeigen)."""
-    data = load_playtime()
-    items = [(label, e["seconds"], e["launches"])
-             for label, e in data.items() if e.get(by, 0) > 0]
-    idx = 1 if by == "seconds" else 2
-    items.sort(key=lambda t: -t[idx])
-    return items[:n]
-
-def format_playtime(seconds):
-    """Formatiert eine Sekundenzahl fuer die Anzeige - z.B. "2h 15min"
-    oder "5min" oder "< 1min"."""
-    if seconds is None or seconds <= 0:
-        return None
-    mins = int(seconds // 60)
-    if mins < 1:
-        return None   # unter einer Minute - noch nichts Sinnvolles zu zeigen
-    h, m = divmod(mins, 60)
-    if h > 0:
-        return "%dh %dmin" % (h, m) if m else "%dh" % h
-    return "%dmin" % m
+from fe.achievements import (
+    ACHIEVEMENTS_SEEN_FILE, DAILY_SYSTEMS_FILE, DEV_ROOM_BONUS_CODE,
+    DEV_ROOM_BONUS_ID, FRONTEND_LEVEL_MAX, HIDDEN_UNLOCKED_FILE,
+    LAST_PLAYED_FILE, RAINBOW_CURSOR_SECONDS, SECRETS_FILE,
+    SECRET_CODES, SECRET_CODE_MAXLEN, WEEKEND_TRACKER_FILE,
+    _check_comeback, _check_versatile, _check_weekend_warrior,
+    _ensure_achievements_seen_initialized, _load_achievements_seen, _load_hidden_unlocked,
+    _load_secrets_unlocked, _ra_100pct_achieved, _save_achievements_seen,
+    _unlock_hidden, _unlock_secret, check_hidden_session_achievements,
+    check_new_achievements, check_secret_code, compute_frontend_level,
+    compute_profile_stats, format_playtime, get_hidden_achievements,
+    top_played_games,
+)
 
 MISTER_CMD  = "/dev/MiSTer_cmd"
 
-# ----------------------------------------------------------------------------
-# NOTAUSSTIEG WAEHREND EINES LAUFENDEN CORES (Esc laenger halten, ueber
-# die rohe HID-Ebene)
-#
-# MiSTer sperrt die normale evdev-Ebene (/dev/input/eventX) exklusiv,
-# sobald ein Core laeuft - ein einfaches `cat /dev/input/eventX` liefert
-# dann 0 Bytes. Der bisherige F10-/Start+Select-Ausstieg in
-# wait_game_exit() liest genau darueber und konnte dadurch vermutlich
-# nie tatsaechlich ausgeloest werden. Per gezielter Diagnose (eigens
-# dafuer geschriebenes Testwerkzeug, das ein Nutzer waehrend eines
-# laufenden Spiels mitlaufen liess) bestaetigt: die ROHE HID-Ebene
-# (/dev/hidrawX) liegt darunter und bleibt bei einer angeschlossenen
-# TASTATUR lesbar (bei manchen Controller-Empfaengern dagegen nicht -
-# deren Tasten laufen offenbar ueber einen anderen, ebenfalls
-# gesperrten Kanal). Deshalb: Esc laenger halten ueber die Tastatur als
-# zusaetzlicher, zuverlaesslicherer Ausstiegsweg (urspruenglich
-# Strg+Alt+Esc, auf Nutzerwunsch vereinfacht).
-def _find_keyboard_hidraws():
-    """Sucht unter /dev/hidraw* nach ALLEN Schnittstellen einer
-    Tastatur - DREISTUFIGE Erkennung, um die Tastatur ueberhaupt zu
-    IDENTIFIZIEREN, dann werden ALLE hidraw-Geraete mit demselben
-    HID-Namen mit zurueckgegeben (Mehrzahl! - siehe BUGFIX Runde 3).
+from fe.hidraw import _find_keyboard_hidraws, _hid_report_has_exit_key
 
-    BUGFIX Runde 1: die urspruengliche Fassung suchte NUR nach einem
-    Geraet, dessen selbstgemeldeter HID-Name das Wort "keyboard"
-    enthaelt - funktioniert nur, wenn Hersteller/Modell das Wort
-    tatsaechlich im Namen fuehren.
+from fe.audio import (
+    MUSIC_DIR, MUSIC_ENABLED_FILE, MUSIC_SOURCE_FILE, VOLUME_FILE,
+    _load_volume, _save_volume, _mpg_scale, _regenerate_sfx,
+    _apply_volume_async, MPG123_BIN, ACHIEVEMENT_SFX_SOURCE, SFX_DIR,
+    SFX_ENABLED_FLAG_FILE, SFX_MIN_GAP, SFX_DEFS, SFX_CHIME_DEFS,
+    play_sfx, sfx_enabled_flag, toggle_sfx, MusicPlayer, get_volume,
+    _ensure_sfx_files,
+)
 
-    BUGFIX Runde 2: bInterfaceProtocol==1 ("Boot Protocol") ist im
-    USB-HID-Standard zwar definiert, aber OPTIONAL - viele Tastaturen
-    implementieren das gar nicht. Dritte Stufe ergaenzt: der HID-
-    Report-Deskriptor selbst (VERPFLICHTEND fuer jedes HID-Geraet).
-
-    BUGFIX Runde 3 (per echter Nutzer-Log-Datei bestaetigt - siehe
-    Diagnose-Ausgabe: "4 Kandidaten", davon DREI mit identischem Namen
-    "KBDFans Tiger80", nur EINER mit bInterfaceProtocol==1): manche
-    Tastaturen (v.a. hochwertige mechanische Custom-Boards mit NKRO/
-    Rollover-Unterstuetzung) legen GLEICHZEITIG MEHRERE hidraw-
-    Schnittstellen unter demselben Namen an - eine "Boot"-Schnittstelle
-    (6-Tasten-Rollover, kompatibel, oft die einzige mit
-    bInterfaceProtocol==1) UND eine oder mehrere weitere fuer den
-    eigentlichen NKRO-Betrieb. Die TATSAECHLICHEN Tastendruecke koennen
-    ueber eine DIESER ANDEREN Schnittstellen laufen, nicht ueber die,
-    die zufaellig als Erste die Erkennungskriterien erfuellt. Bisher
-    wurde IMMER NUR EINE Schnittstelle zurueckgegeben und ueberwacht -
-    war das die falsche der mehreren gleichnamigen, blieb Esc trotz
-    korrekt erkannter Tastatur wirkungslos.
-
-    Fix: sobald EINE Schnittstelle als Tastatur identifiziert ist,
-    werden ZUSAETZLICH alle anderen hidraw-Geraete mit EXAKT demselben
-    HID-Namen gesammelt und ALLE gemeinsam zurueckgegeben - der
-    Aufrufer (wait_game_exit()) ueberwacht sie dann gleichzeitig, die
-    Ambiguitaet "welche der mehreren Schnittstellen ist die richtige"
-    muss dadurch gar nicht mehr aufgeloest werden.
-
-    Protokolliert jede Stufe (LOG()) - bisher war die Funktion komplett
-    stumm, was jede Ferndiagnose zu einem Ratespiel gemacht hat.
-
-    Bewusst dynamisch (nicht fest verdrahtet) - die hidraw-
-    Nummerierung haengt von Anschlussreihenfolge/USB-Bus ab und kann
-    sich zwischen Boots verschieben."""
-    candidates = sorted(glob.glob("/dev/hidraw*"))
-    LOG("_find_keyboard_hidraws: %d Kandidat(en): %s" % (len(candidates), candidates))
-
-    def read_uevent_name(base):
-        uevent = "/sys/class/hidraw/%s/device/uevent" % base
-        try:
-            with open(uevent) as f:
-                for line in f:
-                    if line.startswith("HID_NAME="):
-                        return line[len("HID_NAME="):].strip()
-        except OSError:
-            pass
-        return None
-
-    names = {}
-    for path in candidates:
-        names[path] = read_uevent_name(os.path.basename(path))
-    LOG("_find_keyboard_hidraws: Namen: %s" % names)
-
-    def siblings_with_same_name(found_path):
-        """Alle Geraete (inkl. found_path selbst) mit demselben Namen."""
-        found_name = names.get(found_path)
-        if not found_name:
-            return [found_path]
-        result = [p for p, n in names.items() if n == found_name]
-        LOG("_find_keyboard_hidraws: %d Schnittstelle(n) mit demselben "
-            "Namen (%r): %s" % (len(result), found_name, result))
-        return sorted(result)
-
-    # Stufe 1: Name enthaelt "keyboard" (schnell, funktioniert oft).
-    for path, name in names.items():
-        if name and "keyboard" in name.lower():
-            LOG("_find_keyboard_hidraws: Stufe 1 (Name) Treffer: %s (%r)" % (path, name))
-            return siblings_with_same_name(path)
-
-    # Stufe 2 (Rueckfall): USB-HID-Boot-Protokoll, sofern vorhanden -
-    # optional, deshalb kein Treffer bei vielen Tastaturen.
-    for path in candidates:
-        base = os.path.basename(path)
-        device_dir = "/sys/class/hidraw/%s/device" % base
-        try:
-            real = os.path.realpath(device_dir)
-        except OSError:
-            continue
-        d = real
-        for _ in range(4):
-            d = os.path.dirname(d)
-            proto_file = os.path.join(d, "bInterfaceProtocol")
-            try:
-                with open(proto_file) as f:
-                    if f.read().strip() == "01":
-                        LOG("_find_keyboard_hidraws: Stufe 2 (Boot-Protokoll) "
-                            "Treffer: %s" % path)
-                        return siblings_with_same_name(path)
-            except OSError:
-                continue
-
-    # Stufe 3 (Rueckfall): HID-Report-Deskriptor selbst - VERPFLICHTEND
-    # fuer jedes HID-Geraet, keine optionale Zusatzangabe.
-    sig = bytes([0x05, 0x01, 0x09, 0x06])
-    for path in candidates:
-        base = os.path.basename(path)
-        desc_file = "/sys/class/hidraw/%s/device/report_descriptor" % base
-        try:
-            with open(desc_file, "rb") as f:
-                data = f.read()
-        except OSError:
-            continue
-        if sig in data:
-            LOG("_find_keyboard_hidraws: Stufe 3 (Report-Deskriptor) "
-                "Treffer: %s" % path)
-            return siblings_with_same_name(path)
-
-    LOG("_find_keyboard_hidraws: KEIN Treffer in allen drei Stufen - "
-        "Esc-Ausstieg wird nicht funktionieren.")
-    return []
-
-def _hid_report_has_exit_key(data):
-    """Prueft einen rohen HID-Tastatur-Report auf Escape (0x29) ODER
-    F10 (0x44) - UNABHAENGIG von Modifikatortasten (frueher Strg+Alt+
-    Esc, auf Nutzerwunsch auf reines Esc vereinfacht, da einfacher zu
-    druecken).
-
-    ERWEITERT (Nutzer-Rueckmeldung: "F10 funktioniert nicht"): F10 war
-    bisher NUR ueber die normale evdev-Ebene abgefragt
-    (KEY_F10-Vergleich in wait_game_exit()) - die MiSTer waehrend
-    eines laufenden Cores exklusiv sperrt (dasselbe bereits bekannte
-    Problem wie beim Start+Select-Kombo, siehe dortiger Kommentar).
-    F10 haette dadurch praktisch nie tatsaechlich ausgeloest. Jetzt
-    laeuft F10 ueber denselben bereits bestaetigt funktionierenden
-    HID-Weg wie Esc - zwei gleichwertige Ausstiegs-Tasten statt einer,
-    beide ueber den zuverlaessigen Pfad.
-
-    WICHTIG: viele Spiele nutzen Esc selbst schon fuer eigene Pause-/
-    Menue-Funktionen - deshalb bleibt die Haltezeit (KBD_COMBO_HOLD,
-    siehe wait_game_exit()) als Sicherung bestehen. Ein kurzer,
-    normaler Tastendruck im Spiel loest dadurch NICHT versehentlich
-    den Ausstieg aus - nur ein bewusst LAENGER GEHALTENES Esc oder F10
-    tut das.
-
-    Der Keycode wird IRGENDWO im Report gesucht, nicht an einer festen
-    Position - robuster gegenueber unterschiedlichen Report-Layouts
-    (manche Geraete stellen ein Report-ID-Byte voran) als eine feste
-    Byte-Position anzunehmen.
-
-    ERWEITERT (uebernommener Vorschlag): NKRO-Bitmap-Report (z.B.
-    KBDFans Tiger80 im N-Key-Rollover-Modus) - Tasten kommen dort als
-    BITS, nicht als normale Keycodes, die obige Prüfung faengt das
-    nicht ab. Report-ID 0x06, dann ein Modifier-Byte, dann die Bitmap.
-    Esc = HID-Usage 0x29 -> Bitmap-Byte 5, Bit 1 -> Report-Byte 7,
-    Maske 0x02 (auf echter Hardware bestaetigt). Eindeutig Esc (jede
-    Taste hat ihr eigenes Bit) - kein Fehl-Trigger."""
-    if 0x29 in data or 0x44 in data:
-        return True
-    if len(data) > 7 and data[0] == 0x06 and (data[7] & 0x02):
-        return True
-    return False
-
-
-MUSIC_DIR   = "/media/fat/music"
-MUSIC_ENABLED_FILE = "/media/fat/frontend/music_enabled"
-MUSIC_SOURCE_FILE  = "/media/fat/frontend/music_source"   # "mp3"/"radio" + Stations-sid
-VOLUME_FILE = "/media/fat/frontend/volume"   # Lautstaerke 0-100 (Musik + Menue-Sounds)
-
-# NEUES FEATURE (Nutzerwunsch: Lautstaerke-Regler fuer Musik UND
-# Menue-Sounds, uebernommen aus einem separat vorbereiteten, auf
-# echter MiSTer-Hardware getesteten Vorschlag - siehe
-# CHANGES_VOLUME.md). Zwei unterschiedliche Mechanismen, weil Musik
-# und Menue-Sounds technisch verschieden abgespielt werden: Musik
-# laeuft ueber mpg123, das einen eingebauten Skalierungsfaktor
-# (-f 0..32768) hat. Menue-Sounds sind selbst erzeugte WAVs, abgespielt
-# ueber aplay - aplay hat KEINEN Lautstaerke-Schalter, deshalb steckt
-# die Lautstaerke dort in der AMPLITUDE der erzeugten WAV-Datei selbst
-# (werden bei einer Aenderung neu erzeugt statt nur neu abgespielt).
-def _load_volume():
-    try:
-        return max(0, min(100, int(open(VOLUME_FILE).read().strip())))
-    except (OSError, ValueError):
-        return 100
-
-def _save_volume(v):
-    try:
-        os.makedirs(os.path.dirname(VOLUME_FILE), exist_ok=True)
-        with open(VOLUME_FILE, "w") as f:
-            f.write(str(int(v)))
-    except OSError:
-        pass
-
-VOLUME = _load_volume()   # 0-100; global, von Musik (mpg123 -f) UND SFX genutzt
-
-def _mpg_scale():
-    """mpg123 -f Skalierungsfaktor (0..32768) fuer die aktuelle Lautstaerke."""
-    return str(int(32768 * VOLUME / 100))
-
-def _regenerate_sfx():
-    """Menue-Sound-WAVs bei geaenderter Lautstaerke neu erzeugen - aplay hat
-    keinen Volume-Schalter, also steckt die Lautstaerke in der Amplitude."""
-    try:
-        for _f in glob.glob(os.path.join(SFX_DIR, "*.wav")):
-            os.remove(_f)
-    except OSError:
-        pass
-    _ensure_sfx_files()
-
-_volume_apply_lock = None
-
-def _apply_volume_async(player):
-    """SFX-Neuerzeugung + Musik-Neustart im Hintergrund - beides ist auf dem
-    MiSTer traege bzw. blockierend (Popen.wait bis 2s), also NICHT im
-    Menue-Thread. Ein Lock serialisiert schnelle Mehrfach-Druecke; jeder
-    Lauf nutzt das dann aktuelle VOLUME (letzter gewinnt).
-
-    BUGFIX (uebernommen aus separat vorbereitetem Vorschlag, siehe
-    CHANGES_v4.2_FIXES.md): rief bisher player._stop_current() und
-    player._start_current() als ZWEI getrennte Aufrufe auf - dazwischen
-    konnte tick() (aus dem Menue-Thread) ebenfalls einen Start ausloesen,
-    zwei mpg123-Prozesse liefen dann gleichzeitig (doppelter/verzerrter
-    Radio-Stream). _start_current() beendet jetzt selbst, unter
-    _proc_lock, zuerst den alten Prozess, bevor der neue startet - ein
-    einziger, atomarer Aufruf reicht."""
-    global _volume_apply_lock
-    if _volume_apply_lock is None:
-        _volume_apply_lock = threading.Lock()
-    def _worker():
-        with _volume_apply_lock:
-            _regenerate_sfx()
-            if player.enabled and not player.paused_for_core:
-                player._start_current()
-    threading.Thread(target=_worker, daemon=True).start()
-
-LANGUAGE_FILE = "/media/fat/frontend/language"
-KEYMAP_CUSTOM_FILE = "/media/fat/frontend/keymap_custom.json"
 BOOTANIM_DIR = "/media/fat/frontend/bootanim"
 BOOTANIM_PLAYED_MARKER = "/tmp/frontend_bootanim_played"
-MPG123_BIN  = "/usr/bin/mpg123"
 
 # NEUES FEATURE (Nutzerwunsch: eigenes Logo beim Start zeigen, statt
 # des bisherigen generischen D-Pad-Symbols - mit demselben Flacker-
@@ -5260,42 +3506,18 @@ MPG123_BIN  = "/usr/bin/mpg123"
 # D-Pad-Symbol statt des personalisierten Logos (fuer alle, die das
 # nicht wollen, z.B. TheRealSutefan/Dennsen/Dfense mit eigenem Namen
 # an der Sache).
-DRAGEND_LOGO_FILE = "/media/fat/frontend/boot_logo/dragend_logo.art"
-DRAGEND_LOGO_DISABLED_FLAG = "/media/fat/frontend/dragend_logo_disabled"
-
-def dragend_logo_enabled():
-    return not os.path.exists(DRAGEND_LOGO_DISABLED_FLAG)
-
-def toggle_dragend_logo():
-    if dragend_logo_enabled():
-        try:
-            os.makedirs(os.path.dirname(DRAGEND_LOGO_DISABLED_FLAG), exist_ok=True)
-            open(DRAGEND_LOGO_DISABLED_FLAG, "w").close()
-        except OSError:
-            pass
-    else:
-        try:
-            os.remove(DRAGEND_LOGO_DISABLED_FLAG)
-        except OSError:
-            pass
-
-# NEUES FEATURE (Nutzerwunsch: vereinfachte Installation, ein
-# Ersteinrichtungs-Assistent, der einmalig durch alle wichtigen
-# Schritte fuehrt): anders als BOOTANIM_PLAYED_MARKER (liegt in /tmp,
-# wird bei JEDEM Neustart neu abgespielt) liegt diese Markierung
-# bewusst auf der SD-Karte (/media/fat/...) - der Assistent soll nur
-# EINMAL im Leben automatisch erscheinen, nicht bei jedem Boot.
-SETUP_WIZARD_DONE_FILE = "/media/fat/frontend/setup_wizard_done"
-
-def setup_wizard_done():
-    return os.path.exists(SETUP_WIZARD_DONE_FILE)
-
-def mark_setup_wizard_done():
-    try:
-        os.makedirs(os.path.dirname(SETUP_WIZARD_DONE_FILE), exist_ok=True)
-        open(SETUP_WIZARD_DONE_FILE, "w").close()
-    except OSError:
-        pass
+from fe.settings import (
+    ATTRACT_CHANGE_SECONDS, ATTRACT_DELAY_FILE, ATTRACT_DELAY_STEPS,
+    ATTRACT_DISABLED_FLAG, ATTRACT_IDLE_SECONDS, COVER_SETTLE,
+    CRT_MENU_BLOCK, CURATED_FLAG, DRAGEND_LOGO_DISABLED_FLAG,
+    DRAGEND_LOGO_FILE, MISTER_INI, SETUP_WIZARD_DONE_FILE,
+    _filter_node_curated, _node_has_any_meta, attract_enabled,
+    crt_menu_active, curated_only_active, cycle_attract_delay,
+    dragend_logo_enabled, filter_curated, format_attract_delay,
+    load_attract_delay, mark_setup_wizard_done, save_attract_delay,
+    setup_wizard_done, toggle_attract_mode, toggle_crt_menu,
+    toggle_curated_only, toggle_dragend_logo,
+)
 
 # NEUES FEATURE (Nutzerwunsch: Rainwave-Internetradio als zweite
 # Musikquelle neben den lokalen MP3s, uebernommen aus einem separat
@@ -5310,395 +3532,27 @@ try:
 except Exception:
     rainwave = None
 CORENAME    = "/tmp/CORENAME"
-FBDEV       = "/dev/fb0"
 
 # Ordner, die bei der automatischen Kategorie-Suche uebersprungen werden
 SKIP_DIRS = {"_Scripts"}
 
-# Freundliche Anzeigenamen fuer bekannte Ordner
-NICE_NAMES = {
-    "Arcade": "Arcade", "Console": "Consoles", "Computer": "Computer",
-    "Other": "Other", "Utility": "Utilities", "RA_Cores": "RA Cores",
-}
+from fe.naming import (
+    IGNORE_ROM_BASENAMES, JUNK_TAGS, NICE_NAMES, REGION_PRIORITY,
+    _DISC, _JAPAN_ONLY, _TAGS, _is_japan_only,
+    _is_junk, _region_rank, display_name, nice_name,
+)
 
-# Spielesysteme: (Anzeigename, Systemkey, ROM-Ordner, Core-RBF,
-#                  {Endung: (mgl_delay, mgl_type, mgl_index)})
-# MGL-Parameter stammen aus der mrext-Systemdatenbank (wizzomafizzo).
-GAME_SYSTEMS = [
-    ("NES",           "NES",     ["NES"],                  "_Console/NES",
-        {".nes": (2, "f", 1)}),
-    ("SNES",          "SNES",    ["SNES"],                 "_Console/SNES",
-        {".sfc": (2, "f", 0), ".smc": (2, "f", 0)}),
-    ("Mega Drive",    "Genesis", ["MegaDrive", "Genesis"], "_Console/MegaDrive",
-        {".md": (1, "f", 1), ".gen": (1, "f", 1), ".bin": (1, "f", 1)}),
-    ("Nintendo 64",   "N64",     ["N64"],                  "_Console/N64",
-        {".n64": (1, "f", 1), ".z64": (1, "f", 1)}),
-    ("PlayStation",   "PSX",     ["PSX"],                  "_Console/PSX",
-        {".chd": (1, "s", 1), ".cue": (1, "s", 1)}),
-    ("Game Boy",      "GAMEBOY", ["GAMEBOY"],              "_Console/Gameboy",
-        {".gb": (2, "f", 1)}),
-    ("Game Boy Color","GBC",     ["GAMEBOY"],              "_Console/Gameboy",
-        {".gbc": (2, "f", 1)}),
-    ("GBA",           "GBA",     ["GBA"],                  "_Console/GBA",
-        {".gba": (2, "f", 1)}),
-    ("Master System", "SMS",     ["SMS"],                  "_Console/SMS",
-        {".sms": (1, "f", 1), ".gg": (1, "f", 2)}),
-    ("TurboGrafx16",  "TGFX16",  ["TGFX16"],               "_Console/TurboGrafx16",
-        {".pce": (1, "f", 0), ".sgx": (1, "f", 1)}),
-    ("Mega CD",       "MegaCD",  ["MegaCD"],               "_Console/MegaCD",
-        {".chd": (1, "s", 0), ".cue": (1, "s", 0)}),
-    ("Saturn",        "Saturn",  ["Saturn"],               "_Console/Saturn",
-        {".chd": (1, "s", 0), ".cue": (1, "s", 0)}),
-    ("Neo Geo",       "NEOGEO",  ["NEOGEO"],               "_Console/NeoGeo",
-        {".neo": (1, "f", 1)}),
-    # SMW Hacks (Nutzerwunsch): eigenes System im Hauptmenue, LAEUFT
-    # ABER mit dem ganz normalen SNES-Core (rbf-Pfad identisch zu
-    # "SNES" oben) - eigener Systemschluessel nur fuer eigene
-    # Akzentfarbe/eigenes Sysart (siehe SYSTEM_ACCENT), NICHT weil ein
-    # eigener Core noetig waere. ROMs liegen unter games/SNES/SMW_HACKS
-    # (wird per claimed_subfolders aus der regulaeren SNES-Kategorie
-    # ausgeschlossen, siehe _scan_games_disk() - sonst Doppel-Anzeige).
-    ("SMW Hacks",     "SMW_HACKS", ["SNES/SMW_HACKS"],      "_Console/SNES",
-        {".sfc": (2, "f", 0), ".smc": (2, "f", 0)}),
-]
+from fe.systems import GAME_SYSTEMS, OPTIONAL_GAME_SYSTEMS, system_display_name
 
-# OPTIONALE Systeme (Nutzerwunsch): wie GAME_SYSTEMS oben, aber
-# zusaetzlich mit einer echten Core-Datei-Praesenzpruefung
-# (core_check_path) - erscheinen NUR, wenn diese exakte Datei
-# tatsaechlich auf der SD-Karte liegt, sonst komplett unsichtbar
-# (nicht einmal ein leerer/deaktivierter Eintrag). Anders als die
-# Standardsysteme oben, deren offizielle Cores praktisch immer
-# vorhanden sind und deshalb nie geprueft wurden - hier handelt es
-# sich um einen einzelnen, von Hand installierten Custom-Core
-# (kein versionierter, datumsgestempelter Ordner wie bei den
-# offiziellen Cores, sondern eine einzelne feste Datei direkt in
-# _Console - vom Nutzer bestaetigt: "SNES_Tracker.rbf", Ordner
-# "_Console").
-#
-# Feld-Reihenfolge identisch zu GAME_SYSTEMS (Anzeigename, Systemschluessel,
-# ROM-Unterordner-Liste relativ zu GAMES_BASES, rbf-Pfad OHNE Endung fuer
-# die .mgl-Datei, Dateiendungen-Map), plus fuenftes Feld core_check_path
-# (absoluter Pfad zur tatsaechlichen .rbf-Datei fuer die Praesenzpruefung).
-OPTIONAL_GAME_SYSTEMS = [
-    ("SNES ALTTP Tracker", "SNES_ALTTP_TRACKER", ["SNES/ZELDA_MSU"],
-        "_Console/SNES_Tracker",
-        {".sfc": (2, "f", 0), ".smc": (2, "f", 0)},
-        "/media/fat/_Console/SNES_Tracker.rbf"),
-]
+import fe.paths
+import mister_wot
+mister_wot.configure(GAME_SYSTEMS, lambda: fe.paths.GAMES_BASES, LOG)
+from mister_wot import (
+    WOT_CSV_FILE, wot_load_pool, wot_load_aliases, wot_mark_played,
+    wot_build_playable_pool,
+)
 
-def system_display_name(syskey):
-    """Anzeigename zu einem Systemschluessel (z.B. "Genesis" ->
-    "Mega Drive") - fuer Stellen, die einen menschenlesbaren Namen
-    statt des internen Schluessels brauchen (siehe Trophaeenraum).
-    Prueft auch OPTIONAL_GAME_SYSTEMS mit."""
-    for disp, sk, *_ in GAME_SYSTEMS:
-        if sk == syskey:
-            return disp
-    for disp, sk, *_ in OPTIONAL_GAME_SYSTEMS:
-        if sk == syskey:
-            return disp
-    return syskey or "?"
-
-# ----------------------------------------------------------------------------
-# WONNE ODER TONNE (Dennsens eigenes Bewertungs-Format: zufaellig ein noch
-# nicht gespieltes NES/SNES-Spiel ziehen, aus seiner eigenen CSV-
-# Bewertungsliste). Uebernommen aus einem separat vorbereiteten Vorschlag
-# (wonne_oder_tonne.py) - Kernlogik direkt portiert, aber an unseren
-# Codestil angepasst (keine dataclasses/pathlib/moderne Typ-Hints, da im
-# restlichen Projekt nicht verwendet) und die ROM-Suche auf unsere
-# bestehende GAMES_BASES-Mehrfachpfad-Erkennung umgestellt (statt eines
-# einzelnen fest vorgegebenen ROM-Ordners).
-#
-# GETROFFENE ANNAHMEN (aus dem Vorschlag uebernommen, siehe dort fuer die
-# Begruendung): die CSV bleibt READ-ONLY - eine Ziehung markiert das Spiel
-# NICHT automatisch als gespielt. Kein ROM-Treffer -> ueberspringen und neu
-# ziehen (mit Log-Warnung), kein Fehlerabbruch. Menuepunkt nur sichtbar,
-# wenn WOT_CSV_FILE tatsaechlich existiert (siehe build_categories()).
-WOT_CSV_FILE = "/media/fat/frontend/wot_games.csv"
-WOT_ALIASES_FILE = "/media/fat/frontend/wot_aliases.json"
-WOT_SYSTEMS = ["NES", "SNES"]
-WOT_MATCH_THRESHOLD = 0.72   # difflib-Aehnlichkeit, ab der ein ROM-Treffer akzeptiert wird
-WOT_TAG_PATTERN = re.compile(r"[\(\[][^\)\]]*[\)\]]")
-WOT_ALL_ARTICLES = ["Das", "Die", "Der", "The"]
-
-def _wot_strip_accents(s):
-    nfkd = unicodedata.normalize("NFKD", s)
-    return "".join(c for c in nfkd if not unicodedata.combining(c))
-
-def wot_normalize_title(raw):
-    """Bringt CSV-Anzeigename oder ROM-Dateiname auf eine vergleichbare
-    Form: Klammer-Tags (Region/Sprache/Rev) weg, Artikel-Inversion
-    aufgeloest ("X, The" <-> "The X", genauso De/Die/Der), Satzzeichen/
-    Mehrfach-Leerzeichen normalisiert, Kleinschreibung, keine Akzente."""
-    s = raw.strip()
-    s = WOT_TAG_PATTERN.sub("", s)
-    s = s.strip()
-    m = re.match(r"^(.*),\s*(Das|Die|Der|The)$", s, flags=re.IGNORECASE)
-    if m:
-        s = "%s %s" % (m.group(2), m.group(1))
-    s = _wot_strip_accents(s)
-    s = s.lower()
-    s = re.sub(r"[^a-z0-9]+", " ", s)
-    s = re.sub(r"\s+", " ", s).strip()
-    for art in WOT_ALL_ARTICLES:
-        prefix = art.lower() + " "
-        if s.startswith(prefix):
-            s = s[len(prefix):]
-            break
-    return s
-
-def wot_load_pool():
-    """Laedt WOT_CSV_FILE, liefert die Liste noch nicht gespielter Spiele
-    als (system, title, genre, ra_id)-Tupel. Regel: Spalte "Erstes Mal"
-    leer -> noch nicht bewertet -> Teil des Pools; befuellt (JA/NEIN) ->
-    schon bewertet -> ausgeschlossen. ZUSAETZLICH (uebernommen aus
-    Sutefans eigener Weiterentwicklung): eine eigene Spalte "Gespielt"
-    (vom Frontend selbst gesetzt, siehe wot_mark_played()) - "JA" dort
-    bedeutet "wurde bereits ueber diesen Bildschirm gestartet", auch
-    wenn noch keine Bewertung eingetragen wurde."""
-    pool = []
-    try:
-        with open(WOT_CSV_FILE, encoding="utf-8-sig", newline="") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                system = (row.get("Konsole") or "").strip()
-                if system not in WOT_SYSTEMS:
-                    continue
-                if (row.get("Erstes Mal") or "").strip() != "":
-                    continue   # schon bewertet -> raus
-                if (row.get("Gespielt") or "").strip().upper() == "JA":
-                    continue   # vom Frontend als gespielt markiert -> raus
-                title = (row.get("Spiel") or "").strip()
-                if not title:
-                    continue
-                genre = (row.get("Genre") or "").strip()
-                ra_id = (row.get("RA_ID") or "").strip()
-                pool.append((system, title, genre, ra_id))
-    except (OSError, csv.Error):
-        return []
-    return pool
-
-def wot_load_aliases():
-    """Optionale manuelle Uebersetzungstabelle CSV-Titel -> ROM-Dateiname
-    (fuer Faelle wie 'Action in New York' -> 'S.C.A.T. - Special
-    Cybernetic Attack Team (USA)', die per Fuzzy-Matching nicht
-    zuverlaessig zu finden sind)."""
-    try:
-        with open(WOT_ALIASES_FILE, encoding="utf-8") as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
-
-def wot_mark_played(system, title):
-    """Markiert ein Spiel in der WoT-CSV als gespielt (eigene Spalte
-    'Gespielt' = JA), damit es nicht mehr gezogen wird - unabhaengig
-    von der eigentlichen Bewertung ('Erstes Mal'), die weiterhin von
-    Dennsen selbst von Hand eingetragen wird (CSV bleibt fuer DIESE
-    Spalte weiterhin read-only). Legt EINMALIG ein Backup (.bak) an,
-    schreibt alle anderen Zeilen/Spalten unveraendert + atomar zurueck
-    (erst .tmp schreiben, dann os.replace() - kein halb geschriebener
-    Zustand bei einem Absturz mittendrin). Fehler werden nur geloggt,
-    nie geworfen - ein CSV-Problem darf den Spielstart nicht stoeren."""
-    try:
-        with open(WOT_CSV_FILE, encoding="utf-8-sig", newline="") as f:
-            reader = csv.DictReader(f)
-            fields = list(reader.fieldnames or [])
-            rows = list(reader)
-    except (OSError, csv.Error) as e:
-        LOG("wot_mark_played: CSV nicht lesbar: %s" % e)
-        return
-    if "Gespielt" not in fields:
-        fields.append("Gespielt")
-    changed = False
-    for row in rows:
-        if ((row.get("Konsole") or "").strip() == system and
-                (row.get("Spiel") or "").strip() == title):
-            if (row.get("Gespielt") or "").strip().upper() != "JA":
-                row["Gespielt"] = "JA"
-                changed = True
-            break
-    if not changed:
-        return
-    try:
-        if not os.path.exists(WOT_CSV_FILE + ".bak"):
-            with open(WOT_CSV_FILE, "rb") as src, open(WOT_CSV_FILE + ".bak", "wb") as dst:
-                dst.write(src.read())
-    except OSError as e:
-        LOG("wot_mark_played: Backup fehlgeschlagen: %s" % e)
-    try:
-        tmp = WOT_CSV_FILE + ".tmp"
-        with open(tmp, "w", encoding="utf-8-sig", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
-            w.writeheader()
-            for row in rows:
-                w.writerow({k: (row.get(k) or "") for k in fields})
-        os.replace(tmp, WOT_CSV_FILE)
-        LOG("wot_mark_played: '%s' (%s) als gespielt markiert" % (title, system))
-    except OSError as e:
-        LOG("wot_mark_played: Schreiben fehlgeschlagen: %s" % e)
-
-def wot_list_rom_files(syskey):
-    """ROM-Dateien fuer ein System - nutzt dieselbe GAMES_BASES-
-    Mehrfachpfad-Erkennung wie der normale Scan (nicht nur einen
-    einzelnen fest vorgegebenen Ordner, wie im urspruenglichen
-    Vorschlag), inkl. Unterordnern (os.walk, gleiche Logik wie
-    _scan_folder_tree())."""
-    sysdef = next((s for s in GAME_SYSTEMS if s[1] == syskey), None)
-    if not sysdef:
-        return []
-    _disp, _sk, folders, _rbf, extmap = sysdef
-    exts = tuple(extmap.keys())
-    files = []
-    seen_roots = set()
-    for base in GAMES_BASES:
-        for folder in folders:
-            root = os.path.join(base, folder)
-            try:
-                real = os.path.realpath(root)
-            except OSError:
-                continue
-            if not os.path.isdir(root) or real in seen_roots:
-                continue
-            seen_roots.add(real)
-            for dirpath, _dirnames, filenames in os.walk(root):
-                for fn in filenames:
-                    if os.path.splitext(fn)[1].lower() in exts:
-                        files.append(os.path.join(dirpath, fn))
-    return files
-
-def _wot_region_rank(rom):
-    """Kleiner = bevorzugt. US zuerst (fuer RetroAchievements zaehlt i.d.R.
-    die US-Version - ein Treffer mit falscher Region wuerde dort keine
-    Erfolge tracken), dann World, Europe, Japan, Rest. So wird bei
-    mehreren vorhandenen Versionen gezielt die US-Version gewaehlt statt
-    der zufaellig ersten in der Ordner-Reihenfolge."""
-    n = os.path.basename(rom).lower()
-    if "usa" in n or re.search(r"\(u[,)]", n):
-        return 0
-    if "world" in n:
-        return 1
-    if "europe" in n or re.search(r"\(e[,)]", n):
-        return 2
-    if "japan" in n or re.search(r"\(j[,)]", n):
-        return 3
-    return 4
-
-def wot_build_index(rom_files):
-    """Baut aus einer ROM-Dateiliste einmalig eine normalisierte
-    Zuordnung (Sofort-Treffer, bei mehreren Versionen mit US-Vorzug) +
-    vor-normalisierte Paare fuer die difflib-Suche (ebenfalls US
-    zuerst). Spart beim Ziehen/Neuziehen das erneute Scannen des
-    Ordners UND das Neu-Normalisieren jeder einzelnen Datei."""
-    best = {}     # norm -> (region_rank, rom)
-    pairs = []
-    for rom in rom_files:
-        stem = os.path.splitext(os.path.basename(rom))[0]
-        n = wot_normalize_title(stem)
-        pairs.append((n, rom))
-        rank = _wot_region_rank(rom)
-        cur = best.get(n)
-        if cur is None or rank < cur[0]:
-            best[n] = (rank, rom)
-    exact = {n: rm for n, (rk, rm) in best.items()}
-    pairs.sort(key=lambda pr: _wot_region_rank(pr[1]))   # Fuzzy-Ties: US zuerst
-    return exact, pairs
-
-def wot_find_rom(title, index, aliases):
-    """Sucht die beste ROM-Datei fuer einen Titel. index = (exact_map,
-    norm_pairs) aus wot_build_index(). Exakte (normalisierte) Treffer
-    sofort, difflib nur als Rueckfall. Gibt (Pfad, Score) zurueck,
-    Pfad ist None wenn nichts ueber dem Schwellwert liegt."""
-    exact, pairs = index
-    if title in aliases:
-        alias_target = wot_normalize_title(aliases[title])
-        if alias_target in exact:
-            return exact[alias_target], 1.0
-    target = wot_normalize_title(title)
-    if target in exact:
-        return exact[target], 1.0
-    if not pairs:
-        return None, 0.0
-    best_rom, best_score = None, 0.0
-    for norm, rom in pairs:
-        score = difflib.SequenceMatcher(None, target, norm).ratio()
-        if score > best_score:
-            best_rom, best_score = rom, score
-    if best_score >= WOT_MATCH_THRESHOLD:
-        return best_rom, best_score
-    return None, best_score
-
-def wot_draw_with_rom(pool, aliases, max_attempts=20):
-    """Zieht Spiele, bis eins mit passendem ROM gefunden wird (kein
-    Treffer -> ueberspringen + neu ziehen, mit Log-Warnung statt
-    Fehlerabbruch), oder gibt None nach max_attempts auf (Pool
-    erschoepft / keine passenden ROMs gefunden). Liefert
-    (system, title, genre, ra_id, rom_path, score) oder None."""
-    tried = set()
-    index_by_system = {}
-    candidates = list(pool)
-    for _ in range(max_attempts):
-        remaining = [g for g in candidates if g[1] not in tried]
-        if not remaining:
-            return None
-        system, title, genre, ra_id = random.choice(remaining)
-        tried.add(title)
-        if system not in index_by_system:
-            index_by_system[system] = wot_build_index(wot_list_rom_files(system))
-        rom, score = wot_find_rom(title, index_by_system[system], aliases)
-        if rom is not None:
-            return system, title, genre, ra_id, rom, score
-        LOG("Wonne oder Tonne: kein ROM-Treffer fuer '%s' (Score %.2f) - neu ziehen"
-            % (title, score))
-    return None
-
-# ----------------------------------------------------------------------------
-# RA-CORE-ERKENNUNG (sage2050s "MiSTer_RetroAchievements"-Werkzeug -
-# legt RA-faehige Core-Varianten in einen separaten Ordner, getrennt
-# von den Standard-Cores)
-#
-# EHRLICHER HINWEIS: die exakte Dateibenennung dieses Werkzeugs wurde
-# inzwischen per echter Nutzer-Installation verifiziert (siehe die
-# .mgl-Struktur unten bei write_mgl()/setname). Fuer Systeme ohne
-# bestaetigte Namensliste werden trotzdem mehrere plausible Varianten
-# durchprobiert - der erste tatsaechlich EXISTIERENDE Treffer gewinnt,
-# findet sich keiner, wird fuer dieses System einfach KEINE Auswahl
-# angezeigt (nie ein nicht-existierender Pfad referenziert). Arcade
-# ist bei diesem RA-Core-Set nicht enthalten - taucht deshalb hier
-# bewusst nicht auf.
-RA_CORES_DIR_ABS = "/media/fat/_RA_Cores/Cores"
-RA_CORES_DIR_REL = "_RA_Cores/Cores"
-
-RA_CORE_NAME_CANDIDATES = {
-    "NES":     ["NES"],
-    "SNES":    ["SNES"],
-    "Genesis": ["Genesis", "MegaDrive"],
-    "N64":     ["N64"],
-    "PSX":     ["PSX", "PlayStation"],
-    "GAMEBOY": ["Gameboy", "GAMEBOY", "GB"],
-    "GBC":     ["Gameboy", "GAMEBOY", "GBC"],
-    "GBA":     ["GBA"],
-    "SMS":     ["SMS", "MasterSystem"],
-    "TGFX16":  ["TGFX16", "TurboGrafx16"],
-    "MegaCD":  ["MegaCD", "SegaCD"],
-    "NEOGEO":  ["NeoGeo", "NEOGEO"],
-    "Saturn":  ["Saturn"],
-    "SMW_HACKS": ["SNES"],   # laeuft mit dem normalen SNES-(RA-)Core, siehe GAME_SYSTEMS-Kommentar
-}
-
-def find_ra_core(syskey):
-    """Sucht die RA-faehige Core-Datei fuer ein System. Liefert
-    (mgl_rbf_pfad, setname) bei einem tatsaechlichen Treffer, sonst
-    None. setname entspricht exakt dem Format, das sage2050s eigene
-    .mgl-Dateien verwenden (per echter Nutzer-Installation
-    verifiziert: <rbf>_RA_Cores/Cores/NES</rbf> +
-    <setname same_dir="1">RA_NES</setname>) - ohne dieses Element
-    wird der RA-Core von MiSTer offenbar nicht korrekt als eigene,
-    von der Standard-Konfiguration getrennte Core-Variante behandelt."""
-    for name in RA_CORE_NAME_CANDIDATES.get(syskey, []):
-        if os.path.exists(os.path.join(RA_CORES_DIR_ABS, name + ".rbf")):
-            return (RA_CORES_DIR_REL + "/" + name, "RA_" + name)
-    return None
+from fe.ra_core import RA_CORES_DIR_ABS, RA_CORES_DIR_REL, RA_CORE_NAME_CANDIDATES, find_ra_core
 
 # Overscan-Sicherheitsrand in Prozent pro Seite (CRTs beschneiden das Bild).
 # Bei Bedarf anpassen: mehr, wenn weiterhin Raender fehlen; weniger auf LCD.
@@ -5733,19 +3587,7 @@ SYSTEM_ACCENT = {
     "SMW_HACKS": (225, 100, 40),            # Mario-Rot/Orange, abgesetzt von SNES-Lila
 }
 
-def seasonal_decoration():
-    """Easter Egg (Nutzerwunsch): kleine, rein optische Jahreszeiten-
-    Deko am 24.12. und 31.12. - liefert (text, farbe) oder None an
-    jedem anderen Tag. Schaltet sich dadurch von selbst wieder ab,
-    kein Freischalt-/Speicherzustand noetig, reiner Datumsvergleich
-    bei jedem Zeichnen (vernachlaessigbare Kosten, wie die Uhrzeit in
-    der Statuszeile)."""
-    lt = time.localtime()
-    if lt.tm_mon == 12 and lt.tm_mday == 24:
-        return (t("seasonal_xmas"), (210, 70, 70))
-    if lt.tm_mon == 12 and lt.tm_mday == 31:
-        return (t("seasonal_nye"), (210, 175, 70))
-    return None
+from fe.seasonal import seasonal_decoration
 
 def accent_for(syskey):
     """Akzentfarbe fuer ein System - faellt auf den Standard zurueck,
@@ -5848,7 +3690,13 @@ def current_theme_name():
 def apply_theme(name):
     """Aktiviert ein Farbschema - schreibt direkt in die gleichnamigen
     globalen Variablen, die im gesamten restlichen Code bereits
-    verwendet werden (kein Umbau an anderer Stelle noetig)."""
+    verwendet werden (kein Umbau an anderer Stelle noetig).
+
+    MODULARISIERUNG: fe.framebuffer.C_BG/C_TEXT (siehe dortiger Modul-
+    Kommentar) werden hier zusaetzlich per modul-qualifiziertem
+    Zugriff synchron gehalten - das ist eine normale Zuweisung auf das
+    fe.framebuffer-Modul selbst, kein Neu-Binden einer importierten
+    Kopie hier in frontend.py, wirkt also sofort auch dort."""
     global C_BG, C_PANEL, C_TEXT, C_DIM, C_TITLE, C_ACCENT, CURRENT_THEME_MONOCHROME
     theme = THEMES.get(name, THEMES["dark"])
     C_BG = theme["C_BG"]
@@ -5858,6 +3706,9 @@ def apply_theme(name):
     C_TITLE = theme["C_TITLE"]
     C_ACCENT = theme["C_ACCENT"]
     CURRENT_THEME_MONOCHROME = theme.get("monochrome", False)
+    import fe.framebuffer
+    fe.framebuffer.C_BG = C_BG
+    fe.framebuffer.C_TEXT = C_TEXT
 
 def cycle_theme():
     """Zum naechsten Farbschema wechseln (der Reihe nach), speichert
@@ -5882,479 +3733,10 @@ def cycle_theme():
 apply_theme(current_theme_name())   # beim Laden des Moduls sofort anwenden
 
 # ----------------------------------------------------------------------------
-# 8x8 BITMAP-FONT (Public Domain, IBM VGA / Marcel Sondaar / Daniel Hepper)
+# FRAMEBUFFER (siehe fe/framebuffer.py - Zeichen-Grundfunktionen +
+# 8x8-Bitmap-Font komplett ausgelagert)
 # ----------------------------------------------------------------------------
-FONT8X8 = bytes.fromhex('000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000183c3c1818001800363600000000000036367f367f3636000c3e031e301f0c00006333180c6663001c361c6e3b336e000606030000000000180c0606060c1800060c1818180c060000663cff3c660000000c0c3f0c0c000000000000000c0c060000003f0000000000000000000c0c006030180c060301003e63737b6f673e000c0e0c0c0c0c3f001e33301c06333f001e33301c30331e00383c36337f3078003f031f3030331e001c06031f33331e003f3330180c0c0c001e33331e33331e001e33333e30180e00000c0c00000c0c00000c0c00000c0c06180c0603060c180000003f00003f0000060c1830180c06001e3330180c000c003e637b7b7b031e000c1e33333f3333003f66663e66663f003c66030303663c001f36666666361f007f46161e16467f007f46161e16060f003c66030373667c003333333f333333001e0c0c0c0c0c1e007830303033331e006766361e366667000f06060646667f0063777f7f6b63630063676f7b736363001c36636363361c003f66663e06060f001e3333333b1e38003f66663e366667001e33070e38331e003f2d0c0c0c0c1e003333333333333f0033333333331e0c006363636b7f7763006363361c1c3663003333331e0c0c1e007f6331184c667f001e06060606061e0003060c18306040001e18181818181e00081c36630000000000000000000000ff0c0c18000000000000001e303e336e000706063e66663b0000001e3303331e003830303e33336e0000001e333f031e001c36060f06060f0000006e33333e301f0706366e666667000c000e0c0c0c1e00300030303033331e070666361e3667000e0c0c0c0c0c1e000000337f7f6b630000001f333333330000001e3333331e0000003b66663e060f00006e33333e307800003b6e66060f0000003e031e301f00080c3e0c0c2c18000000333333336e0000003333331e0c000000636b7f7f3600000063361c36630000003333333e301f00003f190c263f00380c0c070c0c38001818180018181800070c0c380c0c07006e3b0000000000000000000000000000')
-
-# ----------------------------------------------------------------------------
-# FRAMEBUFFER
-# ----------------------------------------------------------------------------
-
-ROWCACHE_MAX_ENTRIES = 150  # siehe Framebuffer.rect()/clear() - verhindert
-                            # unbegrenztes Cache-Wachstum durch leicht
-                            # wechselnde (Farbe, Breite)-Kombinationen
-VIGNETTE_ENABLED = True    # dezente Randabdunkelung auf einfarbigen
-                            # Flaechen (siehe Framebuffer.clear()) - rein
-                            # optisch, kostet dank Zeilen-Cache nichts
-                            # beim eigentlichen Zeichnen
-
-class Framebuffer:
-    # FBIO_WAITFORVSYNC (siehe linux/fb.h: _IOW('F', 0x20, __u32)) - wartet
-    # auf den naechsten vertikalen Bildwechsel der Anzeige-Hardware, BEVOR
-    # in den Framebuffer geschrieben wird. Ohne das kann ein Schreibvorgang
-    # (egal ob flip() oder flip_rows()) mitten in einem laufenden Scanvorgang
-    # der Hardware landen - der Bildschirm zeigt dann fuer einen Sekundenbruch-
-    # teil einen Mix aus altem und neuem Bildinhalt ("Tearing"). Sichtbar wird
-    # das z.B. als leicht verschobener, "doppelt belichtet" wirkender Text bei
-    # der markierten Zeile (Nutzer-Rueckmeldung: Text ueberlappt beim
-    # Scrollen). Je groesser der Schreibvorgang (volle Seite vs. einzelne
-    # Zeile), desto laenger dauert er und desto wahrscheinlicher ein
-    # sichtbarer Treffer mitten im Scan.
-    FBIO_WAITFORVSYNC = 0x40044620
-
-    def __init__(self):
-        # BUGFIX Teil 2 (Nutzer-Rueckmeldung: "1 von 10 Faellen startet
-        # nicht richtig, bleibt im OSD" - siehe frontend_boot.sh fuer
-        # Teil 1/die volle Herleitung): selbst mit der grosszuegigeren
-        # 120s-Wartezeit in frontend_boot.sh kann es in seltenen Faellen
-        # noch vorkommen, dass MiSTer's eigener Uebergang vom OSD zum
-        # Framebuffer im exakt falschen Sekundenbruchteil noch nicht
-        # ganz abgeschlossen ist, wenn wir hier ankommen - das Oeffnen
-        # des Geraets (oder das Lesen seiner Geometrie) schlaegt dann
-        # kurzzeitig fehl, obwohl eine Sekunde spaeter alles bereit
-        # waere. Bisher fuehrte das zu einem sofortigen, harten Absturz
-        # (sauber geloggt, aber das Frontend erschien nie - das alte
-        # OSD blieb einfach stehen). Fix: bis zu 5 Versuche mit 0.5s
-        # Pause dazwischen (insgesamt max. 2.5s zusaetzliche Wartezeit,
-        # nur im Fehlerfall - beim ERSTEN, ueblichen erfolgreichen
-        # Versuch entsteht KEINE zusaetzliche Verzoegerung).
-        last_error = None
-        for attempt in range(5):
-            try:
-                self._read_geometry()
-                self.fd = os.open(FBDEV, os.O_RDWR)
-                break
-            except OSError as e:
-                last_error = e
-                LOG("Framebuffer-Oeffnen fehlgeschlagen (Versuch %d/5): %s"
-                    % (attempt + 1, e))
-                time.sleep(0.5)
-        else:
-            raise last_error
-        self._map()
-        self._rowcache = {}
-        self._rectcache = {}   # eigener Cache fuer rect() (siehe dort) -
-                                # getrennt von _rowcache, damit dessen
-                                # Obergrenze nicht die selten wechselnden,
-                                # teuren Hintergrundmuster von clear() mitloescht
-        self._glyphcache = {}
-        self._textcache = {}          # (text, scale, fg, bg) -> Liste von Byte-Zeilen
-        self._textcache_order = []
-        self._TEXTCACHE_LIMIT = 400   # ~12MB bei typischen Labellaengen -
-                                      # vertretbar auf einem MiSTer mit ~1GB RAM
-        # None = noch nicht getestet, True/False = Ergebnis des ersten
-        # Versuchs. Wird nur EINMAL probiert - unterstuetzt der Treiber es
-        # nicht (ENOTTY/EINVAL o.ae.), schalten wir dauerhaft ab, statt bei
-        # JEDEM Frame erneut einen fehlschlagenden ioctl-Aufruf zu riskieren.
-        self._vsync_supported = None
-
-    def _wait_vsync(self):
-        """Wartet, falls moeglich, auf den naechsten vertikalen Bildwechsel -
-        siehe FBIO_WAITFORVSYNC oben. Schlaegt der ioctl fehl (Treiber
-        unterstuetzt es nicht), wird das dauerhaft vermerkt und nie wieder
-        versucht - kostet dann nichts mehr, faellt einfach auf das bisherige
-        Verhalten (ohne Vsync-Wartezeit) zurueck."""
-        if self._vsync_supported is False:
-            return
-        try:
-            fcntl.ioctl(self.fd, self.FBIO_WAITFORVSYNC, struct.pack("I", 0))
-            self._vsync_supported = True
-        except (OSError, AttributeError):
-            self._vsync_supported = False
-
-    def _read_geometry(self):
-        w, h = open("/sys/class/graphics/fb0/virtual_size").read().split(",")
-        self.width  = int(w)
-        self.height = int(h)
-        self.bpp    = int(open("/sys/class/graphics/fb0/bits_per_pixel").read())
-        self.stride = int(open("/sys/class/graphics/fb0/stride").read())
-        if self.bpp != 32:
-            sys.exit("Nur 32bpp wird unterstuetzt, gefunden: %d" % self.bpp)
-        self.size = self.stride * self.height
-
-    def _map(self):
-        self.mm = mmap.mmap(self.fd, self.size, mmap.MAP_SHARED,
-                            mmap.PROT_READ | mmap.PROT_WRITE)
-        self.buf = bytearray(self.size)
-
-    def refresh_geometry(self):
-        """Nach Rueckkehr aus einem Core neu einlesen - die Aufloesung
-        kann sich geaendert haben (z.B. anderer Videomodus)."""
-        old = (self.width, self.height, self.stride)
-        self._read_geometry()
-        if (self.width, self.height, self.stride) != old:
-            try:
-                self.mm.close()
-            except Exception:
-                pass
-            self._map()
-            self._rowcache.clear()
-
-    @staticmethod
-    def _vignette_row_variants(rgb, width, stride, levels=12, strength=0.30):
-        """Vorberechnet `levels` unterschiedlich dunkle Varianten einer
-        vollen Bildzeile in EINER Farbe - Grundlage fuer eine schnelle,
-        zeilenbasierte Vignette (siehe clear()). NUR fuer Flaechen mit
-        einer einzelnen Fuellfarbe geeignet (kein Bild), da eine ganze
-        Zeile hier IMMER dieselbe Farbe hat - genau das macht die
-        Kopie so billig (eine Slice-Zuweisung pro Zeile statt Pixel
-        fuer Pixel).
-
-        WICHTIG (Performance-Grund): eine echte, pixelgenaue radiale
-        Vignette (mit Verlauf auch in X-Richtung, wie bei einem Foto)
-        wurde direkt gemessen - ueber 1 Sekunde fuer eine einzelne
-        1080p-Flaeche, selbst nur EINMALIG berechnet. Bei bis zu zwei
-        Systemwechseln zwischen Hintergrundbildern (BgCache.LIMIT=2)
-        haette das zu spuerbaren Haengern beim Navigieren gefuehrt -
-        nicht vertretbar. Diese Zeilen-Variante ist rein vertikal
-        (oben/unten dunkler, kein staerkerer Effekt in den Ecken) -
-        optisch ein etwas einfacherer, aber immer noch deutlich
-        hochwertiger wirkender Verlauf, dafuer um Groessenordnungen
-        schneller (siehe _apply_vignette_rows())."""
-        pad = b"\x00" * (stride - width * 4)
-        r, g, b = rgb
-        out = []
-        for lvl in range(levels):
-            f = 1.0 - strength * (lvl / max(1, levels - 1))
-            drgb = (int(r * f), int(g * f), int(b * f))
-            out.append(Framebuffer.px(drgb) * width + pad)
-        return out
-
-    @staticmethod
-    def _apply_vignette_rows(out, height, stride, row_variants):
-        """Setzt out (bytearray, bereits mit vollem Puffer-Speicher
-        allokiert) zeilenweise aus den vorberechneten, unterschiedlich
-        dunklen Varianten zusammen - Mitte hell, Rand oben/unten
-        dunkler. Aufeinanderfolgende Zeilen mit derselben (quantisierten)
-        Helligkeitsstufe werden zu einem Block zusammengefasst und per
-        EINER Bytes-Multiplikation (variante * anzahl) statt einzelner
-        Zeilen-Kopien geschrieben - deutlich weniger Einzeloperationen."""
-        levels = len(row_variants)
-        cy = height / 2.0
-        y = 0
-        while y < height:
-            d = abs(y - cy) / cy if cy else 0.0
-            lvl = min(levels - 1, int(d * d * (levels - 1)))
-            run_start = y
-            y += 1
-            while y < height:
-                d2 = abs(y - cy) / cy if cy else 0.0
-                lvl2 = min(levels - 1, int(d2 * d2 * (levels - 1)))
-                if lvl2 != lvl:
-                    break
-                y += 1
-            run_len = y - run_start
-            off = run_start * stride
-            block = row_variants[lvl] * run_len
-            out[off:off + len(block)] = block
-
-    @staticmethod
-    def _scale_brightness(pix, factor):
-        """Skaliert die Helligkeit eines kompletten BGRA-Pixelpuffers
-        (siehe blit()) um factor (0.0-1.0+) - per bytes.translate() mit
-        vorberechneter 256-Werte-Tabelle, deutlich schneller als eine
-        Python-Schleife pro Byte. Der Alpha-Kanal wird zwar mit
-        skaliert (translate() kennt keine Kanaele, wirkt gleichmaessig
-        auf JEDES Byte), das ist aber unschaedlich: blit() kopiert
-        Pixel direkt ohne Alpha-Blending, der Alpha-Wert wird beim
-        Zeichnen also nie ausgewertet. Fuer den Logo-Flacker-Effekt
-        beim Start (siehe _draw_dragend_logo_boot()) - dieselbe
-        Wirkung wie das bisherige dunkel/mittel/voll beim generischen
-        D-Pad-Symbol, nur auf ein echtes Bild statt auf einfache
-        Rechtecke angewendet."""
-        factor = max(0.0, min(1.0, factor))
-        lut = bytes(min(255, int(i * factor)) for i in range(256))
-        return pix.translate(lut)
-
-    @staticmethod
-    def px(rgb):
-        r, g, b = rgb
-        return bytes((b, g, r, 0))
-
-    @staticmethod
-    def _darken(rgb, factor=0.82):
-        r, g, b = rgb
-        return (int(r*factor), int(g*factor), int(b*factor))
-
-    def clear(self, rgb):
-        key = ("bg", rgb, self.width, self.height)
-        bg = self._rowcache.get(key)
-        if bg is None:
-            if VIGNETTE_ENABLED:
-                variants = self._vignette_row_variants(rgb, self.width, self.stride)
-                bg = bytearray(self.stride * self.height)
-                self._apply_vignette_rows(bg, self.height, self.stride, variants)
-            else:
-                row = self.px(rgb) * self.width
-                pad = b"\x00" * (self.stride - self.width * 4)
-                bg = (row + pad) * self.height
-            self._rowcache[key] = bg
-        self.buf[:] = bg
-
-    def blend_rect(self, x, y, w, h, rgb, alpha):
-        """Rechteck mit einer Farbe UEBERBLENDEN statt zu ueberschreiben -
-        fuer Glow-/Schatten-Effekte. alpha=0..1 (0=keine Wirkung, 1=wie
-        rect()). Kann NICHT gecacht werden (haengt vom vorhandenen
-        Bildinhalt ab) - deshalb bewusst nur fuer kleine Bereiche
-        (Glow-Ringe, Schatten), nicht fuer grosse Flaechen. Wie bei
-        allen anderen Zeichenmethoden: schreibt nie mehr/weniger Bytes
-        als der Zielbereich hat, um den Puffer nicht zu verschieben."""
-        x = max(0, x); y = max(0, y)
-        w = min(w, self.width - x); h = min(h, self.height - y)
-        if w <= 0 or h <= 0 or alpha <= 0:
-            return
-        alpha = min(1.0, alpha)
-        nb, ng, nr = rgb[2], rgb[1], rgb[0]  # BGRA-Reihenfolge im Puffer
-        buflen = len(self.buf)
-        need = w * 4
-        for yy in range(y, y + h):
-            off = yy * self.stride + x * 4
-            end = off + need
-            if end > buflen:
-                continue
-            row = bytearray(self.buf[off:end])
-            for i in range(0, need, 4):
-                row[i]   = int(row[i]   + (nb - row[i])   * alpha)
-                row[i+1] = int(row[i+1] + (ng - row[i+1]) * alpha)
-                row[i+2] = int(row[i+2] + (nr - row[i+2]) * alpha)
-            if len(row) == need:
-                self.buf[off:end] = row
-
-    def blend_border(self, x, y, w, h, rgb, alpha, thickness=2):
-        """Nur den RAND eines Rechtecks ueberblenden (vier duenne
-        Streifen) statt der ganzen Flaeche - fuer Glow-Ringe deutlich
-        billiger als blend_rect() auf die volle Flaeche, da nur der
-        Umfang statt die Flaeche skaliert. Fuer KLEINE, bildschirm-
-        unabhaengige Bereiche gedacht (z.B. Boxart-Rahmen/Schatten) -
-        fuer breite, bildschirmfuellende Streifen (Listenmarkierung auf
-        HDMI) stattdessen glow_border_fast() nutzen, siehe dort."""
-        t = max(1, thickness)
-        self.blend_rect(x, y, w, t, rgb, alpha)                    # oben
-        self.blend_rect(x, y + h - t, w, t, rgb, alpha)             # unten
-        self.blend_rect(x, y, t, h, rgb, alpha)                     # links
-        self.blend_rect(x + w - t, y, t, h, rgb, alpha)             # rechts
-
-    def glow_border_fast(self, x, y, w, h, base_bg, accent, alpha, thickness):
-        """Schnelle Glow-Ring-Variante: statt jedes Pixel einzeln mit
-        dem VORHANDENEN Bildinhalt zu mischen (blend_border, teuer bei
-        breiten Bereichen), wird die Zielfarbe VORAB einmal berechnet
-        (Grundfarbe + Akzent bei gegebenem Alpha) und dann ueber das
-        normale, gecachte rect() gezeichnet. Auf breiten HDMI-Zeilen
-        um ein Vielfaches schneller, weil rect() dieselbe Zeile fuer
-        gleiche Breite wiederverwendet statt sie jedes Mal neu
-        durchzurechnen. Nimmt an, dass der Hintergrund unter dem Ring
-        etwa base_bg entspricht - bei aktivem Hintergrundbild kann die
-        Farbe dadurch minimal abweichen, bewusster Kompromiss fuer
-        Geschwindigkeit."""
-        mixed = tuple(int(bg + (ac - bg) * alpha)
-                      for bg, ac in zip(base_bg, accent))
-        t = max(1, thickness)
-        self.rect(x, y, w, t, mixed)
-        self.rect(x, y + h - t, w, t, mixed)
-        self.rect(x, y, t, h, mixed)
-        self.rect(x + w - t, y, t, h, mixed)
-
-    def blend_rect_fast(self, x, y, w, h, base_bg, color, alpha):
-        """Wie blend_rect(), aber mit vorgemischter FESTER Farbe statt
-        echter Pixel-fuer-Pixel-Mischung - fuer FLAECHEN (z.B. den
-        Boxart-Schatten). Derselbe Trick wie glow_border_fast(): die
-        Zielfarbe wird EINMAL berechnet statt pro Pixel, dann ueber
-        das gecachte rect() gezeichnet. Wichtig bei groesseren
-        Flaechen (z.B. schattenbreite = Cover-Breite) - echtes
-        Pixel-Blending kostete hier auf HDMI bei einem Boxart-Schatten
-        gemessen ueber 60% der gesamten Zeichenzeit einer Navigation
-        (per cProfile bestaetigt), obwohl der Schatten selbst klein
-        wirkt. Nimmt an, dass der Untergrund etwa base_bg entspricht -
-        bei aktivem Hintergrundbild kann die Farbe dadurch leicht
-        abweichen, bewusster Kompromiss fuer Geschwindigkeit."""
-        mixed = tuple(int(bg + (c - bg) * alpha)
-                      for bg, c in zip(base_bg, color))
-        self.rect(x, y, w, h, mixed)
-
-    def rect(self, x, y, w, h, rgb, scanlines=False):
-        """scanlines=True: jede 2. Zeile dezent abgedunkelt (Retro-Look) -
-        nur fuer reine Hintergrundflaechen, nicht fuer Markierungsbalken."""
-        x = max(0, x); y = max(0, y)
-        w = min(w, self.width - x); h = min(h, self.height - y)
-        if w <= 0 or h <= 0:
-            return
-        # WICHTIG (Bugfix): _rectcache cacht nach (Farbe, EXAKTER Breite)
-        # - bei leicht wechselnden Breiten (z.B. je nach Cover-
-        # Seitenverhaeltnis, Glow-Ring-Position, Info-Textlaenge) sammelt
-        # sich ueber viele Navigationen hinweg eine WACHSENDE Zahl nie
-        # wieder verwendeter Eintraege an, die nie geloescht wird -
-        # aehnliches Muster wie der in v1.32 behobene Pulsier-Cache-Bug,
-        # nur an anderer Stelle. Per Differenzmessung bestaetigt: das
-        # macht sich als spuerbare, mit der Zeit zunehmende Verzoegerung
-        # bemerkbar. Einfache, sichere Absicherung: Cache bei
-        # Ueberschreiten einer Obergrenze komplett leeren, statt einzelne
-        # Eintraege aufwendig zu verwalten (LRU o.ae.) - der haeufige
-        # Fall (dieselbe Farbe/Breite ueber mehrere Bilder hinweg, z.B.
-        # Equalizer-Balken, Zeilen-Markierungen) bleibt dadurch weiterhin
-        # schnell. Eigener Cache (nicht _rowcache), damit das Leeren
-        # nicht die selten wechselnden, teuren Hintergrundmuster von
-        # clear() mitreisst.
-        if len(self._rectcache) > ROWCACHE_MAX_ENTRIES:
-            self._rectcache.clear()
-        key = (rgb, w)
-        row = self._rectcache.get(key)
-        if row is None:
-            row = self.px(rgb) * w
-            self._rectcache[key] = row
-        row_dark = None
-        if scanlines:
-            key2 = (rgb, w, "dark")
-            row_dark = self._rectcache.get(key2)
-            if row_dark is None:
-                row_dark = self.px(self._darken(rgb)) * w
-                self._rectcache[key2] = row_dark
-        for yy in range(y, y + h):
-            off = yy * self.stride + x * 4
-            use_row = row_dark if (scanlines and yy % 2) else row
-            self.buf[off:off + w * 4] = use_row
-
-    def rect_rounded(self, x, y, w, h, rgb, radius=None):
-        """Wie rect(), aber mit abgerundeten Ecken. radius in Pixeln
-        (bereits skaliert) - ohne Angabe ein kleiner, dezenter Wert.
-        Kostet nur ein paar zusaetzliche, KUERZERE Randzeilen (die
-        Eckenrundung), nicht die ganze Flaeche neu - der Mittelteil
-        laeuft weiterhin ueber das normale, gecachte rect(). Die
-        Einzugstabelle pro Randzeile wird nur einmal pro radius-Wert
-        berechnet und mitgecacht, nicht bei jedem Aufruf neu."""
-        x = max(0, x); y = max(0, y)
-        w = min(w, self.width - x); h = min(h, self.height - y)
-        if w <= 0 or h <= 0:
-            return
-        if radius is None:
-            radius = max(1, min(w, h) // 8)
-        radius = max(0, min(radius, w // 2, h // 2))
-        if radius <= 0:
-            self.rect(x, y, w, h, rgb)
-            return
-        key_ind = ("rounded_indent", radius)
-        indents = self._rectcache.get(key_ind)
-        if indents is None:
-            indents = []
-            r2 = radius * radius
-            for ry in range(radius):
-                dy = radius - ry - 1
-                dx = 0
-                while dx < radius and (radius - dx - 1) ** 2 + dy * dy <= r2:
-                    dx += 1
-                indents.append(radius - dx)
-            self._rectcache[key_ind] = indents
-        px = self.px(rgb)
-        for i, indent in enumerate(indents):
-            rw = w - 2 * indent
-            if rw <= 0:
-                continue
-            row = px * rw
-            yy_top = y + i
-            yy_bot = y + h - 1 - i
-            if 0 <= yy_top < self.height:
-                off = yy_top * self.stride + (x + indent) * 4
-                self.buf[off:off + rw * 4] = row
-            if yy_bot != yy_top and 0 <= yy_bot < self.height:
-                off = yy_bot * self.stride + (x + indent) * 4
-                self.buf[off:off + rw * 4] = row
-        mid_top = y + radius
-        mid_h = h - 2 * radius
-        if mid_h > 0:
-            self.rect(x, mid_top, w, mid_h, rgb)
-
-    def _glyph_row(self, bits, scale, fg, bg):
-        key = (bits, scale, fg, bg)
-        row = self._glyphcache.get(key)
-        if row is None:
-            f = self.px(fg); b = self.px(bg)
-            row = b"".join((f if bits >> i & 1 else b) * scale for i in range(8))
-            self._glyphcache[key] = row
-        return row
-
-    def text(self, x, y, s, scale=2, fg=None, bg=None):
-        if fg is None:
-            fg = C_TEXT
-        if bg is None:
-            bg = C_BG
-        cw = 8 * scale
-        if y + 8 * scale > self.height or y < 0 or x < 0:
-            return
-        # Nur so viele Zeichen wie auf den Schirm passen - identischer
-        # Abschneidepunkt wie die alte, zeichenweise Fassung (die bei
-        # gx + cw > self.width abgebrochen hat), nur vorab statt
-        # mitten in der Schleife berechnet.
-        maxch = (self.width - x) // cw
-        if maxch <= 0:
-            return
-        if len(s) > maxch:
-            s = s[:maxch]
-        if not s:
-            return
-        # Ganze Text-Zeile cachen: Beim Scrollen/Neuzeichnen sind die
-        # meisten Labels bereits bekannt (Spieltitel, Menuepunkte usw.)
-        # - dann reicht ein fertiger Streifen zum Blitten, statt jedes
-        # Mal wieder Buchstabe fuer Buchstabe (und Zeile fuer Zeile pro
-        # Buchstabe) zusammenzusetzen. Groesster Hebel bei den reinen
-        # Zeichenkosten, siehe Kopfkommentar-Changelog.
-        key = (s, scale, fg, bg)
-        strip = self._textcache.get(key)
-        if strip is None:
-            w4 = len(s) * cw * 4
-            rows = [bytearray(w4) for _ in range(8 * scale)]
-            for ci, ch in enumerate(s):
-                code = ord(ch)
-                if code > 127:
-                    code = ord("?")
-                xo = ci * cw * 4
-                for gy in range(8):
-                    grow = self._glyph_row(FONT8X8[code * 8 + gy], scale, fg, bg)
-                    for rep in range(scale):
-                        rows[gy * scale + rep][xo:xo + cw * 4] = grow
-            strip = [bytes(r) for r in rows]
-            self._textcache[key] = strip
-            self._textcache_order.append(key)
-            if len(self._textcache_order) > self._TEXTCACHE_LIMIT:
-                self._textcache.pop(self._textcache_order.pop(0), None)
-        w4 = len(strip[0])
-        xo = x * 4
-        for i, row in enumerate(strip):
-            off = (y + i) * self.stride + xo
-            self.buf[off:off + w4] = row
-
-    def flip(self):
-        # Erst auf den Vertical-Blank warten (falls unterstuetzt), DANN
-        # schreiben - vermeidet Tearing bei der grossen Vollbild-Kopie.
-        self._wait_vsync()
-        # Direkte Slice-Zuweisung: mmap nimmt das bytearray ohne die
-        # teure bytes()-Zwischenkopie (auf 1080p ~8 MB pro Frame).
-        self.mm[:] = self.buf
-
-    def flip_rows(self, y, h):
-        """Nur einen Zeilenbereich auf den Schirm bringen (Laufschrift)."""
-        y0 = max(0, y)
-        y1 = min(self.height, y + h)
-        if y1 <= y0:
-            return
-        self._wait_vsync()
-        off = y0 * self.stride
-        end = y1 * self.stride
-        self.mm[off:end] = self.buf[off:end]
-
-    def close(self):
-        try:
-            self.mm.close(); os.close(self.fd)
-        except Exception:
-            pass
+from fe.framebuffer import FBDEV, Framebuffer
 
 # ----------------------------------------------------------------------------
 # EINGABE: Tastatur + Gamepads parallel, mit Hotplug und exklusivem Grab
@@ -6366,2169 +3748,41 @@ import urllib.request
 import urllib.parse
 import urllib.error
 
-EVIOCGRAB = 0x40044590
-EV_SYN, EV_KEY, EV_ABS = 0, 1, 3
-KEY_ESC, KEY_ENTER = 1, 28
-KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT = 103, 108, 105, 106
-KEY_F7 = 65
-KEY_F6 = 64
-KEY_F8, KEY_F9, KEY_F10, KEY_F11, KEY_F12 = 66, 67, 68, 87, 88
-# Gamepad-Buttons (Linux-Standardcodes)
-BTN_A, BTN_B, BTN_X, BTN_Y = 304, 305, 307, 308
-KEY_Y = 21                   # Y key on keyboard
-BTN_TL, BTN_TR = 310, 311
-BTN_TL2, BTN_TR2 = 312, 313  # zusaetzliche Schultertasten (L2/R2), sofern vorhanden
-BTN_SELECT, BTN_START, BTN_MODE = 314, 315, 316
-BTN_DPAD_UP, BTN_DPAD_DOWN, BTN_DPAD_LEFT, BTN_DPAD_RIGHT = 544, 545, 546, 547
-# Achsen
-ABS_X, ABS_Y, ABS_HAT0X, ABS_HAT0Y = 0, 1, 16, 17
-ABS_Z, ABS_RZ = 2, 5   # analoge L2/R2-Trigger bei vielen Xbox-artigen Pads
-# Interne Pseudo-Codes fuer L2/R2, WENN sie analog (als Achse) statt als
-# eigene Taste ankommen - negative Zahlen, damit sie garantiert nicht mit
-# einem echten evdev-Code (immer >= 0) kollidieren. Werden genau wie ein
-# normaler Tastencode im KEYMAP behandelt (siehe InputManager._translate()
-# und read_raw_key()) - dadurch bleiben sie ganz normal frei belegbar,
-# auch wenn L2/R2 auf dem jeweiligen Pad nicht als BTN_TL2/BTN_TR2 ankommen.
-AXIS_L2, AXIS_R2 = -2, -5
-EVENT_FMT  = "llHHi"
-EVENT_SIZE = struct.calcsize(EVENT_FMT)
-
-# Standard-evdev-Scancodes der Buchstabentasten (QWERTY-Zeilen) - fuer
-# den Direktsprung per Tastatur: A druecken -> naechster Eintrag mit A.
-LETTER_KEYS = {
-    16: "Q", 17: "W", 18: "E", 19: "R", 20: "T", 21: "Y", 22: "U",
-    23: "I", 24: "O", 25: "P",
-    30: "A", 31: "S", 32: "D", 33: "F", 34: "G", 35: "H", 36: "J",
-    37: "K", 38: "L",
-    44: "Z", 45: "X", 46: "C", 47: "V", 48: "B", 49: "N", 50: "M",
-}
-
-# Tasten/Buttons -> logische Aktionen des Frontends
-# Seit v1.11 bewusst schlank gehalten: Enter oeffnet/startet, ESC/B geht
-# eine Ebene zurueck (bzw. fragt im Hauptmenue nach), hoch/runter
-# navigiert einzeln, links/rechts springt seitenweise. Bild auf/ab und
-# Pos1/Ende gibt es dafuer nicht mehr - die Schultertasten L/R sind
-# jetzt einfach ein zweiter Weg fuer den Seitensprung (wie D-Pad
-# links/rechts), statt eine eigene Buchstabensprung-Logik zu haben.
-KEYMAP = {
-    KEY_UP: "up", KEY_DOWN: "down", KEY_LEFT: "left", KEY_RIGHT: "right",
-    KEY_ENTER: "ok", KEY_ESC: "exit",
-    KEY_F12: "osd", KEY_F10: "back_fe", KEY_F9: None, KEY_F11: "random",
-    KEY_F8: "favorite", BTN_TL2: "favorite", BTN_TR2: "favorite",
-    AXIS_L2: "favorite", AXIS_R2: "favorite",
-    KEY_F7: "completed",
-    KEY_F6: "ra_showcase",
-    BTN_A: "ok", BTN_START: "ok",
-    BTN_B: "back", BTN_X: "back_fe",
-    BTN_Y: "music_next", KEY_Y: "music_next",
-    BTN_TL: "left", BTN_TR: "right",
-    BTN_MODE: "osd", BTN_SELECT: "select",
-    BTN_DPAD_UP: "up", BTN_DPAD_DOWN: "down",
-    BTN_DPAD_LEFT: "left", BTN_DPAD_RIGHT: "right",
-}
-for _code, _ch in LETTER_KEYS.items():
-    KEYMAP[_code] = "letter:" + _ch
-
-# Schnappschuss der Standardbelegung (fuer "Auf Standard zuruecksetzen")
-DEFAULT_KEYMAP = dict(KEYMAP)
-
-def _load_custom_keymap():
-    """Eigene Tastenbelegung laden und in KEYMAP einmischen (ueberschreibt
-    einzelne Eintraege, der Rest bleibt Standard)."""
-    try:
-        data = json.load(open(KEYMAP_CUSTOM_FILE))
-        for k, v in data.items():
-            KEYMAP[int(k)] = v
-    except (OSError, ValueError, TypeError):
-        pass
-
-_load_custom_keymap()
-
-# Richtungs-Aktionen, die beim Halten wiederholt werden - sowohl
-# hoch/runter (einzelne Position) als auch links/rechts (Seitensprung)
-# beschleunigen beim Halten.
-REPEAT_ACTIONS = {"up", "down", "left", "right"}
-REPEAT_DELAY    = 0.40      # Sekunden bis zur ersten Wiederholung
-REPEAT_INTERVAL = 0.14      # Start-Intervall, beschleunigt bis 0.05
-
-def _absinfo(fd, axis):
-    """min/max einer Achse per EVIOCGABS-ioctl auslesen."""
-    buf = bytearray(24)
-    fcntl.ioctl(fd, 0x80184540 + axis, buf)
-    _val, amin, amax, _f, _fl, _res = struct.unpack("6i", buf)
-    return amin, amax
-
-class Device:
-    def __init__(self, path, name, is_kbd):
-        self.path = path
-        self.name = name
-        self.is_kbd = is_kbd
-        self.fd = os.open(path, os.O_RDWR)
-        self.grabbed = False
-        self.axis = {}            # axis -> (min, max)
-        self.axis_state = {}      # axis -> -1/0/1 (fuer Flankenerkennung)
-        for ax in (ABS_X, ABS_Y, ABS_HAT0X, ABS_HAT0Y, ABS_Z, ABS_RZ):
-            try:
-                self.axis[ax] = _absinfo(self.fd, ax)
-                self.axis_state[ax] = 0
-            except OSError:
-                pass
-
-    def grab(self, on):
-        try:
-            fcntl.ioctl(self.fd, EVIOCGRAB, 1 if on else 0)
-            self.grabbed = on
-        except OSError:
-            pass
-
-    def close(self):
-        try:
-            self.grab(False)
-            os.close(self.fd)
-        except OSError:
-            pass
-
-def scan_devices():
-    """Alle echten Input-Geraete finden (MiSTers virtuelles ueberspringen)."""
-    devs = []
-    try:
-        blocks = open("/proc/bus/input/devices").read().split("\n\n")
-    except OSError:
-        return devs
-    for b in blocks:
-        if "event" not in b or "MiSTer virtual" in b:
-            continue
-        m = re.search(r"event(\d+)", b)
-        n = re.search(r'N: Name="([^"]*)"', b)
-        if not m:
-            continue
-        path = "/dev/input/event" + m.group(1)
-        devs.append((path, n.group(1) if n else "?", "kbd" in b))
-    return devs
-
-class InputManager:
-    RESCAN_EVERY = 3.0            # Sekunden - fuer Hotplug neuer Pads
-
-    def __init__(self):
-        self.devices = {}
-        self.want_grab = False
-        self.last_scan = 0.0
-        self.held = None          # (key_id, aktion, naechste_zeit, intervall)
-        self._last_input_mtime = None
-        self.rescan(force=True)
-
-    def rescan(self, force=False):
-        # Billiger Schnellcheck: aendert sich /dev/input ueberhaupt? Neue
-        # oder entfernte Geraete aendern die mtime des Ordners. Solange
-        # die gleich bleibt (im Menue-Alltag praktisch immer), sparen wir
-        # uns das teure Parsen von /proc/bus/input/devices - nur ein
-        # einziger stat()-Syscall alle RESCAN_EVERY Sekunden statt
-        # unnoetiger Dauerlast auf der eher schwachen CPU. Hotplug wird
-        # weiterhin zuverlaessig erkannt, nur eben nicht teurer als noetig.
-        self.last_scan = time.monotonic()
-        try:
-            mt = os.stat("/dev/input").st_mtime
-        except OSError:
-            mt = 0.0
-        if not force and mt == self._last_input_mtime:
-            return
-        self._last_input_mtime = mt
-        seen = set()
-        for path, name, is_kbd in scan_devices():
-            seen.add(path)
-            if path not in self.devices:
-                try:
-                    d = Device(path, name, is_kbd)
-                    d.grab(self.want_grab)
-                    self.devices[path] = d
-                    LOG("Geraet: %s '%s' kbd=%s achsen=%s"
-                        % (path, name, is_kbd, sorted(d.axis)))
-                except OSError as e:
-                    LOG("Geraet %s nicht nutzbar: %s" % (path, e))
-        for path in list(self.devices):
-            if path not in seen:
-                self.devices[path].close()
-                del self.devices[path]
-
-    def grab(self, on):
-        LOG("grab(%s)" % on)
-        self.want_grab = on
-        for d in self.devices.values():
-            d.grab(on)
-
-    def _hold(self, key_id, act):
-        if act in REPEAT_ACTIONS:
-            self.held = (key_id, act, time.monotonic() + REPEAT_DELAY,
-                         REPEAT_INTERVAL)
-
-    def _release(self, key_id):
-        if self.held and self.held[0] == key_id:
-            self.held = None
-
-    def _translate(self, dev, etype, code, value):
-        if etype == EV_KEY:
-            if code in (BTN_DPAD_UP, BTN_DPAD_DOWN,
-                        BTN_DPAD_LEFT, BTN_DPAD_RIGHT):
-                key_id = (dev.path, "k", code)
-                if value == 1:
-                    act = KEYMAP.get(code)
-                    self._hold(key_id, act)
-                    return act
-                if value == 0:
-                    self._release(key_id)
-                return None
-            act = KEYMAP.get(code)
-            key_id = (dev.path, "key", code)
-            if act in REPEAT_ACTIONS:
-                # Wiederholbare Aktionen (Navigation) laufen über unsere
-                # EIGENE kontrollierte, beschleunigende Wiederholung -
-                # die Auto-Wiederholung der Tastatur selbst (value==2)
-                # wird ignoriert, sonst staut sich das bei ARM-Tempo
-                # und laeuft nach dem Loslassen noch Sekunden nach.
-                if value == 1:
-                    self._hold(key_id, act)
-                    return act
-                if value == 0:
-                    self._release(key_id)
-                return None
-            if value == 1:
-                return act
-            return None
-        if etype == EV_ABS and code in (ABS_Z, ABS_RZ) and code in dev.axis:
-            # Analoger L2/R2-Trigger: Schwellwert-Erkennung (>50% =
-            # "gedrueckt"), danach ganz normal ueber KEYMAP behandelt -
-            # wie ein echter Tastencode frei belegbar (Pseudo-Code
-            # AXIS_L2/AXIS_R2), inklusive derselben Wiederholungslogik
-            # wie bei echten Tasten, falls die zugewiesene Aktion
-            # wiederholbar ist (z.B. bei Belegung auf Navigation).
-            amin, amax = dev.axis[code]
-            span = max(1, amax - amin)
-            rel = (value - amin) / span
-            pressed = 1 if rel > 0.5 else 0
-            if pressed == dev.axis_state.get(code, 0):
-                return None
-            dev.axis_state[code] = pressed
-            pseudo_code = AXIS_L2 if code == ABS_Z else AXIS_R2
-            key_id = (dev.path, "a2", code)
-            act = KEYMAP.get(pseudo_code)
-            if not pressed:
-                self._release(key_id)
-                return None
-            if act in REPEAT_ACTIONS:
-                self._hold(key_id, act)
-                return act
-            return act
-        if etype == EV_ABS and code in dev.axis:
-            amin, amax = dev.axis[code]
-            if code in (ABS_HAT0X, ABS_HAT0Y):
-                direction = -1 if value < 0 else (1 if value > 0 else 0)
-            else:
-                span = max(1, amax - amin)
-                rel = (value - amin) / span
-                direction = -1 if rel < 0.30 else (1 if rel > 0.70 else 0)
-            if direction == dev.axis_state.get(code, 0):
-                return None
-            dev.axis_state[code] = direction
-            key_id = (dev.path, "a", code)
-            if direction == 0:
-                self._release(key_id)
-                return None
-            if code in (ABS_HAT0X, ABS_X):
-                act = "left" if direction < 0 else "right"
-            else:
-                act = "up" if direction < 0 else "down"
-            self._hold(key_id, act)
-            return act
-        return None
-
-    def read_action(self, timeout=None):
-        """Blockierend (oder mit Timeout) auf die naechste logische
-        Aktion warten. Geraete-Events haben IMMER Vorrang vor Halte-
-        Wiederholungen, damit ein Loslassen nie verloren geht.
-
-        BUGFIX (Nutzer-Rueckmeldung von echter Hardware: Bildschirm
-        bleibt nach dem Start schwarz, ueberlebte sogar den v3.1-Fix,
-        der flip()/VSync als Ursache ausschloss - also musste das
-        eigentliche Haengenbleiben anderswo stecken): die Deadline-
-        Pruefung stand bisher NUR am ENDE der Schleife. Schlaegt
-        select.select() mit OSError fehl (z.B. ein kaputtes/abgezogenes
-        Eingabegeraet), sprang der Code per "continue" DIREKT zurueck
-        an den Schleifenanfang - UNTER UMGEHUNG der Deadline-Pruefung
-        am Ende. Wiederholt sich der Fehler (z.B. weil rescan() dasselbe
-        problematische Geraet immer wieder findet, ohne das
-        zugrundeliegende Problem zu loesen), entsteht eine Endlosschleife,
-        die die Zeitueberschreitung NIE prueft - unabhaengig vom
-        uebergebenen timeout-Wert. Das erklaert vermutlich, warum der
-        erste Fix (VSync in der Boot-Animation umgehen) allein nicht
-        reichte: das eigentliche Haengenbleiben steckte in DIESER
-        Funktion, nicht im Bildschirmaufbau selbst - read_action(timeout=
-        ...) wird durch die neue Boot-Animation zum ALLERERSTEN MAL so
-        frueh im Programmablauf aufgerufen, zu einem Zeitpunkt, an dem
-        Eingabegeraete moeglicherweise noch nicht vollstaendig bereit
-        sind.
-
-        Fix: Deadline-Pruefung zusaetzlich an den ANFANG jeder
-        Schleifenrunde verschoben - dadurch kann KEIN Pfad durch die
-        Schleife (auch nicht nach einem continue) die Pruefung mehr
-        umgehen. Selbst eine dauerhaft fehlschlagende select()-Abfrage
-        kann die Funktion jetzt nicht mehr laenger als die angeforderte
-        Zeit blockieren."""
-        deadline = None if timeout is None else time.monotonic() + timeout
-        while True:
-            now = time.monotonic()
-            if deadline is not None and now >= deadline:
-                return None
-            if now - self.last_scan > self.RESCAN_EVERY:
-                self.rescan()
-            due = self.held is not None and now >= self.held[2]
-            wait = 0.0 if due else self.RESCAN_EVERY
-            if not due:
-                if deadline is not None:
-                    wait = min(wait, max(0.0, deadline - now))
-                if self.held is not None:
-                    wait = min(wait, max(0.0, self.held[2] - now))
-            fds = {d.fd: d for d in self.devices.values()}
-            if not fds:
-                time.sleep(0.5)
-            else:
-                try:
-                    r, _, _ = select.select(list(fds), [], [], wait)
-                except OSError:
-                    self.rescan()
-                    continue
-                got_event = False
-                for fd in r:
-                    dev = fds[fd]
-                    try:
-                        data = os.read(fd, EVENT_SIZE)
-                    except OSError:          # Geraet abgezogen
-                        self.rescan()
-                        continue
-                    if len(data) < EVENT_SIZE:
-                        continue
-                    got_event = True
-                    _, _, etype, code, value = struct.unpack(EVENT_FMT, data)
-                    act = self._translate(dev, etype, code, value)
-                    if act:
-                        return act
-                if got_event:
-                    continue      # erst die Warteschlange leeren, dann Repeat
-            if self.held is not None and time.monotonic() >= self.held[2]:
-                kid, act, _t, iv = self.held
-                # Untergrenze bewusst bei 0.08s (12.5/s) statt zuvor 0.05s
-                # (20/s) - auf HDMI dauert ein volles Neuzeichnen auf
-                # schwacher ARM-Hardware laenger als 0.05s, wodurch sich
-                # Eingaben stauen konnten (spuerbarer "Lag" beim Halten
-                # einer Richtungstaste). CRT ist so schnell, dass es den
-                # Unterschied nicht merkt - 12.5 Spruenge/Sekunde sind
-                # immer noch sehr flott fuer eine kleine Liste.
-                iv = max(0.08, iv * 0.85)
-                self.held = (kid, act, time.monotonic() + iv, iv)
-                return act
-            if deadline is not None and time.monotonic() >= deadline:
-                return None
-
-    def read_raw_key(self, timeout=None, allow_axis_skip=False):
-        """Blockierend auf den naechsten PHYSISCHEN Tastendruck warten
-        und dessen rohen evdev-Code liefern - ignoriert KEYMAP. Fuer den
-        Tastenbelegungs-Assistenten: so kann auch eine bisher unbelegte
-        oder anders belegte Taste erfasst werden.
-
-        allow_axis_skip=True: ein klarer Analogstick-/D-Pad-Ausschlag
-        (egal in welche Richtung) wird als "diese Aktion funktioniert
-        schon nativ ueber die Achse" gewertet und liefert die spezielle
-        Rueckgabe "AXIS" statt eines Codes - der Aufrufer soll dann
-        einfach zur naechsten Abfrage weitergehen, ohne etwas zu
-        ueberschreiben. Ohne diese Erkennung wuerde der Assistent bei
-        Pads, deren D-Pad als Achse (nicht als Taste) ankommt, bei der
-        allerersten Abfrage endlos haengen bleiben."""
-        deadline = None if timeout is None else time.monotonic() + timeout
-        while True:
-            now = time.monotonic()
-            if now - self.last_scan > self.RESCAN_EVERY:
-                self.rescan()
-            wait = self.RESCAN_EVERY
-            if deadline is not None:
-                wait = min(wait, max(0.0, deadline - now))
-            fds = {d.fd: d for d in self.devices.values()}
-            if not fds:
-                time.sleep(0.3)
-            else:
-                try:
-                    r, _, _ = select.select(list(fds), [], [], wait)
-                except OSError:
-                    self.rescan()
-                    continue
-                for fd in r:
-                    dev = fds.get(fd)
-                    if not dev:
-                        continue
-                    try:
-                        data = os.read(fd, EVENT_SIZE)
-                    except OSError:
-                        self.rescan()
-                        continue
-                    if len(data) < EVENT_SIZE:
-                        continue
-                    _, _, etype, code, value = struct.unpack(EVENT_FMT, data)
-                    if etype == EV_KEY and value == 1:
-                        return code
-                    if etype == EV_ABS and code in (ABS_Z, ABS_RZ) and code in dev.axis:
-                        # Analoger L2/R2-Trigger - unabhaengig von
-                        # allow_axis_skip erkennbar, damit sich JEDE
-                        # Aktion (nicht nur Navigation) darauf legen
-                        # laesst. Schwellwert wie beim eigentlichen
-                        # Ablesen im Hauptbetrieb (siehe _translate()).
-                        amin, amax = dev.axis[code]
-                        span = max(1, amax - amin)
-                        rel = (value - amin) / span
-                        if rel > 0.5:
-                            return AXIS_L2 if code == ABS_Z else AXIS_R2
-                    if allow_axis_skip and etype == EV_ABS and code in dev.axis:
-                        amin, amax = dev.axis[code]
-                        if code in (ABS_HAT0X, ABS_HAT0Y):
-                            direction = -1 if value < 0 else (1 if value > 0 else 0)
-                        else:
-                            span = max(1, amax - amin)
-                            rel = (value - amin) / span
-                            direction = -1 if rel < 0.30 else (1 if rel > 0.70 else 0)
-                        if direction != 0:
-                            return "AXIS"
-            if deadline is not None and time.monotonic() >= deadline:
-                return None
-
-    COMBO_HOLD = 0.8          # Sekunden Start+Select halten
-
-    KBD_COMBO_HOLD = 0.6      # Sekunden Esc halten (hidraw-Notausstieg) -
-                              # bewusst laenger als bei Strg+Alt+Esc, da
-                              # ein einzelnes Esc leichter mal kurz in
-                              # einem spiel-eigenen Pause-Menue gedrueckt
-                              # wird als eine Dreifach-Kombination
-
-    def wait_game_exit(self):
-        """Waehrend ein Core laeuft: warten, bis MiSTer zurueck im
-        Menue ist, F10 gedrueckt wird, Start+Select lange genug
-        gehalten werden, ODER Esc auf der Tastatur laenger gehalten
-        wird - erkannt ueber die rohe HID-Ebene. Rueckgabe: "menu",
-        "f10", "combo" oder "hid_combo".
-
-        WICHTIG: F10/Start+Select werden ueber die normale evdev-Ebene
-        gelesen, die MiSTer waehrend eines laufenden Cores exklusiv
-        sperrt - vermutlich hat dieser Zweig dadurch in der Praxis nie
-        tatsaechlich ausgeloest. Bleibt trotzdem als Absicherung
-        bestehen. Esc laeuft stattdessen ueber /dev/hidrawX (siehe
-        _find_keyboard_hidraws()).
-
-        BUGFIX Runde 3 (per echter Nutzer-Log-Datei bestaetigt: manche
-        Tastaturen legen MEHRERE hidraw-Schnittstellen unter demselben
-        Namen an, z.B. eine "Boot"- und eine NKRO-Schnittstelle - die
-        tatsaechlichen Tastendruecke koennen ueber eine ANDERE
-        Schnittstelle laufen als die zuerst erkannte): _find_keyboard_
-        hidraws() liefert jetzt eine LISTE aller Schnittstellen
-        desselben Tastatur-Namens, ALLE werden hier gleichzeitig
-        ueberwacht (kbd_fds statt kbd_fd) - welche davon tatsaechlich
-        die Tasten sendet, muss dadurch nicht mehr erraten werden."""
-        down = set()              # (geraetepfad, code) gedrueckter Tasten
-        combo_since = None
-        last_core_check = 0.0
-        kbd_paths = _find_keyboard_hidraws()
-        kbd_fds = {}               # fd -> True/False (Esc gerade gehalten?)
-        kbd_fd_paths = {}          # fd -> Pfad (nur fuers Diagnose-Log)
-        for kp in kbd_paths:
-            try:
-                fd = os.open(kp, os.O_RDONLY | os.O_NONBLOCK)
-                kbd_fds[fd] = False
-                kbd_fd_paths[fd] = kp
-            except OSError as e:
-                LOG("wait_game_exit: Oeffnen fehlgeschlagen fuer %s: %s" % (kp, e))
-        LOG("wait_game_exit: %d von %d Schnittstelle(n) erfolgreich geoeffnet: %s"
-            % (len(kbd_fds), len(kbd_paths), list(kbd_fd_paths.values())))
-        # DIAGNOSE (Nutzerwunsch: Esc wird trotz korrekt gefundener und
-        # geoeffneter Schnittstellen weiterhin nicht erkannt - naechster
-        # Verdacht: das Report-FORMAT selbst, nicht mehr die Schnittstellen-
-        # Auswahl. Manche NKRO-faehigen Tastaturen senden Tastendruecke als
-        # BITMASKE statt als Byte-Array von Tastencodes - _hid_report_
-        # has_esc() sucht aber nach dem blossen Byte-WERT 0x29 irgendwo im
-        # Report, was bei einer Bitmaske nie zutrifft). Protokolliert die
-        # rohen Bytes der ersten 30 tatsaechlich empfangenen Reports (ueber
-        # alle Schnittstellen zusammen begrenzt, nicht pro Schnittstelle -
-        # sonst koennte eine sehr "gespraechige" Schnittstelle das Log
-        # fluten) - zeigt beim naechsten Testlauf schwarz auf weiss, wie
-        # ein Tastendruck auf DIESER Tastatur tatsaechlich aussieht.
-        #
-        # BUGFIX (per echter Diagnose-Ausgabe von Sutefan bestaetigt):
-        # ein GEMEINSAMES Budget ueber alle Schnittstellen hinweg war
-        # ein Fehler - hidraw2 sendete ALLE 30 protokollierten Reports
-        # (regelmaessig wechselndes Muster, sieht nach einem periodischen
-        # Status-/Heartbeat-Signal aus, NICHT nach Tastendruecken), noch
-        # bevor hidraw0/hidraw1 - die vermutlich tatsaechlichen
-        # Tastatur-Schnittstellen - ueberhaupt einmal zu Wort kamen.
-        # Jetzt: eigenes Budget PRO Schnittstelle, damit eine
-        # "gespraechige" Schnittstelle die anderen nicht mehr verdraengt.
-        kbd_diag_budget = {fd: 10 for fd in kbd_fds}
-        kbd_combo_since = None
-        try:
-            while True:
-                now = time.monotonic()
-                if now - self.last_scan > self.RESCAN_EVERY:
-                    self.rescan()
-                    down = {k for k in down if k[0] in self.devices}
-                if now - last_core_check > 0.7:
-                    last_core_check = now
-                    if current_core() == "MENU":
-                        return "menu"
-                if combo_since is not None and now - combo_since >= self.COMBO_HOLD:
-                    return "combo"
-                if (kbd_combo_since is not None
-                        and now - kbd_combo_since >= self.KBD_COMBO_HOLD):
-                    return "hid_combo"
-                fds = {d.fd: d for d in self.devices.values()}
-                for kfd in kbd_fds:
-                    fds[kfd] = None
-                if not fds:
-                    time.sleep(0.5)
-                    continue
-                try:
-                    r, _, _ = select.select(list(fds), [], [], 0.2)
-                except OSError:
-                    self.rescan()
-                    continue
-                for fd in r:
-                    if fd in kbd_fds:
-                        try:
-                            data = os.read(fd, 64)
-                        except OSError:
-                            try:
-                                os.close(fd)
-                            except OSError:
-                                pass
-                            kbd_fds.pop(fd, None)
-                            kbd_diag_budget.pop(fd, None)
-                            continue
-                        if kbd_diag_budget.get(fd, 0) > 0:
-                            kbd_diag_budget[fd] -= 1
-                            LOG("wait_game_exit DIAGNOSE (%s): %s"
-                                % (kbd_fd_paths.get(fd, "?"), data.hex()))
-                        kbd_fds[fd] = _hid_report_has_exit_key(data)
-                        any_held = any(kbd_fds.values())
-                        if any_held and kbd_combo_since is None:
-                            kbd_combo_since = time.monotonic()
-                        elif not any_held:
-                            kbd_combo_since = None
-                        continue
-                    dev = fds.get(fd)
-                    try:
-                        data = os.read(fd, EVENT_SIZE)
-                    except OSError:
-                        self.rescan()
-                        continue
-                    if len(data) < EVENT_SIZE:
-                        continue
-                    _, _, etype, code, value = struct.unpack(EVENT_FMT, data)
-                    if etype == EV_KEY and code == KEY_F10 and value == 1:
-                        return "f10"
-                    if etype == EV_KEY and code in (BTN_START, BTN_SELECT):
-                        key = (dev.path, code)
-                        if value == 1:
-                            down.add(key)
-                        elif value == 0:
-                            down.discard(key)
-                        # Kombo: Start UND Select am selben Geraet gedrueckt?
-                        active = False
-                        for path in set(p for p, _c in down):
-                            codes = {c for p, c in down if p == path}
-                            if BTN_START in codes and BTN_SELECT in codes:
-                                active = True
-                        if active and combo_since is None:
-                            combo_since = time.monotonic()
-                        elif not active:
-                            combo_since = None
-        finally:
-            for fd in kbd_fds:
-                try:
-                    os.close(fd)
-                except OSError:
-                    pass
-
-    def flush(self):
-        for d in self.devices.values():
-            fl = fcntl.fcntl(d.fd, fcntl.F_GETFL)
-            fcntl.fcntl(d.fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
-            try:
-                while os.read(d.fd, EVENT_SIZE * 64):
-                    pass
-            except (BlockingIOError, OSError):
-                pass
-            finally:
-                fcntl.fcntl(d.fd, fcntl.F_SETFL, fl)
-
-    def inject(self, keycode):
-        """Tasten-Event einspeisen (bevorzugt ueber die Tastatur).
-        Funktioniert nur bei geloestem Grab.
-
-        BUGFIX (Nutzer-Rueckmeldung): auf MiSTer-Setups mit einem
-        Sony/PlayStation-artigen Controller wurde bisher IMMER dessen
-        "Consumer Control"- bzw. "System Control"-Nebenschnittstelle
-        getroffen statt der tatsaechlichen Tastatur - is_kbd basiert
-        nur darauf, ob der Linux-Kernel IRGENDEINEN "kbd"-Handler an
-        das Geraet gehaengt hat (siehe scan_devices()), was bei
-        Controller-Nebenschnittstellen mit Medien-/Systemtasten
-        ebenfalls zutrifft. Landete diese Nebenschnittstelle in der
-        Aufzaehlung VOR der echten Tastatur, ging das injizierte F9
-        (fuer den Wechsel in den Konsolenmodus) ins Leere - MiSTer
-        blieb dauerhaft im eigenen Menue haengen, ohne dass unser Code
-        abstuerzte (schwer zu finden, weil das Log ganz normal
-        aussah). Deshalb jetzt ZUERST gezielt nach einem Geraet
-        suchen, das "keyboard" im NAMEN traegt (deutlich zuverlaessigeres
-        Signal als der generische Kernel-Handler) - nur wenn keins
-        gefunden wird, auf die bisherige is_kbd-Heuristik zurueckfallen."""
-        target = None
-        for d in self.devices.values():
-            if "keyboard" in d.name.lower():
-                target = d
-                break
-        if target is None:
-            for d in self.devices.values():
-                if d.is_kbd:
-                    target = d
-                    break
-        if target is None and self.devices:
-            target = next(iter(self.devices.values()))
-        if target is None:
-            LOG("inject(%d): KEIN Zielgeraet!" % keycode)
-            return
-        LOG("inject(%d) -> %s" % (keycode, target.path))
-        for value in (1, 0):
-            ev  = struct.pack(EVENT_FMT, 0, 0, EV_KEY, keycode, value)
-            syn = struct.pack(EVENT_FMT, 0, 0, EV_SYN, 0, 0)
-            try:
-                os.write(target.fd, ev + syn)
-            except OSError:
-                pass
-            time.sleep(0.05)
-
-    def close(self):
-        for d in self.devices.values():
-            d.close()
-        self.devices = {}
-
-# ----------------------------------------------------------------------------
-# PNG-DECODER (Nutzerwunsch: RA-Erfolgs-Icons direkt im Frontend zeigen,
-# nicht nur im Browser-Overlay, das PNGs von selbst versteht). Reines
-# Standard-Python (zlib fuer die eigentliche Kompression - das macht der
-# schwierige Teil bereits selbst), die PNG-eigene ZEILENFILTERUNG muss
-# aber von Hand rekonstruiert werden - das ist der eigentliche Aufwand
-# an einem PNG-Decoder.
-#
-# BEWUSST EINGESCHRAENKT (lieber None als ein falsches/kaputtes Bild):
-# nur 8-Bit Farbtiefe, nicht interlaced, Farbtypen 0/2/3/4/6 - deckt
-# praktisch jedes uebliche kleine Web-/Icon-Bild ab (fuer RA-Badges
-# also die ueberwiegende Mehrheit der Faelle), NICHT aber 16-Bit-Tiefe,
-# Adam7-Interlacing oder 1/2/4-Bit-Farbtiefen. Chunk-CRCs werden NICHT
-# geprueft (vertrauenswuerdige Quelle: RAs eigenes CDN, keine
-# Nutzereingabe) - das spart Aufwand, ohne die eigentliche Bild-
-# Rekonstruktion zu beeintraechtigen.
-def _paeth_predictor(a, b, c):
-    """PNG-Paeth-Praediktor (siehe PNG-Spezifikation) - waehlt von den
-    drei Nachbarn (links/oben/oben-links) den, der dem linearen
-    Schaetzwert am naechsten liegt."""
-    p = a + b - c
-    pa = abs(p - a)
-    pb = abs(p - b)
-    pc = abs(p - c)
-    if pa <= pb and pa <= pc:
-        return a
-    if pb <= pc:
-        return b
-    return c
-
-def _png_unfilter(raw, width, height, bpp):
-    """Entfernt die PNG-Zeilenfilterung - jede Zeile im entpackten
-    IDAT-Strom beginnt mit einem Filtertyp-Byte (0-4), gefolgt von den
-    GEFILTERTEN (nicht den echten) Pixel-Bytes dieser Zeile. Liefert
-    die rekonstruierten Rohpixel OHNE die Filter-Byte-Praefixe, oder
-    None bei einem unbekannten Filtertyp oder zu kurzen Daten.
-    bpp: Bytes pro Pixel (fuer den Filter-Rueckbezug - z.B. 4 bei
-    RGBA/8-Bit, 1 bei Graustufen/8-Bit)."""
-    stride = width * bpp
-    row_len = stride + 1
-    if len(raw) < row_len * height:
-        return None
-    out = bytearray(stride * height)
-    prev_row = bytearray(stride)
-    for y in range(height):
-        off = y * row_len
-        ftype = raw[off]
-        line = raw[off + 1:off + 1 + stride]
-        cur = bytearray(stride)
-        if ftype == 0:      # None - unveraendert
-            cur[:] = line
-        elif ftype == 1:    # Sub - relativ zum Pixel LINKS
-            for i in range(stride):
-                a = cur[i - bpp] if i >= bpp else 0
-                cur[i] = (line[i] + a) & 0xff
-        elif ftype == 2:    # Up - relativ zum Pixel DARUEBER
-            for i in range(stride):
-                cur[i] = (line[i] + prev_row[i]) & 0xff
-        elif ftype == 3:    # Average - Mittelwert aus links+oben
-            for i in range(stride):
-                a = cur[i - bpp] if i >= bpp else 0
-                cur[i] = (line[i] + ((a + prev_row[i]) // 2)) & 0xff
-        elif ftype == 4:    # Paeth - siehe _paeth_predictor()
-            for i in range(stride):
-                a = cur[i - bpp] if i >= bpp else 0
-                c = prev_row[i - bpp] if i >= bpp else 0
-                cur[i] = (line[i] + _paeth_predictor(a, prev_row[i], c)) & 0xff
-        else:
-            return None   # unbekannter Filtertyp - lieber abbrechen als raten
-        out[y * stride:(y + 1) * stride] = cur
-        prev_row = cur
-    return bytes(out)
-
-def decode_png(data):
-    """Dekodiert eine PNG-Bilddatei (Bytes) zu (breite, hoehe,
-    rgba_bytes) - fuer RA-Erfolgs-Icons direkt im Frontend. Liefert
-    None bei JEDEM nicht unterstuetzten oder fehlerhaften Fall - NIE
-    eine Ausnahme nach aussen (siehe Modul-Kopfkommentar fuer die
-    bewussten Einschraenkungen)."""
-    try:
-        if not data.startswith(b"\x89PNG\r\n\x1a\n"):
-            return None
-        pos = 8
-        width = height = bitdepth = colortype = None
-        palette = None
-        trns = None
-        idat_parts = []
-        n = len(data)
-        while pos + 8 <= n:
-            length = struct.unpack(">I", data[pos:pos + 4])[0]
-            ctype = data[pos + 4:pos + 8]
-            cstart = pos + 8
-            cdata = data[cstart:cstart + length]
-            pos = cstart + length + 4   # +4 = CRC, bewusst nicht geprueft
-            if ctype == b"IHDR":
-                if len(cdata) != 13:
-                    return None
-                (width, height, bitdepth, colortype,
-                 comp, filt, interlace) = struct.unpack(">IIBBBBB", cdata)
-                if comp != 0 or filt != 0 or interlace != 0:
-                    return None   # Interlacing/exotische Kompression: nicht unterstuetzt
-                if bitdepth != 8:
-                    return None   # nur 8-Bit-Tiefe unterstuetzt
-                if width <= 0 or height <= 0 or width * height > 4_000_000:
-                    return None   # Groessen-Notbremse gegen kaputte/boesartige Header
-            elif ctype == b"PLTE":
-                palette = cdata
-            elif ctype == b"tRNS":
-                trns = cdata
-            elif ctype == b"IDAT":
-                idat_parts.append(cdata)
-            elif ctype == b"IEND":
-                break
-        if width is None or not idat_parts:
-            return None
-        if colortype not in (0, 2, 3, 4, 6):
-            return None
-
-        channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[colortype]
-        raw = zlib.decompress(b"".join(idat_parts))
-        pixels = _png_unfilter(raw, width, height, channels)
-        if pixels is None:
-            return None
-
-        # Zu RGBA vereinheitlichen, unabhaengig vom Quell-Farbtyp - so
-        # muss der Rest des Frontends (blit() usw.) nur EIN Format
-        # kennen, egal welcher PNG-Farbtyp reinkam.
-        n_px = width * height
-        out = bytearray(n_px * 4)
-        if colortype == 6:      # RGBA schon direkt passend
-            out[:] = pixels
-        elif colortype == 2:    # RGB -> RGBA (Alpha immer deckend)
-            for i in range(n_px):
-                out[i * 4:i * 4 + 3] = pixels[i * 3:i * 3 + 3]
-                out[i * 4 + 3] = 255
-        elif colortype == 0:    # Graustufen -> RGBA
-            for i in range(n_px):
-                g = pixels[i]
-                out[i * 4] = out[i * 4 + 1] = out[i * 4 + 2] = g
-                out[i * 4 + 3] = 255
-        elif colortype == 4:    # Graustufen+Alpha -> RGBA
-            for i in range(n_px):
-                g = pixels[i * 2]
-                out[i * 4] = out[i * 4 + 1] = out[i * 4 + 2] = g
-                out[i * 4 + 3] = pixels[i * 2 + 1]
-        elif colortype == 3:    # Palette -> RGBA
-            if not palette:
-                return None
-            for i in range(n_px):
-                idx = pixels[i]
-                p = idx * 3
-                if p + 3 > len(palette):
-                    return None
-                out[i * 4:i * 4 + 3] = palette[p:p + 3]
-                out[i * 4 + 3] = (trns[idx] if trns and idx < len(trns) else 255)
-        return (width, height, bytes(out))
-    except (struct.error, zlib.error, IndexError, ValueError):
-        return None
-
-# ----------------------------------------------------------------------------
-# RA-ERFOLGS-ICONS (Badges) FUERS FRONTEND SELBST - baut auf decode_png()
-# auf (siehe oben). Gleiches Grundprinzip wie ArtCache: dauerhaft als
-# rohe PNG-Bytes lokal zwischengespeichert (Icons aendern sich nie mehr,
-# sobald ein Erfolg veroeffentlicht ist), zusaetzlich die BEREITS
-# DEKODIERTEN Bilder im Speicher gehalten (begrenzt, wie bei ArtCache).
-# ----------------------------------------------------------------------------
-BADGE_DIR = "/media/fat/frontend/ra_badges"
-RA_BADGE_URL = "https://media.retroachievements.org/Badge/%s.png"
-
-class BadgeCache:
-    LIMIT = 60   # gleicher Gedanke wie ArtCache - Icons sind winzig,
-                # koennte durchaus hoeher, aber kein Grund zur Eile
-
-    def __init__(self):
-        self.cache = {}   # badge_name -> (w, h, rgba) oder None
-        self.order = []
-
-    def get(self, badge_name):
-        """Liefert (breite, hoehe, rgba) fuer ein RA-Badge, oder None,
-        wenn der Name unbrauchbar ist oder das Icon nicht geladen/
-        dekodiert werden konnte. Laedt/dekodiert bei Bedarf, danach
-        aus dem Speicher-Cache."""
-        if not badge_name or not re.match(r"^[A-Za-z0-9_-]+$", badge_name):
-            return None   # kein Pfad-Trick moeglich, siehe _load_bytes()
-        if badge_name in self.cache:
-            return self.cache[badge_name]
-        data = self._load_bytes(badge_name)
-        result = decode_png(data) if data else None
-        self.cache[badge_name] = result
-        self.order.append(badge_name)
-        if len(self.order) > self.LIMIT:
-            old = self.order.pop(0)
-            self.cache.pop(old, None)
-        return result
-
-    def _load_bytes(self, badge_name):
-        """Rohe PNG-Bytes eines Badges - aus dem lokalen Dauer-Cache,
-        falls vorhanden, sonst live von RA heruntergeladen und
-        gespeichert. NIE eine Ausnahme nach aussen."""
-        try:
-            os.makedirs(BADGE_DIR, exist_ok=True)
-        except OSError:
-            pass
-        path = os.path.join(BADGE_DIR, badge_name + ".png")
-        try:
-            with open(path, "rb") as f:
-                return f.read()
-        except OSError:
-            pass
-        try:
-            req = urllib.request.Request(
-                RA_BADGE_URL % badge_name,
-                headers={"User-Agent": "MiSTerFrontend/1.0"})
-            with urllib.request.urlopen(req, timeout=5.0) as resp:
-                if resp.status != 200:
-                    return None
-                data = resp.read()
-        except (urllib.error.URLError, OSError, TimeoutError):
-            return None
-        try:
-            with open(path, "wb") as f:
-                f.write(data)
-        except OSError:
-            pass
-        return data
-
-BADGES = BadgeCache()
-
-# ----------------------------------------------------------------------------
-# ARTWORK (.art) UND METADATEN
-# .art-Format: b"ART1" + uint16 Breite + uint16 Hoehe + zlib(BGRA-Rohpixel)
-# Die Dateien werden am PC mit art_convert.py erzeugt - der MiSTer
-# muss nur noch entpacken (zlib ist Standardbibliothek) und blitten.
-# ----------------------------------------------------------------------------
-
-class ArtCache:
-    LIMIT = 60                       # max. Bilder im Speicher halten - moderat
-                                      # erhoeht (vorher 40): die tolerante
-                                      # Cover-Suche findet jetzt mehr Cover als
-                                      # zuvor, wodurch der alte Wert beim Hin-
-                                      # und-Herscrollen zu haeufigem erneuten
-                                      # Dekodieren fuehrte. Bewusst NICHT so
-                                      # stark erhoeht wie urspruenglich
-                                      # vorgeschlagen (90) - bei grossen HD-
-                                      # Covern (~4MB/Bild unkomprimiert) waere
-                                      # das ein spuerbarer RAM-Batzen auf einem
-                                      # MiSTer mit typischerweise ~1GB RAM.
-
-    def __init__(self):
-        self.cache = {}              # pfad -> (w, h, pixelbytes) oder None
-        self.order = []
-        self._defer_uncached = False # beim schnellen Scrollen: noch nicht
-                                     # dekodierte Cover ueberspringen (siehe
-                                     # get_scaled()/COVER_SETTLE)
-
-    def get(self, path):
-        if path in self.cache:
-            return self.cache[path]
-        # WICHTIG (Bugfix): "Datei existiert nicht" (FileNotFoundError,
-        # eine OSError-Unterklasse) ist ein STABILER Fall - sicher
-        # dauerhaft zu cachen, da sich das waehrend der Sitzung normal-
-        # erweise nicht mehr aendert. Eine BESCHAEDIGTE oder noch
-        # UNVOLLSTAENDIGE Datei (z.B. waehrend eines noch laufenden
-        # Kopier-/Downloadvorgangs) ist dagegen ein moeglicherweise
-        # VORUEBERGEHENDER Zustand - struct.error/zlib.error traten
-        # bisher NICHT gefangen ("except OSError" allein deckt das
-        # nicht ab, waere sonst ein Absturz gewesen) und wurden trotzdem
-        # als "nicht gefunden" dauerhaft gecacht, was ein spaeteres
-        # erneutes Laden verhinderte, selbst wenn die Datei danach
-        # vollstaendig und gueltig vorlag. Deshalb: bei einem
-        # unerwarteten Format-/Dekomprimierungsfehler NICHT cachen -
-        # naechster Zugriff versucht es einfach erneut.
-        art = None
-        cache_result = True
-        try:
-            with open(path, "rb") as f:
-                if f.read(4) == b"ART1":
-                    w, h = struct.unpack("<HH", f.read(4))
-                    pix = zlib.decompress(f.read())
-                    if len(pix) == w * h * 4:
-                        art = (w, h, pix)
-        except FileNotFoundError:
-            pass                     # stabil - Cache-Eintrag bleibt bestehen
-        except OSError:
-            cache_result = False    # z.B. Berechtigung/IO-Fehler - lieber erneut versuchen
-        except (struct.error, zlib.error, ValueError):
-            cache_result = False    # unvollstaendige/beschaedigte Datei - erneut versuchen
-        if not cache_result:
-            return art
-        self.cache[path] = art
-        self.order.append(path)
-        if len(self.order) > self.LIMIT:
-            old = self.order.pop(0)
-            self.cache.pop(old, None)
-        return art
-
-    SCALED_LIMIT = 20   # moderat erhoeht (vorher 10), gleicher Grund wie LIMIT
-
-    def _scaled_cache_put(self, key, result):
-        if not hasattr(self, "scaled"):
-            self.scaled = {}
-            self.scaled_order = []
-        self.scaled[key] = result
-        self.scaled_order.append(key)
-        if len(self.scaled_order) > self.SCALED_LIMIT:
-            old = self.scaled_order.pop(0)
-            self.scaled.pop(old, None)
-
-    def get_scaled(self, path, max_w, max_h):
-        _t0 = time.monotonic()
-        r = self._get_scaled_impl(path, max_w, max_h)
-        _dt = time.monotonic() - _t0
-        if _dt > 0.025:
-            LOG("PERF cover: %.0f ms (%s)" % (_dt * 1000, os.path.basename(path)))
-        return r
-
-    def _get_scaled_impl(self, path, max_w, max_h):
-        """Bild in die verfuegbare Flaeche einpassen. Kleine Cover werden
-        ganzzahlig hochskaliert (Pixel-Look). Cover, die groesser als die
-        Box sind, werden seit v1.8.1 per Nearest-Neighbor VERKLEINERT statt
-        unskaliert zu bleiben - sonst ragen sie ueber den reservierten
-        Platz hinaus und ueberlappen den Info-Text darunter."""
-        # Waehrend aktiv gescrollt wird: ein noch nicht dekodiertes Cover
-        # NICHT hier (im Zeichen-/Scroll-Pfad) dekodieren - das ruckelt auf
-        # der schwachen CPU. Stattdessen ueberspringen; kurz nach dem
-        # letzten Tastendruck laedt die Idle-Nachzeichnung es nach (siehe
-        # COVER_SETTLE in der Hauptschleife).
-        if self._defer_uncached and path not in self.cache:
-            return None
-        base = self.get(path)
-        if not base:
-            return None
-        w, h, pix = base
-        if max_w <= 0 or max_h <= 0:
-            return None
-        if not hasattr(self, "scaled"):
-            self.scaled = {}
-            self.scaled_order = []
-
-        if w <= max_w and h <= max_h:
-            # Kein hartes Limit mehr wie in v1.8.1 (dort noch 4x) - seit
-            # v1.9 hat die Boxart-Spalte deutlich mehr Platz, ein Deckel
-            # von 4x liess kleine Cover unnoetig klein und von Leerraum
-            # umgeben wirken. 10x ist grosszuegig genug, um jede Box zu
-            # fuellen, aber immer noch klein genug, um den Speicher- und
-            # Rechenaufwand des Nearest-Neighbor-Upscales im Rahmen zu
-            # halten (Cache haelt ohnehin nur SCALED_LIMIT Bilder).
-            scale = max(1, min(max_w // w, max_h // h, 10))
-            if scale == 1:
-                return base
-            key = (path, "up", scale)
-            if key in self.scaled:
-                return self.scaled[key]
-            sw, sh = w * scale, h * scale
-            out = bytearray(sw * sh * 4)
-            row_out = sw * 4
-            for y in range(h):
-                o = y * w * 4
-                row = b"".join(pix[o + x*4:o + x*4 + 4] * scale
-                               for x in range(w))
-                base_off = y * scale * row_out
-                for rep in range(scale):
-                    off = base_off + rep * row_out
-                    out[off:off + row_out] = row
-            result = (sw, sh, bytes(out))
-            self._scaled_cache_put(key, result)
-            return result
-
-        # Bild ist in mindestens einer Richtung groesser als die Box -
-        # verkleinern statt es unskaliert ueberstehen zu lassen.
-        scale = min(max_w / w, max_h / h)
-        tw = max(1, int(w * scale))
-        th = max(1, int(h * scale))
-        key = (path, "down", tw, th)
-        if key in self.scaled:
-            return self.scaled[key]
-        # WICHTIG (Bugfix): frueher eine einzelne 4-Byte-Zuweisung PRO
-        # ZIEL-PIXEL in einer doppelt verschachtelten Schleife (bei
-        # z.B. 480x600 Zielgroesse: 288.000 einzelne bytearray-Slice-
-        # Zuweisungen!) - jede einzelne Python-Anweisung hat spuerbaren
-        # Overhead. Per Differenzmessung bestaetigt: ~90ms fuer eine
-        # einzelne Verkleinerung, genau der Fall bei jeder echten
-        # Navigation zu einem neuen Spiel mit einem HD-Cover, das
-        # nicht exakt in den verfuegbaren Platz passt. Jetzt wie bei
-        # der Vergroesserung: pro Zeile EIN b\"\".join() (in C
-        # implementiert, deutlich weniger Python-Interpreter-Overhead
-        # pro Zeile) statt einzelner Zuweisungen pro Pixel.
-        xmap = [min(w - 1, int(x / scale)) * 4 for x in range(tw)]
-        out = bytearray(tw * th * 4)
-        row_out = tw * 4
-        for ty in range(th):
-            sy = min(h - 1, int(ty / scale))
-            srow = pix[sy * w * 4:(sy + 1) * w * 4]
-            row_bytes = b"".join([srow[sx:sx + 4] for sx in xmap])
-            out[ty * row_out:(ty + 1) * row_out] = row_bytes
-        result = (tw, th, bytes(out))
-        self._scaled_cache_put(key, result)
-        return result
-
-ART = ArtCache()
-
-class BgCache:
-    """Haelt pro System einen fertig komponierten Vollbild-Puffer
-    (inkl. Stride-Padding), damit der Hintergrund beim Zeichnen nur
-    noch per Blockkopie eingesetzt werden muss."""
-    LIMIT = 2
-
-    def __init__(self):
-        self.cache = {}
-        self.order = []
-
-    def get(self, syskey, fb):
-        key = (syskey, fb.width, fb.height, fb.stride)
-        if key in self.cache:
-            return self.cache[key]
-        buf = None
-        for fn in ("%s_%dx%d.art" % (syskey, fb.width, fb.height),
-                   "%s.art" % syskey):
-            art = ART.get(os.path.join(BG_BASE, fn))
-            if art:
-                buf = self._compose(art, fb)
-                break
-        self.cache[key] = buf
-        self.order.append(key)
-        if len(self.order) > self.LIMIT:
-            self.cache.pop(self.order.pop(0), None)
-        return buf
-
-    @staticmethod
-    def _compose(art, fb):
-        w, h, pix = art
-        base = Framebuffer.px(C_BG)
-        row_bg = base * fb.width + b"\x00" * (fb.stride - fb.width * 4)
-        out = bytearray(row_bg * fb.height)
-        # Bild zentrieren, bei Ueberbreite mittig beschneiden
-        sx = max(0, (w - fb.width) // 2)
-        dx = max(0, (fb.width - w) // 2)
-        cw = min(w, fb.width)
-        sy = max(0, (h - fb.height) // 2)
-        dy = max(0, (fb.height - h) // 2)
-        ch = min(h, fb.height)
-        for y in range(ch):
-            so = ((sy + y) * w + sx) * 4
-            do = (dy + y) * fb.stride + dx * 4
-            out[do:do + cw * 4] = pix[so:so + cw * 4]
-        return bytes(out)
-
-BG = BgCache()
-
-_art_index_cache = {}   # (basis_ordner, syskey) -> {Name ohne "NNN "-Praefix: Dateiname}
-
-def _art_index(base_dir, syskey):
-    """Index fuer <base_dir>/<syskey>: Name OHNE fuehrende "NNN "-Nummer
-    -> tatsaechlicher Dateiname. Ermoeglicht Cover aus nummerierten
-    (kuratierten) Sets wie "007 Super Mario Kart (USA).art", obwohl
-    das Spiel intern nur "Super Mario Kart (USA)" heisst. Pro
-    (Ordner, System) gecacht - wird nur beim ERSTEN Cache-Fehltreffer
-    fuer ein System ueberhaupt aufgebaut (siehe art_path()), nicht bei
-    jedem Cover-Aufruf."""
-    key = (base_dir, syskey)
-    idx = _art_index_cache.get(key)
-    if idx is None:
-        idx = {}
-        try:
-            for fn in os.listdir(os.path.join(base_dir, syskey)):
-                if not fn.endswith(".art"):
-                    continue
-                base = fn[:-4]
-                stripped = re.sub(r"^\d+\s+", "", base)
-                if stripped != base and stripped not in idx:
-                    idx[stripped] = fn
-        except OSError:
-            pass
-        _art_index_cache[key] = idx
-    return idx
-
-def _art_path_in(base_dir, syskey, rom_basename):
-    """Cover-Pfad innerhalb eines bestimmten Basisordners (ART_BASE
-    oder ART_HD) - erst der exakte Name, sonst wird eine fuehrende
-    "NNN "-Nummer im tatsaechlichen Dateinamen ignoriert (siehe
-    _art_index()). Liefert IMMER einen Pfad zurueck (auch wenn er
-    nicht existiert) - der Aufrufer prueft ohnehin schon selbst auf
-    Existenz, hier nur der BESSERE Pfad-Kandidat."""
-    exact = os.path.join(base_dir, syskey, rom_basename + ".art")
-    if os.path.exists(exact):
-        return exact
-    fn = _art_index(base_dir, syskey).get(rom_basename)
-    if fn:
-        return os.path.join(base_dir, syskey, fn)
-    return exact
-
-def art_path(syskey, rom_basename):
-    return _art_path_in(ART_BASE, syskey, rom_basename)
-
-def _category_art_key(name, syskey):
-    """Kuenstlicher Schluessel NUR fuer die Sysart-/Hintergrundsuche
-    (BG_BASE/SYSART_BASE) - fuer echte Systeme identisch mit syskey.
-
-    NEU (Nutzerwunsch: eigenes Artwork fuer "Weiterspielen" und
-    "Zuletzt gespielt"): diese beiden Kategorien mischen mehrere
-    Systeme und haben deshalb bewusst syskey=None (siehe
-    build_categories()) - das darf NICHT geaendert werden, da mehrere
-    andere Stellen (z.B. filter_curated(), das Kategorien ohne syskey
-    unangetastet laesst) genau daran erkennen, dass es sich um eine
-    gemischte Spezialkategorie statt eines echten Spielesystems
-    handelt. Stattdessen wird hier - NUR fuer die Kunstwerk-Suche -
-    ueber den (uebersetzten) Kategorienamen ein fester, aber
-    sprachunabhaengiger Ersatzschluessel ermittelt, exakt nach dem
-    bereits bewaehrten Muster aus dem Core-Auswahl-Fix fuer Favoriten
-    (Vergleich gegen t(...) zur Laufzeit statt eines gespeicherten
-    festen Strings)."""
-    if syskey:
-        return syskey
-    if name == t("continue_cat"):
-        return "CONTINUE"
-    if name == t("recent_cat"):
-        return "RECENT"
-    return None
-
-_meta_cache = {}
-_mra_cache = {}
-
-def mra_meta(path):
-    """Jahr/Hersteller/Kategorie/Spieler aus einer MRA-Datei lesen."""
-    if path in _mra_cache:
-        return _mra_cache[path]
-    meta = {}
-    try:
-        with open(path, "r", errors="replace") as f:
-            head = f.read(4096)
-        for tag, key in (("year", "year"), ("manufacturer", "manufacturer"),
-                         ("category", "genre"), ("players", "players")):
-            m = re.search(r"<%s>\s*([^<]+?)\s*</%s>" % (tag, tag), head,
-                          re.I)
-            if m:
-                meta[key] = m.group(1)
-    except OSError:
-        pass
-    _mra_cache[path] = meta
-    if len(_mra_cache) > 200:
-        _mra_cache.pop(next(iter(_mra_cache)))
-    return meta
-
-def get_meta(syskey, rom_basename):
-    """Metadaten (players/year/genre) fuer ein Spiel, lazy geladen."""
-    if syskey not in _meta_cache:
-        data = {}
-        try:
-            with open(os.path.join(META_BASE, syskey + ".json")) as f:
-                data = json.load(f)
-        except (OSError, ValueError):
-            pass
-        _meta_cache[syskey] = data
-    return _meta_cache[syskey].get(rom_basename, {})
+from fe.input import (
+    ABS_HAT0X, ABS_HAT0Y, ABS_RZ, ABS_X, ABS_Y, ABS_Z,
+    AXIS_L2, AXIS_R2, BTN_A, BTN_B, BTN_DPAD_DOWN, BTN_DPAD_LEFT,
+    BTN_DPAD_RIGHT, BTN_DPAD_UP, BTN_MODE, BTN_SELECT, BTN_START, BTN_TL,
+    BTN_TL2, BTN_TR, BTN_TR2, BTN_X, BTN_Y, DEFAULT_KEYMAP,
+    Device, EV_ABS, EV_KEY, EV_SYN, InputManager, KEYMAP,
+    KEYMAP_CUSTOM_FILE, KEY_BACKSPACE, KEY_DOWN, KEY_ENTER, KEY_ESC, KEY_F10,
+    KEY_F11, KEY_F12, KEY_F6, KEY_F7, KEY_F8, KEY_F9,
+    KEY_LEFT, KEY_RIGHT, KEY_SLASH, KEY_UP, KEY_Y, LETTER_KEYS,
+    REPEAT_ACTIONS, REPEAT_DELAY, REPEAT_INTERVAL, scan_devices,
+)
+
+from fe.art import (
+    decode_png, BadgeCache, ArtCache, BgCache, _art_path_in,
+    art_path, mra_meta, get_meta, ART, ART_BASE,
+    ART_HD, BG_BASE, SYSART_BASE, META_BASE, BADGE_DIR,
+    RA_BADGE_URL, BG, BADGES, _category_art_key,
+)
 
 # ----------------------------------------------------------------------------
 # KATEGORIEN & AKTIONEN
 # ----------------------------------------------------------------------------
 
-_TAGS = re.compile(r"\s*[\(\[][^\)\]]*[\)\]]")
 
-# Datentraeger-Marker (Disc 1/2, CD 2, Side B, Part 3 ...). Diese Klammer-
-# Zusaetze duerfen NICHT wie Regions-Tags behandelt werden: sie
-# unterscheiden echte, eigenstaendige Eintraege desselben Spiels. Ohne
-# diese Ausnahme faenden "Spiel (Disc 1)" und "Spiel (Disc 2)" auf
-# demselben Dedupe-Schluessel zusammen - Disc 2+ waere aus der Liste
-# verschwunden und nicht mehr startbar.
-_DISC = re.compile(r"[\(\[]\s*(?:disc|disk|cd|side|part|tape|track)\s*"
-                   r"[0-9a-z]+\s*[\)\]]", re.I)
 
-def display_name(full):
-    """Klammer-Zusaetze fuer die Anzeige entfernen - Disc-/CD-Marker
-    bleiben aber stehen, sonst waeren mehrteilige Spiele in der Liste
-    nicht auseinanderzuhalten."""
-    short = _TAGS.sub("", full).strip()
-    m = _DISC.search(full)
-    if m and short:
-        short += " " + m.group(0).strip()
-    return short if short else full
+from fe.scan import (
+    GAMES_CACHE, GAMES_CACHE_OLD_JSON, NETWORK_WAIT_FILE, SCAN_LOGIC_VERSION,
+    _count_tree_items, _dedupe_items, _empty_node, _games_signature,
+    _has_network_mount, _merge_node, _node_count, _scan_folder_tree,
+    _scan_games_disk, _sig_expects_usb, _wait_for_network_ready, _wait_for_usb_stable,
+    _wrap_flat, network_wait_enabled, save_network_wait, scan_cores,
+    scan_games,
+)
 
-# Region-Prioritaet fuer die Dedupe-Logik beim Scannen - dieselbe
-# Reihenfolge wie in mister_boxart.py/mister_gameinfo.py bei der
-# Boxart-/Info-Zuordnung, damit alles konsistent dieselbe Region
-# bevorzugt.
-REGION_PRIORITY = ["(germany)", "(europe)", "(world)", "(usa)", "(japan)"]
-
-def _region_rank(name):
-    low = name.lower()
-    for i, tag in enumerate(REGION_PRIORITY):
-        if tag in low:
-            return i
-    return len(REGION_PRIORITY)
-
-def _canonical_key(name):
-    """Name ohne Klammer-Zusaetze, kleingeschrieben - fuer die Erkennung
-    von Mehrfach-Regionen desselben Spiels ("Spiel (USA)" und
-    "Spiel (Europe)" landen auf demselben Schluessel).
-
-    Ausnahme: ein Disc-/CD-/Side-Marker bleibt Teil des Schluessels,
-    damit mehrteilige Spiele (Disc 1/2/3) NICHT zusammengefasst und
-    dadurch unerreichbar werden."""
-    key = _TAGS.sub("", name).strip().lower()
-    m = _DISC.search(name)
-    if m:
-        key += " " + re.sub(r"\s+", "", m.group(0).lower())
-    return key
-
-# Tags, die ein ROM als Beta/Prototyp/Demo/defekten Dump o.ae.
-# kennzeichnen - werden beim Scannen ausgefiltert.
-JUNK_TAGS = ("(beta", "(proto", "(demo", "(sample", "[b]",
-            "(program", "(test", "(kiosk")
-# BUGFIX/AENDERUNG (Nutzerwunsch: "Was ist mit ROM Hacks und Zelda
-# Randomizer" - Spielhacks und Randomizer-Ausgaben wurden bisher
-# GAR NICHT angezeigt): "(hack" stand bisher in dieser Liste und
-# wurde damit komplett ausgefiltert, genau wie unfertige Beta-/Proto-
-# Dumps. Anders als diese sind Hacks (und Randomizer-Ausgaben, die
-# haeufig aehnlich getaggt werden) aber vollstaendige, spielbare
-# Inhalte, die viele Nutzer bewusst suchen - keine unfertigen/
-# kaputten Dumps. Deshalb aus der Ausschlussliste entfernt.
-#
-# BUGFIX Runde 2 (Nutzer-Rueckmeldung anhand eines echten Datei-
-# Screenshots: "NES-Ordner zeigt nur 2 ROMs an, sind aber viel mehr"):
-# "(unl)" und "(pirate" standen ebenfalls noch in dieser Liste - die
-# Screenshot-Dateiliste zeigte, dass ein GROSSER TEIL einer typischen
-# NES-Sammlung aus genau diesen Tags besteht (unzaehlige beliebte,
-# VOLLSTAENDIGE Mehrfach-Cartridges/unlizenzierte Spiele, gerade im
-# asiatischen Raum sehr verbreitet und kommerziell verkauft) - wurden
-# bisher komplett wie kaputte Dumps behandelt und ausgeblendet, obwohl
-# es sich um voll spielbare, oft gesuchte Inhalte handelt. Aus der
-# Ausschlussliste entfernt, gleiche Begruendung wie bei "(hack" oben.
-# "[b]" (explizit als fehlerhafter Dump markiert) bleibt bewusst
-# bestehen - das ist ein echter Qualitaetsmangel, kein blosser
-# Lizenzstatus.
-
-def _is_junk(name):
-    low = name.lower()
-    return any(tag in low for tag in JUNK_TAGS)
-
-# Rein japanische ROMs ausblenden (auf Wunsch - EU/USA reicht den
-# meisten). Erkennt "(Japan)"/"[Japan]" und die abgekuerzte Variante
-# "(J)" aus aelteren ROM-Sets. WICHTIG: Mehrfach-Region-Tags wie
-# "(Japan, USA)" oder "(USA, Japan)" bleiben erhalten, da diese Version
-# auch USA/Europa abdeckt - das Muster verlangt eine direkt schliessende
-# Klammer OHNE weiteren Text/Komma dazwischen.
-_JAPAN_ONLY = re.compile(r"[\(\[]\s*(?:japan|j)\s*[\)\]]", re.I)
-
-def _is_japan_only(name):
-    return bool(_JAPAN_ONLY.search(name))
-
-# Bekannte Boot-/Test-/Demo-Dateien, die manche MiSTer-Verteilungen
-# direkt in die ROM-Ordner legen (fuer den Hardware-Selbsttest). Haben
-# zufaellig die richtige Endung (z.B. .chd/.gb/.gba) und wuerden sonst
-# faelschlich als "Spiel" in der Liste auftauchen.
-IGNORE_ROM_BASENAMES = {"boot", "boot1", "boot2", "mister-boot", "mister-demo"}
-
-def nice_name(dirname):
-    raw = dirname.lstrip("_")
-    return NICE_NAMES.get(raw, raw.replace("_", " "))
-
-RECENT_MARKER = ".frontend_recent"   # Marker-Datei, mit der ein externes
-                            # Skript (z.B. TheRealSutefans "Recently
-                            # Played"-Skript) einen _*-Ordner als Quelle
-                            # kennzeichnet - siehe find_marked_recent_dir().
-
-def _folder_items(d, by_mtime=False):
-    """Startbare Items (.mra/.rbf/.mgl) eines _*-Ordners - wie scan_cores
-    sie baut. Ausgelagert, damit auch der markierte Recently-Ordner
-    dieselbe Logik nutzt.
-
-    by_mtime=True sortiert nach Datei-mtime absteigend (neueste zuerst) -
-    fuer den markierten "Zuletzt gespielt"-Ordner, dessen Skript die
-    mtimes auf die jeweilige Spielzeit stempelt. Bei gleichen mtimes
-    (Skript ohne Zeitstempel) faellt es auf alphabetisch zurueck."""
-    files = (glob.glob(os.path.join(d, "*.mra")) +
-             glob.glob(os.path.join(d, "*.rbf")) +
-             glob.glob(os.path.join(d, "*.mgl")))
-    if by_mtime:
-        def _key(f):
-            try:
-                mt = os.path.getmtime(f)
-            except OSError:
-                mt = 0
-            return (-mt, os.path.basename(f).lower())
-        files = sorted(files, key=_key)
-    else:
-        files = sorted(files)
-    items = []
-    for f in files:
-        name = os.path.splitext(os.path.basename(f))[0]
-        name = re.sub(r"_\d{8}[a-zA-Z]?$", "", name)
-        items.append((name, "core", f))
-    return items
-
-def find_marked_recent_dir():
-    """Den _*-Ordner suchen, den ein externes Skript per RECENT_MARKER
-    als Zuletzt-gespielt-Quelle kennzeichnet. Gibt den Pfad zurueck oder
-    None. Ueber den Marker unabhaengig vom Ordnernamen - der ist im
-    externen Skript frei konfigurierbar. Ohne ein solches Skript
-    (Normalfall) existiert kein Marker irgendwo - diese Funktion liefert
-    dann einfach None, und alles verhaelt sich wie bisher."""
-    for d in sorted(glob.glob(os.path.join(BASE, "_*"))):
-        if os.path.isdir(d) and os.path.exists(os.path.join(d, RECENT_MARKER)):
-            return d
-    return None
-
-def scan_cores(skip_dir=None):
-    """Alle /media/fat/_*-Ordner nach .rbf/.mra/.mgl durchsuchen.
-    skip_dir wird ausgelassen (der markierte Recently-Ordner, der bereits
-    separat als "Zuletzt gespielt" gefuehrt wird - sonst doppelt)."""
-    cats = []
-    skip_real = os.path.realpath(skip_dir) if skip_dir else None
-    for d in sorted(glob.glob(os.path.join(BASE, "_*"))):
-        if not os.path.isdir(d) or os.path.basename(d) in SKIP_DIRS:
-            continue
-        if skip_real and os.path.realpath(d) == skip_real:
-            continue
-        # .mgl mit aufnehmen: so tauchen MGL-Shortcut-Ordner (z.B. das
-        # "Recently Played"-Skript) auf und sind direkt startbar - der
-        # Start-Pfad (load_core) verarbeitet .mgl genauso wie .rbf/.mra.
-        items = _folder_items(d)
-        if items:
-            # Arcade-Ordner bekommen ein Info-Panel (MRA-Metadaten)
-            base = os.path.basename(d).lstrip("_").lower()
-            syskey = "ARCADE" if "arcade" in base else None
-            cats.append((nice_name(os.path.basename(d)), items, syskey))
-    return cats
-
-# BUGFIX (Nutzer-Rueckmeldung anhand einer echten Verzeichnisliste mit
-# 3202 Dateien: "es werden immer noch nur zwei Spiele angezeigt" - TROTZ
-# des vorherigen (unl)/(pirate)-Fixes): _games_signature() (siehe unten)
-# ist bewusst NUR ein schneller Fingerabdruck basierend auf Ordner-
-# Aenderungszeiten, keine Tiefensuche (Performance-Grund, siehe
-# Kommentar dort). Aendert sich NUR unsere FILTER-LOGIK im Code (z.B.
-# JUNK_TAGS), nicht aber die Dateien selbst, bleibt die Ordner-mtime
-# UNVERAENDERT - der alte, noch mit der alten Logik erzeugte
-# Cache-Eintrag wurde dadurch munter weiterverwendet, obwohl der Code
-# laengst repariert war. Nur ein manueller Rescan (System -> Wartung)
-# half bisher, JEDE zukuenftige Filter-Logik-Aenderung haette denselben
-# Effekt gehabt. Fix: eine eigene Versionsnummer, die bei jeder
-# Aenderung an der FILTER-/DEDUPE-Logik selbst (nicht bei jedem Code-
-# Release) von Hand hochgezaehlt wird - fliesst mit in die Signatur
-# ein, macht den Cache dadurch automatisch ungueltig, sobald sich die
-# Auswertung selbst geaendert hat, ganz unabhaengig von Datei-mtimes.
-SCAN_LOGIC_VERSION = 4   # 1 = Basis, 2 = "(unl)"/"(pirate)" nicht mehr Junk,
-                         # 3 = OPTIONAL_GAME_SYSTEMS (SNES_Tracker-Core),
-                         # 4 = SMW Hacks (games/SNES/SMW_HACKS)
-
-def _games_signature():
-    """Schneller Fingerabdruck der ROM-Ordner (ohne Tiefensuche):
-    existierende Wurzeln + deren mtime. Aendert sich der Inhalt einer
-    Wurzel direkt, aendert sich die Signatur; bei Aenderungen tief in
-    Unterordnern hilft der System-Eintrag 'Spieleliste neu einlesen'.
-
-    HINWEIS (v1.32 zurueckgerollt): Ein Zwischenstand hat versucht,
-    hierfuer ALLE Unterordner rekursiv mit einzubeziehen, um Aende-
-    rungen tief in Sammlungen (z.B. 'Favoriten') automatisch zu
-    erkennen. Das hat sich bei einer echten, grossen Sammlung (v.a.
-    ueber USB mit hoeherer Zugriffszeit als ein schneller lokaler
-    Datentraeger) als deutlich zu langsam herausgestellt - der
-    komplette Ordnerbaum wurde dadurch bei JEDEM Boot durchlaufen,
-    bevor der Bildschirm ueberhaupt wechselt (Musik lief bereits,
-    das Frontend blieb aber minutenlang unsichtbar). Zurueck auf die
-    schnelle, nur-oberste-Ebene-Pruefung - das war der urspruengliche,
-    bewusste Kompromiss: schneller Boot immer, dafuer Aenderungen tief
-    in Unterordnern nur per manuellem Rescan erkannt.
-
-    WICHTIG (v1.53): statt des ABSOLUTEN Pfads geht nur eine Ort-
-    Kennung ("usb:" oder "fat:") + der relative Ordnername in die
-    Signatur ein. Eine USB-Platte mountet nach einem Kaltstart nicht
-    immer unter derselben Nummer (mal /media/usb0, mal /media/usb1) -
-    mit dem absoluten Pfad haette sich die Signatur dadurch bei jedem
-    Boot geaendert, obwohl sich am Inhalt nichts geaendert hat, und
-    jedes Mal einen unnoetigen kompletten Neuscan ausgeloest. Sortiert,
-    damit auch die Reihenfolge der Basispfade die Signatur nicht
-    veraendert."""
-    sig = []
-    for base in GAMES_BASES:
-        if not os.path.isdir(base):
-            continue
-        tag = "usb:" if "/media/usb" in base else "fat:"
-        for _d, _sk, folders, _r, _e in GAME_SYSTEMS:
-            for folder in folders:
-                root = os.path.join(base, folder)
-                try:
-                    mtime = int(os.path.getmtime(root))
-                except OSError:
-                    continue
-                sig.append((tag + folder, mtime))
-        for _d, _sk, folders, _r, _e, _core in OPTIONAL_GAME_SYSTEMS:
-            for folder in folders:
-                root = os.path.join(base, folder)
-                try:
-                    mtime = int(os.path.getmtime(root))
-                except OSError:
-                    continue
-                sig.append((tag + folder, mtime))
-    # Core-Datei der optionalen Systeme selbst mit in die Signatur
-    # aufnehmen (nicht nur den ROM-Ordner oben) - sonst wuerde ein
-    # nachtraeglich installierter/entfernter SNES_Tracker-Core NICHT
-    # erkannt, solange sich am ROM-Ordner nichts aendert, und die neue
-    # Kategorie bliebe bis zum naechsten manuellen Rescan unsichtbar.
-    for _d, _sk, _f, _r, _e, core_check_path in OPTIONAL_GAME_SYSTEMS:
-        try:
-            sig.append(("core:" + core_check_path,
-                       int(os.path.getmtime(core_check_path))))
-        except OSError:
-            sig.append(("core:" + core_check_path, None))
-    sig.sort(key=lambda t: (t[0], t[1] is None, t[1]))
-    sig.append(("__scan_logic_version__", SCAN_LOGIC_VERSION))
-    return sig
-
-def _sig_expects_usb(sig):
-    """True, wenn eine Signatur mindestens einen USB-Ordner enthaelt -
-    genutzt, um zu entscheiden, ob sich das Warten auf einen USB-Mount
-    ueberhaupt lohnt (siehe scan_games())."""
-    return any(entry[0].startswith("usb:") for entry in sig)
-
-def _node_to_json(node):
-    return {"folders": {k: _node_to_json(v) for k, v in node["folders"].items()},
-            "items": [[i0, i1, list(i2[:4]) + [list(i2[4])]] for i0, i1, i2 in node["items"]]}
-
-def _node_from_json(data):
-    return {"folders": {k: _node_from_json(v) for k, v in data["folders"].items()},
-            "items": [(i0, i1, (i2[0], i2[1], i2[2], i2[3], tuple(i2[4])))
-                     for i0, i1, i2 in data["items"]]}
-
-def _cats_to_json(cats):
-    return [[n, _node_to_json(node), sk] for n, node, sk in cats]
-
-def _cats_from_json(data):
-    return [(n, _node_from_json(node), sk) for n, node, sk in data]
-
-def load_recent():
-    """Liste der zuletzt gespielten Spiele laden - Rueckgabe im
-    gleichen (label, kind, arg)-Format wie normale Kategorie-Eintraege,
-    direkt startbar. Leere Liste, wenn noch nie etwas gestartet wurde
-    oder die Datei fehlt/beschaedigt ist."""
-    try:
-        with open(RECENT_FILE) as f:
-            data = json.load(f)
-        return [(e["label"], "game", e["arg"]) for e in data]
-    except (OSError, ValueError, KeyError, TypeError):
-        return []
-
-def _bare_game_name(label):
-    """Loest aus einer Zuletzt-gespielt-Beschriftung den reinen
-    Spielnamen heraus - fuer externe Listen (siehe find_marked_recent_
-    dir()), deren Eintraege ein Core-/RA-Praefix vorne dran haben
-    (z.B. TheRealSutefans "RA SNES - Chrono Trigger", Format
-    "<Anzeige> - <Spielname>" mit dem Spielnamen NACH dem ERSTEN
-    " - "). Ohne " - " im Label wird das Label unveraendert
-    zurueckgegeben (unsere eigene load_recent()-Liste hat kein
-    Praefix, braucht diese Behandlung also nicht)."""
-    return label.split(" - ", 1)[1] if " - " in label else label
-
-def find_continue_game():
-    """Sucht das zuletzt gespielte Spiel, das noch NICHT als
-    durchgespielt markiert ist - fuer die "Weiterspielen"-Vorschlag
-    ganz oben im Hauptmenue (Nutzerwunsch: "genau hier bist du stehen-
-    geblieben" statt nur eine chronologische Liste). Liefert (label,
-    "game"/"core", arg) oder None, wenn nichts passt (z.B. alles
-    bereits durchgespielt markiert, oder noch nie etwas gestartet).
-
-    Bevorzugt die ueber RECENT_MARKER eingebundene externe Liste
-    (TheRealSutefans "Last Played"-Skript), FALLS vorhanden - MiSTers
-    eigene *_recent_1.cfg-Dateien erfassen JEDEN Spielstart, egal ob
-    ueber unser Frontend, MiSTers eigenes Menue oder ein anderes Tool.
-    Unsere eigene load_recent()-Liste kennt dagegen nur, was ueber
-    UNSER Frontend gestartet wurde - waere sonst zunehmend veraltet
-    gegenueber der darunter angezeigten "Zuletzt gespielt"-Liste,
-    sobald ein solches externes Skript aktiv ist.
-
-    WICHTIG beim Abgleich gegen die Durchgespielt-Markierung: die
-    externe Liste hat Core-/RA-Praefixe im Label (z.B. "RA SNES -
-    Chrono Trigger"), unsere Markierung speichert aber den REINEN
-    Spielnamen ("Chrono Trigger") - ein direkter Vergleich wuerde nie
-    treffen. Siehe _bare_game_name() fuer die Praefix-Behandlung.
-    Ohne aktiven Marker unveraendert unsere eigene load_recent()."""
-    completed = _load_completed_raw()
-    marked_recent = find_marked_recent_dir()
-    if marked_recent:
-        for entry in _folder_items(marked_recent, by_mtime=True):
-            if _bare_game_name(entry[0]) not in completed:
-                return entry
-        return None
-    for entry in load_recent():
-        label = entry[0]
-        if label not in completed:
-            return entry
-    return None
-
-def record_recent(label, arg):
-    """Ein gestartetes Spiel oben in die 'Zuletzt gespielt'-Liste
-    einreihen (Duplikate werden nach oben verschoben statt doppelt zu
-    erscheinen - Erkennung ueber den Namen, nicht ueber arg: nach
-    einer JSON-Speicherrunde werden verschachtelte Tupel zu Listen,
-    ein direkter Tupel-Vergleich wuerde also nie zutreffen), auf
-    RECENT_MAX Eintraege gekappt."""
-    try:
-        with open(RECENT_FILE) as f:
-            data = json.load(f)
-    except (OSError, ValueError):
-        data = []
-    data = [e for e in data if e.get("label") != label]
-    data.insert(0, {"label": label, "arg": list(arg)})
-    data = data[:RECENT_MAX]
-    try:
-        os.makedirs(os.path.dirname(RECENT_FILE), exist_ok=True)
-        with open(RECENT_FILE, "w") as f:
-            json.dump(data, f)
-    except OSError:
-        pass
-
-def _load_favorites_raw():
-    try:
-        with open(FAVORITES_FILE) as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return []
-
-def load_favorites():
-    """Favoriten laden - selbes (label, kind, arg)-Format wie
-    load_recent(), direkt als eigene Kategorie nutzbar. Reihenfolge:
-    zuletzt hinzugefuegt zuerst (wie bei 'Zuletzt gespielt'), aber OHNE
-    Obergrenze - Favoriten sind eine bewusste, dauerhafte Auswahl,
-    keine automatische Verlaufsliste."""
-    return [(e["label"], "game", e["arg"]) for e in _load_favorites_raw()
-            if "label" in e and "arg" in e]
-
-def is_favorite(label):
-    """Ob ein Spiel (per Name) aktuell als Favorit markiert ist - fuer
-    die kleine Markierung in der Liste."""
-    return any(e.get("label") == label for e in _load_favorites_raw())
-
-def toggle_favorite(label, arg):
-    """Favoritenstatus eines Spiels umschalten (per Name erkannt,
-    genau wie bei 'Zuletzt gespielt' - aus demselben Grund: nach dem
-    Speichern sind es Listen, kein direkter Tupel-Vergleich moeglich).
-    Rueckgabe: True, wenn jetzt Favorit ist, sonst False."""
-    data = _load_favorites_raw()
-    if any(e.get("label") == label for e in data):
-        data = [e for e in data if e.get("label") != label]
-        now_fav = False
-    else:
-        data.insert(0, {"label": label, "arg": list(arg)})
-        now_fav = True
-    try:
-        os.makedirs(os.path.dirname(FAVORITES_FILE), exist_ok=True)
-        with open(FAVORITES_FILE, "w") as f:
-            json.dump(data, f)
-    except OSError:
-        pass
-    return now_fav
-
-# NEUES FEATURE (Nutzer-Rueckfrage: "werden bei Weiterspielen und
-# Zuletzt gespielt auch die richtigen Cores fuer die Spiele verwendet,
-# womit sie zuletzt gestartet wurden?"): Antwort war NEIN - die
-# bisherige Core-Wahl (Standard/RA) wurde nur SITZUNGS-lokal in
-# self._ra_core_choice gemerkt, und zwar pro SYSTEM (z.B. "SNES"),
-# nicht pro einzelnem Spiel, UND nur, wenn die echte Kategorie in
-# DERSELBEN Sitzung schon einmal betreten wurde - startete man ein
-# Spiel direkt aus "Weiterspielen"/"Zuletzt gespielt" heraus, griff
-# das oft gar nicht, es lief still (und ohne Nachfrage) der
-# Standard-Core, selbst wenn das Spiel zuletzt mit RA gestartet wurde.
-#
-# Fix: zusaetzlich zur bestehenden Sitzungs-Erinnerung eine
-# PERSISTIERTE, pro einzelnem Spiel (nach Name) gespeicherte "zuletzt
-# tatsaechlich verwendete Core-Wahl" - ueberlebt einen Neustart. Wird
-# in der Hauptschleife als Rueckfallebene genutzt, wenn fuer das
-# aktuelle System in DIESER Sitzung noch keine frische Wahl getroffen
-# wurde (siehe Kommentar dort). Favoriten fragen bewusst IMMER neu
-# (siehe dort) und nutzen diese Datei nur zum Schreiben, nicht zum
-# Lesen.
-def load_last_core_choice(label):
-    """(rbf, setname) oder None - die zuletzt fuer GENAU DIESES Spiel
-    (nach Namen) tatsaechlich verwendete Core-Wahl. None bedeutet
-    sowohl "noch nie erfasst" als auch "zuletzt bewusst Standard-Core
-    gewaehlt" - in beiden Faellen ist das Ergebnis (Standard-Core
-    verwenden) identisch, die Unterscheidung waere ohne Nutzen."""
-    try:
-        with open(LAST_CORE_CHOICE_FILE) as f:
-            data = json.load(f)
-        v = data.get(label)
-        return tuple(v) if v else None
-    except (OSError, ValueError, AttributeError, TypeError):
-        return None
-
-def record_core_choice(label, ra_choice):
-    """Speichert, welche Core-Wahl (ra_choice: (rbf, setname) oder
-    None fuer Standard) beim letzten tatsaechlichen Start dieses
-    Spiels verwendet wurde."""
-    try:
-        with open(LAST_CORE_CHOICE_FILE) as f:
-            data = json.load(f)
-    except (OSError, ValueError):
-        data = {}
-    data[label] = list(ra_choice) if ra_choice else None
-    try:
-        os.makedirs(os.path.dirname(LAST_CORE_CHOICE_FILE), exist_ok=True)
-        with open(LAST_CORE_CHOICE_FILE, "w") as f:
-            json.dump(data, f)
-    except OSError:
-        pass
-
-def _wait_for_usb_stable(max_wait=10.0, poll=0.5, min_wait_if_none=3.0):
-    """Kurz warten, falls USB-Laufwerke gerade erst einhaengen - nur
-    relevant fuer den (seltenen) tatsaechlichen Scan-Fall, verzoegert
-    NICHT den schnellen Cache-Treffer-Normalfall.
-
-    Prueft nicht nur, OB der Mountpunkt existiert (das kann bei einer
-    langsam hochlaufenden Festplatte schon der Fall sein, WAEHREND die
-    Dateiliste dahinter noch nachzieht) - sondern die tatsaechliche
-    Anzahl an Eintraegen in jedem USB-Basisordner (os.listdir). Erst
-    wenn sich diese Anzahl zwischen zwei Abfragen nicht mehr aendert,
-    gilt das Laufwerk als wirklich fertig eingehaengt.
-
-    Rueckgabe (v1.53): drei moegliche Zustaende, damit der Aufrufer
-    weiss, ob das Ergebnis vertrauenswuerdig genug zum Zwischen-
-    speichern ist:
-    - True  = mindestens ein USB-Pfad gefunden UND stabil - Ergebnis
-      vollstaendig, cachen ist sicher.
-    - None  = ueberhaupt kein USB im Spiel (Setup ohne USB-Laufwerk) -
-      Ergebnis vollstaendig, cachen ist sicher.
-    - False = ein USB-Mountpunkt wurde gesehen, ist aber bis zum
-      Zeitlimit nicht stabil geworden - das Scan-Ergebnis KOENNTE
-      unvollstaendig sein, cachen ist NICHT sicher (siehe scan_games()).
-
-    Hintergrund: seit v1.48 passiert der Bildschirmwechsel VOR dem
-    Scan (behebt das Haengenbleiben im MiSTer-OSD) - das aendert aber
-    nichts daran, WANN der Scan selbst startet. Laeuft er, bevor ein
-    USB-Laufwerk nach einem Kaltstart wirklich fertig eingehaengt ist,
-    fehlen dessen Spiele im Ergebnis."""
-    usb_candidates = [b for b in GAMES_BASES if "/media/usb" in b]
-    if not usb_candidates:
-        return None
-
-    def snapshot():
-        found = False
-        total = 0
-        for b in usb_candidates:
-            if os.path.isdir(b):
-                found = True
-                try:
-                    total += len(os.listdir(b))
-                except OSError:
-                    pass
-        return found, total
-
-    t0 = time.monotonic()
-    last_total = None
-    stable_streak = 0
-    while True:
-        elapsed = time.monotonic() - t0
-        found, total = snapshot()
-        if elapsed >= max_wait:
-            LOG("_wait_for_usb_stable: Zeitlimit (%.1fs) erreicht, fahre trotzdem fort"
-               % max_wait)
-            # Beim Zeitlimit unterscheiden: ist ueberhaupt ein
-            # Mountpunkt da? Wenn ja, ist er evtl. nur noch nicht
-            # stabil - trotzdem unsicher, also nicht cachen (False).
-            # Wenn gar keiner kam, ist es ein Setup ohne USB (None).
-            return False if found else None
-        # BUGFIX (Nutzer-Rueckmeldung): ein durchgehend LEERER, aber
-        # STABILER Ordner (Anzahl bleibt bei 0) wurde bisher NIE als
-        # stabil erkannt, weil "has_content" das ausdruecklich
-        # voraussetzte - nur ein durchgehend GEFUELLTER Ordner konnte
-        # jemals "stabil" werden. MiSTer legt aber haeufig leere
-        # /media/usb0, /media/usb1 usw. als Platzhalter an, VOELLIG
-        # unabhaengig davon, ob dort tatsaechlich ein USB-Laufwerk
-        # angeschlossen ist. Bei so einem Setup blieb die Anzahl immer
-        # bei 0, "stable_streak" wurde nie hochgezaehlt, das Zeitlimit
-        # wurde dadurch IMMER erreicht - das Scan-Ergebnis wurde NIE
-        # gecacht, die Spieleliste wurde bei JEDEM Start komplett neu
-        # gescannt. Jetzt zaehlt auch eine durchgehend stabile Null als
-        # stabil (mit etwas mehr Vorsicht: doppelt so viele
-        # aufeinanderfolgende Abfragen wie bei echtem Inhalt, damit ein
-        # Laufwerk, das gerade erst zu befuellen beginnt, nicht zu
-        # frueh faelschlich als "leer und fertig" gilt).
-        if total == last_total:
-            stable_streak += 1
-            required = 2 if total > 0 else 4
-            if stable_streak >= required:
-                LOG("_wait_for_usb_stable: USB-Inhalt stabil (%d Eintraege) nach %.1fs"
-                   % (total, elapsed))
-                return True if total > 0 else None
-        else:
-            stable_streak = 0
-        if not found and elapsed >= min_wait_if_none:
-            return None
-        last_total = total
-        time.sleep(poll)
-
-# ----------------------------------------------------------------------------
-# NETZWERK/NAS-WARTEOPTION (Nutzerwunsch): liegen die ROMs auf einem
-# Netzlaufwerk (NAS, ueber CIFS/SMB oder NFS eingebunden - MiSTer haengt
-# das typischerweise unter /media/fat/cifs ein bzw. blendet es direkt in
-# die games-Ordner ein, siehe cifs_mount.sh), kann der Scan starten,
-# BEVOR die Verbindung wirklich steht - das Ergebnis (leer oder
-# unvollstaendig) wuerde dann sogar dauerhaft gecacht werden. Standard
-# AUS (die meisten Nutzer haben SD-Karte/USB, fuer die das nur unnoetig
-# verzoegern wuerde) - NUR fuer NAS-Nutzer per Option einschaltbar.
-NETWORK_WAIT_FILE = "/media/fat/frontend/network_wait"
-
-def network_wait_enabled():
-    """Liest die Einstellung "beim Start auf Netzwerk/NAS warten" -
-    Standard NEIN."""
-    try:
-        with open(NETWORK_WAIT_FILE) as f:
-            return f.read().strip().lower() in ("yes", "1", "ja", "true")
-    except OSError:
-        return False
-
-def save_network_wait(enabled):
-    try:
-        os.makedirs(os.path.dirname(NETWORK_WAIT_FILE), exist_ok=True)
-        with open(NETWORK_WAIT_FILE, "w") as f:
-            f.write("yes" if enabled else "no")
-    except OSError:
-        pass
-
-def _has_network_mount():
-    """True, wenn eine Netzwerk-Freigabe (CIFS/NFS) gemountet ist - das
-    eigentliche Signal, dass das NAS jetzt wirklich da ist. Uebernommener
-    Vorschlag - siehe _wait_for_network_ready()."""
-    try:
-        with open("/proc/mounts") as f:
-            for line in f:
-                parts = line.split()
-                if len(parts) >= 3 and parts[2] in (
-                        "cifs", "smb3", "smbfs", "nfs", "nfs4"):
-                    return True
-    except OSError:
-        pass
-    return False
-
-def _wait_for_network_ready(max_wait=45.0, poll=0.5):
-    """NUR aktiv, wenn network_wait_enabled() - sonst sofortige
-    Rueckkehr (kein Einfluss auf den ganz ueberwiegenden Regelfall SD-
-    Karte/USB).
-
-    ERWEITERT (uebernommener Vorschlag - loest eine Luecke der
-    urspruenglichen Fassung): die vorherige Version wartete nur auf
-    "irgendeine Netzwerkverbindung" und dann auf einen stabilen Inhalt
-    von GAMES_BASES - GAMES_BASES war aber beim Modul-Import bereits
-    (leer) eingefroren, BEVOR das NAS ueberhaupt gemountet war, und ein
-    schon stabiler, aber rein LOKALER Ordner (nur Cores, kein NAS)
-    konnte das Warten faelschlich vorzeitig beenden lassen. Jetzt wird
-    zusaetzlich echt geprueft, ob eine CIFS/NFS-Freigabe TATSAECHLICH
-    gemountet ist (_has_network_mount()) - erst NACHDEM das gesehen
-    wurde, zaehlt ein stabiler Inhalt. GAMES_BASES wird ausserdem bei
-    jeder Pruefung sowie am Ende neu ermittelt (_discover_games_bases()),
-    damit ein erst waehrend der Wartezeit erscheinendes NAS-Mount auch
-    tatsaechlich erfasst wird."""
-    if not network_wait_enabled():
-        return
-    global GAMES_BASES
-    t0 = time.monotonic()
-    while not _has_network():
-        if time.monotonic() - t0 >= max_wait:
-            LOG("_wait_for_network_ready: keine Netzwerkverbindung nach %.0fs - fahre trotzdem fort"
-               % max_wait)
-            GAMES_BASES = _discover_games_bases()
-            return
-        time.sleep(poll)
-
-    def snapshot():
-        # Wurzeln JEDES Mal neu ermitteln - erfasst ein erst jetzt
-        # erscheinendes NFS/CIFS-Mount (GAMES_BASES ist eingefroren).
-        total = 0
-        for b in _discover_games_bases():
-            if os.path.isdir(b):
-                try:
-                    total += len(os.listdir(b))
-                except OSError:
-                    pass
-        return total
-
-    last_total = None
-    stable_streak = 0
-    saw_mount = False
-    while True:
-        elapsed = time.monotonic() - t0
-        if elapsed >= max_wait:
-            LOG("_wait_for_network_ready: Zeitlimit (%.0fs) erreicht, fahre trotzdem fort"
-               % max_wait)
-            break
-        if _has_network_mount():
-            saw_mount = True
-        total = snapshot()
-        # Erst als fertig gelten, wenn das NAS-Mount GESEHEN wurde - sonst
-        # bricht der schon stabile LOKALE Ordner (nur Cores) das Warten ab,
-        # bevor das NAS ueberhaupt gemountet ist.
-        if saw_mount and total == last_total:
-            stable_streak += 1
-            required = 2 if total > 0 else 4   # bei leer vorsichtiger, siehe _wait_for_usb_stable()
-            if stable_streak >= required:
-                LOG("_wait_for_network_ready: NAS gemountet, Inhalt stabil (%d Eintraege) nach %.1fs"
-                   % (total, elapsed))
-                break
-        else:
-            stable_streak = 0
-        last_total = total
-        time.sleep(poll)
-    GAMES_BASES = _discover_games_bases()
-
-def scan_games(force=False, progress_cb=None):
-    """ROM-Listen laden - aus dem Cache, wenn er noch passt.
-    progress_cb(i, total, name): wird NUR beim tatsaechlichen Scannen
-    von der Platte aufgerufen (nicht beim schnellen Cache-Treffer) -
-    normale Boots (Cache passt) bleiben also unveraendert schnell,
-    nur der seltene "erster Start"/"ROMs geaendert"-Fall zeigt Fortschritt.
-
-    PERFORMANCE (Nutzerwunsch: "performance-technisch noch was
-    rausholen"): Cache-Datei laeuft seit hier auf Pickle statt JSON -
-    bei einer grossen Sammlung (getestet mit ~4700 Spielen, angelehnt
-    an eine echte Nutzer-Sammlung) ca. 9x schnelleres Schreiben, ca.
-    2.7x schnelleres Lesen, UND kleinere Datei. Pickle erhaelt Tupel
-    nativ, dadurch entfaellt zusaetzlich der komplette Umweg ueber
-    _cats_to_json()/_cats_from_json() (Tupel<->Liste-Konvertierung
-    fuer JEDES einzelne Spiel) - das war selbst schon ein spuerbarer
-    Teil der Kosten, nicht nur die reine Serialisierung."""
-    sig = _games_signature()
-    cached_sig = None
-    data = None
-    if not force:
-        try:
-            with open(GAMES_CACHE, "rb") as f:
-                data = pickle.load(f)
-            cached_sig = data["sig"]
-            if cached_sig == sig:
-                LOG("Spieleliste aus Cache (%d Systeme)"
-                    % len(data["cats"]))
-                return data["cats"]
-        except (OSError, ValueError, KeyError, IndexError, TypeError,
-                pickle.UnpicklingError, EOFError, AttributeError):
-            cached_sig = None
-            data = None
-
-    usb_ready = None
-    waited_already = False
-    # Cache passt (noch) nicht. Haeufigster Grund bei einem KALTSTART:
-    # die USB-Platte war in dem Moment, in dem die Signatur oben
-    # gebildet wurde, schlicht noch nicht gemountet - die aktuelle
-    # Signatur hat dann keine USB-Ordner, der Cache (vom letzten Scan
-    # MIT USB) aber schon. Nur in genau diesem Fall lohnt sich das
-    # Warten VOR einem kompletten Neuscan: erwartet der Cache USB,
-    # sehen wir aber noch keines, dann warten und erneut vergleichen.
-    # SD-only-Systeme (Cache ohne USB) und warme Boots (Signatur passt
-    # sofort) warten hier gar nicht.
-    if (not force and cached_sig is not None
-            and _sig_expects_usb(cached_sig) and not _sig_expects_usb(sig)):
-        LOG("scan_games: Cache erwartet USB, noch nicht gemountet - warte")
-        usb_ready = _wait_for_usb_stable()
-        waited_already = True
-        sig = _games_signature()
-        if cached_sig == sig:
-            LOG("Spieleliste aus Cache nach USB-Mount (%d Systeme)"
-                % len(data["cats"]))
-            return data["cats"]
-
-    if not waited_already:
-        usb_ready = _wait_for_usb_stable()
-    cats = _scan_games_disk(progress_cb)
-
-    # usb_ready: True = USB sauber eingehaengt, None = gar kein USB im
-    # Spiel (beides -> Ergebnis vollstaendig, cachen ok). False = ein
-    # USB-Mountpunkt war da, wurde aber nicht rechtzeitig stabil - das
-    # Ergebnis KOENNTE unvollstaendig sein. Dann NICHT cachen, sonst
-    # bliebe eine Luecke dauerhaft bestehen (der Cache passt beim
-    # naechsten Boot ja wieder) - ohne Cache scannt der naechste Boot
-    # einfach erneut, bis die Platte einmal rechtzeitig bereit war.
-    if usb_ready is False:
-        LOG("scan_games: USB nicht sicher bereit - Ergebnis wird NICHT gecacht")
-        return cats
-
-    sig = _games_signature()
-    try:
-        with open(GAMES_CACHE, "wb") as f:
-            pickle.dump({"sig": sig, "cats": cats}, f, protocol=pickle.HIGHEST_PROTOCOL)
-        # Einmalige Aufraeumung: eine alte JSON-Cache-Datei aus der Zeit
-        # vor dem Pickle-Wechsel wuerde sonst nutzlos auf der SD-Karte
-        # liegen bleiben (wird nie wieder gelesen, seit GAMES_CACHE auf
-        # .pkl zeigt) - einfach mit entfernen, kein Fehler wenn nicht
-        # vorhanden.
-        try:
-            os.remove(GAMES_CACHE_OLD_JSON)
-        except OSError:
-            pass
-    except OSError:
-        pass
-    return cats
-
-def _wrap_flat(items_list):
-    """Eine bestehende flache Liste (Scripts/System/Cores/Zuletzt
-    gespielt) als Baumknoten ohne Unterordner einwickeln - macht alle
-    Kategorien einheitlich zu Baumknoten, der Rest des Codes muss
-    dadurch nicht zwischen 'flacher Liste' und 'Baum' unterscheiden."""
-    return {"folders": {}, "items": items_list}
-
-def _count_tree_items(node):
-    """Zaehlt rekursiv alle Eintraege in einem Baumknoten - auch in
-    verschachtelten Unterordnern (Nutzerwunsch: die Kategorien
-    "Sammlungen"/"RA-Erfolgsjaeger" zeigten im Hauptmenue selbst keine
-    Anzahl, man musste erst reingehen um zu sehen ob ueberhaupt was
-    drinsteckt). Nur fuer die kleinen, abgeleiteten Kategorien gedacht
-    (Sammlungen/RA-Erfolgsjaeger haben wenige Dutzend Eintraege) - fuer
-    die grossen ROM-Kategorien waere das zu teuer, dort zaehlen wir
-    bewusst nicht."""
-    total = len(node.get("items", ()))
-    for sub in node.get("folders", {}).values():
-        total += _count_tree_items(sub)
-    return total
-
-def _empty_node():
-    """Leerer Baumknoten: {'folders': {Name: Knoten, ...}, 'items':
-    [(label,kind,arg), ...]}. Wird fuer ALLE Kategorien einheitlich
-    genutzt - auch fuer Scripts/System/Cores/Zuletzt-gespielt, die
-    einfach 'folders'={} bekommen (flach, wie bisher)."""
-    return {"folders": {}, "items": []}
-
-def _merge_node(dst, src):
-    """src-Knoten in dst hineinmischen - noetig, falls derselbe
-    Systemordner (z.B. 'SNES') von mehreren GAMES_BASES aus existiert
-    (SD-Karte UND ein USB-Laufwerk)."""
-    for name, sub in src["folders"].items():
-        if name in dst["folders"]:
-            _merge_node(dst["folders"][name], sub)
-        else:
-            dst["folders"][name] = sub
-    dst["items"].extend(src["items"])
-
-def _dedupe_items(raw_items):
-    """BUGFIX/AENDERUNG (Nutzerwunsch: "mehrere Spielversionen muessen
-    auch im Menue zur Auswahl stehen, PAL/NTSC etcpp"): frueher wurde
-    hier pro kanonischem Namen (ohne Region-/Versions-Tags) NUR die
-    Kopie mit der besten Region behalten (Germany > Europe > World >
-    USA > Japan, siehe REGION_PRIORITY), alle anderen Versionen
-    verschwanden komplett aus der Liste - nicht mehr auswaehlbar,
-    unabhaengig davon, ob man gezielt die PAL- oder NTSC-Fassung
-    wollte. Jetzt bleiben ALLE gefundenen Versionen erhalten, nur
-    alphabetisch sortiert - REGION_PRIORITY/_region_rank() bleiben im
-    Code bestehen (werden an anderer Stelle noch fuer die Boxart-/
-    Info-Zuordnung gebraucht), wirken sich hier aber nicht mehr
-    aus."""
-    items = list(raw_items)
-    items.sort(key=lambda t: t[0].lower())
-    return items
-
-def _node_count(node):
-    """Rekursive Gesamtzahl aller Eintraege (inkl. aller Unterordner)
-    fuer die Anzeige in der Kategorienliste."""
-    n = len(node["items"])
-    for sub in node["folders"].values():
-        n += _node_count(sub)
-    return n
-
-def _scan_folder_tree(path, syskey, rbf, extmap):
-    """Rekursiv EINEN Ordner scannen, gibt einen Baumknoten zurueck -
-    beliebig tief verschachtelt, spiegelt die eigene Ordnerstruktur/
-    Sortierung 1:1 wider. Bekannte Boot-/Testdateien, Beta/Proto/Hack-
-    Tags und rein japanische Titel werden wie bisher ausgefiltert."""
-    node = _empty_node()
-    try:
-        entries = sorted(os.listdir(path), key=str.lower)
-    except OSError:
-        return node
-    raw_items = []
-    for entry in entries:
-        if entry.startswith("."):
-            continue
-        full = os.path.join(path, entry)
-        if os.path.isdir(full):
-            sub = _scan_folder_tree(full, syskey, rbf, extmap)
-            if sub["folders"] or sub["items"]:
-                node["folders"][entry] = sub
-        else:
-            name, ext = os.path.splitext(entry)
-            ext = ext.lower()
-            if name.lower() in IGNORE_ROM_BASENAMES:
-                continue
-            if _is_junk(name):
-                continue
-            if _is_japan_only(name):
-                continue
-            if ext in extmap:
-                raw_items.append((name, "game",
-                                  (full, ext, syskey, rbf, extmap[ext])))
-    node["items"] = _dedupe_items(raw_items)
-    return node
-
-def _scan_games_disk(progress_cb=None):
-    """Fuer jedes bekannte System die ROMs einsammeln. Rueckgabe: Liste
-    (Anzeigename, Baumknoten, Systemkey) - der Baumknoten spiegelt die
-    eigene Ordnerstruktur 1:1 wider (beliebig tief verschachtelt),
-    statt wie bisher alles in eine flache Liste zu quetschen. Das
-    Frontend zeigt Unterordner als eigene Eintraege, die man oeffnen
-    kann - genau wie auf dem Datentraeger abgelegt.
-
-    Bekannte Boot-/Testdateien (IGNORE_ROM_BASENAMES) sowie Beta/Proto/
-    Demo/Hack/Bad-Dump-Tags (JUNK_TAGS) werden ausgefiltert. Mehrfach-
-    Regionen desselben Spiels werden INNERHALB jedes einzelnen Ordners
-    zu EINEM Eintrag zusammengefasst (beste Region gewinnt,
-    REGION_PRIORITY)."""
-    cats = []
-    total_sys = len(GAME_SYSTEMS) + len(OPTIONAL_GAME_SYSTEMS)
-    # Unterordner, die ein ANDERER Eintrag (egal ob GAME_SYSTEMS oder
-    # OPTIONAL_GAME_SYSTEMS) exklusiv fuer sich beansprucht (z.B.
-    # "ZELDA_MSU" oder "SMW_HACKS" unter "SNES"), muessen aus der
-    # REGULAEREN Kategorie desselben Basisordners ausgeschlossen werden -
-    # sonst wuerden dieselben ROMs zusaetzlich unter der normalen SNES-
-    # Kategorie auftauchen und liessen sich dort versehentlich mit dem
-    # falschen Core statt dem dafuer vorgesehenen starten. Nur EIN
-    # Ordner tief beruecksichtigt (passend zu den bisherigen
-    # Anwendungsfaellen) - Schluessel ist der oberste Ordnername (z.B.
-    # "SNES"), Wert die Menge auszuschliessender direkter
-    # Unterordnernamen (z.B. {"ZELDA_MSU", "SMW_HACKS"}).
-    claimed_subfolders = {}
-    for _d, _sk, sub_folders, _r, _e in GAME_SYSTEMS:
-        for f in sub_folders:
-            if "/" in f:
-                top, sub = f.split("/", 1)
-                claimed_subfolders.setdefault(top, set()).add(sub.split("/", 1)[0])
-    for _d, _sk, opt_folders, _r, _e, _core in OPTIONAL_GAME_SYSTEMS:
-        for f in opt_folders:
-            if "/" in f:
-                top, sub = f.split("/", 1)
-                claimed_subfolders.setdefault(top, set()).add(sub.split("/", 1)[0])
-    for sys_idx, (disp, syskey, folders, rbf, extmap) in enumerate(GAME_SYSTEMS):
-        if progress_cb:
-            try:
-                progress_cb(sys_idx, total_sys, disp)
-            except Exception:
-                pass
-        sys_node = _empty_node()
-        seen_roots = set()
-        for base in GAMES_BASES:
-            if not os.path.isdir(base):
-                continue
-            for folder in folders:
-                root = os.path.join(base, folder)
-                real = os.path.realpath(root)
-                if not os.path.isdir(root) or real in seen_roots:
-                    continue
-                seen_roots.add(real)
-                sub_node = _scan_folder_tree(root, syskey, rbf, extmap)
-                _merge_node(sys_node, sub_node)
-            for excluded in claimed_subfolders.get(folder, ()):
-                sys_node["folders"].pop(excluded, None)
-        if sys_node["folders"] or sys_node["items"]:
-            cats.append((disp, sys_node, syskey))
-
-    # OPTIONALE Systeme (Nutzerwunsch: SNES_Tracker-Core "wie ein
-    # eigenes System behandeln, falls installiert - falls NICHT
-    # installiert darf das auch nicht mit angezeigt werden"): exakt
-    # dieselbe Scan-Logik wie oben, aber zusaetzlich VORAB die
-    # core_check_path-Datei pruefen - fehlt sie, wird gar nicht erst
-    # gescannt, das System taucht dann so auf, als gaebe es den
-    # Eintrag nicht (kein leerer/ausgegrauter Platzhalter).
-    for opt_idx, (disp, syskey, folders, rbf, extmap, core_check_path) \
-            in enumerate(OPTIONAL_GAME_SYSTEMS):
-        if progress_cb:
-            try:
-                progress_cb(len(GAME_SYSTEMS) + opt_idx, total_sys, disp)
-            except Exception:
-                pass
-        if not os.path.isfile(core_check_path):
-            continue
-        sys_node = _empty_node()
-        seen_roots = set()
-        for base in GAMES_BASES:
-            if not os.path.isdir(base):
-                continue
-            for folder in folders:
-                root = os.path.join(base, folder)
-                real = os.path.realpath(root)
-                if not os.path.isdir(root) or real in seen_roots:
-                    continue
-                seen_roots.add(real)
-                sub_node = _scan_folder_tree(root, syskey, rbf, extmap)
-                _merge_node(sys_node, sub_node)
-        if sys_node["folders"] or sys_node["items"]:
-            cats.append((disp, sys_node, syskey))
-    return cats
-
-def write_mgl(rbf, rom_path, delay, ftype, index, setname=None):
-    """MGL-Startdatei erzeugen (Pfad-Konvention wie in mrext).
-    setname (optional): fuer RA-Cores noetig (siehe find_ra_core()) -
-    <setname same_dir="1">...</setname> zwischen <rbf> und <file>,
-    exakt wie in einer echten .mgl-Datei von sage2050s Werkzeug
-    verifiziert."""
-    setname_xml = ('\t<setname same_dir="1">%s</setname>\n' % setname) \
-        if setname else ""
-    xml = ('<mistergamedescription>\n'
-           '\t<rbf>%s</rbf>\n'
-           '%s'
-           '\t<file delay="%d" type="%s" index="%d" '
-           'path="../../../../..%s"/>\n'
-           '</mistergamedescription>\n'
-           % (rbf, setname_xml, delay, ftype, index, rom_path))
-    with open(MGL_TMP, "w") as f:
-        f.write(xml)
-    return MGL_TMP
-
-def scan_scripts():
-    items = []
-    for f in sorted(glob.glob(os.path.join(SCRIPTS_DIR, "*.sh"))):
-        name = os.path.splitext(os.path.basename(f))[0].replace("_", " ")
-        items.append((name, "script", f))
-    return items
-
-MISTER_INI = "/media/fat/MiSTer.ini"
-CRT_MENU_BLOCK = """
-[Menu]
-vga_scaler=1
-fb_terminal=1
-video_mode=320,8,32,24,240,4,3,16,6048
-"""
+from fe.launch import write_mgl, scan_scripts, current_core, launch_core, MGL_TMP
 
 def _has_network():
     """Prueft, ob irgendein Netzwerk-Interface eine Adresse hat -
@@ -8549,1681 +3803,24 @@ def _has_network():
     except OSError:
         return False
 
-# ----------------------------------------------------------------------------
-# NTP-ZEITSYNCHRONISIERUNG BEIM START
-#
-# MiSTer hat keine batteriegepufferte Echtzeituhr - die Systemuhr startet
-# beim Booten nahe Null (siehe v1.70: Log-Zeitstempel begannen bei
-# "00:00:11") und wird sonst erst spaet (falls ueberhaupt) per NTP
-# korrigiert, oft mitten in der Sitzung als ploetzlicher Sprung. Deshalb
-# holt das Frontend die Uhrzeit selbst, EINMALIG und MOEGLICHST FRUEH
-# beim Start (noch vor dem ersten Log-Eintrag), per einfacher SNTP-
-# Abfrage (RFC 5905, reines socket/struct - keine externe Bibliothek).
-NTP_SERVER = "pool.ntp.org"
-NTP_EPOCH_OFFSET = 2208988800   # Sekunden zwischen 1.1.1900 (NTP) und 1.1.1970 (Unix)
-TIMEZONE_OFFSET_FILE = "/media/fat/frontend/timezone_offset"
+from fe.update_check import (
+    UPDATE_CHECK_DISABLED_FLAG_FILE, UPDATE_CHECK_STATE_FILE, UPDATE_CHECK_URL, _parse_version,
+    _version_newer, check_for_update, load_update_state, save_update_state,
+    toggle_update_check, update_check_enabled,
+)
+from fe.timekeeping import (
+    NTP_EPOCH_OFFSET, NTP_SERVER, TIMEZONE_OFFSET_FILE, TIMEZONE_STEPS,
+    _apply_ntp_result, _ntp_time, cycle_timezone_offset, format_timezone_offset,
+    get_ntp_sync_ok, load_timezone_offset, save_timezone_offset, sync_system_clock_from_ntp,
+)
 
-def load_timezone_offset():
-    """Stunden-Versatz zur UTC-Zeit (z.B. 2.0 fuer UTC+2/deutsche
-    Sommerzeit). MiSTer hat keine echte Zeitzonen-Datenbank und keine
-    automatische Erkennung - NTP liefert grundsaetzlich nur UTC, ohne
-    diesen manuell eingestellten Versatz wuerde die angezeigte Uhrzeit
-    je nach Zeitzone des Nutzers falsch sein (Bugfix: genau das wurde
-    gemeldet - Anzeige zeigte UTC statt der tatsaechlichen Ortszeit,
-    zwei Stunden Differenz durch die deutsche Sommerzeit)."""
-    try:
-        with open(TIMEZONE_OFFSET_FILE) as f:
-            return float(f.read().strip())
-    except (OSError, ValueError):
-        return 0.0
-
-def save_timezone_offset(hours):
-    try:
-        os.makedirs(os.path.dirname(TIMEZONE_OFFSET_FILE), exist_ok=True)
-        with open(TIMEZONE_OFFSET_FILE, "w") as f:
-            f.write(str(hours))
-    except OSError:
-        pass
-
-TIMEZONE_STEPS = [x * 0.5 for x in range(-24, 29)]   # -12.0 .. +14.0 in 0.5h-Schritten
-
-def cycle_timezone_offset():
-    """Naechsten Wert in TIMEZONE_STEPS waehlen (wrap-around). Liefert
-    den neuen Versatz."""
-    current = load_timezone_offset()
-    try:
-        idx = min(range(len(TIMEZONE_STEPS)),
-                  key=lambda i: abs(TIMEZONE_STEPS[i] - current))
-        new_idx = (idx + 1) % len(TIMEZONE_STEPS)
-    except ValueError:
-        new_idx = 0
-    new_offset = TIMEZONE_STEPS[new_idx]
-    save_timezone_offset(new_offset)
-    return new_offset
-
-def format_timezone_offset(hours):
-    """z.B. 'UTC+2', 'UTC-3.5', 'UTC' fuer 0."""
-    if hours == 0:
-        return "UTC"
-    sign = "+" if hours > 0 else "-"
-    h = abs(hours)
-    if h == int(h):
-        return "UTC%s%d" % (sign, int(h))
-    return "UTC%s%.1f" % (sign, h)
-
-def _ntp_time(server=NTP_SERVER, timeout=2.0):
-    """Fragt die aktuelle Unix-Zeit per SNTP ab. Liefert None bei jedem
-    Fehler (kein Internet, Zeitueberschreitung, unplausible Antwort) -
-    wird NIE eine Ausnahme nach aussen weiterreichen, damit ein
-    Zeitserver-Problem den Start niemals blockieren oder zum Absturz
-    fuehren kann."""
-    s = None
-    try:
-        packet = bytearray(48)
-        packet[0] = 0x1B   # LI=0, VN=3 (NTPv3), Mode=3 (Client)
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.settimeout(timeout)
-        s.sendto(bytes(packet), (server, 123))
-        data, _ = s.recvfrom(48)
-        if len(data) < 48:
-            return None
-        secs = struct.unpack("!I", data[40:44])[0]
-        frac = struct.unpack("!I", data[44:48])[0]
-        unix_time = secs - NTP_EPOCH_OFFSET + frac / 2**32
-        # Grobe Plausibilitaetspruefung (nach 2020, vor 2100) - schuetzt
-        # vor einer kaputten Antwort, die die Uhr auf einen abwegigen
-        # Wert setzen wuerde.
-        if unix_time < 1577836800 or unix_time > 4102444800:
-            return None
-        return unix_time
-    except (OSError, struct.error, socket.gaierror):
-        return None
-    finally:
-        if s is not None:
-            try:
-                s.close()
-            except OSError:
-                pass
-
-NTP_SYNC_OK = False   # von sync_system_clock_from_ntp() bei jedem Aufruf
-                      # aktuell gehalten - ermoeglicht spaeteren Code (z.B.
-                      # dem RA-Neuversuch) zu pruefen, ob die Systemuhr
-                      # zum jetzigen Zeitpunkt als verlaesslich gilt.
-
-def _apply_ntp_result(unix_time):
-    """Setzt die Systemuhr anhand eines per NTP ermittelten UTC-
-    Zeitstempels (oder None bei Fehlschlag) und haelt NTP_SYNC_OK
-    aktuell. Ausgelagert, damit sowohl der blockierende als auch der
-    nicht-blockierende Modus von sync_system_clock_from_ntp() dieselbe
-    Logik nutzen (siehe dort).
-
-    NACHGEBESSERT (Nutzer-Rueckmeldung: Uhrzeit trotz korrekt
-    eingestelltem UTC+2-Versatz falsch, aber im Log stand dazu
-    RUEBERHAUPT NICHTS - weder Erfolg noch Fehlschlag): die komplette
-    NTP-Kette war bisher vollstaendig stumm, dadurch nicht
-    diagnostizierbar, ob ueberhaupt versucht wurde zu synchronisieren."""
-    global NTP_SYNC_OK
-    if unix_time is None:
-        NTP_SYNC_OK = False
-        LOG("NTP-Sync fehlgeschlagen (kein Zeitserver erreichbar/Zeitueberschreitung)")
-        return False
-    try:
-        # BUGFIX (Nutzer-Rueckmeldung: Uhr zeigte 2 Stunden zu wenig,
-        # deutsche Sommerzeit): NTP liefert grundsaetzlich UTC. Die alte
-        # Fassung nutzte time.localtime(), das sich auf die System-
-        # Zeitzone verlaesst - MiSTer hat aber vermutlich gar keine
-        # echte Zeitzone konfiguriert (Standard UTC), wodurch die
-        # angezeigte Uhrzeit der reinen UTC-Zeit entsprach statt der
-        # tatsaechlichen Ortszeit. Jetzt wird der manuell eingestellte
-        # Versatz (siehe load_timezone_offset()) selbst angewendet und
-        # mit time.gmtime() formatiert - unabhaengig davon, was die
-        # Systemzeitzone gerade zu sein glaubt.
-        offset_h = load_timezone_offset()
-        local_unix_time = unix_time + offset_h * 3600
-        ts = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(local_unix_time))
-        subprocess.run(["date", "-s", ts], capture_output=True, timeout=2.0)
-        NTP_SYNC_OK = True
-        LOG("NTP-Sync erfolgreich: Systemuhr auf %s gesetzt (UTC%+d)" % (ts, offset_h))
-        return True
-    except (OSError, subprocess.SubprocessError) as e:
-        NTP_SYNC_OK = False
-        LOG("NTP-Sync: Systemuhr setzen fehlgeschlagen: %s" % e)
-        return False
-
-def check_for_update(timeout=5.0):
-    """Fragt die aktuell auf GitHub liegende VERSION-Datei ab (reiner
-    Rohtext-Abruf, kein API-Rate-Limit). Gibt den Versions-String
-    zurueck (z.B. "4.3") oder None bei jedem Fehler (kein Internet,
-    DNS-Problem, Zeitueberschreitung, Repo umbenannt usw.) - ein
-    fehlgeschlagener Update-Check darf niemals irgendetwas anderes
-    stoeren, deshalb ein einzelnes breites except.
-
-    NACHGEBESSERT (Nutzer-Rueckmeldung: "es kommt keine Info, dass ein
-    Update verfuegbar ist" - ohne jede Log-Ausgabe war das bisher gar
-    nicht diagnostizierbar: lief der Check ueberhaupt, schlug er fehl,
-    oder gibt es schlicht (noch) keine neuere Version auf GitHub?)."""
-    try:
-        with urllib.request.urlopen(UPDATE_CHECK_URL, timeout=timeout) as resp:
-            text = resp.read(200).decode("utf-8", "ignore").strip()
-        LOG("Update-Check: GitHub meldet Version %r (lokal: %r)" % (text, FRONTEND_VERSION))
-        return text if text else None
-    except Exception as e:
-        LOG("Update-Check fehlgeschlagen: %s" % e)
-        return None
-
-def sync_system_clock_from_ntp(timeout=2.5, blocking=True):
-    """Setzt die Systemuhr per NTP, FALLS ein lokales Netzwerk vorhanden
-    ist - in einem separaten Thread mit hartem Zeitlimit, damit eine
-    haengende DNS-Aufloesung (die von socket.settimeout() NICHT
-    zuverlaessig erfasst wird) den Start niemals um mehr als `timeout`
-    Sekunden verzoegert. Der Thread laeuft im schlimmsten Fall im
-    Hintergrund weiter, blockiert dabei aber nichts mehr (Daemon-Thread) -
-    sein Ergebnis wird dann einfach verworfen. Ohne lokales Netzwerk wird
-    gar nicht erst versucht (spart die Wartezeit komplett).
-
-    blocking=False (Nutzerwunsch: schnellerer Programmstart): startet
-    die Synchronisierung nur im Hintergrund und kehrt SOFORT zurueck
-    (Rueckgabewert dann None - das Ergebnis steht ja noch nicht fest),
-    ohne auf das Ergebnis zu warten. Der Hintergrund-Thread setzt die
-    Uhr trotzdem zuverlaessig, sobald er fertig ist - der bestehende
-    RA-Neuversuch-Mechanismus (Frontend._maybe_retry_ra()) faengt den
-    Fall "Uhr war beim allerersten RA-Abruf noch nicht fertig" schon
-    ab, dafuer aendert sich durch blocking=False nichts.
-
-    Haelt NTP_SYNC_OK bei jedem Aufruf aktuell (auch bei spaeteren
-    Neuversuchen) - andere Code-Stellen koennen darueber pruefen, ob
-    die Systemuhr aktuell als verlaesslich gilt, ohne selbst NTP
-    abfragen zu muessen."""
-    if not _has_network():
-        LOG("NTP-Sync uebersprungen: kein Netzwerk erkannt")
-        return False
-    result = {"t": None}
-    def worker():
-        result["t"] = _ntp_time(timeout=timeout)
-        if not blocking:
-            # Niemand wartet auf dieses Ergebnis - der Hintergrund-
-            # Thread muss die Uhr deshalb selbst setzen.
-            _apply_ntp_result(result["t"])
-    th = threading.Thread(target=worker, daemon=True)
-    th.start()
-    if not blocking:
-        return None   # Ergebnis noch nicht bekannt, laeuft im Hintergrund weiter
-    th.join(timeout=timeout + 0.5)
-    return _apply_ntp_result(result["t"])
-
-def crt_menu_active():
-    try:
-        return "[Menu]" in open(MISTER_INI).read()
-    except OSError:
-        return False
-
-def toggle_crt_menu():
-    """[Menu]-Block in der MiSTer.ini setzen/entfernen.
-    Rueckgabe: True wenn danach CRT-Modus aktiv ist."""
-    try:
-        ini = open(MISTER_INI).read()
-    except OSError:
-        return None
-    if "[Menu]" in ini:
-        # Block entfernen: von der [Menu]-Zeile bis zur naechsten
-        # Sektion oder zum Dateiende
-        i = ini.index("[Menu]")
-        j = ini.find("\n[", i + 1)
-        ini = ini[:i].rstrip() + "\n" + (ini[j + 1:] if j != -1 else "")
-        active = False
-    else:
-        ini = ini.rstrip() + "\n" + CRT_MENU_BLOCK
-        active = True
-    # Atomar schreiben: erst in eine Temp-Datei, dann umbenennen. Sonst
-    # kann ein Abbruch mitten im Schreiben die MiSTer.ini leeren/zerstoeren.
-    tmp = MISTER_INI + ".tmp"
-    try:
-        with open(tmp, "w") as f:
-            f.write(ini)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, MISTER_INI)
-    except OSError:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
-        return None
-    return active
-
-# ----------------------------------------------------------------------------
-# NAVIGATIONS-SOUNDEFFEKTE (selbst erzeugte Sinuston-WAVs, aplay)
-#
-# Kein Download noetig - die kurzen Toene werden beim ersten Start
-# einmalig selbst synthetisiert (reines math/struct) und unter
-# SFX_DIR abgelegt. Abgespielt wird "fire and forget" ueber `aplay`
-# (Teil von alsa-utils, auf MiSTer bereits vorhanden) - laeuft parallel
-# zur Hintergrundmusik; ist die Soundkarte gerade belegt ("device
-# busy"), wird der Effekt einfach uebersprungen statt etwas zu stoeren.
-# Eine Drossel verhindert, dass beim Halten einer Richtungstaste (mit
-# Turbo-Beschleunigung) zu viele Prozesse pro Sekunde losgehen.
-SFX_DIR = "/media/fat/frontend/sfx"
-SFX_ENABLED_FLAG_FILE = "/media/fat/frontend/sfx_disabled"
-SFX_MIN_GAP = 0.07   # Sekunden zwischen zwei Soundeffekten (Drossel)
-
-def sfx_enabled_flag():
-    return not os.path.exists(SFX_ENABLED_FLAG_FILE)
-
-def toggle_sfx():
-    if os.path.exists(SFX_ENABLED_FLAG_FILE):
-        try:
-            os.remove(SFX_ENABLED_FLAG_FILE)
-        except OSError:
-            pass
-    else:
-        try:
-            dirname = os.path.dirname(SFX_ENABLED_FLAG_FILE)
-            if dirname:
-                os.makedirs(dirname, exist_ok=True)
-            open(SFX_ENABLED_FLAG_FILE, "w").close()
-        except OSError:
-            pass
-
-def _synth_tone_samples(freq_start, freq_end, duration_ms, volume, sample_rate):
-    """Erzeugt die rohen 16-Bit-Samples fuer EINEN Frequenz-Sweep
-    (kumulative Phase statt sin(2*pi*freq*t) mit wechselndem freq -
-    sonst wuerden bei einem Sweep hoerbare Spruenge entstehen). Kern
-    von _write_wav_tone()/_write_wav_chime()."""
-    n = max(1, int(sample_rate * duration_ms / 1000))
-    fade = max(1, n // 8)
-    samples = bytearray(n * 2)
-    phase = 0.0
-    for i in range(n):
-        freq = freq_start + (freq_end - freq_start) * (i / max(1, n - 1))
-        phase += 2 * math.pi * freq / sample_rate
-        env = 1.0
-        if i < fade:
-            env = i / fade
-        elif i > n - fade:
-            env = (n - i) / fade
-        val = int(math.sin(phase) * volume * env * 32767)
-        val = max(-32768, min(32767, val))
-        struct.pack_into("<h", samples, i * 2, val)
-    return samples
-
-def _write_wav(path, data, sample_rate=22050):
-    """Schreibt fertige 16-Bit-Mono-Samples als WAV-Datei."""
-    byte_rate = sample_rate * 2
-    header = (b"RIFF" + struct.pack("<I", 36 + len(data)) + b"WAVE"
-             + b"fmt " + struct.pack("<IHHIIHH", 16, 1, 1, sample_rate,
-                                     byte_rate, 2, 16)
-             + b"data" + struct.pack("<I", len(data)))
-    with open(path, "wb") as f:
-        f.write(header + data)
-
-def _write_wav_tone(path, freq_start, freq_end, duration_ms,
-                    volume=0.35, sample_rate=22050):
-    """Erzeugt eine kurze Mono-WAV-Datei mit einem einzelnen Sinuston
-    (linearer Frequenz-Sweep von freq_start zu freq_end)."""
-    samples = _synth_tone_samples(freq_start, freq_end, duration_ms,
-                                  volume, sample_rate)
-    _write_wav(path, bytes(samples), sample_rate)
-
-def _write_wav_chime(path, segments, volume=0.35, sample_rate=22050):
-    """Wie _write_wav_tone(), aber fuer mehrere Toene HINTEREINANDER -
-    segments: Liste von (freq_start, freq_end, duration_ms)-Tupeln.
-    Fuer den Erfolgs-Sound (kurzer aufsteigender Doppelklang), der mit
-    einem einzelnen Sweep nicht "erfolgreich" genug klingt."""
-    all_samples = bytearray()
-    for freq_start, freq_end, duration_ms in segments:
-        all_samples += _synth_tone_samples(freq_start, freq_end, duration_ms,
-                                           volume, sample_rate)
-    _write_wav(path, bytes(all_samples), sample_rate)
-
-# NEUES FEATURE (Nutzerwunsch: einen echten, selbst aufgenommenen/
-# gewaehlten Sound statt des prozedural erzeugten Doppelklangs fuer
-# Erfolge UND Popup-Benachrichtigungen verwenden - beide nutzen
-# denselben SFX-Schluessel "achievement", siehe SFX_CHIME_DEFS unten
-# und die play_sfx()-Aufrufe an mehreren Stellen). Die eigentliche
-# Ton-QUELLE liegt als WAV-Datei bei (22050Hz/Mono/16-Bit, damit sie
-# zum Rest des SFX-Systems passt - vom urspruenglich hochgeladenen
-# FLAC per ffmpeg konvertiert), wird aber bei JEDER Erzeugung/
-# Lautstaerke-Aenderung frisch mit der aktuellen VOLUME-Einstellung
-# skaliert eingelesen - genau wie bei den prozedural erzeugten Toenen,
-# nur dass hier eine echte Aufnahme statt eines Sinuston-Sweeps als
-# Ausgangsmaterial dient.
-ACHIEVEMENT_SFX_SOURCE = "/media/fat/frontend/sfx_source/achievement.wav"
-
-def _write_wav_from_source(source_path, dest_path, volume=1.0):
-    """Liest eine vorhandene WAV-Datei ein, skaliert die Amplitude mit
-    volume (0.0-1.0+) und schreibt sie unter dest_path neu heraus -
-    gleiches Prinzip wie bei den prozedural erzeugten Toenen
-    (_write_wav_tone()/_write_wav_chime()), nur mit echtem
-    Audiomaterial als Quelle statt eines berechneten Sinuston-Sweeps.
-    Faengt JEDEN Fehler ab und liefert False statt einer Ausnahme -
-    Aufrufer soll bei Fehlschlag auf die prozedurale Erzeugung
-    zurueckfallen (siehe _ensure_sfx_files())."""
-    try:
-        with wave.open(source_path, "rb") as wf:
-            n_channels = wf.getnchannels()
-            sampwidth = wf.getsampwidth()
-            framerate = wf.getframerate()
-            raw = wf.readframes(wf.getnframes())
-    except (wave.Error, OSError):
-        return False
-    if sampwidth != 2:
-        return False   # nur 16-Bit-PCM unterstuetzt, Quelle wurde so konvertiert
-    n_samples = len(raw) // 2
-    scaled = bytearray(len(raw))
-    for i in range(n_samples):
-        val = struct.unpack_from("<h", raw, i * 2)[0]
-        val = int(val * volume)
-        val = max(-32768, min(32767, val))
-        struct.pack_into("<h", scaled, i * 2, val)
-    try:
-        with wave.open(dest_path, "wb") as wf_out:
-            wf_out.setnchannels(n_channels)
-            wf_out.setsampwidth(2)
-            wf_out.setframerate(framerate)
-            wf_out.writeframes(bytes(scaled))
-    except (wave.Error, OSError):
-        return False
-    return True
-
-SFX_DEFS = {
-    "move":    (760, 900, 30),
-    "confirm": (600, 1100, 70),
-    "back":    (700, 420, 55),
-}
-SFX_CHIME_DEFS = {
-    # Kurzer aufsteigender Doppelklang - deutlich von den einfachen
-    # Sweeps oben abgesetzt, fuer den Erfolgs-Sound.
-    "achievement": [(600, 900, 60), (950, 1400, 90)],
-    # Geheimer Sound (Nutzerwunsch: "Easter Egg System") -
-    # verspielter, mehrstufiger Klang, bewusst deutlich anders
-    # als die anderen Sounds (auffaelliger "Fund"-Charakter).
-    "secret_found": [(300, 600, 50), (600, 450, 40), (450, 900, 70), (900, 700, 90)],
-    # Chiptune-Easter-Egg (Nutzerwunsch): kurze, FLACHE Toene (Start-
-    # und Zielfrequenz gleich, kein Sweep/Gleiten) statt der weichen
-    # Sweeps oben - klingt dadurch "blippiger", naeher an einem
-    # klassischen 8-Bit-Arpeggio (A-C#-E-A).
-    "chiptune": [(440, 440, 45), (554, 554, 45), (659, 659, 45), (880, 880, 70)],
-}
-
-def _ensure_sfx_files():
-    """Erzeugt die WAV-Dateien einmalig, falls sie noch fehlen (erster
-    Start bzw. nach einem Update). Amplitude skaliert mit der
-    eingestellten Lautstaerke (VOLUME) - aplay hat selbst keinen
-    Lautstaerke-Schalter, siehe _regenerate_sfx()."""
-    try:
-        os.makedirs(SFX_DIR, exist_ok=True)
-    except OSError:
-        return
-    for name, (f0, f1, dur) in SFX_DEFS.items():
-        path = os.path.join(SFX_DIR, name + ".wav")
-        if not os.path.exists(path):
-            try:
-                _write_wav_tone(path, f0, f1, dur, volume=0.35 * VOLUME / 100.0)
-            except OSError:
-                pass
-    for name, segments in SFX_CHIME_DEFS.items():
-        path = os.path.join(SFX_DIR, name + ".wav")
-        if not os.path.exists(path):
-            try:
-                _write_wav_chime(path, segments, volume=0.35 * VOLUME / 100.0)
-                if name == "achievement" and os.path.exists(ACHIEVEMENT_SFX_SOURCE):
-                    # NEUES FEATURE (Nutzerwunsch): echte Audiodatei statt
-                    # prozedural erzeugtem Doppelklang - faellt bei jedem
-                    # Fehler (Datei fehlt/kaputt/falsches Format) sauber
-                    # auf den bisherigen, garantiert funktionierenden
-                    # Klang zurueck, statt komplett stumm zu bleiben.
-                    ok = _write_wav_from_source(ACHIEVEMENT_SFX_SOURCE, path,
-                                                volume=VOLUME / 100.0)
-                    if not ok:
-                        _write_wav_chime(path, segments, volume=0.35 * VOLUME / 100.0)
-                else:
-                    _write_wav_chime(path, segments, volume=0.35 * VOLUME / 100.0)
-            except OSError:
-                pass
-
-_last_sfx_time = 0.0
-_sfx_enabled_cache = True
-_sfx_enabled_check_next = 0.0
-_sfx_proc = None   # laufender aplay-Prozess (oder None) - siehe play_sfx()
-
-def _sfx_enabled_cached():
-    """Zwischengespeicherte sfx_enabled_flag()-Abfrage, alle 5 Sekunden
-    neu geprueft - selbes Prinzip wie beim Netzwerkstatus/Attract-Modus
-    (siehe _network_connected()/_attract_enabled_cached()). Wird von
-    play_sfx() genutzt, damit nicht bei jedem einzelnen Aufruf eine
-    Datei-Existenzpruefung noetig ist."""
-    global _sfx_enabled_cache, _sfx_enabled_check_next
-    now = time.monotonic()
-    if now >= _sfx_enabled_check_next:
-        _sfx_enabled_cache = sfx_enabled_flag()
-        _sfx_enabled_check_next = now + 5.0
-    return _sfx_enabled_cache
-
-def play_sfx(name, music_playing=False):
-    """Spielt einen Soundeffekt ab, falls aktiviert - "fire and forget",
-    jeder Fehler (aplay fehlt, Soundkarte belegt, Datei fehlt) wird
-    still ignoriert. Nie eine Ausnahme nach aussen. Gedrosselt
-    (SFX_MIN_GAP) - sonst wuerden beim Halten einer Richtungstaste mit
-    Turbo-Beschleunigung zu viele aplay-Prozesse pro Sekunde entstehen.
-
-    BUGFIX (Nutzer-Rueckmeldung): die reine Zeit-Drossel allein hat
-    NICHT verhindert, dass sich bei schneller Navigation mehrere
-    aplay-Prozesse ueberlappen - jeder einzelne Aufruf brauchte
-    laenger als die Drosselzeit, bis er tatsaechlich fertig war
-    (vermutlich, weil aplay auf die Soundkarte warten musste, die
-    gleichzeitig von mpg123 fuer die Hintergrundmusik belegt ist).
-    Ergebnis: ein wachsender Rueckstau, der noch Toene abspielte, lange
-    nachdem der Cursor schon wieder stillstand - UND dabei offenbar
-    kurze Aussetzer in der Musik verursachte, weil beide Programme sich
-    dieselbe Audioausgabe streitig machten. Zwei Absicherungen dagegen:
-    (1) ein neuer Ton wird NICHT gestartet, solange der vorherige
-    aplay-Prozess noch laeuft (kein Rueckstau moeglich, hoechstens
-    EIN Ton gleichzeitig unterwegs). (2) Solange Musik TATSAECHLICH
-    gerade spielt (music_playing=True, vom Aufrufer per
-    self.music._proc_alive() ermittelt), wird gar nicht erst
-    versucht - vermeidet die Geraete-Ueberschneidung von vornherein,
-    statt nur ihre Folgen abzumildern.
-
-    WICHTIG: die guenstige, rein im Speicher liegende Drossel-Pruefung
-    muss VOR der (Datei-basierten) Ein/Aus-Pruefung passieren, nicht
-    danach - sonst waere bei jedem einzelnen Navigations-Schritt
-    waehrend eines Turbo-Sprungs eine Datei-Existenzpruefung noetig
-    gewesen. Zusaetzlich per _sfx_enabled_cached() auf 5s
-    zwischengespeichert.
-
-    ERWEITERT (Nutzerwunsch: eigener, echter Sound statt des
-    synthetischen Klangs fuer den geheimen Ikari-Warriors-Code):
-    liegt eine <name>.mp3 in SFX_DIR, wird DIE bevorzugt abgespielt
-    (per mpg123, das ohnehin schon fuer die Hintergrundmusik im
-    Einsatz ist - aplay selbst kann keine MP3s dekodieren). Die
-    <name>.wav bleibt als automatisch erzeugte Rueckfallebene
-    bestehen (siehe _ensure_sfx_files()), falls keine eigene MP3
-    hinterlegt ist - dadurch bricht nichts, wenn z.B. jemand die
-    sfx-mp3-Datei versehentlich loescht."""
-    global _last_sfx_time, _sfx_proc
-    now = time.monotonic()
-    if now - _last_sfx_time < SFX_MIN_GAP:
-        return
-    if music_playing:
-        return
-    if _sfx_proc is not None and _sfx_proc.poll() is None:
-        return   # voriger Ton laeuft noch - lieber auslassen als stapeln
-    if not _sfx_enabled_cached():
-        return
-    _last_sfx_time = now
-    mp3_path = os.path.join(SFX_DIR, name + ".mp3")
-    if os.path.exists(mp3_path) and os.path.exists(MPG123_BIN):
-        try:
-            _sfx_proc = subprocess.Popen(
-                [MPG123_BIN, "-q", "-f", _mpg_scale(), mp3_path],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except OSError:
-            pass
-        return
-    path = os.path.join(SFX_DIR, name + ".wav")
-    try:
-        _sfx_proc = subprocess.Popen(["aplay", "-q", path],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except OSError:
-        pass
-
-# ----------------------------------------------------------------------------
-# BACKGROUND MUSIC (mpg123, extern - no own MP3 decoder needed)
-# ----------------------------------------------------------------------------
-
-class MusicPlayer:
-    """Plays MP3s from MUSIC_DIR in random order in the background.
-    Uses the external mpg123 command-line player (present on MiSTer)
-    instead of decoding audio ourselves. Non-blocking: the current
-    track runs via subprocess.Popen, the switch to the next track
-    happens whenever tick() is called from the main loop."""
-
-    MAX_TRACK_SECONDS = 20 * 60   # Sicherheitsnetz, siehe tick()
-
-    def __init__(self):
-        self.enabled = self._load_enabled()
-        self.source, _radio_sid = self._load_source()   # "mp3" oder "radio" + sid
-        self.radio = rainwave.RainwaveRadio(sid=_radio_sid, log=LOG) \
-            if rainwave is not None else None
-        self.playlist = []
-        self.pos = 0
-        self.proc = None
-        self._track_started_at = None
-        # RLock (nicht Lock): tick() unten haelt die Sperre waehrend des
-        # gesamten Durchlaufs (siehe dortiger Kommentar) und ruft dabei
-        # selbst _start_current()/_stop_current() auf, die die Sperre
-        # INTERN ebenfalls holen - mit einem normalen Lock waere das
-        # ein Deadlock (derselbe Thread wartet auf sich selbst). RLock
-        # erlaubt genau das (derselbe Thread darf mehrfach verschachtelt
-        # zugreifen), verhindert aber weiterhin zuverlaessig, dass ZWEI
-        # VERSCHIEDENE Threads (z.B. Haupt-Thread/tick() und ein
-        # Hintergrund-Thread fuer Musikquellenwechsel/geheimen Sound)
-        # gleichzeitig an mpg123 herumschrauben - der urspruengliche
-        # Grund fuer dieses Schloss (siehe Kommentar direkt darunter).
-        self._proc_lock = threading.RLock()   # BUGFIX (uebernommen aus separat
-                                              # vorbereitetem Vorschlag, siehe
-                                              # CHANGES_v4.2_FIXES.md): verhindert
-                                              # doppelte mpg123-Prozesse - der
-                                              # Lautstaerke-Hintergrund-Thread und
-                                              # tick() konnten bisher gleichzeitig
-                                              # einen Start ausloesen, zwei mpg123
-                                              # gleichzeitig fuehrten zu doppeltem/
-                                              # verzerrtem Radio-Stream.
-        self.paused_for_core = False
-        self.paused_for_jingle = False   # NEU (Nutzerwunsch: Erfolgs-Pop-ups sollen
-                                          # jetzt GENAUSO einen Jingle bekommen wie
-                                          # der geheime Sound - EIN Flag jetzt
-                                          # fuer JEDEN gedaempften Soundeffekt
-                                          # verwendet, nicht mehr nur fuer den einen
-                                          # Spezialfall). Ohne dieses Flag wuerde
-                                          # tick() (laeuft staendig im Haupt-Loop)
-                                          # die Musik WAEHREND ein solcher Sound noch
-                                          # laeuft automatisch neu starten, sobald es
-                                          # merkt, dass "nichts mehr laeuft" -
-                                          # GENAU dasselbe Prinzip wie paused_for_core,
-                                          # nur ein eigenes Flag, um mit einem gerade
-                                          # laufenden Core nicht zu kollidieren.
-        self._rescan()
-
-    @staticmethod
-    def _load_enabled():
-        try:
-            return open(MUSIC_ENABLED_FILE).read().strip() != "0"
-        except OSError:
-            return True    # default: on, until toggled once
-
-    def _save_enabled(self):
-        try:
-            os.makedirs(os.path.dirname(MUSIC_ENABLED_FILE), exist_ok=True)
-            with open(MUSIC_ENABLED_FILE, "w") as f:
-                f.write("1" if self.enabled else "0")
-        except OSError:
-            pass
-
-    @staticmethod
-    def _load_source():
-        """(quelle, sid) aus MUSIC_SOURCE_FILE - Default ("mp3", 1).
-        Faellt zusaetzlich auf "mp3" zurueck, falls das rainwave-Modul
-        nicht geladen werden konnte (siehe Import-Absicherung oben) -
-        eine gespeicherte "radio"-Quelle darf dann nicht blind
-        uebernommen werden, sonst gaebe es keine Musik mehr."""
-        if rainwave is None:
-            return "mp3", 1
-        try:
-            parts = open(MUSIC_SOURCE_FILE).read().split()
-            src = parts[0] if parts and parts[0] in ("mp3", "radio") else "mp3"
-            sid = int(parts[1]) if len(parts) > 1 else 1
-            if sid not in rainwave.RAINWAVE_STATIONS:
-                sid = 1
-            return src, sid
-        except (OSError, ValueError):
-            return "mp3", 1
-
-    def _save_source(self):
-        if self.radio is None:
-            return
-        try:
-            os.makedirs(os.path.dirname(MUSIC_SOURCE_FILE), exist_ok=True)
-            with open(MUSIC_SOURCE_FILE, "w") as f:
-                f.write("%s %d" % (self.source, self.radio.sid))
-        except OSError:
-            pass
-
-    def _rescan(self):
-        try:
-            files = [os.path.join(MUSIC_DIR, f)
-                    for f in os.listdir(MUSIC_DIR)
-                    if f.lower().endswith(".mp3")]
-        except OSError:
-            files = []
-        random.shuffle(files)
-        self.playlist = files
-        self.pos = 0
-
-    def available(self):
-        if self.source == "radio":
-            return self.radio is not None and os.path.exists(MPG123_BIN)
-        return bool(self.playlist) and os.path.exists(MPG123_BIN)
-
-    def _proc_alive(self):
-        return self.proc is not None and self.proc.poll() is None
-
-    def _start_current(self):
-        """Startet die aktuelle Quelle (MP3/Radio). Lock + 'vorher
-        alten Prozess beenden' -> nie zwei mpg123 gleichzeitig (siehe
-        _proc_lock-Kommentar im __init__)."""
-        with self._proc_lock:
-            self._kill_proc()
-            self._start_current_impl()
-
-    def _start_current_impl(self):
-        if self.source == "radio":
-            if self.radio is None:
-                return
-            url = self.radio.stream_url()
-            if not url:
-                return
-            try:
-                self.proc = subprocess.Popen(
-                    [MPG123_BIN, "-q", "-f", _mpg_scale(), url],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    stdin=subprocess.DEVNULL)
-                self._track_started_at = time.monotonic()
-                LOG("Radio: %s -> %s" % (rainwave.station_name(self.radio.sid), url))
-            except OSError as e:
-                LOG("Radio: mpg123-Start fehlgeschlagen: %s" % e)
-                self.proc = None
-            return
-        if not self.playlist:
-            return
-        path = self.playlist[self.pos]
-        try:
-            self.proc = subprocess.Popen(
-                [MPG123_BIN, "-q", "-f", _mpg_scale(), path],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                stdin=subprocess.DEVNULL)
-            self._track_started_at = time.monotonic()
-            LOG("Music: playing %s" % os.path.basename(path))
-        except OSError as e:
-            LOG("Music: failed to start mpg123: %s" % e)
-            self.proc = None
-
-    def _kill_proc(self):
-        """Beendet den laufenden mpg123-Prozess. Aufrufer haelt _proc_lock."""
-        if self.proc is not None:
-            try:
-                self.proc.terminate()
-                self.proc.wait(timeout=2)
-            except Exception:
-                try:
-                    self.proc.kill()
-                except Exception:
-                    pass
-            self.proc = None
-
-    def _stop_current(self):
-        with self._proc_lock:
-            self._kill_proc()
-
-    def _advance(self):
-        if not self.playlist:
-            return
-        self.pos += 1
-        if self.pos >= len(self.playlist):
-            random.shuffle(self.playlist)   # new round, reshuffled
-            self.pos = 0
-
-    def current_track_name(self):
-        """Anzeigename des aktuell (bzw. zuletzt gestarteten) Songs,
-        ohne Pfad und Dateiendung - oder None, wenn gerade nichts
-        gespielt wird/werden soll."""
-        if not self.enabled or self.paused_for_core:
-            return None
-        if self.source == "radio":
-            if self.radio is None:
-                return None
-            return self.radio.now_playing() or \
-                ("Radio: %s" % rainwave.station_name(self.radio.sid))
-        if not self.playlist:
-            return None
-        path = self.playlist[self.pos]
-        return os.path.splitext(os.path.basename(path))[0]
-
-    def tick(self):
-        """Call regularly from the main loop. Starts playback if
-        needed, automatically advances to the next track once the
-        current one has ended.
-
-        Sicherheitsnetz: manche MP3-Dateien (beschaedigte/unuebliche
-        Tags) koennen mpg123 nach dem eigentlichen Ende haengen lassen,
-        statt sauber zu beenden - poll() wuerde dann faelschlich
-        weiterhin 'laeuft noch' melden. Nach MAX_TRACK_SECONDS wird
-        deshalb trotzdem zum naechsten Song gewechselt.
-
-        BUGFIX (Nutzer-Rueckmeldung: geheimer Sound ueberschnitt sich
-        mit der Musik/"nur Gestotter", UND der Musikquellenwechsel
-        blockierte trotz des vorherigen Hintergrund-Thread-Fixes immer
-        noch kurz die Eingabe): zwei zusammenhaengende Ursachen.
-        (1) tick() laeuft SEHR haeufig im Haupt-Loop und wusste bisher
-        nichts von einer bewusst pausierten Musik fuer einen gedaempften
-        Soundeffekt (geheimer Sound, Erfolgs-Jingle) - startete sie
-        mitten drin automatisch neu, sobald es "nichts laeuft" sah
-        (paused_for_jingle unten behebt das, gleiches Prinzip wie
-        paused_for_core). (2) _start_current()/_stop_current() holen
-        sich INTERN dieselbe Sperre wie ein Hintergrund-Thread
-        (Musikquellenwechsel/gedaempfter Soundeffekt) - lief gerade so
-        ein Hintergrund-Thread, wartete tick() im Haupt-Thread bisher
-        BLOCKIEREND auf dieselbe Sperre, was trotz des Hintergrund-
-        Threads selbst wieder die gesamte Eingabeverarbeitung anhielt.
-        Jetzt versucht tick() die Sperre nur noch NICHT-BLOCKIEREND zu
-        holen - ist sie gerade belegt, macht tick() diesmal einfach
-        nichts und versucht es beim naechsten Durchlauf (kommt sehr
-        bald wieder) erneut, statt zu warten."""
-        if not self.enabled or self.paused_for_core or self.paused_for_jingle:
-            return
-        if not self._proc_lock.acquire(blocking=False):
-            return   # gerade anderweitig beschaeftigt - naechstes Mal wieder versuchen
-        try:
-            if self.source == "radio":
-                if self.radio is None:
-                    return
-                self.radio.tick()                 # Now-Playing aktuell halten (nur alle 15s)
-                if not self._proc_alive():
-                    # (neu) verbinden - kleiner Backoff gegen Haemmern bei Netzausfall
-                    if self._track_started_at is None or \
-                       time.monotonic() - self._track_started_at > 3:
-                        self._start_current()
-                return
-            if not self.playlist:
-                return
-            alive = self._proc_alive()
-            had_proc = self.proc is not None  # VOR _stop_current() merken -
-                                              # das setzt self.proc selbst auf None
-            if alive and self._track_started_at is not None and \
-               time.monotonic() - self._track_started_at > self.MAX_TRACK_SECONDS:
-                LOG("Music: Sicherheitsnetz ausgeloest (Song laeuft laenger "
-                    "als %d Minuten) - erzwinge Wechsel"
-                    % (self.MAX_TRACK_SECONDS // 60))
-                self._stop_current()
-                alive = False
-            if not alive:
-                if had_proc:
-                    LOG("Music: Song beendet, wechsle weiter")
-                    self._advance()
-                self._start_current()
-        finally:
-            self._proc_lock.release()
-
-    def next_track(self):
-        """Manual track skip (Y button). Nicht-blockierend (gleicher
-        Grund wie cycle_source(), siehe dortiger Kommentar) - laeuft
-        direkt in der Hauptschleife, das Stoppen/Starten von mpg123
-        darf sie deshalb nicht aufhalten."""
-        if not self.playlist:
-            return
-        self._advance()
-
-        def _worker():
-            self._stop_current()
-            if self.enabled and not self.paused_for_core:
-                self._start_current()
-        threading.Thread(target=_worker, daemon=True).start()
-
-    def toggle(self):
-        """Musik an/aus (gleicher Nicht-blockierend-Grund wie
-        cycle_source()/next_track() oben)."""
-        self.enabled = not self.enabled
-        self._save_enabled()
-        if self.enabled:
-            if not self.paused_for_core:
-                threading.Thread(target=self.tick, daemon=True).start()
-        else:
-            threading.Thread(target=self._stop_current, daemon=True).start()
-
-    def cycle_source(self):
-        """Musik-Quelle umschalten: MP3 -> Radio(Game..All) -> zurueck zu MP3.
-        Laesst den An/Aus-Zustand (self.enabled) bewusst unberuehrt.
-        Ohne geladenes rainwave-Modul (siehe Import-Absicherung oben)
-        bleibt das ein no-op - es gaebe nichts, wohin man umschalten
-        koennte.
-
-        BUGFIX (Nutzer-Rueckmeldung: "wenn ich die Musikquelle
-        wechsel nimmt das Frontend ein paar Sekunden lang KEINE
-        Eingabe an, dann ziehen alle auf einmal nach"): rief bisher
-        SYNCHRON in der Hauptschleife self._stop_current() auf, was
-        intern terminate()+wait(timeout=2) auf den alten mpg123-
-        Prozess macht - bei einem gerade haengenden Netzwerk-Stream
-        (Radio reagiert nicht sofort auf SIGTERM) blockierte das
-        spuerbar die GESAMTE Eingabeverarbeitung, da beides im selben
-        Haupt-Thread lief. Jetzt wie bei cycle_volume()/
-        _apply_volume_async() (siehe dortiger Kommentar, gleicher
-        Grund) in einem Hintergrund-Thread erledigt: state (Quelle/
-        Sender) wird weiterhin SOFORT synchron aktualisiert (billig,
-        die Menue-Beschriftung stimmt sofort), nur das eigentliche
-        Stoppen+Starten von mpg123 laeuft asynchron - weiterhin ueber
-        denselben _proc_lock serialisiert wie tick()/die Lautstaerke-
-        Anpassung, also weiterhin GARANTIERT kein doppelter mpg123
-        gleichzeitig (der urspruengliche Grund fuer den bisherigen
-        synchronen Ablauf bleibt gewahrt, nur eben nicht mehr
-        blockierend fuer die Hauptschleife)."""
-        if self.radio is None:
-            return
-        stations = sorted(rainwave.RAINWAVE_STATIONS)
-        if self.source == "mp3":
-            self.source = "radio"
-            self.radio.set_station(stations[0])
-        else:
-            idx = stations.index(self.radio.sid) if self.radio.sid in stations else -1
-            if idx + 1 < len(stations):
-                self.radio.set_station(stations[idx + 1])
-            else:
-                self.source = "mp3"
-        self._track_started_at = None
-        self._save_source()
-        if self.enabled and not self.paused_for_core:
-            threading.Thread(target=self._start_current, daemon=True).start()
-        else:
-            threading.Thread(target=self._stop_current, daemon=True).start()
-
-    def cycle_volume(self):
-        """Lautstaerke 0->20->...->100->0 (Musik UND Menue-Sounds)."""
-        global VOLUME
-        levels = [0, 20, 40, 60, 80, 100]
-        idx = levels.index(VOLUME) if VOLUME in levels else len(levels) - 1
-        VOLUME = levels[(idx + 1) % len(levels)]
-        _save_volume(VOLUME)
-        _apply_volume_async(self)   # SFX-Regen + Musik-Neustart im Hintergrund
-
-    def pause_for_core(self):
-        """Before starting a core/game: stop music so it doesn't mix
-        with the game's own audio."""
-        self.paused_for_core = True
-        self._stop_current()
-
-    def resume_after_core(self):
-        """After returning to the frontend: resume music automatically
-        if it's enabled."""
-        self.paused_for_core = False
-        if self.enabled:
-            self.tick()
-
-    def shutdown(self):
-        self._stop_current()
-
-
-# ----------------------------------------------------------------------------
 # LANGUAGE / TRANSLATIONS
 # ----------------------------------------------------------------------------
 
-TRANSLATIONS = {
-    "categories":      {"en": "%d categories",  "de": "%d Kategorien"},
-    "entries":         {"en": "%d entries",      "de": "%d Eintraege"},
-    "footer_cats_wide":   {"en": "Up/Down:Nav  Left/Right:Page  Enter:Open  ESC:Quit",
-                           "de": "Hoch/Runter:Nav  Links/Rechts:Seite  Enter:Oeffnen  ESC:Beenden"},
-    "footer_cats_mid":    {"en": "Nav  Page  Enter:Open  ESC:Quit",
-                           "de": "Nav  Seite  Enter:Oeffnen  ESC:Beenden"},
-    "footer_cats_narrow": {"en": "Enter:Open  ESC:Quit",
-                           "de": "Enter:Oeffnen  ESC:Beenden"},
-    "footer_items_wide":   {"en": "Up/Down:Nav  Left/Right:Page  Enter/A:Start  ESC/B:Back",
-                            "de": "Hoch/Runter:Nav  Links/Rechts:Seite  Enter/A:Start  ESC/B:Zurueck"},
-    "footer_items_mid":    {"en": "L/R:Page  Enter/A:Start  ESC/B:Back",
-                            "de": "L/R:Seite  Enter/A:Start  ESC/B:Zurueck"},
-    "footer_items_narrow": {"en": "A:Start  B:Back", "de": "A:Start  B:Zurueck"},
-    "quit_confirm":    {"en": "Quit the frontend?", "de": "Frontend wirklich beenden?"},
-    "yes":             {"en": "Yes", "de": "Ja"},
-    "no":              {"en": "No",  "de": "Nein"},
-    "players":         {"en": "Players: %s", "de": "Spieler: %s"},
-    "year":            {"en": "Year: %s",    "de": "Jahr: %s"},
-    "playtime_shown":  {"en": "Played: %s",  "de": "Gespielt: %s"},
-    "ra_progress_shown": {"en": "RA: %d/%d", "de": "RA: %d/%d"},
-    "completed_shown": {"en": "Completed", "de": "Durchgespielt"},
-    "milestone_playtime_1h": {"en": "Played 1 hour total", "de": "Insgesamt 1 Stunde gespielt"},
-    "milestone_playtime_10h": {"en": "Played 10 hours total", "de": "Insgesamt 10 Stunden gespielt"},
-    "milestone_playtime_50h": {"en": "Played 50 hours total", "de": "Insgesamt 50 Stunden gespielt"},
-    "milestone_playtime_100h": {"en": "Played 100 hours total", "de": "Insgesamt 100 Stunden gespielt"},
-    "milestone_launches_10": {"en": "Launched 10 games", "de": "10 Spiele gestartet"},
-    "milestone_launches_50": {"en": "Launched 50 games", "de": "50 Spiele gestartet"},
-    "milestone_launches_100": {"en": "Launched 100 games", "de": "100 Spiele gestartet"},
-    "milestone_launches_500": {"en": "Launched 500 games", "de": "500 Spiele gestartet"},
-    "milestone_systems_3": {"en": "Explorer: 3 different systems", "de": "Entdecker: 3 verschiedene Systeme"},
-    "milestone_systems_5": {"en": "Explorer: 5 different systems", "de": "Entdecker: 5 verschiedene Systeme"},
-    "milestone_systems_10": {"en": "Explorer: 10 different systems", "de": "Entdecker: 10 verschiedene Systeme"},
-    "milestone_completed_1": {"en": "First game completed", "de": "Erstes Spiel durchgespielt"},
-    "milestone_completed_5": {"en": "5 games completed", "de": "5 Spiele durchgespielt"},
-    "milestone_completed_10": {"en": "10 games completed", "de": "10 Spiele durchgespielt"},
-    "milestone_completed_25": {"en": "25 games completed", "de": "25 Spiele durchgespielt"},
-    "milestones_title": {"en": "MY ACHIEVEMENTS", "de": "MEINE ERFOLGE"},
-    "milestones_summary": {"en": "%d of %d unlocked", "de": "%d von %d freigeschaltet"},
-    "hidden_section_title": {"en": "Hidden achievements (%d/%d)",
-                             "de": "Versteckte Erfolge (%d/%d)"},
-    "hidden_mystery": {"en": "??? (keep playing to find out)",
-                       "de": "??? (einfach weiterspielen)"},
-    "hidden_night_owl": {"en": "Night Owl: played between midnight and 5am",
-                         "de": "Nachteule: zwischen 0 und 5 Uhr gespielt"},
-    "hidden_marathon": {"en": "Marathon: a single session over 3 hours",
-                        "de": "Marathon: eine Sitzung ueber 3 Stunden am Stueck"},
-    "hidden_collector": {"en": "Collector: 10 favorites at once",
-                         "de": "Sammlerin: 10 Favoriten gleichzeitig"},
-    "hidden_completionist": {"en": "Regular: one game launched 20+ times",
-                             "de": "Stammspieler: ein Spiel 20+ mal gestartet"},
-    "hidden_legend": {"en": "Legend: reached every top-tier milestone at once",
-                      "de": "Legende: alle hoechsten Meilensteine gleichzeitig erreicht"},
-    "hidden_early_bird": {"en": "Early Bird: played between 5am and 7am",
-                          "de": "Fruehaufsteher: zwischen 5 und 7 Uhr gespielt"},
-    "hidden_weekend_warrior": {"en": "Weekend Warrior: played both Saturday and Sunday of the same week",
-                               "de": "Wochenend-Krieger: an Samstag UND Sonntag derselben Woche gespielt"},
-    "hidden_comeback": {"en": "Comeback: returned to a game after 6+ months away",
-                        "de": "Comeback: ein Spiel nach 6+ Monaten Pause wieder gestartet"},
-    "hidden_versatile": {"en": "Versatile: 4+ different systems in a single day",
-                         "de": "Vielseitig: an einem Tag Spiele aus 4+ verschiedenen Systemen gestartet"},
-    "hidden_perfectionist": {"en": "Perfectionist: 100% RetroAchievements completion on a game",
-                             "de": "Perfektionist: ein Spiel zu 100% bei RetroAchievements abgeschlossen"},
-    "achievement_popup": {"en": "Achievement unlocked: %s",
-                          "de": "Erfolg freigeschaltet: %s"},
-    "achievement_popup_multi": {"en": "%d achievements unlocked!",
-                                "de": "%d Erfolge freigeschaltet!"},
-    "secret_unlocked": {"en": "Secret unlocked: %s", "de": "Geheimnis freigeschaltet: %s"},
-    "secret_sound_replay": {"en": "\u2669 secret sound \u2669", "de": "\u2669 geheimer Sound \u2669"},
-    "secrets_title": {"en": "SECRETS", "de": "GEHEIMNISSE"},
-    "secrets_summary": {"en": "%d of %d found", "de": "%d von %d gefunden"},
-    "secrets_keyboard_hint": {"en": "Codes only work via keyboard, not gamepad",
-                              "de": "Codes funktionieren nur per Tastatur, nicht per Gamepad"},
-    "secret_origin_secret_theme_1": {"en": "Origin: the Konami Code (Contra, Gradius, ...)",
-                                     "de": "Herkunft: der Konami-Code (Contra, Gradius, ...)"},
-    "secret_origin_entwicklerraum": {"en": "Origin: the Capcom Code (Street Fighter II)",
-                                     "de": "Herkunft: der Capcom-Code (Street Fighter II)"},
-    "secret_origin_secret_sound": {"en": "Origin: the Ikari Warriors continue code",
-                                   "de": "Herkunft: der Ikari-Warriors-Weiterspielen-Code"},
-    "secret_origin_dev_room_bonus": {"en": "Origin: found by trying things inside a secret itself",
-                                     "de": "Herkunft: gefunden, indem im Geheimnis selbst weiterprobiert wurde"},
-    "secret_origin_rainbow_cursor": {"en": "Origin: just spell it out",
-                                     "de": "Herkunft: einfach buchstabieren"},
-    "secret_origin_chiptune_sound": {"en": "Origin: an 8-bit state of mind",
-                                     "de": "Herkunft: eine 8-Bit-Geisteshaltung"},
-    "max_level_boot_effect": {"en": "FRONTEND LEVEL MAX", "de": "FRONTEND-LEVEL MAX"},
-    "secret_name_secret_theme_1": {"en": "hidden theme", "de": "geheimes Theme"},
-    "secret_name_entwicklerraum": {"en": "developer room", "de": "Entwicklerraum"},
-    "secret_name_secret_sound": {"en": "hidden sound", "de": "geheimer Sound"},
-    "secret_name_dev_room_bonus": {"en": "a secret within a secret", "de": "ein Geheimnis im Geheimnis"},
-    "secret_name_rainbow_cursor": {"en": "rainbow cursor", "de": "Regenbogen-Cursor"},
-    "secret_name_chiptune_sound": {"en": "chiptune jingle", "de": "Chiptune-Jingle"},
-    "dev_room_title": {"en": "DEVELOPER ROOM", "de": "ENTWICKLERRAUM"},
-    "dev_room_level": {"en": "Frontend level: %d of %d", "de": "Frontend-Level: %d von %d"},
-    "dev_room_secrets": {"en": "Secrets found: %d of %d", "de": "Geheimnisse gefunden: %d von %d"},
-    "dev_room_credits_1": {"en": "Built by Dragrem.",
-                           "de": "Gebaut von Dragrem."},
-    "dev_room_credits_2": {"en": "With contributions from TheRealSutefan and Dfense1980.",
-                           "de": "Mit Beitraegen von TheRealSutefan und Dfense1980."},
-    "dev_room_thanks": {"en": "Thanks for playing around with hidden things.",
-                        "de": "Danke, dass du an geheimen Dingen herumprobierst."},
-    "dev_room_bonus_message": {
-        "en": "Thanks for looking closely!",
-        "de": "Danke fuers genaue Hinschauen!"},
-    "seasonal_xmas": {"en": "* Merry Christmas! *", "de": "* Frohe Weihnachten! *"},
-    "seasonal_nye": {"en": "* Happy New Year! *", "de": "* Guten Rutsch! *"},
-    "credits_title": {"en": "CREDITS", "de": "MITWIRKENDE"},
-    "credits_creator_heading": {"en": "Created by", "de": "Erstellt von"},
-    "credits_creator_entry": {"en": "Dragrem", "de": "Dragrem"},
-    "credits_contrib_heading": {"en": "Contributions", "de": "Beitraege"},
-    "credits_contrib_sutefan": {"en": "TheRealSutefan - patches, RA tools, bugfixes",
-                                "de": "TheRealSutefan - Patches, RA-Werkzeuge, Bugfixes"},
-    "credits_contrib_dfense": {"en": "Dfense1980 - contributions",
-                               "de": "Dfense1980 - Mitwirkung"},
-    "credits_contrib_dennsen": {"en": "Dennsen86 - streaming and testing",
-                                "de": "Dennsen86 - Streaming und Testen"},
-    "credits_thanks_heading": {"en": "Thanks", "de": "Danke"},
-    "credits_thanks_entry": {"en": "To everyone playing, testing and reporting bugs.",
-                             "de": "An alle, die spielen, testen und Fehler melden."},
-    "trophy_room_title": {"en": "TROPHY ROOM", "de": "TROPHAEENRAUM"},
-    "trophy_favorite_system": {"en": "Favorite system: %s",
-                               "de": "Lieblingssystem: %s"},
-    "trophy_top_game": {"en": "Most played: %s", "de": "Meistgespielt: %s"},
-    "trophy_total_playtime": {"en": "Total playtime: %s",
-                              "de": "Insgesamt gespielt: %s"},
-    "trophy_launches": {"en": "Games launched: %d", "de": "Spiele gestartet: %d"},
-    "trophy_systems": {"en": "Systems explored: %d",
-                       "de": "Systeme ausprobiert: %d"},
-    "trophy_achievements": {"en": "Achievements: %d of %d",
-                            "de": "Erfolge: %d von %d"},
-    "trophy_summary": {"en": "A retro gamer on %d systems, %d of %d achievements unlocked.",
-                       "de": "Retro-Spieler(in) auf %d Systemen, %d von %d Erfolgen freigeschaltet."},
-    "year_review_title": {"en": "YEAR IN REVIEW %s", "de": "JAHRESRUECKBLICK %s"},
-    "year_review_empty": {"en": "Nothing recorded for this year yet - keep playing!",
-                          "de": "Fuer dieses Jahr noch nichts aufgezeichnet - einfach weiterspielen!"},
-    "year_review_favorite_system": {"en": "Favorite system this year: %s",
-                                    "de": "Lieblingssystem dieses Jahr: %s"},
-    "year_review_top_game": {"en": "Most played this year: %s",
-                             "de": "Meistgespielt dieses Jahr: %s"},
-    "year_review_total_playtime": {"en": "Played this year: %s",
-                                   "de": "Dieses Jahr gespielt: %s"},
-    "year_review_launches": {"en": "Games launched: %d", "de": "Spiele gestartet: %d"},
-    "year_review_games": {"en": "Different games: %d", "de": "Verschiedene Spiele: %d"},
-    "year_review_systems": {"en": "Systems used: %d", "de": "Genutzte Systeme: %d"},
-    "year_review_discovered": {"en": "Discovered this year: %d",
-                               "de": "Dieses Jahr entdeckt: %d"},
-    "year_review_summary": {"en": "Your %s: %d games, %d of them brand new discoveries.",
-                            "de": "Dein %s: %d Spiele, davon %d ganz neu entdeckt."},
-    "diary_title": {"en": "GAME DIARY", "de": "SPIELTAGEBUCH"},
-    "diary_summary": {"en": "%d sessions in the last %d days",
-                      "de": "%d Sitzungen in den letzten %d Tagen"},
-    "diary_empty": {"en": "Nothing recorded yet - keep playing!",
-                    "de": "Noch nichts aufgezeichnet - einfach weiterspielen!"},
-    "diary_today": {"en": "Today", "de": "Heute"},
-    "diary_yesterday": {"en": "Yesterday", "de": "Gestern"},
-    "sys_diary_action": {"en": "Game diary", "de": "Spieltagebuch"},
-    "sys_help_action": {"en": "Help / Overview", "de": "Hilfe / Uebersicht"},
-    "boot_default_title": {"en": "MISTER FRONTEND", "de": "MISTER FRONTEND"},
-    "help_title": {"en": "HELP / OVERVIEW", "de": "HILFE / UEBERSICHT"},
-    "help_section_nav": {"en": "Navigation", "de": "Navigation"},
-    "help_nav_move_key": {"en": "Arrow keys", "de": "Pfeiltasten"},
-    "help_nav_move_desc": {"en": "Move around", "de": "Bewegen"},
-    "help_nav_ok_key": {"en": "OK / A", "de": "OK / A"},
-    "help_nav_ok_desc": {"en": "Select, enter category/folder",
-                         "de": "Auswaehlen, Kategorie/Ordner betreten"},
-    "help_nav_back_key": {"en": "Back / B", "de": "Zurueck / B"},
-    "help_nav_back_desc": {"en": "One level back, at the top: exit dialog",
-                           "de": "Eine Ebene zurueck, ganz oben: Beenden-Dialog"},
-    "help_nav_letter_key": {"en": "Letter key (keyboard)",
-                            "de": "Buchstabentaste (Tastatur)"},
-    "help_nav_letter_desc": {"en": "Jump to next entry with that letter",
-                             "de": "Springt zum naechsten Eintrag mit diesem Buchstaben"},
-    "help_section_list": {"en": "In the game list", "de": "In der Spieleliste"},
-    "help_list_showcase_key": {"en": "F6", "de": "F6"},
-    "help_list_showcase_desc": {"en": "RA achievement showcase for the selected game",
-                                "de": "RA-Erfolgs-Vitrine fuer das markierte Spiel"},
-    "help_list_completed_key": {"en": "F7", "de": "F7"},
-    "help_list_completed_desc": {"en": "Toggle completed status",
-                                 "de": "Durchgespielt-Status umschalten"},
-    "help_list_favorite_key": {"en": "F8 / L2 or R2", "de": "F8 / L2 oder R2"},
-    "help_list_favorite_desc": {"en": "Toggle favorite", "de": "Favorit umschalten"},
-    "help_list_random_key": {"en": "F11", "de": "F11"},
-    "help_list_random_desc": {"en": "Start a random game across all systems",
-                              "de": "Zufaelliges Spiel ueber alle Systeme starten"},
-    "help_section_menu": {"en": "Special entries in the main menu",
-                          "de": "Besondere Eintraege im Hauptmenue"},
-    "help_menu_continue_key": {"en": "Continue playing", "de": "Weiterspielen"},
-    "help_menu_continue_desc": {"en": "Your last unfinished game",
-                                "de": "Dein zuletzt offenes Spiel"},
-    "help_menu_collections_key": {"en": "Collections", "de": "Sammlungen"},
-    "help_menu_collections_desc": {"en": "Automatic groupings",
-                                   "de": "Automatische Gruppierungen"},
-    "help_menu_hunter_key": {"en": "RA Achievement Hunter", "de": "RA-Erfolgsjaeger"},
-    "help_menu_hunter_desc": {"en": "Open achievements in your library",
-                              "de": "Offene Erfolge in deiner Bibliothek"},
-    "help_section_system": {"en": "System menu", "de": "System-Menue"},
-    "help_system_stats_key": {"en": "Statistics & achievements",
-                              "de": "Statistiken & Erfolge"},
-    "help_system_stats_desc": {"en": "Top-10 lists, trophy room, year in review, diary",
-                               "de": "Top-10-Listen, Trophaeenraum, Jahresrueckblick, Spieltagebuch"},
-    "help_system_secrets_key": {"en": "Secrets", "de": "Geheimnisse"},
-    "help_system_secrets_desc": {"en": "Hidden things to discover for yourself",
-                                 "de": "Verstecktes, das du selbst entdecken kannst"},
-    "help_system_credits_key": {"en": "Credits", "de": "Mitwirkende"},
-    "help_system_credits_desc": {"en": "Who made this", "de": "Wer das gebaut hat"},
-    "help_section_playing": {"en": "While playing", "de": "Waehrend des Spielens"},
-    "help_playing_exit_key": {"en": "Esc or F10 (hold ~0.6s)",
-                              "de": "Esc oder F10 (ca. 0,6s halten)"},
-    "help_playing_exit_desc": {"en": "Back to the menu immediately",
-                               "de": "Sofort zurueck ins Menue"},
-    "help_playing_exit_pad_key": {"en": "Start + Select (pad, hold ~0.8s)",
-                                  "de": "Start + Select (Pad, ca. 0,8s halten)"},
-    "help_playing_exit_pad_desc": {"en": "Back to the menu immediately",
-                                   "de": "Sofort zurueck ins Menue"},
-    "help_playing_music_key": {"en": "Y", "de": "Y"},
-    "help_playing_music_desc": {"en": "Next music track",
-                                "de": "Naechster Musiktitel"},
-    "help_section_general": {"en": "Anywhere", "de": "Ueberall"},
-    "help_general_osd_key": {"en": "F12 / Mode (pad)", "de": "F12 / Mode-Taste (Pad)"},
-    "help_general_osd_desc": {"en": "Open the MiSTer OSD (joystick setup, settings)",
-                              "de": "MiSTer-OSD oeffnen (Joystick-Definition, Einstellungen)"},
-    "help_general_osd_back_key": {"en": "F10 / X (pad)", "de": "F10 / X (Pad)"},
-    "help_general_osd_back_desc": {"en": "Back to the frontend from the OSD",
-                                   "de": "Zurueck ins Frontend aus dem OSD"},
-    "sys_trophy_action": {"en": "My trophy room", "de": "Mein Trophaeenraum"},
-    "sys_year_review_action": {"en": "Year in review", "de": "Jahresrueckblick"},
-    "sys_secrets_action": {"en": "Secrets", "de": "Geheimnisse"},
-    "sys_credits_action": {"en": "Credits", "de": "Mitwirkende"},
-    "sys_crt_test_action": {"en": "CRT test pattern", "de": "CRT-Testbild"},
-    "ra_showcase_title": {"en": "RA ACHIEVEMENTS - %s", "de": "RA-ERFOLGE - %s"},
-    "ra_showcase_loading": {"en": "Loading achievements ...",
-                            "de": "Erfolge werden geladen ..."},
-    "ra_showcase_error": {"en": "Could not load achievements (no network/timeout)",
-                          "de": "Erfolge konnten nicht geladen werden (kein Netz/Zeitlimit)"},
-    "ra_showcase_empty": {"en": "No achievements found for this game",
-                          "de": "Keine Erfolge fuer dieses Spiel gefunden"},
-    "ra_showcase_none": {"en": "No RetroAchievements data for this game",
-                         "de": "Keine RetroAchievements-Daten fuer dieses Spiel"},
-    "ra_showcase_not_setup": {"en": "RetroAchievements not set up (see README)",
-                              "de": "RetroAchievements nicht eingerichtet (siehe README)"},
-    "sys_milestones_action": {"en": "My achievements", "de": "Meine Erfolge"},
-    "sys_ra_setup": {"en": "RetroAchievements: not set up",
-                     "de": "RetroAchievements: nicht eingerichtet"},
-    "sys_ra_configured": {"en": "RetroAchievements: %s (reload)",
-                          "de": "RetroAchievements: %s (neu laden)"},
-    "core_choice_title": {"en": "%s - CHOOSE CORE",
-                          "de": "%s - CORE WAEHLEN"},
-    "core_choice_normal": {"en": "Standard core",
-                           "de": "Standard-Core"},
-    "core_choice_ra": {"en": "RetroAchievements core",
-                       "de": "RetroAchievements-Core"},
-    "core_choice_hint": {"en": "Up/Down to choose, OK to confirm",
-                         "de": "Hoch/Runter waehlen, OK bestaetigen"},
-    "wot_title": {"en": "WONNE OR TONNE", "de": "WONNE ODER TONNE"},
-    "wot_hint": {"en": "Up/Down: select   OK: confirm   ESC: back",
-                 "de": "Hoch/Runter: waehlen   OK: bestaetigen   ESC: zurueck"},
-    "wot_pool_empty": {
-        "en": "No unplayed game left in the list - everything has been rated!",
-        "de": "Kein noch nicht bewertetes Spiel mehr in der Liste - alles durchgespielt!"},
-    "wot_no_rom_match": {
-        "en": "Drew several games but found no matching ROM file for any of them.",
-        "de": "Mehrere Spiele gezogen, aber fuer keins eine passende ROM-Datei gefunden."},
-    "wot_option_start": {"en": "Start", "de": "Starten"},
-    "wot_option_redraw": {"en": "Draw again", "de": "Neu ziehen"},
-    "wot_option_back": {"en": "Back", "de": "Zurueck"},
-    "sys_wot_action": {"en": "Wonne or Tonne - draw a game", "de": "Wonne oder Tonne - Spiel ziehen"},
-    "ra_setup_title": {"en": "RETROACHIEVEMENTS SETUP",
-                       "de": "RETROACHIEVEMENTS EINRICHTEN"},
-    "ra_setup_line1": {"en": "Create this file via SSH/text editor:",
-                       "de": "Diese Datei per SSH/Texteditor anlegen:"},
-    "ra_setup_line2": {"en": "Line 1: your RA username",
-                       "de": "Zeile 1: dein RA-Benutzername"},
-    "ra_setup_line3": {"en": "Line 2: your RA web API key (from your",
-                       "de": "Zeile 2: dein RA-Web-API-Schluessel (aus"},
-    "ra_setup_line4": {"en": "RA control panel, section \"Keys\")",
-                       "de": "deinem RA-Kontrollbereich, Abschnitt \"Keys\")"},
-
-    # Ersteinrichtungs-Assistent (Nutzerwunsch: vereinfachte
-    # Installation, einmalig durch alle wichtigen Schritte fuehren).
-    "wizard_step_title": {"en": "Setup %d/%d - %s", "de": "Einrichtung %d/%d - %s"},
-    "wizard_step_language": {"en": "Language", "de": "Sprache"},
-    "wizard_step_video": {"en": "Display", "de": "Bildschirm"},
-    "wizard_step_timezone": {"en": "Time zone", "de": "Zeitzone"},
-    "wizard_step_ra": {"en": "RetroAchievements", "de": "RetroAchievements"},
-    "wizard_step_boxart": {"en": "Box art", "de": "Boxart"},
-    "wizard_step_gameinfo": {"en": "Game info", "de": "Gameinfos"},
-    "wizard_step_scan": {"en": "Finding your games", "de": "Spiele werden gesucht"},
-    "wizard_step_esc_hint": {"en": "Good to know", "de": "Gut zu wissen"},
-    "wizard_choice_hint": {"en": "Up/Down: select   OK: confirm   ESC: cancel setup",
-                           "de": "Hoch/Runter: waehlen   OK: bestaetigen   ESC: Einrichtung abbrechen"},
-    "wizard_skip_hint": {"en": "OK: continue   ESC: skip this step",
-                         "de": "OK: weiter   ESC: diesen Schritt ueberspringen"},
-    "wizard_continue_hint": {"en": "Any key: continue", "de": "Beliebige Taste: weiter"},
-    "wizard_video_reboot_note": {
-        "en": "Saved - takes effect after the next restart. Setup continues now.",
-        "de": "Gespeichert - wird erst nach dem naechsten Neustart aktiv. Die Einrichtung geht jetzt weiter."},
-    "wizard_timezone_current": {"en": "Current: %s -> change", "de": "Aktuell: %s -> aendern"},
-    "wizard_continue_option": {"en": "Continue", "de": "Weiter"},
-    "wizard_download_now": {"en": "Download now", "de": "Jetzt herunterladen"},
-    "wizard_download_skip": {"en": "Skip (can be done later from Scripts)",
-                             "de": "Ueberspringen (spaeter jederzeit ueber Scripts moeglich)"},
-    "wizard_scan_patience": {
-        "en": "If you have a lot of ROMs, this can take a while - that's normal, not frozen.",
-        "de": "Bei vielen ROMs kann das etwas dauern - das ist normal, kein Einfrieren."},
-    "wizard_scan_progress": {"en": "%d/%d - %s", "de": "%d/%d - %s"},
-    "wizard_scan_done": {"en": "Done: %d systems, %d games found.",
-                         "de": "Fertig: %d Systeme, %d Spiele gefunden."},
-    "wizard_esc_hint_1": {
-        "en": "To exit a running game, hold Esc on a connected keyboard.",
-        "de": "Um ein laufendes Spiel zu verlassen: Esc auf einer angeschlossenen Tastatur halten."},
-    "wizard_esc_hint_2": {
-        "en": "Needs a keyboard - a gamepad alone can't do this.",
-        "de": "Braucht eine Tastatur - mit einem Controller allein geht das nicht."},
-    "sys_setup_wizard": {"en": "Run setup wizard again", "de": "Einrichtung erneut starten"},
-
-    "ra_reload_done": {"en": "RetroAchievements: %d games matched",
-                       "de": "RetroAchievements: %d Spiele zugeordnet"},
-    "ra_reload_failed": {"en": "RetroAchievements: could not reach server",
-                         "de": "RetroAchievements: Server nicht erreichbar"},
-    "top10_time_action": {"en": "Top 10: most played",
-                          "de": "Top 10: meistgespielt"},
-    "top10_launches_action": {"en": "Top 10: most launched",
-                              "de": "Top 10: meistgestartet"},
-    "top10_time_title": {"en": "TOP 10 - MOST PLAYED",
-                         "de": "TOP 10 - MEISTGESPIELT"},
-    "top10_launches_title": {"en": "TOP 10 - MOST LAUNCHED",
-                             "de": "TOP 10 - MEISTGESTARTET"},
-    "top10_empty": {"en": "No games played yet",
-                    "de": "Noch keine Spiele gespielt"},
-    "top10_launches_count": {"en": "%dx", "de": "%dx"},
-    "top10_scroll_hint": {"en": "%d-%d of %d - Up/Down to scroll",
-                          "de": "%d-%d von %d - Hoch/Runter zum Scrollen"},
-    "no_artwork_1":    {"en": "no",      "de": "kein"},
-    "no_artwork_2":    {"en": "artwork", "de": "Artwork"},
-    "sys_group_ra": {"en": "RetroAchievements", "de": "RetroAchievements"},
-    "sys_group_stats": {"en": "Statistics & achievements", "de": "Statistiken & Erfolge"},
-    "sys_group_display": {"en": "Display & sound", "de": "Anzeige & Sound"},
-    "sys_group_behavior": {"en": "Options", "de": "Optionen"},
-    "sys_group_input": {"en": "Input & language", "de": "Eingabe & Sprache"},
-    "sys_group_info": {"en": "Info", "de": "Info"},
-    "sys_group_maintenance": {"en": "Maintenance", "de": "Wartung"},
-    "sys_osd":         {"en": "Open MiSTer OSD (Settings/Buttons)",
-                        "de": "MiSTer-OSD oeffnen (Settings/Buttons)"},
-    "sys_video_crt":   {"en": "Menu video: CRT -> switch to HDMI",
-                        "de": "Menue-Video: CRT -> auf HDMI wechseln"},
-    "sys_video_hdmi":  {"en": "Menu video: HDMI -> switch to CRT",
-                        "de": "Menue-Video: HDMI -> auf CRT wechseln"},
-    "sys_video_suffix":{"en": " (reboot)", "de": " (Neustart)"},
-    "sys_music_on":    {"en": "Music: On -> turn off", "de": "Musik: an -> ausschalten"},
-    "sys_music_off":   {"en": "Music: Off -> turn on", "de": "Musik: aus -> einschalten"},
-    "sys_music_source": {"en": "Music source: %s", "de": "Musik-Quelle: %s"},
-    "sys_volume": {"en": "Volume: %d%%", "de": "Lautstaerke: %d%%"},
-    "sys_language":    {"en": "Language: English -> switch to German",
-                        "de": "Sprache: Deutsch -> auf Englisch wechseln"},
-    "sys_configure_buttons": {"en": "Configure buttons",
-                              "de": "Tastenbelegung anpassen"},
-    "sys_reset_buttons":     {"en": "Reset to default buttons",
-                              "de": "Auf Standardbelegung zuruecksetzen"},
-    "sys_curated_on":  {"en": "Curated list (DB-matched only): ON -> turn off",
-                        "de": "Kuratierte Liste (nur DB-Treffer): AN -> ausschalten"},
-    "sys_curated_off": {"en": "Curated list (DB-matched only): OFF -> turn on",
-                        "de": "Kuratierte Liste (nur DB-Treffer): AUS -> einschalten"},
-    "sys_attract_on":  {"en": "Attract mode (screensaver): ON -> turn off",
-                        "de": "Attract-Modus (Bildschirmschoner): AN -> ausschalten"},
-    "sys_attract_off": {"en": "Attract mode (screensaver): OFF -> turn on",
-                        "de": "Attract-Modus (Bildschirmschoner): AUS -> einschalten"},
-    "sys_attract_delay": {"en": "Attract mode delay: %s -> next",
-                          "de": "Attract-Modus Verzoegerung: %s -> naechste"},
-    "sys_theme": {"en": "Color theme: %s -> next",
-                  "de": "Farbschema: %s -> naechstes"},
-    "sys_timezone": {"en": "Timezone: %s -> next",
-                      "de": "Zeitzone: %s -> naechste"},
-    "sys_network_wait_off": {"en": "Wait for NAS/network at boot: OFF -> turn on",
-                             "de": "Beim Start auf NAS/Netzwerk warten: AUS -> einschalten"},
-    "sys_network_wait_on": {"en": "Wait for NAS/network at boot: ON -> turn off",
-                            "de": "Beim Start auf NAS/Netzwerk warten: AN -> ausschalten"},
-    "sys_sfx_on": {"en": "Navigation sounds: ON -> turn off",
-                   "de": "Navigations-Soundeffekte: AN -> ausschalten"},
-    "sys_sfx_off": {"en": "Navigation sounds: OFF -> turn on",
-                    "de": "Navigations-Soundeffekte: AUS -> einschalten"},
-    "sys_dragend_logo_on": {"en": "Boot logo: Dragend -> switch to plain",
-                            "de": "Boot-Logo: Dragend -> auf neutral wechseln"},
-    "sys_dragend_logo_off": {"en": "Boot logo: plain -> switch to Dragend",
-                             "de": "Boot-Logo: neutral -> auf Dragend wechseln"},
-    "sys_update_on": {"en": "Check for updates: ON -> turn off",
-                      "de": "Auf Updates pruefen: AN -> ausschalten"},
-    "sys_update_off": {"en": "Check for updates: OFF -> turn on",
-                       "de": "Auf Updates pruefen: AUS -> einschalten"},
-    "sys_update_available": {"en": "Update available: v%s! -> turn check off",
-                             "de": "Update verfuegbar: v%s! -> Pruefung ausschalten"},
-    "update_available_popup": {"en": "Update v%s!",
-                               "de": "Update v%s!"},
-    "on_this_day_popup": {"en": "%d years ago today, you first started %s",
-                          "de": "Vor %d Jahren hast du an diesem Tag zum ersten Mal %s gestartet"},
-    "attract_hint": {"en": "Press any button to continue",
-                     "de": "Beliebige Taste zum Fortfahren"},
-    "scanning":  {"en": "Scanning: %s", "de": "Durchsuche: %s"},
-    "recent_cat": {"en": "Recently Played", "de": "Zuletzt gespielt"},
-    "continue_cat": {"en": "Continue Playing", "de": "Weiterspielen"},
-    "ra_hunter_cat": {"en": "RA Achievement Hunter", "de": "RA-Erfolgsjaeger"},
-    "ra_almost_done_cat": {"en": "Almost there", "de": "Fast geschafft"},
-    "collections_cat": {"en": "Collections", "de": "Sammlungen"},
-    "collection_discovered_this_year": {"en": "Discovered in %s", "de": "%s entdeckt"},
-    "collection_quick_games": {"en": "Quick games", "de": "Kurzweilige Spiele"},
-    "favorites_cat": {"en": "Favorites", "de": "Favoriten"},
-    "favorite_added": {"en": "Added to favorites", "de": "Zu Favoriten hinzugefuegt"},
-    "favorite_removed": {"en": "Removed from favorites", "de": "Aus Favoriten entfernt"},
-    "completed_added": {"en": "Marked as completed", "de": "Als durchgespielt markiert"},
-    "completed_removed": {"en": "Completed mark removed", "de": "Durchgespielt-Markierung entfernt"},
-    "sys_rescan":      {"en": "Rescan game list", "de": "Spieleliste neu einlesen"},
-    "sys_redraw":      {"en": "Redraw display",   "de": "Anzeige neu aufbauen"},
-    "sys_reboot":      {"en": "Restart MiSTer",   "de": "MiSTer neu starten"},
-    "sys_quit":        {"en": "Quit frontend",    "de": "Frontend beenden"},
-    "remap_prompt":    {"en": "Press a button for: %s",
-                        "de": "Taste druecken fuer: %s"},
-    "remap_action_up":     {"en": "Up",     "de": "Hoch"},
-    "remap_action_down":   {"en": "Down",   "de": "Runter"},
-    "remap_action_left":   {"en": "Left",   "de": "Links"},
-    "remap_action_right":  {"en": "Right",  "de": "Rechts"},
-    "remap_action_ok":     {"en": "OK / Start", "de": "OK / Start"},
-    "remap_action_back":   {"en": "Back",   "de": "Zurueck"},
-    "remap_action_osd":    {"en": "Open MiSTer menu", "de": "MiSTer-Menue oeffnen"},
-    "remap_action_random": {"en": "Random game", "de": "Zufaelliges Spiel"},
-    "remap_action_favorite": {"en": "Toggle favorite", "de": "Favorit umschalten"},
-    "remap_action_completed": {"en": "Toggle completed", "de": "Durchgespielt umschalten"},
-    "remap_done":      {"en": "Button mapping saved!",
-                        "de": "Tastenbelegung gespeichert!"},
-    "remap_cancelled": {"en": "Cancelled - keeping previous mapping",
-                        "de": "Abgebrochen - alte Belegung bleibt aktiv"},
-    "remap_esc_hint":  {"en": "(ESC to cancel)", "de": "(ESC zum Abbrechen)"},
-    "remap_f9_blocked": {"en": "F9 is reserved for MiSTer - press another key",
-                        "de": "F9 ist fuer MiSTer reserviert - andere Taste druecken"},
-    "now_playing":     {"en": "Now playing: %s", "de": "Es laeuft: %s"},
-}
-
-def _load_language():
-    try:
-        lang = open(LANGUAGE_FILE).read().strip()
-        return lang if lang in ("en", "de") else "en"
-    except OSError:
-        return "en"
-
-CURRENT_LANG = _load_language()
-
-def set_language(lang):
-    global CURRENT_LANG
-    CURRENT_LANG = lang
-    try:
-        os.makedirs(os.path.dirname(LANGUAGE_FILE), exist_ok=True)
-        with open(LANGUAGE_FILE, "w") as f:
-            f.write(lang)
-    except OSError:
-        pass
-
-def t(key, *fmt_args):
-    """Uebersetzten Text fuer den aktuellen Sprachstand liefern.
-    Faellt bei fehlendem Schluessel/fehlender Sprache auf Englisch
-    bzw. den Schluessel selbst zurueck, statt abzustuerzen."""
-    entry = TRANSLATIONS.get(key)
-    if entry is None:
-        return key
-    text = entry.get(CURRENT_LANG, entry.get("en", key))
-    if fmt_args:
-        try:
-            return text % fmt_args
-        except (TypeError, ValueError):
-            return text
-    return text
+from fe.translations import TRANSLATIONS, t, set_language, current_lang
 
 
-def system_items(music_enabled=None, music_source="mp3", music_station="",
-                 cores_subcats=None, standalone_items=None, scripts_items=None):
-    """Liefert die Inhalte der 'System'-Kategorie als Baumknoten mit
-    thematischen Unterordnern (Nutzerwunsch: die Liste war auf 23
-    flache Eintraege angewachsen, kaum noch ueberschaubar) - nutzt
-    dieselbe Ordner-Navigation wie eigene ROM-Unterordner, kein neuer
-    Code-Pfad noetig. Die Aktions-"kind"-Werte in jedem Eintrag bleiben
-    UNVERAENDERT (siehe Aktions-Dispatch in run()) - nur die
-    Gruppierung/Anzeige aendert sich, kein bestehendes Verhalten.
-
-    music_source/music_station (neu, Nutzerwunsch: Rainwave-
-    Internetradio als zweite Musikquelle, siehe CHANGES_RAINWAVE.md):
-    fuer die Beschriftung des neuen "Musik-Quelle"-Eintrags.
-
-    ERWEITERT (Nutzerwunsch: Hauptmenue aufraeumen, "zu viele
-    Eintraege" - Utilities/Other/Scripts sowie Consoles/
-    Console (autoboot)/RA Cores waren bisher eigene Top-Level-
-    Kategorien): cores_subcats - Liste von (Anzeigename, Items) fuer
-    die vormals eigenstaendigen Core-Ordner-Kategorien (Consoles,
-    Console (autoboot), RA Cores), die hier gemeinsam unter einem
-    NEUEN "Cores"-Unterordner landen (als je EIGENER Unter-Unterordner
-    darunter - bleiben so weiterhin unterscheidbar, nur eine Ebene
-    tiefer verschachtelt, nicht zu einer einzigen Liste vermischt).
-    standalone_items - dict Anzeigename -> Items fuer Kategorien, die
-    je einen EIGENEN Unterordner direkt im System-Menue bekommen
-    (Utilities, Other). scripts_items - Items fuer einen neuen
-    "Scripts"-Unterordner (ehemals eigene Top-Level-Kategorie). Alle
-    drei bewusst optional (None/leer = Verhalten unveraendert wie vor
-    dieser Erweiterung) - betrifft nur, ob der jeweilige Ordner
-    ueberhaupt auftaucht, keine bestehende Logik wird angefasst."""
-    crt = crt_menu_active()
-    video = t("sys_video_crt") if crt else t("sys_video_hdmi")
-    music_label = t("sys_music_on") if music_enabled else t("sys_music_off")
-    music_src_label = (t("sys_music_source", "Radio - %s" % (music_station or "?"))
-                       if music_source == "radio" else t("sys_music_source", "MP3"))
-    volume_label = t("sys_volume", VOLUME)
-    curated_label = t("sys_curated_on") if curated_only_active() \
-        else t("sys_curated_off")
-    attract_label = t("sys_attract_on") if attract_enabled() \
-        else t("sys_attract_off")
-    attract_delay_label = t("sys_attract_delay", format_attract_delay(load_attract_delay()))
-    theme_names = THEME_NAMES_DE if CURRENT_LANG == "de" else THEME_NAMES_EN
-    theme_label = t("sys_theme", theme_names.get(current_theme_name(), "?"))
-    tz_label = t("sys_timezone", format_timezone_offset(load_timezone_offset()))
-    netwait_label = t("sys_network_wait_on" if network_wait_enabled()
-                      else "sys_network_wait_off")
-    sfx_label = t("sys_sfx_on") if sfx_enabled_flag() else t("sys_sfx_off")
-    dragend_logo_label = t("sys_dragend_logo_on") if dragend_logo_enabled() \
-        else t("sys_dragend_logo_off")
-    if not update_check_enabled():
-        update_label = t("sys_update_off")
-    else:
-        _remote_v = load_update_state().get("remote_version")
-        if _remote_v and _version_newer(_remote_v, FRONTEND_VERSION):
-            update_label = t("sys_update_available", _remote_v)
-        else:
-            update_label = t("sys_update_on")
-    ra_user, _ra_key = load_ra_config()
-    ra_label = t("sys_ra_configured", ra_user) if ra_user else t("sys_ra_setup")
-
-    def folder(*items):
-        return {"folders": {}, "items": list(items)}
-
-    groups = {
-        t("sys_group_ra"): folder(
-            (ra_label, "ra_status", None),
-        ),
-        t("sys_group_stats"): folder(
-            (t("top10_time_action"), "top10_time", None),
-            (t("top10_launches_action"), "top10_launches", None),
-            (t("sys_milestones_action"), "milestones", None),
-            (t("sys_trophy_action"), "trophy_room", None),
-            (t("sys_year_review_action"), "year_review", None),
-            (t("sys_diary_action"), "diary", None),
-        ),
-        t("sys_group_display"): folder(
-            (video + t("sys_video_suffix"), "crtmenu", None),
-            (theme_label, "theme", None),
-            (sfx_label, "sfx", None),
-            (dragend_logo_label, "dragend_logo", None),
-            (music_label, "music", None),
-            (music_src_label, "music_source", None),
-            (volume_label, "volume", None),
-        ),
-        t("sys_group_behavior"): folder(
-            (t("sys_crt_test_action"), "crt_test", None),
-            (curated_label, "curated", None),
-            (attract_label, "attract", None),
-            (attract_delay_label, "attract_delay", None),
-            (tz_label, "timezone", None),
-            (netwait_label, "network_wait", None),
-        ),
-        t("sys_group_input"): folder(
-            (t("sys_language"), "language", None),
-            (t("sys_configure_buttons"), "remap", None),
-            (t("sys_reset_buttons"), "remap_reset", None),
-        ),
-        t("sys_group_info"): folder(
-            (t("sys_help_action"), "help", None),
-            (t("sys_setup_wizard"), "setup_wizard", None),
-            (t("sys_secrets_action"), "secrets", None),
-            (t("sys_credits_action"), "credits", None),
-            (update_label, "update_check", None),
-        ),
-        t("sys_group_maintenance"): folder(
-            (t("sys_osd"), "osd", None),
-            (t("sys_rescan"), "rescan", None),
-            (t("sys_redraw"), "redraw", None),
-            (t("sys_reboot"), "reboot", None),
-            (t("sys_quit"), "quit", None),
-        ),
-    }
-
-    if cores_subcats:
-        groups["Cores"] = {
-            "folders": {name: folder(*items) for name, items in cores_subcats if items},
-            "items": [],
-        }
-    if standalone_items:
-        for name, items in standalone_items.items():
-            if items:
-                groups[name] = folder(*items)
-    if scripts_items:
-        groups["Scripts"] = folder(*scripts_items)
-
-    return {"folders": groups, "items": []}
-
-
-def _node_has_any_meta(node, syskey):
-    """Rekursiv prüfen, ob IRGENDWO im Baum ein Eintrag Metadaten hat -
-    entscheidet, ob das Sicherheitsnetz (kein Filtern bei komplett
-    fehlender Datenbank) greift."""
-    for it in node["items"]:
-        label, kind, arg = it
-        meta = mra_meta(arg) if (syskey == "ARCADE" and kind == "core") \
-              else ({} if syskey == "ARCADE" else get_meta(syskey, label))
-        if meta:
-            return True
-    for sub in node["folders"].values():
-        if _node_has_any_meta(sub, syskey):
-            return True
-    return False
-
-def _filter_node_curated(node, syskey):
-    """Rekursiv jeden Knoten auf katalogisierte Eintraege einschraenken.
-    Ordner, die dadurch komplett leer werden (keine Items, keine
-    nicht-leeren Unterordner), fallen ganz weg."""
-    kept_items = []
-    for it in node["items"]:
-        label, kind, arg = it
-        meta = mra_meta(arg) if (syskey == "ARCADE" and kind == "core") \
-              else ({} if syskey == "ARCADE" else get_meta(syskey, label))
-        if meta:
-            kept_items.append(it)
-    kept_folders = {}
-    for fname, sub in node["folders"].items():
-        filtered_sub = _filter_node_curated(sub, syskey)
-        if filtered_sub["folders"] or filtered_sub["items"]:
-            kept_folders[fname] = filtered_sub
-    return {"folders": kept_folders, "items": kept_items}
-
-def filter_curated(name, node, syskey):
-    """Wenn der 'Nur katalogisierte Spiele'-Schalter aktiv ist (System-
-    Menue), auf Eintraege einschraenken, die einen Treffer in der
-    libretro-Datenbank haben (von mister_gameinfo.py geladen,
-    meta/<System>.json bzw. fuer Arcade die MRA-Datei selbst) - das ist
-    die "Source of Authority", die Hyperspin frueher mit seinen
-    XML-Datenbanken pro System bereitgestellt hat: nur tatsaechlich
-    katalogisierte, offiziell erschienene Spiele, keine Hacks/Homebrew/
-    unbekannten Dumps. Arbeitet rekursiv ueber die komplette
-    Ordnerstruktur - leer gewordene Unterordner fallen weg.
-
-    Sicherheitsnetz: Hat ein System UEBERHAUPT keine Metadaten (z.B.
-    weil mister_gameinfo.py dafuer noch nie gelaufen ist), wird NICHT
-    gefiltert - sonst wuerde die Liste faelschlich komplett leer
-    werden, nur weil noch keine Datenbank geladen wurde."""
-    if not syskey or not (node["folders"] or node["items"]):
-        return (name, node, syskey)
-    if not _node_has_any_meta(node, syskey):
-        return (name, node, syskey)
-    return (name, _filter_node_curated(node, syskey), syskey)
-
-CURATED_FLAG = "/media/fat/frontend/curated_only"
-ATTRACT_DISABLED_FLAG = "/media/fat/frontend/attract_disabled"
-ATTRACT_DELAY_FILE = "/media/fat/frontend/attract_delay"
-# NEUES FEATURE (Nutzerwunsch: "fuer denn attract Modus eventuell aus
-# nur an und aus zu machen noch eine Einstellung dabei damit man sich
-# selber aussuchen kann ab wieviel Minuten der anfaengt"): bisher war
-# die Verzoegerung mit ATTRACT_IDLE_SECONDS = 90 fest verdrahtet, nur
-# AN/AUS liess sich einstellen (siehe attract_enabled()). Jetzt
-# zusaetzlich einstellbar - gleiches Muster wie die bestehende
-# Zeitzonen-Einstellung (load/save/cycle-Dreiklang mit einer festen
-# Schrittliste).
-ATTRACT_DELAY_STEPS = [30, 60, 90, 120, 180, 300, 600, 900]   # Sekunden
-
-def load_attract_delay():
-    try:
-        with open(ATTRACT_DELAY_FILE) as f:
-            val = int(f.read().strip())
-            return val if val in ATTRACT_DELAY_STEPS else 90
-    except (OSError, ValueError):
-        return 90   # bisheriger fester Standardwert bleibt der Default
-
-def save_attract_delay(seconds):
-    try:
-        os.makedirs(os.path.dirname(ATTRACT_DELAY_FILE), exist_ok=True)
-        with open(ATTRACT_DELAY_FILE, "w") as f:
-            f.write(str(seconds))
-    except OSError:
-        pass
-
-def cycle_attract_delay():
-    """Naechsten Wert in ATTRACT_DELAY_STEPS waehlen (wrap-around).
-    Liefert den neuen Wert in Sekunden."""
-    current = load_attract_delay()
-    try:
-        idx = ATTRACT_DELAY_STEPS.index(current)
-    except ValueError:
-        idx = -1
-    new_val = ATTRACT_DELAY_STEPS[(idx + 1) % len(ATTRACT_DELAY_STEPS)]
-    save_attract_delay(new_val)
-    return new_val
-
-def format_attract_delay(seconds):
-    """z.B. '30s', '2min', '10min' - fuer die Menu-Beschriftung."""
-    if seconds < 60:
-        return "%ds" % seconds
-    if seconds % 60 == 0:
-        return "%dmin" % (seconds // 60)
-    return "%.1fmin" % (seconds / 60)
-
-ATTRACT_IDLE_SECONDS = 90   # so lange ohne Eingabe, bevor der Attract-
-                            # Modus (Bildschirmschoner) automatisch startet
-                            # - BLEIBT als Standardwert/Sicherheitsnetz
-                            # bestehen (siehe load_attract_delay()), wird
-                            # aber nicht mehr direkt fuer den eigentlichen
-                            # Check verwendet (siehe next_action()).
-ATTRACT_CHANGE_SECONDS = 6  # wie lange ein Spiel im Attract-Modus gezeigt wird
-COVER_SETTLE = 0.15         # s nach letzter Eingabe, bis waehrend des
-                            # Scrollens uebersprungene Cover nachgeladen
-                            # werden (haelt das Scrollen selbst fluessig)
-
-def attract_enabled():
-    """Standardmaessig AN (im Gegensatz zu curated_only_active(), das
-    standardmaessig AUS ist) - die Datei bedeutet hier 'abgeschaltet',
-    nicht 'aktiviert'."""
-    return not os.path.exists(ATTRACT_DISABLED_FLAG)
-
-def toggle_attract_mode():
-    existed_before = os.path.exists(ATTRACT_DISABLED_FLAG)
-    if existed_before:
-        try:
-            os.remove(ATTRACT_DISABLED_FLAG)
-        except OSError as e:
-            LOG("toggle_attract_mode: Loeschen der Markierungsdatei "
-                "fehlgeschlagen: %s" % e)
-    else:
-        try:
-            dirname = os.path.dirname(ATTRACT_DISABLED_FLAG)
-            if dirname:
-                os.makedirs(dirname, exist_ok=True)
-            open(ATTRACT_DISABLED_FLAG, "w").close()
-        except OSError as e:
-            LOG("toggle_attract_mode: Anlegen der Markierungsdatei "
-                "fehlgeschlagen: %s" % e)
-    LOG("toggle_attract_mode: vorher %s -> jetzt %s (Datei existiert: %s)"
-        % ("AUS" if existed_before else "AN",
-           "AN" if existed_before else "AUS",
-           os.path.exists(ATTRACT_DISABLED_FLAG)))
-
-def curated_only_active():
-    return os.path.exists(CURATED_FLAG)
-
-def toggle_curated_only():
-    if os.path.exists(CURATED_FLAG):
-        try:
-            os.remove(CURATED_FLAG)
-        except OSError:
-            pass
-    else:
-        try:
-            dirname = os.path.dirname(CURATED_FLAG)
-            if dirname:
-                os.makedirs(dirname, exist_ok=True)
-            open(CURATED_FLAG, "w").close()
-        except OSError:
-            pass
-
-def _letter_of(name):
-    for ch in name:
-        if ch.isalnum():
-            return ch.upper()
-    return "#"
-
-def jump_to_letter(names, cur_i, ch):
-    """Index des naechsten Eintrags (zyklisch, ab cur_i+1 gesucht),
-    dessen Anfangsbuchstabe ch entspricht. Mehrfaches Druecken derselben
-    Taste springt dadurch der Reihe nach durch alle Treffer - wie die
-    Direktsprung-Suche in klassischen Dateibrowsern."""
-    n = len(names)
-    if n == 0:
-        return cur_i
-    for step in range(1, n + 1):
-        idx = (cur_i + step) % n
-        if _letter_of(names[idx]) == ch:
-            return idx
-    return cur_i
-
-def current_core():
-    try:
-        return open(CORENAME).read().strip("\x00 \n\r\t")
-    except OSError:
-        return ""
-
-def launch_core(path):
-    with open(MISTER_CMD, "w") as f:
-        f.write("load_core " + path)
-
-# ----------------------------------------------------------------------------
+from fe.menu import system_items
 # FRONTEND
 # ----------------------------------------------------------------------------
 
@@ -10312,7 +3909,7 @@ class Frontend:
             if ra_data is not None:
                 self._ra_lookup = build_ra_lookup(ra_data)
                 self._ra_fetch_ok = True
-            elif not NTP_SYNC_OK:
+            elif not get_ntp_sync_ok():
                 # Wahrscheinlichste Erklaerung fuer einen fehlgeschlagenen
                 # Abruf direkt beim Start: die Systemuhr war noch falsch
                 # (MiSTer hat keine batteriegepufferte Uhr), wodurch die
@@ -10359,7 +3956,7 @@ class Frontend:
                     self._ra_pending_result = (build_ra_lookup(ra_data), True)
                 else:
                     self._ra_pending_result = (None, False)
-                    if not NTP_SYNC_OK:
+                    if not get_ntp_sync_ok():
                         # Wahrscheinlichste Erklaerung fuer einen
                         # fehlgeschlagenen Abruf direkt beim Start: die
                         # Systemuhr war noch falsch (MiSTer hat keine
@@ -10506,6 +4103,10 @@ class Frontend:
         # Beenden-Bestaetigung (ESC/B im Hauptmenue)
         self.confirm_quit = False
         self.confirm_choice = 1    # 0 = Ja, 1 = Nein (Standard)
+        # NEUES FEATURE (Nutzerwunsch: Volltextsuche statt nur
+        # Anfangsbuchstaben-Sprung) - siehe jump_to_substring().
+        self._search_mode = False
+        self._search_query = ""
         if self.music.available():
             self.music.tick()      # start playback right away
 
@@ -11306,8 +4907,28 @@ class Frontend:
             msg_w = len(message) * 8 * msg_scale
             fb.text((W - msg_w) // 2, H - oy - 13 * s, message, msg_scale, C_DIM, C_BG)
         self._draw_status_bar(L)
+        self._draw_search_overlay()
         if flip:
             fb.flip()
+
+    def _draw_search_overlay(self):
+        """Zeigt die aktuelle Sucheingabe als auffaelligen Balken oben
+        im Bild, wenn der Suchmodus aktiv ist (siehe self._search_mode/
+        jump_to_substring()) - bewusst als eigene, wiederverwendbare
+        Methode statt dupliziertem Code in draw_page_cats() UND
+        draw_page_items(), da der Suchmodus auf beiden Seiten
+        funktioniert."""
+        if not self._search_mode:
+            return
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        label = t("search_prompt") + self._search_query + "_"
+        scale = self._fit_scale(label, W - 40 * s, s + 1)
+        bar_h = 22 * scale
+        fb.rect(0, 0, W, bar_h, accent_for(None))
+        text_w = len(label) * 8 * scale
+        fb.text((W - text_w) // 2, 3 * scale, label, scale, C_BG, accent_for(None))
 
     def _draw_cat_row(self, i, row, L, maxc):
         """Eine einzelne Zeile der Kategorienliste (Seite 0) zeichnen -
@@ -11407,11 +5028,11 @@ class Frontend:
         self._ra_retry_count += 1
         backoff = min(30.0 * (2 ** (self._ra_retry_count - 1)), 300.0)
         self._ra_retry_next = now + backoff
-        need_ntp_first = not NTP_SYNC_OK
+        need_ntp_first = not get_ntp_sync_ok()
         def worker():
             if need_ntp_first:
                 sync_system_clock_from_ntp()
-                if not NTP_SYNC_OK:
+                if not get_ntp_sync_ok():
                     return   # weiterhin keine verlaessliche Uhr - beim naechsten Mal wieder
             ra_data = fetch_ra_progress_bounded(timeout=5.0)
             if ra_data is not None:
@@ -11439,7 +5060,7 @@ class Frontend:
 
         Hoert nach 5 Versuchen von selbst auf (kein endloses
         Nachfragen, falls kein Netzwerk vorhanden ist)."""
-        if NTP_SYNC_OK or self._clock_retry_count >= 5:
+        if get_ntp_sync_ok() or self._clock_retry_count >= 5:
             return
         now = time.monotonic()
         if now < self._clock_retry_next:
@@ -12038,6 +5659,7 @@ class Frontend:
                 track_display = self.track_marquee_text(foot_maxc)
                 if track_display:
                     fb.text(ox, footer_y, track_display, s, C_DIM)
+        self._draw_search_overlay()
         if flip:
             _tf = time.monotonic()
             fb.flip()
@@ -12592,6 +6214,7 @@ class Frontend:
                         time.monotonic() - self._last_input_time >= COVER_SETTLE):
                     self.draw_page_items()
                     self._settled_redrawn = True
+                    self._prefetch_neighbor_covers()
                 self._boot_watch()   # Diagnose: Anzeige-Zustand nach dem Boot
                 # WICHTIG: unabhaengige if-Abfragen statt einer elif-Kette.
                 # Mit elif haette "track_needs" (Songtitel muss scrollen -
@@ -12659,6 +6282,55 @@ class Frontend:
         lines = [ln if len(ln) <= maxc else ln[:max(1, maxc-1)] + "~"
                 for ln in lines]
         return lines
+
+    def _prefetch_neighbor_covers(self):
+        """NEUES FEATURE (Nutzerwunsch: 'kann man da was vorcachen?' -
+        nach dem Ruckel-Fix beim erneuten Skalieren). Dekodiert (aber
+        skaliert NICHT) die Cover der direkten Nachbarn (ein Feld
+        davor/danach) im Hintergrund, sobald die Liste stillsteht -
+        wer kurz guckt und dann weiterscrollt, findet das naechste
+        Cover so oft schon roh dekodiert vor.
+
+        Bewusst NUR das rohe Dekodieren (ART.get()), NICHT die fertige
+        Skalierung (ART.get_scaled()): die tatsaechliche Zielgroesse
+        haengt vom Titeltext des jeweiligen Spiels ab (laengere Titel
+        -> mehr Zeilen -> weniger Platz fuer das Cover selbst, siehe
+        draw_art_panel()) und liesse sich hier nicht ohne die komplette
+        Layout-Berechnung erneut zu duplizieren zuverlaessig vorher-
+        sagen. Das rohe Dekodieren (Datei lesen + zlib-Dekompression)
+        ist ohnehin der teurere Teil - die anschliessende Skalierung
+        ist seit dem Performance-Fix (Zeilen-weises b\"\".join()) auch
+        bei falscher Vorhersage schnell genug, um beim tatsaechlichen
+        Hinscrollen kaum noch aufzufallen.
+
+        Nur bei Stillstand aufgerufen (siehe COVER_SETTLE-Handler oben)
+        - waehrend aktiven Scrollens passiert hier nichts, das wuerde
+        den gerade behobenen Ruckel-Fehler nur an anderer Stelle
+        wieder einfuehren."""
+        if self.page != 1:
+            return
+        items = self._display_items()
+        if not items:
+            return
+        fb = self.fb
+        _name, _root_node, cat_syskey = self.cats[self.cat_i]
+        for offset in (-1, 1):
+            idx = self.item_i + offset
+            if not (0 <= idx < len(items)):
+                continue
+            item = items[idx]
+            item_syskey = self._item_syskey(item, cat_syskey)
+            lookup_name = item[2] if item[1] == "folder" else item[0]
+            if item_syskey == "ARCADE":
+                continue   # Arcade-Cover kommen aus mra_meta(), kein einfacher Pfad hier
+            try:
+                if fb.height >= 720:
+                    hd = _art_path_in(ART_HD, item_syskey, lookup_name)
+                    if ART.get(hd) is not None:
+                        continue
+                ART.get(art_path(item_syskey, lookup_name))
+            except Exception:
+                pass   # Vorab-Laden ist rein optional - niemals den Hauptablauf stoeren
 
     def draw_art_panel(self, x0, w, y0, h, syskey, item, s):
         """Eigene Boxart+Info-Spalte rechts neben der Liste (seit v1.8
@@ -13055,22 +6727,35 @@ class Frontend:
                 fcntl.ioctl(0, termios.TIOCSCTTY, 1)
             except OSError:
                 pass
-        cmd = ["/bin/bash", path] + (list(args) if args else [])
+        # UEBERNOMMEN (TheRealSutefan): "Script beendet (Code X) -
+        # Taste druecken" jetzt auf Konsolenebene selbst (bash-Wrapper
+        # mit read -rsn1) statt ueber self.inp.read_action() zu warten -
+        # zeigt zusaetzlich den Exit-Code, unabhaengig davon, ob das
+        # Frontend-Eingabesystem waehrend des Konsolenmodus zuverlaessig
+        # mitliest. Deutscher Text statt des bisherigen englischen.
+        inner = ('printf "\\033[2J\\033[H"; '
+                 'bash "$0" "$@"; _ec=$?; '
+                 'printf "\\n-- Script beendet (Code %s) - Taste druecken --\\n" "$_ec"; '
+                 'read -rsn1')
+        wrapped = ["/bin/bash", "-c", inner, path] + (list(args) if args else [])
+        raw     = ["/bin/bash", path] + (list(args) if args else [])
         # Bildschirm dem Script ueberlassen
         try:
             if tty:
-                tty.write(b"\x1b[2J\x1b[H")     # Konsole loeschen
-                subprocess.call(cmd, preexec_fn=_ctty,
+                subprocess.call(wrapped, preexec_fn=_ctty,
                                 stdin=tty, stdout=tty, stderr=tty,
                                 env=dict(os.environ, TERM="linux",
                                          HOME="/root"))
-                tty.write(b"\n-- Script finished, press any key --\n")
             else:
-                subprocess.call(cmd)
+                subprocess.call(raw)
+        except Exception as e:
+            LOG("run_script: Fehler bei %s: %s" % (path, e))
         finally:
             if tty:
-                tty.close()
-        self.inp.read_action()                    # auf Eingabe warten
+                try:
+                    tty.close()
+                except OSError:
+                    pass
         self.music.resume_after_core()
         self.back_to_frontend()
 
@@ -13124,102 +6809,279 @@ class Frontend:
                 return None   # Abbruch - Kategorie wird NICHT betreten
 
     def draw_wot_screen(self):
-        """'Wonne oder Tonne' (Dennsens Format): zieht ein zufaelliges,
-        noch nicht bewertetes NES/SNES-Spiel aus seiner CSV-Liste,
-        sucht die passende ROM-Datei und zeigt Titel/System/Genre mit
-        drei Optionen: Starten, Neu ziehen, Zurueck. Zieht bei
-        fehlendem ROM-Treffer automatisch neu (siehe
-        wot_draw_with_rom()) - der Nutzer sieht davon nichts, nur das
-        Endergebnis oder eine ehrliche Fehlermeldung, falls gar nichts
-        passt.
-
-        BUGFIX (Nutzer-Rueckmeldung: RA-ID wurde zwar angezeigt, aber
-        beim Starten nie tatsaechlich verwendet - der Core startete
-        IMMER normal, nie mit RetroAchievements): fragt jetzt, genau
-        wie beim normalen Betreten einer Kategorie und beim F11-
-        Zufallsstart, per find_ra_core()/draw_core_choice_screen()
-        nach, falls fuer das System ein RA-faehiger Core existiert,
-        und reicht dessen setname korrekt an write_mgl() durch."""
+        """'Wonne oder Tonne' (Dennsens Format): baut EINMAL (mit kurzer
+        Fortschrittsanzeige) die Liste der tatsaechlich SPIELBAREN Spiele -
+        also der CSV-Eintraege, fuer die auch ein ROM vorhanden ist - und
+        bietet daraus drei zufaellige Spiele GLEICHZEITIG zur Wahl an: je
+        Zeile voller Name, System, Genre, RA-ID; die drei Cover nebeneinander
+        unten. Hoch/Runter waehlt, OK oeffnet den Starten-Screen. "Neu ziehen"
+        zeigt drei neue - wiederholungsfrei, bis alle spielbaren Spiele einmal
+        dran waren. Das einmalige Pruefen macht das spaetere Ziehen sofort und
+        ohne Wiederholungen (frueher wurde zufaellig aus ALLEN CSV-Eintraegen
+        gezogen - bei vielen fehlenden ROMs langsam, und der kleine spielbare
+        Rest wiederholte sich nach wenigen Zuegen)."""
         fb = self.fb
         W, H = fb.width, fb.height
         s = max(1, H // 360)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
+        text_w = W - 2 * ox
         aliases = wot_load_aliases()
+        pool = wot_load_pool()
+        if not pool:
+            self._wizard_info(t("wot_title"), [t("wot_pool_empty")], skippable=False)
+            return
+
+        # Spielbare Liste EINMAL bauen (danach prozessweit gecacht -> beim
+        # naechsten Oeffnen sofort da). Fortschrittsanzeige, weil das Pruefen
+        # bei grosser CSV / ROMs auf NAS ein paar Sekunden dauern kann.
+        def _progress(done, total):
+            fb.clear(C_BG)
+            fb.text(ox, oy, t("wot_title"),
+                    self._fit_scale(t("wot_title"), text_w, s + 1), C_TITLE, C_BG)
+            fb.text(ox, oy + 70 * s, t("wot_checking", done, total), s, C_TEXT, C_BG)
+            fb.flip()
+        index_cache = {}
+        playable = wot_build_playable_pool(pool, aliases, index_cache=index_cache,
+                                           progress_cb=_progress)
+        if not playable:
+            self._wizard_info(t("wot_title"), [t("wot_no_rom_match")], skippable=False)
+            return
+
+        # Rotations-Queue: gemischte spielbare Liste, jeweils drei entnehmen;
+        # ist sie fast leer, neu mischen -> keine Wiederholung, bis alle
+        # spielbaren Spiele einmal dran waren.
+        queue = []
+        def _next_three():
+            if len(queue) < 3:
+                del queue[:]
+                fresh = list(playable)
+                random.shuffle(fresh)
+                queue.extend(fresh)
+            return [queue.pop() for _ in range(min(3, len(queue)))]
+
+        row_h = 44 * s
+        cover_cache = {}          # (system, rom_base) -> Cover | None (ueber Neu ziehen hinweg)
+        picks = _next_three()
 
         while True:
-            pool = wot_load_pool()
-            if not pool:
-                self._wizard_info(t("wot_title"), [t("wot_pool_empty")], skippable=False)
-                return
-            result = wot_draw_with_rom(pool, aliases)
-            if result is None:
-                self._wizard_info(t("wot_title"), [t("wot_no_rom_match")], skippable=False)
-                return
-            system, title, genre, ra_id, rom_path, score = result
-            accent = accent_for(system)
-            choice = 0
-            options = [t("wot_option_start"), t("wot_option_redraw"), t("wot_option_back")]
+            n_games = len(picks)
+            redraw_i = n_games
+            back_i = n_games + 1
+            n_rows = n_games + 2
+
+            # Zeilen (voller Name + System - Genre + RA-ID); gemeinsame
+            # Schriftgroesse bis s+1, so dass die laengste Zeile komplett passt
+            # (statt zu schneiden) - erst im Extremfall wird der Titel gekuerzt.
+            glines = []
+            for p in picks:
+                clean = " ".join(p[1].split())
+                meta = "%s - %s" % (system_display_name(p[0]), p[2] or "?")
+                if p[3]:
+                    meta += "  RA-ID: %s" % p[3]
+                glines.append((clean, meta))
+            rows_scale = s + 1
+            for clean, meta in glines:
+                rows_scale = min(rows_scale,
+                                 self._fit_scale("%s   %s" % (clean, meta), text_w, s + 1))
+            maxchars = max(8, text_w // (8 * rows_scale))
+            row_strs = []
+            for clean, meta in glines:
+                ln = "%s   %s" % (clean, meta)
+                if len(ln) > maxchars:
+                    keep = maxchars - len(meta) - 5
+                    if keep < 4:
+                        ln = ln[:maxchars - 1] + "\u2026"
+                    else:
+                        ln = "%s\u2026   %s" % (clean[:keep], meta)
+                row_strs.append(ln)
+
+            games_top = oy + 70 * s
+            action_top = games_top + n_games * row_h + 14 * s
+
+            # Cover-Streifen unten rechts: die drei Cover nebeneinander, auf
+            # Hoehe der Aktionszeilen. Wuerde die Aktionsspalte links zu breit,
+            # rueckt der Streifen nach rechts (kein Ueberlappen).
+            action_labels = [t("wot_option_redraw"), t("wot_option_back")]
+            action_col = ox + max(len(a) for a in action_labels) * 8 * s + 16 * s
+            covers_block_w = int(W * 0.62)
+            covers_x0 = max(action_col, W - ox - covers_block_w)
+            covers_block_w = max(30 * s, W - ox - covers_x0)
+            covers_h = max(60 * s, (H - oy - 26 * s) - action_top)
+            cell_w = covers_block_w // max(1, n_games)
+
+            sel = 0
             redraw = False
+            back_to_menu = False
             while True:
                 fb.clear(C_BG)
-                title_scale = self._fit_scale(t("wot_title"), W - 2 * ox, s + 1)
-                fb.text(ox, oy, t("wot_title"), title_scale, C_TITLE, C_BG)
-                y = oy + 70 * s
-                game_title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
-                fb.text(ox, y, title, game_title_scale, accent, C_BG)
-                y += 50 * s
-                fb.text(ox, y, "%s - %s" % (system_display_name(system), genre or "?"), s, C_DIM, C_BG)
-                if ra_id:
-                    y += 45 * s
-                    fb.text(ox, y, "RetroAchievements-ID: %s" % ra_id, s, C_DIM, C_BG)
-                y += 70 * s
-                for i, label in enumerate(options):
-                    sel = i == choice
-                    color = accent if sel else C_TEXT
-                    prefix = "> " if sel else "  "
+                fb.text(ox, oy, t("wot_title"),
+                        self._fit_scale(t("wot_title"), text_w, s + 1), C_TITLE, C_BG)
+
+                # Spielzeilen (volle Breite)
+                y = games_top
+                for i, ln in enumerate(row_strs):
+                    selrow = i == sel
+                    color = accent_for(picks[i][0]) if selrow else C_TEXT
+                    prefix = "> " if selrow else "  "
+                    fb.text(ox, y, prefix + ln, rows_scale, color, C_BG)
+                    y += row_h
+
+                # Aktionszeilen (links)
+                y = action_top
+                for label, ri in ((action_labels[0], redraw_i), (action_labels[1], back_i)):
+                    selrow = ri == sel
+                    color = accent_for(None) if selrow else C_DIM
+                    prefix = "> " if selrow else "  "
                     fb.text(ox, y, prefix + label, s, color, C_BG)
                     y += 40 * s
+
+                # Drei Cover nebeneinander (rechts, auf Hoehe der Aktionen);
+                # das markierte Spiel bekommt einen farbigen Rahmen.
+                for i, p in enumerate(picks):
+                    psys = p[0]
+                    prom_base = os.path.splitext(os.path.basename(p[4]))[0]
+                    ckey = (psys, prom_base)
+                    if ckey not in cover_cache:
+                        art = None
+                        if H >= 720:
+                            art = ART.get_scaled(_art_path_in(ART_HD, psys, prom_base),
+                                                 cell_w - 10 * s, covers_h)
+                        if art is None:
+                            art = ART.get_scaled(art_path(psys, prom_base),
+                                                 cell_w - 10 * s, covers_h)
+                        cover_cache[ckey] = art
+                    art = cover_cache[ckey]
+                    if not art:
+                        continue
+                    caw, cah, cpix = art
+                    cell_x = covers_x0 + i * cell_w
+                    cax = cell_x + (cell_w - caw) // 2
+                    cay = action_top
+                    if i == sel:
+                        cpad = 5 * s
+                        fb.rect(cax - cpad, cay - cpad, caw + 2 * cpad, cah + 2 * cpad,
+                                accent_for(psys))
+                    self.blit(cax, cay, caw, cah, cpix)
+
                 hint = t("wot_hint")
                 sc = s - 1 if s > 1 else 1
                 hint_w = len(hint) * 8 * sc
                 fb.text((W - hint_w) // 2, H - oy - 8 * sc, hint, sc, C_DIM, C_BG)
                 fb.flip()
+
                 act = self.inp.read_action()
-                if act in ("up", "down"):
-                    choice = (choice + 1) % len(options)
+                if act == "up":
+                    sel = (sel - 1) % n_rows
+                elif act == "down":
+                    sel = (sel + 1) % n_rows
                 elif act == "ok":
-                    if choice == 0:      # Starten
-                        sysdef = next((sd for sd in GAME_SYSTEMS if sd[1] == system), None)
-                        if sysdef:
-                            rbf = sysdef[3]
-                            ext = os.path.splitext(rom_path)[1].lower()
-                            dl, ftype, idx = sysdef[4].get(ext, (2, "f", 0))
-                            setname = None
-                            ra_core = find_ra_core(system)
-                            if ra_core:
-                                use_ra = self.draw_core_choice_screen(system, title)
-                                if use_ra is None:
-                                    self.draw()
-                                    return   # ESC/back auf der Core-Auswahl - kompletter Abbruch
-                                if use_ra:
-                                    rbf, setname = ra_core
-                            LOG("Wonne oder Tonne: gestartet - %s (%s)%s"
-                                % (title, rom_path, " [RA-Core]" if setname else ""))
-                            record_recent(title, (rom_path, ext, system, rbf, (dl, ftype, idx)))
-                            mgl = write_mgl(rbf, rom_path, dl, ftype, idx, setname=setname)
-                            wot_mark_played(system, title)   # dauerhaft aus dem Pool nehmen
-                            self.run_core(mgl, label=title, syskey=system)
-                        return
-                    elif choice == 1:    # Neu ziehen
+                    if sel < n_games:
+                        if self._wot_start_screen(picks[sel]):
+                            return
+                    elif sel == redraw_i:
+                        picks = _next_three()
                         redraw = True
                         break
-                    else:                # Zurueck
-                        return
+                    else:
+                        back_to_menu = True
+                        break
                 elif act in ("back", "exit"):
-                    return
-            if not redraw:
+                    back_to_menu = True
+                    break
+
+            if back_to_menu:
                 return
+            # redraw -> aeussere Schleife mit den neuen picks
+
+    def _wot_start_screen(self, pick):
+        """Bestaetigungs-/Starten-Screen fuer ein aus der Dreier-Auswahl
+        gewaehltes Spiel: grosses Cover + Starten/Zurueck. Liefert True, wenn
+        gestartet wurde (Aufrufer kehrt ins Menue zurueck), sonst False
+        (zurueck zur Dreier-Auswahl). Der Start-Ablauf (RA-Core-Erkennung,
+        dauerhaftes Als-gespielt-Markieren, MGL/Core-Start) ist unveraendert
+        aus dem frueheren Einzel-Screen uebernommen."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        system, title, genre, ra_id, rom_path, score = pick
+        accent = accent_for(system)
+        clean_title = " ".join(title.split())
+        rom_base = os.path.splitext(os.path.basename(rom_path))[0]
+        cov_w = int(W * 0.40)
+        cov_h = int(H * 0.62)
+        wot_art = None
+        if H >= 720:
+            wot_art = ART.get_scaled(_art_path_in(ART_HD, system, rom_base), cov_w, cov_h)
+        if wot_art is None:
+            wot_art = ART.get_scaled(art_path(system, rom_base), cov_w, cov_h)
+        text_w = W - 2 * ox
+        if wot_art:
+            text_w = max(80 * s, W - 2 * ox - wot_art[0] - 20 * s)
+        choice = 0
+        options = [t("wot_option_start"), t("wot_option_back")]
+        while True:
+            fb.clear(C_BG)
+            fb.text(ox, oy, t("wot_title"),
+                    self._fit_scale(t("wot_title"), text_w, s + 1), C_TITLE, C_BG)
+            y = oy + 70 * s
+            fb.text(ox, y, clean_title, self._fit_scale(clean_title, text_w, s + 1), accent, C_BG)
+            y += 50 * s
+            fb.text(ox, y, "%s - %s" % (system_display_name(system), genre or "?"), s, C_DIM, C_BG)
+            if ra_id:
+                y += 45 * s
+                fb.text(ox, y, "RA-ID: %s" % ra_id, s, C_DIM, C_BG)
+            y += 70 * s
+            if wot_art:
+                caw, cah, cpix = wot_art
+                cax = W - ox - caw
+                cay = oy + 70 * s
+                cpad = 6 * s
+                fb.rect(cax - cpad, cay - cpad, caw + 2 * cpad, cah + 2 * cpad, accent)
+                self.blit(cax, cay, caw, cah, cpix)
+            for i, label in enumerate(options):
+                selrow = i == choice
+                color = accent if selrow else C_TEXT
+                prefix = "> " if selrow else "  "
+                fb.text(ox, y, prefix + label, s, color, C_BG)
+                y += 40 * s
+            hint = t("wot_hint")
+            sc = s - 1 if s > 1 else 1
+            hint_w = len(hint) * 8 * sc
+            fb.text((W - hint_w) // 2, H - oy - 8 * sc, hint, sc, C_DIM, C_BG)
+            fb.flip()
+            act = self.inp.read_action()
+            if act == "up":
+                choice = (choice - 1) % len(options)
+            elif act == "down":
+                choice = (choice + 1) % len(options)
+            elif act == "ok":
+                if choice == 0:      # Starten
+                    sysdef = next((sd for sd in GAME_SYSTEMS if sd[1] == system), None)
+                    if sysdef:
+                        ext = os.path.splitext(rom_path)[1].lower()
+                        dl, ftype, idx = sysdef[4].get(ext, (2, "f", 0))
+                        ra_core = find_ra_core(system)
+                        if ra_core:
+                            launch_rbf, setname = ra_core
+                            LOG("Wonne oder Tonne: gestartet mit RA-Core - %s (%s)"
+                                % (title, rom_path))
+                        else:
+                            launch_rbf, setname = sysdef[3], None
+                            LOG("Wonne oder Tonne: kein RA-Core fuer %s, Standard-Core - %s"
+                                % (system, title))
+                        wot_mark_played(system, title)   # dauerhaft aus dem Pool nehmen
+                        record_recent(title, (rom_path, ext, system, sysdef[3], (dl, ftype, idx)))
+                        mgl = write_mgl(launch_rbf, rom_path, dl, ftype, idx, setname=setname)
+                        self.run_core(mgl, label=title, syskey=system)
+                    return True
+                else:                # Zurueck -> zurueck zur Dreier-Auswahl
+                    return False
+            elif act in ("back", "exit"):
+                return False
+
 
     def draw_ra_setup_screen(self):
         """Zeigt eine kurze Anleitung zur RetroAchievements-Einrichtung
@@ -13385,7 +7247,7 @@ class Frontend:
 
         # Schritt 1: Sprache
         lang_options = ["Deutsch", "English"]
-        idx = 0 if CURRENT_LANG == "de" else 1
+        idx = 0 if current_lang() == "de" else 1
         choice = self._wizard_choice(
             t("wizard_step_title", 1, total, t("wizard_step_language")),
             lang_options, initial=idx)
@@ -15469,6 +9331,67 @@ class Frontend:
                 elif act is not None:
                     self._secret_buffer = []
 
+                # NEUES FEATURE (Nutzerwunsch: Volltextsuche statt nur
+                # Anfangsbuchstaben-Sprung - "bei vielen ROMs ist das
+                # besser"). Bewusst VOR der normalen Aktionsverarbeitung
+                # abgefangen, wie beim Geheimcode-Puffer oben - im
+                # Suchmodus sollen Buchstabentasten die Anfrage
+                # aufbauen statt wie sonst einzeln zu springen.
+                if self._search_mode:
+                    items = [] if self.page == 0 else self._display_items()
+                    names = ([c[0] for c in self.cats] if self.page == 0
+                             else [it[0] for it in items] if items else [])
+                    if act == "search_backspace":
+                        self._search_query = self._search_query[:-1]
+                        idx = jump_to_substring(names, self._search_start_i, self._search_query) \
+                            if self._search_query else self._search_start_i
+                        if self.page == 0:
+                            self.cat_i = idx
+                        elif items:
+                            self.item_i = idx
+                        self.draw()
+                        continue
+                    elif act is not None and act.startswith("letter:"):
+                        self._search_query += act.split(":", 1)[1]
+                        cur = self.cat_i if self.page == 0 else self.item_i
+                        idx = jump_to_substring(names, cur, self._search_query)
+                        if self.page == 0:
+                            self.cat_i = idx
+                        elif items:
+                            self.item_i = idx
+                            self.marquee_reset()
+                        self.draw()
+                        continue
+                    elif act == "ok":
+                        # Suche bestaetigen - am gefundenen Eintrag stehen
+                        # bleiben, Suchmodus verlassen.
+                        self._search_mode = False
+                        self.draw()
+                        continue
+                    elif act in ("back", "exit", "search"):
+                        # Suche abbrechen - zurueck zur Position VOR
+                        # Suchbeginn (klassisches Abbrechen-Verhalten,
+                        # kein "haengengebliebener" Zufallstreffer).
+                        self._search_mode = False
+                        if self.page == 0:
+                            self.cat_i = self._search_start_i
+                        else:
+                            self.item_i = self._search_start_i
+                        self.draw()
+                        continue
+                    else:
+                        # Jede andere Taste (hoch/runter/links/rechts
+                        # etc.) beendet die Suche stillschweigend und
+                        # laesst die Aktion danach ganz normal weiter-
+                        # laufen (faellt einfach durch, kein continue).
+                        self._search_mode = False
+                elif act == "search":
+                    self._search_mode = True
+                    self._search_query = ""
+                    self._search_start_i = self.cat_i if self.page == 0 else self.item_i
+                    self.draw()
+                    continue
+
                 # Zustand VOR der Aktion merken - fuer die Entscheidung,
                 # ob nach einem einzelnen hoch/runter-Schritt der leichte
                 # Navigations-Zeichenpfad ausreicht (siehe unten, nach
@@ -15853,7 +9776,7 @@ class Frontend:
                             self.music.cycle_volume()
                             self.build_categories()   # refresh menu label
                         elif kind == "language":
-                            set_language("de" if CURRENT_LANG == "en" else "en")
+                            set_language("de" if current_lang() == "en" else "en")
                             self.build_categories()
                             self.page = 0
                         elif kind == "remap":

@@ -1,0 +1,183 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Aufbau der 'System'-Kategorie als Baumknoten mit thematischen
+Unterordnern (system_items()). Ausgelagert aus frontend.py
+(Modularisierung, Git-Branch 'modular-refactor').
+
+Einige kleine Theme-bezogene Stuecke hier bewusst dupliziert statt
+importiert (FRONTEND_VERSION, THEME_FILE, die gueltigen Themennamen,
+THEME_NAMES_DE/EN, current_theme_name()) - das VOLLSTAENDIGE Theme-
+System (apply_theme/accent_for mit den ueber 80 Farbvariablen-
+Lesestellen in der Frontend-Klasse) bleibt bewusst ein spaeterer,
+eigener Schritt (siehe fruehere Analyse). system_items() braucht aber
+nur den Namen des aktuell aktiven Themes fuer die Menuebeschriftung,
+nicht die Farben selbst - dafuer reicht ein schlanker, unabhaengiger
+current_theme_name()-Nachbau ohne die riskanten Teile.
+"""
+import os
+from fe.translations import t, current_lang
+from fe.audio import get_volume, sfx_enabled_flag
+from fe.settings import (
+    attract_enabled, crt_menu_active, curated_only_active,
+    dragend_logo_enabled, format_attract_delay, load_attract_delay,
+)
+from fe.timekeeping import format_timezone_offset, load_timezone_offset
+from fe.retroachievements import load_ra_config
+from fe.update_check import load_update_state, update_check_enabled, _version_newer
+from fe.scan import network_wait_enabled
+
+FRONTEND_VERSION = "4.3"
+THEME_FILE = "/media/fat/frontend/theme"
+_VALID_THEME_NAMES = {"dark", "light", "green", "secret_gold"}
+THEME_NAMES_DE = {"dark": "Dunkel (Standard)", "light": "Hell",
+                  "green": "Retro-Gruen", "secret_gold": "??? Geheim ???"}
+THEME_NAMES_EN = {"dark": "Dark (default)", "light": "Light",
+                  "green": "Retro Green", "secret_gold": "??? Secret ???"}
+
+def current_theme_name():
+    """Schlanker, unabhaengiger Nachbau (siehe Modul-Kommentar oben) -
+    liefert nur den NAMEN des aktiven Themes, nicht die Farben."""
+    try:
+        name = open(THEME_FILE).read().strip()
+        if name in _VALID_THEME_NAMES:
+            return name
+    except OSError:
+        pass
+    return "dark"
+
+def system_items(music_enabled=None, music_source="mp3", music_station="",
+                 cores_subcats=None, standalone_items=None, scripts_items=None):
+    """Liefert die Inhalte der 'System'-Kategorie als Baumknoten mit
+    thematischen Unterordnern (Nutzerwunsch: die Liste war auf 23
+    flache Eintraege angewachsen, kaum noch ueberschaubar) - nutzt
+    dieselbe Ordner-Navigation wie eigene ROM-Unterordner, kein neuer
+    Code-Pfad noetig. Die Aktions-"kind"-Werte in jedem Eintrag bleiben
+    UNVERAENDERT (siehe Aktions-Dispatch in run()) - nur die
+    Gruppierung/Anzeige aendert sich, kein bestehendes Verhalten.
+
+    music_source/music_station (neu, Nutzerwunsch: Rainwave-
+    Internetradio als zweite Musikquelle, siehe CHANGES_RAINWAVE.md):
+    fuer die Beschriftung des neuen "Musik-Quelle"-Eintrags.
+
+    ERWEITERT (Nutzerwunsch: Hauptmenue aufraeumen, "zu viele
+    Eintraege" - Utilities/Other/Scripts sowie Consoles/
+    Console (autoboot)/RA Cores waren bisher eigene Top-Level-
+    Kategorien): cores_subcats - Liste von (Anzeigename, Items) fuer
+    die vormals eigenstaendigen Core-Ordner-Kategorien (Consoles,
+    Console (autoboot), RA Cores), die hier gemeinsam unter einem
+    NEUEN "Cores"-Unterordner landen (als je EIGENER Unter-Unterordner
+    darunter - bleiben so weiterhin unterscheidbar, nur eine Ebene
+    tiefer verschachtelt, nicht zu einer einzigen Liste vermischt).
+    standalone_items - dict Anzeigename -> Items fuer Kategorien, die
+    je einen EIGENEN Unterordner direkt im System-Menue bekommen
+    (Utilities, Other). scripts_items - Items fuer einen neuen
+    "Scripts"-Unterordner (ehemals eigene Top-Level-Kategorie). Alle
+    drei bewusst optional (None/leer = Verhalten unveraendert wie vor
+    dieser Erweiterung) - betrifft nur, ob der jeweilige Ordner
+    ueberhaupt auftaucht, keine bestehende Logik wird angefasst."""
+    crt = crt_menu_active()
+    video = t("sys_video_crt") if crt else t("sys_video_hdmi")
+    music_label = t("sys_music_on") if music_enabled else t("sys_music_off")
+    music_src_label = (t("sys_music_source", "Radio - %s" % (music_station or "?"))
+                       if music_source == "radio" else t("sys_music_source", "MP3"))
+    volume_label = t("sys_volume", get_volume())
+    curated_label = t("sys_curated_on") if curated_only_active() \
+        else t("sys_curated_off")
+    attract_label = t("sys_attract_on") if attract_enabled() \
+        else t("sys_attract_off")
+    attract_delay_label = t("sys_attract_delay", format_attract_delay(load_attract_delay()))
+    theme_names = THEME_NAMES_DE if current_lang() == "de" else THEME_NAMES_EN
+    theme_label = t("sys_theme", theme_names.get(current_theme_name(), "?"))
+    tz_label = t("sys_timezone", format_timezone_offset(load_timezone_offset()))
+    netwait_label = t("sys_network_wait_on" if network_wait_enabled()
+                      else "sys_network_wait_off")
+    sfx_label = t("sys_sfx_on") if sfx_enabled_flag() else t("sys_sfx_off")
+    dragend_logo_label = t("sys_dragend_logo_on") if dragend_logo_enabled() \
+        else t("sys_dragend_logo_off")
+    if not update_check_enabled():
+        update_label = t("sys_update_off")
+    else:
+        _remote_v = load_update_state().get("remote_version")
+        if _remote_v and _version_newer(_remote_v, FRONTEND_VERSION):
+            update_label = t("sys_update_available", _remote_v)
+        else:
+            update_label = t("sys_update_on")
+    ra_user, _ra_key = load_ra_config()
+    ra_label = t("sys_ra_configured", ra_user) if ra_user else t("sys_ra_setup")
+
+    def folder(*items):
+        return {"folders": {}, "items": list(items)}
+
+    groups = {
+        t("sys_group_ra"): folder(
+            (ra_label, "ra_status", None),
+        ),
+        t("sys_group_stats"): folder(
+            (t("top10_time_action"), "top10_time", None),
+            (t("top10_launches_action"), "top10_launches", None),
+            (t("sys_milestones_action"), "milestones", None),
+            (t("sys_trophy_action"), "trophy_room", None),
+            (t("sys_year_review_action"), "year_review", None),
+            (t("sys_diary_action"), "diary", None),
+        ),
+        t("sys_group_display"): folder(
+            (video + t("sys_video_suffix"), "crtmenu", None),
+            (theme_label, "theme", None),
+            (sfx_label, "sfx", None),
+            (dragend_logo_label, "dragend_logo", None),
+            (music_label, "music", None),
+            (music_src_label, "music_source", None),
+            (volume_label, "volume", None),
+        ),
+        t("sys_group_behavior"): folder(
+            (t("sys_crt_test_action"), "crt_test", None),
+            (curated_label, "curated", None),
+            (attract_label, "attract", None),
+            (attract_delay_label, "attract_delay", None),
+            (tz_label, "timezone", None),
+            (netwait_label, "network_wait", None),
+        ),
+        t("sys_group_input"): folder(
+            (t("sys_language"), "language", None),
+            (t("sys_configure_buttons"), "remap", None),
+            (t("sys_reset_buttons"), "remap_reset", None),
+        ),
+        t("sys_group_info"): folder(
+            (t("sys_help_action"), "help", None),
+            (t("sys_setup_wizard"), "setup_wizard", None),
+            (t("sys_secrets_action"), "secrets", None),
+            (t("sys_credits_action"), "credits", None),
+            (update_label, "update_check", None),
+        ),
+        t("sys_group_maintenance"): folder(
+            (t("sys_osd"), "osd", None),
+            (t("sys_rescan"), "rescan", None),
+            (t("sys_redraw"), "redraw", None),
+            (t("sys_reboot"), "reboot", None),
+            (t("sys_quit"), "quit", None),
+        ),
+    }
+
+    if cores_subcats:
+        groups["Cores"] = {
+            "folders": {name: folder(*items) for name, items in cores_subcats if items},
+            "items": [],
+        }
+    if standalone_items:
+        for name, items in standalone_items.items():
+            if items:
+                groups[name] = folder(*items)
+    if scripts_items:
+        groups["Scripts"] = folder(*scripts_items)
+
+    return {"folders": groups, "items": []}
+
+
+
+from fe.search import _normalize_for_search, jump_to_letter, jump_to_substring
+
+# ----------------------------------------------------------------------------
+# FRONTEND
+# ----------------------------------------------------------------------------
+

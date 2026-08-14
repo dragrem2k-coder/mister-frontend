@@ -1,0 +1,655 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Kern des ROM-Scans: Cores durchsuchen, Ordnerbaeume aufbauen,
+Cache-Verwaltung (Pickle), USB-/Netzwerk-Bereitschaft abwarten.
+Ausgelagert aus frontend.py (Modularisierung, Git-Branch
+'modular-refactor').
+
+BASE, SKIP_DIRS, GAMES_CACHE, GAMES_CACHE_OLD_JSON hierher verschoben
+(waren vorher an frontend.py-Stellen definiert, die NUR von diesem
+Bereich gebraucht wurden - reine Verschiebung, keine Duplikate noetig,
+siehe Namensabgleich beim Commit).
+
+GAMES_BASES kommt aus fe.paths (siehe dortiger Modul-Kommentar zur
+Einfrier-Falle) - modul-qualifizierter Zugriff, nicht per direktem
+Import. _wait_for_network_ready() haelt fe.paths.GAMES_BASES bei
+jeder Neuermittlung synchron.
+"""
+import os, glob, re, time, pickle, socket
+from fe.log import LOG
+from fe.systems import GAME_SYSTEMS, OPTIONAL_GAME_SYSTEMS
+from fe.naming import IGNORE_ROM_BASENAMES, JUNK_TAGS, REGION_PRIORITY, nice_name, _is_junk, _is_japan_only
+from fe.game_state import _folder_items
+import fe.paths
+
+BASE = "/media/fat"
+SKIP_DIRS = {"_Scripts"}
+GAMES_CACHE = "/media/fat/frontend/games_cache.pkl"
+GAMES_CACHE_OLD_JSON = "/media/fat/frontend/games_cache.json"
+
+def _has_network():
+    """Prueft, ob irgendein Netzwerk-Interface eine Adresse hat -
+    ueber den klassischen 'UDP connect'-Trick: verbindet einen UDP-
+    Socket zu einer beliebigen externen Adresse (verschickt dabei
+    KEIN einziges Paket, UDP-connect() ist rein lokales Routing) und
+    schaut, welche lokale Adresse das Betriebssystem dafuer waehlen
+    wuerde. Funktioniert auch ohne echten Internetzugang, solange das
+    lokale Netzwerk (WLAN/LAN) steht - genau das, wonach gefragt war,
+    nicht ob das Internet erreichbar ist."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.1)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return bool(ip) and not ip.startswith("127.")
+    except OSError:
+        return False
+
+def scan_cores(skip_dir=None):
+    """Alle /media/fat/_*-Ordner nach .rbf/.mra/.mgl durchsuchen.
+    skip_dir wird ausgelassen (der markierte Recently-Ordner, der bereits
+    separat als "Zuletzt gespielt" gefuehrt wird - sonst doppelt)."""
+    cats = []
+    skip_real = os.path.realpath(skip_dir) if skip_dir else None
+    for d in sorted(glob.glob(os.path.join(BASE, "_*"))):
+        if not os.path.isdir(d) or os.path.basename(d) in SKIP_DIRS:
+            continue
+        if skip_real and os.path.realpath(d) == skip_real:
+            continue
+        # .mgl mit aufnehmen: so tauchen MGL-Shortcut-Ordner (z.B. das
+        # "Recently Played"-Skript) auf und sind direkt startbar - der
+        # Start-Pfad (load_core) verarbeitet .mgl genauso wie .rbf/.mra.
+        items = _folder_items(d)
+        if items:
+            # Arcade-Ordner bekommen ein Info-Panel (MRA-Metadaten)
+            base = os.path.basename(d).lstrip("_").lower()
+            syskey = "ARCADE" if "arcade" in base else None
+            cats.append((nice_name(os.path.basename(d)), items, syskey))
+    return cats
+
+# BUGFIX (Nutzer-Rueckmeldung anhand einer echten Verzeichnisliste mit
+# 3202 Dateien: "es werden immer noch nur zwei Spiele angezeigt" - TROTZ
+# des vorherigen (unl)/(pirate)-Fixes): _games_signature() (siehe unten)
+# ist bewusst NUR ein schneller Fingerabdruck basierend auf Ordner-
+# Aenderungszeiten, keine Tiefensuche (Performance-Grund, siehe
+# Kommentar dort). Aendert sich NUR unsere FILTER-LOGIK im Code (z.B.
+# JUNK_TAGS), nicht aber die Dateien selbst, bleibt die Ordner-mtime
+# UNVERAENDERT - der alte, noch mit der alten Logik erzeugte
+# Cache-Eintrag wurde dadurch munter weiterverwendet, obwohl der Code
+# laengst repariert war. Nur ein manueller Rescan (System -> Wartung)
+# half bisher, JEDE zukuenftige Filter-Logik-Aenderung haette denselben
+# Effekt gehabt. Fix: eine eigene Versionsnummer, die bei jeder
+# Aenderung an der FILTER-/DEDUPE-Logik selbst (nicht bei jedem Code-
+# Release) von Hand hochgezaehlt wird - fliesst mit in die Signatur
+# ein, macht den Cache dadurch automatisch ungueltig, sobald sich die
+# Auswertung selbst geaendert hat, ganz unabhaengig von Datei-mtimes.
+SCAN_LOGIC_VERSION = 4   # 1 = Basis, 2 = "(unl)"/"(pirate)" nicht mehr Junk,
+                         # 3 = OPTIONAL_GAME_SYSTEMS (SNES_Tracker-Core),
+                         # 4 = SMW Hacks (games/SNES/SMW_HACKS)
+
+def _games_signature():
+    """Schneller Fingerabdruck der ROM-Ordner (ohne Tiefensuche):
+    existierende Wurzeln + deren mtime. Aendert sich der Inhalt einer
+    Wurzel direkt, aendert sich die Signatur; bei Aenderungen tief in
+    Unterordnern hilft der System-Eintrag 'Spieleliste neu einlesen'.
+
+    HINWEIS (v1.32 zurueckgerollt): Ein Zwischenstand hat versucht,
+    hierfuer ALLE Unterordner rekursiv mit einzubeziehen, um Aende-
+    rungen tief in Sammlungen (z.B. 'Favoriten') automatisch zu
+    erkennen. Das hat sich bei einer echten, grossen Sammlung (v.a.
+    ueber USB mit hoeherer Zugriffszeit als ein schneller lokaler
+    Datentraeger) als deutlich zu langsam herausgestellt - der
+    komplette Ordnerbaum wurde dadurch bei JEDEM Boot durchlaufen,
+    bevor der Bildschirm ueberhaupt wechselt (Musik lief bereits,
+    das Frontend blieb aber minutenlang unsichtbar). Zurueck auf die
+    schnelle, nur-oberste-Ebene-Pruefung - das war der urspruengliche,
+    bewusste Kompromiss: schneller Boot immer, dafuer Aenderungen tief
+    in Unterordnern nur per manuellem Rescan erkannt.
+
+    WICHTIG (v1.53): statt des ABSOLUTEN Pfads geht nur eine Ort-
+    Kennung ("usb:" oder "fat:") + der relative Ordnername in die
+    Signatur ein. Eine USB-Platte mountet nach einem Kaltstart nicht
+    immer unter derselben Nummer (mal /media/usb0, mal /media/usb1) -
+    mit dem absoluten Pfad haette sich die Signatur dadurch bei jedem
+    Boot geaendert, obwohl sich am Inhalt nichts geaendert hat, und
+    jedes Mal einen unnoetigen kompletten Neuscan ausgeloest. Sortiert,
+    damit auch die Reihenfolge der Basispfade die Signatur nicht
+    veraendert."""
+    sig = []
+    for base in fe.paths.GAMES_BASES:
+        if not os.path.isdir(base):
+            continue
+        tag = "usb:" if "/media/usb" in base else "fat:"
+        for _d, _sk, folders, _r, _e in GAME_SYSTEMS:
+            for folder in folders:
+                root = os.path.join(base, folder)
+                try:
+                    mtime = int(os.path.getmtime(root))
+                except OSError:
+                    continue
+                sig.append((tag + folder, mtime))
+        for _d, _sk, folders, _r, _e, _core in OPTIONAL_GAME_SYSTEMS:
+            for folder in folders:
+                root = os.path.join(base, folder)
+                try:
+                    mtime = int(os.path.getmtime(root))
+                except OSError:
+                    continue
+                sig.append((tag + folder, mtime))
+    # Core-Datei der optionalen Systeme selbst mit in die Signatur
+    # aufnehmen (nicht nur den ROM-Ordner oben) - sonst wuerde ein
+    # nachtraeglich installierter/entfernter SNES_Tracker-Core NICHT
+    # erkannt, solange sich am ROM-Ordner nichts aendert, und die neue
+    # Kategorie bliebe bis zum naechsten manuellen Rescan unsichtbar.
+    for _d, _sk, _f, _r, _e, core_check_path in OPTIONAL_GAME_SYSTEMS:
+        try:
+            sig.append(("core:" + core_check_path,
+                       int(os.path.getmtime(core_check_path))))
+        except OSError:
+            sig.append(("core:" + core_check_path, None))
+    sig.sort(key=lambda t: (t[0], t[1] is None, t[1]))
+    sig.append(("__scan_logic_version__", SCAN_LOGIC_VERSION))
+    return sig
+
+def _sig_expects_usb(sig):
+    """True, wenn eine Signatur mindestens einen USB-Ordner enthaelt -
+    genutzt, um zu entscheiden, ob sich das Warten auf einen USB-Mount
+    ueberhaupt lohnt (siehe scan_games())."""
+    return any(entry[0].startswith("usb:") for entry in sig)
+
+def _node_to_json(node):
+    return {"folders": {k: _node_to_json(v) for k, v in node["folders"].items()},
+            "items": [[i0, i1, list(i2[:4]) + [list(i2[4])]] for i0, i1, i2 in node["items"]]}
+
+def _node_from_json(data):
+    return {"folders": {k: _node_from_json(v) for k, v in data["folders"].items()},
+            "items": [(i0, i1, (i2[0], i2[1], i2[2], i2[3], tuple(i2[4])))
+                     for i0, i1, i2 in data["items"]]}
+
+def _cats_to_json(cats):
+    return [[n, _node_to_json(node), sk] for n, node, sk in cats]
+
+def _cats_from_json(data):
+    return [(n, _node_from_json(node), sk) for n, node, sk in data]
+
+
+def _wait_for_usb_stable(max_wait=10.0, poll=0.5, min_wait_if_none=3.0):
+    """Kurz warten, falls USB-Laufwerke gerade erst einhaengen - nur
+    relevant fuer den (seltenen) tatsaechlichen Scan-Fall, verzoegert
+    NICHT den schnellen Cache-Treffer-Normalfall.
+
+    Prueft nicht nur, OB der Mountpunkt existiert (das kann bei einer
+    langsam hochlaufenden Festplatte schon der Fall sein, WAEHREND die
+    Dateiliste dahinter noch nachzieht) - sondern die tatsaechliche
+    Anzahl an Eintraegen in jedem USB-Basisordner (os.listdir). Erst
+    wenn sich diese Anzahl zwischen zwei Abfragen nicht mehr aendert,
+    gilt das Laufwerk als wirklich fertig eingehaengt.
+
+    Rueckgabe (v1.53): drei moegliche Zustaende, damit der Aufrufer
+    weiss, ob das Ergebnis vertrauenswuerdig genug zum Zwischen-
+    speichern ist:
+    - True  = mindestens ein USB-Pfad gefunden UND stabil - Ergebnis
+      vollstaendig, cachen ist sicher.
+    - None  = ueberhaupt kein USB im Spiel (Setup ohne USB-Laufwerk) -
+      Ergebnis vollstaendig, cachen ist sicher.
+    - False = ein USB-Mountpunkt wurde gesehen, ist aber bis zum
+      Zeitlimit nicht stabil geworden - das Scan-Ergebnis KOENNTE
+      unvollstaendig sein, cachen ist NICHT sicher (siehe scan_games()).
+
+    Hintergrund: seit v1.48 passiert der Bildschirmwechsel VOR dem
+    Scan (behebt das Haengenbleiben im MiSTer-OSD) - das aendert aber
+    nichts daran, WANN der Scan selbst startet. Laeuft er, bevor ein
+    USB-Laufwerk nach einem Kaltstart wirklich fertig eingehaengt ist,
+    fehlen dessen Spiele im Ergebnis."""
+    usb_candidates = [b for b in fe.paths.GAMES_BASES if "/media/usb" in b]
+    if not usb_candidates:
+        return None
+
+    def snapshot():
+        found = False
+        total = 0
+        for b in usb_candidates:
+            if os.path.isdir(b):
+                found = True
+                try:
+                    total += len(os.listdir(b))
+                except OSError:
+                    pass
+        return found, total
+
+    t0 = time.monotonic()
+    last_total = None
+    stable_streak = 0
+    while True:
+        elapsed = time.monotonic() - t0
+        found, total = snapshot()
+        if elapsed >= max_wait:
+            LOG("_wait_for_usb_stable: Zeitlimit (%.1fs) erreicht, fahre trotzdem fort"
+               % max_wait)
+            # Beim Zeitlimit unterscheiden: ist ueberhaupt ein
+            # Mountpunkt da? Wenn ja, ist er evtl. nur noch nicht
+            # stabil - trotzdem unsicher, also nicht cachen (False).
+            # Wenn gar keiner kam, ist es ein Setup ohne USB (None).
+            return False if found else None
+        # BUGFIX (Nutzer-Rueckmeldung): ein durchgehend LEERER, aber
+        # STABILER Ordner (Anzahl bleibt bei 0) wurde bisher NIE als
+        # stabil erkannt, weil "has_content" das ausdruecklich
+        # voraussetzte - nur ein durchgehend GEFUELLTER Ordner konnte
+        # jemals "stabil" werden. MiSTer legt aber haeufig leere
+        # /media/usb0, /media/usb1 usw. als Platzhalter an, VOELLIG
+        # unabhaengig davon, ob dort tatsaechlich ein USB-Laufwerk
+        # angeschlossen ist. Bei so einem Setup blieb die Anzahl immer
+        # bei 0, "stable_streak" wurde nie hochgezaehlt, das Zeitlimit
+        # wurde dadurch IMMER erreicht - das Scan-Ergebnis wurde NIE
+        # gecacht, die Spieleliste wurde bei JEDEM Start komplett neu
+        # gescannt. Jetzt zaehlt auch eine durchgehend stabile Null als
+        # stabil (mit etwas mehr Vorsicht: doppelt so viele
+        # aufeinanderfolgende Abfragen wie bei echtem Inhalt, damit ein
+        # Laufwerk, das gerade erst zu befuellen beginnt, nicht zu
+        # frueh faelschlich als "leer und fertig" gilt).
+        if total == last_total:
+            stable_streak += 1
+            required = 2 if total > 0 else 4
+            if stable_streak >= required:
+                LOG("_wait_for_usb_stable: USB-Inhalt stabil (%d Eintraege) nach %.1fs"
+                   % (total, elapsed))
+                return True if total > 0 else None
+        else:
+            stable_streak = 0
+        if not found and elapsed >= min_wait_if_none:
+            return None
+        last_total = total
+        time.sleep(poll)
+
+# ----------------------------------------------------------------------------
+# NETZWERK/NAS-WARTEOPTION (Nutzerwunsch): liegen die ROMs auf einem
+# Netzlaufwerk (NAS, ueber CIFS/SMB oder NFS eingebunden - MiSTer haengt
+# das typischerweise unter /media/fat/cifs ein bzw. blendet es direkt in
+# die games-Ordner ein, siehe cifs_mount.sh), kann der Scan starten,
+# BEVOR die Verbindung wirklich steht - das Ergebnis (leer oder
+# unvollstaendig) wuerde dann sogar dauerhaft gecacht werden. Standard
+# AUS (die meisten Nutzer haben SD-Karte/USB, fuer die das nur unnoetig
+# verzoegern wuerde) - NUR fuer NAS-Nutzer per Option einschaltbar.
+NETWORK_WAIT_FILE = "/media/fat/frontend/network_wait"
+
+def network_wait_enabled():
+    """Liest die Einstellung "beim Start auf Netzwerk/NAS warten" -
+    Standard NEIN."""
+    try:
+        with open(NETWORK_WAIT_FILE) as f:
+            return f.read().strip().lower() in ("yes", "1", "ja", "true")
+    except OSError:
+        return False
+
+def save_network_wait(enabled):
+    try:
+        os.makedirs(os.path.dirname(NETWORK_WAIT_FILE), exist_ok=True)
+        with open(NETWORK_WAIT_FILE, "w") as f:
+            f.write("yes" if enabled else "no")
+    except OSError:
+        pass
+
+def _has_network_mount():
+    """True, wenn eine Netzwerk-Freigabe (CIFS/NFS) gemountet ist - das
+    eigentliche Signal, dass das NAS jetzt wirklich da ist. Uebernommener
+    Vorschlag - siehe _wait_for_network_ready()."""
+    try:
+        with open("/proc/mounts") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 3 and parts[2] in (
+                        "cifs", "smb3", "smbfs", "nfs", "nfs4"):
+                    return True
+    except OSError:
+        pass
+    return False
+
+def _wait_for_network_ready(max_wait=45.0, poll=0.5):
+    """NUR aktiv, wenn network_wait_enabled() - sonst sofortige
+    Rueckkehr (kein Einfluss auf den ganz ueberwiegenden Regelfall SD-
+    Karte/USB).
+
+    ERWEITERT (uebernommener Vorschlag - loest eine Luecke der
+    urspruenglichen Fassung): die vorherige Version wartete nur auf
+    "irgendeine Netzwerkverbindung" und dann auf einen stabilen Inhalt
+    von GAMES_BASES - GAMES_BASES war aber beim Modul-Import bereits
+    (leer) eingefroren, BEVOR das NAS ueberhaupt gemountet war, und ein
+    schon stabiler, aber rein LOKALER Ordner (nur Cores, kein NAS)
+    konnte das Warten faelschlich vorzeitig beenden lassen. Jetzt wird
+    zusaetzlich echt geprueft, ob eine CIFS/NFS-Freigabe TATSAECHLICH
+    gemountet ist (_has_network_mount()) - erst NACHDEM das gesehen
+    wurde, zaehlt ein stabiler Inhalt. GAMES_BASES wird ausserdem bei
+    jeder Pruefung sowie am Ende neu ermittelt (_discover_games_bases()),
+    damit ein erst waehrend der Wartezeit erscheinendes NAS-Mount auch
+    tatsaechlich erfasst wird."""
+    if not network_wait_enabled():
+        return
+    t0 = time.monotonic()
+    while not _has_network():
+        if time.monotonic() - t0 >= max_wait:
+            LOG("_wait_for_network_ready: keine Netzwerkverbindung nach %.0fs - fahre trotzdem fort"
+               % max_wait)
+            fe.paths.GAMES_BASES = fe.paths._discover_games_bases()
+            return
+        time.sleep(poll)
+
+    def snapshot():
+        # Wurzeln JEDES Mal neu ermitteln - erfasst ein erst jetzt
+        # erscheinendes NFS/CIFS-Mount (GAMES_BASES ist eingefroren).
+        total = 0
+        for b in fe.paths._discover_games_bases():
+            if os.path.isdir(b):
+                try:
+                    total += len(os.listdir(b))
+                except OSError:
+                    pass
+        return total
+
+    last_total = None
+    stable_streak = 0
+    saw_mount = False
+    while True:
+        elapsed = time.monotonic() - t0
+        if elapsed >= max_wait:
+            LOG("_wait_for_network_ready: Zeitlimit (%.0fs) erreicht, fahre trotzdem fort"
+               % max_wait)
+            break
+        if _has_network_mount():
+            saw_mount = True
+        total = snapshot()
+        # Erst als fertig gelten, wenn das NAS-Mount GESEHEN wurde - sonst
+        # bricht der schon stabile LOKALE Ordner (nur Cores) das Warten ab,
+        # bevor das NAS ueberhaupt gemountet ist.
+        if saw_mount and total == last_total:
+            stable_streak += 1
+            required = 2 if total > 0 else 4   # bei leer vorsichtiger, siehe _wait_for_usb_stable()
+            if stable_streak >= required:
+                LOG("_wait_for_network_ready: NAS gemountet, Inhalt stabil (%d Eintraege) nach %.1fs"
+                   % (total, elapsed))
+                break
+        else:
+            stable_streak = 0
+        last_total = total
+        time.sleep(poll)
+    fe.paths.GAMES_BASES = fe.paths._discover_games_bases()
+
+def scan_games(force=False, progress_cb=None):
+    """ROM-Listen laden - aus dem Cache, wenn er noch passt.
+    progress_cb(i, total, name): wird NUR beim tatsaechlichen Scannen
+    von der Platte aufgerufen (nicht beim schnellen Cache-Treffer) -
+    normale Boots (Cache passt) bleiben also unveraendert schnell,
+    nur der seltene "erster Start"/"ROMs geaendert"-Fall zeigt Fortschritt.
+
+    PERFORMANCE (Nutzerwunsch: "performance-technisch noch was
+    rausholen"): Cache-Datei laeuft seit hier auf Pickle statt JSON -
+    bei einer grossen Sammlung (getestet mit ~4700 Spielen, angelehnt
+    an eine echte Nutzer-Sammlung) ca. 9x schnelleres Schreiben, ca.
+    2.7x schnelleres Lesen, UND kleinere Datei. Pickle erhaelt Tupel
+    nativ, dadurch entfaellt zusaetzlich der komplette Umweg ueber
+    _cats_to_json()/_cats_from_json() (Tupel<->Liste-Konvertierung
+    fuer JEDES einzelne Spiel) - das war selbst schon ein spuerbarer
+    Teil der Kosten, nicht nur die reine Serialisierung."""
+    sig = _games_signature()
+    cached_sig = None
+    data = None
+    if not force:
+        try:
+            with open(GAMES_CACHE, "rb") as f:
+                data = pickle.load(f)
+            cached_sig = data["sig"]
+            if cached_sig == sig:
+                LOG("Spieleliste aus Cache (%d Systeme)"
+                    % len(data["cats"]))
+                return data["cats"]
+        except (OSError, ValueError, KeyError, IndexError, TypeError,
+                pickle.UnpicklingError, EOFError, AttributeError):
+            cached_sig = None
+            data = None
+
+    usb_ready = None
+    waited_already = False
+    # Cache passt (noch) nicht. Haeufigster Grund bei einem KALTSTART:
+    # die USB-Platte war in dem Moment, in dem die Signatur oben
+    # gebildet wurde, schlicht noch nicht gemountet - die aktuelle
+    # Signatur hat dann keine USB-Ordner, der Cache (vom letzten Scan
+    # MIT USB) aber schon. Nur in genau diesem Fall lohnt sich das
+    # Warten VOR einem kompletten Neuscan: erwartet der Cache USB,
+    # sehen wir aber noch keines, dann warten und erneut vergleichen.
+    # SD-only-Systeme (Cache ohne USB) und warme Boots (Signatur passt
+    # sofort) warten hier gar nicht.
+    if (not force and cached_sig is not None
+            and _sig_expects_usb(cached_sig) and not _sig_expects_usb(sig)):
+        LOG("scan_games: Cache erwartet USB, noch nicht gemountet - warte")
+        usb_ready = _wait_for_usb_stable()
+        waited_already = True
+        sig = _games_signature()
+        if cached_sig == sig:
+            LOG("Spieleliste aus Cache nach USB-Mount (%d Systeme)"
+                % len(data["cats"]))
+            return data["cats"]
+
+    if not waited_already:
+        usb_ready = _wait_for_usb_stable()
+    cats = _scan_games_disk(progress_cb)
+
+    # usb_ready: True = USB sauber eingehaengt, None = gar kein USB im
+    # Spiel (beides -> Ergebnis vollstaendig, cachen ok). False = ein
+    # USB-Mountpunkt war da, wurde aber nicht rechtzeitig stabil - das
+    # Ergebnis KOENNTE unvollstaendig sein. Dann NICHT cachen, sonst
+    # bliebe eine Luecke dauerhaft bestehen (der Cache passt beim
+    # naechsten Boot ja wieder) - ohne Cache scannt der naechste Boot
+    # einfach erneut, bis die Platte einmal rechtzeitig bereit war.
+    if usb_ready is False:
+        LOG("scan_games: USB nicht sicher bereit - Ergebnis wird NICHT gecacht")
+        return cats
+
+    sig = _games_signature()
+    try:
+        with open(GAMES_CACHE, "wb") as f:
+            pickle.dump({"sig": sig, "cats": cats}, f, protocol=pickle.HIGHEST_PROTOCOL)
+        # Einmalige Aufraeumung: eine alte JSON-Cache-Datei aus der Zeit
+        # vor dem Pickle-Wechsel wuerde sonst nutzlos auf der SD-Karte
+        # liegen bleiben (wird nie wieder gelesen, seit GAMES_CACHE auf
+        # .pkl zeigt) - einfach mit entfernen, kein Fehler wenn nicht
+        # vorhanden.
+        try:
+            os.remove(GAMES_CACHE_OLD_JSON)
+        except OSError:
+            pass
+    except OSError:
+        pass
+    return cats
+
+def _wrap_flat(items_list):
+    """Eine bestehende flache Liste (Scripts/System/Cores/Zuletzt
+    gespielt) als Baumknoten ohne Unterordner einwickeln - macht alle
+    Kategorien einheitlich zu Baumknoten, der Rest des Codes muss
+    dadurch nicht zwischen 'flacher Liste' und 'Baum' unterscheiden."""
+    return {"folders": {}, "items": items_list}
+
+def _count_tree_items(node):
+    """Zaehlt rekursiv alle Eintraege in einem Baumknoten - auch in
+    verschachtelten Unterordnern (Nutzerwunsch: die Kategorien
+    "Sammlungen"/"RA-Erfolgsjaeger" zeigten im Hauptmenue selbst keine
+    Anzahl, man musste erst reingehen um zu sehen ob ueberhaupt was
+    drinsteckt). Nur fuer die kleinen, abgeleiteten Kategorien gedacht
+    (Sammlungen/RA-Erfolgsjaeger haben wenige Dutzend Eintraege) - fuer
+    die grossen ROM-Kategorien waere das zu teuer, dort zaehlen wir
+    bewusst nicht."""
+    total = len(node.get("items", ()))
+    for sub in node.get("folders", {}).values():
+        total += _count_tree_items(sub)
+    return total
+
+def _empty_node():
+    """Leerer Baumknoten: {'folders': {Name: Knoten, ...}, 'items':
+    [(label,kind,arg), ...]}. Wird fuer ALLE Kategorien einheitlich
+    genutzt - auch fuer Scripts/System/Cores/Zuletzt-gespielt, die
+    einfach 'folders'={} bekommen (flach, wie bisher)."""
+    return {"folders": {}, "items": []}
+
+def _merge_node(dst, src):
+    """src-Knoten in dst hineinmischen - noetig, falls derselbe
+    Systemordner (z.B. 'SNES') von mehreren GAMES_BASES aus existiert
+    (SD-Karte UND ein USB-Laufwerk)."""
+    for name, sub in src["folders"].items():
+        if name in dst["folders"]:
+            _merge_node(dst["folders"][name], sub)
+        else:
+            dst["folders"][name] = sub
+    dst["items"].extend(src["items"])
+
+def _dedupe_items(raw_items):
+    """BUGFIX/AENDERUNG (Nutzerwunsch: "mehrere Spielversionen muessen
+    auch im Menue zur Auswahl stehen, PAL/NTSC etcpp"): frueher wurde
+    hier pro kanonischem Namen (ohne Region-/Versions-Tags) NUR die
+    Kopie mit der besten Region behalten (Germany > Europe > World >
+    USA > Japan, siehe REGION_PRIORITY), alle anderen Versionen
+    verschwanden komplett aus der Liste - nicht mehr auswaehlbar,
+    unabhaengig davon, ob man gezielt die PAL- oder NTSC-Fassung
+    wollte. Jetzt bleiben ALLE gefundenen Versionen erhalten, nur
+    alphabetisch sortiert - REGION_PRIORITY/_region_rank() bleiben im
+    Code bestehen (werden an anderer Stelle noch fuer die Boxart-/
+    Info-Zuordnung gebraucht), wirken sich hier aber nicht mehr
+    aus."""
+    items = list(raw_items)
+    items.sort(key=lambda t: t[0].lower())
+    return items
+
+def _node_count(node):
+    """Rekursive Gesamtzahl aller Eintraege (inkl. aller Unterordner)
+    fuer die Anzeige in der Kategorienliste."""
+    n = len(node["items"])
+    for sub in node["folders"].values():
+        n += _node_count(sub)
+    return n
+
+def _scan_folder_tree(path, syskey, rbf, extmap):
+    """Rekursiv EINEN Ordner scannen, gibt einen Baumknoten zurueck -
+    beliebig tief verschachtelt, spiegelt die eigene Ordnerstruktur/
+    Sortierung 1:1 wider. Bekannte Boot-/Testdateien, Beta/Proto/Hack-
+    Tags und rein japanische Titel werden wie bisher ausgefiltert."""
+    node = _empty_node()
+    try:
+        entries = sorted(os.listdir(path), key=str.lower)
+    except OSError:
+        return node
+    raw_items = []
+    for entry in entries:
+        if entry.startswith("."):
+            continue
+        full = os.path.join(path, entry)
+        if os.path.isdir(full):
+            sub = _scan_folder_tree(full, syskey, rbf, extmap)
+            if sub["folders"] or sub["items"]:
+                node["folders"][entry] = sub
+        else:
+            name, ext = os.path.splitext(entry)
+            ext = ext.lower()
+            if name.lower() in IGNORE_ROM_BASENAMES:
+                continue
+            if _is_junk(name):
+                continue
+            if _is_japan_only(name):
+                continue
+            if ext in extmap:
+                raw_items.append((name, "game",
+                                  (full, ext, syskey, rbf, extmap[ext])))
+    node["items"] = _dedupe_items(raw_items)
+    return node
+
+def _scan_games_disk(progress_cb=None):
+    """Fuer jedes bekannte System die ROMs einsammeln. Rueckgabe: Liste
+    (Anzeigename, Baumknoten, Systemkey) - der Baumknoten spiegelt die
+    eigene Ordnerstruktur 1:1 wider (beliebig tief verschachtelt),
+    statt wie bisher alles in eine flache Liste zu quetschen. Das
+    Frontend zeigt Unterordner als eigene Eintraege, die man oeffnen
+    kann - genau wie auf dem Datentraeger abgelegt.
+
+    Bekannte Boot-/Testdateien (IGNORE_ROM_BASENAMES) sowie Beta/Proto/
+    Demo/Hack/Bad-Dump-Tags (JUNK_TAGS) werden ausgefiltert. Mehrfach-
+    Regionen desselben Spiels werden INNERHALB jedes einzelnen Ordners
+    zu EINEM Eintrag zusammengefasst (beste Region gewinnt,
+    REGION_PRIORITY)."""
+    cats = []
+    total_sys = len(GAME_SYSTEMS) + len(OPTIONAL_GAME_SYSTEMS)
+    # Unterordner, die ein ANDERER Eintrag (egal ob GAME_SYSTEMS oder
+    # OPTIONAL_GAME_SYSTEMS) exklusiv fuer sich beansprucht (z.B.
+    # "ZELDA_MSU" oder "SMW_HACKS" unter "SNES"), muessen aus der
+    # REGULAEREN Kategorie desselben Basisordners ausgeschlossen werden -
+    # sonst wuerden dieselben ROMs zusaetzlich unter der normalen SNES-
+    # Kategorie auftauchen und liessen sich dort versehentlich mit dem
+    # falschen Core statt dem dafuer vorgesehenen starten. Nur EIN
+    # Ordner tief beruecksichtigt (passend zu den bisherigen
+    # Anwendungsfaellen) - Schluessel ist der oberste Ordnername (z.B.
+    # "SNES"), Wert die Menge auszuschliessender direkter
+    # Unterordnernamen (z.B. {"ZELDA_MSU", "SMW_HACKS"}).
+    claimed_subfolders = {}
+    for _d, _sk, sub_folders, _r, _e in GAME_SYSTEMS:
+        for f in sub_folders:
+            if "/" in f:
+                top, sub = f.split("/", 1)
+                claimed_subfolders.setdefault(top, set()).add(sub.split("/", 1)[0])
+    for _d, _sk, opt_folders, _r, _e, _core in OPTIONAL_GAME_SYSTEMS:
+        for f in opt_folders:
+            if "/" in f:
+                top, sub = f.split("/", 1)
+                claimed_subfolders.setdefault(top, set()).add(sub.split("/", 1)[0])
+    for sys_idx, (disp, syskey, folders, rbf, extmap) in enumerate(GAME_SYSTEMS):
+        if progress_cb:
+            try:
+                progress_cb(sys_idx, total_sys, disp)
+            except Exception:
+                pass
+        sys_node = _empty_node()
+        seen_roots = set()
+        for base in fe.paths.GAMES_BASES:
+            if not os.path.isdir(base):
+                continue
+            for folder in folders:
+                root = os.path.join(base, folder)
+                real = os.path.realpath(root)
+                if not os.path.isdir(root) or real in seen_roots:
+                    continue
+                seen_roots.add(real)
+                sub_node = _scan_folder_tree(root, syskey, rbf, extmap)
+                _merge_node(sys_node, sub_node)
+            for excluded in claimed_subfolders.get(folder, ()):
+                sys_node["folders"].pop(excluded, None)
+        if sys_node["folders"] or sys_node["items"]:
+            cats.append((disp, sys_node, syskey))
+
+    # OPTIONALE Systeme (Nutzerwunsch: SNES_Tracker-Core "wie ein
+    # eigenes System behandeln, falls installiert - falls NICHT
+    # installiert darf das auch nicht mit angezeigt werden"): exakt
+    # dieselbe Scan-Logik wie oben, aber zusaetzlich VORAB die
+    # core_check_path-Datei pruefen - fehlt sie, wird gar nicht erst
+    # gescannt, das System taucht dann so auf, als gaebe es den
+    # Eintrag nicht (kein leerer/ausgegrauter Platzhalter).
+    for opt_idx, (disp, syskey, folders, rbf, extmap, core_check_path) \
+            in enumerate(OPTIONAL_GAME_SYSTEMS):
+        if progress_cb:
+            try:
+                progress_cb(len(GAME_SYSTEMS) + opt_idx, total_sys, disp)
+            except Exception:
+                pass
+        if not os.path.isfile(core_check_path):
+            continue
+        sys_node = _empty_node()
+        seen_roots = set()
+        for base in fe.paths.GAMES_BASES:
+            if not os.path.isdir(base):
+                continue
+            for folder in folders:
+                root = os.path.join(base, folder)
+                real = os.path.realpath(root)
+                if not os.path.isdir(root) or real in seen_roots:
+                    continue
+                seen_roots.add(real)
+                sub_node = _scan_folder_tree(root, syskey, rbf, extmap)
+                _merge_node(sys_node, sub_node)
+        if sys_node["folders"] or sys_node["items"]:
+            cats.append((disp, sys_node, syskey))
+    return cats
