@@ -1,0 +1,50 @@
+name: pyflakes (undefinierte Namen finden)
+
+# Faengt genau die Fehlerklasse, die am 14.08.2026 main komplett
+# unbrauchbar gemacht hat: mehrere Module der modularen Struktur
+# (fe/*.py) verwendeten Namen (struct, sys, re, urllib, Funktionen aus
+# anderen fe/-Modulen), ohne den zugehoerigen Import mitgezogen zu
+# haben. Das fuehrte zu einem sofortigen Absturz beim allerersten
+# Bildaufbau auf echter Hardware - unser bisheriger Regressionstest
+# hatte das NICHT gefangen, da er den echten Hardware-Pfad
+# (fb.flip()/vsync-ioctl) nicht durchlaeuft. pyflakes braucht dafuer
+# keine echte Hardware und laeuft in Sekunden.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pyflakes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: pyflakes installieren
+        run: pip install pyflakes
+
+      - name: Undefinierte Namen suchen (frontend/, fe/-Paket, mister_wot.py)
+        run: |
+          cd frontend
+          echo "=== Vollstaendige pyflakes-Ausgabe (zur Info, nicht alles ist ein Fehler) ==="
+          python3 -m pyflakes fe/*.py frontend.py mister_wot.py || true
+          echo ""
+          echo "=== Nur 'undefined name' - DAS ist die kritische Fehlerklasse ==="
+          UNDEFINED=$(python3 -m pyflakes fe/*.py frontend.py mister_wot.py 2>&1 | grep -i "undefined name" || true)
+          if [ -n "$UNDEFINED" ]; then
+            echo "$UNDEFINED"
+            echo ""
+            echo "FEHLGESCHLAGEN: mindestens ein undefinierter Name gefunden - siehe oben."
+            echo "Das ist genau die Fehlerklasse, die den Absturz am 14.08.2026 verursacht hat"
+            echo "(fehlender 'import struct' in fe/framebuffer.py fuehrte zu einem sofortigen"
+            echo "Absturz bei jedem Start). Fehlt an dieser Stelle wahrscheinlich ein 'import'"
+            echo "oder ein 'from fe.xxx import ...'."
+            exit 1
+          fi
+          echo "Keine undefinierten Namen gefunden."
