@@ -21,7 +21,7 @@ Zugriff (fe.framebuffer.C_BG = ...) direkt hinein - das ist eine
 normale Zuweisung, kein Neu-Binden einer importierten Kopie, wirkt
 also sofort auch hier.
 """
-import os, mmap, fcntl, time
+import os, sys, mmap, fcntl, time, struct
 from fe.log import LOG
 
 FBDEV = "/dev/fb0"

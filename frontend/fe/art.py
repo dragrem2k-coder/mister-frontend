@@ -20,7 +20,7 @@ qualifizierter Zugriff auf fe.framebuffer.C_BG (das dort bereits
 korrekt synchron gehalten wird) ist hier voellig ausreichend und
 spart eine weitere Synchronisierungsstelle.
 """
-import os, struct, zlib, json, time
+import os, re, struct, zlib, json, time, urllib.request
 from fe.log import LOG
 from fe.framebuffer import Framebuffer
 from fe.translations import t

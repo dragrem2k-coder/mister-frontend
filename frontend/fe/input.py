@@ -16,6 +16,8 @@ ist sofort auch von der anderen sichtbar.
 """
 import os, sys, struct, fcntl, time, select, threading, json, re
 from fe.log import LOG
+from fe.launch import current_core
+from fe.hidraw import _find_keyboard_hidraws, _hid_report_has_exit_key
 
 KEYMAP_CUSTOM_FILE = "/media/fat/frontend/keymap_custom.json"
 

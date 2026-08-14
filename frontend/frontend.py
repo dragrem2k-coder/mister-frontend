@@ -3821,6 +3821,7 @@ from fe.translations import TRANSLATIONS, t, set_language, current_lang
 
 
 from fe.menu import system_items
+from fe.search import jump_to_substring, jump_to_letter
 # FRONTEND
 # ----------------------------------------------------------------------------
 
