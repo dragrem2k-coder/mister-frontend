@@ -354,7 +354,16 @@ def _thumb_cache_put(path, w, h, tw, th, pix):
     """Speichert eine FRISCH vom Original berechnete Miniatur. Ueber
     eine temporaere Datei + os.replace() geschrieben (atomar) - ein
     Stromausfall/Absturz mitten im Schreiben kann so keine halb
-    geschriebene, kaputte Cache-Datei hinterlassen."""
+    geschriebene, kaputte Cache-Datei hinterlassen.
+
+    GEAENDERT (Nutzerwunsch: "Performance auf echter Hardware messen") -
+    ein Schreibfehler wurde bisher STUMM verschluckt (nur "except
+    OSError: return", keine Protokollierung). Auf einem echten Geraet
+    koennte z.B. ein Rechte- oder Speicherplatzproblem den Cache
+    dadurch dauerhaft wirkungslos machen, OHNE dass irgendwo im Log
+    ein Hinweis darauf zu finden waere - genau die Art von stillem
+    Fehler, die die Frage "warum wird es nicht schneller?" unbeant-
+    wortet laesst. Jetzt wird jeder Fehlschlag explizit geloggt."""
     try:
         os.makedirs(THUMB_CACHE_DIR, exist_ok=True)
         cpath = _thumb_cache_path(_thumb_cache_key(path, w, h))
@@ -362,7 +371,8 @@ def _thumb_cache_put(path, w, h, tw, th, pix):
         with open(tmp, "wb") as f:
             f.write(b"ART1" + struct.pack("<HH", tw, th) + zlib.compress(pix, 6))
         os.replace(tmp, cpath)
-    except OSError:
+    except OSError as e:
+        LOG("THUMB_CACHE Schreibfehler (%s): %s" % (os.path.basename(path), e))
         return
     _thumb_cache_evict_if_needed()
 
@@ -498,8 +508,21 @@ class ArtCache:
         box_key = (path, "box", max_w, max_h)
         if box_key in self.scaled:
             return self.scaled[box_key]
+        # NEU (Nutzerwunsch: "Performance auf echter Hardware messen") -
+        # ein Festplatten-Cache-TREFFER ist so schnell (im Sandbox-Test
+        # ~5-7ms), dass er die PERF-Schwelle weiter unten (>25ms) nie
+        # erreicht - Treffer blieben dadurch bisher im Log UNSICHTBAR,
+        # obwohl gerade DAS die interessante Frage ist ("greift der
+        # Cache auf echter Hardware ueberhaupt?"). Deshalb hier ein
+        # eigenes, unmittelbares Log-Signal, unabhaengig von der
+        # Zeitschwelle - bewusst mit Zeitmessung, damit sich Treffer
+        # und Fehltreffer direkt aus echten Log-Daten vergleichen lassen.
+        _tcache_t0 = time.monotonic()
         disk_hit = _thumb_cache_get(path, max_w, max_h)
         if disk_hit is not None:
+            _tcache_dt = (time.monotonic() - _tcache_t0) * 1000
+            LOG("THUMB_CACHE Treffer: %.1fms (%s, %dx%d)"
+                % (_tcache_dt, os.path.basename(path), max_w, max_h))
             self._scaled_cache_put(box_key, disk_hit)
             return disk_hit
 
