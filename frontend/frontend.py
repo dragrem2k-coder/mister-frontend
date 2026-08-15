@@ -5526,6 +5526,36 @@ class Frontend:
     # Seite 1: Liste + (falls vorhanden) grosse Boxart-Spalte
     # ------------------------------------------------------------------
     def draw_page_items(self, message=None, flip=True):
+        # NEU (Nutzerwunsch: "auf echter Hardware messen" - Sandbox
+        # erreichte die realen 150-250ms nicht annaehernd, egal wie
+        # gross die nachgebaute Sammlung war - moeglicherweise einfach
+        # deutlich schwaechere ARM-CPU, moeglicherweise etwas, das sich
+        # nur mit ECHTEN Metadaten/RA-Daten zeigt). Statt weiter zu
+        # raten: optionales, per Umgebungsvariable einschaltbares
+        # Profiling direkt auf dem echten Geraet - zeigt beim naechsten
+        # Log genau, WELCHE Funktion(en) die Zeit tatsaechlich
+        # verbrauchen, nach demselben Prinzip, das beim F5-Problem am
+        # Ende den Ausschlag gegeben hat (echte Daten statt Vermutung).
+        # Bewusst NICHT dauerhaft aktiv (cProfile kostet selbst Zeit,
+        # wuerde die normale Bedienung spuerbar verlangsamen) - nur
+        # wenn DRAGEND_PROFILE=1 in der Umgebung gesetzt ist.
+        if os.environ.get("DRAGEND_PROFILE") == "1":
+            import cProfile, pstats, io as _io
+            _pr = cProfile.Profile()
+            _pr.enable()
+            _t0 = time.monotonic()
+            r = self._draw_page_items_impl(message=message, flip=flip)
+            _dt = time.monotonic() - _t0
+            _pr.disable()
+            if _dt > 0.040:
+                LOG("PERF draw_page_items: %.0f ms" % (_dt * 1000))
+                _s = _io.StringIO()
+                _stats = pstats.Stats(_pr, stream=_s).sort_stats("cumulative")
+                _stats.print_stats(12)
+                for _line in _s.getvalue().splitlines():
+                    if _line.strip():
+                        LOG("PROFILE: " + _line)
+            return r
         _t0 = time.monotonic()
         r = self._draw_page_items_impl(message=message, flip=flip)
         _dt = time.monotonic() - _t0
