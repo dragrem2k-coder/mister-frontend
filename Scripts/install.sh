@@ -1,10 +1,22 @@
 #!/bin/bash
+# AUTOMATISCH ERZEUGTE KOPIE - NICHT DIREKT BEARBEITEN.
+# Diese Datei ist eine 1:1-Kopie von /install.sh (Hauptverzeichnis),
+# hier abgelegt, damit sie im MiSTer-OSD unter "Scripts"
+# erscheint und direkt startbar ist. Aenderungen bitte NUR
+# an der Hauptdatei vornehmen - diese Kopie wird beim naechsten
+# Paket-Build automatisch neu erzeugt. Eine GitHub Action prueft
+# bei jedem Push, ob beide Dateien noch uebereinstimmen (siehe
+# .github/workflows/sync-check.yml) - laeuft sonst auseinander,
+# wie es hier zuvor bereits passiert war (fehlender fe/-Fix in
+# dieser Kopie, urspruengliche Ursache fuer Dennsens Installations-
+# problem).
+#
 # ============================================================
 # MiSTer Custom Frontend - automatische Installation
 #
 # Fuer Leute ohne Vorkenntnisse: laedt den kompletten Build direkt
 # von GitHub, kopiert alles an die richtige Stelle und richtet den
-# Autostart ein - EIN Befehl statt vieler manueller Kopierschritte.
+# Autostart ein - EIN Befehl statt vieler manueller WinSCP-Schritte.
 #
 # Aufruf (per SSH auf dem MiSTer):
 #
@@ -37,7 +49,7 @@ elif command -v wget >/dev/null 2>&1; then
     TOOL=wget
 else
     echo "FEHLER: Weder curl noch wget gefunden."
-    echo "Bitte die Dateien stattdessen manuell kopieren -"
+    echo "Bitte die Dateien stattdessen manuell per WinSCP kopieren -"
     echo "siehe README.md, Abschnitt 3 (Installation Schritt fuer Schritt)."
     exit 1
 fi
@@ -104,7 +116,7 @@ if [ "$download_ok" != "1" ]; then
     echo "  1. Internetzugang testen:   ping -c 2 github.com"
     echo "  2. Direkter Testaufruf:     $TOOL -v \"$REPO_ZIP\""
     echo "  3. Falls beides fehlschlaegt: Dateien stattdessen manuell"
-    echo "     kopieren (Netzwerkfreigabe/SD-Karte), siehe README.md Abschnitt 3."
+    echo "     per WinSCP kopieren, siehe README.md Abschnitt 3."
     rm -rf "$TMP_DIR"
     exit 1
 fi
@@ -141,8 +153,39 @@ if [ -d "$SRC_DIR/frontend/sysart" ]; then
     mkdir -p "$FRONTEND_DIR/sysart"
     cp -rn "$SRC_DIR/frontend/sysart/." "$FRONTEND_DIR/sysart/" 2>/dev/null || true
 fi
+if [ -d "$SRC_DIR/frontend/sfx_source" ]; then
+    # Quelldatei(en) fuer echte (statt prozedural erzeugte) SFX-Klaenge
+    # (z.B. achievement.wav) - gleiches "nicht ueberschreiben"-Prinzip
+    # wie bei sysart oben, falls jemand eine eigene Datei eingesetzt hat.
+    mkdir -p "$FRONTEND_DIR/sfx_source"
+    cp -rn "$SRC_DIR/frontend/sfx_source/." "$FRONTEND_DIR/sfx_source/" 2>/dev/null || true
+fi
+if [ -d "$SRC_DIR/frontend/boot_logo" ]; then
+    # Boot-Logo (dragend_logo.art) - gleiches Prinzip, eigene Datei
+    # wird nicht ueberschrieben.
+    mkdir -p "$FRONTEND_DIR/boot_logo"
+    cp -rn "$SRC_DIR/frontend/boot_logo/." "$FRONTEND_DIR/boot_logo/" 2>/dev/null || true
+fi
+# fe/-Paket (modulare Logik, nur bei der modularen Variante vorhanden) -
+# komplettes Verzeichnis, MIT Ueberschreiben (Code-Update, nicht
+# nutzer-anpassbar wie sysart/). Fehlt es bei einer modularen
+# Installation, bricht der Start mit "ModuleNotFoundError: No module
+# named 'fe'" ab - genau das Problem, das ohne diesen Block hier
+# entstehen wuerde.
+if [ -d "$SRC_DIR/frontend/fe" ]; then
+    mkdir -p "$FRONTEND_DIR/fe"
+    cp -f "$SRC_DIR"/frontend/fe/*.py "$FRONTEND_DIR/fe/" 2>/dev/null || true
+fi
 cp -f "$SRC_DIR"/Scripts/*.sh "$SCRIPTS_DIR/" 2>/dev/null || true
 chmod +x "$FRONTEND_DIR"/*.sh "$SCRIPTS_DIR"/*.sh 2>/dev/null || true
+# Sicherheitsnetz gegen Windows-Zeilenenden (CRLF): kopierte Shell-Skripte
+# auf Unix-LF normalisieren. Kommen die Dateien uebers Netz/Windows mit
+# CR-Zeichen an, scheitert bash sonst mit "syntax error near unexpected
+# token" an den \r. Bereinigt die bereits kopierten .sh im Zielordner.
+for s in "$FRONTEND_DIR"/*.sh "$SCRIPTS_DIR"/*.sh; do
+    [ -f "$s" ] || continue
+    tr -d '\r' < "$s" > "$s.__nl__" 2>/dev/null && mv "$s.__nl__" "$s" 2>/dev/null || true
+done
 
 # --- Autostart einrichten (nur falls noch nicht vorhanden) ---
 STARTUP_FILE="/media/fat/linux/user-startup.sh"
@@ -155,6 +198,19 @@ else
 fi
 
 rm -rf "$TMP_DIR"
+
+echo ""
+if command -v mpg123 >/dev/null 2>&1; then
+    echo "mpg123 gefunden:  Hintergrundmusik ist nutzbar"
+else
+    echo "mpg123 fehlt:     Frontend laeuft normal, nur ohne Musik"
+    echo "                  mpg123 gehoert eigentlich zur MiSTer-Firmware"
+    echo "                  selbst (kein separates Paket) - falls es fehlt,"
+    echo "                  hilft meist ein einmaliges 'Update All' im"
+    echo "                  MiSTer-OSD (komplette Firmware auf den"
+    echo "                  neuesten Stand bringen). Danach per SSH"
+    echo "                  pruefen:  which mpg123"
+fi
 
 echo ""
 echo "=== Fertig! ==="

@@ -188,3 +188,46 @@ def _hid_report_has_exit_key(data):
     if len(data) > 7 and data[0] == 0x06 and (data[7] & 0x02):
         return True
     return False
+
+def _hid_report_has_reset_key(data):
+    """Wie _hid_report_has_exit_key(), aber fuer F5 (HID-Usage 0x3E) -
+    Nutzerwunsch: Reset im laufenden Core (alle Cores, nicht nur RA)
+    ueber F5 laenger halten, nach demselben bewaehrten Muster wie der
+    Esc/F10-Notausstieg.
+
+    GEAENDERT (Nutzer-Rueckmeldung nach echtem Hardware-Test: 'Tab und
+    Reset-Funktion will nicht so recht'): urspruenglich stand hier Tab
+    (HID-Usage 0x2B), bewusst OHNE die NKRO-Bitmap-Erweiterung (siehe
+    _hid_report_has_exit_key()) - mit der Begruendung, die Esc-
+    Bitposition liesse keine verlaessliche Aussage ueber andere Tasten
+    zu. Das hat sich als der eigentliche Fehler herausgestellt: ein
+    echtes Log zeigte, dass Tab auf der betroffenen NKRO-Tastatur
+    (KBDFans Tiger80) niemals ueber den einfachen Byte-Array-Weg
+    ankommt (0x2B erscheint dort nie als eigener Byte-Wert) - der
+    Ausloeser hat deshalb ueberhaupt nie gefeuert, ganz unabhaengig von
+    der gewaehlten Taste.
+
+    Aus genau diesem Log liess sich die Bit-Position fuer Tab auf
+    dieser Tastatur erstmals wirklich MESSEN (nicht nur vermuten):
+    Report-Byte 7, Bit 3 (Maske 0x08). Zusammen mit der bereits
+    vorher bestaetigten Esc-Position (Report-Byte 7, Bit 1) ergibt
+    sich ein klares, konsistentes Muster:
+        Bitmap-Byte = HID-Usage // 8      Report-Byte = Bitmap-Byte + 2
+        Bit         = HID-Usage % 8
+    Esc (0x29=41): Bitmap-Byte 5 -> Report-Byte 7, Bit 1 (bestaetigt).
+    Tab (0x2B=43): Bitmap-Byte 5 -> Report-Byte 7, Bit 3 (bestaetigt,
+    aus dem oben genannten Log).
+
+    F5 (HID-Usage 0x3E=62) nach DERSELBEN Formel: Bitmap-Byte 7 ->
+    Report-Byte 9, Bit 6 (Maske 0x40). WICHTIG - ehrlich einzuordnen:
+    das ist eine HOCHRECHNUNG anhand von zwei bestaetigten Messpunkten,
+    KEINE eigene Messung fuer F5 selbst. Sollte sich das beim naechsten
+    Test als falsch herausstellen, zeigt die ohnehin vorhandene
+    DIAGNOSE-Protokollierung in wait_game_exit() den tatsaechlichen
+    Report - von dort laesst sich die richtige Position dann genauso
+    ablesen wie diesmal bei Tab."""
+    if 0x3E in data:
+        return True
+    if len(data) > 9 and data[0] == 0x06 and (data[9] & 0x40):
+        return True
+    return False

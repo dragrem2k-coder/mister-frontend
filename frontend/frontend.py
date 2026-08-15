@@ -4044,6 +4044,13 @@ class Frontend:
         self.attract_mode = False
         self._last_input_time = time.monotonic()
         self._settled_redrawn = True   # Cover-Nachladen erst nach Bewegung
+        # NEU (Phase 2, Nutzerwunsch "Vorab-Laden nach Scrollrichtung"):
+        # merkt sich, ob zuletzt nach unten (1) oder oben (-1) navigiert
+        # wurde - _prefetch_neighbor_covers() bevorzugt beim Vorab-Laden
+        # die Richtung, in die man vermutlich weiterscrollt. Vorgabe 1
+        # (runter) - beim allerersten Aufruf noch keine echte Richtung
+        # bekannt, runter ist die haeufigere erste Bewegung.
+        self._last_scroll_dir = 1
         self._attract_game = None
         self._attract_change_next = 0.0
         self._attract_pool = None   # zwischengespeicherte flache Spieleliste
@@ -6287,10 +6294,34 @@ class Frontend:
     def _prefetch_neighbor_covers(self):
         """NEUES FEATURE (Nutzerwunsch: 'kann man da was vorcachen?' -
         nach dem Ruckel-Fix beim erneuten Skalieren). Dekodiert (aber
-        skaliert NICHT) die Cover der direkten Nachbarn (ein Feld
-        davor/danach) im Hintergrund, sobald die Liste stillsteht -
-        wer kurz guckt und dann weiterscrollt, findet das naechste
-        Cover so oft schon roh dekodiert vor.
+        skaliert NICHT) Cover in der Naehe der aktuellen Auswahl im
+        Hintergrund, sobald die Liste stillsteht - wer kurz guckt und
+        dann weiterscrollt, findet das naechste Cover so oft schon
+        roh dekodiert vor.
+
+        ERWEITERT (Phase 2, Sutefans Prioritaeten-Vorschlag): statt
+        nur der direkten Nachbarn (+-1) jetzt mehrere Stufen mit
+        sinkender Prioritaet, bevorzugt in der zuletzt genutzten
+        Scrollrichtung (_last_scroll_dir):
+          Stufe 1: direkter Nachbar in Scrollrichtung
+          Stufe 2: direkter Nachbar in Gegenrichtung
+          Stufe 3: zwei Felder in Scrollrichtung
+          Stufe 4: zwei Felder in Gegenrichtung, drei in Scrollrichtung
+        'Prioritaet 4: alles andere' aus dem Vorschlag bewusst NICHT
+        als echtes Vorladen der kompletten Liste umgesetzt - anders
+        als bei RA-Erfolgen (reiner Netzwerk-Abruf) muesste hier
+        potenziell die GESAMTE Sammlung im begrenzten Bildspeicher
+        gehalten werden, mit denselben Nachteilen, die schon beim
+        RA-Vorlade-Feature gegen ein volles Cover-Vorladen gesprochen
+        haben (siehe damalige Entscheidung: kleiner LRU-Bildspeicher
+        wuerde die meisten Bilder sofort wieder verdraengen, bevor sie
+        ueberhaupt gesehen werden).
+
+        Zeitbudget bewusst begrenzt (PREFETCH_BUDGET) - auf schwacher
+        Hardware soll ein Stillstand mit vielen gleichzeitig neuen
+        Covern (z.B. nach einem Sprung in der Liste) niemals spuerbar
+        haengen bleiben; bricht einfach fruehzeitig ab, die naechste
+        Ruhephase erledigt den Rest.
 
         Bewusst NUR das rohe Dekodieren (ART.get()), NICHT die fertige
         Skalierung (ART.get_scaled()): die tatsaechliche Zielgroesse
@@ -6315,7 +6346,18 @@ class Frontend:
             return
         fb = self.fb
         _name, _root_node, cat_syskey = self.cats[self.cat_i]
-        for offset in (-1, 1):
+        d = 1 if getattr(self, "_last_scroll_dir", 1) >= 0 else -1
+        # Prioritaets-Reihenfolge: Stufe 1+2 (direkte Nachbarn, in
+        # Scrollrichtung zuerst), dann Stufe 3+4 (weiter weg, weiterhin
+        # Scrollrichtung bevorzugt).
+        offsets = [d, -d, 2*d, -2*d, 3*d]
+        PREFETCH_BUDGET = 0.06   # Sekunden - grosszuegig genug fuer
+                                 # mehrere Dekodierungen, aber niemals
+                                 # spuerbar haengend auf schwacher HW.
+        t0 = time.monotonic()
+        for offset in offsets:
+            if time.monotonic() - t0 > PREFETCH_BUDGET:
+                break
             idx = self.item_i + offset
             if not (0 <= idx < len(items)):
                 continue
@@ -9504,12 +9546,14 @@ class Frontend:
                 elif act == "up":
                     # Rundum-Navigation: vom ersten Eintrag nach oben
                     # geht's zum letzten - erspart langes Zurueckscrollen.
+                    self._last_scroll_dir = -1
                     if self.page == 0:
                         self.cat_i = (self.cat_i - move_step) % len(self.cats)
                     elif items:
                         self.item_i = (self.item_i - move_step) % len(items)
                         self.marquee_reset()
                 elif act == "down":
+                    self._last_scroll_dir = 1
                     if self.page == 0:
                         self.cat_i = (self.cat_i + move_step) % len(self.cats)
                     elif items:

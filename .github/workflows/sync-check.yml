@@ -1,0 +1,61 @@
+name: Scripts-Kopien-Abgleich (install.sh/install_offline.sh/uninstall.sh)
+
+# Faengt genau die Fehlerklasse, die zweimal echte Probleme verursacht
+# hat: install.sh, install_offline.sh und uninstall.sh liegen sowohl
+# im Hauptverzeichnis als auch (fuer die OSD-Sichtbarkeit) nochmal in
+# Scripts/ - zwei getrennt bearbeitete Kopien mit demselben Namen
+# laufen zwangslaeufig auseinander, sobald nur die eine Seite
+# aktualisiert wird. Genau das ist passiert: Scripts/install.sh und
+# Scripts/install_offline.sh fehlte ueber laengere Zeit der komplette
+# fe/-Modulordner-Fix (derselbe, der urspruenglich Dennsens
+# Installationsproblem geloest hat) - unbemerkt, weil niemand die
+# beiden Dateien routinemaessig verglichen hat.
+#
+# Diese Action vergleicht bei jedem Push/PR den Inhalt (ohne den
+# erklaerenden Kommentarkopf in der Scripts/-Kopie, siehe dortige
+# ersten Zeilen) und schlaegt fehl, wenn sie nicht mehr uebereinstimmen -
+# lange bevor es wieder unbemerkt auf einem echten Geraet auffaellt.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  sync-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Hauptdateien mit ihren Scripts/-Kopien vergleichen
+        run: |
+          FAIL=0
+          for f in install.sh install_offline.sh uninstall.sh; do
+            if [ ! -f "Scripts/$f" ]; then
+              echo "FEHLER: Scripts/$f fehlt komplett."
+              FAIL=1
+              continue
+            fi
+            # Die Scripts/-Kopie beginnt mit einem erklaerenden
+            # Kommentarkopf (13 Zeilen, siehe dortige Datei) - der wird
+            # beim Vergleich uebersprungen, danach MUSS der Inhalt
+            # Zeile fuer Zeile identisch zur Hauptdatei sein (ab deren
+            # Zeile 2, da die Kopie dieselbe Shebang-Zeile 1 hat).
+            if ! diff <(tail -n +2 "$f") <(tail -n +14 "Scripts/$f") > /tmp/diff_$f.txt; then
+              echo "FEHLER: $f und Scripts/$f sind nicht mehr identisch:"
+              cat /tmp/diff_$f.txt
+              echo ""
+              FAIL=1
+            else
+              echo "OK: $f und Scripts/$f stimmen ueberein."
+            fi
+          done
+          if [ "$FAIL" = "1" ]; then
+            echo ""
+            echo "Mindestens eine Scripts/-Kopie weicht von der Hauptdatei ab."
+            echo "Bitte NUR die Hauptdatei bearbeiten und die Scripts/-Kopie"
+            echo "danach neu daraus erzeugen (Kommentarkopf beibehalten,"
+            echo "Rest 1:1 uebernehmen)."
+            exit 1
+          fi

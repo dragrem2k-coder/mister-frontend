@@ -20,7 +20,7 @@ qualifizierter Zugriff auf fe.framebuffer.C_BG (das dort bereits
 korrekt synchron gehalten wird) ist hier voellig ausreichend und
 spart eine weitere Synchronisierungsstelle.
 """
-import os, re, struct, zlib, json, time, urllib.request
+import os, re, struct, zlib, json, time, urllib.request, hashlib
 from fe.log import LOG
 from fe.framebuffer import Framebuffer
 from fe.translations import t
@@ -266,6 +266,134 @@ BADGES = BadgeCache()
 # muss nur noch entpacken (zlib ist Standardbibliothek) und blitten.
 # ----------------------------------------------------------------------------
 
+# ----------------------------------------------------------------------------
+# MINIATUREN-CACHE AUF DER SD-KARTE (Nutzerwunsch: "beim Scrollen wird
+# staendig dekodiert/skaliert, das kostet auf schwacher Hardware Zeit -
+# koennte man fertige Miniaturen speichern?")
+#
+# Prinzip: Original -> dekodieren -> skalieren -> fertige Miniatur EINMAL
+# auf der SD-Karte ablegen. Beim naechsten Mal (auch nach einem Neustart,
+# der RAM-Cache ist dann ja leer) wird nur noch die kleine, fertige
+# Miniatur eingelesen statt erneut zu dekodieren+skalieren.
+#
+# WICHTIGE QUALITAETS-REGEL (Nutzer-Rueckfrage: "darf die Bildqualitaet
+# nicht leiden"): eine gespeicherte Miniatur wird NIEMALS erneut skaliert,
+# um sie an eine ANDERE Zielgroesse anzupassen (das wuerde sichtbar
+# schlechter aussehen als eine frische Skalierung vom Original). Bei
+# einem Cache-Fehltreffer (andere Zielgroesse als gespeichert, z.B. weil
+# ein anderer Titeltext mehr/weniger Zeilen braucht) wird IMMER frisch
+# vom Original aus skaliert - der Festplatten-Cache liefert dann einfach
+# keinen Treffer, kein Qualitaetsverlust, nur kein Geschwindigkeitsvorteil
+# in diesem einen Fall.
+#
+# Format: dieselbe simple ART1-Kopfstruktur wie normale .art-Dateien -
+# kein neues Format noetig, derselbe Lesecode funktioniert fuer beides.
+THUMB_CACHE_DIR = "/media/fat/frontend/thumb_cache"
+
+# Obergrenze nach ANZAHL Dateien (nicht Speicherplatz) - einfach zu
+# pruefen, verhindert zuverlaessig "irgendwann liegen Zehntausende
+# Dateien herum" unabhaengig von der tatsaechlichen Dateigroesse.
+THUMB_CACHE_MAX_FILES = 800
+
+def _thumb_cache_key(path, w, h):
+    """Cache-Schluessel aus Quellpfad + Zielgroesse + Dateigroesse/
+    Aenderungszeitpunkt der Quelle - letzteres sorgt fuer automatische
+    Entwertung, falls jemand ein Cover durch ein anderes ersetzt (neue
+    Datei an derselben Stelle -> anderer Schluessel -> alter Cache-
+    Eintrag wird einfach nie wieder getroffen, veraltet spurlos aus dem
+    Cache heraus statt ein falsches Bild zu zeigen).
+
+    EHRLICH DOKUMENTIERTE GRENZE: die MiSTer-SD-Karte laeuft ueblicher-
+    weise auf FAT32, das teils nur 2-Sekunden-Genauigkeit bei
+    Aenderungszeiten kennt. Wird ein Cover durch ein ANDERES mit exakt
+    derselben Dateigroesse ersetzt UND das passiert innerhalb desselben
+    2-Sekunden-Fensters, koennte kurzzeitig noch die alte Miniatur
+    getroffen werden (bis sie irgendwann verdraengt wird). Ein voller
+    Inhaltsvergleich waere zuverlaessiger, wuerde aber bei JEDEM Aufruf
+    die komplette Datei lesen muessen - genau der Aufwand, den der
+    Cache ja vermeiden soll. Fuer den ueblichen Fall (Cover wird einmal
+    ersetzt, danach lange nicht mehr angefasst) ist das unproblematisch."""
+    try:
+        st = os.stat(path)
+        sig = "%s|%d|%d|%d|%.6f" % (path, w, h, st.st_size, st.st_mtime)
+    except OSError:
+        sig = "%s|%d|%d" % (path, w, h)
+    return hashlib.sha1(sig.encode("utf-8", "surrogateescape")).hexdigest()[:24]
+
+def _thumb_cache_path(key):
+    return os.path.join(THUMB_CACHE_DIR, key + ".art")
+
+def _thumb_cache_get(path, w, h):
+    """Liefert (breite, hoehe, pixelbytes) bei einem Treffer, sonst
+    None. Aktualisiert bei einem Treffer die Aenderungszeit der Datei
+    (dient als einfacher, robuster "zuletzt benutzt"-Zeitstempel fuer
+    die Verdraengung weiter unten - keine separate Indexdatei noetig,
+    die nach einem Absturz/Stromausfall inkonsistent werden koennte)."""
+    cpath = _thumb_cache_path(_thumb_cache_key(path, w, h))
+    try:
+        with open(cpath, "rb") as f:
+            if f.read(4) != b"ART1":
+                return None
+            tw, th = struct.unpack("<HH", f.read(4))
+            pix = zlib.decompress(f.read())
+            if len(pix) != tw * th * 4:
+                return None
+        try:
+            os.utime(cpath, None)
+        except OSError:
+            pass
+        return (tw, th, pix)
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return None
+    except (struct.error, zlib.error, ValueError):
+        return None
+
+def _thumb_cache_put(path, w, h, tw, th, pix):
+    """Speichert eine FRISCH vom Original berechnete Miniatur. Ueber
+    eine temporaere Datei + os.replace() geschrieben (atomar) - ein
+    Stromausfall/Absturz mitten im Schreiben kann so keine halb
+    geschriebene, kaputte Cache-Datei hinterlassen."""
+    try:
+        os.makedirs(THUMB_CACHE_DIR, exist_ok=True)
+        cpath = _thumb_cache_path(_thumb_cache_key(path, w, h))
+        tmp = cpath + ".tmp%d" % os.getpid()
+        with open(tmp, "wb") as f:
+            f.write(b"ART1" + struct.pack("<HH", tw, th) + zlib.compress(pix, 6))
+        os.replace(tmp, cpath)
+    except OSError:
+        return
+    _thumb_cache_evict_if_needed()
+
+def _thumb_cache_evict_if_needed():
+    """Einfache Verdraengung nach Anzahl Dateien: die am laengsten nicht
+    mehr gelesenen/geschriebenen (aelteste Aenderungszeit) zuerst
+    entfernen, bis wieder unter der Obergrenze. Laeuft nur, wenn
+    tatsaechlich etwas Neues geschrieben wurde - nicht bei jedem
+    Lesezugriff, um den haeufigen Fall (Cache-Treffer) nicht unnoetig
+    zu verlangsamen."""
+    try:
+        names = [f for f in os.listdir(THUMB_CACHE_DIR) if f.endswith(".art")]
+    except OSError:
+        return
+    if len(names) <= THUMB_CACHE_MAX_FILES:
+        return
+    entries = []
+    for fn in names:
+        fp = os.path.join(THUMB_CACHE_DIR, fn)
+        try:
+            entries.append((os.path.getmtime(fp), fp))
+        except OSError:
+            pass
+    entries.sort()
+    to_remove = len(entries) - THUMB_CACHE_MAX_FILES
+    for _, fp in entries[:to_remove]:
+        try:
+            os.remove(fp)
+        except OSError:
+            pass
+
 class ArtCache:
     LIMIT = 60                       # max. Bilder im Speicher halten - moderat
                                       # erhoeht (vorher 40): die tolerante
@@ -353,6 +481,28 @@ class ArtCache:
         Box sind, werden seit v1.8.1 per Nearest-Neighbor VERKLEINERT statt
         unskaliert zu bleiben - sonst ragen sie ueber den reservierten
         Platz hinaus und ueberlappen den Info-Text darunter."""
+        if max_w <= 0 or max_h <= 0:
+            return None
+        if not hasattr(self, "scaled"):
+            self.scaled = {}
+            self.scaled_order = []
+
+        # Festplatten-Cache ZUERST pruefen - noch VOR dem Dekodieren des
+        # Originals. Schluessel ist die verfuegbare Kastengroesse
+        # (max_w/max_h), nicht die erst noch zu berechnende Zielgroesse -
+        # die kennen wir ja erst, nachdem wir das Original (Breite/Hoehe)
+        # kennen, und genau DAS Dekodieren wollen wir bei einem Treffer
+        # ja gerade vermeiden. Ein Treffer hier ist ein reiner kleiner
+        # Lesevorgang - schnell genug, um auch waehrend aktivem Scrollen
+        # sofort zurueckgegeben zu werden (keine Defer-Pruefung noetig).
+        box_key = (path, "box", max_w, max_h)
+        if box_key in self.scaled:
+            return self.scaled[box_key]
+        disk_hit = _thumb_cache_get(path, max_w, max_h)
+        if disk_hit is not None:
+            self._scaled_cache_put(box_key, disk_hit)
+            return disk_hit
+
         # Waehrend aktiv gescrollt wird: ein noch nicht dekodiertes Cover
         # NICHT hier (im Zeichen-/Scroll-Pfad) dekodieren - das ruckelt auf
         # der schwachen CPU. Stattdessen ueberspringen; kurz nach dem
@@ -364,11 +514,6 @@ class ArtCache:
         if not base:
             return None
         w, h, pix = base
-        if max_w <= 0 or max_h <= 0:
-            return None
-        if not hasattr(self, "scaled"):
-            self.scaled = {}
-            self.scaled_order = []
 
         if w <= max_w and h <= max_h:
             # Kein hartes Limit mehr wie in v1.8.1 (dort noch 4x) - seit
@@ -380,10 +525,8 @@ class ArtCache:
             # halten (Cache haelt ohnehin nur SCALED_LIMIT Bilder).
             scale = max(1, min(max_w // w, max_h // h, 10))
             if scale == 1:
+                self._scaled_cache_put(box_key, base)
                 return base
-            key = (path, "up", scale)
-            if key in self.scaled:
-                return self.scaled[key]
             # BUGFIX (Nutzer-Rueckmeldung: "beim Scrollen durch viele
             # ROMs ruckelt es spuerbar"): die Defer-Pruefung oben
             # schuetzte bisher NUR vor dem erneuten DEKODIEREN, nicht
@@ -408,7 +551,13 @@ class ArtCache:
                     off = base_off + rep * row_out
                     out[off:off + row_out] = row
             result = (sw, sh, bytes(out))
-            self._scaled_cache_put(key, result)
+            self._scaled_cache_put(box_key, result)
+            # WICHTIGE QUALITAETS-REGEL (siehe Modul-Kommentar oben):
+            # hier wird IMMER vom soeben aus dem Original berechneten
+            # "result" gespeichert, NIEMALS von einer schon vorhandenen
+            # Miniatur aus - so bleibt die gespeicherte Datei bit-
+            # identisch zu einer frischen Berechnung.
+            _thumb_cache_put(path, max_w, max_h, sw, sh, result[2])
             return result
 
         # Bild ist in mindestens einer Richtung groesser als die Box -
@@ -416,9 +565,6 @@ class ArtCache:
         scale = min(max_w / w, max_h / h)
         tw = max(1, int(w * scale))
         th = max(1, int(h * scale))
-        key = (path, "down", tw, th)
-        if key in self.scaled:
-            return self.scaled[key]
         # Gleicher Bugfix wie beim Hochskalieren oben (siehe dortiger
         # Kommentar) - auch die (teurere) Verkleinerung wird waehrend
         # aktivem Scrollen verzoegert, wenn sie noch nicht im
@@ -445,7 +591,11 @@ class ArtCache:
             row_bytes = b"".join([srow[sx:sx + 4] for sx in xmap])
             out[ty * row_out:(ty + 1) * row_out] = row_bytes
         result = (tw, th, bytes(out))
-        self._scaled_cache_put(key, result)
+        self._scaled_cache_put(box_key, result)
+        # WICHTIGE QUALITAETS-REGEL (siehe Modul-Kommentar oben): immer
+        # das soeben aus dem Original berechnete "result" speichern,
+        # niemals eine bereits vorhandene Miniatur weiterverarbeiten.
+        _thumb_cache_put(path, max_w, max_h, tw, th, result[2])
         return result
 
 ART = ArtCache()
@@ -501,21 +651,43 @@ BG = BgCache()
 _art_index_cache = {}   # (basis_ordner, syskey) -> {Name ohne "NNN "-Praefix: Dateiname}
 
 def _art_index(base_dir, syskey):
-    """Index fuer <base_dir>/<syskey>: Name OHNE fuehrende "NNN "-Nummer
-    -> tatsaechlicher Dateiname. Ermoeglicht Cover aus nummerierten
-    (kuratierten) Sets wie "007 Super Mario Kart (USA).art", obwohl
-    das Spiel intern nur "Super Mario Kart (USA)" heisst. Pro
-    (Ordner, System) gecacht - wird nur beim ERSTEN Cache-Fehltreffer
-    fuer ein System ueberhaupt aufgebaut (siehe art_path()), nicht bei
-    jedem Cover-Aufruf."""
+    """Index fuer <base_dir>/<syskey>: Dateiname OHNE ".art" (exakt
+    UND ohne fuehrende "NNN "-Nummer) -> tatsaechlicher Dateiname.
+    Ermoeglicht sowohl den direkten Treffer als auch Cover aus
+    nummerierten (kuratierten) Sets wie "007 Super Mario Kart (USA)
+    .art", obwohl das Spiel intern nur "Super Mario Kart (USA)" heisst.
+    Pro (Ordner, System) gecacht - wird nur beim ERSTEN Cache-
+    Fehltreffer fuer ein System ueberhaupt aufgebaut (siehe
+    art_path()), nicht bei jedem Cover-Aufruf.
+
+    PERFORMANCE (Phase 2, Nutzerwunsch "Dateisystemzugriffe
+    minimieren"): deckt jetzt AUCH den exakten Namen mit ab (frueher
+    nur die "Nummer entfernt"-Variante) - _art_path_in() kommt dadurch
+    komplett ohne eigenen os.path.exists()-Aufruf aus, der vorher bei
+    JEDEM einzelnen Cover-Aufruf noetig war. Kostet hier nichts
+    zusaetzlich (derselbe os.listdir()-Durchlauf wie bisher, nur
+    zusaetzlich ausgewertet), spart aber einen Festplattenzugriff pro
+    Cover-Anzeige im Aufrufer.
+
+    ZWEI Durchlaeufe bewusst getrennt (nicht in einer Schleife
+    gemischt): exakte Namen MUESSEN unabhaengig von der - nicht
+    garantiert alphabetischen - Reihenfolge von os.listdir() immer
+    Vorrang vor der "Nummer entfernt"-Variante haben (wie es der
+    vorherige os.path.exists()-Aufruf VOR dem Index-Zugriff sichergestellt
+    hat). Erst wenn alle exakten Namen eingetragen sind, fuellt der
+    zweite Durchlauf nur noch LUECKEN mit den nummerierten Varianten -
+    sonst koennte je nach Dateisystem-Reihenfolge zufaellig das falsche
+    Cover treffen."""
     key = (base_dir, syskey)
     idx = _art_index_cache.get(key)
     if idx is None:
         idx = {}
         try:
-            for fn in os.listdir(os.path.join(base_dir, syskey)):
-                if not fn.endswith(".art"):
-                    continue
+            names = [fn for fn in os.listdir(os.path.join(base_dir, syskey))
+                     if fn.endswith(".art")]
+            for fn in names:
+                idx[fn[:-4]] = fn
+            for fn in names:
                 base = fn[:-4]
                 stripped = re.sub(r"^\d+\s+", "", base)
                 if stripped != base and stripped not in idx:
@@ -532,13 +704,10 @@ def _art_path_in(base_dir, syskey, rom_basename):
     _art_index()). Liefert IMMER einen Pfad zurueck (auch wenn er
     nicht existiert) - der Aufrufer prueft ohnehin schon selbst auf
     Existenz, hier nur der BESSERE Pfad-Kandidat."""
-    exact = os.path.join(base_dir, syskey, rom_basename + ".art")
-    if os.path.exists(exact):
-        return exact
     fn = _art_index(base_dir, syskey).get(rom_basename)
     if fn:
         return os.path.join(base_dir, syskey, fn)
-    return exact
+    return os.path.join(base_dir, syskey, rom_basename + ".art")
 
 def art_path(syskey, rom_basename):
     return _art_path_in(ART_BASE, syskey, rom_basename)
@@ -593,7 +762,15 @@ def mra_meta(path):
     return meta
 
 def get_meta(syskey, rom_basename):
-    """Metadaten (players/year/genre) fuer ein Spiel, lazy geladen."""
+    """Metadaten (players/year/genre) fuer ein Spiel, lazy geladen.
+
+    PHASE 2 (Nutzerwunsch "RAM-Verbrauch optimieren"): vorsorgliche
+    Obergrenze ergaenzt. Aktuell durch die feste, kleine Anzahl an
+    Systemen (GAME_SYSTEMS) ohnehin praktisch von selbst begrenzt (max.
+    ein Eintrag pro System) - falls die Systemliste kuenftig waechst
+    oder ein System eine ungewoehnlich grosse Metadaten-Datei hat,
+    verhindert diese Grenze trotzdem unbegrenztes Wachstum, nach
+    demselben einfachen Verdraengungs-Prinzip wie bei _mra_cache."""
     if syskey not in _meta_cache:
         data = {}
         try:
@@ -602,5 +779,7 @@ def get_meta(syskey, rom_basename):
         except (OSError, ValueError):
             pass
         _meta_cache[syskey] = data
+        if len(_meta_cache) > 20:
+            _meta_cache.pop(next(iter(_meta_cache)))
     return _meta_cache[syskey].get(rom_basename, {})
 

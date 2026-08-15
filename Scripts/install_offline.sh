@@ -1,4 +1,16 @@
 #!/bin/bash
+# AUTOMATISCH ERZEUGTE KOPIE - NICHT DIREKT BEARBEITEN.
+# Diese Datei ist eine 1:1-Kopie von /install_offline.sh (Hauptverzeichnis),
+# hier abgelegt, damit sie im MiSTer-OSD unter "Scripts"
+# erscheint und direkt startbar ist. Aenderungen bitte NUR
+# an der Hauptdatei vornehmen - diese Kopie wird beim naechsten
+# Paket-Build automatisch neu erzeugt. Eine GitHub Action prueft
+# bei jedem Push, ob beide Dateien noch uebereinstimmen (siehe
+# .github/workflows/sync-check.yml) - laeuft sonst auseinander,
+# wie es hier zuvor bereits passiert war (fehlender fe/-Fix in
+# dieser Kopie, urspruengliche Ursache fuer Dennsens Installations-
+# problem).
+#
 # ============================================================
 # MiSTer Custom Frontend - Installation OHNE Internet
 #
@@ -14,9 +26,8 @@
 # bestimmte (z.B. getestete) Fassung installiert werden soll oder
 # wenn der Download an alten SSL-Zertifikaten scheitert.
 #
-# Aufruf: das Paket auf den MiSTer kopieren (ganz ohne Zusatzprogramm
-# - ueber die Netzwerkfreigabe des MiSTer im Explorer/Finder oder die
-# microSD-Karte am PC), dann per SSH oder aus dem OSD unter "Scripts":
+# Aufruf: das Paket per WinSCP auf den MiSTer kopieren, dann
+# per SSH oder aus dem OSD unter "Scripts":
 #
 #     ./install_offline.sh
 #
@@ -45,21 +56,22 @@ LOCKFILE="/tmp/frontend.lock"
 
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Ein PAKET-Ordner enthaelt sowohl frontend/frontend.py als auch dieses
-# install_offline.sh daneben. Daran laesst es sich zuverlaessig vom
+# Ein Paket-Ordner enthaelt sowohl frontend/frontend.py als auch dieses
+# install_offline.sh daneben - daran laesst er sich zuverlaessig vom
 # bereits INSTALLIERTEN Frontend unterscheiden (/media/fat/frontend hat
-# kein install_offline.sh daneben liegen).
+# kein install_offline.sh daneben liegen, nur die Programmdateien selbst).
 _is_pkg() { [ -f "$1/frontend/frontend.py" ] && [ -f "$1/install_offline.sh" ]; }
 
 # Quellpaket robust finden - egal ob dieses Skript aus dem Paketordner
 # selbst, aus dessen Scripts/-Unterordner oder als Kopie in
-# /media/fat/Scripts/ (OSD) gestartet wurde:
+# /media/fat/Scripts/ (OSD-Aufruf) gestartet wurde:
 _find_src() {
     local d
     for d in "$SELF_DIR" "$SELF_DIR/.." \
              "$MISTER_ROOT"/MiSTer_Frontend* \
              "$MISTER_ROOT"/mister-frontend* \
              "$MISTER_ROOT"/*[Ff]rontend*; do
+        [ -d "$d" ] || continue
         if _is_pkg "$d"; then (cd "$d" && pwd); return 0; fi
     done
     return 1
@@ -125,6 +137,12 @@ if command -v mpg123 >/dev/null 2>&1; then
     say "mpg123 gefunden:  Hintergrundmusik ist nutzbar"
 else
     say "mpg123 fehlt:     Frontend laeuft normal, nur ohne Musik"
+    say "                  mpg123 gehoert eigentlich zur MiSTer-Firmware"
+    say "                  selbst (kein separates Paket) - falls es fehlt,"
+    say "                  hilft meist ein einmaliges 'Update All' im"
+    say "                  MiSTer-OSD (komplette Firmware auf den"
+    say "                  neuesten Stand bringen). Danach per SSH"
+    say "                  pruefen:  which mpg123"
 fi
 
 MODE="Neuinstallation"
@@ -172,6 +190,7 @@ if [ "$MODE" = "Aktualisierung" ]; then
     for f in "$FRONTEND_DIR"/*.py "$FRONTEND_DIR"/*.sh "$FRONTEND_DIR"/*.html; do
         [ -e "$f" ] && cp -p "$f" "$BACKUP/" 2>/dev/null
     done
+    [ -d "$FRONTEND_DIR/fe" ] && cp -rp "$FRONTEND_DIR/fe" "$BACKUP/" 2>/dev/null
     say "Gesichert nach: $BACKUP"
 fi
 
@@ -213,8 +232,57 @@ if [ -d "$SRC/frontend/sysart" ]; then
     say "  $NEW neu, $KEPT vorhandene behalten"
 fi
 
-# ------------------------------------------------------------
-# 5. Scripts fuer das MiSTer-OSD
+# SFX-Quelldateien (echte Klaenge statt prozedural erzeugter Toene,
+# z.B. achievement.wav): gleiches "nur fehlende ergaenzen"-Prinzip.
+if [ -d "$SRC/frontend/sfx_source" ]; then
+    step "SFX-Quelldateien (sfx_source)"
+    mkdir -p "$FRONTEND_DIR/sfx_source"
+    NEW=0; KEPT=0
+    for f in "$SRC/frontend/sfx_source/"*.wav; do
+        [ -e "$f" ] || continue
+        base="$(basename "$f")"
+        if [ -f "$FRONTEND_DIR/sfx_source/$base" ]; then
+            KEPT=$((KEPT+1))
+        else
+            cp -f "$f" "$FRONTEND_DIR/sfx_source/" && NEW=$((NEW+1))
+        fi
+    done
+    say "  $NEW neu, $KEPT vorhandene behalten"
+fi
+
+# Boot-Logo (dragend_logo.art): gleiches Prinzip.
+if [ -d "$SRC/frontend/boot_logo" ]; then
+    step "Boot-Logo (boot_logo)"
+    mkdir -p "$FRONTEND_DIR/boot_logo"
+    NEW=0; KEPT=0
+    for f in "$SRC/frontend/boot_logo/"*.art; do
+        [ -e "$f" ] || continue
+        base="$(basename "$f")"
+        if [ -f "$FRONTEND_DIR/boot_logo/$base" ]; then
+            KEPT=$((KEPT+1))
+        else
+            cp -f "$f" "$FRONTEND_DIR/boot_logo/" && NEW=$((NEW+1))
+        fi
+    done
+    say "  $NEW neu, $KEPT vorhandene behalten"
+fi
+
+# fe/-Paket (modulare Logik, nur bei der modularen Variante vorhanden) -
+# komplettes Verzeichnis, MIT Ueberschreiben (Code-Update, nicht
+# nutzer-anpassbar wie sysart/). Fehlt es bei einer modularen
+# Installation, bricht der Start mit "ModuleNotFoundError: No module
+# named 'fe'" ab - genau das Problem, das ohne diesen Block hier
+# entstehen wuerde.
+if [ -d "$SRC/frontend/fe" ]; then
+    step "Modul-Paket (fe/)"
+    mkdir -p "$FRONTEND_DIR/fe"
+    FE=0
+    for f in "$SRC/frontend/fe/"*.py; do
+        [ -e "$f" ] || continue
+        cp -f "$f" "$FRONTEND_DIR/fe/" && FE=$((FE+1))
+    done
+    say "  $FE Modul(e) kopiert."
+fi
 # ------------------------------------------------------------
 step "Hilfsskripte nach $SCRIPTS_DIR"
 mkdir -p "$SCRIPTS_DIR"
@@ -241,6 +309,15 @@ done
 # Ausfuehrbar setzen - auf exFAT/FAT32 ohne Wirkung, das ist ok
 chmod +x "$FRONTEND_DIR"/*.sh 2>/dev/null
 chmod +x "$SCRIPTS_DIR"/*.sh 2>/dev/null
+
+# Sicherheitsnetz gegen Windows-Zeilenenden (CRLF): kopierte Shell-Skripte
+# auf Unix-LF normalisieren. Kommen die Dateien uebers Netz/Windows mit
+# CR-Zeichen an, scheitert bash sonst mit "syntax error near unexpected
+# token" an den \r. Bereinigt die bereits kopierten .sh im Zielordner.
+for s in "$FRONTEND_DIR"/*.sh "$SCRIPTS_DIR"/*.sh; do
+    [ -f "$s" ] || continue
+    tr -d '\r' < "$s" > "$s.__nl__" 2>/dev/null && mv "$s.__nl__" "$s" 2>/dev/null || true
+done
 
 # ------------------------------------------------------------
 # 7. Autostart

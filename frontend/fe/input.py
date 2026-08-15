@@ -17,7 +17,9 @@ ist sofort auch von der anderen sichtbar.
 import os, sys, struct, fcntl, time, select, threading, json, re
 from fe.log import LOG
 from fe.launch import current_core
-from fe.hidraw import _find_keyboard_hidraws, _hid_report_has_exit_key
+from fe.hidraw import (_find_keyboard_hidraws, _hid_report_has_exit_key,
+                        _hid_report_has_reset_key)
+from fe.reset_trigger import send_reset_combo
 
 KEYMAP_CUSTOM_FILE = "/media/fat/frontend/keymap_custom.json"
 
@@ -469,6 +471,19 @@ class InputManager:
                               # einem spiel-eigenen Pause-Menue gedrueckt
                               # wird als eine Dreifach-Kombination
 
+    RESET_HOLD = 0.6          # Sekunden F5 halten (Reset im laufenden
+                              # Core, ueber denselben hidraw-Weg wie
+                              # der Esc-Notausstieg - siehe dortiger
+                              # Kommentar). Nutzerwunsch: Reset per
+                              # Tastatur fuer ALLE Cores, nicht nur
+                              # RA-Cores, OHNE den Core selbst neu zu
+                              # laden (wichtig fuer RA-Fortschritt).
+                              # War urspruenglich Tab - nach einem
+                              # echten Hardware-Test auf F5 umgestellt,
+                              # siehe Kommentar bei
+                              # _hid_report_has_reset_key() in
+                              # fe/hidraw.py fuer den genauen Grund.
+
     def wait_game_exit(self):
         """Waehrend ein Core laeuft: warten, bis MiSTer zurueck im
         Menue ist, F10 gedrueckt wird, Start+Select lange genug
@@ -531,6 +546,15 @@ class InputManager:
         # "gespraechige" Schnittstelle die anderen nicht mehr verdraengt.
         kbd_diag_budget = {fd: 10 for fd in kbd_fds}
         kbd_combo_since = None
+        # NEU (Nutzerwunsch: Reset per F5 laenger halten, fuer ALLE
+        # Cores inkl. RA, ohne Core-Wechsel): eigene Verfolgung analog
+        # zu kbd_fds/kbd_combo_since oben, aber komplett unabhaengig -
+        # F5 und Esc/F10 sollen sich gegenseitig nicht beeinflussen
+        # koennen (z.B. F5+Esc gleichzeitig gehalten soll trotzdem
+        # beides unabhaengig weiterzaehlen, nicht das jeweils andere
+        # zuruecksetzen).
+        kbd_reset_fds = {fd: False for fd in kbd_fds}
+        reset_since = None
         try:
             while True:
                 now = time.monotonic()
@@ -541,6 +565,22 @@ class InputManager:
                     last_core_check = now
                     if current_core() == "MENU":
                         return "menu"
+                # WICHTIG (per Test gefunden): Reset-Pruefung bewusst VOR
+                # den beiden Ausstiegs-Pruefungen - bei exakt
+                # gleichzeitigem Erreichen beider Haltezeiten (seltener,
+                # aber moeglicher Randfall) wuerde sonst der Ausstieg per
+                # "return" die Funktion sofort verlassen, BEVOR der
+                # bereits faellige Reset in derselben Schleifenrunde noch
+                # ausgeloest werden konnte - der Reset ginge dadurch
+                # spurlos verloren. Der Reset selbst verlaesst die
+                # Funktion nicht (kein "return"), die nachfolgenden
+                # Ausstiegs-Pruefungen laufen also in jedem Fall noch mit.
+                if reset_since is not None and now - reset_since >= self.RESET_HOLD:
+                    LOG("wait_game_exit: F5 %.1fs gehalten - loese "
+                        "Reset aus (Strg+Alt+AltGr ueber uinput)"
+                        % self.RESET_HOLD)
+                    send_reset_combo()
+                    reset_since = None
                 if combo_since is not None and now - combo_since >= self.COMBO_HOLD:
                     return "combo"
                 if (kbd_combo_since is not None
@@ -567,6 +607,7 @@ class InputManager:
                             except OSError:
                                 pass
                             kbd_fds.pop(fd, None)
+                            kbd_reset_fds.pop(fd, None)
                             kbd_diag_budget.pop(fd, None)
                             continue
                         if kbd_diag_budget.get(fd, 0) > 0:
@@ -579,6 +620,31 @@ class InputManager:
                             kbd_combo_since = time.monotonic()
                         elif not any_held:
                             kbd_combo_since = None
+                        kbd_reset_fds[fd] = _hid_report_has_reset_key(data)
+                        any_reset_held = any(kbd_reset_fds.values())
+                        # NEU (Nutzer-Rueckmeldung: Bit-Position stimmt
+                        # nachweislich exakt (Byte 9 = 0x40 im Log
+                        # bestaetigt), aber der Reset loest trotzdem
+                        # nicht aus - Codepruefung fand keinen
+                        # offensichtlichen Fehler). Zusaetzliches,
+                        # gezieltes Logging genau an der Stelle, wo es
+                        # bisher im Dunkeln blieb: wird reset_since
+                        # ueberhaupt gesetzt, und bleibt es bis zur
+                        # Ausloese-Schwelle bestehen, oder wird es
+                        # vorher wieder auf None zurueckgesetzt (z.B.
+                        # durch zwischenzeitliche "losgelassen"-Reports,
+                        # die bei einem echten, ununterbrochenen Halten
+                        # eigentlich nicht auftreten sollten)?
+                        if any_reset_held and reset_since is None:
+                            reset_since = time.monotonic()
+                            LOG("wait_game_exit: reset_since GESETZT "
+                                "(F5-Bit erkannt)")
+                        elif not any_reset_held and reset_since is not None:
+                            LOG("wait_game_exit: reset_since ZURUECKGESETZT "
+                                "nach %.2fs (F5-Bit nicht mehr erkannt, "
+                                "Schwelle war %.1fs)"
+                                % (time.monotonic() - reset_since, self.RESET_HOLD))
+                            reset_since = None
                         continue
                     dev = fds.get(fd)
                     try:

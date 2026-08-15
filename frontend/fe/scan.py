@@ -116,42 +116,61 @@ def _games_signature():
     Boot geaendert, obwohl sich am Inhalt nichts geaendert hat, und
     jedes Mal einen unnoetigen kompletten Neuscan ausgeloest. Sortiert,
     damit auch die Reihenfolge der Basispfade die Signatur nicht
-    veraendert."""
+    veraendert.
+
+    NEU (Phase 2, Nutzerwunsch "ROM-Index/inkrementelles Scannen"):
+    liefert zusaetzlich per_syskey - dieselben Fingerabdruck-Eintraege,
+    aber nach Systemkey aufgeschluesselt statt in einer einzigen
+    flachen Liste. Kostet NICHTS zusaetzlich an Festplattenzugriffen
+    (dieselben os.path.getmtime()-Aufrufe wie bisher, nur anders
+    einsortiert) - ermoeglicht aber scan_games(), bei einer Aenderung
+    NUR die tatsaechlich betroffenen Systeme neu zu scannen, statt wie
+    bisher immer ALLE 14+ Systeme neu einzulesen, auch wenn sich nur an
+    einem einzigen etwas veraendert hat."""
     sig = []
+    per_syskey = {}
     for base in fe.paths.GAMES_BASES:
         if not os.path.isdir(base):
             continue
         tag = "usb:" if "/media/usb" in base else "fat:"
-        for _d, _sk, folders, _r, _e in GAME_SYSTEMS:
+        for _d, sk, folders, _r, _e in GAME_SYSTEMS:
             for folder in folders:
                 root = os.path.join(base, folder)
                 try:
                     mtime = int(os.path.getmtime(root))
                 except OSError:
                     continue
-                sig.append((tag + folder, mtime))
-        for _d, _sk, folders, _r, _e, _core in OPTIONAL_GAME_SYSTEMS:
+                entry = (tag + folder, mtime)
+                sig.append(entry)
+                per_syskey.setdefault(sk, []).append(entry)
+        for _d, sk, folders, _r, _e, _core in OPTIONAL_GAME_SYSTEMS:
             for folder in folders:
                 root = os.path.join(base, folder)
                 try:
                     mtime = int(os.path.getmtime(root))
                 except OSError:
                     continue
-                sig.append((tag + folder, mtime))
+                entry = (tag + folder, mtime)
+                sig.append(entry)
+                per_syskey.setdefault(sk, []).append(entry)
     # Core-Datei der optionalen Systeme selbst mit in die Signatur
     # aufnehmen (nicht nur den ROM-Ordner oben) - sonst wuerde ein
     # nachtraeglich installierter/entfernter SNES_Tracker-Core NICHT
     # erkannt, solange sich am ROM-Ordner nichts aendert, und die neue
     # Kategorie bliebe bis zum naechsten manuellen Rescan unsichtbar.
-    for _d, _sk, _f, _r, _e, core_check_path in OPTIONAL_GAME_SYSTEMS:
+    for _d, sk, _f, _r, _e, core_check_path in OPTIONAL_GAME_SYSTEMS:
         try:
-            sig.append(("core:" + core_check_path,
-                       int(os.path.getmtime(core_check_path))))
+            entry = ("core:" + core_check_path,
+                     int(os.path.getmtime(core_check_path)))
         except OSError:
-            sig.append(("core:" + core_check_path, None))
+            entry = ("core:" + core_check_path, None)
+        sig.append(entry)
+        per_syskey.setdefault(sk, []).append(entry)
     sig.sort(key=lambda t: (t[0], t[1] is None, t[1]))
     sig.append(("__scan_logic_version__", SCAN_LOGIC_VERSION))
-    return sig
+    for sk in per_syskey:
+        per_syskey[sk].sort(key=lambda t: (t[0], t[1] is None, t[1]))
+    return sig, per_syskey
 
 def _sig_expects_usb(sig):
     """True, wenn eine Signatur mindestens einen USB-Ordner enthaelt -
@@ -390,15 +409,30 @@ def scan_games(force=False, progress_cb=None):
     nativ, dadurch entfaellt zusaetzlich der komplette Umweg ueber
     _cats_to_json()/_cats_from_json() (Tupel<->Liste-Konvertierung
     fuer JEDES einzelne Spiel) - das war selbst schon ein spuerbarer
-    Teil der Kosten, nicht nur die reine Serialisierung."""
-    sig = _games_signature()
+    Teil der Kosten, nicht nur die reine Serialisierung.
+
+    NEU (Phase 2, Nutzerwunsch "ROM-Index/inkrementelles Scannen"):
+    passt die flache Signatur NICHT mehr komplett (z.B. weil ein
+    einziges neues NES-ROM dazukam), wird NICHT mehr zwangslaeufig
+    ALLES neu gescannt. Stattdessen wird per-System verglichen -
+    NUR die tatsaechlich veraenderten Systeme werden von der Platte
+    gelesen, alle anderen unveraendert aus dem alten Cache
+    uebernommen. Bei einer grossen Sammlung mit vielen Systemen kann
+    das den seltenen 'ROMs geaendert'-Fall deutlich beschleunigen -
+    ohne die bewusste Entscheidung von v1.32 anzutasten (siehe
+    _games_signature()): es wird weiterhin NUR die oberste Ebene
+    geprueft, kein tieferer Ordnerbaum zusaetzlich durchlaufen, um
+    diese Entscheidung zu treffen."""
+    sig, per_syskey = _games_signature()
     cached_sig = None
+    cached_per_syskey = None
     data = None
     if not force:
         try:
             with open(GAMES_CACHE, "rb") as f:
                 data = pickle.load(f)
             cached_sig = data["sig"]
+            cached_per_syskey = data.get("per_syskey")
             if cached_sig == sig:
                 LOG("Spieleliste aus Cache (%d Systeme)"
                     % len(data["cats"]))
@@ -406,6 +440,7 @@ def scan_games(force=False, progress_cb=None):
         except (OSError, ValueError, KeyError, IndexError, TypeError,
                 pickle.UnpicklingError, EOFError, AttributeError):
             cached_sig = None
+            cached_per_syskey = None
             data = None
 
     usb_ready = None
@@ -424,7 +459,7 @@ def scan_games(force=False, progress_cb=None):
         LOG("scan_games: Cache erwartet USB, noch nicht gemountet - warte")
         usb_ready = _wait_for_usb_stable()
         waited_already = True
-        sig = _games_signature()
+        sig, per_syskey = _games_signature()
         if cached_sig == sig:
             LOG("Spieleliste aus Cache nach USB-Mount (%d Systeme)"
                 % len(data["cats"]))
@@ -432,7 +467,57 @@ def scan_games(force=False, progress_cb=None):
 
     if not waited_already:
         usb_ready = _wait_for_usb_stable()
-    cats = _scan_games_disk(progress_cb)
+
+    # Inkrementelles Scannen: nur versuchen, wenn ein gueltiger alter
+    # Cache MIT per_syskey-Aufschluesselung vorliegt (aeltere Cache-
+    # Dateien vor diesem Feature haben das Feld nicht - dann faellt
+    # dies automatisch auf den kompletten Scan zurueck, sicherer
+    # Normalfall beim allerersten Lauf nach einem Update). Ein
+    # geaenderter SCAN_LOGIC_VERSION-Eintrag betrifft ALLE Systeme
+    # gleichermassen (z.B. neue Filterregeln) - in diesem Fall lohnt
+    # sich der Versuch, nur einen Teil zu scannen, ohnehin nicht, also
+    # bewusst nicht extra behandelt: der Versuch, per-System zu ver-
+    # gleichen, findet dann ganz natuerlich JEDES System als 'veraendert'
+    # (der Versions-Eintrag ist Teil jeder per_syskey-Teilliste), das
+    # Ergebnis ist also automatisch korrekt identisch zu einem vollen Scan.
+    cats = None
+    if cached_per_syskey:
+        changed_syskeys = set()
+        all_syskeys = set(per_syskey.keys()) | set(cached_per_syskey.keys())
+        for sk in all_syskeys:
+            if per_syskey.get(sk) != cached_per_syskey.get(sk):
+                changed_syskeys.add(sk)
+        if changed_syskeys and changed_syskeys != all_syskeys:
+            LOG("scan_games: inkrementell - %d von %d Systemen veraendert (%s)"
+                % (len(changed_syskeys), len(all_syskeys),
+                   ", ".join(sorted(changed_syskeys))))
+            fresh = _scan_games_disk(progress_cb, only_syskeys=changed_syskeys)
+            fresh_by_sk = {sk: (disp, node) for disp, node, sk in fresh}
+            old_by_sk = {sk: (disp, node) for disp, node, sk in data["cats"]}
+            cats = []
+            for disp, sk, *_rest in GAME_SYSTEMS:
+                if sk in changed_syskeys:
+                    if sk in fresh_by_sk:
+                        d, node = fresh_by_sk[sk]
+                        cats.append((d, node, sk))
+                elif sk in old_by_sk:
+                    d, node = old_by_sk[sk]
+                    cats.append((d, node, sk))
+            for disp, sk, *_rest in OPTIONAL_GAME_SYSTEMS:
+                if sk in changed_syskeys:
+                    if sk in fresh_by_sk:
+                        d, node = fresh_by_sk[sk]
+                        cats.append((d, node, sk))
+                elif sk in old_by_sk:
+                    d, node = old_by_sk[sk]
+                    cats.append((d, node, sk))
+        elif not changed_syskeys:
+            # Sollte praktisch nicht vorkommen (sig haette dann oben
+            # schon vollstaendig gepasst) - reiner Sicherheits-Rueckfall.
+            cats = data["cats"]
+
+    if cats is None:
+        cats = _scan_games_disk(progress_cb)
 
     # usb_ready: True = USB sauber eingehaengt, None = gar kein USB im
     # Spiel (beides -> Ergebnis vollstaendig, cachen ok). False = ein
@@ -445,10 +530,11 @@ def scan_games(force=False, progress_cb=None):
         LOG("scan_games: USB nicht sicher bereit - Ergebnis wird NICHT gecacht")
         return cats
 
-    sig = _games_signature()
+    sig, per_syskey = _games_signature()
     try:
         with open(GAMES_CACHE, "wb") as f:
-            pickle.dump({"sig": sig, "cats": cats}, f, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump({"sig": sig, "per_syskey": per_syskey, "cats": cats},
+                        f, protocol=pickle.HIGHEST_PROTOCOL)
         # Einmalige Aufraeumung: eine alte JSON-Cache-Datei aus der Zeit
         # vor dem Pickle-Wechsel wuerde sonst nutzlos auf der SD-Karte
         # liegen bleiben (wird nie wieder gelesen, seit GAMES_CACHE auf
@@ -560,7 +646,7 @@ def _scan_folder_tree(path, syskey, rbf, extmap):
     node["items"] = _dedupe_items(raw_items)
     return node
 
-def _scan_games_disk(progress_cb=None):
+def _scan_games_disk(progress_cb=None, only_syskeys=None):
     """Fuer jedes bekannte System die ROMs einsammeln. Rueckgabe: Liste
     (Anzeigename, Baumknoten, Systemkey) - der Baumknoten spiegelt die
     eigene Ordnerstruktur 1:1 wider (beliebig tief verschachtelt),
@@ -572,7 +658,16 @@ def _scan_games_disk(progress_cb=None):
     Demo/Hack/Bad-Dump-Tags (JUNK_TAGS) werden ausgefiltert. Mehrfach-
     Regionen desselben Spiels werden INNERHALB jedes einzelnen Ordners
     zu EINEM Eintrag zusammengefasst (beste Region gewinnt,
-    REGION_PRIORITY)."""
+    REGION_PRIORITY).
+
+    NEU (Phase 2, inkrementelles Scannen): only_syskeys - wenn gesetzt
+    (Menge von Systemkeys), werden NUR diese Systeme tatsaechlich von
+    der Platte gelesen, alle anderen komplett uebersprungen (kein
+    os.listdir(), keine Ordner-Tiefensuche fuer sie). scan_games()
+    fuegt die uebersprungenen Systeme anschliessend aus dem
+    vorhandenen Cache wieder hinzu - siehe dortiger Kommentar. Bei
+    only_syskeys=None (Vorgabe) unveraendertes Verhalten: alle Systeme
+    werden gescannt, wie bisher."""
     cats = []
     total_sys = len(GAME_SYSTEMS) + len(OPTIONAL_GAME_SYSTEMS)
     # Unterordner, die ein ANDERER Eintrag (egal ob GAME_SYSTEMS oder
@@ -598,6 +693,8 @@ def _scan_games_disk(progress_cb=None):
                 top, sub = f.split("/", 1)
                 claimed_subfolders.setdefault(top, set()).add(sub.split("/", 1)[0])
     for sys_idx, (disp, syskey, folders, rbf, extmap) in enumerate(GAME_SYSTEMS):
+        if only_syskeys is not None and syskey not in only_syskeys:
+            continue
         if progress_cb:
             try:
                 progress_cb(sys_idx, total_sys, disp)
@@ -630,6 +727,8 @@ def _scan_games_disk(progress_cb=None):
     # Eintrag nicht (kein leerer/ausgegrauter Platzhalter).
     for opt_idx, (disp, syskey, folders, rbf, extmap, core_check_path) \
             in enumerate(OPTIONAL_GAME_SYSTEMS):
+        if only_syskeys is not None and syskey not in only_syskeys:
+            continue
         if progress_cb:
             try:
                 progress_cb(len(GAME_SYSTEMS) + opt_idx, total_sys, disp)
