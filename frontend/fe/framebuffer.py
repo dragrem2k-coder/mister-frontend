@@ -99,13 +99,77 @@ class Framebuffer:
         self._glyphcache = {}
         self._textcache = {}          # (text, scale, fg, bg) -> Liste von Byte-Zeilen
         self._textcache_order = []
-        self._TEXTCACHE_LIMIT = 400   # ~12MB bei typischen Labellaengen -
-                                      # vertretbar auf einem MiSTer mit ~1GB RAM
+        # BUGFIX (Nutzerwunsch "Scrollen soll butterweich sein" fuehrte zu
+        # echten DRAGEND_PROFILE-Logs auf echter Hardware - siehe TEXTCACHE-
+        # Zeilen dort): die fruehere Vermutung aus dem Kommentar unten
+        # ("ob das an echten Cache-Fehltreffern liegt... laesst sich ohne
+        # echte Daten nicht serioes unterscheiden") ist jetzt beantwortet -
+        # Verdraengungen wurden auf echter Hardware nachweislich beobachtet
+        # (von 0 auf ueber 350 waehrend weniger Minuten aktiven Scrollens
+        # durch eine grosse NES-Sammlung angestiegen). 400 Eintraege waren
+        # zu knapp: bereits gecachte, kuerzlich gesehene Titel flogen
+        # wieder raus, bevor man zu ihnen zurueckscrollte, und mussten
+        # unnoetig neu gerendert werden. Auf 2000 angehoben (~60MB bei
+        # typischen Labellaengen, siehe Rechnung unten) - grosszuegiger
+        # Puffer fuer auch sehr grosse Sammlungen, weiterhin unbedenklich
+        # auf einem MiSTer mit ueblicherweise ≥1GB RAM.
+        self._TEXTCACHE_LIMIT = 2000  # ~60MB bei typischen Labellaengen
+        # NEU (Nutzerwunsch: "noch mehr Performance rausholen" - text()
+        # hat bereits einen Ganze-Zeile-Cache, im echten Profiling aber
+        # weiterhin 20-100ms je nach Bild). Ob das an echten Cache-
+        # Fehltreffern liegt (z.B. weil _TEXTCACHE_LIMIT=400 bei einer
+        # grossen Sammlung zu knapp bemessen ist und haeufig gesehene
+        # Titel wieder rausfliegen) oder schlicht daran, dass beim
+        # Scrollen staendig NEUE, noch nie gezeichnete Titel auftauchen
+        # (strukturell kaum vermeidbar), laesst sich ohne echte Daten
+        # nicht serioes unterscheiden - hier NUR mitzaehlen (guenstige
+        # Zaehler-Erhoehung, kein spuerbarer Zusatzaufwand), Auswertung
+        # optional ueber DRAGEND_PROFILE (siehe frontend.py).
+        self._textcache_hits = 0
+        self._textcache_misses = 0
+        self._textcache_evictions = 0
         # None = noch nicht getestet, True/False = Ergebnis des ersten
         # Versuchs. Wird nur EINMAL probiert - unterstuetzt der Treiber es
         # nicht (ENOTTY/EINVAL o.ae.), schalten wir dauerhaft ab, statt bei
         # JEDEM Frame erneut einen fehlschlagenden ioctl-Aufruf zu riskieren.
         self._vsync_supported = None
+        # NEU (Nutzerwunsch: "HDMI-Modus muss fluessiger laufen" - der
+        # groesste verbliebene Einzelposten war der komplette Puffer-
+        # Neuaufbau bei JEDEM Bild, selbst beim reinen Scrollen innerhalb
+        # derselben Liste). Zaehler, der bei JEDEM vollstaendigen
+        # Neuaufbau (clear() oder eine gleichwertige volle Pufferkopie)
+        # hochgezaehlt wird - unabhaengig davon, WELCHE Funktion das
+        # ausloest. _draw_page_items_impl() nutzt das, um zuverlaessig zu
+        # erkennen, ob seit dem letzten eigenen vollen Neuaufbau
+        # ZWISCHENDURCH irgendetwas anderes (Hilfe-Bildschirm, WoT,
+        # Bestaetigungsdialog, Attract-Modus, ...) den Puffer ebenfalls
+        # komplett neu geschrieben hat - nur dann ist der schnelle,
+        # NICHT-loeschende Pfad wirklich sicher.
+        self.full_redraw_gen = 0
+
+        # NEUES FEATURE (Nutzerwunsch nach dem Bildschirmspiegel-Test:
+        # "die 2-Sekunden-Aktualisierung sieht aus wie Standbilder,
+        # geht das fluessiger?") - bewusst NICHT einfach das Intervall
+        # verkuerzt (haette bei UNVERAENDERTEM Bildschirm, z.B. wenn
+        # man einfach nur im Menue steht, unnoetig oft neu kodiert -
+        # dieselbe Verschwendung, die full_redraw_gen oben schon fuer
+        # den HDMI-Fast-Path vermeidet). Stattdessen: EIGENER Zaehler,
+        # der bei JEDER tatsaechlich sichtbaren Aenderung hochzaehlt
+        # (flip() UND flip_rows(), z.B. auch Laufschrift/Puls-Effekte -
+        # full_redraw_gen oben zaehlt bewusst NUR bei vollen
+        # Neuaufbauten, waere hierfuer also zu grob). Der Bildschirm-
+        # spiegel-Hintergrund-Thread (siehe _screen_mirror_loop() in
+        # frontend.py) prueft diesen Zaehler haeufiger, kodiert aber
+        # nur neu, wenn sich seit dem letzten Schnappschuss wirklich
+        # etwas geaendert hat.
+        self.flip_gen = 0
+
+    def mark_full_redraw(self):
+        """Von JEDEM Code aufzurufen, der den Puffer auf andere Weise als
+        clear() komplett neu schreibt (aktuell: die Hintergrundbild-Kopie
+        in _draw_page_items_impl()) - haelt full_redraw_gen konsistent,
+        egal auf welchem Weg ein voller Neuaufbau passiert ist."""
+        self.full_redraw_gen += 1
 
     def _wait_vsync(self):
         """Wartet, falls moeglich, auf den naechsten vertikalen Bildwechsel -
@@ -249,6 +313,7 @@ class Framebuffer:
                 bg = (row + pad) * self.height
             self._rowcache[key] = bg
         self.buf[:] = bg
+        self.mark_full_redraw()
 
     def blend_rect(self, x, y, w, h, rgb, alpha):
         """Rechteck mit einer Farbe UEBERBLENDEN statt zu ueberschreiben -
@@ -402,12 +467,31 @@ class Framebuffer:
                     dx += 1
                 indents.append(radius - dx)
             self._rectcache[key_ind] = indents
-        px = self.px(rgb)
+        # PERFORMANCE-FIX (Nutzerwunsch: "noch mehr Performance rausholen,
+        # vor allem HDMI" - echtes Profiling auf echter Hardware zeigte
+        # rect_rounded() bei nur 3 Aufrufen pro Bild trotzdem 40-50ms
+        # (~15ms PRO Aufruf) - 5-6x teurer als das normale, bereits
+        # gecachte rect() (~2.5-3.5ms pro Aufruf). Ursache: die FORM der
+        # Rundung (indents) war zwar schon gecacht, aber die
+        # eigentlichen PIXEL-ZEILEN dafuer (px * rw) wurden bei JEDEM
+        # Aufruf neu berechnet - obwohl sie sich bei gleicher Farbe und
+        # gleicher Zeilenbreite nicht aendern. Fix: dieselbe (Farbe,
+        # Breite)-Cache-Konvention wie rect() nutzen, im GLEICHEN
+        # self._rectcache - Auswahl-Markierung und Cover-Panel-Karte
+        # nutzen ueber viele Navigationen hinweg immer wieder dieselben
+        # paar (Farbe, Randbreite)-Kombinationen, der Cache greift also
+        # praktisch sofort ab dem zweiten Aufruf.
+        if len(self._rectcache) > ROWCACHE_MAX_ENTRIES:
+            self._rectcache.clear()
         for i, indent in enumerate(indents):
             rw = w - 2 * indent
             if rw <= 0:
                 continue
-            row = px * rw
+            row_key = (rgb, rw)
+            row = self._rectcache.get(row_key)
+            if row is None:
+                row = self.px(rgb) * rw
+                self._rectcache[row_key] = row
             yy_top = y + i
             yy_bot = y + h - 1 - i
             if 0 <= yy_top < self.height:
@@ -458,6 +542,7 @@ class Framebuffer:
         key = (s, scale, fg, bg)
         strip = self._textcache.get(key)
         if strip is None:
+            self._textcache_misses += 1
             w4 = len(s) * cw * 4
             rows = [bytearray(w4) for _ in range(8 * scale)]
             for ci, ch in enumerate(s):
@@ -482,7 +567,10 @@ class Framebuffer:
             self._textcache[key] = strip
             self._textcache_order.append(key)
             if len(self._textcache_order) > self._TEXTCACHE_LIMIT:
+                self._textcache_evictions += 1
                 self._textcache.pop(self._textcache_order.pop(0), None)
+        else:
+            self._textcache_hits += 1
         w4 = len(strip[0])
         xo = x * 4
         for i, row in enumerate(strip):
@@ -496,6 +584,7 @@ class Framebuffer:
         # Direkte Slice-Zuweisung: mmap nimmt das bytearray ohne die
         # teure bytes()-Zwischenkopie (auf 1080p ~8 MB pro Frame).
         self.mm[:] = self.buf
+        self.flip_gen += 1
 
     def flip_rows(self, y, h):
         """Nur einen Zeilenbereich auf den Schirm bringen (Laufschrift)."""
@@ -507,6 +596,7 @@ class Framebuffer:
         off = y0 * self.stride
         end = y1 * self.stride
         self.mm[off:end] = self.buf[off:end]
+        self.flip_gen += 1
 
     def close(self):
         try:
