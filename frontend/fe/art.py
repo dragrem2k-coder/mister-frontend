@@ -634,7 +634,20 @@ class BgCache:
         self.order = []
 
     def get(self, syskey, fb):
-        key = (syskey, fb.width, fb.height, fb.stride)
+        # BUGFIX (beim erneuten Durchgehen ungetesteter Fixes gefunden,
+        # nicht Teil der eigentlich angefragten Aenderung: der
+        # zusammengesetzte Puffer bettet in _compose() die AKTUELL
+        # aktive C_BG-Farbe als Rand-/Letterbox-Fuellung ein (fuer
+        # Hintergrundbilder, die nicht exakt die Bildschirmgroesse
+        # treffen) - der Cache-Schluessel enthielt das Theme bisher
+        # NICHT. Nach einem Themenwechsel waehrend der Sitzung haette
+        # ein bereits gecachter Eintrag fuer denselben syskey/dieselbe
+        # Aufloesung die FARBE DES ALTEN THEMES behalten, bis er durch
+        # LRU-Verdraengung (LIMIT=2) zufaellig rausfiel. Betrifft NICHT
+        # den kuerzlich gebauten HDMI-Fast-Path (der verhaelt sich hier
+        # nachweislich identisch zum vorherigen Code, siehe Pixel-
+        # Vergleichstest) - ein eigenstaendiger, aelterer Fund.
+        key = (syskey, fb.width, fb.height, fb.stride, _fb_mod.C_BG)
         if key in self.cache:
             return self.cache[key]
         buf = None
@@ -758,6 +771,36 @@ def _category_art_key(name, syskey):
         return "CONTINUE"
     if name == t("recent_cat"):
         return "RECENT"
+    # NEU (Nutzerwunsch: "solltest du das als sysart anlegen, wenn man
+    # auf Wonne oder Tonne geht wird es in der Art-Box angezeigt" -
+    # bisher zeigte die Art-Box beim Markieren dieses Menuepunkts nur
+    # den generischen Platzhalter, da "Wonne oder Tonne" wie
+    # Weiterspielen/Zuletzt gespielt mit syskey=None angelegt wird,
+    # aber hier oben noch fehlte): gleiches Prinzip, fester
+    # sprachunabhaengiger Schluessel "WOT" - Bilddatei liegt unter
+    # SYSART_BASE/WOT.art.
+    if name == t("wot_title"):
+        return "WOT"
+    # NEU (Nutzerwunsch: "fuer Arcade, Computer und System im Hauptmenue
+    # kleine Sysart erstellen, da steht noch kein Artwork vorhanden") -
+    # "Arcade" bekommt seinen Schluessel bereits automatisch (siehe
+    # scan.py: syskey="ARCADE", sobald der Ordnername "arcade" enthaelt),
+    # "System" und "Computer" aber nicht - beide werden mit syskey=None
+    # angelegt (System: fest in frontend.py, "Computer": Name eines
+    # Ordners auf der SD-Karte des Nutzers, kommt ueber scan_games()).
+    # Bewusst GEGEN den woertlichen String verglichen, nicht ueber t() -
+    # "System" ist im Code selbst nicht uebersetzt (siehe
+    # self.cats.append(("System", ...)) in frontend.py), und
+    # "Computer" ist kein Uebersetzungsschluessel, sondern exakt der
+    # Ordnername des Nutzers, wie er im Menue erscheint - bei anderen
+    # Nutzern mit anders benanntem Ordner greift dieser Sonderfall
+    # entsprechend nicht, das ist eine bekannte, hier bewusst in Kauf
+    # genommene Einschraenkung (im Gegensatz zu "System", das bei
+    # JEDEM Nutzer identisch heisst).
+    if name == "System":
+        return "SYSTEM"
+    if name == "Computer":
+        return "COMPUTER"
     return None
 
 _meta_cache = {}

@@ -89,6 +89,24 @@
       <div class="hint">Als "Browser"-Quelle in OBS hinzufuegen, Breite/Hoehe
         auf deine Canvas-Groesse (z.B. 1920&times;1080). Der Rest bleibt
         transparent.</div>
+      <h2>Automatischer Szenenwechsel (optional)</h2>
+      <div class="hint">Wechselt in OBS automatisch zur Spiel-Szene, sobald
+        ein Core startet, und zurueck zur Frontend-Szene, sobald du wieder
+        im Menue bist - braucht eine Capture-Karte am HDMI-Ausgang fuer das
+        Live-Spielbild UND OBS' WebSocket-Server (Werkzeuge &rarr;
+        WebSocket-Server-Einstellungen, dort auch das Passwort).</div>
+      <div class="row"><label>Aktiviert</label>
+        <label class="sw"><input type="checkbox" id="obs_control_enabled"><span class="sl"></span></label></div>
+      <div class="row"><label>OBS-Rechner (IP)</label>
+        <input type="text" id="obs_host" placeholder="z.B. 192.168.178.50"></div>
+      <div class="row"><label>WebSocket-Port</label>
+        <input type="number" id="obs_port" placeholder="4455"></div>
+      <div class="row"><label>WebSocket-Passwort</label>
+        <input type="password" id="obs_password"></div>
+      <div class="row"><label>Szene waehrend des Spiels</label>
+        <input type="text" id="obs_game_scene" placeholder="z.B. Live-Spiel"></div>
+      <div class="row"><label>Szene im Frontend-Menue</label>
+        <input type="text" id="obs_frontend_scene" placeholder="z.B. Frontend"></div>
     </div>
     <div class="preview">
       <div class="bar"><span>Live-Vorschau</span><span id="pvstate"></span></div>
@@ -98,7 +116,9 @@
 <script>
 const F = ["title","accent","bg","transparent","show_boxart","show_system",
            "show_list","show_nowplaying","show_genre","show_playtime",
-           "show_ra","show_ra_badges","show_favorite","corner","scale"];
+           "show_ra","show_ra_badges","show_favorite","corner","scale",
+           "obs_control_enabled","obs_host","obs_port","obs_password",
+           "obs_game_scene","obs_frontend_scene"];
 const $ = id => document.getElementById(id);
 let cfg = {};
 
@@ -120,6 +140,12 @@ function fillForm(c){
   $("corner").value = c.corner||"bottom-left";
   $("scale").value = c.scale||100;
   $("scaleval").textContent = ($("scale").value)+"%";
+  $("obs_control_enabled").checked = c.obs_control_enabled===true;
+  $("obs_host").value = c.obs_host||"";
+  $("obs_port").value = c.obs_port||4455;
+  $("obs_password").value = c.obs_password||"";
+  $("obs_game_scene").value = c.obs_game_scene||"";
+  $("obs_frontend_scene").value = c.obs_frontend_scene||"";
 }
 
 function collect(){
@@ -132,7 +158,13 @@ function collect(){
     show_ra:$("show_ra").checked, show_ra_badges:$("show_ra_badges").checked,
     show_favorite:$("show_favorite").checked,
     corner:$("corner").value,
-    scale:parseInt($("scale").value,10)
+    scale:parseInt($("scale").value,10),
+    obs_control_enabled:$("obs_control_enabled").checked,
+    obs_host:$("obs_host").value,
+    obs_port:parseInt($("obs_port").value,10)||4455,
+    obs_password:$("obs_password").value,
+    obs_game_scene:$("obs_game_scene").value,
+    obs_frontend_scene:$("obs_frontend_scene").value
   };
 }
 

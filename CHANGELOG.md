@@ -4,6 +4,88 @@ Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
 schau am besten in die Git-Historie oder in den Kopf von
 `frontend/frontend.py`.
 
+## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
+
+**Neue Features:**
+- Reset im laufenden Core per F5 (Taste ~0,6s halten) - funktioniert
+  bei allen Cores, auch RA-Cores, ohne den Core selbst neu zu laden
+  (RA-Fortschritt bleibt erhalten). Ausdrücklich als experimentell
+  gekennzeichnet. Die Tasten-Erkennung wurde über mehrere echte
+  Hardware-Logs hinweg entwickelt und bestätigt (ursprünglich auf Tab
+  gelegt, aber auf NKRO-Tastaturen wie dem KBDFans Tiger80 nie
+  ausgelöst - aus genau diesem Log ließ sich die tatsächliche
+  Bit-Position messen und auf F5 übertragen).
+- Stream-Overlay jetzt direkt im Menü an/aus schaltbar (System ->
+  Anzeige & Sound), zusätzlich zum bisherigen externen
+  `stream_toggle.sh`. Wirkt wie bisher erst nach einem Neustart.
+- Bildschirmspiegel (`/mirror`, eigener Menüpunkt, braucht Stream-
+  Overlay): zeigt den aktuellen Frontend-Bildschirm zusätzlich im
+  Browser - praktisch für CRT-Nutzer, die HDMI nicht direkt einsehen
+  können. Zeigt nur den Frontend-Bildschirm selbst (Kategorien,
+  Spieleliste), nicht das laufende Spiel (technisch nicht möglich,
+  siehe Abschnitt 12.1 der README) - arbeitet deshalb bewusst nur bei
+  CRT-typischen Auflösungen, HDMI wird komplett übersprungen (bei
+  HDMI-Auflösung gemessen: bis zu 830ms pro Bild, spürbare
+  CPU-Konkurrenz mit der Eingabe-Hauptschleife).
+- Automatischer OBS-Szenenwechsel (Einrichtung über die bestehende
+  `/admin`-Weboberfläche): wechselt OBS automatisch zur
+  Capture-Karten-Szene, sobald ein Spiel startet, und zurück zur
+  Frontend-Szene, sobald wieder im Menü - eigener, von Grund auf
+  geschriebener OBS-WebSocket-v5-Client (reine Python-
+  Standardbibliothek, keine externen Pakete). Komplett
+  fehlertolerant: nicht konfiguriert oder OBS nicht erreichbar
+  verzögert niemals Spielstart/Rückkehr zum Menü.
+
+**Performance (vor allem HDMI-Modus):**
+- Größter Einzelfund: der komplette Bildschirm-Neuaufbau (47-57ms bei
+  JEDEM Bild, auch beim reinen Scrollen) wird jetzt übersprungen, wenn
+  sich seit dem letzten eigenen Neuaufbau nachweislich nichts anderes
+  am Bildschirm verändert hat - abgesichert über einen Generations-
+  zähler, der bei JEDER anderen Bildschirmseite automatisch mitzählt.
+- Festplatten-Cache für skalierte Cover-Bilder (Miniaturen) - macht
+  erneutes Laden praktisch kostenlos (bestätigt: über 1000ms auf
+  wenige ms gesenkt).
+- Cover-Ordner werden beim Start im Hintergrund vorgewärmt, behebt
+  eine über 1 Sekunde lange Verzögerung beim ersten Betreten eines
+  Systems pro Sitzung (kaltes SD-Karten-Verzeichnis).
+- Zielgröße des Cover-Rückfallbilds (für Spiele ohne eigenes Cover)
+  wird auf ein gröberes Raster gerundet - verhindert, dass praktisch
+  jedes Spiel ohne Cover eine eigene, teure Neuberechnung auslöst.
+- Abgerundete Ecken (Auswahl-Markierung, Cover-Panel-Karte) cachen
+  jetzt ihre Randzeilen, statt sie bei jedem Bild neu zu berechnen.
+- Sortierte Ordner-/Spieleliste (`_display_items()`) wird jetzt direkt
+  am Navigations-Knoten gecacht, statt bei jedem der vielen Aufrufe
+  (Zeichnen, Stream, Suche, Cover-Vorladen, ...) neu sortiert zu
+  werden.
+- Stream-Overlay-Publizierung prüft jetzt günstig vor (Auswahl/
+  Songtitel), bevor die teure vollständige Zustands-Berechnung
+  überhaupt angestoßen wird - betrifft nur Sitzungen mit aktivem
+  Stream-Overlay, dort aber bei jedem Schleifendurchlauf.
+
+**Diagnose-Werkzeuge** (für Fehlersuche auf echter Hardware, ohne
+Verhaltensänderung im Normalbetrieb):
+- `DRAGEND_PROFILE=1`-Umgebungsvariable: detailliertes cProfile-
+  Profiling bei langsamen Bildaufbauten, direkt ins Log geschrieben.
+- Festplatten-Cache-Treffer/-Fehler für Cover jetzt im Log sichtbar
+  (`THUMB_CACHE ...`).
+- Textcache-Treffer/-Fehler/-Verdrängungen jetzt im Log sichtbar
+  (`TEXTCACHE ...`, nur bei aktivem `DRAGEND_PROFILE`).
+
+**Bugfixes:**
+- Mehrere verbliebene ASCII-Umlaut-Ersatzschreibweisen in der
+  Oberfläche korrigiert (u.a. Trophäenraum, Jahresrückblick).
+- `Scripts/install.sh`, `Scripts/install_offline.sh` und
+  `Scripts/uninstall.sh` liefen den Hauptdateien im Wurzelverzeichnis
+  hinterher (u.a. fehlte der komplette `fe/`-Modulordner-Fix, der
+  ursprünglich ein reales Installationsproblem gelöst hatte) - jetzt
+  synchronisiert, plus eine neue GitHub Action, die bei jedem Push
+  automatisch prüft, ob beide Seiten noch übereinstimmen.
+- `FRONTEND_VERSION` war zweimal unabhängig als Zeichenkette
+  hinterlegt (`frontend.py` und `fe/menu.py`) - dieselbe Drift-Gefahr
+  wie bei den Scripts-Kopien. Jetzt eine einzige, kanonische Quelle.
+- Englische README war bei "v3.2" stehengeblieben, während die
+  deutsche schon bei v4.3 war - beide jetzt synchron.
+
 ## v4.3 — großes Sammel-Release (staging → main)
 
 Alles, was sich seit v4.2 angesammelt hat, jetzt offiziell gebündelt.

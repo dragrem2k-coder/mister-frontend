@@ -1,4 +1,4 @@
-# MiSTer Custom Frontend v3.2
+# MiSTer Custom Frontend v4.4
 
 **By Dragrem2K**, with contributions from **TheRealSuTefan**, **Dfense**
 and **Dennsen**.
@@ -120,7 +120,7 @@ history to read up on (`CHANGELOG.md`).
 
 | File                            | Destination on the MiSTer        | Purpose |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | The frontend itself (v3.2) |
+| frontend/frontend.py            | /media/fat/frontend/             | The frontend itself (v4.4) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart wrapper (on every boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart downloader (runs on the MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Game-info downloader (runs on the MiSTer) |
@@ -267,6 +267,13 @@ first time in the current calendar year) and "Bite-sized games" (games
 with a short average session length, at least 2 launches required).
 Appears only if something actually fits.
 
+**"Wonne or Tonne"** (Dennsen's rating format, in the main menu under
+System or as its own menu item depending on configuration): pulls
+three random, not-yet-rated games at once for you to choose from -
+without repeats, until all of them have had a turn. Handy when "don't
+know what to play" should become an actual decision, rather than just
+suggesting a single random game (see F11 in the table below).
+
 **Your own folder structure is adopted 1:1.** If you have organized your
 ROMs in subfolders (e.g. "1 US-A-E", "2 Popular"), the frontend shows
 these folders as their own clickable entries - nested arbitrarily deep,
@@ -297,6 +304,8 @@ real network traffic.
 | F7                                  | Toggle completed status (game entries only) |
 | 3x Select in a row (pad)           | Quit confirmation (like ESC) |
 | In a running game: Esc on the keyboard, hold ~0.6 s | Directly back to the frontend, without going through the MiSTer OSD |
+| In a running game: F5 on the keyboard, hold ~0.6 s (experimental) | Reset the running core (all cores, including RA - does NOT reload the core, RA progress is kept) |
+| / (keyboard) | Start full-text search - matches anywhere in the name, not just the start |
 | In a running game: F12 -> "Exit to Menu Core" | Alternative via MiSTer's own menu |
 
 **Returning from a running game:** As soon as a core is running, MiSTer
@@ -822,12 +831,17 @@ after 8 seconds. No need to wait until returning to the menu. Its own
 admin switch, if not desired.
 
 **Setup:**
-1. Turn on via SSH:
-   ```bash
-   /media/fat/Scripts/stream_toggle.sh on
-   ```
-   (only creates an enable file - without it the web server doesn't even
-   start, so existing users notice nothing of it)
+1. Turn on - two equivalent ways:
+   - **Directly in the frontend menu** (new, no SSH needed): System ->
+     Display & Sound -> "Stream overlay: OFF -> turn on". Takes effect
+     after a frontend restart, same as the SSH way (the web server is
+     only set up at startup) - the menu label says so explicitly.
+   - Via SSH:
+     ```bash
+     /media/fat/Scripts/stream_toggle.sh on
+     ```
+   Both ways create the same enable file - without it the web server
+   doesn't even start, so existing users notice nothing of it.
 2. Restart the frontend (see section 13 for the clean restart procedure).
 3. In OBS, add a **browser source** with the address
    `http://<MiSTer-IP>:8080/` (set width/height to your stream canvas,
@@ -842,7 +856,8 @@ admin switch, if not desired.
 4. Customize the appearance (position, colors, what is shown) at
    `http://<MiSTer-IP>:8080/admin` in the browser - takes effect
    immediately, without a restart.
-5. Turn off again: `stream_toggle.sh off` + restart the frontend.
+5. Turn off again: either the same menu item (now "ON -> turn off") or
+   `stream_toggle.sh off` - then restart the frontend.
 
 Runs entirely on standard Python (`http.server` + server-sent events), no
 external packages, as its own background thread next to the normal
@@ -850,6 +865,63 @@ frontend loop - binds to port 8080 on the local network. Do **not**
 forward it to the internet, there is no authentication. Detailed setup
 step by step (also for non-techies): `ANLEITUNG_fuer_Dennsen.md`.
 Technical details: `STREAM_fuer_Dragrem.md`.
+
+### 12.1 Screen mirror (optional, for CRT users)
+
+Since CRT and HDMI can't run simultaneously in their respective native
+resolution for technical reasons (a genuine hardware limitation of the
+single scaler, not an oversight - see `STREAM_fuer_Dragrem.md` for
+details), this feature additionally exposes the current frontend
+screen as an image via the browser: `http://<MiSTer-IP>:8080/mirror`.
+Handy if you run on CRT and still want to see (or show viewers) how
+you're browsing the frontend.
+
+**Important limitation:** this only mirrors the **frontend screen
+itself** (categories, game list, cover selection) - **not** the
+actual running game. As soon as a core starts, the mirror freezes on
+the last frontend state until you're back in the menu - the actual
+game video is generated directly by the FPGA core and never passes
+through the frontend, so it's not accessible in software at all. For
+the running game you'll still need a capture card on the HDMI output
+(see 12.2 for automatic switching between the two).
+
+For the same reason, this deliberately only works at CRT-sized
+resolutions (up to 640px wide) - at HDMI resolution, encoding would
+noticeably burden the already weak MiSTer CPU (measured: up to 830ms
+per frame, 57% slowdown of a concurrently running thread), while
+being unused there anyway since you already see the screen directly.
+
+**Setup:** its own menu entry under System -> Display & Sound
+("Screen mirror"), requires the stream overlay (12) as a prerequisite
+- the menu label points this out. Add it in OBS as an additional
+browser source with the address `http://<MiSTer-IP>:8080/mirror`,
+same as the regular overlay.
+
+### 12.2 Automatic OBS scene switching (optional)
+
+For anyone with a capture card on the HDMI output: OBS can
+automatically switch between two scenes - to the capture card scene
+as soon as a game starts, and back to the frontend scene (e.g. with
+the screen mirror from 12.1) as soon as you're back in the menu. The
+frontend is the only thing that reliably knows exactly when that
+happens.
+
+**Prerequisites:**
+- OBS' WebSocket server enabled (Tools -> WebSocket Server Settings) -
+  port and password are also visible/configurable there.
+- Two OBS scenes already created (names are up to you, e.g.
+  "Frontend" and "Live Game").
+
+**Setup:** at `http://<MiSTer-IP>:8080/admin` in the "Automatic scene
+switching" section - copy the OBS machine's IP address, port and
+password from OBS' WebSocket settings, enter both scene names exactly
+as in OBS, turn on "Enabled". Takes effect immediately, no restart
+needed.
+
+Runs completely fault-tolerant: if OBS is unreachable, misconfigured,
+or the feature is simply disabled, the scene-switch attempt is just
+skipped - the actual game launch or return to the menu is never
+affected or delayed by it.
 
 ## 13. Troubleshooting
 

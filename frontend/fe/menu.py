@@ -6,14 +6,21 @@ Unterordnern (system_items()). Ausgelagert aus frontend.py
 (Modularisierung, Git-Branch 'modular-refactor').
 
 Einige kleine Theme-bezogene Stuecke hier bewusst dupliziert statt
-importiert (FRONTEND_VERSION, THEME_FILE, die gueltigen Themennamen,
-THEME_NAMES_DE/EN, current_theme_name()) - das VOLLSTAENDIGE Theme-
-System (apply_theme/accent_for mit den ueber 80 Farbvariablen-
-Lesestellen in der Frontend-Klasse) bleibt bewusst ein spaeterer,
-eigener Schritt (siehe fruehere Analyse). system_items() braucht aber
-nur den Namen des aktuell aktiven Themes fuer die Menuebeschriftung,
-nicht die Farben selbst - dafuer reicht ein schlanker, unabhaengiger
+importiert (THEME_FILE, die gueltigen Themennamen, THEME_NAMES_DE/EN,
+current_theme_name()) - das VOLLSTAENDIGE Theme-System (apply_theme/
+accent_for mit den ueber 80 Farbvariablen-Lesestellen in der
+Frontend-Klasse) bleibt bewusst ein spaeterer, eigener Schritt (siehe
+fruehere Analyse). system_items() braucht aber nur den Namen des
+aktuell aktiven Themes fuer die Menuebeschriftung, nicht die Farben
+selbst - dafuer reicht ein schlanker, unabhaengiger
 current_theme_name()-Nachbau ohne die riskanten Teile.
+
+FRONTEND_VERSION liegt NICHT mehr dupliziert hier UND in frontend.py
+UND in fe/update_check.py (fruesher gleich DREIMAL der Fall, beim
+v4.4-Bump als echtes Drift-Risiko gefunden - siehe Kommentar dort).
+Kanonische Quelle ist jetzt fe/update_check.py (liegt am tiefsten in
+der Abhaengigkeitskette) - hier nur noch importiert, frontend.py
+importiert wiederum von hier (transitiv).
 """
 import os
 from fe.translations import t, current_lang
@@ -21,13 +28,16 @@ from fe.audio import get_volume, sfx_enabled_flag
 from fe.settings import (
     attract_enabled, crt_menu_active, curated_only_active,
     dragend_logo_enabled, format_attract_delay, load_attract_delay,
+    screen_mirror_enabled, stream_overlay_enabled, system_bg_enabled,
 )
 from fe.timekeeping import format_timezone_offset, load_timezone_offset
 from fe.retroachievements import load_ra_config
-from fe.update_check import load_update_state, update_check_enabled, _version_newer
+from fe.update_check import (
+    load_update_state, update_check_enabled, _version_newer,
+    FRONTEND_VERSION,
+)
 from fe.scan import network_wait_enabled
 
-FRONTEND_VERSION = "4.3"
 THEME_FILE = "/media/fat/frontend/theme"
 _VALID_THEME_NAMES = {"dark", "light", "green", "secret_gold"}
 THEME_NAMES_DE = {"dark": "Dunkel (Standard)", "light": "Hell",
@@ -95,6 +105,12 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     sfx_label = t("sys_sfx_on") if sfx_enabled_flag() else t("sys_sfx_off")
     dragend_logo_label = t("sys_dragend_logo_on") if dragend_logo_enabled() \
         else t("sys_dragend_logo_off")
+    system_bg_label = t("sys_system_bg_on") if system_bg_enabled() \
+        else t("sys_system_bg_off")
+    stream_label = t("sys_stream_on") if stream_overlay_enabled() \
+        else t("sys_stream_off")
+    screen_mirror_label = t("sys_screen_mirror_on") if screen_mirror_enabled() \
+        else t("sys_screen_mirror_off")
     if not update_check_enabled():
         update_label = t("sys_update_off")
     else:
@@ -126,6 +142,9 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             (theme_label, "theme", None),
             (sfx_label, "sfx", None),
             (dragend_logo_label, "dragend_logo", None),
+            (system_bg_label, "system_bg", None),
+            (stream_label, "stream_overlay", None),
+            (screen_mirror_label, "screen_mirror", None),
             (music_label, "music", None),
             (music_src_label, "music_source", None),
             (volume_label, "volume", None),

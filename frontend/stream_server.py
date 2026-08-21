@@ -33,6 +33,8 @@ import time
 import urllib.error
 import urllib.request
 import zlib
+
+from fe.obs_websocket import switch_scene as _obs_switch_scene
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, unquote
 
@@ -54,6 +56,21 @@ DEFAULT_CONFIG = {
     "show_favorite": True,       # Favoriten-Stern neben dem Titel
     "scale": 100,                # Prozent
     "corner": "bottom-left",     # bottom-left|bottom-right|top-left|top-right
+    # NEUES FEATURE (Nutzerwunsch: "wenn ich ein Spiel starte, sollen
+    # Zuschauer automatisch die Capture-Karten-Szene sehen statt des
+    # eingefrorenen Frontend-Spiegels, und beim Zurueckkehren wieder
+    # die Frontend-Szene") - OBS-WebSocket-Zugangsdaten UND die beiden
+    # Szenennamen, die umgeschaltet werden sollen. Bewusst UEBER
+    # dieselbe /config-Route wie die restlichen Overlay-Einstellungen
+    # editierbar (Passwort/Hostname liessen sich ueber die Controller-
+    # gesteuerte On-Screen-Menuefuehrung des Frontends kaum vernuenftig
+    # eingeben) - kein zweites, paralleles Konfigurationssystem noetig.
+    "obs_control_enabled": False,
+    "obs_host": "",
+    "obs_port": 4455,
+    "obs_password": "",
+    "obs_game_scene": "",
+    "obs_frontend_scene": "",
 }
 
 
@@ -83,6 +100,21 @@ class StreamServer:
                        "nowplaying": None}
         self._config = dict(DEFAULT_CONFIG)
         self._load_config()
+
+        # NEUES FEATURE (Nutzerwunsch: "CRT und HDMI koennen nicht
+        # gleichzeitig laufen - waere es machbar, wenn man auf CRT
+        # laeuft, es per Websocket als Stream-Overlay angezeigt werden
+        # kann?"): recherchiert und bestaetigt (mehrere MiSTer-Forum-
+        # Quellen uebereinstimmend) - der Linux-Framebuffer haengt fest
+        # am einzigen vorhandenen Scaler, echte gleichzeitige Ausgabe in
+        # JEWEILS nativer Aufloesung auf CRT UND HDMI ist auf dieser
+        # Hardware nicht moeglich. Diese Funktion umgeht das Problem
+        # NICHT technisch, sondern macht den aktuellen Bildschirminhalt
+        # zusaetzlich als Bild ueber HTTP abrufbar - wer auf CRT laeuft,
+        # kann so trotzdem auf einem Handy/zweiten Monitor/im Stream
+        # sehen, was gerade im Frontend passiert.
+        self._screen_png = None
+        self._screen_lock = threading.Lock()
 
         self._httpd = None
         self._thread = None
@@ -148,6 +180,87 @@ class StreamServer:
                     dead.append(q)
             for q in dead:
                 self._clients.discard(q)
+
+    def publish_screen(self, width, height, stride, buf):
+        """Aktuellen Framebuffer-Inhalt als PNG zwischenspeichern, damit
+        /screen.png ihn ausliefern kann - siehe Kommentar bei
+        self._screen_png in __init__ zum Hintergrund dieser Funktion.
+
+        Nimmt bewusst rohe Framebuffer-Werte entgegen (nicht schon
+        fertig konvertiert) - die Umwandlung (Stride-Padding entfernen,
+        BGRA->RGBA, siehe _art_png() fuer dasselbe Muster bei
+        Cover-Bildern) bleibt komplett hier gekapselt, der Aufrufer
+        (frontend.py) muss die Einzelheiten des PNG-Formats nicht
+        kennen.
+
+        Bewusst OHNE staendige Wiederholung/Threading HIER drin - der
+        Aufrufer (frontend.py) entscheidet, wie oft das aufgerufen wird
+        (siehe dortiger Kommentar zur Drosselung, gerade bei der
+        deutlich groesseren HDMI-Aufloesung wichtig fuer die schwache
+        MiSTer-CPU)."""
+        row_bytes = width * 4
+        if stride == row_bytes:
+            rgba = bytearray(buf)
+        else:
+            # Stride-Padding vorhanden (Framebuffer-Zeilen sind auf eine
+            # Grenze ausgerichtet, die nicht zwangsläufig width*4
+            # entspricht) - Zeile fuer Zeile nur die tatsaechlichen
+            # Pixel-Bytes uebernehmen, Auffuellung verwerfen. _encode_png()
+            # erwartet lueckenlos gepackte Zeilen (stride = width*4 intern
+            # angenommen), sonst waere das Ergebnis schief/verzerrt.
+            rgba = bytearray(row_bytes * height)
+            for y in range(height):
+                so = y * stride
+                do = y * row_bytes
+                rgba[do:do + row_bytes] = buf[so:so + row_bytes]
+        # Framebuffer ist BGRA (Projekt-Konvention), PNG/Browser
+        # erwarten RGBA - B und R vertauschen, Alpha undeckend lassen
+        # ist hier kein Problem (Browser zeigt volle Deckkraft nur bei
+        # Alpha=255) - siehe _art_png() fuer dieselbe Notwendigkeit bei
+        # Cover-Bildern und die dortige Begruendung.
+        rgba[0::4], rgba[2::4] = rgba[2::4], rgba[0::4]
+        rgba[3::4] = b"\xff" * (len(rgba) // 4)
+        png = _encode_png(width, height, bytes(rgba))
+        with self._screen_lock:
+            self._screen_png = png
+
+    def _obs_switch(self, scene_key):
+        """Gemeinsame Grundlage fuer obs_switch_to_game()/
+        obs_switch_to_frontend() - liest die aktuelle Konfiguration und
+        wechselt per WebSocket zur passenden Szene (siehe
+        fe/obs_websocket.py fuer das eigentliche Protokoll). scene_key
+        ist "obs_game_scene" oder "obs_frontend_scene" - der jeweilige
+        Konfigurationsschluessel, nicht der Szenenname selbst.
+
+        Bewusst KOMPLETT still bei Fehlern/Deaktivierung (kein LOG-
+        Aufruf hier) - dieselbe Begruendung wie in fe/obs_websocket.py:
+        ein nicht konfiguriertes oder nicht erreichbares OBS darf den
+        eigentlichen Spielstart/die Rueckkehr zum Menue niemals
+        beeintraechtigen, und staendige Fehlermeldungen fuer ein
+        bewusst NICHT genutztes Feature waeren nur Log-Rauschen."""
+        with self._lock:
+            cfg = dict(self._config)
+        if not cfg.get("obs_control_enabled"):
+            return
+        host = cfg.get("obs_host") or ""
+        scene = cfg.get(scene_key) or ""
+        if not host or not scene:
+            return
+        _obs_switch_scene(host, int(cfg.get("obs_port") or 4455),
+                          cfg.get("obs_password") or "", scene)
+
+    def obs_switch_to_game(self):
+        """Aufzurufen, sobald ein Core bestaetigt gestartet ist (siehe
+        run_core() in frontend.py) - wechselt OBS zur Capture-Karten-
+        Szene, falls konfiguriert."""
+        self._obs_switch("obs_game_scene")
+
+    def obs_switch_to_frontend(self):
+        """Aufzurufen, sobald das Frontend wieder sichtbar ist (Core
+        beendet/zurueck zum Menue, siehe run_core() in frontend.py) -
+        wechselt OBS zurueck zur Frontend-Spiegel-Szene, falls
+        konfiguriert."""
+        self._obs_switch("obs_frontend_scene")
 
     def publish_achievement(self, achievement):
         """Pusht ein "gerade freigeschaltet"-Ereignis an alle
@@ -344,6 +457,19 @@ class StreamServer:
                         self._send(404, "text/plain", b"no badge")
                 elif p == "/events":
                     self._events()
+                elif p == "/screen.png":
+                    with srv._screen_lock:
+                        png = srv._screen_png
+                    if png:
+                        # bewusst no-store (Standard-Verhalten schon
+                        # oben in _send()) - jedes Bild ist nur eine
+                        # Momentaufnahme, der Browser soll IMMER neu
+                        # abfragen, nie eine alte Version zwischenlagern
+                        self._send(200, "image/png", png)
+                    else:
+                        self._send(404, "text/plain", b"noch kein Bild")
+                elif p == "/mirror":
+                    self._file("stream_mirror.html", "text/html; charset=utf-8")
                 else:
                     self._send(404, "text/plain", b"not found")
 

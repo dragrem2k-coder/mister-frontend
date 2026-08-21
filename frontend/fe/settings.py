@@ -31,6 +31,92 @@ def toggle_dragend_logo():
         except OSError:
             pass
 
+# NEUES FEATURE (Nutzerwunsch: "bitte den bg-Ordner komplett rausnehmen,
+# glaube der laggt ein wenig" - System-Hintergrundbilder hinter der
+# Spieleliste UND als Cover-Rueckfall fuer Spiele ohne eigenes Artwork,
+# siehe BG_BASE/BgCache in fe/art.py). Fehlende Dateien werden bereits
+# sicher/guenstig behandelt (ART.get() cached "nicht gefunden" dauerhaft
+# nach dem ersten Fehlschlag) - dieser Schalter betrifft den Fall, dass
+# die Dateien VORHANDEN sind, aber trotzdem uebersprungen werden sollen.
+# Bewusst ALS SCHALTER statt den Code fest zu entfernen - andere Nutzer
+# (Sutefan/Dennsen/Community) moechten das visuelle Feature evtl.
+# behalten. Standard AN (bestehendes Verhalten bleibt fuer alle
+# unveraendert, die den Schalter nicht anfassen) - nach demselben
+# "Standard an, per Datei abschaltbar"-Muster wie beim Boot-Logo oben.
+SYSTEM_BG_DISABLED_FLAG = "/media/fat/frontend/system_bg_disabled"
+
+def system_bg_enabled():
+    return not os.path.exists(SYSTEM_BG_DISABLED_FLAG)
+
+def toggle_system_bg():
+    if system_bg_enabled():
+        try:
+            os.makedirs(os.path.dirname(SYSTEM_BG_DISABLED_FLAG), exist_ok=True)
+            open(SYSTEM_BG_DISABLED_FLAG, "w").close()
+        except OSError:
+            pass
+    else:
+        try:
+            os.remove(SYSTEM_BG_DISABLED_FLAG)
+        except OSError:
+            pass
+
+# NEUES FEATURE (Nutzerwunsch: "kann man das mit Stream Overlay in den
+# Optionen mit einem an/aus schaltbar machen?"): bisher nur ueber das
+# externe Scripts/stream_toggle.sh umschaltbar (legt/entfernt dieselbe
+# Datei) - Kern-Mechanismus unveraendert (siehe frontend.py __init__:
+# der StreamServer wird nur gestartet, wenn diese Datei beim Start
+# existiert), NUR der Zugriffsweg ist jetzt zusaetzlich direkt im
+# Menue moeglich, ohne SSH/externes Skript. GLEICHE Einschraenkung wie
+# beim externen Skript (dort auch so dokumentiert): wirkt erst nach
+# einem Neustart des Frontends, da der StreamServer (Port-Bindung,
+# Hintergrund-Thread) nur einmal beim Start aufgebaut wird - ein
+# Live-Start/Stop waere ein groesserer, riskanterer Eingriff fuer
+# denselben Nutzen.
+STREAM_ENABLED_FLAG = "/media/fat/frontend/stream_enabled"
+
+def stream_overlay_enabled():
+    return os.path.exists(STREAM_ENABLED_FLAG)
+
+def toggle_stream_overlay():
+    if stream_overlay_enabled():
+        try:
+            os.remove(STREAM_ENABLED_FLAG)
+        except OSError:
+            pass
+    else:
+        try:
+            os.makedirs(os.path.dirname(STREAM_ENABLED_FLAG), exist_ok=True)
+            open(STREAM_ENABLED_FLAG, "w").close()
+        except OSError:
+            pass
+
+# NEUES FEATURE (Nutzerwunsch: "waere es machbar diese Funktion unter
+# der Kategorie System an/aus schaltbar zu machen?" - zum Bildschirm-
+# spiegel-Feature, siehe publish_screen() in stream_server.py): setzt
+# technisch auf dem Stream-Overlay-Server auf, deshalb NUR wirksam,
+# wenn Stream-Overlay (oben) ebenfalls aktiv ist - eigener Schalter,
+# da nicht jeder, der das Overlay fuer OBS nutzt, auch den Bildschirm
+# spiegeln moechte (staendiges Kodieren kostet etwas CPU, siehe
+# Drosselung in frontend.py).
+SCREEN_MIRROR_ENABLED_FLAG = "/media/fat/frontend/screen_mirror_enabled"
+
+def screen_mirror_enabled():
+    return os.path.exists(SCREEN_MIRROR_ENABLED_FLAG)
+
+def toggle_screen_mirror():
+    if screen_mirror_enabled():
+        try:
+            os.remove(SCREEN_MIRROR_ENABLED_FLAG)
+        except OSError:
+            pass
+    else:
+        try:
+            os.makedirs(os.path.dirname(SCREEN_MIRROR_ENABLED_FLAG), exist_ok=True)
+            open(SCREEN_MIRROR_ENABLED_FLAG, "w").close()
+        except OSError:
+            pass
+
 # NEUES FEATURE (Nutzerwunsch: vereinfachte Installation, ein
 # Ersteinrichtungs-Assistent, der einmalig durch alle wichtigen
 # Schritte fuehrt): anders als BOOTANIM_PLAYED_MARKER (liegt in /tmp,

@@ -8,18 +8,25 @@ aus frontend.py (Modularisierung, Git-Branch 'modular-refactor').
 Das eigentliche Herunterladen/Installieren bleibt bewusst manuell
 ueber install_frontend.sh - hier geht es NUR um die Benachrichtigung.
 
-FRONTEND_VERSION hier bewusst noch einmal definiert (nicht importiert)
-- frontend.py braucht denselben Wert AUCH noch an mehreren Stellen
-  (z.B. fuer die eigene Update-Pruefung in der Frontend-Klasse), ein
-  Ruecksfall-Import haette einen Zirkelbezug ausgeloest (frontend.py
-  laeuft als Hauptskript, nicht als benanntes, importierbares Modul).
-  Da es ein fester Versions-String ist, ist die zweite Definition
-  unproblematisch.
+FRONTEND_VERSION liegt HIER als kanonische Quelle (nicht in
+frontend.py oder fe/menu.py - beide importieren sie von hier), weil
+dieses Modul in der Abhaengigkeitskette am weitesten unten steht
+(importiert nur os/json/urllib/fe.log, wird selbst von fe/menu.py UND
+frontend.py importiert - waere die Definition stattdessen in
+fe/menu.py, haette fe/menu.py's Import von HIER (fuer
+update_check_enabled/_version_newer) einen Zirkelbezug ausgeloest).
+
+BUGFIX (beim v4.4-Bump gefunden): FRONTEND_VERSION war zuvor GLEICH
+DREIMAL unabhaengig als Zeichenkette hinterlegt (hier, in frontend.py
+UND in fe/menu.py) - dasselbe Drift-Risiko wie zuvor schon bei den
+Scripts/-Kopien der Installationsskripte gefunden und behoben. Jetzt
+genau eine Quelle, die beiden anderen Stellen importieren von hier
+(direkt bzw. transitiv ueber fe/menu.py).
 """
 import os, json, urllib.request
 from fe.log import LOG
 
-FRONTEND_VERSION = "4.3"
+FRONTEND_VERSION = "4.4"
 
 UPDATE_CHECK_URL = ("https://raw.githubusercontent.com/dragrem2k-coder/"
                     "mister-frontend/main/frontend/VERSION")

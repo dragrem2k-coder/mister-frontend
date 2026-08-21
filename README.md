@@ -1,4 +1,4 @@
-# MiSTer Custom Frontend v4.3
+# MiSTer Custom Frontend v4.4
 **Von Dragrem2K**, mit Beiträgen von **TheRealSuTefan**, **Dfense**
 und **Dennsen**.
 
@@ -123,7 +123,7 @@ Nachlesen (`CHANGELOG.md`).
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v4.3) || frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v4.4) || frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (läuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (läuft auf dem MiSTer) |
 | frontend/stream_server.py       | /media/fat/frontend/             | Web-Server fürs Stream-Overlay (optional) |
@@ -276,6 +276,14 @@ hast) und "Kurzweilige Spiele" (Spiele mit kurzer durchschnittlicher
 Sitzungsdauer, mindestens 2 Starts nötig). Erscheint nur, wenn
 tatsächlich etwas reinpasst.
 
+**"Wonne oder Tonne"** (Dennsens Bewertungs-Format, im Hauptmenü unter
+System oder als eigener Menüpunkt je nach Konfiguration): zieht drei
+zufällige, noch nicht bewertete Spiele auf einmal zur Auswahl -
+wiederholungsfrei, bis alle einmal dran waren. Praktisch, wenn "keine
+Ahnung was ich spielen soll" zur echten Entscheidung werden soll,
+statt nur ein einzelnes Zufallsspiel vorzuschlagen (siehe F11 in der
+Tabelle unten).
+
 **Eigene Ordnerstruktur wird 1:1 übernommen.** Hast du deine ROMs in
 Unterordnern organisiert (z.B. "1 US-A-E", "2 Beliebt"), zeigt das
 Frontend diese Ordner als eigene, anklickbare Einträge - beliebig
@@ -306,6 +314,8 @@ geprüft, ohne echten Netzwerkverkehr zu erzeugen.
 | F7                                  | Durchgespielt-Status umschalten (nur bei Spiele-Einträgen) |
 | 3x Select nacheinander (Pad)       | Beenden-Bestätigung (wie ESC) |
 | Im laufenden Spiel: Esc auf der Tastatur, ~0,6s halten | Direkt zurück ins Frontend, ohne Umweg über MiSTers OSD |
+| Im laufenden Spiel: F5 auf der Tastatur, ~0,6s halten (experimentell) | Reset im laufenden Core (alle Cores, auch RA - lädt den Core NICHT neu, RA-Fortschritt bleibt erhalten) |
+| / (Tastatur) | Volltextsuche starten - Treffer auch mitten im Namen, nicht nur am Anfang |
 | Im laufenden Spiel: F12 -> "Exit to Menu Core" | Alternative über MiSTers eigenes Menü |
 
 **Zum Zurückkehren aus einem laufenden Spiel:** Sobald ein Core läuft,
@@ -840,12 +850,19 @@ an - Icon, Titel, Beschreibung, Punkte, oben rechts eingeblendet, nach
 Menü nötig. Eigener Admin-Schalter, falls nicht gewünscht.
 
 **Einrichtung:**
-1. Einschalten per SSH:
-   ```bash
-   /media/fat/Scripts/stream_toggle.sh on
-   ```
-   (legt nur eine Freigabe-Datei an - ohne sie startet der Web-Server
-   gar nicht erst, bestehende Nutzer merken also nichts davon)
+1. Einschalten - zwei gleichwertige Wege:
+   - **Direkt im Frontend-Menü** (neu, kein SSH nötig): System ->
+     Anzeige & Sound -> "Stream-Overlay: AUS -> einschalten". Wirkt
+     wie beim SSH-Weg erst nach einem Neustart des Frontends (der
+     Web-Server wird nur beim Start aufgebaut), die Menü-Beschriftung
+     weist ausdrücklich darauf hin.
+   - Per SSH:
+     ```bash
+     /media/fat/Scripts/stream_toggle.sh on
+     ```
+   Beide Wege legen dieselbe Freigabe-Datei an - ohne sie startet der
+   Web-Server gar nicht erst, bestehende Nutzer merken also nichts
+   davon.
 2. Frontend neu starten (siehe Abschnitt 13 für den sauberen
    Neustart-Ablauf).
 3. In OBS eine **Browser-Quelle** hinzufügen mit der Adresse
@@ -862,7 +879,9 @@ Menü nötig. Eigener Admin-Schalter, falls nicht gewünscht.
 4. Aussehen anpassen (Position, Farben, was angezeigt wird) unter
    `http://<MiSTer-IP>:8080/admin` im Browser - wirkt sofort, ohne
    Neustart.
-5. Wieder ausschalten: `stream_toggle.sh off` + Frontend neu starten.
+5. Wieder ausschalten: entweder derselbe Menüpunkt (jetzt "AN ->
+   ausschalten") oder `stream_toggle.sh off` - danach Frontend neu
+   starten.
 
 Läuft komplett über Standard-Python (`http.server` + Server-Sent-
 Events), keine externen Pakete, als eigener Hintergrund-Thread neben
@@ -871,6 +890,66 @@ Netzwerk. **Nicht** ins Internet weiterleiten, es gibt keine
 Authentifizierung. Ausführliche Einrichtung Schritt für Schritt (auch
 für Nicht-Techniker): `ANLEITUNG_fuer_Dennsen.md`. Technische Details:
 `STREAM_fuer_Dragrem.md`.
+
+### 12.1 Bildschirmspiegel (optional, für CRT-Nutzer)
+
+Da CRT und HDMI aus technischen Gründen nicht gleichzeitig in
+jeweils nativer Auflösung laufen können (echte Hardware-Grenze des
+einzigen Scalers, keine übersehene Kleinigkeit - siehe
+`STREAM_fuer_Dragrem.md` für die Einzelheiten), zeigt dieses Feature
+den aktuellen Frontend-Bildschirm zusätzlich als Bild über den Browser
+an: `http://<MiSTer-IP>:8080/mirror`. Praktisch, wenn du auf CRT läufst
+und trotzdem sehen möchtest (oder Zuschauern zeigen möchtest), wie du
+gerade im Frontend browst.
+
+**Wichtige Einschränkung:** Das spiegelt nur den **Frontend-Bildschirm
+selbst** (Kategorien, Spieleliste, Cover-Auswahl) - **nicht** das
+eigentliche, laufende Spiel. Sobald ein Core startet, friert das
+Spiegelbild auf dem letzten Frontend-Stand ein, bis du wieder im Menü
+bist - das eigentliche Spielbild wird direkt vom FPGA-Core erzeugt und
+geht nie durch das Frontend selbst, ist also softwareseitig nicht
+greifbar. Für das laufende Spiel brauchst du weiterhin eine
+Capture-Karte am HDMI-Ausgang (siehe 12.2 für automatisches
+Umschalten dazwischen).
+
+Aus demselben Grund arbeitet es bewusst nur bei CRT-typischen,
+kleinen Auflösungen (bis 640px Breite) - bei HDMI-Auflösung würde das
+Kodieren die ohnehin schwache MiSTer-CPU spürbar belasten (gemessen:
+bis zu 830ms pro Bild, 57% Verlangsamung eines parallel laufenden
+Threads), obwohl es dort ohnehin ungenutzt bliebe, da man den
+Bildschirm dort schon direkt sieht.
+
+**Einrichtung:** eigener Menüpunkt unter System -> Anzeige & Sound
+("Bildschirmspiegel"), braucht das Stream-Overlay (12) als
+Voraussetzung - Menü-Beschriftung weist darauf hin. In OBS als
+zusätzliche Browser-Quelle mit der Adresse
+`http://<MiSTer-IP>:8080/mirror` einbinden, genau wie das normale
+Overlay.
+
+### 12.2 Automatischer OBS-Szenenwechsel (optional)
+
+Für alle mit Capture-Karte am HDMI-Ausgang: OBS kann automatisch
+zwischen zwei Szenen wechseln - zur Capture-Karten-Szene, sobald ein
+Spiel startet, und zurück zur Frontend-Szene (z.B. mit dem
+Bildschirmspiegel aus 12.1), sobald du wieder im Menü bist. Das
+Frontend weiß als einziges zuverlässig, wann genau das passiert.
+
+**Voraussetzungen:**
+- OBS' WebSocket-Server aktiviert (Werkzeuge -> WebSocket-Server-
+  Einstellungen) - dort auch Port und Passwort einsehbar/einstellbar.
+- Zwei bereits angelegte OBS-Szenen (Namen frei wählbar, z.B.
+  "Frontend" und "Live-Spiel").
+
+**Einrichtung:** unter `http://<MiSTer-IP>:8080/admin` im Abschnitt
+"Automatischer Szenenwechsel" - IP-Adresse des OBS-Rechners, Port und
+Passwort aus OBS' WebSocket-Einstellungen übernehmen, beide
+Szenennamen exakt wie in OBS eintragen, "Aktiviert" anschalten. Wirkt
+sofort, kein Neustart nötig.
+
+Läuft komplett fehlertolerant: ist OBS nicht erreichbar, falsch
+konfiguriert, oder das Feature schlicht nicht aktiviert, wird der
+Szenenwechsel-Versuch einfach übersprungen - der Spielstart bzw. die
+Rückkehr zum Menü selbst wird davon nie beeinträchtigt oder verzögert.
 
 ## 13. Fehlerbehebung
 

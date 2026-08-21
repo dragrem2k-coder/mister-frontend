@@ -37,7 +37,7 @@ Hinweis: Die PNG-Dekodierung in reinem Python braucht ein paar
 Sekunden pro Bild. Grosse Sammlungen laufen am besten ueber Nacht.
 """
 
-import re, difflib, glob, html, json, os, re, ssl, struct, sys, time, zlib
+import re, difflib, glob, html, json, os, ssl, struct, sys, threading, time, zlib
 import urllib.request, urllib.parse
 import concurrent.futures
 
@@ -142,7 +142,17 @@ def decode_png(data):
 
     ch = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[ct]
     raw = zlib.decompress(b"".join(idat))
+    # BUGFIX (Nutzer-Rueckmeldung zu Abstuerzen beim Konvertieren, siehe
+    # CONVERT_WORKERS/_convert_semaphore in mister_boxart.py): idat wird
+    # ab hier nicht mehr gebraucht (schon zu raw entpackt) - frueh
+    # freigeben statt bis zum Funktionsende mitzuschleppen, spart auf
+    # einem speicherknappen Geraet zusaetzlich zur Parallelitaets-
+    # Drosselung noch etwas Spitzenlast pro einzelnem Dekodiervorgang.
+    del idat
     pix = _unfilter(raw, w, h, ch)
+    # raw wird ab hier ebenfalls nicht mehr gebraucht (schon zu pix
+    # entfiltert) - aus demselben Grund frueh freigeben.
+    del raw
 
     # In RGB wandeln
     bg_r, bg_g, bg_b = PANEL_BG
@@ -473,27 +483,63 @@ def collect_arcade_names():
             result.append(n)
     return result
 
+# BUGFIX (Nutzer-Rueckmeldung: "Konvertieren der Boxarts bringt den
+# MiSTer an seine Grenzen, hab jetzt einige Abstuerze gehabt" -
+# aufgetreten NACHDEM die Download-Geschwindigkeit erhoeht wurde):
+# decode_png() weiter unten entfaltet PNGs in reinem Python, pixel-
+# weise (siehe dortige Kommentare) - bei DOWNLOAD_WORKERS gleich-
+# zeitigen process_one_rom()-Aufrufen liefen bisher bis zu genauso
+# viele Dekodier-/Skalier-/Konvertier-Vorgaenge parallel, jeder mit
+# mehreren vollen Bildpuffern im Speicher (entpackte PNG-Rohdaten +
+# entfilterte Pixel + RGB-Ausgabe). Da Pythons GIL bei reinem
+# Python-Code ohnehin keine echte CPU-Parallelitaet erlaubt (nur
+# EIN Thread fuehrt zu einem Zeitpunkt Python-Bytecode aus), brachte
+# die hohe Parallelitaet dort keinen Geschwindigkeitsgewinn - nur
+# mehrfachen Speicherbedarf gleichzeitig, auf einem Geraet mit
+# begrenztem RAM.
+#
+# Fix: die Download-Parallelitaet (echter Nutzen, da Netzwerk-I/O
+# das GIL freigibt) bleibt bei DOWNLOAD_WORKERS unveraendert - NUR
+# der teure Dekodier-/Konvertier-Teil wird zusaetzlich durch einen
+# Semaphor auf CONVERT_WORKERS gleichzeitige Vorgaenge begrenzt.
+# Andere Threads koennen waehrenddessen weiter downloaden (kein
+# Two-Phase-Split noetig, der die Ueberlappung von Download und
+# Konvertierung zunichte gemacht haette) - nur das Betreten des
+# Dekodier-Abschnitts selbst wird gedrosselt.
+CONVERT_WORKERS = 2   # bewusst KLEIN (nicht DOWNLOAD_WORKERS) - der
+                      # eigentliche Engpass ist Spitzenspeicher-
+                      # verbrauch waehrend reiner Python-Pixelarbeit,
+                      # nicht Netzwerk-Wartezeit
+_convert_semaphore = threading.Semaphore(CONVERT_WORKERS)
+
 def process_one_rom(rom, sysname, idx_exact, idx_strip, all_norms,
                     out_dir, box):
     """Ein einzelnes ROM verarbeiten: Cover suchen, herunterladen,
     skalieren, speichern. Nebenwirkungsfrei bis auf das Schreiben der
     eigenen Ausgabedatei (jedes ROM schreibt eine andere Datei) -
-    sicher aus mehreren Threads gleichzeitig aufrufbar."""
+    sicher aus mehreren Threads gleichzeitig aufrufbar.
+
+    Download (I/O-gebunden) laeuft mit voller Thread-Parallelitaet;
+    der Dekodier-/Skalier-/Konvertier-Teil (CPU-gebunden, siehe
+    CONVERT_WORKERS oben) ist zusaetzlich ueber einen Semaphor
+    gedrosselt, um Speicherspitzen auf schwacher Hardware zu
+    vermeiden."""
     cover, how = match_rom(rom, idx_exact, idx_strip, all_norms)
     if not cover:
         return (rom, "missing", None)
     png = download_cover(sysname, cover)
     if not png:
         return (rom, "dl_failed", cover)
-    try:
-        w, h, rgb = decode_png(png)
-        tw, th, small = scale_to_box(w, h, rgb, box[0], box[1])
-        art = rgb_to_art(tw, th, small)
-        with open(os.path.join(out_dir, rom + ".art"), "wb") as f:
-            f.write(art)
-        return (rom, "ok", (how, cover))
-    except PngError as e:
-        return (rom, "png_error", str(e))
+    with _convert_semaphore:
+        try:
+            w, h, rgb = decode_png(png)
+            tw, th, small = scale_to_box(w, h, rgb, box[0], box[1])
+            art = rgb_to_art(tw, th, small)
+            with open(os.path.join(out_dir, rom + ".art"), "wb") as f:
+                f.write(art)
+            return (rom, "ok", (how, cover))
+        except PngError as e:
+            return (rom, "png_error", str(e))
 
 DOWNLOAD_WORKERS = 6   # gleichzeitige Downloads - genug fuer spuerbare
                        # Beschleunigung, ohne den Server zu ueberlasten

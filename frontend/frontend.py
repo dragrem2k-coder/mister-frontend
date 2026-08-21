@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v4.3
+MiSTer Custom Frontend - v4.4
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
@@ -3374,16 +3374,27 @@ import os, sys, mmap, struct, fcntl, time, re, glob, subprocess, traceback, zlib
 # No module named 'fe'" auftreten.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# EINZIGE QUELLE DER WAHRHEIT fuer die Versionsnummer (Vereinbarung,
-# da mehrere Leute an derselben Codebasis arbeiten - siehe Nutzer-
-# Vorgabe zur Versionierung). Muss mit dem Header-Kommentar oben,
-# README, CHANGELOG und der VERSION-Datei (frontend/VERSION)
-# UEBEREINSTIMMEN. Wird NUR bei einem ausdruecklich angewiesenen
-# Release-Bump geaendert - niemals von sich aus hochgezaehlt, auch
-# nicht bei Zwischenstaenden/Diagnose-Builds/Bugfix-Versuchen (die
-# bekommen hoechstens einen Zusatz wie "4.2-test3", nie eine neue
-# Nummer hier).
-FRONTEND_VERSION = "4.3"
+# EINZIGE QUELLE DER WAHRHEIT fuer die Versionsnummer liegt in
+# fe/menu.py (nicht hier) - Vereinbarung, da mehrere Leute an derselben
+# Codebasis arbeiten (siehe Nutzer-Vorgabe zur Versionierung). Muss mit
+# dem Header-Kommentar oben, README, CHANGELOG und der VERSION-Datei
+# (frontend/VERSION) UEBEREINSTIMMEN. Wird NUR bei einem ausdruecklich
+# angewiesenen Release-Bump geaendert - niemals von sich aus
+# hochgezaehlt, auch nicht bei Zwischenstaenden/Diagnose-Builds/
+# Bugfix-Versuchen (die bekommen hoechstens einen Zusatz wie
+# "4.2-test3", nie eine neue Nummer hier).
+#
+# BUGFIX (beim v4.4-Bump gefunden): FRONTEND_VERSION war bisher
+# ZWEIMAL unabhaengig als Zeichenkette hinterlegt - hier UND in
+# fe/menu.py - mit demselben Drift-Risiko wie zuvor schon bei den
+# Scripts/-Kopien der Installationsskripte gefunden und behoben (ein
+# Bump an nur einer der beiden Stellen faellt lange nicht auf). fe.menu
+# wird bereits von frontend.py importiert (nicht umgekehrt) - ein
+# Rueckimport haette einen Zirkelbezug erzeugt, deshalb liegt die
+# kanonische Definition jetzt dort (siehe Import weiter unten
+# zusammen mit system_items), hier bewusst KEIN eigener Import mehr,
+# um die Reihenfolge/Lesbarkeit der bestehenden fe.menu-Importzeile
+# nicht zu verdoppeln.
 
 # NEUES FEATURE (Nutzerwunsch: "wenn es ein Update gibt, einmal eine
 # Info anzeigen" - das eigentliche Herunterladen/Installieren bleibt
@@ -3403,6 +3414,15 @@ from fe.single_instance import LOCKFILE, _pid_alive, acquire_single_instance, re
 
 BASE        = "/media/fat"
 SCRIPTS_DIR = "/media/fat/Scripts"
+
+# NEUES FEATURE (Nutzerwunsch: eigenes "Wonne oder Tonne"-Logo statt
+# nur des reinen Textes) - mitgeliefertes .art-Bild, kein Nutzer-
+# Toggle wie beim Boot-Logo (siehe DRAGEND_LOGO_FILE), da es sich
+# speziell auf DIESES eine Feature bezieht, nicht allgemein
+# austauschbar sein muss. Faellt automatisch auf den reinen Text-Titel
+# zurueck, falls die Datei fehlen sollte (z.B. bei einem sehr alten,
+# unvollstaendigen Update) - siehe draw_wot_screen().
+WOT_LOGO_FILE = "/media/fat/frontend/wot_logo/wonne_oder_tonne.art"
 
 
 # --- Stream-Overlay (optional, siehe stream_server.py) -----------------
@@ -3516,7 +3536,9 @@ from fe.settings import (
     dragend_logo_enabled, filter_curated, format_attract_delay,
     load_attract_delay, mark_setup_wizard_done, save_attract_delay,
     setup_wizard_done, toggle_attract_mode, toggle_crt_menu,
-    toggle_curated_only, toggle_dragend_logo,
+    toggle_curated_only, toggle_dragend_logo, screen_mirror_enabled,
+    toggle_screen_mirror, toggle_stream_overlay, system_bg_enabled,
+    toggle_system_bg,
 )
 
 # NEUES FEATURE (Nutzerwunsch: Rainwave-Internetradio als zweite
@@ -3761,7 +3783,7 @@ from fe.input import (
 )
 
 from fe.art import (
-    decode_png, BadgeCache, ArtCache, BgCache, _art_path_in,
+    decode_png, BadgeCache, ArtCache, BgCache, _art_path_in, _art_index,
     art_path, mra_meta, get_meta, ART, ART_BASE,
     ART_HD, BG_BASE, SYSART_BASE, META_BASE, BADGE_DIR,
     RA_BADGE_URL, BG, BADGES, _category_art_key,
@@ -3820,7 +3842,7 @@ from fe.timekeeping import (
 from fe.translations import TRANSLATIONS, t, set_language, current_lang
 
 
-from fe.menu import system_items
+from fe.menu import system_items, FRONTEND_VERSION
 from fe.search import jump_to_substring, jump_to_letter
 # FRONTEND
 # ----------------------------------------------------------------------------
@@ -3970,6 +3992,35 @@ class Frontend:
             threading.Thread(target=_initial_ra_fetch, daemon=True).start()
 
         self.build_categories()
+
+        # NEU (Nutzerwunsch: "beim Scrollen fuehlt es sich laghaft an" -
+        # echtes Profiling auf echter Hardware fand einen viel groesseren
+        # Verdaechtigen als das eigentliche Scrollen: der ALLERERSTE
+        # Eintritt in ein System pro Sitzung kostete teils ueber 1
+        # SEKUNDE (PERF cover: 1077 ms, 1057 ms) - zurueckverfolgt auf
+        # _art_index() -> os.listdir() ueber den kompletten Cover-Ordner
+        # des Systems. Ein zweiter Testlauf (neuer Prozess, derselbe
+        # Ordner) brauchte dafuer nur noch ~20ms - kein Python-Problem,
+        # sondern ein KALTES Verzeichnis auf der SD-Karte: der erste
+        # Zugriff ist langsam, das Betriebssystem haelt die
+        # Verzeichniseintraege danach automatisch im eigenen
+        # Speicher-Cache vor.
+        #
+        # Fix nach demselben, bereits bewaehrten Muster wie der RA-
+        # Vorabruf oben: ein Hintergrund-Thread liest gleich beim Start
+        # (parallel, ohne die Oberflaeche zu blockieren) einmal alle
+        # Cover-Ordner durch - wenn der Nutzer tatsaechlich in ein
+        # System wechselt, ist das Verzeichnis dann schon "warm",
+        # unabhaengig davon, ob das ueber unseren eigenen Index-Cache
+        # oder den Cache des Betriebssystems passiert.
+        def _prewarm_art_dirs():
+            for _name, _node, _syskey in self.cats:
+                if not _syskey:
+                    continue
+                _art_index(ART_BASE, _syskey)
+                _art_index(ART_HD, _syskey)
+        threading.Thread(target=_prewarm_art_dirs, daemon=True).start()
+
         self.page = 0              # 0 = Kategorien-Menue, 1 = Kategorie-Ansicht
         self.cat_i = 0
         self.cat_scroll = 0
@@ -4079,6 +4130,20 @@ class Frontend:
             except Exception as e:
                 LOG("Stream-Server-Start fehlgeschlagen: %s" % e)
                 self.stream = None
+
+        # Bildschirmspiegel (Nutzerwunsch: "CRT und HDMI koennen nicht
+        # gleichzeitig laufen - waere es machbar, den Inhalt trotzdem
+        # per Stream-Overlay sichtbar zu machen? Und unter System
+        # an/aus schaltbar machen?") - eigener Hintergrund-Thread, NUR
+        # gestartet wenn sowohl der Stream-Server laeuft ALS AUCH die
+        # eigene Freigabe-Datei existiert (siehe screen_mirror_enabled()
+        # in fe/settings.py). Setzt technisch auf dem Stream-Server auf
+        # (publish_screen() dort), braucht ihn deshalb als Voraus-
+        # setzung - eigener Schalter, da nicht jeder OBS-Overlay-Nutzer
+        # auch den Bildschirm spiegeln moechte.
+        if self.stream is not None and screen_mirror_enabled():
+            threading.Thread(target=self._screen_mirror_loop,
+                             daemon=True).start()
         self.mq_off = 0            # Laufschrift-Versatz (Zeichen)
         self.mq_pause = 0          # Pausen-Ticks an den Enden
         self._mq_tick_next = 0.0   # Zeitbremse fuer marquee_tick() (Bugfix)
@@ -4448,12 +4513,36 @@ class Frontend:
         Unterordner (kind='folder', anklickbar zum Reinwechseln), dann
         die Eintraege des aktuellen Knotens - alphabetisch sortiert
         innerhalb jeder Gruppe. Ordner-Eintraege tragen als arg den
-        reinen Ordnernamen (zum Nachschlagen beim Reinwechseln)."""
+        reinen Ordnernamen (zum Nachschlagen beim Reinwechseln).
+
+        PERFORMANCE-FIX (Nutzer-Review, gegen den echten Code geprueft
+        und bestaetigt): wird an sehr vielen Stellen verwendet
+        (Zeichnen, Stream-State, Navigation, Suche, Zufall, Cover-
+        Prefetch) und sortierte bisher bei JEDEM einzelnen Aufruf neu -
+        bei einer grossen Sammlung mit vielen Unterordnern spuerbar
+        unnoetige Arbeit, da sich die Sortierung zwischen zwei Aufrufen
+        so gut wie nie aendert.
+
+        Cache direkt AM Knoten (nicht in einem separaten, global
+        wachsenden Dict) - Knoten werden im ganzen Projekt nachweislich
+        NIE nachtraeglich veraendert (kein einziges node['items'].
+        append()/node['folders'][...]=... o.ae. im gesamten Code
+        gefunden), sondern bei Aenderungen (Rescan, Favoriten-Wechsel,
+        kuratierter Filter, ...) immer als KOMPLETT NEUER Baum via
+        build_categories() aufgebaut. Ein frisch gebauter Knoten ist
+        dadurch automatisch ohne Cache-Eintrag - keine manuelle
+        Invalidierung an jeder Aenderungsstelle noetig, dasselbe
+        risikoarme Prinzip wie schon beim Stream-Dirty-Flag."""
         node = self._current_node()
+        cached = node.get("_display_items_cache")
+        if cached is not None:
+            return cached
         folder_names = sorted(node["folders"].keys(), key=str.lower)
         folder_entries = [(fname + "/", "folder", fname)
                           for fname in folder_names]
-        return folder_entries + node["items"]
+        result = folder_entries + node["items"]
+        node["_display_items_cache"] = result
+        return result
 
     QUICK_GAME_MIN_LAUNCHES = 2       # mindestens 2 Starts, sonst zu
                                       # wenig Aussagekraft
@@ -5437,20 +5526,7 @@ class Frontend:
             if foot_maxc < 6:
                 return
             h = 8 * s
-            cur_bg = getattr(self, "_cur_bg", None)
-            row_w = (W - 2 * ox)
-            if cur_bg is None:
-                fb.rect(ox, footer_y, row_w, h, C_BG)
-            else:
-                buflen, need = len(fb.buf), row_w * 4
-                for yy in range(max(0, footer_y), min(fb.height, footer_y + h)):
-                    off = yy * fb.stride + ox * 4
-                    end = off + need
-                    if end > buflen or end > len(cur_bg) or off < 0:
-                        continue
-                    chunk = cur_bg[off:end]
-                    if len(chunk) == need:
-                        fb.buf[off:end] = chunk
+            self._restore_row_bg(ox, footer_y, W - 2 * ox, h)
             track_display = self.track_marquee_text(foot_maxc)
             if track_display:
                 fb.text(ox, footer_y, track_display, s, C_DIM)
@@ -5555,6 +5631,21 @@ class Frontend:
                 for _line in _s.getvalue().splitlines():
                     if _line.strip():
                         LOG("PROFILE: " + _line)
+                # NEU (Nutzerwunsch: "noch mehr Performance rausholen" -
+                # soll klaeren, ob _TEXTCACHE_LIMIT=400 bei einer grossen
+                # Sammlung tatsaechlich zu knapp ist, oder ob die text()-
+                # Kosten schlicht an staendig NEUEN Titeln beim Scrollen
+                # liegen - siehe Kommentar bei den Zaehlern in
+                # fe/framebuffer.py). Zaehlt kumulativ ueber die ganze
+                # Sitzung, nicht pro Bild - Verdraengungen > 0 waeren ein
+                # klares Indiz, dass die Grenze zu knapp ist.
+                _th = self.fb._textcache_hits
+                _tm = self.fb._textcache_misses
+                _te = self.fb._textcache_evictions
+                _ttotal = _th + _tm
+                _trate = (_th / _ttotal * 100) if _ttotal else 0.0
+                LOG("TEXTCACHE: Treffer=%d Fehltreffer=%d Verdraengungen=%d "
+                    "Trefferquote=%.1f%%" % (_th, _tm, _te, _trate))
             return r
         _t0 = time.monotonic()
         r = self._draw_page_items_impl(message=message, flip=flip)
@@ -5584,12 +5675,51 @@ class Frontend:
         self.items_visible = visible
 
         art_key = _category_art_key(name, syskey)
-        self._cur_bg = BG.get(art_key, fb) if art_key else None
+        # NEUES FEATURE (Nutzerwunsch: "bg-Ordner rausnehmen, glaube der
+        # laggt" - siehe system_bg_enabled() in fe/settings.py). Nutzt
+        # bewusst denselben None-Pfad, der ohnehin schon existiert (fuer
+        # Kategorien ohne art_key) - kein neuer Sonderfall noetig, self.
+        # _cur_bg=None ist bereits ueberall sicher gehandhabt.
+        self._cur_bg = (BG.get(art_key, fb)
+                        if art_key and system_bg_enabled() else None)
         _tb = time.monotonic()
-        if self._cur_bg is not None:
+        # NEU (Nutzerwunsch: "HDMI-Modus muss fluessiger laufen" - echtes
+        # Profiling zeigte den vollen Pufferaufbau/-kopie (47-57ms bei
+        # JEDEM Bild) als groessten verbliebenen Einzelposten, deutlich
+        # groesser als z.B. der Schimmer-Effekt (6-8ms), der zuerst als
+        # Verdaechtiger geprueft wurde). Beim reinen Scrollen INNERHALB
+        # derselben Liste (gleiche Kategorie, gleicher Ordnerpfad,
+        # gleiche Eintragsanzahl, gleicher Hintergrund) aendert sich am
+        # Hintergrund nichts - der volle Neuaufbau ist dann komplett
+        # ueberfluessig, da Kopfzeile/Eintragsanzahl unveraendert bleiben
+        # und Zeilen sowie Cover-Panel ohnehin bei JEDEM Bild ihren
+        # kompletten eigenen Bereich neu fuellen (siehe draw_list_row()/
+        # draw_art_panel() - beide bereits entsprechend abgesichert).
+        #
+        # SICHERHEIT (wichtig, da "alle Funktionen muessen weiter
+        # funktionieren" ausdruecklich gefordert war): fb.full_redraw_gen
+        # (siehe fe/framebuffer.py) wird bei JEDEM vollstaendigen
+        # Neuaufbau hochgezaehlt, unabhaengig von hier - lief zwischen-
+        # durch irgendeine ANDERE Bildschirmseite (Hilfe, WoT, Bestaeti-
+        # gungsdialog, Attract-Modus, ...), stimmt die eigene gemerkte
+        # Generation nicht mehr mit fb.full_redraw_gen ueberein, und der
+        # schnelle Pfad wird automatisch NICHT genommen - dann laeuft
+        # wie bisher immer der volle, sichere Neuaufbau.
+        _fast_key = (self.cat_i, tuple(self.nav_path), total, art_key, W, H)
+        _fast_path = (getattr(self, "_pgi_fast_key", None) == _fast_key and
+                      getattr(self, "_pgi_fast_gen", -1) == fb.full_redraw_gen)
+        self._pgi_fast_taken = _fast_path
+        if _fast_path:
+            pass   # Hintergrund unveraendert - kompletter Neuaufbau nicht noetig
+        elif self._cur_bg is not None:
             fb.buf[:] = self._cur_bg
+            fb.mark_full_redraw()
+            self._pgi_fast_key = _fast_key
+            self._pgi_fast_gen = fb.full_redraw_gen
         else:
             fb.clear(C_BG)
+            self._pgi_fast_key = _fast_key
+            self._pgi_fast_gen = fb.full_redraw_gen
         self._perf_bg = time.monotonic() - _tb
 
         # Breadcrumb: Kategorie + aktueller Ordnerpfad (falls in einen
@@ -5639,9 +5769,72 @@ class Frontend:
             self.scroll = self.item_i - visible + 1
         self.scroll = max(0, min(self.scroll, max(0, total - visible)))
         end = min(self.scroll + visible, total)
+
+        # BUGFIX (per Pixelvergleich schneller/langsamer Pfad gefunden,
+        # mehrere Anlaeufe): der neue schnelle Pfad (siehe Kommentar
+        # beim Hintergrund weiter oben) nimmt fuer NICHT markierte
+        # Zeilen an, deren Hintergrund sei bereits korrekt - stimmt
+        # aber NUR, wenn seit dem letzten ECHTEN Neuaufbau nichts
+        # anderes an dieser Bildschirm-POSITION sass. Aendert sich die
+        # SCROLL-Position, rutscht die vorher markierte Zeile (samt
+        # ihrem Schimmer-Rand, siehe glow_border_fast() - der ragt bis
+        # zu 6*s Pixel ueber die Zeile hinaus, nach ALLEN Seiten) an
+        # eine ANDERE Bildschirm-Position.
+        #
+        # Ein erster Versuch, gezielt nur die ALTE markierte Position
+        # (+Nachbarn, +Schimmer-Rand) zu restaurieren, ist zweimal
+        # fehlgeschlagen: Rand-Ueberlappung frisst sich in nicht
+        # mitverwaltete Nachbarzeilen, und selbst eine breitere,
+        # randlose Zeilengruppe hat die Differenz nur verschoben statt
+        # beseitigt - die genaue Nachverfolgung ist fehleranfaelliger
+        # als der Performance-Gewinn wert ist. Stattdessen die simple,
+        # robuste Loesung: beim schnellen Pfad wird die KOMPLETTE
+        # Listenspalte (nicht der ganze Bildschirm!) einmal restauriert -
+        # das macht jede Row-Position garantiert wieder "frisch", genau
+        # wie ein echter clear() es fuer den ganzen Bildschirm tut, nur
+        # auf die Listenspalte begrenzt. Spart weiterhin die Kosten fuer
+        # Cover-Panel-Bereich, Kopf-/Fusszeile und Raender, ohne die
+        # Fehleranfaelligkeit der Positions-genauen Variante.
+        #
+        # Rand (10*s, grosszuegig ueber die glow_border_fast()-
+        # Reichweite hinaus) rundum die Liste mit dazu - dort liegt
+        # keine andere verwaltete Flaeche (nur Rand-/Vignette-
+        # Hintergrund bzw. der freie Zwischenraum zur Kopfzeile/
+        # Fusszeile), ein Uebergriff dorthin ist also unbedenklich.
+        # Der Abstand Kopfzeile->list_y betraegt 46*s minus der
+        # Kopfzeilen-Hoehe (~30*s) = ca. 16*s freier Zwischenraum -
+        # der 10*s-Rand bleibt also sicher innerhalb dieser Luecke.
+        # Deckt den vom Schimmer-Rand seitlich UND oben/unten (bei der
+        # ersten/letzten sichtbaren Zeile) ueberragten Bereich ab
+        # (jeweils per Pixelvergleich mit unterschiedlichen Scroll-
+        # Sequenzen als verbliebene Differenzen gefunden).
+        if getattr(self, "_pgi_fast_taken", False):
+            _lm = 10 * s
+            self._restore_row_bg(list_x - _lm, list_y - _lm,
+                                 (list_right - list_x) + 2 * _lm,
+                                 visible * rowh + 2 * _lm)
+
         _tr = time.monotonic()
         for idx in range(self.scroll, end):
-            self.draw_list_row(idx, bg_fresh=self._cur_bg is not None)
+            # BUGFIX (Nutzer-Rueckmeldung: "beim Scrollen durch meine
+            # NES-Sammlung auf HDMI fuehlt es sich immer noch laghaft
+            # an" - echtes Profiling auf echter Hardware zeigte
+            # fb.rect() als Hauptkosten, 37 Aufrufe pro Bildaufbau bei
+            # 17-18 sichtbaren Zeilen). Ursache gefunden: bg_fresh war
+            # bisher NUR True, wenn ein Bild-Hintergrund kopiert wurde
+            # (self._cur_bg is not None) - der GENAUSO gueltige Fall
+            # "gerade eben fb.clear(C_BG) aufgerufen" (kein Bild
+            # verfuegbar, einfarbiger Hintergrund) wurde dabei NICHT
+            # als "frisch" erkannt, obwohl auch clear() den KOMPLETTEN
+            # Puffer (inklusive aller Zeilenbereiche) bereits mit der
+            # exakt gleichen Farbe fuellt, die draw_list_row() fuer
+            # nicht markierte Zeilen sonst extra nochmal zeichnet -
+            # bei JEDER einzelnen der 17-18 sichtbaren Zeilen komplett
+            # redundant. bg_fresh=True gilt jetzt fuer BEIDE Faelle
+            # (direkt nach fb.buf[:]=... ODER fb.clear() in diesem
+            # Durchlauf) - draw_list_row() selbst wurde entsprechend
+            # um einen dritten Zweig ergaenzt (siehe dort).
+            self.draw_list_row(idx, bg_fresh=True)
         # BUGFIX (uebernommen aus einer parallelen Fehlerdiagnose - siehe
         # Kopfkommentar-Changelog): der obige Durchlauf zeichnet die
         # Zeilen in AUFSTEIGENDER Reihenfolge - die markierte Zeile (samt
@@ -5651,16 +5844,31 @@ class Frontend:
         # direkt auf den bereits fertigen oberen Nachbarn - und NICHTS
         # zeichnet ihn danach nochmal darueber, der Bleed bleibt also
         # dauerhaft sichtbar (nicht nur kurz waehrend eines Redraws).
-        # Nach unten faellt das nie auf, weil die jeweils naechste Zeile
-        # im selben Durchlauf ohnehin erst DANACH gezeichnet wird und
-        # den Bleed automatisch uebermalt. Fix: die Zeile direkt UEBER
-        # der Markierung (falls sichtbar) wird hier einmal mit vollem
-        # Hintergrund-Restore (bg_fresh=False) neu gezeichnet - malt
-        # einen eventuellen Bleed zuverlaessig weg, ohne den schnellen
-        # bg_fresh-Pfad fuer alle anderen Zeilen im Hauptdurchlauf zu
-        # verlangsamen.
+        # Fix: die Zeile direkt UEBER der Markierung (falls sichtbar)
+        # wird hier einmal mit vollem Hintergrund-Restore (bg_fresh=False)
+        # neu gezeichnet - malt einen eventuellen Bleed zuverlaessig weg,
+        # ohne den schnellen bg_fresh-Pfad fuer alle anderen Zeilen im
+        # Hauptdurchlauf zu verlangsamen.
+        #
+        # GEAENDERT (Nutzer-Rueckmeldung: "beim Scrollen fuehlt es sich
+        # immer noch laghaft an" - echtes Profiling zeigte redundante
+        # rect()-Aufrufe pro Zeile als Hauptkosten, siehe bg_fresh=True
+        # weiter oben). Der urspruengliche Kommentar "Nach unten faellt
+        # das nie auf, weil die naechste Zeile im selben Durchlauf
+        # ohnehin erst DANACH gezeichnet wird und den Bleed automatisch
+        # uebermalt" stimmte nur, WEIL bisher jede einzelne Zeile ihren
+        # Hintergrund individuell neu gezeichnet hat - genau das war der
+        # jetzt behobene, teure Teil. Ohne dieses "Nebenbei-Uebermalen"
+        # blutet der Glow jetzt genauso sichtbar nach UNTEN wie zuvor
+        # schon nach oben (per Differenzmessung zweier Screenshots vor/
+        # nach der Optimierung bestaetigt, Zeile 678 betroffen) - deshalb
+        # jetzt symmetrisch: auch die Zeile direkt UNTER der Markierung
+        # (falls sichtbar) wird einmal mit vollem Hintergrund-Restore
+        # neu gezeichnet.
         if self.scroll <= self.item_i - 1 < end and self.scroll <= self.item_i < end:
             self.draw_list_row(self.item_i - 1, bg_fresh=False)
+        if self.scroll <= self.item_i + 1 < end and self.scroll <= self.item_i < end:
+            self.draw_list_row(self.item_i + 1, bg_fresh=False)
         self._perf_rows = time.monotonic() - _tr
         self._perf_nrows = end - self.scroll
 
@@ -5681,6 +5889,17 @@ class Frontend:
                                     item_syskey, items[self.item_i], s)
                 self._perf_art = time.monotonic() - _ta
 
+        # ABSICHERUNG fuer den neuen schnellen Pfad oben: dieser Bereich
+        # (Nachricht ODER Musiktitel) kann sich AUCH bei reinem Scrollen
+        # unabhaengig aendern (z.B. wechselt der Song, waehrend man
+        # gerade browst) - anders als Kopfzeile/Eintragsanzahl, die bei
+        # gleicher Kategorie stabil bleiben. Ohne diese explizite
+        # Wiederherstellung koennte bei einem kuerzeren neuen Text ein
+        # Rest des vorherigen, laengeren Textes sichtbar bleiben, wenn
+        # der volle Bildschirm-Neuaufbau übersprungen wurde. Kostet nur
+        # eine schmale Zeile, nicht den ganzen Bildschirm - vernachlaessigbar,
+        # selbst wenn der volle Neuaufbau ohnehin schon lief.
+        self._restore_row_bg(ox, footer_y, W - 2 * ox, 8 * s)
         if message:
             # BUGFIX (Nutzer-Rueckmeldung: Geheimcode-Popup erschien
             # links unten am Bildschirmrand statt zentriert) - gleicher
@@ -5789,11 +6008,16 @@ class Frontend:
         need = rw * 4
         sel_radius = 3 * s
         cur_bg = getattr(self, "_cur_bg", None)
-        if bg_fresh and cur_bg is not None:
-            # Voller Redraw: der Hintergrund wurde gerade erst komplett in
-            # den Puffer kopiert - die Zeile NICHT nochmal Zeile-fuer-Zeile
-            # wiederherstellen (das war der teure, hier redundante Teil).
-            # Nur die Auswahl braucht noch ihr farbiges Feld obendrauf.
+        if bg_fresh:
+            # Voller Redraw: der Puffer wurde gerade erst KOMPLETT frisch
+            # etabliert - entweder durch Kopie eines Bild-Hintergrunds
+            # (cur_bg is not None) ODER durch fb.clear(C_BG) (kein Bild
+            # verfuegbar, einfarbig - cur_bg is None). BEIDE Faelle
+            # bedeuten: der Zeilenhintergrund steht an dieser Stelle
+            # bereits korrekt im Puffer - die Zeile NICHT nochmal
+            # Zeile-fuer-Zeile wiederherstellen (das war der teure, hier
+            # redundante Teil, siehe Aufrufstelle weiter oben). Nur die
+            # Auswahl braucht noch ihr farbiges Feld obendrauf.
             if sel:
                 fb.rect_rounded(x0, y_top, rw, rowh - 2 * s, bg, sel_radius)
         elif cur_bg is not None:
@@ -5930,6 +6154,51 @@ class Frontend:
         self.mq_off = 0
         self.mq_pause = 4
         self._mq_tick_next = 0.0
+
+    def _restore_row_bg(self, x, y, w, h):
+        """Stellt einen einzelnen, schmalen Zeilenbereich des Hintergrunds
+        wieder her (aus self._cur_bg, falls ein Bild-Hintergrund aktiv
+        ist, sonst aus der GLEICHEN zwischengespeicherten Vorlage, die
+        auch fb.clear() verwendet - siehe unten) - OHNE den kompletten
+        Bildschirm neu aufzubauen. Extrahiert aus der bereits
+        vorhandenen, bewaehrten Logik der Musiktitel-Laufschrift (siehe
+        _sync_track_marquee()) in eine gemeinsame Stelle, damit
+        _draw_page_items_impl() beim NEUEN schnellen Pfad (siehe
+        dortiger Kommentar) denselben, bereits bewaehrten Ansatz fuer
+        die Fusszeile UND fuer die Listenspalte nutzen kann.
+
+        BUGFIX (per Pixelvergleich gefunden): urspruenglich fuellte der
+        einfarbige Fall per fb.rect(x, y, w, h, C_BG) - das ignoriert
+        den Vignette-Effekt (dezente Randabdunkelung, siehe
+        VIGNETTE_ENABLED in fe/framebuffer.py), den fb.clear() fuer den
+        KOMPLETTEN Bildschirm anwendet. Das erzeugte einen sichtbaren,
+        harten Bruch zwischen der wiederhergestellten Flaeche (flach)
+        und dem Rest des Bildschirms (mit Vignette) - ueber 260.000
+        abweichende Pixel im Test, verteilt ueber die ganze Liste.
+        Jetzt wird stattdessen dieselbe zwischengespeicherte Vorlage
+        (fb._rowcache) verwendet, die fb.clear() selbst aufbaut und
+        wiederverwendet - Zeile fuer Zeile herauskopiert, genau wie
+        beim Bild-Hintergrund-Fall."""
+        fb = self.fb
+        cur_bg = getattr(self, "_cur_bg", None)
+        if cur_bg is None:
+            cur_bg = fb._rowcache.get(("bg", C_BG, fb.width, fb.height))
+        if cur_bg is None:
+            # Vorlage (noch) nicht vorhanden (sollte im schnellen Pfad
+            # eigentlich nie vorkommen, da der einen vorherigen echten
+            # clear()-Aufruf voraussetzt) - sicherer Rueckfall auf die
+            # einfache, flache Fuellung statt eines Fehlers.
+            fb.rect(x, y, w, h, C_BG)
+            return
+        buflen, need = len(fb.buf), w * 4
+        for yy in range(max(0, y), min(fb.height, y + h)):
+            off = yy * fb.stride + x * 4
+            end = off + need
+            if end > buflen or end > len(cur_bg) or off < 0:
+                continue
+            chunk = cur_bg[off:end]
+            if len(chunk) == need:
+                fb.buf[off:end] = chunk
 
     def _sync_track_marquee(self):
         """Bei Songwechsel den Laufschrift-Zustand des Titels
@@ -6556,11 +6825,41 @@ class Frontend:
             # System existiert (z.B. ein sehr seltenes/eigenes System
             # ohne mitgeliefertes BG), bleibt der reine Textplatzhalter
             # als letzter Rueckfall bestehen.
+            #
+            # PERFORMANCE-BUGFIX (Nutzer-Rueckmeldung: "beim Scrollen
+            # fuehlt es sich laghaft an" - echtes Profiling auf echter
+            # Hardware fand hier einen erheblichen, sich WIEDERHOLENDEN
+            # Kostenfaktor, keinen Einmal-Fall): dieses Rueckfallbild
+            # ist das GROSSE, fast bildschirmfuellende Systembild -
+            # jedes Herunterskalieren auf Panel-Groesse kostete 200-
+            # 700+ ms. Der Festplatten-Cache (siehe THUMB_CACHE) haette
+            # das eigentlich nach dem ersten Mal abfangen sollen - tat
+            # es aber nicht, weil cover_h (die Zielhoehe) von Spiel zu
+            # Spiel geringfuegig schwankt (unterschiedlich viele
+            # Metadaten-Zeilen: Genre/Jahr/Spielzeit/RA-Fortschritt/
+            # Durchgespielt-Markierung aendern die verbleibende
+            # Cover-Hoehe) - jede Abweichung war ein neuer Cache-
+            # Schluessel, also ein neuer Fehltreffer, obwohl inhaltlich
+            # dasselbe Bild in praktisch derselben Groesse gebraucht
+            # wurde. Bestaetigt im echten Log: bei GBC-Spielen ohne
+            # eigenes Cover wiederholte sich der teure Fall bei JEDEM
+            # einzelnen Spiel (201/653/224/39/590/212/650/183/674/200/
+            # 632/182/45/629/768/629 ms - nicht nur einmal).
+            #
+            # Fix: NUR fuer dieses Rueckfallbild (nicht fuer normale
+            # Spiele-Cover, wo Pixelgenauigkeit zaehlt) wird die
+            # Zielgroesse auf ein groberes Raster (8px) gerundet - bei
+            # einem grossen, generischen Hintergrundbild als Platz-
+            # halter faellt eine Abweichung von wenigen Pixeln optisch
+            # nicht auf, ermoeglicht aber, dass praktisch alle Spiele
+            # desselben Systems denselben Cache-Eintrag treffen.
             bg_fallback = None
-            if syskey:
+            if syskey and system_bg_enabled():
+                _bg_fb_w = max(1, (avail_w // 8) * 8)
+                _bg_fb_h = max(1, (cover_h // 8) * 8)
                 for fn in ("%s_%dx%d.art" % (syskey, fb.width, fb.height),
                           "%s.art" % syskey):
-                    bg_fallback = ART.get_scaled(os.path.join(BG_BASE, fn), avail_w, cover_h)
+                    bg_fallback = ART.get_scaled(os.path.join(BG_BASE, fn), _bg_fb_w, _bg_fb_h)
                     if bg_fallback:
                         break
             if bg_fallback:
@@ -6707,6 +7006,16 @@ class Frontend:
             self.music.resume_after_core()
             self.back_to_frontend()
             return
+        # NEUES FEATURE (Nutzerwunsch: "das Frontend muesste registrieren,
+        # wann ein Spiel startet, und OBS entsprechend umschalten") - ERST
+        # HIER, nachdem der Core nachweislich lief (started=True oben),
+        # nicht schon beim blossen Tastendruck - sonst wuerde OBS bei
+        # einem fehlgeschlagenen Start (siehe "if not started" gerade
+        # eben) faelschlich zur Spiel-Szene wechseln, obwohl gar kein
+        # Spiel laeuft. Komplett wirkungslos, falls nicht konfiguriert
+        # (siehe obs_switch_to_game() in stream_server.py).
+        if self.stream:
+            self.stream.obs_switch_to_game()
         play_start = time.monotonic()
         play_start_wall = time.time()   # fuer die Nachteule-Pruefung (Tageszeit) -
                                         # play_start selbst ist absichtlich
@@ -6738,6 +7047,13 @@ class Frontend:
                 t1 = time.monotonic()
                 while current_core() != "MENU" and time.monotonic() - t1 < 10:
                     time.sleep(0.3)
+        # Bewusst HIER, direkt nach der Schleife (deckt BEIDE Wege
+        # zurueck ab: normales Core-Ende UND manueller Notausstieg
+        # ueber combo/f10/hid_combo oben) - EINE Stelle statt an jedem
+        # der beiden Ausstiegspfade einzeln, da beide hier zusammen-
+        # laufen. Komplett wirkungslos, falls nicht konfiguriert.
+        if self.stream:
+            self.stream.obs_switch_to_frontend()
         if ra_watch_stop:
             ra_watch_stop.set()
         played_seconds = time.monotonic() - play_start
@@ -6881,6 +7197,24 @@ class Frontend:
             elif act in ("back", "exit"):
                 return None   # Abbruch - Kategorie wird NICHT betreten
 
+    def _draw_wot_title(self, fb, ox, oy, text_w, s):
+        """Zeichnet den 'Wonne oder Tonne'-Titel - als Logo-Bild, falls
+        WOT_LOGO_FILE vorhanden ist (Nutzerwunsch: eigenes Artwork
+        statt nur des reinen Textes), sonst automatisch der bisherige
+        Text-Titel als Rueckfall. In den gleichen Hoehen-Rahmen
+        eingepasst (max. 55*s hoch), den der reine Text vorher belegt
+        hat (games_top = oy + 70*s bleibt dadurch fuer BEIDE Faelle
+        unveraendert - kein Eingriff in die Zeilen-Positionierung
+        weiter unten noetig)."""
+        max_h = 55 * s
+        art = ART.get_scaled(WOT_LOGO_FILE, text_w, max_h)
+        if art:
+            lw, lh, pix = art
+            self.blit(ox, oy, lw, lh, pix)
+            return
+        fb.text(ox, oy, t("wot_title"),
+                self._fit_scale(t("wot_title"), text_w, s + 1), C_TITLE, C_BG)
+
     def draw_wot_screen(self):
         """'Wonne oder Tonne' (Dennsens Format): baut EINMAL (mit kurzer
         Fortschrittsanzeige) die Liste der tatsaechlich SPIELBAREN Spiele -
@@ -6910,8 +7244,7 @@ class Frontend:
         # bei grosser CSV / ROMs auf NAS ein paar Sekunden dauern kann.
         def _progress(done, total):
             fb.clear(C_BG)
-            fb.text(ox, oy, t("wot_title"),
-                    self._fit_scale(t("wot_title"), text_w, s + 1), C_TITLE, C_BG)
+            self._draw_wot_title(fb, ox, oy, text_w, s)
             fb.text(ox, oy + 70 * s, t("wot_checking", done, total), s, C_TEXT, C_BG)
             fb.flip()
         index_cache = {}
@@ -6988,8 +7321,7 @@ class Frontend:
             back_to_menu = False
             while True:
                 fb.clear(C_BG)
-                fb.text(ox, oy, t("wot_title"),
-                        self._fit_scale(t("wot_title"), text_w, s + 1), C_TITLE, C_BG)
+                self._draw_wot_title(fb, ox, oy, text_w, s)
 
                 # Spielzeilen (volle Breite)
                 y = games_top
@@ -7097,8 +7429,7 @@ class Frontend:
         options = [t("wot_option_start"), t("wot_option_back")]
         while True:
             fb.clear(C_BG)
-            fb.text(ox, oy, t("wot_title"),
-                    self._fit_scale(t("wot_title"), text_w, s + 1), C_TITLE, C_BG)
+            self._draw_wot_title(fb, ox, oy, text_w, s)
             y = oy + 70 * s
             fb.text(ox, y, clean_title, self._fit_scale(clean_title, text_w, s + 1), accent, C_BG)
             y += 50 * s
@@ -9010,9 +9341,131 @@ class Frontend:
             "favorite": is_favorite,
         }
 
+    def _screen_mirror_loop(self):
+        """Haengt im Hintergrund, bis das Frontend beendet wird (daemon-
+        Thread, siehe Start-Stelle in __init__) - kodiert den aktuellen
+        Framebuffer-Inhalt periodisch als PNG und stellt ihn ueber den
+        Stream-Server bereit (siehe publish_screen() in
+        stream_server.py, dort auch die eigentliche BGRA->RGBA/Stride-
+        Umwandlung).
+
+        Absichtlich EIGENER Thread statt in next_action()/draw()
+        eingehaengt: PNG-Kodierung ist CPU-gebunden (dieselbe Lehre wie
+        beim Boxart-Konvertieren, siehe CONVERT_WORKERS-Kommentar in
+        mister_boxart.py - reine Python-Pixelarbeit ist teuer), soll
+        aber die Reaktionsfaehigkeit der Eingabe-Hauptschleife nicht
+        blockieren.
+
+        BUGFIX (Nutzer-Nachfrage: "laeuft das wirklich lagfrei, ohne
+        Performance-Einbussen?" - direkt nachgemessen, nicht nur
+        angenommen): der urspruengliche Kommentar hier behauptete, die
+        2-Sekunden-Drosselung wuerde "besonders bei HDMI" reichen -
+        das war eine unbelegte Annahme, keine Messung. Tatsaechlich
+        gemessen (selbst auf einer deutlich staerkeren Cloud-CPU als
+        dem schwachen MiSTer-ARM-Kern): CRT (320x240) ~15-30ms pro
+        Bild, voellig unbedenklich - aber HDMI (1920x1080) ~400-830ms
+        PRO EINZELNEM BILD, und ein parallel simulierter Haupt-Thread
+        verlor waehrend eines einzelnen HDMI-Kodiervorgangs nachweis-
+        lich 57% seines Durchsatzes (GIL-Konkurrenz, da reine Python-
+        Pixelarbeit den Interpreter blockiert). Auf echter, schwaecherer
+        MiSTer-Hardware waere das noch deutlich schlimmer - genau die
+        Art sptürbarer Verzoegerung, die dieses Feature laut Nutzer
+        NICHT verursachen sollte.
+
+        Fix: HDMI-Aufloesungen werden komplett uebersprungen (kein
+        publish_screen()-Aufruf, keine Kodierung) - inhaltlich auch
+        sinnvoll, da der eigentliche Zweck (Bildschirminhalt sehen,
+        waehrend man auf CRT laeuft und HDMI nicht direkt einsehen
+        kann) bei HDMI ohnehin nicht gebraucht wird: dort sieht man
+        den Bildschirm ja bereits direkt.
+
+        BUGFIX 2 (Nutzer-Rueckmeldung NACH dem ersten echten Test:
+        "die 2-Sekunden-Aktualisierung sieht aus wie Standbilder, geht
+        das fluessiger?"): das pauschale 2-Sekunden-Intervall einfach
+        zu verkuerzen haette bei UNVERAENDERTEM Bildschirm (z.B. wenn
+        man einfach nur im Menue steht) unnoetig oft neu kodiert -
+        dieselbe Art Verschwendung, die full_redraw_gen beim HDMI-
+        Fast-Path schon vermeidet. Stattdessen: das Pruefintervall
+        selbst wird kuerzer (oefter nachschauen), aber NUR wenn sich
+        der Bildschirm seit dem letzten Schnappschuss TATSAECHLICH
+        veraendert hat (fb.flip_gen, siehe fe/framebuffer.py - zaehlt
+        bei JEDER sichtbaren Aenderung hoch, auch Laufschrift/Puls,
+        nicht nur bei vollen Neuaufbauten), wird ueberhaupt neu
+        kodiert. Bei Stillstand bleibt die Kosten praktisch bei null,
+        bei aktiver Navigation wirkt es deutlich fluessiger als vorher
+        - ohne das GROSSZUEGIG-Prinzip von vorhin (kein Dauerfeuer bei
+        HDMI-Aufloesung, siehe oben) aufzugeben, da dieser Dirty-Check
+        UNABHAENGIG von der HDMI-Ausschluss-Pruefung wirkt.
+
+        NACHTRAEGLICH WEITER VERKUERZT (Nutzer-Nachfrage nach dem
+        ersten echten Test: "noch fluessiger geht nicht?"): risikoarm,
+        da der Dirty-Check oben die Leerlauf-Kosten UNABHAENGIG vom
+        Pruefintervall bei null haelt - nur die maximale Verzoegerung
+        zwischen einer echten Aenderung und ihrem Erscheinen im
+        Spiegel sinkt. Bewusst nicht extremer (z.B. 50ms) - das waere
+        kein Schnappschuss-Mechanismus mehr, sondern naeherte sich
+        einer echten Videoausgabe an, fuer die dieser Bild-per-HTTP-
+        Ansatz architektonisch nicht gebaut ist. 0.2s ist ein
+        vernuenftiger Punkt: spuerbar fluessiger, ohne die
+        Kodierhaeufigkeit bei AKTIVER Nutzung uebermaessig zu
+        steigern (die einzelnen Kodiervorgaenge selbst bleiben exakt
+        gleich teuer wie vorher, nur die maximale Wartezeit sinkt)."""
+        CHECK_INTERVAL = 0.2
+        # Schwelle bewusst grosszuegig ueber typischen CRT-Aufloesungen
+        # (320x240 bis hoch zu z.B. 640x480 bei einigen Cores) und klar
+        # UNTER jeder HDMI-Aufloesung (kleinste ueblicherweise 1280x720)
+        # angesetzt - kein Grenzfall zu erwarten.
+        MAX_MIRROR_WIDTH = 640
+        last_gen = -1
+        while True:
+            try:
+                fb = self.fb
+                if fb.width <= MAX_MIRROR_WIDTH and fb.flip_gen != last_gen:
+                    self.stream.publish_screen(fb.width, fb.height,
+                                               fb.stride, fb.buf)
+                    last_gen = fb.flip_gen
+            except Exception:
+                pass  # naechster Durchlauf versucht es erneut - ein
+                      # einzelner fehlgeschlagener Schnappschuss ist
+                      # kein Grund, den Hintergrund-Thread zu beenden
+            time.sleep(CHECK_INTERVAL)
+
     def _publish_stream(self):
         if not self.stream:
             return
+        # PERFORMANCE-FIX (Analyse eines Nutzer-Reviews, gegen den echten
+        # Code geprueft und bestaetigt): _publish_stream() lief bisher bei
+        # JEDEM Schleifendurchlauf in run() - auf CRT bis zu ~100x/Sekunde -
+        # und baute dabei IMMER den kompletten stream_state() auf (inkl.
+        # der ungecachten _display_items()-Sortierung sowie Metadaten-/RA-
+        # Lookups), nur um DANACH festzustellen, dass sich meistens gar
+        # nichts geaendert hat. Betrifft nur Sitzungen mit aktivem Stream-
+        # Overlay, dort aber potenziell sehr haeufig.
+        #
+        # Fix: guenstige Vorpruefung OHNE _display_items()/Metadaten-
+        # Zugriff (nur bereits vorhandene Attribute: Seite/Kategorie/
+        # Auswahl/Scroll/Songtitel) - hat sich NICHTS davon geaendert,
+        # lohnt sich der teure volle Aufbau meistens nicht. BEWUSST kein
+        # rein ereignisbasiertes Dirty-Flag (haette an JEDER Stelle im
+        # Code manuell gesetzt werden muessen, die RA-Fortschritt/
+        # Spielzeit/Favoriten aendert - hohes Risiko, eine Stelle zu
+        # uebersehen und damit den Zuschauern einen veralteten Stand zu
+        # zeigen). Stattdessen zusaetzliches Zeit-Sicherheitsnetz: selbst
+        # ohne Aenderung an den guenstigen Feldern wird spaetestens alle
+        # 2 Sekunden trotzdem einmal voll aufgebaut - faengt Hintergrund-
+        # Aenderungen ab (RA-Fortschritt kommt asynchron rein, Spielzeit
+        # laeuft weiter), OHNE bei jedem einzelnen Tick die teure Arbeit
+        # zu wiederholen.
+        now = time.monotonic()
+        nowplaying = (self.music.current_track_name()
+                      if hasattr(self, "music") else None)
+        cheap_sig = (self.page, self.cat_i, self.item_i, self.scroll, nowplaying)
+        last_cheap = getattr(self, "_stream_cheap_sig", None)
+        last_full_check = getattr(self, "_stream_last_full_check", 0.0)
+        if cheap_sig == last_cheap and now - last_full_check < 2.0:
+            return
+        self._stream_cheap_sig = cheap_sig
+        self._stream_last_full_check = now
         try:
             st = self.stream_state()
         except Exception:
@@ -9901,6 +10354,44 @@ class Frontend:
                             self._refresh_system_category()
                         elif kind == "dragend_logo":
                             toggle_dragend_logo()
+                            self._refresh_system_category()
+                        elif kind == "system_bg":
+                            # NEUES FEATURE (Nutzerwunsch: "bg-Ordner
+                            # rausnehmen, glaube der laggt ein wenig") -
+                            # wirkt SOFORT (beide Aufrufstellen pruefen
+                            # system_bg_enabled() live beim Zeichnen,
+                            # kein zwischengespeicherter Zustand wie bei
+                            # Stream-Overlay/Bildschirmspiegel), deshalb
+                            # kein Neustart-Hinweis in der Beschriftung.
+                            toggle_system_bg()
+                            self._refresh_system_category()
+                        elif kind == "stream_overlay":
+                            # NEUES FEATURE (Nutzerwunsch: "kann man das
+                            # mit Stream Overlay in den Optionen an/aus
+                            # schaltbar machen?") - toggelt nur die
+                            # Freigabe-Datei (siehe fe/settings.py), der
+                            # StreamServer selbst wird weiterhin nur
+                            # beim Frontend-Start aufgebaut (self.stream
+                            # in __init__) - Menue-Beschriftung weist
+                            # deshalb ausdruecklich auf "wirkt nach
+                            # Neustart" hin, kein stiller Unterschied
+                            # zum bisherigen externen Scripts/
+                            # stream_toggle.sh.
+                            toggle_stream_overlay()
+                            self._refresh_system_category()
+                        elif kind == "screen_mirror":
+                            # NEUES FEATURE (Nutzerwunsch: "CRT und HDMI
+                            # koennen nicht gleichzeitig laufen - waere
+                            # es machbar, den Bildschirminhalt trotzdem
+                            # per Stream-Overlay sichtbar zu machen?
+                            # Und das unter System an/aus schaltbar
+                            # machen?") - toggelt nur die Freigabe-Datei,
+                            # der eigentliche periodische Push (siehe
+                            # _publish_screen_mirror_loop()) wird
+                            # ebenfalls nur beim Frontend-Start
+                            # aufgebaut - wirkt also, wie beim Stream-
+                            # Overlay selbst, erst nach einem Neustart.
+                            toggle_screen_mirror()
                             self._refresh_system_category()
                         elif kind == "update_check":
                             toggle_update_check()

@@ -78,6 +78,11 @@ def _fake_fb_init(self, bpp=32):
     self._textcache_order = []
     self._TEXTCACHE_LIMIT = 400
     self._vsync_supported = False       # ioctl erst gar nicht versuchen
+    self.full_redraw_gen = 0            # siehe Framebuffer.mark_full_redraw()
+    self.flip_gen = 0                   # siehe Framebuffer.flip()/flip_rows()
+    self._textcache_hits = 0            # siehe Framebuffer.text()
+    self._textcache_misses = 0
+    self._textcache_evictions = 0
 
 
 def _fake_fb_refresh_geometry(self):
