@@ -29,6 +29,17 @@ echo "=== MiSTer Custom Frontend - Deinstallation ==="
 echo ""
 
 # --- Laufende Instanz sauber beenden ---
+# BEWUSST OHNE den Selbstmord-Schutz aus install_frontend.sh/install.sh/
+# install_offline.sh/update_frontend.sh: bei einer Deinstallation SOLL
+# das Frontend danach nicht mehr laufen, egal ob dieses Skript aus
+# MiSTers eigenem OSD oder aus dem Frontend-Menue selbst gestartet
+# wurde - der Kill hier ist das gewuenschte Ergebnis, nicht ein
+# Seiteneffekt, der vermieden werden muesste. Der Kind-Prozess (dieses
+# Skript) laeuft dank setsid() in _ctty() ohnehin in einer eigenen
+# Sitzung weiter und wird von einem sterbenden Elternprozess nicht
+# beeintraechtigt - die restlichen Aufraeumschritte laufen also auch
+# dann sauber zu Ende, wenn der Kill hier tatsaechlich das aufrufende
+# Frontend selbst trifft.
 if [ -f "$LOCKFILE" ]; then
     OLD_PID=$(cat "$LOCKFILE" 2>/dev/null)
     if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then

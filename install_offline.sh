@@ -150,11 +150,17 @@ fi
 
 # ------------------------------------------------------------
 # 2. Laufende Instanz beenden
+# BUGFIX (siehe install_frontend.sh fuer die ausfuehrliche Begruendung -
+# identisches Deadlock-Risiko, falls aus dem Frontend-Menue selbst statt
+# aus MiSTers eigenem OSD gestartet)
 # ------------------------------------------------------------
 if [ -f "$LOCKFILE" ]; then
     step "Laufende Instanz"
     OLD_PID="$(cat "$LOCKFILE" 2>/dev/null)"
-    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+    if [ -n "$OLD_PID" ] && [ "$OLD_PID" = "$PPID" ]; then
+        say "  Aus dem Frontend-Menue selbst gestartet - ueberspringe"
+        say "  das Beenden der 'laufenden Instanz' (waere sie selbst)."
+    elif [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
         say "  Beende laufende Instanz (PID $OLD_PID)..."
         kill "$OLD_PID" 2>/dev/null
         i=0

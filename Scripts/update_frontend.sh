@@ -18,6 +18,17 @@ LOCKFILE="/tmp/frontend.lock"
 
 echo "Frontend-Update wird angewendet..."
 
+# BEWUSST OHNE den Selbstmord-Schutz aus install_frontend.sh/install.sh/
+# install_offline.sh: hier ist der Kill tatsaechlich beabsichtigt UND
+# funktioniert korrekt selbst dann, wenn er das aufrufende Frontend
+# selbst trifft - anders als bei den Install-Skripten (die auf das
+# ORIGINAL-Frontend angewiesen sind, das nach diesem Script normal ueber
+# back_to_frontend() zurueckkehrt) startet DIESES Script am Ende selbst
+# einen frischen Frontend-Prozess (exec python3 frontend.py, siehe
+# unten) - der Kill hier toetet also bewusst die ALTE Instanz, bevor
+# gleich die NEUE (mit aktualisiertem Code) an ihrer Stelle startet.
+# Wuerde der Kill hier uebersprungen, liefen am Ende ZWEI
+# Frontend-Prozesse gleichzeitig - ein anderes, neues Problem.
 if [ -f "$LOCKFILE" ]; then
     OLD_PID=$(cat "$LOCKFILE" 2>/dev/null)
     if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then

@@ -44,9 +44,28 @@ else
 fi
 
 # --- Laufende Instanz sauber beenden (falls vorhanden) ---
+# BUGFIX (Nutzer-Rueckmeldung: "Skript startet nicht sichtbar, Frontend
+# haengt danach fest" - per Log bestaetigt: subprocess.call() im
+# Frontend kehrte NIE zurueck): dieses Skript funktioniert normal aus
+# MiSTers eigenem OSD gestartet (dort ist die "laufende Instanz" ein
+# GENUIN unabhaengiger Hintergrundprozess) - aber startet man es aus
+# dem Frontend-Menue SELBST (System -> Scripts), ist die im Lockfile
+# hinterlegte PID das EIGENE Elternprogramm, das gerade blockierend
+# (subprocess.call()) auf genau dieses Skript wartet. Der bisherige
+# Kill toetete es dabei mitten im Warten - Deadlock: das Skript kann
+# nicht fertig werden (kein Prozess mehr da, der zurueck ins Frontend
+# wechselt), das Frontend kann nicht zurueckkehren (der subprocess-
+# Aufruf, der noch laeuft, haelt es fest). setsid() im Frontend (siehe
+# _ctty() in run_script()) aendert zwar die Session, NICHT aber PPID -
+# $PPID zeigt deshalb zuverlaessig weiterhin auf das aufrufende
+# Frontend, falls so gestartet.
 if [ -f "$LOCKFILE" ]; then
     OLD_PID=$(cat "$LOCKFILE" 2>/dev/null)
-    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+    if [ -n "$OLD_PID" ] && [ "$OLD_PID" = "$PPID" ]; then
+        echo "Aus dem Frontend-Menue selbst gestartet - ueberspringe"
+        echo "das Beenden der 'laufenden Instanz' (waere sie selbst)."
+        echo "Das Frontend kehrt nach diesem Skript automatisch zurueck."
+    elif [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
         echo "Beende laufende Instanz (PID $OLD_PID)..."
         kill "$OLD_PID" 2>/dev/null
         i=0
