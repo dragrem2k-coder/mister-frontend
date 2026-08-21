@@ -7217,10 +7217,27 @@ class Frontend:
         self.music.pause_for_core()
         self.enter_console_mode()
         self.set_cursor_blink(True)
+        # NEUE DIAGNOSE (Nutzer-Rueckmeldung: "wenn ich ein Script starte,
+        # wechselt das Frontend in den Konsolenmodus und dann passiert
+        # nichts weiter") - bislang wurde ein fehlgeschlagenes Oeffnen
+        # von /dev/tty1 KOMPLETT still abgefangen (tty=None), und der
+        # Fallback-Pfad (subprocess.call(raw) weiter unten) leitet
+        # Ein-/Ausgabe NIRGENDS explizit um - das Script liefe dann mit
+        # den geerbten Datei-Deskriptoren des Frontend-Prozesses selbst,
+        # die je nach Start-Methode (Dienst/SSH/Skript) NICHT der
+        # sichtbare Bildschirm sein muessen. Genau das wuerde das
+        # gemeldete Symptom erklaeren: der Bildschirm wechselt (passiert
+        # bedingungslos VOR diesem try/except), aber das Script selbst
+        # landet sichtbar nirgends. Ohne Log-Zeile war bisher nicht mal
+        # unterscheidbar, OB dieser Fall ueberhaupt eintritt.
         try:
             tty = open("/dev/tty1", "r+b", buffering=0)
-        except OSError:
+            LOG("run_script: /dev/tty1 erfolgreich geoeffnet fuer %s" % path)
+        except OSError as e:
             tty = None
+            LOG("run_script: /dev/tty1 KONNTE NICHT geoeffnet werden (%s) - "
+                "Skript laeuft ohne explizite Ein-/Ausgabe-Umleitung, "
+                "vermutlich NICHT sichtbar auf dem Bildschirm!" % e)
         # UEBERNOMMENER VORSCHLAG (TheRealSutefan): tty1 zum STEUERNDEN
         # Terminal des Scripts machen (neuer Session-Leader + TIOCSCTTY).
         # Erst dann laufen dialog/whiptail und alles, was /dev/tty
@@ -7248,12 +7265,15 @@ class Frontend:
         # Bildschirm dem Script ueberlassen
         try:
             if tty:
-                subprocess.call(wrapped, preexec_fn=_ctty,
-                                stdin=tty, stdout=tty, stderr=tty,
-                                env=dict(os.environ, TERM="linux",
-                                         HOME="/root"))
+                LOG("run_script: starte mit tty1-Umleitung: %s" % wrapped)
+                rc = subprocess.call(wrapped, preexec_fn=_ctty,
+                                     stdin=tty, stdout=tty, stderr=tty,
+                                     env=dict(os.environ, TERM="linux",
+                                              HOME="/root"))
             else:
-                subprocess.call(raw)
+                LOG("run_script: starte OHNE tty1-Umleitung (Fallback): %s" % raw)
+                rc = subprocess.call(raw)
+            LOG("run_script: %s beendet, Ruecksprungwert=%s" % (path, rc))
         except Exception as e:
             LOG("run_script: Fehler bei %s: %s" % (path, e))
         finally:
