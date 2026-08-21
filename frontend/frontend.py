@@ -4095,6 +4095,22 @@ class Frontend:
         self.attract_mode = False
         self._last_input_time = time.monotonic()
         self._settled_redrawn = True   # Cover-Nachladen erst nach Bewegung
+        # BUGFIX (Nutzer-Rueckmeldung: "ich hatte einen Erfolg, z.B.
+        # Entdecker 5 verschiedene Systeme, aber es kam kein Popup und
+        # kein Ton"): gefunden ueber die vom Nutzer selbst geaeusserte
+        # Vermutung, die Songtitel-Laufschrift koennte damit zu tun
+        # haben - bestaetigt richtig, nur an anderer Stelle als gedacht.
+        # draw(message=...) und _draw_dynamic_track_marquee() (Seite 1)
+        # zeichnen beide an EXAKT derselben Stelle (footer_y) - die
+        # Laufschrift kennt aber keine gerade angezeigte Meldung und
+        # ueberschreibt sie beim naechsten faelligen Tick (bis zu
+        # 12.5x/Sekunde) einfach wieder mit dem Songtitel, oft
+        # innerhalb von unter 100ms - die Meldung war dann de facto nie
+        # wahrnehmbar, obwohl draw() sie korrekt gezeichnet hatte.
+        # Schutzfenster: solange time.monotonic() < diesem Zeitpunkt,
+        # verzichtet _draw_dynamic_track_marquee() bewusst auf ihren
+        # eigenen Tick, statt die Meldung zu riskieren.
+        self._popup_message_until = 0.0
         # NEU (Phase 2, Nutzerwunsch "Vorab-Laden nach Scrollrichtung"):
         # merkt sich, ob zuletzt nach unten (1) oder oben (-1) navigiert
         # wurde - _prefetch_neighbor_covers() bevorzugt beim Vorab-Laden
@@ -4836,6 +4852,13 @@ class Frontend:
         self._sync_track_marquee()
         self._maybe_retry_ra()
         self._maybe_retry_clock()
+        if message:
+            # Schutzfenster setzen (siehe Kommentar bei
+            # self._popup_message_until in __init__) - 2 Sekunden sind
+            # grosszuegig genug, um eine kurze Meldung sicher lesen zu
+            # koennen, aber kurz genug, dass die Laufschrift danach
+            # zuegig wieder normal weiterlaeuft.
+            self._popup_message_until = time.monotonic() + 2.0
         if self.attract_mode:
             self.draw_attract()
             return
@@ -5516,6 +5539,18 @@ class Frontend:
                 fb.text(track_x, y, track_text, s, C_DIM, C_BG)
             fb.flip_rows(y, h)
         else:
+            # BUGFIX (siehe self._popup_message_until in __init__) -
+            # Meldung UND Laufschrift teilen sich hier dieselbe Zeile
+            # (footer_y) - ohne diesen Schutz wuerde eine gerade erst
+            # gezeigte Meldung (z.B. Erfolgs-Popup) vom naechsten
+            # faelligen Laufschrift-Tick sofort wieder ueberschrieben,
+            # oft binnen unter 100ms, bevor sie ueberhaupt wahrnehmbar
+            # war. Einfaches Aussetzen fuer die Dauer des
+            # Schutzfensters - die Laufschrift bewegt sich in dieser
+            # kurzen Zeit ohnehin kaum spuerbar, kein wahrnehmbarer
+            # Nachteil fuer die Laufschrift selbst.
+            if time.monotonic() < self._popup_message_until:
+                return
             v = getattr(self, "view", None)
             if not v:
                 return
@@ -6553,6 +6588,24 @@ class Frontend:
                         # (~5ms voller Aufbau vs. ~0.4ms hier auf HDMI
                         # gemessen) - genau die Ticks, die am
                         # haeufigsten laufen (bis zu 12.5x/Sekunde).
+                        #
+                        # NEUES PROFILING (Nutzer-Vermutung: "waere es
+                        # sinnvoll, die Laufschrift/den Equalizer beim
+                        # Scrollen rauszunehmen?"): die "~0.4ms"-Messung
+                        # oben stammt vermutlich aus einer Umgebung OHNE
+                        # echte Vsync-Synchronisierung - _draw_dynamic_
+                        # items() ruft flip_rows() auf, das denselben
+                        # ioctl-Vsync-Wartevorgang ausloest, der bei
+                        # draw_page_items() auf echter Hardware bereits
+                        # 8-17ms gekostet hat (siehe PERF-Logs). Ob das
+                        # hier GENAUSO viel kostet und sich mit bis zu
+                        # 12.5 Ticks/Sekunde spuerbar aufsummiert, ist
+                        # noch unbestaetigt - deshalb dieselbe Art
+                        # DRAGEND_PROFILE-Messung wie bei draw_page_items,
+                        # NUR wenn die Umgebungsvariable gesetzt ist
+                        # (kein Zusatzaufwand im Normalbetrieb).
+                        if os.environ.get("DRAGEND_PROFILE") == "1":
+                            _dt0 = time.monotonic()
                         if redraw_dynamic:
                             if self.page == 0:
                                 self._draw_dynamic_cats()
@@ -6560,6 +6613,16 @@ class Frontend:
                                 self._draw_dynamic_items()
                         if redraw_marquee:
                             self._draw_dynamic_track_marquee()
+                        if os.environ.get("DRAGEND_PROFILE") == "1":
+                            _dtick = time.monotonic() - _dt0
+                            if _dtick > 0.003:   # bewusst NIEDRIGE Schwelle
+                                                  # (3ms) - selbst bei der
+                                                  # behaupteten 0.4ms-Kosten
+                                                  # waere das noch 7x Spielraum,
+                                                  # aber faengt jeden echten
+                                                  # Vsync-Ausreisser zuverlaessig
+                                LOG("PERF tick: %.1f ms (marquee=%s dynamic=%s)"
+                                    % (_dtick * 1000, redraw_marquee, redraw_dynamic))
             self.music.tick()
 
     @staticmethod
@@ -9409,26 +9472,57 @@ class Frontend:
         vernuenftiger Punkt: spuerbar fluessiger, ohne die
         Kodierhaeufigkeit bei AKTIVER Nutzung uebermaessig zu
         steigern (die einzelnen Kodiervorgaenge selbst bleiben exakt
-        gleich teuer wie vorher, nur die maximale Wartezeit sinkt)."""
-        CHECK_INTERVAL = 0.2
+        gleich teuer wie vorher, nur die maximale Wartezeit sinkt).
+
+        NACHTRAEGLICH EREIGNISGESTEUERT GEMACHT (Nutzerwunsch: "kann
+        man beim Mirror noch mehr rausholen?"): das Pruefintervall
+        von 0.2s bedeutete bisher, dass selbst eine einzelne,
+        isolierte Aenderung (z.B. Menuewechsel nach laengerem
+        Stillstand) im schlimmsten Fall bis zu 200ms brauchte, bevor
+        der Spiegel sie ueberhaupt bemerkte. fb.flip_event (siehe
+        fe/framebuffer.py, wird von flip()/flip_rows() gesetzt) weckt
+        die Schleife jetzt SOFORT auf, statt starr zu schlafen. Die
+        MINDESTABSTAND-Drosselung zwischen zwei tatsaechlichen
+        Kodiervorgaengen bleibt UNVERAENDERT bei 0.2s bestehen -
+        schnelles, durchgehendes Scrollen loest weiterhin nicht
+        haeufiger als bisher eine echte Kodierung aus, nur eine
+        EINZELNE, ISOLIERTE Aenderung erscheint jetzt praktisch
+        sofort statt erst beim naechsten Prüf-Zyklus."""
+        MIN_ENCODE_INTERVAL = 0.2
+        # Sicherheitsnetz-Timeout: falls das Event aus irgendeinem
+        # Grund nie ausgeloest wird (sollte nicht vorkommen, da JEDER
+        # sichtbare Bildschirmwechsel ueber flip()/flip_rows() laeuft),
+        # schaut die Schleife trotzdem spaetestens hier wieder nach -
+        # kein permanentes Haengenbleiben moeglich.
+        SAFETY_TIMEOUT = 1.0
         # Schwelle bewusst grosszuegig ueber typischen CRT-Aufloesungen
         # (320x240 bis hoch zu z.B. 640x480 bei einigen Cores) und klar
         # UNTER jeder HDMI-Aufloesung (kleinste ueblicherweise 1280x720)
         # angesetzt - kein Grenzfall zu erwarten.
         MAX_MIRROR_WIDTH = 640
         last_gen = -1
+        last_encode = 0.0
         while True:
             try:
                 fb = self.fb
+                fb.flip_event.wait(timeout=SAFETY_TIMEOUT)
+                fb.flip_event.clear()
+                # Mindestabstand seit dem letzten ECHTEN Kodiervorgang
+                # erzwingen - bei einer Serie schneller Aenderungen
+                # (durchgehendes Scrollen) wuerde das Event sonst weit
+                # oefter als alle 0.2s auswachen.
+                since_last = time.monotonic() - last_encode
+                if since_last < MIN_ENCODE_INTERVAL:
+                    time.sleep(MIN_ENCODE_INTERVAL - since_last)
                 if fb.width <= MAX_MIRROR_WIDTH and fb.flip_gen != last_gen:
                     self.stream.publish_screen(fb.width, fb.height,
                                                fb.stride, fb.buf)
                     last_gen = fb.flip_gen
+                    last_encode = time.monotonic()
             except Exception:
                 pass  # naechster Durchlauf versucht es erneut - ein
                       # einzelner fehlgeschlagener Schnappschuss ist
                       # kein Grund, den Hintergrund-Thread zu beenden
-            time.sleep(CHECK_INTERVAL)
 
     def _publish_stream(self):
         if not self.stream:

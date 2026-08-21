@@ -21,7 +21,7 @@ Zugriff (fe.framebuffer.C_BG = ...) direkt hinein - das ist eine
 normale Zuweisung, kein Neu-Binden einer importierten Kopie, wirkt
 also sofort auch hier.
 """
-import os, sys, mmap, fcntl, time, struct
+import os, sys, mmap, fcntl, time, struct, threading
 from fe.log import LOG
 
 FBDEV = "/dev/fb0"
@@ -163,6 +163,20 @@ class Framebuffer:
         # nur neu, wenn sich seit dem letzten Schnappschuss wirklich
         # etwas geaendert hat.
         self.flip_gen = 0
+        # NACHTRAEGLICH ERGAENZT (Nutzerwunsch: "kann man beim Mirror
+        # noch mehr rausholen?") - bisher musste der Spiegel-Hintergrund-
+        # Thread bis zu 0.2s auf den naechsten Pruef-Zyklus warten, selbst
+        # bei einer einzelnen, isolierten Aenderung (z.B. Menuewechsel
+        # nach laengerem Stillstand). Dieses Event weckt ihn SOFORT auf,
+        # sobald flip()/flip_rows() etwas Neues geschrieben hat - die
+        # bestehende Mindest-Abstand-Drosselung (siehe _screen_mirror_loop
+        # in frontend.py) bleibt UNVERAENDERT bestehen, verhindert also
+        # weiterhin Dauerfeuer bei schnellem, durchgehendem Scrollen.
+        # threading.Event().set() ist eine reine Flag-Operation (kein
+        # Locking-Overhead wie ein echtes Lock) - vernachlaessigbare
+        # Kosten fuer flip()/flip_rows(), auch wenn kein Spiegel-Thread
+        # gerade wartet.
+        self.flip_event = threading.Event()
 
     def mark_full_redraw(self):
         """Von JEDEM Code aufzurufen, der den Puffer auf andere Weise als
@@ -585,6 +599,7 @@ class Framebuffer:
         # teure bytes()-Zwischenkopie (auf 1080p ~8 MB pro Frame).
         self.mm[:] = self.buf
         self.flip_gen += 1
+        self.flip_event.set()
 
     def flip_rows(self, y, h):
         """Nur einen Zeilenbereich auf den Schirm bringen (Laufschrift)."""
@@ -597,6 +612,7 @@ class Framebuffer:
         end = y1 * self.stride
         self.mm[off:end] = self.buf[off:end]
         self.flip_gen += 1
+        self.flip_event.set()
 
     def close(self):
         try:
