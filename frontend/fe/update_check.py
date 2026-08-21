@@ -33,6 +33,21 @@ UPDATE_CHECK_URL = ("https://raw.githubusercontent.com/dragrem2k-coder/"
 UPDATE_CHECK_STATE_FILE = "/media/fat/frontend/update_check_state.json"
 UPDATE_CHECK_DISABLED_FLAG_FILE = "/media/fat/frontend/update_check_disabled"
 
+# NEUES FEATURE (Nutzerwunsch: "ich bekomme keine Update-Benachrichtigung,
+# wenn ich auf GitHub was aktualisiert habe" - Ursache geklaert: der
+# obige Mechanismus vergleicht AUSSCHLIESSLICH die Versionsnummer, die
+# sich bei laufenden Fixes innerhalb derselben Version (bewusst KEIN
+# automatischer Bump, siehe FRONTEND_VERSION oben) gar nicht aendert.
+# Nutzer moechte ausdruecklich bei v4.4 bleiben, aber trotzdem einen
+# Hinweis sehen, wenn es neue Fixes gibt UND WAS sich geaendert hat).
+# Komplett UNABHAENGIG von FRONTEND_VERSION/_version_newer() - eigene
+# kleine JSON-Datei mit einer frei waehlbaren Kennung + Kurzbeschreibung,
+# die bei jedem nennenswerten Fix-Batch aktualisiert wird (aehnliches
+# Prinzip wie CHANGELOG.md, nur maschinenlesbar und bewusst SEHR kurz -
+# fuer eine Popup-Zeile, kein vollstaendiger Changelog-Abruf).
+BUILD_CHECK_URL = ("https://raw.githubusercontent.com/dragrem2k-coder/"
+                   "mister-frontend/main/frontend/LATEST_BUILD.json")
+
 def update_check_enabled():
     return not os.path.exists(UPDATE_CHECK_DISABLED_FLAG_FILE)
 
@@ -112,3 +127,25 @@ def check_for_update(timeout=5.0):
         LOG("Update-Check fehlgeschlagen: %s" % e)
         return None
 
+
+def check_for_build_update(timeout=5.0):
+    """Wie check_for_update(), aber komplett unabhaengig von der
+    Versionsnummer - fragt stattdessen LATEST_BUILD.json ab (siehe
+    BUILD_CHECK_URL oben). Gibt (build_id, summary) zurueck oder None
+    bei jedem Fehler ODER wenn die Antwort nicht wie erwartet aussieht
+    (fehlende Felder, kaputtes JSON) - dieselbe "niemals etwas anderes
+    stoeren"-Regel wie beim Versions-Check."""
+    try:
+        with urllib.request.urlopen(BUILD_CHECK_URL, timeout=timeout) as resp:
+            raw = resp.read(2000).decode("utf-8", "ignore")
+        data = json.loads(raw)
+        build_id = data.get("build_id")
+        summary = data.get("summary")
+        if not build_id or not summary:
+            LOG("Build-Check: Antwort unvollstaendig: %r" % data)
+            return None
+        LOG("Build-Check: GitHub meldet Build %r" % build_id)
+        return (build_id, summary)
+    except Exception as e:
+        LOG("Build-Check fehlgeschlagen: %s" % e)
+        return None

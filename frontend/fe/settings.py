@@ -61,6 +61,34 @@ def toggle_system_bg():
         except OSError:
             pass
 
+# NEUES FEATURE (Nutzerwunsch: "wenn wir den Schimmer-Effekt rausnehmen
+# wuerde das noch was bringen?" - Puls-/Schimmer-Animation auf der
+# markierten Zeile/Kachel, siehe _pulse_tick()/_pulsed() in
+# frontend.py). Haengt am selben leichten Tick-Mechanismus, der gerade
+# erst per DRAGEND_PROFILE messbar gemacht wurde (siehe "PERF tick" in
+# next_action()) - laeuft bis zu 12.5x/Sekunde UNABHAENGIG vom
+# Scrollen, sobald man einfach nur auf einem Eintrag steht. Bewusst
+# ALS SCHALTER statt fest zu entfernen (rein optische Praeferenz,
+# manche moegen die Animation) - Standard AN (bestehendes Verhalten
+# bleibt unveraendert), gleiches Muster wie oben.
+PULSE_EFFECT_DISABLED_FLAG = "/media/fat/frontend/pulse_effect_disabled"
+
+def pulse_effect_enabled():
+    return not os.path.exists(PULSE_EFFECT_DISABLED_FLAG)
+
+def toggle_pulse_effect():
+    if pulse_effect_enabled():
+        try:
+            os.makedirs(os.path.dirname(PULSE_EFFECT_DISABLED_FLAG), exist_ok=True)
+            open(PULSE_EFFECT_DISABLED_FLAG, "w").close()
+        except OSError:
+            pass
+    else:
+        try:
+            os.remove(PULSE_EFFECT_DISABLED_FLAG)
+        except OSError:
+            pass
+
 # NEUES FEATURE (Nutzerwunsch: "kann man das mit Stream Overlay in den
 # Optionen mit einem an/aus schaltbar machen?"): bisher nur ueber das
 # externe Scripts/stream_toggle.sh umschaltbar (legt/entfernt dieselbe
@@ -300,6 +328,37 @@ ATTRACT_CHANGE_SECONDS = 6  # wie lange ein Spiel im Attract-Modus gezeigt wird
 COVER_SETTLE = 0.15         # s nach letzter Eingabe, bis waehrend des
                             # Scrollens uebersprungene Cover nachgeladen
                             # werden (haelt das Scrollen selbst fluessig)
+
+# NEUES FEATURE (Nutzerwunsch: "kann man das Vsync-Warten beim Scrollen
+# weglassen, um schneller zu werden? Will ich probieren" - AUSDRUECKLICH
+# vom Nutzer angefragter Kompromiss, nicht unilateral entschieden): siehe
+# ausfuehrliche Begruendung/Risiko-Erklaerung bei flip()/flip_rows() in
+# fe/framebuffer.py. Standard AUS (bewusster Opt-in) - Bildriss-Risiko
+# soll niemand ungefragt bekommen, der einfach nur aktualisiert.
+FAST_SCROLL_ENABLED_FLAG = "/media/fat/frontend/fast_scroll_enabled"
+FAST_SCROLL_WINDOW = 0.15   # s nach letzter Eingabe, in der Vsync beim
+                            # Scrollen uebersprungen wird (danach: normal
+                            # synchronisiert, kein Tearing im Ruhezustand) -
+                            # bewusst derselbe Wert wie COVER_SETTLE, beide
+                            # beschreiben dasselbe "gerade aktiv am
+                            # Scrollen"-Zeitfenster.
+
+def fast_scroll_enabled():
+    return os.path.exists(FAST_SCROLL_ENABLED_FLAG)
+
+def toggle_fast_scroll():
+    if fast_scroll_enabled():
+        try:
+            os.remove(FAST_SCROLL_ENABLED_FLAG)
+        except OSError:
+            pass
+    else:
+        try:
+            os.makedirs(os.path.dirname(FAST_SCROLL_ENABLED_FLAG), exist_ok=True)
+            open(FAST_SCROLL_ENABLED_FLAG, "w").close()
+        except OSError:
+            pass
+
 
 def attract_enabled():
     """Standardmaessig AN (im Gegensatz zu curated_only_active(), das

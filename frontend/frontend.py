@@ -3538,7 +3538,8 @@ from fe.settings import (
     setup_wizard_done, toggle_attract_mode, toggle_crt_menu,
     toggle_curated_only, toggle_dragend_logo, screen_mirror_enabled,
     toggle_screen_mirror, toggle_stream_overlay, system_bg_enabled,
-    toggle_system_bg,
+    toggle_system_bg, fast_scroll_enabled, toggle_fast_scroll,
+    FAST_SCROLL_WINDOW, pulse_effect_enabled, toggle_pulse_effect,
 )
 
 # NEUES FEATURE (Nutzerwunsch: Rainwave-Internetradio als zweite
@@ -3828,7 +3829,7 @@ def _has_network():
 from fe.update_check import (
     UPDATE_CHECK_DISABLED_FLAG_FILE, UPDATE_CHECK_STATE_FILE, UPDATE_CHECK_URL, _parse_version,
     _version_newer, check_for_update, load_update_state, save_update_state,
-    toggle_update_check, update_check_enabled,
+    toggle_update_check, update_check_enabled, check_for_build_update,
 )
 from fe.timekeeping import (
     NTP_EPOCH_OFFSET, NTP_SERVER, TIMEZONE_OFFSET_FILE, TIMEZONE_STEPS,
@@ -4795,14 +4796,26 @@ class Frontend:
         siehe dortiger Kommentar."""
         LOG("Update-Check gestartet (Leerlauf erkannt)")
         remote = check_for_update()
-        if not remote:
-            return
         state = load_update_state()
-        state["remote_version"] = remote
-        state["last_checked"] = time.time()
-        if _version_newer(remote, FRONTEND_VERSION) and state.get("notified_version") != remote:
-            state["notified_version"] = remote
-            self._update_popup_pending = remote
+        if remote:
+            state["remote_version"] = remote
+            state["last_checked"] = time.time()
+            if _version_newer(remote, FRONTEND_VERSION) and state.get("notified_version") != remote:
+                state["notified_version"] = remote
+                self._update_popup_pending = remote
+        # NEUES FEATURE (siehe check_for_build_update() in
+        # fe/update_check.py fuer die ausfuehrliche Begruendung, warum
+        # das ein EIGENSTAENDIGER, von der Versionsnummer unabhaengiger
+        # Check ist) - im selben Hintergrund-Aufruf mit erledigt (ein
+        # Thread statt zwei), aber bewusst UNABHAENGIG vom obigen
+        # Versions-Ergebnis: wird auch dann geprueft/angezeigt, wenn
+        # remote oben leer war oder keine neuere Version meldet.
+        build = check_for_build_update()
+        if build:
+            build_id, summary = build
+            if state.get("notified_build_id") != build_id:
+                state["notified_build_id"] = build_id
+                self._build_popup_pending = summary
         save_update_state(state)
 
     # ------------------------------------------------------------------
@@ -5954,7 +5967,18 @@ class Frontend:
         self._draw_search_overlay()
         if flip:
             _tf = time.monotonic()
-            fb.flip()
+            # NEUES FEATURE (Nutzerwunsch: "kann man das Vsync-Warten
+            # beim Scrollen weglassen? Will ich probieren" - siehe
+            # ausfuehrliche Erklaerung/Risiko-Abwaegung bei flip() in
+            # fe/framebuffer.py). NUR wenn BEIDES zutrifft: der Schalter
+            # ist aktiviert UND wir befinden uns nachweislich noch im
+            # "gerade aktiv am Scrollen"-Fenster (dieselbe Zeitspanne
+            # wie COVER_SETTLE) - im Ruhezustand bleibt Vsync IMMER
+            # aktiv, kein Tearing-Risiko beim blossen Betrachten.
+            _skip_vsync = (fast_scroll_enabled() and
+                          (time.monotonic() - self._last_input_time)
+                          < FAST_SCROLL_WINDOW)
+            fb.flip(skip_vsync=_skip_vsync)
             _fdt = time.monotonic() - _tf
         else:
             _fdt = 0.0
@@ -6303,6 +6327,15 @@ class Frontend:
         return 0.90 + 0.10 * (0.5 + 0.5 * math.sin(elapsed * 2 * math.pi / period))
 
     def _pulsed(self, rgb):
+        # NEUES FEATURE (Nutzerwunsch: "wenn wir den Schimmer-Effekt
+        # rausnehmen wuerde das noch was bringen?"): bei Deaktivierung
+        # (siehe pulse_effect_enabled() in fe/settings.py) einfach die
+        # volle Helligkeit zurueckgeben (entspricht dem Spitzenwert des
+        # bisherigen Pulses, f=1.0) - eine feste, aber weiterhin klar
+        # erkennbare Hervorhebung, ohne die laufende Neuberechnung/
+        # das wiederholte Zeichnen, die die Animation braucht.
+        if not pulse_effect_enabled():
+            return rgb
         f = self._pulse_factor()
         # Auf feste Stufen runden statt eines fein-kontinuierlichen
         # Wertes - sonst erzeugt praktisch jeder Aufruf eine LEICHT
@@ -6511,6 +6544,21 @@ class Frontend:
                 self._last_input_time = time.monotonic()
                 self.draw(message=t("update_available_popup", pending_update))
 
+            # NEUES FEATURE (Nutzerwunsch: "ich moechte bei v4.4 bleiben,
+            # aber trotzdem einen Hinweis sehen, wenn es neue Fixes gibt")
+            # - komplett unabhaengig vom obigen Versions-Popup, eigener
+            # Zustand, kann also auch dann anschlagen, wenn KEIN
+            # Versions-Update ansteht. Gleicher Attract-Modus-Fix wie
+            # oben (direkt uebernommen, keine Dopplung des ersten,
+            # eigentlich ueberfluessigen draw()-Aufrufs von oben).
+            pending_build = getattr(self, "_build_popup_pending", None)
+            if pending_build:
+                self._build_popup_pending = None
+                if self.attract_mode:
+                    self.attract_mode = False
+                self._last_input_time = time.monotonic()
+                self.draw(message=t("build_available_popup", pending_build))
+
             # "Auf diesen Tag vor X Jahren" (Nutzerwunsch): rein lokale
             # Dateiabfrage, kein Netzwerk - trotzdem bewusst genauso wie
             # RA-Vorwaermen/Update-Check erst im echten Leerlauf gezeigt
@@ -6575,7 +6623,13 @@ class Frontend:
                     redraw_marquee = True
                 if self._track_mq_name and self._eq_tick():
                     redraw_dynamic = True
-                if self._pulse_tick():
+                # NEUES FEATURE (siehe pulse_effect_enabled() in
+                # fe/settings.py): bei Deaktivierung wird _pulse_tick()
+                # gar nicht erst aufgerufen - vermeidet nicht nur die
+                # Animation selbst, sondern auch den wiederholten
+                # Neuaufbau (redraw_dynamic), den jeder faellige Tick
+                # sonst ausloesen wuerde (siehe "PERF tick" Profiling).
+                if pulse_effect_enabled() and self._pulse_tick():
                     redraw_dynamic = True
                 if redraw_marquee or redraw_dynamic:
                     if self.confirm_quit:
@@ -10458,6 +10512,23 @@ class Frontend:
                             # Stream-Overlay/Bildschirmspiegel), deshalb
                             # kein Neustart-Hinweis in der Beschriftung.
                             toggle_system_bg()
+                            self._refresh_system_category()
+                        elif kind == "fast_scroll":
+                            # NEUES FEATURE (Nutzerwunsch: "kann man das
+                            # Vsync-Warten beim Scrollen weglassen? Will
+                            # ich probieren") - wirkt SOFORT wie system_bg
+                            # oben (fast_scroll_enabled() wird live beim
+                            # Zeichnen geprueft, siehe _draw_page_items_impl()),
+                            # kein Neustart noetig.
+                            toggle_fast_scroll()
+                            self._refresh_system_category()
+                        elif kind == "pulse_effect":
+                            # NEUES FEATURE (Nutzerwunsch: "wenn wir den
+                            # Schimmer-Effekt rausnehmen wuerde das noch
+                            # was bringen?") - wirkt SOFORT (pulse_effect_
+                            # enabled() wird live in _pulsed()/next_action()
+                            # geprueft), kein Neustart noetig.
+                            toggle_pulse_effect()
                             self._refresh_system_category()
                         elif kind == "stream_overlay":
                             # NEUES FEATURE (Nutzerwunsch: "kann man das
