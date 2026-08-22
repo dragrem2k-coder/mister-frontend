@@ -4136,6 +4136,16 @@ class Frontend:
         # Aufloesung fest fuer die Sitzung), kein Verdraengungslimit
         # noetig.
         self._layout_items_cache = {}
+        # NEUES FEATURE (Nutzerwunsch: "sollte nach dem Logo mittig als
+        # Infobox fuer ein paar Sekunden erscheinen" - fuer wichtige,
+        # eigenstaendige Ankuendigungen wie "neues Update verfuegbar",
+        # die mehr Aufmerksamkeit verdienen als eine kurze Bestaetigung
+        # wie "Favorit hinzugefuegt" in der Fusszeile): separater
+        # Zustand von self._popup_message_until - komplett eigene
+        # Anzeigeform (siehe _draw_prominent_message()), kein Konflikt
+        # mit dem bestehenden Fusszeilen-Mechanismus.
+        self._prominent_message = None
+        self._prominent_message_until = 0.0
         # NEU (Phase 2, Nutzerwunsch "Vorab-Laden nach Scrollrichtung"):
         # merkt sich, ob zuletzt nach unten (1) oder oben (-1) navigiert
         # wurde - _prefetch_neighbor_covers() bevorzugt beim Vorab-Laden
@@ -4927,12 +4937,22 @@ class Frontend:
         self._layout_items_cache[key] = result
         return result
 
-    def draw(self, message=None):
+    def draw(self, message=None, prominent=False):
         self._maybe_apply_pending_ra_data()
         self._sync_track_marquee()
         self._maybe_retry_ra()
         self._maybe_retry_clock()
-        if message:
+        if message and prominent:
+            # NEUES FEATURE (siehe Kommentar bei self._prominent_message
+            # in __init__): bewusst NICHT auch noch die kleine
+            # Fusszeilen-Meldung setzen (message bleibt fuer
+            # draw_page_cats()/draw_page_items() unten auf None) - die
+            # auffaellige Box unten uebernimmt das komplett allein,
+            # sonst zeigt der Bildschirm dieselbe Information doppelt.
+            self._prominent_message = message
+            self._prominent_message_until = time.monotonic() + 5.0
+            message = None
+        elif message:
             # Schutzfenster setzen (siehe Kommentar bei
             # self._popup_message_until in __init__) - 2 Sekunden sind
             # grosszuegig genug, um eine kurze Meldung sicher lesen zu
@@ -4953,6 +4973,47 @@ class Frontend:
             self.draw_page_items(message, flip=not self.confirm_quit)
         if self.confirm_quit:
             self.draw_confirm_dialog()
+        elif self._prominent_message and time.monotonic() < self._prominent_message_until:
+            self._draw_prominent_message()
+
+    def _draw_prominent_message(self):
+        """Auffaellige, mittig platzierte Infobox fuer wichtige,
+        eigenstaendige Ankuendigungen (aktuell: "neues Update
+        verfuegbar") - bewusst deutlich sichtbarer als die kleine
+        Fusszeilen-Meldung, die fuer schnelle Bestaetigungen wie
+        "Favorit hinzugefuegt" gedacht ist. Platzierung: unterhalb der
+        Kopfzeile (auf Seite 0 direkt unter Logo + "N Kategorien"),
+        auf beiden Seiten konsistent an derselben vertikalen Position,
+        damit der Aufruf unabhaengig von der aktuellen Seite immer
+        gleich aussieht.
+
+        Wird NICHT von next_action()'s leichten Tick-Pfaden beruehrt
+        oder ueberschrieben (die pruefen nur self._popup_message_until,
+        ein komplett separater Zustand) - bleibt also stabil stehen,
+        bis draw() sie nach Ablauf von self._prominent_message_until
+        selbst wegzeichnet (siehe next_action()-Tick-Aufruf dafuer)."""
+        fb = self.fb
+        W = fb.width
+        L = self.layout_cats()
+        s, oy = L["s"], L["oy"]
+        text = self._prominent_message
+        pad_x, pad_y = 16 * s, 10 * s
+        text_w = len(text) * 8 * s
+        box_w = text_w + 2 * pad_x
+        box_h = 8 * s + 2 * pad_y
+        box_x = (W - box_w) // 2
+        box_y = oy + 55 * s
+        fb.rect_rounded(box_x, box_y, box_w, box_h, C_PANEL)
+        # Rahmen: vier duenne Linien in Akzentfarbe statt einer vollen
+        # zweiten rect_rounded() (die wuerde das Panel darunter komplett
+        # uebermalen statt nur einen Rand zu zeigen)
+        border = max(1, s // 2)
+        fb.rect(box_x, box_y, box_w, border, C_ACCENT)
+        fb.rect(box_x, box_y + box_h - border, box_w, border, C_ACCENT)
+        fb.rect(box_x, box_y, border, box_h, C_ACCENT)
+        fb.rect(box_x + box_w - border, box_y, border, box_h, C_ACCENT)
+        fb.text(box_x + pad_x, box_y + pad_y, text, s, C_TEXT, C_PANEL)
+        fb.flip_rows(box_y, box_h)
 
     def draw_attract(self):
         """Attract-Modus (Bildschirmschoner): zeigt grossflaechig ein
@@ -6625,7 +6686,12 @@ class Frontend:
                 if self.attract_mode:
                     self.attract_mode = False
                 self._last_input_time = time.monotonic()
-                self.draw(message=t("build_available_popup", pending_build))
+                # NEUES FEATURE (Nutzerwunsch: "sollte nach dem Logo
+                # mittig als Infobox erscheinen") - prominent=True statt
+                # der kleinen Fusszeilen-Meldung, siehe
+                # _draw_prominent_message().
+                self.draw(message=t("build_available_popup", pending_build),
+                         prominent=True)
 
             # "Auf diesen Tag vor X Jahren" (Nutzerwunsch): rein lokale
             # Dateiabfrage, kein Netzwerk - trotzdem bewusst genauso wie
@@ -6699,6 +6765,19 @@ class Frontend:
                 # sonst ausloesen wuerde (siehe "PERF tick" Profiling).
                 if pulse_effect_enabled() and self._pulse_tick():
                     redraw_dynamic = True
+                # NEUES FEATURE (siehe _draw_prominent_message()): die
+                # auffaellige Box muss auch OHNE weitere Nutzereingabe
+                # nach Ablauf ihrer Anzeigedauer wieder verschwinden -
+                # dieser leichte Tick-Pfad laeuft ohnehin schon
+                # regelmaessig (bis zu 12.5x/Sekunde), daher reicht ein
+                # einfacher Zeitvergleich hier, statt einen eigenen
+                # Timer-Mechanismus aufzusetzen. Passiert nur EINMAL pro
+                # Anzeige (self._prominent_message wird dabei auf None
+                # gesetzt), kein wiederholter Aufwand danach.
+                if (self._prominent_message
+                        and time.monotonic() >= self._prominent_message_until):
+                    self._prominent_message = None
+                    self.draw()
                 if redraw_marquee or redraw_dynamic:
                     if self.confirm_quit:
                         # Beenden-Dialog liegt ueber allem - der leichte

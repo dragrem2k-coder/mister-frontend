@@ -36,7 +36,7 @@ Bist du drin, siehst du eine Zeile wie `root@MiSTer:~#`.
 
 Ein einziger Befehl lädt alles automatisch:
 ```
-curl -Ls https://raw.githubusercontent.com/dragrem2k-coder/mister-frontend/main/install.sh | bash
+curl -Ls https://raw.githubusercontent.com/dragrem2k-coder/mister-frontend/main/Scripts/install.sh | bash
 ```
 
 Das Skript läuft komplett automatisch durch, keine Rückfragen. Am Ende
