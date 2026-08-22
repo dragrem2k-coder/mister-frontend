@@ -31,15 +31,35 @@ _TAGS = re.compile(r"\s*[\(\[][^\)\]]*[\)\]]")
 _DISC = re.compile(r"[\(\[]\s*(?:disc|disk|cd|side|part|tape|track)\s*"
                    r"[0-9a-z]+\s*[\)\]]", re.I)
 
+# NEUES FEATURE (Nutzerwunsch: "es muesste noch fluessiger laufen" -
+# gezielte Suche nach unnoetiger Doppelarbeit, inspiriert von Zaparoos
+# Performance-Ansatz): display_name() ist eine REINE Funktion (gleicher
+# Dateiname -> immer dasselbe Ergebnis, keine Seiteneffekte) - wurde
+# bislang aber bei JEDEM Neuzeichnen einer Listenzeile neu berechnet
+# (zwei Regex-Operationen), obwohl sich derselbe Dateiname zwischen
+# zwei Scrollschritten typischerweise gar nicht aendert. Bei einer
+# sichtbaren Liste von z.B. 8-10 Zeilen bleiben beim Scrollen um einen
+# Schritt meist 7-9 davon unveraendert sichtbar - wurden bisher trotzdem
+# jedes Mal neu durch beide Regexe geschickt. Einfacher Dict-Cache statt
+# functools.lru_cache (bleibt im Stil des restlichen Projekts, kein
+# zusaetzlicher Import) - Eingaberaum ist ohnehin begrenzt (nur echte
+# Dateinamen der gescannten Sammlung, keine unbegrenzte/gegnerische
+# Eingabe), daher bewusst OHNE Groessenlimit/Verdraengung.
+_DISPLAY_NAME_CACHE = {}
+
 def display_name(full):
     """Klammer-Zusaetze fuer die Anzeige entfernen - Disc-/CD-Marker
     bleiben aber stehen, sonst waeren mehrteilige Spiele in der Liste
     nicht auseinanderzuhalten."""
+    if full in _DISPLAY_NAME_CACHE:
+        return _DISPLAY_NAME_CACHE[full]
     short = _TAGS.sub("", full).strip()
     m = _DISC.search(full)
     if m and short:
         short += " " + m.group(0).strip()
-    return short if short else full
+    result = short if short else full
+    _DISPLAY_NAME_CACHE[full] = result
+    return result
 
 # Region-Prioritaet fuer die Dedupe-Logik beim Scannen - dieselbe
 # Reihenfolge wie in mister_boxart.py/mister_gameinfo.py bei der

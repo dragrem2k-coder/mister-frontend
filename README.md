@@ -186,7 +186,7 @@ MiSTer (im Heimnetz meist automatisch vorhanden).
 
 Falls du sowieso schon eine SSH-Sitzung offen hast:
 ```bash
-curl -Ls https://raw.githubusercontent.com/dragrem2k-coder/mister-frontend/main/Scripts/install.sh | bash
+curl -Ls https://raw.githubusercontent.com/dragrem2k-coder/mister-frontend/main/install.sh | bash
 ```
 (Falls `curl` fehlt, geht auch `wget -qO- ... | bash` - das Skript
 sagt dir Bescheid, falls beides fehlt.)
@@ -203,13 +203,13 @@ das komplette Paket per WinSCP auf den MiSTer kopieren, dann per SSH
 oder aus dem OSD unter Scripts:
 ```bash
 cd /media/fat/MiSTer_Frontend   # Ordner, in den du das Paket kopiert hast
-./Scripts/install_offline.sh
+./install_offline.sh
 ```
 Fragt interaktiv nach Autostart und Stream-Overlay. Ohne Rückfragen:
 ```bash
-./Scripts/install_offline.sh --yes                # Autostart an, Overlay aus
-./Scripts/install_offline.sh --yes --stream        # zusätzlich Overlay an
-./Scripts/install_offline.sh --yes --no-autostart  # ohne Autostart
+./install_offline.sh --yes                # Autostart an, Overlay aus
+./install_offline.sh --yes --stream        # zusätzlich Overlay an
+./install_offline.sh --yes --no-autostart  # ohne Autostart
 ```
 Erneutes Ausführen ist gefahrlos: eigene Boxart, Metadaten, Musik,
 selbst ersetzte System-Logos und Einstellungen bleiben unangetastet,
@@ -242,11 +242,11 @@ Oder aus dem echten MiSTer-OSD heraus: Hauptmenü -> Scripts ->
 `start_frontend` (MiSTer listet automatisch jedes `.sh`-Skript in
 `/media/fat/Scripts/` im OSD).
 
-**Wieder entfernen:** `./Scripts/uninstall.sh` (im Paketordner) macht alles
+**Wieder entfernen:** `./uninstall.sh` (im Paketordner) macht alles
 rückgängig - Autostart, Scripts, optional auch die Programmdateien
 selbst. Fragt nach, ob eigene Boxart/Musik/Einstellungen erhalten
-bleiben sollen (`./Scripts/uninstall.sh --yes` für "alles weg" ohne
-Rückfrage, `./Scripts/uninstall.sh --keep-data` für "nur Programmdateien weg"
+bleiben sollen (`./uninstall.sh --yes` für "alles weg" ohne
+Rückfrage, `./uninstall.sh --keep-data` für "nur Programmdateien weg"
 ohne Rückfrage).
 
 ## 4. Bedienung

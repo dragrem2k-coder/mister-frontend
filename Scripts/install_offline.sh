@@ -1,4 +1,16 @@
 #!/bin/bash
+# AUTOMATISCH ERZEUGTE KOPIE - NICHT DIREKT BEARBEITEN.
+# Diese Datei ist eine 1:1-Kopie von /install_offline.sh (Hauptverzeichnis),
+# hier abgelegt, damit sie im MiSTer-OSD unter "Scripts"
+# erscheint und direkt startbar ist. Aenderungen bitte NUR
+# an der Hauptdatei vornehmen - diese Kopie wird beim naechsten
+# Paket-Build automatisch neu erzeugt. Eine GitHub Action prueft
+# bei jedem Push, ob beide Dateien noch uebereinstimmen (siehe
+# .github/workflows/sync-check.yml) - laeuft sonst auseinander,
+# wie es hier zuvor bereits passiert war (fehlender fe/-Fix in
+# dieser Kopie, urspruengliche Ursache fuer Dennsens Installations-
+# problem).
+#
 # ============================================================
 # MiSTer Custom Frontend - Installation OHNE Internet
 #
@@ -150,18 +162,14 @@ fi
 
 # ------------------------------------------------------------
 # 2. Laufende Instanz beenden
-# BUGFIX (siehe install_frontend.sh fuer die ausfuehrliche Begruendung):
-# run_script() im Frontend startet nicht direkt dieses Skript, sondern
-# eine "Wrapper-Bash", die ERST DANACH eine ZWEITE, innere Bash startet,
-# die dieses Skript ausfuehrt. $PPID zeigt deshalb auf die WRAPPER-Bash,
-# nicht auf das Frontend selbst - der GROSSVATER-Prozess (Elternteil
-# der Wrapper-Bash) ist das eigentliche Frontend.
+# BUGFIX (siehe install_frontend.sh fuer die ausfuehrliche Begruendung -
+# identisches Deadlock-Risiko, falls aus dem Frontend-Menue selbst statt
+# aus MiSTers eigenem OSD gestartet)
 # ------------------------------------------------------------
 if [ -f "$LOCKFILE" ]; then
     step "Laufende Instanz"
     OLD_PID="$(cat "$LOCKFILE" 2>/dev/null)"
-    GRANDPARENT_PID=$(cut -d' ' -f4 /proc/$PPID/stat 2>/dev/null)
-    if [ -n "$OLD_PID" ] && { [ "$OLD_PID" = "$PPID" ] || [ "$OLD_PID" = "$GRANDPARENT_PID" ]; }; then
+    if [ -n "$OLD_PID" ] && [ "$OLD_PID" = "$PPID" ]; then
         say "  Aus dem Frontend-Menue selbst gestartet - ueberspringe"
         say "  das Beenden der 'laufenden Instanz' (waere sie selbst)."
     elif [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then

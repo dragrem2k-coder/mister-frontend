@@ -182,7 +182,7 @@ on a home network).
 
 If you already have an SSH session open anyway:
 ```bash
-curl -Ls https://raw.githubusercontent.com/dragrem2k-coder/mister-frontend/main/Scripts/install.sh | bash
+curl -Ls https://raw.githubusercontent.com/dragrem2k-coder/mister-frontend/main/install.sh | bash
 ```
 (If `curl` is missing, `wget -qO- ... | bash` also works - the script
 tells you if both are missing.)
@@ -199,13 +199,13 @@ package to the MiSTer via WinSCP, then via SSH or from the OSD under
 Scripts:
 ```bash
 cd /media/fat/MiSTer_Frontend   # folder you copied the package into
-./Scripts/install_offline.sh
+./install_offline.sh
 ```
 Asks interactively about autostart and stream overlay. Without prompts:
 ```bash
-./Scripts/install_offline.sh --yes                # autostart on, overlay off
-./Scripts/install_offline.sh --yes --stream        # additionally overlay on
-./Scripts/install_offline.sh --yes --no-autostart  # without autostart
+./install_offline.sh --yes                # autostart on, overlay off
+./install_offline.sh --yes --stream        # additionally overlay on
+./install_offline.sh --yes --no-autostart  # without autostart
 ```
 Running it again is safe: your own boxart, metadata, music, self-replaced
 system logos and settings stay untouched, and the previous program files
@@ -235,11 +235,11 @@ Or from the actual MiSTer OSD: main menu -> Scripts -> `start_frontend`
 (MiSTer automatically lists every `.sh` script in `/media/fat/Scripts/`
 in the OSD).
 
-**Removing it again:** `./Scripts/uninstall.sh` (in the package folder) reverts
+**Removing it again:** `./uninstall.sh` (in the package folder) reverts
 everything - autostart, Scripts, optionally the program files themselves.
 Asks whether your own boxart/music/settings should be kept
-(`./Scripts/uninstall.sh --yes` for "remove everything" without prompts,
-`./Scripts/uninstall.sh --keep-data` for "remove only program files" without
+(`./uninstall.sh --yes` for "remove everything" without prompts,
+`./uninstall.sh --keep-data` for "remove only program files" without
 prompts).
 
 ## 4. Usage

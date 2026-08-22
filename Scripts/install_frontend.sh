@@ -52,23 +52,16 @@ fi
 # dem Frontend-Menue SELBST (System -> Scripts), ist die im Lockfile
 # hinterlegte PID das EIGENE Elternprogramm, das gerade blockierend
 # (subprocess.call()) auf genau dieses Skript wartet. Der bisherige
-# Kill toetete es dabei mitten im Warten - Deadlock.
-#
-# KORREKTUR (per echtem "Signal 15 empfangen" im Frontend-Log bestaetigt,
-# dass der erste Anlauf NICHT griff): run_script() im Frontend startet
-# NICHT direkt dieses Skript, sondern eine "Wrapper-Bash" (druckt den
-# Bildschirm-Reset, zeigt hinterher den Exit-Code + "Taste druecken"),
-# die ERST DANACH per "bash \"\$0\" \"\$@\"" eine ZWEITE, innere Bash
-# startet, die dieses Skript tatsaechlich ausfuehrt. $PPID zeigt hier
-# deshalb auf die WRAPPER-Bash, nicht auf das Frontend selbst - der
-# einfache Vergleich von vorhin griff nie. Der GROSSVATER-Prozess (der
-# Elternteil der Wrapper-Bash) ist das eigentliche Frontend - ueber
-# /proc/$PPID/stat ermittelt (Feld 4 = PPID jenes Prozesses), direkt
-# mit der echten verschachtelten Struktur nachgebaut und bestaetigt.
+# Kill toetete es dabei mitten im Warten - Deadlock: das Skript kann
+# nicht fertig werden (kein Prozess mehr da, der zurueck ins Frontend
+# wechselt), das Frontend kann nicht zurueckkehren (der subprocess-
+# Aufruf, der noch laeuft, haelt es fest). setsid() im Frontend (siehe
+# _ctty() in run_script()) aendert zwar die Session, NICHT aber PPID -
+# $PPID zeigt deshalb zuverlaessig weiterhin auf das aufrufende
+# Frontend, falls so gestartet.
 if [ -f "$LOCKFILE" ]; then
     OLD_PID=$(cat "$LOCKFILE" 2>/dev/null)
-    GRANDPARENT_PID=$(cut -d' ' -f4 /proc/$PPID/stat 2>/dev/null)
-    if [ -n "$OLD_PID" ] && { [ "$OLD_PID" = "$PPID" ] || [ "$OLD_PID" = "$GRANDPARENT_PID" ]; }; then
+    if [ -n "$OLD_PID" ] && [ "$OLD_PID" = "$PPID" ]; then
         echo "Aus dem Frontend-Menue selbst gestartet - ueberspringe"
         echo "das Beenden der 'laufenden Instanz' (waere sie selbst)."
         echo "Das Frontend kehrt nach diesem Skript automatisch zurueck."
@@ -92,26 +85,12 @@ cd "$TMP_DIR" || exit 1
 echo "Lade aktuellen Build herunter..."
 echo "(kann je nach Internetverbindung eine Weile dauern - bitte warten)"
 
-# BUGFIX (Nutzer-Rueckmeldung: "Skript aus dem Frontend-Menue gestartet,
-# geht in den Konsolenmodus und dann passiert nichts weiter" - der
-# Selbstmord-Deadlock beim Beenden der laufenden Instanz war die ERSTE
-# gefundene Ursache und ist behoben, aber das Problem trat auch DANACH
-# noch auf): keiner der vier Download-Versuche unten hatte bislang ein
-# Zeitlimit - haengt die Verbindung zu GitHub (DNS-Problem, instabiles
-# Netz, o.ae.), wartet das Skript UNBEGRENZT, exakt passend zum
-# gemeldeten Symptom. --connect-timeout/--max-time (curl) bzw.
-# --timeout/--tries (wget) sorgen jetzt dafuer, dass ein haengender
-# Download nach spaetestens 3 Minuten mit einer klaren Fehlermeldung
-# abbricht, statt fuer immer zu warten - 3 Minuten sind grosszuegig
-# genug fuer eine echte, nur langsame Verbindung.
 download_ok=0
 if [ "$TOOL" = "curl" ]; then
-    curl -L --fail --show-error --connect-timeout 15 --max-time 180 \
-        -o build.zip "$REPO_ZIP" 2>dl_err.txt \
+    curl -L --fail --show-error -o build.zip "$REPO_ZIP" 2>dl_err.txt \
         && download_ok=1
 else
-    wget --timeout=30 --tries=2 -O build.zip "$REPO_ZIP" 2>dl_err.txt \
-        && download_ok=1
+    wget -O build.zip "$REPO_ZIP" 2>dl_err.txt && download_ok=1
 fi
 
 if [ "$download_ok" != "1" ]; then
@@ -120,12 +99,10 @@ if [ "$download_ok" != "1" ]; then
     echo "SSL-Zertifikatspruefung (auf manchen MiSTer-Installationen"
     echo "sind die mitgelieferten Zertifikate veraltet)..."
     if [ "$TOOL" = "curl" ]; then
-        curl -L --fail --show-error -k --connect-timeout 15 --max-time 180 \
-            -o build.zip "$REPO_ZIP" 2>dl_err2.txt \
+        curl -L --fail --show-error -k -o build.zip "$REPO_ZIP" 2>dl_err2.txt \
             && download_ok=1
     else
-        wget --no-check-certificate --timeout=30 --tries=2 \
-            -O build.zip "$REPO_ZIP" 2>dl_err2.txt \
+        wget --no-check-certificate -O build.zip "$REPO_ZIP" 2>dl_err2.txt \
             && download_ok=1
     fi
 fi

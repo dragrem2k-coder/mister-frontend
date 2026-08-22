@@ -3612,6 +3612,18 @@ SYSTEM_ACCENT = {
 
 from fe.seasonal import seasonal_decoration
 
+# NEUES FEATURE (siehe ausfuehrliche Begruendung bei display_name() in
+# fe/naming.py - dieselbe Ueberlegung): accent_for() ist ebenfalls eine
+# reine Funktion, wird pro sichtbarer Zeile bei jedem Neuzeichnen erneut
+# aufgerufen, obwohl sich der Systemschluessel einer Zeile so gut wie
+# nie aendert. Eingaberaum hier besonders klein (nur die paar Dutzend
+# bekannten Systemschluessel) - idealer Fall fuer einen Cache. WICHTIG:
+# CURRENT_THEME_MONOCHROME kann sich zur Laufzeit aendern (Themenwechsel
+# im Menue) - der Cache wird deshalb explizit dort geleert (siehe
+# apply_theme()), sonst wuerde nach einem Themenwechsel die alte Farbe
+# haengen bleiben.
+_ACCENT_FOR_CACHE = {}
+
 def accent_for(syskey):
     """Akzentfarbe fuer ein System - faellt auf den Standard zurueck,
     wenn kein syskey vorhanden ist (Scripts/System/Core-Ordner) oder
@@ -3625,10 +3637,13 @@ def accent_for(syskey):
     Phosphor-Look raus. Bewusst nicht 100% Theme-Farbe (0% System-
     Farbe) - ein leichter Farbstich bleibt erhalten, genug um
     Systeme im Zweifel noch unterscheiden zu koennen."""
+    if syskey in _ACCENT_FOR_CACHE:
+        return _ACCENT_FOR_CACHE[syskey]
     color = SYSTEM_ACCENT.get(syskey, C_ACCENT)
     if CURRENT_THEME_MONOCHROME and syskey is not None:
         mix = 0.7
         color = tuple(int(c * (1 - mix) + a * mix) for c, a in zip(color, C_ACCENT))
+    _ACCENT_FOR_CACHE[syskey] = color
     return color
 C_TEXT   = (220, 224, 232)
 C_DIM    = (120, 126, 140)
@@ -3729,6 +3744,10 @@ def apply_theme(name):
     C_TITLE = theme["C_TITLE"]
     C_ACCENT = theme["C_ACCENT"]
     CURRENT_THEME_MONOCHROME = theme.get("monochrome", False)
+    # NEU: siehe Kommentar bei _ACCENT_FOR_CACHE oben - C_ACCENT und
+    # CURRENT_THEME_MONOCHROME aendern sich hier gerade, alte
+    # zwischengespeicherte Farben waeren ab jetzt falsch.
+    _ACCENT_FOR_CACHE.clear()
     import fe.framebuffer
     fe.framebuffer.C_BG = C_BG
     fe.framebuffer.C_TEXT = C_TEXT
@@ -4112,6 +4131,11 @@ class Frontend:
         # verzichtet _draw_dynamic_track_marquee() bewusst auf ihren
         # eigenen Tick, statt die Meldung zu riskieren.
         self._popup_message_until = 0.0
+        # NEU: siehe Kommentar bei layout_items() - Cache-Dict, nie
+        # groesser als 2 Eintraege in der Praxis (has_art: True/False,
+        # Aufloesung fest fuer die Sitzung), kein Verdraengungslimit
+        # noetig.
+        self._layout_items_cache = {}
         # NEU (Phase 2, Nutzerwunsch "Vorab-Laden nach Scrollrichtung"):
         # merkt sich, ob zuletzt nach unten (1) oder oben (-1) navigiert
         # wurde - _prefetch_neighbor_covers() bevorzugt beim Vorab-Laden
@@ -4818,6 +4842,30 @@ class Frontend:
                 self._build_popup_pending = summary
         save_update_state(state)
 
+    def _scroll_skip_vsync(self):
+        """NEUES FEATURE (Nutzerwunsch: "Schnelles Scrollen wirkt sich
+        merkbar hauptsaechlich auf HDMI aus - koennte das am Equalizer/
+        der Laufschrift liegen?"): urspruenglich nur an EINER Stelle
+        berechnet (der Haupt-Zeichenfunktion, siehe draw_page_items()) -
+        die leichten Tick-Pfade fuer Puls/Glow (_draw_dynamic_cats(),
+        _draw_dynamic_items()), Einzelschritt-Navigation
+        (_draw_navigate_items()) und Songtitel-Laufschrift
+        (_draw_dynamic_track_marquee()) riefen bislang IMMER das volle,
+        Vsync-wartende flip_rows() auf - unabhaengig vom "Schnelles
+        Scrollen"-Schalter. Auf CRT faellt das kaum auf (dort kostet
+        Vsync-Warten ohnehin praktisch nichts), auf HDMI (8-17ms pro
+        Aufruf, siehe fruehere Profiling-Runde) ist JEDES dieser
+        Aufblitzen ein echtes, spuerbares Vsync-Warten - erklaert die
+        Nutzer-Beobachtung "merkbar hauptsaechlich bei HDMI" sehr sauber.
+        Gemeinsame Hilfsmethode statt fuenffacher Duplikation derselben
+        Bedingung - dieselbe Logik wie am urspruenglichen Einsatzort:
+        NUR wenn BEIDES zutrifft (Schalter aktiviert UND nachweislich
+        noch im "gerade aktiv"-Zeitfenster) wird Vsync uebersprungen -
+        im Ruhezustand bleibt es bei jedem dieser Pfade unveraendert
+        beim bisherigen, sicheren Verhalten."""
+        return (fast_scroll_enabled() and
+               (time.monotonic() - self._last_input_time) < FAST_SCROLL_WINDOW)
+
     # ------------------------------------------------------------------
     # Adaptives Layout: alles wird aus der Framebuffer-Hoehe abgeleitet.
     # 1080p -> Schrift 3x, 720p -> 2x, 480p -> 1x
@@ -4843,7 +4891,24 @@ class Frontend:
         """Layout fuer Seite 1. Bei Systemen mit Boxart teilt sich der
         Platz in eine Listenspalte links und eine Boxart-Spalte rechts;
         ohne Boxart (Scripts/System/Core-Ordner) nutzt die Liste die
-        volle Breite."""
+        volle Breite.
+
+        NEU (siehe Begruendung bei display_name()/accent_for() weiter
+        oben - dieselbe Ueberlegung): haengt AUSSCHLIESSLICH von der
+        Aufloesung (fb.width/height - aendert sich waehrend einer
+        Sitzung nie) und has_art (nur zwei moegliche Werte) ab -
+        maximal ZWEI moegliche Ergebnisse pro Sitzung insgesamt, wurde
+        aber bislang bei JEDEM Neuzeichnen (inkl. Laufschrift-/Puls-
+        Ticks, bis zu 12.5x/Sekunde) komplett neu berechnet. Cache-
+        Schluessel bewusst inkl. Aufloesung (nicht nur has_art), falls
+        sich diese durch einen Aufloesungswechsel zur Laufzeit doch
+        einmal aendern sollte - dann bleibt der alte Cache-Eintrag
+        einfach ungenutzt liegen, statt eine falsche Aufloesung
+        zurueckzuliefern."""
+        key = (self.fb.width, self.fb.height, has_art)
+        cached = self._layout_items_cache.get(key)
+        if cached is not None:
+            return cached
         W, H = self.fb.width, self.fb.height
         s = max(1, H // 360)
         ox = W * OVERSCAN_X // 100
@@ -4856,9 +4921,11 @@ class Frontend:
         list_x = ox
         list_right = list_x + list_w
         visible = max(3, (footer_y - 6 * s - list_y) // rowh)
-        return {"s": s, "ox": ox, "oy": oy, "list_x": list_x,
-                "list_y": list_y, "list_right": list_right,
-                "rowh": rowh, "footer_y": footer_y, "visible": visible}
+        result = {"s": s, "ox": ox, "oy": oy, "list_x": list_x,
+                 "list_y": list_y, "list_right": list_right,
+                 "rowh": rowh, "footer_y": footer_y, "visible": visible}
+        self._layout_items_cache[key] = result
+        return result
 
     def draw(self, message=None):
         self._maybe_apply_pending_ra_data()
@@ -5309,7 +5376,8 @@ class Frontend:
                 y_max = max(y_max, oy + 36 * s)
 
         if y_max > y_min:
-            fb.flip_rows(y_min, y_max - y_min)
+            fb.flip_rows(y_min, y_max - y_min,
+                        skip_vsync=self._scroll_skip_vsync())
 
     def _draw_navigate_items(self, old_item_i):
         """Leichter Zeichenpfad fuer EINEN Navigationsschritt (hoch/
@@ -5412,7 +5480,7 @@ class Frontend:
         if regions:
             y0 = min(r[0] for r in regions)
             y1 = max(r[1] for r in regions)
-            fb.flip_rows(y0, y1 - y0)
+            fb.flip_rows(y0, y1 - y0, skip_vsync=self._scroll_skip_vsync())
         return True
 
     def _clear_row_glow_margin(self, item_i):
@@ -5518,7 +5586,8 @@ class Frontend:
         flip_y0 = y_top - (rowh if has_prev else max_p)
         flip_y1 = y_top + rowh - 2 * s + max_p + (rowh if has_next else 0)
         if flip:
-            fb.flip_rows(flip_y0, flip_y1 - flip_y0)
+            fb.flip_rows(flip_y0, flip_y1 - flip_y0,
+                        skip_vsync=self._scroll_skip_vsync())
         return flip_y0, flip_y1
 
     def _draw_dynamic_track_marquee(self):
@@ -5550,7 +5619,7 @@ class Frontend:
             track_text = self.track_marquee_text(track_maxc)
             if track_text:
                 fb.text(track_x, y, track_text, s, C_DIM, C_BG)
-            fb.flip_rows(y, h)
+            fb.flip_rows(y, h, skip_vsync=self._scroll_skip_vsync())
         else:
             # BUGFIX (siehe self._popup_message_until in __init__) -
             # Meldung UND Laufschrift teilen sich hier dieselbe Zeile
@@ -5578,7 +5647,7 @@ class Frontend:
             track_display = self.track_marquee_text(foot_maxc)
             if track_display:
                 fb.text(ox, footer_y, track_display, s, C_DIM)
-            fb.flip_rows(footer_y, h)
+            fb.flip_rows(footer_y, h, skip_vsync=self._scroll_skip_vsync())
 
     def _draw_status_bar(self, L):
         """Netzwerksymbol (nur wenn verbunden) + Uhrzeit unten rechts
@@ -5975,9 +6044,7 @@ class Frontend:
             # "gerade aktiv am Scrollen"-Fenster (dieselbe Zeitspanne
             # wie COVER_SETTLE) - im Ruhezustand bleibt Vsync IMMER
             # aktiv, kein Tearing-Risiko beim blossen Betrachten.
-            _skip_vsync = (fast_scroll_enabled() and
-                          (time.monotonic() - self._last_input_time)
-                          < FAST_SCROLL_WINDOW)
+            _skip_vsync = self._scroll_skip_vsync()
             fb.flip(skip_vsync=_skip_vsync)
             _fdt = time.monotonic() - _tf
         else:
@@ -6207,7 +6274,8 @@ class Frontend:
             if self.mq_off >= max_off:
                 self.mq_pause = 6          # am Ende kurz stehenbleiben
         y = self.draw_list_row(self.item_i)
-        self.fb.flip_rows(y - 3 * v["s"], v["rowh"])
+        self.fb.flip_rows(y - 3 * v["s"], v["rowh"],
+                          skip_vsync=self._scroll_skip_vsync())
 
     def marquee_reset(self):
         self.mq_off = 0

@@ -14,7 +14,8 @@ z.B. CURRENT_LANG in fe/translations.py) - alle Seiten teilen sich
 dasselbe Dict-Objekt im Speicher, eine Mutation von der einen Seite
 ist sofort auch von der anderen sichtbar.
 """
-import os, sys, struct, fcntl, time, select, threading, json, re
+import os, sys, struct, fcntl, time, select, threading, json, re, glob
+from collections import defaultdict
 from fe.log import LOG
 from fe.launch import current_core
 from fe.hidraw import (_find_keyboard_hidraws, _hid_report_has_exit_key,
@@ -509,6 +510,14 @@ class InputManager:
         die Tasten sendet, muss dadurch nicht mehr erraten werden."""
         down = set()              # (geraetepfad, code) gedrueckter Tasten
         combo_since = None
+        # NEU: siehe ausfuehrlicher Kommentar an der eigentlichen
+        # Protokollierstelle unten - eigenes Budget PRO Geraetepfad
+        # (gleiches Muster wie kbd_diag_budget), damit ein einzelner
+        # "gespraechiger" Controller nicht das ganze Log flutet oder
+        # das Budget fuer andere Geraete vorwegnimmt. defaultdict statt
+        # vorab bekannter Pfade, da Controller waehrend des laufenden
+        # Spiels erst noch erkannt werden koennen.
+        combo_diag_budget = defaultdict(lambda: 40)
         last_core_check = 0.0
         kbd_paths = _find_keyboard_hidraws()
         kbd_fds = {}               # fd -> True/False (Esc gerade gehalten?)
@@ -546,6 +555,41 @@ class InputManager:
         # "gespraechige" Schnittstelle die anderen nicht mehr verdraengt.
         kbd_diag_budget = {fd: 10 for fd in kbd_fds}
         kbd_combo_since = None
+        # NEU (Nutzer-Rueckmeldung: "Start+Select am Controller
+        # funktioniert gar nicht, auch nach breiterer Diagnose kommt
+        # WAEHREND des Spiels ueberhaupt kein Ereignis mehr an - egal
+        # welche Taste"): per echtem Test bestaetigt, dass die normale
+        # evdev-Ebene fuer Controller waehrend eines laufenden Cores
+        # komplett taub ist (bekanntes MiSTer-Verhalten, siehe
+        # _find_keyboard_hidraws() oben). Bei Tastaturen hilft der
+        # tiefere hidraw-Kanal - ob das bei DIESEM Controller-Empfaenger
+        # (siehe _find_keyboard_hidraws()-Log: '8BitDo 8BitDo Receiver'
+        # hat eine EIGENE hidraw-Schnittstelle, wurde bisher aber nie
+        # ueberwacht, da _find_keyboard_hidraws() nur nach Tastaturen
+        # sucht) ebenfalls funktioniert oder ob auch dieser Kanal
+        # gesperrt ist, ist noch unbekannt - genau das soll diese
+        # Diagnose klaeren. ALLE hidraw-Geraete oeffnen, die NICHT
+        # bereits als Tastatur erkannt/geoeffnet wurden (kbd_paths),
+        # und jeden eingehenden rohen Report protokollieren (gleiches
+        # Budget-pro-Geraet-Muster wie bei kbd_diag_budget oben, verhindert
+        # Log-Flut durch periodische Status-/Heartbeat-Reports).
+        try:
+            all_hidraws = sorted(glob.glob("/dev/hidraw*"))
+        except OSError:
+            all_hidraws = []
+        extra_hidraw_paths = [p for p in all_hidraws if p not in kbd_paths]
+        extra_hidraw_fds = {}      # fd -> Pfad
+        for hp in extra_hidraw_paths:
+            try:
+                fd = os.open(hp, os.O_RDONLY | os.O_NONBLOCK)
+                extra_hidraw_fds[fd] = hp
+            except OSError as e:
+                LOG("wait_game_exit: Controller-hidraw-Oeffnen "
+                    "fehlgeschlagen fuer %s: %s" % (hp, e))
+        LOG("wait_game_exit: %d weitere(s) (Nicht-Tastatur-)hidraw-"
+            "Geraet(e) zusaetzlich geoeffnet: %s"
+            % (len(extra_hidraw_fds), list(extra_hidraw_fds.values())))
+        extra_hidraw_budget = {fd: 15 for fd in extra_hidraw_fds}
         # NEU (Nutzerwunsch: Reset per F5 laenger halten, fuer ALLE
         # Cores inkl. RA, ohne Core-Wechsel): eigene Verfolgung analog
         # zu kbd_fds/kbd_combo_since oben, aber komplett unabhaengig -
@@ -589,6 +633,8 @@ class InputManager:
                 fds = {d.fd: d for d in self.devices.values()}
                 for kfd in kbd_fds:
                     fds[kfd] = None
+                for hfd in extra_hidraw_fds:
+                    fds[hfd] = None
                 if not fds:
                     time.sleep(0.5)
                     continue
@@ -598,6 +644,23 @@ class InputManager:
                     self.rescan()
                     continue
                 for fd in r:
+                    if fd in extra_hidraw_fds:
+                        try:
+                            data = os.read(fd, 64)
+                        except OSError:
+                            try:
+                                os.close(fd)
+                            except OSError:
+                                pass
+                            extra_hidraw_fds.pop(fd, None)
+                            extra_hidraw_budget.pop(fd, None)
+                            continue
+                        if extra_hidraw_budget.get(fd, 0) > 0:
+                            extra_hidraw_budget[fd] -= 1
+                            LOG("wait_game_exit DIAGNOSE Controller-hidraw "
+                                "(%s): %s" % (extra_hidraw_fds.get(fd, "?"),
+                                              data.hex()))
+                        continue
                     if fd in kbd_fds:
                         try:
                             data = os.read(fd, 64)
@@ -657,6 +720,30 @@ class InputManager:
                     _, _, etype, code, value = struct.unpack(EVENT_FMT, data)
                     if etype == EV_KEY and code == KEY_F10 and value == 1:
                         return "f10"
+                    # ERWEITERTE DIAGNOSE (Nutzer-Test bestaetigt: bei einem
+                    # 8BitDo-Controller kam ueber mehrere Tests hinweg nur EIN
+                    # einziges, unzusammenhaengend wirkendes EV_KEY-Ereignis
+                    # an - weder von der Gamepad- noch von der zusaetzlichen
+                    # "Receiver Keyboard"-Schnittstelle des Adapters kam
+                    # irgendetwas Erwartbares. Zwei verbliebene Verdaechte:
+                    # (a) der Empfaenger sendet fuer diese Kombination einen
+                    # ANDEREN Ereignistyp als EV_KEY (bisher komplett
+                    # ausgefiltert), oder (b) der Empfaenger faengt die
+                    # Kombination selbst ab, noch bevor sie Linux erreicht.
+                    # Jetzt werden ALLE Ereignistypen protokolliert (ausser
+                    # dem reinen SYN-Trennzeichen, das viel zu haeufig und
+                    # bedeutungslos ist und sonst das Budget sofort
+                    # aufbrauchen wuerde) - zeigt beim naechsten Test, ob
+                    # ueberhaupt IRGENDETWAS ankommt, wenn die Kombination
+                    # gedrueckt wird.
+                    if etype != EV_SYN and etype != EV_ABS:
+                        if combo_diag_budget[dev.path] > 0:
+                            combo_diag_budget[dev.path] -= 1
+                            LOG("wait_game_exit DIAGNOSE Controller (%s): "
+                                "etype=%d code=%d value=%d (EV_KEY=%d "
+                                "BTN_START=%d BTN_SELECT=%d BTN_MODE=%d)"
+                                % (dev.path, etype, code, value, EV_KEY,
+                                   BTN_START, BTN_SELECT, BTN_MODE))
                     if etype == EV_KEY and code in (BTN_START, BTN_SELECT):
                         key = (dev.path, code)
                         if value == 1:
@@ -675,6 +762,11 @@ class InputManager:
                             combo_since = None
         finally:
             for fd in kbd_fds:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+            for fd in extra_hidraw_fds:
                 try:
                     os.close(fd)
                 except OSError:
