@@ -162,14 +162,18 @@ fi
 
 # ------------------------------------------------------------
 # 2. Laufende Instanz beenden
-# BUGFIX (siehe install_frontend.sh fuer die ausfuehrliche Begruendung -
-# identisches Deadlock-Risiko, falls aus dem Frontend-Menue selbst statt
-# aus MiSTers eigenem OSD gestartet)
+# BUGFIX (siehe install_frontend.sh fuer die ausfuehrliche Begruendung):
+# run_script() im Frontend startet nicht direkt dieses Skript, sondern
+# eine "Wrapper-Bash", die ERST DANACH eine ZWEITE, innere Bash startet,
+# die dieses Skript ausfuehrt. $PPID zeigt deshalb auf die WRAPPER-Bash,
+# nicht auf das Frontend selbst - der GROSSVATER-Prozess (Elternteil
+# der Wrapper-Bash) ist das eigentliche Frontend.
 # ------------------------------------------------------------
 if [ -f "$LOCKFILE" ]; then
     step "Laufende Instanz"
     OLD_PID="$(cat "$LOCKFILE" 2>/dev/null)"
-    if [ -n "$OLD_PID" ] && [ "$OLD_PID" = "$PPID" ]; then
+    GRANDPARENT_PID=$(cut -d' ' -f4 /proc/$PPID/stat 2>/dev/null)
+    if [ -n "$OLD_PID" ] && { [ "$OLD_PID" = "$PPID" ] || [ "$OLD_PID" = "$GRANDPARENT_PID" ]; }; then
         say "  Aus dem Frontend-Menue selbst gestartet - ueberspringe"
         say "  das Beenden der 'laufenden Instanz' (waere sie selbst)."
     elif [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then

@@ -55,21 +55,20 @@ else
 fi
 
 # --- Laufende Instanz sauber beenden (falls vorhanden) ---
-# BUGFIX (Nutzer-Rueckmeldung: "Skript startet nicht sichtbar, Frontend
-# haengt danach fest" - identisches Problem bei install_frontend.sh
-# gefunden und dort ausfuehrlich begruendet): dieses Skript funktioniert
-# normal aus MiSTers eigenem OSD gestartet (dort ist die "laufende
-# Instanz" ein GENUIN unabhaengiger Hintergrundprozess) - aber startet
-# man es aus dem Frontend-Menue SELBST (System -> Scripts), ist die im
-# Lockfile hinterlegte PID das EIGENE Elternprogramm, das gerade
-# blockierend (subprocess.call()) auf genau dieses Skript wartet. Der
-# bisherige Kill toetete es dabei mitten im Warten. setsid() im
-# Frontend (siehe _ctty() in run_script()) aendert zwar die Session,
-# NICHT aber PPID - $PPID zeigt deshalb zuverlaessig weiterhin auf das
-# aufrufende Frontend, falls so gestartet.
+# BUGFIX (siehe Scripts/install_frontend.sh fuer die ausfuehrliche
+# Begruendung - identisches Problem, UND identische Korrektur noetig):
+# run_script() im Frontend startet nicht direkt dieses Skript, sondern
+# eine "Wrapper-Bash" (Bildschirm-Reset, danach Exit-Code-Anzeige +
+# "Taste druecken"), die ERST DANACH per "bash \"\$0\" \"\$@\"" eine
+# ZWEITE, innere Bash startet, die dieses Skript ausfuehrt. $PPID zeigt
+# deshalb auf die WRAPPER-Bash, nicht auf das Frontend selbst - ein
+# einfacher Vergleich gegen $PPID allein reicht nicht. Der GROSSVATER-
+# Prozess (Elternteil der Wrapper-Bash) ist das eigentliche Frontend -
+# ueber /proc/$PPID/stat ermittelt (Feld 4 = PPID jenes Prozesses).
 if [ -f "$LOCKFILE" ]; then
     OLD_PID=$(cat "$LOCKFILE" 2>/dev/null)
-    if [ -n "$OLD_PID" ] && [ "$OLD_PID" = "$PPID" ]; then
+    GRANDPARENT_PID=$(cut -d' ' -f4 /proc/$PPID/stat 2>/dev/null)
+    if [ -n "$OLD_PID" ] && { [ "$OLD_PID" = "$PPID" ] || [ "$OLD_PID" = "$GRANDPARENT_PID" ]; }; then
         echo "Aus dem Frontend-Menue selbst gestartet - ueberspringe"
         echo "das Beenden der 'laufenden Instanz' (waere sie selbst)."
         echo "Das Frontend kehrt nach diesem Skript automatisch zurueck."
@@ -92,12 +91,18 @@ mkdir -p "$TMP_DIR"
 cd "$TMP_DIR"
 echo "Lade aktuellen Build herunter..."
 
+# BUGFIX (siehe Scripts/install_frontend.sh fuer die ausfuehrliche
+# Begruendung - identisches Risiko: keiner der Download-Versuche hatte
+# bislang ein Zeitlimit, ein haengendes Netzwerk wuerde das Skript
+# unbegrenzt warten lassen)
 download_ok=0
 if [ "$TOOL" = "curl" ]; then
-    curl -L --fail --show-error -o build.zip "$REPO_ZIP" 2>dl_err.txt \
+    curl -L --fail --show-error --connect-timeout 15 --max-time 180 \
+        -o build.zip "$REPO_ZIP" 2>dl_err.txt \
         && download_ok=1
 else
-    wget -O build.zip "$REPO_ZIP" 2>dl_err.txt && download_ok=1
+    wget --timeout=30 --tries=2 -O build.zip "$REPO_ZIP" 2>dl_err.txt \
+        && download_ok=1
 fi
 
 if [ "$download_ok" != "1" ]; then
@@ -111,10 +116,12 @@ if [ "$download_ok" != "1" ]; then
     echo "MiSTer-Installationen sind die mitgelieferten Zertifikate"
     echo "veraltet - das ist ein bekanntes, haeufiges Problem)..."
     if [ "$TOOL" = "curl" ]; then
-        curl -L --fail --show-error -k -o build.zip "$REPO_ZIP" 2>dl_err2.txt \
+        curl -L --fail --show-error -k --connect-timeout 15 --max-time 180 \
+            -o build.zip "$REPO_ZIP" 2>dl_err2.txt \
             && download_ok=1
     else
-        wget --no-check-certificate -O build.zip "$REPO_ZIP" 2>dl_err2.txt \
+        wget --no-check-certificate --timeout=30 --tries=2 \
+            -O build.zip "$REPO_ZIP" 2>dl_err2.txt \
             && download_ok=1
     fi
 fi
