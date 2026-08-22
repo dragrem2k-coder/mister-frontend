@@ -1,16 +1,4 @@
 #!/bin/bash
-# AUTOMATISCH ERZEUGTE KOPIE - NICHT DIREKT BEARBEITEN.
-# Diese Datei ist eine 1:1-Kopie von /install.sh (Hauptverzeichnis),
-# hier abgelegt, damit sie im MiSTer-OSD unter "Scripts"
-# erscheint und direkt startbar ist. Aenderungen bitte NUR
-# an der Hauptdatei vornehmen - diese Kopie wird beim naechsten
-# Paket-Build automatisch neu erzeugt. Eine GitHub Action prueft
-# bei jedem Push, ob beide Dateien noch uebereinstimmen (siehe
-# .github/workflows/sync-check.yml) - laeuft sonst auseinander,
-# wie es hier zuvor bereits passiert war (fehlender fe/-Fix in
-# dieser Kopie, urspruengliche Ursache fuer Dennsens Installations-
-# problem).
-#
 # ============================================================
 # MiSTer Custom Frontend - automatische Installation
 #
@@ -20,11 +8,11 @@
 #
 # Aufruf (per SSH auf dem MiSTer):
 #
-#   curl -Ls https://raw.githubusercontent.com/dragrem2k-coder/mister-frontend/main/install.sh | bash
+#   curl -Ls https://raw.githubusercontent.com/dragrem2k-coder/mister-frontend/main/Scripts/install.sh | bash
 #
 # oder, falls curl nicht vorhanden ist:
 #
-#   wget -qO- https://raw.githubusercontent.com/dragrem2k-coder/mister-frontend/main/install.sh | bash
+#   wget -qO- https://raw.githubusercontent.com/dragrem2k-coder/mister-frontend/main/Scripts/install.sh | bash
 #
 # Kann jederzeit erneut ausgefuehrt werden (z.B. fuer ein Update) -
 # vorhandene eigene Daten (Musik, heruntergeladene Boxart, Einstell-
