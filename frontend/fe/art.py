@@ -801,6 +801,21 @@ def _category_art_key(name, syskey):
         return "SYSTEM"
     if name == "Computer":
         return "COMPUTER"
+    # NEU (Nutzerwunsch: eigenes Artwork auch fuer "Favoriten" und
+    # "Sammlungen" im Hauptmenue) - gleiches Prinzip wie oben bei
+    # Weiterspielen/Zuletzt gespielt/Wonne oder Tonne: beide Kategorien
+    # werden mit syskey=None angelegt (build_categories(): eigene,
+    # kuratierte bzw. gemischte Auswahl statt eines echten Systems),
+    # der Vergleich laeuft daher wieder ueber t(...) statt eines festen
+    # Strings. "Sammlungen" bekommt im Menuenamen zusaetzlich die
+    # Anzahl angehaengt ("%s (%d)" % (t("collections_cat"), count)) -
+    # deshalb hier bewusst startswith() statt "==", "Favoriten" bleibt
+    # dagegen ein exakter Vergleich wie "Weiterspielen"/"Zuletzt
+    # gespielt" (keine Zahl im Namen).
+    if name == t("favorites_cat"):
+        return "FAVORITES"
+    if name.startswith(t("collections_cat")):
+        return "COLLECTIONS"
     return None
 
 _meta_cache = {}

@@ -1,18 +1,35 @@
-"""mister_wot.py - "Wonne oder Tonne" (Dennsens Bewertungs-Format): zieht
-zufaellig ein noch nicht gespieltes NES/SNES-Spiel aus einer CSV-Liste,
-findet die passende ROM-Datei (US-Version bevorzugt fuer RetroAchievements),
-liest die RA_ID mit und markiert gestartete Spiele dauerhaft als gespielt.
+"""mister_wot.py - "Zufalls-Zock" (Spieleroulette): schlaegt dem
+Nutzer zufaellig Spiele aus ALLEN Systemen vor, zu denen er ROMs hat, und
+schliesst bereits gespielte Spiele aus.
+
+Umbau gegenueber der CSV-Version:
+  - Quelle der Spiele sind jetzt die TATSAECHLICH VORHANDENEN ROM-Dateien
+    (Katalog quer ueber alle Systeme aus GAME_SYSTEMS), NICHT mehr eine
+    CSV-Liste. Damit ist das Feature auch ohne CSV voll sichtbar/nutzbar.
+  - "Bereits gespielt" liegt in einer JSON-Datenbank (WOT_PLAYED_FILE).
+    Gespielte Spiele tauchen nicht mehr im Roulette auf.
+  - Der RetroAchievements-Ansatz bleibt: bei mehreren Regionen wird die
+    US-Version bevorzugt (RA-Hashes zaehlen i.d.R. die US-Version). Die
+    RA-ID kommt - sofern vorhanden - aus der OPTIONALEN CSV-Anreicherung.
+  - Kein Fuzzy-Matching (difflib) mehr: da der ROM selbst die Quelle ist,
+    ist jeder Katalog-/Pool-Eintrag per Definition spielbar. Das war der
+    langsame Teil der alten Version und faellt komplett weg.
 
 Ausgelagert aus frontend.py: reine Logik ohne Framebuffer, eigenstaendig
-testbar. Die ANZEIGE + der Start (draw_wot_screen, inkl. RA-Core-Start)
-bleiben in frontend.py. Das Frontend ruft einmalig configure(...) auf."""
+testbar (siehe __main__). ANZEIGE + Start (draw_wot_screen, inkl. RA-Core-
+Start) bleiben in frontend.py. Das Frontend ruft einmalig configure(...) auf.
+
+Rueckgabeform der Ziehungen bleibt bewusst gleich wie bisher:
+  (system, title, genre, ra_id, rom_path, score)
+so dass die Anzeige in draw_wot_screen praktisch unveraendert bleibt
+(score ist jetzt konstant 1.0)."""
 
 import re
 import os
 import csv
 import json
+import time
 import random
-import difflib
 import hashlib
 import unicodedata
 
@@ -41,25 +58,36 @@ def configure(game_systems, games_bases_getter, log=None):
 
 
 # ============================================================================
-# Kernlogik (ausgelagert aus frontend.py; nur GAMES_BASES -> _games_bases_getter())
+# Dateipfade + Konfiguration
 # ============================================================================
-WOT_CSV_FILE = "/media/fat/frontend/wot_games.csv"
-WOT_ALIASES_FILE = "/media/fat/frontend/wot_aliases.json"
-WOT_MATCH_CACHE_FILE = "/media/fat/frontend/wot_rom_cache.json"
-WOT_SYSTEMS = ["NES", "SNES"]
-WOT_MATCH_THRESHOLD = 0.72   # difflib-Aehnlichkeit, ab der ein ROM-Treffer akzeptiert wird
+WOT_PLAYED_FILE = "/media/fat/frontend/wot_played.json"          # gespielt-DB (Wahrheit)
+WOT_CATALOG_CACHE_FILE = "/media/fat/frontend/wot_catalog_cache.json"  # Katalog-Platten-Cache
+WOT_CSV_FILE = "/media/fat/frontend/wot_games.csv"               # OPTIONAL: Anreicherung
+WOT_ALIASES_FILE = "/media/fat/frontend/wot_aliases.json"        # OPTIONAL: Alias-Tabelle
+
+# Systemauswahl fuers Roulette:
+#   None  -> ALLE Systeme aus GAME_SYSTEMS, zu denen ROMs vorhanden sind.
+#   Liste -> nur diese syskeys (z.B. ["NES","SNES","MegaDrive"]).
+WOT_SYSTEMS = None
+
 WOT_TAG_PATTERN = re.compile(r"[\(\[][^\)\]]*[\)\]]")
 WOT_ALL_ARTICLES = ["Das", "Die", "Der", "The"]
+WOT_ARTICLE_INVERT = re.compile(r"^(.*?),\s*(Das|Die|Der|The)(\b.*)$", flags=re.IGNORECASE)
 
+
+# ============================================================================
+# Titel-Normalisierung (fuer Vergleich/Dedup) + Anzeige-Aufhuebschung
+# ============================================================================
 def _wot_strip_accents(s):
     nfkd = unicodedata.normalize("NFKD", s)
     return "".join(c for c in nfkd if not unicodedata.combining(c))
 
 def wot_normalize_title(raw):
     """Bringt CSV-Anzeigename oder ROM-Dateiname auf eine vergleichbare
-    Form: Klammer-Tags (Region/Sprache/Rev) weg, Artikel-Inversion
-    aufgeloest ("X, The" <-> "The X", genauso De/Die/Der), Satzzeichen/
-    Mehrfach-Leerzeichen normalisiert, Kleinschreibung, keine Akzente."""
+    Form (fuer Dedup + gespielt-Abgleich): Klammer-Tags weg, Artikel-
+    Inversion aufgeloest ("X, The" -> "The X"), Satzzeichen/Mehrfach-
+    Leerzeichen normalisiert, Kleinschreibung, keine Akzente, fuehrender
+    Artikel entfernt. NUR fuer den Vergleich - nicht fuer die Anzeige."""
     s = raw.strip()
     s = WOT_TAG_PATTERN.sub("", s)
     s = s.strip()
@@ -77,51 +105,28 @@ def wot_normalize_title(raw):
             break
     return s
 
-def wot_load_pool():
-    """Laedt WOT_CSV_FILE, liefert die Liste noch nicht gespielter Spiele
-    als (system, title, genre)-Tupel. Regel: Spalte "Erstes Mal" leer ->
-    noch nicht gespielt -> Teil des Pools; befuellt (JA/NEIN) -> schon
-    gespielt -> ausgeschlossen."""
-    pool = []
-    try:
-        with open(WOT_CSV_FILE, encoding="utf-8-sig", newline="") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                system = (row.get("Konsole") or "").strip()
-                if system not in WOT_SYSTEMS:
-                    continue
-                if (row.get("Erstes Mal") or "").strip() != "":
-                    continue   # schon bewertet -> raus
-                if (row.get("Gespielt") or "").strip().upper() == "JA":
-                    continue   # vom Frontend als gespielt markiert -> raus
-                title = (row.get("Spiel") or "").strip()
-                if not title:
-                    continue
-                genre = (row.get("Genre") or "").strip()
-                ra_id = (row.get("RA_ID") or "").strip()          # NEU
-                pool.append((system, title, genre, ra_id))        # NEU: 4-Tupel
-    except (OSError, csv.Error):
-        return []
-    return pool
+def wot_pretty_title(name):
+    """Erzeugt aus einem ROM-Dateinamen (oder Pfad) einen anzeigetauglichen
+    Titel: Endung + Klammer-Tags (Region/Sprache/Rev) weg, Artikel-Inversion
+    aufgeloest ("Zelda, The - ..." -> "The Zelda - ..."), Original-Gross-/
+    Kleinschreibung bleibt erhalten. Faellt auf den rohen Stem zurueck, falls
+    nach dem Saeubern nichts uebrig bliebe."""
+    stem = os.path.splitext(os.path.basename(name))[0]
+    s = WOT_TAG_PATTERN.sub("", stem)
+    s = re.sub(r"\s{2,}", " ", s).strip(" -_.\t")
+    m = WOT_ARTICLE_INVERT.match(s)
+    if m:
+        s = ("%s %s%s" % (m.group(2), m.group(1), m.group(3)))
+    s = re.sub(r"\s{2,}", " ", s).strip()
+    return s or stem.strip()
 
-def wot_load_aliases():
-    """Optionale manuelle Uebersetzungstabelle CSV-Titel -> ROM-Dateiname
-    (fuer Faelle wie 'Action in New York' -> 'S.C.A.T. - Special
-    Cybernetic Attack Team (USA)', die per Fuzzy-Matching nicht
-    zuverlaessig zu finden sind)."""
-    try:
-        with open(WOT_ALIASES_FILE, encoding="utf-8") as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
 
+# ============================================================================
+# ROM-Scan (unveraendert: gleiche Mehrfachpfad-/Unterordner-Logik wie der Scan)
+# ============================================================================
 def wot_list_rom_files(syskey):
-    """ROM-Dateien fuer ein System - nutzt dieselbe GAMES_BASES-
-    Mehrfachpfad-Erkennung wie der normale Scan (nicht nur einen
-    einzelnen fest vorgegebenen Ordner, wie im urspruenglichen
-    Vorschlag), inkl. Unterordnern (os.walk, gleiche Logik wie
-    _scan_folder_tree())."""
+    """ROM-Dateien fuer ein System - nutzt dieselbe GAMES_BASES-Mehrfachpfad-
+    Erkennung wie der normale Scan, inkl. Unterordnern (os.walk)."""
     sysdef = next((s for s in GAME_SYSTEMS if s[1] == syskey), None)
     if not sysdef:
         return []
@@ -148,8 +153,7 @@ def wot_list_rom_files(syskey):
 def _wot_region_rank(rom):
     """Kleiner = bevorzugt. US zuerst (fuer RetroAchievements zaehlt i.d.R.
     die US-Version), dann World, Europe, Japan, Rest. So wird bei mehreren
-    Versionen gezielt die US-Version gewaehlt statt der zufaellig ersten
-    in der Ordner-Reihenfolge."""
+    Versionen gezielt die US-Version gewaehlt."""
     n = os.path.basename(rom).lower()
     if "usa" in n or re.search(r"\(u[,)]", n):
         return 0
@@ -161,329 +165,395 @@ def _wot_region_rank(rom):
         return 3
     return 4
 
-def wot_mark_played(system, title):
-    """Markiert ein Spiel in der WoT-CSV als gespielt (eigene Spalte
-    'Gespielt' = JA), damit es nicht mehr gezogen wird. Legt EINMALIG ein
-    Backup (.bak) an, laesst die Bewertungsspalte 'Erstes Mal' unangetastet,
-    schreibt alle anderen Zeilen/Spalten unveraendert + atomar zurueck.
-    Fehler werden nur geloggt, nie geworfen - ein CSV-Problem darf den
-    Spielstart nicht stoeren."""
+
+# ============================================================================
+# Optionale Anreicherung: Aliases + CSV (Genre / RA-ID)
+# ============================================================================
+def wot_load_aliases():
+    """OPTIONALE manuelle Uebersetzungstabelle CSV-Titel -> ROM-Dateiname
+    (fuer Faelle, die per Normalisierung nicht zusammenfinden). Fehlt die
+    Datei, wird einfach nichts angereichert."""
+    try:
+        with open(WOT_ALIASES_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+def wot_load_csv_enrichment(aliases=None):
+    """OPTIONAL: liest wot_games.csv (falls vorhanden) und liefert
+    {(system, norm_title): (genre, ra_id)} zur Anreicherung der aus ROMs
+    gebauten Katalog-Eintraege. Fehlt die CSV, ist das Roulette voll
+    funktionsfaehig - Genre/RA-ID bleiben dann eben leer.
+
+    Der Abgleich laeuft ueber die normalisierte Form (gleiche Normalisierung
+    wie beim ROM-Namen -> exakter Treffer trotz Region-Tags). Fuer Alias-
+    Faelle wird zusaetzlich unter der normalisierten Ziel-ROM-Form abgelegt."""
+    aliases = aliases or {}
+    enr = {}
     try:
         with open(WOT_CSV_FILE, encoding="utf-8-sig", newline="") as f:
             reader = csv.DictReader(f)
-            fields = list(reader.fieldnames or [])
-            rows = list(reader)
-    except (OSError, csv.Error) as e:
-        LOG("wot_mark_played: CSV nicht lesbar: %s" % e)
-        return
-    if "Gespielt" not in fields:
-        fields.append("Gespielt")
-    changed = False
-    for row in rows:
-        if ((row.get("Konsole") or "").strip() == system and
-                (row.get("Spiel") or "").strip() == title):
-            if (row.get("Gespielt") or "").strip().upper() != "JA":
-                row["Gespielt"] = "JA"
-                changed = True
-            break
-    if not changed:
-        return
-    try:
-        if not os.path.exists(WOT_CSV_FILE + ".bak"):
-            with open(WOT_CSV_FILE, "rb") as src, open(WOT_CSV_FILE + ".bak", "wb") as dst:
-                dst.write(src.read())
-    except OSError as e:
-        LOG("wot_mark_played: Backup fehlgeschlagen: %s" % e)
-    try:
-        tmp = WOT_CSV_FILE + ".tmp"
-        with open(tmp, "w", encoding="utf-8-sig", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
-            w.writeheader()
-            for row in rows:
-                w.writerow({k: (row.get(k) or "") for k in fields})
-        os.replace(tmp, WOT_CSV_FILE)
-        LOG("wot_mark_played: '%s' (%s) als gespielt markiert" % (title, system))
-    except OSError as e:
-        LOG("wot_mark_played: Schreiben fehlgeschlagen: %s" % e)
+            for row in reader:
+                system = (row.get("Konsole") or "").strip()
+                title = (row.get("Spiel") or "").strip()
+                if not system or not title:
+                    continue
+                genre = (row.get("Genre") or "").strip()
+                ra_id = (row.get("RA_ID") or "").strip()
+                enr[(system, wot_normalize_title(title))] = (genre, ra_id)
+                if title in aliases:
+                    enr[(system, wot_normalize_title(aliases[title]))] = (genre, ra_id)
+    except (OSError, csv.Error):
+        return {}
+    return enr
 
-# Prozessweite Caches. Der teure Teil ist NICHT das Zufallsziehen, sondern
-# (1) das Einlesen ALLER ROM-Dateien eines Systems von SD/USB/NAS (os.walk)
-# samt Normalisieren, (2) die difflib-Fuzzy-Suche ueber die komplette ROM-
-# Liste bei jedem Titel ohne exakten Treffer, und (3) - der eigentliche
-# Zeitfresser bei einer grossen CSV mit wenigen vorhandenen ROMs - das
-# wiederholte, meist erfolglose Zufallsziehen. Diese Caches halten die
-# Ergebnisse prozessweit fest: jedes System wird pro Sitzung HOECHSTENS
-# EINMAL gescannt, jeder Titel HOECHSTENS EINMAL aufgeloest, und die
-# spielbare Gesamtliste HOECHSTENS EINMAL gebaut.
-_INDEX_CACHE = {}       # syskey -> (exact_map, norm_pairs)
-_MATCH_CACHE = {}       # (syskey, csv_title) -> (rom_path | None, score)
-_PLAYABLE_CACHE = {}    # pool-signature -> [ (system,title,genre,ra_id,rom,score), ... ]
-_DISK_MATCH_LOADED = False   # Platten-Cache (Titel->ROM) pro Prozess nur einmal laden
+
+# ============================================================================
+# gespielt-Datenbank (JSON) - die einzige Wahrheit ueber "schon gespielt"
+# ============================================================================
+def wot_load_played():
+    """Laedt die gespielt-DB. Liefert (played_set, raw_list):
+      played_set = Menge {(system, norm_title)} zum schnellen Ausschluss,
+      raw_list   = Original-Eintraege (Dicts) zum Zurueckschreiben.
+    Fehlt/defekt die Datei, sind beide leer -> Roulette bietet alles an."""
+    try:
+        with open(WOT_PLAYED_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return set(), []
+    raw = data.get("played", []) if isinstance(data, dict) else []
+    if not isinstance(raw, list):
+        return set(), []
+    played = set()
+    clean = []
+    for e in raw:
+        if not isinstance(e, dict):
+            continue
+        system = (e.get("system") or "").strip()
+        title = (e.get("title") or "").strip()
+        norm = (e.get("norm") or "").strip() or wot_normalize_title(title)
+        if not system or not norm:
+            continue
+        played.add((system, norm))
+        clean.append(e)
+    return played, clean
+
+def wot_save_played(raw_list):
+    """Schreibt die gespielt-DB atomar (indent=2, damit sie von Hand lesbar/
+    editierbar bleibt). Fehler werden nur geloggt, nie geworfen."""
+    data = {"version": 1, "played": raw_list}
+    try:
+        tmp = WOT_PLAYED_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, WOT_PLAYED_FILE)
+        return True
+    except OSError as e:
+        LOG("Zufalls-Zock: gespielt-DB schreiben fehlgeschlagen: %s" % e)
+        return False
+
+def wot_is_played(system, title, played_set=None):
+    """True, wenn (system, title) bereits in der gespielt-DB steht."""
+    if played_set is None:
+        played_set, _ = wot_load_played()
+    return (system, wot_normalize_title(title)) in played_set
+
+def wot_mark_played(system, title, rom=None, ra_id=None):
+    """Traegt ein Spiel in die gespielt-DB ein, damit es nicht mehr im
+    Roulette auftaucht. Idempotent (kein Doppel-Eintrag), atomarer Write,
+    Fehler werden nur geloggt - ein DB-Problem darf den Spielstart nicht
+    stoeren. rom/ra_id sind optional (nur zur Dokumentation im Eintrag)."""
+    system = (system or "").strip()
+    title = (title or "").strip()
+    if not system or not title:
+        return
+    norm = wot_normalize_title(title)
+    played, raw = wot_load_played()
+    if (system, norm) in played:
+        return
+    entry = {"system": system, "title": title, "norm": norm,
+             "ts": time.strftime("%Y-%m-%dT%H:%M:%S")}
+    if rom:
+        entry["rom"] = rom
+    if ra_id:
+        entry["ra_id"] = ra_id
+    raw.append(entry)
+    if wot_save_played(raw):
+        LOG("Zufalls-Zock: '%s' (%s) als gespielt markiert" % (title, system))
+
+def wot_unmark_played(system, title):
+    """Nimmt ein Spiel wieder aus der gespielt-DB heraus (fuer den Fall, dass
+    es faelschlich markiert wurde). Liefert True, wenn etwas entfernt wurde."""
+    system = (system or "").strip()
+    norm = wot_normalize_title(title or "")
+    _played, raw = wot_load_played()
+    new_raw = [e for e in raw
+               if not ((e.get("system") or "").strip() == system
+                       and ((e.get("norm") or "").strip()
+                            or wot_normalize_title(e.get("title") or "")) == norm)]
+    if len(new_raw) == len(raw):
+        return False
+    wot_save_played(new_raw)
+    LOG("Zufalls-Zock: '%s' (%s) aus gespielt-DB entfernt" % (title, system))
+    return True
+
+
+# ============================================================================
+# Katalog: alle verfuegbaren Spiele (aus vorhandenen ROMs, US-bevorzugt)
+# ============================================================================
+# Prozessweiter Katalog-Cache. Teuer ist NUR der Ordner-Scan (os.walk) ueber
+# alle Systeme; der laeuft pro Sitzung hoechstens einmal und wird zusaetzlich
+# auf Platte gecacht, damit er einen Reboot ueberdauert.
+_CATALOG_CACHE = None   # [ (system, pretty_title, genre, ra_id, rom, norm), ... ]
 
 def wot_reset_index_cache():
-    """Verwirft alle prozessweiten Caches UND den Platten-Cache - aufrufen,
-    wenn sich der ROM-Bestand geaendert hat (neue/entfernte ROMs, NAS neu
-    eingehaengt). Der naechste Aufbau scannt dann frisch und schreibt den
-    Platten-Cache neu."""
-    global _DISK_MATCH_LOADED
-    _INDEX_CACHE.clear()
-    _MATCH_CACHE.clear()
-    _PLAYABLE_CACHE.clear()
-    _DISK_MATCH_LOADED = False
+    """Verwirft den in-Prozess-Katalog UND den Platten-Katalog-Cache -
+    aufrufen, wenn sich der ROM-Bestand geaendert hat (neue/entfernte ROMs,
+    NAS neu eingehaengt). Der naechste Katalogbau scannt dann frisch."""
+    global _CATALOG_CACHE
+    _CATALOG_CACHE = None
     try:
-        os.remove(WOT_MATCH_CACHE_FILE)
+        os.remove(WOT_CATALOG_CACHE_FILE)
     except OSError:
         pass
 
-def wot_build_index(syskey, force=False):
-    """Baut den ROM-Index eines Systems: exakte normalisierte Zuordnung
-    (Sofort-Treffer, bei mehreren Versionen mit US-Vorzug) + vor-
-    normalisierte Paare fuer die difflib-Suche (ebenfalls US zuerst). Das
-    Ergebnis wird prozessweit gecacht (_INDEX_CACHE) - der teure Ordner-
-    Scan laeuft pro System nur EINMAL pro Sitzung. force=True erzwingt einen
-    Neuaufbau."""
-    if not force and syskey in _INDEX_CACHE:
-        return _INDEX_CACHE[syskey]
-    best = {}     # norm -> (region_rank, rom)
-    pairs = []
-    for rom in wot_list_rom_files(syskey):
-        stem = os.path.splitext(os.path.basename(rom))[0]
-        n = wot_normalize_title(stem)
-        pairs.append((n, rom))
-        rank = _wot_region_rank(rom)
-        cur = best.get(n)
-        if cur is None or rank < cur[0]:
-            best[n] = (rank, rom)
-    exact = {n: rm for n, (rk, rm) in best.items()}
-    pairs.sort(key=lambda pr: _wot_region_rank(pr[1]))   # Fuzzy-Ties: US zuerst
-    _INDEX_CACHE[syskey] = (exact, pairs)
-    return _INDEX_CACHE[syskey]
+def _wot_target_syskeys():
+    """Zu durchsuchende syskeys: standardmaessig ALLE aus GAME_SYSTEMS, sonst
+    nur die in WOT_SYSTEMS gelisteten (in GAME_SYSTEMS-Reihenfolge)."""
+    all_keys = [s[1] for s in GAME_SYSTEMS]
+    if not WOT_SYSTEMS:
+        return all_keys
+    wanted = set(WOT_SYSTEMS)
+    return [k for k in all_keys if k in wanted]
 
-def wot_prewarm_indexes(pool):
-    """Baut den ROM-Index fuer ALLE im Pool vorkommenden Systeme vor (nutzt
-    _INDEX_CACHE -> nur beim allerersten Mal teuer)."""
-    for syskey in dict.fromkeys(g[0] for g in pool):
-        wot_build_index(syskey)
-
-def wot_find_rom(title, index, aliases):
-    """index = (exact_map, norm_pairs) aus wot_build_index(). Exakte
-    (normalisierte) Treffer sofort, difflib nur als Rueckfall."""
-    exact, pairs = index
-    if title in aliases:
-        rom = exact.get(wot_normalize_title(aliases[title]))
-        if rom is not None:
-            return rom, 1.0
-    target = wot_normalize_title(title)
-    rom = exact.get(target)
-    if rom is not None:
-        return rom, 1.0
-    if not pairs:
-        return None, 0.0
-    # EINE SequenceMatcher-Instanz, target als (haeufige) seq2 - deren Index
-    # wird einmal berechnet und wiederverwendet. Pro Kandidat nur set_seq1 +
-    # billige obere Schranken (real_quick_ratio/quick_ratio) VOR der teuren
-    # ratio(); uebersprungen werden nur Kandidaten, die den bisher Besten
-    # ohnehin nicht schlagen koennen -> gleiches Ergebnis, deutlich schneller.
-    sm = difflib.SequenceMatcher()
-    sm.set_seq2(target)
-    best_rom, best_score = None, 0.0
-    for norm, rom in pairs:
-        sm.set_seq1(norm)
-        if sm.real_quick_ratio() <= best_score or sm.quick_ratio() <= best_score:
+def _wot_catalog_fingerprint():
+    """Fingerprint der katalogbestimmenden Konfiguration: Systemauswahl + je
+    System Ordner/Endungen + die aktuellen ROM-Basispfade + mtime von CSV &
+    Aliases (damit geaenderte Anreicherung den Cache erneuert). BEWUSST NICHT
+    vom ROM-Inhalt abhaengig - das waere genau der teure Scan, den der Cache
+    spart; entfernte ROMs faengt die Existenzpruefung im Pool-Bau ab, neue
+    ROMs deckt wot_reset_index_cache()."""
+    sysinfo = []
+    wanted = set(WOT_SYSTEMS) if WOT_SYSTEMS else None
+    for s in GAME_SYSTEMS:
+        _disp, syskey, folders, _rbf, extmap = s
+        if wanted is not None and syskey not in wanted:
             continue
-        score = sm.ratio()
-        if score > best_score:
-            best_rom, best_score = rom, score
-    if best_score >= WOT_MATCH_THRESHOLD:
-        return best_rom, best_score
-    return None, best_score
-
-def wot_draw_with_rom(pool, aliases, max_attempts=20, index_cache=None, exclude=None):
-    """Zieht Spiele, bis eins mit passendem ROM gefunden wird (kein
-    Treffer -> ueberspringen + neu ziehen, mit Log-Warnung statt
-    Fehlerabbruch), oder gibt None nach max_attempts auf (Pool
-    erschoepft / keine passenden ROMs gefunden). Liefert
-    (system, title, genre, ra_id, rom_path, score) oder None."""
-    tried = set(exclude) if exclude else set()
-    if index_cache is None:
-        index_cache = {}
-    candidates = list(pool)
-    for _ in range(max_attempts):
-        remaining = [g for g in candidates if g[1] not in tried]
-        if not remaining:
-            return None
-        system, title, genre, ra_id = random.choice(remaining)   # NEU: ra_id
-        tried.add(title)
-        if system not in index_cache:
-            index_cache[system] = wot_build_index(system)   # prozessweit gecacht
-        mkey = (system, title)
-        if mkey in _MATCH_CACHE:
-            rom, score = _MATCH_CACHE[mkey]                 # difflib nur EINMAL je Titel
-        else:
-            rom, score = wot_find_rom(title, index_cache[system], aliases)
-            _MATCH_CACHE[mkey] = (rom, score)
-        if rom is not None:
-            return system, title, genre, ra_id, rom, score        # NEU: ra_id
-        LOG("Wonne oder Tonne: kein ROM-Treffer fuer '%s' (Score %.2f) - neu ziehen"
-            % (title, score))
-    return None
-def wot_draw_multiple(pool, aliases, count=3, max_attempts=20, index_cache=None, exclude=None):
-    """Zieht bis zu `count` VERSCHIEDENE Spiele mit passender ROM-Datei -
-    fuer die Auswahl "nach 'Spiel ziehen' drei zufaellige Spiele zur Wahl".
-    Bewusst quer ueber ALLE Systeme/Genres im uebergebenen Pool; wer
-    einschraenken will, uebergibt einfach einen bereits gefilterten Pool
-    (diese Funktion filtert nicht selbst - die Wahl der Grundmenge bleibt
-    beim Aufrufer).
-
-    Baut direkt auf wot_draw_with_rom() auf: jeder gefundene Titel wandert
-    in die Ausschlussmenge, damit kein Spiel doppelt erscheint; der
-    index_cache (ROM-Index je System) wird ueber alle Ziehungen hinweg
-    weitergereicht, es wird also nicht mehrfach gescannt/normalisiert.
-
-    Liefert eine Liste von (system, title, genre, ra_id, rom_path, score)-
-    Tupeln mit 0..count Eintraegen - bei kleinem Pool (oder wenig ROM-
-    Treffern) koennen es weniger als count sein, nie ein Fehler, nie
-    Doppelte.
-
-    `exclude` (optional): Titel, die von vornherein nicht gezogen werden
-    sollen - z.B. die zuletzt angebotenen drei, damit ein erneutes
-    "Neu ziehen" nicht dieselbe Auswahl bringt."""
-    if index_cache is None:
-        index_cache = {}
-    wot_prewarm_indexes(pool)
-    tried = set(exclude) if exclude else set()
-    picked = []
-    for _ in range(count):
-        result = wot_draw_with_rom(pool, aliases, max_attempts=max_attempts,
-                                   index_cache=index_cache, exclude=tried)
-        if result is None:
-            break   # Pool erschoepft / keine weiteren ROM-Treffer
-        picked.append(result)
-        tried.add(result[1])   # result[1] = title -> kein Doppel bei der naechsten Ziehung
-    return picked
-
-
-def _wot_match_fingerprint(aliases):
-    """Fingerprint der matching-relevanten Konfiguration (Aliases, Schwelle,
-    Systeme). Aendert sich einer dieser Werte, wird der Platten-Cache
-    verworfen. BEWUSST NICHT vom ROM-Bestand abhaengig - den zu erfassen
-    wuerde genau den teuren Scan erfordern, den der Cache vermeiden soll;
-    ROM-Aenderungen deckt die Existenzpruefung + wot_reset_index_cache ab."""
-    payload = json.dumps({"v": 1, "aliases": aliases,
-                          "threshold": WOT_MATCH_THRESHOLD, "systems": WOT_SYSTEMS},
+        sysinfo.append([syskey, list(folders), sorted(extmap.keys())])
+    def _mtime(p):
+        try:
+            return os.path.getmtime(p)
+        except OSError:
+            return 0
+    payload = json.dumps({"v": 1,
+                          "systems": sysinfo,
+                          "bases": sorted(_games_bases_getter()),
+                          "csv": _mtime(WOT_CSV_FILE),
+                          "aliases": _mtime(WOT_ALIASES_FILE)},
                          sort_keys=True, ensure_ascii=False)
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
-def _wot_load_disk_match_cache(aliases):
-    """Laedt die Titel->ROM-Zuordnungen EINMAL pro Prozess aus dem Platten-
-    Cache in _MATCH_CACHE - aber nur, wenn der Fingerprint passt. Damit
-    entfaellt nach einem Neustart/Reboot der komplette Scan + difflib."""
-    global _DISK_MATCH_LOADED
-    if _DISK_MATCH_LOADED:
-        return
-    _DISK_MATCH_LOADED = True
+def _wot_load_catalog_disk():
+    """Laedt den Katalog aus dem Platten-Cache, aber nur wenn der Fingerprint
+    passt. Liefert die Katalogliste oder None (kein/ungueltiger Cache)."""
     try:
-        with open(WOT_MATCH_CACHE_FILE, encoding="utf-8") as f:
+        with open(WOT_CATALOG_CACHE_FILE, encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, ValueError):
-        return
-    if not isinstance(data, dict) or data.get("fingerprint") != _wot_match_fingerprint(aliases):
-        return   # Aliases/Schwelle/Systeme geaendert -> Platten-Cache ignorieren
-    loaded = 0
-    for entry in data.get("matches", []):
-        try:
-            system, title, rom, score = entry
-        except (ValueError, TypeError):
-            continue
-        _MATCH_CACHE[(system, title)] = (rom, score)
-        loaded += 1
-    LOG("Wonne oder Tonne: %d ROM-Zuordnungen aus Platten-Cache geladen" % loaded)
+        return None
+    if not isinstance(data, dict) or data.get("fingerprint") != _wot_catalog_fingerprint():
+        return None
+    out = []
+    for g in data.get("games", []):
+        if isinstance(g, list) and len(g) == 6:
+            out.append(tuple(g))
+    LOG("Zufalls-Zock: Katalog aus Platten-Cache geladen (%d Spiele)" % len(out))
+    return out
 
-def _wot_save_disk_match_cache(aliases):
-    """Schreibt _MATCH_CACHE atomar auf Platte (Fehler werden nur geloggt,
-    nie geworfen - ein Cache-Problem darf WoT nicht stoeren)."""
-    matches = [[sy, ti, rom, score] for (sy, ti), (rom, score) in _MATCH_CACHE.items()]
-    data = {"version": 1, "fingerprint": _wot_match_fingerprint(aliases), "matches": matches}
+def _wot_save_catalog_disk(catalog):
+    """Schreibt den Katalog atomar auf Platte (Fehler werden nur geloggt)."""
+    data = {"version": 1, "fingerprint": _wot_catalog_fingerprint(),
+            "games": [list(g) for g in catalog]}
     try:
-        tmp = WOT_MATCH_CACHE_FILE + ".tmp"
+        tmp = WOT_CATALOG_CACHE_FILE + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
-        os.replace(tmp, WOT_MATCH_CACHE_FILE)
-        LOG("Wonne oder Tonne: %d ROM-Zuordnungen in Platten-Cache gespeichert" % len(matches))
+        os.replace(tmp, WOT_CATALOG_CACHE_FILE)
     except OSError as e:
-        LOG("Wonne oder Tonne: Platten-Cache schreiben fehlgeschlagen: %s" % e)
+        LOG("Zufalls-Zock: Katalog-Cache schreiben fehlgeschlagen: %s" % e)
 
-def _wot_pool_signature(pool):
-    """Stabile Signatur der Grundmenge (System+Titel) - der spielbare-Liste-
-    Cache baut damit automatisch neu, wenn sich die CSV/der Pool aendert."""
-    return (len(pool), tuple(sorted((g[0], g[1]) for g in pool)))
+def wot_build_catalog(force=False, progress_cb=None):
+    """Baut den Katalog ALLER verfuegbaren Spiele aus den tatsaechlich
+    vorhandenen ROM-Dateien - quer ueber alle Ziel-Systeme. Pro
+    (System, normalisiertem Titel) EIN Eintrag; bei mehreren Regionen wird
+    die US-Version bevorzugt (RetroAchievements-Ansatz). Jeder Eintrag wird -
+    falls eine wot_games.csv da ist - um Genre + RA-ID angereichert.
 
-def wot_build_playable_pool(pool, aliases, index_cache=None, progress_cb=None, force=False):
-    """Loest EINMAL fuer den KOMPLETTEN Pool die ROM-Zuordnung auf und liefert
-    die Liste der tatsaechlich spielbaren Spiele als
-    (system, title, genre, ra_id, rom_path, score)-Tupel.
+    Liefert Liste von (system, pretty_title, genre, ra_id, rom, norm).
+    Prozessweit + auf Platte gecacht. force=True erzwingt einen Neuscan.
+    progress_cb(done, total) optional fuer eine Fortschrittsanzeige (done =
+    fertige Systeme). Sollte erst NACH dem NAS-Warten laufen (wie der
+    normale Scan), sonst wird ein unvollstaendiger Stand gecacht."""
+    global _CATALOG_CACHE
+    if not force and _CATALOG_CACHE is not None:
+        return _CATALOG_CACHE
+    if not force:
+        disk = _wot_load_catalog_disk()
+        if disk is not None:
+            _CATALOG_CACHE = disk
+            return disk
 
-    Hintergrund: die CSV listet i.d.R. viel mehr Spiele als ROMs vorhanden
-    sind. Zufaelliges Ziehen aus der ganzen Liste traf dann meist "kein ROM"
-    (langsam wegen difflib je Fehlversuch) und hatte nach wenigen Zuegen den
-    kleinen spielbaren Rest verbraucht -> Wiederholungen. Mit der fertigen
-    spielbaren Liste ist Ziehen/Neu ziehen sofort UND wiederholungsfrei.
+    aliases = wot_load_aliases()
+    enrich = wot_load_csv_enrichment(aliases)
+    syskeys = _wot_target_syskeys()
+    total = len(syskeys)
+    catalog = []
+    for i, syskey in enumerate(syskeys):
+        best = {}   # norm -> (region_rank, rom, pretty)
+        for rom in wot_list_rom_files(syskey):
+            stem = os.path.splitext(os.path.basename(rom))[0]
+            norm = wot_normalize_title(stem)
+            if not norm:
+                continue
+            rank = _wot_region_rank(rom)
+            cur = best.get(norm)
+            if cur is None or rank < cur[0]:
+                best[norm] = (rank, rom, wot_pretty_title(stem))
+        for norm, (_rank, rom, pretty) in best.items():
+            genre, ra_id = enrich.get((syskey, norm), ("", ""))
+            catalog.append((syskey, pretty, genre, ra_id, rom, norm))
+        if progress_cb is not None:
+            progress_cb(i + 1, total)
 
-    Ergebnis wird prozessweit gecacht (_PLAYABLE_CACHE, Schluessel = Pool-
-    Signatur) - der (einmalige) Aufbau nutzt _INDEX_CACHE/_MATCH_CACHE, ist
-    also beim zweiten Aufruf sofort da. progress_cb(done, total) optional
-    fuer eine Fortschrittsanzeige waehrend des einmaligen Aufbaus."""
-    if index_cache is None:
-        index_cache = {}
-    sig = _wot_pool_signature(pool)
-    if not force and sig in _PLAYABLE_CACHE:
-        return _PLAYABLE_CACHE[sig]
+    _CATALOG_CACHE = catalog
+    _wot_save_catalog_disk(catalog)
+    LOG("Zufalls-Zock: Katalog gebaut - %d Spiele aus %d Systemen" % (len(catalog), total))
+    return catalog
 
-    # Grundmenge deduplizieren (doppelte CSV-Zeilen desselben Spiels)
-    seen = set()
-    items = []
-    for (system, title, genre, ra_id) in pool:
-        k = (system, title)
-        if k in seen:
+
+# ============================================================================
+# Roulette-Pool (Katalog minus gespielt) + Ziehen
+# ============================================================================
+def wot_build_playable_pool(pool=None, aliases=None, index_cache=None,
+                            progress_cb=None, force=False):
+    """Liefert den ROULETTE-POOL: alle Katalog-Spiele MINUS der bereits
+    gespielten (gespielt-DB). Rueckgabe wie bisher als
+    (system, title, genre, ra_id, rom, score)-Tupel; score ist jetzt
+    konstant 1.0 (direkt aus vorhandenen ROMs, kein Fuzzy-Matching).
+
+    Die Alt-Parameter pool/aliases/index_cache werden aus Kompatibilitaet
+    akzeptiert, aber ignoriert - die Grundmenge ergibt sich jetzt aus
+    ROMs + gespielt-DB, nicht mehr aus einer CSV. force=True baut den
+    Katalog neu (Neuscan)."""
+    catalog = wot_build_catalog(force=force, progress_cb=progress_cb)
+    played, _raw = wot_load_played()
+    out = []
+    for (system, pretty, genre, ra_id, rom, norm) in catalog:
+        if (system, norm) in played:
             continue
-        seen.add(k)
-        items.append((system, title, genre, ra_id))
+        if not os.path.exists(rom):   # self-healing: inzwischen entfernte ROMs raus
+            continue
+        out.append((system, pretty, genre, ra_id, rom, 1.0))
+    LOG("Zufalls-Zock: Pool - %d von %d Katalog-Spielen offen (Rest gespielt/entfernt)"
+        % (len(out), len(catalog)))
+    return out
 
-    if force:
-        # Kompletter Neuaufbau: Index + gemerkte Matches der Pool-Systeme
-        # verwerfen, damit frisch gescannt/aufgeloest wird.
-        for sk in {it[0] for it in items}:
-            _INDEX_CACHE.pop(sk, None)
-        for it in items:
-            _MATCH_CACHE.pop((it[0], it[1]), None)
-    else:
-        # Titel->ROM-Zuordnungen vom Platten-Cache uebernehmen (falls gueltig)
-        # -> nach Reboot kein Scan/difflib, sofern alle Titel schon bekannt.
-        _wot_load_disk_match_cache(aliases)
+# Sprechender Alias fuer neuen Code:
+wot_get_pool = wot_build_playable_pool
 
-    # Nur die noch NICHT aufgeloesten Titel muessen gescannt/ge-difflib-t
-    # werden - der einzige teure Teil (nach Erst-Bau / Platten-Cache leer).
-    misses = [it for it in items if (it[0], it[1]) not in _MATCH_CACHE]
-    if misses:
-        for sk in dict.fromkeys(m[0] for m in misses):
-            wot_build_index(sk)   # nur die tatsaechlich benoetigten Systeme scannen
-        total = len(misses)
-        for j, (system, title, genre, ra_id) in enumerate(misses):
-            if progress_cb is not None and (j % 20 == 0 or j == total - 1):
-                progress_cb(j + 1, total)
-            rom, score = wot_find_rom(title, _INDEX_CACHE[system], aliases)
-            _MATCH_CACHE[(system, title)] = (rom, score)
-        _wot_save_disk_match_cache(aliases)   # nur wenn wirklich neu aufgeloest wurde
+def wot_draw(count=3, exclude=None, pool=None):
+    """Zieht bis zu `count` VERSCHIEDENE Spiele aus dem Roulette-Pool - quer
+    ueber alle Systeme/Genres. `exclude`: Titel, die nicht gezogen werden
+    sollen (z.B. die zuletzt angebotenen drei, damit 'Neu ziehen' frische
+    Spiele bringt). `pool`: bereits gebauter Pool (spart erneutes Filtern);
+    None -> wird selbst gebaut.
 
-    # Spielbare Liste aus dem (jetzt vollstaendigen) Match-Cache bauen.
-    # os.path.exists filtert inzwischen entfernte ROMs heraus (self-healing);
-    # bei kleinem spielbarem Bestand sind das nur wenige, billige stat-Aufrufe.
-    playable = []
-    for (system, title, genre, ra_id) in items:
-        rom, score = _MATCH_CACHE.get((system, title), (None, 0.0))
-        if rom is not None and os.path.exists(rom):
-            playable.append((system, title, genre, ra_id, rom, score))
-    _PLAYABLE_CACHE[sig] = playable
-    LOG("Wonne oder Tonne: spielbare Liste - %d von %d Titeln spielbar (%d neu aufgeloest)"
-        % (len(playable), len(items), len(misses)))
-    return playable
+    Liefert Liste von (system, title, genre, ra_id, rom, score) mit 0..count
+    Eintraegen - weniger, wenn der (Rest-)Pool kleiner ist; nie ein Fehler,
+    nie Doppelte."""
+    if pool is None:
+        pool = wot_build_playable_pool()
+    ex = set(exclude) if exclude else set()
+    candidates = [g for g in pool if g[1] not in ex]
+    if not candidates:
+        return []
+    if len(candidates) <= count:
+        picks = list(candidates)
+        random.shuffle(picks)
+        return picks
+    return random.sample(candidates, count)
+
+def wot_draw_multiple(pool=None, aliases=None, count=3, max_attempts=20,
+                      index_cache=None, exclude=None):
+    """Kompatibilitaets-Wrapper auf wot_draw() - gleiche Rueckgabe wie bisher.
+    aliases/max_attempts/index_cache werden ignoriert (kein Fuzzy-Ziehen
+    mehr: jeder Pool-Eintrag ist per Definition spielbar)."""
+    return wot_draw(count=count, exclude=exclude, pool=pool)
+
+
+# ============================================================================
+# Kompatibilitaets-Shim + optionale Einmal-Migration
+# ============================================================================
+def wot_load_pool():
+    """Kompatibilitaets-Shim: liefert den offenen Pool als (system, title,
+    genre, ra_id) - fruehere 4-Tupel-Form. Neuer Code nutzt direkt
+    wot_build_playable_pool() / wot_draw()."""
+    return [(s, t, g, r) for (s, t, g, r, _rom, _sc) in wot_build_playable_pool()]
+
+def wot_migrate_played_from_csv():
+    """OPTIONAL, EINMALIG: uebernimmt bereits gespielte/bewertete Spiele aus
+    einer vorhandenen wot_games.csv in die gespielt-DB, damit die bisherige
+    Historie erhalten bleibt. "gespielt" = Spalte 'Gespielt'==JA ODER Spalte
+    'Erstes Mal' befuellt. Idempotent. Liefert die Anzahl neu uebernommener
+    Eintraege."""
+    try:
+        with open(WOT_CSV_FILE, encoding="utf-8-sig", newline="") as f:
+            rows = list(csv.DictReader(f))
+    except (OSError, csv.Error):
+        return 0
+    played, raw = wot_load_played()
+    added = 0
+    for row in rows:
+        system = (row.get("Konsole") or "").strip()
+        title = (row.get("Spiel") or "").strip()
+        if not system or not title:
+            continue
+        is_played = ((row.get("Gespielt") or "").strip().upper() == "JA"
+                     or (row.get("Erstes Mal") or "").strip() != "")
+        if not is_played:
+            continue
+        norm = wot_normalize_title(title)
+        if (system, norm) in played:
+            continue
+        raw.append({"system": system, "title": title, "norm": norm,
+                    "ra_id": (row.get("RA_ID") or "").strip(),
+                    "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "source": "csv-migration"})
+        played.add((system, norm))
+        added += 1
+    if added:
+        wot_save_played(raw)
+        LOG("Zufalls-Zock: %d Spiele aus CSV in gespielt-DB uebernommen" % added)
+    return added
+
+
+# ============================================================================
+# Standalone-Selbsttest (ohne Frontend/Framebuffer)
+# ============================================================================
+if __name__ == "__main__":
+    # Ohne configure() gibt es keine GAME_SYSTEMS -> der Katalog bleibt leer.
+    # Getestet werden hier die Bausteine, die keine ROMs brauchen.
+    print("== Titel-Normalisierung / Anzeige ==")
+    samples = [
+        "Legend of Zelda, The - A Link to the Past (USA)",
+        "Super Mario World (USA)",
+        "Mega Man X3 (Europe)",
+        "Castlevania - Rondo of Blood (Japan)",
+        "Adventures of Batman & Robin, The (USA) (Rev 1)",
+    ]
+    for t in samples:
+        print("  %-52s\n      norm=%-30s pretty=%s"
+              % (t, wot_normalize_title(t), wot_pretty_title(t)))
+    print("\n== gespielt-DB Roundtrip (Dummy) ==")
+    print("  played (geladen):", wot_load_played()[0])

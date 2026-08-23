@@ -3415,14 +3415,15 @@ from fe.single_instance import LOCKFILE, _pid_alive, acquire_single_instance, re
 BASE        = "/media/fat"
 SCRIPTS_DIR = "/media/fat/Scripts"
 
-# NEUES FEATURE (Nutzerwunsch: eigenes "Wonne oder Tonne"-Logo statt
-# nur des reinen Textes) - mitgeliefertes .art-Bild, kein Nutzer-
-# Toggle wie beim Boot-Logo (siehe DRAGEND_LOGO_FILE), da es sich
-# speziell auf DIESES eine Feature bezieht, nicht allgemein
-# austauschbar sein muss. Faellt automatisch auf den reinen Text-Titel
-# zurueck, falls die Datei fehlen sollte (z.B. bei einem sehr alten,
-# unvollstaendigen Update) - siehe draw_wot_screen().
-WOT_LOGO_FILE = "/media/fat/frontend/wot_logo/wonne_oder_tonne.art"
+# NEUES FEATURE (Nutzerwunsch: eigenes "Zufalls-Zock"-Logo statt nur
+# des reinen Textes) - mitgeliefertes .art-Bild, kein Nutzer-Toggle
+# wie beim Boot-Logo (siehe DRAGEND_LOGO_FILE), da es sich speziell
+# auf DIESES eine Feature bezieht, nicht allgemein austauschbar sein
+# muss. Faellt automatisch auf den reinen Text-Titel (t("wot_title"))
+# zurueck, falls die Datei fehlt - siehe draw_wot_screen(). Neuer
+# Dateiname nach der Umbenennung: solange kein zufalls_zock.art
+# vorliegt, erscheint automatisch der Text-Titel "Zufalls-Zock".
+WOT_LOGO_FILE = "/media/fat/frontend/wot_logo/zufalls_zock.art"
 
 
 # --- Stream-Overlay (optional, siehe stream_server.py) -----------------
@@ -3571,8 +3572,7 @@ import fe.paths
 import mister_wot
 mister_wot.configure(GAME_SYSTEMS, lambda: fe.paths.GAMES_BASES, LOG)
 from mister_wot import (
-    WOT_CSV_FILE, wot_load_pool, wot_load_aliases, wot_mark_played,
-    wot_build_playable_pool,
+    wot_mark_played, wot_normalize_title, wot_load_played,
 )
 
 from fe.ra_core import RA_CORES_DIR_ABS, RA_CORES_DIR_REL, RA_CORE_NAME_CANDIDATES, find_ra_core
@@ -4391,17 +4391,16 @@ class Frontend:
             count = _count_tree_items(ra_hunter)
             self.cats.append(("%s (%d)" % (t("ra_hunter_cat"), count),
                               ra_hunter, None))
-        # NEUES FEATURE (Dennsens "Wonne oder Tonne"-Format, uebernommen
-        # aus einem separat vorbereiteten Vorschlag): eigene Kategorie,
-        # gleiches Prinzip wie RA-Erfolgsjaeger direkt darueber - taucht
-        # NUR auf, wenn WOT_CSV_FILE tatsaechlich existiert (kein
-        # Rueckwaerts-Kaputtmachen fuer alle, die dieses Format nicht
-        # nutzen). Nur EIN Eintrag ("Spiel ziehen"), kein Ordnerbaum -
-        # das Ziehen selbst passiert im Bildschirm (draw_wot_screen()),
-        # nicht ueber Navigation.
-        if os.path.exists(WOT_CSV_FILE):
-            self.cats.append((t("wot_title"), _wrap_flat(
-                [(t("sys_wot_action"), "wot_draw", None)]), None))
+        # Zufalls-Zock (internes Kuerzel im Code weiterhin WOT): eigene Kategorie,
+        # gleiches Prinzip wie RA-Erfolgsjaeger direkt darueber. IMMER aktiv -
+        # das Feature ist jetzt ROM-first (Spiele kommen aus den vorhandenen
+        # ROMs, gespielt-DB als JSON), eine CSV ist nicht mehr noetig. Nur EIN
+        # Eintrag ("Spiel ziehen"), kein Ordnerbaum - das Ziehen selbst
+        # passiert im Bildschirm (draw_wot_screen()), nicht ueber Navigation.
+        # Anlegen des Menuepunkts ist billig; der (nur beim ersten Oeffnen /
+        # nach ROM-Aenderung) teure Katalogbau laeuft erst in draw_wot_screen().
+        self.cats.append((t("wot_title"), _wrap_flat(
+            [(t("sys_wot_action"), "wot_draw", None)]), None))
         self.cats.append(("System", system_items(
             self.music.enabled, self.music.source,
             rainwave.station_name(self.music.radio.sid) if self.music.radio else "",
@@ -7501,7 +7500,7 @@ class Frontend:
                 return None   # Abbruch - Kategorie wird NICHT betreten
 
     def _draw_wot_title(self, fb, ox, oy, text_w, s):
-        """Zeichnet den 'Wonne oder Tonne'-Titel - als Logo-Bild, falls
+        """Zeichnet den 'Zufalls-Zock'-Titel - als Logo-Bild, falls
         WOT_LOGO_FILE vorhanden ist (Nutzerwunsch: eigenes Artwork
         statt nur des reinen Textes), sonst automatisch der bisherige
         Text-Titel als Rueckfall. In den gleichen Hoehen-Rahmen
@@ -7519,42 +7518,41 @@ class Frontend:
                 self._fit_scale(t("wot_title"), text_w, s + 1), C_TITLE, C_BG)
 
     def draw_wot_screen(self):
-        """'Wonne oder Tonne' (Dennsens Format): baut EINMAL (mit kurzer
-        Fortschrittsanzeige) die Liste der tatsaechlich SPIELBAREN Spiele -
-        also der CSV-Eintraege, fuer die auch ein ROM vorhanden ist - und
-        bietet daraus drei zufaellige Spiele GLEICHZEITIG zur Wahl an: je
-        Zeile voller Name, System, Genre, RA-ID; die drei Cover nebeneinander
-        unten. Hoch/Runter waehlt, OK oeffnet den Starten-Screen. "Neu ziehen"
-        zeigt drei neue - wiederholungsfrei, bis alle spielbaren Spiele einmal
-        dran waren. Das einmalige Pruefen macht das spaetere Ziehen sofort und
-        ohne Wiederholungen (frueher wurde zufaellig aus ALLEN CSV-Eintraegen
-        gezogen - bei vielen fehlenden ROMs langsam, und der kleine spielbare
-        Rest wiederholte sich nach wenigen Zuegen)."""
+        """'Zufalls-Zock': bietet drei zufaellige Spiele GLEICHZEITIG zur Wahl
+        an (je Zeile voller Name + System; die drei Cover nebeneinander unten).
+        Hoch/Runter waehlt, OK oeffnet den Starten-Screen. "Neu ziehen" zeigt
+        drei neue - wiederholungsfrei, bis alle Spiele einmal dran waren.
+
+        Quelle ist die SELBE Spieleliste, die das Frontend beim Scannen fuer
+        seine Menues aufbaut (_attract_games_pool()) - dadurch ist das Roulette
+        immer deckungsgleich mit dem, was tatsaechlich auf dem MiSTer liegt,
+        und aktualisiert sich automatisch mit jedem Rescan. Bereits gespielte
+        Spiele (wot_played.json) werden herausgefiltert."""
         fb = self.fb
         W, H = fb.width, fb.height
         s = max(1, H // 360)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         text_w = W - 2 * ox
-        aliases = wot_load_aliases()
-        pool = wot_load_pool()
-        if not pool:
-            self._wizard_info(t("wot_title"), [t("wot_pool_empty")], skippable=False)
-            return
-
-        # Spielbare Liste EINMAL bauen (danach prozessweit gecacht -> beim
-        # naechsten Oeffnen sofort da). Fortschrittsanzeige, weil das Pruefen
-        # bei grosser CSV / ROMs auf NAS ein paar Sekunden dauern kann.
-        def _progress(done, total):
-            fb.clear(C_BG)
-            self._draw_wot_title(fb, ox, oy, text_w, s)
-            fb.text(ox, oy + 70 * s, t("wot_checking", done, total), s, C_TEXT, C_BG)
-            fb.flip()
-        index_cache = {}
-        playable = wot_build_playable_pool(pool, aliases, index_cache=index_cache,
-                                           progress_cb=_progress)
+        # ABGLEICH mit dem tatsaechlichen MiSTer-Bestand: die spielbare Liste
+        # kommt direkt aus _attract_games_pool() - der flachen Liste ALLER
+        # gescannten Spiele, die das Frontend ohnehin schon fuer seine Menues
+        # gebaut hat. Damit kann das Roulette nicht mehr vom echten Bestand
+        # abweichen (kein separater Zweitscan, kein eigener Cache), und ein
+        # Rescan aktualisiert es automatisch mit. Bereits gespielte Spiele
+        # (wot_played.json) werden herausgefiltert. Jeder Attract-Eintrag ist
+        # (label, syskey, arg) mit arg=(rom, ext, syskey, rbf, load); wir
+        # bringen ihn in die bewaehrte Roulette-Form
+        # (system, title, genre, ra_id, rom, score) - genre/ra_id bleiben leer,
+        # Ziehen/Anzeige/Start darunter bleiben unveraendert.
+        played_set, _ = wot_load_played()
+        playable = []
+        for label, syskey, arg in self._attract_games_pool():
+            if (syskey, wot_normalize_title(label)) in played_set:
+                continue
+            playable.append((syskey, label, "", "", arg[0], 1.0))
         if not playable:
-            self._wizard_info(t("wot_title"), [t("wot_no_rom_match")], skippable=False)
+            self._wizard_info(t("wot_title"), [t("wot_pool_empty")], skippable=False)
             return
 
         # Rotations-Queue: gemischte spielbare Liste, jeweils drei entnehmen;
@@ -7585,7 +7583,9 @@ class Frontend:
             glines = []
             for p in picks:
                 clean = " ".join(p[1].split())
-                meta = "%s - %s" % (system_display_name(p[0]), p[2] or "?")
+                meta = system_display_name(p[0])
+                if p[2]:
+                    meta += " - %s" % p[2]
                 if p[3]:
                     meta += "  RA-ID: %s" % p[3]
                 glines.append((clean, meta))
@@ -7736,7 +7736,10 @@ class Frontend:
             y = oy + 70 * s
             fb.text(ox, y, clean_title, self._fit_scale(clean_title, text_w, s + 1), accent, C_BG)
             y += 50 * s
-            fb.text(ox, y, "%s - %s" % (system_display_name(system), genre or "?"), s, C_DIM, C_BG)
+            meta = system_display_name(system)
+            if genre:
+                meta += " - %s" % genre
+            fb.text(ox, y, meta, s, C_DIM, C_BG)
             if ra_id:
                 y += 45 * s
                 fb.text(ox, y, "RA-ID: %s" % ra_id, s, C_DIM, C_BG)
@@ -7773,11 +7776,11 @@ class Frontend:
                         ra_core = find_ra_core(system)
                         if ra_core:
                             launch_rbf, setname = ra_core
-                            LOG("Wonne oder Tonne: gestartet mit RA-Core - %s (%s)"
+                            LOG("Zufalls-Zock: gestartet mit RA-Core - %s (%s)"
                                 % (title, rom_path))
                         else:
                             launch_rbf, setname = sysdef[3], None
-                            LOG("Wonne oder Tonne: kein RA-Core fuer %s, Standard-Core - %s"
+                            LOG("Zufalls-Zock: kein RA-Core fuer %s, Standard-Core - %s"
                                 % (system, title))
                         wot_mark_played(system, title)   # dauerhaft aus dem Pool nehmen
                         record_recent(title, (rom_path, ext, system, sysdef[3], (dl, ftype, idx)))

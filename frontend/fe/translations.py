@@ -272,7 +272,7 @@ TRANSLATIONS = {
                        "de": "RetroAchievements-Core"},
     "core_choice_hint": {"en": "Up/Down to choose, OK to confirm",
                          "de": "Hoch/Runter waehlen, OK bestaetigen"},
-    "wot_title": {"en": "WONNE OR TONNE", "de": "WONNE ODER TONNE"},
+    "wot_title": {"en": "ZUFALLS-ZOCK", "de": "ZUFALLS-ZOCK"},
     "wot_hint": {"en": "Up/Down: select   OK: confirm   ESC: back",
                  "de": "Hoch/Runter: waehlen   OK: bestaetigen   ESC: zurueck"},
     "wot_pool_empty": {
@@ -286,7 +286,7 @@ TRANSLATIONS = {
     "wot_option_back": {"en": "Back", "de": "Zurueck"},
     "wot_checking": {"en": "Checking games... %d/%d",
                      "de": "Pruefe Spiele... %d/%d"},
-    "sys_wot_action": {"en": "Wonne or Tonne - draw a game", "de": "Wonne oder Tonne - Spiel ziehen"},
+    "sys_wot_action": {"en": "Zufalls-Zock - draw a game", "de": "Zufalls-Zock - Spiel ziehen"},
     "ra_setup_title": {"en": "RETROACHIEVEMENTS SETUP",
                        "de": "RETROACHIEVEMENTS EINRICHTEN"},
     "ra_setup_line1": {"en": "Create this file via SSH/text editor:",
