@@ -308,7 +308,7 @@ geprüft, ohne echten Netzwerkverkehr zu erzeugen.
 | Ein Buchstabe (Tastatur, A-Z)      | Direktsprung zum nächsten Eintrag mit diesem Anfangsbuchstaben |
 | F12 / Guide-Button                 | Echtes MiSTer-OSD öffnen (Joystick-Belegung, ini-Settings) |
 | F10 / X-Button                     | Aus dem OSD zurück ins Frontend |
-| Y-Taste                            | Nächster Song (manueller Musik-Wechsel) |
+| Y-Button (Pad) / F5 oder Medientaste "nächster Titel" (Tastatur) | Nächster Song (manueller Musik-Wechsel) |
 | F11                                 | Zufälliges Spiel/Kategorie ("weiß nicht was ich spielen soll") |
 | F8 / L2- oder R2-Taste               | Favorit umschalten (nur bei Spiele-Einträgen) |
 | F7                                  | Durchgespielt-Status umschalten (nur bei Spiele-Einträgen) |
@@ -342,7 +342,8 @@ Menü wechselt, übernimmt das Frontend automatisch wieder.
 2. Frontend neu starten - die Wiedergabe beginnt automatisch, zufällig
    gemischt.
 3. Steuerung:
-   - Y-Taste: nächster Song
+   - Y-Button am Pad, F5 oder die Medientaste "nächster Titel" auf der
+     Tastatur (je nachdem, was gerade zur Hand ist): nächster Song
    - System -> "Music: On/Off": Musik komplett ein-/ausschalten
      (Status bleibt über Neustarts erhalten)
    - Musik pausiert automatisch, sobald ein Spiel oder Script startet,

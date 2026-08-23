@@ -468,6 +468,7 @@ TRANSLATIONS = {
     "remap_action_random": {"en": "Random game", "de": "Zufaelliges Spiel"},
     "remap_action_favorite": {"en": "Toggle favorite", "de": "Favorit umschalten"},
     "remap_action_completed": {"en": "Toggle completed", "de": "Durchgespielt umschalten"},
+    "remap_action_music_next": {"en": "Next song", "de": "Naechster Song"},
     "remap_done":      {"en": "Button mapping saved!",
                         "de": "Tastenbelegung gespeichert!"},
     "remap_cancelled": {"en": "Cancelled - keeping previous mapping",

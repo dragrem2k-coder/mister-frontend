@@ -36,6 +36,25 @@ KEY_F8, KEY_F9, KEY_F10, KEY_F11, KEY_F12 = 66, 67, 68, 87, 88
 # Gamepad-Buttons (Linux-Standardcodes)
 BTN_A, BTN_B, BTN_X, BTN_Y = 304, 305, 307, 308
 KEY_Y = 21                   # Y key on keyboard
+# BUGFIX (Nutzer-Rueckmeldung: "die Y-Taste zum Musik skippen hat mich
+# ziemlich verwirrt, ich dachte das ist nur eine Controller-Belegung" -
+# bei der Untersuchung noch etwas Wichtigeres gefunden, als zunaechst
+# vermutet): KEY_Y: "music_next" stand zwar in der KEYMAP, wurde aber
+# von der LETTER_KEYS-Schleife weiter unten STILLSCHWEIGEND ueberschrieben
+# ("Y" ist eine der Buchstabentasten fuer den Direktsprung im Menue,
+# z.B. zu "Yoshi's Island") - diese Tastatur-Bindung hat vermutlich noch
+# NIE funktioniert, unabhaengig vom Tastaturlayout (QWERTY oder QWERTZ
+# waere gleichermassen betroffen gewesen, da beide "Y" UND "Z" als
+# Buchstaben fuer den Direktsprung verwenden). Y als Musik-Taste zu
+# erzwingen wuerde umgekehrt den Buchstabensprung zu "Y"-Spielen kaputt
+# machen - keine der beiden Funktionen sollte der anderen geopfert werden.
+# Neue, konfliktfreie Loesung: eine bislang komplett ungenutzte
+# Funktionstaste (F1-F5 waren noch nie belegt) PLUS die dedizierte
+# Multimedia-Taste "naechster Titel", die viele Tastaturen ohnehin
+# haben (Linux-Standardcode, siehe KEY_NEXTSONG unten) - bei sowas
+# druecken Nutzer intuitiv genau diese Taste, ganz ohne Anleitung.
+KEY_F5 = 63
+KEY_NEXTSONG = 163            # Medientaste "naechster Titel", falls vorhanden
 BTN_TL, BTN_TR = 310, 311
 BTN_TL2, BTN_TR2 = 312, 313  # zusaetzliche Schultertasten (L2/R2), sofern vorhanden
 BTN_SELECT, BTN_START, BTN_MODE = 314, 315, 316
@@ -87,7 +106,7 @@ KEYMAP = {
     KEY_F6: "ra_showcase",
     BTN_A: "ok", BTN_START: "ok",
     BTN_B: "back", BTN_X: "back_fe",
-    BTN_Y: "music_next", KEY_Y: "music_next",
+    BTN_Y: "music_next", KEY_F5: "music_next", KEY_NEXTSONG: "music_next",
     BTN_TL: "left", BTN_TR: "right",
     BTN_MODE: "osd", BTN_SELECT: "select",
     BTN_DPAD_UP: "up", BTN_DPAD_DOWN: "down",

@@ -298,7 +298,7 @@ real network traffic.
 | A single letter (keyboard, A-Z)    | Jump directly to the next entry with that initial letter |
 | F12 / Guide button                 | Open the actual MiSTer OSD (joystick mapping, ini settings) |
 | F10 / X button                     | From the OSD back to the frontend |
-| Y key                              | Next song (manual music change) |
+| Y button (pad) / F5 or media "next track" key (keyboard) | Next song (manual music change) |
 | F11                                 | Random game/category ("don't know what to play") |
 | F8 / L2 or R2 button                | Toggle favorite (game entries only) |
 | F7                                  | Toggle completed status (game entries only) |
@@ -330,7 +330,8 @@ the menu, the frontend takes over again automatically.
 2. Restart the frontend - playback starts automatically, randomly
    shuffled.
 3. Control:
-   - Y key: next song
+   - Y button on the pad, F5, or the "next track" media key on the
+     keyboard (whichever's handy): next song
    - System -> "Music: On/Off": turn music completely on/off (state
      persists across restarts)
    - Music pauses automatically as soon as a game or script starts, and

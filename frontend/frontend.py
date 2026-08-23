@@ -9475,6 +9475,13 @@ class Frontend:
             ("osd", "remap_action_osd"), ("random", "remap_action_random"),
             ("favorite", "remap_action_favorite"),
             ("completed", "remap_action_completed"),
+            # NEUES FEATURE (Nutzerwunsch: "ist es moeglich der Tastatur
+            # auch einen Shortcut zuzuweisen, um die Musik zu wechseln?" -
+            # der feste F5/Medientaste-Fix deckt den Normalfall ab, aber
+            # hierueber kann sich jeder Nutzer zusaetzlich eine GANZ
+            # BELIEBIGE eigene Taste dafuer eintragen, genau wie fuer
+            # Favorit/Durchgespielt schon moeglich).
+            ("music_next", "remap_action_music_next"),
         ]
         new_map = {}
         cancelled = False
