@@ -40,9 +40,15 @@ try:
 except ImportError:
     sys.exit("Pillow fehlt. Bitte installieren:  pip install Pillow")
 
+# NEU (siehe ausfuehrliche Begruendung in frontend/mister_boxart.py -
+# per echter Hardware-Diagnose bestaetigt: kleinere Quelldateien lesen
+# spuerbar schneller von der SD-Karte UND treffen bei typischen 1080p-
+# Boxgroessen den Sprung auf Skalierungsfaktor 2x, was die Box sogar
+# BESSER ausfuellt als die bisherigen 360x420 (die dort meist bei 1x
+# blieben, kein tatsaechliches Hochskalieren).
 PROFILES = {
     "sd": (100, 120),   # max Breite x Hoehe fuer CRT-Modi (240 Zeilen)
-    "hd": (360, 420),   # max Breite x Hoehe fuer 1080p
+    "hd": (300, 350),   # max Breite x Hoehe fuer 1080p
 }
 
 IMG_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}

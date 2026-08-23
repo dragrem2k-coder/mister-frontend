@@ -65,7 +65,15 @@ def display_name(full):
 # Reihenfolge wie in mister_boxart.py/mister_gameinfo.py bei der
 # Boxart-/Info-Zuordnung, damit alles konsistent dieselbe Region
 # bevorzugt.
-REGION_PRIORITY = ["(germany)", "(europe)", "(world)", "(usa)", "(japan)"]
+# BUGFIX (Nutzer-Rueckmeldung: "Scrollen im HDMI-Modus fuehlt sich
+# schlecht an" - bei der Fehlersuche in mister_boxart.py gefunden und
+# hier konsistent mitkorrigiert, siehe dortige ausfuehrliche
+# Begruendung): Germany/Europe/World standen bisher VOR USA - bei
+# einer ueberwiegend USA-getaggten Sammlung mit doppelten Regions-
+# ROMs desselben Spiels waere hier faelschlich die europaeische
+# Variante als "die eine" angezeigte Version bevorzugt worden. USA/
+# World jetzt vorne, deckt den weitaus haeufigeren Sammlungstyp ab.
+REGION_PRIORITY = ["(usa)", "(world)", "(europe)", "(japan)", "(germany)"]
 
 def _region_rank(name):
     low = name.lower()

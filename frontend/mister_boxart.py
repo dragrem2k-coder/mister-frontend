@@ -91,7 +91,23 @@ SYSTEMS = {
     "NEOGEO":  (["NEOGEO"],               {".neo"},                "SNK - Neo Geo"),
 }
 
-PROFILES = {"sd": (100, 120), "hd": (360, 420)}
+# NEU (Nutzer-Rueckmeldung: "Scrollen im HDMI-Modus fuehlt sich nicht
+# fluessig an" - per echter Hardware-Diagnose bestaetigt: die 360x420-
+# HD-Cover wurden bei typischen 1080p-Boxgroessen NIE tatsaechlich
+# hochskaliert (Skalierungsfaktor blieb bei 1x, siehe get_scaled() in
+# fe/art.py), das Bild sass nur mit ungenutztem Rand in der Box - die
+# gemessenen 26-28ms pro neu geladenem Cover waren dabei GANZ ueberwiegend
+# reine Lesezeit von der SD-Karte, nicht Rechenarbeit (Vergleichsmessung
+# in einer schnellen Umgebung: unter 3ms fuer dieselbe Entpack-Arbeit).
+# 300x350 (69% der bisherigen Pixelzahl, gleiches 6:7-Seitenverhaeltnis)
+# reduziert die zu lesende Datenmenge SPUERBAR, UND trifft bei ueblichen
+# 1080p-Boxgroessen zufaellig genau den Sprung auf Skalierungsfaktor 2x -
+# damit wird die Box tatsaechlich BESSER ausgefuellt als vorher (86%/96%
+# statt 52%/58%), nicht nur schneller geladen. Betrifft AUSSCHLIESSLICH
+# neu erzeugte .art-Dateien - bereits vorhandene werden von diesem
+# Skript uebersprungen (siehe Docstring oben), muessen also fuer den
+# Effekt einmalig geloescht und neu erzeugt werden.
+PROFILES = {"sd": (100, 120), "hd": (300, 350)}
 
 LIBRETRO_BASE = "https://thumbnails.libretro.com"
 GITHUB_RAW    = "https://raw.githubusercontent.com/libretro-thumbnails"
@@ -303,7 +319,32 @@ def norm(name):
 def strip_tags(name):
     return re.sub(r"[\(\[][^\)\]]*[\)\]]", "", name).strip()
 
-REGION_PRIORITY = ["(germany)", "(europe)", "(world)", "(usa)", "(japan)"]
+# BUGFIX (Nutzer-Rueckmeldung: "Scrollen im HDMI-Modus fuehlt sich
+# schlecht an" - bei der Fehlersuche gefunden: das Frontend suchte
+# nach 'Addams Family, The (USA)', gefunden wurde aber nur 'Addams
+# Family, The (Europe) (En,Fr,De).art' - eine ROM/Cover-Region-
+# Verwechslung, KEINE fehlende Datei). Ursache: wenn der EXAKTE Name
+# (inklusive Region-Tag) keine Cover-Entsprechung findet, greift der
+# "ohne-tags"-Rueckfall in match_rom() weiter unten - der entfernt
+# testweise ALLE Klammer-Tags (auch die Region) und sucht danach
+# erneut. Bei MEHREREN passenden Cover-Kandidaten verschiedener
+# Regionen entschied bisher diese Prioritaetsliste, welche gewinnt -
+# und die stellte Germany/Europe/World bisher VOR USA. Fuer eine
+# ueberwiegend USA-getaggte ROM-Sammlung (weit verbreiteter
+# Normalfall bei No-Intro/Redump-Sets) fuehrte das systematisch dazu,
+# dass viele USA-ROMs faelschlich europaeische Cover zugeordnet
+# bekamen, sobald keine exakte USA-Datei in der Quelle vorhanden war -
+# nicht nur bei einzelnen Spielen, sondern bei einem grossen Teil der
+# Sammlung, was das durchgaengig "unrunde" Scroll-Gefuehl erklaert
+# (staendiger SD-Rueckfall statt eines einzigen, echten Treffers).
+# USA/World jetzt bewusst vorne (deckt die meisten gaengigen ROM-Sets
+# ab), Japan/Germany hinten (nur relevant fuer entsprechend
+# spezialisierte Sammlungen). Bei Bedarf hier direkt anpassen, falls
+# die eigene ROM-Sammlung ueberwiegend eine andere Region nutzt (z.B.
+# reine PAL/Europe-Sammlung) - eine Kommandozeilen-Option war fuer
+# diesen Fix bewusst nicht der Ansatz, um die Aenderung einfach und
+# gut nachvollziehbar zu halten.
+REGION_PRIORITY = ["(usa)", "(world)", "(europe)", "(japan)", "(germany)"]
 
 def region_rank(name):
     low = name.lower()

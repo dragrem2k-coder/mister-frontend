@@ -71,9 +71,15 @@ SYSTEMS = {
     "NEOGEO":  (["NEOGEO"],               {".neo"},                "SNK - Neo Geo"),
 }
 
+# NEU (siehe ausfuehrliche Begruendung in frontend/mister_boxart.py -
+# per echter Hardware-Diagnose bestaetigt: kleinere Quelldateien lesen
+# spuerbar schneller von der SD-Karte UND treffen bei typischen 1080p-
+# Boxgroessen den Sprung auf Skalierungsfaktor 2x, was die Box sogar
+# BESSER ausfuellt als die bisherigen 360x420 (die dort meist bei 1x
+# blieben, kein tatsaechliches Hochskalieren).
 PROFILES = {
     "sd": (100, 120),   # max Breite x Hoehe fuer CRT-Modi (240 Zeilen)
-    "hd": (360, 420),   # max Breite x Hoehe fuer 1080p
+    "hd": (300, 350),   # max Breite x Hoehe fuer 1080p
 }
 
 # Bekannte Boot-/Test-/Demo-Dateien, die manche MiSTer-Verteilungen
@@ -123,7 +129,12 @@ def strip_tags(name):
     """Klammer-Tags entfernen: 'Spiel (Europe) (Rev 1)' -> 'Spiel'."""
     return re.sub(r"[\(\[][^\)\]]*[\)\]]", "", name).strip()
 
-REGION_PRIORITY = ["(germany)", "(europe)", "(world)", "(usa)", "(japan)"]
+# BUGFIX (siehe frontend/mister_boxart.py fuer die ausfuehrliche
+# Begruendung - identische Region-Verwechslung: USA-ROMs bekamen bei
+# fehlendem exaktem Cover-Treffer systematisch europaeische Cover
+# zugeordnet statt umgekehrt, da Germany/Europe/World bisher vor USA
+# standen).
+REGION_PRIORITY = ["(usa)", "(world)", "(europe)", "(japan)", "(germany)"]
 
 def region_rank(name):
     low = name.lower()

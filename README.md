@@ -887,9 +887,7 @@ Läuft komplett über Standard-Python (`http.server` + Server-Sent-
 Events), keine externen Pakete, als eigener Hintergrund-Thread neben
 der normalen Frontend-Schleife - bindet auf Port 8080 im lokalen
 Netzwerk. **Nicht** ins Internet weiterleiten, es gibt keine
-Authentifizierung. Ausführliche Einrichtung Schritt für Schritt (auch
-für Nicht-Techniker): `ANLEITUNG_fuer_Dennsen.md`. Technische Details:
-`STREAM_fuer_Dragrem.md`.
+Authentifizierung. Technische Details: `STREAM_fuer_Dragrem.md`.
 
 ### 12.1 Bildschirmspiegel (optional, für CRT-Nutzer)
 

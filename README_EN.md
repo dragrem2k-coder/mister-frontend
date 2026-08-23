@@ -862,9 +862,8 @@ admin switch, if not desired.
 Runs entirely on standard Python (`http.server` + server-sent events), no
 external packages, as its own background thread next to the normal
 frontend loop - binds to port 8080 on the local network. Do **not**
-forward it to the internet, there is no authentication. Detailed setup
-step by step (also for non-techies): `ANLEITUNG_fuer_Dennsen.md`.
-Technical details: `STREAM_fuer_Dragrem.md`.
+forward it to the internet, there is no authentication. Technical
+details: `STREAM_fuer_Dragrem.md`.
 
 ### 12.1 Screen mirror (optional, for CRT users)
 

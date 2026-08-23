@@ -175,7 +175,10 @@ def norm2(name):
     t = _canon_article(strip_tags(name)).replace("&", " and ")
     return re.sub(r"[^a-z0-9]", "", t.lower())
 
-REGION_PRIORITY = ["(germany)", "(europe)", "(world)", "(usa)", "(japan)"]
+# BUGFIX (siehe fe/naming.py bzw. mister_boxart.py fuer die
+# ausfuehrliche Begruendung - dieselbe Korrektur, damit alle drei
+# Stellen weiterhin konsistent dieselbe Region bevorzugen).
+REGION_PRIORITY = ["(usa)", "(world)", "(europe)", "(japan)", "(germany)"]
 
 def region_rank(name):
     low = name.lower()

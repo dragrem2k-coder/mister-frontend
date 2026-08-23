@@ -3582,6 +3582,11 @@ from fe.ra_core import RA_CORES_DIR_ABS, RA_CORES_DIR_REL, RA_CORE_NAME_CANDIDAT
 OVERSCAN_X = 7
 OVERSCAN_Y = 5
 
+# NEU: Budget fuer die SD-Rueckfall-Diagnose in draw_art_panel() -
+# einfache Liste statt int, damit sie aus der Funktion heraus
+# veraendert werden kann, ohne "global" zu brauchen (mutable Objekt).
+_sd_fallback_diag_budget = [30]
+
 # Farben als (R, G, B)
 C_BG     = (16, 18, 24)
 C_PANEL  = (28, 32, 44)
@@ -7044,6 +7049,20 @@ class Frontend:
         if H >= 720:
             hd = _art_path_in(ART_HD, syskey, lookup_name)
             art = ART.get_scaled(hd, avail_w, cover_h)
+            # NEUES DIAGNOSE (Nutzerfrage: "liegt es eventuell am SD-
+            # Rueckfall, wenn keine HD-Datei vorhanden ist?" - per
+            # isolierter Messung bereits geklaert, dass der SD-
+            # Rueckfall SELBST rechnerisch nicht teurer ist als der
+            # normale HD-Pfad [SD-Quelle hat weniger Pixel zu
+            # durchlaufen, trotz staerkerer Hochskalierung] - aber
+            # OB der Rueckfall ueberhaupt passiert, war bisher nicht
+            # sichtbar. Budget pro Sitzung, keine Log-Flut bei vielen
+            # fehlenden HD-Dateien.
+            if art is None:
+                if _sd_fallback_diag_budget[0] > 0:
+                    _sd_fallback_diag_budget[0] -= 1
+                    LOG("draw_art_panel: HD-Datei fehlt/unlesbar, "
+                        "SD-Rueckfall fuer '%s' (%s)" % (lookup_name, hd))
         if art is None:
             art = ART.get_scaled(art_path(syskey, lookup_name), avail_w, cover_h)
         if art:
