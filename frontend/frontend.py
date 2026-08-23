@@ -4943,7 +4943,7 @@ class Frontend:
         self._layout_items_cache[key] = result
         return result
 
-    def draw(self, message=None, prominent=False):
+    def draw(self, message=None, prominent=False, prominent_duration=5.0):
         self._maybe_apply_pending_ra_data()
         self._sync_track_marquee()
         self._maybe_retry_ra()
@@ -4956,7 +4956,7 @@ class Frontend:
             # auffaellige Box unten uebernimmt das komplett allein,
             # sonst zeigt der Bildschirm dieselbe Information doppelt.
             self._prominent_message = message
-            self._prominent_message_until = time.monotonic() + 5.0
+            self._prominent_message_until = time.monotonic() + prominent_duration
             message = None
         elif message:
             # Schutzfenster setzen (siehe Kommentar bei
@@ -5196,6 +5196,30 @@ class Frontend:
         fb.rect(0, 0, W, bar_h, accent_for(None))
         text_w = len(label) * 8 * scale
         fb.text((W - text_w) // 2, 3 * scale, label, scale, C_BG, accent_for(None))
+        # BUGFIX (Nutzer-Rueckmeldung: Suchbalken blieb nach Enter/Abbruch
+        # als Bildschirm-Leiche stehen, "wird nicht wieder richtig
+        # ausgeblendet"): dieser Balken wird direkt auf den Puffer
+        # gemalt, OHNE ueber clear() zu laufen - der Schnellpfad in
+        # _draw_page_items_impl() (siehe dort, "_fast_path") merkt sich
+        # aber nur, ob SEIT dem letzten vollen Neuaufbau ueberhaupt
+        # etwas anderes den Puffer veraendert hat, erkennt an diesem
+        # direkten rect()/text() hier also nichts. Verlaesst der Nutzer
+        # den Suchmodus (naechster Aufruf mit self._search_mode=False),
+        # gibt _draw_search_overlay() dann sofort zurueck, OHNE den
+        # Balken wegzuraeumen - trifft der Schnellpfad in genau diesem
+        # Moment zu (Kategorie/Ordner/Trefferzahl unveraendert, was beim
+        # reinen Suchen-und-Bestaetigen der Normalfall ist), bleibt der
+        # Balken als Leiche stehen, da gar kein voller Neuaufbau mehr
+        # passiert. Fix: full_redraw_gen bei JEDEM tatsaechlichen
+        # Balken-Aufbau hochzaehlen - macht die Schnellpfad-Momentaufnahme
+        # dieses Bildes fuer das NAECHSTE Bild ungueltig, erzwingt dort
+        # also einen echten Neuaufbau. Kostet whaerend des aktiven
+        # Suchens einen vollen Neuaufbau pro Tastendruck statt des
+        # Schnellpfads - unproblematisch, da Tippen im Suchfeld ein
+        # einzelner, menschlich getakteter Tastendruck ist, kein
+        # durchlaufendes Scrollen (die eigentliche "keine Scroll-Lags"-
+        # Vorgabe betrifft ausschliesslich Navigation, nicht die Suche).
+        fb.mark_full_redraw()
 
     def _draw_cat_row(self, i, row, L, maxc):
         """Eine einzelne Zeile der Kategorienliste (Seite 0) zeichnen -
@@ -6724,16 +6748,13 @@ class Frontend:
                 threading.Thread(target=self._prewarm_ra_achievements,
                                  daemon=True).start()
 
-            # Update-Pruefung (Nutzerwunsch, siehe
-            # _check_for_update_background()): gleiches Ein-mal-pro-
-            # Sitzung-Muster wie das RA-Vorwaermen oben - EIN einzelner
-            # Abruf, sobald wirklich Leerlauf herrscht.
-            if (not getattr(self, "_update_check_started", False)
-                    and update_check_enabled()
-                    and time.monotonic() - self._last_input_time > self._attract_delay_cached()):
-                self._update_check_started = True
-                threading.Thread(target=self._check_for_update_background,
-                                 daemon=True).start()
+            # Update-Pruefung (Nutzerwunsch): der eigentliche Start des
+            # Hintergrund-Threads (_check_for_update_background()) ist
+            # umgezogen nach run(), direkt beim Sichtbarwerden des Menues
+            # (Nutzerwunsch: "sofort im Hauptmenue", nicht erst nach
+            # Leerlauf) - siehe dortiger Kommentar. Hier wird weiterhin nur
+            # das FERTIGE Ergebnis abgeholt und gezeichnet, unabhaengig
+            # davon, ob gerade echter Leerlauf herrscht oder nicht.
             pending_update = getattr(self, "_update_popup_pending", None)
             if pending_update:
                 self._update_popup_pending = None
@@ -6761,20 +6782,33 @@ class Frontend:
                     self.attract_mode = False
                 self._last_input_time = time.monotonic()
                 # NEUES FEATURE (Nutzerwunsch: "Update-Info sehe ich nicht -
-                # ueberschneidet sich das mit dem Boot-Logo?"): keine
-                # Ueberschneidung gefunden - der Update-Check startet
-                # grundsaetzlich erst nach _attract_delay_cached() Sekunden
-                # echten Leerlaufs (siehe oben), also WEIT nach dem Boot-
-                # Logo. Der eigentliche Grund war die bisherige kleine, nur
-                # 2s sichtbare Fusszeilen-Meldung (draw(message=...) ohne
-                # prominent=True) - ausgerechnet waehrend des Leerlaufs
-                # gezeigt, wenn kaum jemand hinschaut. prominent=True wie
-                # beim Build-Update-Hinweis direkt darunter (dort beim
-                # fruehreren Wunsch "sollte nach dem Logo mittig als
-                # Infobox erscheinen" bereits umgesetzt) - hier aus
-                # Versehen nicht mit erledigt worden.
+                # ueberschneidet sich das mit dem Boot-Logo?", dann
+                # weiter praezisiert: "soll sofort im Hauptmenue
+                # eingeblendet werden, wenn ein Update verfuegbar ist, fuer
+                # 2-3 Sekunden"): keine Ueberschneidung mit dem Boot-Logo
+                # gefunden - der eigentliche Grund war zunaechst die kleine,
+                # nur 2s sichtbare Fusszeilen-Meldung (draw(message=...)
+                # ohne prominent=True), dann (Zwischenstand) noch der
+                # Leerlauf-Schwellenwert (_attract_delay_cached()), der den
+                # Update-Check ueberhaupt erst startete - der Hinweis kam
+                # dadurch fruehestens nach etlichen Sekunden Leerlauf an,
+                # nicht "sofort". Der Update-Check-Thread wird jetzt direkt
+                # in run() gestartet, sobald das Menue sichtbar/bedienbar
+                # ist (siehe dortiger Kommentar) - dieser Codeblock hier
+                # (next_action()-Idle-Zweig) bleibt unveraendert die Stelle,
+                # die das Ergebnis abholt und zeichnet, sobald der
+                # Hintergrund-Thread fertig ist; da next_action() auch ohne
+                # echten Leerlauf alle paar hundert Millisekunden neu
+                # abgefragt wird (siehe Aufwach-Zeitberechnung oben), taucht
+                # die Meldung praktisch sofort nach Abschluss des
+                # Netzwerk-Abrufs auf. prominent_duration=3.0 statt der
+                # Standard-5s (siehe draw()) - eigens auf den gewuenschten
+                # 2-3-Sekunden-Rahmen verkuerzt; der Build-Update-Hinweis
+                # ("Neue Fixes") direkt darunter behaelt bewusst die
+                # laengeren 5s, da dort kein entsprechender Wunsch geaeussert
+                # wurde.
                 self.draw(message=t("update_available_popup", pending_update),
-                         prominent=True)
+                         prominent=True, prominent_duration=3.0)
 
             # NEUES FEATURE (Nutzerwunsch: "ich moechte bei v4.4 bleiben,
             # aber trotzdem einen Hinweis sehen, wenn es neue Fixes gibt")
@@ -10316,6 +10350,27 @@ class Frontend:
         # wenn das Menue tatsaechlich sichtbar und bedienbar ist.
         self._last_input_time = time.monotonic()
         LOG("Menue sichtbar, Leerlauf-Uhr fuer Attract-Modus gestartet")
+        # NEUES FEATURE (Nutzerwunsch: "Update-Nachricht soll sofort im
+        # Hauptmenue eingeblendet werden, wenn ein Update verfuegbar ist,
+        # fuer 2-3 Sekunden" - vorher hing der Update-Check-Start am
+        # selben Leerlauf-Schwellenwert wie der Attract-Modus, siehe
+        # _attract_delay_cached() weiter unten in next_action(), der
+        # Hinweis kam dadurch fruehestens nach vielen Sekunden Leerlauf
+        # an). Bewusst hierher verschoben, an dieselbe Stelle, an der
+        # bereits die Leerlauf-Uhr selbst zurueckgesetzt wird - das Menue
+        # ist ab hier sichtbar/bedienbar, ein einzelner leiser
+        # Netzwerk-Abruf im Hintergrund verzoegert nichts (siehe
+        # _check_for_update_background(), laeuft in einem eigenen
+        # Thread). Gleiches Ein-mal-pro-Sitzung-Muster (_update_check_
+        # started) wie zuvor - next_action()'s Idle-Zweig holt das
+        # Ergebnis weiterhin ab und zeichnet es, sobald es vorliegt (dort
+        # jetzt ohne eigene Start-Bedingung mehr, siehe dortiger
+        # Kommentar).
+        if (not getattr(self, "_update_check_started", False)
+                and update_check_enabled()):
+            self._update_check_started = True
+            threading.Thread(target=self._check_for_update_background,
+                             daemon=True).start()
         # SICHERHEITSNETZ CRT-Wechsel (siehe mark_crt_pending_confirm() in
         # fe/settings.py und den zugehoerigen Idle-Zweig in next_action()):
         # falls das Bild tatsaechlich ankommt, soll der Nutzer sofort sehen,

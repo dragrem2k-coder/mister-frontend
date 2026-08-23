@@ -114,8 +114,21 @@ Verhaltensänderung im Normalbetrieb):
   deutsche schon bei v4.3 war - beide jetzt synchron.
 - "Neue Version verfügbar"-Hinweis war nur ein kleines,
   2-Sekunden-Fußzeilen-Popup und wurde dadurch praktisch nie bemerkt -
-  zeigt jetzt wie der "Neue Fixes"-Hinweis eine große, 5 Sekunden
-  stehenbleibende Meldung.
+  zeigt jetzt wie der "Neue Fixes"-Hinweis eine große Infobox. War im
+  ersten Anlauf noch an denselben Leerlauf-Schwellenwert wie der
+  Attract-Modus gekoppelt (Update-Check startete erst nach etlichen
+  Sekunden Leerlauf) - startet jetzt sofort, sobald das Hauptmenü
+  sichtbar ist, und bleibt 2-3 Sekunden stehen (statt der 5s des
+  "Neue Fixes"-Hinweises).
+- Nach Bestätigen oder Abbrechen der Volltextsuche (F2/"/") blieb der
+  farbige Suchbalken oben im Bild als Leiche stehen, statt richtig zu
+  verschwinden - der HDMI-Performance-Schnellpfad in
+  `_draw_page_items_impl()` erkannte nicht, dass der Balken den Puffer
+  außerhalb seiner eigenen Buchführung verändert hatte, und übersprang
+  deshalb fälschlich den nötigen vollen Neuaufbau. Der Suchbalken
+  zählt jetzt bei jedem eigenen Zeichnen `full_redraw_gen` mit hoch,
+  wodurch der Schnellpfad direkt danach zuverlässig einmal den echten,
+  sauberen Neuaufbau erzwingt.
 
 ## v4.3 — großes Sammel-Release (staging → main)
 
