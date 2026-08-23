@@ -107,7 +107,25 @@ SYSTEMS = {
 # neu erzeugte .art-Dateien - bereits vorhandene werden von diesem
 # Skript uebersprungen (siehe Docstring oben), muessen also fuer den
 # Effekt einmalig geloescht und neu erzeugt werden.
-PROFILES = {"sd": (100, 120), "hd": (300, 350)}
+# NEU (Nutzerfrage: "sollte die Boxart auf CRT nicht aggressiver, z.B.
+# 240x280, sein?"): NACHGERECHNET statt geraten - das tatsaechliche
+# Boxart-Panel im CRT-Layout (320x240, siehe layout_items()/draw_art_panel())
+# ist rechnerisch NIE breiter als ~101px und NIE hoeher als ~165px (obere
+# Kappung bei 85% der Panel-Hoehe, siehe cover_h-Berechnung dort) - selbst
+# im guenstigsten Fall (gar kein Text darunter). 240x280 waere also mehr
+# als das Doppelte dessen, was auf dem CRT-Bildschirm je zu sehen ist: die
+# Datei wuerde beim Zeichnen ohnehin wieder auf ~101x165 herunterskaliert
+# (siehe get_scaled() in fe/art.py) - keine sichtbare Verbesserung, aber
+# spuerbar mehr Lesezeit von der SD-Karte UND mehr Rechenarbeit beim
+# Skalieren pro NEU geladenem Cover (genau der Kostenfaktor, der oben bei
+# der HD-Reduzierung von 360x420 auf 300x350 schon einmal gemessen wurde -
+# hier in die andere Richtung). Die bisherigen 100x120 waren dagegen in der
+# Breite schon fast exakt richtig, aber in der Hoehe (120 statt bis zu 165)
+# zu knapp bemessen - das ist der tatsaechliche Rest-Verbesserungsspielraum,
+# den 100x120 noch liegen liess: 104x168 deckt den rechnerischen Maximalfall
+# jetzt mit etwas Marge ab, ohne unnoetig ueber den CRT-Bildschirm hinaus
+# aufzuloesen.
+PROFILES = {"sd": (104, 168), "hd": (300, 350)}
 
 LIBRETRO_BASE = "https://thumbnails.libretro.com"
 GITHUB_RAW    = "https://raw.githubusercontent.com/libretro-thumbnails"

@@ -369,6 +369,11 @@ TRANSLATIONS = {
     "sys_video_hdmi":  {"en": "Menu video: HDMI -> switch to CRT",
                         "de": "Menue-Video: HDMI -> auf CRT wechseln"},
     "sys_video_suffix":{"en": " (reboot)", "de": " (Neustart)"},
+    # NEUES FEATURE (CRT-Sicherheitsnetz, siehe mark_crt_pending_confirm()
+    # in fe/settings.py): kurz genug gehalten, um auch auf CRT (320px
+    # Breite) sicher in eine Zeile zu passen.
+    "crt_pending_notice": {"en": "CRT active - else HDMI in %ds",
+                           "de": "CRT aktiv - sonst HDMI in %ds"},
     "sys_music_on":    {"en": "Music: On -> turn off", "de": "Musik: an -> ausschalten"},
     "sys_music_off":   {"en": "Music: Off -> turn on", "de": "Musik: aus -> einschalten"},
     "sys_music_source": {"en": "Music source: %s", "de": "Musik-Quelle: %s"},
@@ -417,6 +422,10 @@ TRANSLATIONS = {
                      "de": "Markierungs-Schimmer: AN -> ausschalten (feste statt animierte Hervorhebung)"},
     "sys_pulse_off": {"en": "Selection glow: OFF -> turn on",
                       "de": "Markierungs-Schimmer: AUS -> einschalten"},
+    "sys_eq_on": {"en": "Equalizer bars: ON -> turn off (test if this helps HDMI scrolling)",
+                 "de": "Equalizer-Balken: AN -> ausschalten (testen ob es beim HDMI-Scrollen hilft)"},
+    "sys_eq_off": {"en": "Equalizer bars: OFF -> turn on",
+                  "de": "Equalizer-Balken: AUS -> einschalten"},
     "sys_stream_on": {"en": "Stream overlay: ON -> turn off (takes effect after restart)",
                       "de": "Stream-Overlay: AN -> ausschalten (wirkt nach Neustart)"},
     "sys_stream_off": {"en": "Stream overlay: OFF -> turn on (takes effect after restart)",

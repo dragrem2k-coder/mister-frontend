@@ -3541,6 +3541,8 @@ from fe.settings import (
     toggle_screen_mirror, toggle_stream_overlay, system_bg_enabled,
     toggle_system_bg, fast_scroll_enabled, toggle_fast_scroll,
     FAST_SCROLL_WINDOW, pulse_effect_enabled, toggle_pulse_effect,
+    CRT_CONFIRM_TIMEOUT, crt_pending_confirm, mark_crt_pending_confirm,
+    clear_crt_pending_confirm, eq_effect_enabled, toggle_eq_effect,
 )
 
 # NEUES FEATURE (Nutzerwunsch: Rainwave-Internetradio als zweite
@@ -5105,7 +5107,7 @@ class Frontend:
         # Hinweis.
         logo_w = len("MiSTer") * 8 * 3 * s
         eq_w = 0
-        if self._track_mq_name:
+        if self._track_mq_name and eq_effect_enabled():
             self._draw_equalizer(ox + logo_w + 10 * s, oy + 8 * s, s)
             eq_w = 4 * (3 * s + 2 * s) + 10 * s
         track_x = ox + logo_w + eq_w + 16 * s
@@ -5380,7 +5382,7 @@ class Frontend:
         y_min, y_max = H, 0
 
         logo_w = len("MiSTer") * 8 * 3 * s
-        if self._track_mq_name:
+        if self._track_mq_name and eq_effect_enabled():
             eq_x, eq_y = ox + logo_w + 10 * s, oy + 8 * s
             eq_h = 10 * s
             eq_w = 4 * (3 * s + 2 * s)
@@ -5528,7 +5530,35 @@ class Frontend:
         syskey = v.get("syskey")
         has_art = len(v["items"]) > 0 and (bool(syskey) or
                                            v["items"][0][1] == "game")
-        if has_art:
+
+        # NEUES FEATURE ("Turbo-Scroll", Nutzervorschlag): Waehrend eines
+        # schnellen Scroll-Bursts (Taste gedrueckt halten, siehe
+        # _scroll_skip_vsync() - dasselbe Zeitfenster wie FAST_SCROLL_WINDOW,
+        # bewusst derselbe Opt-in-Schalter wie beim Vsync-Ueberspringen)
+        # wird das Boxart-/Info-Panel bewusst NICHT bei jedem einzelnen
+        # Schritt neu gezeichnet. Grund: rect_rounded()/text() cachen zwar
+        # die BERECHNUNG (Farben, Glyphen), nicht aber das eigentliche
+        # Kopieren der fertigen Pixel in den Framebuffer - das faellt bei
+        # jedem Aufruf erneut an, allen voran self.blit() fuer das Cover
+        # (bei HD-Profil bis zu 360x420 Pixel, zeilenweise kopiert). Bei
+        # zehn oder mehr Schritten/Sekunde beim Gedruecktalten summiert
+        # sich genau dieser Kopieraufwand spuerbar.
+        #
+        # Das zuletzt gezeichnete Panel bleibt einfach stehen (der alte
+        # Framebuffer-Inhalt wird nicht angetastet), bis der ohnehin
+        # bereits vorhandene COVER_SETTLE-Mechanismus (siehe next_action():
+        # ~150ms nach der letzten Eingabe, sobald wirklich Stillstand
+        # herrscht) automatisch einen vollen draw_page_items()-Aufbau
+        # ausloest - der zeichnet das Panel fuer die dann endgueltige
+        # Auswahl ohnehin bereits vollstaendig neu, kein zusaetzlicher
+        # Timer noetig. Bei normaler, langsamer Navigation (kein aktives
+        # Fast-Scroll-Fenster) aendert sich am Verhalten NICHTS - das
+        # Panel wird weiterhin sofort bei jedem Schritt aktualisiert, wie
+        # bisher. Die Vsync-Skip-Logik selbst (_scroll_skip_vsync()) bleibt
+        # unangetastet, wird hier nur gelesen.
+        defer_panel = has_art and self._scroll_skip_vsync()
+
+        if has_art and not defer_panel:
             L = self.layout_items(has_art)
             s, ox, oy = L["s"], L["ox"], L["oy"]
             list_right, footer_y = L["list_right"], L["footer_y"]
@@ -5673,7 +5703,7 @@ class Frontend:
             L = self.layout_cats()
             ox, oy = L["ox"], L["oy"]
             logo_w = len("MiSTer") * 8 * 3 * s
-            eq_w = 4 * (3 * s + 2 * s) + 10 * s
+            eq_w = (4 * (3 * s + 2 * s) + 10 * s) if eq_effect_enabled() else 0
             track_x = ox + logo_w + eq_w + 16 * s
             track_maxc = max(0, (W - ox - track_x) // (8 * s))
             if track_maxc < 6:
@@ -6610,6 +6640,22 @@ class Frontend:
                 timeout = min(candidates)
             act = self.inp.read_action(timeout=timeout)
             if act is not None:
+                # SICHERHEITSNETZ CRT-Wechsel (siehe die ausfuehrliche
+                # Begruendung weiter unten im Idle-Zweig sowie bei
+                # mark_crt_pending_confirm() in fe/settings.py): JEDE echte
+                # Eingabe - egal welche - ist der Beweis, dass das Bild
+                # ankommt UND bedienbar ist. Sofort hier abklemmen (nicht
+                # erst im Idle-Zweig unten warten), sonst wuerde eine
+                # spaetere, ganz normale Lesepause von >= CRT_CONFIRM_
+                # TIMEOUT Sekunden faelschlich als "kein Bild" gewertet,
+                # obwohl CRT laengst bestaetigt ist.
+                if crt_pending_confirm():
+                    clear_crt_pending_confirm()
+                    self._crt_confirm_handled = True
+                    self._prominent_message = None   # Hinweisbox nicht
+                                                      # unnoetig weiter
+                                                      # anzeigen - CRT ist
+                                                      # ja jetzt bestaetigt
                 if self.attract_mode:
                     # Erste Eingabe beendet NUR den Attract-Modus -
                     # wird nicht zusaetzlich als normale Navigation
@@ -6625,6 +6671,41 @@ class Frontend:
                 if need_mq:
                     self.marquee_reset()
                 return act
+
+            # SICHERHEITSNETZ CRT-Wechsel (Nutzerwunsch: "wie soll er da
+            # wieder rauskommen, wenn jemand ohne CRT im CRT-Modus landet?"
+            # - siehe ausfuehrliche Begruendung bei mark_crt_pending_confirm()
+            # in fe/settings.py, warum eine echte Sperre VORHER nicht robust
+            # baubar ist). Wird nur EINMAL pro Sitzung behandelt (getattr-
+            # Ein-mal-Schalter, gleiches Muster wie _ra_prewarm_started
+            # weiter unten). idle_for misst hier bewusst ab self.
+            # _last_input_time - genau derselbe Zeitpunkt, den run() setzt,
+            # sobald das Menue tatsaechlich sichtbar/bedienbar ist (siehe
+            # dortiger Kommentar) - startet die Uhr also nicht schon
+            # waehrend Boot-Animation/Scan.
+            if (not getattr(self, "_crt_confirm_handled", False)
+                    and crt_pending_confirm()):
+                if not crt_menu_active():
+                    # Zwischenzeitlich (z.B. manuell ueber das Systemmenue)
+                    # schon wieder auf HDMI zurueckgestellt - Markierung nur
+                    # noch aufraeumen, nichts weiter zu tun.
+                    clear_crt_pending_confirm()
+                    self._crt_confirm_handled = True
+                elif time.monotonic() - self._last_input_time >= CRT_CONFIRM_TIMEOUT:
+                    LOG("CRT-Sicherheitsnetz: %ds keine Eingabe seit dem "
+                        "Wechsel in den CRT-Modus - automatischer "
+                        "Ruecksprung auf HDMI" % CRT_CONFIRM_TIMEOUT)
+                    clear_crt_pending_confirm()
+                    self._crt_confirm_handled = True
+                    if toggle_crt_menu() is not None:
+                        os.system("sync; reboot")
+                        # KEIN return hier: next_action() darf laut eigenem
+                        # Vertrag niemals None zurueckgeben (siehe die
+                        # anderen Idle-Zweige unten, die ebenfalls einfach
+                        # durchlaufen statt zurueckzukehren) - der Reboot
+                        # selbst braucht ohnehin noch einen Moment, bis er
+                        # tatsaechlich greift, ein paar weitere Schleifen-
+                        # durchlaeufe hier sind harmlos.
 
             # RA-Hintergrund-Vorwaermen (Nutzerwunsch, siehe
             # _prewarm_ra_achievements()): EINMAL pro Sitzung starten,
@@ -6656,7 +6737,6 @@ class Frontend:
             pending_update = getattr(self, "_update_popup_pending", None)
             if pending_update:
                 self._update_popup_pending = None
-                self.draw(message=t("update_available_popup", pending_update))
 
                 # BUGFIX (Nutzer-Rueckmeldung: "keine Info, dass ein
                 # Update verfuegbar ist"): draw(message=...) verwirft
@@ -6671,11 +6751,30 @@ class Frontend:
                 # ueberhaupt vorliegt. Fix: Attract-Modus hier explizit
                 # verlassen (wie durch eine echte Eingabe), bevor die
                 # Meldung gezeichnet wird - sonst kam sie nie sichtbar
-                # an, obwohl der Check laengst erfolgreich war.
+                # an, obwohl der Check laengst erfolgreich war. (Der
+                # urspruenglich HIER VOR dem Fix stehende erste, vom Fix
+                # selbst schon als "eigentlich ueberfluessig" dokumentierte
+                # draw()-Aufruf ist jetzt entfernt - genau wie beim Build-
+                # Update-Hinweis direkt darunter, der denselben Fix ohne
+                # diese Dopplung uebernommen hatte.)
                 if self.attract_mode:
                     self.attract_mode = False
                 self._last_input_time = time.monotonic()
-                self.draw(message=t("update_available_popup", pending_update))
+                # NEUES FEATURE (Nutzerwunsch: "Update-Info sehe ich nicht -
+                # ueberschneidet sich das mit dem Boot-Logo?"): keine
+                # Ueberschneidung gefunden - der Update-Check startet
+                # grundsaetzlich erst nach _attract_delay_cached() Sekunden
+                # echten Leerlaufs (siehe oben), also WEIT nach dem Boot-
+                # Logo. Der eigentliche Grund war die bisherige kleine, nur
+                # 2s sichtbare Fusszeilen-Meldung (draw(message=...) ohne
+                # prominent=True) - ausgerechnet waehrend des Leerlaufs
+                # gezeigt, wenn kaum jemand hinschaut. prominent=True wie
+                # beim Build-Update-Hinweis direkt darunter (dort beim
+                # fruehreren Wunsch "sollte nach dem Logo mittig als
+                # Infobox erscheinen" bereits umgesetzt) - hier aus
+                # Versehen nicht mit erledigt worden.
+                self.draw(message=t("update_available_popup", pending_update),
+                         prominent=True)
 
             # NEUES FEATURE (Nutzerwunsch: "ich moechte bei v4.4 bleiben,
             # aber trotzdem einen Hinweis sehen, wenn es neue Fixes gibt")
@@ -6759,7 +6858,11 @@ class Frontend:
                 redraw_dynamic = False
                 if track_needs and self._track_marquee_tick(24):
                     redraw_marquee = True
-                if self._track_mq_name and self._eq_tick():
+                # NEUES FEATURE (siehe eq_effect_enabled() in
+                # fe/settings.py): gleiches Muster wie beim Schimmer-
+                # Effekt direkt darunter - bei Deaktivierung wird
+                # _eq_tick() gar nicht erst aufgerufen.
+                if eq_effect_enabled() and self._track_mq_name and self._eq_tick():
                     redraw_dynamic = True
                 # NEUES FEATURE (siehe pulse_effect_enabled() in
                 # fe/settings.py): bei Deaktivierung wird _pulse_tick()
@@ -8036,6 +8139,14 @@ class Frontend:
         want_crt = (choice2 == 1)
         if want_crt != crt_menu_active():
             toggle_crt_menu()
+            # SICHERHEITSNETZ (siehe Kommentar bei mark_crt_pending_confirm()
+            # in fe/settings.py): nur beim Wechsel IN den CRT-Modus setzen -
+            # der naechste Boot ueberwacht dann automatisch, ob ueberhaupt
+            # eine Eingabe ankommt, und wechselt sonst von selbst zurueck.
+            if want_crt:
+                mark_crt_pending_confirm()
+            else:
+                clear_crt_pending_confirm()
             self._wizard_info(
                 t("wizard_step_title", 2, total, t("wizard_step_video")),
                 [t("wizard_video_reboot_note")], skippable=False)
@@ -10205,6 +10316,18 @@ class Frontend:
         # wenn das Menue tatsaechlich sichtbar und bedienbar ist.
         self._last_input_time = time.monotonic()
         LOG("Menue sichtbar, Leerlauf-Uhr fuer Attract-Modus gestartet")
+        # SICHERHEITSNETZ CRT-Wechsel (siehe mark_crt_pending_confirm() in
+        # fe/settings.py und den zugehoerigen Idle-Zweig in next_action()):
+        # falls das Bild tatsaechlich ankommt, soll der Nutzer sofort sehen,
+        # WARUM das Menue sich gleich von selbst zurueckschalten koennte,
+        # statt sich nur zu wundern - bewusst eine laengere Anzeigedauer als
+        # die eingebauten 5s von draw(message=..., prominent=True) (siehe
+        # dortiger Kommentar), deshalb hier direkt gesetzt statt ueber den
+        # message-Parameter.
+        if crt_pending_confirm():
+            self._prominent_message = t("crt_pending_notice", CRT_CONFIRM_TIMEOUT)
+            self._prominent_message_until = time.monotonic() + CRT_CONFIRM_TIMEOUT
+            self.draw()
         try:
             move_streak = 0     # zaehlt gehaltene hoch/runter-Wiederholungen
             move_last = None    # fuer den Turbo-Sprung (einzelne Position)
@@ -10686,7 +10809,16 @@ class Frontend:
                             self.page = 0        # Kategorien koennten sich geaendert haben
                         elif kind == "crtmenu":
                             self.draw("Switching menu video, rebooting ...")
-                            if toggle_crt_menu() is not None:
+                            new_crt_state = toggle_crt_menu()
+                            if new_crt_state is not None:
+                                # SICHERHEITSNETZ (siehe Kommentar bei
+                                # mark_crt_pending_confirm() in
+                                # fe/settings.py): nur beim Wechsel IN den
+                                # CRT-Modus setzen.
+                                if new_crt_state:
+                                    mark_crt_pending_confirm()
+                                else:
+                                    clear_crt_pending_confirm()
                                 os.system("sync; reboot")
                                 return
                         elif kind == "reboot":
@@ -10782,6 +10914,16 @@ class Frontend:
                             # enabled() wird live in _pulsed()/next_action()
                             # geprueft), kein Neustart noetig.
                             toggle_pulse_effect()
+                            self._refresh_system_category()
+                        elif kind == "eq_effect":
+                            # NEUES FEATURE (Nutzerwunsch: "Equalizer im
+                            # HDMI-Modus abschaltbar, um zu sehen ob es
+                            # beim Scrollen besser wird") - wirkt SOFORT
+                            # (eq_effect_enabled() wird live in
+                            # draw_page_cats()/_draw_dynamic_cats()/
+                            # next_action() geprueft), kein Neustart
+                            # noetig.
+                            toggle_eq_effect()
                             self._refresh_system_category()
                         elif kind == "stream_overlay":
                             # NEUES FEATURE (Nutzerwunsch: "kann man das

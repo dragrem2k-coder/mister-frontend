@@ -46,8 +46,12 @@ except ImportError:
 # Boxgroessen den Sprung auf Skalierungsfaktor 2x, was die Box sogar
 # BESSER ausfuellt als die bisherigen 360x420 (die dort meist bei 1x
 # blieben, kein tatsaechliches Hochskalieren).
+# NEU (siehe ausfuehrliche Begruendung in frontend/mister_boxart.py -
+# nachgerechnet statt "aggressiver" geraten: das CRT-Boxart-Panel ist
+# rechnerisch nie groesser als ~101x165px, 104x168 deckt das mit kleiner
+# Marge ab, ohne unnoetig ueber den Bildschirm hinaus aufzuloesen).
 PROFILES = {
-    "sd": (100, 120),   # max Breite x Hoehe fuer CRT-Modi (240 Zeilen)
+    "sd": (104, 168),   # max Breite x Hoehe fuer CRT-Modi (240 Zeilen)
     "hd": (300, 350),   # max Breite x Hoehe fuer 1080p
 }
 

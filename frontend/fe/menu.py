@@ -29,7 +29,7 @@ from fe.settings import (
     attract_enabled, crt_menu_active, curated_only_active,
     dragend_logo_enabled, format_attract_delay, load_attract_delay,
     screen_mirror_enabled, stream_overlay_enabled, system_bg_enabled,
-    fast_scroll_enabled, pulse_effect_enabled,
+    fast_scroll_enabled, pulse_effect_enabled, eq_effect_enabled,
 )
 from fe.timekeeping import format_timezone_offset, load_timezone_offset
 from fe.retroachievements import load_ra_config
@@ -112,6 +112,8 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         else t("sys_fast_scroll_off")
     pulse_label = t("sys_pulse_on") if pulse_effect_enabled() \
         else t("sys_pulse_off")
+    eq_label = t("sys_eq_on") if eq_effect_enabled() \
+        else t("sys_eq_off")
     stream_label = t("sys_stream_on") if stream_overlay_enabled() \
         else t("sys_stream_off")
     screen_mirror_label = t("sys_screen_mirror_on") if screen_mirror_enabled() \
@@ -150,6 +152,7 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             (system_bg_label, "system_bg", None),
             (fast_scroll_label, "fast_scroll", None),
             (pulse_label, "pulse_effect", None),
+            (eq_label, "eq_effect", None),
             (stream_label, "stream_overlay", None),
             (screen_mirror_label, "screen_mirror", None),
             (music_label, "music", None),

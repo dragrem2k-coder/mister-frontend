@@ -89,6 +89,36 @@ def toggle_pulse_effect():
         except OSError:
             pass
 
+# NEUES FEATURE (Nutzerwunsch: "ich haette gerne denn Equalizer im HDMI-
+# Modus abschaltbar, um zu sehen ob es dadurch besser wird mit dem
+# Scrollen im Menue"): gleiches Ein/Aus-Muster wie beim Schimmer-Effekt
+# oben. Wichtig fuer die Erwartungshaltung: die eigentliche HDMI-Scroll-
+# Traegheit wurde bereits an anderer Stelle behoben (siehe
+# _scroll_skip_vsync() in frontend.py - urspruenglich GENAU wegen des
+# Verdachts "liegt es am Equalizer/der Laufschrift?" eingefuehrt, aber
+# als Vsync-Wartezeit bei den Tick-Pfaden identifiziert, nicht als
+# Equalizer-Zeichenkosten selbst). Dieser Schalter existiert trotzdem,
+# damit der Nutzer es auf seiner eigenen Hardware selbst gegenpruefen
+# kann - schadet im deaktivierten Zustand nichts (die Balken werden dann
+# schlicht nie gezeichnet, kein eigener Tick faellig).
+EQ_EFFECT_DISABLED_FLAG = "/media/fat/frontend/eq_effect_disabled"
+
+def eq_effect_enabled():
+    return not os.path.exists(EQ_EFFECT_DISABLED_FLAG)
+
+def toggle_eq_effect():
+    if eq_effect_enabled():
+        try:
+            os.makedirs(os.path.dirname(EQ_EFFECT_DISABLED_FLAG), exist_ok=True)
+            open(EQ_EFFECT_DISABLED_FLAG, "w").close()
+        except OSError:
+            pass
+    else:
+        try:
+            os.remove(EQ_EFFECT_DISABLED_FLAG)
+        except OSError:
+            pass
+
 # NEUES FEATURE (Nutzerwunsch: "kann man das mit Stream Overlay in den
 # Optionen mit einem an/aus schaltbar machen?"): bisher nur ueber das
 # externe Scripts/stream_toggle.sh umschaltbar (legt/entfernt dieselbe
@@ -211,6 +241,49 @@ def toggle_crt_menu():
         return None
     return active
 
+
+# NEUES FEATURE (Nutzerwunsch: "sowas darf nicht passieren, wenn jemand im
+# CRT-Modus landet, der kein CRT hat - wie soll er da wieder rauskommen?"):
+# eine ECHTE Sperre ("CRT nur waehlbar, wenn wirklich eins angeschlossen
+# ist") laesst sich auf einem MiSTer software-seitig NICHT zuverlaessig
+# bauen - anders als HDMI (EDID/Hotplug-Erkennung) meldet ein per VGA/SCART
+# angeschlossener CRT dem System normalerweise gar nichts zurueck, es gibt
+# also kein generisches Signal "CRT ist da". Und selbst wenn: das Zeichnen
+# selbst laeuft immer weiter, ob am anderen Ende tatsaechlich ein Bild
+# ankommt, weiss die Software nie.
+#
+# Deshalb hier das praktische Gegenstueck: ein Sicherheitsnetz NACH dem
+# Umschalten statt einer Sperre VORHER. Wird kurz vor einem Neustart in den
+# CRT-Modus diese Markierung gesetzt, ueberwacht next_action() nach dem
+# naechsten Boot automatisch, ob innerhalb von CRT_CONFIRM_TIMEOUT Sekunden
+# UEBERHAUPT eine Eingabe ankommt (siehe next_action()-Kommentar dort). Bleibt
+# es (z.B. mangels Bild) komplett still, wechselt das System GANZ VON ALLEIN
+# zurueck auf HDMI und startet neu - der Nutzer muss dafuer nichts sehen
+# oder druecken koennen. Jede echte Eingabe beweist dagegen, dass das Bild
+# ankommt UND bedienbar ist, und bestaetigt CRT dauerhaft.
+CRT_PENDING_CONFIRM_FILE = "/media/fat/frontend/crt_menu_pending_confirm"
+CRT_CONFIRM_TIMEOUT = 20   # s ohne jede Eingabe nach einem Wechsel IN den
+                          # CRT-Modus, bevor automatisch auf HDMI zurueck-
+                          # gewechselt wird - grosszuegig genug fuer jemanden,
+                          # der tatsaechlich vor einem CRT sitzt und kurz
+                          # liest, kurz genug, um nicht ewig auf einem
+                          # dunklen Fernseher zu warten.
+
+def crt_pending_confirm():
+    return os.path.exists(CRT_PENDING_CONFIRM_FILE)
+
+def mark_crt_pending_confirm():
+    try:
+        os.makedirs(os.path.dirname(CRT_PENDING_CONFIRM_FILE), exist_ok=True)
+        open(CRT_PENDING_CONFIRM_FILE, "w").close()
+    except OSError:
+        pass
+
+def clear_crt_pending_confirm():
+    try:
+        os.remove(CRT_PENDING_CONFIRM_FILE)
+    except OSError:
+        pass
 
 
 # ----------------------------------------------------------------------------
