@@ -30,6 +30,15 @@ KEY_ESC, KEY_ENTER = 1, 28
 KEY_BACKSPACE = 14
 KEY_SLASH = 53
 KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT = 103, 108, 105, 106
+# NEUES FEATURE (Nutzerwunsch: "waere F2 im Frontend noch frei? wuerde
+# gerne die Volltextsuche mit der Taste einbauen"): F2 war bislang
+# tatsaechlich komplett unbelegt (siehe Kommentar bei KEY_F5 weiter
+# unten: "F1-F5 waren noch nie belegt" - F1/F3/F4 sind es bis heute
+# immer noch nicht). Bindet KEIN neues Feature, sondern nur eine
+# ZWEITE Taste fuer den schon vorhandenen Suchmodus (siehe KEY_SLASH
+# unten) - wer eine Tastatur nutzt, muss dafuer nicht mehr "/" tippen,
+# beide Tasten loesen exakt dieselbe, bereits bestehende Logik aus.
+KEY_F2 = 60
 KEY_F7 = 65
 KEY_F6 = 64
 KEY_F8, KEY_F9, KEY_F10, KEY_F11, KEY_F12 = 66, 67, 68, 87, 88
@@ -102,6 +111,11 @@ KEYMAP = {
     # das letzte eingegebene Zeichen der Suchanfrage. Siehe
     # self._search_mode/self._search_query weiter unten.
     KEY_SLASH: "search",
+    # NEUES FEATURE (Nutzerwunsch: "F2 als Taste fuer die Suche"): zweite,
+    # gleichwertige Taste fuer denselben Suchmodus wie "/" oben - manche
+    # finden eine dedizierte Funktionstaste intuitiver als "/". Loest
+    # exakt dieselbe Aktion "search" aus, keine eigene Logik noetig.
+    KEY_F2: "search",
     KEY_BACKSPACE: "search_backspace",
     KEY_F6: "ra_showcase",
     BTN_A: "ok", BTN_START: "ok",

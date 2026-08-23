@@ -305,7 +305,7 @@ real network traffic.
 | 3x Select in a row (pad)           | Quit confirmation (like ESC) |
 | In a running game: Esc on the keyboard, hold ~0.6 s | Directly back to the frontend, without going through the MiSTer OSD |
 | In a running game: F5 on the keyboard, hold ~0.6 s (experimental) | Reset the running core (all cores, including RA - does NOT reload the core, RA progress is kept) |
-| / (keyboard) | Start full-text search - matches anywhere in the name, not just the start |
+| / or F2 (keyboard) | Start full-text search - matches anywhere in the name, not just the start (both keys trigger the exact same function) |
 | In a running game: F12 -> "Exit to Menu Core" | Alternative via MiSTer's own menu |
 
 **Returning from a running game:** As soon as a core is running, MiSTer
@@ -488,6 +488,18 @@ The scaler can only do one mode at a time - the menu is therefore visible
 either on the CRT or on HDMI (games themselves still run on both outputs
 simultaneously, independent of the menu).
 
+**Safety net against "no signal":** If you switch from HDMI to CRT via
+System -> Display & sound while no CRT is actually connected, the
+TV/monitor stays black after the automatic reboot - and since real CRT
+detection isn't technically possible on the MiSTer, you'd be locked out
+without physical access to the hardware. That's why the frontend shows a
+clear notice with a countdown right after switching. If not a single
+real input (key/pad) arrives within 20 seconds - e.g. because no CRT is
+actually connected and the screen simply stays blank - the frontend
+automatically switches back to HDMI and reboots on its own. A single
+input within those 20 seconds permanently confirms CRT mode instead; the
+notice disappears and nothing gets reset.
+
 ## 8c. Recently played, loading progress
 
 Active automatically, no setup needed:
@@ -514,9 +526,11 @@ Active automatically, no setup needed:
 - **Equalizer bars** next to the now-playing display while music is
   playing (purely animated, not a real volume measurement).
 
-If that's too busy for you: all four effects can be turned off
-individually in the code - let me know if you'd rather have a menu switch
-for it.
+If that's too busy for you: the pulsing highlight and the equalizer bars
+can each be turned off individually via System -> Display & sound (handy
+e.g. for testing whether that helps HDMI scrolling). The glow effect and
+drop shadow stay code-only for now - let me know if you'd like a menu
+switch for those too.
 
 ## 8d. Attract mode / screensaver
 

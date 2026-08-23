@@ -315,7 +315,7 @@ geprüft, ohne echten Netzwerkverkehr zu erzeugen.
 | 3x Select nacheinander (Pad)       | Beenden-Bestätigung (wie ESC) |
 | Im laufenden Spiel: Esc auf der Tastatur, ~0,6s halten | Direkt zurück ins Frontend, ohne Umweg über MiSTers OSD |
 | Im laufenden Spiel: F5 auf der Tastatur, ~0,6s halten (experimentell) | Reset im laufenden Core (alle Cores, auch RA - lädt den Core NICHT neu, RA-Fortschritt bleibt erhalten) |
-| / (Tastatur) | Volltextsuche starten - Treffer auch mitten im Namen, nicht nur am Anfang |
+| / oder F2 (Tastatur) | Volltextsuche starten - Treffer auch mitten im Namen, nicht nur am Anfang (beide Tasten lösen exakt dieselbe Funktion aus) |
 | Im laufenden Spiel: F12 -> "Exit to Menu Core" | Alternative über MiSTers eigenes Menü |
 
 **Zum Zurückkehren aus einem laufenden Spiel:** Sobald ein Core läuft,
@@ -485,6 +485,20 @@ Der Scaler kann nur einen Modus gleichzeitig - das Menü ist daher
 entweder auf dem CRT oder auf HDMI sichtbar (Spiele selbst laufen
 weiterhin auf beiden Ausgängen gleichzeitig, unabhängig vom Menü).
 
+**Sicherheitsnetz gegen "kein Signal":** Schaltest du über System ->
+Anzeige & Sound von HDMI auf CRT um, obwohl gar kein CRT angeschlossen
+ist, bleibt der Fernseher/Monitor nach dem automatischen Neustart
+schwarz - und ohne eigene CRT-Erkennung (auf dem MiSTer technisch
+nicht möglich) käme man ohne physischen Zugriff auf die Hardware da
+nicht mehr raus. Deshalb zeigt das Frontend direkt nach dem Umschalten
+einen deutlichen Hinweis mit Countdown an. Kommt innerhalb von 20
+Sekunden keine einzige echte Eingabe (Taste/Pad) an - z.B. weil
+tatsächlich kein CRT dranhängt und das Bild schlicht leer bleibt -,
+schaltet das Frontend automatisch zurück auf HDMI und startet
+selbstständig neu. Eine einzige Eingabe innerhalb der 20 Sekunden
+bestätigt den CRT-Modus dagegen dauerhaft, der Hinweis verschwindet
+und es wird nichts zurückgesetzt.
+
 ## 8c. Zuletzt gespielt, Lade-Fortschritt
 
 Automatisch aktiv, keine Einrichtung nötig:
@@ -512,8 +526,11 @@ Automatisch aktiv, keine Einrichtung nötig:
 - **Equalizer-Balken** neben der Now-Playing-Anzeige, solange Musik
   läuft (rein animiert, keine echte Lautstärke-Messung).
 
-Falls dir das zu unruhig ist: alle vier Effekte lassen sich einzeln
-im Code abschalten - sag Bescheid, falls du dafür lieber einen
+Falls dir das zu unruhig ist: die pulsierende Markierung und die
+Equalizer-Balken lassen sich jeweils einzeln über System -> Anzeige &
+Sound abschalten (z.B. praktisch, um zu testen, ob das beim
+HDMI-Scrollen etwas bringt). Glow-Effekt und Schlagschatten bleiben
+bewusst code-only - sag Bescheid, falls du dafür auch einen
 Menüschalter hättest.
 
 ## 8d. Attract-Modus / Bildschirmschoner

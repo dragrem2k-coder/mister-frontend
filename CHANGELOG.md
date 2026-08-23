@@ -35,6 +35,24 @@ schau am besten in die Git-Historie oder in den Kopf von
   Standardbibliothek, keine externen Pakete). Komplett
   fehlertolerant: nicht konfiguriert oder OBS nicht erreichbar
   verzögert niemals Spielstart/Rückkehr zum Menü.
+- F2 als zweite, gleichwertige Taste für die (bereits bestehende)
+  Volltextsuche - bisher nur über "/" erreichbar. Löst exakt dieselbe
+  Aktion aus, keinerlei Verhaltensänderung für die bestehende
+  "/"-Taste. Gedacht für Sammlungen mit vielen Einträgen, bei denen
+  ein Sprung mitten in den Namen praktischer ist als der klassische
+  Erster-Buchstabe-Sprung.
+- Equalizer-Balken jetzt einzeln über System -> Anzeige & Sound
+  abschaltbar, unabhängig von der pulsierenden Markierung - gedacht
+  zum Testen, ob das beim Scrollen im HDMI-Modus spürbar hilft.
+- CRT/HDMI-Sicherheitsnetz: Wechselst du auf CRT-Videomodus, ohne dass
+  tatsächlich ein CRT angeschlossen ist, bleibt der Bildschirm nach
+  dem Neustart schwarz - ohne echte CRT-Erkennung (technisch nicht
+  möglich) bisher ein kompletter Aussperrer ohne physischen
+  Hardware-Zugriff. Jetzt zeigt das Frontend direkt nach dem Umschalten
+  einen Hinweis mit 20-Sekunden-Countdown; kommt in dieser Zeit keine
+  einzige echte Eingabe an, schaltet es automatisch zurück auf HDMI
+  und startet selbst neu. Eine einzige Eingabe bestätigt CRT dagegen
+  dauerhaft.
 
 **Performance (vor allem HDMI-Modus):**
 - Größter Einzelfund: der komplette Bildschirm-Neuaufbau (47-57ms bei
@@ -61,6 +79,15 @@ schau am besten in die Git-Historie oder in den Kopf von
   Songtitel), bevor die teure vollständige Zustands-Berechnung
   überhaupt angestoßen wird - betrifft nur Sitzungen mit aktivem
   Stream-Overlay, dort aber bei jedem Schleifendurchlauf.
+- "Turbo-Scroll": Boxart- und Info-Panel-Neuaufbau wird während eines
+  schnellen Scroll-Laufs (dieselbe Erkennung wie beim bestehenden
+  VSync-Skip) verzögert und erst einmalig neu gezeichnet, sobald der
+  Scroll-Lauf stoppt - reduziert die Bildlast zusätzlich genau in den
+  Momenten, in denen ohnehin am schnellsten gescrollt wird.
+- SD-Boxart-Zielgröße für CRT von 100×120 auf 104×168 angepasst -
+  exakt anhand der tatsächlichen maximalen Panel-Geometrie berechnet
+  (vorher spürbar kleiner als möglich, ohne dass es einen Grund dafür
+  gab).
 
 **Diagnose-Werkzeuge** (für Fehlersuche auf echter Hardware, ohne
 Verhaltensänderung im Normalbetrieb):
@@ -85,6 +112,10 @@ Verhaltensänderung im Normalbetrieb):
   wie bei den Scripts-Kopien. Jetzt eine einzige, kanonische Quelle.
 - Englische README war bei "v3.2" stehengeblieben, während die
   deutsche schon bei v4.3 war - beide jetzt synchron.
+- "Neue Version verfügbar"-Hinweis war nur ein kleines,
+  2-Sekunden-Fußzeilen-Popup und wurde dadurch praktisch nie bemerkt -
+  zeigt jetzt wie der "Neue Fixes"-Hinweis eine große, 5 Sekunden
+  stehenbleibende Meldung.
 
 ## v4.3 — großes Sammel-Release (staging → main)
 
