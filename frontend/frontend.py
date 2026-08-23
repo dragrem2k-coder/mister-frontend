@@ -7534,6 +7534,13 @@ class Frontend:
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         text_w = W - 2 * ox
+        # Untere sichere Grenze oberhalb der Hinweiszeile (siehe deren
+        # Position weiter unten: H - oy - 8*sc) - Zeilen/Cover duerfen
+        # nie tiefer reichen, sonst ueberlappen sie den Hinweis oder
+        # ragen ueber den Bildschirmrand hinaus (siehe BUGFIX weiter
+        # unten bei row_h).
+        sc = s - 1 if s > 1 else 1
+        bottom_limit = H - oy - 8 * sc - 6 * s
         # ABGLEICH mit dem tatsaechlichen MiSTer-Bestand: die spielbare Liste
         # kommt direkt aus _attract_games_pool() - der flachen Liste ALLER
         # gescannten Spiele, die das Frontend ohnehin schon fuer seine Menues
@@ -7567,7 +7574,6 @@ class Frontend:
                 queue.extend(fresh)
             return [queue.pop() for _ in range(min(3, len(queue)))]
 
-        row_h = 44 * s
         cover_cache = {}          # (system, rom_base) -> Cover | None (ueber Neu ziehen hinweg)
         picks = _next_three()
 
@@ -7598,15 +7604,49 @@ class Frontend:
             for clean, meta in glines:
                 ln = "%s   %s" % (clean, meta)
                 if len(ln) > maxchars:
+                    # BUGFIX (Nutzer-Rueckmeldung: auf CRT (320x240, wo diese
+                    # Zeilen ueberhaupt erst gekuerzt werden - auf HDMI ist
+                    # meist genug Platz) erschien statt einer Ellipse ein
+                    # "?" mitten im Titel, z.B. "Beauty and the ?" statt
+                    # "Beauty and the...". Ursache: "\u2026" (Ellipse) liegt
+                    # weit ausserhalb der beiden Zeichensaetze, die fb.text()
+                    # kennt (FONT8X8 fuer 0-127, FONT_EXTRA fuer Latin-1
+                    # 0xA0-0xFF - siehe fe/framebuffer.py) und faellt dort auf
+                    # den "?"-Platzhalter zurueck. Der Rest des Frontends
+                    # kuerzt genau deshalb schon immer mit "~" statt "..."
+                    # (siehe z.B. die Kategorie-/Item-Listen) - hier an
+                    # dieselbe, garantiert im Font vorhandene Konvention
+                    # angeglichen.
                     keep = maxchars - len(meta) - 5
                     if keep < 4:
-                        ln = ln[:maxchars - 1] + "\u2026"
+                        ln = ln[:maxchars - 1] + "~"
                     else:
-                        ln = "%s\u2026   %s" % (clean[:keep], meta)
+                        ln = "%s~   %s" % (clean[:keep], meta)
                 row_strs.append(ln)
 
             games_top = oy + 70 * s
+            # BUGFIX (Nutzer-Rueckmeldung + Foto: auf CRT wurden die Cover
+            # unten abgeschnitten, und "Zurueck" tauchte gar nicht mehr auf).
+            # Ursache: Zeilenhoehe/Abstaende/Cover-Mindesthoehe waren feste
+            # 44*s/14*s/40*s/26*s-Vielfache, zugeschnitten auf HDMI (1080px,
+            # s=3, jede Menge Platz) - auf CRT (240px, s=1) passte diese
+            # Summe rechnerisch gar nicht mehr in die verfuegbare Hoehe.
+            # fb.text()/blit() schneiden ueberschuessigen Inhalt aber still
+            # ab (kein Fehler, nur unsichtbar), daher fiel es erst jetzt auf.
+            # Fix: Zeilenhoehe, Aktionszeilen-Abstand und Cover-Mindesthoehe
+            # werden jetzt aus der TATSAECHLICH verfuegbaren Hoehe (bis
+            # bottom_limit) abgeleitet - genau wie schon _fit_scale es fuer
+            # die Breite tut. Auf HDMI aendert sich dadurch nichts (dort
+            # greift min(44*s, ...) weiterhin bei 44*s, da reichlich Platz
+            # ist); auf CRT schrumpfen Zeilen/Abstaende/Cover-Mindesthoehe
+            # jetzt so weit, dass wirklich alles sichtbar bleibt.
+            covers_min = max(16, 20 * s)
+            avail_for_rows = bottom_limit - games_top - 14 * s - covers_min
+            row_h = max(8 * rows_scale + 4 * s,
+                       min(44 * s, avail_for_rows // max(1, n_games)))
             action_top = games_top + n_games * row_h + 14 * s
+            action_row_gap = max(8 * s + 2 * s,
+                                 min(40 * s, (bottom_limit - action_top) // 2))
 
             # Cover-Streifen unten rechts: die drei Cover nebeneinander, auf
             # Hoehe der Aktionszeilen. Wuerde die Aktionsspalte links zu breit,
@@ -7616,7 +7656,7 @@ class Frontend:
             covers_block_w = int(W * 0.62)
             covers_x0 = max(action_col, W - ox - covers_block_w)
             covers_block_w = max(30 * s, W - ox - covers_x0)
-            covers_h = max(60 * s, (H - oy - 26 * s) - action_top)
+            covers_h = max(covers_min, bottom_limit - action_top)
             cell_w = covers_block_w // max(1, n_games)
 
             sel = 0
@@ -7642,7 +7682,7 @@ class Frontend:
                     color = accent_for(None) if selrow else C_DIM
                     prefix = "> " if selrow else "  "
                     fb.text(ox, y, prefix + label, s, color, C_BG)
-                    y += 40 * s
+                    y += action_row_gap
 
                 # Drei Cover nebeneinander (rechts, auf Hoehe der Aktionen);
                 # das markierte Spiel bekommt einen farbigen Rahmen.
@@ -7714,6 +7754,12 @@ class Frontend:
         s = max(1, H // 360)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
+        # Gleicher CRT-Bugfix wie in draw_wot_screen() (siehe dortiger
+        # Kommentar): sichere untere Grenze oberhalb der Hinweiszeile, an
+        # der sich der Abstand vor/zwischen den Optionszeilen weiter unten
+        # orientiert, statt fest 70*s/40*s anzunehmen.
+        sc = s - 1 if s > 1 else 1
+        bottom_limit = H - oy - 8 * sc - 6 * s
         system, title, genre, ra_id, rom_path, score = pick
         accent = accent_for(system)
         clean_title = " ".join(title.split())
@@ -7743,7 +7789,19 @@ class Frontend:
             if ra_id:
                 y += 45 * s
                 fb.text(ox, y, "RA-ID: %s" % ra_id, s, C_DIM, C_BG)
-            y += 70 * s
+            # BUGFIX (gleiche Ursache wie in draw_wot_screen(), siehe dortiger
+            # Kommentar): auf CRT reichte die feste Kombination aus 70*s
+            # Abstand + 2x 40*s Optionszeilen rechnerisch nicht mehr in die
+            # verfuegbare Hoehe - "Zurueck" landete dadurch unsichtbar
+            # unterhalb des Bildschirms. remaining/option_row_h leiten den
+            # Abstand jetzt aus der TATSAECHLICH verfuegbaren Hoehe ab (wie
+            # _fit_scale es fuer die Breite tut); auf HDMI bleibt durch die
+            # min()-Deckelung alles exakt wie bisher (dort ist reichlich
+            # Platz, min() greift immer bei den alten 70*s/40*s-Werten).
+            remaining = max(0, bottom_limit - y)
+            option_row_h = max(8 * s + 4 * s,
+                               min(40 * s, remaining // (len(options) + 1)))
+            y += min(70 * s, max(option_row_h, remaining - len(options) * option_row_h))
             if wot_art:
                 caw, cah, cpix = wot_art
                 cax = W - ox - caw
@@ -7756,9 +7814,8 @@ class Frontend:
                 color = accent if selrow else C_TEXT
                 prefix = "> " if selrow else "  "
                 fb.text(ox, y, prefix + label, s, color, C_BG)
-                y += 40 * s
+                y += option_row_h
             hint = t("wot_hint")
-            sc = s - 1 if s > 1 else 1
             hint_w = len(hint) * 8 * sc
             fb.text((W - hint_w) // 2, H - oy - 8 * sc, hint, sc, C_DIM, C_BG)
             fb.flip()
