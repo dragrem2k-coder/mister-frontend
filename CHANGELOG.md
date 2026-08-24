@@ -157,6 +157,28 @@ Verhaltensänderung im Normalbetrieb):
   ob inzwischen ein neues Netzlaufwerk aufgetaucht ist, und zieht die
   Spieleliste dann automatisch einmal nach, statt sich auf eine einzige
   starre Wartezeit beim Booten zu verlassen.
+- Die Dateinamen unter `Scripts/` waren uneinheitlich gewachsen
+  (`install.sh`, `install_frontend.sh`, `start_frontend.sh`,
+  `stream_toggle.sh` usw.) und dadurch im MiSTer-OSD zwischen fremden
+  Skripten kaum wiederzufinden. Vorher geprüft, ob MiSTers Scripts-Menü
+  eigene Unterordner sauber darstellt (technisch ja, beliebig
+  verschachtelbar) - dagegen entschieden, weil ein Unterordner im OSD
+  einen zusätzlichen Klick kostet und die etablierte Community-Praxis
+  (z.B. Update All, MiSTerMAME) stattdessen auf ein gemeinsames,
+  sprechendes Präfix setzt. Alle 9 eigenen Skripte tragen jetzt
+  einheitlich das Präfix `Frontend_` (`Frontend_Install.sh`,
+  `Frontend_Install_Remote.sh`, `Frontend_Install_Offline.sh`,
+  `Frontend_Uninstall.sh`, `Frontend_Start.sh`, `Frontend_Update.sh`,
+  `Frontend_Stream_Toggle.sh`, `Frontend_Boxart_Download.sh`,
+  `Frontend_Gameinfo_Download.sh`) und stehen im OSD dadurch alphabetisch
+  zusammen; `Scripts/MiSTer_RA.sh` bleibt bewusst unangetastet, da es
+  sich um ein fremdes Drittanbieter-Tool handelt. Migration läuft
+  automatisch mit: ein bereits auf der SD-Karte liegendes altes
+  `install_frontend.sh` funktioniert noch genau ein letztes Mal (der
+  bisherige `update_frontend.sh`-Aufruf bleibt dafür unter seinem alten
+  Namen als reine Weiterleitung erhalten), und `Frontend_Update.sh`
+  räumt bei jedem folgenden Install/Update automatisch sämtliche 9 alten
+  Dateinamen von selbst auf - kein manueller Eingriff nötig.
 - Mehrere verbliebene ASCII-Umlaut-Ersatzschreibweisen in der
   Oberfläche korrigiert (u.a. Trophäenraum, Jahresrückblick).
 - `Scripts/install.sh`, `Scripts/install_offline.sh` und

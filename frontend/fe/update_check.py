@@ -6,7 +6,7 @@ den Ein/Aus-Zustand und den zuletzt gemeldeten Stand fest. Ausgelagert
 aus frontend.py (Modularisierung, Git-Branch 'modular-refactor').
 
 Das eigentliche Herunterladen/Installieren bleibt bewusst manuell
-ueber install_frontend.sh - hier geht es NUR um die Benachrichtigung.
+ueber Frontend_Install.sh - hier geht es NUR um die Benachrichtigung.
 
 FRONTEND_VERSION liegt HIER als kanonische Quelle (nicht in
 frontend.py oder fe/menu.py - beide importieren sie von hier), weil

@@ -3398,7 +3398,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # NEUES FEATURE (Nutzerwunsch: "wenn es ein Update gibt, einmal eine
 # Info anzeigen" - das eigentliche Herunterladen/Installieren bleibt
-# bewusst manuell ueber install_frontend.sh, hier geht es NUR um die
+# bewusst manuell ueber Frontend_Install.sh, hier geht es NUR um die
 # Benachrichtigung). Die VERSION-Datei liegt im Repo bereits neben
 # frontend.py - ein Rohtext-Abruf dieser EINEN Datei via
 # raw.githubusercontent.com reicht als Versionspruefung, kein API-
@@ -4965,7 +4965,7 @@ class Frontend:
         """Laeuft in einem eigenen Hintergrund-Thread (Nutzerwunsch:
         "wenn es ein Update gibt, einmal eine Info anzeigen" - das
         eigentliche Herunterladen/Installieren bleibt bewusst manuell
-        ueber install_frontend.sh, hier geht es NUR um die
+        ueber Frontend_Install.sh, hier geht es NUR um die
         Benachrichtigung). EIN einzelner, leiser Abruf pro Sitzung -
         schlaegt er fehl (kein Internet, DNS-Problem), wird es beim
         naechsten Neustart einfach wieder versucht, kein Wiederholungs-
@@ -7799,7 +7799,7 @@ class Frontend:
         """Script auf der Konsole (tty1) laufen lassen, danach zurueck.
         args (neu, fuer den Ersteinrichtungs-Assistenten): optionale
         Zusatzargumente, z.B. das im Assistenten bereits gewaehlte
-        CRT/HDMI-Profil direkt an boxart_download.sh durchreichen,
+        CRT/HDMI-Profil direkt an Frontend_Boxart_Download.sh durchreichen,
         statt es dort ein zweites Mal abzufragen. Bestehende Aufrufe
         ohne args bleiben unveraendert (Rueckwaertskompatibel).
 
@@ -8515,7 +8515,7 @@ class Frontend:
             return
         if do_boxart == 0:
             profile = "sd" if want_crt else "hd"
-            self.run_script(os.path.join(SCRIPTS_DIR, "boxart_download.sh"),
+            self.run_script(os.path.join(SCRIPTS_DIR, "Frontend_Boxart_Download.sh"),
                             args=[profile])
 
         # Schritt 6: Gameinfo-Download - optional, ueberspringbar.
@@ -8525,7 +8525,7 @@ class Frontend:
         if do_gameinfo is None:
             return
         if do_gameinfo == 0:
-            self.run_script(os.path.join(SCRIPTS_DIR, "gameinfo_download.sh"))
+            self.run_script(os.path.join(SCRIPTS_DIR, "Frontend_Gameinfo_Download.sh"))
 
         # Schritt 7: Spiele suchen (erzwungener Neu-Scan mit Fortschritt).
         self._wizard_scanning_step(
@@ -11433,7 +11433,7 @@ class Frontend:
                             # deshalb ausdruecklich auf "wirkt nach
                             # Neustart" hin, kein stiller Unterschied
                             # zum bisherigen externen Scripts/
-                            # stream_toggle.sh.
+                            # Frontend_Stream_Toggle.sh.
                             toggle_stream_overlay()
                             self._refresh_system_category()
                         elif kind == "screen_mirror":
@@ -11559,7 +11559,7 @@ def _handle_sigterm(signum, frame):
     Frontend.run() (Bildschirm loeschen, Eingaben freigeben, zurueck
     ins MiSTer-Menue per F12) wuerde also nie laufen und der Bildschirm
     bliebe eingefroren im letzten Frontend-Zustand haengen - genau das
-    Verhalten, das update_frontend.sh/install.sh beim Neustarten einer
+    Verhalten, das Frontend_Update.sh/Frontend_Install_Remote.sh beim Neustarten einer
     laufenden Instanz ausgeloest hat. SystemExit sorgt dafuer, dass die
     bestehenden try/finally-Bloecke ganz normal durchlaufen werden."""
     LOG("Signal %d empfangen - fahre sauber herunter" % signum)

@@ -121,7 +121,7 @@ def toggle_eq_effect():
 
 # NEUES FEATURE (Nutzerwunsch: "kann man das mit Stream Overlay in den
 # Optionen mit einem an/aus schaltbar machen?"): bisher nur ueber das
-# externe Scripts/stream_toggle.sh umschaltbar (legt/entfernt dieselbe
+# externe Scripts/Frontend_Stream_Toggle.sh umschaltbar (legt/entfernt dieselbe
 # Datei) - Kern-Mechanismus unveraendert (siehe frontend.py __init__:
 # der StreamServer wird nur gestartet, wenn diese Datei beim Start
 # existiert), NUR der Zugriffsweg ist jetzt zusaetzlich direkt im

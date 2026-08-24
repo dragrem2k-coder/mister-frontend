@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-5",
-  "summary": "OSD-Sackgasse behoben, CIFS-Erkennung, OK/Cancel-Tausch"
+  "build_id": "2026-08-24-6",
+  "summary": "Scripts/ einheitlich umbenannt (Frontend_-Präfix, mit Migration)"
 }
