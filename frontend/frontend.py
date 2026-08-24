@@ -3929,6 +3929,7 @@ from fe.input import (
     KEY_F11, KEY_F12, KEY_F6, KEY_F7, KEY_F8, KEY_F9,
     KEY_LEFT, KEY_RIGHT, KEY_SLASH, KEY_UP, KEY_Y, LETTER_KEYS,
     REPEAT_ACTIONS, REPEAT_DELAY, REPEAT_INTERVAL, scan_devices,
+    SWAP_OK_BACK_FILE, swap_ok_back_enabled, save_swap_ok_back,
 )
 
 from fe.art import (
@@ -4198,6 +4199,15 @@ class Frontend:
         # sehr guenstig ist (kein echter Netzwerkverkehr, <2ms).
         self._net_status = False
         self._net_check_next = 0.0
+
+        # Sicherheitsnetz fuer NAS/CIFS-Nutzer, siehe
+        # _maybe_rescan_for_late_mount() - ergaenzt (nicht ersetzt) die
+        # optionale, blockierende "beim Start warten"-Option weiter
+        # unten in main().
+        self._late_mount_rescan_pending = False
+        self._late_mount_rescan_done = False
+        self._late_mount_check_next = 0.0
+        self._late_mount_deadline = time.monotonic() + 300.0   # nach 5 Min. aufgeben (nur Phase 1)
 
         # Attract-Modus-Einstellung ebenfalls zwischengespeichert (siehe
         # _attract_enabled_cached()) - attract_enabled() wird bei JEDEM
@@ -5080,6 +5090,7 @@ class Frontend:
         self._maybe_retry_ra()
         self._maybe_retry_clock()
         self._maybe_rebuild_ra_categories()
+        self._maybe_rescan_for_late_mount()
         if message and prominent:
             # NEUES FEATURE (siehe Kommentar bei self._prominent_message
             # in __init__): bewusst NICHT auch noch die kleine
@@ -5498,7 +5509,7 @@ class Frontend:
             return ("sys", syskey)
         return ("label", name.split(" (")[0])
 
-    def _rebuild_categories_preserving_selection(self):
+    def _rebuild_categories_preserving_selection(self, force_rescan=False):
         """build_categories() neu aufrufen, OHNE die Kategorien-Auswahl
         (self.cat_i) unter dem Nutzer wegzuziehen - Kategorien koennen
         beim Neuaufbau in Anzahl/Reihenfolge wechseln (z.B. wenn
@@ -5512,11 +5523,18 @@ class Frontend:
         geworden), faellt cat_i auf einen gueltigen Index zurueck. Nur
         fuer den Aufruf gedacht, waehrend self.page == 0 ist (siehe
         _maybe_rebuild_ra_categories()) - self.nav_path/self.item_i auf
-        Seite 1 werden hier bewusst nicht angefasst."""
+        Seite 1 werden hier bewusst nicht angefasst.
+
+        force_rescan (NEU, Nutzerwunsch: verlaesslichere CIFS/NAS-
+        Erkennung statt einer starren Wartezeit beim Start) - an
+        build_categories() durchgereicht: True erzwingt einen echten
+        Festplatten-Neuscan (wie beim manuellen "Spieleliste neu
+        einlesen"), statt nur den ohnehin schon vorhandenen Cache zu
+        uebernehmen. Siehe _maybe_rescan_for_late_mount()."""
         old_key = None
         if 0 <= self.cat_i < len(self.cats):
             old_key = self._category_match_key(self.cats[self.cat_i])
-        self.build_categories()
+        self.build_categories(force_rescan=force_rescan)
         if old_key is not None:
             for i, entry in enumerate(self.cats):
                 if self._category_match_key(entry) == old_key:
@@ -5546,6 +5564,71 @@ class Frontend:
             return
         self._ra_categories_dirty = False
         self._rebuild_categories_preserving_selection()
+
+    def _maybe_rescan_for_late_mount(self):
+        """Periodisch (aus draw(), gleiches Muster wie
+        _maybe_rebuild_ra_categories()) geprueft: eigenstaendiges
+        Sicherheitsnetz fuer NAS/CIFS-Nutzer, UNABHAENGIG von der "beim
+        Start warten"-Option (network_wait_enabled()/
+        _wait_for_network_ready() in fe/scan.py).
+
+        NEU (Nutzer-Rueckmeldung: "das Einhaengen via CIFS funktioniert
+        einwandfrei automatisch, sobald mein WLAN up and running ist -
+        im Grunde hat dein Frontend hier einen Workaround fuer das
+        Henne-Ei-Problem geschaffen, welches leider dauerhaft eine
+        Sollbruchstelle schafft"): eine EINMALIGE, starre Wartezeit
+        beim Programmstart (max. 45s) bleibt immer eine gewisse
+        Sollbruchstelle, ganz gleich wie grosszuegig sie bemessen ist -
+        je nach WLAN/Router kann die tatsaechliche Einhaengung mal
+        laenger dauern. Statt sich nur darauf zu verlassen, prueft das
+        Frontend deshalb zusaetzlich waehrend der ersten paar Minuten
+        Laufzeit alle paar Sekunden ganz nebenbei (billiger Check, kein
+        eigener Netzwerkverkehr - siehe _has_network_mount()), ob GERADE
+        JETZT ein Netzlaufwerk auftaucht, das beim letzten Scan noch
+        fehlte - und zieht dann GENAU EINMAL automatisch nach, exakt wie
+        "Spieleliste neu einlesen", nur automatisch statt von Hand
+        ausgeloest. Bewusst nur auf Seite 0 (Kategorien-Uebersicht) und
+        ausserhalb von Suche/Beenden-Dialog ausgeloest - aus demselben
+        Grund wie bei _maybe_rebuild_ra_categories() waere ein
+        unangekuendigter Neuaufbau mitten in einer Kategorie oder
+        Eingabe nur verwirrend; bleibt die Bedingung laenger unerfuellt,
+        wird einfach beim naechsten sicheren Moment nachgeholt.
+
+        Haengt sich NICHT dauerhaft ein: nach dem einen erfolgreichen
+        Nachziehen ODER (solange noch GAR KEIN Netzlaufwerk gesehen
+        wurde) spaetestens nach 5 Minuten Laufzeit (grosszuegig genug
+        fuer jede realistische WLAN-Verzoegerung) ist endgueltig Schluss
+        - kein dauerhafter Hintergrund-Overhead fuer die grosse
+        Mehrheit ohne NAS/CIFS. Wurde dagegen bereits eine Einhaengung
+        GESEHEN, aber noch nicht nachgezogen (Nutzer stand z.B. gerade
+        mitten in einer Kategorie), wird NICHT mehr aufgegeben, sondern
+        weiter auf den naechsten sicheren Moment gewartet - sonst
+        koennten die NAS-Spiele fuer den Rest der Sitzung stumm
+        verschwinden, nur weil das Zeitfenster ungluecklich lag."""
+        if self._late_mount_rescan_done:
+            return
+        now = time.monotonic()
+        if not self._late_mount_rescan_pending:
+            # Phase 1: noch keine Einhaengung gesehen - regelmaessig,
+            # aber zeitlich begrenzt nachsehen.
+            if now >= self._late_mount_deadline:
+                self._late_mount_rescan_done = True   # aufgeben, nicht mehr pruefen
+                return
+            if now < self._late_mount_check_next:
+                return
+            self._late_mount_check_next = now + 8.0
+            if not _has_network_mount():
+                return
+            LOG("_maybe_rescan_for_late_mount: neues Netzlaufwerk erkannt")
+            self._late_mount_rescan_pending = True
+        # Phase 2: Einhaengung gesehen, Nachziehen steht noch aus - kein
+        # weiteres Zeitlimit mehr, nur noch auf einen sicheren Moment
+        # warten (billiger Flag-Check bei jedem draw()).
+        if self.page != 0 or self.confirm_quit or self._search_mode:
+            return
+        LOG("_maybe_rescan_for_late_mount: ziehe Spieleliste automatisch nach")
+        self._late_mount_rescan_done = True
+        self._rebuild_categories_preserving_selection(force_rescan=True)
 
     def _maybe_retry_clock(self):
         """Periodisch (aus draw(), gleiches Muster wie _maybe_retry_ra())
@@ -9896,20 +9979,46 @@ class Frontend:
 
     def open_osd(self):
         """Echtes MiSTer-OSD oeffnen (fuer Joystick-Definition, Settings).
-        Rueckkehr ins Frontend mit F10."""
+
+        BUGFIX (Nutzer-Rueckmeldung: "wenn ich mit F12 aus dem Frontend
+        rausgehe, komme ich nicht wieder rein" - start_frontend.sh
+        meldete dabei "Frontend laeuft bereits (PID ...), nichts zu
+        tun"): der Prozess laeuft in diesem Fall tatsaechlich die ganze
+        Zeit weiter - er haengt nur GENAU HIER fest, in der
+        Warteschleife unten, die bisher AUSSCHLIESSLICH auf die Aktion
+        "back_fe" reagierte (Standard: Taste F10 oder Pad-Button X).
+        Ist der Pad-Button, den der Nutzer fuer "X"/Zurueck haelt, ueber
+        MiSTers eigene Joystick-Belegung anders zugeordnet als hier
+        angenommen (siehe Diskussion zur fehlenden Ruecksicht auf
+        MiSTers Belegung), kommt dieses "back_fe" schlicht NIE an - der
+        einzige Ausweg war bisher ein SSH-Zugriff mit
+        "kill $(cat /tmp/frontend.lock)". configure_buttons() erlaubt
+        jetzt zusaetzlich, "back_fe" explizit auf eine beliebige eigene
+        Taste zu legen (siehe dortige "remap_action_back_fe"-Aktion).
+        Als weiteres, unabhaengiges Sicherheitsnetz akzeptiert die
+        Schleife jetzt zusaetzlich "exit" (ESC-Taste), "back" (Standard:
+        Pad-Button B) und "osd" (Standard: F12/Guide-Button, als
+        Umschalter gedacht - nochmal draufdruecken bringt einen
+        zurueck) - vier voneinander unabhaengige Wege zurueck statt
+        nur eines starren, dadurch bleibt man selbst bei ungewoehnlicher
+        Tasten-/Pad-Belegung praktisch nie mehr dauerhaft im MiSTer-OSD
+        gefangen."""
         LOG("open_osd: Start")
         self.music.pause_for_core()
-        self.draw("MiSTer OSD active - F10 or X button = back")
+        self.draw("MiSTer OSD active - Back/Menu/ESC/F10 = back to frontend")
         self.inp.grab(False)
         time.sleep(0.2)
         self.inp.inject(KEY_F12)
-        LOG("open_osd: F12 injiziert, warte auf back_fe (F10/X)")
+        LOG("open_osd: F12 injiziert, warte auf Rueckkehr-Aktion "
+            "(back_fe/exit/back/osd)")
+        RETURN_ACTIONS = ("back_fe", "exit", "back", "osd")
+        act = None
         while True:
             act = self.inp.read_action()
             LOG("open_osd passthrough: %s" % act)
-            if act == "back_fe":
+            if act in RETURN_ACTIONS:
                 break
-        LOG("open_osd: Rueckkehr")
+        LOG("open_osd: Rueckkehr (ausgeloest durch %r)" % act)
         self.music.resume_after_core()
         self.back_to_frontend()
 
@@ -9961,6 +10070,15 @@ class Frontend:
             ("osd", "remap_action_osd"), ("random", "remap_action_random"),
             ("favorite", "remap_action_favorite"),
             ("completed", "remap_action_completed"),
+            # NEU (BUGFIX: siehe ausfuehrlicher Kommentar bei
+            # open_osd() - Nutzer konnte nach F12/OSD manchmal dauerhaft
+            # nicht mehr zurueck ins Frontend finden, wenn "back_fe"
+            # (Standard F10/X) auf der eigenen Pad-Belegung nicht wie
+            # erwartet ankam): "back_fe" ("Zurueck ins Frontend, wenn
+            # das echte MiSTer-OSD offen ist") ist jetzt genauso frei
+            # zuweisbar wie jede andere Aktion, statt nur ueber die
+            # feste Vorgabe erreichbar zu sein.
+            ("back_fe", "remap_action_back_fe"),
             # NEUES FEATURE (Nutzerwunsch: "ist es moeglich der Tastatur
             # auch einen Shortcut zuzuweisen, um die Musik zu wechseln?" -
             # der feste F5/Medientaste-Fix deckt den Normalfall ab, aber
@@ -11213,8 +11331,24 @@ class Frontend:
                                 os.remove(KEYMAP_CUSTOM_FILE)
                             except OSError:
                                 pass
+                            # NEU: "Auf Standard zuruecksetzen" soll
+                            # auch einen aktiven OK/Zurueck-Tausch
+                            # (siehe "swap_ok_back" weiter unten) mit
+                            # zuruecksetzen - die Datei wird hier direkt
+                            # entfernt statt ueber save_swap_ok_back(False),
+                            # da KEYMAP oben bereits auf den echten
+                            # (unvertauschten) Standard gesetzt wurde und
+                            # ein zusaetzlicher Tausch-Aufruf ihn sonst
+                            # sofort wieder vertauschen wuerde.
+                            try:
+                                os.remove(SWAP_OK_BACK_FILE)
+                            except OSError:
+                                pass
                             self.draw(t("remap_done"))
                             time.sleep(1.0)
+                        elif kind == "swap_ok_back":
+                            save_swap_ok_back(not swap_ok_back_enabled())
+                            self._refresh_system_category()
                         elif kind == "curated":
                             toggle_curated_only()
                             self.build_categories()

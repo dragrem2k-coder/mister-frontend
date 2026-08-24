@@ -37,7 +37,8 @@ from fe.update_check import (
     load_update_state, update_check_enabled, _version_newer,
     FRONTEND_VERSION,
 )
-from fe.scan import network_wait_enabled
+from fe.scan import network_wait_enabled, network_wait_is_auto
+from fe.input import swap_ok_back_enabled
 
 THEME_FILE = "/media/fat/frontend/theme"
 # BUGFIX (Nutzer-Rueckmeldung: "freigeschaltete Geheim-Themes sollten im
@@ -142,6 +143,17 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     tz_label = t("sys_timezone", format_timezone_offset(load_timezone_offset()))
     netwait_label = t("sys_network_wait_on" if network_wait_enabled()
                       else "sys_network_wait_off")
+    # NEU (siehe network_wait_is_auto() in fe/scan.py): solange der
+    # Stand rein automatisch anhand von user-startup.sh erkannt wurde
+    # (Nutzer hat den Menuepunkt noch nie selbst angefasst), bekommt
+    # die Zeile einen kleinen Hinweis - sonst wirkt ein von selbst
+    # aktiviertes "AN" wie ein Bug statt wie ein Feature. Sobald der
+    # Nutzer den Punkt einmal selbst umschaltet, verschwindet der
+    # Hinweis (network_wait_is_auto() wird dann False).
+    if network_wait_is_auto():
+        netwait_label = "%s %s" % (netwait_label, t("sys_network_wait_auto_hint"))
+    swap_ok_back_label = t("sys_swap_ok_back_on" if swap_ok_back_enabled()
+                           else "sys_swap_ok_back_off")
     sfx_label = t("sys_sfx_on") if sfx_enabled_flag() else t("sys_sfx_off")
     dragend_logo_label = t("sys_dragend_logo_on") if dragend_logo_enabled() \
         else t("sys_dragend_logo_off")
@@ -210,6 +222,12 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             (t("sys_language"), "language", None),
             (t("sys_configure_buttons"), "remap", None),
             (t("sys_reset_buttons"), "remap_reset", None),
+            # NEU (Nutzerwunsch: Bestaetigen/Abbrechen auf manchen Pads
+            # andersherum als vom Frontend angenommen - siehe
+            # save_swap_ok_back()/swap_ok_back_enabled() in fe/input.py):
+            # ein einziger Umschalter statt der kompletten Remap-
+            # Prozedur fuer genau diesen (haeufigsten) Einzelfall.
+            (swap_ok_back_label, "swap_ok_back", None),
         ),
         t("sys_group_info"): folder(
             (t("sys_help_action"), "help", None),

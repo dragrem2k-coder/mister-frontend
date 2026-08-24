@@ -7,6 +7,19 @@ schau am besten in die Git-Historie oder in den Kopf von
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
 **Neue Features:**
+- Neuer Menüpunkt "Bestätigen/Abbrechen vertauschen" (System -> Eingabe):
+  ein einziger Umschalter für den häufigsten Fall unpassender Pad-
+  Belegung (z.B. Nintendo- statt Xbox-Tastenlayout) - vertauscht überall
+  im Frontend die Rollen von OK/Bestätigen und Zurück/Abbrechen, ohne
+  die komplette Tastenbelegungs-Prozedur durchlaufen zu müssen. Hinweis
+  dazu: MiSTers eigene Controller-Zuordnung (aus dem echten MiSTer-Menü,
+  "Joystick-Belegung definieren") lässt sich nicht verlässlich vom
+  Frontend mitgelesen werden - die zugrunde liegenden Dateien sind ein
+  undokumentiertes, sich zwischen Firmware-Versionen bereits mehrfach
+  geändertes Binärformat, das selbst MiSTer-eigene Community-Tools nur
+  als unauswertbaren Kopier-Block behandeln. Der Umschalter hier ist
+  daher eine bewusst eigenständige, robuste Lösung statt eines
+  fragilen Versuchs, MiSTers interne Zuordnung nachzubauen.
 - Reset im laufenden Core per F5 (Taste ~0,6s halten) - funktioniert
   bei allen Cores, auch RA-Cores, ohne den Core selbst neu zu laden
   (RA-Fortschritt bleibt erhalten). Ausdrücklich als experimentell
@@ -117,6 +130,33 @@ Verhaltensänderung im Normalbetrieb):
   (`TEXTCACHE ...`, nur bei aktivem `DRAGEND_PROFILE`).
 
 **Bugfixes:**
+- Nach "MiSTer-Menü öffnen" (F12) blieb man auf manchen Pad-Belegungen
+  dauerhaft im echten MiSTer-OSD gefangen - selbst `start_frontend.sh`
+  half dann nicht, sondern meldete nur "Frontend läuft bereits", weil
+  der Prozess tatsächlich weiterlief, nur eben in genau dieser
+  Warteschleife feststeckte (die bislang ausschließlich auf Taste F10
+  oder Pad-Button X reagierte). Die Schleife akzeptiert jetzt zusätzlich
+  drei weitere, unabhängige Wege zurück (ESC, der Standard-"Zurück"-
+  Button sowie nochmaliges Drücken von MiSTer-Menü/F12 als Umschalter),
+  und "Zurück ins Frontend" lässt sich über den Tastenbelegungs-
+  Assistenten jetzt zusätzlich auch auf eine ganz eigene Taste legen.
+- CIFS/NAS-eingehängte Spiele wurden nie gefunden, selbst wenn die
+  Einhängung einwandfrei lief: `/media/fat/cifs` (der von MiSTer
+  typischerweise genutzte Netzlaufwerk-Pfad) wurde beim Durchsuchen
+  der Spiele-Ordner schlicht nie erreicht, weil die Suche "fat"
+  komplett überspringt (die SD-Karte selbst ist ja schon separat
+  abgedeckt) - `/media/fat/cifs` liegt aber eine Ebene *unterhalb*
+  davon und wurde dadurch nie mit erfasst. Jetzt zusätzlich gezielt
+  durchsucht (der Pfad selbst, ein `games`-Unterordner sowie alle
+  direkten Unterordner einzelner Freigaben). Zusätzlich: die "beim
+  Start auf Netzwerk/NAS warten"-Option muss nicht mehr von Hand
+  gesetzt werden, sobald `user-startup.sh` bereits ein CIFS-Mount-
+  Skript enthält (automatisch erkannt, per Menü weiterhin übersteuerbar)
+  - und unabhängig von dieser Option prüft das Frontend während der
+  ersten paar Minuten nach dem Start ohnehin periodisch im Hintergrund,
+  ob inzwischen ein neues Netzlaufwerk aufgetaucht ist, und zieht die
+  Spieleliste dann automatisch einmal nach, statt sich auf eine einzige
+  starre Wartezeit beim Booten zu verlassen.
 - Mehrere verbliebene ASCII-Umlaut-Ersatzschreibweisen in der
   Oberfläche korrigiert (u.a. Trophäenraum, Jahresrückblick).
 - `Scripts/install.sh`, `Scripts/install_offline.sh` und

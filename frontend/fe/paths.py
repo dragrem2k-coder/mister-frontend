@@ -52,6 +52,38 @@ def _discover_games_bases():
                 bases.append(path)
     except OSError:
         pass   # /media nicht lesbar - bei der festen Liste bleiben
+
+    # BUGFIX (Nutzer-Rueckmeldung: CIFS-eingehaengte ROMs wurden trotz
+    # funktionierender Einhaengung nie gefunden): "fat" wird oben ganz
+    # bewusst uebersprungen (die SD-Karte selbst, schon separat als
+    # /media/fat/games abgedeckt) - genau dadurch blieb aber der
+    # UEBLICHE MiSTer-eigene NAS-Einhaengepunkt /media/fat/cifs
+    # komplett aussen vor: der liegt naemlich EINE Ebene TIEFER als
+    # /media, wird von der obigen Schleife also nie erreicht, obwohl er
+    # selbst im Code-Kommentar oben schon laenger als "typischer"
+    # Einhaengepunkt genannt wird. Jetzt zusaetzlich explizit erfasst,
+    # nach demselben Muster wie bei /media selbst (fester Pfad + fester
+    # "games"-Unterordner + alles, was tatsaechlich direkt darunter
+    # liegt - deckt sowohl "eine Freigabe komplett unter cifs/games"
+    # als auch "mehrere Freigaben, je ein eigener Unterordner unter
+    # cifs/" ab).
+    cifs_base = "/media/fat/cifs"
+    if os.path.isdir(cifs_base):
+        for cand in (cifs_base, os.path.join(cifs_base, "games")):
+            if cand not in bases:
+                bases.append(cand)
+        try:
+            for entry in sorted(os.listdir(cifs_base)):
+                path = os.path.join(cifs_base, entry)
+                if not os.path.isdir(path):
+                    continue
+                games_sub = os.path.join(path, "games")
+                if games_sub not in bases:
+                    bases.append(games_sub)
+                if path not in bases:
+                    bases.append(path)
+        except OSError:
+            pass
     return bases
 
 # Bewusst als Funktionsergebnis statt als literale Liste - siehe

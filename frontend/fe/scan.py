@@ -293,14 +293,61 @@ def _wait_for_usb_stable(max_wait=10.0, poll=0.5, min_wait_if_none=3.0):
 # verzoegern wuerde) - NUR fuer NAS-Nutzer per Option einschaltbar.
 NETWORK_WAIT_FILE = "/media/fat/frontend/network_wait"
 
+# NEU (Nutzer-Rueckmeldung: "Option 'wait for Network' habe ich gesetzt,
+# kein Effekt. Besser waere hier eher, zu pruefen, ob im Autostart
+# ueberhaupt ein Cifs_Mount konfiguriert ist - dann spart man sich den
+# haendischen Eingriff"): MiSTers eigener Autostart-Mechanismus haengt
+# ALLE Zeilen in user-startup.sh beim Booten aus - typischerweise auch
+# den Aufruf eines cifs_mount.sh o.ae. Steht dort tatsaechlich ein
+# CIFS-Bezug drin, ist ziemlich sicher ein NAS im Spiel, OHNE dass der
+# Nutzer das erst manuell im Frontend-Menue nachtragen muesste.
+USER_STARTUP_FILE = "/media/fat/linux/user-startup.sh"
+
+def _autostart_has_cifs_entry():
+    """True, wenn user-startup.sh eine (nicht auskommentierte) Zeile
+    mit einem CIFS-Bezug enthaelt (z.B. ein Aufruf von cifs_mount.sh) -
+    reines Textmuster, absichtlich simpel/tolerant gehalten (keine
+    Annahme ueber den genauen Skriptnamen), damit auch abweichend
+    benannte eigene Mount-Skripte erkannt werden. Fehlt die Datei oder
+    ist sie nicht lesbar, wird sicherheitshalber NEIN angenommen (wie
+    bisher - kein Verhalten fuer den ganz ueberwiegenden Regelfall ohne
+    NAS aendert sich dadurch)."""
+    try:
+        with open(USER_STARTUP_FILE) as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#"):
+                    continue
+                if "cifs" in stripped.lower():
+                    return True
+    except OSError:
+        pass
+    return False
+
 def network_wait_enabled():
-    """Liest die Einstellung "beim Start auf Netzwerk/NAS warten" -
-    Standard NEIN."""
+    """Liest die Einstellung "beim Start auf Netzwerk/NAS warten".
+
+    NEU: wurde die Option noch NIE von Hand gesetzt (Datei fehlt ganz),
+    wird nicht mehr stur NEIN angenommen, sondern automatisch anhand
+    von _autostart_has_cifs_entry() entschieden - steht dort ein
+    CIFS-Mount im Autostart, ist die Wartezeit von Anfang an sinnvoll
+    aktiv, ganz ohne manuellen Eingriff im Menue. Eine einmal explizit
+    getroffene Nutzerentscheidung (Datei vorhanden, "yes"/"no") hat
+    IMMER Vorrang vor dieser automatischen Erkennung - siehe auch
+    network_wait_is_auto() fuer den entsprechenden Menue-Hinweis."""
     try:
         with open(NETWORK_WAIT_FILE) as f:
             return f.read().strip().lower() in ("yes", "1", "ja", "true")
     except OSError:
-        return False
+        return _autostart_has_cifs_entry()
+
+def network_wait_is_auto():
+    """True, wenn die Warteoption (noch) nicht von Hand gesetzt wurde,
+    ihr aktueller AN/AUS-Stand also rein automatisch (ueber
+    _autostart_has_cifs_entry()) zustande kommt - nur fuer einen
+    kleinen "(automatisch erkannt)"-Hinweis im Menue gedacht, damit ein
+    von selbst aktiviertes "AN" niemanden verwirrt."""
+    return not os.path.exists(NETWORK_WAIT_FILE)
 
 def save_network_wait(enabled):
     try:

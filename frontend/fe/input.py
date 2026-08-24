@@ -170,6 +170,67 @@ def _load_custom_keymap():
 
 _load_custom_keymap()
 
+# NEU (Nutzerwunsch: "waere es nicht sinnvoll, sich darauf zu verlassen,
+# was im MiSTer entsprechend gemapped ist? Grade sowas ist einfach ne
+# bloede Conveniencefalle" - anschliessende Recherche ergab: MiSTers
+# eigene Belegungsdateien unter /media/fat/config/inputs/*.map sind ein
+# undokumentiertes, sich zwischen Firmware-Versionen bereits mehrfach
+# geaendertes Binaerformat (Suffix "_v3" beweist mind. zwei stille
+# Formatwechsel seither) - selbst die MiSTer-Community-eigenen Tools
+# behandeln diese Dateien nur als komplette, undurchsichtige Kopier-
+# Bloecke, nie als auswertbare Daten. Verlaesslich auslesen ist damit
+# nicht seriös machbar. Praktikablere Abhilfe fuer den haeufigsten
+# Einzelfall (Bestaetigen/Abbrechen ist auf dem eigenen Pad andersherum
+# belegt als hier angenommen, z.B. Nintendo- vs. Xbox-Layout): ein
+# einziger, expliziter Umschalter statt der kompletten Remap-Prozedur -
+# vertauscht ueberall dort, wo aktuell "ok" bzw. "back" hinterlegt ist,
+# beide Rollen. Wirkt UNABHAENGIG von einer eigenen Tastenbelegung
+# (KEYMAP_CUSTOM_FILE, oben bereits eingemischt) und ist sein eigenes
+# Gegenstueck (zweimal anwenden = wieder Ausgangszustand) - siehe
+# save_swap_ok_back() fuer den Umschalt-Aufruf aus dem Menue.
+SWAP_OK_BACK_FILE = "/media/fat/frontend/swap_ok_back.flag"
+
+def swap_ok_back_enabled():
+    """Liest die Einstellung "Bestaetigen/Abbrechen vertauscht" -
+    Standard NEIN (reine Existenz der Datei als Schalter, kein Inhalt
+    noetig)."""
+    return os.path.exists(SWAP_OK_BACK_FILE)
+
+def _swap_ok_back_in_keymap():
+    """Vertauscht in KEYMAP (dem tatsaechlich aktiven Dict, siehe
+    Modul-Docstring oben - eine Mutation ist ueberall sofort sichtbar)
+    einmalig alle "ok"<->"back"-Eintraege. Selbstinvers: zweimaliger
+    Aufruf stellt den Ausgangszustand wieder her - genau deshalb reicht
+    beim Umschalten im Menue ein einzelner Aufruf in beide Richtungen."""
+    for code, act in list(KEYMAP.items()):
+        if act == "ok":
+            KEYMAP[code] = "back"
+        elif act == "back":
+            KEYMAP[code] = "ok"
+
+def save_swap_ok_back(enabled):
+    """Schalter setzen/loeschen UND sofort auf die laufende KEYMAP
+    anwenden (kein Neustart noetig, wirkt ab dem naechsten Tastendruck)."""
+    try:
+        if enabled:
+            d = os.path.dirname(SWAP_OK_BACK_FILE)
+            if d:
+                os.makedirs(d, exist_ok=True)
+            open(SWAP_OK_BACK_FILE, "w").close()
+        else:
+            if os.path.exists(SWAP_OK_BACK_FILE):
+                os.remove(SWAP_OK_BACK_FILE)
+    except OSError:
+        pass
+    _swap_ok_back_in_keymap()
+
+# Beim Programmstart bereits eingeschalteter Schalter (aus einer
+# frueheren Sitzung) muss einmalig angewendet werden, BEVOR irgendeine
+# Eingabe verarbeitet wird - sonst wuerde er erst beim naechsten
+# manuellen Umschalten im Menue wirksam.
+if swap_ok_back_enabled():
+    _swap_ok_back_in_keymap()
+
 # Richtungs-Aktionen, die beim Halten wiederholt werden - sowohl
 # hoch/runter (einzelne Position) als auch links/rechts (Seitensprung)
 # beschleunigen beim Halten.
