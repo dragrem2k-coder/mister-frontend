@@ -187,6 +187,40 @@ Verhaltensänderung im Normalbetrieb):
   hochgezählt, das eigene Gerät hatte den (unveränderten) Stand
   dadurch schon als "gesehen" gespeichert. Kennung jetzt aktualisiert;
   wird ab sofort bei jedem nennenswerten Fix-Batch mit hochgezählt.
+- Freigeschaltete geheime Themes erschienen im Menü System → Anzeige
+  unter "Farbschema" nicht mit ihrem echten Namen, sondern entweder mit
+  der alten "Dunkel (Standard)"-Beschriftung oder einem bloßen "?" -
+  die Theme-Namenslisten in `fe/menu.py` waren beim Hinzufügen der 9
+  neuen geheimen Themes nicht mit aktualisiert worden (dieses Modul
+  führt bewusst eine eigene, unabhängige Kopie der Theme-Konstanten,
+  um `frontend.py` nicht importieren zu müssen). Beide Listen sind
+  jetzt synchron; alle 9 neuen Themes zeigen ihren echten Namen und
+  lassen sich über "Farbschema wechseln" wie gewohnt anwählen, sobald
+  sie einmal per Geheimcode freigeschaltet wurden.
+- "RA-Erfolgsjäger" erschien auf der Hauptseite manchmal gar nicht und
+  tauchte erst nach irgendeiner unabhängigen Aktion (z. B. eine
+  Einstellung ändern) plötzlich doch auf: Der Hintergrund-Abruf der
+  RetroAchievements-Fortschrittsdaten aktualisierte zwar den internen
+  Datenspeicher, stieß aber nur unter einer sehr engen Bedingung
+  ("Nutzer steht exakt auf der allerersten Kategorie, hat noch gar
+  nichts angeklickt") einen Neuaufbau der Kategorienliste an - im
+  Alltag praktisch nie erfüllt. Der Wiederholungsabruf bei
+  fehlgeschlagenem erstem Versuch löste sogar überhaupt nie einen
+  Neuaufbau aus. Jetzt setzt jeder erfolgreiche Datenabruf (egal ob
+  beim ersten Versuch oder bei einem späteren Wiederholungsversuch)
+  nur noch ein "schmutzig"-Merkmal; ein neuer, sicherer Mechanismus
+  baut die Kategorienliste zuverlässig neu auf, sobald man als
+  Nächstes auf der Kategorien-Übersicht steht - unabhängig davon, wo
+  man sich in der Zwischenzeit im Menü bewegt hat, und ohne dabei die
+  aktuell markierte Kategorie zu verlieren.
+- "RA-Erfolgsjäger" zeigte in der Boxart-Spalte bisher nur den
+  generischen "kein Artwork"-Platzhalter. Neues, eigens erstelltes
+  Pokal-Motiv (mit einem kleinen Controller-Emblem, bewusst kein
+  Nachbau des echten RetroAchievements-Markenlogos) unter
+  `frontend/sysart/RA_HUNTER.art` ergänzt und `_category_art_key()` in
+  `fe/art.py` um den passenden Schlüssel erweitert - die Kategorie
+  bekommt jetzt wie "Favoriten"/"Sammlungen" ein eigenes Logo neben der
+  Liste, sowohl auf CRT als auch auf HDMI.
 
 **Dokumentation:**
 - `docs/Dragend_Anleitung.pdf` aktualisiert: F2 als zweite Suche-Taste

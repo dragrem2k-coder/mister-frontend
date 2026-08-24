@@ -3793,14 +3793,44 @@ SECRET_THEME_META = {
     "theme_saturn":    {"theme": "saturn_sonic",     "flourish": "flourish_saturn"},
 }
 
+
+# BUGFIX (Nutzer-Rueckmeldung: "freigeschaltete Geheim-Themes sollten
+# im Anzeige-Menue unter Farbschema auswaehlbar erscheinen"): die
+# Anzeigenamen standen hier bisher DAUERHAFT auf "??? Geheim ???" -
+# auch dann noch, wenn ein Theme laengst gefunden und AKTIV war. Das
+# ist unproblemlos aufzuloesen: current_theme_name() liefert einen
+# Geheim-Theme-Namen ueberhaupt nur dann, wenn er zuvor in THEME_FILE
+# geschrieben wurde - und das passiert ausschliesslich ueber
+# cycle_theme() (nur unter _available_theme_order(), also nur
+# freigeschaltete Themes) oder _on_secret_triggered() (nur wenn der
+# Code gerade gefunden wurde). Ein Geheim-Theme kann also gar nicht
+# aktiv sein, ohne bereits gefunden zu sein - der echte Name kann
+# hier also gefahrlos direkt gezeigt werden, sobald es aktiv ist,
+# statt fuer immer geheimnisvoll zu bleiben.
 THEME_NAMES_DE = {"dark": "Dunkel (Standard)", "light": "Hell",
-                  "green": "Retro-Gruen", "secret_gold": "??? Geheim ???"}
+                  "green": "Retro-Gruen", "secret_gold": "Gold (geheim)"}
 THEME_NAMES_EN = {"dark": "Dark (default)", "light": "Light",
-                  "green": "Retro Green", "secret_gold": "??? Secret ???"}
+                  "green": "Retro Green", "secret_gold": "Gold (secret)"}
+# Anzeigename je Geheim-Theme (siehe SECRET_THEME_META oben) - eine
+# Stelle, die sowohl hier als auch in fe/menu.py's eigener, bewusst
+# unabhaengiger Kopie (siehe dortiger Modul-Kommentar) gepflegt werden
+# MUSS, wenn ein neues Geheim-Theme dazukommt.
+SECRET_THEME_DISPLAY_NAMES = {
+    "snes_16bit":      ("SNES (geheim)", "SNES (secret)"),
+    "dmg_green":       ("Game Boy (geheim)", "Game Boy (secret)"),
+    "gbc_neon":        ("Game Boy Color (geheim)", "Game Boy Color (secret)"),
+    "n64_turbo":       ("N64 (geheim)", "N64 (secret)"),
+    "ps1_classic":     ("PS1 (geheim)", "PS1 (secret)"),
+    "sega_sonic":      ("Mega Drive (geheim)", "Mega Drive (secret)"),
+    "sms_sonic":       ("Master System (geheim)", "Master System (secret)"),
+    "gamegear_sonic":  ("Game Gear (geheim)", "Game Gear (secret)"),
+    "saturn_sonic":    ("Saturn (geheim)", "Saturn (secret)"),
+}
 for _sm in SECRET_THEME_META.values():
-    THEME_NAMES_DE[_sm["theme"]] = "??? Geheim ???"
-    THEME_NAMES_EN[_sm["theme"]] = "??? Secret ???"
-del _sm
+    _de, _en = SECRET_THEME_DISPLAY_NAMES[_sm["theme"]]
+    THEME_NAMES_DE[_sm["theme"]] = _de
+    THEME_NAMES_EN[_sm["theme"]] = _en
+del _sm, _de, _en
 
 def _available_theme_order():
     """THEME_ORDER, erweitert um freigeschaltete Geheim-Themes - so
@@ -4031,6 +4061,15 @@ class Frontend:
                                     # den Neuversuch in _maybe_retry_ra().
         self._ra_retry_next = 0.0
         self._ra_retry_count = 0
+        # BUGFIX (Nutzer-Rueckmeldung: "RA-Erfolgsjaeger erscheint manchmal
+        # gar nicht, taucht dann irgendwann ploetzlich doch auf"): siehe
+        # _maybe_rebuild_ra_categories() weiter unten fuer die volle
+        # Erklaerung - kurz gesagt wurde self.cats bisher nur in sehr
+        # wenigen, teils zufaelligen Situationen neu aufgebaut, nachdem
+        # frische RA-Fortschrittsdaten im Hintergrund eintrafen. Dieses
+        # Flag wird gesetzt, sobald neue Daten da sind, aber die
+        # Kategorienliste noch nicht entsprechend aktualisiert wurde.
+        self._ra_categories_dirty = False
 
         # BUGFIX (Nutzer-Rueckmeldung: Uhrzeit war bei einem Nutzer
         # trotz korrekt eingestelltem Zeitzonen-Versatz falsch): der
@@ -5040,6 +5079,7 @@ class Frontend:
         self._sync_track_marquee()
         self._maybe_retry_ra()
         self._maybe_retry_clock()
+        self._maybe_rebuild_ra_categories()
         if message and prominent:
             # NEUES FEATURE (siehe Kommentar bei self._prominent_message
             # in __init__): bewusst NICHT auch noch die kleine
@@ -5366,20 +5406,26 @@ class Frontend:
         """Uebernimmt das Ergebnis des asynchronen RA-Start-Abrufs aus
         __init__() (siehe dortiger Kommentar), sobald es eingetroffen
         ist - periodisch aus draw() geprueft, als ALLERERSTES (noch
-        vor jeder eigentlichen Zeichenarbeit), damit ein frisch
-        aufgebautes self.cats sofort in DIESEM Durchlauf mitgezeichnet
-        wird, ohne draw() rekursiv erneut aufzurufen.
+        vor jeder eigentlichen Zeichenarbeit).
 
-        Baut die Kategorienliste bewusst NUR dann neu auf, wenn der
-        Nutzer seit dem Programmstart noch GAR NICHT navigiert hat
-        (Seite 0, erste Kategorie, keine Ordnertiefe) - sonst wuerden
-        self.cat_i/self.page/self.scroll ploetzlich auf eine andere
-        Kategorie zeigen als die, die der Nutzer gerade tatsaechlich
-        vor sich hat. In dem selteneren Fall (Nutzer navigiert
-        innerhalb der ersten Sekunden schneller als der Netzwerk-Abruf
-        braucht) taucht die RA-Erfolgsjaeger-Kategorie einfach erst
-        beim naechsten regulaeren Rescan auf - Stabilitaet hat hier
-        bewusst Vorrang vor Vollstaendigkeit."""
+        BUGFIX (Nutzer-Rueckmeldung: "RA-Erfolgsjaeger erscheint
+        manchmal gar nicht auf der Hauptseite, taucht dann ab und zu
+        ploetzlich doch auf, wenn ich irgendwas mache"): baute die
+        Kategorienliste bisher NUR dann neu auf, wenn der Nutzer seit
+        dem Programmstart noch GAR NICHT navigiert hatte (Seite 0,
+        erste Kategorie, keine Ordnertiefe) - in JEDEM anderen Fall
+        (praktisch immer, sobald man auch nur einen einzigen Schritt
+        navigiert, bevor der Netzwerk-Abruf durch ist) wurde
+        self._ra_lookup zwar aktualisiert, self.cats aber NIE wieder
+        neu aufgebaut - die Kategorie blieb dadurch fuer den Rest der
+        Sitzung komplett unsichtbar, bis zufaellig eine ANDERE Stelle
+        (Einstellung geaendert, Rescan, Assistent) ohnehin einen vollen
+        Neuaufbau ausgeloest hat ("ab und zu ploetzlich doch auf, wenn
+        ich irgendwas mache" - genau das). Jetzt wird nur noch
+        self._ra_categories_dirty gesetzt; den eigentlichen (sicheren)
+        Neuaufbau uebernimmt _maybe_rebuild_ra_categories() weiter
+        unten, das GARANTIERT reagiert, sobald es gefahrlos moeglich
+        ist - nicht mehr nur zufaellig."""
         pending = self._ra_pending_result
         if pending is None:
             return
@@ -5388,8 +5434,7 @@ class Frontend:
         if lookup is not None:
             self._ra_lookup = lookup
             self._ra_fetch_ok = True
-            if self.page == 0 and self.cat_i == 0 and not self.nav_path:
-                self.build_categories()
+            self._ra_categories_dirty = True
 
     def _maybe_retry_ra(self):
         """Periodisch (aus draw(), wie _network_connected()) geprueft:
@@ -5400,7 +5445,17 @@ class Frontend:
         Neuversuch unternommen. Netzwerk-Aufrufe laufen dabei in einem
         Hintergrund-Thread, damit die Navigation nie blockiert wird.
         Hoert nach 5 Versuchen von selbst auf (kein endloses Nachfragen,
-        falls RA dauerhaft nicht erreichbar ist)."""
+        falls RA dauerhaft nicht erreichbar ist).
+
+        BUGFIX (siehe _maybe_apply_pending_ra_data() fuer die
+        ausfuehrliche Begruendung derselben Nutzer-Rueckmeldung): dieser
+        Neuversuchspfad hat self._ra_lookup bisher aktualisiert, aber
+        self.cats ueberhaupt NIE neu aufgebaut - selbst im guenstigsten
+        Fall (Netzwerk beim Start nur kurz nicht bereit, erster
+        Neuversuch nach 30s klappt) blieb RA-Erfolgsjaeger dadurch bis
+        zum naechsten zufaelligen Neuaufbau unsichtbar. Setzt jetzt
+        ebenfalls nur das Dirty-Flag - siehe
+        _maybe_rebuild_ra_categories()."""
         if self._ra_fetch_ok or self._ra_retry_count >= 5:
             return
         if not ra_enabled():
@@ -5421,7 +5476,76 @@ class Frontend:
             if ra_data is not None:
                 self._ra_lookup = build_ra_lookup(ra_data)
                 self._ra_fetch_ok = True
+                self._ra_categories_dirty = True
         threading.Thread(target=worker, daemon=True).start()
+
+    @staticmethod
+    def _category_match_key(entry):
+        """Liefert einen stabilen Vergleichsschluessel fuer einen
+        self.cats-Eintrag (Anzeigename, Baumknoten, syskey) - benutzt
+        von _rebuild_categories_preserving_selection(), um dieselbe
+        Kategorie nach einem Neuaufbau wiederzufinden, selbst wenn sich
+        ihr Anzeigename (z.B. eine mitgezaehlte Anzahl in Klammern wie
+        "Sammlungen (12)") zwischenzeitlich veraendert hat. Echte
+        Spiele-Systeme haben einen stabilen syskey - der reicht allein.
+        Kategorien ohne syskey (Weiterspielen/Zuletzt gespielt/
+        Favoriten/Sammlungen/RA-Erfolgsjaeger/Zufalls-Zock/System)
+        vergleichen nur den Teil des Anzeigenamens VOR einer moeglichen
+        Klammer, damit ein reiner Zaehlerwechsel nicht wie eine andere
+        Kategorie aussieht."""
+        name, _node, syskey = entry
+        if syskey is not None:
+            return ("sys", syskey)
+        return ("label", name.split(" (")[0])
+
+    def _rebuild_categories_preserving_selection(self):
+        """build_categories() neu aufrufen, OHNE die Kategorien-Auswahl
+        (self.cat_i) unter dem Nutzer wegzuziehen - Kategorien koennen
+        beim Neuaufbau in Anzahl/Reihenfolge wechseln (z.B. wenn
+        RA-Erfolgsjaeger/Sammlungen neu dazukommen oder Weiterspielen/
+        Zuletzt gespielt/Favoriten je nach Zustand vorne ein-/
+        ausgeblendet werden), ein reiner Index-Vergleich waere dadurch
+        unzuverlaessig. Merkt sich stattdessen den _category_match_key()
+        der aktuell ausgewaehlten Kategorie, baut neu auf, und sucht
+        genau diesen Schluessel in der neuen Liste wieder heraus. Bleibt
+        die Kategorie nicht mehr vorhanden (z.B. Favoriten leer
+        geworden), faellt cat_i auf einen gueltigen Index zurueck. Nur
+        fuer den Aufruf gedacht, waehrend self.page == 0 ist (siehe
+        _maybe_rebuild_ra_categories()) - self.nav_path/self.item_i auf
+        Seite 1 werden hier bewusst nicht angefasst."""
+        old_key = None
+        if 0 <= self.cat_i < len(self.cats):
+            old_key = self._category_match_key(self.cats[self.cat_i])
+        self.build_categories()
+        if old_key is not None:
+            for i, entry in enumerate(self.cats):
+                if self._category_match_key(entry) == old_key:
+                    self.cat_i = i
+                    break
+            else:
+                self.cat_i = min(self.cat_i, max(0, len(self.cats) - 1))
+        else:
+            self.cat_i = 0
+
+    def _maybe_rebuild_ra_categories(self):
+        """Periodisch (aus draw()) geprueft: holt einen von
+        _maybe_apply_pending_ra_data()/_maybe_retry_ra() hinterlegten
+        "es gibt frische RA-Daten, aber self.cats ist noch nicht auf
+        dem neuesten Stand"-Zustand nach, SOBALD das gefahrlos moeglich
+        ist. Bewusst nur auf Seite 0 (Kategorien-Uebersicht) - befindet
+        sich der Nutzer gerade IN einer Kategorie (Seite 1, evtl. tief
+        verschachtelt ueber nav_path), wuerde ein Neuaufbau von
+        self.cats dort erst recht fuer Verwirrung sorgen (Ordnerpfad/
+        Scroll-Position koennten nicht mehr zum frisch aufgebauten Baum
+        passen). Bleibt das Flag laenger stehen, wird es einfach beim
+        naechsten Blick auf Seite 0 nachgeholt - GARANTIERT, nicht nur
+        zufaellig wie vor diesem Fix."""
+        if not getattr(self, "_ra_categories_dirty", False):
+            return
+        if self.page != 0:
+            return
+        self._ra_categories_dirty = False
+        self._rebuild_categories_preserving_selection()
 
     def _maybe_retry_clock(self):
         """Periodisch (aus draw(), gleiches Muster wie _maybe_retry_ra())

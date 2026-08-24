@@ -40,11 +40,50 @@ from fe.update_check import (
 from fe.scan import network_wait_enabled
 
 THEME_FILE = "/media/fat/frontend/theme"
-_VALID_THEME_NAMES = {"dark", "light", "green", "secret_gold"}
+# BUGFIX (Nutzer-Rueckmeldung: "freigeschaltete Geheim-Themes sollten im
+# Anzeige-Menue unter Farbschema auswaehlbar erscheinen"): diese Liste/
+# diese Namen sind eine BEWUSSTE, unabhaengige Kopie (siehe Modul-
+# Kommentar oben) - sie kannte die 9 neuen Konsolen-Geheim-Themes aus
+# frontend.py's SECRET_THEME_META (Secret-Themes-Feature) bisher gar
+# nicht. Folge: current_theme_name() gab fuer ein aktives, aber HIER
+# unbekanntes Geheim-Theme still auf "dark" zurueck (nicht in
+# _VALID_THEME_NAMES) - die Menuezeile zeigte dadurch faelschlich
+# "Farbschema: Dunkel (Standard)" an, obwohl tatsaechlich laengst ein
+# Geheim-Theme aktiv war. Jetzt nachgezogen - bei einem kuenftigen
+# neuen Geheim-Theme MUSS diese Liste hier mit aktualisiert werden
+# (genau wie THEMES/SECRET_THEME_META in frontend.py selbst).
+_VALID_THEME_NAMES = {
+    "dark", "light", "green", "secret_gold",
+    "snes_16bit", "dmg_green", "gbc_neon", "n64_turbo", "ps1_classic",
+    "sega_sonic", "sms_sonic", "gamegear_sonic", "saturn_sonic",
+}
+# Anzeigenamen: sobald ein Geheim-Theme HIER als current_theme_name()
+# auftaucht, ist es zwangslaeufig bereits gefunden (siehe Begruendung
+# bei SECRET_THEME_DISPLAY_NAMES in frontend.py) - der echte Name kann
+# also gefahrlos direkt gezeigt werden statt fuer immer "??? Geheim
+# ???" zu bleiben.
 THEME_NAMES_DE = {"dark": "Dunkel (Standard)", "light": "Hell",
-                  "green": "Retro-Gruen", "secret_gold": "??? Geheim ???"}
+                  "green": "Retro-Gruen", "secret_gold": "Gold (geheim)",
+                  "snes_16bit": "SNES (geheim)",
+                  "dmg_green": "Game Boy (geheim)",
+                  "gbc_neon": "Game Boy Color (geheim)",
+                  "n64_turbo": "N64 (geheim)",
+                  "ps1_classic": "PS1 (geheim)",
+                  "sega_sonic": "Mega Drive (geheim)",
+                  "sms_sonic": "Master System (geheim)",
+                  "gamegear_sonic": "Game Gear (geheim)",
+                  "saturn_sonic": "Saturn (geheim)"}
 THEME_NAMES_EN = {"dark": "Dark (default)", "light": "Light",
-                  "green": "Retro Green", "secret_gold": "??? Secret ???"}
+                  "green": "Retro Green", "secret_gold": "Gold (secret)",
+                  "snes_16bit": "SNES (secret)",
+                  "dmg_green": "Game Boy (secret)",
+                  "gbc_neon": "Game Boy Color (secret)",
+                  "n64_turbo": "N64 (secret)",
+                  "ps1_classic": "PS1 (secret)",
+                  "sega_sonic": "Mega Drive (secret)",
+                  "sms_sonic": "Master System (secret)",
+                  "gamegear_sonic": "Game Gear (secret)",
+                  "saturn_sonic": "Saturn (secret)"}
 
 def current_theme_name():
     """Schlanker, unabhaengiger Nachbau (siehe Modul-Kommentar oben) -

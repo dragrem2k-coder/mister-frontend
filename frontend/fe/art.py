@@ -816,6 +816,19 @@ def _category_art_key(name, syskey):
         return "FAVORITES"
     if name.startswith(t("collections_cat")):
         return "COLLECTIONS"
+    # NEU (Nutzerwunsch: "wir braeuchten fuer diese Kategorie auch noch
+    # eine Artwork die dann daneben in der Boxart erscheint" - RA-
+    # Erfolgsjaeger zeigte bisher nur den generischen "kein Artwork"-
+    # Platzhalter): exakt dasselbe Muster wie bei "Sammlungen" - die
+    # Kategorie wird mit syskey=None angelegt (build_ra_hunter_category()
+    # mischt ja RA-Spiele aus mehreren Systemen) und der Menuename traegt
+    # zusaetzlich die Trefferanzahl ("%s (%d)" % (t("ra_hunter_cat"),
+    # count), siehe build_categories()) - deshalb wieder startswith()
+    # statt "==". Bilddatei liegt unter SYSART_BASE/RA_HUNTER.art
+    # (eigens erstelltes Pokal-/Controller-Motiv, bewusst KEIN Nachbau
+    # des echten RetroAchievements-Markenlogos).
+    if name.startswith(t("ra_hunter_cat")):
+        return "RA_HUNTER"
     return None
 
 _meta_cache = {}
