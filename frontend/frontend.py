@@ -8580,8 +8580,22 @@ class Frontend:
                     f.write("secret_gold")
             except OSError:
                 pass
+            # NEU (Nutzerwunsch: eigener Sound je Geheimnis/Theme, siehe
+            # SFX_DIR/secret_theme_1.mp3 bzw. der synthetische Ersatzton
+            # in SFX_CHIME_DEFS) - bisher spielte dieser Zweig ueberhaupt
+            # keinen Ton ab, obwohl _play_ducked_sfx() (Musik kurz
+            # pausieren, Sound abspielen, danach automatisch fortsetzen)
+            # laengst existiert und fuer die 9 Konsolen-Themes weiter
+            # unten schon genau so genutzt wird.
+            self._play_ducked_sfx("secret_theme_1")
             self.draw()
         elif secret_id == "entwicklerraum":
+            # NEU (Nutzerwunsch, siehe Kommentar bei "secret_theme_1"
+            # oben): eigener Sound beim Betreten des Entwicklerraums -
+            # laeuft nicht-blockierend im Hintergrund (siehe
+            # _play_ducked_sfx()), startet also schon waehrend der Raum
+            # gezeichnet wird.
+            self._play_ducked_sfx("entwicklerraum")
             self.draw_dev_room_screen()
             self.draw()
         elif secret_id == "secret_sound":
@@ -9119,7 +9133,13 @@ class Frontend:
             if nested_buffer == DEV_ROOM_BONUS_CODE:
                 is_new = _unlock_secret(DEV_ROOM_BONUS_ID)
                 if is_new:
-                    self._play_ducked_sfx("achievement")
+                    # NEU (Nutzerwunsch: eigener Sound je Geheimnis) -
+                    # spielte bisher den generischen "achievement"-Ton;
+                    # DEV_ROOM_BONUS_ID ("dev_room_bonus") hat jetzt
+                    # einen eigenen, dedizierten Sound (siehe
+                    # SFX_DIR/dev_room_bonus.mp3 bzw. der synthetische
+                    # Ersatzton in SFX_CHIME_DEFS).
+                    self._play_ducked_sfx(DEV_ROOM_BONUS_ID)
                 nested_buffer = []
                 render()
                 continue

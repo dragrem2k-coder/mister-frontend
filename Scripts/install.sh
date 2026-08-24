@@ -171,6 +171,16 @@ if [ -d "$SRC_DIR/frontend/sfx_source" ]; then
     mkdir -p "$FRONTEND_DIR/sfx_source"
     cp -rn "$SRC_DIR/frontend/sfx_source/." "$FRONTEND_DIR/sfx_source/" 2>/dev/null || true
 fi
+if [ -d "$SRC_DIR/frontend/sfx" ]; then
+    # NEU (Nutzerwunsch: eigene MP3-Sounds je Geheimnis/Theme statt der
+    # prozedural erzeugten Ersatztoene) - direkt abspielbereite Klaenge
+    # fuer play_sfx()/_play_ducked_sfx() (SFX_DIR = .../frontend/sfx).
+    # Gleiches "nicht ueberschreiben"-Prinzip wie bei sysart/sfx_source
+    # oben, falls jemand eine eigene Sound-Datei mit demselben Namen
+    # hinterlegt hat.
+    mkdir -p "$FRONTEND_DIR/sfx"
+    cp -rn "$SRC_DIR/frontend/sfx/." "$FRONTEND_DIR/sfx/" 2>/dev/null || true
+fi
 if [ -d "$SRC_DIR/frontend/boot_logo" ]; then
     # Boot-Logo (dragend_logo.art) - gleiches Prinzip, eigene Datei
     # wird nicht ueberschrieben.

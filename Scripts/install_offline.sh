@@ -248,6 +248,28 @@ if [ -d "$SRC/frontend/sfx_source" ]; then
     say "  $NEW neu, $KEPT vorhandene behalten"
 fi
 
+# NEU (Nutzerwunsch: eigene MP3-Sounds je Geheimnis/Theme statt der
+# prozedural erzeugten Ersatztoene) - direkt abspielbereite Klaenge fuer
+# play_sfx()/_play_ducked_sfx() (SFX_DIR = .../frontend/sfx). Gleiches
+# "nur fehlende ergaenzen"-Prinzip wie bei sysart/sfx_source oben, damit
+# eine eigene, per Hand ersetzte Sound-Datei nicht wieder ueberschrieben
+# wird.
+if [ -d "$SRC/frontend/sfx" ]; then
+    step "SFX-Klaenge (sfx)"
+    mkdir -p "$FRONTEND_DIR/sfx"
+    NEW=0; KEPT=0
+    for f in "$SRC/frontend/sfx/"*.mp3; do
+        [ -e "$f" ] || continue
+        base="$(basename "$f")"
+        if [ -f "$FRONTEND_DIR/sfx/$base" ]; then
+            KEPT=$((KEPT+1))
+        else
+            cp -f "$f" "$FRONTEND_DIR/sfx/" && NEW=$((NEW+1))
+        fi
+    done
+    say "  $NEW neu, $KEPT vorhandene behalten"
+fi
+
 # Boot-Logo (dragend_logo.art): gleiches Prinzip.
 if [ -d "$SRC/frontend/boot_logo" ]; then
     step "Boot-Logo (boot_logo)"

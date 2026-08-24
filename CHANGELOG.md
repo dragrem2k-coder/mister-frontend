@@ -236,12 +236,46 @@ Verhaltensänderung im Normalbetrieb):
   (über das bereits vorhandene, dafür gebaute `update_frontend.sh`) -
   weder beim Erstinstall noch bei einem späteren erneuten Ausführen
   ist danach noch ein manueller Neustart nötig.
+- Drei Geheimnisse blieben beim Freischalten komplett stumm: das
+  goldene Geheim-Theme, der Entwicklerraum und der Bonus-Code im
+  Entwicklerraum ("Geheimnis im Geheimnis") riefen bisher überhaupt
+  keine Sound-Funktion auf, obwohl der generische Mechanismus dafür
+  (`_play_ducked_sfx()` - Musik kurz pausieren, Sound abspielen, danach
+  automatisch fortsetzen, falls sie an war) längst existierte und für
+  die 9 Konsolen-Themes bereits genutzt wurde. Alle drei rufen diesen
+  Mechanismus jetzt ebenfalls auf; der Bonus-Code bekam dabei zusätzlich
+  einen eigenen Sound-Namen statt weiterhin den generischen
+  "Erfolg freigeschaltet"-Ton mitzubenutzen.
+
+**Neue Features:**
+- Jedes Geheimnis und jedes der 9 geheimen Themes hat jetzt einen
+  eigenen, echten Sound-Jingle statt eines synthetisch erzeugten
+  Ersatztons: 14 MP3-Dateien liegen unter `frontend/sfx/` (nur
+  Regenbogen-Cursor bleibt bewusst stumm, rein visueller Effekt).
+  Wird ein Code eingegeben, pausiert eine eventuell laufende Musik kurz,
+  der zugehörige Sound spielt ab, danach läuft die Musik automatisch
+  weiter, falls sie an war (`_play_ducked_sfx()`, unverändert
+  wiederverwendet). Fehlt eine MP3 auf einem Gerät (z. B. bei eigenen
+  Anpassungen), springt weiterhin der bisherige synthetische Ersatzton
+  ein statt komplett stumm zu bleiben. `Scripts/install.sh`,
+  `Scripts/install_frontend.sh` und `Scripts/install_offline.sh` kopieren
+  `frontend/sfx/` jetzt beim (Erst-)Install/Update automatisch mit
+  (gleiches "nicht überschreiben"-Prinzip wie bei `sysart/`/
+  `sfx_source/`, eigene Sound-Dateien mit demselben Namen bleiben
+  erhalten).
 
 **Dokumentation:**
 - `docs/Dragend_Anleitung.pdf` aktualisiert: F2 als zweite Suche-Taste
   ergänzt, die Doppelbelegung von F5 (kurz im Menü = Musik, gehalten im
   Spiel = Reset) klargestellt, und die bisher komplett leere
   JOYPAD-Seite mit den tatsächlichen Pad-Belegungen gefüllt.
+- "Geheimcodes - Hinweise" (öffentliches, spoilerarmes Hinweisblatt zu
+  allen Geheimnissen) neu in zwei Dateien aufgeteilt: Der bisherige
+  konkrete Google-Suchbegriff je Geheimnis ("Rechercheansatz") wurde aus
+  dem Hauptdokument entfernt und steht jetzt nur noch separat im neuen,
+  klar als Abkürzung gekennzeichneten Zusatzblatt "Geheimcodes -
+  Recherche" - wer selbst recherchieren will, wird durch das
+  Hauptdokument allein nicht mehr vorzeitig gespoilert.
 
 ## v4.3 — großes Sammel-Release (staging → main)
 

@@ -252,6 +252,19 @@ SFX_CHIME_DEFS = {
     # klassischen 8-Bit-Arpeggio (A-C#-E-A).
     "chiptune": [(440, 440, 45), (554, 554, 45), (659, 659, 45), (880, 880, 70)],
 
+    # NEU (Nutzerwunsch: eigene MP3-Sounds fuer Geheimes Gold-Theme,
+    # Entwicklerraum und den EGG-Bonus-Code, siehe SFX_DIR/*.mp3 bzw.
+    # _on_secret_triggered()/draw_dev_room_screen() in frontend.py) -
+    # bisher hatten diese drei ueberhaupt keinen Eintrag hier, das
+    # Reingehen/Freischalten blieb bis dahin stumm (bzw. nutzte nur den
+    # generischen "achievement"-Ton). Synthetische Ersatzklaenge nach
+    # demselben Prinzip wie bei den anderen Eintraegen - greifen nur,
+    # falls die echte MP3-Datei mal fehlen sollte (siehe play_sfx()/
+    # _play_ducked_sfx(): MP3 wird immer bevorzugt).
+    "secret_theme_1": [(500, 900, 50), (900, 1300, 60), (1300, 1700, 90)],
+    "entwicklerraum": [(200, 500, 60), (500, 350, 40), (350, 650, 70)],
+    "dev_room_bonus": [(700, 700, 35), (700, 1000, 35), (1000, 1300, 35), (1300, 1600, 80)],
+
     # NEU (Nutzerwunsch: eigener Unlock-Sound pro Secret-Theme, siehe
     # SECRET_CODES/THEMES in frontend.py) - alle rein prozedural erzeugt
     # wie die Sounds oben, kein zusaetzliches Audio-Asset noetig.

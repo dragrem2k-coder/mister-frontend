@@ -199,6 +199,13 @@ if [ -d "$SRC_DIR/frontend/sfx_source" ]; then
     mkdir -p "$FRONTEND_DIR/sfx_source"
     cp -rn "$SRC_DIR/frontend/sfx_source/." "$FRONTEND_DIR/sfx_source/" 2>/dev/null || true
 fi
+if [ -d "$SRC_DIR/frontend/sfx" ]; then
+    # NEU (Nutzerwunsch: eigene MP3-Sounds je Geheimnis/Theme) - direkt
+    # abspielbereite Klaenge fuer play_sfx()/_play_ducked_sfx(). Gleiches
+    # "nicht ueberschreiben"-Prinzip wie bei sysart/sfx_source oben.
+    mkdir -p "$FRONTEND_DIR/sfx"
+    cp -rn "$SRC_DIR/frontend/sfx/." "$FRONTEND_DIR/sfx/" 2>/dev/null || true
+fi
 if [ -d "$SRC_DIR/frontend/boot_logo" ]; then
     mkdir -p "$FRONTEND_DIR/boot_logo"
     cp -rn "$SRC_DIR/frontend/boot_logo/." "$FRONTEND_DIR/boot_logo/" 2>/dev/null || true
