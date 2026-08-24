@@ -44,6 +44,24 @@ schau am besten in die Git-Historie oder in den Kopf von
 - Equalizer-Balken jetzt einzeln über System -> Anzeige & Sound
   abschaltbar, unabhängig von der pulsierenden Markierung - gedacht
   zum Testen, ob das beim Scrollen im HDMI-Modus spürbar hilft.
+- 9 neue geheime Konsolen-Themes (dazu passender Sound und kurzer
+  Vollbild-Effekt beim Freischalten), jedes über einen eigenen
+  Geheimcode nach dem Vorbild eines echten klassischen Cheat-/
+  Level-Select-Codes: SNES (Batman Forever), Game Boy (Game Genie),
+  Game Boy Color (Space Invaders), N64 (Robotron 64), PS1 (Aladdin),
+  Mega Drive (Sonic 2 Sound-Test), Master System (Sonic Chaos),
+  Game Gear (Sonic Chaos) und Saturn (Sonic Jam/Sonic 2
+  Level-Auswahl). Alle 14 Geheimcodes (die 5 bisherigen plus die 9
+  neuen) sind untereinander eindeutig geprüft - keiner löst
+  versehentlich einen anderen vorzeitig aus. Dreamcast bewusst NICHT
+  dabei, da sich kein wirklich eindeutiger, belegter Original-Code
+  finden ließ. Das N64-Theme hat als einziges eine echte
+  Zusatzwirkung: schaltet beim allerersten Freischalten automatisch
+  das bereits bestehende "Schnelles Scrollen" ein (rein additiv, wird
+  danach nie mehr von selbst wieder ausgeschaltet). Alle neuen
+  Geheimnisse erscheinen wie gewohnt in der Geheimnis-Übersicht,
+  sobald gefunden. Nur per Tastatur eingebbar, wie alle anderen
+  Codes.
 - CRT/HDMI-Sicherheitsnetz: Wechselst du auf CRT-Videomodus, ohne dass
   tatsächlich ein CRT angeschlossen ist, bleibt der Bildschirm nach
   dem Neustart schwarz - ohne echte CRT-Erkennung (technisch nicht
@@ -129,6 +147,44 @@ Verhaltensänderung im Normalbetrieb):
   zählt jetzt bei jedem eigenen Zeichnen `full_redraw_gen` mit hoch,
   wodurch der Schnellpfad direkt danach zuverlässig einmal den echten,
   sauberen Neuaufbau erzwingt.
+- Geheimcode für den Entwicklerraum reagierte nicht auf deutschen
+  Tastaturen: Das Frontend liest rohe Tastatur-Scancodes direkt aus
+  `/dev/input`, ganz ohne Tastaturlayout-Umrechnung - die bedruckte
+  Y-Taste löste dadurch "letter:Z" aus, nicht "letter:Y" ("Y" und "Z"
+  sind die einzigen beiden Buchstaben, die zwischen QWERTY- und
+  QWERTZ-Layout die Position tauschen). Da dieses Projekt durchgehend
+  auf deutsche Nutzer ausgelegt ist, jetzt direkt an der Quelle
+  behoben statt layoutneutral ausgewichen: `LETTER_KEYS` in
+  `fe/input.py` ordnet Y/Z jetzt so zu, wie sie auf einer deutschen
+  Tastatur tatsächlich beschriftet sind - betrifft nicht nur den
+  Geheimcode, sondern auch den ganz normalen Buchstaben-Direktsprung
+  (A-Z-Taste drücken, zum nächsten Eintrag mit diesem Buchstaben
+  springen), der beim Buchstaben Y/Z bisher ebenso falsch sprang.
+- Bonus-Geheimcode im Entwicklerraum ("Geheimnis im Geheimnis") ließ
+  sich nicht eingeben - der Bildschirm zeichnete sich beim Betreten
+  zunächst einmal und wartete auf eine erste, komplett verworfene
+  Taste ("nur zum Bestätigen"), bevor die eigentliche Code-Erkennung
+  überhaupt zu lauschen begann. Genau dieser erste Tastendruck war
+  aber bereits das "E" des Codes - er verschwand spurlos, die
+  Erkennung sah nur noch "G" als vermeintlich ersten Buchstaben und
+  verließ den Raum sofort wieder. Der doppelte Zeichnen-und-Warten-
+  Schritt entfällt jetzt komplett; der allererste Tastendruck nach dem
+  Betreten zählt von Anfang an für den Bonus-Code.
+- Entwicklerraum auf CRT (320×240) nicht mehr lesbar: längere Zeilen
+  (Mitwirkende, Danksagung) liefen bisher ungewrappt durch und wurden
+  am Bildschirmrand einfach abgeschnitten statt umgebrochen. Laufen
+  jetzt wie die übrigen Info-Bildschirme durch echten Zeilenumbruch;
+  die dadurch zusätzlich nötigen Zeilen bekommen ihren Platz über eine
+  automatisch kompaktere Zeilenhöhe, die sich am tatsächlich
+  benötigten Platz orientiert (auf HDMI mit reichlich Platz bleibt das
+  Layout unverändert) - dadurch bleibt garantiert alles sichtbar,
+  unabhängig von Sprache oder Textlänge.
+
+**Dokumentation:**
+- `docs/Dragend_Anleitung.pdf` aktualisiert: F2 als zweite Suche-Taste
+  ergänzt, die Doppelbelegung von F5 (kurz im Menü = Musik, gehalten im
+  Spiel = Reset) klargestellt, und die bisher komplett leere
+  JOYPAD-Seite mit den tatsächlichen Pad-Belegungen gefüllt.
 
 ## v4.3 — großes Sammel-Release (staging → main)
 

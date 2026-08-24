@@ -395,6 +395,18 @@ SECRET_CODES = {
     "secret_theme_1": ["up", "up", "down", "down", "left", "right",
                        "left", "right", "letter:B", "letter:A"],
     # Schaltet den Entwicklerraum frei. Nur per Tastatur eingebbar.
+    #
+    # BUGFIX (Nutzer-Rueckmeldung: "der Code fuer den Entwicklerraum
+    # funktioniert nicht", dann auf Nachfrage: "geh davon aus, dass
+    # jeder eine deutsche Tastatur hat"): der Bug lag nicht am "Y"
+    # selbst, sondern daran, dass LETTER_KEYS in fe/input.py Y/Z bisher
+    # nach der reinen US-QWERTY-Scancode-Bedeutung benannt hatte, obwohl
+    # das Frontend rohe Scancodes ohne Tastaturlayout-Umrechnung liest -
+    # auf einer deutschen QWERTZ-Tastatur loeste die bedruckte "Y"-Taste
+    # dadurch "letter:Z" aus statt "letter:Y". Der eigentliche Fix sitzt
+    # jetzt direkt in LETTER_KEYS (siehe dortiger Kommentar) - die
+    # Zuordnung ist dort bewusst an die deutsche Tastatur angepasst,
+    # nicht layoutneutral. "letter:Y" hier ist also wieder das Original.
     "entwicklerraum": ["down", "letter:R", "up", "letter:L",
                       "letter:Y", "letter:B"],
     # Schaltet einen geheimen Sound frei. Nur per Tastatur eingebbar.
@@ -408,6 +420,64 @@ SECRET_CODES = {
     # Jingle ab (ueber denselben gedaempften Weg wie der geheime Sound/
     # die Erfolgs-Jingles - siehe _play_ducked_sfx()). Nur per Tastatur.
     "chiptune_sound": ["letter:C", "letter:H", "letter:I", "letter:P"],
+
+    # NEU (Nutzerwunsch: "Secret-Sammlung" mit einem eigenen Theme pro
+    # klassischem System, angelehnt an bekannte Cheat-/Level-Select-Codes
+    # dieser Systeme). WICHTIG: unsere Codes koennen NUR aus Pfeiltasten
+    # und Buchstaben bestehen (siehe Design-Erklaerung ganz oben in
+    # diesem Kommentarblock - ok/back/select loesen im Hauptmenue immer
+    # eine echte Wirkung aus). Die Original-Vorlagen benutzen teils
+    # Gesichtstasten (A/B/X/Y - lassen sich 1:1 als Buchstaben
+    # uebernehmen, genau wie beim bestehenden Konami-Code oben), teils
+    # aber auch Select/Start, Zahlen oder System-spezifische Tasten ohne
+    # Tastatur-Aequivalent (PS1-Symbole, Mega-Drive-Sound-Test-Ziffern) -
+    # diese wurden durch thematisch passende Buchstaben ERSETZT statt
+    # weggelassen, um trotzdem auf die volle, eindeutige Laenge des
+    # Originals zu kommen. Jeder Code unten wurde einzeln gegen ALLE
+    # anderen (auch die vier oben) auf Eindeutigkeit UND auf verfrühtes
+    # Ausloesen als Teilsequenz geprueft (siehe tools/regression_test.py
+    # bzw. das Diagnose-Skript aus der Entwicklung).
+    #
+    # Original: Batman Forever (SNES) - Stage-/Waffen-Auswahl.
+    "theme_snes": ["left", "up", "left", "left",
+                  "letter:A", "letter:B", "letter:Y"],
+    # Original: Game Genie/"Message 2" (Game Boy). Select durch die
+    # Buchstaben G,B (fuer "Game Boy") ersetzt.
+    "theme_gb": ["letter:B", "letter:A", "left", "right",
+                "letter:G", "letter:B"],
+    # Original: Cheat-Menu-Code aus Space Invaders (Game Boy Color).
+    # Die beiden Select-Druecke durch "NEON" (Theme-Name) ersetzt.
+    "theme_gbc": ["down", "down", "letter:N", "letter:E",
+                 "letter:O", "letter:N"],
+    # Original: Robotron 64 (N64) - C-Oben-Taste durch "T" (Turbo)
+    # ersetzt, siehe der zugehoerige Turbo-Scroll-Effekt in
+    # _on_secret_triggered().
+    "theme_n64": ["left", "left", "right", "right", "letter:T"],
+    # Original: Aladdin (PS1) - die Dreieck/Quadrat/Kreis-Symbole haben
+    # kein Tastatur-Aequivalent, ersetzt durch "PSX".
+    "theme_ps1": ["right", "right", "letter:P", "letter:S", "letter:X"],
+    # Original: Sonic 2 (Mega Drive) - der beruehmte Sound-Test-Code ist
+    # eine elfstellige Ziffernfolge (kein "digit:"-Aktionstyp vorhanden,
+    # siehe fe/input.py), ersetzt durch "RING" (Sonics Ringe).
+    "theme_megadrive": ["down", "down", "letter:R", "letter:I",
+                        "letter:N", "letter:G"],
+    # Original: Sonic Chaos (Master System) - eigener Sound-Test-Code,
+    # NICHT identisch mit dem Mega-Drive-Code oben (bewusst getrennt
+    # gehalten, wie in der urspruenglichen Recherche gefordert).
+    "theme_sms": ["up", "up", "down", "down",
+                 "letter:S", "letter:M", "letter:S"],
+    # Original: Sonic Chaos (Game Gear) - hier fast 1:1 uebernehmbar,
+    # nur das abschliessende "Start" entfaellt (nicht codetauglich).
+    "theme_gamegear": ["up", "up", "down", "down",
+                       "right", "left", "right", "left"],
+    # Original: Sonic Jam/Sonic 2 Level-Select (Saturn) - "A+Start" am
+    # Ende durch "SAT" ersetzt.
+    "theme_saturn": ["down", "up", "letter:S", "letter:A", "letter:T"],
+
+    # Dreamcast BEWUSST NICHT dabei: es gibt zwar Sonic-Adventure-
+    # Geheimnisse, aber noch keinen sauber belegten, wirklich
+    # eindeutigen Code dafuer (siehe Recherche-Notiz) - lieber kein
+    # erfundener Code als einer, der spaeter falsch zugeordnet wird.
 }
 SECRET_CODE_MAXLEN = max(len(seq) for seq in SECRET_CODES.values())
 

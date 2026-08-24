@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Dragend Anleitung</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #101218; }
+  body {
+    font-family: Arial, Helvetica, "Segoe UI", sans-serif;
+    color: #ffffff;
+  }
+  :root {
+    --bg: #101218;
+    --panel: #181c28;
+    --blue: #4285f4;
+    --purple: #8572d1;
+    --gold: #d2af46;
+    --dim: #8c92a0;
+    --dim2: #c7ccd6;
+    --red: #ed2024;
+    --keybox: #1c2130;
+    --keyborder: #3a4258;
+  }
+  .page {
+    width: 210mm;
+    height: 297mm;
+    position: relative;
+    background: var(--bg);
+    page-break-after: always;
+    overflow: hidden;
+  }
+  .page:last-child { page-break-after: auto; }
+  .frame {
+    position: absolute;
+    left: 9mm; right: 9mm; top: 9mm; bottom: 9mm;
+    border: 1.6px solid var(--blue);
+    border-radius: 16px;
+  }
+  .topbar {
+    position: absolute;
+    left: 9mm; right: 9mm; top: 13mm;
+    height: 12mm;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 9mm;
+  }
+  .logo-chip {
+    width: 13mm; height: 13mm;
+    background: #000;
+    border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  .logo-chip img { width: 100%; height: 100%; object-fit: contain; }
+  .page-tag { font-family: "Courier New", monospace; font-size: 10.5px; color: var(--dim); letter-spacing: 0.5px; }
+  .footer {
+    position: absolute;
+    left: 9mm; right: 9mm; bottom: 9mm;
+    padding: 0 9mm 5mm;
+    display: flex;
+    justify-content: space-between;
+    font-family: "Courier New", monospace;
+    font-size: 9px;
+    color: var(--dim);
+  }
+  .footer-rule {
+    position: absolute;
+    left: 15mm; right: 15mm; bottom: 15mm;
+    border-top: 0.8px solid #262b3a;
+  }
+  .content { position: absolute; left: 15mm; right: 15mm; top: 28mm; bottom: 20mm; }
+
+  h1.section-title {
+    display: flex;
+    align-items: center;
+    gap: 6mm;
+    color: var(--blue);
+    font-size: 21px;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+    margin-bottom: 11mm;
+  }
+  h1.section-title::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: #262b3a;
+  }
+
+  /* ---------- Page 1 (Cover) ---------- */
+  .cover-logo { width: 65mm; margin: 14mm auto 0; display:block; }
+  .cover-title { text-align:center; font-size: 24px; font-weight: bold; margin-top: 6mm; }
+  .cover-tagline { text-align:center; color: var(--dim2); font-size: 12px; margin-top: 5mm; line-height: 1.6; }
+  .badges { display:flex; justify-content:center; gap: 11mm; margin-top: 11mm; }
+  .badge { display:flex; flex-direction:column; align-items:center; width: 30mm; }
+  .badge-circle {
+    width: 19mm; height: 19mm; border-radius: 50%;
+    border: 1.6px solid var(--gold); color: var(--gold);
+    display:flex; align-items:center; justify-content:center;
+    font-size: 14px; font-weight:bold; font-family:"Courier New",monospace;
+  }
+  .badge-label { margin-top: 3mm; font-size: 8.6px; color: var(--dim2); text-align:center; }
+  .demo-heading { text-align:center; color: var(--blue); letter-spacing: 2px; font-size: 12.5px; font-weight:bold; margin-top: 13mm; }
+  .mockup {
+    width: 155mm; margin: 6mm auto 0;
+    border: 1.6px solid var(--blue); border-radius: 10px;
+    overflow: hidden;
+  }
+  .mockup img { width: 100%; display:block; }
+
+  /* ---------- Page 2/3 (Tastatur/Joypad) ---------- */
+  .arrows { display:flex; align-items:flex-start; justify-content: space-between; margin-bottom: 13mm; padding: 0 4mm; }
+  .dpad { display:grid; grid-template-columns: repeat(3, 12mm); grid-template-rows: repeat(2, 12mm); gap: 2mm; justify-content:center; }
+  .key {
+    background: var(--keybox);
+    border: 1.2px solid var(--keyborder); border-radius: 4px;
+    display:flex; align-items:center; justify-content:center;
+    font-size: 13px; color:#fff;
+  }
+  .dpad .k-up { grid-column:2; grid-row:1; }
+  .dpad .k-left { grid-column:1; grid-row:2; }
+  .dpad .k-down { grid-column:2; grid-row:2; }
+  .dpad .k-right { grid-column:3; grid-row:2; }
+  .arrow-label { font-size: 11px; color: var(--dim2); margin-top: 4mm; text-align:center; }
+  .key-wide { background: var(--keybox); border:1.2px solid var(--keyborder); border-radius: 6px; padding: 4mm 8mm; font-family:"Courier New",monospace; font-size: 13px; font-weight:bold; text-align:center; }
+  .key-desc { font-size: 10px; color: var(--dim2); margin-top: 3mm; text-align:center; }
+  .ok-esc { display:flex; flex-direction:column; gap: 9mm; width: 62mm; }
+
+  .frow-title, .extra-title { font-size: 11px; color: var(--dim2); font-style: italic; margin: 11mm 0 6mm; }
+  .frow { display:flex; gap: 5mm; }
+  .fkey { flex:1; display:flex; flex-direction:column; align-items:center; }
+  .fkey .key-wide { width: 100%; padding: 4mm 2mm; }
+  .fkey .key-desc { font-size: 9px; }
+
+  .extra-row { display:flex; align-items:center; gap: 6mm; margin-bottom: 5.5mm; }
+  .extra-key { min-width: 46mm; background: var(--keybox); border:1.2px solid var(--keyborder); border-radius: 6px; padding: 3.2mm 4mm; font-family:"Courier New",monospace; font-size: 11px; font-weight:bold; text-align:center; }
+  .extra-desc { font-size: 10.5px; color: var(--dim2); line-height: 1.4; }
+  .extra-desc .sub { display:block; font-size: 9px; color: #caa74a; font-style: italic; margin-top: 1.2mm; }
+
+  .remap-note { margin-top: 9mm; font-size: 10px; color: var(--dim); font-style: italic; line-height: 1.5; }
+
+  /* Joypad grid */
+  .pad-intro { font-size: 11px; color: var(--dim2); font-style: italic; margin-bottom: 9mm; }
+  .pad-grid { display:grid; grid-template-columns: 1fr 1fr; gap: 6.5mm 9mm; }
+  .pad-item { display:flex; align-items:center; gap: 5mm; border-bottom: 0.6px solid #202537; padding-bottom: 4.5mm; }
+  .pad-btn { min-width: 21mm; height: 12mm; border-radius: 6mm; background: var(--keybox); border: 1.4px solid var(--gold); color: var(--gold);
+             display:flex; align-items:center; justify-content:center; font-family:"Courier New",monospace; font-size:10px; font-weight:bold; flex-shrink:0; padding: 0 2mm; text-align:center; line-height:1.15; }
+  .pad-desc { font-size: 9.8px; color: var(--dim2); line-height:1.4; }
+
+  /* Page 4 Funktionen */
+  .func-grid { display:flex; flex-direction:column; gap: 6mm; }
+  .func-row { display:flex; gap: 6mm; align-items:stretch; }
+  .func-shot { width: 50mm; height: 28mm; border: 1.4px solid var(--blue); border-radius: 6px; background: var(--panel); flex-shrink:0; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+  .func-shot img { width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+  .func-text { flex:1; padding-top: 1mm; }
+  .func-title { color: var(--blue); font-weight:bold; font-size: 12px; letter-spacing: 0.3px; margin-bottom: 2.5mm; }
+  .func-body { font-size: 10px; color: var(--dim2); line-height: 1.55; }
+</style>
+</head>
+<body>
+
+<!-- ================= PAGE 1: COVER ================= -->
+<div class="page">
+  <div class="frame"></div>
+  <div class="footer-rule"></div>
+  <div class="footer">
+    <span>github.com/dragrem2k-coder/mister-frontend</span>
+    <span>MiSTer Custom Frontend</span>
+  </div>
+  <div class="content" style="top:0; bottom: 20mm;">
+    <img class="cover-logo" src="_anleitung_assets/logo.png">
+    <div class="cover-title">MiSTer Custom Frontend</div>
+    <div class="cover-tagline">Ein eigenes Menue fuer MiSTer FPGA &ndash; mit Erfolgen,<br>Statistiken und ein paar Geheimnissen zum Entdecken.</div>
+    <div class="badges">
+      <div class="badge"><div class="badge-circle">RA</div><div class="badge-label">RetroAchievements</div></div>
+      <div class="badge"><div class="badge-circle">&#9733;</div><div class="badge-label">Troph&auml;enraum</div></div>
+      <div class="badge"><div class="badge-circle">&#9638;</div><div class="badge-label">Sammlungen</div></div>
+      <div class="badge"><div class="badge-circle">?</div><div class="badge-label">Geheimnisse</div></div>
+    </div>
+    <div class="demo-heading">SO SIEHT'S AUS</div>
+    <div class="mockup">
+      <img src="_anleitung_assets/shot_categories.png">
+    </div>
+  </div>
+</div>
+
+<!-- ================= PAGE 2: TASTATUR ================= -->
+<div class="page">
+  <div class="frame"></div>
+  <div class="topbar">
+    <div class="logo-chip"><img src="_anleitung_assets/logo.png"></div>
+    <span class="page-tag">2/4 &nbsp;-&nbsp; TASTATUR</span>
+  </div>
+  <div class="footer-rule"></div>
+  <div class="footer">
+    <span>github.com/dragrem2k-coder/mister-frontend</span>
+    <span>MiSTer Custom Frontend</span>
+  </div>
+  <div class="content">
+    <h1 class="section-title">TASTATUR</h1>
+
+    <div class="arrows">
+      <div>
+        <div class="dpad">
+          <div class="key k-up">&uarr;</div>
+          <div class="key k-left">&larr;</div>
+          <div class="key k-down">&darr;</div>
+          <div class="key k-right">&rarr;</div>
+        </div>
+        <div class="arrow-label">Bewegen</div>
+      </div>
+      <div class="ok-esc">
+        <div><div class="key-wide">OK / ENTER</div><div class="key-desc">Ausw&auml;hlen, Ordner betreten</div></div>
+        <div><div class="key-wide">ESC</div><div class="key-desc">Zur&uuml;ck / Beenden-Dialog</div></div>
+      </div>
+    </div>
+
+    <div class="frow-title">F-Tasten-Leiste (wie am oberen Rand jeder Tastatur):</div>
+    <div class="frow">
+      <div class="fkey"><div class="key-wide">F6</div><div class="key-desc">RA-Erfolgs&shy;vitrine</div></div>
+      <div class="fkey"><div class="key-wide">F7</div><div class="key-desc">Durch&shy;gespielt</div></div>
+      <div class="fkey"><div class="key-wide">F8</div><div class="key-desc">Favorit</div></div>
+      <div class="fkey"><div class="key-wide">F11</div><div class="key-desc">Zufalls&shy;spiel</div></div>
+      <div class="fkey"><div class="key-wide">F12</div><div class="key-desc">MiSTer&shy;OSD</div></div>
+    </div>
+
+    <div class="extra-title">Ausserdem:</div>
+    <div class="extra-row">
+      <div class="extra-key">ESC / F10 (halten)</div>
+      <div class="extra-desc">Spiel verlassen</div>
+    </div>
+    <div class="extra-row">
+      <div class="extra-key">F2 &nbsp;oder&nbsp; /</div>
+      <div class="extra-desc">Suche starten (Volltextsuche) &ndash; beide Tasten l&ouml;sen dieselbe Funktion aus</div>
+    </div>
+    <div class="extra-row">
+      <div class="extra-key">F5 (kurz, im Men&uuml;)</div>
+      <div class="extra-desc">N&auml;chster Musiktitel &ndash; genauso wie eine Medientaste &raquo;n&auml;chster Titel&laquo;, falls die Tastatur eine hat
+        <span class="sub">Im laufenden Spiel bewirkt dieselbe Taste (gehalten) stattdessen einen Reset - siehe unten.</span>
+      </div>
+    </div>
+    <div class="extra-row">
+      <div class="extra-key">F5 (halten, im Spiel)</div>
+      <div class="extra-desc">Reset im laufenden Core (alle Cores, auch RA)
+        <span class="sub">Experimentell - probier es zuerst in einem unwichtigen Spiel aus.</span>
+      </div>
+    </div>
+
+    <div class="remap-note">Alle Tasten frei belegbar unter System &rarr; Eingabe &amp; Sprache.<br>(Ausnahme: Suche und die geheimen Codes sind bewusst fest verdrahtet, nicht umbelegbar.)</div>
+  </div>
+</div>
+
+<!-- ================= PAGE 3: JOYPAD ================= -->
+<div class="page">
+  <div class="frame"></div>
+  <div class="topbar">
+    <div class="logo-chip"><img src="_anleitung_assets/logo.png"></div>
+    <span class="page-tag">3/4 &nbsp;-&nbsp; JOYPAD</span>
+  </div>
+  <div class="footer-rule"></div>
+  <div class="footer">
+    <span>github.com/dragrem2k-coder/mister-frontend</span>
+    <span>MiSTer Custom Frontend</span>
+  </div>
+  <div class="content">
+    <h1 class="section-title">JOYPAD</h1>
+    <div class="pad-intro">(Beispielbelegung &ndash; gilt sinngemaess fuer jedes Standard-USB-Pad)</div>
+
+    <div class="pad-grid">
+      <div class="pad-item"><div class="pad-btn">D-Pad /<br>Stick</div><div class="pad-desc">Bewegen &ndash; navigiert einzeln, wie die Pfeiltasten.</div></div>
+      <div class="pad-item"><div class="pad-btn">A</div><div class="pad-desc">Ausw&auml;hlen, Ordner betreten &ndash; wie OK/ENTER.</div></div>
+      <div class="pad-item"><div class="pad-btn">B</div><div class="pad-desc">Zur&uuml;ck / Beenden-Dialog &ndash; wie ESC.</div></div>
+      <div class="pad-item"><div class="pad-btn">X</div><div class="pad-desc">Aus dem MiSTer-OSD zur&uuml;ck ins Frontend &ndash; wie F10.</div></div>
+      <div class="pad-item"><div class="pad-btn">Y</div><div class="pad-desc">N&auml;chster Musiktitel &ndash; wie F5 auf der Tastatur.</div></div>
+      <div class="pad-item"><div class="pad-btn">Start</div><div class="pad-desc">Ausw&auml;hlen, Ordner betreten &ndash; gleichwertig zu A.</div></div>
+      <div class="pad-item"><div class="pad-btn">Select</div><div class="pad-desc">Zur&uuml;ck / Beenden-Dialog &ndash; wie B/ESC. 3x hintereinander bestätigt direkt das Beenden.</div></div>
+      <div class="pad-item"><div class="pad-btn">Guide /<br>Mode</div><div class="pad-desc">MiSTerOSD &ouml;ffnen &ndash; wie F12.</div></div>
+      <div class="pad-item"><div class="pad-btn">L / R</div><div class="pad-desc">Seitenweise bl&auml;ttern &ndash; wie Links/Rechts.</div></div>
+      <div class="pad-item"><div class="pad-btn">L2 / R2</div><div class="pad-desc">Favorit umschalten (nur bei Spiele-Eintr&auml;gen) &ndash; wie F8.</div></div>
+    </div>
+
+    <div class="remap-note">Fehlt eine Taste auf deinem Pad (z.B. kein L2/R2)? Alle Belegungen lassen sich unter<br>System &rarr; Eingabe &amp; Sprache &rarr; Tasten konfigurieren frei auf vorhandene Tasten legen.</div>
+  </div>
+</div>
+
+<!-- ================= PAGE 4: FUNKTIONEN ================= -->
+<div class="page">
+  <div class="frame"></div>
+  <div class="topbar">
+    <div class="logo-chip"><img src="_anleitung_assets/logo.png"></div>
+    <span class="page-tag">4/4 &nbsp;-&nbsp; FUNKTIONEN</span>
+  </div>
+  <div class="footer-rule"></div>
+  <div class="footer">
+    <span>github.com/dragrem2k-coder/mister-frontend</span>
+    <span>MiSTer Custom Frontend</span>
+  </div>
+  <div class="content">
+    <h1 class="section-title">FUNKTIONEN</h1>
+    <div class="func-grid">
+      <div class="func-row">
+        <div class="func-shot"><img src="_anleitung_assets/shot_trophy.png"></div>
+        <div class="func-text">
+          <div class="func-title">STATISTIKEN</div>
+          <div class="func-body">Troph&auml;enraum, Jahresr&uuml;ckblick &amp; Spieltagebuch: Spielzeit, Lieblingssystem und Fortschritt auf einen Blick.</div>
+        </div>
+      </div>
+      <div class="func-row">
+        <div class="func-shot"><img src="_anleitung_assets/shot_racore.png"></div>
+        <div class="func-text">
+          <div class="func-title">RETROACHIEVEMENTS</div>
+          <div class="func-body">Beim Betreten eines RA-f&auml;higen Systems w&auml;hlst du: Standard-Core oder RA-Core mit echten Erfolgen.</div>
+        </div>
+      </div>
+      <div class="func-row">
+        <div class="func-shot"><img src="_anleitung_assets/shot_ra_erfolge.png"></div>
+        <div class="func-text">
+          <div class="func-title">ERFOLGE</div>
+          <div class="func-body">F6 zeigt die komplette Erfolgsliste eines Spiels &ndash; freigeschaltet oder noch offen, direkt im Men&uuml;e.</div>
+        </div>
+      </div>
+      <div class="func-row">
+        <div class="func-shot"><img src="_anleitung_assets/shot_favoriten.png"></div>
+        <div class="func-text">
+          <div class="func-title">FAVORITEN</div>
+          <div class="func-body">Mit F8 markierte Lieblingsspiele landen in einer eigenen Kategorie &ndash; immer griffbereit.</div>
+        </div>
+      </div>
+      <div class="func-row">
+        <div class="func-shot"><img src="_anleitung_assets/shot_zufallszock.png"></div>
+        <div class="func-text">
+          <div class="func-title">ZUFALLS-ZOCK</div>
+          <div class="func-body">Kein Bock auf Ausw&auml;hlen? Drei zuf&auml;llige Spiele gleichzeitig zur Wahl &ndash; wiederholungsfrei, bis alle einmal dran waren.</div>
+        </div>
+      </div>
+      <div class="func-row">
+        <div class="func-shot"><img src="_anleitung_assets/shot_search.png"></div>
+        <div class="func-text">
+          <div class="func-title">VOLLTEXTSUCHE</div>
+          <div class="func-body">Mit / oder F2 direkt zum gesuchten Spiel springen &ndash; auch mitten im Namen, nicht nur am Anfang.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
