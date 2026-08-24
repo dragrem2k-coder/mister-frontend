@@ -3707,112 +3707,20 @@ THEMES = {
         "C_TEXT": (255, 224, 130), "C_DIM": (150, 110, 170),
         "C_TITLE": (255, 200, 60), "C_ACCENT": (255, 170, 30),
     },
-
-    # NEU (Nutzerwunsch: "Secret-Sammlung" - ein eigenes Theme pro
-    # klassischem Retro-System, siehe die zugehoerigen SECRET_CODES in
-    # fe/achievements.py und SECRET_THEME_META weiter unten). Jedes nur
-    # ueber cycle_theme() erreichbar, sobald der jeweilige Code gefunden
-    # wurde (siehe _available_theme_order()) - taucht vorher nirgends
-    # in der normalen Durchschalt-Reihenfolge auf, genau wie secret_gold
-    # oben.
-    "snes_16bit": {   # Batman Forever (SNES) - dunkles Violett/Magenta
-        "C_BG": (24, 14, 36), "C_PANEL": (46, 26, 64),
-        "C_TEXT": (230, 220, 240), "C_DIM": (150, 120, 170),
-        "C_TITLE": (255, 255, 255), "C_ACCENT": (190, 60, 220),
-    },
-    "dmg_green": {   # Game Boy - klassisches LCD-Gruen, monochrom
-        "C_BG": (15, 30, 15), "C_PANEL": (24, 44, 20),
-        "C_TEXT": (155, 188, 15), "C_DIM": (90, 130, 60),
-        "C_TITLE": (200, 220, 90), "C_ACCENT": (139, 172, 15),
-        "monochrome": True,
-    },
-    "gbc_neon": {   # Game Boy Color - Cyan/Magenta-Neon
-        "C_BG": (10, 8, 20), "C_PANEL": (24, 16, 40),
-        "C_TEXT": (255, 255, 255), "C_DIM": (150, 150, 180),
-        "C_TITLE": (0, 255, 220), "C_ACCENT": (255, 0, 180),
-    },
-    "n64_turbo": {   # N64 - Grau mit kraeftigem Rot-Akzent
-        "C_BG": (20, 20, 24), "C_PANEL": (40, 40, 46),
-        "C_TEXT": (230, 230, 235), "C_DIM": (140, 140, 150),
-        "C_TITLE": (255, 255, 255), "C_ACCENT": (220, 60, 50),
-    },
-    "ps1_classic": {   # PS1 - Anthrazit mit PlayStation-Blau
-        "C_BG": (14, 14, 18), "C_PANEL": (28, 28, 36),
-        "C_TEXT": (220, 224, 232), "C_DIM": (120, 126, 140),
-        "C_TITLE": (255, 255, 255), "C_ACCENT": (0, 60, 180),
-    },
-    "sega_sonic": {   # Mega Drive/Sonic - SEGA-Blau/Gelb
-        "C_BG": (10, 10, 40), "C_PANEL": (20, 20, 70),
-        "C_TEXT": (255, 255, 255), "C_DIM": (150, 160, 220),
-        "C_TITLE": (255, 220, 0), "C_ACCENT": (0, 90, 200),
-    },
-    "sms_sonic": {   # Master System/Sonic Chaos - dunkles Blau
-        "C_BG": (8, 8, 30), "C_PANEL": (18, 18, 60),
-        "C_TEXT": (255, 255, 255), "C_DIM": (140, 150, 200),
-        "C_TITLE": (255, 255, 255), "C_ACCENT": (30, 80, 220),
-    },
-    "gamegear_sonic": {   # Game Gear/Sonic Chaos - Handheld-LCD-Blau,
-        # monochrom (wie DMG - eigener Handheld-Charakter)
-        "C_BG": (8, 10, 30), "C_PANEL": (18, 22, 55),
-        "C_TEXT": (220, 230, 255), "C_DIM": (110, 130, 180),
-        "C_TITLE": (255, 255, 255), "C_ACCENT": (60, 140, 255),
-        "monochrome": True,
-    },
-    "saturn_sonic": {   # Saturn/Sonic Jam - fast Schwarz mit Violett
-        "C_BG": (10, 10, 10), "C_PANEL": (30, 26, 40),
-        "C_TEXT": (230, 220, 255), "C_DIM": (130, 120, 160),
-        "C_TITLE": (255, 255, 255), "C_ACCENT": (140, 90, 230),
-    },
 }
 THEME_ORDER = ["dark", "light", "green"]
-
-# NEU: Metadaten fuer die 9 neuen Secret-Themes, an EINER Stelle
-# gebuendelt statt ueber mehrere if/elif-Ketten verteilt (secret_id ->
-# Theme-Name, Unlock-Spruch fuer die Flourish-Anzeige, optionale
-# Zusatzwirkung). _on_secret_triggered() und _available_theme_order()
-# lesen beide von hier - ein neues Theme spaeter hinzuzufuegen heisst
-# nur noch: ein THEMES-Eintrag, ein SECRET_CODES-Eintrag, ein
-# SFX_CHIME_DEFS-Eintrag, zwei Uebersetzungen und EIN Eintrag hier.
-SECRET_THEME_META = {
-    "theme_snes":      {"theme": "snes_16bit",      "flourish": "flourish_snes"},
-    "theme_gb":        {"theme": "dmg_green",        "flourish": "flourish_gb"},
-    "theme_gbc":       {"theme": "gbc_neon",         "flourish": "flourish_gbc"},
-    # N64: einziges Theme mit echtem Zusatzeffekt (Nutzerwunsch/
-    # Recherche-Notiz: "koennte tatsaechlich den schnelleren
-    # ROM-Listen-Scroll aktivieren") - schaltet beim allerersten
-    # Freischalten den bestehenden "Schnelles Scrollen"-Schalter (siehe
-    # fe/settings.py) mit ein, falls noch aus. Rein additiv: wer den
-    # Schalter schon an hatte oder ihn danach wieder ausschaltet, wird
-    # dadurch nicht bevormundet - siehe _on_secret_triggered().
-    "theme_n64":       {"theme": "n64_turbo",        "flourish": "flourish_n64",
-                        "enable_fast_scroll": True},
-    "theme_ps1":       {"theme": "ps1_classic",      "flourish": "flourish_ps1"},
-    "theme_megadrive": {"theme": "sega_sonic",       "flourish": "flourish_megadrive"},
-    "theme_sms":       {"theme": "sms_sonic",        "flourish": "flourish_sms"},
-    "theme_gamegear":  {"theme": "gamegear_sonic",   "flourish": "flourish_gamegear"},
-    "theme_saturn":    {"theme": "saturn_sonic",     "flourish": "flourish_saturn"},
-}
-
 THEME_NAMES_DE = {"dark": "Dunkel (Standard)", "light": "Hell",
                   "green": "Retro-Gruen", "secret_gold": "??? Geheim ???"}
 THEME_NAMES_EN = {"dark": "Dark (default)", "light": "Light",
                   "green": "Retro Green", "secret_gold": "??? Secret ???"}
-for _sm in SECRET_THEME_META.values():
-    THEME_NAMES_DE[_sm["theme"]] = "??? Geheim ???"
-    THEME_NAMES_EN[_sm["theme"]] = "??? Secret ???"
-del _sm
 
 def _available_theme_order():
     """THEME_ORDER, erweitert um freigeschaltete Geheim-Themes - so
     bleiben sie in der normalen Durchschalt-Reihenfolge (cycle_theme())
     unsichtbar, bis der zugehoerige Geheimcode gefunden wurde."""
     order = list(THEME_ORDER)
-    unlocked = _load_secrets_unlocked()
-    if "secret_theme_1" in unlocked:
+    if "secret_theme_1" in _load_secrets_unlocked():
         order.append("secret_gold")
-    for secret_id, meta in SECRET_THEME_META.items():
-        if secret_id in unlocked:
-            order.append(meta["theme"])
     return order
 
 def current_theme_name():
@@ -8476,32 +8384,6 @@ class Frontend:
             self.draw()
         elif secret_id == "chiptune_sound":
             self._play_ducked_sfx("chiptune")
-        elif secret_id in SECRET_THEME_META:
-            # Die 9 neuen Konsolen-Themes (siehe SECRET_THEME_META ganz
-            # oben) - EIN gemeinsamer Zweig statt neun fast identischer
-            # elif-Bloecke, weil sich Theme setzen/speichern, Sound
-            # abspielen und Flourish zeigen fuer alle neun exakt gleich
-            # abspielen und sich nur die Daten (Theme-Name, Sound-Datei,
-            # Anzeigetext, Akzentfarbe) unterscheiden.
-            meta = SECRET_THEME_META[secret_id]
-            apply_theme(meta["theme"])
-            try:
-                dirname = os.path.dirname(THEME_FILE)
-                if dirname:
-                    os.makedirs(dirname, exist_ok=True)
-                with open(THEME_FILE, "w") as f:
-                    f.write(meta["theme"])
-            except OSError:
-                pass
-            self._play_ducked_sfx(secret_id)
-            accent = THEMES[meta["theme"]]["C_ACCENT"]
-            self._show_theme_unlock_flourish(t(meta["flourish"]), accent)
-            # Zusatzwirkung (aktuell nur N64): rein additiv, siehe
-            # Kommentar bei SECRET_THEME_META - schaltet den Schalter nur
-            # EIN, nie wieder aus, und nur wenn er noch aus war.
-            if meta.get("enable_fast_scroll") and not fast_scroll_enabled():
-                toggle_fast_scroll()
-            self.draw()
 
     def _rainbow_color(self, phase):
         """Leichte Regenbogenfarbe ohne zusaetzliche Abhaengigkeit -
@@ -8737,10 +8619,6 @@ class Frontend:
         order = ["secret_theme_1", "entwicklerraum", "secret_sound"]
         order = ["secret_theme_1", "entwicklerraum", "secret_sound",
                  "rainbow_cursor", "chiptune_sound", DEV_ROOM_BONUS_ID]
-        # Die 9 neuen Konsolen-Themes (SECRET_THEME_META) in derselben
-        # Reihenfolge wie dort definiert - haengen einfach hinten an,
-        # damit die bereits bekannten Geheimnisse ihre Position behalten.
-        order = order + list(SECRET_THEME_META.keys())
         for secret_id in order:
             found = secret_id in unlocked
             mark = "[x] " if found else "[ ] "
@@ -10171,33 +10049,6 @@ class Frontend:
                 accent, (0, 0, 0))
         fb.flip()
         self.inp.read_action(timeout=1.2)   # ueberspringbar wie die Bildsequenz
-
-    def _show_theme_unlock_flourish(self, msg, accent):
-        """Kurzer Vollbild-Effekt beim Freischalten eines der 9 neuen
-        Secret-Themes (SECRET_THEME_META) - bewusst nach dem Vorbild von
-        _show_max_level_boot_effect() gebaut (gleiches Muster: Bildschirm
-        leeren, zentrierten Text in der neuen Akzentfarbe zeigen,
-        ueberspringbar per Tastendruck warten), aber als eigene, generische
-        Methode statt Kopie, weil sie hier zusaetzlich die Akzentfarbe als
-        Parameter bekommt (jedes der 9 Themes hat eine eigene) und WAEHREND
-        des laufenden Betriebs aufgerufen wird, nicht nur beim Boot.
-        Genau wie bei _draw_search_overlay() (siehe dort) wird hier direkt
-        auf den Framebuffer gemalt, OHNE die normale Seiten-Zeichenroutine
-        - deshalb am Ende zwingend fb.mark_full_redraw(), sonst haelt der
-        Fast-Path in _draw_page_items_impl() faelschlich den alten Puffer-
-        Stand fuer aktuell und der Flourish-Text bliebe als Geisterbild
-        auf dem Screen stehen (identischer Bug wie beim Suchbalken)."""
-        fb = self.fb
-        W, H = fb.width, fb.height
-        s = max(1, H // 360)
-        msg_scale = self._fit_scale(msg, W - 40 * s, s + 1)
-        msg_w = len(msg) * 8 * msg_scale
-        fb.clear((0, 0, 0))
-        fb.text((W - msg_w) // 2, (H - 8 * msg_scale) // 2, msg, msg_scale,
-                accent, (0, 0, 0))
-        fb.flip()
-        self.inp.read_action(timeout=1.2)   # ueberspringbar
-        fb.mark_full_redraw()
 
     def _draw_dragend_logo_boot(self):
         """Eigenes Logo beim Start (Nutzerwunsch: 'mein eigenes Logo

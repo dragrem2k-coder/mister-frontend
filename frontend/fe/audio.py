@@ -251,19 +251,6 @@ SFX_CHIME_DEFS = {
     # Sweeps oben - klingt dadurch "blippiger", naeher an einem
     # klassischen 8-Bit-Arpeggio (A-C#-E-A).
     "chiptune": [(440, 440, 45), (554, 554, 45), (659, 659, 45), (880, 880, 70)],
-
-    # NEU (Nutzerwunsch: eigener Unlock-Sound pro Secret-Theme, siehe
-    # SECRET_CODES/THEMES in frontend.py) - alle rein prozedural erzeugt
-    # wie die Sounds oben, kein zusaetzliches Audio-Asset noetig.
-    "theme_snes": [(300, 300, 40), (500, 500, 40), (750, 750, 40), (1000, 1200, 90)],
-    "theme_gb": [(200, 200, 35), (200, 200, 35), (200, 200, 35), (400, 400, 60)],
-    "theme_gbc": [(500, 700, 40), (700, 500, 40), (900, 1300, 80)],
-    "theme_n64": [(1200, 400, 40), (400, 1400, 70)],
-    "theme_ps1": [(150, 150, 60), (150, 600, 90), (600, 600, 50)],
-    "theme_megadrive": [(1000, 1400, 35), (1400, 1800, 45)],
-    "theme_sms": [(300, 300, 40), (450, 450, 40), (600, 600, 40), (900, 900, 60)],
-    "theme_gamegear": [(800, 1100, 30), (1100, 900, 30), (1400, 1400, 50)],
-    "theme_saturn": [(200, 200, 70), (200, 700, 90), (700, 300, 60)],
 }
 
 def _ensure_sfx_files():
