@@ -221,6 +221,21 @@ Verhaltensänderung im Normalbetrieb):
   `fe/art.py` um den passenden Schlüssel erweitert - die Kategorie
   bekommt jetzt wie "Favoriten"/"Sammlungen" ein eigenes Logo neben der
   Liste, sowohl auf CRT als auch auf HDMI.
+- Installierte Fixes/Updates wirkten nach `Scripts/install_frontend.sh`
+  scheinbar nicht, obwohl auf der SD-Karte längst alles aktuell war
+  (genau daran zeigte sich der obige RA-Erfolgsjäger-Fix beim ersten
+  Nutzertest): das Skript kopierte bisher nur die neuen Dateien, ohne
+  den bereits laufenden Frontend-Prozess zu beenden - der hatte seinen
+  alten Code aber schon im Speicher, liest ihn nie von selbst neu ein.
+  Wurde `install_frontend` aus dem Frontend-Menü selbst heraus
+  gestartet (System → Scripts), landete man über `back_to_frontend()`
+  einfach wieder in genau dieser alten, unveränderten Instanz - ohne
+  einen kompletten manuellen MiSTer-Neustart blieb jede frisch
+  installierte Änderung bis zum nächsten Booten unsichtbar. Das Skript
+  startet den Frontend-Prozess jetzt am Ende selbst automatisch neu
+  (über das bereits vorhandene, dafür gebaute `update_frontend.sh`) -
+  weder beim Erstinstall noch bei einem späteren erneuten Ausführen
+  ist danach noch ein manueller Neustart nötig.
 
 **Dokumentation:**
 - `docs/Dragend_Anleitung.pdf` aktualisiert: F2 als zweite Suche-Taste

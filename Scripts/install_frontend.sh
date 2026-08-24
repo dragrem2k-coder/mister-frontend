@@ -5,11 +5,31 @@
 # Diese EINE Datei einmalig per WinSCP nach /media/fat/Scripts/
 # kopieren. Danach im MiSTer-OSD: Scripts -> "install frontend"
 # antippen - der komplette Rest (Herunterladen, Einrichten,
-# Autostart) laeuft von selbst, ganz ohne SSH/Terminal.
+# Autostart, NEUSTART) laeuft von selbst, ganz ohne SSH/Terminal.
 #
 # Kann jederzeit erneut ausgefuehrt werden (z.B. fuer ein Update) -
 # vorhandene eigene Daten (Musik, heruntergeladene Boxart, Einstell-
 # ungen) werden NICHT angetastet, nur die Programmdateien ersetzt.
+#
+# NEU (Nutzer-Rueckmeldung: "Fixes wurden installiert, wirken aber
+# nicht" - Ursache geklaert: dieses Skript kopierte bisher nur die
+# Dateien auf die SD-Karte, der zu diesem Zeitpunkt BEREITS laufende
+# Frontend-Prozess hatte seinen alten Code aber schon laengst in den
+# Speicher geladen und liest ihn nie von selbst neu ein. Wurde dieses
+# Skript aus dem Frontend-Menue selbst heraus gestartet (System ->
+# Scripts -> install_frontend), kehrte man danach ueber
+# back_to_frontend() einfach in genau diese ALTE, unveraenderte
+# Instanz zurueck - ohne einen kompletten MiSTer-Neustart blieben die
+# frisch installierten Fixes dadurch bis zum naechsten Booten
+# unsichtbar, obwohl auf der SD-Karte laengst alles aktuell war): am
+# Ende jetzt EXEC in update_frontend.sh statt nur "fertig" zu melden -
+# das beendet den alten Frontend-Prozess zuverlaessig (dessen bereits
+# bewaehrte, extra dafuer geschriebene Kill-Logik, siehe dortiger
+# Kommentar, warum das dort - anders als am SKRIPTANFANG hier drueber -
+# bewusst auch beim eigenen aufrufenden Elternprozess sicher
+# funktioniert) und startet direkt danach selbst einen frischen
+# Frontend-Prozess mit dem gerade installierten Code. Kein manueller
+# Neustart mehr noetig, weder beim Erstinstall noch bei einem Update.
 # ============================================================
 
 REPO_ZIP="https://github.com/dragrem2k-coder/mister-frontend/archive/refs/heads/main.zip"
@@ -228,11 +248,34 @@ else
 fi
 
 echo ""
-echo "=== Fertig! ==="
-echo ""
-echo "Das Frontend startet automatisch beim naechsten MiSTer-Neustart."
+echo "=== Installation abgeschlossen ==="
 echo ""
 echo "Boxart und Musik sind noch leer - sobald das Frontend laeuft,"
 echo "im System-Menue \"Rescan\"/Boxart-Download nutzen, oder per SSH"
 echo "siehe README.md auf GitHub (dragrem2k-coder/mister-frontend)."
+echo ""
+
+UPDATE_SCRIPT="$SCRIPTS_DIR/update_frontend.sh"
+if [ -x "$UPDATE_SCRIPT" ] || [ -f "$UPDATE_SCRIPT" ]; then
+    # NEU (siehe ausfuehrliche Begruendung im Kopfkommentar): startet
+    # den frisch installierten Code JETZT, ohne manuellen Neustart -
+    # exec statt Aufruf, damit diese Shell durch update_frontend.sh
+    # ERSETZT wird (nicht als Kindprozess daneben haengen bleibt), das
+    # danach seinerseits per exec in den neuen Frontend-Prozess
+    # uebergeht. pause_before_exit hier bewusst VOR dem exec, nicht
+    # danach - update_frontend.sh startet das Frontend selbst sofort
+    # neu, eine Wartemeldung DANACH wuerde nie mehr angezeigt.
+    echo "Frontend wird jetzt automatisch neu gestartet..."
+    pause_before_exit
+    exec bash "$UPDATE_SCRIPT"
+fi
+
+# Fallback (sollte praktisch nie eintreten - update_frontend.sh gehoert
+# seit Langem zum Repo und wurde oben gerade erst mit installiert):
+# ohne diese Datei bleibt nur der bisherige Hinweis auf den naechsten
+# manuellen Neustart, statt das Skript mit einem unklaren Fehler
+# abbrechen zu lassen.
+echo "Hinweis: update_frontend.sh wurde nicht gefunden - bitte den"
+echo "MiSTer einmal manuell neu starten, damit die installierten"
+echo "Aenderungen wirksam werden."
 pause_before_exit

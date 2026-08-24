@@ -173,9 +173,12 @@ per WinSCP kopieren:
 2. Die Datei per WinSCP nach `/media/fat/Scripts/` kopieren.
 3. Im MiSTer-OSD: **Scripts -> "install frontend"** antippen.
 
-Der Rest läuft von selbst - herunterladen, einrichten, Autostart. Am
-Ende kurz eine Taste drücken, um zurück ins Menü zu kommen. Danach
-einmal neu starten, fertig.
+Der Rest läuft von selbst - herunterladen, einrichten, Autostart, und
+am Ende ein automatischer Neustart des Frontends mit dem gerade
+installierten Stand. Am Ende kurz eine Taste drücken, dann übernimmt
+das Skript den Rest von selbst - kein manuelles Neustarten mehr
+nötig, auch nicht bei einem späteren erneuten Ausführen für ein
+Update.
 
 Lässt sich jederzeit erneut ausführen (z.B. für ein Update) - eigene
 Daten (Musik, Boxart, Einstellungen) bleiben dabei unangetastet, nur
