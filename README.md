@@ -276,7 +276,7 @@ hast) und "Kurzweilige Spiele" (Spiele mit kurzer durchschnittlicher
 Sitzungsdauer, mindestens 2 Starts nötig). Erscheint nur, wenn
 tatsächlich etwas reinpasst.
 
-**"Zufalls-Zock"** (Dennsens Bewertungs-Format, im Hauptmenü unter
+**"Wonne oder Tonne"** (Dennsens Bewertungs-Format, im Hauptmenü unter
 System oder als eigener Menüpunkt je nach Konfiguration): zieht drei
 zufällige, noch nicht bewertete Spiele auf einmal zur Auswahl -
 wiederholungsfrei, bis alle einmal dran waren. Praktisch, wenn "keine

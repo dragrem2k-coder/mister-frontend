@@ -8878,45 +8878,47 @@ class Frontend:
         gezeichnet, jetzt mit der Bonus-Zeile) statt wie sonst bei jeder
         Taste sofort zu verlassen - jede ANDERE Eingabe, die keine
         gueltige Teilsequenz des Bonus-Codes ist, verlaesst weiterhin
-        wie bisher sofort den Raum.
-
-        BUGFIX (Nutzer-Rueckmeldung: "kann den EGG-Code nicht eingeben,
-        der Raum wird sofort wieder verlassen"): frueher zeichnete diese
-        Methode den Bildschirm EINMAL und wartete dort per read_action()
-        auf eine erste, komplett verworfene Taste ("bloss zum Bestaetigen
-        des Betretens"), BEVOR die eigentliche Bonus-Code-Erkennung
-        (nested_buffer-Schleife) ueberhaupt anfing zuzuhoeren. Genau
-        dieser erste Tastendruck war beim Eintippen von "EGG" aber
-        bereits das "E" - es verschwand spurlos in dieser Warteschleife,
-        die Erkennung sah nur noch "G" als vermeintlich ERSTEN Buchstaben,
-        der nicht zum Code passte, und verliess den Raum sofort wieder.
-        Fix: der doppelte Zeichnen-und-Warten-Schritt entfaellt komplett -
-        render() zeichnet einmal, direkt danach beginnt dieselbe
-        nested_buffer-Schleife, die auch jede weitere Taste verarbeitet.
-        Der allererste Tastendruck nach dem Betreten zaehlt dadurch
-        ebenfalls schon fuer den Bonus-Code (oder verlaesst den Raum,
-        wenn er nicht passt - unveraendertes Verhalten fuer alle anderen
-        Tasten).
-
-        BUGFIX (Nutzer-Rueckmeldung: "auf CRT kann man nicht alles
-        lesen"): die festen Zeilen (Credits/Danksagung) liefen bisher
-        UNGEWRAPPT durch line() - auf CRT (320x240, deutlich weniger
-        Zeichen pro Zeile als HDMI) wurden laengere Saetze (z.B. die
-        Mitwirkenden-Zeile) am Bildschirmrand einfach abgeschnitten statt
-        umgebrochen. Jetzt laufen ALLE Zeilen durch _wrap_text() wie
-        schon die Bonus-Nachricht. Die dadurch zusaetzlich noetigen
-        Zeilen wuerden mit der bisherigen, grosszuegigen Zeilenhoehe auf
-        CRT wiederum unten aus dem Bild bzw. in die Fusszeile
-        hineinlaufen - deshalb passt sich die Zeilenhoehe jetzt dynamisch
-        an den TATSAECHLICH benoetigten Platz an (nie groesser als
-        vorher, wird aber automatisch kompakter, sobald mehr Zeilen durch
-        Umbruch dazukommen, bis wirklich alles in den sichtbaren Bereich
-        passt) - unabhaengig von Sprache/Textlaenge/Aufloesung."""
+        wie bisher sofort den Raum."""
         fb = self.fb
         W, H = fb.width, fb.height
         s = max(1, H // 360)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
+        fb.clear(C_BG)
+
+        title = t("dev_room_title")
+        title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
+        fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
+
+        level = compute_frontend_level()
+        secrets = _load_secrets_unlocked()
+
+        y = oy + 50 * s
+        line_h = 26 * s
+
+        def line(text, color=C_TEXT):
+            nonlocal y
+            fb.text(ox, y, text, s, color, C_BG)
+            y += line_h
+
+        line(t("dev_room_level", level, FRONTEND_LEVEL_MAX), C_ACCENT)
+        line(t("dev_room_secrets", len(secrets), len(SECRET_CODES)), C_ACCENT)
+        y += line_h // 2
+        line(t("dev_room_credits_1"), C_DIM)
+        line(t("dev_room_credits_2"), C_DIM)
+        y += line_h
+        line(t("dev_room_thanks"), C_TEXT)
+
+        hint = t("attract_hint")
+        hint_scale = s - 1 if s > 1 else 1
+        hint_w = len(hint) * 8 * hint_scale
+        fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
+                hint, hint_scale, C_DIM, C_BG)
+        fb.flip()
+        while True:
+            act = self.inp.read_action()
+            if act is not None:
+                break
         maxc = max(8, (W - 2 * ox) // (8 * s))
 
         def render():
@@ -8929,55 +8931,38 @@ class Frontend:
             secrets = _load_secrets_unlocked()
             bonus_shown = DEV_ROOM_BONUS_ID in secrets
 
-            # Inhalt als flache Liste von (Zeilentext, Farbe, Abstand-
-            # danach-in-Zeilenhoehen) aufbauen - jeder Absatz laeuft durch
-            # _wrap_text(), damit lange Saetze auf CRT umbrechen statt
-            # abgeschnitten zu werden. gap_after in "Zeilenhoehen" (0.5/
-            # 1.0) statt fester Pixelwerte, damit sich die spaeter
-            # ermittelte, ggf. gestauchte Zeilenhoehe gleichmaessig auf
-            # Text UND Absatzabstaende auswirkt.
-            blocks = []
+            y = oy + 50 * s
+            line_h = 26 * s
+            # BUGFIX (beim Testen auf CRT-Aufloesung gefunden, noch vor
+            # der Auslieferung): die urspruengliche, grosszuegige
+            # Zeilenhoehe liess die zusaetzliche Bonus-Zeile auf 320x240
+            # unterhalb des sichtbaren Bereichs verschwinden bzw. mit der
+            # "Beliebige Taste"-Fusszeile kollidieren. Sobald die Bonus-
+            # Zeile dazukommt, werden die Luecken zwischen den
+            # Abschnitten kompakter (die Zeilen selbst bleiben gleich
+            # gross/lesbar) - genug Platz gespart, um sicher zu passen.
+            gap_half = 3 * s if bonus_shown else (line_h // 2)
+            gap_full = 5 * s if bonus_shown else line_h
 
-            def add(text, color, gap_after=0.0):
-                wrapped = self._wrap_text(text, maxc)
-                for wl in wrapped:
-                    blocks.append([wl, color, 0.0])
-                if blocks:
-                    blocks[-1][2] = gap_after
+            def line(text, color=C_TEXT):
+                nonlocal y
+                fb.text(ox, y, text, s, color, C_BG)
+                y += line_h
 
-            add(t("dev_room_level", level, FRONTEND_LEVEL_MAX), C_ACCENT)
-            add(t("dev_room_secrets", len(secrets), len(SECRET_CODES) + 1),
-                C_ACCENT, gap_after=0.5)
-            add(t("dev_room_credits_1"), C_DIM)
-            add(t("dev_room_credits_2"), C_DIM, gap_after=1.0)
-            add(t("dev_room_thanks"), C_TEXT,
-                gap_after=(0.5 if bonus_shown else 0.0))
+            line(t("dev_room_level", level, FRONTEND_LEVEL_MAX), C_ACCENT)
+            line(t("dev_room_secrets", len(secrets), len(SECRET_CODES) + 1), C_ACCENT)
+            y += gap_half
+            line(t("dev_room_credits_1"), C_DIM)
+            line(t("dev_room_credits_2"), C_DIM)
+            y += gap_full
+            line(t("dev_room_thanks"), C_TEXT)
             if bonus_shown:
-                add(t("dev_room_bonus_message"), C_ACCENT)
+                y += gap_half
+                for bl in self._wrap_text(t("dev_room_bonus_message"), maxc):
+                    line(bl, C_ACCENT)
 
             hint = t("attract_hint")
             hint_scale = s - 1 if s > 1 else 1
-
-            # Verfuegbarer Platz zwischen Titel und Fusszeile - die
-            # Zeilenhoehe wird unten so gewaehlt, dass ALLE Zeilen
-            # (inklusive Umbrueche) garantiert hineinpassen.
-            y_top = oy + 40 * s
-            y_bottom = H - oy - 8 * hint_scale - 10 * s
-            avail = max(8 * s, y_bottom - y_top)
-
-            natural_line_h = 26 * s   # bisherige, grosszuegige Standardhoehe
-            needed_units = len(blocks) + sum(b[2] for b in blocks)
-            fitted_line_h = avail / needed_units if needed_units > 0 else natural_line_h
-            # Nie kleiner als die reine Glyphenhoehe (sonst ueberlappen
-            # sich Zeilen), nie groesser als der bisherige Standard (auf
-            # HDMI/wenig Inhalt bleibt das Layout dadurch unveraendert).
-            line_h = max(8 * s, min(natural_line_h, fitted_line_h))
-
-            y = float(y_top)
-            for text, color, gap_after in blocks:
-                fb.text(ox, int(y), text, s, color, C_BG)
-                y += line_h * (1.0 + gap_after)
-
             hint_w = len(hint) * 8 * hint_scale
             fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
                     hint, hint_scale, C_DIM, C_BG)

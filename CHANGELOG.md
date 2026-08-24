@@ -160,25 +160,6 @@ Verhaltensänderung im Normalbetrieb):
   Geheimcode, sondern auch den ganz normalen Buchstaben-Direktsprung
   (A-Z-Taste drücken, zum nächsten Eintrag mit diesem Buchstaben
   springen), der beim Buchstaben Y/Z bisher ebenso falsch sprang.
-- Bonus-Geheimcode im Entwicklerraum ("Geheimnis im Geheimnis") ließ
-  sich nicht eingeben - der Bildschirm zeichnete sich beim Betreten
-  zunächst einmal und wartete auf eine erste, komplett verworfene
-  Taste ("nur zum Bestätigen"), bevor die eigentliche Code-Erkennung
-  überhaupt zu lauschen begann. Genau dieser erste Tastendruck war
-  aber bereits das "E" des Codes - er verschwand spurlos, die
-  Erkennung sah nur noch "G" als vermeintlich ersten Buchstaben und
-  verließ den Raum sofort wieder. Der doppelte Zeichnen-und-Warten-
-  Schritt entfällt jetzt komplett; der allererste Tastendruck nach dem
-  Betreten zählt von Anfang an für den Bonus-Code.
-- Entwicklerraum auf CRT (320×240) nicht mehr lesbar: längere Zeilen
-  (Mitwirkende, Danksagung) liefen bisher ungewrappt durch und wurden
-  am Bildschirmrand einfach abgeschnitten statt umgebrochen. Laufen
-  jetzt wie die übrigen Info-Bildschirme durch echten Zeilenumbruch;
-  die dadurch zusätzlich nötigen Zeilen bekommen ihren Platz über eine
-  automatisch kompaktere Zeilenhöhe, die sich am tatsächlich
-  benötigten Platz orientiert (auf HDMI mit reichlich Platz bleibt das
-  Layout unverändert) - dadurch bleibt garantiert alles sichtbar,
-  unabhängig von Sprache oder Textlänge.
 
 **Dokumentation:**
 - `docs/Dragend_Anleitung.pdf` aktualisiert: F2 als zweite Suche-Taste
