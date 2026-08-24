@@ -44,7 +44,12 @@ KEY_F6 = 64
 KEY_F8, KEY_F9, KEY_F10, KEY_F11, KEY_F12 = 66, 67, 68, 87, 88
 # Gamepad-Buttons (Linux-Standardcodes)
 BTN_A, BTN_B, BTN_X, BTN_Y = 304, 305, 307, 308
-KEY_Y = 21                   # Y key on keyboard
+KEY_Y = 21                   # Scancode an der QWERTY-"Y"-Position (evdev
+                              # KEY_Y) - auf deutschen Tastaturen physisch
+                              # mit "Z" beschriftet, siehe LETTER_KEYS
+                              # weiter unten. Aktuell nirgends mehr aktiv
+                              # gebunden (siehe Kommentar direkt darunter),
+                              # nur noch importiert/historisch vorhanden.
 # BUGFIX (Nutzer-Rueckmeldung: "die Y-Taste zum Musik skippen hat mich
 # ziemlich verwirrt, ich dachte das ist nur eine Controller-Belegung" -
 # bei der Untersuchung noch etwas Wichtigeres gefunden, als zunaechst
@@ -81,14 +86,35 @@ AXIS_L2, AXIS_R2 = -2, -5
 EVENT_FMT  = "llHHi"
 EVENT_SIZE = struct.calcsize(EVENT_FMT)
 
-# Standard-evdev-Scancodes der Buchstabentasten (QWERTY-Zeilen) - fuer
-# den Direktsprung per Tastatur: A druecken -> naechster Eintrag mit A.
+# Standard-evdev-Scancodes der Buchstabentasten - fuer den Direktsprung
+# per Tastatur: A druecken -> naechster Eintrag mit A. Ausserdem die
+# Grundlage fuer die Buchstaben-Positionen in den Geheimcodes (siehe
+# SECRET_CODES in fe/achievements.py).
+#
+# BUGFIX (Nutzer-Rueckmeldung: "der Code fuer den Entwicklerraum
+# funktioniert nicht", dann auf Nachfrage bestaetigt: "geh davon aus,
+# dass jeder eine deutsche Tastatur hat"): Linux liest Tastatureingaben
+# als rohe, layoutlose Scancodes - der Kernel selbst nennt sie nur nach
+# ihrer PHYSISCHEN Position auf einem US-QWERTY-Referenzboard (KEY_Y=21
+# an der Position, wo QWERTY ein "Y" hat). Y und Z sind die einzigen
+# beiden Buchstaben, die zwischen QWERTY und QWERTZ (deutsches Layout)
+# die Position tauschen: physisch mit "Z" beschriftet sitzt auf
+# Scancode 21 (der "QWERTY-Y-Position"), physisch mit "Y" beschriftet
+# sitzt auf Scancode 44 (der "QWERTY-Z-Position"). Dieses Projekt ist
+# durchgehend auf deutsche Nutzer ausgelegt (Sprache, Doku, Community) -
+# deshalb bewusst NICHT layoutneutral geloest (z.B. durch Vermeiden von
+# Y/Z in Codes), sondern die Zuordnung direkt an die tatsaechliche
+# deutsche Tastatur angepasst: 21 -> "Z", 44 -> "Y" (vertauscht
+# gegenueber der reinen US-QWERTY-Scancode-Bedeutung). Wer eine
+# US-QWERTY-Tastatur anschliesst, bekommt dadurch umgekehrt ein
+# vertauschtes Y/Z beim Buchstabensprung - fuer die weit ueberwiegende
+# Nutzerbasis (DE-Tastatur) ist das der richtige Kompromiss.
 LETTER_KEYS = {
-    16: "Q", 17: "W", 18: "E", 19: "R", 20: "T", 21: "Y", 22: "U",
+    16: "Q", 17: "W", 18: "E", 19: "R", 20: "T", 21: "Z", 22: "U",
     23: "I", 24: "O", 25: "P",
     30: "A", 31: "S", 32: "D", 33: "F", 34: "G", 35: "H", 36: "J",
     37: "K", 38: "L",
-    44: "Z", 45: "X", 46: "C", 47: "V", 48: "B", 49: "N", 50: "M",
+    44: "Y", 45: "X", 46: "C", 47: "V", 48: "B", 49: "N", 50: "M",
 }
 
 # Tasten/Buttons -> logische Aktionen des Frontends

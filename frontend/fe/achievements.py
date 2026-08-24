@@ -397,25 +397,18 @@ SECRET_CODES = {
     # Schaltet den Entwicklerraum frei. Nur per Tastatur eingebbar.
     #
     # BUGFIX (Nutzer-Rueckmeldung: "der Code fuer den Entwicklerraum
-    # funktioniert nicht"): urspruenglich stand hier "letter:Y" statt
-    # "letter:V". Grund fuer den Bug: LETTER_KEYS in fe/input.py bildet
-    # ROH-Scancodes auf Buchstaben ab, positionsbasiert nach dem
-    # US-QWERTY-Referenzlayout, das der Linux-Kernel fuer seine
-    # KEY_*-Konstanten verwendet (KEY_Y=21 an der physischen
-    # QWERTY-Y-Position) - das Frontend liest diese Scancodes direkt aus
-    # /dev/input, komplett OHNE Tastatur-Layout-Umrechnung (kein X11/XKB
-    # im Spiel). Bei einer deutschen QWERTZ-Tastatur sind Y und Z
-    # (einzige beiden vertauschten Buchstaben zwischen den Layouts)
-    # dadurch effektiv vertauscht: die physisch mit "Y" beschriftete
-    # Taste sendet Scancode KEY_Z, die mit "Z" beschriftete sendet
-    # KEY_Y. Wer auf einer deutschen Tastatur die (bedruckte) Y-Taste
-    # drueckte, loeste dadurch "letter:Z" aus, nicht das erwartete
-    # "letter:Y" - der Code konnte so nie vollstaendig eingegeben werden.
-    # Kein anderer SECRET_CODES-Eintrag verwendet Y oder Z (siehe
-    # Assertion direkt unten, die das dauerhaft absichert) - "letter:V"
-    # ist auf beiden Layouts identisch belegt.
+    # funktioniert nicht", dann auf Nachfrage: "geh davon aus, dass
+    # jeder eine deutsche Tastatur hat"): der Bug lag nicht am "Y"
+    # selbst, sondern daran, dass LETTER_KEYS in fe/input.py Y/Z bisher
+    # nach der reinen US-QWERTY-Scancode-Bedeutung benannt hatte, obwohl
+    # das Frontend rohe Scancodes ohne Tastaturlayout-Umrechnung liest -
+    # auf einer deutschen QWERTZ-Tastatur loeste die bedruckte "Y"-Taste
+    # dadurch "letter:Z" aus statt "letter:Y". Der eigentliche Fix sitzt
+    # jetzt direkt in LETTER_KEYS (siehe dortiger Kommentar) - die
+    # Zuordnung ist dort bewusst an die deutsche Tastatur angepasst,
+    # nicht layoutneutral. "letter:Y" hier ist also wieder das Original.
     "entwicklerraum": ["down", "letter:R", "up", "letter:L",
-                      "letter:V", "letter:B"],
+                      "letter:Y", "letter:B"],
     # Schaltet einen geheimen Sound frei. Nur per Tastatur eingebbar.
     "secret_sound": ["letter:A", "letter:B", "letter:B", "letter:A"],
     # NEU (Nutzerwunsch, Easter Egg): faerbt den Auswahl-Cursor im
@@ -427,25 +420,66 @@ SECRET_CODES = {
     # Jingle ab (ueber denselben gedaempften Weg wie der geheime Sound/
     # die Erfolgs-Jingles - siehe _play_ducked_sfx()). Nur per Tastatur.
     "chiptune_sound": ["letter:C", "letter:H", "letter:I", "letter:P"],
+
+    # NEU (Nutzerwunsch: "Secret-Sammlung" mit einem eigenen Theme pro
+    # klassischem System, angelehnt an bekannte Cheat-/Level-Select-Codes
+    # dieser Systeme). WICHTIG: unsere Codes koennen NUR aus Pfeiltasten
+    # und Buchstaben bestehen (siehe Design-Erklaerung ganz oben in
+    # diesem Kommentarblock - ok/back/select loesen im Hauptmenue immer
+    # eine echte Wirkung aus). Die Original-Vorlagen benutzen teils
+    # Gesichtstasten (A/B/X/Y - lassen sich 1:1 als Buchstaben
+    # uebernehmen, genau wie beim bestehenden Konami-Code oben), teils
+    # aber auch Select/Start, Zahlen oder System-spezifische Tasten ohne
+    # Tastatur-Aequivalent (PS1-Symbole, Mega-Drive-Sound-Test-Ziffern) -
+    # diese wurden durch thematisch passende Buchstaben ERSETZT statt
+    # weggelassen, um trotzdem auf die volle, eindeutige Laenge des
+    # Originals zu kommen. Jeder Code unten wurde einzeln gegen ALLE
+    # anderen (auch die vier oben) auf Eindeutigkeit UND auf verfrühtes
+    # Ausloesen als Teilsequenz geprueft (siehe tools/regression_test.py
+    # bzw. das Diagnose-Skript aus der Entwicklung).
+    #
+    # Original: Batman Forever (SNES) - Stage-/Waffen-Auswahl.
+    "theme_snes": ["left", "up", "left", "left",
+                  "letter:A", "letter:B", "letter:Y"],
+    # Original: Game Genie/"Message 2" (Game Boy). Select durch die
+    # Buchstaben G,B (fuer "Game Boy") ersetzt.
+    "theme_gb": ["letter:B", "letter:A", "left", "right",
+                "letter:G", "letter:B"],
+    # Original: Cheat-Menu-Code aus Space Invaders (Game Boy Color).
+    # Die beiden Select-Druecke durch "NEON" (Theme-Name) ersetzt.
+    "theme_gbc": ["down", "down", "letter:N", "letter:E",
+                 "letter:O", "letter:N"],
+    # Original: Robotron 64 (N64) - C-Oben-Taste durch "T" (Turbo)
+    # ersetzt, siehe der zugehoerige Turbo-Scroll-Effekt in
+    # _on_secret_triggered().
+    "theme_n64": ["left", "left", "right", "right", "letter:T"],
+    # Original: Aladdin (PS1) - die Dreieck/Quadrat/Kreis-Symbole haben
+    # kein Tastatur-Aequivalent, ersetzt durch "PSX".
+    "theme_ps1": ["right", "right", "letter:P", "letter:S", "letter:X"],
+    # Original: Sonic 2 (Mega Drive) - der beruehmte Sound-Test-Code ist
+    # eine elfstellige Ziffernfolge (kein "digit:"-Aktionstyp vorhanden,
+    # siehe fe/input.py), ersetzt durch "RING" (Sonics Ringe).
+    "theme_megadrive": ["down", "down", "letter:R", "letter:I",
+                        "letter:N", "letter:G"],
+    # Original: Sonic Chaos (Master System) - eigener Sound-Test-Code,
+    # NICHT identisch mit dem Mega-Drive-Code oben (bewusst getrennt
+    # gehalten, wie in der urspruenglichen Recherche gefordert).
+    "theme_sms": ["up", "up", "down", "down",
+                 "letter:S", "letter:M", "letter:S"],
+    # Original: Sonic Chaos (Game Gear) - hier fast 1:1 uebernehmbar,
+    # nur das abschliessende "Start" entfaellt (nicht codetauglich).
+    "theme_gamegear": ["up", "up", "down", "down",
+                       "right", "left", "right", "left"],
+    # Original: Sonic Jam/Sonic 2 Level-Select (Saturn) - "A+Start" am
+    # Ende durch "SAT" ersetzt.
+    "theme_saturn": ["down", "up", "letter:S", "letter:A", "letter:T"],
+
+    # Dreamcast BEWUSST NICHT dabei: es gibt zwar Sonic-Adventure-
+    # Geheimnisse, aber noch keinen sauber belegten, wirklich
+    # eindeutigen Code dafuer (siehe Recherche-Notiz) - lieber kein
+    # erfundener Code als einer, der spaeter falsch zugeordnet wird.
 }
 SECRET_CODE_MAXLEN = max(len(seq) for seq in SECRET_CODES.values())
-
-# SICHERHEITSNETZ (siehe ausfuehrlichen Bugfix-Kommentar bei
-# "entwicklerraum" oben): "letter:Y"/"letter:Z" sind auf QWERTY- und
-# QWERTZ-Tastaturen vertauscht, weil das Frontend rohe, layoutlose
-# evdev-Scancodes liest. Ein Code, der Y oder Z verwendet, ist fuer
-# einen Teil der (u.a. aller deutschen) Nutzer schlicht nicht eingebbar.
-# Diese Pruefung laeuft einmalig beim Modul-Import und wirft sofort
-# einen klaren Fehler, falls das versehentlich wieder passiert - lieber
-# ein lauter Absturz beim Testen als ein weiterer stiller "Code
-# funktioniert nicht"-Bugreport.
-for _sid, _seq in SECRET_CODES.items():
-    for _tok in _seq:
-        assert _tok not in ("letter:Y", "letter:Z"), (
-            "SECRET_CODES[%r] verwendet %r - Y/Z sind zwischen QWERTY "
-            "und QWERTZ vertauscht (siehe Kommentar oben), bitte einen "
-            "anderen Buchstaben verwenden" % (_sid, _tok))
-del _sid, _seq, _tok
 
 # NEU (Nutzerwunsch: "ein Geheimnis im Geheimnis"): BEWUSST NICHT Teil
 # von SECRET_CODES/check_secret_code() - jene Pruefung laeuft nur auf
@@ -460,10 +494,6 @@ del _sid, _seq, _tok
 # X-von-Y-Anzeigen unten.
 DEV_ROOM_BONUS_ID = "dev_room_bonus"
 DEV_ROOM_BONUS_CODE = ["letter:E", "letter:G", "letter:G"]
-# Gleiches Sicherheitsnetz wie bei SECRET_CODES oben - dieser Code laeuft
-# ueber einen komplett eigenen Puffer (draw_dev_room_screen()), rutscht
-# also nicht automatisch durch die Pruefung dort mit.
-assert "letter:Y" not in DEV_ROOM_BONUS_CODE and "letter:Z" not in DEV_ROOM_BONUS_CODE
 
 RAINBOW_CURSOR_SECONDS = 120   # wie lange der Regenbogen-Cursor-Effekt anhaelt
 
