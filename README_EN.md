@@ -267,7 +267,7 @@ first time in the current calendar year) and "Bite-sized games" (games
 with a short average session length, at least 2 launches required).
 Appears only if something actually fits.
 
-**"Wonne or Tonne"** (Dennsen's rating format, in the main menu under
+**"Zufalls-Zock"** (Dennsen's rating format, in the main menu under
 System or as its own menu item depending on configuration): pulls
 three random, not-yet-rated games at once for you to choose from -
 without repeats, until all of them have had a turn. Handy when "don't
