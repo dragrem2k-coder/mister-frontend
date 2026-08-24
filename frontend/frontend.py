@@ -4926,7 +4926,7 @@ class Frontend:
         gezeichnet - Framebuffer-Zugriff bleibt dem Haupt-Thread
         vorbehalten) und von next_action() im Haupt-Thread konsumiert,
         siehe dortiger Kommentar."""
-        LOG("Update-Check gestartet (Leerlauf erkannt)")
+        LOG("Update-Check gestartet (Hauptmenue sichtbar)")
         remote = check_for_update()
         state = load_update_state()
         if remote:

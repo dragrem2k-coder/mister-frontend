@@ -179,6 +179,14 @@ Verhaltensänderung im Normalbetrieb):
   benötigten Platz orientiert (auf HDMI mit reichlich Platz bleibt das
   Layout unverändert) - dadurch bleibt garantiert alles sichtbar,
   unabhängig von Sprache oder Textlänge.
+- "Neue Fixes verfügbar"-Hinweis erschien trotz zahlreicher echter
+  Änderungen nicht mehr: dieser Hinweis vergleicht bewusst NICHT die
+  Versionsnummer (die bleibt laut Wunsch stabil bei v4.4), sondern eine
+  eigene, separate Kennung in `frontend/LATEST_BUILD.json` auf GitHub -
+  genau diese Kennung wurde beim letzten Fix-Batch nicht mit
+  hochgezählt, das eigene Gerät hatte den (unveränderten) Stand
+  dadurch schon als "gesehen" gespeichert. Kennung jetzt aktualisiert;
+  wird ab sofort bei jedem nennenswerten Fix-Batch mit hochgezählt.
 
 **Dokumentation:**
 - `docs/Dragend_Anleitung.pdf` aktualisiert: F2 als zweite Suche-Taste
