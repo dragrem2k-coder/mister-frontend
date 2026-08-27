@@ -9395,7 +9395,27 @@ class Frontend:
         Ausserdem ergaenzt um bisher gar nicht aufgefuehrte, aber
         real vorhandene Tasten (beim Durchgehen der KEYMAP aufgefallen:
         F11/F12/F10/Y/Start+Select existierten, waren in der Hilfe
-        aber nirgends erwaehnt)."""
+        aber nirgends erwaehnt).
+
+        AKTUALISIERT (Nutzer-Rueckmeldung: "es fehlen einige Tasten"):
+        erneut gegen die tatsaechliche KEYMAP (fe/input.py) und die
+        hidraw-Sondertasten (fe/reset_trigger.py) geprueft, seither
+        dazugekommen und ergaenzt: "/"/F2 (Volltextsuche in der
+        Spieleliste, KEY_SLASH/KEY_F2 -> "search"), Select allein am
+        Pad (BTN_SELECT -> "select", macht dasselbe wie Zurueck/B) und
+        F5 als Reset-Taste WAEHREND ein Core laeuft (RESET_HOLD in
+        fe/input.py, ueber den hidraw-Weg, unabhaengig vom normalen
+        KEYMAP). Dabei aufgefallen und korrigiert: "Y: naechster
+        Musiktitel" stand bisher unter "Waehrend des Spielens" - lief
+        aber schon immer nur ueber die normale KEYMAP/evdev-Ebene, die
+        MiSTer waehrend eines laufenden Cores exklusiv sperrt (siehe
+        Kommentar bei InputManager.wait_game_exit()), funktioniert
+        also tatsaechlich nur beim Bedienen des Menues selbst - jetzt
+        entsprechend unter "Ueberall" gefuehrt, mit F5 als zweiter,
+        gleichwertiger Taste dafuer (KEY_F5 -> "music_next" im
+        Menuekontext - nicht zu verwechseln mit F5 als Reset-Taste
+        WAEHREND des Spielens direkt oben, zwei unterschiedliche
+        Kontexte, dieselbe physische Taste)."""
         fb = self.fb
         W, H = fb.width, fb.height
         s = max(1, H // 360)
@@ -9412,7 +9432,8 @@ class Frontend:
         section_keys = [
             ("header", "help_section_nav"), ("item", "help_nav_move"),
             ("item", "help_nav_ok"), ("item", "help_nav_back"),
-            ("item", "help_nav_letter"),
+            ("item", "help_nav_letter"), ("item", "help_nav_search"),
+            ("item", "help_nav_select"),
             ("header", "help_section_list"), ("item", "help_list_showcase"),
             ("item", "help_list_completed"), ("item", "help_list_favorite"),
             ("item", "help_list_random"),
@@ -9421,9 +9442,9 @@ class Frontend:
             ("header", "help_section_system"), ("item", "help_system_stats"),
             ("item", "help_system_secrets"), ("item", "help_system_credits"),
             ("header", "help_section_playing"), ("item", "help_playing_exit"),
-            ("item", "help_playing_exit_pad"), ("item", "help_playing_music"),
-            ("header", "help_section_general"), ("item", "help_general_osd"),
-            ("item", "help_general_osd_back"),
+            ("item", "help_playing_exit_pad"), ("item", "help_playing_reset"),
+            ("header", "help_section_general"), ("item", "help_general_music"),
+            ("item", "help_general_osd"), ("item", "help_general_osd_back"),
         ]
         # BUGFIX (Nutzer-Rueckmeldung: auf CRT wurde z.B. "OK/A:
         # auswaehlen, Kategorie/Ord~" abgeschnitten): jede Zeile

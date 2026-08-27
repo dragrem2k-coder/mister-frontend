@@ -130,6 +130,25 @@ Verhaltensänderung im Normalbetrieb):
   (`TEXTCACHE ...`, nur bei aktivem `DRAGEND_PROFILE`).
 
 **Bugfixes:**
+- Hilfe/Übersicht (System -> Info) auf den aktuellen Stand gebracht
+  (Nutzer-Rückmeldung: "es fehlen einige Tasten") - erneut gegen die
+  tatsächliche Tastenbelegung geprüft, ergänzt: "/"/F2 (Volltextsuche
+  in der Spieleliste), Select allein am Pad (macht dasselbe wie
+  Zurück/B) sowie F5 als Reset-Taste während ein Core läuft. Dabei
+  aufgefallen und korrigiert: "Y: nächster Musiktitel" stand bisher
+  unter "Während des Spielens", funktioniert technisch aber nur beim
+  Bedienen des Menüs selbst (MiSTer sperrt die normale Tastenebene
+  während ein Core läuft exklusiv) - jetzt unter "Überall" geführt,
+  mit F5 als zweiter, gleichwertiger Taste dafür (im Menü - nicht zu
+  verwechseln mit F5 als Reset-Taste während des Spielens, zwei
+  unterschiedliche Kontexte, dieselbe physische Taste).
+- Zufalls-Zock-Logo ausgetauscht (Nutzer-Vorlage) und dabei einen
+  stillen, bestehenden Bug behoben: der Code suchte bereits nach
+  `zufalls_zock.art`, die mitgelieferte Bilddatei hieß aber noch
+  `wonne_oder_tonne.art` (Rest einer alten Umbenennung) - das eigene
+  Logo wurde dadurch nie gefunden, angezeigt wurde unbemerkt nur der
+  reine Text-Titel als Rückfall. Datei jetzt unter dem richtigen
+  Namen, alte Datei entfernt.
 - Update-Infobox (mittige Meldung "Update vX.Y!"/"Neu: ...") war im
   CRT-Modus teils riesig und zeigte scheinbar nichts an (Nutzer-
   Rückmeldung). Ursache: die Box wurde bisher ausschließlich aus der
