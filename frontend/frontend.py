@@ -5144,16 +5144,37 @@ class Frontend:
         oder ueberschrieben (die pruefen nur self._popup_message_until,
         ein komplett separater Zustand) - bleibt also stabil stehen,
         bis draw() sie nach Ablauf von self._prominent_message_until
-        selbst wegzeichnet (siehe next_action()-Tick-Aufruf dafuer)."""
+        selbst wegzeichnet (siehe next_action()-Tick-Aufruf dafuer).
+
+        BUGFIX (Nutzer-Rueckmeldung: "die Update-Infobox ist im CRT-
+        Modus zu gross und da steht nichts drin"): text_w wurde bisher
+        direkt aus der vollen Zeichenlaenge berechnet, ganz ohne
+        Ruecksicht auf die tatsaechlich verfuegbare Bildschirmbreite.
+        Beim kurzen Versions-Hinweis ("Update v4.5!") faellt das nicht
+        auf, aber der zweite Aufrufer (build_available_popup, zeigt den
+        frei formulierten LATEST_BUILD.json-"summary"-Text, der bewusst
+        ein ganzer, oft laengerer Satz ist statt eines Codeworts)
+        sprengte auf CRT (320px breit, s=1) die Box leicht um ein
+        Vielfaches der Bildschirmbreite - box_x wurde dadurch stark
+        negativ, Box UND Text landeten praktisch komplett ausserhalb
+        des sichtbaren Bereichs, sichtbar blieb nur ein leerer
+        Ausschnitt. Jetzt wie beim Beenden-Dialog (draw_confirm_dialog(),
+        selbes Muster) wortweise umgebrochen und auf maximal 3 Zeilen
+        begrenzt (_wrap() kappt eine dann immer noch zu lange letzte
+        Zeile zusaetzlich mit "~") - Box bleibt dadurch auf jeder
+        Aufloesung garantiert innerhalb des Bildschirms."""
         fb = self.fb
         W = fb.width
         L = self.layout_cats()
         s, oy = L["s"], L["oy"]
         text = self._prominent_message
         pad_x, pad_y = 16 * s, 10 * s
-        text_w = len(text) * 8 * s
-        box_w = text_w + 2 * pad_x
-        box_h = 8 * s + 2 * pad_y
+        maxc = max(10, (W - 4 * pad_x) // (8 * s))
+        lines = self._wrap(text, maxc, max_lines=3)
+        line_h = 12 * s
+        text_w = max(len(ln) for ln in lines) * 8 * s
+        box_w = min(W - 16 * s, text_w + 2 * pad_x)
+        box_h = len(lines) * line_h + 2 * pad_y
         box_x = (W - box_w) // 2
         box_y = oy + 55 * s
         fb.rect_rounded(box_x, box_y, box_w, box_h, C_PANEL)
@@ -5165,7 +5186,11 @@ class Frontend:
         fb.rect(box_x, box_y + box_h - border, box_w, border, C_ACCENT)
         fb.rect(box_x, box_y, border, box_h, C_ACCENT)
         fb.rect(box_x + box_w - border, box_y, border, box_h, C_ACCENT)
-        fb.text(box_x + pad_x, box_y + pad_y, text, s, C_TEXT, C_PANEL)
+        ty = box_y + pad_y
+        for ln in lines:
+            tw = len(ln) * 8 * s
+            fb.text(box_x + (box_w - tw) // 2, ty, ln, s, C_TEXT, C_PANEL)
+            ty += line_h
         fb.flip_rows(box_y, box_h)
 
     def draw_attract(self):

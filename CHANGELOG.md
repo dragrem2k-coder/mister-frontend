@@ -130,6 +130,34 @@ Verhaltensänderung im Normalbetrieb):
   (`TEXTCACHE ...`, nur bei aktivem `DRAGEND_PROFILE`).
 
 **Bugfixes:**
+- Update-Infobox (mittige Meldung "Update vX.Y!"/"Neu: ...") war im
+  CRT-Modus teils riesig und zeigte scheinbar nichts an (Nutzer-
+  Rückmeldung). Ursache: die Box wurde bisher ausschließlich aus der
+  vollen Zeichenlänge des Textes berechnet, ganz ohne Rücksicht auf
+  die verfügbare Bildschirmbreite. Beim kurzen Versions-Hinweis fällt
+  das nicht auf, aber der "Neue Fixes"-Hinweis zeigt den frei
+  formulierten `LATEST_BUILD.json`-Text - der kann ein ganzer, längerer
+  Satz sein. Auf CRT (320px breit) sprengte das die Box um ein
+  Vielfaches, die Box landete dadurch (rechnerisch stark negative
+  Startposition) praktisch komplett außerhalb des sichtbaren Bereichs.
+  Jetzt wie beim Beenden-Dialog wortweise umgebrochen und auf maximal
+  3 Zeilen begrenzt - passt garantiert auf jede Auflösung.
+- Nach einem Neustart des Frontends setzte die Musik gelegentlich
+  aus/stotterte, "als würde da was doppelt laufen" (Nutzer-
+  Rückmeldung) - und genau das war es auch: überlebte der `mpg123`-
+  Kindprozess der VORHERIGEN Instanz einen nicht ganz sauberen
+  Neustart (z.B. weil `/tmp` - und damit dessen PID - einen Soft-Reset
+  überlebt, siehe der ähnliche Fall bei der Sperrdatei in
+  `single_instance.py`), wusste die NEUE Instanz nichts davon und
+  startete einfach ihren eigenen zweiten `mpg123` dazu - zwei
+  Musikstreams gleichzeitig auf derselben Audioausgabe. Alle
+  bisherigen mpg123-Überlagerungs-Fixes (Prozess-Sperre, Jingle-
+  Zähler) deckten nur Fälle INNERHALB einer laufenden Instanz ab,
+  nicht einen Rest aus einer vorherigen. Jetzt räumt `MusicPlayer` beim
+  eigenen Start einmalig über `/proc` jeden noch laufenden `mpg123`-
+  Prozess weg, bevor es selbst einen neuen startet (mpg123 wird auf
+  dem MiSTer ausschließlich vom Frontend selbst genutzt, ein Abschuss
+  kann also nichts Fremdes treffen).
 - Boxart-Download (`mister_boxart.py`) überarbeitet (Nutzer-Vorlage:
   ein selbst geprüfter, vertrauenswürdiger Mirror mit bereits fertigen
   .art-Dateien - übernommen, aber bewusst nicht 1:1, drei Korrekturen

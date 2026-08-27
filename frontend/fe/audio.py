@@ -18,7 +18,7 @@ geloest: get_volume() als Funktion, die IMMER den aktuellen Wert
 liefert (hier unproblematisch, da system_items() nur bei Menue-
 Aufbau aufgerufen wird, keine heisse Stelle wie Framebuffer.text()).
 """
-import os, sys, glob, subprocess, threading, time, wave, struct, math, random
+import os, sys, glob, subprocess, threading, time, wave, struct, math, random, signal
 from fe.log import LOG
 
 try:
@@ -405,6 +405,58 @@ def play_sfx(name, music_playing=False):
 # BACKGROUND MUSIC (mpg123, extern - no own MP3 decoder needed)
 # ----------------------------------------------------------------------------
 
+def _kill_stray_mpg123():
+    """BUGFIX (Nutzer-Rueckmeldung: "hab gerade das Frontend neu
+    gestartet, ab und zu faengt die Musik dann an zu stottern, als ob
+    da was nicht richtig laeuft oder doppelt"): alle bisherigen
+    mpg123-Ueberlagerungs-Fixes (siehe die _proc_lock- und
+    _jingle_depth-Kommentare in MusicPlayer.__init__ unten) decken nur
+    Faelle INNERHALB EINER laufenden Instanz ab - zwei Threads
+    DESSELBEN Prozesses, die sich gegenseitig ueberholen. Ueberlebt ein
+    mpg123-KINDPROZESS aber einen Neustart des Frontends SELBST (z.B.
+    weil die alte Instanz nicht sauber heruntergefahren wurde, oder
+    weil /tmp - und damit die Lock-Datei - einen "Soft Reset" ueberlebt,
+    der Kindprozess selbst aber in einem unklaren Zwischenzustand
+    haengen bleibt - siehe der fast identische Kommentar zu
+    ueberlebenden PIDs in single_instance.py._pid_alive()), startet die
+    NEUE Instanz gleich noch einen ZWEITEN mpg123 dazu, ohne vom ersten
+    zu wissen -> zwei Musikstreams gleichzeitig auf derselben
+    Audioausgabe, genau das gemeldete Stottern/"laeuft doppelt".
+
+    MiSTer hat kein pkill/pgrep (siehe single_instance.py), deshalb
+    hier derselbe manuelle /proc-Scan wie dort: JEDE noch laufende
+    mpg123-Instanz wird einmalig beim Start der eigenen MusicPlayer-
+    Instanz beendet, bevor wir selbst einen neuen Prozess starten -
+    mpg123 wird auf dem MiSTer ausschliesslich von diesem Frontend
+    selbst genutzt (Musik + Radio + gedaempfte Soundeffekte, siehe
+    Modul-Kopfkommentar), ein Abschuss kann also nichts fremdes
+    treffen. Nicht-fatal: schlaegt der /proc-Zugriff aus irgendeinem
+    Grund fehl, macht der Start ganz normal ohne diese Vorsichtsmass-
+    nahme weiter (kein neues Absturzrisiko fuer ein reines
+    Aufraeum-Extra)."""
+    try:
+        pids = [p for p in os.listdir("/proc") if p.isdigit()]
+    except OSError:
+        return
+    my_pid = os.getpid()
+    for pid_s in pids:
+        pid = int(pid_s)
+        if pid == my_pid:
+            continue
+        try:
+            with open("/proc/%s/cmdline" % pid_s, "rb") as f:
+                cmdline = f.read()
+        except OSError:
+            continue   # Prozess ist zwischen listdir() und open() schon weg - ok
+        if b"mpg123" not in cmdline:
+            continue
+        try:
+            os.kill(pid, signal.SIGTERM)
+            LOG("MusicPlayer: verwaisten mpg123-Prozess (PID %d) beim "
+                "Start beendet" % pid)
+        except OSError:
+            pass
+
 class MusicPlayer:
     """Plays MP3s from MUSIC_DIR in random order in the background.
     Uses the external mpg123 command-line player (present on MiSTer)
@@ -415,6 +467,9 @@ class MusicPlayer:
     MAX_TRACK_SECONDS = 20 * 60   # Sicherheitsnetz, siehe tick()
 
     def __init__(self):
+        _kill_stray_mpg123()   # siehe Funktionskommentar oben - erst
+                                # aufraeumen, dann erst self.proc unten
+                                # ueberhaupt einen eigenen Prozess starten
         self.enabled = self._load_enabled()
         self.source, _radio_sid = self._load_source()   # "mp3" oder "radio" + sid
         self.radio = rainwave.RainwaveRadio(sid=_radio_sid, log=LOG) \
