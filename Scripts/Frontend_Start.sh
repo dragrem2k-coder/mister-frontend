@@ -31,4 +31,36 @@ if [ -f /tmp/frontend.lock ]; then
 fi
 
 echo "Starte Frontend..."
-exec /usr/bin/python3 /media/fat/frontend/frontend.py
+# BUGFIX: gleiches Sicherheitsnetz wie in Frontend_Update.sh (siehe
+# dortiger ausfuehrlicher Kommentar) - kein "exec" mehr, damit ein
+# sofortiger Absturz nicht zu einer stillen, leeren Konsole ohne jeden
+# Hinweis fuehrt, sondern zu einem automatischen Neuversuch samt
+# sichtbarer Fehlermeldung, falls selbst der scheitert.
+FRONTEND_DIR="/media/fat/frontend"
+attempt=1
+while [ "$attempt" -le 2 ]; do
+    START_TS=$(date +%s 2>/dev/null || echo 0)
+    /usr/bin/python3 "$FRONTEND_DIR/frontend.py"
+    RC=$?
+    END_TS=$(date +%s 2>/dev/null || echo 0)
+    RUNTIME=$((END_TS - START_TS))
+    if [ "$RUNTIME" -ge 3 ]; then
+        exit "$RC"
+    fi
+    if [ "$attempt" -eq 1 ]; then
+        echo ""
+        echo "Frontend hat sich sofort wieder beendet (Code $RC, nach ${RUNTIME}s)"
+        echo "- vermutlich eine kurze Race direkt nach dem Start."
+        echo "Neuer Versuch in 2 Sekunden..."
+        sleep 2
+    fi
+    attempt=$((attempt + 1))
+done
+echo ""
+echo "FEHLER: Frontend startet auch im zweiten Versuch sofort wieder ab."
+echo "Details:  cat /tmp/frontend.log"
+echo "Manuell erneut versuchen:  python3 $FRONTEND_DIR/frontend.py"
+echo ""
+read -rsn1 -p "Taste druecken zum Beenden..." 2>/dev/null
+echo ""
+exit 1

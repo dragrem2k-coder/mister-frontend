@@ -90,4 +90,52 @@ if [ -e "$FRONTEND_DIR/disable" ]; then
 fi
 
 echo "Starte aktualisiertes Frontend..."
-exec /usr/bin/python3 "$FRONTEND_DIR/frontend.py"
+# BUGFIX (Nutzer-Rueckmeldung: "hab gerade Update gemacht und dann
+# bleibt das Frontend haengen [an der rohen Linux-Konsole/Login-
+# Aufforderung], passiert nicht oft aber ab und zu"): der bisherige
+# "exec python3 frontend.py" ersetzte diese Shell bedingungslos durch
+# den neuen Python-Prozess. Scheiterte der (z.B. durch eine seltene,
+# kurze Race unmittelbar nach dem Beenden der alten Instanz - aehnliche
+# Fehlerkategorie wie der bereits in frontend_boot.sh behobene "1 von
+# 10 startet nicht richtig"-Bug beim normalen Hochfahren, nur bisher
+# ohne das dortige Sicherheitsnetz fuer DIESEN Weg hier), gab es
+# DANACH ueberhaupt keinen Prozess mehr, der irgendetwas auf den
+# Bildschirm haette zeichnen koennen - genau die gemeldete leere
+# Konsole, ohne jeden Hinweis, dass ueberhaupt etwas schiefgelaufen ist.
+#
+# Jetzt: kein "exec" mehr (die Shell bleibt als Aufseher am Leben,
+# kostet auf dem MiSTer keine spuerbaren Ressourcen), echter
+# ueberwachter Start mit automatischem Neuversuch, falls der Prozess
+# SOFORT (innerhalb der ersten 3 Sekunden) wieder beendet ist - ein
+# regulaeres Beenden (Beenden-Dialog oder ein spaeterer, gewollter
+# Neustart) laeuft immer viele Minuten, ein Ende nach nur 1-2 Sekunden
+# ist so gut wie sicher ein frueher Absturz/eine verlorene Race, kein
+# gewolltes Beenden. Scheitert selbst der zweite Versuch, zumindest
+# eine klar sichtbare Fehlermeldung statt einer stillen, leeren Konsole.
+attempt=1
+while [ "$attempt" -le 2 ]; do
+    START_TS=$(date +%s 2>/dev/null || echo 0)
+    /usr/bin/python3 "$FRONTEND_DIR/frontend.py"
+    RC=$?
+    END_TS=$(date +%s 2>/dev/null || echo 0)
+    RUNTIME=$((END_TS - START_TS))
+    if [ "$RUNTIME" -ge 3 ]; then
+        exit "$RC"
+    fi
+    if [ "$attempt" -eq 1 ]; then
+        echo ""
+        echo "Frontend hat sich sofort wieder beendet (Code $RC, nach ${RUNTIME}s)"
+        echo "- vermutlich eine kurze Race direkt nach dem Neustart."
+        echo "Neuer Versuch in 2 Sekunden..."
+        sleep 2
+    fi
+    attempt=$((attempt + 1))
+done
+echo ""
+echo "FEHLER: Frontend startet auch im zweiten Versuch sofort wieder ab."
+echo "Details:  cat /tmp/frontend.log"
+echo "Manuell erneut versuchen:  python3 $FRONTEND_DIR/frontend.py"
+echo ""
+read -rsn1 -p "Taste druecken zum Beenden..." 2>/dev/null
+echo ""
+exit 1

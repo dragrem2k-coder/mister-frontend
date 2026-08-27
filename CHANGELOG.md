@@ -130,6 +130,26 @@ Verhaltensänderung im Normalbetrieb):
   (`TEXTCACHE ...`, nur bei aktivem `DRAGEND_PROFILE`).
 
 **Bugfixes:**
+- Nach einem Update blieb das Frontend ganz selten (Nutzer-
+  Rückmeldung: "passiert nicht oft aber ab und zu") an der rohen
+  Linux-Konsole/Login-Aufforderung hängen, statt zu starten - der
+  Bildschirm zeigte nur noch "Welcome to MiSTer ... login:", nichts
+  reagierte mehr. Ursache: `Frontend_Update.sh` (und `Frontend_Start.sh`)
+  ersetzten die eigene Shell bisher bedingungslos per `exec` durch den
+  neuen Python-Prozess - scheiterte der (z.B. durch eine seltene, kurze
+  Race unmittelbar nach dem Beenden der alten Instanz, ähnliche
+  Fehlerkategorie wie der bereits in `frontend_boot.sh` behobene "1 von
+  10 startet nicht richtig"-Bug beim normalen Hochfahren, nur bisher
+  ohne dessen Sicherheitsnetz), gab es danach überhaupt keinen Prozess
+  mehr, der irgendetwas auf den Bildschirm hätte zeichnen können - und
+  keinerlei sichtbaren Hinweis, dass etwas schiefgelaufen ist. Jetzt:
+  kein `exec` mehr, echter überwachter Start mit automatischem
+  Neuversuch, falls der Prozess sofort (innerhalb von 3 Sekunden)
+  wieder beendet ist, und einer klar sichtbaren Fehlermeldung samt
+  Log-Hinweis, falls selbst der zweite Versuch scheitert - statt einer
+  stillen, leeren Konsole. Mit einer eigenen Simulation aller drei
+  Fälle geprüft (Absturz-dann-Erfolg, Dauerabsturz, normaler Lauf ohne
+  Neuversuch).
 - Hilfe/Übersicht (System -> Info) auf den aktuellen Stand gebracht
   (Nutzer-Rückmeldung: "es fehlen einige Tasten") - erneut gegen die
   tatsächliche Tastenbelegung geprüft, ergänzt: "/"/F2 (Volltextsuche
