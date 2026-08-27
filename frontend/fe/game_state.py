@@ -26,7 +26,11 @@ from fe.log import LOG
 
 BASE = "/media/fat"
 RECENT_FILE = "/media/fat/frontend/recently_played.json"
-RECENT_MAX = 15
+# Nutzerwunsch (Rueckmeldung: "Zuletzt gespielt" zeigte nicht wirklich
+# alle zuletzt gespielten Spiele) - von 15 auf 100 angehoben, damit die
+# Liste bei aktiver Nutzung nicht schon nach wenigen Sitzungen aeltere
+# Spiele stillschweigend verdraengt.
+RECENT_MAX = 100
 FAVORITES_FILE = "/media/fat/frontend/favorites.json"
 LAST_CORE_CHOICE_FILE = "/media/fat/frontend/last_core_choice.json"
 
@@ -167,19 +171,37 @@ def find_continue_game():
             return entry
     return None
 
+def _recent_syskey(arg):
+    """Systemschluessel aus einem (rom, ext, syskey, rbf, (dl, ft, ix))-
+    Argument - defensiv, falls arg mal kuerzer/anders geformt ist."""
+    return arg[2] if len(arg) > 2 else None
+
 def record_recent(label, arg):
     """Ein gestartetes Spiel oben in die 'Zuletzt gespielt'-Liste
     einreihen (Duplikate werden nach oben verschoben statt doppelt zu
     erscheinen - Erkennung ueber den Namen, nicht ueber arg: nach
     einer JSON-Speicherrunde werden verschachtelte Tupel zu Listen,
     ein direkter Tupel-Vergleich wuerde also nie zutreffen), auf
-    RECENT_MAX Eintraege gekappt."""
+    RECENT_MAX Eintraege gekappt.
+
+    BUGFIX (Nutzer-Rueckmeldung: "Zuletzt gespielt" zeigte nicht
+    wirklich alle zuletzt gespielten Spiele an): die Duplikat-Erkennung
+    verglich bisher NUR den Anzeigenamen - zwei gleichnamige Spiele auf
+    UNTERSCHIEDLICHEN Systemen (z.B. "Sonic the Hedgehog" auf Mega
+    Drive UND Master System) galten dadurch als ein und dasselbe:
+    startete man das eine, verschwand der Eintrag des anderen
+    ersatzlos aus der Liste, statt dass beide nebeneinander stehen.
+    Jetzt zusaetzlich der Systemschluessel (arg[2]) mit in den
+    Vergleich - nur wirklich dasselbe Spiel auf demselben System wird
+    noch als Duplikat nach oben verschoben."""
     try:
         with open(RECENT_FILE) as f:
             data = json.load(f)
     except (OSError, ValueError):
         data = []
-    data = [e for e in data if e.get("label") != label]
+    syskey = _recent_syskey(arg)
+    data = [e for e in data if not (e.get("label") == label
+                                     and _recent_syskey(e.get("arg") or []) == syskey)]
     data.insert(0, {"label": label, "arg": list(arg)})
     data = data[:RECENT_MAX]
     try:

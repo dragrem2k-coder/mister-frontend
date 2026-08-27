@@ -3442,7 +3442,11 @@ GAMES_CACHE_OLD_JSON = "/media/fat/frontend/games_cache.json"   # fuer die
         # Wechsel auf Pickle (siehe scan_games()) - wird nie neu
         # geschrieben, nur einmalig geloescht, falls noch vorhanden.
 RECENT_FILE = "/media/fat/frontend/recently_played.json"
-RECENT_MAX = 15
+RECENT_MAX = 100   # kanonischer Wert in fe/game_state.py - siehe Import
+                   # gleich darunter, der diese Zeile ueberschreibt;
+                   # hier nur mitgefuehrt, damit beide Stellen nicht
+                   # auseinanderlaufen (gleiches Drift-Risiko wie bei
+                   # FRONTEND_VERSION, siehe fe/update_check.py).
 FAVORITES_FILE = "/media/fat/frontend/favorites.json"
 LAST_CORE_CHOICE_FILE = "/media/fat/frontend/last_core_choice.json"
 PLAYTIME_FILE = "/media/fat/frontend/playtime.json"
@@ -7886,7 +7890,7 @@ class Frontend:
         self.music.resume_after_core()
         self.back_to_frontend()
 
-    def draw_core_choice_screen(self, syskey, display_name):
+    def draw_core_choice_screen(self, syskey, display_name, default_ra=False):
         """Zwei-Optionen-Auswahl (Normal-Core / RA-Core), gezeigt beim
         Betreten eines Systems, fuer das find_ra_core() eine RA-
         faehige Core-Variante gefunden hat. Hoch/Runter wechselt die
@@ -7901,14 +7905,29 @@ class Frontend:
         ist deshalb IMMER in die Kategorie gewechselt, selbst bei ESC.
         Das fuehlte sich fuer den Nutzer an, als koenne man aus diesem
         Bildschirm ueberhaupt nicht mehr zurueck. Jetzt liefert ESC
-        explizit None, und NUR das bricht wirklich ab."""
+        explizit None, und NUR das bricht wirklich ab.
+
+        BUGFIX (Nutzer-Rueckmeldung: "Weiterspielen"/"Zuletzt gespielt"
+        funktionierten nicht sauber, u.a. weil nicht richtig
+        unterschieden wurde, mit welchem Core ein Spiel zuletzt lief):
+        die Auswahl stand hier bisher IMMER fest auf "normaler Core",
+        unabhaengig davon, ob genau dieses Spiel zuletzt tatsaechlich
+        mit dem RA-Core gestartet wurde. Wer schnell OK gedrueckt hat
+        (etwa aus Gewohnheit), landete dadurch stillschweigend im
+        falschen Core - ohne RA-Fortschrittserfassung, wenn zuletzt RA
+        lief. default_ra (vom Aufrufer typischerweise aus
+        load_last_core_choice() abgeleitet) laesst den Cursor jetzt auf
+        der zuletzt tatsaechlich genutzten Variante starten - gefragt
+        wird weiterhin JEDES Mal (bewusst keine stille Automatik, siehe
+        Kommentar beim Aufruf in der Hauptschleife), nur die Vorauswahl
+        stimmt jetzt."""
         fb = self.fb
         W, H = fb.width, fb.height
         s = max(1, H // 360)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         accent = accent_for(syskey)
-        choice = 0   # 0 = normaler Core, 1 = RA-Core
+        choice = 1 if default_ra else 0   # 0 = normaler Core, 1 = RA-Core
         options = [t("core_choice_normal"), t("core_choice_ra")]
         while True:
             fb.clear(C_BG)
@@ -11224,7 +11243,14 @@ class Frontend:
                             always_ask_core = self.cats[self.cat_i][0] in (
                                 t("favorites_cat"), t("recent_cat"), t("continue_cat"))
                             if always_ask_core and ra_core:
-                                use_ra = self.draw_core_choice_screen(syskey, label)
+                                # Vorauswahl auf der zuletzt fuer GENAU
+                                # DIESES Spiel tatsaechlich verwendeten
+                                # Core-Variante (siehe Bugfix-Kommentar
+                                # in draw_core_choice_screen()) - gefragt
+                                # wird trotzdem weiterhin jedes Mal.
+                                default_ra = load_last_core_choice(label) is not None
+                                use_ra = self.draw_core_choice_screen(
+                                    syskey, label, default_ra=default_ra)
                                 if use_ra is None:
                                     # Siehe F11-Bugfix (gleicher Grund):
                                     # draw_core_choice_screen() zeichnet

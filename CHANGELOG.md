@@ -130,6 +130,32 @@ Verhaltensänderung im Normalbetrieb):
   (`TEXTCACHE ...`, nur bei aktivem `DRAGEND_PROFILE`).
 
 **Bugfixes:**
+- "Weiterspielen" und "Zuletzt gespielt" funktionierten nicht sauber
+  (Nutzer-Rückmeldung, zwei Ursachen gefunden und behoben):
+  - Die Liste war auf 15 Einträge gedeckelt - bei etwas aktiverer
+    Nutzung fielen ältere Spiele dadurch schon nach relativ kurzer Zeit
+    stillschweigend wieder heraus, ohne dass das irgendwo sichtbar
+    gewesen wäre. Jetzt 100 Einträge.
+  - Die Duplikat-Erkennung beim Einreihen verglich bisher NUR den
+    Anzeigenamen: zwei gleichnamige Spiele auf UNTERSCHIEDLICHEN
+    Systemen (z.B. "Sonic the Hedgehog" auf Mega Drive UND Master
+    System) galten dadurch fälschlich als dasselbe Spiel - startete man
+    das eine, verschwand der Eintrag des anderen ersatzlos aus der
+    Liste. Jetzt zählt zusätzlich das jeweilige System mit; nur
+    wirklich dasselbe Spiel auf demselben System wird noch nach oben
+    verschoben statt doppelt zu erscheinen.
+  - Zusätzlich (Nutzerwunsch: "richtig unterscheiden, welcher Core
+    geladen war"): der Core-Auswahlbildschirm, der beim Start aus
+    Weiterspielen/Zuletzt gespielt/Favoriten weiterhin für JEDES Spiel
+    erneut erscheint (bewusst keine stille Automatik, siehe
+    Kommentar in `draw_core_choice_screen()`), stand bisher unabhängig
+    von der Spielhistorie immer auf "normaler Core" - wer aus
+    Gewohnheit schnell bestätigte, landete dadurch leicht im falschen
+    Core, ohne dass RA-Fortschritt erfasst wurde. Die Vorauswahl
+    richtet sich jetzt danach, mit welchem Core genau dieses Spiel
+    zuletzt tatsächlich gestartet wurde - Bestätigen übernimmt dann
+    automatisch wieder den richtigen Core, eine bewusste Umentscheidung
+    bleibt weiterhin jederzeit möglich.
 - Nach "MiSTer-Menü öffnen" (F12) blieb man auf manchen Pad-Belegungen
   dauerhaft im echten MiSTer-OSD gefangen - selbst `start_frontend.sh`
   half dann nicht, sondern meldete nur "Frontend läuft bereits", weil
