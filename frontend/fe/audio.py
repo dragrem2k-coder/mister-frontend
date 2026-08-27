@@ -405,6 +405,35 @@ def play_sfx(name, music_playing=False):
 # BACKGROUND MUSIC (mpg123, extern - no own MP3 decoder needed)
 # ----------------------------------------------------------------------------
 
+def _proc_still_running(pid):
+    """True nur, wenn 'pid' noch tatsaechlich LAEUFT (nicht bloss noch
+    als Zombie in /proc sichtbar ist). Ein blosses os.path.exists()
+    auf "/proc/<pid>" reicht dafuer NICHT: ein bereits beendeter, aber
+    von seinem (neuen) Elternprozess noch nicht per wait() eingesammelter
+    Prozess (Zombie, Status 'Z') hat weiterhin einen /proc-Eintrag,
+    kann aber nie wieder etwas tun (insbesondere nicht mehr auf Audio
+    zugreifen) - genau der Fall fuer einen bereits verwaisten
+    mpg123-Prozess, dessen alte Frontend-Instanz nicht mehr existiert.
+    Wuerde man Zombies hier faelschlich als 'laeuft noch' werten, warten
+    wir unnoetig die volle Eskalationszeit ab, obwohl der Prozess
+    laengst tot ist."""
+    try:
+        with open("/proc/%d/stat" % pid, "rb") as f:
+            data = f.read()
+    except OSError:
+        return False
+    # Format: "pid (comm) state ...". Der Programmname in Klammern kann
+    # selbst Leerzeichen/Klammern enthalten, deshalb ab der LETZTEN
+    # schliessenden Klammer weitersuchen statt naiv nach Leerzeichen zu
+    # splitten.
+    close = data.rfind(b")")
+    if close == -1:
+        return True   # unerwartetes Format - sicherheitshalber "laeuft noch" annehmen
+    rest = data[close + 1:].split()
+    if not rest:
+        return True
+    return rest[0] != b"Z"
+
 def _kill_stray_mpg123():
     """BUGFIX (Nutzer-Rueckmeldung: "hab gerade das Frontend neu
     gestartet, ab und zu faengt die Musik dann an zu stottern, als ob
@@ -433,12 +462,29 @@ def _kill_stray_mpg123():
     treffen. Nicht-fatal: schlaegt der /proc-Zugriff aus irgendeinem
     Grund fehl, macht der Start ganz normal ohne diese Vorsichtsmass-
     nahme weiter (kein neues Absturzrisiko fuer ein reines
-    Aufraeum-Extra)."""
+    Aufraeum-Extra).
+
+    BUGFIX (Nutzer-Rueckmeldung: "eben nach einem normalen Neustart
+    vom Frontend stotterte die Musik wieder"): diese Funktion hat
+    bisher nur SIGTERM verschickt und ist SOFORT zurueckgekehrt, ohne
+    abzuwarten, ob der getroffene Prozess das Signal ueberhaupt schon
+    verarbeitet hat. __init__() startete direkt im Anschluss den
+    EIGENEN mpg123 - kurzes Ueberlappungsfenster zwischen dem noch
+    sterbenden Alt-Prozess und dem frisch gestarteten Neuen, beide
+    gleichzeitig auf derselben Audioausgabe -> genau das gemeldete
+    Stottern/"laeuft doppelt". Jetzt wird (gleiches Muster wie
+    _kill_proc() unten: terminate, dann warten, dann kill als
+    Rueckfall) bis zu ~1s auf das tatsaechliche Verschwinden aus /proc
+    gewartet; wer danach immer noch da ist, bekommt SIGKILL. Da es
+    sich um PIDs eines FREMDEN, bereits abgetrennten Prozesses
+    handelt (kein eigener Popen-Handle vorhanden), geht das nur per
+    /proc-Polling, nicht per Popen.wait()."""
     try:
         pids = [p for p in os.listdir("/proc") if p.isdigit()]
     except OSError:
         return
     my_pid = os.getpid()
+    victims = []
     for pid_s in pids:
         pid = int(pid_s)
         if pid == my_pid:
@@ -454,8 +500,27 @@ def _kill_stray_mpg123():
             os.kill(pid, signal.SIGTERM)
             LOG("MusicPlayer: verwaisten mpg123-Prozess (PID %d) beim "
                 "Start beendet" % pid)
+            victims.append(pid)
         except OSError:
             pass
+    if not victims:
+        return
+    for _ in range(20):   # bis zu 20 x 50ms = ~1s
+        victims = [pid for pid in victims if _proc_still_running(pid)]
+        if not victims:
+            return
+        time.sleep(0.05)
+    for pid in victims:
+        try:
+            os.kill(pid, signal.SIGKILL)
+            LOG("MusicPlayer: mpg123-Prozess (PID %d) reagierte nicht auf "
+                "SIGTERM - SIGKILL erzwungen" % pid)
+        except OSError:
+            pass
+    # Kurze Gnadenfrist, damit der Kernel/ALSA das Audio-Geraet auch
+    # tatsaechlich wieder freigibt, bevor gleich im Anschluss der
+    # eigene mpg123-Prozess darauf zugreift.
+    time.sleep(0.1)
 
 class MusicPlayer:
     """Plays MP3s from MUSIC_DIR in random order in the background.
@@ -478,6 +543,26 @@ class MusicPlayer:
         self.pos = 0
         self.proc = None
         self._track_started_at = None
+        # BUGFIX (Nutzer-Rueckmeldung: "wenn ich das Frontend beende
+        # spielt die Musik weiter waehrend ich im OSD bin"): mehrere
+        # Stellen (cycle_volume()/_apply_volume_async(), next_track(),
+        # cycle_source(), toggle()) stossen einen mpg123-Neustart
+        # bewusst in einem HINTERGRUND-Thread an (siehe deren
+        # Kommentare - noetig, damit ein haengender Netzwerk-Stream/
+        # eine langsame SFX-Neuerzeugung nicht die Eingabe blockiert).
+        # Wurde kurz vor dem Beenden noch Lautstaerke/Quelle/Titel
+        # geaendert, konnte so ein Thread NACH shutdown() (siehe unten)
+        # trotzdem noch einen frischen mpg123-Prozess starten - das
+        # Frontend selbst war zu dem Zeitpunkt schon zurueck im
+        # MiSTer-OSD und toetet diesen neuen, ihm unbekannten Prozess
+        # nie wieder. self._shutdown wird von shutdown() gesetzt und
+        # von _start_current() als aller-erstes (noch VOR dem
+        # eigentlichen Start, unter demselben _proc_lock) geprueft -
+        # einziger Ort, an dem tatsaechlich ein neuer mpg123-Prozess
+        # entsteht (siehe _start_current()), also der richtige
+        # Kontrollpunkt fuer ALLE der oben genannten Aufrufer auf
+        # einmal, ohne jeden einzeln aendern zu muessen.
+        self._shutdown = False
         # RLock (nicht Lock): tick() unten haelt die Sperre waehrend des
         # gesamten Durchlaufs (siehe dortiger Kommentar) und ruft dabei
         # selbst _start_current()/_stop_current() auf, die die Sperre
@@ -606,8 +691,16 @@ class MusicPlayer:
     def _start_current(self):
         """Startet die aktuelle Quelle (MP3/Radio). Lock + 'vorher
         alten Prozess beenden' -> nie zwei mpg123 gleichzeitig (siehe
-        _proc_lock-Kommentar im __init__)."""
+        _proc_lock-Kommentar im __init__).
+
+        BUGFIX: siehe self._shutdown-Kommentar im __init__ - ohne
+        diese Pruefung konnte ein zeitversetzt eintreffender
+        Hintergrund-Thread hier noch einen neuen mpg123-Prozess
+        starten, NACHDEM shutdown() den Player bereits als beendet
+        markiert hat."""
         with self._proc_lock:
+            if self._shutdown:
+                return
             self._kill_proc()
             self._start_current_impl()
 
@@ -843,6 +936,16 @@ class MusicPlayer:
             self.tick()
 
     def shutdown(self):
+        """BUGFIX (Nutzer-Rueckmeldung: "wenn ich das Frontend beende
+        spielt die Musik weiter waehrend ich im OSD bin") - siehe der
+        ausfuehrliche self._shutdown-Kommentar im __init__: die Sperre
+        MUSS gesetzt werden, BEVOR der laufende Prozess gestoppt wird,
+        sonst koennte ein zu diesem exakten Zeitpunkt bereits im Gange
+        befindlicher Hintergrund-Thread (Lautstaerke/Quelle/Titel
+        wurden gerade eben erst geaendert) den _proc_lock ausgerechnet
+        zwischen diesen beiden Zeilen bekommen und ungehindert einen
+        neuen Prozess starten."""
+        self._shutdown = True
         self._stop_current()
 
 

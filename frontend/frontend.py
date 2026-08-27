@@ -4033,6 +4033,30 @@ class Frontend:
         self.fb.flip()
         self.music = MusicPlayer()
 
+        # DIAGNOSE (Nutzer-Rueckmeldung: "habe nach dem Update immer
+        # noch das alte Zufalls-Zock-Bild") - im Code selbst konnte
+        # dafuer keine Ursache gefunden werden: der Festplatten-Cache
+        # in fe/art.py ist ueber Dateigroesse+Aenderungszeitpunkt der
+        # QUELLDATEI abgesichert (siehe _thumb_cache_key()) und wuerde
+        # bei einer tatsaechlich ausgetauschten Datei automatisch neu
+        # berechnen, nicht die alte Miniatur weiterverwenden. Deshalb
+        # der Verdacht: die Datei selbst kam beim manuellen Update
+        # (WinSCP-Kopie, siehe Frontend_Update.sh) gar nicht neu auf
+        # der SD-Karte an - z.B. weil "wot_logo/" als NEUER Unterordner
+        # beim Kopieren einzelner Dateien uebersehen wird. Diese
+        # Zeile schreibt bei JEDEM Start Groesse+Alter der tatsaechlich
+        # vorliegenden Datei ins Log - beim naechsten Auftreten liefert
+        # ein Blick in /tmp/frontend.log einen echten Beleg, ob die
+        # Datei auf der Karte wirklich (noch) die alte ist.
+        try:
+            _wot_st = os.stat(WOT_LOGO_FILE)
+            LOG("WOT_LOGO_FILE: %s (%d Bytes, zuletzt geaendert %s)" % (
+                WOT_LOGO_FILE, _wot_st.st_size,
+                time.strftime("%Y-%m-%d %H:%M:%S",
+                               time.localtime(_wot_st.st_mtime))))
+        except OSError as _e:
+            LOG("WOT_LOGO_FILE: nicht vorhanden (%s) - Fallback auf Text-Titel" % _e)
+
         # BUGFIX (KRITISCH - Nutzer-Rueckmeldung von echter Hardware:
         # Frontend startet, Bildschirm bleibt schwarz, Absturz laut Log
         # in build_ra_hunter_category(): "'Frontend' object has no

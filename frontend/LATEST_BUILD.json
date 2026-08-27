@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-12",
-  "summary": "Update-Neustart haengt nicht mehr an der Konsole fest"
+  "build_id": "2026-08-24-13",
+  "summary": "Musik stoppt jetzt zuverlaessig beim Beenden, kein Stottern mehr nach Neustart"
 }

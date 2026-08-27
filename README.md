@@ -989,10 +989,26 @@ Rückkehr zum Menü selbst wird davon nie beeinträchtigt oder verzögert.
   überspringt die Abfrage statt endlos zu warten) und lehnt ein
   erfasstes F9 grundsätzlich als Belegung ab. Tritt es trotzdem noch
   auf: `tail -60 /tmp/frontend.log` direkt danach teilen.
-- **Nach einem Datei-Update** (neue Version installiert): einfach
+- **Nach einem Datei-Update** (neue Version installiert): immer den
+  **kompletten** Ordner `frontend/` per WinSCP nach
+  `/media/fat/frontend/` kopieren (überschreiben lassen), nicht nur
+  einzelne bekannte Dateien wie `frontend.py` - neue Versionen bringen
+  gelegentlich neue Unterordner/Dateien mit (z.B. neues Artwork), die
+  bei einer Kopie "nur der geänderten Dateien" sonst leicht übersehen
+  werden und dann fälschlich alt bleiben. Danach einfach
   `/media/fat/Scripts/Frontend_Update.sh` ausführen (per SSH oder aus
   dem MiSTer-OSD unter Scripts) - beendet die alte Instanz sauber und
   startet automatisch neu.
+- **Altes Bild/Artwork erscheint trotz Update weiterhin** (z.B. das
+  Zufalls-Zock-Logo): der interne Bild-Cache ist über Dateigröße +
+  Änderungszeitpunkt der Quelldatei abgesichert und verwendet nach
+  einem echten Dateiaustausch nie eine alte Miniatur weiter - liegt
+  eine alte Version trotzdem weiter vor, wurde die neue Datei beim
+  Kopieren höchstwahrscheinlich gar nicht auf die SD-Karte übertragen
+  (siehe Punkt oben). Zum Nachprüfen: auf der SD-Karte per WinSCP das
+  Änderungsdatum/die Dateigröße der betroffenen Datei ansehen, oder
+  `/tmp/frontend.log` nach dem nächsten Start durchsuchen - dort steht
+  bei jedem Start Größe und Alter der tatsächlich geladenen Datei.
 - Frontend startet nicht / reagiert nicht: Prüfen, ob schon eine
   Instanz läuft: `cat /tmp/frontend.lock`. Beenden mit
   `kill $(cat /tmp/frontend.lock)`, dann `rm -f /tmp/frontend.lock`.

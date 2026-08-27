@@ -128,8 +128,51 @@ Verhaltensänderung im Normalbetrieb):
   (`THUMB_CACHE ...`).
 - Textcache-Treffer/-Fehler/-Verdrängungen jetzt im Log sichtbar
   (`TEXTCACHE ...`, nur bei aktivem `DRAGEND_PROFILE`).
+- Größe und Änderungsdatum des Zufalls-Zock-Logos (`wot_logo/
+  zufalls_zock.art`) jetzt bei jedem Start im Log sichtbar (Nutzer-
+  Rückmeldung: "habe nach dem Update immer noch das alte Bild"). Im
+  Code selbst ließ sich keine Ursache finden - der Bild-Cache ist über
+  Dateigröße+Änderungszeitpunkt der Quelldatei abgesichert und würde
+  bei einer tatsächlich ausgetauschten Datei nie eine alte Miniatur
+  weiterverwenden (im ausgelieferten Paket liegt die neue Datei auch
+  nachweislich korrekt vor). Naheliegendster Verdacht: die Datei kam
+  beim manuellen Update (WinSCP-Kopie einzelner Dateien statt des
+  kompletten Ordners) gar nicht neu auf der SD-Karte an, da
+  `wot_logo/` als neuer Unterordner dabei leicht übersehen wird (siehe
+  README, Abschnitt Fehlerbehebung). Dieser Log-Eintrag liefert beim
+  nächsten Auftreten einen echten Beleg dafür, ohne dass ich es selbst
+  auf echter Hardware nachvollziehen könnte.
 
 **Bugfixes:**
+- Musik spielte nach dem Beenden über den eigenen Beenden-Dialog
+  manchmal im Hintergrund weiter, hörbar auch noch zurück im MiSTer-
+  OSD (Nutzer-Rückmeldung: "wenn ich das Frontend beende spielt die
+  Musik weiter während ich im OSD bin"). Ursache: Lautstärke-,
+  Quellen- oder Titelwechsel stoßen den eigentlichen mpg123-Neustart
+  bewusst in einem Hintergrund-Thread an (damit ein hängender
+  Netzwerk-Stream/eine langsame Soundeffekt-Neuerzeugung nicht die
+  Eingabe blockiert) - wurde kurz vor dem Beenden noch etwas davon
+  bedient, konnte dieser Thread NACH dem eigentlichen `shutdown()`
+  noch einen frischen mpg123-Prozess starten, den zu dem Zeitpunkt
+  niemand mehr kennt oder je wieder beendet. `shutdown()` markiert den
+  Player jetzt zuerst als beendet; jeder Versuch, danach noch mpg123
+  zu starten (egal aus welchem der genannten Hintergrund-Threads),
+  wird an der einzigen tatsächlichen Startstelle abgefangen und läuft
+  ins Leere. Mit einer gezielten Race-Simulation geprüft (Hintergrund-
+  Thread trifft absichtlich unmittelbar nach `shutdown()` ein).
+- Die Musik stotterte nach einem ganz normalen Neustart des Frontends
+  (nicht nur nach einem Update) manchmal weiter wie "doppelt"
+  (Nutzer-Rückmeldung) - der zuvor eingeführte Aufräum-Schritt für
+  verwaiste mpg123-Prozesse (siehe unten) schickte bisher nur SIGTERM
+  und kehrte sofort zurück, ohne abzuwarten, ob der Alt-Prozess das
+  Signal überhaupt schon verarbeitet hatte - kurzes Überlappungs-
+  fenster zwischen sterbendem Alt-Prozess und frisch gestartetem
+  neuen. Wartet jetzt bis zu ~1s auf das tatsächliche Prozessende
+  (erkennt dabei auch einen "Zombie"-Zwischenzustand korrekt als
+  bereits beendet, statt unnötig die volle Wartezeit auszureizen) und
+  erzwingt danach nötigenfalls SIGKILL. Mit zwei gezielten Tests
+  geprüft (normaler Prozess und ein absichtlich SIGTERM-resistenter,
+  um die SIGKILL-Eskalation selbst zu überprüfen).
 - Nach einem Update blieb das Frontend ganz selten (Nutzer-
   Rückmeldung: "passiert nicht oft aber ab und zu") an der rohen
   Linux-Konsole/Login-Aufforderung hängen, statt zu starten - der
