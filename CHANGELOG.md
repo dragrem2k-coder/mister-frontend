@@ -130,6 +130,29 @@ Verhaltensänderung im Normalbetrieb):
   (`TEXTCACHE ...`, nur bei aktivem `DRAGEND_PROFILE`).
 
 **Bugfixes:**
+- Geheime Codes/Erfolgs-Popups überlagerten sich hörbar mit sich selbst
+  und mit der laufenden Musik ("Sound kommt, aber MP3/Radio pausiert
+  nicht dabei, es kommt zur Überlagerung und fängt das Stottern an" -
+  Nutzer-Rückmeldung). Zwei Ursachen, beide in `_play_ducked_sfx()`
+  bzw. an dessen Aufrufstellen:
+  - Bei einer Erst-Freischaltung (neuer Geheimcode/Erfolg) lief
+    zusätzlich zum neuen, sauber gedämpften `_play_ducked_sfx(
+    "achievement")` noch ein alter, direkter `play_sfx("achievement",
+    ...)`-Aufruf mit - ein reines Überbleibsel aus der Zeit vor der
+    Dämpfungs-Funktion, das denselben Ton kommentarlos ein zweites Mal
+    (unabhängig von ihr) abspielte. Entfernt.
+  - Löst ein Geheimcode ZWEI Töne kurz hintereinander aus (den
+    allgemeinen Erfolgston direkt gefolgt vom eigenen Theme-/Raum-/
+    Chiptune-Ton, z.B. bei einem neuen geheimen Theme), lief jeder
+    Aufruf bisher in einem komplett eigenständigen Hintergrund-Thread -
+    beide Töne konnten dadurch teilweise GLEICHZEITIG auf derselben
+    Audioausgabe landen (das eigentliche Stottern), und der zuerst
+    fertige Thread startete die Musik bereits wieder, während der
+    zweite Ton noch lief. Jetzt über einen Zähler statt eines einzelnen
+    Ein/Aus-Flags koordiniert: nur der erste einer solchen "Salve" hält
+    die Musik an, nur der letzte startet sie wieder, und die
+    eigentlichen Sound-Dateien spielen dabei garantiert sauber
+    nacheinander statt sich zu überlagern.
 - "Weiterspielen" und "Zuletzt gespielt" funktionierten nicht sauber
   (Nutzer-Rückmeldung, zwei Ursachen gefunden und behoben):
   - Die Liste war auf 15 Einträge gedeckelt - bei etwas aktiverer

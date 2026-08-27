@@ -8617,41 +8617,74 @@ class Frontend:
         verstummen").
 
         Laeuft komplett in einem Hintergrund-Thread (nicht-blockierend,
-        gleiches Prinzip wie cycle_source())."""
+        gleiches Prinzip wie cycle_source()).
+
+        BUGFIX (Nutzer-Rueckmeldung: "Sound kommt beim Code, aber MP3/
+        Radio pausiert nicht dabei, es kommt zur Ueberlagerung und faengt
+        das Stottern an"): bei einer Erst-Freischaltung ruft
+        _on_secret_triggered() diese Funktion oft ZWEIMAL kurz
+        hintereinander auf (allgemeiner Erfolgs-Ton, direkt gefolgt vom
+        eigenen Theme-/Raum-/Chiptune-Ton). Jeder Aufruf startete bisher
+        einen komplett eigenstaendigen Thread, der unabhaengig von den
+        anderen die Musik anhielt/neu startete und seine eigene mpg123/
+        aplay-Instanz startete - zwei Aufrufe kurz hintereinander liefen
+        dadurch teilweise GLEICHZEITIG (zwei Sound-Dateien gleichzeitig
+        auf derselben Audioausgabe), und der zuerst fertige Aufruf
+        startete die Musik bereits wieder, waehrend der zweite Sound noch
+        lief. Jetzt ueber music._jingle_count_lock/_jingle_depth
+        koordiniert (siehe Kommentar in fe/audio.py, MusicPlayer.
+        __init__): nur der ERSTE gleichzeitig aktive Aufruf haelt die
+        Musik an, nur der LETZTE startet sie wieder, und
+        music._jingle_play_lock sorgt dafuer, dass die Sound-Dateien
+        selbst bei mehreren nahezu gleichzeitigen Aufrufen strikt
+        NACHEINANDER abgespielt werden statt sich zu ueberlagern."""
         mp3_path = os.path.join(SFX_DIR, name + ".mp3")
         wav_path = os.path.join(SFX_DIR, name + ".wav")
         use_mp3 = os.path.exists(mp3_path) and os.path.exists(MPG123_BIN)
         if not use_mp3 and not os.path.exists(wav_path):
             return   # kein Sound fuer diesen Namen hinterlegt
         music = self.music
-        was_playing = music._proc_alive() and not music.paused_for_core
 
         def _worker():
-            # paused_for_jingle UEBER die gesamte Dauer gesetzt (nicht
-            # erst kurz vor dem eigentlichen Abspielen) - tick() laeuft
-            # staendig im Haupt-Loop und wuerde sonst genau in der
-            # Luecke zwischen dem Stoppen der Musik und dem Start
-            # dieses Sounds (oder danach, vor dem eigenen Wieder-
-            # Anspringen) selbst versuchen, die Musik neu zu starten.
-            music.paused_for_jingle = True
+            with music._jingle_count_lock:
+                first = music._jingle_depth == 0
+                if first:
+                    music._jingle_was_playing = (music._proc_alive()
+                                                  and not music.paused_for_core)
+                music._jingle_depth += 1
+                # paused_for_jingle UEBER die gesamte Dauer gesetzt (nicht
+                # erst kurz vor dem eigentlichen Abspielen) - tick() laeuft
+                # staendig im Haupt-Loop und wuerde sonst genau in einer
+                # Luecke selbst versuchen, die Musik neu zu starten.
+                music.paused_for_jingle = True
+            if first and music._jingle_was_playing:
+                music._stop_current()
             try:
-                if was_playing:
-                    music._stop_current()
-                try:
-                    if use_mp3:
-                        cmd = [MPG123_BIN, "-q", "-f", _mpg_scale(), mp3_path]
-                    else:
-                        cmd = ["aplay", "-q", wav_path]
-                    proc = subprocess.Popen(
-                        cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                        stdin=subprocess.DEVNULL)
-                    proc.wait()
-                except OSError:
-                    pass
-                if was_playing and music.enabled and not music.paused_for_core:
-                    music._start_current()
+                # Serialisiert NUR das eigentliche Abspielen - zwei
+                # nahezu gleichzeitige ducked-Sounds spielen dadurch
+                # sauber nacheinander, ohne dass die Musik zwischendurch
+                # (faelschlich) wieder anspringt.
+                with music._jingle_play_lock:
+                    try:
+                        if use_mp3:
+                            cmd = [MPG123_BIN, "-q", "-f", _mpg_scale(), mp3_path]
+                        else:
+                            cmd = ["aplay", "-q", wav_path]
+                        proc = subprocess.Popen(
+                            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                            stdin=subprocess.DEVNULL)
+                        proc.wait()
+                    except OSError:
+                        pass
             finally:
-                music.paused_for_jingle = False
+                with music._jingle_count_lock:
+                    music._jingle_depth -= 1
+                    last = music._jingle_depth == 0
+                    if last:
+                        music.paused_for_jingle = False
+                if last and music._jingle_was_playing and music.enabled \
+                        and not music.paused_for_core:
+                    music._start_current()
 
         threading.Thread(target=_worker, daemon=True).start()
 
@@ -8669,7 +8702,12 @@ class Frontend:
         die man beliebig oft eingeben kann. Die "neu freigeschaltet"-
         Meldung erscheint dagegen nur einmalig (is_new)."""
         if is_new:
-            play_sfx("achievement", music_playing=self.music._proc_alive())
+            # BUGFIX (siehe Kommentar in _play_ducked_sfx()): frueher
+            # zusaetzlich ein direkter play_sfx("achievement", ...)-Aufruf
+            # hier - reines Ueberbleibsel aus der Zeit VOR
+            # _play_ducked_sfx() (das den Ton bereits garantiert hoerbar
+            # UND sauber gedaempft abspielt). Die beiden liefen parallel
+            # und ueberlagerten sich hoerbar mit sich selbst.
             self._play_ducked_sfx("achievement")
             self.draw(message=t("secret_unlocked", t("secret_name_" + secret_id)))
         if secret_id == "secret_theme_1":
@@ -8762,7 +8800,10 @@ class Frontend:
         newly = check_new_achievements()
         if not newly:
             return None
-        play_sfx("achievement", music_playing=self.music._proc_alive())
+        # BUGFIX (siehe Kommentar in _play_ducked_sfx()): kein
+        # zusaetzlicher play_sfx(...)-Aufruf mehr hier - lief bisher
+        # parallel zu _play_ducked_sfx() und ueberlagerte sich damit
+        # hoerbar selbst.
         self._play_ducked_sfx("achievement")
         if len(newly) == 1:
             return t("achievement_popup", t(newly[0]))

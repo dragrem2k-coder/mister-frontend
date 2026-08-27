@@ -457,6 +457,32 @@ class MusicPlayer:
                                           # GENAU dasselbe Prinzip wie paused_for_core,
                                           # nur ein eigenes Flag, um mit einem gerade
                                           # laufenden Core nicht zu kollidieren.
+        # BUGFIX (Nutzer-Rueckmeldung: "Sound kommt beim Code, aber MP3/
+        # Radio pausiert nicht dabei, es kommt zur Ueberlagerung und
+        # faengt das Stottern an"): _play_ducked_sfx() in frontend.py
+        # wird bei einer Erst-Freischaltung mehrfach HINTEREINANDER fuer
+        # DENSELBEN Moment aufgerufen (allgemeiner "Erfolg"-Ton PLUS der
+        # eigene Theme-/Raum-/Chiptune-Ton) - jeder Aufruf startete
+        # bisher einen komplett eigenstaendigen Hintergrund-Thread, der
+        # unabhaengig von den anderen die Musik anhielt/neu startete UND
+        # seine eigene mpg123/aplay-Instanz startete. Zwei solche Threads
+        # kurz hintereinander liefen dadurch TEILWEISE GLEICHZEITIG:
+        # zwei Sound-Dateien gleichzeitig auf derselben Audioausgabe
+        # (das eigentliche "Stottern"), UND der zuerst fertige Thread
+        # setzte "paused_for_jingle" schon wieder auf False und startete
+        # die Musik neu, WAEHREND der zweite Sound noch lief. Jetzt statt
+        # eines einzelnen Bool-Flags ein Zaehler (_jingle_depth, per
+        # _jingle_count_lock geschuetzt): nur der ERSTE gleichzeitig
+        # aktive Aufruf haelt die Musik an (und merkt sich in
+        # _jingle_was_playing, ob sie lief), nur der LETZTE (Zaehler
+        # wieder auf 0) startet sie wieder. _jingle_play_lock sorgt
+        # zusaetzlich dafuer, dass die eigentlichen Sound-Dateien trotz
+        # gleichzeitig eintreffender Aufrufe strikt NACHEINANDER
+        # abgespielt werden statt einander zu ueberlagern.
+        self._jingle_depth = 0
+        self._jingle_was_playing = False
+        self._jingle_count_lock = threading.Lock()
+        self._jingle_play_lock = threading.Lock()
         self._rescan()
 
     @staticmethod
