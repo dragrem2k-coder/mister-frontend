@@ -130,6 +130,33 @@ Verhaltensänderung im Normalbetrieb):
   (`TEXTCACHE ...`, nur bei aktivem `DRAGEND_PROFILE`).
 
 **Bugfixes:**
+- Boxart-Download (`mister_boxart.py`) überarbeitet (Nutzer-Vorlage:
+  ein selbst geprüfter, vertrauenswürdiger Mirror mit bereits fertigen
+  .art-Dateien - übernommen, aber bewusst nicht 1:1, drei Korrekturen
+  gegenüber der Vorlage):
+  - Der Mirror läuft jetzt als schneller Hauptweg (kein Dekodieren
+    mehr auf dem MiSTer selbst nötig), mit automatischem Rückfall auf
+    den bisherigen Weg (thumbnails.libretro.com, Fallback GitHub) für
+    alles, was der Mirror gerade nicht liefert - kein Alles-oder-
+    nichts, falls der Mirror mal nicht erreichbar ist.
+  - Regions-Priorität bewusst NICHT auf die in der Vorlage verwendete
+    alte Reihenfolge zurückgestellt, sondern bei der bereits vorher
+    aus echter Nutzer-Rückmeldung korrigierten Reihenfolge (USA/World
+    zuerst) belassen - sonst wäre der schon behobene Bug (Europa-Cover
+    für USA-Sammlungen) wieder aufgetaucht.
+  - Zusätzlich ein tatsächlicher, bisher unbemerkter Bug gefunden und
+    behoben: Game-Gear-ROMs (`.gg`) wurden bei der Cover-Suche gegen
+    die Master-System-Datenbank abgeglichen statt gegen die eigene
+    Game-Gear-Datenbank - praktisch nie ein Treffer. ROMs und fertige
+    .art-Dateien bleiben weiter zusammen im gemeinsamen "SMS"-Ordner
+    (so wie das Frontend selbst danach sucht, siehe `fe/systems.py`),
+    nur die Cover-QUELLE wird jetzt intern je nach Dateiendung
+    getrennt nachgeschlagen.
+  - Die zusätzlichen Systeme aus der Vorlage (u.a. Atari-Familie, C64,
+    Amiga, ScummVM) wurden bewusst NICHT übernommen: das Frontend
+    zeigt aktuell nur die 13 Systeme aus `GAME_SYSTEMS` als eigene
+    Kategorie an, für alles Weitere gäbe es nirgends eine Anzeige für
+    die geladenen Cover - wäre nur unnötig belegter SD-Kartenplatz.
 - Geheime Codes/Erfolgs-Popups überlagerten sich hörbar mit sich selbst
   und mit der laufenden Musik ("Sound kommt, aber MP3/Radio pausiert
   nicht dabei, es kommt zur Überlagerung und fängt das Stottern an" -

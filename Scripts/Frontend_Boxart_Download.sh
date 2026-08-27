@@ -1,8 +1,13 @@
 #!/bin/bash
 # ============================================================
 # Boxart-Download fuer das MiSTer-Frontend
-# Laedt Cover von thumbnails.libretro.com und erzeugt
-# .art-Dateien unter /media/fat/frontend/art/
+# Erzeugt .art-Dateien unter /media/fat/frontend/art/ (bzw.
+# art_hd/ fuer HD). Seit mister_boxart.py v4.0: zwei Quellen
+# automatisch kombiniert - zuerst ein schneller Mirror mit
+# bereits fertigen .art-Dateien (kein Dekodieren auf dem MiSTer
+# noetig), fuer alles, was der Mirror nicht liefert, automatisch
+# ein Rueckfall auf den bisherigen Weg (thumbnails.libretro.com,
+# Fallback GitHub). Details siehe Kopfkommentar in mister_boxart.py.
 #
 # Startbar aus dem MiSTer-OSD (Scripts), aus der Scripts-
 # Kategorie des Frontends oder per SSH.
@@ -18,6 +23,11 @@
 # "boxart_download.sh" - jetzt umbenannt, siehe Kopfkommentar in
 # Frontend_Install.sh fuer die Begruendung. frontend.py ruft sie
 # passend dazu jetzt ebenfalls unter dem neuen Namen auf.
+#
+# Bleibt bewusst der EINZIGE Boxart-Launcher (sd/hd per Argument
+# oder Menue) statt zwei getrennter Dateien - vermeidet die
+# Skript-Namens-Unuebersichtlichkeit, die an anderer Stelle in
+# diesem Projekt gerade erst aufgeraeumt wurde.
 # ============================================================
 
 PROFIL="$1"
