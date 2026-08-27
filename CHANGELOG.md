@@ -128,22 +128,48 @@ Verhaltensänderung im Normalbetrieb):
   (`THUMB_CACHE ...`).
 - Textcache-Treffer/-Fehler/-Verdrängungen jetzt im Log sichtbar
   (`TEXTCACHE ...`, nur bei aktivem `DRAGEND_PROFILE`).
-- Größe und Änderungsdatum des Zufalls-Zock-Logos (`wot_logo/
-  zufalls_zock.art`) jetzt bei jedem Start im Log sichtbar (Nutzer-
-  Rückmeldung: "habe nach dem Update immer noch das alte Bild"). Im
-  Code selbst ließ sich keine Ursache finden - der Bild-Cache ist über
-  Dateigröße+Änderungszeitpunkt der Quelldatei abgesichert und würde
-  bei einer tatsächlich ausgetauschten Datei nie eine alte Miniatur
-  weiterverwenden (im ausgelieferten Paket liegt die neue Datei auch
-  nachweislich korrekt vor). Naheliegendster Verdacht: die Datei kam
-  beim manuellen Update (WinSCP-Kopie einzelner Dateien statt des
-  kompletten Ordners) gar nicht neu auf der SD-Karte an, da
-  `wot_logo/` als neuer Unterordner dabei leicht übersehen wird (siehe
-  README, Abschnitt Fehlerbehebung). Dieser Log-Eintrag liefert beim
-  nächsten Auftreten einen echten Beleg dafür, ohne dass ich es selbst
-  auf echter Hardware nachvollziehen könnte.
+- Größe und Änderungsdatum von `sysart/WOT.art` (Zufalls-Zock-Vorschau
+  in der Boxart) jetzt bei jedem Start im Log sichtbar.
+- Start-Dauer bis das Kategorien-Menü zum ersten Mal bereit ist
+  (Framebuffer/Eingaben öffnen, RA-Abruf anstoßen, Spieleliste
+  einlesen) jetzt einmalig pro Start im Log sichtbar (Nutzerfrage: "ob
+  man den Bootvorgang noch etwas beschleunigen könnte") - bisher gab
+  es dafür keine Messung auf echter Hardware, jede weitere
+  Optimierung wäre ohne diese Zahl nur Raten gewesen.
+
+**KORREKTUR** (Nutzer-Rückmeldung: "das Bild für Zufalls-Zock muss in
+den Ordner sysart, du hast einen eigenen wot_logo-Ordner dafür
+erstellt, das war nicht richtig"): der vorherige Build hatte für das
+neue Zufalls-Zock-Bild fälschlich einen komplett neuen, eigenen
+Mechanismus samt eigenem `wot_logo/`-Ordner eingeführt (ein
+zusätzliches Logo-Bild oben im Zufalls-Zock-Bildschirm selbst). Der
+eigentliche, schon lange vor dieser Session bestehende Ort für dieses
+Bild ist aber `sysart/WOT.art` - darüber läuft die kleine Vorschau
+links neben der Kategorie "Zufalls-Zock" im Kategorien-Hauptmenü, auf
+die sich der ursprüngliche Nutzerwunsch ("das alte Bild in der Boxart
+neben der Kategorie ZUFALLS-ZOCK austauschen") die ganze Zeit bezog.
+Diese Datei wurde beim vorherigen Versuch nie angefasst - das erklärt
+auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
+`wot_logo/` komplett entfernt, das neue Bild liegt jetzt korrekt unter
+`sysart/WOT.art`, der Zufalls-Zock-Bildschirm selbst zeigt wieder nur
+den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- F12 (echtes MiSTer-OSD öffnen) sprang manchmal sofort wieder zurück
+  ins Frontend, ohne dass der Nutzer irgendetwas gedrückt hatte
+  (Nutzerfrage: "ist das normal?" - war es nicht). Ursache: `open_osd()`
+  injiziert selbst ein F12-Tastenevent, damit MiSTer tatsächlich in
+  sein eigenes OSD wechselt - das passiert auf derselben Geräte-
+  verbindung, von der dieselbe Eingabe-Verwaltung direkt im Anschluss
+  auch wieder liest. Das selbst erzeugte Event landete dadurch sofort
+  wieder in der eigenen Lesewarteschlange, und weil F12 selbst bewusst
+  auch als Rückkehr-Taste zählt (Sicherheitsnetz gegen dauerhaftes
+  Hängenbleiben im OSD, siehe weiter oben), erfüllte es damit
+  augenblicklich die eigene Abbruchbedingung. Jetzt wird die
+  Eingabe-Warteschlange direkt nach dem Injizieren einmal geleert,
+  bevor auf eine tatsächliche Rückkehr-Eingabe gewartet wird - eine
+  echte, spätere Rückkehr-Taste bleibt davon unberührt. Mit einer
+  gezielten Simulation der Selbst-Rückkopplung geprüft.
 - Musik spielte nach dem Beenden über den eigenen Beenden-Dialog
   manchmal im Hintergrund weiter, hörbar auch noch zurück im MiSTer-
   OSD (Nutzer-Rückmeldung: "wenn ich das Frontend beende spielt die

@@ -3415,17 +3415,6 @@ from fe.single_instance import LOCKFILE, _pid_alive, acquire_single_instance, re
 BASE        = "/media/fat"
 SCRIPTS_DIR = "/media/fat/Scripts"
 
-# NEUES FEATURE (Nutzerwunsch: eigenes "Zufalls-Zock"-Logo statt nur
-# des reinen Textes) - mitgeliefertes .art-Bild, kein Nutzer-Toggle
-# wie beim Boot-Logo (siehe DRAGEND_LOGO_FILE), da es sich speziell
-# auf DIESES eine Feature bezieht, nicht allgemein austauschbar sein
-# muss. Faellt automatisch auf den reinen Text-Titel (t("wot_title"))
-# zurueck, falls die Datei fehlt - siehe draw_wot_screen(). Neuer
-# Dateiname nach der Umbenennung: solange kein zufalls_zock.art
-# vorliegt, erscheint automatisch der Text-Titel "Zufalls-Zock".
-WOT_LOGO_FILE = "/media/fat/frontend/wot_logo/zufalls_zock.art"
-
-
 # --- Stream-Overlay (optional, siehe stream_server.py) -----------------
 STREAM_ENABLED_FILE = "/media/fat/frontend/stream_enabled"
 STREAM_CONFIG_FILE  = "/media/fat/frontend/stream_config.json"
@@ -4034,28 +4023,24 @@ class Frontend:
         self.music = MusicPlayer()
 
         # DIAGNOSE (Nutzer-Rueckmeldung: "habe nach dem Update immer
-        # noch das alte Zufalls-Zock-Bild") - im Code selbst konnte
-        # dafuer keine Ursache gefunden werden: der Festplatten-Cache
-        # in fe/art.py ist ueber Dateigroesse+Aenderungszeitpunkt der
-        # QUELLDATEI abgesichert (siehe _thumb_cache_key()) und wuerde
-        # bei einer tatsaechlich ausgetauschten Datei automatisch neu
-        # berechnen, nicht die alte Miniatur weiterverwenden. Deshalb
-        # der Verdacht: die Datei selbst kam beim manuellen Update
-        # (WinSCP-Kopie, siehe Frontend_Update.sh) gar nicht neu auf
-        # der SD-Karte an - z.B. weil "wot_logo/" als NEUER Unterordner
-        # beim Kopieren einzelner Dateien uebersehen wird. Diese
-        # Zeile schreibt bei JEDEM Start Groesse+Alter der tatsaechlich
-        # vorliegenden Datei ins Log - beim naechsten Auftreten liefert
-        # ein Blick in /tmp/frontend.log einen echten Beleg, ob die
-        # Datei auf der Karte wirklich (noch) die alte ist.
+        # noch das alte Zufalls-Zock-Bild") - inzwischen als Ursache
+        # identifiziert und behoben (siehe Korrektur-Kommentar in
+        # _draw_wot_title()): das Bild wurde bisher an der FALSCHEN
+        # Stelle ausgetauscht (ein eigens dafuer angelegter, aber
+        # falscher wot_logo/-Ordner) - die tatsaechlich angezeigte
+        # Datei (SYSART_BASE/WOT.art, ueber den bereits VORHER
+        # bestehenden Sysart-Mechanismus) wurde dabei nie angefasst.
+        # Trotzdem bei jedem Start geloggt, damit ein kuenftiger
+        # Austausch immer nachvollziehbar bleibt.
         try:
-            _wot_st = os.stat(WOT_LOGO_FILE)
-            LOG("WOT_LOGO_FILE: %s (%d Bytes, zuletzt geaendert %s)" % (
-                WOT_LOGO_FILE, _wot_st.st_size,
+            _wot_st = os.stat(os.path.join(SYSART_BASE, "WOT.art"))
+            LOG("SYSART WOT.art: %d Bytes, zuletzt geaendert %s" % (
+                _wot_st.st_size,
                 time.strftime("%Y-%m-%d %H:%M:%S",
                                time.localtime(_wot_st.st_mtime))))
         except OSError as _e:
-            LOG("WOT_LOGO_FILE: nicht vorhanden (%s) - Fallback auf Text-Titel" % _e)
+            LOG("SYSART WOT.art: nicht vorhanden (%s) - Platzhalter in der "
+                "Boxart-Vorschau" % _e)
 
         # BUGFIX (KRITISCH - Nutzer-Rueckmeldung von echter Hardware:
         # Frontend startet, Bildschirm bleibt schwarz, Absturz laut Log
@@ -8004,20 +7989,24 @@ class Frontend:
                 return None   # Abbruch - Kategorie wird NICHT betreten
 
     def _draw_wot_title(self, fb, ox, oy, text_w, s):
-        """Zeichnet den 'Zufalls-Zock'-Titel - als Logo-Bild, falls
-        WOT_LOGO_FILE vorhanden ist (Nutzerwunsch: eigenes Artwork
-        statt nur des reinen Textes), sonst automatisch der bisherige
-        Text-Titel als Rueckfall. In den gleichen Hoehen-Rahmen
-        eingepasst (max. 55*s hoch), den der reine Text vorher belegt
-        hat (games_top = oy + 70*s bleibt dadurch fuer BEIDE Faelle
-        unveraendert - kein Eingriff in die Zeilen-Positionierung
-        weiter unten noetig)."""
-        max_h = 55 * s
-        art = ART.get_scaled(WOT_LOGO_FILE, text_w, max_h)
-        if art:
-            lw, lh, pix = art
-            self.blit(ox, oy, lw, lh, pix)
-            return
+        """Zeichnet den 'Zufalls-Zock'-Titel als Text.
+
+        KORRIGIERT (Nutzer-Rueckmeldung: "das Bild fuer Zufalls-Zock
+        muss in den Ordner sysart. Du hast einen eigenen wot_logo-
+        Ordner dafuer erstellt, das war nicht richtig"): dieser
+        Bildschirm hatte urspruenglich NIE eigenes Bild-Artwork - der
+        Nutzerwunsch "das alte Bild in der Boxart neben der Kategorie
+        ZUFALLS-ZOCK austauschen" bezog sich die ganze Zeit auf die
+        kleine Vorschau links im Kategorien-Hauptmenue (siehe
+        _draw_cat_artbox()), die bereits VOR dieser Session ueber den
+        etablierten Sysart-Mechanismus lief (SYSART_BASE/WOT.art,
+        siehe _category_art_key() in fe/art.py). Hier wurde
+        faelschlich ein KOMPLETT NEUER, eigener Mechanismus samt
+        eigenem wot_logo/-Ordner fuer eine andere Stelle (dieser
+        Bildschirm hier) eingefuehrt - der eigentliche Ort, an dem der
+        Nutzer das alte Bild sah, blieb dadurch unveraendert, das neue
+        Bild landete bisher an der falschen Stelle. Jetzt entfernt;
+        das neue Bild liegt korrekt unter SYSART_BASE/WOT.art."""
         fb.text(ox, oy, t("wot_title"),
                 self._fit_scale(t("wot_title"), text_w, s + 1), C_TITLE, C_BG)
 
@@ -10139,6 +10128,27 @@ class Frontend:
         self.inp.grab(False)
         time.sleep(0.2)
         self.inp.inject(KEY_F12)
+        # BUGFIX (Nutzer-Rueckmeldung: "die F12-Taste um ins OSD zu
+        # kommen springt jetzt sofort wieder ins Frontend, ist das
+        # normal?" - war es nicht, echter Bug): inject() schreibt das
+        # F12-Tastenevent auf DIESELBE Geraeteverbindung (O_RDWR), von
+        # der dieselbe InputManager-Instanz gleich darunter auch wieder
+        # LIEST - das selbst erzeugte Event landet dadurch (Grab ist ja
+        # bewusst geloest, siehe oben) sofort auch in unserer EIGENEN
+        # Lesewarteschlange zurueck. "osd" (F12) zaehlt bewusst als
+        # eine von mehreren Rueckkehr-Aktionen (siehe Kommentar oben,
+        # frueherer Fix gegen dauerhaftes Haengenbleiben im OSD) - ohne
+        # dieses flush() erfuellte das selbst injizierte Event diese
+        # Bedingung sofort, noch bevor der Nutzer ueberhaupt reagieren
+        # konnte: die Schleife unten brach augenblicklich wieder ab,
+        # als haette der Nutzer selbst schon ein zweites Mal gedrueckt.
+        # Kurze Wartezeit, damit das injizierte Event sicher in der
+        # Warteschlange angekommen ist, dann verwerfen (flush()) - eine
+        # ECHTE, spaeter eintreffende Rueckkehr-Eingabe des Nutzers ist
+        # davon nicht betroffen (mit einem gezielten Test simuliert und
+        # geprueft, siehe /tmp/diag_f12_bounce.py).
+        time.sleep(0.05)
+        self.inp.flush()
         LOG("open_osd: F12 injiziert, warte auf Rueckkehr-Aktion "
             "(back_fe/exit/back/osd)")
         RETURN_ACTIONS = ("back_fe", "exit", "back", "osd")
@@ -11781,8 +11791,19 @@ if __name__ == "__main__":
         print("  kill %s ; rm -f %s" % (old_pid, LOCKFILE))
         sys.exit(0)
     print("Keine andere Instanz aktiv - starte Framebuffer/Eingaben ...")
+    # DIAGNOSE (Nutzerfrage: "koennte man den Bootvorgang noch etwas
+    # beschleunigen?") - bisher gab es keine Messung, WIE LANGE der
+    # eigentliche Start (Framebuffer/Eingaben oeffnen, RA-Abruf anstossen,
+    # Spieleliste einlesen - alles, was in Frontend() passiert, BEVOR
+    # das Kategorien-Menue zum ersten Mal gezeichnet wird) auf echter
+    # Hardware tatsaechlich dauert - jede weitere Optimierung waere ohne
+    # diese Zahl nur Raten. Jetzt einmalig pro Start geloggt.
+    _t_boot = time.monotonic()
     try:
-        Frontend().run()
+        _fe = Frontend()
+        LOG("Start-Dauer bis Kategorien-Menue bereit: %.2fs"
+            % (time.monotonic() - _t_boot))
+        _fe.run()
     except Exception:
         LOG("CRASH:\n" + traceback.format_exc())
         print("")
