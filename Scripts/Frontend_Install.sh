@@ -210,6 +210,27 @@ if [ -d "$SRC_DIR/frontend/sysart" ]; then
     # wieder auf die Standard-Bilder aus dem Repo zurueckgesetzt.
     mkdir -p "$FRONTEND_DIR/sysart"
     cp -rn "$SRC_DIR/frontend/sysart/." "$FRONTEND_DIR/sysart/" 2>/dev/null || true
+    # BUGFIX (Nutzer-Rueckmeldung: "immer noch das alte Zufalls-Zock-
+    # Bild, auch nach Update UND Install"): genau das "nicht
+    # ueberschreiben"-Prinzip direkt oberhalb war die Ursache -
+    # WOT.art existierte schon lange (altes Platzhalterbild), ein neues
+    # mitgeliefertes Bild kam dadurch NIE an, egal wie oft
+    # Update/Install liefen. Fuer eine kurze, bewusst gepflegte Liste
+    # von Dateien wird deshalb HIER gezielt trotzdem ueberschrieben.
+    # EHRLICH DOKUMENTIERTE EINSCHRAENKUNG: hat ein Nutzer genau eine
+    # dieser Dateien zwischenzeitlich SELBST durch eigenes Artwork
+    # ersetzt, geht das bei einem zukuenftigen Update wieder verloren -
+    # es gibt keinen zuverlaessigen Weg, "noch der alte Standard" von
+    # "bewusst vom Nutzer ersetzt" zu unterscheiden, ohne dafuer einen
+    # eigenen Fingerabdruck pro Datei zu speichern. Deshalb bewusst nur
+    # eine sehr kurze, namentlich genannte Liste, kein genereller
+    # Rueckfall auf "immer ueberschreiben" - der Schutz fuer ALLE
+    # ANDEREN sysart-Dateien (echte Nutzer-Anpassungen) bleibt
+    # unveraendert bestehen.
+    for _f in WOT.art; do
+        [ -f "$SRC_DIR/frontend/sysart/$_f" ] && \
+            cp -f "$SRC_DIR/frontend/sysart/$_f" "$FRONTEND_DIR/sysart/$_f" 2>/dev/null
+    done
 fi
 if [ -d "$SRC_DIR/frontend/sfx_source" ]; then
     mkdir -p "$FRONTEND_DIR/sfx_source"

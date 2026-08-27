@@ -168,6 +168,22 @@ if [ -d "$SRC_DIR/frontend/sysart" ]; then
     # Repo zurueckgesetzt.
     mkdir -p "$FRONTEND_DIR/sysart"
     cp -rn "$SRC_DIR/frontend/sysart/." "$FRONTEND_DIR/sysart/" 2>/dev/null || true
+    # BUGFIX (Nutzer-Rueckmeldung: "immer noch das alte Zufalls-Zock-
+    # Bild, auch nach Update UND Install") - gleicher Fix wie in
+    # Frontend_Install.sh, siehe dortiger ausfuehrlicher Kommentar:
+    # das "nicht ueberschreiben"-Prinzip direkt oberhalb verhinderte,
+    # dass ein neues mitgeliefertes Standardbild jemals ankam, wenn
+    # unter demselben Namen schon irgendeine (auch eine sehr alte)
+    # Datei vorlag. Kurze, bewusst gepflegte Ausnahmeliste, die
+    # trotzdem ueberschrieben wird - EHRLICH DOKUMENTIERTE
+    # EINSCHRAENKUNG: geht bei einer zwischenzeitlich selbst ersetzten
+    # Datei aus dieser Liste beim naechsten Update verloren, siehe
+    # Frontend_Install.sh fuer die volle Begruendung. Der Schutz fuer
+    # alle anderen sysart-Dateien bleibt unveraendert bestehen.
+    for _f in WOT.art; do
+        [ -f "$SRC_DIR/frontend/sysart/$_f" ] && \
+            cp -f "$SRC_DIR/frontend/sysart/$_f" "$FRONTEND_DIR/sysart/$_f" 2>/dev/null
+    done
 fi
 if [ -d "$SRC_DIR/frontend/sfx_source" ]; then
     # Quelldatei(en) fuer echte (statt prozedural erzeugte) SFX-Klaenge

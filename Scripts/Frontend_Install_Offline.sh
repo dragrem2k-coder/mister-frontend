@@ -220,15 +220,34 @@ done
 say "$COPIED Datei(en) kopiert."
 
 # System-Logos: nur fehlende ergaenzen, selbst ersetzte behalten
+#
+# BUGFIX (Nutzer-Rueckmeldung: "immer noch das alte Zufalls-Zock-Bild,
+# auch nach Update UND Install"): das "vorhandene behalten"-Prinzip
+# hier war die Ursache - WOT.art existierte schon lange (altes
+# Platzhalterbild), ein neues mitgeliefertes Bild kam dadurch NIE an.
+# FORCE_OVERWRITE_SYSART listet Dateien, die trotzdem ueberschrieben
+# werden - EHRLICH DOKUMENTIERTE EINSCHRAENKUNG: hat ein Nutzer genau
+# eine davon zwischenzeitlich SELBST ersetzt, geht das beim naechsten
+# Lauf wieder verloren (kein zuverlaessiger Weg, "noch Standard" von
+# "bewusst ersetzt" zu unterscheiden). Bewusst kurz gehalten - fuer
+# alle anderen sysart-Dateien gilt weiterhin "vorhandene behalten".
+FORCE_OVERWRITE_SYSART="WOT.art"
 if [ -d "$SRC/frontend/sysart" ]; then
     step "System-Logos (sysart)"
     mkdir -p "$FRONTEND_DIR/sysart"
-    NEW=0; KEPT=0
+    NEW=0; KEPT=0; REPLACED=0
     for f in "$SRC/frontend/sysart/"*.art; do
         [ -e "$f" ] || continue
         base="$(basename "$f")"
         if [ -f "$FRONTEND_DIR/sysart/$base" ]; then
-            KEPT=$((KEPT+1))
+            case " $FORCE_OVERWRITE_SYSART " in
+                *" $base "*)
+                    cp -f "$f" "$FRONTEND_DIR/sysart/" && REPLACED=$((REPLACED+1))
+                    ;;
+                *)
+                    KEPT=$((KEPT+1))
+                    ;;
+            esac
         else
             cp -f "$f" "$FRONTEND_DIR/sysart/" && NEW=$((NEW+1))
         fi
@@ -240,7 +259,7 @@ if [ -d "$SRC/frontend/sysart" ]; then
               "$FRONTEND_DIR/sysart/_weitere_systeme_noch_nicht_unterstuetzt/" \
               2>/dev/null
     fi
-    say "  $NEW neu, $KEPT vorhandene behalten"
+    say "  $NEW neu, $REPLACED aktualisiert, $KEPT vorhandene behalten"
 fi
 
 # SFX-Quelldateien (echte Klaenge statt prozedural erzeugter Toene,

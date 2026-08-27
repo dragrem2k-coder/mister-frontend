@@ -155,6 +155,28 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- Das neue Zufalls-Zock-Bild (`sysart/WOT.art`) kam bei einer
+  BESTEHENDEN Installation über Update UND Install NIE an, egal wie
+  oft man es versuchte (Nutzer-Rückmeldung eines Freundes: "Nope noch
+  da", nach mehrfachem Update UND Install-Lauf). Ursache gefunden:
+  alle drei Install-Skripte (`Frontend_Install.sh`,
+  `Frontend_Install_Remote.sh`, `Frontend_Install_Offline.sh`) kopieren
+  `sysart/` bewusst mit "nicht überschreiben" - schützt eigene, per
+  Hand ersetzte System-Logos vor einem Update. Existierte
+  `sysart/WOT.art` aber schon (das alte Platzhalterbild lag dort schon
+  lange), griff genau dieser Schutz und verhinderte JEDE Aktualisierung
+  dauerhaft - unabhängig davon, wie oft die Skripte liefen. Jetzt gibt
+  es eine kurze, bewusst gepflegte Ausnahmeliste (aktuell nur
+  `WOT.art`), die trotzdem überschrieben wird; alle anderen
+  sysart-Dateien (also echte Nutzer-Anpassungen) bleiben wie bisher
+  geschützt. EHRLICH DOKUMENTIERTE EINSCHRÄNKUNG: wer `WOT.art`
+  zwischenzeitlich selbst durch eigenes Artwork ersetzt hat, verliert
+  das bei einem künftigen Update wieder - es gibt keinen zuverlässigen
+  Weg, "noch der alte Standard" von "bewusst selbst ersetzt" zu
+  unterscheiden, ohne dafür einen eigenen Fingerabdruck pro Datei zu
+  speichern. Mit einer eigenen Simulation aller drei Install-Skript-
+  Varianten geprüft (neues Bild kommt an, andere sysart-Dateien bleiben
+  unangetastet).
 - F12 (echtes MiSTer-OSD öffnen) sprang manchmal sofort wieder zurück
   ins Frontend, ohne dass der Nutzer irgendetwas gedrückt hatte
   (Nutzerfrage: "ist das normal?" - war es nicht). Ursache: `open_osd()`
