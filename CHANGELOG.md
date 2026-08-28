@@ -178,6 +178,13 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- Leertaste wurde in der F2/"/"-Volltextsuche komplett ignoriert
+  (Nutzer-Rückmeldung: "F2 Volltextsuche erkennt keine Leertaste? Wenn
+  ich super mario suchen will schreibt der supermario"). Ursache: die
+  Leertaste hatte schlicht noch nie eine Zuordnung in der Tastenbelegung
+  (KEYMAP) - jeder Tastendruck ohne bekannte Zuordnung wird von der
+  Eingabeverarbeitung stillschweigend verworfen, das Leerzeichen landete
+  dadurch nie in der Suchanfrage. Jetzt behoben.
 - Spieleliste (Seite 1): gehaltenes Hoch/Runter sprang beim "Turbo"
   nach kurzer Zeit über mehrere Zeilen auf einmal (Sprungweite 1 -> 2 ->
   4 -> 10), was sich sowohl als sichtbarer "Zeilensprung" bemerkbar

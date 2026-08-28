@@ -29,6 +29,23 @@ EV_SYN, EV_KEY, EV_ABS = 0, 1, 3
 KEY_ESC, KEY_ENTER = 1, 28
 KEY_BACKSPACE = 14
 KEY_SLASH = 53
+# BUGFIX (Nutzer-Rueckmeldung: "F2 Volltextsuche erkennt keine
+# Leertaste? Wenn ich super mario suchen will schreibt der
+# supermario"): die Leertaste war bisher komplett unbelegt (kein
+# Eintrag in KEYMAP) - jeder Tastendruck ohne bekannte Zuordnung wird
+# von read_action() stillschweigend verworfen (kein Fehler, einfach
+# keine Aktion), das Leerzeichen landete dadurch nie in
+# self._search_query. Bindet die Leertaste an dieselbe "letter:X"-
+# Aktion wie die normalen Buchstabentasten weiter unten (LETTER_KEYS),
+# nur mit X=" " (ein Leerzeichen) - im Suchmodus haengt
+# jump_to_substring() das genau wie jeden anderen Buchstaben einfach an
+# self._search_query an (siehe run()). Ausserhalb des Suchmodus loest
+# dieselbe Aktion den klassischen Anfangsbuchstaben-Sprung
+# (jump_to_letter()) aus - dort schadet ein Leerzeichen nichts: KEIN
+# Name beginnt mit einem Leerzeichen, jump_to_letter() findet also nie
+# einen Treffer und laesst die Auswahl unveraendert, exakt wie bei
+# jeder anderen ungenutzten Buchstabentaste.
+KEY_SPACE = 57
 KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT = 103, 108, 105, 106
 # NEUES FEATURE (Nutzerwunsch: "waere F2 im Frontend noch frei? wuerde
 # gerne die Volltextsuche mit der Taste einbauen"): F2 war bislang
@@ -143,6 +160,9 @@ KEYMAP = {
     # exakt dieselbe Aktion "search" aus, keine eigene Logik noetig.
     KEY_F2: "search",
     KEY_BACKSPACE: "search_backspace",
+    # BUGFIX (siehe ausfuehrlicher Kommentar bei KEY_SPACE weiter oben):
+    # Leertaste fehlte bisher komplett in der KEYMAP.
+    KEY_SPACE: "letter: ",
     KEY_F6: "ra_showcase",
     BTN_A: "ok", BTN_START: "ok",
     BTN_B: "back", BTN_X: "back_fe",

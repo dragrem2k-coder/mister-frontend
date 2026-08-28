@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-21",
-  "summary": "Kein Zeilensprung mehr beim gehaltenen Scrollen in der Spieleliste (Turbo-Sprung entfernt)"
+  "build_id": "2026-08-24-22",
+  "summary": "Bugfix: Leertaste in der Volltextsuche (F2/\"/\") wird jetzt erkannt"
 }
