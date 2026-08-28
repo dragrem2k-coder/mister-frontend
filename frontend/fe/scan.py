@@ -47,10 +47,68 @@ def _has_network():
     except OSError:
         return False
 
+def _arcade_folder_tree(path):
+    """Wie _folder_items(), aber REKURSIV - nur fuer den Arcade-Ordner
+    gedacht (siehe scan_cores() unten).
+
+    NEU (Nutzerfrage: "wenn ich ueber das OSD auf Arcade gehe werden
+    mir noch Ordner angezeigt 'alternatives' 'insert Coin' 'organized'
+    'st-v' - warum sehe ich diese nicht im Frontend?"): kuratierte
+    Arcade-Sammlungen legen ihre .mra-Dateien haeufig NICHT direkt in
+    _Arcade/ ab, sondern in frei benannten Unterordnern zur eigenen
+    Organisation (nach Hersteller/Board/Status usw.) - MiSTers eigenes
+    OSD durchsucht Ordner ganz normal rekursiv, zeigt diese Unterordner
+    also anstandslos an. _folder_items() (bisher fuer Arcade genutzt,
+    siehe scan_cores()) macht dagegen bewusst nur einen FLACHEN
+    glob() OHNE Rekursion - alles, was nicht DIREKT in _Arcade/ selbst
+    liegt, blieb dadurch fuers Frontend unsichtbar, ganz ohne
+    Fehlermeldung. Baut - genau wie _scan_folder_tree() fuer die
+    regulaeren Spielesysteme (siehe dort) - einen beliebig tief
+    verschachtelten Baumknoten, der die eigene Ordnerstruktur 1:1
+    widerspiegelt, damit Unterordner im Frontend genauso als eigene,
+    oeffenbare Eintraege erscheinen wie im OSD. Bewusst NUR fuer Arcade
+    eingefuehrt - die anderen generischen _*-Core-Ordner (Console/
+    Computer/Utility/...) bleiben unveraendert flach, dort ist eine
+    tiefe Ordnerorganisation in der Praxis kaum gebraeuchlich."""
+    node = _empty_node()
+    try:
+        entries = sorted(os.listdir(path), key=str.lower)
+    except OSError:
+        return node
+    files = []
+    for entry in entries:
+        if entry.startswith("."):
+            continue
+        full = os.path.join(path, entry)
+        if os.path.isdir(full):
+            sub = _arcade_folder_tree(full)
+            if sub["folders"] or sub["items"]:
+                node["folders"][entry] = sub
+        else:
+            ext = os.path.splitext(entry)[1].lower()
+            if ext in (".mra", ".rbf", ".mgl"):
+                files.append(full)
+    items = []
+    for f in sorted(files, key=lambda p: os.path.basename(p).lower()):
+        name = os.path.splitext(os.path.basename(f))[0]
+        name = re.sub(r"_\d{8}[a-zA-Z]?$", "", name)
+        items.append((name, "core", f))
+    node["items"] = items
+    return node
+
 def scan_cores(skip_dir=None):
     """Alle /media/fat/_*-Ordner nach .rbf/.mra/.mgl durchsuchen.
     skip_dir wird ausgelassen (der markierte Recently-Ordner, der bereits
-    separat als "Zuletzt gespielt" gefuehrt wird - sonst doppelt)."""
+    separat als "Zuletzt gespielt" gefuehrt wird - sonst doppelt).
+
+    GEAENDERT: liefert fuer den Arcade-Ordner jetzt einen echten,
+    rekursiven Baumknoten (siehe _arcade_folder_tree()) statt einer
+    flachen Liste - Unterordner wie "alternatives"/"organized"/"ST-V"
+    werden dadurch sichtbar. Alle anderen _*-Ordner liefern weiterhin
+    eine flache Liste wie bisher, der Aufrufer (Frontend._partition_
+    core_cats()) unterscheidet anhand des Rueckgabetyps (dict = bereits
+    fertiger Baumknoten, Liste = wie bisher noch in _wrap_flat() zu
+    verpacken)."""
     cats = []
     skip_real = os.path.realpath(skip_dir) if skip_dir else None
     for d in sorted(glob.glob(os.path.join(BASE, "_*"))):
@@ -58,14 +116,19 @@ def scan_cores(skip_dir=None):
             continue
         if skip_real and os.path.realpath(d) == skip_real:
             continue
+        # Arcade-Ordner bekommen ein Info-Panel (MRA-Metadaten)
+        base = os.path.basename(d).lstrip("_").lower()
+        syskey = "ARCADE" if "arcade" in base else None
+        if syskey == "ARCADE":
+            node = _arcade_folder_tree(d)
+            if node["folders"] or node["items"]:
+                cats.append((nice_name(os.path.basename(d)), node, syskey))
+            continue
         # .mgl mit aufnehmen: so tauchen MGL-Shortcut-Ordner (z.B. das
         # "Recently Played"-Skript) auf und sind direkt startbar - der
         # Start-Pfad (load_core) verarbeitet .mgl genauso wie .rbf/.mra.
         items = _folder_items(d)
         if items:
-            # Arcade-Ordner bekommen ein Info-Panel (MRA-Metadaten)
-            base = os.path.basename(d).lstrip("_").lower()
-            syskey = "ARCADE" if "arcade" in base else None
             cats.append((nice_name(os.path.basename(d)), items, syskey))
     return cats
 

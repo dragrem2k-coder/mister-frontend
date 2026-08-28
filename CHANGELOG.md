@@ -7,6 +7,21 @@ schau am besten in die Git-Historie oder in den Kopf von
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
 **Neue Features:**
+- Arcade-Unterordner (z.B. "alternatives", "organized", "insert Coin",
+  "ST-V" - übliche Ordnung bei kuratierten Arcade-Sammlungen) sind
+  jetzt auch im Frontend sichtbar und navigierbar, genau wie im OSD
+  (Nutzerfrage: "wenn ich über das OSD auf Arcade gehe werden mir
+  noch Ordner angezeigt … warum sehe ich diese nicht im Frontend?").
+  Ursache: Arcade nutzte bisher einen rein FLACHEN Ordner-Scan (nur
+  .mra/.rbf/.mgl-Dateien DIREKT im `_Arcade`-Ordner selbst), anders
+  als die regulären Spielesysteme, die schon länger beliebig tief
+  verschachtelte Unterordner unterstützen. Arcade bekommt jetzt
+  denselben rekursiven Ordnerbaum wie diese - Unterordner (auch
+  mehrere Ebenen tief) erscheinen als eigene, öffenbare Einträge.
+  Bewusst NUR für Arcade eingeführt, die übrigen generischen
+  `_*`-Core-Ordner (Console/Computer/Utility/...) bleiben unverändert
+  flach, dort ist eine tiefe Ordnerorganisation in der Praxis kaum
+  gebräuchlich.
 - Musik-Titel-Laufschrift jetzt ein/ausschaltbar (System -> Anzeige,
   Nutzerwunsch: "Musik Laufschrift hätte ich auch gerne noch ein und
   ausschaltbar"). Ausgeschaltet zeigt der Songtitel weiterhin (den

@@ -4549,7 +4549,18 @@ class Frontend:
         # Unterordner im System-Menue ergaenzt (siehe scripts_items
         # unten) - NICHT als Top-Level-Kategorie.
         top_level_core_cats, cores_subcats = self._partition_core_cats(marked_recent)
-        self.cats.extend((n, _wrap_flat(it), sk) for n, it, sk in top_level_core_cats)
+        # GEAENDERT (Nutzerfrage: Arcade-Unterordner wie "alternatives"/
+        # "organized"/"ST-V" fehlten im Frontend, siehe _arcade_folder_
+        # tree() in fe/scan.py): scan_cores() liefert fuer Arcade jetzt
+        # bereits einen FERTIGEN Baumknoten (echte Unterordner) statt
+        # einer flachen Liste - der darf NICHT nochmal durch
+        # _wrap_flat() (das wuerde "items" auf den ganzen Baumknoten
+        # statt einer Liste setzen und jede Navigation dort zerstoeren).
+        # Alle anderen _*-Ordner liefern weiterhin eine flache Liste wie
+        # bisher und werden entsprechend weiterhin gewickelt.
+        self.cats.extend(
+            (n, it if isinstance(it, dict) else _wrap_flat(it), sk)
+            for n, it, sk in top_level_core_cats)
         collections = self.build_collections_category()
         if collections:
             count = _count_tree_items(collections)
