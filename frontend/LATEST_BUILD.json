@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-24",
-  "summary": "F6-Erfolge: Hardcore/Softcore-Kennzeichnung + schnellere Anzeige durch Icon-Vorwaermen"
+  "build_id": "2026-08-24-25",
+  "summary": "ABSTURZ behoben: F6 warf bei altem Erfolge-Cache das Frontend zurueck ins OSD"
 }

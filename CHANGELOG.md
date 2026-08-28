@@ -198,6 +198,28 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- ABSTURZ behoben: F6 (Erfolgs-Vitrine) warf das komplette Frontend
+  zurück ins MiSTer-OSD, statt die Erfolgsliste zu zeigen
+  (Nutzer-Rückmeldung: "nach dem letzten Update, wenn ich jetzt ein
+  Spiel auswähle und F6 drücke, flieg ich komplett aus dem Frontend
+  raus und lande im OSD"). Direkte Folge der neuen Hardcore/
+  Softcore-Kennzeichnung aus dem letzten Build: die Erfolgsliste
+  besteht seitdem pro Zeile aus 7 statt vorher 6 Werten (neues
+  "Hardcore ja/nein"-Feld) - der Bildschirm selbst wurde entsprechend
+  angepasst, ABER auf der SD-Karte lag von vorherigen Sitzungen noch
+  ein Zwischenspeicher (`ra_achievements_cache.json`) im ALTEN
+  6-Werte-Format. Wurde beim F6-Druck auf ein bereits vorher
+  angesehenes (oder automatisch im Hintergrund vorgewärmtes) Spiel
+  ein solcher alter Eintrag geladen, scheiterte das Entpacken der
+  Zeile mit einem Programmfehler, der nirgends abgefangen wurde -
+  das Frontend beendete sich dadurch komplett, zurück blieb nur das
+  MiSTer-OSD. Fix: jede aus dem Zwischenspeicher gelesene Zeile wird
+  jetzt immer auf das aktuelle Format gebracht, ein fehlendes
+  Hardcore-Feld wird sicher mit "nein" ergänzt - kein Absturz mehr,
+  kein manuelles Löschen des Zwischenspeichers nötig. Betroffene
+  Erfolge zeigen übergangsweise "[SC]" statt "[HC]", bis der ohnehin
+  bestehende Hintergrund-Refresh sie mit den echten Daten
+  überschreibt.
 - Hardreset nach Update-Installation: nach "Jetzt installieren" im
   Update-Dialog (bzw. beim manuellen Ausführen von `Frontend_Install`
   über das Scripts-Menü) startete bisher nur der Frontend-PROZESS neu

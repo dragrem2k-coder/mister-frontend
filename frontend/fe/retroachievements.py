@@ -352,6 +352,56 @@ def _refresh_ra_achievements_background(game_id, timeout=5.0):
         with _ra_achievements_refresh_lock:
             _ra_achievements_refresh_inflight.discard(key)
 
+# BUGFIX/ABSTURZ (Nutzer-Rueckmeldung: "nach dem letzten Update, wenn
+# ich jetzt ein Spiel auswaehle und F6 druecke, flieg ich komplett aus
+# dem Frontend raus und lande im OSD"): direkte Folge der neuen
+# Hardcore/Softcore-Unterscheidung von eben - fetch_ra_game_achievements()
+# liefert seitdem pro Erfolg ein 7-Tupel (mit dem neuen "hardcore"-Feld
+# am Ende) statt wie vorher ein 6-Tupel. draw_ra_showcase_screen() in
+# frontend.py wurde zwar entsprechend angepasst - ABER: RA_ACHIEVEMENTS_
+# CACHE_FILE auf der SD-Karte enthaelt bei jedem, der das Frontend
+# schon vor diesem Update benutzt hat, noch massenhaft Eintraege im
+# ALTEN 6-Tupel-Format. fetch_ra_game_achievements_cached() gibt einen
+# vorhandenen Cache-Eintrag laut Stale-while-revalidate-Prinzip IMMER
+# sofort zurueck, ganz ohne Formatpruefung - beim ersten F6-Druck auf
+# ein Spiel, das schon VOR diesem Update einmal angesehen (oder vom
+# Hintergrund-Vorwaermen erfasst) wurde, bekam draw_ra_showcase_screen()
+# dadurch ploetzlich 6-elementige statt der jetzt erwarteten
+# 7-elementigen Zeilen - "ValueError: not enough values to unpack"
+# direkt in der Haupt-Eingabeschleife, dort NICHT abgefangen (siehe
+# run()-Aufruf ganz unten in dieser Datei: ein Absturz dort wird
+# geloggt und dann bewusst weitergereicht, nicht stillschweigend
+# geschluckt) - genau das "raus aus dem Frontend, rein ins OSD".
+#
+# Fix: jede aus dem Cache gelesene Zeile wird jetzt IMMER auf exakt 7
+# Elemente normalisiert - fehlt das "hardcore"-Feld (altes Format),
+# wird es mit False ergaenzt (sicherste Annahme: ein vor diesem Update
+# gecachter Erfolg zeigt dann uebergangsweise als "[SC]" statt "[HC]",
+# bis der naechste Hintergrund-Refresh die echten Daten nachliefert -
+# NIEMALS ein Absturz). Kein manuelles Loeschen von
+# ra_achievements_cache.json noetig, das raeumt sich von selbst ueber
+# das ohnehin bestehende 15-Minuten-TTL/Stale-while-revalidate auf.
+def _normalize_achievement_row(row):
+    try:
+        row = tuple(row)
+    except TypeError:
+        return None
+    if len(row) >= 7:
+        return row[:7]
+    if len(row) == 6:
+        return row + (False,)   # altes Cache-Format ohne Hardcore-Feld
+    return None   # unbrauchbare Zeile - auslassen statt abstuerzen
+
+def _normalize_achievements_list(data):
+    if data is None:
+        return None
+    out = []
+    for row in data:
+        norm = _normalize_achievement_row(row)
+        if norm is not None:
+            out.append(norm)
+    return out
+
 def fetch_ra_game_achievements_cached(game_id, timeout=5.0):
     """Wie fetch_ra_game_achievements_bounded(), aber mit kurzlebigem
     Cache nach dem Stale-while-revalidate-Prinzip (siehe Kommentar
@@ -360,7 +410,12 @@ def fetch_ra_game_achievements_cached(game_id, timeout=5.0):
     ist - in dem Fall wird zusaetzlich, nicht-blockierend, ein
     Hintergrund-Abruf gestartet, der den Cache fuer naechstes Mal
     aktualisiert. Nur wenn NOCH GAR NICHTS im Cache steht (allererster
-    Blick auf dieses Spiel), erfolgt ein einmaliger synchroner Abruf."""
+    Blick auf dieses Spiel), erfolgt ein einmaliger synchroner Abruf.
+
+    Jede zurueckgegebene Zeile laeuft durch _normalize_achievement_row()
+    (siehe dortiger Kommentar) - schuetzt gegen Cache-Eintraege in
+    einem aelteren Format, egal ob durch dieses oder ein kuenftiges
+    Update entstanden."""
     cache = _load_ra_achievements_cache()
     key = str(game_id)
     entry = cache.get(key)
@@ -371,7 +426,7 @@ def fetch_ra_game_achievements_cached(game_id, timeout=5.0):
                 target=_refresh_ra_achievements_background,
                 args=(game_id,), kwargs={"timeout": timeout},
                 daemon=True).start()
-        return entry.get("data")
+        return _normalize_achievements_list(entry.get("data"))
     data = fetch_ra_game_achievements_bounded(game_id, timeout=timeout)
     if data is not None:
         cache[key] = {"ts": now, "data": data}
