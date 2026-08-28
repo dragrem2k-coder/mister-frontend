@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-31",
-  "summary": "HDMI-Ruckler beim Start behoben: Artbox-Bild (CONTINUE.art etc.) wird jetzt vorgewaermt (dein PERF-Log zeigte 863ms)"
+  "build_id": "2026-08-24-32",
+  "summary": "HDMI-Start-Ruckler jetzt WIRKLICH behoben: Artbox der ersten Kategorie synchron statt im (racigen) Hintergrund-Thread vorgewaermt"
 }

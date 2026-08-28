@@ -259,6 +259,17 @@ den reinen Text-Titel wie vor dieser Session.
   vorhandene Kategorie einmal vor (nicht nur für Systeme mit eigenem
   Systemkey wie bisher) - ist der Nutzer schneller als dieser
   Hintergrund-Thread, ändert sich nichts am bisherigen Verhalten.
+  NACHTRAG (zweite Nachmessung auf echter Hardware zeigte weiterhin
+  einen Ruckler, nur kleiner: 863ms -> 755ms statt behoben): der erste
+  Versuch oben verließ sich allein auf einen Hintergrund-Thread - der
+  gewann den Wettlauf mit dem allerersten `draw()`-Aufruf des
+  Haupt-Threads auf echter Hardware aber nicht zuverlässig. Fix:
+  für genau die beim Start zuerst sichtbare Kategorie wird die
+  Artbox-Datei jetzt SYNCHRON (nicht mehr im Hintergrund-Thread)
+  vorgewärmt, bevor überhaupt ein erster `draw()` möglich ist - kein
+  Wettlauf mehr, garantiert warm. Alle übrigen Kategorien bleiben beim
+  bisherigen, asynchronen Vorwärmen im Hintergrund (dort unkritisch,
+  da der Nutzer dafür erst aktiv weiterscrollen müsste).
 - Stocken beim Scrollen/Zurückgehen behoben: Navigieren innerhalb einer
   Sammlung (z.B. Game Boy) oder das Zurückgehen ins vorherige Menü
   brauchte gelegentlich mehrere Sekunden (Nutzer-Rückmeldung: "es nervt
