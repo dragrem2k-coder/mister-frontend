@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-15",
-  "summary": "Update/Install ueberschreiben das Zufalls-Zock-Bild jetzt endlich zuverlaessig"
+  "build_id": "2026-08-24-16",
+  "summary": "Windows-CRLF-Absturz bei Frontend_Install.sh behoben (.gitattributes)"
 }

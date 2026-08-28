@@ -228,8 +228,9 @@ if [ -d "$SRC_DIR/frontend/sysart" ]; then
     # ANDEREN sysart-Dateien (echte Nutzer-Anpassungen) bleibt
     # unveraendert bestehen.
     for _f in WOT.art; do
-        [ -f "$SRC_DIR/frontend/sysart/$_f" ] && \
+        if [ -f "$SRC_DIR/frontend/sysart/$_f" ]; then
             cp -f "$SRC_DIR/frontend/sysart/$_f" "$FRONTEND_DIR/sysart/$_f" 2>/dev/null
+        fi
     done
 fi
 if [ -d "$SRC_DIR/frontend/sfx_source" ]; then

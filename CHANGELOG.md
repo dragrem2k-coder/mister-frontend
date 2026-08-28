@@ -155,6 +155,22 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- `Frontend_Install.sh` brach beim Ausführen mit `Permission denied`
+  auf `/dev/null` und `syntax error near unexpected token 'done'` ab
+  (Screenshot von echter Hardware). Ursache lag NICHT im Skript
+  selbst, sondern in Windows-Git (MINGW64/Git Bash) - ohne eine feste
+  Vorgabe im Repo entscheidet jeder Rechner per `core.autocrlf`
+  eigenmächtig, ob Textdateien beim Auschecken CRLF- oder reine
+  LF-Zeilenenden bekommen. Ein Shell-Skript mit CRLF-Zeilenenden ist
+  auf MiSTers Linux/bash aber kaputt - ein zusätzliches CR-Byte am
+  Zeilenende sprengt vor allem Zeilenfortsetzungen, genau das
+  beobachtete Fehlerbild (mit einer eigenen CRLF-Simulation
+  nachgestellt und bestätigt). Neue `.gitattributes`-Datei erzwingt
+  jetzt für jeden, der das Repo auscheckt, reine LF-Zeilenenden bei
+  `.sh`/`.py`/`.json`/`.md`/`.txt` - unabhängig von der eigenen
+  Git-Konfiguration. Zusätzlich die neue WOT.art-Ausnahme (siehe
+  vorheriger Eintrag) ohne Backslash-Zeilenfortsetzung umgeschrieben,
+  damit sie auch ohne den `.gitattributes`-Fix robust bleibt.
 - Das neue Zufalls-Zock-Bild (`sysart/WOT.art`) kam bei einer
   BESTEHENDEN Installation über Update UND Install NIE an, egal wie
   oft man es versuchte (Nutzer-Rückmeldung eines Freundes: "Nope noch
