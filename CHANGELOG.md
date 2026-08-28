@@ -240,6 +240,43 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- Gelegentliche 1-3 Sekunden lange Hänger beim Scrollen durch Spiele-
+  listen spürbar reduziert (Nutzer-Rückmeldung: "das muss unter HDMI
+  noch deutlich besser laufen ... da sind ab und zu ganz schöne Hänger
+  drin"). Analyse einer dritten, diesmal vollständig erfolgreichen
+  DRAGEND_PROFILE-Log-Datei (die ersten beiden scheiterten an einem
+  eigenen Bedienungsfehler in der Mess-Anleitung - siehe unten) zeigte:
+  anders als zunächst vermutet ist es NICHT die SD-Karte, die beim
+  Scrollen zu Cover-Ladezeiten führt (die "kaltes Verzeichnis"-Ursache
+  ist bereits behoben, siehe Artbox-Fix oben). Bei einzelnen
+  Spiele-Covern lag die Zeit stattdessen an zwei anderen, ebenfalls im
+  Zeichenpfad SYNCHRON laufenden Kosten, gemessen z.B. bei "Taekwon-Do
+  (Korea).art" (1210ms gesamt): rund 65% reines Hochskalieren des
+  Covers (eine Pixel-für-Pixel-Python-Schleife) und rund 30% das
+  anschließende Wegschreiben der neu berechneten Miniatur in den
+  Festplatten-Cache (inklusive `zlib.compress` und einem
+  Verzeichnis-Scan für die Verdrängung) - beides blockierte bisher die
+  Anzeige, obwohl das fertige Bild für den aktuellen Frame zu diesem
+  Zeitpunkt schon vorlag. Zwei gezielte Fixes: (1) das
+  Festplatten-Cache-Schreiben läuft jetzt in einem kurzlebigen
+  Hintergrund-Thread (`_thumb_cache_put_async()` in `fe/art.py`) - das
+  Ergebnis wird weiterhin garantiert bitidentisch geschrieben, blockiert
+  aber die Anzeige nicht mehr; (2) die Hochskalierungs-Schleife nutzt
+  jetzt dasselbe bereits bewährte Muster wie die benachbarte
+  Verkleinerungs-Schleife (eine Zeile einmal herausschneiden statt bei
+  jedem Pixel erneut über den ganzen Puffer zuzugreifen, sowie eine
+  Listenabstraktion statt eines Generators für `b"".join()`) - laut
+  eigener Differenzmessung ca. 10-15% schneller, pixel-identisch zur
+  vorherigen Berechnung (eigener Test vergleicht beide Implementierungen
+  Byte für Byte). EHRLICH DOKUMENTIERT: das ist eine Verbesserung des
+  Konstantfaktors, kein grundlegend anderer Algorithmus - bewusst ohne
+  numpy/C-Erweiterung, um keine zusätzliche Abhängigkeit für die
+  Offline-Installation auf der MiSTer-SD-Karte einzuführen. Ob die
+  verbleibende Restzeit beim nächsten Scrollen zu einem noch nicht
+  berechneten Cover spürbar genug sinkt, muss die nächste echte
+  Hardware-Messung zeigen - falls nicht, wäre der nächste sinnvolle
+  Schritt ein begrenztes Vorausladen (z.B. der nächsten 1-2 Cover in
+  Scrollrichtung), das aber eine größere, eigenständige Änderung wäre.
 - HDMI-Ruckler beim allerersten Bildaufbau des Hauptmenüs behoben
   (Nutzer-Rückmeldung: "das muss unter HDMI insgesamt flüssiger laufen"
   - gefunden über das neue PERF-Profiling: `PERF draw_page_cats: 863

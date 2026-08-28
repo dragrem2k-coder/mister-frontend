@@ -20,7 +20,7 @@ qualifizierter Zugriff auf fe.framebuffer.C_BG (das dort bereits
 korrekt synchron gehalten wird) ist hier voellig ausreichend und
 spart eine weitere Synchronisierungsstelle.
 """
-import os, re, struct, zlib, json, time, urllib.request, hashlib
+import os, re, struct, zlib, json, time, urllib.request, hashlib, threading
 from fe.log import LOG
 from fe.framebuffer import Framebuffer
 from fe.translations import t
@@ -363,11 +363,28 @@ def _thumb_cache_put(path, w, h, tw, th, pix):
     dadurch dauerhaft wirkungslos machen, OHNE dass irgendwo im Log
     ein Hinweis darauf zu finden waere - genau die Art von stillem
     Fehler, die die Frage "warum wird es nicht schneller?" unbeant-
-    wortet laesst. Jetzt wird jeder Fehlschlag explizit geloggt."""
+    wortet laesst. Jetzt wird jeder Fehlschlag explizit geloggt.
+
+    GEAENDERT (Nutzerwunsch: "das muss schneller laufen!!" - echte
+    Hardware-Messung via DRAGEND_PROFILE zeigte diesen Aufruf als
+    zweitgroessten Einzelposten beim Aufreissen der Anzeige waehrend
+    des Scrollens, z.B. "_thumb_cache_put: 380ms (Taekwon-Do (Korea).art)",
+    davon 201ms allein fuer zlib.compress). Der Dateiname der
+    temporaeren Datei enthaelt jetzt zusaetzlich zur Prozess-ID auch
+    die Thread-ID: seit _thumb_cache_put_async() unten mehrere
+    Aufrufe gleichzeitig aus verschiedenen Hintergrund-Threads
+    passieren koennen (z.B. wenn kurz hintereinander zweimal dieselbe
+    noch nicht gecachte Cover-Groesse gebraucht wird), wuerden zwei
+    Threads sonst dieselbe .tmp-Datei benutzen und sich gegenseitig
+    beim Schreiben ueberschreiben (kaputte/vermischte Bytes vor dem
+    finalen os.replace()). Mit der Thread-ID im Namen bekommt jeder
+    Aufruf garantiert seine eigene temporaere Datei - os.replace()
+    bleibt weiterhin atomar, im schlimmsten Fall "gewinnt" einfach
+    der zuletzt fertige Thread mit einem (identischen) Ergebnis."""
     try:
         os.makedirs(THUMB_CACHE_DIR, exist_ok=True)
         cpath = _thumb_cache_path(_thumb_cache_key(path, w, h))
-        tmp = cpath + ".tmp%d" % os.getpid()
+        tmp = cpath + ".tmp%d_%d" % (os.getpid(), threading.get_ident())
         with open(tmp, "wb") as f:
             f.write(b"ART1" + struct.pack("<HH", tw, th) + zlib.compress(pix, 6))
         os.replace(tmp, cpath)
@@ -375,6 +392,41 @@ def _thumb_cache_put(path, w, h, tw, th, pix):
         LOG("THUMB_CACHE Schreibfehler (%s): %s" % (os.path.basename(path), e))
         return
     _thumb_cache_evict_if_needed()
+
+def _thumb_cache_put_async(path, w, h, tw, th, pix):
+    """Wie _thumb_cache_put(), aber nicht-blockierend.
+
+    NEU (Nutzerwunsch: "das muss schneller laufen!!" - dritte
+    DRAGEND_PROFILE-Log-Datei mit echten Scroll-Messungen zeigte:
+    das Schreiben der frisch berechneten Miniatur auf die SD-Karte
+    (inkl. zlib.compress UND dem Verzeichnis-Scan in
+    _thumb_cache_evict_if_needed()) lief bisher SYNCHRON mitten im
+    Zeichenpfad - z.B. "_thumb_cache_put: 380ms" bei einem insgesamt
+    1210ms-Aufruf fuer 'Taekwon-Do (Korea).art", also rund 30% der
+    gesamten gemessenen Blockierzeit, nur fuer das Wegschreiben einer
+    Kopie, die fuer die AKTUELLE Anzeige gar nicht mehr gebraucht
+    wird (das fertige Bild liegt zu diesem Zeitpunkt schon im
+    Speicher-Cache 'self.scaled' UND wird an den Aufrufer zurueck-
+    gegeben). Der Festplatten-Cache ist reine Optimierung fuer
+    SPAETERE Zugriffe (naechstes Vorbeiscrollen, naechster Start) -
+    er muss also nicht fertig sein, bevor der aktuelle Frame steht.
+
+    Bewusst ein eigener, kurzlebiger Thread PRO AUFRUF statt eines
+    dauerhaften Warteschlangen-Worker-Threads: das Schreiben passiert
+    ohnehin nur bei einem echten Skalierungs-Fehltreffer (nicht bei
+    jedem Scrollschritt), der Thread beendet sich von selbst sobald
+    die Datei geschrieben ist. daemon=True, damit ein noch laufender
+    Schreibvorgang das Beenden des Frontends nicht blockiert. Fehler
+    werden bewusst verschluckt (nicht Aufgabe des Aufrufers, auf
+    einen Hintergrund-Schreibvorgang zu warten oder zu reagieren -
+    _thumb_cache_put() selbst loggt einen etwaigen Fehlschlag ja
+    bereits, siehe deren Docstring oben)."""
+    def _run():
+        try:
+            _thumb_cache_put(path, w, h, tw, th, pix)
+        except Exception:
+            pass
+    threading.Thread(target=_run, daemon=True).start()
 
 def _thumb_cache_evict_if_needed():
     """Einfache Verdraengung nach Anzahl Dateien: die am laengsten nicht
@@ -565,10 +617,42 @@ class ArtCache:
             sw, sh = w * scale, h * scale
             out = bytearray(sw * sh * 4)
             row_out = sw * 4
+            # GEAENDERT (Nutzerwunsch: "das muss schneller laufen!!" -
+            # dritte DRAGEND_PROFILE-Log-Datei zeigte diese Schleife als
+            # groessten Einzelposten beim Aufreissen der Anzeige, z.B.
+            # "fe/art.py:570(<genexpr>): 565ms (65792 Aufrufe)" bei
+            # einem 773ms-join fuer ein einzelnes Cover. Zwei kleine,
+            # aber MESSBAR wirksame Aenderungen (per Differenzmessung
+            # bestaetigt, siehe /tmp/bench_upscale.py):
+            # 1) Die Ursprungszeile wird jetzt EINMAL pro Durchlauf aus
+            #    "pix" herausgeschnitten ("src_row") statt bei JEDEM der
+            #    w Pixel erneut ueber den vollen, viel groesseren "pix"-
+            #    Puffer plus Offset-Arithmetik zuzugreifen.
+            # 2) Eine LISTENABSTRAKTION ("[... for x in range(w)]") statt
+            #    des vorherigen GENERATORS ("... for x in range(w)" ohne
+            #    Klammern) - b"".join() kann eine fertige Liste schneller
+            #    durchlaufen als einen Generator, der bei jedem Element
+            #    einen eigenen Interpreter-Frame-Wechsel braucht. Genau
+            #    dasselbe Muster (Liste statt Generator) wird beim
+            #    Verkleinern weiter unten schon seit dessen eigenem
+            #    Performance-Fix verwendet - hier war es bisher nur
+            #    nicht konsequent uebernommen worden.
+            # EHRLICH DOKUMENTIERT: das ist eine Verbesserung des
+            # Konstantfaktors (in Sandbox-Messungen ca. 10-15% schneller),
+            # KEIN grundlegend anderer, asymptotisch schnellerer
+            # Algorithmus - die Schleife bleibt weiterhin ein reiner
+            # Python-Pixel-Durchlauf ohne numpy/C-Erweiterung (bewusst,
+            # um keine zusaetzliche Abhaengigkeit auf der ohnehin schon
+            # eng bemessenen MiSTer-SD-Karte/Offline-Installation
+            # einzufuehren). In Kombination mit dem asynchronen
+            # Festplatten-Cache-Schreiben (siehe _thumb_cache_put_async()
+            # in fe/art.py) sollte die spuerbare Blockierzeit trotzdem
+            # deutlich sinken, auch wenn ein Rest bleibt - ob und wie
+            # viel, muss die naechste echte Hardware-Messung zeigen.
             for y in range(h):
-                o = y * w * 4
-                row = b"".join(pix[o + x*4:o + x*4 + 4] * scale
-                               for x in range(w))
+                src_row = pix[y * w * 4:(y + 1) * w * 4]
+                row = b"".join([src_row[x*4:x*4 + 4] * scale
+                                 for x in range(w)])
                 base_off = y * scale * row_out
                 for rep in range(scale):
                     off = base_off + rep * row_out
@@ -580,7 +664,13 @@ class ArtCache:
             # "result" gespeichert, NIEMALS von einer schon vorhandenen
             # Miniatur aus - so bleibt die gespeicherte Datei bit-
             # identisch zu einer frischen Berechnung.
-            _thumb_cache_put(path, max_w, max_h, sw, sh, result[2])
+            #
+            # GEAENDERT: _thumb_cache_put_async() statt _thumb_cache_put()
+            # - siehe deren Docstring in fe/art.py (spart ca. 30% der
+            # gemessenen Blockierzeit, da das Wegschreiben jetzt im
+            # Hintergrund passiert statt die Anzeige des bereits fertig
+            # berechneten "result" weiter zu verzoegern).
+            _thumb_cache_put_async(path, max_w, max_h, sw, sh, result[2])
             return result
 
         # Bild ist in mindestens einer Richtung groesser als die Box -
@@ -618,7 +708,14 @@ class ArtCache:
         # WICHTIGE QUALITAETS-REGEL (siehe Modul-Kommentar oben): immer
         # das soeben aus dem Original berechnete "result" speichern,
         # niemals eine bereits vorhandene Miniatur weiterverarbeiten.
-        _thumb_cache_put(path, max_w, max_h, tw, th, result[2])
+        #
+        # GEAENDERT: _thumb_cache_put_async() statt _thumb_cache_put() -
+        # gleicher Grund wie beim Hochskalieren oben (siehe dortiger
+        # Kommentar und der Docstring von _thumb_cache_put_async() in
+        # fe/art.py): das Wegschreiben ist reine Optimierung fuer
+        # spaeter und muss die Anzeige des schon fertigen "result"
+        # nicht mehr blockieren.
+        _thumb_cache_put_async(path, max_w, max_h, tw, th, result[2])
         return result
 
 ART = ArtCache()

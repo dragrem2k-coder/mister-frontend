@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-32",
-  "summary": "HDMI-Start-Ruckler jetzt WIRKLICH behoben: Artbox der ersten Kategorie synchron statt im (racigen) Hintergrund-Thread vorgewaermt"
+  "build_id": "2026-08-24-33",
+  "summary": "Cover-Skalierung beim Scrollen beschleunigt: Festplatten-Cache-Schreiben laeuft jetzt im Hintergrund, Hochskalierungs-Schleife optimiert"
 }
