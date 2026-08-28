@@ -43,9 +43,13 @@
 # bewaehrte, extra dafuer geschriebene Kill-Logik, siehe dortiger
 # Kommentar, warum das dort - anders als am SKRIPTANFANG hier drueber -
 # bewusst auch beim eigenen aufrufenden Elternprozess sicher
-# funktioniert) und startet direkt danach selbst einen frischen
-# Frontend-Prozess mit dem gerade installierten Code. Kein manueller
-# Neustart mehr noetig, weder beim Erstinstall noch bei einem Update.
+# funktioniert). Kein manueller Neustart mehr noetig, weder beim
+# Erstinstall noch bei einem Update.
+#
+# GEAENDERT: Frontend_Update.sh startet danach nicht mehr nur den
+# Frontend-PROZESS neu, sondern fuehrt einen kompletten MiSTer-Neustart
+# (Hardreset) aus, damit wirklich JEDE installierte Aenderung greift,
+# nicht nur der Python-Code - siehe ausfuehrliche Begruendung dort.
 # ============================================================
 
 REPO_ZIP="https://github.com/dragrem2k-coder/mister-frontend/archive/refs/heads/main.zip"
@@ -58,8 +62,16 @@ pause_before_exit() {
     # Im MiSTer-OSD verschwindet die Ausgabe sonst sofort wieder,
     # sobald das Skript endet - hier auf einen Tastendruck warten,
     # damit die Meldung tatsaechlich gelesen werden kann.
+    #
+    # GEAENDERT: nimmt jetzt optional einen eigenen Prompt-Text entgegen
+    # (Standard weiterhin "...zurueck ins Menue..." fuer die echten
+    # Fehler-/Abbruch-Faelle unten, die tatsaechlich ins Menue
+    # zurueckkehren) - noetig geworden, weil der Erfolgsfall am Ende
+    # dieses Skripts inzwischen NICHT mehr ins Menue zurueckkehrt,
+    # sondern in einen kompletten MiSTer-Neustart uebergeht (siehe dort).
+    local prompt_text="${1:-Taste druecken, um zurueck ins Menue zu gehen...}"
     echo ""
-    read -n 1 -s -r -p "Taste druecken, um zurueck ins Menue zu gehen..."
+    read -n 1 -s -r -p "$prompt_text"
     echo ""
 }
 
@@ -318,15 +330,25 @@ echo ""
 UPDATE_SCRIPT="$SCRIPTS_DIR/Frontend_Update.sh"
 if [ -x "$UPDATE_SCRIPT" ] || [ -f "$UPDATE_SCRIPT" ]; then
     # NEU (siehe ausfuehrliche Begruendung im Kopfkommentar): startet
-    # den frisch installierten Code JETZT, ohne manuellen Neustart -
+    # den frisch installierten Code JETZT, ohne manuellen Eingriff -
     # exec statt Aufruf, damit diese Shell durch Frontend_Update.sh
-    # ERSETZT wird (nicht als Kindprozess daneben haengen bleibt), das
-    # danach seinerseits per exec in den neuen Frontend-Prozess
-    # uebergeht. pause_before_exit hier bewusst VOR dem exec, nicht
-    # danach - Frontend_Update.sh startet das Frontend selbst sofort
-    # neu, eine Wartemeldung DANACH wuerde nie mehr angezeigt.
-    echo "Frontend wird jetzt automatisch neu gestartet..."
-    pause_before_exit
+    # ERSETZT wird (nicht als Kindprozess daneben haengen bleibt).
+    #
+    # GEAENDERT (Nutzer-Rueckmeldung: "sollten wir nach der Installation
+    # einen Hardreset/kompletten Neustart machen lassen?" - bestaetigt,
+    # gilt bewusst fuer diesen Weg genauso wie fuer den manuellen ueber
+    # das Scripts-Menue): Frontend_Update.sh beendet hier nicht mehr nur
+    # den alten Prozess und startet direkt einen neuen, sondern schliesst
+    # danach mit einem kompletten MiSTer-Neustart ab (sync; reboot) -
+    # diese Shell (und mit ihr das gesamte OSD-Skriptfenster) kehrt also
+    # NICHT mehr zurueck, sondern der MiSTer bootet gleich frisch neu
+    # hoch. pause_before_exit hier bewusst VOR dem exec, mit eigenem
+    # Text, der das auch ankuendigt - eine Wartemeldung DANACH wuerde
+    # nie mehr angezeigt.
+    echo "Frontend wird jetzt installiert, danach startet der MiSTer"
+    echo "automatisch komplett neu (Hardreset), damit alle Aenderungen"
+    echo "sicher greifen..."
+    pause_before_exit "Taste druecken, um fortzufahren (MiSTer startet danach neu)..."
     exec bash "$UPDATE_SCRIPT"
 fi
 

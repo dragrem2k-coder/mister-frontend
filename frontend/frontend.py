@@ -11528,13 +11528,23 @@ class Frontend:
                 # Frontend_Install.sh/Frontend_Update.sh dokumentiert im
                 # Detail, warum dieser Weg den ALTEN Frontend-Prozess
                 # (auch wenn er selbst gerade blockierend darauf wartet)
-                # sauber beendet und direkt danach einen frischen mit dem
-                # gerade installierten Code startet - ein zusaetzlicher
-                # kompletter MiSTer-Neustart ist dafuer bewusst NICHT
-                # noetig (das war frueher noetig, wurde aber genau dafuer
-                # bereits in einem frueheren Build behoben, siehe
-                # Frontend_Install.sh-Kopfkommentar "Kein manueller
-                # Neustart mehr noetig").
+                # sauber beendet.
+                #
+                # GEAENDERT (Nutzer-Rueckmeldung: "sollten wir nach der
+                # Installation einen Hardreset/kompletten Neustart machen
+                # lassen, damit die Aenderungen auch definitiv uebernommen
+                # sind?" - bestaetigt, ausdruecklich fuer BEIDE Wege
+                # gleichermassen, also auch hier): anders als zuvor endet
+                # Frontend_Install.sh -> Frontend_Update.sh jetzt NICHT
+                # mehr in einem einfachen Neustart des Frontend-PROZESSES,
+                # sondern in einem kompletten MiSTer-Neustart (sync;
+                # reboot) - ein zusaetzlicher manueller Neustart ist zwar
+                # weiterhin nicht noetig, ABER anders als der Kommentar
+                # hier frueher behauptete, findet jetzt sehr wohl ein
+                # echter kompletter MiSTer-Neustart statt (siehe
+                # Frontend_Update.sh fuer die ausfuehrliche Begruendung,
+                # warum das zuverlaessiger ist als der reine
+                # Prozess-Neustart).
                 if self.confirm_update:
                     if act == "left":
                         self.confirm_choice = 0    # Jetzt

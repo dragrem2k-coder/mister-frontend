@@ -89,53 +89,43 @@ if [ -e "$FRONTEND_DIR/disable" ]; then
     exit 0
 fi
 
-echo "Starte aktualisiertes Frontend..."
-# BUGFIX (Nutzer-Rueckmeldung: "hab gerade Update gemacht und dann
-# bleibt das Frontend haengen [an der rohen Linux-Konsole/Login-
-# Aufforderung], passiert nicht oft aber ab und zu"): der bisherige
-# "exec python3 frontend.py" ersetzte diese Shell bedingungslos durch
-# den neuen Python-Prozess. Scheiterte der (z.B. durch eine seltene,
-# kurze Race unmittelbar nach dem Beenden der alten Instanz - aehnliche
-# Fehlerkategorie wie der bereits in frontend_boot.sh behobene "1 von
-# 10 startet nicht richtig"-Bug beim normalen Hochfahren, nur bisher
-# ohne das dortige Sicherheitsnetz fuer DIESEN Weg hier), gab es
-# DANACH ueberhaupt keinen Prozess mehr, der irgendetwas auf den
-# Bildschirm haette zeichnen koennen - genau die gemeldete leere
-# Konsole, ohne jeden Hinweis, dass ueberhaupt etwas schiefgelaufen ist.
+# GEAENDERT (Nutzer-Rueckmeldung: "wenn Update verfuegbar ist und man
+# waehlt jetzt installieren, sollten wir nach der Installation einen
+# Hardreset/kompletten Neustart machen lassen, damit die Aenderungen
+# auch definitiv uebernommen sind?" - Einschaetzung geteilt und
+# bestaetigt): bis hierher startete dieses Skript nur den Frontend-
+# PROZESS neu (siehe Historie direkt unten, jetzt ersetzt) - das laedt
+# zuverlaessig neuen PYTHON-Code, fasst aber zwei Dinge NICHT an, die
+# nur bei einem echten Boot neu geladen werden: frontend_boot.sh selbst
+# (das Skript, das den Frontend-Prozess beim Hochfahren ueberhaupt
+# erst startet) und die Autostart-Zeile in
+# /media/fat/linux/user-startup.sh. Aendert ein Update genau daran
+# etwas (kam in diesem Projekt schon vor, siehe z.B. die Skript-
+# Umbenennungen weiter oben in dieser Datei), wuerde der reine
+# Prozess-Neustart das STILLSCHWEIGEND nicht uebernehmen - erst der
+# naechste ECHTE Neustart haette gegriffen. Deshalb jetzt stattdessen
+# ein kompletter MiSTer-Neustart: dauert spuerbar laenger als der
+# vorherige Weg, garantiert dafuer aber wirklich JEDE installierte
+# Aenderung, nicht nur den Python-Code - fuer "ich habe gerade ein
+# Update installiert" ist Verlaesslichkeit wichtiger als die paar
+# gesparten Sekunden. Gilt bewusst fuer BEIDE Aufrufwege gleichermassen
+# (manuell ueber das Scripts-Menue UND automatisch ueber den "Update
+# jetzt installieren?"-Dialog im Frontend selbst, siehe frontend.py) -
+# kein Sonderfall im Code, ein einziges, konsistentes Verhalten.
 #
-# Jetzt: kein "exec" mehr (die Shell bleibt als Aufseher am Leben,
-# kostet auf dem MiSTer keine spuerbaren Ressourcen), echter
-# ueberwachter Start mit automatischem Neuversuch, falls der Prozess
-# SOFORT (innerhalb der ersten 3 Sekunden) wieder beendet ist - ein
-# regulaeres Beenden (Beenden-Dialog oder ein spaeterer, gewollter
-# Neustart) laeuft immer viele Minuten, ein Ende nach nur 1-2 Sekunden
-# ist so gut wie sicher ein frueher Absturz/eine verlorene Race, kein
-# gewolltes Beenden. Scheitert selbst der zweite Versuch, zumindest
-# eine klar sichtbare Fehlermeldung statt einer stillen, leeren Konsole.
-attempt=1
-while [ "$attempt" -le 2 ]; do
-    START_TS=$(date +%s 2>/dev/null || echo 0)
-    /usr/bin/python3 "$FRONTEND_DIR/frontend.py"
-    RC=$?
-    END_TS=$(date +%s 2>/dev/null || echo 0)
-    RUNTIME=$((END_TS - START_TS))
-    if [ "$RUNTIME" -ge 3 ]; then
-        exit "$RC"
-    fi
-    if [ "$attempt" -eq 1 ]; then
-        echo ""
-        echo "Frontend hat sich sofort wieder beendet (Code $RC, nach ${RUNTIME}s)"
-        echo "- vermutlich eine kurze Race direkt nach dem Neustart."
-        echo "Neuer Versuch in 2 Sekunden..."
-        sleep 2
-    fi
-    attempt=$((attempt + 1))
-done
-echo ""
-echo "FEHLER: Frontend startet auch im zweiten Versuch sofort wieder ab."
-echo "Details:  cat /tmp/frontend.log"
-echo "Manuell erneut versuchen:  python3 $FRONTEND_DIR/frontend.py"
-echo ""
-read -rsn1 -p "Taste druecken zum Beenden..." 2>/dev/null
-echo ""
-exit 1
+# HISTORIE (fuer den Kontext, warum es hier vorher eine eigene
+# Ueberwachungs-/Neuversuch-Logik gab): frueher startete dieses Skript
+# per "exec python3 frontend.py" direkt den neuen Prozess, mit einem
+# extra gebauten Sicherheitsnetz fuer den seltenen Fall, dass der
+# sofort wieder abstuerzte (Nutzer-Rueckmeldung: "bleibt das Frontend
+# haengen [an der rohen Linux-Konsole], passiert nicht oft aber ab und
+# zu"). Bei einem echten Neustart durchlaeuft der neue Prozess ohnehin
+# denselben Weg wie jeder normale Boot, inklusive des dort bereits
+# LANGE bewaehrten eigenen Sicherheitsnetzes (frontend_boot.sh, siehe
+# dortiger Kommentar zum "1 von 10 startet nicht richtig"-Bug) - eine
+# zweite, separate Ueberwachung genau dafuer hier ist dadurch
+# ueberfluessig geworden.
+echo "MiSTer wird jetzt komplett neu gestartet, damit wirklich alle"
+echo "installierten Aenderungen greifen (kann einen Moment dauern)..."
+sync
+reboot

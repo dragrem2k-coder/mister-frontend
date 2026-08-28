@@ -26,10 +26,9 @@ schau am besten in die Git-Historie oder in den Kopf von
   "Jetzt" startet `Frontend_Install.sh` über denselben, bereits
   ausführlich getesteten Weg wie ein manueller Tap auf "Frontend
   Install" im Scripts-Menü - der beendet den alten Frontend-Prozess
-  sauber und startet direkt danach selbst einen frischen mit dem gerade
-  installierten Code, ein zusätzlicher kompletter MiSTer-Neustart ist
-  dafür bewusst nicht nötig (das wurde bereits in einem früheren Build
-  behoben, siehe Kopfkommentar von `Frontend_Install.sh`).
+  sauber und schließt danach automatisch mit einem kompletten
+  MiSTer-Neustart ab, siehe "Hardreset nach Update-Installation" weiter
+  unten unter Bugfixes.
 - Neuer Menüpunkt "Bestätigen/Abbrechen vertauschen" (System -> Eingabe):
   ein einziger Umschalter für den häufigsten Fall unpassender Pad-
   Belegung (z.B. Nintendo- statt Xbox-Tastenlayout) - vertauscht überall
@@ -178,6 +177,29 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- Hardreset nach Update-Installation: nach "Jetzt installieren" im
+  Update-Dialog (bzw. beim manuellen Ausführen von `Frontend_Install`
+  über das Scripts-Menü) startete bisher nur der Frontend-PROZESS neu
+  (frischer `python3 frontend.py`, sofort mit dem gerade installierten
+  Code) - schnell, aber nicht wirklich vollständig (Nutzer-Rückmeldung/
+  Einschätzung: "sollten wir nach der Installation einen Hardreset
+  quasi kompletten Neustart machen lassen, damit die Änderungen auch
+  definitiv übernommen sind und das Frontend einmal frisch neu
+  hochfährt?"). Der reine Prozess-Neustart lädt zwar zuverlässig neuen
+  Python-Code, fasst aber zwei Dinge NICHT an, die nur bei einem
+  echten Boot neu geladen werden: `frontend_boot.sh` selbst (das
+  Skript, das den Frontend-Prozess beim Hochfahren überhaupt erst
+  startet) und die Autostart-Zeile in
+  `/media/fat/linux/user-startup.sh`. Ändert ein Update genau daran
+  etwas, würde der reine Prozess-Neustart das bisher stillschweigend
+  nicht übernehmen - erst der nächste ECHTE Neustart hätte gegriffen.
+  `Frontend_Update.sh` (gemeinsamer Endpunkt beider Installationswege)
+  schließt jetzt stattdessen konsistent mit einem kompletten
+  MiSTer-Neustart (`sync; reboot`) ab - dauert spürbar länger als
+  vorher, garantiert dafür aber wirklich jede installierte Änderung,
+  nicht nur den Python-Code. Gilt bewusst für beide Aufrufwege
+  gleichermaßen (Update-Dialog im Frontend UND manueller Start über
+  das Scripts-Menü), kein Sonderfall im Code.
 - Leertaste wurde in der F2/"/"-Volltextsuche komplett ignoriert
   (Nutzer-Rückmeldung: "F2 Volltextsuche erkennt keine Leertaste? Wenn
   ich super mario suchen will schreibt der supermario"). Ursache: die
