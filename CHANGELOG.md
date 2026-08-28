@@ -7,6 +7,13 @@ schau am besten in die Git-Historie oder in den Kopf von
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
 **Neue Features:**
+- Musik-Titel-Laufschrift jetzt ein/ausschaltbar (System -> Anzeige,
+  Nutzerwunsch: "Musik Laufschrift hätte ich auch gerne noch ein und
+  ausschaltbar"). Ausgeschaltet zeigt der Songtitel weiterhin (den
+  Anfang von) sich selbst an, scrollt aber nicht mehr - betrifft nur die
+  Songtitel-Laufschrift, nicht die separate Laufschrift für zu lange
+  Spieletitel in der Liste selbst. Wirkt sofort, ohne Neustart, gleiches
+  An/Aus-Muster wie beim Equalizer/Schimmer-Effekt.
 - Update-/Fix-Hinweis fragt jetzt aktiv nach, statt nur kurz einzublenden
   (Nutzerwunsch: "können wir das Update-Popup wenn die Info kommt gleich
   eine Abfrage hinzufügen, ob man jetzt das Update gleich installieren

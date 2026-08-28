@@ -3536,6 +3536,7 @@ from fe.settings import (
     FAST_SCROLL_WINDOW, pulse_effect_enabled, toggle_pulse_effect,
     CRT_CONFIRM_TIMEOUT, crt_pending_confirm, mark_crt_pending_confirm,
     clear_crt_pending_confirm, eq_effect_enabled, toggle_eq_effect,
+    track_marquee_enabled, toggle_track_marquee,
 )
 
 # NEUES FEATURE (Nutzerwunsch: Rainwave-Internetradio als zweite
@@ -7139,6 +7140,18 @@ class Frontend:
         return name[off:off + maxc]
 
     def _track_marquee_needs_scroll(self, maxc):
+        # NEUES FEATURE (Nutzerwunsch: "Musik-Laufschrift haette ich auch
+        # gerne noch ein und ausschaltbar"): einziger Pruefpunkt, den
+        # sowohl next_action() (Aufwach-/Tick-Steuerung) als auch der
+        # eigentliche Tick-Aufruf (_track_marquee_tick(), siehe next_action())
+        # konsultieren, bevor ueberhaupt weitergescrollt wird - bei
+        # deaktiviertem Schalter also einfach IMMER False, unabhaengig
+        # von der Titellaenge. self.track_mq_off bleibt dadurch dauerhaft
+        # bei 0 (siehe _sync_track_marquee() bei jedem Songwechsel) -
+        # track_marquee_text() zeigt weiterhin den (Anfang des) Songtitel(s),
+        # nur eben statisch statt scrollend.
+        if not track_marquee_enabled():
+            return False
         name = self._track_mq_name
         return bool(name) and len(name) > maxc
 
@@ -12004,6 +12017,19 @@ class Frontend:
                             # next_action() geprueft), kein Neustart
                             # noetig.
                             toggle_eq_effect()
+                            self._refresh_system_category()
+                        elif kind == "track_marquee":
+                            # NEUES FEATURE (Nutzerwunsch: "Musik-
+                            # Laufschrift haette ich auch gerne noch ein
+                            # und ausschaltbar") - wirkt SOFORT
+                            # (track_marquee_enabled() wird live in
+                            # _track_marquee_needs_scroll() geprueft,
+                            # siehe dortiger Kommentar), kein Neustart
+                            # noetig. Betrifft NUR den scrollenden
+                            # Songtitel, nicht die Laufschrift fuer zu
+                            # lange Spieletitel in der Liste (eigenes,
+                            # getrenntes System).
+                            toggle_track_marquee()
                             self._refresh_system_category()
                         elif kind == "stream_overlay":
                             # NEUES FEATURE (Nutzerwunsch: "kann man das

@@ -119,6 +119,34 @@ def toggle_eq_effect():
         except OSError:
             pass
 
+# NEUES FEATURE (Nutzerwunsch: "Musik-Laufschrift haette ich auch gerne
+# noch ein und ausschaltbar"): gleiches Ein/Aus-Muster wie beim
+# Equalizer direkt oberhalb - betrifft NUR die scrollende Songtitel-
+# Anzeige (frontend.py: track_marquee_text()/_track_marquee_tick()),
+# NICHT die Laufschrift fuer zu lange Spieletitel in der Liste
+# (marquee_needed()/marquee_tick() - komplett getrenntes, eigenes
+# System, siehe dortige Kommentare). Deaktiviert zeigt der Songtitel
+# weiterhin (nur) seinen Anfang statt zu scrollen, statt ganz zu
+# verschwinden - naeher an "Laufschrift aus" als an "Songtitel
+# ausblenden".
+TRACK_MARQUEE_DISABLED_FLAG = "/media/fat/frontend/track_marquee_disabled"
+
+def track_marquee_enabled():
+    return not os.path.exists(TRACK_MARQUEE_DISABLED_FLAG)
+
+def toggle_track_marquee():
+    if track_marquee_enabled():
+        try:
+            os.makedirs(os.path.dirname(TRACK_MARQUEE_DISABLED_FLAG), exist_ok=True)
+            open(TRACK_MARQUEE_DISABLED_FLAG, "w").close()
+        except OSError:
+            pass
+    else:
+        try:
+            os.remove(TRACK_MARQUEE_DISABLED_FLAG)
+        except OSError:
+            pass
+
 # NEUES FEATURE (Nutzerwunsch: "kann man das mit Stream Overlay in den
 # Optionen mit einem an/aus schaltbar machen?"): bisher nur ueber das
 # externe Scripts/Frontend_Stream_Toggle.sh umschaltbar (legt/entfernt dieselbe
