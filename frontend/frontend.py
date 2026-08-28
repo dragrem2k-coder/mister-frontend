@@ -5431,7 +5431,75 @@ class Frontend:
     # ------------------------------------------------------------------
     # Seite 0: Kategorien-Menue
     # ------------------------------------------------------------------
+    def _perf_profiled_call(self, label, fn, args=(), threshold=0.020):
+        """Gemeinsame PERF-Messhilfe fuer die zentralen Navigations-
+        Zeichenpfade (draw_page_cats/_items, _draw_navigate_cats/_items).
+
+        PERF-DIAGNOSE (Nutzer-Rueckmeldung: "das muss unter HDMI
+        insgesamt fluessiger laufen, vor allem beim Wechsel rein in
+        einen Ordner/zurueck UND beim reinen Scrollen" - trotz bereits
+        aktiviertem "Schnelles Scrollen"; RA-Icon-Vorwaermen als eine
+        konkrete Ursache bereits separat behoben, siehe Changelog):
+        noch KEIN weiterer Fix, sondern gezielte Messung. Existierte
+        bisher NUR fuer draw_page_items() (siehe dortige, ausfuehrliche
+        Vorgeschichte: "auf echter Hardware messen" - dort gemessene
+        150-250ms liessen sich in dieser Cloud-Sandbox trotz nachgebauter
+        grosser Sammlungen NIE auch nur annaehernd reproduzieren,
+        vermutlich schlicht die deutlich schwaechere MiSTer-ARM-CPU oder
+        etwas, das nur mit echten Metadaten/RA-Daten auftritt). Jetzt
+        fuer alle vier zentralen Zeichenpfade vereinheitlicht (statt die
+        cProfile-Logik viermal separat zu kopieren), damit ein einziger
+        DRAGEND_PROFILE=1-Lauf auf dem echten Geraet ueberall dieselbe
+        Detailtiefe liefert - sowohl fuer den vollen Seitenwechsel
+        (Wechsel rein/zurueck) als auch fuer einen einzelnen
+        Scroll-Schritt.
+
+        Normalbetrieb (DRAGEND_PROFILE nicht gesetzt): nur eine leichte
+        Zeitmessung, Log-Zeile nur bei Ueberschreiten von threshold -
+        vernachlaessigbarer Overhead. Mit DRAGEND_PROFILE=1: zusaetzlich
+        ein vollstaendiges cProfile fuer genau diesen einen Aufruf, bei
+        Ueberschreiten der Schwelle als "PROFILE: ..."-Zeilen mitgeloggt
+        (Top 12 nach kumulativer Zeit) - zeigt beim naechsten
+        Auftreten des Rucklers auf dem echten Geraet genau, WELCHE
+        Funktion(en) die Zeit tatsaechlich verbrauchen, statt weiter zu
+        raten (gleiches Prinzip, das beim F5-Problem frueher schon den
+        Ausschlag gegeben hat)."""
+        if os.environ.get("DRAGEND_PROFILE") == "1":
+            import cProfile, pstats, io as _io
+            _pr = cProfile.Profile()
+            _pr.enable()
+            _t0 = time.monotonic()
+            r = fn(*args)
+            _dt = time.monotonic() - _t0
+            _pr.disable()
+            if _dt > threshold:
+                LOG("PERF %s: %.0f ms" % (label, _dt * 1000))
+                _s = _io.StringIO()
+                _stats = pstats.Stats(_pr, stream=_s).sort_stats("cumulative")
+                _stats.print_stats(12)
+                for _line in _s.getvalue().splitlines():
+                    if _line.strip():
+                        LOG("PROFILE: " + _line)
+                _th = self.fb._textcache_hits
+                _tm = self.fb._textcache_misses
+                _te = self.fb._textcache_evictions
+                _ttotal = _th + _tm
+                _trate = (_th / _ttotal * 100) if _ttotal else 0.0
+                LOG("TEXTCACHE: Treffer=%d Fehltreffer=%d Verdraengungen=%d "
+                    "Trefferquote=%.1f%%" % (_th, _tm, _te, _trate))
+            return r
+        _t0 = time.monotonic()
+        r = fn(*args)
+        _dt = time.monotonic() - _t0
+        if _dt > threshold:
+            LOG("PERF %s: %.0f ms" % (label, _dt * 1000))
+        return r
+
     def draw_page_cats(self, message=None, flip=True):
+        return self._perf_profiled_call(
+            "draw_page_cats", self._draw_page_cats_impl, (message, flip))
+
+    def _draw_page_cats_impl(self, message=None, flip=True):
         fb = self.fb
         W, H = fb.width, fb.height
         L = self.layout_cats()
@@ -6040,6 +6108,13 @@ class Frontend:
             fb.buf[off:end] = bg_pattern[off:end]
 
     def _draw_navigate_cats(self, old_cat_i):
+        # PERF-DIAGNOSE (siehe ausfuehrlichen Kommentar bei
+        # _perf_profiled_call()) - derselbe Grund, hier fuer den "beim
+        # reinen Scrollen"-Fall aus derselben Nutzer-Rueckmeldung.
+        return self._perf_profiled_call(
+            "navigate_cats", self._draw_navigate_cats_impl, (old_cat_i,))
+
+    def _draw_navigate_cats_impl(self, old_cat_i):
         """Leichter Zeichenpfad fuer EINEN Navigationsschritt (hoch/
         runter) auf Seite 0 (Kategorien-Hauptmenue), OHNE dass dabei
         gescrollt werden musste - Pendant zu _draw_navigate_items()
@@ -6191,6 +6266,13 @@ class Frontend:
         return True
 
     def _draw_navigate_items(self, old_item_i):
+        # PERF-DIAGNOSE (siehe ausfuehrlichen Kommentar bei
+        # _perf_profiled_call()) - hier fuer die weitaus haeufigere
+        # Item-Liste (Seite 1) statt der Kategorienliste (Seite 0).
+        return self._perf_profiled_call(
+            "navigate_items", self._draw_navigate_items_impl, (old_item_i,))
+
+    def _draw_navigate_items_impl(self, old_item_i):
         """Leichter Zeichenpfad fuer EINEN Navigationsschritt (hoch/
         runter) auf Seite 1, OHNE dass dabei gescrollt werden musste:
         aktualisiert nur die alte und neue markierte Zeile (plus
@@ -6571,44 +6653,17 @@ class Frontend:
         # Bewusst NICHT dauerhaft aktiv (cProfile kostet selbst Zeit,
         # wuerde die normale Bedienung spuerbar verlangsamen) - nur
         # wenn DRAGEND_PROFILE=1 in der Umgebung gesetzt ist.
-        if os.environ.get("DRAGEND_PROFILE") == "1":
-            import cProfile, pstats, io as _io
-            _pr = cProfile.Profile()
-            _pr.enable()
-            _t0 = time.monotonic()
-            r = self._draw_page_items_impl(message=message, flip=flip)
-            _dt = time.monotonic() - _t0
-            _pr.disable()
-            if _dt > 0.040:
-                LOG("PERF draw_page_items: %.0f ms" % (_dt * 1000))
-                _s = _io.StringIO()
-                _stats = pstats.Stats(_pr, stream=_s).sort_stats("cumulative")
-                _stats.print_stats(12)
-                for _line in _s.getvalue().splitlines():
-                    if _line.strip():
-                        LOG("PROFILE: " + _line)
-                # NEU (Nutzerwunsch: "noch mehr Performance rausholen" -
-                # soll klaeren, ob _TEXTCACHE_LIMIT=400 bei einer grossen
-                # Sammlung tatsaechlich zu knapp ist, oder ob die text()-
-                # Kosten schlicht an staendig NEUEN Titeln beim Scrollen
-                # liegen - siehe Kommentar bei den Zaehlern in
-                # fe/framebuffer.py). Zaehlt kumulativ ueber die ganze
-                # Sitzung, nicht pro Bild - Verdraengungen > 0 waeren ein
-                # klares Indiz, dass die Grenze zu knapp ist.
-                _th = self.fb._textcache_hits
-                _tm = self.fb._textcache_misses
-                _te = self.fb._textcache_evictions
-                _ttotal = _th + _tm
-                _trate = (_th / _ttotal * 100) if _ttotal else 0.0
-                LOG("TEXTCACHE: Treffer=%d Fehltreffer=%d Verdraengungen=%d "
-                    "Trefferquote=%.1f%%" % (_th, _tm, _te, _trate))
-            return r
-        _t0 = time.monotonic()
-        r = self._draw_page_items_impl(message=message, flip=flip)
-        _dt = time.monotonic() - _t0
-        if _dt > 0.040:
-            LOG("PERF draw_page_items: %.0f ms" % (_dt * 1000))
-        return r
+        #
+        # GEAENDERT (Nutzer-Rueckmeldung: "muss unter HDMI insgesamt
+        # fluessiger laufen, auch beim Wechsel rein/zurueck und beim
+        # reinen Scrollen"): dieselbe Mess-/Profiling-Logik ist jetzt in
+        # _perf_profiled_call() ausgelagert und wird zusaetzlich auch von
+        # draw_page_cats()/_draw_navigate_cats()/_draw_navigate_items()
+        # genutzt (siehe dortiger Kommentar) - hier unveraendert derselbe
+        # Schwellenwert (40ms) wie zuvor.
+        return self._perf_profiled_call(
+            "draw_page_items", self._draw_page_items_impl,
+            (message, flip), threshold=0.040)
 
     def _draw_page_items_impl(self, message=None, flip=True):
         fb = self.fb

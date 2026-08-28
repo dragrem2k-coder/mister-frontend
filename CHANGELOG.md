@@ -7,6 +7,33 @@ schau am besten in die Git-Historie oder in den Kopf von
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
 **Neue Features:**
+- PERF-Profiling fuer die vier zentralen Navigations-Zeichenpfade
+  (Nutzer-Rueckmeldung: "das muss unter HDMI insgesamt fluessiger
+  laufen, auch beim Wechsel rein/zurueck und beim reinen Scrollen" -
+  trotz bereits behobenem Icon-Vorwaerm-Bug und bereits aktiviertem
+  "Schnelles Scrollen"). WICHTIG: dies ist noch KEIN weiterer Fix,
+  sondern gezielte Messinfrastruktur - eine ausfuehrliche Durchsicht
+  aller periodischen draw()-Prüfungen, Hintergrund-Threads, des
+  Boxart-Ladepfads und der bereits mehrfach HDMI-optimierten
+  Zeichenroutinen (rect_rounded()/glow_border_fast()/gebündeltes
+  flip_rows() - alles schon aus frueheren Runden) ergab keinen
+  weiteren offensichtlichen Verdaechtigen, der sich allein durch
+  Code-Lesen sicher bestaetigen liesse. Es gab bereits einen
+  optionalen, per Umgebungsvariable (`DRAGEND_PROFILE=1`)
+  einschaltbaren cProfile-Mitschnitt fuer draw_page_items() (aus einer
+  frueheren Runde, als reale Messwerte von 150-250ms sich in dieser
+  Cloud-Sandbox trotz nachgebauter grosser Sammlungen nie reproduzieren
+  liessen) - der ist jetzt auf alle vier zentralen Pfade ausgeweitet:
+  draw_page_cats()/draw_page_items() (voller Seitenwechsel, z.B.
+  rein in einen Ordner/zurueck) sowie _draw_navigate_cats()/
+  _draw_navigate_items() (einzelner Scroll-Schritt). Normalbetrieb
+  bleibt unveraendert leichtgewichtig (nur eine Zeitmessung, Log-Zeile
+  nur bei ungewoehnlicher Dauer) - mit `DRAGEND_PROFILE=1` gesetzt
+  liefert das Log beim naechsten Auftreten des Rucklers zusaetzlich
+  eine vollstaendige Funktions-fuer-Funktion-Aufschluesselung (Top 12
+  nach kumulativer Zeit) sowie Text-Cache-Trefferquote - das soll beim
+  naechsten Mal endlich zeigen, WAS auf dem echten Geraet tatsaechlich
+  die Zeit kostet, statt weiter zu raten.
 - Arcade-Unterordner (z.B. "alternatives", "organized", "insert Coin",
   "ST-V" - übliche Ordnung bei kuratierten Arcade-Sammlungen) sind
   jetzt auch im Frontend sichtbar und navigierbar, genau wie im OSD

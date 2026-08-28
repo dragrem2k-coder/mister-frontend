@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-29",
-  "summary": "Stocken beim Scrollen/Zurueckgehen behoben (Ursache: Badge-Icon-Vorwaermen fuer F6)"
+  "build_id": "2026-08-24-30",
+  "summary": "PERF-Profiling fuer alle Navigations-Zeichenpfade (DRAGEND_PROFILE=1) - fuer die HDMI-Ruckler-Suche"
 }
