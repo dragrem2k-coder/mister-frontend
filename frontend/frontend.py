@@ -5082,23 +5082,49 @@ class Frontend:
         gleich auch alle zugehoerigen Badge-Icons (siehe dort) - beim
         tatsaechlichen F6-Druck ist damit im Regelfall (Favoriten/
         zuletzt Gespielte zuerst, siehe _ra_prewarm_candidates())
-        wirklich alles bereits lokal vorhanden, nicht nur der Text."""
+        wirklich alles bereits lokal vorhanden, nicht nur der Text.
+
+        BUGFIX/PERFORMANCE (Nutzer-Rueckmeldung: "es nervt total wenn
+        ich in meiner gameboy sammlung oder sonst einer sammlung
+        rumscrolle und wieder auf zurueck gehe das das teilweise
+        sekunden braucht"): die Leerlauf-Pruefung unten (die while-
+        True-Warteschleife) griff bislang nur VOR jedem Spiel - war ein
+        Spiel erstmal dran, dekodierte _refresh_ra_achievements_
+        background() alle seine Badge-Icons am Stueck durch, egal ob
+        der Nutzer zwischendurch wieder aktiv wurde. Das reine Python-
+        Dekodieren (fe/art.py, decode_png(), keine C-Beschleunigung)
+        ist auf MiSTers ARM-Kern spuerbar teuer und haelt dabei den
+        GIL fest, was den Haupt-Zeichen-/Eingabe-Thread ausbremst -
+        genau das war das gemeldete "teilweise Sekunden"-Stocken beim
+        Scrollen/Zurueckgehen. _refresh_ra_achievements_background()
+        bekommt jetzt should_abort() uebergeben, das nach JEDEM
+        einzelnen Icon erneut denselben Leerlauf-Massstab prueft wie
+        die Warteschleife hier - wird der Nutzer waehrenddessen aktiv,
+        bricht das Vorwaermen fuer dieses eine Spiel sofort ab (die
+        restlichen Icons holt entweder der naechste Leerlauf-Durchlauf
+        nach, oder sie laden ganz normal beim tatsaechlichen F6-Aufruf,
+        wie vor dem Icon-Vorwaermen-Feature)."""
         candidates = self._ra_prewarm_candidates()
         if not candidates:
             return
         LOG("RA-Hintergrund-Vorwaermen: %d Kandidat(en)" % len(candidates))
+
+        def _idle_enough():
+            return (time.monotonic() - self._last_input_time) > self._attract_delay_cached()
+
         warmed = 0
         for name, game_id in candidates:
             while True:
-                idle_for = time.monotonic() - self._last_input_time
-                if idle_for > self._attract_delay_cached():
+                if _idle_enough():
                     break
                 time.sleep(2.0)
             cache = _load_ra_achievements_cache()
             entry = cache.get(str(game_id))
             if entry and (time.time() - entry.get("ts", 0)) < self.RA_PREWARM_STALE_SECONDS:
                 continue
-            _refresh_ra_achievements_background(game_id, timeout=5.0)
+            _refresh_ra_achievements_background(
+                game_id, timeout=5.0,
+                should_abort=lambda: not _idle_enough())
             warmed += 1
             time.sleep(self.RA_PREWARM_THROTTLE_SECONDS)
         LOG("RA-Hintergrund-Vorwaermen: fertig (%d von %d tatsaechlich abgerufen)"

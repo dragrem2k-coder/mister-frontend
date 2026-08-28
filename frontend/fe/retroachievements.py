@@ -326,8 +326,39 @@ _ra_achievements_refresh_lock = threading.Lock()
 # SD-Karte - ein Icon wird dadurch nie zweimal aus dem Netz geholt,
 # dieser Aufruf hier kostet fuer bereits vorhandene Icons praktisch
 # nichts.
-def _prewarm_badge_icons(achievements):
+# BUGFIX/PERFORMANCE (Nutzer-Rueckmeldung: "es nervt total wenn ich in
+# meiner gameboy sammlung oder sonst einer sammlung rumscrolle und
+# wieder auf zurueck gehe das das teilweise sekunden braucht"):
+# _prewarm_ra_achievements() in frontend.py prueft zwar VOR jedem Spiel,
+# ob der Nutzer gerade aktiv ist (pausiert sonst) - aber einmal
+# gestartet, dekodierte diese Funktion hier bislang ALLE Badge-Icons
+# eines Spiels am Stueck durch, ohne zwischendurch nochmal nachzusehen.
+# decode_png() (fe/art.py) ist reiner, interpretierter Python-Code ohne
+# C-Beschleunigung (~3ms/Icon schon auf schneller x86-Hardware, auf dem
+# MiSTer-ARM-Kern deutlich mehr) - bei einem Spiel mit vielen Erfolgen
+# (30-80 Icons) hielt der Hintergrund-Thread den GIL damit am Stueck
+# potenziell mehrere hundert Millisekunden bis über eine Sekunde fest
+# und bremste dadurch den Haupt-Zeichen-/Eingabe-Thread genau dann aus,
+# wenn der Nutzer zufaellig mitten in diesem Fenster wieder anfing zu
+# scrollen/zurueckzugehen - das erklaert das "teilweise Sekunden"-
+# Stocken, das dabei nicht auf Arcade beschraenkt war.
+#
+# Fix: optionaler should_abort()-Callback wird jetzt nach JEDEM
+# einzelnen Icon geprueft (nicht nur einmal vor dem ganzen Spiel) -
+# wird der Nutzer waehrenddessen aktiv, bricht das Vorwaermen fuer
+# dieses Spiel sofort ab. Die uebrigen Icons dieses Spiels werden dann
+# einfach beim naechsten echten Leerlauf nachgeholt (oder ganz normal
+# erst beim tatsaechlichen F6-Aufruf geladen, wie vor dem Icon-
+# Vorwaermen-Feature) - kein Datenverlust, nur etwas weniger
+# Vorab-Beschleunigung fuer dieses eine unterbrochene Spiel.
+# should_abort bleibt None (= nie abbrechen) fuer den stale-while-
+# revalidate-Refresh unten in fetch_ra_game_achievements_cached() -
+# der laeuft ja bereits WAEHREND der Nutzer sich das Spiel auf dem
+# F6-Bildschirm ansieht, dort ist ein Abbruch nicht sinnvoll.
+def _prewarm_badge_icons(achievements, should_abort=None):
     for entry in achievements or []:
+        if should_abort is not None and should_abort():
+            break
         badge = entry[3] if len(entry) > 3 else None
         if badge:
             try:
@@ -335,7 +366,7 @@ def _prewarm_badge_icons(achievements):
             except Exception:
                 pass   # Icon-Vorwaermen darf den Hintergrund-Thread nie stoeren
 
-def _refresh_ra_achievements_background(game_id, timeout=5.0):
+def _refresh_ra_achievements_background(game_id, timeout=5.0, should_abort=None):
     key = str(game_id)
     with _ra_achievements_refresh_lock:
         if key in _ra_achievements_refresh_inflight:
@@ -347,7 +378,7 @@ def _refresh_ra_achievements_background(game_id, timeout=5.0):
             cache = _load_ra_achievements_cache()
             cache[key] = {"ts": time.time(), "data": data}
             _save_ra_achievements_cache(cache)
-            _prewarm_badge_icons(data)
+            _prewarm_badge_icons(data, should_abort=should_abort)
     finally:
         with _ra_achievements_refresh_lock:
             _ra_achievements_refresh_inflight.discard(key)

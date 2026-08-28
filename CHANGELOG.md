@@ -213,6 +213,30 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- Stocken beim Scrollen/Zurückgehen behoben: Navigieren innerhalb einer
+  Sammlung (z.B. Game Boy) oder das Zurückgehen ins vorherige Menü
+  brauchte gelegentlich mehrere Sekunden (Nutzer-Rückmeldung: "es nervt
+  total wenn ich in meiner gameboy sammlung oder sonst einer sammlung
+  rumscrolle und wieder auf zurück gehe das das teilweise sekunden
+  braucht um in das vorherige menü wieder zu gelangen"). Direkte Folge
+  des neuen Badge-Icon-Vorwärmens für F6 (siehe "Erfolgs-Vitrine (F6)"
+  weiter oben unter Neue Features): das Hintergrund-Vorwärmen prüfte
+  zwar VOR jedem Spiel, ob man gerade aktiv ist, dekodierte dann aber
+  alle Badge-Icons eines Spiels am Stück durch, ohne zwischendurch noch
+  einmal nachzusehen. Das Dekodieren selbst ist reiner, handgeschriebener
+  Python-Code ohne Beschleunigung (eigene Messung: ca. 3ms pro Icon
+  bereits auf schneller Hardware, auf MiSTers ARM-Kern deutlich mehr) -
+  bei einem Spiel mit vielen Erfolgen (30-80 Icons) hielt das den
+  Haupt-Zeichen-/Eingabe-Thread am Stück potenziell mehrere hundert
+  Millisekunden bis über eine Sekunde auf, genau dann, wenn man
+  zufällig mitten in diesem Fenster weiterscrollte oder zurückging.
+  Fix: die Aktivitätsprüfung greift jetzt nach JEDEM einzelnen Icon,
+  nicht nur vor jedem Spiel - wird man währenddessen aktiv, bricht das
+  Vorwärmen für dieses eine Spiel sofort ab (die übrigen Icons holt der
+  nächste echte Leerlauf nach, oder sie laden ganz normal beim
+  tatsächlichen F6-Aufruf). Die Erfolgs-TEXTliste selbst bleibt davon
+  unberührt, die ist ja bereits vollständig geladen, bevor die Icons
+  überhaupt drankommen.
 - PERFORMANCE-Regression behoben: das Frontend brauchte nach dem
   letzten Update spürbar länger zum Starten (Nutzer-Rückmeldung: "warum
   braucht das Frontend nach dem letzten Update jetzt solange zum

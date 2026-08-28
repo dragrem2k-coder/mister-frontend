@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-28",
-  "summary": "PERFORMANCE-Fix: Arcade-Ordnerbaum wird jetzt gecacht, Frontend startet wieder schnell"
+  "build_id": "2026-08-24-29",
+  "summary": "Stocken beim Scrollen/Zurueckgehen behoben (Ursache: Badge-Icon-Vorwaermen fuer F6)"
 }
