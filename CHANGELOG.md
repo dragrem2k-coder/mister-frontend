@@ -178,6 +178,31 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- Spieleliste (Seite 1): gehaltenes Hoch/Runter sprang beim "Turbo"
+  nach kurzer Zeit über mehrere Zeilen auf einmal (Sprungweite 1 -> 2 ->
+  4 -> 10), was sich sowohl als sichtbarer "Zeilensprung" bemerkbar
+  machte als auch spürbar zum Laggen beitrug (Nutzer-Rückmeldung: "diese
+  Zeilensprünge durch das Überspringen nach unten gedrückt halten, in
+  den ROMs wenn sie angezeigt werden, sollen wegfallen - könnte das
+  laggig machen?"). Bestätigt: jede Sprungweite über 1 hinaus erzwingt
+  zwingend den vollen, teuren Bildschirmaufbau statt des leichten
+  Zeichenpfads (siehe `_draw_navigate_items()`) - nach rund 8
+  Wiederholungen einer gehaltenen Taste schaltete das Spiel dadurch bei
+  praktisch jedem weiteren Schritt auf den vollen Aufbau um. Auf Seite 1
+  bleibt die Sprungweite jetzt immer bei 1 - kein Zeilensprung mehr,
+  und der leichte Zeichenpfad bleibt innerhalb der sichtbaren Zeilen
+  durchgehend aktiv. Schnelleres Scrollen bleibt trotzdem möglich, da
+  die Wiederhol-Taktrate selbst beim Halten weiterhin beschleunigt.
+  Seite 0 (Kategorien-Hauptmenü) bleibt unverändert, dort wurde kein
+  entsprechender Wunsch geäußert. Wichtig dazu ehrlich gesagt: sobald
+  die Auswahl über das allererste sichtbare Bildschirm-Fenster hinaus
+  weiterscrollt, verlangt schon das reine Verschieben des Listenfensters
+  selbst (unabhängig von dieser Änderung) weiterhin den vollen Aufbau je
+  Schritt - der leichte Pfad wurde bisher nur für Bewegungen INNERHALB
+  des sichtbaren Fensters gebaut. Bei sehr langen Listen bleibt beim
+  durchgehenden Scrollen dadurch weiterhin ein Rest-Ruckeln bestehen;
+  das wäre ein separates, größeres Stück Arbeit (ein echter "Scroll"-
+  Zeichenpfad).
 - HDMI-Cover-Anzeige (art_hd) fiel bisher automatisch auf das SD-Cover
   zurück, sobald für ein Spiel keine passende HD-Datei existierte
   (Nutzer-Rückmeldung: "wäre es machbar, dass wenn es keine art_hd-

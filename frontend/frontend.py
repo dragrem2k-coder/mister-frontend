@@ -11580,9 +11580,38 @@ class Frontend:
                 else:
                     move_streak = 0
                     move_last = None
-                move_step = (10 if move_streak > 40 else
-                            4 if move_streak > 20 else
-                            2 if move_streak > 8 else 1)
+                # BUGFIX/NEUES FEATURE (Nutzer-Rueckmeldung: "diese
+                # Zeilensprünge durch das Überspringen nach unten
+                # gedrückt halten, in den ROMs wenn sie angezeigt
+                # werden, sollen wegfallen - könnte das laggig machen?"):
+                # Ja, genau das war der Fall. Die Sprungweite (1 -> 2 ->
+                # 4 -> 10, siehe Kommentar oben) ist NICHT nur optisch
+                # ein Zeilensprung, sondern erzwingt ab move_step > 1 IMMER
+                # den vollen, teuren Bildschirmaufbau (siehe die
+                # "move_step == 1"-Bedingung vor _draw_navigate_items()/
+                # _draw_navigate_cats() weiter unten) - der leichte,
+                # billige Zeichenpfad greift dadurch nur fuer die ersten
+                # ~8 Wiederholungen einer gehaltenen Taste, danach
+                # (move_streak > 8) schaltet es bei JEDEM weiteren Schritt
+                # auf den vollen Aufbau um, spuerbar besonders auf HDMI.
+                # Fuer die Spieleliste (Seite 1) bleibt move_step deshalb
+                # jetzt IMMER bei 1 - kein Zeilensprung mehr, und der
+                # leichte Zeichenpfad bleibt durchgehend aktiv, auch bei
+                # lange gehaltener Taste. Schnelleres Durchlaufen langer
+                # Listen bleibt trotzdem moeglich: die vom InputManager
+                # selbst beschleunigte Wiederhol-Taktrate (siehe Kommentar
+                # oben, bis zu ~12,5 Schritte/Sekunde) sorgt weiterhin fuer
+                # zuegiges Scrollen, nur eben Zeile fuer Zeile statt in
+                # Spruengen. Seite 0 (Kategorien-Hauptmenue, in aller
+                # Regel eine deutlich kuerzere Liste) bleibt bewusst
+                # unveraendert - dazu wurde kein entsprechender Wunsch
+                # geaeussert.
+                if self.page == 1:
+                    move_step = 1
+                else:
+                    move_step = (10 if move_streak > 40 else
+                                4 if move_streak > 20 else
+                                2 if move_streak > 8 else 1)
 
                 # Turbo-Sprung links/rechts: Grundschritt ist eine volle
                 # Bildschirmseite, waechst beim Halten auf mehrere Seiten.
