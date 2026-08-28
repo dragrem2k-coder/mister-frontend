@@ -5432,7 +5432,18 @@ class Frontend:
         self._draw_status_bar(L)
         self._draw_search_overlay()
         if flip:
-            fb.flip()
+            # PERFORMANCE-FIX (Nutzer-Rueckmeldung: "im Hauptmenü wenn ich
+            # schnell scrolle macht das Zeilensprünge und lagt etwas"):
+            # dieser Aufruf wartete bisher IMMER auf Vsync, unabhaengig vom
+            # "Schnelles Scrollen"-Schalter - alle anderen Zeichenpfade
+            # (Spieleliste, Puls-/Navigations-Ticks, siehe
+            # _scroll_skip_vsync()) beruecksichtigen ihn laengst. Faellt
+            # besonders beim "Turbo-Sprung" (move_step > 1 bei gehaltener
+            # Taste, siehe run()) ins Gewicht - der landet IMMER hier
+            # (siehe _draw_navigate_cats(), die nur echte Einzelschritte
+            # abdeckt), also ausgerechnet waehrend aktiven schnellen
+            # Scrollens.
+            fb.flip(skip_vsync=self._scroll_skip_vsync())
 
     def _draw_search_overlay(self):
         """Zeigt die aktuelle Sucheingabe als auffaelligen Balken oben
@@ -5795,7 +5806,7 @@ class Frontend:
             self._attract_delay_check_next = now + 5.0
         return self._attract_delay_cache
 
-    def _draw_dynamic_cats(self):
+    def _draw_dynamic_cats(self, flip=True):
         """Leichter Zeichenpfad fuer Equalizer-/Pulsier-Ticks auf Seite 0:
         aktualisiert NUR den Equalizer-Bereich und die markierte Zeile
         (deren Glow-Farbe sich veraendert), statt die komplette Seite
@@ -5807,7 +5818,20 @@ class Frontend:
 
         Muss PIXELGENAU dasselbe Ergebnis liefern wie draw_page_cats()
         fuer dieselben Bereiche, sonst drohen Bildfehler - deshalb per
-        Differenzvergleich gegen einen vollen Aufbau getestet."""
+        Differenzvergleich gegen einen vollen Aufbau getestet.
+
+        flip (NEU, fuer _draw_navigate_cats() - siehe dort): False zeichnet
+        nur in den Speicherpuffer und liefert stattdessen den betroffenen
+        Bildbereich als (y_min, y_max) zurueck (bzw. (None, None), falls
+        nichts gezeichnet wurde), OHNE selbst zu flippen - derselbe
+        Rueckgabe-Kontrakt wie bei _draw_dynamic_items(flip=False). Damit
+        kann der Aufrufer mehrere Teil-Updates zu EINEM einzigen
+        flip_rows()-Aufruf zusammenfassen (mehrere direkt hintereinander
+        auf den echten Framebuffer geschriebene Teil-Updates konnten an
+        anderer Stelle bereits sichtbare Zwischenbilder verursachen, siehe
+        Bugfix-Kommentar in _draw_navigate_items()). Der bestehende Aufrufer
+        (Puls-Tick weiter unten in next_action()) ruft weiterhin ohne
+        Argument auf und verhaelt sich dadurch exakt wie bisher."""
         fb = self.fb
         H = fb.height
         L = self.layout_cats()
@@ -5879,8 +5903,194 @@ class Frontend:
                 y_max = max(y_max, oy + 36 * s)
 
         if y_max > y_min:
-            fb.flip_rows(y_min, y_max - y_min,
-                        skip_vsync=self._scroll_skip_vsync())
+            if flip:
+                fb.flip_rows(y_min, y_max - y_min,
+                            skip_vsync=self._scroll_skip_vsync())
+                return None, None
+            return y_min, y_max
+        return None, None
+
+    def _bg_fill(self, x, y, w, h):
+        """Einen Bereich auf den Hintergrund zuruecksetzen - wie
+        fb.rect(x, y, w, h, C_BG), aber unter Beruecksichtigung einer
+        eventuell aktiven Rand-Abdunkelung (VIGNETTE_ENABLED in
+        fe/framebuffer.py): dort ist der Hintergrund NICHT einfarbig,
+        sondern je Bildzeile leicht unterschiedlich. fb.clear(C_BG)
+        (der normale Weg, den draw_page_cats() nutzt) speichert sein
+        fertiges Muster bereits in fb._rowcache - hier einfach denselben
+        Ausschnitt daraus wiederverwenden, statt naiv einfarbig zu
+        fuellen (das erzeugte an duennen Uebergangsstellen - Artbox-
+        Raendern, Zeilen-Zwischenraeumen, der Kopfzeile - einen kleinen,
+        aber per Pixel-Differenzvergleich nachweisbaren Farbunterschied
+        zum vollen Aufbau). Faellt auf die einfarbige Variante zurueck,
+        falls noch nie geclear't wurde (Muster dann noch nicht im
+        Cache)."""
+        fb = self.fb
+        bg_pattern = fb._rowcache.get(("bg", C_BG, fb.width, fb.height))
+        if bg_pattern is None:
+            fb.rect(x, y, w, h, C_BG)
+            return
+        x = max(0, x); y = max(0, y)
+        w = min(w, fb.width - x); h = min(h, fb.height - y)
+        if w <= 0 or h <= 0:
+            return
+        stride = fb.stride
+        row_bytes = w * 4
+        for yy in range(y, y + h):
+            off = yy * stride + x * 4
+            end = off + row_bytes
+            fb.buf[off:end] = bg_pattern[off:end]
+
+    def _draw_navigate_cats(self, old_cat_i):
+        """Leichter Zeichenpfad fuer EINEN Navigationsschritt (hoch/
+        runter) auf Seite 0 (Kategorien-Hauptmenue), OHNE dass dabei
+        gescrollt werden musste - Pendant zu _draw_navigate_items()
+        (Seite 1) fuer die Kategorienliste.
+
+        PERFORMANCE (Nutzer-Rueckmeldung: "im Hauptmenü wenn ich schnell
+        scrolle macht das ab und zu Zeilensprünge und lagt etwas, koennte
+        man das fluessiger/schneller machen?"): fuer Seite 0 gab es bisher
+        UEBERHAUPT KEINEN guenstigen Teil-Redraw-Pfad - jeder einzelne
+        Navigationsschritt loeste immer den kompletten draw_page_cats()
+        aus (fb.clear() + jede sichtbare Zeile + Artbox + Statusleiste +
+        volles Vsync-Warten), laut einer frueheren Profiling-Runde
+        47-57ms auf HDMI. Bei gehaltener Taste (die Wiederholrate steigt
+        ab REPEAT_INTERVAL, siehe fe/input.py) kann das mit der Eingabe-
+        Wiederholung kollidieren - der zwischen zwei TATSAECHLICH
+        gezeichneten Bildern sichtbare Fortschritt wirkt dadurch groesser
+        als ein einzelner Schritt, sieht also wie ein Ruckler/Zeilensprung
+        aus, obwohl der Cursor intern korrekt nur um 1 weiterspringt.
+
+        Nutzt fuer die NEUE Auswahl (samt allen dortigen Sonderfaellen,
+        v.a. der Kopfzeilen-Bleed-Korrektur ganz oben in der Liste) die
+        bereits vorhandene, gegen einen vollen Aufbau pixelgenau getestete
+        _draw_dynamic_cats() (bisher nur fuer Pulsier-Ticks genutzt) - hier
+        kommt nur das dafuer noch fehlende Stueck dazu: die ALTE Zeile
+        unmarkiert zuruecksetzen und die Artbox (Logo/Cover) rechts auf
+        den neuen Stand bringen. WICHTIG: alle Teil-Updates sammeln ihre
+        Bildbereiche nur im Speicherpuffer (kein eigenes flip_rows()) und
+        werden erst ganz am Ende in EINEM einzigen flip_rows()-Aufruf auf
+        den Bildschirm gebracht - mehrere einzelne, direkt hintereinander
+        auf denselben echten Framebuffer geschriebene Teil-Updates haben an
+        anderer Stelle bereits einmal ein sichtbares Zwischenbild verursacht
+        (siehe Bugfix-Kommentar in _draw_navigate_items()), das wird hier
+        von vornherein vermieden.
+
+        Deckt bewusst NICHT jeden Fall ab (scrollen, aktiver Regenbogen-
+        Cursor-Sondereffekt) - gibt dann False zurueck, Aufrufer nutzt in
+        diesen Faellen den vollen, bewaehrten draw()-Pfad (gleiches Prinzip
+        wie bei _draw_navigate_items())."""
+        if self.page != 0:
+            return False
+        new_cat_i = self.cat_i
+        L = self.layout_cats()
+        visible = L["visible"]
+        if not (self.cat_scroll <= old_cat_i < self.cat_scroll + visible):
+            return False
+        if not (self.cat_scroll <= new_cat_i < self.cat_scroll + visible):
+            return False
+        if time.monotonic() < getattr(self, "_rainbow_cursor_until", 0):
+            return False
+
+        fb = self.fb
+        s, ox, oy = L["s"], L["ox"], L["oy"]
+        rowh, y0 = L["rowh"], L["y0"]
+        list_right = L["list_right"]
+        maxc = max(4, (list_right - ox) // (8 * s))
+        max_p = 3 * 2 * s
+        gx = ox - 4 * s
+        gw = list_right - ox + 8 * s
+
+        old_row = old_cat_i - self.cat_scroll
+        y = y0 + old_row * rowh
+        gy = y - 4 * s
+        gh = rowh - 4 * s
+        # Alte Zeile: erst den ueber die eigene Zeile hinausragenden
+        # Glow-Rand zuruecksetzen, dann unmarkiert neu zeichnen (gleiches
+        # Prinzip wie in _draw_navigate_items()/_clear_row_glow_margin() -
+        # Seite 0 hat aber, anders als Seite 1, NIE einen Bild-Hintergrund,
+        # nur ggf. die Rand-Abdunkelung aus fb.clear() - siehe _bg_fill()).
+        self._bg_fill(gx - max_p, gy - max_p, gw + 2 * max_p, gh + 2 * max_p)
+        self._draw_cat_row(old_cat_i, old_row, L, maxc)
+        y_min = gy - max_p
+        y_max = gy - max_p + gh + 2 * max_p
+
+        # Zeile ueber der ALTEN Position frisch zeichnen (ihr Glow-Rand
+        # reichte bis dahin hinein, ist jetzt aber weg) - bzw. Kopfzeile,
+        # falls die alte Position ganz oben in der sichtbaren Liste stand
+        # (gleiches Prinzip wie in draw_page_cats()/_draw_dynamic_cats()).
+        prev_row = old_row - 1
+        if prev_row >= 0:
+            self._draw_cat_row(old_cat_i - 1, prev_row, L, maxc)
+            prev_y = y0 + prev_row * rowh
+            y_min = min(y_min, prev_y - 4 * s)
+            y_max = max(y_max, prev_y - 4 * s + rowh - 4 * s)
+        else:
+            clear_top = y0 - 4 * s - max_p
+            clear_bot = y0 - 4 * s
+            self._bg_fill(gx, clear_top, gw, clear_bot - clear_top)
+            fb.text(ox, oy + 28 * s, t("categories", len(self.cats)),
+                    s, C_DIM, C_BG)
+            y_min = min(y_min, clear_top)
+            y_max = max(y_max, oy + 36 * s)
+
+        next_row = old_row + 1
+        if next_row < visible and self.cat_scroll + next_row < len(self.cats):
+            self._draw_cat_row(old_cat_i + 1, next_row, L, maxc)
+            next_y = y0 + next_row * rowh
+            y_min = min(y_min, next_y - 4 * s)
+            y_max = max(y_max, next_y - 4 * s + rowh - 4 * s)
+
+        # Neue Auswahl (markierte Zeile inkl. Glow, Equalizer, Kopfzeilen-
+        # Sonderfall) - siehe Docstring oben: flip=False zeichnet nur in
+        # den Puffer, ohne selbst zu flippen.
+        new_y0, new_y1 = self._draw_dynamic_cats(flip=False)
+        if new_y0 is not None:
+            y_min = min(y_min, new_y0)
+            y_max = max(y_max, new_y1)
+
+        # BUGFIX (per Pixel-Differenzvergleich gegen einen vollen Aufbau
+        # gefunden, bevor dieser Pfad in Betrieb ging): der Glow-Rand der
+        # NEUEN Auswahl reicht wie ueberall bis zu max_p Pixel ueber die
+        # eigene Zeile hinaus - auch NACH UNTEN, in die Zeile DARUNTER
+        # hinein. Im vollen Aufbau faellt das nie auf, weil die naechste
+        # Zeile im selben top-nach-unten-Durchlauf ohnehin unmittelbar
+        # danach neu gezeichnet wird (heilt sich also von selbst). Dieser
+        # Pfad zeichnet aber NICHT jede Zeile neu - ohne diese Korrektur
+        # bliebe am oberen Rand der Zeile UNTER der neuen Auswahl ein
+        # kleiner Rest ihres Glows sichtbar stehen. Nach OBEN ist das
+        # bereits abgedeckt (_draw_dynamic_cats() zeichnet die Zeile davor
+        # bzw. die Kopfzeile ohnehin mit); hier fehlte noch die
+        # symmetrische Korrektur nach unten.
+        below_new = new_cat_i + 1
+        if (self.cat_scroll <= below_new < self.cat_scroll + visible
+                and below_new < len(self.cats)):
+            below_row = below_new - self.cat_scroll
+            self._draw_cat_row(below_new, below_row, L, maxc)
+            below_y = y0 + below_row * rowh
+            y_min = min(y_min, below_y - 4 * s)
+            y_max = max(y_max, below_y - 4 * s + rowh - 4 * s)
+
+        # Artbox rechts: Logo/Cover des jetzt markierten Systems. Vorher
+        # auf den Hintergrund zuruecksetzen (draw_page_cats() erledigt das
+        # sonst ueber sein fb.clear() ganz am Anfang - hier bewusst nicht,
+        # sonst waere der gesamte Vorteil dieses Pfads dahin; siehe
+        # _bg_fill() fuer den Grund, warum nicht einfach fb.rect(...,C_BG)),
+        # sonst kann bei unterschiedlich grossen/foermigen Bildern ein Rand
+        # des vorherigen Covers stehen bleiben.
+        art_w = L["art_w"]
+        W, H = fb.width, fb.height
+        art_x0 = W - ox - art_w
+        art_y0 = y0
+        art_y_max = H - oy - 20 * s
+        art_h = max(20, art_y_max - art_y0)
+        self._bg_fill(art_x0, art_y0, art_w, art_h)
+        self._draw_cat_artbox(L)
+        y_min = min(y_min, art_y0)
+        y_max = max(y_max, art_y0 + art_h)
+
+        fb.flip_rows(y_min, y_max - y_min, skip_vsync=self._scroll_skip_vsync())
+        return True
 
     def _draw_navigate_items(self, old_item_i):
         """Leichter Zeichenpfad fuer EINEN Navigationsschritt (hoch/
@@ -11153,6 +11363,7 @@ class Frontend:
                 # der kompletten Aktionsverarbeitung).
                 pre_page = self.page
                 pre_item_i = self.item_i
+                pre_cat_i = self.cat_i
 
                 # Soundeffekt zentral an EINER Stelle ausloesen, statt
                 # in jedem einzelnen der vielen Aktions-Zweige weiter
@@ -11763,6 +11974,17 @@ class Frontend:
                 if (act in ("up", "down") and move_step == 1 and self.page == 1
                         and pre_page == 1 and not self.confirm_quit
                         and self._draw_navigate_items(pre_item_i)):
+                    continue
+                # ERWEITERUNG (Nutzer-Rueckmeldung: "im Hauptmenü wenn ich
+                # schnell scrolle macht das Zeilensprünge und lagt etwas"):
+                # dasselbe Prinzip wie direkt oberhalb, jetzt auch fuer Seite
+                # 0 (Kategorien-Hauptmenue) - bisher gab es dafuer ueberhaupt
+                # keinen leichten Pfad, jeder Einzelschritt loeste den vollen
+                # draw_page_cats()-Aufbau aus. Siehe _draw_navigate_cats()
+                # fuer die ausfuehrliche Begruendung.
+                if (act in ("up", "down") and move_step == 1 and self.page == 0
+                        and pre_page == 0 and not self.confirm_quit
+                        and self._draw_navigate_cats(pre_cat_i)):
                     continue
                 self.draw()
         finally:

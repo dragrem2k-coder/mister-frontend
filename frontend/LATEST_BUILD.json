@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-17",
-  "summary": "Weiterspielen/Zuletzt gespielt zeigen ein gerade gespieltes Spiel jetzt sofort an"
+  "build_id": "2026-08-24-18",
+  "summary": "Scrollen im Hauptmenü flüssiger (leichter Zeichenpfad + Vsync-Fix beim Turbo-Sprung)"
 }

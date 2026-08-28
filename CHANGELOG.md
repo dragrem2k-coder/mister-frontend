@@ -155,6 +155,33 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- Scrollen im Kategorien-Hauptmenü konnte bei schnellem/gehaltenem
+  Hoch/Runter gelegentlich ruckeln bzw. wie Zeilensprünge wirken
+  (Nutzer-Rückmeldung: "im Hauptmenü wenn ich schnell scrolle macht
+  das Zeilensprünge und lagt etwas"). Ursache: für die Kategorienliste
+  (im Gegensatz zur Spieleliste) gab es bisher KEINEN günstigen
+  Teil-Redraw-Pfad - jeder einzelne Navigationsschritt löste immer
+  den kompletten Bildschirmaufbau aus (Löschen + alle sichtbaren
+  Zeilen + Artbox + Statusleiste + volles Warten auf den
+  Bildschirmaufbau), laut einer früheren Profiling-Runde 47-57ms auf
+  HDMI - das kann sich bei gehaltener Taste mit der Eingabe-
+  Wiederholrate überschneiden. Neuer, leichter Zeichenpfad
+  (`_draw_navigate_cats()`, Pendant zur bereits bestehenden Lösung für
+  die Spieleliste) aktualisiert bei einem einzelnen Schritt jetzt nur
+  noch die betroffenen Zeilen plus die Artbox, statt der ganzen Seite.
+  Zusätzlich respektiert auch der "Turbo-Sprung" bei länger gehaltener
+  Taste (mehrere Zeilen auf einmal, dort bleibt der volle Aufbau
+  nötig) jetzt den "Schnelles Scrollen"-Schalter beim Warten auf den
+  Bildschirmaufbau, was bisher nur die Spieleliste tat. Gründlich
+  gegen einen vollen Bildschirmaufbau pixel-für-pixel abgeglichen
+  (CRT und HDMI, oben/mitte/unten in der Liste, mit und ohne
+  System-Farbwechsel) - dabei zwei echte, kleine Bildfehler gefunden
+  und behoben: der Leucht-Rand der neu markierten Zeile reichte ohne
+  Korrektur minimal in die Zeile darunter hinein (bei einem
+  vollständigen Neuaufbau fällt das nie auf, weil dort ohnehin jede
+  Zeile neu gezeichnet wird), und die Randbereiche der Artbox nutzten
+  beim Zurücksetzen eine einfarbige statt der bei aktiver
+  Rand-Abdunkelung eigentlich leicht abgestuften Hintergrundfarbe.
 - "Weiterspielen" und "Zuletzt gespielt" zeigten ein gerade gespieltes
   Spiel manchmal nicht an (Nutzer-Rückmeldung: "Tetris (NES RA) zB was
   ich vorhin kurz gespielt habe, zeigt er nicht"). Per Ferndiagnose
