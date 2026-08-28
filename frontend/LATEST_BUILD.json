@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-27",
-  "summary": "Arcade-Unterordner (alternatives/organized/ST-V usw.) jetzt im Frontend sichtbar"
+  "build_id": "2026-08-24-28",
+  "summary": "PERFORMANCE-Fix: Arcade-Ordnerbaum wird jetzt gecacht, Frontend startet wieder schnell"
 }

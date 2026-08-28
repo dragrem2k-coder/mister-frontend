@@ -4468,14 +4468,20 @@ class Frontend:
     MOVE_TO_CORES_FOLDER = {"Consoles", "Console (autoboot)", "RA Cores"}
     DROP_ENTIRELY = {"Utilities", "Other"}
 
-    def _partition_core_cats(self, marked_recent=None):
+    def _partition_core_cats(self, marked_recent=None, force_rescan=False):
         """scan_cores() einmal auswerten und aufteilen in
         (top_level_core_cats, cores_subcats) - siehe Klassenkommentar
         oben fuer die Zuordnung. DROP_ENTIRELY-Eintraege landen in
-        keiner der beiden Listen (bewusst verworfen)."""
+        keiner der beiden Listen (bewusst verworfen).
+
+        force_rescan wird an scan_cores() durchgereicht - erzwingt fuer
+        Arcade einen echten Neuaufbau des (seit dem Performance-Fix
+        gecachten) Ordnerbaums statt eines eventuell noch passenden,
+        aber inzwischen veralteten Cache-Eintrags (siehe fe/scan.py,
+        _arcade_tree_cached())."""
         top_level = []
         cores_subcats = []
-        for n, it, sk in scan_cores(skip_dir=marked_recent):
+        for n, it, sk in scan_cores(skip_dir=marked_recent, force=force_rescan):
             if n in self.MOVE_TO_CORES_FOLDER:
                 cores_subcats.append((n, it))
             elif n in self.DROP_ENTIRELY:
@@ -4548,7 +4554,8 @@ class Frontend:
         # ausgelassen, auf spaeteren Wunsch aber wieder als eigener
         # Unterordner im System-Menue ergaenzt (siehe scripts_items
         # unten) - NICHT als Top-Level-Kategorie.
-        top_level_core_cats, cores_subcats = self._partition_core_cats(marked_recent)
+        top_level_core_cats, cores_subcats = self._partition_core_cats(
+            marked_recent, force_rescan=force_rescan)
         # GEAENDERT (Nutzerfrage: Arcade-Unterordner wie "alternatives"/
         # "organized"/"ST-V" fehlten im Frontend, siehe _arcade_folder_
         # tree() in fe/scan.py): scan_cores() liefert fuer Arcade jetzt

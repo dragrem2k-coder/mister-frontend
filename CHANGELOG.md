@@ -213,6 +213,26 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- PERFORMANCE-Regression behoben: das Frontend brauchte nach dem
+  letzten Update spürbar länger zum Starten (Nutzer-Rückmeldung: "warum
+  braucht das Frontend nach dem letzten Update jetzt solange zum
+  starten??? das ist sehr schlecht!"). Direkte, selbst verschuldete
+  Folge der neuen Arcade-Unterordner-Unterstützung: der dafür nötige
+  rekursive Ordner-Scan durchsucht bei einer großen, tief organisierten
+  Arcade-Sammlung (viele Unterordner, oft Tausende .mra-Dateien)
+  potenziell sehr viele Verzeichnisse einzeln - und lief dabei, anders
+  als die Spieleliste der übrigen Systeme (die längst einen
+  ausgereiften Cache hat), bislang bei JEDEM einzelnen Start komplett
+  neu von der SD-Karte. Eigene Messung: allein in einer schnellen
+  Testumgebung bereits gut 20x teurer als der alte, flache Scan - auf
+  echter SD-Karten-Hardware fällt der Unterschied erfahrungsgemäß noch
+  deutlich stärker aus. Fix: derselbe Cache-Ansatz wie bei der übrigen
+  Spieleliste (schneller Änderungs-Fingerabdruck statt jedes Mal
+  neuem Scan) jetzt auch für den Arcade-Ordnerbaum - ein erneuter
+  voller Scan passiert nur noch, wenn sich an der obersten Ebene von
+  `_Arcade` wirklich etwas geändert hat, oder nach einem manuellen
+  "Spieleliste neu einlesen". Mit einer gezielten Messung (kalt vs.
+  warm vs. nach echter Änderung vs. erzwungener Neuscan) geprüft.
 - Nach dem automatischen MiSTer-Neustart bei einer Update-Installation
   (siehe "Hardreset nach Update-Installation" weiter unten) blieb kurz
   die rohe Linux-Konsole ("Welcome to MiSTer ... login:") sichtbar,

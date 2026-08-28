@@ -96,19 +96,98 @@ def _arcade_folder_tree(path):
     node["items"] = items
     return node
 
-def scan_cores(skip_dir=None):
+# BUGFIX/PERFORMANCE (Nutzer-Rueckmeldung: "warum braucht das Frontend
+# nach dem letzten Update jetzt solange zum starten??? das ist sehr
+# schlecht!"): direkte, selbst verschuldete Folge der Arcade-Unterordner-
+# Rekursion von eben. _arcade_folder_tree() durchsucht den KOMPLETTEN
+# Ordnerbaum - bei einer grossen, tief organisierten Arcade-Sammlung
+# (Hersteller-/Board-/Status-Unterordner wie "alternatives"/"organized"/
+# "ST-V", oft mehrere Tausend .mra-Dateien in Dutzenden Unterordnern)
+# potenziell viele einzelne os.listdir()-Aufrufe. Eigene Messung dazu:
+# rein in dieser Sandbox (RAM statt SD-Karte) bereits ca. 22x teurer als
+# der alte flache Scan bei ~3000 Dateien/97 Ordnern - auf echter SD-
+# Karten-Hardware (siehe fruehere, aehnliche Messung zu kalten Cover-
+# Verzeichnissen: ueber 1000ms fuer EIN einziges os.listdir()) faellt der
+# Unterschied erfahrungsgemaess noch deutlich staerker aus. Und anders
+# als scan_games() (siehe GAMES_CACHE/_games_signature() oben - dort
+# laengst eine ausgereifte Mtime-Signatur+Pickle-Cache-Loesung) hatte
+# scan_cores() BISHER UEBERHAUPT KEINEN Cache - lief bei jedem einzelnen
+# build_categories()-Aufruf (JEDEN Boot, JEDEN manuellen/automatischen
+# Kategorien-Neuaufbau) komplett frisch von der Platte. Das war bisher
+# harmlos, weil der alte, flache Arcade-Scan nur EINEN einzigen
+# os.listdir()-Aufruf kostete - durch die Rekursion jetzt nicht mehr.
+#
+# Fix: genau dieselbe Grund-Idee wie bei _games_signature() (siehe
+# dortiger Kommentar) - ein SCHNELLER, flacher Fingerabdruck (nur die
+# eigene Mtime des _Arcade-Ordners selbst, kein tieferer Baumdurchlauf
+# dafuer) genuegt, um zu erkennen, ob sich an der OBERSTEN Ebene etwas
+# getan hat (neuer/entfernter Ordner oder neue/entfernte Datei DIREKT in
+# _Arcade/). Passt der Fingerabdruck noch zum letzten Cache-Eintrag,
+# wird der bereits fertige Baum aus dem Pickle-Cache uebernommen, KEIN
+# erneuter Rekursions-Durchlauf. EHRLICH DOKUMENTIERTE, bewusst in Kauf
+# genommene Einschraenkung (identisch zu scan_games()s eigener, laengst
+# akzeptierter Grenze): eine Aenderung TIEF in einem bereits bestehenden
+# Unterordner (z.B. eine neue .mra-Datei in "organized/Capcom/", ohne
+# dass sich "organized" selbst oder _Arcade/ selbst aendert) aendert
+# unter Linux NICHT die Mtime des Elternordners - wird dadurch nicht
+# automatisch erkannt, genau wie bei allen anderen Systemen auch. Ein
+# manueller Rescan (System -> Wartung -> "Spieleliste neu einlesen",
+# force=True) erzwingt in dem Fall wie gewohnt einen vollstaendigen
+# Neuaufbau.
+ARCADE_TREE_CACHE = "/media/fat/frontend/arcade_tree_cache.pkl"
+
+def _load_arcade_tree_cache():
+    try:
+        with open(ARCADE_TREE_CACHE, "rb") as f:
+            data = pickle.load(f)
+            return data if isinstance(data, dict) else {}
+    except (OSError, ValueError, EOFError, pickle.UnpicklingError,
+            KeyError, AttributeError):
+        return {}
+
+def _save_arcade_tree_cache(data):
+    try:
+        os.makedirs(os.path.dirname(ARCADE_TREE_CACHE), exist_ok=True)
+        with open(ARCADE_TREE_CACHE, "wb") as f:
+            pickle.dump(data, f)
+    except OSError:
+        pass
+
+def _arcade_tree_cached(path, force=False):
+    """_arcade_folder_tree(path), aber mit Mtime-Signatur-Cache (siehe
+    ausfuehrliche Begruendung oben) - baut den Baum nur dann wirklich
+    neu auf, wenn sich die Mtime von 'path' selbst seit dem letzten
+    Aufruf geaendert hat, oder force=True (manueller Rescan)."""
+    try:
+        sig = int(os.path.getmtime(path))
+    except OSError:
+        sig = None
+    if not force:
+        cached = _load_arcade_tree_cache()
+        if cached.get("path") == path and cached.get("sig") == sig:
+            return cached.get("node", _empty_node())
+    node = _arcade_folder_tree(path)
+    _save_arcade_tree_cache({"path": path, "sig": sig, "node": node})
+    return node
+
+def scan_cores(skip_dir=None, force=False):
     """Alle /media/fat/_*-Ordner nach .rbf/.mra/.mgl durchsuchen.
     skip_dir wird ausgelassen (der markierte Recently-Ordner, der bereits
     separat als "Zuletzt gespielt" gefuehrt wird - sonst doppelt).
 
     GEAENDERT: liefert fuer den Arcade-Ordner jetzt einen echten,
-    rekursiven Baumknoten (siehe _arcade_folder_tree()) statt einer
-    flachen Liste - Unterordner wie "alternatives"/"organized"/"ST-V"
-    werden dadurch sichtbar. Alle anderen _*-Ordner liefern weiterhin
-    eine flache Liste wie bisher, der Aufrufer (Frontend._partition_
-    core_cats()) unterscheidet anhand des Rueckgabetyps (dict = bereits
-    fertiger Baumknoten, Liste = wie bisher noch in _wrap_flat() zu
-    verpacken)."""
+    rekursiven Baumknoten (siehe _arcade_folder_tree()/_arcade_tree_
+    cached()) statt einer flachen Liste - Unterordner wie "alternatives"/
+    "organized"/"ST-V" werden dadurch sichtbar, per Mtime-Signatur-Cache
+    OHNE bei jedem Aufruf neu von der Platte zu lesen (siehe Kommentar
+    dort). Alle anderen _*-Ordner liefern weiterhin eine flache Liste
+    wie bisher, der Aufrufer (Frontend._partition_core_cats())
+    unterscheidet anhand des Rueckgabetyps (dict = bereits fertiger
+    Baumknoten, Liste = wie bisher noch in _wrap_flat() zu verpacken).
+
+    force=True (manueller Rescan) erzwingt fuer Arcade einen
+    vollstaendigen Neuaufbau des Baums, ignoriert also einen eventuell
+    noch passenden Cache-Eintrag."""
     cats = []
     skip_real = os.path.realpath(skip_dir) if skip_dir else None
     for d in sorted(glob.glob(os.path.join(BASE, "_*"))):
@@ -120,7 +199,7 @@ def scan_cores(skip_dir=None):
         base = os.path.basename(d).lstrip("_").lower()
         syskey = "ARCADE" if "arcade" in base else None
         if syskey == "ARCADE":
-            node = _arcade_folder_tree(d)
+            node = _arcade_tree_cached(d, force=force)
             if node["folders"] or node["items"]:
                 cats.append((nice_name(os.path.basename(d)), node, syskey))
             continue
