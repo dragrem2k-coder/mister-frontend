@@ -155,6 +155,31 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- "Weiterspielen" und "Zuletzt gespielt" zeigten ein gerade gespieltes
+  Spiel manchmal nicht an (Nutzer-Rückmeldung: "Tetris (NES RA) zB was
+  ich vorhin kurz gespielt habe, zeigt er nicht"). Per Ferndiagnose
+  (Nutzer hat `recently_played.json` und `frontend.log` per SSH
+  ausgelesen und geteilt) zweifelsfrei geklärt: die AUFZEICHNUNG
+  funktionierte die ganze Zeit korrekt - Tetris stand tatsächlich an
+  erster Stelle in `recently_played.json`, und der Spielstart war auch
+  im Log vermerkt. Der eigentliche Fehler lag in der ANZEIGE: die
+  Menüliste (`self.cats`) wird aus Performance-Gründen NICHT bei jedem
+  Spielstart komplett neu aufgebaut (das würde einen kompletten
+  Scan/Cache-Check aller Spiele-Systeme anstoßen und nach jedem Spiel
+  spürbar Ladezeit kosten), sondern nur beim Programmstart bzw. einem
+  echten Rescan. Dadurch blieb der beim Verlassen des Spiels gezeigte
+  Menüstand einfach der von VOR dem Spiel - bis zufällig irgendein
+  anderer Vorgang (Rescan, Sprachwechsel, Musik-Umschalten) einen
+  kompletten Neuaufbau auslöste. Neue, gezielte `_sync_recent_category()`
+  aktualisiert jetzt nach JEDEM Spiel (egal ob normaler Kategorie-
+  Start, Zufalls-Zock oder F11-Schnellstart - alle laufen durch
+  dieselbe zentrale `run_core()`) ausschließlich "Weiterspielen" und
+  "Zuletzt gespielt", ohne die teure komplette Neuscan-Logik
+  anzustoßen - gleiches, bereits bewährtes Prinzip wie die bestehende
+  `_sync_favorites_category()`. Mit einer eigenen Diagnose bestätigt
+  (recently_played.json/frontend.log-Auszug des Nutzers als Testfall
+  nachgestellt) sowie mit der vollständigen Regressionssuite
+  (18/18 Kombinationen) geprüft.
 - `Frontend_Install.sh` brach beim Ausführen mit `Permission denied`
   auf `/dev/null` und `syntax error near unexpected token 'done'` ab
   (Screenshot von echter Hardware). Ursache lag NICHT im Skript

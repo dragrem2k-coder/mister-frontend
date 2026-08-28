@@ -4685,6 +4685,81 @@ class Frontend:
             if self.item_i >= len(display):
                 self.item_i = max(0, len(display) - 1)
 
+    def _sync_recent_category(self):
+        """Nach der Rueckkehr aus einem Spiel (run_core()) 'Weiterspielen'
+        und 'Zuletzt gespielt' in self.cats aktuell halten - OHNE die
+        teure komplette build_categories() aufzurufen (die einen
+        Scan/Cache-Check ALLER Spiele-Systeme anstossen wuerde, nur um
+        zwei kleine Listen aufzufrischen - das wuerde nach JEDEM Spiel
+        spuerbar Ladezeit kosten). Gleiches Prinzip wie
+        _sync_favorites_category() direkt darueber.
+
+        BUGFIX (Nutzer-Rueckmeldung: "Weiterspielen und Zuletzt gezockt
+        funktioniert bei mir doch nicht so richtig. Er zeigt zwar nun
+        andere Spiele an. Aber Tetris (NES RA) zB was ich vorhin kurz
+        gespielt habe, zeigt er nicht."): per Diagnose (recently_played.json
+        UND frontend.log vom Nutzer gegengeprueft) bestaetigt, dass
+        record_recent() (siehe Spielstart-Code oben, wird bei JEDEM
+        Spielstart aufgerufen, unabhaengig vom gewaehlten Core) die
+        Aufzeichnung selbst immer korrekt und sofort VOR dem Start in
+        recently_played.json schreibt - Tetris stand tatsaechlich an
+        Position 0. Der Fehler lag also nicht in der Aufzeichnung,
+        sondern in der ANZEIGE: self.cats (und damit die Eintraege
+        'Weiterspielen'/'Zuletzt gespielt') wird nur beim Programmstart
+        bzw. bei einem echten Rescan neu aufgebaut - run_core() rief
+        bisher an keiner Stelle einen Refresh dieser beiden Kategorien
+        auf, weshalb das Menue nach der Rueckkehr aus einem Spiel
+        weiterhin den Stand von DAVOR zeigte, bis rein zufaellig ein
+        anderer Vorgang (Rescan, Sprachwechsel, Musik-Umschalten -
+        alle rufen intern build_categories() auf) einen kompletten
+        Neuaufbau ausloeste."""
+        current_ref = (self.cats[self.cat_i][0], self.cats[self.cat_i][2]) \
+            if self.cats else None
+
+        continue_name = t("continue_cat")
+        recent_name = t("recent_cat")
+        self.cats = [c for c in self.cats
+                    if not (c[2] is None and c[0] in (continue_name, recent_name))]
+
+        marked_recent = find_marked_recent_dir()
+        if marked_recent:
+            recent_items = _folder_items(marked_recent, by_mtime=True)
+        else:
+            recent_items = load_recent()
+        continue_game = find_continue_game()
+
+        # Reihenfolge wie in build_categories(): "Weiterspielen" ganz
+        # vorne, "Zuletzt gespielt" direkt danach (bzw. ganz vorne,
+        # falls kein "Weiterspielen"-Vorschlag vorhanden ist).
+        if recent_items:
+            self.cats.insert(0, (recent_name, _wrap_flat(recent_items), None))
+        if continue_game:
+            self.cats.insert(0, (continue_name, _wrap_flat([continue_game]), None))
+
+        if current_ref is not None:
+            for i, c in enumerate(self.cats):
+                if (c[0], c[2]) == current_ref:
+                    self.cat_i = i
+                    break
+            else:
+                # Die Kategorie, die wir gerade betrachtet haben, gibt
+                # es nicht mehr (z.B. "Weiterspielen" ist gerade
+                # weggefallen und wir waren genau dort) - zurueck zu
+                # den Kategorien statt auf eine falsche Liste zu zeigen.
+                self.cat_i = min(self.cat_i, len(self.cats) - 1) if self.cats else 0
+                if self.page == 1:
+                    self.page = 0
+                    self.nav_path = []
+                    self._nav_position_stack = []
+
+        if self.page == 1:
+            display = self._display_items()
+            if self.item_i >= len(display):
+                self.item_i = max(0, len(display) - 1)
+        LOG("_sync_recent_category: Weiterspielen/Zuletzt gespielt nach "
+            "Spielende aktualisiert (Weiterspielen=%s, Zuletzt-gespielt-"
+            "Eintraege=%d)" % (bool(continue_game), len(recent_items)))
+
     def _enter_category(self):
         """Von Seite 0 (Kategorien-Menue) in Seite 1 (Liste der
         aktuellen Kategorie, oberste Ordnerebene) wechseln."""
@@ -7822,6 +7897,15 @@ class Frontend:
         self._playtime_cache = load_playtime()
         time.sleep(1.0)
         self.music.resume_after_core()
+        # BUGFIX (Nutzer-Rueckmeldung: "Weiterspielen und Zuletzt gezockt
+        # funktioniert bei mir doch nicht so richtig ... Tetris zeigt er
+        # nicht"): 'Weiterspielen'/'Zuletzt gespielt' in self.cats VOR
+        # back_to_frontend() (das mit draw() endet) auffrischen - siehe
+        # ausfuehrlichen Kommentar in _sync_recent_category(). Bewusst
+        # HIER (ein einziger Ort, deckt alle drei Aufrufer von run_core()
+        # ab: normaler Kategorie-Start, Zufalls-Zock, F11-Schnellstart),
+        # statt an jeder record_recent()-Stelle einzeln.
+        self._sync_recent_category()
         # Overlay wieder auf den (jetzt evtl. veraenderten, z.B. neue
         # Spielzeit) Menue-Stand auffrischen.
         if hasattr(self, "stream") and self.stream:

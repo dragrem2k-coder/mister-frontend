@@ -1,0 +1,35 @@
+# BUGFIX (Nutzer-Rueckmeldung, Screenshot von echter Hardware: Frontend_Install.sh
+# brach mit "Permission denied" auf /dev/null und "syntax error near unexpected
+# token `done'" ab): Ursache war NICHT der Skriptinhalt selbst, sondern
+# Windows-Git (MINGW64/Git Bash, siehe die "LF will be replaced by CRLF"-
+# Warnungen beim vorherigen Commit) - ohne diese Datei entscheidet jeder
+# Rechner selbst (per core.autocrlf), ob Textdateien beim Auschecken CRLF-
+# oder LF-Zeilenenden bekommen. Ein Shell-Skript mit CRLF-Zeilenenden ist
+# auf MiSTers Linux/bash aber KAPUTT - ein CR-Byte am Zeilenende sprengt vor
+# allem Zeilenfortsetzungen (Backslash+Newline) und "here"-artige Konstrukte,
+# genau das beobachtete Fehlerbild.
+#
+# Erzwingt jetzt fuer JEDEN, der dieses Repo auscheckt (unabhaengig vom
+# eigenen core.autocrlf) reine LF-Zeilenenden bei allen Dateien, die auf dem
+# MiSTer selbst ausgefuehrt/interpretiert werden - unabhaengig davon, ob
+# spaeter noch weitere Skripte hinzukommen. Nach dem Hinzufuegen dieser
+# Datei muss der bereits ausgecheckte Arbeitsordner einmalig neu normalisiert
+# werden (siehe README/Chat-Anleitung: "git add --renormalize .").
+* text=auto eol=lf
+
+*.sh   text eol=lf
+*.py   text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+*.txt  text eol=lf
+
+# Binaerformate NIE als Text behandeln (kein Zeilenenden-Umschreiben,
+# das wuerde sie unbrauchbar machen).
+*.art  binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.mp3  binary
+*.wav  binary
+*.zip  binary
+*.pdf  binary
