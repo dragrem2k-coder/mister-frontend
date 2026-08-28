@@ -4189,10 +4189,53 @@ class Frontend:
         # oder den Cache des Betriebssystems passiert.
         def _prewarm_art_dirs():
             for _name, _node, _syskey in self.cats:
-                if not _syskey:
-                    continue
-                _art_index(ART_BASE, _syskey)
-                _art_index(ART_HD, _syskey)
+                if _syskey:
+                    _art_index(ART_BASE, _syskey)
+                    _art_index(ART_HD, _syskey)
+            # BUGFIX/PERFORMANCE (Nutzer-Rueckmeldung: "das muss unter
+            # HDMI insgesamt fluessiger laufen"): reale Messung ueber
+            # das neue DRAGEND_PROFILE-Log ("PERF draw_page_cats: 863
+            # ms", davon 511.6ms allein fuer einen THUMB_CACHE-TREFFER
+            # von CONTINUE.art) zeigte GENAU dasselbe "kaltes SD-Karten-
+            # Verzeichnis"-Muster wie oben bei _art_index() - nur diesmal
+            # nicht bei einer Verzeichnisliste, sondern beim allerersten
+            # Lesen einer einzelnen Datei: der Cache-TREFFER selbst (ein
+            # eigentlich kleiner, laut Kommentar in ArtCache.get_scaled()
+            # "so schneller Lesevorgang, dass er nie in den 25ms-
+            # Schwellenwert faellt") brauchte auf echter Hardware beim
+            # ALLERERSTEN Zugriff ueber 500ms, weil die Datei seit dem
+            # letzten Neustart noch nicht im Betriebssystem-Cache lag.
+            # Betroffen: die Sysart-Datei fuer die rechte Artbox im
+            # Kategorien-Hauptmenue (_draw_cat_artbox(), SYSART_BASE/
+            # <art_key>.art) - die bekam bisher UEBERHAUPT KEIN
+            # Vorwaermen, unabhaengig vom Systemkey (der obige Loop-Teil
+            # ueberspringt Kategorien ohne Systemkey wie "Weiterspielen"
+            # sogar explizit, und selbst fuer echte Systeme deckte er
+            # nur die Cover-VERZEICHNISSE ab, nie die Sysart-Datei
+            # selbst). Fix: dieselbe Datei/Groesse, die
+            # _draw_cat_artbox() beim tatsaechlichen Zeichnen anfordert
+            # (identischer Cache-Schluessel, siehe ArtCache.get_scaled()),
+            # wird hier fuer JEDE Kategorie (auch ohne Systemkey) schon
+            # im Hintergrund einmal gelesen/skaliert - ist der Nutzer
+            # tatsaechlich beim allerersten Zeichnen des Hauptmenues
+            # schneller als dieser Hintergrund-Thread, bleibt es beim
+            # bisherigen (jetzt bekannten) Verhalten, kein Rueckschritt.
+            try:
+                L = self.layout_cats()
+                s, art_w, y0, oy = L["s"], L["art_w"], L["y0"], L["oy"]
+                y_max = self.fb.height - oy - 20 * s
+                box_h = max(20, y_max - y0)
+                pad = 6 * s
+                seen_keys = set()
+                for _name, _node, _syskey in self.cats:
+                    _art_key = _category_art_key(_name, _syskey)
+                    if not _art_key or _art_key in seen_keys:
+                        continue
+                    seen_keys.add(_art_key)
+                    ART.get_scaled(os.path.join(SYSART_BASE, "%s.art" % _art_key),
+                                   art_w - 2 * pad, box_h)
+            except Exception:
+                pass   # Vorwaermen darf den Hintergrund-Thread nie stoeren
         threading.Thread(target=_prewarm_art_dirs, daemon=True).start()
 
         self.page = 0              # 0 = Kategorien-Menue, 1 = Kategorie-Ansicht

@@ -240,6 +240,25 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- HDMI-Ruckler beim allerersten Bildaufbau des Hauptmenüs behoben
+  (Nutzer-Rückmeldung: "das muss unter HDMI insgesamt flüssiger laufen"
+  - gefunden über das neue PERF-Profiling: `PERF draw_page_cats: 863
+  ms`, davon allein `THUMB_CACHE Treffer: 511.6ms (CONTINUE.art)`).
+  Derselbe "kaltes SD-Karten-Verzeichnis"-Effekt, der schon einmal bei
+  den Cover-Ordnern behoben wurde (siehe frühere Messung "PERF cover:
+  1077ms" weiter oben in diesem Changelog) - nur diesmal nicht bei
+  einer Verzeichnisliste, sondern beim allerersten Lesen einer
+  einzelnen Datei: das Bild für die rechte Artbox im Kategorien-Menü
+  (`_draw_cat_artbox()`, z.B. `CONTINUE.art` für "Weiterspielen") wurde
+  bisher NIE vorgewärmt - selbst ein an sich schneller
+  Festplatten-Cache-Treffer brauchte dadurch beim allerersten Zugriff
+  seit dem letzten Neustart über eine halbe Sekunde, weil die Datei
+  noch nicht im Betriebssystem-Speicher lag. Fix: derselbe
+  Hintergrund-Vorwärm-Thread, der schon die Cover-Ordner vorwärmt,
+  lädt jetzt beim Start zusätzlich das Artbox-Bild für JEDE tatsächlich
+  vorhandene Kategorie einmal vor (nicht nur für Systeme mit eigenem
+  Systemkey wie bisher) - ist der Nutzer schneller als dieser
+  Hintergrund-Thread, ändert sich nichts am bisherigen Verhalten.
 - Stocken beim Scrollen/Zurückgehen behoben: Navigieren innerhalb einer
   Sammlung (z.B. Game Boy) oder das Zurückgehen ins vorherige Menü
   brauchte gelegentlich mehrere Sekunden (Nutzer-Rückmeldung: "es nervt
