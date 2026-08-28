@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-25",
-  "summary": "ABSTURZ behoben: F6 warf bei altem Erfolge-Cache das Frontend zurueck ins OSD"
+  "build_id": "2026-08-24-26",
+  "summary": "Konsolen-Login-Screen nach Update-Neustart verschwindet jetzt automatisch, kein Enter mehr noetig"
 }

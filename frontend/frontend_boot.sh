@@ -11,6 +11,30 @@
 # Deaktivierungs-Schalter pruefen
 [ -e /media/fat/frontend/disable ] && exit 0
 
+# NEU (Nutzer-Rueckmeldung: "nach einem Update-Neustart steht da
+# 'Welcome to MiSTer ... login:', da muss ich wieder Enter druecken,
+# das nervt - kann man das nicht umgehen?"): direkte Folge des neuen
+# Hardresets nach einer Update-Installation (siehe Frontend_Update.sh) -
+# der fuehrt jetzt durch einen ECHTEN Linux-Neustart, und ganz am
+# Anfang JEDES Boots steht kurz die rohe Konsole (Login-Prompt) auf
+# dem Bildschirm, bevor irgendein Programm eigene Pixel in den
+# Framebuffer schreibt - das gab es bei jedem MiSTer-Boot schon immer,
+# nur loeste "Update installieren" vorher nie einen echten Neustart
+# aus (nur einen Prozess-Ersatz), diese Phase war beim Updaten also
+# bisher nie sichtbar.
+#
+# Loescht die sichtbare Konsolenausgabe hier ganz am Anfang AKTIV -
+# noch VOR der Wartezeit auf MiSTers eigenes Menue weiter unten - statt
+# einfach abzuwarten, bis unser eigenes Zeichnen (kann laut Warte-
+# schleife unten im Ausnahmefall bis zu 120s dauern) das von selbst
+# ueberdeckt. Reine ANSI-Escape-Sequenz (Bildschirm loeschen + Cursor
+# an den Anfang) direkt auf die Konsole geschrieben - kein zusaetzliches
+# Tool wie "setterm" noetig, das auf MiSTers schlankem Linux moeglicher-
+# weise fehlt. Ein Schreibfehler (z.B. falls /dev/tty1 aus irgendeinem
+# Grund gerade nicht beschreibbar ist) wird bewusst stillschweigend
+# ignoriert - das darf den eigentlichen Start niemals verhindern.
+printf '\033[2J\033[H' > /dev/tty1 2>/dev/null || true
+
 # Sicherheitsnetz: falls die Log-Datei durch rohe Fehlerausgaben
 # (Python-Tracebacks ueber stderr, ausserhalb der eigenen LOG()-
 # Kuerzung) trotzdem zu gross geworden ist, hier zusaetzlich kappen.

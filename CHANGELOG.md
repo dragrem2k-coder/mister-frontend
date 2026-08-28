@@ -198,6 +198,18 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- Nach dem automatischen MiSTer-Neustart bei einer Update-Installation
+  (siehe "Hardreset nach Update-Installation" weiter unten) blieb kurz
+  die rohe Linux-Konsole ("Welcome to MiSTer ... login:") sichtbar,
+  bei der man erst Enter drücken musste (Nutzer-Rückmeldung: "das
+  nervt kann man das nicht umgehen?"). Das gab es bei jedem MiSTer-Boot
+  eigentlich schon immer ganz am Anfang - nur löste "Update
+  installieren" vorher nie einen echten Neustart aus, diese kurze
+  Phase war beim Updaten also bisher nie sichtbar. `frontend_boot.sh`
+  (unser Autostart-Skript) löscht die Konsolenausgabe jetzt gleich als
+  allererste Aktion beim Boot aktiv, statt abzuwarten, bis das eigene
+  Zeichnen das irgendwann von selbst überdeckt - kein Tastendruck mehr
+  nötig.
 - ABSTURZ behoben: F6 (Erfolgs-Vitrine) warf das komplette Frontend
   zurück ins MiSTer-OSD, statt die Erfolgsliste zu zeigen
   (Nutzer-Rückmeldung: "nach dem letzten Update, wenn ich jetzt ein
