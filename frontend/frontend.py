@@ -3644,6 +3644,12 @@ def accent_for(syskey):
 C_TEXT   = (220, 224, 232)
 C_DIM    = (120, 126, 140)
 C_TITLE  = (255, 255, 255)   # Logo/Systemname: weiss (Retro-Look)
+# NEU (Nutzerwunsch: Hardcore/Softcore-Unterscheidung in der F6-Erfolgs-
+# Vitrine): warmer Gold-/Amber-Ton, angelehnt an RAs eigene Farbgebung
+# fuer Hardcore-Freischaltungen - hebt sich bewusst deutlich von der
+# neutralen C_TEXT-Farbe (Softcore) und dem gedimmten C_DIM (noch nicht
+# erreicht) ab.
+C_RA_HARDCORE = (255, 195, 40)
 CURRENT_THEME_MONOCHROME = False   # von apply_theme() gesetzt, siehe accent_for()
 
 # ----------------------------------------------------------------------------
@@ -5050,7 +5056,15 @@ class Frontend:
         waehrenddessen zufaellig genau dasselbe Spiel per F6 ansieht.
         Wird synchron (nicht als weiterer Thread pro Spiel) innerhalb
         DIESES einen Hintergrund-Threads aufgerufen, damit die
-        Drosselung (Pause zwischen Abrufen) auch wirklich greift."""
+        Drosselung (Pause zwischen Abrufen) auch wirklich greift.
+
+        GEAENDERT (Nutzerwunsch: "F6 dauert ganz schoen bis die Erfolge
+        angezeigt werden"): _refresh_ra_achievements_background() laedt
+        inzwischen nicht mehr nur die Text-Erfolgsliste vor, sondern
+        gleich auch alle zugehoerigen Badge-Icons (siehe dort) - beim
+        tatsaechlichen F6-Druck ist damit im Regelfall (Favoriten/
+        zuletzt Gespielte zuerst, siehe _ra_prewarm_candidates())
+        wirklich alles bereits lokal vorhanden, nicht nur der Text."""
         candidates = self._ra_prewarm_candidates()
         if not candidates:
             return
@@ -8098,7 +8112,7 @@ class Frontend:
                 else:
                     new_ones = earned_now - seen_titles
                     if new_ones and self.stream:
-                        for name, desc, points, badge, earned, date in achievements:
+                        for name, desc, points, badge, earned, date, hardcore in achievements:
                             if name in new_ones:
                                 try:
                                     self.stream.publish_achievement({
@@ -9318,7 +9332,7 @@ class Frontend:
         # ohnehin pro Name, ein doppelter Abruf fuer dasselbe Badge
         # (z.B. mehrere Erfolge mit identischem Icon) kostet dadurch
         # praktisch nichts.
-        for name, desc, points, badge, earned, date in achievements:
+        for name, desc, points, badge, earned, date, hardcore in achievements:
             if badge:
                 BADGES.get(badge)
 
@@ -9374,13 +9388,28 @@ class Frontend:
             fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
             y = list_y0
             for i in range(scroll, min(scroll + visible, len(achievements))):
-                name, desc, points, badge, earned, date = achievements[i]
+                name, desc, points, badge, earned, date, hardcore = achievements[i]
                 scaled_icon = get_processed_icon(badge, earned)
                 if scaled_icon:
                     self.blit(ox, y, icon_size, icon_size, scaled_icon)
-                mark = "[x] " if earned else "[ ] "
+                # NEU (Nutzerwunsch: "wir unterscheiden gar nicht zwischen
+                # Softcore- oder Hardcore-Mode bei den Erfolgen"): statt
+                # eines einzigen "[x]" fuer "irgendwie erreicht" zeigt die
+                # Markierung jetzt, in welchem Modus - "[HC]" gold
+                # hervorgehoben fuer Hardcore, "[SC]" in der normalen
+                # Erreicht-Farbe fuer Softcore-Erfolge, "[ ]" gedimmt wie
+                # bisher fuer noch nicht freigeschaltete. Kommt direkt aus
+                # dem schon abgerufenen "hardcore"-Feld (siehe
+                # fetch_ra_game_achievements() in fe/retroachievements.py),
+                # kein zusaetzlicher RA-Aufruf noetig.
+                if hardcore:
+                    mark = "[HC] "
+                elif earned:
+                    mark = "[SC] "
+                else:
+                    mark = "[ ] "
                 line1 = "%s%s (%d)" % (mark, name, points)
-                color = C_TEXT if earned else C_DIM
+                color = C_RA_HARDCORE if hardcore else (C_TEXT if earned else C_DIM)
                 # BUGFIX (Nutzer-Rueckmeldung, gleiche Ursache wie bei
                 # anderen Info-Bildschirmen): Name+Punkte wird an
                 # Wortgrenzen umgebrochen statt hart abgeschnitten -

@@ -9,6 +9,7 @@ Spielenamen und RAs Datenbank. Ausgelagert aus frontend.py
 """
 import os, json, time, re, urllib.request, urllib.parse, urllib.error, threading
 from fe.log import LOG
+from fe.art import BADGES
 
 def _has_network():
     """Prueft, ob irgendein Netzwerk-Interface eine Adresse hat - siehe
@@ -181,10 +182,22 @@ RA_GAME_API_URL = "https://retroachievements.org/API/API_GetGameInfoAndUserProgr
 def fetch_ra_game_achievements(game_id, timeout=5.0):
     """Fragt bei RetroAchievements die komplette Erfolgsliste EINES
     Spiels ab (Name, Beschreibung, Punkte, Badge-Name, freigeschaltet/
-    wann). Liefert eine Liste von (titel, beschreibung, punkte,
-    badge_name, freigeschaltet, datum)-Tupeln, sortiert nach RAs
-    eigener Anzeigereihenfolge, oder None bei JEDEM Fehler - NIE eine
-    Ausnahme nach aussen.
+    wann, Hardcore-Status). Liefert eine Liste von (titel, beschreibung,
+    punkte, badge_name, freigeschaltet, datum, hardcore)-Tupeln,
+    sortiert nach RAs eigener Anzeigereihenfolge, oder None bei JEDEM
+    Fehler - NIE eine Ausnahme nach aussen.
+
+    NEU (Nutzerwunsch: "wir unterscheiden gar nicht zwischen Softcore-
+    oder Hardcore-Mode bei den Erfolgen"): RA liefert pro Erfolg zwei
+    getrennte Freischalt-Zeitstempel - "DateEarned" (Softcore) und
+    "DateEarnedHardcore" (Hardcore, wird bei einem Hardcore-Unlock
+    IMMER zusaetzlich zum Softcore-Zeitstempel gesetzt, RA behandelt
+    einen Hardcore-Unlock also als "beides"). Bisher wurde nur EINER
+    von beiden ausgewertet ("welcher zuerst da ist"), der Modus selbst
+    ging dabei verloren - ein Hardcore- und ein Softcore-Erfolg sahen
+    in der F6-Vitrine identisch aus. Das neue siebte Tupel-Element
+    "hardcore" haelt jetzt fest, ob ausdruecklich ein
+    Hardcore-Zeitstempel vorlag.
 
     EHRLICHER HINWEIS: wie bei fetch_ra_progress() sind die genauen
     Feldnamen anhand der oeffentlichen API-Dokumentation nachgebaut,
@@ -223,8 +236,9 @@ def fetch_ra_game_achievements(game_id, timeout=5.0):
         points = ach.get("Points") or ach.get("points")
         badge = ach.get("BadgeName") or ach.get("badgeName")
         order = ach.get("DisplayOrder") or ach.get("displayOrder") or 0
-        date_earned = (ach.get("DateEarned") or ach.get("dateEarned")
-                       or ach.get("DateEarnedHardcore") or ach.get("dateEarnedHardcore"))
+        date_earned_sc = ach.get("DateEarned") or ach.get("dateEarned")
+        date_earned_hc = ach.get("DateEarnedHardcore") or ach.get("dateEarnedHardcore")
+        date_earned = date_earned_hc or date_earned_sc
         if not title:
             continue
         try:
@@ -233,9 +247,10 @@ def fetch_ra_game_achievements(game_id, timeout=5.0):
         except (TypeError, ValueError):
             points, order = 0, 0
         out.append((str(title), str(desc), points, str(badge) if badge else None,
-                    bool(date_earned), str(date_earned) if date_earned else None, order))
+                    bool(date_earned), str(date_earned) if date_earned else None, order,
+                    bool(date_earned_hc)))
     out.sort(key=lambda a: a[6])   # RAs eigene Anzeigereihenfolge
-    return [a[:6] for a in out]
+    return [(a[0], a[1], a[2], a[3], a[4], a[5], a[7]) for a in out]
 
 def fetch_ra_game_achievements_bounded(game_id, timeout=5.0):
     """Wie fetch_ra_game_achievements(), aber zeitlich hart begrenzt in
@@ -299,6 +314,27 @@ def _save_ra_achievements_cache(cache):
 _ra_achievements_refresh_inflight = set()
 _ra_achievements_refresh_lock = threading.Lock()
 
+# NEU (Nutzerwunsch: F6-Erfolgs-Vitrine soll spuerbar schneller
+# erscheinen): der Stale-while-revalidate-Cache oben beschleunigt
+# bislang nur die TEXT-Erfolgsliste selbst - die Badge-ICONS wurden
+# bisher ausschliesslich beim tatsaechlichen F6-Aufruf nachgeladen
+# (draw_ra_showcase_screen() in frontend.py, dort noch dazu
+# NACHEINANDER statt parallel), nie im Voraus. Bei einem zwar
+# vorgewaermten (Text schon da), aber noch nie zuvor ANGESEHENEN Spiel
+# mit vielen Erfolgen war genau das der spuerbare Rest-Bremsklotz.
+# BADGES.get() (siehe fe/art.py, BadgeCache) cacht dauerhaft auf der
+# SD-Karte - ein Icon wird dadurch nie zweimal aus dem Netz geholt,
+# dieser Aufruf hier kostet fuer bereits vorhandene Icons praktisch
+# nichts.
+def _prewarm_badge_icons(achievements):
+    for entry in achievements or []:
+        badge = entry[3] if len(entry) > 3 else None
+        if badge:
+            try:
+                BADGES.get(badge)
+            except Exception:
+                pass   # Icon-Vorwaermen darf den Hintergrund-Thread nie stoeren
+
 def _refresh_ra_achievements_background(game_id, timeout=5.0):
     key = str(game_id)
     with _ra_achievements_refresh_lock:
@@ -311,6 +347,7 @@ def _refresh_ra_achievements_background(game_id, timeout=5.0):
             cache = _load_ra_achievements_cache()
             cache[key] = {"ts": time.time(), "data": data}
             _save_ra_achievements_cache(cache)
+            _prewarm_badge_icons(data)
     finally:
         with _ra_achievements_refresh_lock:
             _ra_achievements_refresh_inflight.discard(key)

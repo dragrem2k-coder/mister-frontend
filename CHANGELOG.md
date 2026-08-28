@@ -106,6 +106,27 @@ schau am besten in die Git-Historie oder in den Kopf von
   einzige echte Eingabe an, schaltet es automatisch zurück auf HDMI
   und startet selbst neu. Eine einzige Eingabe bestätigt CRT dagegen
   dauerhaft.
+- F6-Erfolgs-Vitrine unterscheidet jetzt zwischen Hardcore und Softcore
+  (Nutzer-Rückmeldung: "wir unterscheiden gar nicht zwischen Softcore-
+  oder Hardcore-Mode bei den Erfolgen"). RA liefert pro Erfolg zwei
+  getrennte Freischalt-Zeitstempel (ein Hardcore-Unlock setzt dabei
+  immer zusätzlich auch den Softcore-Stempel) - bisher wertete das
+  Frontend nur "irgendeinen davon" aus, der Modus selbst ging
+  verloren. Jede Zeile zeigt jetzt "[HC]" (golden hervorgehoben) für
+  einen im Hardcore-Modus erreichten Erfolg, "[SC]" für einen nur im
+  Softcore-Modus erreichten, "[ ]" wie bisher für noch offene - ohne
+  zusätzlichen RA-Abruf, die Information stand in den ohnehin schon
+  geladenen Rohdaten bereits bereit.
+- F6 zeigt Erfolge jetzt spürbar schneller an (Nutzerfrage: "wäre es
+  noch möglich, diese, wenn ich F6 gedrückt habe, noch schneller
+  anzuzeigen?"). Das bestehende Hintergrund-Vorwärmen im Leerlauf
+  (Favoriten/zuletzt Gespielte zuerst) lud bisher nur die
+  Text-Erfolgsliste vor - die Badge-Icons wurden erst beim
+  tatsächlichen F6-Druck selbst nachgeladen, bei einem noch nie
+  angesehenen Spiel mit vielen Erfolgen durchaus spürbar. Das
+  Vorwärmen lädt jetzt beides zusammen vor - im Regelfall (Spiel war
+  in Reichweite des Vorwärmens) ist beim F6-Druck dadurch wirklich
+  alles bereits lokal vorhanden.
 
 **Performance (vor allem HDMI-Modus):**
 - Größter Einzelfund: der komplette Bildschirm-Neuaufbau (47-57ms bei
