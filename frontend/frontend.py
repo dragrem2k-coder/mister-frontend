@@ -3577,11 +3577,6 @@ from fe.ra_core import RA_CORES_DIR_ABS, RA_CORES_DIR_REL, RA_CORE_NAME_CANDIDAT
 OVERSCAN_X = 7
 OVERSCAN_Y = 5
 
-# NEU: Budget fuer die SD-Rueckfall-Diagnose in draw_art_panel() -
-# einfache Liste statt int, damit sie aus der Funktion heraus
-# veraendert werden kann, ohne "global" zu brauchen (mutable Objekt).
-_sd_fallback_diag_budget = [30]
-
 # Farben als (R, G, B)
 C_BG     = (16, 18, 24)
 C_PANEL  = (28, 32, 44)
@@ -4388,6 +4383,17 @@ class Frontend:
         # Beenden-Bestaetigung (ESC/B im Hauptmenue)
         self.confirm_quit = False
         self.confirm_choice = 1    # 0 = Ja, 1 = Nein (Standard)
+        # NEUES FEATURE (Nutzerwunsch: "koennen wir das Update-Popup um
+        # eine Abfrage 'jetzt installieren oder spaeter' erweitern?") -
+        # eigener, vom Beenden-Dialog unabhaengiger Zustand fuer den
+        # "Update jetzt installieren?"-Dialog (siehe
+        # _start_update_install_dialog()/draw_confirm_dialog()), nutzt
+        # aber bewusst dasselbe self.confirm_choice-Feld direkt oberhalb
+        # zur Knopf-Auswahl mit - beide Dialoge schliessen sich
+        # gegenseitig aus (nie beide gleichzeitig aktiv), ein eigenes
+        # zweites Auswahl-Feld waere hier nur unnoetige Dopplung.
+        self.confirm_update = False
+        self._update_install_message = ""
         # NEUES FEATURE (Nutzerwunsch: Volltextsuche statt nur
         # Anfangsbuchstaben-Sprung) - siehe jump_to_substring().
         self._search_mode = False
@@ -4605,6 +4611,22 @@ class Frontend:
         zeigt immer die Bestaetigung, unabhaengig von der Seite."""
         self.confirm_quit = True
         self.confirm_choice = 1    # Nein vorausgewaehlt
+        self.draw()
+
+    def _start_update_install_dialog(self, msg):
+        """NEUES FEATURE (Nutzerwunsch: "koennen wir das Update-Popup um
+        eine Abfrage 'jetzt installieren oder spaeter' erweitern? Wenn
+        man dann ja anklickt, dass Frontend_Install.sh ausgefuehrt wird"):
+        zeigt den Update-Installieren-Dialog (self.confirm_update, siehe
+        __init__ und draw()) mit dem uebergebenen, bereits fertig
+        formatierten Hinweistext (Versions- ODER Build-Popup-Text, siehe
+        die beiden Aufrufer in next_action()). "Spaeter" vorausgewaehlt -
+        derselbe sichere Standard wie beim Beenden-Dialog, ein
+        versehentliches Enter darf niemals ungefragt einen Download/
+        Update-Lauf anstossen."""
+        self.confirm_update = True
+        self.confirm_choice = 1    # Spaeter vorausgewaehlt
+        self._update_install_message = msg
         self.draw()
 
     def _refresh_system_category(self):
@@ -5199,17 +5221,29 @@ class Frontend:
         if self.attract_mode:
             self.draw_attract()
             return
-        # Wenn der Bestaetigungsdialog kommt, soll die Seite dahinter
-        # NICHT extra geflippt werden - sonst blitzt fuer einen Frame
-        # der Hintergrund ohne Dialog auf, bevor der Dialog erscheint
-        # (genau das war das Flackern beim Wechseln zwischen den
-        # Optionen).  Nur der letzte Zeichenschritt flippt.
+        # Wenn ein Bestaetigungsdialog kommt (Beenden ODER - NEU, siehe
+        # self.confirm_update - Update installieren), soll die Seite
+        # dahinter NICHT extra geflippt werden - sonst blitzt fuer einen
+        # Frame der Hintergrund ohne Dialog auf, bevor der Dialog
+        # erscheint (genau das war das Flackern beim Wechseln zwischen
+        # den Optionen). Nur der letzte Zeichenschritt flippt.
+        any_dialog = self.confirm_quit or self.confirm_update
         if self.page == 0:
-            self.draw_page_cats(message, flip=not self.confirm_quit)
+            self.draw_page_cats(message, flip=not any_dialog)
         else:
-            self.draw_page_items(message, flip=not self.confirm_quit)
+            self.draw_page_items(message, flip=not any_dialog)
         if self.confirm_quit:
             self.draw_confirm_dialog()
+        elif self.confirm_update:
+            # NEUES FEATURE (Nutzerwunsch, siehe
+            # _start_update_install_dialog()): gleicher Dialog-Rahmen wie
+            # die Beenden-Bestaetigung, nur mit eigenem Text/eigenen
+            # Knopfbeschriftungen - draw_confirm_dialog() wurde dafuer um
+            # optionale msg/labels-Parameter erweitert (Standardwerte
+            # entsprechen exakt dem bisherigen, festen Beenden-Dialog).
+            self.draw_confirm_dialog(msg=self._update_install_message,
+                                     labels=[t("install_now"), t("install_later")],
+                                     max_lines=3)
         elif self._prominent_message and time.monotonic() < self._prominent_message_until:
             self._draw_prominent_message()
 
@@ -5296,10 +5330,15 @@ class Frontend:
         cover_max_w = int(W * 0.5)
         cover_max_h = int(H * 0.72)
         art = None
+        # BUGFIX (Nutzer-Rueckmeldung, siehe ausfuehrlicher Kommentar in
+        # draw_art_panel(): kein SD-Rueckfall mehr im HD-Modus, wenn
+        # keine art_hd-Datei existiert - fehlt sie, bleibt art=None und
+        # es wird schlicht kein Cover gezeigt statt eines matschig
+        # hochskalierten SD-Bilds).
         if H >= 720:
             hd = _art_path_in(ART_HD, syskey, name)
             art = ART.get_scaled(hd, cover_max_w, cover_max_h)
-        if art is None:
+        else:
             art = ART.get_scaled(art_path(syskey, name), cover_max_w, cover_max_h)
 
         if art:
@@ -6797,18 +6836,28 @@ class Frontend:
                 % (_bg * 1000, _rw * 1000, _nr, _ar * 1000, _fdt * 1000))
         self._perf_art = 0
 
-    def draw_confirm_dialog(self):
-        """Beenden-Bestaetigung: ueberlagert die aktuelle Seite mit
-        einem kleinen Dialog. Links waehlt 'Ja', Rechts waehlt 'Nein'
-        (Standardauswahl), Enter bestaetigt die Auswahl. ESC/B im
-        Dialog bricht sofort ab (sicherer Standard)."""
+    def draw_confirm_dialog(self, msg=None, labels=None, max_lines=2):
+        """Beenden-Bestaetigung (Standardaufruf ohne Argumente):
+        ueberlagert die aktuelle Seite mit einem kleinen Dialog. Links
+        waehlt 'Ja', Rechts waehlt 'Nein' (Standardauswahl), Enter
+        bestaetigt die Auswahl. ESC/B im Dialog bricht sofort ab
+        (sicherer Standard).
+
+        ERWEITERT (Nutzerwunsch: Update-Installieren-Abfrage) - msg/
+        labels/max_lines optional, damit derselbe Dialograhmen auch fuer
+        den "Update jetzt installieren?"-Dialog wiederverwendet werden
+        kann (siehe self.draw()), statt die komplette Geometrie-/Zeichen-
+        Logik ein zweites Mal zu duplizieren. Ohne Argumente identisches
+        Verhalten wie zuvor."""
         fb = self.fb
         W, H = fb.width, fb.height
         s = max(1, H // 360)
-        msg = t("quit_confirm")
+        if msg is None:
+            msg = t("quit_confirm")
         maxc = max(10, (W - 40 * s) // (8 * s))
-        lines = self._wrap(msg, maxc, max_lines=2)
-        labels = [t("yes"), t("no")]
+        lines = self._wrap(msg, maxc, max_lines=max_lines)
+        if labels is None:
+            labels = [t("yes"), t("no")]
 
         line_h = 12 * s
         btn_h = 16 * s
@@ -7429,8 +7478,22 @@ class Frontend:
                 # ("Neue Fixes") direkt darunter behaelt bewusst die
                 # laengeren 5s, da dort kein entsprechender Wunsch geaeussert
                 # wurde.
-                self.draw(message=t("update_available_popup", pending_update),
-                         prominent=True, prominent_duration=3.0)
+                #
+                # ERWEITERUNG (Nutzer-Rueckmeldung: "koennen wir das
+                # Update-Popup wenn die Info kommt gleich eine Abfrage
+                # hinzufuegen, ob man jetzt das Update installieren will
+                # oder spaeter?"): die bisherige rein passive, nach 2-3s
+                # von selbst verschwindende Meldung (self.draw(message=...,
+                # prominent=True, ...) siehe oben) reichte dafuer nicht -
+                # ersetzt durch einen echten Ja/Nein-Dialog (gleiches
+                # Grundmuster wie die Beenden-Bestaetigung, siehe
+                # self.confirm_quit/draw_confirm_dialog()), der so lange
+                # sichtbar bleibt, bis der Nutzer aktiv "Jetzt" oder
+                # "Spaeter" waehlt (siehe _start_update_install_dialog()
+                # und die Eingabebehandlung in run(), Block
+                # "if self.confirm_update:").
+                self._start_update_install_dialog(
+                    t("update_install_confirm", pending_update))
 
             # NEUES FEATURE (Nutzerwunsch: "ich moechte bei v4.4 bleiben,
             # aber trotzdem einen Hinweis sehen, wenn es neue Fixes gibt")
@@ -7449,8 +7512,16 @@ class Frontend:
                 # mittig als Infobox erscheinen") - prominent=True statt
                 # der kleinen Fusszeilen-Meldung, siehe
                 # _draw_prominent_message().
-                self.draw(message=t("build_available_popup", pending_build),
-                         prominent=True)
+                #
+                # ERWEITERUNG (Nutzer-Rueckmeldung, siehe ausfuehrlicher
+                # Kommentar beim Versions-Update-Hinweis oben): derselbe
+                # Wechsel von einer passiven Meldung zu einem aktiven
+                # "Jetzt installieren?"-Dialog, unabhaengig davon, ob der
+                # Hinweis von der Versionsnummer (oben) oder - wie hier -
+                # vom versionsunabhaengigen Build-Check ausgeloest wurde;
+                # beide fuehren zum selben Frontend_Install.sh-Lauf.
+                self._start_update_install_dialog(
+                    t("build_install_confirm", pending_build))
 
             # "Auf diesen Tag vor X Jahren" (Nutzerwunsch): rein lokale
             # Dateiabfrage, kein Netzwerk - trotzdem bewusst genauso wie
@@ -7542,10 +7613,11 @@ class Frontend:
                     self._prominent_message = None
                     self.draw()
                 if redraw_marquee or redraw_dynamic:
-                    if self.confirm_quit:
-                        # Beenden-Dialog liegt ueber allem - der leichte
-                        # Pfad wuerde darunter durchscheinen, deshalb
-                        # hier immer der volle, sichere Aufbau.
+                    if self.confirm_quit or self.confirm_update:
+                        # Beenden-Dialog ODER (NEU) Update-Installieren-
+                        # Dialog liegt ueber allem - der leichte Pfad
+                        # wuerde darunter durchscheinen, deshalb hier
+                        # immer der volle, sichere Aufbau.
                         self.draw()
                     else:
                         # Deutlich billiger als der komplette Aufbau
@@ -7693,11 +7765,17 @@ class Frontend:
             if item_syskey == "ARCADE":
                 continue   # Arcade-Cover kommen aus mra_meta(), kein einfacher Pfad hier
             try:
+                # BUGFIX (Nutzer-Rueckmeldung, siehe ausfuehrlicher
+                # Kommentar in draw_art_panel(): die Anzeige selbst faellt
+                # im HD-Modus nicht mehr auf das SD-Cover zurueck, wenn
+                # keine art_hd-Datei existiert - das bisherige zusaetzliche
+                # Vorab-Laden des SD-Covers hier waere in dem Fall reine
+                # Verschwendung des knappen Zeitbudgets (PREFETCH_BUDGET),
+                # da es ohnehin nie angezeigt wird).
                 if fb.height >= 720:
-                    hd = _art_path_in(ART_HD, item_syskey, lookup_name)
-                    if ART.get(hd) is not None:
-                        continue
-                ART.get(art_path(item_syskey, lookup_name))
+                    ART.get(_art_path_in(ART_HD, item_syskey, lookup_name))
+                else:
+                    ART.get(art_path(item_syskey, lookup_name))
             except Exception:
                 pass   # Vorab-Laden ist rein optional - niemals den Hauptablauf stoeren
 
@@ -7804,24 +7882,32 @@ class Frontend:
         cy = y0
         accent = accent_for(syskey)
         art = None
+        # BUGFIX (Nutzer-Rueckmeldung: "waere es machbar, dass wenn es
+        # keine art_hd-Cover fuer den HDMI-Modus gibt, auch einfach
+        # keine angezeigt werden, anstatt die SD-Cover dort einzublenden?
+        # Das sieht bloed aus"): bis hierher (wie an allen anderen HD-
+        # Cover-Stellen im Code, siehe ART_HD-Suche) ein automatischer
+        # Rueckfall auf art_path() (SD-Bild), sobald keine passende
+        # HD-Datei existierte - genau die vorherige Diagnose-Notiz
+        # direkt oberhalb (jetzt entfernt, da der Rueckfall selbst
+        # wegfaellt) hatte diesen Fall extra sichtbar gemacht, um genau
+        # diese Nutzerfrage zu klaeren. Ein auf HDMI-Aufloesung stark
+        # hochskaliertes SD-Bild ist unvermeidbar sichtbar matschig -
+        # deshalb jetzt bewusst OHNE Rueckfall im HD-Modus: fehlt die
+        # HD-Datei, bleibt art=None, und die schon vorhandene
+        # "kein Artwork"/System-Hintergrundbild-Platzhalteranzeige
+        # weiter unten greift automatisch - exakt dasselbe, bereits
+        # etablierte Verhalten wie bei einem Spiel ganz ohne jedes
+        # Cover (siehe "if art: ... else: ..." unterhalb). Reines
+        # SD-Layout (H < 720, z.B. CRT) bleibt UNVERAENDERT: dort gab
+        # es noch nie eine HD-Datei zu suchen, art_path() greift
+        # weiterhin direkt, ohne Umweg. Gleiches Prinzip an den
+        # uebrigen ART_HD-Fundstellen (draw_attract(), Wonne-oder-
+        # Tonne-Screens, Trophaeenraum/Jahresrueckblick) mitgezogen.
         if H >= 720:
             hd = _art_path_in(ART_HD, syskey, lookup_name)
             art = ART.get_scaled(hd, avail_w, cover_h)
-            # NEUES DIAGNOSE (Nutzerfrage: "liegt es eventuell am SD-
-            # Rueckfall, wenn keine HD-Datei vorhanden ist?" - per
-            # isolierter Messung bereits geklaert, dass der SD-
-            # Rueckfall SELBST rechnerisch nicht teurer ist als der
-            # normale HD-Pfad [SD-Quelle hat weniger Pixel zu
-            # durchlaufen, trotz staerkerer Hochskalierung] - aber
-            # OB der Rueckfall ueberhaupt passiert, war bisher nicht
-            # sichtbar. Budget pro Sitzung, keine Log-Flut bei vielen
-            # fehlenden HD-Dateien.
-            if art is None:
-                if _sd_fallback_diag_budget[0] > 0:
-                    _sd_fallback_diag_budget[0] -= 1
-                    LOG("draw_art_panel: HD-Datei fehlt/unlesbar, "
-                        "SD-Rueckfall fuer '%s' (%s)" % (lookup_name, hd))
-        if art is None:
+        else:
             art = ART.get_scaled(art_path(syskey, lookup_name), avail_w, cover_h)
         if art:
             aw, ah, pix = art
@@ -8479,10 +8565,14 @@ class Frontend:
                     ckey = (psys, prom_base)
                     if ckey not in cover_cache:
                         art = None
+                        # BUGFIX (Nutzer-Rueckmeldung, siehe ausfuehrlicher
+                        # Kommentar in draw_art_panel(): kein SD-Rueckfall
+                        # mehr im HD-Modus - fehlende HD-Datei = kein Cover
+                        # statt matschig hochskaliertem SD-Bild).
                         if H >= 720:
                             art = ART.get_scaled(_art_path_in(ART_HD, psys, prom_base),
                                                  cell_w - 10 * s, covers_h)
-                        if art is None:
+                        else:
                             art = ART.get_scaled(art_path(psys, prom_base),
                                                  cell_w - 10 * s, covers_h)
                         cover_cache[ckey] = art
@@ -8554,9 +8644,12 @@ class Frontend:
         cov_w = int(W * 0.40)
         cov_h = int(H * 0.62)
         wot_art = None
+        # BUGFIX (Nutzer-Rueckmeldung, siehe ausfuehrlicher Kommentar in
+        # draw_art_panel(): kein SD-Rueckfall mehr im HD-Modus - fehlende
+        # HD-Datei = kein Cover statt matschig hochskaliertem SD-Bild).
         if H >= 720:
             wot_art = ART.get_scaled(_art_path_in(ART_HD, system, rom_base), cov_w, cov_h)
-        if wot_art is None:
+        else:
             wot_art = ART.get_scaled(art_path(system, rom_base), cov_w, cov_h)
         text_w = W - 2 * ox
         if wot_art:
@@ -9985,10 +10078,15 @@ class Frontend:
         if top_label:
             top_syskey = load_playtime().get(top_label, {}).get("syskey")
             if top_syskey:
+                # BUGFIX (Nutzer-Rueckmeldung, siehe ausfuehrlicher
+                # Kommentar in draw_art_panel(): kein SD-Rueckfall mehr
+                # im HD-Modus - fehlende HD-Datei = kein Cover statt
+                # matschig hochskaliertem SD-Bild; die "kein Artwork"-
+                # Anzeige direkt unten greift dann wie gewohnt).
                 if H >= 720:
                     hd = _art_path_in(ART_HD, top_syskey, top_label)
                     art = ART.get_scaled(hd, cover_w, cover_h)
-                if art is None:
+                else:
                     art = ART.get_scaled(art_path(top_syskey, top_label),
                                          cover_w, cover_h)
         pad = 5 * s
@@ -10089,10 +10187,15 @@ class Frontend:
             top_label = stats["top_game"][0]
             top_syskey = load_playtime().get(top_label, {}).get("syskey")
             if top_syskey:
+                # BUGFIX (Nutzer-Rueckmeldung, siehe ausfuehrlicher
+                # Kommentar in draw_art_panel(): kein SD-Rueckfall mehr
+                # im HD-Modus - fehlende HD-Datei = kein Cover statt
+                # matschig hochskaliertem SD-Bild; die "kein Artwork"-
+                # Anzeige weiter unten greift dann wie gewohnt).
                 if H >= 720:
                     hd = _art_path_in(ART_HD, top_syskey, top_label)
                     art = ART.get_scaled(hd, cover_w, cover_h)
-                if art is None:
+                else:
                     art = ART.get_scaled(art_path(top_syskey, top_label),
                                          cover_w, cover_h)
         pad = 5 * s
@@ -11396,6 +11499,44 @@ class Frontend:
                     self.draw()
                     continue
 
+                # ---- Update-Installieren-Abfrage hat ebenfalls Vorrang ----
+                # NEUES FEATURE (Nutzerwunsch: "koennen wir das
+                # Update-Popup um eine Abfrage 'jetzt installieren oder
+                # spaeter' erweitern? Wenn man dann ja anklickt, dass
+                # Frontend_Install.sh ausgefuehrt wird und danach der
+                # MiSTer einmal neugestartet wird"): gleiches Grundmuster
+                # wie die Beenden-Bestaetigung direkt oberhalb - links
+                # waehlt "Jetzt" (self.confirm_choice==0), rechts/
+                # Standard "Spaeter". Ein "Jetzt" hier startet
+                # Frontend_Install.sh ueber genau denselben, bereits
+                # ausfuehrlich getesteten Weg wie ein manueller Tap auf
+                # "Frontend Install" im Scripts-Menue (run_script(), siehe
+                # dortiger Kommentar) - der Kopfkommentar in
+                # Frontend_Install.sh/Frontend_Update.sh dokumentiert im
+                # Detail, warum dieser Weg den ALTEN Frontend-Prozess
+                # (auch wenn er selbst gerade blockierend darauf wartet)
+                # sauber beendet und direkt danach einen frischen mit dem
+                # gerade installierten Code startet - ein zusaetzlicher
+                # kompletter MiSTer-Neustart ist dafuer bewusst NICHT
+                # noetig (das war frueher noetig, wurde aber genau dafuer
+                # bereits in einem frueheren Build behoben, siehe
+                # Frontend_Install.sh-Kopfkommentar "Kein manueller
+                # Neustart mehr noetig").
+                if self.confirm_update:
+                    if act == "left":
+                        self.confirm_choice = 0    # Jetzt
+                    elif act == "right":
+                        self.confirm_choice = 1    # Spaeter
+                    elif act == "ok":
+                        self.confirm_update = False
+                        if self.confirm_choice == 0:
+                            self.run_script(os.path.join(SCRIPTS_DIR, "Frontend_Install.sh"))
+                            continue
+                    elif act in ("exit", "back"):
+                        self.confirm_update = False    # ESC/B im Dialog = Spaeter
+                    self.draw()
+                    continue
+
                 name, _root_node, _syskey = self.cats[self.cat_i]
                 items = self._display_items() if self.page == 1 else []
 
@@ -11973,6 +12114,7 @@ class Frontend:
                 # versucht, sonst korrekt der volle, immer richtige Aufbau.
                 if (act in ("up", "down") and move_step == 1 and self.page == 1
                         and pre_page == 1 and not self.confirm_quit
+                        and not self.confirm_update
                         and self._draw_navigate_items(pre_item_i)):
                     continue
                 # ERWEITERUNG (Nutzer-Rueckmeldung: "im Hauptmenü wenn ich
@@ -11984,6 +12126,7 @@ class Frontend:
                 # fuer die ausfuehrliche Begruendung.
                 if (act in ("up", "down") and move_step == 1 and self.page == 0
                         and pre_page == 0 and not self.confirm_quit
+                        and not self.confirm_update
                         and self._draw_navigate_cats(pre_cat_i)):
                     continue
                 self.draw()

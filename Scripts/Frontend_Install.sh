@@ -277,6 +277,21 @@ else
     echo "Autostart eingerichtet."
 fi
 
+# BUGFIX (Nutzer-Rueckmeldung, Screenshot: "shell-init: error retrieving
+# current directory: getcwd: cannot access parent directories: No such
+# file or directory" erscheint einmal kurz vor "Frontend-Update wird
+# angewendet..." - lief danach aber trotzdem normal weiter): dieses
+# Skript wechselt ganz oben per "cd $TMP_DIR" in den Download-Ordner und
+# bleibt seitdem dort - das "rm -rf $TMP_DIR" direkt hier drunter loescht
+# also GENAU das Verzeichnis, in dem die Shell gerade selbst steht. Bash
+# haelt das eigene Arbeitsverzeichnis danach noch fuer den Rest DIESES
+# Skripts intern gecached (harmlos), aber der gleich folgende
+# "exec bash $UPDATE_SCRIPT" startet einen NEUEN Bash-Prozess, dessen
+# Start-Routine das (jetzt geloeschte) Arbeitsverzeichnis frisch per
+# getcwd() ermitteln will - genau das schlaegt fehl und gibt die kurze,
+# aber harmlose Fehlermeldung aus. Fix: VOR dem Loeschen zurueck in ein
+# garantiert weiterhin existierendes Verzeichnis wechseln.
+cd "$SCRIPTS_DIR" 2>/dev/null || cd / 2>/dev/null || true
 rm -rf "$TMP_DIR"
 
 echo ""

@@ -7,6 +7,22 @@ schau am besten in die Git-Historie oder in den Kopf von
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
 **Neue Features:**
+- Update-/Fix-Hinweis fragt jetzt aktiv nach, statt nur kurz einzublenden
+  (Nutzerwunsch: "können wir das Update-Popup wenn die Info kommt gleich
+  eine Abfrage hinzufügen, ob man jetzt das Update gleich installieren
+  will oder später?"): sowohl der Versions- als auch der unabhängige
+  Build-/Fix-Hinweis (siehe "ich möchte bei v4.4 bleiben, aber trotzdem
+  einen Hinweis sehen, wenn es neue Fixes gibt" weiter unten in diesem
+  Changelog) zeigen jetzt einen echten Ja/Nein-Dialog ("Jetzt" /
+  "Später", "Später" sicherheitshalber vorausgewählt) statt der
+  bisherigen, nach wenigen Sekunden von selbst verschwindenden Meldung.
+  "Jetzt" startet `Frontend_Install.sh` über denselben, bereits
+  ausführlich getesteten Weg wie ein manueller Tap auf "Frontend
+  Install" im Scripts-Menü - der beendet den alten Frontend-Prozess
+  sauber und startet direkt danach selbst einen frischen mit dem gerade
+  installierten Code, ein zusätzlicher kompletter MiSTer-Neustart ist
+  dafür bewusst nicht nötig (das wurde bereits in einem früheren Build
+  behoben, siehe Kopfkommentar von `Frontend_Install.sh`).
 - Neuer Menüpunkt "Bestätigen/Abbrechen vertauschen" (System -> Eingabe):
   ein einziger Umschalter für den häufigsten Fall unpassender Pad-
   Belegung (z.B. Nintendo- statt Xbox-Tastenlayout) - vertauscht überall
@@ -155,6 +171,32 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- HDMI-Cover-Anzeige (art_hd) fiel bisher automatisch auf das SD-Cover
+  zurück, sobald für ein Spiel keine passende HD-Datei existierte
+  (Nutzer-Rückmeldung: "wäre es machbar, dass wenn es keine art_hd-
+  Cover für den HDMI-Modus gibt, auch einfach keine angezeigt werden,
+  anstatt die SD-Cover dort einzublenden? Das sieht blöd aus"). Ein auf
+  HDMI-Auflösung stark hochskaliertes SD-Bild wirkt tatsächlich sichtbar
+  matschig. Betroffen waren alle sechs Stellen im Code, die HD-Cover
+  laden (Spieleliste, Attract-Modus, "Wonne oder Tonne", Trophäenraum,
+  Jahresrückblick) - fehlt jetzt die HD-Datei, wird im HDMI-Modus
+  konsequent kein Cover gezeigt (bzw. die an den meisten dieser Stellen
+  bereits vorhandene "kein Artwork"-/Systembild-Platzhalteranzeige
+  greift), statt des unscharfen SD-Rückfalls. Reines SD-Layout (CRT)
+  bleibt komplett unverändert - dort gab es noch nie eine HD-Datei zu
+  suchen.
+- `Frontend_Install.sh`/`Frontend_Install_Remote.sh` gaben beim
+  Ausführen einmalig die harmlose, aber verwirrende Meldung
+  "shell-init: error retrieving current directory: getcwd: cannot
+  access parent directories: No such file or directory" aus (per
+  Screenshot von echter Hardware gemeldet - danach lief die Installation
+  normal weiter). Ursache: das Skript löschte seinen eigenen, temporären
+  Download-Ordner (`rm -rf "$TMP_DIR"`), während die Shell selbst noch
+  genau dort stand (`cd "$TMP_DIR"` ganz am Anfang) - der direkt danach
+  gestartete neue Bash-Prozess (Übergabe an `Frontend_Update.sh`) konnte
+  sein Arbeitsverzeichnis dadurch nicht mehr ermitteln. Fix: vor dem
+  Löschen zurück in ein garantiert weiterhin existierendes Verzeichnis
+  wechseln.
 - Scrollen im Kategorien-Hauptmenü konnte bei schnellem/gehaltenem
   Hoch/Runter gelegentlich ruckeln bzw. wie Zeilensprünge wirken
   (Nutzer-Rückmeldung: "im Hauptmenü wenn ich schnell scrolle macht

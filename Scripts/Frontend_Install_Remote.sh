@@ -240,6 +240,15 @@ else
     echo "Autostart eingerichtet."
 fi
 
+# BUGFIX (gleiche Ursache wie in Frontend_Install.sh, siehe dortiger
+# ausfuehrlicher Kommentar): "cd $TMP_DIR" ganz oben laesst die Shell in
+# genau dem Ordner stehen, der hier geloescht wird - ohne ein "cd" davor
+# koennte ein spaeter noch hinzugefuegter Folgebefehl (neuer Bash-
+# Prozess, siehe dort) mit "shell-init: error retrieving current
+# directory" scheitern. Hier aktuell noch harmlos (kein weiterer
+# Prozess-Start danach), aber aus Konsistenz-/Sicherheitsgruenden
+# genauso behoben.
+cd "$SCRIPTS_DIR" 2>/dev/null || cd / 2>/dev/null || true
 rm -rf "$TMP_DIR"
 
 echo ""

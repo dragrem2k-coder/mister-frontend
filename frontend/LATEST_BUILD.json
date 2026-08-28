@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-18",
-  "summary": "Scrollen im Hauptmenü flüssiger (leichter Zeichenpfad + Vsync-Fix beim Turbo-Sprung)"
+  "build_id": "2026-08-24-19",
+  "summary": "Update-Popup fragt jetzt aktiv (Jetzt/Spaeter), kein SD-Cover-Rueckfall mehr im HDMI-Modus, Installer-Fix"
 }

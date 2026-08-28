@@ -36,6 +36,15 @@ TRANSLATIONS = {
     "quit_confirm":    {"en": "Quit the frontend?", "de": "Frontend wirklich beenden?"},
     "yes":             {"en": "Yes", "de": "Ja"},
     "no":              {"en": "No",  "de": "Nein"},
+    # NEUES FEATURE (Nutzerwunsch: "koennen wir das Update-Popup um eine
+    # Abfrage 'jetzt installieren oder spaeter' erweitern?") - siehe
+    # _start_update_install_dialog()/draw_confirm_dialog() in frontend.py.
+    "update_install_confirm": {"en": "Update v%s available. Install now?",
+                               "de": "Update v%s verfuegbar. Jetzt installieren?"},
+    "build_install_confirm": {"en": "New: %s. Install now?",
+                              "de": "Neu: %s. Jetzt installieren?"},
+    "install_now":     {"en": "Now",   "de": "Jetzt"},
+    "install_later":   {"en": "Later", "de": "Spaeter"},
     "players":         {"en": "Players: %s", "de": "Spieler: %s"},
     "year":            {"en": "Year: %s",    "de": "Jahr: %s"},
     "playtime_shown":  {"en": "Played: %s",  "de": "Gespielt: %s"},
