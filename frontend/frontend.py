@@ -7305,11 +7305,12 @@ class Frontend:
             and full in self._completed_set
         prefix = ("* " if is_fav else "") + ("V " if is_done else "")
         maxc = (list_right - list_x - 8 * s) // (8 * s) - len(prefix)
+        mq_off = None      # != None: markierte Zeile laeuft als Laufschrift
         if sel:
             # Markierte Zeile: voller Name, bei Bedarf als Laufschrift
             if len(full) > maxc:
-                off = min(self.mq_off, max(0, len(full) - maxc))
-                label = full[off:off + maxc]
+                mq_off = min(self.mq_off, max(0, len(full) - maxc))
+                label = full[mq_off:mq_off + maxc]
             else:
                 label = full
         else:
@@ -7331,7 +7332,25 @@ class Frontend:
                     cut = space_pos
                 label = label[:max(1, cut)] + "~"
         label = prefix + label
-        fb.text(list_x, y, label, s, C_TEXT if sel else C_DIM, bg)
+        if mq_off is not None:
+            # PERFORMANCE-FIX (siehe ausfuehrliche Begruendung bei
+            # Framebuffer.text_window()): die Laufschrift zeigt immer
+            # einen Ausschnitt DESSELBEN Titels - jeder Ausschnitt war
+            # fuer den Text-Cache bisher ein neuer Schluessel und damit
+            # ein garantierter Fehltreffer alle 0.18s. Jetzt wird der
+            # volle Titel einmal gerendert und nur noch ein Fenster
+            # daraus geblittet. Ein eventuelles Praefix (Favoriten-Stern/
+            # Durchgespielt-Haken) wird davor separat gezeichnet - es ist
+            # nur ein bis vier Zeichen lang und dauerhaft im Cache, und
+            # da jedes Zeichen eine feste Breite hat (keine
+            # Unterschneidung), ergibt das exakt dasselbe Bild wie das
+            # bisherige Zeichnen von praefix+ausschnitt am Stueck.
+            if prefix:
+                fb.text(list_x, y, prefix, s, C_TEXT, bg)
+            fb.text_window(list_x + len(prefix) * 8 * s, y, full,
+                           mq_off, maxc, s, C_TEXT, bg)
+        else:
+            fb.text(list_x, y, label, s, C_TEXT if sel else C_DIM, bg)
         return y
 
     def marquee_needed(self):

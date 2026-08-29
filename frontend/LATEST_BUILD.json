@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-40",
-  "summary": "F10/X-Hinweis in Hilfe entfernt, echte Umlaute in allen Texten, Update-Popup-Fix (inkl. 'zu frueh als gezeigt markiert' und Popup-Kollision) sowie Hintergrund-Thread-Audit gegen Scroll-Stocken"
+  "build_id": "2026-08-24-41",
+  "summary": "Textdarstellung entlastet: Laufschrift der markierten Zeile erzeugte alle 0.18s einen garantierten Text-Cache-Fehltreffer (erklaert die auf echter Hardware gemessenen 83-85% Trefferquote) - jetzt Fenster aus dem vollen Titel statt Teilstring-Rendering, plus 3-5x billigerer Streifen-Aufbau. Bitgenau identisches Bild."
 }

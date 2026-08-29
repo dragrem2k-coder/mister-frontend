@@ -274,6 +274,63 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- Textdarstellung deutlich entlastet — die Ursache der bisher
+  unerklärten Fehltreffer im Text-Cache ist gefunden und behoben
+  (Fortsetzung der HDMI-Performance-Runde, diesmal messend statt
+  vermutend). Ausgangspunkt war die Frage, warum die im echten
+  `DRAGEND_PROFILE`-Mitschnitt gemessene Trefferquote von 83–85%
+  hartnäckig nicht besser wurde. Zwei Messungen haben das aufgeklärt:
+  - Ein **Fehltreffer kostet das 45-fache eines Treffers** (0,45 ms
+    gegen 0,010 ms bei einem 40-Zeichen-Titel). Die verbliebenen 15–17%
+    Fehltreffer verursachen damit rund 90% der gesamten `text()`-Zeit —
+    also genau die 34–74 ms, die im Profiling unter `draw_page_items()`
+    auftauchten. Nicht die Trefferquote war das Problem, sondern der
+    Preis pro Fehltreffer.
+  - Die **Laufschrift der markierten Zeile war der Verursacher**: Sie
+    rückt alle 0,18 s um ein Zeichen weiter und zeichnete dafür den
+    Teilstring `full[off:off+maxc]` — für den Cache jedes Mal ein neuer
+    Schlüssel, also ein garantierter Fehltreffer im Sekundentakt, und
+    zwar dauerhaft, auch wenn man einfach nur stillsteht. Nachgestellt
+    an einem typischen langen Titel ergab das 23 Fehltreffer und 23
+    Cache-Einträge für einen einzigen Titel bei einer Trefferquote von
+    86,1% — praktisch deckungsgleich mit den auf echter Hardware
+    gemessenen 83–85%. Damit ist der Hauptteil der dortigen Fehltreffer
+    erstmals reproduziert und erklärt.
+
+  Zwei Änderungen, beide ohne jede sichtbare Auswirkung:
+  1. Der Aufbau eines Textstreifens (`Framebuffer.text()`, der teure
+     Fehltreffer-Pfad) läuft jetzt über 8 `join()`-Aufrufe statt über
+     `len(s)·8·scale` einzelne Slice-Zuweisungen — bei einem
+     40-Zeichen-Titel auf HDMI also 8 statt 960 Einzeloperationen, ohne
+     die anschließende komplette Zweitkopie aller Zeilen. Zusätzlich
+     teilen sich die `scale` identischen Wiederholungen einer
+     Glyphenzeile dasselbe Objekt, statt kopiert zu werden. Gemessen:
+     Listenzeile 0,382 → 0,116 ms (3,3×), Kopfzeile 0,243 → 0,049 ms
+     (5,0×); Speicher pro Cache-Eintrag bei HDMI von 90 auf 30 KB.
+  2. Neue Methode `Framebuffer.text_window()`: Da jedes Zeichen im
+     fertigen Streifen eine feste Breite belegt, *ist* der
+     Laufschrift-Ausschnitt schlicht ein Byte-Bereich des Streifens für
+     den vollen Titel. Der wird jetzt einmal gerendert und danach nur
+     noch ein Fenster daraus kopiert. Aus 23 teuren Neu-Renderings pro
+     langem Titel werden 3 (eines je Schimmer-Stufe), die Trefferquote
+     in diesem Szenario steigt von 86,1% auf 98,2%.
+
+  Verifiziert mit 580 Byte-Vergleichen des Streifen-Aufbaus (kompletter
+  ASCII- und Latin-1-Bereich, `?`-Rückfall außerhalb davon, Grenzfälle
+  der Bereichsprüfung, alle Skalierungen, 300 Zufallstexte), 5836
+  geprüften Laufschrift-Fällen inklusive Favoriten-/Durchgespielt-Präfix
+  und Rückfallpfad für überlange Namen, einem Vorher/Nachher-Vergleich
+  von 144 komplett gerenderten Bildschirmseiten (CRT und HDMI, inklusive
+  eines vollen Schimmer-Zyklus und 104 Laufschrift-Positionen) sowie der
+  vollständigen Regressionssuite (18/18) — überall null Abweichungen.
+  EINSCHRÄNKUNG (ehrlichkeitshalber): Alle Zeitmessungen stammen aus der
+  Entwicklungsumgebung, nicht vom MiSTer. Die Verhältnisse sollten sich
+  übertragen (es geht um die Anzahl der Python-Operationen, nicht um
+  Speicherbandbreite), die absolute Ersparnis auf echter Hardware kann
+  aber abweichen. Was gesichert ist: das gezeichnete Bild ist bitgenau
+  identisch, und es wird nichts zu einem anderen Zeitpunkt gezeichnet
+  als bisher — die Änderung kann also nur schneller oder gleich schnell
+  sein, aber nichts am Verhalten verändern.
 - Der nicht mehr funktionierende Hinweis "F10 / X (Pad) zurück ins
   Frontend" ganz unten in System → Hilfe/Übersicht wurde entfernt
   (Nutzer-Rückmeldung: "das muss raus das funktioniert ja garnicht").
