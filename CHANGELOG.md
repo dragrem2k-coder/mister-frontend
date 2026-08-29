@@ -274,6 +274,105 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- Der nicht mehr funktionierende Hinweis "F10 / X (Pad) zurück ins
+  Frontend" ganz unten in System → Hilfe/Übersicht wurde entfernt
+  (Nutzer-Rückmeldung: "das muss raus das funktioniert ja garnicht").
+  Die zugehörige Tastenkombination gab es an dieser Stelle schlicht
+  nicht mehr, der Eintrag war ein Überbleibsel aus einer früheren
+  Bedienlogik - entfernt aus der `section_keys`-Liste in
+  `draw_help_screen()`, die verwaisten Übersetzungsschlüssel gleich mit
+  aufgeräumt.
+- Durchgängige Rechtschreib-Auffrischung: sämtliche noch als "ae"/"oe"/
+  "ue" geschriebenen Umlaute in den sichtbaren deutschen Texten (Menüs,
+  Überschriften, Hinweise, Dialoge - alles aus `fe/translations.py`)
+  wurden durch echte ä/ö/ü/Ä/Ö/Ü ersetzt (Nutzer-Rückmeldung: "dort
+  steht überall noch die alte Schrift, mit zum Beispiel 'naechster
+  Musiktitel' - das sieht blöd aus"). Der eigens dafür schon in einer
+  früheren Runde erweiterte Zeichensatz (`FONT_EXTRA` in
+  `fe/framebuffer.py`, deckt den Latin-1-Bereich inklusive ä/ö/ü/ß ab)
+  konnte diese Zeichen technisch schon die ganze Zeit darstellen - nur
+  die Übersetzungstexte selbst wurden nach dieser Erweiterung nie
+  nachgezogen. Bewusst NUR die sichtbaren "de"-Texte geändert, NICHT
+  die Code-Kommentare (die behalten wie gehabt die etablierte
+  ASCII-Schreibweise) - 96 automatisiert geprüfte Ersetzungen plus eine
+  von Hand nachgezogene ("Fuer" → "Für" in `year_review_empty`), dabei
+  bewusst sechs echte Nicht-Umlaut-Wörter unangetastet gelassen
+  (Aktuell, aufbauen, dauern, genaue, Hinschauen, Quelle - alle mit
+  einem "ue"/"ae"/"oe", das kein Umlaut ist). Verifiziert per
+  vollständigem Nachscan der Datei (nur noch die sechs beabsichtigten
+  Ausnahmen übrig, jedes neu eingefügte Zeichen liegt im von
+  `FONT_EXTRA` abgedeckten Bereich) sowie einer Syntaxprüfung.
+- Update-Popup erscheint nach einem Update wieder zuverlässig, nicht
+  mehr erst nach manuellem Update-Lauf (Nutzer-Rückmeldung: "ich
+  bekomme seit ein paar Updates keine Popup-Info mehr, ich krieg die
+  erst wenn ich manuell Update gemacht habe"). Gezielt nachgeprüft statt
+  vermutet: der "Update jetzt installieren?"-Dialog (siehe
+  `_start_update_install_dialog()`) läuft über exakt denselben
+  Zeichenpfad wie der "Frontend beenden"-Dialog, dessen Übermal-Fehler
+  im Build davor (2026-08-24-39) bereits behoben wurde (Laufschrift/
+  Cover-Nachlade-Redraw löschten jeden offenen Dialog alle ~150ms
+  wieder). Ein gezielter Test, der den echten Ablauf nachstellt (Update
+  wird im Hintergrund erkannt, Dialog wird gezeichnet, direkt im selben
+  Leerlauf-Tick ist zusätzlich ein Cover-Nachlade-Redraw fällig), bestätigt:
+  dieser Fix behebt das Update-Popup-Problem bereits als Nebeneffekt mit -
+  vorher wäre der frisch gezeichnete Dialog noch VOR der ersten
+  Reaktionsmöglichkeit des Nutzers wieder übermalt worden, exakt die
+  gemeldete Symptomatik.
+  Zusätzlich zwei weitere, beim Nachprüfen gefundene Ursachen für
+  denselben Effekt, die unabhängig vom obigen Fix bestanden und beide
+  ebenfalls behoben wurden: (1) `_check_for_update_background()`
+  markierte eine neue Version/einen neuen Build bereits beim blossen
+  Erkennen im Hintergrund-Thread dauerhaft als "gezeigt"
+  (`notified_version`/`notified_build_id` in
+  `update_check_state.json`) - noch bevor der Haupt-Thread den Dialog
+  überhaupt gezeichnet hatte. War der Dialog zu diesem Zeitpunkt (z.B.
+  durch den oben behobenen Übermal-Fehler) trotzdem nicht sichtbar,
+  blieb die Version/der Build für immer als "gezeigt" markiert - auch
+  über einen Neustart hinweg, obwohl der Nutzer nie etwas zu sehen
+  bekommen hatte. Jetzt wird "gezeigt" erst markiert und dauerhaft
+  gespeichert, NACHDEM der Dialog tatsächlich gezeichnet wurde (siehe
+  `next_action()`, Blöcke "pending_update"/"pending_build") - schlägt
+  das Zeichnen fehl oder wird die Sitzung vorher beendet, fragt der
+  nächste Start einfach erneut nach. (2) Sind ein Versions- UND ein
+  Build-Update im SELBEN Leerlauf-Tick fällig, liefen beide Popup-
+  Auslöser bisher bedingungslos nacheinander - der zweite Aufruf von
+  `_start_update_install_dialog()` (Build-Hinweis) überschrieb dabei
+  sofort wieder den gerade erst gezeichneten ersten Dialog
+  (Versions-Hinweis), innerhalb desselben Funktionsaufrufs, noch bevor
+  der Nutzer ihn zu Gesicht bekommen konnte - im Grunde dieselbe Art
+  Fehler wie der Übermal-Fehler oben, nur durch den eigenen zweiten
+  Dialog statt durch Laufschrift/Cover-Redraw ausgelöst. Der Build-
+  Hinweis wartet jetzt einfach bis zum nächsten Leerlauf-Tick, sobald
+  der Nutzer den Versions-Dialog beantwortet hat. Alle drei Fixe
+  zusammen mit einer eigenen Testreihe verifiziert (u.a.: Erkennung
+  allein markiert noch nichts als gezeigt; erst nach echtem Zeichnen
+  wird gespeichert; zwei gleichzeitig fällige Popups überschreiben sich
+  nicht mehr gegenseitig). Eine bereits VOR diesem Fix fälschlich als
+  "gezeigt" markierte `update_check_state.json` auf einer bestehenden
+  Installation kann dadurch nicht rückwirkend repariert werden - da
+  sich die Build-Kennung (`build_id` in `LATEST_BUILD.json`) mit jeder
+  Auslieferung ändert, wird der Zähler dafür aber automatisch mit
+  diesem und jedem künftigen Build zurückgesetzt, ohne dass dafür etwas
+  manuell gelöscht werden müsste.
+  Im gleichen Zug (Nutzerwunsch: "prüfen ob irgendwo im Hintergrund
+  zwei Mechanismen laufen und ob wir dadurch Einbußen beim
+  Scrollverhalten haben") wurden sämtliche Hintergrund-Threads
+  (Update-Check, RetroAchievements-Vorwärmen, Kunstwerk-Vorwärmen,
+  NTP-Zeitabgleich, Bildschirmspiegelung fürs Streaming) sowie jeder
+  periodische Zeichenpfad in `next_action()`s Leerlauf-Zweig gezielt
+  daraufhin durchsucht, ob noch irgendwo direkt auf den Framebuffer
+  geschrieben wird, ohne einen offenen Dialog oder laufende Navigation
+  zu berücksichtigen. Ergebnis: außer den beiden oben beschriebenen,
+  jetzt behobenen Fällen (Übermal-Fehler bei offenem Dialog,
+  Popup-Kollision) schreibt kein Hintergrund-Thread direkt in den
+  Framebuffer - alle setzen nur ein Ergebnis-Flag, das ausschließlich
+  der Haupt-Thread konsumiert und zeichnet. Das RetroAchievements-
+  Vorwärmen und die Bildschirmspiegelung waren bereits aus früheren
+  Runden heraus eigens gegen genau dieses "Stocken beim Scrollen"
+  gehärtet (Leerlauf-/Abbruch-Prüfung nach jedem einzelnen Schritt bzw.
+  komplette Auslassung bei HDMI-Auflösung wegen GIL-Konkurrenz) - hier
+  wurde keine neue Regression gefunden. Die volle Regressionssuite
+  (18/18) läuft nach allen Änderungen weiterhin fehlerfrei durch.
 - "Frontend beenden" (System → Wartung) schien bei manchen Nutzern
   nicht zu funktionieren (Nutzer-Rückmeldung: "die Meldung 'Frontend
   beenden' kam, dann wählte ich Ja und habe bestätigt, und das Fenster

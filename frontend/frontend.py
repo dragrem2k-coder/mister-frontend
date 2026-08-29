@@ -5301,8 +5301,27 @@ class Frontend:
             state["remote_version"] = remote
             state["last_checked"] = time.time()
             if _version_newer(remote, FRONTEND_VERSION) and state.get("notified_version") != remote:
-                state["notified_version"] = remote
                 self._update_popup_pending = remote
+                # BUGFIX (Nutzer-Rueckmeldung: "ich bekomme seit ein paar
+                # Updates keine Popup-Info mehr, ich krieg sie erst wenn
+                # ich manuell update gemacht habe"): "notified_version"
+                # wurde FRUEHER genau HIER, direkt beim Erkennen im
+                # Hintergrund-Thread, gesetzt UND sofort persistiert (siehe
+                # save_update_state() unten) - lange BEVOR der Haupt-Thread
+                # den Dialog ueberhaupt gezeichnet hat. Traf in derselben
+                # Leerlauf-Runde der (jetzt behobene) Uebermal-Fehler zu
+                # (marquee_tick()/COVER_SETTLE-Redraw loeschten den Dialog
+                # sofort wieder, siehe next_action()), war die Version
+                # trotzdem schon dauerhaft als "gezeigt" markiert - der
+                # Dialog erschien dadurch nie wieder, auch nicht nach einem
+                # Neustart, obwohl der Nutzer ihn nie zu Gesicht bekommen
+                # hatte. Jetzt wird "notified_version" NICHT mehr hier,
+                # sondern erst markiert, NACHDEM der Dialog im Haupt-Thread
+                # tatsaechlich gezeichnet wurde (siehe next_action(),
+                # Block "pending_update") - schlaegt das Zeichnen aus
+                # irgendeinem Grund fehl oder wird die Sitzung vorher
+                # beendet, fragt der naechste Start einfach erneut nach,
+                # statt die Meldung fuer immer zu unterdruecken.
         # NEUES FEATURE (siehe check_for_build_update() in
         # fe/update_check.py fuer die ausfuehrliche Begruendung, warum
         # das ein EIGENSTAENDIGER, von der Versionsnummer unabhaengiger
@@ -5314,8 +5333,15 @@ class Frontend:
         if build:
             build_id, summary = build
             if state.get("notified_build_id") != build_id:
-                state["notified_build_id"] = build_id
                 self._build_popup_pending = summary
+                # BUGFIX: siehe ausfuehrlicher Kommentar beim
+                # Versions-Popup oben - "notified_build_id" wird jetzt
+                # ebenso erst nach dem tatsaechlichen Zeichnen markiert
+                # (next_action(), Block "pending_build"), nicht schon
+                # hier beim blossen Erkennen. build_id selbst muss dafuer
+                # zwischengespeichert werden, da _build_popup_pending nur
+                # die Kurzbeschreibung (summary) enthaelt.
+                self._pending_build_id = build_id
         save_update_state(state)
 
     def _scroll_skip_vsync(self):
@@ -7796,6 +7822,15 @@ class Frontend:
                 # "if self.confirm_update:").
                 self._start_update_install_dialog(
                     t("update_install_confirm", pending_update))
+                # BUGFIX: siehe ausfuehrlicher Kommentar in
+                # _check_for_update_background() - "notified_version" wird
+                # jetzt ERST HIER, direkt nach dem tatsaechlichen Zeichnen
+                # des Dialogs (siehe _start_update_install_dialog(), das
+                # am Ende self.draw() aufruft), dauerhaft markiert, nicht
+                # schon beim blossen Erkennen im Hintergrund-Thread.
+                _upd_state = load_update_state()
+                _upd_state["notified_version"] = pending_update
+                save_update_state(_upd_state)
 
             # NEUES FEATURE (Nutzerwunsch: "ich moechte bei v4.4 bleiben,
             # aber trotzdem einen Hinweis sehen, wenn es neue Fixes gibt")
@@ -7804,8 +7839,25 @@ class Frontend:
             # Versions-Update ansteht. Gleicher Attract-Modus-Fix wie
             # oben (direkt uebernommen, keine Dopplung des ersten,
             # eigentlich ueberfluessigen draw()-Aufrufs von oben).
+            #
+            # BUGFIX (beim Testen des Timing-Fixes oben gefunden): sind
+            # Versions- UND Build-Update im SELBEN Leerlauf-Tick faellig
+            # (beide Bloecke liefen bislang bedingungslos nacheinander),
+            # ueberschrieb dieser zweite _start_update_install_dialog()-
+            # Aufruf sofort wieder self.confirm_update/_update_install_
+            # message des ersten - der Versions-Dialog waere dadurch nie
+            # sichtbar geworden, obwohl er korrekt gezeichnet wurde (nur
+            # eben im selben Funktionsaufruf sofort ueberschrieben, bevor
+            # next_action() zu einer echten Eingabe zurueckkehrt - exakt
+            # dieselbe Symptomatik wie der bereits behobene Uebermal-
+            # Fehler, nur diesmal durch den EIGENEN zweiten Dialog statt
+            # durch Laufschrift/Cover-Redraw). "and not self.confirm_update"
+            # sorgt dafuer, dass der Build-Hinweis in diesem Fall einfach
+            # bis zum naechsten Leerlauf-Tick wartet, sobald der Nutzer den
+            # Versions-Dialog beantwortet hat - _build_popup_pending bleibt
+            # dafuer bewusst unveraendert (noch nicht auf None gesetzt).
             pending_build = getattr(self, "_build_popup_pending", None)
-            if pending_build:
+            if pending_build and not self.confirm_update:
                 self._build_popup_pending = None
                 if self.attract_mode:
                     self.attract_mode = False
@@ -7824,6 +7876,14 @@ class Frontend:
                 # beide fuehren zum selben Frontend_Install.sh-Lauf.
                 self._start_update_install_dialog(
                     t("build_install_confirm", pending_build))
+                # BUGFIX: siehe Kommentar beim Versions-Popup oben -
+                # gleiches Prinzip, "notified_build_id" wird jetzt ebenso
+                # erst nach dem tatsaechlichen Zeichnen markiert.
+                _upd_build_id = getattr(self, "_pending_build_id", None)
+                if _upd_build_id:
+                    _upd_state = load_update_state()
+                    _upd_state["notified_build_id"] = _upd_build_id
+                    save_update_state(_upd_state)
 
             # "Auf diesen Tag vor X Jahren" (Nutzerwunsch): rein lokale
             # Dateiabfrage, kein Netzwerk - trotzdem bewusst genauso wie
@@ -10187,7 +10247,7 @@ class Frontend:
             ("header", "help_section_playing"), ("item", "help_playing_exit"),
             ("item", "help_playing_exit_pad"), ("item", "help_playing_reset"),
             ("header", "help_section_general"), ("item", "help_general_music"),
-            ("item", "help_general_osd"), ("item", "help_general_osd_back"),
+            ("item", "help_general_osd"),
         ]
         # BUGFIX (Nutzer-Rueckmeldung: auf CRT wurde z.B. "OK/A:
         # auswaehlen, Kategorie/Ord~" abgeschnitten): jede Zeile

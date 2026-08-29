@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-39",
-  "summary": "Eigentliche Ursache fuer 'Frontend beenden'-Dialog gefunden: Laufschrift- und Cover-Nachlade-Redraw im Hintergrund uebermalten den offenen Dialog alle 150ms - jetzt pausieren beide, solange ein Dialog offen ist"
+  "build_id": "2026-08-24-40",
+  "summary": "F10/X-Hinweis in Hilfe entfernt, echte Umlaute in allen Texten, Update-Popup-Fix (inkl. 'zu frueh als gezeigt markiert' und Popup-Kollision) sowie Hintergrund-Thread-Audit gegen Scroll-Stocken"
 }
