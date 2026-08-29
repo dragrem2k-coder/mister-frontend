@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-37",
-  "summary": "Frontend-beenden-Dialog: Hoch/Runter waehlen jetzt auch Ja/Nein, sichtbarer Hinweistext, plus 350ms-Sperre gegen ein reflexartiges Sofort-OK direkt nach dem Oeffnen - behebt 'Frontend beenden geht nicht'/'Dialog ploppt nur kurz auf'"
+  "build_id": "2026-08-24-38",
+  "summary": "RetroAchievements im System-Menue direkt an-/ausschaltbar (neue Zeile unter 'neu laden', nur sichtbar wenn eingerichtet)"
 }

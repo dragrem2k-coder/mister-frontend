@@ -74,10 +74,52 @@ def load_ra_config():
         return None, None
     return lines[0], lines[1]
 
+# NEUES FEATURE (Nutzerwunsch: "ich würde gerne die Option haben, die
+# RetroAchievements von dort [System-Menue] an und aus zu schalten" -
+# bisher gab es im System-Menue unter "RetroAchievements" NUR "neu
+# laden", ein tatsaechliches Abschalten ging ausschliesslich durch
+# Loeschen/Umbenennen von RA_CONFIG_FILE per SSH). Bewusst GETRENNT von
+# der Einrichtung selbst (Benutzername+API-Schluessel bleiben beim
+# Deaktivieren unangetastet - ein spaeteres Wiedereinschalten braucht
+# keine erneute Einrichtung) - reiner lokaler Ein/Aus-Schalter nach
+# demselben "Standard an, per Markierungsdatei abschaltbar"-Muster wie
+# die uebrigen kleinen Ein/Aus-Einstellungen (siehe fe/settings.py).
+RA_DISABLED_FLAG = "/media/fat/frontend/retroachievements_disabled"
+
+def ra_toggle_enabled():
+    """NUR der lokale Ein/Aus-Schalter selbst (unabhaengig davon, ob
+    ueberhaupt Zugangsdaten hinterlegt sind) - fuer die tatsaechlich
+    massgebliche Kombination aus beidem siehe ra_enabled() unten."""
+    return not os.path.exists(RA_DISABLED_FLAG)
+
+def toggle_ra_enabled():
+    if ra_toggle_enabled():
+        try:
+            os.makedirs(os.path.dirname(RA_DISABLED_FLAG), exist_ok=True)
+            open(RA_DISABLED_FLAG, "w").close()
+        except OSError:
+            pass
+    else:
+        try:
+            os.remove(RA_DISABLED_FLAG)
+        except OSError:
+            pass
+
 def ra_enabled():
-    """Kurzform: ist RetroAchievements ueberhaupt eingerichtet?"""
+    """Kurzform: ist RetroAchievements gerade tatsaechlich aktiv? Das
+    ist der Fall, wenn (a) Zugangsdaten hinterlegt sind UND (b) der
+    Nutzer es nicht ueber den Ein/Aus-Schalter (ra_toggle_enabled())
+    manuell pausiert hat. Bewusst als EINZIGE kombinierte Pruefung -
+    ALLE anderen RA-Funktionen im Frontend (Fortschrittsanzeige,
+    Abzeichen, Erfolgs-Vitrine, Bestenlisten/Meilensteine) bauen
+    darauf auf, ein Aus-/Wiedereinschalten wirkt dadurch ueberall
+    sofort konsistent, ohne jede einzelne Aufrufstelle einzeln
+    anzupassen. Betrifft NICHT find_ra_core()/die RA-Core-Auswahl beim
+    Betreten eines Systems (fe/ra_core.py) - das ist ein unabhaengiger
+    Mechanismus (welche Core-BINARY gestartet wird), der weiterhin
+    unveraendert funktioniert, auch wenn hier pausiert wurde."""
     u, k = load_ra_config()
-    return u is not None and k is not None
+    return u is not None and k is not None and ra_toggle_enabled()
 
 RA_API_URL = "https://retroachievements.org/API/API_GetUserCompletionProgress.php"
 

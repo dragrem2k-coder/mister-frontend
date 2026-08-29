@@ -7,6 +7,26 @@ schau am besten in die Git-Historie oder in den Kopf von
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
 **Neue Features:**
+- RetroAchievements lässt sich jetzt direkt im System-Menü an- und
+  ausschalten (Nutzerwunsch: "ich würde gerne die Option haben, die
+  RetroAchievements von dort an und aus zu schalten" - bisher gab es
+  unter "RetroAchievements" nur "neu laden", ein echtes Deaktivieren
+  ging nur durch Löschen/Umbenennen der Zugangsdaten-Datei per SSH).
+  Neue zweite Zeile direkt unter der bestehenden "neu laden"-Zeile,
+  erscheint aber bewusst NUR, wenn überhaupt Zugangsdaten hinterlegt
+  sind (ohne Einrichtung gibt es noch nichts zum Umschalten). Getrennt
+  von der Einrichtung selbst - Benutzername/API-Schlüssel bleiben beim
+  Ausschalten unangetastet, ein späteres Wiedereinschalten braucht
+  keine erneute Einrichtung. Betrifft die Fortschrittsanzeige/
+  Abzeichen/Erfolgs-Vitrine/Bestenlisten/Meilensteine (alles, was auf
+  ra_enabled() aufbaut) - NICHT die RA-Core-Auswahl beim Betreten eines
+  Systems (find_ra_core()), die unabhängig davon weiterläuft, falls
+  eine RA-fähige Core-Variante im _RA_Cores-Ordner liegt. Standard
+  unverändert AN für alle, die den neuen Schalter nicht anfassen.
+  Verifiziert mit 9 gezielten Tests (u.a. dass die Zeile ohne
+  Zugangsdaten korrekt NICHT erscheint, und dass die Zugangsdaten beim
+  Aus-/Wiedereinschalten unverändert bleiben) plus der vollständigen
+  Regressionssuite.
 - N64_ALSA.rbf/PSX_ALSA.rbf im _RA_Cores-Ordner werden jetzt bevorzugt
   geladen (Nutzerwunsch): liegt eine dieser ALSA-Core-Varianten dort
   vor, wird sie fuer RetroAchievements-Starts des jeweiligen Systems

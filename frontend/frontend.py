@@ -3456,7 +3456,7 @@ from fe.retroachievements import (
     _save_ra_achievements_cache, build_ra_lookup, fetch_ra_game_achievements,
     fetch_ra_game_achievements_bounded, fetch_ra_game_achievements_cached, fetch_ra_progress,
     fetch_ra_progress_bounded, load_ra_config, lookup_ra_game_id,
-    lookup_ra_progress, ra_enabled,
+    lookup_ra_progress, ra_enabled, toggle_ra_enabled,
 )
 from fe.playtime import (
     DIARY_FILE, DIARY_RETENTION_DAYS, FIRST_PLAYED_FILE, MILESTONE_DEFS,
@@ -12465,6 +12465,19 @@ class Frontend:
                                 self.draw(message=msg)
                                 time.sleep(1.5)
                             self.draw()
+                        elif kind == "ra_toggle":
+                            # NEU (Nutzerwunsch: RetroAchievements aus
+                            # dem System-Menue heraus an-/ausschalten,
+                            # ohne die Zugangsdaten per SSH loeschen zu
+                            # muessen) - siehe toggle_ra_enabled()/
+                            # ra_enabled() in fe/retroachievements.py.
+                            # Gleiches Muster wie die uebrigen kleinen
+                            # Ein/Aus-Schalter hier (z.B. "sfx"/
+                            # "fast_scroll") - nur die Beschriftung im
+                            # System-Menue aktualisieren, kein Neustart
+                            # noetig.
+                            toggle_ra_enabled()
+                            self._refresh_system_category()
                 # Bei einem einzelnen hoch/runter-Schritt (kein Scrollen,
                 # keine Seite/Kategorie gewechselt) reicht der leichte
                 # Navigations-Zeichenpfad - deutlich billiger als die

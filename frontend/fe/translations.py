@@ -330,6 +330,14 @@ TRANSLATIONS = {
                      "de": "RetroAchievements: nicht eingerichtet"},
     "sys_ra_configured": {"en": "RetroAchievements: %s (reload)",
                           "de": "RetroAchievements: %s (neu laden)"},
+    # NEU (Nutzerwunsch: RetroAchievements aus dem System-Menue heraus
+    # an-/ausschalten koennen, ohne die Zugangsdaten per SSH loeschen zu
+    # muessen) - gleiches "AN -> ausschalten"/"AUS -> einschalten"-Muster
+    # wie die uebrigen Ein/Aus-Menuepunkte (siehe z.B. sys_fast_scroll_on).
+    "sys_ra_toggle_on": {"en": "RetroAchievements: ON -> turn off (progress/badges/lists pause, RA-capable cores still launch normally)",
+                         "de": "RetroAchievements: AN -> ausschalten (Fortschritt/Abzeichen/Listen pausieren, RA-faehige Cores starten weiterhin normal)"},
+    "sys_ra_toggle_off": {"en": "RetroAchievements: OFF -> turn on",
+                          "de": "RetroAchievements: AUS -> einschalten"},
     "core_choice_title": {"en": "%s - CHOOSE CORE",
                           "de": "%s - CORE WÄHLEN"},
     "core_choice_normal": {"en": "Standard core",

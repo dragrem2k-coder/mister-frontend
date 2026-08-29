@@ -33,7 +33,7 @@ from fe.settings import (
     track_marquee_enabled,
 )
 from fe.timekeeping import format_timezone_offset, load_timezone_offset
-from fe.retroachievements import load_ra_config
+from fe.retroachievements import load_ra_config, ra_toggle_enabled
 from fe.update_check import (
     load_update_state, update_check_enabled, _version_newer,
     FRONTEND_VERSION,
@@ -182,14 +182,24 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             update_label = t("sys_update_on")
     ra_user, _ra_key = load_ra_config()
     ra_label = t("sys_ra_configured", ra_user) if ra_user else t("sys_ra_setup")
+    # NEU (Nutzerwunsch: "ich würde gerne die Option haben, die
+    # RetroAchievements von dort an und aus zu schalten" - bisher gab es
+    # hier nur "neu laden"): zusaetzliche Ein/Aus-Zeile, NUR sichtbar,
+    # wenn ueberhaupt Zugangsdaten hinterlegt sind (ra_user) - ohne
+    # Einrichtung gibt es noch nichts zum An-/Ausschalten, siehe
+    # ra_toggle_enabled()/ra_enabled() in fe/retroachievements.py.
+    ra_toggle_label = (t("sys_ra_toggle_on") if ra_toggle_enabled()
+                       else t("sys_ra_toggle_off"))
 
     def folder(*items):
         return {"folders": {}, "items": list(items)}
 
+    ra_items = [(ra_label, "ra_status", None)]
+    if ra_user:
+        ra_items.append((ra_toggle_label, "ra_toggle", None))
+
     groups = {
-        t("sys_group_ra"): folder(
-            (ra_label, "ra_status", None),
-        ),
+        t("sys_group_ra"): folder(*ra_items),
         t("sys_group_stats"): folder(
             (t("top10_time_action"), "top10_time", None),
             (t("top10_launches_action"), "top10_launches", None),
