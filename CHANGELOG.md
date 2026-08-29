@@ -274,6 +274,67 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- Glow-Effekt entfernt und die dadurch erzwungene Mehrarbeit beim
+  Scrollen gleich mit (Nutzerwunsch: "glow Effekt komplett raus, 3
+  Zeilen Sprung komplett beim Scrollen rausnehmen"). Die markierte Zeile
+  hatte bisher zusätzlich zum farbigen Balken drei konzentrische
+  Leucht-Ringe (`glow_border_fast()`, je vier `rect()`-Aufrufe — also 12
+  zusätzliche Zeichenoperationen pro markierter Zeile, bei *jedem*
+  Bildaufbau und *jedem* Puls-Tick). Der Balken selbst bleibt
+  unverändert; nur das Leuchten drumherum ist weg.
+
+  Der eigentliche Gewinn liegt aber in den Folgekosten: Weil der Glow
+  bewusst über die eigene Zeile hinausragte, blutete er in die
+  Nachbarzeilen — und musste dort wieder übermalt werden. Deshalb wurden
+  bei jedem Navigationsschritt und jedem Puls-Tick **drei Zeilen**
+  gezeichnet (die markierte plus beide Nachbarn) statt einer, dazu
+  jeweils ein großzügig verbreiterter Randbereich freigeräumt und, wenn
+  die Markierung ganz oben stand, zusätzlich die Kopfzeile neu gesetzt.
+  All das war ausschließlich Reparaturarbeit am Glow. Ohne ihn bleibt
+  jede Zeile in ihrem eigenen Bereich, und sämtliche dieser
+  Zusatz-Durchgänge entfallen — an allen sechs betroffenen Stellen
+  (`draw_page_items`, `_draw_navigate_items`, `_draw_dynamic_items`,
+  `draw_page_cats`, `_draw_navigate_cats`, `_draw_dynamic_cats`).
+
+  Zusätzlich fällt der Zeilensprung im Kategorien-Hauptmenü weg: Dort
+  sprang die Auswahl bei gehaltener Taste noch um 2, dann 4, dann 10
+  Zeilen. Das ist nicht nur optisch ein Sprung — ab einer Sprungweite
+  über 1 greift der leichte Zeichenpfad nicht mehr, und jeder weitere
+  Schritt löst wieder den vollen Seitenaufbau aus. Für die Spieleliste
+  war das in einer früheren Runde bereits behoben, jetzt auch fürs
+  Hauptmenü. Zügiges Durchlaufen bleibt über die beschleunigte
+  Wiederhol-Taktrate erhalten, nur eben Zeile für Zeile.
+
+  Gemessen (1920×1080, Median):
+
+  | Zeichenpfad | vorher | nachher | |
+  |---|---|---|---|
+  | Spieleliste, voller Aufbau | 3,43 ms | 2,83 ms | −18% |
+  | Spieleliste, ein Navigationsschritt | 2,48 ms | 1,84 ms | −26% |
+  | Spieleliste, Puls-Tick | 0,296 ms | 0,068 ms | **−77%** |
+  | Hauptmenü, voller Aufbau | 1,83 ms | 1,66 ms | −10% |
+  | Hauptmenü, ein Navigationsschritt | 1,52 ms | 0,99 ms | **−35%** |
+  | Hauptmenü, Puls-Tick | 0,318 ms | 0,045 ms | **−86%** |
+
+  Die Puls-Ticks fallen dabei besonders ins Gewicht, weil sie dauerhaft
+  laufen (bis zu ~12,5 pro Sekunde), auch wenn man einfach nur im Menü
+  steht. Abgesichert über einen Vergleich, der genau das Risiko dieser
+  Änderung prüft: Der leichte Zeichenpfad muss weiterhin bitgenau
+  dasselbe Bild liefern wie ein vollständiger Neuaufbau — bliebe
+  irgendwo ein Rest einer alten Markierung stehen, würde es auffallen.
+  Über 32 Fälle (beide Auflösungen, Navigationsschritte und Puls-Ticks
+  auf beiden Seiten) kam **keine einzige neue Abweichung** hinzu; zwei
+  bereits vorher bestehende (Puls-Tick im Hauptmenü) sind durch die
+  Änderung sogar verschwunden. Dazu die vollständige Regressionssuite
+  (18/18).
+  ANMERKUNG (unabhängig von dieser Änderung, für später notiert): Beim
+  Aufbau dieses Vergleichs zeigte sich, dass der leichte Zeichenpfad der
+  Spieleliste schon vorher nicht in allen Fällen bitgenau dem vollen
+  Aufbau entsprach. Zwei dieser Abweichungen gehen auf die
+  Rand-Abdunkelung zurück (die Zeilen werden im leichten Pfad einfarbig
+  statt mit dem Verlauf gefüllt), die übrigen sind noch nicht
+  eingegrenzt. Das ist ein bestehender Zustand, der durch diese Änderung
+  weder besser noch schlechter wird.
 - Textdarstellung deutlich entlastet — die Ursache der bisher
   unerklärten Fehltreffer im Text-Cache ist gefunden und behoben
   (Fortsetzung der HDMI-Performance-Runde, diesmal messend statt

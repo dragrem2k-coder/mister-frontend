@@ -5727,37 +5727,15 @@ class Frontend:
         maxc = max(4, (list_right - ox) // (8 * s))
         for row, i in enumerate(range(self.cat_scroll, end)):
             self._draw_cat_row(i, row, L, maxc)
-        # BUGFIX (uebernommen aus einer parallelen Fehlerdiagnose - siehe
-        # Kopfkommentar-Changelog fuer die volle Herleitung): die
-        # markierte Zeile hat einen Leucht-Rand (glow_border_fast()), der
-        # ABSICHTLICH etwas ueber die eigene Zeile hinausragt. Beim obigen
-        # Durchlauf in AUFSTEIGENDER Reihenfolge wird die Zeile DARUEBER
-        # zuerst gezeichnet, die Markierung danach - ihr Glow blutet dabei
-        # auf den bereits fertigen oberen Nachbarn, ohne dass ihn danach
-        # etwas uebermalt (nach unten faellt das nie auf, da die naechste
-        # Zeile im selben Durchlauf ohnehin erst DANACH kommt). Zeile
-        # direkt darueber (falls sichtbar) hier einmal sauber neu zeichnen.
-        if (self.cat_scroll <= self.cat_i - 1 < end
-                and self.cat_scroll <= self.cat_i < end):
-            self._draw_cat_row(self.cat_i - 1, self.cat_i - 1 - self.cat_scroll,
-                               L, maxc)
-        # BUGFIX (Sonderfall, von der Korrektur oben nicht abgedeckt):
-        # steht die Markierung auf der ALLERERSTEN sichtbaren Zeile, gibt
-        # es keine Listenzeile darueber, die den Bleed auffangen koennte -
-        # der Glow blutet stattdessen nach oben in die Kopfzeile hinein
-        # ("X categories"-Text). Der Glow-Rand ist ein Streifen ueber die
-        # VOLLE Zeilenbreite, nicht nur ueber die Textbreite - deshalb
-        # zuerst ein rect() ueber die volle Breite (aber nur ueber die vom
-        # Glow tatsaechlich erreichte Hoehe), dann der Text neu.
-        if self.cat_i == self.cat_scroll:
-            max_p = 3 * 2 * s
-            gx = ox - 4 * s
-            gw = list_right - ox + 8 * s
-            clear_top = y0 - 4 * s - max_p
-            clear_bot = y0 - 4 * s
-            fb.rect(gx, clear_top, gw, clear_bot - clear_top, C_BG)
-            fb.text(ox, oy + 28 * s, t("categories", len(self.cats)),
-                    s, C_DIM, C_BG)
+        # ENTFALLEN (Nutzerwunsch: "glow Effekt komplett raus"): hier
+        # wurden bisher zwei Korrekturen gebraucht, die es AUSSCHLIESSLICH
+        # wegen des Leucht-Rands gab - die Zeile ueber der Markierung
+        # musste ein zweites Mal gezeichnet werden (der Glow blutete beim
+        # Durchlauf von oben nach unten auf den bereits fertigen oberen
+        # Nachbarn), und stand die Markierung ganz oben, musste
+        # zusaetzlich die Kopfzeile freigeraeumt und neu gesetzt werden.
+        # Ohne Glow bleibt jede Zeile in ihrem eigenen Bereich, beides
+        # ist damit hinfaellig.
 
         # Artbox rechts: Logo/Cover des gerade markierten Systems
         self._draw_cat_artbox(L)
@@ -5857,14 +5835,19 @@ class Frontend:
             fb.rect(ox - 4 * s, y - 4 * s, list_right - ox + 8 * s,
                     rowh - 4 * s, C_BG)
         else:
+            # GEAENDERT (Nutzerwunsch: "glow Effekt komplett raus"): der
+            # markierte Eintrag hatte hier zusaetzlich drei konzentrische
+            # Leucht-Ringe (glow_border_fast(), je 4 rect()-Aufrufe, also
+            # 12 pro markierter Zeile). Die Markierung selbst - der
+            # farbige Balken darunter - bleibt unveraendert. Weil der Glow
+            # bewusst UEBER die eigene Zeile hinausragte, mussten bisher
+            # an mehreren Stellen zusaetzlich die Nachbarzeilen bzw. die
+            # Kopfzeile mitgezeichnet werden, damit kein Rest stehen
+            # blieb; all diese Zusatzarbeit entfaellt jetzt ebenfalls
+            # (siehe die entsprechenden Stellen in draw_page_cats(),
+            # _draw_dynamic_cats() und _draw_navigate_cats_impl()).
             fb.rect(ox - 4 * s, y - 4 * s, list_right - ox + 8 * s,
                     rowh - 4 * s, bg)
-            gx, gy = ox - 4 * s, y - 4 * s
-            gw, gh = list_right - ox + 8 * s, rowh - 4 * s
-            for ring, a in enumerate((0.22, 0.13, 0.06)):
-                p = (ring + 1) * 2 * s
-                fb.glow_border_fast(gx - p, gy - p, gw + 2 * p, gh + 2 * p,
-                                    C_BG, accent, a, thickness=2 * s)
         label = name if len(name) <= maxc else name[:max(1, maxc-1)] + "~"
         fb.text(ox, y, label, s, C_TITLE if sel else C_TEXT, bg)
 
@@ -6200,49 +6183,21 @@ class Frontend:
             bg = self._pulsed(accent)
             gx, gy = ox - 4 * s, y - 4 * s
             gw, gh = list_right - ox + 8 * s, rowh - 4 * s
-            max_p = 3 * 2 * s
-            fb.rect(gx - max_p, gy - max_p, gw + 2 * max_p, gh + 2 * max_p, C_BG)
+            # GEAENDERT (Nutzerwunsch: "glow Effekt komplett raus"): hier
+            # standen zuvor die drei Leucht-Ringe, dazu eine breite
+            # Randloeschung (max_p) rund um die Zeile, weil der Glow
+            # ueber die eigene Zeile hinausragte - und, als Folgekosten
+            # daraus, das Mitzeichnen der Zeile DARUEBER bzw. der
+            # Kopfzeile bei jedem einzelnen Tick. Ohne Glow faellt das
+            # alles weg: die markierte Zeile fuellt ihren eigenen
+            # Bereich per rect() vollstaendig selbst, ein Ueberstand in
+            # Nachbarzeilen entsteht nicht mehr.
             fb.rect(gx, gy, gw, gh, bg)
-            for ring, a in enumerate((0.22, 0.13, 0.06)):
-                p = (ring + 1) * 2 * s
-                fb.glow_border_fast(gx - p, gy - p, gw + 2 * p, gh + 2 * p,
-                                    C_BG, accent, a, thickness=2 * s)
             maxc = max(4, (list_right - ox) // (8 * s))
             label = name if len(name) <= maxc else name[:max(1, maxc - 1)] + "~"
             fb.text(ox, y, label, s, C_TITLE, bg)
-            y_min = min(y_min, gy - max_p)
-            y_max = max(y_max, gy - max_p + gh + 2 * max_p)
-            # BUGFIX (uebernommen aus einer parallelen Fehlerdiagnose,
-            # siehe draw_page_cats()/_draw_dynamic_items()): die breite
-            # Randloeschung oben (max_p, wegen des ueber die eigene Zeile
-            # hinausragenden Glow-Rands) reicht bisher bis in die Zeile
-            # DARUEBER hinein - und NICHTS hat sie danach wieder
-            # aufgefrischt. Bei bis zu 12.5 Ticks/Sekunde waere der obere
-            # Nachbar dadurch praktisch dauerhaft teilweise geloescht
-            # geblieben. Zeile darueber (falls sichtbar) bzw. die
-            # Kopfzeile (falls die Markierung ganz oben steht) hier
-            # ebenfalls wieder sauber zeichnen.
-            prev_row = row - 1
-            if prev_row >= 0:
-                self._draw_cat_row(self.cat_i - 1, prev_row, L, maxc)
-                prev_y = y0 + prev_row * rowh
-                y_min = min(y_min, prev_y - 4 * s)
-                y_max = max(y_max, prev_y - 4 * s + rowh - 4 * s)
-            else:
-                # Keine Listenzeile darueber vorhanden - der Glow blutet
-                # stattdessen in die Kopfzeile ("X categories"-Text)
-                # hinein. Glow-Rand ist ein Streifen ueber die VOLLE
-                # Zeilenbreite (siehe ausfuehrliche Begruendung in
-                # draw_page_cats()) - deshalb erst ein rect() ueber die
-                # volle Breite (nur ueber die vom Glow tatsaechlich
-                # erreichte Hoehe), dann der Text neu.
-                clear_top = y0 - 4 * s - max_p
-                clear_bot = y0 - 4 * s
-                fb.rect(gx, clear_top, gw, clear_bot - clear_top, C_BG)
-                fb.text(ox, oy + 28 * s, t("categories", len(self.cats)),
-                        s, C_DIM, C_BG)
-                y_min = min(y_min, clear_top)
-                y_max = max(y_max, oy + 36 * s)
+            y_min = min(y_min, gy)
+            y_max = max(y_max, gy + gh)
 
         if y_max > y_min:
             if flip:
@@ -6346,7 +6301,6 @@ class Frontend:
         rowh, y0 = L["rowh"], L["y0"]
         list_right = L["list_right"]
         maxc = max(4, (list_right - ox) // (8 * s))
-        max_p = 3 * 2 * s
         gx = ox - 4 * s
         gw = list_right - ox + 8 * s
 
@@ -6354,41 +6308,20 @@ class Frontend:
         y = y0 + old_row * rowh
         gy = y - 4 * s
         gh = rowh - 4 * s
-        # Alte Zeile: erst den ueber die eigene Zeile hinausragenden
-        # Glow-Rand zuruecksetzen, dann unmarkiert neu zeichnen (gleiches
-        # Prinzip wie in _draw_navigate_items()/_clear_row_glow_margin() -
-        # Seite 0 hat aber, anders als Seite 1, NIE einen Bild-Hintergrund,
-        # nur ggf. die Rand-Abdunkelung aus fb.clear() - siehe _bg_fill()).
-        self._bg_fill(gx - max_p, gy - max_p, gw + 2 * max_p, gh + 2 * max_p)
+        # Alte Zeile unmarkiert neu zeichnen - _draw_cat_row() fuellt den
+        # kompletten eigenen Zeilenbereich selbst mit C_BG, ein separates
+        # Freiraeumen davor ist nicht noetig.
+        #
+        # GEAENDERT (Nutzerwunsch: "glow Effekt komplett raus"): hier
+        # stand zuvor ein breites _bg_fill() um die Zeile herum (max_p,
+        # wegen des ueberstehenden Leucht-Rands) und, als Folgekosten
+        # daraus, das Mitzeichnen der Zeile darueber, der Zeile darunter
+        # und ggf. der Kopfzeile - bei JEDEM Navigationsschritt. Ohne
+        # Glow bleibt jede Zeile in ihrem eigenen Bereich; damit
+        # entfaellt das alles.
         self._draw_cat_row(old_cat_i, old_row, L, maxc)
-        y_min = gy - max_p
-        y_max = gy - max_p + gh + 2 * max_p
-
-        # Zeile ueber der ALTEN Position frisch zeichnen (ihr Glow-Rand
-        # reichte bis dahin hinein, ist jetzt aber weg) - bzw. Kopfzeile,
-        # falls die alte Position ganz oben in der sichtbaren Liste stand
-        # (gleiches Prinzip wie in draw_page_cats()/_draw_dynamic_cats()).
-        prev_row = old_row - 1
-        if prev_row >= 0:
-            self._draw_cat_row(old_cat_i - 1, prev_row, L, maxc)
-            prev_y = y0 + prev_row * rowh
-            y_min = min(y_min, prev_y - 4 * s)
-            y_max = max(y_max, prev_y - 4 * s + rowh - 4 * s)
-        else:
-            clear_top = y0 - 4 * s - max_p
-            clear_bot = y0 - 4 * s
-            self._bg_fill(gx, clear_top, gw, clear_bot - clear_top)
-            fb.text(ox, oy + 28 * s, t("categories", len(self.cats)),
-                    s, C_DIM, C_BG)
-            y_min = min(y_min, clear_top)
-            y_max = max(y_max, oy + 36 * s)
-
-        next_row = old_row + 1
-        if next_row < visible and self.cat_scroll + next_row < len(self.cats):
-            self._draw_cat_row(old_cat_i + 1, next_row, L, maxc)
-            next_y = y0 + next_row * rowh
-            y_min = min(y_min, next_y - 4 * s)
-            y_max = max(y_max, next_y - 4 * s + rowh - 4 * s)
+        y_min = gy
+        y_max = gy + gh
 
         # Neue Auswahl (markierte Zeile inkl. Glow, Equalizer, Kopfzeilen-
         # Sonderfall) - siehe Docstring oben: flip=False zeichnet nur in
@@ -6398,27 +6331,11 @@ class Frontend:
             y_min = min(y_min, new_y0)
             y_max = max(y_max, new_y1)
 
-        # BUGFIX (per Pixel-Differenzvergleich gegen einen vollen Aufbau
-        # gefunden, bevor dieser Pfad in Betrieb ging): der Glow-Rand der
-        # NEUEN Auswahl reicht wie ueberall bis zu max_p Pixel ueber die
-        # eigene Zeile hinaus - auch NACH UNTEN, in die Zeile DARUNTER
-        # hinein. Im vollen Aufbau faellt das nie auf, weil die naechste
-        # Zeile im selben top-nach-unten-Durchlauf ohnehin unmittelbar
-        # danach neu gezeichnet wird (heilt sich also von selbst). Dieser
-        # Pfad zeichnet aber NICHT jede Zeile neu - ohne diese Korrektur
-        # bliebe am oberen Rand der Zeile UNTER der neuen Auswahl ein
-        # kleiner Rest ihres Glows sichtbar stehen. Nach OBEN ist das
-        # bereits abgedeckt (_draw_dynamic_cats() zeichnet die Zeile davor
-        # bzw. die Kopfzeile ohnehin mit); hier fehlte noch die
-        # symmetrische Korrektur nach unten.
-        below_new = new_cat_i + 1
-        if (self.cat_scroll <= below_new < self.cat_scroll + visible
-                and below_new < len(self.cats)):
-            below_row = below_new - self.cat_scroll
-            self._draw_cat_row(below_new, below_row, L, maxc)
-            below_y = y0 + below_row * rowh
-            y_min = min(y_min, below_y - 4 * s)
-            y_max = max(y_max, below_y - 4 * s + rowh - 4 * s)
+        # ENTFALLEN (Nutzerwunsch: "glow Effekt komplett raus"): der
+        # Leucht-Rand der NEUEN Auswahl ragte auch nach UNTEN in die
+        # Zeile darunter hinein, weshalb diese hier zusaetzlich neu
+        # gezeichnet werden musste. Ohne Glow gibt es keinen Ueberstand
+        # mehr - die Korrektur ist hinfaellig.
 
         # Artbox rechts: Logo/Cover des jetzt markierten Systems. Vorher
         # auf den Hintergrund zuruecksetzen (draw_page_cats() erledigt das
@@ -6505,21 +6422,19 @@ class Frontend:
         # Framebuffer._wait_vsync(), verstaerkt diesen Effekt weiter.)
         fb = self.fb
         total = len(v["items"])
-        old_has_prev = old_item_i > self.scroll
-        old_has_next = (old_item_i + 1 < self.scroll + visible
-                        and old_item_i + 1 < total)
+        # GEAENDERT (Nutzerwunsch: "glow Effekt komplett raus"): fuer die
+        # ALTE Position wurden bisher DREI Zeilen neu gezeichnet (sie
+        # selbst plus beide Nachbarn), weil ihr Leucht-Rand in die
+        # Nachbarzeilen hineinragte und dort sonst sichtbare Reste
+        # hinterlassen haette. Ohne Glow genuegt die Zeile selbst - sie
+        # fuellt ihren eigenen Bereich vollstaendig.
         old_y_top, old_max_p = self._clear_row_glow_margin(old_item_i)
         regions = []
         if old_y_top is not None:
-            if old_has_prev:
-                self.draw_list_row(old_item_i - 1)
             self.draw_list_row(old_item_i)
-            if old_has_next:
-                self.draw_list_row(old_item_i + 1)
             s, rowh = v["s"], v["rowh"]
-            flip_y0 = old_y_top - (rowh if old_has_prev else old_max_p)
-            flip_y1 = (old_y_top + rowh - 2 * s + old_max_p
-                      + (rowh if old_has_next else 0))
+            flip_y0 = old_y_top - old_max_p
+            flip_y1 = old_y_top + rowh - 2 * s + old_max_p
             regions.append((flip_y0, flip_y1))
 
         new_y0, new_y1 = self._draw_dynamic_items(flip=False)
@@ -6598,7 +6513,15 @@ class Frontend:
         y_top = y - 3 * s
         x0 = list_x - 4 * s
         rw = max(4, list_right - list_x - 2 * s)
-        max_p = 3 * 2 * s
+        # GEAENDERT (Nutzerwunsch: "glow Effekt komplett raus"): war
+        # vorher 3 * 2 * s - so weit ragte der Leucht-Rand ueber die
+        # eigene Zeile hinaus, und genau so breit musste hier
+        # freigeraeumt werden. Ohne Glow reicht der eigene Zeilenbereich.
+        # Die Funktion selbst bleibt trotzdem noetig: die markierte Zeile
+        # wird mit ABGERUNDETEN Ecken gezeichnet (rect_rounded()), die
+        # Eckpixel ausserhalb der Rundung bleiben dabei unberuehrt und
+        # muessen vorher auf den Hintergrund zurueckgesetzt werden.
+        max_p = 0
         cur_bg = getattr(self, "_cur_bg", None)
         if cur_bg is None:
             fb.rect(x0 - max_p, y_top - max_p, rw + 2 * max_p,
@@ -6666,22 +6589,17 @@ class Frontend:
             return None, None
         fb = self.fb
         total = len(v["items"])
+        # GEAENDERT (Nutzerwunsch: "glow Effekt komplett raus"): bisher
+        # wurden hier bei JEDEM Puls-Tick DREI Zeilen gezeichnet - die
+        # markierte plus beide Nachbarn -, ausschliesslich weil der
+        # Leucht-Rand in die Nachbarzeilen hineinblutete und dort sonst
+        # Reste stehen geblieben waeren. Ohne Glow bleibt die Markierung
+        # in ihrem eigenen Bereich: eine Zeile genuegt, und der auf den
+        # Schirm zu bringende Streifen ist entsprechend schmaler.
         y_top, max_p = self._clear_row_glow_margin(self.item_i)
-        has_prev = self.item_i > self.scroll
-        has_next = (self.item_i + 1 < self.scroll + self.items_visible
-                    and self.item_i + 1 < total)
         self.draw_list_row(self.item_i)
-        if has_prev:
-            self.draw_list_row(self.item_i - 1)
-        if has_next:
-            self.draw_list_row(self.item_i + 1)
-        # Grosszuegiger Bereich, der die tatsaechlich aufgefrischten
-        # Zeilen (markierte Zeile + evtl. Nachbarn) komplett abdeckt -
-        # ein paar zusaetzliche Pixel zu flippen kostet kaum etwas,
-        # verglichen mit dem Risiko, eine aufgefrischte Nachbarzeile
-        # nur teilweise auf den Schirm zu bringen.
-        flip_y0 = y_top - (rowh if has_prev else max_p)
-        flip_y1 = y_top + rowh - 2 * s + max_p + (rowh if has_next else 0)
+        flip_y0 = y_top - max_p
+        flip_y1 = y_top + rowh - 2 * s + max_p
         if flip:
             fb.flip_rows(flip_y0, flip_y1 - flip_y0,
                         skip_vsync=self._scroll_skip_vsync())
@@ -7052,10 +6970,13 @@ class Frontend:
         # jetzt symmetrisch: auch die Zeile direkt UNTER der Markierung
         # (falls sichtbar) wird einmal mit vollem Hintergrund-Restore
         # neu gezeichnet.
-        if self.scroll <= self.item_i - 1 < end and self.scroll <= self.item_i < end:
-            self.draw_list_row(self.item_i - 1, bg_fresh=False)
-        if self.scroll <= self.item_i + 1 < end and self.scroll <= self.item_i < end:
-            self.draw_list_row(self.item_i + 1, bg_fresh=False)
+        # ENTFALLEN (Nutzerwunsch: "glow Effekt komplett raus"): hier
+        # wurden bisher die Zeile UEBER und die Zeile UNTER der
+        # Markierung ein zweites Mal gezeichnet (mit vollem
+        # Hintergrund-Restore), weil der Leucht-Rand der markierten Zeile
+        # ueber die eigene Zeile hinausragte und auf beide Nachbarn
+        # blutete. Ohne Glow gibt es keinen Ueberstand mehr - beide
+        # Zusatz-Durchgaenge sind hinfaellig.
         self._perf_rows = time.monotonic() - _tr
         self._perf_nrows = end - self.scroll
 
@@ -7275,12 +7196,17 @@ class Frontend:
             else:
                 fb.rect(x0, y_top, rw, rowh - 2 * s, C_BG)
 
-        if sel:
-            for ring, a in enumerate((0.20, 0.11, 0.05)):
-                p = (ring + 1) * 2 * s
-                fb.glow_border_fast(x0 - p, y_top - p, rw + 2 * p,
-                                    rowh - 2 * s + 2 * p, C_BG, accent, a,
-                                    thickness=2 * s)
+        # GEAENDERT (Nutzerwunsch: "glow Effekt komplett raus"): hier
+        # standen drei konzentrische Leucht-Ringe um die markierte Zeile
+        # (glow_border_fast(), je 4 rect()-Aufrufe - also 12 zusaetzliche
+        # rect()-Aufrufe pro markierter Zeile, bei jedem Bildaufbau und
+        # bei jedem Puls-/Navigations-Tick). Die abgerundete
+        # Markierungsflaeche selbst bleibt unveraendert bestehen. Da der
+        # Glow absichtlich ueber die eigene Zeile hinausragte, mussten
+        # bisher zusaetzlich beide Nachbarzeilen mitgezeichnet werden -
+        # diese Zusatzarbeit entfaellt damit ebenfalls (siehe
+        # _draw_page_items_impl(), _draw_navigate_items_impl() und
+        # _draw_dynamic_items()).
 
         full = v["items"][idx][0]
         item_kind = v["items"][idx][1]
@@ -12034,12 +11960,20 @@ class Frontend:
                 # Regel eine deutlich kuerzere Liste) bleibt bewusst
                 # unveraendert - dazu wurde kein entsprechender Wunsch
                 # geaeussert.
-                if self.page == 1:
-                    move_step = 1
-                else:
-                    move_step = (10 if move_streak > 40 else
-                                4 if move_streak > 20 else
-                                2 if move_streak > 8 else 1)
+                #
+                # ERWEITERT (Nutzerwunsch: "3 Zeilen Sprung komplett beim
+                # Scrollen rausnehmen"): der obige Absatz galt bisher nur
+                # fuer die Spieleliste (Seite 1) - im Kategorien-
+                # Hauptmenue (Seite 0) sprang die Auswahl bei gehaltener
+                # Taste weiterhin um 2, dann 4, dann 10 Zeilen, mit exakt
+                # denselben Folgekosten: ab move_step > 1 greift der
+                # leichte Zeichenpfad (_draw_navigate_cats()) nicht mehr,
+                # jeder weitere Schritt loest wieder den vollen
+                # draw_page_cats()-Aufbau aus. Jetzt auch dort dauerhaft
+                # ein Schritt pro Tastendruck - zuegiges Durchlaufen
+                # bleibt ueber die vom InputManager selbst beschleunigte
+                # Wiederhol-Taktrate erhalten, nur eben Zeile fuer Zeile.
+                move_step = 1
 
                 # Turbo-Sprung links/rechts: Grundschritt ist eine volle
                 # Bildschirmseite, waechst beim Halten auf mehrere Seiten.

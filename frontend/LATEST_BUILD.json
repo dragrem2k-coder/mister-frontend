@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-41",
-  "summary": "Textdarstellung entlastet: Laufschrift der markierten Zeile erzeugte alle 0.18s einen garantierten Text-Cache-Fehltreffer (erklaert die auf echter Hardware gemessenen 83-85% Trefferquote) - jetzt Fenster aus dem vollen Titel statt Teilstring-Rendering, plus 3-5x billigerer Streifen-Aufbau. Bitgenau identisches Bild."
+  "build_id": "2026-08-24-42",
+  "summary": "Glow-Effekt der Markierung entfernt - und damit auch die nur dadurch noetige Mehrarbeit: statt drei Zeilen (markierte plus beide Nachbarn) wird pro Schritt/Tick nur noch eine gezeichnet. Zeilensprung im Kategorien-Hauptmenue faellt weg. Puls-Tick 4-7x schneller, Navigationsschritt 26-35% schneller."
 }
