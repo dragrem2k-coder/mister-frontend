@@ -274,6 +274,61 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- Animations-Ticks pausieren jetzt, solange aktiv navigiert wird. Bei
+  der gezielten Suche nach weiteren ungeschützten Hintergrund-Redraws
+  (dieselbe Fehlerklasse wie beim Beenden-Dialog) gefunden: Gegen einen
+  offenen **Dialog** waren alle Zeichenpfade im Leerlauf-Zweig sauber
+  abgesichert — gegen eine gerade laufende **Navigation** dagegen nicht.
+
+  Das ist kein Randfall, sondern ein exakter Gleichstand zweier Werte:
+  `next_action()` wartet auf HDMI 0,08 s auf eine Eingabe (das
+  Puls-Intervall), und die Tastenwiederholung beschleunigt in
+  `fe/input.py` über `iv = max(0.08, iv * 0.85)` auf einen Boden von —
+  ebenfalls 0,08 s. Bei gehaltener Taste läuft der Timeout dadurch etwa
+  jedes zweite Mal ab, der Leerlauf-Zweig feuert einen Puls-,
+  Equalizer- oder Laufschrift-Tick, und der zeichnet die markierte Zeile
+  samt eigenem `flip_rows()` neu — inklusive Vsync-Warten (auf echter
+  Hardware 8–17 ms), direkt zwischen zwei Navigationsschritten, die
+  genau dieselbe Zeile ohnehin gerade neu gezeichnet haben.
+
+  Mit der echten Wiederhol-Logik aus `fe/input.py` nachgestellt (6 s
+  gehaltene Taste, jeweils drei identische Läufe): **23 → 19
+  Bildschirm-Updates bei gleicher Schrittzahl, also 17% weniger.**
+
+  Sichtbar ändert sich nichts: `draw_list_row()` holt die aktuelle
+  Schimmerfarbe bei jedem Zeichnen frisch über `_pulsed()`, die
+  Animation läuft über die Navigationsschritte also ganz normal weiter.
+  Die Ticks werden bewusst gar nicht erst aufgerufen, statt ihr Ergebnis
+  zu verwerfen — so bleibt ihre interne Fälligkeitszeit stehen und die
+  Animation setzt beim Loslassen ohne Verzögerung wieder ein. Verwendet
+  wird dasselbe 150-ms-Fenster wie beim bereits vorhandenen
+  `FAST_SCROLL_WINDOW`/`COVER_SETTLE`; bei normaler, langsamer
+  Navigation (mehr als 150 ms zwischen zwei Schritten) greift der Schutz
+  gar nicht erst. Verifiziert mit der vollständigen Regressionssuite
+  (18/18) sowie dem Vergleich „leichter Zeichenpfad gegen vollen
+  Neuaufbau" — keine neue Abweichung.
+
+  ZWEI WEITERE ERGEBNISSE derselben Suche, beide ohne Codeänderung:
+  - `_restore_row_bg()` (stellt beim schnellen Pfad die komplette
+    Listenspalte wieder her) kostet **0,608 ms — 22% eines vollen
+    Seitenaufbaus** und liegt dabei genau *zwischen* den Messpunkten
+    `bg=` und `rows=` der `PERF split`-Zeile, taucht in den
+    Hardware-Mitschnitten also überhaupt nicht auf. Geprüft, ob die
+    Glow-Entfernung sie billiger macht: Der 10·s-Rand war tatsächlich
+    Glow-Erbe, aber eine Kürzung auf die noch nötigen 4·s bringt nur
+    3%. Die naheliegende Alternative (keine Spalten-Wiederherstellung,
+    jede Zeile füllt ihren eigenen Hintergrund) misst zwar schneller
+    (0,68 statt 0,93 ms), ist aber **nicht bildgleich** — sie füllt flach
+    statt mit dem Vignette-Verlauf, also genau der Fehler, der bei
+    `_restore_row_bg()` als „260.000 abweichende Pixel" dokumentiert
+    ist. Ergebnis: teuer, aber notwendig; hier ist kein sicherer Gewinn
+    zu holen.
+  - Sobald der Cursor am unteren Rand steht und die Liste mitscrollt,
+    gibt `_draw_navigate_items()` False zurück und **jeder** Schritt
+    läuft über den vollen Seitenaufbau (im Test 43 von 59 Schritten).
+    Das ist beim Durchblättern einer langen Liste der Normalfall und
+    inhärent — ein Scroll um eine Zeile ändert den Text aller sichtbaren
+    Zeilen, ein Teil-Redraw kann dort nichts einsparen.
 - Glow-Effekt entfernt und die dadurch erzwungene Mehrarbeit beim
   Scrollen gleich mit (Nutzerwunsch: "glow Effekt komplett raus, 3
   Zeilen Sprung komplett beim Scrollen rausnehmen"). Die markierte Zeile

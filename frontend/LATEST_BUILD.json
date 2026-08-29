@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-42",
-  "summary": "Glow-Effekt der Markierung entfernt - und damit auch die nur dadurch noetige Mehrarbeit: statt drei Zeilen (markierte plus beide Nachbarn) wird pro Schritt/Tick nur noch eine gezeichnet. Zeilensprung im Kategorien-Hauptmenue faellt weg. Puls-Tick 4-7x schneller, Navigationsschritt 26-35% schneller."
+  "build_id": "2026-08-24-43",
+  "summary": "Animations-Ticks (Puls, Equalizer, Laufschrift) pausieren jetzt waehrend aktiver Navigation - Leerlauf-Timeout und Boden der Tastenwiederholung lagen beide bei exakt 0.08s, wodurch sich bei gehaltener Taste ein zusaetzlicher Redraw samt Vsync-Warten zwischen die Navigationsschritte schob. 17% weniger Bildschirm-Updates beim Scrollen, sichtbar unveraendert."
 }

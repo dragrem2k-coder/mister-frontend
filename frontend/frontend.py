@@ -7890,7 +7890,43 @@ class Frontend:
                 # sein soll - nach dem Schliessen laeuft beides einfach
                 # normal weiter.
                 any_dialog = self.confirm_quit or self.confirm_update
-                if need_mq and not any_dialog:
+                # NEUES FEATURE (Ergebnis der gezielten Suche nach
+                # weiteren ungeschuetzten Hintergrund-Redraws): die
+                # Animations-Ticks waren bisher zwar sauber gegen einen
+                # offenen DIALOG abgesichert (siehe oben), aber NICHT
+                # gegen eine gerade laufende NAVIGATION.
+                #
+                # Das ist kein theoretischer Fall: read_action() wartet
+                # hier auf HDMI 0.08s (das Puls-Intervall, siehe
+                # timeout-Berechnung am Schleifenanfang), und die
+                # Tastenwiederholung beschleunigt in fe/input.py ueber
+                # iv = max(0.08, iv * 0.85) auf einen Boden von exakt
+                # 0.08s. Beide Werte sind identisch - bei gehaltener
+                # Taste laeuft der Timeout dadurch etwa jedes zweite Mal
+                # ab, der Leerlauf-Zweig feuert einen Tick, und der
+                # zeichnet die markierte Zeile samt eigenem flip_rows()
+                # (inkl. Vsync-Warten, auf echter Hardware 8-17ms) neu -
+                # direkt zwischen zwei Navigationsschritten, die exakt
+                # dieselbe Zeile ohnehin gerade neu gezeichnet haben.
+                # Nachgestellt mit der echten Wiederhol-Logik: 23 statt
+                # 19 Bildschirm-Updates bei gleicher Schrittzahl.
+                #
+                # Sichtbar aendert sich dadurch nichts: draw_list_row()
+                # holt die aktuelle Schimmerfarbe bei JEDEM Zeichnen
+                # frisch ueber _pulsed(), die Animation laeuft ueber die
+                # Navigationsschritte also ganz normal weiter. Die Ticks
+                # werden bewusst gar nicht erst AUFGERUFEN (statt ihr
+                # Ergebnis zu verwerfen) - so bleibt ihre interne
+                # Faelligkeits-Zeit stehen, und sobald man die Taste
+                # loslaesst, laeuft die Animation ohne Verzoegerung
+                # sofort weiter. Dasselbe Zeitfenster wie beim bereits
+                # vorhandenen FAST_SCROLL_WINDOW/COVER_SETTLE (150ms) -
+                # bei normaler, langsamer Navigation (mehr als 150ms
+                # zwischen zwei Schritten) greift der Schutz gar nicht,
+                # dort bleibt alles exakt wie bisher.
+                nav_active = (time.monotonic() - self._last_input_time
+                              < FAST_SCROLL_WINDOW)
+                if need_mq and not any_dialog and not nav_active:
                     self.marquee_tick()
                 # Beim schnellen Scrollen uebersprungene Cover ~COVER_SETTLE
                 # nach dem letzten Tastendruck EINMAL nachladen (voller
@@ -7916,13 +7952,17 @@ class Frontend:
                 # ist es sicher, alle drei unabhaengig abzufragen.
                 redraw_marquee = False
                 redraw_dynamic = False
-                if track_needs and self._track_marquee_tick(24):
+                # "not nav_active": siehe ausfuehrliche Begruendung weiter
+                # oben - kein Animations-Tick, solange nachweislich
+                # navigiert wird.
+                if track_needs and not nav_active and self._track_marquee_tick(24):
                     redraw_marquee = True
                 # NEUES FEATURE (siehe eq_effect_enabled() in
                 # fe/settings.py): gleiches Muster wie beim Schimmer-
                 # Effekt direkt darunter - bei Deaktivierung wird
                 # _eq_tick() gar nicht erst aufgerufen.
-                if eq_effect_enabled() and self._track_mq_name and self._eq_tick():
+                if (eq_effect_enabled() and self._track_mq_name
+                        and not nav_active and self._eq_tick()):
                     redraw_dynamic = True
                 # NEUES FEATURE (siehe pulse_effect_enabled() in
                 # fe/settings.py): bei Deaktivierung wird _pulse_tick()
@@ -7930,7 +7970,8 @@ class Frontend:
                 # Animation selbst, sondern auch den wiederholten
                 # Neuaufbau (redraw_dynamic), den jeder faellige Tick
                 # sonst ausloesen wuerde (siehe "PERF tick" Profiling).
-                if pulse_effect_enabled() and self._pulse_tick():
+                if (pulse_effect_enabled() and not nav_active
+                        and self._pulse_tick()):
                     redraw_dynamic = True
                 # NEUES FEATURE (siehe _draw_prominent_message()): die
                 # auffaellige Box muss auch OHNE weitere Nutzereingabe
