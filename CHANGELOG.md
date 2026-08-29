@@ -274,6 +274,60 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- Richtungswechsel beim Scrollen bleibt nicht mehr hängen
+  (Nutzer-Rückmeldung: "wenn ich nach unten gedrückt halte und dann
+  wieder nach oben drücke um zu scrollen, bleibt der kurz hängen, das
+  fühlt sich klemmig an"). Ursache nachgerechnet statt vermutet:
+  `_hold()` in `fe/input.py` setzt bei **jedem** frischen Tastendruck die
+  volle Anlaufverzögerung von 400 ms und wirft die bereits erreichte
+  Beschleunigung weg — und ein Richtungswechsel ist für die
+  Eingabeschicht genau so ein frischer Tastendruck. Die Zeitleiste mit
+  den echten Konstanten:
+
+  | | Abstand zum nächsten Schritt |
+  |---|---|
+  | Dauerlauf vorher | 80 ms |
+  | direkt nach dem Richtungswechsel | **400 ms** (Faktor 5) |
+  | danach | 119 → 101 → 86 → 80 ms |
+
+  Volle Geschwindigkeit war damit erst nach **0,79 s und 5 Schritten**
+  wieder erreicht. Jetzt gilt: Lag die letzte *echte* Wiederholung
+  derselben Achse weniger als 0,5 s zurück, startet der Richtungswechsel
+  mit einer kurzen Pause von 140 ms und behält das bereits erreichte
+  Tempo — volle Geschwindigkeit nach **0,14 s statt 0,79 s**. Die
+  400-ms-Sperre hat ihren Sinn (ein einzelner, bewusster Tastendruck
+  soll nicht ungewollt in eine Wiederholung laufen) und bleibt für genau
+  diesen Fall vollständig erhalten: Sie greift unverändert, wenn vorher
+  nicht gescrollt wurde, bei einem Achswechsel (runter → rechts) und
+  nach jeder Scroll-Pause von mehr als einer halben Sekunde.
+- Keine Geister-Wiederholung mehr nach "Zurück"/"OK"
+  (Nutzer-Rückmeldung: "wenn ich in einem Ordner länger gescrollt habe
+  und dann einen Ordner zurückgehe, bewegt sich der Cursor teilweise
+  nicht und dann kommt auf einmal eine plötzliche Bewegung"). Beim
+  Nachlesen gefunden: `_translate()` fasste `self.held` im Zweig für
+  nicht wiederholbare Aktionen überhaupt nicht an — weder setzend noch
+  löschend. Wer beim Drücken von "Zurück" die Richtungstaste noch
+  gedrückt hielt, dessen Wiederholung lief im übergeordneten Ordner
+  einfach weiter, ohne dass er etwas Neues gedrückt hat; der Cursor
+  wanderte also von selbst weiter, bis der Loslass-Event eintraf. Eine
+  nicht wiederholbare Aktion (Zurück, OK, Menü) beendet einen laufenden
+  Scrollvorgang jetzt sofort.
+
+  Beide Fixe mit einer eigenen Testreihe gegen die echte
+  Wiederhol-Logik abgesichert (einzelner Tastendruck behält 400 ms;
+  Richtungswechsel im Scrollen bekommt 140 ms und behält das Tempo;
+  Achswechsel und Scroll-Pause lösen die Verkürzung korrekt NICHT aus;
+  Abbruch nach "Zurück" setzt alles sauber zurück; `_release()`
+  unverändert) plus der vollständigen Regressionssuite (18/18).
+
+  AUSGESCHLOSSEN bei derselben Suche, damit es nicht erneut geprüft
+  wird: `rescan()` läuft zwar in jeder Schleifenrunde, ist aber bereits
+  auf einen einzigen `stat()`-Aufruf optimiert, solange sich
+  `/dev/input` nicht ändert — kein Kostenfaktor. Und ein Rückstau
+  aufgelaufener Tasten-Wiederholungen ist technisch ausgeschlossen: Die
+  Auto-Wiederholung des Kernels (`value == 2`) wird bewusst ignoriert,
+  und `self.held` verankert die nächste Fälligkeit immer an *jetzt*
+  statt an der verpassten Deadline, kann also nicht nachfeuern.
 - Animations-Ticks pausieren jetzt, solange aktiv navigiert wird. Bei
   der gezielten Suche nach weiteren ungeschützten Hintergrund-Redraws
   (dieselbe Fehlerklasse wie beim Beenden-Dialog) gefunden: Gegen einen

@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-43",
-  "summary": "Animations-Ticks (Puls, Equalizer, Laufschrift) pausieren jetzt waehrend aktiver Navigation - Leerlauf-Timeout und Boden der Tastenwiederholung lagen beide bei exakt 0.08s, wodurch sich bei gehaltener Taste ein zusaetzlicher Redraw samt Vsync-Warten zwischen die Navigationsschritte schob. 17% weniger Bildschirm-Updates beim Scrollen, sichtbar unveraendert."
+  "build_id": "2026-08-24-44",
+  "summary": "Richtungswechsel beim Scrollen haengt nicht mehr: die volle 400ms-Anlaufsperre griff bisher auch mitten im Scrollen (volle Geschwindigkeit erst nach 0.79s) - jetzt 140ms mit Beibehaltung des Tempos, volle Sperre nur noch beim einzelnen Tastendruck aus dem Stand. Ausserdem beendet Zurueck/OK eine laufende Tasten-Wiederholung sofort, statt sie im neuen Ordner weiterlaufen zu lassen."
 }

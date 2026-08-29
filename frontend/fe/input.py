@@ -258,6 +258,30 @@ REPEAT_ACTIONS = {"up", "down", "left", "right"}
 REPEAT_DELAY    = 0.40      # Sekunden bis zur ersten Wiederholung
 REPEAT_INTERVAL = 0.14      # Start-Intervall, beschleunigt bis 0.05
 
+# BUGFIX (Nutzer-Rueckmeldung: "wenn ich nach unten gedrueckt halte und
+# dann wieder nach oben druecke um zu scrollen, bleibt der kurz haengen,
+# das fuehlt sich klemmig an"). Ursache nachgerechnet: _hold() setzt bei
+# JEDEM frischen Tastendruck die volle Anlaufverzoegerung von 400ms und
+# wirft die bereits erreichte Beschleunigung weg - ein Richtungswechsel
+# ist fuer die Eingabeschicht aber genau so ein frischer Tastendruck.
+# Wer gerade mit 80ms pro Schritt gescrollt hat, landet dadurch
+# schlagartig bei 400ms (Faktor 5) und ist erst nach 0.79s und 5
+# Schritten wieder auf voller Geschwindigkeit.
+#
+# Die 400ms haben ihren Sinn - sie verhindern, dass ein EINZELNER,
+# bewusster Tastendruck ungewollt in eine Wiederholung laeuft. Dieser
+# Fall liegt hier aber nachweislich nicht vor: es wurde ja unmittelbar
+# davor bereits wiederholt. Deshalb greift die verkuerzte Anlaufzeit
+# ausschliesslich dann, wenn die letzte echte Wiederholung derselben
+# Achse (hoch/runter bzw. links/rechts) weniger als
+# REPEAT_CONTINUE_WINDOW zurueckliegt - ein normaler einzelner
+# Tastendruck aus dem Stand behaelt die volle 400ms-Sperre unveraendert.
+REPEAT_REVERSE_DELAY  = 0.14   # Anlaufzeit bei Richtungswechsel im Scrollen
+REPEAT_CONTINUE_WINDOW = 0.5   # so lange gilt ein Scrollvorgang als "laufend"
+# Zuordnung Aktion -> Achse: nur ein Wechsel INNERHALB derselben Achse
+# gilt als Richtungswechsel (hoch<->runter, links<->rechts).
+REPEAT_AXIS = {"up": "y", "down": "y", "left": "x", "right": "x"}
+
 def _absinfo(fd, axis):
     """min/max einer Achse per EVIOCGABS-ioctl auslesen."""
     buf = bytearray(24)
@@ -321,6 +345,15 @@ class InputManager:
         self.want_grab = False
         self.last_scan = 0.0
         self.held = None          # (key_id, aktion, naechste_zeit, intervall)
+        # Letzte TATSAECHLICHE Wiederholung (nicht: letzter Tastendruck) -
+        # Grundlage fuer die verkuerzte Anlaufzeit beim Richtungswechsel,
+        # siehe REPEAT_REVERSE_DELAY und _hold(). Bewusst nur bei einer
+        # echten Wiederholung gesetzt: so gilt ein Scrollvorgang nur dann
+        # als "laufend", wenn wirklich gescrollt wurde - einzelne
+        # Tastendruecke hintereinander loesen die Verkuerzung nicht aus.
+        self._last_repeat_time = 0.0
+        self._last_repeat_act = None
+        self._last_repeat_iv = REPEAT_INTERVAL
         self._last_input_mtime = None
         self.rescan(force=True)
 
@@ -364,13 +397,50 @@ class InputManager:
             d.grab(on)
 
     def _hold(self, key_id, act):
-        if act in REPEAT_ACTIONS:
-            self.held = (key_id, act, time.monotonic() + REPEAT_DELAY,
-                         REPEAT_INTERVAL)
+        if act not in REPEAT_ACTIONS:
+            return
+        now = time.monotonic()
+        delay, iv = REPEAT_DELAY, REPEAT_INTERVAL
+        # Richtungswechsel mitten in einem laufenden Scrollvorgang -
+        # siehe ausfuehrliche Begruendung bei REPEAT_REVERSE_DELAY oben.
+        # Statt der vollen Anlaufsperre nur eine kurze Pause, und das
+        # bereits erreichte Tempo wird beibehalten, statt den kompletten
+        # Beschleunigungs-Anlauf von vorne zu beginnen.
+        if (self._last_repeat_act is not None
+                and REPEAT_AXIS.get(act) is not None
+                and REPEAT_AXIS.get(act) == REPEAT_AXIS.get(self._last_repeat_act)
+                and now - self._last_repeat_time < REPEAT_CONTINUE_WINDOW):
+            delay = REPEAT_REVERSE_DELAY
+            iv = self._last_repeat_iv
+        self.held = (key_id, act, now + delay, iv)
 
     def _release(self, key_id):
         if self.held and self.held[0] == key_id:
             self.held = None
+
+    def _cancel_repeat(self):
+        """Eine laufende Tasten-Wiederholung abbrechen, sobald eine NICHT
+        wiederholbare Aktion kommt (Zurueck, OK, Menue, ...).
+
+        BUGFIX (Nutzer-Rueckmeldung: "wenn ich in einem Ordner laenger
+        gescrollt habe und dann einen Ordner zurueckgehe, bewegt sich der
+        Cursor teilweise nicht und dann kommt auf einmal eine ploetzliche
+        Bewegung"). Ursache: _translate() fasste self.held im Zweig fuer
+        nicht wiederholbare Aktionen ueberhaupt nicht an - weder setzend
+        noch loeschend. Wer beim Druecken von "Zurueck" die Richtungstaste
+        noch gedrueckt hielt, dessen Wiederholung lief im uebergeordneten
+        Ordner einfach weiter, ohne dass er etwas Neues gedrueckt hat.
+        Der zugehoerige Loslass-Event kommt zwar spaeter und raeumt
+        korrekt auf - bis dahin ist der Cursor aber schon von selbst
+        weitergewandert. Ein bewusster Tastendruck auf etwas anderes
+        beendet den Scrollvorgang jetzt sofort.
+
+        Setzt auch die Merker fuer die verkuerzte Anlaufzeit zurueck
+        (siehe _hold()) - nach einem Ordnerwechsel soll die naechste
+        Richtungstaste wieder ganz normal mit voller Sperre anlaufen."""
+        self.held = None
+        self._last_repeat_act = None
+        self._last_repeat_iv = REPEAT_INTERVAL
 
     def _translate(self, dev, etype, code, value):
         if etype == EV_KEY:
@@ -399,6 +469,8 @@ class InputManager:
                     self._release(key_id)
                 return None
             if value == 1:
+                if act:
+                    self._cancel_repeat()
                 return act
             return None
         if etype == EV_ABS and code in (ABS_Z, ABS_RZ) and code in dev.axis:
@@ -424,6 +496,8 @@ class InputManager:
             if act in REPEAT_ACTIONS:
                 self._hold(key_id, act)
                 return act
+            if act:
+                self._cancel_repeat()   # siehe dort - gleiche Begruendung
             return act
         if etype == EV_ABS and code in dev.axis:
             amin, amax = dev.axis[code]
@@ -531,6 +605,13 @@ class InputManager:
                 # immer noch sehr flott fuer eine kleine Liste.
                 iv = max(0.08, iv * 0.85)
                 self.held = (kid, act, time.monotonic() + iv, iv)
+                # Nur HIER (bei einer echten Wiederholung) vermerken,
+                # nicht bei jedem Tastendruck - siehe _hold()/
+                # REPEAT_REVERSE_DELAY: nur ein nachweislich laufender
+                # Scrollvorgang darf die verkuerzte Anlaufzeit ausloesen.
+                self._last_repeat_time = time.monotonic()
+                self._last_repeat_act = act
+                self._last_repeat_iv = iv
                 return act
             if deadline is not None and time.monotonic() >= deadline:
                 return None
