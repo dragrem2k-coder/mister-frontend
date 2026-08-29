@@ -254,6 +254,51 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- "Frontend beenden" (System → Wartung) schien bei manchen Nutzern
+  nicht zu funktionieren (Nutzer-Rückmeldung: "die Meldung 'Frontend
+  beenden' kam, dann wählte ich Ja und habe bestätigt, und das Fenster
+  schloss sich wieder - konnte damit das Frontend nicht verlassen",
+  reproduziert mit Joypad UND Tastatur). Ein echtes `frontend.log` von
+  der betroffenen Hardware zeigte den tatsächlichen Ablauf: eine lange
+  Folge aus ausschließlich "runter"+"OK"-Eingaben, ganz ohne ein
+  einziges "links"/"rechts" dazwischen. Der Ja/Nein-Dialog selbst
+  funktionierte technisch die ganze Zeit korrekt - er startet aber
+  bewusst mit vorausgewähltem "Nein" (sicherer Standard gegen
+  versehentliches Beenden), und ohne vorheriges Wechseln zu "Ja"
+  bestätigt "OK" eben genau diese "Nein"-Option, der Dialog schließt
+  sich wieder, ohne dass etwas passiert. Für den Nutzer sah das exakt
+  wie "beenden geht nicht" aus. Zwei Verbesserungen direkt im Dialog:
+  (1) ein sichtbarer Hinweistext ("Links/Rechts oder Hoch/Runter
+  wählen, OK bestätigen") direkt im Dialog selbst, analog zum bereits
+  bestehenden Hinweis beim Core-Auswahlbildschirm; (2) zusätzlich zu
+  Links/Rechts schalten jetzt auch Hoch/Runter zwischen den beiden
+  Optionen um - entspricht dem bereits vertrauten Verhalten an anderen
+  Stellen im Frontend (Core-Auswahl, Zufalls-Zock), wo jede
+  Richtungstaste umschaltet. Der sichere "Nein"/"Später"-Standard bei
+  reiner OK-Wiederholung OHNE jede Richtungseingabe bleibt bewusst
+  unverändert bestehen (per Test verifiziert) - es wurde nur die
+  Bedienung selbst klarer und großzügiger gemacht, nicht die
+  Sicherheitslogik geändert. Betrifft gleichermaßen den "Update jetzt
+  installieren?"-Dialog, der denselben Dialograhmen wiederverwendet.
+  NACHTRAG (weitere Nutzer-Rückmeldung, noch vor dem Hochladen dieses
+  Builds: "sobald ich auf Frontend beenden klicke, ploppt das Fenster
+  nur kurz auf und verschwindet wieder, ich kann nicht mal was
+  auswählen"): das deutet zusätzlich auf ein reflexartiges zweites OK
+  direkt nach dem OK hin, das den Dialog erst öffnet (z.B. aus
+  Gewohnheit, weil man bei den meisten Menüpunkten einfach OK drücken
+  kann) - dieses zweite OK bestätigte bisher SOFORT die vorausgewählte
+  "Nein"-Option, noch bevor überhaupt eine bewusste Reaktion möglich
+  war. Zusätzlicher dritter Teil des Fixes: ein OK, das innerhalb von
+  350ms nach dem Öffnen ankommt UND bei dem der Nutzer vorher noch
+  KEINE einzige Richtungstaste gedrückt hat, wird jetzt bewusst
+  ignoriert (nur neu gezeichnet, keine Bestätigung) - eine echte,
+  bewusste Richtungseingabe hebt diese Sperre sofort wieder auf, ein
+  direkt danach folgendes OK bestätigt dann ganz normal ohne jede
+  Verzögerung. Ebenfalls per Test verifiziert (u.a. die exakte
+  Reflex-Sequenz sowie mehrere schnelle OK-Wiederholungen hintereinander).
+  Die zweite gemeldete Ursache (Absturz/Zahlensalat nach "Update jetzt
+  installieren") ist noch nicht abschließend geklärt - dafür wird noch
+  ein `frontend.log`-Ausschnitt vom eigentlichen Absturz benötigt.
 - Gelegentliche 1-3 Sekunden lange Hänger beim Scrollen durch Spiele-
   listen spürbar reduziert (Nutzer-Rückmeldung: "das muss unter HDMI
   noch deutlich besser laufen ... da sind ab und zu ganz schöne Hänger

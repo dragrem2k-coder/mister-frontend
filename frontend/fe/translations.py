@@ -36,6 +36,15 @@ TRANSLATIONS = {
     "quit_confirm":    {"en": "Quit the frontend?", "de": "Frontend wirklich beenden?"},
     "yes":             {"en": "Yes", "de": "Ja"},
     "no":              {"en": "No",  "de": "Nein"},
+    # NEU (Nutzer-Rueckmeldung: "Frontend beenden" schien nicht zu
+    # funktionieren - ein echtes frontend.log zeigte, dass wiederholt
+    # NUR "ok" gedrueckt wurde, nie "links"/"rechts" davor, wodurch
+    # immer die vorausgewaehlte "Nein"-Option bestaetigt wurde, siehe
+    # draw_confirm_dialog()/_confirm_dialog_toggle()): sichtbarer
+    # Hinweistext direkt im Ja/Nein-Dialog, analog zum bereits
+    # bestehenden core_choice_hint.
+    "confirm_dialog_hint": {"en": "Left/Right or Up/Down to choose, OK to confirm",
+                            "de": "Links/Rechts oder Hoch/Runter waehlen, OK bestaetigen"},
     # NEUES FEATURE (Nutzerwunsch: "koennen wir das Update-Popup um eine
     # Abfrage 'jetzt installieren oder spaeter' erweitern?") - siehe
     # _start_update_install_dialog()/draw_confirm_dialog() in frontend.py.

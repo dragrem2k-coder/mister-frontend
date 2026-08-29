@@ -3578,6 +3578,20 @@ from fe.ra_core import RA_CORES_DIR_ABS, RA_CORES_DIR_REL, RA_CORE_NAME_CANDIDAT
 OVERSCAN_X = 7
 OVERSCAN_Y = 5
 
+# NEU (Nutzer-Rueckmeldung: "Frontend beenden"-Dialog ploppte nur kurz
+# auf und verschwand wieder, ohne dass eine Auswahl moeglich war) -
+# siehe self._confirm_dialog_opened_at/_confirm_dialog_toggle(): eine
+# "ok"-Eingabe, die INNERHALB dieses Zeitfensters nach dem Oeffnen des
+# Ja/Nein-Dialogs ankommt, wird bewusst ignoriert (nur neu gezeichnet,
+# nicht als Bestaetigung gewertet) - verhindert, dass ein reflexartiges
+# zweites OK (das den Dialog erst geoeffnet hat) ihn im selben Atemzug
+# wieder mit der vorausgewaehlten "Nein"/"Spaeter"-Option schliesst,
+# bevor der Nutzer ueberhaupt eine echte Chance hatte, zu reagieren.
+# 350ms sind deutlich laenger als jede normale Doppel-Eingabe/Prellen,
+# aber kurz genug, um bei einer bewusst schnellen zweiten Eingabe nicht
+# selbst wie eine Verzoegerung/ein Bug zu wirken.
+CONFIRM_DIALOG_IGNORE_OK_WINDOW = 0.35
+
 # Farben als (R, G, B)
 C_BG     = (16, 18, 24)
 C_PANEL  = (28, 32, 44)
@@ -4456,6 +4470,23 @@ class Frontend:
         # Beenden-Bestaetigung (ESC/B im Hauptmenue)
         self.confirm_quit = False
         self.confirm_choice = 1    # 0 = Ja, 1 = Nein (Standard)
+        # NEU (Nutzer-Rueckmeldung: "das Fenster ploppt nur kurz auf und
+        # verschwindet wieder, ich kann nicht mal was auswaehlen" -
+        # zusaetzlich zum echten frontend.log, das eine Folge von reinen
+        # "ok"-Eingaben OHNE Links/Rechts dazwischen zeigte): sehr
+        # plausibel ein reflexartiges zweites OK direkt nach dem OK, das
+        # den Dialog ueberhaupt erst geoeffnet hat (z.B. aus Gewohnheit,
+        # weil man bei anderen Menuepunkten einfach OK druecken kann) -
+        # dieses zweite OK bestaetigte bisher SOFORT die vorausgewaehlte
+        # "Nein"-Option, noch bevor der Nutzer den Dialog ueberhaupt
+        # bewusst wahrnehmen/reagieren konnte. self._confirm_dialog_
+        # opened_at haelt fest, WANN ein Dialog geoeffnet wurde - siehe
+        # die kurze Sperrzeit in der Hauptschleife (CONFIRM_DIALOG_
+        # IGNORE_OK_WINDOW), die ein SOFORTIGES OK direkt danach bewusst
+        # ignoriert (Richtungstasten bleiben davon unberuehrt, die darf
+        # man weiterhin sofort druecken).
+        self._confirm_dialog_opened_at = 0.0
+        self._confirm_dialog_touched = False   # siehe _confirm_dialog_toggle()
         # NEUES FEATURE (Nutzerwunsch: "koennen wir das Update-Popup um
         # eine Abfrage 'jetzt installieren oder spaeter' erweitern?") -
         # eigener, vom Beenden-Dialog unabhaengiger Zustand fuer den
@@ -4702,6 +4733,9 @@ class Frontend:
         zeigt immer die Bestaetigung, unabhaengig von der Seite."""
         self.confirm_quit = True
         self.confirm_choice = 1    # Nein vorausgewaehlt
+        # NEU: siehe CONFIRM_DIALOG_IGNORE_OK_WINDOW/_confirm_dialog_toggle()
+        self._confirm_dialog_opened_at = time.monotonic()
+        self._confirm_dialog_touched = False
         self.draw()
 
     def _start_update_install_dialog(self, msg):
@@ -4718,7 +4752,57 @@ class Frontend:
         self.confirm_update = True
         self.confirm_choice = 1    # Spaeter vorausgewaehlt
         self._update_install_message = msg
+        # NEU: siehe CONFIRM_DIALOG_IGNORE_OK_WINDOW/_confirm_dialog_toggle()
+        self._confirm_dialog_opened_at = time.monotonic()
+        self._confirm_dialog_touched = False
         self.draw()
+
+    def _confirm_dialog_toggle(self, act):
+        """Gemeinsame Richtungs-Logik fuer BEIDE Ja/Nein-Bestaetigungs-
+        dialoge (Beenden UND Update-Installieren - identische
+        Button-Reihenfolge: Option 0 links, Option 1 rechts). Liefert
+        True, wenn act tatsaechlich eine Richtungseingabe war (nur fuer
+        den Aufrufer/Tests praktisch, sonst ungenutzt).
+
+        NEU (Nutzer-Rueckmeldung: siehe ausfuehrlicher Kommentar bei
+        draw_confirm_dialog() - ein echtes frontend.log zeigte, dass
+        Nutzer wiederholt NUR "ok" gedrueckt haben, nie "links"/
+        "rechts" davor, wodurch immer die vorausgewaehlte "Nein"/
+        "Spaeter"-Option bestaetigt wurde): hoch/runter schalten jetzt
+        GENAUSO wie links/rechts zwischen den beiden Optionen um - das
+        entspricht exakt dem bereits bestehenden, vertrauten Muster aus
+        draw_core_choice_screen()/draw_wot_screen() (dort toggelt JEDE
+        Richtungstaste zwischen den beiden bzw. mehreren Optionen).
+        "Hoch" wechselt zur ERSTEN Option (wie "links"), "runter" zur
+        ZWEITEN (wie "rechts") - entspricht der Lese-/Leserichtung
+        oben-nach-unten genauso wie links-nach-rechts."""
+        if act in ("left", "up"):
+            self.confirm_choice = 0
+            self._confirm_dialog_touched = True
+            return True
+        if act in ("right", "down"):
+            self.confirm_choice = 1
+            self._confirm_dialog_touched = True
+            return True
+        return False
+
+    def _confirm_dialog_ok_too_soon(self):
+        """True, wenn ein "ok" bewusst NICHT als Bestaetigung gewertet
+        werden soll, weil es vermutlich nur das reflexartige Echo des
+        OK ist, das den Dialog gerade erst geoeffnet hat - NUR
+        relevant, solange der Nutzer noch KEINE einzige bewusste
+        Richtungseingabe im Dialog gemacht hat (self._confirm_dialog_
+        touched, siehe _confirm_dialog_toggle()) UND seit dem Oeffnen
+        noch keine CONFIRM_DIALOG_IGNORE_OK_WINDOW Sekunden vergangen
+        sind. Sobald der Nutzer einmal bewusst links/rechts/hoch/runter
+        gedrueckt hat, greift diese Sperre NIE MEHR fuer diesen offenen
+        Dialog - ein direkt darauf folgendes "ok" ist dann eindeutig
+        eine bewusste, schnelle Bestaetigung und darf NICHT mehr
+        verzoegert werden (siehe Testfall: 'hoch' + sofortiges 'ok')."""
+        if self._confirm_dialog_touched:
+            return False
+        return (time.monotonic() - self._confirm_dialog_opened_at
+                < CONFIRM_DIALOG_IGNORE_OK_WINDOW)
 
     def _refresh_system_category(self):
         """Nach dem Umschalten einer System-Menue-Einstellung (z.B.
@@ -7028,7 +7112,26 @@ class Frontend:
         den "Update jetzt installieren?"-Dialog wiederverwendet werden
         kann (siehe self.draw()), statt die komplette Geometrie-/Zeichen-
         Logik ein zweites Mal zu duplizieren. Ohne Argumente identisches
-        Verhalten wie zuvor."""
+        Verhalten wie zuvor.
+
+        BUGFIX (Nutzer-Rueckmeldung: "Frontend beenden funktioniert
+        nicht" - ein echtes frontend.log zeigte reproduzierbar eine
+        lange Folge aus AUSSCHLIESSLICH "down"+"ok"-Eingaben, OHNE ein
+        einziges "left"/"right" dazwischen: der Dialog oeffnete sich,
+        wurde per "ok" bestaetigt - aber da nie zur "Ja"-Option
+        gewechselt wurde, bestaetigte das jedes Mal nur die
+        vorausgewaehlte "Nein"-Option, der Dialog schloss sich wieder,
+        OHNE dass das Frontend tatsaechlich beendet wurde. Fuer den
+        Nutzer sah das aus wie "das Fenster schliesst sich wieder, ich
+        kann das Frontend damit nicht verlassen" - technisch hat der
+        Dialog aber die ganze Zeit korrekt funktioniert, es war nur nie
+        sichtbar/klar genug, dass ueberhaupt erst eine Auswahl noetig
+        ist. Jetzt zusaetzlich ein sichtbarer Hinweistext im Dialog
+        selbst (analog zum bereits bestehenden core_choice_hint bei
+        draw_core_choice_screen()) - siehe auch
+        _confirm_dialog_toggle() fuer den zugehoerigen zweiten Teil des
+        Fixes (hoch/runter schalten jetzt GENAUSO wie links/rechts
+        zwischen den beiden Optionen um)."""
         fb = self.fb
         W, H = fb.width, fb.height
         s = max(1, H // 360)
@@ -7038,17 +7141,21 @@ class Frontend:
         lines = self._wrap(msg, maxc, max_lines=max_lines)
         if labels is None:
             labels = [t("yes"), t("no")]
+        hint = t("confirm_dialog_hint")
+        hint_s = max(1, s - 1)
 
         line_h = 12 * s
         btn_h = 16 * s
         btn_w = max(len(l) for l in labels) * 8 * s + 16 * s
         gap = 14 * s
         pad = 12 * s
+        hint_h = 10 * hint_s
 
         text_w = max(len(ln) for ln in lines) * 8 * s
         buttons_w = btn_w * 2 + gap
-        box_w = min(W - 16 * s, max(text_w, buttons_w) + 2 * pad)
-        box_h = pad + len(lines) * line_h + gap + btn_h + pad
+        hint_w = len(hint) * 8 * hint_s
+        box_w = min(W - 16 * s, max(text_w, buttons_w, hint_w) + 2 * pad)
+        box_h = pad + len(lines) * line_h + hint_h + gap + btn_h + pad
         x0 = (W - box_w) // 2
         y0 = (H - box_h) // 2
 
@@ -7060,6 +7167,9 @@ class Frontend:
             tw = len(ln) * 8 * s
             fb.text(x0 + (box_w - tw) // 2, ty, ln, s, C_TITLE, C_PANEL)
             ty += line_h
+
+        hw = len(hint) * 8 * hint_s
+        fb.text(x0 + (box_w - hw) // 2, ty, hint, hint_s, C_DIM, C_PANEL)
 
         bx = x0 + (box_w - buttons_w) // 2
         by = y0 + box_h - pad - btn_h
@@ -11693,14 +11803,21 @@ class Frontend:
 
                 # ---- Beenden-Bestaetigung hat Vorrang vor allem anderen ----
                 if self.confirm_quit:
-                    if act == "left":
-                        self.confirm_choice = 0    # Ja
-                    elif act == "right":
-                        self.confirm_choice = 1    # Nein
+                    # BUGFIX (Nutzer-Rueckmeldung, siehe ausfuehrlicher
+                    # Kommentar bei draw_confirm_dialog()/
+                    # _confirm_dialog_toggle()): bisher NUR links/rechts,
+                    # jetzt auch hoch/runter.
+                    if self._confirm_dialog_toggle(act):
+                        pass
                     elif act == "ok":
-                        if self.confirm_choice == 0:
-                            break                   # Ja bestaetigt
-                        self.confirm_quit = False    # Nein
+                        # NEU: siehe CONFIRM_DIALOG_IGNORE_OK_WINDOW -
+                        # ein OK unmittelbar nach dem Oeffnen (z.B. ein
+                        # reflexartiges zweites OK) wird bewusst
+                        # ignoriert, statt sofort "Nein" zu bestaetigen.
+                        if not self._confirm_dialog_ok_too_soon():
+                            if self.confirm_choice == 0:
+                                break                   # Ja bestaetigt
+                            self.confirm_quit = False    # Nein
                     elif act in ("exit", "back"):
                         self.confirm_quit = False    # ESC/B im Dialog = Nein
                     self.draw()
@@ -11740,15 +11857,17 @@ class Frontend:
                 # warum das zuverlaessiger ist als der reine
                 # Prozess-Neustart).
                 if self.confirm_update:
-                    if act == "left":
-                        self.confirm_choice = 0    # Jetzt
-                    elif act == "right":
-                        self.confirm_choice = 1    # Spaeter
+                    # BUGFIX: siehe Kommentar beim confirm_quit-Zweig
+                    # oben - hoch/runter jetzt ebenfalls unterstuetzt.
+                    if self._confirm_dialog_toggle(act):
+                        pass
                     elif act == "ok":
-                        self.confirm_update = False
-                        if self.confirm_choice == 0:
-                            self.run_script(os.path.join(SCRIPTS_DIR, "Frontend_Install.sh"))
-                            continue
+                        # NEU: siehe Kommentar beim confirm_quit-Zweig oben.
+                        if not self._confirm_dialog_ok_too_soon():
+                            self.confirm_update = False
+                            if self.confirm_choice == 0:
+                                self.run_script(os.path.join(SCRIPTS_DIR, "Frontend_Install.sh"))
+                                continue
                     elif act in ("exit", "back"):
                         self.confirm_update = False    # ESC/B im Dialog = Spaeter
                     self.draw()

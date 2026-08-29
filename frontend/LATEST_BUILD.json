@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-36",
-  "summary": "N64_ALSA.rbf/PSX_ALSA.rbf im _RA_Cores-Ordner werden fuer RetroAchievements jetzt bevorzugt geladen, falls vorhanden"
+  "build_id": "2026-08-24-37",
+  "summary": "Frontend-beenden-Dialog: Hoch/Runter waehlen jetzt auch Ja/Nein, sichtbarer Hinweistext, plus 350ms-Sperre gegen ein reflexartiges Sofort-OK direkt nach dem Oeffnen - behebt 'Frontend beenden geht nicht'/'Dialog ploppt nur kurz auf'"
 }
