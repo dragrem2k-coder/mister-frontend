@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-33",
-  "summary": "Cover-Skalierung beim Scrollen beschleunigt: Festplatten-Cache-Schreiben laeuft jetzt im Hintergrund, Hochskalierungs-Schleife optimiert"
+  "build_id": "2026-08-24-36",
+  "summary": "N64_ALSA.rbf/PSX_ALSA.rbf im _RA_Cores-Ordner werden fuer RetroAchievements jetzt bevorzugt geladen, falls vorhanden"
 }

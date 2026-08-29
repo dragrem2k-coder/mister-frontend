@@ -33,8 +33,18 @@ RA_CORE_NAME_CANDIDATES = {
     "NES":     ["NES"],
     "SNES":    ["SNES"],
     "Genesis": ["Genesis", "MegaDrive"],
-    "N64":     ["N64"],
-    "PSX":     ["PSX", "PlayStation"],
+    # NEU (Nutzerwunsch: "N64_ALSA.rbf"/"PSX_ALSA.rbf" bevorzugt starten,
+    # wenn im _RA_Cores-Ordner vorhanden - sonst ganz normal auf den
+    # bisherigen RA-Core zurueckfallen): die ALSA-Variante steht jeweils
+    # VOR dem bisherigen Namen in der Liste - find_ra_core() unten nimmt
+    # ja ohnehin schon "die erste tatsaechlich EXISTIERENDE Datei" (siehe
+    # Docstring), das genuegt hier also bereits vollstaendig, ohne
+    # find_ra_core() selbst aendern zu muessen. Ist NUR die normale
+    # N64.rbf/PSX.rbf vorhanden (keine ALSA-Datei), aendert sich nichts
+    # am bisherigen Verhalten - der zweite Listeneintrag greift dann wie
+    # gehabt.
+    "N64":     ["N64_ALSA", "N64"],
+    "PSX":     ["PSX_ALSA", "PSX", "PlayStation"],
     "GAMEBOY": ["Gameboy", "GAMEBOY", "GB"],
     "GBC":     ["Gameboy", "GAMEBOY", "GBC"],
     "GBA":     ["GBA"],

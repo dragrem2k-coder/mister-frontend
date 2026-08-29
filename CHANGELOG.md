@@ -7,6 +7,20 @@ schau am besten in die Git-Historie oder in den Kopf von
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
 **Neue Features:**
+- N64_ALSA.rbf/PSX_ALSA.rbf im _RA_Cores-Ordner werden jetzt bevorzugt
+  geladen (Nutzerwunsch): liegt eine dieser ALSA-Core-Varianten dort
+  vor, wird sie fuer RetroAchievements-Starts des jeweiligen Systems
+  verwendet statt der bisherigen normalen RA-Core-Datei (N64.rbf bzw.
+  PSX.rbf). Ist keine ALSA-Datei vorhanden, greift wie gehabt der
+  normale RA-Core aus diesem Ordner - keine Aenderung fuer alle, die
+  keine ALSA-Variante installiert haben. Betrifft ausschliesslich
+  find_ra_core() in fe/ra_core.py (eine einzige, zentrale Stelle,
+  ueber die JEDER RA-Core-Start laeuft - Core-Auswahl-Bildschirm beim
+  Kategorie-Eintritt, Weiterspielen/Zuletzt gespielt/Favoriten, Wonne
+  oder Tonne) - keine weiteren Aenderungen an frontend.py noetig,
+  find_ra_core() war fuer genau so eine Namens-Priorisierung schon von
+  Anfang an ausgelegt ("mehrere plausible Varianten durchprobiert -
+  die erste tatsaechlich existierende gewinnt").
 - PERF-Profiling fuer die vier zentralen Navigations-Zeichenpfade
   (Nutzer-Rueckmeldung: "das muss unter HDMI insgesamt fluessiger
   laufen, auch beim Wechsel rein/zurueck und beim reinen Scrollen" -
