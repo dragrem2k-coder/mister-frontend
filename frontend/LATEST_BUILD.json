@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-38",
-  "summary": "RetroAchievements im System-Menue direkt an-/ausschaltbar (neue Zeile unter 'neu laden', nur sichtbar wenn eingerichtet)"
+  "build_id": "2026-08-24-39",
+  "summary": "Eigentliche Ursache fuer 'Frontend beenden'-Dialog gefunden: Laufschrift- und Cover-Nachlade-Redraw im Hintergrund uebermalten den offenen Dialog alle 150ms - jetzt pausieren beide, solange ein Dialog offen ist"
 }

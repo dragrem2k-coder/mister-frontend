@@ -7859,15 +7859,41 @@ class Frontend:
                 # die Idle-Schleife unten sie einmalig nach.
                 ART._defer_uncached = (time.monotonic() - self._last_input_time
                                        < COVER_SETTLE)
-                if need_mq:
+                # BUGFIX (Nutzer-Rueckmeldung: "wenn ich das Steuerkreuz
+                # nach rechts oder links druecke, kommt der Beenden-
+                # Dialog kurz wieder, und verschwindet dann wieder" -
+                # exakt reproduziert: marquee_tick() UND der COVER_SETTLE-
+                # Nachlade-Redraw direkt darunter zeichneten bisher OHNE
+                # jede Ruecksicht auf einen offenen Ja/Nein-Dialog direkt
+                # auf den physischen Bildschirm (marquee_tick() nur eine
+                # einzelne Listenzeile per flip_rows(), der COVER_SETTLE-
+                # Redraw sogar die KOMPLETTE Seite per draw_page_items())
+                # - beide UEBERMALTEN den Dialog dadurch wieder, sobald
+                # sie als naechstes fielligen wurden, OHNE ihn erneut
+                # obendrauf zu zeichnen. COVER_SETTLE liegt bei nur
+                # 150ms, self._last_input_time wird bei JEDER Eingabe
+                # (auch innerhalb des Dialogs!) zurueckgesetzt - der
+                # Nachlade-Redraw feuerte dadurch praktisch IMMER kurz
+                # nach jedem Links/Rechts im Dialog, das fuehlte sich an
+                # wie "ploppt auf und verschwindet sofort wieder wieder".
+                # Fix: beide Pfade pausieren jetzt, solange ein Dialog
+                # (Beenden ODER Update-Installieren) offen ist - genau
+                # das bereits etablierte Muster der Musiktitel-Laufschrift
+                # weiter unten (dort schon immer korrekt abgesichert).
+                # Fuer den Nutzer unsichtbar, da die dahinterliegende
+                # Liste waehrend eines Dialogs ohnehin nicht sichtbar
+                # sein soll - nach dem Schliessen laeuft beides einfach
+                # normal weiter.
+                any_dialog = self.confirm_quit or self.confirm_update
+                if need_mq and not any_dialog:
                     self.marquee_tick()
                 # Beim schnellen Scrollen uebersprungene Cover ~COVER_SETTLE
                 # nach dem letzten Tastendruck EINMAL nachladen (voller
                 # Aufbau der Listenseite - defer ist dann aus, also werden
                 # sie jetzt dekodiert). Passiert nur einmal pro Stillstand,
                 # nicht bei jedem Schleifendurchlauf.
-                if (not self._settled_redrawn and self.page == 1 and
-                        time.monotonic() - self._last_input_time >= COVER_SETTLE):
+                if (not self._settled_redrawn and self.page == 1 and not any_dialog
+                        and time.monotonic() - self._last_input_time >= COVER_SETTLE):
                     self.draw_page_items()
                     self._settled_redrawn = True
                     self._prefetch_neighbor_covers()

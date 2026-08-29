@@ -316,6 +316,32 @@ den reinen Text-Titel wie vor dieser Session.
   direkt danach folgendes OK bestätigt dann ganz normal ohne jede
   Verzögerung. Ebenfalls per Test verifiziert (u.a. die exakte
   Reflex-Sequenz sowie mehrere schnelle OK-Wiederholungen hintereinander).
+  ZWEITER NACHTRAG (noch genauere Nutzer-Rückmeldung, hat den
+  tatsächlichen Hauptverursacher entlarvt: "ich bestätige, das
+  Infofenster öffnet sich, verschwindet aber wieder - drücke ich das
+  Steuerkreuz nach rechts oder links, kommt es kurz wieder und man
+  sieht ob Ja oder Nein hinterlegt ist, dann verschwindet es wieder
+  wenn ich rechts/links drücke"): DAS war die eigentliche Ursache,
+  nicht die beiden obigen Punkte. Zwei Stellen im Hintergrund-
+  Zeichenpfad (next_action()) prüften bisher NICHT, ob gerade ein
+  Ja/Nein-Dialog offen ist, bevor sie zeichneten: die Laufschrift für
+  lange Menü-Beschriftungen (marquee_tick(), zeichnet direkt eine
+  einzelne Listenzeile) und der "Cover-Nachlade"-Redraw nach
+  COVER_SETTLE=150ms Stillstand (zeichnet die KOMPLETTE Seite ohne
+  jeden Dialog). self._last_input_time wird bei JEDER Eingabe
+  zurückgesetzt, auch innerhalb des Dialogs selbst - der 150ms-Redraw
+  feuerte dadurch praktisch nach jedem Links/Rechts im Dialog und
+  übermalte ihn wieder vollständig, bevor man reagieren konnte -
+  exakt "ploppt auf und verschwindet wieder". Fix: beide Stellen
+  pausieren jetzt, solange ein Dialog (Beenden ODER Update-
+  Installieren) offen ist - für den Nutzer unsichtbar, da die
+  dahinterliegende Liste während eines Dialogs ohnehin nicht sichtbar
+  sein soll; nach dem Schließen läuft beides normal weiter (per Test
+  verifiziert, inklusive eines direkten Belegs, dass die ungeschützten
+  Originalfunktionen den Dialog tatsächlich übermalt hätten). Die
+  vorherigen beiden Fixes (Hoch/Runter-Unterstützung, Hinweistext,
+  Reflex-Sperre) bleiben trotzdem sinnvoll und wurden nicht wieder
+  entfernt.
   Die zweite gemeldete Ursache (Absturz/Zahlensalat nach "Update jetzt
   installieren") ist noch nicht abschließend geklärt - dafür wird noch
   ein `frontend.log`-Ausschnitt vom eigentlichen Absturz benötigt.
