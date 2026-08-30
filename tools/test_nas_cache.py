@@ -144,6 +144,23 @@ check("SNES ist in der Aufschluesselung enthalten", "SNES" in per)
 check("und enthaelt alle drei Ablageorte",
       len(per.get("SNES", [])) == 3, str(per.get("SNES")))
 
+print()
+print("Test 7: das automatische Nachziehen darf nicht bei JEDEM Start laufen")
+# BUGFIX-ABSICHERUNG (Nutzer-Rueckmeldung: "scannt schon wieder", auch
+# nachdem die Signatur-Kennung stimmte): das Sicherheitsnetz fuer spaet
+# auftauchende Netzlaufwerke fragte nur, OB eine Freigabe eingehaengt
+# ist - nicht, ob sie beim Einlesen der Spiele gefehlt hatte. Bei einem
+# NAS, das rechtzeitig da ist, erzwang es dadurch bei jedem Start einen
+# kompletten Neuaufbau, wenige Sekunden nach dem Hochfahren.
+S._netz_mountpunkte = lambda: [os.path.join(TMP, "media", "fat", "cifs", "meinserver")]
+signatur([SD, NAS, USB])
+check("nach einem Einlesen MIT Freigabe: nichts nachzuholen",
+      S.letzter_scan_hatte_nas())
+S._netz_mountpunkte = lambda: []
+signatur([SD, USB])
+check("nach einem Einlesen OHNE Freigabe: Nachziehen bleibt sinnvoll",
+      not S.letzter_scan_hatte_nas())
+
 S._netz_mountpunkte = _echte_mounts
 shutil.rmtree(TMP, ignore_errors=True)
 

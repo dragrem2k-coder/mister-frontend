@@ -240,6 +240,45 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
   (vorher spürbar kleiner als möglich, ohne dass es einen Grund dafür
   gab).
 
+**NAS-Nachtrag: das automatische Nachziehen lief bei jedem Start**
+(Build 60 — Nutzer-Rückmeldung: "scannt nun ganz kurz … nope, scannt
+schon wieder"):
+
+Build 59 hat den ersten Teil behoben (die Signatur), aber nicht den
+zweiten. „Ganz kurz" war schon der Hinweis: es wurde nur noch
+*inkrementell* eingelesen, die Signatur passte also fast.
+
+Der übersehene Teil sitzt in `_maybe_rescan_for_late_mount()` — dem
+Sicherheitsnetz für Netzlaufwerke, die erst nach dem Start auftauchen.
+Es prüfte:
+
+```python
+if not _has_network_mount():
+    return
+# -> gesehen! Spieleliste komplett neu aufbauen
+```
+
+`_has_network_mount()` sagt aber nur, **dass** eine Freigabe eingehängt
+ist — nicht, ob sie **neu** ist. Bei jemandem, dessen NAS beim
+Hochfahren ohnehin rechtzeitig da ist, war die Bedingung damit bei
+**jedem** Start erfüllt: rund acht Sekunden nach dem Start lief ein
+erzwungener kompletter Neuaufbau (`force_rescan=True`) — also genau das
+Verhalten, das dieses Sicherheitsnetz eigentlich verhindern soll.
+
+**Behoben:** das Frontend merkt sich jetzt beim Einlesen, ob dabei schon
+Ordner von einer Freigabe dabei waren (`letzter_scan_hatte_nas()`). War
+das der Fall, gibt es nichts nachzuziehen und das Sicherheitsnetz legt
+sich sofort schlafen. Nur wenn die Freigabe beim Einlesen tatsächlich
+gefehlt hat, wird später nachgezogen — so war es gemeint.
+
+- **Neue Diagnose `SIG-DIFF`:** passt die Signatur nicht, schreibt das
+  Frontend jetzt ins Log, WELCHE Einträge sich unterscheiden (nur im
+  Cache / nur jetzt / andere Zeitmarke), dazu die aktuellen
+  Netz-Einhängepunkte und Spiele-Wurzeln. Läuft ausschließlich im
+  Fehlerfall — bei passendem Cache ist die Funktion längst zurück.
+  Sollte es bei jemandem weiterhin scannen, steht die Ursache damit
+  wörtlich im Log statt im Bereich der Vermutungen.
+
 **Spiele auf einem NAS wurden bei JEDEM Start neu eingelesen**
 (Build 59 — Nutzer-Rückmeldung über einen Bekannten: "seine Spiele liegen
 auf einem NAS-Server, bei jedem Neustart werden die Spiele wieder neu

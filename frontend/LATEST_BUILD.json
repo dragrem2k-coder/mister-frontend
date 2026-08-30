@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-59",
-  "summary": "NAS-Spiele werden nicht mehr bei jedem Start neu eingelesen."
+  "build_id": "2026-08-24-60",
+  "summary": "NAS: kein erzwungener Neuscan mehr wenige Sekunden nach dem Start."
 }

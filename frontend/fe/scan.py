@@ -347,10 +347,25 @@ def _games_signature():
         sig.append(entry)
         per_syskey.setdefault(sk, []).append(entry)
     sig.sort(key=lambda t: (t[0], t[1] is None, t[1]))
+    global _LETZTE_SIGNATUR_MIT_NAS
+    _LETZTE_SIGNATUR_MIT_NAS = any(e[0].startswith("nas:") for e in sig)
     sig.append(("__scan_logic_version__", SCAN_LOGIC_VERSION))
     for sk in per_syskey:
         per_syskey[sk].sort(key=lambda t: (t[0], t[1] is None, t[1]))
     return sig, per_syskey
+
+# Merker (siehe _maybe_rescan_for_late_mount() in frontend.py): enthielt
+# die zuletzt verwendete Signatur bereits Eintraege von einer Netzwerk-
+# Freigabe? Nur wenn NICHT, lohnt sich spaeter ein automatisches
+# Nachziehen, sobald eine Freigabe auftaucht.
+_LETZTE_SIGNATUR_MIT_NAS = False
+
+
+def letzter_scan_hatte_nas():
+    """True, wenn beim letzten Ermitteln der Spieleliste bereits Ordner
+    von einer Netzwerk-Freigabe dabei waren."""
+    return _LETZTE_SIGNATUR_MIT_NAS
+
 
 def _netz_mountpunkte():
     """Alle aktuell eingehaengten Netzwerk-Freigaben (CIFS/NFS) als Liste
@@ -781,6 +796,34 @@ def scan_games(force=False, progress_cb=None):
 
     if not waited_already:
         usb_ready = _wait_for_usb_stable()
+
+    # DIAGNOSE (Nutzer-Rueckmeldung: "scannt schon wieder" - nach dem
+    # nas:-Fix nur noch kurz, also inkrementell, aber eben immer noch).
+    # Genau hier ist der Punkt, an dem feststeht: die Signatur passt
+    # nicht. WELCHER Eintrag sich unterscheidet, stand bisher nirgends -
+    # ohne diese Zeilen bleibt nur Raten. Laeuft ausschliesslich im
+    # Fehlerfall (bei passendem Cache ist die Funktion langst zurueck),
+    # kostet im Normalbetrieb also nichts.
+    if cached_sig is not None:
+        alt_map = dict(cached_sig)
+        neu_map = dict(sig)
+        nur_alt = sorted(set(alt_map) - set(neu_map))
+        nur_neu = sorted(set(neu_map) - set(alt_map))
+        geaendert = sorted(k for k in (set(alt_map) & set(neu_map))
+                           if alt_map[k] != neu_map[k])
+        LOG("SIG-DIFF: %d nur im Cache, %d nur jetzt, %d mit anderer Zeit"
+            % (len(nur_alt), len(nur_neu), len(geaendert)))
+        for k in nur_alt[:8]:
+            LOG("SIG-DIFF   nur im Cache: %s (Zeit %s)" % (k, alt_map[k]))
+        for k in nur_neu[:8]:
+            LOG("SIG-DIFF   nur jetzt   : %s (Zeit %s)" % (k, neu_map[k]))
+        for k in geaendert[:8]:
+            LOG("SIG-DIFF   Zeit anders : %s  Cache=%s  jetzt=%s"
+                % (k, alt_map[k], neu_map[k]))
+        LOG("SIG-DIFF: Netz-Einhaengepunkte gerade: %s"
+            % (", ".join(_netz_mountpunkte()) or "keine"))
+        LOG("SIG-DIFF: Spiele-Wurzeln gerade: %s"
+            % ", ".join(b for b in fe.paths.GAMES_BASES if os.path.isdir(b)))
 
     # Inkrementelles Scannen: nur versuchen, wenn ein gueltiger alter
     # Cache MIT per_syskey-Aufschluesselung vorliegt (aeltere Cache-
