@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-47",
-  "summary": "Kein sekundenlanges Haengen mehr beim Ordnerwechsel: der Schutz, der noch nicht dekodierte Cover waehrend der Navigation ueberspringt, wurde nur im Leerlauf-Zweig gesetzt und war beim sofortigen Zeichnen eines Ordnerwechsels veraltet - das Cover wurde dann synchron von der Karte geladen (dokumentierte Messung: 1210ms fuer ein einzelnes Cover). Der Wert wird jetzt zu Beginn jedes Seitenaufbaus aktualisiert, und der Nachlader laeuft dafuer auch im Kategorien-Hauptmenue."
+  "build_id": "2026-08-24-48",
+  "summary": "Update-Hinweis erscheint jetzt auch nach einem MiSTer-Neustart: der Check lief bisher genau EINMAL pro Sitzung, rund zwei Sekunden nach dem Start - beim Kaltstart ist das Netzwerk da meist noch nicht bereit, und es wurde nie wiederholt. Jetzt Wiederholung nach 20/60/180 Sekunden. Ausserdem laeuft der Bildschirmspiegel fuers Streaming mit 6,7 statt 5 Bildern pro Sekunde."
 }

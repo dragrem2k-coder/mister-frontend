@@ -274,6 +274,40 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- Update-Hinweis erscheint jetzt auch nach einem MiSTer-Neustart
+  (Nutzer-Rückmeldung: "wenn ich auf GitHub ein Update hochgeladen habe,
+  wird es mir beim MiSTer-Neustart nicht angezeigt, auch ein zweiter
+  Neustart zeigt nichts — dann habe ich das Frontend beendet und über OSD
+  frontend_start ausgeführt, dann wurde mir angezeigt, dass ein Update
+  verfügbar ist"). Genau dieses Muster erklärt sich aus dem bisherigen
+  Verhalten: Es gab **einen einzigen Abruf pro Sitzung**, gestartet
+  sobald das Kategorien-Menü steht — also rund zwei Sekunden nach dem
+  Start. Beim Kaltstart ist das Netzwerk (DHCP bzw. WLAN-Anmeldung) zu
+  diesem Zeitpunkt regelmäßig noch nicht bereit; der Abruf schlug fehl
+  und wurde innerhalb der Sitzung **nie wiederholt**. Beim zweiten
+  Neustart passierte dasselbe. Startet man das Frontend dagegen später
+  von Hand neu, steht das Netz längst — der eine Abruf gelingt, die
+  Meldung erscheint.
+
+  Der Check wiederholt sich jetzt bei ausbleibender Antwort nach 20, 60
+  und 180 Sekunden. Ein Fehlschlag lässt sich dabei sauber von "es gibt
+  nichts Neues" unterscheiden: `check_for_update()` liefert die entfernte
+  Version auch dann zurück, wenn sie der lokalen entspricht, und nur bei
+  einem echten Fehler `None`. Wiederholt wird also ausschließlich, wenn
+  von **beiden** Abfragen nichts kam — bei vorhandenem Netz bleibt es
+  exakt beim bisherigen einen Abruf. Verifiziert mit fünf Tests (Netz da
+  → genau ein Versuch; Netz dauerhaft weg → vier Versuche ohne Absturz;
+  Netz kommt beim dritten Versuch → danach Schluss; kompletter
+  Hintergrund-Check läuft durch) plus Regressionssuite (18/18).
+- Bildschirmspiegel fürs Streaming läuft etwas flüssiger: Mindestabstand
+  zwischen zwei Schnappschüssen von 0,2 s auf 0,15 s gesenkt, also von 5
+  auf rund 6,7 Bilder pro Sekunde. Bewusst dieser maßvolle Schritt und
+  nicht 0,1 s — der Kodiervorgang selbst ist bei CRT-Auflösung mit ~3 ms
+  bereits nahe am Optimum, die Bildrate kostet also unmittelbar CPU-Zeit
+  in einem Hintergrund-Thread, der sich den Interpreter mit der
+  Eingabe-Hauptschleife teilt. Sollte das Scrollen dadurch spürbar
+  zurückfallen, ist `MIN_ENCODE_INTERVAL` die eine Zahl zum
+  Zurückdrehen.
 - Kein sekundenlanges Hängen mehr beim Ordnerwechsel
   (Nutzer-Rückmeldung: "wenn ich durch meine ROM-Listen scrolle und dann
   wieder auf Zurück drücke, bleibt der Cursor ab und zu mal für 1 Sekunde

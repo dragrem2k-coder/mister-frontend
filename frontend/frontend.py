@@ -5286,6 +5286,61 @@ class Frontend:
         LOG("RA-Hintergrund-Vorwaermen: fertig (%d von %d tatsaechlich abgerufen)"
             % (warmed, len(candidates)))
 
+    # Wartezeiten zwischen den Versuchen der Update-Pruefung, falls
+    # ueberhaupt keine Antwort kam. Bewusst grosszuegig gestaffelt: der
+    # haeufigste Grund ist ein beim Frontend-Start noch nicht fertig
+    # eingerichtetes Netzwerk (DHCP/WLAN), und das braucht auf einem
+    # MiSTer regelmaessig deutlich laenger als die ~2s, nach denen das
+    # Kategorien-Menue steht.
+    UPDATE_CHECK_RETRY_DELAYS = (20, 60, 180)
+
+    def _update_check_with_retry(self):
+        """Beide Abfragen durchfuehren und bei voelliger Ergebnislosigkeit
+        wiederholen. Rueckgabe: (remote_version, build_info).
+
+        BUGFIX (Nutzer-Rueckmeldung: "wenn ich auf GitHub ein Update
+        hochgeladen habe, wird es mir beim MiSTer-Neustart nicht
+        angezeigt, auch ein zweiter Neustart zeigt nichts - dann habe ich
+        das Frontend beendet und ueber OSD frontend_start ausgefuehrt,
+        dann wurde mir angezeigt, dass ein Update verfuegbar ist").
+
+        Genau dieses Muster erklaert sich aus dem bisherigen Verhalten:
+        Es gab EINEN einzigen Abruf pro Sitzung, gestartet sobald das
+        Kategorien-Menue steht - also rund zwei Sekunden nach dem Start.
+        Beim MiSTer-Kaltstart ist das Netzwerk (DHCP bzw. WLAN-Anmeldung)
+        zu diesem Zeitpunkt regelmaessig noch nicht bereit; der Abruf
+        schlug fehl und wurde INNERHALB der Sitzung nie wiederholt. Beim
+        zweiten Neustart passierte dasselbe - deshalb auch dort nichts.
+        Startet man das Frontend dagegen spaeter von Hand neu (ueber das
+        OSD), steht das Netzwerk laengst, der eine Abruf gelingt, und die
+        Meldung erscheint. Genau der beschriebene Ablauf.
+
+        Ein Fehlschlag ist dabei sauber von "es gibt nichts Neues" zu
+        unterscheiden: check_for_update() liefert die entfernte Version
+        auch dann zurueck, wenn sie der lokalen entspricht, und nur bei
+        einem echten Fehler None (siehe fe/update_check.py). Kam von
+        BEIDEN Abfragen nichts, war also mit hoher Wahrscheinlichkeit
+        kein Netz da - und nur dann wird ueberhaupt wiederholt.
+
+        Laeuft weiterhin im Hintergrund-Thread und schreibt nach wie vor
+        nichts selbst auf den Bildschirm; die Wartezeiten kosten den
+        Haupt-Thread nichts."""
+        remote = check_for_update()
+        build = check_for_build_update()
+        for delay in self.UPDATE_CHECK_RETRY_DELAYS:
+            if remote or build:
+                return remote, build
+            LOG("Update-Check: keine Antwort - Netzwerk vermutlich noch "
+                "nicht bereit, naechster Versuch in %ds" % delay)
+            time.sleep(delay)
+            remote = check_for_update()
+            build = check_for_build_update()
+        if not (remote or build):
+            LOG("Update-Check: auch nach %d Versuchen keine Antwort - "
+                "wird beim naechsten Start erneut probiert"
+                % (len(self.UPDATE_CHECK_RETRY_DELAYS) + 1))
+        return remote, build
+
     def _check_for_update_background(self):
         """Laeuft in einem eigenen Hintergrund-Thread (Nutzerwunsch:
         "wenn es ein Update gibt, einmal eine Info anzeigen" - das
@@ -5301,7 +5356,9 @@ class Frontend:
         vorbehalten) und von next_action() im Haupt-Thread konsumiert,
         siehe dortiger Kommentar."""
         LOG("Update-Check gestartet (Hauptmenue sichtbar)")
-        remote = check_for_update()
+        # Beide Abfragen inkl. Wiederholung bei fehlendem Netz - siehe
+        # _update_check_with_retry() fuer die ausfuehrliche Begruendung.
+        remote, build = self._update_check_with_retry()
         state = load_update_state()
         if remote:
             state["remote_version"] = remote
@@ -5335,7 +5392,6 @@ class Frontend:
         # Thread statt zwei), aber bewusst UNABHAENGIG vom obigen
         # Versions-Ergebnis: wird auch dann geprueft/angezeigt, wenn
         # remote oben leer war oder keine neuere Version meldet.
-        build = check_for_build_update()
         if build:
             build_id, summary = build
             if state.get("notified_build_id") != build_id:
@@ -11405,7 +11461,16 @@ class Frontend:
         haeufiger als bisher eine echte Kodierung aus, nur eine
         EINZELNE, ISOLIERTE Aenderung erscheint jetzt praktisch
         sofort statt erst beim naechsten Prüf-Zyklus."""
-        MIN_ENCODE_INTERVAL = 0.2
+        # GEAENDERT (Nutzerwunsch: "wir probieren es mal aus") - von 0.2s
+        # auf 0.15s, also von 5 auf rund 6.7 Bilder pro Sekunde. Bewusst
+        # dieser massvolle Schritt und nicht 0.1s: der Kodiervorgang selbst
+        # ist bei CRT-Aufloesung bereits nahe am Optimum (nachgemessen; ein
+        # naheliegender Umbau auf PNG-Farbtyp 2 waere sogar 5x LANGSAMER),
+        # die Bildrate kostet also unmittelbar CPU-Zeit im Hintergrund-
+        # Thread, die sich der Interpreter mit der Eingabe-Hauptschleife
+        # teilt. Faellt das Scrollen dadurch spuerbar zurueck, ist dies die
+        # eine Zahl, an der man wieder zurueckdreht.
+        MIN_ENCODE_INTERVAL = 0.15
         # Sicherheitsnetz-Timeout: falls das Event aus irgendeinem
         # Grund nie ausgeloest wird (sollte nicht vorkommen, da JEDER
         # sichtbare Bildschirmwechsel ueber flip()/flip_rows() laeuft),
