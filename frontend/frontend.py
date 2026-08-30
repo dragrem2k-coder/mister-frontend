@@ -5293,6 +5293,38 @@ class Frontend:
     # MiSTer regelmaessig deutlich laenger als die ~2s, nach denen das
     # Kategorien-Menue steht.
     UPDATE_CHECK_RETRY_DELAYS = (20, 60, 180)
+    # Wie lange vor dem ersten Abruf hoechstens auf eine per NTP
+    # gestellte Systemuhr gewartet wird - siehe _wait_for_clock().
+    UPDATE_CHECK_CLOCK_WAIT = 30.0
+
+    def _wait_for_clock(self):
+        """Warten, bis die Systemuhr gestellt ist - hoechstens
+        UPDATE_CHECK_CLOCK_WAIT Sekunden.
+
+        Grund: die Update-Adressen laufen ueber HTTPS, und die
+        Zertifikatspruefung vergleicht gegen die SYSTEMUHR. Die steht auf
+        dem MiSTer beim Start falsch (siehe den Modulkommentar in
+        fe/timekeeping.py), wodurch jeder Abruf mit "certificate is not
+        yet valid" scheitert - nachweisbar im echten Geraete-Log, siehe
+        die ausfuehrliche Herleitung bei _update_check_with_retry().
+
+        Laeuft im Hintergrund-Thread; das Warten kostet den Haupt-Thread
+        nichts. Bricht die Wartezeit ab, wird trotzdem abgefragt - eine
+        nicht gestellte Uhr ist kein Grund, es gar nicht erst zu
+        versuchen (manche Aufbauten setzen die Zeit anders)."""
+        t0 = time.monotonic()
+        while not get_ntp_sync_ok():
+            waited = time.monotonic() - t0
+            if waited >= self.UPDATE_CHECK_CLOCK_WAIT:
+                LOG("Update-Check: Uhr nach %.0fs noch nicht gestellt - "
+                    "wird trotzdem versucht" % waited)
+                return False
+            time.sleep(1.0)
+        waited = time.monotonic() - t0
+        if waited >= 1.0:
+            LOG("Update-Check: %.0fs auf die gestellte Uhr gewartet "
+                "(HTTPS braucht sie fuer die Zertifikatspruefung)" % waited)
+        return True
 
     def _update_check_with_retry(self):
         """Beide Abfragen durchfuehren und bei voelliger Ergebnislosigkeit
@@ -5304,16 +5336,37 @@ class Frontend:
         das Frontend beendet und ueber OSD frontend_start ausgefuehrt,
         dann wurde mir angezeigt, dass ein Update verfuegbar ist").
 
-        Genau dieses Muster erklaert sich aus dem bisherigen Verhalten:
-        Es gab EINEN einzigen Abruf pro Sitzung, gestartet sobald das
-        Kategorien-Menue steht - also rund zwei Sekunden nach dem Start.
-        Beim MiSTer-Kaltstart ist das Netzwerk (DHCP bzw. WLAN-Anmeldung)
-        zu diesem Zeitpunkt regelmaessig noch nicht bereit; der Abruf
-        schlug fehl und wurde INNERHALB der Sitzung nie wiederholt. Beim
-        zweiten Neustart passierte dasselbe - deshalb auch dort nichts.
-        Startet man das Frontend dagegen spaeter von Hand neu (ueber das
-        OSD), steht das Netzwerk laengst, der eine Abruf gelingt, und die
-        Meldung erscheint. Genau der beschriebene Ablauf.
+        Es gab bisher EINEN einzigen Abruf pro Sitzung, gestartet sobald
+        das Kategorien-Menue steht - also rund zwei Sekunden nach dem
+        Start. Schlug der fehl, wurde er innerhalb der Sitzung nie
+        wiederholt; beim zweiten Neustart passierte dasselbe. Startet man
+        das Frontend dagegen spaeter von Hand neu (ueber das OSD),
+        gelingt der eine Abruf, und die Meldung erscheint.
+
+        KORREKTUR einer ersten Vermutung: naheliegend war "beim Kaltstart
+        ist das Netzwerk noch nicht bereit". Ein echtes Log vom Geraet
+        zeigt aber etwas anderes - und zwar sehr eindeutig:
+
+            01:00:16  Rainwave: info-Abruf fehlgeschlagen: <urlopen error
+                      [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify
+                      failed: certificate is not yet valid>
+            01:00:20  boot-watch +07s: ...
+            12:02:03  boot-watch +12s: ...
+
+        Das Netz war also da (die Verbindung kam ja bis zum TLS-
+        Zertifikat), aber die MiSTer-Uhr stand beim Start auf 01:00 -
+        und gegen eine derart falsche Uhr ist JEDES Zertifikat "noch
+        nicht gueltig". Beide Update-Adressen laufen ueber HTTPS (siehe
+        UPDATE_CHECK_URL/BUILD_CHECK_URL in fe/update_check.py), der
+        Abruf scheitert also zwangslaeufig. Die beiden boot-watch-Zeilen
+        zeigen den Rest: zwischen +07s und +12s Laufzeit springt die
+        Uhrzeit von 01:00 auf 12:02 - NTP hat sie da erst gestellt,
+        rund zehn Sekunden NACH dem Update-Check.
+
+        Deshalb wird jetzt zuerst kurz auf eine gestellte Uhr gewartet
+        (siehe _wait_for_clock()) und erst danach abgefragt. Die
+        Wiederholungen bleiben als Sicherheitsnetz fuer die Faelle, in
+        denen wirklich kein Netz da ist.
 
         Ein Fehlschlag ist dabei sauber von "es gibt nichts Neues" zu
         unterscheiden: check_for_update() liefert die entfernte Version
@@ -5325,6 +5378,7 @@ class Frontend:
         Laeuft weiterhin im Hintergrund-Thread und schreibt nach wie vor
         nichts selbst auf den Bildschirm; die Wartezeiten kosten den
         Haupt-Thread nichts."""
+        self._wait_for_clock()
         remote = check_for_update()
         build = check_for_build_update()
         for delay in self.UPDATE_CHECK_RETRY_DELAYS:

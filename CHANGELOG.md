@@ -279,18 +279,35 @@ den reinen Text-Titel wie vor dieser Session.
   wird es mir beim MiSTer-Neustart nicht angezeigt, auch ein zweiter
   Neustart zeigt nichts — dann habe ich das Frontend beendet und über OSD
   frontend_start ausgeführt, dann wurde mir angezeigt, dass ein Update
-  verfügbar ist"). Genau dieses Muster erklärt sich aus dem bisherigen
-  Verhalten: Es gab **einen einzigen Abruf pro Sitzung**, gestartet
-  sobald das Kategorien-Menü steht — also rund zwei Sekunden nach dem
-  Start. Beim Kaltstart ist das Netzwerk (DHCP bzw. WLAN-Anmeldung) zu
-  diesem Zeitpunkt regelmäßig noch nicht bereit; der Abruf schlug fehl
-  und wurde innerhalb der Sitzung **nie wiederholt**. Beim zweiten
-  Neustart passierte dasselbe. Startet man das Frontend dagegen später
-  von Hand neu, steht das Netz längst — der eine Abruf gelingt, die
-  Meldung erscheint.
+  verfügbar ist"). Es gab bisher **einen einzigen Abruf pro Sitzung**,
+  gestartet sobald das Kategorien-Menü steht — also rund zwei Sekunden
+  nach dem Start. Schlug der fehl, wurde er innerhalb der Sitzung nie
+  wiederholt; beim zweiten Neustart passierte dasselbe.
 
-  Der Check wiederholt sich jetzt bei ausbleibender Antwort nach 20, 60
-  und 180 Sekunden. Ein Fehlschlag lässt sich dabei sauber von "es gibt
+  **Die Ursache war eine andere als zunächst vermutet.** Naheliegend war
+  "beim Kaltstart ist das Netzwerk noch nicht bereit" — ein echtes
+  Gerätelog zeigt aber etwas anderes, und zwar eindeutig:
+
+  ```
+  01:00:16  Rainwave: info-Abruf fehlgeschlagen: [SSL:
+            CERTIFICATE_VERIFY_FAILED] certificate is not yet valid
+  01:00:20  boot-watch +07s: ...
+  12:02:03  boot-watch +12s: ...
+  ```
+
+  Das Netz war also da — die Verbindung kam bis zum TLS-Zertifikat. Aber
+  die MiSTer-Uhr stand beim Start auf 01:00, und gegen eine derart
+  falsche Uhr ist *jedes* Zertifikat "noch nicht gültig". Beide
+  Update-Adressen laufen über HTTPS, der Abruf scheitert damit
+  zwangsläufig. Die beiden boot-watch-Zeilen zeigen den Rest: zwischen 7
+  und 12 Sekunden Laufzeit springt die Uhrzeit von 01:00 auf 12:02 — NTP
+  stellt sie also erst rund zehn Sekunden **nach** dem Update-Check.
+
+  Deshalb wird jetzt zuerst kurz auf eine gestellte Uhr gewartet
+  (höchstens 30 s, im Hintergrund-Thread) und erst danach abgefragt.
+  Zusätzlich wiederholt sich der Check bei ausbleibender Antwort nach 20,
+  60 und 180 Sekunden — als Sicherheitsnetz für die Fälle, in denen
+  wirklich kein Netz da ist. Ein Fehlschlag lässt sich dabei sauber von "es gibt
   nichts Neues" unterscheiden: `check_for_update()` liefert die entfernte
   Version auch dann zurück, wenn sie der lokalen entspricht, und nur bei
   einem echten Fehler `None`. Wiederholt wird also ausschließlich, wenn

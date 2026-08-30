@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-48",
-  "summary": "Update-Hinweis erscheint jetzt auch nach einem MiSTer-Neustart: der Check lief bisher genau EINMAL pro Sitzung, rund zwei Sekunden nach dem Start - beim Kaltstart ist das Netzwerk da meist noch nicht bereit, und es wurde nie wiederholt. Jetzt Wiederholung nach 20/60/180 Sekunden. Ausserdem laeuft der Bildschirmspiegel fuers Streaming mit 6,7 statt 5 Bildern pro Sekunde."
+  "build_id": "2026-08-24-49",
+  "summary": "Update-Hinweis erscheint jetzt auch nach einem MiSTer-Neustart. Ursache war nicht das Netzwerk, sondern die Uhr: der MiSTer startet mit falscher Systemzeit, wodurch die HTTPS-Zertifikatspruefung mit 'certificate is not yet valid' scheitert - NTP stellt die Uhr erst rund zehn Sekunden nach dem Update-Check. Es wird jetzt zuerst auf die gestellte Uhr gewartet, plus Wiederholungen als Sicherheitsnetz."
 }
