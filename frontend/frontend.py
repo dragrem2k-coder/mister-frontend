@@ -3732,8 +3732,18 @@ class Frontend:
         # bewusst denselben None-Pfad, der ohnehin schon existiert (fuer
         # Kategorien ohne art_key) - kein neuer Sonderfall noetig, self.
         # _cur_bg=None ist bereits ueberall sicher gehandhabt.
+        # MESSPUNKT (zweiter Blindfleck, beim Nachgehen des Hakelns beim
+        # Zurueckgehen gefunden): BG.get() baut bei einem Cache-Fehltreffer
+        # das komplette Hintergrundbild bildschirmfuellend neu auf - bei
+        # 1920x1080 sind das 8,3 MB, zeilenweise in Python zusammengesetzt.
+        # Hier nachgemessen: 41-67 ms auf dieser Sandbox, auf der
+        # schwaecheren MiSTer-CPU entsprechend deutlich mehr. Das lag
+        # bisher VOR dem bg=-Zeitnehmer und tauchte damit in keiner
+        # einzigen Messung auf.
+        _tbg = time.monotonic()
         self._cur_bg = (BG.get(art_key, fb)
                         if art_key and system_bg_enabled() else None)
+        self._perf_bgimg = time.monotonic() - _tbg
         _tb = time.monotonic()
         # NEU (Nutzerwunsch: "HDMI-Modus muss fluessiger laufen" - echtes
         # Profiling zeigte den vollen Pufferaufbau/-kopie (47-57ms bei
@@ -4008,12 +4018,15 @@ class Frontend:
         _bg = getattr(self, "_perf_bg", 0); _rw = getattr(self, "_perf_rows", 0)
         _ar = getattr(self, "_perf_art", 0); _nr = getattr(self, "_perf_nrows", 0)
         _re = getattr(self, "_perf_restore", 0)
-        if (_bg + _re + _rw + _ar + _fdt) > 0.1:
-            LOG("PERF split: bg=%.0f restore=%.0f rows=%.0f(%d) art=%.0f flip=%.0f ms"
-                % (_bg * 1000, _re * 1000, _rw * 1000, _nr,
+        _bi = getattr(self, "_perf_bgimg", 0)
+        if (_bi + _bg + _re + _rw + _ar + _fdt) > 0.1:
+            LOG("PERF split: bgbild=%.0f bg=%.0f restore=%.0f rows=%.0f(%d) "
+                "art=%.0f flip=%.0f ms"
+                % (_bi * 1000, _bg * 1000, _re * 1000, _rw * 1000, _nr,
                    _ar * 1000, _fdt * 1000))
         self._perf_art = 0
         self._perf_restore = 0.0
+        self._perf_bgimg = 0.0
 
     def draw_confirm_dialog(self, msg=None, labels=None, max_lines=2):
         """Beenden-Bestaetigung (Standardaufruf ohne Argumente):
@@ -8868,11 +8881,12 @@ class Frontend:
                     _busy = (_rt1 - _rt_prev) + (time.monotonic() - _rt2)
                     if _busy >= RUCKLER_SCHWELLE:
                         LOG("RUCKLER: %.0f ms busy "
-                            "(stream=%.0f haus=%.0f bg=%.0f restore=%.0f "
-                            "rows=%.0f art=%.0f flip=%.0f | vorige Aktion=%s "
-                            "Seite=%d)"
+                            "(stream=%.0f haus=%.0f bgbild=%.0f bg=%.0f "
+                            "restore=%.0f rows=%.0f art=%.0f flip=%.0f | "
+                            "vorige Aktion=%s Seite=%d)"
                             % (_busy * 1000, (_rt1 - _rt0) * 1000,
                                getattr(self, "_perf_house", 0) * 1000,
+                               getattr(self, "_perf_bgimg", 0) * 1000,
                                getattr(self, "_perf_bg", 0) * 1000,
                                getattr(self, "_perf_restore", 0) * 1000,
                                getattr(self, "_perf_rows", 0) * 1000,

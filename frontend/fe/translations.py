@@ -520,8 +520,8 @@ TRANSLATIONS = {
         "en": "Menu resolution: quarter -> back to full (original sharpness, needs restart)",
         "de": "Menü-Auflösung: viertel -> zurück auf voll (ursprüngliche Schärfe, nach Neustart)"},
     "sys_fb_size_changed": {
-        "en": "Menu resolution changed - takes effect after the next restart.",
-        "de": "Menü-Auflösung geändert - wirkt nach dem nächsten Neustart."},
+        "en": "Menu resolution changed - takes effect after the next restart. At a smaller size, covers are scaled down: the first view of each cover takes a moment, after that it comes from the cache.",
+        "de": "Menü-Auflösung geändert - wirkt nach dem nächsten Neustart. Bei kleinerer Größe werden Cover verkleinert: das erste Betrachten dauert je Cover kurz, danach kommt es aus dem Zwischenspeicher."},
     "sys_fb_size_failed": {
         "en": "Could not write MiSTer.ini - menu resolution unchanged.",
         "de": "MiSTer.ini nicht beschreibbar - Menü-Auflösung unverändert."},

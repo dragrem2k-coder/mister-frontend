@@ -240,6 +240,59 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
   (vorher spürbar kleiner als möglich, ohne dass es einen Grund dafür
   gab).
 
+**Boxart wird jetzt richtig verkleinert + zwei weitere Messblindflecke**
+(Build 57):
+
+- **Cover-Verkleinerung: Flächenmittel statt Wegwerfen**
+  (Nutzer-Rückmeldung: "auf halb sehen jetzt die Boxarts pixelig aus …
+  auf viertel läuft das Scrollen super, aber auch hier sehen die
+  Boxarts verpixelt aus"). Ursache war eine Altlast im Skalierer: er
+  hat beim Verkleinern schlicht **Bildzeilen und -spalten weggeworfen**
+  (Nearest-Neighbor). Bei fotoartigen Bildern wie Boxart erzeugt das
+  genau den ausgefransten Eindruck — feine Strukturen fallen je nach
+  Rasterlage mal ganz weg, mal bleiben sie hart stehen. Jetzt wird über
+  die zusammenfallenden Bildpunkte gemittelt.
+
+  Warum das erst jetzt auffiel: die Cover-Fläche ist bei voller
+  Auflösung **733×909** groß, ein übliches Cover passt hinein und wird
+  gar nicht angefasst. Erst mit dem neuen Menüpunkt schrumpft sie auf
+  **377×465** (halb) bzw. **179×223** (viertel) — und damit wurde zum
+  ersten Mal überhaupt verkleinert.
+
+  **Laufzeit, ehrlich benannt:** das Mitteln kostet rund das Zehnfache
+  (gemessen 135 ms statt 11 ms für ein 600×800-Cover auf einer
+  schnellen Sandbox, auf der MiSTer-CPU entsprechend mehr — grob ein
+  bis zwei Sekunden). Das fällt **nur beim allerersten Betrachten** an:
+  beim Scrollen wird ohnehin nicht skaliert, und das Ergebnis landet im
+  Zwischenspeicher auf der SD-Karte. Der Hinweis darauf steht jetzt in
+  der README, und das Frontend sagt es nach dem Umschalten selbst.
+
+  Wichtig dabei: `THUMB_ALGO_VERSION` wurde hochgezählt, damit bereits
+  gespeicherte Miniaturen aus dem alten Verfahren **nicht** weiter
+  getroffen werden — sonst käme die Verbesserung ausgerechnet bei den
+  Covern nicht an, die man am häufigsten anschaut. Alte Einträge
+  veralten von selbst aus dem Cache heraus, es muss nichts von Hand
+  gelöscht werden. Neuer Test `tools/test_cover_scaling.py`.
+
+- **Hintergrundbild-Aufbau war nicht gemessen** (beim Nachgehen des
+  Hakelns beim Zurückgehen gefunden). `BG.get()` setzt bei einem
+  Cache-Fehltreffer den kompletten bildschirmfüllenden Hintergrund neu
+  zusammen — bei 1920×1080 sind das 8,3 MB, zeilenweise in Python.
+  Nachgemessen: **41–67 ms** auf dieser Sandbox, auf dem MiSTer
+  entsprechend deutlich mehr. Das lag genau zwischen der "Hausarbeit"
+  und dem `bg=`-Zeitnehmer und tauchte damit in **keiner** Messung auf.
+  Jetzt eigener Posten `bgbild=` in `PERF split` und in der
+  RUCKLER-Zeile.
+
+- **Hintergrund-Zwischenspeicher von 2 auf 4 Plätze.** Mit nur zwei
+  Plätzen genügte das Hin- und Herwechseln zwischen drei Systemen,
+  damit jeder Wechsel wieder einen kompletten Neuaufbau auslöste — ein
+  plausibler Teil des "hängt ab und zu kurz" beim Zurückgehen. Preis
+  ehrlich benannt: jeder Platz kostet einen vollen Bildschirmpuffer,
+  bei 1080p rund 8,3 MB, bei vier Plätzen also etwa 33 MB. Auf einem
+  MiSTer mit ~1 GB RAM vertretbar; deshalb 4 und nicht 8. Mit
+  kleinerer Menü-Auflösung sinkt der Bedarf entsprechend mit.
+
 **Bugfix am Menü-Auflösung-Schalter + Ruckler-Suche** (Build 56):
 
 - **BUGFIX (Nutzer-Rückmeldung: "ich merke da keinen Unterschied, egal

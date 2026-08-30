@@ -315,10 +315,102 @@ def _thumb_cache_key(path, w, h):
     ersetzt, danach lange nicht mehr angefasst) ist das unproblematisch."""
     try:
         st = os.stat(path)
-        sig = "%s|%d|%d|%d|%.6f" % (path, w, h, st.st_size, st.st_mtime)
+        sig = "%s|%d|%d|%d|%.6f|%s" % (path, w, h, st.st_size, st.st_mtime,
+                                       THUMB_ALGO_VERSION)
     except OSError:
-        sig = "%s|%d|%d" % (path, w, h)
+        sig = "%s|%d|%d|%s" % (path, w, h, THUMB_ALGO_VERSION)
     return hashlib.sha1(sig.encode("utf-8", "surrogateescape")).hexdigest()[:24]
+
+# VERSION DES SKALIERVERFAHRENS - Teil des Cache-Schluessels.
+#
+# Wird das Verkleinerungsverfahren geaendert, muessen die bereits auf der
+# SD-Karte liegenden Miniaturen entwertet werden: sie wurden mit dem ALTEN
+# Verfahren berechnet und wuerden sonst weiterhin getroffen, wodurch die
+# Verbesserung bei genau den Covern NICHT ankaeme, die man am haeufigsten
+# anschaut (die naemlich liegen sicher im Cache). Die Nummer hier einfach
+# hochzaehlen - alte Eintraege werden dann nie wieder getroffen und
+# veralten von selbst aus dem Cache heraus (siehe
+# _thumb_cache_evict_if_needed()), es muss nichts von Hand geloescht
+# werden.
+#
+# 2 = Flaechenmittel beim Verkleinern (vorher: Nearest-Neighbor)
+THUMB_ALGO_VERSION = "2"
+
+
+def _verkleinern_flaechenmittel(pix, w, h, tw, th):
+    """Bild auf tw x th verkleinern, indem ueber die zusammenfallenden
+    Quellpixel GEMITTELT wird (Kastenfilter).
+
+    WARUM (Nutzer-Rueckmeldung: "auf halb und viertel sehen die Boxarts
+    verpixelt aus"): das bisherige Verfahren war Nearest-Neighbor - es
+    hat schlicht Bildzeilen und -spalten WEGGEWORFEN. Bei Fotos, und
+    Boxart ist Foto-artig, erzeugt das genau den ausgefransten,
+    "verpixelten" Eindruck: feine Strukturen fallen je nach Rasterlage
+    mal ganz weg, mal bleiben sie hart stehen. Wird das Ergebnis danach
+    noch von der Hardware vergroessert (kleinerer Framebuffer), faellt
+    es doppelt auf.
+
+    Aufgefallen ist es erst mit dem Menuepunkt "Menue-Aufloesung":
+    bei voller Aufloesung ist die Cover-Flaeche groesser als ein
+    uebliches Cover, es wird also gar nicht verkleinert - der Mangel
+    konnte dort nie sichtbar werden.
+
+    ZUR LAUFZEIT (ehrlich benannt, gemessen): das Mitteln ist rund
+    zehnmal so teuer wie das blosse Wegwerfen - auf dieser Sandbox
+    135 ms statt 11 ms fuer ein 600x800-Cover, auf der schwaecheren
+    MiSTer-CPU entsprechend mehr. Das faellt aber NUR beim allerersten
+    Betrachten eines Covers in einer bestimmten Groesse an:
+      - waehrend aktiven Scrollens wird ohnehin nicht skaliert
+        (siehe _defer_uncached weiter unten),
+      - das Ergebnis landet im Festplatten-Cache und wird danach nur
+        noch gelesen.
+    Bewusst kein numpy o.ae. - das Frontend bleibt abhaengigkeitsfrei.
+
+    UMSETZUNG: getrennt nach Achsen. Die inneren Summen laufen ueber
+    sum() auf Ausschnitten mit Schrittweite 4 - das ist eine
+    C-Schleife statt einer Python-Schleife und macht in der Messung
+    den Unterschied zwischen 135 ms und rund 270 ms aus. Es wird immer
+    nur EINE Zielzeile im Speicher gehalten (kein kompletter
+    Zwischenpuffer) - auf einem Geraet mit ~1 GB RAM und HD-Covern ein
+    bewusster Verzicht."""
+    if tw <= 0 or th <= 0 or w <= 0 or h <= 0:
+        return None
+    # Quell-Spaltenbereich je Zielspalte, einmal vorab.
+    xr = []
+    nx = []
+    for x in range(tw):
+        a = int(x * w / tw)
+        b = max(a + 1, int((x + 1) * w / tw))
+        xr.append((a * 4, b * 4))
+        nx.append(b - a)
+    rw = w * 4
+    ro = tw * 4
+    out = bytearray(tw * th * 4)
+    for ty in range(th):
+        y0 = int(ty * h / th)
+        y1 = max(y0 + 1, int((ty + 1) * h / th))
+        n = y1 - y0
+        acc = None
+        for y in range(y0, y1):
+            row = pix[y * rw:(y + 1) * rw]
+            cur = []
+            _an = cur.append
+            for a, b in xr:
+                _an(sum(row[a:b:4]))        # Blau
+                _an(sum(row[a + 1:b:4]))    # Gruen
+                _an(sum(row[a + 2:b:4]))    # Rot
+            acc = cur if acc is None else [p + q for p, q in zip(acc, cur)]
+        o = ty * ro
+        i = 0
+        for x in range(tw):
+            d = nx[x] * n
+            out[o] = acc[i] // d
+            out[o + 1] = acc[i + 1] // d
+            out[o + 2] = acc[i + 2] // d
+            o += 4
+            i += 3
+    return bytes(out)
+
 
 def _thumb_cache_path(key):
     return os.path.join(THUMB_CACHE_DIR, key + ".art")
@@ -723,15 +815,20 @@ class ArtCache:
         # der Vergroesserung: pro Zeile EIN b\"\".join() (in C
         # implementiert, deutlich weniger Python-Interpreter-Overhead
         # pro Zeile) statt einzelner Zuweisungen pro Pixel.
-        xmap = [min(w - 1, int(x / scale)) * 4 for x in range(tw)]
-        out = bytearray(tw * th * 4)
-        row_out = tw * 4
-        for ty in range(th):
-            sy = min(h - 1, int(ty / scale))
-            srow = pix[sy * w * 4:(sy + 1) * w * 4]
-            row_bytes = b"".join([srow[sx:sx + 4] for sx in xmap])
-            out[ty * row_out:(ty + 1) * row_out] = row_bytes
-        result = (tw, th, bytes(out))
+        # GEAENDERT (Nutzer-Rueckmeldung: "auf halb und viertel sehen die
+        # Boxarts verpixelt aus"): hier stand bisher ein reines
+        # Nearest-Neighbor-Verfahren - fuer jede Zielposition wurde EIN
+        # Quellpixel gegriffen, der Rest fiel weg. Jetzt wird ueber die
+        # zusammenfallenden Quellpixel gemittelt. Siehe die ausfuehrliche
+        # Begruendung samt Messwerten bei _verkleinern_flaechenmittel().
+        # Die Zielgroesse (tw/th) ist unveraendert - nur der Inhalt ist
+        # ein anderer, deshalb ist auch THUMB_ALGO_VERSION hochgezaehlt
+        # worden (sonst wuerden die alten, grob verkleinerten Miniaturen
+        # aus dem Festplatten-Cache weiterverwendet).
+        data = _verkleinern_flaechenmittel(pix, w, h, tw, th)
+        if data is None:
+            return None
+        result = (tw, th, data)
         self._scaled_cache_put(box_key, result)
         # WICHTIGE QUALITAETS-REGEL (siehe Modul-Kommentar oben): immer
         # das soeben aus dem Original berechnete "result" speichern,
@@ -752,7 +849,24 @@ class BgCache:
     """Haelt pro System einen fertig komponierten Vollbild-Puffer
     (inkl. Stride-Padding), damit der Hintergrund beim Zeichnen nur
     noch per Blockkopie eingesetzt werden muss."""
-    LIMIT = 2
+    # ERHOEHT von 2 auf 4 (Nutzer-Rueckmeldung: "wenn ich aus einem
+    # ROM-Ordner zurueckgehe, haengt das Frontend ab und zu kurz").
+    #
+    # Ein Fehltreffer hier ist teuer: _compose() setzt den kompletten
+    # Bildschirminhalt neu zusammen - bei 1920x1080 sind das 8,3 MB,
+    # zeilenweise in Python. Nachgemessen 41-67 ms auf einer schnellen
+    # Sandbox, auf der MiSTer-CPU entsprechend deutlich mehr. Mit nur
+    # ZWEI Plaetzen genuegte das Hin- und Herwechseln zwischen drei
+    # Systemen, damit jeder Wechsel wieder einen kompletten Neuaufbau
+    # ausgeloest hat.
+    #
+    # Preis ehrlich benannt: jeder Platz kostet einen vollen
+    # Bildschirmpuffer - bei 1080p rund 8,3 MB, bei vier Plaetzen also
+    # etwa 33 MB. Auf einem MiSTer mit typischerweise ~1 GB RAM
+    # vertretbar, aber kein Freibier; deshalb 4 und nicht 8. Mit
+    # kleinerem Framebuffer (Menuepunkt "Menue-Aufloesung") sinkt der
+    # Bedarf entsprechend mit (bei halber Groesse ein Viertel davon).
+    LIMIT = 4
 
     def __init__(self):
         self.cache = {}

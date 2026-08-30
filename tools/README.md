@@ -21,6 +21,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_overlay_redraw.py \
   && python3 tools/test_fb_size.py \
   && python3 tools/test_virtualboy.py \
+  && python3 tools/test_cover_scaling.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -31,6 +32,7 @@ python3 tools/regression_test.py \
 | `test_overlay_redraw.py` | Test (Pass/Fail) | Hinweisbox verschwindet bitgenau restlos |
 | `test_fb_size.py` | Test (Pass/Fail) | Menuepunkt "Menue-Aufloesung": fb_size in der MiSTer.ini |
 | `test_virtualboy.py` | Test (Pass/Fail) | Kategorie "Virtual Boy": Core-/ROM-Pruefung, Logo, Akzentfarbe |
+| `test_cover_scaling.py` | Test (Pass/Fail) | Verkleinern der Boxart: Flaechenmittel statt Wegwerfen |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -132,6 +134,25 @@ Akzentfarbe sowie die mitgelieferte Logo-Datei `sysart/VIRTUALBOY.art`
 
 Gearbeitet wird in einem temporaeren Ordner mit umgebogenen Pfaden, nie
 auf echten Spieldaten.
+
+## test_cover_scaling.py
+
+Prueft das Verkleinern der Boxart (Nutzer-Rueckmeldung nach Einfuehrung
+der "Menue-Aufloesung": "auf halb sehen die Boxarts pixelig aus").
+
+Bisher wurden beim Verkleinern schlicht Bildzeilen und -spalten
+weggeworfen (Nearest-Neighbor); jetzt wird ueber die zusammenfallenden
+Bildpunkte gemittelt. "Sieht huebsch aus" kann kein Test pruefen -
+geprueft wird deshalb das objektiv Nachrechenbare: unveraenderte
+Zielgroesse, exakte Farbtreue bei einfarbigen Flaechen, Mittelung eines
+1-Pixel-Streifenmusters (dort lieferte das alte Verfahren reines
+Schwarz oder Weiss - genau der sichtbare Mangel), Monotonie eines
+Verlaufs, Randfaelle bis hinunter zu 1x1, und dass sich der
+Cache-Schluessel geaendert hat (sonst kaeme die Verbesserung bei bereits
+zwischengespeicherten Covern nie an).
+
+Gibt am Ende die gemessene Laufzeit aus - als Einordnung, nicht als
+Bestehenskriterium.
 
 ## diag_lightpath.py
 

@@ -382,6 +382,23 @@ beide Größen nebeneinander vor (`art/` für CRT, `art_hd/` für HDMI),
 das Frontend wählt automatisch die passende - nichts muss
 gelöscht/ersetzt werden.
 
+**Wenn ein Cover verkleinert werden muss, dauert das EINMALIG einen
+Moment.** Das Frontend mittelt beim Verkleinern über die
+zusammenfallenden Bildpunkte, statt einfach Bildzeilen wegzuwerfen -
+das sieht deutlich besser aus, kostet beim allerersten Betrachten eines
+Covers aber spürbar Rechenzeit (auf dem MiSTer grob ein bis zwei
+Sekunden). Das Ergebnis landet danach im Zwischenspeicher auf der
+SD-Karte: ab dem zweiten Mal ist es sofort da, auch nach einem
+Neustart. Beim Scrollen passiert das grundsätzlich nicht - dort werden
+noch nicht fertige Cover übersprungen und erst nachgeladen, wenn du
+stehen bleibst.
+
+Zum Verkleinern kommt es vor allem, wenn du im System-Menü unter
+Optionen → Anzeige die **Menü-Auflösung** auf halb oder viertel
+gestellt hast: die Cover-Fläche ist dann kleiner als das Cover. Bei
+voller Auflösung passen übliche Cover hinein und werden gar nicht erst
+angefasst.
+
 **Auch für Arcade** - läuft automatisch mit, keine eigene Option
 nötig. Findet alle `_Arcade`-Ordner, sammelt die MRA-Dateinamen (das
 ist bei MiSTer-Sammlungen üblicherweise schon der Spieletitel) und
