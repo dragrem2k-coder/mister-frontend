@@ -503,6 +503,28 @@ TRANSLATIONS = {
                            "de": "Schnelles Scrollen: AN -> ausschalten (kann beim Scrollen kurz Bildrisse verursachen)"},
     "sys_fast_scroll_off": {"en": "Fast scroll: OFF -> turn on (trades a small tearing risk for less scroll delay)",
                             "de": "Schnelles Scrollen: AUS -> einschalten (etwas Bildriss-Risiko gegen kürzere Scroll-Verzögerung)"},
+    # NEUES FEATURE (Nutzerwunsch: Schalter fuer die Framebuffer-Groesse):
+    # drei Stufen statt AN/AUS, deshalb keine on/off-Paare wie sonst -
+    # jede Zeile nennt den AKTUELLEN Wert und wohin der naechste
+    # Tastendruck schaltet. Der Neustart-Hinweis steht bewusst in JEDER
+    # der drei Zeilen: die Aenderung wirkt erst nach einem Neustart, und
+    # ohne diesen Hinweis wirkt ein "es aendert sich ja nichts" wie ein
+    # Fehler.
+    "sys_fb_size_full": {
+        "en": "Menu resolution: full -> switch to half (faster HDMI, softer picture, needs restart)",
+        "de": "Menü-Auflösung: voll -> auf halb stellen (schnelleres HDMI, weicheres Bild, nach Neustart)"},
+    "sys_fb_size_half": {
+        "en": "Menu resolution: half -> switch to quarter (fastest, clearly blockier, needs restart)",
+        "de": "Menü-Auflösung: halb -> auf viertel stellen (am schnellsten, deutlich klotziger, nach Neustart)"},
+    "sys_fb_size_quarter": {
+        "en": "Menu resolution: quarter -> back to full (original sharpness, needs restart)",
+        "de": "Menü-Auflösung: viertel -> zurück auf voll (ursprüngliche Schärfe, nach Neustart)"},
+    "sys_fb_size_changed": {
+        "en": "Menu resolution changed - takes effect after the next restart.",
+        "de": "Menü-Auflösung geändert - wirkt nach dem nächsten Neustart."},
+    "sys_fb_size_failed": {
+        "en": "Could not write MiSTer.ini - menu resolution unchanged.",
+        "de": "MiSTer.ini nicht beschreibbar - Menü-Auflösung unverändert."},
     "sys_pulse_on": {"en": "Selection glow: ON -> turn off (static highlight instead of animation)",
                      "de": "Markierungs-Schimmer: AN -> ausschalten (feste statt animierte Hervorhebung)"},
     "sys_pulse_off": {"en": "Selection glow: OFF -> turn on",

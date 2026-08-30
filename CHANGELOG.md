@@ -240,6 +240,82 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
   (vorher spürbar kleiner als möglich, ohne dass es einen Grund dafür
   gab).
 
+**HDMI-Performance, Runde 4** (Build 54 — auf die Frage "hast du noch
+einen Ansatz, um den HDMI-Modus performancetechnisch flüssiger zu
+kriegen?"):
+
+Zuerst gemessen statt geraten. Ein Seitenaufbau auf 1920×1080 kostete
+3,28 ms reine Zeichenzeit, aufgeteilt in: **Cover-Panel 67 %**,
+**`_restore_row_bg()` 39 %**, Rest Listenzeilen/Text. Derselbe Aufbau
+kostet auf CRT (320×240) nur 0,46 ms — also rund ein Sechstel. Der
+Aufwand hängt fast vollständig an der Pixelzahl, und genau daran setzen
+die beiden Änderungen an.
+
+- **Zwei heiße Schleifen entschlackt** (bitgenau gleiches Bild, keine
+  Verhaltensänderung):
+  - `_restore_row_bg()` legte pro Bildzeile mit `cur_bg[off:end]` eine
+    vollständige Zwischenkopie an (bei 700 Pixel Breite ~2,8 KB), die
+    direkt danach kopiert und sofort weggeworfen wurde — nur, um eine
+    Längenprüfung machen zu können. Mit `memoryview` entfällt diese
+    Zwischenkopie ersatzlos; die Längenprüfung wird einmal vorab auf die
+    Zeilenspanne angewandt statt pro Zeile. Gemessen **0,826 → 0,526 ms
+    (−36 %)** für 700×880.
+  - `rect()` schlug pro Bildzeile zweimal Attribute nach (`self.buf`,
+    `self.stride`), rechnete den Offset neu aus und wertete — obwohl
+    `scanlines` fast immer aus ist — jedes Mal eine Bedingung samt
+    Modulo aus. Jetzt lokale Variablen, fortlaufend addierter Offset und
+    eine eigene minimale Schleife für den häufigen Fall. Gemessen
+    **0,427 → 0,382 ms (−11 %)** für 700×800.
+  - Zusammen: **Seitenaufbau 3,28 → 2,87 ms (−12,5 %)**. Beide
+    Umbauten wurden über 620 bzw. 800 zufällige Geometrien (inkl. aller
+    Randfälle: Puffergrenzen, negative Positionen, zu kurzer
+    Hintergrundpuffer, Scanlines) gegen die alte Fassung geprüft —
+    **null abweichende Bytes**.
+
+- **Neuer Menüpunkt "Menü-Auflösung"** (System → Optionen → Anzeige,
+  Nutzerwunsch: "eventuell unter System und dann unter Optionen dafür
+  einen Schalter einbauen, der beim Neustart das an- und ausschaltet").
+  Schaltet `fb_size` in der MiSTer.ini durch: **voll → halb → viertel →
+  voll**. MiSTer betreibt den Linux-Framebuffer dann kleiner und
+  skaliert per Hardware wieder auf die Ausgabeauflösung hoch — bei
+  halber Größe ist das **ein Viertel der Pixel**, und zwar bei allem:
+  Hintergrund füllen, Zeilen zeichnen, Text setzen, Hintergrund
+  wiederherstellen und die fertige Seite in den Framebuffer kopieren.
+  Am Frontend selbst muss dafür nichts geändert werden, es liest die
+  Geometrie beim Start aus `/sys/class/graphics/fb0` und skaliert sein
+  Layout automatisch mit.
+
+  Der Preis wird offen genannt: das Bild wird sichtbar weicher bzw.
+  klotziger, weil die Hardware wieder hochrechnet. Deshalb Standard
+  unverändert "voll" und ein Punkt zum Ausprobieren statt einer stillen
+  Voreinstellung.
+
+  Details der Umsetzung:
+  - Die Änderung wirkt **erst nach einem Neustart** (die
+    Framebuffer-Größe legt MiSTer beim Hochfahren fest). Anders als beim
+    CRT-Umschalten wird deshalb NICHT sofort neu gestartet — beim
+    Durchschalten von drei Stufen wäre ein erzwungener Neustart pro
+    Tastendruck eine Zumutung. Stattdessen ein deutlicher Hinweis in der
+    Zeile selbst UND als Meldung nach dem Umschalten.
+  - `fb_size` wird als **globaler** Schlüssel geschrieben (vor der ersten
+    `[Sektion]`), bewusst nicht in den `[Menu]`-Block: den legt der
+    CRT-Schalter komplett an und entfernt ihn wieder, die Einstellung
+    wäre sonst beim nächsten CRT-Umschalten stillschweigend weg.
+  - Geschrieben wird **atomar** (Temp-Datei + `os.replace`), dieselbe
+    Absicherung wie beim CRT-Schalter: ein Abbruch mitten im Schreiben
+    darf die MiSTer.ini nicht zerstören.
+  - Der Punkt erscheint **nur im HDMI-Modus**. Im CRT-Modus ist der
+    Framebuffer ohnehin nur 320×240 — halbiert (160×120) wäre er
+    unlesbar, und zu gewinnen gäbe es dort auch nichts. Schaltet man
+    per CRT-Schalter in den CRT-Modus, wird eine gesetzte Verkleinerung
+    automatisch zurückgenommen, da der Punkt dort nicht mehr sichtbar
+    (und damit nicht mehr selbst korrigierbar) wäre.
+  - Neuer Test `tools/test_fb_size.py` (26 Prüfungen): der einzige Test
+    im Projekt, der eine Datei außerhalb des Frontends betrifft. Die
+    MiSTer.ini gehört dem MiSTer, nicht uns — entsprechend gründlich
+    wird geprüft, dass außer der einen Zeile nichts verändert wird und
+    die Datei nach einem Rundlauf **wortgleich** wie vorher ist.
+
 **Aufräumen und Testabdeckung** (Build 53, keine Verhaltensänderung im
 Normalbetrieb — auf Nutzerfrage "kann ich irgendwo noch was optimieren
 oder besser machen oder fixen?"):

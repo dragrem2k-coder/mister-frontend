@@ -19,6 +19,7 @@ Alles auf einmal (Reihenfolge wie beim Ausliefern eines neuen Builds):
 python3 tools/regression_test.py \
   && python3 tools/test_input_repeat.py \
   && python3 tools/test_overlay_redraw.py \
+  && python3 tools/test_fb_size.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -27,6 +28,7 @@ python3 tools/regression_test.py \
 | `regression_test.py` | Test (Pass/Fail) | Zeichnet jede Kategorie in beiden Aufloesungen ohne Ausnahme |
 | `test_input_repeat.py` | Test (Pass/Fail) | Tastenwiederholung: Anlaufsperre, Richtungswechsel, Geister-Wiederholung |
 | `test_overlay_redraw.py` | Test (Pass/Fail) | Hinweisbox verschwindet bitgenau restlos |
+| `test_fb_size.py` | Test (Pass/Fail) | Menuepunkt "Menue-Aufloesung": fb_size in der MiSTer.ini |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -88,6 +90,27 @@ Der Test vergleicht BITGENAU mit einer Referenzinstanz, die dieselbe
 Position ohne jemals eingeblendete Box zeichnet - bleibt auch nur ein Pixel
 uebrig, schlaegt er fehl. Beide Wege werden abgedeckt: Box per Tastendruck
 weggeraeumt und Box per Zeitablauf ausgelaufen.
+
+## test_fb_size.py
+
+Prueft den Menuepunkt "Menue-Aufloesung" (Nutzerwunsch: "eventuell unter
+System und dann unter Optionen dafuer einen Schalter einbauen, der beim
+Neustart das an- und ausschaltet"). Der Punkt schaltet `fb_size` in der
+MiSTer.ini durch (voll -> halb -> viertel).
+
+Das ist der einzige Test hier, der eine Datei ausserhalb des Frontends
+betrifft: die MiSTer.ini gehoert dem MiSTer, nicht uns, und ein Fehler
+dort trifft das ganze Geraet. Entsprechend gruendlich wird geprueft, dass
+ausser der einen Zeile NICHTS veraendert wird - insbesondere nicht der
+`[Menu]`-Block, den der CRT-Schalter verwaltet. Gearbeitet wird immer auf
+einer Kopie in einem temporaeren Ordner, nie auf einer echten MiSTer.ini.
+
+Abgedeckt: Lesen/Schreiben/Durchschalten, wortgleiche Wiederherstellung
+nach einem Rundlauf, mehrfach vorhandener Schluessel, Eintrag innerhalb
+einer Sektion (darf nicht angefasst werden), ini ohne Sektionen,
+unbekannter Wert, fehlende Datei, sowie die Menuezeile selbst
+(sichtbar im HDMI-Modus, ausgeblendet im CRT-Modus) und die
+Vollstaendigkeit der Uebersetzungen.
 
 ## diag_lightpath.py
 

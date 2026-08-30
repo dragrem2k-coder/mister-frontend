@@ -30,7 +30,7 @@ from fe.settings import (
     dragend_logo_enabled, format_attract_delay, load_attract_delay,
     screen_mirror_enabled, stream_overlay_enabled, system_bg_enabled,
     fast_scroll_enabled, pulse_effect_enabled, eq_effect_enabled,
-    track_marquee_enabled,
+    track_marquee_enabled, fb_size_label_key,
 )
 from fe.timekeeping import format_timezone_offset, load_timezone_offset
 from fe.retroachievements import load_ra_config, ra_toggle_enabled
@@ -162,6 +162,10 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         else t("sys_system_bg_off")
     fast_scroll_label = t("sys_fast_scroll_on") if fast_scroll_enabled() \
         else t("sys_fast_scroll_off")
+    # NEUES FEATURE (Nutzerwunsch: Schalter fuer die Framebuffer-Groesse):
+    # drei Stufen (voll / halb / viertel), die Zeile nennt den aktuellen
+    # Wert - siehe fb_size_label_key() in fe/settings.py.
+    fb_size_label = t(fb_size_label_key())
     pulse_label = t("sys_pulse_on") if pulse_effect_enabled() \
         else t("sys_pulse_off")
     eq_label = t("sys_eq_on") if eq_effect_enabled() \
@@ -198,6 +202,35 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     if ra_user:
         ra_items.append((ra_toggle_label, "ra_toggle", None))
 
+    # NEUES FEATURE (Nutzerwunsch: Schalter fuer die Framebuffer-Groesse):
+    # die Zeile erscheint bewusst NUR, wenn der CRT-Modus AUS ist. Im
+    # CRT-Modus ist der Framebuffer ohnehin nur 320x240 - eine halbe oder
+    # gar geviertelte Auflösung davon (160x120 bzw. 80x60) waere praktisch
+    # unlesbar, und es gaebe dort auch nichts zu gewinnen: der gemessene
+    # Aufwand pro Bildaufbau liegt auf CRT bereits bei einem Sechstel des
+    # HDMI-Werts. Der Punkt loest also genau das Problem, das es nur auf
+    # HDMI gibt, und kann im CRT-Modus gar nicht erst falsch gesetzt werden.
+    display_items = [
+        (video + t("sys_video_suffix"), "crtmenu", None),
+        (theme_label, "theme", None),
+        (sfx_label, "sfx", None),
+        (dragend_logo_label, "dragend_logo", None),
+        (system_bg_label, "system_bg", None),
+        (fast_scroll_label, "fast_scroll", None),
+    ]
+    if not crt:
+        display_items.append((fb_size_label, "fb_size", None))
+    display_items += [
+        (pulse_label, "pulse_effect", None),
+        (eq_label, "eq_effect", None),
+        (track_marquee_label, "track_marquee", None),
+        (stream_label, "stream_overlay", None),
+        (screen_mirror_label, "screen_mirror", None),
+        (music_label, "music", None),
+        (music_src_label, "music_source", None),
+        (volume_label, "volume", None),
+    ]
+
     groups = {
         t("sys_group_ra"): folder(*ra_items),
         t("sys_group_stats"): folder(
@@ -208,22 +241,7 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             (t("sys_year_review_action"), "year_review", None),
             (t("sys_diary_action"), "diary", None),
         ),
-        t("sys_group_display"): folder(
-            (video + t("sys_video_suffix"), "crtmenu", None),
-            (theme_label, "theme", None),
-            (sfx_label, "sfx", None),
-            (dragend_logo_label, "dragend_logo", None),
-            (system_bg_label, "system_bg", None),
-            (fast_scroll_label, "fast_scroll", None),
-            (pulse_label, "pulse_effect", None),
-            (eq_label, "eq_effect", None),
-            (track_marquee_label, "track_marquee", None),
-            (stream_label, "stream_overlay", None),
-            (screen_mirror_label, "screen_mirror", None),
-            (music_label, "music", None),
-            (music_src_label, "music_source", None),
-            (volume_label, "volume", None),
-        ),
+        t("sys_group_display"): folder(*display_items),
         t("sys_group_behavior"): folder(
             (t("sys_crt_test_action"), "crt_test", None),
             (curated_label, "curated", None),

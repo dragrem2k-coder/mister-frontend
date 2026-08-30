@@ -8,7 +8,7 @@ Filterung (nur Spiele mit Metadaten anzeigen), Attract-Modus
 Git-Branch 'modular-refactor') - mehrere ehemals ueber die Datei
 verstreute kleine Bloecke hier sinnvoll zusammengefuehrt.
 """
-import os, glob, time
+import os, glob, time, re
 from fe.log import LOG
 from fe.art import get_meta, mra_meta
 
@@ -459,6 +459,124 @@ def toggle_fast_scroll():
             open(FAST_SCROLL_ENABLED_FLAG, "w").close()
         except OSError:
             pass
+
+
+# NEUES FEATURE (Nutzerwunsch: "eventuell unter System und dann unter
+# Optionen dafuer einen Schalter einbauen, der beim Neustart das an- und
+# ausschaltet"): Groesse des Linux-Framebuffers ueber die MiSTer.ini
+# steuern.
+#
+# HINTERGRUND (gemessen, nicht geschaetzt): der gesamte Aufwand eines
+# Bildaufbaus - Hintergrund fuellen, Zeilen zeichnen, Text setzen,
+# Hintergrund wiederherstellen UND die fertige Seite in den Framebuffer
+# kopieren - haengt direkt an der Pixelzahl. Derselbe Seitenaufbau kostet
+# im Profiling auf 1920x1080 rund das Sechsfache von 320x240. MiSTer kann
+# den Linux-Framebuffer kleiner betreiben und per Hardware wieder auf die
+# Ausgabeaufloesung hochskalieren - bei halber Groesse sind das ein
+# Viertel der Pixel, bei einem Viertel sogar ein Sechzehntel, ohne dass am
+# Frontend selbst irgendetwas geaendert werden muss (die Geometrie wird
+# beim Start aus /sys/class/graphics/fb0 gelesen, das Layout skaliert
+# automatisch mit).
+#
+# Der Preis ist ehrlich zu nennen: das Bild wird sichtbar weicher bzw.
+# kloetziger, weil die Hardware wieder hochrechnet. Deshalb bewusst als
+# Menuepunkt zum Ausprobieren statt als stille Voreinstellung - Standard
+# bleibt die volle Groesse.
+#
+# Die Einstellung ist ein GLOBALER Schluessel der MiSTer.ini (also vor der
+# ersten [Sektion]) - bewusst NICHT im [Menu]-Block, den der CRT-Schalter
+# oben komplett anlegt und wieder entfernt; sonst wuerde ein
+# CRT-Umschalten diese Einstellung stillschweigend mit loeschen.
+FB_SIZE_STEPS = [0, 2, 4]   # 0 = volle Groesse (MiSTer-Standard/automatisch),
+                            # 2 = halbe Aufloesung, 4 = ein Viertel
+                            # (Werte laut MiSTer.ini: "0 - automatic,
+                            # 1 - full size, 2 - 1/2 of resolution,
+                            # 4 - 1/4 of resolution")
+
+_FB_SIZE_RE = re.compile(r"^[ \t]*fb_size[ \t]*=[ \t]*([0-9]+)",
+                         re.MULTILINE)
+
+
+def _ini_global_part(ini):
+    """Teilt den ini-Text in (globaler Teil, Rest ab der ersten Sektion).
+    Der globale Teil ist alles vor der ersten Zeile, die mit '[' beginnt."""
+    m = re.search(r"^\[", ini, re.MULTILINE)
+    if m is None:
+        return ini, ""
+    return ini[:m.start()], ini[m.start():]
+
+
+def fb_size_value():
+    """Aktueller globaler fb_size-Wert aus der MiSTer.ini (0 wenn nicht
+    gesetzt oder nicht lesbar - das entspricht dem MiSTer-Standard)."""
+    try:
+        ini = open(MISTER_INI).read()
+    except OSError:
+        return 0
+    head, _rest = _ini_global_part(ini)
+    m = _FB_SIZE_RE.search(head)
+    if not m:
+        return 0
+    try:
+        val = int(m.group(1))
+    except ValueError:
+        return 0
+    return val if val in FB_SIZE_STEPS else 0
+
+
+def set_fb_size(value):
+    """fb_size im globalen Teil der MiSTer.ini setzen. value=0 entfernt
+    die Zeile wieder (zurueck zum MiSTer-Standard). Rueckgabe: der neue
+    Wert, oder None wenn die Datei nicht geschrieben werden konnte."""
+    try:
+        ini = open(MISTER_INI).read()
+    except OSError:
+        return None
+    head, rest = _ini_global_part(ini)
+    # Bestehende Zeile(n) im globalen Teil zuerst entfernen - so entsteht
+    # auch bei mehrfach vorhandenem Schluessel ein eindeutiger Zustand.
+    head = re.sub(r"^[ \t]*fb_size[ \t]*=[^\n]*\n?", "", head,
+                  flags=re.MULTILINE)
+    if value:
+        if head and not head.endswith("\n"):
+            head += "\n"
+        head += "fb_size=%d\n" % value
+    new_ini = head + rest
+    # Atomar schreiben (gleiche Begruendung wie bei toggle_crt_menu()):
+    # ein Abbruch mitten im Schreiben darf die MiSTer.ini nicht zerstoeren.
+    tmp = MISTER_INI + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            f.write(new_ini)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, MISTER_INI)
+    except OSError:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return None
+    return value
+
+
+def cycle_fb_size():
+    """Naechsten Wert aus FB_SIZE_STEPS waehlen (wrap-around).
+    Rueckgabe: der neue Wert, oder None bei Schreibfehler."""
+    current = fb_size_value()
+    try:
+        idx = FB_SIZE_STEPS.index(current)
+    except ValueError:
+        idx = -1
+    return set_fb_size(FB_SIZE_STEPS[(idx + 1) % len(FB_SIZE_STEPS)])
+
+
+def fb_size_label_key(value=None):
+    """Uebersetzungs-Schluessel fuer die Menuezeile zum aktuellen Wert."""
+    if value is None:
+        value = fb_size_value()
+    return {2: "sys_fb_size_half", 4: "sys_fb_size_quarter"}.get(
+        value, "sys_fb_size_full")
 
 
 def attract_enabled():
