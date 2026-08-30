@@ -278,6 +278,33 @@ REPEAT_INTERVAL = 0.14      # Start-Intervall, beschleunigt bis 0.05
 # Tastendruck aus dem Stand behaelt die volle 400ms-Sperre unveraendert.
 REPEAT_REVERSE_DELAY  = 0.14   # Anlaufzeit bei Richtungswechsel im Scrollen
 REPEAT_CONTINUE_WINDOW = 0.5   # so lange gilt ein Scrollvorgang als "laufend"
+
+# BUGFIX (Nutzer-Rueckmeldung: "wenn ich nach links oder rechts druecke um
+# mehrere zu ueberspringen, fuehlt sich das auch noch etwas stockend an im
+# HDMI-Modus"). Ursache gemessen: links/rechts springt eine ganze
+# Bildschirmseite weit, danach zeigen ALLE sichtbaren Zeilen Titel, die
+# noch nie gezeichnet wurden - die Trefferquote des Text-Caches bricht
+# dabei von ~86% auf ~20% ein, und einen leichten Zeichenpfad gibt es
+# fuer Seitenspruenge nicht (den gibt es nur fuer Einzelschritte
+# hoch/runter). Gemessen kostet ein Seitensprung dadurch das 4-fache
+# eines normalen Schritts; hochgerechnet auf die auf echter Hardware
+# gemessenen 45-110ms fuer einen vollen Aufbau sind das rund 110-260ms.
+#
+# Bei einem gemeinsamen Wiederhol-Boden von 0.08s werden aber 12.5
+# Seitenspruenge pro Sekunde ANGEFORDERT - liefern lassen sich real nur
+# etwa 4-9. Das Frontend hinkt dauerhaft hinterher, und weil die Dauer je
+# nach Anteil neuer Titel schwankt, kommen die Bildaktualisierungen
+# unregelmaessig an: genau das fuehlt sich als Stocken an.
+#
+# Deshalb ein EIGENER, langsamerer Boden fuer links/rechts. Es wird nur
+# noch so viel angefordert, wie sich gleichmaessig liefern laesst - ruhige,
+# regelmaessige Seitenwechsel statt unregelmaessig durchkommender. Der
+# erste Tastendruck reagiert unveraendert sofort; betroffen ist nur die
+# WIEDERHOLRATE bei gehaltener Taste. Nebeneffekt: man kann ueberhaupt
+# noch lesen, wo man gelandet ist.
+PAGE_ACTIONS      = {"left", "right"}
+REPEAT_FLOOR      = 0.08   # hoch/runter: eine Zeile pro Schritt
+REPEAT_FLOOR_PAGE = 0.25   # links/rechts: eine ganze Seite pro Schritt
 # Zuordnung Aktion -> Achse: nur ein Wechsel INNERHALB derselben Achse
 # gilt als Richtungswechsel (hoch<->runter, links<->rechts).
 REPEAT_AXIS = {"up": "y", "down": "y", "left": "x", "right": "x"}
@@ -396,11 +423,21 @@ class InputManager:
         for d in self.devices.values():
             d.grab(on)
 
+    @staticmethod
+    def _repeat_floor(act):
+        """Kleinstmoegliches Wiederhol-Intervall fuer eine Aktion - fuer
+        links/rechts bewusst groesser, siehe REPEAT_FLOOR_PAGE."""
+        return REPEAT_FLOOR_PAGE if act in PAGE_ACTIONS else REPEAT_FLOOR
+
     def _hold(self, key_id, act):
         if act not in REPEAT_ACTIONS:
             return
         now = time.monotonic()
-        delay, iv = REPEAT_DELAY, REPEAT_INTERVAL
+        floor = self._repeat_floor(act)
+        # Das Start-Intervall darf den Boden nicht unterschreiten - bei
+        # links/rechts liegt REPEAT_INTERVAL (0.14s) bereits darunter,
+        # dort wird also von Anfang an mit dem groesseren Boden gearbeitet.
+        delay, iv = REPEAT_DELAY, max(REPEAT_INTERVAL, floor)
         # Richtungswechsel mitten in einem laufenden Scrollvorgang -
         # siehe ausfuehrliche Begruendung bei REPEAT_REVERSE_DELAY oben.
         # Statt der vollen Anlaufsperre nur eine kurze Pause, und das
@@ -410,8 +447,11 @@ class InputManager:
                 and REPEAT_AXIS.get(act) is not None
                 and REPEAT_AXIS.get(act) == REPEAT_AXIS.get(self._last_repeat_act)
                 and now - self._last_repeat_time < REPEAT_CONTINUE_WINDOW):
-            delay = REPEAT_REVERSE_DELAY
-            iv = self._last_repeat_iv
+            # Auch die verkuerzte Anlaufzeit darf den Boden nicht
+            # unterschreiten - sonst wuerde ein Links/Rechts-Wechsel
+            # sofort wieder mehr anfordern als lieferbar ist.
+            delay = max(REPEAT_REVERSE_DELAY, floor)
+            iv = max(self._last_repeat_iv, floor)
         self.held = (key_id, act, now + delay, iv)
 
     def _release(self, key_id):
@@ -603,7 +643,11 @@ class InputManager:
                 # einer Richtungstaste). CRT ist so schnell, dass es den
                 # Unterschied nicht merkt - 12.5 Spruenge/Sekunde sind
                 # immer noch sehr flott fuer eine kleine Liste.
-                iv = max(0.08, iv * 0.85)
+                # Untergrenze jetzt aktionsabhaengig (siehe
+                # _repeat_floor()): hoch/runter behaelt die bisherigen
+                # 0.08s, links/rechts bekommt den groesseren Boden, da
+                # dort jeder Schritt eine ganze Seite neu aufbaut.
+                iv = max(self._repeat_floor(act), iv * 0.85)
                 self.held = (kid, act, time.monotonic() + iv, iv)
                 # Nur HIER (bei einer echten Wiederholung) vermerken,
                 # nicht bei jedem Tastendruck - siehe _hold()/

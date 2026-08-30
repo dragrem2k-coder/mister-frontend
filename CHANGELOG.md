@@ -274,6 +274,56 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- Seitensprung mit Links/Rechts läuft ruhig statt stockend
+  (Nutzer-Rückmeldung: "wenn ich nach links oder rechts drücke um
+  mehrere zu überspringen, fühlt sich das auch noch etwas stockend an im
+  HDMI-Modus"). Anders als vermutet steckte hier **keine** weitere
+  Anlaufsperre und keine Geister-Wiederholung — alle Rückgabepfade in
+  `_translate()` wurden dafür systematisch durchgegangen, jeder setzt,
+  beendet oder bricht eine Wiederholung korrekt ab. Die Ursache ist
+  strukturell und ließ sich messen:
+
+  | Aktion | Kosten | Text-Cache-Trefferquote |
+  |---|---|---|
+  | hoch/runter, ein Schritt (leichter Pfad) | 1,76 ms | ~86% |
+  | **links/rechts, eine Seite** | **7,14 ms** | **19,5%** |
+
+  Ein Seitensprung verschiebt die Auswahl um eine volle Bildschirmseite;
+  danach zeigen *alle* sichtbaren Zeilen Titel, die noch nie gezeichnet
+  wurden. Die Trefferquote bricht damit von ~86% auf ~20% ein, praktisch
+  jede Zeile landet im teuren Neu-Render-Pfad, und einen leichten
+  Zeichenpfad gibt es für Seitensprünge nicht (nur für Einzelschritte
+  hoch/runter). Zusammen Faktor 4 gegenüber einem normalen Schritt —
+  hochgerechnet auf die auf echter Hardware gemessenen 45–110 ms für
+  einen vollen Aufbau also grob 110–260 ms pro Seitensprung. Angefordert
+  wurden bei gehaltener Taste aber 12,5 pro Sekunde (Wiederhol-Boden
+  0,08 s), liefern lassen sich real 4–9. Das Frontend hinkt dauerhaft
+  hinterher, und weil die Dauer je nach Anteil neuer Titel schwankt,
+  kommen die Bildaktualisierungen unregelmäßig an — genau das fühlt sich
+  als Stocken an.
+
+  Zwei Änderungen, beide nach demselben Grundsatz "nicht mehr anfordern
+  als lieferbar ist":
+  1. **Eigener Wiederhol-Boden für links/rechts** von 0,25 s statt der
+     0,08 s von hoch/runter (`REPEAT_FLOOR_PAGE` in `fe/input.py`) — also
+     4 statt 12,5 Seitenwechsel pro Sekunde. Ruhige, *gleichmäßige*
+     Seitenwechsel statt unregelmäßig durchkommender, und man kann
+     überhaupt noch lesen, wo man gelandet ist. Der erste Tastendruck
+     reagiert unverändert sofort; betroffen ist ausschließlich die
+     Wiederholrate bei gehaltener Taste. Hoch/runter bleibt exakt wie
+     bisher bei 0,08 s.
+  2. **Turbo-Wachstum auf Faktor 2 begrenzt** (vorher bis Faktor 5). Bei
+     17 sichtbaren Zeilen sprang die Auswahl bisher auf bis zu 85
+     Einträge pro Tastendruck — weder lesbar noch steuerbar, und jeder
+     dieser Sprünge ein vollständiger Neuaufbau ohne einen einzigen
+     nutzbaren Cache-Treffer. Zusammen mit dem langsameren Takt reicht
+     Faktor 2 aus, um auch sehr lange Listen zügig zu durchqueren.
+
+  Verifiziert mit einer eigenen Testreihe (hoch/runter behält seinen
+  Takt; links/rechts erreicht den neuen Boden; erster Tastendruck
+  unverändert; Richtungswechsel links↔rechts respektiert den Boden,
+  hoch↔runter bleibt schnell) plus der vollständigen Regressionssuite
+  (18/18) und den bestehenden Eingabe-Tests aus dem vorigen Build.
 - Richtungswechsel beim Scrollen bleibt nicht mehr hängen
   (Nutzer-Rückmeldung: "wenn ich nach unten gedrückt halte und dann
   wieder nach oben drücke um zu scrollen, bleibt der kurz hängen, das

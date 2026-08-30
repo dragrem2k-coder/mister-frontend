@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-44",
-  "summary": "Richtungswechsel beim Scrollen haengt nicht mehr: die volle 400ms-Anlaufsperre griff bisher auch mitten im Scrollen (volle Geschwindigkeit erst nach 0.79s) - jetzt 140ms mit Beibehaltung des Tempos, volle Sperre nur noch beim einzelnen Tastendruck aus dem Stand. Ausserdem beendet Zurueck/OK eine laufende Tasten-Wiederholung sofort, statt sie im neuen Ordner weiterlaufen zu lassen."
+  "build_id": "2026-08-24-45",
+  "summary": "Seitensprung mit Links/Rechts laeuft ruhig statt stockend: ein Seitensprung kostet das 4-fache eines normalen Schritts (Text-Cache-Trefferquote bricht auf ~20% ein), es wurden aber 12.5 pro Sekunde angefordert bei real 4-9 lieferbaren. Jetzt eigener Wiederhol-Boden von 0.25s fuer links/rechts (hoch/runter unveraendert) und Turbo-Wachstum von Faktor 5 auf 2 begrenzt."
 }

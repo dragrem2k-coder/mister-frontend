@@ -12029,9 +12029,19 @@ class Frontend:
                 else:
                     page_streak = 0
                     page_last = None
-                page_mult = (5 if page_streak > 40 else
-                            3 if page_streak > 20 else
-                            2 if page_streak > 8 else 1)
+                # GEAENDERT (Nutzerwunsch: "Turbo-Wachstum begrenzen"):
+                # der Sprung wuchs bisher auf bis zu FUENF Bildschirm-
+                # seiten pro Tastendruck (bei 17 sichtbaren Zeilen also
+                # 85 Eintraege). Das ist weder lesbar noch steuerbar -
+                # man verliert komplett die Orientierung -, und jeder
+                # dieser Spruenge ist ein vollstaendiger Neuaufbau, bei
+                # dem KEINE einzige Zeile aus dem Text-Cache bedient
+                # werden kann (gemessene Trefferquote ~20% statt ~86%).
+                # Zusammen mit dem jetzt langsameren Wiederhol-Takt fuer
+                # links/rechts (siehe REPEAT_FLOOR_PAGE in fe/input.py)
+                # reicht Faktor 2 voellig aus, um auch sehr lange Listen
+                # zuegig zu durchqueren, ohne die Kontrolle zu verlieren.
+                page_mult = 2 if page_streak > 8 else 1
                 base_page = self.cats_visible if self.page == 0 \
                     else self.items_visible
                 page_step = max(1, base_page) * page_mult
