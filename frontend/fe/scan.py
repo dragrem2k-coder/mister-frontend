@@ -272,10 +272,41 @@ def _games_signature():
     einem einzigen etwas veraendert hat."""
     sig = []
     per_syskey = {}
+    netz = _netz_mountpunkte()
     for base in fe.paths.GAMES_BASES:
         if not os.path.isdir(base):
             continue
-        tag = "usb:" if "/media/usb" in base else "fat:"
+        # BUGFIX (Nutzer-Rueckmeldung ueber einen Bekannten: "seine Spiele
+        # liegen auf einem NAS, bei JEDEM Neustart werden sie neu
+        # eingelesen"): hier stand bisher nur
+        #     tag = "usb:" if "/media/usb" in base else "fat:"
+        # Ein NAS haengt ueblicherweise unter /media/fat/cifs/... - es
+        # bekam damit dieselbe Kennung wie die SD-Karte. Zwei Folgen,
+        # beide schlecht:
+        #
+        # 1. Beim Kaltstart ist die Freigabe oft noch nicht eingehaengt.
+        #    Die frisch gebildete Signatur enthaelt die NAS-Ordner dann
+        #    nicht, der Cache (vom letzten Lauf MIT NAS) schon - die
+        #    Signaturen weichen ab, es wird komplett neu eingelesen.
+        #    Genau dafuer gibt es in scan_games() bereits ein
+        #    Sicherheitsnetz ("Cache erwartet X, X fehlt -> warten"),
+        #    das aber ausschliesslich auf "usb:" geprueft hat und beim
+        #    NAS deshalb nie ansprang.
+        # 2. Ein Ordner "SNES" auf der SD-Karte und einer auf dem NAS
+        #    ergaben denselben Signatur-Schluessel "fat:SNES" - beim
+        #    inkrementellen Vergleich waren sie nicht auseinanderzuhalten.
+        #
+        # Eine eigene Kennung "nas:" loest beides. Sie ist genauso
+        # ortsunabhaengig wie "usb:"/"fat:" (nur Kennung + relativer
+        # Ordnername, siehe Erklaerung oben), aendert sich also nicht,
+        # wenn die Freigabe einmal woanders eingehaengt wird.
+        if any(base == mp or base.startswith(mp.rstrip("/") + "/")
+               for mp in netz):
+            tag = "nas:"
+        elif "/media/usb" in base:
+            tag = "usb:"
+        else:
+            tag = "fat:"
         for _d, sk, folders, _r, _e in GAME_SYSTEMS:
             for folder in folders:
                 root = os.path.join(base, folder)
@@ -320,6 +351,75 @@ def _games_signature():
     for sk in per_syskey:
         per_syskey[sk].sort(key=lambda t: (t[0], t[1] is None, t[1]))
     return sig, per_syskey
+
+def _netz_mountpunkte():
+    """Alle aktuell eingehaengten Netzwerk-Freigaben (CIFS/NFS) als Liste
+    von Einhaengepunkten. Ein Lesevorgang auf /proc/mounts - kostet
+    praktisch nichts und ist die einzige zuverlaessige Auskunft darueber,
+    ob ein Pfad ueber das Netz kommt oder von der Karte."""
+    punkte = []
+    try:
+        with open("/proc/mounts") as f:
+            for line in f:
+                teile = line.split()
+                if len(teile) >= 3 and teile[2] in (
+                        "cifs", "smb3", "smbfs", "nfs", "nfs4"):
+                    punkte.append(teile[1].replace("\\040", " "))
+    except OSError:
+        pass
+    return punkte
+
+
+def _sig_expects(sig, praefix):
+    """True, wenn eine Signatur mindestens einen Eintrag mit dieser
+    Ortskennung enthaelt."""
+    return any(entry[0].startswith(praefix) for entry in sig)
+
+
+def _wait_for_nas_mount(max_wait=60.0, poll=0.5):
+    """Auf eine Netzwerk-Freigabe warten.
+
+    Bewusst UNABHAENGIG von der Option "Beim Start auf NAS/Netzwerk
+    warten": diese Funktion wird nur aufgerufen, wenn der Cache selbst
+    beweist, dass zuletzt Spiele von einer Freigabe gelesen wurden.
+    Dann ist Warten keine Vermutung mehr, sondern die richtige Antwort -
+    genau dieselbe Ueberlegung wie beim USB-Zweig, der ebenfalls ohne
+    Option auskommt.
+
+    Wartet nicht nur auf die Einhaengung selbst, sondern danach noch auf
+    einen stabilen Ordnerinhalt: eine frisch eingehaengte Freigabe kann
+    einen Moment lang leer erscheinen.
+    """
+    t0 = time.monotonic()
+    while not _has_network_mount():
+        if time.monotonic() - t0 >= max_wait:
+            LOG("_wait_for_nas_mount: keine Freigabe nach %.0fs - "
+                "fahre trotzdem fort" % max_wait)
+            return False
+        time.sleep(poll)
+    fe.paths.GAMES_BASES = fe.paths._discover_games_bases()
+    letzte = None
+    while time.monotonic() - t0 < max_wait:
+        netz = _netz_mountpunkte()
+        jetzt = []
+        for base in fe.paths.GAMES_BASES:
+            if not any(base == mp or base.startswith(mp.rstrip("/") + "/")
+                       for mp in netz):
+                continue
+            try:
+                jetzt.append((base, len(os.listdir(base))))
+            except OSError:
+                jetzt.append((base, -1))
+        if jetzt and jetzt == letzte:
+            LOG("_wait_for_nas_mount: Freigabe da und stabil nach %.1fs"
+                % (time.monotonic() - t0))
+            return True
+        letzte = jetzt
+        time.sleep(poll)
+        fe.paths.GAMES_BASES = fe.paths._discover_games_bases()
+    LOG("_wait_for_nas_mount: Zeitlimit (%.0fs) erreicht" % max_wait)
+    return False
+
 
 def _sig_expects_usb(sig):
     """True, wenn eine Signatur mindestens einen USB-Ordner enthaelt -
@@ -650,6 +750,24 @@ def scan_games(force=False, progress_cb=None):
     # sehen wir aber noch keines, dann warten und erneut vergleichen.
     # SD-only-Systeme (Cache ohne USB) und warme Boots (Signatur passt
     # sofort) warten hier gar nicht.
+    # NEU (siehe ausfuehrliche Begruendung bei der Ortskennung "nas:" in
+    # _games_signature()): dasselbe Sicherheitsnetz fuer Netzwerk-
+    # Freigaben. Erwartet der Cache NAS-Ordner, sehen wir aber gerade
+    # keine, dann ist die Freigabe schlicht noch nicht eingehaengt -
+    # warten und erneut vergleichen, statt die ganze Sammlung sinnlos
+    # neu einzulesen. Ohne diesen Zweig passierte genau das bei JEDEM
+    # Kaltstart, solange das Netz langsamer hochkam als das Frontend.
+    if (not force and cached_sig is not None
+            and _sig_expects(cached_sig, "nas:")
+            and not _sig_expects(sig, "nas:")):
+        LOG("scan_games: Cache erwartet NAS, noch nicht gemountet - warte")
+        _wait_for_nas_mount()
+        sig, per_syskey = _games_signature()
+        if cached_sig == sig:
+            LOG("Spieleliste aus Cache nach NAS-Mount (%d Systeme)"
+                % len(data["cats"]))
+            return data["cats"]
+
     if (not force and cached_sig is not None
             and _sig_expects_usb(cached_sig) and not _sig_expects_usb(sig)):
         LOG("scan_games: Cache erwartet USB, noch nicht gemountet - warte")

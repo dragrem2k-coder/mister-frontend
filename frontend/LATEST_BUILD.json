@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-58",
-  "summary": "Auch beim Erzeugen der Cover wird jetzt gemittelt - Lauf mit 'neu' wiederholen."
+  "build_id": "2026-08-24-59",
+  "summary": "NAS-Spiele werden nicht mehr bei jedem Start neu eingelesen."
 }

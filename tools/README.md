@@ -22,6 +22,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_fb_size.py \
   && python3 tools/test_virtualboy.py \
   && python3 tools/test_cover_scaling.py \
+  && python3 tools/test_nas_cache.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -33,6 +34,7 @@ python3 tools/regression_test.py \
 | `test_fb_size.py` | Test (Pass/Fail) | Menuepunkt "Menue-Aufloesung": fb_size in der MiSTer.ini |
 | `test_virtualboy.py` | Test (Pass/Fail) | Kategorie "Virtual Boy": Core-/ROM-Pruefung, Logo, Akzentfarbe |
 | `test_cover_scaling.py` | Test (Pass/Fail) | Verkleinern der Boxart: Flaechenmittel statt Wegwerfen |
+| `test_nas_cache.py` | Test (Pass/Fail) | NAS-Spiele werden nicht bei jedem Start neu eingelesen |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -153,6 +155,26 @@ zwischengespeicherten Covern nie an).
 
 Gibt am Ende die gemessene Laufzeit aus - als Einordnung, nicht als
 Bestehenskriterium.
+
+## test_nas_cache.py
+
+Prueft, dass Spiele auf einer Netzwerk-Freigabe NICHT bei jedem Start neu
+eingelesen werden (Nutzer-Rueckmeldung ueber einen Bekannten).
+
+Die Signatur, an der das Frontend "hat sich etwas geaendert?" erkennt,
+kennzeichnet jeden Ablageort. Die Kennung lautete
+`"usb:" if "/media/usb" in base else "fat:"` - ein NAS unter
+`/media/fat/cifs/...` bekam damit dieselbe Kennung wie die SD-Karte.
+Beim Kaltstart ist die Freigabe oft noch nicht eingehaengt, die frische
+Signatur enthaelt die NAS-Ordner dann nicht, der gespeicherte Stand
+schon - Unterschied, alles neu einlesen. Das Sicherheitsnetz
+("Cache erwartet X, X fehlt -> warten") gab es nur fuer USB.
+
+Geprueft wird das, was sich ohne echtes NAS objektiv nachstellen laesst:
+eigene Kennung `nas:`, keine Kollision gleichnamiger Ordner auf Karte,
+NAS und USB, Ortsunabhaengigkeit der Kennung (ein Umhaengen darf keinen
+Neuscan ausloesen), das unveraenderte USB-Verhalten und die
+Aufschluesselung nach System.
 
 ## diag_lightpath.py
 

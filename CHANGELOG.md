@@ -240,6 +240,54 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
   (vorher spürbar kleiner als möglich, ohne dass es einen Grund dafür
   gab).
 
+**Spiele auf einem NAS wurden bei JEDEM Start neu eingelesen**
+(Build 59 — Nutzer-Rückmeldung über einen Bekannten: "seine Spiele liegen
+auf einem NAS-Server, bei jedem Neustart werden die Spiele wieder neu
+eingelesen, das ist Mist"):
+
+Die Ursache ließ sich im Code festmachen. Die Signatur, an der das
+Frontend erkennt "hat sich an der Sammlung etwas geändert?", kennzeichnet
+jeden Ablageort mit einer kurzen Kennung. Die lautete:
+
+```python
+tag = "usb:" if "/media/usb" in base else "fat:"
+```
+
+Ein NAS hängt üblicherweise unter `/media/fat/cifs/...` — es bekam damit
+**dieselbe Kennung wie die SD-Karte**. Das hatte zwei Folgen:
+
+1. Beim Kaltstart ist die Freigabe oft noch nicht eingehängt. Die frisch
+   gebildete Signatur enthält die NAS-Ordner dann nicht, der gespeicherte
+   Stand (vom letzten Lauf **mit** NAS) schon → Unterschied → komplett neu
+   einlesen. Für USB gibt es dafür längst ein Sicherheitsnetz ("Cache
+   erwartet USB, USB fehlt → warten statt neu einlesen") — das prüfte aber
+   ausschließlich auf `usb:` und sprang beim NAS mangels eigener Kennung
+   **nie** an.
+2. Ein Ordner `SNES` auf der Karte und einer auf dem NAS ergaben denselben
+   Signatur-Schlüssel `fat:SNES`. Beim inkrementellen Vergleich waren sie
+   nicht auseinanderzuhalten.
+
+**Behoben:** Netzwerk-Freigaben bekommen eine eigene Kennung `nas:`
+(ermittelt aus `/proc/mounts`, also unabhängig davon, wo die Freigabe
+gerade eingehängt ist — ein Umhängen löst weiterhin keinen Neuscan aus).
+Und das Sicherheitsnetz gilt jetzt auch für sie: erwartet der
+gespeicherte Stand NAS-Ordner, sind aber gerade keine da, wird auf die
+Einhängung gewartet (und danach noch auf einen stabilen Ordnerinhalt,
+weil eine frisch eingehängte Freigabe kurz leer erscheinen kann) statt
+die ganze Sammlung sinnlos neu einzulesen.
+
+Das Warten läuft hier bewusst **unabhängig** von der Option "Beim Start
+auf NAS/Netzwerk warten": es wird nur ausgelöst, wenn der gespeicherte
+Stand selbst beweist, dass zuletzt von einer Freigabe gelesen wurde. Dann
+ist Warten keine Vermutung mehr — dieselbe Überlegung wie beim
+USB-Zweig, der ebenfalls ohne Option auskommt.
+
+**Einmalig nach dem Update:** der gespeicherte Stand trägt noch die alten
+`fat:`-Schlüssel, der erste Start liest deshalb noch einmal komplett ein.
+Ab dem zweiten Start ist Ruhe.
+
+Neuer Test `tools/test_nas_cache.py`.
+
 **Die Cover werden schon beim ERZEUGEN grob verkleinert** (Build 58 —
 Nutzer-Rückfrage: "kann das sein, dass du das bei den Boxarts bei den
 Spielen/ROMs selbst vergessen hast?"):
