@@ -14,6 +14,8 @@ mit anderen Konzepten verflochten (Wonne oder Tonne, Theme-System,
 RetroAchievements liegen dazwischen) und wird in einem spaeteren,
 eigenen Schritt behandelt.
 """
+import glob
+import os
 
 # Spielesysteme: (Anzeigename, Systemkey, ROM-Ordner, Core-RBF,
 #                  {Endung: (mgl_delay, mgl_type, mgl_index)})
@@ -73,12 +75,58 @@ GAME_SYSTEMS = [
 # ROM-Unterordner-Liste relativ zu GAMES_BASES, rbf-Pfad OHNE Endung fuer
 # die .mgl-Datei, Dateiendungen-Map), plus fuenftes Feld core_check_path
 # (absoluter Pfad zur tatsaechlichen .rbf-Datei fuer die Praesenzpruefung).
+#
+# ERWEITERUNG (Nutzerwunsch Virtual Boy): core_check_path darf jetzt auch
+# ein MUSTER mit Platzhalter sein (siehe optional_core_file() unten). Fuer
+# von Hand installierte Einzel-Cores wie den SNES_Tracker bleibt der feste
+# Pfad richtig; offizielle Cores dagegen liegen mit Datumsstempel im
+# Dateinamen auf der Karte ("VirtualBoy_20240115.rbf"), der sich bei jedem
+# Update aendert - ein fester Pfad wuerde dort nach dem naechsten
+# Core-Update nicht mehr passen und die Kategorie waere ploetzlich weg.
 OPTIONAL_GAME_SYSTEMS = [
     ("SNES ALTTP Tracker", "SNES_ALTTP_TRACKER", ["SNES/ZELDA_MSU"],
         "_Console/SNES_Tracker",
         {".sfc": (2, "f", 0), ".smc": (2, "f", 0)},
         "/media/fat/_Console/SNES_Tracker.rbf"),
+    # NEUES SYSTEM (Nutzerwunsch: "wenn der Core verfuegbar ist und ROMs
+    # dazu vorhanden sind, wie die anderen Kategorien auf der Hauptseite
+    # hinzufuegen"). Bewusst als OPTIONALES System: der Virtual-Boy-Core
+    # gehoert nicht zur Standardausstattung eines MiSTers, er muss ueber
+    # den Downloader nachinstalliert werden. Ohne Core (oder ohne ROMs im
+    # Ordner games/VirtualBoy) taucht die Kategorie gar nicht erst auf.
+    #
+    # MGL-Parameter (delay 1, Typ "f", Index 1) und Endung ".vb" stammen
+    # aus derselben gepflegten Systemdatenbank, aus der auch die uebrigen
+    # Systeme hier kommen (Zaparoo, Nachfolger von mrext) - dort gegen die
+    # bekannten Werte der bereits laufenden Systeme abgeglichen: SNES
+    # (2/f/0), NES (2/f/1), Game Boy (2/f/1) und Mega Drive (1/f/1)
+    # stimmen dort exakt mit unseren seit Langem funktionierenden Werten
+    # ueberein, die Quelle ist fuer Virtual Boy also belastbar. Passt zur
+    # Core-Beschreibung selbst ("FS1,VB ,Load ROM;" in VirtualBoy.sv).
+    ("Virtual Boy",       "VIRTUALBOY",        ["VirtualBoy"],
+        "_Console/VirtualBoy",
+        {".vb": (1, "f", 1)},
+        "/media/fat/_Console/VirtualBoy*.rbf"),
 ]
+
+
+def optional_core_file(pattern):
+    """Tatsaechlich vorhandene Core-Datei zu einem core_check_path.
+
+    Der Eintrag darf ein fester Pfad ODER ein Muster mit Platzhalter
+    sein. Grund fuer den Platzhalter: offizielle MiSTer-Cores tragen den
+    Build-Stempel im Dateinamen ("VirtualBoy_20240115.rbf") und heissen
+    nach jedem Core-Update anders. Ein fester Pfad wuerde nur zufaellig
+    genau einmal passen.
+
+    Rueckgabe: der Pfad der gefundenen Datei (bei mehreren Treffern der
+    alphabetisch letzte - das ist bei Datumsstempeln automatisch der
+    neueste), sonst None.
+    """
+    if "*" not in pattern and "?" not in pattern and "[" not in pattern:
+        return pattern if os.path.isfile(pattern) else None
+    treffer = sorted(p for p in glob.glob(pattern) if os.path.isfile(p))
+    return treffer[-1] if treffer else None
 
 def system_display_name(syskey):
     """Anzeigename zu einem Systemschluessel (z.B. "Genesis" ->

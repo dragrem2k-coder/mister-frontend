@@ -18,7 +18,8 @@ jeder Neuermittlung synchron.
 """
 import os, glob, re, time, pickle, socket
 from fe.log import LOG
-from fe.systems import GAME_SYSTEMS, OPTIONAL_GAME_SYSTEMS
+from fe.systems import (GAME_SYSTEMS, OPTIONAL_GAME_SYSTEMS,
+                        optional_core_file)
 from fe.naming import IGNORE_ROM_BASENAMES, JUNK_TAGS, REGION_PRIORITY, nice_name, _is_junk, _is_japan_only
 from fe.game_state import _folder_items
 import fe.paths
@@ -301,10 +302,16 @@ def _games_signature():
     # erkannt, solange sich am ROM-Ordner nichts aendert, und die neue
     # Kategorie bliebe bis zum naechsten manuellen Rescan unsichtbar.
     for _d, sk, _f, _r, _e, core_check_path in OPTIONAL_GAME_SYSTEMS:
+        # Als Schluessel bewusst das MUSTER verwenden, nicht den gefundenen
+        # Dateinamen: sonst wuerde schon ein reines Core-Update (neuer
+        # Datumsstempel im Namen) die Signatur aendern und einen kompletten
+        # Neuaufbau ausloesen, obwohl sich an der Spieleliste nichts getan
+        # hat. Der Zeitstempel unten faengt eine echte Aenderung ohnehin ab.
+        _core_file = optional_core_file(core_check_path)
         try:
             entry = ("core:" + core_check_path,
-                     int(os.path.getmtime(core_check_path)))
-        except OSError:
+                     int(os.path.getmtime(_core_file)))
+        except (OSError, TypeError):
             entry = ("core:" + core_check_path, None)
         sig.append(entry)
         per_syskey.setdefault(sk, []).append(entry)
@@ -923,7 +930,7 @@ def _scan_games_disk(progress_cb=None, only_syskeys=None):
                 progress_cb(len(GAME_SYSTEMS) + opt_idx, total_sys, disp)
             except Exception:
                 pass
-        if not os.path.isfile(core_check_path):
+        if optional_core_file(core_check_path) is None:
             continue
         sys_node = _empty_node()
         seen_roots = set()

@@ -20,6 +20,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_input_repeat.py \
   && python3 tools/test_overlay_redraw.py \
   && python3 tools/test_fb_size.py \
+  && python3 tools/test_virtualboy.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -29,6 +30,7 @@ python3 tools/regression_test.py \
 | `test_input_repeat.py` | Test (Pass/Fail) | Tastenwiederholung: Anlaufsperre, Richtungswechsel, Geister-Wiederholung |
 | `test_overlay_redraw.py` | Test (Pass/Fail) | Hinweisbox verschwindet bitgenau restlos |
 | `test_fb_size.py` | Test (Pass/Fail) | Menuepunkt "Menue-Aufloesung": fb_size in der MiSTer.ini |
+| `test_virtualboy.py` | Test (Pass/Fail) | Kategorie "Virtual Boy": Core-/ROM-Pruefung, Logo, Akzentfarbe |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -111,6 +113,25 @@ einer Sektion (darf nicht angefasst werden), ini ohne Sektionen,
 unbekannter Wert, fehlende Datei, sowie die Menuezeile selbst
 (sichtbar im HDMI-Modus, ausgeblendet im CRT-Modus) und die
 Vollstaendigkeit der Uebersetzungen.
+
+## test_virtualboy.py
+
+Prueft die Kategorie "Virtual Boy" (Nutzerwunsch: "wenn der Core
+verfuegbar ist und ROMs dazu vorhanden sind, wie die anderen Kategorien
+auf der Hauptseite hinzufuegen").
+
+Geprueft werden die drei Sichtbarkeits-Bedingungen (Core da + ROMs da ->
+erscheint; Core weg -> erscheint nicht; ROM-Ordner leer -> erscheint
+nicht), die Stammdaten (Ordner `games/VirtualBoy`, Endung `.vb`,
+MGL-Parameter delay 1 / Typ f / Index 1), der Umgang mit dem
+Datumsstempel im Core-Dateinamen (`VirtualBoy_20240115.rbf` - bei
+mehreren Staenden muss der neueste gewinnen), Anzeigename und
+Akzentfarbe sowie die mitgelieferte Logo-Datei `sysart/VIRTUALBOY.art`
+(ART1-Kopf, Breite 900 wie die uebrigen Logos, Hintergrundfarbe
+28,32,44, kein Rest des Karomusters aus der Bildvorlage).
+
+Gearbeitet wird in einem temporaeren Ordner mit umgebogenen Pfaden, nie
+auf echten Spieldaten.
 
 ## diag_lightpath.py
 

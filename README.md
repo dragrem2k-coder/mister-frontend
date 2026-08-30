@@ -462,9 +462,9 @@ eine Artbox mit dem Logo/Cover des gerade markierten Systems - wechselt
 live beim Hoch/Runter-Blättern durch die Kategorien.
 
 **Bereits im Build enthalten** (liegt in `frontend/sysart/`, muss
-nicht mehr selbst erzeugt werden): alle 13 aktuell unterstützten
+nicht mehr selbst erzeugt werden): alle 14 aktuell unterstützten
 Systeme (NES, SNES, Genesis, N64, PSX, GAMEBOY, GBC, GBA, SMS, TGFX16,
-MegaCD, Saturn, NEOGEO) haben ein echtes Logo hinterlegt. Im
+MegaCD, Saturn, NEOGEO, VIRTUALBOY) haben ein echtes Logo hinterlegt. Im
 Unterordner `frontend/sysart/_weitere_systeme_noch_nicht_unterstuetzt/`
 liegen außerdem fertige Logos für neun weitere Systeme (Atari
 5200/7800/Jaguar, ColecoVision, Philips CD-i, Pico-8, Sega 32X, Super

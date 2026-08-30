@@ -240,6 +240,56 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
   (vorher spürbar kleiner als möglich, ohne dass es einen Grund dafür
   gab).
 
+**Neues System: Virtual Boy** (Build 55, Nutzerwunsch: "wenn der Core
+verfügbar ist und ROMs dazu vorhanden sind, wie die anderen Kategorien
+auf der Hauptseite hinzufügen"):
+
+- Neue Kategorie **Virtual Boy** im Hauptmenü — als OPTIONALES System
+  eingetragen, also nach demselben Muster wie der SNES-ALTTP-Tracker:
+  sie erscheint nur, wenn **beides** stimmt, Core installiert UND ROMs
+  im Ordner `games/VirtualBoy` vorhanden. Fehlt eines von beiden, taucht
+  sie gar nicht erst auf — kein leerer oder ausgegrauter Platzhalter.
+  Der Virtual-Boy-Core gehört nicht zur Standardausstattung eines
+  MiSTers, er muss über den Downloader nachinstalliert werden.
+- **Core-Erkennung mit Platzhalter.** Die bisherige Prüfung verglich
+  einen festen Dateipfad — richtig für einen von Hand installierten
+  Einzel-Core wie `SNES_Tracker.rbf`, aber falsch für offizielle Cores:
+  die tragen den Build-Stempel im Namen (`VirtualBoy_20240115.rbf`) und
+  heißen nach jedem Core-Update anders. Ein fester Pfad hätte genau
+  einmal gepasst und die Kategorie beim nächsten Update stillschweigend
+  verschwinden lassen. `core_check_path` darf jetzt ein Muster sein; bei
+  mehreren vorhandenen Ständen gewinnt der neueste. Feste Pfade
+  funktionieren unverändert weiter.
+- **Systemlogo** `sysart/VIRTUALBOY.art` liegt bei (900 px breit wie die
+  übrigen Logos). Die Bildvorlage hatte das Transparenz-Karomuster als
+  echte Pixel eingebrannt (20×20-Raster in Weiß/Hellgrau, wie es beim
+  Speichern einer Vorschau entsteht). Das Muster wurde rechnerisch
+  wieder entfernt: das Raster ist exakt bekannt, dadurch ließen sich
+  auch die halbtransparenten Kantenpixel korrekt zurückrechnen statt
+  nur hart abzuschneiden. Die weiße Innenfläche des Nintendo-Logos
+  wurde dabei bewusst erhalten — sie ist Teil des Logos und sieht dem
+  Karomuster zum Verwechseln ähnlich.
+- Eigene **Akzentfarbe** (235, 45, 45): das Gerät konnte nur Rot
+  darstellen, das Logo ist rot, die Spiele sind rot. Kräftiger und
+  weniger ins Rosa gehend als NES und Master System, damit die drei
+  roten Systeme unterscheidbar bleiben.
+- Die MGL-Parameter (`.vb`, delay 1, Typ `f`, Index 1) stammen aus
+  derselben gepflegten Systemdatenbank wie die übrigen Systeme. Gegen
+  die bekannten Werte der bereits laufenden Systeme abgeglichen: SNES,
+  NES, Game Boy und Mega Drive stimmen dort exakt mit unseren seit
+  Langem funktionierenden Werten überein, die Quelle ist für Virtual
+  Boy also belastbar. Passt außerdem zur Core-Beschreibung selbst
+  (`"FS1,VB ,Load ROM;"`).
+- Neuer Test `tools/test_virtualboy.py` (26 Prüfungen): die drei
+  Sichtbarkeits-Bedingungen, der Umgang mit dem Datumsstempel, sowie
+  Logo-Datei, Anzeigename und Akzentfarbe.
+
+**Einschränkung, ehrlich benannt:** der eigentliche Spielstart ließ sich
+hier nicht prüfen — dafür braucht es den Core auf echter Hardware. Sollte
+ein Spiel nicht starten und stattdessen das Core-Menü offen bleiben, ist
+fast immer der MGL-Index schuld; das wäre eine Ein-Zeichen-Änderung in
+`fe/systems.py`.
+
 **HDMI-Performance, Runde 4** (Build 54 — auf die Frage "hast du noch
 einen Ansatz, um den HDMI-Modus performancetechnisch flüssiger zu
 kriegen?"):

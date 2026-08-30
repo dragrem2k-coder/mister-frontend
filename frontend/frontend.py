@@ -286,6 +286,12 @@ SYSTEM_ACCENT = {
     "ARCADE":  (255, 185, 50),
     "SNES_ALTTP_TRACKER": (210, 175, 70),   # Gold, angelehnt an das Triforce-Logo
     "SMW_HACKS": (225, 100, 40),            # Mario-Rot/Orange, abgesetzt von SNES-Lila
+    # Virtual Boy: das Geraet konnte nur Rot darstellen, das Logo ist rot,
+    # die Spiele sind rot - eine andere Farbe waere hier schlicht falsch.
+    # Bewusst ein klarer, satter Rotton, der sich von NES (210,70,70) und
+    # Master System (230,90,90) abhebt: kraeftiger und weniger ins
+    # Rosa gehend, passend zum LED-Rot der echten Konsole.
+    "VIRTUALBOY": (235, 45, 45),
 }
 
 from fe.seasonal import seasonal_decoration
