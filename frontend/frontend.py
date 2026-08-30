@@ -4389,6 +4389,12 @@ class Frontend:
         # mit dem bestehenden Fusszeilen-Mechanismus.
         self._prominent_message = None
         self._prominent_message_until = 0.0
+        # Einmal-Schalter: erzwingt beim naechsten Zeichnen den vollen,
+        # sicheren Aufbau statt eines leichten Teil-Redraws. Wird gesetzt,
+        # wenn eine BILDSCHIRMFUELLENDE Ueberlagerung verschwindet, deren
+        # Reste ein Teil-Redraw stehen lassen wuerde - siehe
+        # _overlay_active() und die Fundstelle in next_action().
+        self._force_full_redraw = False
         # NEU (Phase 2, Nutzerwunsch "Vorab-Laden nach Scrollrichtung"):
         # merkt sich, ob zuletzt nach unten (1) oder oben (-1) navigiert
         # wurde - _prefetch_neighbor_covers() bevorzugt beim Vorab-Laden
@@ -5482,6 +5488,31 @@ class Frontend:
         elif self._prominent_message and time.monotonic() < self._prominent_message_until:
             self._draw_prominent_message()
 
+    def _overlay_active(self):
+        """True, solange eine Ueberlagerung ueber der normalen Seite
+        liegt, die ein leichter Teil-Redraw NICHT wieder korrekt
+        herstellen kann - aktuell die auffaellige Hinweisbox
+        (_draw_prominent_message()).
+
+        BUGFIX (Nutzer-Rueckmeldung: "wenn ich von HDMI auf CRT umschalte
+        und der MiSTer im CRT-Modus neu startet, kommt die Info 'CRT
+        aktiv' - sobald ich dann den Cursor bewege, verschwindet die
+        Infobox nicht ganz und ist teilweise noch zu sehen"). Die Box
+        liegt bei box_y = oy + 55*s ueber die volle Breite - auf Seite 1
+        also mitten UEBER den ersten Listenzeilen (list_y = oy + 46*s).
+        Die leichten Zeichenpfade (Einzelschritt-Navigation, Puls-Tick)
+        frischen aber nur einzelne Zeilenbaender und das Cover-Panel auf:
+        Sie uebermalen genau die Streifen, die sie anfassen, und lassen
+        alles dazwischen stehen - die Box wird also stueckweise
+        angeknabbert statt sauber entfernt. Dieselbe Fehlerklasse wie
+        beim Beenden-Dialog, nur fuer die Hinweisbox.
+
+        Ist eine solche Ueberlagerung aktiv, faellt alles auf den vollen
+        draw() zurueck - der zeichnet die Seite komplett neu UND die Box
+        wieder korrekt obendrauf."""
+        return bool(self._prominent_message
+                    and time.monotonic() < self._prominent_message_until)
+
     def _draw_prominent_message(self):
         """Auffaellige, mittig platzierte Infobox fuer wichtige,
         eigenstaendige Ankuendigungen (aktuell: "neues Update
@@ -5493,11 +5524,16 @@ class Frontend:
         damit der Aufruf unabhaengig von der aktuellen Seite immer
         gleich aussieht.
 
-        Wird NICHT von next_action()'s leichten Tick-Pfaden beruehrt
-        oder ueberschrieben (die pruefen nur self._popup_message_until,
-        ein komplett separater Zustand) - bleibt also stabil stehen,
-        bis draw() sie nach Ablauf von self._prominent_message_until
-        selbst wegzeichnet (siehe next_action()-Tick-Aufruf dafuer).
+        KORREKTUR eines frueheren Kommentars an dieser Stelle: hier stand
+        bisher, die Box werde "NICHT von next_action()'s leichten
+        Tick-Pfaden beruehrt oder ueberschrieben". Das stimmte nicht -
+        die leichten Pfade frischen Zeilenbaender auf, die mitten durch
+        die Box laufen, und knabberten sie dadurch stueckweise an (siehe
+        die ausfuehrliche Herleitung bei _overlay_active()). Solange die
+        Box sichtbar ist, laufen alle betroffenen Pfade jetzt ueber den
+        vollen draw(), der die Box korrekt wieder obendrauf zeichnet;
+        nach Ablauf von self._prominent_message_until raeumt derselbe
+        volle draw() sie sauber weg.
 
         BUGFIX (Nutzer-Rueckmeldung: "die Update-Infobox ist im CRT-
         Modus zu gross und da steht nichts drin"): text_w wurde bisher
@@ -5545,6 +5581,26 @@ class Frontend:
             fb.text(box_x + (box_w - tw) // 2, ty, ln, s, C_TEXT, C_PANEL)
             ty += line_h
         fb.flip_rows(box_y, box_h)
+        # BUGFIX (zweiter Teil, per Pixelvergleich gefunden - der erste
+        # Teil allein reichte NICHT): die Box wird ueber die VOLLE Breite
+        # gezeichnet, also auch ausserhalb der Listenspalte (ueber das
+        # Cover-Panel und die Raender). draw_page_items() nimmt beim
+        # reinen Weiterscrollen innerhalb derselben Liste aber seinen
+        # eigenen schnellen Pfad und baut den Hintergrund NICHT neu auf -
+        # es stellt nur die Listenspalte wieder her (siehe
+        # _restore_row_bg() dort). Alles, was die Box ausserhalb dieser
+        # Spalte ueberdeckt hat, blieb dadurch stehen, selbst wenn man
+        # den vollen draw() erzwang.
+        #
+        # Genau dafuer gibt es fb.full_redraw_gen: der Zaehler meldet
+        # "irgendetwas anderes hat in den Puffer geschrieben" und
+        # entwertet damit den schnellen Hintergrund-Pfad. Die Hinweisbox
+        # ist so ein "etwas anderes" - deshalb hier hochzaehlen. Wirkt
+        # automatisch fuer BEIDE Wege, auf denen die Box wieder
+        # verschwindet (Zeitablauf im Leerlauf-Zweig und Abraeumen bei
+        # der ersten Eingabe): der jeweils naechste Seitenaufbau baut den
+        # Hintergrund garantiert komplett neu auf.
+        fb.mark_full_redraw()
 
     def draw_attract(self):
         """Attract-Modus (Bildschirmschoner): zeigt grossflaechig ein
@@ -6286,6 +6342,11 @@ class Frontend:
         wie bei _draw_navigate_items())."""
         if self.page != 0:
             return False
+        # Siehe _overlay_active() - gleiche Begruendung wie bei
+        # _draw_navigate_items_impl().
+        if self._force_full_redraw or self._overlay_active():
+            self._force_full_redraw = False
+            return False
         new_cat_i = self.cat_i
         L = self.layout_cats()
         visible = L["visible"]
@@ -6380,6 +6441,12 @@ class Frontend:
         draw()-Pfad nutzen - z.B. bei Scrollen, Ordnerwechsel o.ae.)."""
         v = getattr(self, "view", None)
         if not v or not v["items"] or self.page != 1:
+            return False
+        # Siehe _overlay_active(): liegt eine Hinweisbox ueber der Seite
+        # (oder ist gerade eine verschwunden), kann ein Teil-Redraw das
+        # Bild nicht korrekt herstellen - dann der volle, sichere Aufbau.
+        if self._force_full_redraw or self._overlay_active():
+            self._force_full_redraw = False
             return False
         new_item_i = self.item_i
         visible = self.items_visible
@@ -7624,6 +7691,18 @@ class Frontend:
                                                       # unnoetig weiter
                                                       # anzeigen - CRT ist
                                                       # ja jetzt bestaetigt
+                    # BUGFIX (Nutzer-Rueckmeldung: "die Infobox
+                    # verschwindet nicht ganz und ist teilweise noch zu
+                    # sehen"): die Box wurde hier zwar abgeschaltet, aber
+                    # NICHTS hat den Bildschirm daraufhin neu gezeichnet -
+                    # sie stand also weiter im Bildpuffer. Die gleich
+                    # folgende Navigation lief dann ueber den leichten
+                    # Pfad, der nur einzelne Zeilenbaender auffrischt und
+                    # damit genau die Streifen wegnahm, die er ohnehin
+                    # anfasst - der Rest der Box blieb sichtbar stehen.
+                    # Jetzt wird der naechste Aufbau einmalig als voller
+                    # Neuaufbau erzwungen (siehe _overlay_active()).
+                    self._force_full_redraw = True
                 if self.attract_mode:
                     # Erste Eingabe beendet NUR den Attract-Modus -
                     # wird nicht zusaetzlich als normale Navigation
@@ -7889,7 +7968,12 @@ class Frontend:
                 # Liste waehrend eines Dialogs ohnehin nicht sichtbar
                 # sein soll - nach dem Schliessen laeuft beides einfach
                 # normal weiter.
-                any_dialog = self.confirm_quit or self.confirm_update
+                # "overlay_active" umfasst zusaetzlich zur Dialog-Pruefung
+                # die auffaellige Hinweisbox - auch sie liegt UEBER der
+                # Seite und wuerde von den leichten Teil-Redraws
+                # stueckweise angeknabbert (siehe _overlay_active()).
+                any_dialog = (self.confirm_quit or self.confirm_update
+                              or self._overlay_active())
                 # NEUES FEATURE (Ergebnis der gezielten Suche nach
                 # weiteren ungeschuetzten Hintergrund-Redraws): die
                 # Animations-Ticks waren bisher zwar sauber gegen einen
@@ -7987,11 +8071,16 @@ class Frontend:
                     self._prominent_message = None
                     self.draw()
                 if redraw_marquee or redraw_dynamic:
-                    if self.confirm_quit or self.confirm_update:
-                        # Beenden-Dialog ODER (NEU) Update-Installieren-
-                        # Dialog liegt ueber allem - der leichte Pfad
-                        # wuerde darunter durchscheinen, deshalb hier
-                        # immer der volle, sichere Aufbau.
+                    if any_dialog:
+                        # Eine Ueberlagerung liegt ueber allem - Beenden-
+                        # Dialog, Update-Installieren-Dialog oder (NEU)
+                        # die auffaellige Hinweisbox. Der leichte Pfad
+                        # wuerde darunter durchscheinen bzw. die
+                        # Ueberlagerung stueckweise anknabbern (siehe
+                        # _overlay_active()), deshalb hier immer der
+                        # volle, sichere Aufbau - der zeichnet die
+                        # Ueberlagerung anschliessend korrekt wieder
+                        # obendrauf.
                         self.draw()
                     else:
                         # Deutlich billiger als der komplette Aufbau

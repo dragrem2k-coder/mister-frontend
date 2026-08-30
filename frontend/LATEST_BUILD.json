@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-45",
-  "summary": "Seitensprung mit Links/Rechts laeuft ruhig statt stockend: ein Seitensprung kostet das 4-fache eines normalen Schritts (Text-Cache-Trefferquote bricht auf ~20% ein), es wurden aber 12.5 pro Sekunde angefordert bei real 4-9 lieferbaren. Jetzt eigener Wiederhol-Boden von 0.25s fuer links/rechts (hoch/runter unveraendert) und Turbo-Wachstum von Faktor 5 auf 2 begrenzt."
+  "build_id": "2026-08-24-46",
+  "summary": "Die Hinweisbox ('CRT-Modus aktiv', Update-Hinweis) verschwindet jetzt vollstaendig: sie wurde beim Abraeumen nie neu gezeichnet und von den leichten Zeichenpfaden nur stueckweise ueberschrieben - und selbst ein voller draw() liess die Bereiche ausserhalb der Listenspalte stehen. Behoben ueber fb.full_redraw_gen plus Rueckfall auf den vollen Aufbau, solange eine Ueberlagerung sichtbar ist."
 }

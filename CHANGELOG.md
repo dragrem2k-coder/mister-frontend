@@ -274,6 +274,46 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- Die Hinweisbox ("CRT-Modus aktiv", Update-Hinweis) verschwindet jetzt
+  vollständig (Nutzer-Rückmeldung: "wenn ich von HDMI auf CRT umschalte
+  und der MiSTer im CRT-Modus neu startet, kommt die Info 'CRT aktiv' —
+  sobald ich dann den Cursor bewege, verschwindet die Infobox nicht ganz
+  und ist teilweise noch zu sehen"). Zwei Ursachen, die zusammenwirkten:
+  1. Bei der ersten Eingabe wurde die Box zwar abgeschaltet
+     (`_prominent_message = None`), aber **nichts zeichnete den
+     Bildschirm daraufhin neu** — sie stand also weiter im Bildpuffer.
+     Die unmittelbar folgende Navigation lief dann über den leichten
+     Zeichenpfad, der nur einzelne Zeilenbänder auffrischt: Er nahm
+     genau die Streifen weg, die er ohnehin anfasst, und ließ den Rest
+     der Box stehen. Die Box liegt bei `oy + 55*s` über die volle
+     Breite, auf Seite 1 also mitten über den ersten Listenzeilen — sie
+     wurde dadurch stückweise angeknabbert statt entfernt. Dieselbe
+     Fehlerklasse wie seinerzeit beim Beenden-Dialog, nur für die
+     Hinweisbox. Der frühere Kommentar an `_draw_prominent_message()`,
+     die Box werde "NICHT von den leichten Tick-Pfaden berührt", war
+     schlicht falsch und ist entsprechend korrigiert.
+  2. Selbst ein erzwungener voller `draw()` reichte **nicht** — das kam
+     erst durch einen Pixelvergleich heraus. `draw_page_items()` nimmt
+     beim Scrollen innerhalb derselben Liste seinen eigenen schnellen
+     Pfad und baut den Hintergrund gar nicht neu auf, sondern stellt nur
+     die Listenspalte wieder her. Alles, was die Box **außerhalb** dieser
+     Spalte überdeckt hatte (Cover-Panel, Ränder), blieb deshalb stehen.
+
+  Behoben über den dafür vorgesehenen Mechanismus: `_draw_prominent_
+  message()` zählt jetzt `fb.full_redraw_gen` hoch — der Zähler bedeutet
+  genau "irgendetwas anderes hat in den Puffer geschrieben" und entwertet
+  den schnellen Hintergrund-Pfad. Das wirkt automatisch für **beide**
+  Wege, auf denen die Box verschwindet (Zeitablauf und Abräumen bei der
+  ersten Eingabe). Zusätzlich weigern sich die leichten Navigationspfade,
+  solange eine Überlagerung sichtbar ist (neue Hilfsfunktion
+  `_overlay_active()`), und die Animations-Ticks behandeln die Box jetzt
+  wie einen Dialog — sie zeichnen dann voll und setzen die Box korrekt
+  wieder obendrauf, statt sie anzuknabbern.
+
+  Verifiziert mit einem gezielten Pixelvergleich auf beiden Auflösungen:
+  Nach dem Verschwinden der Box ist der Bildpuffer **bitgenau identisch**
+  mit einer Seite, die nie eine Box gesehen hat — geprüft für beide
+  Verschwinde-Wege. Dazu die vollständige Regressionssuite (18/18).
 - Seitensprung mit Links/Rechts läuft ruhig statt stockend
   (Nutzer-Rückmeldung: "wenn ich nach links oder rechts drücke um
   mehrere zu überspringen, fühlt sich das auch noch etwas stockend an im
