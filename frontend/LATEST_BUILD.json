@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-52",
-  "summary": "Cover-Vorladen blockiert nicht mehr direkt nach dem Zurueckgehen aus einem Ordner."
+  "build_id": "2026-08-24-53",
+  "summary": "Aufraeumen: Dateikopf ausgelagert, toter Code raus, drei Testskripte im Projekt."
 }

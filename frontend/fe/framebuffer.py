@@ -363,39 +363,22 @@ class Framebuffer:
         Streifen) statt der ganzen Flaeche - fuer Glow-Ringe deutlich
         billiger als blend_rect() auf die volle Flaeche, da nur der
         Umfang statt die Flaeche skaliert. Fuer KLEINE, bildschirm-
-        unabhaengige Bereiche gedacht (z.B. Boxart-Rahmen/Schatten) -
-        fuer breite, bildschirmfuellende Streifen (Listenmarkierung auf
-        HDMI) stattdessen glow_border_fast() nutzen, siehe dort."""
+        unabhaengige Bereiche gedacht (z.B. Boxart-Rahmen/Schatten).
+        Fuer breite, bildschirmfuellende Streifen gab es frueher die
+        billigere Variante glow_border_fast() - sie ist mit dem
+        Entfernen des Leuchtrands um die Listenmarkierung weggefallen
+        (Nutzerwunsch: "glow Effekt komplett raus"). Die Technik dahinter
+        lebt in blend_rect_fast() weiter, siehe dort."""
         t = max(1, thickness)
         self.blend_rect(x, y, w, t, rgb, alpha)                    # oben
         self.blend_rect(x, y + h - t, w, t, rgb, alpha)             # unten
         self.blend_rect(x, y, t, h, rgb, alpha)                     # links
         self.blend_rect(x + w - t, y, t, h, rgb, alpha)             # rechts
 
-    def glow_border_fast(self, x, y, w, h, base_bg, accent, alpha, thickness):
-        """Schnelle Glow-Ring-Variante: statt jedes Pixel einzeln mit
-        dem VORHANDENEN Bildinhalt zu mischen (blend_border, teuer bei
-        breiten Bereichen), wird die Zielfarbe VORAB einmal berechnet
-        (Grundfarbe + Akzent bei gegebenem Alpha) und dann ueber das
-        normale, gecachte rect() gezeichnet. Auf breiten HDMI-Zeilen
-        um ein Vielfaches schneller, weil rect() dieselbe Zeile fuer
-        gleiche Breite wiederverwendet statt sie jedes Mal neu
-        durchzurechnen. Nimmt an, dass der Hintergrund unter dem Ring
-        etwa base_bg entspricht - bei aktivem Hintergrundbild kann die
-        Farbe dadurch minimal abweichen, bewusster Kompromiss fuer
-        Geschwindigkeit."""
-        mixed = tuple(int(bg + (ac - bg) * alpha)
-                      for bg, ac in zip(base_bg, accent))
-        t = max(1, thickness)
-        self.rect(x, y, w, t, mixed)
-        self.rect(x, y + h - t, w, t, mixed)
-        self.rect(x, y, t, h, mixed)
-        self.rect(x + w - t, y, t, h, mixed)
-
     def blend_rect_fast(self, x, y, w, h, base_bg, color, alpha):
         """Wie blend_rect(), aber mit vorgemischter FESTER Farbe statt
         echter Pixel-fuer-Pixel-Mischung - fuer FLAECHEN (z.B. den
-        Boxart-Schatten). Derselbe Trick wie glow_border_fast(): die
+        Boxart-Schatten). Der Trick: die
         Zielfarbe wird EINMAL berechnet statt pro Pixel, dann ueber
         das gecachte rect() gezeichnet. Wichtig bei groesseren
         Flaechen (z.B. schattenbreite = Cover-Breite) - echtes

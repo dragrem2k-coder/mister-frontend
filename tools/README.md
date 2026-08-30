@@ -3,32 +3,106 @@
 Entwickler-Werkzeuge, die NICHT auf den MiSTer deployt werden (analog zu
 `PC-Tools/`, aber fuer reine Test-/Diagnose-Skripte statt Endnutzer-Tools).
 
+Alle Skripte hier laufen auf jedem PC mit Python 3, OHNE echte
+MiSTer-Hardware (kein `/dev/fb0`, keine echten Eingabegeraete noetig) und
+ohne zusaetzliche Pakete. Sie finden `frontend/frontend.py` von selbst
+(relativ zum `tools/`-Ordner); ein abweichender Pfad laesst sich ueber die
+Umgebungsvariable `FRONTEND_PY` setzen:
+
+```
+FRONTEND_PY=/pfad/zu/frontend.py python3 tools/regression_test.py
+```
+
+Alles auf einmal (Reihenfolge wie beim Ausliefern eines neuen Builds):
+
+```
+python3 tools/regression_test.py \
+  && python3 tools/test_input_repeat.py \
+  && python3 tools/test_overlay_redraw.py \
+  && python3 tools/diag_lightpath.py
+```
+
+| Skript | Art | Prueft |
+|---|---|---|
+| `regression_test.py` | Test (Pass/Fail) | Zeichnet jede Kategorie in beiden Aufloesungen ohne Ausnahme |
+| `test_input_repeat.py` | Test (Pass/Fail) | Tastenwiederholung: Anlaufsperre, Richtungswechsel, Geister-Wiederholung |
+| `test_overlay_redraw.py` | Test (Pass/Fail) | Hinweisbox verschwindet bitgenau restlos |
+| `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
+| `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
+
 ## regression_test.py
 
-Standard-Regressionstest fuer `frontend/frontend.py`. Laeuft auf jedem PC mit
-Python 3, OHNE echte MiSTer-Hardware (kein `/dev/fb0`, keine echten
-Eingabegeraete noetig) - ersetzt nur die hardwarenahen Teile der
-`Framebuffer`-Klasse durch eine Attrappe, geht aber bewusst durch den ECHTEN
-`Frontend()`-Konstruktor (siehe Kommentar im Skript, Grund: ein frueherer
-Reihenfolge-Fehler in `__init__()` blieb monatelang unentdeckt, weil jeder
-damalige Test das betroffene Attribut von Hand vorher gesetzt hatte).
+Standard-Regressionstest fuer `frontend/frontend.py`. Ersetzt nur die
+hardwarenahen Teile der `Framebuffer`-Klasse durch eine Attrappe, geht aber
+bewusst durch den ECHTEN `Frontend()`-Konstruktor (siehe Kommentar im
+Skript, Grund: ein frueherer Reihenfolge-Fehler in `__init__()` blieb
+monatelang unentdeckt, weil jeder damalige Test das betroffene Attribut von
+Hand vorher gesetzt hatte).
 
 Testet 2 Aufloesungen (CRT 320x240, HDMI 1920x1080) x jede tatsaechlich
 vorhandene Kategorie (aus `fe.cats`, skaliert automatisch mit der echten
 Spielebibliothek) x mehrere Navigationspositionen/Sonderzustaende
 (Beenden-Dialog, Attract-Modus, RA-Core-Auswahlbildschirm inkl. Abbruch).
 
-Ausfuehren:
-```
-python3 tools/regression_test.py
-```
-Optional anderen Pfad zu `frontend.py` angeben:
-```
-FRONTEND_PY=/pfad/zu/frontend.py python3 tools/regression_test.py
-```
-
 Prueft NUR, dass `draw()`/verwandte Zeichenfunktionen ohne Ausnahme
 durchlaufen (Abdeckung von Strukturfehlern, Index-/Attributfehlern,
 Konstruktor-Reihenfolge). Prueft NICHT das tatsaechliche visuelle Ergebnis,
 Eingabeverarbeitung oder Core-Start - das bleibt ein Test auf echter
 Hardware.
+
+Erwartetes Ergebnis: `18/18 Kombinationen bestanden` (die Zahl waechst mit
+der Anzahl vorhandener Kategorien).
+
+## test_input_repeat.py
+
+Prueft die Tastenwiederholung mit der ECHTEN `InputManager`-Logik - ohne
+echte Eingabegeraete, indem nur die Zustandsuebergaenge
+(`_hold`/`_release`/`_cancel_repeat`) durchgespielt werden.
+
+Sichert zwei Nutzer-Rueckmeldungen ab, die je einen Bugfix ausgeloest haben:
+
+* "wenn ich nach unten gedrueckt halte und dann wieder nach oben druecke
+  bleibt der kurz haengen" - beim Richtungswechsel MITTEN im Scrollen lief
+  die volle Anlaufsperre erneut an (jetzt: verkuerzte Anlaufzeit, erreichtes
+  Tempo bleibt erhalten).
+* "der Cursor bewegt sich nicht und dann kommt auf einmal die ploetzliche
+  Bewegung" - nach 'Zurueck'/'OK' lief eine Geister-Wiederholung der vorher
+  gehaltenen Richtungstaste weiter.
+
+Zusaetzlich abgedeckt: Achswechsel (runter -> rechts) darf NICHT als
+Richtungswechsel zaehlen, nach einer Scroll-Pause gilt wieder die volle
+Anlaufsperre, und Seiten-Spruenge (links/rechts) haben eine eigene,
+langsamere Untergrenze als Zeilen-Spruenge.
+
+## test_overlay_redraw.py
+
+Prueft, dass eine eingeblendete Hinweisbox RESTLOS verschwindet.
+
+Hintergrund (Nutzer-Rueckmeldung): "wenn ich von HDMI auf CRT umschalte
+kommt das Popup mit der Info 'CRT aktiv' - sobald ich dann den Cursor
+bewege, verschwindet die Infobox nicht ganz". Ursache war der schnelle
+Zeichenpfad: er baut den Hintergrund ausserhalb der Listenspalte nicht neu
+auf und liess deshalb den ueberstehenden Teil der Box stehen.
+
+Der Test vergleicht BITGENAU mit einer Referenzinstanz, die dieselbe
+Position ohne jemals eingeblendete Box zeichnet - bleibt auch nur ein Pixel
+uebrig, schlaegt er fehl. Beide Wege werden abgedeckt: Box per Tastendruck
+weggeraeumt und Box per Zeitablauf ausgelaufen.
+
+## diag_lightpath.py
+
+DIAGNOSE, kein Pass/Fail-Test. Prueft die zentrale Annahme hinter dem
+schnellen Zeichenpfad: ein Einzelschritt bzw. ein Puls-Tick muss dasselbe
+Bild hinterlassen wie ein VOLLER Neuaufbau desselben Zustands.
+
+Aktueller Stand: **22 von 32 verglichenen Faellen weichen ab**. Diese
+Abweichungen sind bekannt, auf echter Hardware bisher NICHT sichtbar und
+noch nicht aufgeklaert. Als Pass/Fail-Test wuerde das Skript deshalb
+dauerhaft rot stehen und den Regressionslauf entwerten - es liefert
+stattdessen immer den Rueckgabewert 0 und dient als Messinstrument:
+
+> Die Zahl der Abweichungen darf bei Aenderungen am Zeichenpfad nicht
+> STEIGEN.
+
+Vor und nach einer Aenderung ausfuehren und die Zeile
+`Abweichungen : N` vergleichen.

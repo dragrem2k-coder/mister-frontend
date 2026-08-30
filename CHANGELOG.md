@@ -1,8 +1,9 @@
 # Changelog
 
 Was sich am Frontend so getan hat. Für die ganz kleinteiligen Details
-schau am besten in die Git-Historie oder in den Kopf von
-`frontend/frontend.py`.
+schau am besten in die Git-Historie oder in
+`docs/ENTWICKLUNGSHISTORIE.md` (stand früher als über 3300 Zeilen langer
+Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
@@ -238,6 +239,57 @@ schau am besten in die Git-Historie oder in den Kopf von
   exakt anhand der tatsächlichen maximalen Panel-Geometrie berechnet
   (vorher spürbar kleiner als möglich, ohne dass es einen Grund dafür
   gab).
+
+**Aufräumen und Testabdeckung** (Build 53, keine Verhaltensänderung im
+Normalbetrieb — auf Nutzerfrage "kann ich irgendwo noch was optimieren
+oder besser machen oder fixen?"):
+- **Dateikopf ausgelagert:** der Modul-Kommentar am Anfang von
+  `frontend/frontend.py` war auf 3.362 Zeilen bzw. rund 202.000 Zeichen
+  angewachsen — 26 % der gesamten Datei, bevor die erste Codezeile kam.
+  Python lädt so einen Kommentar bei jedem Start als Zeichenkette in
+  den Speicher, gelesen hat ihn kein einziger Codepfad (geprüft:
+  `__doc__` wird nirgends verwendet). Vor allem machte er die
+  eigentliche Programmlogik in Editoren und bei der Suche schwer
+  auffindbar. Der komplette Text steht jetzt wortgleich in
+  `docs/ENTWICKLUNGSHISTORIE.md`; im Dateikopf bleiben Projektname,
+  Steuerungsübersicht und Startbefehl (597 statt 202.204 Zeichen).
+  Verifiziert: der Codeteil der Datei ist byte-identisch geblieben.
+- **Toter Code entfernt:** `Framebuffer.glow_border_fast()` hatte seit
+  dem Entfernen des Leuchtrands ("glow Effekt komplett raus") keinen
+  einzigen Aufrufer mehr. Funktion entfernt, die vier Kommentar-
+  Verweise darauf sinngemäß auf "früher" umgestellt, damit die
+  Begründungen in den Kommentaren nachvollziehbar bleiben.
+- **Messblindfleck geschlossen:** die Wiederherstellung des
+  Listenspalten-Hintergrunds (`_restore_row_bg()`) lag genau ZWISCHEN
+  den beiden Zeitnehmern der `PERF split`-Zeile — `bg=` endete davor,
+  `rows=` begann danach — und tauchte deshalb in keiner Messung auf,
+  obwohl sie nachgemessen rund 0,6 ms bzw. gut ein Fünftel eines
+  Seitenaufbaus kostet. Bei der Fehlersuche fehlte damit ein spürbarer
+  Posten in der Summe. Neuer eigener Zähler:
+  `PERF split: bg=... restore=... rows=...(n) art=... flip=... ms`.
+- **Drei Testskripte ins Projekt aufgenommen** (`tools/`): sie waren
+  bisher nur temporär zur Absicherung einzelner Bugfixes entstanden und
+  gingen danach verloren, obwohl sie genau die Stellen abdecken, an
+  denen es schon zweimal Regressionen gab.
+  - `test_input_repeat.py` — Tastenwiederholung mit der echten
+    `InputManager`-Logik: Anlaufsperre, verkürzter Richtungswechsel
+    mitten im Scrollen, Achswechsel, Geister-Wiederholung nach
+    "Zurück"/"OK", eigene langsamere Untergrenze für Seiten-Sprünge.
+  - `test_overlay_redraw.py` — die Hinweisbox ("CRT aktiv") muss
+    bitgenau restlos verschwinden, über beide Wege (weggeklickt und
+    per Zeitablauf), in beiden Auflösungen.
+  - `diag_lightpath.py` — bewusst DIAGNOSE statt Pass/Fail-Test:
+    vergleicht den leichten Zeichenpfad bitgenau mit einem vollen
+    Neuaufbau. Aktuell weichen 22 von 32 Fällen ab; diese Abweichungen
+    sind bekannt, auf echter Hardware bisher nicht sichtbar und noch
+    nicht aufgeklärt. Als roter Test würde das Skript den
+    Regressionslauf entwerten, als Messinstrument ist es nützlich: die
+    Zahl darf bei Änderungen am Zeichenpfad nicht steigen.
+  Alle Skripte finden `frontend.py` jetzt relativ zum `tools/`-Ordner
+  (vorher fester Pfad aus einer Entwicklungsumgebung, überschreibbar
+  per `FRONTEND_PY`) — das galt auch für den bestehenden
+  `regression_test.py`. `tools/README.md` beschreibt alle vier Skripte
+  samt Sammelaufruf.
 
 **Diagnose-Werkzeuge** (für Fehlersuche auf echter Hardware, ohne
 Verhaltensänderung im Normalbetrieb):

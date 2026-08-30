@@ -33,8 +33,14 @@ import os
 import traceback
 import importlib.util
 
+# Standardpfad relativ zu DIESER Datei (tools/ -> ../frontend/frontend.py),
+# per FRONTEND_PY ueberschreibbar. Frueher stand hier ein fester Pfad aus
+# einer bestimmten Entwicklungsumgebung - das Skript lief dann nur auf
+# genau einem Rechner ohne zusaetzliche Umgebungsvariable.
 FRONTEND_PATH = os.environ.get(
-    "FRONTEND_PY", "/home/claude/mister_frontend_git/frontend/frontend.py")
+    "FRONTEND_PY",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                 "frontend", "frontend.py"))
 
 spec = importlib.util.spec_from_file_location("frontend_mod", FRONTEND_PATH)
 frontend_mod = importlib.util.module_from_spec(spec)
