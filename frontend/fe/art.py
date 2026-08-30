@@ -472,6 +472,10 @@ class ArtCache:
     def __init__(self):
         self.cache = {}              # pfad -> (w, h, pixelbytes) oder None
         self.order = []
+        # Wird gesetzt, sobald wegen _defer_uncached wirklich etwas
+        # uebersprungen wurde - siehe die drei Fundstellen unten und
+        # den COVER_SETTLE-Handler in frontend.py.
+        self._deferred_something = False
         self._defer_uncached = False # beim schnellen Scrollen: noch nicht
                                      # dekodierte Cover ueberspringen (siehe
                                      # get_scaled()/COVER_SETTLE)
@@ -584,6 +588,14 @@ class ArtCache:
         # letzten Tastendruck laedt die Idle-Nachzeichnung es nach (siehe
         # COVER_SETTLE in der Hauptschleife).
         if self._defer_uncached and path not in self.cache:
+            # NEU (siehe _settle_needed in frontend.py): festhalten,
+            # DASS hier tatsaechlich etwas uebersprungen wurde. Nur dann
+            # muss der COVER_SETTLE-Nachlader spaeter ueberhaupt neu
+            # zeichnen - liegen alle Cover bereits im Cache (der
+            # Normalfall, sobald der Festplatten-Cache warm ist), gibt es
+            # nichts nachzuladen, und der komplette Seitenaufbau nach
+            # jedem Stillstand entfaellt.
+            self._deferred_something = True
             return None
         base = self.get(path)
         if not base:
@@ -613,6 +625,14 @@ class ArtCache:
             # trotzdem JEDES Mal neu skaliert, obwohl aktiv gescrollt
             # wurde. Jetzt: dieselbe Verzoegerung gilt auch hier.
             if self._defer_uncached:
+                # NEU (siehe _settle_needed in frontend.py): festhalten,
+                # DASS hier tatsaechlich etwas uebersprungen wurde. Nur dann
+                # muss der COVER_SETTLE-Nachlader spaeter ueberhaupt neu
+                # zeichnen - liegen alle Cover bereits im Cache (der
+                # Normalfall, sobald der Festplatten-Cache warm ist), gibt es
+                # nichts nachzuladen, und der komplette Seitenaufbau nach
+                # jedem Stillstand entfaellt.
+                self._deferred_something = True
                 return None
             sw, sh = w * scale, h * scale
             out = bytearray(sw * sh * 4)
@@ -683,6 +703,14 @@ class ArtCache:
         # aktivem Scrollen verzoegert, wenn sie noch nicht im
         # Skalierungs-Cache liegt.
         if self._defer_uncached:
+            # NEU (siehe _settle_needed in frontend.py): festhalten,
+            # DASS hier tatsaechlich etwas uebersprungen wurde. Nur dann
+            # muss der COVER_SETTLE-Nachlader spaeter ueberhaupt neu
+            # zeichnen - liegen alle Cover bereits im Cache (der
+            # Normalfall, sobald der Festplatten-Cache warm ist), gibt es
+            # nichts nachzuladen, und der komplette Seitenaufbau nach
+            # jedem Stillstand entfaellt.
+            self._deferred_something = True
             return None
         # WICHTIG (Bugfix): frueher eine einzelne 4-Byte-Zuweisung PRO
         # ZIEL-PIXEL in einer doppelt verschachtelten Schleife (bei

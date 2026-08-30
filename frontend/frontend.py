@@ -3414,6 +3414,9 @@ from fe.single_instance import LOCKFILE, _pid_alive, acquire_single_instance, re
 
 BASE        = "/media/fat"
 SCRIPTS_DIR = "/media/fat/Scripts"
+# Absturz-Protokoll auf der SD-Karte - ueberlebt im Gegensatz zu
+# /tmp/frontend.log einen Neustart des MiSTer (siehe main()).
+CRASHLOG = "/media/fat/frontend_crash.log"
 
 # --- Stream-Overlay (optional, siehe stream_server.py) -----------------
 STREAM_ENABLED_FILE = "/media/fat/frontend/stream_enabled"
@@ -6686,6 +6689,12 @@ class Frontend:
         # bisher. Die Vsync-Skip-Logik selbst (_scroll_skip_vsync()) bleibt
         # unangetastet, wird hier nur gelesen.
         defer_panel = has_art and self._scroll_skip_vsync()
+        if defer_panel:
+            # Das Boxart-Panel wird hier bewusst ausgelassen - also gibt
+            # es nach dem Stillstand etwas nachzuholen. Vermerken, damit
+            # der COVER_SETTLE-Nachlader weiss, dass er gebraucht wird
+            # (siehe dortiger Kommentar).
+            ART._deferred_something = True
 
         if has_art and not defer_panel:
             L = self.layout_items(has_art)
@@ -8173,8 +8182,27 @@ class Frontend:
                 # waere dort dann leer geblieben). Jetzt laeuft der
                 # Nachlader auf beiden Seiten, und _sync_cover_defer()
                 # kann den Schutz gefahrlos immer korrekt setzen.
+                # NEU (Nutzer-Rueckmeldung: "ab und zu hab ich immer noch
+                # kleine Haenger, wenn ich mehrmals schnell links/rechts
+                # druecke und dann sofort auf Zurueck"): der Nachlader lief
+                # bisher nach JEDEM Stillstand, unabhaengig davon, ob
+                # ueberhaupt etwas nachzuladen war - und kostet dabei einen
+                # kompletten Seitenaufbau (auf echter Hardware 45-110ms).
+                # Sobald der Festplatten-Cache warm ist, sind aber alle
+                # Cover sofort da (im Geraete-Log durchgehend
+                # "THUMB_CACHE Treffer: 0.9-6.4ms"), es wurde also gar
+                # nichts uebersprungen - der Aufbau war reine
+                # Verschwendung, und zwar genau in dem Moment, in dem man
+                # nach schnellem Blaettern die naechste Taste drueckt.
+                # Jetzt wird nur noch nachgezeichnet, wenn tatsaechlich
+                # etwas ausgelassen wurde (ART._deferred_something, gesetzt
+                # an den drei Auslass-Stellen in fe/art.py sowie beim
+                # ausgelassenen Boxart-Panel in _draw_navigate_items_impl).
+                _nachzuholen = getattr(ART, "_deferred_something", False)
                 if (not self._settled_redrawn and not any_dialog
+                        and _nachzuholen
                         and time.monotonic() - self._last_input_time >= COVER_SETTLE):
+                    ART._deferred_something = False
                     if self.page == 1:
                         self.draw_page_items()
                         self._settled_redrawn = True
@@ -12994,9 +13022,34 @@ if __name__ == "__main__":
             % (time.monotonic() - _t_boot))
         _fe.run()
     except Exception:
-        LOG("CRASH:\n" + traceback.format_exc())
-        print("")
-        print("ABSTURZ - Details siehe oben und in %s" % LOGFILE)
+        _tb = traceback.format_exc()
+        LOG("CRASH:\n" + _tb)
+        # NEU (aus einer echten Fehlersuche gelernt): /tmp wird beim
+        # Neustart des MiSTer geleert. Genau dadurch ging ein bereits
+        # protokollierter Absturz-Traceback zweimal verloren, bevor er
+        # ausgewertet werden konnte - einmal durch einen Neustart, einmal
+        # durch das Leeren der Datei. Deshalb zusaetzlich auf die
+        # SD-Karte schreiben, wo er einen Neustart uebersteht. Bewusst
+        # ANHAENGEND und mit Zeitstempel, damit auch mehrere Vorfaelle
+        # hintereinander erhalten bleiben, und komplett in try/except:
+        # ein fehlschlagendes Protokollieren darf den eigentlichen
+        # Fehler niemals verdecken.
+        try:
+            with open(CRASHLOG, "a") as _f:
+                _f.write("=== %s ===\n%s\n"
+                         % (time.strftime("%Y-%m-%d %H:%M:%S"), _tb))
+        except OSError:
+            pass
+        # Auch die Bildschirmausgabe absichern: wurde das Frontend ueber
+        # ein Script gestartet, dessen Terminal inzwischen weg ist,
+        # scheitert schon ein einfaches print() (Broken pipe) - und
+        # wuerde dann als Folgefehler den ECHTEN Absturzgrund verdecken.
+        try:
+            print("")
+            print("ABSTURZ - Details siehe oben, in %s und in %s"
+                  % (LOGFILE, CRASHLOG))
+        except OSError:
+            pass
         raise
     finally:
         release_single_instance()

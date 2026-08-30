@@ -274,6 +274,37 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- Der Nachlade-Aufbau nach jedem Stillstand läuft nur noch, wenn wirklich
+  etwas nachzuladen ist (Nutzer-Rückmeldung: "ab und zu hab ich immer
+  noch kleine Hänger, wenn ich mehrmals schnell links/rechts drücke oder
+  gedrückt halte und dann sofort auf Zurück"). Der COVER_SETTLE-Nachlader
+  feuerte bisher nach **jedem** Stillstand — unabhängig davon, ob
+  überhaupt ein Cover übersprungen worden war — und kostet dabei einen
+  kompletten Seitenaufbau (auf echter Hardware 45–110 ms). Sobald der
+  Festplatten-Cache warm ist, sind aber alle Cover sofort da; im
+  Gerätelog steht durchgehend `THUMB_CACHE Treffer: 0,9–6,4 ms`. Es gab
+  also nichts nachzuladen, und der Aufbau war reine Verschwendung — genau
+  in dem Moment, in dem man nach schnellem Blättern die nächste Taste
+  drückt.
+
+  Jetzt wird vermerkt, ob tatsächlich etwas ausgelassen wurde: an den
+  drei Auslass-Stellen in `fe/art.py` sowie beim bewusst übersprungenen
+  Boxart-Panel während schnellen Scrollens. Nur dann läuft der Nachlader.
+  Wichtig für den Normalfall: Ein Treffer im Festplatten-Cache kehrt
+  **vor** der Auslass-Prüfung zurück, setzt den Vermerk also gar nicht —
+  bei warmem Cache entfällt der Aufbau damit vollständig. Bleibt der
+  Vermerk stehen, bleibt der Nachlader scharf und holt es beim nächsten
+  Leerlauf-Tick nach.
+- Absturz-Protokoll übersteht jetzt einen Neustart. `/tmp` wird beim
+  Neustart des MiSTer geleert — dadurch ging ein bereits protokollierter
+  Absturz-Traceback bei der Fehlersuche zweimal verloren, bevor er
+  ausgewertet werden konnte. Der Traceback wird deshalb zusätzlich nach
+  `/media/fat/frontend_crash.log` geschrieben (anhängend, mit
+  Zeitstempel, damit auch mehrere Vorfälle erhalten bleiben). Außerdem
+  ist die Bildschirmausgabe im Absturz-Handler jetzt abgesichert: Wurde
+  das Frontend über ein Script gestartet, dessen Terminal inzwischen weg
+  ist, scheitert schon ein einfaches `print()` mit "Broken pipe" — und
+  würde als Folgefehler den echten Absturzgrund verdecken.
 - Stream-Spiegel wird jetzt tatsächlich flüssiger — die Bremse saß im
   Browser (Nutzer-Rückmeldung nach dem Absenken des Server-Takts auf
   0,15 s: "hab jetzt keinen Unterschied gemerkt"). Genau deshalb nicht:
