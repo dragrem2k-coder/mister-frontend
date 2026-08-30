@@ -373,8 +373,20 @@ im Frontend selbst startbar):
 ```bash
 python3 /media/fat/frontend/mister_boxart.py            # Cover, CRT-Groesse
 python3 /media/fat/frontend/mister_boxart.py hd          # zusätzlich scharfe Cover für HDMI
+python3 /media/fat/frontend/mister_boxart.py hd neu      # vorhandene Cover ERSETZEN
 python3 /media/fat/frontend/mister_gameinfo.py           # Jahr/Genre/Spieleranzahl
 ```
+
+**Einmalig empfehlenswert: der Lauf mit `neu`.** Beim Erzeugen der Cover
+wurde früher schlicht jede zweite oder dritte Bildzeile weggeworfen -
+die Vorlagen sind mehrere hundert bis über tausend Pixel breit, das Ziel
+misst 300×350 (hd) bzw. 104×168 (sd), da ging entsprechend viel
+verloren. Inzwischen wird über die zusammenfallenden Bildpunkte
+gemittelt, was sichtbar sauberer aussieht. Cover, die du **vorher**
+geladen hast, liegen aber weiterhin in der alten Qualität auf der Karte
+und werden bei einem normalen Lauf übersprungen - `neu` erzeugt sie noch
+einmal. Der Lauf dauert dann so lange wie beim ersten Mal und lässt sich
+jederzeit mit Strg+C abbrechen und später fortsetzen.
 **Nutzt du sowohl CRT als auch HDMI, führ beide Zeilen aus** - ohne den
 `hd`-Lauf zeigt das Frontend auf HDMI die kleinen, für die Röhre
 gedachten Cover einfach hochskaliert (wirkt verpixelt). Mit `hd` liegen

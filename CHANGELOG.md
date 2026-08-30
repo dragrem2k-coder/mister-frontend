@@ -240,6 +240,44 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
   (vorher spürbar kleiner als möglich, ohne dass es einen Grund dafür
   gab).
 
+**Die Cover werden schon beim ERZEUGEN grob verkleinert** (Build 58 —
+Nutzer-Rückfrage: "kann das sein, dass du das bei den Boxarts bei den
+Spielen/ROMs selbst vergessen hast?"):
+
+**Ja, genau da.** Build 57 hat nur die Skalierung beim *Anzeigen*
+verbessert. Die `.art`-Dateien der Spiele-Cover werden aber von
+`frontend/mister_boxart.py` überhaupt erst erzeugt — und das Skript hat
+dabei weiterhin Nearest-Neighbor verwendet, also Bildzeilen und -spalten
+weggeworfen. Was dort verloren geht, kann später keine noch so gute
+Anzeige-Skalierung zurückholen.
+
+Dort wiegt der Mangel sogar schwerer als beim Anzeigen: die
+heruntergeladenen Vorlagen sind mehrere hundert bis über tausend Pixel
+breit, das Ziel misst 300×350 (hd) bzw. 104×168 (sd). Bei einer
+Verkleinerung auf ein Drittel trägt jeder übernommene Bildpunkt die
+Information von neun — acht davon fielen einfach weg.
+
+Kurioserweise war das Gegenstück für den PC (`PC-Tools/art_convert.py`)
+immer schon in Ordnung: es nutzt Pillow mit LANCZOS. Auf dem MiSTer
+selbst ging das nicht, weil dort bewusst keine Bildbibliothek
+vorausgesetzt wird — deshalb jetzt dieselbe Mittelung von Hand, ohne
+zusätzliche Abhängigkeit.
+
+- **Neuer Aufruf `mister_boxart.py hd neu`**: erzeugt auch bereits
+  vorhandene Cover noch einmal. Ohne diesen Schalter würden genau die
+  Cover, die man schon hat, für immer übersprungen — die Verbesserung
+  käme also bei niemandem an, der seine Bilder bereits geladen hat.
+  Abbrechen (Strg+C) und später fortsetzen geht wie gehabt.
+- **Laufzeit, ehrlich gerechnet:** pro Cover 140 ms statt 13 ms (hd)
+  bzw. 73 ms statt 2 ms (sd) auf einer schnellen Sandbox. Das klingt
+  nach viel, fällt aber neben dem Herunterladen jedes einzelnen Bildes
+  kaum ins Gewicht — bei 2000 ROMs sind das rund vier Minuten
+  zusätzlich auf einen Lauf, der ohnehin deutlich länger dauert.
+- Eine Vorlage, die bereits klein genug ist, wird jetzt gar nicht mehr
+  angefasst (vorher lief sie unnötig durch die Skalierschleife).
+- `tools/test_cover_scaling.py` deckt jetzt beide Stellen ab —
+  Anzeigen UND Erzeugen.
+
 **Boxart wird jetzt richtig verkleinert + zwei weitere Messblindflecke**
 (Build 57):
 

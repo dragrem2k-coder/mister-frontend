@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-57",
-  "summary": "Boxart wird beim Verkleinern jetzt gemittelt statt grob abgetastet."
+  "build_id": "2026-08-24-58",
+  "summary": "Auch beim Erzeugen der Cover wird jetzt gemittelt - Lauf mit 'neu' wiederholen."
 }

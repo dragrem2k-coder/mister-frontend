@@ -29,9 +29,18 @@ Aufruf (SSH oder ueber die Scripts-Kategorie des Frontends):
   python3 /media/fat/frontend/mister_boxart.py            # alle Systeme, CRT-Profil
   python3 /media/fat/frontend/mister_boxart.py hd         # 1080p-Profil
   python3 /media/fat/frontend/mister_boxart.py sd SNES NES  # nur bestimmte Systeme
+  python3 /media/fat/frontend/mister_boxart.py hd neu       # vorhandene ERSETZEN
 
 Bereits vorhandene .art-Dateien werden uebersprungen - das Skript
 kann jederzeit abgebrochen (Strg+C) und spaeter fortgesetzt werden.
+
+Mit dem zusaetzlichen Wort "neu" werden vorhandene Cover NICHT
+uebersprungen, sondern noch einmal erzeugt. Das ist einmalig sinnvoll,
+seit das Verkleinern ueber die zusammenfallenden Bildpunkte mittelt
+statt sie wegzuwerfen (siehe scale_to_box()): vorher geladene Cover
+liegen in der alten, groberen Qualitaet auf der Karte und wuerden sonst
+fuer immer uebersprungen. Der Lauf dauert damit natuerlich so lange wie
+beim ersten Mal - er laesst sich jederzeit abbrechen und fortsetzen.
 
 Versionshistorie:
   v4.0 - Mirror-Fetch als schnellen Hauptweg ergaenzt (Nutzerwunsch,
@@ -695,22 +704,82 @@ def _unfilter(raw, w, h, ch):
         prev = line
     return out
 
+# Wird von main() gesetzt (Aufruf mit "neu"): bereits vorhandene
+# .art-Dateien noch einmal erzeugen, statt sie zu ueberspringen.
+FORCE_NEU = False
+
+
 def scale_to_box(w, h, rgb, max_w, max_h):
-    """Nearest-Neighbor-Skalierung in die Begrenzungsbox."""
+    """Verkleinerung in die Begrenzungsbox - mit Mittelung ueber die
+    zusammenfallenden Bildpunkte (Kastenfilter).
+
+    GEAENDERT (Nutzer-Rueckfrage: "kann das sein, dass du das bei den
+    Boxarts bei den Spielen/ROMs selbst vergessen hast?" - ja, genau
+    hier): dieses Skript erzeugt die .art-Dateien der Spiele-Cover
+    ueberhaupt erst. Es hat dabei bisher Nearest-Neighbor verwendet, also
+    schlicht Bildzeilen und -spalten WEGGEWORFEN.
+
+    Das faellt hier besonders ins Gewicht, weil die Verkleinerung gross
+    ist: die heruntergeladenen Vorlagen sind typischerweise mehrere
+    hundert bis ueber tausend Pixel breit, das Ziel misst 300x350 (hd)
+    bzw. 104x168 (sd). Bei einer Verkleinerung auf ein Drittel traegt
+    jeder uebernommene Bildpunkt die Information von neun - acht davon
+    fielen einfach weg. Genau daher stammt der ausgefranste Eindruck,
+    und zwar UNABHAENGIG davon, wie gut das Frontend spaeter beim
+    Anzeigen skaliert: was hier verloren geht, ist endgueltig weg.
+
+    Das Gegenstueck fuer den PC (PC-Tools/art_convert.py) hat schon
+    immer ordentlich skaliert (Pillow/LANCZOS) - auf dem MiSTer selbst
+    ging das nicht, weil dort bewusst keine Bildbibliothek vorausgesetzt
+    wird. Deshalb hier dieselbe Mittelung von Hand, ohne zusaetzliche
+    Abhaengigkeit.
+
+    LAUFZEIT (ehrlich benannt): Mitteln ist deutlich teurer als
+    Wegwerfen, weil jeder Bildpunkt der Vorlage angefasst werden muss
+    statt nur jeder dritte oder neunte. Das faellt einmalig beim
+    Umwandeln an - also in genau dem Lauf, den man ohnehin startet und
+    nebenbei laufen laesst -, nicht spaeter im Betrieb. Die inneren
+    Summen laufen ueber sum() auf Ausschnitten mit Schrittweite 3, das
+    ist eine C-Schleife statt einer Python-Schleife.
+    """
     scale = min(max_w / w, max_h / h, 1.0)
     tw = max(1, round(w * scale))
     th = max(1, round(h * scale))
-    xmap = [min(w - 1, int(x * w / tw)) * 3 for x in range(tw)]
+    if tw >= w and th >= h:
+        # Nichts zu verkleinern (Vorlage ist bereits klein genug) -
+        # unveraendert uebernehmen, kein Rechenaufwand, kein
+        # Qualitaetsverlust.
+        return w, h, bytes(rgb)
+    xr = []
+    nx = []
+    for x in range(tw):
+        a = int(x * w / tw)
+        b = max(a + 1, int((x + 1) * w / tw))
+        xr.append((a * 3, b * 3))
+        nx.append(b - a)
+    rw = w * 3
     out = bytearray(tw * th * 3)
     for ty in range(th):
-        sy = min(h - 1, int(ty * h / th))
-        row = rgb[sy*w*3:(sy+1)*w*3]
+        y0 = int(ty * h / th)
+        y1 = max(y0 + 1, int((ty + 1) * h / th))
+        n = y1 - y0
+        acc = None
+        for y in range(y0, y1):
+            row = rgb[y * rw:(y + 1) * rw]
+            cur = []
+            _an = cur.append
+            for a, b in xr:
+                _an(sum(row[a:b:3]))
+                _an(sum(row[a + 1:b:3]))
+                _an(sum(row[a + 2:b:3]))
+            acc = cur if acc is None else [p + q for p, q in zip(acc, cur)]
         o = ty * tw * 3
-        for tx in range(tw):
-            s = xmap[tx]
-            out[o]   = row[s]
-            out[o+1] = row[s+1]
-            out[o+2] = row[s+2]
+        for x in range(tw):
+            d = nx[x] * n
+            i = x * 3
+            out[o] = acc[i] // d
+            out[o + 1] = acc[i + 1] // d
+            out[o + 2] = acc[i + 2] // d
             o += 3
     return tw, th, bytes(out)
 
@@ -871,8 +940,15 @@ def process_system(syskey, roms, ext_sysname_map, art_base, remote_dir, box, ges
     out_dir = os.path.join(art_base, syskey)
     os.makedirs(out_dir, exist_ok=True)
 
+    # NEU: mit FORCE_NEU werden auch bereits vorhandene .art-Dateien noch
+    # einmal erzeugt. Gebraucht, seit das Verkleinern mittelt statt
+    # wegzuwerfen (siehe scale_to_box()): wer seine Cover VOR dieser
+    # Aenderung geladen hat, hat sie in der alten, groberen Qualitaet auf
+    # der Karte liegen - ohne diesen Schalter wuerden sie fuer immer
+    # uebersprungen und die Verbesserung kaeme nie an.
     todo = [(name, ext) for name, ext in roms
-            if not os.path.exists(os.path.join(out_dir, name + ".art"))]
+            if FORCE_NEU
+            or not os.path.exists(os.path.join(out_dir, name + ".art"))]
     gesamt["roms"] += len(roms)
     gesamt["vorhanden"] += len(roms) - len(todo)
     print("== %s: %d Eintraege, %d ohne .art" % (syskey, len(roms), len(todo)))
@@ -903,11 +979,19 @@ def process_system(syskey, roms, ext_sysname_map, art_base, remote_dir, box, ges
         _write_missing(art_base, syskey, final_missing)
 
 def main():
+    global FORCE_NEU
     args = list(sys.argv[1:])
+    for schalter in ("neu", "--neu", "force"):
+        if schalter in args:
+            args.remove(schalter)
+            FORCE_NEU = True
     profile = "sd"
     if args and args[0] in ("sd", "hd"):
         profile = args.pop(0)
     only = set(args) if args else None
+    if FORCE_NEU:
+        print("Modus 'neu': vorhandene .art-Dateien werden ERSETZT "
+              "(dauert entsprechend laenger).")
 
     art_base   = ART_HD if profile == "hd" else ART_BASE
     remote_dir = REMOTE_ART[profile]

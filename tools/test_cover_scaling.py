@@ -178,6 +178,54 @@ print("       (auf dem MiSTer entsprechend langsamer - faellt aber nur")
 print("        beim ERSTEN Betrachten eines Covers an, danach Cache)")
 
 print()
+print("Test 9: derselbe Anspruch beim ERZEUGEN der Cover "
+      "(frontend/mister_boxart.py)")
+# Das Skript, das die .art-Dateien der Spiele ueberhaupt erst erzeugt,
+# hatte denselben Mangel - und dort wiegt er schwerer, weil die
+# Verkleinerung viel groesser ist (Vorlage mehrere hundert bis ueber
+# tausend Pixel breit, Ziel 300x350 bzw. 104x168). Was dort verloren
+# geht, kann spaeter keine noch so gute Anzeige-Skalierung zurueckholen.
+import importlib.util                              # noqa: E402
+_spec = importlib.util.spec_from_file_location(
+    "mister_boxart", os.path.join(_FRONTEND_DIR, "mister_boxart.py"))
+_mb = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_mb)
+
+
+def bild_rgb(w, h, fn):
+    b = bytearray(w * h * 3)
+    for y in range(h):
+        for x in range(w):
+            r, g, bl = fn(x, y)
+            o = (y * w + x) * 3
+            b[o] = r
+            b[o + 1] = g
+            b[o + 2] = bl
+    return bytes(b)
+
+
+d = bild_rgb(600, 600, lambda x, y: (255, 255, 255) if x % 2 else (0, 0, 0))
+tw, th, out = _mb.scale_to_box(600, 600, d, 300, 350)
+farben = {(out[i], out[i + 1], out[i + 2]) for i in range(0, len(out), 3)}
+check("Streifenmuster wird auch beim Erzeugen gemittelt",
+      len(farben) == 1 and all(0 < c[0] < 255 for c in farben),
+      str(sorted(farben)))
+
+d = bild_rgb(200, 200, lambda x, y: (200, 120, 40))
+_tw, _th, out = _mb.scale_to_box(200, 200, d, 104, 168)
+farben = {(out[i], out[i + 1], out[i + 2]) for i in range(0, len(out), 3)}
+check("einfarbige Flaeche bleibt exakt farbtreu", farben == {(200, 120, 40)},
+      str(sorted(farben)))
+
+d = bild_rgb(50, 60, lambda x, y: (x % 256, y % 256, 7))
+r = _mb.scale_to_box(50, 60, d, 300, 350)
+check("eine bereits kleine Vorlage wird gar nicht angefasst",
+      r == (50, 60, d))
+
+check("Schalter zum Neuerzeugen vorhandener Cover existiert",
+      hasattr(_mb, "FORCE_NEU"))
+
+print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))
     for f in fails:
