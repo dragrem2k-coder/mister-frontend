@@ -269,6 +269,14 @@ C_ACCENT2= (40, 70, 120)
 # Pro-System-Akzentfarbe: Markierung/Rahmen faerben sich passend zum
 # aktuellen System ein statt immer Standard-Blau zu zeigen. Kategorien
 # ohne Systemkey (Scripts, System, Core-Ordner) behalten C_ACCENT.
+# RUCKLER-DETEKTOR (siehe ausfuehrlichen Kommentar in run()): ab dieser
+# Dauer einer Schleifenrunde wird eine Diagnosezeile ins Log geschrieben.
+# 80 ms ist bewusst so gewaehlt, dass normale Bildaufbauten (auf HDMI
+# gemessen im einstelligen bis niedrigen zweistelligen Millisekunden-
+# Bereich) NIE anschlagen, ein tatsaechlich sichtbares Stocken aber
+# sicher - unter etwa 50 ms nimmt man beim Scrollen nichts wahr.
+RUCKLER_SCHWELLE = 0.08
+
 SYSTEM_ACCENT = {
     "NES":     (210, 70, 70),
     "SNES":    (140, 120, 220),
@@ -2223,12 +2231,27 @@ class Frontend:
         return result
 
     def draw(self, message=None, prominent=False, prominent_duration=5.0):
+        # MESSPUNKT (Nutzer-Rueckmeldung: "wenn ich nach unten gedrueckt
+        # halte, stockt es nach ein paar Sekunden einmal kurz - im
+        # Hauptmenue genauso"): diese sechs Aufrufe sind die "Hausarbeit",
+        # die VOR jedem Zeichnen laeuft. Die meisten davon tun fast immer
+        # nichts, prueft aber jeweils eine eigene Uhr und schlagen dann
+        # ALLE PAAR SEKUNDEN einmal richtig zu (Netzwerk-Abfrage,
+        # Netzlaufwerk-Suche, RA-Wiederholversuch, Uhrzeit-Abgleich).
+        # Genau dieses Muster - lange billig, dann einmal teuer - passt
+        # auf die Beschreibung, war aber bisher in KEINER Messung
+        # enthalten: die PERF-Zeile beginnt erst beim eigentlichen
+        # Zeichnen. Ohne diesen Zaehler laesst sich nicht unterscheiden,
+        # ob das Stocken vom Zeichnen kommt oder von der Hausarbeit
+        # davor. Kostet zwei Zeitabfragen pro Bild.
+        _th = time.monotonic()
         self._maybe_apply_pending_ra_data()
         self._sync_track_marquee()
         self._maybe_retry_ra()
         self._maybe_retry_clock()
         self._maybe_rebuild_ra_categories()
         self._maybe_rescan_for_late_mount()
+        self._perf_house = time.monotonic() - _th
         if message and prominent:
             # NEUES FEATURE (siehe Kommentar bei self._prominent_message
             # in __init__): bewusst NICHT auch noch die kleine
@@ -2729,13 +2752,31 @@ class Frontend:
         label = name if len(name) <= maxc else name[:max(1, maxc-1)] + "~"
         fb.text(ox, y, label, s, C_TITLE if sel else C_TEXT, bg)
 
+    def _nav_active(self):
+        """True, solange gerade aktiv navigiert wird (letzte Eingabe liegt
+        weniger als FAST_SCROLL_WINDOW zurueck) - dieselbe Zeitspanne, die
+        auch die Laufschrift-/Puls-Ticks beim Scrollen aussetzen laesst.
+        Genutzt, um regelmaessige Hintergrund-Pruefungen aus dem
+        Scroll-Moment herauszuhalten."""
+        return (time.monotonic() - self._last_input_time) < FAST_SCROLL_WINDOW
+
     def _network_connected(self):
         """Zwischengespeicherter Netzwerkstatus, alle 5 Sekunden neu
         geprueft (nicht bei jedem einzelnen Neuzeichnen - unnoetig
         haeufige Systemaufrufe vermeiden, auch wenn die Pruefung
         selbst schon sehr guenstig ist)."""
         now = time.monotonic()
-        if now >= self._net_check_next:
+        # VORBEUGEND (Nutzer-Rueckmeldung "stockt nach ein paar Sekunden
+        # einmal kurz"): die eigentliche Abfrage macht einen Systemaufruf
+        # und laeuft alle 5 Sekunden - also genau in dem Takt, der zur
+        # Beschreibung passt. Sie ist normalerweise sehr billig, kann aber
+        # nicht garantiert schnell sein (settimeout(0.1) laesst bis zu
+        # 100 ms zu). Waehrend aktiver Navigation wird sie deshalb nicht
+        # ausgeloest, sondern auf die naechste Atempause verschoben - der
+        # zwischenzeitlich angezeigte Wert ist der zuletzt bekannte, und
+        # ein Netzwerk-Symbol darf beim Scrollen problemlos ein paar
+        # Sekunden alt sein.
+        if now >= self._net_check_next and not self._nav_active():
             self._net_status = _has_network()
             self._net_check_next = now + 5.0
         return self._net_status
@@ -2942,6 +2983,14 @@ class Frontend:
                 self._late_mount_rescan_done = True   # aufgeben, nicht mehr pruefen
                 return
             if now < self._late_mount_check_next:
+                return
+            # Gleiche Vorsichtsmassnahme wie bei _network_connected():
+            # nicht mitten in einer gehaltenen Taste nachsehen, sondern
+            # in der naechsten Atempause. Die Suche ist ein Dateisystem-
+            # Zugriff und laeuft alle 8 Sekunden - ein Aufschub um ein
+            # paar Sekunden ist voellig unkritisch (es geht um ein
+            # Netzlaufwerk, das ohnehin erst irgendwann auftaucht).
+            if self._nav_active():
                 return
             self._late_mount_check_next = now + 8.0
             if not _has_network_mount():
@@ -3952,6 +4001,10 @@ class Frontend:
             _fdt = time.monotonic() - _tf
         else:
             _fdt = 0.0
+        # Auch fuer den Ruckler-Detektor in run() festhalten (die
+        # PERF-Zeile unten sieht den Wert ohnehin, sie wird aber nur bei
+        # ohnehin langsamen Bildern ueberhaupt geschrieben).
+        self._perf_flip = _fdt
         _bg = getattr(self, "_perf_bg", 0); _rw = getattr(self, "_perf_rows", 0)
         _ar = getattr(self, "_perf_art", 0); _nr = getattr(self, "_perf_nrows", 0)
         _re = getattr(self, "_perf_restore", 0)
@@ -8774,6 +8827,8 @@ class Frontend:
             page_streak = 0     # zaehlt gehaltene links/rechts-Wiederholungen
             page_last = None    # fuer den Turbo-Sprung (seitenweise)
             page_last_time = 0.0
+            _rt_prev = None     # Ruckler-Detektor, siehe unten
+            _act_prev = None
             while True:
                 # Zustand VOR dem Blockieren veroeffentlichen - spiegelt
                 # die aktuell ANGEZEIGTE Auswahl (Ergebnis der vorigen
@@ -8781,10 +8836,51 @@ class Frontend:
                 # Verarbeitung dieser neuen Aktion - dadurch hing das
                 # Overlay einen Schritt hinterher (zeigte noch das
                 # "vorherige Spiel", bis die naechste Eingabe kam).
+                # RUCKLER-DETEKTOR (Nutzer-Rueckmeldung: "wenn ich nach
+                # unten gedrueckt halte, stockt es nach ein paar Sekunden
+                # einmal kurz - beim Hochhalten genauso, und im Hauptmenue
+                # auch"): so ein Stocken ist mit blossem Codelesen nicht
+                # zu finden, weil die Ursache genau die Stelle ist, die
+                # SELTEN etwas tut. Statt weiter zu raten misst diese
+                # Schleife jetzt ihre eigene Runde und schreibt eine
+                # Zeile ins Log, sobald eine davon spuerbar lang war -
+                # inklusive Aufteilung, WOHIN die Zeit ging.
+                #
+                # Bewusst immer aktiv und nicht nur mit DRAGEND_PROFILE:
+                # der Zaehler kostet zwei Zeitabfragen pro Eingabe, und
+                # geschrieben wird nur im Ausnahmefall. Genau dafuer ist
+                # er da - der Ruckler tritt unregelmaessig auf, ein extra
+                # einzuschaltender Schalter wuerde ihn typischerweise
+                # verpassen.
+                _rt0 = time.monotonic()
                 self._publish_stream()
+                _rt1 = time.monotonic()
                 act = self.next_action()
+                _rt2 = time.monotonic()
                 LOG("aktion: %s (Seite %d, confirm=%s)"
                     % (act, self.page, self.confirm_quit))
+                if _rt_prev is not None:
+                    # Zeit vom Ende der VORIGEN Runde bis jetzt, also
+                    # inklusive Verarbeitung + Zeichnen der vorigen
+                    # Aktion. next_action() blockiert bis zur naechsten
+                    # Eingabe und wird deshalb getrennt ausgewiesen -
+                    # dessen Wartezeit ist normal und kein Ruckler.
+                    _busy = (_rt1 - _rt_prev) + (time.monotonic() - _rt2)
+                    if _busy >= RUCKLER_SCHWELLE:
+                        LOG("RUCKLER: %.0f ms busy "
+                            "(stream=%.0f haus=%.0f bg=%.0f restore=%.0f "
+                            "rows=%.0f art=%.0f flip=%.0f | vorige Aktion=%s "
+                            "Seite=%d)"
+                            % (_busy * 1000, (_rt1 - _rt0) * 1000,
+                               getattr(self, "_perf_house", 0) * 1000,
+                               getattr(self, "_perf_bg", 0) * 1000,
+                               getattr(self, "_perf_restore", 0) * 1000,
+                               getattr(self, "_perf_rows", 0) * 1000,
+                               getattr(self, "_perf_art", 0) * 1000,
+                               getattr(self, "_perf_flip", 0) * 1000,
+                               _act_prev, self.page))
+                _rt_prev = time.monotonic()
+                _act_prev = act
 
                 # Geheimcode-Erkennung (siehe
                 # check_secret_code()) - beobachtet nur, greift nie in

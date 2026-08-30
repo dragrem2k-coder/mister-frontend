@@ -240,6 +240,61 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
   (vorher spürbar kleiner als möglich, ohne dass es einen Grund dafür
   gab).
 
+**Bugfix am Menü-Auflösung-Schalter + Ruckler-Suche** (Build 56):
+
+- **BUGFIX (Nutzer-Rückmeldung: "ich merke da keinen Unterschied, egal
+  was ich auswähle und dann Neustart mache"):** der Schalter hat
+  tatsächlich nichts bewirkt — mein Fehler, und zwar ein grundsätzlicher.
+  Ich hatte `fb_size` in einen vermeintlich "globalen Teil" der
+  MiSTer.ini vor die erste `[Sektion]` geschrieben. **Diesen globalen
+  Teil gibt es nicht.** Im ini-Parser des MiSTers (`cfg.cpp`,
+  `ini_parse()`) startet die Variable `section` auf 0, und Zeilen werden
+  nur ausgewertet, solange eine Sektion aktiv ist
+  (`else if (section) ini_parse_var(line);`) — alles vor der ersten
+  Sektionszeile wird **stillschweigend verworfen**. Die Einstellung kam
+  also nie beim MiSTer an, und jede Stufe sah zwangsläufig gleich aus.
+  Der Wert steht jetzt in der `[MiSTer]`-Sektion (die laut
+  `ini_get_section()` immer greift, unabhängig vom geladenen Core); fehlt
+  sie, wird sie angelegt. Der Test hat den Fehler nicht gefunden, weil er
+  nur die *eigene* Lese-/Schreiblogik gegen sich selbst geprüft hat, nicht
+  gegen das Format, das MiSTer tatsächlich liest — er prüft jetzt gezielt,
+  dass ein Schlüssel vor der ersten Sektion NICHT zählt.
+
+- **Ruckler-Detektor** (Nutzer-Rückmeldung: "wenn ich nach unten gedrückt
+  halte, stockt es nach ein paar Sekunden einmal kurz — beim Hochhalten
+  genauso, und im Hauptmenü auch"). So ein Stocken lässt sich durch
+  Codelesen kaum finden, weil die Ursache gerade die Stelle ist, die
+  *selten* etwas tut. Statt weiter zu raten misst die Hauptschleife jetzt
+  ihre eigene Runde und schreibt eine Zeile ins Log, sobald eine davon
+  spürbar lang war — mit Aufteilung, wohin die Zeit ging:
+
+  ```
+  RUCKLER: 340 ms busy (stream=2 haus=310 bg=1 restore=1 rows=18 art=6 flip=2 | vorige Aktion=down Seite=1)
+  ```
+
+  Neu ist dabei vor allem `haus=` — die sechs Aufgaben, die vor jedem
+  Zeichnen laufen (Netzwerkstatus, Netzlaufwerk-Suche,
+  RetroAchievements-Wiederholversuch, Uhrzeit-Abgleich …). Die tun fast
+  immer nichts, prüfen aber jeweils eine eigene Uhr und schlagen dann
+  alle paar Sekunden einmal richtig zu — genau das Muster aus der
+  Beschreibung, und bisher in **keiner** Messung enthalten: die
+  PERF-Zeile beginnt erst beim eigentlichen Zeichnen. Der Detektor ist
+  bewusst immer aktiv (zwei Zeitabfragen pro Eingabe, geschrieben wird
+  nur im Ausnahmefall) — ein extra einzuschaltender Schalter würde einen
+  unregelmäßigen Ruckler typischerweise verpassen. Schwelle 80 ms:
+  normale Bildaufbauten schlagen nie an, sichtbares Stocken sicher.
+
+- **Zwei vorbeugende Maßnahmen** an den beiden Kandidaten, die zeitlich
+  am besten passen: die Netzwerkstatus-Abfrage (alle 5 s, ein
+  Systemaufruf mit bis zu 100 ms Zeitlimit) und die Netzlaufwerk-Suche
+  (alle 8 s, ein Dateisystem-Zugriff) laufen nicht mehr mitten in einer
+  gehaltenen Taste, sondern erst in der nächsten Atempause — dieselbe
+  Zeitspanne, die auch Laufschrift und Puls beim Scrollen aussetzen
+  lässt. Ein Netzwerk-Symbol darf beim Scrollen ein paar Sekunden alt
+  sein. Sollte eine der beiden die Ursache sein, ist der Ruckler damit
+  weg; falls nicht, benennt der Detektor beim nächsten Auftreten den
+  wahren Verursacher.
+
 **Neues System: Virtual Boy** (Build 55, Nutzerwunsch: "wenn der Core
 verfügbar ist und ROMs dazu vorhanden sind, wie die anderen Kategorien
 auf der Hauptseite hinzufügen"):

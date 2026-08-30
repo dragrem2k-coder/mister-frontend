@@ -496,25 +496,56 @@ FB_SIZE_STEPS = [0, 2, 4]   # 0 = volle Groesse (MiSTer-Standard/automatisch),
 _FB_SIZE_RE = re.compile(r"^[ \t]*fb_size[ \t]*=[ \t]*([0-9]+)",
                          re.MULTILINE)
 
+# In WELCHE Sektion der Schluessel gehoert.
+#
+# BUGFIX (Nutzer-Rueckmeldung: "ich merke da keinen Unterschied, egal was
+# ich auswaehle und dann Neustart mache"): die erste Fassung schrieb
+# fb_size VOR die erste [Sektion], in der Annahme, es gaebe in der
+# MiSTer.ini so etwas wie einen "globalen Teil". Den gibt es NICHT - im
+# ini-Parser des MiSTers (cfg.cpp, ini_parse()) startet die Variable
+# 'section' auf 0, und Zeilen werden nur ausgewertet, solange eine
+# Sektion aktiv ist ("else if (section) ini_parse_var(line);"). Alles vor
+# der ersten Sektionszeile wird also STILLSCHWEIGEND VERWORFEN - die
+# Einstellung kam nie beim MiSTer an, deshalb sah jede Stufe gleich aus.
+#
+# Die allgemeine Sektion heisst [MiSTer] und passt laut ini_get_section()
+# immer (fester Namensvergleich, unabhaengig vom geladenen Core). Genau
+# dorthin gehoert der Schluessel. Bewusst NICHT nach [Menu]: den Block
+# legt der CRT-Schalter komplett an und entfernt ihn wieder, die
+# Einstellung waere beim naechsten CRT-Umschalten stillschweigend weg.
+FB_SIZE_SECTION = "MiSTer"
 
-def _ini_global_part(ini):
-    """Teilt den ini-Text in (globaler Teil, Rest ab der ersten Sektion).
-    Der globale Teil ist alles vor der ersten Zeile, die mit '[' beginnt."""
-    m = re.search(r"^\[", ini, re.MULTILINE)
+
+def _ini_split_section(ini, name):
+    """Teilt den ini-Text in (davor, Inhalt der Sektion, danach).
+
+    Der mittlere Teil ist der Inhalt der genannten Sektion OHNE deren
+    Kopfzeile - also alles zwischen "[name]" und der naechsten
+    Sektionszeile bzw. dem Dateiende. Fehlt die Sektion, ist der mittlere
+    Teil None (der Aufrufer legt sie dann an).
+    """
+    m = re.search(r"^[ \t]*\[[ \t]*" + re.escape(name) + r"[ \t]*\][ \t]*\r?\n",
+                  ini, re.MULTILINE | re.IGNORECASE)
     if m is None:
-        return ini, ""
-    return ini[:m.start()], ini[m.start():]
+        return ini, None, ""
+    start = m.end()
+    m2 = re.search(r"^[ \t]*\[", ini[start:], re.MULTILINE)
+    end = start + m2.start() if m2 else len(ini)
+    return ini[:start], ini[start:end], ini[end:]
 
 
 def fb_size_value():
-    """Aktueller globaler fb_size-Wert aus der MiSTer.ini (0 wenn nicht
-    gesetzt oder nicht lesbar - das entspricht dem MiSTer-Standard)."""
+    """Aktueller fb_size-Wert aus der [MiSTer]-Sektion der MiSTer.ini
+    (0 wenn nicht gesetzt oder nicht lesbar - das entspricht dem
+    MiSTer-Standard)."""
     try:
         ini = open(MISTER_INI).read()
     except OSError:
         return 0
-    head, _rest = _ini_global_part(ini)
-    m = _FB_SIZE_RE.search(head)
+    _vor, mitte, _nach = _ini_split_section(ini, FB_SIZE_SECTION)
+    if mitte is None:
+        return 0
+    m = _FB_SIZE_RE.search(mitte)
     if not m:
         return 0
     try:
@@ -525,23 +556,34 @@ def fb_size_value():
 
 
 def set_fb_size(value):
-    """fb_size im globalen Teil der MiSTer.ini setzen. value=0 entfernt
-    die Zeile wieder (zurueck zum MiSTer-Standard). Rueckgabe: der neue
-    Wert, oder None wenn die Datei nicht geschrieben werden konnte."""
+    """fb_size in der [MiSTer]-Sektion der MiSTer.ini setzen. value=0
+    entfernt die Zeile wieder (zurueck zum MiSTer-Standard). Rueckgabe:
+    der neue Wert, oder None wenn die Datei nicht geschrieben werden
+    konnte."""
     try:
         ini = open(MISTER_INI).read()
     except OSError:
         return None
-    head, rest = _ini_global_part(ini)
-    # Bestehende Zeile(n) im globalen Teil zuerst entfernen - so entsteht
+    vor, mitte, nach = _ini_split_section(ini, FB_SIZE_SECTION)
+    if mitte is None:
+        # Sektion fehlt - ohne sie wuerde der Schluessel wieder ins Leere
+        # laufen (siehe Kommentar bei FB_SIZE_SECTION). Nur anlegen, wenn
+        # ueberhaupt etwas gesetzt werden soll.
+        if not value:
+            return 0
+        vor = ini.rstrip("\n")
+        vor = (vor + "\n\n") if vor else ""
+        vor += "[" + FB_SIZE_SECTION + "]\n"
+        mitte, nach = "", ""
+    # Bestehende Zeile(n) in der Sektion zuerst entfernen - so entsteht
     # auch bei mehrfach vorhandenem Schluessel ein eindeutiger Zustand.
-    head = re.sub(r"^[ \t]*fb_size[ \t]*=[^\n]*\n?", "", head,
-                  flags=re.MULTILINE)
+    mitte = re.sub(r"^[ \t]*fb_size[ \t]*=[^\n]*\n?", "", mitte,
+                   flags=re.MULTILINE)
     if value:
-        if head and not head.endswith("\n"):
-            head += "\n"
-        head += "fb_size=%d\n" % value
-    new_ini = head + rest
+        if mitte and not mitte.endswith("\n"):
+            mitte += "\n"
+        mitte += "fb_size=%d\n" % value
+    new_ini = vor + mitte + nach
     # Atomar schreiben (gleiche Begruendung wie bei toggle_crt_menu()):
     # ein Abbruch mitten im Schreiben darf die MiSTer.ini nicht zerstoeren.
     tmp = MISTER_INI + ".tmp"

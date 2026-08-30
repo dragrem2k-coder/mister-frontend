@@ -92,8 +92,9 @@ print("Test 1: Lesen und Schreiben des Werts")
 write_ini(ORIG)
 check("ohne Eintrag ist der Wert 0 (MiSTer-Standard)", S.fb_size_value() == 0)
 check("auf halbe Groesse stellen", S.set_fb_size(2) == 2 and S.fb_size_value() == 2)
-check("Zeile steht im globalen Teil, vor der ersten Sektion",
-      read_ini().index("fb_size=2") < read_ini().index("["))
+check("Zeile steht INNERHALB der [MiSTer]-Sektion",
+      read_ini().index("[MiSTer]") < read_ini().index("fb_size=2")
+      < read_ini().index("[Menu]"), read_ini().replace("\n", " | "))
 check("weiterschalten -> viertel", S.cycle_fb_size() == 4 and S.fb_size_value() == 4)
 check("weiterschalten -> wieder voll", S.cycle_fb_size() == 0
       and S.fb_size_value() == 0)
@@ -117,24 +118,38 @@ check("nach dem Zurueckstellen ist die Datei WORTGLEICH wie vorher",
 
 print()
 print("Test 3: Randfaelle")
-write_ini("fb_size=2\nfb_size=4\n[MiSTer]\nx=1\n")
+write_ini("[MiSTer]\nfb_size=2\nfb_size=4\nx=1\n")
 S.set_fb_size(2)
 check("mehrfach vorhandener Schluessel wird zu genau einem",
       read_ini().count("fb_size=") == 1, read_ini().replace("\n", " | "))
 
-write_ini("[MiSTer]\nfb_size=4\n")
-check("ein Eintrag INNERHALB einer Sektion zaehlt nicht als globaler Wert",
+# BUGFIX-ABSICHERUNG (Nutzer-Rueckmeldung "ich merke keinen Unterschied"):
+# der MiSTer-ini-Parser wertet NUR Zeilen INNERHALB einer Sektion aus.
+# Ein Schluessel vor der ersten Sektionszeile wird stillschweigend
+# verworfen - genau das war der Fehler der ersten Fassung.
+write_ini("fb_size=2\n[MiSTer]\nx=1\n")
+check("Schluessel VOR der ersten Sektion zaehlt nicht (MiSTer ignoriert ihn)",
       S.fb_size_value() == 0)
-S.set_fb_size(2)
-check("und wird auch nicht angefasst", read_ini().count("fb_size=4") == 1,
+S.set_fb_size(4)
+_pos_sec = read_ini().index("[MiSTer]")
+_pos_key = read_ini().rindex("fb_size=4")
+check("Schreiben legt den Wert in die [MiSTer]-Sektion", _pos_key > _pos_sec,
       read_ini().replace("\n", " | "))
 
-write_ini("fb_size=2\n")
-check("ini ganz ohne Sektion wird gelesen", S.fb_size_value() == 2)
-S.set_fb_size(0)
-check("und sauber wieder geleert", read_ini() == "")
+write_ini("[Menu]\nvga_scaler=1\n")
+check("ohne [MiSTer]-Sektion ist der Wert 0", S.fb_size_value() == 0)
+S.set_fb_size(2)
+check("fehlende [MiSTer]-Sektion wird angelegt",
+      "[MiSTer]" in read_ini() and S.fb_size_value() == 2,
+      read_ini().replace("\n", " | "))
+check("der vorhandene [Menu]-Block bleibt dabei erhalten",
+      "vga_scaler=1" in read_ini())
 
-write_ini("fb_size=9\n[MiSTer]\n")
+write_ini("[Menu]\nvga_scaler=1\n")
+check("ohne Sektion und mit Wert 0 wird NICHTS angelegt",
+      S.set_fb_size(0) == 0 and "[MiSTer]" not in read_ini())
+
+write_ini("[MiSTer]\nfb_size=9\n")
 check("unbekannter Wert wird als 0 gemeldet statt zu stoeren",
       S.fb_size_value() == 0)
 
