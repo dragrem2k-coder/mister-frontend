@@ -274,6 +274,53 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- Kein sekundenlanges Hängen mehr beim Ordnerwechsel
+  (Nutzer-Rückmeldung: "wenn ich durch meine ROM-Listen scrolle und dann
+  wieder auf Zurück drücke, bleibt der Cursor ab und zu mal für 1 Sekunde
+  hängen — fühlt sich an, als wenn er nachladen müsste"). Genau das tat
+  er auch. Es gibt einen Schutz, der noch nicht dekodierte Cover
+  überspringt, solange navigiert wird (`ART._defer_uncached`) — gesetzt
+  wurde er aber an **genau einer Stelle**: im Leerlauf-Zweig von
+  `next_action()`. Beim Verarbeiten einer Navigations-Aktion wurde er
+  nicht aktualisiert. Ein Ordnerwechsel zeichnet jedoch sofort
+  (`_go_back_or_confirm_quit()` ruft direkt `draw()` auf) und benutzte
+  dabei den veralteten Wert vom letzten Leerlauf-Tick.
+
+  Wer vor dem Zurückdrücken kurz innehielt (länger als die 150 ms), bei
+  dem stand der Schutz auf `False` — das Cover wurde dann **synchron im
+  Zeichenpfad** von der Karte gelesen und entpackt. Für exakt diesen
+  Vorgang ist im Code bereits eine echte Hardware-Messung dokumentiert:
+  **1210 ms für ein einzelnes Cover**. Das erklärt auch das "ab und zu":
+  Drückt man Zurück *mitten* im Scrollen, steht der veraltete Wert
+  zufällig richtig und es passiert nichts.
+
+  Behoben an der Wurzel: Der Wert wird jetzt dort gesetzt, wo er
+  gebraucht wird — zu Beginn beider Seitenaufbauten (neue Hilfsfunktion
+  `_sync_cover_defer()`) — und ist damit immer aktuell, egal über welchen
+  Weg gezeichnet wurde. Damit das gefahrlos möglich ist, läuft der
+  COVER_SETTLE-Nachlader jetzt **auch im Kategorien-Hauptmenü**: Bisher
+  war er auf Seite 1 beschränkt, weshalb ein dort übersprungenes Bild nie
+  nachgeladen worden wäre — genau der Grund, warum der Schutz früher
+  nicht einfach überall gesetzt werden konnte.
+
+  Verifiziert mit fünf gezielten Tests (Schutz aktiv während Navigation
+  und aus im Stillstand, jeweils auf beiden Seiten; Nachlader nicht mehr
+  seitenbeschränkt; und der konkrete Ablauf "aus dem Unterordner zurück"
+  löst keinen synchronen Ladevorgang mehr aus) plus der vollständigen
+  Regressionssuite (18/18).
+
+  GEPRÜFT UND VERWORFEN bei derselben Untersuchung, damit es nicht
+  erneut probiert wird: Der Bildschirmspiegel fürs Streaming kodiert
+  RGBA, obwohl der Alphakanal fest auf 255 steht. Naheliegend wäre, auf
+  PNG-Farbtyp 2 (RGB, 3 statt 4 Bytes) umzustellen — gemessen ist das
+  aber **5× langsamer**, weil das Zusammenbauen der RGB-Zeilen eine
+  Python-Schleife über die Pixel braucht, während der heutige Weg
+  (`rgba[0::4], rgba[2::4] = ...`) komplett in C läuft. Die zlib-Ersparnis
+  von 12% wird davon um ein Vielfaches aufgefressen. Auch ein niedrigerer
+  Kompressionsgrad bringt nichts (Stufe 3 und 1 messen sich bei dieser
+  Bildgröße nicht schneller als Stufe 6). Der Kodiervorgang bei
+  CRT-Auflösung ist also bereits nahe am Optimum; die Bildrate von 5/s
+  ist eine bewusste CPU-Grenze, kein Versäumnis.
 - Die Hinweisbox ("CRT-Modus aktiv", Update-Hinweis) verschwindet jetzt
   vollständig (Nutzer-Rückmeldung: "wenn ich von HDMI auf CRT umschalte
   und der MiSTer im CRT-Modus neu startet, kommt die Info 'CRT aktiv' —

@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-46",
-  "summary": "Die Hinweisbox ('CRT-Modus aktiv', Update-Hinweis) verschwindet jetzt vollstaendig: sie wurde beim Abraeumen nie neu gezeichnet und von den leichten Zeichenpfaden nur stueckweise ueberschrieben - und selbst ein voller draw() liess die Bereiche ausserhalb der Listenspalte stehen. Behoben ueber fb.full_redraw_gen plus Rueckfall auf den vollen Aufbau, solange eine Ueberlagerung sichtbar ist."
+  "build_id": "2026-08-24-47",
+  "summary": "Kein sekundenlanges Haengen mehr beim Ordnerwechsel: der Schutz, der noch nicht dekodierte Cover waehrend der Navigation ueberspringt, wurde nur im Leerlauf-Zweig gesetzt und war beim sofortigen Zeichnen eines Ordnerwechsels veraltet - das Cover wurde dann synchron von der Karte geladen (dokumentierte Messung: 1210ms fuer ein einzelnes Cover). Der Wert wird jetzt zu Beginn jedes Seitenaufbaus aktualisiert, und der Nachlader laeuft dafuer auch im Kategorien-Hauptmenue."
 }

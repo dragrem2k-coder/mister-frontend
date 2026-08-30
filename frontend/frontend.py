@@ -5488,6 +5488,38 @@ class Frontend:
         elif self._prominent_message and time.monotonic() < self._prominent_message_until:
             self._draw_prominent_message()
 
+    def _sync_cover_defer(self):
+        """Den Cover-Schutz auf den AKTUELLEN Stand bringen: waehrend
+        aktiver Navigation werden noch nicht dekodierte Cover
+        uebersprungen (siehe ART._defer_uncached in fe/art.py), im
+        Stillstand nicht.
+
+        BUGFIX (Nutzer-Rueckmeldung: "wenn ich durch meine ROM-Listen
+        scrolle und dann wieder auf Zurueck druecke, bleibt der Cursor ab
+        und zu mal fuer 1 Sekunde haengen - fuehlt sich an, als wenn er
+        nachladen muesste"). Genau das tat er auch. Der Schutz wurde
+        bisher an GENAU EINER Stelle gesetzt: im Leerlauf-Zweig von
+        next_action(). Beim Verarbeiten einer Navigations-Aktion wurde er
+        NICHT aktualisiert - ein Ordnerwechsel zeichnet aber sofort
+        (_go_back_or_confirm_quit() ruft direkt self.draw() auf) und
+        benutzte dabei den veralteten Wert vom letzten Leerlauf-Tick.
+        Wer vor dem Zurueckdruecken kurz innehielt (laenger als
+        COVER_SETTLE), bei dem stand der Schutz auf False - das Cover
+        wurde dann SYNCHRON im Zeichenpfad von der Karte gelesen und
+        entpackt. Fuer genau diesen Fall ist im Code eine echte
+        Hardware-Messung dokumentiert: 1210ms fuer ein einzelnes Cover
+        (siehe _thumb_cache_put_async() in fe/art.py). Das erklaert auch
+        das "ab und zu": drueckt man Zurueck MITTEN im Scrollen, greift
+        der veraltete Wert zufaellig richtig und es passiert nichts.
+
+        Jetzt wird der Wert dort gesetzt, wo er gebraucht wird - direkt
+        zu Beginn der beiden Seitenaufbauten - und ist damit IMMER
+        aktuell, egal ueber welchen Weg gezeichnet wurde. Uebersprungene
+        Cover holt wie gehabt der COVER_SETTLE-Nachlader ~150ms spaeter
+        (der dafuer jetzt auch auf Seite 0 laeuft, siehe dort)."""
+        ART._defer_uncached = (time.monotonic() - self._last_input_time
+                               < COVER_SETTLE)
+
     def _overlay_active(self):
         """True, solange eine Ueberlagerung ueber der normalen Seite
         liegt, die ein leichter Teil-Redraw NICHT wieder korrekt
@@ -5732,6 +5764,9 @@ class Frontend:
             "draw_page_cats", self._draw_page_cats_impl, (message, flip))
 
     def _draw_page_cats_impl(self, message=None, flip=True):
+        # Cover-Schutz auf den aktuellen Stand bringen - siehe
+        # _sync_cover_defer() fuer die ausfuehrliche Begruendung.
+        self._sync_cover_defer()
         fb = self.fb
         W, H = fb.width, fb.height
         L = self.layout_cats()
@@ -6827,6 +6862,9 @@ class Frontend:
             (message, flip), threshold=0.040)
 
     def _draw_page_items_impl(self, message=None, flip=True):
+        # Cover-Schutz auf den aktuellen Stand bringen - siehe
+        # _sync_cover_defer() fuer die ausfuehrliche Begruendung.
+        self._sync_cover_defer()
         fb = self.fb
         W, H = fb.width, fb.height
         name, _root_node, syskey = self.cats[self.cat_i]
@@ -8017,11 +8055,24 @@ class Frontend:
                 # Aufbau der Listenseite - defer ist dann aus, also werden
                 # sie jetzt dekodiert). Passiert nur einmal pro Stillstand,
                 # nicht bei jedem Schleifendurchlauf.
-                if (not self._settled_redrawn and self.page == 1 and not any_dialog
+                # ERWEITERT (Nutzerwunsch "gruendlich"): lief bisher NUR
+                # auf Seite 1. Damit gab es im Kategorien-Hauptmenue
+                # ueberhaupt keinen Nachlader fuer uebersprungene Bilder -
+                # der Grund, warum der Cover-Schutz frueher nicht einfach
+                # bei jeder Eingabe gesetzt werden konnte (die Artbox
+                # waere dort dann leer geblieben). Jetzt laeuft der
+                # Nachlader auf beiden Seiten, und _sync_cover_defer()
+                # kann den Schutz gefahrlos immer korrekt setzen.
+                if (not self._settled_redrawn and not any_dialog
                         and time.monotonic() - self._last_input_time >= COVER_SETTLE):
-                    self.draw_page_items()
-                    self._settled_redrawn = True
-                    self._prefetch_neighbor_covers()
+                    if self.page == 1:
+                        self.draw_page_items()
+                        self._settled_redrawn = True
+                        # Prueft selbst auf Seite 1, siehe dort.
+                        self._prefetch_neighbor_covers()
+                    else:
+                        self.draw_page_cats()
+                        self._settled_redrawn = True
                 self._boot_watch()   # Diagnose: Anzeige-Zustand nach dem Boot
                 # WICHTIG: unabhaengige if-Abfragen statt einer elif-Kette.
                 # Mit elif haette "track_needs" (Songtitel muss scrollen -
