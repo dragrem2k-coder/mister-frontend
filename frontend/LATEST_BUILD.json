@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-51",
-  "summary": "Weniger Haenger beim Blaettern, Absturz-Protokoll ueberlebt jetzt einen Neustart."
+  "build_id": "2026-08-24-52",
+  "summary": "Cover-Vorladen blockiert nicht mehr direkt nach dem Zurueckgehen aus einem Ordner."
 }

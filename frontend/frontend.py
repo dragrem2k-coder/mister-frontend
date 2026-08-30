@@ -3417,6 +3417,13 @@ SCRIPTS_DIR = "/media/fat/Scripts"
 # Absturz-Protokoll auf der SD-Karte - ueberlebt im Gegensatz zu
 # /tmp/frontend.log einen Neustart des MiSTer (siehe main()).
 CRASHLOG = "/media/fat/frontend_crash.log"
+# Ruhe-Zeit, bevor Cover der NACHBAR-Eintraege vorgeladen werden.
+# Bewusst deutlich laenger als COVER_SETTLE (0.15s, das steuert nur
+# das Nachzeichnen): Vorladen ist reine Vorratshaltung fuer den Fall,
+# dass jemand stehen bleibt und dann weiterblaettert - es muss NICHT
+# unmittelbar nach dem letzten Tastendruck passieren. Siehe
+# _prefetch_neighbor_covers() und den Leerlauf-Zweig von next_action().
+PREFETCH_SETTLE = 1.0
 
 # --- Stream-Overlay (optional, siehe stream_server.py) -----------------
 STREAM_ENABLED_FILE = "/media/fat/frontend/stream_enabled"
@@ -4398,6 +4405,9 @@ class Frontend:
         # Reste ein Teil-Redraw stehen lassen wuerde - siehe
         # _overlay_active() und die Fundstelle in next_action().
         self._force_full_redraw = False
+        # Einmal-Schalter fuers Vorladen der Nachbar-Cover pro Ruhephase -
+        # siehe PREFETCH_SETTLE.
+        self._prefetched_done = False
         # NEU (Phase 2, Nutzerwunsch "Vorab-Laden nach Scrollrichtung"):
         # merkt sich, ob zuletzt nach unten (1) oder oben (-1) navigiert
         # wurde - _prefetch_neighbor_covers() bevorzugt beim Vorab-Laden
@@ -7872,6 +7882,7 @@ class Frontend:
                     continue
                 self._last_input_time = time.monotonic()
                 self._settled_redrawn = False
+                self._prefetched_done = False
                 if need_mq:
                     self.marquee_reset()
                 return act
@@ -8205,12 +8216,37 @@ class Frontend:
                     ART._deferred_something = False
                     if self.page == 1:
                         self.draw_page_items()
-                        self._settled_redrawn = True
-                        # Prueft selbst auf Seite 1, siehe dort.
-                        self._prefetch_neighbor_covers()
                     else:
                         self.draw_page_cats()
-                        self._settled_redrawn = True
+                    self._settled_redrawn = True
+                # BUGFIX (Nutzer-Rueckmeldung: "ich bin in einen Games-Ordner
+                # gegangen, habe die Taste nach unten 5-8 Sekunden gedrueckt
+                # gehalten, dann auf Zurueck gedrueckt - und da kam wieder
+                # dieser 1-Sekunden-Haenger"): das Vorladen der Nachbar-Cover
+                # lief bisher unmittelbar nach dem Nachzeichnen, also schon
+                # 150ms nach dem letzten Tastendruck. Es ruft ART.get() auf -
+                # die ROHE Dekodierung des Originalbildes (Datei lesen +
+                # zlib-Entpacken), und dabei hilft der Festplatten-Cache
+                # NICHT: der greift nur fuer bereits skalierte Bilder
+                # (_thumb_cache_get() in _get_scaled_impl). Verschaerfend
+                # kommt hinzu, dass die Zeitbremse PREFETCH_BUDGET am ANFANG
+                # jeder Runde geprueft wird - die erste Dekodierung laeuft
+                # also IMMER vollstaendig durch, egal wie lange sie dauert.
+                # Nach laengerem Scrollen sind reihenweise Nachbarn noch
+                # nicht dekodiert, und genau dann summiert sich das zu dem
+                # gemeldeten Haenger.
+                #
+                # Vorladen ist aber reine Vorratshaltung fuer den Fall, dass
+                # jemand stehen bleibt und danach weiterblaettert - es muss
+                # NICHT 150ms nach dem letzten Tastendruck passieren. Jetzt
+                # mit eigener, deutlich laengerer Ruhe-Schwelle
+                # (PREFETCH_SETTLE): wer nach dem Zurueckgehen sofort
+                # weiternavigiert, zahlt dafuer gar nichts mehr.
+                if (not self._prefetched_done and self.page == 1
+                        and not any_dialog
+                        and time.monotonic() - self._last_input_time >= PREFETCH_SETTLE):
+                    self._prefetched_done = True
+                    self._prefetch_neighbor_covers()
                 self._boot_watch()   # Diagnose: Anzeige-Zustand nach dem Boot
                 # WICHTIG: unabhaengige if-Abfragen statt einer elif-Kette.
                 # Mit elif haette "track_needs" (Songtitel muss scrollen -

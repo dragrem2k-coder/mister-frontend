@@ -274,6 +274,33 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- Cover-Vorladen blockiert nicht mehr direkt nach dem Zurückgehen
+  (Nutzer-Rückmeldung: "ich bin in einen Games-Ordner gegangen, habe die
+  Taste nach unten 5–8 Sekunden gedrückt gehalten, dann auf Zurück
+  gedrückt — und da kam wieder dieser 1-Sekunden-Hänger"). Das war ein
+  **anderer** Hänger als der zuvor behobene, mit eigener Ursache.
+
+  Das Vorladen der Nachbar-Cover lief unmittelbar nach dem Nachzeichnen,
+  also schon 150 ms nach dem letzten Tastendruck. Es ruft `ART.get()`
+  auf — die **rohe** Dekodierung des Originalbildes (Datei lesen +
+  zlib-Entpacken). Dabei hilft der Festplatten-Cache nicht: Der greift
+  nur für bereits skalierte Bilder. Verschärfend kommt hinzu, dass die
+  Zeitbremse `PREFETCH_BUDGET` am **Anfang** jeder Runde geprüft wird —
+  die erste Dekodierung läuft also immer vollständig durch, egal wie
+  lange sie dauert. Nach 5–8 Sekunden Scrollen sind reihenweise Nachbarn
+  noch nicht dekodiert, und genau dann summiert sich das zur gemeldeten
+  Sekunde.
+
+  Vorladen ist aber reine Vorratshaltung für den Fall, dass jemand stehen
+  bleibt und danach weiterblättert — es muss nicht 150 ms nach dem
+  letzten Tastendruck passieren. Es hat jetzt eine eigene, deutlich
+  längere Ruhe-Schwelle (`PREFETCH_SETTLE`, 1 s), getrennt vom
+  Nachzeichnen (das weiterhin bei 150 ms bleibt). Wer nach dem
+  Zurückgehen sofort weiternavigiert, zahlt dafür gar nichts mehr.
+  Verifiziert mit fünf Tests (bei 0,3 s wird nachgezeichnet aber nicht
+  vorgeladen; bei 1,5 s wird vorgeladen; pro Ruhephase nur einmal; ohne
+  ausgelassene Cover gar kein Aufbau; jede Eingabe macht beide Schalter
+  wieder scharf) plus Regressionssuite (18/18).
 - Der Nachlade-Aufbau nach jedem Stillstand läuft nur noch, wenn wirklich
   etwas nachzuladen ist (Nutzer-Rückmeldung: "ab und zu hab ich immer
   noch kleine Hänger, wenn ich mehrmals schnell links/rechts drücke oder
