@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-49",
-  "summary": "Update-Hinweis erscheint jetzt auch nach einem MiSTer-Neustart. Ursache war nicht das Netzwerk, sondern die Uhr: der MiSTer startet mit falscher Systemzeit, wodurch die HTTPS-Zertifikatspruefung mit 'certificate is not yet valid' scheitert - NTP stellt die Uhr erst rund zehn Sekunden nach dem Update-Check. Es wird jetzt zuerst auf die gestellte Uhr gewartet, plus Wiederholungen als Sicherheitsnetz."
+  "build_id": "2026-08-24-50",
+  "summary": "Stream-Spiegel laeuft fluessiger, Update-Hinweis kommt jetzt auch nach dem Neustart."
 }

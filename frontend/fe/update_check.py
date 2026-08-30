@@ -45,6 +45,16 @@ UPDATE_CHECK_DISABLED_FLAG_FILE = "/media/fat/frontend/update_check_disabled"
 # die bei jedem nennenswerten Fix-Batch aktualisiert wird (aehnliches
 # Prinzip wie CHANGELOG.md, nur maschinenlesbar und bewusst SEHR kurz -
 # fuer eine Popup-Zeile, kein vollstaendiger Changelog-Abruf).
+# WICHTIG fuer den "summary"-Eintrag in LATEST_BUILD.json: dieser Text
+# wird dem Nutzer UNVERAENDERT im Update-Dialog angezeigt (siehe
+# _start_update_install_dialog() in frontend.py) - und der ist bewusst
+# klein und auf drei Zeilen begrenzt. Es passen daher nur rund
+#     96 Zeichen auf CRT (320x240)   bzw.   216 Zeichen auf HDMI
+# hinein; alles darueber wird schlicht abgeschnitten. Genau das ist
+# einmal passiert (Nutzer-Foto: der Text brach mitten im Satz bei
+# "Ursache" ab, weil die Zusammenfassung ~380 Zeichen lang war). Der
+# "summary" ist also eine KURZE Nutzer-Meldung in einem Satz - die
+# ausfuehrliche Beschreibung gehoert in die CHANGELOG.md, nicht hierhin.
 BUILD_CHECK_URL = ("https://raw.githubusercontent.com/dragrem2k-coder/"
                    "mister-frontend/main/frontend/LATEST_BUILD.json")
 

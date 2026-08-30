@@ -274,6 +274,30 @@ auch, warum dort weiterhin das alte Bild zu sehen war. Jetzt korrigiert:
 den reinen Text-Titel wie vor dieser Session.
 
 **Bugfixes:**
+- Stream-Spiegel wird jetzt tatsächlich flüssiger — die Bremse saß im
+  Browser (Nutzer-Rückmeldung nach dem Absenken des Server-Takts auf
+  0,15 s: "hab jetzt keinen Unterschied gemerkt"). Genau deshalb nicht:
+  Der Server kodierte zwar häufiger, das Overlay im Browser fragte aber
+  weiterhin nur alle **250 ms** nach (`INTERVAL_MS` in
+  `stream_mirror.html`). Damit blieb die sichtbare Bildrate bei 4/s
+  hängen, egal was das Frontend tat. Der Abruf liegt jetzt bei 120 ms und
+  damit bewusst etwas **schneller** als der Server kodiert (150 ms) — so
+  wird jedes neue Bild ohne zusätzliche Wartezeit abgeholt, statt im
+  ungünstigsten Fall fast einen ganzen Takt liegenzubleiben. Häufigeres
+  Nachfragen kostet nichts: Das Bild ist wenige KB groß und wird
+  serverseitig nur aus dem Speicher herausgereicht, ohne erneut zu
+  kodieren.
+- Update-Text im Dialog wird nicht mehr mitten im Satz abgeschnitten
+  (Nutzer-Foto: der Hinweis brach bei "Ursache" ab). Ursache war kein
+  Fehler im Code, sondern ein zu langer `summary`-Eintrag in
+  `LATEST_BUILD.json`: Dieser Text wird dem Nutzer unverändert im
+  Update-Dialog angezeigt, und dort passen nur rund **96 Zeichen auf CRT**
+  bzw. 216 auf HDMI — die betreffende Zusammenfassung war rund 380
+  Zeichen lang. Der `summary` ist eine kurze Nutzer-Meldung in einem
+  Satz; die ausführliche Beschreibung gehört hierher in die CHANGELOG.md.
+  Die Längengrenze ist jetzt direkt an der Stelle dokumentiert, an der
+  die Zusammenfassung herkommt (`fe/update_check.py`), damit das nicht
+  wieder passiert.
 - Update-Hinweis erscheint jetzt auch nach einem MiSTer-Neustart
   (Nutzer-Rückmeldung: "wenn ich auf GitHub ein Update hochgeladen habe,
   wird es mir beim MiSTer-Neustart nicht angezeigt, auch ein zweiter

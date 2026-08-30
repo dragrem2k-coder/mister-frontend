@@ -49,7 +49,20 @@
 const img = document.getElementById("frame");
 const dot = document.getElementById("dot");
 const statustext = document.getElementById("statustext");
-const INTERVAL_MS = 250;
+// GEAENDERT (Nutzer-Rueckmeldung nach dem Absenken des Server-Takts auf
+// 0.15s: "hab jetzt keinen unterschied gemerkt"): genau deshalb nicht -
+// der Server kodierte zwar oefter, der Browser fragte aber weiterhin nur
+// alle 250ms nach. Damit blieb die tatsaechlich sichtbare Bildrate bei
+// 4/s haengen, egal was das Frontend tat: DER BROWSER war die Bremse,
+// nicht die Kodierung. Jetzt bewusst etwas SCHNELLER als der Server
+// kodiert (120ms gegen 150ms) - so wird jedes neu kodierte Bild
+// garantiert ohne zusaetzliche Wartezeit abgeholt, statt im
+// unguenstigsten Fall fast einen ganzen Takt liegenzubleiben. Fragt der
+// Browser oefter nach als neu kodiert wird, bekommt er einfach dasselbe,
+// noch aktuelle Bild zurueck - im lokalen Netz unbedenklich, das Bild
+// ist nur wenige KB gross und wird serverseitig nur aus dem Speicher
+// herausgereicht (kein erneutes Kodieren, siehe /screen.png).
+const INTERVAL_MS = 120;
 
 function refresh() {
   const probe = new Image();
