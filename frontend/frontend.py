@@ -3578,22 +3578,16 @@ class Frontend:
         # Eckpixel ausserhalb der Rundung bleiben dabei unberuehrt und
         # muessen vorher auf den Hintergrund zurueckgesetzt werden.
         max_p = 0
-        cur_bg = getattr(self, "_cur_bg", None)
-        if cur_bg is None:
-            fb.rect(x0 - max_p, y_top - max_p, rw + 2 * max_p,
-                    rowh - 2 * s + 2 * max_p, C_BG)
-        else:
-            buflen = len(fb.buf)
-            need = (rw + 2 * max_p) * 4
-            for yy in range(max(0, y_top - max_p),
-                            min(fb.height, y_top + rowh - 2 * s + max_p)):
-                off = yy * fb.stride + (x0 - max_p) * 4
-                end = off + need
-                if end > buflen or end > len(cur_bg) or off < 0:
-                    continue
-                chunk = cur_bg[off:end]
-                if len(chunk) == need:
-                    fb.buf[off:end] = chunk
+        # BUGFIX (gleiche Ursache wie in draw_list_row(), siehe dort die
+        # ausfuehrliche Begruendung): hier stand dieselbe Rechnung
+        # "rowh - 2*s" - zu wenig, um den 8*s hohen Text vollstaendig
+        # abzudecken, sobald die Zeilenhoehe unter 14*s-1 faellt - UND
+        # dieselbe flache Fuellung per fb.rect(..., C_BG), die die
+        # Randabdunkelung ignoriert. Beides wird jetzt von
+        # _restore_row_bg() erledigt, das genau dafuer da ist.
+        band_h = max(rowh - 2 * s, 11 * s)
+        self._restore_row_bg(x0 - max_p, y_top - max_p,
+                             rw + 2 * max_p, band_h + 2 * max_p)
         return y_top, max_p
 
     def _draw_dynamic_items(self, flip=True):
@@ -3994,9 +3988,32 @@ class Frontend:
         _tre = time.monotonic()
         if getattr(self, "_pgi_fast_taken", False):
             _lm = 10 * s
-            self._restore_row_bg(list_x - _lm, list_y - _lm,
+            # BUGFIX (Nutzer-Rueckmeldung: "beim Hochscrollen verursacht
+            # der immer noch Zeichenreste in den ROM-Ordnern sowie im
+            # System-Ordner" - sichtbar als halb abgeschnittene
+            # Eintragszahl "20 entries" direkt ueber der Liste).
+            #
+            # Der Rand von 10*s nach OBEN stuetzte sich auf eine
+            # Annahme, die direkt darueber im Kommentar steht: "der
+            # Abstand Kopfzeile->list_y betraegt 46*s minus der
+            # Kopfzeilen-Hoehe (~30*s) = ca. 16*s freier Zwischenraum".
+            # Mit dem engeren CRT-Kopfblock (36*s statt 46*s) sind es
+            # nur noch 6*s - der Rand griff also 4 Pixel WEIT IN DIE
+            # KOPFZEILE hinein und radierte die untere Haelfte der
+            # Eintragszahl weg, direkt nachdem sie gezeichnet worden
+            # war. Auf HDMI blieb es unauffaellig, weil dort 48*s
+            # Zwischenraum sind.
+            #
+            # Dritter Fall derselben Sorte in diesem Build: eine feste
+            # Pixelzahl, die stillschweigend vom alten Layout ausging.
+            # Deshalb wird der obere Rand jetzt aus dem tatsaechlich
+            # vorhandenen Zwischenraum abgeleitet, statt ihn zu raten.
+            # Die Kopfzeile endet bei oy + 22*s (Eintragszahl) + 8*s
+            # (Zeichenhoehe).
+            _lm_oben = min(_lm, max(0, list_y - (oy + 30 * s)))
+            self._restore_row_bg(list_x - _lm, list_y - _lm_oben,
                                  (list_right - list_x) + 2 * _lm,
-                                 visible * rowh + 2 * _lm)
+                                 visible * rowh + _lm_oben + _lm)
         self._perf_restore = time.monotonic() - _tre
 
         _tr = time.monotonic()

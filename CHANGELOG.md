@@ -7,6 +7,70 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**BUGFIX: Zeichenreste beim Hochscrollen + Boxart-Zwischenspeicher zu klein**
+(Build 65 — Nutzer-Rückmeldung: „beim Hochscrollen verursacht der immer
+noch Zeichenreste in den ROM-Ordnern sowie im System-Ordner. Rendert der
+die ganzen Boxarts jetzt immer neu?"):
+
+**Warum Build 64 nicht gereicht hat.** Der Test dort verglich den
+**Zeichenpuffer**. Der war sauber. Der Fehler saß aber nicht im Puffer,
+sondern kam vom **vollen Seitenaufbau**: der räumt vor dem Zeichnen die
+Listenspalte frei, mit einem festen Rand von `10*s` nach oben. Dieser
+Rand stützte sich auf eine Annahme, die als Kommentar direkt daneben
+stand — „der Abstand Kopfzeile→list_y beträgt 46*s minus Kopfzeilenhöhe
+(~30*s) = ca. 16*s freier Zwischenraum". Mit dem engeren CRT-Kopfblock
+(36*s) sind es nur noch 6*s. Der Rand griff also **4 Pixel weit in die
+Kopfzeile** und radierte die untere Hälfte der Eintragszahl weg, direkt
+nachdem sie gezeichnet worden war. Auf HDMI unauffällig (48*s
+Zwischenraum), auf der Röhre sofort sichtbar — und weil der volle Aufbau
+genau beim Scrollen über den Listenrand einspringt, trat es beim
+Hochscrollen auf.
+
+Das ist der **dritte Fall derselben Sorte** in diesem Build: eine feste
+Pixelzahl, die stillschweigend vom alten Layout ausging. Der Rand wird
+jetzt aus dem tatsächlich vorhandenen Zwischenraum abgeleitet statt
+geraten. Mit gefixt: `_clear_row_glow_margin()` trug beide Fehler aus
+Build 64 (zu schmaler Bereich, flache Füllung ohne Randabdunkelung)
+noch in einer eigenen Kopie — nutzt jetzt dieselbe Funktion wie alle
+anderen.
+
+**Die Lehre für den Test.** `tools/test_crt_layout.py` vergleicht jetzt
+`fb.mm` statt `fb.buf` — also das, was flip() tatsächlich auf den Schirm
+bringt, nicht nur das, was gezeichnet wurde. Und in **beide** Richtungen,
+innerhalb des Fensters und über den Listenrand hinaus (dort fällt der
+leichte Pfad auf den vollen Aufbau zurück — genau die Stelle, an der es
+gehakt hat). Ergebnis: 0 abweichende Bildpunkte in allen acht
+Kombinationen. Der Puffervergleich allein hätte das nie gefunden.
+
+**Boxart-Zwischenspeicher: 800 → 4000 Einträge.** Zur Frage „rendert der
+die Boxarts jetzt immer neu?" — teilweise ja, und das war unvermeidbar:
+die CRT-Cover-Spalte wurde von 101 auf 96 Pixel schmaler, und die
+Zielgröße ist Teil des Cache-Schlüssels. Einmal komplett neu also.
+**Dass es sich bei jedem Neustart wiederholt, ist aber eine echte
+Grenze:** 800 Dateien sind für eine große Sammlung zu wenig. Jedes Cover
+braucht einen eigenen Eintrag je Zielgröße (CRT und HDMI unterscheiden
+sich, ebenso ändert sich die Cover-Höhe mit der Zahl der
+Metadatenzeilen). Einmal quer durch zwei Systeme gescrollt, und die
+Einträge des ersten sind schon wieder verdrängt.
+
+Ehrlich benannter Preis: Platz auf der SD-Karte, je nach Mischung ein
+paar hundert MB. Wer das nicht will, setzt den Wert herunter oder löscht
+`frontend/thumb_cache` — es geht dabei nichts verloren außer Wartezeit.
+Zusätzlich meldet die Verdrängung jetzt im Log, wie viele Einträge sie
+entfernt hat: taucht das oft auf, ist die Grenze für diese Sammlung
+immer noch zu klein. Vorher lief das völlig lautlos, weshalb sich die
+Frage bis jetzt nur raten ließ.
+
+**F4: Selbsttest statt weiterem Raten.** Nach zwei Fehlversuchen aus der
+Ferne bekommt `f4_hotkey.py` einen Diagnosemodus:
+`python3 /media/fat/frontend/f4_hotkey.py --debug` sagt in Klartext, was
+auf dem Gerät wirklich vorliegt (Schalterdatei, Startscript,
+Autostart-Zeile, Menüzustand, lesbare Eingabegeräte) und meldet danach
+**jeden** Tastendruck mit seinem Code. Kommt beim Drücken von F4 keine
+Zeile, erreicht die Taste den Wächter überhaupt nicht — dann liegt es
+nicht an dieser Datei, und das ist eine Antwort statt einer Vermutung.
+
+
 **BUGFIX: farbige Reste beim Scrollen auf dem CRT**
 (Build 64 — Nutzer-Rückmeldung mit Foto: „habe mal den CRT-Modus
 gestartet, und wenn ich jetzt durch die Menüs scrolle oder in

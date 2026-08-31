@@ -68,6 +68,7 @@ KEY_F4 = 62
 WERT_GEDRUECKT = 1
 
 DEBUG = "--debug" in sys.argv
+USER_STARTUP = "/media/fat/linux/user-startup.sh"
 
 
 def log(text):
@@ -181,8 +182,12 @@ class Geraete(object):
             for i in range(0, len(roh) - EVENT_SIZE + 1, EVENT_SIZE):
                 _s, _us, etype, code, wert = struct.unpack(
                     EVENT_FMT, roh[i:i + EVENT_SIZE])
-                if etype == EV_KEY and code == KEY_F4 and wert == WERT_GEDRUECKT:
-                    treffer = True
+                if etype == EV_KEY and wert == WERT_GEDRUECKT:
+                    if DEBUG:
+                        log("Taste gedrueckt: Code %d%s"
+                            % (code, "  <-- das ist F4" if code == KEY_F4 else ""))
+                    if code == KEY_F4:
+                        treffer = True
         return treffer
 
 
@@ -217,7 +222,64 @@ def einmal_sicherstellen():
     return f                     # offen halten, sonst faellt die Sperre
 
 
+def selbsttest():
+    """Sagt in Klartext, was auf DIESEM Geraet tatsaechlich vorliegt.
+
+    NEU (Nutzer-Rueckmeldung: "F4 funktioniert immer noch nicht"): nach
+    zwei Fehlversuchen aus der Ferne wird hier nicht noch einmal
+    geraten, sondern gemessen. Aufruf:
+
+        python3 /media/fat/frontend/f4_hotkey.py --debug
+
+    Danach F4 druecken - erscheint keine Zeile "Taste gedrueckt", kommt
+    die Taste ueberhaupt nicht bei uns an (dann liegt es NICHT an dieser
+    Datei). Erscheinen andere Tasten, aber F4 nie, meldet die Tastatur
+    einen anderen Code als 62."""
+    print("=== F4-Waechter: Selbsttest ===")
+    print("Schalterdatei %s : %s"
+          % (FLAG_FILE, "vorhanden (AN)" if eingeschaltet() else "FEHLT (aus)"))
+    print("Startscript   %s : %s"
+          % (START_SCRIPT, "vorhanden" if os.path.exists(START_SCRIPT) else "FEHLT"))
+    try:
+        with open(USER_STARTUP, "r", errors="replace") as f:
+            zeilen = [z.strip() for z in f]
+        treffer = [z for z in zeilen
+                   if "f4_hotkey.sh" in z and not z.startswith("#")]
+        print("Autostart-Zeile in %s : %s"
+              % (USER_STARTUP, treffer[0] if treffer else "FEHLT"))
+    except OSError as e:
+        print("Autostart-Datei %s NICHT LESBAR: %s" % (USER_STARTUP, e))
+    print("MiSTer-Menue aktiv (/tmp/CORENAME): %s" % ("ja" if menue_aktiv() else "nein"))
+    print("Frontend laeuft gerade            : %s" % ("ja" if frontend_laeuft() else "nein"))
+    gefunden = sorted(glob.glob("/dev/input/event*"))
+    print("Eingabegeraete gefunden: %d" % len(gefunden))
+    lesbar = 0
+    for pfad in gefunden:
+        try:
+            open(pfad, "rb", buffering=0).close()
+            lesbar += 1
+        except OSError as e:
+            print("   NICHT lesbar: %s (%s)" % (pfad, e))
+    print("Davon lesbar: %d" % lesbar)
+    if not lesbar:
+        print("KEIN Geraet lesbar - ohne Lesezugriff kann F4 nie ankommen.")
+    print("")
+    print("Jetzt F4 druecken. Kommt keine Zeile 'Taste gedrueckt', erreicht")
+    print("uns die Taste nicht. Abbrechen mit Strg+C.")
+    print("")
+
+
 def main():
+    if DEBUG:
+        # Im Diagnosemodus bewusst OHNE Schalterdatei lauffaehig - sonst
+        # koennte man genau den Fall "Schalter aus" nicht untersuchen.
+        selbsttest()
+        geraete = Geraete()
+        while True:
+            geraete.aktualisieren(time.monotonic())
+            if geraete.f4_gedrueckt(1.0):
+                print(">>> F4 erkannt. Menue aktiv: %s, Frontend laeuft: %s"
+                      % (menue_aktiv(), frontend_laeuft()))
     if not eingeschaltet():
         # Kein Log-Eintrag: der Normalfall (Funktion ist aus), und die
         # Datei soll bei jedem Boot nicht unnoetig wachsen.

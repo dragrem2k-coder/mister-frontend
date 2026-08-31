@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-64",
-  "summary": "CRT: farbige Reste beim Scrollen behoben (Aufraeumbereich deckte den Text nicht ganz ab)."
+  "build_id": "2026-08-24-65",
+  "summary": "CRT: Kopfzeile wurde beim Seitenaufbau angeknabbert; Boxart-Zwischenspeicher deutlich groesser."
 }

@@ -293,7 +293,27 @@ THUMB_CACHE_DIR = "/media/fat/frontend/thumb_cache"
 # Obergrenze nach ANZAHL Dateien (nicht Speicherplatz) - einfach zu
 # pruefen, verhindert zuverlaessig "irgendwann liegen Zehntausende
 # Dateien herum" unabhaengig von der tatsaechlichen Dateigroesse.
-THUMB_CACHE_MAX_FILES = 800
+#
+# ERHOEHT 800 -> 4000 (Nutzer-Rueckmeldung: "rendert der die ganzen
+# Boxarts jetzt immer neu? Ich bin schon mehrmals neu gestartet und
+# denke jedes Mal: warum macht der das").
+#
+# 800 war fuer eine grosse Sammlung schlicht zu wenig. Jedes Cover
+# braucht einen eigenen Eintrag JE Zielgroesse - und CRT und HDMI haben
+# unterschiedliche Zielgroessen, ebenso aendert sich die Cover-Hoehe mit
+# der Zahl der Metadatenzeilen eines Spiels. Wer ein paar tausend Spiele
+# hat, verdraengt sich damit dauerhaft selbst: einmal quer durch zwei
+# Systeme gescrollt, und die Eintraege des ersten sind schon wieder weg.
+# Nach aussen sieht das genau so aus, wie es gemeldet wurde - "der
+# rendert alles immer wieder neu".
+#
+# EHRLICH BENANNTER PREIS: Platz auf der SD-Karte. Eine CRT-Miniatur
+# liegt bei grob 10-20 KB, eine HDMI-Miniatur deutlich darueber. 4000
+# Eintraege koennen also je nach Mischung ein paar hundert MB belegen.
+# Wer das nicht moechte, setzt den Wert hier herunter oder loescht den
+# Ordner thumb_cache - er wird bei Bedarf neu aufgebaut, es geht dabei
+# nichts verloren ausser Wartezeit.
+THUMB_CACHE_MAX_FILES = 4000
 
 def _thumb_cache_key(path, w, h):
     """Cache-Schluessel aus Quellpfad + Zielgroesse + Dateigroesse/
@@ -547,6 +567,16 @@ def _thumb_cache_evict_if_needed():
             os.remove(fp)
         except OSError:
             pass
+    # NEU (Nutzer-Rueckmeldung "rendert der die Boxarts immer neu?"):
+    # bisher lief die Verdraengung voellig lautlos. Ob der Zwischen-
+    # speicher zu klein ist, liess sich damit nur raten. Diese Zeile
+    # macht es im Log unmittelbar sichtbar - taucht sie regelmaessig
+    # auf, ist die Sammlung groesser als THUMB_CACHE_MAX_FILES und
+    # genau DAS ist der Grund fuer wiederkehrendes Neuberechnen.
+    LOG("THUMB_CACHE Verdraengung: %d von %d Eintraegen entfernt "
+        "(Obergrenze %d) - taucht das oft auf, ist die Obergrenze fuer "
+        "diese Sammlung zu klein."
+        % (to_remove, len(entries), THUMB_CACHE_MAX_FILES))
 
 class ArtCache:
     LIMIT = 60                       # max. Bilder im Speicher halten - moderat

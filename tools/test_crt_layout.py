@@ -262,6 +262,58 @@ for w, h, grenze in ((320, 240, 200), (1920, 1080, 3000)):
           % (w, h, grenze), n <= grenze, "gemessen %d" % n)
 
 print()
+print("Test 8: was auf dem SCHIRM landet, stimmt - auch beim Hochscrollen")
+# BUGFIX-ABSICHERUNG (Nutzer-Rueckmeldung: "beim Hochscrollen verursacht
+# der immer noch Zeichenreste in den ROM-Ordnern sowie im
+# System-Ordner").
+#
+# Test 7 verglich den ZEICHENPUFFER (fb.buf). Der war nach dem
+# vorherigen Fix sauber - der Fehler blieb trotzdem sichtbar. Grund:
+# der Fehler sass gar nicht im Puffer, sondern kam vom vollen
+# Seitenaufbau, der auf CRT 4 Pixel WEIT IN DIE KOPFZEILE hineinraeumte
+# (fester Rand von 10*s, der vom alten, hoeheren Kopfblock ausging) und
+# die untere Haelfte der Eintragszahl wegradierte.
+#
+# Deshalb wird hier fb.mm verglichen - der Puffer, in den flip()/
+# flip_rows() schreiben, also das, was der Nutzer TATSAECHLICH sieht.
+# Und bewusst in beide Richtungen: hoch UND runter, jeweils innerhalb
+# des Fensters und ueber den Rand hinaus (dort faellt der leichte Pfad
+# selbst auf den vollen Aufbau zurueck - genau die Stelle, an der es
+# gehakt hat).
+def schirm_unterschiede(w, h, start, ziel):
+    H.set_screen(w, h)
+    fe = H.make_frontend(page=1)
+    fe.item_i = start
+    fe.scroll = 0
+    fe.draw_page_items(flip=True)
+    schritt = 1 if ziel > start else -1
+    k = start
+    while k != ziel:
+        alt_i = k
+        k += schritt
+        fe.item_i = k
+        if not fe._draw_navigate_items(alt_i):
+            fe.draw_page_items(flip=True)   # wie im echten Ablauf
+    ist = bytes(fe.fb.mm)
+
+    H.set_screen(w, h)
+    ref = H.make_frontend(page=1)
+    ref.item_i = ziel
+    ref.scroll = fe.scroll
+    ref.draw_page_items(flip=True)
+    soll = bytes(ref.fb.mm)
+    return sum(1 for i in range(0, len(ist), 4) if ist[i:i + 3] != soll[i:i + 3])
+
+
+for w, h in ((320, 240), (1920, 1080)):
+    for name, a, b in (("runter", 0, 6), ("hoch", 6, 0),
+                       ("runter ueber den Rand", 0, 18),
+                       ("hoch ueber den Rand", 18, 2)):
+        n = schirm_unterschiede(w, h, a, b)
+        check("%dx%d %s: Schirmbild stimmt mit dem vollen Aufbau ueberein"
+              % (w, h, name), n == 0, "%d abweichende Bildpunkte" % n)
+
+print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))
     for f in fails:
