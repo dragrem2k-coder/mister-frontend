@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-66",
-  "summary": "Streifen im System-Menue behoben (Flip-Bereich zu schmal); Boxart-Cache 20000; F4-Geraetediagnose."
+  "build_id": "2026-08-24-67",
+  "summary": "F4-Selbsttest zeigt, ob der Waechter laeuft; PERF-Messung per Schalterdatei einschaltbar."
 }

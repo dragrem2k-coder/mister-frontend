@@ -281,6 +281,29 @@ def selbsttest():
               % (USER_STARTUP, treffer[0] if treffer else "FEHLT"))
     except OSError as e:
         print("Autostart-Datei %s NICHT LESBAR: %s" % (USER_STARTUP, e))
+    # NEU: die wichtigste Frage ueberhaupt - laeuft der Waechter als
+    # Hintergrunddienst? Alles andere kann richtig eingerichtet sein und
+    # F4 trotzdem nichts tun, wenn ihn seit dem Einschalten niemand
+    # gestartet hat (die Zeile in user-startup.sh wirkt erst beim
+    # naechsten Boot). Erkennbar an der Sperrdatei, die er beim Start
+    # anlegt und mit flock() haelt.
+    laeuft = "nein"
+    try:
+        with open(LOCK_FILE) as lf:
+            lpid = int(lf.read().strip() or 0)
+        if lpid > 0:
+            try:
+                os.kill(lpid, 0)
+                laeuft = "ja (PID %d)" % lpid
+            except OSError:
+                laeuft = "nein (verwaiste Sperrdatei)"
+    except (OSError, ValueError):
+        pass
+    print("Waechter laeuft im Hintergrund    : %s" % laeuft)
+    if laeuft.startswith("nein") and eingeschaltet():
+        print("   -> Schalter ist AN, aber niemand hat den Waechter gestartet.")
+        print("      Beim naechsten Neustart passiert das von selbst.")
+        print("      Sofort starten:  /media/fat/frontend/f4_hotkey.sh &")
     print("MiSTer-Menue aktiv (/tmp/CORENAME): %s" % ("ja" if menue_aktiv() else "nein"))
     print("Frontend laeuft gerade            : %s" % ("ja" if frontend_laeuft() else "nein"))
     gefunden = sorted(glob.glob("/dev/input/event*"))
@@ -328,6 +351,8 @@ def main():
             if geraete.f4_gedrueckt(1.0):
                 print(">>> F4 erkannt. Menue aktiv: %s, Frontend laeuft: %s"
                       % (menue_aktiv(), frontend_laeuft()))
+                print("    (im Diagnosemodus wird BEWUSST nichts gestartet -")
+                print("     sonst laege das Frontend gleich ueber dieser Ausgabe)")
     if not eingeschaltet():
         # Kein Log-Eintrag: der Normalfall (Funktion ist aus), und die
         # Datei soll bei jedem Boot nicht unnoetig wachsen.

@@ -7,6 +7,49 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**F4 kommt an — und eine Messmöglichkeit fürs Stocken beim Zurückgehen**
+(Build 67):
+
+**F4 ist damit geklärt.** Der Selbsttest auf dem Gerät zeigt:
+`Logitech Wireless Keyboard` und `MiSTer virtual input` melden beide
+eine F4-Taste, und beim Drücken kommt `Taste gedrueckt: Code 62 <-- das
+ist F4`, gefolgt von `>>> F4 erkannt. Menue aktiv: True, Frontend
+laeuft: False`. Die Erkennung funktioniert also vollständig.
+
+Was im Selbsttest noch fehlte, war die wichtigste Frage überhaupt:
+**läuft der Wächter gerade als Hintergrunddienst?** Alles kann korrekt
+eingerichtet sein und F4 trotzdem nichts tun, wenn ihn seit dem
+Einschalten niemand gestartet hat — die Zeile in `user-startup.sh` wirkt
+erst beim nächsten Boot. Der Selbsttest sagt das jetzt, samt der einen
+Zeile zum Sofortstart. Außerdem steht jetzt ausdrücklich dabei, dass im
+Diagnosemodus bewusst **nichts** gestartet wird (sonst läge das Frontend
+sofort über der Ausgabe, die man gerade lesen will).
+
+**Stocken beim schnellen Zurückgehen: erst messen, dann ändern.**
+Nutzer-Rückmeldung: „wenn ich eine Kategorie auswähle, dort 2-3
+Unterordner drin sind und ich dann schnell auf Zurück drücke, stockt es
+etwas, bis ich wieder im Hauptmenü bin."
+
+Nachgestellt in der Sandbox: derselbe Vorgang dauert dort **0,2 ms** —
+das Stocken kommt also aus etwas, das nur auf der echten Hardware
+auftritt (SD-Karten-Zugriff, echte Metadaten, echte RA-Daten). Nach
+mehreren Fehlgriffen in dieser Runde wird deshalb bewusst nicht wieder
+geraten.
+
+Die ausführliche PERF-Messung gab es bisher nur über die
+Umgebungsvariable `DRAGEND_PROFILE=1`. Das setzt voraus, das Frontend
+von Hand mit gesetzter Variable zu starten — und genau dann läuft es
+nicht mehr so, wie es normalerweise benutzt wird. Jetzt zusätzlich als
+Schalterdatei, wie alle anderen Schalter auch:
+
+```
+touch /media/fat/frontend/profile      # einschalten
+... normal benutzen, das Stocken nachstellen ...
+grep PERF /tmp/frontend.log            # ansehen
+rm /media/fat/frontend/profile         # wieder aus
+```
+
+
 **BUGFIX: die Streifen blieben im System-Menü stehen**
 (Build 66 — Nutzer-Rückmeldung: „bei den ROMs verschwinden die Streifen,
 sobald ich die Taste loslasse, im System-Menü bleiben sie stehen, im

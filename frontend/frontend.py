@@ -247,6 +247,31 @@ from fe.ra_core import RA_CORES_DIR_ABS, RA_CORES_DIR_REL, RA_CORE_NAME_CANDIDAT
 OVERSCAN_X = 7
 OVERSCAN_Y = 5
 
+# NEU (Nutzer-Rueckmeldung: "es stockt, bis ich wieder im Hauptmenue
+# bin" - beim schnellen Zurueckdruecken aus einem Unterordner): dieses
+# Stocken laesst sich in der Sandbox nicht nachstellen (derselbe Vorgang
+# dauert dort 0,2 ms), es braucht also eine Messung auf dem echten
+# Geraet.
+#
+# Die ausfuehrliche PERF-Messung gab es bisher nur ueber die
+# Umgebungsvariable DRAGEND_PROFILE=1. Das setzt voraus, dass man das
+# Frontend von Hand mit gesetzter Variable startet - und genau dann
+# laeuft es nicht mehr so, wie der Nutzer es normalerweise benutzt
+# (ueber den Autostart, ohne SSH). Deshalb zusaetzlich als
+# Schalterdatei, nach demselben Muster wie alle anderen Schalter hier:
+#
+#     touch /media/fat/frontend/profile      # einschalten
+#     ... normal benutzen, das Problem nachstellen ...
+#     grep PERF /tmp/frontend.log            # ansehen
+#     rm /media/fat/frontend/profile         # wieder aus
+PROFILE_FLAG = "/media/fat/frontend/profile"
+
+
+def profiling_an():
+    return (os.environ.get("DRAGEND_PROFILE") == "1"
+            or os.path.exists(PROFILE_FLAG))
+
+
 # NEU (Nutzerwunsch: "haben wir irgendwie ne Moeglichkeit, das Frontend
 # im CRT-Modus huebscher aussehen zu lassen?").
 #
@@ -2618,7 +2643,7 @@ class Frontend:
         Funktion(en) die Zeit tatsaechlich verbrauchen, statt weiter zu
         raten (gleiches Prinzip, das beim F5-Problem frueher schon den
         Ausschlag gegeben hat)."""
-        if os.environ.get("DRAGEND_PROFILE") == "1":
+        if profiling_an():
             import cProfile, pstats, io as _io
             _pr = cProfile.Profile()
             _pr.enable()
@@ -5279,7 +5304,7 @@ class Frontend:
                         # DRAGEND_PROFILE-Messung wie bei draw_page_items,
                         # NUR wenn die Umgebungsvariable gesetzt ist
                         # (kein Zusatzaufwand im Normalbetrieb).
-                        if os.environ.get("DRAGEND_PROFILE") == "1":
+                        if profiling_an():
                             _dt0 = time.monotonic()
                         if redraw_dynamic:
                             if self.page == 0:
@@ -5288,7 +5313,7 @@ class Frontend:
                                 self._draw_dynamic_items()
                         if redraw_marquee:
                             self._draw_dynamic_track_marquee()
-                        if os.environ.get("DRAGEND_PROFILE") == "1":
+                        if profiling_an():
                             _dtick = time.monotonic() - _dt0
                             if _dtick > 0.003:   # bewusst NIEDRIGE Schwelle
                                                   # (3ms) - selbst bei der
