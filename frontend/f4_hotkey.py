@@ -209,14 +209,51 @@ def frontend_starten():
         log("Start fehlgeschlagen: %s" % e)
 
 
+def sperre_inhaber():
+    """PID des Waechters, der die Sperre gerade haelt - oder None."""
+    try:
+        with open(LOCK_FILE) as f:
+            pid = int(f.read().strip() or 0)
+    except (OSError, ValueError):
+        return None
+    if pid <= 0:
+        return None
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return None
+    return pid
+
+
 def einmal_sicherstellen():
     """Verhindert, dass zwei Waechter gleichzeitig laufen (z.B. weil
-    der Eintrag in user-startup.sh versehentlich doppelt steht)."""
+    der Eintrag in user-startup.sh versehentlich doppelt steht).
+
+    BUGFIX (beim Nachgehen der Meldung "laeuft bereits - dieser Start
+    wird beendet" gefunden): die Datei wurde mit "w" geoeffnet, und das
+    LEERT sie sofort - noch BEVOR ueberhaupt klar ist, ob die Sperre zu
+    bekommen ist. Ein zweiter Startversuch loeschte damit die PID des
+    tatsaechlich laufenden Waechters aus der Sperrdatei. Der Waechter
+    lief zwar weiter (die Sperre selbst haengt am Dateizeiger, nicht am
+    Inhalt), aber jede spaetere Frage "laeuft er, und unter welcher
+    PID?" - Selbsttest wie Deinstallation - bekam eine leere Datei zu
+    sehen und antwortete "nein". Also genau dann irrefuehrend, wenn man
+    sich darauf verlassen wollte.
+
+    Jetzt wird ohne Leeren geoeffnet, erst die Sperre geholt und
+    ausschliesslich im Erfolgsfall geschrieben."""
     try:
-        f = open(LOCK_FILE, "w")
+        fd = os.open(LOCK_FILE, os.O_RDWR | os.O_CREAT, 0o644)
+        f = os.fdopen(fd, "r+")
+    except OSError:
+        return None
+    try:
         fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except (OSError, IOError):
+        f.close()
         return None
+    f.seek(0)
+    f.truncate()
     f.write("%d\n" % os.getpid())
     f.flush()
     return f                     # offen halten, sonst faellt die Sperre
@@ -359,7 +396,9 @@ def main():
         return 0
     sperre = einmal_sicherstellen()
     if sperre is None:
-        log("laeuft bereits - dieser Start wird beendet.")
+        andere = sperre_inhaber()
+        log("laeuft bereits%s - dieser Start wird beendet."
+            % ((" (PID %d)" % andere) if andere else ""))
         return 0
     log("gestartet (F4 startet das Frontend, solange MiSTers Menue laeuft).")
     geraete = Geraete()

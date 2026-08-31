@@ -7,6 +7,24 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**BUGFIX: ein zweiter Startversuch leerte die Sperrdatei des F4-Wächters**
+(Build 68 — beim Nachgehen der Meldung „laeuft bereits - dieser Start
+wird beendet" gefunden):
+
+Die Sperrdatei wurde mit `"w"` geöffnet, und das **leert sie sofort** —
+noch bevor überhaupt klar ist, ob die Sperre zu bekommen ist. Jeder
+zweite Startversuch löschte damit die PID des tatsächlich laufenden
+Wächters aus der Datei. Der lief zwar weiter (die Sperre hängt am
+Dateizeiger, nicht am Inhalt), aber jede spätere Frage „läuft er, und
+unter welcher PID?" bekam eine leere Datei zu sehen und antwortete
+„nein" — also genau dann irreführend, wenn man sich darauf verlassen
+wollte: im Selbsttest und bei der Deinstallation.
+
+Jetzt wird ohne Leeren geöffnet, erst die Sperre geholt und
+ausschließlich im Erfolgsfall geschrieben. Die Meldung nennt zusätzlich
+die PID des Wächters, der die Sperre hält.
+
+
 **F4 kommt an — und eine Messmöglichkeit fürs Stocken beim Zurückgehen**
 (Build 67):
 

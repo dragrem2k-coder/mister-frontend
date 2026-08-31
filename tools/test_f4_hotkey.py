@@ -266,6 +266,31 @@ for schluessel in ("sys_f4_hotkey_on", "sys_f4_hotkey_off",
           bool(eintrag) and "de" in eintrag and "en" in eintrag)
 
 print()
+print("Test 6e: ein zweiter Start zerstoert die Sperrdatei NICHT")
+# BUGFIX-ABSICHERUNG (beim Nachgehen der Meldung "laeuft bereits -
+# dieser Start wird beendet" gefunden): die Sperrdatei wurde mit "w"
+# geoeffnet, was sie sofort leert - noch BEVOR klar ist, ob die Sperre
+# ueberhaupt zu bekommen ist. Ein zweiter Startversuch loeschte damit
+# die PID des tatsaechlich laufenden Waechters. Der lief zwar weiter,
+# aber jede spaetere Frage "laeuft er, und unter welcher PID?" bekam
+# eine leere Datei zu sehen und antwortete "nein" - irrefuehrend genau
+# dann, wenn man sich darauf verlassen wollte.
+F.LOCK_FILE = os.path.join(TMP, "f4_hotkey.lock")
+sperre = F.einmal_sicherstellen()
+check("erster Start bekommt die Sperre", sperre is not None)
+check("die Sperrdatei nennt die eigene PID",
+      F.sperre_inhaber() == os.getpid(),
+      "gelesen: %r" % (F.sperre_inhaber(),))
+zweiter = F.einmal_sicherstellen()
+check("zweiter Start bekommt sie NICHT", zweiter is None)
+check("und die PID des ersten steht immer noch drin",
+      F.sperre_inhaber() == os.getpid(),
+      "gelesen: %r" % (F.sperre_inhaber(),))
+sperre.close()
+check("nach dem Freigeben ist die Sperre wieder zu haben",
+      F.einmal_sicherstellen() is not None)
+
+print()
 print("Test 7: die Skripte selbst")
 sh = open(HOTKEY_SH, encoding="utf-8").read()
 check("f4_hotkey.sh prueft die Schalterdatei", "f4_hotkey" in sh)

@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-67",
-  "summary": "F4-Selbsttest zeigt, ob der Waechter laeuft; PERF-Messung per Schalterdatei einschaltbar."
+  "build_id": "2026-08-24-68",
+  "summary": "Sperrdatei des F4-Waechters wurde von einem zweiten Startversuch geleert."
 }
