@@ -314,6 +314,59 @@ for w, h in ((320, 240), (1920, 1080)):
               % (w, h, name), n == 0, "%d abweichende Bildpunkte" % n)
 
 print()
+print("Test 9: dasselbe fuer Listen OHNE Boxart-Spalte (System-Menue)")
+# BUGFIX-ABSICHERUNG (Nutzer-Rueckmeldung: "im System-Menue bleiben die
+# Streifen stehen, im Ordner 'Anzeige & Sound' zum Beispiel").
+#
+# Genau dieser Fall war nach dem vorigen Anlauf noch kaputt und fiel
+# durch alle bisherigen Tests: dort ist has_art False, die Liste nutzt
+# die volle Breite, und es gibt kein Boxart-Panel, dessen eigener,
+# grosszuegigerer Flip-Bereich den zu schmalen Zeilen-Flip zufaellig mit
+# abgedeckt haette. Sichtbar blieb dadurch die unterste Bildzeile des
+# Auswahlbalkens jeder verlassenen Zeile stehen - im Puffer war sie
+# korrekt aufgeraeumt, sie wurde nur nie auf den Schirm kopiert.
+OPTIONEN = ["Menuepunkt Nummer %d mit etwas laengerem Text" % i
+            for i in range(14)]
+
+
+def schirm_unterschiede_ohne_art(w, h, start, ziel):
+    def baue(item_i, scroll=0):
+        H.set_screen(w, h)
+        f = H.make_frontend(page=1)
+        node = f.cats[0][1]
+        # kind "action" -> keine Boxart-Spalte
+        node["items"] = [(t, "action", None) for t in OPTIONEN]
+        node.pop("_display_items_cache", None)
+        f.item_i = item_i
+        f.scroll = scroll
+        return f
+
+    fe = baue(start)
+    fe.draw_page_items(flip=True)
+    schritt = 1 if ziel > start else -1
+    k = start
+    while k != ziel:
+        alt_i = k
+        k += schritt
+        fe.item_i = k
+        if not fe._draw_navigate_items(alt_i):
+            fe.draw_page_items(flip=True)
+    ist = bytes(fe.fb.mm)
+    ref = baue(ziel, fe.scroll)
+    ref.draw_page_items(flip=True)
+    soll = bytes(ref.fb.mm)
+    return sum(1 for i in range(0, len(ist), 4) if ist[i:i + 3] != soll[i:i + 3])
+
+
+for w, h in ((320, 240), (1920, 1080)):
+    for name, a, b in (("runter", 0, 8), ("hoch", 8, 0),
+                       ("runter ueber den Rand", 0, 13),
+                       ("hoch ueber den Rand", 13, 0)):
+        n = schirm_unterschiede_ohne_art(w, h, a, b)
+        check("%dx%d ohne Boxart, %s: Schirmbild stimmt" % (w, h, name),
+              n == 0, "%d abweichende Bildpunkte" % n)
+
+print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))
     for f in fails:

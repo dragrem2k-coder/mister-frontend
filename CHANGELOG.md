@@ -7,6 +7,56 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**BUGFIX: die Streifen blieben im System-Menü stehen**
+(Build 66 — Nutzer-Rückmeldung: „bei den ROMs verschwinden die Streifen,
+sobald ich die Taste loslasse, im System-Menü bleiben sie stehen, im
+Ordner Anzeige & Sound zum Beispiel"):
+
+Diese Unterscheidung war der entscheidende Hinweis, und sie führte
+direkt zur Ursache. Im System-Menü gibt es **keine Boxart-Spalte**
+(`has_art` ist False). Dadurch fehlt auch deren großzügigerer
+Flip-Bereich, der in der Spieleliste den eigentlichen Fehler zufällig
+mit überdeckte.
+
+Der Fehler: an zwei Stellen wurde der Bereich, der nach dem Zeichnen auf
+den **Schirm kopiert** wird, weiterhin mit der alten Rechnung
+`rowh - 2*s` bemessen, während gezeichnet längst mit `band_h`
+(= `max(rowh-2*s, 11*s)`) wird. Der Puffer war also **korrekt** — die
+unterste Bildzeile des Auswahlbalkens wurde nur nie auf den Schirm
+übertragen. Genau deshalb war der Puffervergleich in Build 64 grün und
+der Fehler trotzdem sichtbar.
+
+In der Spieleliste flippt das Boxart-Panel einen breiten Streifen mit,
+weshalb es dort nach dem Loslassen (voller Neuaufbau) wieder sauber
+aussah — exakt das beobachtete Verhalten.
+
+Mit aufgeräumt: dieselbe Rechnung stand auch noch an drei Stellen der
+Kategorienseite. Alle nutzen jetzt denselben Ausdruck.
+
+`tools/test_crt_layout.py` deckt jetzt zusätzlich Listen **ohne**
+Boxart-Spalte ab — der Fall, der durch alle bisherigen Tests
+durchgefallen ist. 16 Kombinationen (zwei Auflösungen × mit/ohne
+Boxart × hoch/runter × innerhalb/über den Rand), alle mit 0
+abweichenden Bildpunkten.
+
+**Boxart-Zwischenspeicher: 4000 → 20000** (auf Nachfrage: „Platz genug
+ist auf einer 128-GB-Karte sowieso"). Damit passt praktisch jede
+realistische Sammlung vollständig hinein, in beiden Auflösungen — einmal
+aufgewärmt, danach dauerhaft warm. Preis: im Extremfall (alles HDMI)
+mehrere GB auf der Karte. Auf 128 GB unkritisch, auf einer 16-GB-Karte
+nicht; wer knapp ist, setzt den Wert herunter oder löscht
+`frontend/thumb_cache`.
+
+**F4-Diagnose erweitert.** Der Selbsttest meldete zwar 6 lesbare
+Eingabegeräte, aber nicht, *was* das für Geräte sind. Jetzt fragt er
+Name und Tastenumfang direkt beim Kernel ab (dieselben ioctls wie
+`evtest`) und sagt pro Gerät, ob es überhaupt eine F4-Taste kennt.
+Meldet keines eine, sind es nur Gamepads — dann kann der Wächter
+prinzipiell nicht funktionieren, und das ist eine Antwort statt einer
+Vermutung. Wichtig dabei: eine Tastatur im SSH-Fenster zählt nicht, die
+Tastendrücke gehen an den PC.
+
+
 **BUGFIX: Zeichenreste beim Hochscrollen + Boxart-Zwischenspeicher zu klein**
 (Build 65 — Nutzer-Rückmeldung: „beim Hochscrollen verursacht der immer
 noch Zeichenreste in den ROM-Ordnern sowie im System-Ordner. Rendert der

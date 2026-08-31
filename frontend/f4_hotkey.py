@@ -222,6 +222,38 @@ def einmal_sicherstellen():
     return f                     # offen halten, sonst faellt die Sperre
 
 
+def geraete_info(f):
+    """Name des Eingabegeraets und ob es ueberhaupt eine F4-Taste kennt.
+
+    Beides direkt beim Kernel erfragt (dieselben ioctls, die auch evtest
+    benutzt) - ohne das laesst sich nicht unterscheiden zwischen "die
+    Taste kam nicht an" und "an diesem MiSTer haengt gar keine
+    Tastatur". Genau diese Unterscheidung fehlte bei der Ferndiagnose.
+
+    Schlaegt eines der ioctls fehl, wird das ehrlich als "unbekannt"
+    gemeldet statt eine Vermutung auszugeben."""
+    name = "?"
+    try:
+        puffer = bytearray(256)
+        # EVIOCGNAME(len): _IOR('E', 0x06, len)
+        fcntl.ioctl(f, 0x80000000 | (len(puffer) << 16) | (0x45 << 8) | 0x06,
+                    puffer)
+        name = puffer.split(b"\x00")[0].decode("latin-1") or "?"
+    except (OSError, ValueError):
+        pass
+    kann_f4 = None
+    try:
+        # EVIOCGBIT(EV_KEY, len): _IOR('E', 0x20 + EV_KEY, len) - liefert
+        # eine Bitmaske aller Tastencodes, die dieses Geraet melden kann.
+        bits = bytearray((KEY_F4 // 8) + 1)
+        fcntl.ioctl(f, 0x80000000 | (len(bits) << 16) | (0x45 << 8)
+                    | (0x20 + EV_KEY), bits)
+        kann_f4 = bool(bits[KEY_F4 // 8] & (1 << (KEY_F4 % 8)))
+    except (OSError, ValueError, IndexError):
+        kann_f4 = None
+    return name[:34], kann_f4
+
+
 def selbsttest():
     """Sagt in Klartext, was auf DIESEM Geraet tatsaechlich vorliegt.
 
@@ -254,15 +286,31 @@ def selbsttest():
     gefunden = sorted(glob.glob("/dev/input/event*"))
     print("Eingabegeraete gefunden: %d" % len(gefunden))
     lesbar = 0
+    mit_f4 = []
     for pfad in gefunden:
         try:
-            open(pfad, "rb", buffering=0).close()
-            lesbar += 1
+            f = open(pfad, "rb", buffering=0)
         except OSError as e:
-            print("   NICHT lesbar: %s (%s)" % (pfad, e))
-    print("Davon lesbar: %d" % lesbar)
+            print("   %-20s NICHT lesbar (%s)" % (pfad, e))
+            continue
+        lesbar += 1
+        name, kann_f4 = geraete_info(f)
+        print("   %-20s %-34s %s"
+              % (pfad, name, "kann F4" if kann_f4 else "kann KEIN F4"))
+        if kann_f4:
+            mit_f4.append(pfad)
+        f.close()
+    print("Davon lesbar: %d, davon mit F4-Taste: %d" % (lesbar, len(mit_f4)))
     if not lesbar:
+        print("")
         print("KEIN Geraet lesbar - ohne Lesezugriff kann F4 nie ankommen.")
+    elif not mit_f4:
+        print("")
+        print("WICHTIG: KEINES der angeschlossenen Geraete meldet eine")
+        print("F4-Taste. Das sind vermutlich nur Gamepads. Dann kann dieser")
+        print("Waechter prinzipiell nicht funktionieren - er braucht eine")
+        print("echte Tastatur AM MISTER. Eine Tastatur im SSH-Fenster zaehlt")
+        print("nicht: die Tastendruecke gehen an den PC, nie an den MiSTer.")
     print("")
     print("Jetzt F4 druecken. Kommt keine Zeile 'Taste gedrueckt', erreicht")
     print("uns die Taste nicht. Abbrechen mit Strg+C.")

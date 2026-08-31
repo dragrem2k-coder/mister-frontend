@@ -2836,7 +2836,7 @@ class Frontend:
             # (siehe die entsprechenden Stellen in draw_page_cats(),
             # _draw_dynamic_cats() und _draw_navigate_cats_impl()).
             fb.rect(ox - 4 * s, y - 4 * s, list_right - ox + 8 * s,
-                    rowh - 4 * s, bg)
+                    cat_band_h, bg)
         label = name if len(name) <= maxc else name[:max(1, maxc-1)] + "~"
         fb.text(ox, y, label, s, C_TITLE if sel else C_TEXT, bg)
 
@@ -3216,7 +3216,7 @@ class Frontend:
             accent = accent_for(sk)
             bg = self._pulsed(accent)
             gx, gy = ox - 4 * s, y - 4 * s
-            gw, gh = list_right - ox + 8 * s, rowh - 4 * s
+            gw, gh = list_right - ox + 8 * s, max(rowh - 4 * s, 12 * s)
             # GEAENDERT (Nutzerwunsch: "glow Effekt komplett raus"): hier
             # standen zuvor die drei Leucht-Ringe, dazu eine breite
             # Randloeschung (max_p) rund um die Zeile, weil der Glow
@@ -3346,7 +3346,7 @@ class Frontend:
         old_row = old_cat_i - self.cat_scroll
         y = y0 + old_row * rowh
         gy = y - 4 * s
-        gh = rowh - 4 * s
+        gh = max(rowh - 4 * s, 12 * s)
         # Alte Zeile unmarkiert neu zeichnen - _draw_cat_row() fuellt den
         # kompletten eigenen Zeilenbereich selbst mit C_BG, ein separates
         # Freiraeumen davor ist nicht noetig.
@@ -3478,8 +3478,15 @@ class Frontend:
         if old_y_top is not None:
             self.draw_list_row(old_item_i)
             s, rowh = v["s"], v["rowh"]
+            # BUGFIX (Nutzer-Rueckmeldung: "die Streifen bleiben im
+            # System-Menue stehen"): hier stand weiterhin die alte
+            # Rechnung rowh-2*s, waehrend gezeichnet laengst mit
+            # band_h wird. Der Puffer war also KORREKT - nur wurde
+            # die unterste Bildzeile nie auf den Schirm kopiert.
+            # Genau deshalb war der Puffervergleich gruen und der
+            # Fehler trotzdem sichtbar. Siehe draw_list_row().
             flip_y0 = old_y_top - old_max_p
-            flip_y1 = old_y_top + rowh - 2 * s + old_max_p
+            flip_y1 = old_y_top + max(rowh - 2 * s, 11 * s) + old_max_p
             regions.append((flip_y0, flip_y1))
 
         new_y0, new_y1 = self._draw_dynamic_items(flip=False)
@@ -3648,8 +3655,10 @@ class Frontend:
         # Schirm zu bringende Streifen ist entsprechend schmaler.
         y_top, max_p = self._clear_row_glow_margin(self.item_i)
         self.draw_list_row(self.item_i)
+        # Gleiche Ursache wie in _draw_navigate_items_impl(): der auf den
+        # Schirm gebrachte Streifen muss so hoch sein wie der gezeichnete.
         flip_y0 = y_top - max_p
-        flip_y1 = y_top + rowh - 2 * s + max_p
+        flip_y1 = y_top + max(rowh - 2 * s, 11 * s) + max_p
         if flip:
             fb.flip_rows(flip_y0, flip_y1 - flip_y0,
                         skip_vsync=self._scroll_skip_vsync())

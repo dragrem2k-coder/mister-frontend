@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-65",
-  "summary": "CRT: Kopfzeile wurde beim Seitenaufbau angeknabbert; Boxart-Zwischenspeicher deutlich groesser."
+  "build_id": "2026-08-24-66",
+  "summary": "Streifen im System-Menue behoben (Flip-Bereich zu schmal); Boxart-Cache 20000; F4-Geraetediagnose."
 }

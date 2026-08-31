@@ -307,13 +307,24 @@ THUMB_CACHE_DIR = "/media/fat/frontend/thumb_cache"
 # Nach aussen sieht das genau so aus, wie es gemeldet wurde - "der
 # rendert alles immer wieder neu".
 #
+# ZWEITE ERHOEHUNG 4000 -> 20000 (Nutzer: "koennen wir den Cache noch
+# hoeher setzen? Platz genug ist auf einer 128GB-SD-Karte sowieso").
+# Damit passt praktisch jede realistische Sammlung vollstaendig hinein,
+# in beiden Aufloesungen - der Zwischenspeicher waermt sich einmal auf
+# und bleibt danach warm, auch ueber Neustarts.
+#
 # EHRLICH BENANNTER PREIS: Platz auf der SD-Karte. Eine CRT-Miniatur
-# liegt bei grob 10-20 KB, eine HDMI-Miniatur deutlich darueber. 4000
-# Eintraege koennen also je nach Mischung ein paar hundert MB belegen.
-# Wer das nicht moechte, setzt den Wert hier herunter oder loescht den
-# Ordner thumb_cache - er wird bei Bedarf neu aufgebaut, es geht dabei
-# nichts verloren ausser Wartezeit.
-THUMB_CACHE_MAX_FILES = 4000
+# liegt bei grob 10-20 KB, eine HDMI-Miniatur bei grob 100-200 KB.
+# 20000 Eintraege koennen also im Extremfall (alles HDMI) mehrere GB
+# belegen - auf einer 128-GB-Karte unkritisch, auf einer 16-GB-Karte
+# nicht. Wer knapp bei Platz ist, setzt den Wert hier herunter oder
+# loescht den Ordner thumb_cache; er wird bei Bedarf neu aufgebaut, es
+# geht dabei nichts verloren ausser Wartezeit.
+#
+# Die Obergrenze wird nur beim SCHREIBEN geprueft, und die Pruefung ist
+# ein einzelnes os.listdir() - auch bei 20000 Dateien kostet das nichts
+# Spuerbares, zumal sie nur nach einer neu berechneten Miniatur laeuft.
+THUMB_CACHE_MAX_FILES = 20000
 
 def _thumb_cache_key(path, w, h):
     """Cache-Schluessel aus Quellpfad + Zielgroesse + Dateigroesse/
