@@ -7,6 +7,60 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**BUGFIX: farbige Reste beim Scrollen auf dem CRT**
+(Build 64 — Nutzer-Rückmeldung mit Foto: „habe mal den CRT-Modus
+gestartet, und wenn ich jetzt durch die Menüs scrolle oder in
+System-Ordner, zieht es Fehler — das ist erst nach unserem
+CRT-Verschönern passiert, das war vorher nicht"):
+
+Stimmt, und die Ursache saß genau dort. Nachgestellt hat sich das im
+Testaufbau sofort — waagerechte farbige Streifen rechts neben den
+Einträgen, exakt wie auf dem Foto.
+
+**Ursache 1 — eine stille Kopplung, ein Pixel.** Der Streifen, den
+`draw_list_row()` aufräumt, beginnt bei `y-3*s` und ist `rowh-2*s` hoch.
+Der Text ist `8*s` hoch und beginnt bei `y`. Damit der Text vollständig
+im aufgeräumten Bereich liegt, muss `rowh >= 14*s-1` gelten. Diese
+Bedingung stand **nirgends** im Code. Bei den bisherigen Werten (15 bzw.
+45) war sie zufällig erfüllt; mit der neuen CRT-Zeilenhöhe 12 fehlte
+genau **ein** Pixel. Die unterste Zeile jedes Buchstabens wurde
+gezeichnet, aber nie wieder aufgeräumt. Bei der markierten Zeile ist der
+Zeichenhintergrund die Akzentfarbe — übrig blieb also ein farbiger
+Strich. Und weil die markierte Zeile den vollen Namen zeigt
+(Laufschrift), die unmarkierte aber den gekürzten, ragte der Strich
+rechts über den Text hinaus. Genau das Bild auf dem Foto.
+
+Behoben nicht durch eine größere Zeilenhöhe (das wäre nur das Symptom),
+sondern indem der Aufräumbereich jetzt so bemessen wird, dass er den Text
+**immer** abdeckt: `max(rowh - 2*s, 11*s)`. Für alle bisherigen
+Auflösungen ändert sich dadurch nichts.
+
+**Ursache 2 — dieselbe Beobachtung, zweiter Grund.** Beim Nachgehen fiel
+ein zweiter, viel älterer Fehler auf: `draw_list_row()` füllte den
+Zeilenhintergrund ohne Hintergrundbild schlicht per `fb.rect(..., C_BG)`
+— eine **flache** Füllung. Der volle Neuaufbau nutzt dagegen
+`fb.clear(C_BG)`, und das legt zusätzlich die dezente Randabdunkelung an
+(`VIGNETTE_ENABLED`). Jede Zeile, über die der Cursor einmal gelaufen
+war, bekam dadurch einen minimal helleren Hintergrund als eine nie
+berührte — auf einer Röhre sichtbar als Streifen quer durch die Liste.
+Exakt dieser Fehler war in `_restore_row_bg()` schon einmal gefunden und
+behoben worden; diese zweite, ältere Kopie derselben Logik blieb dabei
+stehen. Jetzt nutzen beide dieselbe Funktion.
+
+**Messbar:** im nachgestellten Scroll-Versuch (6 Einzelschritte) fielen
+die Abweichungen gegenüber einem vollen Neuaufbau von **2.785 auf 107**
+Bildpunkte (CRT) und von **105.717 auf 2.190** (HDMI). Das ist zugleich
+der größte Teil der lange bekannten Abweichungen im leichten
+Zeichenpfad — die Fallzahl fiel dabei nur von 24 auf 22, weshalb
+`diag_lightpath.py` jetzt zusätzlich die Zahl abweichender Bildpunkte
+ausgibt: ohne die hätte diese Verbesserung wie ein Rundungsfehler
+ausgesehen.
+
+`tools/test_crt_layout.py` prüft jetzt beides — die Bedingung selbst
+(nachrechenbar, ohne Testdaten) und das tatsächliche Bild nach echtem
+Scrollen.
+
+
 **BUGFIX: F4 wirkte nach einem Kaltstart nicht**
 (Build 63 — Nutzer-Rückmeldung: „Autostart kann ich im Menü ausstellen,
 aber die F4-Funktion, dass das Frontend dann startet, wenn ich den MiSTer

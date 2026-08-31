@@ -38,7 +38,7 @@ python3 tools/regression_test.py \
 | `test_virtualboy.py` | Test (Pass/Fail) | Kategorie "Virtual Boy": Core-/ROM-Pruefung, Logo, Akzentfarbe |
 | `test_cover_scaling.py` | Test (Pass/Fail) | Verkleinern der Boxart: Flaechenmittel statt Wegwerfen |
 | `test_nas_cache.py` | Test (Pass/Fail) | NAS-Spiele werden nicht bei jedem Start neu eingelesen |
-| `test_crt_layout.py` | Test (Pass/Fail) | Engeres Layout auf CRT - und dass HDMI/480p unveraendert bleiben |
+| `test_crt_layout.py` | Test (Pass/Fail) | Engeres Layout auf CRT, keine Reste beim Scrollen, HDMI/480p unveraendert |
 | `test_f4_hotkey.py` | Test (Pass/Fail) | F4-Schnellstart: Tastenerkennung, Sicherungen, Installation |
 | `test_autostart.py` | Test (Pass/Fail) | Autostart-Schalter: user-startup.sh sicher aendern |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
@@ -262,19 +262,24 @@ DIAGNOSE, kein Pass/Fail-Test. Prueft die zentrale Annahme hinter dem
 schnellen Zeichenpfad: ein Einzelschritt bzw. ein Puls-Tick muss dasselbe
 Bild hinterlassen wie ein VOLLER Neuaufbau desselben Zustands.
 
-Aktueller Stand: **24 von 34 verglichenen Faellen weichen ab**.
-(Vorher 22 von 32: durch das engere CRT-Layout sind zwei
-Listenpositionen mehr vorhanden, die verglichen werden koennen - es
-schlaegt also kein vorher heiler Fall neu fehl. Wichtig bleibt die
-Regel unten: die Zahl darf nicht STEIGEN, ohne dass sich zugleich die
-Fallzahl erhoeht.) Diese
+Aktueller Stand: **22 von 34 verglichenen Faellen weichen ab**, zusammen
+rund 28.000 Bildpunkte.
+
+Die Fallzahl allein taeuscht: als der Vignette-Fehler in
+`draw_list_row()` behoben wurde (siehe CHANGELOG, Build 64), fiel sie
+nur von 24 auf 22 - im direkt nachgemessenen Scroll-Versuch fielen die
+abweichenden BILDPUNKTE dagegen von 2.785 auf 107 (CRT) bzw. von 105.717
+auf 2.190 (HDMI). Deshalb gibt das Skript beide Zahlen aus. Die
+verbliebenen Abweichungen liegen fast alle auf einer einzigen Bildzeile
+am unteren Rand der Boxart-Karte. Diese
 Abweichungen sind bekannt, auf echter Hardware bisher NICHT sichtbar und
 noch nicht aufgeklaert. Als Pass/Fail-Test wuerde das Skript deshalb
 dauerhaft rot stehen und den Regressionslauf entwerten - es liefert
 stattdessen immer den Rueckgabewert 0 und dient als Messinstrument:
 
-> Die Zahl der Abweichungen darf bei Aenderungen am Zeichenpfad nicht
-> STEIGEN.
+> WEDER die Zahl der Faelle NOCH die Zahl abweichender Bildpunkte darf
+> bei Aenderungen am Zeichenpfad steigen - die zweite ist dabei die
+> aussagekraeftigere.
 
-Vor und nach einer Aenderung ausfuehren und die Zeile
-`Abweichungen : N` vergleichen.
+Vor und nach einer Aenderung ausfuehren und BEIDE Zeilen
+(`Abweichungen` und `Abweichende Punkte`) vergleichen.

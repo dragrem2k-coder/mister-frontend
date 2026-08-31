@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-63",
-  "summary": "F4 wirkte nach einem Kaltstart nicht - Startzeile wird jetzt selbst nachgetragen."
+  "build_id": "2026-08-24-64",
+  "summary": "CRT: farbige Reste beim Scrollen behoben (Aufraeumbereich deckte den Text nicht ganz ab)."
 }

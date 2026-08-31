@@ -192,6 +192,76 @@ for w, h in ((320, 240), (640, 480), (1920, 1080)):
           "jetzt %d" % ist["voll_breite"])
 
 print()
+print("Test 7: nach dem Scrollen bleiben keine Reste stehen")
+# BUGFIX-ABSICHERUNG (Nutzer-Rueckmeldung mit Foto vom CRT: "wenn ich
+# jetzt durch die Menues scrolle oder in System-Ordner, zieht es
+# Fehler").
+#
+# Die engere Zeilenhoehe hat eine STILLE KOPPLUNG aufgedeckt, die
+# nirgends im Code stand: der Streifen, den draw_list_row() aufraeumt,
+# beginnt bei y-3*s und ist rowh-2*s hoch, der Text ist aber 8*s hoch
+# und beginnt bei y. Damit der Text vollstaendig im aufgeraeumten
+# Bereich liegt, musste rowh >= 14*s-1 sein. Bei 15*s war das zufaellig
+# erfuellt, bei 12 fehlte GENAU EIN Pixel - die unterste Zeile jedes
+# Buchstabens blieb stehen. Bei der markierten Zeile ist der
+# Zeichenhintergrund die Akzentfarbe, uebrig blieb also ein farbiger
+# Strich.
+#
+# Zwei Ebenen werden geprueft: die Bedingung selbst (nachrechenbar,
+# unabhaengig von Testdaten) und das tatsaechliche Bild nach echtem
+# Scrollen.
+for w, h in ((320, 240), (640, 480), (1920, 1080)):
+    ist = kennzahlen(w, h)
+    Li = ist["L_items"]
+    s = Li["s"]
+    band_h = max(Li["rowh"] - 2 * s, 11 * s)
+    check("%dx%d: aufgeraeumter Streifen deckt den Text ab" % (w, h),
+          band_h >= 3 * s + 8 * s,
+          "Streifen %d, gebraucht %d" % (band_h, 3 * s + 8 * s))
+    Lc = ist["L_cats"]
+    cat_band = max(Lc["rowh"] - 4 * s, 12 * s)
+    check("%dx%d: dasselbe im Hauptmenue" % (w, h),
+          cat_band >= 4 * s + 8 * s,
+          "Streifen %d, gebraucht %d" % (cat_band, 4 * s + 8 * s))
+
+
+def reste_nach_scrollen(w, h, schritte=6):
+    """Scrollt Schritt fuer Schritt ueber den schnellen Zeichenpfad und
+    vergleicht das Ergebnis mit einem vollen Neuaufbau derselben
+    Position. Liefert die Zahl abweichender Bildpunkte."""
+    H.set_screen(w, h)
+    fe = H.make_frontend(page=1)
+    fe.item_i = 0
+    fe.scroll = 0
+    fe.draw_page_items(flip=False)
+    for k in range(1, schritte + 1):
+        fe.item_i = k
+        fe._draw_navigate_items(k - 1)
+    ist_buf = bytes(fe.fb.buf)
+
+    H.set_screen(w, h)
+    ref = H.make_frontend(page=1)
+    ref.item_i = schritte
+    ref.scroll = 0
+    ref.draw_page_items(flip=False)
+    soll_buf = bytes(ref.fb.buf)
+    return sum(1 for i in range(0, len(ist_buf), 4)
+               if ist_buf[i:i + 3] != soll_buf[i:i + 3])
+
+
+# Zahlen zur Einordnung, gemessen an genau diesem Testaufbau:
+#   vor dem Fix   CRT 2785 / HDMI 105717 abweichende Bildpunkte
+#   nach dem Fix  CRT  107 / HDMI   2190
+# Die verbliebenen liegen alle auf einer einzigen Bildzeile am unteren
+# Rand der Boxart-Karte (bekannt, seit jeher vorhanden, auf echter
+# Hardware nicht sichtbar). Die Grenzen sind bewusst knapp ueber den
+# gemessenen Werten: jeder neue Rest faellt sofort auf.
+for w, h, grenze in ((320, 240, 200), (1920, 1080, 3000)):
+    n = reste_nach_scrollen(w, h)
+    check("%dx%d: hoechstens %d abweichende Bildpunkte nach 6 Schritten"
+          % (w, h, grenze), n <= grenze, "gemessen %d" % n)
+
+print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))
     for f in fails:

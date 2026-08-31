@@ -2812,9 +2812,17 @@ class Frontend:
         else:
             accent = accent_for(sk)
         bg = self._pulsed(accent) if sel else C_BG
+        # Dieselbe stille Kopplung wie in draw_list_row() (siehe dort
+        # die ausfuehrliche Begruendung): der aufgeraeumte Streifen
+        # beginnt bei y-4*s und muss bis y+8*s-1 reichen, also
+        # mindestens 12*s hoch sein. Bei 22*s war das erfuellt, bei der
+        # engeren CRT-Zeilenhoehe (17) ebenfalls - hier wird die
+        # Bedingung trotzdem festgeschrieben, damit sie nicht beim
+        # naechsten Anfassen der Zeilenhoehe erneut lautlos kippt.
+        cat_band_h = max(rowh - 4 * s, 12 * s)
         if not sel:
             fb.rect(ox - 4 * s, y - 4 * s, list_right - ox + 8 * s,
-                    rowh - 4 * s, C_BG)
+                    cat_band_h, C_BG)
         else:
             # GEAENDERT (Nutzerwunsch: "glow Effekt komplett raus"): der
             # markierte Eintrag hatte hier zusaetzlich drei konzentrische
@@ -4248,9 +4256,37 @@ class Frontend:
         bg = self._pulsed(accent) if sel else C_BG
         x0 = list_x - 4 * s
         rw = max(4, list_right - list_x - 2 * s)
-        need = rw * 4
+        # BUGFIX (Nutzer-Rueckmeldung mit Foto vom CRT: "wenn ich jetzt
+        # durch die Menues scrolle oder in System-Ordner, zieht es
+        # Fehler" - waagerechte farbige Streifen rechts neben den
+        # Eintraegen, genau dort, wo der laengere Text der zuvor
+        # markierten Zeile stand).
+        #
+        # Der aufgeraeumte Streifen war "rowh - 2*s" hoch und begann bei
+        # y_top = y - 3*s, deckte also y-3s bis y+rowh-6s ab. Der Text
+        # ist aber 8*s hoch und beginnt bei y, reicht also bis
+        # y+8*s-1. Damit der Text vollstaendig im aufgeraeumten Bereich
+        # liegt, muss gelten:  rowh >= 14*s - 1.
+        #
+        # Diese Bedingung stand NIRGENDS im Code - sie war eine stille
+        # Kopplung zwischen Zeilenhoehe und Aufraeumhoehe. Bei den
+        # bisherigen Werten (15*s bzw. 45*s) war sie zufaellig erfuellt.
+        # Mit der engeren CRT-Zeilenhoehe (12) fehlte GENAU EIN Pixel:
+        # die unterste Zeile jedes Buchstabens wurde gezeichnet, aber
+        # nie wieder aufgeraeumt. Bei der markierten Zeile ist der
+        # Zeichenhintergrund die Akzentfarbe - uebrig blieb also ein
+        # farbiger Strich in Textbreite, und da die markierte Zeile den
+        # vollen Namen zeigt (Laufschrift) und die unmarkierte den
+        # gekuerzten, ragte der Strich rechts ueber den Text hinaus.
+        # Exakt das Bild auf dem Foto.
+        #
+        # Statt die Zeilenhoehe wieder zu vergroessern (waere nur das
+        # Symptom) wird der Aufraeumbereich jetzt so bemessen, dass er
+        # den Text IMMER abdeckt - unabhaengig von der Zeilenhoehe. Fuer
+        # alle bisherigen Aufloesungen aendert sich dadurch nichts
+        # (15-2=13 > 11, 45-6=39 > 33), die stille Kopplung ist aber weg.
+        band_h = max(rowh - 2 * s, 11 * s)
         sel_radius = 3 * s
-        cur_bg = getattr(self, "_cur_bg", None)
         if bg_fresh:
             # Voller Redraw: der Puffer wurde gerade erst KOMPLETT frisch
             # etabliert - entweder durch Kopie eines Bild-Hintergrunds
@@ -4262,29 +4298,34 @@ class Frontend:
             # redundante Teil, siehe Aufrufstelle weiter oben). Nur die
             # Auswahl braucht noch ihr farbiges Feld obendrauf.
             if sel:
-                fb.rect_rounded(x0, y_top, rw, rowh - 2 * s, bg, sel_radius)
-        elif cur_bg is not None:
-            # Listenstreifen aus dem Hintergrundbild wiederherstellen -
-            # hart abgesichert: nie eine falsche Byte-Anzahl schreiben,
-            # sonst verschiebt sich der GESAMTE Framebuffer-Puffer.
-            buflen = len(fb.buf)
-            cur_bg_len = len(cur_bg)
-            for yy in range(max(0, y_top), min(fb.height, y_top + rowh - 2 * s)):
-                off = yy * fb.stride + x0 * 4
-                end = off + need
-                if end > buflen or end > cur_bg_len or off < 0:
-                    continue
-                chunk = cur_bg[off:end]
-                if len(chunk) != need:
-                    continue
-                fb.buf[off:end] = chunk
-            if sel:
-                fb.rect_rounded(x0, y_top, rw, rowh - 2 * s, bg, sel_radius)
+                fb.rect_rounded(x0, y_top, rw, band_h, bg, sel_radius)
         else:
+            # BUGFIX (beim Nachgehen der farbigen Streifen auf dem CRT
+            # gefunden - zweite, unabhaengige Ursache derselben
+            # Beobachtung "es zieht Fehler"): dieser Block hatte zwei
+            # Zweige, und der zweite fuellte ohne Hintergrundbild schlicht
+            # per fb.rect(..., C_BG). Das ist eine FLACHE Fuellung - der
+            # volle Neuaufbau nutzt dagegen fb.clear(C_BG), und das legt
+            # zusaetzlich die dezente Randabdunkelung (VIGNETTE_ENABLED in
+            # fe/framebuffer.py) an.
+            #
+            # Folge: jede Zeile, ueber die der Cursor einmal gelaufen ist,
+            # bekam einen minimal HELLEREN Hintergrund als eine nie
+            # beruehrte Zeile. Am Bildrand, wo die Abdunkelung am
+            # staerksten ist, ist der Unterschied am groessten - auf einer
+            # Roehre sieht das aus wie ein Streifen quer durch die Liste.
+            # Genau derselbe Fehler war in _restore_row_bg() schon einmal
+            # per Pixelvergleich gefunden und dort behoben worden; diese
+            # zweite, aeltere Kopie derselben Logik blieb dabei stehen.
+            #
+            # Beide Zweige koennen ersatzlos durch _restore_row_bg()
+            # ersetzt werden - die Funktion deckt den Bild-Hintergrund UND
+            # den einfarbigen Fall bereits korrekt ab (inkl. Abdunkelung)
+            # und ist zudem die schnellere Fassung (memoryview statt einer
+            # Zwischenkopie pro Bildzeile).
+            self._restore_row_bg(x0, y_top, rw, band_h)
             if sel:
-                fb.rect_rounded(x0, y_top, rw, rowh - 2 * s, bg, sel_radius)
-            else:
-                fb.rect(x0, y_top, rw, rowh - 2 * s, C_BG)
+                fb.rect_rounded(x0, y_top, rw, band_h, bg, sel_radius)
 
         # GEAENDERT (Nutzerwunsch: "glow Effekt komplett raus"): hier
         # standen drei konzentrische Leucht-Ringe um die markierte Zeile

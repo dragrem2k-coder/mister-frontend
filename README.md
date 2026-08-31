@@ -565,6 +565,14 @@ beschnitten. Der breitere Listenanteil geht zu Lasten der Cover-Spalte,
 die dafür einen kleineren Abstand zur Liste bekommt - unterm Strich
 bleiben dem Cover 96 statt 101 Pixel Breite.
 
+Die engere Zeilenhöhe hat dabei zwei ältere Zeichenfehler ans Licht
+gebracht, die beide mit behoben sind (siehe CHANGELOG, Build 64): beim
+Aufräumen einer Zeile blieb die unterste Pixelzeile jedes Buchstabens
+stehen - sichtbar als farbiger Strich neben dem Text -, und Zeilen, über
+die der Cursor gelaufen war, bekamen einen minimal helleren Hintergrund
+als nie berührte. Beides fiel auf HDMI praktisch nicht auf und auf der
+Röhre sofort.
+
 ## 8c. Zuletzt gespielt, Lade-Fortschritt
 
 Automatisch aktiv, keine Einrichtung nötig:

@@ -34,11 +34,28 @@ fails = []
 checks = 0
 
 
+# NEU (beim Nachgehen eines echten, auf dem CRT sichtbaren Fehlers
+# ergaenzt): die reine Fallzahl sagt nichts ueber das AUSMASS. Als der
+# Vignette-Fehler in draw_list_row() behoben wurde, fiel die Zahl der
+# betroffenen Faelle nur von 24 auf 22. Im direkt nachgemessenen
+# Scroll-Versuch (6 Einzelschritte, siehe tools/test_crt_layout.py)
+# fiel die Zahl abweichender BILDPUNKTE dagegen von 2.785 auf 107
+# (CRT) bzw. von 105.717 auf 2.190 (HDMI). Ohne diese zweite Zahl
+# haette die Verbesserung wie ein Rundungsfehler ausgesehen, und
+# umgekehrt wuerde ein neuer, grober Fehler in einem bereits
+# betroffenen Fall gar nicht auffallen.
+pixel_gesamt = 0
+
+
 def cmp_buf(label, a, b):
-    global checks
+    global checks, pixel_gesamt
     checks += 1
-    if hashlib.sha256(bytes(a)).hexdigest() != hashlib.sha256(bytes(b)).hexdigest():
-        fails.append(label)
+    if hashlib.sha256(bytes(a)).hexdigest() == hashlib.sha256(bytes(b)).hexdigest():
+        return
+    ab, bb = bytes(a), bytes(b)
+    n = sum(1 for i in range(0, len(ab), 4) if ab[i:i + 3] != bb[i:i + 3])
+    pixel_gesamt += n
+    fails.append("%s  (%d Bildpunkte)" % (label, n))
 
 
 for res_label, w, h in (("CRT", 320, 240), ("HDMI", 1920, 1080)):
@@ -110,15 +127,16 @@ for res_label, w, h in (("CRT", 320, 240), ("HDMI", 1920, 1080)):
 
 print("Verglichene Faelle : %d" % checks)
 print("Abweichungen       : %d" % len(fails))
+print("Abweichende Punkte : %d" % pixel_gesamt)
 if fails:
     print()
     print("Betroffene Faelle (Aufloesung | Zeichenpfad | Position):")
     for f in fails:
         print("   ", f)
     print()
-    print("Bekannter, noch offener Stand - auf echter Hardware bisher nicht")
-    print("sichtbar. Wichtig ist nur, dass diese Zahl bei Aenderungen am")
-    print("Zeichenpfad nicht groesser wird.")
+    print("Bekannter, noch offener Stand. Wichtig ist, dass WEDER die Zahl")
+    print("der Faelle NOCH die Zahl abweichender Bildpunkte bei Aenderungen")
+    print("am Zeichenpfad steigt - die zweite ist dabei die aussagekraeftigere.")
 else:
     print()
     print("Alle Faelle bitgenau identisch.")
