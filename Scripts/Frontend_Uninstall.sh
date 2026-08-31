@@ -71,6 +71,25 @@ else
     echo "Kein Autostart-Eintrag gefunden (schon entfernt oder nie eingerichtet)."
 fi
 
+# --- F4-Schnellstart entfernen ---
+# NEU (siehe frontend/f4_hotkey.sh): der Waechter kann noch laufen, und
+# sein Eintrag steht in derselben Datei. Beides muss weg, sonst bleibt
+# nach der Deinstallation ein Prozess uebrig, der bei jedem Boot eine
+# nicht mehr vorhandene Datei zu starten versucht.
+if [ -f /tmp/f4_hotkey.lock ]; then
+    F4_PID=$(cat /tmp/f4_hotkey.lock 2>/dev/null)
+    if [ -n "$F4_PID" ] && kill -0 "$F4_PID" 2>/dev/null; then
+        kill "$F4_PID" 2>/dev/null
+        echo "F4-Waechter beendet (PID $F4_PID)."
+    fi
+    rm -f /tmp/f4_hotkey.lock
+fi
+if [ -f "$STARTUP_FILE" ] && grep -q "f4_hotkey.sh" "$STARTUP_FILE"; then
+    grep -v "f4_hotkey.sh" "$STARTUP_FILE" > "$STARTUP_FILE.tmp" 2>/dev/null
+    mv "$STARTUP_FILE.tmp" "$STARTUP_FILE"
+    echo "F4-Schnellstart-Eintrag entfernt."
+fi
+
 # --- Scripts entfernen ---
 # NEU: neue ("Frontend_"-Praefix, seit Build 2026-08-24-6) UND alte
 # Dateinamen (falls hier noch von einer vor der Umbenennung installierten

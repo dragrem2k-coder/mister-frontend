@@ -110,6 +110,7 @@ Nachlesen (`CHANGELOG.md`).
    - 8n. Easter-Egg-System (Geheimnisse) + Frontend-Level
    - 8o. CRT-Testbild
    - 8p. Mitwirkende
+   - 8q. Autostart an/aus + F4 startet das Frontend
 9. Sprache umschalten
 10. Eigene Tastenbelegung
 11. Boot-Animation (Startvideo)
@@ -123,12 +124,15 @@ Nachlesen (`CHANGELOG.md`).
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v4.4) || frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v4.4) |
+| frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (läuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (läuft auf dem MiSTer) |
 | frontend/stream_server.py       | /media/fat/frontend/             | Web-Server fürs Stream-Overlay (optional) |
 | frontend/stream_overlay.html    | /media/fat/frontend/             | OBS-Browser-Quelle (optional) |
 | frontend/stream_admin.html      | /media/fat/frontend/             | Stream-Overlay-Konfiguration (optional) |
+| frontend/f4_hotkey.py           | /media/fat/frontend/             | F4-Schnellstart-Wächter (optional, standardmäßig aus) |
+| frontend/f4_hotkey.sh           | /media/fat/frontend/             | Autostart-Wrapper für den F4-Wächter |
 | Scripts/Frontend_Install_Remote.sh | /media/fat/Scripts/           | Installation mit Internetzugang (lädt von GitHub) |
 | Scripts/Frontend_Install_Offline.sh | /media/fat/Scripts/          | Installation ohne Internetzugang (aus diesem Paket) |
 | Scripts/Frontend_Uninstall.sh   | /media/fat/Scripts/              | Alles wieder sauber entfernen, eigene Daten optional behalten |
@@ -539,6 +543,28 @@ selbstständig neu. Eine einzige Eingabe innerhalb der 20 Sekunden
 bestätigt den CRT-Modus dagegen dauerhaft, der Hinweis verschwindet
 und es wird nichts zurückgesetzt.
 
+**Das Layout passt sich der kleinen Auflösung an.** Bei 240 Bildzeilen
+werden Kopfblock, Zeilenabstände und die Breite der Logo-Spalte enger
+gefasst als auf HDMI. Hintergrund: mehrere dieser Abstände standen als
+feste Pixelzahl im Code und belegten bei 240 Zeilen den doppelten
+Bildanteil wie bei 1080. Nachgemessen an echten, in beiden Auflösungen
+gerenderten Bildern:
+
+| | CRT 320x240 vorher | CRT 320x240 jetzt | HDMI 1920x1080 |
+|---|---|---|---|
+| Zeichen pro Zeile | 17 | **20** | 35 |
+| Sichtbare Spiele | 10 | **13** | 17 |
+| Kategorien im Hauptmenü | 7 | **9** | 12 |
+| Anteil für den Kopfblock | 24 % | **20 %** | 18 % |
+
+Auf HDMI und bei 640x480 ändert sich dadurch **nichts** - dort war kein
+Mangel messbar. Der Overscan-Sicherheitsrand (siehe `OVERSCAN_X`/
+`OVERSCAN_Y`) bleibt ebenfalls unangetastet: Platz am Bildrand zu holen
+wäre bei einer Röhre genau der falsche Ort, dort wird ohnehin
+beschnitten. Der breitere Listenanteil geht zu Lasten der Cover-Spalte,
+die dafür einen kleineren Abstand zur Liste bekommt - unterm Strich
+bleiben dem Cover 96 statt 101 Pixel Breite.
+
 ## 8c. Zuletzt gespielt, Lade-Fortschritt
 
 Automatisch aktiv, keine Einrichtung nötig:
@@ -819,6 +845,66 @@ zum Farbabgleich. Nützlich beim Einstellen eines 15kHz-CRT-Setups
 System-Menü -> "Mitwirkende" - wer das Frontend gebaut hat und wer
 mitgeholfen hat. Ein kleines Dankeschön, kein Geheimnis wie der
 Entwicklerraum aus Abschnitt 8n.
+
+## 8q. Autostart an/aus + F4 startet das Frontend
+
+Zwei Schalter, die zusammengehören - beide unter System-Menü ->
+Optionen -> **Verhalten**, direkt untereinander.
+
+### Autostart an/aus
+
+Ob das Frontend beim Booten mitstartet, wurde bisher einmalig beim
+Installieren festgelegt und ließ sich danach nur per SSH ändern. Jetzt
+gibt es dafür einen Menüpunkt.
+
+**Wirkt ab dem nächsten Neustart** - MiSTer liest die Autostart-Datei
+nur beim Booten, ein laufendes Frontend merkt von der Umschaltung
+nichts. Steht so auch in der Meldung, sonst wirkt "es passiert ja
+nichts" wie ein Fehler.
+
+**Was dabei passiert:** die Zeile `frontend_boot.sh &` wird aus
+`/media/fat/linux/user-startup.sh` wirklich entfernt bzw. wieder
+eingetragen. Diese Datei gehört dem MiSTer, deshalb wird hier deutlich
+vorsichtiger vorgegangen als bei jedem anderen Schalter: vor der ersten
+Änderung entsteht eine einmalige Sicherheitskopie
+(`user-startup.sh.dragend_backup`), geschrieben wird in eine Nebendatei,
+deren Inhalt vor dem Übernehmen zurückgelesen und geprüft wird, und erst
+dann wird sie in einem einzigen, unteilbaren Schritt an ihren Platz
+geschoben. Alle anderen Zeilen bleiben zeichengenau stehen - auch ein
+NAS-Mount oder was du sonst dort eingetragen hast.
+
+**Ausschalten sperrt das Frontend nicht.** Starten geht weiterhin über
+OSD -> Scripts -> `Frontend_Start` - oder eben per F4, siehe unten.
+
+### F4 startet das Frontend
+
+Wer keinen Autostart nutzt, muss das Frontend sonst jedes Mal über
+OSD -> Scripts -> `Frontend_Start` von Hand starten. Mit diesem
+Schalter genügt ein Druck auf **F4** auf einer angeschlossenen
+Tastatur.
+
+Wirkt sofort, kein Neustart nötig, und nach jedem Boot wieder.
+
+**Was dabei passiert:** MiSTer selbst kann keine Taste auf ein Skript
+legen - die MiSTer.ini kennt dafür keine Option. Deshalb läuft im
+Hintergrund ein winziger Wächter (`frontend/f4_hotkey.py`), der die
+Eingabegeräte mitliest. Er ist bewusst zurückhaltend gebaut:
+
+- Er **greift die Tastatur nicht exklusiv ab**, sondern liest nur mit.
+  MiSTers Menü bekommt jeden Tastendruck weiterhin unverändert. F4
+  selbst wertet MiSTer nirgends aus - die Taste ist frei.
+- Er reagiert **nur, solange MiSTers Menü läuft**. Mitten im Spiel
+  passiert auf F4 nichts.
+- Er startet nichts, wenn das Frontend **schon läuft**.
+- Er ist **standardmäßig aus** und wird nie ungefragt aktiviert, auch
+  nicht durch ein Update.
+
+**Grenzen, ehrlich benannt:** nur Tastatur, kein Gamepad - im MiSTer-
+Menü sind die Pad-Tasten bereits vollständig von MiSTer selbst belegt,
+eine freie Taste gibt es dort schlicht nicht. Und der Wächter läuft
+dauerhaft im Hintergrund (ein Python-Prozess, der die meiste Zeit
+schläft). Wer das nicht möchte, schaltet den Punkt einfach aus - der
+Wächter beendet sich dann innerhalb einer Sekunde von selbst.
 
 ## 9. Sprache umschalten
 

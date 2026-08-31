@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-60",
-  "summary": "NAS: kein erzwungener Neuscan mehr wenige Sekunden nach dem Start."
+  "build_id": "2026-08-24-62",
+  "summary": "Autostart jetzt im Menue an-/abschaltbar (zusammen mit dem F4-Schalter)."
 }

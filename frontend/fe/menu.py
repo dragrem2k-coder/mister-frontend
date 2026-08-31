@@ -30,7 +30,8 @@ from fe.settings import (
     dragend_logo_enabled, format_attract_delay, load_attract_delay,
     screen_mirror_enabled, stream_overlay_enabled, system_bg_enabled,
     fast_scroll_enabled, pulse_effect_enabled, eq_effect_enabled,
-    track_marquee_enabled, fb_size_label_key,
+    track_marquee_enabled, fb_size_label_key, f4_hotkey_enabled,
+    autostart_enabled,
 )
 from fe.timekeeping import format_timezone_offset, load_timezone_offset
 from fe.retroachievements import load_ra_config, ra_toggle_enabled
@@ -195,6 +196,20 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     ra_toggle_label = (t("sys_ra_toggle_on") if ra_toggle_enabled()
                        else t("sys_ra_toggle_off"))
 
+    # NEUES FEATURE (Nutzerwunsch: "koennen wir das Script
+    # Frontend_Start.sh, wenn einer kein Autostart eingerichtet hat,
+    # irgendwie auf F4 im OSD einbinden?"). Standard AUS - siehe
+    # F4_HOTKEY_FLAG in fe/settings.py fuer die Begruendung.
+    # NEUES FEATURE (Nutzerfrage: "ist da jetzt quasi ein Schalter unter
+    # System/Optionen drin, der den Autostart an- und ausschaltbar
+    # macht?"). Steht bewusst DIREKT ueber dem F4-Schalter: die beiden
+    # gehoeren zusammen ("Autostart aus, dafuer F4"), und wer den einen
+    # sucht, findet so den anderen gleich mit.
+    autostart_label = t("sys_autostart_on") if autostart_enabled() \
+        else t("sys_autostart_off")
+    f4_label = t("sys_f4_hotkey_on") if f4_hotkey_enabled() \
+        else t("sys_f4_hotkey_off")
+
     def folder(*items):
         return {"folders": {}, "items": list(items)}
 
@@ -249,6 +264,8 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             (attract_delay_label, "attract_delay", None),
             (tz_label, "timezone", None),
             (netwait_label, "network_wait", None),
+            (autostart_label, "autostart", None),
+            (f4_label, "f4_hotkey", None),
         ),
         t("sys_group_input"): folder(
             (t("sys_language"), "language", None),

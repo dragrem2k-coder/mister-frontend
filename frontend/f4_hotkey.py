@@ -1,0 +1,265 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""F4-Schnellstart fuer das Frontend - kleiner Hintergrundwaechter.
+
+NEUES FEATURE (Nutzerwunsch: "koennen wir das Script Frontend_Start.sh,
+wenn einer kein Autostart eingerichtet hat, irgendwie auf F4 im OSD
+einbinden? So dass man nur F4 druecken muss und es startet?").
+
+WARUM UEBERHAUPT EIN EIGENER PROZESS
+------------------------------------
+Nachgesehen statt geraten: MiSTers eigene Menue-Verarbeitung
+(menu.cpp) wertet in ihrem Tasten-Zweig F12, F1, F11, F10, F9, F7,
+ESC, BACK, BACKSPACE und ENTER aus - F4 kommt dort NICHT vor, die
+Taste ist also tatsaechlich frei. Eine Moeglichkeit, eine Taste per
+MiSTer.ini auf ein Script zu legen, gibt es aber nicht (die komplette
+Optionsliste in cfg.cpp wurde danach durchsucht: kein Eintrag fuer
+Taste/Button/Script/Shortcut). Ohne Aenderung an MiSTer selbst bleibt
+deshalb nur ein eigener kleiner Waechter, der die Eingabegeraete
+mitliest - genau das ist diese Datei.
+
+WAS SIE BEWUSST NICHT TUT
+-------------------------
+* Sie greift die Eingabegeraete NICHT exklusiv ab (kein EVIOCGRAB) -
+  sie liest nur mit. MiSTers Menue bekommt jeden Tastendruck also
+  weiterhin unveraendert; F4 selbst wertet es ohnehin nicht aus.
+* Sie reagiert NUR, solange MiSTers Menue-Core aktiv ist
+  (/tmp/CORENAME == "MENU"). Waehrend eines laufenden Spiels passiert
+  auf F4 nichts - sonst wuerde ein versehentlicher Tastendruck mitten
+  im Spiel das Frontend starten.
+* Sie startet nichts, wenn das Frontend bereits laeuft (Sperrdatei
+  /tmp/frontend.lock mit lebendem Prozess) - dann waere ein zweiter
+  Start ohnehin sinnlos, und Frontend_Start.sh lehnt ihn selbst ab.
+* Sie ist standardmaessig AUS. Ohne die Schalterdatei (siehe FLAG_FILE)
+  beendet sie sich sofort wieder. Eingeschaltet wird ueber den
+  Menuepunkt unter System -> Optionen.
+
+Aufruf normalerweise ueber f4_hotkey.sh aus user-startup.sh.
+Direkter Aufruf zum Ausprobieren:  python3 f4_hotkey.py --debug
+"""
+import fcntl
+import glob
+import os
+import select
+import struct
+import subprocess
+import sys
+import time
+
+FRONTEND_DIR = "/media/fat/frontend"
+FLAG_FILE = os.path.join(FRONTEND_DIR, "f4_hotkey")
+LOCK_FILE = "/tmp/f4_hotkey.lock"
+FRONTEND_LOCK = "/tmp/frontend.lock"
+CORENAME = "/tmp/CORENAME"
+START_SCRIPT = "/media/fat/Scripts/Frontend_Start.sh"
+LOGFILE = "/tmp/frontend.log"
+
+# evdev-Grundlagen - bewusst hier wiederholt statt aus fe/input.py
+# importiert: dieser Waechter laeuft beim Booten, moeglicherweise noch
+# bevor irgendetwas anderes bereit ist. Ein Importfehler im grossen
+# Frontend-Paket darf ihn nicht mitreissen, und er soll ohne dieses
+# Paket lauffaehig bleiben.
+EVENT_FMT = "llHHi"
+EVENT_SIZE = struct.calcsize(EVENT_FMT)
+EV_KEY = 1
+KEY_F4 = 62
+# Wert 1 = gedrueckt, 2 = Wiederholung (halten), 0 = losgelassen.
+# Nur der echte Druck zaehlt - sonst wuerde Halten eine Salve ausloesen.
+WERT_GEDRUECKT = 1
+
+DEBUG = "--debug" in sys.argv
+
+
+def log(text):
+    zeile = "[f4_hotkey] %s\n" % text
+    if DEBUG:
+        sys.stdout.write(zeile)
+        sys.stdout.flush()
+    try:
+        with open(LOGFILE, "a") as f:
+            f.write(zeile)
+    except OSError:
+        pass
+
+
+def eingeschaltet():
+    return os.path.exists(FLAG_FILE)
+
+
+def menue_aktiv():
+    """True, wenn MiSTers eigener Menue-Core laeuft.
+
+    Genauso robust gelesen wie in frontend_boot.sh und current_core()
+    im Frontend selbst: manche Firmware haengt ein Leerzeichen oder ein
+    CR an, ein blosser Vergleich auf "MENU" trifft dann nie."""
+    try:
+        with open(CORENAME, "rb") as f:
+            roh = f.read(64)
+    except OSError:
+        return False
+    return roh.decode("latin-1").strip("\x00\r\n\t ").upper() == "MENU"
+
+
+def frontend_laeuft():
+    try:
+        with open(FRONTEND_LOCK) as f:
+            pid = int(f.read().strip() or 0)
+    except (OSError, ValueError):
+        return False
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)          # Signal 0: nur pruefen, nicht senden
+    except OSError:
+        return False             # verwaiste Sperrdatei
+    return True
+
+
+class Geraete(object):
+    """Offene Lese-Handles auf alle /dev/input/event*.
+
+    Wird regelmaessig aufgefrischt: eine Tastatur, die erst nach dem
+    Booten eingesteckt wird, soll genauso funktionieren."""
+
+    def __init__(self):
+        self.offen = {}          # Pfad -> Dateiobjekt
+        self.letzte_pruefung = 0.0
+
+    def aktualisieren(self, jetzt):
+        if jetzt - self.letzte_pruefung < 3.0:
+            return
+        self.letzte_pruefung = jetzt
+        vorhanden = set(glob.glob("/dev/input/event*"))
+        for pfad in sorted(vorhanden - set(self.offen)):
+            try:
+                f = open(pfad, "rb", buffering=0)
+                # Nicht blockierend: read() darf niemals haengen
+                # bleiben, sonst reagiert der Waechter auf nichts mehr.
+                flags = fcntl.fcntl(f, fcntl.F_GETFL)
+                fcntl.fcntl(f, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+            except OSError:
+                continue         # z.B. fehlende Rechte - einfach ueberspringen
+            self.offen[pfad] = f
+            log("Geraet dazu: %s" % pfad)
+        for pfad in list(self.offen):
+            if pfad not in vorhanden:
+                self.schliessen(pfad)
+
+    def schliessen(self, pfad):
+        f = self.offen.pop(pfad, None)
+        if f is not None:
+            try:
+                f.close()
+            except OSError:
+                pass
+            log("Geraet weg: %s" % pfad)
+
+    def f4_gedrueckt(self, timeout):
+        """Wartet bis zu timeout Sekunden auf Eingaben. True, sobald
+        auf irgendeinem Geraet F4 gedrueckt wurde."""
+        if not self.offen:
+            time.sleep(timeout)
+            return False
+        try:
+            bereit, _, _ = select.select(list(self.offen.values()), [], [],
+                                         timeout)
+        except (OSError, ValueError):
+            return False
+        treffer = False
+        for f in bereit:
+            try:
+                roh = f.read(EVENT_SIZE * 32)
+            except (OSError, ValueError):
+                # Geraet ist verschwunden (Kabel gezogen) - beim
+                # naechsten Auffrischen faellt es sauber heraus.
+                for pfad, g in list(self.offen.items()):
+                    if g is f:
+                        self.schliessen(pfad)
+                continue
+            if not roh:
+                continue
+            for i in range(0, len(roh) - EVENT_SIZE + 1, EVENT_SIZE):
+                _s, _us, etype, code, wert = struct.unpack(
+                    EVENT_FMT, roh[i:i + EVENT_SIZE])
+                if etype == EV_KEY and code == KEY_F4 and wert == WERT_GEDRUECKT:
+                    treffer = True
+        return treffer
+
+
+def frontend_starten():
+    if not os.path.exists(START_SCRIPT):
+        log("Startscript fehlt: %s" % START_SCRIPT)
+        return
+    log("F4 im Menue erkannt - starte das Frontend.")
+    try:
+        # Vom Waechter ABKOPPELN (eigene Sitzung): der Waechter laeuft
+        # weiter und soll den Start weder blockieren noch mit in den
+        # Abgrund reissen, falls er selbst spaeter beendet wird.
+        subprocess.Popen(["/bin/bash", START_SCRIPT],
+                         stdin=subprocess.DEVNULL,
+                         stdout=open(LOGFILE, "a"),
+                         stderr=subprocess.STDOUT,
+                         start_new_session=True)
+    except OSError as e:
+        log("Start fehlgeschlagen: %s" % e)
+
+
+def einmal_sicherstellen():
+    """Verhindert, dass zwei Waechter gleichzeitig laufen (z.B. weil
+    der Eintrag in user-startup.sh versehentlich doppelt steht)."""
+    try:
+        f = open(LOCK_FILE, "w")
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (OSError, IOError):
+        return None
+    f.write("%d\n" % os.getpid())
+    f.flush()
+    return f                     # offen halten, sonst faellt die Sperre
+
+
+def main():
+    if not eingeschaltet():
+        # Kein Log-Eintrag: der Normalfall (Funktion ist aus), und die
+        # Datei soll bei jedem Boot nicht unnoetig wachsen.
+        return 0
+    sperre = einmal_sicherstellen()
+    if sperre is None:
+        log("laeuft bereits - dieser Start wird beendet.")
+        return 0
+    log("gestartet (F4 startet das Frontend, solange MiSTers Menue laeuft).")
+    geraete = Geraete()
+    while True:
+        jetzt = time.monotonic()
+        # Schalter zur Laufzeit ausgeschaltet -> sauber beenden, ohne
+        # dass ein Neustart noetig waere.
+        if not eingeschaltet():
+            log("Schalter aus - beende mich.")
+            return 0
+        geraete.aktualisieren(jetzt)
+        if not geraete.f4_gedrueckt(1.0):
+            continue
+        if not menue_aktiv():
+            log("F4 erkannt, aber MiSTers Menue laeuft gerade nicht - ignoriert.")
+            continue
+        if frontend_laeuft():
+            log("F4 erkannt, aber das Frontend laeuft bereits - ignoriert.")
+            continue
+        frontend_starten()
+        # Kurze Sperrzeit: der Start braucht einen Moment, bis die
+        # Sperrdatei des Frontends steht. Ohne diese Pause wuerde ein
+        # zweiter Tastendruck in der Zwischenzeit einen zweiten Start
+        # ausloesen.
+        time.sleep(5.0)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(0)
+    except Exception as e:                      # noqa: BLE001
+        # Ein Waechter darf den Bootvorgang unter keinen Umstaenden
+        # stoeren - jeder unerwartete Fehler wird protokolliert und
+        # fuehrt zu einem stillen, sauberen Ende.
+        log("unerwarteter Fehler, beende mich: %r" % (e,))
+        sys.exit(0)

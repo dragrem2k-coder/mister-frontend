@@ -47,6 +47,25 @@ for old in start_frontend.sh update_frontend.sh boxart_download.sh \
     [ -f "$SCRIPTS_DIR/$old" ] && rm -f "$SCRIPTS_DIR/$old"
 done
 
+# NEU (Nutzerwunsch F4-Schnellstart, siehe frontend/f4_hotkey.sh): den
+# Autostart-Eintrag fuer den Waechter nachtragen, falls er fehlt. Noetig,
+# weil bestehende Installationen nur ueber dieses Update-Skript laufen
+# und nie wieder durch einen Installer - ohne diesen Block gaebe es den
+# Menuepunkt zwar, er wuerde den Waechter aber nur bis zum naechsten
+# Neustart am Leben halten. Der Eintrag ist wirkungslos, solange der
+# Schalter aus ist (f4_hotkey.sh beendet sich dann sofort).
+F4_STARTUP="/media/fat/linux/user-startup.sh"
+if [ -f "/media/fat/frontend/f4_hotkey.sh" ] \
+   && ! grep -qF "f4_hotkey.sh" "$F4_STARTUP" 2>/dev/null; then
+    mkdir -p "$(dirname "$F4_STARTUP")" 2>/dev/null || true
+    if [ ! -f "$F4_STARTUP" ]; then
+        printf '#!/bin/bash\n' > "$F4_STARTUP"
+        chmod +x "$F4_STARTUP" 2>/dev/null
+    fi
+    printf '%s\n' "/media/fat/frontend/f4_hotkey.sh &" >> "$F4_STARTUP"
+    echo "F4-Schnellstart eingetragen (standardmaessig AUS)."
+fi
+
 # BEWUSST OHNE den Selbstmord-Schutz aus Frontend_Install.sh/
 # Frontend_Install_Remote.sh/Frontend_Install_Offline.sh: hier ist der
 # Kill tatsaechlich beabsichtigt UND

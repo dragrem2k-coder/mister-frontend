@@ -59,7 +59,7 @@ What's different here:
 - **No system modification, reversible at any time** - this is a single
   Python script that runs on a completely unmodified MiSTer. No swapping
   of the kernel/Linux image, no additional hardware needed. Try it out
-  without risk: one command uninstalls it cleanly (see `uninstall.sh`),
+  without risk: one command uninstalls it cleanly (see `Scripts/Frontend_Uninstall.sh`),
   and your MiSTer is exactly as it was before.
 - **No external dependency** - pure Python from the standard library,
   runs without a single additional package.
@@ -127,21 +127,31 @@ history to read up on (`CHANGELOG.md`).
 | frontend/stream_server.py       | /media/fat/frontend/             | Web server for the stream overlay (optional) |
 | frontend/stream_overlay.html    | /media/fat/frontend/             | OBS browser source (optional) |
 | frontend/stream_admin.html      | /media/fat/frontend/             | Stream overlay configuration (optional) |
-| install.sh                      | stays in the package (installer) | Installation with internet access (downloads from GitHub) |
-| install_offline.sh              | stays in the package (installer) | Installation without internet access (from this package) |
-| uninstall.sh                     | stays in the package (uninstall) | Remove everything cleanly, optionally keep your own data |
-| Scripts/install_frontend.sh     | /media/fat/Scripts/              | Install/update directly from the MiSTer menu (Option A) |
-| Scripts/start_frontend.sh       | /media/fat/Scripts/              | Start the frontend manually from the MiSTer OSD |
-| Scripts/update_frontend.sh      | /media/fat/Scripts/              | Restart cleanly after a file update (1 command instead of several) |
-| Scripts/boxart_download.sh      | /media/fat/Scripts/              | Start the boxart download from the OSD/frontend |
-| Scripts/gameinfo_download.sh    | /media/fat/Scripts/              | Start the game-info download from the OSD/frontend |
-| Scripts/stream_toggle.sh        | /media/fat/Scripts/              | Toggle the stream overlay on/off (optional) |
+| frontend/f4_hotkey.py           | /media/fat/frontend/             | F4 shortcut watcher (optional, off by default) |
+| frontend/f4_hotkey.sh           | /media/fat/frontend/             | Autostart wrapper for the F4 watcher |
+| Scripts/Frontend_Install_Remote.sh | /media/fat/Scripts/           | Installation with internet access (downloads from GitHub) |
+| Scripts/Frontend_Install_Offline.sh | /media/fat/Scripts/          | Installation without internet access (from this package) |
+| Scripts/Frontend_Uninstall.sh   | /media/fat/Scripts/              | Remove everything cleanly, optionally keep your own data |
+| Scripts/Frontend_Install.sh     | /media/fat/Scripts/              | Install/update directly from the MiSTer menu (Option A) |
+| Scripts/Frontend_Start.sh       | /media/fat/Scripts/              | Start the frontend manually from the MiSTer OSD |
+| Scripts/Frontend_Update.sh      | /media/fat/Scripts/              | Restart cleanly after a file update (1 command instead of several) |
+| Scripts/Frontend_Boxart_Download.sh | /media/fat/Scripts/          | Start the boxart download from the OSD/frontend |
+| Scripts/Frontend_Gameinfo_Download.sh | /media/fat/Scripts/        | Start the game-info download from the OSD/frontend |
+| Scripts/Frontend_Stream_Toggle.sh | /media/fat/Scripts/            | Toggle the stream overlay on/off (optional) |
 | PC-Tools/art_convert.py         | stays on the PC (Python+Pillow)  | Images -> .art format, including background images |
 | PC-Tools/boxart_fetch.py        | stays on the PC (optional)       | Alternative: download boxart on the PC instead of the MiSTer |
 | PC-Tools/video_to_bootanim.py   | stays on the PC (Python+Pillow)  | Video/image sequence -> boot animation |
 | PC-Tools/obs_setup.py           | stays on the PC (optional)       | Create a local OBS overlay file with a hard-coded MiSTer IP |
 | PC-Tools/OBS_Setup_starten.bat  | stays on the PC (optional)       | Windows double-click launcher for obs_setup.py |
 | music/                          | (for reference only, contents irrelevant) | Target folder for your own MP3s |
+
+All scripts that show up in the MiSTer OSD (`Scripts/`) deliberately
+share a `Frontend_` prefix, so they sort together in the OSD menu and are
+recognisable at a glance (instead of disappearing among other people's
+scripts under mixed names like `install_frontend.sh` or
+`stream_toggle.sh`, as they did before). If you still have an older
+version installed: the rename happens automatically with the next update,
+no manual cleanup needed.
 
 ## 2. Requirements
 
@@ -165,10 +175,10 @@ history to read up on (`CHANGELOG.md`).
 No SSH/terminal needed - just copy a single, small file once via WinSCP:
 
 1. Download
-   [`Scripts/install_frontend.sh`](https://raw.githubusercontent.com/dragrem2k-coder/mister-frontend/main/Scripts/install_frontend.sh)
+   [`Scripts/Frontend_Install.sh`](https://raw.githubusercontent.com/dragrem2k-coder/mister-frontend/main/Scripts/Frontend_Install.sh)
    (right-click -> Save as, or browser download).
 2. Copy the file to `/media/fat/Scripts/` via WinSCP.
-3. In the MiSTer OSD: tap **Scripts -> "install frontend"**.
+3. In the MiSTer OSD: tap **Scripts -> "Frontend Install"**.
 
 The rest runs by itself - download, set up, autostart. At the end, press
 a key briefly to get back to the menu. Then reboot once, done.
@@ -182,7 +192,7 @@ on a home network).
 
 If you already have an SSH session open anyway:
 ```bash
-curl -Ls https://raw.githubusercontent.com/dragrem2k-coder/mister-frontend/main/Scripts/install.sh | bash
+curl -Ls https://raw.githubusercontent.com/dragrem2k-coder/mister-frontend/main/Scripts/Frontend_Install_Remote.sh | bash
 ```
 (If `curl` is missing, `wget -qO- ... | bash` also works - the script
 tells you if both are missing.)
@@ -199,13 +209,13 @@ package to the MiSTer via WinSCP, then via SSH or from the OSD under
 Scripts:
 ```bash
 cd /media/fat/MiSTer_Frontend   # folder you copied the package into
-./Scripts/install_offline.sh
+./Scripts/Frontend_Install_Offline.sh
 ```
 Asks interactively about autostart and stream overlay. Without prompts:
 ```bash
-./Scripts/install_offline.sh --yes                # autostart on, overlay off
-./Scripts/install_offline.sh --yes --stream        # additionally overlay on
-./Scripts/install_offline.sh --yes --no-autostart  # without autostart
+./Scripts/Frontend_Install_Offline.sh --yes                # autostart on, overlay off
+./Scripts/Frontend_Install_Offline.sh --yes --stream        # additionally overlay on
+./Scripts/Frontend_Install_Offline.sh --yes --no-autostart  # without autostart
 ```
 Running it again is safe: your own boxart, metadata, music, self-replaced
 system logos and settings stay untouched, and the previous program files
@@ -231,16 +241,16 @@ Manual start (e.g. for testing, without rebooting), via SSH:
 python3 /media/fat/frontend/frontend.py
 ```
 
-Or from the actual MiSTer OSD: main menu -> Scripts -> `start_frontend`
+Or from the actual MiSTer OSD: main menu -> Scripts -> `Frontend_Start`
 (MiSTer automatically lists every `.sh` script in `/media/fat/Scripts/`
 in the OSD).
 
-**Removing it again:** `./Scripts/uninstall.sh` (in the package folder) reverts
-everything - autostart, Scripts, optionally the program files themselves.
-Asks whether your own boxart/music/settings should be kept
-(`./Scripts/uninstall.sh --yes` for "remove everything" without prompts,
-`./Scripts/uninstall.sh --keep-data` for "remove only program files" without
-prompts).
+**Removing it again:** `./Scripts/Frontend_Uninstall.sh` (in the package folder)
+reverts everything - autostart, Scripts, optionally the program files
+themselves. Asks whether your own boxart/music/settings should be kept
+(`./Scripts/Frontend_Uninstall.sh --yes` for "remove everything" without
+prompts, `./Scripts/Frontend_Uninstall.sh --keep-data` for "remove only
+program files" without prompts).
 
 ## 4. Usage
 
@@ -853,7 +863,7 @@ admin switch, if not desired.
      only set up at startup) - the menu label says so explicitly.
    - Via SSH:
      ```bash
-     /media/fat/Scripts/stream_toggle.sh on
+     /media/fat/Scripts/Frontend_Stream_Toggle.sh on
      ```
    Both ways create the same enable file - without it the web server
    doesn't even start, so existing users notice nothing of it.
@@ -872,7 +882,7 @@ admin switch, if not desired.
    `http://<MiSTer-IP>:8080/admin` in the browser - takes effect
    immediately, without a restart.
 5. Turn off again: either the same menu item (now "ON -> turn off") or
-   `stream_toggle.sh off` - then restart the frontend.
+   `Frontend_Stream_Toggle.sh off` - then restart the frontend.
 
 Runs entirely on standard Python (`http.server` + server-sent events), no
 external packages, as its own background thread next to the normal
@@ -948,7 +958,7 @@ affected or delayed by it.
   a captured F9 as a mapping. If it still occurs: share
   `tail -60 /tmp/frontend.log` right afterwards.
 - **After a file update** (new version installed): simply run
-  `/media/fat/Scripts/update_frontend.sh` (via SSH or from the MiSTer OSD
+  `/media/fat/Scripts/Frontend_Update.sh` (via SSH or from the MiSTer OSD
   under Scripts) - it ends the old instance cleanly and restarts
   automatically.
 - Frontend doesn't start / doesn't respond: check whether an instance is

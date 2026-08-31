@@ -8,7 +8,7 @@ Filterung (nur Spiele mit Metadaten anzeigen), Attract-Modus
 Git-Branch 'modular-refactor') - mehrere ehemals ueber die Datei
 verstreute kleine Bloecke hier sinnvoll zusammengefuehrt.
 """
-import os, glob, time, re
+import os, glob, time, re, subprocess
 from fe.log import LOG
 from fe.art import get_meta, mra_meta
 
@@ -619,6 +619,230 @@ def fb_size_label_key(value=None):
         value = fb_size_value()
     return {2: "sys_fb_size_half", 4: "sys_fb_size_quarter"}.get(
         value, "sys_fb_size_full")
+
+
+# NEUES FEATURE (Nutzerwunsch: "koennen wir das Script Frontend_Start.sh,
+# wenn einer kein Autostart eingerichtet hat, irgendwie auf F4 im OSD
+# einbinden? So dass man nur F4 druecken muss und es startet?").
+#
+# Standard AUS - im Gegensatz zu den meisten anderen Schaltern hier
+# bedeutet die Datei also "AN", nicht "abgeschaltet". Begruendung: der
+# Schalter startet einen zusaetzlichen Hintergrundprozess, der beim
+# Booten dauerhaft die Eingabegeraete mitliest. So etwas gehoert nicht
+# ungefragt bei jedem Nutzer aktiviert, nur weil er ein Update
+# einspielt - wer es will, schaltet es bewusst ein.
+#
+# Die Datei ist zugleich die Schnittstelle zum Waechter selbst
+# (frontend/f4_hotkey.py) und zu seinem Autostart-Wrapper
+# (frontend/f4_hotkey.sh): beide pruefen genau diesen Pfad. Dadurch
+# muss zum Ein-/Ausschalten NIE an /media/fat/linux/user-startup.sh
+# geruehrt werden - diese Datei gehoert dem MiSTer, und ein Fehler
+# darin legt beim naechsten Boot das ganze Geraet lahm.
+F4_HOTKEY_FLAG = "/media/fat/frontend/f4_hotkey"
+F4_HOTKEY_SCRIPT = "/media/fat/frontend/f4_hotkey.sh"
+
+
+def f4_hotkey_enabled():
+    return os.path.exists(F4_HOTKEY_FLAG)
+
+
+def toggle_f4_hotkey():
+    """Schaltet den F4-Schnellstart um. Liefert den NEUEN Zustand.
+
+    Beim Einschalten wird der Waechter sofort mitgestartet, statt den
+    Nutzer auf den naechsten Neustart zu vertroesten. Beim Ausschalten
+    ist nichts weiter zu tun: der laufende Waechter prueft die
+    Schalterdatei einmal pro Sekunde selbst und beendet sich dann von
+    allein (siehe main() in f4_hotkey.py)."""
+    if f4_hotkey_enabled():
+        try:
+            os.remove(F4_HOTKEY_FLAG)
+        except OSError as e:
+            LOG("toggle_f4_hotkey: Loeschen fehlgeschlagen: %s" % e)
+            return True
+        return False
+    try:
+        d = os.path.dirname(F4_HOTKEY_FLAG)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        open(F4_HOTKEY_FLAG, "w").close()
+    except OSError as e:
+        LOG("toggle_f4_hotkey: Anlegen fehlgeschlagen: %s" % e)
+        return False
+    _f4_hotkey_starten()
+    return True
+
+
+def _f4_hotkey_starten():
+    """Waechter jetzt starten, falls er nicht ohnehin schon laeuft.
+
+    Ein zweiter Start ist unschaedlich: f4_hotkey.py sichert sich per
+    flock() gegen Mehrfachstarts ab und beendet sich in dem Fall sofort
+    wieder. Fehler werden bewusst nur protokolliert - ein nicht
+    startender Waechter darf den Menuepunkt nicht scheitern lassen, der
+    Schalter selbst ist ja korrekt gesetzt und greift spaetestens beim
+    naechsten Neustart."""
+    if not os.path.exists(F4_HOTKEY_SCRIPT):
+        LOG("f4_hotkey: %s fehlt - greift erst nach einer Neuinstallation"
+            % F4_HOTKEY_SCRIPT)
+        return
+    try:
+        subprocess.Popen(["/bin/bash", F4_HOTKEY_SCRIPT],
+                         stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+    except OSError as e:
+        LOG("f4_hotkey: Start fehlgeschlagen: %s" % e)
+
+
+# NEUES FEATURE (Nutzerfrage: "ist da jetzt quasi ein Schalter unter
+# System/Optionen drin, der den Autostart an- und ausschaltbar macht?" -
+# war bis dahin NEIN: der Autostart wurde einmalig beim Installieren
+# eingerichtet und liess sich danach nur per SSH wieder loswerden).
+#
+# WARUM NICHT die vorhandene "disable"-Datei
+# ---------------------------------------------------------------
+# /media/fat/frontend/disable gibt es laengst - die prueft aber AUCH
+# Frontend_Start.sh und der neue F4-Waechter. Damit waere alles aus,
+# auch der manuelle Start und F4 - das genaue Gegenteil des Wunsches
+# ("Autostart aus, dafuer F4").
+#
+# WAS HIER PASSIERT - und warum das die heikelste Stelle im Projekt ist
+# ---------------------------------------------------------------
+# Auf ausdruecklichen Wunsch wird die Zeile WIRKLICH aus
+# /media/fat/linux/user-startup.sh entfernt (statt sie nur ueber eine
+# Schalterdatei wirkungslos zu machen). Diese Datei gehoert dem MiSTer,
+# und ein kaputter Inhalt legt den naechsten Boot lahm. Deshalb wird
+# hier deutlich mehr Aufwand getrieben als bei jedem anderen Schalter:
+#
+#   1. Vor der ERSTEN Aenderung wird eine Sicherheitskopie angelegt
+#      (user-startup.sh.dragend_backup) - einmalig, sie wird nie
+#      ueberschrieben, damit sie den Originalzustand bewahrt.
+#   2. Geschrieben wird NIE in die Zieldatei selbst, sondern in eine
+#      Nebendatei im GLEICHEN Verzeichnis, die anschliessend per
+#      os.replace() darueber geschoben wird. Das ist auf demselben
+#      Dateisystem ein atomarer Vorgang: entweder die alte oder die
+#      neue Fassung ist da, niemals eine halb geschriebene.
+#   3. Vor dem Umbenennen wird der neue Inhalt zurueckgelesen und
+#      geprueft (Shebang vorhanden, gewuenschte Aenderung tatsaechlich
+#      drin). Faellt die Pruefung durch, wird die Nebendatei verworfen
+#      und die Zieldatei bleibt unangetastet.
+#   4. Alle anderen Zeilen bleiben zeichengenau erhalten - auch der
+#      Eintrag des F4-Waechters (der enthaelt "f4_hotkey.sh", nicht
+#      "frontend_boot.sh") und alles, was der Nutzer sonst dort stehen
+#      hat.
+USER_STARTUP_FILE = "/media/fat/linux/user-startup.sh"
+AUTOSTART_MARKER = "frontend_boot.sh"
+AUTOSTART_LINE = "/media/fat/frontend/frontend_boot.sh &"
+_AUTOSTART_BACKUP = USER_STARTUP_FILE + ".dragend_backup"
+
+
+def _startup_zeilen():
+    """Inhalt von user-startup.sh als Zeilenliste, oder None wenn die
+    Datei nicht lesbar ist."""
+    try:
+        with open(USER_STARTUP_FILE, "r", encoding="utf-8",
+                  errors="surrogateescape") as f:
+            return f.read().splitlines()
+    except OSError:
+        return None
+
+
+def autostart_enabled():
+    """True, wenn das Frontend beim Booten mitgestartet wird.
+
+    Bewusst am tatsaechlichen Dateiinhalt abgelesen statt an einer
+    eigenen Merkdatei: der Eintrag kann auch vom Installer, per SSH oder
+    von Hand gesetzt/entfernt worden sein. Eine Merkdatei wuerde in dem
+    Fall etwas anderes behaupten als der MiSTer tatsaechlich tut."""
+    zeilen = _startup_zeilen()
+    if not zeilen:
+        return False
+    for z in zeilen:
+        s = z.strip()
+        if s and not s.startswith("#") and AUTOSTART_MARKER in s:
+            return True
+    return False
+
+
+def _startup_schreiben(neue_zeilen, pruefung):
+    """Schreibt user-startup.sh sicher neu. Liefert True bei Erfolg.
+
+    pruefung(text) muss True liefern, damit die neue Fassung ueberhaupt
+    an ihren Platz geschoben wird - siehe Punkt 3 im Kopfkommentar."""
+    verzeichnis = os.path.dirname(USER_STARTUP_FILE)
+    text = "\n".join(neue_zeilen).rstrip("\n") + "\n"
+    try:
+        os.makedirs(verzeichnis, exist_ok=True)
+        # Einmalige Sicherheitskopie des Originals
+        if os.path.exists(USER_STARTUP_FILE) \
+                and not os.path.exists(_AUTOSTART_BACKUP):
+            with open(USER_STARTUP_FILE, "rb") as q, \
+                    open(_AUTOSTART_BACKUP, "wb") as z:
+                z.write(q.read())
+            LOG("autostart: Sicherheitskopie angelegt: %s" % _AUTOSTART_BACKUP)
+        tmp = USER_STARTUP_FILE + ".dragend_tmp"
+        with open(tmp, "w", encoding="utf-8", errors="surrogateescape") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        # Zurueckgelesen pruefen, BEVOR die Datei an ihren Platz kommt
+        with open(tmp, "r", encoding="utf-8", errors="surrogateescape") as f:
+            zurueck = f.read()
+        if not pruefung(zurueck):
+            os.remove(tmp)
+            LOG("autostart: Pruefung der neuen Fassung fehlgeschlagen - "
+                "user-startup.sh bleibt unveraendert.")
+            return False
+        os.chmod(tmp, 0o755)
+        os.replace(tmp, USER_STARTUP_FILE)     # atomar
+        return True
+    except OSError as e:
+        LOG("autostart: Schreiben fehlgeschlagen: %s" % e)
+        try:
+            os.remove(USER_STARTUP_FILE + ".dragend_tmp")
+        except OSError:
+            pass
+        return False
+
+
+def set_autostart(an):
+    """Autostart ein- oder ausschalten. Liefert True bei Erfolg.
+
+    Wirkt ab dem naechsten Neustart - beim Booten liest MiSTer die Datei
+    einmal, ein laufendes Frontend ist davon nicht betroffen."""
+    zeilen = _startup_zeilen()
+    if zeilen is None:
+        if not an:
+            # Keine Datei -> es gibt auch keinen Eintrag zu entfernen.
+            return True
+        zeilen = ["#!/bin/bash"]
+    if an:
+        if autostart_enabled():
+            return True
+        neu = list(zeilen)
+        if not neu or not neu[0].startswith("#!"):
+            neu.insert(0, "#!/bin/bash")
+        neu.append(AUTOSTART_LINE)
+        return _startup_schreiben(
+            neu, lambda t: t.startswith("#!") and AUTOSTART_MARKER in t)
+    # Ausschalten: NUR die Zeilen mit dem Marker fallen weg, alles
+    # andere bleibt zeichengenau stehen.
+    behalten = [z for z in zeilen if AUTOSTART_MARKER not in z]
+    if len(behalten) == len(zeilen):
+        return True                            # war schon aus
+    if not behalten or not behalten[0].startswith("#!"):
+        behalten.insert(0, "#!/bin/bash")
+    return _startup_schreiben(
+        behalten, lambda t: t.startswith("#!") and AUTOSTART_MARKER not in t)
+
+
+def toggle_autostart():
+    """Schaltet um. Liefert (erfolgreich, neuer_zustand)."""
+    ziel = not autostart_enabled()
+    ok = set_autostart(ziel)
+    return ok, autostart_enabled()
 
 
 def attract_enabled():

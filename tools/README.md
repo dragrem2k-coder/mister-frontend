@@ -23,6 +23,9 @@ python3 tools/regression_test.py \
   && python3 tools/test_virtualboy.py \
   && python3 tools/test_cover_scaling.py \
   && python3 tools/test_nas_cache.py \
+  && python3 tools/test_crt_layout.py \
+  && python3 tools/test_f4_hotkey.py \
+  && python3 tools/test_autostart.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -35,6 +38,9 @@ python3 tools/regression_test.py \
 | `test_virtualboy.py` | Test (Pass/Fail) | Kategorie "Virtual Boy": Core-/ROM-Pruefung, Logo, Akzentfarbe |
 | `test_cover_scaling.py` | Test (Pass/Fail) | Verkleinern der Boxart: Flaechenmittel statt Wegwerfen |
 | `test_nas_cache.py` | Test (Pass/Fail) | NAS-Spiele werden nicht bei jedem Start neu eingelesen |
+| `test_crt_layout.py` | Test (Pass/Fail) | Engeres Layout auf CRT - und dass HDMI/480p unveraendert bleiben |
+| `test_f4_hotkey.py` | Test (Pass/Fail) | F4-Schnellstart: Tastenerkennung, Sicherungen, Installation |
+| `test_autostart.py` | Test (Pass/Fail) | Autostart-Schalter: user-startup.sh sicher aendern |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -176,13 +182,92 @@ NAS und USB, Ortsunabhaengigkeit der Kennung (ein Umhaengen darf keinen
 Neuscan ausloesen), das unveraenderte USB-Verhalten und die
 Aufschluesselung nach System.
 
+## test_crt_layout.py
+
+Prueft das engere Layout auf CRT (Nutzerwunsch: "haben wir irgendwie
+ne Moeglichkeit, das Frontend im CRT-Modus huebscher aussehen zu
+lassen?").
+
+Mehrere Abstaende standen als FESTE Pixelzahl im Layout (Kopfblock 46,
+Zeilenhoehe 15, Abstand zur Boxart-Karte 20, Kategorie-Zeilenhoehe 22).
+Sie skalieren zwar ueber `s = H//360` mit - aber `s` ist bei 240 und bei
+480 Zeilen gleich 1, bei 240 Zeilen belegten sie also den doppelten
+Bildanteil. Gemessen: 17 statt 35 Zeichen pro Zeile, 10 statt 17
+sichtbare Spiele, 7 statt 12 Kategorien.
+
+"Sieht huebscher aus" kann kein Test pruefen. Geprueft wird deshalb der
+nachrechenbare Teil: dass der Gewinn da ist, dass HDMI und 640x480
+BIT-genau unveraendert bleiben (der eigentliche Sinn des Tests), dass
+der Overscan-Sicherheitsrand unangetastet ist, dass die Cover-Spalte
+brauchbar breit bleibt - und dass der Kopfbereich nicht mit der ersten
+Zeile kollidiert. Letzteres ist beim Bauen ZWEIMAL passiert (der
+Auswahlbalken lief in die Eintragszahl) und faellt in reinen Zahlen
+nicht auf, deshalb steht die Freiraum-Rechnung ausdruecklich im Test.
+
+## test_f4_hotkey.py
+
+Prueft den F4-Schnellstart (Nutzerwunsch: "koennen wir das Script
+Frontend_Start.sh, wenn einer kein Autostart eingerichtet hat, irgendwie
+auf F4 im OSD einbinden?").
+
+Ein Hintergrundprozess, der beim Booten startet und Tastendruecke
+mitliest, ist die heikelste Art von Zusatz in diesem Projekt: er laeuft,
+wenn niemand hinsieht, und ein Fehler faellt erst auf, wenn das Geraet
+sich seltsam verhaelt. Entsprechend wird nicht nur der Gutfall geprueft,
+sondern vor allem, dass er in allen anderen Lagen NICHTS tut.
+
+Die Tastenerkennung laeuft ueber eine Pipe als Ersatz-Eingabegeraet -
+gefuettert mit exakt dem Byte-Format, das der Linux-Kernel auf
+`/dev/input/event*` liefert. Abgedeckt: Tastencode gegen die
+Systemkopfdatei `input-event-codes.h` geprueft, Loslassen und Halten
+loesen NICHT aus, andere Tasten und andere Ereignistypen loesen NICHT
+aus, ein abgeschnittenes Ereignis stuerzt nicht ab; `/tmp/CORENAME` mit
+Nullbytes/CR/Leerzeichen wird korrekt als "Menue" erkannt (genau daran
+ist frueher schon einmal etwas gescheitert); verwaiste und unlesbare
+Sperrdateien; der Wrapper startet ohne Schalterdatei nichts und der
+Not-Aus schlaegt den Schalter; und Installation, Update und
+Deinstallation greifen ineinander (der Eintrag in `user-startup.sh`
+wird nicht doppelt gesetzt und bei der Deinstallation wieder entfernt).
+
+## test_autostart.py
+
+Prueft den Autostart-Schalter (Nutzerfrage: "ist da jetzt quasi ein
+Schalter unter System/Optionen drin, der den Autostart an- und
+ausschaltbar macht?").
+
+Das ist die heikelste Schreiboperation im ganzen Projekt: der Schalter
+aendert `/media/fat/linux/user-startup.sh`, eine Datei, die dem MiSTer
+gehoert. Ist ihr Inhalt kaputt, bootet das Geraet nicht mehr richtig -
+und der Nutzer kaeme an kein Menue mehr, um es zurueckzunehmen.
+Entsprechend liegt der Schwerpunkt auf den Faellen, in denen etwas
+SCHIEFGEHT.
+
+Abgedeckt: nur die eine Zeile faellt weg (fremde Eintraege UND der
+Eintrag des F4-Waechters bleiben zeichengenau stehen, Reihenfolge
+inklusive); ein auskommentierter Eintrag zaehlt nicht als "an";
+mehrfaches Ein-/Ausschalten traegt nichts doppelt ein; die einmalige
+Sicherheitskopie bewahrt den Originalzustand und wird spaeter NICHT
+ueberschrieben; nach jeder Aenderung hat die Datei Shebang und
+Ausfuehrungsrecht; eine Datei ohne Shebang bekommt einen; nicht sauber
+kodierte Bytes ueberleben unveraendert. Und die drei Fehlerwege: nicht
+beschreibbares Verzeichnis, scheiterndes `os.replace()` (kuenstlich
+ausgeloest - der einzige Weg, der auch als root aussagekraeftig ist),
+und eine durchgefallene Rueckleseprobe. In allen dreien muss die
+Zieldatei zeichengenau unveraendert bleiben und darf keine halbe
+Nebendatei liegen bleiben.
+
 ## diag_lightpath.py
 
 DIAGNOSE, kein Pass/Fail-Test. Prueft die zentrale Annahme hinter dem
 schnellen Zeichenpfad: ein Einzelschritt bzw. ein Puls-Tick muss dasselbe
 Bild hinterlassen wie ein VOLLER Neuaufbau desselben Zustands.
 
-Aktueller Stand: **22 von 32 verglichenen Faellen weichen ab**. Diese
+Aktueller Stand: **24 von 34 verglichenen Faellen weichen ab**.
+(Vorher 22 von 32: durch das engere CRT-Layout sind zwei
+Listenpositionen mehr vorhanden, die verglichen werden koennen - es
+schlaegt also kein vorher heiler Fall neu fehl. Wichtig bleibt die
+Regel unten: die Zahl darf nicht STEIGEN, ohne dass sich zugleich die
+Fallzahl erhoeht.) Diese
 Abweichungen sind bekannt, auf echter Hardware bisher NICHT sichtbar und
 noch nicht aufgeklaert. Als Pass/Fail-Test wuerde das Skript deshalb
 dauerhaft rot stehen und den Regressionslauf entwerten - es liefert

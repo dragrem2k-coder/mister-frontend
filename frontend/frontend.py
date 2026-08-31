@@ -204,7 +204,8 @@ from fe.settings import (
     CRT_CONFIRM_TIMEOUT, crt_pending_confirm, mark_crt_pending_confirm,
     clear_crt_pending_confirm, eq_effect_enabled, toggle_eq_effect,
     track_marquee_enabled, toggle_track_marquee,
-    cycle_fb_size, fb_size_value, set_fb_size,
+    cycle_fb_size, fb_size_value, set_fb_size, toggle_f4_hotkey,
+    toggle_autostart, f4_hotkey_enabled,
 )
 
 # NEUES FEATURE (Nutzerwunsch: Rainwave-Internetradio als zweite
@@ -245,6 +246,24 @@ from fe.ra_core import RA_CORES_DIR_ABS, RA_CORES_DIR_REL, RA_CORE_NAME_CANDIDAT
 # Bei Bedarf anpassen: mehr, wenn weiterhin Raender fehlen; weniger auf LCD.
 OVERSCAN_X = 7
 OVERSCAN_Y = 5
+
+# NEU (Nutzerwunsch: "haben wir irgendwie ne Moeglichkeit, das Frontend
+# im CRT-Modus huebscher aussehen zu lassen?").
+#
+# Unterhalb dieser Bildhoehe gilt das Layout als "eng": mehrere
+# Abstaende im Layout standen als FESTE Pixelzahl im Code (Kopfblock 46,
+# Zeilenhoehe 15, Abstand zur Boxart-Karte 20, Kategorie-Zeilenhoehe
+# 22). Diese Zahlen skalieren zwar ueber s = H//360 mit - aber s ist
+# sowohl bei 240 als auch bei 480 Zeilen gleich 1, die Abstaende
+# belegen bei 240 Zeilen also den DOPPELTEN Bildanteil. Gemessen an
+# echten, in beiden Aufloesungen gerenderten Bildern kamen dadurch auf
+# CRT nur 10 statt 17 Spiele und 7 statt 12 Kategorien aufs Bild.
+#
+# Die Schwelle liegt bewusst bei 400 und nicht bei 480: 640x480 zeigt
+# nachgemessen bereits 35 Zeichen und 24 Zeilen (also genau so viel wie
+# HDMI) und braucht die Enger-Fassung nicht. Betroffen sind damit genau
+# die echten 240p-/288p-CRT-Modi.
+KOMPAKT_H = 400
 
 # NEU (Nutzer-Rueckmeldung: "Frontend beenden"-Dialog ploppte nur kurz
 # auf und verschwand wieder, ohne dass eine Auswahl moeglich war) -
@@ -2177,16 +2196,43 @@ class Frontend:
     def layout_cats(self):
         """Layout fuer Seite 0. Rechts wird eine Artbox-Spalte reserviert,
         die das Logo/Cover des gerade markierten Systems zeigt - der
-        Rest der Breite gehoert der Kategorienliste."""
+        Rest der Breite gehoert der Kategorienliste.
+
+        NEU (Nutzerwunsch: "haben wir irgendwie ne Moeglichkeit, das
+        Frontend im CRT-Modus huebscher aussehen zu lassen?"). Siehe die
+        ausfuehrliche Begruendung samt Messwerten bei KOMPAKT_H in
+        layout_items() - kurz: mehrere Abstaende standen hier als feste
+        Pixelzahl (22/40/20), die bei 1080 Zeilen kaum auffaellt, bei
+        240 Zeilen aber einen erheblichen Anteil des Bildes frisst.
+        Gemessen kamen dadurch auf CRT nur 7 Kategorien aufs Bild,
+        auf HDMI dagegen 12."""
         W, H = self.fb.width, self.fb.height
         s = max(1, H // 360)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
-        rowh = 22 * s
+        eng = H < KOMPAKT_H
+        rowh = (17 if eng else 22) * s
+        # BEWUSST NICHT verkleinert (beim Nachrendern geprueft, nicht
+        # gerechnet): "MiSTer" wird mit 3*s gezeichnet (24 px bei
+        # s=1), die Kategorienzahl darunter bei oy+28*s, und die
+        # Markierung der ersten Zeile beginnt 4*s OBERHALB von y0
+        # (siehe _draw_cat_row()). Damit sind oy+40*s bereits das
+        # Minimum - jeder kleinere Wert schiebt den Auswahlbalken in
+        # die Kategorienzahl hinein. Die zusaetzlichen Zeilen kommen
+        # hier allein aus der engeren Zeilenhoehe (7 -> 9 Eintraege).
         y0 = oy + 40 * s
+        # Unterer Freiraum ebenfalls unveraendert: ein engerer Wert
+        # ergibt nachgerechnet dieselben 9 Zeilen, kostet aber
+        # Overscan-Reserve.
         visible = max(3, (H - y0 - oy - 20 * s) // rowh)
-        art_w = min(int(W * 0.34), 340)
-        list_right = W - ox - art_w - 12 * s
+        # Die Deckelung auf 340 px greift erst ab ca. 1000 px Breite -
+        # auf CRT blieb es bei vollen 34 % der Bildbreite, also fast dem
+        # doppelten ANTEIL dessen, was dieselbe Spalte auf HDMI bekommt
+        # (dort 18 %). Das Logo darin wird ohnehin eingepasst und bleibt
+        # damit anteilig immer noch groesser als auf HDMI; die
+        # gewonnenen Pixel gehen an die Kategorienamen.
+        art_w = min(int(W * (0.28 if eng else 0.34)), 340)
+        list_right = W - ox - art_w - (8 if eng else 12) * s
         return {"s": s, "ox": ox, "oy": oy, "rowh": rowh,
                 "y0": y0, "visible": visible,
                 "art_w": art_w, "list_right": list_right}
@@ -2217,11 +2263,44 @@ class Frontend:
         s = max(1, H // 360)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
-        list_y = oy + 46 * s   # etwas mehr Luft zwischen Kopfzeile und Liste
+        # NEU (Nutzerwunsch: "das Frontend im CRT-Modus huebscher
+        # aussehen lassen") - siehe KOMPAKT_H. Nachgemessen mit echten,
+        # in beiden Aufloesungen gerenderten Bildern:
+        #
+        #                        CRT 320x240   HDMI 1920x1080
+        #   Zeichen pro Zeile         17            35
+        #   sichtbare Spiele          10            17
+        #   Hoehe fuer Zeilen         62 %          71 %
+        #   Kopfzeilenblock           24 %          18 %
+        #
+        # Die Unterschiede sind NICHT einfach "CRT ist kleiner": der
+        # Kopfblock (46 px), die Zeilenhoehe (15 px) und der Abstand zur
+        # Boxart-Karte (20 px) sind feste Pixelzahlen, die bei 240
+        # Zeilen einen viel groesseren ANTEIL des Bildes belegen als bei
+        # 1080. Auf kleinen Schirmen werden sie deshalb enger gefasst.
+        # Bei 640x480 greift das bewusst NICHT (dort schon 35 Zeichen
+        # und 24 Zeilen, also kein Mangel).
+        eng = H < KOMPAKT_H
+        # Wie bei layout_cats(): der Kopf braucht seinen Platz. Titel
+        # bis 2*s (16 px) bei oy, Eintragszahl bei oy+22*s (8 px hoch,
+        # endet also bei oy+30*s) - 36 laesst 6 px Luft zur ersten
+        # Zeile, 32 war beim Nachrendern sichtbar zu knapp.
+        list_y = oy + (36 if eng else 46) * s
+        # Fusszeile BEWUSST unveraendert bei 13*s: die 2 px, die ein
+        # engerer Wert braechte, aendern die Zeilenzahl nicht (13 so
+        # wie so) - sie gingen aber vom Overscan-Sicherheitsrand ab,
+        # also genau dort, wo ein echter CRT das Bild beschneidet.
         footer_y = H - oy - 13 * s
-        rowh = 15 * s
+        rowh = (12 if eng else 15) * s
         avail_w = W - 2 * ox
-        list_w = int(avail_w * 0.52) if has_art else avail_w
+        # Breiterer Listenanteil auf CRT. Der Gegenwert - eine etwas
+        # schmalere Boxart-Spalte - wird durch den kleineren Abstand zur
+        # Karte (siehe art_gap()) fast vollstaendig ausgeglichen: die
+        # nutzbare Cover-Breite sinkt nur von 101 auf 94 px, die Zeile
+        # gewinnt dafuer 3 Zeichen.
+        list_w = int(avail_w * ((0.58 if eng else 0.52) if has_art else 1.0))
+        if not has_art:
+            list_w = avail_w
         list_x = ox
         list_right = list_x + list_w
         visible = max(3, (footer_y - 6 * s - list_y) // rowh)
@@ -3443,7 +3522,12 @@ class Frontend:
             L = self.layout_items(has_art)
             s, ox, oy = L["s"], L["ox"], L["oy"]
             list_right, footer_y = L["list_right"], L["footer_y"]
-            art_x0 = list_right + 20 * s   # etwas mehr Abstand zur Boxart-Karte
+            # Abstand zur Boxart-Karte - auf CRT enger (siehe
+            # KOMPAKT_H): 20 px sind dort 6 % der Bildbreite, nur
+            # fuer eine Luecke. Das Gegenstueck zum breiteren
+            # Listenanteil in layout_items().
+            art_x0 = list_right + (8 if self.fb.height < KOMPAKT_H
+                                   else 20) * s
             art_y0 = oy
             art_w = (self.fb.width - ox) - art_x0
             art_h = footer_y - 8 * s - art_y0
@@ -3974,7 +4058,12 @@ class Frontend:
             # den linken Teil der Zeile, rechts daneben blieb bisher ein
             # ungenutzter Streifen bis zur Liste. Das Cover bekommt so
             # spuerbar mehr Platz nach oben.
-            art_x0 = list_right + 20 * s   # etwas mehr Abstand zur Boxart-Karte
+            # Abstand zur Boxart-Karte - auf CRT enger (siehe
+            # KOMPAKT_H): 20 px sind dort 6 % der Bildbreite, nur
+            # fuer eine Luecke. Das Gegenstueck zum breiteren
+            # Listenanteil in layout_items().
+            art_x0 = list_right + (8 if self.fb.height < KOMPAKT_H
+                                   else 20) * s
             art_y0 = oy
             art_w = (W - ox) - art_x0
             art_h = footer_y - 8 * s - art_y0
@@ -9642,6 +9731,74 @@ class Frontend:
                             self.draw(t("sys_fb_size_changed")
                                       if _new_fb is not None
                                       else t("sys_fb_size_failed"),
+                                      prominent=True)
+                            continue
+                        elif kind == "autostart":
+                            # NEUES FEATURE (Nutzerfrage: "ist da jetzt
+                            # quasi ein Schalter unter System/Optionen
+                            # drin, der den Autostart an- und
+                            # ausschaltbar macht?" - war NEIN, der
+                            # Autostart wurde einmalig beim Installieren
+                            # eingerichtet und liess sich danach nur per
+                            # SSH wieder loswerden).
+                            #
+                            # Entfernt bzw. ergaenzt auf ausdruecklichen
+                            # Wunsch die Zeile in
+                            # /media/fat/linux/user-startup.sh WIRKLICH.
+                            # Das ist die heikelste Schreiboperation im
+                            # ganzen Projekt (kaputter Inhalt = MiSTer
+                            # bootet nicht mehr richtig) - siehe
+                            # set_autostart() in fe/settings.py fuer die
+                            # vier Sicherungen dagegen: einmalige
+                            # Sicherheitskopie, Schreiben in eine
+                            # Nebendatei, Rueckleseprobe VOR dem
+                            # Umbenennen, atomares os.replace().
+                            #
+                            # Wirkt erst beim naechsten Neustart (MiSTer
+                            # liest die Datei nur beim Booten) - deshalb
+                            # steht das in beiden Meldungen drin, sonst
+                            # wirkt "es passiert ja nichts" wie ein
+                            # Fehler.
+                            _as_ok, _as_an = toggle_autostart()
+                            self._refresh_system_category()
+                            if not _as_ok:
+                                _as_msg = t("sys_autostart_failed")
+                            elif _as_an:
+                                _as_msg = t("sys_autostart_enabled")
+                            elif f4_hotkey_enabled():
+                                _as_msg = t("sys_autostart_disabled")
+                            else:
+                                # Nur wenn F4 noch AUS ist, lohnt der
+                                # Hinweis darauf - sonst waere es ein
+                                # Tipp zu etwas bereits Eingeschaltetem.
+                                _as_msg = t("sys_autostart_disabled_f4")
+                            self.draw(_as_msg, prominent=True)
+                            continue
+                        elif kind == "f4_hotkey":
+                            # NEUES FEATURE (Nutzerwunsch: "koennen wir
+                            # das Script Frontend_Start.sh, wenn einer
+                            # kein Autostart eingerichtet hat, irgendwie
+                            # auf F4 im OSD einbinden? So dass man nur F4
+                            # druecken muss und es startet?").
+                            #
+                            # Nachgesehen statt geraten: MiSTer selbst
+                            # wertet F4 nirgends aus (die Taste ist frei),
+                            # bietet aber auch keine Moeglichkeit, eine
+                            # Taste per MiSTer.ini auf ein Script zu
+                            # legen. Deshalb ein eigener, winziger
+                            # Hintergrundwaechter - siehe
+                            # frontend/f4_hotkey.py, dort steht die
+                            # vollstaendige Begruendung samt allem, was er
+                            # bewusst NICHT tut.
+                            #
+                            # Wirkt SOFORT: beim Einschalten startet
+                            # toggle_f4_hotkey() den Waechter gleich mit,
+                            # beim Ausschalten beendet er sich innerhalb
+                            # einer Sekunde von selbst. Kein Neustart.
+                            _f4_an = toggle_f4_hotkey()
+                            self._refresh_system_category()
+                            self.draw(t("sys_f4_hotkey_enabled") if _f4_an
+                                      else t("sys_f4_hotkey_disabled"),
                                       prominent=True)
                             continue
                         elif kind == "pulse_effect":

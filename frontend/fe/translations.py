@@ -525,6 +525,48 @@ TRANSLATIONS = {
     "sys_fb_size_failed": {
         "en": "Could not write MiSTer.ini - menu resolution unchanged.",
         "de": "MiSTer.ini nicht beschreibbar - Menü-Auflösung unverändert."},
+    # NEUES FEATURE (Nutzerwunsch: "können wir das Script
+    # Frontend_Start.sh, wenn einer kein Autostart eingerichtet hat,
+    # irgendwie auf F4 im OSD einbinden? So dass man nur F4 drücken
+    # muss und es startet?"). Die Zeilen nennen bewusst BEIDE
+    # Einschränkungen, die der Waechter hat: Tastatur nötig, und er
+    # reagiert nur im MiSTer-Menü, nicht während eines Spiels.
+    "sys_f4_hotkey_on": {
+        "en": "F4 starts the frontend: ON -> turn off (keyboard only, works in the MiSTer menu)",
+        "de": "F4 startet das Frontend: AN -> ausschalten (nur Tastatur, wirkt im MiSTer-Menü)"},
+    "sys_f4_hotkey_off": {
+        "en": "F4 starts the frontend: OFF -> turn on (small background helper, keyboard only)",
+        "de": "F4 startet das Frontend: AUS -> einschalten (kleiner Hintergrunddienst, nur Tastatur)"},
+    "sys_f4_hotkey_enabled": {
+        "en": "F4 now starts the frontend from the MiSTer menu. Active right away, and again after every restart.",
+        "de": "F4 startet das Frontend jetzt aus dem MiSTer-Menü heraus. Sofort aktiv und nach jedem Neustart wieder."},
+    "sys_f4_hotkey_disabled": {
+        "en": "F4 shortcut switched off. The background helper stops on its own within a second.",
+        "de": "F4-Kurzbefehl ausgeschaltet. Der Hintergrunddienst beendet sich innerhalb einer Sekunde von selbst."},
+    # NEUES FEATURE (Nutzerfrage: "ist da jetzt quasi ein Schalter unter
+    # System/Optionen drin, der den Autostart an- und ausschaltbar
+    # macht?"). Der Neustart-Hinweis steht in beiden Meldungen: die
+    # Autostart-Zeile liest MiSTer nur beim Booten, ein laufendes
+    # Frontend merkt von der Umschaltung nichts - ohne den Hinweis
+    # wirkt genau das wie ein Fehler.
+    "sys_autostart_on": {
+        "en": "Autostart: ON -> turn off (frontend no longer starts on boot)",
+        "de": "Autostart: AN -> ausschalten (Frontend startet dann nicht mehr beim Booten)"},
+    "sys_autostart_off": {
+        "en": "Autostart: OFF -> turn on (frontend starts with the MiSTer)",
+        "de": "Autostart: AUS -> einschalten (Frontend startet zusammen mit dem MiSTer)"},
+    "sys_autostart_enabled": {
+        "en": "Autostart on - the frontend starts from the next boot onwards.",
+        "de": "Autostart an - das Frontend startet ab dem nächsten Neustart wieder mit."},
+    "sys_autostart_disabled": {
+        "en": "Autostart off from the next boot. You can still start it from the OSD under Scripts -> Frontend_Start.",
+        "de": "Autostart ab dem nächsten Neustart aus. Starten geht weiter über OSD -> Scripts -> Frontend_Start."},
+    "sys_autostart_disabled_f4": {
+        "en": "Autostart off from the next boot. Tip: the switch right below makes F4 start the frontend from the MiSTer menu.",
+        "de": "Autostart ab dem nächsten Neustart aus. Tipp: der Schalter direkt darunter lässt F4 das Frontend aus dem MiSTer-Menü starten."},
+    "sys_autostart_failed": {
+        "en": "Could not write user-startup.sh - autostart unchanged.",
+        "de": "user-startup.sh nicht beschreibbar - Autostart unverändert."},
     "sys_pulse_on": {"en": "Selection glow: ON -> turn off (static highlight instead of animation)",
                      "de": "Markierungs-Schimmer: AN -> ausschalten (feste statt animierte Hervorhebung)"},
     "sys_pulse_off": {"en": "Selection glow: OFF -> turn on",

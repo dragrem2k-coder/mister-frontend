@@ -7,6 +7,136 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Autostart im Menü an- und abschaltbar**
+(Build 62 — Nutzerfrage: „ist da jetzt quasi ein Schalter unter
+System/Optionen drin, der den Autostart an- und ausschaltbar macht, und
+wenn er ausgeschaltet ist, muss man im OSD nur F4 drücken?"):
+
+Ehrliche Antwort war: nur die Hälfte. Build 61 brachte den F4-Schalter,
+einen Schalter für den Autostart selbst gab es im Menü **nie** — der
+wurde einmalig beim Installieren eingerichtet und ließ sich danach nur
+per SSH wieder loswerden.
+
+Neuer Punkt unter System → Optionen → **Verhalten**, direkt über dem
+F4-Schalter (die beiden gehören zusammen; wer den einen sucht, findet so
+den anderen gleich mit). Ist der Autostart aus und F4 noch nicht
+eingeschaltet, weist die Meldung ausdrücklich auf den Schalter darunter
+hin.
+
+**Warum nicht die vorhandene `disable`-Datei:** die prüfen auch
+`Frontend_Start.sh` und der F4-Wächter. Damit wäre alles aus, auch der
+manuelle Start und F4 — das genaue Gegenteil des Wunsches.
+
+**Der Schalter entfernt die Zeile wirklich** (so gewünscht), statt sie
+nur über eine Schalterdatei zu neutralisieren. Damit ist das die
+heikelste Schreiboperation im Projekt: `/media/fat/linux/user-startup.sh`
+gehört dem MiSTer, ein kaputter Inhalt legt den nächsten Boot lahm — und
+zwar ohne dass man noch an ein Menü käme, um es zurückzunehmen. Vier
+Sicherungen dagegen:
+
+1. Vor der **ersten** Änderung eine Sicherheitskopie
+   (`user-startup.sh.dragend_backup`), die später nie überschrieben wird
+   und damit den Originalzustand bewahrt.
+2. Geschrieben wird nie in die Zieldatei, sondern in eine Nebendatei im
+   gleichen Verzeichnis.
+3. Deren Inhalt wird **zurückgelesen und geprüft**, bevor sie an ihren
+   Platz kommt (Shebang da, gewünschte Änderung tatsächlich drin). Fällt
+   die Probe durch, wird sie verworfen.
+4. Erst dann `os.replace()` — auf demselben Dateisystem atomar: entweder
+   die alte oder die neue Fassung, nie eine halb geschriebene.
+
+Alle anderen Zeilen bleiben zeichengenau erhalten — fremde Einträge, ein
+NAS-Mount des Nutzers und der Eintrag des F4-Wächters (der enthält
+`f4_hotkey.sh`, nicht `frontend_boot.sh`).
+
+Abgesichert durch `tools/test_autostart.py`, mit Schwerpunkt auf den
+Fehlerwegen: nicht beschreibbares Verzeichnis, künstlich scheiterndes
+`os.replace()` (der einzige dieser Wege, der auch als root
+aussagekräftig ist), durchgefallene Rückleseprobe. In allen dreien muss
+die Zieldatei zeichengenau unverändert bleiben. Dazu: auskommentierter
+Eintrag zählt nicht als „an", mehrfaches Umschalten trägt nichts doppelt
+ein, nicht sauber kodierte Bytes in der Datei überleben unverändert.
+
+
+**F4 startet das Frontend, CRT-Layout enger gefasst**
+(Build 61 — Nutzerwünsche: „können wir das Script Frontend_Start.sh,
+wenn einer kein Autostart eingerichtet hat, irgendwie auf F4 im OSD
+einbinden?" und „haben wir irgendwie ne Möglichkeit, das Frontend im
+CRT-Modus hübscher aussehen zu lassen?"):
+
+**F4-Schnellstart (neu, standardmäßig aus).** Erst nachgesehen statt
+geraten: MiSTers Menü-Code wertet F12, F1, F11, F10, F9, F7, ESC, BACK,
+BACKSPACE und ENTER aus — **F4 kommt dort nicht vor**, die Taste ist
+tatsächlich frei. Eine Möglichkeit, eine Taste per `MiSTer.ini` auf ein
+Skript zu legen, gibt es dagegen nicht (die komplette Optionsliste
+wurde danach durchsucht). Ohne Änderung an MiSTer selbst bleibt nur ein
+eigener Wächter: `frontend/f4_hotkey.py`, gestartet über
+`frontend/f4_hotkey.sh` aus `user-startup.sh`.
+
+Bewusst zurückhaltend gebaut — was er *nicht* tut, ist hier der
+wichtigere Teil:
+
+- Kein `EVIOCGRAB`: er liest nur mit, MiSTers Menü bekommt jeden
+  Tastendruck weiterhin unverändert.
+- Reagiert nur, solange `/tmp/CORENAME` `MENU` meldet — mitten im Spiel
+  passiert auf F4 nichts.
+- Startet nichts, wenn `/tmp/frontend.lock` einen lebenden Prozess
+  nennt.
+- Standardmäßig aus. Der Eintrag in `user-startup.sh` wird zwar immer
+  gesetzt (auch bei `--no-autostart`, denn genau diese Nutzer sind die
+  Zielgruppe), ist ohne die Schalterdatei aber wirkungslos: der Wrapper
+  beendet sich sofort wieder. Dadurch muss zum Ein-/Ausschalten **nie**
+  an `user-startup.sh` gerührt werden — einer Datei, die dem MiSTer
+  gehört und bei der ein Fehler den nächsten Boot lahmlegt.
+
+Der Menüpunkt liegt unter System → Optionen → Verhalten und wirkt
+sofort: beim Einschalten wird der Wächter mitgestartet, beim
+Ausschalten beendet er sich innerhalb einer Sekunde selbst. Ehrliche
+Grenze: nur Tastatur. Im MiSTer-Menü sind die Gamepad-Tasten bereits
+vollständig von MiSTer belegt, eine freie gibt es dort nicht.
+
+Abgesichert durch `tools/test_f4_hotkey.py` (u.a.: Tastencode gegen
+`input-event-codes.h` des Systems geprüft; Loslassen und Halten lösen
+nicht aus; `CORENAME` mit Nullbytes/CR/Leerzeichen wird korrekt
+erkannt; verwaiste Sperrdatei; Installation/Update/Deinstallation
+greifen ineinander).
+
+**CRT-Layout.** Hier hatte ich zuerst eine falsche Diagnose gestellt
+(„die Logos werden mittig beschnitten") — das betrifft die
+Seiten-Hintergrundbilder aus `bg/`, nicht die Sysart-Logos, die sauber
+eingepasst werden. Nach dem Nachrendern echter Bilder in beiden
+Auflösungen zeigte sich der tatsächliche Mangel: mehrere Abstände
+standen als **feste Pixelzahl** im Layout (Kopfblock 46, Zeilenhöhe 15,
+Abstand zur Boxart-Karte 20, Kategorie-Zeilenhöhe 22). Sie skalieren
+zwar über `s = H//360` mit — aber `s` ist bei 240 *und* bei 480 Zeilen
+gleich 1, die Abstände belegten bei 240 Zeilen also den doppelten
+Bildanteil.
+
+| | CRT vorher | CRT jetzt | HDMI |
+|---|---|---|---|
+| Zeichen pro Zeile | 17 | **20** | 35 |
+| Sichtbare Spiele | 10 | **13** | 17 |
+| Kategorien im Hauptmenü | 7 | **9** | 12 |
+| Anteil für den Kopfblock | 24 % | **20 %** | 18 % |
+| Breite der Logo-Spalte | 34 % | **28 %** | 18 % |
+
+Greift nur unterhalb von 400 Bildzeilen (`KOMPAKT_H`) — 640x480 zeigte
+nachgemessen bereits 35 Zeichen und 24 Zeilen und braucht nichts.
+HDMI und 480p bleiben unverändert, was `tools/test_crt_layout.py`
+ausdrücklich mitprüft. Der Overscan-Sicherheitsrand bleibt ebenfalls
+unangetastet: Platz am Bildrand zu holen wäre bei einer Röhre genau der
+falsche Ort. Beim Bauen lief der Auswahlbalken zweimal in die
+Kopfzeile — beide Male beim Nachrendern gesehen, nicht beim Rechnen;
+die Freiraum-Rechnung ist deshalb jetzt Teil des Tests.
+
+**Dokumentation.** `README_EN.md` führte durchweg noch die alten
+Skriptnamen (`install.sh`, `install_offline.sh`,
+`Scripts/install_frontend.sh`, `uninstall.sh`) und schickte Leser damit
+zu Dateien, die es seit der Umbenennung nicht mehr gibt — komplett auf
+die `Frontend_*.sh`-Namen umgestellt. In `README.md` waren außerdem
+zwei Tabellenzeilen in einer Zeile zusammengelaufen.
+
+
 **Neue Features:**
 - RetroAchievements lässt sich jetzt direkt im System-Menü an- und
   ausschalten (Nutzerwunsch: "ich würde gerne die Option haben, die

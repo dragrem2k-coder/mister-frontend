@@ -289,6 +289,29 @@ else
     echo "Autostart eingerichtet."
 fi
 
+# --- F4-Schnellstart eintragen ---
+# NEUES FEATURE (Nutzerwunsch: "koennen wir das Script Frontend_Start.sh,
+# wenn einer kein Autostart eingerichtet hat, irgendwie auf F4 im OSD
+# einbinden?"). Der Eintrag wird IMMER gesetzt - auch bei --no-autostart,
+# denn genau diese Nutzer sind die Zielgruppe. Er ist trotzdem
+# wirkungslos, solange der Schalter unter System -> Optionen aus ist:
+# f4_hotkey.sh beendet sich ohne die Schalterdatei sofort wieder (siehe
+# Kopfkommentar dort). So muss zum Ein-/Ausschalten spaeter NIE mehr an
+# user-startup.sh geruehrt werden - einer Datei, die dem MiSTer gehoert
+# und bei der ein Fehler den naechsten Boot lahmlegt.
+F4_LINE="$FRONTEND_DIR/f4_hotkey.sh &"
+if grep -qF "f4_hotkey.sh" "$STARTUP_FILE" 2>/dev/null; then
+    echo "F4-Schnellstart bereits eingetragen."
+else
+    mkdir -p "$(dirname "$STARTUP_FILE")" 2>/dev/null || true
+    if [ ! -f "$STARTUP_FILE" ]; then
+        printf '#!/bin/bash\n' > "$STARTUP_FILE"
+        chmod +x "$STARTUP_FILE" 2>/dev/null
+    fi
+    printf '%s\n' "$F4_LINE" >> "$STARTUP_FILE"
+    echo "F4-Schnellstart eingetragen (standardmaessig AUS - Schalter unter System -> Optionen)."
+fi
+
 # BUGFIX (Nutzer-Rueckmeldung, Screenshot: "shell-init: error retrieving
 # current directory: getcwd: cannot access parent directories: No such
 # file or directory" erscheint einmal kurz vor "Frontend-Update wird
