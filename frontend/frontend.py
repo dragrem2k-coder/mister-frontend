@@ -205,7 +205,7 @@ from fe.settings import (
     clear_crt_pending_confirm, eq_effect_enabled, toggle_eq_effect,
     track_marquee_enabled, toggle_track_marquee,
     cycle_fb_size, fb_size_value, set_fb_size, toggle_f4_hotkey,
-    toggle_autostart, f4_hotkey_enabled,
+    toggle_autostart, f4_hotkey_enabled, f4_selbstheilung,
 )
 
 # NEUES FEATURE (Nutzerwunsch: Rainwave-Internetradio als zweite
@@ -9795,11 +9795,23 @@ class Frontend:
                             # toggle_f4_hotkey() den Waechter gleich mit,
                             # beim Ausschalten beendet er sich innerhalb
                             # einer Sekunde von selbst. Kein Neustart.
-                            _f4_an = toggle_f4_hotkey()
+                            _f4_an, _f4_boot = toggle_f4_hotkey()
                             self._refresh_system_category()
-                            self.draw(t("sys_f4_hotkey_enabled") if _f4_an
-                                      else t("sys_f4_hotkey_disabled"),
-                                      prominent=True)
+                            if not _f4_an:
+                                _f4_msg = t("sys_f4_hotkey_disabled")
+                            elif _f4_boot:
+                                _f4_msg = t("sys_f4_hotkey_enabled")
+                            else:
+                                # BUGFIX (Nutzer-Rueckmeldung: "F4
+                                # funktioniert nicht, wenn ich den MiSTer
+                                # kalt starte"): frueher meldete der
+                                # Punkt in JEDEM Fall Erfolg - auch dann,
+                                # wenn die Startzeile in user-startup.sh
+                                # fehlte und der Schalter damit nur bis
+                                # zum naechsten Ausschalten hielt. Diese
+                                # Luecke muss der Nutzer sehen koennen.
+                                _f4_msg = t("sys_f4_hotkey_no_boot")
+                            self.draw(_f4_msg, prominent=True)
                             continue
                         elif kind == "pulse_effect":
                             # NEUES FEATURE (Nutzerwunsch: "wenn wir den
@@ -10080,6 +10092,20 @@ if __name__ == "__main__":
         print("  kill %s ; rm -f %s" % (old_pid, LOCKFILE))
         sys.exit(0)
     print("Keine andere Instanz aktiv - starte Framebuffer/Eingaben ...")
+    # BUGFIX (Nutzer-Rueckmeldung: "F4 funktioniert nicht, wenn ich den
+    # MiSTer kalt starte und Autostart deaktiviert habe"): der
+    # F4-Waechter braucht beim Booten eine Startzeile in
+    # /media/fat/linux/user-startup.sh. Die setzten bisher nur die
+    # Installer - wer seine Dateien von Hand kopiert hat, hatte den
+    # Schalter, aber keinen Starter, und merkte das erst nach dem
+    # naechsten Kaltstart. Hier wird das EINMAL stillschweigend in
+    # Ordnung gebracht (schreibt nur, wenn der Schalter an UND die
+    # Zeile weg ist - danach nie wieder). Darf den Start unter keinen
+    # Umstaenden aufhalten, deshalb komplett abgeschirmt.
+    try:
+        f4_selbstheilung()
+    except Exception:
+        traceback.print_exc()
     # DIAGNOSE (Nutzerfrage: "koennte man den Bootvorgang noch etwas
     # beschleunigen?") - bisher gab es keine Messung, WIE LANGE der
     # eigentliche Start (Framebuffer/Eingaben oeffnen, RA-Abruf anstossen,

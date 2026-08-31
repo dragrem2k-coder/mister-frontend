@@ -543,6 +543,17 @@ TRANSLATIONS = {
     "sys_f4_hotkey_disabled": {
         "en": "F4 shortcut switched off. The background helper stops on its own within a second.",
         "de": "F4-Kurzbefehl ausgeschaltet. Der Hintergrunddienst beendet sich innerhalb einer Sekunde von selbst."},
+    # BUGFIX (Nutzer-Rueckmeldung: "F4 funktioniert nicht, wenn ich den
+    # MiSTer kalt starte und Autostart deaktiviert habe"): der Waechter
+    # braucht beim Booten eine Startzeile in user-startup.sh. Klappt das
+    # Nachtragen nicht, darf der Menuepunkt NICHT einfach Erfolg melden -
+    # F4 wuerde dann nur bis zum naechsten Ausschalten funktionieren.
+    "sys_f4_hotkey_no_boot": {
+        "en": "F4 works now, but user-startup.sh could not be written - after a cold start it will be off again. Reinstall via Scripts -> Frontend_Install to fix this for good.",
+        "de": "F4 wirkt jetzt, aber user-startup.sh war nicht beschreibbar - nach einem Kaltstart ist es wieder aus. Dauerhaft behebt das eine Installation über Scripts -> Frontend_Install."},
+    "sys_f4_hotkey_no_boot_hint": {
+        "en": "(not after a cold start!)",
+        "de": "(nicht nach einem Kaltstart!)"},
     # NEUES FEATURE (Nutzerfrage: "ist da jetzt quasi ein Schalter unter
     # System/Optionen drin, der den Autostart an- und ausschaltbar
     # macht?"). Der Neustart-Hinweis steht in beiden Meldungen: die

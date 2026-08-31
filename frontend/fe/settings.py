@@ -634,33 +634,116 @@ def fb_size_label_key(value=None):
 #
 # Die Datei ist zugleich die Schnittstelle zum Waechter selbst
 # (frontend/f4_hotkey.py) und zu seinem Autostart-Wrapper
-# (frontend/f4_hotkey.sh): beide pruefen genau diesen Pfad. Dadurch
-# muss zum Ein-/Ausschalten NIE an /media/fat/linux/user-startup.sh
-# geruehrt werden - diese Datei gehoert dem MiSTer, und ein Fehler
-# darin legt beim naechsten Boot das ganze Geraet lahm.
+# (frontend/f4_hotkey.sh): beide pruefen genau diesen Pfad.
+#
+# BUGFIX (Nutzer-Rueckmeldung: "Autostart kann ich im Menue ausstellen,
+# aber die F4-Funktion, dass das Frontend dann startet, wenn ich den
+# MiSTer kalt starte und Autostart deaktiviert habe, funktioniert
+# nicht"):
+#
+# Der Schalter allein reicht NICHT. Beim Kaltstart muss den Waechter
+# jemand starten, und das kann nur eine Zeile in
+# /media/fat/linux/user-startup.sh - der einzige Haken, den MiSTer
+# fuer eigene Programme beim Booten anbietet. Diese Zeile setzten
+# bisher AUSSCHLIESSLICH die Installer bzw. Frontend_Update.sh. Wer
+# seine Dateien von Hand kopiert (oder aus irgendeinem anderen Grund
+# keinen dieser Wege gelaufen ist), hatte den Menuepunkt, den
+# Waechter und die Schalterdatei - aber keinen Starter. Der Schalter
+# wirkte dann nur bis zum naechsten Ausschalten, und beim Kaltstart
+# passierte auf F4 gar nichts. Genau so ist es passiert.
+#
+# Das war ein Entwurfsfehler von mir: eine Funktion, deren
+# Funktionieren still an einem Schritt haengt, den der Nutzer nicht
+# sieht und nicht pruefen kann. Der Schalter traegt die Zeile deshalb
+# jetzt selbst nach (ueber denselben abgesicherten Schreibweg wie der
+# Autostart-Schalter, siehe _startup_schreiben()), und beim Start des
+# Frontends wird einmal nachgesehen, ob sie noch da ist.
 F4_HOTKEY_FLAG = "/media/fat/frontend/f4_hotkey"
 F4_HOTKEY_SCRIPT = "/media/fat/frontend/f4_hotkey.sh"
+F4_BOOT_MARKER = "f4_hotkey.sh"
+F4_BOOT_LINE = "/media/fat/frontend/f4_hotkey.sh &"
 
 
 def f4_hotkey_enabled():
     return os.path.exists(F4_HOTKEY_FLAG)
 
 
-def toggle_f4_hotkey():
-    """Schaltet den F4-Schnellstart um. Liefert den NEUEN Zustand.
+def f4_boot_entry_ok():
+    """True, wenn der Waechter beim Booten ueberhaupt gestartet wird.
 
-    Beim Einschalten wird der Waechter sofort mitgestartet, statt den
-    Nutzer auf den naechsten Neustart zu vertroesten. Beim Ausschalten
-    ist nichts weiter zu tun: der laufende Waechter prueft die
-    Schalterdatei einmal pro Sekunde selbst und beendet sich dann von
-    allein (siehe main() in f4_hotkey.py)."""
+    Ohne diesen Eintrag ist der Schalter oben wirkungslos, sobald der
+    MiSTer einmal aus war - siehe Kopfkommentar."""
+    zeilen = _startup_zeilen()
+    if not zeilen:
+        return False
+    for z in zeilen:
+        t = z.strip()
+        if t and not t.startswith("#") and F4_BOOT_MARKER in t:
+            return True
+    return False
+
+
+def f4_boot_entry_sicherstellen():
+    """Traegt die Startzeile nach, falls sie fehlt. Liefert True, wenn
+    sie danach da ist (oder schon da war)."""
+    if f4_boot_entry_ok():
+        return True
+    zeilen = _startup_zeilen()
+    if zeilen is None:
+        zeilen = ["#!/bin/bash"]
+    neu = list(zeilen)
+    if not neu or not neu[0].startswith("#!"):
+        neu.insert(0, "#!/bin/bash")
+    neu.append(F4_BOOT_LINE)
+    ok = _startup_schreiben(
+        neu, lambda t: t.startswith("#!") and F4_BOOT_MARKER in t)
+    LOG("f4_hotkey: Startzeile in user-startup.sh %s"
+        % ("nachgetragen" if ok else "konnte NICHT nachgetragen werden"))
+    return ok
+
+
+def f4_selbstheilung():
+    """Beim Start des Frontends einmal nachsehen: Schalter an, aber
+    keine Startzeile? Dann nachtragen.
+
+    Schreibt hoechstens EINMAL - danach ist der Eintrag da und
+    f4_boot_entry_ok() liefert sofort True. Repariert bestehende
+    Installationen, ohne dass der Nutzer irgendetwas tun muss."""
+    if f4_hotkey_enabled() and not f4_boot_entry_ok():
+        LOG("f4_hotkey: Schalter ist an, aber die Startzeile in "
+            "user-startup.sh fehlt - wird nachgetragen.")
+        f4_boot_entry_sicherstellen()
+
+
+def toggle_f4_hotkey():
+    """Schaltet den F4-Schnellstart um. Liefert (an, ueberlebt_neustart).
+
+    Beim Einschalten passieren DREI Dinge, nicht nur eines:
+      1. Schalterdatei anlegen (das eigentliche "an").
+      2. Startzeile in user-startup.sh nachtragen, falls sie fehlt -
+         sonst ist der Schalter nach dem naechsten Kaltstart
+         wirkungslos (siehe Kopfkommentar bei F4_BOOT_MARKER; genau
+         das war der gemeldete Fehler).
+      3. Den Waechter sofort starten, statt auf den naechsten Neustart
+         zu vertroesten.
+
+    Der zweite Rueckgabewert sagt, ob Schritt 2 geklappt hat - nur dann
+    darf dem Nutzer versprochen werden, dass F4 auch nach einem
+    Kaltstart funktioniert.
+
+    Beim Ausschalten ist nichts weiter zu tun: der laufende Waechter
+    prueft die Schalterdatei einmal pro Sekunde selbst und beendet sich
+    dann von allein (siehe main() in f4_hotkey.py). Die Startzeile
+    bleibt bewusst stehen - sie ist ohne Schalterdatei wirkungslos, und
+    jedes unnoetige Schreiben in user-startup.sh ist ein Risiko, das
+    nichts einbringt."""
     if f4_hotkey_enabled():
         try:
             os.remove(F4_HOTKEY_FLAG)
         except OSError as e:
             LOG("toggle_f4_hotkey: Loeschen fehlgeschlagen: %s" % e)
-            return True
-        return False
+            return True, f4_boot_entry_ok()
+        return False, f4_boot_entry_ok()
     try:
         d = os.path.dirname(F4_HOTKEY_FLAG)
         if d:
@@ -668,9 +751,10 @@ def toggle_f4_hotkey():
         open(F4_HOTKEY_FLAG, "w").close()
     except OSError as e:
         LOG("toggle_f4_hotkey: Anlegen fehlgeschlagen: %s" % e)
-        return False
+        return False, False
+    boot_ok = f4_boot_entry_sicherstellen()
     _f4_hotkey_starten()
-    return True
+    return True, boot_ok
 
 
 def _f4_hotkey_starten():

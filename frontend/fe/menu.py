@@ -31,7 +31,7 @@ from fe.settings import (
     screen_mirror_enabled, stream_overlay_enabled, system_bg_enabled,
     fast_scroll_enabled, pulse_effect_enabled, eq_effect_enabled,
     track_marquee_enabled, fb_size_label_key, f4_hotkey_enabled,
-    autostart_enabled,
+    autostart_enabled, f4_boot_entry_ok,
 )
 from fe.timekeeping import format_timezone_offset, load_timezone_offset
 from fe.retroachievements import load_ra_config, ra_toggle_enabled
@@ -209,6 +209,14 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         else t("sys_autostart_off")
     f4_label = t("sys_f4_hotkey_on") if f4_hotkey_enabled() \
         else t("sys_f4_hotkey_off")
+    # BUGFIX (Nutzer-Rueckmeldung: "F4 funktioniert nicht, wenn ich den
+    # MiSTer kalt starte"): steht der Schalter auf AN, fehlt aber die
+    # Startzeile in user-startup.sh, wirkt der Punkt nur bis zum
+    # naechsten Ausschalten. Frueher war das von aussen ueberhaupt nicht
+    # erkennbar - die Zeile sah aus wie jede andere eingeschaltete
+    # Option. Jetzt sagt sie es.
+    if f4_hotkey_enabled() and not f4_boot_entry_ok():
+        f4_label = "%s %s" % (f4_label, t("sys_f4_hotkey_no_boot_hint"))
 
     def folder(*items):
         return {"folders": {}, "items": list(items)}

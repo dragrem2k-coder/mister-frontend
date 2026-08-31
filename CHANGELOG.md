@@ -7,6 +7,48 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**BUGFIX: F4 wirkte nach einem Kaltstart nicht**
+(Build 63 — Nutzer-Rückmeldung: „Autostart kann ich im Menü ausstellen,
+aber die F4-Funktion, dass das Frontend dann startet, wenn ich den MiSTer
+kalt starte und Autostart deaktiviert habe, das funktioniert nicht"):
+
+Mein Entwurfsfehler. Der Schalter legt eine Schalterdatei an und startet
+den Wächter sofort — beides funktionierte. Beim **Booten** muss den
+Wächter aber jemand starten, und dafür gibt es genau einen Haken: eine
+Zeile in `/media/fat/linux/user-startup.sh`. Die setzten bisher
+**ausschließlich** die Installer bzw. `Frontend_Update.sh`.
+
+Wer seine Dateien von Hand kopiert (oder aus anderem Grund keinen dieser
+Wege gelaufen ist), hatte damit den Menüpunkt, den Wächter und die
+Schalterdatei — aber keinen Starter. Der Schalter wirkte bis zum
+nächsten Ausschalten und war nach einem Kaltstart still wirkungslos.
+Schlimmer noch: der Menüpunkt meldete in **jedem** Fall Erfolg, die Zeile
+sah aus wie jede andere eingeschaltete Option. Eine Funktion, deren
+Funktionieren still an einem Schritt hängt, den der Nutzer weder sieht
+noch prüfen kann.
+
+Drei Änderungen:
+
+1. **Der Schalter trägt die Startzeile jetzt selbst nach** — über
+   denselben abgesicherten Schreibweg wie der Autostart-Schalter
+   (Sicherheitskopie, Nebendatei, Rückleseprobe, atomares Ersetzen). Kein
+   Installer mehr nötig.
+2. **Selbstheilung beim Start:** ist der Schalter an und die Zeile fehlt,
+   wird sie beim nächsten Start des Frontends einmal nachgetragen. Das
+   repariert bestehende Installationen, ohne dass jemand etwas tun muss.
+3. **Ehrliche Rückmeldung:** klappt das Nachtragen nicht, meldet der
+   Menüpunkt das ausdrücklich statt Erfolg. Und solange die Zeile fehlt,
+   trägt die Menüzeile selbst den Zusatz „(nicht nach einem Kaltstart!)".
+
+Beim Ausschalten bleibt die Startzeile bewusst stehen: ohne
+Schalterdatei ist sie wirkungslos, und jedes unnötige Schreiben in
+`user-startup.sh` ist ein Risiko, das nichts einbringt.
+
+Abgesichert durch drei neue Testblöcke in `tools/test_f4_hotkey.py`
+(Kaltstart-Fall, Selbstheilung inkl. „schreibt nur einmal", und dass ein
+auskommentierter Eintrag nicht als vorhanden zählt).
+
+
 **Autostart im Menü an- und abschaltbar**
 (Build 62 — Nutzerfrage: „ist da jetzt quasi ein Schalter unter
 System/Optionen drin, der den Autostart an- und ausschaltbar macht, und

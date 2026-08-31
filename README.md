@@ -899,6 +899,21 @@ Eingabegeräte mitliest. Er ist bewusst zurückhaltend gebaut:
 - Er ist **standardmäßig aus** und wird nie ungefragt aktiviert, auch
   nicht durch ein Update.
 
+**Wo das eingehängt wird:** damit der Wächter nach einem Kaltstart
+wieder läuft, braucht er eine Startzeile in
+`/media/fat/linux/user-startup.sh` - der einzige Haken, den MiSTer für
+eigene Programme beim Booten anbietet. Die trägt der Schalter selbst
+nach, ein Installer ist dafür nicht nötig. Fehlt sie und lässt sie sich
+nicht schreiben, sagt der Menüpunkt das ausdrücklich, und die Zeile
+bekommt den Zusatz "(nicht nach einem Kaltstart!)" - früher meldete sie
+in dem Fall stillschweigend Erfolg.
+
+Die Datei findest du über die Netzwerkfreigabe unter
+`\\<MiSTer-IP>\fat\linux\user-startup.sh` bzw. auf der SD-Karte
+direkt im Ordner `linux`. Es ist eine ganz normale Textdatei; die
+Autostart-Zeile heißt `frontend_boot.sh &`, die des Wächters
+`f4_hotkey.sh &`.
+
 **Grenzen, ehrlich benannt:** nur Tastatur, kein Gamepad - im MiSTer-
 Menü sind die Pad-Tasten bereits vollständig von MiSTer selbst belegt,
 eine freie Taste gibt es dort schlicht nicht. Und der Wächter läuft

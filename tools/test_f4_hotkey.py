@@ -183,14 +183,83 @@ check("Standard ist AUS (Datei bedeutet AN, nicht 'abgeschaltet')",
       "f4_hotkey" in S.F4_HOTKEY_FLAG and not S.F4_HOTKEY_FLAG.endswith("disabled"))
 S.F4_HOTKEY_FLAG = os.path.join(TMP, "schalter")
 S.F4_HOTKEY_SCRIPT = os.path.join(TMP, "gibtsnicht.sh")   # Start unterbinden
+S.USER_STARTUP_FILE = os.path.join(TMP, "user-startup.sh")
+S._AUTOSTART_BACKUP = S.USER_STARTUP_FILE + ".dragend_backup"
+with open(S.USER_STARTUP_FILE, "w", encoding="utf-8") as f:
+    f.write("#!/bin/sh\n/media/fat/etwas_fremdes.sh &\n")
 check("frisch: aus", not S.f4_hotkey_enabled())
-check("einschalten meldet AN", S.toggle_f4_hotkey() is True)
+_an, _boot = S.toggle_f4_hotkey()
+check("einschalten meldet AN", _an is True)
 check("danach eingeschaltet", S.f4_hotkey_enabled())
-check("ausschalten meldet AUS", S.toggle_f4_hotkey() is False)
+_an, _boot = S.toggle_f4_hotkey()
+check("ausschalten meldet AUS", _an is False)
 check("danach ausgeschaltet", not S.f4_hotkey_enabled())
 
+print()
+print("Test 6b: der Schalter ueberlebt einen Kaltstart")
+# BUGFIX-ABSICHERUNG (Nutzer-Rueckmeldung: "Autostart kann ich im Menue
+# ausstellen, aber die F4-Funktion, dass das Frontend dann startet, wenn
+# ich den MiSTer kalt starte, funktioniert nicht").
+#
+# Der Schalter allein reicht nicht: beim Booten muss den Waechter jemand
+# starten, und das kann nur eine Zeile in user-startup.sh. Die setzten
+# bisher AUSSCHLIESSLICH die Installer. Wer seine Dateien von Hand
+# kopiert hat, bekam einen Schalter, der bis zum naechsten Ausschalten
+# funktionierte und danach still nichts mehr tat - ohne dass irgendwo
+# erkennbar war, warum. Genau das darf nicht wieder passieren.
+with open(S.USER_STARTUP_FILE, "w", encoding="utf-8") as f:
+    f.write("#!/bin/sh\n/media/fat/etwas_fremdes.sh &\n")
+check("Ausgangslage: keine Startzeile vorhanden", not S.f4_boot_entry_ok())
+_an, _boot = S.toggle_f4_hotkey()
+check("Einschalten meldet, dass der Kaltstart abgedeckt ist", _boot is True)
+check("die Startzeile steht jetzt in user-startup.sh", S.f4_boot_entry_ok())
+inhalt = open(S.USER_STARTUP_FILE, encoding="utf-8").read()
+check("die fremde Zeile blieb erhalten", "etwas_fremdes.sh" in inhalt)
+check("Shebang steht weiterhin vorne", inhalt.startswith("#!"))
+_an, _boot = S.toggle_f4_hotkey()          # aus
+_an, _boot = S.toggle_f4_hotkey()          # wieder an
+check("erneutes Einschalten traegt NICHT doppelt ein",
+      open(S.USER_STARTUP_FILE, encoding="utf-8").read().count("f4_hotkey.sh") == 1)
+check("Ausschalten laesst die Startzeile stehen (ohne Schalter wirkungslos)",
+      S.toggle_f4_hotkey()[0] is False and S.f4_boot_entry_ok())
+
+print()
+print("Test 6c: Selbstheilung repariert bestehende Installationen")
+# Der Fall des Nutzers: Schalter an, Startzeile fehlt. Beim naechsten
+# Start des Frontends muss das von selbst in Ordnung kommen, ohne dass
+# er irgendetwas tut.
+with open(S.USER_STARTUP_FILE, "w", encoding="utf-8") as f:
+    f.write("#!/bin/sh\n/media/fat/etwas_fremdes.sh &\n")
+open(S.F4_HOTKEY_FLAG, "w").close()
+check("Ausgangslage: Schalter an, Startzeile fehlt",
+      S.f4_hotkey_enabled() and not S.f4_boot_entry_ok())
+S.f4_selbstheilung()
+check("nach dem naechsten Frontend-Start ist die Zeile da",
+      S.f4_boot_entry_ok())
+check("die fremde Zeile ist immer noch da",
+      "etwas_fremdes.sh" in open(S.USER_STARTUP_FILE, encoding="utf-8").read())
+# Und sie darf NICHT bei jedem Start erneut schreiben.
+vorher = os.stat(S.USER_STARTUP_FILE).st_mtime_ns
+S.f4_selbstheilung()
+check("beim uebernaechsten Start wird nicht erneut geschrieben",
+      os.stat(S.USER_STARTUP_FILE).st_mtime_ns == vorher)
+# Schalter aus -> Selbstheilung fasst nichts an.
+os.remove(S.F4_HOTKEY_FLAG)
+with open(S.USER_STARTUP_FILE, "w", encoding="utf-8") as f:
+    f.write("#!/bin/sh\n")
+S.f4_selbstheilung()
+check("bei ausgeschaltetem Schalter wird nichts eingetragen",
+      not S.f4_boot_entry_ok())
+
+print()
+print("Test 6d: ein auskommentierter Eintrag zaehlt nicht")
+with open(S.USER_STARTUP_FILE, "w", encoding="utf-8") as f:
+    f.write("#!/bin/sh\n# /media/fat/frontend/f4_hotkey.sh &\n")
+check("auskommentiert -> gilt als nicht vorhanden", not S.f4_boot_entry_ok())
+
 for schluessel in ("sys_f4_hotkey_on", "sys_f4_hotkey_off",
-                   "sys_f4_hotkey_enabled", "sys_f4_hotkey_disabled"):
+                   "sys_f4_hotkey_enabled", "sys_f4_hotkey_disabled",
+                   "sys_f4_hotkey_no_boot", "sys_f4_hotkey_no_boot_hint"):
     eintrag = T.TRANSLATIONS.get(schluessel) if hasattr(T, "TRANSLATIONS") \
         else getattr(T, "STRINGS", {}).get(schluessel)
     check("Uebersetzung %s vorhanden (de+en)" % schluessel,
