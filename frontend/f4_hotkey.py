@@ -126,6 +126,26 @@ class Geraete(object):
         self.offen = {}          # Pfad -> Dateiobjekt
         self.letzte_pruefung = 0.0
 
+    def neu_oeffnen(self):
+        """Alle Geraete schliessen und beim naechsten Auffrischen frisch
+        oeffnen.
+
+        NEU (nach dem Befund: im Vordergrund-Diagnosemodus kam F4 an, im
+        Hintergrundprozess nicht): solange das Frontend laeuft, greift
+        es die Eingabegeraete EXKLUSIV ab (EVIOCGRAB in fe/input.py).
+        Ein anderer Leser bekommt in dieser Zeit nichts - so soll es
+        auch sein. Laut evdev-Verhalten bekommen bereits offene
+        Dateizeiger nach dem Freigeben wieder Ereignisse; darauf will
+        ich mich nach dieser Fehlersuche aber nicht mehr verlassen.
+        Deshalb: sobald das Frontend sich beendet - also genau in dem
+        Moment, in dem F4 ueberhaupt erst sinnvoll wird - werden die
+        Geraete einmal frisch geoeffnet. Kostet nichts (passiert
+        hoechstens beim Beenden des Frontends) und schliesst diese
+        Unsicherheit vollstaendig aus."""
+        for pfad in list(self.offen):
+            self.schliessen(pfad)
+        self.letzte_pruefung = 0.0
+
     def aktualisieren(self, jetzt):
         if jetzt - self.letzte_pruefung < 3.0:
             return
@@ -402,6 +422,7 @@ def main():
         return 0
     log("gestartet (F4 startet das Frontend, solange MiSTers Menue laeuft).")
     geraete = Geraete()
+    fe_lief = frontend_laeuft()
     while True:
         jetzt = time.monotonic()
         # Schalter zur Laufzeit ausgeschaltet -> sauber beenden, ohne
@@ -409,6 +430,13 @@ def main():
         if not eingeschaltet():
             log("Schalter aus - beende mich.")
             return 0
+        # Frontend gerade beendet? Dann Geraete frisch oeffnen - siehe
+        # Geraete.neu_oeffnen() fuer die Begruendung.
+        fe_jetzt = frontend_laeuft()
+        if fe_lief and not fe_jetzt:
+            log("Frontend wurde beendet - Eingabegeraete neu oeffnen.")
+            geraete.neu_oeffnen()
+        fe_lief = fe_jetzt
         geraete.aktualisieren(jetzt)
         if not geraete.f4_gedrueckt(1.0):
             continue

@@ -291,6 +291,31 @@ check("nach dem Freigeben ist die Sperre wieder zu haben",
       F.einmal_sicherstellen() is not None)
 
 print()
+print("Test 6f: nach dem Beenden des Frontends werden die Geraete neu geoeffnet")
+# Befund aus der Ferndiagnose: im Vordergrund-Diagnosemodus kam F4 an,
+# im Hintergrundprozess nicht. Der Unterschied war der Zustand des
+# Frontends: solange es laeuft, greift es die Eingabegeraete EXKLUSIV
+# ab (EVIOCGRAB) - ein anderer Leser bekommt dann nichts. Genau so soll
+# es sein. Sobald das Frontend sich beendet, wird F4 aber ueberhaupt
+# erst sinnvoll, und ab da muessen die Geraete zuverlaessig wieder
+# liefern. Statt auf das evdev-Verhalten zu vertrauen, werden sie in
+# diesem Moment frisch geoeffnet.
+g = F.Geraete()
+r, w = os.pipe()
+g.offen = {"/dev/input/event-test": os.fdopen(r, "rb", buffering=0)}
+g.letzte_pruefung = 12345.0
+check("vorher ist ein Geraet offen", len(g.offen) == 1)
+g.neu_oeffnen()
+check("neu_oeffnen() schliesst alle Geraete", len(g.offen) == 0)
+check("und erzwingt ein sofortiges Auffrischen", g.letzte_pruefung == 0.0)
+os.close(w)
+quelle = open(os.path.join(_FRONTEND_DIR, "f4_hotkey.py"), encoding="utf-8").read()
+check("die Hauptschleife achtet auf das Ende des Frontends",
+      "fe_lief and not fe_jetzt" in quelle)
+check("und ruft dann neu_oeffnen()",
+      "geraete.neu_oeffnen()" in quelle)
+
+print()
 print("Test 7: die Skripte selbst")
 sh = open(HOTKEY_SH, encoding="utf-8").read()
 check("f4_hotkey.sh prueft die Schalterdatei", "f4_hotkey" in sh)

@@ -7,6 +7,30 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**F4: der Unterschied zwischen Vordergrund und Hintergrund**
+(Build 70):
+
+Befund aus der Ferndiagnose: im Diagnosemodus (`--debug`, im
+Vordergrund) kam `Code 62` sauber an — beim Hintergrundprozess erschien
+keine einzige Zeile im Log. Gleicher Code, gleiche Geräte, gleiche
+Tastatur.
+
+Der Unterschied war der Zustand des Frontends. Solange es läuft, greift
+es die Eingabegeräte **exklusiv** ab (`EVIOCGRAB` in `fe/input.py`) —
+ein anderer Leser bekommt in dieser Zeit nichts. Das ist richtig so und
+soll auch so bleiben. Beim Diagnoselauf war das Frontend nachweislich
+nicht aktiv (`Frontend laeuft gerade: nein`), beim Hintergrundtest
+dagegen sehr wahrscheinlich schon.
+
+Laut evdev-Verhalten bekommen bereits geöffnete Dateizeiger nach dem
+Freigeben wieder Ereignisse. Nach dieser Fehlersuche verlasse ich mich
+darauf nicht mehr: der Wächter merkt sich jetzt, ob das Frontend läuft,
+und öffnet die Geräte **einmal frisch, sobald es sich beendet** — also
+genau in dem Moment, in dem F4 überhaupt erst sinnvoll wird. Kostet
+nichts (passiert höchstens beim Beenden des Frontends) und schließt
+diese Unsicherheit vollständig aus.
+
+
 **ROMs verschwanden stillschweigend aus der Liste — jetzt abschaltbar,
 standardmäßig aus**
 (Build 69 — Nutzer-Rückmeldung: „Die Datei heißt `Tetris (Japan) (En).gb`

@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-69",
-  "summary": "ROM-Filter jetzt abschaltbar und standardmaessig AUS; 'Tetris (Japan) (En)' wird wieder gefunden."
+  "build_id": "2026-08-24-70",
+  "summary": "F4-Waechter oeffnet die Eingabegeraete neu, sobald das Frontend sich beendet."
 }
