@@ -135,8 +135,45 @@ def _is_junk(name):
 # Klammer OHNE weiteren Text/Komma dazwischen.
 _JAPAN_ONLY = re.compile(r"[\(\[]\s*(?:japan|j)\s*[\)\]]", re.I)
 
+# BUGFIX (Nutzer-Rueckmeldung: "Tetris (Japan) (En).gb wurde weder mit
+# kuratierter Liste noch ohne erkannt - erst als ich sie in Tetris.gb
+# umbenannt habe. Das ist genau die Datei, die bei RetroAchievements
+# genutzt werden soll").
+#
+# Der Filter oben kannte bereits die Ausnahme "(Japan, USA)" - mehrere
+# Regionen in EINER Klammer. Er kannte aber nicht den in No-Intro-Sets
+# sehr haeufigen Fall: japanisches Release MIT englischer Sprachfassung,
+# wobei die Sprache in einer ZWEITEN Klammer steht:
+#
+#     Tetris (Japan) (En).gb
+#     Puyo Puyo (Japan) (En,Ja).gb
+#
+# Solche Titel sind auf Englisch spielbar - sie auszublenden ist genau
+# das, was der Filter NICHT tun soll. Und weil er beim Einlesen lief,
+# tauchte die Datei nirgends auf: nicht in der kuratierten Liste, nicht
+# ohne sie, und ohne jeden Hinweis, warum.
+#
+# Erkannt wird eine Sprachangabe als Klammergruppe aus zwei Buchstaben,
+# optional mehrere durch Komma getrennt (En / En,Fr / En,Ja,De) - so
+# schreiben No-Intro und Redump das durchgaengig.
+_SPRACHE = re.compile(r"[\(\[]\s*[A-Z][a-z](?:\s*,\s*[A-Z][a-z])*\s*[\)\]]")
+
+
+def _hat_englische_sprachangabe(name):
+    """True, wenn der Name eine Sprachliste mit Englisch enthaelt."""
+    for treffer in _SPRACHE.finditer(name):
+        teile = [t.strip() for t in treffer.group(0).strip("()[]").split(",")]
+        if any(t.lower() == "en" for t in teile):
+            return True
+    return False
+
+
 def _is_japan_only(name):
-    return bool(_JAPAN_ONLY.search(name))
+    if not _JAPAN_ONLY.search(name):
+        return False
+    # Japanisches Release, aber ausdruecklich mit englischer Fassung ->
+    # kein "nur japanisch".
+    return not _hat_englische_sprachangabe(name)
 
 # Bekannte Boot-/Test-/Demo-Dateien, die manche MiSTer-Verteilungen
 # direkt in die ROM-Ordner legen (fuer den Hardware-Selbsttest). Haben

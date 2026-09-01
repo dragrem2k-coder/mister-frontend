@@ -206,6 +206,7 @@ from fe.settings import (
     track_marquee_enabled, toggle_track_marquee,
     cycle_fb_size, fb_size_value, set_fb_size, toggle_f4_hotkey,
     toggle_autostart, f4_hotkey_enabled, f4_selbstheilung,
+    toggle_rom_filter,
 )
 
 # NEUES FEATURE (Nutzerwunsch: Rainwave-Internetradio als zweite
@@ -9663,6 +9664,32 @@ class Frontend:
                             continue
                         elif kind == "redraw":
                             self.fb.refresh_geometry()
+                        elif kind == "rom_filter":
+                            # NEUES FEATURE (Nutzerwunsch: "dass jeder
+                            # wirklich das angezeigt bekommt, was er auch
+                            # in seinen ROM-Ordnern sieht").
+                            #
+                            # Vorgeschichte: "Tetris (Japan) (En).gb"
+                            # tauchte nirgends auf - weder mit noch ohne
+                            # kuratierte Liste. Zwei Filter liefen beim
+                            # EINLESEN, immer, ohne Schalter und ohne
+                            # Hinweis; die kuratierte Liste kam danach
+                            # und konnte deshalb gar nichts mehr retten.
+                            # Standard ist jetzt: nichts filtern.
+                            #
+                            # Die Filter wirken beim Einlesen, nicht beim
+                            # Anzeigen - ein Umschalten muss deshalb
+                            # sofort einen Neuscan ausloesen, sonst
+                            # aendert sich auf dem Bildschirm gar nichts
+                            # und der Punkt wirkt kaputt.
+                            toggle_rom_filter()
+                            self.draw(t("sys_rom_filter_changed"),
+                                      prominent=True)
+                            self.build_categories(force_rescan=True)
+                            self.cat_i = self.item_i = 0
+                            self.scroll = self.cat_scroll = 0
+                            self.page = 0
+                            continue
                         elif kind == "rescan":
                             self.draw("Rescanning game list ...")
                             self.build_categories(force_rescan=True)

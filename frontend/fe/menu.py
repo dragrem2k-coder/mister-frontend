@@ -31,7 +31,7 @@ from fe.settings import (
     screen_mirror_enabled, stream_overlay_enabled, system_bg_enabled,
     fast_scroll_enabled, pulse_effect_enabled, eq_effect_enabled,
     track_marquee_enabled, fb_size_label_key, f4_hotkey_enabled,
-    autostart_enabled, f4_boot_entry_ok,
+    autostart_enabled, f4_boot_entry_ok, rom_filter_enabled,
 )
 from fe.timekeeping import format_timezone_offset, load_timezone_offset
 from fe.retroachievements import load_ra_config, ra_toggle_enabled
@@ -205,6 +205,11 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     # macht?"). Steht bewusst DIREKT ueber dem F4-Schalter: die beiden
     # gehoeren zusammen ("Autostart aus, dafuer F4"), und wer den einen
     # sucht, findet so den anderen gleich mit.
+    # NEUES FEATURE (Nutzerwunsch: "dass jeder wirklich das angezeigt
+    # bekommt, was er auch in seinen ROM-Ordnern sieht") - siehe
+    # rom_filter_enabled() in fe/settings.py. Standard AUS.
+    rom_filter_label = t("sys_rom_filter_on") if rom_filter_enabled() \
+        else t("sys_rom_filter_off")
     autostart_label = t("sys_autostart_on") if autostart_enabled() \
         else t("sys_autostart_off")
     f4_label = t("sys_f4_hotkey_on") if f4_hotkey_enabled() \
@@ -268,6 +273,7 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         t("sys_group_behavior"): folder(
             (t("sys_crt_test_action"), "crt_test", None),
             (curated_label, "curated", None),
+            (rom_filter_label, "rom_filter", None),
             (attract_label, "attract", None),
             (attract_delay_label, "attract_delay", None),
             (tz_label, "timezone", None),

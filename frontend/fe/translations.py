@@ -578,6 +578,20 @@ TRANSLATIONS = {
     "sys_autostart_failed": {
         "en": "Could not write user-startup.sh - autostart unchanged.",
         "de": "user-startup.sh nicht beschreibbar - Autostart unverändert."},
+    # NEUES FEATURE (Nutzerwunsch: "dass jeder wirklich das angezeigt
+    # bekommt, was er auch in seinen ROM-Ordnern sieht"). Die Zeilen
+    # nennen bewusst, WAS gefiltert wird - "Filter an/aus" allein sagt
+    # niemandem, welche Dateien dann fehlen. Genau diese Unsichtbarkeit
+    # war das eigentliche Problem.
+    "sys_rom_filter_on": {
+        "en": "Hide beta/proto/demo and Japan-only: ON -> turn off (then every ROM in your folders shows up)",
+        "de": "Beta/Proto/Demo und Nur-Japan ausblenden: AN -> ausschalten (dann erscheint jede ROM aus deinen Ordnern)"},
+    "sys_rom_filter_off": {
+        "en": "Hide beta/proto/demo and Japan-only: OFF -> turn on (tidier list, but files disappear)",
+        "de": "Beta/Proto/Demo und Nur-Japan ausblenden: AUS -> einschalten (aufgeräumtere Liste, dafür fehlen Dateien)"},
+    "sys_rom_filter_changed": {
+        "en": "Filter changed - reading the game list again now.",
+        "de": "Filter geändert - die Spieleliste wird jetzt neu eingelesen."},
     "sys_pulse_on": {"en": "Selection glow: ON -> turn off (static highlight instead of animation)",
                      "de": "Markierungs-Schimmer: AN -> ausschalten (feste statt animierte Hervorhebung)"},
     "sys_pulse_off": {"en": "Selection glow: OFF -> turn on",

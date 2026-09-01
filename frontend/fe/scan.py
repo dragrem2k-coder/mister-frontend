@@ -22,6 +22,7 @@ from fe.systems import (GAME_SYSTEMS, OPTIONAL_GAME_SYSTEMS,
                         optional_core_file)
 from fe.naming import IGNORE_ROM_BASENAMES, JUNK_TAGS, REGION_PRIORITY, nice_name, _is_junk, _is_japan_only
 from fe.game_state import _folder_items
+from fe.settings import rom_filter_enabled
 import fe.paths
 
 BASE = "/media/fat"
@@ -350,6 +351,11 @@ def _games_signature():
     global _LETZTE_SIGNATUR_MIT_NAS
     _LETZTE_SIGNATUR_MIT_NAS = any(e[0].startswith("nas:") for e in sig)
     sig.append(("__scan_logic_version__", SCAN_LOGIC_VERSION))
+    # NEU: der Filterschalter gehoert in den Fingerabdruck. Die Filter
+    # wirken beim EINLESEN - ohne diesen Eintrag wuerde ein Umschalten
+    # erst beim naechsten ohnehin faelligen Neuscan sichtbar, und der
+    # Nutzer haette den Eindruck, der Schalter tue nichts.
+    sig.append(("__rom_filter__", 1 if rom_filter_enabled() else 0))
     for sk in per_syskey:
         per_syskey[sk].sort(key=lambda t: (t[0], t[1] is None, t[1]))
     return sig, per_syskey
@@ -979,6 +985,10 @@ def _scan_folder_tree(path, syskey, rbf, extmap):
         entries = sorted(os.listdir(path), key=str.lower)
     except OSError:
         return node
+    # Einmal pro Ordner abfragen statt pro Datei - der Schalter ist eine
+    # Dateisystem-Pruefung, und die soll bei mehreren tausend ROMs nicht
+    # tausendfach laufen.
+    _filter_an = rom_filter_enabled()
     raw_items = []
     for entry in entries:
         if entry.startswith("."):
@@ -993,10 +1003,17 @@ def _scan_folder_tree(path, syskey, rbf, extmap):
             ext = ext.lower()
             if name.lower() in IGNORE_ROM_BASENAMES:
                 continue
-            if _is_junk(name):
-                continue
-            if _is_japan_only(name):
-                continue
+            # NEU (Nutzerwunsch: "dass jeder wirklich das angezeigt
+            # bekommt, was er auch in seinen ROM-Ordnern sieht"):
+            # diese beiden Filter liefen bisher IMMER. Jetzt nur noch,
+            # wenn sie ausdruecklich eingeschaltet sind - siehe
+            # rom_filter_enabled() in fe/settings.py fuer die
+            # Begruendung. Standard ist AUS.
+            if _filter_an:
+                if _is_junk(name):
+                    continue
+                if _is_japan_only(name):
+                    continue
             if ext in extmap:
                 raw_items.append((name, "game",
                                   (full, ext, syskey, rbf, extmap[ext])))

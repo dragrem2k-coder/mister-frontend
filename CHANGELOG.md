@@ -7,6 +7,55 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**ROMs verschwanden stillschweigend aus der Liste — jetzt abschaltbar,
+standardmäßig aus**
+(Build 69 — Nutzer-Rückmeldung: „Die Datei heißt `Tetris (Japan) (En).gb`
+— das ist die, die auch bei RetroAchievements genutzt werden soll. Diese
+wurde weder mit kuratierter Liste noch ohne erkannt. Erst als ich den
+Dateinamen auf `Tetris.gb` geändert habe.")
+
+Zwei Ursachen, beide behoben.
+
+**1. Der Nur-Japan-Filter war zu grob.** Er kannte bereits die Ausnahme
+`(Japan, USA)` — mehrere Regionen in *einer* Klammer. Er kannte aber
+nicht den in No-Intro-Sets sehr häufigen Fall: japanisches Release mit
+englischer Sprachfassung, wobei die Sprache in einer **zweiten** Klammer
+steht (`Tetris (Japan) (En)`, `Puyo Puyo (Japan) (En,Ja)`). Solche Titel
+sind auf Englisch spielbar; sie auszublenden ist genau das, was der
+Filter nicht tun soll. Erkannt wird jetzt die Sprachliste als eigene
+Klammergruppe (`En` / `En,Fr` / `En,Ja,De`).
+
+**2. Der eigentliche Fehler: die Filter waren unsichtbar.** `_is_junk()`
+(beta/proto/demo/sample/`[b]`/program/test/kiosk) und `_is_japan_only()`
+liefen beim **Einlesen**, immer, ohne Schalter, ohne Hinweis — und damit
+**vor** der kuratierten Liste. Deshalb half deren Abschalten nicht: die
+Datei war zu dem Zeitpunkt längst verworfen. Ein Nutzer sieht eine Datei
+im Ordner, sieht sie im Frontend nicht, und nichts sagt ihm warum.
+
+Beide Filter haben jetzt einen gemeinsamen Schalter unter
+System → Optionen → **Verhalten**, und zwar **standardmäßig AUS**: ab
+diesem Build erscheint jede ROM aus den Ordnern. Das ist eine bewusste
+Verhaltensänderung für alle — „zeig mir, was in meinen Ordnern liegt"
+ist die Erwartung, die niemanden überrascht. Wer die aufgeräumtere Liste
+möchte, schaltet sie ein; auch dann bleibt `Tetris (Japan) (En)` dank
+Fix 1 sichtbar.
+
+Die Menüzeile nennt ausdrücklich, *was* ausgeblendet wird — „Filter
+an/aus" allein sagt niemandem, welche Dateien dann fehlen, und genau
+diese Unsichtbarkeit war das Problem.
+
+**Die kuratierte Liste bleibt unverändert.** Sie war nicht die Ursache
+und hat ihren eigenen Schalter; sie zu entfernen hätte den gemeldeten
+Fehler nicht behoben.
+
+Der Schalterzustand geht in den Cache-Fingerabdruck ein, und das
+Umschalten stößt sofort einen Neuscan an — die Filter wirken beim
+Einlesen, nicht beim Anzeigen. Ohne das änderte sich auf dem Bildschirm
+nichts und der Menüpunkt wirkte kaputt.
+
+Abgesichert durch `tools/test_rom_filter.py`.
+
+
 **BUGFIX: ein zweiter Startversuch leerte die Sperrdatei des F4-Wächters**
 (Build 68 — beim Nachgehen der Meldung „laeuft bereits - dieser Start
 wird beendet" gefunden):

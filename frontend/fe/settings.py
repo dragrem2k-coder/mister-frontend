@@ -929,6 +929,64 @@ def toggle_autostart():
     return ok, autostart_enabled()
 
 
+# NEUES FEATURE (Nutzerwunsch: "vielleicht sollten wir das komplett
+# rausnehmen, dass jeder wirklich das angezeigt bekommt, was er auch in
+# seinen ROM-Ordnern sieht").
+#
+# Vorgeschichte: beim Einlesen liefen ZWEI Filter, immer, ohne Schalter
+# und ohne Hinweis - _is_junk() (beta/proto/demo/sample/[b]/program/
+# test/kiosk) und _is_japan_only(). Sie laufen VOR der kuratierten
+# Liste, weshalb deren Abschalten nichts half: die Datei war da schon
+# verworfen. Aufgefallen ist das an "Tetris (Japan) (En).gb", das
+# nirgends auftauchte - weder mit noch ohne kuratierte Liste.
+#
+# Das eigentliche Problem war nicht die Filterregel, sondern dass sie
+# unsichtbar war. Ein Nutzer sieht eine Datei im Ordner und im Frontend
+# nicht, und nichts sagt ihm warum. Deshalb jetzt ein Schalter -
+# und zwar STANDARDMAESSIG AUS, also standardmaessig wird nichts mehr
+# weggefiltert. Das ist eine bewusste Verhaltensaenderung fuer alle:
+# "zeig mir, was in meinen Ordnern liegt" ist die Erwartung, die
+# niemanden ueberrascht. Wer die Aufraeumfunktion moechte, schaltet sie
+# ein.
+#
+# Die Datei bedeutet also "Filter AN", nicht "abgeschaltet" - wie beim
+# F4-Schalter und aus demselben Grund: was standardmaessig aus ist,
+# wird durch eine Datei eingeschaltet, nicht umgekehrt.
+ROM_FILTER_FLAG = "/media/fat/frontend/rom_filter"
+
+
+def rom_filter_enabled():
+    """True, wenn Beta/Proto/Demo- und Nur-Japan-Titel beim Einlesen
+    ausgefiltert werden sollen. Standard: False (nichts filtern)."""
+    return os.path.exists(ROM_FILTER_FLAG)
+
+
+def toggle_rom_filter():
+    """Schaltet um. Liefert den NEUEN Zustand.
+
+    WICHTIG: der Aufrufer MUSS danach die Spieleliste neu einlesen
+    lassen - die Filter wirken beim Einlesen, nicht beim Anzeigen. Der
+    Cache-Fingerabdruck enthaelt den Schalterzustand (siehe
+    _games_signature() in fe/scan.py), ein Neustart wuerde also ohnehin
+    neu einlesen; der Menuepunkt stoesst es sofort an."""
+    if rom_filter_enabled():
+        try:
+            os.remove(ROM_FILTER_FLAG)
+        except OSError as e:
+            LOG("toggle_rom_filter: Loeschen fehlgeschlagen: %s" % e)
+            return True
+        return False
+    try:
+        d = os.path.dirname(ROM_FILTER_FLAG)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        open(ROM_FILTER_FLAG, "w").close()
+    except OSError as e:
+        LOG("toggle_rom_filter: Anlegen fehlgeschlagen: %s" % e)
+        return False
+    return True
+
+
 def attract_enabled():
     """Standardmaessig AN (im Gegensatz zu curated_only_active(), das
     standardmaessig AUS ist) - die Datei bedeutet hier 'abgeschaltet',

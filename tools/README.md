@@ -26,6 +26,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_crt_layout.py \
   && python3 tools/test_f4_hotkey.py \
   && python3 tools/test_autostart.py \
+  && python3 tools/test_rom_filter.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -41,6 +42,7 @@ python3 tools/regression_test.py \
 | `test_crt_layout.py` | Test (Pass/Fail) | Engeres Layout auf CRT, keine Reste beim Scrollen, HDMI/480p unveraendert |
 | `test_f4_hotkey.py` | Test (Pass/Fail) | F4-Schnellstart: Tastenerkennung, Sicherungen, Installation |
 | `test_autostart.py` | Test (Pass/Fail) | Autostart-Schalter: user-startup.sh sicher aendern |
+| `test_rom_filter.py` | Test (Pass/Fail) | ROMs verschwinden nicht mehr stillschweigend aus der Liste |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -255,6 +257,29 @@ ausgeloest - der einzige Weg, der auch als root aussagekraeftig ist),
 und eine durchgefallene Rueckleseprobe. In allen dreien muss die
 Zieldatei zeichengenau unveraendert bleiben und darf keine halbe
 Nebendatei liegen bleiben.
+
+## test_rom_filter.py
+
+Prueft, dass ROMs aus den Ordnern des Nutzers nicht mehr stillschweigend
+verschwinden (Nutzer-Rueckmeldung: "Tetris (Japan) (En).gb wurde weder
+mit kuratierter Liste noch ohne erkannt - erst als ich sie in Tetris.gb
+umbenannt habe").
+
+Zwei Ursachen, beide abgesichert. Erstens kannte der Nur-Japan-Filter
+die Ausnahme "(Japan, USA)" (mehrere Regionen in EINER Klammer), aber
+nicht "japanisches Release mit englischer Sprachfassung", wo die Sprache
+in einer ZWEITEN Klammer steht - in No-Intro-Sets die uebliche
+Schreibweise. Zweitens liefen beide Filter beim EINLESEN, immer, ohne
+Schalter und ohne Hinweis, und damit VOR der kuratierten Liste; deren
+Abschalten half deshalb nicht, die Datei war da schon verworfen.
+
+Geprueft werden zehn uebliche Schreibweisen aus No-Intro/Redump, das
+tatsaechliche Einlesen eines Ordners mit und ohne Filter (ohne Filter
+muss JEDE Datei erscheinen, mit Filter muss der gemeldete Tetris-Titel
+TROTZDEM sichtbar bleiben), dass der Schalter standardmaessig AUS ist,
+und dass der Cache-Fingerabdruck den Schalterzustand kennt - sonst
+wuerde ein Umschalten erst beim naechsten ohnehin faelligen Neuscan
+sichtbar und der Menuepunkt wirkte kaputt.
 
 ## diag_lightpath.py
 
