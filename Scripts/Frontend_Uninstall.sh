@@ -90,6 +90,28 @@ if [ -f "$STARTUP_FILE" ] && grep -q "f4_hotkey.sh" "$STARTUP_FILE"; then
     echo "F4-Schnellstart-Eintrag entfernt."
 fi
 
+# --- Video-Reste aus der MiSTer.ini entfernen ---
+# NEU (Nutzerwunsch nach einem Fehlerbild bei einem Bekannten, dessen
+# HDMI-Bild nach dem Start des Frontends wackelte): diese
+# Deinstallation versprach bisher eine rueckstandsfreie Entfernung,
+# fasste die MiSTer.ini aber ueberhaupt nicht an. Das Frontend kann
+# darin genau zwei Dinge veraendern - den [Menu]-Block (CRT-Modus) und
+# fb_size (Menue-Aufloesung). Beides sind Video-Einstellungen, die nach
+# einer Deinstallation niemand mehr dem Frontend zuordnen wuerde.
+#
+# WICHTIG: der [Menu]-Block wird nur entfernt, wenn er auch wirklich vom
+# Frontend stammt (Markierungsdatei oder wortgleicher Inhalt, siehe
+# fe/settings.py) - ein selbst angelegter Block bleibt unangetastet.
+#
+# Muss VOR dem Loeschen der Programmdateien laufen, das Skript liegt
+# selbst im Frontend-Ordner.
+if [ -f "$FRONTEND_DIR/mister_ini_cleanup.py" ]; then
+    python3 "$FRONTEND_DIR/mister_ini_cleanup.py" 2>/dev/null \
+        || echo "MiSTer.ini: Aufraeumen uebersprungen."
+else
+    echo "MiSTer.ini: Aufraeumskript nicht gefunden - uebersprungen."
+fi
+
 # --- Scripts entfernen ---
 # NEU: neue ("Frontend_"-Praefix, seit Build 2026-08-24-6) UND alte
 # Dateinamen (falls hier noch von einer vor der Umbenennung installierten

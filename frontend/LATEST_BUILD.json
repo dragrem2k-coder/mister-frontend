@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-71",
-  "summary": "Uebersetzte/lokalisierte japanische ROMs werden erkannt; CRT/HDMI-Frage aus dem Einrichtungsassistenten entfernt."
+  "build_id": "2026-08-24-72",
+  "summary": "Deinstallation raeumt jetzt auch die MiSTer.ini auf (CRT-Block und Menue-Aufloesung); Video-Zustand steht beim Start im Log."
 }

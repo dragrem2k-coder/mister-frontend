@@ -27,6 +27,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_f4_hotkey.py \
   && python3 tools/test_autostart.py \
   && python3 tools/test_rom_filter.py \
+  && python3 tools/test_mister_ini.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -43,6 +44,7 @@ python3 tools/regression_test.py \
 | `test_f4_hotkey.py` | Test (Pass/Fail) | F4-Schnellstart: Tastenerkennung, Sicherungen, Installation |
 | `test_autostart.py` | Test (Pass/Fail) | Autostart-Schalter: user-startup.sh sicher aendern |
 | `test_rom_filter.py` | Test (Pass/Fail) | ROMs verschwinden nicht mehr stillschweigend aus der Liste |
+| `test_mister_ini.py` | Test (Pass/Fail) | Keine Video-Reste in der MiSTer.ini - und kein Anfassen fremder Bloecke |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -280,6 +282,36 @@ TROTZDEM sichtbar bleiben), dass der Schalter standardmaessig AUS ist,
 und dass der Cache-Fingerabdruck den Schalterzustand kennt - sonst
 wuerde ein Umschalten erst beim naechsten ohnehin faelligen Neuscan
 sichtbar und der Menuepunkt wirkte kaputt.
+
+## test_mister_ini.py
+
+Prueft, dass das Frontend keine Video-Reste in der `MiSTer.ini`
+hinterlaesst - und dass es dabei nichts anfasst, was ihm nicht gehoert
+(Nutzer-Rueckmeldung nach einem wackelnden HDMI-Bild bei einem
+Bekannten: "falls das die Ursache ist, sollten wir da Vorkehrungen
+treffen, das heisst bei uninstall mit raus").
+
+Das Frontend setzt selbst KEINEN Videomodus - es liest die Geometrie aus
+`/sys/class/graphics/fb0/` und schreibt Pixel. Die einzigen beiden
+Stellen, an denen es das Bild ueberhaupt beeinflussen kann, sind der
+`[Menu]`-Block (CRT-Modus) und `fb_size` (Menue-Aufloesung).
+
+Der wichtigste Block ist Test 3: ein `[Menu]`-Block kann auch vom Nutzer
+selbst stammen (das ist eine ganz normale MiSTer-Funktion), und der darf
+durch eine Deinstallation nicht verlorengehen. Entfernt wird nur, was
+dem Frontend zuzurechnen ist - erkennbar an der Markierungsdatei ODER an
+einem wortgleichen Blockinhalt (Rueckfall fuer Installationen aus der
+Zeit vor der Markierung, Test 4). Eine einzige geaenderte Zeile genuegt,
+damit der Block als fremd gilt (Test 4b).
+
+Ausserdem: `fb_size` wird in BEIDE Umschaltrichtungen zurueckgesetzt
+(Test 5/5b), das sichere Schreiben mit Sicherungskopie und Rueck-Lesen
+(Test 6), ein absichtlich fehlgeschlagenes `os.replace` laesst die Datei
+unveraendert (Test 6b), eine fehlende `MiSTer.ini` bricht nichts ab
+(Test 7), die Log-Zeile beim Start nennt beide Einstellungen (Test 8),
+und `frontend/mister_ini_cleanup.py` wird als eigener Prozess gegen eine
+Wegwerf-`MiSTer.ini` wirklich ausgefuehrt (Test 9/9b) - einmal mit
+eigenem, einmal mit fremdem Block.
 
 ## diag_lightpath.py
 

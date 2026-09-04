@@ -229,6 +229,126 @@ fb_terminal=1
 video_mode=320,8,32,24,240,4,3,16,6048
 """
 
+# NEUES FEATURE (Nutzerwunsch nach einem Fehlerbild bei einem Bekannten,
+# bei dem das HDMI-Bild nach dem Frontend-Start wackelte: "falls das die
+# Ursache ist, sollten wir da Vorkehrungen treffen, das heisst bei
+# uninstall mit raus ... nicht dass es noch mehrere betrifft"):
+#
+# Das Frontend setzt selbst KEINEN Videomodus - es liest die Geometrie aus
+# /sys/class/graphics/fb0/ und schreibt Pixel. Die EINZIGEN beiden Stellen,
+# an denen es das Bild des MiSTers ueberhaupt beeinflussen kann, sind
+# dieser [Menu]-Block und fb_size in der [MiSTer]-Sektion. Genau deshalb
+# muessen beide bei einer Deinstallation zuverlaessig wieder verschwinden -
+# sonst bleibt eine Video-Einstellung zurueck, die niemand mehr dem
+# Frontend zuordnet.
+#
+# Die Schwierigkeit dabei: ein [Menu]-Block kann auch VOM NUTZER SELBST
+# stammen (der Block ist eine ganz normale MiSTer-Funktion). Den einfach
+# mitzuloeschen waere schlimmer als das Problem. Deshalb zwei Merkmale,
+# und nur wenn eines zutrifft, gilt der Block als "vom Frontend erzeugt":
+#
+#   1. die Markierungsdatei unten - wird beim Einschalten angelegt und
+#      beim Ausschalten wieder entfernt;
+#   2. der Blockinhalt entspricht Zeile fuer Zeile CRT_MENU_BLOCK.
+#
+# Merkmal 2 ist der Rueckfall fuer alle, die den CRT-Modus mit einer
+# aelteren Fassung eingeschaltet haben, als es die Markierung noch nicht
+# gab - ohne ihn waere die Aufraeumfunktion genau bei den bestehenden
+# Installationen wirkungslos, um die es hier eigentlich geht.
+CRT_MENU_OWNED_FLAG = "/media/fat/frontend/crt_menu_by_frontend"
+
+
+def _mister_ini_schreiben(text):
+    """MiSTer.ini sicher ersetzen. Rueckgabe True/False.
+
+    Gleiches Vorgehen wie beim Autostart-Eintrag (_startup_schreiben):
+    einmalige Sicherungskopie, Schreiben in eine Temp-Datei im SELBEN
+    Verzeichnis (sonst waere os.replace kein atomarer Rename), Rueck-Lesen
+    zur Kontrolle und erst dann das atomare Umbenennen. Eine halb
+    geschriebene MiSTer.ini kann einen MiSTer unbedienbar machen - hier ist
+    Vorsicht billiger als eine Fehlersuche am Fernseher.
+    """
+    sicherung = MISTER_INI + ".dragend_backup"
+    if not os.path.exists(sicherung):
+        try:
+            with open(MISTER_INI) as f:
+                alt = f.read()
+            with open(sicherung, "w") as f:
+                f.write(alt)
+        except OSError:
+            pass          # kein Grund abzubrechen - nur eine Bequemlichkeit
+    tmp = MISTER_INI + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        with open(tmp) as f:
+            if f.read() != text:
+                raise OSError("Rueck-Lesen der Temp-Datei stimmt nicht ueberein")
+        os.replace(tmp, MISTER_INI)
+    except OSError as e:
+        LOG("MiSTer.ini konnte nicht geschrieben werden: %s" % e)
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return False
+    return True
+
+
+def _crt_menu_block_text(ini):
+    """Den [Menu]-Block aus dem ini-Text ausschneiden (ohne Rest).
+    Rueckgabe: (start, ende, text) oder None, wenn kein Block da ist."""
+    i = ini.find("[Menu]")
+    if i == -1:
+        return None
+    j = ini.find("\n[", i + 1)
+    ende = len(ini) if j == -1 else j + 1
+    return i, ende, ini[i:ende]
+
+
+def _block_zeilen(text):
+    """Vergleichsform eines ini-Blocks: leere Zeilen und Randzeichen weg,
+    damit ein zusaetzlicher Zeilenumbruch keinen Unterschied macht."""
+    return [z.strip() for z in text.strip().splitlines() if z.strip()]
+
+
+def crt_menu_block_is_ours(ini=None):
+    """True, wenn der vorhandene [Menu]-Block inhaltlich genau der ist,
+    den dieses Frontend schreibt (siehe Merkmal 2 oben)."""
+    if ini is None:
+        try:
+            ini = open(MISTER_INI).read()
+        except OSError:
+            return False
+    teil = _crt_menu_block_text(ini)
+    if teil is None:
+        return False
+    return _block_zeilen(teil[2]) == _block_zeilen(CRT_MENU_BLOCK)
+
+
+def crt_menu_by_frontend():
+    """True, wenn der [Menu]-Block der MiSTer.ini dem Frontend zuzurechnen
+    ist - nur dann darf eine Deinstallation ihn entfernen."""
+    if not crt_menu_active():
+        return False
+    if os.path.exists(CRT_MENU_OWNED_FLAG):
+        return True
+    return crt_menu_block_is_ours()
+
+
+def _mark_crt_menu_owned(an):
+    try:
+        if an:
+            os.makedirs(os.path.dirname(CRT_MENU_OWNED_FLAG), exist_ok=True)
+            open(CRT_MENU_OWNED_FLAG, "w").close()
+        else:
+            os.remove(CRT_MENU_OWNED_FLAG)
+    except OSError:
+        pass
+
+
 def crt_menu_active():
     try:
         return "[Menu]" in open(MISTER_INI).read()
@@ -242,32 +362,92 @@ def toggle_crt_menu():
         ini = open(MISTER_INI).read()
     except OSError:
         return None
-    if "[Menu]" in ini:
+    teil = _crt_menu_block_text(ini)
+    if teil is not None:
         # Block entfernen: von der [Menu]-Zeile bis zur naechsten
         # Sektion oder zum Dateiende
-        i = ini.index("[Menu]")
-        j = ini.find("\n[", i + 1)
-        ini = ini[:i].rstrip() + "\n" + (ini[j + 1:] if j != -1 else "")
+        i, ende, _text = teil
+        ini = ini[:i].rstrip() + "\n" + ini[ende:]
         active = False
     else:
         ini = ini.rstrip() + "\n" + CRT_MENU_BLOCK
         active = True
-    # Atomar schreiben: erst in eine Temp-Datei, dann umbenennen. Sonst
-    # kann ein Abbruch mitten im Schreiben die MiSTer.ini leeren/zerstoeren.
-    tmp = MISTER_INI + ".tmp"
-    try:
-        with open(tmp, "w") as f:
-            f.write(ini)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, MISTER_INI)
-    except OSError:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
+    if not _mister_ini_schreiben(ini):
         return None
+    _mark_crt_menu_owned(active)
+    # Eine verkleinerte Framebuffer-Groesse in BEIDE Richtungen zuruecknehmen:
+    #
+    # Richtung CRT: der CRT-Framebuffer ist ohnehin nur 320x240, halbiert
+    # (160x120) waere er unlesbar - und der Menuepunkt dafuer ist im
+    # CRT-Modus bewusst ausgeblendet (siehe fe/menu.py), der Nutzer koennte
+    # ihn dort also gar nicht selbst zuruecksetzen.
+    #
+    # Richtung HDMI (NEU): genau weil der Menuepunkt im CRT-Modus
+    # ausgeblendet ist, kann ein dort vorgefundener Wert gar keine bewusste
+    # Entscheidung sein - er ist ein Rest aus einer aelteren Fassung oder
+    # von Hand eingetragen. Ihn beim Rueckweg auf HDMI stehenzulassen hiesse,
+    # jemanden mit einem halb aufgeloesten Bild sitzen zu lassen, ohne dass
+    # er weiss, woher es kommt. Umgekehrt geht dabei nichts verloren: eine
+    # bewusst auf HDMI getroffene Wahl kann hier nicht betroffen sein, weil
+    # dieser Zweig nur aus dem CRT-Modus heraus erreicht wird.
+    try:
+        if fb_size_value():
+            set_fb_size(0)
+    except Exception:
+        pass
     return active
+
+
+def remove_crt_menu_block(force=False):
+    """Den [Menu]-Block bei einer Deinstallation entfernen.
+
+    Rueckgabe: True  = entfernt
+               False = nichts zu tun / fremder Block bewusst stehengelassen
+               None  = Datei nicht les-/schreibbar
+    """
+    try:
+        ini = open(MISTER_INI).read()
+    except OSError:
+        return None
+    teil = _crt_menu_block_text(ini)
+    if teil is None:
+        return False
+    if not force and not crt_menu_by_frontend():
+        # Fremder [Menu]-Block: NICHT anfassen. Lieber ein Rest, den der
+        # Nutzer selbst gesetzt hat, als eine geloeschte Einstellung, die
+        # er nie wieder findet.
+        return False
+    i, ende, _text = teil
+    neu = ini[:i].rstrip() + "\n" + ini[ende:]
+    if not _mister_ini_schreiben(neu):
+        return None
+    _mark_crt_menu_owned(False)
+    return True
+
+
+def mister_ini_video_zustand():
+    """Kurzfassung dessen, was das Frontend beim Start in der MiSTer.ini
+    an Video-Einstellungen VORFINDET - fuer eine Zeile im Log.
+
+    Hintergrund: bei einem Fehlerbild ("das Bild wackelt, seit das
+    Frontend laeuft") gab es bisher nichts, woran man haette ablesen
+    koennen, ob ueberhaupt eine dieser beiden Einstellungen gesetzt war.
+    Das kostet jedes Mal eine Rueckfrage-Runde. Diese Zeile beantwortet
+    sie im Voraus.
+    """
+    try:
+        ini = open(MISTER_INI).read()
+    except OSError:
+        return "MiSTer.ini nicht lesbar"
+    teil = _crt_menu_block_text(ini)
+    if teil is None:
+        menu = "[Menu] nicht vorhanden"
+    elif crt_menu_by_frontend():
+        menu = "[Menu] vorhanden (vom Frontend gesetzt)"
+    else:
+        eigene = " | ".join(_block_zeilen(teil[2])[1:]) or "leer"
+        menu = "[Menu] vorhanden (NICHT vom Frontend - eigener Block: %s)" % eigene
+    return "%s, fb_size=%d" % (menu, fb_size_value())
 
 
 # NEUES FEATURE (Nutzerwunsch: "sowas darf nicht passieren, wenn jemand im
@@ -584,20 +764,10 @@ def set_fb_size(value):
             mitte += "\n"
         mitte += "fb_size=%d\n" % value
     new_ini = vor + mitte + nach
-    # Atomar schreiben (gleiche Begruendung wie bei toggle_crt_menu()):
-    # ein Abbruch mitten im Schreiben darf die MiSTer.ini nicht zerstoeren.
-    tmp = MISTER_INI + ".tmp"
-    try:
-        with open(tmp, "w") as f:
-            f.write(new_ini)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, MISTER_INI)
-    except OSError:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
+    # Sicher schreiben (Sicherung, Temp-Datei, Rueck-Lesen, atomarer
+    # Rename - siehe _mister_ini_schreiben): ein Abbruch mitten im
+    # Schreiben darf die MiSTer.ini nicht zerstoeren.
+    if not _mister_ini_schreiben(new_ini):
         return None
     return value
 

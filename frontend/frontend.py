@@ -206,7 +206,7 @@ from fe.settings import (
     track_marquee_enabled, toggle_track_marquee,
     cycle_fb_size, fb_size_value, set_fb_size, toggle_f4_hotkey,
     toggle_autostart, f4_hotkey_enabled, f4_selbstheilung,
-    toggle_rom_filter,
+    toggle_rom_filter, mister_ini_video_zustand,
 )
 
 # NEUES FEATURE (Nutzerwunsch: Rainwave-Internetradio als zweite
@@ -9700,18 +9700,14 @@ class Frontend:
                                 # CRT-Modus setzen.
                                 if new_crt_state:
                                     mark_crt_pending_confirm()
-                                    # Beim Wechsel IN den CRT-Modus eine
-                                    # eventuell gesetzte, verkleinerte
-                                    # Framebuffer-Groesse zuruecknehmen:
-                                    # der CRT-Framebuffer ist ohnehin nur
-                                    # 320x240, halbiert (160x120) waere er
-                                    # unlesbar - und der Menuepunkt dafuer
-                                    # ist im CRT-Modus bewusst ausgeblendet
-                                    # (siehe fe/menu.py), der Nutzer koennte
-                                    # ihn dort also gar nicht selbst wieder
-                                    # zuruecksetzen.
-                                    if fb_size_value():
-                                        set_fb_size(0)
+                                    # Das Zuruecksetzen einer verkleinerten
+                                    # Framebuffer-Groesse passiert seit
+                                    # Build 72 in BEIDEN Richtungen direkt
+                                    # in toggle_crt_menu() (fe/settings.py,
+                                    # Begruendung dort) - damit es auch auf
+                                    # dem zweiten Weg hierher greift, dem
+                                    # automatischen Ruecksprung des
+                                    # CRT-Sicherheitsnetzes.
                                 else:
                                     clear_crt_pending_confirm()
                                 os.system("sync; reboot")
@@ -10219,6 +10215,18 @@ if __name__ == "__main__":
         f4_selbstheilung()
     except Exception:
         traceback.print_exc()
+    # DIAGNOSE (Anlass: ein wackelndes HDMI-Bild bei einem Bekannten des
+    # Nutzers, bei dem die naheliegende Vermutung - ein [Menu]-Block in
+    # der MiSTer.ini - erst nach zwei Rueckfrage-Runden ausgeschlossen
+    # werden konnte). Das Frontend setzt selbst keinen Videomodus; die
+    # einzigen beiden Stellen, an denen es das Bild beeinflussen kann,
+    # sind der [Menu]-Block und fb_size. Ab jetzt steht in jedem Log,
+    # was es davon beim Start VORFINDET - eine Zeile, die eine ganze
+    # Rueckfrage-Runde spart.
+    try:
+        LOG("MiSTer.ini beim Start: %s" % mister_ini_video_zustand())
+    except Exception:
+        pass
     # DIAGNOSE (Nutzerfrage: "koennte man den Bootvorgang noch etwas
     # beschleunigen?") - bisher gab es keine Messung, WIE LANGE der
     # eigentliche Start (Framebuffer/Eingaben oeffnen, RA-Abruf anstossen,

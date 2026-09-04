@@ -7,6 +7,63 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Keine Video-Reste mehr in der `MiSTer.ini`** (Build 72 —
+Nutzer-Rückmeldung nach einem wackelnden HDMI-Bild bei einem Bekannten:
+„falls das die Ursache ist, sollten wir da Vorkehrungen treffen, das
+heißt bei uninstall mit raus … nicht dass es noch mehrere betrifft"):
+
+Vorweg, weil es für die Ursachensuche wichtig ist: **das Frontend setzt
+selbst keinen Videomodus.** Es liest die Bildgeometrie aus
+`/sys/class/graphics/fb0/` und schreibt Pixel — welches Signal am HDMI
+anliegt, bestimmt weiterhin allein der MiSTer. Genau **zwei** Stellen in
+der `MiSTer.ini` kann es überhaupt verändern: den `[Menu]`-Block
+(CRT-Modus) und `fb_size` (Menü-Auflösung). Beide sind
+Video-Einstellungen, die nach einer Deinstallation niemand mehr dem
+Frontend zuordnen würde — und die Deinstallation fasste die `MiSTer.ini`
+bisher überhaupt nicht an, obwohl sie eine rückstandsfreie Entfernung
+versprach.
+
+**1. Die Deinstallation räumt beides auf.** `Frontend_Uninstall.sh` ruft
+vor dem Löschen der Programmdateien `mister_ini_cleanup.py` auf, das den
+`[Menu]`-Block entfernt und `fb_size` auf den MiSTer-Standard
+zurücksetzt. Es sagt in Klartext, was es getan hat.
+
+**2. Ein selbst angelegter `[Menu]`-Block bleibt unangetastet.** `[Menu]`
+ist eine ganz normale MiSTer-Funktion; wer dort eigene Werte stehen hat,
+darf sie durch eine Deinstallation nicht verlieren. Entfernt wird nur,
+was dem Frontend zuzurechnen ist — erkennbar an einer Markierungsdatei
+(seit diesem Build beim Einschalten gesetzt) **oder** daran, dass der
+Blockinhalt wortgleich dem ist, den der CRT-Schalter schreibt. Das
+zweite Merkmal ist der Rückfall für alle, die den CRT-Modus mit einer
+älteren Fassung eingeschaltet haben — also genau für die bestehenden
+Installationen, um die es hier geht. Eine einzige geänderte Zeile
+genügt, damit der Block als fremd gilt und stehen bleibt.
+
+**3. Der Rückweg auf HDMI setzt `fb_size` mit zurück.** Bisher passierte
+das nur in die andere Richtung. Ein im CRT-Modus vorgefundener Wert kann
+gar keine bewusste Entscheidung sein — der Menüpunkt dafür ist dort
+ausgeblendet. Ihn beim Rückweg stehen zu lassen hieße, jemanden mit
+einem halb aufgelösten Bild sitzen zu lassen, ohne dass er weiß, woher
+es kommt. Umgekehrt geht nichts verloren: eine bewusst auf HDMI
+getroffene Wahl kann davon nicht betroffen sein. Das Zurücksetzen liegt
+jetzt in `toggle_crt_menu()` selbst und greift damit auch auf dem
+zweiten Weg — dem automatischen Rücksprung des CRT-Sicherheitsnetzes.
+
+**4. Der Video-Zustand steht beim Start im Log.** Eine Zeile
+(`MiSTer.ini beim Start: [Menu] … , fb_size=…`) sagt künftig sofort, ob
+eine dieser beiden Einstellungen überhaupt gesetzt war — und ob der
+Block vom Frontend stammt. Beim aktuellen Fehlerbild kostete genau diese
+fehlende Auskunft zwei Rückfrage-Runden.
+
+Alle Schreibzugriffe auf die `MiSTer.ini` laufen jetzt über denselben
+abgesicherten Weg wie der Autostart-Eintrag: einmalige Sicherungskopie
+(`MiSTer.ini.dragend_backup`), Temp-Datei im selben Verzeichnis,
+Rück-Lesen zur Kontrolle, erst dann das atomare Umbenennen. Schlägt
+irgendetwas davon fehl, bleibt die Datei unverändert. Abgesichert durch
+`tools/test_mister_ini.py` (13 Blöcke, u. a. fremder Block, alte
+Installation ohne Markierung, fehlgeschlagenes Schreiben, echter
+Durchlauf des Aufräumskripts).
+
 **Übersetzte japanische ROMs + CRT/HDMI raus aus dem Assistenten**
 (Build 71 — Nutzer-Rückmeldungen: „Seiken Densetsu 3 (Japan) (German).sfc
 und Magic Knight Rayearth (J) [T+Ger].sfc werden nicht erkannt, das sind
