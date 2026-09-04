@@ -7,6 +7,43 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Virtual Boy fehlte in allen drei Download-Werkzeugen** (Build 78 —
+Nutzerfrage: „wir haben ja den Virtual Boy mit reingenommen, muss ich
+das Script `Frontend_Boxart_Download.sh` nochmal starten, damit ich die
+dafür bekomme?"):
+
+Die ehrliche Antwort war **nein** — ein erneuter Lauf hätte nichts
+gebracht, weil das System in keiner der Systemtabellen stand. Die
+Kategorie kam mit einem früheren Build dazu; die drei Tabellen in
+`frontend/mister_boxart.py`, `frontend/mister_gameinfo.py` und
+`PC-Tools/boxart_fetch.py` wurden dabei übersehen.
+
+**Das Tückische daran ist der fehlende Fehler.** Das Skript wäre brav
+durchgelaufen, hätte die 13 ihm bekannten Systeme abgeklappert und
+Erfolg gemeldet — Virtual Boy hätte es stillschweigend ausgelassen.
+Sichtbar wäre nur gewesen, dass keine Cover kommen, und gesucht hätte
+man den Fehler dann bei den ROM-Namen, beim Netzwerk oder bei den
+Rechten.
+
+Nachgetragen in allen drei Werkzeugen, mit **geprüften statt geratenen**
+Namen: `thumbnails.libretro.com/Nintendo - Virtual Boy/Named_Boxarts/`
+liefert echte Dateien, und `metadat/releaseyear/Nintendo - Virtual
+Boy.dat` echte Einträge (beides abgerufen, nicht angenommen).
+
+Neu dazu: `tools/test_system_abdeckung.py`. Er vergleicht die
+Systemliste des Frontends mit allen drei Werkzeugen und prüft zusätzlich
+ROM-Ordner, Dateiendungen und den Datenbanknamen — ein falscher Ordner
+findet genauso lautlos nichts wie ein fehlender Eintrag. Systeme ohne
+Datenbank (SMW-Hacks, ALTTP-Tracker) stehen in einer Ausnahmeliste mit
+Begründung, und ein weiterer Test verhindert, dass diese Liste zur
+Müllhalde wird.
+
+**Für dich heißt das:** nach dem Aufspielen einmal
+`Frontend_Boxart_Download.sh` laufen lassen (bereits vorhandene Cover
+werden übersprungen, es lädt nur die fehlenden), und für Jahr/Genre/
+Spielerzahl zusätzlich `Frontend_Gameinfo_Download.sh`.
+
+
 **Tastenbelegung aufgeräumt: F1 raus aus dem Spiel, F4 und F10 weg**
 (Build 77 — Nutzerwünsche: „Esc-Funktion hätte ich dann gerne auf F1,
 und die soll so schnell auslösen wie die F5-Reset-Funktion", „F4 kann

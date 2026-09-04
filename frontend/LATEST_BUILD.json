@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-77",
-  "summary": "F1 steigt sofort aus dem laufenden Spiel aus; F10 und der F4-Schnellstart sind ersatzlos entfernt (F10 prueft seit jeher versehentlich F11)."
+  "build_id": "2026-08-24-78",
+  "summary": "Virtual Boy fehlte in allen drei Boxart-/Gameinfo-Werkzeugen - nachgetragen. Danach einmal den Boxart-Download starten."
 }

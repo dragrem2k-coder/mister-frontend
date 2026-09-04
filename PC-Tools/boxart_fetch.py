@@ -69,6 +69,12 @@ SYSTEMS = {
     "MegaCD":  (["MegaCD"],               {".chd", ".cue"},        "Sega - Mega-CD - Sega CD"),
     "Saturn":  (["Saturn"],               {".chd", ".cue"},        "Sega - Saturn"),
     "NEOGEO":  (["NEOGEO"],               {".neo"},                "SNK - Neo Geo"),
+    # NACHGETRAGEN (Build 78): fehlte hier, seit die Kategorie dazukam -
+    # siehe ausfuehrliche Begruendung in frontend/mister_boxart.py.
+    # Name per Abruf geprueft: die libretro-Datenbank fuehrt das System
+    # als "Nintendo - Virtual Boy" (metadat/releaseyear/... liefert
+    # echte Eintraege, z.B. "3-D Tetris (USA)", 1996).
+    "VIRTUALBOY": (["VirtualBoy"],        {".vb"},                 "Nintendo - Virtual Boy"),
 }
 
 # NEU (siehe ausfuehrliche Begruendung in frontend/mister_boxart.py -

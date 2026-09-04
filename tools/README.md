@@ -29,6 +29,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_mister_ini.py \
   && python3 tools/test_cover_prewarm.py \
   && python3 tools/test_reset_sofort.py \
+  && python3 tools/test_system_abdeckung.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -47,6 +48,7 @@ python3 tools/regression_test.py \
 | `test_mister_ini.py` | Test (Pass/Fail) | Keine Video-Reste in der MiSTer.ini - und kein Anfassen fremder Bloecke |
 | `test_cover_prewarm.py` | Test (Pass/Fail) | Cover-Vorberechnung: gleiche Kastengroesse wie der Zeichenpfad, bitgleiche Miniaturen |
 | `test_reset_sofort.py` | Test (Pass/Fail) | F5-Reset und F1-Ausstieg ohne Haltezeit; F10 und der F4-Schnellstart restlos entfernt |
+| `test_system_abdeckung.py` | Test (Pass/Fail) | Jedes Spiele-System des Frontends ist auch den Download-Werkzeugen bekannt |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -343,6 +345,37 @@ das Anlegen, Druck UND Loslassen aller drei Tasten werden gesendet
 (bleibt eine haengen, kaeme kein weiterer Reset an), und nach einem
 Schreibfehler wird das Geraet verworfen und beim naechsten Mal neu
 angelegt - sonst waere ein einmal kaputtes Geraet ein Dauerproblem.
+
+## test_system_abdeckung.py
+
+Prueft, dass jedes Spiele-System, das das Frontend anzeigt, auch von den
+drei Download-Werkzeugen bedient wird (`frontend/mister_boxart.py`,
+`frontend/mister_gameinfo.py`, `PC-Tools/boxart_fetch.py`).
+
+Ausloeser war eine Nutzerfrage: "wir haben ja den Virtual Boy mit
+reingenommen - muss ich das Boxart-Skript nochmal starten, damit ich die
+dafuer bekomme?" Die Antwort war nein - das System stand in KEINEM der
+drei Werkzeuge. Die Kategorie kam mit einem frueheren Build dazu, die
+drei getrennten Tabellen wurden dabei uebersehen.
+
+**Das Tueckische daran ist der fehlende Fehler:** das Skript laeuft
+durch, klappert die ihm bekannten Systeme ab und meldet Erfolg - das
+fehlende laesst es einfach aus. Sichtbar ist nur, dass keine Cover
+kommen, und gesucht wird der Fehler dann zwangslaeufig woanders
+(ROM-Namen, Netzwerk, Rechte).
+
+Geprueft wird deshalb nicht nur die Anwesenheit, sondern auch, dass
+ROM-Ordner und Dateiendungen mit `fe/systems.py` uebereinstimmen (ein
+falscher Ordner findet ebenso lautlos nichts) und dass alle drei
+Werkzeuge denselben Namen der libretro-Datenbank benutzen. Systeme ohne
+Datenbank (SMW-Hacks, ALTTP-Tracker) stehen in einer kurzen
+Ausnahmeliste MIT Begruendung; ein weiterer Test verhindert, dass diese
+Liste zur Muellhalde wird.
+
+Die Tabellen werden ueber den Syntaxbaum gelesen (`ast.literal_eval`),
+nicht per Textsuche - die drei Werkzeuge schreiben sie
+unterschiedlich, und ein Muster, das auf alle passt, waere genau die
+Sorte Halbwissen, die hier zum Fehler gefuehrt hat.
 
 ## diag_lightpath.py
 

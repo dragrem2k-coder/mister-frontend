@@ -168,6 +168,21 @@ SYSTEMS = {
         ".cue": "Sega - Saturn"}),
     "NEOGEO":  (["NEOGEO"], {
         ".neo": "SNK - Neo Geo"}),
+    # NACHGETRAGEN (Build 78, Nutzerfrage: "wir haben ja den Virtual Boy
+    # mit reingenommen - muss ich das Boxart-Skript nochmal starten,
+    # damit ich die dafuer bekomme?"). Die ehrliche Antwort war: nein,
+    # das haette nichts gebracht - das System stand hier gar nicht drin.
+    # Die Kategorie kam mit dem Virtual-Boy-Build dazu, diese Tabelle
+    # wurde dabei uebersehen. Ein Neustart des Skripts haette brav die
+    # 13 bekannten Systeme abgeklappert und Virtual Boy stillschweigend
+    # ausgelassen - ohne Fehlermeldung, es waeren einfach nie Cover
+    # aufgetaucht.
+    #
+    # Name der Datenbank per Abruf geprueft, nicht geraten:
+    # thumbnails.libretro.com/Nintendo - Virtual Boy/Named_Boxarts/
+    # liefert echte Dateien ("Mario's Tennis (Japan, USA).png" usw.).
+    "VIRTUALBOY": (["VirtualBoy"], {
+        ".vb":  "Nintendo - Virtual Boy"}),
 }
 
 # ---------------------------------------------------------------------------
