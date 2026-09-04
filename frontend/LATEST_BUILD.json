@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-73",
-  "summary": "Cover-Miniaturen werden im Leerlauf vorberechnet; neuer Menuepunkt 'Miniaturen vorbereiten' gegen das Stocken beim Ordnerwechsel."
+  "build_id": "2026-08-24-74",
+  "summary": "Cache-Ausreisser behoben (keine Verzeichniszaehlung mehr bei jedem Schreiben), Skalierungs-Cache nach Speicherbudget, Kategorie-Logos werden vorgewaermt."
 }

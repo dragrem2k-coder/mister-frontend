@@ -7,6 +7,58 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Der 169-ms-Ausreißer bei einem reinen Cache-Treffer** (Build 74 —
+Nutzer-Rückmeldung: „sind immer noch ein paar Ausreißer drin, zum
+Beispiel CONTINUE.art, manche andere auf der Hauptseite habe ich das
+Gefühl auch"):
+
+Im Log stand etwas, das nicht sein durfte — ein **Treffer**, bei dem
+also gar nichts gerechnet, sondern nur eine Datei gelesen wird:
+
+```
+THUMB_CACHE Treffer:   0.9 ms  (SNES.art, 77x156)
+THUMB_CACHE Treffer:  15.5 ms  (Capcom vs. SNK Pro (USA).art, 96x163)
+THUMB_CACHE Treffer: 169.0 ms  (Brave Prove (English v1.1b).art, 96x165)
+```
+
+Mein erster Verdacht war das Zeitstempel-Schreiben bei jedem Lesen
+(`os.utime`, die LRU-Markierung). Eine Messung auf dem Gerät hat ihn
+klar widerlegt und stattdessen den wahren Posten benannt:
+
+```
+Ordner durchzaehlen (7700 Dateien): 167 ms
+lesen     Schnitt 11.2 ms, max 26 ms
+entpacken Schnitt  1.3 ms, max  2 ms
+utime     Schnitt  0.1 ms, max  0 ms
+```
+
+**1. Die Verdrängungs-Prüfung zählt nicht mehr bei jedem Schreiben.**
+Sie begann mit genau jenem `os.listdir` über alle 7700 Dateien — 167 ms,
+nach **jedem** geschriebenen Miniaturbild, im Hintergrund-Thread, der
+sich dabei mit dem Zeichnen um dieselbe SD-Karte streitet. Die 167 ms
+und der 169-ms-Treffer sind dieselbe Zahl. Jetzt wird die Anzahl einmal
+ermittelt und danach mitgezählt; im Normalbetrieb findet gar kein
+Verzeichniszugriff mehr statt. Alle 2000 Schreibvorgänge wird zur
+Sicherheit nachgezählt, falls jemand von außen im Ordner aufräumt.
+
+**2. Der Skalierungs-Cache begrenzt sich nach Speicher statt nach
+Stückzahl.** Er hielt 20 Bilder — unabhängig davon, ob eine
+CRT-Miniatur (rund 60 KB) oder ein HDMI-Cover (über 2 MB) darin lag. Auf
+CRT passte damit nicht einmal eine Bildschirmseite plus Umfeld hinein:
+beim Hoch- und Runterscrollen fiel ein Cover heraus, bevor man es
+wiedersah, und wurde erneut von der Karte gelesen — die gemessenen
+11 ms, jedes Mal. Jetzt gilt ein Budget von 24 MB, womit auf CRT
+mehrere hundert Miniaturen im Speicher bleiben; auf HDMI bleibt es bei
+einer Handvoll großer Bilder, aber nie bei weniger Plätzen als vorher.
+
+**3. Die Kategorie-Logos der Hauptseite werden mit vorgewärmt.** Der
+Vorauslader aus Build 73 kümmerte sich nur um die Spieleliste — dabei
+sind ausgerechnet die Logos mit 900 px Breite die größten Bilder im
+Frontend (`PERF cover: 722 ms (CONTINUE.art)`) und stehen auf der Seite,
+die man beim Start als erstes sieht. Es sind nur rund zwanzig Stück, und
+„Miniaturen vorbereiten" nimmt sie jetzt zuerst dran — wer den Durchlauf
+nach einer Minute abbricht, hat wenigstens die erledigt.
+
 **Cover-Miniaturen werden vorberechnet — das Stocken beim Ordnerwechsel**
 (Build 73 — Nutzer-Rückmeldung: „wenn man in die Unterordner geht und
 wieder zurück will, bleibt das Frontend echt mal hängen für 1–2

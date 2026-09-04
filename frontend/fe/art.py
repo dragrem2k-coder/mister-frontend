@@ -551,17 +551,59 @@ def _thumb_cache_put_async(path, w, h, tw, th, pix):
             pass
     threading.Thread(target=_run, daemon=True).start()
 
+# Mitgefuehrter Dateizaehler - siehe die lange Begruendung in
+# _thumb_cache_evict_if_needed(). None = "noch nie gezaehlt".
+_thumb_cache_anzahl = None
+_thumb_cache_seit_zaehlung = 0
+
+# Nach so vielen Schreibvorgaengen wird trotz gueltigem Zaehler noch
+# einmal wirklich nachgezaehlt. Der Zaehler kann naemlich abdriften,
+# wenn jemand von aussen Dateien in den Ordner legt oder daraus loescht
+# (was ausdruecklich erlaubt ist - der Ordner darf jederzeit von Hand
+# geleert werden). Alle 2000 Schreibvorgaenge ist oft genug, damit das
+# nie aus dem Ruder laeuft, und selten genug, dass es niemand merkt.
+_THUMB_CACHE_NACHZAEHLEN_ALLE = 2000
+
+
 def _thumb_cache_evict_if_needed():
-    """Einfache Verdraengung nach Anzahl Dateien: die am laengsten nicht
-    mehr gelesenen/geschriebenen (aelteste Aenderungszeit) zuerst
-    entfernen, bis wieder unter der Obergrenze. Laeuft nur, wenn
-    tatsaechlich etwas Neues geschrieben wurde - nicht bei jedem
-    Lesezugriff, um den haeufigen Fall (Cache-Treffer) nicht unnoetig
-    zu verlangsamen."""
+    """Verdraengung nach Anzahl Dateien: die am laengsten nicht mehr
+    gelesenen/geschriebenen (aelteste Aenderungszeit) zuerst entfernen,
+    bis wieder unter der Obergrenze.
+
+    GEAENDERT (Build 74, Messung auf dem Geraet des Nutzers):
+
+        Ordner durchzaehlen (7700 Dateien): 167 ms
+        lesen     Schnitt 11.2 ms, max 26 ms
+        entpacken Schnitt  1.3 ms, max  2 ms
+        utime     Schnitt  0.1 ms, max  0 ms
+
+    Diese Funktion lief nach JEDEM geschriebenen Miniaturbild und begann
+    mit genau diesem os.listdir - 167 ms, die sich der Hintergrund-
+    Schreiber mit dem Zeichnen um dieselbe SD-Karte streitet. Im Log
+    schlug das als Cache-TREFFER mit 169 ms durch (sonst 1-16 ms), also
+    ausgerechnet dort, wo gar nichts gerechnet wird. Ich hatte zuvor
+    os.utime bei jedem Lesen verdaechtigt - die Messung sagt 0.1 ms,
+    diese Vermutung war falsch.
+
+    Jetzt wird die Anzahl EINMAL ermittelt und danach mitgezaehlt. Im
+    Normalbetrieb (Anzahl unter der Obergrenze) findet gar kein
+    Verzeichniszugriff mehr statt.
+    """
+    global _thumb_cache_anzahl, _thumb_cache_seit_zaehlung
+
+    if _thumb_cache_anzahl is not None:
+        _thumb_cache_anzahl += 1
+        _thumb_cache_seit_zaehlung += 1
+        if (_thumb_cache_anzahl <= THUMB_CACHE_MAX_FILES
+                and _thumb_cache_seit_zaehlung < _THUMB_CACHE_NACHZAEHLEN_ALLE):
+            return
+
     try:
         names = [f for f in os.listdir(THUMB_CACHE_DIR) if f.endswith(".art")]
     except OSError:
         return
+    _thumb_cache_anzahl = len(names)
+    _thumb_cache_seit_zaehlung = 0
     if len(names) <= THUMB_CACHE_MAX_FILES:
         return
     entries = []
@@ -573,11 +615,14 @@ def _thumb_cache_evict_if_needed():
             pass
     entries.sort()
     to_remove = len(entries) - THUMB_CACHE_MAX_FILES
+    entfernt = 0
     for _, fp in entries[:to_remove]:
         try:
             os.remove(fp)
+            entfernt += 1
         except OSError:
             pass
+    _thumb_cache_anzahl = len(entries) - entfernt
     # NEU (Nutzer-Rueckmeldung "rendert der die Boxarts immer neu?"):
     # bisher lief die Verdraengung voellig lautlos. Ob der Zwischen-
     # speicher zu klein ist, liess sich damit nur raten. Diese Zeile
@@ -654,17 +699,41 @@ class ArtCache:
             self.cache.pop(old, None)
         return art
 
-    SCALED_LIMIT = 20   # moderat erhoeht (vorher 10), gleicher Grund wie LIMIT
+    # GEAENDERT (Build 74): frueher eine feste Stueckzahl (SCALED_LIMIT
+    # = 20). Das war fuer CRT viel zu wenig und fuer HDMI eher zu viel -
+    # ein CRT-Cover belegt rund 60 KB, ein HDMI-Cover ueber 2 MB. Mit
+    # 20 Plaetzen fuer beide passte auf CRT nicht einmal eine ganze
+    # Bildschirmseite (13 Zeilen) plus ein bisschen Umfeld hinein: beim
+    # Hoch- und Runterscrollen fiel ein Cover schon wieder heraus, bevor
+    # man es wiedersah, und musste erneut von der Karte gelesen werden.
+    #
+    # Genau das kostet laut Messung auf dem Geraet des Nutzers 11 ms im
+    # Schnitt (max 26 ms) - nicht dramatisch, aber bei jedem Schritt,
+    # und voellig unnoetig fuer ein Bild, das eben noch da war.
+    #
+    # Deshalb jetzt ein SPEICHER-Budget statt einer Stueckzahl: auf CRT
+    # passen damit mehrere hundert Miniaturen hinein (die ganze
+    # Umgebung, in der man sich bewegt), auf HDMI weiterhin nur eine
+    # Handvoll grosser Bilder. SCALED_MIN sorgt dafuer, dass selbst bei
+    # sehr grossen Einzelbildern nie weniger Plaetze bleiben als frueher.
+    SCALED_BUDGET = 24 * 1024 * 1024   # rund 24 MB - auf einem MiSTer mit
+                                       # typischerweise ~1 GB RAM unkritisch
+    SCALED_MIN = 20                    # niemals weniger als bisher
 
     def _scaled_cache_put(self, key, result):
         if not hasattr(self, "scaled"):
             self.scaled = {}
             self.scaled_order = []
+            self.scaled_bytes = 0
         self.scaled[key] = result
         self.scaled_order.append(key)
-        if len(self.scaled_order) > self.SCALED_LIMIT:
+        self.scaled_bytes = getattr(self, "scaled_bytes", 0) + len(result[2])
+        while (len(self.scaled_order) > self.SCALED_MIN
+               and self.scaled_bytes > self.SCALED_BUDGET):
             old = self.scaled_order.pop(0)
-            self.scaled.pop(old, None)
+            alt = self.scaled.pop(old, None)
+            if alt is not None:
+                self.scaled_bytes -= len(alt[2])
 
     def get_scaled(self, path, max_w, max_h):
         _t0 = time.monotonic()
@@ -742,7 +811,8 @@ class ArtCache:
             # umgeben wirken. 10x ist grosszuegig genug, um jede Box zu
             # fuellen, aber immer noch klein genug, um den Speicher- und
             # Rechenaufwand des Nearest-Neighbor-Upscales im Rahmen zu
-            # halten (Cache haelt ohnehin nur SCALED_LIMIT Bilder).
+            # halten (der Skalierungs-Cache ist ohnehin nach
+            # Speicherbudget begrenzt, siehe SCALED_BUDGET).
             scale = max(1, min(max_w // w, max_h // h, 10))
             if scale == 1:
                 self._scaled_cache_put(box_key, base)
@@ -751,7 +821,8 @@ class ArtCache:
             # ROMs ruckelt es spuerbar"): die Defer-Pruefung oben
             # schuetzte bisher NUR vor dem erneuten DEKODIEREN, nicht
             # vor der hier folgenden Skalierung. Bei grossen Sammlungen
-            # (mehr als SCALED_LIMIT=20 unterschiedliche Cover pro
+            # (mehr Cover, als das Speicherbudget des Skalierungs-
+            # Caches gleichzeitig fasst, pro
             # Sitzung) wird der Skalierungs-Cache haeufiger geleert als
             # der Rohbild-Cache (LIMIT=60) - ein bereits dekodiertes,
             # aber "verdraengtes" Cover wurde beim erneuten Vorbeiscrollen

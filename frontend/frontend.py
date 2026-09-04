@@ -5225,17 +5225,24 @@ class Frontend:
                 # mit eigener, deutlich laengerer Ruhe-Schwelle
                 # (PREFETCH_SETTLE): wer nach dem Zurueckgehen sofort
                 # weiternavigiert, zahlt dafuer gar nichts mehr.
-                if (not self._prefetched_done and self.page == 1
+                if (not self._prefetched_done
+                        and self.page in (0, 1)
                         and not any_dialog
                         and time.monotonic() - self._last_input_time >= PREFETCH_SETTLE):
                     self._prefetched_done = True
-                    self._prefetch_neighbor_covers()
+                    if self.page == 1:
+                        self._prefetch_neighbor_covers()
                     # NEU (Build 73): und im selben Ruhemoment den
-                    # Hintergrund-Vorauslader auf die weiter entfernten
-                    # Eintraege ansetzen. Dieselbe Ruhe-Schwelle
-                    # (PREFETCH_SETTLE) aus demselben Grund: wer nach dem
-                    # Zurueckgehen sofort weiternavigiert, soll dafuer
-                    # nichts bezahlen.
+                    # Hintergrund-Vorauslader ansetzen. Dieselbe Ruhe-
+                    # Schwelle (PREFETCH_SETTLE) aus demselben Grund: wer
+                    # nach dem Zurueckgehen sofort weiternavigiert, soll
+                    # dafuer nichts bezahlen.
+                    #
+                    # ERWEITERT (Build 74): auch auf der HAUPTSEITE
+                    # (page 0). Dort stehen die Kategorie-Logos - mit
+                    # 900 px Breite die groessten Bilder im Frontend und
+                    # damit die teuersten Erstberechnungen ("PERF cover:
+                    # 722 ms (CONTINUE.art)" im Log des Nutzers).
                     self._prewarm_anstossen()
                 self._boot_watch()   # Diagnose: Anzeige-Zustand nach dem Boot
                 # WICHTIG: unabhaengige if-Abfragen statt einer elif-Kette.
@@ -5519,10 +5526,57 @@ class Frontend:
             return None
         return pfad, bw, bh
 
+    def kategorie_logo_auftraege(self):
+        """[(pfad, breite, hoehe), ...] fuer die Logos der Hauptseite.
+
+        NEU (Build 74, Nutzer-Rueckmeldung: "sind immer noch ein paar
+        Ausreisser drin, zum Beispiel CONTINUE.art, manche andere auf
+        der Hauptseite habe ich das Gefuehl auch" - im Log dazu
+        "PERF cover: 722 ms (CONTINUE.art)"). Der Vorauslader aus Build
+        73 kuemmerte sich nur um die Spieleliste. Dabei sind ausgerechnet
+        die Kategorie-Logos mit 900 px Breite die GROESSTEN Bilder im
+        ganzen Frontend und damit die teuersten Erstberechnungen - und
+        sie stehen auf der Seite, die man beim Start als erstes sieht.
+
+        Es sind nur rund zwanzig Stueck, und die Kastengroesse ist hier
+        fuer alle gleich (kein Text darunter, der sie verschiebt) -
+        entsprechend kurz ist die Rechnung."""
+        fb = self.fb
+        L = self.layout_cats()
+        s, ox, oy = L["s"], L["ox"], L["oy"]
+        art_w = L["art_w"]
+        box_h = max(20, (fb.height - oy - 20 * s) - L["y0"])
+        breite = art_w - 2 * (6 * s)
+        if breite <= 0:
+            return []
+        auftraege = []
+        for name, _node, syskey in self.cats:
+            art_key = _category_art_key(name, syskey)
+            if not art_key:
+                continue
+            pfad = os.path.join(SYSART_BASE, "%s.art" % art_key)
+            if thumb_cache_has(pfad, breite, box_h):
+                continue
+            auftraege.append((pfad, breite, box_h))
+        return auftraege
+
     def _prewarm_anstossen(self):
         """Im Leerlauf die Cover der voraussichtlich naechsten Eintraege
         im Hintergrund vorberechnen lassen (siehe fe/prewarm.py fuer die
         Begruendung und die beiden ehrlichen Einschraenkungen)."""
+        if self.page == 0:
+            # Hauptseite: die Kategorie-Logos vorwaermen. Bewusst nur
+            # hier und nicht dauernd - sind sie einmal berechnet, liefert
+            # kategorie_logo_auftraege() eine leere Liste und es passiert
+            # gar nichts mehr.
+            auftraege = self.kategorie_logo_auftraege()
+            if auftraege:
+                PREWARMER.start()
+                PREWARMER.uebergeben(auftraege)
+                if profiling_an():
+                    LOG("PREWARM: %d Kategorie-Logos vorgemerkt"
+                        % len(auftraege))
+            return
         if self.page != 1:
             return
         items = self._display_items()
@@ -5604,6 +5658,17 @@ class Frontend:
                 self.draw(t("thumb_prewarm_failed"), prominent=True)
                 return
             geo = (art_w, art_h, s)
+
+        # Die Kategorie-Logos der Hauptseite zuerst: es sind nur rund
+        # zwanzig, aber die groessten Bilder im Frontend (900 px breit),
+        # und sie stehen auf der Seite, die man beim Start als erstes
+        # sieht. Wer den Durchlauf nach einer Minute abbricht, hat
+        # wenigstens die schon erledigt.
+        for pfad, bw, bh in self.kategorie_logo_auftraege():
+            try:
+                prewarm_thumb(pfad, bw, bh)
+            except Exception:                        # noqa: BLE001
+                pass
 
         eintraege = self._alle_spiel_eintraege()
         gesamt = len(eintraege)

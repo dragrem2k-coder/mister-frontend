@@ -351,6 +351,167 @@ de_ab = tabelle.get("thumb_prewarm_cancel", {}).get("de", "").lower()
 check("der Abbruch-Hinweis beruhigt ueber das schon Gerechnete",
       "bleibt" in de_ab or "erhalten" in de_ab, de_ab)
 
+# ----------------------------------------------------------------------
+print()
+print("Test 6: die Verdraengungs-Pruefung zaehlt nicht mehr bei jedem Schreiben")
+# GEMESSEN auf dem Geraet des Nutzers: "Ordner durchzaehlen (7700
+# Dateien): 167 ms". Diese Pruefung lief nach JEDEM geschriebenen
+# Miniaturbild und stritt sich dabei mit dem Zeichnen um dieselbe
+# SD-Karte - im Log schlug das als Cache-TREFFER mit 169 ms durch,
+# also ausgerechnet dort, wo gar nichts gerechnet wird.
+shutil.rmtree(A.THUMB_CACHE_DIR, ignore_errors=True)
+os.makedirs(A.THUMB_CACHE_DIR, exist_ok=True)
+A._thumb_cache_anzahl = None
+A._thumb_cache_seit_zaehlung = 0
+zaehlungen = [0]
+_echtes_listdir = os.listdir
+
+
+def _gezaehltes_listdir(pfad, _echt=_echtes_listdir):
+    if str(pfad) == A.THUMB_CACHE_DIR:
+        zaehlungen[0] += 1
+    return _echt(pfad)
+
+
+os.listdir = _gezaehltes_listdir
+try:
+    for i in range(30):
+        A._thumb_cache_evict_if_needed()
+finally:
+    os.listdir = _echtes_listdir
+check("bei 30 Schreibvorgaengen wird hoechstens EINMAL gezaehlt",
+      zaehlungen[0] <= 1, "%d Zaehlungen" % zaehlungen[0])
+check("die Anzahl wird danach mitgefuehrt",
+      A._thumb_cache_anzahl is not None and A._thumb_cache_anzahl >= 29,
+      str(A._thumb_cache_anzahl))
+
+print()
+print("Test 6b: bei Ueberschreiten der Obergrenze wird trotzdem verdraengt")
+shutil.rmtree(A.THUMB_CACHE_DIR, ignore_errors=True)
+os.makedirs(A.THUMB_CACHE_DIR, exist_ok=True)
+for i in range(12):
+    with open(os.path.join(A.THUMB_CACHE_DIR, "d%02d.art" % i), "wb") as f:
+        f.write(b"x")
+    os.utime(os.path.join(A.THUMB_CACHE_DIR, "d%02d.art" % i),
+             (1000 + i, 1000 + i))       # aelteste zuerst
+_alte_grenze = A.THUMB_CACHE_MAX_FILES
+A.THUMB_CACHE_MAX_FILES = 8
+A._thumb_cache_anzahl = None
+A._thumb_cache_seit_zaehlung = 0
+try:
+    A._thumb_cache_evict_if_needed()
+    uebrig = sorted(x for x in os.listdir(A.THUMB_CACHE_DIR)
+                    if x.endswith(".art"))
+    check("auf die Obergrenze heruntergeraeumt", len(uebrig) == 8,
+          "%d uebrig" % len(uebrig))
+    check("und zwar die AELTESTEN entfernt",
+          uebrig[0] == "d04.art", str(uebrig))
+    check("der Zaehler stimmt danach",
+          A._thumb_cache_anzahl == 8, str(A._thumb_cache_anzahl))
+finally:
+    A.THUMB_CACHE_MAX_FILES = _alte_grenze
+    A._thumb_cache_anzahl = None
+    A._thumb_cache_seit_zaehlung = 0
+
+# ----------------------------------------------------------------------
+print()
+print("Test 7: der Skalierungs-Cache haelt nach Speicherbudget")
+# GEMESSEN: ein Lesen vom Festplatten-Cache kostet 11 ms im Schnitt.
+# Fuer ein Cover, das eben noch auf dem Bildschirm war, ist das
+# unnoetig - frueher fielen aber schon nach 20 Bildern die aeltesten
+# heraus, unabhaengig davon, ob es winzige CRT- oder riesige
+# HDMI-Miniaturen waren.
+cache = A.ArtCache()
+
+
+def ablegen(nr, groesse):
+    cache._scaled_cache_put(("p%d" % nr, "box", 1, 1),
+                            (1, 1, b"\x00" * groesse))
+
+
+KLEIN = 96 * 165 * 4          # eine CRT-Miniatur, rund 63 KB
+for i in range(400):
+    ablegen(i, KLEIN)
+check("CRT: deutlich mehr als die frueheren 20 Miniaturen passen hinein",
+      len(cache.scaled) > 200, "%d Stueck" % len(cache.scaled))
+check("CRT: das Speicherbudget wird eingehalten",
+      cache.scaled_bytes <= cache.SCALED_BUDGET,
+      "%.1f MB" % (cache.scaled_bytes / 1048576.0))
+
+cache2 = A.ArtCache()
+GROSS = 697 * 772 * 4         # ein HDMI-Cover, rund 2,1 MB
+
+
+def ablegen2(nr):
+    cache2._scaled_cache_put(("q%d" % nr, "box", 1, 1),
+                             (1, 1, b"\x00" * GROSS))
+
+
+for i in range(60):
+    ablegen2(i)
+check("HDMI: es bleiben nie weniger Plaetze als frueher (SCALED_MIN)",
+      len(cache2.scaled) >= cache2.SCALED_MIN, "%d Stueck" % len(cache2.scaled))
+check("HDMI: nicht alle 60 grossen Bilder werden gehalten",
+      len(cache2.scaled) < 60, "%d Stueck" % len(cache2.scaled))
+check("die Buchfuehrung stimmt mit dem tatsaechlichen Inhalt ueberein",
+      cache2.scaled_bytes == sum(len(v[2]) for v in cache2.scaled.values()),
+      "%d vs %d" % (cache2.scaled_bytes,
+                    sum(len(v[2]) for v in cache2.scaled.values())))
+check("die aeltesten fielen heraus, die neuesten sind da",
+      ("q59", "box", 1, 1) in cache2.scaled
+      and ("q0", "box", 1, 1) not in cache2.scaled)
+
+# ----------------------------------------------------------------------
+print()
+print("Test 8: die Kategorie-Logos der Hauptseite werden mit vorgewaermt")
+# Nutzer-Rueckmeldung: "sind immer noch ein paar Ausreisser drin, zum
+# Beispiel CONTINUE.art" - im Log dazu "PERF cover: 722 ms
+# (CONTINUE.art)". Die Logos sind mit 900 px Breite die groessten
+# Bilder im Frontend, und sie stehen auf der Seite, die man beim Start
+# als erstes sieht.
+H.set_screen(320, 240)
+fe = H.make_frontend(page=0)
+auftraege = fe.kategorie_logo_auftraege()
+check("es kommen ueberhaupt Logo-Auftraege heraus", len(auftraege) > 0,
+      "%d Auftraege" % len(auftraege))
+check("alle zeigen in den sysart-Ordner",
+      all(p.startswith(A.SYSART_BASE) for p, _w, _h in auftraege),
+      str(auftraege[:2]))
+check("alle haben dieselbe Kastengroesse (kein Text darunter)",
+      len({(w, h) for _p, w, h in auftraege}) == 1,
+      str({(w, h) for _p, w, h in auftraege}))
+
+# Gegenprobe wie bei Test 1: fragt der Zeichenpfad wirklich genau diese
+# Groesse an?
+angefragt = []
+_echt = A.ART.get_scaled
+
+
+def _mit(pfad, mw, mh, _e=_echt):
+    angefragt.append((pfad, mw, mh))
+    return _e(pfad, mw, mh)
+
+
+A.ART.get_scaled = _mit
+try:
+    fe.draw_page_cats()
+finally:
+    A.ART.get_scaled = _echt
+vom_zeichnen = [a for a in angefragt if a[0].startswith(A.SYSART_BASE)]
+check("der Zeichenpfad fragt ein Logo an", bool(vom_zeichnen))
+if vom_zeichnen and auftraege:
+    check("und zwar in derselben Kastengroesse wie der Vorauslader",
+          vom_zeichnen[0][1:] == auftraege[0][1:],
+          "Zeichnen=%s Vorauslader=%s"
+          % (vom_zeichnen[0][1:], auftraege[0][1:]))
+fe_py_2 = open(H.FRONTEND_PY, encoding="utf-8").read()
+check("der Vorauslader wird auch auf der Hauptseite angestossen",
+      "self.page in (0, 1)" in fe_py_2)
+check('und "Miniaturen vorbereiten" nimmt die Logos mit',
+      "kategorie_logo_auftraege()" in fe_py_2
+      and fe_py_2.count("kategorie_logo_auftraege()") >= 3)
+
+
 shutil.rmtree(TMP, ignore_errors=True)
 
 print()
