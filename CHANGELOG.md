@@ -7,6 +7,79 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**48 statt 16 Systeme — und die Systemliste gibt es nur noch einmal**
+(Build 79 — Nutzerwunsch: „eigentlich sollten alle runtergeladen werden,
+wenn die Cores und die passenden ROMs im Frontend mit verfügbar sind …
+falls jemand mal auf die Idee kommt, dass er auf einmal Atari oder
+Jaguar oder 3DO mit nutzen will. Quasi: falls vorhanden, dann auch mit
+bereitstellen."):
+
+**1. Die Ursache des Virtual-Boy-Fehlers ist beseitigt.** Die Systemliste
+existierte **viermal**: im Frontend und in den drei Download-Werkzeugen,
+alle von Hand gepflegt. Jetzt ist `fe/systems.py` die einzige Quelle —
+sie enthält zusätzlich den Namen der libretro-Datenbank je System, und
+die beiden Werkzeuge auf dem MiSTer lesen direkt von dort.
+`PC-Tools/boxart_fetch.py` behält eine erzeugte Kopie, weil es einzeln
+auf einen Windows-PC kopiert wird und nichts importieren kann; dass sie
+nicht abdriftet, prüft der Test bei jedem Lauf.
+
+**2. 30 weitere Konsolen dazu.** Alle übrigen Konsolen-Systeme der
+MiSTer-Distribution: 3DO, Adventure Vision, Arcadia 2001, Astrocade,
+Atari 2600/5200/7800/Lynx, Casio PV-1000, CD-i, Channel F,
+ColecoVision, CreatiVision, Famicom Disk System, Game & Watch, Game
+Gear, Gamate, Intellivision, Jaguar, Mega Duck, Neo Geo CD, Odyssey 2,
+Pocket Challenge V2, Pokémon Mini, SG-1000, Sega 32X, Super Game Boy,
+TurboGrafx-16 CD, VC 4000, Vectrex, WonderSwan (+ Color).
+
+Jedes erscheint **nur, wenn Core und ROMs wirklich da sind** — der
+Mechanismus dafür gab es schon, er wird jetzt nur breiter genutzt. Wer
+die Cores nicht hat, merkt von der Liste nichts.
+
+**Woher die Startparameter kommen, und warum ich ihnen traue:** alle aus
+der mrext-Systemdatenbank, derselben Quelle wie unsere bisherigen. Zur
+Kontrolle habe ich die dortigen Werte für die **bestehenden** Systeme
+abgerufen und verglichen — NES `(2,f,1)`, SNES `(2,f,0)`, Mega Drive
+`(1,f,1)`, PSX `(1,s,1)`, Master System `(1,f,1)`, Game Gear `(1,f,2)`,
+TurboGrafx `(1,f,0)`, SuperGrafx `(1,f,1)`, MegaCD/Saturn `(1,s,0)`,
+Neo Geo `(1,f,1)`: **alle stimmen exakt überein.** Die Quelle ist damit
+an 13 Punkten belegt, nicht angenommen. Genauso die Datenbanknamen: jeder
+einzelne wurde abgerufen, nicht geraten.
+
+**Ehrlich dazu:** geraten ist nichts, *getestet* aber auch nichts — ich
+habe keinen MiSTer. Ob ein Core wirklich startet und das ROM lädt, zeigt
+erst der Einsatz. Sollte eines nicht laufen, steckt der Fehler mit hoher
+Wahrscheinlichkeit in genau einer Zahl, und die steht im Code direkt
+daneben.
+
+**3. Acht Logos sind aufgetaucht.** Im Ordner
+`sysart/_weitere_systeme_noch_nicht_unterstuetzt/` lagen längst fertige
+Logos für Atari 5200/7800, Jaguar, ColecoVision, CD-i, Sega 32X, Super
+Game Boy und TurboGrafx-CD — „für den Tag, an dem die mal ergänzt
+werden". Der Tag ist heute; sie sind an ihren Platz gerückt. Damit haben
+24 der 48 Systeme ein Logo. Welche noch fehlen und in welchem Format
+Nachschub gehört, steht in `docs/LOGOS_NACHLIEFERN.md`. Eine eigene
+Akzentfarbe hat jedes der 48 Systeme.
+
+**Das Sicherheitsnetz:** `tools/test_system_abdeckung.py` nagelt
+Startparameter, ROM-Ordner und Datenbank-Zuordnung der ursprünglichen 16
+Systeme auf ihre bekannten Werte fest. Die Liste wuchs in einem Zug von
+16 auf 48 — ein dabei verrutschter Index hieße „Core startet, ROM lädt
+nicht", ohne Fehlermeldung. Zusätzlich geprüft: keine Kombination aus
+ROM-Ordner und Dateiendung ist doppelt vergeben (sonst erschiene
+dieselbe Datei in zwei Kategorien), und alle drei Werkzeuge liefern
+dieselbe Tabelle.
+
+Nachgemessen statt vermutet: die 34 zusätzlichen Core-Prüfungen beim
+Start kosten zusammen rund 2 ms. Ein Zwischenspeicher dafür wäre Aufwand
+ohne Gegenwert und ist bewusst nicht eingebaut.
+
+**Zwei Dinge, die absichtlich so sind:** Game-Gear-Dateien im Ordner
+`games/SMS` erscheinen weiterhin unter „Master System" (die Kategorie
+liest `.gg` dort seit jeher mit) — die neue eigene Kategorie gilt für
+den Ordner `games/GameGear`. Und der Zufalls-Zock zieht nach wie vor nur
+aus den Standardsystemen, nicht aus den optionalen.
+
+
 **Virtual Boy fehlte in allen drei Download-Werkzeugen** (Build 78 —
 Nutzerfrage: „wir haben ja den Virtual Boy mit reingenommen, muss ich
 das Script `Frontend_Boxart_Download.sh` nochmal starten, damit ich die

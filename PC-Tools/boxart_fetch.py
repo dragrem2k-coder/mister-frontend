@@ -55,26 +55,67 @@ except ImportError:
 # syskey: (ROM-Ordner, ROM-Endungen, libretro-Thumbnail-Name)
 # GAMEBOY und GBC teilen sich den Ordner "GAMEBOY", getrennt ueber die
 # Endung (.gb vs .gbc). syskeys identisch zu Frontend/mister_boxart.
+# ---------------------------------------------------------------------------
+# SYSTEMTABELLE
+# ---------------------------------------------------------------------------
+# {syskey: (ROM-Ordner, {Endung: Datenbankname})}
+#
+# ACHTUNG - AUTOMATISCH ERZEUGT (Build 79). Die Quelle ist
+# frontend/fe/systems.py (GAME_SYSTEMS + OPTIONAL_GAME_SYSTEMS +
+# LIBRETRO_DB). Hier von Hand etwas einzutragen bringt nichts: dieses
+# Skript laeuft zwar eigenstaendig auf einem PC und kann deshalb nichts
+# aus fe/ importieren, aber tools/test_system_abdeckung.py vergleicht
+# diese Tabelle bei jedem Testlauf mit der Quelle und schlaegt bei jeder
+# Abweichung fehl.
+#
+# Warum ueberhaupt eine Kopie: bis Build 78 gab es DREI von Hand
+# gepflegte Listen mit demselben Inhalt. Virtual Boy stand in keiner
+# davon - das System kam ins Frontend, die Tabellen wurden uebersehen,
+# und der Download lief brav durch, ohne es zu beruecksichtigen. Kein
+# Fehler, nur keine Cover. Die beiden Werkzeuge auf dem MiSTer lesen
+# jetzt direkt aus fe/systems.py; nur diese eine Kopie bleibt, weil das
+# Skript einzeln auf einen Windows-PC kopiert wird.
 SYSTEMS = {
-    "NES":     (["NES"],                  {".nes"},                "Nintendo - Nintendo Entertainment System"),
-    "SNES":    (["SNES"],                 {".sfc", ".smc"},        "Nintendo - Super Nintendo Entertainment System"),
-    "Genesis": (["MegaDrive", "Genesis"], {".md", ".gen", ".bin"}, "Sega - Mega Drive - Genesis"),
-    "N64":     (["N64"],                  {".n64", ".z64"},        "Nintendo - Nintendo 64"),
-    "PSX":     (["PSX"],                  {".chd", ".cue"},        "Sony - PlayStation"),
-    "GAMEBOY": (["GAMEBOY"],              {".gb"},                 "Nintendo - Game Boy"),
-    "GBC":     (["GAMEBOY"],              {".gbc"},                "Nintendo - Game Boy Color"),
-    "GBA":     (["GBA"],                  {".gba"},                "Nintendo - Game Boy Advance"),
-    "SMS":     (["SMS"],                  {".sms", ".gg"},         "Sega - Master System - Mark III"),
-    "TGFX16":  (["TGFX16"],               {".pce", ".sgx"},        "NEC - PC Engine - TurboGrafx 16"),
-    "MegaCD":  (["MegaCD"],               {".chd", ".cue"},        "Sega - Mega-CD - Sega CD"),
-    "Saturn":  (["Saturn"],               {".chd", ".cue"},        "Sega - Saturn"),
-    "NEOGEO":  (["NEOGEO"],               {".neo"},                "SNK - Neo Geo"),
-    # NACHGETRAGEN (Build 78): fehlte hier, seit die Kategorie dazukam -
-    # siehe ausfuehrliche Begruendung in frontend/mister_boxart.py.
-    # Name per Abruf geprueft: die libretro-Datenbank fuehrt das System
-    # als "Nintendo - Virtual Boy" (metadat/releaseyear/... liefert
-    # echte Eintraege, z.B. "3-D Tetris (USA)", 1996).
-    "VIRTUALBOY": (["VirtualBoy"],        {".vb"},                 "Nintendo - Virtual Boy"),
+    "3DO": (['3DO'], {".chd": "The 3DO Company - 3DO", ".cue": "The 3DO Company - 3DO"}),
+    "ADVENTUREVISION": (['AVision'], {".bin": "Entex - Adventure Vision"}),
+    "ARCADIA": (['Arcadia'], {".bin": "Emerson - Arcadia 2001"}),
+    "ATARI2600": (['Atari2600', 'ATARI7800'], {".a26": "Atari - 2600"}),
+    "ATARI5200": (['ATARI5200'], {".a52": "Atari - 5200", ".bin": "Atari - 5200", ".car": "Atari - 5200", ".rom": "Atari - 5200"}),
+    "ATARI7800": (['ATARI7800'], {".a78": "Atari - 7800", ".bin": "Atari - 7800"}),
+    "ATARILYNX": (['AtariLynx'], {".lnx": "Atari - Lynx"}),
+    "CASIOPV1000": (['Casio_PV-1000'], {".bin": "Casio - PV-1000"}),
+    "CDI": (['CD-i'], {".chd": "Philips - CD-i", ".cue": "Philips - CD-i"}),
+    "CHANNELF": (['ChannelF'], {".bin": "Fairchild - Channel F", ".rom": "Fairchild - Channel F"}),
+    "COLECOVISION": (['Coleco'], {".bin": "Coleco - ColecoVision", ".col": "Coleco - ColecoVision", ".rom": "Coleco - ColecoVision"}),
+    "CREATIVISION": (['CreatiVision'], {".bas": "VTech - CreatiVision", ".bin": "VTech - CreatiVision", ".rom": "VTech - CreatiVision"}),
+    "FDS": (['FDS', 'NES'], {".fds": "Nintendo - Family Computer Disk System"}),
+    "GAMEBOY": (['GAMEBOY'], {".gb": "Nintendo - Game Boy"}),
+    "GAMEGEAR": (['GameGear'], {".gg": "Sega - Game Gear"}),
+    "GBA": (['GBA'], {".gba": "Nintendo - Game Boy Advance"}),
+    "GBC": (['GAMEBOY'], {".gbc": "Nintendo - Game Boy Color"}),
+    "Genesis": (['MegaDrive', 'Genesis'], {".bin": "Sega - Mega Drive - Genesis", ".gen": "Sega - Mega Drive - Genesis", ".md": "Sega - Mega Drive - Genesis"}),
+    "INTELLIVISION": (['Intellivision'], {".bin": "Mattel - Intellivision", ".int": "Mattel - Intellivision"}),
+    "JAGUAR": (['Jaguar'], {".bin": "Atari - Jaguar", ".j64": "Atari - Jaguar", ".jag": "Atari - Jaguar", ".rom": "Atari - Jaguar"}),
+    "MegaCD": (['MegaCD'], {".chd": "Sega - Mega-CD - Sega CD", ".cue": "Sega - Mega-CD - Sega CD"}),
+    "N64": (['N64'], {".n64": "Nintendo - Nintendo 64", ".z64": "Nintendo - Nintendo 64"}),
+    "NEOGEO": (['NEOGEO'], {".neo": "SNK - Neo Geo"}),
+    "NEOGEOCD": (['NeoGeo-CD'], {".chd": "SNK - Neo Geo CD", ".cue": "SNK - Neo Geo CD"}),
+    "NES": (['NES'], {".nes": "Nintendo - Nintendo Entertainment System"}),
+    "ODYSSEY2": (['ODYSSEY2'], {".bin": "Magnavox - Odyssey2"}),
+    "POKEMONMINI": (['PokemonMini'], {".min": "Nintendo - Pokemon Mini"}),
+    "PSX": (['PSX'], {".chd": "Sony - PlayStation", ".cue": "Sony - PlayStation"}),
+    "S32X": (['S32X'], {".32x": "Sega - 32X"}),
+    "SG1000": (['SG1000', 'Coleco', 'SMS'], {".sg": "Sega - SG-1000"}),
+    "SMS": (['SMS'], {".gg": "Sega - Game Gear", ".sms": "Sega - Master System - Mark III"}),
+    "SNES": (['SNES'], {".sfc": "Nintendo - Super Nintendo Entertainment System", ".smc": "Nintendo - Super Nintendo Entertainment System"}),
+    "SUPERGAMEBOY": (['SGB'], {".gb": "Nintendo - Game Boy", ".gbc": "Nintendo - Game Boy"}),
+    "Saturn": (['Saturn'], {".chd": "Sega - Saturn", ".cue": "Sega - Saturn"}),
+    "TGFX16": (['TGFX16'], {".pce": "NEC - PC Engine - TurboGrafx 16", ".sgx": "NEC - PC Engine - TurboGrafx 16"}),
+    "TGFX16CD": (['TGFX16-CD'], {".chd": "NEC - PC Engine CD - TurboGrafx-CD", ".cue": "NEC - PC Engine CD - TurboGrafx-CD"}),
+    "VECTREX": (['VECTREX'], {".bin": "GCE - Vectrex", ".rom": "GCE - Vectrex", ".vec": "GCE - Vectrex"}),
+    "VIRTUALBOY": (['VirtualBoy'], {".vb": "Nintendo - Virtual Boy"}),
+    "WONDERSWAN": (['WonderSwan'], {".ws": "Bandai - WonderSwan"}),
+    "WONDERSWANCOLOR": (['WonderSwanColor', 'WonderSwan'], {".wsc": "Bandai - WonderSwan Color"}),
 }
 
 # NEU (siehe ausfuehrliche Begruendung in frontend/mister_boxart.py -
@@ -360,14 +401,21 @@ def main():
         if args.systems else None
 
     gesamt = {"roms": 0, "ok": 0, "fehlend": 0}
-    for syskey, (folders, exts, sysname) in SYSTEMS.items():
+    for syskey, (folders, ext_db_map) in SYSTEMS.items():
         if only and syskey not in only:
             continue
-        roms = collect_roms(args.roms_base, folders, exts)
+        roms = collect_roms(args.roms_base, folders, set(ext_db_map))
         if not roms:
             continue
         print("== %s: %d ROMs" % (syskey, len(roms)))
-        covers = get_cover_list(sysname, args.cache)
+        # Ein Core kann Spiele mehrerer Systeme abspielen, deren Cover
+        # bei libretro getrennt liegen (Master System / Game Gear).
+        # Deshalb die Cover-Listen aller beteiligten Datenbanken
+        # zusammenfuehren, statt nur eine abzufragen.
+        covers = []
+        for datenbank in sorted(set(ext_db_map.values())):
+            covers.extend(get_cover_list(datenbank, args.cache) or [])
+        sysname = sorted(set(ext_db_map.values()))[0]
         if not covers:
             continue
         idx_exact, idx_strip = build_index(covers)

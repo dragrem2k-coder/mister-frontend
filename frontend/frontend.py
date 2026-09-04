@@ -345,6 +345,44 @@ SYSTEM_ACCENT = {
     # Master System (230,90,90) abhebt: kraeftiger und weniger ins
     # Rosa gehend, passend zum LED-Rot der echten Konsole.
     "VIRTUALBOY": (235, 45, 45),
+    # NEU (Build 79, zusammen mit den 30 zusaetzlichen Konsolen in
+    # fe/systems.py): ohne eigenen Eintrag bekaeme jedes davon die
+    # allgemeine Akzentfarbe des Themes, und alle saehen gleich aus.
+    # Die Farben orientieren sich am jeweiligen Geraet bzw. seinem
+    # Logo - kein System bekommt exakt denselben Ton wie ein bereits
+    # vorhandenes, damit sie in der Liste unterscheidbar bleiben.
+    "3DO":              (215, 215, 220),   # helles Grau des Panasonic-Gehaeuses
+    "ADVENTUREVISION":  (200, 60, 40),     # rote LED-Anzeige
+    "ARCADIA":          (120, 165, 200),
+    "ASTROCADE":        (215, 160, 60),
+    "ATARI2600":        (120, 90, 60),     # Holzfurnier der Urfassung
+    "ATARI5200":        (150, 115, 75),
+    "ATARI7800":        (185, 60, 50),     # rotes Atari-Logo
+    "ATARILYNX":        (225, 165, 40),    # gelbe Beschriftung
+    "CASIOPV1000":      (170, 170, 180),
+    "CDI":              (70, 105, 175),    # Philips-Blau
+    "CHANNELF":         (170, 140, 90),
+    "COLECOVISION":     (60, 145, 200),
+    "CREATIVISION":     (200, 130, 60),
+    "FDS":              (215, 190, 175),   # Beige des Famicom
+    "GAMATE":           (140, 165, 150),
+    "GAMEGEAR":         (55, 55, 65),      # schwarzes Gehaeuse
+    "GAMENWATCH":       (185, 185, 175),   # silbernes Gehaeuse
+    "INTELLIVISION":    (185, 145, 70),    # braun-goldenes Gehaeuse
+    "JAGUAR":           (200, 60, 55),     # rotes Jaguar-Logo
+    "MEGADUCK":         (215, 190, 65),
+    "NEOGEOCD":         (195, 55, 90),
+    "ODYSSEY2":         (170, 175, 185),
+    "POCKETCHALLENGEV2": (130, 150, 180),
+    "POKEMONMINI":      (235, 205, 60),    # Pokemon-Gelb
+    "S32X":             (55, 130, 230),    # Sega-Blau, heller als Mega Drive
+    "SG1000":           (200, 75, 60),     # rot-weisses SG-1000-Gehaeuse
+    "SUPERGAMEBOY":     (130, 130, 200),   # SNES-Grautoene mit Blaustich
+    "TGFX16CD":         (245, 175, 90),    # heller als TurboGrafx selbst
+    "VC4000":           (150, 155, 160),
+    "VECTREX":          (90, 200, 140),    # gruener Vektor-Phosphor
+    "WONDERSWAN":       (105, 175, 165),
+    "WONDERSWANCOLOR":  (95, 165, 205),
 }
 
 from fe.seasonal import seasonal_decoration

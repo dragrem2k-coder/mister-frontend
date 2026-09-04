@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-78",
-  "summary": "Virtual Boy fehlte in allen drei Boxart-/Gameinfo-Werkzeugen - nachgetragen. Danach einmal den Boxart-Download starten."
+  "build_id": "2026-08-24-79",
+  "summary": "48 statt 16 Systeme (Atari, Jaguar, 3DO, Vectrex, WonderSwan ...) - erscheinen nur mit vorhandenem Core und ROMs. Systemliste jetzt an einer einzigen Stelle."
 }

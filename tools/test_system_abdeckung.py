@@ -1,28 +1,30 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Prueft, dass jedes Spiele-System, das das Frontend anzeigt, auch von
-den Download-Werkzeugen fuer Boxart und Spiele-Infos bedient wird.
+"""Prueft, dass die Systemliste EINE Quelle hat und dass die
+Startparameter der bestehenden Systeme sich nicht heimlich aendern.
 
 AUSLOESER (Nutzerfrage, Build 78): "wir haben ja den Virtual Boy mit
 reingenommen - muss ich das Skript Frontend_Boxart_Download.sh nochmal
 starten, damit ich die dafuer bekomme?"
 
-Die ehrliche Antwort war: nein, das haette nichts gebracht. Virtual Boy
-stand in keinem der drei Werkzeuge in der Systemtabelle. Die Kategorie
-kam mit einem frueheren Build dazu, die Tabellen wurden dabei
-uebersehen - drei getrennte Listen, die niemand miteinander verglichen
-hat.
+Die Antwort war nein: Virtual Boy stand in keinem der drei
+Download-Werkzeuge. Es gab die Systemliste VIERMAL - einmal im Frontend
+und dreimal in den Werkzeugen, alle von Hand gepflegt.
 
-DAS TUECKISCHE DARAN, und der Grund fuer diesen Test: es gibt keine
-Fehlermeldung. Das Skript laeuft durch, klappert die ihm bekannten
-Systeme ab, meldet Erfolg - und laesst das fehlende einfach aus. Der
-Nutzer sieht nur, dass keine Cover kommen, und sucht den Fehler
-zwangslaeufig woanders (kaputte ROM-Namen, Netzwerk, Rechte).
+DAS TUECKISCHE DARAN IST DER FEHLENDE FEHLER: das Skript laeuft durch,
+klappert die ihm bekannten Systeme ab, meldet Erfolg - und laesst das
+fehlende einfach aus. Sichtbar ist nur, dass keine Cover kommen, und
+gesucht wird der Fehler dann zwangslaeufig woanders.
+
+Seit Build 79 ist fe/systems.py die einzige Quelle. Dieser Test sichert
+beides ab: dass die Werkzeuge wirklich von dort lesen, UND - Test 3 -
+dass beim Umbau kein bestehendes System stillschweigend andere
+Startparameter bekommen hat.
 
 Ausfuehren:
     python3 tools/test_system_abdeckung.py
 """
-import ast
+import importlib.util
 import os
 import sys
 
@@ -45,119 +47,193 @@ def check(label, cond, extra=""):
         fails.append(label)
 
 
-# Systeme, die BEWUSST in keinem Download-Werkzeug stehen - mit dem
-# Grund, warum das richtig ist. Wer hier etwas eintraegt, sollte einen
-# echten Grund haben; die Liste ist kurz zu halten.
-OHNE_DATENBANK = {
-    "SMW_HACKS": "ROM-Hacks von Fans - es gibt dafuer keine offizielle "
-                 "Boxart-/Metadatenbank, die Cover legt man selbst ab",
-    "SNES_ALTTP_TRACKER": "kein Spielesystem, sondern eine Tracker-"
-                          "Ansicht - dort gibt es nichts herunterzuladen",
-}
-
-WERKZEUGE = [
-    ("frontend/mister_boxart.py", "Boxart-Download auf dem MiSTer"),
-    ("frontend/mister_gameinfo.py", "Spiele-Infos auf dem MiSTer"),
-    ("PC-Tools/boxart_fetch.py", "Boxart-Download am PC"),
-]
+def lade(pfad, name):
+    """Ein Werkzeug-Skript als Modul laden, ohne es auszufuehren
+    (die Skripte tun beim Import nichts ausser Definitionen)."""
+    spec = importlib.util.spec_from_file_location(
+        name, os.path.join(_REPO, pfad))
+    modul = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modul)
+    return modul
 
 
-def systemtabelle(pfad):
-    """Die SYSTEMS-Tabelle einer Werkzeug-Datei als echtes dict.
+QUELLE = SYS.download_systeme()
 
-    Bewusst ueber den Syntaxbaum (ast) statt per Textsuche: die drei
-    Werkzeuge schreiben ihre Tabellen unterschiedlich (einmal
-    {Endung: Datenbankname}, zweimal {Endungen} + Name), und ein
-    Muster, das auf alle passt, waere genau die Sorte Halbwissen, die
-    hier gerade zum Fehler gefuehrt hat. Ausgefuehrt wird nichts -
-    literal_eval nimmt nur Literale."""
-    quelle = open(os.path.join(_REPO, pfad), encoding="utf-8").read()
-    baum = ast.parse(quelle)
-    for knoten in baum.body:
-        if not isinstance(knoten, ast.Assign):
-            continue
-        for ziel in knoten.targets:
-            if isinstance(ziel, ast.Name) and ziel.id == "SYSTEMS":
-                return ast.literal_eval(knoten.value)
-    raise AssertionError("keine SYSTEMS-Tabelle in %s gefunden" % pfad)
-
-
-frontend_systeme = [(e[0], e[1]) for e in
-                    (list(SYS.GAME_SYSTEMS)
-                     + list(getattr(SYS, "OPTIONAL_GAME_SYSTEMS", [])))]
-
-print("Test 1: jedes Spiele-System ist in allen Werkzeugen bekannt")
-print("        (Frontend kennt %d Systeme)" % len(frontend_systeme))
-for pfad, was in WERKZEUGE:
-    keys = set(systemtabelle(pfad))
-    fehlend = [(name, key) for name, key in frontend_systeme
-               if key not in keys and key not in OHNE_DATENBANK]
-    check("%s kennt alle" % was, not fehlend,
-          "fehlt: %s" % ", ".join("%s (%s)" % (n, k) for n, k in fehlend)
-          if fehlend else "")
+print("Test 1: alle Werkzeuge benutzen dieselbe Systemliste")
+print("        (Quelle fe/systems.py: %d Systeme mit Datenbank)" % len(QUELLE))
+for pfad, name, was in (
+        ("frontend/mister_boxart.py", "mb", "Boxart-Download auf dem MiSTer"),
+        ("frontend/mister_gameinfo.py", "mg", "Spiele-Infos auf dem MiSTer"),
+        ("PC-Tools/boxart_fetch.py", "bf", "Boxart-Download am PC")):
+    modul = lade(pfad, name)
+    check("%s: identisch zur Quelle" % was,
+          modul.SYSTEMS == QUELLE,
+          "%d statt %d Systeme" % (len(modul.SYSTEMS), len(QUELLE))
+          if len(modul.SYSTEMS) != len(QUELLE) else
+          "Inhalt weicht ab: %s" % sorted(
+              k for k in set(modul.SYSTEMS) | set(QUELLE)
+              if modul.SYSTEMS.get(k) != QUELLE.get(k))[:4])
 
 print()
 print("Test 1b: der gemeldete Fall selbst - Virtual Boy")
-for pfad, was in WERKZEUGE:
-    check("%s kennt VIRTUALBOY" % was,
-          "VIRTUALBOY" in systemtabelle(pfad))
+check("VIRTUALBOY hat eine Datenbank", "VIRTUALBOY" in QUELLE)
+check("und zwar die gepruefte",
+      QUELLE.get("VIRTUALBOY", (None, {}))[1].get(".vb")
+      == "Nintendo - Virtual Boy",
+      str(QUELLE.get("VIRTUALBOY")))
 
 print()
-print("Test 2: die Ausnahmen sind wirklich Ausnahmen")
-# Verhindert, dass die Ausnahmeliste zur Muellhalde wird: was hier
-# steht, muss es im Frontend ueberhaupt geben.
-frontend_keys = {key for _n, key in frontend_systeme}
+print("Test 2: jedes Frontend-System hat eine Datenbank ODER einen Grund")
+# Systeme, fuer die es NACHWEISLICH keine Datenbank gibt (bei
+# thumbnails.libretro.com nachgesehen, nicht vermutet) bzw. geben kann.
+OHNE_DATENBANK = {
+    "ASTROCADE": "keine libretro-Datenbank vorhanden",
+    "GAMATE": "keine libretro-Datenbank vorhanden",
+    "GAMENWATCH": "keine libretro-Datenbank vorhanden",
+    "MEGADUCK": "keine libretro-Datenbank vorhanden",
+    "POCKETCHALLENGEV2": "keine libretro-Datenbank vorhanden",
+    "VC4000": "keine libretro-Datenbank vorhanden",
+    "SMW_HACKS": "Fan-Hacks - eine offizielle Datenbank kann es nicht geben",
+    "SNES_ALTTP_TRACKER": "kein Spielesystem, sondern eine Tracker-Ansicht",
+}
+alle = [(e[0], e[1]) for e in
+        (list(SYS.GAME_SYSTEMS) + list(SYS.OPTIONAL_GAME_SYSTEMS))]
+fehlend = [(n, k) for n, k in alle
+           if k not in QUELLE and k not in OHNE_DATENBANK]
+check("kein System faellt unbemerkt durch", not fehlend,
+      "ohne Datenbank UND ohne Begruendung: %s" % fehlend)
 for key in OHNE_DATENBANK:
-    check("%s gibt es im Frontend" % key, key in frontend_keys)
+    check("Ausnahme %s gibt es im Frontend" % key,
+          key in {k for _n, k in alle})
 
 print()
-print("Test 3: Ordnername und Dateiendung stimmen zwischen Frontend "
-      "und Werkzeugen ueberein")
-# Zweite Falle derselben Art: das System steht zwar in der Tabelle, aber
-# mit einem anderen ROM-Ordner oder einer anderen Endung - dann findet
-# das Werkzeug schlicht keine Dateien und meldet trotzdem Erfolg.
-for pfad, was in WERKZEUGE:
-    tabelle = systemtabelle(pfad)
-    for eintrag in (list(SYS.GAME_SYSTEMS)
-                    + list(getattr(SYS, "OPTIONAL_GAME_SYSTEMS", []))):
-        name, key, ordner, _corepfad, endungen = eintrag[:5]
-        if key in OHNE_DATENBANK or key not in tabelle:
-            continue
-        wert = tabelle[key]
-        werkzeug_ordner = set(wert[0])
-        # Endungen stehen je nach Werkzeug an Stelle 1 als dict
-        # {Endung: Datenbankname} oder als Menge {Endung, ...}.
-        werkzeug_ext = set(wert[1])
-        check("%s / %s: ROM-Ordner passt" % (was, name),
-              set(ordner) <= werkzeug_ordner,
-              "Frontend %s, Werkzeug %s" % (sorted(ordner),
-                                            sorted(werkzeug_ordner)))
-        check("%s / %s: Endungen passen" % (was, name),
-              set(endungen) <= werkzeug_ext,
-              "Frontend %s, Werkzeug %s" % (sorted(endungen),
-                                            sorted(werkzeug_ext)))
+print("Test 3: die Startparameter der BESTEHENDEN Systeme sind unveraendert")
+# Der wichtigste Block dieser Datei. Build 79 hat fe/systems.py von 16
+# auf 48 Systeme erweitert - dabei darf sich an den bereits laufenden
+# nichts verschoben haben. Ein falscher Index heisst: Core startet, ROM
+# laedt nicht, und zwar ohne Fehlermeldung.
+#
+# Die Werte hier sind der Stand VOR der Erweiterung, von Hand
+# festgehalten. Sie stimmen ausserdem mit der mrext-Datenbank ueberein
+# (abgerufen und verglichen) - zwei unabhaengige Belege.
+BESTAND = {
+    "NES":        {".nes": (2, "f", 1)},
+    "SNES":       {".sfc": (2, "f", 0), ".smc": (2, "f", 0)},
+    "Genesis":    {".md": (1, "f", 1), ".gen": (1, "f", 1), ".bin": (1, "f", 1)},
+    "N64":        {".n64": (1, "f", 1), ".z64": (1, "f", 1)},
+    "PSX":        {".chd": (1, "s", 1), ".cue": (1, "s", 1)},
+    "GAMEBOY":    {".gb": (2, "f", 1)},
+    "GBC":        {".gbc": (2, "f", 1)},
+    "GBA":        {".gba": (2, "f", 1)},
+    "SMS":        {".sms": (1, "f", 1), ".gg": (1, "f", 2)},
+    "TGFX16":     {".pce": (1, "f", 0), ".sgx": (1, "f", 1)},
+    "MegaCD":     {".chd": (1, "s", 0), ".cue": (1, "s", 0)},
+    "Saturn":     {".chd": (1, "s", 0), ".cue": (1, "s", 0)},
+    "NEOGEO":     {".neo": (1, "f", 1)},
+    "SMW_HACKS":  {".sfc": (2, "f", 0), ".smc": (2, "f", 0)},
+    "SNES_ALTTP_TRACKER": {".sfc": (2, "f", 0), ".smc": (2, "f", 0)},
+    "VIRTUALBOY": {".vb": (1, "f", 1)},
+}
+BESTAND_ORDNER = {
+    "NES": ["NES"], "SNES": ["SNES"], "Genesis": ["MegaDrive", "Genesis"],
+    "N64": ["N64"], "PSX": ["PSX"], "GAMEBOY": ["GAMEBOY"], "GBC": ["GAMEBOY"],
+    "GBA": ["GBA"], "SMS": ["SMS"], "TGFX16": ["TGFX16"], "MegaCD": ["MegaCD"],
+    "Saturn": ["Saturn"], "NEOGEO": ["NEOGEO"], "SMW_HACKS": ["SNES/SMW_HACKS"],
+    "SNES_ALTTP_TRACKER": ["SNES/ZELDA_MSU"], "VIRTUALBOY": ["VirtualBoy"],
+}
+nach_key = {e[1]: e for e in
+            (list(SYS.GAME_SYSTEMS) + list(SYS.OPTIONAL_GAME_SYSTEMS))}
+for key, erwartet in BESTAND.items():
+    eintrag = nach_key.get(key)
+    if not eintrag:
+        check("%s gibt es noch" % key, False)
+        continue
+    check("%s: Startparameter unveraendert" % key,
+          eintrag[4] == erwartet,
+          "jetzt %s, erwartet %s" % (eintrag[4], erwartet))
+    check("%s: ROM-Ordner unveraendert" % key,
+          list(eintrag[2]) == BESTAND_ORDNER[key],
+          "jetzt %s" % list(eintrag[2]))
 
 print()
-print("Test 4: alle Werkzeuge nutzen denselben Datenbanknamen")
-# Alle drei fragen dieselbe libretro-Datenbank ab. Weicht ein Name
-# zwischen ihnen ab, laedt eines der drei nichts - wieder lautlos.
-def datenbanknamen(pfad):
-    raus = {}
-    for key, wert in systemtabelle(pfad).items():
-        if isinstance(wert[1], dict):          # {Endung: Datenbankname}
-            raus[key] = set(wert[1].values())
-        elif len(wert) > 2:                    # {Endungen}, Datenbankname
-            raus[key] = {wert[2]}
-    return raus
+print("Test 3b: die Datenbank-Zuordnung der bestehenden Systeme "
+      "ist unveraendert")
+# Gleiche Ueberlegung fuer die Download-Seite. Besonders Game Gear:
+# der Master-System-Core spielt auch .gg, und deren Cover liegen bei
+# libretro unter einem EIGENEN Namen. Ginge diese Ausnahme beim Umbau
+# verloren, wuerden Game-Gear-Spiele in der Master-System-Datenbank
+# gesucht und nicht mehr gefunden - lautlos.
+BESTAND_DB = {
+    "NES": {".nes": "Nintendo - Nintendo Entertainment System"},
+    "SNES": {".sfc": "Nintendo - Super Nintendo Entertainment System",
+             ".smc": "Nintendo - Super Nintendo Entertainment System"},
+    "Genesis": {".md": "Sega - Mega Drive - Genesis",
+                ".gen": "Sega - Mega Drive - Genesis",
+                ".bin": "Sega - Mega Drive - Genesis"},
+    "GAMEBOY": {".gb": "Nintendo - Game Boy"},
+    "GBC": {".gbc": "Nintendo - Game Boy Color"},
+    "SMS": {".sms": "Sega - Master System - Mark III",
+            ".gg": "Sega - Game Gear"},
+    "TGFX16": {".pce": "NEC - PC Engine - TurboGrafx 16",
+               ".sgx": "NEC - PC Engine - TurboGrafx 16"},
+    "NEOGEO": {".neo": "SNK - Neo Geo"},
+}
+for key, erwartet in BESTAND_DB.items():
+    check("%s: Datenbank-Zuordnung unveraendert" % key,
+          QUELLE.get(key, (None, None))[1] == erwartet,
+          "jetzt %s" % (QUELLE.get(key, (None, None))[1],))
 
+print()
+print("Test 4: die neuen Systeme sind plausibel definiert")
+# Kein Ersatz fuer einen echten Test auf Hardware - aber die Sorte
+# Fehler, die beim Abtippen von 30 Eintraegen entsteht, faengt das ab.
+for disp, key, ordner, rbf, extmap, corepfad in SYS.OPTIONAL_GAME_SYSTEMS:
+    check("%s: Core-Pruefpfad ist absolut" % disp,
+          corepfad.startswith("/media/fat/"), corepfad)
+    check("%s: rbf-Pfad ohne .rbf-Endung" % disp,
+          not rbf.endswith(".rbf"), rbf)
+    check("%s: mindestens eine Endung" % disp, bool(extmap))
+    for ext, werte in extmap.items():
+        check("%s: %s hat drei Startwerte" % (disp, ext),
+              isinstance(werte, tuple) and len(werte) == 3, str(werte))
+        check("%s: %s Methode ist f oder s" % (disp, ext),
+              werte[1] in ("f", "s"), str(werte))
+        check("%s: %s beginnt mit einem Punkt" % (disp, ext),
+              ext.startswith("."), ext)
+    check("%s: ROM-Ordner angegeben" % disp, bool(ordner))
 
-ref = datenbanknamen("frontend/mister_boxart.py")
-for pfad, was in WERKZEUGE[1:]:
-    for key, namen in datenbanknamen(pfad).items():
-        if key in ref:
-            check("%s: %s nutzt denselben Datenbanknamen" % (was, key),
-                  namen <= ref[key],
-                  "%s vs %s" % (sorted(namen), sorted(ref[key])))
+print()
+print("Test 4b: keine doppelten Systemschluessel")
+keys = [e[1] for e in (list(SYS.GAME_SYSTEMS) + list(SYS.OPTIONAL_GAME_SYSTEMS))]
+doppelt = sorted({k for k in keys if keys.count(k) > 1})
+check("jeder Schluessel kommt genau einmal vor", not doppelt, str(doppelt))
+
+print()
+print("Test 4c: gleiche Endung im gleichen Ordner nur einmal")
+# Sonst erschiene dieselbe Datei in zwei Kategorien. Beispiel, das
+# bewusst KEIN Konflikt ist: das Famicom Disk System liest .fds aus dem
+# Ordner NES, die NES-Kategorie liest dort nur .nes.
+belegt = {}
+for eintrag in (list(SYS.GAME_SYSTEMS) + list(SYS.OPTIONAL_GAME_SYSTEMS)):
+    disp, _key, ordner, _rbf, extmap = eintrag[:5]
+    for f in ordner:
+        for ext in extmap:
+            belegt.setdefault((f.lower(), ext), []).append(disp)
+check("es wurden ueberhaupt Kombinationen geprueft", len(belegt) > 40,
+      "%d Ordner/Endung-Kombinationen" % len(belegt))
+konflikte = {k: v for k, v in belegt.items() if len(v) > 1}
+check("keine Datei kann in zwei Kategorien landen", not konflikte,
+      "; ".join("%s%s -> %s" % (f, e, v) for (f, e), v in
+                sorted(konflikte.items())[:5]))
+
+print()
+print("Test 5: Akzentfarben")
+farben = open(os.path.join(_FRONTEND_DIR, "frontend.py"),
+              encoding="utf-8").read()
+i = farben.index("SYSTEM_ACCENT = {")
+block = farben[i:farben.index("\n}", i)]
+for _disp, key in alle:
+    check("%s hat eine eigene Akzentfarbe" % key, '"%s":' % key in block)
 
 print()
 if fails:

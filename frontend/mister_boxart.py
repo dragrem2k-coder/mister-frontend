@@ -122,68 +122,33 @@ _JAPAN_ONLY = re.compile(r"[\(\[]\s*(?:japan|j)\s*[\)\]]", re.I)
 def _is_japan_only(name):
     return bool(_JAPAN_ONLY.search(name))
 
-# syskey: (ROM-Ordner, {Endung: Cover-Quellenname})
-# Der Cover-Quellenname ist der Ordnername bei thumbnails.libretro.com
-# UND gleichzeitig der Systemname beim Mirror. Meist identisch fuer
-# alle Endungen eines Systems - Ausnahme SMS/Game Gear (siehe v4.0-
-# Changelog oben): gleicher ROM-Ordner "SMS" (wie im Frontend selbst,
-# fe/systems.py), aber getrennte Cover-Quelle je nach Endung.
-# WICHTIG: die syskeys UND ROM-Ordner sind bewusst exakt identisch zu
-# GAME_SYSTEMS in fe/systems.py gehalten - nur Systeme, die das
-# Frontend auch tatsaechlich als eigene Kategorie anzeigt, werden hier
-# gelistet (siehe v4.0-Changelog, Punkt 3).
-SYSTEMS = {
-    "NES":     (["NES"], {
-        ".nes": "Nintendo - Nintendo Entertainment System"}),
-    "SNES":    (["SNES"], {
-        ".sfc": "Nintendo - Super Nintendo Entertainment System",
-        ".smc": "Nintendo - Super Nintendo Entertainment System"}),
-    "Genesis": (["MegaDrive", "Genesis"], {
-        ".md":  "Sega - Mega Drive - Genesis",
-        ".gen": "Sega - Mega Drive - Genesis",
-        ".bin": "Sega - Mega Drive - Genesis"}),
-    "N64":     (["N64"], {
-        ".n64": "Nintendo - Nintendo 64",
-        ".z64": "Nintendo - Nintendo 64"}),
-    "PSX":     (["PSX"], {
-        ".chd": "Sony - PlayStation",
-        ".cue": "Sony - PlayStation"}),
-    "GAMEBOY": (["GAMEBOY"], {
-        ".gb":  "Nintendo - Game Boy"}),
-    "GBC":     (["GAMEBOY"], {
-        ".gbc": "Nintendo - Game Boy Color"}),
-    "GBA":     (["GBA"], {
-        ".gba": "Nintendo - Game Boy Advance"}),
-    "SMS":     (["SMS"], {
-        ".sms": "Sega - Master System - Mark III",
-        ".gg":  "Sega - Game Gear"}),
-    "TGFX16":  (["TGFX16"], {
-        ".pce": "NEC - PC Engine - TurboGrafx 16",
-        ".sgx": "NEC - PC Engine - TurboGrafx 16"}),
-    "MegaCD":  (["MegaCD"], {
-        ".chd": "Sega - Mega-CD - Sega CD",
-        ".cue": "Sega - Mega-CD - Sega CD"}),
-    "Saturn":  (["Saturn"], {
-        ".chd": "Sega - Saturn",
-        ".cue": "Sega - Saturn"}),
-    "NEOGEO":  (["NEOGEO"], {
-        ".neo": "SNK - Neo Geo"}),
-    # NACHGETRAGEN (Build 78, Nutzerfrage: "wir haben ja den Virtual Boy
-    # mit reingenommen - muss ich das Boxart-Skript nochmal starten,
-    # damit ich die dafuer bekomme?"). Die ehrliche Antwort war: nein,
-    # das haette nichts gebracht - das System stand hier gar nicht drin.
-    # Die Kategorie kam mit dem Virtual-Boy-Build dazu, diese Tabelle
-    # wurde dabei uebersehen. Ein Neustart des Skripts haette brav die
-    # 13 bekannten Systeme abgeklappert und Virtual Boy stillschweigend
-    # ausgelassen - ohne Fehlermeldung, es waeren einfach nie Cover
-    # aufgetaucht.
-    #
-    # Name der Datenbank per Abruf geprueft, nicht geraten:
-    # thumbnails.libretro.com/Nintendo - Virtual Boy/Named_Boxarts/
-    # liefert echte Dateien ("Mario's Tennis (Japan, USA).png" usw.).
-    "VIRTUALBOY": (["VirtualBoy"], {
-        ".vb":  "Nintendo - Virtual Boy"}),
-}
+# ---------------------------------------------------------------------------
+# SYSTEMTABELLE - kommt seit Build 79 aus fe/systems.py
+# ---------------------------------------------------------------------------
+# Hier stand bis Build 78 eine EIGENE, von Hand gepflegte Liste. Genau
+# daran ist Virtual Boy gescheitert: das System kam ins Frontend, diese
+# Tabelle wurde uebersehen, und der Download lief brav durch, ohne es zu
+# beruecksichtigen - kein Fehler, nur keine Cover. Und dieselbe Liste
+# gab es noch zweimal woanders.
+#
+# Jetzt ist fe/systems.py die einzige Quelle: was das Frontend als
+# Kategorie anzeigen kann UND wofuer es eine Datenbank gibt, wird hier
+# automatisch bedient. Ein neues System einzutragen genuegt dort.
+#
+# Rueckfall: laesst sich fe.systems nicht importieren (z.B. weil dieses
+# Skript einzeln irgendwohin kopiert wurde), bleibt SYSTEMS leer und
+# das Skript sagt das deutlich, statt kommentarlos nichts zu tun.
+try:
+    _hier = os.path.dirname(os.path.abspath(__file__))
+    if _hier not in sys.path:
+        sys.path.insert(0, _hier)
+    from fe.systems import download_systeme as _download_systeme
+    SYSTEMS = _download_systeme()
+except Exception as _e:                              # noqa: BLE001
+    print("FEHLER: Systemliste (fe/systems.py) nicht lesbar: %s" % _e)
+    print("Dieses Skript gehoert in denselben Ordner wie frontend.py "
+          "und der Unterordner fe/.")
+    SYSTEMS = {}
 
 # ---------------------------------------------------------------------------
 # Regions-Prioritaet (Nutzer-Rueckmeldung, siehe v4.0-Changelog Punkt 1

@@ -494,13 +494,15 @@ eine Artbox mit dem Logo/Cover des gerade markierten Systems - wechselt
 live beim Hoch/Runter-Blättern durch die Kategorien.
 
 **Bereits im Build enthalten** (liegt in `frontend/sysart/`, muss
-nicht mehr selbst erzeugt werden): alle 14 aktuell unterstützten
-Systeme (NES, SNES, Genesis, N64, PSX, GAMEBOY, GBC, GBA, SMS, TGFX16,
-MegaCD, Saturn, NEOGEO, VIRTUALBOY) haben ein echtes Logo hinterlegt. Im
-Unterordner `frontend/sysart/_weitere_systeme_noch_nicht_unterstuetzt/`
-liegen außerdem fertige Logos für neun weitere Systeme (Atari
-5200/7800/Jaguar, ColecoVision, Philips CD-i, Pico-8, Sega 32X, Super
-Game Boy, TurboGrafx-CD) - für den Tag, an dem die mal ergänzt werden.
+nicht mehr selbst erzeugt werden): **24 der 48 Systeme** haben ein
+echtes Logo. Seit Build 79 sind das neben den ursprünglichen 14 auch
+Atari 5200/7800, Jaguar, ColecoVision, CD-i, Sega 32X, Super Game Boy
+und TurboGrafx-CD - deren Logos lagen schon länger im Unterordner
+`_weitere_systeme_noch_nicht_unterstuetzt/` und sind jetzt an ihren
+Platz gerückt, da es die Systeme nun wirklich gibt.
+
+Die übrigen 24 zeigen den dezenten Platzhalter; welche das sind und in
+welchem Format Nachschub gehört, steht in `docs/LOGOS_NACHLIEFERN.md`.
 
 Eigene/weitere Bilder erzeugen (derselbe Konverter wie für Boxart,
 kein Hintergrund-Modus nötig):

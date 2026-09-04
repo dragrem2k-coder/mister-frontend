@@ -66,27 +66,29 @@ def _is_japan_only(name):
 # syskey: (ROM-Ordner, ROM-Endungen, libretro-DB-Name)
 # GAMEBOY und GBC teilen sich den Ordner "GAMEBOY", werden aber ueber die
 # Endung getrennt (.gb vs .gbc). syskeys identisch zu Frontend/boxart.
-SYSTEMS = {
-    "NES":     (["NES"],                  {".nes"},                "Nintendo - Nintendo Entertainment System"),
-    "SNES":    (["SNES"],                 {".sfc", ".smc"},        "Nintendo - Super Nintendo Entertainment System"),
-    "Genesis": (["MegaDrive", "Genesis"], {".md", ".gen", ".bin"}, "Sega - Mega Drive - Genesis"),
-    "N64":     (["N64"],                  {".n64", ".z64"},        "Nintendo - Nintendo 64"),
-    "PSX":     (["PSX"],                  {".chd", ".cue"},        "Sony - PlayStation"),
-    "GAMEBOY": (["GAMEBOY"],              {".gb"},                 "Nintendo - Game Boy"),
-    "GBC":     (["GAMEBOY"],              {".gbc"},                "Nintendo - Game Boy Color"),
-    "GBA":     (["GBA"],                  {".gba"},                "Nintendo - Game Boy Advance"),
-    "SMS":     (["SMS"],                  {".sms", ".gg"},         "Sega - Master System - Mark III"),
-    "TGFX16":  (["TGFX16"],               {".pce", ".sgx"},        "NEC - PC Engine - TurboGrafx 16"),
-    "MegaCD":  (["MegaCD"],               {".chd", ".cue"},        "Sega - Mega-CD - Sega CD"),
-    "Saturn":  (["Saturn"],               {".chd", ".cue"},        "Sega - Saturn"),
-    "NEOGEO":  (["NEOGEO"],               {".neo"},                "SNK - Neo Geo"),
-    # NACHGETRAGEN (Build 78): fehlte hier, seit die Kategorie dazukam -
-    # siehe ausfuehrliche Begruendung in frontend/mister_boxart.py.
-    # Name per Abruf geprueft: die libretro-Datenbank fuehrt das System
-    # als "Nintendo - Virtual Boy" (metadat/releaseyear/... liefert
-    # echte Eintraege, z.B. "3-D Tetris (USA)", 1996).
-    "VIRTUALBOY": (["VirtualBoy"],        {".vb"},                 "Nintendo - Virtual Boy"),
-}
+# ---------------------------------------------------------------------------
+# SYSTEMTABELLE - kommt seit Build 79 aus fe/systems.py
+# ---------------------------------------------------------------------------
+# Hier stand bis Build 78 eine EIGENE, von Hand gepflegte Liste - eine
+# von dreien mit demselben Inhalt. Genau daran ist Virtual Boy
+# gescheitert: das System kam ins Frontend, die Tabellen wurden
+# uebersehen, und der Download lief brav durch, ohne es zu
+# beruecksichtigen. Kein Fehler, nur keine Daten.
+#
+# Format hier: {syskey: (Ordnerliste, {Endung: Datenbankname})} - die
+# Endung entscheidet ueber die Datenbank, weil ein Core mehrere Systeme
+# spielen kann (Master System / Game Gear).
+try:
+    _hier = os.path.dirname(os.path.abspath(__file__))
+    if _hier not in sys.path:
+        sys.path.insert(0, _hier)
+    from fe.systems import download_systeme as _download_systeme
+    SYSTEMS = _download_systeme()
+except Exception as _e:                              # noqa: BLE001
+    print("FEHLER: Systemliste (fe/systems.py) nicht lesbar: %s" % _e)
+    print("Dieses Skript gehoert in denselben Ordner wie frontend.py "
+          "und der Unterordner fe/.")
+    SYSTEMS = {}
 
 DB_RAW = ("https://raw.githubusercontent.com/libretro/"
           "libretro-database/master/metadat")
@@ -300,22 +302,28 @@ def main():
     os.makedirs(META_BASE, exist_ok=True)
     total = with_meta = 0
     t0 = time.time()
-    for syskey, (folders, exts, sysname) in SYSTEMS.items():
+    for syskey, (folders, ext_db_map) in SYSTEMS.items():
         if only and syskey not in only:
             continue
-        roms = collect_roms(folders, exts)
+        roms = collect_roms(folders, set(ext_db_map))
         if not roms:
             continue
         print("== %s: %d ROMs" % (syskey, len(roms)), flush=True)
 
         db = {}                      # Spielname -> {genre, year, players}
-        for kind, out_key in (("genre", "genre"),
-                              ("releaseyear", "year"),
-                              ("maxusers", "players")):
-            text = fetch_dat(sysname, kind, refresh)
-            parsed = parse_dat(text, kind)
-            for name, val in parsed.items():
-                db.setdefault(name, {})[out_key] = val
+        # Ein Core kann Spiele MEHRERER Systeme abspielen, und die
+        # liegen bei libretro in getrennten Datenbanken - beim
+        # Master-System-Core zum Beispiel zusaetzlich Game Gear (.gg).
+        # Deshalb alle Datenbanken dieses Systems einlesen und
+        # zusammenfuehren, statt nur einer.
+        for datenbank in sorted(set(ext_db_map.values())):
+            for kind, out_key in (("genre", "genre"),
+                                  ("releaseyear", "year"),
+                                  ("maxusers", "players")):
+                text = fetch_dat(datenbank, kind, refresh)
+                parsed = parse_dat(text, kind)
+                for name, val in parsed.items():
+                    db.setdefault(name, {})[out_key] = val
         if not db:
             print("  keine Datenbank verfuegbar")
             continue

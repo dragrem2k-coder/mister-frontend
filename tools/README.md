@@ -48,7 +48,7 @@ python3 tools/regression_test.py \
 | `test_mister_ini.py` | Test (Pass/Fail) | Keine Video-Reste in der MiSTer.ini - und kein Anfassen fremder Bloecke |
 | `test_cover_prewarm.py` | Test (Pass/Fail) | Cover-Vorberechnung: gleiche Kastengroesse wie der Zeichenpfad, bitgleiche Miniaturen |
 | `test_reset_sofort.py` | Test (Pass/Fail) | F5-Reset und F1-Ausstieg ohne Haltezeit; F10 und der F4-Schnellstart restlos entfernt |
-| `test_system_abdeckung.py` | Test (Pass/Fail) | Jedes Spiele-System des Frontends ist auch den Download-Werkzeugen bekannt |
+| `test_system_abdeckung.py` | Test (Pass/Fail) | Eine Systemliste fuer alle Werkzeuge; Startparameter der bestehenden Systeme festgenagelt |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -348,34 +348,34 @@ angelegt - sonst waere ein einmal kaputtes Geraet ein Dauerproblem.
 
 ## test_system_abdeckung.py
 
-Prueft, dass jedes Spiele-System, das das Frontend anzeigt, auch von den
-drei Download-Werkzeugen bedient wird (`frontend/mister_boxart.py`,
-`frontend/mister_gameinfo.py`, `PC-Tools/boxart_fetch.py`).
+Prueft, dass die Systemliste EINE Quelle hat - und dass beim Erweitern
+kein bestehendes System stillschweigend andere Startparameter bekommt.
 
-Ausloeser war eine Nutzerfrage: "wir haben ja den Virtual Boy mit
-reingenommen - muss ich das Boxart-Skript nochmal starten, damit ich die
-dafuer bekomme?" Die Antwort war nein - das System stand in KEINEM der
-drei Werkzeuge. Die Kategorie kam mit einem frueheren Build dazu, die
-drei getrennten Tabellen wurden dabei uebersehen.
+Ausloeser war die Nutzerfrage "muss ich das Boxart-Skript nochmal
+starten, damit ich die fuer Virtual Boy bekomme?" Die Antwort war nein:
+das System stand in KEINEM der drei Download-Werkzeuge. Die Liste gab es
+viermal - einmal im Frontend, dreimal in den Werkzeugen, alle von Hand
+gepflegt. **Das Tueckische ist der fehlende Fehler:** das Skript laeuft
+durch, meldet Erfolg und laesst das fehlende System einfach aus.
 
-**Das Tueckische daran ist der fehlende Fehler:** das Skript laeuft
-durch, klappert die ihm bekannten Systeme ab und meldet Erfolg - das
-fehlende laesst es einfach aus. Sichtbar ist nur, dass keine Cover
-kommen, und gesucht wird der Fehler dann zwangslaeufig woanders
-(ROM-Namen, Netzwerk, Rechte).
+Seit Build 79 ist `fe/systems.py` die einzige Quelle; die beiden
+Werkzeuge auf dem MiSTer lesen direkt von dort, das PC-Werkzeug behaelt
+eine erzeugte Kopie (es wird einzeln auf einen Windows-PC kopiert und
+kann nichts importieren). Test 1 laedt alle drei und vergleicht ihre
+Tabelle mit der Quelle.
 
-Geprueft wird deshalb nicht nur die Anwesenheit, sondern auch, dass
-ROM-Ordner und Dateiendungen mit `fe/systems.py` uebereinstimmen (ein
-falscher Ordner findet ebenso lautlos nichts) und dass alle drei
-Werkzeuge denselben Namen der libretro-Datenbank benutzen. Systeme ohne
-Datenbank (SMW-Hacks, ALTTP-Tracker) stehen in einer kurzen
-Ausnahmeliste MIT Begruendung; ein weiterer Test verhindert, dass diese
-Liste zur Muellhalde wird.
+**Test 3 ist der wichtigste:** er nagelt Startparameter und ROM-Ordner
+der urspruenglichen 16 Systeme auf ihre bekannten Werte fest. Die Liste
+wuchs in einem Zug von 16 auf 48 - ein dabei verrutschter Index heisst
+"Core startet, ROM laedt nicht", und zwar ohne Fehlermeldung. Test 3b
+macht dasselbe fuer die Datenbank-Zuordnung, besonders fuer den Sonder-
+fall Game Gear (derselbe Core wie Master System, aber eine eigene
+Cover-Datenbank).
 
-Die Tabellen werden ueber den Syntaxbaum gelesen (`ast.literal_eval`),
-nicht per Textsuche - die drei Werkzeuge schreiben sie
-unterschiedlich, und ein Muster, das auf alle passt, waere genau die
-Sorte Halbwissen, die hier zum Fehler gefuehrt hat.
+Test 4c prueft, dass keine Kombination aus ROM-Ordner und Dateiendung
+zweimal vergeben ist - sonst erschiene dieselbe Datei in zwei
+Kategorien. Systeme ohne Datenbank stehen in einer Ausnahmeliste MIT
+Begruendung (jeweils bei libretro nachgesehen, nicht vermutet).
 
 ## diag_lightpath.py
 
