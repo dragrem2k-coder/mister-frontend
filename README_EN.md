@@ -127,8 +127,6 @@ history to read up on (`CHANGELOG.md`).
 | frontend/stream_server.py       | /media/fat/frontend/             | Web server for the stream overlay (optional) |
 | frontend/stream_overlay.html    | /media/fat/frontend/             | OBS browser source (optional) |
 | frontend/stream_admin.html      | /media/fat/frontend/             | Stream overlay configuration (optional) |
-| frontend/f4_hotkey.py           | /media/fat/frontend/             | F4 shortcut watcher (optional, off by default) |
-| frontend/f4_hotkey.sh           | /media/fat/frontend/             | Autostart wrapper for the F4 watcher |
 | Scripts/Frontend_Install_Remote.sh | /media/fat/Scripts/           | Installation with internet access (downloads from GitHub) |
 | Scripts/Frontend_Install_Offline.sh | /media/fat/Scripts/          | Installation without internet access (from this package) |
 | Scripts/Frontend_Uninstall.sh   | /media/fat/Scripts/              | Remove everything cleanly, optionally keep your own data |
@@ -307,27 +305,29 @@ real network traffic.
 | ESC/B                              | Back one folder/menu level; in the main menu: quit confirmation |
 | A single letter (keyboard, A-Z)    | Jump directly to the next entry with that initial letter |
 | F12 / Guide button                 | Open the actual MiSTer OSD (joystick mapping, ini settings) |
-| F10 / X button                     | From the OSD back to the frontend |
+| X button (pad)                     | From the OSD back to the frontend |
 | Y button (pad) / F5 or media "next track" key (keyboard) | Next song (manual music change) |
 | F11                                 | Random game/category ("don't know what to play") |
 | F8 / L2 or R2 button                | Toggle favorite (game entries only) |
 | F7                                  | Toggle completed status (game entries only) |
 | 3x Select in a row (pad)           | Quit confirmation (like ESC) |
-| In a running game: Esc on the keyboard, hold ~0.6 s | Directly back to the frontend, without going through the MiSTer OSD |
-| In a running game: F5 on the keyboard, hold ~0.6 s (experimental) | Reset the running core (all cores, including RA - does NOT reload the core, RA progress is kept) |
+| In a running game: **F1** on the keyboard | Straight back to the frontend, no hold time and no detour through the MiSTer OSD |
+| In a running game: Esc on the keyboard, hold ~0.6 s | Same as F1, but with a hold time - needed because many games use Esc for their own pause menu |
+| In a running game: **F5** on the keyboard | Reset the running core, no hold time (all cores, including RA - does NOT reload the core, RA progress is kept) |
 | / or F2 (keyboard) | Start full-text search - matches anywhere in the name, not just the start (both keys trigger the exact same function) |
 | In a running game: F12 -> "Exit to Menu Core" | Alternative via MiSTer's own menu |
 
 **Returning from a running game:** As soon as a core is running, MiSTer
 completely locks the normal keyboard/pad layer (verified: `cat
 /dev/input/eventX` returns 0 bytes during a game, no matter what you
-press) - Start+Select or F10 therefore never arrive during the game
+press) - Start+Select therefore never arrives during the game
 itself; that is a platform limitation, not a frontend bug. But there is a
 way around it: the *raw* HID layer of a connected keyboard remains
-readable even during a running game. Holding Esc a bit longer (the hold
-time is deliberately chosen so that a normal short Esc press in a game's
-own pause menu doesn't accidentally trigger the exit) therefore takes you
-straight back to the frontend. If that doesn't work for some reason (e.g.
+readable even during a running game. **F1 takes you straight back to
+the frontend, immediately** - no hold time, because cores practically
+never use that key. Esc does the same but needs to be held for about
+0.6 s: many games use Esc for their own pause menu, so a short press
+must not throw you out by accident. If that doesn't work for some reason (e.g.
 no keyboard connected), the route via MiSTer's own menu remains: F12/menu
 button on the pad opens MiSTer's on-screen menu over the running game,
 choose "Exit to Menu Core" there - as soon as MiSTer really switches to
@@ -995,7 +995,7 @@ affected or delayed by it.
   mister_boxart.py loads it automatically).
 - Menu visible on only one video output at a time (a technical limit of
   the MiSTer scaler, not a frontend restriction).
-- Start+Select and F10 generally don't work during a running game -
+- Start+Select generally doesn't work during a running game -
   MiSTer claims the normal input layer exclusively as soon as a core runs
   (see section 4). The Esc route via the raw HID layer of the keyboard
   does work, however; a pad-based exit could not be reliably built in so

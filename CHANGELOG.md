@@ -7,6 +7,60 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Tastenbelegung aufgeräumt: F1 raus aus dem Spiel, F4 und F10 weg**
+(Build 77 — Nutzerwünsche: „Esc-Funktion hätte ich dann gerne auf F1,
+und die soll so schnell auslösen wie die F5-Reset-Funktion", „F4 kann
+raus komplett, auch der Schalter unter System, weil die Funktion ja
+nicht geht", „F10 kann auch komplett raus, funktioniert genauso wenig"):
+
+**1. F1 bringt dich sofort aus dem laufenden Spiel zurück ins
+Frontend.** Kein Halten, ausgelöst in dem Moment, in dem die Taste
+erkannt wird — genau wie der F5-Reset seit Build 75.
+
+Esc bleibt daneben bestehen, mit seiner Haltezeit von 0,6 s. Das ist
+Absicht und kein vergessener Rest: viele Spiele und Cores belegen Esc
+selbst für ihr Pausemenü, ein kurzer Druck darf einen dort nicht
+hinauswerfen. F1 belegt praktisch kein Core — deshalb ist sofortiges
+Auslösen dort gefahrlos, bei Esc wäre es das nicht.
+
+**2. F10 ist ersatzlos entfallen — und beim Ausbauen kam heraus, warum
+es nie funktioniert hat.** Gleich zwei Gründe, jeder für sich schon
+tödlich:
+
+- Es wurde über die normale evdev-Ebene abgefragt. Genau die sperrt
+  MiSTer exklusiv, sobald ein Core läuft — dieser Zweig konnte nie
+  auslösen.
+- Der HID-Weg, der später dazukam, prüfte auf `0x44`. Das ist im
+  HID-Standard **F11**, nicht F10 (`0x43`). Erkannt wurde also all die
+  Zeit F11; F10 selbst kam nie an.
+
+Statt auf `0x43` zu korrigieren wurde die Prüfung ganz entfernt — sonst
+würde ein F11-Druck im Spiel weiterhin unerwartet aussteigen.
+
+**3. Der F4-Schnellstart ist komplett raus** — Menüschalter,
+Übersetzungen, Selbstheilung und der Hintergrund-Wächter
+(`frontend/f4_hotkey.py`), der bei jedem Boot die Eingabegeräte mitlas.
+
+Wichtig für alle, die ihn installiert hatten: **die Installer und
+`Frontend_Update.sh` räumen die Startzeile aus
+`/media/fat/linux/user-startup.sh` und die Dateien jetzt aktiv weg.**
+Ohne das bliebe dort eine Zeile stehen, die bei jedem Boot eine
+gelöschte Datei starten will. Ein laufender Wächter wird dabei beendet.
+Wer das Frontend ohne Autostart starten möchte, nimmt
+OSD → Scripts → `Frontend_Start`; der Autostart-Schalter selbst bleibt
+unverändert.
+
+Anleitungen nachgezogen: `README.md`, `README_EN.md`,
+`docs/anleitung_source.html` und die daraus erzeugte
+`docs/Dragend_Anleitung.pdf`. Dazu neu: `docs/PDF_ERZEUGEN.md` — die PDF
+muss mit Chromium erzeugt werden, nicht mit wkhtmltopdf; letzteres
+ignoriert `@page { size: A4; margin: 0 }` und schrumpft den Inhalt
+stillschweigend auf drei Viertel der Seite.
+
+**Freie F-Tasten danach: F3.** Belegt sind F1 (Ausstieg), F2 (Suche),
+F5 (Musik/Reset), F6 (RA-Schaufenster), F7 (durchgespielt), F8
+(Favorit), F11 (Zufallsspiel), F12 (OSD); F9 gehört MiSTer selbst.
+
 **Die Boxart-Spalte wird auch beim vollen Seitenaufbau ausgelassen**
 (Build 76 — Messung im HDMI-Modus, Nutzerfrage: „es ist schon besser,
 aber haben wir da noch Möglichkeiten das zu verbessern?"):

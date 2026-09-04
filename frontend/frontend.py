@@ -204,8 +204,8 @@ from fe.settings import (
     CRT_CONFIRM_TIMEOUT, crt_pending_confirm, mark_crt_pending_confirm,
     clear_crt_pending_confirm, eq_effect_enabled, toggle_eq_effect,
     track_marquee_enabled, toggle_track_marquee,
-    cycle_fb_size, fb_size_value, set_fb_size, toggle_f4_hotkey,
-    toggle_autostart, f4_hotkey_enabled, f4_selbstheilung,
+    cycle_fb_size, fb_size_value, set_fb_size,
+    toggle_autostart,
     toggle_rom_filter, mister_ini_video_zustand,
 )
 
@@ -4118,6 +4118,10 @@ class Frontend:
         self._perf_rows = time.monotonic() - _tr
         self._perf_nrows = end - self.scroll
 
+        # Vorbelegt fuer den Fall ohne Boxart-Spalte: dann gibt es
+        # nichts auszulassen.
+        _spalte_auslassen = False
+
         if has_art:
             # Die Spalte beginnt jetzt auf Hoehe der Kopfzeile (oy) statt
             # erst auf Hoehe der Liste (list_y) - der Header nutzt nur
@@ -4215,6 +4219,28 @@ class Frontend:
             # wie COVER_SETTLE) - im Ruhezustand bleibt Vsync IMMER
             # aktiv, kein Tearing-Risiko beim blossen Betrachten.
             _skip_vsync = self._scroll_skip_vsync()
+            # GEPRUEFT UND VERWORFEN (Build 77): hier stand kurzzeitig
+            # ein Teil-Flip, der beim Scrollen nur die linke Bildhaelfte
+            # kopiert haette (die Boxart-Spalte rechts wird ja ohnehin
+            # ausgelassen, siehe _spalte_auslassen oben). Nachgemessen
+            # ist das LANGSAMER, nicht schneller:
+            #
+            #   Vollbild (8,3 MB, EIN memcpy)     0,63 ms
+            #   Spalte 58% Breite (1080 Zeilen)   0,67 ms
+            #   Spalte 31% Breite (1080 Zeilen)   0,52 ms
+            #
+            # Grund: ein Vollbild ist EINE einzige Slice-Zuweisung, die
+            # der Interpreter komplett in C erledigt. Ein senkrechter
+            # Ausschnitt ist dagegen zwangslaeufig zeilenweise - 1080
+            # einzelne Zuweisungen, deren Python-Aufwand mehr kostet, als
+            # die eingesparten Bytes bringen. Auf der langsameren
+            # MiSTer-CPU faellt das noch deutlicher gegen den Teil-Flip
+            # aus, weil dort der Interpreter-Aufwand relativ staerker
+            # wiegt als der reine Speicherdurchsatz.
+            #
+            # Nicht zu verwechseln mit flip_rows() (volle Breite, nur
+            # ein Zeilenband): das ist ebenfalls eine einzige Zuweisung
+            # und deshalb weiterhin sinnvoll - siehe Laufschrift.
             fb.flip(skip_vsync=_skip_vsync)
             _fdt = time.monotonic() - _tf
         else:
@@ -6201,10 +6227,12 @@ class Frontend:
                     args=(game_id, ra_watch_stop), daemon=True).start()
         while current_core() != "MENU":
             res = self.inp.wait_game_exit()
-            if res in ("combo", "f10", "hid_combo"):
+            # "f10" gibt es seit Build 77 nicht mehr (siehe KEYMAP in
+            # fe/input.py) - der Ausstieg laeuft ueber F1 (sofort) oder
+            # Esc (laenger halten), beide melden "hid_combo".
+            if res in ("combo", "hid_combo"):
                 LOG({"combo": "Start+Select erkannt - zurueck ins Menue",
-                     "f10": "F10 erkannt - zurueck ins Menue",
-                     "hid_combo": "Esc (HID-Notausstieg) erkannt - "
+                     "hid_combo": "F1/Esc (HID-Notausstieg) erkannt - "
                                   "zurueck ins Menue"}[res])
                 launch_core("/media/fat/menu.rbf")
                 t1 = time.monotonic()
@@ -6212,7 +6240,7 @@ class Frontend:
                     time.sleep(0.3)
         # Bewusst HIER, direkt nach der Schleife (deckt BEIDE Wege
         # zurueck ab: normales Core-Ende UND manueller Notausstieg
-        # ueber combo/f10/hid_combo oben) - EINE Stelle statt an jedem
+        # ueber combo/hid_combo oben) - EINE Stelle statt an jedem
         # der beiden Ausstiegspfade einzeln, da beide hier zusammen-
         # laufen. Komplett wirkungslos, falls nicht konfiguriert.
         if self.stream:
@@ -10257,53 +10285,16 @@ class Frontend:
                                 _as_msg = t("sys_autostart_failed")
                             elif _as_an:
                                 _as_msg = t("sys_autostart_enabled")
-                            elif f4_hotkey_enabled():
+                            else:
+                                # GEAENDERT (Build 77): hier stand
+                                # frueher je nach F4-Schalter eine von
+                                # zwei Meldungen. Den F4-Schnellstart
+                                # gibt es nicht mehr, also bleibt die
+                                # eine - sie nennt jetzt den Weg, der
+                                # tatsaechlich funktioniert
+                                # (Frontend_Start.sh aus dem OSD).
                                 _as_msg = t("sys_autostart_disabled")
-                            else:
-                                # Nur wenn F4 noch AUS ist, lohnt der
-                                # Hinweis darauf - sonst waere es ein
-                                # Tipp zu etwas bereits Eingeschaltetem.
-                                _as_msg = t("sys_autostart_disabled_f4")
                             self.draw(_as_msg, prominent=True)
-                            continue
-                        elif kind == "f4_hotkey":
-                            # NEUES FEATURE (Nutzerwunsch: "koennen wir
-                            # das Script Frontend_Start.sh, wenn einer
-                            # kein Autostart eingerichtet hat, irgendwie
-                            # auf F4 im OSD einbinden? So dass man nur F4
-                            # druecken muss und es startet?").
-                            #
-                            # Nachgesehen statt geraten: MiSTer selbst
-                            # wertet F4 nirgends aus (die Taste ist frei),
-                            # bietet aber auch keine Moeglichkeit, eine
-                            # Taste per MiSTer.ini auf ein Script zu
-                            # legen. Deshalb ein eigener, winziger
-                            # Hintergrundwaechter - siehe
-                            # frontend/f4_hotkey.py, dort steht die
-                            # vollstaendige Begruendung samt allem, was er
-                            # bewusst NICHT tut.
-                            #
-                            # Wirkt SOFORT: beim Einschalten startet
-                            # toggle_f4_hotkey() den Waechter gleich mit,
-                            # beim Ausschalten beendet er sich innerhalb
-                            # einer Sekunde von selbst. Kein Neustart.
-                            _f4_an, _f4_boot = toggle_f4_hotkey()
-                            self._refresh_system_category()
-                            if not _f4_an:
-                                _f4_msg = t("sys_f4_hotkey_disabled")
-                            elif _f4_boot:
-                                _f4_msg = t("sys_f4_hotkey_enabled")
-                            else:
-                                # BUGFIX (Nutzer-Rueckmeldung: "F4
-                                # funktioniert nicht, wenn ich den MiSTer
-                                # kalt starte"): frueher meldete der
-                                # Punkt in JEDEM Fall Erfolg - auch dann,
-                                # wenn die Startzeile in user-startup.sh
-                                # fehlte und der Schalter damit nur bis
-                                # zum naechsten Ausschalten hielt. Diese
-                                # Luecke muss der Nutzer sehen koennen.
-                                _f4_msg = t("sys_f4_hotkey_no_boot")
-                            self.draw(_f4_msg, prominent=True)
                             continue
                         elif kind == "pulse_effect":
                             # NEUES FEATURE (Nutzerwunsch: "wenn wir den
@@ -10584,20 +10575,6 @@ if __name__ == "__main__":
         print("  kill %s ; rm -f %s" % (old_pid, LOCKFILE))
         sys.exit(0)
     print("Keine andere Instanz aktiv - starte Framebuffer/Eingaben ...")
-    # BUGFIX (Nutzer-Rueckmeldung: "F4 funktioniert nicht, wenn ich den
-    # MiSTer kalt starte und Autostart deaktiviert habe"): der
-    # F4-Waechter braucht beim Booten eine Startzeile in
-    # /media/fat/linux/user-startup.sh. Die setzten bisher nur die
-    # Installer - wer seine Dateien von Hand kopiert hat, hatte den
-    # Schalter, aber keinen Starter, und merkte das erst nach dem
-    # naechsten Kaltstart. Hier wird das EINMAL stillschweigend in
-    # Ordnung gebracht (schreibt nur, wenn der Schalter an UND die
-    # Zeile weg ist - danach nie wieder). Darf den Start unter keinen
-    # Umstaenden aufhalten, deshalb komplett abgeschirmt.
-    try:
-        f4_selbstheilung()
-    except Exception:
-        traceback.print_exc()
     # DIAGNOSE (Anlass: ein wackelndes HDMI-Bild bei einem Bekannten des
     # Nutzers, bei dem die naheliegende Vermutung - ein [Menu]-Block in
     # der MiSTer.ini - erst nach zwei Rueckfrage-Runden ausgeschlossen

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Notausstieg waehrend eines laufenden Cores (Esc laenger halten, ueber
-die rohe HID-Ebene): MiSTer sperrt die normale evdev-Ebene exklusiv,
+Notausstieg waehrend eines laufenden Cores (F1 sofort oder Esc laenger
+halten, ueber die rohe HID-Ebene): MiSTer sperrt die normale evdev-Ebene exklusiv,
 sobald ein Core laeuft - die rohe HID-Ebene (/dev/hidrawX) bleibt bei
 einer angeschlossenen Tastatur dagegen lesbar. Ausgelagert aus
 frontend.py (Modularisierung, Git-Branch 'modular-refactor').
@@ -149,27 +149,27 @@ def _find_keyboard_hidraws():
     return []
 
 def _hid_report_has_exit_key(data):
-    """Prueft einen rohen HID-Tastatur-Report auf Escape (0x29) ODER
-    F10 (0x44) - UNABHAENGIG von Modifikatortasten (frueher Strg+Alt+
-    Esc, auf Nutzerwunsch auf reines Esc vereinfacht, da einfacher zu
-    druecken).
+    """Prueft einen rohen HID-Tastatur-Report auf Escape (0x29) -
+    UNABHAENGIG von Modifikatortasten (frueher Strg+Alt+Esc, auf
+    Nutzerwunsch auf reines Esc vereinfacht, da einfacher zu druecken).
 
-    ERWEITERT (Nutzer-Rueckmeldung: "F10 funktioniert nicht"): F10 war
-    bisher NUR ueber die normale evdev-Ebene abgefragt
-    (KEY_F10-Vergleich in wait_game_exit()) - die MiSTer waehrend
-    eines laufenden Cores exklusiv sperrt (dasselbe bereits bekannte
-    Problem wie beim Start+Select-Kombo, siehe dortiger Kommentar).
-    F10 haette dadurch praktisch nie tatsaechlich ausgeloest. Jetzt
-    laeuft F10 ueber denselben bereits bestaetigt funktionierenden
-    HID-Weg wie Esc - zwei gleichwertige Ausstiegs-Tasten statt einer,
-    beide ueber den zuverlaessigen Pfad.
+    ENTFERNT (Build 77, Nutzer-Rueckmeldung: "F10 kann auch komplett
+    raus, funktioniert genauso wenig"): hier stand zusaetzlich eine
+    Pruefung auf 0x44. Bei der Gelegenheit gefunden, WARUM F10 nie
+    ausgeloest hat - 0x44 ist im HID-Standard gar nicht F10, sondern
+    **F11**. F10 hat die Usage 0x43. Die Taste, die hier all die Zeit
+    erkannt wurde, war also F11; F10 selbst kam nie an. Da F10 laut
+    Nutzerwunsch ohnehin ersatzlos wegfaellt (F1 uebernimmt, siehe
+    _hid_report_has_f1_key() unten), wird die Pruefung ganz entfernt
+    statt auf 0x43 korrigiert - sonst wuerde ein F11-Druck im Spiel
+    weiterhin unerwartet aussteigen.
 
     WICHTIG: viele Spiele nutzen Esc selbst schon fuer eigene Pause-/
     Menue-Funktionen - deshalb bleibt die Haltezeit (KBD_COMBO_HOLD,
     siehe wait_game_exit()) als Sicherung bestehen. Ein kurzer,
     normaler Tastendruck im Spiel loest dadurch NICHT versehentlich
-    den Ausstieg aus - nur ein bewusst LAENGER GEHALTENES Esc oder F10
-    tut das.
+    den Ausstieg aus - nur ein bewusst LAENGER GEHALTENES Esc tut das.
+    Wer es sofort will, nimmt F1 (siehe unten).
 
     Der Keycode wird IRGENDWO im Report gesucht, nicht an einer festen
     Position - robuster gegenueber unterschiedlichen Report-Layouts
@@ -183,9 +183,40 @@ def _hid_report_has_exit_key(data):
     Esc = HID-Usage 0x29 -> Bitmap-Byte 5, Bit 1 -> Report-Byte 7,
     Maske 0x02 (auf echter Hardware bestaetigt). Eindeutig Esc (jede
     Taste hat ihr eigenes Bit) - kein Fehl-Trigger."""
-    if 0x29 in data or 0x44 in data:
+    if 0x29 in data:
         return True
     if len(data) > 7 and data[0] == 0x06 and (data[7] & 0x02):
+        return True
+    return False
+
+
+def _hid_report_has_f1_key(data):
+    """Prueft einen rohen HID-Tastatur-Report auf F1 (HID-Usage 0x3A).
+
+    NEUES FEATURE (Nutzerwunsch: "Esc-Funktion haette ich dann gerne auf
+    F1, und die soll so schnell ausloesen wie die F5-Reset-Funktion").
+
+    Warum das mit F1 geht, mit Esc aber ausdruecklich NICHT: viele
+    Spiele und Cores benutzen Esc selbst fuer eigene Pause-/Menue-
+    Funktionen - deshalb braucht Esc die Haltezeit als Schutz gegen
+    versehentliches Aussteigen mitten im Spiel. F1 wird von Cores
+    praktisch nie belegt; dort ist ein sofortiges Ausloesen gefahrlos.
+    Esc bleibt daneben unveraendert bestehen, mit seiner Haltezeit.
+
+    Bit-Position nach derselben, an zwei Messpunkten bestaetigten Formel
+    wie bei Esc und Tab (siehe _hid_report_has_reset_key()):
+
+        Bitmap-Byte = HID-Usage // 8      Report-Byte = Bitmap-Byte + 2
+        Bit         = HID-Usage % 8
+
+    F1 (0x3A = 58): Bitmap-Byte 7 -> Report-Byte 9, Bit 2 (Maske 0x04).
+    Dasselbe Report-Byte wie F5 (Bit 6, Maske 0x40) - dessen Position
+    hat der Nutzer auf echter Hardware bereits bestaetigt, was die
+    Formel fuer dieses Byte belegt.
+    """
+    if 0x3A in data:
+        return True
+    if len(data) > 9 and data[0] == 0x06 and (data[9] & 0x04):
         return True
     return False
 

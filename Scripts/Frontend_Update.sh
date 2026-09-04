@@ -47,24 +47,30 @@ for old in start_frontend.sh update_frontend.sh boxart_download.sh \
     [ -f "$SCRIPTS_DIR/$old" ] && rm -f "$SCRIPTS_DIR/$old"
 done
 
-# NEU (Nutzerwunsch F4-Schnellstart, siehe frontend/f4_hotkey.sh): den
-# Autostart-Eintrag fuer den Waechter nachtragen, falls er fehlt. Noetig,
-# weil bestehende Installationen nur ueber dieses Update-Skript laufen
-# und nie wieder durch einen Installer - ohne diesen Block gaebe es den
-# Menuepunkt zwar, er wuerde den Waechter aber nur bis zum naechsten
-# Neustart am Leben halten. Der Eintrag ist wirkungslos, solange der
-# Schalter aus ist (f4_hotkey.sh beendet sich dann sofort).
+# AUFRAEUMEN (Build 77, Nutzerwunsch: "F4 kann raus komplett, auch der
+# Schalter unter System, weil die Funktion ja nicht geht"). Hier wurde
+# frueher der Autostart-Eintrag des F4-Waechters NACHGETRAGEN. Jetzt
+# passiert das Gegenteil - und genau hier ist es am wichtigsten:
+# bestehende Installationen laufen nur ueber dieses Update-Skript und
+# nie wieder durch einen Installer. Ohne diesen Block bliebe bei allen,
+# die den Schnellstart je installiert hatten, eine Startzeile stehen,
+# die bei jedem Boot eine geloeschte Datei aufrufen will.
 F4_STARTUP="/media/fat/linux/user-startup.sh"
-if [ -f "/media/fat/frontend/f4_hotkey.sh" ] \
-   && ! grep -qF "f4_hotkey.sh" "$F4_STARTUP" 2>/dev/null; then
-    mkdir -p "$(dirname "$F4_STARTUP")" 2>/dev/null || true
-    if [ ! -f "$F4_STARTUP" ]; then
-        printf '#!/bin/bash\n' > "$F4_STARTUP"
-        chmod +x "$F4_STARTUP" 2>/dev/null
+if [ -f /tmp/f4_hotkey.lock ]; then
+    F4_PID=$(cat /tmp/f4_hotkey.lock 2>/dev/null)
+    if [ -n "$F4_PID" ] && kill -0 "$F4_PID" 2>/dev/null; then
+        kill "$F4_PID" 2>/dev/null
+        echo "Alten F4-Waechter beendet (PID $F4_PID)."
     fi
-    printf '%s\n' "/media/fat/frontend/f4_hotkey.sh &" >> "$F4_STARTUP"
-    echo "F4-Schnellstart eingetragen (standardmaessig AUS)."
+    rm -f /tmp/f4_hotkey.lock
 fi
+if [ -f "$F4_STARTUP" ] && grep -qF "f4_hotkey.sh" "$F4_STARTUP"; then
+    grep -v "f4_hotkey.sh" "$F4_STARTUP" > "$F4_STARTUP.tmp" 2>/dev/null \
+        && mv "$F4_STARTUP.tmp" "$F4_STARTUP"
+    echo "Alten F4-Eintrag aus user-startup.sh entfernt."
+fi
+rm -f /media/fat/frontend/f4_hotkey.py /media/fat/frontend/f4_hotkey.sh \
+      /media/fat/frontend/f4_hotkey
 
 # BEWUSST OHNE den Selbstmord-Schutz aus Frontend_Install.sh/
 # Frontend_Install_Remote.sh/Frontend_Install_Offline.sh: hier ist der

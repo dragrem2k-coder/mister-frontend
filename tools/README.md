@@ -24,7 +24,6 @@ python3 tools/regression_test.py \
   && python3 tools/test_cover_scaling.py \
   && python3 tools/test_nas_cache.py \
   && python3 tools/test_crt_layout.py \
-  && python3 tools/test_f4_hotkey.py \
   && python3 tools/test_autostart.py \
   && python3 tools/test_rom_filter.py \
   && python3 tools/test_mister_ini.py \
@@ -43,12 +42,11 @@ python3 tools/regression_test.py \
 | `test_cover_scaling.py` | Test (Pass/Fail) | Verkleinern der Boxart: Flaechenmittel statt Wegwerfen |
 | `test_nas_cache.py` | Test (Pass/Fail) | NAS-Spiele werden nicht bei jedem Start neu eingelesen |
 | `test_crt_layout.py` | Test (Pass/Fail) | Engeres Layout auf CRT, keine Reste beim Scrollen, HDMI/480p unveraendert |
-| `test_f4_hotkey.py` | Test (Pass/Fail) | F4-Schnellstart: Tastenerkennung, Sicherungen, Installation |
 | `test_autostart.py` | Test (Pass/Fail) | Autostart-Schalter: user-startup.sh sicher aendern |
 | `test_rom_filter.py` | Test (Pass/Fail) | ROMs verschwinden nicht mehr stillschweigend aus der Liste |
 | `test_mister_ini.py` | Test (Pass/Fail) | Keine Video-Reste in der MiSTer.ini - und kein Anfassen fremder Bloecke |
 | `test_cover_prewarm.py` | Test (Pass/Fail) | Cover-Vorberechnung: gleiche Kastengroesse wie der Zeichenpfad, bitgleiche Miniaturen |
-| `test_reset_sofort.py` | Test (Pass/Fail) | F5-Reset ohne Haltezeit, kein Dauerfeuer beim Halten |
+| `test_reset_sofort.py` | Test (Pass/Fail) | F5-Reset und F1-Ausstieg ohne Haltezeit; F10 und der F4-Schnellstart restlos entfernt |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -212,31 +210,6 @@ Zeile kollidiert. Letzteres ist beim Bauen ZWEIMAL passiert (der
 Auswahlbalken lief in die Eintragszahl) und faellt in reinen Zahlen
 nicht auf, deshalb steht die Freiraum-Rechnung ausdruecklich im Test.
 
-## test_f4_hotkey.py
-
-Prueft den F4-Schnellstart (Nutzerwunsch: "koennen wir das Script
-Frontend_Start.sh, wenn einer kein Autostart eingerichtet hat, irgendwie
-auf F4 im OSD einbinden?").
-
-Ein Hintergrundprozess, der beim Booten startet und Tastendruecke
-mitliest, ist die heikelste Art von Zusatz in diesem Projekt: er laeuft,
-wenn niemand hinsieht, und ein Fehler faellt erst auf, wenn das Geraet
-sich seltsam verhaelt. Entsprechend wird nicht nur der Gutfall geprueft,
-sondern vor allem, dass er in allen anderen Lagen NICHTS tut.
-
-Die Tastenerkennung laeuft ueber eine Pipe als Ersatz-Eingabegeraet -
-gefuettert mit exakt dem Byte-Format, das der Linux-Kernel auf
-`/dev/input/event*` liefert. Abgedeckt: Tastencode gegen die
-Systemkopfdatei `input-event-codes.h` geprueft, Loslassen und Halten
-loesen NICHT aus, andere Tasten und andere Ereignistypen loesen NICHT
-aus, ein abgeschnittenes Ereignis stuerzt nicht ab; `/tmp/CORENAME` mit
-Nullbytes/CR/Leerzeichen wird korrekt als "Menue" erkannt (genau daran
-ist frueher schon einmal etwas gescheitert); verwaiste und unlesbare
-Sperrdateien; der Wrapper startet ohne Schalterdatei nichts und der
-Not-Aus schlaegt den Schalter; und Installation, Update und
-Deinstallation greifen ineinander (der Eintrag in `user-startup.sh`
-wird nicht doppelt gesetzt und bei der Deinstallation wieder entfernt).
-
 ## test_autostart.py
 
 Prueft den Autostart-Schalter (Nutzerfrage: "ist da jetzt quasi ein
@@ -350,7 +323,11 @@ Uebersetzungen (5).
 
 ## test_reset_sofort.py
 
-Prueft den F5-Reset auf sofortigen Tastendruck (Nutzerwunsch:
+Prueft die beiden Tasten, die waehrend eines laufenden Spiels SOFORT
+ausloesen: F5 (Reset im Core) und F1 (zurueck ins Frontend). Ausserdem,
+dass F10 und der F4-Schnellstart restlos entfernt sind.
+
+Zum F5-Reset auf sofortigen Tastendruck (Nutzerwunsch:
 "F5-Reset-Funktion haette ich gerne auf sofortigen Tastendruck, wenn das
 geht"). Vorher lagen drei Verzoegerungen hintereinander: 0,6 s
 Haltezeit, bis zu 0,2 s weil die Haltezeit erst am Anfang der naechsten

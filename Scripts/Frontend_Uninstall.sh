@@ -71,11 +71,12 @@ else
     echo "Kein Autostart-Eintrag gefunden (schon entfernt oder nie eingerichtet)."
 fi
 
-# --- F4-Schnellstart entfernen ---
-# NEU (siehe frontend/f4_hotkey.sh): der Waechter kann noch laufen, und
-# sein Eintrag steht in derselben Datei. Beides muss weg, sonst bleibt
-# nach der Deinstallation ein Prozess uebrig, der bei jedem Boot eine
-# nicht mehr vorhandene Datei zu starten versucht.
+# --- Reste des alten F4-Schnellstarts entfernen ---
+# Den F4-Schnellstart gibt es seit Build 77 nicht mehr (siehe CHANGELOG).
+# Wer ihn frueher installiert hatte, kann aber noch einen laufenden
+# Waechter und einen Eintrag in user-startup.sh haben - beides muss weg,
+# sonst bleibt nach der Deinstallation ein Prozess uebrig, der bei jedem
+# Boot eine nicht mehr vorhandene Datei zu starten versucht.
 if [ -f /tmp/f4_hotkey.lock ]; then
     F4_PID=$(cat /tmp/f4_hotkey.lock 2>/dev/null)
     if [ -n "$F4_PID" ] && kill -0 "$F4_PID" 2>/dev/null; then

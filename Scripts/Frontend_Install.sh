@@ -289,28 +289,29 @@ else
     echo "Autostart eingerichtet."
 fi
 
-# --- F4-Schnellstart eintragen ---
-# NEUES FEATURE (Nutzerwunsch: "koennen wir das Script Frontend_Start.sh,
-# wenn einer kein Autostart eingerichtet hat, irgendwie auf F4 im OSD
-# einbinden?"). Der Eintrag wird IMMER gesetzt - auch bei --no-autostart,
-# denn genau diese Nutzer sind die Zielgruppe. Er ist trotzdem
-# wirkungslos, solange der Schalter unter System -> Optionen aus ist:
-# f4_hotkey.sh beendet sich ohne die Schalterdatei sofort wieder (siehe
-# Kopfkommentar dort). So muss zum Ein-/Ausschalten spaeter NIE mehr an
-# user-startup.sh geruehrt werden - einer Datei, die dem MiSTer gehoert
-# und bei der ein Fehler den naechsten Boot lahmlegt.
-F4_LINE="$FRONTEND_DIR/f4_hotkey.sh &"
-if grep -qF "f4_hotkey.sh" "$STARTUP_FILE" 2>/dev/null; then
-    echo "F4-Schnellstart bereits eingetragen."
-else
-    mkdir -p "$(dirname "$STARTUP_FILE")" 2>/dev/null || true
-    if [ ! -f "$STARTUP_FILE" ]; then
-        printf '#!/bin/bash\n' > "$STARTUP_FILE"
-        chmod +x "$STARTUP_FILE" 2>/dev/null
+# --- Reste des alten F4-Schnellstarts entfernen ---
+# AUFRAEUMEN (Build 77, Nutzerwunsch: "F4 kann raus komplett, auch der
+# Schalter unter System, weil die Funktion ja nicht geht"). Hier wurde
+# frueher eine Startzeile fuer den F4-Waechter in user-startup.sh
+# eingetragen. Den Waechter gibt es nicht mehr - bestehende
+# Installationen muessen den Rest deshalb AKTIV loswerden, sonst
+# versucht user-startup.sh bei jedem Boot eine Datei zu starten, die
+# nicht mehr existiert.
+if [ -f /tmp/f4_hotkey.lock ]; then
+    F4_PID=$(cat /tmp/f4_hotkey.lock 2>/dev/null)
+    if [ -n "$F4_PID" ] && kill -0 "$F4_PID" 2>/dev/null; then
+        kill "$F4_PID" 2>/dev/null
+        echo "Alten F4-Waechter beendet (PID $F4_PID)."
     fi
-    printf '%s\n' "$F4_LINE" >> "$STARTUP_FILE"
-    echo "F4-Schnellstart eingetragen (standardmaessig AUS - Schalter unter System -> Optionen)."
+    rm -f /tmp/f4_hotkey.lock
 fi
+if [ -f "$STARTUP_FILE" ] && grep -qF "f4_hotkey.sh" "$STARTUP_FILE"; then
+    grep -v "f4_hotkey.sh" "$STARTUP_FILE" > "$STARTUP_FILE.tmp" 2>/dev/null \
+        && mv "$STARTUP_FILE.tmp" "$STARTUP_FILE"
+    echo "Alten F4-Eintrag aus user-startup.sh entfernt."
+fi
+rm -f "$FRONTEND_DIR/f4_hotkey.py" "$FRONTEND_DIR/f4_hotkey.sh" \
+      "$FRONTEND_DIR/f4_hotkey"
 
 # BUGFIX (Nutzer-Rueckmeldung, Screenshot: "shell-init: error retrieving
 # current directory: getcwd: cannot access parent directories: No such

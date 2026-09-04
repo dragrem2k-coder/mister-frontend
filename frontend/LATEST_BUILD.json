@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-76",
-  "summary": "Boxart-Spalte wird beim Scrollen auch im vollen Seitenaufbau ausgelassen - im HDMI-Modus rund 100 der 190 ms pro Schritt."
+  "build_id": "2026-08-24-77",
+  "summary": "F1 steigt sofort aus dem laufenden Spiel aus; F10 und der F4-Schnellstart sind ersatzlos entfernt (F10 prueft seit jeher versehentlich F11)."
 }

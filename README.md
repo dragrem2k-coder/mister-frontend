@@ -110,7 +110,7 @@ Nachlesen (`CHANGELOG.md`).
    - 8n. Easter-Egg-System (Geheimnisse) + Frontend-Level
    - 8o. CRT-Testbild
    - 8p. Mitwirkende
-   - 8q. Autostart an/aus + F4 startet das Frontend
+   - 8q. Autostart an/aus
 9. Sprache umschalten
 10. Eigene Tastenbelegung
 11. Boot-Animation (Startvideo)
@@ -131,8 +131,6 @@ Nachlesen (`CHANGELOG.md`).
 | frontend/stream_server.py       | /media/fat/frontend/             | Web-Server fürs Stream-Overlay (optional) |
 | frontend/stream_overlay.html    | /media/fat/frontend/             | OBS-Browser-Quelle (optional) |
 | frontend/stream_admin.html      | /media/fat/frontend/             | Stream-Overlay-Konfiguration (optional) |
-| frontend/f4_hotkey.py           | /media/fat/frontend/             | F4-Schnellstart-Wächter (optional, standardmäßig aus) |
-| frontend/f4_hotkey.sh           | /media/fat/frontend/             | Autostart-Wrapper für den F4-Wächter |
 | Scripts/Frontend_Install_Remote.sh | /media/fat/Scripts/           | Installation mit Internetzugang (lädt von GitHub) |
 | Scripts/Frontend_Install_Offline.sh | /media/fat/Scripts/          | Installation ohne Internetzugang (aus diesem Paket) |
 | Scripts/Frontend_Uninstall.sh   | /media/fat/Scripts/              | Alles wieder sauber entfernen, eigene Daten optional behalten |
@@ -322,21 +320,22 @@ geprüft, ohne echten Netzwerkverkehr zu erzeugen.
 | ESC/B                              | Eine Ordner-/Menüebene zurück; im Hauptmenü: Beenden-Bestätigung |
 | Ein Buchstabe (Tastatur, A-Z)      | Direktsprung zum nächsten Eintrag mit diesem Anfangsbuchstaben |
 | F12 / Guide-Button                 | Echtes MiSTer-OSD öffnen (Joystick-Belegung, ini-Settings) |
-| F10 / X-Button                     | Aus dem OSD zurück ins Frontend |
+| X-Button (Pad)                     | Aus dem OSD zurück ins Frontend |
 | Y-Button (Pad) / F5 oder Medientaste "nächster Titel" (Tastatur) | Nächster Song (manueller Musik-Wechsel) |
 | F11                                 | Zufälliges Spiel/Kategorie ("weiß nicht was ich spielen soll") |
 | F8 / L2- oder R2-Taste               | Favorit umschalten (nur bei Spiele-Einträgen) |
 | F7                                  | Durchgespielt-Status umschalten (nur bei Spiele-Einträgen) |
 | 3x Select nacheinander (Pad)       | Beenden-Bestätigung (wie ESC) |
-| Im laufenden Spiel: Esc auf der Tastatur, ~0,6s halten | Direkt zurück ins Frontend, ohne Umweg über MiSTers OSD |
-| Im laufenden Spiel: F5 auf der Tastatur, ~0,6s halten (experimentell) | Reset im laufenden Core (alle Cores, auch RA - lädt den Core NICHT neu, RA-Fortschritt bleibt erhalten) |
+| Im laufenden Spiel: **F1** auf der Tastatur | Sofort zurück ins Frontend, ohne Haltezeit und ohne Umweg über MiSTers OSD |
+| Im laufenden Spiel: Esc auf der Tastatur, ~0,6s halten | Dasselbe wie F1, nur mit Haltezeit - die ist nötig, weil viele Spiele Esc selbst für ihr Pausemenü benutzen |
+| Im laufenden Spiel: **F5** auf der Tastatur | Reset im laufenden Core, ohne Haltezeit (alle Cores, auch RA - lädt den Core NICHT neu, RA-Fortschritt bleibt erhalten) |
 | / oder F2 (Tastatur) | Volltextsuche starten - Treffer auch mitten im Namen, nicht nur am Anfang (beide Tasten lösen exakt dieselbe Funktion aus) |
 | Im laufenden Spiel: F12 -> "Exit to Menu Core" | Alternative über MiSTers eigenes Menü |
 
 **Zum Zurückkehren aus einem laufenden Spiel:** Sobald ein Core läuft,
 sperrt MiSTer die normale Tastatur-/Pad-Ebene komplett (selbst
 nachgeprüft: `cat /dev/input/eventX` liefert während des Spiels 0
-Bytes, egal was man drückt) - Start+Select oder F10 kommen dadurch
+Bytes, egal was man drückt) - Start+Select kommt dadurch
 während des Spiels selbst nie an, das ist eine Plattformgrenze, kein
 Bug im Frontend. Es gibt aber einen Weg drumherum: die *rohe*
 HID-Ebene einer angeschlossenen Tastatur bleibt auch während eines
@@ -854,10 +853,17 @@ System-Menü -> "Mitwirkende" - wer das Frontend gebaut hat und wer
 mitgeholfen hat. Ein kleines Dankeschön, kein Geheimnis wie der
 Entwicklerraum aus Abschnitt 8n.
 
-## 8q. Autostart an/aus + F4 startet das Frontend
+## 8q. Autostart an/aus
 
-Zwei Schalter, die zusammengehören - beide unter System-Menü ->
-Optionen -> **Verhalten**, direkt untereinander.
+Ein Schalter unter System-Menü -> Optionen -> **Verhalten**.
+
+> **Entfallen mit Build 77:** hier stand daneben ein zweiter Schalter,
+> der F4 im MiSTer-OSD auf den Frontend-Start legte. Die Funktion hat
+> beim Nutzer im Alltag nicht zuverlässig gearbeitet und ist ersatzlos
+> entfernt worden - samt Hintergrund-Wächter. Das Update räumt die
+> Startzeile und die Dateien bei bestehenden Installationen von selbst
+> weg. Wer das Frontend ohne Autostart starten will, nimmt
+> OSD -> Scripts -> `Frontend_Start`.
 
 ### Autostart an/aus
 
@@ -882,52 +888,12 @@ geschoben. Alle anderen Zeilen bleiben zeichengenau stehen - auch ein
 NAS-Mount oder was du sonst dort eingetragen hast.
 
 **Ausschalten sperrt das Frontend nicht.** Starten geht weiterhin über
-OSD -> Scripts -> `Frontend_Start` - oder eben per F4, siehe unten.
-
-### F4 startet das Frontend
-
-Wer keinen Autostart nutzt, muss das Frontend sonst jedes Mal über
-OSD -> Scripts -> `Frontend_Start` von Hand starten. Mit diesem
-Schalter genügt ein Druck auf **F4** auf einer angeschlossenen
-Tastatur.
-
-Wirkt sofort, kein Neustart nötig, und nach jedem Boot wieder.
-
-**Was dabei passiert:** MiSTer selbst kann keine Taste auf ein Skript
-legen - die MiSTer.ini kennt dafür keine Option. Deshalb läuft im
-Hintergrund ein winziger Wächter (`frontend/f4_hotkey.py`), der die
-Eingabegeräte mitliest. Er ist bewusst zurückhaltend gebaut:
-
-- Er **greift die Tastatur nicht exklusiv ab**, sondern liest nur mit.
-  MiSTers Menü bekommt jeden Tastendruck weiterhin unverändert. F4
-  selbst wertet MiSTer nirgends aus - die Taste ist frei.
-- Er reagiert **nur, solange MiSTers Menü läuft**. Mitten im Spiel
-  passiert auf F4 nichts.
-- Er startet nichts, wenn das Frontend **schon läuft**.
-- Er ist **standardmäßig aus** und wird nie ungefragt aktiviert, auch
-  nicht durch ein Update.
-
-**Wo das eingehängt wird:** damit der Wächter nach einem Kaltstart
-wieder läuft, braucht er eine Startzeile in
-`/media/fat/linux/user-startup.sh` - der einzige Haken, den MiSTer für
-eigene Programme beim Booten anbietet. Die trägt der Schalter selbst
-nach, ein Installer ist dafür nicht nötig. Fehlt sie und lässt sie sich
-nicht schreiben, sagt der Menüpunkt das ausdrücklich, und die Zeile
-bekommt den Zusatz "(nicht nach einem Kaltstart!)" - früher meldete sie
-in dem Fall stillschweigend Erfolg.
+OSD -> Scripts -> `Frontend_Start`.
 
 Die Datei findest du über die Netzwerkfreigabe unter
 `\\<MiSTer-IP>\fat\linux\user-startup.sh` bzw. auf der SD-Karte
 direkt im Ordner `linux`. Es ist eine ganz normale Textdatei; die
-Autostart-Zeile heißt `frontend_boot.sh &`, die des Wächters
-`f4_hotkey.sh &`.
-
-**Grenzen, ehrlich benannt:** nur Tastatur, kein Gamepad - im MiSTer-
-Menü sind die Pad-Tasten bereits vollständig von MiSTer selbst belegt,
-eine freie Taste gibt es dort schlicht nicht. Und der Wächter läuft
-dauerhaft im Hintergrund (ein Python-Prozess, der die meiste Zeit
-schläft). Wer das nicht möchte, schaltet den Punkt einfach aus - der
-Wächter beendet sich dann innerhalb einer Sekunde von selbst.
+Autostart-Zeile heißt `frontend_boot.sh &`.
 
 ## 9. Sprache umschalten
 
@@ -1183,9 +1149,11 @@ Rückkehr zum Menü selbst wird davon nie beeinträchtigt oder verzögert.
   Abschnitt 6, mister_boxart.py lädt sie automatisch mit).
 - Menü nur auf einem Video-Ausgang gleichzeitig sichtbar (technische
   Grenze des MiSTer-Scalers, keine Frontend-Einschränkung).
-- Start+Select und F10 funktionieren während eines laufenden Spiels
+- Start+Select funktioniert während eines laufenden Spiels
   grundsätzlich nicht - MiSTer beansprucht die normale Eingabe-Ebene
-  exklusiv, sobald ein Core läuft (siehe Abschnitt 4). Der Esc-Weg
+  exklusiv, sobald ein Core läuft (siehe Abschnitt 4). Aus demselben
+  Grund gab es bis Build 76 einen F10-Ausstieg, der nie funktionieren
+  konnte; er ist ersatzlos entfallen, F1 übernimmt. Der F1-/Esc-Weg
   über die rohe HID-Ebene der Tastatur funktioniert dagegen; ein
   Pad-basierter Ausstieg konnte bisher nicht zuverlässig eingebaut
   werden (kommt beim getesteten Controller während des Spiels über

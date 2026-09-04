@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Prueft den F5-Reset auf sofortigen Tastendruck (Build 75).
+"""Prueft die beiden SOFORT ausloesenden Tasten waehrend eines Spiels:
+F5 (Reset im Core, Build 75) und F1 (Ausstieg zum Frontend, Build 77).
 
 NUTZERWUNSCH: "F5-Reset-Funktion haette ich gerne auf sofortigen
 Tastendruck, wenn das geht."
@@ -21,6 +22,12 @@ EHRLICH BENANNTES RISIKO, hier mitgeprueft: ohne Haltezeit ist ein
 versehentlicher F5-Antipper waehrend des Spielens sofort ein Reset.
 Was dagegen NICHT passieren darf, ist ein Dauerfeuer durch blosses
 Halten - dafuer gibt es reset_gefeuert, und Test 3 nagelt das fest.
+
+NUTZERWUNSCH ZU F1 (Build 77): "Esc-Funktion haette ich dann gerne auf
+F1, und die soll so schnell ausloesen wie die F5-Reset-Funktion." Dazu:
+"F10 kann auch komplett raus, funktioniert genauso wenig." Beim Umbau
+kam heraus, WARUM F10 nie ausgeloest hat - die HID-Pruefung verglich
+0x44, und das ist im HID-Standard F11, nicht F10 (0x43).
 
 Ausfuehren:
     python3 tools/test_reset_sofort.py
@@ -172,6 +179,111 @@ check("vier Berichte mit gehaltener Taste ergeben EINEN Reset",
       ausloesungen[:1] == ["reset"], str(ausloesungen))
 check("nach Loslassen und erneutem Druecken kommt ein zweiter",
       len(ausloesungen) == 2, str(ausloesungen))
+
+print()
+print("Test 4: F1 steigt SOFORT aus dem laufenden Core aus")
+import fe.hidraw as HR                                # noqa: E402
+
+# HID-Usages: F1 = 0x3A, F5 = 0x3E, Esc = 0x29, F10 = 0x43, F11 = 0x44.
+def bericht(*usages):
+    """Ein einfacher 8-Byte-Tastaturbericht (Boot-Protokoll)."""
+    b = bytearray(8)
+    for i, u in enumerate(usages[:6]):
+        b[2 + i] = u
+    return bytes(b)
+
+
+check("F1 wird erkannt", HR._hid_report_has_f1_key(bericht(0x3A)))
+check("eine andere Taste nicht", not HR._hid_report_has_f1_key(bericht(0x3E)))
+check("ein leerer Bericht nicht", not HR._hid_report_has_f1_key(bericht()))
+check("F1 zaehlt NICHT als Esc-Ausstieg (getrennte Wege)",
+      not HR._hid_report_has_exit_key(bericht(0x3A)))
+check("Esc weiterhin als Esc-Ausstieg", HR._hid_report_has_exit_key(bericht(0x29)))
+
+print()
+print("Test 4b: NKRO-Bitmap - dieselbe Formel wie bei Esc und F5")
+# Bitmap-Byte = Usage // 8, Report-Byte = Bitmap-Byte + 2, Bit = Usage % 8.
+# F5 (0x3E) landet danach in Byte 9, Bit 6 - genau das hat der Nutzer auf
+# echter Hardware bestaetigt. F1 (0x3A) liegt im SELBEN Byte, Bit 2.
+def nkro(usage):
+    b = bytearray(12)
+    b[0] = 0x06
+    b[2 + usage // 8] |= 1 << (usage % 8)
+    return bytes(b)
+
+
+check("F1 im NKRO-Bericht erkannt", HR._hid_report_has_f1_key(nkro(0x3A)))
+check("F5 im NKRO-Bericht erkannt", HR._hid_report_has_reset_key(nkro(0x3E)))
+check("Esc im NKRO-Bericht erkannt", HR._hid_report_has_exit_key(nkro(0x29)))
+check("F1 und F5 liegen im selben Byte, aber auf verschiedenen Bits",
+      not HR._hid_report_has_f1_key(nkro(0x3E))
+      and not HR._hid_report_has_reset_key(nkro(0x3A)))
+
+print()
+print("Test 5: F10 ist ueberall raus - und war ohnehin die falsche Taste")
+# 0x44 ist F11, nicht F10 (0x43). Die alte Pruefung haette also bei
+# einem F11-Druck im Spiel den Ausstieg ausgeloest und bei F10 nie.
+check("F10 (0x43) loest keinen Ausstieg mehr aus",
+      not HR._hid_report_has_exit_key(bericht(0x43)))
+check("F11 (0x44) ebenfalls nicht - genau der alte Fehlgriff",
+      not HR._hid_report_has_exit_key(bericht(0x44)))
+# Bewusst die TATSAECHLICHE Tabelle pruefen, nicht den Dateitext - der
+# enthaelt die alte Belegung noch als Kommentar, und genau so soll es
+# sein (dort steht, warum sie weg ist).
+check("F10 ist nicht mehr in der KEYMAP",
+      I.KEY_F10 not in I.KEYMAP, str(I.KEYMAP.get(I.KEY_F10)))
+# F1 taucht bewusst NICHT in der KEYMAP auf: die evdev-Ebene ist
+# waehrend eines laufenden Cores gesperrt (genau der Grund, warum F10
+# dort nie ankam). F1 laeuft ausschliesslich ueber die HID-Ebene.
+check("F1 (evdev 59) steht bewusst NICHT in der KEYMAP",
+      59 not in I.KEYMAP, str(I.KEYMAP.get(59)))
+input_py = open(os.path.join(_FRONTEND_DIR, "fe", "input.py"),
+                encoding="utf-8").read()
+check("und die evdev-Abfrage ist weg",
+      "if etype == EV_KEY and code == KEY_F10" not in input_py)
+fe_py = open(os.path.join(_FRONTEND_DIR, "frontend.py"), encoding="utf-8").read()
+check('das Ergebnis "f10" wird nicht mehr behandelt',
+      'res in ("combo", "hid_combo")' in fe_py)
+
+print()
+print("Test 6: der F4-Schnellstart ist restlos entfernt")
+# NUTZERWUNSCH (Build 77): "F4 kann raus komplett, auch der Schalter
+# unter System, weil die Funktion ja nicht geht."
+import fe.settings as S4                              # noqa: E402
+for name in ("toggle_f4_hotkey", "f4_hotkey_enabled", "f4_selbstheilung",
+             "f4_boot_entry_ok", "F4_HOTKEY_FLAG"):
+    check("fe.settings hat kein %s mehr" % name, not hasattr(S4, name))
+for datei in ("f4_hotkey.py", "f4_hotkey.sh"):
+    check("%s ist geloescht" % datei,
+          not os.path.exists(os.path.join(_FRONTEND_DIR, datei)))
+menu_py = open(os.path.join(_FRONTEND_DIR, "fe", "menu.py"),
+               encoding="utf-8").read()
+check("der Menuepunkt ist raus", '"f4_hotkey"' not in menu_py)
+check("und der Handler in frontend.py auch",
+      'kind == "f4_hotkey"' not in fe_py)
+import fe.translations as T4                          # noqa: E402
+tab4 = getattr(T4, "TRANSLATIONS", {})
+check("keine F4-Uebersetzungen mehr uebrig",
+      not [k for k in tab4 if "f4" in k.lower()],
+      str([k for k in tab4 if "f4" in k.lower()]))
+
+print()
+print("Test 6b: die Skripte raeumen alte Installationen aktiv auf")
+# Das ist der Teil, der leicht vergessen wird: wer den Schnellstart je
+# installiert hatte, hat eine Startzeile in user-startup.sh. Bleibt sie
+# stehen, versucht der MiSTer bei JEDEM Boot eine geloeschte Datei zu
+# starten. Bestehende Installationen laufen nur ueber Frontend_Update.sh.
+_SCRIPTS = os.path.join(_REPO, "Scripts")
+for skript in ("Frontend_Update.sh", "Frontend_Install.sh",
+               "Frontend_Install_Remote.sh", "Frontend_Install_Offline.sh"):
+    txt = open(os.path.join(_SCRIPTS, skript), encoding="utf-8").read()
+    check("%s traegt NICHTS mehr ein" % skript,
+          "printf '%s\\n' \"$F4_LINE\"" not in txt
+          and '/media/fat/frontend/f4_hotkey.sh &" >>' not in txt)
+    check("%s entfernt die alte Zeile" % skript,
+          'grep -v "f4_hotkey.sh"' in txt)
+    check("%s loescht die alten Dateien" % skript,
+          "f4_hotkey.py" in txt and "rm -f" in txt)
 
 print()
 if fails:

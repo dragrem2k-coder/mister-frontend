@@ -525,35 +525,6 @@ TRANSLATIONS = {
     "sys_fb_size_failed": {
         "en": "Could not write MiSTer.ini - menu resolution unchanged.",
         "de": "MiSTer.ini nicht beschreibbar - Menü-Auflösung unverändert."},
-    # NEUES FEATURE (Nutzerwunsch: "können wir das Script
-    # Frontend_Start.sh, wenn einer kein Autostart eingerichtet hat,
-    # irgendwie auf F4 im OSD einbinden? So dass man nur F4 drücken
-    # muss und es startet?"). Die Zeilen nennen bewusst BEIDE
-    # Einschränkungen, die der Waechter hat: Tastatur nötig, und er
-    # reagiert nur im MiSTer-Menü, nicht während eines Spiels.
-    "sys_f4_hotkey_on": {
-        "en": "F4 starts the frontend: ON -> turn off (keyboard only, works in the MiSTer menu)",
-        "de": "F4 startet das Frontend: AN -> ausschalten (nur Tastatur, wirkt im MiSTer-Menü)"},
-    "sys_f4_hotkey_off": {
-        "en": "F4 starts the frontend: OFF -> turn on (small background helper, keyboard only)",
-        "de": "F4 startet das Frontend: AUS -> einschalten (kleiner Hintergrunddienst, nur Tastatur)"},
-    "sys_f4_hotkey_enabled": {
-        "en": "F4 now starts the frontend from the MiSTer menu. Active right away, and again after every restart.",
-        "de": "F4 startet das Frontend jetzt aus dem MiSTer-Menü heraus. Sofort aktiv und nach jedem Neustart wieder."},
-    "sys_f4_hotkey_disabled": {
-        "en": "F4 shortcut switched off. The background helper stops on its own within a second.",
-        "de": "F4-Kurzbefehl ausgeschaltet. Der Hintergrunddienst beendet sich innerhalb einer Sekunde von selbst."},
-    # BUGFIX (Nutzer-Rueckmeldung: "F4 funktioniert nicht, wenn ich den
-    # MiSTer kalt starte und Autostart deaktiviert habe"): der Waechter
-    # braucht beim Booten eine Startzeile in user-startup.sh. Klappt das
-    # Nachtragen nicht, darf der Menuepunkt NICHT einfach Erfolg melden -
-    # F4 wuerde dann nur bis zum naechsten Ausschalten funktionieren.
-    "sys_f4_hotkey_no_boot": {
-        "en": "F4 works now, but user-startup.sh could not be written - after a cold start it will be off again. Reinstall via Scripts -> Frontend_Install to fix this for good.",
-        "de": "F4 wirkt jetzt, aber user-startup.sh war nicht beschreibbar - nach einem Kaltstart ist es wieder aus. Dauerhaft behebt das eine Installation über Scripts -> Frontend_Install."},
-    "sys_f4_hotkey_no_boot_hint": {
-        "en": "(not after a cold start!)",
-        "de": "(nicht nach einem Kaltstart!)"},
     # NEUES FEATURE (Nutzerfrage: "ist da jetzt quasi ein Schalter unter
     # System/Optionen drin, der den Autostart an- und ausschaltbar
     # macht?"). Der Neustart-Hinweis steht in beiden Meldungen: die
@@ -572,9 +543,6 @@ TRANSLATIONS = {
     "sys_autostart_disabled": {
         "en": "Autostart off from the next boot. You can still start it from the OSD under Scripts -> Frontend_Start.",
         "de": "Autostart ab dem nächsten Neustart aus. Starten geht weiter über OSD -> Scripts -> Frontend_Start."},
-    "sys_autostart_disabled_f4": {
-        "en": "Autostart off from the next boot. Tip: the switch right below makes F4 start the frontend from the MiSTer menu.",
-        "de": "Autostart ab dem nächsten Neustart aus. Tipp: der Schalter direkt darunter lässt F4 das Frontend aus dem MiSTer-Menü starten."},
     "sys_autostart_failed": {
         "en": "Could not write user-startup.sh - autostart unchanged.",
         "de": "user-startup.sh nicht beschreibbar - Autostart unverändert."},

@@ -19,7 +19,7 @@ from collections import defaultdict
 from fe.log import LOG
 from fe.launch import current_core
 from fe.hidraw import (_find_keyboard_hidraws, _hid_report_has_exit_key,
-                        _hid_report_has_reset_key)
+                        _hid_report_has_reset_key, _hid_report_has_f1_key)
 from fe.reset_trigger import send_reset_combo
 
 KEYMAP_CUSTOM_FILE = "/media/fat/frontend/keymap_custom.json"
@@ -144,7 +144,14 @@ LETTER_KEYS = {
 KEYMAP = {
     KEY_UP: "up", KEY_DOWN: "down", KEY_LEFT: "left", KEY_RIGHT: "right",
     KEY_ENTER: "ok", KEY_ESC: "exit",
-    KEY_F12: "osd", KEY_F10: "back_fe", KEY_F9: None, KEY_F11: "random",
+    # ENTFERNT (Build 77, Nutzerwunsch: "F10 kann auch komplett raus,
+    # funktioniert genauso wenig"): hier stand KEY_F10: "back_fe".
+    # Waehrend eines laufenden Cores konnte das ueber diese evdev-Ebene
+    # ohnehin nie ankommen (MiSTer sperrt sie exklusiv, siehe
+    # fe/hidraw.py), und der HID-Weg prueft seit jeher versehentlich
+    # 0x44 - das ist F11, nicht F10. Die Aufgabe uebernimmt jetzt F1
+    # (sofort, ueber die HID-Ebene); im Frontend selbst bleibt Esc.
+    KEY_F12: "osd", KEY_F9: None, KEY_F11: "random",
     KEY_F8: "favorite", BTN_TL2: "favorite", BTN_TR2: "favorite",
     AXIS_L2: "favorite", AXIS_R2: "favorite",
     KEY_F7: "completed",
@@ -776,10 +783,17 @@ class InputManager:
 
     def wait_game_exit(self):
         """Waehrend ein Core laeuft: warten, bis MiSTer zurueck im
-        Menue ist, F10 gedrueckt wird, Start+Select lange genug
-        gehalten werden, ODER Esc auf der Tastatur laenger gehalten
-        wird - erkannt ueber die rohe HID-Ebene. Rueckgabe: "menu",
-        "f10", "combo" oder "hid_combo".
+        Menue ist, Start+Select lange genug gehalten werden, ODER auf
+        der Tastatur F1 gedrueckt (sofort) bzw. Esc laenger gehalten
+        wird - beide erkannt ueber die rohe HID-Ebene. Rueckgabe:
+        "menu", "combo" oder "hid_combo".
+
+        GEAENDERT (Build 77): F10 ist ersatzlos entfallen. Es wurde ueber
+        die evdev-Ebene abgefragt, die MiSTer waehrend eines laufenden
+        Cores exklusiv sperrt - der Zweig konnte nie ausloesen; und die
+        HID-Pruefung dafuer verglich versehentlich 0x44 (das ist F11,
+        nicht F10). F1 uebernimmt die Aufgabe, ueber den nachweislich
+        funktionierenden HID-Weg und ohne Haltezeit.
 
         WICHTIG: F10/Start+Select werden ueber die normale evdev-Ebene
         gelesen, die MiSTer waehrend eines laufenden Cores exklusiv
@@ -975,6 +989,24 @@ class InputManager:
                             kbd_diag_budget[fd] -= 1
                             LOG("wait_game_exit DIAGNOSE (%s): %s"
                                 % (kbd_fd_paths.get(fd, "?"), data.hex()))
+                        # NEUES FEATURE (Build 77, Nutzerwunsch:
+                        # "Esc-Funktion haette ich dann gerne auf F1, und
+                        # die soll so schnell ausloesen wie die
+                        # F5-Reset-Funktion"): F1 steigt SOFORT aus, ohne
+                        # jede Haltezeit - und zwar hier, im selben
+                        # Moment, in dem die Taste erkannt wird. Wuerde
+                        # man auf den Schleifenanfang warten, kaeme die
+                        # Wartezeit von select(..., 0.2) obendrauf.
+                        #
+                        # Warum das bei F1 gefahrlos ist, bei Esc aber
+                        # nicht: Cores und Spiele belegen Esc haeufig
+                        # selbst (Pause-/Ingame-Menue), F1 praktisch nie.
+                        # Deshalb behaelt Esc seine Haltezeit als Schutz
+                        # und bleibt unveraendert daneben bestehen.
+                        if _hid_report_has_f1_key(data):
+                            LOG("wait_game_exit: F1 gedrueckt - steige "
+                                "SOFORT aus dem Core aus")
+                            return "hid_combo"
                         kbd_fds[fd] = _hid_report_has_exit_key(data)
                         any_held = any(kbd_fds.values())
                         if any_held and kbd_combo_since is None:
@@ -1037,8 +1069,10 @@ class InputManager:
                     if len(data) < EVENT_SIZE:
                         continue
                     _, _, etype, code, value = struct.unpack(EVENT_FMT, data)
-                    if etype == EV_KEY and code == KEY_F10 and value == 1:
-                        return "f10"
+                    # ENTFERNT (Build 77): hier wurde F10 ueber die
+                    # evdev-Ebene abgefragt. Genau die sperrt MiSTer
+                    # waehrend eines laufenden Cores exklusiv - der
+                    # Zweig konnte also nie ausloesen. Siehe KEYMAP oben.
                     # ERWEITERTE DIAGNOSE (Nutzer-Test bestaetigt: bei einem
                     # 8BitDo-Controller kam ueber mehrere Tests hinweg nur EIN
                     # einziges, unzusammenhaengend wirkendes EV_KEY-Ereignis

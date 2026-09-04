@@ -97,7 +97,9 @@ danach = lies()
 check("danach ist Autostart aus", not S.autostart_enabled())
 check("die Autostart-Zeile ist weg", "frontend_boot.sh" not in danach)
 # Das ist der eigentliche Kern: alles ANDERE muss zeichengenau stehen
-# bleiben - fremde Eintraege genauso wie unser eigener F4-Waechter.
+# bleiben - fremde Eintraege genauso wie eine alte, seit Build 77
+# nicht mehr benutzte F4-Zeile (die raeumt das Update-Skript weg, nicht
+# der Autostart-Schalter).
 for zeile in ("#!/bin/sh",
               "# Startup script for MiSTer",
               "/media/fat/linux/_user/meinmount.sh",
@@ -114,10 +116,14 @@ check("genau eine Zeile weniger",
                        len(ORIGINAL.splitlines()) - 1))
 
 print()
-print("Test 3: der F4-Waechter wird nicht mit abgeraeumt")
-# Beide Eintraege stehen in derselben Datei und sehen sich aehnlich -
-# ein zu grob gefasster Filter wuerde beide treffen.
-check("f4_hotkey.sh steht noch da", "f4_hotkey.sh" in lies())
+print("Test 3: aehnlich aussehende Zeilen werden nicht mit abgeraeumt")
+# Eine alte f4_hotkey.sh-Zeile (Build 77 hat den F4-Schnellstart
+# entfernt) steht in derselben Datei und sieht unserer sehr aehnlich -
+# ein zu grob gefasster Filter wuerde beide treffen. Wegraeumen ist
+# Sache des Update-Skripts, NICHT des Autostart-Schalters: der darf
+# ausschliesslich seine eigene Zeile anfassen.
+check("die fremde f4_hotkey.sh-Zeile steht noch da",
+      "f4_hotkey.sh" in lies())
 
 print()
 print("Test 4: Einschalten und Mehrfach-Umschalten")
@@ -271,20 +277,20 @@ menu_py = open(os.path.join(_FRONTEND_DIR, "fe", "menu.py"),
                encoding="utf-8").read()
 check('der Menuepunkt "autostart" ist eingetragen',
       '"autostart", None' in menu_py)
-check("er steht direkt ueber dem F4-Schalter",
-      menu_py.index('"autostart", None') < menu_py.index('"f4_hotkey", None'))
+check("er steht in der Gruppe Verhalten",
+      menu_py.index('sys_group_behavior') < menu_py.index('"autostart", None'))
 fe_py = open(os.path.join(_FRONTEND_DIR, "frontend.py"), encoding="utf-8").read()
 check("und wird in frontend.py behandelt", 'kind == "autostart"' in fe_py)
 
 tabelle = getattr(T, "TRANSLATIONS", None) or getattr(T, "STRINGS", {})
 for schluessel in ("sys_autostart_on", "sys_autostart_off",
                    "sys_autostart_enabled", "sys_autostart_disabled",
-                   "sys_autostart_disabled_f4", "sys_autostart_failed"):
+                   "sys_autostart_failed"):
     eintrag = tabelle.get(schluessel)
     check("Uebersetzung %s vorhanden (de+en)" % schluessel,
           bool(eintrag) and "de" in eintrag and "en" in eintrag)
 for schluessel in ("sys_autostart_enabled", "sys_autostart_disabled",
-                   "sys_autostart_disabled_f4"):
+                   ):
     txt = tabelle.get(schluessel, {})
     check("%s nennt den Neustart bzw. den Weg drumherum" % schluessel,
           any(w in txt.get("de", "").lower()

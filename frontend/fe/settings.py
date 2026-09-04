@@ -8,7 +8,7 @@ Filterung (nur Spiele mit Metadaten anzeigen), Attract-Modus
 Git-Branch 'modular-refactor') - mehrere ehemals ueber die Datei
 verstreute kleine Bloecke hier sinnvoll zusammengefuehrt.
 """
-import os, glob, time, re, subprocess
+import os, glob, time, re
 from fe.log import LOG
 from fe.art import get_meta, mra_meta
 
@@ -791,163 +791,26 @@ def fb_size_label_key(value=None):
         value, "sys_fb_size_full")
 
 
-# NEUES FEATURE (Nutzerwunsch: "koennen wir das Script Frontend_Start.sh,
-# wenn einer kein Autostart eingerichtet hat, irgendwie auf F4 im OSD
-# einbinden? So dass man nur F4 druecken muss und es startet?").
+# ENTFERNT (Build 77, Nutzerwunsch: "F4 kann raus komplett, auch der
+# Schalter unter System, weil die Funktion ja nicht geht").
 #
-# Standard AUS - im Gegensatz zu den meisten anderen Schaltern hier
-# bedeutet die Datei also "AN", nicht "abgeschaltet". Begruendung: der
-# Schalter startet einen zusaetzlichen Hintergrundprozess, der beim
-# Booten dauerhaft die Eingabegeraete mitliest. So etwas gehoert nicht
-# ungefragt bei jedem Nutzer aktiviert, nur weil er ein Update
-# einspielt - wer es will, schaltet es bewusst ein.
+# Hier stand der F4-Schnellstart: ein eigener Hintergrund-Waechter
+# (frontend/f4_hotkey.py), der beim Booten die Eingabegeraete mitlas
+# und das Frontend startete, sobald im MiSTer-OSD F4 gedrueckt wurde -
+# gedacht fuer alle, die keinen Autostart eingerichtet haben.
 #
-# Die Datei ist zugleich die Schnittstelle zum Waechter selbst
-# (frontend/f4_hotkey.py) und zu seinem Autostart-Wrapper
-# (frontend/f4_hotkey.sh): beide pruefen genau diesen Pfad.
+# In der Sandbox und in der Tastenerkennung auf dem Geraet lief er
+# nachweislich ("Taste gedrueckt: Code 62" im Log des Nutzers), im
+# Alltag hat er beim Nutzer trotzdem nie zuverlaessig getan, was er
+# sollte. Statt weiter daran zu suchen, faellt er ersatzlos weg: der
+# Autostart-Schalter (siehe unten) erfuellt denselben Zweck ohne
+# zusaetzlichen Dauerprozess, der bei jedem Boot alle Eingabegeraete
+# mitliest.
 #
-# BUGFIX (Nutzer-Rueckmeldung: "Autostart kann ich im Menue ausstellen,
-# aber die F4-Funktion, dass das Frontend dann startet, wenn ich den
-# MiSTer kalt starte und Autostart deaktiviert habe, funktioniert
-# nicht"):
-#
-# Der Schalter allein reicht NICHT. Beim Kaltstart muss den Waechter
-# jemand starten, und das kann nur eine Zeile in
-# /media/fat/linux/user-startup.sh - der einzige Haken, den MiSTer
-# fuer eigene Programme beim Booten anbietet. Diese Zeile setzten
-# bisher AUSSCHLIESSLICH die Installer bzw. Frontend_Update.sh. Wer
-# seine Dateien von Hand kopiert (oder aus irgendeinem anderen Grund
-# keinen dieser Wege gelaufen ist), hatte den Menuepunkt, den
-# Waechter und die Schalterdatei - aber keinen Starter. Der Schalter
-# wirkte dann nur bis zum naechsten Ausschalten, und beim Kaltstart
-# passierte auf F4 gar nichts. Genau so ist es passiert.
-#
-# Das war ein Entwurfsfehler von mir: eine Funktion, deren
-# Funktionieren still an einem Schritt haengt, den der Nutzer nicht
-# sieht und nicht pruefen kann. Der Schalter traegt die Zeile deshalb
-# jetzt selbst nach (ueber denselben abgesicherten Schreibweg wie der
-# Autostart-Schalter, siehe _startup_schreiben()), und beim Start des
-# Frontends wird einmal nachgesehen, ob sie noch da ist.
-F4_HOTKEY_FLAG = "/media/fat/frontend/f4_hotkey"
-F4_HOTKEY_SCRIPT = "/media/fat/frontend/f4_hotkey.sh"
-F4_BOOT_MARKER = "f4_hotkey.sh"
-F4_BOOT_LINE = "/media/fat/frontend/f4_hotkey.sh &"
-
-
-def f4_hotkey_enabled():
-    return os.path.exists(F4_HOTKEY_FLAG)
-
-
-def f4_boot_entry_ok():
-    """True, wenn der Waechter beim Booten ueberhaupt gestartet wird.
-
-    Ohne diesen Eintrag ist der Schalter oben wirkungslos, sobald der
-    MiSTer einmal aus war - siehe Kopfkommentar."""
-    zeilen = _startup_zeilen()
-    if not zeilen:
-        return False
-    for z in zeilen:
-        t = z.strip()
-        if t and not t.startswith("#") and F4_BOOT_MARKER in t:
-            return True
-    return False
-
-
-def f4_boot_entry_sicherstellen():
-    """Traegt die Startzeile nach, falls sie fehlt. Liefert True, wenn
-    sie danach da ist (oder schon da war)."""
-    if f4_boot_entry_ok():
-        return True
-    zeilen = _startup_zeilen()
-    if zeilen is None:
-        zeilen = ["#!/bin/bash"]
-    neu = list(zeilen)
-    if not neu or not neu[0].startswith("#!"):
-        neu.insert(0, "#!/bin/bash")
-    neu.append(F4_BOOT_LINE)
-    ok = _startup_schreiben(
-        neu, lambda t: t.startswith("#!") and F4_BOOT_MARKER in t)
-    LOG("f4_hotkey: Startzeile in user-startup.sh %s"
-        % ("nachgetragen" if ok else "konnte NICHT nachgetragen werden"))
-    return ok
-
-
-def f4_selbstheilung():
-    """Beim Start des Frontends einmal nachsehen: Schalter an, aber
-    keine Startzeile? Dann nachtragen.
-
-    Schreibt hoechstens EINMAL - danach ist der Eintrag da und
-    f4_boot_entry_ok() liefert sofort True. Repariert bestehende
-    Installationen, ohne dass der Nutzer irgendetwas tun muss."""
-    if f4_hotkey_enabled() and not f4_boot_entry_ok():
-        LOG("f4_hotkey: Schalter ist an, aber die Startzeile in "
-            "user-startup.sh fehlt - wird nachgetragen.")
-        f4_boot_entry_sicherstellen()
-
-
-def toggle_f4_hotkey():
-    """Schaltet den F4-Schnellstart um. Liefert (an, ueberlebt_neustart).
-
-    Beim Einschalten passieren DREI Dinge, nicht nur eines:
-      1. Schalterdatei anlegen (das eigentliche "an").
-      2. Startzeile in user-startup.sh nachtragen, falls sie fehlt -
-         sonst ist der Schalter nach dem naechsten Kaltstart
-         wirkungslos (siehe Kopfkommentar bei F4_BOOT_MARKER; genau
-         das war der gemeldete Fehler).
-      3. Den Waechter sofort starten, statt auf den naechsten Neustart
-         zu vertroesten.
-
-    Der zweite Rueckgabewert sagt, ob Schritt 2 geklappt hat - nur dann
-    darf dem Nutzer versprochen werden, dass F4 auch nach einem
-    Kaltstart funktioniert.
-
-    Beim Ausschalten ist nichts weiter zu tun: der laufende Waechter
-    prueft die Schalterdatei einmal pro Sekunde selbst und beendet sich
-    dann von allein (siehe main() in f4_hotkey.py). Die Startzeile
-    bleibt bewusst stehen - sie ist ohne Schalterdatei wirkungslos, und
-    jedes unnoetige Schreiben in user-startup.sh ist ein Risiko, das
-    nichts einbringt."""
-    if f4_hotkey_enabled():
-        try:
-            os.remove(F4_HOTKEY_FLAG)
-        except OSError as e:
-            LOG("toggle_f4_hotkey: Loeschen fehlgeschlagen: %s" % e)
-            return True, f4_boot_entry_ok()
-        return False, f4_boot_entry_ok()
-    try:
-        d = os.path.dirname(F4_HOTKEY_FLAG)
-        if d:
-            os.makedirs(d, exist_ok=True)
-        open(F4_HOTKEY_FLAG, "w").close()
-    except OSError as e:
-        LOG("toggle_f4_hotkey: Anlegen fehlgeschlagen: %s" % e)
-        return False, False
-    boot_ok = f4_boot_entry_sicherstellen()
-    _f4_hotkey_starten()
-    return True, boot_ok
-
-
-def _f4_hotkey_starten():
-    """Waechter jetzt starten, falls er nicht ohnehin schon laeuft.
-
-    Ein zweiter Start ist unschaedlich: f4_hotkey.py sichert sich per
-    flock() gegen Mehrfachstarts ab und beendet sich in dem Fall sofort
-    wieder. Fehler werden bewusst nur protokolliert - ein nicht
-    startender Waechter darf den Menuepunkt nicht scheitern lassen, der
-    Schalter selbst ist ja korrekt gesetzt und greift spaetestens beim
-    naechsten Neustart."""
-    if not os.path.exists(F4_HOTKEY_SCRIPT):
-        LOG("f4_hotkey: %s fehlt - greift erst nach einer Neuinstallation"
-            % F4_HOTKEY_SCRIPT)
-        return
-    try:
-        subprocess.Popen(["/bin/bash", F4_HOTKEY_SCRIPT],
-                         stdin=subprocess.DEVNULL,
-                         stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL,
-                         start_new_session=True)
-    except OSError as e:
-        LOG("f4_hotkey: Start fehlgeschlagen: %s" % e)
+# Die Installer und Frontend_Update.sh raeumen die Startzeile aus
+# /media/fat/linux/user-startup.sh sowie die zurueckgebliebenen
+# Dateien bei bestehenden Installationen aktiv weg - sonst startete
+# dort bei jedem Boot ein Waechter, den es nicht mehr gibt.
 
 
 # NEUES FEATURE (Nutzerfrage: "ist da jetzt quasi ein Schalter unter
@@ -958,9 +821,9 @@ def _f4_hotkey_starten():
 # WARUM NICHT die vorhandene "disable"-Datei
 # ---------------------------------------------------------------
 # /media/fat/frontend/disable gibt es laengst - die prueft aber AUCH
-# Frontend_Start.sh und der neue F4-Waechter. Damit waere alles aus,
-# auch der manuelle Start und F4 - das genaue Gegenteil des Wunsches
-# ("Autostart aus, dafuer F4").
+# Frontend_Start.sh. Damit waere alles aus, auch der manuelle Start -
+# das genaue Gegenteil des Wunsches ("Autostart aus, aber von Hand
+# starten koennen").
 #
 # WAS HIER PASSIERT - und warum das die heikelste Stelle im Projekt ist
 # ---------------------------------------------------------------
@@ -982,10 +845,8 @@ def _f4_hotkey_starten():
 #      geprueft (Shebang vorhanden, gewuenschte Aenderung tatsaechlich
 #      drin). Faellt die Pruefung durch, wird die Nebendatei verworfen
 #      und die Zieldatei bleibt unangetastet.
-#   4. Alle anderen Zeilen bleiben zeichengenau erhalten - auch der
-#      Eintrag des F4-Waechters (der enthaelt "f4_hotkey.sh", nicht
-#      "frontend_boot.sh") und alles, was der Nutzer sonst dort stehen
-#      hat.
+#   4. Alle anderen Zeilen bleiben zeichengenau erhalten - alles, was
+#      der Nutzer sonst dort stehen hat, wird nicht angefasst.
 USER_STARTUP_FILE = "/media/fat/linux/user-startup.sh"
 AUTOSTART_MARKER = "frontend_boot.sh"
 AUTOSTART_LINE = "/media/fat/frontend/frontend_boot.sh &"
@@ -1119,9 +980,9 @@ def toggle_autostart():
 # niemanden ueberrascht. Wer die Aufraeumfunktion moechte, schaltet sie
 # ein.
 #
-# Die Datei bedeutet also "Filter AN", nicht "abgeschaltet" - wie beim
-# F4-Schalter und aus demselben Grund: was standardmaessig aus ist,
-# wird durch eine Datei eingeschaltet, nicht umgekehrt.
+# Die Datei bedeutet also "Filter AN", nicht "abgeschaltet" - was
+# standardmaessig aus ist, wird durch eine Datei eingeschaltet, nicht
+# umgekehrt.
 ROM_FILTER_FLAG = "/media/fat/frontend/rom_filter"
 
 
