@@ -737,7 +737,31 @@ class InputManager:
                               # einem spiel-eigenen Pause-Menue gedrueckt
                               # wird als eine Dreifach-Kombination
 
-    RESET_HOLD = 0.6          # Sekunden F5 halten (Reset im laufenden
+    RESET_HOLD = 0.0          # NUTZERWUNSCH (Build 75): "F5-Reset-Funktion
+                              # haette ich gerne auf sofortigen Tastendruck,
+                              # wenn das geht". 0 = ausloesen, sobald die
+                              # Taste erkannt wird - siehe die Stelle in
+                              # wait_game_exit(), wo das Bit gesetzt wird:
+                              # bei 0 wird DORT sofort ausgeloest, nicht erst
+                              # in der naechsten Schleifenrunde (die haengt
+                              # an select(..., 0.2) und haette allein schon
+                              # bis zu 0,2 s Verzoegerung gebracht).
+                              #
+                              # EHRLICH BENANNTES RISIKO: ein versehentlicher
+                              # F5-Antipper waehrend des Spielens ist jetzt
+                              # sofort ein Reset, also im Zweifel ein
+                              # verlorener Spielstand. Die Haltezeit war
+                              # genau dafuer da. Der Nutzer hat das
+                              # ausdruecklich so gewuenscht; wer sie
+                              # zurueckhaben will, setzt hier wieder 0.6.
+                              # Ein mehrfaches Ausloesen durch blosses
+                              # HALTEN ist unabhaengig davon ausgeschlossen
+                              # (siehe reset_gefeuert unten) - es braucht
+                              # immer erst ein Loslassen.
+                              #
+                              # Frueherer Wert: 0.6 Sekunden halten.
+                              #
+                              # Reset im laufenden
                               # Core, ueber denselben hidraw-Weg wie
                               # der Esc-Notausstieg - siehe dortiger
                               # Kommentar). Nutzerwunsch: Reset per
@@ -864,6 +888,13 @@ class InputManager:
         # zuruecksetzen).
         kbd_reset_fds = {fd: False for fd in kbd_fds}
         reset_since = None
+        # NEU (Build 75, sofortiges Ausloesen): merkt sich, dass fuer den
+        # AKTUELLEN Tastendruck bereits ein Reset gesendet wurde. Ohne
+        # das wuerde blosses Halten von F5 immer wieder ausloesen - bei
+        # der frueheren Haltezeit von 0,6 s fiel das nicht auf, bei 0 s
+        # waere es ein Dauerfeuer. Wird erst zurueckgesetzt, wenn die
+        # Taste nachweislich losgelassen wurde.
+        reset_gefeuert = False
         try:
             while True:
                 now = time.monotonic()
@@ -884,12 +915,14 @@ class InputManager:
                 # spurlos verloren. Der Reset selbst verlaesst die
                 # Funktion nicht (kein "return"), die nachfolgenden
                 # Ausstiegs-Pruefungen laufen also in jedem Fall noch mit.
-                if reset_since is not None and now - reset_since >= self.RESET_HOLD:
+                if (reset_since is not None
+                        and now - reset_since >= self.RESET_HOLD):
                     LOG("wait_game_exit: F5 %.1fs gehalten - loese "
                         "Reset aus (Strg+Alt+AltGr ueber uinput)"
                         % self.RESET_HOLD)
                     send_reset_combo()
                     reset_since = None
+                    reset_gefeuert = True
                 if combo_since is not None and now - combo_since >= self.COMBO_HOLD:
                     return "combo"
                 if (kbd_combo_since is not None
@@ -963,16 +996,37 @@ class InputManager:
                         # durch zwischenzeitliche "losgelassen"-Reports,
                         # die bei einem echten, ununterbrochenen Halten
                         # eigentlich nicht auftreten sollten)?
-                        if any_reset_held and reset_since is None:
+                        if any_reset_held and reset_since is None \
+                                and not reset_gefeuert:
                             reset_since = time.monotonic()
                             LOG("wait_game_exit: reset_since GESETZT "
                                 "(F5-Bit erkannt)")
-                        elif not any_reset_held and reset_since is not None:
-                            LOG("wait_game_exit: reset_since ZURUECKGESETZT "
-                                "nach %.2fs (F5-Bit nicht mehr erkannt, "
-                                "Schwelle war %.1fs)"
-                                % (time.monotonic() - reset_since, self.RESET_HOLD))
+                            # NEU (Build 75, Nutzerwunsch "sofortiger
+                            # Tastendruck"): ohne Haltezeit HIER
+                            # ausloesen, im selben Moment, in dem die
+                            # Taste erkannt wird. Wuerde man auf den
+                            # Schleifenanfang warten, kaeme die
+                            # Wartezeit von select(..., 0.2) obendrauf -
+                            # bis zu 0,2 s, die man deutlich merkt,
+                            # wenn man "sofort" erwartet.
+                            if self.RESET_HOLD <= 0:
+                                LOG("wait_game_exit: F5 gedrueckt - loese "
+                                    "Reset SOFORT aus (Strg+Alt+AltGr "
+                                    "ueber uinput)")
+                                send_reset_combo()
+                                reset_since = None
+                                reset_gefeuert = True
+                        elif not any_reset_held:
+                            if reset_since is not None:
+                                LOG("wait_game_exit: reset_since ZURUECKGESETZT "
+                                    "nach %.2fs (F5-Bit nicht mehr erkannt, "
+                                    "Schwelle war %.1fs)"
+                                    % (time.monotonic() - reset_since,
+                                       self.RESET_HOLD))
                             reset_since = None
+                            # Taste losgelassen: der naechste Druck darf
+                            # wieder ausloesen.
+                            reset_gefeuert = False
                         continue
                     dev = fds.get(fd)
                     try:

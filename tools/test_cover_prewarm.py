@@ -512,6 +512,126 @@ check('und "Miniaturen vorbereiten" nimmt die Logos mit',
       and fe_py_2.count("kategorie_logo_auftraege()") >= 3)
 
 
+# ----------------------------------------------------------------------
+print()
+print("Test 9: die SONDERKATEGORIEN sind genauso abgedeckt")
+# NUTZERWUNSCH (Build 75): "bitte auch die anderen bedenken wie die
+# Kategorie Zuletzt gespielt, Weiterspielen, SMW Hacks, SNES ALTTP
+# Tracker, Sammlungen, RA-Erfolgsjaeger, Zufalls-Zock, System - nicht
+# dass da auch noch irgendwo was haengt, so wie jetzt erkannt auf der
+# Hauptseite."
+#
+# Diese Kategorien sind der gefaehrliche Fall, weil sie ANDERS gebaut
+# sind als ein normales System: sie haben KEINEN eigenen Systemkey
+# (syskey=None), weil sie Spiele aus mehreren Systemen mischen. Der
+# Systemkey steckt stattdessen in jedem Eintrag selbst
+# (_item_syskey()). Wuerde der Vorauslader hier den Kategorie-Systemkey
+# nehmen, suchte er die Cover im falschen Ordner - und wieder faellt es
+# nicht auf, es bleibt nur langsam.
+#
+# In dieser Sandbox liegen keine echten ROMs, deshalb werden die
+# Kategorien hier so nachgebaut, wie build_categories() sie anlegt:
+# Name aus der Uebersetzungstabelle, syskey=None, Eintraege aus
+# verschiedenen Systemen.
+SONDER = [
+    (fm.t("recent_cat"), "Zuletzt gespielt"),
+    (fm.t("continue_cat"), "Weiterspielen"),
+    (fm.t("favorites_cat"), "Favoriten"),
+    ("%s (3)" % fm.t("collections_cat"), "Sammlungen"),
+    ("%s (7)" % fm.t("ra_hunter_cat"), "RA-Erfolgsjaeger"),
+]
+GEMISCHT = [
+    ("Super Mario World", "game", ("/f/smw.sfc", ".sfc", "SNES", None, None)),
+    ("Sonic the Hedgehog", "game", ("/f/sonic.md", ".md", "Genesis", None, None)),
+    ("Super Mario Land", "game", ("/f/sml.gb", ".gb", "GAMEBOY", None, None)),
+    ("Castlevania - Symphony of the Night", "game",
+     ("/f/sotn.cue", ".cue", "PSX", None, None)),
+]
+for w, h, aufl in ((320, 240, "CRT"), (1920, 1080, "HDMI")):
+    for kat_name, klartext in SONDER:
+        H.set_screen(w, h)
+        fe = H.make_frontend(page=1)
+        # Die Kategorie so umbauen, wie build_categories() sie anlegt.
+        _name, node, _sk = fe.cats[fe.cat_i]
+        fe.cats[fe.cat_i] = (kat_name, node, None)
+        node["folders"] = {}
+        node["items"] = list(GEMISCHT)
+        node.pop("_display_items_cache", None)
+        fe.item_i = 0
+        fe.scroll = 0
+        geo = fe._art_panel_geometrie()
+        if geo is None:
+            check("%s/%s: Boxart-Spalte vorhanden" % (aufl, klartext), False)
+            continue
+        angefragt = []
+        _e = A.ART.get_scaled
+
+        def _mit(pfad, mw, mh, _ee=_e):
+            angefragt.append((pfad, mw, mh))
+            return _ee(pfad, mw, mh)
+
+        A.ART.get_scaled = _mit
+        try:
+            items = fe._display_items()
+            alle_gleich = True
+            details = ""
+            for i in range(len(items)):
+                fe.item_i = i
+                angefragt.clear()
+                fe.draw_page_items()
+                gez = [a for a in angefragt if a[0].startswith(A.ART_BASE)
+                       or a[0].startswith(A.ART_HD)]
+                vorher = fe.cover_pfad_und_kasten(items[i], None, geo)
+                if not gez or not vorher or tuple(gez[0]) != tuple(vorher):
+                    alle_gleich = False
+                    details = "Zeichnen=%s Vorauslader=%s" % (
+                        gez[0] if gez else None, vorher)
+                    break
+        finally:
+            A.ART.get_scaled = _e
+        check("%s/%s: jeder Eintrag wird richtig vorhergesagt"
+              % (aufl, klartext), alle_gleich, details)
+
+print()
+print("Test 9b: bei gemischten Kategorien zaehlt der Systemkey des EINTRAGS")
+# Der eigentliche Stolperstein dieser Kategorien - hier ausdruecklich
+# festgenagelt, damit niemand spaeter versehentlich auf den
+# Kategorie-Systemkey zurueckfaellt.
+H.set_screen(320, 240)
+fe = H.make_frontend(page=1)
+_name, node, _sk = fe.cats[fe.cat_i]
+fe.cats[fe.cat_i] = (fm.t("recent_cat"), node, None)
+node["folders"] = {}
+node["items"] = list(GEMISCHT)
+node.pop("_display_items_cache", None)
+geo = fe._art_panel_geometrie()
+pfade = [fe.cover_pfad_und_kasten(it, None, geo)[0] for it in GEMISCHT]
+check("das SNES-Spiel wird im SNES-Ordner gesucht", "/SNES/" in pfade[0],
+      pfade[0])
+check("das Genesis-Spiel im Genesis-Ordner", "/Genesis/" in pfade[1],
+      pfade[1])
+check("das Game-Boy-Spiel im GAMEBOY-Ordner", "/GAMEBOY/" in pfade[2],
+      pfade[2])
+check("das PSX-Spiel im PSX-Ordner", "/PSX/" in pfade[3], pfade[3])
+
+print()
+print("Test 9c: die Logos der Sonderkategorien werden vorgewaermt")
+# Diese Kategorien haben syskey=None, ihr Logo findet sich nur ueber
+# _category_art_key() (CONTINUE.art, RECENT.art, COLLECTIONS.art,
+# RA_HUNTER.art ...). Genau dieses CONTINUE.art war der 722-ms-Posten
+# aus dem Log des Nutzers.
+H.set_screen(320, 240)
+fe = H.make_frontend(page=0)
+node = fe.cats[0][1]
+fe.cats = [(kat_name, node, None) for kat_name, _kl in SONDER] + [
+    (fm.t("wot_cat"), node, None) if hasattr(fm, "t") else fe.cats[0]]
+auftraege = fe.kategorie_logo_auftraege()
+namen = {os.path.basename(p) for p, _w, _h in auftraege}
+for erwartet in ("CONTINUE.art", "RECENT.art", "FAVORITES.art",
+                 "COLLECTIONS.art", "RA_HUNTER.art"):
+    check("%s steht in der Vorwaermliste" % erwartet, erwartet in namen,
+          str(sorted(namen)))
+
 shutil.rmtree(TMP, ignore_errors=True)
 
 print()

@@ -29,6 +29,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_rom_filter.py \
   && python3 tools/test_mister_ini.py \
   && python3 tools/test_cover_prewarm.py \
+  && python3 tools/test_reset_sofort.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -47,6 +48,7 @@ python3 tools/regression_test.py \
 | `test_rom_filter.py` | Test (Pass/Fail) | ROMs verschwinden nicht mehr stillschweigend aus der Liste |
 | `test_mister_ini.py` | Test (Pass/Fail) | Keine Video-Reste in der MiSTer.ini - und kein Anfassen fremder Bloecke |
 | `test_cover_prewarm.py` | Test (Pass/Fail) | Cover-Vorberechnung: gleiche Kastengroesse wie der Zeichenpfad, bitgleiche Miniaturen |
+| `test_reset_sofort.py` | Test (Pass/Fail) | F5-Reset ohne Haltezeit, kein Dauerfeuer beim Halten |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -345,6 +347,25 @@ haben keine Sperre), der Thread arbeitet ab und laesst sich abbrechen
 (4/4b), die Auftragsliste laesst schon Vorhandenes weg und schaut in
 Scrollrichtung weiter voraus als zurueck (4c/4d), Menuepunkt und
 Uebersetzungen (5).
+
+## test_reset_sofort.py
+
+Prueft den F5-Reset auf sofortigen Tastendruck (Nutzerwunsch:
+"F5-Reset-Funktion haette ich gerne auf sofortigen Tastendruck, wenn das
+geht"). Vorher lagen drei Verzoegerungen hintereinander: 0,6 s
+Haltezeit, bis zu 0,2 s weil die Haltezeit erst am Anfang der naechsten
+Schleifenrunde geprueft wurde (die vorher in `select(..., 0.2)` wartet),
+und 0,2 s fuer das virtuelle Tastatur-Geraet, das bei JEDEM Reset neu
+angelegt wurde. Uebrig bleibt die Tastendruckdauer von 0,1 s.
+
+Der wichtigste Block ist Test 3: ohne Haltezeit darf blosses HALTEN
+nicht zum Dauerfeuer werden - es braucht immer erst ein Loslassen. Dazu
+geprueft: das Geraet wird nur einmal angelegt und danach
+wiederverwendet, der zweite Aufruf wartet nachweislich nicht mehr auf
+das Anlegen, Druck UND Loslassen aller drei Tasten werden gesendet
+(bleibt eine haengen, kaeme kein weiterer Reset an), und nach einem
+Schreibfehler wird das Geraet verworfen und beim naechsten Mal neu
+angelegt - sonst waere ein einmal kaputtes Geraet ein Dauerproblem.
 
 ## diag_lightpath.py
 

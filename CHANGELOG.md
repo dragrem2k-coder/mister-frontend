@@ -7,6 +7,49 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**F5-Reset ohne Halten, und die Sonderkategorien nachgeprüft** (Build 75
+— Nutzerwünsche: „F5-Reset-Funktion hätte ich gerne auf sofortigen
+Tastendruck, wenn das geht" und „bitte auch die anderen bedenken wie die
+Kategorie Zuletzt gespielt, Weiterspielen, SMW Hacks, SNES ALTTP
+Tracker, Sammlungen, RA-Erfolgsjäger, Zufalls-Zock, System — nicht dass
+da auch noch irgendwo was hängt"):
+
+**1. F5 löst jetzt beim Drücken aus.** Es lagen drei Verzögerungen
+hintereinander, und nur die erste war beabsichtigt:
+
+- 0,6 s Haltezeit
+- bis zu 0,2 s, weil die Haltezeit erst am *Anfang* der nächsten
+  Schleifenrunde geprüft wurde — und die wartet vorher in
+  `select(..., 0.2)`
+- 0,2 s, weil das virtuelle Tastatur-Gerät bei **jedem** Reset neu
+  angelegt wurde; der Kernel braucht diese Zeit, um es bekannt zu
+  machen
+
+Macht bis zu 1,0 s. Jetzt wird direkt an der Stelle ausgelöst, an der
+die Taste erkannt wird, und das Gerät wird einmal angelegt und
+wiederverwendet. Übrig bleibt die Tastendruckdauer von 0,1 s, die der
+Empfänger braucht, um den Druck überhaupt zu sehen.
+
+*Ehrlich benanntes Risiko:* ein versehentlicher F5-Antipper während des
+Spielens ist jetzt sofort ein Reset, also im Zweifel ein verlorener
+Spielstand — genau dafür war die Haltezeit da. Wer sie zurückhaben will,
+setzt `RESET_HOLD` in `fe/input.py` wieder auf 0.6. Ein Dauerfeuer durch
+bloßes Halten ist unabhängig davon ausgeschlossen: es braucht immer erst
+ein Loslassen.
+
+**2. Die Sonderkategorien sind nachweislich abgedeckt.** Sie sind der
+gefährliche Fall, weil sie anders gebaut sind als ein normales System:
+„Zuletzt gespielt", „Weiterspielen", „Favoriten", „Sammlungen" und
+„RA-Erfolgsjäger" haben **keinen eigenen Systemkey** — sie mischen
+Spiele aus mehreren Systemen, und der Systemkey steckt in jedem Eintrag
+selbst. Würde der Vorauslader hier den Kategorie-Systemkey nehmen,
+suchte er die Cover im falschen Ordner, und wieder fiele es nicht auf:
+es bliebe nur langsam. `tools/test_cover_prewarm.py` baut diese
+Kategorien jetzt so nach, wie `build_categories()` sie anlegt, und prüft
+in beiden Auflösungen Eintrag für Eintrag, dass Vorhersage und
+tatsächliche Anfrage übereinstimmen — inklusive der Logos
+(`CONTINUE.art`, `RECENT.art`, `COLLECTIONS.art`, `RA_HUNTER.art`).
+
 **Der 169-ms-Ausreißer bei einem reinen Cache-Treffer** (Build 74 —
 Nutzer-Rückmeldung: „sind immer noch ein paar Ausreißer drin, zum
 Beispiel CONTINUE.art, manche andere auf der Hauptseite habe ich das

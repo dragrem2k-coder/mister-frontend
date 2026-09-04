@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Reset im laufenden Core ueber Tab (lange halten) - Nutzerwunsch,
-gilt fuer ALLE Cores gleichermassen (Konsolen- wie RA-Cores), ohne
-den Core selbst neu zu laden (wichtig fuer RA: kein Core-Wechsel ->
-kein Risiko, versehentlich auf die Nicht-RA-Variante zu wechseln).
+Reset im laufenden Core ueber F5 - Nutzerwunsch, gilt fuer ALLE Cores
+gleichermassen (Konsolen- wie RA-Cores), ohne den Core selbst neu zu
+laden (wichtig fuer RA: kein Core-Wechsel -> kein Risiko,
+versehentlich auf die Nicht-RA-Variante zu wechseln).
+
+GEAENDERT (Build 75, Nutzerwunsch "F5-Reset-Funktion haette ich gerne
+auf sofortigen Tastendruck"): frueher musste F5 0,6 Sekunden gehalten
+werden (urspruenglich war es sogar Tab). Jetzt loest der erste
+erkannte Tastendruck sofort aus - siehe RESET_HOLD in fe/input.py fuer
+die Umschaltung und das dort ausdruecklich benannte Risiko.
 
 HINTERGRUND: MiSTers eigener "User"-Knopf (gelber Knopf am Board/
 IO-Board) loest per Firmware einen Reset INNERHALB des laufenden
@@ -58,45 +64,75 @@ KEY_LEFTCTRL, KEY_LEFTALT, KEY_RIGHTALT = 29, 56, 100
 # ohnehin selbst neu), zwei unsigned short (Typ, Code), ein int (Wert).
 _EVENT_FMT = "llHHi"
 
-def send_reset_combo():
-    """Simuliert Strg+Alt+AltGr ueber ein frisch angelegtes virtuelles
-    Tastatur-Geraet. Liefert True, wenn das Geraet erfolgreich
-    angelegt und die Ereignisse geschrieben wurden (KEINE Garantie,
-    dass MiSTer das auch tatsaechlich als Tastendruck erkennt - nur,
-    dass unser Teil fehlerfrei durchgelaufen ist). False bei jedem
-    Fehler (z.B. /dev/uinput nicht vorhanden - dann ist das
-    uinput-Kernel-Modul nicht geladen)."""
-    LOG("send_reset_combo: aufgerufen")
+# NEU (Build 75, Nutzerwunsch "F5-Reset auf sofortigen Tastendruck"):
+# das einmal angelegte virtuelle Geraet bleibt offen.
+#
+# Vorher wurde bei JEDEM Auslesen ein neues Geraet angelegt und danach
+# 0,2 Sekunden gewartet, bis der Kernel es anderen Prozessen (inklusive
+# MiSTers eigenem) bekannt gemacht hat. Diese Wartezeit ist echt und
+# noetig - aber nur BEIM ANLEGEN. Sie bei jedem Reset erneut zu zahlen
+# hiess: selbst bei sofortigem Tastendruck vergingen 0,2 s, bevor die
+# Tastenkombination ueberhaupt losgeschickt wurde, plus 0,1 s
+# Tastendruckdauer. Genau das, was "sofort" verhindert.
+#
+# Jetzt wird das Geraet beim ersten Reset angelegt und bleibt bestehen;
+# jeder weitere Reset kostet nur noch die 0,1 s Tastendruckdauer, die
+# der Empfaenger braucht, um den Druck ueberhaupt zu sehen.
+_geraet_fd = None
+
+
+def _geraet_holen():
+    """Das virtuelle Tastatur-Geraet - beim ersten Aufruf anlegen,
+    danach wiederverwenden. Rueckgabe: Dateideskriptor oder None."""
+    global _geraet_fd
+    if _geraet_fd is not None:
+        return _geraet_fd
     try:
         fd = os.open("/dev/uinput", os.O_WRONLY | os.O_NONBLOCK)
     except OSError as e:
         LOG("send_reset_combo: /dev/uinput nicht verfuegbar: %s" % e)
-        return False
-
+        return None
     try:
         fcntl.ioctl(fd, UI_SET_EVBIT, EV_KEY)
         for k in (KEY_LEFTCTRL, KEY_LEFTALT, KEY_RIGHTALT):
             fcntl.ioctl(fd, UI_SET_KEYBIT, k)
-
-        # struct uinput_user_dev: char name[80]; struct input_id id
-        # (4x unsigned short: bustype, vendor, product, version);
-        # int ff_effects_max; int absmax[64]; int absmin[64];
-        # int absfuzz[64]; int absflat[64]. Nur der Name + eine
-        # minimale (aber gueltige) input_id wird gebraucht - der Rest
-        # bleibt genullt (kein Kraftfeedback, keine Analogachsen).
         name = b"dragend-reset-trigger"
         uidev = (name + b"\x00" * (80 - len(name))
-                 + struct.pack("HHHH", 0, 1, 1, 1)   # bustype, vendor, product, version
-                 + struct.pack("i", 0)                 # ff_effects_max
-                 + b"\x00" * (4 * 64 * 4))              # absmax/absmin/absfuzz/absflat
+                 + struct.pack("HHHH", 0, 1, 1, 1)
+                 + struct.pack("i", 0)
+                 + b"\x00" * (4 * 64 * 4))
         os.write(fd, uidev)
         fcntl.ioctl(fd, UI_DEV_CREATE)
-        # Kurze Pause: der Kernel braucht einen Moment, bis das neue
-        # Geraet fuer andere Prozesse (inkl. MiSTers eigenem) sichtbar
-        # ist - ohne diese Pause koennten die folgenden Ereignisse
-        # verloren gehen, bevor irgendwer zuhoert.
+        # Diese Pause bleibt - sie ist beim ANLEGEN wirklich noetig
+        # (der Kernel muss das Geraet erst bekannt machen). Sie faellt
+        # jetzt nur noch EINMAL an, nicht bei jedem Reset.
         time.sleep(0.2)
+    except Exception as e:                          # noqa: BLE001
+        LOG("send_reset_combo: Geraet anlegen fehlgeschlagen (%s): %s"
+            % (type(e).__name__, e))
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        return None
+    _geraet_fd = fd
+    LOG("send_reset_combo: virtuelles Tastatur-Geraet angelegt "
+        "(bleibt fuer weitere Resets bestehen)")
+    return fd
 
+
+def send_reset_combo():
+    """Simuliert Strg+Alt+AltGr ueber ein virtuelles Tastatur-Geraet.
+    Liefert True, wenn die Ereignisse geschrieben wurden (KEINE
+    Garantie, dass MiSTer das auch tatsaechlich als Tastendruck erkennt -
+    nur, dass unser Teil fehlerfrei durchgelaufen ist). False bei jedem
+    Fehler (z.B. /dev/uinput nicht vorhanden - dann ist das
+    uinput-Kernel-Modul nicht geladen)."""
+    LOG("send_reset_combo: aufgerufen")
+    fd = _geraet_holen()
+    if fd is None:
+        return False
+    try:
         def emit(etype, code, value):
             os.write(fd, struct.pack(_EVENT_FMT, 0, 0, etype, code, value))
 
@@ -107,26 +143,26 @@ def send_reset_combo():
         for k in (KEY_RIGHTALT, KEY_LEFTALT, KEY_LEFTCTRL):
             emit(EV_KEY, k, 0)
         emit(EV_SYN, SYN_REPORT, 0)
-        time.sleep(0.1)
-
         LOG("send_reset_combo: Strg+Alt+AltGr ueber virtuelles Geraet gesendet")
         return True
-    except Exception as e:
-        # ERWEITERT (Nutzer-Rueckmeldung: Bit-Erkennung bestaetigt
-        # korrekt, Reset loest trotzdem nicht aus - moegliche Ursache:
-        # ein Fehler HIER, der bisher unbemerkt durchrutschte, weil
-        # nur OSError abgefangen wurde. Jetzt jede Fehlerart geloggt,
-        # nicht nur OSError - falls z.B. ein struct.pack()-Aufruf mit
-        # falscher Groesse scheitert (struct.error) oder ein anderer,
-        # unerwarteter Fehler auftritt, war das bisher STUMM.
+    except Exception as e:                          # noqa: BLE001
         LOG("send_reset_combo: Fehler (%s): %s" % (type(e).__name__, e))
+        # Das Geraet koennte kaputt sein (z.B. weil das uinput-Modul
+        # entladen wurde) - beim naechsten Mal neu anlegen lassen.
+        _geraet_schliessen()
         return False
-    finally:
-        try:
-            fcntl.ioctl(fd, UI_DEV_DESTROY)
-        except OSError:
-            pass
-        try:
-            os.close(fd)
-        except OSError:
-            pass
+
+
+def _geraet_schliessen():
+    global _geraet_fd
+    if _geraet_fd is None:
+        return
+    try:
+        fcntl.ioctl(_geraet_fd, UI_DEV_DESTROY)
+    except OSError:
+        pass
+    try:
+        os.close(_geraet_fd)
+    except OSError:
+        pass
+    _geraet_fd = None
