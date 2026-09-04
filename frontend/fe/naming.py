@@ -135,35 +135,68 @@ def _is_junk(name):
 # Klammer OHNE weiteren Text/Komma dazwischen.
 _JAPAN_ONLY = re.compile(r"[\(\[]\s*(?:japan|j)\s*[\)\]]", re.I)
 
-# BUGFIX (Nutzer-Rueckmeldung: "Tetris (Japan) (En).gb wurde weder mit
-# kuratierter Liste noch ohne erkannt - erst als ich sie in Tetris.gb
-# umbenannt habe. Das ist genau die Datei, die bei RetroAchievements
-# genutzt werden soll").
+# BUGFIX, Runde 2 (Nutzer-Rueckmeldung ueber Bekannte - erst
+# "Tetris (Japan) (En).gb", dann diese hier:
 #
-# Der Filter oben kannte bereits die Ausnahme "(Japan, USA)" - mehrere
-# Regionen in EINER Klammer. Er kannte aber nicht den in No-Intro-Sets
-# sehr haeufigen Fall: japanisches Release MIT englischer Sprachfassung,
-# wobei die Sprache in einer ZWEITEN Klammer steht:
+#     Seiken Densetsu 3 (Japan) (German).sfc
+#     Magic Knight Rayearth (J) [T+Ger].sfc
 #
-#     Tetris (Japan) (En).gb
-#     Puyo Puyo (Japan) (En,Ja).gb
+# "Das sind wieder so Sonderlocken, das muesste nochmal erweitert
+# werden.")
 #
-# Solche Titel sind auf Englisch spielbar - sie auszublenden ist genau
-# das, was der Filter NICHT tun soll. Und weil er beim Einlesen lief,
-# tauchte die Datei nirgends auf: nicht in der kuratierten Liste, nicht
-# ohne sie, und ohne jeden Hinweis, warum.
+# Die erste Runde erkannte nur zweibuchstabige Sprachcodes und nur
+# Englisch. Damit fielen zwei sehr verbreitete Schreibweisen durch:
 #
-# Erkannt wird eine Sprachangabe als Klammergruppe aus zwei Buchstaben,
-# optional mehrere durch Komma getrennt (En / En,Fr / En,Ja,De) - so
-# schreiben No-Intro und Redump das durchgaengig.
-_SPRACHE = re.compile(r"[\(\[]\s*[A-Z][a-z](?:\s*,\s*[A-Z][a-z])*\s*[\)\]]")
+#  * AUSGESCHRIEBENE Sprachnamen - "(German)", "(English)", "(Spanish)".
+#  * UEBERSETZUNGS-Kennzeichen der GoodTools-Konvention - "[T+Ger]"
+#    (neuere Uebersetzung), "[T-Eng]" (aeltere), oft mit Versions- und
+#    Gruppenzusatz wie "[T+Ger1.01_Team]".
+#
+# Beides bedeutet dasselbe: das Spiel ist NICHT nur auf Japanisch
+# nutzbar. Ein Fan-Uebersetzungspatch ist sogar der haeufigste Grund
+# ueberhaupt, ein japanisches ROM zu behalten - ausgerechnet die
+# auszublenden ist das Gegenteil des Gewollten.
+#
+# Regel jetzt: ein Japan-Kennzeichen blendet nur dann aus, wenn im
+# Namen KEIN Hinweis auf eine andere Sprache steht. Ein
+# Uebersetzungs-Kennzeichen zaehlt dabei IMMER als solcher Hinweis -
+# unabhaengig davon, in welche Sprache uebersetzt wurde, denn eine
+# Uebersetzung ins Japanische gibt es bei japanischen ROMs nicht.
+
+# GoodTools-Uebersetzungskennzeichen: [T+Ger], [T-Eng], [T+Ger1.01],
+# (T+Spa) ... - ein "T", dann + oder -, in runden ODER eckigen Klammern.
+_UEBERSETZUNG = re.compile(r"[\(\[]\s*T[+-]", re.I)
+
+# Ausgeschriebene Sprachnamen, wie sie in Sammlungen vorkommen.
+# Japanisch bewusst NICHT in dieser Liste - "(Japanese)" ist kein
+# Hinweis auf eine andere Sprache.
+_SPRACHNAMEN = (
+    "english", "german", "deutsch", "french", "francais", "spanish",
+    "espanol", "italian", "italiano", "portuguese", "dutch", "swedish",
+    "danish", "norwegian", "finnish", "polish", "russian", "korean",
+    "chinese", "czech", "hungarian", "greek", "turkish", "catalan",
+)
+_SPRACHNAME = re.compile(
+    r"[\(\[]\s*(?:%s)(?:\s*,\s*[A-Za-z]+)*\s*[\)\]]" % "|".join(_SPRACHNAMEN),
+    re.I)
+
+# Zweibuchstabige Sprachcodes als Klammergruppe: (En), (En,Ja),
+# (En,Fr,De) - so schreiben No-Intro und Redump das durchgaengig.
+# "Ja" allein ist KEIN Hinweis auf eine andere Sprache.
+_SPRACHCODES = re.compile(r"[\(\[]\s*[A-Z][a-z](?:\s*,\s*[A-Z][a-z])*\s*[\)\]]")
 
 
-def _hat_englische_sprachangabe(name):
-    """True, wenn der Name eine Sprachliste mit Englisch enthaelt."""
-    for treffer in _SPRACHE.finditer(name):
-        teile = [t.strip() for t in treffer.group(0).strip("()[]").split(",")]
-        if any(t.lower() == "en" for t in teile):
+def _hat_fremdsprache(name):
+    """True, wenn der Name irgendeinen Hinweis darauf traegt, dass das
+    Spiel in einer ANDEREN Sprache als Japanisch spielbar ist."""
+    if _UEBERSETZUNG.search(name):
+        return True
+    if _SPRACHNAME.search(name):
+        return True
+    for treffer in _SPRACHCODES.finditer(name):
+        teile = [t.strip().lower()
+                 for t in treffer.group(0).strip("()[]").split(",")]
+        if any(t and t != "ja" for t in teile):
             return True
     return False
 
@@ -171,9 +204,10 @@ def _hat_englische_sprachangabe(name):
 def _is_japan_only(name):
     if not _JAPAN_ONLY.search(name):
         return False
-    # Japanisches Release, aber ausdruecklich mit englischer Fassung ->
-    # kein "nur japanisch".
-    return not _hat_englische_sprachangabe(name)
+    # Japanisches Release, aber mit Hinweis auf eine andere Sprache
+    # (Sprachcode, ausgeschriebener Sprachname oder Uebersetzungspatch)
+    # -> kein "nur japanisch".
+    return not _hat_fremdsprache(name)
 
 # Bekannte Boot-/Test-/Demo-Dateien, die manche MiSTer-Verteilungen
 # direkt in die ROM-Ordner legen (fuer den Hardware-Selbsttest). Haben

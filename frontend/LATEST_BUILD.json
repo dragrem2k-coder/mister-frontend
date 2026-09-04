@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-70",
-  "summary": "F4-Waechter oeffnet die Eingabegeraete neu, sobald das Frontend sich beendet."
+  "build_id": "2026-08-24-71",
+  "summary": "Uebersetzte/lokalisierte japanische ROMs werden erkannt; CRT/HDMI-Frage aus dem Einrichtungsassistenten entfernt."
 }

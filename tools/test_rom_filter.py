@@ -76,6 +76,35 @@ for name, soll, was in FAELLE:
           N._is_japan_only(name) is soll)
 
 print()
+print("Test 2b: Uebersetzungen und ausgeschriebene Sprachnamen")
+# BUGFIX RUNDE 2 (Nutzer-Rueckmeldung ueber Bekannte): "Seiken Densetsu
+# 3 (Japan) (German).sfc" und "Magic Knight Rayearth (J) [T+Ger].sfc"
+# wurden weiterhin verworfen. Die erste Runde kannte nur
+# zweibuchstabige Sprachcodes und nur Englisch - ausgeschriebene
+# Sprachnamen und die GoodTools-Uebersetzungskennzeichen fehlten.
+#
+# Gerade Fan-Uebersetzungen sind der HAEUFIGSTE Grund, ein japanisches
+# ROM ueberhaupt zu behalten - ausgerechnet die auszublenden ist das
+# Gegenteil des Gewollten.
+UEBERSETZT = [
+    ("Seiken Densetsu 3 (Japan) (German)", False, "gemeldeter Fall 1"),
+    ("Magic Knight Rayearth (J) [T+Ger]", False, "gemeldeter Fall 2"),
+    ("Spiel (Japan) [T-Eng]", False, "aeltere Uebersetzung"),
+    ("Spiel (J) [T+Ger1.01_Team]", False, "mit Version und Gruppe"),
+    ("Spiel (Japan) (T+Spa)", False, "runde statt eckige Klammern"),
+    ("Spiel (Japan) (English)", False, "ausgeschrieben"),
+    ("Spiel (Japan) (Spanish)", False, "ausgeschrieben"),
+    ("Spiel (Japan) (Japanese)", True, "japanisch bleibt japanisch"),
+    ("Spiel (Japan) (Ja)", True, "Sprachcode japanisch"),
+    ("Spiel (Japan) (Rev A)", True, "Revision ist keine Sprache"),
+    ("Spiel (Japan) (v1.1)", True, "Version ist keine Sprache"),
+]
+for name, soll, was in UEBERSETZT:
+    check("%-36s -> %s (%s)"
+          % (name, "ausgeblendet" if soll else "sichtbar", was),
+          N._is_japan_only(name) is soll)
+
+print()
 print("Test 3: der Schalter - Standard ist AUS (nichts wird gefiltert)")
 TMP = tempfile.mkdtemp(prefix="romfilter_")
 S.ROM_FILTER_FLAG = os.path.join(TMP, "rom_filter")
@@ -92,7 +121,9 @@ print("Test 4: das Einlesen selbst - mit und ohne Filter")
 ROMS = os.path.join(TMP, "GAMEBOY")
 os.makedirs(ROMS)
 DATEIEN = [
-    "Tetris (Japan) (En).gb",          # der gemeldete Fall
+    "Tetris (Japan) (En).gb",          # gemeldeter Fall, Runde 1
+    "Seiken Densetsu 3 (Japan) (German).gb",   # gemeldeter Fall, Runde 2
+    "Magic Knight Rayearth (J) [T+Ger].gb",    # gemeldeter Fall, Runde 2
     "Tetris (World).gb",
     "Spiel (Japan).gb",                # nur japanisch
     "Spiel (USA) (Beta).gb",           # unfertiger Dump
@@ -131,6 +162,10 @@ check("MIT Filter faellt der [b]-Dump weg", "Spiel (USA) [b]" not in mit)
 # eingeschaltetem Filter sichtbar bleiben - er ist auf Englisch spielbar.
 check("MIT Filter bleibt 'Tetris (Japan) (En)' TROTZDEM sichtbar",
       "Tetris (Japan) (En)" in mit, str(mit))
+check("MIT Filter bleibt der Titel mit ausgeschriebener Sprache sichtbar",
+      "Seiken Densetsu 3 (Japan) (German)" in mit, str(mit))
+check("MIT Filter bleibt der uebersetzte Titel sichtbar",
+      "Magic Knight Rayearth (J) [T+Ger]" in mit, str(mit))
 check("MIT Filter bleiben die normalen Titel sichtbar",
       "Spiel (USA)" in mit and "Tetris (World)" in mit)
 

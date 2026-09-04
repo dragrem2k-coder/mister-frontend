@@ -6555,7 +6555,23 @@ class Frontend:
         Start erneut). Reine Info-/Download-Schritte lassen sich
         dagegen einzeln ueberspringen, ohne den ganzen Assistenten
         abzubrechen."""
-        total = 8
+        # GEAENDERT (Nutzerwunsch: "bei der Neuinstallation die Option
+        # CRT/HDMI komplett rausnehmen - jeder, der einen MiSTer nutzt,
+        # installiert das eh ueber HDMI"). Der Schritt ist ersatzlos
+        # entfallen, deshalb 7 statt 8.
+        #
+        # Sachlich richtig, und es beseitigt zugleich eine echte Falle:
+        # der Assistent laeuft beim ALLERERSTEN Start: wer dort aus
+        # Versehen CRT waehlt und keinen anschliesst, sitzt vor einem
+        # schwarzen Bild - ausgerechnet in dem Moment, in dem er das
+        # Frontend noch gar nicht kennt. Das Sicherheitsnetz
+        # (CRT_CONFIRM_TIMEOUT, siehe fe/settings.py) faengt das zwar
+        # ab, aber gar nicht erst hineinlaufen zu koennen ist besser.
+        #
+        # Die Umschaltung bleibt vollstaendig erhalten - unter
+        # System -> Optionen -> Anzeige & Sound, dort wo sie hingehoert:
+        # bei jemandem, der das Frontend bereits laufen sieht.
+        total = 7
 
         # Schritt 1: Sprache
         lang_options = ["Deutsch", "English"]
@@ -6567,39 +6583,13 @@ class Frontend:
             return
         set_language("de" if choice == 0 else "en")
 
-        # Schritt 2: CRT/HDMI (Aenderung braucht einen Neustart - wird
-        # angewendet, der Assistent laeuft aber in der AKTUELLEN
-        # Aufloesung zu Ende, statt eine komplexe "Assistent nach
-        # Neustart fortsetzen"-Logik zu bauen).
-        video_options = [t("sys_video_hdmi"), t("sys_video_crt")]
-        idx2 = 1 if crt_menu_active() else 0
-        choice2 = self._wizard_choice(
-            t("wizard_step_title", 2, total, t("wizard_step_video")),
-            video_options, initial=idx2)
-        if choice2 is None:
-            return
-        want_crt = (choice2 == 1)
-        if want_crt != crt_menu_active():
-            toggle_crt_menu()
-            # SICHERHEITSNETZ (siehe Kommentar bei mark_crt_pending_confirm()
-            # in fe/settings.py): nur beim Wechsel IN den CRT-Modus setzen -
-            # der naechste Boot ueberwacht dann automatisch, ob ueberhaupt
-            # eine Eingabe ankommt, und wechselt sonst von selbst zurueck.
-            if want_crt:
-                mark_crt_pending_confirm()
-            else:
-                clear_crt_pending_confirm()
-            self._wizard_info(
-                t("wizard_step_title", 2, total, t("wizard_step_video")),
-                [t("wizard_video_reboot_note")], skippable=False)
-
-        # Schritt 3: Zeitzone (wiederholbar zyklisch, wie im System-
+        # Schritt 2: Zeitzone (wiederholbar zyklisch, wie im System-
         # Menue - "Weiter" als eigene, zweite Option in dieser
         # Auswahl statt einer neuen Interaktionsart).
         while True:
             tz_label = format_timezone_offset(load_timezone_offset())
             choice3 = self._wizard_choice(
-                t("wizard_step_title", 3, total, t("wizard_step_timezone")),
+                t("wizard_step_title", 2, total, t("wizard_step_timezone")),
                 [t("wizard_timezone_current", tz_label),
                  t("wizard_continue_option")], initial=1)
             if choice3 is None:
@@ -6610,43 +6600,47 @@ class Frontend:
             break
         threading.Thread(target=sync_system_clock_from_ntp, daemon=True).start()
 
-        # Schritt 4: RetroAchievements - reiner Info-Bildschirm (keine
+        # Schritt 3: RetroAchievements - reiner Info-Bildschirm (keine
         # Bildschirmtastatur, Einrichtung passiert extern per SSH) -
         # der bereits bestehende draw_ra_setup_screen() wird direkt
         # wiederverwendet statt eines eigenen, aehnlichen Bildschirms.
         self.draw_ra_setup_screen()
 
-        # Schritt 5: Boxart-Download - optional, ueberspringbar.
+        # Schritt 4: Boxart-Download - optional, ueberspringbar.
         do_boxart = self._wizard_choice(
-            t("wizard_step_title", 5, total, t("wizard_step_boxart")),
+            t("wizard_step_title", 4, total, t("wizard_step_boxart")),
             [t("wizard_download_now"), t("wizard_download_skip")], initial=0)
         if do_boxart is None:
             return
         if do_boxart == 0:
-            profile = "sd" if want_crt else "hd"
+            # Der tatsaechlich aktive Modus steht in der MiSTer.ini und
+            # ist die verlaesslichere Quelle als die frueher hier
+            # abgefragte Auswahl (die ohnehin erst nach einem Neustart
+            # gewirkt haette) - siehe entfallener CRT/HDMI-Schritt oben.
+            profile = "sd" if crt_menu_active() else "hd"
             self.run_script(os.path.join(SCRIPTS_DIR, "Frontend_Boxart_Download.sh"),
                             args=[profile])
 
-        # Schritt 6: Gameinfo-Download - optional, ueberspringbar.
+        # Schritt 5: Gameinfo-Download - optional, ueberspringbar.
         do_gameinfo = self._wizard_choice(
-            t("wizard_step_title", 6, total, t("wizard_step_gameinfo")),
+            t("wizard_step_title", 5, total, t("wizard_step_gameinfo")),
             [t("wizard_download_now"), t("wizard_download_skip")], initial=0)
         if do_gameinfo is None:
             return
         if do_gameinfo == 0:
             self.run_script(os.path.join(SCRIPTS_DIR, "Frontend_Gameinfo_Download.sh"))
 
-        # Schritt 7: Spiele suchen (erzwungener Neu-Scan mit Fortschritt).
+        # Schritt 6: Spiele suchen (erzwungener Neu-Scan mit Fortschritt).
         self._wizard_scanning_step(
-            t("wizard_step_title", 7, total, t("wizard_step_scan")))
+            t("wizard_step_title", 6, total, t("wizard_step_scan")))
 
-        # Schritt 8: Esc-Ausstieg-Hinweis (reiner Hinweis, ESC hier
+        # Schritt 7: Esc-Ausstieg-Hinweis (reiner Hinweis, ESC hier
         # bedeutet "verstanden, weiter" statt "abbrechen" - skippable=
         # True, aber run_setup_wizard() behandelt False identisch zu
         # True, da es hier nichts zu ueberspringen gibt ausser dem
         # Lesen selbst).
         self._wizard_info(
-            t("wizard_step_title", 8, total, t("wizard_step_esc_hint")),
+            t("wizard_step_title", 7, total, t("wizard_step_esc_hint")),
             [t("wizard_esc_hint_1"), t("wizard_esc_hint_2")], skippable=True)
 
         mark_setup_wizard_done()

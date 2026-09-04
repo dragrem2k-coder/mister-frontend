@@ -7,6 +7,52 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Übersetzte japanische ROMs + CRT/HDMI raus aus dem Assistenten**
+(Build 71 — Nutzer-Rückmeldungen: „Seiken Densetsu 3 (Japan) (German).sfc
+und Magic Knight Rayearth (J) [T+Ger].sfc werden nicht erkannt, das sind
+wieder so Sonderlocken" sowie „bei der Neuinstallation die Option
+CRT/HDMI komplett rausnehmen — jeder, der einen MiSTer nutzt,
+installiert das eh über HDMI"):
+
+**1. Der Nur-Japan-Filter erkennt jetzt Übersetzungen und
+ausgeschriebene Sprachnamen.** Build 69 hatte nur zweibuchstabige
+Sprachcodes gelernt (`(En)`, `(En,Ja)`) — durch dieses Raster fielen die
+beiden häufigsten anderen Schreibweisen:
+
+- **Ausgeschriebene Sprachnamen:** `(German)`, `(English)`, `(Spanish)` …
+- **Übersetzungs-Kennzeichen** der GoodTools-Konvention: `[T+Ger]`
+  (neuere Übersetzung), `[T-Eng]` (ältere), oft mit Versions- und
+  Gruppenzusatz wie `[T+Ger1.01_Team]`.
+
+Beides bedeutet dasselbe: das Spiel ist nicht nur auf Japanisch nutzbar.
+Bei Fan-Übersetzungen ist das sogar der häufigste Grund überhaupt, ein
+japanisches ROM zu behalten — ausgerechnet die auszublenden ist das
+Gegenteil des Gewollten. Ein Übersetzungs-Kennzeichen zählt jetzt
+**immer** als Hinweis auf eine andere Sprache; eine Übersetzung ins
+Japanische gibt es bei japanischen ROMs nicht. `(Japanese)`, `(Ja)`,
+`(Rev A)` und `(v1.1)` bleiben korrekt ohne Wirkung.
+
+Zur Einordnung: seit Build 69 ist der Filter **standardmäßig aus**, diese
+Dateien erscheinen also ohnehin. Der Fix betrifft alle, die die
+aufgeräumtere Liste eingeschaltet haben — dort dürfen übersetzte Titel
+nicht verschwinden.
+
+**2. Die CRT/HDMI-Frage ist aus dem Einrichtungsassistenten entfernt**
+(Schritt 2 von vormals acht, jetzt sieben Schritte). Sachlich richtig —
+installiert wird praktisch immer über HDMI — und es beseitigt eine echte
+Falle: der Assistent läuft beim **allerersten** Start. Wer dort
+versehentlich CRT wählt und keinen anschließt, sitzt vor einem schwarzen
+Bild, ausgerechnet bevor er das Frontend überhaupt kennt. Das
+Sicherheitsnetz (20 Sekunden ohne Eingabe → automatisch zurück auf HDMI)
+fängt das zwar ab, aber gar nicht erst hineinlaufen zu können ist besser.
+
+Die Umschaltung selbst bleibt vollständig erhalten — unter
+System → Optionen → Anzeige & Sound, also bei jemandem, der das Frontend
+bereits laufen sieht. Der Boxart-Download im Assistenten liest den
+aktiven Modus jetzt aus der MiSTer.ini statt aus der entfallenen
+Auswahl; das ist ohnehin die verlässlichere Quelle.
+
+
 **F4: der Unterschied zwischen Vordergrund und Hintergrund**
 (Build 70):
 
