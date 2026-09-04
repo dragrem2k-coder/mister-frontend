@@ -7,6 +7,48 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Die Boxart-Spalte wird auch beim vollen Seitenaufbau ausgelassen**
+(Build 76 — Messung im HDMI-Modus, Nutzerfrage: „es ist schon besser,
+aber haben wir da noch Möglichkeiten das zu verbessern?"):
+
+```
+split: bgbild=0 bg=0 restore=22 rows=44(17) art=105 flip=21 ms
+draw_page_items: 195 ms
+```
+
+Von rund 190 ms Seitenaufbau entfallen **über 100 ms allein auf die
+Boxart-Spalte**. Im HDMI-Modus ist ein Cover 697×729 Bildpunkte, gut
+2 MB, die gelesen, entpackt und in den Bildspeicher kopiert werden —
+bei jedem einzelnen Scrollschritt.
+
+Der leichte Zeichenpfad lässt die Spalte beim schnellen Scrollen längst
+aus. Nur griff das ausgerechnet dann nicht, wenn es am meisten wehtut:
+in einer langen Liste erreicht der Auswahlbalken nach wenigen Schritten
+den unteren Rand, ab da muss die Liste bei **jedem** Schritt verschoben
+werden, der leichte Pfad gibt auf — und der volle Neuaufbau zeichnete
+die Spalte weiterhin jedes Mal. Genau der Fall, in dem man am längsten
+scrollt.
+
+Jetzt lässt auch der volle Aufbau sie aus, solange aktiv gescrollt wird.
+Das zuletzt gezeichnete Cover bleibt so lange stehen und wird nach dem
+Stillstand nachgeholt (`COVER_SETTLE`) — dasselbe Verhalten, das der
+leichte Pfad schon immer hatte.
+
+**Die eine Bedingung, die das sicher macht:** ausgelassen wird nur, wenn
+der Hintergrund in diesem Durchgang *nicht* neu aufgebaut wurde (in der
+Messung oben das `bg=0`). Dann steht das alte Cover noch im Puffer und
+bleibt einfach stehen. Wurde der Hintergrund frisch gefüllt, würde ein
+Auslassen ein leeres Feld hinterlassen — der Unterschied zwischen „altes
+Cover steht noch" (harmlos, wird nachgeholt) und „da ist ein Loch"
+(sieht kaputt aus). `tools/test_cover_prewarm.py` prüft beide Fälle und
+vergleicht den Bildschirm nach dem Nachholen **bitgenau** mit einem, der
+nie etwas ausgelassen hat: null abweichende Bildpunkte.
+
+Wirksam nur bei eingeschaltetem „Schnelles Scrollen" (System → Anzeige)
+— bewusst an denselben Schalter gehängt wie der leichte Pfad, damit ein
+Schalter das gesamte Verhalten beim Scrollen bestimmt und nicht zwei
+Regeln nebeneinander gelten.
+
 **F5-Reset ohne Halten, und die Sonderkategorien nachgeprüft** (Build 75
 — Nutzerwünsche: „F5-Reset-Funktion hätte ich gerne auf sofortigen
 Tastendruck, wenn das geht" und „bitte auch die anderen bedenken wie die

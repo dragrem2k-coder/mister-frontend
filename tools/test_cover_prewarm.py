@@ -632,6 +632,142 @@ for erwartet in ("CONTINUE.art", "RECENT.art", "FAVORITES.art",
     check("%s steht in der Vorwaermliste" % erwartet, erwartet in namen,
           str(sorted(namen)))
 
+# ----------------------------------------------------------------------
+print()
+print("Test 10: die Boxart-Spalte wird beim schnellen Scrollen ausgelassen")
+# GEMESSEN im HDMI-Modus auf dem Geraet des Nutzers:
+#
+#   split: bgbild=0 bg=0 restore=22 rows=44(17) art=105 flip=21 ms
+#   draw_page_items: 195 ms
+#
+# Ueber 100 der 190 ms gehen allein in die Boxart-Spalte - ein
+# HDMI-Cover ist 697x729 Bildpunkte, also gut 2 MB zum Lesen,
+# Entpacken und Kopieren. Der leichte Zeichenpfad laesst die Spalte
+# beim schnellen Scrollen laengst aus; nur griff das ausgerechnet dann
+# nicht, wenn es am meisten wehtut: in einer langen Liste muss ab dem
+# unteren Rand bei JEDEM Schritt verschoben werden, der leichte Pfad
+# gibt auf, und der volle Neuaufbau zeichnete die Spalte weiter.
+H.set_screen(1920, 1080)
+fe = H.make_frontend(page=1)
+_n, _node, _sk = fe.cats[fe.cat_i]
+_node["folders"] = {}
+_node["items"] = [("Spiel %02d" % i, "game",
+                   ("/f/%d.sfc" % i, ".sfc", "SNES", None, None))
+                  for i in range(60)]
+_node.pop("_display_items_cache", None)
+fe.item_i = 0
+fe.scroll = 0
+
+panel_aufrufe = []
+_echt_panel = fe.draw_art_panel
+
+
+def _panel_zaehler(*a, **k):
+    panel_aufrufe.append(a[:2])
+    return _echt_panel(*a, **k)
+
+
+fe.draw_art_panel = _panel_zaehler
+
+import fe.settings as S2                              # noqa: E402
+_flag = S2.FAST_SCROLL_ENABLED_FLAG
+S2.FAST_SCROLL_ENABLED_FLAG = os.path.join(TMP, "fast_scroll")
+try:
+    # ---- ohne "Schnelles Scrollen": Spalte MUSS immer gezeichnet werden
+    try:
+        os.remove(S2.FAST_SCROLL_ENABLED_FLAG)
+    except OSError:
+        pass
+    fe.draw_page_items()                     # erster Aufbau (Hintergrund frisch)
+    panel_aufrufe.clear()
+    fe._last_input_time = H.NOW[0]           # "gerade eben gedrueckt"
+    fe.item_i = 1
+    fe.draw_page_items()
+    check("ohne Schnelles Scrollen wird die Spalte gezeichnet",
+          len(panel_aufrufe) == 1, "%d Aufrufe" % len(panel_aufrufe))
+
+    # ---- mit "Schnelles Scrollen" und unveraendertem Hintergrund
+    open(S2.FAST_SCROLL_ENABLED_FLAG, "w").close()
+    fe.draw_page_items()                     # sorgt fuer _pgi_fast_taken
+    panel_aufrufe.clear()
+    A.ART._deferred_something = False
+    fe._last_input_time = H.NOW[0]
+    fe.item_i = 2
+    fe.draw_page_items()
+    check("beim schnellen Scrollen wird die Spalte AUSGELASSEN",
+          len(panel_aufrufe) == 0, "%d Aufrufe" % len(panel_aufrufe))
+    check("und zum Nachholen nach dem Stillstand vorgemerkt",
+          A.ART._deferred_something is True)
+
+    # ---- nach dem Stillstand: wieder zeichnen
+    panel_aufrufe.clear()
+    fe._last_input_time = H.NOW[0] - 10.0    # lange nichts gedrueckt
+    fe.draw_page_items()
+    check("nach dem Stillstand wird sie wieder gezeichnet",
+          len(panel_aufrufe) == 1, "%d Aufrufe" % len(panel_aufrufe))
+
+    # ---- Hintergrund frisch aufgebaut: NICHT auslassen
+    # Sonst bliebe ein leeres Feld stehen, wo das Cover hingehoert -
+    # der Unterschied zwischen "altes Cover steht noch" (harmlos, wird
+    # nachgeholt) und "da ist ein Loch" (sieht kaputt aus).
+    panel_aufrufe.clear()
+    fe._pgi_fast_key = None                  # erzwingt vollen Neuaufbau
+    fe._last_input_time = H.NOW[0]
+    fe.item_i = 3
+    fe.draw_page_items()
+    check("bei frisch gefuelltem Hintergrund wird trotzdem gezeichnet",
+          len(panel_aufrufe) == 1, "%d Aufrufe" % len(panel_aufrufe))
+finally:
+    fe.draw_art_panel = _echt_panel
+    S2.FAST_SCROLL_ENABLED_FLAG = _flag
+
+print()
+print("Test 10b: nach dem Stillstand bleibt KEIN Rest des alten Covers")
+# Der eigentliche Beweis: ein Bildschirm, der zwischendurch die Spalte
+# ausgelassen hat, muss nach dem Nachholen Bildpunkt fuer Bildpunkt
+# demselben Bild entsprechen wie einer, der sie nie ausgelassen hat.
+# Genau diese Art Rest hatte uns beim CRT-Layout schon einmal mehrere
+# Runden gekostet - deshalb hier bitgenau und nicht "sieht gut aus".
+S2.FAST_SCROLL_ENABLED_FLAG = os.path.join(TMP, "fast_scroll2")
+
+
+def _bildschirm(mit_auslassen):
+    H.set_screen(1920, 1080)
+    f = H.make_frontend(page=1)
+    _nn, nod, _ss = f.cats[f.cat_i]
+    nod["folders"] = {}
+    nod["items"] = [("Spiel %02d" % i, "game",
+                     ("/f/%d.sfc" % i, ".sfc", "SNES", None, None))
+                    for i in range(60)]
+    nod.pop("_display_items_cache", None)
+    f.item_i = 0
+    f.scroll = 0
+    f._last_input_time = H.NOW[0] - 10.0
+    f.draw_page_items()
+    for ziel in (1, 2, 3, 4, 5):
+        f.item_i = ziel
+        f._last_input_time = H.NOW[0] if mit_auslassen else H.NOW[0] - 10.0
+        f.draw_page_items()
+    # Stillstand: der Nachlader zeichnet die Seite komplett neu
+    f._last_input_time = H.NOW[0] - 10.0
+    f.draw_page_items()
+    return bytes(f.fb.mm)
+
+
+try:
+    open(S2.FAST_SCROLL_ENABLED_FLAG, "w").close()
+    mit = _bildschirm(True)
+    try:
+        os.remove(S2.FAST_SCROLL_ENABLED_FLAG)
+    except OSError:
+        pass
+    ohne = _bildschirm(False)
+finally:
+    S2.FAST_SCROLL_ENABLED_FLAG = _flag
+abweichend = sum(1 for a, b in zip(mit, ohne) if a != b)
+check("der Bildschirm ist danach bitgenau derselbe", abweichend == 0,
+      "%d abweichende Bytes" % abweichend)
+
 shutil.rmtree(TMP, ignore_errors=True)
 
 print()

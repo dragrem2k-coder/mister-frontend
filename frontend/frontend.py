@@ -4133,7 +4133,40 @@ class Frontend:
             art_y0 = oy
             art_w = (W - ox) - art_x0
             art_h = footer_y - 8 * s - art_y0
-            if art_w > 20 and art_h > 20:
+            # NEU (Build 76, Messung im HDMI-Modus auf dem Geraet des
+            # Nutzers):
+            #
+            #   split: bgbild=0 bg=0 restore=22 rows=44(17) art=105 flip=21 ms
+            #   draw_page_items: 195 ms
+            #
+            # Von rund 190 ms Seitenaufbau entfallen ueber 100 ms allein
+            # auf die Boxart-Spalte - im HDMI-Modus ist ein Cover
+            # 697x729 Bildpunkte, also gut 2 MB, die gelesen, entpackt
+            # und in den Bildspeicher kopiert werden muessen. Beim
+            # Scrollen faellt das bei JEDEM Schritt an.
+            #
+            # Der leichte Zeichenpfad (_draw_navigate_items_impl) laesst
+            # die Spalte waehrend schnellen Scrollens laengst aus. Nur
+            # griff das genau dann nicht, wenn es am meisten wehtut: in
+            # einer langen Liste erreicht der Balken nach wenigen
+            # Schritten den Rand, ab da muss die Liste bei JEDEM Schritt
+            # verschoben werden, der leichte Pfad gibt auf, und der volle
+            # Neuaufbau hier zeichnete die Spalte weiterhin jedes Mal.
+            #
+            # WICHTIG - nur bei _pgi_fast_taken: dann wurde der
+            # Hintergrund NICHT neu aufgebaut (siehe oben, "bg=0" in der
+            # Messung), das zuletzt gezeichnete Cover steht also noch im
+            # Puffer und bleibt einfach stehen - genau wie beim leichten
+            # Pfad. Wurde der Hintergrund dagegen frisch gefuellt, wuerde
+            # ein Auslassen ein LEERES Feld hinterlassen; dann wird
+            # gezeichnet, egal wie schnell gescrollt wird.
+            _spalte_auslassen = (self._scroll_skip_vsync()
+                                 and getattr(self, "_pgi_fast_taken", False))
+            if _spalte_auslassen:
+                # Nach dem Stillstand nachholen (COVER_SETTLE) - sonst
+                # bliebe das Cover des vorigen Eintrags stehen.
+                ART._deferred_something = True
+            if art_w > 20 and art_h > 20 and not _spalte_auslassen:
                 item_syskey = self._item_syskey(items[self.item_i], syskey)
                 _ta = time.monotonic()
                 self.draw_art_panel(art_x0, art_w, art_y0, art_h,
