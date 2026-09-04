@@ -7,6 +7,71 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Cover-Miniaturen werden vorberechnet — das Stocken beim Ordnerwechsel**
+(Build 73 — Nutzer-Rückmeldung: „wenn man in die Unterordner geht und
+wieder zurück will, bleibt das Frontend echt mal hängen für 1–2
+Sekunden … das nervt schon sehr"):
+
+Diesem Fehler bin ich mit vier Vermutungen hinterhergelaufen, die alle
+falsch waren — Dateisystem, Listensortierung, Netzwerk, und zuletzt
+Bildschirm-Spiegel plus Stream-Overlay. Erst eine Messung auf dem Gerät
+hat es beantwortet, und zwar unmissverständlich:
+
+```
+PERF split: bgbild=0 bg=0 restore=3 rows=5(13) art=225 flip=1 ms
+PERF draw_page_items: 251 ms
+```
+
+Von 251 ms Seitenaufbau entfallen **225 ms auf ein einziges Cover**.
+Hintergrund, Zeilen und Bildausgabe kosten zusammen rund 20 ms. Beim
+zweiten Besuch kostet dasselbe Cover 1–6 ms — der Festplatten-Cache
+arbeitet also einwandfrei, er ist beim ersten Durchgang durch eine Liste
+nur eben noch leer. Das erlebte Hängen sind vier bis acht solcher Cover
+hintereinander.
+
+**Das korrigiert auch eine frühere Einschätzung von mir.** Auf die Frage
+nach einem C-Modul für die Zeichen-Grundfunktionen hatte ich mit 47–55 %
+Anteil gerechnet. Diese Messung sagt: die Zeichenroutinen sind mit 20 ms
+längst nicht mehr der Engpass. Ein C-Modul hätte an der falschen Stelle
+angesetzt.
+
+**1. Vorausladen im Leerlauf.** Ein Hintergrund-Thread berechnet die
+Cover der voraussichtlich als nächstes gebrauchten Einträge schon,
+während jemand eine Seite ansieht (`frontend/fe/prewarm.py`). Zwei
+Einschränkungen sind bewusst so entworfen und im Code benannt: auf der
+schwachen CPU rechnet wegen Pythons GIL immer nur ein Thread, deshalb
+lässt der Vorauslader bei **jeder** Eingabe sofort los — eine bereits
+begonnene Miniatur läuft noch zu Ende, mehr nicht. Und er fasst die
+Arbeitsspeicher-Caches von `ArtCache` mit keinem Byte an, sondern
+schreibt ausschließlich Dateien; diese Caches haben keine Sperre, und
+zwei Threads darin wären genau die Sorte Fehler, die sich nie
+zuverlässig nachstellen lässt.
+
+**2. Neuer Menüpunkt „Miniaturen vorbereiten"** (System → Verhalten).
+Rechnet einmalig alle Cover durch. Danach ist auch das Springen in
+Listen schnell, dauerhaft und über Neustarts hinweg. Ehrlich genannter
+Preis, der auch im Menüpunkt selbst steht: grob 3–8 Minuten je 1000
+Spiele, und CRT und HDMI brauchen getrennte Durchläufe. Läuft mit
+Fortschrittsbalken und Restzeit-Schätzung, jede Taste bricht ab, und
+Abbrechen verliert nichts.
+
+**3. Die Kastengröße kommt jetzt aus einer einzigen Funktion**
+(`cover_box_size()`). Das ist der unscheinbare, aber entscheidende
+Punkt: Der Schlüssel des Festplatten-Caches enthält die Größe, in die
+das Cover eingepasst wird — und die hängt am Text darunter, ist also pro
+Spiel verschieden (im Log des Nutzers gut zu sehen: 96x99, 96x111,
+96x135 in derselben Liste). Hätte der Vorauslader diese Rechnung
+nachgebaut, wäre sie irgendwann abgewichen, und er hätte fleißig
+Miniaturen abgelegt, die der Zeichenpfad nie findet — ohne dass
+irgendetwas kaputtgeht, es bliebe nur langsam. `tools/test_cover_prewarm.py`
+schneidet deshalb die vom **echten** Zeichenpfad angefragten Maße mit
+und vergleicht sie Eintrag für Eintrag.
+
+Ebenso herausgelöst: das Vergrößern (`_hochskalieren()`), damit
+Vorberechnung und Anzeige bitgleiche Ergebnisse liefern — der
+Modul-Kommentar in `fe/art.py` verlangt das ausdrücklich, und der Test
+prüft es Byte für Byte in beiden Richtungen.
+
 **Keine Video-Reste mehr in der `MiSTer.ini`** (Build 72 —
 Nutzer-Rückmeldung nach einem wackelnden HDMI-Bild bei einem Bekannten:
 „falls das die Ursache ist, sollten wir da Vorkehrungen treffen, das

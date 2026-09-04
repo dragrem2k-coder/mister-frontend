@@ -673,7 +673,13 @@ from fe.art import (
     art_path, mra_meta, get_meta, ART, ART_BASE,
     ART_HD, BG_BASE, SYSART_BASE, META_BASE, BADGE_DIR,
     RA_BADGE_URL, BG, BADGES, _category_art_key,
+    prewarm_thumb, thumb_cache_has,
 )
+
+# NEU (Build 73): Cover-Miniaturen im Leerlauf vorberechnen. Die
+# ausfuehrliche Begruendung samt der beiden ehrlichen Einschraenkungen
+# steht im Kopf von fe/prewarm.py.
+from fe.prewarm import PREWARMER, auftraege_bauen
 
 # ----------------------------------------------------------------------------
 # KATEGORIEN & AKTIONEN
@@ -5224,6 +5230,13 @@ class Frontend:
                         and time.monotonic() - self._last_input_time >= PREFETCH_SETTLE):
                     self._prefetched_done = True
                     self._prefetch_neighbor_covers()
+                    # NEU (Build 73): und im selben Ruhemoment den
+                    # Hintergrund-Vorauslader auf die weiter entfernten
+                    # Eintraege ansetzen. Dieselbe Ruhe-Schwelle
+                    # (PREFETCH_SETTLE) aus demselben Grund: wer nach dem
+                    # Zurueckgehen sofort weiternavigiert, soll dafuer
+                    # nichts bezahlen.
+                    self._prewarm_anstossen()
                 self._boot_watch()   # Diagnose: Anzeige-Zustand nach dem Boot
                 # WICHTIG: unabhaengige if-Abfragen statt einer elif-Kette.
                 # Mit elif haette "track_needs" (Songtitel muss scrollen -
@@ -5444,6 +5457,314 @@ class Frontend:
             except Exception:
                 pass   # Vorab-Laden ist rein optional - niemals den Hauptablauf stoeren
 
+    def _art_panel_geometrie(self):
+        """(breite, hoehe, s) der Boxart-Spalte auf der Spieleliste, oder
+        None, wenn dort gerade gar keine Spalte gezeichnet wird.
+
+        Dieselbe Rechnung wie in _draw_page_items_impl() - dort bleibt
+        sie stehen, weil sie dort noch die Position (x0/y0) braucht; hier
+        interessieren nur die Masse, die in die Kastengroesse eingehen."""
+        fb = self.fb
+        W = fb.width
+        items = self._display_items()
+        _name, _root_node, syskey = self.cats[self.cat_i]
+        # Gleiche Bedingung wie in _draw_page_items_impl(): bei "Zuletzt
+        # gespielt" ist der Kategorie-Systemkey None, die Spalte
+        # erscheint trotzdem, weil jeder Eintrag seinen eigenen Systemkey
+        # mitbringt.
+        has_art = len(items) > 0 and (bool(syskey) or items[0][1] == "game")
+        if not has_art:
+            return None
+        L = self.layout_items(has_art)
+        s, ox, oy = L["s"], L["ox"], L["oy"]
+        art_x0 = L["list_right"] + (8 if fb.height < KOMPAKT_H else 20) * s
+        art_w = (W - ox) - art_x0
+        art_h = L["footer_y"] - 8 * s - oy
+        if art_w <= 20 or art_h <= 20:
+            return None
+        return art_w, art_h, s
+
+    def cover_pfad_und_kasten(self, item, cat_syskey, geo):
+        """(Cover-Pfad, Kastenbreite, Kastenhoehe) fuer EINEN Eintrag -
+        genau das Tripel, das der Zeichenpfad spaeter bei ART.get_scaled()
+        anfragt. Rueckgabe None, wenn es fuer diesen Eintrag nichts
+        vorzuberechnen gibt.
+
+        Die einzige Stelle, an der Vorauslader und "Miniaturen
+        vorbereiten" den Pfad UND die Groesse bestimmen - beides muss mit
+        draw_art_panel() uebereinstimmen, sonst landen die Miniaturen
+        unter einem Schluessel, den nie jemand abfragt."""
+        if geo is None:
+            return None
+        art_w, art_h, s = geo
+        item_syskey = self._item_syskey(item, cat_syskey)
+        if item_syskey == "ARCADE":
+            # Arcade-Cover haengen an mra_meta(), es gibt hier keinen
+            # einfachen Dateipfad - dieselbe Ausnahme wie beim
+            # Nachbar-Vorabladen darueber.
+            return None
+        lookup_name = item[2] if item[1] == "folder" else item[0]
+        # Gleiche Regel wie in draw_art_panel(): im HD-Modus KEIN
+        # Rueckfall auf das SD-Cover - fehlt die HD-Datei, wird gar
+        # nichts angezeigt, also gaebe es auch nichts vorzuberechnen.
+        if self.fb.height >= 720:
+            pfad = _art_path_in(ART_HD, item_syskey, lookup_name)
+        else:
+            pfad = art_path(item_syskey, lookup_name)
+        if not pfad:
+            return None
+        try:
+            bw, bh = self.cover_box_size(art_w, art_h, item_syskey, item, s)[:2]
+        except Exception:                            # noqa: BLE001
+            return None
+        return pfad, bw, bh
+
+    def _prewarm_anstossen(self):
+        """Im Leerlauf die Cover der voraussichtlich naechsten Eintraege
+        im Hintergrund vorberechnen lassen (siehe fe/prewarm.py fuer die
+        Begruendung und die beiden ehrlichen Einschraenkungen)."""
+        if self.page != 1:
+            return
+        items = self._display_items()
+        if not items:
+            return
+        geo = self._art_panel_geometrie()
+        if geo is None:
+            return
+        _name, _root_node, cat_syskey = self.cats[self.cat_i]
+        auftraege = auftraege_bauen(
+            items, self.item_i,
+            lambda it: self.cover_pfad_und_kasten(it, cat_syskey, geo),
+            vorwaerts=getattr(self, "_last_scroll_dir", 1) >= 0)
+        if not auftraege:
+            return
+        PREWARMER.start()
+        PREWARMER.uebergeben(auftraege)
+        if profiling_an():
+            LOG("PREWARM: %d Cover vorgemerkt (Position %d/%d)"
+                % (len(auftraege), self.item_i + 1, len(items)))
+
+    def _alle_spiel_eintraege(self):
+        """Alle Eintraege aller Kategorien als [(eintrag, kategorie-
+        systemkey), ...] - auch die in Unterordnern. Fuer "Miniaturen
+        vorbereiten"; die normale Anzeige sieht immer nur EINEN Ordner."""
+        raus = []
+
+        def durchgehen(node):
+            for it in node.get("items", []):
+                raus.append(it)
+            for sub in node.get("folders", {}).values():
+                durchgehen(sub)
+
+        for _name, node, cat_syskey in self.cats:
+            vorher = len(raus)
+            durchgehen(node)
+            raus[vorher:] = [(it, cat_syskey) for it in raus[vorher:]]
+        return raus
+
+    def run_thumb_prewarm_all(self):
+        """Menuepunkt "Miniaturen vorbereiten": einmal alle Cover
+        durchrechnen und auf der Karte ablegen.
+
+        NEUES FEATURE (Build 73). Der Vorauslader im Leerlauf
+        (_prewarm_anstossen()) faengt den Alltag ab - wer der Reihe nach
+        scrollt, laeuft ihm nicht davon. Er hilft aber NICHT beim
+        Springen: wer mit Bild-ab mitten in eine Liste faellt oder eine
+        Kategorie zum ersten Mal oeffnet, trifft weiterhin auf Cover, die
+        noch niemand berechnet hat. Genau dafuer ist dieser Punkt da -
+        einmal laufen lassen, danach ist die ganze Sammlung dauerhaft
+        schnell, auch ueber Neustarts hinweg (der Festplatten-Cache
+        ueberlebt sie).
+
+        EHRLICH GENANNTER PREIS: das dauert. Auf dem Geraet des Nutzers
+        gemessen kostet ein Cover 200-500 ms, macht grob 3-8 Minuten je
+        1000 Spiele - und CRT und HDMI brauchen getrennte Durchlaeufe,
+        weil die Kastengroesse in den Cache-Schluessel eingeht. Deshalb
+        laeuft es im Vordergrund mit Fortschrittsanzeige und laesst sich
+        mit jeder Taste abbrechen; Abbrechen verliert nichts, das bis
+        dahin Gerechnete bleibt liegen."""
+        # Der Hintergrund-Vorauslader haette hier nichts zu suchen -
+        # er wuerde sich mit diesem Durchlauf um dieselbe CPU streiten
+        # und dieselben Dateien doppelt berechnen.
+        PREWARMER.abbrechen()
+        geo = self._art_panel_geometrie()
+        if geo is None:
+            # Sollte auf der Spieleliste nicht vorkommen - der Menuepunkt
+            # wird aber aus dem System-Menue heraus aufgerufen, wo gerade
+            # keine Boxart-Spalte gezeichnet wird. Dann die Masse aus dem
+            # Layout mit Boxart-Spalte holen, genau wie die Spieleliste
+            # es taete.
+            fb = self.fb
+            L = self.layout_items(True)
+            s, ox, oy = L["s"], L["ox"], L["oy"]
+            art_x0 = L["list_right"] + (8 if fb.height < KOMPAKT_H else 20) * s
+            art_w = (fb.width - ox) - art_x0
+            art_h = L["footer_y"] - 8 * s - oy
+            if art_w <= 20 or art_h <= 20:
+                self.draw(t("thumb_prewarm_failed"), prominent=True)
+                return
+            geo = (art_w, art_h, s)
+
+        eintraege = self._alle_spiel_eintraege()
+        gesamt = len(eintraege)
+        if not gesamt:
+            self.draw(t("thumb_prewarm_nothing"), prominent=True)
+            return
+
+        gerechnet = lagen_da = uebersprungen = 0
+        t0 = time.monotonic()
+        abgebrochen = False
+        for i, (item, cat_syskey) in enumerate(eintraege):
+            # Abbruch: bei JEDEM Eintrag pruefen (nicht nur alle 20) -
+            # ein einzelnes Cover kann eine halbe Sekunde dauern, und
+            # ein Abbruch, der erst zehn Cover spaeter greift, fuehlt
+            # sich kaputt an.
+            if self.inp.read_action(timeout=0) is not None:
+                abgebrochen = True
+                break
+            if i % 10 == 0 or i == gesamt - 1:
+                self._draw_prewarm_progress(i, gesamt, gerechnet, t0)
+            ziel = self.cover_pfad_und_kasten(item, cat_syskey, geo)
+            if not ziel:
+                uebersprungen += 1
+                continue
+            pfad, bw, bh = ziel
+            if thumb_cache_has(pfad, bw, bh):
+                lagen_da += 1
+                continue
+            try:
+                if prewarm_thumb(pfad, bw, bh) == "fertig":
+                    gerechnet += 1
+                else:
+                    uebersprungen += 1
+            except Exception:                        # noqa: BLE001
+                uebersprungen += 1
+
+        dauer = time.monotonic() - t0
+        LOG("PREWARM Durchlauf %s: %d gerechnet, %d lagen schon da, "
+            "%d uebersprungen, %d gesamt, %.0fs"
+            % ("abgebrochen" if abgebrochen else "fertig",
+               gerechnet, lagen_da, uebersprungen, gesamt, dauer))
+        self.build_categories()      # Menuebeschriftung auffrischen
+        schluessel = "thumb_prewarm_aborted" if abgebrochen \
+            else "thumb_prewarm_done"
+        self.draw(t(schluessel, gerechnet, int(dauer)), prominent=True)
+
+    def _draw_prewarm_progress(self, i, gesamt, gerechnet, t0):
+        """Fortschritt waehrend "Miniaturen vorbereiten" - bewusst im
+        Aufbau von _draw_scan_progress() gehalten, damit es aussieht wie
+        das, was der Nutzer vom ersten Einlesen schon kennt. Zusaetzlich
+        eine Restzeit-Schaetzung: bei einem Vorgang, der Minuten dauern
+        kann, ist "noch etwa 4 Minuten" der Unterschied zwischen Warten
+        und Abbrechen."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        fb.clear(C_BG)
+        fb.text(ox, oy, t("thumb_prewarm"), 2 * s, C_TITLE, C_BG)
+        bar_w = min(W - 2 * ox, 300 * s)
+        bar_h = 10 * s
+        by = oy + 60 * s
+        fb.rect(ox, by, bar_w, bar_h, C_PANEL)
+        fb.rect(ox, by, int(bar_w * (i + 1) / max(1, gesamt)), bar_h, C_ACCENT)
+        fb.text(ox, by + 16 * s, "%d / %d" % (i + 1, gesamt), s, C_TEXT, C_BG)
+        # Restzeit nur aus TATSAECHLICH gerechneten Covern schaetzen -
+        # die uebersprungenen (schon vorhanden, kein Cover, Arcade)
+        # laufen in Millisekunden durch und wuerden die Schaetzung
+        # sonst schoenrechnen, bis sie wertlos ist.
+        rest = ""
+        verstrichen = time.monotonic() - t0
+        if gerechnet >= 5 and i > 0:
+            pro_eintrag = verstrichen / (i + 1)
+            sek = int(pro_eintrag * (gesamt - i - 1))
+            if sek >= 60:
+                rest = t("thumb_prewarm_eta_min", sek // 60)
+            else:
+                rest = t("thumb_prewarm_eta_sec", max(1, sek))
+        if rest:
+            fb.text(ox, by + 30 * s, rest, s, C_DIM, C_BG)
+        fb.text(ox, by + 48 * s, t("thumb_prewarm_cancel"), s, C_DIM, C_BG)
+        fb.flip()
+
+    def cover_box_size(self, w, h, syskey, item, s):
+        """Die Kastengroesse, in die das Cover dieses EINEN Eintrags
+        eingepasst wird: (breite, hoehe). Reine Rechnung, zeichnet nichts.
+
+        NEU (Build 73, Nutzer-Rueckmeldung mit echten Messwerten vom
+        Geraet: "PERF split: ... rows=5 art=225 flip=1 ms" - von 251ms
+        Seitenaufbau entfielen 225ms auf ein einziges, noch nicht
+        vorberechnetes Cover, das Zeichnen selbst kostete 20ms).
+        Herausgeloest aus draw_art_panel(), weil der Vorauslader und der
+        Menuepunkt "Miniaturen vorbereiten" die Miniaturen unter GENAU
+        derselben Groesse ablegen muessen, unter der der Zeichenpfad sie
+        spaeter sucht - der Schluessel des Festplatten-Caches enthaelt
+        die Kastengroesse (siehe _thumb_cache_key() in fe/art.py).
+
+        Und die ist eben NICHT fuer alle Spiele gleich: sie haengt am
+        Text, der unter dem Cover steht. Im Log des Nutzers gut zu
+        sehen - 96x99, 96x111, 96x135 fuer drei Spiele derselben Liste.
+        Genau daran waere eine nachgebaute zweite Rechnung frueher oder
+        spaeter auseinandergelaufen: der Vorauslader haette fleissig
+        Miniaturen erzeugt, die der Zeichenpfad nie findet, und niemand
+        haette gemerkt, warum es trotzdem ruckelt. Deshalb EINE Funktion,
+        von beiden Seiten benutzt, und ein Test, der genau das prueft
+        (tools/test_cover_prewarm.py, Test 1)."""
+        pad = 6 * s
+        avail_w = w - 2 * pad
+        maxc = max(4, avail_w // (8 * s))
+        name = item[0]
+        lookup_name = item[2] if item[1] == "folder" else name
+
+        if syskey == "ARCADE":
+            meta = mra_meta(item[2]) if item[1] == "core" else {}
+        else:
+            meta = get_meta(syskey, lookup_name)
+
+        title_lines = self._wrap(display_name(name), maxc, max_lines=3)
+
+        info_src = []
+        if meta.get("players"):
+            info_src.append(t("players", meta["players"]))
+        if meta.get("year"):
+            info_src.append(t("year", meta["year"]))
+        if meta.get("genre"):
+            info_src.append(str(meta["genre"]))
+        if meta.get("manufacturer"):
+            info_src.append(str(meta["manufacturer"]))
+        played_entry = self._playtime_cache.get(name) \
+            if hasattr(self, "_playtime_cache") else None
+        played = format_playtime(played_entry.get("seconds") if played_entry else None)
+        if played:
+            info_src.append(t("playtime_shown", played))
+        ra_progress = lookup_ra_progress(self._ra_lookup, name, syskey) \
+            if hasattr(self, "_ra_lookup") and self._ra_lookup else None
+        if ra_progress:
+            info_src.append(t("ra_progress_shown", ra_progress[0], ra_progress[1]))
+        if hasattr(self, "_completed_set") and name in self._completed_set:
+            info_src.append(t("completed_shown"))
+        info_lines = []
+        for ln in info_src:
+            info_lines.extend(self._wrap(ln, maxc, max_lines=1))
+
+        line_h = 12 * s
+        text_h = len(title_lines) * line_h
+        if info_lines:
+            text_h += 4 * s + len(info_lines) * line_h
+
+        # Cover bekommt den nach dem Text uebrig bleibenden Platz -
+        # zwischen 35% und 85% der Spaltenhoehe gedeckelt, damit weder
+        # ein winziges Cover (sehr viel Text) noch ein den Text
+        # verdraengendes Cover (kaum/kein Text) entsteht.
+        cover_h = h - text_h - 8 * s
+        cover_h = max(int(h * 0.35), min(cover_h, int(h * 0.85)))
+        cover_h = max(20, cover_h)
+        # ra_progress wird mit zurueckgegeben, weil draw_art_panel() es
+        # ohnehin noch fuer das 100%-Abzeichen auf dem Cover braucht -
+        # sonst muesste es dort ein zweites Mal nachgeschlagen werden.
+        return avail_w, cover_h, title_lines, info_lines, ra_progress
+
     def draw_art_panel(self, x0, w, y0, h, syskey, item, s):
         """Eigene Boxart+Info-Spalte rechts neben der Liste (seit v1.8
         deutlich groesser als der alte Block unten rechts, weil sie sich
@@ -5482,66 +5803,18 @@ class Frontend:
                         card_radius)
         fb.rect_rounded(x0 - pad, y0 - pad, w + 2 * pad, h + 2 * pad,
                         C_PANEL, card_radius)
-        avail_w = w - 2 * pad
-        maxc = max(4, avail_w // (8 * s))
-
-        if syskey == "ARCADE":
-            meta = mra_meta(item[2]) if item[1] == "core" else {}
-        else:
-            meta = get_meta(syskey, lookup_name)
-
-        title = display_name(name)
-        title_lines = self._wrap(title, maxc, max_lines=3)
-
-        info_src = []
-        if meta.get("players"):
-            info_src.append(t("players", meta["players"]))
-        if meta.get("year"):
-            info_src.append(t("year", meta["year"]))
-        if meta.get("genre"):
-            info_src.append(str(meta["genre"]))
-        if meta.get("manufacturer"):
-            info_src.append(str(meta["manufacturer"]))
-        # Spielzeit - mit demselben Namen (item[0], inkl. Schraegstrich-
-        # Suffix bei Ordnern) nachgeschlagen, mit dem run_core() sie
-        # aufgezeichnet hat (siehe record_playtime()) - NICHT
-        # lookup_name, das waere bei Ordnern ein anderer String.
-        played_entry = self._playtime_cache.get(name) \
-            if hasattr(self, "_playtime_cache") else None
-        played = format_playtime(played_entry.get("seconds") if played_entry else None)
-        if played:
-            info_src.append(t("playtime_shown", played))
-        # RetroAchievements - nur sichtbar, wenn ein Treffer gefunden
-        # wurde (kein Treffer = keine Zeile, kein Unterschied zu vorher
-        # fuer alle, die RA nicht eingerichtet haben, siehe
-        # lookup_ra_progress()).
-        ra_progress = lookup_ra_progress(self._ra_lookup, name, syskey) \
-            if hasattr(self, "_ra_lookup") and self._ra_lookup else None
-        if ra_progress:
-            info_src.append(t("ra_progress_shown", ra_progress[0], ra_progress[1]))
-        if hasattr(self, "_completed_set") and name in self._completed_set:
-            info_src.append(t("completed_shown"))
-        info_lines = []
-        for ln in info_src:
-            info_lines.extend(self._wrap(ln, maxc, max_lines=1))
-
-        # Songtitel steht jetzt in der Fusszeile (siehe draw_page_items),
-        # nicht mehr hier im Boxart-Block - macht mehr Platz fuers Cover
-        # frei und ist an einer Stelle sichtbar, die bei jedem System
-        # gleich bleibt (auch wenn kein Cover/keine Infos vorhanden sind).
-
+        # GEAENDERT (Build 73): Kastengroesse und Textzeilen kommen jetzt
+        # aus cover_box_size() - dieselbe Funktion, die auch der
+        # Vorauslader und "Miniaturen vorbereiten" benutzen. Vorher stand
+        # die Rechnung nur hier; jede Vorberechnung anderswo haette sie
+        # nachbauen muessen und waere irgendwann davon abgewichen -
+        # unsichtbar, weil dann einfach Miniaturen unter einer
+        # Kastengroesse abgelegt worden waeren, die nie jemand abfragt.
+        # Songtitel steht in der Fusszeile (siehe draw_page_items), nicht
+        # mehr hier im Boxart-Block.
+        avail_w, cover_h, title_lines, info_lines, ra_progress = \
+            self.cover_box_size(w, h, syskey, item, s)
         line_h = 12 * s
-        text_h = len(title_lines) * line_h
-        if info_lines:
-            text_h += 4 * s + len(info_lines) * line_h
-
-        # Cover bekommt den nach dem Text uebrig bleibenden Platz -
-        # zwischen 35% und 85% der Spaltenhoehe gedeckelt, damit weder
-        # ein winziges Cover (sehr viel Text) noch ein den Text
-        # verdraengendes Cover (kaum/kein Text) entsteht.
-        cover_h = h - text_h - 8 * s
-        cover_h = max(int(h * 0.35), min(cover_h, int(h * 0.85)))
-        cover_h = max(20, cover_h)
 
         # ---- Cover oben, zentriert ----
         cy = y0
@@ -9065,6 +9338,15 @@ class Frontend:
                 self._publish_stream()
                 _rt1 = time.monotonic()
                 act = self.next_action()
+                # NEU (Build 73): sobald wieder bedient wird, laesst der
+                # Vorauslader seine Liste augenblicklich fallen. Auf der
+                # schwachen MiSTer-CPU rechnet wegen Pythons GIL immer
+                # nur EIN Thread - liefe er weiter, naehme er dem
+                # Zeichnen genau in dem Moment die Rechenzeit weg, in dem
+                # es darauf ankommt. Bewusst hier an der EINEN Stelle,
+                # durch die jede Aktion muss, statt verteilt an den
+                # sieben Stellen, die _last_input_time setzen.
+                PREWARMER.abbrechen()
                 _rt2 = time.monotonic()
                 LOG("aktion: %s (Seite %d, confirm=%s)"
                     % (act, self.page, self.confirm_quit))
@@ -9683,6 +9965,9 @@ class Frontend:
                             self.cat_i = self.item_i = 0
                             self.scroll = self.cat_scroll = 0
                             self.page = 0
+                            continue
+                        elif kind == "thumb_prewarm":
+                            self.run_thumb_prewarm_all()
                             continue
                         elif kind == "rescan":
                             self.draw("Rescanning game list ...")

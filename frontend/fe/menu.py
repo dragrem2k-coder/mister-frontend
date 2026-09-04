@@ -272,6 +272,11 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         t("sys_group_display"): folder(*display_items),
         t("sys_group_behavior"): folder(
             (t("sys_crt_test_action"), "crt_test", None),
+            # NEU (Build 73): einmalig alle Cover-Miniaturen vorberechnen.
+            # Bewusst HIER unter "Verhalten" und nicht unter "Anzeige":
+            # es aendert nichts am Aussehen, sondern nur daran, wie
+            # schnell sich das Frontend anfuehlt.
+            (t("sys_thumb_prewarm_action"), "thumb_prewarm", None),
             (curated_label, "curated", None),
             (rom_filter_label, "rom_filter", None),
             (attract_label, "attract", None),

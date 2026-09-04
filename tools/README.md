@@ -28,6 +28,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_autostart.py \
   && python3 tools/test_rom_filter.py \
   && python3 tools/test_mister_ini.py \
+  && python3 tools/test_cover_prewarm.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -45,6 +46,7 @@ python3 tools/regression_test.py \
 | `test_autostart.py` | Test (Pass/Fail) | Autostart-Schalter: user-startup.sh sicher aendern |
 | `test_rom_filter.py` | Test (Pass/Fail) | ROMs verschwinden nicht mehr stillschweigend aus der Liste |
 | `test_mister_ini.py` | Test (Pass/Fail) | Keine Video-Reste in der MiSTer.ini - und kein Anfassen fremder Bloecke |
+| `test_cover_prewarm.py` | Test (Pass/Fail) | Cover-Vorberechnung: gleiche Kastengroesse wie der Zeichenpfad, bitgleiche Miniaturen |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -312,6 +314,37 @@ unveraendert (Test 6b), eine fehlende `MiSTer.ini` bricht nichts ab
 und `frontend/mister_ini_cleanup.py` wird als eigener Prozess gegen eine
 Wegwerf-`MiSTer.ini` wirklich ausgefuehrt (Test 9/9b) - einmal mit
 eigenem, einmal mit fremdem Block.
+
+## test_cover_prewarm.py
+
+Prueft das Vorberechnen der Cover-Miniaturen (Build 73). Anlass waren
+Messwerte vom Geraet des Nutzers: von 251 ms Seitenaufbau entfielen
+225 ms auf EIN noch nicht vorberechnetes Cover, das Zeichnen selbst
+kostete rund 20 ms.
+
+**Test 1 ist der wichtigste dieser Datei.** Der Schluessel des
+Festplatten-Caches enthaelt die KASTENGROESSE, in die das Cover
+eingepasst wird - und die haengt am Text darunter, ist also pro Spiel
+verschieden (im Log des Nutzers: 96x99, 96x111, 96x135 in derselben
+Liste). Fragt der Vorauslader auch nur ein Pixel anders an als der
+Zeichenpfad, legt er Miniaturen ab, die nie jemand findet - und es faellt
+niemandem auf, weil nichts kaputtgeht, es bleibt nur langsam. Der Test
+schneidet deshalb die vom ECHTEN Zeichenpfad angefragten Masse mit
+(`ART.get_scaled` wird umgebogen) und vergleicht sie Eintrag fuer
+Eintrag mit dem, was der Vorauslader vorhersagt - in beiden
+Aufloesungen. Dazu die Gegenprobe, dass die Testtitel ueberhaupt
+verschiedene Kastenhoehen erzeugen (auf CRT; auf HDMI deckelt die
+85%-Regel alles auf dieselbe Hoehe).
+
+Weiter: die vorberechnete Miniatur ist Byte fuer Byte identisch mit
+einer frisch berechneten (Test 2, beide Richtungen - vergroessern und
+verkleinern), Sonderfaelle wie fehlende/beschaedigte Dateien (2b), die
+Vorberechnung fasst die Arbeitsspeicher-Caches von `ArtCache` NICHT an
+(Test 3 - sie laeuft aus einem Hintergrund-Thread, und diese Caches
+haben keine Sperre), der Thread arbeitet ab und laesst sich abbrechen
+(4/4b), die Auftragsliste laesst schon Vorhandenes weg und schaut in
+Scrollrichtung weiter voraus als zurueck (4c/4d), Menuepunkt und
+Uebersetzungen (5).
 
 ## diag_lightpath.py
 

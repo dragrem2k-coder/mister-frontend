@@ -592,6 +592,30 @@ TRANSLATIONS = {
     "sys_rom_filter_changed": {
         "en": "Filter changed - reading the game list again now.",
         "de": "Filter geändert - die Spieleliste wird jetzt neu eingelesen."},
+    # NEU (Build 73): Cover-Miniaturen einmalig vorberechnen. Die Texte
+    # sagen bewusst, WAS das bringt und WAS es kostet - ein Vorgang, der
+    # Minuten dauern kann, darf nicht als harmloser Schalter aussehen.
+    "sys_thumb_prewarm_action": {
+        "en": "Prepare cover thumbnails (one-off, takes a few minutes)",
+        "de": "Miniaturen vorbereiten (einmalig, dauert einige Minuten)"},
+    "thumb_prewarm": {"en": "Preparing cover thumbnails",
+                      "de": "Miniaturen werden vorbereitet"},
+    "thumb_prewarm_cancel": {"en": "Any button cancels - what is done stays done.",
+                             "de": "Jede Taste bricht ab - Gerechnetes bleibt erhalten."},
+    "thumb_prewarm_eta_min": {"en": "about %d min left",
+                              "de": "noch etwa %d Min."},
+    "thumb_prewarm_eta_sec": {"en": "about %d s left",
+                              "de": "noch etwa %d Sek."},
+    "thumb_prewarm_done": {
+        "en": "Done: %d thumbnails computed in %d s. Scrolling should feel smooth now.",
+        "de": "Fertig: %d Miniaturen in %d Sek. berechnet. Das Scrollen sollte jetzt fluessig sein."},
+    "thumb_prewarm_aborted": {
+        "en": "Cancelled - %d thumbnails computed in %d s. They are kept; you can continue later.",
+        "de": "Abgebrochen - %d Miniaturen in %d Sek. berechnet. Sie bleiben erhalten, du kannst später weitermachen."},
+    "thumb_prewarm_nothing": {"en": "No games found - nothing to prepare.",
+                              "de": "Keine Spiele gefunden - nichts vorzubereiten."},
+    "thumb_prewarm_failed": {"en": "Could not determine the cover size - nothing prepared.",
+                             "de": "Cover-Größe nicht ermittelbar - nichts vorbereitet."},
     "sys_pulse_on": {"en": "Selection glow: ON -> turn off (static highlight instead of animation)",
                      "de": "Markierungs-Schimmer: AN -> ausschalten (feste statt animierte Hervorhebung)"},
     "sys_pulse_off": {"en": "Selection glow: OFF -> turn on",

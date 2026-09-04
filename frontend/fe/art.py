@@ -767,49 +767,7 @@ class ArtCache:
                 # jedem Stillstand entfaellt.
                 self._deferred_something = True
                 return None
-            sw, sh = w * scale, h * scale
-            out = bytearray(sw * sh * 4)
-            row_out = sw * 4
-            # GEAENDERT (Nutzerwunsch: "das muss schneller laufen!!" -
-            # dritte DRAGEND_PROFILE-Log-Datei zeigte diese Schleife als
-            # groessten Einzelposten beim Aufreissen der Anzeige, z.B.
-            # "fe/art.py:570(<genexpr>): 565ms (65792 Aufrufe)" bei
-            # einem 773ms-join fuer ein einzelnes Cover. Zwei kleine,
-            # aber MESSBAR wirksame Aenderungen (per Differenzmessung
-            # bestaetigt, siehe /tmp/bench_upscale.py):
-            # 1) Die Ursprungszeile wird jetzt EINMAL pro Durchlauf aus
-            #    "pix" herausgeschnitten ("src_row") statt bei JEDEM der
-            #    w Pixel erneut ueber den vollen, viel groesseren "pix"-
-            #    Puffer plus Offset-Arithmetik zuzugreifen.
-            # 2) Eine LISTENABSTRAKTION ("[... for x in range(w)]") statt
-            #    des vorherigen GENERATORS ("... for x in range(w)" ohne
-            #    Klammern) - b"".join() kann eine fertige Liste schneller
-            #    durchlaufen als einen Generator, der bei jedem Element
-            #    einen eigenen Interpreter-Frame-Wechsel braucht. Genau
-            #    dasselbe Muster (Liste statt Generator) wird beim
-            #    Verkleinern weiter unten schon seit dessen eigenem
-            #    Performance-Fix verwendet - hier war es bisher nur
-            #    nicht konsequent uebernommen worden.
-            # EHRLICH DOKUMENTIERT: das ist eine Verbesserung des
-            # Konstantfaktors (in Sandbox-Messungen ca. 10-15% schneller),
-            # KEIN grundlegend anderer, asymptotisch schnellerer
-            # Algorithmus - die Schleife bleibt weiterhin ein reiner
-            # Python-Pixel-Durchlauf ohne numpy/C-Erweiterung (bewusst,
-            # um keine zusaetzliche Abhaengigkeit auf der ohnehin schon
-            # eng bemessenen MiSTer-SD-Karte/Offline-Installation
-            # einzufuehren). In Kombination mit dem asynchronen
-            # Festplatten-Cache-Schreiben (siehe _thumb_cache_put_async()
-            # in fe/art.py) sollte die spuerbare Blockierzeit trotzdem
-            # deutlich sinken, auch wenn ein Rest bleibt - ob und wie
-            # viel, muss die naechste echte Hardware-Messung zeigen.
-            for y in range(h):
-                src_row = pix[y * w * 4:(y + 1) * w * 4]
-                row = b"".join([src_row[x*4:x*4 + 4] * scale
-                                 for x in range(w)])
-                base_off = y * scale * row_out
-                for rep in range(scale):
-                    off = base_off + rep * row_out
-                    out[off:off + row_out] = row
+            sw, sh, out = _hochskalieren(pix, w, h, scale)
             result = (sw, sh, bytes(out))
             self._scaled_cache_put(box_key, result)
             # WICHTIGE QUALITAETS-REGEL (siehe Modul-Kommentar oben):
@@ -845,27 +803,6 @@ class ArtCache:
             # jedem Stillstand entfaellt.
             self._deferred_something = True
             return None
-        # WICHTIG (Bugfix): frueher eine einzelne 4-Byte-Zuweisung PRO
-        # ZIEL-PIXEL in einer doppelt verschachtelten Schleife (bei
-        # z.B. 480x600 Zielgroesse: 288.000 einzelne bytearray-Slice-
-        # Zuweisungen!) - jede einzelne Python-Anweisung hat spuerbaren
-        # Overhead. Per Differenzmessung bestaetigt: ~90ms fuer eine
-        # einzelne Verkleinerung, genau der Fall bei jeder echten
-        # Navigation zu einem neuen Spiel mit einem HD-Cover, das
-        # nicht exakt in den verfuegbaren Platz passt. Jetzt wie bei
-        # der Vergroesserung: pro Zeile EIN b\"\".join() (in C
-        # implementiert, deutlich weniger Python-Interpreter-Overhead
-        # pro Zeile) statt einzelner Zuweisungen pro Pixel.
-        # GEAENDERT (Nutzer-Rueckmeldung: "auf halb und viertel sehen die
-        # Boxarts verpixelt aus"): hier stand bisher ein reines
-        # Nearest-Neighbor-Verfahren - fuer jede Zielposition wurde EIN
-        # Quellpixel gegriffen, der Rest fiel weg. Jetzt wird ueber die
-        # zusammenfallenden Quellpixel gemittelt. Siehe die ausfuehrliche
-        # Begruendung samt Messwerten bei _verkleinern_flaechenmittel().
-        # Die Zielgroesse (tw/th) ist unveraendert - nur der Inhalt ist
-        # ein anderer, deshalb ist auch THUMB_ALGO_VERSION hochgezaehlt
-        # worden (sonst wuerden die alten, grob verkleinerten Miniaturen
-        # aus dem Festplatten-Cache weiterverwendet).
         data = _verkleinern_flaechenmittel(pix, w, h, tw, th)
         if data is None:
             return None
@@ -876,13 +813,146 @@ class ArtCache:
         # niemals eine bereits vorhandene Miniatur weiterverarbeiten.
         #
         # GEAENDERT: _thumb_cache_put_async() statt _thumb_cache_put() -
-        # gleicher Grund wie beim Hochskalieren oben (siehe dortiger
-        # Kommentar und der Docstring von _thumb_cache_put_async() in
-        # fe/art.py): das Wegschreiben ist reine Optimierung fuer
-        # spaeter und muss die Anzeige des schon fertigen "result"
-        # nicht mehr blockieren.
+        # gleicher Grund wie beim Hochskalieren oben.
         _thumb_cache_put_async(path, max_w, max_h, tw, th, result[2])
         return result
+
+
+def thumb_cache_has(path, w, h):
+    """Liegt die Miniatur fuer diese Kastengroesse schon auf der Karte?
+    Nur eine Existenzpruefung - bewusst OHNE die Datei zu lesen und zu
+    entpacken (das macht _thumb_cache_get()). Der Vorauslader fragt das
+    fuer viele Eintraege hintereinander; ihn dafuer jedes Mal ein
+    fertiges Bild entpacken zu lassen, das er gar nicht anzeigen will,
+    waere reine Verschwendung."""
+    try:
+        return os.path.exists(_thumb_cache_path(_thumb_cache_key(path, w, h)))
+    except OSError:
+        return False
+
+
+def prewarm_thumb(path, max_w, max_h):
+    """Eine Miniatur berechnen und AUSSCHLIESSLICH auf der Karte ablegen.
+
+    NEU (Build 73). Hintergrund, mit echten Messwerten vom Geraet des
+    Nutzers: ein noch nicht vorberechnetes Cover kostet dort 200-500 ms
+    (Entpacken des Originals + Verkleinern mit Flaechenmittelung, beides
+    reines Python), das Zeichnen der Seite drumherum nur ~20 ms. Beim
+    ersten Durchgang durch eine Liste faellt dieser Preis bei JEDEM
+    Eintrag an - genau das, was der Nutzer als "das haengt 1-2 Sekunden"
+    beschreibt. Beim zweiten Mal kostet dasselbe Cover 1-6 ms. Es geht
+    hier also nicht darum, etwas schneller zu machen, sondern darum, den
+    einmaligen Preis dorthin zu verschieben, wo niemand wartet.
+
+    Rueckgabe: "treffer" (lag schon da), "fertig" (neu berechnet),
+    "uebersprungen" (nichts zu tun - z.B. passt das Bild exakt, dann
+    legt auch der Zeichenpfad nichts ab) oder "fehler".
+
+    WICHTIG - was diese Funktion BEWUSST NICHT tut: sie fasst die
+    Arbeitsspeicher-Caches von ArtCache (self.cache/self.scaled) mit
+    keinem Byte an. Sie ist dafuer gedacht, aus einem HINTERGRUND-Thread
+    aufgerufen zu werden, waehrend der Hauptthread zeichnet - und die
+    beiden Caches sind Liste+Wurgeboerse ohne Sperre (siehe
+    _scaled_cache_put()); zwei Threads darin gleichzeitig waeren genau
+    die Sorte Fehler, die sich nie zuverlaessig nachstellen laesst.
+    Deshalb liest sie ihr Original selbst ein, rechnet, schreibt die
+    Datei - fertig. Der Zeichenpfad findet das Ergebnis spaeter ganz
+    normal ueber _thumb_cache_get().
+    """
+    if max_w <= 0 or max_h <= 0:
+        return "uebersprungen"
+    if thumb_cache_has(path, max_w, max_h):
+        return "treffer"
+    # Original selbst einlesen - dieselben Schritte wie ArtCache.get(),
+    # aber ohne dessen Cache anzufassen (siehe Docstring).
+    try:
+        with open(path, "rb") as f:
+            if f.read(4) != b"ART1":
+                return "fehler"
+            w, h = struct.unpack("<HH", f.read(4))
+            pix = zlib.decompress(f.read())
+        if len(pix) != w * h * 4 or w <= 0 or h <= 0:
+            return "fehler"
+    except (OSError, struct.error, zlib.error, ValueError):
+        return "fehler"
+
+    if w <= max_w and h <= max_h:
+        scale = max(1, min(max_w // w, max_h // h, 10))
+        if scale == 1:
+            # Das Bild passt genau - der Zeichenpfad gibt in diesem Fall
+            # das Original unveraendert zurueck und legt nichts ab. Hier
+            # dasselbe zu tun waere ein Eintrag, den nie jemand abfragt.
+            return "uebersprungen"
+        sw, sh, out = _hochskalieren(pix, w, h, scale)
+        _thumb_cache_put(path, max_w, max_h, sw, sh, bytes(out))
+        return "fertig"
+
+    scale = min(max_w / w, max_h / h)
+    tw = max(1, int(w * scale))
+    th = max(1, int(h * scale))
+    data = _verkleinern_flaechenmittel(pix, w, h, tw, th)
+    if data is None:
+        return "fehler"
+    _thumb_cache_put(path, max_w, max_h, tw, th, data)
+    return "fertig"
+
+
+def _hochskalieren(pix, w, h, scale):
+    """Ganzzahliges Vergroessern (Pixel-Look, Nearest-Neighbor).
+    Rueckgabe: (breite, hoehe, bytearray).
+
+    HERAUSGELOEST (Build 73) aus _get_scaled_impl(), damit die
+    Vorberechnung fuer den Festplatten-Cache (prewarm_thumb() unten)
+    exakt dieselbe Rechnung benutzt. Das ist keine Kosmetik: der
+    Modul-Kommentar oben verlangt, dass eine gespeicherte Miniatur
+    BIT-IDENTISCH zu einer frisch berechneten ist - mit zwei getrennten
+    Fassungen desselben Algorithmus waere genau das irgendwann still
+    auseinandergelaufen."""
+    sw, sh = w * scale, h * scale
+    out = bytearray(sw * sh * 4)
+    row_out = sw * 4
+    # GEAENDERT (Nutzerwunsch: "das muss schneller laufen!!" -
+    # dritte DRAGEND_PROFILE-Log-Datei zeigte diese Schleife als
+    # groessten Einzelposten beim Aufreissen der Anzeige, z.B.
+    # "fe/art.py:570(<genexpr>): 565ms (65792 Aufrufe)" bei
+    # einem 773ms-join fuer ein einzelnes Cover. Zwei kleine,
+    # aber MESSBAR wirksame Aenderungen (per Differenzmessung
+    # bestaetigt, siehe /tmp/bench_upscale.py):
+    # 1) Die Ursprungszeile wird jetzt EINMAL pro Durchlauf aus
+    #    "pix" herausgeschnitten ("src_row") statt bei JEDEM der
+    #    w Pixel erneut ueber den vollen, viel groesseren "pix"-
+    #    Puffer plus Offset-Arithmetik zuzugreifen.
+    # 2) Eine LISTENABSTRAKTION ("[... for x in range(w)]") statt
+    #    des vorherigen GENERATORS ("... for x in range(w)" ohne
+    #    Klammern) - b"".join() kann eine fertige Liste schneller
+    #    durchlaufen als einen Generator, der bei jedem Element
+    #    einen eigenen Interpreter-Frame-Wechsel braucht. Genau
+    #    dasselbe Muster (Liste statt Generator) wird beim
+    #    Verkleinern weiter unten schon seit dessen eigenem
+    #    Performance-Fix verwendet - hier war es bisher nur
+    #    nicht konsequent uebernommen worden.
+    # EHRLICH DOKUMENTIERT: das ist eine Verbesserung des
+    # Konstantfaktors (in Sandbox-Messungen ca. 10-15% schneller),
+    # KEIN grundlegend anderer, asymptotisch schnellerer
+    # Algorithmus - die Schleife bleibt weiterhin ein reiner
+    # Python-Pixel-Durchlauf ohne numpy/C-Erweiterung (bewusst,
+    # um keine zusaetzliche Abhaengigkeit auf der ohnehin schon
+    # eng bemessenen MiSTer-SD-Karte/Offline-Installation
+    # einzufuehren). In Kombination mit dem asynchronen
+    # Festplatten-Cache-Schreiben (siehe _thumb_cache_put_async()
+    # in fe/art.py) sollte die spuerbare Blockierzeit trotzdem
+    # deutlich sinken, auch wenn ein Rest bleibt - ob und wie
+    # viel, muss die naechste echte Hardware-Messung zeigen.
+    for y in range(h):
+        src_row = pix[y * w * 4:(y + 1) * w * 4]
+        row = b"".join([src_row[x*4:x*4 + 4] * scale
+                         for x in range(w)])
+        base_off = y * scale * row_out
+        for rep in range(scale):
+            off = base_off + rep * row_out
+            out[off:off + row_out] = row
+    return sw, sh, out
+
 
 ART = ArtCache()
 
