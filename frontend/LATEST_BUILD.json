@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-29-85",
-  "summary": "Getrennte Miniaturen-Zwischenspeicher fuer CRT (sd) und HDMI (hd), Obergrenze je Modus auf 40000 angehoben, Dateien auf 256 Unterordner verteilt (exFAT sucht linear)."
+  "build_id": "2026-08-29-86",
+  "summary": "Boxart-Kasten nur noch in drei festen Hoehen statt bis zu zwoelf: eine neue Textzeile (Gespielt, Durchgespielt, RA-Fortschritt) aendert die Miniatur nicht mehr, die vorbereiteten Miniaturen passen weiter."
 }

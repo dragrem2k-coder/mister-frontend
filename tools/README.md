@@ -36,6 +36,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_prewarm_absturz.py \
   && python3 tools/test_script_eingaben.py \
   && python3 tools/test_thumb_verdraengung.py \
+  && python3 tools/test_kastenstufen.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -61,6 +62,7 @@ python3 tools/regression_test.py \
 | `test_prewarm_absturz.py` | Test (Pass/Fail) | "Miniaturen vorbereiten" kann das Frontend nicht mehr mitreissen; keine doppelten Cover |
 | `test_script_eingaben.py` | Test (Pass/Fail) | Abfragen in den Shell-Skripten funktionieren auch mit Wagenruecklauf in der Eingabe |
 | `test_thumb_verdraengung.py` | Test (Pass/Fail) | Miniaturen-Cache: Uhrensprung nach dem Start, Schutz der Kategorie-Logos, Aufraeumen auf Vorrat, getrennte Ablagen fuer CRT/HDMI |
+| `test_kastenstufen.py` | Test (Pass/Fail) | Boxart-Kasten hat nur drei Hoehen, und der Text passt in jedem Fall noch hinein |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -496,6 +498,35 @@ auf Vorrat (frueher: EIN Eintrag je Schreibvorgang, jeder mit einem
 getmtime je Datei - im Gegentest 50 Verzeichnisdurchgaenge bei 50
 Schreibvorgaengen, jetzt 4), Test 3 den Schutz der Kategorie-Logos,
 Test 6 das Aufraeumen liegengebliebener .tmp-Dateien.
+
+## test_kastenstufen.py
+
+Der Nutzer beschrieb es so: "wenn das Miniaturen vorbereiten
+durchgelaufen ist und ich gehe in irgendein System und blaettere durch
+die ROMs, kommt es mir so vor, als wuerde das Frontend immer noch
+nachjustieren."
+
+Die Ursache: die Hoehe des Boxart-Kastens haengt am TEXT darunter, und
+der aendert sich im Betrieb. Startet man ein Spiel zum ersten Mal, kommt
+"Gespielt: 12min" als neue Zeile dazu, der Kasten wird um eine
+Zeilenhoehe kleiner, der Cache-Schluessel ein anderer - und die beim
+Vorbereiten berechnete Miniatur ist wertlos. Dasselbe bei
+"Durchgespielt" und bei jeder Aenderung des RA-Fortschritts.
+Nachgerechnet gab es bis zu ZWOELF verschiedene Kastenhoehen.
+
+Der Test faehrt den kompletten Kombinationsraum ab (4 Titellaengen x 5
+Metadaten-Staende x Spielzeit x Durchgespielt x RA-Fortschritt = 160
+Faelle je Aufloesung) und prueft zwei Zusagen:
+
+1. **Hoechstens drei Kastenhoehen** je Aufloesung. Gemessen: CRT
+   63/114/165, 480p 279/314/349, HDMI 513/642/771.
+2. **Der Text passt IMMER noch vollstaendig** (`cover_h + text_h + 8*s
+   <= art_h`). Das ist die wichtigere Zusage - eine Stufung, die Text
+   abschneidet, waere schlimmer als das Problem, das sie loest.
+
+Dazu die Gegenprobe, die den eigentlichen Zweck festnagelt: die
+"Gespielt"-Zeile, die beim ersten Start eines Spiels dazukommt, darf die
+Kastenhoehe NICHT mehr veraendern.
 
 ## diag_lightpath.py
 

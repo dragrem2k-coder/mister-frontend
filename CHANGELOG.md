@@ -7,6 +7,38 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Der Boxart-Kasten hat nur noch drei Höhen** (Build 86 — Nutzerwunsch:
+„ich möchte bitte die drei Stufen einbauen … zudem habe ich den
+Eindruck, dass das mit dem Miniaturen vorbereiten nicht richtig klappt —
+wenn das durchgelaufen ist und ich gehe in irgendein System und blättere
+durch die ROMs, kommt es mir so vor, als würde das Frontend immer noch
+nachjustieren"):
+
+Der Eindruck stimmte, und er hatte eine handfeste Ursache. Die Höhe des
+Boxart-Kastens richtete sich nach dem **Text darunter** — je mehr Zeilen
+Spieler/Jahr/Genre/Hersteller, desto flacher der Kasten. Dieser Text
+ändert sich aber im Betrieb: startet man ein Spiel zum ersten Mal, kommt
+„Gespielt: 12 min" als zusätzliche Zeile dazu, später „Durchgespielt",
+und der RA-Fortschritt wandert. Jede dieser Zeilen machte den Kasten um
+eine Zeilenhöhe kleiner — und weil die Kastenhöhe im Cache-Schlüssel
+steckt, war die beim „Miniaturen vorbereiten" berechnete Miniatur damit
+wertlos und musste neu skaliert werden. Genau das fühlt sich beim
+Blättern an wie Nachjustieren.
+
+Nachgerechnet gab es bis zu **zwölf** verschiedene Kastenhöhen (CRT
+68–165, HDMI 513–772). Jetzt sind es **drei feste Stufen** (CRT
+63/114/165, HDMI 513/642/771): eine Textzeile mehr oder weniger bleibt
+fast immer in derselben Stufe, die vorbereitete Miniatur passt weiter.
+Nebenbei sieht die Liste ruhiger aus, weil die Karte beim Durchblättern
+nicht mehr bei jedem Spiel eine andere Höhe hat.
+
+Die unterste Stufe ist bewusst so gewählt, dass auch der **längste
+mögliche** Text noch vollständig hineinpasst (3 Titelzeilen + 7
+Infozeilen). `tools/test_kastenstufen.py` prüft beide Zusagen über den
+kompletten Kombinationsraum aus Titellänge, Metadaten, Spielzeit,
+Durchgespielt und RA-Fortschritt: höchstens drei Höhen, und der Text
+passt in jedem einzelnen Fall.
+
 **Getrennte Zwischenspeicher für CRT und HDMI, Obergrenze auf 40.000**
 (Build 85 — Nutzerwunsch: „Obergrenze auf 40000 erhöhen und bitte für
 jeden Modus, also CRT und HDMI, einen eigenen Cache anlegen — quasi

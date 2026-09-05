@@ -6174,6 +6174,44 @@ class Frontend:
         cover_h = h - text_h - 8 * s
         cover_h = max(int(h * 0.35), min(cover_h, int(h * 0.85)))
         cover_h = max(20, cover_h)
+
+        # NEU (Build 86, Nutzerwunsch nach einem Vorher/Nachher-Vergleich:
+        # "ich moechte bitte die drei Stufen einbauen ... zudem habe ich
+        # den Eindruck, dass das mit dem Miniaturen vorbereiten nicht
+        # richtig klappt - wenn das durchgelaufen ist und ich gehe in
+        # irgendein System und blaettere durch die ROMs, kommt es mir so
+        # vor, als wuerde das Frontend immer noch nachjustieren").
+        #
+        # DER ZUSAMMENHANG, der das erklaert: die Kastenhoehe haengt am
+        # TEXT unter dem Cover - und der aendert sich im Betrieb. Startet
+        # man ein Spiel zum ersten Mal, kommt "Gespielt: 12min" als neue
+        # Zeile dazu; dasselbe bei "Durchgespielt" und bei jeder
+        # Aenderung des RA-Fortschritts. Der Kasten wird dadurch um eine
+        # Zeilenhoehe kleiner, der Cache-Schluessel ein anderer - und die
+        # beim Vorbereiten berechnete Miniatur passt nicht mehr. Genau
+        # das fuehlt sich an wie "er justiert immer noch nach".
+        #
+        # Nachgerechnet gab es dadurch bis zu ZWOELF verschiedene
+        # Kastenhoehen (CRT 68..165, HDMI 513..772). Jetzt sind es drei
+        # Stufen: eine Textzeile mehr oder weniger bleibt fast immer in
+        # derselben Stufe, und die vorbereitete Miniatur passt weiter.
+        #
+        # Die unterste Stufe ist bewusst so gewaehlt, dass auch der
+        # LAENGSTE moegliche Text noch vollstaendig passt: 3 Titelzeilen
+        # plus der 4*s-Abstand plus 7 Infozeilen (Spieler, Jahr, Genre,
+        # Hersteller, Spielzeit, RA-Fortschritt, "Durchgespielt").
+        laengster_text = 3 * line_h + 4 * s + 7 * line_h
+        stufe_min = max(20, h - laengster_text - 8 * s)
+        stufe_max = int(h * 0.85)
+        raster = (stufe_max - stufe_min) // 2
+        if raster > 0 and cover_h >= stufe_min:
+            gestuft = stufe_min + ((cover_h - stufe_min) // raster) * raster
+            # Sicherheitsnetz: die Stufe darf den Text dieses Eintrags
+            # nicht aus der Spalte druecken. Passt sie nicht, bleibt es
+            # beim genau berechneten Wert - lieber eine Kastengroesse
+            # mehr im Zwischenspeicher als abgeschnittener Text.
+            if gestuft >= 20 and gestuft + text_h + 8 * s <= h:
+                cover_h = gestuft
         # ra_progress wird mit zurueckgegeben, weil draw_art_panel() es
         # ohnehin noch fuer das 100%-Abzeichen auf dem Cover braucht -
         # sonst muesste es dort ein zweites Mal nachgeschlagen werden.
