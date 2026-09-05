@@ -7,6 +7,61 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Die Kategorie-Logos wurden weggeworfen, WEIL sie gerade benutzt
+wurden** (Build 84 — Nutzer-Rückmeldung: „bei Virtual Boy, SNES-Tracker
+etc. so viel ms, warum? Dachte das ist alles im Cache und dann solche
+Ausreißer?"):
+
+Im Log standen diese zwei Zeilen:
+
+```
+01:00:16  THUMB_CACHE Treffer: 6.3ms (ATARI2600.art, 304x792)
+12:48:33  PERF cover: 1732 ms (ATARI2600.art)
+```
+
+**Der entscheidende Hinweis kam vom Nutzer selbst:** „wenn das an der Uhr
+liegt, die aktualisiert sich ja immer erst nach ein paar Sekunden. Ich
+starte das Frontend, dann steht da 1.00, dann nach ein paar Sekunden
+springt sie auf die tatsächliche Uhrzeit." Die beiden Zeilen liegen also
+nicht zwölf Stunden auseinander, sondern **Sekunden**.
+
+**1. Die Ursache.** Der MiSTer hat keine batteriegepufferte Uhr. Die
+Verdrängung im Miniaturen-Zwischenspeicher benutzt die Änderungszeit der
+Cache-Datei als „zuletzt benutzt"-Marke und setzte sie bei jedem Treffer
+per `os.utime` auf die **aktuelle** Systemzeit. Beim Start ist das 01:00.
+Springt die Uhr danach auf 12:48, liegen ausgerechnet die eben gelesenen
+Dateien zwölf Stunden in der Vergangenheit — sie sind schlagartig die
+ältesten im ganzen Zwischenspeicher und fliegen als Erste raus. Die
+Umkehrung dessen, was eine Verdrängung tun soll. Jetzt wird vor dem
+Stellen der Uhr keine Marke gesetzt; die in dieser Zeit berührten
+Einträge werden nachgeholt, sobald NTP fertig ist.
+
+**2. Die Kategorie-Logos sind jetzt geschützt.** Rund vier Dutzend
+Dateien, aber die teuersten Neuberechnungen im ganzen Frontend (auf dem
+Gerät 1,4–3,7 Sekunden je Logo, weil sie mit 900 px die größten Bilder
+sind) — und sie stehen auf genau der Seite, die man beim Start sieht.
+Sie werden nie mehr verdrängt.
+
+**3. Die Verdrängung räumt auf Vorrat.** Vorher wurde exakt auf die
+Obergrenze heruntergeräumt: bei vollem Cache genau **ein** Eintrag je
+Schreibvorgang, und dafür jedes Mal ein `listdir` plus ein `getmtime`
+**je Datei** — bei 20.000 Dateien also 20.000 Systemaufrufe. Aus den
+Messungen des Nutzers ließ sich das herausrechnen:
+
+```
+Zeit eines Fehltreffers = 1030 ms + 7,4 µs je Quellpixel
+```
+
+Die 1030 ms sind bildgrößen-**unabhängig**; das war genau dieser
+Durchgang. Jetzt wird auf 90 % Zielfüllung geräumt, der teure Durchgang
+läuft dadurch nur noch etwa alle 2000 Schreibvorgänge. Im Gegentest: 50
+Verzeichnisdurchgänge bei 50 Schreibvorgängen vorher, 4 danach.
+
+**4. Liegengebliebene Zwischendateien werden aufgeräumt.** Beim Nutzer
+standen 20008 Dateien im Ordner bei einer Obergrenze von 20000 — die
+überzähligen sind abgebrochene Schreibvorgänge (`.art.tmpPID_TID`), die
+bisher niemand entfernt hat, weil die Verdrängung nur auf `.art` sah.
+
 **Boxart-Download lud immer SD herunter, egal was man wählte**
 (Build 83 — Nutzer-Rückmeldung: „egal ob ich Option 1 oder 2 auswähle,
 der lädt immer nur Profil sd runter"):

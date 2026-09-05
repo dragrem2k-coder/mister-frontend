@@ -446,12 +446,89 @@ def _verkleinern_flaechenmittel(pix, w, h, tw, th):
 def _thumb_cache_path(key):
     return os.path.join(THUMB_CACHE_DIR, key + ".art")
 
+# ----------------------------------------------------------------------------
+# DIE UHR, DIE NACH DEM START SPRINGT
+# ----------------------------------------------------------------------------
+# BUGFIX (Build 84, Nutzer-Rueckmeldung - und der entscheidende Hinweis
+# kam von ihm selbst: "wenn das an der Uhr liegt, die aktualisiert sich
+# ja immer erst nach ein paar Sekunden. Ich starte das Frontend, dann
+# steht da 1.00, dann nach ein paar Sekunden springt sie auf die
+# tatsaechliche Uhrzeit").
+#
+# Der MiSTer hat keine batteriegepufferte Uhr. Nach dem Einschalten
+# steht sie auf 01:00; ein paar Sekunden spaeter setzt der
+# NTP-Hintergrundthread sie auf die echte Zeit - im gemeldeten Fall ein
+# Sprung um fast ZWOELF Stunden nach vorn.
+#
+# Die Verdraengung unten benutzt die Aenderungszeit der Cache-Datei als
+# "zuletzt benutzt"-Marke. Damit passierte Folgendes:
+#
+#   1. Das Frontend liest beim Start alle Kategorie-Logos aus dem Cache
+#      und stempelt sie per os.utime mit der FALSCHEN Zeit (01:00).
+#   2. Sekunden spaeter springt die Uhr auf 12:48.
+#   3. Damit liegen ausgerechnet die eben erst gelesenen Logos rund zwoelf
+#      Stunden in der Vergangenheit - sie sind schlagartig die aeltesten
+#      Dateien im ganzen Zwischenspeicher.
+#   4. Ist der Cache voll, verdraengt der naechste Schreibvorgang genau
+#      sie.
+#
+# Ergebnis: die Logos flogen raus, WEIL sie gerade benutzt wurden - die
+# Umkehrung dessen, was eine Verdraengung tun soll. Im Log des Nutzers
+# steht beides Sekunden auseinander: erst "THUMB_CACHE Treffer: 6.3ms
+# (ATARI2600.art)", dann "PERF cover: 1732 ms (ATARI2600.art)".
+#
+# Deshalb: solange die Uhr nicht nachweislich steht, wird KEINE
+# Aenderungszeit gesetzt (die Datei behaelt ihre alte, richtige Marke).
+# Die in dieser Zeit beruehrten Dateien werden gemerkt und nachgeholt,
+# sobald die Uhr steht - siehe uhr_ist_gestellt().
+_uhr_verlaesslich = False
+_vor_uhrstellung_beruehrt = []
+_VOR_UHRSTELLUNG_MAX = 500      # Notbremse, falls die Uhr nie gestellt wird
+
+
+def uhr_ist_gestellt():
+    """Meldet, dass die Systemuhr jetzt stimmt (aufgerufen von
+    fe/timekeeping.py nach einer erfolgreichen NTP-Synchronisierung).
+
+    Holt fuer alle seit dem Start beruehrten Cache-Dateien die
+    "zuletzt benutzt"-Marke nach. Ohne das behielten genau die Dateien,
+    die beim Start gebraucht wurden, eine Marke aus der Zeit VOR dem
+    Sprung - und waeren weiterhin die ersten Verdraengungsopfer, nur aus
+    dem umgekehrten Grund."""
+    global _uhr_verlaesslich, _vor_uhrstellung_beruehrt
+    _uhr_verlaesslich = True
+    nachzuholen, _vor_uhrstellung_beruehrt = _vor_uhrstellung_beruehrt, []
+    geholt = 0
+    for cpath in nachzuholen:
+        try:
+            os.utime(cpath, None)
+            geholt += 1
+        except OSError:
+            pass
+    if geholt:
+        LOG("THUMB_CACHE: %d beim Start gelesene Eintraege auf die jetzt "
+            "richtige Uhrzeit gesetzt" % geholt)
+
+
+def _benutzt_vermerken(cpath):
+    """"Zuletzt benutzt"-Marke setzen - oder vormerken, falls die Uhr
+    noch nicht steht (siehe Kommentarblock oben)."""
+    if _uhr_verlaesslich:
+        try:
+            os.utime(cpath, None)
+        except OSError:
+            pass
+        return
+    if len(_vor_uhrstellung_beruehrt) < _VOR_UHRSTELLUNG_MAX:
+        _vor_uhrstellung_beruehrt.append(cpath)
+
+
 def _thumb_cache_get(path, w, h):
     """Liefert (breite, hoehe, pixelbytes) bei einem Treffer, sonst
-    None. Aktualisiert bei einem Treffer die Aenderungszeit der Datei
-    (dient als einfacher, robuster "zuletzt benutzt"-Zeitstempel fuer
-    die Verdraengung weiter unten - keine separate Indexdatei noetig,
-    die nach einem Absturz/Stromausfall inkonsistent werden koennte)."""
+    None. Vermerkt bei einem Treffer die Benutzung (dient als einfacher,
+    robuster "zuletzt benutzt"-Zeitstempel fuer die Verdraengung weiter
+    unten - keine separate Indexdatei noetig, die nach einem
+    Absturz/Stromausfall inkonsistent werden koennte)."""
     cpath = _thumb_cache_path(_thumb_cache_key(path, w, h))
     try:
         with open(cpath, "rb") as f:
@@ -461,10 +538,7 @@ def _thumb_cache_get(path, w, h):
             pix = zlib.decompress(f.read())
             if len(pix) != tw * th * 4:
                 return None
-        try:
-            os.utime(cpath, None)
-        except OSError:
-            pass
+        _benutzt_vermerken(cpath)
         return (tw, th, pix)
     except FileNotFoundError:
         return None
@@ -514,6 +588,11 @@ def _thumb_cache_put(path, w, h, tw, th, pix):
     except OSError as e:
         LOG("THUMB_CACHE Schreibfehler (%s): %s" % (os.path.basename(path), e))
         return
+    # Auch frisch geschriebene Dateien bekommen ihre Marke von der
+    # Systemuhr - steht die noch nicht (siehe Kommentarblock bei
+    # uhr_ist_gestellt()), wird sie hier vorgemerkt und nachgeholt.
+    if not _uhr_verlaesslich and len(_vor_uhrstellung_beruehrt) < _VOR_UHRSTELLUNG_MAX:
+        _vor_uhrstellung_beruehrt.append(cpath)
     _thumb_cache_evict_if_needed()
 
 def _thumb_cache_put_async(path, w, h, tw, th, pix):
@@ -565,6 +644,22 @@ _thumb_cache_seit_zaehlung = 0
 _THUMB_CACHE_NACHZAEHLEN_ALLE = 2000
 
 
+# Cache-Dateien, die niemals verdraengt werden duerfen - siehe
+# ausfuehrliche Begruendung in _thumb_cache_evict_if_needed().
+_geschuetzte_cache_dateien = set()
+
+
+def thumb_cache_schuetzen(auftraege):
+    """Die uebergebenen (pfad, breite, hoehe)-Tripel vor der Verdraengung
+    schuetzen. Ersetzt die bisherige Liste vollstaendig, damit ein
+    geaenderter Kategoriesatz (oder eine andere Aufloesung) keine
+    veralteten Schutzeintraege hinterlaesst."""
+    global _geschuetzte_cache_dateien
+    _geschuetzte_cache_dateien = {
+        _thumb_cache_path(_thumb_cache_key(p, w, h)) for p, w, h in auftraege}
+    return len(_geschuetzte_cache_dateien)
+
+
 def _thumb_cache_evict_if_needed():
     """Verdraengung nach Anzahl Dateien: die am laengsten nicht mehr
     gelesenen/geschriebenen (aelteste Aenderungszeit) zuerst entfernen,
@@ -599,9 +694,23 @@ def _thumb_cache_evict_if_needed():
             return
 
     try:
-        names = [f for f in os.listdir(THUMB_CACHE_DIR) if f.endswith(".art")]
+        alle = os.listdir(THUMB_CACHE_DIR)
     except OSError:
         return
+    names = [f for f in alle if f.endswith(".art")]
+    # Liegengebliebene Zwischendateien mitnehmen, wenn wir schon einmal
+    # hier sind: _thumb_cache_put() schreibt erst nach "<name>.tmpPID_TID"
+    # und benennt dann um. Bricht der Vorgang dazwischen ab (Absturz,
+    # Stromausfall), bleibt die Zwischendatei fuer immer liegen - bisher
+    # hat sie niemand aufgeraeumt, weil die Verdraengung nur auf ".art"
+    # sieht. Beim Nutzer standen 20008 Dateien im Ordner bei einer
+    # Obergrenze von 20000.
+    for fn in alle:
+        if ".art.tmp" in fn:
+            try:
+                os.remove(os.path.join(THUMB_CACHE_DIR, fn))
+            except OSError:
+                pass
     _thumb_cache_anzahl = len(names)
     _thumb_cache_seit_zaehlung = 0
     if len(names) <= THUMB_CACHE_MAX_FILES:
@@ -609,12 +718,36 @@ def _thumb_cache_evict_if_needed():
     entries = []
     for fn in names:
         fp = os.path.join(THUMB_CACHE_DIR, fn)
+        # GESCHUETZTE Eintraege ueberspringen (siehe
+        # thumb_cache_schuetzen()): die Kategorie-Logos der Startseite
+        # sind nur rund vier Dutzend Dateien, aber die teuersten im
+        # ganzen Frontend (auf dem Geraet des Nutzers 1.4-3.7 SEKUNDEN
+        # je Neuberechnung, weil sie mit 900 px die groessten Bilder
+        # sind). Sie duerfen unter keinen Umstaenden verdraengt werden -
+        # sie stehen auf genau der Seite, die man beim Start sieht.
+        if fp in _geschuetzte_cache_dateien:
+            continue
         try:
             entries.append((os.path.getmtime(fp), fp))
         except OSError:
             pass
     entries.sort()
-    to_remove = len(entries) - THUMB_CACHE_MAX_FILES
+    # GEAENDERT (Build 84): frueher wurde exakt auf die Obergrenze
+    # heruntergeraeumt, also bei einem vollen Cache GENAU EIN Eintrag je
+    # Schreibvorgang entfernt - bei vollem Preis. Der Preis ist das
+    # os.listdir plus ein os.path.getmtime JE DATEI; beim Nutzer mit
+    # 20000 Dateien sind das 20000 Systemaufrufe auf der SD-Karte. Aus
+    # seinen Messungen laesst sich das herausrechnen:
+    #
+    #   Zeit eines Fehltreffers = 1030 ms + 7.4 us je Quellpixel
+    #
+    # Die 1030 ms sind bildgroessen-UNABHAENGIG - das ist genau dieser
+    # Durchgang. Jetzt wird auf ZIELFUELLUNG heruntergeraeumt (90 %),
+    # der teure Durchgang laeuft dadurch nur noch etwa alle 2000
+    # Schreibvorgaenge statt bei jedem einzelnen.
+    ziel = int(THUMB_CACHE_MAX_FILES * 0.9)
+    to_remove = max(0, len(names) - ziel)
+    to_remove = min(to_remove, len(entries))
     entfernt = 0
     for _, fp in entries[:to_remove]:
         try:
@@ -622,7 +755,7 @@ def _thumb_cache_evict_if_needed():
             entfernt += 1
         except OSError:
             pass
-    _thumb_cache_anzahl = len(entries) - entfernt
+    _thumb_cache_anzahl = len(names) - entfernt
     # NEU (Nutzer-Rueckmeldung "rendert der die Boxarts immer neu?"):
     # bisher lief die Verdraengung voellig lautlos. Ob der Zwischen-
     # speicher zu klein ist, liess sich damit nur raten. Diese Zeile

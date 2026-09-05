@@ -35,6 +35,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_prewarm_abbruch.py \
   && python3 tools/test_prewarm_absturz.py \
   && python3 tools/test_script_eingaben.py \
+  && python3 tools/test_thumb_verdraengung.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -59,6 +60,7 @@ python3 tools/regression_test.py \
 | `test_prewarm_abbruch.py` | Test (Pass/Fail) | read_action(timeout=0) sieht wirklich nach; Fortschrittsbild wird auf CRT nicht abgeschnitten |
 | `test_prewarm_absturz.py` | Test (Pass/Fail) | "Miniaturen vorbereiten" kann das Frontend nicht mehr mitreissen; keine doppelten Cover |
 | `test_script_eingaben.py` | Test (Pass/Fail) | Abfragen in den Shell-Skripten funktionieren auch mit Wagenruecklauf in der Eingabe |
+| `test_thumb_verdraengung.py` | Test (Pass/Fail) | Miniaturen-Verdraengung: Uhrensprung nach dem Start, Schutz der Kategorie-Logos, Aufraeumen auf Vorrat |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -470,6 +472,30 @@ Warum das ueberhaupt ein automatischer Test sein muss: von Hand testet
 man mit einer normalen Tastatur, und die liefert kein `\r`. Genau der
 Fall, der beim Nutzer auftritt, ist der, den man beim Testen nie
 erwischt.
+
+## test_thumb_verdraengung.py
+
+Der MiSTer hat keine gepufferte Uhr: nach dem Start steht sie auf 01:00,
+ein paar Sekunden spaeter stellt NTP sie auf die echte Zeit. Die
+Verdraengung im Miniaturen-Zwischenspeicher benutzte die Aenderungszeit
+der Cache-Datei als "zuletzt benutzt"-Marke und setzte sie bei jedem
+Treffer auf die AKTUELLE Systemzeit.
+
+Damit lagen ausgerechnet die beim Start gelesenen Kategorie-Logos nach
+dem Uhrensprung zwoelf Stunden in der Vergangenheit - sie waren
+schlagartig die aeltesten Dateien im ganzen Zwischenspeicher und flogen
+als Erste raus. **Sie wurden weggeworfen, WEIL sie gerade benutzt
+wurden.** Im Log des Nutzers stehen die beiden Zeilen Sekunden
+auseinander:
+
+    01:00:16  THUMB_CACHE Treffer: 6.3ms (ATARI2600.art, 304x792)
+    12:48:33  PERF cover: 1732 ms (ATARI2600.art)
+
+Test 4 stellt genau diesen Sprung nach. Test 1/2 pruefen das Aufraeumen
+auf Vorrat (frueher: EIN Eintrag je Schreibvorgang, jeder mit einem
+getmtime je Datei - im Gegentest 50 Verzeichnisdurchgaenge bei 50
+Schreibvorgaengen, jetzt 4), Test 3 den Schutz der Kategorie-Logos,
+Test 6 das Aufraeumen liegengebliebener .tmp-Dateien.
 
 ## diag_lightpath.py
 

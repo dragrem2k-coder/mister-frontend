@@ -402,12 +402,24 @@ try:
     A._thumb_cache_evict_if_needed()
     uebrig = sorted(x for x in os.listdir(A.THUMB_CACHE_DIR)
                     if x.endswith(".art"))
-    check("auf die Obergrenze heruntergeraeumt", len(uebrig) == 8,
+    # GEAENDERT (Build 84): frueher wurde exakt AUF die Obergrenze
+    # heruntergeraeumt - bei vollem Cache also genau ein Eintrag je
+    # Schreibvorgang, und dafuer jedes Mal der volle Verzeichnisdurchgang
+    # mit einem getmtime je Datei. Im Log des Nutzers waren das 1030 ms
+    # Grundkosten bei JEDEM Fehltreffer. Jetzt wird auf eine
+    # Zielfuellung von 90 % geraeumt, damit der teure Durchgang lange
+    # Ruhe hat (siehe tools/test_thumb_verdraengung.py).
+    ziel = int(A.THUMB_CACHE_MAX_FILES * 0.9)
+    check("unter die Obergrenze heruntergeraeumt",
+          len(uebrig) <= ziel, "%d uebrig (Ziel %d)" % (len(uebrig), ziel))
+    check("nicht mehr als noetig weggeworfen", len(uebrig) >= ziel - 1,
           "%d uebrig" % len(uebrig))
     check("und zwar die AELTESTEN entfernt",
-          uebrig[0] == "d04.art", str(uebrig))
+          uebrig == sorted(uebrig)[-len(uebrig):]
+          and uebrig[0] == "d%02d.art" % (12 - len(uebrig)), str(uebrig))
     check("der Zaehler stimmt danach",
-          A._thumb_cache_anzahl == 8, str(A._thumb_cache_anzahl))
+          A._thumb_cache_anzahl == len(uebrig),
+          "%s statt %d" % (A._thumb_cache_anzahl, len(uebrig)))
 finally:
     A.THUMB_CACHE_MAX_FILES = _alte_grenze
     A._thumb_cache_anzahl = None

@@ -167,6 +167,21 @@ def _apply_ntp_result(unix_time):
         subprocess.run(["date", "-s", ts], capture_output=True, timeout=2.0)
         NTP_SYNC_OK = True
         LOG("NTP-Sync erfolgreich: Systemuhr auf %s gesetzt (UTC%+d)" % (ts, offset_h))
+        # NEU (Build 84): dem Miniaturen-Zwischenspeicher Bescheid sagen.
+        # Er benutzt die Aenderungszeit der Dateien als "zuletzt
+        # benutzt"-Marke - und genau JETZT ist die Uhr gerade um Stunden
+        # gesprungen. Ohne diesen Anruf haetten alle beim Start
+        # gelesenen Eintraege eine Marke aus der Zeit VOR dem Sprung und
+        # waeren dadurch die ersten Verdraengungsopfer. Die
+        # ausfuehrliche Herleitung steht bei uhr_ist_gestellt() in
+        # fe/art.py. Bewusst spaet importiert: fe/art.py importiert
+        # dieses Modul nicht, ein Import auf Modulebene waere trotzdem
+        # eine unnoetige Kopplung fuer eine einzige Zeile.
+        try:
+            from fe.art import uhr_ist_gestellt
+            uhr_ist_gestellt()
+        except Exception:                            # noqa: BLE001
+            pass   # Uhrstellen darf an dieser Nebensache nie scheitern
         return True
     except (OSError, subprocess.SubprocessError) as e:
         NTP_SYNC_OK = False

@@ -749,6 +749,7 @@ from fe.art import (
     ART_HD, BG_BASE, SYSART_BASE, META_BASE, BADGE_DIR,
     RA_BADGE_URL, BG, BADGES, _category_art_key,
     prewarm_thumb, thumb_cache_has, thumb_cache_stand,
+    thumb_cache_schuetzen,
 )
 
 # NEU (Build 73): Cover-Miniaturen im Leerlauf vorberechnen. Die
@@ -1041,6 +1042,17 @@ class Frontend:
         # asynchronen Vorwaermen im Hintergrund-Thread unten - dort ist
         # ein verlorener Wettlauf unkritisch, da fuer diese der Nutzer
         # ohnehin erst noch aktiv navigieren muss.
+        # NEU (Build 84): die Kategorie-Logos SOFORT beim Start vor der
+        # Verdraengung schuetzen, nicht erst wenn zufaellig einmal
+        # vorgewaermt wird. Genau hier faengt der gemeldete Fehler an -
+        # die Zeile darunter LIEST die erste Sysart-Datei, und ein
+        # Lesevorgang stempelt sie mit der Systemuhr, die zu diesem
+        # Zeitpunkt noch auf 01:00 steht (siehe uhr_ist_gestellt() in
+        # fe/art.py). Kostet nur ein paar Dutzend sha1-Berechnungen.
+        try:
+            self.kategorie_logo_auftraege()
+        except Exception:                            # noqa: BLE001
+            pass   # darf den Start nie zum Absturz bringen
         if self.cats:
             _first_name, _first_node, _first_syskey = self.cats[0]
             _prewarm_one_cat_art(_first_name, _first_syskey)
@@ -5720,16 +5732,24 @@ class Frontend:
         breite = art_w - 2 * (6 * s)
         if breite <= 0:
             return []
-        auftraege = []
+        alle = []
         for name, _node, syskey in self.cats:
             art_key = _category_art_key(name, syskey)
             if not art_key:
                 continue
             pfad = os.path.join(SYSART_BASE, "%s.art" % art_key)
-            if thumb_cache_has(pfad, breite, box_h):
-                continue
-            auftraege.append((pfad, breite, box_h))
-        return auftraege
+            alle.append((pfad, breite, box_h))
+        # NEU (Build 84): ALLE Logos vor der Verdraengung schuetzen, nicht
+        # nur die noch fehlenden. Genau das war der zweite Teil des
+        # gemeldeten Fehlers - die Logos lagen im Zwischenspeicher, wurden
+        # aber verdraengt, und der naechste Blick aufs Hauptmenue kostete
+        # dann 1.4 bis 3.7 Sekunden je Kategorie. Es sind rund vier
+        # Dutzend Dateien; sie belegen einen verschwindenden Teil des
+        # Zwischenspeichers und sind gleichzeitig die teuersten
+        # Neuberechnungen im ganzen Frontend.
+        thumb_cache_schuetzen(alle)
+        # Zurueckgegeben wird weiterhin nur, was tatsaechlich noch fehlt.
+        return [a for a in alle if not thumb_cache_has(*a)]
 
     def _prewarm_anstossen(self):
         """Im Leerlauf die Cover der voraussichtlich naechsten Eintraege
