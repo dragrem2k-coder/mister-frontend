@@ -288,7 +288,81 @@ BADGES = BadgeCache()
 #
 # Format: dieselbe simple ART1-Kopfstruktur wie normale .art-Dateien -
 # kein neues Format noetig, derselbe Lesecode funktioniert fuer beides.
-THUMB_CACHE_DIR = "/media/fat/frontend/thumb_cache"
+# GEAENDERT (Build 85, Nutzerwunsch: "bitte fuer jeden Modus, also CRT
+# und HDMI, einen eigenen Cache anlegen - quasi einmal SD-Variante fuer
+# CRT-Modus und einmal HD-Variante fuer HDMI-Modus").
+#
+# Ab jetzt drei Ebenen statt einer:
+#
+#   thumb_cache/hd/a7/a7f3....art      HDMI-Miniaturen
+#   thumb_cache/sd/1c/1c90....art      CRT-Miniaturen
+#
+# WARUM getrennt nach Modus: die Kastengroessen der beiden Modi haben
+# nichts miteinander zu tun, und wer nur einen davon benutzt, schleppt
+# den anderen als toten Ballast mit. Getrennt laesst sich der ungenutzte
+# Teil in einem Rutsch loeschen, und eine lange HDMI-Sitzung kann die
+# CRT-Eintraege nicht mehr nach und nach verdraengen.
+#
+# WARUM die zusaetzliche Zwischenebene aus zwei Zeichen des Schluessels:
+# /media/fat ist ueblicherweise exFAT, und dort ist das Nachschlagen in
+# einem Verzeichnis LINEAR - jedes Oeffnen einer Datei laeuft die
+# Verzeichniseintraege durch. Mit der auf Nutzerwunsch angehobenen
+# Obergrenze von 40000 waere ein einzelner flacher Ordner doppelt so
+# teuer wie der bisherige. 256 Unterordner machen daraus rund 156
+# Eintraege je Ordner - der Punkt faellt damit ganz weg.
+#
+# EHRLICH BENANNT: die Umstellung entwertet den bestehenden
+# Zwischenspeicher nicht (die Schluessel bleiben gleich), aber die alten
+# Dateien liegen am falschen Ort und werden nicht mehr gefunden. Sie
+# werden beim ersten Start nach dem Update im Hintergrund aufgeraeumt -
+# siehe alten_flachen_cache_aufraeumen().
+THUMB_CACHE_BASE = "/media/fat/frontend/thumb_cache"
+THUMB_CACHE_DIR = os.path.join(THUMB_CACHE_BASE, "hd")
+
+
+def thumb_cache_modus_setzen(hd):
+    """Legt fest, ob der HD- oder der SD-Zwischenspeicher benutzt wird.
+
+    Aufgerufen vom Frontend beim Start (und nach einem Aufloesungs-
+    wechsel) anhand derselben Bedingung, nach der auch die Cover-Quelle
+    gewaehlt wird: ART_HD ab 720 Bildzeilen, sonst ART_BASE."""
+    global THUMB_CACHE_DIR, _thumb_cache_anzahl, _thumb_cache_seit_zaehlung
+    neu_dir = os.path.join(THUMB_CACHE_BASE, "hd" if hd else "sd")
+    if neu_dir == THUMB_CACHE_DIR:
+        return THUMB_CACHE_DIR
+    THUMB_CACHE_DIR = neu_dir
+    # Der mitgefuehrte Zaehler gilt fuer den ALTEN Ordner - verwerfen,
+    # sonst wuerde im neuen sofort falsch verdraengt.
+    _thumb_cache_anzahl = None
+    _thumb_cache_seit_zaehlung = 0
+    LOG("THUMB_CACHE: Modus %s -> %s" % ("HD" if hd else "SD", THUMB_CACHE_DIR))
+    return THUMB_CACHE_DIR
+
+
+def alten_flachen_cache_aufraeumen():
+    """Die Dateien der Vorgaengerfassung entfernen, die direkt in
+    thumb_cache/ liegen statt in hd/ bzw. sd/.
+
+    Sie werden nach der Umstellung nie wieder gefunden - liegen bleiben
+    wuerden sie trotzdem, bei einer grossen Sammlung mehrere Gigabyte.
+    Bewusst nur die losen .art-Dateien der obersten Ebene, die
+    Unterordner bleiben unangetastet."""
+    entfernt = 0
+    try:
+        for fn in os.listdir(THUMB_CACHE_BASE):
+            if not (fn.endswith(".art") or ".art.tmp" in fn):
+                continue
+            try:
+                os.remove(os.path.join(THUMB_CACHE_BASE, fn))
+                entfernt += 1
+            except OSError:
+                pass
+    except OSError:
+        return 0
+    if entfernt:
+        LOG("THUMB_CACHE: %d Dateien der alten, flachen Ablage entfernt "
+            "(liegen seit Build 85 in hd/ bzw. sd/)" % entfernt)
+    return entfernt
 
 # Obergrenze nach ANZAHL Dateien (nicht Speicherplatz) - einfach zu
 # pruefen, verhindert zuverlaessig "irgendwann liegen Zehntausende
@@ -324,7 +398,16 @@ THUMB_CACHE_DIR = "/media/fat/frontend/thumb_cache"
 # Die Obergrenze wird nur beim SCHREIBEN geprueft, und die Pruefung ist
 # ein einzelnes os.listdir() - auch bei 20000 Dateien kostet das nichts
 # Spuerbares, zumal sie nur nach einer neu berechneten Miniatur laeuft.
-THUMB_CACHE_MAX_FILES = 20000
+# DRITTE ERHOEHUNG 20000 -> 40000 (Nutzerwunsch, nachdem sein Ordner mit
+# 20008 Dateien exakt an der Grenze klebte): 10000 Spiele mit Cover in
+# zwei Modi sind 20000 Eintraege - die alte Grenze war damit auf Kante
+# genaeht. Die Grenze gilt jetzt JE MODUS (hd/ und sd/ getrennt), es
+# koennen also bis zu 80000 Dateien zusammenkommen. Bei grob 150 KB je
+# HDMI- und 15 KB je CRT-Miniatur sind das im Extremfall rund 6.6 GB -
+# auf einer 128-GB-Karte unkritisch, auf einer kleinen nicht. Wer knapp
+# bei Platz ist, setzt den Wert hier herunter; thumb_cache_stand()
+# schreibt die tatsaechliche Belegung nach jedem Durchlauf ins Log.
+THUMB_CACHE_MAX_FILES = 40000
 
 def _thumb_cache_key(path, w, h):
     """Cache-Schluessel aus Quellpfad + Zielgroesse + Dateigroesse/
@@ -444,7 +527,12 @@ def _verkleinern_flaechenmittel(pix, w, h, tw, th):
 
 
 def _thumb_cache_path(key):
-    return os.path.join(THUMB_CACHE_DIR, key + ".art")
+    """Ablageort einer Miniatur: <cache>/<modus>/<2 Zeichen>/<schluessel>.art
+
+    Die Zwischenebene aus den ersten zwei Zeichen des (hexadezimalen)
+    Schluessels verteilt die Dateien auf 256 Unterordner - siehe
+    Begruendung bei THUMB_CACHE_BASE."""
+    return os.path.join(THUMB_CACHE_DIR, key[:2], key + ".art")
 
 # ----------------------------------------------------------------------------
 # DIE UHR, DIE NACH DEM START SPRINGT
@@ -579,8 +667,8 @@ def _thumb_cache_put(path, w, h, tw, th, pix):
     bleibt weiterhin atomar, im schlimmsten Fall "gewinnt" einfach
     der zuletzt fertige Thread mit einem (identischen) Ergebnis."""
     try:
-        os.makedirs(THUMB_CACHE_DIR, exist_ok=True)
         cpath = _thumb_cache_path(_thumb_cache_key(path, w, h))
+        os.makedirs(os.path.dirname(cpath), exist_ok=True)
         tmp = cpath + ".tmp%d_%d" % (os.getpid(), threading.get_ident())
         with open(tmp, "wb") as f:
             f.write(b"ART1" + struct.pack("<HH", tw, th) + zlib.compress(pix, 6))
@@ -693,11 +781,23 @@ def _thumb_cache_evict_if_needed():
                 and _thumb_cache_seit_zaehlung < _THUMB_CACHE_NACHZAEHLEN_ALLE):
             return
 
+    # GEAENDERT (Build 85): die Dateien liegen jetzt in 256 Unterordnern
+    # (siehe _thumb_cache_path), es muss also gelaufen statt gelistet
+    # werden. Gesammelt wird gleich der VOLLE Pfad - der wird unten
+    # ohnehin gebraucht, und ein zweites os.path.join je Datei bei
+    # 40000 Dateien ist unnoetig.
+    namen = []
+    reste = []
     try:
-        alle = os.listdir(THUMB_CACHE_DIR)
+        for unterordner, _dirs, dateien in os.walk(THUMB_CACHE_DIR):
+            for f in dateien:
+                if f.endswith(".art"):
+                    namen.append(os.path.join(unterordner, f))
+                elif ".art.tmp" in f:
+                    reste.append(os.path.join(unterordner, f))
     except OSError:
         return
-    names = [f for f in alle if f.endswith(".art")]
+    names = namen
     # Liegengebliebene Zwischendateien mitnehmen, wenn wir schon einmal
     # hier sind: _thumb_cache_put() schreibt erst nach "<name>.tmpPID_TID"
     # und benennt dann um. Bricht der Vorgang dazwischen ab (Absturz,
@@ -705,19 +805,17 @@ def _thumb_cache_evict_if_needed():
     # hat sie niemand aufgeraeumt, weil die Verdraengung nur auf ".art"
     # sieht. Beim Nutzer standen 20008 Dateien im Ordner bei einer
     # Obergrenze von 20000.
-    for fn in alle:
-        if ".art.tmp" in fn:
-            try:
-                os.remove(os.path.join(THUMB_CACHE_DIR, fn))
-            except OSError:
-                pass
+    for fp in reste:
+        try:
+            os.remove(fp)
+        except OSError:
+            pass
     _thumb_cache_anzahl = len(names)
     _thumb_cache_seit_zaehlung = 0
     if len(names) <= THUMB_CACHE_MAX_FILES:
         return
     entries = []
-    for fn in names:
-        fp = os.path.join(THUMB_CACHE_DIR, fn)
+    for fp in names:
         # GESCHUETZTE Eintraege ueberspringen (siehe
         # thumb_cache_schuetzen()): die Kategorie-Logos der Startseite
         # sind nur rund vier Dutzend Dateien, aber die teuersten im
@@ -1030,7 +1128,8 @@ class ArtCache:
 
 
 def thumb_cache_stand():
-    """(Anzahl Dateien, Obergrenze) im Miniaturen-Zwischenspeicher.
+    """(Anzahl Dateien, Obergrenze, belegte Bytes) im Miniaturen-
+    Zwischenspeicher des AKTUELLEN Modus (hd/ oder sd/).
 
     NEU (Nutzerfrage: "die Miniaturen werden ja gecacht, quasi
     gespeichert, und nicht immer neu erstellt? Kam mir gerade so vor").
@@ -1042,12 +1141,21 @@ def thumb_cache_stand():
     Kostet ein os.listdir (auf dem Geraet des Nutzers 167 ms bei 7700
     Dateien) - vertretbar, weil es EINMAL am Ende eines Vorgangs laeuft,
     der ohnehin Minuten dauert."""
+    n = 0
+    bytes_ = 0
     try:
-        n = len([f for f in os.listdir(THUMB_CACHE_DIR)
-                 if f.endswith(".art")])
+        for unterordner, _dirs, dateien in os.walk(THUMB_CACHE_DIR):
+            for f in dateien:
+                if not f.endswith(".art"):
+                    continue
+                n += 1
+                try:
+                    bytes_ += os.path.getsize(os.path.join(unterordner, f))
+                except OSError:
+                    pass
     except OSError:
-        n = 0
-    return n, THUMB_CACHE_MAX_FILES
+        pass
+    return n, THUMB_CACHE_MAX_FILES, bytes_
 
 
 def thumb_cache_has(path, w, h):

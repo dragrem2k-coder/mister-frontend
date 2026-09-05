@@ -60,7 +60,7 @@ python3 tools/regression_test.py \
 | `test_prewarm_abbruch.py` | Test (Pass/Fail) | read_action(timeout=0) sieht wirklich nach; Fortschrittsbild wird auf CRT nicht abgeschnitten |
 | `test_prewarm_absturz.py` | Test (Pass/Fail) | "Miniaturen vorbereiten" kann das Frontend nicht mehr mitreissen; keine doppelten Cover |
 | `test_script_eingaben.py` | Test (Pass/Fail) | Abfragen in den Shell-Skripten funktionieren auch mit Wagenruecklauf in der Eingabe |
-| `test_thumb_verdraengung.py` | Test (Pass/Fail) | Miniaturen-Verdraengung: Uhrensprung nach dem Start, Schutz der Kategorie-Logos, Aufraeumen auf Vorrat |
+| `test_thumb_verdraengung.py` | Test (Pass/Fail) | Miniaturen-Cache: Uhrensprung nach dem Start, Schutz der Kategorie-Logos, Aufraeumen auf Vorrat, getrennte Ablagen fuer CRT/HDMI |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 

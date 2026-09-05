@@ -749,7 +749,8 @@ from fe.art import (
     ART_HD, BG_BASE, SYSART_BASE, META_BASE, BADGE_DIR,
     RA_BADGE_URL, BG, BADGES, _category_art_key,
     prewarm_thumb, thumb_cache_has, thumb_cache_stand,
-    thumb_cache_schuetzen,
+    thumb_cache_schuetzen, thumb_cache_modus_setzen,
+    alten_flachen_cache_aufraeumen,
 )
 
 # NEU (Build 73): Cover-Miniaturen im Leerlauf vorberechnen. Die
@@ -1042,6 +1043,22 @@ class Frontend:
         # asynchronen Vorwaermen im Hintergrund-Thread unten - dort ist
         # ein verlorener Wettlauf unkritisch, da fuer diese der Nutzer
         # ohnehin erst noch aktiv navigieren muss.
+        # NEU (Build 85, Nutzerwunsch "fuer jeden Modus einen eigenen
+        # Cache"): ZUERST den richtigen Zwischenspeicher waehlen -
+        # dieselbe Bedingung, nach der auch die Cover-Quelle gewaehlt
+        # wird (ART_HD ab 720 Bildzeilen, siehe
+        # cover_pfad_und_kasten()). Muss vor allem anderen stehen, was
+        # den Cache anfasst: die Logo-Registrierung direkt darunter
+        # rechnet Dateipfade aus, und die haengen am Modus.
+        thumb_cache_modus_setzen(self.fb.height >= 720)
+        # Die Dateien der Vorgaengerfassung liegen flach in
+        # thumb_cache/ und werden nie wieder gefunden - im Hintergrund
+        # wegraeumen, damit sie nicht dauerhaft Platz belegen. Bewusst
+        # nebenlaeufig: bei 20000 Dateien dauert das ein paar Sekunden,
+        # und der Start soll darauf nicht warten.
+        threading.Thread(target=alten_flachen_cache_aufraeumen,
+                         daemon=True).start()
+
         # NEU (Build 84): die Kategorie-Logos SOFORT beim Start vor der
         # Verdraengung schuetzen, nicht erst wenn zufaellig einmal
         # vorgewaermt wird. Genau hier faengt der gemeldete Fehler an -
@@ -6001,13 +6018,13 @@ class Frontend:
         # gerade so vor"): steht die Zahl an der Obergrenze, verdraengt
         # die Sammlung sich selbst - und DANN wird tatsaechlich immer
         # wieder neu gerechnet, egal wie oft man diesen Punkt startet.
-        im_cache, obergrenze = thumb_cache_stand()
+        im_cache, obergrenze, belegt = thumb_cache_stand()
         LOG("PREWARM Durchlauf %s: %d gerechnet, %d lagen schon da, "
             "%d uebersprungen, %d gesamt, %.0fs - Zwischenspeicher "
-            "%d/%d Dateien%s"
+            "%d/%d Dateien, %.1f GB%s"
             % ("abgebrochen" if abgebrochen else "fertig",
                gerechnet, lagen_da, uebersprungen, gesamt, dauer,
-               im_cache, obergrenze,
+               im_cache, obergrenze, belegt / (1024.0 ** 3),
                " (VOLL - siehe THUMB_CACHE_MAX_FILES)"
                if im_cache >= obergrenze else ""))
         self.build_categories()      # Menuebeschriftung auffrischen

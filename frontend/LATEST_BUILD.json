@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-29-84",
-  "summary": "Kategorie-Logos fliegen nicht mehr aus dem Miniaturen-Zwischenspeicher: der Uhrensprung nach dem Start machte ausgerechnet die gerade gelesenen Eintraege zu den aeltesten. Verdraengung raeumt auf Vorrat statt bei jedem Schreibvorgang."
+  "build_id": "2026-08-29-85",
+  "summary": "Getrennte Miniaturen-Zwischenspeicher fuer CRT (sd) und HDMI (hd), Obergrenze je Modus auf 40000 angehoben, Dateien auf 256 Unterordner verteilt (exFAT sucht linear)."
 }

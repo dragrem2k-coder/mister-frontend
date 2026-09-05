@@ -7,6 +7,40 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Getrennte Zwischenspeicher für CRT und HDMI, Obergrenze auf 40.000**
+(Build 85 — Nutzerwunsch: „Obergrenze auf 40000 erhöhen und bitte für
+jeden Modus, also CRT und HDMI, einen eigenen Cache anlegen — quasi
+einmal SD-Variante für CRT-Modus und einmal HD-Variante für
+HDMI-Modus"):
+
+**1. Zwei getrennte Ablagen.** Statt eines gemeinsamen Ordners jetzt
+`thumb_cache/hd/` und `thumb_cache/sd/`, gewählt beim Start nach
+derselben Bedingung wie die Cover-Quelle (ab 720 Bildzeilen HD). Wer nur
+einen Modus benutzt, kann den anderen in einem Rutsch löschen, und eine
+lange HDMI-Sitzung verdrängt die CRT-Einträge nicht mehr nach und nach.
+
+**2. Obergrenze 20.000 → 40.000, und zwar je Modus.** Beim Nutzer
+klebten 20.008 Dateien exakt an der alten Grenze — 10.000 Spiele mit
+Cover in zwei Modi sind eben 20.000 Einträge. Im Extremfall können jetzt
+80.000 Dateien zusammenkommen: bei grob 150 KB je HDMI- und 15 KB je
+CRT-Miniatur rund 6,6 GB. Auf einer 128-GB-Karte unkritisch, auf einer
+kleinen nicht — der Wert steht als eine Konstante in `fe/art.py`, und
+die tatsächliche Belegung steht nach jedem Durchlauf im Log.
+
+**3. 256 Unterordner statt einer flachen Ablage.** Das ist der Haken an
+der größeren Obergrenze: `/media/fat` ist üblicherweise exFAT, und dort
+ist das Nachschlagen in einem Verzeichnis **linear** — jedes Öffnen
+läuft die Einträge durch. 40.000 Dateien in einem Ordner wären doppelt
+so teuer wie die bisherigen 20.000 gewesen. Die Dateien liegen jetzt
+nach den ersten zwei Zeichen ihres Schlüssels verteilt
+(`hd/a7/a7f3….art`), das sind rund 156 Einträge je Ordner statt 40.000.
+Gemessen im Test: 2000 Schlüssel verteilen sich auf alle 256 Ordner.
+
+**4. Die alte, flache Ablage wird aufgeräumt.** Die Dateien der
+Vorgängerfassung liegen am falschen Ort und werden nie wieder gefunden;
+sie werden beim ersten Start nach dem Update im Hintergrund entfernt,
+statt für immer Platz zu belegen.
+
 **Die Kategorie-Logos wurden weggeworfen, WEIL sie gerade benutzt
 wurden** (Build 84 — Nutzer-Rückmeldung: „bei Virtual Boy, SNES-Tracker
 etc. so viel ms, warum? Dachte das ist alles im Cache und dann solche

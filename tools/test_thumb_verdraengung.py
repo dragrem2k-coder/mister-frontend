@@ -53,15 +53,18 @@ def check(label, cond, extra=""):
 
 
 TMP = tempfile.mkdtemp(prefix="verdraengung_")
-A.THUMB_CACHE_DIR = os.path.join(TMP, "thumb_cache")
+A.THUMB_CACHE_BASE = os.path.join(TMP, "thumb_cache")
+A.THUMB_CACHE_DIR = os.path.join(A.THUMB_CACHE_BASE, "hd")
 os.makedirs(A.THUMB_CACHE_DIR, exist_ok=True)
 QUELLE = os.path.join(TMP, "quelle")
 os.makedirs(QUELLE, exist_ok=True)
 
 
 def cache_datei(name, alter_sekunden=0.0):
-    """Eine Datei direkt im Cache-Ordner anlegen, mit gewaehltem Alter."""
-    fp = os.path.join(A.THUMB_CACHE_DIR, name + ".art")
+    """Eine Datei im Cache anlegen, mit gewaehltem Alter - inklusive der
+    Zwischenebene aus zwei Zeichen (siehe _thumb_cache_path)."""
+    fp = os.path.join(A.THUMB_CACHE_DIR, name[:2], name + ".art")
+    os.makedirs(os.path.dirname(fp), exist_ok=True)
     with open(fp, "wb") as f:
         f.write(b"ART1" + b"\0" * 8)
     if alter_sekunden:
@@ -71,13 +74,15 @@ def cache_datei(name, alter_sekunden=0.0):
 
 
 def zaehlen():
-    return len([f for f in os.listdir(A.THUMB_CACHE_DIR)
-                if f.endswith(".art")])
+    n = 0
+    for _d, _s, dateien in os.walk(A.THUMB_CACHE_DIR):
+        n += len([f for f in dateien if f.endswith(".art")])
+    return n
 
 
 def zuruecksetzen(anzahl, grenze):
-    for f in os.listdir(A.THUMB_CACHE_DIR):
-        os.remove(os.path.join(A.THUMB_CACHE_DIR, f))
+    shutil.rmtree(A.THUMB_CACHE_DIR, ignore_errors=True)
+    os.makedirs(A.THUMB_CACHE_DIR, exist_ok=True)
     A.THUMB_CACHE_MAX_FILES = grenze
     A._thumb_cache_anzahl = None
     A._thumb_cache_seit_zaehlung = 0
@@ -201,13 +206,82 @@ print("Test 6: liegengebliebene Zwischendateien werden aufgeraeumt")
 # 20000 - die acht ueberzaehligen sind abgebrochene Schreibvorgaenge.
 zuruecksetzen(105, grenze=100)
 for i in range(8):
-    with open(os.path.join(A.THUMB_CACHE_DIR,
-                           "rest%d.art.tmp1234_5678" % i), "wb") as f:
+    ordner = os.path.join(A.THUMB_CACHE_DIR, "re")
+    os.makedirs(ordner, exist_ok=True)
+    with open(os.path.join(ordner, "rest%d.art.tmp1234_5678" % i), "wb") as f:
         f.write(b"kaputt")
 A._thumb_cache_evict_if_needed()
-reste = [f for f in os.listdir(A.THUMB_CACHE_DIR) if ".art.tmp" in f]
+reste = [f for _d, _s, dateien in os.walk(A.THUMB_CACHE_DIR)
+         for f in dateien if ".art.tmp" in f]
 check("keine .tmp-Reste mehr im Ordner", not reste,
       "%d uebrig" % len(reste))
+
+print()
+print("Test 7: getrennte Zwischenspeicher fuer CRT und HDMI")
+# Nutzerwunsch: "bitte fuer jeden Modus, also CRT und HDMI, einen
+# eigenen Cache anlegen - quasi einmal SD-Variante fuer CRT-Modus und
+# einmal HD-Variante fuer HDMI-Modus."
+A.THUMB_CACHE_BASE = os.path.join(TMP, "modi")
+hd = A.thumb_cache_modus_setzen(True)
+check("HD-Modus landet in hd/", hd.endswith(os.sep + "hd"), hd)
+sd = A.thumb_cache_modus_setzen(False)
+check("SD-Modus landet in sd/", sd.endswith(os.sep + "sd"), sd)
+check("die beiden Ordner sind verschieden", hd != sd)
+# Und der mitgefuehrte Zaehler darf beim Wechsel NICHT stehenbleiben -
+# sonst wuerde im neuen Ordner sofort falsch verdraengt.
+A._thumb_cache_anzahl = 12345
+A.thumb_cache_modus_setzen(True)
+check("der Zaehler wird beim Moduswechsel verworfen",
+      A._thumb_cache_anzahl is None, str(A._thumb_cache_anzahl))
+
+print()
+print("Test 8: derselbe Schluessel liegt je Modus an anderer Stelle")
+A.thumb_cache_modus_setzen(True)
+p_hd = A._thumb_cache_path("abcdef0123")
+A.thumb_cache_modus_setzen(False)
+p_sd = A._thumb_cache_path("abcdef0123")
+check("HD- und SD-Pfad unterscheiden sich", p_hd != p_sd)
+check("Zwischenebene aus zwei Zeichen vorhanden",
+      os.path.basename(os.path.dirname(p_hd)) == "ab",
+      os.path.dirname(p_hd))
+# Der Sinn der Zwischenebene: /media/fat ist ueblicherweise exFAT, dort
+# ist das Nachschlagen in einem Verzeichnis linear. 40000 Dateien in
+# EINEM Ordner waeren doppelt so teuer wie die bisherigen 20000.
+# ECHTE Schluessel benutzen, keine ausgedachten: _thumb_cache_key()
+# liefert sha1-Hex, und nur dessen Gleichverteilung sorgt fuer die
+# gleichmaessige Streuung ueber die 256 Unterordner. Ein Test mit
+# hochgezaehlten Zahlen haette hier nichts bewiesen - die faengen alle
+# mit denselben Zeichen an.
+schluessel = [A._thumb_cache_key("/spiele/spiel%d.art" % i, 300, 400)
+              for i in range(2000)]
+ordner = {os.path.dirname(A._thumb_cache_path(k)) for k in schluessel}
+check("2000 Schluessel verteilen sich auf viele Unterordner",
+      len(ordner) >= 200, "%d Ordner" % len(ordner))
+
+print()
+print("Test 9: die alte, flache Ablage wird aufgeraeumt")
+# Nach der Umstellung liegen die alten Dateien am falschen Ort und
+# werden nie wieder gefunden - bei einer grossen Sammlung mehrere
+# Gigabyte, die sonst fuer immer liegen blieben.
+A.THUMB_CACHE_BASE = os.path.join(TMP, "alt")
+os.makedirs(os.path.join(A.THUMB_CACHE_BASE, "hd", "ab"), exist_ok=True)
+for i in range(12):
+    open(os.path.join(A.THUMB_CACHE_BASE, "alt%02d.art" % i), "wb").close()
+open(os.path.join(A.THUMB_CACHE_BASE, "rest.art.tmp1_2"), "wb").close()
+neu_datei = os.path.join(A.THUMB_CACHE_BASE, "hd", "ab", "abcd.art")
+open(neu_datei, "wb").close()
+entfernt = A.alten_flachen_cache_aufraeumen()
+check("die 13 losen Altdateien sind weg", entfernt == 13, "%d entfernt" % entfernt)
+check("die neue Ablage bleibt unangetastet", os.path.exists(neu_datei))
+
+print()
+print("Test 10: die Obergrenze ist auf 40000 angehoben")
+import importlib
+A2 = importlib.reload(A)
+check("THUMB_CACHE_MAX_FILES = 40000", A2.THUMB_CACHE_MAX_FILES == 40000,
+      str(A2.THUMB_CACHE_MAX_FILES))
+check("thumb_cache_stand() liefert auch die Belegung",
+      len(A2.thumb_cache_stand()) == 3, str(A2.thumb_cache_stand()))
 
 shutil.rmtree(TMP, ignore_errors=True)
 
