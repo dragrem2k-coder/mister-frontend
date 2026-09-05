@@ -659,6 +659,13 @@ class ArtCache:
                                      # get_scaled()/COVER_SETTLE)
 
     def get(self, path):
+        # ABSICHERUNG (siehe _art_path_in()): der Pfad kann jetzt None
+        # sein, wenn es fuer einen Eintrag gar keinen Cover-Ordner gibt
+        # (Sonderkategorie ohne Systemkey). Hier abfangen statt an jeder
+        # der acht Aufrufstellen - alle wollen dasselbe: kein Pfad, kein
+        # Bild.
+        if not path:
+            return None
         if path in self.cache:
             return self.cache[path]
         # WICHTIG (Bugfix): "Datei existiert nicht" (FileNotFoundError,
@@ -749,7 +756,7 @@ class ArtCache:
         Box sind, werden seit v1.8.1 per Nearest-Neighbor VERKLEINERT statt
         unskaliert zu bleiben - sonst ragen sie ueber den reservierten
         Platz hinaus und ueberlappen den Info-Text darunter."""
-        if max_w <= 0 or max_h <= 0:
+        if not path or max_w <= 0 or max_h <= 0:
             return None
         if not hasattr(self, "scaled"):
             self.scaled = {}
@@ -1156,6 +1163,19 @@ def _art_index(base_dir, syskey):
     zweite Durchlauf nur noch LUECKEN mit den nummerierten Varianten -
     sonst koennte je nach Dateisystem-Reihenfolge zufaellig das falsche
     Cover treffen."""
+    # BUGFIX (Nutzer-Rueckmeldung: "wenn er mit Miniaturen erstellen
+    # fertig ist, springt das Frontend ins OSD"): ohne Systemkey ist
+    # os.path.join(base_dir, None) ein TypeError - und der ist KEIN
+    # OSError, wurde vom except unten also nicht gefangen. Er flog bis
+    # aus run() heraus, wo der Aufraeum-Block den Bildschirm leert und
+    # F12 injiziert. Fuer den Nutzer sah das nicht nach einem Absturz
+    # aus, sondern nach "das Frontend springt ins OSD".
+    #
+    # Ohne Systemkey gibt es schlicht keinen Cover-Ordner - das ist ein
+    # normaler Fall (Sonderkategorien wie System oder Zufalls-Zock haben
+    # bewusst syskey=None, siehe build_categories()), kein Fehler.
+    if not syskey:
+        return {}
     key = (base_dir, syskey)
     idx = _art_index_cache.get(key)
     if idx is None:
@@ -1182,6 +1202,11 @@ def _art_path_in(base_dir, syskey, rom_basename):
     _art_index()). Liefert IMMER einen Pfad zurueck (auch wenn er
     nicht existiert) - der Aufrufer prueft ohnehin schon selbst auf
     Existenz, hier nur der BESSERE Pfad-Kandidat."""
+    # Siehe _art_index(): ohne Systemkey (oder ohne Namen) gibt es
+    # keinen Cover-Ordner. Frueher lief das in einen TypeError, der bis
+    # aus run() herausflog - siehe dortigen Kommentar.
+    if not syskey or not rom_basename:
+        return None
     fn = _art_index(base_dir, syskey).get(rom_basename)
     if fn:
         return os.path.join(base_dir, syskey, fn)

@@ -7,6 +7,50 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Das Frontend ist nach „Miniaturen vorbereiten" nicht ins OSD
+gesprungen — es ist abgestürzt** (Build 82 — Nutzer-Rückmeldung: „wenn
+er mit Miniaturen erstellen fertig ist, springt das Frontend ins OSD.
+Wenn ich dann das Frontend_Start.sh Script starte, geht er wieder ins
+Frontend rein"):
+
+**1. Der Absturz, und warum er wie eine Funktion aussah.** Der
+Aufräum-Block in `run()` leert bei *jedem* Ende den Bildschirm und
+injiziert F12, damit MiSTer sauber sein eigenes Menü zeigt. Ein Absturz
+ist von außen dadurch nicht von einem gewollten Beenden zu
+unterscheiden — deshalb hat das monatelang nach Bedienung ausgesehen
+statt nach einem Fehler. Die Ursache ist nachgestellt und behoben: ein
+Eintrag ohne Systemkey (Sonderkategorien wie *System* oder
+*Zufalls-Zock* haben bewusst `syskey=None`) führte zu
+`os.path.join(ART_BASE, None)` — ein **TypeError**, kein OSError, also
+von keinem der bestehenden `except`-Zweige gefangen.
+
+**2. Sicherheitsnetz.** „Miniaturen vorbereiten" ist eine reine
+Bequemlichkeitsfunktion. Was darin schiefgeht, darf jetzt höchstens
+diesen einen Vorgang kosten, niemals die laufende Sitzung — mit
+vollständigem Fehlerbericht im Log, damit ein solcher Fall beim nächsten
+Mal nachweisbar ist statt nur spürbar.
+
+**3. Aus 52.000 werden die Cover, die es wirklich gibt**
+(Nutzer-Rückmeldung: „wenn ich Miniaturen starte, steht da dann 178 von
+52000, wobei die meisten ROMs kein Artwork besitzen"). 52.000 war die
+Zahl *aller* Einträge *aller* Kategorien — dasselbe Spiel zählte dort
+unter Favoriten, Zuletzt gespielt, Weiterspielen und in jeder Sammlung
+erneut mit, dazu alle Menüpunkte, Scripts und Cores und alle Spiele ohne
+Cover. Der Balken zeigte eine Arbeitsmenge, die es nie gab. Jetzt wird
+zuerst die Liste der tatsächlich zu berechnenden Ziele aufgebaut;
+Doppelte fallen dabei von selbst weg, weil zwei Einträge desselben
+Spiels denselben Cache-Schlüssel ergeben.
+
+**4. Aufgelaufene Tastendrücke werden verworfen.** Nach einem Vorgang,
+der Minuten dauert, wurde alles, was in der Zwischenzeit gedrückt wurde,
+beim Zurückkehren am Stück abgespielt.
+
+**5. Das Log überlebt jetzt ein Update.** Es liegt unter `/tmp` (also im
+RAM) und wurde von `Frontend_Update.sh` zusätzlich gelöscht — ausgerechnet
+im einzigen Ablauf, der mit einem Neustart endet, war die Spur damit
+garantiert vernichtet. Es wird jetzt vorher nach
+`/media/fat/frontend/last_update.log` gerettet.
+
 **„Miniaturen vorbereiten": Abbruch hat nie funktioniert, Anzeige auf
 CRT abgeschnitten** (Build 81 — Nutzer-Rückmeldung: „auf CRT steht da
 nur *Miniaturen werden* und *jede Taste bricht ab - Gerechnetes bl*.

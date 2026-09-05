@@ -106,6 +106,24 @@ if [ -f "$LOCKFILE" ]; then
     fi
     rm -f "$LOCKFILE"
 fi
+# GEAENDERT (Nutzer-Rueckmeldung: "dann kam die Update-Benachrichtigung
+# und ich wollte das mit Jetzt bestaetigen, danach stuerzt das Frontend
+# ab und ich konnte den MiSTer neu starten"). Die Ursache liess sich
+# NICHT nachweisen - und zwar aus einem hausgemachten Grund: das Log
+# liegt unter /tmp (also im RAM, weg bei jedem Neustart) UND wurde hier
+# zusaetzlich geloescht. Ausgerechnet in dem einen Ablauf, der mit einem
+# Neustart endet, war die Spur damit garantiert vernichtet.
+#
+# Jetzt wird das Log VOR dem Loeschen auf die SD-Karte gerettet. Es
+# bleibt genau eine Datei (wird beim naechsten Update ueberschrieben),
+# kostet also dauerhaft ein paar hundert Kilobyte - der Preis dafuer,
+# dass ein Absturz an dieser Stelle beim naechsten Mal nachweisbar ist
+# statt nur spuerbar.
+if [ -f /tmp/frontend.log ]; then
+    cp -f /tmp/frontend.log "$FRONTEND_DIR/last_update.log" 2>/dev/null || true
+    echo "Log des alten Frontends gesichert:"
+    echo "  $FRONTEND_DIR/last_update.log"
+fi
 rm -f /tmp/frontend.log
 
 if [ -e "$FRONTEND_DIR/disable" ]; then

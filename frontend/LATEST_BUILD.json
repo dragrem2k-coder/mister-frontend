@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-29-81",
-  "summary": "\"Miniaturen vorbereiten\": Abbruch per Tastendruck funktioniert jetzt wirklich, Fortschrittsanzeige auf CRT vollstaendig lesbar. Stand des Zwischenspeichers im Log."
+  "build_id": "2026-08-29-82",
+  "summary": "Absturz nach \"Miniaturen vorbereiten\" behoben (sah aus wie ein Sprung ins OSD). Fortschritt zaehlt jetzt die wirklich vorhandenen Cover statt aller 52000 Eintraege. Log ueberlebt ein Update."
 }

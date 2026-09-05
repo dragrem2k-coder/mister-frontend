@@ -5788,6 +5788,52 @@ class Frontend:
         return raus
 
     def run_thumb_prewarm_all(self):
+        """Menuepunkt "Miniaturen vorbereiten" - mit Sicherheitsnetz.
+
+        BUGFIX (Nutzer-Rueckmeldung: "wenn er mit Miniaturen erstellen
+        fertig ist, springt das Frontend ins OSD. Wenn ich dann das
+        Frontend_Start.sh Script starte, geht er wieder ins Frontend
+        rein"). Das Frontend ist dort nicht "ins OSD gesprungen" - es
+        ist ABGESTUERZT. Der Aufraeum-Block in run() leert bei jedem
+        Ende den Bildschirm und injiziert F12, damit MiSTer sauber sein
+        eigenes Menue zeigt. Genau das sieht von aussen aus wie ein
+        gewollter Wechsel ins OSD, und deshalb hat monatelang niemand
+        nach einem Absturz gesucht.
+
+        Die konkrete Ursache (nachgestellt und behoben, siehe
+        fe/art.py::_art_index): ein Eintrag ohne Systemkey fuehrte zu
+        os.path.join(basis, None) - ein TypeError, KEIN OSError, also
+        von keinem der bestehenden except-Zweige gefangen.
+
+        Dieses Sicherheitsnetz hier ist die zweite Haelfte der Antwort:
+        "Miniaturen vorbereiten" ist eine reine Bequemlichkeitsfunktion.
+        Was auch immer darin schiefgeht, darf hoechstens diesen einen
+        Vorgang kosten - niemals die laufende Sitzung. Der vollstaendige
+        Fehlerbericht landet im Log, damit ein solcher Fall beim
+        naechsten Mal nachweisbar ist statt nur spuerbar."""
+        try:
+            self._thumb_prewarm_durchlauf()
+        except Exception:                            # noqa: BLE001
+            LOG("PREWARM ABGEBROCHEN durch Fehler:\n"
+                + traceback.format_exc())
+            try:
+                self.draw(t("thumb_prewarm_failed"), prominent=True)
+            except Exception:                        # noqa: BLE001
+                pass
+        finally:
+            # Alles, was waehrend des Durchlaufs an Tastendruecken
+            # aufgelaufen ist, verwerfen. Sonst wird es beim Zurueck-
+            # kehren in die Hauptschleife am Stueck abgespielt - bei
+            # einem Vorgang, der Minuten dauert und in dem viele Leute
+            # ungeduldig Tasten druecken, sind das schnell zwanzig
+            # Navigationsschritte auf einmal, die irgendwo landen, wo
+            # niemand hinwollte.
+            try:
+                self.inp.flush()
+            except Exception:                        # noqa: BLE001
+                pass
+
+    def _thumb_prewarm_durchlauf(self):
         """Menuepunkt "Miniaturen vorbereiten": einmal alle Cover
         durchrechnen und auf der Karte ablegen.
 
@@ -5849,16 +5895,66 @@ class Frontend:
             except Exception:                        # noqa: BLE001
                 pass
 
-        eintraege = self._alle_spiel_eintraege()
-        gesamt = len(eintraege)
+        # GEAENDERT (Nutzer-Rueckmeldung: "wenn ich Miniaturen starte,
+        # steht da dann 178 von 52000, wobei die meisten ROMs kein
+        # Artwork besitzen").
+        #
+        # 52000 war die Zahl ALLER Eintraege aller Kategorien - und die
+        # zaehlt dasselbe Spiel mehrfach: einmal in seinem System, noch
+        # einmal unter Favoriten, unter Zuletzt gespielt, unter
+        # Weiterspielen, in jeder Sammlung, in der es vorkommt. Dazu
+        # kamen alle Nicht-Spiele (Menuepunkte, Scripts, Cores) und alle
+        # Spiele ohne Cover. Der Balken zeigte damit eine Arbeitsmenge
+        # an, die es nie gab, und die Restzeit-Schaetzung war
+        # entsprechend wertlos.
+        #
+        # Jetzt wird ZUERST die Liste der tatsaechlich zu berechnenden
+        # Ziele aufgebaut - Schluessel ist genau das Tripel, unter dem
+        # der Zwischenspeicher ablegt (Pfad + Kastenbreite + -hoehe).
+        # Doppelte fallen dabei von selbst weg, denn zwei Eintraege
+        # desselben Spiels ergeben dasselbe Tripel. Das Aufbauen kostet
+        # nichts Nennenswertes: es ist dieselbe Rechnung, die vorher in
+        # der Schleife stand, nur ohne die Bildberechnung dahinter.
+        t_start = time.monotonic()
+        ziele = []
+        gesehen = set()
+        vorbereitung = self._alle_spiel_eintraege()
+        for nr, (item, cat_syskey) in enumerate(vorbereitung):
+            if nr % 500 == 0:
+                # Auch das Sammeln kann bei zehntausenden Eintraegen
+                # ein paar Sekunden dauern - ohne Lebenszeichen sieht
+                # das nach "haengt" aus.
+                self._draw_prewarm_progress(nr, len(vorbereitung), 0, t_start,
+                                            sammeln=True)
+                if self.inp.read_action(timeout=0) is not None:
+                    self.draw(t("thumb_prewarm_aborted", 0, 0), prominent=True)
+                    return
+            try:
+                ziel = self.cover_pfad_und_kasten(item, cat_syskey, geo)
+            except Exception:                        # noqa: BLE001
+                # ABSICHERUNG (siehe Kopfkommentar dieser Methode): ein
+                # einzelner ungewoehnlicher Eintrag darf den Durchlauf
+                # nicht beenden - und schon gar nicht das Frontend.
+                LOG("PREWARM: Eintrag uebersprungen (%r): %s"
+                    % (item[:2] if isinstance(item, tuple) else item,
+                       traceback.format_exc().strip().splitlines()[-1]))
+                continue
+            if not ziel or ziel in gesehen:
+                continue
+            gesehen.add(ziel)
+            ziele.append(ziel)
+
+        gesamt = len(ziele)
         if not gesamt:
             self.draw(t("thumb_prewarm_nothing"), prominent=True)
             return
+        LOG("PREWARM: %d Eintraege gesamt -> %d verschiedene Cover zu pruefen"
+            % (len(vorbereitung), gesamt))
 
         gerechnet = lagen_da = uebersprungen = 0
         t0 = time.monotonic()
         abgebrochen = False
-        for i, (item, cat_syskey) in enumerate(eintraege):
+        for i, (pfad, bw, bh) in enumerate(ziele):
             # Abbruch: bei JEDEM Eintrag pruefen (nicht nur alle 20) -
             # ein einzelnes Cover kann eine halbe Sekunde dauern, und
             # ein Abbruch, der erst zehn Cover spaeter greift, fuehlt
@@ -5868,11 +5964,6 @@ class Frontend:
                 break
             if i % 10 == 0 or i == gesamt - 1:
                 self._draw_prewarm_progress(i, gesamt, gerechnet, t0)
-            ziel = self.cover_pfad_und_kasten(item, cat_syskey, geo)
-            if not ziel:
-                uebersprungen += 1
-                continue
-            pfad, bw, bh = ziel
             if thumb_cache_has(pfad, bw, bh):
                 lagen_da += 1
                 continue
@@ -5904,7 +5995,8 @@ class Frontend:
             else "thumb_prewarm_done"
         self.draw(t(schluessel, gerechnet, int(dauer)), prominent=True)
 
-    def _draw_prewarm_progress(self, i, gesamt, gerechnet, t0):
+    def _draw_prewarm_progress(self, i, gesamt, gerechnet, t0,
+                               sammeln=False):
         """Fortschritt waehrend "Miniaturen vorbereiten" - bewusst im
         Aufbau von _draw_scan_progress() gehalten, damit es aussieht wie
         das, was der Nutzer vom ersten Einlesen schon kennt. Zusaetzlich
@@ -5933,7 +6025,7 @@ class Frontend:
         # passende Schriftgroesse, _wrap_text() bricht an Wortgrenzen um.
         breite = W - 2 * ox
         maxc = max(4, breite // (8 * s))
-        titel = t("thumb_prewarm")
+        titel = t("thumb_prewarm_collect" if sammeln else "thumb_prewarm")
         titel_s = self._fit_scale(titel, breite, 2 * s)
         fb.text(ox, oy, titel, titel_s, C_TITLE, C_BG)
         bar_w = min(breite, 300 * s)
@@ -5951,7 +6043,9 @@ class Frontend:
         # sonst schoenrechnen, bis sie wertlos ist.
         rest = ""
         verstrichen = time.monotonic() - t0
-        if gerechnet >= 5 and i > 0:
+        if sammeln:
+            pass          # beim Sammeln gibt es noch nichts zu schaetzen
+        elif gerechnet >= 5 and i > 0:
             pro_eintrag = verstrichen / (i + 1)
             sek = int(pro_eintrag * (gesamt - i - 1))
             if sek >= 60:

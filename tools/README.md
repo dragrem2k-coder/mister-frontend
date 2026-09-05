@@ -33,6 +33,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_boxart_streifen.py \
   && python3 tools/test_sysart_logos.py \
   && python3 tools/test_prewarm_abbruch.py \
+  && python3 tools/test_prewarm_absturz.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -55,6 +56,7 @@ python3 tools/regression_test.py \
 | `test_boxart_streifen.py` | Test (Pass/Fail) | Restore-Band knabbert die Boxart-Karte nicht an; Panel-Auslassen nur auf HDMI |
 | `test_sysart_logos.py` | Test (Pass/Fail) | Kategorie-Logos: gueltiges ART1, Groesse, Kartenhintergrund, Dateiname = Systemschluessel |
 | `test_prewarm_abbruch.py` | Test (Pass/Fail) | read_action(timeout=0) sieht wirklich nach; Fortschrittsbild wird auf CRT nicht abgeschnitten |
+| `test_prewarm_absturz.py` | Test (Pass/Fail) | "Miniaturen vorbereiten" kann das Frontend nicht mehr mitreissen; keine doppelten Cover |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -425,6 +427,25 @@ Test 3 rechnet nach, dass Titel und Abbruch-Hinweis in beiden Sprachen
 und allen drei Aufloesungen in die verfuegbare Breite passen - auf
 320x240 waren es vorher 18 bzw. 37 Zeichen Platz bei 29 bzw. 51 Zeichen
 Text, und `fb.text()` schneidet still ab.
+
+## test_prewarm_absturz.py
+
+Der Nutzer meldete: "wenn er mit Miniaturen erstellen fertig ist,
+springt das Frontend ins OSD". Es ist dort nicht gesprungen, sondern
+ABGESTUERZT - der Aufraeum-Block in `run()` leert bei jedem Ende den
+Bildschirm und injiziert F12, damit MiSTer sauber sein eigenes Menue
+zeigt. Von aussen ist ein Absturz dadurch von einem gewollten Beenden
+nicht zu unterscheiden.
+
+Ursache, hier nachgestellt: ein Eintrag ohne Systemkey (Sonder-
+kategorien wie System oder Zufalls-Zock haben bewusst `syskey=None`)
+fuehrte zu `os.path.join(ART_BASE, None)` - ein **TypeError**, kein
+OSError, also von keinem der bestehenden `except`-Zweige gefangen.
+
+Test 3 schickt jede im Frontend vorkommende Eintragsform durch den
+kompletten Durchlauf, Test 4 prueft das Sicherheitsnetz selbst (ein
+absichtlich ausgeloester Fehler darf hoechstens den Vorgang kosten,
+nie die Sitzung), Test 5 die Entdopplung.
 
 ## diag_lightpath.py
 

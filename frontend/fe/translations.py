@@ -568,6 +568,12 @@ TRANSLATIONS = {
         "de": "Miniaturen vorbereiten (einmalig, dauert einige Minuten)"},
     "thumb_prewarm": {"en": "Preparing cover thumbnails",
                       "de": "Miniaturen werden vorbereitet"},
+    # NEU (Build 82): das Zusammenstellen der Liste kann bei mehreren
+    # zehntausend Eintraegen selbst ein paar Sekunden dauern. Ohne
+    # eigene Ueberschrift sah das aus, als haenge der Vorgang gleich
+    # zu Beginn.
+    "thumb_prewarm_collect": {"en": "Collecting covers",
+                              "de": "Cover werden zusammengestellt"},
     "thumb_prewarm_cancel": {"en": "Any button cancels - what is done stays done.",
                              "de": "Jede Taste bricht ab - Gerechnetes bleibt erhalten."},
     "thumb_prewarm_eta_min": {"en": "about %d min left",
