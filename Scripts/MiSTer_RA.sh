@@ -461,12 +461,22 @@ if [ "$PROMPT_CREDS" = "1" ]; then
   echo
   printf "  RetroAchievements credentials are not set. Enter them now? [y/n]: "
   read -r enter_creds
+  # Strip a trailing carriage return: depending on the console, "read"
+  # hands back "y\r" instead of "y", and the exact comparison below
+  # would silently treat that as "no". Same root cause as the profile
+  # menu in Frontend_Boxart_Download.sh - see the detailed note there.
+  # It matters even more for the credentials themselves: a stray \r
+  # would be written into retroachievements.cfg and every login would
+  # fail without any visible reason.
+  enter_creds=$(printf '%s' "$enter_creds" | tr -d '\r\n\t ')
   if [ "$enter_creds" = "y" ] || [ "$enter_creds" = "Y" ]; then
     printf "  Username: "
     read -r ra_username
     printf "  Password: "
     read -rs ra_password
     echo
+    ra_username=$(printf '%s' "$ra_username" | tr -d '\r\n')
+    ra_password=$(printf '%s' "$ra_password" | tr -d '\r\n')
     if [ "$DRY_RUN" = "0" ]; then
       escaped_user="$(printf '%s\n' "$ra_username" | sed 's/[&/\]/\\&/g')"
       escaped_pass="$(printf '%s\n' "$ra_password" | sed 's/[&/\]/\\&/g')"
@@ -607,6 +617,7 @@ fi
 echo
 printf "Reboot now? [y/n]: "
 read -r do_reboot
+do_reboot=$(printf '%s' "$do_reboot" | tr -d '\r\n\t ')   # siehe oben
 if [ "$do_reboot" = "y" ] || [ "$do_reboot" = "Y" ]; then
   echo "Rebooting..."
   reboot

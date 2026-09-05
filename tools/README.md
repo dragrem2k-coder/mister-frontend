@@ -34,6 +34,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_sysart_logos.py \
   && python3 tools/test_prewarm_abbruch.py \
   && python3 tools/test_prewarm_absturz.py \
+  && python3 tools/test_script_eingaben.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -57,6 +58,7 @@ python3 tools/regression_test.py \
 | `test_sysart_logos.py` | Test (Pass/Fail) | Kategorie-Logos: gueltiges ART1, Groesse, Kartenhintergrund, Dateiname = Systemschluessel |
 | `test_prewarm_abbruch.py` | Test (Pass/Fail) | read_action(timeout=0) sieht wirklich nach; Fortschrittsbild wird auf CRT nicht abgeschnitten |
 | `test_prewarm_absturz.py` | Test (Pass/Fail) | "Miniaturen vorbereiten" kann das Frontend nicht mehr mitreissen; keine doppelten Cover |
+| `test_script_eingaben.py` | Test (Pass/Fail) | Abfragen in den Shell-Skripten funktionieren auch mit Wagenruecklauf in der Eingabe |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -446,6 +448,28 @@ Test 3 schickt jede im Frontend vorkommende Eintragsform durch den
 kompletten Durchlauf, Test 4 prueft das Sicherheitsnetz selbst (ein
 absichtlich ausgeloester Fehler darf hoechstens den Vorgang kosten,
 nie die Sitzung), Test 5 die Entdopplung.
+
+## test_script_eingaben.py
+
+`read -r` entfernt den Zeilenumbruch, aber KEIN Wagenruecklauf-Zeichen.
+Je nach Startweg (MiSTer-OSD, serielle Konsole, SSH-Client) kommt eine
+Eingabe als `"2\r"` an - und
+
+    case "2\r" in 2|hd|HD) ... ;; *) ... ;; esac
+
+trifft dann den `*`-Zweig. In `Frontend_Boxart_Download.sh` bedeutete
+der "sd": die Profil-Auswahl war wirkungslos, und zwar lautlos.
+
+Der Test nimmt die ECHTE Skriptdatei, ersetzt nur die letzte Zeile (die
+python3 startet) und faehrt das Auswahlmenue mit beiden Eingabeformen.
+Test 3 prueft zusaetzlich alle uebrigen Abfragen in `Scripts/`: jede
+muss ihre Eingabe entweder saeubern oder ohnehin nur auf ein Praefix
+vergleichen (`[nN]*`).
+
+Warum das ueberhaupt ein automatischer Test sein muss: von Hand testet
+man mit einer normalen Tastatur, und die liefert kein `\r`. Genau der
+Fall, der beim Nutzer auftritt, ist der, den man beim Testen nie
+erwischt.
 
 ## diag_lightpath.py
 

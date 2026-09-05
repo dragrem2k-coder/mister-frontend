@@ -130,10 +130,16 @@ echo "Scripts aus $SCRIPTS_DIR entfernt."
 # --- Eigene Daten behalten oder komplett loeschen? ---
 if [ -z "$MODE" ]; then
     echo ""
-    read -p "Auch eigene Boxart/Musik/Einstellungen loeschen? (j/N) " antwort
+    read -r -p "Auch eigene Boxart/Musik/Einstellungen loeschen? (j/N) " antwort
+    # Wagenruecklauf entfernen: je nach Konsole liefert read "j\r"
+    # statt "j", und der exakte Vergleich unten haette das
+    # stillschweigend als "nein" gewertet. Siehe die ausfuehrliche
+    # Begruendung in Frontend_Boxart_Download.sh - dort hat genau das
+    # dazu gefuehrt, dass eine Auswahl wirkungslos blieb.
+    antwort=$(printf '%s' "$antwort" | tr -d '\r\n\t ')
     case "$antwort" in
-        j|J) MODE="all" ;;
-        *)   MODE="keep" ;;
+        j|J|ja|Ja|JA|y|Y|yes|Yes) MODE="all" ;;
+        *)                        MODE="keep" ;;
     esac
 fi
 

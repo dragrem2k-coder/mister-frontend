@@ -7,6 +7,40 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Boxart-Download lud immer SD herunter, egal was man wählte**
+(Build 83 — Nutzer-Rückmeldung: „egal ob ich Option 1 oder 2 auswähle,
+der lädt immer nur Profil sd runter"):
+
+**1. Die Ursache.** `read -r` entfernt den Zeilenumbruch, aber **kein
+Wagenrücklauf-Zeichen**. Je nach Startweg (MiSTer-OSD, serielle Konsole,
+SSH-Client) kommt die Eingabe als `"2\r"` an — und
+
+```sh
+case "2\r" in 2|hd|HD) PROFIL="hd" ;; *) PROFIL="sd" ;; esac
+```
+
+trifft den `*`-Zweig. Der bedeutete „sd". Nachgestellt: `"2"` → hd,
+`"2 "` → hd (Leerzeichen stehen in `IFS`, die entfernt `read` selbst),
+`"2\r"` → **sd**. Die Auswahl war also wirkungslos, und zwar lautlos.
+
+**2. Nicht mehr stillschweigend durchfallen.** Eine nicht erkannte
+Eingabe wird jetzt als solche gemeldet, statt kommentarlos SD zu
+bedeuten. Genau dieses stille Durchfallen hat den Fehler unsichtbar
+gemacht.
+
+**3. Der Standard richtet sich nach der Wirklichkeit.** Er stand fest
+auf SD. Jetzt kommt er aus dem tatsächlich eingestellten Menü-Modus (dem
+`[Menu]`-Block der MiSTer.ini, dieselbe Quelle wie `crt_menu_active()`
+im Frontend) — wer auf HDMI unterwegs ist, bekommt mit Enter auch HD.
+Und die Startzeile nennt jetzt den Zielordner, sodass eine falsche Wahl
+sofort auffällt.
+
+**4. Dieselbe Falle an drei weiteren Stellen entschärft.**
+`Frontend_Uninstall.sh` („auch eigene Daten löschen?") und zweimal
+`MiSTer_RA.sh` verglichen ebenfalls exakt. Am unangenehmsten dort: ein
+Wagenrücklauf wäre mit in `retroachievements.cfg` geschrieben worden und
+**jeder Login hätte ohne sichtbaren Grund fehlgeschlagen**.
+
 **Das Frontend ist nach „Miniaturen vorbereiten" nicht ins OSD
 gesprungen — es ist abgestürzt** (Build 82 — Nutzer-Rückmeldung: „wenn
 er mit Miniaturen erstellen fertig ist, springt das Frontend ins OSD.
