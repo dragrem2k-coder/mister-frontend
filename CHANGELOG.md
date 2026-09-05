@@ -7,6 +7,46 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Schwarzer Block über Boxart und Gameinfo beim Scrollen im CRT-Modus —
+behoben** (Build 80 — Nutzer-Rückmeldung: „wenn ich jetzt nach unten
+gedrückt halte und die ROMs durchsuche … wird ein Teil der Boxart und
+der Gameinfo mit einem schwarzen Block nicht mehr sichtbar, sobald ich
+loslasse sieht man wieder alles"):
+
+**1. Die Ursache lag tiefer als der Build davor.** Der schnelle
+Seitenpfad stellt vor dem Neuzeichnen der Zeilen den Hintergrund der
+Listenspalte wieder her, mit 10·s Rand nach jeder Seite. Die Boxart-Karte
+beginnt aber nicht in festem Abstand: auf HDMI erst 42 Pixel rechts der
+Liste, auf CRT schon nach 2. Das Band wischte dort also **8 Pixel weit in
+die Karte hinein** — schon immer, nur fiel es nie auf, weil die Karte
+danach jedes Mal wieder darüber gemalt wurde. Seit Build 76 wird sie
+während des Scrollens ausgelassen, seitdem blieb der Streifen stehen.
+Der Rand endet jetzt an der Kartenkante.
+
+**2. Fünf Stellen, eine Rechnung.** Die Position der Boxart-Spalte stand
+wortgleich an vier Stellen im Code, der Innenrand der Karte an einer
+fünften — genau deshalb konnte eine sechste Stelle mit einer festen
+Pixelzahl darüber hinauswischen, ohne dass der Zusammenhang irgendwo
+sichtbar war. Jetzt gibt es `art_spalte_x0()` und `art_karte_x0()`, und
+`tools/test_boxart_streifen.py` prüft die Überlappung direkt.
+
+**3. Das Auslassen der Boxart-Spalte gilt nur noch für HDMI.** Die
+Messung, die Build 76 begründet hat (105 ms für die Spalte), stammt aus
+dem HDMI-Modus mit 697x729-Covern. Auf CRT ist dasselbe Cover 96x99 —
+die Ersparnis liegt bei wenigen Millisekunden, während jedes Auslassen
+nach dem Loslassen einen kompletten Seitenaufbau nachzieht. Netto war
+das dort ein Verlust; das CRT-Scrollen läuft wieder wie in Build 75.
+
+**Neun weitere Kategorie-Logos** (Build 80, vom Nutzer geliefert): 3DO,
+Atari 2600, Atari Lynx, Famicom Disk System, Gamate, Intellivision,
+Neo Geo CD, Vectrex und WonderSwan. Damit haben 33 der 48 Systeme ein
+Logo. Neu dazu: `PC-Tools/sysart_convert.py`, das Logos auf das richtige
+Maß bringt und auf den Kartenhintergrund legt — inklusive der beiden
+Fälle, die von Hand mühsam sind (eingemaltes Transparenz-Schachbrett,
+schwarze Schrift, die auf der dunklen Karte unsichtbar wäre). Welche 15
+noch fehlen und wie man sie umwandelt, steht in
+`docs/LOGOS_NACHLIEFERN.md`.
+
 **48 statt 16 Systeme — und die Systemliste gibt es nur noch einmal**
 (Build 79 — Nutzerwunsch: „eigentlich sollten alle runtergeladen werden,
 wenn die Cores und die passenden ROMs im Frontend mit verfügbar sind …

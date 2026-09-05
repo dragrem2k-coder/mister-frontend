@@ -494,21 +494,27 @@ eine Artbox mit dem Logo/Cover des gerade markierten Systems - wechselt
 live beim Hoch/Runter-Blättern durch die Kategorien.
 
 **Bereits im Build enthalten** (liegt in `frontend/sysart/`, muss
-nicht mehr selbst erzeugt werden): **24 der 48 Systeme** haben ein
+nicht mehr selbst erzeugt werden): **33 der 48 Systeme** haben ein
 echtes Logo. Seit Build 79 sind das neben den ursprünglichen 14 auch
 Atari 5200/7800, Jaguar, ColecoVision, CD-i, Sega 32X, Super Game Boy
 und TurboGrafx-CD - deren Logos lagen schon länger im Unterordner
 `_weitere_systeme_noch_nicht_unterstuetzt/` und sind jetzt an ihren
-Platz gerückt, da es die Systeme nun wirklich gibt.
+Platz gerückt, da es die Systeme nun wirklich gibt. Mit Build 80 kamen
+3DO, Atari 2600, Atari Lynx, Famicom Disk System, Gamate, Intellivision,
+Neo Geo CD, Vectrex und WonderSwan dazu.
 
-Die übrigen 24 zeigen den dezenten Platzhalter; welche das sind und in
+Die übrigen 15 zeigen den dezenten Platzhalter; welche das sind und in
 welchem Format Nachschub gehört, steht in `docs/LOGOS_NACHLIEFERN.md`.
 
-Eigene/weitere Bilder erzeugen (derselbe Konverter wie für Boxart,
-kein Hintergrund-Modus nötig):
+Eigene/weitere Bilder erzeugen - dafür gibt es seit Build 80 ein eigenes
+Werkzeug (`art_convert.py` ist für Boxart da und skaliert auf die
+kleinen Kästen, das passt hier nicht):
 ```
-python art_convert.py --images konsolen_logo.png --out SMS.art --profile hd
+python PC-Tools/sysart_convert.py konsolen_logo.png frontend/sysart/SMS.art
 ```
+Liegt das Logo auf schwarzem oder weißem Grund, kommt `--fluten` dazu;
+ist es schwarze Schrift, zusätzlich `--aufhellen` (sonst wäre es auf der
+dunklen Karte unsichtbar). Details in `docs/LOGOS_NACHLIEFERN.md`.
 Datei nach `/media/fat/frontend/sysart/<Systemkey>.art` kopieren (z.B.
 `sysart/SMS.art`, `sysart/NES.art`). Ohne passende Datei erscheint ein
 dezenter Platzhalter statt eines Fehlers - kann also nach und nach

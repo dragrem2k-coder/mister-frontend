@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-24-79",
-  "summary": "48 statt 16 Systeme (Atari, Jaguar, 3DO, Vectrex, WonderSwan ...) - erscheinen nur mit vorhandenem Core und ROMs. Systemliste jetzt an einer einzigen Stelle."
+  "build_id": "2026-08-29-80",
+  "summary": "Schwarzer Block ueber Boxart/Gameinfo beim Scrollen im CRT-Modus behoben, CRT-Scrollen wieder wie Build 75. Neun neue Kategorie-Logos (3DO, Atari 2600, Lynx, FDS, Gamate, Intellivision, Neo Geo CD, Vectrex, WonderSwan)."
 }

@@ -464,19 +464,26 @@ the list with the logo/cover of the currently highlighted system -
 changes live as you page up/down through the categories.
 
 **Already included in the build** (located in `frontend/sysart/`, no
-longer needs to be created yourself): all 13 currently supported systems
-(NES, SNES, Genesis, N64, PSX, GAMEBOY, GBC, GBA, SMS, TGFX16, MegaCD,
-Saturn, NEOGEO) have a real logo stored. In the subfolder
-`frontend/sysart/_weitere_systeme_noch_nicht_unterstuetzt/` there are also
-finished logos for nine more systems (Atari 5200/7800/Jaguar,
-ColecoVision, Philips CD-i, Pico-8, Sega 32X, Super Game Boy,
-TurboGrafx-CD) - for the day they get added.
+longer needs to be created yourself): **33 of the 48 systems** have a
+real logo. Build 79 moved the logos that had been sitting in
+`frontend/sysart/_weitere_systeme_noch_nicht_unterstuetzt/` into place
+(Atari 5200/7800, Jaguar, ColecoVision, CD-i, Sega 32X, Super Game Boy,
+TurboGrafx-CD), and Build 80 added 3DO, Atari 2600, Atari Lynx, Famicom
+Disk System, Gamate, Intellivision, Neo Geo CD, Vectrex and WonderSwan.
 
-Create your own/additional images (the same converter as for boxart, no
-background mode needed):
+The remaining 15 show the subtle placeholder; which ones they are and
+what format new artwork needs is documented in
+`docs/LOGOS_NACHLIEFERN.md` (German).
+
+Create your own/additional images - since Build 80 there is a dedicated
+tool for this (`art_convert.py` is for boxart and scales to the small
+target boxes, which does not fit here):
 ```
-python art_convert.py --images console_logo.png --out SMS.art --profile hd
+python PC-Tools/sysart_convert.py console_logo.png frontend/sysart/SMS.art
 ```
+Add `--fluten` if the logo sits on a solid black or white background,
+and `--aufhellen` on top of that for black lettering (it would be
+invisible on the dark card otherwise).
 Copy the file to `/media/fat/frontend/sysart/<systemkey>.art` (e.g.
 `sysart/SMS.art`, `sysart/NES.art`). Without a matching file, a subtle
 placeholder appears instead of an error - so it can be filled in over

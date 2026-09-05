@@ -30,6 +30,8 @@ python3 tools/regression_test.py \
   && python3 tools/test_cover_prewarm.py \
   && python3 tools/test_reset_sofort.py \
   && python3 tools/test_system_abdeckung.py \
+  && python3 tools/test_boxart_streifen.py \
+  && python3 tools/test_sysart_logos.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -49,6 +51,8 @@ python3 tools/regression_test.py \
 | `test_cover_prewarm.py` | Test (Pass/Fail) | Cover-Vorberechnung: gleiche Kastengroesse wie der Zeichenpfad, bitgleiche Miniaturen |
 | `test_reset_sofort.py` | Test (Pass/Fail) | F5-Reset und F1-Ausstieg ohne Haltezeit; F10 und der F4-Schnellstart restlos entfernt |
 | `test_system_abdeckung.py` | Test (Pass/Fail) | Eine Systemliste fuer alle Werkzeuge; Startparameter der bestehenden Systeme festgenagelt |
+| `test_boxart_streifen.py` | Test (Pass/Fail) | Restore-Band knabbert die Boxart-Karte nicht an; Panel-Auslassen nur auf HDMI |
+| `test_sysart_logos.py` | Test (Pass/Fail) | Kategorie-Logos: gueltiges ART1, Groesse, Kartenhintergrund, Dateiname = Systemschluessel |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -376,6 +380,31 @@ Test 4c prueft, dass keine Kombination aus ROM-Ordner und Dateiendung
 zweimal vergeben ist - sonst erschiene dieselbe Datei in zwei
 Kategorien. Systeme ohne Datenbank stehen in einer Ausnahmeliste MIT
 Begruendung (jeweils bei libretro nachgesehen, nicht vermutet).
+
+## test_boxart_streifen.py
+
+Der schnelle Seitenpfad stellt vor dem Neuzeichnen der Zeilen den
+Hintergrund der Listenspalte wieder her - mit 10*s Rand nach jeder
+Seite. Die Boxart-Karte beginnt aber nicht in festem Abstand: auf HDMI
+42 Pixel rechts der Liste, auf CRT 2. Das Band wischte dort acht Pixel
+weit in die Karte hinein; sichtbar wurde es erst, als Build 76 die Karte
+waehrend des Scrollens nicht mehr jedes Mal darueber malte ("schwarzer
+Block ueber Boxart und Gameinfo, beim Loslassen wieder weg").
+
+Test 1 haelt die Voraussetzung fest (der Abstand ist NICHT konstant -
+jede feste Pixelzahl an dieser Stelle erzeugt den Fehler erneut), Test 2
+beweist auf Pixelebene, dass die Karte einen Scroll-Schritt mit
+ausgelassenem Panel unveraendert uebersteht, Test 3 haelt fest, dass das
+Auslassen selbst nur auf HDMI greift.
+
+## test_sysart_logos.py
+
+Prueft die Kategorie-Logos unter `frontend/sysart/`. Beide Fehler, die
+hier moeglich sind, sind lautlos: ein Logo mit falschem Hintergrund
+sieht nur aus wie ein heller Kasten auf der dunklen Karte, ein Logo mit
+falsch geschriebenem Dateinamen wird schlicht nie geoeffnet. Zusaetzlich
+wird die Groesse gedeckelt - das 3DO-Logo waere sonst bei 900 px Breite
+1729 Zeilen hoch (6 MB), um am Ende 234 px breit dargestellt zu werden.
 
 ## diag_lightpath.py
 

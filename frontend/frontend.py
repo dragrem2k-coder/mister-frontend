@@ -291,6 +291,43 @@ def profiling_an():
 # die echten 240p-/288p-CRT-Modi.
 KOMPAKT_H = 400
 
+# NEU (Build 80, Nutzer-Rueckmeldung: "wenn ich nach unten gedrueckt
+# halte ... wird ein Teil der Boxart und der Gameinfo mit einem
+# schwarzen Block nicht mehr sichtbar, sobald ich loslasse sieht man
+# wieder alles" - nur im CRT-Modus).
+#
+# Die Rechnung fuer die linke Kante der Boxart-Spalte stand bisher an
+# VIER Stellen wortgleich im Code (zwei Zeichenpfade, die Geometrie-
+# Hilfsfunktion und der Vorauslader), der Innenrand der Karte (pad) eine
+# fuenfte Mal in draw_art_panel(). Genau daran ist der Fehler entstanden:
+# ein sechster Ort - das Restore-Band im schnellen Seitenpfad - hat mit
+# einer festen Pixelzahl (10*s) ueber die Kartenkante hinausgewischt,
+# ohne dass irgendwo aufgefallen waere, dass die beiden Zahlen
+# zusammenhaengen. Auf HDMI blieben 12 Pixel Luft, auf CRT waren es
+# minus 8. Deshalb jetzt an einer Stelle, mit Namen:
+#
+#   Spalte  = art_spalte_x0()  - hier faengt der INHALT an (Cover, Text)
+#   Karte   = art_karte_x0()   - hier faengt die gezeichnete FLAECHE an
+#                                (Spalte minus Innenrand), und weiter
+#                                nach rechts darf niemand sonst wischen.
+ART_CARD_PAD = 6
+
+
+def art_spalte_x0(list_right, H, s):
+    """Linke Kante der Boxart-SPALTE (Cover/Text) neben der Liste.
+
+    Abstand zur Liste auf CRT enger (siehe KOMPAKT_H): 20 px sind dort
+    6 % der Bildbreite, nur fuer eine Luecke. Das Gegenstueck zum
+    breiteren Listenanteil in layout_items()."""
+    return list_right + (8 if H < KOMPAKT_H else 20) * s
+
+
+def art_karte_x0(list_right, H, s):
+    """Linke Kante der gezeichneten Boxart-KARTE - also der Punkt, ab dem
+    draw_art_panel() den Bildschirm besitzt. Alles, was den Hintergrund
+    wiederherstellt, muss links davon aufhoeren."""
+    return art_spalte_x0(list_right, H, s) - ART_CARD_PAD * s
+
 # NEU (Nutzer-Rueckmeldung: "Frontend beenden"-Dialog ploppte nur kurz
 # auf und verschwand wieder, ohne dass eine Auswahl moeglich war) -
 # siehe self._confirm_dialog_opened_at/_confirm_dialog_toggle(): eine
@@ -3607,12 +3644,7 @@ class Frontend:
             L = self.layout_items(has_art)
             s, ox, oy = L["s"], L["ox"], L["oy"]
             list_right, footer_y = L["list_right"], L["footer_y"]
-            # Abstand zur Boxart-Karte - auf CRT enger (siehe
-            # KOMPAKT_H): 20 px sind dort 6 % der Bildbreite, nur
-            # fuer eine Luecke. Das Gegenstueck zum breiteren
-            # Listenanteil in layout_items().
-            art_x0 = list_right + (8 if self.fb.height < KOMPAKT_H
-                                   else 20) * s
+            art_x0 = art_spalte_x0(list_right, self.fb.height, s)
             art_y0 = oy
             art_w = (self.fb.width - ox) - art_x0
             art_h = footer_y - 8 * s - art_y0
@@ -4090,8 +4122,39 @@ class Frontend:
             # Die Kopfzeile endet bei oy + 22*s (Eintragszahl) + 8*s
             # (Zeichenhoehe).
             _lm_oben = min(_lm, max(0, list_y - (oy + 30 * s)))
+            # BUGFIX Build 80 - VIERTER Fall derselben Sorte, und der
+            # bisher sichtbarste (Nutzer-Rueckmeldung: "wird ein Teil der
+            # Boxart und der Gameinfo mit einem schwarzen Block nicht
+            # mehr sichtbar, sobald ich loslasse sieht man wieder alles",
+            # nur im CRT-Modus, beim Hoch- WIE Runterscrollen).
+            #
+            # Auch nach rechts stand hier die feste Zahl 10*s. Die
+            # Boxart-Karte beginnt aber nicht in festem Abstand:
+            #
+            #   CRT  (s=1):  Karte ab list_right +  2  -  Band bis +10
+            #                -> 8 Pixel MITTEN IN DIE KARTE
+            #   HDMI (s=3):  Karte ab list_right + 42  -  Band bis +30
+            #                -> 12 Pixel Luft, alles gut
+            #
+            # Diese Ueberlappung gab es schon immer, sie fiel nur nie
+            # auf: draw_art_panel() hat die Karte bei jedem Aufbau sofort
+            # wieder darueber gemalt. Seit Build 76 wird das Panel
+            # waehrend des Scrollens ausgelassen - seitdem bleibt der
+            # weggewischte Streifen stehen, bis man die Taste loslaesst.
+            #
+            # Der Streifen gehoert der Karte, dort zeichnet sonst
+            # niemand: rechts abschneiden ist also nicht nur richtig,
+            # sondern spart auch ein paar Pixel Wischarbeit. Auf HDMI
+            # aendert sich nichts (dort ist 10*s ohnehin kleiner).
+            # Ohne Boxart-Spalte (Kategorie ohne Spiele) gibt es keine
+            # Karte, die geschuetzt werden muesste - dann bleibt der
+            # Rand wie bisher.
+            _lm_rechts = _lm
+            if has_art:
+                _lm_rechts = min(_lm, max(0, art_karte_x0(
+                    list_right, self.fb.height, s) - list_right))
             self._restore_row_bg(list_x - _lm, list_y - _lm_oben,
-                                 (list_right - list_x) + 2 * _lm,
+                                 (list_right - list_x) + _lm + _lm_rechts,
                                  visible * rowh + _lm_oben + _lm)
         self._perf_restore = time.monotonic() - _tre
 
@@ -4166,12 +4229,7 @@ class Frontend:
             # den linken Teil der Zeile, rechts daneben blieb bisher ein
             # ungenutzter Streifen bis zur Liste. Das Cover bekommt so
             # spuerbar mehr Platz nach oben.
-            # Abstand zur Boxart-Karte - auf CRT enger (siehe
-            # KOMPAKT_H): 20 px sind dort 6 % der Bildbreite, nur
-            # fuer eine Luecke. Das Gegenstueck zum breiteren
-            # Listenanteil in layout_items().
-            art_x0 = list_right + (8 if self.fb.height < KOMPAKT_H
-                                   else 20) * s
+            art_x0 = art_spalte_x0(list_right, self.fb.height, s)
             art_y0 = oy
             art_w = (W - ox) - art_x0
             art_h = footer_y - 8 * s - art_y0
@@ -4202,7 +4260,23 @@ class Frontend:
             # Pfad. Wurde der Hintergrund dagegen frisch gefuellt, wuerde
             # ein Auslassen ein LEERES Feld hinterlassen; dann wird
             # gezeichnet, egal wie schnell gescrollt wird.
-            _spalte_auslassen = (self._scroll_skip_vsync()
+            #
+            # EINGEGRENZT (Build 80, Nutzer-Rueckmeldung: "hdmi modus
+            # scrollt jetzt gut ... ausserdem habe ich den leichten
+            # Eindruck, dass das Scrollen etwas schlechter laeuft beim
+            # CRT"): die 105 ms oben sind eine HDMI-Zahl. Auf CRT ist ein
+            # Cover 96x99 statt 697x729 - also rund 60 KB statt 2 MB,
+            # gemessen im Bereich weniger Millisekunden. Dem steht ein
+            # fester Preis gegenueber: jedes Auslassen setzt
+            # ART._deferred_something, und das erzwingt nach dem
+            # Stillstand einen kompletten Seitenaufbau (COVER_SETTLE,
+            # siehe next_action()) - auf CRT ein Aufbau, den es vor
+            # Build 76 mit warmem Cache dort gar nicht gab. Die Ersparnis
+            # pro Schritt ist klein, der Aufschlag pro Stillstand nicht:
+            # netto ist das Auslassen auf CRT ein Verlust. Es bleibt
+            # deshalb dort, wo es nachgemessen hilft.
+            _spalte_auslassen = (self.fb.height >= KOMPAKT_H
+                                 and self._scroll_skip_vsync()
                                  and getattr(self, "_pgi_fast_taken", False))
             if _spalte_auslassen:
                 # Nach dem Stillstand nachholen (COVER_SETTLE) - sonst
@@ -5581,7 +5655,7 @@ class Frontend:
             return None
         L = self.layout_items(has_art)
         s, ox, oy = L["s"], L["ox"], L["oy"]
-        art_x0 = L["list_right"] + (8 if fb.height < KOMPAKT_H else 20) * s
+        art_x0 = art_spalte_x0(L["list_right"], fb.height, s)
         art_w = (W - ox) - art_x0
         art_h = L["footer_y"] - 8 * s - oy
         if art_w <= 20 or art_h <= 20:
@@ -5748,7 +5822,7 @@ class Frontend:
             fb = self.fb
             L = self.layout_items(True)
             s, ox, oy = L["s"], L["ox"], L["oy"]
-            art_x0 = L["list_right"] + (8 if fb.height < KOMPAKT_H else 20) * s
+            art_x0 = art_spalte_x0(L["list_right"], fb.height, s)
             art_w = (fb.width - ox) - art_x0
             art_h = L["footer_y"] - 8 * s - oy
             if art_w <= 20 or art_h <= 20:
@@ -5954,7 +6028,10 @@ class Frontend:
         if w < 20 or h < 20:
             return
 
-        pad = 6 * s
+        # Gemeinsame Konstante mit art_karte_x0() - siehe dort: das
+        # Restore-Band im schnellen Seitenpfad muss wissen, wo diese
+        # Karte anfaengt, sonst wischt es sie an (Build-80-Fehler).
+        pad = ART_CARD_PAD * s
         card_radius = 4 * s
         shadow_off = 3 * s
         # Dezenter Schlagschatten: einfaches, versetztes dunkles Rechteck
