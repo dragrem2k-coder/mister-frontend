@@ -7,6 +7,51 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**System-Hintergrundbilder komplett entfernt** (Build 87 —
+Nutzerentscheidung: „großen Systembildhintergrund komplett rausnehmen,
+war eh blöde"):
+
+Die Bilder aus `/media/fat/frontend/bg/` hatten zwei Auftritte, und
+beide kosteten Leistung:
+
+**1. Bildschirmfüllend hinter der Spieleliste.** Der Puffer wurde bei
+jedem Kategoriewechsel neu zusammengesetzt — bei 1920×1080 sind das
+8,3 MB, zeilenweise in Python, in der Sandbox gemessene 41–67 ms und auf
+der MiSTer-CPU entsprechend mehr. Das war auch der Grund für das kurze
+Hängen beim Zurückgehen aus einem ROM-Ordner. Dazu hielt `BgCache` bis
+zu vier solcher Vollbildpuffer im Speicher, bei 1080p rund 33 MB.
+
+**2. Klein in der Boxart-Spalte**, als Ersatz für ein fehlendes Cover.
+Das war mit 200–700+ ms je Skalierung die teuerste Einzeloperation im
+ganzen Frontend — und sie wurde von **keinem** Vorauslader erfasst:
+„Miniaturen vorbereiten" läuft nur über Einträge mit Cover-Pfad, und
+geschützt vor der Verdrängung war das Ergebnis auch nicht. Man konnte
+den Durchlauf komplett abwarten und trotzdem bei jedem Spiel ohne
+eigenes Cover — und bei jedem Ordner, denn Ordner haben praktisch nie
+eins — in dieselbe halbe Sekunde Wartezeit laufen.
+
+Fehlt ein Cover, erscheint jetzt der schlichte Platzhalter. Weg sind
+damit: `BgCache` und `BG_BASE` in `fe/art.py`, das `_cur_bg`-Kopieren im
+Zeichenpfad, der Menüpunkt „System-Hintergrundbilder", die
+Einstellungsdatei `system_bg_disabled` und der `bgbild=`-Posten aus den
+PERF- und RUCKLER-Zeilen im Log. Der Ordner
+`/media/fat/frontend/bg/` wird nicht mehr gelesen und kann gelöscht
+werden.
+
+**Ordnerzeilen kommen jetzt in die Miniaturen-Vorbereitung** (Build 87,
+derselbe Zusammenhang): `_alle_spiel_eintraege()` stieg zwar in jeden
+Unterordner ab, nahm aber nur dessen **Inhalt** mit — der Eintrag, der
+den Ordner in der Liste darstellt, kam nie vor. Ein Ordner mit eigenem
+Artwork wurde deshalb nie vorberechnet, egal wie oft man den Durchlauf
+startete. Jetzt ist er dabei, mit exakt demselben Eintrag, den auch die
+Anzeige benutzt.
+
+Neu: `tools/test_kein_systemhintergrund.py` prüft die Abwesenheit statt
+des Aussehens — kein `BG_BASE`/`BgCache`/`_cur_bg` mehr im Code, genau
+ein Bildversuch bei einem Eintrag ohne Cover, gleicher Hintergrund für
+verschiedene Systeme, kein `system_bg` im Menübaum. Gesamtstand: 22
+Testskripte, alle grün.
+
 **Der Boxart-Kasten hat nur noch drei Höhen** (Build 86 — Nutzerwunsch:
 „ich möchte bitte die drei Stufen einbauen … zudem habe ich den
 Eindruck, dass das mit dem Miniaturen vorbereiten nicht richtig klappt —

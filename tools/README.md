@@ -37,6 +37,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_script_eingaben.py \
   && python3 tools/test_thumb_verdraengung.py \
   && python3 tools/test_kastenstufen.py \
+  && python3 tools/test_kein_systemhintergrund.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -63,6 +64,7 @@ python3 tools/regression_test.py \
 | `test_script_eingaben.py` | Test (Pass/Fail) | Abfragen in den Shell-Skripten funktionieren auch mit Wagenruecklauf in der Eingabe |
 | `test_thumb_verdraengung.py` | Test (Pass/Fail) | Miniaturen-Cache: Uhrensprung nach dem Start, Schutz der Kategorie-Logos, Aufraeumen auf Vorrat, getrennte Ablagen fuer CRT/HDMI |
 | `test_kastenstufen.py` | Test (Pass/Fail) | Boxart-Kasten hat nur drei Hoehen, und der Text passt in jedem Fall noch hinein |
+| `test_kein_systemhintergrund.py` | Test (Pass/Fail) | System-Hintergrundbilder sind restlos raus: kein bg-Zugriff, kein zweiter Bildversuch ohne Cover, kein Menuepunkt |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -527,6 +529,39 @@ Faelle je Aufloesung) und prueft zwei Zusagen:
 Dazu die Gegenprobe, die den eigentlichen Zweck festnagelt: die
 "Gespielt"-Zeile, die beim ersten Start eines Spiels dazukommt, darf die
 Kastenhoehe NICHT mehr veraendern.
+
+## test_kein_systemhintergrund.py
+
+Build 87 hat die System-Hintergrundbilder komplett entfernt
+(Nutzerentscheidung: "grossen Systembildhintergrund komplett
+rausnehmen, war eh bloede"). Sie hatten zwei Auftritte, und beide
+kosteten Leistung:
+
+1. **Bildschirmfuellend hinter der Spieleliste.** Der Puffer musste bei
+   jedem Kategoriewechsel neu zusammengesetzt werden - bei 1920x1080
+   8,3 MB, zeilenweise in Python, hier gemessene 41-67 ms und auf der
+   MiSTer-CPU entsprechend mehr. Dazu hielt BgCache bis zu VIER solcher
+   Vollbildpuffer, bei 1080p rund 33 MB Arbeitsspeicher.
+2. **Klein in der Boxart-Spalte**, als Ersatz fuer ein fehlendes Cover.
+   Das war mit 200-700+ ms je Skalierung die teuerste Einzeloperation
+   im ganzen Frontend - und sie wurde von KEINEM Vorauslader erfasst.
+
+Ein Loeschen quer durch vier Dateien laesst leicht einen Rest stehen,
+und ein Rest waere hier heimtueckisch: er kostet nichts, bis ihn ein
+spaeterer Umbau versehentlich wieder anschaltet. Der Test prueft
+deshalb nicht das Aussehen, sondern die Abwesenheit:
+
+- `fe/art.py` hat kein `BG_BASE`, `BgCache`, `BG` mehr, `fe/settings.py`
+  kein `system_bg_enabled`/`toggle_system_bg`/`SYSTEM_BG_DISABLED_FLAG`,
+  und im CODE von `frontend.py` (Kommentare ausgenommen, die erklaeren
+  ja gerade die Entfernung) taucht keines der Muster mehr auf.
+- Ein Eintrag OHNE Cover loest genau EINEN Bildversuch aus - den fuers
+  Cover selbst. Frueher kam ein zweiter fuer das Hintergrundbild.
+- Zwei Kategorien mit verschiedenem Systemkey haben denselben
+  Hintergrund, und der stammt bitgenau aus der `fb.clear()`-Vorlage
+  (`fb._rowcache`).
+- Im kompletten Systemmenue-Baum (44 Eintraege) gibt es keinen Eintrag
+  der Art `system_bg` mehr.
 
 ## diag_lightpath.py
 

@@ -198,8 +198,8 @@ from fe.settings import (
     load_attract_delay, mark_setup_wizard_done, save_attract_delay,
     setup_wizard_done, toggle_attract_mode, toggle_crt_menu,
     toggle_curated_only, toggle_dragend_logo, screen_mirror_enabled,
-    toggle_screen_mirror, toggle_stream_overlay, system_bg_enabled,
-    toggle_system_bg, fast_scroll_enabled, toggle_fast_scroll,
+    toggle_screen_mirror, toggle_stream_overlay,
+    fast_scroll_enabled, toggle_fast_scroll,
     FAST_SCROLL_WINDOW, pulse_effect_enabled, toggle_pulse_effect,
     CRT_CONFIRM_TIMEOUT, crt_pending_confirm, mark_crt_pending_confirm,
     clear_crt_pending_confirm, eq_effect_enabled, toggle_eq_effect,
@@ -744,10 +744,10 @@ from fe.input import (
 )
 
 from fe.art import (
-    decode_png, BadgeCache, ArtCache, BgCache, _art_path_in, _art_index,
+    decode_png, BadgeCache, ArtCache, _art_path_in, _art_index,
     art_path, mra_meta, get_meta, ART, ART_BASE,
-    ART_HD, BG_BASE, SYSART_BASE, META_BASE, BADGE_DIR,
-    RA_BADGE_URL, BG, BADGES, _category_art_key,
+    ART_HD, SYSART_BASE, META_BASE, BADGE_DIR,
+    RA_BADGE_URL, BADGES, _category_art_key,
     prewarm_thumb, thumb_cache_has, thumb_cache_stand,
     thumb_cache_schuetzen, thumb_cache_modus_setzen,
     alten_flachen_cache_aufraeumen,
@@ -3972,24 +3972,17 @@ class Frontend:
         footer_y, visible = L["footer_y"], L["visible"]
         self.items_visible = visible
 
-        art_key = _category_art_key(name, syskey)
-        # NEUES FEATURE (Nutzerwunsch: "bg-Ordner rausnehmen, glaube der
-        # laggt" - siehe system_bg_enabled() in fe/settings.py). Nutzt
-        # bewusst denselben None-Pfad, der ohnehin schon existiert (fuer
-        # Kategorien ohne art_key) - kein neuer Sonderfall noetig, self.
-        # _cur_bg=None ist bereits ueberall sicher gehandhabt.
-        # MESSPUNKT (zweiter Blindfleck, beim Nachgehen des Hakelns beim
-        # Zurueckgehen gefunden): BG.get() baut bei einem Cache-Fehltreffer
-        # das komplette Hintergrundbild bildschirmfuellend neu auf - bei
-        # 1920x1080 sind das 8,3 MB, zeilenweise in Python zusammengesetzt.
-        # Hier nachgemessen: 41-67 ms auf dieser Sandbox, auf der
-        # schwaecheren MiSTer-CPU entsprechend deutlich mehr. Das lag
-        # bisher VOR dem bg=-Zeitnehmer und tauchte damit in keiner
-        # einzigen Messung auf.
-        _tbg = time.monotonic()
-        self._cur_bg = (BG.get(art_key, fb)
-                        if art_key and system_bg_enabled() else None)
-        self._perf_bgimg = time.monotonic() - _tbg
+        # ENTFERNT (Build 87, Nutzerentscheidung: "grossen
+        # Systembildhintergrund komplett rausnehmen, war eh bloede").
+        # Hier wurde bisher ueber BG.get() das bildschirmfuellende
+        # Hintergrundbild des Systems geholt und weiter unten per
+        # Blockkopie in den Puffer gesetzt. Bei einem Cache-Fehltreffer
+        # baute BG.get() dieses Bild komplett neu auf - bei 1920x1080
+        # 8,3 MB, zeilenweise in Python, hier gemessene 41-67 ms und auf
+        # der MiSTer-CPU entsprechend mehr, beim Kategoriewechsel und
+        # beim Zurueckgehen aus einem Ordner. Der Hintergrund ist jetzt
+        # immer die einfarbige Flaeche mit Vignette aus fb.clear(), die
+        # ohnehin schon zwischengespeichert wird (fb._rowcache).
         _tb = time.monotonic()
         # NEU (Nutzerwunsch: "HDMI-Modus muss fluessiger laufen" - echtes
         # Profiling zeigte den vollen Pufferaufbau/-kopie (47-57ms bei
@@ -4013,17 +4006,14 @@ class Frontend:
         # Generation nicht mehr mit fb.full_redraw_gen ueberein, und der
         # schnelle Pfad wird automatisch NICHT genommen - dann laeuft
         # wie bisher immer der volle, sichere Neuaufbau.
-        _fast_key = (self.cat_i, tuple(self.nav_path), total, art_key, W, H)
+        # art_key ist aus dem Schluessel raus (Build 87): er war eine
+        # reine Funktion von cat_i, den der Schluessel ohnehin enthaelt.
+        _fast_key = (self.cat_i, tuple(self.nav_path), total, W, H)
         _fast_path = (getattr(self, "_pgi_fast_key", None) == _fast_key and
                       getattr(self, "_pgi_fast_gen", -1) == fb.full_redraw_gen)
         self._pgi_fast_taken = _fast_path
         if _fast_path:
             pass   # Hintergrund unveraendert - kompletter Neuaufbau nicht noetig
-        elif self._cur_bg is not None:
-            fb.buf[:] = self._cur_bg
-            fb.mark_full_redraw()
-            self._pgi_fast_key = _fast_key
-            self._pgi_fast_gen = fb.full_redraw_gen
         else:
             fb.clear(C_BG)
             self._pgi_fast_key = _fast_key
@@ -4195,9 +4185,9 @@ class Frontend:
             # fb.rect() als Hauptkosten, 37 Aufrufe pro Bildaufbau bei
             # 17-18 sichtbaren Zeilen). Ursache gefunden: bg_fresh war
             # bisher NUR True, wenn ein Bild-Hintergrund kopiert wurde
-            # (self._cur_bg is not None) - der GENAUSO gueltige Fall
-            # "gerade eben fb.clear(C_BG) aufgerufen" (kein Bild
-            # verfuegbar, einfarbiger Hintergrund) wurde dabei NICHT
+            # (den gibt es seit Build 87 nicht mehr) - der GENAUSO
+            # gueltige Fall "gerade eben fb.clear(C_BG) aufgerufen"
+            # (einfarbiger Hintergrund) wurde dabei NICHT
             # als "frisch" erkannt, obwohl auch clear() den KOMPLETTEN
             # Puffer (inklusive aller Zeilenbereiche) bereits mit der
             # exakt gleichen Farbe fuellt, die draw_list_row() fuer
@@ -4393,15 +4383,15 @@ class Frontend:
         _bg = getattr(self, "_perf_bg", 0); _rw = getattr(self, "_perf_rows", 0)
         _ar = getattr(self, "_perf_art", 0); _nr = getattr(self, "_perf_nrows", 0)
         _re = getattr(self, "_perf_restore", 0)
-        _bi = getattr(self, "_perf_bgimg", 0)
-        if (_bi + _bg + _re + _rw + _ar + _fdt) > 0.1:
-            LOG("PERF split: bgbild=%.0f bg=%.0f restore=%.0f rows=%.0f(%d) "
+        # bgbild= ist raus (Build 87): mit dem Systemhintergrund gibt es
+        # den Posten nicht mehr.
+        if (_bg + _re + _rw + _ar + _fdt) > 0.1:
+            LOG("PERF split: bg=%.0f restore=%.0f rows=%.0f(%d) "
                 "art=%.0f flip=%.0f ms"
-                % (_bi * 1000, _bg * 1000, _re * 1000, _rw * 1000, _nr,
+                % (_bg * 1000, _re * 1000, _rw * 1000, _nr,
                    _ar * 1000, _fdt * 1000))
         self._perf_art = 0
         self._perf_restore = 0.0
-        self._perf_bgimg = 0.0
 
     def draw_confirm_dialog(self, msg=None, labels=None, max_lines=2):
         """Beenden-Bestaetigung (Standardaufruf ohne Argumente):
@@ -4724,8 +4714,7 @@ class Frontend:
 
     def _restore_row_bg(self, x, y, w, h):
         """Stellt einen einzelnen, schmalen Zeilenbereich des Hintergrunds
-        wieder her (aus self._cur_bg, falls ein Bild-Hintergrund aktiv
-        ist, sonst aus der GLEICHEN zwischengespeicherten Vorlage, die
+        wieder her (aus der GLEICHEN zwischengespeicherten Vorlage, die
         auch fb.clear() verwendet - siehe unten) - OHNE den kompletten
         Bildschirm neu aufzubauen. Extrahiert aus der bereits
         vorhandenen, bewaehrten Logik der Musiktitel-Laufschrift (siehe
@@ -4744,12 +4733,14 @@ class Frontend:
         abweichende Pixel im Test, verteilt ueber die ganze Liste.
         Jetzt wird stattdessen dieselbe zwischengespeicherte Vorlage
         (fb._rowcache) verwendet, die fb.clear() selbst aufbaut und
-        wiederverwendet - Zeile fuer Zeile herauskopiert, genau wie
-        beim Bild-Hintergrund-Fall."""
+        wiederverwendet - Zeile fuer Zeile herauskopiert.
+
+        VEREINFACHT (Build 87): davor stand hier noch ein zweiter Fall -
+        war gerade ein System-Hintergrundbild aktiv, wurde stattdessen
+        aus dessen Vollbildpuffer kopiert. Den gibt es nicht mehr, also
+        bleibt genau eine Quelle."""
         fb = self.fb
-        cur_bg = getattr(self, "_cur_bg", None)
-        if cur_bg is None:
-            cur_bg = fb._rowcache.get(("bg", C_BG, fb.width, fb.height))
+        cur_bg = fb._rowcache.get(("bg", C_BG, fb.width, fb.height))
         if cur_bg is None:
             # Vorlage (noch) nicht vorhanden (sollte im schnellen Pfad
             # eigentlich nie vorkommen, da der einen vorherigen echten
@@ -5815,7 +5806,16 @@ class Frontend:
         def durchgehen(node):
             for it in node.get("items", []):
                 raus.append(it)
-            for sub in node.get("folders", {}).values():
+            # ERGAENZT (Build 87): die ORDNERZEILEN selbst fehlten hier.
+            # Die Schleife stieg zwar in jeden Unterordner ab, nahm aber
+            # nur dessen Inhalt mit - der Eintrag, der den Ordner in der
+            # Liste darstellt, kam nie vor. Ein Ordner MIT eigenem
+            # Artwork wurde deshalb von "Miniaturen vorbereiten" nie
+            # erfasst, egal wie oft man es laufen liess. Der Eintrag ist
+            # exakt derselbe wie in _display_items(), sonst zeigte die
+            # Vorberechnung auf einen anderen Namen als die Anzeige.
+            for fname, sub in node.get("folders", {}).items():
+                raus.append((fname + "/", "folder", fname))
                 durchgehen(sub)
 
         for _name, node, cat_syskey in self.cats:
@@ -6333,72 +6333,34 @@ class Frontend:
                 fb.text(bx + 3 * s, by + 2 * s, "100%", s, (10, 10, 14), gold)
             art_bottom = ay + ah
         else:
-            # NEU (Nutzerwunsch): statt der reinen Textmeldung erst
-            # versuchen, das SYSTEM-Hintergrundbild (dasselbe wie im
-            # Hintergrund der Spieleliste, siehe BG_BASE/BgCache) klein
-            # als Cover-Ersatz zu zeigen - deutlich weniger "leer" als
-            # eine reine Farbflaeche, und zeigt trotzdem sofort, um
-            # welches System es sich handelt. Nutzt dieselbe Aufloesungs-
-            # bewusste Namenskonvention wie BgCache.get() (erst die zur
-            # aktuellen Aufloesung passende Variante, dann die
-            # allgemeine). Nur wenn GAR KEIN Hintergrundbild fuer dieses
-            # System existiert (z.B. ein sehr seltenes/eigenes System
-            # ohne mitgeliefertes BG), bleibt der reine Textplatzhalter
-            # als letzter Rueckfall bestehen.
+            # ENTFERNT (Build 87, Nutzerentscheidung: "grossen
+            # Systembildhintergrund komplett rausnehmen, war eh bloede").
             #
-            # PERFORMANCE-BUGFIX (Nutzer-Rueckmeldung: "beim Scrollen
-            # fuehlt es sich laghaft an" - echtes Profiling auf echter
-            # Hardware fand hier einen erheblichen, sich WIEDERHOLENDEN
-            # Kostenfaktor, keinen Einmal-Fall): dieses Rueckfallbild
-            # ist das GROSSE, fast bildschirmfuellende Systembild -
-            # jedes Herunterskalieren auf Panel-Groesse kostete 200-
-            # 700+ ms. Der Festplatten-Cache (siehe THUMB_CACHE) haette
-            # das eigentlich nach dem ersten Mal abfangen sollen - tat
-            # es aber nicht, weil cover_h (die Zielhoehe) von Spiel zu
-            # Spiel geringfuegig schwankt (unterschiedlich viele
-            # Metadaten-Zeilen: Genre/Jahr/Spielzeit/RA-Fortschritt/
-            # Durchgespielt-Markierung aendern die verbleibende
-            # Cover-Hoehe) - jede Abweichung war ein neuer Cache-
-            # Schluessel, also ein neuer Fehltreffer, obwohl inhaltlich
-            # dasselbe Bild in praktisch derselben Groesse gebraucht
-            # wurde. Bestaetigt im echten Log: bei GBC-Spielen ohne
-            # eigenes Cover wiederholte sich der teure Fall bei JEDEM
-            # einzelnen Spiel (201/653/224/39/590/212/650/183/674/200/
-            # 632/182/45/629/768/629 ms - nicht nur einmal).
+            # Hier stand bis Build 86 ein Rueckfall: fehlte das Cover,
+            # wurde stattdessen das SYSTEM-Hintergrundbild klein in den
+            # Kasten gerechnet. Gut gemeint - es sah weniger leer aus und
+            # zeigte sofort, um welches System es geht -, aber es war die
+            # teuerste Einzeloperation im ganzen Frontend: das Bild ist
+            # nahezu bildschirmfuellend, das Herunterskalieren kostete auf
+            # dem Geraet 200-700+ ms.
             #
-            # Fix: NUR fuer dieses Rueckfallbild (nicht fuer normale
-            # Spiele-Cover, wo Pixelgenauigkeit zaehlt) wird die
-            # Zielgroesse auf ein groberes Raster (8px) gerundet - bei
-            # einem grossen, generischen Hintergrundbild als Platz-
-            # halter faellt eine Abweichung von wenigen Pixeln optisch
-            # nicht auf, ermoeglicht aber, dass praktisch alle Spiele
-            # desselben Systems denselben Cache-Eintrag treffen.
-            bg_fallback = None
-            if syskey and system_bg_enabled():
-                _bg_fb_w = max(1, (avail_w // 8) * 8)
-                _bg_fb_h = max(1, (cover_h // 8) * 8)
-                for fn in ("%s_%dx%d.art" % (syskey, fb.width, fb.height),
-                          "%s.art" % syskey):
-                    bg_fallback = ART.get_scaled(os.path.join(BG_BASE, fn), _bg_fb_w, _bg_fb_h)
-                    if bg_fallback:
-                        break
-            if bg_fallback:
-                aw, ah, pix = bg_fallback
-                ax = x0 + max(0, (avail_w - aw) // 2)
-                ay = cy + max(0, (cover_h - ah) // 2)
-                self.blit(ax, ay, aw, ah, pix)
-                fb.rect(ax - 2 * s, ay - 2 * s, aw + 4 * s, 2 * s, accent)
-                fb.rect(ax - 2 * s, ay + ah, aw + 4 * s, 2 * s, accent)
-                fb.rect(ax - 2 * s, ay - 2 * s, 2 * s, ah + 4 * s, accent)
-                fb.rect(ax + aw, ay - 2 * s, 2 * s, ah + 4 * s, accent)
-                art_bottom = ay + ah
-            else:
-                fb.rect(x0, cy, avail_w, cover_h, C_ACCENT2)
-                fb.text(x0 + 4 * s, cy + cover_h // 2 - 4 * s,
-                        t("no_artwork_1"), s, C_DIM, C_ACCENT2)
-                fb.text(x0 + 4 * s, cy + cover_h // 2 + 5 * s,
-                        t("no_artwork_2"), s, C_DIM, C_ACCENT2)
-                art_bottom = cy + cover_h
+            # Schlimmer noch: der Fall wurde von KEINEM Vorauslader
+            # erfasst. "Miniaturen vorbereiten" laeuft nur ueber Eintraege
+            # MIT Cover-Pfad (cover_pfad_und_kasten() gibt sonst None
+            # zurueck), und geschuetzt vor der Verdraengung war das
+            # Ergebnis auch nicht. Man konnte den Durchlauf also komplett
+            # abwarten und trotzdem bei jedem Spiel ohne eigenes Cover -
+            # und bei jedem Ordner, denn Ordner haben praktisch nie eins -
+            # in dieselbe halbe Sekunde Wartezeit laufen.
+            #
+            # Jetzt bleibt der schlichte Platzhalter. Er kostet zwei
+            # Textzeilen und ein Rechteck, also nichts.
+            fb.rect(x0, cy, avail_w, cover_h, C_ACCENT2)
+            fb.text(x0 + 4 * s, cy + cover_h // 2 - 4 * s,
+                    t("no_artwork_1"), s, C_DIM, C_ACCENT2)
+            fb.text(x0 + 4 * s, cy + cover_h // 2 + 5 * s,
+                    t("no_artwork_2"), s, C_DIM, C_ACCENT2)
+            art_bottom = cy + cover_h
 
         # ---- Titel + Infos darunter, volle Spaltenbreite ----
         # Text startet erst UNTER dem tatsaechlich gezeichneten Cover -
@@ -9816,12 +9778,11 @@ class Frontend:
                     _busy = (_rt1 - _rt_prev) + (time.monotonic() - _rt2)
                     if _busy >= RUCKLER_SCHWELLE:
                         LOG("RUCKLER: %.0f ms busy "
-                            "(stream=%.0f haus=%.0f bgbild=%.0f bg=%.0f "
+                            "(stream=%.0f haus=%.0f bg=%.0f "
                             "restore=%.0f rows=%.0f art=%.0f flip=%.0f | "
                             "vorige Aktion=%s Seite=%d)"
                             % (_busy * 1000, (_rt1 - _rt0) * 1000,
                                getattr(self, "_perf_house", 0) * 1000,
-                               getattr(self, "_perf_bgimg", 0) * 1000,
                                getattr(self, "_perf_bg", 0) * 1000,
                                getattr(self, "_perf_restore", 0) * 1000,
                                getattr(self, "_perf_rows", 0) * 1000,
@@ -10537,21 +10498,11 @@ class Frontend:
                         elif kind == "dragend_logo":
                             toggle_dragend_logo()
                             self._refresh_system_category()
-                        elif kind == "system_bg":
-                            # NEUES FEATURE (Nutzerwunsch: "bg-Ordner
-                            # rausnehmen, glaube der laggt ein wenig") -
-                            # wirkt SOFORT (beide Aufrufstellen pruefen
-                            # system_bg_enabled() live beim Zeichnen,
-                            # kein zwischengespeicherter Zustand wie bei
-                            # Stream-Overlay/Bildschirmspiegel), deshalb
-                            # kein Neustart-Hinweis in der Beschriftung.
-                            toggle_system_bg()
-                            self._refresh_system_category()
                         elif kind == "fast_scroll":
                             # NEUES FEATURE (Nutzerwunsch: "kann man das
                             # Vsync-Warten beim Scrollen weglassen? Will
-                            # ich probieren") - wirkt SOFORT wie system_bg
-                            # oben (fast_scroll_enabled() wird live beim
+                            # ich probieren") - wirkt SOFORT
+                            # (fast_scroll_enabled() wird live beim
                             # Zeichnen geprueft, siehe _draw_page_items_impl()),
                             # kein Neustart noetig.
                             toggle_fast_scroll()

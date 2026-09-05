@@ -91,7 +91,7 @@ Nachlesen (`CHANGELOG.md`).
 5. Hintergrundmusik einrichten
 6. Boxart und Spielinfos laden
    - 6b. Automatische Listen-Bereinigung + kuratierte Liste
-7. System-Hintergrundbilder (optional)
+7. System-Hintergrundbilder — mit Build 87 entfernt
    - 7b. System-Artbox im Kategorien-Menü
 8. CRT-Bildschirme (15 kHz) einrichten
    - 8b. Optische Verfeinerungen
@@ -140,7 +140,7 @@ Nachlesen (`CHANGELOG.md`).
 | Scripts/Frontend_Boxart_Download.sh | /media/fat/Scripts/          | Boxart-Download aus OSD/Frontend starten |
 | Scripts/Frontend_Gameinfo_Download.sh | /media/fat/Scripts/        | Spielinfo-Download aus OSD/Frontend starten |
 | Scripts/Frontend_Stream_Toggle.sh | /media/fat/Scripts/            | Stream-Overlay an/aus schalten (optional) |
-| PC-Tools/art_convert.py         | bleibt auf dem PC (Python+Pillow) | Bilder -> .art-Format, inkl. Hintergrundbilder |
+| PC-Tools/art_convert.py         | bleibt auf dem PC (Python+Pillow) | Bilder -> .art-Format (die --bg-Option hat seit Build 87 keine Wirkung mehr) |
 | PC-Tools/boxart_fetch.py        | bleibt auf dem PC (optional)      | Alternative: Boxart-Download am PC statt MiSTer |
 | PC-Tools/video_to_bootanim.py   | bleibt auf dem PC (Python+Pillow) | Video/Bildfolge -> Boot-Animation |
 | PC-Tools/obs_setup.py           | bleibt auf dem PC (optional)      | Lokale OBS-Overlay-Datei mit fest eingetragener MiSTer-IP anlegen |
@@ -470,22 +470,29 @@ only)"** zeigt nur Spiele mit einem Treffer in der libretro-Datenbank
 System noch gar keine Metadaten geladen, wird es NICHT gefiltert
 (kein Risiko einer leeren Liste). Wirkt sofort, ohne Neustart.
 
-## 7. System-Hintergrundbilder (optional)
+## 7. System-Hintergrundbilder — mit Build 87 entfernt
 
-**Bereits im Build enthalten** (liegt in `frontend/bg/`, muss nicht
-mehr selbst erzeugt werden): 12 Systeme (NES, SNES, Genesis, N64, PSX,
-GAMEBOY, GBC, SMS, TGFX16, MegaCD, Saturn, NEOGEO) haben ein
-abgedunkeltes Konsolenfoto als Hintergrund hinterlegt, jeweils in
-beiden Auflösungen (CRT 320×240 und HDMI 1920×1080) - Quelle sind die
-gemeinfreien Fotos von Evan Amos auf Wikimedia Commons ("Vanamo
-Online Game Museum").
+Bis Build 86 konnte pro System ein abgedunkeltes Konsolenfoto aus
+`/media/fat/frontend/bg/` hinterlegt werden. Es erschien an zwei
+Stellen: bildschirmfüllend hinter der Spieleliste, und klein in der
+Boxart-Spalte als Ersatz, wenn ein Spiel kein eigenes Cover hatte.
 
-Eigene/weitere Bilder erzeugen (z.B. für GBA oder ARCADE):
-```
-python art_convert.py --bg --images nes.jpg --out NES_320x240.art --size 320x240 --darken 0.25
-```
-Nach `/media/fat/frontend/bg/` kopieren. Systemkeys: NES, SNES, Genesis,
-N64, PSX, GAMEBOY, GBA, SMS, TGFX16, MegaCD, Saturn, NEOGEO, ARCADE.
+**Beides ist mit Build 87 ersatzlos entfallen.** Der Grund war
+Leistung, an beiden Stellen gemessen:
+
+- Der bildschirmfüllende Hintergrund musste bei jedem Kategoriewechsel
+  neu zusammengesetzt werden — bei 1920×1080 sind das 8,3 MB, zeilenweise
+  in Python. Dazu hielt das Frontend bis zu vier solcher Vollbildpuffer
+  im Speicher, bei 1080p rund 33 MB.
+- Der kleine Ersatz in der Boxart-Spalte war die teuerste Einzeloperation
+  im ganzen Frontend: 200–700 ms je Skalierung, und er wurde von keinem
+  Vorauslader erfasst. Wer viele Spiele ohne eigenes Cover hat — und
+  jeder Ordner zählt dazu —, bezahlte das beim Blättern immer wieder.
+
+Fehlt ein Cover, erscheint jetzt der schlichte Platzhalter. Der Ordner
+`/media/fat/frontend/bg/` wird nicht mehr gelesen und kann gelöscht
+werden; der Menüpunkt „System-Hintergrundbilder" ist entsprechend
+verschwunden.
 
 ## 7b. System-Artbox im Kategorien-Menü
 

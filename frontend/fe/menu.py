@@ -28,7 +28,7 @@ from fe.audio import get_volume, sfx_enabled_flag
 from fe.settings import (
     attract_enabled, crt_menu_active, curated_only_active,
     dragend_logo_enabled, format_attract_delay, load_attract_delay,
-    screen_mirror_enabled, stream_overlay_enabled, system_bg_enabled,
+    screen_mirror_enabled, stream_overlay_enabled,
     fast_scroll_enabled, pulse_effect_enabled, eq_effect_enabled,
     track_marquee_enabled, fb_size_label_key,
     autostart_enabled, rom_filter_enabled,
@@ -159,8 +159,6 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     sfx_label = t("sys_sfx_on") if sfx_enabled_flag() else t("sys_sfx_off")
     dragend_logo_label = t("sys_dragend_logo_on") if dragend_logo_enabled() \
         else t("sys_dragend_logo_off")
-    system_bg_label = t("sys_system_bg_on") if system_bg_enabled() \
-        else t("sys_system_bg_off")
     fast_scroll_label = t("sys_fast_scroll_on") if fast_scroll_enabled() \
         else t("sys_fast_scroll_off")
     # NEUES FEATURE (Nutzerwunsch: Schalter fuer die Framebuffer-Groesse):
@@ -233,7 +231,6 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         (theme_label, "theme", None),
         (sfx_label, "sfx", None),
         (dragend_logo_label, "dragend_logo", None),
-        (system_bg_label, "system_bg", None),
         (fast_scroll_label, "fast_scroll", None),
     ]
     if not crt:

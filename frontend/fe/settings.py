@@ -31,35 +31,15 @@ def toggle_dragend_logo():
         except OSError:
             pass
 
-# NEUES FEATURE (Nutzerwunsch: "bitte den bg-Ordner komplett rausnehmen,
-# glaube der laggt ein wenig" - System-Hintergrundbilder hinter der
-# Spieleliste UND als Cover-Rueckfall fuer Spiele ohne eigenes Artwork,
-# siehe BG_BASE/BgCache in fe/art.py). Fehlende Dateien werden bereits
-# sicher/guenstig behandelt (ART.get() cached "nicht gefunden" dauerhaft
-# nach dem ersten Fehlschlag) - dieser Schalter betrifft den Fall, dass
-# die Dateien VORHANDEN sind, aber trotzdem uebersprungen werden sollen.
-# Bewusst ALS SCHALTER statt den Code fest zu entfernen - andere Nutzer
-# (Sutefan/Dennsen/Community) moechten das visuelle Feature evtl.
-# behalten. Standard AN (bestehendes Verhalten bleibt fuer alle
-# unveraendert, die den Schalter nicht anfassen) - nach demselben
-# "Standard an, per Datei abschaltbar"-Muster wie beim Boot-Logo oben.
-SYSTEM_BG_DISABLED_FLAG = "/media/fat/frontend/system_bg_disabled"
+# ENTFERNT (Build 87, Nutzerentscheidung: "grossen
+# Systembildhintergrund komplett rausnehmen, war eh bloede"). Hier stand
+# SYSTEM_BG_DISABLED_FLAG mit system_bg_enabled()/toggle_system_bg().
+# Der Schalter existierte, weil das Feature nachweislich Leistung
+# kostete, aber andere es vielleicht behalten wollten. Jetzt ist das
+# Feature selbst weg, damit auch der Schalter. Eine eventuell noch
+# vorhandene Datei /media/fat/frontend/system_bg_disabled wird einfach
+# nicht mehr gelesen und stoert nicht.
 
-def system_bg_enabled():
-    return not os.path.exists(SYSTEM_BG_DISABLED_FLAG)
-
-def toggle_system_bg():
-    if system_bg_enabled():
-        try:
-            os.makedirs(os.path.dirname(SYSTEM_BG_DISABLED_FLAG), exist_ok=True)
-            open(SYSTEM_BG_DISABLED_FLAG, "w").close()
-        except OSError:
-            pass
-    else:
-        try:
-            os.remove(SYSTEM_BG_DISABLED_FLAG)
-        except OSError:
-            pass
 
 # NEUES FEATURE (Nutzerwunsch: "wenn wir den Schimmer-Effekt rausnehmen
 # wuerde das noch was bringen?" - Puls-/Schimmer-Animation auf der

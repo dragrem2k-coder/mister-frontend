@@ -2,33 +2,22 @@
 # -*- coding: utf-8 -*-
 """
 Boxart-Verwaltung: eigener PNG-Decoder (fuer RA-Erfolgs-Icons),
-ArtCache (Cover/Logos im eigenen .art-Format), BgCache (System-
-Hintergrundbilder), Metadaten-Cache. Ausgelagert aus frontend.py
-(Modularisierung, Git-Branch 'modular-refactor').
+ArtCache (Cover/Logos im eigenen .art-Format), Metadaten-Cache.
+Ausgelagert aus frontend.py (Modularisierung, Git-Branch
+'modular-refactor').
 
-Pfad-Konstanten (ART_BASE/ART_HD/BG_BASE/SYSART_BASE/META_BASE) leben
+Pfad-Konstanten (ART_BASE/ART_HD/SYSART_BASE/META_BASE) leben
 jetzt HIER als ihr eigentliches Zuhause (vorher in frontend.py, an
 mehreren weit entfernten Stellen im restlichen Code verwendet) -
 frontend.py importiert sie von hier zurueck, damit alle bisherigen
 Verwendungsstellen unveraendert weiterlaufen.
-
-C_BG (siehe BgCache._compose()) wird bewusst NICHT als eigene Kopie
-gehalten wie noch in fe/framebuffer.py - _compose() wird deutlich
-seltener aufgerufen als Framebuffer.text() (nicht pro Zeichen, nur
-beim Zusammensetzen eines neuen Hintergrundbilds), ein modul-
-qualifizierter Zugriff auf fe.framebuffer.C_BG (das dort bereits
-korrekt synchron gehalten wird) ist hier voellig ausreichend und
-spart eine weitere Synchronisierungsstelle.
 """
 import os, re, struct, zlib, json, time, urllib.request, hashlib, threading
 from fe.log import LOG
-from fe.framebuffer import Framebuffer
 from fe.translations import t
-import fe.framebuffer as _fb_mod
 
 ART_BASE    = "/media/fat/frontend/art"
 ART_HD      = "/media/fat/frontend/art_hd"
-BG_BASE     = "/media/fat/frontend/bg"
 SYSART_BASE = "/media/fat/frontend/sysart"
 META_BASE   = "/media/fat/frontend/meta"
 
@@ -1296,83 +1285,18 @@ def _hochskalieren(pix, w, h, scale):
 
 ART = ArtCache()
 
-class BgCache:
-    """Haelt pro System einen fertig komponierten Vollbild-Puffer
-    (inkl. Stride-Padding), damit der Hintergrund beim Zeichnen nur
-    noch per Blockkopie eingesetzt werden muss."""
-    # ERHOEHT von 2 auf 4 (Nutzer-Rueckmeldung: "wenn ich aus einem
-    # ROM-Ordner zurueckgehe, haengt das Frontend ab und zu kurz").
-    #
-    # Ein Fehltreffer hier ist teuer: _compose() setzt den kompletten
-    # Bildschirminhalt neu zusammen - bei 1920x1080 sind das 8,3 MB,
-    # zeilenweise in Python. Nachgemessen 41-67 ms auf einer schnellen
-    # Sandbox, auf der MiSTer-CPU entsprechend deutlich mehr. Mit nur
-    # ZWEI Plaetzen genuegte das Hin- und Herwechseln zwischen drei
-    # Systemen, damit jeder Wechsel wieder einen kompletten Neuaufbau
-    # ausgeloest hat.
-    #
-    # Preis ehrlich benannt: jeder Platz kostet einen vollen
-    # Bildschirmpuffer - bei 1080p rund 8,3 MB, bei vier Plaetzen also
-    # etwa 33 MB. Auf einem MiSTer mit typischerweise ~1 GB RAM
-    # vertretbar, aber kein Freibier; deshalb 4 und nicht 8. Mit
-    # kleinerem Framebuffer (Menuepunkt "Menue-Aufloesung") sinkt der
-    # Bedarf entsprechend mit (bei halber Groesse ein Viertel davon).
-    LIMIT = 4
-
-    def __init__(self):
-        self.cache = {}
-        self.order = []
-
-    def get(self, syskey, fb):
-        # BUGFIX (beim erneuten Durchgehen ungetesteter Fixes gefunden,
-        # nicht Teil der eigentlich angefragten Aenderung: der
-        # zusammengesetzte Puffer bettet in _compose() die AKTUELL
-        # aktive C_BG-Farbe als Rand-/Letterbox-Fuellung ein (fuer
-        # Hintergrundbilder, die nicht exakt die Bildschirmgroesse
-        # treffen) - der Cache-Schluessel enthielt das Theme bisher
-        # NICHT. Nach einem Themenwechsel waehrend der Sitzung haette
-        # ein bereits gecachter Eintrag fuer denselben syskey/dieselbe
-        # Aufloesung die FARBE DES ALTEN THEMES behalten, bis er durch
-        # LRU-Verdraengung (LIMIT=2) zufaellig rausfiel. Betrifft NICHT
-        # den kuerzlich gebauten HDMI-Fast-Path (der verhaelt sich hier
-        # nachweislich identisch zum vorherigen Code, siehe Pixel-
-        # Vergleichstest) - ein eigenstaendiger, aelterer Fund.
-        key = (syskey, fb.width, fb.height, fb.stride, _fb_mod.C_BG)
-        if key in self.cache:
-            return self.cache[key]
-        buf = None
-        for fn in ("%s_%dx%d.art" % (syskey, fb.width, fb.height),
-                   "%s.art" % syskey):
-            art = ART.get(os.path.join(BG_BASE, fn))
-            if art:
-                buf = self._compose(art, fb)
-                break
-        self.cache[key] = buf
-        self.order.append(key)
-        if len(self.order) > self.LIMIT:
-            self.cache.pop(self.order.pop(0), None)
-        return buf
-
-    @staticmethod
-    def _compose(art, fb):
-        w, h, pix = art
-        base = Framebuffer.px(_fb_mod.C_BG)
-        row_bg = base * fb.width + b"\x00" * (fb.stride - fb.width * 4)
-        out = bytearray(row_bg * fb.height)
-        # Bild zentrieren, bei Ueberbreite mittig beschneiden
-        sx = max(0, (w - fb.width) // 2)
-        dx = max(0, (fb.width - w) // 2)
-        cw = min(w, fb.width)
-        sy = max(0, (h - fb.height) // 2)
-        dy = max(0, (fb.height - h) // 2)
-        ch = min(h, fb.height)
-        for y in range(ch):
-            so = ((sy + y) * w + sx) * 4
-            do = (dy + y) * fb.stride + dx * 4
-            out[do:do + cw * 4] = pix[so:so + cw * 4]
-        return bytes(out)
-
-BG = BgCache()
+# ENTFERNT (Build 87, Nutzerentscheidung: "grossen
+# Systembildhintergrund komplett rausnehmen, war eh bloede"). Hier stand
+# BgCache: der haelt je System einen fertig zusammengesetzten
+# Vollbild-Puffer, den draw_page_items() beim Kategoriewechsel per
+# Blockkopie einsetzte. Der Aufbau eines solchen Puffers (_compose())
+# setzte den kompletten Bildschirminhalt zeilenweise in Python neu
+# zusammen - bei 1920x1080 sind das 8,3 MB und hier gemessene 41-67 ms,
+# auf der schwaecheren MiSTer-CPU entsprechend mehr. Dazu kamen bis zu
+# vier gehaltene Vollbildpuffer, bei 1080p rund 33 MB Arbeitsspeicher.
+# Beides faellt jetzt ersatzlos weg; der Hintergrund ist die einfarbige
+# Flaeche mit Vignette, die fb.clear() ohnehin schon aufbaut und in
+# fb._rowcache wiederverwendet.
 
 _art_index_cache = {}   # (basis_ordner, syskey) -> {Name ohne "NNN "-Praefix: Dateiname}
 
@@ -1457,8 +1381,8 @@ def art_path(syskey, rom_basename):
     return _art_path_in(ART_BASE, syskey, rom_basename)
 
 def _category_art_key(name, syskey):
-    """Kuenstlicher Schluessel NUR fuer die Sysart-/Hintergrundsuche
-    (BG_BASE/SYSART_BASE) - fuer echte Systeme identisch mit syskey.
+    """Kuenstlicher Schluessel NUR fuer die Sysart-Suche
+    (SYSART_BASE) - fuer echte Systeme identisch mit syskey.
 
     NEU (Nutzerwunsch: eigenes Artwork fuer "Weiterspielen" und
     "Zuletzt gespielt"): diese beiden Kategorien mischen mehrere

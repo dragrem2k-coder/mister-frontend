@@ -240,10 +240,9 @@ class Framebuffer:
         WICHTIG (Performance-Grund): eine echte, pixelgenaue radiale
         Vignette (mit Verlauf auch in X-Richtung, wie bei einem Foto)
         wurde direkt gemessen - ueber 1 Sekunde fuer eine einzelne
-        1080p-Flaeche, selbst nur EINMALIG berechnet. Bei bis zu zwei
-        Systemwechseln zwischen Hintergrundbildern (BgCache.LIMIT=2)
-        haette das zu spuerbaren Haengern beim Navigieren gefuehrt -
-        nicht vertretbar. Diese Zeilen-Variante ist rein vertikal
+        1080p-Flaeche, selbst nur EINMALIG berechnet - das haette bei
+        jedem Wechsel der Hintergrundfarbe (Themenwechsel) zu
+        spuerbaren Haengern gefuehrt, nicht vertretbar. Diese Zeilen-Variante ist rein vertikal
         (oben/unten dunkler, kein staerkerer Effekt in den Ecken) -
         optisch ein etwas einfacherer, aber immer noch deutlich
         hochwertiger wirkender Verlauf, dafuer um Groessenordnungen

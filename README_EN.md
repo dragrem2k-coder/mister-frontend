@@ -88,7 +88,7 @@ history to read up on (`CHANGELOG.md`).
    - 5b. Internet radio (Rainwave)
 6. Loading boxart and game info
    - 6b. Automatic list cleanup + curated list
-7. System background images (optional)
+7. System background images — removed in Build 87
    - 7b. System art box in the category menu
 8. Setting up CRT screens (15 kHz)
    - 8b. Visual refinements
@@ -446,16 +446,26 @@ the XML database per system used to be in Hyperspin. If a system has no
 metadata loaded at all, it is NOT filtered (no risk of an empty list).
 Takes effect immediately, without a restart.
 
-## 7. System background images (optional)
+## 7. System background images — removed in Build 87
 
-For a console photo as a dimmed background per system: a good source is
-the public-domain photos by Evan Amos on Wikimedia Commons (search for
-"Vanamo Online Game Museum").
-```
-python art_convert.py --bg --images nes.jpg --out NES_320x240.art --size 320x240 --darken 0.25
-```
-Copy to `/media/fat/frontend/bg/`. System keys: NES, SNES, Genesis, N64,
-PSX, GAMEBOY, GBA, SMS, TGFX16, MegaCD, Saturn, NEOGEO, ARCADE.
+Up to Build 86 a dimmed console photo could be placed in
+`/media/fat/frontend/bg/` per system. It showed up in two places: full
+screen behind the game list, and small in the box art column as a
+stand-in when a game had no cover of its own.
+
+**Both were removed in Build 87**, for measured performance reasons:
+
+- The full-screen background had to be recomposed on every category
+  change - 8.3 MB at 1920x1080, row by row in Python - and up to four of
+  those full-screen buffers were kept in memory, about 33 MB at 1080p.
+- The small stand-in in the box art column was the single most expensive
+  operation in the whole frontend at 200-700 ms per scaling, and no
+  prewarmer covered it. Anyone with many games without their own cover -
+  and every folder counts as one - paid that repeatedly while browsing.
+
+Missing cover art now shows the plain placeholder. The
+`/media/fat/frontend/bg/` folder is no longer read and can be deleted;
+the "System backgrounds" menu entry is gone accordingly.
 
 ## 7b. System art box in the category menu
 

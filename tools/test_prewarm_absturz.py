@@ -167,10 +167,22 @@ finally:
 # Die Kategorie-Logos laufen ueber denselben Aufruf (siehe
 # kategorie_logo_auftraege()) - die gehoeren hier nicht dazu.
 spiele = [g for g in gesehen if fm.SYSART_BASE not in g[0]]
-# 25 Eintraege x 2 Ordner x 2 Kategorien = 100 Vorkommen desselben Spiels
+# 25 Eintraege x 2 Ordner x 2 Kategorien = 100 Vorkommen desselben
+# Spiels, die zu EINEM Ziel zusammenfallen. Dazu kommt seit Build 87
+# genau ein weiteres Ziel: die ORDNERZEILE "sub/" selbst. Die stand
+# vorher in keiner Vorbereitung - _alle_spiel_eintraege() stieg in
+# jeden Unterordner ab, nahm aber nur dessen Inhalt mit. Der Ordner
+# kommt in beiden Kategorien vor, hat aber nur in der MIT Systemkey
+# einen Bildpfad, faellt also ebenfalls auf ein Ziel zusammen.
+ordner = [g for g in spiele if "sub" in g[0]]
 check("100 gleiche Eintraege ergeben 1 Cover-Pruefung",
-      len(spiele) == 1, "%d Pruefungen (%d davon Kategorie-Logos)"
-      % (len(spiele), len(gesehen) - len(spiele)))
+      len(spiele) - len(ordner) == 1,
+      "%d Spiel-Pruefungen (%d Ordner, %d Kategorie-Logos)"
+      % (len(spiele) - len(ordner), len(ordner),
+         len(gesehen) - len(spiele)))
+check("die Ordnerzeile selbst ist jetzt dabei (Build 87)",
+      len(ordner) == 1, "%d Ordner-Pruefungen: %s"
+      % (len(ordner), [o[0] for o in ordner]))
 
 print()
 if fails:
