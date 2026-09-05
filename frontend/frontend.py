@@ -748,7 +748,7 @@ from fe.art import (
     art_path, mra_meta, get_meta, ART, ART_BASE,
     ART_HD, BG_BASE, SYSART_BASE, META_BASE, BADGE_DIR,
     RA_BADGE_URL, BG, BADGES, _category_art_key,
-    prewarm_thumb, thumb_cache_has,
+    prewarm_thumb, thumb_cache_has, thumb_cache_stand,
 )
 
 # NEU (Build 73): Cover-Miniaturen im Leerlauf vorberechnen. Die
@@ -5812,6 +5812,14 @@ class Frontend:
         # er wuerde sich mit diesem Durchlauf um dieselbe CPU streiten
         # und dieselben Dateien doppelt berechnen.
         PREWARMER.abbrechen()
+        # ABSICHERUNG zum wiederhergestellten Abbruch (siehe unten und
+        # read_action() in fe/input.py): eine noch laufende Tasten-
+        # Wiederholung vom Navigieren im Menue wuerde beim ersten
+        # Eintrag als "Abbruch" ankommen, und der Durchlauf waere sofort
+        # wieder vorbei - ohne dass jemand versteht, warum. Solange der
+        # Abbruch nachweislich nie funktioniert hat, konnte das nicht
+        # auffallen.
+        self.inp._cancel_repeat()
         geo = self._art_panel_geometrie()
         if geo is None:
             # Sollte auf der Spieleliste nicht vorkommen - der Menuepunkt
@@ -5877,10 +5885,20 @@ class Frontend:
                 uebersprungen += 1
 
         dauer = time.monotonic() - t0
+        # Der Stand des Zwischenspeichers gehoert in dieselbe Zeile
+        # (Nutzerfrage: "die Miniaturen werden ja gecacht ... kam mir
+        # gerade so vor"): steht die Zahl an der Obergrenze, verdraengt
+        # die Sammlung sich selbst - und DANN wird tatsaechlich immer
+        # wieder neu gerechnet, egal wie oft man diesen Punkt startet.
+        im_cache, obergrenze = thumb_cache_stand()
         LOG("PREWARM Durchlauf %s: %d gerechnet, %d lagen schon da, "
-            "%d uebersprungen, %d gesamt, %.0fs"
+            "%d uebersprungen, %d gesamt, %.0fs - Zwischenspeicher "
+            "%d/%d Dateien%s"
             % ("abgebrochen" if abgebrochen else "fertig",
-               gerechnet, lagen_da, uebersprungen, gesamt, dauer))
+               gerechnet, lagen_da, uebersprungen, gesamt, dauer,
+               im_cache, obergrenze,
+               " (VOLL - siehe THUMB_CACHE_MAX_FILES)"
+               if im_cache >= obergrenze else ""))
         self.build_categories()      # Menuebeschriftung auffrischen
         schluessel = "thumb_prewarm_aborted" if abgebrochen \
             else "thumb_prewarm_done"
@@ -5899,10 +5917,31 @@ class Frontend:
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         fb.clear(C_BG)
-        fb.text(ox, oy, t("thumb_prewarm"), 2 * s, C_TITLE, C_BG)
-        bar_w = min(W - 2 * ox, 300 * s)
+        # BUGFIX (Nutzer-Rueckmeldung: "der Fortschritts-Screen kommt auf
+        # CRT und ist nicht ganz lesbar, da steht nur 'Miniaturen werden'
+        # ... 'jede taste bricht ab - gerechnetes bl'"). Nachgerechnet
+        # fuer 320x240: ox = 22, also bleiben 298 Pixel. Bei fester
+        # Skalierung 2 sind das (298 // 16) = 18 Zeichen - "Miniaturen
+        # werden vorbereitet" hat 29. Der Abbruch-Hinweis stand bei
+        # Skalierung 1 mit (298 // 8) = 37 Zeichen zur Verfuegung und ist
+        # 51 lang. fb.text() schneidet stillschweigend ab, deshalb sah
+        # der Nutzer genau die von ihm zitierten Bruchstuecke.
+        #
+        # Beide Werkzeuge dagegen gibt es laengst und werden auf anderen
+        # Bildschirmen (Trophaeenraum, Jahresrueckblick, Hilfe) auch
+        # benutzt - nur hier nicht: _fit_scale() sucht die groesste noch
+        # passende Schriftgroesse, _wrap_text() bricht an Wortgrenzen um.
+        breite = W - 2 * ox
+        maxc = max(4, breite // (8 * s))
+        titel = t("thumb_prewarm")
+        titel_s = self._fit_scale(titel, breite, 2 * s)
+        fb.text(ox, oy, titel, titel_s, C_TITLE, C_BG)
+        bar_w = min(breite, 300 * s)
         bar_h = 10 * s
-        by = oy + 60 * s
+        # Balken unter den Titel setzen statt auf feste 60*s: bei
+        # Skalierung 1 ist der Titel nur 8 Pixel hoch, die Luecke sah
+        # auf CRT entsprechend verloren aus.
+        by = oy + 8 * titel_s + 24 * s
         fb.rect(ox, by, bar_w, bar_h, C_PANEL)
         fb.rect(ox, by, int(bar_w * (i + 1) / max(1, gesamt)), bar_h, C_ACCENT)
         fb.text(ox, by + 16 * s, "%d / %d" % (i + 1, gesamt), s, C_TEXT, C_BG)
@@ -5919,9 +5958,17 @@ class Frontend:
                 rest = t("thumb_prewarm_eta_min", sek // 60)
             else:
                 rest = t("thumb_prewarm_eta_sec", max(1, sek))
+        ty = by + 30 * s
         if rest:
-            fb.text(ox, by + 30 * s, rest, s, C_DIM, C_BG)
-        fb.text(ox, by + 48 * s, t("thumb_prewarm_cancel"), s, C_DIM, C_BG)
+            fb.text(ox, ty, rest, s, C_DIM, C_BG)
+            ty += 12 * s
+        # Der Abbruch-Hinweis ist der wichtigste Satz auf diesem Bild -
+        # er ist die einzige Stelle, an der ueberhaupt steht, dass man
+        # den Vorgang beenden kann. Deshalb umgebrochen statt
+        # abgeschnitten, und in zwei Zeilen, falls noetig.
+        for zeile in self._wrap_text(t("thumb_prewarm_cancel"), maxc)[:2]:
+            fb.text(ox, ty + 6 * s, zeile, s, C_DIM, C_BG)
+            ty += 12 * s
         fb.flip()
 
     def cover_box_size(self, w, h, syskey, item, s):

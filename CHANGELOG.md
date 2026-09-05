@@ -7,6 +7,40 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**„Miniaturen vorbereiten": Abbruch hat nie funktioniert, Anzeige auf
+CRT abgeschnitten** (Build 81 — Nutzer-Rückmeldung: „auf CRT steht da
+nur *Miniaturen werden* und *jede Taste bricht ab - Gerechnetes bl*.
+Außerdem kann ich durch Tastendruck nicht abbrechen, oder er reagiert
+gar nicht"):
+
+**1. Der Abbruch konnte gar nicht funktionieren.** Die Prüfung lief über
+`read_action(timeout=0)`. Bei `timeout=0` ist die Deadline sofort
+erreicht — und die Deadline-Prüfung stand ganz am Anfang der Schleife.
+Die Funktion kehrte also zurück, **ohne `select()` überhaupt aufgerufen
+zu haben**. Ein „Nachsehen ohne Warten" war in Wahrheit ein „gar nicht
+nachsehen", und zwar lautlos, weil `None` auch der normale Rückgabewert
+für „keine Taste" ist. Die Prüfung selbst muss bleiben (sie verhindert
+eine Endlosschleife bei dauerhaft fehlschlagendem `select()`) — sie
+wird jetzt nur für die erste Runde ausgesetzt, sodass es garantiert
+genau einen echten, nicht blockierenden Blick gibt.
+
+**2. Nichts passte auf den CRT-Schirm.** Nachgerechnet für 320x240: für
+den Titel standen bei fester Schriftgröße 2 genau **18 Zeichen** zur
+Verfügung, der Text hat 29. Für den Abbruch-Hinweis waren es **37
+Zeichen** bei 51. `fb.text()` schneidet still ab — deshalb genau die
+zitierten Bruchstücke. Beide Werkzeuge dagegen gibt es längst und werden
+auf anderen Bildschirmen auch benutzt (`_fit_scale()` sucht die größte
+noch passende Schriftgröße, `_wrap_text()` bricht an Wortgrenzen um) —
+nur hier nicht. Der Balken sitzt jetzt außerdem unter dem Titel statt
+auf einem festen Abstand, der von der großen Schrift ausging.
+
+**3. Der Stand des Zwischenspeichers steht jetzt im Log.** Auf die Frage
+„werden die Miniaturen gespeichert oder immer neu erstellt?" gab es
+bisher keine direkte Antwort. Nach einem Durchlauf steht dort jetzt
+`Zwischenspeicher 12345/20000 Dateien` — steht die Zahl an der
+Obergrenze, verdrängt die Sammlung sich selbst, und **dann** wird
+tatsächlich immer wieder neu gerechnet.
+
 **Schwarzer Block über Boxart und Gameinfo beim Scrollen im CRT-Modus —
 behoben** (Build 80 — Nutzer-Rückmeldung: „wenn ich jetzt nach unten
 gedrückt halte und die ROMs durchsuche … wird ein Teil der Boxart und

@@ -32,6 +32,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_system_abdeckung.py \
   && python3 tools/test_boxart_streifen.py \
   && python3 tools/test_sysart_logos.py \
+  && python3 tools/test_prewarm_abbruch.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -53,6 +54,7 @@ python3 tools/regression_test.py \
 | `test_system_abdeckung.py` | Test (Pass/Fail) | Eine Systemliste fuer alle Werkzeuge; Startparameter der bestehenden Systeme festgenagelt |
 | `test_boxart_streifen.py` | Test (Pass/Fail) | Restore-Band knabbert die Boxart-Karte nicht an; Panel-Auslassen nur auf HDMI |
 | `test_sysart_logos.py` | Test (Pass/Fail) | Kategorie-Logos: gueltiges ART1, Groesse, Kartenhintergrund, Dateiname = Systemschluessel |
+| `test_prewarm_abbruch.py` | Test (Pass/Fail) | read_action(timeout=0) sieht wirklich nach; Fortschrittsbild wird auf CRT nicht abgeschnitten |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -405,6 +407,24 @@ sieht nur aus wie ein heller Kasten auf der dunklen Karte, ein Logo mit
 falsch geschriebenem Dateinamen wird schlicht nie geoeffnet. Zusaetzlich
 wird die Groesse gedeckelt - das 3DO-Logo waere sonst bei 900 px Breite
 1729 Zeilen hoch (6 MB), um am Ende 234 px breit dargestellt zu werden.
+
+## test_prewarm_abbruch.py
+
+Zwei Fehler an "Miniaturen vorbereiten", die als eine Meldung ankamen.
+
+Der wichtigere Test ist Test 1: `read_action(timeout=0)` hat NIE etwas
+gelesen. Bei timeout=0 ist die Deadline sofort erreicht, und die
+Pruefung stand ganz am Anfang der Schleife - `select()` wurde also gar
+nicht erst aufgerufen. Der Abbruch konnte damit nicht funktionieren, und
+zwar lautlos, weil `None` auch der normale Rueckgabewert fuer "keine
+Taste" ist. Der Test legt dafuer einen echten evdev-Datensatz in eine
+Pipe und prueft, dass der Poll ihn findet UND trotzdem sofort
+zurueckkehrt.
+
+Test 3 rechnet nach, dass Titel und Abbruch-Hinweis in beiden Sprachen
+und allen drei Aufloesungen in die verfuegbare Breite passen - auf
+320x240 waren es vorher 18 bzw. 37 Zeichen Platz bei 29 bzw. 51 Zeichen
+Text, und `fb.text()` schneidet still ab.
 
 ## diag_lightpath.py
 

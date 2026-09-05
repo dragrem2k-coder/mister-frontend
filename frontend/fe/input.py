@@ -602,10 +602,35 @@ class InputManager:
         kann die Funktion jetzt nicht mehr laenger als die angeforderte
         Zeit blockieren."""
         deadline = None if timeout is None else time.monotonic() + timeout
+        # BUGFIX (Nutzer-Rueckmeldung: "ausserdem kann ich durch
+        # Tastendruck nicht abbrechen, oder er reagiert gar nicht" -
+        # gemeint war "Miniaturen vorbereiten", das mit
+        # read_action(timeout=0) auf einen Abbruch prueft).
+        #
+        # Genau dieser Aufruf konnte NIE etwas liefern. Bei timeout=0
+        # ist deadline = jetzt; die Pruefung gleich hier oben griff
+        # deshalb schon in der ERSTEN Schleifenrunde (time.monotonic()
+        # ist beim zweiten Aufruf immer mindestens gleich gross), und
+        # die Funktion kehrte zurueck, OHNE select() ueberhaupt
+        # aufgerufen zu haben. Ein "Poll ohne Warten" war damit ein
+        # "gar nicht nachsehen" - lautlos, weil None auch der normale
+        # Rueckgabewert fuer "keine Taste" ist.
+        #
+        # Die Pruefung selbst muss bleiben (sie verhindert eine
+        # Endlosschleife bei dauerhaft fehlschlagendem select(), siehe
+        # ausfuehrlich oben). Deshalb wird sie nur fuer die erste Runde
+        # ausgesetzt: es gibt garantiert genau einen Durchlauf, und
+        # dieser eine Durchlauf wartet bei timeout=0 mit 0 Sekunden -
+        # also ein echter, nicht blockierender Blick in die
+        # Eingabe-Warteschlange. Fuehrt er ueber "continue" zurueck an
+        # den Anfang, greift die Pruefung ab der zweiten Runde ganz
+        # normal.
+        erste_runde = True
         while True:
             now = time.monotonic()
-            if deadline is not None and now >= deadline:
+            if deadline is not None and now >= deadline and not erste_runde:
                 return None
+            erste_runde = False
             if now - self.last_scan > self.RESCAN_EVERY:
                 self.rescan()
             due = self.held is not None and now >= self.held[2]
@@ -617,7 +642,11 @@ class InputManager:
                     wait = min(wait, max(0.0, self.held[2] - now))
             fds = {d.fd: d for d in self.devices.values()}
             if not fds:
-                time.sleep(0.5)
+                # Nie laenger schlafen als der Aufrufer warten wollte -
+                # sonst haette der neue Poll-Durchlauf (timeout=0, siehe
+                # oben) ohne angeschlossenes Eingabegeraet eine halbe
+                # Sekunde gekostet, und zwar bei JEDER Abfrage.
+                time.sleep(min(0.5, wait) if deadline is not None else 0.5)
             else:
                 try:
                     r, _, _ = select.select(list(fds), [], [], wait)

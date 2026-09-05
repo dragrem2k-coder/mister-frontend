@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-29-80",
-  "summary": "Schwarzer Block ueber Boxart/Gameinfo beim Scrollen im CRT-Modus behoben, CRT-Scrollen wieder wie Build 75. Neun neue Kategorie-Logos (3DO, Atari 2600, Lynx, FDS, Gamate, Intellivision, Neo Geo CD, Vectrex, WonderSwan)."
+  "build_id": "2026-08-29-81",
+  "summary": "\"Miniaturen vorbereiten\": Abbruch per Tastendruck funktioniert jetzt wirklich, Fortschrittsanzeige auf CRT vollstaendig lesbar. Stand des Zwischenspeichers im Log."
 }

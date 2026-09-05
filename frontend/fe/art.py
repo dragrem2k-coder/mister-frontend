@@ -889,6 +889,27 @@ class ArtCache:
         return result
 
 
+def thumb_cache_stand():
+    """(Anzahl Dateien, Obergrenze) im Miniaturen-Zwischenspeicher.
+
+    NEU (Nutzerfrage: "die Miniaturen werden ja gecacht, quasi
+    gespeichert, und nicht immer neu erstellt? Kam mir gerade so vor").
+    Die Frage war bisher nur ueber Umwege zu beantworten. Ein Durchlauf
+    von "Miniaturen vorbereiten" schreibt die Zahl jetzt ins Log - steht
+    sie an der Obergrenze, verdraengt sich die Sammlung selbst und genau
+    dann wird tatsaechlich immer wieder neu gerechnet.
+
+    Kostet ein os.listdir (auf dem Geraet des Nutzers 167 ms bei 7700
+    Dateien) - vertretbar, weil es EINMAL am Ende eines Vorgangs laeuft,
+    der ohnehin Minuten dauert."""
+    try:
+        n = len([f for f in os.listdir(THUMB_CACHE_DIR)
+                 if f.endswith(".art")])
+    except OSError:
+        n = 0
+    return n, THUMB_CACHE_MAX_FILES
+
+
 def thumb_cache_has(path, w, h):
     """Liegt die Miniatur fuer diese Kastengroesse schon auf der Karte?
     Nur eine Existenzpruefung - bewusst OHNE die Datei zu lesen und zu
