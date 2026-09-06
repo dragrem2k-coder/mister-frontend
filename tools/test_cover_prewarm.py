@@ -181,11 +181,26 @@ print()
 print("Test 2b: Sonderfaelle der Vorberechnung")
 passt = os.path.join(TMP, "passt_genau.art")
 art_datei(passt, 96, 111, seed=7)
-check("passt das Bild exakt, wird nichts abgelegt "
-      "(der Zeichenpfad legt dort auch nichts ab)",
-      A.prewarm_thumb(passt, 96, 111) == "uebersprungen")
-check("und es liegt wirklich keine Datei da",
-      not A.thumb_cache_has(passt, 96, 111))
+# UMGEDREHT (Build 92). Hier stand: "passt das Bild exakt, wird nichts
+# abgelegt (der Zeichenpfad legt dort auch nichts ab)" - dieser Test hat
+# den Fehler festgehalten, statt ihn zu finden.
+#
+# Der Nutzer hat ihn gefunden: "das passiert bei NES, Master System,
+# Atari 2600, Atari 5200, Jaguar, Sega 32X, Arcade ... was mir
+# aufgefallen ist, dass die Boxarts in diesen Kategorien andere GROESSEN
+# haben im Gegensatz zu den anderen - kann es daran liegen?" Genau daran.
+#
+# Ohne Eintrag meldet thumb_cache_has() fuer immer "nicht da": diese
+# Cover wurden bei JEDEM Vorbereiten neu gerechnet und nie abgehakt, und
+# weil der Karten-Treffer VOR der Ueberspring-Pruefung kommt, wurden sie
+# beim Scrollen immer wieder uebersprungen. Dass der Eintrag
+# byte-identisch zum Original ist, aendert daran nichts - gebraucht wird
+# er trotzdem.
+check("passt das Bild exakt, wird es TROTZDEM abgelegt "
+      "(sonst kann es nie vorbereitet werden)",
+      A.prewarm_thumb(passt, 96, 111) == "fertig")
+check("und es liegt wirklich eine Datei da",
+      A.thumb_cache_has(passt, 96, 111))
 check("fehlende Datei meldet 'fehler' statt abzustuerzen",
       A.prewarm_thumb(os.path.join(TMP, "gibt_es_nicht.art"), 96, 111)
       == "fehler")

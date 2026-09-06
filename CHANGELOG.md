@@ -7,6 +7,53 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Der eigentliche Fehler: Cover, die genau in den Kasten passen, landeten
+nie im Zwischenspeicher** (Build 92 — gefunden durch die
+Nutzer-Beobachtung: „Das passiert bei NES, Master System, Atari 2600,
+Atari 5200, Jaguar, Sega 32X, Arcade … was mir aufgefallen ist, dass die
+Boxarts in diesen Kategorien andere **Größen** haben im Gegensatz zu den
+anderen — kann es daran liegen?"):
+
+**Ja, genau daran.** Beim Einpassen eines Covers gibt es drei Fälle, und
+einer davon fiel durchs Raster:
+
+| Cover | Was passiert | Kam in den Cache? |
+|---|---|---|
+| größer als der Kasten | verkleinern | ja |
+| viel kleiner (ganzzahlig ≥ 2×) | hochskalieren | ja |
+| kleiner, aber Faktor 1 | bleibt unverändert | **nein** |
+
+Der dritte Fall war sogar ausdrücklich so gebaut, mit der Begründung „das
+Bild passt genau, ein Eintrag wäre byte-identisch zum Original". Der
+erste Halbsatz stimmt — der Schluss war falsch, wegen zweier Folgen:
+
+1. `thumb_cache_has()` meldet für dieses Cover **für immer** „nicht da".
+   „Miniaturen vorbereiten" rechnete es bei **jedem** Durchlauf neu und
+   hakte es nie ab. Diese Systeme konnten durch das Vorbereiten
+   überhaupt nicht schneller werden — egal wie oft man es laufen ließ.
+2. Der Treffer auf der Karte wird **vor** der Überspring-Prüfung
+   abgefragt. Ohne Eintrag lief jeder Aufruf in diese Prüfung, und sobald
+   der Rohbild-Cache (60 Einträge) das Cover verdrängt hatte, wurde beim
+   Scrollen wieder übersprungen — das gemeldete Aufblitzen und
+   Nachladen. In einer Liste mit 269 Einträgen passiert das ständig.
+
+Betroffen war damit genau ein schmales Größenband, und deshalb traf es
+nur die Systeme, deren Scans zufällig darin liegen. Beide Stellen
+(Zeichenpfad und Vorbereitung) legen den Eintrag jetzt an.
+
+**Ein bestehender Test hielt den Fehler fest, statt ihn zu finden:**
+`test_cover_prewarm.py` prüfte wörtlich „passt das Bild exakt, wird
+nichts abgelegt". Die Zusage ist umgedreht und mit der Begründung
+versehen, warum der Eintrag gebraucht wird, obwohl er byte-identisch
+ist. Dazu neu `test_thumb_verdraengung.py` Test 13, der alle drei
+Größenfälle durchspielt und prüft, dass keiner davon beim Scrollen mehr
+übersprungen wird.
+
+**Praktische Folge:** nach dem Umstieg einmal „Miniaturen vorbereiten"
+laufen lassen. Für die betroffenen Systeme entstehen dabei erstmals
+Einträge — der Zwischenspeicher wächst also etwas, dafür sind diese
+Kategorien danach genauso schnell wie alle anderen.
+
 **Zwischenspeicher von Hand leeren, und eine Bilanz statt eines Gefühls**
 (Build 91 — Nutzerwunsch: „Vielleicht sollten wir noch einbauen, dass
 man per Hand den Cache für SD sowie HD unter System/Wartung einmal

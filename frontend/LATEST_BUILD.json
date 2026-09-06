@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-29-91",
-  "summary": "Miniaturen-Zwischenspeicher laesst sich unter Wartung getrennt fuer CRT und HDMI leeren; Trefferbilanz und Messung der Kategorie-Logos im Log."
+  "build_id": "2026-08-29-92",
+  "summary": "Fehler behoben: Cover, die genau in den Kasten passen (NES, Master System, Atari, Jaguar, 32X, Arcade), landeten nie im Miniaturen-Zwischenspeicher und wurden beim Scrollen immer wieder uebersprungen."
 }

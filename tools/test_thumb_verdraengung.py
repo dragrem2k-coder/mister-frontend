@@ -337,6 +337,65 @@ check("Treffer und Fehltreffer werden getrennt gezaehlt",
 check("die laute Einzelzeile je Cover ist standardmaessig aus",
       A.LOG_JEDEN_TREFFER is False)
 
+print()
+print("Test 13: auch Cover, die genau passen, landen im Cache (Build 92)")
+# NUTZER-RUECKMELDUNG, die den Fehler geloest hat: "das passiert bei NES,
+# Master System, Atari 2600, Atari 5200, Jaguar, Sega 32X, Arcade ... was
+# mir aufgefallen ist, dass die Boxarts in diesen Kategorien andere
+# GROESSEN haben im Gegensatz zu den anderen - kann es daran liegen?"
+#
+# Genau daran. Es gibt drei Faelle, und einer davon fiel durchs Raster:
+#   - Cover GROESSER als der Kasten  -> verkleinern -> wurde abgelegt
+#   - Cover viel kleiner (Faktor >=2) -> hochskalieren -> wurde abgelegt
+#   - Cover kleiner, aber Faktor 1    -> unveraendert -> wurde NICHT abgelegt
+#
+# Der dritte Fall konnte dadurch NIE vorbereitet werden: thumb_cache_has()
+# meldete fuer immer "nicht da", und weil der Karten-Treffer VOR der
+# Ueberspring-Pruefung kommt, lief jeder Aufruf in diese Pruefung - sobald
+# der Rohbild-Cache (60 Eintraege) das Cover verdraengt hatte, wurde beim
+# Scrollen wieder uebersprungen. Genau das gemeldete Aufblitzen.
+import struct as _struct
+import zlib as _zlib
+
+BOX_W, BOX_H = 300, 771
+
+
+def art_datei(name, w, h):
+    fp = os.path.join(QUELLE, name + ".art")
+    pix = bytes(bytearray([(x * 7) % 256 for x in range(w * h * 4)]))
+    with open(fp, "wb") as f:
+        f.write(b"ART1" + _struct.pack("<HH", w, h) + _zlib.compress(pix, 6))
+    return fp
+
+
+for name, w, h, art in (("gross", 697, 729, "verkleinert"),
+                        ("passt_genau", 250, 350, "unveraendert"),
+                        ("winzig", 100, 140, "hochskaliert")):
+    fp = art_datei(name, w, h)
+    erg = A.prewarm_thumb(fp, BOX_W, BOX_H)
+    check("%s (%dx%d, %s): wird vorbereitet" % (name, w, h, art),
+          erg == "fertig", "prewarm meldete %r" % erg)
+    check("%s: liegt danach auf der Karte" % name,
+          A.thumb_cache_has(fp, BOX_W, BOX_H))
+
+# Und der Zeichenpfad darf keines davon mehr ueberspringen - auch nicht
+# mitten im Scrollen, wo der Rohbild-Cache leer ist.
+A.ART.cache = {}
+A.ART.order = []
+A.ART.scaled = {}
+A.ART.scaled_order = []
+A.ART._defer_uncached = True          # "gerade am Scrollen"
+uebersprungen = []
+for name in ("gross", "passt_genau", "winzig"):
+    fp = os.path.join(QUELLE, name + ".art")
+    vor = A.ART._defer_count
+    r = A.ART.get_scaled(fp, BOX_W, BOX_H)
+    if r is None and A.ART._defer_count != vor:
+        uebersprungen.append(name)
+A.ART._defer_uncached = False
+check("beim Scrollen wird keines dieser Cover mehr uebersprungen",
+      not uebersprungen, "uebersprungen: %s" % uebersprungen)
+
 shutil.rmtree(TMP, ignore_errors=True)
 
 print()

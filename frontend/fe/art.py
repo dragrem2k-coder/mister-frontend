@@ -1068,6 +1068,34 @@ class ArtCache:
             scale = max(1, min(max_w // w, max_h // h, 10))
             if scale == 1:
                 self._scaled_cache_put(box_key, base)
+                # BUGFIX (Build 92, Nutzer-Rueckmeldung: "das passiert bei
+                # NES, Master System, Atari 2600, Atari 5200, Jaguar, Sega
+                # 32X, Arcade ... was mir aufgefallen ist, dass die Boxarts
+                # in diesen Kategorien andere GROESSEN haben im Gegensatz
+                # zu den anderen - kann es daran liegen?").
+                #
+                # Ja, genau daran. Hier wurde bisher NICHTS auf der Karte
+                # abgelegt, mit der Begruendung "das Bild passt genau, ein
+                # Eintrag waere byte-identisch zum Original". Stimmt - und
+                # ist trotzdem falsch, wegen zweier Folgen:
+                #
+                #   1. thumb_cache_has() meldet fuer dieses Cover FUER
+                #      IMMER "nicht da". "Miniaturen vorbereiten" rechnet
+                #      es also bei JEDEM Durchlauf neu und hakt es nie ab -
+                #      diese Systeme konnten durch das Vorbereiten gar
+                #      nicht schneller werden.
+                #   2. Der Treffer weiter oben (_thumb_cache_get) kommt VOR
+                #      der Ueberspring-Pruefung. Ohne Eintrag laeuft jeder
+                #      Aufruf in diese Pruefung, und sobald der Rohbild-
+                #      Cache (60 Eintraege) das Cover verdraengt hat, wird
+                #      beim Scrollen wieder uebersprungen - genau das
+                #      Aufblitzen und Nachladen aus dem Video.
+                #
+                # Betroffen ist ein schmales Band: Cover, die in den Kasten
+                # passen, aber nicht um einen GANZZAHLIGEN Faktor >= 2
+                # kleiner sind. Deshalb traf es nur die Systeme, deren
+                # Scans zufaellig in diesem Bereich liegen.
+                _thumb_cache_put_async(path, max_w, max_h, w, h, pix)
                 return base
             # BUGFIX (Nutzer-Rueckmeldung: "beim Scrollen durch viele
             # ROMs ruckelt es spuerbar"): die Defer-Pruefung oben
@@ -1326,10 +1354,16 @@ def prewarm_thumb(path, max_w, max_h):
     if w <= max_w and h <= max_h:
         scale = max(1, min(max_w // w, max_h // h, 10))
         if scale == 1:
-            # Das Bild passt genau - der Zeichenpfad gibt in diesem Fall
-            # das Original unveraendert zurueck und legt nichts ab. Hier
-            # dasselbe zu tun waere ein Eintrag, den nie jemand abfragt.
-            return "uebersprungen"
+            # GEAENDERT (Build 92): hier stand "der Zeichenpfad gibt das
+            # Original unveraendert zurueck und legt nichts ab, ein
+            # Eintrag waere einer, den nie jemand abfragt". Der erste Satz
+            # stimmte, der Schluss war falsch - siehe die ausfuehrliche
+            # Begruendung in _get_scaled_impl(). Kurz: OHNE Eintrag meldet
+            # thumb_cache_has() fuer immer "nicht da", das Vorbereiten
+            # hakt dieses Cover nie ab, und der Zeichenpfad ueberspringt
+            # es beim Scrollen immer wieder neu.
+            _thumb_cache_put(path, max_w, max_h, w, h, pix)
+            return "fertig"
         sw, sh, out = _hochskalieren(pix, w, h, scale)
         _thumb_cache_put(path, max_w, max_h, sw, sh, bytes(out))
         return "fertig"
