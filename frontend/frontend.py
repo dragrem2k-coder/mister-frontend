@@ -749,6 +749,7 @@ from fe.art import (
     ART_HD, SYSART_BASE, META_BASE, BADGE_DIR,
     RA_BADGE_URL, BADGES, _category_art_key,
     prewarm_thumb, thumb_cache_has, thumb_cache_stand,
+    thumb_cache_stand_modus, thumb_cache_leeren, thumb_cache_bilanz,
     thumb_cache_schuetzen, thumb_cache_modus_setzen,
     alten_flachen_cache_aufraeumen,
 )
@@ -2895,8 +2896,26 @@ class Frontend:
         # Ohne Glow bleibt jede Zeile in ihrem eigenen Bereich, beides
         # ist damit hinfaellig.
 
-        # Artbox rechts: Logo/Cover des gerade markierten Systems
+        # Artbox rechts: Logo/Cover des gerade markierten Systems.
+        #
+        # NEU (Build 91, Nutzer-Rueckmeldung: "wenn ich lange in ROMs
+        # rumscrolle und dann zurueck gehe ins obere Verzeichnis und dann
+        # nochmal zurueck ins Hauptmenue, laedt immer irgendwas nach oder
+        # wird neu gezeichnet, und es kommt zu Haengern"). Genau hier
+        # koennte es teuer werden: die Kategorie-Logos sind mit 900
+        # Bildpunkten Breite die groessten Bilder im ganzen Frontend.
+        # Liegen sie im Zwischenspeicher, kostet das nichts - liegen sie
+        # NICHT drin, sind es Hunderte Millisekunden.
+        #
+        # Bisher stand das in keiner Messung. Jetzt schreibt es sich
+        # selbst ins Log, sobald es auffaellig wird - dieselbe Schwelle
+        # und dasselbe Muster wie bei "PERF cover:" in fe/art.py.
+        _tab = time.monotonic()
         self._draw_cat_artbox(L)
+        _tab_dt = time.monotonic() - _tab
+        if _tab_dt > 0.025:
+            LOG("PERF katlogo: %.0f ms (%s)"
+                % (_tab_dt * 1000, self.cats[self.cat_i][0]))
 
         if message:
             # BUGFIX (Nutzer-Rueckmeldung: Geheimcode-Popup erschien
@@ -6003,6 +6022,54 @@ class Frontend:
             raus[vorher:] = [(it, cat_syskey) for it in raus[vorher:]]
         return raus
 
+    def thumb_cache_leeren_dialog(self):
+        """Menuepunkt "Miniaturen-Zwischenspeicher leeren" (Build 91,
+        Nutzerwunsch: "vielleicht sollten wir noch einbauen, dass man per
+        Hand den Cache fuer SD sowie HD unter System/Wartung einmal
+        leeren kann"). Bis dahin ging das nur ueber SSH.
+
+        Die Auswahl nennt die Zahlen gleich mit - und die sind der
+        eigentliche Wert dieses Bildschirms: wer wissen will, ob der
+        Zwischenspeicher ueberhaupt gefuellt ist ("greift das
+        Vorbereiten?"), sieht es hier, ohne die Karte am Rechner
+        anzustecken. Getrennt nach Modus, weil man meistens genau den
+        wegraeumt, in dem man gerade NICHT unterwegs ist."""
+        def groesse(bytes_):
+            if bytes_ >= 1024 ** 3:
+                return "%.1f GB" % (bytes_ / 1024.0 ** 3)
+            if bytes_ >= 1024 ** 2:
+                return "%.0f MB" % (bytes_ / 1024.0 ** 2)
+            return "%d KB" % (bytes_ // 1024)
+
+        self.draw(t("thumb_clear_title") + " ...")
+        sd_n, sd_b = thumb_cache_stand_modus(False)
+        hd_n, hd_b = thumb_cache_stand_modus(True)
+        wahl = self._wizard_choice(
+            t("thumb_clear_title"),
+            [t("thumb_clear_sd", "%d" % sd_n, groesse(sd_b)),
+             t("thumb_clear_hd", "%d" % hd_n, groesse(hd_b)),
+             t("thumb_clear_both"),
+             t("thumb_clear_cancel")],
+            hint_key="choice_hint_plain")
+        if wahl is None or wahl == 3:
+            self.draw()
+            return
+        entfernt = 0
+        try:
+            if wahl in (0, 2):
+                entfernt += thumb_cache_leeren(False)
+            if wahl in (1, 2):
+                entfernt += thumb_cache_leeren(True)
+        except Exception:                            # noqa: BLE001
+            LOG("thumb_cache_leeren: " + traceback.format_exc())
+        # Der Speicher-Cache haelt sonst weiter, was gerade von der Karte
+        # verschwunden ist - beim naechsten Zeichnen saehe man einen
+        # Treffer, den es gar nicht mehr gibt.
+        ART.scaled = {}
+        ART.scaled_order = []
+        self.draw(message=(t("thumb_clear_done", entfernt) if entfernt
+                           else t("thumb_clear_empty")))
+
     def run_thumb_prewarm_all(self):
         """Menuepunkt "Miniaturen vorbereiten" - mit Sicherheitsnetz.
 
@@ -7346,7 +7413,7 @@ class Frontend:
     # Zeichencode zu duplizieren.
     # ------------------------------------------------------------------
 
-    def _wizard_choice(self, title, options, initial=0):
+    def _wizard_choice(self, title, options, initial=0, hint_key=None):
         """Generische Ein-aus-N-Auswahl (gleiches Muster wie
         draw_core_choice_screen()). Hoch/Runter wechselt, OK liefert
         den gewaehlten Index. ESC/back bricht den KOMPLETTEN
@@ -7371,7 +7438,12 @@ class Frontend:
                 prefix = "> " if sel else "  "
                 fb.text(ox, y, prefix + label, s, color, C_BG)
                 y += 36 * s
-            hint = t("wizard_choice_hint")
+            # GEAENDERT (Build 91): die Hinweiszeile ist waehlbar. Fest
+            # verdrahtet stand hier "ESC: Einrichtung abbrechen" - in
+            # jedem Aufrufer AUSSERHALB des Einrichtungs-Assistenten ist
+            # das schlicht falsch, und beim Leeren des Zwischenspeichers
+            # klang es, als wuerde man die Einrichtung wegwerfen.
+            hint = t(hint_key or "wizard_choice_hint")
             sc = s - 1 if s > 1 else 1
             hint_w = len(hint) * 8 * sc
             fb.text((W - hint_w) // 2, H - oy - 8 * sc, hint, sc, C_DIM, C_BG)
@@ -10690,6 +10762,9 @@ class Frontend:
                             continue
                         elif kind == "thumb_prewarm":
                             self.run_thumb_prewarm_all()
+                            continue
+                        elif kind == "thumb_clear":
+                            self.thumb_cache_leeren_dialog()
                             continue
                         elif kind in ("boxart_download", "gameinfo_download"):
                             # NEU (Build 88, Nutzerwunsch: "Boxarts

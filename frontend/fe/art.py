@@ -1023,8 +1023,15 @@ class ArtCache:
         disk_hit = _thumb_cache_get(path, max_w, max_h)
         if disk_hit is not None:
             _tcache_dt = (time.monotonic() - _tcache_t0) * 1000
-            LOG("THUMB_CACHE Treffer: %.1fms (%s, %dx%d)"
-                % (_tcache_dt, os.path.basename(path), max_w, max_h))
+            # GEAENDERT (Build 91): die Einzelzeile je Treffer lief bei
+            # JEDEM gezeichneten Cover - in einer langen Sitzung sind das
+            # Tausende Zeilen, die das eigentlich Interessante zudecken.
+            # Sie steht jetzt nur noch bei eingeschalteter Messung; immer
+            # mitgezaehlt wird stattdessen die BILANZ (siehe unten).
+            if LOG_JEDEN_TREFFER:
+                LOG("THUMB_CACHE Treffer: %.1fms (%s, %dx%d)"
+                    % (_tcache_dt, os.path.basename(path), max_w, max_h))
+            _bilanz_zaehlen(True)
             self._scaled_cache_put(box_key, disk_hit)
             return disk_hit
 
@@ -1084,6 +1091,7 @@ class ArtCache:
                 self._deferred_something = True
                 self._defer_count += 1
                 return None
+            _bilanz_zaehlen(False)
             sw, sh, out = _hochskalieren(pix, w, h, scale)
             result = (sw, sh, bytes(out))
             self._scaled_cache_put(box_key, result)
@@ -1121,6 +1129,7 @@ class ArtCache:
             self._deferred_something = True
             self._defer_count += 1
             return None
+        _bilanz_zaehlen(False)
         data = _verkleinern_flaechenmittel(pix, w, h, tw, th)
         if data is None:
             return None
@@ -1134,6 +1143,37 @@ class ArtCache:
         # gleicher Grund wie beim Hochskalieren oben.
         _thumb_cache_put_async(path, max_w, max_h, tw, th, result[2])
         return result
+
+
+# NEU (Build 91, Nutzer-Rueckmeldung: "irgendwie hab ich das Gefuehl,
+# dass der letzte Build nicht greift, was das Scrollen angeht - ein paar
+# Mal kalt neu gestartet und das Verhalten ist das alte").
+#
+# Genau diese Frage war bisher nur ueber Umwege zu beantworten. Die
+# Bilanz macht aus dem Gefuehl eine Zahl: greift der Zwischenspeicher,
+# stehen dort fast nur Treffer. Steht dort eine hohe Fehltreffer-Quote,
+# wird tatsaechlich immer wieder neu gerechnet - und DANN lohnt es sich,
+# nach dem Warum zu suchen (Vorbereiten nie gelaufen, Verdraengung,
+# geaenderte Kastengroesse).
+LOG_JEDEN_TREFFER = False     # die Einzelzeile je Cover - nur zum Messen
+_bilanz = [0, 0]              # [Treffer, Fehltreffer]
+_bilanz_gemeldet = [0]
+
+
+def _bilanz_zaehlen(treffer):
+    _bilanz[0 if treffer else 1] += 1
+    gesamt = _bilanz[0] + _bilanz[1]
+    # Alle 50 Vorgaenge eine kompakte Zeile - haeufig genug, um beim
+    # Mitlesen etwas zu sehen, selten genug, um das Log nicht zu fluten.
+    if gesamt - _bilanz_gemeldet[0] >= 50:
+        _bilanz_gemeldet[0] = gesamt
+        LOG("THUMB_CACHE Bilanz: %d Treffer, %d Fehltreffer (%d%% Treffer)"
+            % (_bilanz[0], _bilanz[1], _bilanz[0] * 100 // max(1, gesamt)))
+
+
+def thumb_cache_bilanz():
+    """(Treffer, Fehltreffer) dieser Sitzung."""
+    return tuple(_bilanz)
 
 
 def thumb_cache_stand():
@@ -1165,6 +1205,64 @@ def thumb_cache_stand():
     except OSError:
         pass
     return n, THUMB_CACHE_MAX_FILES, bytes_
+
+
+def thumb_cache_stand_modus(hd):
+    """Wie thumb_cache_stand(), aber fuer einen BESTIMMTEN Modus statt
+    fuer den gerade aktiven. Der Menuepunkt zum Leeren muss beide Zahlen
+    nebeneinander zeigen koennen - man raeumt ja meistens genau den
+    Modus weg, in dem man gerade NICHT unterwegs ist."""
+    ordner = os.path.join(THUMB_CACHE_BASE, "hd" if hd else "sd")
+    n = 0
+    bytes_ = 0
+    try:
+        for unter, _d, dateien in os.walk(ordner):
+            for f in dateien:
+                if not f.endswith(".art"):
+                    continue
+                n += 1
+                try:
+                    bytes_ += os.path.getsize(os.path.join(unter, f))
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return n, bytes_
+
+
+def thumb_cache_leeren(hd):
+    """Loescht den Miniaturen-Zwischenspeicher EINES Modus.
+
+    NEUES FEATURE (Build 91, Nutzerwunsch: "vielleicht sollten wir noch
+    einbauen, dass man per Hand den Cache fuer SD sowie HD unter System/
+    Wartung einmal leeren kann"). Bis dahin ging das nur ueber SSH.
+
+    Loescht bewusst NUR .art-Dateien und liegengebliebene .art.tmp -
+    alles andere in dem Ordner ruehrt die Funktion nicht an, und die
+    Unterordner selbst bleiben stehen (sie werden sofort wieder
+    gebraucht). Setzt danach den Mitzaehler zurueck, damit die
+    Verdraengung nicht mit einer veralteten Zahl weiterrechnet."""
+    global _thumb_cache_anzahl
+    ordner = os.path.join(THUMB_CACHE_BASE, "hd" if hd else "sd")
+    entfernt = 0
+    fehler = 0
+    try:
+        for unter, _d, dateien in os.walk(ordner):
+            for f in dateien:
+                if not (f.endswith(".art") or ".art.tmp" in f):
+                    continue
+                try:
+                    os.remove(os.path.join(unter, f))
+                    entfernt += 1
+                except OSError:
+                    fehler += 1
+    except OSError:
+        pass
+    _thumb_cache_anzahl = None
+    LOG("THUMB_CACHE geleert (%s): %d Dateien entfernt%s"
+        % ("hd" if hd else "sd", entfernt,
+           ", %d nicht loeschbar" % fehler if fehler else ""))
+    return entfernt
 
 
 def thumb_cache_has(path, w, h):

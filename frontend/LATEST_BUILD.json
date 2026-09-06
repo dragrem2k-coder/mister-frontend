@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-29-90",
-  "summary": "Select geht nicht mehr eine Ebene zurueck (das macht B) - allein gedrueckt zeigt es jetzt die Kombinationen Select+A und Select+X an."
+  "build_id": "2026-08-29-91",
+  "summary": "Miniaturen-Zwischenspeicher laesst sich unter Wartung getrennt fuer CRT und HDMI leeren; Trefferbilanz und Messung der Kategorie-Logos im Log."
 }

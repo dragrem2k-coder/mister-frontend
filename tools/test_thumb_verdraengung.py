@@ -283,6 +283,60 @@ check("THUMB_CACHE_MAX_FILES = 40000", A2.THUMB_CACHE_MAX_FILES == 40000,
 check("thumb_cache_stand() liefert auch die Belegung",
       len(A2.thumb_cache_stand()) == 3, str(A2.thumb_cache_stand()))
 
+print()
+print("Test 11: von Hand leeren, getrennt nach Modus (Build 91)")
+# Nutzerwunsch: "vielleicht sollten wir noch einbauen, dass man per Hand
+# den Cache fuer SD sowie HD unter System/Wartung einmal leeren kann".
+# Die beiden Ablagen muessen sich dabei UNABHAENGIG leeren lassen - wer
+# nur HDMI faehrt, will die CRT-Haelfte loswerden, nicht beide.
+# Frischer Stand - die vorherigen Tests haben in beiden Ablagen schon
+# Dateien liegen lassen, sonst prueft dieser Test deren Reste mit.
+for modus in ("sd", "hd"):
+    shutil.rmtree(os.path.join(A.THUMB_CACHE_BASE, modus), ignore_errors=True)
+for modus in ("sd", "hd"):
+    for i in range(7):
+        fp = os.path.join(A.THUMB_CACHE_BASE, modus, "%02d" % i,
+                          "datei%02d.art" % i)
+        os.makedirs(os.path.dirname(fp), exist_ok=True)
+        with open(fp, "wb") as f:
+            f.write(b"x" * 1000)
+# Eine fremde Datei, die NICHT angefasst werden darf.
+fremd = os.path.join(A.THUMB_CACHE_BASE, "sd", "nicht_anfassen.txt")
+with open(fremd, "wb") as f:
+    f.write(b"x")
+
+sd_n, sd_b = A.thumb_cache_stand_modus(False)
+hd_n, hd_b = A.thumb_cache_stand_modus(True)
+check("der Stand wird je Modus getrennt gezaehlt",
+      sd_n == 7 and hd_n == 7, "sd=%d hd=%d" % (sd_n, hd_n))
+check("und die Belegung wird mitgezaehlt", sd_b >= 7000, "%d Bytes" % sd_b)
+
+entfernt = A.thumb_cache_leeren(False)
+check("nur der SD-Teil wurde geleert", entfernt == 7, "%d entfernt" % entfernt)
+check("SD ist danach leer", A.thumb_cache_stand_modus(False)[0] == 0)
+check("HD ist unangetastet", A.thumb_cache_stand_modus(True)[0] == 7,
+      "%d" % A.thumb_cache_stand_modus(True)[0])
+check("fremde Dateien bleiben liegen", os.path.exists(fremd))
+check("der Mitzaehler wurde zurueckgesetzt",
+      A._thumb_cache_anzahl is None, "%r" % (A._thumb_cache_anzahl,))
+A.thumb_cache_leeren(True)
+check("danach ist auch HD leer", A.thumb_cache_stand_modus(True)[0] == 0)
+
+print()
+print("Test 12: die Treffer-Bilanz zaehlt mit (Build 91)")
+# Aus "irgendwie hab ich das Gefuehl, dass das nicht greift" wird damit
+# eine Zahl im Log.
+vorher = A.thumb_cache_bilanz()
+A._bilanz_zaehlen(True)
+A._bilanz_zaehlen(True)
+A._bilanz_zaehlen(False)
+nachher = A.thumb_cache_bilanz()
+check("Treffer und Fehltreffer werden getrennt gezaehlt",
+      (nachher[0] - vorher[0], nachher[1] - vorher[1]) == (2, 1),
+      "%r -> %r" % (vorher, nachher))
+check("die laute Einzelzeile je Cover ist standardmaessig aus",
+      A.LOG_JEDEN_TREFFER is False)
+
 shutil.rmtree(TMP, ignore_errors=True)
 
 print()

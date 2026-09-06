@@ -698,6 +698,23 @@ TRANSLATIONS = {
     # Build 88: bis dahin nur im Ersteinrichtungs-Assistenten erreichbar.
     # Die Beschriftung nennt bewusst, dass es dauert und Netz braucht -
     # beides sieht man dem Menuepunkt sonst nicht an.
+    # Build 91: Miniaturen-Zwischenspeicher von Hand leeren.
+    "sys_thumb_clear": {"en": "Clear thumbnail cache (CRT / HDMI)",
+                        "de": "Miniaturen-Zwischenspeicher leeren (CRT / HDMI)"},
+    "choice_hint_plain": {"en": "Up/Down: choose   OK: confirm   ESC: back",
+                          "de": "Hoch/Runter: wählen   OK: bestätigen   ESC: zurück"},
+    "thumb_clear_title": {"en": "Clear thumbnail cache",
+                          "de": "Miniaturen-Zwischenspeicher leeren"},
+    "thumb_clear_sd": {"en": "CRT (SD): %s files, %s",
+                       "de": "CRT (SD): %s Dateien, %s"},
+    "thumb_clear_hd": {"en": "HDMI (HD): %s files, %s",
+                       "de": "HDMI (HD): %s Dateien, %s"},
+    "thumb_clear_both": {"en": "Clear both", "de": "Beide leeren"},
+    "thumb_clear_cancel": {"en": "Cancel", "de": "Abbrechen"},
+    "thumb_clear_done": {"en": "%d files removed - they are rebuilt as needed",
+                         "de": "%d Dateien entfernt - sie entstehen bei Bedarf neu"},
+    "thumb_clear_empty": {"en": "Nothing to clear",
+                          "de": "Da war nichts zu leeren"},
     "sys_boxart_download":
         {"en": "Download box art (needs network, takes a while)",
          "de": "Boxarts nachladen (braucht Netz, dauert etwas)"},

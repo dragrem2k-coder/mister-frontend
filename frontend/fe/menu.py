@@ -301,6 +301,11 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             # verlassen und das Skript im OSD starten. Der Code dafuer
             # war die ganze Zeit da - er stand nur an einer Stelle, an
             # die man im Alltag nicht kommt.
+            # NEU (Build 91, Nutzerwunsch: "vielleicht sollten wir noch
+            # einbauen, dass man per Hand den Cache fuer SD sowie HD
+            # unter System/Wartung einmal leeren kann"). Bis dahin ging
+            # das nur ueber SSH.
+            (t("sys_thumb_clear"), "thumb_clear", None),
             (t("sys_boxart_download"), "boxart_download", None),
             (t("sys_gameinfo_download"), "gameinfo_download", None),
             (t("sys_redraw"), "redraw", None),

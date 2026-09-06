@@ -7,6 +7,56 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Zwischenspeicher von Hand leeren, und eine Bilanz statt eines Gefühls**
+(Build 91 — Nutzerwunsch: „Vielleicht sollten wir noch einbauen, dass
+man per Hand den Cache für SD sowie HD unter System/Wartung einmal
+leeren kann. Irgendwie hab ich das Gefühl, dass der letzte Build nicht
+greift, was das Scrollen angeht."):
+
+**1. Neuer Menüpunkt unter Wartung: „Miniaturen-Zwischenspeicher leeren
+(CRT / HDMI)".** Getrennt nach Modus — wer nur HDMI fährt, wird die
+CRT-Hälfte los, ohne die andere anzufassen. Die Auswahl nennt gleich die
+Zahlen mit („CRT (SD): 12.482 Dateien, 1,8 GB"), und die sind der
+eigentliche Wert dieses Bildschirms: wer wissen will, ob der
+Zwischenspeicher überhaupt gefüllt ist, sieht es hier, ohne die
+SD-Karte an den Rechner zu stecken. Gelöscht werden ausschließlich
+`.art`- und liegengebliebene `.art.tmp`-Dateien; alles andere bleibt
+unangetastet.
+
+**2. Eine Trefferbilanz im Log.** Die Frage „greift der Cache?" war
+bisher nur über Umwege zu beantworten. Jetzt schreibt das Frontend alle
+50 Vorgänge eine Zeile:
+
+    THUMB_CACHE Bilanz: 312 Treffer, 47 Fehltreffer (86% Treffer)
+
+Steht dort eine hohe Trefferquote, ist der Zwischenspeicher warm und ein
+Ruckeln hat eine andere Ursache. Steht dort eine hohe Fehltrefferquote,
+wird tatsächlich neu gerechnet — und dann lohnt die Suche nach dem
+Warum. Im Gegenzug ist die alte Einzelzeile je gezeichnetem Cover
+standardmäßig **aus**: die lief bei jedem einzelnen Cover und hat in
+einer langen Sitzung tausende Zeilen erzeugt, die das Interessante
+zugedeckt haben.
+
+**3. Die Kategorie-Logos werden gemessen.** Zum gemeldeten Hänger beim
+Zurückgehen ins Hauptmenü: die Logos sind mit 900 Bildpunkten Breite die
+größten Bilder im ganzen Frontend. Liegen sie im Zwischenspeicher,
+kosten sie nichts — liegen sie nicht drin, sind es Hunderte
+Millisekunden. Das stand in **keiner** Messung. Jetzt schreibt es sich
+selbst ins Log, sobald es auffällig wird:
+
+    PERF katlogo: 412 ms (PlayStation)
+
+**4. Nebenbei korrigiert:** die Hinweiszeile der Ein-aus-N-Auswahl stand
+fest auf „ESC: Einrichtung abbrechen" — außerhalb des
+Einrichtungs-Assistenten schlicht falsch, und beim Leeren des
+Zwischenspeichers klang es, als würde man die Einrichtung wegwerfen.
+
+Nachgemessen wurde vorher: ein Durchlauf von „Miniaturen vorbereiten"
+gefolgt von Blättern, Zurückgehen auf die Ordner-Ebene, Zurückgehen ins
+Hauptmenü und erneutem Betreten der Kategorie ergibt in der Messumgebung
+**null** Neuberechnungen. Der Mechanismus selbst ist also in Ordnung —
+was auf dem Gerät passiert, muss die Bilanz zeigen.
+
 **Select geht nicht mehr zurück** (Build 90 — Nutzervorschlag: „Das mit
 Select funktioniert, aber dadurch dass Select noch die
 Rückwärts-Funktion hat, ist es etwas blöde. Mein Vorschlag: die
