@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-29-87",
-  "summary": "System-Hintergrundbilder komplett entfernt (bildschirmfuellend hinter der Liste und als Cover-Ersatz in der Boxart-Spalte); Ordnerzeilen kommen jetzt mit in die Miniaturen-Vorbereitung."
+  "build_id": "2026-08-29-88",
+  "summary": "Suche und RA-Schaukasten jetzt auch am Pad (Select halten + A bzw. X, mit Buchstabenraster auf dem Bildschirm), Hilfeseite gegen die echte Tastenbelegung korrigiert, Boxarts und Spieledaten nachladen als eigene Menuepunkte unter Wartung."
 }

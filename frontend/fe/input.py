@@ -316,6 +316,42 @@ REPEAT_FLOOR_PAGE = 0.25   # links/rechts: eine ganze Seite pro Schritt
 # gilt als Richtungswechsel (hoch<->runter, links<->rechts).
 REPEAT_AXIS = {"up": "y", "down": "y", "left": "x", "right": "x"}
 
+# NEUES FEATURE (Build 88, Nutzerwunsch: "Suche per Pad, mit der
+# Tastenkombi Select gedrueckt halten und A druecken waere super.
+# Schaukasten dann Select und X").
+#
+# DER HINTERGRUND, der das noetig macht: durchgezaehlt waren FUENF
+# Funktionen ausschliesslich ueber die Tastatur erreichbar -
+# Volltextsuche ("/"/F2), Buchstabensprung (alle Buchstabentasten),
+# Zufallsspiel (F11), Durchgespielt-Markierung (F7) und der
+# RA-Schaukasten (F6). Am Pad belegt waren nur A, B, X, Y, Start,
+# Select, L/R, L2/R2 und Mode. Wer mit dem Controller auf dem Sofa
+# sitzt, konnte in einer Liste mit tausenden Eintraegen also nur
+# seitenweise blaettern.
+#
+# Freie Pad-Tasten gibt es aber keine mehr. Loesung: SELECT wird zum
+# MODIFIKATOR - gehalten und mit einer zweiten Taste kombiniert loest
+# es eine andere Aktion aus. Bewusst ueber die ZIELAKTION der zweiten
+# Taste zugeordnet, nicht ueber deren Tastencode: wer sich im Menue
+# eine eigene Belegung eingerichtet hat (Menuepunkt "Tastenbelegung
+# anpassen"), behaelt die Kombination trotzdem, weil "die Taste, die
+# OK ausloest" mitwandert.
+SELECT_COMBOS = {
+    # "search_pad" statt "search": beides oeffnet dieselbe Suche, aber
+    # nur der Pad-Weg blendet zusaetzlich den Buchstabenwaehler ein
+    # (siehe _draw_letter_picker() in frontend.py). Wer eine Tastatur
+    # hat, tippt weiter einfach los.
+    "ok": "search_pad",         # Select + A  -> Suche mit Waehler
+    "back_fe": "ra_showcase",   # Select + X  -> RA-Schaukasten
+}
+# Select ALLEIN soll weiterhin wie Zurueck wirken (und den bestehenden
+# Dreifach-Select-Kurzbefehl fuers Beenden ausloesen). Damit sich beides
+# nicht ins Gehege kommt, wird "select" jetzt erst beim LOSLASSEN
+# gemeldet - und nur dann, wenn zwischendurch keine Kombination
+# ausgeloest hat. Der Unterschied ist ein Tastendruck lang und faellt
+# beim Bedienen nicht auf; ohne ihn wuerde jede Kombination zusaetzlich
+# ein ungewolltes "zurueck" mitschicken.
+
 def _absinfo(fd, axis):
     """min/max einer Achse per EVIOCGABS-ioctl auslesen."""
     buf = bytearray(24)
@@ -389,6 +425,11 @@ class InputManager:
         self._last_repeat_act = None
         self._last_repeat_iv = REPEAT_INTERVAL
         self._last_input_mtime = None
+        # Select-als-Modifikator (siehe SELECT_COMBOS): merkt sich, auf
+        # welchem Geraet Select gerade gehalten wird, und ob waehrend
+        # dieses Haltens schon eine Kombination ausgeloest hat.
+        self._select_down = set()      # Geraetepfade mit gehaltenem Select
+        self._select_kombiniert = False
         self.rescan(force=True)
 
     def rescan(self, force=False):
@@ -423,6 +464,13 @@ class InputManager:
             if path not in seen:
                 self.devices[path].close()
                 del self.devices[path]
+                # Verschwindet ein Pad, waehrend Select gehalten wird
+                # (Funkverbindung weg, Kabel raus), kaeme das Loslassen
+                # nie an - Select bliebe fuer den Rest der Sitzung als
+                # Modifikator "haengen" und jedes A waere eine Suche.
+                self._select_down.discard(path)
+        if not self._select_down:
+            self._select_kombiniert = False
 
     def grab(self, on):
         LOG("grab(%s)" % on)
@@ -503,6 +551,30 @@ class InputManager:
                 return None
             act = KEYMAP.get(code)
             key_id = (dev.path, "key", code)
+            # Select-als-Modifikator (siehe SELECT_COMBOS oben). Bewusst
+            # VOR der Wiederholungs-Behandlung: "select" ist keine
+            # wiederholbare Aktion, und die zweite Taste der Kombination
+            # (A/X) ebenfalls nicht - die Richtungstasten laufen unten
+            # ganz normal weiter, auch bei gehaltenem Select.
+            if act == "select":
+                if value == 1:
+                    self._select_down.add(dev.path)
+                    self._select_kombiniert = False
+                    return None          # erst beim Loslassen melden
+                if value == 0:
+                    self._select_down.discard(dev.path)
+                    if self._select_kombiniert:
+                        # Die Kombination hat schon gewirkt - kein
+                        # zusaetzliches "zurueck" hinterherschicken.
+                        self._select_kombiniert = False
+                        return None
+                    self._cancel_repeat()
+                    return "select"
+                return None
+            if value == 1 and self._select_down and act in SELECT_COMBOS:
+                self._select_kombiniert = True
+                self._cancel_repeat()
+                return SELECT_COMBOS[act]
             if act in REPEAT_ACTIONS:
                 # Wiederholbare Aktionen (Navigation) laufen über unsere
                 # EIGENE kontrollierte, beschleunigende Wiederholung -

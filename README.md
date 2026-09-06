@@ -325,11 +325,13 @@ geprüft, ohne echten Netzwerkverkehr zu erzeugen.
 | F11                                 | Zufälliges Spiel/Kategorie ("weiß nicht was ich spielen soll") |
 | F8 / L2- oder R2-Taste               | Favorit umschalten (nur bei Spiele-Einträgen) |
 | F7                                  | Durchgespielt-Status umschalten (nur bei Spiele-Einträgen) |
-| 3x Select nacheinander (Pad)       | Beenden-Bestätigung (wie ESC) |
 | Im laufenden Spiel: **F1** auf der Tastatur | Sofort zurück ins Frontend, ohne Haltezeit und ohne Umweg über MiSTers OSD |
 | Im laufenden Spiel: Esc auf der Tastatur, ~0,6s halten | Dasselbe wie F1, nur mit Haltezeit - die ist nötig, weil viele Spiele Esc selbst für ihr Pausemenü benutzen |
 | Im laufenden Spiel: **F5** auf der Tastatur | Reset im laufenden Core, ohne Haltezeit (alle Cores, auch RA - lädt den Core NICHT neu, RA-Fortschritt bleibt erhalten) |
 | / oder F2 (Tastatur) | Volltextsuche starten - Treffer auch mitten im Namen, nicht nur am Anfang (beide Tasten lösen exakt dieselbe Funktion aus) |
+| **Select gedrückt halten + A** (Pad, seit Build 88) | Dieselbe Volltextsuche, aber mit einem Buchstabenraster auf dem Bildschirm - mit dem D-Pad bedienbar, A wählt, B geht zurück, das Feld OK beendet |
+| **Select gedrückt halten + X** (Pad, seit Build 88) | RA-Erfolgs-Vitrine für das markierte Spiel (dasselbe wie F6) |
+| Select allein (Pad) | Eine Ebene zurück, im Hauptmenü die Beenden-Bestätigung - gemeldet wird das beim Loslassen, damit eine Kombination nicht zusätzlich ein "zurück" mitschickt |
 | Im laufenden Spiel: F12 -> "Exit to Menu Core" | Alternative über MiSTers eigenes Menü |
 
 **Zum Zurückkehren aus einem laufenden Spiel:** Sobald ein Core läuft,

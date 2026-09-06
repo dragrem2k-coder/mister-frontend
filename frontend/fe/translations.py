@@ -245,22 +245,33 @@ TRANSLATIONS = {
                             "de": "Buchstabentaste (Tastatur)"},
     "help_nav_letter_desc": {"en": "Jump to next entry with that letter",
                              "de": "Springt zum nächsten Eintrag mit diesem Buchstaben"},
-    "help_nav_search_key": {"en": "/ or F2", "de": "/ oder F2"},
-    "help_nav_search_desc": {"en": "Search the game list, jumps to the first match",
-                             "de": "Spieleliste durchsuchen, springt zum ersten Treffer"},
+    "help_nav_search_key": {"en": "/ or F2 (keyboard), Select+A (pad)",
+                            "de": "/ oder F2 (Tastatur), Select+A (Pad)"},
+    "help_nav_search_desc":
+        {"en": "Search the game list, jumps to the first match. Started from the pad "
+               "an on-screen letter grid opens (A picks, B goes back, the OK field "
+               "finishes)",
+         "de": "Spieleliste durchsuchen, springt zum ersten Treffer. Vom Pad aus "
+               "erscheint ein Buchstabenraster auf dem Bildschirm (A wählt, B zurück, "
+               "das Feld OK beendet)"},
     "help_nav_select_key": {"en": "Select (pad)", "de": "Select (Pad)"},
-    "help_nav_select_desc": {"en": "Also: one level back / exit dialog (same as Back)",
-                             "de": "Ebenfalls: eine Ebene zurück / Beenden-Dialog (wie Zurück)"},
+    "help_nav_select_desc": {"en": "One level back (same as Back); held down it is the "
+                                   "modifier for Select+A and Select+X",
+                             "de": "Eine Ebene zurück (wie Zurück); GEHALTEN ist Select "
+                                   "der Umschalter für Select+A und Select+X"},
     "help_section_list": {"en": "In the game list", "de": "In der Spieleliste"},
-    "help_list_showcase_key": {"en": "F6", "de": "F6"},
+    "help_list_showcase_key": {"en": "F6 (keyboard), Select+X (pad)",
+                               "de": "F6 (Tastatur), Select+X (Pad)"},
     "help_list_showcase_desc": {"en": "RA achievement showcase for the selected game",
                                 "de": "RA-Erfolgs-Vitrine für das markierte Spiel"},
-    "help_list_completed_key": {"en": "F7", "de": "F7"},
+    "help_list_completed_key": {"en": "F7 (keyboard only)",
+                                "de": "F7 (nur Tastatur)"},
     "help_list_completed_desc": {"en": "Toggle completed status",
                                  "de": "Durchgespielt-Status umschalten"},
     "help_list_favorite_key": {"en": "F8 / L2 or R2", "de": "F8 / L2 oder R2"},
     "help_list_favorite_desc": {"en": "Toggle favorite", "de": "Favorit umschalten"},
-    "help_list_random_key": {"en": "F11", "de": "F11"},
+    "help_list_random_key": {"en": "F11 (keyboard only)",
+                             "de": "F11 (nur Tastatur)"},
     "help_list_random_desc": {"en": "Start a random game across all systems",
                               "de": "Zufälliges Spiel über alle Systeme starten"},
     "help_section_menu": {"en": "Special entries in the main menu",
@@ -284,23 +295,62 @@ TRANSLATIONS = {
                                  "de": "Verstecktes, das du selbst entdecken kannst"},
     "help_system_credits_key": {"en": "Credits", "de": "Mitwirkende"},
     "help_system_credits_desc": {"en": "Who made this", "de": "Wer das gebaut hat"},
+    # NEU (Build 88): die beiden Nachlade-Punkte gab es bis dahin nur im
+    # Ersteinrichtungs-Assistenten - entsprechend wusste auch niemand,
+    # dass man sie spaeter noch braucht.
+    "help_system_downloads_key": {"en": "Maintenance", "de": "Wartung"},
+    "help_system_downloads_desc":
+        {"en": "Download box art and game info later on, rescan the game list, "
+               "open the MiSTer OSD",
+         "de": "Boxarts und Spieledaten nachträglich laden, Spieleliste neu "
+               "einlesen, MiSTer-OSD öffnen"},
     "help_section_playing": {"en": "While playing", "de": "Während des Spielens"},
-    "help_playing_exit_key": {"en": "Esc or F10 (hold ~0.6s)",
-                              "de": "Esc oder F10 (ca. 0,6s halten)"},
+    # KORRIGIERT (Build 88, Nutzer-Rueckmeldung: "die Hilfe muss eh
+    # ueberarbeitet werden, da stehen Sachen drin die sind nicht mehr
+    # aktuell"). Hier stand "Esc oder F10 (ca. 0,6s halten)" - F10 ist
+    # seit Build 77 ERSATZLOS ENTFALLEN (es lief ueber die evdev-Ebene,
+    # die MiSTer waehrend eines Cores sperrt, und die HID-Pruefung dafuer
+    # verglich versehentlich F11). F1 hat die Aufgabe uebernommen und
+    # stand bisher gar nicht in der Hilfe.
+    "help_playing_exit_key": {"en": "F1 (keyboard)", "de": "F1 (Tastatur)"},
     "help_playing_exit_desc": {"en": "Back to the menu immediately",
                                "de": "Sofort zurück ins Menü"},
+    "help_playing_exit_esc_key": {"en": "Esc (keyboard, hold ~0.6s)",
+                                  "de": "Esc (Tastatur, ca. 0,6s halten)"},
+    "help_playing_exit_esc_desc":
+        {"en": "Also back to the menu - Esc keeps the hold time because many "
+               "games use Esc themselves for their own pause menu",
+         "de": "Ebenfalls zurück ins Menü - Esc behält die Haltezeit, weil viele "
+               "Spiele Esc selbst für ihr eigenes Pausenmenü benutzen"},
+    # EHRLICH GEMACHT (Build 88): hier stand "Start + Select (Pad, ca.
+    # 0,8s halten) - Sofort zurueck ins Menue", als waere das ein
+    # gleichwertiger Weg. Ist es nicht. MiSTer sperrt waehrend eines
+    # laufenden Cores die evdev-Ebene exklusiv; bei einer Tastatur liegt
+    # darunter noch der hidraw-Kanal, bei den bisher getesteten
+    # Controller-Empfaengern kam dort aber nichts an. Der Code-Zweig
+    # bleibt als Absicherung bestehen, falls es auf anderer Hardware
+    # doch geht - die Hilfe darf es aber nicht als sichere Zusage
+    # verkaufen.
     "help_playing_exit_pad_key": {"en": "Start + Select (pad, hold ~0.8s)",
                                   "de": "Start + Select (Pad, ca. 0,8s halten)"},
-    "help_playing_exit_pad_desc": {"en": "Back to the menu immediately",
-                                   "de": "Sofort zurück ins Menü"},
-    "help_playing_reset_key": {"en": "F5 (keyboard, hold ~0.6s)",
-                               "de": "F5 (Tastatur, ca. 0,6s halten)"},
+    "help_playing_exit_pad_desc":
+        {"en": "Only works if MiSTer does not lock the controller - on the pads "
+               "tested so far it does. The reliable way out is the keyboard.",
+         "de": "Funktioniert nur, wenn MiSTer den Controller nicht sperrt - bei "
+               "den bisher getesteten Pads tut es das. Verlässlich ist der "
+               "Ausstieg über die Tastatur."},
+    # KORRIGIERT (Build 88): stand als "ca. 0,6s halten" drin. Seit
+    # Build 75 ist RESET_HOLD = 0.0, der Reset loest also beim ersten
+    # erkannten Tastendruck aus - genau so war es damals gewuenscht.
+    "help_playing_reset_key": {"en": "F5 (keyboard)",
+                               "de": "F5 (Tastatur)"},
     "help_playing_reset_desc": {"en": "Reset the running core, without reloading it "
                                        "(experimental, RA progress is kept)",
                                 "de": "Laufenden Core zurücksetzen, ohne ihn neu zu laden "
                                       "(experimentell, RA-Fortschritt bleibt erhalten)"},
     "help_section_general": {"en": "Anywhere", "de": "Überall"},
-    "help_general_music_key": {"en": "Y / F5", "de": "Y / F5"},
+    "help_general_music_key": {"en": "Y (pad) / F5 (keyboard)",
+                               "de": "Y (Pad) / F5 (Tastatur)"},
     "help_general_music_desc": {"en": "Next music track (menu only)",
                                 "de": "Nächster Musiktitel (nur im Menü)"},
     "help_general_osd_key": {"en": "F12 / Mode (pad)", "de": "F12 / Mode-Taste (Pad)"},
@@ -607,6 +657,11 @@ TRANSLATIONS = {
     "sys_screen_mirror_off": {"en": "Screen mirror: OFF -> turn on (needs stream overlay, takes effect after restart)",
                               "de": "Bildschirmspiegel: AUS -> einschalten (braucht Stream-Overlay, wirkt nach Neustart)"},
     "search_prompt": {"en": "Search: ", "de": "Suche: "},
+    # Build 88: Bedienhilfe unter dem Buchstabenwaehler (Suche per Pad).
+    # Bewusst kurz - auf CRT steht dafuer eine einzige schmale Zeile zur
+    # Verfuegung.
+    "picker_hint": {"en": "A pick   B back",
+                    "de": "A waehlen  B zurueck"},
     "sys_update_on": {"en": "Check for updates: ON -> turn off",
                       "de": "Auf Updates prüfen: AN -> ausschalten"},
     "sys_update_off": {"en": "Check for updates: OFF -> turn on",
@@ -635,6 +690,15 @@ TRANSLATIONS = {
     "completed_removed": {"en": "Completed mark removed", "de": "Durchgespielt-Markierung entfernt"},
     "sys_rescan":      {"en": "Rescan game list", "de": "Spieleliste neu einlesen"},
     "sys_redraw":      {"en": "Redraw display",   "de": "Anzeige neu aufbauen"},
+    # Build 88: bis dahin nur im Ersteinrichtungs-Assistenten erreichbar.
+    # Die Beschriftung nennt bewusst, dass es dauert und Netz braucht -
+    # beides sieht man dem Menuepunkt sonst nicht an.
+    "sys_boxart_download":
+        {"en": "Download box art (needs network, takes a while)",
+         "de": "Boxarts nachladen (braucht Netz, dauert etwas)"},
+    "sys_gameinfo_download":
+        {"en": "Download game info (needs network, takes a while)",
+         "de": "Spieledaten nachladen (braucht Netz, dauert etwas)"},
     "sys_reboot":      {"en": "Restart MiSTer",   "de": "MiSTer neu starten"},
     "sys_quit":        {"en": "Quit frontend",    "de": "Frontend beenden"},
     "remap_prompt":    {"en": "Press a button for: %s",

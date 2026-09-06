@@ -38,6 +38,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_thumb_verdraengung.py \
   && python3 tools/test_kastenstufen.py \
   && python3 tools/test_kein_systemhintergrund.py \
+  && python3 tools/test_pad_bedienung.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -65,6 +66,7 @@ python3 tools/regression_test.py \
 | `test_thumb_verdraengung.py` | Test (Pass/Fail) | Miniaturen-Cache: Uhrensprung nach dem Start, Schutz der Kategorie-Logos, Aufraeumen auf Vorrat, getrennte Ablagen fuer CRT/HDMI |
 | `test_kastenstufen.py` | Test (Pass/Fail) | Boxart-Kasten hat nur drei Hoehen, und der Text passt in jedem Fall noch hinein |
 | `test_kein_systemhintergrund.py` | Test (Pass/Fail) | System-Hintergrundbilder sind restlos raus: kein bg-Zugriff, kein zweiter Bildversuch ohne Cover, kein Menuepunkt |
+| `test_pad_bedienung.py` | Test (Pass/Fail) | Select als Modifikator (Select+A/Select+X), Buchstabenwaehler, Hilfe gegen die echte Belegung |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -562,6 +564,48 @@ deshalb nicht das Aussehen, sondern die Abwesenheit:
   (`fb._rowcache`).
 - Im kompletten Systemmenue-Baum (44 Eintraege) gibt es keinen Eintrag
   der Art `system_bg` mehr.
+
+## test_pad_bedienung.py
+
+Build 88 hat drei Dinge zusammengefasst, die alle denselben Ursprung
+haben: durchgezaehlt waren FUENF Funktionen ausschliesslich ueber die
+Tastatur erreichbar - Volltextsuche, Buchstabensprung, Zufallsspiel,
+Durchgespielt-Markierung und der RA-Schaukasten. Am Pad belegt waren nur
+A, B, X, Y, Start, Select, L/R, L2/R2 und Mode.
+
+Freie Pad-Tasten gibt es keine mehr, deshalb ist SELECT jetzt ein
+Modifikator. Das ist heikler, als es klingt: Select ALLEIN muss weiter
+wie Zurueck wirken, darf aber bei einer Kombination NICHT zusaetzlich
+ein "zurueck" mitschicken - sonst landet man nach jeder Suche eine
+Ebene hoeher. Geloest, indem "select" erst beim LOSLASSEN gemeldet wird
+und nur dann, wenn zwischendurch keine Kombination ausgeloest hat.
+Genau das prueft Test 1 und 2.
+
+Test 3 nagelt fest, dass die Kombination an der ZIELAKTION der zweiten
+Taste haengt und nicht an deren Tastencode - wer sich ueber
+"Tastenbelegung anpassen" eine eigene Belegung eingerichtet hat, behaelt
+die Kombination sonst nicht.
+
+Test 4 deckt den Fall ab, der im Alltag am ehesten nervt: ein Funkpad
+verliert die Verbindung, waehrend Select gehalten wird. Ohne das
+Aufraeumen in rescan() waere Select fuer den Rest der Sitzung
+"gehalten", und jedes A waere eine Suche.
+
+Test 5/6 der Buchstabenwaehler: das Raster ist vollstaendig, die letzte
+Zeile ist kuerzer als die anderen (36 Zeichen + 3 Sondertasten bei 7
+Spalten), und keine Bewegung von keinem Feld aus darf ins Leere zeigen.
+Test 6 zeichnet ihn in allen drei Aufloesungen - der Framebuffer der
+Attrappe ist genau so gross wie der echte, ein Zeichnen ausserhalb
+fliegt dort auf.
+
+Test 8 prueft die Hilfe gegen die Wirklichkeit: jeder in section_keys
+aufgefuehrte Eintrag muss in BEIDEN Sprachen existieren, F10 darf nicht
+mehr als Ausstieg genannt werden (seit Build 77 ersatzlos entfallen),
+F1 muss drinstehen, und die F5-Reset-Beschreibung darf keine Haltezeit
+mehr nennen (RESET_HOLD ist seit Build 75 auf 0.0). Genau solche
+stehengebliebenen Angaben waren der Anlass: "die Hilfe muss eh
+ueberarbeitet werden, da stehen Sachen drin die sind nicht mehr
+aktuell."
 
 ## diag_lightpath.py
 

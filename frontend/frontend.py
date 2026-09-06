@@ -1349,6 +1349,13 @@ class Frontend:
         # Anfangsbuchstaben-Sprung) - siehe jump_to_substring().
         self._search_mode = False
         self._search_query = ""
+        # NEUES FEATURE (Build 88, Nutzerwunsch "Suche per Pad"): der
+        # Buchstabenwaehler auf dem Bildschirm. Nur aktiv, wenn die
+        # Suche ueber die Pad-Kombination Select+A gestartet wurde - wer
+        # eine Tastatur hat, tippt weiter einfach los und bekommt das
+        # Raster gar nicht zu sehen.
+        self._search_picker = False
+        self._picker_i = 0
         if self.music.available():
             self.music.tick()      # start playback right away
 
@@ -2882,6 +2889,41 @@ class Frontend:
             # Scrollens.
             fb.flip(skip_vsync=self._scroll_skip_vsync())
 
+    # NEUES FEATURE (Build 88, Nutzerwunsch: "Suche per Pad, mit der
+    # Tastenkombi Select gedrueckt halten und A druecken waere super").
+    #
+    # Das Raster: 7 Spalten, funf volle Zeilen mit Buchstaben und
+    # Ziffern, darunter eine kurze Zeile mit Leerzeichen, Loeschen und
+    # Fertig. 26 Buchstaben + 10 Ziffern + 3 Sondertasten = 39 Felder.
+    # Bewusst A-Z am Stueck statt einer Tastatur-Anordnung: auf einem
+    # D-Pad sucht man Buchstaben, und alphabetisch findet man sie ohne
+    # nachzudenken.
+    PICKER_SPALTEN = 7
+    PICKER_FELDER = ([("letter", c) for c in
+                      "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"]
+                     + [("space", " "), ("del", None), ("done", None)])
+
+    def _picker_zeilen(self):
+        """Die Felder in Zeilen zerlegt - die letzte Zeile ist kuerzer."""
+        f = self.PICKER_FELDER
+        n = self.PICKER_SPALTEN
+        return [f[i:i + n] for i in range(0, len(f), n)]
+
+    def _picker_bewegen(self, richtung):
+        """Cursor im Raster bewegen. Die letzte Zeile ist kuerzer als
+        die anderen - wer von oben in eine zu kurze Zeile faellt, landet
+        auf deren letztem Feld statt im Nichts."""
+        zeilen = self._picker_zeilen()
+        n = self.PICKER_SPALTEN
+        z, sp = divmod(self._picker_i, n)
+        if richtung in ("left", "right"):
+            breite = len(zeilen[z])
+            sp = (sp + (1 if richtung == "right" else -1)) % breite
+        else:
+            z = (z + (1 if richtung == "down" else -1)) % len(zeilen)
+            sp = min(sp, len(zeilen[z]) - 1)
+        self._picker_i = z * n + sp
+
     def _draw_search_overlay(self):
         """Zeigt die aktuelle Sucheingabe als auffaelligen Balken oben
         im Bild, wenn der Suchmodus aktiv ist (siehe self._search_mode/
@@ -2923,7 +2965,90 @@ class Frontend:
         # einzelner, menschlich getakteter Tastendruck ist, kein
         # durchlaufendes Scrollen (die eigentliche "keine Scroll-Lags"-
         # Vorgabe betrifft ausschliesslich Navigation, nicht die Suche).
+        if self._search_picker:
+            self._draw_letter_picker(bar_h)
         fb.mark_full_redraw()
+
+    def _draw_letter_picker(self, unter_y):
+        """Das Buchstabenraster (Build 88).
+
+        Die Feldgroesse wird aus dem VERFUEGBAREN Platz gerechnet, nicht
+        fest gesetzt: auf CRT stehen bei 320 Bildpunkten Breite abzueglich
+        Overscan rund 278 zur Verfuegung, auf HDMI knapp 1700. Eine feste
+        Groesse waere entweder auf CRT abgeschnitten oder auf HDMI
+        verloren - dasselbe Problem wie beim Fortschrittsbild in Build 81,
+        deshalb hier von vornherein anders geloest.
+
+        Die Bedienhilfe steht INNERHALB der Platte. Zuerst stand sie
+        darunter - auf HDMI landete sie dadurch quer ueber der
+        Boxart-Karte, was im Testbild sofort auffiel."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        zeilen = self._picker_zeilen()
+        spalten = self.PICKER_SPALTEN
+        rand = 5 * s
+        oben = unter_y + 4 * s
+        verfuegbar_b = W - 2 * ox - 2 * rand
+        verfuegbar_h = (H - oy) - oben - 2 * rand
+        feld_b = min(34 * s, verfuegbar_b // spalten)
+        # Platz fuer die Hinweiszeile gleich mit einrechnen, sonst muesste
+        # sie hinterher irgendwo hingequetscht werden. Die Skalierung
+        # steht erst spaeter fest (sie richtet sich nach der Rasterbreite,
+        # nicht nach der Bildschirmbreite - sonst ragt der Hinweis ueber
+        # die Platte hinaus, was im ersten Testbild genau so passierte);
+        # reserviert wird deshalb der groesstmoegliche Fall.
+        hinweis = t("picker_hint")
+        hinweis_h = 8 * s + 4 * s
+        feld_h = min(24 * s,
+                     max(1, verfuegbar_h - hinweis_h) // len(zeilen))
+        # Ein Zeichen ist 8*Skalierung breit und hoch; "OK" braucht zwei.
+        zeichen_s = max(1, min((feld_b - 2 * s) // 16, (feld_h - 2 * s) // 8))
+        raster_b = spalten * feld_b
+        raster_h = len(zeilen) * feld_h
+        platte_b = raster_b + 2 * rand
+        platte_h = raster_h + hinweis_h + 2 * rand
+        px = (W - platte_b) // 2
+        # Senkrecht mittig in den Platz UNTER dem Suchbalken - auf HDMI
+        # klebte die Platte sonst oben in der Kopfzeile.
+        py = oben + max(0, ((H - oy) - oben - platte_h) // 2)
+        x0, y0 = px + rand, py + rand
+        accent = accent_for(None)
+        fb.rect_rounded(px, py, platte_b, platte_h, C_PANEL, 4 * s)
+        for zi, zeile in enumerate(zeilen):
+            for si, feld in enumerate(zeile):
+                idx = zi * spalten + si
+                fx = x0 + si * feld_b
+                fy = y0 + zi * feld_h
+                gewaehlt = (idx == self._picker_i)
+                bg = accent if gewaehlt else C_ACCENT2
+                fb.rect_rounded(fx + 1 * s, fy + 1 * s,
+                                feld_b - 2 * s, feld_h - 2 * s, bg, 2 * s)
+                art, wert = feld
+                if art == "letter":
+                    label = wert
+                elif art == "space":
+                    label = "_"
+                elif art == "del":
+                    label = "<"
+                else:
+                    label = "OK"
+                tw = len(label) * 8 * zeichen_s
+                fb.text(fx + (feld_b - tw) // 2,
+                        fy + (feld_h - 8 * zeichen_s) // 2,
+                        label, zeichen_s,
+                        C_BG if gewaehlt else C_TEXT, bg)
+        hinweis_s = self._fit_scale(hinweis, raster_b, s)
+        hw = len(hinweis) * 8 * hinweis_s
+        # Passt der Hinweis selbst bei Skalierung 1 nicht auf die Platte
+        # (sehr schmale Aufloesungen), lieber ganz weglassen als ueber
+        # den Rand hinausschreiben - das Feld "OK" ist beschriftet, die
+        # Bedienung steht ausserdem auf der Hilfeseite.
+        if hw <= raster_b:
+            fb.text(px + (platte_b - hw) // 2,
+                    y0 + raster_h + 2 * s, hinweis, hinweis_s, C_DIM, C_PANEL)
 
     def _draw_cat_row(self, i, row, L, maxc):
         """Eine einzelne Zeile der Kategorienliste (Seite 0) zeichnen -
@@ -8207,7 +8332,9 @@ class Frontend:
             ("item", "help_menu_collections"), ("item", "help_menu_hunter"),
             ("header", "help_section_system"), ("item", "help_system_stats"),
             ("item", "help_system_secrets"), ("item", "help_system_credits"),
+            ("item", "help_system_downloads"),
             ("header", "help_section_playing"), ("item", "help_playing_exit"),
+            ("item", "help_playing_exit_esc"),
             ("item", "help_playing_exit_pad"), ("item", "help_playing_reset"),
             ("header", "help_section_general"), ("item", "help_general_music"),
             ("item", "help_general_osd"),
@@ -9836,6 +9963,63 @@ class Frontend:
                     items = [] if self.page == 0 else self._display_items()
                     names = ([c[0] for c in self.cats] if self.page == 0
                              else [it[0] for it in items] if items else [])
+
+                    def _springen(anfrage, ab):
+                        """Sprung ans Ergebnis - dieselbe Rechnung fuer
+                        Tastatur und Buchstabenwaehler, damit beide Wege
+                        garantiert dasselbe tun."""
+                        ziel = jump_to_substring(names, ab, anfrage) \
+                            if anfrage else ab
+                        if self.page == 0:
+                            self.cat_i = ziel
+                        elif items:
+                            self.item_i = ziel
+                            self.marquee_reset()
+
+                    # NEUES FEATURE (Build 88): der Buchstabenwaehler.
+                    # Bewusst VOR der Tastatur-Behandlung darunter, aber
+                    # NUR wenn er ueberhaupt offen ist - wer tippt,
+                    # merkt von diesem Block nichts. Umgekehrt duerfen
+                    # Buchstabentasten auch bei offenem Waehler weiter
+                    # wirken (der Block faellt fuer sie durch), damit
+                    # Pad und Tastatur nebeneinander benutzbar bleiben.
+                    if self._search_picker and act in (
+                            "up", "down", "left", "right", "ok", "back",
+                            "exit", "search", "search_pad"):
+                        if act in ("up", "down", "left", "right"):
+                            self._picker_bewegen(act)
+                            self.draw()
+                            continue
+                        if act in ("back", "exit", "search", "search_pad"):
+                            # Abbrechen - zurueck an die Ausgangsstelle,
+                            # genau wie beim Abbrechen per Tastatur.
+                            self._search_mode = False
+                            self._search_picker = False
+                            if self.page == 0:
+                                self.cat_i = self._search_start_i
+                            else:
+                                self.item_i = self._search_start_i
+                            self.draw()
+                            continue
+                        art, wert = self.PICKER_FELDER[self._picker_i]
+                        if art == "done":
+                            # Uebernehmen - stehen bleiben, wo der
+                            # Sprung hingefuehrt hat.
+                            self._search_mode = False
+                            self._search_picker = False
+                            self.draw()
+                            continue
+                        if art == "del":
+                            self._search_query = self._search_query[:-1]
+                            _springen(self._search_query, self._search_start_i)
+                        else:
+                            self._search_query += wert
+                            _springen(self._search_query,
+                                      self.cat_i if self.page == 0
+                                      else self.item_i)
+                        self.draw()
+                        continue
+
                     if act == "search_backspace":
                         self._search_query = self._search_query[:-1]
                         idx = jump_to_substring(names, self._search_start_i, self._search_query) \
@@ -9880,9 +10064,17 @@ class Frontend:
                         # laesst die Aktion danach ganz normal weiter-
                         # laufen (faellt einfach durch, kein continue).
                         self._search_mode = False
-                elif act == "search":
+                        self._search_picker = False
+                elif act in ("search", "search_pad"):
                     self._search_mode = True
                     self._search_query = ""
+                    # NEU (Build 88): "search_pad" kommt ausschliesslich
+                    # aus der Kombination Select+A am Pad (siehe
+                    # SELECT_COMBOS in fe/input.py). Nur dann erscheint
+                    # der Buchstabenwaehler - mit Tastatur tippt man
+                    # einfach los, da waere das Raster nur im Weg.
+                    self._search_picker = (act == "search_pad")
+                    self._picker_i = 0
                     self._search_start_i = self.cat_i if self.page == 0 else self.item_i
                     self.draw()
                     continue
@@ -10387,6 +10579,34 @@ class Frontend:
                         elif kind == "thumb_prewarm":
                             self.run_thumb_prewarm_all()
                             continue
+                        elif kind in ("boxart_download", "gameinfo_download"):
+                            # NEU (Build 88, Nutzerwunsch: "Boxarts
+                            # nachladen sowie Spieledaten nachladen
+                            # ebenso machen"). Ruft genau dieselben zwei
+                            # Zeilen auf wie Schritt 4/5 des
+                            # Ersteinrichtungs-Assistenten - nur eben von
+                            # einer Stelle aus, an die man im Alltag
+                            # kommt. Das Profil (sd/hd) bestimmt
+                            # crt_menu_active(), seit Build 83
+                            # verlaesslich; gefragt wird also nichts mehr.
+                            if kind == "boxart_download":
+                                skript = "Frontend_Boxart_Download.sh"
+                                args = ["sd" if crt_menu_active() else "hd"]
+                            else:
+                                skript = "Frontend_Gameinfo_Download.sh"
+                                args = None
+                            self.run_script(os.path.join(SCRIPTS_DIR, skript),
+                                            args=args)
+                            # Nach dem Nachladen zeigt die Liste sonst
+                            # weiter die alten Daten: der Metadaten-Cache
+                            # haelt, was beim Start gelesen wurde, und
+                            # neue Cover wuerden erst nach einem Neustart
+                            # auffallen.
+                            self.draw(t("sys_rescan"))
+                            self.build_categories(force_rescan=True)
+                            self.cat_i = self.item_i = 0
+                            self.scroll = self.cat_scroll = 0
+                            self.page = 0
                         elif kind == "rescan":
                             self.draw("Rescanning game list ...")
                             self.build_categories(force_rescan=True)

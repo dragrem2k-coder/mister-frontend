@@ -293,6 +293,16 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         t("sys_group_maintenance"): folder(
             (t("sys_osd"), "osd", None),
             (t("sys_rescan"), "rescan", None),
+            # NEU (Build 88, Nutzerwunsch: "Boxarts nachladen sowie
+            # Spieledaten nachladen ebenso machen"). Beide Skripte liefen
+            # bisher NUR im Ersteinrichtungs-Assistenten (Schritt 4 und
+            # 5). Wer spaeter nachladen wollte, musste entweder den
+            # ganzen Assistenten erneut durchlaufen oder das Frontend
+            # verlassen und das Skript im OSD starten. Der Code dafuer
+            # war die ganze Zeit da - er stand nur an einer Stelle, an
+            # die man im Alltag nicht kommt.
+            (t("sys_boxart_download"), "boxart_download", None),
+            (t("sys_gameinfo_download"), "gameinfo_download", None),
             (t("sys_redraw"), "redraw", None),
             (t("sys_reboot"), "reboot", None),
             (t("sys_quit"), "quit", None),

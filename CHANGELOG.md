@@ -7,6 +7,78 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Suche und Schaukasten jetzt auch mit dem Pad, Hilfe überarbeitet,
+Nachladen ohne Umweg** (Build 88 — Nutzerwunsch: „Suche per Pad, mit der
+Tastenkombi Select gedrückt halten und A drücken wäre super. Schaukasten
+dann Select und X. Die Hilfe muss eh überarbeitet werden, da stehen
+Sachen drin die sind nicht mehr aktuell. Boxarts nachladen sowie
+Spieledaten nachladen ebenso machen"):
+
+**1. Fünf Funktionen waren nur mit Tastatur erreichbar.** Durchgezählt:
+Volltextsuche (`/`/F2), Buchstabensprung (alle Buchstabentasten),
+Zufallsspiel (F11), Durchgespielt-Markierung (F7) und der RA-Schaukasten
+(F6). Am Pad belegt waren nur A, B, X, Y, Start, Select, L/R, L2/R2 und
+Mode — wer mit dem Controller auf dem Sofa sitzt, konnte in einer Liste
+mit tausenden Einträgen also ausschließlich seitenweise blättern.
+
+Freie Pad-Tasten gibt es keine mehr, deshalb ist **Select jetzt ein
+Modifikator**: gehalten und mit A kombiniert öffnet es die Suche, mit X
+den RA-Schaukasten. Select allein wirkt unverändert wie Zurück — nur
+wird es jetzt erst beim **Loslassen** gemeldet und nur dann, wenn
+zwischendurch keine Kombination ausgelöst hat. Ohne diesen Kniff käme
+nach jeder Suche zusätzlich ein „eine Ebene zurück" hinterher. Die
+Zuordnung hängt an der Zielaktion der zweiten Taste, nicht an ihrem
+Tastencode: wer sich über „Tastenbelegung anpassen" eine eigene Belegung
+eingerichtet hat, behält die Kombination.
+
+**2. Ein Buchstabenraster für die Suche per Pad.** Mit dem D-Pad
+bedienbar, A wählt, B geht zurück, das Feld OK beendet. Es schreibt in
+dieselbe Anfrage und ruft dieselbe Sprungrechnung auf wie die Tastatur —
+neue Suchlogik gibt es keine. Die Feldgröße wird aus dem verfügbaren
+Platz gerechnet statt fest gesetzt: auf CRT stehen abzüglich Overscan
+rund 278 Bildpunkte zur Verfügung, auf HDMI knapp 1700. Wer eine
+Tastatur hat, tippt weiter einfach los und bekommt das Raster gar nicht
+zu sehen.
+
+**3. Die Hilfe stimmte an mehreren Stellen nicht mehr.** Gegen die
+tatsächliche KEYMAP geprüft und korrigiert:
+
+- „Esc oder F10 (ca. 0,6s halten)" als Ausstieg — **F10 ist seit Build
+  77 ersatzlos entfallen** (es lief über die evdev-Ebene, die MiSTer
+  während eines Cores sperrt, und die HID-Prüfung dafür verglich
+  versehentlich F11). F1 hat die Aufgabe übernommen und stand bisher gar
+  nicht in der Hilfe. Jetzt: F1 sofort, Esc mit Haltezeit daneben — mit
+  der Begründung, warum ausgerechnet Esc eine Haltezeit behält (viele
+  Spiele benutzen Esc selbst für ihr Pausenmenü).
+- „F5 (Tastatur, ca. 0,6s halten)" für den Reset — seit Build 75 ist
+  `RESET_HOLD = 0.0`, der Reset löst beim ersten erkannten Tastendruck
+  aus.
+- „Start + Select (Pad, ca. 0,8s halten) — Sofort zurück ins Menü" stand
+  da, als wäre es ein gleichwertiger Weg. Ist es nicht: MiSTer sperrt
+  während eines laufenden Cores die evdev-Ebene exklusiv, und bei den
+  bisher getesteten Controller-Empfängern kam auch über den
+  hidraw-Kanal nichts an. Der Code-Zweig bleibt als Absicherung
+  bestehen, die Hilfe verkauft ihn aber nicht mehr als sichere Zusage.
+- „Y / F5" für den nächsten Musiktitel — Y ist die **Pad**-Taste; die
+  Tastatur-Y-Bindung wurde schon immer von der Buchstabensprung-Schleife
+  überschrieben. Steht jetzt so da.
+- F7 und F11 sind als „nur Tastatur" gekennzeichnet, statt so zu tun,
+  als gäbe es sie überall.
+
+**4. Boxarts und Spieledaten nachladen — ohne Umweg.** Beide Skripte
+liefen bisher **nur** im Ersteinrichtungs-Assistenten (Schritt 4 und 5).
+Wer später nachladen wollte, musste entweder den ganzen Assistenten
+erneut durchlaufen oder das Frontend verlassen und das Skript im OSD
+starten. Jetzt stehen sie als eigene Punkte unter Wartung; das Profil
+(sd/hd) bestimmt `crt_menu_active()`, seit Build 83 verlässlich, es wird
+also nichts mehr gefragt. Nach dem Nachladen wird die Spieleliste neu
+eingelesen — sonst zeigt sie weiter die alten Daten.
+
+Neu: `tools/test_pad_bedienung.py` mit neun Prüfgruppen (Modifikator,
+beide Kombinationen, Umbelegbarkeit, abgezogenes Pad, Raster,
+Zeichnen in allen Auflösungen, Suchsprung, Hilfe gegen die Wirklichkeit,
+Menüpunkte). Gesamtstand: 23 Testskripte, alle grün.
+
 **System-Hintergrundbilder komplett entfernt** (Build 87 —
 Nutzerentscheidung: „großen Systembildhintergrund komplett rausnehmen,
 war eh blöde"):
