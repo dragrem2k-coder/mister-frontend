@@ -255,10 +255,11 @@ TRANSLATIONS = {
                "erscheint ein Buchstabenraster auf dem Bildschirm (A wählt, B zurück, "
                "das Feld OK beendet)"},
     "help_nav_select_key": {"en": "Select (pad)", "de": "Select (Pad)"},
-    "help_nav_select_desc": {"en": "One level back (same as Back); held down it is the "
-                                   "modifier for Select+A and Select+X",
-                             "de": "Eine Ebene zurück (wie Zurück); GEHALTEN ist Select "
-                                   "der Umschalter für Select+A und Select+X"},
+    "help_nav_select_desc": {"en": "Shows the combos; held down it is the modifier "
+                                   "for Select+A and Select+X (B goes back)",
+                             "de": "Zeigt die Kombinationen an; GEHALTEN ist Select "
+                                   "der Umschalter für Select+A und Select+X "
+                                   "(zurück geht B)"},
     "help_section_list": {"en": "In the game list", "de": "In der Spieleliste"},
     "help_list_showcase_key": {"en": "F6 (keyboard), Select+X (pad)",
                                "de": "F6 (Tastatur), Select+X (Pad)"},
@@ -662,6 +663,10 @@ TRANSLATIONS = {
     # Verfuegung.
     "picker_hint": {"en": "A pick   B back",
                     "de": "A waehlen  B zurueck"},
+    # Build 90: Select allein geht nicht mehr zurueck (das macht B) -
+    # stattdessen sagt es, wofuer es jetzt da ist.
+    "select_hint": {"en": "Hold Select + A = search, + X = RA showcase",
+                    "de": "Select halten + A = Suche, + X = RA-Schaukasten"},
     "sys_update_on": {"en": "Check for updates: ON -> turn off",
                       "de": "Auf Updates prüfen: AN -> ausschalten"},
     "sys_update_off": {"en": "Check for updates: OFF -> turn on",

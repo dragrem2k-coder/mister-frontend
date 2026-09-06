@@ -7,6 +7,24 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Select geht nicht mehr zurück** (Build 90 — Nutzervorschlag: „Das mit
+Select funktioniert, aber dadurch dass Select noch die
+Rückwärts-Funktion hat, ist es etwas blöde. Mein Vorschlag: die
+Zurück-Funktion von Select runternehmen, da wir diese ja eh auf dem
+Joypad mit B schon haben."):
+
+Er hat recht, und der Grund fiel erst beim Benutzen auf: seit Build 88
+ist Select ein Modifikator. Wer ihn hält und sich dann anders
+entscheidet, löste beim Loslassen ein „eine Ebene zurück" aus, das er
+nie wollte. Zwei Bedeutungen auf einer Taste, von denen eine ohnehin
+doppelt vorhanden ist (B), sind eine zu viel.
+
+Statt einer toten Taste zeigt Select allein jetzt kurz die Kombinationen
+an: „Select halten + A = Suche, + X = RA-Schaukasten". Das ist genau die
+Entdeckbarkeit, um die es bei dem ganzen Umbau ging — bisher musste man
+in die Hilfe schauen, um überhaupt zu wissen, dass es die Kombinationen
+gibt.
+
 **Die Boxart-Spalte wird ruhiger** (Build 89 — vier Rückmeldungen in
 einer Nachricht):
 

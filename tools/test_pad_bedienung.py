@@ -100,13 +100,33 @@ SELECT = code_fuer("select")
 OK_TASTE = code_fuer("ok")
 BACK_FE = code_fuer("back_fe")
 
-print("Test 1: Select allein wirkt weiter wie Zurueck")
+print("Test 1: Select allein meldet sich erst beim Loslassen")
+# GEAENDERT (Build 90, Nutzervorschlag): Select allein geht NICHT mehr
+# eine Ebene zurueck - das macht B, und zwei Bedeutungen auf einer
+# Taste, von denen eine doppelt vorhanden ist, sind eine zu viel. Wer
+# den Modifikator haelt und sich anders entscheidet, loeste sonst beim
+# Loslassen ein ungewolltes "zurueck" aus. Die Meldung selbst bleibt -
+# sie zeigt jetzt den Hinweis, wofuer Select da ist.
 mgr = frischer_manager()
 dev = PadAttrappe()
 check("Druecken meldet noch nichts",
       mgr._translate(dev, EV_KEY, SELECT, 1) is None)
 check("Loslassen meldet 'select'",
       mgr._translate(dev, EV_KEY, SELECT, 0) == "select")
+fquelle = open(H.FRONTEND_PY, encoding="utf-8").read()
+fcode = "\n".join(z for z in fquelle.splitlines()
+                  if not z.lstrip().startswith("#"))
+# Nur der Rumpf DIESES Zweigs - der naechste Zweig ("exit"/"back") ruft
+# _go_back_or_confirm_quit() voellig zu Recht auf.
+_ab = fcode.index('if act == "select":')
+stelle = fcode[_ab:fcode.index('if act == "exit"', _ab)]
+check("Select allein geht nicht mehr zurueck",
+      "_go_back_or_confirm_quit" not in stelle)
+check("Select allein zeigt stattdessen den Hinweis",
+      "select_hint" in stelle)
+check("der Hinweis existiert in beiden Sprachen",
+      TRANSLATIONS.get("select_hint", {}).get("de")
+      and TRANSLATIONS["select_hint"].get("en"))
 
 print()
 print("Test 2: die beiden Kombinationen")

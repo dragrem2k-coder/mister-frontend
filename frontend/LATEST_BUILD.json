@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-29-89",
-  "summary": "Boxart-Spalte ruhiger: kein Aufblitzen von \"kein Artwork\" beim Scrollen, Platzhalter als duenner Rahmen statt gefuellter Flaeche, keine Spalte bei reinen Ordnerlisten, und die Kategorie merkt sich wieder die Position."
+  "build_id": "2026-08-29-90",
+  "summary": "Select geht nicht mehr eine Ebene zurueck (das macht B) - allein gedrueckt zeigt es jetzt die Kombinationen Select+A und Select+X an."
 }

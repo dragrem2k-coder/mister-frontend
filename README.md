@@ -331,7 +331,7 @@ geprüft, ohne echten Netzwerkverkehr zu erzeugen.
 | / oder F2 (Tastatur) | Volltextsuche starten - Treffer auch mitten im Namen, nicht nur am Anfang (beide Tasten lösen exakt dieselbe Funktion aus) |
 | **Select gedrückt halten + A** (Pad, seit Build 88) | Dieselbe Volltextsuche, aber mit einem Buchstabenraster auf dem Bildschirm - mit dem D-Pad bedienbar, A wählt, B geht zurück, das Feld OK beendet |
 | **Select gedrückt halten + X** (Pad, seit Build 88) | RA-Erfolgs-Vitrine für das markierte Spiel (dasselbe wie F6) |
-| Select allein (Pad) | Eine Ebene zurück, im Hauptmenü die Beenden-Bestätigung - gemeldet wird das beim Loslassen, damit eine Kombination nicht zusätzlich ein "zurück" mitschickt |
+| Select allein (Pad) | Zeigt kurz die Kombinationen an (seit Build 90 **kein** Zurück mehr - das macht B; sonst löste jedes abgebrochene Halten ein ungewolltes "zurück" aus) |
 | Im laufenden Spiel: F12 -> "Exit to Menu Core" | Alternative über MiSTers eigenes Menü |
 
 **Zum Zurückkehren aus einem laufenden Spiel:** Sobald ein Core läuft,

@@ -10373,10 +10373,26 @@ class Frontend:
                 page_step = max(1, base_page) * page_mult
 
                 if act == "select":
-                    # 3x Select = Beenden-Kurzbefehl per Pad, laeuft ueber
-                    # dieselbe Bestaetigung wie ESC/B.
+                    # GEAENDERT (Build 90, Nutzervorschlag: "dadurch dass
+                    # Select noch die Rueckwaerts-Funktion hat, ist es
+                    # etwas bloede - mein Vorschlag: die Zurueck-Funktion
+                    # von Select runternehmen, da wir die ja eh auf dem
+                    # Joypad mit B schon haben").
+                    #
+                    # Er hat recht, und zwar aus einem Grund, der beim
+                    # Bauen von Build 88 nicht auffiel, beim Benutzen
+                    # aber sofort: Select ist jetzt ein Modifikator. Wer
+                    # ihn haelt und sich dann anders entscheidet, loest
+                    # beim Loslassen ein "eine Ebene zurueck" aus, das er
+                    # nie wollte. Zwei Bedeutungen auf einer Taste, von
+                    # denen eine doppelt vorhanden ist (B), sind eine zu
+                    # viel.
+                    #
+                    # Statt einer toten Taste zeigt Select allein jetzt
+                    # kurz, wofuer es da ist - genau die Entdeckbarkeit,
+                    # die der ganze Umbau bezwecken sollte.
                     move_streak = page_streak = 0
-                    self._go_back_or_confirm_quit()
+                    self.draw(message=t("select_hint"))
                     continue
                 if act == "exit" or act == "back":
                     self._go_back_or_confirm_quit()
