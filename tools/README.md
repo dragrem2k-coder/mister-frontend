@@ -39,6 +39,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_kastenstufen.py \
   && python3 tools/test_kein_systemhintergrund.py \
   && python3 tools/test_pad_bedienung.py \
+  && python3 tools/test_ruhige_boxspalte.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -67,6 +68,7 @@ python3 tools/regression_test.py \
 | `test_kastenstufen.py` | Test (Pass/Fail) | Boxart-Kasten hat nur drei Hoehen, und der Text passt in jedem Fall noch hinein |
 | `test_kein_systemhintergrund.py` | Test (Pass/Fail) | System-Hintergrundbilder sind restlos raus: kein bg-Zugriff, kein zweiter Bildversuch ohne Cover, kein Menuepunkt |
 | `test_pad_bedienung.py` | Test (Pass/Fail) | Select als Modifikator (Select+A/Select+X), Buchstabenwaehler, Hilfe gegen die echte Belegung |
+| `test_ruhige_boxspalte.py` | Test (Pass/Fail) | Verzoegertes Cover zeigt keinen Platzhalter, Platzhalter ist ein Rahmen, keine Spalte bei reinen Ordnerlisten, Positionsgedaechtnis je Kategorie |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -606,6 +608,51 @@ mehr nennen (RESET_HOLD ist seit Build 75 auf 0.0). Genau solche
 stehengebliebenen Angaben waren der Anlass: "die Hilfe muss eh
 ueberarbeitet werden, da stehen Sachen drin die sind nicht mehr
 aktuell."
+
+## test_ruhige_boxspalte.py
+
+Vier Rueckmeldungen in einer Nachricht, alle zur Boxart-Spalte.
+
+**Das Aufblitzen.** "Wenn ich durch die ROMs scrolle, etwas langsamer,
+ploppt immer erst 'kein Artwork' auf und dann wird das Cover
+nachgeladen." Ursache: `get_scaled()` liefert `None` fuer ZWEI voellig
+verschiedene Faelle - "es gibt kein Cover" und "ich habe es waehrend des
+Scrollens bewusst uebersprungen, es kommt in rund 150 ms"
+(COVER_SETTLE, siehe `_defer_uncached` in `fe/art.py`). Der Zeichenpfad
+konnte die beiden nicht unterscheiden und malte auch im zweiten Fall den
+Platzhalter. Ein Zaehler (`ART._defer_count`) trennt sie jetzt: der
+Aufrufer merkt sich den Stand davor und vergleicht.
+
+Test 1 prueft beide Richtungen - wirklich kein Cover MUSS den
+Platzhalter zeigen, nur verzoegert darf ihn NICHT zeigen. Test 2
+sichert die Voraussetzung dafuer ab: der Zaehler muss an ALLEN drei
+Defer-Stellen stehen. Ohne diese Pruefung wuerde Test 1 eine Zusage
+pruefen, die er sich selbst nachgestellt hat.
+
+**Der blaue Block.** Der Platzhalter war eine vollflaechig gefuellte
+Flaeche in der Akzentfarbe, so gross wie das Cover geworden waere - auf
+HDMI gut eine halbe Million Bildpunkte, bei jedem Eintrag ohne Cover neu
+gefuellt. Jetzt ein duenner Rahmen. Test 3 zaehlt die gefaerbten
+Bildpunkte im Kasten und vergleicht sie mit dem Umfang statt der
+Flaeche: gemessen 8.772 statt 537.387 auf HDMI, also rund ein
+Einundsechzigstel.
+
+**Keine Spalte bei reinen Ordnerlisten.** Ordner haben praktisch nie ein
+eigenes Cover; die Spalte zeigte dort fast immer nur den Platzhalter und
+nahm der Liste dafuer knapp die Haelfte der Breite weg. Test 4 deckt die
+Faelle ab, in denen die Spalte trotzdem bleiben MUSS - gemischte Ebenen
+(Ordner und Spiele nebeneinander) und "Zuletzt gespielt" (syskey=None,
+aber echte Spiele). Und er prueft, dass die Bedingung nur noch an EINER
+Stelle steht: laufen die drei Aufrufer auseinander, berechnet der
+Vorauslader Miniaturen unter einer Kastengroesse, die der Zeichenpfad
+nie abfragt.
+
+**Positionsgedaechtnis je Kategorie.** Fuer Unterordner gab es das
+laengst (`_nav_position_stack`), eine Ebene hoeher nicht. Test 5 prueft
+den Normalfall und die beiden Faelle, in denen ein gemerkter Index
+schlimmer waere als keiner: eine kuerzer gewordene Liste und ein
+Neu-Einlesen (nach dem sich auch die Kategorie-Nummerierung verschieben
+kann).
 
 ## diag_lightpath.py
 

@@ -874,6 +874,23 @@ class ArtCache:
         # uebersprungen wurde - siehe die drei Fundstellen unten und
         # den COVER_SETTLE-Handler in frontend.py.
         self._deferred_something = False
+        # NEU (Build 89, Nutzer-Rueckmeldung: "wenn ich durch die ROMs
+        # scrolle, ploppt immer erst 'kein Artwork' auf und dann wird das
+        # Cover nachgeladen").
+        #
+        # get_scaled() liefert None fuer ZWEI voellig verschiedene Faelle:
+        # "es gibt kein Cover" und "ich habe es waehrend des Scrollens
+        # bewusst uebersprungen, es kommt gleich". Der Zeichenpfad konnte
+        # die beiden nicht unterscheiden und malte deshalb auch im
+        # zweiten Fall den "kein Artwork"-Platzhalter - der 150 ms
+        # spaeter vom nachgeladenen Cover wieder ersetzt wurde. Genau
+        # dieses Aufblitzen hat der Nutzer beschrieben.
+        #
+        # _deferred_something reicht dafuer nicht: das Flag bleibt bis
+        # zum naechsten Nachladen stehen, sagt also nichts darueber, ob
+        # GERADE DIESER Aufruf uebersprungen wurde. Ein Zaehler schon -
+        # der Aufrufer merkt sich den Stand davor und vergleicht.
+        self._defer_count = 0
         self._defer_uncached = False # beim schnellen Scrollen: noch nicht
                                      # dekodierte Cover ueberspringen (siehe
                                      # get_scaled()/COVER_SETTLE)
@@ -1025,6 +1042,7 @@ class ArtCache:
             # nichts nachzuladen, und der komplette Seitenaufbau nach
             # jedem Stillstand entfaellt.
             self._deferred_something = True
+            self._defer_count += 1
             return None
         base = self.get(path)
         if not base:
@@ -1064,6 +1082,7 @@ class ArtCache:
                 # nichts nachzuladen, und der komplette Seitenaufbau nach
                 # jedem Stillstand entfaellt.
                 self._deferred_something = True
+                self._defer_count += 1
                 return None
             sw, sh, out = _hochskalieren(pix, w, h, scale)
             result = (sw, sh, bytes(out))
@@ -1100,6 +1119,7 @@ class ArtCache:
             # nichts nachzuladen, und der komplette Seitenaufbau nach
             # jedem Stillstand entfaellt.
             self._deferred_something = True
+            self._defer_count += 1
             return None
         data = _verkleinern_flaechenmittel(pix, w, h, tw, th)
         if data is None:

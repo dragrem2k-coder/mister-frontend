@@ -1446,6 +1446,12 @@ class Frontend:
         # nach einem Rescan koennten sich neue Spiele dazugesellt oder
         # welche entfernt worden sein.
         self._attract_pool = None
+        # NEU (Build 89): auch die gemerkten Positionen je Kategorie
+        # verwerfen (siehe _enter_category()). Nach einem Neu-Einlesen
+        # koennen sich Reihenfolge UND Kategorie-Nummerierung verschoben
+        # haben - ein gemerkter Index zeigte dann irgendwohin, was
+        # schlimmer waere als gar nichts zu merken.
+        self._kategorie_position = {}
         # Reihenfolge: Spiele-Systeme, dann Core-Ordner, Scripts, System
         # ALLE Kategorien werden einheitlich als Baumknoten dargestellt
         # ({"folders":{...}, "items":[...]}) - Spiele-Systeme koennen
@@ -1576,6 +1582,13 @@ class Frontend:
                     self.scroll = 0
                 self.marquee_reset()
             else:
+                # NEU (Build 89): beim Verlassen der Kategorie die
+                # Position auf der obersten Ebene merken - siehe
+                # _enter_category(), das sie wieder herstellt.
+                if not hasattr(self, "_kategorie_position"):
+                    self._kategorie_position = {}
+                self._kategorie_position[self.cat_i] = (self.item_i,
+                                                        self.scroll)
                 self.page = 0
         else:
             self.confirm_quit = True
@@ -1833,8 +1846,29 @@ class Frontend:
         self.page = 1
         self.nav_path = []
         self._nav_position_stack = []
-        self.item_i = 0
-        self.scroll = 0
+        # NEU (Build 89, Nutzerwunsch: "Die Kategorie vergisst, wo du
+        # warst, das bitte umsetzen, das ist gut").
+        #
+        # Fuer UNTERORDNER gab es das laengst (_nav_position_stack, siehe
+        # _go_back_or_confirm_quit()) - eine Ebene hoeher aber nicht: wer
+        # SNES bis "Super Mario World" durchblaettert, zurueck zu den
+        # Kategorien geht und wieder in SNES hinein, stand wieder bei
+        # "1942". Genau dasselbe Aergernis, nur an anderer Stelle.
+        #
+        # Bewusst NICHT gespeichert wird, in welchem UNTERORDNER man war:
+        # das waere eine zweite Bedeutung von "zurueck" (man kaeme nicht
+        # mehr an die oberste Ebene, ohne sich erst herauszuklicken).
+        # Gemerkt wird nur die Position auf der obersten Ebene.
+        gemerkt = getattr(self, "_kategorie_position", {}).get(self.cat_i)
+        eintraege = len(self._display_items())
+        if gemerkt and gemerkt[0] < eintraege:
+            self.item_i, self.scroll = gemerkt
+        else:
+            # Nichts gemerkt, oder die Liste ist seit dem letzten Mal
+            # kuerzer geworden (Neu-Einlesen, ROM-Filter umgeschaltet) -
+            # dann ist der alte Index wertlos statt bloss ungenau.
+            self.item_i = 0
+            self.scroll = 0
         self.marquee_reset()
 
     def _current_node(self):
@@ -3758,8 +3792,7 @@ class Frontend:
         # Hintergrund selbst (siehe draw_art_panel()), daher genuegt
         # ein einfacher erneuter Aufruf mit der neuen Auswahl.
         syskey = v.get("syskey")
-        has_art = len(v["items"]) > 0 and (bool(syskey) or
-                                           v["items"][0][1] == "game")
+        has_art = self.hat_artspalte(v["items"], syskey)
 
         # NEUES FEATURE ("Turbo-Scroll", Nutzervorschlag): Waehrend eines
         # schnellen Scroll-Bursts (Taste gedrueckt halten, siehe
@@ -3966,8 +3999,11 @@ class Frontend:
             v = getattr(self, "view", None)
             if not v:
                 return
-            L = self.layout_items(bool(v.get("syskey")) or
-                                  (v["items"] and v["items"][0][1] == "game"))
+            # Dieselbe eine Bedingung wie ueberall sonst (Build 89) -
+            # sonst rechnete ausgerechnet die Fusszeile mit einer
+            # anderen Spaltenbreite als der Rest der Seite.
+            L = self.layout_items(
+                self.hat_artspalte(v["items"], v.get("syskey")))
             ox, footer_y = L["ox"], L["footer_y"]
             foot_maxc = max(0, (W - 2 * ox) // (8 * s))
             if foot_maxc < 6:
@@ -4083,12 +4119,7 @@ class Frontend:
         name, _root_node, syskey = self.cats[self.cat_i]
         items = self._display_items()
         total = len(items)
-        # Bei "Zuletzt gespielt" ist der Kategorie-Systemkey None (die
-        # Liste mischt mehrere Systeme) - trotzdem soll die Boxart-
-        # Spalte erscheinen, da jeder einzelne Eintrag seinen eigenen
-        # Systemkey mitbringt (siehe _item_syskey()).
-        has_art = total > 0 and (bool(syskey) or
-                                 (items and items[0][1] == "game"))
+        has_art = self.hat_artspalte(items, syskey)
 
         L = self.layout_items(has_art)
         s, ox, oy = L["s"], L["ox"], L["oy"]
@@ -5690,6 +5721,33 @@ class Frontend:
                 for ln in lines]
         return lines
 
+    def hat_artspalte(self, items, syskey):
+        """Soll rechts neben dieser Liste ueberhaupt eine Boxart-Spalte
+        stehen? EINE Stelle fuer alle drei Aufrufer (voller Aufbau,
+        leichter Navigationspfad, Vorauslader-Geometrie) - laufen die
+        auseinander, berechnet der Vorauslader Miniaturen unter einer
+        Kastengroesse, die der Zeichenpfad nie abfragt.
+
+        GEAENDERT (Build 89, Nutzer-Rueckmeldung: "wenn ich in eine
+        Kategorie reingehe und nur die Ordnerauswahl dort sehe, braucht
+        daneben keine Artwork-Box stehen, das sollte auch weg"). Und er
+        hat recht, nicht nur optisch: Ordner haben praktisch nie ein
+        eigenes Cover, die Spalte zeigte dort also fast immer nur den
+        Platzhalter - und nahm der Liste dafuer knapp die Haelfte der
+        Breite weg.
+
+        Gemischte Ebenen (Ordner UND Spiele nebeneinander) behalten die
+        Spalte: dort gibt es ja echte Cover zu zeigen."""
+        if not items:
+            return False
+        if all(it[1] == "folder" for it in items):
+            return False
+        # Bei "Zuletzt gespielt" ist der Kategorie-Systemkey None (die
+        # Liste mischt mehrere Systeme) - die Spalte erscheint trotzdem,
+        # weil jeder Eintrag seinen eigenen Systemkey mitbringt (siehe
+        # _item_syskey()).
+        return bool(syskey) or items[0][1] == "game"
+
     def _prefetch_neighbor_covers(self):
         """NEUES FEATURE (Nutzerwunsch: 'kann man da was vorcachen?' -
         nach dem Ruckel-Fix beim erneuten Skalieren). Dekodiert (aber
@@ -5791,11 +5849,7 @@ class Frontend:
         W = fb.width
         items = self._display_items()
         _name, _root_node, syskey = self.cats[self.cat_i]
-        # Gleiche Bedingung wie in _draw_page_items_impl(): bei "Zuletzt
-        # gespielt" ist der Kategorie-Systemkey None, die Spalte
-        # erscheint trotzdem, weil jeder Eintrag seinen eigenen Systemkey
-        # mitbringt.
-        has_art = len(items) > 0 and (bool(syskey) or items[0][1] == "game")
+        has_art = self.hat_artspalte(items, syskey)
         if not has_art:
             return None
         L = self.layout_items(has_art)
@@ -6342,6 +6396,37 @@ class Frontend:
         # sonst muesste es dort ein zweites Mal nachgeschlagen werden.
         return avail_w, cover_h, title_lines, info_lines, ra_progress
 
+    def _zeichne_kein_artwork(self, x0, cy, avail_w, cover_h, s):
+        """Der Platzhalter, wenn ein Eintrag WIRKLICH kein Cover hat.
+
+        GEAENDERT (Build 89, Nutzer-Rueckmeldung: "bitte, wenn ein ROM
+        wirklich kein Artwork hat, die Box so anpassen, dass das nicht
+        immer auf die grosse blaue umspringt - das ist optisch nicht
+        schoen und koennte auch Performance-Einbussen bedeuten").
+
+        Hier stand eine VOLLFLAECHIG gefuellte Flaeche in der
+        Akzentfarbe, so gross wie das Cover geworden waere - auf HDMI
+        rund 300x770 Bildpunkte, also gut eine Viertelmillion Pixel, bei
+        jedem Eintrag ohne Cover neu gefuellt. Und sie sprang beim
+        Durchblaettern zwischen Cover und blauem Block hin und her.
+
+        Jetzt ein duenner Rahmen auf der Kartenfarbe, mit dem Hinweis
+        mittig darin: optisch ruhig, und statt einer gefuellten Flaeche
+        sind es vier schmale Balken."""
+        fb = self.fb
+        rahmen = max(1, s)
+        fb.rect(x0, cy, avail_w, rahmen, C_ACCENT2)
+        fb.rect(x0, cy + cover_h - rahmen, avail_w, rahmen, C_ACCENT2)
+        fb.rect(x0, cy, rahmen, cover_h, C_ACCENT2)
+        fb.rect(x0 + avail_w - rahmen, cy, rahmen, cover_h, C_ACCENT2)
+        # Mittig statt links angeschlagen - im leeren Rahmen wirkt
+        # linksbuendiger Text wie ein Rest.
+        for zeile, versatz in ((t("no_artwork_1"), -4 * s),
+                               (t("no_artwork_2"), 5 * s)):
+            tw = len(zeile) * 8 * s
+            fb.text(x0 + max(2 * s, (avail_w - tw) // 2),
+                    cy + cover_h // 2 + versatz, zeile, s, C_DIM, C_PANEL)
+
     def draw_art_panel(self, x0, w, y0, h, syskey, item, s):
         """Eigene Boxart+Info-Spalte rechts neben der Liste (seit v1.8
         deutlich groesser als der alte Block unten rechts, weil sie sich
@@ -6422,11 +6507,20 @@ class Frontend:
         # weiterhin direkt, ohne Umweg. Gleiches Prinzip an den
         # uebrigen ART_HD-Fundstellen (draw_attract(), Wonne-oder-
         # Tonne-Screens, Trophaeenraum/Jahresrueckblick) mitgezogen.
+        # NEU (Build 89): merken, wie oft der Bild-Cache bisher etwas
+        # uebersprungen hat. Liefert get_scaled() gleich None UND ist der
+        # Zaehler dabei gestiegen, war es kein "kein Cover vorhanden",
+        # sondern ein bewusstes Ueberspringen waehrend des Scrollens -
+        # dann darf hier KEIN Platzhalter erscheinen, denn das Cover
+        # kommt gleich (siehe _defer_count in fe/art.py).
+        _defer_vorher = getattr(ART, "_defer_count", 0)
         if H >= 720:
             hd = _art_path_in(ART_HD, syskey, lookup_name)
             art = ART.get_scaled(hd, avail_w, cover_h)
         else:
             art = ART.get_scaled(art_path(syskey, lookup_name), avail_w, cover_h)
+        nur_verzoegert = (art is None
+                          and getattr(ART, "_defer_count", 0) != _defer_vorher)
         if art:
             aw, ah, pix = art
             ax = x0 + max(0, (avail_w - aw) // 2)
@@ -6478,13 +6572,15 @@ class Frontend:
             # und bei jedem Ordner, denn Ordner haben praktisch nie eins -
             # in dieselbe halbe Sekunde Wartezeit laufen.
             #
-            # Jetzt bleibt der schlichte Platzhalter. Er kostet zwei
-            # Textzeilen und ein Rechteck, also nichts.
-            fb.rect(x0, cy, avail_w, cover_h, C_ACCENT2)
-            fb.text(x0 + 4 * s, cy + cover_h // 2 - 4 * s,
-                    t("no_artwork_1"), s, C_DIM, C_ACCENT2)
-            fb.text(x0 + 4 * s, cy + cover_h // 2 + 5 * s,
-                    t("no_artwork_2"), s, C_DIM, C_ACCENT2)
+            # NEU (Build 89, Nutzer-Rueckmeldung: "wenn ich durch die
+            # ROMs scrolle, ploppt immer erst 'kein Artwork' auf und
+            # dann wird das Cover nachgeladen"): wurde das Cover nur
+            # waehrend des Scrollens uebersprungen, kommt es in rund
+            # 150 ms von selbst (COVER_SETTLE). Bis dahin bleibt die
+            # Karte einfach leer - der Platzhalter waere eine Luege fuer
+            # einen Sekundenbruchteil, und genau die hat geblitzt.
+            if not nur_verzoegert:
+                self._zeichne_kein_artwork(x0, cy, avail_w, cover_h, s)
             art_bottom = cy + cover_h
 
         # ---- Titel + Infos darunter, volle Spaltenbreite ----

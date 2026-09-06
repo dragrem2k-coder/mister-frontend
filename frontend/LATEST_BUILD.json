@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-29-88",
-  "summary": "Suche und RA-Schaukasten jetzt auch am Pad (Select halten + A bzw. X, mit Buchstabenraster auf dem Bildschirm), Hilfeseite gegen die echte Tastenbelegung korrigiert, Boxarts und Spieledaten nachladen als eigene Menuepunkte unter Wartung."
+  "build_id": "2026-08-29-89",
+  "summary": "Boxart-Spalte ruhiger: kein Aufblitzen von \"kein Artwork\" beim Scrollen, Platzhalter als duenner Rahmen statt gefuellter Flaeche, keine Spalte bei reinen Ordnerlisten, und die Kategorie merkt sich wieder die Position."
 }

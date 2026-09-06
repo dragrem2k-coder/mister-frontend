@@ -7,6 +7,57 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Die Boxart-Spalte wird ruhiger** (Build 89 — vier Rückmeldungen in
+einer Nachricht):
+
+**1. Kein Aufblitzen von „kein Artwork" mehr.** („Wenn ich durch die
+ROMs scrolle, etwas langsamer, ploppt immer erst ‚kein Artwork' auf und
+dann wird das Cover nachgeladen.") `get_scaled()` lieferte `None` für
+zwei völlig verschiedene Fälle: „es gibt kein Cover" und „ich habe es
+während des Scrollens bewusst übersprungen, es kommt in rund 150 ms"
+(COVER_SETTLE). Der Zeichenpfad konnte die beiden nicht unterscheiden
+und malte auch im zweiten Fall den Platzhalter — der Sekundenbruchteile
+später vom Cover ersetzt wurde. Ein Zähler trennt die Fälle jetzt; beim
+Überspringen bleibt die Karte einfach leer, bis das Cover da ist.
+
+**Wichtig dazu:** dass das überhaupt so oft passiert, heißt, dass der
+Miniaturen-Zwischenspeicher für diese Cover leer ist — bei einem Treffer
+gibt es gar keine Verzögerung. **Build 86 hat die Kastenhöhen geändert,
+damit sind alle vorher erzeugten Einträge ungültig.** Nach dem Umstieg
+auf 86 oder neuer muss „Miniaturen vorbereiten" einmal neu laufen.
+
+**2. Der Platzhalter ist kein blauer Block mehr.** („Wenn ein ROM
+wirklich kein Artwork hat, die Box bitte so anpassen, dass das nicht
+immer auf die große blaue umspringt — das ist optisch nicht schön und
+könnte auch Performance-Einbußen bedeuten.") Er war eine vollflächig
+gefüllte Fläche in der Akzentfarbe, so groß wie das Cover geworden wäre.
+Jetzt ein dünner Rahmen mit dem Hinweis mittig darin. Nachgemessen:
+**8.772 statt 537.387 gefärbte Bildpunkte** auf HDMI, also rund ein
+Einundsechzigstel — der Verdacht mit der Performance war berechtigt.
+
+**3. Reine Ordnerlisten bekommen keine Boxart-Spalte mehr.** („Wenn ich
+in eine Kategorie reingehe und nur die Ordnerauswahl dort sehe, braucht
+daneben keine Artwork-Box stehen.") Ordner haben praktisch nie ein
+eigenes Cover; die Spalte zeigte dort fast immer nur den Platzhalter und
+nahm der Liste dafür knapp die Hälfte der Breite weg. Gemischte Ebenen
+(Ordner und Spiele nebeneinander) behalten sie, ebenso „Zuletzt
+gespielt". Die Bedingung stand vorher an vier Stellen im Code
+handgeschrieben und steht jetzt in einer Funktion — laufen die
+auseinander, berechnet der Vorauslader Miniaturen unter einer
+Kastengröße, die der Zeichenpfad nie abfragt.
+
+**4. Die Kategorie merkt sich, wo man war.** Für Unterordner gab es das
+längst (`_nav_position_stack`), eine Ebene höher nicht: wer SNES bis
+„Super Mario World" durchblättert, zurück zu den Kategorien geht und
+wieder in SNES hinein, stand wieder bei „1942". Gemerkt wird nur die
+Position auf der obersten Ebene, nicht der zuletzt geöffnete Unterordner
+— sonst käme man ohne Herausklicken nicht mehr an die oberste Ebene.
+Nach einem Neu-Einlesen werden die gemerkten Positionen verworfen, weil
+sich dann auch die Kategorie-Nummerierung verschieben kann.
+
+Neu: `tools/test_ruhige_boxspalte.py`. Gesamtstand: 24 Testskripte, alle
+grün.
+
 **Suche und Schaukasten jetzt auch mit dem Pad, Hilfe überarbeitet,
 Nachladen ohne Umweg** (Build 88 — Nutzerwunsch: „Suche per Pad, mit der
 Tastenkombi Select gedrückt halten und A drücken wäre super. Schaukasten
