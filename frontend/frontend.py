@@ -359,6 +359,39 @@ C_ACCENT2= (40, 70, 120)
 # sicher - unter etwa 50 ms nimmt man beim Scrollen nichts wahr.
 RUCKLER_SCHWELLE = 0.08
 
+# NEU (Build 93, Nutzer-Rueckmeldung: "ich habe schnelles Scrollen
+# eigentlich standardmaessig an, und das fuehlt sich manchmal komisch
+# an").
+#
+# WAS DA "KOMISCH" IST: beim Auslassen des Vsync-Wartens kopieren wir,
+# waehrend der Monitor gerade liest. Zeigt das Bild oben noch den alten
+# und weiter unten schon den neuen Inhalt, ist das ein Bildriss
+# (Tearing). Wie sichtbar der ist, haengt NICHT vom Schalter ab, sondern
+# davon, WIE VIEL wir kopieren:
+#
+#   - Zwei Listenzeilen (Navigations-Tick, Laufschrift): das Band ist
+#     ein schmaler Streifen, der Riss faellt in einen Bereich, der sich
+#     ohnehin gerade aendert - praktisch unsichtbar, und genau hier
+#     bringt das Auslassen die gemessenen 8-17 ms.
+#   - Voller Seitenaufbau (Turbo-Sprung, Scrollen an den Listenrand):
+#     hier wandert der Riss quer durch das GANZE Bild. Auf 1080p sind
+#     das gemessen 11,1 ms Kopie gegen 16,7 ms Bildwechsel - der Riss
+#     ist gross, sichtbar und wandert von Bild zu Bild. Das ist das
+#     "komische" Gefuehl.
+#
+# Deshalb haengt das Auslassen ab Build 93 nicht mehr allein am
+# Schalter, sondern zusaetzlich an der GROESSE des Bandes: bis zu
+# diesem Anteil der Bildhoehe wird uebersprungen, darueber (und bei
+# jeder Vollbild-Kopie) wird gewartet. Der Schalter bleibt Vorbedingung
+# - wer ihn aus hat, bekommt weiterhin ueberall Vsync.
+#
+# 0.25 ist bewusst grosszuegig gewaehlt: der gemessene Navigations-Tick
+# auf HDMI umfasst 114 von 1080 Zeilen (10,6 %), auf CRT 32 von 240
+# (13,3 %) - beide bleiben klar darunter, der volle Aufbau (84 % bzw.
+# 81 %) klar darueber. Es gibt also keinen Grenzfall, der zufaellig auf
+# die eine oder andere Seite kippt.
+VSYNC_SKIP_MAX_ANTEIL = 0.25
+
 SYSTEM_ACCENT = {
     "NES":     (210, 70, 70),
     "SNES":    (140, 120, 220),
@@ -2367,6 +2400,31 @@ class Frontend:
         return (fast_scroll_enabled() and
                (time.monotonic() - self._last_input_time) < FAST_SCROLL_WINDOW)
 
+    def _vsync_ueberspringen(self, bandhoehe=None):
+        """Build 93: darf fuer DIESE Kopie das Vsync-Warten entfallen?
+
+        Erweitert _scroll_skip_vsync() um die zweite, entscheidende
+        Bedingung - siehe die ausfuehrliche Begruendung bei
+        VSYNC_SKIP_MAX_ANTEIL: nicht der Schalter allein entscheidet,
+        sondern wie viel Bild die Kopie anfasst.
+
+        bandhoehe = Hoehe des zu kopierenden Streifens in Bildzeilen.
+        None bedeutet ausdruecklich "Vollbild" (fb.flip()) - dort wird
+        IMMER gewartet, denn genau dort entsteht der sichtbare Riss.
+
+        Bewusst als eigene Methode neben _scroll_skip_vsync(): letztere
+        beantwortet weiterhin die andere Frage "wird gerade schnell
+        gescrollt?" und wird an Stellen gebraucht, die gar nichts
+        kopieren (z.B. defer_panel in _draw_page_items_impl())."""
+        if not self._scroll_skip_vsync():
+            return False
+        if bandhoehe is None:
+            return False
+        hoehe = getattr(self.fb, "height", 0) or 0
+        if hoehe <= 0:
+            return False
+        return bandhoehe <= hoehe * VSYNC_SKIP_MAX_ANTEIL
+
     # ------------------------------------------------------------------
     # Adaptives Layout: alles wird aus der Framebuffer-Hoehe abgeleitet.
     # 1080p -> Schrift 3x, 720p -> 2x, 480p -> 1x
@@ -2940,7 +2998,19 @@ class Frontend:
             # (siehe _draw_navigate_cats(), die nur echte Einzelschritte
             # abdeckt), also ausgerechnet waehrend aktiven schnellen
             # Scrollens.
-            fb.flip(skip_vsync=self._scroll_skip_vsync())
+            #
+            # ZURUECKGENOMMEN (Build 93, Nutzer-Rueckmeldung: "schnelles
+            # Scrollen ist bei mir standardmaessig an, und das fuehlt
+            # sich manchmal komisch an"): genau dieser Vollbild-Fall ist
+            # es, der den sichtbaren Bildriss erzeugt - der Riss wandert
+            # hier quer durch das ganze Bild statt durch einen schmalen
+            # Streifen. Die gesparte Zeit war real, aber sie wurde mit
+            # dem einzigen wirklich stoerenden Artefakt bezahlt.
+            # _vsync_ueberspringen(None) heisst ausdruecklich "Vollbild,
+            # immer warten"; die 11,1 ms Kopie auf 1080p passen gemessen
+            # in den Bildwechsel, das Warten ist also bezahlbar. Siehe
+            # VSYNC_SKIP_MAX_ANTEIL.
+            fb.flip(skip_vsync=self._vsync_ueberspringen(None))
 
     # NEUES FEATURE (Build 88, Nutzerwunsch: "Suche per Pad, mit der
     # Tastenkombi Select gedrueckt halten und A druecken waere super").
@@ -3550,7 +3620,8 @@ class Frontend:
         if y_max > y_min:
             if flip:
                 fb.flip_rows(y_min, y_max - y_min,
-                            skip_vsync=self._scroll_skip_vsync())
+                            skip_vsync=self._vsync_ueberspringen(
+                                y_max - y_min))
                 return None, None
             return y_min, y_max
         return None, None
@@ -3708,7 +3779,8 @@ class Frontend:
         y_min = min(y_min, art_y0)
         y_max = max(y_max, art_y0 + art_h)
 
-        fb.flip_rows(y_min, y_max - y_min, skip_vsync=self._scroll_skip_vsync())
+        fb.flip_rows(y_min, y_max - y_min,
+                     skip_vsync=self._vsync_ueberspringen(y_max - y_min))
         return True
 
     def _draw_navigate_items(self, old_item_i):
@@ -3863,7 +3935,8 @@ class Frontend:
         if regions:
             y0 = min(r[0] for r in regions)
             y1 = max(r[1] for r in regions)
-            fb.flip_rows(y0, y1 - y0, skip_vsync=self._scroll_skip_vsync())
+            fb.flip_rows(y0, y1 - y0,
+                         skip_vsync=self._vsync_ueberspringen(y1 - y0))
         return True
 
     def _clear_row_glow_margin(self, item_i):
@@ -3969,7 +4042,8 @@ class Frontend:
         flip_y1 = y_top + max(rowh - 2 * s, 11 * s) + max_p
         if flip:
             fb.flip_rows(flip_y0, flip_y1 - flip_y0,
-                        skip_vsync=self._scroll_skip_vsync())
+                        skip_vsync=self._vsync_ueberspringen(
+                            flip_y1 - flip_y0))
         return flip_y0, flip_y1
 
     def _draw_dynamic_track_marquee(self):
@@ -4001,7 +4075,7 @@ class Frontend:
             track_text = self.track_marquee_text(track_maxc)
             if track_text:
                 fb.text(track_x, y, track_text, s, C_DIM, C_BG)
-            fb.flip_rows(y, h, skip_vsync=self._scroll_skip_vsync())
+            fb.flip_rows(y, h, skip_vsync=self._vsync_ueberspringen(h))
         else:
             # BUGFIX (siehe self._popup_message_until in __init__) -
             # Meldung UND Laufschrift teilen sich hier dieselbe Zeile
@@ -4032,7 +4106,7 @@ class Frontend:
             track_display = self.track_marquee_text(foot_maxc)
             if track_display:
                 fb.text(ox, footer_y, track_display, s, C_DIM)
-            fb.flip_rows(footer_y, h, skip_vsync=self._scroll_skip_vsync())
+            fb.flip_rows(footer_y, h, skip_vsync=self._vsync_ueberspringen(h))
 
     def _draw_status_bar(self, L):
         """Netzwerksymbol (nur wenn verbunden) + Uhrzeit unten rechts
@@ -4524,7 +4598,16 @@ class Frontend:
             # "gerade aktiv am Scrollen"-Fenster (dieselbe Zeitspanne
             # wie COVER_SETTLE) - im Ruhezustand bleibt Vsync IMMER
             # aktiv, kein Tearing-Risiko beim blossen Betrachten.
-            _skip_vsync = self._scroll_skip_vsync()
+            #
+            # ZURUECKGENOMMEN (Build 93): siehe VSYNC_SKIP_MAX_ANTEIL und
+            # den gleichlautenden Kommentar in draw_page_cats(). Der
+            # Vollbild-Aufbau ist die EINE Stelle, an der das Auslassen
+            # einen quer durchs Bild wandernden Riss erzeugt - und die
+            # Stelle, die der Nutzer als "fuehlt sich komisch an"
+            # beschrieben hat. Das Auslassen bleibt dort, wo es
+            # nachweislich hilft und nicht auffaellt: bei den schmalen
+            # Zeilenbaendern (flip_rows, siehe _vsync_ueberspringen()).
+            _skip_vsync = self._vsync_ueberspringen(None)
             # GEPRUEFT UND VERWORFEN (Build 77): hier stand kurzzeitig
             # ein Teil-Flip, der beim Scrollen nur die linke Bildhaelfte
             # kopiert haette (die Boxart-Spalte rechts wird ja ohnehin
@@ -4880,7 +4963,7 @@ class Frontend:
                 self.mq_pause = 6          # am Ende kurz stehenbleiben
         y = self.draw_list_row(self.item_i)
         self.fb.flip_rows(y - 3 * v["s"], v["rowh"],
-                          skip_vsync=self._scroll_skip_vsync())
+                          skip_vsync=self._vsync_ueberspringen(v["rowh"]))
 
     def marquee_reset(self):
         self.mq_off = 0
@@ -10084,6 +10167,29 @@ class Frontend:
                                getattr(self, "_perf_art", 0) * 1000,
                                getattr(self, "_perf_flip", 0) * 1000,
                                _act_prev, self.page))
+                    # NEU (Build 93): dieselbe Messung, die oben nur im
+                    # Ausnahmefall ins Log geht, treibt jetzt auch die
+                    # Wiederholrate der gehaltenen Richtungstaste an -
+                    # siehe zeichenzeit_melden()/_repeat_floor() in
+                    # fe/input.py. Bewusst hier und mit den bereits
+                    # vorhandenen Zeitstempeln: es kostet keine einzige
+                    # zusaetzliche Zeitabfrage.
+                    #
+                    # Gemeldet wird (_rt0 - _rt_prev), also GENAU die
+                    # Zeit fuer Verarbeitung + Zeichnen der VORIGEN
+                    # Aktion - ohne _publish_stream() (das ist Hausarbeit
+                    # fuer den Mirror-Modus, nicht Teil des Bildaufbaus)
+                    # und ohne die Wartezeit in next_action() (das ist
+                    # die Pause bis zum naechsten Tastendruck; sie mit
+                    # einzurechnen wuerde jede Einzeltaste als
+                    # "sekundenlanges Zeichnen" melden).
+                    try:
+                        self.inp.zeichenzeit_melden(_act_prev,
+                                                    _rt0 - _rt_prev)
+                    except Exception:
+                        pass   # eine Messung darf die Bedienung nie
+                               # stoppen - im Zweifel bleibt es bei den
+                               # festen Boeden
                 _rt_prev = time.monotonic()
                 _act_prev = act
 

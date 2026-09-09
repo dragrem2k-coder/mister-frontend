@@ -49,6 +49,9 @@ im._last_repeat_time = 0.0
 im._last_repeat_act = None
 im._last_repeat_iv = I.REPEAT_INTERVAL
 im._last_input_mtime = None
+# Build 93: ohne Messwerte gelten die festen Boeden - genau der
+# Zustand, den dieser Test prueft.
+im._zeichenzeit = {}
 
 KID_DOWN = ("/dev/input/event0", "key", 108)
 KID_UP = ("/dev/input/event0", "key", 103)

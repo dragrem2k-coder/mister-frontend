@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-29-92",
-  "summary": "Fehler behoben: Cover, die genau in den Kasten passen (NES, Master System, Atari, Jaguar, 32X, Arcade), landeten nie im Miniaturen-Zwischenspeicher und wurden beim Scrollen immer wieder uebersprungen."
+  "build_id": "2026-08-29-93",
+  "summary": "Latenz: Vsync wird beim schnellen Scrollen nur noch bei schmalen Zeilenbaendern uebersprungen (kein Bildriss mehr beim vollen Aufbau), und die Wiederholrate der gehaltenen Richtungstaste richtet sich jetzt nach der tatsaechlich gemessenen Zeichendauer statt nach einem festen Wert."
 }

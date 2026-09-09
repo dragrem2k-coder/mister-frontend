@@ -40,6 +40,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_kein_systemhintergrund.py \
   && python3 tools/test_pad_bedienung.py \
   && python3 tools/test_ruhige_boxspalte.py \
+  && python3 tools/test_vsync_und_wiederholrate.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -69,6 +70,7 @@ python3 tools/regression_test.py \
 | `test_kein_systemhintergrund.py` | Test (Pass/Fail) | System-Hintergrundbilder sind restlos raus: kein bg-Zugriff, kein zweiter Bildversuch ohne Cover, kein Menuepunkt |
 | `test_pad_bedienung.py` | Test (Pass/Fail) | Select als Modifikator (Select+A/Select+X), Buchstabenwaehler, Hilfe gegen die echte Belegung |
 | `test_ruhige_boxspalte.py` | Test (Pass/Fail) | Verzoegertes Cover zeigt keinen Platzhalter, Platzhalter ist ein Rahmen, keine Spalte bei reinen Ordnerlisten, Positionsgedaechtnis je Kategorie |
+| `test_vsync_und_wiederholrate.py` | Test (Pass/Fail) | Vsync-Auslassen nur noch bei schmalen Baendern, Wiederholrate folgt der gemessenen Zeichendauer |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -653,6 +655,52 @@ den Normalfall und die beiden Faelle, in denen ein gemerkter Index
 schlimmer waere als keiner: eine kuerzer gewordene Liste und ein
 Neu-Einlesen (nach dem sich auch die Kategorie-Nummerierung verschieben
 kann).
+
+## test_vsync_und_wiederholrate.py
+
+Die beiden Latenz-Aenderungen aus Build 93. Beide gehen auf denselben
+Satz zurueck: "Ich habe schnelles Scrollen eigentlich standardmaessig
+an - und das fuehlt sich manchmal komisch an."
+
+**Das Vsync-Auslassen war zu grob.** Es galt bis Build 92 pauschal fuer
+JEDE Kopie, sobald der Schalter an war und gerade gescrollt wurde. Ein
+Bildriss in einem zwei Zeilen hohen Streifen sieht niemand - derselbe
+Riss quer durch ein 1080-Zeilen-Bild sieht jeder. Ab Build 93
+entscheidet zusaetzlich die GROESSE des Bandes
+(`VSYNC_SKIP_MAX_ANTEIL`, `Frontend._vsync_ueberspringen()`): bis 25 %
+der Bildhoehe wird uebersprungen, darueber und bei jedem Vollbild wird
+gewartet.
+
+Test 3 ist der wichtigste: er prueft nicht die Schwelle an sich,
+sondern dass die tatsaechlich GEMESSENEN Bandhoehen weit von ihr
+entfernt liegen - leichter Pfad 11-13 % der Bildhoehe, voller Aufbau
+81-84 %. Es gibt also keinen Grenzfall, der bei einer kleinen
+Layout-Aenderung zufaellig auf die andere Seite kippt. Test 14 ist der
+Regressionsschutz gegen ein versehentliches Zurueckrutschen auf den
+alten, pauschalen Aufruf - und prueft zugleich, dass
+`_scroll_skip_vsync()` NICHT verschwindet: es beantwortet weiterhin die
+andere Frage ("wird gerade schnell gescrollt?") fuer die beiden
+Entscheidungen, die gar nichts kopieren.
+
+**Die Wiederholrate war geraten.** Feste 0.08 s bedeuten 12,5
+angeforderte Schritte pro Sekunde - unabhaengig davon, ob ein Aufbau
+3 ms kostet (CRT, leichter Pfad) oder 110 ms (HDMI, voller Aufbau mit
+Cover). Beides ist falsch: im ersten Fall unnoetig traege, im zweiten
+kommen mehr Schritte herein als gezeichnet werden koennen. Der
+Ueberschuss verschwindet nicht, er staut sich - und der Stau ist genau
+das, was man als Lag wahrnimmt. `zeichenzeit_melden()` bekommt die
+tatsaechliche Dauer aus `run()` (dieselben Zeitstempel, die der
+Ruckler-Detektor ohnehin nimmt - keine einzige zusaetzliche
+Zeitabfrage), `_repeat_floor()` leitet den Boden daraus ab.
+
+Test 9 sichert eine bewusste Asymmetrie ab: hoch/runter darf durch die
+Messung schneller werden, links/rechts nicht. Bei einem Seitensprung
+ist nicht die Rechenzeit die Grenze, sondern das Lesen - schnellere
+Hardware aendert daran nichts. Die Tests 10 bis 12 decken ab, was
+schiefgehen kann, wenn man eine Regelgroesse aus Messwerten ableitet:
+Deckel nach oben, Verwerfen von Unsinn (Uhrensprung, ein
+zwischendurch gestartetes Spiel), und Traegheit gegen einen einzelnen
+Ausreisser.
 
 ## diag_lightpath.py
 

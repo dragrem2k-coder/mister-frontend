@@ -7,6 +7,61 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Zwei Latenz-Änderungen, beide aus einem einzigen Satz entstanden**
+(Build 93 — „Ich habe schnelles Scrollen eigentlich standardmäßig an,
+und das fühlt sich manchmal komisch an, bitte berücksichtigen"):
+
+Dieser Satz hat die geplante Richtung umgeworfen. Alles, was als
+Beschleunigung vorgeschlagen war, lief bei ihm längst — der Schalter war
+die ganze Zeit an. Was er spürte, war die **Kehrseite** davon.
+
+**1. Das Vsync-Auslassen war zu grob.** Es galt pauschal für *jede*
+Kopie, sobald der Schalter an war und gerade gescrollt wurde. Ein
+Bildriss in einem zwei Zeilen hohen Streifen sieht niemand — derselbe
+Riss quer durch ein 1080-Zeilen-Bild sieht jeder. Ab jetzt entscheidet
+zusätzlich, **wie viel Bild** die Kopie anfasst:
+
+| Was wird kopiert | Anteil der Bildhöhe | Vsync |
+|---|---|---|
+| Navigations-Tick, Laufschrift | 11–13 % | wird übersprungen |
+| voller Seitenaufbau | 81–84 % | wird gewartet |
+
+Die Schwelle liegt bei 25 %, also weit von beiden gemessenen Werten
+entfernt — kein Grenzfall, der bei einer Layout-Änderung zufällig kippt.
+Die 11,1 ms Vollbild-Kopie (auf dem Gerät gemessen) passen in den
+16,7 ms langen Bildwechsel, das Warten ist also bezahlbar. Der Schalter
+bleibt Voraussetzung: wer ihn aus hat, bekommt weiterhin überall Vsync.
+
+**2. Die Wiederholrate der gehaltenen Richtungstaste war geraten.** Feste
+0,08 s heißen 12,5 angeforderte Schritte pro Sekunde — unabhängig davon,
+ob ein Aufbau 3 ms kostet (CRT, leichter Pfad) oder 110 ms (HDMI, voller
+Aufbau mit Cover). Beides ist falsch:
+
+- **zu langsam**, wo mehr ginge (CRT könnte 25/s);
+- **zu schnell**, wo es nicht reicht — es kommen mehr Schritte herein,
+  als gezeichnet werden können. Der Überschuss verschwindet nicht, er
+  **staut sich**: die Liste läuft nach dem Loslassen noch weiter. Genau
+  das nimmt man als Lag wahr.
+
+Das Frontend misst jetzt, wie lange Verarbeitung und Neuzeichnen
+tatsächlich gedauert haben, und leitet die Wiederholrate daraus ab —
+mit denselben Zeitstempeln, die der Ruckler-Detektor ohnehin nimmt, also
+ohne eine einzige zusätzliche Zeitabfrage. Bewusst asymmetrisch:
+hoch/runter darf dadurch **schneller** werden, links/rechts nicht. Bei
+einem Seitensprung ist nicht die Rechenzeit die Grenze, sondern das
+Lesen — schnellere Hardware ändert daran nichts.
+
+Abgesichert nach oben (Deckel bei 0,5 s, damit eine langsame Phase die
+Bedienung nicht festnagelt), nach unten (nie schneller als 25 Schritte/s),
+gegen Unsinn (Uhrensprung, ein zwischendurch gestartetes Spiel) und gegen
+einzelne Ausreißer (gleitendes Mittel über acht Aufbauten).
+
+Neuer Test: `tools/test_vsync_und_wiederholrate.py` (14 Prüfungen).
+Nebenbei ein Fehlalarm im Skript-Test korrigiert — `read -r -n 1`
+(beliebige Taste abwarten, ohne Variable) wurde als ungeprüfte Eingabe
+gemeldet, weil die Suche die Ziffer `1` für einen Variablennamen hielt.
+
+
 **Der eigentliche Fehler: Cover, die genau in den Kasten passen, landeten
 nie im Zwischenspeicher** (Build 92 — gefunden durch die
 Nutzer-Beobachtung: „Das passiert bei NES, Master System, Atari 2600,

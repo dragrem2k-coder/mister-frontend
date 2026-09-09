@@ -124,7 +124,13 @@ print("Test 3: keine Abfrage vergleicht mehr ungefiltert auf Gleichheit")
 # hier schiefgegangen ist. Sie ist erlaubt - aber nur, wenn die
 # Eingabe vorher gesaeubert wurde.
 VERDAECHTIG = []
-LESEN = re.compile(r'^\s*read\s+(?:-\w+\s+)*(?:-p\s+"[^"]*"\s+)?(\w+)\s*$')
+# Der Variablenname muss mit Buchstabe oder _ beginnen - sonst schlug
+# die Pruefung bei "read -r -n 1" (eine beliebige Taste abwarten, ohne
+# Variable) falsch an und meldete die ZIFFER 1 als Variablennamen. Ein
+# solches read liest gar nichts in eine Variable und kann deshalb auch
+# nichts falsch vergleichen.
+LESEN = re.compile(
+    r'^\s*read\s+(?:-\w+\s+)*(?:-p\s+"[^"]*"\s+)?([A-Za-z_]\w*)\s*$')
 for fn in sorted(os.listdir(SCRIPTS)):
     if not fn.endswith(".sh"):
         continue

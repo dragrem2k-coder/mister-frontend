@@ -312,6 +312,62 @@ REPEAT_CONTINUE_WINDOW = 0.5   # so lange gilt ein Scrollvorgang als "laufend"
 PAGE_ACTIONS      = {"left", "right"}
 REPEAT_FLOOR      = 0.08   # hoch/runter: eine Zeile pro Schritt
 REPEAT_FLOOR_PAGE = 0.25   # links/rechts: eine ganze Seite pro Schritt
+
+# NEU (Build 93, Nutzerwunsch: "auf jeden Fall muss die Latenz deutlich
+# besser werden und noch schneller von der Bedienung und scrollen").
+#
+# DAS PROBLEM MIT FESTEN BOEDEN: die beiden Werte oben sind geraten -
+# gut geraten, aber eben fest. Was ein Bildaufbau WIRKLICH kostet,
+# schwankt um mehr als das Zehnfache:
+#
+#   CRT 240 Zeilen, leichter Navigations-Pfad     ~3 ms
+#   HDMI 1080p, leichter Navigations-Pfad        ~15 ms
+#   HDMI 1080p, voller Aufbau mit Cover          45-110 ms
+#
+# Bei festen 0.08 s fordern wir immer 12,5 Schritte/s an. In der ersten
+# Zeile sind das viel zu wenige (dort waeren 40+ moeglich, das Frontend
+# fuehlt sich unnoetig traege an), in der letzten viel zu viele: es
+# kommen mehr Wiederholungen herein, als das Frontend zeichnen kann.
+# Der Ueberschuss verschwindet nicht, er staut sich - die Liste laeuft
+# nach dem Loslassen noch weiter, und genau das nimmt man als "Lag"
+# wahr. Wir haben also gleichzeitig zu langsam UND zu schnell
+# angefordert, je nach Situation.
+#
+# Deshalb misst das Frontend jetzt, wie lange das Neuzeichnen nach
+# einer Wiederholung tatsaechlich gedauert hat (run() hat die noetigen
+# Zeitstempel fuer den Ruckler-Detektor ohnehin schon) und meldet es
+# ueber zeichenzeit_melden() hierher. Der Boden ist dann kein Ratewert
+# mehr, sondern die gemessene Lieferzeit plus etwas Reserve. Getrennt
+# je Achse, weil hoch/runter und links/rechts voellig verschieden teuer
+# sind.
+#
+# REPEAT_MESS_FENSTER: gleitendes Mittel ueber die letzten ~8 Aufbauten.
+# Bewusst traege - ein einzelner Ausreisser (ein Cover, das gerade von
+# der SD-Karte geladen wurde) darf die Wiederholrate nicht sofort
+# einbrechen lassen.
+# REPEAT_MESS_RESERVE: das Zeichnen ist nicht alles, was pro Runde
+# passiert (Eingaben lesen, Musik, Laufschrift). 15 % Aufschlag halten
+# die Warteschlange auch dann leer, wenn eine Runde etwas teurer war
+# als der Durchschnitt.
+# REPEAT_FLOOR_MAX: Notbremse nach oben. Ohne sie koennte eine einzelne
+# sehr langsame Phase (kalter Cache, Netzwerk-Nachladen) die Bedienung
+# fuer Sekunden auf Kriechtempo festnageln. Bei 0.5 s wiederholt es
+# zweimal pro Sekunde - langsam, aber nie "kaputt".
+# REPEAT_FLOOR_MIN: Untergrenze nach unten, gilt NUR fuer hoch/runter.
+# 25 Schritte/s ist bereits sehr flott; darunter wuerde die gemessene
+# Zeit ohnehin mehr Messrauschen als Signal enthalten.
+#
+# WICHTIG - die Messung darf nur bei hoch/runter auch BESCHLEUNIGEN:
+# bei links/rechts ist nicht die Rechenzeit die Grenze, sondern der
+# Mensch. Wer pro Sekunde mehr als vier ganze Seiten weiterspringt,
+# kann nicht mehr lesen, wo er gelandet ist - schnellere Hardware
+# aendert daran nichts. Deshalb bleibt REPEAT_FLOOR_PAGE dort die harte
+# Untergrenze, und die Messung kann links/rechts nur noch VERLANGSAMEN
+# (falls ein Seitenaufbau laenger dauert als 0.25 s), nie beschleunigen.
+REPEAT_MESS_FENSTER = 8
+REPEAT_MESS_RESERVE = 1.15
+REPEAT_FLOOR_MAX    = 0.50
+REPEAT_FLOOR_MIN    = 0.04
 # Zuordnung Aktion -> Achse: nur ein Wechsel INNERHALB derselben Achse
 # gilt als Richtungswechsel (hoch<->runter, links<->rechts).
 REPEAT_AXIS = {"up": "y", "down": "y", "left": "x", "right": "x"}
@@ -430,7 +486,39 @@ class InputManager:
         # dieses Haltens schon eine Kombination ausgeloest hat.
         self._select_down = set()      # Geraetepfade mit gehaltenem Select
         self._select_kombiniert = False
+        # Build 93: gemessene Zeichendauer je Achse ("y" = hoch/runter,
+        # "x" = links/rechts) als gleitendes Mittel in Sekunden. Leer =
+        # noch nichts gemessen, dann gelten die festen Boeden. Siehe
+        # zeichenzeit_melden()/_repeat_floor().
+        self._zeichenzeit = {}
         self.rescan(force=True)
+
+    def zeichenzeit_melden(self, act, dauer):
+        """Build 93: das Frontend meldet nach jeder verarbeiteten Aktion,
+        wie lange Verarbeitung + Neuzeichnen tatsaechlich gedauert haben.
+        Daraus wird die Wiederholrate abgeleitet - siehe den
+        ausfuehrlichen Kommentar bei REPEAT_MESS_FENSTER.
+
+        Bewusst tolerant gegen Unsinn (None, 0, negative Werte durch
+        Uhrensprung, absurd grosse Werte durch ein zwischendurch
+        gestartetes Spiel): solche Meldungen werden verworfen, statt das
+        Mittel zu vergiften. Die Obergrenze ist REPEAT_FLOOR_MAX - alles
+        darueber wuerde ohnehin abgeschnitten und traegt nichts bei,
+        wuerde das Mittel aber lange nachwirkend verzerren."""
+        achse = REPEAT_AXIS.get(act)
+        if achse is None:
+            return
+        try:
+            dauer = float(dauer)
+        except (TypeError, ValueError):
+            return
+        if not (0.0 < dauer <= REPEAT_FLOOR_MAX):
+            return
+        alt = self._zeichenzeit.get(achse)
+        if alt is None:
+            self._zeichenzeit[achse] = dauer
+        else:
+            self._zeichenzeit[achse] = alt + (dauer - alt) / REPEAT_MESS_FENSTER
 
     def rescan(self, force=False):
         # Billiger Schnellcheck: aendert sich /dev/input ueberhaupt? Neue
@@ -478,11 +566,25 @@ class InputManager:
         for d in self.devices.values():
             d.grab(on)
 
-    @staticmethod
-    def _repeat_floor(act):
+    def _repeat_floor(self, act):
         """Kleinstmoegliches Wiederhol-Intervall fuer eine Aktion - fuer
-        links/rechts bewusst groesser, siehe REPEAT_FLOOR_PAGE."""
-        return REPEAT_FLOOR_PAGE if act in PAGE_ACTIONS else REPEAT_FLOOR
+        links/rechts bewusst groesser, siehe REPEAT_FLOOR_PAGE.
+
+        Seit Build 93 nicht mehr fest, sondern an die TATSAECHLICH
+        gemessene Zeichendauer gekoppelt (siehe zeichenzeit_melden() und
+        den ausfuehrlichen Kommentar bei REPEAT_MESS_FENSTER). Solange
+        noch nichts gemessen wurde - also beim allerersten Tastendruck
+        nach dem Start - gelten unveraendert die bisherigen festen
+        Werte; die Anpassung greift erst, wenn echte Zahlen vorliegen."""
+        if act in PAGE_ACTIONS:
+            basis = minimum = REPEAT_FLOOR_PAGE
+        else:
+            basis, minimum = REPEAT_FLOOR, REPEAT_FLOOR_MIN
+        gemessen = self._zeichenzeit.get(REPEAT_AXIS.get(act))
+        if gemessen is None:
+            return basis
+        return min(REPEAT_FLOOR_MAX,
+                   max(minimum, gemessen * REPEAT_MESS_RESERVE))
 
     def _hold(self, key_id, act):
         if act not in REPEAT_ACTIONS:
