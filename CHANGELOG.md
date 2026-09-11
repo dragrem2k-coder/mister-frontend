@@ -7,6 +7,58 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Der Schlagschatten des Cover-Panels war zu 98 % unsichtbar** (Build 97):
+
+Die Messung aus Build 96 hatte gezeigt, wo die Zeit beim Scrollen auf
+HDMI wirklich hingeht — nicht in die Listenzeilen, sondern ins
+Cover-Panel. Und dort war der größte Einzelposten der Schatten.
+
+Er wurde als **vollständiger** abgerundeter Kasten in Kartengröße
+gemalt — und die Karte direkt danach darüber. Auf 1080p sind das
+769×945 = 726.705 Bildpunkte, von denen **15.210 (2,1 %) jemals zu
+sehen sind**. Der Rest wird im selben Atemzug übermalt. Gemessen
+0,461 ms pro Panel-Aufbau, also 35 % des gesamten Panels, für nichts.
+
+Der alte Kommentar an dieser Stelle stimmte sogar — „kostet genauso
+wenig wie ein normaler `rect()`-Aufruf". Er war nur die falsche Frage:
+ein `rect()` dieser Größe ist nicht billig, sondern der zweitteuerste
+Posten im Panel.
+
+| | vorher | nachher |
+|---|---|---|
+| Schatten | 0,461 ms | 0,227 ms |
+| Cover-Panel gesamt (HDMI) | 1,125 ms | 0,969 ms |
+
+**Das Bild ist bitgenau unverändert.** Der Schatten ist ein rein
+optisches Detail — wäre er hinterher an einer Ecke anders, wäre das
+eine Verschlechterung für einen Gewinn, den niemand sieht. Statt die
+sichtbare Form als zwei Streifen nachzubauen (naheliegend, aber an den
+gerundeten Ecken nicht exakt: auch die Karte hat Eckkerben, durch die
+der Schatten stellenweise durchscheint), wird Bildzeile für Bildzeile
+gerechnet — Schattenspanne minus Kartenspanne.
+
+**Zwei Fallen, beide vom Test gefunden:**
+
+1. **Der Bildrand.** `rect_rounded()` beschneidet Breite und Höhe am
+   Bildrand *zuerst* und rundet danach — eine abgeschnittene Karte
+   bekommt also eine andere Rundung als eine freistehende. Die erste
+   Fassung bildete das nicht nach.
+2. **Zu clever ist langsam.** Die erste Fassung rechnete jede Bildzeile
+   einzeln aus. Korrekt — aber gemessen **viermal langsamer** als das
+   volle Rechteck, das sie ersetzen sollte. Neunhundert
+   Einzelzuweisungen schlagen jede eingesparte Fläche. Jetzt geht der
+   gerade Mittelteil in *einem* `rect()`-Aufruf weg, einzeln gerechnet
+   wird nur an den Ecken.
+
+Neuer Test: `tools/test_cover_panel.py` (23 Prüfungen), inklusive einer
+Messung — eine Änderung, die nur theoretisch spart, hat hier nichts
+verloren.
+
+CRT ist von alledem kaum betroffen: das Panel kostet dort 0,165 ms
+gegen 1,125 ms auf HDMI, Faktor 6,8. Das deckt sich mit der
+Beobachtung, dass sich im CRT-Modus längst nichts mehr träge anfühlt.
+
+
 **Scroll-Blitting — gebaut, gemessen, und es bringt nichts** (Build 96 —
 „Scroll-Blitting probieren wir mal aus, wenn es nichts bringt schmeißen
 wir es wieder raus", mit An- und Ausschalter unter *System → Anzeige &

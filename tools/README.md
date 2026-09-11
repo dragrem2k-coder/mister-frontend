@@ -44,6 +44,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_hinweisbox_flackern.py \
   && python3 tools/test_ra_einstellungen.py \
   && python3 tools/test_scroll_blitting.py \
+  && python3 tools/test_cover_panel.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -78,6 +79,7 @@ python3 tools/regression_test.py \
 | `test_ra_einstellungen.py` | Test (Pass/Fail) | MiSTers RA-Datei: nur die gemeinte Zeile wird angefasst, Zugangsdaten und Kommentare bleiben |
 | `test_scroll_blitting.py` | Test (Pass/Fail) | Geblittet sieht bitgenau aus wie voll aufgebaut, auch nach 30 Schritten |
 | `bench_scrollblit.py` | Diagnose (immer Rueckgabewert 0) | Was Scroll-Blitting wirklich bringt - aufgeteilt nach Posten |
+| `test_cover_panel.py` | Test (Pass/Fail) | Verkuerzter Schlagschatten ergibt bitgenau dasselbe Bild und ist schneller |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -823,6 +825,42 @@ Der Schalter bleibt trotzdem drin (Standard AUS): die
 Entwicklungsumgebung ist nicht das Geraet - dort hat das Cover echte
 Bilddaten und die CPU ist eine andere. Bestaetigt sich die Messung auf
 dem MiSTer, gehoert der ganze Pfad geloescht.
+
+## test_cover_panel.py
+
+Der Schlagschatten des Cover-Panels (Build 97). Die Messung aus
+Build 96 hatte gezeigt, dass beim Scrollen auf HDMI nicht die
+Listenzeilen die Zeit kosten, sondern das Cover-Panel - und dort war
+der GROESSTE Einzelposten der Schatten.
+
+Er wurde als vollstaendiger abgerundeter Kasten in Kartengroesse gemalt
+und die Karte direkt danach darueber. Auf 1080p sind das 769x945 =
+726.705 Bildpunkte, von denen **15.210 (2,1 %) jemals zu sehen sind**.
+Gemessen 0,461 ms pro Panel-Aufbau, also 35 % des gesamten Panels, fuer
+Bildpunkte, die im selben Atemzug wieder verschwinden.
+
+**Die Anforderung ist hart: bitgenau dasselbe Bild.** Der Schatten ist
+ein rein optisches Detail - waere er hinterher auch nur an einer Ecke
+anders, waere das eine Verschlechterung fuer einen Gewinn, den niemand
+sieht. Der Test rechnet deshalb nichts nach, sondern stellt den ALTEN
+Weg gegen den NEUEN: derselbe Puffer, einmal volles Schattenrechteck
+plus Karte, einmal verkuerzter Schatten plus Karte. Byte fuer Byte.
+
+Zwei Fallen, beide vom Test gefunden:
+
+1. **Der Bildrand.** `rect_rounded()` beschneidet Breite und Hoehe am
+   Bildrand ZUERST und rundet danach - eine abgeschnittene Karte
+   bekommt also eine ANDERE Rundung als eine freistehende. Die erste
+   Fassung bildete das nicht nach und malte am Rand einen anders
+   geformten Schatten.
+2. **Zu clever ist langsam.** Die erste Fassung rechnete jede Bildzeile
+   einzeln aus. Korrekt, aber gemessen VIERMAL LANGSAMER als das volle
+   Rechteck, das sie ersetzen sollte - neunhundert Einzelzuweisungen
+   schlagen jede eingesparte Flaeche. Jetzt geht der gerade Mittelteil
+   in EINEM rect()-Aufruf weg, einzeln gerechnet wird nur an den Ecken.
+
+Test 4 misst mit: eine Aenderung, die nur theoretisch spart, hat hier
+nichts verloren.
 
 ## diag_lightpath.py
 

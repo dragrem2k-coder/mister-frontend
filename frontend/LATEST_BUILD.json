@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-11-96",
-  "summary": "Scroll-Blitting als abschaltbares Experiment unter System - Anzeige & Sound (Standard AUS). Gemessen bringt es nichts: der groesste Posten ist das Cover-Panel, nicht die Listenzeilen."
+  "build_id": "2026-09-11-97",
+  "summary": "HDMI schneller: der Schlagschatten des Cover-Panels wurde als volles Rechteck gemalt und danach zu 98 Prozent von der Karte uebermalt. Jetzt wird nur noch der sichtbare Teil gezeichnet - bitgenau dasselbe Bild, 0,23 ms weniger pro Aufbau."
 }

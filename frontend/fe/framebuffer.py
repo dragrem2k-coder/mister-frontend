@@ -505,6 +505,152 @@ class Framebuffer:
                 buf[off:off + need] = row
                 off += stride
 
+    def _rounded_indents(self, radius):
+        """Einzug je Randzeile fuer eine Eckenrundung dieses Radius -
+        einmal berechnet, dann aus dem Zwischenspeicher. Ausgelagert in
+        Build 97, weil rect_rounded_schatten() dieselbe Tabelle braucht:
+        nur mit exakt derselben Rundung laesst sich ausrechnen, welcher
+        Teil des Schattens von der Karte verdeckt wird."""
+        key_ind = ("rounded_indent", radius)
+        indents = self._rectcache.get(key_ind)
+        if indents is None:
+            indents = []
+            r2 = radius * radius
+            for ry in range(radius):
+                dy = radius - ry - 1
+                dx = 0
+                while dx < radius and (radius - dx - 1) ** 2 + dy * dy <= r2:
+                    dx += 1
+                indents.append(radius - dx)
+            self._rectcache[key_ind] = indents
+        return indents
+
+    def _zeilenband(self, rgb, n):
+        """n Bildpunkte einer Farbe als fertige Bytes - gleiche
+        Zwischenspeicher-Konvention wie rect()/rect_rounded()."""
+        key = (rgb, n)
+        row = self._rectcache.get(key)
+        if row is None:
+            row = self.px(rgb) * n
+            self._rectcache[key] = row
+        return row
+
+    def rect_rounded_schatten(self, x, y, w, h, versatz, rgb, radius=None):
+        """Den SICHTBAREN Teil eines Schlagschattens zeichnen - also den
+        abgerundeten Kasten bei (x+versatz, y+versatz) OHNE alles, was
+        der gleich grosse Kasten bei (x, y) gleich darueber legt.
+
+        NEU (Build 97). WARUM: der Schatten des Cover-Panels wurde als
+        volles Rechteck in Kartengroesse gemalt und danach von der Karte
+        fast vollstaendig ueberdeckt. Auf 1080p sind das 769x945 =
+        726.705 Bildpunkte, von denen **15.210 (2,1 %) jemals zu sehen
+        sind** - der Rest wird im selben Atemzug uebermalt. Gemessen
+        kostete das 0,461 ms pro Panel-Aufbau, also 35 % des gesamten
+        Panels, fuer nichts.
+
+        Statt die sichtbare Form von Hand als zwei Streifen nachzubauen
+        (naheliegend, aber an den vier gerundeten Ecken nicht exakt -
+        auch die Karte hat Eckkerben, durch die der Schatten stellenweise
+        durchscheint), wird hier Bildzeile fuer Bildzeile gerechnet: der
+        Schatten hat in jeder Zeile eine Spanne, die Karte auch, und
+        gezeichnet wird die Differenz. Damit ist das Ergebnis
+        bitgenau dasselbe wie vorher - nur ohne die verdeckten Punkte.
+        Genau das prueft tools/test_cover_panel.py."""
+        if w <= 0 or h <= 0 or versatz <= 0:
+            return
+        if len(self._rectcache) > ROWCACHE_MAX_ENTRIES:
+            self._rectcache.clear()
+
+        def gestalt(gx, gy):
+            """Position, Groesse und Einzugstabelle eines der beiden
+            Kaesten - GENAU so beschnitten, wie rect_rounded() es tut.
+
+            Das ist keine Kosmetik: rect_rounded() beschneidet Breite und
+            Hoehe am Bildrand ZUERST und rundet danach - eine am rechten
+            Rand abgeschnittene Karte bekommt also eine andere Rundung
+            als eine freistehende. Wer das hier nicht nachbildet, malt
+            am Bildrand einen anders geformten Schatten. Genau daran ist
+            der erste Versuch gescheitert (Test 2)."""
+            gx_ = max(0, gx)
+            gy_ = max(0, gy)
+            gw = min(w, self.width - gx_)
+            gh = min(h, self.height - gy_)
+            if gw <= 0 or gh <= 0:
+                return None
+            r = radius
+            if r is None:
+                r = max(1, min(gw, gh) // 8)
+            r = max(0, min(r, gw // 2, gh // 2))
+            return (gx_, gy_, gw, gh, r,
+                    self._rounded_indents(r) if r > 0 else None)
+
+        schatten = gestalt(x + versatz, y + versatz)
+        if schatten is None:
+            return
+        karte = gestalt(x, y)
+        sx, sy, sw, sh, sr, sind = schatten
+
+        def einzug(gestalt_, j):
+            if gestalt_ is None:
+                return None
+            _gx, _gy, gw, gh, r, ind = gestalt_
+            if not ind or not (0 <= j < gh):
+                return 0 if 0 <= j < gh else None
+            if j < r:
+                return ind[j]
+            if j >= gh - r:
+                return ind[gh - 1 - j]
+            return 0
+
+        stride, buf, breite = self.stride, self.buf, self.width
+
+        def zeile(zy, a, b):
+            a = max(a, 0)
+            b = min(b, breite)
+            if b <= a:
+                return
+            n = b - a
+            o = zy * stride + a * 4
+            buf[o:o + n * 4] = self._zeilenband(rgb, n)
+
+        # SCHNELLER WEG fuer den Normalfall: solange beide Kaesten
+        # unbeschnitten und gleich geformt sind, ist in jeder Zeile, in
+        # der BEIDE gerade verlaufen, genau ein Streifen der Breite
+        # `versatz` sichtbar - der rechts neben der Karte. Das sind fast
+        # alle Zeilen, und sie gehen in EINEM rect()-Aufruf weg statt in
+        # neunhundert Einzelzuweisungen. Ohne diese Abkuerzung war die
+        # "sparsame" Fassung gemessen VIERMAL LANGSAMER als das volle
+        # Rechteck, das sie ersetzen sollte.
+        gerade_von, gerade_bis = None, None
+        if (karte is not None and karte[2] == sw and karte[3] == sh
+                and karte[4] == sr and (sx, sy) == (x + versatz, y + versatz)
+                and (karte[0], karte[1]) == (x, y)):
+            gerade_von = sr
+            gerade_bis = sh - sr - versatz
+            if gerade_bis > gerade_von:
+                self.rect(sx + sw - versatz, sy + gerade_von, versatz,
+                          gerade_bis - gerade_von, rgb)
+            else:
+                gerade_von, gerade_bis = None, None
+
+        for j in range(sh):
+            if gerade_von is not None and gerade_von <= j < gerade_bis:
+                continue
+            zy = sy + j
+            if zy < 0 or zy >= self.height:
+                continue
+            e = einzug(schatten, j)
+            s0, s1 = sx + e, sx + sw - e
+            if s1 <= s0:
+                continue
+            ce = einzug(karte, zy - (karte[1] if karte else 0))
+            if karte is None or ce is None:
+                zeile(zy, s0, s1)
+                continue
+            cx, _cy, cw = karte[0], karte[1], karte[2]
+            zeile(zy, s0, min(s1, cx + ce))
+            zeile(zy, max(s0, cx + cw - ce), s1)
+
     def rect_rounded(self, x, y, w, h, rgb, radius=None):
         """Wie rect(), aber mit abgerundeten Ecken. radius in Pixeln
         (bereits skaliert) - ohne Angabe ein kleiner, dezenter Wert.
@@ -523,18 +669,7 @@ class Framebuffer:
         if radius <= 0:
             self.rect(x, y, w, h, rgb)
             return
-        key_ind = ("rounded_indent", radius)
-        indents = self._rectcache.get(key_ind)
-        if indents is None:
-            indents = []
-            r2 = radius * radius
-            for ry in range(radius):
-                dy = radius - ry - 1
-                dx = 0
-                while dx < radius and (radius - dx - 1) ** 2 + dy * dy <= r2:
-                    dx += 1
-                indents.append(radius - dx)
-            self._rectcache[key_ind] = indents
+        indents = self._rounded_indents(radius)
         # PERFORMANCE-FIX (Nutzerwunsch: "noch mehr Performance rausholen,
         # vor allem HDMI" - echtes Profiling auf echter Hardware zeigte
         # rect_rounded() bei nur 3 Aufrufen pro Bild trotzdem 40-50ms
