@@ -41,6 +41,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_pad_bedienung.py \
   && python3 tools/test_ruhige_boxspalte.py \
   && python3 tools/test_vsync_und_wiederholrate.py \
+  && python3 tools/test_hinweisbox_flackern.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -71,6 +72,7 @@ python3 tools/regression_test.py \
 | `test_pad_bedienung.py` | Test (Pass/Fail) | Select als Modifikator (Select+A/Select+X), Buchstabenwaehler, Hilfe gegen die echte Belegung |
 | `test_ruhige_boxspalte.py` | Test (Pass/Fail) | Verzoegertes Cover zeigt keinen Platzhalter, Platzhalter ist ein Rahmen, keine Spalte bei reinen Ordnerlisten, Positionsgedaechtnis je Kategorie |
 | `test_vsync_und_wiederholrate.py` | Test (Pass/Fail) | Vsync-Auslassen nur noch bei schmalen Baendern, Wiederholrate folgt der gemessenen Zeichendauer |
+| `test_hinweisbox_flackern.py` | Test (Pass/Fail) | Hinweisbox: genau ein Flip pro Aufbau, und der kommt NACH der Box |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -655,6 +657,35 @@ den Normalfall und die beiden Faelle, in denen ein gemerkter Index
 schlimmer waere als keiner: eine kuerzer gewordene Liste und ein
 Neu-Einlesen (nach dem sich auch die Kategorie-Nummerierung verschieben
 kann).
+
+## test_hinweisbox_flackern.py
+
+Ein Flackern, das der Nutzer per Video gemeldet hat ("das kommt bei
+einigen Einstellungen wenn man was veraendert"). Bild fuer Bild
+ausgewertet (1920x1080, 60 Bilder/s): die Hinweisbox verschwand **6 mal
+pro Sekunde fuer genau zwei Bilder** (33 ms).
+
+Ursache: `draw()` brachte die Seite mit `flip=True` auf den Schirm und
+zeichnete die Box ERST DANACH (mit eigenem `flip_rows()` nur ueber das
+Box-Band). Zwischen beidem liegt das Rendern der Box - und genau so
+lange zeigt der Bildschirm die fertige Seite ohne Box. Der 6-Hz-Takt kam
+von der Laufschrift (0.18 s), die wegen `_overlay_active()` bewusst auf
+den vollen `draw()` faellt.
+
+Bemerkenswert: der Kommentar bei `any_dialog` in `draw()` beschrieb
+diesen Fehler bereits woertlich ("sonst blitzt fuer einen Frame der
+Hintergrund ohne Dialog auf") - er war nur fuer die beiden
+Bestaetigungsdialoge behoben worden. Die Hinweisbox kam spaeter dazu und
+wurde in der Aufzaehlung vergessen.
+
+Geprueft wird deshalb nicht das Aussehen, sondern die **Reihenfolge der
+Flips**: solange die Box aktiv ist, darf es pro Aufbau genau EINEN Flip
+geben, und der muss NACH dem Zeichnen der Box kommen und ein Vollbild
+sein. Test 5 sichert eine Feinheit ab, die beim Bauen auffiel:
+`_overlay_active()` prueft die Uhr und darf deshalb pro Aufbau nur
+EINMAL ausgewertet werden - liefe die Box genau zwischen zwei Aufrufen
+ab, waere der Seiten-Flip unterdrueckt UND die Box nicht gezeichnet, das
+Bild bliebe stehen.
 
 ## test_vsync_und_wiederholrate.py
 

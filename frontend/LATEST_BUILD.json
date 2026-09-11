@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-08-29-93",
-  "summary": "Latenz: Vsync wird beim schnellen Scrollen nur noch bei schmalen Zeilenbaendern uebersprungen (kein Bildriss mehr beim vollen Aufbau), und die Wiederholrate der gehaltenen Richtungstaste richtet sich jetzt nach der tatsaechlich gemessenen Zeichendauer statt nach einem festen Wert."
+  "build_id": "2026-09-11-94",
+  "summary": "Flackern behoben: die Hinweisbox nach einer Einstellungsaenderung verschwand sechsmal pro Sekunde kurz, weil die Seite schon auf dem Schirm war, bevor die Box gezeichnet wurde."
 }

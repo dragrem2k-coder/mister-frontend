@@ -2594,7 +2594,46 @@ class Frontend:
         # Frame der Hintergrund ohne Dialog auf, bevor der Dialog
         # erscheint (genau das war das Flackern beim Wechseln zwischen
         # den Optionen). Nur der letzte Zeichenschritt flippt.
-        any_dialog = self.confirm_quit or self.confirm_update
+        #
+        # BUGFIX (Build 94, Nutzer-Rueckmeldung mit Video: "das Flackern
+        # muessen wir auch beheben, das kommt bei einigen Einstellungen
+        # wenn man was veraendert"). Die Hinweisbox
+        # (_draw_prominent_message()) fehlte in dieser Aufzaehlung - und
+        # zwar seit es sie gibt. Der Kommentar direkt darueber beschreibt
+        # den Fehler bereits exakt, er wurde damals nur fuer die beiden
+        # Bestaetigungsdialoge behoben und die dritte, spaeter
+        # dazugekommene Ueberlagerung uebersehen.
+        #
+        # NACHGEMESSEN im eingeschickten Video (1920x1080, 60 Bilder/s,
+        # Bild fuer Bild verglichen): die Box verschwand 6 mal pro
+        # Sekunde fuer genau 2 Bilder (33 ms) und kam dann wieder. Der
+        # Ablauf war
+        #   1. draw_page_items(flip=True)  -> Vollbild OHNE Box auf den
+        #      Schirm
+        #   2. _draw_prominent_message()   -> Box zeichnen, eigenes
+        #      flip_rows() nur fuer das Box-Band
+        # Zwischen 1 und 2 liegt das Rendern der Box (Rahmen, bis zu
+        # drei Textzeilen) - und genau so lange zeigt der Bildschirm die
+        # fertige Seite ohne Box. Der 6-Hz-Takt kam von der Laufschrift
+        # (0.18 s), die wegen _overlay_active() bewusst auf den vollen
+        # draw() faellt: jeder dieser Takte erzeugte ein Aufblitzen.
+        #
+        # Fix in zwei Teilen, beide noetig:
+        #   a) hier: die Seite NICHT mehr einzeln flippen, solange die
+        #      Box aktiv ist - genau wie bei den Dialogen;
+        #   b) in _draw_prominent_message(): der abschliessende Flip muss
+        #      dann ein VOLLER fb.flip() sein, nicht nur das Box-Band -
+        #      sonst stuende der Rest der Seite ungeflippt da.
+        #
+        # Bewusst EINMAL ausgewertet und in einer lokalen Variablen
+        # gehalten, nicht zweimal aufgerufen: _overlay_active() prueft
+        # die Uhr. Liefe die Zeit zwischen dieser Zeile und dem elif
+        # weiter unten ab (Bruchteile einer Millisekunde, aber moeglich),
+        # wuerde oben der Seiten-Flip unterdrueckt und unten die Box
+        # nicht mehr gezeichnet - das Bild bliebe komplett ungeflippt
+        # stehen. Ein Wert, eine Entscheidung.
+        _box_aktiv = self._overlay_active()
+        any_dialog = self.confirm_quit or self.confirm_update or _box_aktiv
         if self.page == 0:
             self.draw_page_cats(message, flip=not any_dialog)
         else:
@@ -2611,7 +2650,7 @@ class Frontend:
             self.draw_confirm_dialog(msg=self._update_install_message,
                                      labels=[t("install_now"), t("install_later")],
                                      max_lines=3)
-        elif self._prominent_message and time.monotonic() < self._prominent_message_until:
+        elif _box_aktiv:
             self._draw_prominent_message()
 
     def _sync_cover_defer(self):
@@ -2738,7 +2777,21 @@ class Frontend:
             tw = len(ln) * 8 * s
             fb.text(box_x + (box_w - tw) // 2, ty, ln, s, C_TEXT, C_PANEL)
             ty += line_h
-        fb.flip_rows(box_y, box_h)
+        # Teil b) des Flacker-Fixes aus Build 94 (die Herleitung steht
+        # bei any_dialog in draw()): hier stand ein flip_rows() nur ueber
+        # das Box-Band. Das setzte voraus, dass die Seite darunter schon
+        # auf dem Schirm ist - genau dieses vorgezogene Flippen ist aber
+        # die Ursache des Aufblitzens und faellt jetzt weg. Ohne den
+        # Wechsel auf den vollen Flip bliebe alles ausser dem Box-Band
+        # ungeflippt stehen (die Box hinge ueber einem veralteten Bild).
+        #
+        # Kostet auf 1080p gemessene 11,1 ms statt der wenigen
+        # Zehntel-Millisekunden fuer das Band. Das ist hier bewusst in
+        # Ordnung: der Aufruf passiert nur, solange die Box tatsaechlich
+        # sichtbar ist (wenige Sekunden), und er ERSETZT den Vollbild-
+        # Flip von draw_page_items(), kommt also nicht obendrauf - unter
+        # dem Strich wird sogar ein Vollbild-Flip pro Aufbau gespart.
+        fb.flip()
         # BUGFIX (zweiter Teil, per Pixelvergleich gefunden - der erste
         # Teil allein reichte NICHT): die Box wird ueber die VOLLE Breite
         # gezeichnet, also auch ausserhalb der Listenspalte (ueber das

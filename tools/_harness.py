@@ -75,10 +75,30 @@ def _fake_fb_init(self, bpp=32):
     self._textcache_evictions = 0
 
 
+_echt_strftime = fm.time.strftime      # fuer alle anderen Formate, siehe unten
+
 fm.Framebuffer.__init__ = _fake_fb_init
 fm.Framebuffer.refresh_geometry = lambda s: None
 fm.Framebuffer.close = lambda s: None
 fm.time.monotonic = lambda: NOW[0]
+
+# BUGFIX (Build 94, beim Pruefen des Flacker-Fixes aufgefallen): die
+# kuenstliche Uhr oben ersetzte nur monotonic(), NICHT strftime(). Die
+# Statuszeile im Hauptmenue zeigt aber die Uhrzeit (%H:%M, siehe
+# _draw_status_bar()) - und die kommt weiterhin von der echten Uhr.
+#
+# Folge: faellt in einem Test oder in diag_lightpath.py ein
+# Minutenwechsel zwischen den Referenz-Aufbau und den Vergleichs-Aufbau,
+# unterscheiden sich die beiden Bilder in den Ziffern der Uhrzeit - und
+# der Vergleich meldet eine Abweichung, die es gar nicht gibt. Genau das
+# ist einmal passiert (diag_lightpath.py sprang von 22 auf 23 Faelle und
+# war beim naechsten Lauf wieder bei 22) und hat eine Viertelstunde
+# Fehlersuche an der voellig falschen Stelle gekostet.
+#
+# Feste Uhrzeit fuer ALLE Vergleiche. Dass die Statuszeile damit immer
+# dieselbe Zeit zeigt, ist fuer Pixelvergleiche genau richtig.
+fm.time.strftime = lambda fmt, *a: (
+    "13:37" if fmt == "%H:%M" else _echt_strftime(fmt, *a))
 
 
 def set_screen(w, h):

@@ -7,6 +7,52 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Das Flackern der Hinweisbox behoben** (Build 94 — gemeldet per Video:
+„das Flackern müssen wir auch beheben, das kommt bei einigen Einstellungen
+wenn man was verändert"):
+
+Das Video ließ sich Bild für Bild auswerten (1920×1080, 60 Bilder/s). Die
+Hinweisbox verschwand dabei **6 mal pro Sekunde für genau zwei Bilder**
+(33 ms) — kein Zufall, sondern ein exakter Takt.
+
+Der Ablauf war:
+
+1. `draw_page_items(flip=True)` → die fertige Seite **ohne** Box geht auf
+   den Schirm
+2. `_draw_prominent_message()` → die Box wird gezeichnet und mit einem
+   eigenen, kleinen Flip nachgereicht
+
+Zwischen 1 und 2 liegt das Rendern der Box (Rahmen, bis zu drei
+Textzeilen) — und genau so lange zeigt der Bildschirm die Seite ohne sie.
+Der 6-Hz-Takt kam von der Laufschrift (0,18 s): solange die Box sichtbar
+ist, fällt sie bewusst auf den vollen Seitenaufbau zurück, und **jeder
+dieser Takte erzeugte ein Aufblitzen**.
+
+Das Unangenehme daran: der Kommentar an der betreffenden Stelle
+beschreibt diesen Fehler bereits wörtlich — *„sonst blitzt für einen
+Frame der Hintergrund ohne Dialog auf, genau das war das Flackern beim
+Wechseln zwischen den Optionen"*. Er wurde damals nur für die beiden
+Bestätigungsdialoge behoben. Die Hinweisbox kam später dazu und fehlte in
+der Aufzählung. Jetzt steht sie drin, und die Box schließt mit einem
+vollen Flip ab statt mit einem Streifen.
+
+Unter dem Strich wird dabei sogar ein Vollbild-Flip pro Aufbau
+eingespart, weil der vorgezogene Seiten-Flip komplett entfällt.
+
+Neuer Test: `tools/test_hinweisbox_flackern.py` (24 Prüfungen). Er prüft
+nicht das Aussehen, sondern die Reihenfolge der Flips — gegen den alten
+Stand gehalten schlägt er zuverlässig an.
+
+**Nebenbei: eine Fehlerquelle in der Testumgebung beseitigt.** Die
+künstliche Uhr im Testgerüst ersetzte nur `monotonic()`, nicht
+`strftime()` — die Uhrzeit in der Statuszeile kam also weiter von der
+echten Uhr. Fiel ein Minutenwechsel zwischen Referenz- und
+Vergleichsaufbau, meldete `diag_lightpath.py` eine Abweichung, die es
+nicht gab (22 Fälle im einen Lauf, 23 im nächsten). Genau das ist beim
+Prüfen dieses Builds passiert und hat Fehlersuche an der falschen Stelle
+gekostet. Die Uhr steht in Vergleichen jetzt fest.
+
+
 **Zwei Latenz-Änderungen, beide aus einem einzigen Satz entstanden**
 (Build 93 — „Ich habe schnelles Scrollen eigentlich standardmäßig an,
 und das fühlt sich manchmal komisch an, bitte berücksichtigen"):
