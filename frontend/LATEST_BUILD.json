@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-11-97",
-  "summary": "HDMI schneller: der Schlagschatten des Cover-Panels wurde als volles Rechteck gemalt und danach zu 98 Prozent von der Karte uebermalt. Jetzt wird nur noch der sichtbare Teil gezeichnet - bitgenau dasselbe Bild, 0,23 ms weniger pro Aufbau."
+  "build_id": "2026-09-11-98",
+  "summary": "Cover-Panel auf HDMI 27 Prozent schneller: der Schlagschatten wird nur noch dort gezeichnet, wo er sichtbar ist, und Karte plus Schatten laufen in einer statt zwei Zeilenschleifen. Das Bild bleibt bitgenau gleich."
 }

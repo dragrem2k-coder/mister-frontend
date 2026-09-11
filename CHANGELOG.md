@@ -7,7 +7,31 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
-**Der Schlagschatten des Cover-Panels war zu 98 % unsichtbar** (Build 97):
+**Cover-Panel auf HDMI 27 % schneller** (Build 97 + 98) — zwei Schritte,
+beide mit bitgenau unverändertem Bild:
+
+| | alt | neu | |
+|---|---|---|---|
+| Cover-Panel HDMI | 1,155 ms | 0,844 ms | **−27 %** |
+| Cover-Panel CRT | 0,159 ms | 0,154 ms | −3 % |
+
+(abwechselnd im selben Lauf gemessen, Median aus neun Durchgängen — bei
+getrennten Läufen schwankten die Zahlen stärker als der Effekt.)
+
+**Schritt 2 (Build 98): Karte und Schatten in einer Zeilenschleife.**
+Beim Messen des ersten Schritts fiel auf, dass der sichtbare
+Schattenstreifen direkt *neben* der Karte liegt — die Karte endet bei
+x+w, der Streifen geht von x+w bis x+w+Versatz. Zwei getrennte Aufrufe
+bedeuteten dort zwei Zeilenschleifen über dieselben rund 900 Bildzeilen.
+
+Und die Zeilenschleife ist der teure Teil, nicht die kopierten Bytes:
+eine Zeile mit 36 Byte kostet 0,25 µs, eine mit 3076 Byte 0,40 µs — der
+Grundaufwand überwiegt deutlich. Jetzt wird in den geraden Mittelzeilen
+*eine* vorgefertigte Zeile aus Kartenfarbe und Schattenfarbe
+geschrieben. An den Eckenrundungen bleibt alles beim bewährten Weg;
+das sind nur wenige Dutzend Zeilen.
+
+**Schritt 1 (Build 97): der Schlagschatten war zu 98 % unsichtbar.**
 
 Die Messung aus Build 96 hatte gezeigt, wo die Zeit beim Scrollen auf
 HDMI wirklich hingeht — nicht in die Listenzeilen, sondern ins
@@ -50,9 +74,10 @@ gerechnet — Schattenspanne minus Kartenspanne.
    gerade Mittelteil in *einem* `rect()`-Aufruf weg, einzeln gerechnet
    wird nur an den Ecken.
 
-Neuer Test: `tools/test_cover_panel.py` (23 Prüfungen), inklusive einer
-Messung — eine Änderung, die nur theoretisch spart, hat hier nichts
-verloren.
+Neuer Test: `tools/test_cover_panel.py` (44 Prüfungen), inklusive zweier
+Messungen — eine Änderung, die nur theoretisch spart, hat hier nichts
+verloren. Geprüft wird jeweils gegen den *alten* Zeichenweg, Byte für
+Byte, in neun Größen- und Randkombinationen.
 
 CRT ist von alledem kaum betroffen: das Panel kostet dort 0,165 ms
 gegen 1,125 ms auf HDMI, Faktor 6,8. Das deckt sich mit der

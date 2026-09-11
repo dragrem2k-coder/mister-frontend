@@ -859,8 +859,16 @@ Zwei Fallen, beide vom Test gefunden:
    schlagen jede eingesparte Flaeche. Jetzt geht der gerade Mittelteil
    in EINEM rect()-Aufruf weg, einzeln gerechnet wird nur an den Ecken.
 
-Test 4 misst mit: eine Aenderung, die nur theoretisch spart, hat hier
-nichts verloren.
+Build 98 kam ein zweiter Schritt dazu: Karte und Schatten liegen in den
+geraden Mittelzeilen direkt NEBENEINANDER und werden seitdem in EINER
+Zuweisung geschrieben statt in zwei Zeilenschleifen ueber dieselben 900
+Bildzeilen. Test 2b haelt auch das bitgenau fest - inklusive der Faelle,
+in denen es NICHT zusammengefasst werden darf (Beschnitt am Bildrand,
+Versatz groesser als der Radius).
+
+Test 4 misst beide Schritte mit: eine Aenderung, die nur theoretisch
+spart, hat hier nichts verloren. Abwechselnd im selben Lauf gemessen
+ergab das auf HDMI 1,155 -> 0,844 ms (-27 %), auf CRT -3 %.
 
 ## diag_lightpath.py
 

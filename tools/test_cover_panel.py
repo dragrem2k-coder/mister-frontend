@@ -109,6 +109,41 @@ for x, y, kw, kh, label in ((1920 - 60, 100, 60, 200, "rechter Rand"),
     check("%s: bitgenau gleich" % label, d == 0,
           "(%d abweichende Bytes)" % d)
 
+print("Test 2b: karte_mit_schatten() ergibt bitgenau dasselbe wie beide "
+      "Aufrufe einzeln")
+# Build 98: Karte und Schatten in einer Zeilenschleife. Derselbe
+# Massstab wie oben - das Bild muss identisch bleiben.
+for w, h, name in ((320, 240, "CRT"), (1920, 1080, "HDMI")):
+    f = frontend(w, h)
+    fb = f.fb
+    s_ = max(1, h // 360)
+    dunkel = fb._darken(fm.C_BG, 0.55)
+    faelle = [
+        (40 * s_, 20 * s_, 120 * s_, 180 * s_, 3 * s_, 4 * s_, "Panel-Groesse"),
+        (10, 10, 60, 40, 3, 4, "klein"),
+        (10, 10, 60, 40, 1, 0, "ohne Rundung"),
+        (10, 10, 40, 40, 6, 20, "Radius = halbe Kante"),
+        (10, 10, 80, 30, 9, 4, "breit und flach"),
+        (10, 10, 30, 80, 9, 4, "schmal und hoch"),
+        (10, 10, 60, 40, 30, 4, "Versatz groesser als der Radius"),
+        (w - 60, 100, 60, 80, 9, 12, "am rechten Rand"),
+        (100, h - 60, 80, 60, 9, 12, "am unteren Rand"),
+    ]
+    for x, y, kw, kh, versatz, radius, label in faelle:
+        if x < 0 or y < 0 or kw <= 0 or kh <= 0:
+            continue
+        fb.clear(fm.C_BG)
+        fb.rect_rounded_schatten(x, y, kw, kh, versatz, dunkel, radius)
+        fb.rect_rounded(x, y, kw, kh, fm.C_PANEL, radius)
+        getrennt = bytes(fb.buf)
+        fb.clear(fm.C_BG)
+        fb.karte_mit_schatten(x, y, kw, kh, versatz, fm.C_PANEL, dunkel,
+                              radius)
+        zusammen = bytes(fb.buf)
+        d = sum(1 for a, b in zip(getrennt, zusammen) if a != b)
+        check("%s/%s: zusammengefasst bitgenau gleich" % (name, label),
+              d == 0, "(%d abweichende Bytes)" % d)
+
 print("Test 3: das komplette Cover-Panel sieht unveraendert aus")
 # Nicht nur der Schatten fuer sich, sondern der echte Aufruf aus
 # draw_art_panel() mit allem drum herum.
@@ -127,15 +162,20 @@ for w, h, name in ((320, 240, "CRT"), (1920, 1080, "HDMI")):
 
     # Denselben Aufbau mit dem ALTEN Schatten nachstellen: das Panel
     # noch einmal zeichnen, davor aber den vollen Schatten legen.
-    echt = f.fb.rect_rounded_schatten
+    echt = f.fb.karte_mit_schatten
 
-    def alter_weg(x, y, kw, kh, versatz, rgb, radius=None, _fb=f.fb):
-        _fb.rect_rounded(x + versatz, y + versatz, kw, kh, rgb, radius)
+    def alter_weg(x, y, kw, kh, versatz, karte_rgb, schatten_rgb,
+                  radius=None, _fb=f.fb):
+        # So sah es vor Build 97/98 aus: volles Schattenrechteck,
+        # danach die Karte darueber.
+        _fb.rect_rounded(x + versatz, y + versatz, kw, kh, schatten_rgb,
+                         radius)
+        _fb.rect_rounded(x, y, kw, kh, karte_rgb, radius)
 
-    f.fb.rect_rounded_schatten = alter_weg
+    f.fb.karte_mit_schatten = alter_weg
     f.draw_art_panel(art_x0, art_w, oy, art_h, sk, item, s)
     alt = bytes(f.fb.buf)
-    f.fb.rect_rounded_schatten = echt
+    f.fb.karte_mit_schatten = echt
     d = sum(1 for a, b in zip(alt, neu) if a != b)
     check("%s: Panel bitgenau wie vorher" % name, d == 0,
           "(%d abweichende Bytes)" % d)
@@ -172,12 +212,24 @@ check("und zwar deutlich (mindestens Faktor 1,5)",
       t_neu * 1.5 < t_alt,
       "(Faktor %.1f)" % (t_alt / t_neu if t_neu else 0))
 
+hell = fm.C_PANEL
+t_getrennt = zeit(lambda: (fb.rect_rounded_schatten(40, 20, kw, kh, versatz,
+                                                    dunkel, radius),
+                           fb.rect_rounded(40, 20, kw, kh, hell, radius)))
+t_zusammen = zeit(lambda: fb.karte_mit_schatten(40, 20, kw, kh, versatz,
+                                                hell, dunkel, radius))
+check("Karte+Schatten zusammengefasst ist schneller als getrennt",
+      t_zusammen < t_getrennt,
+      "(getrennt %.3f ms, zusammen %.3f ms, Faktor %.1f)"
+      % (t_getrennt, t_zusammen,
+         t_getrennt / t_zusammen if t_zusammen else 0))
+
 print("Test 5: kein vollflaechiges Schatten-Rechteck mehr im Zeichenpfad")
 # Regressionsschutz: wer den Aufruf spaeter versehentlich zurueckbaut,
 # holt sich die 0,461 ms wieder ins Haus.
 src = open(H.FRONTEND_PY, encoding="utf-8", errors="replace").read()
-check("draw_art_panel() benutzt rect_rounded_schatten()",
-      "fb.rect_rounded_schatten(" in src)
+check("draw_art_panel() benutzt karte_mit_schatten()",
+      "fb.karte_mit_schatten(" in src)
 check("und malt den Schatten nicht mehr als volles rect_rounded()",
       "shadow_off, y0 - pad + shadow_off" not in src)
 
