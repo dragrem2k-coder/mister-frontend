@@ -7,6 +7,65 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**MiSTers RA-Einstellungen jetzt im Frontend** (Build 95 — „Sute hat eine
+neue Main MiSTer gebaut, die hat nun RA Settings, können wir das
+irgendwie mit ins Frontend einbauen?" und später: „Das hätte ich auch
+gerne bei uns im Frontend, und zwar dann einstellbar unter System und
+dann RetroAchievements"):
+
+Neu unter **System & Wartung → RetroAchievements → Popups & Anzeige**.
+Alle zwölf Werte auf einem Bildschirm, auf Deutsch ausgeschrieben statt
+als englische Kürzel, und vom Sofa aus bedienbar. Das OSD kann dasselbe
+— aber nur auf Englisch, nur mit Kürzeln („Multiline Description") und
+nur über drei Menüebenen.
+
+| | |
+|---|---|
+| Neun Schalter | Popups bei Herausforderungs-Start/-Ende, Fortschritt, Name im Fortschritts-Popup, Bestenlisten-Aktualisierung/-Eintrag, Beschreibung mehrzeilig, Laufschrift in der Erfolgsliste, Erfolgsliste mit Menü+Y |
+| Popup-Position | links / mittig / rechts |
+| Feinjustierung | Waagerecht −80…+80, Senkrecht −10…+10 |
+
+**Global oder pro Core.** Die Position und die beiden Offsets lassen
+sich getrennt für jeden Core einstellen — genau die drei Werte, die
+MiSTer laut seinem eigenen Log pro Core ausliest. Ein Umschalter oben
+wechselt den Geltungsbereich, und hinter jedem Wert steht, ob er *eigen*
+oder vom globalen *geerbt* ist. Ohne diesen Zusatz sehen „0, weil global
+0" und „0, weil hier ausdrücklich gesetzt" gleich aus, verhalten sich
+aber verschieden, sobald man den globalen Wert ändert.
+
+**Ehrlich bei den Core-Namen:** MiSTer legt pro *Core* ab, nicht pro
+System. Game Boy und Game Boy Color teilen sich den Core „Gameboy", SNES
+und SMW Hacks den Core „SNES" — eine Änderung gilt also zwangsläufig für
+beide. Das steht auch so auf dem Bildschirm, statt es zu verstecken.
+
+**Keine Vorschau des Popups**, obwohl die Versuchung groß war. MiSTer
+zeichnet das Popup über den *laufenden Core*, in dessen Auflösung (oft
+256×224), nicht in unserer. Eine Vorschau hätte weder die richtige Größe
+noch die richtigen Proportionen und würde beim Feinjustieren aktiv in die
+Irre führen. Stattdessen der ehrliche Hinweis, dass die Änderung beim
+nächsten Core-Start greift.
+
+**Vorsicht beim Schreiben.** Die Datei `/media/fat/retroachievements.cfg`
+gehört nicht uns — darin stehen RA-Benutzername *und Passwort*. Das neue
+Modul ändert deshalb immer nur genau die eine gemeinte Zeile und lässt
+alles andere Byte für Byte stehen: Kommentare, Reihenfolge, Schreibweise,
+auch Schlüssel, die wir gar nicht kennen. Geschrieben wird wie bei
+MiSTer selbst über eine temporäre Datei mit anschließendem Umbenennen.
+Fehlt die Datei, legen wir sie **nicht** an.
+
+Nicht verwechseln: das ist eine **andere** Datei als unsere eigene
+`/media/fat/frontend/retroachievements.cfg` (Benutzername +
+Web-API-Schlüssel für die Fortschrittsanzeige). Gleicher Name, anderer
+Ordner, anderes Format, andere Zugangsdaten — ein eigener Test wacht
+darüber, dass die beiden nie zusammenlaufen.
+
+Neuer Test: `tools/test_ra_einstellungen.py` (56 Prüfungen). Zwei
+Layout-Fehler wurden nur im gerenderten Bild sichtbar: auf CRT fraß das
+lange deutsche Label den *Wert* auf, und die Bedienzeile brach mitten im
+Wort ab. Werte stehen jetzt rechtsbündig und bekommen ihren Platz
+zuerst.
+
+
 **Das Flackern der Hinweisbox behoben** (Build 94 — gemeldet per Video:
 „das Flackern müssen wir auch beheben, das kommt bei einigen Einstellungen
 wenn man was verändert"):

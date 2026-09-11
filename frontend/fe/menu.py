@@ -35,6 +35,10 @@ from fe.settings import (
 )
 from fe.timekeeping import format_timezone_offset, load_timezone_offset
 from fe.retroachievements import load_ra_config, ra_toggle_enabled
+# ACHTUNG, zwei verschiedene Dateien mit demselben Namen - siehe den
+# ausfuehrlichen Kopf von fe/ra_settings.py. Deshalb hier auch der
+# sprechende Aliasname statt eines blanken "vorhanden".
+from fe.ra_settings import vorhanden as ra_settings_vorhanden
 from fe.update_check import (
     load_update_state, update_check_enabled, _version_newer,
     FRONTEND_VERSION,
@@ -217,6 +221,25 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     ra_items = [(ra_label, "ra_status", None)]
     if ra_user:
         ra_items.append((ra_toggle_label, "ra_toggle", None))
+
+    # NEU (Build 95, Nutzerwunsch: "Sute hat eine neue Main MiSTer
+    # gebaut, die hat nun RA Settings - koennen wir das mit ins Frontend
+    # einbauen?"). Fuehrt auf einen eigenen Bildschirm, nicht auf
+    # weitere Menuezeilen: es sind zwoelf Werte, davon zwei mit einem
+    # Zahlenbereich von -80 bis +80 - das waere als Liste aus
+    # Umschalt-Zeilen unbedienbar.
+    #
+    # Die Zeile haengt NICHT an ra_user (unseren Web-API-Zugangsdaten),
+    # sondern an der MiSTer-eigenen Datei: das sind zwei voellig
+    # verschiedene Dateien (siehe Kopf von fe/ra_settings.py). Wer RA in
+    # MiSTer eingerichtet hat, aber bei uns keinen API-Schluessel
+    # hinterlegt hat, soll die Popups trotzdem einstellen koennen - und
+    # umgekehrt nicht in ein Menue laufen, das nichts bewirken kann.
+    if ra_settings_vorhanden():
+        ra_items.append((t("sys_ra_settings"), "ra_settings", None))
+    else:
+        ra_items.append((t("sys_ra_settings_missing"), "ra_settings_missing",
+                         None))
 
     # NEUES FEATURE (Nutzerwunsch: Schalter fuer die Framebuffer-Groesse):
     # die Zeile erscheint bewusst NUR, wenn der CRT-Modus AUS ist. Im

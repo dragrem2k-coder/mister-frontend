@@ -394,6 +394,103 @@ TRANSLATIONS = {
                          "de": "RetroAchievements: AN -> ausschalten (Fortschritt/Abzeichen/Listen pausieren, RA-fähige Cores starten weiterhin normal)"},
     "sys_ra_toggle_off": {"en": "RetroAchievements: OFF -> turn on",
                           "de": "RetroAchievements: AUS -> einschalten"},
+
+    # NEU (Build 95, Nutzerwunsch: "Sute hat eine neue Main MiSTer
+    # gebaut, die hat nun RA Settings - koennen wir das mit ins Frontend
+    # einbauen?" und spaeter: "Das haette ich auch gerne bei uns im
+    # Frontend, einstellbar unter System und dann RetroAchievements").
+    #
+    # Die Beschriftungen sind bewusst NICHT die englischen Kuerzel aus
+    # dem OSD ("Multiline Description"), sondern ausgeschrieben: wer im
+    # Wohnzimmer sitzt, soll lesen koennen, was der Schalter tut. Die
+    # Reihenfolge im Menue entspricht dagegen genau dem OSD, damit sich
+    # niemand umgewoehnen muss, der beides benutzt.
+    # Kurzform AN/AUS. Die uebrigen Ein/Aus-Menuepunkte im System-Menue
+    # tragen jeweils einen ganzen Satz ("AN -> ausschalten (...)"), weil
+    # sie einzeln in einer langen Liste stehen und sich selbst erklaeren
+    # muessen. Auf dem RA-Bildschirm stehen neun Schalter untereinander
+    # in einer Spalte - dort waeren ganze Saetze nur Rauschen.
+    "ra_on": {"en": "ON", "de": "AN"},
+    "ra_off": {"en": "OFF", "de": "AUS"},
+    "sys_ra_settings": {"en": "Popups & display (MiSTer RA settings)",
+                        "de": "Popups & Anzeige (MiSTer-RA-Einstellungen)"},
+    "sys_ra_settings_missing": {
+        "en": "Popups & display: RA not set up in MiSTer itself",
+        "de": "Popups & Anzeige: RA in MiSTer selbst nicht eingerichtet"},
+    "ra_set_title": {"en": "RETROACHIEVEMENTS - POPUPS",
+                     "de": "RETROACHIEVEMENTS - POPUPS"},
+    "ra_set_group_popups": {"en": "Popups", "de": "Popups"},
+    "ra_set_group_list": {"en": "List", "de": "Liste"},
+    "ra_set_group_pos": {"en": "Position", "de": "Position"},
+    "ra_set_challenge_start": {"en": "Challenge start popup",
+                               "de": "Popup bei Herausforderungs-Start"},
+    "ra_set_challenge_end": {"en": "Challenge end popup",
+                             "de": "Popup bei Herausforderungs-Ende"},
+    "ra_set_progress": {"en": "Progress popups",
+                        "de": "Fortschritts-Popups"},
+    "ra_set_progress_name": {"en": "Show name in progress popup",
+                             "de": "Name im Fortschritts-Popup"},
+    "ra_set_lb_updates": {"en": "Leaderboard updates",
+                          "de": "Bestenlisten-Aktualisierungen"},
+    "ra_set_lb_submission": {"en": "Leaderboard submission",
+                             "de": "Bestenlisten-Eintrag"},
+    "ra_set_multiline": {"en": "Multi-line description",
+                         "de": "Beschreibung mehrzeilig"},
+    "ra_set_list_ticker": {"en": "Scrolling description in list",
+                           "de": "Laufschrift in der Erfolgsliste"},
+    "ra_set_list_hotkey": {"en": "Open list with Menu+Y",
+                           "de": "Erfolgsliste mit Menü+Y öffnen"},
+    "ra_set_position": {"en": "Popup position: %s",
+                        "de": "Popup-Position: %s"},
+    "ra_set_pos_left": {"en": "left", "de": "links"},
+    "ra_set_pos_center": {"en": "centre", "de": "mittig"},
+    "ra_set_pos_right": {"en": "right", "de": "rechts"},
+    "ra_set_offsets": {"en": "Fine-tune popup position ...",
+                       "de": "Popup-Position feinjustieren ..."},
+    "ra_set_offsets_sys": {"en": "Fine-tune popup position for %s ...",
+                           "de": "Popup-Position für %s feinjustieren ..."},
+    "ra_set_h": {"en": "Horizontal", "de": "Waagerecht"},
+    "ra_set_v": {"en": "Vertical", "de": "Senkrecht"},
+    "ra_set_scope_global": {"en": "applies to all cores",
+                            "de": "gilt für alle Cores"},
+    "ra_set_scope_all": {"en": "all cores", "de": "alle Cores"},
+    "ra_set_scope_core": {"en": "applies to the %s core",
+                          "de": "gilt für den %s-Core"},
+    # Wenn mehrere Systeme denselben Core benutzen (Game Boy und Game
+    # Boy Color teilen sich "Gameboy", SNES und SMW Hacks teilen sich
+    # "SNES"), gilt die Einstellung zwangslaeufig fuer alle davon. Das
+    # ist keine Eigenart unserer Umsetzung, sondern die Art, wie MiSTer
+    # die Werte ablegt - also sagen wir es dazu, statt es zu verstecken.
+    "ra_set_scope_shared": {"en": "applies to the %s core - also used by: %s",
+                            "de": "gilt für den %s-Core – den nutzt auch: %s"},
+    # Bewusst SEHR kurz: die Marke haengt rechts hinter dem Wert, und
+    # dort ist auf CRT (34 Zeichen Gesamtbreite) fast kein Platz. Der
+    # ausgeschriebene Satz stand hier zuerst und liess auf CRT vom Wert
+    # selbst nichts mehr uebrig ("+0  (vom globalen~").
+    "ra_set_inherited": {"en": "inherited", "de": "geerbt"},
+    "ra_set_own": {"en": "own", "de": "eigen"},
+    "ra_set_reset": {"en": "Back to the global values",
+                     "de": "Zurück auf die globalen Werte"},
+    "ra_set_scope_label": {"en": "Applies to", "de": "Gilt für"},
+    "ra_set_hint": {"en": "Up/Down: choose   Left/Right: change   "
+                          "Back: done",
+                    "de": "Hoch/Runter: wählen   Links/Rechts: ändern   "
+                          "Zurück: fertig"},
+    # Kurzfassung fuer CRT - die lange Zeile passt bei 320 Bildpunkten
+    # Breite nicht und wurde mitten im Wort abgeschnitten.
+    "ra_set_hint_kurz": {"en": "Left/Right: change   Back: done",
+                         "de": "Links/Rechts: ändern   Zurück: fertig"},
+    # Und noch eine Stufe kuerzer - bei 320 Bildpunkten Breite bleiben
+    # nach Overscan nur 34 Zeichen, da passt auch die mittlere nicht.
+    "ra_set_hint_minimal": {"en": "L/R: change   B: back",
+                            "de": "L/R: ändern   B: zurück"},
+    "ra_set_preview": {"en": "Achievement unlocked", "de": "Erfolg freigeschaltet"},
+    "ra_set_preview_sub": {"en": "Preview - this is where the popup sits",
+                           "de": "Vorschau – hier sitzt das Popup"},
+    "ra_set_takes_effect": {"en": "Takes effect the next time a core starts.",
+                            "de": "Wirkt ab dem nächsten Core-Start."},
+    "ra_set_write_failed": {"en": "Could not save - is the SD card write-protected?",
+                            "de": "Konnte nicht gespeichert werden – SD-Karte schreibgeschützt?"},
     "core_choice_title": {"en": "%s - CHOOSE CORE",
                           "de": "%s - CORE WÄHLEN"},
     "core_choice_normal": {"en": "Standard core",

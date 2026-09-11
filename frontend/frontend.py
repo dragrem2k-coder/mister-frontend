@@ -233,6 +233,11 @@ from fe.naming import (
 )
 
 from fe.systems import GAME_SYSTEMS, OPTIONAL_GAME_SYSTEMS, system_display_name
+# ACHTUNG: NICHT mit fe/retroachievements.py verwechseln - das sind zwei
+# verschiedene Dateien mit demselben Namen, siehe den ausfuehrlichen
+# Kopf von fe/ra_settings.py. Deshalb hier als Modul importiert und
+# immer mit Praefix benutzt (RASET.schalter_lesen(...)), nie einzeln.
+import fe.ra_settings as RASET
 
 import fe.paths
 import mister_wot
@@ -8510,6 +8515,274 @@ class Frontend:
                 continue   # koennte noch werden - nicht verlassen
             break
 
+    # ------------------------------------------------------------------
+    # RetroAchievements-Einstellungen der MiSTer-Hauptanwendung
+    # (Build 95) - siehe fe/ra_settings.py fuer Dateiformat und die
+    # Warnung zu den zwei gleichnamigen Dateien.
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _ra_kuerzen(text, maxc):
+        """Text auf maxc Zeichen kappen, zu langes mit "~" markieren -
+        dieselbe Schreibweise wie in der Hauptliste (siehe
+        _draw_navigate_items_impl), damit ein gekappter Text ueberall
+        gleich aussieht und man ihn als gekappt erkennt."""
+        if maxc < 2:
+            return ""
+        return text if len(text) <= maxc else text[:maxc - 1] + "~"
+
+    def _ra_settings_cores(self):
+        """Alle Cores, fuer die sich ein eigener Bereich lohnt:
+        (Abschnittsname, Anzeigetext).
+
+        MiSTer legt seine Werte PRO CORE ab, nicht pro System - und
+        mehrere unserer Systeme benutzen denselben Core (Game Boy und
+        Game Boy Color teilen sich "Gameboy", SNES und SMW Hacks teilen
+        sich "SNES"). Deshalb wird hier nach Corename zusammengefasst
+        und im Anzeigetext aufgezaehlt, welche Systeme dazugehoeren -
+        wer den Wert fuer "Game Boy" aendert, soll sofort sehen, dass
+        er damit auch "Game Boy Color" aendert. Verstecken waere hier
+        die schlechtere Loesung: der Nutzer wuerde es ohnehin merken,
+        nur spaeter und ohne Erklaerung."""
+        nach_core = {}
+        for eintrag in list(GAME_SYSTEMS) + list(OPTIONAL_GAME_SYSTEMS):
+            name, _syskey, _ordner, rbf = eintrag[0], eintrag[1], eintrag[2], eintrag[3]
+            core = RASET.core_name(rbf)
+            if not core:
+                continue
+            nach_core.setdefault(core, []).append(name)
+        return [(core, nach_core[core])
+                for core in sorted(nach_core, key=lambda c: c.lower())]
+
+    def _ra_settings_zeilen(self, sektion):
+        """Der Bildschirminhalt als flache Liste. Jeder Eintrag ist
+        ("kopf", Text) oder ("wert", art, schluessel, Beschriftung,
+        Wertetext) - so muss die Zeichen- und die Tastenlogik nicht
+        zweimal wissen, wie das Menue aufgebaut ist."""
+        zeilen = [("kopf", t("ra_set_group_popups"))]
+
+        def schalter(key, tkey, standard):
+            an = RASET.schalter_lesen(key, standard)
+            return ("wert", "schalter", key, t(tkey),
+                    t("ra_on") if an else t("ra_off"))
+
+        for key, tkey, standard in RASET.SCHALTER:
+            if key in ("list_desc_ticker", "list_hotkey"):
+                continue          # eigene Gruppe, siehe unten
+            zeilen.append(schalter(key, tkey, standard))
+
+        zeilen.append(("kopf", t("ra_set_group_list")))
+        for key, tkey, standard in RASET.SCHALTER:
+            if key in ("list_desc_ticker", "list_hotkey"):
+                zeilen.append(schalter(key, tkey, standard))
+
+        # Position und Offsets stehen zusammen in einer eigenen Gruppe.
+        # Im OSD steht die Position noch bei den Popups - hier gehoert
+        # sie bewusst zu den Offsets, weil die drei sich denselben
+        # Geltungsbereich teilen (global oder ein Core) und die uebrigen
+        # Schalter nicht. Sie getrennt zu zeigen waere genau die
+        # Verwirrung, die der Geltungsbereich vermeiden soll.
+        # Der Geltungsbereich steht an ZWEI Stellen, und das ist Absicht:
+        # in der waehlbaren Zeile nur das kurze Schlagwort ("alle Cores"
+        # bzw. "SNES"), damit es rechtsbuendig auch auf CRT hinpasst -
+        # und darueber als Ueberschrift der ganze Satz, inklusive der
+        # Systeme, die sich denselben Core teilen. Beides in eine Zeile
+        # zu quetschen ergab beim ersten Versuch "Gilt für: gilt für
+        # alle Cores" und auf CRT einen abgeschnittenen Wert.
+        cores = self._ra_settings_cores()
+        geteilt = dict(cores)
+        if sektion is None:
+            kurz, satz = t("ra_set_scope_all"), t("ra_set_scope_global")
+        else:
+            systeme = geteilt.get(sektion, [])
+            kurz = sektion
+            if len(systeme) > 1:
+                satz = t("ra_set_scope_shared", sektion, ", ".join(systeme))
+            else:
+                satz = t("ra_set_scope_core", sektion)
+        zeilen.append(("kopf", "%s - %s" % (t("ra_set_group_pos"), satz)))
+        zeilen.append(("wert", "bereich", None, t("ra_set_scope_label"), kurz))
+
+        pos, eigen = RASET.wert_mit_herkunft(RASET.POSITION_KEY, sektion)
+        zeilen.append(("wert", "position", RASET.POSITION_KEY,
+                       t("ra_set_position", "").rstrip(": ").rstrip(),
+                       t("ra_set_pos_" + pos)
+                       + self._ra_herkunft_suffix(sektion, eigen)))
+        for key, tkey in (("popup_h_offset", "ra_set_h"),
+                          ("popup_v_offset", "ra_set_v")):
+            wert, eigen = RASET.wert_mit_herkunft(key, sektion)
+            zeilen.append(("wert", "offset", key, t(tkey),
+                           "%+d" % wert
+                           + self._ra_herkunft_suffix(sektion, eigen)))
+        if sektion is not None:
+            zeilen.append(("wert", "reset", None, t("ra_set_reset"), ""))
+        return zeilen
+
+    @staticmethod
+    def _ra_herkunft_suffix(sektion, eigen):
+        """"(geerbt)" bzw. "(eigener Wert)" hinter einem Core-Wert.
+
+        Ohne diesen Zusatz sehen "0, weil global 0" und "0, weil hier
+        ausdruecklich 0 gesetzt" identisch aus - verhalten sich aber
+        verschieden, sobald der globale Wert geaendert wird. Im globalen
+        Bereich entfaellt der Zusatz, dort gibt es nichts zu erben."""
+        if sektion is None:
+            return ""
+        return "  (%s)" % (t("ra_set_own") if eigen else t("ra_set_inherited"))
+
+    def draw_ra_settings_screen(self):
+        """Die RA-Einstellungen der MiSTer-Hauptanwendung, bedienbar vom
+        Sofa aus (Build 95, Nutzerwunsch).
+
+        Das OSD kann dasselbe - aber nur auf Englisch, nur mit Kuerzeln
+        ("Multiline Description") und nur ueber drei Menueebenen. Hier
+        stehen alle Werte auf einem Bildschirm, ausgeschrieben, in der
+        eingestellten Sprache.
+
+        BEWUSST KEINE VORSCHAU DES POPUPS: die Versuchung ist gross, das
+        Popup hier probehalber an die eingestellte Stelle zu malen. Das
+        waere aber eine Luege - MiSTer zeichnet das Popup UEBER DEN
+        LAUFENDEN CORE, in dessen Aufloesung (oft 256x224), nicht in
+        unserer. Eine Vorschau haette also weder die richtige Groesse
+        noch die richtigen Proportionen und wuerde beim Feinjustieren
+        aktiv in die Irre fuehren. Stattdessen der ehrliche Hinweis,
+        dass die Aenderung beim naechsten Core-Start greift."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        accent = accent_for(None)
+        cores = [None] + [c for c, _sys in self._ra_settings_cores()]
+
+        sektion = None
+        auswahl = 0
+        scroll = 0
+        fehler = False
+        while True:
+            zeilen = self._ra_settings_zeilen(sektion)
+            waehlbar = [i for i, z in enumerate(zeilen) if z[0] == "wert"]
+            if not waehlbar:
+                return
+            auswahl = max(0, min(auswahl, len(waehlbar) - 1))
+            cursor = waehlbar[auswahl]
+
+            rowh = 11 * s
+            kopf_h = 30 * s
+            fuss_h = 24 * s
+            platz = max(3, (H - 2 * oy - kopf_h - fuss_h) // rowh)
+            # Mitlaufender Ausschnitt - dieselbe Logik wie in der
+            # Hauptliste: der Cursor bleibt immer im sichtbaren Bereich,
+            # ohne bei jedem Schritt die ganze Liste zu verschieben.
+            if cursor < scroll:
+                scroll = cursor
+            elif cursor >= scroll + platz:
+                scroll = cursor - platz + 1
+            scroll = max(0, min(scroll, max(0, len(zeilen) - platz)))
+
+            fb.clear(C_BG)
+            titel = t("ra_set_title")
+            fb.text(ox, oy, titel, self._fit_scale(titel, W - 2 * ox, s + 1),
+                    C_TITLE, C_BG)
+            y = oy + kopf_h
+            maxc = max(10, (W - 2 * ox) // (8 * s))
+            for i in range(scroll, min(len(zeilen), scroll + platz)):
+                z = zeilen[i]
+                if z[0] == "kopf":
+                    fb.text(ox, y, self._ra_kuerzen(z[1], maxc), s, C_DIM, C_BG)
+                else:
+                    sel = (i == cursor)
+                    farbe = accent if sel else C_TEXT
+                    label, wert = z[3], z[4]
+                    # BUGFIX (am gerenderten Bild gefunden, nicht am
+                    # Quelltext): als eine Zeichenkette "Label: Wert"
+                    # gezeichnet und hinten gekappt, frisst das lange
+                    # deutsche Label auf CRT den WERT auf - zu sehen war
+                    # "Bestenlisten-Aktualisierungen: ~". Ausgerechnet
+                    # die Information, um die es geht, fiel weg.
+                    #
+                    # Jetzt wird der Wert RECHTSBUENDIG gesetzt und
+                    # bekommt seinen Platz zuerst; gekappt wird das
+                    # Label. "Bestenlisten-Aktualisier~   AN" sagt
+                    # immer noch alles Noetige.
+                    prefix = "> " if sel else "  "
+                    if wert:
+                        # Auch der WERT wird begrenzt: ein Corename ist
+                        # zwar kurz, aber nichts garantiert das - und
+                        # ohne Deckel liefe er links aus dem Bild.
+                        wert = self._ra_kuerzen(wert, max(3, maxc // 2))
+                        platz_label = maxc - len(prefix) - len(wert) - 1
+                        fb.text(ox, y, prefix
+                                + self._ra_kuerzen(label, platz_label), s,
+                                farbe, C_BG)
+                        fb.text(ox + (maxc - len(wert)) * 8 * s, y, wert, s,
+                                farbe, C_BG)
+                    else:
+                        fb.text(ox, y, prefix
+                                + self._ra_kuerzen(label, maxc - len(prefix)),
+                                s, farbe, C_BG)
+                y += rowh
+
+            sc = s - 1 if s > 1 else 1
+            hinweis = t("ra_set_write_failed") if fehler \
+                else t("ra_set_takes_effect")
+            # Die lange Bedienzeile passt auf CRT nicht (dort stand
+            # abgeschnitten "Links/Recht~") - dann die Kurzfassung. Eine
+            # halb abgeschnittene Bedienungsanleitung ist schlimmer als
+            # gar keine.
+            fuss_maxc = max(10, (W - 2 * ox) // (8 * sc))
+            bedienung = t("ra_set_hint")
+            for kandidat in (t("ra_set_hint"), t("ra_set_hint_kurz"),
+                             t("ra_set_hint_minimal")):
+                bedienung = kandidat
+                if len(kandidat) <= fuss_maxc:
+                    break
+            for j, zeile in enumerate((hinweis, bedienung)):
+                zeile = self._ra_kuerzen(zeile, fuss_maxc)
+                fb.text((W - len(zeile) * 8 * sc) // 2,
+                        H - oy - (2 - j) * 10 * sc, zeile, sc,
+                        C_ACCENT if (j == 0 and fehler) else C_DIM, C_BG)
+            fb.flip()
+
+            act = self.inp.read_action()
+            fehler = False
+            if act == "up":
+                auswahl = (auswahl - 1) % len(waehlbar)
+            elif act == "down":
+                auswahl = (auswahl + 1) % len(waehlbar)
+            elif act in ("back", "exit"):
+                return
+            elif act in ("ok", "left", "right"):
+                art, key = zeilen[cursor][1], zeilen[cursor][2]
+                richtung = -1 if act == "left" else 1
+                if art == "bereich":
+                    # OK verhaelt sich hier wie "rechts" - sonst
+                    # passiert auf der markierten Zeile beim
+                    # Bestaetigen gar nichts, was sich wie ein
+                    # klemmender Knopf anfuehlt.
+                    i = cores.index(sektion)
+                    sektion = cores[(i + richtung) % len(cores)]
+                elif art == "schalter":
+                    standard = dict((k, d) for k, _tk, d
+                                    in RASET.SCHALTER)[key]
+                    vorher = RASET.schalter_lesen(key, standard)
+                    fehler = RASET.schalter_umschalten(key, standard) == vorher
+                elif art == "position":
+                    vorher = RASET.position_lesen(sektion)
+                    fehler = RASET.position_weiter(sektion) == vorher
+                elif art == "offset":
+                    lo, hi = RASET.offset_grenzen(key)
+                    jetzt, _eigen = RASET.wert_mit_herkunft(key, sektion)
+                    neu = max(lo, min(hi, jetzt + (richtung if act != "ok"
+                                                   else 1)))
+                    if neu != jetzt or not _eigen:
+                        # Auch wenn der Wert gleich bleibt (am Anschlag
+                        # oder beim Uebernehmen eines geerbten Werts)
+                        # wird geschrieben - so bekommt der Core einen
+                        # EIGENEN Eintrag, sobald man ihn anfasst.
+                        fehler = not RASET.offset_schreiben(key, neu, sektion)
+                elif art == "reset":
+                    fehler = not RASET.sektion_zuruecksetzen(sektion)
+
     def draw_crt_test_pattern_screen(self):
         """Testbild zur CRT-Kalibrierung (Nutzerwunsch) - Geometrie-
         Rahmen, Raster (Linearitaet), Farbbalken (Farbabgleich),
@@ -11270,6 +11543,20 @@ class Frontend:
                             # noetig.
                             toggle_ra_enabled()
                             self._refresh_system_category()
+                        elif kind == "ra_settings":
+                            # NEU (Build 95): die RA-Einstellungen der
+                            # MiSTer-Hauptanwendung. Eigener Bildschirm,
+                            # siehe draw_ra_settings_screen().
+                            self.draw_ra_settings_screen()
+                            self.draw()
+                        elif kind == "ra_settings_missing":
+                            # Die MiSTer-eigene RA-Datei gibt es nicht -
+                            # dann gibt es auch nichts einzustellen. Wir
+                            # legen sie bewusst NICHT an (sie enthaelt
+                            # Zugangsdaten, siehe fe/ra_settings.py),
+                            # sondern sagen nur, woran es liegt.
+                            self.draw(message=t("sys_ra_settings_missing"),
+                                      prominent=True)
                 # Bei einem einzelnen hoch/runter-Schritt (kein Scrollen,
                 # keine Seite/Kategorie gewechselt) reicht der leichte
                 # Navigations-Zeichenpfad - deutlich billiger als die

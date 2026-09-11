@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-11-94",
-  "summary": "Flackern behoben: die Hinweisbox nach einer Einstellungsaenderung verschwand sechsmal pro Sekunde kurz, weil die Seite schon auf dem Schirm war, bevor die Box gezeichnet wurde."
+  "build_id": "2026-09-11-95",
+  "summary": "Neu unter System - RetroAchievements - Popups & Anzeige: alle RA-Einstellungen der MiSTer-Hauptanwendung auf einem Bildschirm, auf Deutsch, mit Popup-Position und Feinjustierung global oder pro Core."
 }

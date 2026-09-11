@@ -42,6 +42,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_ruhige_boxspalte.py \
   && python3 tools/test_vsync_und_wiederholrate.py \
   && python3 tools/test_hinweisbox_flackern.py \
+  && python3 tools/test_ra_einstellungen.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -73,6 +74,7 @@ python3 tools/regression_test.py \
 | `test_ruhige_boxspalte.py` | Test (Pass/Fail) | Verzoegertes Cover zeigt keinen Platzhalter, Platzhalter ist ein Rahmen, keine Spalte bei reinen Ordnerlisten, Positionsgedaechtnis je Kategorie |
 | `test_vsync_und_wiederholrate.py` | Test (Pass/Fail) | Vsync-Auslassen nur noch bei schmalen Baendern, Wiederholrate folgt der gemessenen Zeichendauer |
 | `test_hinweisbox_flackern.py` | Test (Pass/Fail) | Hinweisbox: genau ein Flip pro Aufbau, und der kommt NACH der Box |
+| `test_ra_einstellungen.py` | Test (Pass/Fail) | MiSTers RA-Datei: nur die gemeinte Zeile wird angefasst, Zugangsdaten und Kommentare bleiben |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -732,6 +734,54 @@ schiefgehen kann, wenn man eine Regelgroesse aus Messwerten ableitet:
 Deckel nach oben, Verwerfen von Unsinn (Uhrensprung, ein
 zwischendurch gestartetes Spiel), und Traegheit gegen einen einzelnen
 Ausreisser.
+
+## test_ra_einstellungen.py
+
+Die RA-Einstellungen der MiSTer-Hauptanwendung, bedienbar aus unserem
+System-Menue (Build 95).
+
+**Was hier auf dem Spiel steht.** `/media/fat/retroachievements.cfg`
+gehoert NICHT uns. Darin stehen die RA-Zugangsdaten des Nutzers
+(Benutzername UND Passwort), moeglicherweise Kommentare, und in einer
+kuenftigen MiSTer-Version Schluessel, die es heute noch nicht gibt. Ein
+Fehler in `fe/ra_settings.py` kostet nicht ein falsches Pixel, sondern
+im schlimmsten Fall den Zugang zu RetroAchievements. Deshalb prueft
+Test 1 als erstes und wichtigstes, dass nach einer Aenderung **genau
+eine Zeile weg und eine dazugekommen** ist - und zwar die gemeinte.
+
+Die uebrigen Tests decken die Faelle ab, in denen ein naiver
+INI-Editor still etwas kaputtmacht:
+
+- **Test 2** - eine auskommentierte Zeile (`#multiline_desc=1`) darf
+  nicht als gesetzter Wert gelten und nicht wiederbelebt werden.
+- **Test 3** - ein NEUER globaler Wert muss VOR dem ersten
+  `[Abschnitt]` landen. Am Dateiende angehaengt stuende er hinter
+  `[Gameboy]` und waere damit plötzlich ein Gameboy-Wert.
+- **Test 9** - Zuruecksetzen entfernt nur unsere drei Pro-Core-Werte
+  und laesst fremde Schluessel im selben Abschnitt stehen.
+- **Test 10** - fehlt die Datei, wird sie NICHT angelegt. Sie enthaelt
+  Zugangsdaten; eine von uns erzeugte Datei ohne Benutzername waere
+  fuer MiSTer wertlos.
+- **Test 14** - der gefaehrlichste denkbare Fehler: es gibt ZWEI
+  Dateien namens `retroachievements.cfg` (unsere unter
+  `/media/fat/frontend/` mit Benutzername + Web-API-Schluessel, MiSTers
+  unter `/media/fat/` mit Benutzername + Passwort). Geprueft wird, dass
+  die Pfade verschieden sind und `ra_settings.py` nichts aus
+  `retroachievements.py` importiert.
+
+**Test 11** haelt eine Eigenart fest, die leicht zu uebersehen ist:
+MiSTer legt seine Werte pro CORE ab, nicht pro System. Game Boy und
+Game Boy Color benutzen denselben Core ("Gameboy"), SNES und SMW Hacks
+ebenfalls ("SNES") - eine Aenderung gilt also zwangslaeufig fuer beide.
+Der Bildschirm muss das auch dazusagen.
+
+**Test 12** zeichnet den Bildschirm wirklich, in beiden Aufloesungen.
+Zwei Layout-Fehler waren nur so zu finden und sind beide im gerenderten
+PNG aufgefallen, nicht im Quelltext: auf CRT frass das lange deutsche
+Label den WERT auf ("Bestenlisten-Aktualisierungen: ~" - ausgerechnet
+die Information, um die es geht), und die Bedienzeile wurde mitten im
+Wort abgeschnitten. Werte stehen jetzt rechtsbuendig und bekommen ihren
+Platz zuerst; von der Bedienzeile gibt es drei Laengen.
 
 ## diag_lightpath.py
 
