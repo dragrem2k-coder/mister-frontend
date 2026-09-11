@@ -42,6 +42,23 @@ FONT_EXTRA = bytes.fromhex('0000000000000000181800181818180018187e03037e18181c36
 ROWCACHE_MAX_ENTRIES = 150  # siehe Framebuffer.rect()/clear() - verhindert
                             # unbegrenztes Cache-Wachstum durch leicht
                             # wechselnde (Farbe, Breite)-Kombinationen
+# NEU (Build 96, Voraussetzung fuer das Scroll-Blitting): (y0, y1) oder
+# None. In diesem Zeilenbereich bekommt die Vignette EINE einheitliche
+# Helligkeitsstufe statt eines Verlaufs.
+#
+# WARUM DAS NOETIG IST: Blitting verschiebt einen fertig gezeichneten
+# Block um eine Zeilenhoehe. Die Vignette haengt aber von der Bildzeile
+# ab - sie wandert also mit. Da jeder Schritt auf dem Ergebnis des
+# vorigen aufsetzt, SUMMIERT sich der Fehler: nach zwanzig Schritten
+# waere die Abdunkelung im Listenbereich sichtbar falsch. Ein flaches
+# Band laesst sich dagegen beliebig oft verschieben, ohne dass etwas
+# driftet - die Zeilen dort sind ja alle gleich hell.
+#
+# Gesetzt wird das Band vom Frontend (siehe _vignette_band_setzen()),
+# und NUR solange der Nutzer das Scroll-Blitting eingeschaltet hat.
+# Oben und unten am Bildrand bleibt die Vignette unveraendert.
+VIGNETTE_FLAT_BAND = None
+
 VIGNETTE_ENABLED = True    # dezente Randabdunkelung auf einfarbigen
                             # Flaechen (siehe Framebuffer.clear()) - rein
                             # optisch, kostet dank Zeilen-Cache nichts
@@ -267,16 +284,33 @@ class Framebuffer:
         Zeilen-Kopien geschrieben - deutlich weniger Einzeloperationen."""
         levels = len(row_variants)
         cy = height / 2.0
+
+        # Build 96: im flachen Band (siehe VIGNETTE_FLAT_BAND oben) gilt
+        # EINE Stufe fuer alle Zeilen - und zwar die der Bandmitte.
+        # Die Mitte, nicht der Bandanfang: so ist der Sprung an beiden
+        # Bandraendern gleich klein statt an einem Rand doppelt so
+        # gross.
+        band = VIGNETTE_FLAT_BAND
+        band_lvl = None
+        if band:
+            by0, by1 = band
+            bm = (by0 + by1) / 2.0
+            d = abs(bm - cy) / cy if cy else 0.0
+            band_lvl = min(levels - 1, int(d * d * (levels - 1)))
+
+        def stufe(zeile):
+            if band and band[0] <= zeile < band[1]:
+                return band_lvl
+            d_ = abs(zeile - cy) / cy if cy else 0.0
+            return min(levels - 1, int(d_ * d_ * (levels - 1)))
+
         y = 0
         while y < height:
-            d = abs(y - cy) / cy if cy else 0.0
-            lvl = min(levels - 1, int(d * d * (levels - 1)))
+            lvl = stufe(y)
             run_start = y
             y += 1
             while y < height:
-                d2 = abs(y - cy) / cy if cy else 0.0
-                lvl2 = min(levels - 1, int(d2 * d2 * (levels - 1)))
-                if lvl2 != lvl:
+                if stufe(y) != lvl:
                     break
                 y += 1
             run_len = y - run_start
@@ -312,8 +346,22 @@ class Framebuffer:
         r, g, b = rgb
         return (int(r*factor), int(g*factor), int(b*factor))
 
+    def bg_key(self, rgb):
+        """Schluessel des zwischengespeicherten Hintergrundmusters.
+
+        Build 96: bewusst EINE Stelle, an der dieser Schluessel gebildet
+        wird. Er stand vorher an drei Stellen von Hand ausgeschrieben
+        (hier, in _restore_row_bg() und in _bg_fill()) - beim Aufnehmen
+        von VIGNETTE_FLAT_BAND haetten die beiden anderen sonst still
+        danebengegriffen und einfarbig statt mit Vignette gefuellt."""
+        return ("bg", rgb, self.width, self.height, VIGNETTE_FLAT_BAND)
+
     def clear(self, rgb):
-        key = ("bg", rgb, self.width, self.height)
+        # VIGNETTE_FLAT_BAND gehoert MIT in den Schluessel (Build 96):
+        # sonst liefert der Zwischenspeicher nach dem Umschalten des
+        # Scroll-Blittings noch den Hintergrund mit der alten Vignette,
+        # und der Wechsel wuerde erst nach einem Neustart sichtbar.
+        key = self.bg_key(rgb)
         bg = self._rowcache.get(key)
         if bg is None:
             if VIGNETTE_ENABLED:

@@ -7,6 +7,78 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Scroll-Blitting — gebaut, gemessen, und es bringt nichts** (Build 96 —
+„Scroll-Blitting probieren wir mal aus, wenn es nichts bringt schmeißen
+wir es wieder raus", mit An- und Ausschalter unter *System → Anzeige &
+Sound*):
+
+Die Idee: sobald die Markierung den Listenrand erreicht hat, ist **jeder**
+weitere Schritt ein kompletter Seitenaufbau. Statt ihn zu bauen, wird der
+schon gezeichnete Listenblock um eine Zeilenhöhe im Speicher verschoben
+und nur noch vier Zeilen neu gezeichnet.
+
+**Das Ergebnis:**
+
+| Auflösung | voll | geblittet | Faktor |
+|---|---|---|---|
+| CRT 320×240 | 0,48 ms | 0,48 ms | 1,0× |
+| 720p | 1,92 ms | 1,76 ms | 1,1× |
+| HDMI 1920×1080 | 2,49 ms | 3,11 ms | **0,8×** |
+
+Der Grund steht in derselben Messung, nach Posten aufgeteilt (HDMI):
+
+| Posten | Zeit |
+|---|---|
+| **Cover-Panel** | **1,195 ms — 61 %** |
+| alle 17 Zeilen zeichnen | 0,734 ms |
+| Block verschieben | 0,372 ms |
+| nur 4 Zeilen zeichnen | 0,241 ms |
+| zwei Randstreifen | 0,040 ms |
+| Fußzeile | 0,015 ms |
+
+Blitting greift die 0,734 ms an und ersetzt sie durch 0,653 ms — spart
+also rund 0,08 ms von knapp 2 ms. **Der eigentliche Brocken ist das
+Cover-Panel, und das zeichnen beide Wege gleichermaßen.**
+
+Ich habe bei diesem Build **zweimal danebengelegen**, beide Male von der
+Messung korrigiert. Erst erwartete ich, Blitting werde zu teuer — eine
+spaltenweise Kopie über 774 Zeilen gegen 17 Zeilen zwischengespeicherten
+Text. Ein erster Prototyp war dann 5× schneller, was die Erwartung
+widerlegte. Der Prototyp ließ aber Cover-Panel und Fußzeile weg.
+Vollständig gebaut und ehrlich gemessen bleibt nichts übrig.
+
+**Trotzdem ausgeliefert, Standard AUS.** Die Entwicklungsumgebung ist
+nicht das Gerät: dort hat das Cover echte Bilddaten und die CPU ist eine
+andere. Der Schalter kostet nichts, solange er aus ist, und beantwortet
+die Frage auf dem MiSTer mit einem Tastendruck. Bestätigt sich die
+Messung dort, gehört der ganze Pfad gelöscht.
+
+**Der Preis, wenn man ihn einschaltet:** die Randabdunkelung wird hinter
+der Liste flach. Sie hängt von der Bildzeile ab — verschiebt man den
+Block, wandert sie mit, und weil jeder Schritt auf dem vorigen aufsetzt,
+summiert sich der Fehler. Oben und unten am Bildrand bleibt sie
+unverändert. Die Menüzeile nennt diesen Preis mit.
+
+**Zwei Fehler, die nur der bitgenaue Vergleich gefunden hat.** Der Test
+vergleicht den geblitteten Bildschirm Punkt für Punkt mit dem voll
+aufgebauten — einzeln und nach 30 Schritten:
+
+1. **Reihenfolge.** `draw_art_panel()` reicht mit seiner untersten Kante
+   drei Bildzeilen in die Fußzeile hinein; die Fußzeile räumt das beim
+   Wiederherstellen auf. Der Blit-Pfad rief beides umgekehrt auf — der
+   Überstand blieb stehen.
+2. **Zwischenräume.** Eine Listenzeile räumt nur ihren Textbereich auf
+   (39 von 45 Bildzeilen). Die restlichen sechs sind normalerweise
+   ohnehin Hintergrund — nach einer Verschiebung steht dort aber Rest
+   der Nachbarzeile. Beim Herunterscrollen fällt der aus dem Bild, beim
+   Hochscrollen landet er mitten drin.
+
+Neu: `tools/test_scroll_blitting.py` (36 Prüfungen) und
+`tools/bench_scrollblit.py`. Nebenbei wurden drei Stellen
+zusammengeführt, die denselben Code hatten: das Cover-Panel, die
+Fußzeile und der Schlüssel des Hintergrund-Zwischenspeichers.
+
+
 **MiSTers RA-Einstellungen jetzt im Frontend** (Build 95 — „Sute hat eine
 neue Main MiSTer gebaut, die hat nun RA Settings, können wir das
 irgendwie mit ins Frontend einbauen?" und später: „Das hätte ich auch

@@ -29,7 +29,8 @@ from fe.settings import (
     attract_enabled, crt_menu_active, curated_only_active,
     dragend_logo_enabled, format_attract_delay, load_attract_delay,
     screen_mirror_enabled, stream_overlay_enabled,
-    fast_scroll_enabled, pulse_effect_enabled, eq_effect_enabled,
+    fast_scroll_enabled, scroll_blit_enabled,
+    pulse_effect_enabled, eq_effect_enabled,
     track_marquee_enabled, fb_size_label_key,
     autostart_enabled, rom_filter_enabled,
 )
@@ -214,6 +215,8 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         else t("sys_rom_filter_off")
     autostart_label = t("sys_autostart_on") if autostart_enabled() \
         else t("sys_autostart_off")
+    scroll_blit_label = (t("sys_scroll_blit_on") if scroll_blit_enabled()
+                         else t("sys_scroll_blit_off"))
 
     def folder(*items):
         return {"folders": {}, "items": list(items)}
@@ -255,6 +258,12 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         (sfx_label, "sfx", None),
         (dragend_logo_label, "dragend_logo", None),
         (fast_scroll_label, "fast_scroll", None),
+        # NEU (Build 96, Nutzerwunsch: "Scroll-Blitting mit An- und
+        # Ausschalter unter System, Anzeige & Sound"). Steht bewusst
+        # DIREKT unter "Schnelles Scrollen": beide betreffen dasselbe -
+        # wie das Bild beim Scrollen zustande kommt - und wer den einen
+        # sucht, findet so den anderen gleich mit.
+        (scroll_blit_label, "scroll_blit", None),
     ]
     if not crt:
         display_items.append((fb_size_label, "fb_size", None))

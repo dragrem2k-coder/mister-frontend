@@ -137,7 +137,10 @@ ecke_b = bytes(f.fb.buf[0:64])
 check("zwei Kategorien haben denselben Hintergrund",
       ecke_a == ecke_b)
 # Und er stammt aus derselben Vorlage, die fb.clear() aufbaut.
-vorlage = f.fb._rowcache.get(("bg", fm.C_BG, f.fb.width, f.fb.height))
+# Build 96: der Schluessel enthaelt jetzt auch das flache
+# Vignetten-Band - deshalb ueber fb.bg_key() statt von Hand
+# ausgeschrieben (siehe Framebuffer.bg_key()).
+vorlage = f.fb._rowcache.get(f.fb.bg_key(fm.C_BG))
 check("die Vorlage aus fb.clear() ist vorhanden", vorlage is not None)
 if vorlage is not None:
     check("die obere Bildzeile stammt genau aus dieser Vorlage",

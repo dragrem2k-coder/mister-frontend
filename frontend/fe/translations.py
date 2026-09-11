@@ -410,6 +410,20 @@ TRANSLATIONS = {
     # sie einzeln in einer langen Liste stehen und sich selbst erklaeren
     # muessen. Auf dem RA-Bildschirm stehen neun Schalter untereinander
     # in einer Spalte - dort waeren ganze Saetze nur Rauschen.
+    # NEU (Build 96, Nutzerwunsch: "Scroll-Blitting mit An- und
+    # Ausschalter unter System, Anzeige & Sound"). Der Zusatz in
+    # Klammern nennt den PREIS, nicht nur den Nutzen - die
+    # Randabdunkelung wird im Listenbereich flach, und das sieht man.
+    "sys_scroll_blit_on": {
+        "en": "Scroll blitting: ON -> turn off (scrolling at the list "
+              "edge is faster; edge shading is flat behind the list)",
+        "de": "Scroll-Blitting: AN -> ausschalten (Scrollen am Listenrand "
+              "ist schneller; die Randabdunkelung ist hinter der Liste flach)"},
+    "sys_scroll_blit_off": {
+        "en": "Scroll blitting: OFF -> turn on (faster scrolling at the "
+              "list edge, flat edge shading behind the list)",
+        "de": "Scroll-Blitting: AUS -> einschalten (schnelleres Scrollen am "
+              "Listenrand, dafür flache Randabdunkelung hinter der Liste)"},
     "ra_on": {"en": "ON", "de": "AN"},
     "ra_off": {"en": "OFF", "de": "AUS"},
     "sys_ra_settings": {"en": "Popups & display (MiSTer RA settings)",

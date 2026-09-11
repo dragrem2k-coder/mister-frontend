@@ -621,6 +621,81 @@ def toggle_fast_scroll():
             pass
 
 
+# NEUES FEATURE (Build 96, Nutzerwunsch: "Scroll-Blitting probieren wir
+# mal aus, wenn es nichts bringt schmeissen wir es wieder raus" - und
+# ausdruecklich "mit An- und Ausschalter unter System, Anzeige & Sound").
+#
+# WAS ES TUT: sobald die Markierung den Listenrand erreicht, ist bisher
+# JEDER weitere Schritt ein kompletter Seitenaufbau - auf HDMI gemessen
+# 45-110 ms. Beim Dauerscrollen ist das praktisch immer. Blitting
+# verschiebt stattdessen den schon gezeichneten Listenblock um eine
+# Zeilenhoehe im Speicher und zeichnet nur die eine neu
+# hereinkommende Zeile plus die beiden Markierungszeilen.
+#
+# NACHGEMESSEN (tools/bench_scrollblit.py) - UND DAS ERGEBNIS IST
+# ERNUECHTERND:
+#
+#     CRT  320x240    voll 0.48 ms   blit 0.48 ms   Faktor 1.0
+#     720p 1280x720   voll 1.92 ms   blit 1.76 ms   Faktor 1.1
+#     HDMI 1920x1080  voll 2.49 ms   blit 3.11 ms   Faktor 0.8
+#
+# Es bringt nichts. Der Grund steht in derselben Messung, aufgeteilt
+# nach Posten (HDMI, 17 sichtbare Zeilen):
+#
+#     Boxart-Panel          1.195 ms   <- 61 %
+#     alle 17 Zeilen        0.734 ms
+#     Block verschieben     0.372 ms
+#     nur 4 Zeilen          0.241 ms
+#     zwei Randstreifen     0.040 ms
+#     Fusszeile             0.015 ms
+#
+# Blitting greift die 0.734 ms an und ersetzt sie durch 0.653 ms -
+# spart also rund 0.08 ms von knapp 2 ms. Der eigentliche Brocken ist
+# das COVER-PANEL, und das zeichnen beide Wege gleichermassen.
+#
+# ZWEIMAL DANEBENGELEGEN, beide Male von der Messung korrigiert: erst
+# hatte ich erwartet, dass Blitting zu TEUER wird (eine spaltenweise
+# Kopie ueber 774 Zeilen gegen 17 Zeilen zwischengespeicherten Text) -
+# ein erster Prototyp war dann 5x schneller. Der Prototyp liess aber
+# Cover-Panel und Fusszeile weg. Vollstaendig gebaut und ehrlich
+# gemessen bleibt nichts uebrig.
+#
+# WARUM ES TROTZDEM DRIN IST: der Nutzer wollte es ausprobieren, und
+# die Entwicklungsumgebung ist nicht das Geraet - dort hat das Cover
+# echte Bilddaten und die CPU ist eine andere. Der Schalter kostet
+# nichts, solange er aus ist, und beantwortet die Frage auf dem Geraet
+# mit einem Tastendruck. Bestaetigt sich die Messung dort, gehoert der
+# ganze Pfad geloescht.
+#
+# DER PREIS (der Nutzer hat ihn ausdruecklich gewaehlt): die
+# Rand-Abdunkelung (Vignette) haengt von der Bildzeile ab. Verschiebt
+# man den Block, wandert sie mit - und weil jeder Schritt auf dem
+# Ergebnis des vorigen aufsetzt, SUMMIERT sich der Fehler. Deshalb ist
+# die Vignette im Listenbereich flach, solange dieser Schalter an ist
+# (siehe VIGNETTE_FLAT_BAND in fe/framebuffer.py). Oben und unten am
+# Bildrand bleibt sie unveraendert.
+#
+# Standard AUS: es bringt gemessen nichts und aendert das Aussehen.
+SCROLL_BLIT_ENABLED_FLAG = "/media/fat/frontend/scroll_blit_enabled"
+
+def scroll_blit_enabled():
+    return os.path.exists(SCROLL_BLIT_ENABLED_FLAG)
+
+def toggle_scroll_blit():
+    if scroll_blit_enabled():
+        try:
+            os.remove(SCROLL_BLIT_ENABLED_FLAG)
+        except OSError:
+            pass
+    else:
+        try:
+            os.makedirs(os.path.dirname(SCROLL_BLIT_ENABLED_FLAG),
+                        exist_ok=True)
+            open(SCROLL_BLIT_ENABLED_FLAG, "w").close()
+        except OSError:
+            pass
+
+
 # NEUES FEATURE (Nutzerwunsch: "eventuell unter System und dann unter
 # Optionen dafuer einen Schalter einbauen, der beim Neustart das an- und
 # ausschaltet"): Groesse des Linux-Framebuffers ueber die MiSTer.ini

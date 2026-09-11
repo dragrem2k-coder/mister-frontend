@@ -200,6 +200,7 @@ from fe.settings import (
     toggle_curated_only, toggle_dragend_logo, screen_mirror_enabled,
     toggle_screen_mirror, toggle_stream_overlay,
     fast_scroll_enabled, toggle_fast_scroll,
+    scroll_blit_enabled, toggle_scroll_blit,
     FAST_SCROLL_WINDOW, pulse_effect_enabled, toggle_pulse_effect,
     CRT_CONFIRM_TIMEOUT, crt_pending_confirm, mark_crt_pending_confirm,
     clear_crt_pending_confirm, eq_effect_enabled, toggle_eq_effect,
@@ -238,6 +239,12 @@ from fe.systems import GAME_SYSTEMS, OPTIONAL_GAME_SYSTEMS, system_display_name
 # Kopf von fe/ra_settings.py. Deshalb hier als Modul importiert und
 # immer mit Praefix benutzt (RASET.schalter_lesen(...)), nie einzeln.
 import fe.ra_settings as RASET
+# Modul-qualifiziert, NICHT "from ... import VIGNETTE_FLAT_BAND":
+# das Band wird zur Laufzeit umgeschaltet (siehe
+# _vignette_band_setzen()), ein importierter Name waere eine
+# eingefrorene Kopie. Genau dieselbe Falle wie bei C_BG/C_TEXT, siehe
+# den Modul-Kopf von fe/framebuffer.py.
+import fe.framebuffer
 
 import fe.paths
 import mister_wot
@@ -3700,7 +3707,7 @@ class Frontend:
         falls noch nie geclear't wurde (Muster dann noch nicht im
         Cache)."""
         fb = self.fb
-        bg_pattern = fb._rowcache.get(("bg", C_BG, fb.width, fb.height))
+        bg_pattern = fb._rowcache.get(fb.bg_key(C_BG))
         if bg_pattern is None:
             fb.rect(x, y, w, h, C_BG)
             return
@@ -3968,33 +3975,274 @@ class Frontend:
         # Panel wird weiterhin sofort bei jedem Schritt aktualisiert, wie
         # bisher. Die Vsync-Skip-Logik selbst (_scroll_skip_vsync()) bleibt
         # unangetastet, wird hier nur gelesen.
-        defer_panel = has_art and self._scroll_skip_vsync()
-        if defer_panel:
-            # Das Boxart-Panel wird hier bewusst ausgelassen - also gibt
-            # es nach dem Stillstand etwas nachzuholen. Vermerken, damit
-            # der COVER_SETTLE-Nachlader weiss, dass er gebraucht wird
-            # (siehe dortiger Kommentar).
-            ART._deferred_something = True
-
-        if has_art and not defer_panel:
-            L = self.layout_items(has_art)
-            s, ox, oy = L["s"], L["ox"], L["oy"]
-            list_right, footer_y = L["list_right"], L["footer_y"]
-            art_x0 = art_spalte_x0(list_right, self.fb.height, s)
-            art_y0 = oy
-            art_w = (self.fb.width - ox) - art_x0
-            art_h = footer_y - 8 * s - art_y0
-            if art_w > 20 and art_h > 20:
-                item_syskey = self._item_syskey(v["items"][new_item_i], syskey)
-                self.draw_art_panel(art_x0, art_w, art_y0, art_h,
-                                    item_syskey, v["items"][new_item_i], s)
-                regions.append((art_y0, art_y0 + art_h))
+        # GEMEINSAM GENUTZT seit Build 96: derselbe Block wird jetzt
+        # auch vom Scroll-Blitting gebraucht. Ausgelagert statt kopiert -
+        # laufen die beiden Pfade auseinander, zeichnet einer von beiden
+        # das Cover unter einer anderen Kastengroesse als der andere.
+        art_y0, art_y1 = self._art_panel_aktualisieren(v, syskey, new_item_i)
+        if art_y0 is not None:
+            regions.append((art_y0, art_y1))
 
         if regions:
             y0 = min(r[0] for r in regions)
             y1 = max(r[1] for r in regions)
             fb.flip_rows(y0, y1 - y0,
                          skip_vsync=self._vsync_ueberspringen(y1 - y0))
+        return True
+
+    def _fusszeile_zeichnen(self, ox, footer_y, s, message=None):
+        """Die Fusszeile auffrischen: Hintergrund wiederherstellen und
+        entweder die Meldung (mittig) oder den Songtitel (links,
+        Laufschrift) hineinschreiben.
+
+        Ausgelagert in Build 96, weil das Scroll-Blitting dieselbe Zeile
+        braucht. Vorher stand der Block nur in _draw_page_items_impl() -
+        der leichte Navigationspfad liess die Fusszeile stehen, was beim
+        Pixelvergleich als bekannte Abweichung auftauchte. Beim Blitten
+        waere dasselbe passiert: der geblittete Bildschirm haette sich
+        in der Fusszeile vom voll aufgebauten unterschieden.
+
+        Die Zeile kostet nur ein schmales Band, nicht den Bildschirm -
+        sie mitzunehmen ist billiger, als eine zweite Wahrheit ueber den
+        Inhalt der Fusszeile zu pflegen."""
+        fb = self.fb
+        W = fb.width
+        _t = time.monotonic()
+        self._restore_row_bg(ox, footer_y, W - 2 * ox, 8 * s)
+        self._perf_restore = (getattr(self, "_perf_restore", 0.0)
+                              + (time.monotonic() - _t))
+        if message:
+            # BUGFIX (Nutzer-Rueckmeldung: Geheimcode-Popup erschien
+            # links unten am Bildschirmrand statt zentriert) - gleicher
+            # Fix wie in draw_page_cats().
+            msg_scale = self._fit_scale(message, W - 2 * ox, s)
+            msg_w = len(message) * 8 * msg_scale
+            fb.text((W - msg_w) // 2, footer_y, message, msg_scale, C_DIM)
+            return
+        # Songtitel als Laufschrift in der Fusszeile - bleibt so an
+        # derselben Stelle sichtbar, egal ob/wie viel Platz das
+        # Boxart-Panel gerade braucht.
+        foot_maxc = max(0, (W - 2 * ox) // (8 * s))
+        if foot_maxc >= 6:
+            track_display = self.track_marquee_text(foot_maxc)
+            if track_display:
+                fb.text(ox, footer_y, track_display, s, C_DIM)
+
+    def _art_panel_aktualisieren(self, v, syskey, item_i, L=None):
+        """Boxart-/Info-Panel fuer die jetzt markierte Zeile auffrischen.
+        Liefert (y0, y1) des angefassten Bereichs oder (None, None),
+        wenn nichts gezeichnet wurde.
+
+        Ausgelagert in Build 96, weil jetzt ZWEI leichte Pfade das
+        brauchen (Einzelschritt-Navigation und Scroll-Blitting). Der
+        Turbo-Scroll-Verzicht (defer_panel) steht bewusst hier drin und
+        nicht bei den Aufrufern: er gilt fuer beide, und zwei Kopien
+        derselben Bedingung waeren genau die Sorte stiller Abweichung,
+        die man erst auf dem Geraet bemerkt."""
+        has_art = self.hat_artspalte(v["items"], syskey)
+        defer_panel = has_art and self._scroll_skip_vsync()
+        if defer_panel:
+            # Das Panel wird bewusst ausgelassen - also gibt es nach dem
+            # Stillstand etwas nachzuholen. Vermerken, damit der
+            # COVER_SETTLE-Nachlader weiss, dass er gebraucht wird.
+            ART._deferred_something = True
+        if not has_art or defer_panel:
+            return None, None
+        # L darf der Aufrufer mitbringen (Build 96): layout_items() ist
+        # nicht gratis, und der Blit-Pfad braucht dasselbe Layout gleich
+        # noch fuer die Fusszeile.
+        if L is None:
+            L = self.layout_items(has_art)
+        s, ox, oy = L["s"], L["ox"], L["oy"]
+        list_right, footer_y = L["list_right"], L["footer_y"]
+        art_x0 = art_spalte_x0(list_right, self.fb.height, s)
+        art_y0 = oy
+        art_w = (self.fb.width - ox) - art_x0
+        art_h = footer_y - 8 * s - art_y0
+        if art_w <= 20 or art_h <= 20:
+            return None, None
+        item_syskey = self._item_syskey(v["items"][item_i], syskey)
+        self.draw_art_panel(art_x0, art_w, art_y0, art_h,
+                            item_syskey, v["items"][item_i], s)
+        return art_y0, art_y0 + art_h
+
+    # ------------------------------------------------------------------
+    # Scroll-Blitting (Build 96) - siehe scroll_blit_enabled() in
+    # fe/settings.py fuer Messwerte, Begruendung und den Preis.
+    # ------------------------------------------------------------------
+    def _vignette_band_setzen(self, L):
+        """Der Vignette mitteilen, welcher Zeilenbereich flach sein muss
+        (der Listenbereich), solange Scroll-Blitting an ist.
+
+        Wird bei JEDEM Seitenaufbau aufgerufen, nicht nur beim Blitten:
+        das Band haengt an der Aufloesung und am Layout, und beides kann
+        sich aendern (CRT-Wechsel, andere Kastengroesse). Ist der
+        Schalter aus, wird das Band auf None gesetzt - dann sieht alles
+        exakt aus wie vor Build 96."""
+        if scroll_blit_enabled():
+            band = (max(0, L["list_y"] - 3 * L["s"]),
+                    min(self.fb.height,
+                        L["list_y"] + L["visible"] * L["rowh"]))
+        else:
+            band = None
+        if fe.framebuffer.VIGNETTE_FLAT_BAND != band:
+            fe.framebuffer.VIGNETTE_FLAT_BAND = band
+            # Der fertige Hintergrund im Zwischenspeicher gehoert noch
+            # zum alten Band. Er wird ueber den Schluessel ohnehin nicht
+            # mehr gefunden (siehe Framebuffer.bg_key()), aber er belegt
+            # bis zu 8 MB - und beim Umschalten des Schalters waere das
+            # zweimal derselbe Hintergrund im Speicher.
+            self.fb._rowcache.clear()
+            self.fb.mark_full_redraw()
+
+    def _scroll_blit_items(self, old_item_i, old_scroll):
+        """Ein Scrollschritt OHNE vollen Seitenaufbau: den bereits
+        gezeichneten Listenblock um genau eine Zeilenhoehe im Speicher
+        verschieben und nur die drei Zeilen neu zeichnen, die sich
+        wirklich geaendert haben.
+
+        Liefert True, wenn geblittet wurde - sonst False, und der
+        Aufrufer nimmt wie bisher den vollen, immer richtigen draw().
+
+        DIE BEDINGUNGEN SIND BEWUSST ENG. Geblittet wird nur, wenn der
+        Hintergrund nachweislich unveraendert ist und sich genau eine
+        Zeile Inhalt verschoben hat. Jeder Zweifelsfall faellt auf den
+        vollen Aufbau zurueck: ein falsch stehengebliebener Bildteil
+        waere schlimmer als ein paar Millisekunden mehr."""
+        if not scroll_blit_enabled():
+            return False
+        v = getattr(self, "view", None)
+        if not v or not v["items"] or self.page != 1:
+            return False
+        if self._force_full_redraw or self._overlay_active():
+            return False
+        # Genau ein Schritt gescrollt - mehr kann dieser Pfad nicht.
+        delta = self.scroll - old_scroll
+        if delta not in (-1, 1):
+            return False
+        fb = self.fb
+        visible = self.items_visible
+        if visible < 3:
+            return False
+        if not (self.scroll <= self.item_i < self.scroll + visible):
+            return False
+
+        # DIESELBE Bedingung wie der schnelle Hintergrund-Pfad in
+        # _draw_page_items_impl(): nur wenn Kategorie, Ordnerpfad,
+        # Eintragsanzahl und Aufloesung unveraendert sind UND seitdem
+        # niemand anders den Puffer komplett ueberschrieben hat
+        # (full_redraw_gen), steht im Puffer wirklich noch unsere Seite.
+        # Lief zwischendurch die Hilfe, ein Dialog oder der
+        # Attract-Modus, ist der Puffer Fremdbesitz - dann nichts
+        # verschieben.
+        _key = (self.cat_i, tuple(self.nav_path), len(v["items"]),
+                fb.width, fb.height)
+        if getattr(self, "_pgi_fast_key", None) != _key:
+            return False
+        if getattr(self, "_pgi_fast_gen", -1) != fb.full_redraw_gen:
+            return False
+
+        s, rowh = v["s"], v["rowh"]
+        list_x, list_right = v["list_x"], v["list_right"]
+        list_y = v["list_y"]
+        band_y0 = max(0, list_y - 3 * s)
+        band_y1 = min(fb.height, list_y + visible * rowh)
+        if band_y1 - band_y0 < 2 * rowh:
+            return False
+
+        # Waagerechter Ausschnitt: nur die Listenspalte. Die Boxart-
+        # Spalte rechts darf NICHT mitwandern - sie gehoert nicht zur
+        # Liste und wird separat aufgefrischt.
+        x0 = max(0, list_x - 4 * s)
+        x1 = min(fb.width, list_right + 2 * s)
+        if x1 - x0 < 8:
+            return False
+        b0, b1 = x0 * 4, x1 * 4
+        stride = fb.stride
+        buf = fb.buf
+
+        _t0 = time.monotonic()
+        if delta > 0:
+            # Nach unten gescrollt: der Inhalt wandert nach OBEN.
+            # Aufsteigend kopieren, damit keine Zeile ueberschrieben
+            # wird, bevor sie gelesen wurde.
+            for y in range(band_y0, band_y1 - rowh):
+                q = y * stride
+                z = (y + rowh) * stride
+                buf[q + b0:q + b1] = buf[z + b0:z + b1]
+        else:
+            # Nach oben gescrollt: der Inhalt wandert nach UNTEN, also
+            # absteigend kopieren - aus demselben Grund.
+            for y in range(band_y1 - 1, band_y0 + rowh - 1, -1):
+                q = y * stride
+                z = (y - rowh) * stride
+                buf[q + b0:q + b1] = buf[z + b0:z + b1]
+
+        # BEIDE Randstreifen auf den Hintergrund zuruecksetzen und danach
+        # BEIDE Randzeilen neu zeichnen - unabhaengig von der Richtung.
+        #
+        # WARUM SO PAUSCHAL (per Pixelvergleich gefunden, in zwei
+        # Runden): draw_list_row() raeumt nur ihren eigenen Textbereich
+        # auf - band_h = max(rowh - 2*s, 11*s), auf 1080p also 39 von 45
+        # Bildzeilen. Die restlichen sechs bleiben unberuehrt, weil dort
+        # im Normalfall ohnehin Hintergrund steht. Nach einer
+        # Verschiebung steht dort aber mitgewanderter Rest der
+        # Nachbarzeile.
+        #
+        # Beim Herunterscrollen faellt dieser Rest aus dem Bild und
+        # stoert nicht; beim Hochscrollen landet Text aus der Zeile
+        # darueber im Zwischenraum am unteren Rand. Die Richtungen
+        # getrennt zu behandeln waere moeglich, aber genau die Sorte
+        # Feinheit, die beim naechsten Layout-Umbau still kippt. Zwei
+        # Streifen und zwei Zeilen mehr kosten nichts Messbares - der
+        # Gewinn kommt daher, dass die anderen fuenfzehn Zeilen NICHT
+        # angefasst werden.
+        for streifen_y in (band_y0, max(band_y0, band_y1 - rowh)):
+            self._restore_row_bg(x0, streifen_y, x1 - x0,
+                                 min(rowh, band_y1 - streifen_y))
+
+        # Vier Zeilen zeichnen: beide Raender (eine davon ist die neu
+        # hereingekommene), die alte Markierung (jetzt unmarkiert) und
+        # die neue Markierung. Doppelte Treffer sind harmlos -
+        # draw_list_row() fuellt jedes Mal den kompletten eigenen
+        # Bereich.
+        for idx in (self.scroll, self.scroll + visible - 1,
+                    old_item_i, self.item_i):
+            if self.scroll <= idx < min(self.scroll + visible,
+                                        len(v["items"])):
+                self.draw_list_row(idx)
+
+        y_min, y_max = band_y0, band_y1
+
+        # REIHENFOLGE WICHTIG - erst das Boxart-Panel, DANN die
+        # Fusszeile. Genau so macht es auch _draw_page_items_impl(), und
+        # das ist kein Zufall: draw_art_panel() reicht mit seiner
+        # untersten Kante bis in die Fusszeilen-Zeile hinein (auf 1080p
+        # gemessen drei Bildzeilen weit). Die Fusszeile raeumt das beim
+        # Wiederherstellen ihres Hintergrunds auf. Andersherum
+        # aufgerufen bleibt der Ueberstand stehen - genau diese drei
+        # Zeilen hat der Pixelvergleich gegen den vollen Aufbau
+        # gefunden, und nur deshalb ist es aufgefallen.
+        # layout_items() EINMAL und durchreichen: der Aufruf ist nicht
+        # gratis, und drei Aufrufe pro Scrollschritt haben in der
+        # Messung den ganzen Gewinn wieder aufgefressen.
+        syskey = v.get("syskey")
+        L = self.layout_items(self.hat_artspalte(v["items"], syskey))
+        art_y0, art_y1 = self._art_panel_aktualisieren(v, syskey,
+                                                       self.item_i, L)
+        if art_y0 is not None:
+            y_min = min(y_min, art_y0)
+            y_max = max(y_max, art_y1)
+
+        # Die Fusszeile (Meldung oder Songtitel) gehoert dazu: sie kann
+        # sich unabhaengig vom Scrollen aendern.
+        self._fusszeile_zeichnen(L["ox"], L["footer_y"], L["s"])
+        y_min = min(y_min, L["footer_y"])
+        y_max = max(y_max, L["footer_y"] + 8 * L["s"])
+
+        fb.flip_rows(y_min, y_max - y_min,
+                     skip_vsync=self._vsync_ueberspringen(y_max - y_min))
+        self._perf_blit = time.monotonic() - _t0
         return True
 
     def _clear_row_glow_margin(self, item_i):
@@ -4278,6 +4526,12 @@ class Frontend:
         list_right, rowh = L["list_right"], L["rowh"]
         footer_y, visible = L["footer_y"], L["visible"]
         self.items_visible = visible
+        # Build 96: VOR dem fb.clear() weiter unten - das Band gehoert
+        # in den Cache-Schluessel des Hintergrundmusters (siehe
+        # Framebuffer.bg_key()), und der Hintergrund wird gleich
+        # gebaut. Danach gesetzt waere das Muster schon fertig und der
+        # Wechsel erst beim naechsten Aufbau sichtbar.
+        self._vignette_band_setzen(L)
 
         # ENTFERNT (Build 87, Nutzerentscheidung: "grossen
         # Systembildhintergrund komplett rausnehmen, war eh bloede").
@@ -4625,26 +4879,7 @@ class Frontend:
         # der volle Bildschirm-Neuaufbau übersprungen wurde. Kostet nur
         # eine schmale Zeile, nicht den ganzen Bildschirm - vernachlaessigbar,
         # selbst wenn der volle Neuaufbau ohnehin schon lief.
-        _tre2 = time.monotonic()
-        self._restore_row_bg(ox, footer_y, W - 2 * ox, 8 * s)
-        self._perf_restore = (getattr(self, "_perf_restore", 0.0)
-                              + (time.monotonic() - _tre2))
-        if message:
-            # BUGFIX (Nutzer-Rueckmeldung: Geheimcode-Popup erschien
-            # links unten am Bildschirmrand statt zentriert) - gleicher
-            # Fix wie in draw_page_cats().
-            msg_scale = self._fit_scale(message, W - 2 * ox, s)
-            msg_w = len(message) * 8 * msg_scale
-            fb.text((W - msg_w) // 2, footer_y, message, msg_scale, C_DIM)
-        else:
-            # Songtitel als Laufschrift in der Fusszeile - bleibt so
-            # an derselben Stelle sichtbar, egal ob/wie viel Platz das
-            # Boxart-Panel gerade braucht.
-            foot_maxc = max(0, (W - 2 * ox) // (8 * s))
-            if foot_maxc >= 6:
-                track_display = self.track_marquee_text(foot_maxc)
-                if track_display:
-                    fb.text(ox, footer_y, track_display, s, C_DIM)
+        self._fusszeile_zeichnen(ox, footer_y, s, message)
         self._draw_search_overlay()
         if flip:
             _tf = time.monotonic()
@@ -5056,7 +5291,7 @@ class Frontend:
         aus dessen Vollbildpuffer kopiert. Den gibt es nicht mehr, also
         bleibt genau eine Quelle."""
         fb = self.fb
-        cur_bg = fb._rowcache.get(("bg", C_BG, fb.width, fb.height))
+        cur_bg = fb._rowcache.get(fb.bg_key(C_BG))
         if cur_bg is None:
             # Vorlage (noch) nicht vorhanden (sollte im schnellen Pfad
             # eigentlich nie vorkommen, da der einen vorherigen echten
@@ -10686,6 +10921,10 @@ class Frontend:
                 pre_page = self.page
                 pre_item_i = self.item_i
                 pre_cat_i = self.cat_i
+                # Build 96: fuer das Scroll-Blitting - nur wenn sich der
+                # Listenausschnitt um GENAU eine Zeile verschoben hat,
+                # laesst sich der Block verschieben statt neu zu bauen.
+                pre_scroll = self.scroll
 
                 # Soundeffekt zentral an EINER Stelle ausloesen, statt
                 # in jedem einzelnen der vielen Aktions-Zweige weiter
@@ -11543,6 +11782,18 @@ class Frontend:
                             # noetig.
                             toggle_ra_enabled()
                             self._refresh_system_category()
+                        elif kind == "scroll_blit":
+                            # NEU (Build 96). Wie die uebrigen kleinen
+                            # Ein/Aus-Schalter: umlegen, Beschriftung
+                            # auffrischen. Das Vignetten-Band zieht der
+                            # naechste Seitenaufbau von selbst nach
+                            # (siehe _vignette_band_setzen()) - der
+                            # leert dabei auch den Hintergrund-
+                            # Zwischenspeicher, sonst bliebe das alte
+                            # Muster bis zum Neustart stehen.
+                            toggle_scroll_blit()
+                            self._refresh_system_category()
+                            self._force_full_redraw = True
                         elif kind == "ra_settings":
                             # NEU (Build 95): die RA-Einstellungen der
                             # MiSTer-Hauptanwendung. Eigener Bildschirm,
@@ -11586,6 +11837,20 @@ class Frontend:
                         and pre_page == 1 and not self.confirm_quit
                         and not self.confirm_update
                         and self._draw_navigate_items(pre_item_i)):
+                    continue
+                # NEU (Build 96): der Fall, den _draw_navigate_items()
+                # gerade abgelehnt hat, weil GESCROLLT wurde. Genau der
+                # ist beim Dauerscrollen der haeufigste - sobald die
+                # Markierung den Listenrand erreicht hat, ist ab da JEDER
+                # Schritt einer. Statt die Seite komplett neu zu bauen
+                # (auf HDMI gemessen 45-110 ms) wird der schon
+                # gezeichnete Block um eine Zeilenhoehe verschoben.
+                # Nur mit eingeschaltetem Schalter, siehe
+                # _scroll_blit_items() und scroll_blit_enabled().
+                if (act in ("up", "down") and move_step == 1 and self.page == 1
+                        and pre_page == 1 and not self.confirm_quit
+                        and not self.confirm_update
+                        and self._scroll_blit_items(pre_item_i, pre_scroll)):
                     continue
                 # ERWEITERUNG (Nutzer-Rueckmeldung: "im Hauptmenü wenn ich
                 # schnell scrolle macht das Zeilensprünge und lagt etwas"):
