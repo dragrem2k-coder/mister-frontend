@@ -126,6 +126,13 @@ fi
 rm -f /media/fat/frontend/f4_hotkey.py /media/fat/frontend/f4_hotkey.sh \
       /media/fat/frontend/f4_hotkey
 
+# AUFRAEUMEN (Build 102): das Scroll-Blitting aus Build 96 ist raus - es
+# hat in jeder Aufloesung gekostet und in keiner etwas gebracht. Seine
+# Schalter-Datei liest kein Codepfad mehr; sie liegt aber bei allen auf
+# der Karte, die den Punkt im System-Menue einmal eingeschaltet hatten.
+# Hier ist der eine Ort, durch den JEDE bestehende Installation kommt.
+rm -f /media/fat/frontend/scroll_blit_enabled
+
 # BEWUSST OHNE den Selbstmord-Schutz aus Frontend_Install.sh/
 # Frontend_Install_Remote.sh/Frontend_Install_Offline.sh: hier ist der
 # Kill tatsaechlich beabsichtigt UND

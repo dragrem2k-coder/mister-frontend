@@ -43,8 +43,10 @@ python3 tools/regression_test.py \
   && python3 tools/test_vsync_und_wiederholrate.py \
   && python3 tools/test_hinweisbox_flackern.py \
   && python3 tools/test_ra_einstellungen.py \
-  && python3 tools/test_scroll_blitting.py \
   && python3 tools/test_cover_panel.py \
+  && python3 tools/test_kategorie_abzeichen.py \
+  && python3 tools/test_abzeichen_verteilung.py \
+  && python3 tools/test_vorauslader_prozess.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -77,9 +79,12 @@ python3 tools/regression_test.py \
 | `test_vsync_und_wiederholrate.py` | Test (Pass/Fail) | Vsync-Auslassen nur noch bei schmalen Baendern, Wiederholrate folgt der gemessenen Zeichendauer |
 | `test_hinweisbox_flackern.py` | Test (Pass/Fail) | Hinweisbox: genau ein Flip pro Aufbau, und der kommt NACH der Box |
 | `test_ra_einstellungen.py` | Test (Pass/Fail) | MiSTers RA-Datei: nur die gemeinte Zeile wird angefasst, Zugangsdaten und Kommentare bleiben |
-| `test_scroll_blitting.py` | Test (Pass/Fail) | Geblittet sieht bitgenau aus wie voll aufgebaut, auch nach 30 Schritten |
-| `bench_scrollblit.py` | Diagnose (immer Rueckgabewert 0) | Was Scroll-Blitting wirklich bringt - aufgeteilt nach Posten |
 | `test_cover_panel.py` | Test (Pass/Fail) | Verkuerzter Schlagschatten ergibt bitgenau dasselbe Bild und ist schneller |
+| `test_kategorie_abzeichen.py` | Test (Pass/Fail) | Alle Kategorie-Abzeichen gleich gross, gleicher Hintergrund, gleiche Stelle auf dem Schirm |
+| `test_abzeichen_verteilung.py` | Test (Pass/Fail) | Die echten Installer-Bloecke ersetzen die alten Logos wirklich - einmal, und danach nie wieder |
+| `test_vorauslader_prozess.py` | Test (Pass/Fail) | Vorauslader als eigener Prozess: rechnet, schreibt in den richtigen Ordner, faellt sauber auf den Thread zurueck |
+| `diag_vorauslader.py` | Diagnose (immer Rueckgabewert 0) | Was der Vorauslader dem Zeichnen wegnimmt - Thread gegen Prozess |
+| `diag_hintergrundlast.py` | Diagnose (immer Rueckgabewert 0) | Was pro Tastendruck wirklich passiert: Dateizugriffe, Log-Zeilen, doppelte Arbeit |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
@@ -788,43 +793,37 @@ die Information, um die es geht), und die Bedienzeile wurde mitten im
 Wort abgeschnitten. Werte stehen jetzt rechtsbuendig und bekommen ihren
 Platz zuerst; von der Bedienzeile gibt es drei Laengen.
 
-## test_scroll_blitting.py und bench_scrollblit.py
+## Scroll-Blitting (entfernt in Build 102)
 
-Scroll-Blitting (Build 96): sobald die Markierung den Listenrand
-erreicht hat, ist jeder weitere Schritt ein kompletter Seitenaufbau.
-Statt ihn zu bauen, wird der schon gezeichnete Listenblock um eine
-Zeilenhoehe im Speicher verschoben und nur die vier Zeilen neu
-gezeichnet, die sich wirklich geaendert haben.
+Hier standen `test_scroll_blitting.py` und `bench_scrollblit.py`. Die
+Idee aus Build 96: sobald die Markierung den Listenrand erreicht hat,
+ist jeder weitere Schritt ein kompletter Seitenaufbau - statt ihn zu
+bauen, den schon gezeichneten Block um eine Zeilenhoehe im Speicher
+verschieben und nur die vier wirklich geaenderten Zeilen neu zeichnen.
 
-**Der Test prueft nicht die Geschwindigkeit, sondern das Bild.** Ein
-verschobener Block, der um ein Pixel danebenliegt oder einen Rest
-stehenlaesst, faellt beim Scrollen sofort auf. Test 1 und 2 vergleichen
-deshalb Bildpunkt fuer Bildpunkt gegen den vollen Aufbau - einzeln und
-nach 30 Schritten hintereinander. Das hat zwei Fehler gefunden, die man
-sich beim Lesen des Codes nicht ansieht:
+**Der Test prüfte nicht die Geschwindigkeit, sondern das Bild**, und
+genau das war seine Berechtigung: er hat zwei Fehler gefunden, die man
+beim Lesen des Codes nicht sieht - eine falsche Aufrufreihenfolge
+(`draw_art_panel()` reicht drei Bildzeilen in die Fusszeile hinein) und
+die Zwischenraeume zwischen den Zeilen (`draw_list_row()` raeumt nur
+39 von 45 Bildzeilen auf, im Rest stand nach dem Verschieben der
+Nachbar).
 
-1. **Reihenfolge.** `draw_art_panel()` reicht mit seiner untersten
-   Kante drei Bildzeilen in die Fusszeile hinein; die Fusszeile raeumt
-   das beim Wiederherstellen auf. Der Blit-Pfad rief beides in der
-   umgekehrten Reihenfolge auf - der Ueberstand blieb stehen.
-2. **Zwischenraeume.** `draw_list_row()` raeumt nur ihren Textbereich
-   auf (39 von 45 Bildzeilen auf 1080p). Die restlichen sechs sind im
-   Normalfall ohnehin Hintergrund - nach einer Verschiebung steht dort
-   aber Rest der Nachbarzeile. Beim Herunterscrollen faellt der aus dem
-   Bild, beim Hochscrollen landet er mitten drin.
+**Der Benchmark hat den Pfad dann erledigt.** Nachgemessen in allen
+drei Aufloesungen kostet das Verschieben mehr, als es spart:
 
-**Das Ergebnis der Messung ist ernuechternd** und steht ausfuehrlich
-bei `scroll_blit_enabled()` in `fe/settings.py`: Blitting bringt
-gemessen 1.0x (CRT), 1.1x (720p) und 0.8x (HDMI) - also nichts. Der
-Grund steht in der Aufteilung nach Posten: das **Cover-Panel** macht
-61 % der Zeit aus, und das zeichnen beide Wege gleichermassen.
-Blitting greift die Listenzeilen an (0.734 ms) und ersetzt sie durch
-0.653 ms.
+| Aufloesung | voll | geblittet | Faktor |
+|---|---|---|---|
+| CRT 320x240 | 0.50 ms | 0.65 ms | 0.8x |
+| 720p 1280x720 | 1.25 ms | 1.63 ms | 0.8x |
+| HDMI 1920x1080 | 2.04 ms | 2.84 ms | 0.7x |
 
-Der Schalter bleibt trotzdem drin (Standard AUS): die
-Entwicklungsumgebung ist nicht das Geraet - dort hat das Cover echte
-Bilddaten und die CPU ist eine andere. Bestaetigt sich die Messung auf
-dem MiSTer, gehoert der ganze Pfad geloescht.
+Beide Wege kopieren am Ende dieselbe Flaeche. Das Verschieben spart das
+Setzen der Schrift, zahlt die Kopie aber ZUSAETZLICH zu den vier neu
+gezeichneten Zeilen und den beiden wiederhergestellten Raendern. Damit
+ist die Bedingung eingetreten, unter der der Pfad von Anfang an stand
+("bestaetigt sich die Messung, gehoert der ganze Pfad geloescht") - er
+ist mitsamt Schalter, Menuepunkt und flachem Vignetten-Band raus.
 
 ## test_cover_panel.py
 

@@ -7,6 +7,87 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Der Cover-Vorauslader rechnet jetzt auf dem zweiten CPU-Kern**
+(Build 102):
+
+Ausgelöst durch die Frage: „HDMI-Modus läuft auch, aber das Scrollen ist
+mir da zu langsam, vor allem wenn Zeilen nach unten neu ins Bild kommen,
+auch wenn ich zwischen den Ordnern hin und her wechsle. Laufen da noch
+irgendwelche Sachen im Hintergrund, die das verlangsamen?"
+
+Ja — und die Antwort stand seit Build 73 als offene Einschränkung im
+Kopf von `fe/prewarm.py`: der Vorauslader rechnete in einem
+Hintergrund-**Thread**, und Pythons GIL lässt immer nur einen Thread
+rechnen. Eine begonnene Miniatur ließ sich nicht mittendrin abbrechen.
+Auf dem Gerät kostet so eine Erstberechnung 200–500 ms, bei einem
+Kategorie-Logo 722 ms. Wer genau dann eine Taste drückte, wartete. Und
+das trifft fast nur HDMI: ein Cover für 1080p hat rund **neunmal** so
+viele Bildpunkte wie eines für 240p. Die beiden genannten Situationen —
+neue Zeilen von unten, Ordnerwechsel — sind genau die, in denen
+reihenweise noch nicht berechnete Cover anstehen.
+
+**Der DE10-Nano hat zwei Kerne, und Pythons GIL gilt nur innerhalb
+eines Prozesses.** Der Vorauslader ist jetzt ein eigener Prozess
+(`fe/prewarm_worker.py`) und rechnet auf dem Kern, der bisher brachlag.
+Nachgemessen mit `tools/diag_vorauslader.py` (Rechner mit ebenfalls zwei
+Kernen; Dauer eines Scrollschritts, während der Vorauslader arbeitet,
+und wie viele Miniaturen er in denselben drei Sekunden schafft):
+
+| | Leerlauf | Thread (bis 101) | Prozess (ab 102) |
+|---|---|---|---|
+| CRT 320x240 | 0,252 ms | 0,448 ms (+78 %), 32 fertig | 0,294 ms (+17 %), **57 fertig** |
+| HDMI 1920x1080 | 1,001 ms | 1,075 ms (+7 %), 3 fertig | 1,060 ms (+6 %), **25 fertig** |
+
+Zwei Dinge stehen da, und das zweite ist für die Beschwerde das
+wichtigere: der Thread bremst nicht nur stärker, er **kommt selbst kaum
+voran** — auf HDMI 3 fertige Miniaturen gegen 25, also achtmal so weit.
+Je mehr Cover vorgerechnet sind, desto seltener muss der Zeichenpfad
+beim Scrollen selbst rechnen.
+
+Ehrlich dazu: null Aufschlag ist es auch als Prozess nicht, Speicherbus
+und SD-Karte teilen sich beide weiterhin. Null war nie zu erwarten.
+
+**Rückfall eingebaut:** lässt sich der Prozess nicht starten (kein
+passendes python3, Speicher knapp, Rechte) oder bricht er im Betrieb
+weg, rechnet wieder der Thread — genau wie vorher. Schlechter als vorher
+kann es dadurch nicht werden. Der Cache-Ordner steht in **jedem**
+Auftrag mit drin, statt einmal ausgehandelt zu werden: das Frontend
+schaltet zwischen HD- und SD-Zwischenspeicher um, und ein Prozess mit
+eigener Vorstellung davon hätte stillschweigend in den falschen Ordner
+geschrieben — die Miniaturen wären berechnet und der Zeichenpfad fände
+sie trotzdem nie.
+
+**Scroll-Blitting ist wieder raus** (Build 102):
+
+Es stand unter dem Vorbehalt, unter dem es gebaut wurde („wenn es nichts
+bringt, schmeißen wir es wieder raus"). Nachgemessen kostet das
+Verschieben in **jeder** Auflösung mehr, als es spart:
+
+| Auflösung | voll | geblittet | Faktor |
+|---|---|---|---|
+| CRT 320x240 | 0,50 ms | 0,65 ms | 0,8x |
+| 720p 1280x720 | 1,25 ms | 1,63 ms | 0,8x |
+| HDMI 1920x1080 | 2,04 ms | 2,84 ms | 0,7x |
+
+Der Grund: beide Wege kopieren am Ende dieselbe Fläche. Das Verschieben
+spart das Setzen der Schrift, zahlt die Kopie aber **zusätzlich** zu den
+vier neu gezeichneten Zeilen und den beiden wiederhergestellten Rändern.
+Raus sind der Zeichenpfad, der Schalter, der Menüpunkt unter Anzeige &
+Sound, beide Beschriftungen und das flache Vignetten-Band, das nur
+seinetwegen existierte — die Randabdunkelung verläuft wieder über das
+ganze Bild. Die Schalter-Datei auf der Karte räumt
+`Frontend_Update.sh` weg. Begründung und Messwerte bleiben als
+Kommentar an der Stelle stehen, an der der Pfad aufgerufen wurde, damit
+niemand dieselbe Idee in einem halben Jahr ein zweites Mal baut.
+
+**Nebenbei aufgefallen** (noch nicht behoben, festgehalten in
+`tools/diag_hintergrundlast.py`): pro Tastendruck werden vier
+Schalter-Dateien von der SD-Karte abgefragt (`profiling_an`,
+`pulse_effect_enabled`, `fast_scroll_enabled` und bis eben
+`scroll_blit_enabled`), im Leerlauf zwei weitere 12,5-mal pro Sekunde.
+Das sind Einstellungen, die sich nur ändern, wenn jemand sie im Menü
+umlegt.
+
 **Die neuen Abzeichen kommen auf der Karte auch wirklich an**
 (Build 101):
 

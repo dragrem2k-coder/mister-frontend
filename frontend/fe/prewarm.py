@@ -19,46 +19,110 @@ es 1-2 Sekunden" - dort werden mehrere solcher Cover hintereinander zum
 ersten Mal berechnet.
 
 Der Ansatz hier verschiebt diesen einmaligen Preis dorthin, wo niemand
-darauf wartet: waehrend jemand eine Seite ansieht, rechnet ein
-Hintergrund-Thread die Cover der als naechstes zu erwartenden Eintraege
-vor und legt sie auf der Karte ab. Scrollt der Nutzer weiter, liegen sie
-schon da.
+darauf wartet: waehrend jemand eine Seite ansieht, rechnet der
+Vorauslader die Cover der als naechstes zu erwartenden Eintraege vor und
+legt sie auf der Karte ab. Scrollt der Nutzer weiter, liegen sie schon
+da.
 
-ZWEI EHRLICHE EINSCHRAENKUNGEN, die den ganzen Entwurf praegen:
+GEAENDERT (Build 102): EIGENER PROZESS STATT HINTERGRUND-THREAD
+===============================================================
 
-1. Die MiSTer-CPU ist schwach, und das Skalieren ist reines Python.
-   Ein Hintergrund-Thread nimmt dem Zeichnen also tatsaechlich
-   Rechenzeit weg (Pythons GIL laesst immer nur einen Thread rechnen).
-   Deshalb laeuft hier NICHTS, solange jemand bedient: jede Eingabe
-   ruft abbrechen() auf, und der Thread laesst seine Liste augenblicklich
-   fallen. Er kann eine bereits begonnene Miniatur nicht mittendrin
-   abbrechen - schlimmstenfalls teilt er sich also noch fuer die Dauer
-   EINER Berechnung die CPU mit dem Zeichnen. Genau deshalb wird auch
-   nur bei laengerer Ruhe ueberhaupt gestartet.
+Bis Build 101 lief das Vorrechnen in einem Thread DIESES Prozesses. Die
+erste der beiden hier frueher dokumentierten Einschraenkungen lautete:
 
-2. Der Thread fasst die Arbeitsspeicher-Caches von ArtCache mit keinem
-   Byte an - er schreibt ausschliesslich Dateien (siehe prewarm_thumb()
-   in fe/art.py). Diese Caches sind Liste + Woerterbuch ohne jede
-   Sperre; zwei Threads darin gleichzeitig waeren die Sorte Fehler, die
-   sich hinterher nie zuverlaessig nachstellen laesst.
+    "Die MiSTer-CPU ist schwach, und das Skalieren ist reines Python.
+     Ein Hintergrund-Thread nimmt dem Zeichnen also tatsaechlich
+     Rechenzeit weg (Pythons GIL laesst immer nur einen Thread
+     rechnen). [...] Er kann eine bereits begonnene Miniatur nicht
+     mittendrin abbrechen - schlimmstenfalls teilt er sich also noch
+     fuer die Dauer EINER Berechnung die CPU mit dem Zeichnen."
+
+Diese eine Berechnung war der wunde Punkt, und zwar praktisch nur auf
+HDMI: ein Cover fuer 1080p hat rund neunmal so viele Bildpunkte wie
+eines fuer 240p. Auf dem Geraet gemessen 200-500 ms je Erstberechnung,
+bei einem Kategorie-Logo 722 ms. Wer genau dann eine Taste drueckt,
+wartet, bis sie fertig ist. Nutzer-Rueckmeldung: "das Scrollen ist mir
+auf HDMI zu langsam, vor allem wenn Zeilen nach unten neu ins Bild
+kommen, auch wenn ich zwischen den Ordnern hin und her wechsle" - genau
+die beiden Situationen, in denen reihenweise unberechnete Cover
+anstehen.
+
+Der DE10-Nano hat zwei CPU-Kerne, und Pythons GIL gilt nur innerhalb
+eines Prozesses. Als eigener Prozess (fe/prewarm_worker.py) rechnet der
+Vorauslader auf dem zweiten Kern. Die zweite fruehere Einschraenkung -
+"fasst die Arbeitsspeicher-Caches von ArtCache mit keinem Byte an" -
+gilt jetzt von selbst: ein eigener Prozess hat seinen eigenen
+Adressraum und KANN sie nicht anfassen.
+
+NACHGEMESSEN (tools/diag_vorauslader.py, Rechner mit ebenfalls zwei
+Kernen; Dauer eines Scrollschritts waehrend der Vorauslader arbeitet,
+und wie viele Miniaturen er in denselben drei Sekunden schafft):
+
+                Leerlauf    Thread (bis 101)    Prozess (ab 102)
+    CRT          0.252 ms    0.448 ms  +78%  32   0.294 ms  +17%  57
+    HDMI         1.001 ms    1.075 ms   +7%   3   1.060 ms   +6%  25
+
+Zwei Dinge stehen da, und das zweite ist fuer die gemeldete Beschwerde
+das wichtigere. Erstens bremst der Thread das Zeichnen deutlich staerker
+(+78 % gegen +17 % auf CRT). Zweitens - und das ist der eigentliche
+Gewinn auf HDMI - kommt der Vorauslader als Prozess ACHTMAL so weit: 25
+statt 3 fertige Miniaturen. Der Thread bremst also nicht nur, er kommt
+selbst kaum voran, weil er sich die Rechenzeit mit dem Zeichnen teilt.
+Und je mehr Cover vorgerechnet sind, desto seltener muss der
+Zeichenpfad beim Scrollen selbst rechnen - genau die Situation, in der
+"Zeilen kommen unten neu ins Bild" sich zaeh angefuehlt hat.
+
+EHRLICH DAZU: der Aufschlag ist auch im Prozess-Betrieb nicht null.
+Beide teilen sich weiterhin Speicherbus und SD-Karte. Null war nie zu
+erwarten; um den Faktor zwischen +78 % und +17 % ging es.
+
+ABBRECHEN BLEIBT TROTZDEM DRIN, aus einem anderen Grund als vorher: der
+Arbeitsprozess teilt sich zwar keine Rechenzeit mehr, aber sehr wohl die
+SD-Karte und den Speicherbus. Ausserdem sind seine Auftraege nach einer
+Eingabe fachlich veraltet. Neu ist, dass ein bereits begonnener Auftrag
+nicht mehr stoert - er darf in Ruhe zu Ende laufen.
+
+RUECKFALL: laesst sich der Prozess nicht starten (kein python3 im Pfad,
+Speicher knapp, Rechte), faellt diese Klasse auf genau den Thread
+zurueck, den es vorher gab. Schlechter als vorher wird es dadurch nie.
+Dasselbe passiert, wenn der Prozess waehrend des Betriebs wegbricht.
 """
+import os
+import subprocess
+import sys
 import threading
 import time
 
 from fe.art import prewarm_thumb, thumb_cache_has
+import fe.art as _art
 from fe.log import LOG
+
+WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                      "prewarm_worker.py")
 
 
 class CoverPrewarmer:
-    """Ein Hintergrund-Thread, eine Auftragsliste, jederzeit abbrechbar."""
+    """Eine Auftragsliste, ein Arbeiter, jederzeit abbrechbar.
 
-    # Kurze Pause zwischen zwei Miniaturen. Sieht nach Kleinigkeit aus,
-    # ist aber der Unterschied zwischen "arbeitet im Hintergrund" und
-    # "macht die Bedienung zaeh": ohne sie haelt der Thread die CPU
-    # dauerhaft besetzt, und die naechste Eingabe muss sich ihren Anteil
-    # erst erkaempfen. Mit ihr bleibt genug Luft, dass ein Tastendruck
-    # sofort ankommt.
+    Der Arbeiter ist bevorzugt ein eigener Prozess (zweiter CPU-Kern),
+    ersatzweise ein Thread in diesem Prozess. Nach aussen ist das nicht
+    zu unterscheiden - die vier Methoden start/uebergeben/abbrechen/
+    beenden verhalten sich in beiden Faellen gleich."""
+
+    # Kurze Pause zwischen zwei Miniaturen.
+    #
+    # IM THREAD-BETRIEB ist sie der Unterschied zwischen "arbeitet im
+    # Hintergrund" und "macht die Bedienung zaeh": ohne sie haelt der
+    # Thread die CPU dauerhaft besetzt, und die naechste Eingabe muss
+    # sich ihren Anteil erst erkaempfen.
+    #
+    # IM PROZESS-BETRIEB geht es nicht mehr um Rechenzeit (die kommt vom
+    # zweiten Kern), sondern um die SD-Karte und den Speicherbus, die
+    # sich beide Prozesse weiterhin teilen. Deshalb dort kuerzer, aber
+    # nicht null - ein Vorauslader, der die Karte ununterbrochen
+    # beschaeftigt, macht das Nachladen im Zeichenpfad langsamer.
     PAUSE = 0.02
+    PAUSE_PROZESS = 0.01
 
     def __init__(self):
         self._auftraege = []
@@ -66,6 +130,11 @@ class CoverPrewarmer:
         self._wecker = threading.Condition()
         self._thread = None
         self._ende = False
+        self._proc = None
+        # None = noch nicht versucht. Danach True/False und dabei
+        # bleibt es: ein einmal gescheiterter Start wird nicht bei jedem
+        # Leerlauf erneut probiert.
+        self._prozess_moeglich = None
         # Nur fuer die Protokollzeile - keine Steuerung haengt daran.
         self.gerechnet = 0
         self.lagen_schon_da = 0
@@ -76,6 +145,8 @@ class CoverPrewarmer:
     def start(self):
         if self._thread is not None:
             return
+        if self._prozess_moeglich is None:
+            self._prozess_moeglich = self._prozess_starten()
         self._thread = threading.Thread(target=self._schleife,
                                         name="cover-prewarm", daemon=True)
         self._thread.start()
@@ -85,7 +156,7 @@ class CoverPrewarmer:
 
         Ersetzt eine eventuell noch laufende Liste vollstaendig - was
         gerade noch anstand, ist mit der neuen Position ohnehin
-        ueberholt. Die Generationsnummer sorgt dafuer, dass der Thread
+        ueberholt. Die Generationsnummer sorgt dafuer, dass der Arbeiter
         die alte Liste nicht noch zu Ende bearbeitet."""
         with self._wecker:
             self._auftraege = list(auftraege)
@@ -107,12 +178,101 @@ class CoverPrewarmer:
             self._auftraege = []
             self._generation += 1
             self._wecker.notify_all()
+        self._prozess_beenden()
 
     def beschaeftigt(self):
         with self._wecker:
             return bool(self._auftraege)
 
-    # -- Der Thread selbst ------------------------------------------------
+    def betriebsart(self):
+        """"prozess", "thread" oder "aus" - fuer Protokoll und Tests."""
+        if self._thread is None:
+            return "aus"
+        return "prozess" if self._proc is not None else "thread"
+
+    # -- Der Arbeitsprozess ----------------------------------------------
+
+    def _prozess_starten(self):
+        """Versucht, den Arbeitsprozess zu starten. True bei Erfolg.
+
+        Scheitert das, ist das kein Fehler, sondern ein Rueckfall: die
+        Schleife unten arbeitet die Auftraege dann selbst ab, genau wie
+        vor Build 102."""
+        if not os.path.isfile(WORKER):
+            LOG("PREWARM: %s fehlt - Vorauslader laeuft als Thread" % WORKER)
+            return False
+        try:
+            self._proc = subprocess.Popen(
+                [sys.executable or "python3", WORKER],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                # stderr bewusst NICHT abgefangen: niemand liest es hier,
+                # und ein volles Rohr wuerde den Arbeitsprozess
+                # irgendwann blockieren. Es landet dort, wo auch die
+                # Ausgaben des Frontends landen.
+                close_fds=True)
+        except Exception as e:                           # noqa: BLE001
+            LOG("PREWARM: Arbeitsprozess nicht startbar (%s) - "
+                "Vorauslader laeuft als Thread" % e)
+            self._proc = None
+            return False
+        LOG("PREWARM: Arbeitsprozess laeuft (PID %d) - rechnet auf dem "
+            "zweiten CPU-Kern" % self._proc.pid)
+        return True
+
+    def _prozess_beenden(self):
+        p, self._proc = self._proc, None
+        if p is None:
+            return
+        try:
+            if p.stdin:
+                p.stdin.close()
+        except OSError:
+            pass
+        try:
+            p.terminate()
+        except OSError:
+            pass
+
+    def _prozess_verloren(self, grund):
+        """Der Arbeitsprozess antwortet nicht mehr - ab jetzt selbst
+        rechnen. Bewusst kein Neustartversuch: bricht er einmal weg,
+        bricht er meist aus einem Grund weg, der beim zweiten Mal wieder
+        zutrifft (Speicher, Rechte), und eine Startschleife im Leerlauf
+        waere schlimmer als der Rueckfall."""
+        LOG("PREWARM: Arbeitsprozess weg (%s) - Vorauslader rechnet ab "
+            "jetzt selbst" % grund)
+        self._prozess_beenden()
+
+    def _auftrag_im_prozess(self, pfad, bw, bh):
+        """Einen Auftrag hinschicken und auf die Antwort warten.
+
+        Das Warten ist beabsichtigt, nicht nachlaessig: nur so bleibt
+        Abbrechen wirksam (siehe Kopf von fe/prewarm_worker.py). Waehrend
+        des Wartens haelt dieser Thread die GIL nicht - er haengt in
+        einem Lesevorgang, und genau deshalb kann der Hauptthread in
+        dieser Zeit ungestoert zeichnen."""
+        p = self._proc
+        if p is None or p.stdin is None or p.stdout is None:
+            return None
+        # Ein Zeilenumbruch im Pfad wuerde das Protokoll zerlegen. Kommt
+        # praktisch nicht vor, ist aber billig auszuschliessen.
+        if "\n" in pfad or "\t" in pfad:
+            return "uebersprungen"
+        zeile = "%s\t%d\t%d\t%s\n" % (_art.THUMB_CACHE_DIR, bw, bh, pfad)
+        try:
+            p.stdin.write(zeile.encode("utf-8", "surrogateescape"))
+            p.stdin.flush()
+            antwort = p.stdout.readline()
+        except (OSError, ValueError) as e:
+            self._prozess_verloren(str(e))
+            return None
+        if not antwort:
+            self._prozess_verloren("Rohr geschlossen")
+            return None
+        return {b"f": "fertig", b"t": "treffer",
+                b"u": "uebersprungen"}.get(antwort[:1], "fehler")
+
+    # -- Die Schleife -----------------------------------------------------
 
     def _schleife(self):
         while True:
@@ -127,25 +287,32 @@ class CoverPrewarmer:
                 with self._wecker:
                     # Zwischen zwei Miniaturen pruefen, ob die Liste
                     # inzwischen ueberholt ist (Eingabe oder neue
-                    # Position). Das ist der einzige Abbruchpunkt - eine
-                    # einmal begonnene Berechnung laeuft zu Ende.
+                    # Position).
                     if self._ende or self._generation != meine_generation:
                         break
-                try:
-                    ergebnis = prewarm_thumb(pfad, bw, bh)
-                except Exception as e:              # noqa: BLE001
-                    # Ein Fehler hier darf das Frontend NIE beeintraechtigen -
-                    # es geht um Vorratshaltung, nicht um etwas, das
-                    # jemand gerade sehen will.
-                    LOG("PREWARM Fehler (%s): %s" % (pfad, e))
-                    ergebnis = "fehler"
+                ergebnis = None
+                if self._proc is not None:
+                    ergebnis = self._auftrag_im_prozess(pfad, bw, bh)
+                if ergebnis is None:
+                    # Rueckfall: entweder von Anfang an kein Prozess,
+                    # oder er ist gerade weggebrochen. Dann rechnet
+                    # dieser Thread selbst - wie vor Build 102.
+                    try:
+                        ergebnis = prewarm_thumb(pfad, bw, bh)
+                    except Exception as e:               # noqa: BLE001
+                        # Ein Fehler hier darf das Frontend NIE
+                        # beeintraechtigen - es geht um Vorratshaltung,
+                        # nicht um etwas, das jemand gerade sehen will.
+                        LOG("PREWARM Fehler (%s): %s" % (pfad, e))
+                        ergebnis = "fehler"
                 if ergebnis == "fertig":
                     self.gerechnet += 1
                 elif ergebnis == "treffer":
                     self.lagen_schon_da += 1
                 elif ergebnis == "fehler":
                     self.fehler += 1
-                time.sleep(self.PAUSE)
+                time.sleep(self.PAUSE_PROZESS if self._proc is not None
+                           else self.PAUSE)
             with self._wecker:
                 if self._generation == meine_generation:
                     self._auftraege = []
@@ -169,7 +336,8 @@ def auftraege_bauen(eintraege, mitte, kastenmass, vorwaerts=True,
     wer nach unten blaettert, blaettert meistens weiter nach unten.
     Eintraege, deren Miniatur schon auf der Karte liegt, fallen hier
     schon heraus: die Pruefung ist ein reines os.path.exists() und damit
-    um Groessenordnungen billiger, als sie erst im Thread festzustellen.
+    um Groessenordnungen billiger, als sie erst im Arbeiter festzu-
+    stellen.
     """
     if not eintraege:
         return []

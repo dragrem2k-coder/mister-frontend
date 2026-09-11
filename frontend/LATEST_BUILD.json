@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-11-101",
-  "summary": "Die neuen Kategorie-Abzeichen kommen jetzt auch wirklich auf der SD-Karte an - vorher waeren 42 von 57 haengengeblieben, weil die Installer sysart nie ueberschreiben."
+  "build_id": "2026-09-11-102",
+  "summary": "Der Cover-Vorauslader rechnet jetzt auf dem zweiten CPU-Kern statt dem Zeichnen die Rechenzeit wegzunehmen - auf HDMI schafft er dadurch achtmal so viele Cover im Voraus. Scroll-Blitting ist wieder raus, es hat gemessen nur gekostet."
 }
