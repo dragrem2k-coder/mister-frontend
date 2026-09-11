@@ -32,8 +32,13 @@ from fe.systems import alle_systeme                    # noqa: E402
 
 SYSART = os.path.join(_REPO, "frontend", "sysart")
 PANEL = (28, 32, 44)      # muss C_PANEL in frontend.py entsprechen
-MAX_BREITE = 900
-MAX_HOEHE = 450
+# GEAENDERT (Build 100): alle Kategorie-Logos sind jetzt einheitliche
+# Abzeichen-Kacheln von 320x420 (siehe PC-Tools/sysart_abzeichen.py und
+# tools/test_kategorie_abzeichen.py). Die frueheren 900x450 waren die
+# Obergrenze fuer randlos zugeschnittene Schriftzuege unterschiedlicher
+# Groesse - die gibt es nicht mehr.
+MAX_BREITE = 320
+MAX_HOEHE = 420
 
 # Mit Build 80 neu dazugekommen - namentlich festgehalten, damit ein
 # versehentliches Loeschen auffaellt.

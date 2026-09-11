@@ -4458,7 +4458,10 @@ class Frontend:
         pad = 6 * s
 
         name, _items, syskey = self.cats[self.cat_i]
-        accent = accent_for(syskey)
+        # accent wird seit Build 99 nicht mehr gebraucht: der Rahmen in
+        # Systemfarbe ist entfallen (siehe unten). Die Akzentfarbe
+        # steuert weiterhin die Zeilenmarkierung links - nur hier nicht
+        # mehr.
         art_key = _category_art_key(name, syskey)
         art = ART.get_scaled(os.path.join(SYSART_BASE, "%s.art" % art_key),
                              art_w - 2 * pad, box_h) if art_key else None
@@ -4466,13 +4469,47 @@ class Frontend:
             aw, ah, pix = art
             ax = x0 + pad + max(0, (art_w - 2 * pad - aw) // 2)
             ay = y0 + max(0, (box_h - ah) // 2)
-            fb.blend_rect_fast(ax + 3 * s, ay + ah - 4 * s, aw, 10 * s,
-                              C_BG, (0, 0, 0), 0.35)
+            # GEAENDERT (Build 99, Nutzerwunsch: "soll alles die gleiche
+            # Groesse haben, ohne dass ein Rahmen neu gezeichnet werden
+            # muss").
+            #
+            # Hier standen bis Build 98 ein Schlagschatten-Streifen und
+            # vier Rahmenlinien in der Systemfarbe um das Bild herum.
+            # Beides faellt weg, und zwar aus zwei Gruenden:
+            #
+            # 1. Die neuen Kategorie-Abzeichen sind FERTIGE runde
+            #    Marken mit eigener Umrandung und eigenem Schriftzug -
+            #    ein rechteckiger Rahmen drumherum sieht aus wie ein
+            #    Bilderrahmen um einen Aufkleber.
+            # 2. Der Rahmen war der einzige Grund, warum sich beim
+            #    Kategoriewechsel ueberhaupt etwas ausserhalb des Bildes
+            #    aendern konnte. Ohne ihn - und weil ab Build 99 ALLE
+            #    Abzeichen exakt gleich gross sind (320x420, siehe
+            #    PC-Tools/sysart_abzeichen.py) - deckt das neue Bild das
+            #    alte immer vollstaendig ab. Es muss nichts mehr
+            #    freigeraeumt werden.
+            #
+            # Stattdessen liegt das Abzeichen auf derselben Karte wie
+            # das Cover auf der Spieleseite. Das ist kein Rahmen um das
+            # Bild, sondern der Untergrund, auf dem es ohnehin steht: in
+            # jeder .art-Datei ist C_PANEL als Hintergrund eingebacken
+            # (so verlangt es das Format, siehe
+            # tools/test_sysart_logos.py). Ohne Karte stuende dieses
+            # Rechteck sichtbar auf dem Seitenhintergrund - und zwar
+            # auch dann, wenn man stattdessen C_BG einbacken wuerde,
+            # denn der Seitenhintergrund ist wegen der Rand-Abdunkelung
+            # gar nicht ueberall gleich hell.
+            #
+            # Kostet nichts Zusaetzliches: die Karte ist bei ALLEN
+            # Kategorien gleich gross (alle Abzeichen sind 320x420) und
+            # wird mit demselben zusammengefassten Aufruf gezeichnet wie
+            # auf der Spieleseite (Build 98).
+            kpad = ART_CARD_PAD * s
+            fb.karte_mit_schatten(ax - kpad, ay - kpad,
+                                  aw + 2 * kpad, ah + 2 * kpad,
+                                  3 * s, C_PANEL, fb._darken(C_BG, 0.55),
+                                  4 * s)
             self.blit(ax, ay, aw, ah, pix)
-            fb.rect(ax - 2 * s, ay - 2 * s, aw + 4 * s, 2 * s, accent)
-            fb.rect(ax - 2 * s, ay + ah, aw + 4 * s, 2 * s, accent)
-            fb.rect(ax - 2 * s, ay - 2 * s, 2 * s, ah + 4 * s, accent)
-            fb.rect(ax + aw, ay - 2 * s, 2 * s, ah + 4 * s, accent)
         else:
             fb.rect(x0 + pad, y0, art_w - 2 * pad, box_h, C_ACCENT2)
             fb.text(x0 + pad + 4 * s, y0 + box_h // 2 - 4 * s,

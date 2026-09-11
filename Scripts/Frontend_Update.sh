@@ -30,6 +30,60 @@ LOCKFILE="/tmp/frontend.lock"
 
 echo "Frontend-Update wird angewendet..."
 
+# ============================================================
+# NEU (Build 101): Henne-Ei-Problem beim Abzeichen-Umstieg
+# ============================================================
+# Mit Build 99/100 wurden alle 57 Kategorie-Logos auf einen neuen,
+# einheitlichen Abzeichen-Stil umgestellt. Die Installer kopieren
+# sysart bewusst OHNE Ueberschreiben (sonst waere eigenes Artwork bei
+# jedem Lauf weg), deshalb bekamen sie in Build 101 eine einmalige,
+# per Marke gesteuerte Komplett-Ersetzung.
+#
+# DAS PROBLEM DABEI: auf der SD-Karte liegt zum Zeitpunkt eines
+# Updates noch der ALTE Installer. Der laedt zwar das neue Repo und
+# legt dabei auch den neuen Installer ab - aber sein eigener
+# sysart-Schritt ist in genau diesem Lauf noch der alte. Ergebnis:
+# die 15 neuen Abzeichen kaemen an, die 42 gleichnamigen nicht. Der
+# Nutzer saehe eine halb umgestellte Hauptseite - das sieht nach
+# kaputt aus, und er haette keinen Grund, das Update ein zweites Mal
+# zu starten.
+#
+# DIESE STELLE LOEST DAS: Frontend_Install.sh uebergibt ganz am Ende
+# per "exec bash" an dieses Skript - und zwar an die Fassung, die
+# wenige Zeilen vorher frisch mitinstalliert wurde. Hier laeuft also
+# schon NEUER Code, obwohl der Installer selbst noch der alte war.
+# Fehlt die Marke, wird der (jetzt neue) Installer genau einmal
+# nachgestartet; der ersetzt die Abzeichen, setzt die Marke und
+# landet danach wieder hier - dann greift dieser Block nicht mehr und
+# es geht normal mit dem Neustart weiter.
+#
+# DREI BREMSEN GEGEN EINE ENDLOSSCHLEIFE, alle drei muessen halten:
+#   1. Der Stempel unter /tmp erlaubt hoechstens EINEN Nachlauf pro
+#      Systemstart - selbst wenn die Marke aus irgendeinem Grund nie
+#      gesetzt wuerde.
+#   2. Nachgestartet wird nur, wenn der Installer auf der Karte die
+#      Ersetzung ueberhaupt kennt (grep auf die Marke). Ein alter
+#      Installer wuerde die Marke nie setzen - ihn nachzustarten
+#      waere genau die Schleife, die wir verhindern wollen.
+#   3. Ohne sysart-Ordner (z.B. Frontend gar nicht installiert)
+#      passiert hier nichts.
+ABZEICHEN_MARKE="$FRONTEND_DIR/sysart/.abzeichen_v1"
+ABZEICHEN_STEMPEL="/tmp/abzeichen_nachlauf"
+ABZEICHEN_INSTALLER="$SCRIPTS_DIR/Frontend_Install.sh"
+if [ -d "$FRONTEND_DIR/sysart" ] \
+   && [ ! -f "$ABZEICHEN_MARKE" ] \
+   && [ ! -f "$ABZEICHEN_STEMPEL" ] \
+   && [ -f "$ABZEICHEN_INSTALLER" ] \
+   && grep -qF ".abzeichen_v1" "$ABZEICHEN_INSTALLER" 2>/dev/null; then
+    : > "$ABZEICHEN_STEMPEL" 2>/dev/null || true
+    echo ""
+    echo "Die neuen Kategorie-Abzeichen fehlen noch auf der Karte."
+    echo "Dafuer laeuft die Installation einmal nach (das ist normal"
+    echo "und passiert nur dieses eine Mal)..."
+    echo ""
+    exec bash "$ABZEICHEN_INSTALLER"
+fi
+
 # NEU: alte, vor dem "Frontend_"-Praefix-Umzug benannte Script-Kopien
 # aufraeumen, falls noch vorhanden - dieser Punkt hier ist der
 # gemeinsame Endpunkt JEDES Install-/Update-Wegs (egal ob ueber den

@@ -7,6 +7,154 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Die neuen Abzeichen kommen auf der Karte auch wirklich an**
+(Build 101):
+
+Ausgelöst durch eine Nutzerfrage: „Muss ich die alten händisch löschen
+auf GitHub? Oder werden die alten überschrieben?" Auf GitHub: ja. Auf
+der **SD-Karte: nein** — und genau das war ein Fehler.
+
+Alle drei Installer kopieren `sysart` bewusst ohne Überschreiben, damit
+selbst gemaltes Artwork bei einem erneuten Lauf nicht verlorengeht.
+Richtig gedacht für einzelne Bilder — aber mit Build 99/100 wurden
+*alle* 57 Kategorie-Logos umgestellt. 42 davon tragen denselben
+Dateinamen wie ein altes Logo und wären nie auf der Karte angekommen.
+Dieselbe Falle wie damals bei `WOT.art` („immer noch das alte
+Zufalls-Zock-Bild, auch nach Update UND Install"), nur 42-fach.
+
+| | |
+|---|---|
+| neue Abzeichen, die angekommen wären | 15 |
+| Abzeichen, die hängengeblieben wären | 42 |
+| tote Vollbild-Dateien, die niemand entfernt hätte | 4 (1,7 MB) |
+
+**Die Lösung ist eine einmalige, per Marke gesteuerte Ersetzung.** Fehlt
+`sysart/.abzeichen_v1`, wird der komplette Satz genau einmal
+überschrieben, die vier toten Dateien werden gelöscht und die Marke
+gesetzt. Ab dann gilt wieder „vorhandene behalten" — wer sich danach ein
+eigenes Abzeichen malt, behält es bei jedem weiteren Lauf.
+
+**Dazu kam ein Henne-Ei-Problem**, das die Reparatur beim ersten Mal
+wirkungslos gemacht hätte: Bei einem Update läuft zuerst noch der
+**alte** Installer von der Karte. Der lädt zwar das neue Repo und legt
+den neuen Installer ab — sein eigener `sysart`-Schritt ist in genau
+diesem Lauf aber noch der alte. Der Nutzer säh eine halb umgestellte
+Hauptseite und hätte keinen Grund, das Update ein zweites Mal zu
+starten.
+
+Gelöst an der einen Stelle, an der bereits neuer Code läuft, obwohl der
+Installer noch der alte war: `Frontend_Install.sh` übergibt am Ende per
+`exec` an `Frontend_Update.sh` — und die wurde wenige Zeilen vorher
+frisch mitinstalliert. Fehlt dort die Marke, wird die Installation genau
+einmal nachgestartet. Drei Bremsen verhindern eine Endlosschleife: ein
+Stempel unter `/tmp` (höchstens ein Nachlauf pro Systemstart), eine
+Prüfung, ob der Installer auf der Karte die Ersetzung überhaupt kennt,
+und die Bedingung, dass `sysart` existiert.
+
+`tools/test_abzeichen_verteilung.py` (neu) schneidet die **echten**
+Shell-Blöcke aus allen drei Installern heraus und lässt sie gegen eine
+künstliche SD-Karte laufen — kein Nachbau, sondern der Code, der später
+auf dem MiSTer läuft. Fiele einer der Blöcke wieder auf „nur ergänzen"
+zurück, schlägt der Test fehl.
+
+**Alle 57 Kategorien tragen jetzt ein Abzeichen** (Build 100):
+
+Mit dem dritten Vorlagenblatt (32 weitere Abzeichen) ist der Satz
+vollständig. Ein Abzeichen deckt drei Kategorien ab — das Atari-Motiv
+trägt „2600/5200/7800" und gilt für alle drei.
+
+| | |
+|---|---|
+| gebraucht | 57 |
+| vorhanden | 57 |
+| fehlt | nichts |
+
+**Das dritte Blatt brauchte drei neue Kunstgriffe**, weil es anders
+gebaut ist als die ersten beiden:
+
+1. **Grundfarbe statt Schwarz.** Blatt 1 und 2 liegen auf Schwarz,
+   Blatt 3 auf Beige. Das Freistellen darf also nicht „alles Dunkle"
+   entfernen — es flutet jetzt vom Bildrand her, unabhängig davon,
+   welche Farbe der Grund hat.
+2. **Farbverlauf im Hintergrund.** Blatt 3 ist nicht gleichmäßig getönt:
+   Ecke (102,94,68), Mitte (160,143,106) — 58 Stufen Unterschied. Gegen
+   die Eckfarbe verglichen bliebe entweder die halbe Bildmitte als
+   „Motiv" stehen oder die Abzeichen würden mitgefressen. Verglichen
+   wird deshalb mit dem *Nachbarpunkt*: ein Verlauf ändert sich langsam,
+   die Umrandung eines Abzeichens ist ein harter Sprung.
+3. **Helligkeitsgrenze.** Der lokale Vergleich allein reichte nicht —
+   die weiche Kante ließ das Fluten Punkt für Punkt ins Abzeichen
+   hineinkriechen, und bei den meisten war der beige Kreis weggefressen.
+   Der Kreis ist aber immer deutlich heller (209) als die hellste
+   Hintergrundstelle (143); diese Grenze kann kein Verlauf überschreiten.
+
+Außerdem erkennt der Konverter die Zellgrenzen jetzt an den *echten*
+Lücken im Bild statt gleichmäßig zu teilen — mit relativer Schwelle,
+denn auf Blatt 3 berühren sich die Abzeichen fast und es gibt keine
+komplett leeren Bildzeilen.
+
+**Vier tote Dateien entfernt:** `SMW_HACKS_1920x1080.art`,
+`SNES_ALTTP_TRACKER_1920x1080.art` und die beiden 320×240-Varianten
+(zusammen 1,7 MB). Sie wurden von keiner Codestelle geladen —
+Überbleibsel der Vollbild-Hintergründe, die in Build 87 entfallen sind.
+
+`tools/test_kategorie_abzeichen.py` prüft jetzt alle 57 namentlich: ein
+neu dazukommendes System ohne Abzeichen fällt damit sofort auf.
+
+**Neue Kategorie-Abzeichen im Hauptmenü** (Build 99 — „Ich hätte gerne
+auf der Hauptseite die alten Sysarts durch diese hier ersetzt, damit es
+einheitlich aussieht. Alle bitte auf eine Höhe setzen, mittig rechts
+neben den Kategorien … soll alles die gleiche Größe haben, ohne dass ein
+Rahmen neu gezeichnet werden muss"):
+
+24 gelieferte Pixel-Abzeichen ersetzen die alten Logos. Sie liegen
+jetzt als **einheitliche Kacheln von 320×420** vor — jede Kategorie
+landet dadurch im exakt selben Rechteck auf dem Schirm, unabhängig
+davon, wie lang ihr Name ist.
+
+**Die Feinheit beim Zuschneiden:** normiert wird auf den *Kreis*, nicht
+auf das ganze Bild. Die Vorlagen sind 239 bis 295 Punkte breit — aber
+nicht, weil die Kreise unterschiedlich groß wären, sondern weil der Text
+darunter verschieden lang ist („N64" gegen „SEGA MASTER SYSTEM"). Wer
+auf die Gesamtbreite normiert, macht ausgerechnet die Kreise mit kurzem
+Namen zu groß.
+
+Drei Anläufe hat es gebraucht, und alle drei Fehler waren nur im
+gerenderten Bild zu sehen:
+
+1. **Schwarzer Kasten.** Der Blattgrund blieb stehen — jedes Abzeichen
+   saß in einem schwarzen Rechteck auf der Karte. Jetzt wird der Grund
+   vom Rand her geflutet; „alles Dunkle ersetzen" wäre falsch gewesen,
+   weil Mega Drive, N64 und Neo-Geo selbst überwiegend schwarz sind.
+2. **Abgeschnittene Beschriftungen.** Ein fester Zelleneinzug gegen das
+   Übersprechen der Nachbarn schnitt bei „WEITER-SPIELEN" die zweite
+   Zeile ab. Jetzt werden die echten Zellgrenzen aus den Lücken im Bild
+   bestimmt statt gleichmäßig geteilt.
+3. **Rechteck statt Abzeichen.** Ohne Rahmen stand der eingebackene
+   Kartenhintergrund sichtbar auf der Seite. Das Abzeichen liegt jetzt
+   auf derselben Karte wie das Cover auf der Spieleseite — gezeichnet
+   mit dem zusammengefassten Aufruf aus Build 98.
+
+Rahmen in Systemfarbe und Schattenstreifen sind entfallen: die Abzeichen
+sind fertige runde Marken mit eigener Umrandung, ein Bilderrahmen
+drumherum sah aus wie ein Rahmen um einen Aufkleber. Und er war der
+einzige Grund, warum sich beim Kategoriewechsel überhaupt etwas
+*außerhalb* des Bildes ändern konnte.
+
+Nebenbei sind die Dateien deutlich kleiner geworden: die alten Logos
+lagen bei 900 Punkten Breite (SYSTEM.art war 379 KB, um am Ende 300
+Punkte breit gezeigt zu werden), die neuen Kacheln im Schnitt bei
+108 KB.
+
+Neu: `PC-Tools/sysart_abzeichen.py` (erzeugt die Kacheln aus den
+Vorlagenblättern, für weitere Blätter wiederverwendbar) und
+`tools/test_kategorie_abzeichen.py` (32 Prüfungen, darunter: alle
+Abzeichen landen wirklich im selben Rechteck).
+
+**Noch offen:** 33 der 57 Kategorien haben noch kein Abzeichen in
+diesem Stil — 18 tragen weiter ihr altes Logo, 15 haben gar keins.
+
+
 **Cover-Panel auf HDMI 27 % schneller** (Build 97 + 98) — zwei Schritte,
 beide mit bitgenau unverändertem Bild:
 

@@ -180,6 +180,38 @@ if [ -d "$SRC_DIR/frontend/sysart" ]; then
     # Datei aus dieser Liste beim naechsten Update verloren, siehe
     # Frontend_Install.sh fuer die volle Begruendung. Der Schutz fuer
     # alle anderen sysart-Dateien bleibt unveraendert bestehen.
+    # NEU (Build 100, Nutzerfrage: "muss ich die alten haendisch
+    # loeschen, oder werden die alten ueberschrieben?").
+    #
+    # DIE ANTWORT WAR: NEIN, sie wurden NICHT ueberschrieben - und genau
+    # das war ein Fehler. Das "cp -rn" direkt darueber ergaenzt nur
+    # FEHLENDE Dateien, damit eigenes Artwork bei einem erneuten Lauf
+    # nicht verlorengeht. Richtig gedacht fuer einzelne Bilder - aber
+    # mit Build 99/100 wurden ALLE 57 Kategorie-Logos auf einen neuen,
+    # einheitlichen Abzeichen-Stil umgestellt. Von denen waeren 42 nie
+    # auf der Karte angekommen, weil unter demselben Namen schon ein
+    # altes Logo lag. Dieselbe Falle, die es bei WOT.art schon einmal
+    # gab ("immer noch das alte Zufalls-Zock-Bild, auch nach Update UND
+    # Install") - nur diesmal 42-fach.
+    #
+    # Loesung: eine EINMALIGE, versionsgesteuerte Ersetzung. Fehlt die
+    # Marke, wird der komplette Satz einmal ueberschrieben und die Marke
+    # gesetzt. Ab dann gilt wieder "vorhandene behalten" - wer danach
+    # ein Abzeichen durch eigenes Artwork ersetzt, behaelt es bei jedem
+    # weiteren Lauf.
+    _MARKE="$FRONTEND_DIR/sysart/.abzeichen_v1"
+    if [ ! -f "$_MARKE" ]; then
+        cp -f "$SRC_DIR/frontend/sysart/"*.art "$FRONTEND_DIR/sysart/" 2>/dev/null || true
+        # Vier Dateien, die kein Codepfad mehr laedt: Ueberbleibsel der
+        # Vollbild-Hintergruende, die mit Build 87 entfallen sind
+        # (zusammen 1,7 MB). Ein Kopiervorgang kann sie nicht entfernen -
+        # nur ein ausdrueckliches Loeschen.
+        rm -f "$FRONTEND_DIR/sysart/SMW_HACKS_1920x1080.art" \
+              "$FRONTEND_DIR/sysart/SMW_HACKS_320x240.art" \
+              "$FRONTEND_DIR/sysart/SNES_ALTTP_TRACKER_1920x1080.art" \
+              "$FRONTEND_DIR/sysart/SNES_ALTTP_TRACKER_320x240.art" 2>/dev/null
+        : > "$_MARKE" 2>/dev/null || true
+    fi
     for _f in WOT.art; do
         if [ -f "$SRC_DIR/frontend/sysart/$_f" ]; then
             cp -f "$SRC_DIR/frontend/sysart/$_f" "$FRONTEND_DIR/sysart/$_f" 2>/dev/null

@@ -236,10 +236,28 @@ if [ -d "$SRC/frontend/sysart" ]; then
     step "System-Logos (sysart)"
     mkdir -p "$FRONTEND_DIR/sysart"
     NEW=0; KEPT=0; REPLACED=0
+    # NEU (Build 100, Nutzerfrage: "muss ich die alten haendisch
+    # loeschen, oder werden die alten ueberschrieben?"). Die Antwort war
+    # NEIN - und das war ein Fehler: mit Build 99/100 wurden ALLE 57
+    # Kategorie-Logos auf den neuen Abzeichen-Stil umgestellt, und 42
+    # davon waeren nie angekommen, weil unter demselben Namen schon ein
+    # altes Logo lag. Dieselbe Falle wie damals bei WOT.art, nur
+    # 42-fach.
+    #
+    # Deshalb EINMALIG den kompletten Satz ersetzen. Fehlt die Marke,
+    # gilt fuer diesen einen Lauf "alles ueberschreiben"; danach wieder
+    # "vorhandene behalten", damit eigenes Artwork erhalten bleibt.
+    ABZEICHEN_MARKE="$FRONTEND_DIR/sysart/.abzeichen_v1"
+    ALLE_ERSETZEN=0
+    [ -f "$ABZEICHEN_MARKE" ] || ALLE_ERSETZEN=1
     for f in "$SRC/frontend/sysart/"*.art; do
         [ -e "$f" ] || continue
         base="$(basename "$f")"
         if [ -f "$FRONTEND_DIR/sysart/$base" ]; then
+            if [ "$ALLE_ERSETZEN" = "1" ]; then
+                cp -f "$f" "$FRONTEND_DIR/sysart/" && REPLACED=$((REPLACED+1))
+                continue
+            fi
             case " $FORCE_OVERWRITE_SYSART " in
                 *" $base "*)
                     cp -f "$f" "$FRONTEND_DIR/sysart/" && REPLACED=$((REPLACED+1))
@@ -252,6 +270,16 @@ if [ -d "$SRC/frontend/sysart" ]; then
             cp -f "$f" "$FRONTEND_DIR/sysart/" && NEW=$((NEW+1))
         fi
     done
+    if [ "$ALLE_ERSETZEN" = "1" ]; then
+        # Vier Dateien, die kein Codepfad mehr laedt: Ueberbleibsel der
+        # Vollbild-Hintergruende, die mit Build 87 entfallen sind
+        # (zusammen 1,7 MB). Ein Kopiervorgang kann sie nicht entfernen.
+        rm -f "$FRONTEND_DIR/sysart/SMW_HACKS_1920x1080.art" \
+              "$FRONTEND_DIR/sysart/SMW_HACKS_320x240.art" \
+              "$FRONTEND_DIR/sysart/SNES_ALTTP_TRACKER_1920x1080.art" \
+              "$FRONTEND_DIR/sysart/SNES_ALTTP_TRACKER_320x240.art" 2>/dev/null
+        : > "$ABZEICHEN_MARKE" 2>/dev/null || true
+    fi
     extra="$SRC/frontend/sysart/_weitere_systeme_noch_nicht_unterstuetzt"
     if [ -d "$extra" ]; then
         mkdir -p "$FRONTEND_DIR/sysart/_weitere_systeme_noch_nicht_unterstuetzt"

@@ -166,8 +166,14 @@ if os.path.isfile(art_file):
     raw = open(art_file, "rb").read()
     check("Dateikopf ist ART1", raw[:4] == b"ART1")
     w, h = struct.unpack("<HH", raw[4:8])
-    check("Breite 900 wie bei den uebrigen System-Logos", w == 900,
-          "%dx%d" % (w, h))
+    # GEAENDERT (Build 99): die Kategorie-Logos sind keine 900 Punkte
+    # breiten Schriftzuege mehr, sondern einheitliche Abzeichen-Kacheln
+    # von 320x420 (siehe PC-Tools/sysart_abzeichen.py). Genau DIESE
+    # Einheitlichkeit war der Nutzerwunsch - geprueft wird sie jetzt
+    # zentral in tools/test_kategorie_abzeichen.py fuer ALLE Logos,
+    # nicht mehr nur hier fuer eines.
+    check("Kachelgroesse wie bei allen Kategorie-Abzeichen",
+          (w, h) == (320, 420), "%dx%d" % (w, h))
     import zlib                                    # noqa: E402
     pix = zlib.decompress(raw[8:])
     check("Bilddaten haben die passende Groesse", len(pix) == w * h * 4,
