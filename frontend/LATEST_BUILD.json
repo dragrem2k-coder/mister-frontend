@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-11-102",
-  "summary": "Der Cover-Vorauslader rechnet jetzt auf dem zweiten CPU-Kern statt dem Zeichnen die Rechenzeit wegzunehmen - auf HDMI schafft er dadurch achtmal so viele Cover im Voraus. Scroll-Blitting ist wieder raus, es hat gemessen nur gekostet."
+  "build_id": "2026-09-11-103",
+  "summary": "Beim Scrollen wird nur noch freigeraeumt, wo wirklich etwas stand - auf HDMI ein Viertel der Flaeche und rund ein Drittel weniger Zeit je Schritt. Dazu zwei Sicherungen, damit der Vorauslader waehrend eines laufenden Cores garantiert nichts belegt."
 }

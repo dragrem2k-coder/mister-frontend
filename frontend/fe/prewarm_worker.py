@@ -81,6 +81,29 @@ def main():
     if wurzel not in sys.path:
         sys.path.insert(0, wurzel)
 
+    # NEU (Build 103): freiwillig zurueckstecken.
+    #
+    # Der zweite CPU-Kern ist im Menue frei, deshalb kostet das dort
+    # nichts. Es geht um den Fall, in dem BEIDE Kerne gebraucht werden:
+    # auf dem ARM laeuft neben Linux das MiSTer-Programm, und das
+    # arbeitet bei manchen Cores waehrend des Spielens weiter - CD-Cores
+    # (PSX, Saturn, MegaCD, NeoGeo CD), Diskettenabbilder, MSU-1-Musik
+    # lesen fortlaufend von der Karte nach. Bekaeme es dort seine
+    # Rechenzeit nicht rechtzeitig, hoert man das als Tonaussetzer.
+    #
+    # Das Frontend sorgt zwar schon dafuer, dass hier waehrend eines
+    # laufenden Cores nichts ansteht (die Auftragsliste wird bei jeder
+    # Eingabe geleert, und seit Build 103 wird dieser Prozess vor dem
+    # Core-Start ganz beendet). Diese Zeile ist die Sicherung fuer den
+    # Fall, dass doch einmal etwas gleichzeitig laeuft: mit
+    # zurueckgestellter Priorittaet bekommt das MiSTer-Programm die CPU
+    # immer zuerst. Schlaegt es fehl (fehlende Rechte), ist das kein
+    # Grund aufzuhoeren - dann laeuft der Prozess eben normal.
+    try:
+        os.nice(10)
+    except OSError:
+        pass
+
     try:
         import fe.art as art
     except Exception:                                    # noqa: BLE001

@@ -147,9 +147,19 @@ class CoverPrewarmer:
             return
         if self._prozess_moeglich is None:
             self._prozess_moeglich = self._prozess_starten()
-        self._thread = threading.Thread(target=self._schleife,
-                                        name="cover-prewarm", daemon=True)
-        self._thread.start()
+        elif self._prozess_moeglich and self._proc is None:
+            # Nach einem beenden() (z.B. beim Spielstart) wieder
+            # hochfahren. Gelang der Start beim ersten Mal nicht, wird er
+            # bewusst nicht erneut versucht - siehe _prozess_verloren().
+            self._prozess_starten()
+        t = threading.Thread(target=self._schleife, name="cover-prewarm",
+                             daemon=True)
+        # ERST merken, dann starten: die Schleife prueft bei jedem
+        # Durchgang, ob sie noch der aktuelle Arbeiter ist (self._thread
+        # is meiner). Startete sie vor der Zuweisung, koennte sie sich
+        # selbst fuer abgeloest halten und sofort zurueckkehren.
+        self._thread = t
+        t.start()
 
     def uebergeben(self, auftraege):
         """Neue Auftragsliste [(pfad, breite, hoehe), ...] setzen.
@@ -173,12 +183,43 @@ class CoverPrewarmer:
             self._generation += 1
 
     def beenden(self):
+        """Alles anhalten und den Arbeitsprozess abraeumen.
+
+        GEAENDERT (Build 103): danach ist ein erneutes start() wieder
+        moeglich. Gebraucht wird das beim Core-Start - siehe run_core()
+        in frontend.py: solange jemand spielt, soll hier weder ein
+        Prozess herumliegen noch Speicher belegt sein. Vorher war
+        beenden() endgueltig und wurde nur beim Herunterfahren gerufen.
+
+        _prozess_moeglich wird bewusst NICHT zurueckgesetzt: ein einmal
+        gescheiterter Prozessstart soll nicht bei jeder Rueckkehr aus
+        einem Spiel erneut versucht werden."""
         with self._wecker:
             self._ende = True
             self._auftraege = []
             self._generation += 1
             self._wecker.notify_all()
+        with self._wecker:
+            # Ab hier ist KEIN Thread mehr der aktuelle Arbeiter. Ein
+            # noch laufender sieht das beim naechsten Durchgang und
+            # kehrt zurueck - auch dann noch, wenn _ende unten wieder
+            # auf False steht. Ohne diese zweite, thread-eigene
+            # Abbruchbedingung koennte ein alter Thread in seiner
+            # Warteschleife haengenbleiben und nach einem spaeteren
+            # start() als ZWEITER Arbeiter neben dem neuen weiterlaufen -
+            # zwei Schreiber auf derselben Leitung zum Arbeitsprozess,
+            # und die Antworten gehoerten niemandem mehr eindeutig.
+            t, self._thread = self._thread, None
+            self._wecker.notify_all()
         self._prozess_beenden()
+        if t is not None and t is not threading.current_thread():
+            # Kurz warten, aber nie haengen bleiben: der Thread kann in
+            # einer bereits begonnenen Miniatur stecken, und darauf zu
+            # warten waere genau die Verzoegerung, die wir vermeiden
+            # wollen.
+            t.join(timeout=0.2)
+        with self._wecker:
+            self._ende = False
 
     def beschaeftigt(self):
         with self._wecker:
@@ -275,11 +316,13 @@ class CoverPrewarmer:
     # -- Die Schleife -----------------------------------------------------
 
     def _schleife(self):
+        meiner = threading.current_thread()
         while True:
             with self._wecker:
-                while not self._auftraege and not self._ende:
+                while (not self._auftraege and not self._ende
+                       and self._thread is meiner):
                     self._wecker.wait()
-                if self._ende:
+                if self._ende or self._thread is not meiner:
                     return
                 meine_generation = self._generation
                 auftraege = self._auftraege
@@ -287,12 +330,21 @@ class CoverPrewarmer:
                 with self._wecker:
                     # Zwischen zwei Miniaturen pruefen, ob die Liste
                     # inzwischen ueberholt ist (Eingabe oder neue
-                    # Position).
-                    if self._ende or self._generation != meine_generation:
+                    # Position) - oder ob dieser Thread ueberhaupt noch
+                    # der aktuelle Arbeiter ist (siehe beenden()).
+                    if (self._ende or self._thread is not meiner
+                            or self._generation != meine_generation):
                         break
                 ergebnis = None
                 if self._proc is not None:
                     ergebnis = self._auftrag_im_prozess(pfad, bw, bh)
+                if ergebnis is None and (self._ende
+                                         or self._thread is not meiner):
+                    # Wir sind gerade beim Abraeumen - dann NICHT
+                    # ersatzweise selbst rechnen, sonst zoegert genau das
+                    # den Spielstart hinaus, den das Abraeumen freimachen
+                    # sollte.
+                    break
                 if ergebnis is None:
                     # Rueckfall: entweder von Anfang an kein Prozess,
                     # oder er ist gerade weggebrochen. Dann rechnet

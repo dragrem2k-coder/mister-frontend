@@ -7,6 +7,89 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Beim Scrollen wird nur noch freigeräumt, wo wirklich etwas stand**
+(Build 103):
+
+Der gemessen größte Einzelposten eines Scrollschritts war nicht das
+Zeichnen der Zeilen, sondern das **Freiräumen davor**. Der schnelle Pfad
+stellte die komplette Listenspalte wieder her — auf HDMI 859 × 765
+Bildpunkte, jede Bildzeile einzeln kopiert, **0,68 von 1,14 ms**. Mehr
+als alle siebzehn Zeilen zusammen.
+
+Gebraucht wird der Hintergrund aber nur dort, wo im vorigen Bild etwas
+stand, und das ist in **beiden** Richtungen weniger:
+
+| | |
+|---|---|
+| Breite | Eine unmarkierte Zeile besteht nur aus ihrem Text. Der Zeichensatz hat feste Breite, die Ausdehnung steht also fest. Der mittlere Titel belegt 45 % der Spaltenbreite. |
+| Höhe | Der Text ist 8·s hoch — auf HDMI 24 statt 45 Bildpunkte Zeilenhöhe. |
+
+Jede Zeile merkt sich jetzt, wie weit sie gemalt hat. Freigeräumt wird
+nur noch das: **185 335 statt 758 175 Bildpunkte auf HDMI — ein
+Viertel.** Auf CRT 39 %.
+
+Dazu kamen die Ränder weg. Der alte Aufruf legte rundum 10·s Rand dazu —
+ein Überbleibsel des Leucht-Rands, der absichtlich über seine Zeile
+hinausragte. Den gibt es seit „Glow-Effekt komplett raus" nicht mehr;
+der Rand räumte also Fläche frei, auf der ohnehin nichts stand.
+
+**Im selben Aufwasch eine Doppelarbeit gefunden:**
+`_clear_row_glow_margin()` räumte einen Zeilenbereich frei, den
+`draw_list_row()` unmittelbar danach **noch einmal** freiräumte —
+Bildzeile für Bildzeile dasselbe Rechteck. Auch das ein Rest des
+entfernten Glows: ohne ihn schrumpfte der Überstand auf null, und übrig
+blieb exakt der Bereich, den die Zeile ohnehin selbst aufräumt. Die
+Funktion heißt jetzt `_zeilen_platz()` und rechnet nur noch.
+
+Gemessen (`tools/diag_zeilen_spuren.py`, vier Durchläufe):
+
+| | bis 102 | ab 103 | Gewinn |
+|---|---|---|---|
+| HDMI, Zeile kommt neu rein | 1,02 ms | 0,65 ms | **rund ein Drittel** (28–41 %) |
+| HDMI, Markierung wandert | 0,34 ms | 0,29 ms | ~15 % |
+| CRT, Markierung wandert | 0,08 ms | 0,064 ms | ~15–25 % |
+| CRT, Zeile kommt neu rein | 0,29 ms | 0,29 ms | im Rauschen |
+
+Dass CRT beim Scrollen nichts gewinnt, ist kein Fehler, sondern die
+Rechnung von oben: dort belegt ein Titel 80 % der Spaltenbreite, und die
+Zeilen sind ohnehin flach — es gibt schlicht wenig zu sparen. Der
+Engpass lag auf HDMI, und dort greift es.
+
+**Geprüft wird das nicht per Augenschein.** Ist die gemerkte Ausdehnung
+auch nur einen Bildpunkt zu klein, bleibt bei jedem Schritt ein Rest
+stehen, und weil jeder Schritt auf dem vorigen aufsetzt, verschmiert die
+Liste. Genau diese Sorte Fehler hat beim Scroll-Blitting zweimal
+zugeschlagen. `tools/test_zeilen_spuren.py` vergleicht deshalb Bildpunkt
+für Bildpunkt gegen den vollen Neuaufbau — einzeln und nach dreißig
+Schritten, hoch wie runter, mit langen und kurzen Titeln gemischt, mit
+Ordnern dazwischen und mit einer Liste, die kürzer ist als das Fenster.
+
+**Zwei Sicherungen für den zweiten CPU-Kern** (Build 103):
+
+Auf die Frage „wenn wir zwei Kerne haben, sollten wir die auch nutzen —
+aber nicht, dass dann irgendwelche Cores nicht mehr richtig laufen":
+
+1. **Der Arbeitsprozess stellt sich freiwillig zurück** (`os.nice(10)`).
+   Im Menü ist der zweite Kern frei, das kostet dort nichts. Es geht um
+   den Fall, dass doch einmal beide gebraucht werden: das
+   MiSTer-Programm liest bei CD-Cores, Diskettenabbildern und
+   MSU-1-Musik während des Spielens fortlaufend von der Karte nach —
+   bekäme es seine Rechenzeit nicht rechtzeitig, hört man das als
+   Tonaussetzer. Zurückgestellt bekommt es die CPU immer zuerst.
+2. **Vor dem Core-Start wird der Vorauslader ganz abgeräumt** und beim
+   Rücksprung ins Menü von selbst wieder hochgefahren. Die Auftragsliste
+   war ohnehin leer, aber der Prozess belegte gut 18 MB, und eine
+   begonnene Miniatur wäre noch bis zu eine halbe Sekunde weitergelaufen
+   — genau während der Core lädt.
+
+Der heikle Teil daran war nicht das Beenden, sondern das
+**Wiederanlaufen**: ein alter Arbeiter-Thread darf danach nicht als
+zweiter neben dem neuen weiterlaufen. Zwei Schreiber auf derselben
+Leitung zum Arbeitsprozess, und keine Antwort gehörte mehr eindeutig zu
+einer Frage. Jeder Thread prüft deshalb bei jedem Durchgang, ob er noch
+der aktuelle Arbeiter ist. `tools/test_vorauslader_prozess.py` zählt
+nach.
+
 **Der Cover-Vorauslader rechnet jetzt auf dem zweiten CPU-Kern**
 (Build 102):
 

@@ -1277,6 +1277,12 @@ class Frontend:
         # Reste ein Teil-Redraw stehen lassen wuerde - siehe
         # _overlay_active() und die Fundstelle in next_action().
         self._force_full_redraw = False
+        # NEU (Build 103): je Zeilenplatz auf dem Schirm das Rechteck,
+        # das dort zuletzt wirklich bemalt wurde. Schluessel ist die
+        # Bildzeile (y_top) - die Plaetze liegen fest, der INHALT wandert
+        # beim Scrollen. Siehe _zeilen_spuren_holen().
+        self._zeilen_spur = {}
+        self._zeilen_spur_sig = None
         # Einmal-Schalter fuers Vorladen der Nachbar-Cover pro Ruhephase -
         # siehe PREFETCH_SETTLE.
         self._prefetched_done = False
@@ -3922,7 +3928,7 @@ class Frontend:
         # Nachbarzeilen hineinragte und dort sonst sichtbare Reste
         # hinterlassen haette. Ohne Glow genuegt die Zeile selbst - sie
         # fuellt ihren eigenen Bereich vollstaendig.
-        old_y_top, old_max_p = self._clear_row_glow_margin(old_item_i)
+        old_y_top, old_max_p = self._zeilen_platz(old_item_i)
         regions = []
         if old_y_top is not None:
             self.draw_list_row(old_item_i)
@@ -4064,44 +4070,41 @@ class Frontend:
                             item_syskey, v["items"][item_i], s)
         return art_y0, art_y0 + art_h
 
-    def _clear_row_glow_margin(self, item_i):
-        """Den erweiterten Randbereich (bis zu max_p Pixel ueber die
-        eigentliche Zeile hinaus) einer bestimmten Zeile auf den
-        Hintergrund zuruecksetzen - gemeinsam genutzt von
-        _draw_dynamic_items() (neue Auswahl) UND _draw_navigate_items()
-        (alte Auswahl, deren Glow-Rand sonst teilweise stehen bleibt,
-        wenn die Markierung zu einer anderen Zeile weiterspringt)."""
+    def _zeilen_platz(self, item_i):
+        """Obere Bildzeile eines Eintrags auf dem Schirm - oder
+        (None, None), wenn er gar nicht sichtbar ist.
+
+        GEAENDERT (Build 103): diese Funktion hiess
+        _clear_row_glow_margin() und hat den Zeilenbereich zusaetzlich
+        freigeraeumt. Das war Doppelarbeit, und zwar seit dem
+        Nutzerwunsch "Glow-Effekt komplett raus".
+
+        Urspruenglich raeumte sie einen Rand MIT ab, der ueber die
+        eigene Zeile hinausragte - genau so weit, wie der Leucht-Rand
+        reichte. Ohne Glow schrumpfte dieser Rand auf null (max_p = 0),
+        und uebrig blieb exakt dasselbe Rechteck, das draw_list_row()
+        unmittelbar danach ohnehin noch einmal freiraeumt
+        (x0, y_top, rw, band_h - Zeile fuer Zeile identisch). Beide
+        Aufrufstellen rufen direkt hintereinander erst diese Funktion
+        und dann draw_list_row() fuer DIESELBE Zeile auf; der ganze
+        Bereich wurde also zweimal hintereinander mit demselben
+        Hintergrund beschrieben.
+
+        Gemessen auf HDMI: 0.063 von 0.315 ms je Navigationsschritt, also
+        ein Fuenftel - fuer nichts. Das Freiraeumen bleibt dort, wo es
+        ohnehin passiert; hier bleibt nur noch die Rechnung, die beide
+        Aufrufer fuer ihren Ausgabebereich brauchen.
+
+        max_p wird weiterhin mitgeliefert (immer 0), weil beide Aufrufer
+        damit ihren Flip-Bereich bemessen - und damit sichtbar bleibt,
+        dass hier einmal ein Ueberstand war.
+        """
         v = self.view
         s, rowh = v["s"], v["rowh"]
         row = item_i - self.scroll
         if not (0 <= row < self.items_visible):
             return None, None
-        fb = self.fb
-        list_x, list_right = v["list_x"], v["list_right"]
-        y = v["list_y"] + row * rowh
-        y_top = y - 3 * s
-        x0 = list_x - 4 * s
-        rw = max(4, list_right - list_x - 2 * s)
-        # GEAENDERT (Nutzerwunsch: "glow Effekt komplett raus"): war
-        # vorher 3 * 2 * s - so weit ragte der Leucht-Rand ueber die
-        # eigene Zeile hinaus, und genau so breit musste hier
-        # freigeraeumt werden. Ohne Glow reicht der eigene Zeilenbereich.
-        # Die Funktion selbst bleibt trotzdem noetig: die markierte Zeile
-        # wird mit ABGERUNDETEN Ecken gezeichnet (rect_rounded()), die
-        # Eckpixel ausserhalb der Rundung bleiben dabei unberuehrt und
-        # muessen vorher auf den Hintergrund zurueckgesetzt werden.
-        max_p = 0
-        # BUGFIX (gleiche Ursache wie in draw_list_row(), siehe dort die
-        # ausfuehrliche Begruendung): hier stand dieselbe Rechnung
-        # "rowh - 2*s" - zu wenig, um den 8*s hohen Text vollstaendig
-        # abzudecken, sobald die Zeilenhoehe unter 14*s-1 faellt - UND
-        # dieselbe flache Fuellung per fb.rect(..., C_BG), die die
-        # Randabdunkelung ignoriert. Beides wird jetzt von
-        # _restore_row_bg() erledigt, das genau dafuer da ist.
-        band_h = max(rowh - 2 * s, 11 * s)
-        self._restore_row_bg(x0 - max_p, y_top - max_p,
-                             rw + 2 * max_p, band_h + 2 * max_p)
-        return y_top, max_p
+        return v["list_y"] + row * rowh - 3 * s, 0
 
     def _draw_dynamic_items(self, flip=True):
         """Leichter Zeichenpfad fuer Pulsier-Ticks auf Seite 1: zeichnet
@@ -4159,7 +4162,7 @@ class Frontend:
         # Reste stehen geblieben waeren. Ohne Glow bleibt die Markierung
         # in ihrem eigenen Bereich: eine Zeile genuegt, und der auf den
         # Schirm zu bringende Streifen ist entsprechend schmaler.
-        y_top, max_p = self._clear_row_glow_margin(self.item_i)
+        y_top, max_p = self._zeilen_platz(self.item_i)
         self.draw_list_row(self.item_i)
         # Gleiche Ursache wie in _draw_navigate_items_impl(): der auf den
         # Schirm gebrachte Streifen muss so hoch sein wie der gezeichnete.
@@ -4527,7 +4530,17 @@ class Frontend:
         # (restore=...), damit die Summe der Einzelposten wieder zur
         # Gesamtdauer passt.
         _tre = time.monotonic()
+        _spuren = None
         if getattr(self, "_pgi_fast_taken", False):
+            # NEU (Build 103): zuerst versuchen, nur das freizuraeumen,
+            # wo im vorigen Bild wirklich etwas stand - siehe
+            # _zeilen_spuren_holen() fuer Messwerte und Begruendung. Der
+            # Aufruf holt die Spuren UND verwirft sie; die Zeilen unten
+            # tragen ihre neuen selbst wieder ein.
+            _spuren = self._zeilen_spuren_holen(visible)
+            if _spuren is not None:
+                self._restore_spuren(_spuren)
+        if getattr(self, "_pgi_fast_taken", False) and _spuren is None:
             _lm = 10 * s
             # BUGFIX (Nutzer-Rueckmeldung: "beim Hochscrollen verursacht
             # der immer noch Zeichenreste in den ROM-Ordnern sowie im
@@ -5057,6 +5070,26 @@ class Frontend:
                            mq_off, maxc, s, C_TEXT, bg)
         else:
             fb.text(list_x, y, label, s, C_TEXT if sel else C_DIM, bg)
+        # NEU (Build 103): festhalten, WIE WEIT diese Zeile tatsaechlich
+        # gemalt hat. Siehe _zeilen_spuren_holen() fuer den Grund - kurz:
+        # der naechste Scrollschritt muss nur genau das wieder
+        # freiraeumen, nicht die ganze Listenspalte.
+        #
+        # Die markierte Zeile bekommt ihre volle Breite, weil sie das
+        # Markierungsfeld ueber die ganze Zeile legt (rect_rounded oben).
+        # Jede andere Zeile besteht ausschliesslich aus ihrem Text: der
+        # Zeichensatz hat feste Breite (8*s je Zeichen, siehe
+        # Framebuffer.text()), die Ausdehnung steht also fest, ohne sie
+        # messen zu muessen. Auch die Hoehe ist kleiner als das
+        # Zeilenband - Text ist 8*s hoch, das Band bis zu 45.
+        if sel:
+            spur = (x0, y_top, rw, band_h)
+        else:
+            # fb.text() schneidet am Bildrand ab - hier genauso rechnen,
+            # sonst merkt sich die Spur Punkte, die nie gemalt wurden.
+            tw = min(len(label) * 8 * s, max(0, fb.width - list_x))
+            spur = (list_x, y, tw, 8 * s)
+        self._zeilen_spur[y_top] = spur
         return y
 
     def marquee_needed(self):
@@ -5112,6 +5145,127 @@ class Frontend:
         self.mq_off = 0
         self.mq_pause = 4
         self._mq_tick_next = 0.0
+
+    def _zeilen_spur_sig_jetzt(self):
+        """Kennung der aktuellen Listen-Geometrie.
+
+        Aendert sich daran etwas (Aufloesung, Boxart-Spalte da oder
+        nicht, andere Zeilenhoehe), sind alle gemerkten Spuren wertlos -
+        sie beschreiben Rechtecke, die es so nicht mehr gibt."""
+        v = getattr(self, "view", None)
+        if not v:
+            return None
+        return (self.fb.width, self.fb.height, v["list_x"], v["list_right"],
+                v["list_y"], v["rowh"], v["s"])
+
+    def _zeilen_spuren_holen(self, sichtbar):
+        """Die gemerkten Zeilen-Rechtecke abholen UND dabei verwerfen.
+
+        NEU (Build 103). Vorher stellte der schnelle Scroll-Pfad die
+        KOMPLETTE Listenspalte wieder her, bevor er die Zeilen neu
+        zeichnete - auf HDMI 859 mal 765 Bildpunkte, jede Bildzeile
+        einzeln kopiert. Gemessen war das mit 0.68 von 1.14 ms der
+        groesste Einzelposten eines Scrollschritts, groesser als alle
+        siebzehn Zeilen zusammen.
+
+        Wiederhergestellt werden MUSS aber nur, wo im vorigen Bild
+        tatsaechlich etwas stand. Und das ist erheblich weniger, in
+        BEIDEN Richtungen:
+
+          Breite  Eine unmarkierte Zeile besteht nur aus ihrem Text.
+                  Der Zeichensatz hat feste Breite, die Ausdehnung ist
+                  also bekannt, ohne sie zu messen. Gemessen an einer
+                  echten Liste: der mittlere Titel belegt 45 % der
+                  Spaltenbreite auf HDMI.
+          Hoehe   Der Text ist 8*s hoch (HDMI: 24 Punkte), das
+                  aufgeraeumte Zeilenband war 39 bei 45 Punkten
+                  Zeilenhoehe.
+
+        Zusammen: 187 635 statt 758 175 Bildpunkte auf HDMI - ein
+        Viertel. Auf CRT 41 % (dort sind die Titel im Verhaeltnis
+        breiter und die Zeilen flacher).
+
+        WARUM DIE RAENDER WEGFALLEN: der alte Aufruf legte rundum 10*s
+        Rand dazu. Der stammt aus der Zeit des Leucht-Rands (Glow), der
+        absichtlich ueber seine Zeile hinausragte. Den gibt es seit dem
+        Nutzerwunsch "Glow-Effekt komplett raus" nicht mehr; gemalt wird
+        seitdem ausschliesslich innerhalb von x0..x0+rw (siehe
+        draw_list_row()). Der Rand raeumte also Flaeche frei, auf der
+        ohnehin nichts stand.
+
+        Das ist genau die Sorte Aenderung, bei der ein stehengebliebener
+        Rest schlimmer waere als die gesparte Zeit - deshalb wird sie
+        nicht per Augenschein abgenommen, sondern Bildpunkt fuer
+        Bildpunkt gegen den vollen Aufbau geprueft
+        (tools/test_zeilen_spuren.py, 30 Schritte am Stueck).
+
+        Rueckgabe: Liste von (x, y, w, h) oder None, wenn die Spuren
+        nicht verlaesslich sind - dann nimmt der Aufrufer wie bisher die
+        ganze Spalte. Abgeholt und verworfen in einem Zug: die Zeilen,
+        die gleich gezeichnet werden, tragen ihre neue Spur selbst
+        wieder ein. Plaetze, auf denen diesmal nichts mehr steht (die
+        Liste ist kuerzer geworden), werden so genau einmal freigeraeumt
+        und danach nicht ewig weiter.
+        """
+        sig = self._zeilen_spur_sig_jetzt()
+        spuren = self._zeilen_spur
+        self._zeilen_spur = {}
+        if sig is None or sig != self._zeilen_spur_sig:
+            self._zeilen_spur_sig = sig
+            return None
+        if not spuren:
+            return None
+        # Jeder sichtbare Platz muss eine Spur haben - fehlt auch nur
+        # eine, wissen wir von diesem Platz nichts und raeumen lieber
+        # alles frei.
+        v = self.view
+        for k in range(sichtbar):
+            if (v["list_y"] + k * v["rowh"] - 3 * v["s"]) not in spuren:
+                return None
+        return list(spuren.values())
+
+    def _restore_spuren(self, spuren):
+        """Mehrere Zeilen-Rechtecke in EINEM Durchgang freiraeumen.
+
+        Inhaltlich dasselbe wie _restore_row_bg() je Rechteck, nur ohne
+        den Vorlauf pro Aufruf: Vorlage holen, Puffer und Zeilenbreite
+        besorgen, Grenzen bestimmen. Das war frueher einmal pro
+        Seitenaufbau noetig und ist es jetzt achtzehnmal - bei
+        Rechtecken von wenigen Bildzeilen Hoehe faellt dieser Vorlauf
+        ins Gewicht. Gemessen auf HDMI: 0.641 -> 0.602 ms je
+        Scrollschritt.
+
+        Faellt die Vorlage aus (sollte im schnellen Pfad nicht
+        vorkommen, siehe _restore_row_bg()), wird Rechteck fuer Rechteck
+        an die Einzelfassung abgegeben - die hat den sicheren
+        Rueckfall."""
+        fb = self.fb
+        cur_bg = fb._rowcache.get(fb.bg_key(C_BG))
+        if cur_bg is None:
+            for x, y, w, h in spuren:
+                if w > 0 and h > 0:
+                    self._restore_row_bg(x, y, w, h)
+            return
+        buf = fb.buf
+        stride = fb.stride
+        hoehe = fb.height
+        grenze = min(len(buf), len(cur_bg))
+        src = memoryview(cur_bg)
+        for x, y, w, h in spuren:
+            need = w * 4
+            if x < 0 or need <= 0:
+                continue
+            y0 = max(0, y)
+            y1 = min(hoehe, y + h)
+            if y1 <= y0:
+                continue
+            max_rows = (grenze - (x * 4) - need) // stride + 1
+            if max_rows < y1:
+                y1 = max(y0, max_rows)
+            off = y0 * stride + x * 4
+            for _ in range(y1 - y0):
+                buf[off:off + need] = src[off:off + need]
+                off += stride
 
     def _restore_row_bg(self, x, y, w, h):
         """Stellt einen einzelnen, schmalen Zeilenbereich des Hintergrunds
@@ -7002,6 +7156,25 @@ class Frontend:
         if hasattr(self, "stream") and self.stream:
             self._stream_sig = None
             self._publish_stream()
+        # NEU (Build 103, Nutzerfrage: "wenn wir zwei Kerne haben, sollten
+        # wir die auch nutzen - aber nicht, dass dann irgendwelche Cores
+        # nicht mehr richtig laufen").
+        #
+        # Waehrend ein Core laeuft, hat der Vorauslader hier nichts
+        # verloren. Die Auftragsliste ist zwar ohnehin leer (abbrechen()
+        # laeuft bei JEDER Eingabe, also auch bei der, die dieses Spiel
+        # gestartet hat) - aber der Arbeitsprozess bliebe bestehen und
+        # belegte gut 18 MB, und eine bereits begonnene Miniatur liefe
+        # noch bis zu einer halben Sekunde weiter, genau waehrend der
+        # Core laedt.
+        #
+        # Das ist der eine Zeitpunkt, an dem der ARM wirklich gebraucht
+        # wird: das MiSTer-Programm liest waehrend des Spielens bei
+        # CD-Cores, Diskettenabbildern und MSU-1-Musik fortlaufend von
+        # der Karte nach. Hier abraeumen kostet nichts (beim Ruecksprung
+        # ins Menue faehrt _prewarm_anstossen() ihn von selbst wieder
+        # hoch) und macht die Luecke zu null.
+        PREWARMER.beenden()
         launch_core(path)
         t0 = time.monotonic()
         started = False

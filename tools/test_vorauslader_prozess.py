@@ -212,7 +212,63 @@ check("nach beenden() ist er weg",
       warten_bis(lambda: kind.poll() is not None, 10.0),
       "(Rueckgabewert %r)" % (kind.poll() if kind else None))
 
-print("Test 7: das Frontend raeumt ihn beim Beenden ab")
+print("Test 7: nach beenden() laeuft start() wieder an (Build 103)")
+# Gebraucht beim Spielstart: dort wird der Vorauslader abgeraeumt, damit
+# waehrend eines laufenden Cores weder ein Prozess herumliegt noch eine
+# begonnene Miniatur weiterrechnet. Kehrt man ins Menue zurueck, muss er
+# von selbst wieder hochkommen - sonst waere das Vorrechnen nach dem
+# ersten Spiel fuer den Rest der Sitzung tot.
+art.THUMB_CACHE_DIR = os.path.join(TMP, "cache_neustart")
+pw5 = P.CoverPrewarmer()
+pw5.start()
+erster = pw5._proc
+pw5.beenden()
+check("nach beenden() kein Prozess mehr", pw5._proc is None)
+pw5.start()
+check("start() danach wieder im Prozess-Betrieb",
+      pw5.betriebsart() == "prozess", "(%s)" % pw5.betriebsart())
+check("und es ist ein NEUER Prozess",
+      pw5._proc is not None and erster is not None
+      and pw5._proc.pid != erster.pid)
+pw5.uebergeben([(BILD, 55, 77)])
+check("er rechnet auch wieder",
+      warten_bis(lambda: art.thumb_cache_has(BILD, 55, 77)))
+
+# Der gefaehrliche Teil daran: der alte Arbeiter-Thread darf nach dem
+# Neustart NICHT als zweiter weiterlaufen. Zwei Threads auf derselben
+# Leitung zum Arbeitsprozess, und keine Antwort gehoerte mehr eindeutig
+# zu einer Frage.
+lebende = [t for t in __import__("threading").enumerate()
+           if t.name == "cover-prewarm" and t.is_alive()]
+check("genau ein Arbeiter-Thread", len(lebende) <= 1,
+      "(%d)" % len(lebende))
+pw5.beenden()
+
+print("Test 8: der Arbeitsprozess stellt sich freiwillig zurueck")
+# Die Sicherung fuer den Fall, dass doch einmal etwas gleichzeitig
+# laeuft: mit zurueckgestellter Prioritaet bekommt das MiSTer-Programm
+# die CPU zuerst.
+quelle_w = open(P.WORKER, encoding="utf-8").read()
+check("os.nice() im Arbeitsprozess", "os.nice(" in quelle_w)
+pw6 = P.CoverPrewarmer()
+pw6.start()
+if pw6._proc is not None:
+    def nice_wert():
+        # Feld 19 der Zeile; vor dem ersten Feld steht der Programmname
+        # in Klammern, der selbst Leerzeichen enthalten darf - deshalb
+        # hinter der letzten ") " trennen. Danach ist Feld 3 (Zustand)
+        # der Index 0, die Prioritaet also Index 16.
+        felder = open("/proc/%d/stat" % pw6._proc.pid).read() \
+            .rsplit(") ", 1)[1].split()
+        return int(felder[16])
+    # Kurz warten: os.nice() ist die erste Handlung des Arbeitsprozesses,
+    # aber bis dahin muss Python erst hochgefahren sein.
+    warten_bis(lambda: nice_wert() > 0, 15.0)
+    check("Prozess laeuft zurueckgestellt", nice_wert() > 0,
+          "(nice %d)" % nice_wert())
+pw6.beenden()
+
+print("Test 9: das Frontend raeumt ihn beim Beenden und beim Spielstart ab")
 # Ohne diesen Aufruf koennte ein Arbeitsprozess, der gerade mitten in
 # einer Miniatur steckt, den Frontend-Ausstieg ueberleben und weiter auf
 # die SD-Karte schreiben.
@@ -220,6 +276,11 @@ quelle = open(os.path.join(_FRONTEND, "frontend.py"),
               encoding="utf-8", errors="replace").read()
 check("PREWARMER.beenden() steht im Aufraeumzweig von run()",
       "PREWARMER.beenden()" in quelle)
+# Und direkt vor dem Core-Start - dort ist es keine Aufraeumarbeit,
+# sondern die Zusage, dass waehrend eines laufenden Spiels nichts von
+# uns auf dem zweiten Kern sitzt.
+check("PREWARMER.beenden() steht vor launch_core()",
+      "PREWARMER.beenden()\n        launch_core(path)" in quelle)
 
 shutil.rmtree(TMP, ignore_errors=True)
 

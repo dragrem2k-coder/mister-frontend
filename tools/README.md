@@ -47,6 +47,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_kategorie_abzeichen.py \
   && python3 tools/test_abzeichen_verteilung.py \
   && python3 tools/test_vorauslader_prozess.py \
+  && python3 tools/test_zeilen_spuren.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -83,7 +84,9 @@ python3 tools/regression_test.py \
 | `test_kategorie_abzeichen.py` | Test (Pass/Fail) | Alle Kategorie-Abzeichen gleich gross, gleicher Hintergrund, gleiche Stelle auf dem Schirm |
 | `test_abzeichen_verteilung.py` | Test (Pass/Fail) | Die echten Installer-Bloecke ersetzen die alten Logos wirklich - einmal, und danach nie wieder |
 | `test_vorauslader_prozess.py` | Test (Pass/Fail) | Vorauslader als eigener Prozess: rechnet, schreibt in den richtigen Ordner, faellt sauber auf den Thread zurueck |
+| `test_zeilen_spuren.py` | Test (Pass/Fail) | Gezieltes Freiraeumen ergibt bitgenau dasselbe Bild wie der volle Aufbau, auch nach 30 Schritten |
 | `diag_vorauslader.py` | Diagnose (immer Rueckgabewert 0) | Was der Vorauslader dem Zeichnen wegnimmt - Thread gegen Prozess |
+| `diag_zeilen_spuren.py` | Diagnose (immer Rueckgabewert 0) | Was das gezielte Freiraeumen bringt - ganze Spalte gegen Spuren |
 | `diag_hintergrundlast.py` | Diagnose (immer Rueckgabewert 0) | Was pro Tastendruck wirklich passiert: Dateizugriffe, Log-Zeilen, doppelte Arbeit |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
