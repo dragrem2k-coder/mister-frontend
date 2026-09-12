@@ -7,6 +7,65 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Das Frontend startet auch auf dem neuen MiSTer-Kernel** (Build 111):
+
+Rückmeldung: „Einige Nutzer haben auf den neuen Kernel gewechselt, und
+da lief unser Frontend nicht mehr — deswegen habe ich Update All nicht
+gestartet."
+
+Das MiSTer-Update vom **07.09.2026** hat den Linux-Kernel gewechselt und
+dabei den Zugriff auf den Bildspeicher verändert. Mehrere Frontends
+(Zaparoo, Degauss) starteten danach nicht mehr — sie beendeten sich,
+*bevor* überhaupt etwas auf dem Schirm stand. **Kernelseitig ist nichts
+zurückgenommen worden**, jedes Programm hat sich selbst gepatcht. Wir
+also auch.
+
+**Bei uns hing es an einer einzigen Funktion.** `_read_geometry()` las
+drei Dateien unter `/sys/class/graphics/fb0/`. Fehlt oder ändert sich
+eine davon, fliegt nach fünf Versuchen eine Ausnahme — und das Frontend
+endet still. Wort für Wort das gemeldete Verhalten.
+
+**Der Umbau in drei Punkten:**
+
+1. **sysfs bleibt der erste Versuch.** Auf dem alten Kernel ändert sich
+   buchstäblich nichts — gleicher Code, gleiche Werte. Erst wenn er
+   ausfällt *oder unplausible Werte liefert*, übernimmt der Rückfall.
+2. **Der Rückfall fragt den Treiber direkt** (`FBIOGET_VSCREENINFO` /
+   `FBIOGET_FSCREENINFO`). Diese ioctls sind stabile Kernel-ABI und seit
+   Jahrzehnten unverändert; die sysfs-Attribute sind es nicht. Dieselben
+   Aufrufe benutzt `tools/fb_probe.py` schon länger, dort auf echter
+   Hardware erprobt. Beantwortet ein Treiber nur den ersten, wird die
+   Zeilenlänge aus der Breite abgeleitet.
+3. **Scheitert doch alles, steht danach im Log, WAS der Kernel
+   anbietet** — alle `/dev/fb*`, alle Knoten unter
+   `/sys/class/graphics/`, und je Knoten die Dateien samt Inhalt. Genau
+   diese Zeilen fehlen den anderen Frontends, die „einfach nicht mehr
+   starten".
+
+Dazu Kleinigkeiten am Rand: `/dev/fb0` ist nicht mehr fest verdrahtet
+(erster Kandidat bleibt es, `DRAGEND_FBDEV` übersteuert für die
+Fehlersuche), das Gerät wird jetzt *vor* der Geometrie geöffnet (der
+ioctl-Weg braucht einen offenen Deskriptor), und ein unerwarteter
+Farbtiefenwert landet im Log statt nur auf einer Konsole, die in dem
+Moment niemand sieht.
+
+**Geprüft wird gegen einen nachgebauten sysfs-Ordner und einen
+nachgebildeten Treiber** (`tools/test_kernel_wechsel.py`) — auf dem
+Entwicklungsrechner gibt es keinen MiSTer-Bildspeicher, und die Zusage
+„läuft auf beiden Kerneln" ließe sich sonst überhaupt nicht prüfen.
+Test 1 rechnet dabei mit genau den Werten, die auf dem Gerät des
+Nutzers abgelesen wurden (5.15.1-MiSTer, CRT: `320,240` / `1280` / `32`)
+— damit der alte Kernel nicht kaputtgeht, während der neue gerettet
+wird.
+
+*Ehrlich zur Grenze dieser Änderung:* was der neue Kernel wirklich
+anbietet, weiß ich nicht — niemand hat bisher berichtet, welche Dateien
+dort noch da sind. Der Rückfall deckt den wahrscheinlichsten Fall ab
+(sysfs weg oder unvollständig). Startet es danach immer noch nicht,
+liefert die neue Diagnose im Log beim ersten Versuch die Antwort, statt
+dass wir raten.
+
+
 **Die Karte unter dem Abzeichen wird nicht mehr bei jedem Schritt neu
 gemalt** (Build 110):
 

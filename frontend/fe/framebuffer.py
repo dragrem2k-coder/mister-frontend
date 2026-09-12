@@ -25,6 +25,43 @@ import os, sys, mmap, fcntl, time, struct, threading
 from fe.log import LOG
 
 FBDEV = "/dev/fb0"
+
+# NEU (Build 111, Nutzer-Rueckmeldung: "einige Nutzer haben auf den
+# neuen Kernel gewechselt, und da lief unser Frontend nicht mehr").
+#
+# Das MiSTer-Update vom 07.09.2026 hat den Linux-Kernel gewechselt und
+# dabei den Zugriff auf den Bildspeicher veraendert. Mehrere Frontends
+# (Zaparoo, Degauss) starteten danach nicht mehr - sie beendeten sich,
+# BEVOR ueberhaupt etwas auf dem Schirm stand. Kernelseitig ist nichts
+# zurueckgenommen worden; jedes Programm hat sich selbst gepatcht.
+#
+# Bei uns haengt genau eine Stelle daran: _read_geometry() las drei
+# Dateien unter /sys/class/graphics/fb0/. Fehlt oder aendert sich eine
+# davon, fliegt eine Ausnahme, und das Frontend endet still - Wort fuer
+# Wort das gemeldete Verhalten.
+#
+# Der Ausweg sind die beiden ioctls hier. Sie sind stabile Kernel-ABI
+# und seit Jahrzehnten unveraendert; die sysfs-Attribute sind es nicht.
+# Benutzt werden sie NUR als Rueckfall - der sysfs-Weg bleibt der erste
+# Versuch, damit sich auf dem alten Kernel buchstaeblich nichts aendert.
+# (Dieselben Konstanten benutzt tools/fb_probe.py schon laenger, dort
+# auf echter Hardware erprobt.)
+FBIOGET_VSCREENINFO = 0x4600
+FBIOGET_FSCREENINFO = 0x4602
+
+# Falls der neue Kernel das Geraet anders benennt. Der erste Eintrag ist
+# der Normalfall und wird auf jedem bisherigen MiSTer sofort treffen.
+FBDEV_KANDIDATEN = ("/dev/fb0", "/dev/fb1", "/dev/fb2")
+
+# Als Konstante, damit der Test beide Wege gegen einen nachgebauten
+# Ordner pruefen kann - auf dem Geraet gibt es nur diesen einen Pfad.
+SYSFS_GRAPHICS = "/sys/class/graphics"
+
+# Grenzen fuer die Plausibilitaetspruefung. Ein Kernel, der Unsinn
+# liefert, soll nicht in einem mmap ueber mehrere Gigabyte enden,
+# sondern sauber in den naechsten Versuch laufen.
+GEO_MAX_KANTE = 8192
+GEO_MAX_BYTES = 64 * 1024 * 1024
 C_BG = (16, 18, 24)          # siehe Modul-Kommentar oben - von
 C_TEXT = (220, 224, 232)     # apply_theme() aktuell gehalten
 
@@ -85,18 +122,34 @@ class Framebuffer:
         # Pause dazwischen (insgesamt max. 2.5s zusaetzliche Wartezeit,
         # nur im Fehlerfall - beim ERSTEN, ueblichen erfolgreichen
         # Versuch entsteht KEINE zusaetzliche Verzoegerung).
+        # GEAENDERT (Build 111): erst das Geraet OEFFNEN, dann die
+        # Geometrie lesen - vorher war es umgekehrt. Der Rueckfall ueber
+        # ioctl braucht einen offenen Dateideskriptor, und ohne ihn
+        # haette er gar nicht erst zum Zug kommen koennen.
+        self.fd = -1
         last_error = None
         for attempt in range(5):
             try:
+                self._geraet_oeffnen()
                 self._read_geometry()
-                self.fd = os.open(FBDEV, os.O_RDWR)
                 break
             except OSError as e:
                 last_error = e
+                if self.fd >= 0:
+                    try:
+                        os.close(self.fd)
+                    except OSError:
+                        pass
+                    self.fd = -1
                 LOG("Framebuffer-Oeffnen fehlgeschlagen (Versuch %d/5): %s"
                     % (attempt + 1, e))
                 time.sleep(0.5)
         else:
+            # Bevor wir aufgeben: aufschreiben, WAS der Kernel anbietet.
+            # Genau diese Zeilen fehlen den anderen Frontends, die nach
+            # dem Kernelwechsel "einfach nicht mehr starten".
+            LOG("Framebuffer: alle 5 Versuche gescheitert - Diagnose folgt")
+            self.diagnose()
             raise last_error
         self._map()
         self._rowcache = {}
@@ -207,15 +260,158 @@ class Framebuffer:
         except (OSError, AttributeError):
             self._vsync_supported = False
 
+    def _geraet_oeffnen(self):
+        """Den Bildspeicher oeffnen und sich merken, welcher es war.
+
+        Bisher stand hier fest /dev/fb0. Das ist weiterhin der erste und
+        in aller Regel einzige Versuch - die Liste dahinter kostet
+        nichts, solange der erste trifft, und faengt den Fall ab, dass
+        ein neuer Kernel das Geraet anders durchnummeriert.
+        DRAGEND_FBDEV setzt den Weg fuer eine gezielte Fehlersuche
+        ausser Kraft."""
+        kandidaten = list(FBDEV_KANDIDATEN)
+        erzwungen = os.environ.get("DRAGEND_FBDEV")
+        if erzwungen:
+            kandidaten = [erzwungen]
+        letzter = None
+        for pfad in kandidaten:
+            try:
+                self.fd = os.open(pfad, os.O_RDWR)
+            except OSError as e:
+                letzter = e
+                continue
+            self.fbdev = pfad
+            self.fbname = os.path.basename(pfad)
+            if pfad != FBDEV:
+                LOG("Framebuffer: %s statt %s benutzt" % (pfad, FBDEV))
+            return
+        raise letzter or OSError("kein Bildspeicher-Geraet gefunden")
+
+    @staticmethod
+    def _geo_plausibel(w, h, bpp, stride):
+        """Sieht das nach einem echten Bildspeicher aus?
+
+        Ohne diese Pruefung wuerde ein Kernel, der unerwartete Werte
+        liefert, direkt in ein mmap ueber viele Gigabyte laufen - der
+        Fehler daraus waere dann weit weg von seiner Ursache."""
+        return (0 < w <= GEO_MAX_KANTE and 0 < h <= GEO_MAX_KANTE
+                and bpp in (16, 24, 32)
+                and stride >= w * (bpp // 8)
+                and 0 < stride * h <= GEO_MAX_BYTES)
+
+    def _geometrie_aus_sysfs(self):
+        """Der bisherige Weg. Liefert None, wenn irgendetwas fehlt."""
+        basis = "%s/%s" % (SYSFS_GRAPHICS, self.fbname)
+        try:
+            w, h = open(basis + "/virtual_size").read().strip().split(",")
+            bpp = int(open(basis + "/bits_per_pixel").read())
+            stride = int(open(basis + "/stride").read())
+            return int(w), int(h), bpp, stride
+        except (OSError, ValueError) as e:
+            LOG("Framebuffer: sysfs nicht verwendbar (%s: %s)"
+                % (type(e).__name__, e))
+            return None
+
+    def _geometrie_per_ioctl(self):
+        """Der Rueckfall: direkt beim Geraetetreiber nachfragen.
+
+        fb_var_screeninfo beginnt mit acht 32-Bit-Werten (xres, yres,
+        xres_virtual, yres_virtual, xoffset, yoffset, bits_per_pixel,
+        grayscale) - das ist der stabile Teil der Struktur, mehr
+        brauchen wir nicht.
+
+        Die Zeilenlaenge steht in fb_fix_screeninfo, und deren Aufbau
+        haengt an der Wortbreite (smem_start ist ein unsigned long).
+        Deshalb wird sie nicht fest ausgerechnet, sondern beide
+        moeglichen Stellen werden probiert und die genommen, die zur
+        Breite passt. Faellt auch das aus, tut es w * 4 - bei 32 Bit je
+        Bildpunkt ohne Zeilenauffuellung ist das genau richtig, und mehr
+        als eine unnoetig grosse Kopie kann dabei nicht herauskommen."""
+        roh = bytearray(160)
+        fcntl.ioctl(self.fd, FBIOGET_VSCREENINFO, roh, True)
+        xres, yres, _xv, _yv, _xo, _yo, bpp, _gray = struct.unpack_from("<8I", roh)
+        stride = 0
+        try:
+            fix = bytearray(160)
+            fcntl.ioctl(self.fd, FBIOGET_FSCREENINFO, fix, True)
+            for offset in (44, 52):          # 32-Bit- bzw. 64-Bit-Aufbau
+                kandidat = struct.unpack_from("<I", fix, offset)[0]
+                if xres * (bpp // 8) <= kandidat <= GEO_MAX_KANTE * 4:
+                    stride = kandidat
+                    break
+        except OSError as e:
+            LOG("Framebuffer: FBIOGET_FSCREENINFO nicht verfuegbar (%s)" % e)
+        if not stride:
+            stride = xres * (bpp // 8 or 4)
+        return xres, yres, bpp, stride
+
     def _read_geometry(self):
-        w, h = open("/sys/class/graphics/fb0/virtual_size").read().split(",")
-        self.width  = int(w)
-        self.height = int(h)
-        self.bpp    = int(open("/sys/class/graphics/fb0/bits_per_pixel").read())
-        self.stride = int(open("/sys/class/graphics/fb0/stride").read())
+        """Groesse und Zeilenlaenge des Bildspeichers bestimmen.
+
+        GEAENDERT (Build 111): erst sysfs wie bisher, dann der ioctl-
+        Rueckfall. Auf dem alten Kernel greift Zweig eins und es aendert
+        sich nichts; auf einem Kernel, der die sysfs-Dateien nicht mehr
+        so anbietet, uebernimmt Zweig zwei, statt dass das Frontend
+        lautlos endet."""
+        geo = self._geometrie_aus_sysfs()
+        quelle = "sysfs"
+        if geo is None or not self._geo_plausibel(*geo):
+            if geo is not None:
+                LOG("Framebuffer: sysfs liefert unplausible Werte %r" % (geo,))
+            geo = self._geometrie_per_ioctl()
+            quelle = "ioctl"
+            if not self._geo_plausibel(*geo):
+                raise OSError("Bildspeicher-Geometrie unbrauchbar: %r" % (geo,))
+        w, h, bpp, stride = geo
+        if getattr(self, "_geo_quelle", None) != quelle:
+            LOG("Framebuffer: %s, Geometrie per %s: %dx%d, %d bpp, "
+                "Zeile %d Bytes" % (self.fbname, quelle, w, h, bpp, stride))
+            self._geo_quelle = quelle
+        self.width, self.height, self.bpp, self.stride = w, h, bpp, stride
         if self.bpp != 32:
+            # Der gesamte Zeichenweg rechnet mit vier Bytes je Bildpunkt
+            # (BGRA). Das ist keine Kleinigkeit, die sich hier abfangen
+            # laesst - aber es soll wenigstens IM LOG stehen und nicht
+            # nur auf einer Konsole, die in diesem Moment niemand sieht.
+            LOG("Framebuffer: %d bpp - nur 32 werden unterstuetzt, Abbruch"
+                % self.bpp)
             sys.exit("Nur 32bpp wird unterstuetzt, gefunden: %d" % self.bpp)
         self.size = self.stride * self.height
+
+    @staticmethod
+    def diagnose():
+        """Alles ins Log schreiben, was ueber den Bildspeicher zu
+        erfahren ist - gerufen, wenn das Oeffnen endgueltig scheitert.
+
+        Ohne das steht im Log nur "ging nicht". Mit dem hier steht da,
+        WAS der Kernel anbietet, und die naechste Runde ist eine Frage
+        von Minuten statt von Rueckfragen."""
+        try:
+            LOG("FB-DIAGNOSE: /dev/fb* -> %s"
+                % sorted(n for n in os.listdir("/dev") if n.startswith("fb")))
+        except OSError as e:
+            LOG("FB-DIAGNOSE: /dev nicht lesbar: %s" % e)
+        try:
+            knoten = sorted(os.listdir(SYSFS_GRAPHICS))
+        except OSError as e:
+            LOG("FB-DIAGNOSE: %s nicht lesbar: %s" % (SYSFS_GRAPHICS, e))
+            return
+        LOG("FB-DIAGNOSE: %s -> %s" % (SYSFS_GRAPHICS, knoten))
+        for k in knoten:
+            if not k.startswith("fb"):
+                continue
+            basis = SYSFS_GRAPHICS + "/" + k
+            try:
+                dateien = sorted(os.listdir(basis))
+            except OSError:
+                continue
+            LOG("FB-DIAGNOSE: %s hat %s" % (k, dateien))
+            for name in ("virtual_size", "stride", "bits_per_pixel", "name"):
+                try:
+                    LOG("FB-DIAGNOSE:   %s/%s = %r"
+                        % (k, name, open(basis + "/" + name).read().strip()))
+                except OSError as e:
+                    LOG("FB-DIAGNOSE:   %s/%s nicht lesbar (%s)" % (k, name, e))
 
     def _map(self):
         self.mm = mmap.mmap(self.fd, self.size, mmap.MAP_SHARED,

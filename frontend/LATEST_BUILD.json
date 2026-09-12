@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-11-110",
-  "summary": "Die Karte unter dem Kategorie-Abzeichen ist bei jeder Kategorie identisch und wird auf dem schnellen Weg nicht mehr neu gemalt - das waren 22 Prozent eines Schritts. Ein Kategorieschritt kostet auf HDMI jetzt 0,94 statt 1,79 ms."
+  "build_id": "2026-09-11-111",
+  "summary": "Das Frontend startet jetzt auch auf dem neuen MiSTer-Kernel: die Bildspeicher-Geometrie kommt weiterhin zuerst aus sysfs, faellt aber auf die stabilen Treiber-ioctls zurueck, wenn der Kernel sie nicht mehr so anbietet. Auf dem alten Kernel aendert sich nichts."
 }
