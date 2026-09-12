@@ -72,7 +72,12 @@ def seite(w, h, anzahl=None):
     H.set_screen(w, h)
     f = H.make_frontend(page=0)
     namen = KEYS if anzahl is None else KEYS[:anzahl]
-    f.cats = [(k, {"items": [], "folders": {}}, None) for k in namen]
+    # Der Systemkey MUSS gesetzt sein: _category_art_key() liefert ohne
+    # ihn None, dann gibt es kein Abzeichen und der Zeichenweg landet im
+    # "kein Artwork"-Platzhalter. Genau darauf bin ich beim ersten
+    # Anlauf hereingefallen - gemessen und geprueft wurde der
+    # Platzhalter, nicht die Karte mit dem Abzeichen darauf.
+    f.cats = [(k, {"items": [], "folders": {}}, k) for k in namen]
     f.cat_i = 0
     f.cat_scroll = 0
     f.draw_page_cats(flip=False)
@@ -131,6 +136,14 @@ def lauf(w, h, schritte, richtung=1, label=""):
         check("%s: bitgenau wie voller Aufbau" % label, False,
               "%d Bildpunkte, z.B. %s" % (n_, wo))
 
+
+print("Test 0: es wird ueberhaupt ein Abzeichen gezeichnet")
+# Ohne diese Pruefung koennen alle folgenden Vergleiche gruen sein und
+# trotzdem nichts ueber die Karte unter dem Abzeichen aussagen.
+_p = seite(1920, 1080)
+_p.draw_page_cats(flip=False)
+check("die Karte unter dem Abzeichen steht", _p._artbox_karte is not None,
+      "(%r)" % (_p._artbox_karte,))
 
 print("Test 1: ein einzelner Kategorieschritt")
 for w, h, name in ((320, 240, "CRT"), (1920, 1080, "HDMI")):
@@ -275,7 +288,51 @@ for w, h, name in ((320, 240, "CRT"), (1920, 1080, "HDMI")):
     check("%s: leicht + Puls + voll gemischt bleibt sauber" % name,
           schlecht is None, schlecht or "")
 
-print("Test 9: es wird wirklich weniger Flaeche angefasst")
+print("Test 9: die Karte wird nur einmal gezeichnet, nicht je Schritt")
+# Die Karte samt Schatten ist bei jeder Kategorie identisch - gleiche
+# Stelle, gleiche Groesse, gleiche Farben (alle Abzeichen sind seit
+# Build 99 exakt 320x420). Gemessen kostet sie trotzdem 22 % eines
+# Kategorieschritts auf HDMI. Auf dem schnellen Weg entfaellt sie
+# deshalb; das Abzeichen deckt sie ohnehin vollstaendig ab.
+import fe.framebuffer as FB                              # noqa: E402
+_echte_karte = FB.Framebuffer.karte_mit_schatten
+_karten = []
+
+
+def _zaehlend(self, *a, **k):
+    _karten.append(a[:4])
+    return _echte_karte(self, *a, **k)
+
+
+FB.Framebuffer.karte_mit_schatten = _zaehlend
+try:
+    f = seite(1920, 1080)
+    f.draw_page_cats(flip=False)
+    _karten[:] = []
+    for _ in range(10):
+        f.cat_i = (f.cat_i + 1) % len(f.cats)
+        f.draw_page_cats(flip=False)
+    check("zehn Schritte, keine einzige neue Karte", not _karten,
+          "(%d gezeichnet)" % len(_karten))
+    # Aber nach einem vollen Aufbau MUSS sie wieder kommen - dort hat
+    # fb.clear() sie gerade weggewischt.
+    _karten[:] = []
+    f.fb.mark_full_redraw()
+    f.draw_page_cats(flip=False)
+    check("nach einem vollen Aufbau wird sie neu gezeichnet",
+          len(_karten) == 1, "(%d)" % len(_karten))
+    # Und der leichte Navigationspfad raeumt die Flaeche frei, also auch
+    # dort.
+    _karten[:] = []
+    alt_i = f.cat_i
+    f.cat_i = (f.cat_i + 1) % len(f.cats)
+    if f._draw_navigate_cats(alt_i):
+        check("auch der leichte Pfad zeichnet sie neu", len(_karten) == 1,
+              "(%d)" % len(_karten))
+finally:
+    FB.Framebuffer.karte_mit_schatten = _echte_karte
+
+print("Test 10: es wird wirklich weniger Flaeche angefasst")
 # Ohne diese Pruefung koennte die Aenderung unbemerkt wirkungslos sein -
 # alle Bildvergleiche oben wuerden weiterhin bestehen.
 for w, h, name in ((320, 240, "CRT"), (1920, 1080, "HDMI")):

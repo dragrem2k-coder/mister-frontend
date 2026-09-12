@@ -7,6 +7,39 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Die Karte unter dem Abzeichen wird nicht mehr bei jedem Schritt neu
+gemalt** (Build 110):
+
+Sie ist bei jeder Kategorie **exakt dieselbe** — gleiche Stelle, gleiche
+Größe, gleiche Farben, seit alle Abzeichen 320×420 groß sind. Beim
+Kategoriewechsel ändert sich an ihr kein einziger Bildpunkt. Gemessen
+kostete sie trotzdem 0,283 ms und damit **22 %** eines
+Kategorieschritts auf HDMI.
+
+Auf dem schnellen Weg entfällt sie jetzt; das Abzeichen deckt sie
+ohnehin vollständig ab. Nach einem vollen Aufbau (dort hat `fb.clear()`
+sie weggewischt) und auf dem leichten Navigationspfad (der räumt die
+ganze Artbox-Fläche frei) wird sie weiterhin gezeichnet — beides prüft
+der Test namentlich nach.
+
+| Auflösung | voller Aufbau | schnell | |
+|---|---|---|---|
+| CRT 320×240 | 0,250 ms | 0,249 ms | bewusst aus |
+| 1280×720 | 1,139 ms | 0,736 ms | **+35 %** |
+| HDMI 1920×1080 | 1,786 ms | 0,943 ms | **+47 %** |
+
+**Ein Messfehler von mir, der beinahe durchgegangen wäre:** die
+Kategorien im Test und im Benchmark hatten keinen Systemkey — und ohne
+den liefert `_category_art_key()` None, es gibt gar kein Abzeichen, und
+der Zeichenweg landet im „kein Artwork"-Platzhalter. Gemessen und
+geprüft wurde also der Platzhalter, nicht die Karte. Aufgefallen ist es
+nur, weil in einer Messung plötzlich weder `karte_mit_schatten()` noch
+das Blitten des Abzeichens auftauchte. Mit richtigem Systemkey liegt der
+Schritt 0,3 ms höher als vorher gedacht — die Zahlen oben sind die
+korrigierten. Der Test prüft jetzt als **erstes**, dass überhaupt ein
+Abzeichen gezeichnet wird.
+
+
 **Zwei Markierungsbalken gleichzeitig — Fehler aus Build 108 behoben**
 (Build 109):
 

@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-11-109",
-  "summary": "Behebt die zwei roten Markierungsbalken aus Build 108: der Puls-Takt malte den Balken selbst und meldete das nicht der Spurbuchhaltung - beim naechsten Schritt blieben 940 von 1300 Punkten stehen. Der Test faehrt jetzt die echte Mischung aus leichtem Schritt, Puls und vollem Aufbau."
+  "build_id": "2026-09-11-110",
+  "summary": "Die Karte unter dem Kategorie-Abzeichen ist bei jeder Kategorie identisch und wird auf dem schnellen Weg nicht mehr neu gemalt - das waren 22 Prozent eines Schritts. Ein Kategorieschritt kostet auf HDMI jetzt 0,94 statt 1,79 ms."
 }

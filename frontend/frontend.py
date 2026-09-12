@@ -1416,6 +1416,9 @@ class Frontend:
         # Dasselbe fuer die Kategorienliste der Hauptseite (Build 108).
         self._kat_spur = {}
         self._pgc_fast_taken = False
+        # Rechteck der zuletzt gezeichneten Karte unter dem
+        # Kategorie-Abzeichen, oder None (Build 110).
+        self._artbox_karte = None
         # Einmal-Schalter fuers Ansetzen des Vorausladers pro Ruhephase -
         # siehe PREWARM_SETTLE.
         self._prefetched_done = False
@@ -3262,7 +3265,7 @@ class Frontend:
         # selbst ins Log, sobald es auffaellig wird - dieselbe Schwelle
         # und dasselbe Muster wie bei "PERF cover:" in fe/art.py.
         _tab = time.monotonic()
-        self._draw_cat_artbox(L)
+        self._draw_cat_artbox(L, karte_erhalten=_pgc_fast)
         _tab_dt = time.monotonic() - _tab
         if _tab_dt > 0.025:
             LOG("PERF katlogo: %.0f ms (%s)"
@@ -4130,6 +4133,9 @@ class Frontend:
         art_y_max = H - oy - 20 * s
         art_h = max(20, art_y_max - art_y0)
         self._bg_fill(art_x0, art_y0, art_w, art_h)
+        # Die Flaeche ist gerade freigeraeumt worden - was auch
+        # immer dort stand, steht nicht mehr da.
+        self._artbox_karte = None
         self._draw_cat_artbox(L)
         y_min = min(y_min, art_y0)
         y_max = max(y_max, art_y0 + art_h)
@@ -4549,7 +4555,7 @@ class Frontend:
                 bx = icon_x + i * (bar_w + gap)
                 fb.rect(bx, base_y - bh, bar_w, bh, C_DIM)
 
-    def _draw_cat_artbox(self, L):
+    def _draw_cat_artbox(self, L, karte_erhalten=False):
         """Zeigt rechts neben der Kategorienliste ein Logo/Cover fuer
         das gerade markierte System (aus SYSART_BASE/<Systemkey>.art).
         Ohne passende Datei erscheint ein dezenter Platzhalter statt
@@ -4613,12 +4619,38 @@ class Frontend:
             # wird mit demselben zusammengefassten Aufruf gezeichnet wie
             # auf der Spieleseite (Build 98).
             kpad = ART_CARD_PAD * s
-            fb.karte_mit_schatten(ax - kpad, ay - kpad,
-                                  aw + 2 * kpad, ah + 2 * kpad,
-                                  3 * s, C_PANEL, fb._darken(C_BG, 0.55),
-                                  4 * s)
+            karte = (ax - kpad, ay - kpad, aw + 2 * kpad, ah + 2 * kpad)
+            # NEU (Build 110, Nutzerfrage: "kann man das Scrollen im
+            # Hauptmenue noch schneller machen?").
+            #
+            # Die Karte samt Schatten ist bei JEDER Kategorie exakt
+            # dieselbe - gleiche Stelle, gleiche Groesse, gleiche
+            # Farben. Seit Build 99 sind alle Abzeichen 320x420 gross
+            # (siehe tools/test_kategorie_abzeichen.py, das genau das
+            # nachweist), also veraendert sich an ihr beim
+            # Kategoriewechsel kein einziger Bildpunkt. Gemessen kostet
+            # sie trotzdem 0.283 ms und damit 22 % eines
+            # Kategorieschritts auf HDMI.
+            #
+            # karte_erhalten sagt: der Puffer ist noch unserer, und die
+            # Karte von eben steht unveraendert darin. Dann wird nur
+            # noch das Abzeichen daraufgelegt. Das darf NUR der
+            # Seitenaufbau setzen, und auch nur auf seinem schnellen
+            # Weg - der leichte Navigationspfad raeumt die ganze
+            # Artbox-Flaeche vorher frei (_bg_fill()), dort MUSS sie neu
+            # gezeichnet werden.
+            if not (karte_erhalten and self._artbox_karte == karte):
+                fb.karte_mit_schatten(ax - kpad, ay - kpad,
+                                      aw + 2 * kpad, ah + 2 * kpad,
+                                      3 * s, C_PANEL, fb._darken(C_BG, 0.55),
+                                      4 * s)
+            self._artbox_karte = karte
             self.blit(ax, ay, aw, ah, pix)
         else:
+            # Kein Abzeichen: der Platzhalter kommt an dieselbe Stelle.
+            # Lag dort eben noch eine Karte, koennte ihr Rand seitlich
+            # ueberstehen - deshalb vermerken, dass keine mehr steht.
+            self._artbox_karte = None
             fb.rect(x0 + pad, y0, art_w - 2 * pad, box_h, C_ACCENT2)
             fb.text(x0 + pad + 4 * s, y0 + box_h // 2 - 4 * s,
                     t("no_artwork_1"), s, C_DIM, C_ACCENT2)
