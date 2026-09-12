@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-11-108",
-  "summary": "Das Hauptmenue baut nicht mehr bei jedem Schritt das ganze Bild neu auf - bei HDMI waren das 8,3 MB je Kategorie. Ein Kategorieschritt kostet dort jetzt 0,89 statt 1,90 ms. Dazu die neue Anleitung Geheimcodes_Hinweise.pdf im docs-Ordner."
+  "build_id": "2026-09-11-109",
+  "summary": "Behebt die zwei roten Markierungsbalken aus Build 108: der Puls-Takt malte den Balken selbst und meldete das nicht der Spurbuchhaltung - beim naechsten Schritt blieben 940 von 1300 Punkten stehen. Der Test faehrt jetzt die echte Mischung aus leichtem Schritt, Puls und vollem Aufbau."
 }

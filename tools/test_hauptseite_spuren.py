@@ -79,8 +79,20 @@ def seite(w, h, anzahl=None):
     return f
 
 
-def voll(f):
-    """Denselben Zustand garantiert komplett neu aufbauen."""
+def voll(f, wie=None):
+    """Denselben Zustand garantiert komplett neu aufbauen.
+
+    'wie' ist die Seite, gegen die verglichen wird. Von ihr wird der
+    Startzeitpunkt des Schimmer-Effekts uebernommen - _pulse_factor()
+    rechnet gegen self._pulse_t0, und das ist ein Wert JE INSTANZ. Ohne
+    diese Zeile vergleicht man zwei verschiedene Schimmer-Phasen und
+    haelt den Farbunterschied faelschlich fuer einen Zeichenfehler.
+    Genau darauf bin ich beim Absichern hereingefallen: 2022
+    abweichende Bildpunkte auf CRT, die nichts mit dem Freiraeumen zu
+    tun hatten (auf HDMI fiel es nicht auf, dort wird die Schimmerfarbe
+    auf gröbere Stufen gerundet)."""
+    if wie is not None:
+        f._pulse_t0 = wie._pulse_t0
     f.fb.mark_full_redraw()
     f.draw_page_cats(flip=False)
 
@@ -111,7 +123,7 @@ def lauf(w, h, schritte, richtung=1, label=""):
     g = seite(w, h)
     g.cat_i = f.cat_i
     g.cat_scroll = f.cat_scroll
-    voll(g)
+    voll(g, f)
     if gleich(schnell, g.fb.buf):
         check("%s: bitgenau wie voller Aufbau" % label, True)
     else:
@@ -148,7 +160,7 @@ for w, h, name in ((320, 240, "CRT"), (1920, 1080, "HDMI")):
     f.draw_page_cats(flip=False)
     g = seite(w, h, anzahl=3)
     g.cat_i = 2
-    voll(g)
+    voll(g, f)
     if gleich(f.fb.buf, g.fb.buf):
         check("%s: kurze Liste bitgenau" % name, True)
     else:
@@ -188,7 +200,7 @@ for w, h, name in ((320, 240, "CRT"), (1920, 1080, "HDMI")):
     g = seite(w, h)
     g._track_mq_name = "Kurz"
     g.cat_i, g.cat_scroll = f.cat_i, f.cat_scroll
-    voll(g)
+    voll(g, f)
     if gleich(f.fb.buf, g.fb.buf):
         check("%s: kein Rest des langen Titels" % name, True)
     else:
@@ -209,7 +221,7 @@ for w, h, name in ((320, 240, "CRT"), (1920, 1080, "HDMI")):
     g = seite(w, h)
     g._network_connected = lambda: False
     g.cat_i, g.cat_scroll = f.cat_i, f.cat_scroll
-    voll(g)
+    voll(g, f)
     if gleich(f.fb.buf, g.fb.buf):
         check("%s: kein Rest des Netzwerksymbols" % name, True)
     else:
@@ -217,7 +229,53 @@ for w, h, name in ((320, 240, "CRT"), (1920, 1080, "HDMI")):
         check("%s: kein Rest des Netzwerksymbols" % name, False,
               "%d Bildpunkte, z.B. %s" % (n_, wo))
 
-print("Test 8: es wird wirklich weniger Flaeche angefasst")
+print("Test 8: die ECHTE Navigationsmischung, Schritt fuer Schritt")
+# DIESER TEST HAT GEFEHLT, und deshalb ist Build 108 mit einem sichtbaren
+# Fehler ausgeliefert worden (Nutzer-Screenshot: zwei rote
+# Markierungsbalken gleichzeitig, "wenn ich scrolle und das Bild
+# verlasse nach oben oder unten").
+#
+# Die Vergleiche oben rufen immer nur draw_page_cats(). Im echten
+# Ablauf wechseln sich aber DREI Wege ab: der leichte
+# Navigationsschritt, der Puls-Takt und der volle Aufbau - und der
+# Fehler entstand genau an der Naht. _draw_dynamic_cats() malt den
+# Markierungsbalken selbst und trug sich nicht in die Spurbuchhaltung
+# ein; die Spur dieser Zeile blieb auf "schmales Textfeld" stehen.
+# Wanderte die Auswahl weiter, raeumte der schnelle Weg nur dieses
+# schmale Feld frei - der Rest des Balkens blieb stehen.
+#
+# Zu sehen ist das erst NACH dem uebernaechsten Schritt. Verglichen
+# wird deshalb nach JEDEM einzelnen.
+for w, h, name in ((320, 240, "CRT"), (1920, 1080, "HDMI")):
+    f = seite(w, h)
+    f.draw_page_cats(flip=False)
+    n = len(f.cats)
+    schlecht = None
+    for richtung in (1, -1):
+        for schritt in range(1, 2 * n + 5):
+            alt = f.cat_i
+            f.cat_i = (f.cat_i + richtung) % n
+            if not f._draw_navigate_cats(alt):
+                f.draw_page_cats(flip=False)
+            # Puls-Takt, wie ihn der Leerlauf-Zweig ausloest
+            H.NOW[0] += 0.5
+            f._draw_dynamic_cats(flip=False)
+            g = seite(w, h)
+            g.cat_i, g.cat_scroll = f.cat_i, f.cat_scroll
+            voll(g, f)
+            if not gleich(f.fb.buf, g.fb.buf):
+                n_, wo = abweichung(f.fb.buf, g.fb.buf)
+                schlecht = ("Richtung %+d, Schritt %d (cat_i=%d, scroll=%d): "
+                            "%d Bildpunkte, z.B. %s"
+                            % (richtung, schritt, f.cat_i, f.cat_scroll,
+                               n_, wo))
+                break
+        if schlecht:
+            break
+    check("%s: leicht + Puls + voll gemischt bleibt sauber" % name,
+          schlecht is None, schlecht or "")
+
+print("Test 9: es wird wirklich weniger Flaeche angefasst")
 # Ohne diese Pruefung koennte die Aenderung unbemerkt wirkungslos sein -
 # alle Bildvergleiche oben wuerden weiterhin bestehen.
 for w, h, name in ((320, 240, "CRT"), (1920, 1080, "HDMI")):

@@ -3947,6 +3947,28 @@ class Frontend:
             maxc = max(4, (list_right - ox) // (8 * s))
             label = name if len(name) <= maxc else name[:max(1, maxc - 1)] + "~"
             fb.text(ox, y, label, s, C_TITLE, bg)
+            # BUGFIX (Build 109, Nutzer-Rueckmeldung mit Screenshot:
+            # "seit dem letzten Update passiert das, wenn ich scrolle und
+            # das Bild verlasse nach oben oder unten" - zwei rote
+            # Markierungsbalken gleichzeitig, einer davon ein Rest).
+            #
+            # Diese Stelle malt den Markierungsbalken SELBST, statt ueber
+            # _draw_cat_row() zu gehen - und trug sich deshalb nicht in
+            # die Spurbuchhaltung ein, die Build 108 eingefuehrt hat.
+            #
+            # Der Ablauf, der den Rest erzeugt hat: ein leichter
+            # Navigationsschritt laesst _draw_cat_row() die ALTE Zeile
+            # zeichnen (die traegt sich brav ein, als schmales Textfeld)
+            # und danach diese Funktion die NEUE Zeile - mit einem 1300
+            # Punkte breiten Balken, aber ohne Eintrag. Die Spur dieser
+            # Zeile stand weiterhin auf "360 Punkte Text". Wanderte die
+            # Auswahl beim naechsten Schritt weiter, raeumte der schnelle
+            # Weg nur diese 360 Punkte frei - die restlichen 940 blieben
+            # als roter Balken stehen. Nachgemessen: 61560 Bildpunkte.
+            #
+            # Bis Build 107 fiel das nicht auf, weil jeder Seitenaufbau
+            # ohnehin mit fb.clear() begann und alles miterledigte.
+            self._kat_spur[gy + 4 * s] = (gx, gy, gw, gh)
             y_min = min(y_min, gy)
             y_max = max(y_max, gy + gh)
 

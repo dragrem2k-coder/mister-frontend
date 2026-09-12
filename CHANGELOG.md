@@ -7,6 +7,57 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Zwei Markierungsbalken gleichzeitig — Fehler aus Build 108 behoben**
+(Build 109):
+
+Nutzer-Screenshot: im Hauptmenü leuchten zwei Zeilen rot, „seit dem
+letzten Update, wenn ich scrolle und das Bild verlasse nach oben oder
+unten". Der Fehler ist meiner, eingebaut mit Build 108.
+
+**Die Ursache:** `_draw_dynamic_cats()` malt den Markierungsbalken
+**selbst** (`fb.rect`), statt über `_draw_cat_row()` zu gehen — und trug
+sich deshalb nicht in die Spurbuchhaltung ein, die Build 108 eingeführt
+hat.
+
+Der Ablauf, der den Rest erzeugt:
+
+1. Ein leichter Navigationsschritt lässt `_draw_cat_row()` die **alte**
+   Zeile zeichnen. Die trägt sich brav ein — als schmales Textfeld,
+   360 Punkte breit.
+2. Danach malt `_draw_dynamic_cats()` die **neue** Zeile mit einem
+   1300 Punkte breiten Balken. **Ohne Eintrag.** Die Spur dieser Zeile
+   stand weiterhin auf „360 Punkte Text".
+3. Wandert die Auswahl beim nächsten Schritt weiter, räumt der schnelle
+   Weg nur diese 360 Punkte frei. Die restlichen **940 bleiben als roter
+   Balken stehen** — nachgemessen 61560 Bildpunkte.
+
+Bis Build 107 fiel das nicht auf, weil jeder Seitenaufbau ohnehin mit
+`fb.clear()` begann und alles miterledigte. Der schnelle Weg hat den
+Fehler nicht verursacht, er hat ihn **sichtbar gemacht**.
+
+**Warum der Test ihn nicht gefunden hat, und was jetzt anders ist.**
+`tools/test_hauptseite_spuren.py` rief bisher immer nur
+`draw_page_cats()`. Im echten Ablauf wechseln sich aber **drei** Wege ab
+— leichter Navigationsschritt, Puls-Takt, voller Aufbau —, und der
+Fehler entstand genau an der Naht. Der Test fährt jetzt diese Mischung
+und vergleicht nach **jedem einzelnen** Schritt (der Rest ist erst nach
+dem übernächsten zu sehen).
+
+**Und ein Eigentor beim Absichern, für die Nachwelt:** dieser neue Test
+meldete zunächst 2022 abweichende Bildpunkte auf CRT — an einer Stelle,
+die mit dem Freiräumen nichts zu tun hatte. Ursache war der Test:
+`_pulse_factor()` rechnet gegen `self._pulse_t0`, einen Wert **je
+Instanz**. Die Vergleichsseite hatte damit eine andere Schimmer-Phase.
+Auf HDMI fiel es nicht auf, weil die Schimmerfarbe dort auf gröbere
+Stufen gerundet wird.
+
+**Stand nach der Korrektur** (HDMI, Kategorieschritt): 1,90 ms vor Build
+108, jetzt **0,89–0,98 ms**. Was übrig bleibt, verteilt sich auf fünf
+`rect()`-Aufrufe (Markierungsbalken und die Karte unter dem Abzeichen),
+das Freiräumen der Spuren und siebzehn Textzeilen. Die Karte unter dem
+Abzeichen ist dabei bei jedem Schritt identisch — der nächste Kandidat,
+falls es noch nicht reicht.
+
 **Das Hauptmenü — diesmal an der richtigen Stelle gesucht** (Build 108):
 
 Build 107 hat den Start entlastet, aber die Rückmeldung blieb: „scrollt
