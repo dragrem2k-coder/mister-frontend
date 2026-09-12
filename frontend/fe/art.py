@@ -1773,7 +1773,36 @@ def _category_art_key(name, syskey):
     # des echten RetroAchievements-Markenlogos).
     if name.startswith(t("ra_hunter_cat")):
         return "RA_HUNTER"
-    return None
+    # NEU (Build 112, Nutzerwunsch: zwei weitere Abzeichen fuer "Custom
+    # Cores" und "Physical Disc Cores").
+    #
+    # Das sind Ordner auf der SD-Karte, also derselbe Fall wie
+    # "Computer" weiter oben: syskey=None, der Kategoriename ist genau
+    # der Ordnername. Bei "Computer" steht dort ein woertlicher
+    # Vergleich, samt der ehrlichen Einschraenkung "bei anderen Nutzern
+    # mit anders benanntem Ordner greift dieser Sonderfall nicht".
+    #
+    # Fuer diese beiden wird es etwas nachsichtiger gemacht: verglichen
+    # wird der auf Buchstaben und Ziffern eingedampfte Name. Damit
+    # treffen "Custom Cores", "custom cores", "CustomCores" und
+    # "_Custom Cores" alle dasselbe Abzeichen - Ordnernamen schreibt
+    # jeder ein bisschen anders, und ein fehlendes Bild waere die
+    # unnoetigste aller Enttaeuschungen.
+    schlank = "".join(c for c in name.upper() if c.isalnum())
+    return ORDNER_ABZEICHEN.get(schlank)
+
+
+# Ordnername (eingedampft auf Buchstaben/Ziffern) -> Abzeichen-Datei.
+# Siehe _category_art_key() fuer die Begruendung des nachsichtigen
+# Vergleichs.
+ORDNER_ABZEICHEN = {
+    "CUSTOMCORES": "CUSTOM_CORES",
+    "PHYSICALDISCCORES": "PHYSICAL_DISC_CORES",
+    # Die beiden folgenden sind nur Abkuerzungen derselben Ordner, wie
+    # sie in freier Wildbahn ebenfalls vorkommen.
+    "DISCCORES": "PHYSICAL_DISC_CORES",
+    "PHYSICALDISC": "PHYSICAL_DISC_CORES",
+}
 
 _meta_cache = {}
 _mra_cache = {}

@@ -7,6 +7,35 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Zwei weitere Kategorie-Abzeichen** (Build 112):
+
+`CUSTOM_CORES` und `PHYSICAL_DISC_CORES`, im selben Stil und derselben
+Größe wie die anderen 57 — durch denselben Umwandler gelaufen
+(`PC-Tools/sysart_abzeichen.py`, viertes Blatt), also 320×420 mit
+C_PANEL als Hintergrund. Damit landen sie automatisch im selben
+Rechteck wie alle anderen; der Test weist das nach.
+
+**Die beiden hängen nicht an einem Systemkey, sondern am Ordnernamen**
+auf der SD-Karte — derselbe Fall wie „Computer". Bei „Computer" steht
+im Code ein wörtlicher Vergleich, samt der ehrlichen Einschränkung *„bei
+anderen Nutzern mit anders benanntem Ordner greift dieser Sonderfall
+nicht"*. Für diese beiden ist es nachsichtiger gelöst: verglichen wird
+der auf Buchstaben und Ziffern eingedampfte Name. „Custom Cores",
+„custom cores", „CustomCores" und „_Custom Cores" treffen damit alle
+dasselbe Abzeichen, ebenso „Physical Disc Cores" und die Kurzform „Disc
+Cores". Ein Systemkey behält weiterhin Vorrang.
+
+Am Umwandler eine Kleinigkeit, die das Nachtragen erst praktikabel
+macht: `--nur N` verarbeitet ein einzelnes Blatt. Vorher mussten alle
+Blätter gleichzeitig vorliegen — für zwei Nachzügler hätte man die
+älteren Vorlagen wieder heraussuchen müssen, die gar nicht im Repo
+liegen.
+
+Beim Verteilen ist nichts zu beachten: es sind **neue** Dateinamen, die
+kopieren die Installer ohnehin. Die einmalige Komplett-Ersetzung aus
+Build 101 (`.abzeichen_v1`) bleibt unberührt.
+
+
 **Das Frontend startet auch auf dem neuen MiSTer-Kernel** (Build 111):
 
 Rückmeldung: „Einige Nutzer haben auf den neuen Kernel gewechselt, und

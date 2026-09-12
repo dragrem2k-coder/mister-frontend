@@ -35,15 +35,19 @@ KACHEL = (320, 420)
 # ALLE Kategorien, die es im Frontend gibt - namentlich festgehalten,
 # damit ein versehentliches Loeschen oder ein neu dazugekommenes System
 # ohne Abzeichen auffaellt. Seit Build 100 ist die Liste vollstaendig:
-# 48 Spielesysteme plus neun Sonderkategorien.
+# 48 Spielesysteme plus neun Sonderkategorien; mit Build 112 kamen
+# CUSTOM_CORES und PHYSICAL_DISC_CORES dazu (zwei Ordner auf der
+# SD-Karte, siehe ORDNER_ABZEICHEN in fe/art.py).
 ABZEICHEN = [
     "3DO", "ADVENTUREVISION", "ARCADE", "ARCADIA", "ASTROCADE",
     "ATARI2600", "ATARI5200", "ATARI7800", "ATARILYNX", "CASIOPV1000",
     "CDI", "CHANNELF", "COLECOVISION", "COLLECTIONS", "COMPUTER",
-    "CONTINUE", "CREATIVISION", "FAVORITES", "FDS", "GAMATE", "GAMEBOY",
+    "CONTINUE", "CREATIVISION", "CUSTOM_CORES", "FAVORITES", "FDS",
+    "GAMATE", "GAMEBOY",
     "GAMEGEAR", "GAMENWATCH", "GBA", "GBC", "Genesis", "INTELLIVISION",
     "JAGUAR", "MEGADUCK", "MegaCD", "N64", "NEOGEO", "NEOGEOCD", "NES",
-    "ODYSSEY2", "POCKETCHALLENGEV2", "POKEMONMINI", "PSX", "RA_HUNTER",
+    "ODYSSEY2", "PHYSICAL_DISC_CORES", "POCKETCHALLENGEV2", "POKEMONMINI",
+    "PSX", "RA_HUNTER",
     "RECENT", "S32X", "SG1000", "SMS", "SMW_HACKS", "SNES",
     "SNES_ALTTP_TRACKER", "SUPERGAMEBOY", "SYSTEM", "Saturn", "TGFX16",
     "TGFX16CD", "VC4000", "VECTREX", "VIRTUALBOY", "WONDERSWAN",
@@ -154,6 +158,27 @@ for w, h, name in ((320, 240, "CRT"), (1920, 1080, "HDMI")):
     check("%s: alle Abzeichen im selben Rechteck" % name,
           len(stellen) <= 1, "(%d verschiedene: %s)"
           % (len(stellen), sorted(stellen)[:3]))
+
+print("Test 6: die Ordner-Kategorien finden ihr Abzeichen")
+# CUSTOM_CORES und PHYSICAL_DISC_CORES haengen nicht an einem Systemkey,
+# sondern am ORDNERNAMEN auf der SD-Karte - wie "Computer". Ohne den
+# Eintrag in ORDNER_ABZEICHEN liegt die Datei zwar da, wird aber nie
+# gefunden, und im Hauptmenue steht weiter "kein Artwork".
+import fe.art as _A                                     # noqa: E402
+for _name, _erwartet in (
+        ("Custom Cores", "CUSTOM_CORES"),
+        ("custom cores", "CUSTOM_CORES"),
+        ("CustomCores", "CUSTOM_CORES"),
+        ("Physical Disc Cores", "PHYSICAL_DISC_CORES"),
+        ("Disc Cores", "PHYSICAL_DISC_CORES"),
+        ("Computer", "COMPUTER"),
+        ("Ein Ordner ohne Abzeichen", None)):
+    check("%-26r -> %s" % (_name, _erwartet),
+          _A._category_art_key(_name, None) == _erwartet,
+          "ist: %r" % _A._category_art_key(_name, None))
+# Ein echtes System darf davon nicht beruehrt werden.
+check("Systemkey hat weiterhin Vorrang",
+      _A._category_art_key("Custom Cores", "SNES") == "SNES")
 
 print()
 if fails:

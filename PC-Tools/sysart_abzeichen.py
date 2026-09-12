@@ -111,6 +111,12 @@ BLAETTER = [
      # irgendwohin zu zwingen.
      ["MEGADUCK", "ODYSSEY2", "POCKETCHALLENGEV2", "POKEMONMINI",
       "SG1000", "VC4000", None, "WONDERSWANCOLOR"]],
+    # Viertes Blatt (Build 112): zwei Nachzuegler fuer Kategorien, die
+    # als ORDNER auf der SD-Karte liegen - "Custom Cores" und "Physical
+    # Disc Cores". Eine Zeile, zwei Zellen; das Blatt ist deutlich
+    # kleiner als die vorherigen, das Raster kommt damit von selbst
+    # zurecht (die Trennlinien werden gemessen, nicht gerechnet).
+    [["CUSTOM_CORES", "PHYSICAL_DISC_CORES"]],
 ]
 
 
@@ -335,17 +341,27 @@ def main():
     p.add_argument("--vorschau", help="Kontaktbogen als PNG hierhin")
     p.add_argument("--trocken", action="store_true",
                    help="nichts schreiben, nur berichten")
+    # NEU (Build 112): die Blaetter kommen nach und nach dazu, und die
+    # alten liegen nicht im Repo. Ohne diese Angabe muesste man zum
+    # Nachtragen von zwei Abzeichen alle vier Blaetter zur Hand haben.
+    p.add_argument("--nur", type=int, metavar="N",
+                   help="nur Blatt N aus BLAETTER verarbeiten (1-basiert)")
     a = p.parse_args()
 
-    if len(a.blaetter) != len(BLAETTER):
-        sys.exit("%d Blaetter uebergeben, %d in BLAETTER beschrieben"
-                 % (len(a.blaetter), len(BLAETTER)))
+    blaetter = BLAETTER
+    if a.nur:
+        if not 1 <= a.nur <= len(BLAETTER):
+            sys.exit("--nur %d: es gibt %d Blaetter" % (a.nur, len(BLAETTER)))
+        blaetter = [BLAETTER[a.nur - 1]]
+    if len(a.blaetter) != len(blaetter):
+        sys.exit("%d Blaetter uebergeben, %d erwartet"
+                 % (len(a.blaetter), len(blaetter)))
 
     if not a.trocken:
         os.makedirs(a.ziel, exist_ok=True)
 
     fertig = []
-    for pfad, raster in zip(a.blaetter, BLAETTER):
+    for pfad, raster in zip(a.blaetter, blaetter):
         blatt = Image.open(pfad).convert("RGB")
         B, H = blatt.size
         reihen, spalten = len(raster), len(raster[0])
