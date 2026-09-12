@@ -173,6 +173,31 @@ class CoverPrewarmer:
             self._generation += 1
             self._wecker.notify_all()
 
+    def dringend(self, pfad, bw, bh):
+        """EIN Auftrag mit Vorrang - jemand schaut gerade darauf.
+
+        NEU (Build 105). Gerufen aus dem Zeichenpfad, wenn die Miniatur
+        eines gerade sichtbaren Covers noch nicht auf der Karte liegt
+        (siehe ArtCache._auslagern_versuchen() in fe/art.py). Statt sie
+        dort zu rechnen - auf HDMI 200-500 ms, in denen die Bedienung
+        steht - wandert sie hierher.
+
+        Die Vorratsliste wird dabei bewusst VERWORFEN: sie enthaelt
+        Cover, die vielleicht gleich gebraucht werden, und dieses eine
+        wird jetzt gebraucht. Nachgefuellt wird sie ohnehin beim
+        naechsten Ruhemoment (PREWARM_SETTLE, 0.1 s).
+
+        Rueckgabe False heisst "nicht angenommen, rechne selbst". Genau
+        das passiert im THREAD-Betrieb, und zwar absichtlich: ohne
+        zweiten Kern nimmt das Rechnen dem Zeichnen dieselbe Zeit weg -
+        nur eben spaeter und mit einem leeren Cover-Platz dazwischen.
+        Ohne Arbeitsprozess bleibt es deshalb beim bisherigen Verhalten."""
+        self.start()
+        if self._proc is None:
+            return False
+        self.uebergeben([(pfad, bw, bh)])
+        return True
+
     def abbrechen(self):
         """Sofort aufhoeren. Wird bei JEDER Eingabe gerufen - muss
         deshalb billig sein und darf nie blockieren."""

@@ -1317,6 +1317,12 @@ class Frontend:
         # ohne auf die naechste vollstaendige Ruhephase zu warten
         # (Build 104, siehe Leerlauf-Zweig in next_action()).
         self._prewarm_dir = 1
+        # NEU (Build 105): der Zeichenpfad darf ein kaltes Cover an den
+        # Arbeitsprozess abgeben, statt es selbst zu rechnen. Hier wird
+        # die Verbindung hergestellt - fe/art.py kennt den Vorauslader
+        # bewusst nicht selbst (er importiert umgekehrt aus fe/art.py,
+        # ein Gegenimport waere ein Zirkelbezug).
+        ART.auslagern = PREWARMER.dringend
         self._attract_game = None
         self._attract_change_next = 0.0
         self._attract_pool = None   # zwischengespeicherte flache Spieleliste
@@ -5995,6 +6001,28 @@ class Frontend:
                     # damit die teuersten Erstberechnungen ("PERF cover:
                     # 722 ms (CONTINUE.art)" im Log des Nutzers).
                     self._prewarm_anstossen()
+                # NEU (Build 105): auf ein ausgelagertes Cover warten.
+                #
+                # Der Nachlader unten zeichnet pro Stillstand genau
+                # EINMAL nach (_settled_redrawn). Das reichte, solange
+                # das Nachladen selbst rechnete - danach war das Cover
+                # ja da. Seit das Rechnen an den Arbeitsprozess geht
+                # (siehe ArtCache._auslagern_versuchen()), ist es beim
+                # ersten Nachzeichnen typischerweise noch NICHT fertig:
+                # ohne diesen Takt bliebe der Cover-Platz leer, bis man
+                # die naechste Taste drueckt.
+                #
+                # warte_pruefen() ist billig (eine Dateiabfrage je
+                # wartendem Cover, und es wartet praktisch nie mehr als
+                # eines) und liefert nur dann True, wenn es wirklich
+                # etwas zu zeichnen gibt: Miniatur angekommen - oder
+                # Geduld am Ende, dann rechnet der naechste Versuch
+                # selbst. Beides endet mit einem Bild.
+                if (self._settled_redrawn and not any_dialog
+                        and time.monotonic() - self._last_input_time >= COVER_SETTLE
+                        and ART.warte_pruefen()):
+                    ART._deferred_something = True
+                    self._settled_redrawn = False
                 _nachzuholen = getattr(ART, "_deferred_something", False)
                 if (not self._settled_redrawn and not any_dialog
                         and _nachzuholen
@@ -6934,9 +6962,10 @@ class Frontend:
         _defer_vorher = getattr(ART, "_defer_count", 0)
         if H >= 720:
             hd = _art_path_in(ART_HD, syskey, lookup_name)
-            art = ART.get_scaled(hd, avail_w, cover_h)
+            art = ART.get_scaled(hd, avail_w, cover_h, auslagern_ok=True)
         else:
-            art = ART.get_scaled(art_path(syskey, lookup_name), avail_w, cover_h)
+            art = ART.get_scaled(art_path(syskey, lookup_name), avail_w,
+                                 cover_h, auslagern_ok=True)
         nur_verzoegert = (art is None
                           and getattr(ART, "_defer_count", 0) != _defer_vorher)
         if art:

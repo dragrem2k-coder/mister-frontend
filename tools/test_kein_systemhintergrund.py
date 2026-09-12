@@ -94,7 +94,8 @@ for w, h, name in ((320, 240, "CRT"), (1920, 1080, "HDMI")):
     skaliert = []
     echt = A.ART.get_scaled
 
-    def zaehlend(pfad, bw, bh, _e=echt, _l=skaliert):
+    # **kw: siehe auslagern_ok in ArtCache.get_scaled() (Build 105).
+    def zaehlend(pfad, bw, bh, _e=echt, _l=skaliert, **kw):
         _l.append(pfad)
         return None                    # kein Bild vorhanden
 

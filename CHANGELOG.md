@@ -7,6 +7,52 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Ein kaltes Cover wird nicht mehr im Zeichen-Thread gerechnet**
+(Build 105):
+
+Bis hierher galt: während des Scrollens werden noch nicht berechnete
+Cover übersprungen, **im Stillstand** werden sie gerechnet. Der
+Stillstand ist aber genau der Moment, in dem jemand hinschaut — und eine
+Erstberechnung kostet auf HDMI 200–500 ms, in denen die Bedienung steht.
+Das war der Rest, der nach Build 104 noch hakte.
+
+Jetzt geht diese Rechnung an den Arbeitsprozess auf dem zweiten Kern.
+Der Cover-Platz bleibt eine Runde leer, der `COVER_SETTLE`-Nachlader
+holt das Bild, sobald die Miniatur da ist. Kein „kein Artwork"-Aufblitzen
+— das unterscheidet der Zeichenpfad seit Build 89 über `_defer_count`,
+und dieselbe Unterscheidung greift hier.
+
+**Drei Sicherungen, und die sind das Eigentliche an dieser Änderung:**
+
+1. **Ohne Quelldatei wird nicht ausgelagert.** Ein Spiel ohne Cover — in
+   einer frischen Sammlung der Normalfall — würde sonst zwei Sekunden
+   auf einen Arbeiter warten, der nichts finden kann, statt sofort den
+   Platzhalter zu zeigen. Ein `os.path.isfile()` ist hier kostenlos: wir
+   sind bereits im Zweig, der sonst das ganze Bild dekodieren würde.
+2. **Notbremse nach zwei Sekunden.** Antwortet niemand — hängender oder
+   abgestürzter Arbeitsprozess —, rechnet der Zeichen-Thread doch
+   selbst. Lieber ein einmaliger Ruckler als ein Cover, das gar nicht
+   mehr auftaucht, und zwar lautlos.
+3. **Im Thread-Betrieb wird gar nicht erst ausgelagert.** `dringend()`
+   lehnt ab, wenn kein Arbeitsprozess läuft: ohne zweiten Kern nimmt das
+   Rechnen dem Zeichnen dieselbe Zeit weg — nur eben später und mit
+   einem leeren Cover-Platz dazwischen. Schlechter als vorher wird es
+   dadurch nirgends.
+
+**Beim ersten Anlauf lief das Auslagern für *jeden* Aufrufer von
+`get_scaled()` — und `tools/test_cover_prewarm.py` hat das sofort
+gefangen.** Es hätte das synchrone Vorwärmen beim Start stillschweigend
+wirkungslos gemacht: die Funktion, die die Sysart-Datei der ersten
+Kategorie *vor* dem ersten Bildaufbau in den Speicher holt, hätte nur
+noch einen Auftrag abgegeben und nichts gewärmt. Deshalb ist das
+Auslagern jetzt ausdrücklich pro Aufrufer freigegeben (`auslagern_ok`)
+und steht an genau zwei Stellen — beiden im Cover-Zeichenpfad.
+
+Dazu ein kosmetischer Fund: der Arbeitsprozess schrieb eine
+`BrokenPipeError`-Rückverfolgung auf die Konsole, wenn das Frontend
+beendet wurde, während er noch an einer Miniatur saß. Das ist der
+Normalfall beim Herunterfahren, sah aber aus wie ein echtes Problem.
+
 **Der Vorauslader wartet nicht mehr, und er zielt beim Umdrehen neu**
 (Build 104):
 

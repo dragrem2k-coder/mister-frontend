@@ -49,6 +49,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_vorauslader_prozess.py \
   && python3 tools/test_zeilen_spuren.py \
   && python3 tools/test_vorladen_richtung.py \
+  && python3 tools/test_kaltes_cover.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -87,6 +88,7 @@ python3 tools/regression_test.py \
 | `test_vorauslader_prozess.py` | Test (Pass/Fail) | Vorauslader als eigener Prozess: rechnet, schreibt in den richtigen Ordner, faellt sauber auf den Thread zurueck |
 | `test_zeilen_spuren.py` | Test (Pass/Fail) | Gezieltes Freiraeumen ergibt bitgenau dasselbe Bild wie der volle Aufbau, auch nach 30 Schritten |
 | `test_vorladen_richtung.py` | Test (Pass/Fail) | Vorauslader startet fast sofort statt nach einer Sekunde und zielt beim Richtungswechsel neu |
+| `test_kaltes_cover.py` | Test (Pass/Fail) | Kaltes Cover geht an den Arbeitsprozess - mit Notbremse, ohne Quelldatei gar nicht, und nur aus dem Zeichenpfad |
 | `diag_vorauslader.py` | Diagnose (immer Rueckgabewert 0) | Was der Vorauslader dem Zeichnen wegnimmt - Thread gegen Prozess |
 | `diag_zeilen_spuren.py` | Diagnose (immer Rueckgabewert 0) | Was das gezielte Freiraeumen bringt - ganze Spalte gegen Spuren |
 | `diag_hintergrundlast.py` | Diagnose (immer Rueckgabewert 0) | Was pro Tastendruck wirklich passiert: Dateizugriffe, Log-Zeilen, doppelte Arbeit |

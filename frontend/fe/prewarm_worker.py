@@ -141,9 +141,18 @@ def main():
             # verliert das Frontend den Vorauslader wegen eines einzigen
             # kaputten Bildes fuer den Rest der Sitzung.
             ergebnis = "fehler"
-        aus.write({"fertig": "f", "treffer": "t",
-                   "uebersprungen": "u"}.get(ergebnis, "e") + "\n")
-        aus.flush()
+        try:
+            aus.write({"fertig": "f", "treffer": "t",
+                       "uebersprungen": "u"}.get(ergebnis, "e") + "\n")
+            aus.flush()
+        except (BrokenPipeError, ValueError):
+            # Das Frontend ist weg (beendet, oder der Vorauslader wurde
+            # vor einem Core-Start abgeraeumt), waehrend hier noch eine
+            # Miniatur lief. Das ist der Normalfall beim Herunterfahren,
+            # kein Fehler - still beenden statt eine Ausnahme samt
+            # Rueckverfolgung auf die Konsole zu schreiben, wo sie wie
+            # ein echtes Problem aussieht.
+            return 0
     return 0
 
 

@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-11-104",
-  "summary": "Der Cover-Vorauslader startet jetzt nach einer Zehntelsekunde statt nach einer ganzen und zielt beim Richtungswechsel sofort neu. Das Roh-Dekodieren im Zeichen-Thread ist ersatzlos entfallen - es war die schwaechere Kopie am schlechteren Ort."
+  "build_id": "2026-09-11-105",
+  "summary": "Ein Cover, das noch nicht berechnet ist, wird jetzt an den zweiten CPU-Kern abgegeben statt im Zeichen-Thread gerechnet - die Bedienung steht dabei nicht mehr still. Mit Notbremse: antwortet niemand, rechnet das Frontend nach zwei Sekunden doch selbst."
 }

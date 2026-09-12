@@ -894,6 +894,93 @@ class ArtCache:
         self._defer_uncached = False # beim schnellen Scrollen: noch nicht
                                      # dekodierte Cover ueberspringen (siehe
                                      # get_scaled()/COVER_SETTLE)
+        # NEU (Build 105): ein KALTES Cover im Stillstand nicht mehr hier
+        # im Zeichen-Thread rechnen, sondern an den Arbeitsprozess auf dem
+        # zweiten CPU-Kern geben und eine Runde spaeter nachzeichnen.
+        #
+        # WARUM: bis hierher galt "waehrend des Scrollens ueberspringen,
+        # im Stillstand rechnen". Der Stillstand ist aber genau der
+        # Moment, in dem jemand hinschaut - und eine Erstberechnung
+        # kostet auf HDMI 200-500 ms, in denen die Bedienung steht.
+        # Nutzer-Rueckmeldung: "wenn ich beim Scrollen schnell die
+        # Richtung wechsle, haengt es kurz".
+        #
+        # auslagern() wird vom Frontend gesetzt (auf PREWARMER.dringend)
+        # und liefert True, wenn der Auftrag angenommen wurde. Im
+        # Thread-Betrieb liefert sie bewusst False: dort gibt es keinen
+        # zweiten Kern, das Rechnen wuerde dem Zeichnen dieselbe Zeit
+        # wegnehmen - nur eben spaeter. Dann bleibt es beim bisherigen
+        # Verhalten, und schlechter als vorher wird es nirgends.
+        self.auslagern = None
+        # box_key -> Zeitpunkt, seit wann auf den Arbeitsprozess gewartet
+        # wird. Der Eintrag ist zugleich die Notbremse: nach
+        # AUSLAGERN_MAX Sekunden rechnet der naechste Aufruf selbst.
+        # OHNE diese Grenze haette ein haengender oder abgestuerzter
+        # Arbeitsprozess zur Folge, dass ein Cover NIE erscheint - und
+        # zwar lautlos.
+        self._warte_start = {}
+
+    # Wie lange hoechstens auf den Arbeitsprozess gewartet wird, bevor
+    # der Zeichen-Thread die Miniatur doch selbst berechnet. Grosszuegig:
+    # der Arbeiter kann noch an einer vorigen Miniatur sitzen (bis ~0.5 s)
+    # und braucht dann selbst noch einmal so lange. Knapper bemessen
+    # wuerde die Notbremse regelmaessig ohne Not ausloesen und damit
+    # genau den Ruckler zurueckholen, den die Auslagerung vermeidet.
+    AUSLAGERN_MAX = 2.0
+
+    def _auslagern_versuchen(self, box_key, path, max_w, max_h):
+        """Das Rechnen an den Arbeitsprozess abgeben. True = abgegeben,
+        der Aufrufer soll fuer diese Runde nichts zeichnen."""
+        if self.auslagern is None:
+            return False
+        # WICHTIG: nur auslagern, wenn es ueberhaupt eine Quelldatei
+        # gibt. Ohne diese Pruefung wuerde ein Spiel OHNE Cover - in
+        # einer frisch installierten Sammlung der Normalfall - zwei
+        # Sekunden lang auf einen Arbeitsprozess warten, der nichts
+        # finden kann, statt sofort "kein Artwork" zu zeigen. Ein
+        # os.path.isfile() ist hier vernachlaessigbar: wir sind bereits
+        # im teuren Zweig, der sonst das ganze Bild dekodieren wuerde.
+        if not os.path.isfile(path):
+            return False
+        t0 = self._warte_start.get(box_key)
+        if t0 is not None and time.monotonic() - t0 > self.AUSLAGERN_MAX:
+            # Notbremse: zu lange nichts gekommen. Eintrag loeschen und
+            # selbst rechnen - lieber ein einmaliger Ruckler als ein
+            # Cover, das gar nicht mehr auftaucht.
+            self._warte_start.pop(box_key, None)
+            LOG("COVER: Arbeitsprozess zu langsam, rechne selbst (%s)"
+                % os.path.basename(path))
+            return False
+        try:
+            angenommen = self.auslagern(path, max_w, max_h)
+        except Exception:                                # noqa: BLE001
+            angenommen = False
+        if not angenommen:
+            return False
+        if t0 is None:
+            self._warte_start[box_key] = time.monotonic()
+        return True
+
+    def warte_pruefen(self):
+        """Ist eine ausgelagerte Miniatur inzwischen da (oder die Geduld
+        am Ende)? Dann lohnt sich ein Nachzeichnen.
+
+        Wird aus dem Leerlauf-Zweig der Hauptschleife gerufen und ist
+        bewusst billig: eine Dateiabfrage je wartendem Cover, und es
+        wartet praktisch nie mehr als eines."""
+        if not self._warte_start:
+            return False
+        jetzt = time.monotonic()
+        for box_key, t0 in list(self._warte_start.items()):
+            pfad, _marke, mw, mh = box_key
+            if thumb_cache_has(pfad, mw, mh):
+                self._warte_start.pop(box_key, None)
+                return True
+            if jetzt - t0 > self.AUSLAGERN_MAX:
+                # Eintrag bleibt stehen - _auslagern_versuchen() sieht
+                # ihn, zieht die Notbremse und rechnet selbst.
+                return True
+        return False
 
     def get(self, path):
         # ABSICHERUNG (siehe _art_path_in()): der Pfad kann jetzt None
@@ -979,15 +1066,31 @@ class ArtCache:
             if alt is not None:
                 self.scaled_bytes -= len(alt[2])
 
-    def get_scaled(self, path, max_w, max_h):
+    def get_scaled(self, path, max_w, max_h, auslagern_ok=False):
+        """auslagern_ok (Build 105): darf eine noch nicht berechnete
+        Miniatur an den Arbeitsprozess abgegeben werden?
+
+        Standard False, und das ist die wichtige Voreinstellung. True
+        heisst "liefert in diesem Fall vielleicht None, obwohl es das
+        Cover gibt" - das darf nur setzen, wer damit umgehen kann, also
+        ein Zeichenpfad, der gleich darauf noch einmal gerufen wird
+        (Cover-Panel und Kategorie-Kasten, beide ueber den
+        COVER_SETTLE-Nachlader abgesichert).
+
+        Alle uebrigen Aufrufer brauchen ein Ergebnis: das Vorwaermen
+        beim Start wuerde sonst stillschweigend gar nichts waermen, und
+        Einmal-Anzeigen wie Trophaeenraum oder Attract-Modus haetten
+        einfach ein leeres Bild. Genau das hat
+        tools/test_cover_prewarm.py beim ersten Anlauf gefunden, als
+        das Auslagern noch fuer alle galt."""
         _t0 = time.monotonic()
-        r = self._get_scaled_impl(path, max_w, max_h)
+        r = self._get_scaled_impl(path, max_w, max_h, auslagern_ok)
         _dt = time.monotonic() - _t0
         if _dt > 0.025:
             LOG("PERF cover: %.0f ms (%s)" % (_dt * 1000, os.path.basename(path)))
         return r
 
-    def _get_scaled_impl(self, path, max_w, max_h):
+    def _get_scaled_impl(self, path, max_w, max_h, auslagern_ok=False):
         """Bild in die verfuegbare Flaeche einpassen. Kleine Cover werden
         ganzzahlig hochskaliert (Pixel-Look). Cover, die groesser als die
         Box sind, werden seit v1.8.1 per Nearest-Neighbor VERKLEINERT statt
@@ -1033,6 +1136,8 @@ class ArtCache:
                     % (_tcache_dt, os.path.basename(path), max_w, max_h))
             _bilanz_zaehlen(True)
             self._scaled_cache_put(box_key, disk_hit)
+            # Falls auf genau dieses Cover gewartet wurde: angekommen.
+            self._warte_start.pop(box_key, None)
             return disk_hit
 
         # Waehrend aktiv gescrollt wird: ein noch nicht dekodiertes Cover
@@ -1048,6 +1153,21 @@ class ArtCache:
             # Normalfall, sobald der Festplatten-Cache warm ist), gibt es
             # nichts nachzuladen, und der komplette Seitenaufbau nach
             # jedem Stillstand entfaellt.
+            self._deferred_something = True
+            self._defer_count += 1
+            return None
+        # NEU (Build 105): im STILLSTAND ist die Miniatur nicht auf der
+        # Karte - genau hier stand bisher der 200-500-ms-Ruckler. Erst den
+        # Arbeitsprozess fragen; nimmt er an, wird diese Runde nichts
+        # gezeichnet und der COVER_SETTLE-Nachlader holt es, sobald die
+        # Datei da ist (siehe warte_pruefen() und den Leerlauf-Zweig in
+        # frontend.py).
+        #
+        # Bewusst NACH der Defer-Pruefung darueber: waehrend aktiv
+        # gescrollt wird, ist der billige Sprung oben richtig - der
+        # Eintrag wechselt ohnehin gleich wieder.
+        if (auslagern_ok and not self._defer_uncached
+                and self._auslagern_versuchen(box_key, path, max_w, max_h)):
             self._deferred_something = True
             self._defer_count += 1
             return None

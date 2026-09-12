@@ -92,9 +92,13 @@ for w, h, was in ((320, 240, "CRT"), (1920, 1080, "HDMI")):
     angefragt = []
     echtes_get_scaled = A.ART.get_scaled
 
-    def mitschnitt(pfad, mw, mh, _echt=echtes_get_scaled):
+    # **kw: seit Build 105 hat get_scaled() den Zusatz auslagern_ok
+    # (darf eine kalte Miniatur an den Arbeitsprozess abgegeben werden).
+    # Hier durchgereicht statt nachgebaut - diese Attrappe soll nur
+    # MITSCHREIBEN, nicht mitentscheiden.
+    def mitschnitt(pfad, mw, mh, _echt=echtes_get_scaled, **kw):
         angefragt.append((pfad, mw, mh))
-        return _echt(pfad, mw, mh)
+        return _echt(pfad, mw, mh, **kw)
 
     A.ART.get_scaled = mitschnitt
     try:
@@ -514,9 +518,9 @@ angefragt = []
 _echt = A.ART.get_scaled
 
 
-def _mit(pfad, mw, mh, _e=_echt):
+def _mit(pfad, mw, mh, _e=_echt, **kw):     # **kw: siehe auslagern_ok
     angefragt.append((pfad, mw, mh))
-    return _e(pfad, mw, mh)
+    return _e(pfad, mw, mh, **kw)
 
 
 A.ART.get_scaled = _mit
@@ -593,9 +597,9 @@ for w, h, aufl in ((320, 240, "CRT"), (1920, 1080, "HDMI")):
         angefragt = []
         _e = A.ART.get_scaled
 
-        def _mit(pfad, mw, mh, _ee=_e):
+        def _mit(pfad, mw, mh, _ee=_e, **kw):   # **kw: siehe auslagern_ok
             angefragt.append((pfad, mw, mh))
-            return _ee(pfad, mw, mh)
+            return _ee(pfad, mw, mh, **kw)
 
         A.ART.get_scaled = _mit
         try:
