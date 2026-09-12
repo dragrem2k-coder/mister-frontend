@@ -1130,12 +1130,47 @@ class Frontend:
         # Zeitpunkt noch auf 01:00 steht (siehe uhr_ist_gestellt() in
         # fe/art.py). Kostet nur ein paar Dutzend sha1-Berechnungen.
         try:
-            self.kategorie_logo_auftraege()
+            _logo_auftraege = self.kategorie_logo_auftraege()
         except Exception:                            # noqa: BLE001
-            pass   # darf den Start nie zum Absturz bringen
+            _logo_auftraege = []   # darf den Start nie zum Absturz bringen
         if self.cats:
             _first_name, _first_node, _first_syskey = self.cats[0]
             _prewarm_one_cat_art(_first_name, _first_syskey)
+
+        # NEU (Build 106, Nutzerfrage: "bringt uns der zweite Kern beim
+        # Startvorgang noch etwas oder im Hauptmenue?").
+        #
+        # Ja - fuer genau diesen Teil. Die Abzeichen der Hauptseite
+        # wurden bisher in einem Hintergrund-THREAD dekodiert und
+        # skaliert (siehe _prewarm_art_dirs() weiter unten, dort
+        # entfernt). Das ist reines Python und damit GIL-gebunden: der
+        # Thread nahm dem Zeichnen genau in den Sekunden Rechenzeit weg,
+        # in denen das Hauptmenue zum ersten Mal aufgebaut und bedient
+        # wird. Dasselbe Muster, das beim Cover-Vorauslader schon
+        # aufgeraeumt wurde (Build 102), nur an einer anderen Stelle.
+        #
+        # Der Rueckgabewert von kategorie_logo_auftraege() wurde hier
+        # bisher weggeworfen - der Aufruf stand nur wegen
+        # thumb_cache_schuetzen() darin. Genau diese Liste ist aber das,
+        # was der Arbeitsprozess braucht: Pfad und Kastengroesse je
+        # Abzeichen, und zwar dieselbe Rechnung wie im Zeichenpfad.
+        #
+        # Sofort statt erst im ersten Ruhemoment: der Arbeiter soll
+        # schon waehrend der Boot-Animation rechnen, nicht erst, wenn
+        # das Menue steht.
+        #
+        # WAS DAS *NICHT* LOEST, damit hier keine falsche Erwartung
+        # stehen bleibt: die erste sichtbare Kategorie ist direkt
+        # darueber bereits synchron gewaermt worden, und das bleibt so -
+        # ein Hintergrund-Arbeiter verliert dieses Rennen nachweislich
+        # (siehe die Begruendung beim synchronen Aufruf). Und der
+        # zweite grosse Startposten, das Einlesen der Cover-Ordner, ist
+        # SD-Karte und nicht CPU - dafuer hilft kein zweiter Kern.
+        if _logo_auftraege:
+            PREWARMER.start()
+            PREWARMER.uebergeben(_logo_auftraege)
+            LOG("PREWARM: %d Kategorie-Abzeichen beim Start vorgemerkt"
+                % len(_logo_auftraege))
 
         # NEU (Nutzerwunsch: "beim Scrollen fuehlt es sich laghaft an" -
         # echtes Profiling auf echter Hardware fand einen viel groesseren
@@ -1162,14 +1197,23 @@ class Frontend:
         # ja schon synchron oben erledigt) - hier ist ein Ruecksfall auf
         # den langsamen Erstzugriff unkritisch, da der Nutzer dafuer
         # erst aktiv navigieren muesste.
+        # GEAENDERT (Build 106): hier stand zusaetzlich eine Schleife, die
+        # die Abzeichen ALLER uebrigen Kategorien dekodiert und skaliert
+        # hat. Die ist raus - das macht jetzt der Arbeitsprozess auf dem
+        # zweiten Kern (siehe direkt oben).
+        #
+        # WARUM DIESER THREAD TROTZDEM BLEIBT, und zwar bewusst als
+        # THREAD: was hier uebrig ist, ist kein Rechnen, sondern
+        # WARTEN AUF DIE SD-KARTE. os.listdir() gibt Pythons GIL
+        # waehrend des Wartens frei - ein Thread nimmt dem Zeichnen hier
+        # also gar nichts weg, und ein eigener Prozess braechte nichts:
+        # was dabei warm wird, ist der Verzeichnis-Cache des
+        # Betriebssystems, und den teilen sich alle Prozesse ohnehin.
+        #
+        # Ein zweiter Kern macht keine SD-Karte schneller. Genau das ist
+        # der Unterschied zwischen den beiden Haelften, die hier frueher
+        # in einer Schleife zusammenlagen.
         def _prewarm_art_dirs():
-            seen_keys = set()
-            for _name, _node, _syskey in self.cats:
-                _art_key = _category_art_key(_name, _syskey)
-                if not _art_key or _art_key in seen_keys:
-                    continue
-                seen_keys.add(_art_key)
-                _prewarm_one_cat_art(_name, _syskey)
             for _name, _node, _syskey in self.cats:
                 if _syskey:
                     _art_index(ART_BASE, _syskey)

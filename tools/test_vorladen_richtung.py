@@ -173,6 +173,32 @@ leerlauf()
 check("in derselben Ruhephase kein Dauerfeuer", angesetzt == [],
       "(%r)" % (angesetzt,))
 
+print("Test 5: die Abzeichen beim Start gehen an den zweiten Kern")
+# NUTZERFRAGE: "bringt uns der zweite Kern beim Startvorgang noch etwas
+# oder im Hauptmenue?" - fuer diesen Teil ja. Die Abzeichen der
+# Hauptseite wurden bis Build 105 in einem Python-THREAD dekodiert und
+# skaliert, also GIL-gebunden und damit auf Kosten des Zeichnens, genau
+# waehrend das Hauptmenue zum ersten Mal aufgebaut wird.
+#
+# Gemessen (Hauptseite zeichnen, waehrend 57 Abzeichen vorgerechnet
+# werden): Leerlauf 1.939 ms, mit Thread 2.117 ms (+9 %), mit
+# Arbeitsprozess 1.910 ms (-2 %, also im Rauschen des Leerlaufs).
+check("die Abzeichen-Schleife ist aus dem Start-Thread raus",
+      "_prewarm_one_cat_art(_name, _syskey)" not in QUELLE)
+check("stattdessen werden sie beim Start vorgemerkt",
+      "PREWARMER.uebergeben(_logo_auftraege)" in QUELLE)
+# Die andere Haelfte desselben Threads MUSS bleiben, und zwar als
+# Thread: os.listdir() wartet auf die SD-Karte und gibt die GIL dabei
+# frei. Ein Prozess braechte dort nichts - was warm wird, ist der
+# Verzeichnis-Cache des Betriebssystems, und den teilen sich alle.
+check("das Einlesen der Cover-Ordner bleibt im Thread",
+      "_art_index(ART_BASE, _syskey)" in QUELLE
+      and "threading.Thread(target=_prewarm_art_dirs" in QUELLE)
+# Und die erste sichtbare Kategorie bleibt synchron - ein
+# Hintergrund-Arbeiter verliert dieses Rennen nachweislich.
+check("die erste Kategorie wird weiterhin synchron gewaermt",
+      "_prewarm_one_cat_art(_first_name, _first_syskey)" in QUELLE)
+
 print()
 if fails:
     print("FEHLGESCHLAGEN (%d):" % len(fails))

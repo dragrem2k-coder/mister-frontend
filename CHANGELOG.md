@@ -7,6 +7,58 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Die Kategorie-Abzeichen werden beim Start auf dem zweiten Kern
+gerechnet** (Build 106):
+
+Auf die Frage „bringt uns der zweite Kern beim Startvorgang noch etwas
+oder im Hauptmenü?" — für **einen** der beiden Teile ja, und die
+Trennlinie ist der eigentlich interessante Punkt.
+
+Der Hintergrund-Thread beim Start machte zwei ganz verschiedene Dinge:
+
+| | | |
+|---|---|---|
+| **(a)** | 57 Abzeichen dekodieren und skalieren | reines Python, **GIL-gebunden** — nimmt dem Zeichnen Rechenzeit weg |
+| **(b)** | `os.listdir()` über jeden Cover-Ordner | **I/O** — Python gibt die GIL beim Warten frei |
+
+Nur (a) gehört auf den zweiten Kern. Gemessen, Hauptseite zeichnen
+während alle 57 Abzeichen vorgerechnet werden:
+
+| | |
+|---|---|
+| Leerlauf, nichts nebenher | 1,939 ms |
+| mit Thread (bis Build 105) | 2,117 ms (**+9 %**) |
+| mit Arbeitsprozess (ab 106) | 1,910 ms (**−2 %**, im Rauschen) |
+
+Kleiner als beim Cover-Vorauslader — und das war zu erwarten: seit
+Build 99/100 sind die Abzeichen einheitlich 320×420 statt bis zu 900 px
+breit, also längst nicht mehr die teuersten Bilder im Frontend.
+
+**Die Aufträge dafür gab es schon.** `kategorie_logo_auftraege()` wurde
+beim Start bereits gerufen — nur wegen `thumb_cache_schuetzen()`, der
+Rückgabewert wanderte in den Papierkorb. Genau diese Liste ist das, was
+der Arbeitsprozess braucht: Pfad und Kastengröße je Abzeichen, dieselbe
+Rechnung wie im Zeichenpfad. Übergeben wird sie jetzt **sofort**, nicht
+erst im ersten Ruhemoment: der Arbeiter soll schon während der
+Boot-Animation rechnen.
+
+**(b) bleibt ausdrücklich ein Thread.** Ein eigener Prozess brächte dort
+nichts — was dabei warm wird, ist der Verzeichnis-Cache des
+Betriebssystems, und den teilen sich alle Prozesse ohnehin. Und das
+Warten auf die SD-Karte blockiert die GIL gar nicht erst.
+
+**Zwei Dinge ändern sich bewusst nicht:** Die erste sichtbare Kategorie
+wird weiterhin **synchron** vor dem ersten Bildaufbau gewärmt — im Code
+ist dokumentiert, dass ein Hintergrund-Arbeiter dieses Rennen
+nachweislich verliert. Und der zweite große Startposten, das Einlesen
+kalter Cover-Ordner (gemessen 1077 ms kalt gegen ~20 ms warm), ist
+SD-Karte und nicht CPU. Zwei Kerne machen keine Karte schneller.
+
+Beim Prüfen sah es kurz so aus, als blieben verwaiste Arbeitsprozesse
+zurück. Das waren die eigenen Suchbefehle, die sich selbst gefunden
+haben — echte Arbeitsprozesse nach einem vollen Testlauf: **null**. Sie
+beenden sich korrekt, sobald ihre Leitung schließt.
+
 **Ein kaltes Cover wird nicht mehr im Zeichen-Thread gerechnet**
 (Build 105):
 
