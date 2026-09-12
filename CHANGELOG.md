@@ -7,6 +7,41 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Der Bildrand lässt sich jetzt im Menü einstellen** (Build 113):
+
+Abgeschaut bei Degauss, wo Randbreite und Bildlage einstellbar sind.
+Bei uns standen die beiden Werte als feste Zahlen im Quelltext:
+`OVERSCAN_X = 7`, `OVERSCAN_Y = 5`. Auf HDMI ist das unkritisch; auf
+einer Röhre nicht — jede sitzt anders, manche schneiden rechts mehr ab
+als links, und wer das korrigieren wollte, musste bisher Python
+editieren.
+
+Unter **Anzeige & Sound** stehen dafür zwei neue Punkte: *Rand seitlich*
+und *Rand oben/unten*, jeweils in Prozent, jeweils mit Enter eine Stufe
+weiter (0–10 in Einerschritten, dann 12 und 15, danach wieder von
+vorn). Gespeichert wird in `/media/fat/frontend/overscan`.
+
+**Wer nichts einstellt, bekommt exakt das Bild von vorher** — ohne
+Datei gelten weiterhin 7 und 5. Eine kaputte oder von Hand verstellte
+Datei (Buchstaben, negative Zahlen, über 20 %) fällt ebenfalls auf
+diese Vorgabe zurück, statt ein Menü zu erzeugen, das man nicht mehr
+bedienen kann, um den Fehler zurückzunehmen.
+
+**Wie es umgesetzt ist, und warum so:** die beiden Werte werden an
+sechsundzwanzig Stellen als `W * OVERSCAN_X // 100` gelesen. Sie alle
+auf ein Objektfeld umzustellen wären sechsundzwanzig Gelegenheiten, ein
+Layout zu verschieben. Stattdessen überschreibt `_overscan_anwenden()`
+die Modul-Variablen — dieselbe Wirkung, ohne eine einzige dieser Zeilen
+anzufassen. `tools/test_bildrand.py` weist nach, dass der Wert
+tatsächlich überall ankommt: geprüft wird nicht die Einstellung,
+sondern das Bild, auf CRT und HDMI, für Hauptseite und Spieleliste.
+
+Eine Stelle war dabei nicht offensichtlich: der Layout-Zwischenspeicher
+hat den Schlüssel `(Breite, Höhe, Boxart ja/nein)` — der Rand kommt
+darin nicht vor. Ohne Leeren bliebe nach dem Umschalten die alte
+Aufteilung stehen und die Einstellung wäre sichtbar wirkungslos.
+
+
 **Zwei weitere Kategorie-Abzeichen** (Build 112):
 
 `CUSTOM_CORES` und `PHYSICAL_DISC_CORES`, im selben Stil und derselben

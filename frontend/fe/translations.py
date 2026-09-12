@@ -410,6 +410,19 @@ TRANSLATIONS = {
     # sie einzeln in einer langen Liste stehen und sich selbst erklaeren
     # muessen. Auf dem RA-Bildschirm stehen neun Schalter untereinander
     # in einer Spalte - dort waeren ganze Saetze nur Rauschen.
+    # NEU (Build 113): Bildrand/Bildlage, einstellbar im Menue statt
+    # als feste Zahl im Quelltext. Der Zusatz nennt ausdruecklich die
+    # Roehre - auf HDMI braucht das praktisch niemand.
+    "sys_overscan_x": {
+        "en": "Side margin: %d %% -> next (for CRTs that cut off "
+              "left/right)",
+        "de": "Rand seitlich: %d %% -> weiter (für Röhren, die links/"
+              "rechts abschneiden)"},
+    "sys_overscan_y": {
+        "en": "Top/bottom margin: %d %% -> next (for CRTs that cut off "
+              "top/bottom)",
+        "de": "Rand oben/unten: %d %% -> weiter (für Röhren, die oben/"
+              "unten abschneiden)"},
     "ra_on": {"en": "ON", "de": "AN"},
     "ra_off": {"en": "OFF", "de": "AUS"},
     "sys_ra_settings": {"en": "Popups & display (MiSTer RA settings)",

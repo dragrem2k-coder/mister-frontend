@@ -29,7 +29,7 @@ from fe.settings import (
     attract_enabled, crt_menu_active, curated_only_active,
     dragend_logo_enabled, format_attract_delay, load_attract_delay,
     screen_mirror_enabled, stream_overlay_enabled,
-    fast_scroll_enabled,
+    fast_scroll_enabled, overscan_lesen,
     pulse_effect_enabled, eq_effect_enabled,
     track_marquee_enabled, fb_size_label_key,
     autostart_enabled, rom_filter_enabled,
@@ -213,6 +213,7 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     # rom_filter_enabled() in fe/settings.py. Standard AUS.
     rom_filter_label = t("sys_rom_filter_on") if rom_filter_enabled() \
         else t("sys_rom_filter_off")
+    _ovx, _ovy = overscan_lesen()
     autostart_label = t("sys_autostart_on") if autostart_enabled() \
         else t("sys_autostart_off")
 
@@ -256,6 +257,10 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         (sfx_label, "sfx", None),
         (dragend_logo_label, "dragend_logo", None),
         (fast_scroll_label, "fast_scroll", None),
+        # NEU (Build 113): Bildrand. Steht direkt bei den anderen
+        # Anzeige-Punkten; wer eine Roehre hat, sucht genau hier.
+        (t("sys_overscan_x", _ovx), "overscan_x", None),
+        (t("sys_overscan_y", _ovy), "overscan_y", None),
     ]
     if not crt:
         display_items.append((fb_size_label, "fb_size", None))

@@ -227,6 +227,7 @@ from fe.settings import (
     toggle_curated_only, toggle_dragend_logo, screen_mirror_enabled,
     toggle_screen_mirror, toggle_stream_overlay,
     fast_scroll_enabled, toggle_fast_scroll,
+    overscan_lesen, overscan_weiter,
     FAST_SCROLL_WINDOW, pulse_effect_enabled, toggle_pulse_effect,
     CRT_CONFIRM_TIMEOUT, crt_pending_confirm, mark_crt_pending_confirm,
     clear_crt_pending_confirm, eq_effect_enabled, toggle_eq_effect,
@@ -282,6 +283,17 @@ from fe.ra_core import RA_CORES_DIR_ABS, RA_CORES_DIR_REL, RA_CORE_NAME_CANDIDAT
 
 # Overscan-Sicherheitsrand in Prozent pro Seite (CRTs beschneiden das Bild).
 # Bei Bedarf anpassen: mehr, wenn weiterhin Raender fehlen; weniger auf LCD.
+# GEAENDERT (Build 113): das sind jetzt die VORGABEN. Die tatsaechlich
+# benutzten Werte kommen aus der Einstellung und werden beim Start sowie
+# beim Umstellen im Menue hier hineingeschrieben (siehe
+# _overscan_anwenden()).
+#
+# Bewusst weiterhin Modul-Variablen statt eines Objektfeldes: sie werden
+# an sechsundzwanzig Stellen als "W * OVERSCAN_X // 100" gelesen. Ein
+# Feld daraus zu machen hiesse, sechsundzwanzig Zeilen anzufassen, von
+# denen jede einzelne beim Verrechnen ein verschobenes Layout ergibt -
+# das Zuweisen der Modul-Variablen erreicht dasselbe, ohne eine davon
+# anzufassen.
 OVERSCAN_X = 7
 OVERSCAN_Y = 5
 
@@ -1419,6 +1431,10 @@ class Frontend:
         # Rechteck der zuletzt gezeichneten Karte unter dem
         # Kategorie-Abzeichen, oder None (Build 110).
         self._artbox_karte = None
+        # Die gespeicherten Randwerte gelten ab sofort - VOR dem ersten
+        # layout_cats()/layout_items(), sonst rechnete der erste
+        # Bildaufbau noch mit der Vorgabe.
+        self._overscan_anwenden()
         # Einmal-Schalter fuers Ansetzen des Vorausladers pro Ruhephase -
         # siehe PREWARM_SETTLE.
         self._prefetched_done = False
@@ -10319,6 +10335,23 @@ class Frontend:
         self.draw()
 
     @staticmethod
+    def _overscan_anwenden():
+        """Die gespeicherten Randwerte in die Modul-Variablen schreiben.
+
+        NEU (Build 113, uebernommen von Degauss): OVERSCAN_X/Y standen
+        als feste Zahlen im Quelltext. Auf HDMI ist das unkritisch, auf
+        einer Roehre nicht - jede sitzt anders, manche schneiden rechts
+        mehr ab als links, und wer das korrigieren wollte, musste bisher
+        Python editieren.
+
+        Geschrieben wird in die Modul-Variablen, nicht in ein Feld:
+        sechsundzwanzig Stellen lesen "W * OVERSCAN_X // 100". Sie alle
+        anzufassen waere sechsundzwanzig Gelegenheiten, ein Layout zu
+        verschieben - hier genuegt eine Zuweisung."""
+        global OVERSCAN_X, OVERSCAN_Y
+        OVERSCAN_X, OVERSCAN_Y = overscan_lesen()
+
+    @staticmethod
     def set_cursor_blink(on):
         try:
             open("/sys/class/graphics/fbcon/cursor_blink", "w") \
@@ -12088,6 +12121,23 @@ class Frontend:
                             # System-Menue aktualisieren, kein Neustart
                             # noetig.
                             toggle_ra_enabled()
+                            self._refresh_system_category()
+                        elif kind in ("overscan_x", "overscan_y"):
+                            # NEU (Build 113): Rand eine Stufe weiter.
+                            # Danach MUSS komplett neu aufgebaut werden -
+                            # es aendert sich die Lage von allem, und die
+                            # schnellen Zeichenwege gehen davon aus, dass
+                            # der Puffer noch zum alten Layout passt.
+                            overscan_weiter(kind[-1])
+                            self._overscan_anwenden()
+                            # Der Layout-Zwischenspeicher kennt nur
+                            # Aufloesung und Boxart-Spalte als
+                            # Schluessel - nicht den Rand. Ohne dieses
+                            # Leeren bliebe die alte Aufteilung stehen
+                            # und die Einstellung sichtbar wirkungslos.
+                            self._layout_items_cache.clear()
+                            self.fb.mark_full_redraw()
+                            self._force_full_redraw = True
                             self._refresh_system_category()
                         elif kind == "ra_settings":
                             # NEU (Build 95): die RA-Einstellungen der

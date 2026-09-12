@@ -571,6 +571,61 @@ def cycle_attract_delay():
     save_attract_delay(new_val)
     return new_val
 
+# NEUES FEATURE (Build 113, uebernommen von Degauss - dort laesst sich
+# Randbreite und Bildlage im Menue einstellen).
+#
+# Bei uns standen die beiden Werte bisher als feste Zahlen im Quelltext
+# (OVERSCAN_X = 7, OVERSCAN_Y = 5 in frontend.py). Auf HDMI ist das
+# unkritisch, auf einer Roehre nicht: jede Bildroehre sitzt anders,
+# manche schneiden rechts mehr ab als links, und wer das korrigieren
+# wollte, musste bisher Python editieren.
+#
+# Prozent statt Bildpunkte, weil die Werte so fuer CRT und HDMI
+# gleichermassen gelten - genau dafuer waren sie von Anfang an in
+# Prozent gerechnet.
+OVERSCAN_FILE = "/media/fat/frontend/overscan"
+OVERSCAN_X_STD = 7           # dieselben Werte wie bisher im Quelltext
+OVERSCAN_Y_STD = 5
+OVERSCAN_STUFEN = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15)
+
+def overscan_lesen():
+    """(x, y) in Prozent - die Vorgabe, wenn nichts gespeichert ist."""
+    try:
+        roh = open(OVERSCAN_FILE).read().split(",")
+        x, y = int(roh[0]), int(roh[1])
+    except (OSError, ValueError, IndexError):
+        return OVERSCAN_X_STD, OVERSCAN_Y_STD
+    # Eine von Hand verstellte Datei darf das Bild nicht unbrauchbar
+    # machen - ein Rand von 40 % liesse praktisch nichts uebrig.
+    if not (0 <= x <= 20 and 0 <= y <= 20):
+        return OVERSCAN_X_STD, OVERSCAN_Y_STD
+    return x, y
+
+def overscan_schreiben(x, y):
+    try:
+        os.makedirs(os.path.dirname(OVERSCAN_FILE), exist_ok=True)
+        with open(OVERSCAN_FILE, "w") as f:
+            f.write("%d,%d" % (x, y))
+    except OSError:
+        pass
+
+def overscan_weiter(achse):
+    """Naechste Stufe fuer 'x' oder 'y' waehlen (wrap-around).
+    Liefert das neue Paar (x, y)."""
+    x, y = overscan_lesen()
+    aktuell = x if achse == "x" else y
+    try:
+        idx = OVERSCAN_STUFEN.index(aktuell)
+    except ValueError:
+        idx = -1
+    neu = OVERSCAN_STUFEN[(idx + 1) % len(OVERSCAN_STUFEN)]
+    if achse == "x":
+        x = neu
+    else:
+        y = neu
+    overscan_schreiben(x, y)
+    return x, y
+
 def format_attract_delay(seconds):
     """z.B. '30s', '2min', '10min' - fuer die Menu-Beschriftung."""
     if seconds < 60:

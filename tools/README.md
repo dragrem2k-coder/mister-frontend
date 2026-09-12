@@ -53,6 +53,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_cover_index.py \
   && python3 tools/test_hauptseite_spuren.py \
   && python3 tools/test_kernel_wechsel.py \
+  && python3 tools/test_bildrand.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -95,6 +96,7 @@ python3 tools/regression_test.py \
 | `test_cover_index.py` | Test (Pass/Fail) | Cover-Index ohne regulaeren Ausdruck - bewiesen gleichwertig ueber 65536 Zeichen - und der Start-Thread steckt zurueck |
 | `test_hauptseite_spuren.py` | Test (Pass/Fail) | Hauptseite ohne Vollbild-Clear: bitgenau wie der volle Aufbau, auch nach 30 Schritten, bei kuerzerem Songtitel und wegfallendem Netzwerk |
 | `test_kernel_wechsel.py` | Test (Pass/Fail) | Bildspeicher wird auf beiden MiSTer-Kerneln erkannt - sysfs zuerst, ioctl als Rueckfall |
+| `test_bildrand.py` | Test (Pass/Fail) | Einstellbarer Bildrand: Vorgabe unveraendert, kaputte Datei faellt zurueck, und der Wert kommt wirklich im Layout an |
 | `diag_vorauslader.py` | Diagnose (immer Rueckgabewert 0) | Was der Vorauslader dem Zeichnen wegnimmt - Thread gegen Prozess |
 | `diag_zeilen_spuren.py` | Diagnose (immer Rueckgabewert 0) | Was das gezielte Freiraeumen bringt - ganze Spalte gegen Spuren |
 | `diag_hintergrundlast.py` | Diagnose (immer Rueckgabewert 0) | Was pro Tastendruck wirklich passiert: Dateizugriffe, Log-Zeilen, doppelte Arbeit |
@@ -881,6 +883,35 @@ Versatz groesser als der Radius).
 Test 4 misst beide Schritte mit: eine Aenderung, die nur theoretisch
 spart, hat hier nichts verloren. Abwechselnd im selben Lauf gemessen
 ergab das auf HDMI 1,155 -> 0,844 ms (-27 %), auf CRT -3 %.
+
+## test_bildrand.py
+
+Der Bildrand (`OVERSCAN_X` / `OVERSCAN_Y`) stand bisher als feste Zahl
+im Quelltext. Seit Build 113 laesst er sich im Menue einstellen -
+uebernommen von Degauss, wo das ebenfalls moeglich ist. Auf HDMI
+braucht das kaum jemand; auf einer Roehre schon, denn jede schneidet
+anders ab.
+
+Der Knackpunkt: die beiden Werte werden an SECHSUNDZWANZIG Stellen als
+`W * OVERSCAN_X // 100` gelesen. Sie alle auf ein Objektfeld
+umzustellen waeren sechsundzwanzig Gelegenheiten, ein Layout zu
+verschieben. Stattdessen ueberschreibt `_overscan_anwenden()` die
+Modul-Variablen - dieselbe Wirkung, ohne eine einzige dieser Zeilen
+anzufassen.
+
+Test 5 ist deshalb der eigentliche Test: er misst nicht die
+Einstellung, sondern das Bild. Bei 2 % gegen 10 % muessen auf CRT UND
+HDMI sowohl die Hauptseite (`layout_cats`) als auch die Spieleliste
+(`layout_items`) einruecken, und zwar auf genau die eingestellten
+Prozent und auf beiden Seiten.
+
+Die uebrigen Pruefungen: ohne gespeicherten Wert gilt weiterhin 7/5
+(wer nichts einstellt, bekommt exakt das Bild von vorher); eine von
+Hand verstellte oder kaputte Datei faellt auf die Vorgabe zurueck statt
+ein unbedienbares Menue zu erzeugen; das Weiterschalten laeuft durch
+alle Stufen und dreht um; und der Layout-Zwischenspeicher wird beim
+Umschalten geleert - ohne das bliebe die alte Aufteilung stehen und die
+Einstellung waere sichtbar wirkungslos.
 
 ## diag_lightpath.py
 
