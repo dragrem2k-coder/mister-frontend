@@ -56,6 +56,11 @@ KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT = 103, 108, 105, 106
 # unten) - wer eine Tastatur nutzt, muss dafuer nicht mehr "/" tippen,
 # beide Tasten loesen exakt dieselbe, bereits bestehende Logik aus.
 KEY_F2 = 60
+# Build 114: F3/F4 - bis dahin die letzten voellig unbelegten
+# Funktionstasten im Frontend. Jetzt Sprung an den Listenanfang bzw.
+# ans Listenende (siehe KEYMAP weiter unten).
+KEY_F3 = 61
+KEY_F4 = 62
 KEY_F7 = 65
 KEY_F6 = 64
 KEY_F8, KEY_F9, KEY_F10, KEY_F11, KEY_F12 = 66, 67, 68, 87, 88
@@ -166,6 +171,13 @@ KEYMAP = {
     # finden eine dedizierte Funktionstaste intuitiver als "/". Loest
     # exakt dieselbe Aktion "search" aus, keine eigene Logik noetig.
     KEY_F2: "search",
+    # NEUES FEATURE (Build 114): F3/F4 springen an den Anfang bzw. ans
+    # Ende der Liste. Die beiden waren im Frontend als einzige
+    # Funktionstasten noch voellig unbelegt (siehe Kommentar oben:
+    # "F1/F3/F4 sind es bis heute"), und bei 3500 Eintraegen ist der
+    # Sprung an den Rand mehr wert, als es klingt.
+    KEY_F3: "list_start",
+    KEY_F4: "list_end",
     KEY_BACKSPACE: "search_backspace",
     # BUGFIX (siehe ausfuehrlicher Kommentar bei KEY_SPACE weiter oben):
     # Leertaste fehlte bisher komplett in der KEYMAP.
@@ -399,6 +411,11 @@ SELECT_COMBOS = {
     # hat, tippt weiter einfach los.
     "ok": "search_pad",         # Select + A  -> Suche mit Waehler
     "back_fe": "ra_showcase",   # Select + X  -> RA-Schaukasten
+    # Build 114: L/R springen ohnehin schon seitenweise - mit Select
+    # dazu gleich ganz an den Rand der Liste. Dieselbe Taste, dieselbe
+    # Richtung, nur weiter; das muss man sich nicht getrennt merken.
+    "left": "list_start",       # Select + L  -> an den Anfang
+    "right": "list_end",        # Select + R  -> ans Ende
 }
 # Select ALLEIN soll weiterhin wie Zurueck wirken (und den bestehenden
 # Dreifach-Select-Kurzbefehl fuers Beenden ausloesen). Damit sich beides
@@ -656,8 +673,14 @@ class InputManager:
             # Select-als-Modifikator (siehe SELECT_COMBOS oben). Bewusst
             # VOR der Wiederholungs-Behandlung: "select" ist keine
             # wiederholbare Aktion, und die zweite Taste der Kombination
-            # (A/X) ebenfalls nicht - die Richtungstasten laufen unten
-            # ganz normal weiter, auch bei gehaltenem Select.
+            # ebenfalls nicht.
+            # GEAENDERT (Build 114): hier stand "die Richtungstasten
+            # laufen unten ganz normal weiter, auch bei gehaltenem
+            # Select". Das gilt jetzt nur noch fuer hoch/runter -
+            # Select+L/R sind zu "an den Anfang"/"ans Ende" geworden
+            # (L/R springen ohnehin schon seitenweise). Gehaltenes
+            # Select ist dabei Absicht, kein Versehen: alleine gedrueckt
+            # wirkt Select weiterhin wie Zurueck.
             if act == "select":
                 if value == 1:
                     self._select_down.add(dev.path)

@@ -232,7 +232,18 @@ print("Test 7: Eingeben, Loeschen, Fertig und Abbrechen")
 H.set_screen(1920, 1080)
 f = H.make_frontend(page=1)
 namen = [it[0] for it in f._display_items()]
-treffer = fm.jump_to_substring(namen, 0, "MARIO")
+
+
+def _sprung(anfrage, ab):
+    """GEAENDERT (Build 114): der Waehler rechnet nicht mehr ueber
+    jump_to_substring(), sondern ueber die vollstaendige Trefferliste -
+    dieselben zwei Zeilen wie _springen() in frontend.py. Der Test muss
+    denselben Weg nehmen, sonst prueft er einen, den es nicht mehr
+    gibt."""
+    return fm.treffer_ab(fm.treffer_suchen(namen, anfrage), ab)
+
+
+treffer = _sprung("MARIO", 0)
 check("die Suche findet ueberhaupt etwas",
       0 <= treffer < len(namen),
       "%r" % (namen[treffer] if namen else None,))
@@ -241,7 +252,7 @@ check("und zwar einen Namen, der 'Mario' enthaelt",
 # Loeschen muss ab der AUSGANGSPOSITION neu suchen, nicht ab dem
 # aktuellen Treffer - sonst wandert man beim Zurueckloeschen weiter
 # nach unten statt zurueck.
-zurueck = fm.jump_to_substring(namen, 0, "MAR")
+zurueck = _sprung("MAR", 0)
 check("kuerzere Anfrage sucht wieder von vorn",
       zurueck <= treffer or "mar" in namen[zurueck].lower(),
       "%r" % namen[zurueck])

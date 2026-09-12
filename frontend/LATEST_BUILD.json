@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-12-113",
-  "summary": "Der Bildrand laesst sich jetzt unter Anzeige & Sound einstellen - seitlich und oben/unten getrennt, in Prozent. Fuer Roehren, die am Rand abschneiden. Wer nichts einstellt, bekommt genau das Bild von vorher."
+  "build_id": "2026-09-12-114",
+  "summary": "Die Fusszeile zeigt jetzt 142/3500 - man sieht endlich, wo man in einer langen Liste steht. Die Suche blaettert mit hoch/runter durch die Treffer und zaehlt sie mit. F3/F4 (am Pad Select+L/R) springen an den Anfang bzw. ans Ende."
 }

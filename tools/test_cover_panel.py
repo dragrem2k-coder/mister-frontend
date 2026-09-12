@@ -192,13 +192,28 @@ dunkel = fb._darken(fm.C_BG, 0.55)
 kw, kh, versatz, radius = 769, 945, 3 * s, 4 * s
 
 
-def zeit(fn, n=30):
+def zeit(fn, n=30, runden=5):
+    """Bestes Ergebnis aus mehreren Durchgaengen, nicht der Mittelwert.
+
+    GEAENDERT (Build 114): der Mittelwert machte diesen Test unter Last
+    unzuverlaessig - laeuft die ganze Suite hintereinander, sank der
+    gemessene Faktor schon mal von 1,8 auf 1,3 und der Test wurde rot,
+    ohne dass sich am Code etwas geaendert hatte. Ein roter Test, der
+    nichts bedeutet, ist schlimmer als gar keiner: man gewoehnt sich
+    an, ihn zu ignorieren. Das Minimum ist bei Mikromessungen ohnehin
+    die ehrlichere Zahl - Stoerungen von aussen koennen nur bremsen,
+    nie beschleunigen."""
     for _ in range(5):
         fn()
-    t0 = time.perf_counter()
-    for _ in range(n):
-        fn()
-    return (time.perf_counter() - t0) / n * 1000
+    bestes = None
+    for _ in range(runden):
+        t0 = time.perf_counter()
+        for _ in range(n):
+            fn()
+        dauer = (time.perf_counter() - t0) / n * 1000
+        if bestes is None or dauer < bestes:
+            bestes = dauer
+    return bestes
 
 
 t_alt = zeit(lambda: fb.rect_rounded(40 + versatz, 20 + versatz, kw, kh,

@@ -248,18 +248,26 @@ TRANSLATIONS = {
     "help_nav_search_key": {"en": "/ or F2 (keyboard), Select+A (pad)",
                             "de": "/ oder F2 (Tastatur), Select+A (Pad)"},
     "help_nav_search_desc":
-        {"en": "Search the game list, jumps to the first match. Started from the pad "
+        {"en": "Search the game list, jumps to the first match. Up/down step through "
+               "the matches, the bar counts them (3/17). Started from the pad "
                "an on-screen letter grid opens (A picks, B goes back, the OK field "
                "finishes)",
-         "de": "Spieleliste durchsuchen, springt zum ersten Treffer. Vom Pad aus "
-               "erscheint ein Buchstabenraster auf dem Bildschirm (A wählt, B zurück, "
-               "das Feld OK beendet)"},
+         "de": "Spieleliste durchsuchen, springt zum ersten Treffer. Hoch/runter "
+               "blättert durch die Treffer, der Balken zählt sie mit (3/17). Vom Pad "
+               "aus erscheint ein Buchstabenraster auf dem Bildschirm (A wählt, "
+               "B zurück, das Feld OK beendet)"},
+    # Build 114: F3/F4 waren die letzten unbelegten Funktionstasten.
+    "help_nav_ends_key": {"en": "F3 / F4 (keyboard), Select+L / Select+R (pad)",
+                          "de": "F3 / F4 (Tastatur), Select+L / Select+R (Pad)"},
+    "help_nav_ends_desc": {"en": "Jump to the start / the end of the list",
+                           "de": "An den Anfang / ans Ende der Liste springen"},
     "help_nav_select_key": {"en": "Select (pad)", "de": "Select (Pad)"},
     "help_nav_select_desc": {"en": "Shows the combos; held down it is the modifier "
-                                   "for Select+A and Select+X (B goes back)",
+                                   "for Select+A, Select+X and Select+L/R "
+                                   "(B goes back)",
                              "de": "Zeigt die Kombinationen an; GEHALTEN ist Select "
-                                   "der Umschalter für Select+A und Select+X "
-                                   "(zurück geht B)"},
+                                   "der Umschalter für Select+A, Select+X und "
+                                   "Select+L/R (zurück geht B)"},
     "help_section_list": {"en": "In the game list", "de": "In der Spieleliste"},
     "help_list_showcase_key": {"en": "F6 (keyboard), Select+X (pad)",
                                "de": "F6 (Tastatur), Select+X (Pad)"},

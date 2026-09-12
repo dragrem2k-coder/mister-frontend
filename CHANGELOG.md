@@ -7,6 +7,70 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Wo bin ich in der Liste? Drei Antworten** (Build 114):
+
+**1. Die Fußzeile zeigt jetzt „142/3500".** Bisher nannte die Kopfzeile
+nur die Gesamtzahl — bei 3500 Einträgen sagte nichts, ob man bei 5 %
+oder 80 % steht. Die Zahl steht rechts, der Musiktitel rückt
+entsprechend früher zu Ende. Passt die ganze Liste ohnehin auf den
+Schirm, bleibt die Anzeige weg; sie wäre dann nur Beiwerk und nähme auf
+der Röhre dem Titel den Platz.
+
+**2. Die Suche kann endlich einen zweiten Treffer.** Bisher beendete im
+Suchmodus jede Taste außer Buchstaben die Suche stillschweigend — auch
+hoch und runter. Traf „mario" das falsche Mario, kam man nur weiter,
+indem man mehr tippte. Jetzt blättern hoch und runter durch die
+Treffer, die Suche bleibt dabei offen, und der Suchbalken zählt mit:
+„3/17". Man sieht also auch, ob sich Weitersuchen überhaupt lohnt.
+
+**3. F3 und F4 springen an den Anfang bzw. ans Ende der Liste**, am Pad
+Select+L und Select+R. Das waren die letzten im Frontend völlig
+unbelegten Funktionstasten, und L/R springen ohnehin schon seitenweise
+— mit Select dazu eben ganz an den Rand. Die Hilfeseite führt beides
+auf.
+
+**Was dabei nebenbei herauskam — der Zeichenpfad ist zum ersten Mal
+bitgenau.** `diag_lightpath.py` vergleicht seit Build 64, ob ein
+Einzelschritt dasselbe Bild hinterlässt wie ein vollständiger
+Neuaufbau. Seither standen dort **22 von 34 Fällen und rund 25.000
+abweichende Bildpunkte** als „bekannt, auf echter Hardware nicht
+sichtbar, nicht aufgeklärt". Die Notiz von damals war näher dran, als
+sie klang: die Abweichungen lägen „fast alle auf einer einzigen
+Bildzeile am unteren Rand der Boxart-Karte".
+
+Es war der **Schlagschatten der Boxart-Karte**, der drei Bildzeilen weit
+in das Fußband hineinragt. Der volle Aufbau räumt ihn weg, weil er die
+Fußzeile ohnehin wiederherstellt; der leichte Pfad fasste die Fußzeile
+nie an. Dazu kam die stehengebliebene Laufschrift. Weil die
+Positionsanzeige den leichten Pfad zwingt, die Fußzeile mitzunehmen,
+sind beide Ursachen weg: **0 von 34 Fällen, 0 abweichende Bildpunkte.**
+
+Die Sorge um die Kosten war unbegründet und ist nachgemessen: das ganze
+Fußband wiederherzustellen kostet 0,013 ms gegen 0,008 ms für nur das
+Zahlenfeld — `_restore_row_bg()` arbeitet aus einer fertigen
+Hintergrundzeile, die Breite fällt kaum ins Gewicht. Die erste Fassung
+hatte trotzdem nur das schmale Feld aufgefrischt, aus Rücksicht auf die
+Builds 102–110; der Pixelvergleich hat das widerlegt.
+
+**Die Stelle, an der es hätte klemmen können**, ist nicht die Anzeige,
+sondern der Trefferzähler: um „3/17" zu schreiben, muss die *ganze*
+Liste durchsucht werden, statt beim ersten Treffer aufzuhören. Über
+12.605 Namen sind das 21,8 ms — pro Tastendruck, auf der MiSTer-CPU
+entsprechend mehr. Deshalb nimmt die Namensnormalisierung für reines
+ASCII eine Abkürzung (`unicodedata.normalize()` ist dort die Identität,
+übrig bleibt `.lower()`): 1,6 ms statt 21,8. Dass das wirklich dasselbe
+Ergebnis liefert, ist über alle 128 ASCII-Zeichen plus 3000
+Zufallstexte mit Umlauten und CJK nachgewiesen, und der neue Sprung ist
+über 1000 Zufallsfälle gegen die alte Funktion gestellt — dieselbe
+Beweisform wie beim Cover-Index in Build 110.
+
+Am Rande: `test_cover_panel.py` maß seine Geschwindigkeitszusage als
+Mittelwert und wurde dadurch rot, wenn die ganze Suite unter Last lief
+(Faktor 1,3 statt 1,8, ohne Codeänderung). Jetzt das Minimum aus
+mehreren Durchgängen — bei Mikromessungen ohnehin die ehrlichere Zahl,
+denn Störungen von außen können nur bremsen.
+
+
 **Der Bildrand lässt sich jetzt im Menü einstellen** (Build 113):
 
 Abgeschaut bei Degauss, wo Randbreite und Bildlage einstellbar sind.

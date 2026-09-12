@@ -896,7 +896,8 @@ from fe.translations import TRANSLATIONS, t, set_language, current_lang
 
 
 from fe.menu import system_items, FRONTEND_VERSION
-from fe.search import jump_to_substring, jump_to_letter
+from fe.search import (jump_to_letter, treffer_suchen,
+                       treffer_ab, treffer_davor, treffer_rang)
 # FRONTEND
 # ----------------------------------------------------------------------------
 
@@ -1562,6 +1563,12 @@ class Frontend:
         # Anfangsbuchstaben-Sprung) - siehe jump_to_substring().
         self._search_mode = False
         self._search_query = ""
+        # NEU (Build 114): alle Treffer der laufenden Suche, in
+        # Listenreihenfolge. Bisher kannte die Suche nur "irgendein
+        # Treffer" - traf sie das falsche "Mario", kam man nur weiter,
+        # indem man mehr tippte. Mit der vollstaendigen Liste gibt es
+        # voriger/naechster Treffer und die Anzeige "3/17".
+        self._such_treffer = []
         # NEUES FEATURE (Build 88, Nutzerwunsch "Suche per Pad"): der
         # Buchstabenwaehler auf dem Bildschirm. Nur aktiv, wenn die
         # Suche ueber die Pad-Kombination Select+A gestartet wurde - wer
@@ -3372,6 +3379,17 @@ class Frontend:
         W, H = fb.width, fb.height
         s = max(1, H // 360)
         label = t("search_prompt") + self._search_query + "_"
+        # NEU (Build 114): Trefferzaehler. Ohne ihn weiss man nicht, ob
+        # sich Weitersuchen ueberhaupt lohnt - und genau das ist die
+        # Frage, sobald hoch/runter durch die Treffer blaettert.
+        # Bewusst nur Ziffern, keine Woerter: das braucht keine
+        # Uebersetzung und keinen Platz, den es auf der Roehre nicht
+        # gibt.
+        if self._search_query:
+            anzahl = len(self._such_treffer)
+            rang = treffer_rang(self._such_treffer,
+                                self.cat_i if self.page == 0 else self.item_i)
+            label += "  %d/%d" % (rang, anzahl)
         scale = self._fit_scale(label, W - 40 * s, s + 1)
         bar_h = 22 * scale
         fb.rect(0, 0, W, bar_h, accent_for(None))
@@ -4300,7 +4318,97 @@ class Frontend:
             y1 = max(r[1] for r in regions)
             fb.flip_rows(y0, y1 - y0,
                          skip_vsync=self._vsync_ueberspringen(y1 - y0))
+        # NEU (Build 114): die Positionsanzeige aendert sich bei GENAU
+        # diesem Schritt - stuende sie nur im vollen Aufbau, zeigte sie
+        # beim Durchblaettern dauerhaft eine veraltete Zahl. Bewusst
+        # NACH dem Sammel-Flip und mit eigenem, schmalem Band, siehe
+        # _position_auffrischen().
+        _L = self.layout_items(has_art)
+        self._position_auffrischen(_L["ox"], _L["footer_y"], _L["s"])
         return True
+
+    def _positionstext(self):
+        """"142/3500" fuer die rechte Ecke der Fusszeile - oder "" wenn
+        die Anzeige nichts beitraegt.
+
+        NUTZERWUNSCH (Build 114, aus IDEEN_Bedienbarkeit Punkt 2): die
+        Kopfzeile nennt nur die Gesamtzahl. Bei 3500 Eintraegen sagt
+        nichts, ob man bei 5 % oder 80 % steht.
+
+        Leer bleibt sie, wenn ohnehin die ganze Liste auf den Schirm
+        passt - dann waere die Zahl reines Beiwerk und nimmt auf der
+        Roehre nur dem Songtitel den Platz weg."""
+        v = getattr(self, "view", None)
+        if self.page != 1 or not v or not v.get("items"):
+            return ""
+        gesamt = len(v["items"])
+        if gesamt <= max(1, getattr(self, "items_visible", 0)):
+            return ""
+        return "%d/%d" % (min(self.item_i + 1, gesamt), gesamt)
+
+    def _positionsfeld(self, ox, s):
+        """(x, breite) des Feldes fuer die Positionsanzeige.
+
+        Bemessen nach der GESAMTZAHL, nicht nach der gerade angezeigten
+        Zahl: beim Wechsel von "1420/3500" auf "999/3500" wuerde sonst
+        die letzte Ziffer der laengeren Zahl stehenbleiben, weil der
+        leichte Pfad nur das freiraeumt, was er selbst beschreibt."""
+        v = getattr(self, "view", None)
+        gesamt = len(v["items"]) if v and v.get("items") else 0
+        zeichen = 2 * len(str(max(1, gesamt))) + 1
+        breite = zeichen * 8 * s
+        return self.fb.width - ox - breite, breite
+
+    def _position_zeichnen(self, ox, footer_y, s):
+        """Positionsanzeige rechts in die Fusszeile. Liefert die Breite
+        des belegten Feldes (0, wenn nichts gezeichnet wurde), damit der
+        Songtitel links entsprechend frueher endet."""
+        text = self._positionstext()
+        if not text:
+            return 0
+        feld_x, feld_w = self._positionsfeld(ox, s)
+        # Rechtsbuendig im festen Feld - die Zahl waechst nach links,
+        # der rechte Rand bleibt stehen.
+        breite = len(text) * 8 * s
+        self.fb.text(feld_x + feld_w - breite, footer_y, text, s, C_DIM)
+        return feld_w
+
+    def _position_auffrischen(self, ox, footer_y, s):
+        """Fusszeile im leichten Navigationspfad auffrischen, damit die
+        Positionsanzeige nicht veraltet - sie aendert sich ja bei genau
+        diesem Schritt.
+
+        ZUERST STAND HIER, nur das schmale Zahlenfeld freizuraeumen -
+        aus Sorge um den Zeichenpfad, um den es in den Builds 102-110
+        ging. Der Pixelvergleich (tools/test_crt_layout.py) hat das
+        widerlegt und dabei etwas Aelteres aufgedeckt: das Boxart-Panel
+        malt seinen Schlagschatten drei Bildzeilen weit in das
+        Fussband hinein. Der volle Aufbau raeumt das hinterher weg, der
+        leichte Pfad nicht - solange er das Band nie auf den Schirm
+        kopierte, fiel es nicht auf. Sobald er es tut, muss er es auch
+        sauber hinterlassen.
+
+        Und die Sorge war unbegruendet: gemessen kostet das GANZE Band
+        0,013 ms gegen 0,008 ms fuers Zahlenfeld - _restore_row_bg()
+        arbeitet aus einer fertigen Hintergrundzeile, die Breite faellt
+        kaum ins Gewicht. Also derselbe eine Weg wie beim vollen
+        Aufbau, statt einer zweiten Wahrheit fuer ein halbes
+        Hunderstel.
+
+        Eigener flip_rows()-Aufruf statt Aufnahme in die Sammelregion
+        des Aufrufers: die Fusszeile liegt am unteren Bildrand, die
+        Zeilen liegen oben. Beides in EINE Region zu legen hiesse, bei
+        jedem Schritt fast den ganzen Bildschirm zu kopieren. Das Band
+        ist schmal genug, dass _vsync_ueberspringen() greift."""
+        # Dieselbe Ruecksicht wie beim Laufschrift-Tick: eine gerade
+        # gezeigte Meldung teilt sich diese Zeile und darf nicht binnen
+        # Millisekunden weggeputzt werden.
+        if time.monotonic() < self._popup_message_until:
+            return
+        h = 8 * s
+        self._fusszeile_zeichnen(ox, footer_y, s)
+        self.fb.flip_rows(footer_y, h,
+                          skip_vsync=self._vsync_ueberspringen(h))
 
     def _fusszeile_zeichnen(self, ox, footer_y, s, message=None):
         """Die Fusszeile auffrischen: Hintergrund wiederherstellen und
@@ -4331,10 +4439,15 @@ class Frontend:
             msg_w = len(message) * 8 * msg_scale
             fb.text((W - msg_w) // 2, footer_y, message, msg_scale, C_DIM)
             return
+        # Positionsanzeige zuerst - sie bestimmt, wie viel Platz dem
+        # Songtitel links davon bleibt. Andersherum ueberschrieben sich
+        # die beiden bei langen Titeln.
+        pos_w = self._position_zeichnen(ox, footer_y, s)
         # Songtitel als Laufschrift in der Fusszeile - bleibt so an
         # derselben Stelle sichtbar, egal ob/wie viel Platz das
         # Boxart-Panel gerade braucht.
-        foot_maxc = max(0, (W - 2 * ox) // (8 * s))
+        abstand = 2 * 8 * s if pos_w else 0
+        foot_maxc = max(0, (W - 2 * ox - pos_w - abstand) // (8 * s))
         if foot_maxc >= 6:
             track_display = self.track_marquee_text(foot_maxc)
             if track_display:
@@ -4534,14 +4647,16 @@ class Frontend:
             L = self.layout_items(
                 self.hat_artspalte(v["items"], v.get("syskey")))
             ox, footer_y = L["ox"], L["footer_y"]
-            foot_maxc = max(0, (W - 2 * ox) // (8 * s))
-            if foot_maxc < 6:
+            if max(0, (W - 2 * ox) // (8 * s)) < 6:
                 return
             h = 8 * s
-            self._restore_row_bg(ox, footer_y, W - 2 * ox, h)
-            track_display = self.track_marquee_text(foot_maxc)
-            if track_display:
-                fb.text(ox, footer_y, track_display, s, C_DIM)
+            # GEAENDERT (Build 114): hier stand eine zweite, eigene
+            # Fassung derselben Fusszeile. Seit die Zeile rechts
+            # ausserdem die Positionsanzeige traegt, waeren das zwei
+            # Wahrheiten darueber, was da unten steht - dieser Tick
+            # haette die Zahl bei jedem Laufschrift-Schritt weggeputzt.
+            # Jetzt derselbe eine Weg wie beim vollen Aufbau.
+            self._fusszeile_zeichnen(ox, footer_y, s)
             fb.flip_rows(footer_y, h, skip_vsync=self._vsync_ueberspringen(h))
 
     def _draw_status_bar(self, L):
@@ -9463,6 +9578,7 @@ class Frontend:
             ("header", "help_section_nav"), ("item", "help_nav_move"),
             ("item", "help_nav_ok"), ("item", "help_nav_back"),
             ("item", "help_nav_letter"), ("item", "help_nav_search"),
+            ("item", "help_nav_ends"),
             ("item", "help_nav_select"),
             ("header", "help_section_list"), ("item", "help_list_showcase"),
             ("item", "help_list_completed"), ("item", "help_list_favorite"),
@@ -11143,17 +11259,31 @@ class Frontend:
                     names = ([c[0] for c in self.cats] if self.page == 0
                              else [it[0] for it in items] if items else [])
 
-                    def _springen(anfrage, ab):
-                        """Sprung ans Ergebnis - dieselbe Rechnung fuer
-                        Tastatur und Buchstabenwaehler, damit beide Wege
-                        garantiert dasselbe tun."""
-                        ziel = jump_to_substring(names, ab, anfrage) \
-                            if anfrage else ab
+                    def _setzen(ziel):
                         if self.page == 0:
                             self.cat_i = ziel
                         elif items:
                             self.item_i = ziel
                             self.marquee_reset()
+
+                    def _springen(anfrage, ab):
+                        """Sprung ans Ergebnis - dieselbe Rechnung fuer
+                        Tastatur und Buchstabenwaehler, damit beide Wege
+                        garantiert dasselbe tun.
+
+                        GEAENDERT (Build 114): gerechnet wird jetzt ueber
+                        die vollstaendige Trefferliste statt ueber
+                        jump_to_substring(). Das Ergebnis ist dasselbe
+                        (in tools/test_suchtreffer.py gegen die alte
+                        Funktion nachgewiesen), aber die Liste wird
+                        ohnehin fuer "naechster Treffer" und den Zaehler
+                        gebraucht - sie zweimal zu ermitteln waere bei
+                        12.605 Eintraegen die teuerste Stelle im
+                        Suchpfad."""
+                        self._such_treffer = treffer_suchen(names, anfrage)
+                        ziel = treffer_ab(self._such_treffer, ab) \
+                            if anfrage else ab
+                        _setzen(ab if ziel < 0 else ziel)
 
                     # NEUES FEATURE (Build 88): der Buchstabenwaehler.
                     # Bewusst VOR der Tastatur-Behandlung darunter, aber
@@ -11201,23 +11331,31 @@ class Frontend:
 
                     if act == "search_backspace":
                         self._search_query = self._search_query[:-1]
-                        idx = jump_to_substring(names, self._search_start_i, self._search_query) \
-                            if self._search_query else self._search_start_i
-                        if self.page == 0:
-                            self.cat_i = idx
-                        elif items:
-                            self.item_i = idx
+                        _springen(self._search_query, self._search_start_i)
                         self.draw()
                         continue
                     elif act is not None and act.startswith("letter:"):
                         self._search_query += act.split(":", 1)[1]
+                        _springen(self._search_query,
+                                  self.cat_i if self.page == 0
+                                  else self.item_i)
+                        self.draw()
+                        continue
+                    elif act in ("up", "down") and self._such_treffer:
+                        # NEUES FEATURE (Build 114, aus
+                        # IDEEN_Bedienbarkeit Punkt 3): voriger/
+                        # naechster Treffer. Bisher beendete hoch/runter
+                        # die Suche stillschweigend - traf "mario" das
+                        # falsche Mario, kam man nur weiter, indem man
+                        # mehr tippte. Die Suche BLEIBT dabei offen,
+                        # man kann also weitertippen oder mit Enter an
+                        # der gefundenen Stelle aussteigen.
                         cur = self.cat_i if self.page == 0 else self.item_i
-                        idx = jump_to_substring(names, cur, self._search_query)
-                        if self.page == 0:
-                            self.cat_i = idx
-                        elif items:
-                            self.item_i = idx
-                            self.marquee_reset()
+                        ziel = (treffer_ab(self._such_treffer, cur + 1)
+                                if act == "down"
+                                else treffer_davor(self._such_treffer, cur))
+                        if ziel >= 0:
+                            _setzen(ziel)
                         self.draw()
                         continue
                     elif act == "ok":
@@ -11247,6 +11385,7 @@ class Frontend:
                 elif act in ("search", "search_pad"):
                     self._search_mode = True
                     self._search_query = ""
+                    self._such_treffer = []
                     # NEU (Build 88): "search_pad" kommt ausschliesslich
                     # aus der Kombination Select+A am Pad (siehe
                     # SELECT_COMBOS in fe/input.py). Nur dann erscheint
@@ -11515,6 +11654,26 @@ class Frontend:
                     elif items:
                         self.item_i = (self.item_i + page_step) % len(items)
                         self.marquee_reset()
+                elif act in ("list_start", "list_end"):
+                    # NEUES FEATURE (Build 114, aus IDEEN_Bedienbarkeit
+                    # Punkt 3): an den Anfang / ans Ende. Bei 3500
+                    # Eintraegen ist das mehr wert, als es klingt -
+                    # bisher blieb nur seitenweises Blaettern oder der
+                    # Umweg ueber die Rundum-Navigation (einmal hoch
+                    # vom ersten Eintrag).
+                    #
+                    # F3 und F4 waren im Frontend bis heute unbelegt
+                    # (siehe Kommentar bei KEY_F2 in fe/input.py), am
+                    # Pad liegt es auf Select+L bzw. Select+R - also
+                    # dort, wo L/R ohnehin schon seitenweise springen.
+                    anzahl = len(self.cats) if self.page == 0 else len(items)
+                    if anzahl:
+                        ziel = 0 if act == "list_start" else anzahl - 1
+                        if self.page == 0:
+                            self.cat_i = ziel
+                        else:
+                            self.item_i = ziel
+                            self.marquee_reset()
                 elif act.startswith("letter:"):
                     # Direktsprung per Tastatur: Buchstabentaste druecken
                     # springt zum naechsten passenden Eintrag, erneutes

@@ -54,6 +54,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_hauptseite_spuren.py \
   && python3 tools/test_kernel_wechsel.py \
   && python3 tools/test_bildrand.py \
+  && python3 tools/test_suchtreffer.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -97,6 +98,7 @@ python3 tools/regression_test.py \
 | `test_hauptseite_spuren.py` | Test (Pass/Fail) | Hauptseite ohne Vollbild-Clear: bitgenau wie der volle Aufbau, auch nach 30 Schritten, bei kuerzerem Songtitel und wegfallendem Netzwerk |
 | `test_kernel_wechsel.py` | Test (Pass/Fail) | Bildspeicher wird auf beiden MiSTer-Kerneln erkannt - sysfs zuerst, ioctl als Rueckfall |
 | `test_bildrand.py` | Test (Pass/Fail) | Einstellbarer Bildrand: Vorgabe unveraendert, kaputte Datei faellt zurueck, und der Wert kommt wirklich im Layout an |
+| `test_suchtreffer.py` | Test (Pass/Fail) | Positionsanzeige und Trefferwechsel: ASCII-Abkuerzung bewiesen gleichwertig, neuer Sprung trifft dasselbe wie der alte, leichter Pfad bitgleich |
 | `diag_vorauslader.py` | Diagnose (immer Rueckgabewert 0) | Was der Vorauslader dem Zeichnen wegnimmt - Thread gegen Prozess |
 | `diag_zeilen_spuren.py` | Diagnose (immer Rueckgabewert 0) | Was das gezielte Freiraeumen bringt - ganze Spalte gegen Spuren |
 | `diag_hintergrundlast.py` | Diagnose (immer Rueckgabewert 0) | Was pro Tastendruck wirklich passiert: Dateizugriffe, Log-Zeilen, doppelte Arbeit |
@@ -913,30 +915,78 @@ alle Stufen und dreht um; und der Layout-Zwischenspeicher wird beim
 Umschalten geleert - ohne das bliebe die alte Aufteilung stehen und die
 Einstellung waere sichtbar wirkungslos.
 
+## test_suchtreffer.py
+
+Deckt zwei Aenderungen aus Build 114 ab, die dieselbe Frage
+beantworten - wo bin ich gerade?
+
+**Die Positionsanzeige** ("142/3500" rechts in der Fusszeile). Getestet
+wird nicht die Zeichenkette, sondern das Bild, auf CRT und HDMI. Zwei
+Punkte, die man leicht uebersieht:
+
+- Das Feld wird nach der GESAMTZAHL bemessen, nicht nach der gerade
+  angezeigten Zahl. Sonst bliebe beim Wechsel von "1420/3500" auf
+  "999/3500" die letzte Ziffer der laengeren Zahl stehen.
+- Test 6 ist der eigentliche Test: die Zahl aendert sich bei genau dem
+  Schritt, den der LEICHTE Zeichenpfad bedient. Stuende sie nur im
+  vollen Aufbau, zeigte sie beim Durchblaettern dauerhaft etwas
+  Veraltetes. Geprueft wird deshalb ueber fuenf Schritte hinweg
+  bitgenau gegen den vollen Aufbau.
+
+**Der Trefferwechsel** (hoch/runter blaettert durch die Suchtreffer,
+der Balken zaehlt mit). Hier liegt das Risiko in der Leistung: die
+Zaehlung muss die GANZE Liste normalisieren, statt beim ersten Treffer
+aufzuhoeren. Ueber 12.605 Namen waren das 21,8 ms pro Tastendruck - auf
+der MiSTer-CPU unbenutzbar. Die Abkuerzung fuer reines ASCII
+(`unicodedata.normalize()` ist dort die Identitaet, uebrig bleibt
+`.lower()`) bringt das auf 1,6 ms.
+
+Test 1 weist die Gleichwertigkeit ueber alle 128 ASCII-Zeichen plus
+3000 Zufallstexte mit Umlauten und CJK nach - dieselbe Beweisform wie
+beim Cover-Index in Build 110, weil auch hier eine Abkuerzung eine
+korrekte Funktion ersetzt. Test 2 vergleicht den neuen Sprung ueber
+1000 Zufallsfaelle gegen die alte `jump_to_substring()`: die Suche
+muss sich nach dem Umbau genauso verhalten wie vorher. Test 8 misst
+nach, dass die Abkuerzung ueberhaupt etwas bringt - ohne diese Messung
+waere Test 1 nur eine Gleichheitsaussage ueber zwei Funktionen, von
+denen eine grundlos existiert.
+
 ## diag_lightpath.py
 
 DIAGNOSE, kein Pass/Fail-Test. Prueft die zentrale Annahme hinter dem
 schnellen Zeichenpfad: ein Einzelschritt bzw. ein Puls-Tick muss dasselbe
 Bild hinterlassen wie ein VOLLER Neuaufbau desselben Zustands.
 
-Aktueller Stand: **22 von 34 verglichenen Faellen weichen ab**, zusammen
-rund 28.000 Bildpunkte.
+Aktueller Stand seit Build 114: **0 von 34 Faellen weichen ab.**
 
-Die Fallzahl allein taeuscht: als der Vignette-Fehler in
-`draw_list_row()` behoben wurde (siehe CHANGELOG, Build 64), fiel sie
-nur von 24 auf 22 - im direkt nachgemessenen Scroll-Versuch fielen die
-abweichenden BILDPUNKTE dagegen von 2.785 auf 107 (CRT) bzw. von 105.717
-auf 2.190 (HDMI). Deshalb gibt das Skript beide Zahlen aus. Die
-verbliebenen Abweichungen liegen fast alle auf einer einzigen Bildzeile
-am unteren Rand der Boxart-Karte. Diese
-Abweichungen sind bekannt, auf echter Hardware bisher NICHT sichtbar und
-noch nicht aufgeklaert. Als Pass/Fail-Test wuerde das Skript deshalb
-dauerhaft rot stehen und den Regressionslauf entwerten - es liefert
-stattdessen immer den Rueckgabewert 0 und dient als Messinstrument:
+Das war jahrelang anders. Die Fallzahl allein taeuschte dabei: als der
+Vignette-Fehler in `draw_list_row()` behoben wurde (siehe CHANGELOG,
+Build 64), fiel sie nur von 24 auf 22 - im direkt nachgemessenen
+Scroll-Versuch fielen die abweichenden BILDPUNKTE dagegen von 2.785 auf
+107 (CRT) bzw. von 105.717 auf 2.190 (HDMI). Deshalb gibt das Skript
+beide Zahlen aus.
+
+Der REST (22 Faelle, rund 25.000 Bildpunkte) galt als „bekannt, auf
+echter Hardware nicht sichtbar, nicht aufgeklaert" und lag laut
+damaliger Notiz „fast alle auf einer einzigen Bildzeile am unteren Rand
+der Boxart-Karte". Das war naeher dran, als es klang: der Schlagschatten
+der Boxart-Karte reicht drei Bildzeilen weit in das Fussband hinein. Der
+volle Aufbau raeumt das hinterher weg (`_fusszeile_zeichnen()` stellt
+das ganze Band wieder her), der leichte Pfad fasste die Fusszeile gar
+nicht an - dazu kam die stehengebliebene Laufschrift. Seit der leichte
+Pfad die Fusszeile mitnimmt (Build 114, noetig fuer die
+Positionsanzeige), sind beide Ursachen weg und der Vergleich ist
+bitgenau.
+
+**Damit ist das Skript zu einem echten Pass/Fail-Kandidaten geworden** -
+bewusst noch nicht umgestellt: eine Null will erst ein paar Builds lang
+halten, bevor man den Regressionslauf davon abhaengig macht. Es liefert
+weiterhin immer den Rueckgabewert 0 und dient als Messinstrument:
 
 > WEDER die Zahl der Faelle NOCH die Zahl abweichender Bildpunkte darf
 > bei Aenderungen am Zeichenpfad steigen - die zweite ist dabei die
-> aussagekraeftigere.
+> aussagekraeftigere. Seit Build 114 heisst das: beide muessen 0
+> bleiben.
 
 Vor und nach einer Aenderung ausfuehren und BEIDE Zeilen
 (`Abweichungen` und `Abweichende Punkte`) vergleichen.
