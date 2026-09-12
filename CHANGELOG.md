@@ -7,6 +7,72 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Das träge Hauptmenü direkt nach dem Start** (Build 107):
+
+Rückmeldung: „Warum ist nach einem Neustart das Hauptmenü so träge? Das
+Scrollen ist total langsam, wird erst nach ein paar Sekunden besser."
+
+**Gefunden — und es war ein einziger regulärer Ausdruck.** Beim Start
+baut `_art_index()` für jedes System ein Verzeichnis „Spielname →
+Coverdatei" auf, in `art/` **und** `art_hd/`. Je Datei lief dabei ein
+`re.sub(r"^\d+\s+", …)`, um eine führende Sortiernummer zu entfernen.
+Bei einer großen Sammlung sind das sechsstellig viele Aufrufe — reines
+Python, also **GIL-haltend**, genau in den Sekunden, in denen jemand
+das frisch gestartete Menü bedient.
+
+Nachgemessen an 48 Systemen zu je 1500 Covern:
+
+| | |
+|---|---|
+| Index-Aufbau gesamt | 0,129 s |
+| davon nur `re.sub` | 0,090 s (**69 %**) |
+| Ersatz ohne regulären Ausdruck | 0,026 s (**4× schneller**) |
+
+Auf der deutlich langsameren MiSTer-CPU sind aus diesen 0,129 s
+mehrere Sekunden — das sind die „paar Sekunden" aus der Meldung.
+
+Der Trick ist unspektakulär: die allermeisten Cover-Namen fangen gar
+nicht mit einer Ziffer an, und für die ist nach **einer** Prüfung
+Schluss. **Gleichwertigkeit ist hier aber nicht verhandelbar** — eine
+Abweichung stürzt nicht ab und malt nichts falsch, sie zeigt irgendwann
+bei irgendeinem Spiel das falsche Cover, und niemand bringt das je mit
+dieser Funktion in Verbindung. `tools/test_cover_index.py` prüft
+deshalb nicht ein paar Beispiele, sondern **alle 65536 Zeichen der
+Basic Multilingual Plane in vier Stellungen**: null Abweichungen. Dabei
+fiel auch auf, warum es `isdecimal()` sein muss und nicht das
+naheliegendere `isdigit()` — `\d` trifft genau die Dezimalziffern,
+`isdigit()` zusätzlich Dinge wie die hochgestellte Zwei.
+
+**Zweite Hälfte: der Start-Thread steckt jetzt zurück.** Auch viermal
+schneller ist auf der schwachen CPU noch spürbar, wenn es am Stück
+durchläuft. Solange bedient wird, tut der Thread nichts — Vorwärmen ist
+reine Vorratshaltung, und ein Cover-Ordner wird erst gebraucht, wenn
+jemand in das System hineingeht.
+
+**Die erste Fassung davon war falsch, und das Nachmessen hat es
+gefangen:** sie wartete nur auf eine Ruhephase und blieb prompt bei
+**null** eingelesenen Systemen stehen. Bei gehaltener Taste wiederholt
+die Eingabe alle 0,08 s, die Ruhe-Schwelle liegt bei 0,10 s — es kommt
+schlicht nie eine Ruhephase zustande. Wer nach dem Start zehn Sekunden
+durchscrollt, hätte danach jeden Ordner immer noch kalt gehabt. Jetzt
+mit Obergrenze (`PREWARM_MAX_WARTEN`): nach zwei Sekunden wird ein
+System eingelesen, auch wenn gerade bedient wird. Fortschritt ist damit
+garantiert, die Last bleibt ein Happen alle zwei Sekunden statt
+sekundenlang am Stück.
+
+*Ehrlich zur Messung:* der Effekt aufs Zeichnen ließ sich auf dem
+Entwicklungsrechner **nicht** nachweisen — dort dauert der ganze
+Index-Aufbau 0,129 s, verteilt über Sekunden ist das unsichtbar.
+Belegt sind die Bausteine (69 % Anteil, Faktor 4, garantierter
+Fortschritt), nicht das Endergebnis auf deiner Hardware.
+
+*Und noch ein Eigentor beim Messen, für die Nachwelt:* die erste
+Messreihe meldete hartnäckig „null Systeme", obwohl die Obergrenze
+schon drin war. Ursache war nicht der Code, sondern die Test-Attrappe —
+sie friert `time.monotonic()` **prozessweit** ein, und das Messskript
+hatte damit gerechnet. Mit `time.perf_counter()` gemessen greift die
+Obergrenze wie vorgesehen.
+
 **Die Kategorie-Abzeichen werden beim Start auf dem zweiten Kern
 gerechnet** (Build 106):
 

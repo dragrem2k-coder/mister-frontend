@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-11-106",
-  "summary": "Die 57 Kategorie-Abzeichen werden beim Start jetzt auf dem zweiten CPU-Kern gerechnet statt im Hintergrund-Thread - das Hauptmenue zeichnet dabei wieder so schnell wie im Leerlauf. Das Einlesen der Cover-Ordner bleibt bewusst ein Thread: das wartet auf die SD-Karte, nicht auf die CPU."
+  "build_id": "2026-09-11-107",
+  "summary": "Das traege Hauptmenue direkt nach dem Start ist behoben: der Cover-Index kommt ohne regulaeren Ausdruck aus (viermal schneller, bewiesen gleichwertig) und das Vorwaermen der Ordner steckt zurueck, solange bedient wird - statt sekundenlang am Stueck die CPU zu belegen."
 }

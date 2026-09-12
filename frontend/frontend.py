@@ -101,6 +101,14 @@ CRASHLOG = "/media/fat/frontend_crash.log"
 # der Auftragsliste bei jedem Schritt waere nur Arbeit im Hauptthread.
 PREWARM_SETTLE = 0.10
 
+# Wie lange das Vorwaermen der Cover-Ordner beim Start hoechstens auf
+# eine Ruhephase wartet, bevor es trotzdem EIN System einliest (siehe
+# _prewarm_art_dirs()). Ohne diese Obergrenze bliebe es bei gehaltener
+# Taste dauerhaft stehen - nachgemessen: null eingelesene Systeme,
+# weil die Tastenwiederholung (0.08 s) schneller ist als
+# PREWARM_SETTLE.
+PREWARM_MAX_WARTEN = 2.0
+
 # --- Stream-Overlay (optional, siehe stream_server.py) -----------------
 STREAM_ENABLED_FILE = "/media/fat/frontend/stream_enabled"
 STREAM_CONFIG_FILE  = "/media/fat/frontend/stream_config.json"
@@ -1215,9 +1223,68 @@ class Frontend:
         # in einer Schleife zusammenlagen.
         def _prewarm_art_dirs():
             for _name, _node, _syskey in self.cats:
-                if _syskey:
-                    _art_index(ART_BASE, _syskey)
-                    _art_index(ART_HD, _syskey)
+                if not _syskey:
+                    continue
+                # NEU (Build 107, Nutzer-Rueckmeldung: "warum ist nach
+                # einem Neustart das Hauptmenue so traege? Das Scrollen
+                # ist total langsam, wird erst nach ein paar Sekunden
+                # besser").
+                #
+                # os.listdir() selbst wartet nur auf die SD-Karte und
+                # gibt die GIL dabei frei - unkritisch. Was danach
+                # kommt, ist es nicht: aus der Dateiliste wird ein
+                # Verzeichnis gebaut, und das ist reines Python. Bei
+                # einer grossen Sammlung laeuft dieser Thread damit
+                # mehrere Sekunden lang GIL-haltend durch, genau
+                # waehrend jemand das frisch gestartete Hauptmenue
+                # bedient. Das ist die "paar Sekunden" aus der Meldung.
+                #
+                # WARUM NICHT AUF DEN ZWEITEN KERN: das Verzeichnis wird
+                # im Hauptprozess gebraucht. Ein eigener Prozess muesste
+                # es zurueckschicken - bei tausenden Eintraegen je
+                # System mehr Arbeit als das Bauen selbst.
+                #
+                # WARUM NICHT EINFACH nice(): gegen GIL-Konkurrenz hilft
+                # das nichts. Die GIL wird reihum weitergegeben, ohne
+                # Rueckfrage bei der Prioritaet. Nur weniger arbeiten
+                # hilft - oder warten.
+                #
+                # Also warten: solange gerade bedient wird, tut dieser
+                # Thread gar nichts. Vorwaermen ist reine
+                # Vorratshaltung; gebraucht wird ein Cover-Ordner erst,
+                # wenn jemand in das System hineingeht - und dafuer muss
+                # er ohnehin erst einmal stehenbleiben.
+                # ABER NICHT ENDLOS. Die erste Fassung wartete nur auf
+                # eine Ruhephase - und ist beim Nachmessen prompt bei
+                # NULL eingelesenen Systemen stehengeblieben: bei
+                # gehaltener Taste wiederholt die Eingabe alle 0.08 s,
+                # die Ruhe-Schwelle liegt bei 0.10 s, also kommt nie
+                # eine Ruhephase zustande. Wer nach dem Start zehn
+                # Sekunden durchscrollt, haette danach immer noch jeden
+                # Ordner kalt - und beim Hineingehen die volle Sekunde
+                # bezahlt, die das Vorwaermen gerade verhindern soll.
+                #
+                # Deshalb eine Obergrenze: nach PREWARM_MAX_WARTEN wird
+                # EIN System eingelesen, auch wenn gerade bedient wird.
+                # Damit ist Fortschritt garantiert, und die Last bleibt
+                # auf einen Happen alle zwei Sekunden begrenzt statt
+                # sekundenlang am Stueck.
+                _wartet_seit = time.monotonic()
+                while (time.monotonic() - self._last_input_time
+                       < PREWARM_SETTLE
+                       and time.monotonic() - _wartet_seit
+                       < PREWARM_MAX_WARTEN):
+                    time.sleep(0.05)
+                _art_index(ART_BASE, _syskey)
+                _art_index(ART_HD, _syskey)
+        # MUSS vor dem Thread stehen: der liest _last_input_time gleich
+        # in seiner ersten Zeile. Weiter unten wird der Wert ohnehin noch
+        # einmal gesetzt - hier geht es nur darum, dass es ihn zu diesem
+        # Zeitpunkt schon GIBT. Ohne diese Zeile stirbt der Thread beim
+        # Start still an einem AttributeError, und das Vorwaermen der
+        # Cover-Ordner faende schlicht nicht mehr statt - ohne dass
+        # irgendwo etwas auffiele.
+        self._last_input_time = time.monotonic()
         threading.Thread(target=_prewarm_art_dirs, daemon=True).start()
 
         self.page = 0              # 0 = Kategorien-Menue, 1 = Kategorie-Ansicht
