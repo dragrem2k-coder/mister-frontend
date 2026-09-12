@@ -7,6 +7,69 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Das Hauptmenü — diesmal an der richtigen Stelle gesucht** (Build 108):
+
+Build 107 hat den Start entlastet, aber die Rückmeldung blieb: „scrollt
+noch etwas langsam, wirkt etwas träge". Zu Recht — ich hatte die
+Hintergrundarbeit untersucht und den **Zeichenweg der Hauptseite selbst**
+nie gemessen. Das nachgeholt, und es lagen dort zwei Posten, die Seite 1
+längst hinter sich hat:
+
+| | |
+|---|---|
+| `fb.clear()` bei **jedem** Kategorieschritt | 0,64 ms — eine Kopie von 8,3 MB |
+| ein `fb.rect()` je sichtbarer Zeile, direkt nach diesem clear | 0,94 ms für 16 Aufrufe |
+
+Zusammen 83 % von 1,90 ms — für Arbeit, die zweimal dasselbe tat.
+
+**Erstens: `bg_fresh` für die Kategoriezeilen.** Nach einem frischen
+`fb.clear()` steht der Hintergrund bereits; eine unmarkierte Zeile hat
+dann gar nichts mehr zu füllen. Seite 1 hat genau das seit Langem
+(gefunden damals mit „37 rect()-Aufrufe pro Bildaufbau bei 17-18
+sichtbaren Zeilen"), Seite 0 nicht. Nebenbei eine Korrektur: die Füllung
+war `fb.rect(..., C_BG)` — flach, ohne die Randabdunkelung, die
+`fb.clear()` anlegt. Die Zeilenbänder der Hauptseite waren dadurch
+minimal heller als der Rest. Derselbe Fehler war auf Seite 1 schon
+einmal per Pixelvergleich gefunden worden; jetzt sehen beide Seiten
+gleich aus.
+
+**Zweitens: der schnelle Weg ohne Vollbild-Clear.** Ändert sich an der
+Form der Seite nichts, bleibt der Hintergrund stehen und es wird nur
+freigeräumt, was im vorigen Bild wirklich bemalt war — **6 % des Bildes
+statt 100 %**. Abgesichert über `fb.full_redraw_gen` wie auf Seite 1:
+lief zwischendurch irgendeine andere Bildschirmseite, wird wieder voll
+aufgebaut.
+
+Zwei Bereiche brauchten dabei eigenes Freiräumen, weil sie sich
+unabhängig von der Kategorie ändern: die Kopfzeile mit
+Songtitel-Laufschrift und Equalizer (wird der Titel kürzer, bliebe der
+Schwanz stehen) und das Netzwerksymbol unten rechts (es wird *nur*
+gezeichnet, wenn eine Verbindung besteht — fällt sie weg, entfernt es
+sonst niemand). Beide prüft `tools/test_hauptseite_spuren.py`
+ausdrücklich, denn die Bildvergleiche laufen mit eingefrorener Uhr und
+ohne Musik und hätten genau diese zwei Fälle nicht gesehen.
+
+**Und eine Schwelle, weil die erste Fassung CRT langsamer machte:**
+
+| Auflösung | bis 107 | ab 108 | |
+|---|---|---|---|
+| CRT 320×240 | 0,155 ms | 0,155 ms | schneller Weg bewusst **aus** |
+| 640×480 | 0,348 ms | 0,336 ms | +3 % |
+| 1280×720 | 0,741 ms | 0,573 ms | +23 % |
+| HDMI 1920×1080 | 1,389 ms | 0,889 ms | **+36 %** |
+
+Auf CRT ist `fb.clear()` eine einzige Kopie von 307 KB — billiger als
+ein Dutzend einzeln freigeräumter Rechtecke mit ihrem jeweiligen
+Vorlauf; gemessen **−23 %**. Erst wenn der Bildspeicher groß wird, dreht
+sich das Verhältnis. Der schnelle Weg gilt deshalb ab `KOMPAKT_H`,
+derselben Schwelle, die das Layout ohnehin schon zwischen „enges Bild"
+und „großes Bild" zieht.
+
+Mit beiden Änderungen kostet ein Kategorieschritt auf HDMI **0,89 statt
+1,90 ms — 53 % weniger**.
+
+**Neu im `docs`-Ordner:** `Geheimcodes_Hinweise.pdf` (2 Seiten).
+
 **Das träge Hauptmenü direkt nach dem Start** (Build 107):
 
 Rückmeldung: „Warum ist nach einem Neustart das Hauptmenü so träge? Das

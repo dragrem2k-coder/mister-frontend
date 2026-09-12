@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-11-107",
-  "summary": "Das traege Hauptmenue direkt nach dem Start ist behoben: der Cover-Index kommt ohne regulaeren Ausdruck aus (viermal schneller, bewiesen gleichwertig) und das Vorwaermen der Ordner steckt zurueck, solange bedient wird - statt sekundenlang am Stueck die CPU zu belegen."
+  "build_id": "2026-09-11-108",
+  "summary": "Das Hauptmenue baut nicht mehr bei jedem Schritt das ganze Bild neu auf - bei HDMI waren das 8,3 MB je Kategorie. Ein Kategorieschritt kostet dort jetzt 0,89 statt 1,90 ms. Dazu die neue Anleitung Geheimcodes_Hinweise.pdf im docs-Ordner."
 }

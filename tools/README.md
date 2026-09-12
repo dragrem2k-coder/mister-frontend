@@ -51,6 +51,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_vorladen_richtung.py \
   && python3 tools/test_kaltes_cover.py \
   && python3 tools/test_cover_index.py \
+  && python3 tools/test_hauptseite_spuren.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -91,6 +92,7 @@ python3 tools/regression_test.py \
 | `test_vorladen_richtung.py` | Test (Pass/Fail) | Vorauslader startet fast sofort statt nach einer Sekunde und zielt beim Richtungswechsel neu |
 | `test_kaltes_cover.py` | Test (Pass/Fail) | Kaltes Cover geht an den Arbeitsprozess - mit Notbremse, ohne Quelldatei gar nicht, und nur aus dem Zeichenpfad |
 | `test_cover_index.py` | Test (Pass/Fail) | Cover-Index ohne regulaeren Ausdruck - bewiesen gleichwertig ueber 65536 Zeichen - und der Start-Thread steckt zurueck |
+| `test_hauptseite_spuren.py` | Test (Pass/Fail) | Hauptseite ohne Vollbild-Clear: bitgenau wie der volle Aufbau, auch nach 30 Schritten, bei kuerzerem Songtitel und wegfallendem Netzwerk |
 | `diag_vorauslader.py` | Diagnose (immer Rueckgabewert 0) | Was der Vorauslader dem Zeichnen wegnimmt - Thread gegen Prozess |
 | `diag_zeilen_spuren.py` | Diagnose (immer Rueckgabewert 0) | Was das gezielte Freiraeumen bringt - ganze Spalte gegen Spuren |
 | `diag_hintergrundlast.py` | Diagnose (immer Rueckgabewert 0) | Was pro Tastendruck wirklich passiert: Dateizugriffe, Log-Zeilen, doppelte Arbeit |
