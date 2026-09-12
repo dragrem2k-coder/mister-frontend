@@ -74,13 +74,32 @@ SCRIPTS_DIR = "/media/fat/Scripts"
 # Absturz-Protokoll auf der SD-Karte - ueberlebt im Gegensatz zu
 # /tmp/frontend.log einen Neustart des MiSTer (siehe main()).
 CRASHLOG = "/media/fat/frontend_crash.log"
-# Ruhe-Zeit, bevor Cover der NACHBAR-Eintraege vorgeladen werden.
-# Bewusst deutlich laenger als COVER_SETTLE (0.15s, das steuert nur
-# das Nachzeichnen): Vorladen ist reine Vorratshaltung fuer den Fall,
-# dass jemand stehen bleibt und dann weiterblaettert - es muss NICHT
-# unmittelbar nach dem letzten Tastendruck passieren. Siehe
-# _prefetch_neighbor_covers() und den Leerlauf-Zweig von next_action().
-PREFETCH_SETTLE = 1.0
+# Ruhe-Zeit, bevor der Vorauslader angesetzt wird.
+#
+# GEAENDERT (Build 104): stand als PREFETCH_SETTLE auf 1.0 Sekunde, und
+# die Begruendung dafuer war voellig richtig - solange das Vorrechnen im
+# HAUPTPROZESS lief. Sie lautete: "Vorladen ist reine Vorratshaltung -
+# es muss NICHT unmittelbar nach dem letzten Tastendruck passieren", und
+# dahinter stand ein echter Fehlerbericht ("5-8 Sekunden nach unten
+# gehalten, dann Zurueck - und da kam wieder dieser 1-Sekunden-Haenger").
+# Jede Sekunde Wartezeit war eine Sekunde, in der das Vorrechnen dem
+# Zeichnen NICHT die Rechenzeit wegnahm.
+#
+# Seit Build 102 rechnet der Vorauslader in einem eigenen Prozess auf
+# dem zweiten CPU-Kern. Dieser Grund ist damit ersatzlos entfallen - und
+# die Wartezeit wurde vom Schutz zum Nachteil. Nutzer-Rueckmeldung:
+# "wenn ich beim Scrollen schnell die Richtung wechsle, haengt es kurz,
+# und beim Ordnerwechsel auch". Genau dann kommt man nie eine Sekunde
+# zur Ruhe - es wurde also GAR NICHTS vorgerechnet, waehrend der zweite
+# Kern danebenstand.
+#
+# Jetzt knapp UNTER COVER_SETTLE (0.15s, steuert das Nachzeichnen des
+# Cover-Panels): so hat der Arbeitsprozess seine Auftraege schon, wenn
+# der Hauptthread gleich darauf das Panel zeichnet. Waehrend einer
+# gehaltenen Taste (Wiederholung alle 0.08s) loest das bewusst NICHT
+# aus - dort wird das Panel ohnehin ausgelassen, und ein Neuaufsetzen
+# der Auftragsliste bei jedem Schritt waere nur Arbeit im Hauptthread.
+PREWARM_SETTLE = 0.10
 
 # --- Stream-Overlay (optional, siehe stream_server.py) -----------------
 STREAM_ENABLED_FILE = "/media/fat/frontend/stream_enabled"
@@ -1283,16 +1302,21 @@ class Frontend:
         # beim Scrollen. Siehe _zeilen_spuren_holen().
         self._zeilen_spur = {}
         self._zeilen_spur_sig = None
-        # Einmal-Schalter fuers Vorladen der Nachbar-Cover pro Ruhephase -
-        # siehe PREFETCH_SETTLE.
+        # Einmal-Schalter fuers Ansetzen des Vorausladers pro Ruhephase -
+        # siehe PREWARM_SETTLE.
         self._prefetched_done = False
         # NEU (Phase 2, Nutzerwunsch "Vorab-Laden nach Scrollrichtung"):
         # merkt sich, ob zuletzt nach unten (1) oder oben (-1) navigiert
-        # wurde - _prefetch_neighbor_covers() bevorzugt beim Vorab-Laden
-        # die Richtung, in die man vermutlich weiterscrollt. Vorgabe 1
-        # (runter) - beim allerersten Aufruf noch keine echte Richtung
-        # bekannt, runter ist die haeufigere erste Bewegung.
+        # wurde - auftraege_bauen() schaut in diese Richtung deutlich
+        # weiter voraus als zurueck. Vorgabe 1 (runter) - beim
+        # allerersten Aufruf noch keine echte Richtung bekannt, runter
+        # ist die haeufigere erste Bewegung.
         self._last_scroll_dir = 1
+        # Richtung, fuer die zuletzt vorgemerkt wurde. Weicht sie von
+        # _last_scroll_dir ab, wurde umgedreht und es wird neu gezielt,
+        # ohne auf die naechste vollstaendige Ruhephase zu warten
+        # (Build 104, siehe Leerlauf-Zweig in next_action()).
+        self._prewarm_dir = 1
         self._attract_game = None
         self._attract_change_next = 0.0
         self._attract_pool = None   # zwischengespeicherte flache Spieleliste
@@ -5938,6 +5962,39 @@ class Frontend:
                 # etwas ausgelassen wurde (ART._deferred_something, gesetzt
                 # an den drei Auslass-Stellen in fe/art.py sowie beim
                 # ausgelassenen Boxart-Panel in _draw_navigate_items_impl).
+                # NEU (Build 104): den Vorauslader VOR dem Nachzeichnen
+                # ansetzen, nicht danach. Beide haengen an derselben
+                # Ruhephase; steht der Arbeitsprozess schon auf den
+                # Startloechern, rechnet er die Nachbarcover auf dem
+                # zweiten Kern, WAEHREND der Hauptthread hier gleich das
+                # Cover-Panel zeichnet. Umgekehrt bekaeme er seine
+                # Auftraege erst, wenn das Zeichnen fertig ist - ein
+                # halber Wimpernschlag verschenkt, bei jedem Stehenbleiben.
+                #
+                # Die zweite Bedingung ist der Richtungswechsel und damit
+                # der Kern der Nutzer-Rueckmeldung ("wenn ich beim
+                # Scrollen schnell die Richtung wechsle, haengt es
+                # kurz"): auftraege_bauen() schaut 20 Eintraege in
+                # Scrollrichtung voraus und nur 6 zurueck - wer umdreht,
+                # hat 20 vorgerechnete Cover HINTER sich und kaltes Land
+                # vor sich. Bisher wurde erst nach der naechsten
+                # vollstaendigen Ruhephase neu gezielt. Jetzt loest ein
+                # Richtungswechsel das Neuzielen selbst aus, auch wenn
+                # fuer diese Ruhephase schon einmal vorgemerkt wurde.
+                _richtung = 1 if getattr(self, "_last_scroll_dir", 1) >= 0 else -1
+                _umgedreht = _richtung != getattr(self, "_prewarm_dir", _richtung)
+                if ((not self._prefetched_done or _umgedreht)
+                        and self.page in (0, 1)
+                        and not any_dialog
+                        and time.monotonic() - self._last_input_time >= PREWARM_SETTLE):
+                    self._prefetched_done = True
+                    self._prewarm_dir = _richtung
+                    # ERWEITERT (Build 74): auch auf der HAUPTSEITE
+                    # (page 0). Dort stehen die Kategorie-Logos - mit
+                    # 900 px Breite die groessten Bilder im Frontend und
+                    # damit die teuersten Erstberechnungen ("PERF cover:
+                    # 722 ms (CONTINUE.art)" im Log des Nutzers).
+                    self._prewarm_anstossen()
                 _nachzuholen = getattr(ART, "_deferred_something", False)
                 if (not self._settled_redrawn and not any_dialog
                         and _nachzuholen
@@ -5948,48 +6005,12 @@ class Frontend:
                     else:
                         self.draw_page_cats()
                     self._settled_redrawn = True
-                # BUGFIX (Nutzer-Rueckmeldung: "ich bin in einen Games-Ordner
-                # gegangen, habe die Taste nach unten 5-8 Sekunden gedrueckt
-                # gehalten, dann auf Zurueck gedrueckt - und da kam wieder
-                # dieser 1-Sekunden-Haenger"): das Vorladen der Nachbar-Cover
-                # lief bisher unmittelbar nach dem Nachzeichnen, also schon
-                # 150ms nach dem letzten Tastendruck. Es ruft ART.get() auf -
-                # die ROHE Dekodierung des Originalbildes (Datei lesen +
-                # zlib-Entpacken), und dabei hilft der Festplatten-Cache
-                # NICHT: der greift nur fuer bereits skalierte Bilder
-                # (_thumb_cache_get() in _get_scaled_impl). Verschaerfend
-                # kommt hinzu, dass die Zeitbremse PREFETCH_BUDGET am ANFANG
-                # jeder Runde geprueft wird - die erste Dekodierung laeuft
-                # also IMMER vollstaendig durch, egal wie lange sie dauert.
-                # Nach laengerem Scrollen sind reihenweise Nachbarn noch
-                # nicht dekodiert, und genau dann summiert sich das zu dem
-                # gemeldeten Haenger.
-                #
-                # Vorladen ist aber reine Vorratshaltung fuer den Fall, dass
-                # jemand stehen bleibt und danach weiterblaettert - es muss
-                # NICHT 150ms nach dem letzten Tastendruck passieren. Jetzt
-                # mit eigener, deutlich laengerer Ruhe-Schwelle
-                # (PREFETCH_SETTLE): wer nach dem Zurueckgehen sofort
-                # weiternavigiert, zahlt dafuer gar nichts mehr.
-                if (not self._prefetched_done
-                        and self.page in (0, 1)
-                        and not any_dialog
-                        and time.monotonic() - self._last_input_time >= PREFETCH_SETTLE):
-                    self._prefetched_done = True
-                    if self.page == 1:
-                        self._prefetch_neighbor_covers()
-                    # NEU (Build 73): und im selben Ruhemoment den
-                    # Hintergrund-Vorauslader ansetzen. Dieselbe Ruhe-
-                    # Schwelle (PREFETCH_SETTLE) aus demselben Grund: wer
-                    # nach dem Zurueckgehen sofort weiternavigiert, soll
-                    # dafuer nichts bezahlen.
-                    #
-                    # ERWEITERT (Build 74): auch auf der HAUPTSEITE
-                    # (page 0). Dort stehen die Kategorie-Logos - mit
-                    # 900 px Breite die groessten Bilder im Frontend und
-                    # damit die teuersten Erstberechnungen ("PERF cover:
-                    # 722 ms (CONTINUE.art)" im Log des Nutzers).
-                    self._prewarm_anstossen()
+                # ENTFERNT (Build 104): hier stand das Vorladen der
+                # Nachbar-Cover (_prefetch_neighbor_covers()) und, im
+                # selben Zweig, das Ansetzen des Vorausladers. Letzteres
+                # ist jetzt weiter oben, VOR dem Nachzeichnen, und mit
+                # einer viel kuerzeren Ruhe-Schwelle - siehe dort und bei
+                # PREWARM_SETTLE.
                 self._boot_watch()   # Diagnose: Anzeige-Zustand nach dem Boot
                 # WICHTIG: unabhaengige if-Abfragen statt einer elif-Kette.
                 # Mit elif haette "track_needs" (Songtitel muss scrollen -
@@ -6147,95 +6168,26 @@ class Frontend:
         # _item_syskey()).
         return bool(syskey) or items[0][1] == "game"
 
-    def _prefetch_neighbor_covers(self):
-        """NEUES FEATURE (Nutzerwunsch: 'kann man da was vorcachen?' -
-        nach dem Ruckel-Fix beim erneuten Skalieren). Dekodiert (aber
-        skaliert NICHT) Cover in der Naehe der aktuellen Auswahl im
-        Hintergrund, sobald die Liste stillsteht - wer kurz guckt und
-        dann weiterscrollt, findet das naechste Cover so oft schon
-        roh dekodiert vor.
-
-        ERWEITERT (Phase 2, Sutefans Prioritaeten-Vorschlag): statt
-        nur der direkten Nachbarn (+-1) jetzt mehrere Stufen mit
-        sinkender Prioritaet, bevorzugt in der zuletzt genutzten
-        Scrollrichtung (_last_scroll_dir):
-          Stufe 1: direkter Nachbar in Scrollrichtung
-          Stufe 2: direkter Nachbar in Gegenrichtung
-          Stufe 3: zwei Felder in Scrollrichtung
-          Stufe 4: zwei Felder in Gegenrichtung, drei in Scrollrichtung
-        'Prioritaet 4: alles andere' aus dem Vorschlag bewusst NICHT
-        als echtes Vorladen der kompletten Liste umgesetzt - anders
-        als bei RA-Erfolgen (reiner Netzwerk-Abruf) muesste hier
-        potenziell die GESAMTE Sammlung im begrenzten Bildspeicher
-        gehalten werden, mit denselben Nachteilen, die schon beim
-        RA-Vorlade-Feature gegen ein volles Cover-Vorladen gesprochen
-        haben (siehe damalige Entscheidung: kleiner LRU-Bildspeicher
-        wuerde die meisten Bilder sofort wieder verdraengen, bevor sie
-        ueberhaupt gesehen werden).
-
-        Zeitbudget bewusst begrenzt (PREFETCH_BUDGET) - auf schwacher
-        Hardware soll ein Stillstand mit vielen gleichzeitig neuen
-        Covern (z.B. nach einem Sprung in der Liste) niemals spuerbar
-        haengen bleiben; bricht einfach fruehzeitig ab, die naechste
-        Ruhephase erledigt den Rest.
-
-        Bewusst NUR das rohe Dekodieren (ART.get()), NICHT die fertige
-        Skalierung (ART.get_scaled()): die tatsaechliche Zielgroesse
-        haengt vom Titeltext des jeweiligen Spiels ab (laengere Titel
-        -> mehr Zeilen -> weniger Platz fuer das Cover selbst, siehe
-        draw_art_panel()) und liesse sich hier nicht ohne die komplette
-        Layout-Berechnung erneut zu duplizieren zuverlaessig vorher-
-        sagen. Das rohe Dekodieren (Datei lesen + zlib-Dekompression)
-        ist ohnehin der teurere Teil - die anschliessende Skalierung
-        ist seit dem Performance-Fix (Zeilen-weises b\"\".join()) auch
-        bei falscher Vorhersage schnell genug, um beim tatsaechlichen
-        Hinscrollen kaum noch aufzufallen.
-
-        Nur bei Stillstand aufgerufen (siehe COVER_SETTLE-Handler oben)
-        - waehrend aktiven Scrollens passiert hier nichts, das wuerde
-        den gerade behobenen Ruckel-Fehler nur an anderer Stelle
-        wieder einfuehren."""
-        if self.page != 1:
-            return
-        items = self._display_items()
-        if not items:
-            return
-        fb = self.fb
-        _name, _root_node, cat_syskey = self.cats[self.cat_i]
-        d = 1 if getattr(self, "_last_scroll_dir", 1) >= 0 else -1
-        # Prioritaets-Reihenfolge: Stufe 1+2 (direkte Nachbarn, in
-        # Scrollrichtung zuerst), dann Stufe 3+4 (weiter weg, weiterhin
-        # Scrollrichtung bevorzugt).
-        offsets = [d, -d, 2*d, -2*d, 3*d]
-        PREFETCH_BUDGET = 0.06   # Sekunden - grosszuegig genug fuer
-                                 # mehrere Dekodierungen, aber niemals
-                                 # spuerbar haengend auf schwacher HW.
-        t0 = time.monotonic()
-        for offset in offsets:
-            if time.monotonic() - t0 > PREFETCH_BUDGET:
-                break
-            idx = self.item_i + offset
-            if not (0 <= idx < len(items)):
-                continue
-            item = items[idx]
-            item_syskey = self._item_syskey(item, cat_syskey)
-            lookup_name = item[2] if item[1] == "folder" else item[0]
-            if item_syskey == "ARCADE":
-                continue   # Arcade-Cover kommen aus mra_meta(), kein einfacher Pfad hier
-            try:
-                # BUGFIX (Nutzer-Rueckmeldung, siehe ausfuehrlicher
-                # Kommentar in draw_art_panel(): die Anzeige selbst faellt
-                # im HD-Modus nicht mehr auf das SD-Cover zurueck, wenn
-                # keine art_hd-Datei existiert - das bisherige zusaetzliche
-                # Vorab-Laden des SD-Covers hier waere in dem Fall reine
-                # Verschwendung des knappen Zeitbudgets (PREFETCH_BUDGET),
-                # da es ohnehin nie angezeigt wird).
-                if fb.height >= 720:
-                    ART.get(_art_path_in(ART_HD, item_syskey, lookup_name))
-                else:
-                    ART.get(art_path(item_syskey, lookup_name))
-            except Exception:
-                pass   # Vorab-Laden ist rein optional - niemals den Hauptablauf stoeren
+    # ENTFERNT (Build 104): hier stand _prefetch_neighbor_covers().
+    #
+    # Sie hat im HAUPTTHREAD Cover roh dekodiert (Datei lesen +
+    # zlib-Entpacken) - auf HDMI der teure Teil, 200-500 ms je Bild -
+    # und das ausgerechnet in der Ruhephase, in der als naechstes ein
+    # Tastendruck kommt. Ihr eigenes Zeitbudget half dagegen nur
+    # begrenzt: geprueft wurde es am ANFANG jeder Runde, die erste
+    # Dekodierung lief also immer vollstaendig durch.
+    #
+    # Sie entstand, bevor es den Vorauslader gab, und konnte nur ROH
+    # dekodieren: die Zielgroesse der Miniatur haengt vom Titeltext des
+    # Spiels ab (laengere Titel -> weniger Platz fuers Cover), und die
+    # liess sich hier nicht vorhersagen, ohne die komplette
+    # Layout-Rechnung zu wiederholen.
+    #
+    # Der Vorauslader KANN das vorhersagen (cover_pfad_und_kasten(),
+    # dieselbe Rechnung wie der Zeichenpfad), liefert deshalb die
+    # FERTIGE Miniatur statt nur des rohen Bildes - und rechnet dabei
+    # seit Build 102 auf dem zweiten CPU-Kern. Diese Funktion war damit
+    # die schwaechere Kopie am schlechteren Ort.
 
     def _art_panel_geometrie(self):
         """(breite, hoehe, s) der Boxart-Spalte auf der Spieleliste, oder

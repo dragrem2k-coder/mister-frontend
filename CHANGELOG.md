@@ -7,6 +7,56 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Der Vorauslader wartet nicht mehr, und er zielt beim Umdrehen neu**
+(Build 104):
+
+Rückmeldung: „Wenn ich beim Scrollen schnell die Richtung wechsle, hängt
+es kurz, und wenn ich Ordner hin und her wechsle auch." Beides zeigte auf
+dieselbe Stelle — und alle drei Ursachen waren **Überbleibsel aus der
+Zeit, als das Vorrechnen noch im Hauptprozess lief**.
+
+**1. Eine volle Sekunde Wartezeit.** `PREFETCH_SETTLE = 1.0` — und die
+Begründung dafür war völlig richtig, solange das Vorrechnen dem Zeichnen
+Rechenzeit wegnahm. Sie stand wörtlich im Code, samt Fehlerbericht dazu:
+„5–8 Sekunden nach unten gehalten, dann Zurück — und da kam wieder dieser
+1-Sekunden-Hänger." Jede Sekunde Wartezeit war damals ein Schutz.
+
+Seit Build 102 rechnet der Vorauslader in einem eigenen Prozess auf dem
+zweiten Kern. Der Schutz wurde damit zum Nachteil: wer schnell scrollt
+und umdreht, kommt nie eine Sekunde zur Ruhe — es wurde also **gar
+nichts** vorgerechnet, während der zweite Kern danebenstand. Jetzt
+`PREWARM_SETTLE = 0.10`, also knapp **unter** `COVER_SETTLE`: der
+Arbeitsprozess hat seine Aufträge schon, wenn der Hauptthread gleich
+darauf das Cover-Panel zeichnet, und rechnet die Nachbarn nebenher. Bei
+gehaltener Taste (Wiederholung alle 0,08 s) löst das bewusst nicht aus —
+dort wird das Panel ohnehin ausgelassen.
+
+**2. Vorausgeschaut wurde nur in eine Richtung.** 20 Einträge voraus, 6
+zurück — und neu gezielt erst nach der nächsten vollständigen Ruhephase.
+Wer umdreht, hat 20 vorgerechnete Cover **hinter** sich und kaltes Land
+vor sich. Ein Richtungswechsel löst das Neuzielen jetzt selbst aus, auch
+wenn für diese Ruhephase schon einmal vorgemerkt wurde.
+
+**3. `_prefetch_neighbor_covers()` ist ersatzlos raus.** Sie dekodierte
+Cover im **Hauptthread** — auf HDMI der teure Teil, 200–500 ms je Bild —
+und das ausgerechnet in der Ruhephase, in der als nächstes ein
+Tastendruck kommt. Ihr Zeitbudget half nur begrenzt: geprüft wurde es am
+*Anfang* jeder Runde, die erste Dekodierung lief also immer vollständig
+durch.
+
+Sie entstand, bevor es den Vorauslader gab, und konnte nur **roh**
+dekodieren: die Zielgröße der Miniatur hängt vom Titeltext ab (längere
+Titel → weniger Platz fürs Cover), und die ließ sich dort nicht
+vorhersagen. Der Vorauslader **kann** das (`cover_pfad_und_kasten()`,
+dieselbe Rechnung wie der Zeichenpfad), liefert deshalb die *fertige*
+Miniatur statt des rohen Bildes — und rechnet dabei auf dem zweiten Kern.
+Sie war damit die schwächere Kopie am schlechteren Ort.
+
+`tools/test_vorladen_richtung.py` (neu) prüft nicht nur den Quelltext,
+sondern fährt den echten Leerlauf-Zweig von `next_action()`: vorgemerkt
+wird in der Ruhe, **nicht** ein zweites Mal ohne Grund, aber sehr wohl
+nach einem Richtungswechsel — und danach wieder Ruhe statt Dauerfeuer.
+
 **Beim Scrollen wird nur noch freigeräumt, wo wirklich etwas stand**
 (Build 103):
 
