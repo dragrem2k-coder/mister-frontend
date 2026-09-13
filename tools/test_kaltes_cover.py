@@ -140,10 +140,22 @@ abgegeben[:] = []
 A.ART.get_scaled(BILD, 220, 308, auslagern_ok=True)
 check("waehrend gewartet wird: noch nichts", A.ART.warte_pruefen() is False)
 # Jetzt die Miniatur tatsaechlich anlegen, wie es der Arbeitsprozess taete.
-A.prewarm_thumb(BILD, 220, 308)
+#
+# ERGAENZT (Build 119): das Ergebnis von prewarm_thumb() und der
+# Zustand der Warteliste wandern in die Meldung. Diese beiden
+# Pruefungen sind in einem Sammellauf der ganzen Suite zweimal
+# fehlgeschlagen und liessen sich danach weder einzeln noch unter
+# kuenstlicher Last wiederholen - ohne diese Angaben bleibt beim
+# naechsten Mal wieder nur Raten. Es kostet nichts: die Zeichenkette
+# wird ohnehin nur bei einem Fehlschlag ausgegeben.
+_vorbereitet = A.prewarm_thumb(BILD, 220, 308)
+_liegt_da = A.thumb_cache_has(BILD, 220, 308)
 check("sobald die Miniatur da ist: nachzeichnen",
-      A.ART.warte_pruefen() is True)
-check("und der Warte-Eintrag ist abgeraeumt", not A.ART._warte_start)
+      A.ART.warte_pruefen() is True,
+      "prewarm_thumb=%r, Miniatur auf der Karte=%r, Warteliste=%r"
+      % (_vorbereitet, _liegt_da, list(A.ART._warte_start)))
+check("und der Warte-Eintrag ist abgeraeumt", not A.ART._warte_start,
+      "%r" % (list(A.ART._warte_start),))
 
 print("Test 6: der echte Weg - Arbeitsprozess rechnet, Cover kommt an")
 # Kein Nachbau der Abgabe mehr, sondern PREWARMER.dringend() selbst.

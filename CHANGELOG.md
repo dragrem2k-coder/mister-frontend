@@ -7,6 +7,75 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Cover im Original, Enter bleibt Enter, und Geduld mit der USB-Platte**
+(Build 119):
+
+**Der Cover-Download wandelt nicht mehr um.** Nutzerwunsch: *„ich würde
+ganz gerne JPG und PNG beim Cover-Download bevorzugen, anstatt auf .art
+umzuwandeln — denke mal das ist der bessere und schnellere Weg, wenn
+einer alles auf einmal runterladen möchte."* Stimmt in beiden Punkten,
+und seit Build 115 spricht nichts mehr dagegen — das Frontend liest PNG
+und JPG selbst.
+
+Der Rückfall-Weg (libretro-Thumbnails, für alles, was der Mirror nicht
+hat) legt das geladene Bild jetzt **unverändert** ab. Das Dekodieren
+und Verkleinern in reinem Python auf der MiSTer-CPU fällt weg — genau
+der Teil, dessentwegen dort nur zwei gleichzeitige Umwandlungen
+erlaubt waren und es früher Abstürze durch Spitzenspeicher gab. Ein
+Download ist jetzt nur noch ein Download.
+
+Dazu ein Vorteil, der vorher gar nicht möglich war: die Datei behält
+**volle Auflösung**. Bisher wurde auf die Kastengröße *eines* Profils
+verkleinert — wer zwischen CRT und HDMI wechselt, brauchte deshalb zwei
+Durchläufe. Jetzt bedient dieselbe Datei beide.
+
+Der Preis, ehrlich genannt: **Platz auf der Karte**. Ein volles
+libretro-Cover ist ein Vielfaches einer fertig verkleinerten
+`.art`-Datei. Wer knapp ist, hängt das Wort `art` an den Aufruf und
+bekommt das alte Verhalten. Der Mirror-Weg liefert unverändert fertige
+`.art`-Dateien — dort gibt es nichts umzuwandeln.
+
+Damit das überhaupt etwas nützt, kennt der Cover-Index jetzt auch
+`.png` und `.jpg`. Liegt zu einem Spiel beides, gewinnt `.art`: schon
+verkleinert, also billiger zu zeichnen.
+
+**Die Enter-Taste.** Rückmeldung: *„wenn ich unter Eingabe und Sprache
+Bestätigen/Abbrechen vertauschen aktiviere, ändert auf einmal die
+Enter-Taste auf der Tastatur ihre Funktion und hat statt Eingabe die
+Zurück-Funktion — das ist Mist."*
+
+Er hat recht, und es war schlimmer als beschrieben. Der Umschalter lief
+über die **ganze** Tastenbelegung. Auf der Tastatur ist Enter die
+einzige Taste mit „Bestätigen", und eine mit „Zurück" gibt es dort gar
+nicht (zurück liegt auf Esc, und das ist eine eigene Aktion) — nach dem
+Umschalten hatte die Tastatur also **überhaupt keine
+Bestätigungstaste** mehr. Der Schalter ist ausdrücklich für das Pad
+gedacht (Nintendo- gegen Xbox-Anordnung) und fasst jetzt nur noch das
+an.
+
+Dabei ist derselbe Fehler eine Etage tiefer gleich mit aufgefallen:
+**Start** wurde ebenfalls zu „Zurück". Es gibt kein Controller-Layout,
+auf dem Start abbricht — nach dem Umschalten hatte man zwei
+Abbrechen-Tasten und eine zum Bestätigen. Start bleibt jetzt, was es
+ist.
+
+**Die USB-Platte, zweiter Anlauf.** Rückmeldung nach Build 117: *„das
+findet das Frontend jetzt zwar, aber er liest sie beim Start quasi
+nochmal ein, das macht er bei jedem kalten Neustart."*
+
+Build 117 hat das Symptom behoben, nicht die Ursache. Beim Kaltstart
+war die Platte nach den vorgesehenen **zehn Sekunden** immer noch nicht
+da — also lief ein kompletter Scan ohne sie, und kurz darauf der
+automatische zweite mit ihr. Zwei Scans statt keinem.
+
+Jetzt wird bis zu **45 Sekunden** gewartet — aber nur in dem einen
+Fall, in dem der Cache weiß, dass dort Spiele liegen, und gerade keine
+zu sehen sind. Ist die Platte rechtzeitig oben (der Regelfall), kommt
+das Frontend an dieser Stelle gar nicht vorbei und wartet keine
+Sekunde. Damit dabei niemand den Stecker zieht, steht auf dem Schirm,
+worauf gewartet wird und warum.
+
+
 **Der letzte große Posten: das Verkleinern** (Build 118):
 
 Nach Build 115 und 116 war klar, woran es noch hängt. Von einem kalten

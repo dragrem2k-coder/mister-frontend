@@ -664,6 +664,17 @@ TRANSLATIONS = {
                             "de": "Boot-Logo: Dragend -> auf neutral wechseln"},
     "sys_dragend_logo_off": {"en": "Boot logo: plain -> switch to Dragend",
                              "de": "Boot-Logo: neutral -> auf Dragend wechseln"},
+    # Build 119: waehrend auf eine noch anlaufende USB-Platte gewartet
+    # wird. Der Hinweis nennt den Grund, damit niemand den Stecker
+    # zieht, weil er einen Absturz vermutet.
+    "warte_laufwerk": {
+        "en": "Waiting for the USB drive ...",
+        "de": "Warte auf das USB-Laufwerk ..."},
+    "warte_laufwerk_hinweis": {
+        "en": "Your games are on it. Spinning up takes a moment after a "
+              "cold start.",
+        "de": "Dort liegen deine Spiele. Nach einem Kaltstart braucht "
+              "das Anlaufen einen Moment."},
     # Build 115. Bewusst ohne den Pfad im Text - der interessiert
     # niemanden, der das Menue bedient; wichtig ist, was der Schalter
     # bewirkt und dass eigenes Artwork Vorrang behaelt.

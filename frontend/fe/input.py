@@ -235,13 +235,49 @@ def swap_ok_back_enabled():
     noetig)."""
     return os.path.exists(SWAP_OK_BACK_FILE)
 
+# Ab hier faengt der Gamepad-Bereich der Linux-Eingabecodes an: alle
+# BTN_*-Werte liegen bei 304 und darueber, jede Tastaturtaste darunter
+# (siehe die Konstanten oben). Die Achsen-Ersatzcodes sind negativ und
+# tragen ohnehin nie "ok" oder "back".
+PAD_CODE_AB = 256
+
+# Tasten, die der Umschalter auch am Pad NICHT anfasst. Start ist auf
+# jedem Controller dieser Welt eine Bestaetigung - es gibt kein Layout,
+# auf dem Start abbricht. Ohne diese Ausnahme hatte man nach dem
+# Umschalten ZWEI Abbrechen-Tasten (A und Start) und nur eine zum
+# Bestaetigen; derselbe Fehler wie bei der Enter-Taste, nur eine Etage
+# tiefer.
+SWAP_AUSNAHMEN = frozenset((315,))          # BTN_START
+
+
 def _swap_ok_back_in_keymap():
     """Vertauscht in KEYMAP (dem tatsaechlich aktiven Dict, siehe
     Modul-Docstring oben - eine Mutation ist ueberall sofort sichtbar)
-    einmalig alle "ok"<->"back"-Eintraege. Selbstinvers: zweimaliger
-    Aufruf stellt den Ausgangszustand wieder her - genau deshalb reicht
-    beim Umschalten im Menue ein einzelner Aufruf in beide Richtungen."""
+    einmalig alle "ok"<->"back"-Eintraege AM GAMEPAD. Selbstinvers:
+    zweimaliger Aufruf stellt den Ausgangszustand wieder her - genau
+    deshalb reicht beim Umschalten im Menue ein einzelner Aufruf in
+    beide Richtungen.
+
+    BUGFIX (Build 119, Nutzer-Rueckmeldung: "wenn ich unter Eingabe und
+    Sprache Bestaetigen/Abbrechen vertauschen aktiviere, aendert auf
+    einmal die Enter-Taste auf der Tastatur ihre Funktion und hat statt
+    Eingabe die Zurueck-Funktion - das ist Mist").
+
+    Er hat recht, und es war schlimmer als beschrieben. Die Schleife
+    lief ueber ALLE Eintraege, also auch ueber die Tastatur. Dort ist
+    Enter die einzige Taste mit "ok" und es gibt gar keine mit "back"
+    (zurueck liegt auf Esc, und das ist "exit") - nach dem Umschalten
+    wurde Enter also zu "zurueck", und die Tastatur hatte ueberhaupt
+    keine Bestaetigungstaste mehr.
+
+    Der Schalter ist ausdruecklich fuer das PAD gedacht: er loest den
+    Fall, dass Bestaetigen/Abbrechen dort andersherum belegt sind als
+    hier angenommen (Nintendo- gegen Xbox-Anordnung). Auf einer Tastatur
+    gibt es dieses Problem nicht - Enter ist auf jeder Tastatur der
+    Welt die Bestaetigung."""
     for code, act in list(KEYMAP.items()):
+        if code < PAD_CODE_AB or code in SWAP_AUSNAHMEN:
+            continue                 # Tastatur und Start bleiben, wie sie sind
         if act == "ok":
             KEYMAP[code] = "back"
         elif act == "back":

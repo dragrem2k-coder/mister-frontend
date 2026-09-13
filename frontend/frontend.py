@@ -1594,6 +1594,37 @@ class Frontend:
             pass
         return fallback
 
+    def _draw_laufwerk_warten(self):
+        """Ein Lebenszeichen, waehrend auf eine noch anlaufende
+        USB-Platte gewartet wird (Build 119).
+
+        Der Cache weiss in diesem Moment, dass dort Spiele liegen - die
+        Platte ist nur noch nicht so weit. Warten ist dann billiger als
+        die Alternative (kompletter Scan ohne sie, kurz darauf der
+        automatische zweite mit ihr), aber bis zu 45 Sekunden schwarzer
+        Bildschirm haelt niemand aus, ohne den Stecker zu ziehen.
+
+        Bewusst dieselbe schlichte Machart wie _draw_scan_progress():
+        self.cats existiert hier noch nicht, die normale
+        Seiten-Infrastruktur ist also nicht benutzbar."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        fb.clear(C_BG)
+        fb.text(ox, oy, "MiSTer", 3 * s, C_TITLE, C_BG)
+        msg = t("warte_laufwerk")
+        maxc = max(4, (W - 2 * ox) // (8 * s))
+        if len(msg) > maxc:
+            msg = msg[:max(1, maxc - 1)] + "~"
+        fb.text(ox, oy + 50 * s, msg, s, C_TEXT, C_BG)
+        hinweis = t("warte_laufwerk_hinweis")
+        if len(hinweis) > maxc:
+            hinweis = hinweis[:max(1, maxc - 1)] + "~"
+        fb.text(ox, oy + 66 * s, hinweis, s, C_DIM, C_BG)
+        fb.flip()
+
     def _draw_scan_progress(self, i, total, name):
         """Einfacher Lade-Fortschritt waehrend des (seltenen)
         tatsaechlichen Plattenscans (erster Start oder ROM-Aenderungen)
@@ -1681,7 +1712,8 @@ class Frontend:
         # folders={} (flach, wie bisher) - dadurch kann der Rest des
         # Codes (Rendering, Navigation) alle Kategorien gleich behandeln.
         self.cats = scan_games(force=force_rescan,
-                               progress_cb=self._draw_scan_progress)
+                               progress_cb=self._draw_scan_progress,
+                               warte_cb=self._draw_laufwerk_warten)
         # "Weiterspielen" (Nutzerwunsch): ganz oben ein einzelner,
         # hervorgehobener Vorschlag - das zuletzt gespielte Spiel, das
         # noch NICHT als durchgespielt markiert ist. Faellt weg, wenn

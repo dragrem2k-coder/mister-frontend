@@ -31,8 +31,18 @@ Aufruf (SSH oder ueber die Scripts-Kategorie des Frontends):
   python3 /media/fat/frontend/mister_boxart.py sd SNES NES  # nur bestimmte Systeme
   python3 /media/fat/frontend/mister_boxart.py hd neu       # vorhandene ERSETZEN
 
-Bereits vorhandene .art-Dateien werden uebersprungen - das Skript
-kann jederzeit abgebrochen (Strg+C) und spaeter fortgesetzt werden.
+Bereits vorhandene Cover (.art, .png, .jpg) werden uebersprungen - das
+Skript kann jederzeit abgebrochen (Strg+C) und spaeter fortgesetzt
+werden.
+
+NEU AB BUILD 119: der Rueckfall-Weg legt das heruntergeladene Cover als
+ORIGINAL ab (PNG/JPG) und wandelt es nicht mehr in .art um. Das ist
+schneller (kein Dekodieren und Verkleinern in Python auf der
+MiSTer-CPU) und behaelt die volle Aufloesung - dieselbe Datei bedient
+damit CRT UND HDMI, statt wie bisher pro Profil einen eigenen
+Durchlauf zu brauchen. Der Preis ist Platz auf der Karte; mit dem
+zusaetzlichen Wort "art" laeuft es wie frueher. Der Mirror-Weg liefert
+weiterhin fertige .art-Dateien - dort gibt es nichts umzuwandeln.
 
 Mit dem zusaetzlichen Wort "neu" werden vorhandene Cover NICHT
 uebersprungen, sondern noch einmal erzeugt. Das ist einmalig sinnvoll,
@@ -836,6 +846,32 @@ CONVERT_WORKERS = 2   # bewusst KLEIN (nicht DOWNLOAD_WORKERS) - der
                       # Rueckmeldung zu Abstuerzen in frueherer Version)
 _convert_semaphore = threading.Semaphore(CONVERT_WORKERS)
 
+# NEUES VERHALTEN (Build 119, Nutzerwunsch: "ich wuerde ganz gerne JPG
+# und PNG beim Cover-Download bevorzugen, anstatt auf .art umzuwandeln -
+# denke mal das ist der bessere und schnellere Weg, wenn einer alles auf
+# einmal runterladen moechte").
+#
+# Er hat in beiden Punkten recht, und seit Build 115 spricht nichts mehr
+# dagegen: das Frontend liest PNG und JPG inzwischen selbst.
+#
+#   SCHNELLER: das Dekodieren und Verkleinern hier lief in reinem
+#   Python auf der MiSTer-CPU - deshalb steht CONVERT_WORKERS auf 2 und
+#   deshalb gab es frueher Abstuerze durch Spitzenspeicher. Faellt das
+#   weg, ist der Download nur noch Download.
+#
+#   BESSER: die Datei behaelt ihre volle Aufloesung. Bisher wurde beim
+#   Herunterladen auf die Kastengroesse EINES Profils verkleinert - wer
+#   zwischen CRT und HDMI wechselt, brauchte deshalb zwei Durchlaeufe
+#   und bekam sonst ein hochgerechnetes Bild. Das Original bedient
+#   beide.
+#
+#   DER PREIS, ehrlich genannt: Platz auf der Karte. Ein volles
+#   libretro-Cover ist ein Vielfaches einer fertig verkleinerten
+#   .art-Datei. Wer knapp bei Platz ist, nimmt "art" als drittes Wort
+#   auf der Kommandozeile und bekommt das alte Verhalten.
+ORIGINAL_BEHALTEN = True
+
+
 def process_one_rom_fallback(rom, sysname, idx_exact, idx_strip, tri, out_dir, box):
     cover, how = match_rom(rom, idx_exact, idx_strip, tri)
     if not cover:
@@ -843,6 +879,17 @@ def process_one_rom_fallback(rom, sysname, idx_exact, idx_strip, tri, out_dir, b
     png = download_cover(sysname, cover)
     if not png:
         return (rom, "dl_failed", cover)
+    if ORIGINAL_BEHALTEN:
+        # Kein Dekodieren, kein Verkleinern, kein Umwandeln - die Datei
+        # wird genommen, wie sie kommt. Die Endung richtet sich nach dem
+        # tatsaechlichen Inhalt, nicht nach dem Namen auf dem Server.
+        endung = ".jpg" if png[:2] == b"\xff\xd8" else ".png"
+        try:
+            with open(os.path.join(out_dir, rom + endung), "wb") as f:
+                f.write(png)
+        except OSError as e:
+            return (rom, "png_error", str(e))
+        return (rom, "ok", (how, cover))
     with _convert_semaphore:
         try:
             w, h, rgb = decode_png(png)
@@ -926,12 +973,20 @@ def process_system(syskey, roms, ext_sysname_map, art_base, remote_dir, box, ges
     # Aenderung geladen hat, hat sie in der alten, groberen Qualitaet auf
     # der Karte liegen - ohne diesen Schalter wuerden sie fuer immer
     # uebersprungen und die Verbesserung kaeme nie an.
+    # GEAENDERT (Build 119): auch ein PNG oder JPG zaehlt als
+    # vorhandenes Cover. Ohne das wuerde ein zweiter Lauf alles noch
+    # einmal herunterladen, was der erste als Original abgelegt hat.
+    def _schon_da(name):
+        for endung in (".art", ".png", ".jpg", ".jpeg"):
+            if os.path.exists(os.path.join(out_dir, name + endung)):
+                return True
+        return False
+
     todo = [(name, ext) for name, ext in roms
-            if FORCE_NEU
-            or not os.path.exists(os.path.join(out_dir, name + ".art"))]
+            if FORCE_NEU or not _schon_da(name)]
     gesamt["roms"] += len(roms)
     gesamt["vorhanden"] += len(roms) - len(todo)
-    print("== %s: %d Eintraege, %d ohne .art" % (syskey, len(roms), len(todo)))
+    print("== %s: %d Eintraege, %d ohne Cover" % (syskey, len(roms), len(todo)))
     if not todo:
         return
 
@@ -959,19 +1014,31 @@ def process_system(syskey, roms, ext_sysname_map, art_base, remote_dir, box, ges
         _write_missing(art_base, syskey, final_missing)
 
 def main():
-    global FORCE_NEU
+    global FORCE_NEU, ORIGINAL_BEHALTEN
     args = list(sys.argv[1:])
     for schalter in ("neu", "--neu", "force"):
         if schalter in args:
             args.remove(schalter)
             FORCE_NEU = True
+    # Build 119: "art" schaltet auf das alte Verhalten zurueck -
+    # umwandeln und verkleinern statt das Original behalten. Fuer alle,
+    # bei denen der Platz auf der Karte knapper ist als die Geduld.
+    for schalter in ("art", "--art", "umwandeln"):
+        if schalter in args:
+            args.remove(schalter)
+            ORIGINAL_BEHALTEN = False
     profile = "sd"
     if args and args[0] in ("sd", "hd"):
         profile = args.pop(0)
     only = set(args) if args else None
     if FORCE_NEU:
-        print("Modus 'neu': vorhandene .art-Dateien werden ERSETZT "
+        print("Modus 'neu': vorhandene Cover werden ERSETZT "
               "(dauert entsprechend laenger).")
+    if ORIGINAL_BEHALTEN:
+        print("Cover werden als Original (PNG/JPG) abgelegt - schneller "
+              "und in voller Aufloesung, dafuer mehr Platz auf der Karte.")
+        print("Mit dem Zusatz 'art' stattdessen wie frueher umwandeln "
+              "und verkleinern.")
 
     art_base   = ART_HD if profile == "hd" else ART_BASE
     remote_dir = REMOTE_ART[profile]

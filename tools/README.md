@@ -58,6 +58,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_bildlib.py \
   && python3 tools/test_namensabgleich.py \
   && python3 tools/test_verkleinern.py \
+  && python3 tools/test_cover_original.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -102,6 +103,7 @@ python3 tools/regression_test.py \
 | `test_kernel_wechsel.py` | Test (Pass/Fail) | Bildspeicher wird auf beiden MiSTer-Kerneln erkannt - sysfs zuerst, ioctl als Rueckfall |
 | `test_bildrand.py` | Test (Pass/Fail) | Einstellbarer Bildrand: Vorgabe unveraendert, kaputte Datei faellt zurueck, und der Wert kommt wirklich im Layout an |
 | `test_suchtreffer.py` | Test (Pass/Fail) | Positionsanzeige und Trefferwechsel: ASCII-Abkuerzung bewiesen gleichwertig, neuer Sprung trifft dasselbe wie der alte, leichter Pfad bitgleich |
+| `test_cover_original.py` | Test (Pass/Fail) | Download legt PNG/JPG im Original ab und das Frontend findet sie; Tauschschalter laesst Enter in Ruhe; USB-Wartezeit |
 | `test_verkleinern.py` | Test (Pass/Fail) | Der umgebaute Verkleinerer liefert bitgenau dasselbe Bild wie vorher, und ist im HDMI-Fall doppelt so schnell |
 | `test_namensabgleich.py` | Test (Pass/Fail) | Cover trotz anderer ROM-Schreibweise (GoodTools gegen No-Intro), und das Nachzieh-Netz fuer spaet anlaufende Laufwerke |
 | `test_bildlib.py` | Test (Pass/Fail) | libpng/TurboJPEG ueber ctypes: bitgleich zum Python-Dekoder, Rueckfall ohne Bibliothek, fremde docs-Quelle nur als Luecken-Fueller |
@@ -957,6 +959,33 @@ muss sich nach dem Umbau genauso verhalten wie vorher. Test 8 misst
 nach, dass die Abkuerzung ueberhaupt etwas bringt - ohne diese Messung
 waere Test 1 nur eine Gleichheitsaussage ueber zwei Funktionen, von
 denen eine grundlos existiert.
+
+## test_cover_original.py
+
+Drei Aenderungen aus Build 119, die nur gemeinsam haben, dass sie aus
+derselben Rueckmeldungsrunde stammen.
+
+**Cover im Original ablegen.** Der Download wandelt nicht mehr in
+`.art` um, sondern legt PNG/JPG unveraendert ab. Der Knackpunkt ist
+nicht das Ablegen, sondern das WIEDERFINDEN: der Cover-Index kannte bis
+dahin nur `.art` - ohne die Erweiterung laege die Datei auf der Karte
+und wuerde nie gefunden. Geprueft wird deshalb beides, und dazu die
+Reihenfolge (liegt beides, gewinnt `.art` - schon verkleinert, also
+billiger), die Endung nach INHALT statt nach Servername, und dass ein
+zweiter Durchlauf nichts doppelt laedt.
+
+**Die Enter-Taste.** Der Schalter "Bestaetigen/Abbrechen vertauschen"
+lief ueber die ganze Tastenbelegung. Auf der Tastatur ist Enter die
+einzige Taste mit "ok" und es gibt dort gar keine mit "back" - nach dem
+Umschalten hatte die Tastatur also ueberhaupt keine Bestaetigungstaste
+mehr. Geprueft wird, dass Tastatur und Start unangetastet bleiben, A
+und B dagegen wirklich tauschen, und dass zweimaliges Anwenden weiterhin
+den Ausgangszustand herstellt - darauf baut das Umschalten im Menue.
+
+**Die USB-Wartezeit.** Geprueft wird nicht nur die Zahl, sondern auch,
+dass sie NUR in dem einen Fall greift, in dem der Cache USB-Ordner
+erwartet und gerade keine da sind - der allgemeine Fall wartet
+weiterhin kurz, sonst wuerde jeder Start ohne Not haengen.
 
 ## test_verkleinern.py
 

@@ -526,6 +526,15 @@ def _cats_from_json(data):
     return [(n, _node_from_json(node), sk) for n, node, sk in data]
 
 
+# Wie lange beim KALTSTART auf eine USB-Platte gewartet wird, von der
+# der Cache weiss, dass dort Spiele liegen. Grosszuegig, weil die
+# Alternative teurer ist: ein kompletter Scan ohne die Platte, und kurz
+# darauf der automatische zweite mit ihr (siehe scan_games()). Im
+# Regelfall - Platte rechtzeitig oben - wird hier keine einzige Sekunde
+# gewartet, weil der Zweig gar nicht betreten wird.
+USB_WARTEN_KALTSTART = 45.0
+
+
 def _wait_for_usb_stable(max_wait=10.0, poll=0.5, min_wait_if_none=3.0):
     """Kurz warten, falls USB-Laufwerke gerade erst einhaengen - nur
     relevant fuer den (seltenen) tatsaechlichen Scan-Fall, verzoegert
@@ -773,7 +782,7 @@ def _wait_for_network_ready(max_wait=45.0, poll=0.5):
         time.sleep(poll)
     fe.paths.GAMES_BASES = fe.paths._discover_games_bases()
 
-def scan_games(force=False, progress_cb=None):
+def scan_games(force=False, progress_cb=None, warte_cb=None):
     """ROM-Listen laden - aus dem Cache, wenn er noch passt.
     progress_cb(i, total, name): wird NUR beim tatsaechlichen Scannen
     von der Platte aufgerufen (nicht beim schnellen Cache-Treffer) -
@@ -854,13 +863,39 @@ def scan_games(force=False, progress_cb=None):
 
     if (not force and cached_sig is not None
             and _sig_expects_usb(cached_sig) and not _sig_expects_usb(sig)):
+        # GEAENDERT (Build 119, Nutzer-Rueckmeldung: "mit der USB-Platte
+        # findet das Frontend sie jetzt zwar, aber er liest sie beim
+        # Start quasi nochmal ein, das macht er bei jedem kalten
+        # Neustart, das nervt").
+        #
+        # Das Nachziehen aus Build 117 hat das Symptom behoben, nicht
+        # die Ursache: beim Kaltstart war die Platte nach zehn Sekunden
+        # immer noch nicht da, also lief ein kompletter Scan OHNE sie -
+        # und kurz darauf der automatische zweite MIT ihr. Zwei Scans
+        # statt keinem.
+        #
+        # Hier zu warten kostet dagegen NICHTS im Normalfall: dieser
+        # Zweig wird nur betreten, wenn der Cache USB-Ordner erwartet
+        # und gerade keine da sind. Ist die Platte rechtzeitig oben -
+        # der Regelfall - kommt das Frontend hier gar nicht vorbei. Eine
+        # anlaufende Festplatte braucht nach einem Kaltstart durchaus
+        # 15 bis 30 Sekunden; zehn waren schlicht zu knapp bemessen.
         LOG("scan_games: Cache erwartet USB, noch nicht gemountet - warte")
-        usb_ready = _wait_for_usb_stable()
+        if warte_cb:
+            # Ohne ein Lebenszeichen waeren das bis zu 45 Sekunden
+            # schwarzer Bildschirm - da haelt es niemand aus, ohne den
+            # Stecker zu ziehen.
+            try:
+                warte_cb()
+            except Exception:                            # noqa: BLE001
+                pass
+        usb_ready = _wait_for_usb_stable(max_wait=USB_WARTEN_KALTSTART)
         waited_already = True
         sig, per_syskey = _games_signature()
         if cached_sig == sig:
             LOG("Spieleliste aus Cache nach USB-Mount (%d Systeme)"
                 % len(data["cats"]))
+            ordner_merken(sig)
             return data["cats"]
 
     if not waited_already:

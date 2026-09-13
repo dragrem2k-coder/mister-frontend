@@ -1947,11 +1947,23 @@ def _art_index(base_dir, syskey):
     if idx is None:
         idx = {}
         try:
-            names = [fn for fn in os.listdir(os.path.join(base_dir, syskey))
-                     if fn.endswith(".art")]
+            # GEAENDERT (Build 119): auch PNG und JPG zaehlen als Cover.
+            # Der Download legt sie seither im Original ab, statt sie in
+            # unser .art-Format umzuwandeln - ohne diese Zeile laege das
+            # Cover auf der Karte und wuerde nie gefunden.
+            #
+            # Reihenfolge: unser eigenes Format zuerst. Liegt zu einem
+            # Spiel beides, gewinnt die bereits fertig verkleinerte
+            # .art-Datei - sie ist billiger zu zeichnen.
+            alle = os.listdir(os.path.join(base_dir, syskey))
+            names = [fn for fn in alle if fn.endswith(".art")]
+            fremde = [fn for fn in alle
+                      if fn.rsplit(".", 1)[-1].lower() in ("png", "jpg", "jpeg")]
             for fn in names:
                 idx[fn[:-4]] = fn
-            _index_ergaenzen(idx, names, lambda fn: fn)
+            for fn in fremde:
+                idx.setdefault(fn.rsplit(".", 1)[0], fn)
+            _index_ergaenzen(idx, names + fremde, lambda fn: fn)
         except OSError:
             pass
         _art_index_cache[key] = idx

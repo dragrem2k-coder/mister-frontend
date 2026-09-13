@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-13-118",
-  "summary": "Das Verkleinern der Cover ist auf HDMI doppelt so schnell (98,8 -> 45,4 ms) - bei bitgenau demselben Bild. Damit kostet ein kaltes Cover nach den Builds 115 bis 118 rund 43 ms statt 445."
+  "build_id": "2026-09-13-119",
+  "summary": "Der Cover-Download legt PNG und JPG jetzt im Original ab statt sie umzuwandeln - schneller und in voller Aufloesung, dieselbe Datei bedient CRT und HDMI. Ausserdem: Bestaetigen/Abbrechen vertauschen laesst die Enter-Taste in Ruhe, und eine langsam anlaufende USB-Platte wird beim Start abgewartet statt die Spieleliste zweimal einzulesen."
 }
