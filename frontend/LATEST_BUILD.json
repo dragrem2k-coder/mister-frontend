@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-13-125",
-  "summary": "Die Cover in der Galerie laden nicht mehr nach. Die Miniaturen der Nachbarleiste standen in keiner Vorbereitungsliste - jetzt rechnet 'Miniaturen vorbereiten' sie mit. Die Leiste blaettert seitenweise statt mitzulaufen, dadurch gibt es auch fuer die Galerie einen schnellen Zeichenweg: statt zwoelf Bildern pro Tastendruck nur noch eines. Und ein Nachlade-Thread holt fertige Miniaturen im Leerlauf von der Karte in den Arbeitsspeicher - das ist der Teil, der nach jedem Neustart gefehlt hat."
+  "build_id": "2026-09-13-126",
+  "summary": "Rot und Blau waren bei allen Covern vertauscht, die als PNG oder JPG vorliegen - der Bildspeicher des MiSTer ist BGRA, die drei Dekoder fuer PNG und JPEG lieferten aber RGBA. Bis Build 119 fiel das nicht auf, weil jedes Cover beim Download in .art umgewandelt wurde. Die RetroAchievements-Abzeichen sind gleich mit repariert. WICHTIG: einmal 'Miniaturen vorbereiten' laufen lassen - die bereits gerechneten Miniaturen tragen den Fehler weiter."
 }

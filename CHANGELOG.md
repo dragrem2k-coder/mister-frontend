@@ -7,6 +7,49 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Rot und Blau waren vertauscht** (Build 126):
+
+Rückmeldung mit Bildschirmfoto: *„die Farben von den Boxarts passen
+nicht, was ist da denn passiert?"* — das goldene Nintendo-Siegel war
+blau, der Himmel kippte ins Kalte.
+
+Der Bildspeicher des MiSTer ist **BGRA**: `fb.rect((255,0,0))` legt
+`(0,0,255)` ab. Der `.art`-Dekoder liefert BGRA, der Downloader erzeugt
+BGRA. Die drei Dekoder für PNG und JPEG lieferten aber **RGBA**:
+
+| Stelle | stand dort | richtig |
+|---|---|---|
+| `fe/bildlib.py` | `TJPF_RGBX` | `TJPF_BGRX` |
+| `fe/bildlib.py` | `PNG_FORMAT_RGBA` (0x03) | `PNG_FORMAT_BGRA` (0x13) |
+| `fe/art.py` | `_decode_png_python` baute RGBA | baut BGRA |
+
+**Warum es so lange keiner gesehen hat:** bis Build 119 wurde *jedes*
+heruntergeladene Cover in `.art` umgewandelt, und der Weg war immer
+richtig. Die Anzeige lief also nie durch diese Dekoder. Seit Build 119
+bleiben PNG/JPG im Original liegen, seit Build 123 kommen sie sogar
+bevorzugt so vom Spiegel. Aus einem schlafenden Fehler wurde ein
+sichtbarer — und zwar genau in dem Moment, in dem das Frontend besser
+werden sollte.
+
+**Warum kein Test angeschlagen hat, und was sich daran ändert.**
+`tools/test_bildlib.py` prüft seit Build 115, dass libpng *bitgleich*
+zum Python-Dekoder ist. Beide waren gleich falsch — eine
+Gleichheitsaussage über zwei Funktionen sagt nichts darüber, ob beide
+richtig liegen. Der neue `tools/test_farbkanaele.py` misst deshalb
+gegen einen Maßstab aus einer anderen Familie: `fb.rect()`, also das,
+was tatsächlich auf dem Schirm landet. Geprüft werden alle Wege —
+libpng, der Python-Dekoder mit jedem PNG-Farbtyp (inklusive Palette und
+Graustufen), TurboJPEG, und `.art` als Vergleich.
+
+**Nebenwirkung: die Miniaturen auf der Karte tragen den Fehler.** Am
+Schlüssel ist nicht zu erkennen, aus welchem Quellformat eine Miniatur
+gerechnet wurde, also müssen alle einmal neu — `THUMB_ALGO_VERSION`
+steht jetzt auf „3". Einmal **„Miniaturen vorbereiten"** laufen lassen,
+je Bildmodus einmal.
+
+**Und die RetroAchievements-Abzeichen sind gleich mit repariert** — die
+liefen schon immer über denselben PNG-Dekoder.
+
 **Warum die Cover trotz „Miniaturen vorbereiten" nachgeladen haben**
 (Build 125):
 

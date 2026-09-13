@@ -233,28 +233,44 @@ def _decode_png_python(data):
         if pixels is None:
             return None
 
-        # Zu RGBA vereinheitlichen, unabhaengig vom Quell-Farbtyp - so
+        # Zu BGRA vereinheitlichen, unabhaengig vom Quell-Farbtyp - so
         # muss der Rest des Frontends (blit() usw.) nur EIN Format
         # kennen, egal welcher PNG-Farbtyp reinkam.
+        #
+        # BUGFIX (Build 126, Nutzer-Rueckmeldung: "die Farben von den
+        # Boxarts passen nicht"): hier stand RGBA. Der Bildspeicher des
+        # MiSTer ist aber BGRA - dieselbe Farbe, die fb.rect((255,0,0))
+        # als (0,0,255,a) ablegt, und dasselbe, was der .art-Dekoder
+        # liefert. Rot und Blau waren auf jedem PNG vertauscht.
+        #
+        # PNG legt seine Bytes als R,G,B ab. Umgedreht wird deshalb
+        # HIER, an der einen Stelle, an der aus Quellbytes unsere
+        # Bildpunkte werden - nicht spaeter mit einem zweiten Durchlauf
+        # ueber Millionen Bytes.
         n_px = width * height
         out = bytearray(n_px * 4)
-        if colortype == 6:      # RGBA schon direkt passend
+        if colortype == 6:      # RGBA -> BGRA
             out[:] = pixels
-        elif colortype == 2:    # RGB -> RGBA (Alpha immer deckend)
+            out[0::4] = pixels[2::4]
+            out[2::4] = pixels[0::4]
+        elif colortype == 2:    # RGB -> BGRA (Alpha immer deckend)
             for i in range(n_px):
-                out[i * 4:i * 4 + 3] = pixels[i * 3:i * 3 + 3]
+                r, g, b = pixels[i * 3], pixels[i * 3 + 1], pixels[i * 3 + 2]
+                out[i * 4] = b
+                out[i * 4 + 1] = g
+                out[i * 4 + 2] = r
                 out[i * 4 + 3] = 255
-        elif colortype == 0:    # Graustufen -> RGBA
+        elif colortype == 0:    # Graustufen - Reihenfolge egal
             for i in range(n_px):
                 g = pixels[i]
                 out[i * 4] = out[i * 4 + 1] = out[i * 4 + 2] = g
                 out[i * 4 + 3] = 255
-        elif colortype == 4:    # Graustufen+Alpha -> RGBA
+        elif colortype == 4:    # Graustufen+Alpha - Reihenfolge egal
             for i in range(n_px):
                 g = pixels[i * 2]
                 out[i * 4] = out[i * 4 + 1] = out[i * 4 + 2] = g
                 out[i * 4 + 3] = pixels[i * 2 + 1]
-        elif colortype == 3:    # Palette -> RGBA
+        elif colortype == 3:    # Palette -> BGRA
             if not palette:
                 return None
             for i in range(n_px):
@@ -262,7 +278,9 @@ def _decode_png_python(data):
                 p = idx * 3
                 if p + 3 > len(palette):
                     return None
-                out[i * 4:i * 4 + 3] = palette[p:p + 3]
+                out[i * 4] = palette[p + 2]
+                out[i * 4 + 1] = palette[p + 1]
+                out[i * 4 + 2] = palette[p]
                 out[i * 4 + 3] = (trns[idx] if trns and idx < len(trns) else 255)
         return (width, height, bytes(out))
     except (struct.error, zlib.error, IndexError, ValueError):
@@ -526,7 +544,18 @@ def _thumb_cache_key(path, w, h):
 # werden.
 #
 # 2 = Flaechenmittel beim Verkleinern (vorher: Nearest-Neighbor)
-THUMB_ALGO_VERSION = "2"
+# GEAENDERT (Build 126): von "2" auf "3". Alle Miniaturen, die aus
+# einem PNG oder JPG gerechnet wurden, liegen mit vertauschtem Rot und
+# Blau auf der Karte (siehe _decode_png_python() oben). Sie sind nicht
+# daran zu erkennen - im Schluessel steht der Quellpfad, nicht das
+# Quellformat -, also muessen sie alle einmal neu.
+#
+# Der Preis ist ein einmaliger Durchlauf von "Miniaturen vorbereiten".
+# Die Alternative waere, nach der Dateiendung der Quelle zu
+# unterscheiden und nur die betroffenen zu verwerfen - mehr Code, mehr
+# Wege, etwas zu uebersehen, und am Ende blieben genau die falschen
+# Bilder liegen, die man loswerden will.
+THUMB_ALGO_VERSION = "3"
 
 
 # Die beiden Rechenoperationen als fertige Funktionen - map() ruft sie

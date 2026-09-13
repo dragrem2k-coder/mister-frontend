@@ -53,7 +53,7 @@ Bibliothek auf einem Geraet, laeuft alles exakt wie bisher - ein
 Rueckschritt ist dadurch unmoeglich.
 
 VERTRAG NACH AUSSEN: jede decode_*-Funktion liefert (breite, hoehe,
-rgba) oder None - genau wie decode_png() in fe/art.py, und wie dort
+bgra) oder None - genau wie decode_png() in fe/art.py, und wie dort
 wird NIE eine Ausnahme nach aussen gelassen. Fehlt die Bibliothek,
 liefert die Funktion immer None.
 """
@@ -61,11 +61,24 @@ import ctypes
 import os
 
 # TurboJPEG-Pixelformate (tjPixelFormats in turbojpeg.h). Wir brauchen
-# nur eines: RGBX schreibt R, G, B und laesst das vierte Byte in Ruhe -
+# nur eines: BGRX schreibt B, G, R und laesst das vierte Byte in Ruhe -
 # deshalb wird der Zielpuffer vorher mit 0xFF gefuellt und ist danach
-# gueltiges RGBA mit voller Deckkraft, ohne dass ein Python-Durchlauf
+# gueltiges BGRA mit voller Deckkraft, ohne dass ein Python-Durchlauf
 # ueber Millionen Bytes noetig waere.
-TJPF_RGBX = 2
+#
+# BUGFIX (Build 126, Nutzer-Rueckmeldung mit Bildschirmfoto: "die Farben
+# von den Boxarts passen nicht"). Hier stand TJPF_RGBX = 2, und
+# derselbe Fehler steckte in der PNG-Seite: beide lieferten RGBA, der
+# Bildspeicher des MiSTer ist aber BGRA. Rot und Blau waren also auf
+# JEDEM Cover vertauscht, das nicht aus einer .art-Datei kam - das
+# goldene Nintendo-Siegel wurde blau, der Himmel kippte ins Kalte.
+#
+# Warum es so lange niemandem auffiel: bis Build 119 wurden alle Cover
+# beim Download in .art umgewandelt, und DER Weg war immer richtig
+# (siehe rgb_to_art() in mister_boxart.py). Erst seit PNG/JPG im
+# Original liegen bleiben - und seit Build 123 aus dem png-Spiegel
+# kommen - laeuft die Anzeige ueberhaupt durch diese beiden Dekoder.
+TJPF_BGRX = 3
 
 TJ_MAX_KANTE = 8000        # groesser ist bei Coverbildern Unsinn
 TJ_MAX_PIXEL = 16_000_000  # Schutz gegen absichtlich riesige Bilder
@@ -242,12 +255,12 @@ def decode_jpeg(data, ziel_b=0, ziel_h=0):
             breite = (breite * num + denom - 1) // denom
             hoehe = (hoehe * num + denom - 1) // denom
 
-        # Mit 0xFF vorgefuellt: TJPF_RGBX schreibt nur die ersten drei
+        # Mit 0xFF vorgefuellt: TJPF_BGRX schreibt nur die ersten drei
         # Bytes je Bildpunkt, das vierte bleibt stehen - und ist damit
         # ohne weiteren Durchlauf die volle Deckkraft.
         puffer = ctypes.create_string_buffer(b"\xff" * (breite * hoehe * 4))
         if _LIB.tjDecompress2(griff, data, len(data), puffer,
-                              breite, breite * 4, hoehe, TJPF_RGBX, 0) != 0:
+                              breite, breite * 4, hoehe, TJPF_BGRX, 0) != 0:
             return None
         return breite, hoehe, puffer.raw[:breite * hoehe * 4]
     except Exception:
@@ -290,7 +303,16 @@ def datei_lesen(pfad, ziel_b=0, ziel_h=0):
 # ---------------------------------------------------------------------------
 
 PNG_IMAGE_VERSION = 1
-PNG_FORMAT_RGBA = 0x03      # FLAG_COLOR | FLAG_ALPHA
+# Die Flags aus png.h, damit der Wert nachvollziehbar ist statt geraten:
+#
+#   PNG_FORMAT_FLAG_ALPHA  0x01
+#   PNG_FORMAT_FLAG_COLOR  0x02
+#   PNG_FORMAT_FLAG_BGR    0x10
+#
+# BUGFIX (Build 126): hier stand PNG_FORMAT_RGBA = 0x03. Der
+# Bildspeicher des MiSTer ist BGRA - siehe die ausfuehrliche
+# Begruendung bei TJPF_BGRX oben, es ist derselbe Fehler.
+PNG_FORMAT_BGRA = 0x13      # FLAG_COLOR | FLAG_ALPHA | FLAG_BGR
 PNG_MAX_PIXEL = 16_000_000
 
 _PNG_KANDIDATEN = (
@@ -365,7 +387,7 @@ def decode_png_lib(data):
         if breite <= 0 or hoehe <= 0 or breite * hoehe > PNG_MAX_PIXEL:
             _PNG.png_image_free(ctypes.byref(bild))
             return None
-        bild.format = PNG_FORMAT_RGBA
+        bild.format = PNG_FORMAT_BGRA
         puffer = ctypes.create_string_buffer(breite * hoehe * 4)
         ok = _PNG.png_image_finish_read(ctypes.byref(bild), None, puffer,
                                         breite * 4, None)

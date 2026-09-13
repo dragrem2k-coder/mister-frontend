@@ -63,6 +63,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_zip.py \
   && python3 tools/test_ansichten.py \
   && python3 tools/test_quelle_png.py \
+  && python3 tools/test_farbkanaele.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -107,6 +108,7 @@ python3 tools/regression_test.py \
 | `test_kernel_wechsel.py` | Test (Pass/Fail) | Bildspeicher wird auf beiden MiSTer-Kerneln erkannt - sysfs zuerst, ioctl als Rueckfall |
 | `test_bildrand.py` | Test (Pass/Fail) | Einstellbarer Bildrand: Vorgabe unveraendert, kaputte Datei faellt zurueck, und der Wert kommt wirklich im Layout an |
 | `test_suchtreffer.py` | Test (Pass/Fail) | Positionsanzeige und Trefferwechsel: ASCII-Abkuerzung bewiesen gleichwertig, neuer Sprung trifft dasselbe wie der alte, leichter Pfad bitgleich |
+| `test_farbkanaele.py` | Test (Pass/Fail) | Jeder Bildweg liefert BGRA - gemessen gegen fb.rect(), nicht gegen einen zweiten Dekoder |
 | `test_quelle_png.py` | Test (Pass/Fail) | Zweite Cover-Quelle (png/-Baum des Mirrors): beide Ablageorte, Endung nach Inhalt, Klartext-HTTP, Reihenfolge der Quellen |
 | `test_ansichten.py` | Test (Pass/Fail) | Die drei Ansichten von Spieleliste UND Hauptseite, dazu der Nachlade-Thread: Kastengroesse stimmt mit dem Vorauslader ueberein, schneller Rasterpfad bitgenau, leichte Listenpfade halten sich raus |
 | `test_zip.py` | Test (Pass/Fail) | ROMs in ZIP-Archiven: Archiv wird zum Ordner, Pfad laeuft durch das Archiv, nichts wird entpackt, kaputtes Archiv faellt still weg |
@@ -1242,6 +1244,41 @@ Pfad, leichte Pfade halten sich raus), dazu:
   Geprueft ueber das, was die Funktion `thumb_cache_schuetzen()`
   uebergibt, nicht ueber ihre Rueckgabe - die enthaelt nur, was noch
   fehlt, und waere nach einem Zeichenversuch leer.
+
+## test_farbkanaele.py
+
+Rot und Blau waren vertauscht (Build 126). Nutzer-Rueckmeldung mit
+Bildschirmfoto: *„die Farben von den Boxarts passen nicht"* - das
+goldene Nintendo-Siegel war blau.
+
+Der Bildspeicher des MiSTer ist **BGRA**. Der `.art`-Dekoder liefert
+BGRA, der Downloader erzeugt BGRA. Die drei Dekoder fuer PNG und JPEG
+lieferten aber **RGBA**:
+
+| Stelle | stand dort | richtig |
+|---|---|---|
+| `fe/bildlib.py` | `TJPF_RGBX` | `TJPF_BGRX` |
+| `fe/bildlib.py` | `PNG_FORMAT_RGBA` (0x03) | `PNG_FORMAT_BGRA` (0x13) |
+| `fe/art.py` | `_decode_png_python` baute RGBA | baut BGRA |
+
+**Warum es so lange niemandem auffiel:** bis Build 119 wurde jedes
+heruntergeladene Cover in `.art` umgewandelt, und DIESER Weg war immer
+richtig. Die Anzeige lief also nie durch diese Dekoder. Seit Build 119
+bleiben PNG/JPG im Original liegen, seit Build 123 kommen sie sogar
+bevorzugt so vom Spiegel - damit wurde aus einem schlafenden Fehler ein
+sichtbarer.
+
+**WAS DIESER TEST ANDERS MACHT als `test_bildlib.py`:** der vergleicht
+libpng GEGEN den Python-Dekoder. Beide waren gleich falsch, der Test
+blieb gruen - eine Gleichheitsaussage ueber zwei Funktionen sagt nichts
+darueber, ob beide richtig liegen. Hier wird gegen einen Massstab
+geprueft, der NICHT aus derselben Familie stammt: `fb.rect()`, also
+das, was tatsaechlich auf dem Schirm landet.
+
+Geprueft werden alle Wege (libpng, Python-Dekoder mit jedem PNG-Farbtyp
+inklusive Palette und Graustufen, TurboJPEG, und `.art` als
+Vergleichsmassstab) sowie, dass `THUMB_ALGO_VERSION` erhoeht wurde -
+die Miniaturen auf der Karte tragen den Fehler sonst weiter.
 
 ## test_quelle_png.py
 
