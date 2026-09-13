@@ -7,6 +7,97 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Zweite Cover-Quelle, und zwei Fehler aus Build 122** (Build 123):
+
+### Die zweite Quelle ist da
+
+Der Download geht jetzt **vier Stufen** durch und hört beim ersten
+Treffer auf:
+
+0. **Auf dem MiSTer selbst** — liegt das Cover schon in der
+   Artwork-Datenbank unter `/media/fat/docs` oder in einem Artpack,
+   gibt es nichts zu laden. Kostet null Bandbreite und null Platz.
+1. **Spiegel, `png/`-Baum** *(neu)* — fertige PNG/JPG, die genau so
+   abgelegt werden, wie sie kommen. Kein Dekodieren, kein Verkleinern,
+   kein Umwandeln — seit Build 119 die Form, in der wir Cover haben
+   wollen.
+2. **Spiegel, `art/`-Baum** — dieselbe Quelle, aber bereits fertig
+   verkleinert. Im „art"-Modus die erste Wahl, sonst das Netz darunter.
+3. **libretro** — unabhängig vom Spiegel, als letztes Netz.
+
+Drei Eigenheiten der neuen Stufe, alle vom Betreiber so dokumentiert
+und alle einzeln geprüft:
+
+- **Klartext-HTTP, kein SSL.** Der Host hat bewusst kein Zertifikat.
+  Ein versehentliches `https` wäre kein Schönheitsfehler, sondern der
+  Totalausfall der Stufe.
+- **Zwei Ablageorte.** Meist `<System>/Named_Boxarts/`, bei Amiga und
+  Amstrad direkt `<System>/`. Beide werden gelistet; kommt ein Name in
+  beiden vor, gewinnt die direkte. Der Named_Boxarts-Zweig bleibt
+  drin — er kostet ein Verzeichnis-Listing pro System und macht die
+  Migration schmerzfrei.
+- **Der Server meldet falsche Content-Types.** Die Endung kommt aus den
+  ersten Bytes. Was kein Bild ist — eine HTML-Fehlerseite etwa —, wird
+  **nicht** geschrieben, sondern an die nächste Stufe weitergereicht.
+  Lieber eine Stufe später ein Cover als eine kaputte Datei auf der
+  Karte.
+
+Dateinamen folgen der No-Intro-Konvention, also derselbe unscharfe
+Abgleich wie überall (Build 117).
+
+### Der Beenden-Dialog blieb stehen
+
+Rückmeldung: *„wenn ich das Frontend beenden will und dann Nein
+anklicke, bleibt die Infobox stehen — aber nur im HDMI-Modus."*
+
+Der Dialog schreibt mitten in den Bildspeicher, ohne dass die Seite
+davon erfährt. Beim nächsten Aufbau sah der schnelle Zeichenpfad seinen
+eigenen Schlüssel unverändert, hielt den Hintergrund für gültig und
+frischte nur die Zeilen auf — der Dialog blieb zwischen ihnen liegen.
+Dass es **nur** auf HDMI auffiel, hat einen Grund: den schnellen Pfad
+auf der Hauptseite gibt es nur dort (auf der Röhre ist ein voller
+Neuaufbau billiger, dort verschwand der Dialog von selbst).
+
+Die Hinweisbox und der Suchbalken melden so etwas längst an. Beim
+Bestätigungsdialog war es schlicht vergessen. Der Pixelvergleich zeigte
+nebenbei, dass es **auch auf der Röhre** etwas hinterließ — nur in der
+Spieleliste statt auf der Hauptseite, und dort so klein, dass es nie
+gemeldet wurde.
+
+### Im Raster luden die Cover einzeln nach
+
+Rückmeldung: *„hab die Miniaturen durchlaufen lassen, und wenn ich dann
+mit F9 zum Beispiel in Arcade die Ansicht wechsle, laden die erst, wenn
+ich draufgehe."*
+
+Zwei Ursachen, beide echte Fehler aus Build 122:
+
+**Der Vorauslader nahm nur einen Auftrag an.** Die Funktion für „das
+brauche ich JETZT" warf bisher die ganze Liste weg und setzte den einen
+neuen Auftrag hinein. Für die Liste völlig richtig — dort ist pro Bild
+genau ein Cover zu sehen. Im Raster sind es 28, und **jede Kachel warf
+die 27 davor wieder weg.** Übrig blieb eine. Genau das sieht man als
+„sie laden erst, wenn ich draufgehe": es wurde tatsächlich immer nur
+ein einziges Cover pro Bild gerechnet. Jetzt wird gesammelt; verworfen
+wird nur die spekulative Vorratsliste, und das einmal.
+
+**„Miniaturen vorbereiten" ließ zwei Ansichten aus.** Der Schlüssel des
+Zwischenspeichers enthält die Kastengröße, und Raster und Galerie
+rechnen mit anderen Kästen als die Liste. Build 122 bereitete nur die
+Liste und die als **Vorgabe eingestellte** Ansicht vor, mit der
+Begründung, alle drei zu rechnen sei dreifache Laufzeit für etwas, das
+vielleicht nie jemand aufruft. Die Begründung hat die Taste übersehen:
+**F9 schaltet ausdrücklich um, ohne etwas zu speichern** — wer sie
+benutzt, landet damit immer in der einen Ansicht, für die nichts
+vorbereitet wurde. Ein Menüpunkt, der „vorbereiten" heißt und dann doch
+nachlädt, ist schlimmer als gar keiner. Jetzt werden alle drei
+vorbereitet; die Rasterkacheln sind klein, dreifache Laufzeit wird es
+dadurch nicht.
+
+Geprüft in `tools/test_quelle_png.py` (6 Prüfblöcke) sowie in
+`tools/test_overlay_redraw.py` und `tools/test_ansichten.py`, die je
+einen Block dazubekommen haben.
+
 **Drei Ansichten für die Spieleliste** (Build 122):
 
 Aus den Kachel-Entwürfen ausgewählt: *„B und D und das alte als

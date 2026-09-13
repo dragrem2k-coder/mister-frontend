@@ -5927,6 +5927,31 @@ class Frontend:
             fb.text(bx + (btn_w - tw) // 2, by + 4 * s, label,
                     s, C_TITLE if sel else C_TEXT, bg)
             bx += btn_w + gap
+        # BUGFIX (Build 123, Nutzer-Rueckmeldung: "wenn ich das Frontend
+        # beenden will und dann Nein anklicke, bleibt die Infobox
+        # stehen - aber nur im HDMI-Modus").
+        #
+        # Warum NUR auf HDMI: den schnellen Seitenpfad auf der
+        # Hauptseite gibt es nur dort (siehe _pgc_fast bei
+        # H >= KOMPAKT_H - auf CRT ist ein fb.clear() billiger als ein
+        # Dutzend einzeln freigeraeumter Rechtecke, dort wird also
+        # ohnehin immer voll aufgebaut und der Dialog verschwindet von
+        # selbst).
+        #
+        # Auf HDMI dagegen: der Dialog schreibt mitten in den Puffer,
+        # ohne dass die Seite davon etwas erfaehrt. Beim naechsten
+        # Aufbau sieht der schnelle Pfad seinen eigenen Schluessel
+        # unveraendert, haelt den Hintergrund fuer gueltig und frischt
+        # nur die Zeilen auf - der Dialog steht zwischen ihnen und
+        # bleibt liegen.
+        #
+        # Genau dafuer gibt es fb.full_redraw_gen, und die Hinweisbox
+        # (_draw_prominent_message()) und der Suchbalken zaehlen ihn
+        # laengst hoch. Beim Bestaetigungsdialog war es schlicht
+        # vergessen. Wirkt fuer BEIDE Wege aus dem Dialog heraus
+        # (Nein/ESC und ein bestaetigtes Ja, das doch nicht beendet)
+        # und fuer alle drei Ansichten.
+        fb.mark_full_redraw()
         fb.flip()
 
     def draw_list_row(self, idx, bg_fresh=False):
@@ -7230,7 +7255,7 @@ class Frontend:
     # seit Build 102 auf dem zweiten CPU-Kern. Diese Funktion war damit
     # die schwaechere Kopie am schlechteren Ort.
 
-    def _art_panel_geometrie(self, ansicht=None):
+    def _art_panel_geometrie(self, ansicht=None, erzwingen=False):
         """Die Geometrie, aus der die Cover-Kastengroesse folgt - oder
         None, wenn hier gerade gar kein Cover gezeichnet wird.
 
@@ -7249,15 +7274,22 @@ class Frontend:
         Die Drei-Form ist absichtlich unveraendert geblieben: sie ist
         genau das, was der Vorauslader seit Build 73 bekommt.
 
-        ansicht=None bedeutet "die, die gerade gilt"."""
+        ansicht=None bedeutet "die, die gerade gilt".
+
+        erzwingen=True rechnet auch dann, wenn hier gerade gar keine
+        Cover-Spalte gezeichnet wird. Das braucht "Miniaturen
+        vorbereiten": der Menuepunkt wird aus dem System-Menue heraus
+        aufgerufen, und dort gibt es keine. Ohne das kam fuer Raster und
+        Galerie None zurueck - und genau die beiden wurden dann nicht
+        vorbereitet, obwohl sie in der Liste standen."""
         fb = self.fb
         W = fb.width
         items = self._display_items()
         _name, _root_node, syskey = self.cats[self.cat_i]
         has_art = self.hat_artspalte(items, syskey)
-        if not has_art:
+        if not has_art and not erzwingen:
             return None
-        L = self.layout_items(has_art)
+        L = self.layout_items(True if erzwingen else has_art)
         s, ox, oy = L["s"], L["ox"], L["oy"]
         if ansicht is None:
             ansicht = self.aktuelle_ansicht(has_art)
@@ -7602,29 +7634,43 @@ class Frontend:
                 return
             geo = (art_w, art_h, s)
 
-        # NEU (Build 122): vorbereitet wird fuer JEDE Ansicht, die
-        # tatsaechlich in Gebrauch ist - nicht nur fuer die, in der man
-        # gerade steht.
+        # Vorbereitet wird fuer ALLE DREI Ansichten.
         #
         # Der Grund steckt im Schluessel des Miniatur-Zwischenspeichers:
         # er enthaelt die KASTENGROESSE (siehe _thumb_cache_key() in
         # fe/art.py). Raster und Galerie rechnen mit anderen Kaesten als
-        # die Liste. Wer also im Menue "Miniaturen vorbereiten" laufen
-        # laesst, danach auf Raster umschaltet und dann wieder alles
-        # nachrechnen muesste, haette voellig zu Recht das Gefuehl, der
-        # Durchlauf habe nichts gebracht.
+        # die Liste - eine Miniatur fuer die eine ist fuer die andere
+        # nicht da.
         #
-        # Vorbereitet werden deshalb die Listenansicht (die gilt immer -
-        # in jeder Kategorie ohne Cover-Spalte und ueberall dort, wo
-        # niemand umgeschaltet hat) UND die eingestellte Vorgabe, falls
-        # das eine der beiden neuen ist. Mehr nicht: alle drei
-        # vorzurechnen waere die dreifache Laufzeit fuer eine Ansicht,
-        # die vielleicht nie jemand aufruft.
+        # KORRIGIERT (Build 123, Nutzer-Rueckmeldung: "hab die Miniaturen
+        # gerade durchlaufen lassen, und wenn ich dann mit F9 zum
+        # Beispiel in Arcade die Ansicht wechsle, laden die erst, wenn
+        # ich draufgehe"). In Build 122 standen hier nur die Liste und
+        # die als Vorgabe EINGESTELLTE Ansicht, mit der Begruendung, alle
+        # drei zu rechnen sei die dreifache Laufzeit fuer etwas, das
+        # vielleicht nie jemand aufruft.
+        #
+        # Die Begruendung war falsch, weil sie die Taste uebersehen hat:
+        # F9 schaltet ausdruecklich um, OHNE etwas zu speichern - genau
+        # dafuer ist sie da. Wer sie benutzt, landet damit immer in der
+        # einen Ansicht, fuer die nichts vorbereitet wurde. Ein
+        # Menuepunkt, der "vorbereiten" heisst und dann doch nachlaedt,
+        # ist schlimmer als gar keiner.
+        #
+        # Und die dreifache Laufzeit ist es auch nicht: die Rasterkacheln
+        # sind klein (auf HDMI 137x183 gegen 371x672 in der Liste), das
+        # Verkleinern kostet dort einen Bruchteil. Doppelte faellt weg,
+        # weil der Schluessel Pfad+Kasten ist und ein set() dagegen
+        # laeuft.
         geos = [geo]
-        for _a in (ansicht_lesen(),):
+        for _a in ANSICHTEN:
             if _a == "liste":
                 continue
-            _g = self._art_panel_geometrie(_a)
+            # erzwingen=True: der Menuepunkt wird aus dem System-Menue
+            # heraus gerufen, und dort gibt es keine Cover-Spalte - ohne
+            # das kaeme hier fuer beide neuen Ansichten None zurueck und
+            # der ganze Absatz darueber waere wirkungslos.
+            _g = self._art_panel_geometrie(_a, erzwingen=True)
             if _g is not None and _g not in geos:
                 geos.append(_g)
 

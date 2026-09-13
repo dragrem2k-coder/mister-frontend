@@ -175,14 +175,36 @@ spiele = [g for g in gesehen if fm.SYSART_BASE not in g[0]]
 # kommt in beiden Kategorien vor, hat aber nur in der MIT Systemkey
 # einen Bildpfad, faellt also ebenfalls auf ein Ziel zusammen.
 ordner = [g for g in spiele if "sub" in g[0]]
-check("100 gleiche Eintraege ergeben 1 Cover-Pruefung",
-      len(spiele) - len(ordner) == 1,
+# GEAENDERT (Build 123): "ein Ziel" heisst jetzt "ein Ziel JE ANSICHT".
+#
+# Der Schluessel des Zwischenspeichers enthaelt die Kastengroesse, und
+# Liste, Raster und Galerie rechnen mit verschiedenen Kaesten - eine
+# Miniatur fuer die eine ist fuer die andere nicht da. Seit Build 123
+# bereitet der Menuepunkt deshalb alle drei vor (der Nutzer schaltet
+# mit F9 um, ohne dass etwas gespeichert wird - wer nur die
+# eingestellte Ansicht vorbereitet, laesst ihn genau dort auflaufen).
+#
+# Worauf es diesem Test ankommt, bleibt unveraendert: aus 100
+# Vorkommen desselben Spiels werden nicht 100 Berechnungen, sondern so
+# viele, wie es verschiedene KAESTEN gibt. Deshalb wird hier gegen die
+# Zahl der Ansichten geprueft und nicht gegen eine feste Zahl - und
+# zusaetzlich, dass es wirklich verschiedene Kaesten sind.
+_ansichten = len(fm.ANSICHTEN)
+_spiel_ziele = [g for g in spiele if g not in ordner]
+check("100 gleiche Eintraege ergeben %d Cover-Pruefungen (je Ansicht eine)"
+      % _ansichten,
+      len(_spiel_ziele) == _ansichten,
       "%d Spiel-Pruefungen (%d Ordner, %d Kategorie-Logos)"
-      % (len(spiele) - len(ordner), len(ordner),
-         len(gesehen) - len(spiele)))
+      % (len(_spiel_ziele), len(ordner), len(gesehen) - len(spiele)))
+check("und es sind wirklich drei VERSCHIEDENE Kastengroessen",
+      len({(g[1], g[2]) for g in _spiel_ziele}) == _ansichten,
+      repr(sorted({(g[1], g[2]) for g in _spiel_ziele})))
+check("es ist derselbe Pfad, nur in drei Groessen",
+      len({g[0] for g in _spiel_ziele}) == 1,
+      repr(sorted({g[0] for g in _spiel_ziele})))
 check("die Ordnerzeile selbst ist jetzt dabei (Build 87)",
-      len(ordner) == 1, "%d Ordner-Pruefungen: %s"
-      % (len(ordner), [o[0] for o in ordner]))
+      len(ordner) == _ansichten, "%d Ordner-Pruefungen: %s"
+      % (len(ordner), sorted({o[0] for o in ordner})))
 
 print()
 if fails:

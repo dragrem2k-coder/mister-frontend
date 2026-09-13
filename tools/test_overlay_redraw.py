@@ -86,6 +86,56 @@ for w, h in ((320, 240), (1920, 1080)):
           bytes(fe2.fb.buf) == want)
     print()
 
+# ---------------------------------------------------------------------------
+# Build 123: derselbe Fehler, andere Box - der Beenden-Dialog.
+#
+# Nutzer-Rueckmeldung: "wenn ich das Frontend beenden will und dann Nein
+# anklicke, bleibt die Infobox stehen - aber nur im HDMI-Modus".
+#
+# Warum nur HDMI: den schnellen Seitenpfad auf der HAUPTSEITE gibt es
+# nur dort (H >= KOMPAKT_H, siehe _pgc_fast in frontend.py) - auf CRT
+# ist ein fb.clear() billiger als ein Dutzend einzeln freigeraeumter
+# Rechtecke, dort wird also immer voll aufgebaut und der Dialog
+# verschwindet von selbst. Genau deshalb wird hier in BEIDEN
+# Aufloesungen geprueft: auf CRT muss der Test gruen sein, ohne dass
+# der Fix ueberhaupt etwas tut, auf HDMI faellt er ohne ihn um.
+# ---------------------------------------------------------------------------
+print("--- Beenden-Dialog (Build 123) ---")
+for w, h in ((320, 240), (1920, 1080)):
+    lbl = "CRT" if w == 320 else "HDMI"
+    H.set_screen(w, h)
+    for seite, wo in ((0, "Hauptseite"), (1, "Spieleliste")):
+        ref = H.make_frontend(seite)
+        ref.item_i = 1
+        ref.draw()
+        ref.draw()
+        want = bytes(ref.fb.buf)
+
+        fe = H.make_frontend(seite)
+        fe.item_i = 1
+        fe.draw()
+        fe.confirm_quit = True
+        fe.confirm_choice = 1
+        fe.draw()                      # Dialog liegt jetzt ueber der Seite
+        fe.confirm_quit = False        # "Nein"
+        fe.draw()
+        anders = sum(1 for i in range(0, len(want), 4)
+                     if bytes(fe.fb.buf[i:i + 4]) != want[i:i + 4])
+        check("%-4s %-12s: kein Rest des Dialogs" % (lbl, wo),
+              anders == 0, "%d abweichende Bildpunkte" % anders)
+
+# Und die Ursache selbst, damit klar bleibt, WORAN es lag.
+H.set_screen(1920, 1080)
+fe = H.make_frontend(0)
+fe.draw()
+vorher = fe.fb.full_redraw_gen
+fe.confirm_quit = True
+fe.draw()
+check("der Dialog entwertet den schnellen Pfad",
+      fe.fb.full_redraw_gen > vorher,
+      "%d -> %d" % (vorher, fe.fb.full_redraw_gen))
+
+print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))
     for f in fails:

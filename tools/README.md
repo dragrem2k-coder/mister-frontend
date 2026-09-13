@@ -62,6 +62,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_artpacks.py \
   && python3 tools/test_zip.py \
   && python3 tools/test_ansichten.py \
+  && python3 tools/test_quelle_png.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -106,6 +107,7 @@ python3 tools/regression_test.py \
 | `test_kernel_wechsel.py` | Test (Pass/Fail) | Bildspeicher wird auf beiden MiSTer-Kerneln erkannt - sysfs zuerst, ioctl als Rueckfall |
 | `test_bildrand.py` | Test (Pass/Fail) | Einstellbarer Bildrand: Vorgabe unveraendert, kaputte Datei faellt zurueck, und der Wert kommt wirklich im Layout an |
 | `test_suchtreffer.py` | Test (Pass/Fail) | Positionsanzeige und Trefferwechsel: ASCII-Abkuerzung bewiesen gleichwertig, neuer Sprung trifft dasselbe wie der alte, leichter Pfad bitgleich |
+| `test_quelle_png.py` | Test (Pass/Fail) | Zweite Cover-Quelle (png/-Baum des Mirrors): beide Ablageorte, Endung nach Inhalt, Klartext-HTTP, Reihenfolge der Quellen |
 | `test_ansichten.py` | Test (Pass/Fail) | Die drei Ansichten der Spieleliste: Kastengroesse stimmt mit dem Vorauslader ueberein, schneller Rasterpfad bitgenau, leichte Listenpfade halten sich raus |
 | `test_zip.py` | Test (Pass/Fail) | ROMs in ZIP-Archiven: Archiv wird zum Ordner, Pfad laeuft durch das Archiv, nichts wird entpackt, kaputtes Archiv faellt still weg |
 | `test_artpacks.py` | Test (Pass/Fail) | Artwork aus Artpacks in allen ueblichen Ablageformen, Arcade beim Vorbereiten, Groesse des Bild-Zwischenspeichers |
@@ -1204,6 +1206,36 @@ zurueck (ein Raster aus lauter Platzhaltern waere keine Ansicht),
 hoch/runter springt im Raster eine REIHE und links/rechts nur einen
 Nachbarn, und die Taste merkt sich die Ansicht je Kategorie, waehrend
 der Menuepunkt die Vorgabe wegschreibt.
+
+## test_quelle_png.py
+
+Die zweite Cover-Quelle (Build 123): der `png/`-Baum desselben Mirrors,
+der bisher nur fertige `.art`-Dateien lieferte. Nutzerwunsch aus
+Build 120: *„erst auf dem MiSTer schauen, dann als zweites auf einer
+Quelle die ich dir noch nachreiche, und dann erst ueber libretro"*.
+
+Geprueft wird, was an dieser Quelle anders ist als an allen anderen:
+
+- **Klartext-HTTP, kein SSL.** Der Host hat bewusst kein Zertifikat.
+  Ein versehentliches `https` waere kein Schoenheitsfehler, sondern ein
+  Totalausfall der ganzen Stufe - deshalb prueft Test 5 den Quelltext
+  darauf.
+- **Zwei Ablageorte.** Die Bilder liegen uneinheitlich: bei den meisten
+  Systemen unter `<System>/Named_Boxarts/`, bei einigen (Amiga,
+  Amstrad) direkt unter `<System>/`. Beide werden gelistet; kommt ein
+  Name in beiden vor, gewinnt die direkte. Der Named_Boxarts-Zweig
+  bleibt ausdruecklich drin, auch wenn das Ziel irgendwann flach sein
+  sollte (Nutzerentscheidung: *„kostet fast nichts und macht die lange
+  Migration schmerzfrei"*).
+- **Der Server meldet falsche Content-Types** (`.art` z.B. als
+  `message/rfc822`). Die Endung kommt deshalb aus den ersten Bytes. Was
+  kein Bild ist - eine HTML-Fehlerseite etwa -, darf NICHT geschrieben
+  werden: Test 3 laesst den Server bewusst luegen und prueft, dass die
+  Datei nicht auf der Karte landet, sondern der Eintrag an die naechste
+  Quelle weitergereicht wird.
+- **Die Reihenfolge der vier Stufen** (Geraet -> png -> art ->
+  libretro), und dass die png-Stufe im "art"-Modus uebersprungen wird -
+  sie liefert ja gerade das Original, das dort niemand will.
 
 ## diag_ansichten.py
 

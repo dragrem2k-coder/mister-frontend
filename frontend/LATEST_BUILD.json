@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-13-122",
-  "summary": "Drei Ansichten fuer die Spieleliste: die bisherige Liste, ein dichtes Kachelraster (28 Cover auf einen Blick) und eine Galerie mit grossem Cover, Spieldaten und einer Leiste der Nachbarn. Die Vorgabe stellt man unter 'Anzeige & Sound' ein, F9 (am Pad Select+Y) schaltet nur die gerade offene Kategorie um. Im Raster wechselt hoch/runter die Reihe und links/rechts den Nachbarn. 'Miniaturen vorbereiten' rechnet fuer die eingestellte Ansicht gleich mit."
+  "build_id": "2026-09-13-123",
+  "summary": "Der Cover-Download hat eine zweite Quelle: fertige PNG/JPG vom Spiegel, abgefragt nach dem Geraet selbst und vor libretro. Dazu zwei Fehler aus Build 122: der Beenden-Dialog blieb nach 'Nein' im HDMI-Modus stehen, und im Raster lud pro Bild nur ein einziges Cover nach, weil der Vorauslader immer nur einen Auftrag annahm. 'Miniaturen vorbereiten' rechnet jetzt fuer alle drei Ansichten."
 }

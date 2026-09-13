@@ -126,6 +126,11 @@ class CoverPrewarmer:
 
     def __init__(self):
         self._auftraege = []
+        # True, solange die aktuelle Liste aus DRINGENDEN Auftraegen
+        # besteht (sichtbare Cover) statt aus der Vorratsliste. Siehe
+        # dringend() - daran haengt, ob ein neuer dringender Auftrag
+        # angehaengt oder die Liste vorher geleert wird.
+        self._dringend = False
         self._generation = 0
         self._wecker = threading.Condition()
         self._thread = None
@@ -170,11 +175,12 @@ class CoverPrewarmer:
         die alte Liste nicht noch zu Ende bearbeitet."""
         with self._wecker:
             self._auftraege = list(auftraege)
+            self._dringend = False
             self._generation += 1
             self._wecker.notify_all()
 
     def dringend(self, pfad, bw, bh):
-        """EIN Auftrag mit Vorrang - jemand schaut gerade darauf.
+        """Ein Auftrag mit Vorrang - jemand schaut gerade darauf.
 
         NEU (Build 105). Gerufen aus dem Zeichenpfad, wenn die Miniatur
         eines gerade sichtbaren Covers noch nicht auf der Karte liegt
@@ -182,10 +188,36 @@ class CoverPrewarmer:
         dort zu rechnen - auf HDMI 200-500 ms, in denen die Bedienung
         steht - wandert sie hierher.
 
-        Die Vorratsliste wird dabei bewusst VERWORFEN: sie enthaelt
-        Cover, die vielleicht gleich gebraucht werden, und dieses eine
-        wird jetzt gebraucht. Nachgefuellt wird sie ohnehin beim
-        naechsten Ruhemoment (PREWARM_SETTLE, 0.1 s).
+        BUGFIX (Build 123, Nutzer-Rueckmeldung: "wenn ich mit F9 zum
+        Beispiel in Arcade die Ansicht wechsle, laden die Cover erst,
+        wenn ich draufgehe").
+
+        Hier stand bis dahin ein einziger Aufruf: uebergeben([auftrag]) -
+        also "wirf alles weg, mach DAS hier". Fuer die Listenansicht war
+        das genau richtig, denn dort ist pro Bild GENAU EIN Cover zu
+        sehen.
+
+        Im Raster sind es 28. Alle 28 Kacheln rufen beim selben Bild
+        hier an - und jede warf die 27 davor wieder weg. Uebrig blieb
+        die letzte. Beim naechsten Bild dasselbe. Genau das sieht man
+        als "sie laden erst, wenn ich draufgehe": es wurde tatsaechlich
+        immer nur ein einziges Cover pro Bild gerechnet.
+
+        Jetzt wird gesammelt. Verworfen wird nur EINMAL, naemlich die
+        VORRATSLISTE beim ersten dringenden Auftrag - die ist
+        Spekulation ("koennte gleich gebraucht werden"), und was jetzt
+        auf dem Schirm steht, wird sicher gebraucht. Alle weiteren
+        dringenden Auftraege desselben Bildes kommen hinten dran, in der
+        Reihenfolge, in der sie gezeichnet werden. Nachgefuellt wird die
+        Vorratsliste ohnehin beim naechsten Ruhemoment
+        (PREWARM_SETTLE, 0.1 s), und jede Eingabe raeumt ueber
+        abbrechen() alles weg.
+
+        Die Generationsnummer wird beim ANHAENGEN bewusst NICHT
+        hochgezaehlt: der Arbeiter laeuft ueber genau dieses
+        Listenobjekt, sieht angehaengte Eintraege also von selbst und
+        muss nicht von vorne anfangen (was die schon gerechneten noch
+        einmal anfassen wuerde).
 
         Rueckgabe False heisst "nicht angenommen, rechne selbst". Genau
         das passiert im THREAD-Betrieb, und zwar absichtlich: ohne
@@ -195,13 +227,24 @@ class CoverPrewarmer:
         self.start()
         if self._proc is None:
             return False
-        self.uebergeben([(pfad, bw, bh)])
+        auftrag = (pfad, bw, bh)
+        with self._wecker:
+            if not self._dringend:
+                # Erster dringender Auftrag seit der letzten
+                # Vorratsliste: die Spekulation faellt weg.
+                self._auftraege = []
+                self._dringend = True
+                self._generation += 1
+            if auftrag not in self._auftraege:
+                self._auftraege.append(auftrag)
+            self._wecker.notify_all()
         return True
 
     def abbrechen(self):
         """Sofort aufhoeren. Wird bei JEDER Eingabe gerufen - muss
         deshalb billig sein und darf nie blockieren."""
         with self._wecker:
+            self._dringend = False
             if not self._auftraege:
                 return
             self._auftraege = []
@@ -222,6 +265,7 @@ class CoverPrewarmer:
         with self._wecker:
             self._ende = True
             self._auftraege = []
+            self._dringend = False
             self._generation += 1
             self._wecker.notify_all()
         with self._wecker:

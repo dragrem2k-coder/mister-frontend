@@ -6,12 +6,20 @@ mister_boxart.py - Boxart-Downloader fuer den MiSTer
 v4.0
 Keine Abhaengigkeiten - nur Python-Standardbibliothek.
 
-ZWEI QUELLEN, automatisch kombiniert:
-  1. MIRROR (schnell, bevorzugt): ein vertrauenswuerdiger HTTP-Mirror
-     mit bereits FERTIGEN .art-Dateien (einmalig auf einem PC erzeugt,
-     siehe art_build_mirror.py auf der Mirror-Seite). Der MiSTer muss
-     dabei selbst NICHTS dekodieren/skalieren - reiner Download.
-  2. FALLBACK (langsamer, aber unabhaengig): fuer alles, was der
+VIER STUFEN, automatisch der Reihe nach (Build 123):
+  0. DAS GERAET SELBST: liegt das Cover schon in der Artwork-Datenbank
+     unter /media/fat/docs (oder als Artpack daneben), gibt es nichts
+     zu laden - das Frontend zeigt es ohnehin. Kostet null Bandbreite
+     und null Platz.
+  1. MIRROR, png/-BAUM (neu): fertige PNG/JPG-Cover, die genau so
+     abgelegt werden, wie sie kommen - kein Dekodieren, kein
+     Verkleinern, kein Umwandeln. Seit Build 119 ist das die Form, in
+     der wir Cover haben wollen.
+  2. MIRROR, art/-BAUM: dieselbe Quelle, aber bereits FERTIG
+     verkleinerte .art-Dateien (einmalig auf einem PC erzeugt, siehe
+     art_build_mirror.py auf der Mirror-Seite). Im "art"-Modus die
+     erste Wahl, sonst das Netz unter Stufe 1.
+  3. FALLBACK (langsamer, aber unabhaengig): fuer alles, was der
      Mirror nicht listet oder nicht zuordnen kann, faellt das Skript
      automatisch auf den bisherigen Weg zurueck - PNG-Cover von
      thumbnails.libretro.com (Fallback: GitHub) laden und in reinem
@@ -557,6 +565,219 @@ def process_system_mirror(syskey, roms, sysname, remote_dir, out_dir, gesamt):
     return unresolved
 
 # ---------------------------------------------------------------------------
+# QUELLE 1b: derselbe Mirror, aber der png/-Baum (Build 123)
+#
+# NEU, und der Grund dafuer steht in Build 119: seitdem legen wir Cover
+# als ORIGINAL ab (PNG/JPG) statt sie in .art zu wandeln. Der Mirror
+# hatte bis dahin nur fertige .art-Dateien - mit dem png/-Baum liefert
+# er jetzt genau das, was wir eigentlich wollen, und zwar immer noch
+# ohne dass der MiSTer irgendetwas dekodieren muss.
+#
+# Drei Eigenheiten der Quelle, alle vom Betreiber so dokumentiert:
+#
+#   - KLARTEXT-HTTP, kein SSL. Der Host hat bewusst kein Zertifikat.
+#     Deshalb dieselbe HTTPConnection wie beim .art-Zweig, nicht
+#     urllib mit https.
+#
+#   - ZWEI ABLAGEORTE. Die Bilder liegen uneinheitlich: bei den meisten
+#     Systemen unter <System>/Named_Boxarts/, bei einigen (Amiga,
+#     Amstrad) direkt unter <System>/. Beide werden gelistet und
+#     zusammengeworfen.
+#
+#     Der Named_Boxarts-Zweig BLEIBT ausdruecklich drin, auch wenn das
+#     Ziel irgendwann flach sein sollte (Nutzerentscheidung: "kostet
+#     fast nichts und macht die lange Migration schmerzfrei"). Es ist
+#     ein einziges zusaetzliches Verzeichnis-Listing pro System.
+#
+#   - DER SERVER MELDET FALSCHE CONTENT-TYPES (.art z.B. als
+#     message/rfc822). Die Endung wird deshalb nach den ersten Bytes
+#     bestimmt, nicht nach dem Namen auf dem Server und schon gar nicht
+#     nach dem Header - dieselbe Regel, die der libretro-Zweig seit
+#     Build 119 anwendet.
+#
+# Die Dateinamen folgen der No-Intro-Konvention, also derselbe
+# unscharfe Abgleich wie ueberall sonst (match_rom()).
+# ---------------------------------------------------------------------------
+
+PNG_EXT = (".png", ".jpg", ".jpeg")
+_HREF_ANY = re.compile(r'href="([^"?]+)"', re.I)
+
+
+def _listing_lesen(pfad):
+    """Einen HTTP-Verzeichnisindex lesen -> (dateien, unterordner).
+
+    Leere Listen bei JEDEM Fehler - der Aufrufer faellt dann auf die
+    naechste Quelle zurueck, genau wie beim .art-Zweig."""
+    try:
+        conn = _get_http()
+        conn.request("GET", "/" + urllib.parse.quote(pfad),
+                     headers={"Connection": "keep-alive"})
+        resp = conn.getresponse()
+        body = resp.read()
+        if resp.status != 200:
+            return [], []
+        if "text/html" not in (resp.getheader("Content-Type") or "").lower():
+            return [], []
+        dateien, ordner = [], []
+        for href in _HREF_ANY.findall(body.decode("utf-8", "replace")):
+            if href.startswith(("?", "/", "..")):
+                continue
+            name = urllib.parse.unquote(href)
+            (ordner if name.endswith("/") else dateien).append(name.rstrip("/"))
+        return dateien, ordner
+    except Exception as e:                               # noqa: BLE001
+        _http_local.conn = None
+        print("  Mirror-PNG-Listing-Fehler (%s): %s" % (pfad, e))
+        return [], []
+
+
+def list_png(system):
+    """Alle PNG/JPG eines Systems - direkt UND in Named_Boxarts.
+
+    Rueckgabe: {Basisname ohne Endung: voller Pfad unter dem Host}.
+    Kommt ein Name in beiden Ablagen vor, gewinnt die direkte - sie ist
+    das Ziel der Migration."""
+    basis = "%s/png/%s/" % (HTTP_BASE_PATH.strip("/"), system)
+    raus = {}
+    dateien, ordner = _listing_lesen(basis)
+    for fn in dateien:
+        if fn.lower().endswith(PNG_EXT):
+            raus.setdefault(os.path.splitext(fn)[0], basis + fn)
+    for d in ordner:
+        if d.lower() != "named_boxarts":
+            continue
+        unter = basis + d + "/"
+        unterdateien, _ = _listing_lesen(unter)
+        for fn in unterdateien:
+            if fn.lower().endswith(PNG_EXT):
+                raus.setdefault(os.path.splitext(fn)[0], unter + fn)
+    return raus
+
+
+def download_png_http(relpfad, retries=3):
+    """Eine Datei ueber ihren vollen Pfad holen. Bytes oder None."""
+    url = "/" + urllib.parse.quote(relpfad)
+    for versuch in range(retries):
+        try:
+            conn = _get_http()
+            conn.request("GET", url, headers={"Connection": "keep-alive"})
+            resp = conn.getresponse()
+            data = resp.read()
+            if resp.status == 200:
+                return data
+            return None
+        except Exception:                                # noqa: BLE001
+            try:
+                _get_http().close()
+            except Exception:                            # noqa: BLE001
+                pass
+            _http_local.conn = None
+            if versuch == retries - 1:
+                return None
+            time.sleep(0.3 * (versuch + 1))
+    return None
+
+
+def endung_nach_inhalt(data):
+    """".png" / ".jpg" nach den ersten Bytes - oder None.
+
+    None heisst ausdruecklich "das ist kein Bild": dann wird nichts
+    geschrieben und der Eintrag wandert an die naechste Quelle. Der
+    Server meldet fuer manche Dateien einen falschen Content-Type, auf
+    den ist also kein Verlass; die Magic-Bytes sind eindeutig."""
+    if not data or len(data) < 4:
+        return None
+    if data[:4] == b"\x89PNG":
+        return ".png"
+    if data[:3] == b"\xff\xd8\xff":
+        return ".jpg"
+    return None
+
+
+def process_system_mirror_png(syskey, roms, sysname, out_dir, gesamt):
+    """Cover als ORIGINAL (PNG/JPG) vom Mirror holen.
+
+    Gibt die Namen zurueck, die hier NICHT geloest werden konnten -
+    der Aufrufer reicht sie an die naechste Quelle weiter. Gleiche
+    Vertragsform wie process_system_mirror()."""
+    if not roms:
+        return []
+    verfuegbar = list_png(sysname)
+    if not verfuegbar:
+        return list(roms)      # System dort (gerade) nicht vorhanden
+    idx_exact, idx_strip = build_index(list(verfuegbar))
+    tri = build_trigram_index(idx_strip)
+    print("  Mirror PNG (%s): %d Cover verfuegbar, %d ROMs abgleichen ..."
+          % (sysname, len(verfuegbar), len(roms)))
+    jobs, offen = [], []
+    t1 = time.time()
+    for i, rom in enumerate(roms, 1):
+        treffer, _wie = match_rom(rom, idx_exact, idx_strip, tri)
+        if treffer and treffer in verfuegbar:
+            jobs.append((rom, verfuegbar[treffer]))
+        else:
+            offen.append(rom)
+        if i % 250 == 0 or i == len(roms):
+            _match_bar(i, len(roms), t1)
+    sys.stdout.write("\n")
+    if not jobs:
+        return offen
+
+    _speed.reset(len(jobs))
+    _progress_stop.clear()
+    prog = threading.Thread(target=_download_progress, daemon=True)
+    prog.start()
+
+    jobs_q = queue.Queue(maxsize=DOWNLOAD_WORKERS * 4)
+    lock = threading.Lock()
+    lock2 = threading.Lock()
+    threads = []
+
+    def _worker():
+        while True:
+            item = jobs_q.get()
+            if item is _MIRROR_DONE:
+                jobs_q.put(_MIRROR_DONE)
+                break
+            rom, relpfad = item
+            data = download_png_http(relpfad)
+            endung = endung_nach_inhalt(data)
+            if endung is None:
+                # Nichts geladen, oder was geladen wurde ist kein Bild.
+                # Beides derselbe Fall: an die naechste Quelle geben,
+                # statt eine kaputte Datei auf der Karte abzulegen.
+                _speed.finish_one()
+                with lock2:
+                    offen.append(rom)
+                continue
+            try:
+                with open(os.path.join(out_dir, rom + endung), "wb") as f:
+                    f.write(data)
+            except OSError as e:
+                print("  Schreibfehler (%s): %s" % (rom, e))
+                _speed.finish_one()
+                with lock2:
+                    offen.append(rom)
+                continue
+            _speed.add(len(data))
+            _speed.finish_one()
+            with lock:
+                gesamt["neu"] += 1
+
+    for _ in range(DOWNLOAD_WORKERS):
+        t = threading.Thread(target=_worker, daemon=True)
+        t.start()
+        threads.append(t)
+    for job in jobs:
+        jobs_q.put(job)
+    jobs_q.put(_MIRROR_DONE)
+    for t in threads:
+        t.join()
+    _progress_stop.set()
+    prog.join()
+    return offen
+
+# ---------------------------------------------------------------------------
 # QUELLE 2: Fallback (langsamer, dekodiert selbst) - unveraendert der
 # bisherige Weg dieses Skripts, siehe Modul-Docstring.
 # ---------------------------------------------------------------------------
@@ -1026,11 +1247,32 @@ def process_system(syskey, roms, ext_sysname_map, art_base, remote_dir, box, ges
     for name, ext in todo:
         by_sysname.setdefault(ext_sysname_map.get(ext, syskey), []).append(name)
 
+    # DIE REIHENFOLGE DER QUELLEN (Build 123, Nutzerwunsch: "erst auf
+    # dem MiSTer schauen, dann auf einer Quelle die ich nachreiche, und
+    # dann erst ueber libretro"):
+    #
+    #   0. auf dem Geraet selbst      - laeuft schon in _schon_da()
+    #                                   oben; was dort liegt, kommt gar
+    #                                   nicht erst in diese Liste
+    #   1. Mirror, png/-Baum          - das Original, genau das, was wir
+    #                                   seit Build 119 ablegen wollen
+    #   2. Mirror, art/-Baum          - fertig verkleinert; im
+    #                                   "art"-Modus die erste Wahl,
+    #                                   sonst das Netz darunter
+    #   3. libretro                   - unabhaengig vom Mirror
+    #
+    # Im "art"-Modus (ORIGINAL_BEHALTEN=False, drittes Wort "art" auf
+    # der Kommandozeile) wird Stufe 1 UEBERSPRUNGEN - sie liefert ja
+    # gerade das Original, das dort niemand will.
     still_missing = []
     for sysname, names in by_sysname.items():
+        offen = names
+        if ORIGINAL_BEHALTEN:
+            offen = process_system_mirror_png(syskey, offen, sysname,
+                                              out_dir, gesamt)
         still_missing.extend(
             (n, sysname) for n in
-            process_system_mirror(syskey, names, sysname, remote_dir, out_dir, gesamt))
+            process_system_mirror(syskey, offen, sysname, remote_dir, out_dir, gesamt))
 
     if still_missing:
         print("  %d nicht ueber den Mirror gefunden - Rueckfall auf Einzel-Download ..."
