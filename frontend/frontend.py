@@ -854,7 +854,7 @@ from fe.scan import (
     _count_tree_items, _dedupe_items, _empty_node, _games_signature,
     _has_network_mount, _merge_node, _node_count, _scan_folder_tree,
     _scan_games_disk, _sig_expects_usb, _wait_for_network_ready, _wait_for_usb_stable,
-    letzter_scan_hatte_nas,
+    letzter_scan_hatte_nas, ordner_sind_dazugekommen,
     _wrap_flat, network_wait_enabled, save_network_wait, scan_cores,
     scan_games,
 )
@@ -3837,29 +3837,50 @@ class Frontend:
             if self._nav_active():
                 return
             self._late_mount_check_next = now + 8.0
-            if not _has_network_mount():
-                return
-            # BUGFIX (Nutzer-Rueckmeldung: "scannt schon wieder", auch
-            # nachdem der Signatur-Fehler behoben war): _has_network_mount()
-            # sagt nur, DASS eine Freigabe eingehaengt ist - nicht, ob sie
-            # NEU ist. Bei jemandem, dessen NAS beim Hochfahren ohnehin
-            # rechtzeitig da ist, war die Bedingung damit bei JEDEM Start
-            # erfuellt: rund acht Sekunden nach dem Start lief hier ein
-            # erzwungener KOMPLETTER Neuaufbau der Spieleliste
-            # (force_rescan=True) - genau das Verhalten, das dieses
-            # Sicherheitsnetz eigentlich verhindern soll.
+            # ERWEITERT (Build 117, Nutzer-Rueckmeldung: "ich habe mal
+            # eine andere USB-Festplatte angeschlossen, die startet wohl
+            # etwas langsamer - also wird bei jedem Frontendstart
+            # versucht, die Spieleliste neu aufzubauen, und ich muss
+            # immer erst unter Wartung von Hand neu einlesen").
             #
-            # Nachgezogen werden muss nur, wenn die Freigabe beim
-            # Einlesen der Spiele noch NICHT dabei war. Genau das sagt
-            # letzter_scan_hatte_nas(): waren schon NAS-Ordner in der
-            # verwendeten Signatur, ist nichts nachzuholen - fertig.
-            if letzter_scan_hatte_nas():
-                LOG("_maybe_rescan_for_late_mount: Freigabe war beim "
-                    "Einlesen schon dabei - kein Nachziehen noetig")
-                self._late_mount_rescan_done = True
+            # Hier stand nur _has_network_mount(). Das Netz war fuer
+            # einen NAS-Nutzer gebaut und hat deshalb ausschliesslich
+            # nach CIFS/NFS gesehen - eine langsam anlaufende USB-Platte
+            # fiel durchs Raster, obwohl es dasselbe Problem ist: beim
+            # Scan war der Ordner noch nicht da, kurz darauf schon.
+            #
+            # ordner_sind_dazugekommen() fragt genau das, unabhaengig
+            # davon, WO der Ordner herkommt. Bewusst nur
+            # "dazugekommen", nicht "veraendert" - siehe dortiger
+            # Kommentar.
+            if _has_network_mount():
+                # Nachgezogen werden muss nur, wenn die Freigabe beim
+                # Einlesen noch NICHT dabei war.
+                if letzter_scan_hatte_nas():
+                    LOG("_maybe_rescan_for_late_mount: Freigabe war beim "
+                        "Einlesen schon dabei - kein Nachziehen noetig")
+                    self._late_mount_rescan_done = True
+                    return
+                LOG("_maybe_rescan_for_late_mount: neues Netzlaufwerk erkannt")
+                self._late_mount_rescan_pending = True
+            elif ordner_sind_dazugekommen():
+                LOG("_maybe_rescan_for_late_mount: Spieleordner nachtraeglich "
+                    "aufgetaucht (z.B. USB-Platte spaet angelaufen)")
+                self._late_mount_rescan_pending = True
+            else:
                 return
-            LOG("_maybe_rescan_for_late_mount: neues Netzlaufwerk erkannt")
-            self._late_mount_rescan_pending = True
+            # HINWEIS zum Netzlaufwerk-Zweig oben (BUGFIX aus einer
+            # frueheren Runde, Nutzer-Rueckmeldung "scannt schon
+            # wieder"): _has_network_mount() sagt nur, DASS eine
+            # Freigabe eingehaengt ist - nicht, ob sie NEU ist. Bei
+            # jemandem, dessen NAS beim Hochfahren ohnehin rechtzeitig
+            # da ist, waere die Bedingung sonst bei JEDEM Start erfuellt
+            # und acht Sekunden nach dem Start liefe ein erzwungener
+            # kompletter Neuaufbau - genau das, was dieses Netz
+            # verhindern soll. Deshalb dort letzter_scan_hatte_nas().
+            # Beim USB-Zweig uebernimmt ordner_sind_dazugekommen()
+            # dieselbe Aufgabe: war der Ordner beim Einlesen schon da,
+            # ist er nicht "dazugekommen".
         # Phase 2: Einhaengung gesehen, Nachziehen steht noch aus - kein
         # weiteres Zeitlimit mehr, nur noch auf einen sicheren Moment
         # warten (billiger Flag-Check bei jedem draw()).

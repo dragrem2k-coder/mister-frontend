@@ -373,6 +373,68 @@ def letzter_scan_hatte_nas():
     return _LETZTE_SIGNATUR_MIT_NAS
 
 
+# Welche ROM-Ordner beim letzten Einlesen ueberhaupt DA waren (nur die
+# Kennungen, ohne Zeitstempel). Siehe ordner_sind_dazugekommen().
+_LETZTE_ORDNER = set()
+
+
+def ordner_sind_dazugekommen():
+    """Gibt es JETZT Spieleordner, die es beim letzten Einlesen noch
+    nicht gab?
+
+    NEUES FEATURE (Build 117, Nutzer-Rueckmeldung: "ich habe mal eine
+    andere USB-Festplatte angeschlossen, die startet wohl etwas
+    langsamer - also wird bei jedem Frontendstart versucht, die
+    Spieleliste neu aufzubauen, und ich muss immer erst unter Wartung
+    von Hand neu einlesen").
+
+    Fuer genau dieses Problem gab es schon ein Sicherheitsnetz
+    (_maybe_rescan_for_late_mount() in frontend.py) - es hat aber nur
+    nach NETZLAUFWERKEN gesehen, weil es fuer einen NAS-Nutzer gebaut
+    wurde. Eine langsam anlaufende USB-Platte fiel durchs Raster,
+    obwohl es dasselbe Problem ist: beim Scan war der Ordner noch nicht
+    da, kurz darauf schon.
+
+    Bewusst NUR "dazugekommen", nicht "veraendert": ein veraenderter
+    Zeitstempel passiert im Alltag staendig (ein gestartetes Spiel
+    reicht) und wuerde das Netz in einen Dauerscanner verwandeln. Ein
+    Ordner, den es vorher GAR NICHT gab, ist dagegen genau das Signal,
+    auf das es ankommt.
+
+    Der Aufruf kostet dasselbe wie der Fingerabdruck beim Start: ein
+    os.path.isdir() je Basispfad und Systemordner, keine Tiefensuche."""
+    global _LETZTE_SIGNATUR_MIT_NAS
+    if not _LETZTE_ORDNER:
+        return False        # noch gar nicht eingelesen - nichts zu vergleichen
+    # _games_signature() setzt _LETZTE_SIGNATUR_MIT_NAS als Nebenwirkung.
+    # Diese Abfrage hier ist aber nur eine ZWISCHENDURCH-Frage und darf
+    # den Merker des letzten echten Einlesens nicht ueberschreiben -
+    # sonst haette letzter_scan_hatte_nas() nach dem ersten Aufruf eine
+    # andere Bedeutung als sein Name sagt.
+    merker = _LETZTE_SIGNATUR_MIT_NAS
+    try:
+        sig, _per = _games_signature()
+    except Exception:                                    # noqa: BLE001
+        return False
+    finally:
+        _LETZTE_SIGNATUR_MIT_NAS = merker
+    return bool(_ordner_kennungen(sig) - _LETZTE_ORDNER)
+
+
+def _ordner_kennungen(sig):
+    """Nur die Ort-Kennungen aus einem Fingerabdruck, ohne Zeitstempel
+    und ohne die __-Sondereintraege."""
+    return set(e[0] for e in sig
+               if ":" in e[0] and not e[0].startswith("__"))
+
+
+def ordner_merken(sig):
+    """Festhalten, welche Ordner beim jetzt verwendeten Einlesen da
+    waren - Grundlage fuer ordner_sind_dazugekommen()."""
+    global _LETZTE_ORDNER
+    _LETZTE_ORDNER = _ordner_kennungen(sig)
+
+
 def _netz_mountpunkte():
     """Alle aktuell eingehaengten Netzwerk-Freigaben (CIFS/NFS) als Liste
     von Einhaengepunkten. Ein Lesevorgang auf /proc/mounts - kostet
@@ -753,6 +815,7 @@ def scan_games(force=False, progress_cb=None):
             if cached_sig == sig:
                 LOG("Spieleliste aus Cache (%d Systeme)"
                     % len(data["cats"]))
+                ordner_merken(sig)
                 return data["cats"]
         except (OSError, ValueError, KeyError, IndexError, TypeError,
                 pickle.UnpicklingError, EOFError, AttributeError):
@@ -891,9 +954,17 @@ def scan_games(force=False, progress_cb=None):
     # einfach erneut, bis die Platte einmal rechtzeitig bereit war.
     if usb_ready is False:
         LOG("scan_games: USB nicht sicher bereit - Ergebnis wird NICHT gecacht")
+        # Trotzdem merken, welche Ordner beim Scan da waren - genau
+        # DIESER Fall ist der, in dem spaeter welche dazukommen (die
+        # Platte laeuft an), und das Sicherheitsnetz soll das sehen.
+        ordner_merken(sig)
         return cats
 
     sig, per_syskey = _games_signature()
+    # Festhalten, welche Ordner JETZT da waren - daran erkennt das
+    # Sicherheitsnetz spaeter, ob nachtraeglich welche dazugekommen
+    # sind (siehe ordner_sind_dazugekommen()).
+    ordner_merken(sig)
     try:
         with open(GAMES_CACHE, "wb") as f:
             pickle.dump({"sig": sig, "per_syskey": per_syskey, "cats": cats},

@@ -86,7 +86,14 @@ check("65536 Zeichen x 4 Stellungen ohne Abweichung", not schlecht,
 print("Test 3: der regulaere Ausdruck ist wirklich raus")
 quelle = open(os.path.join(_REPO, "frontend", "fe", "art.py"),
               encoding="utf-8", errors="replace").read()
-block = quelle[quelle.index("def _art_index("):]
+# GEAENDERT (Build 117): der Block faengt jetzt bei _index_ergaenzen()
+# an. Das Nachtragen der Ausweich-Schreibweisen ist von dort aus
+# _art_index() UND _docs_index() gemeinsam - der Aufruf von
+# _ohne_fuehrende_nummer() steht seither in dieser Hilfsfunktion und
+# nicht mehr im Rumpf von _art_index(). Geprueft wird weiterhin
+# dasselbe: kein regulaerer Ausdruck, und die eigene Fassung wird
+# tatsaechlich benutzt.
+block = quelle[quelle.index("def _index_ergaenzen("):]
 block = block[:block.index("def _art_path_in(")]
 check("kein re.sub mehr im Index-Aufbau", "re.sub" not in block)
 check("stattdessen die eigene Fassung",

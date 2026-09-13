@@ -56,6 +56,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_bildrand.py \
   && python3 tools/test_suchtreffer.py \
   && python3 tools/test_bildlib.py \
+  && python3 tools/test_namensabgleich.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -100,6 +101,7 @@ python3 tools/regression_test.py \
 | `test_kernel_wechsel.py` | Test (Pass/Fail) | Bildspeicher wird auf beiden MiSTer-Kerneln erkannt - sysfs zuerst, ioctl als Rueckfall |
 | `test_bildrand.py` | Test (Pass/Fail) | Einstellbarer Bildrand: Vorgabe unveraendert, kaputte Datei faellt zurueck, und der Wert kommt wirklich im Layout an |
 | `test_suchtreffer.py` | Test (Pass/Fail) | Positionsanzeige und Trefferwechsel: ASCII-Abkuerzung bewiesen gleichwertig, neuer Sprung trifft dasselbe wie der alte, leichter Pfad bitgleich |
+| `test_namensabgleich.py` | Test (Pass/Fail) | Cover trotz anderer ROM-Schreibweise (GoodTools gegen No-Intro), und das Nachzieh-Netz fuer spaet anlaufende Laufwerke |
 | `test_bildlib.py` | Test (Pass/Fail) | libpng/TurboJPEG ueber ctypes: bitgleich zum Python-Dekoder, Rueckfall ohne Bibliothek, fremde docs-Quelle nur als Luecken-Fueller |
 | `diag_kaltes_cover.py` | Diagnose (immer Rueckgabewert 0) | Woraus ein kaltes Cover besteht: lesen, dekodieren, verkleinern - laeuft auch auf dem MiSTer |
 | `diag_vorauslader.py` | Diagnose (immer Rueckgabewert 0) | Was der Vorauslader dem Zeichnen wegnimmt - Thread gegen Prozess |
@@ -953,6 +955,50 @@ muss sich nach dem Umbau genauso verhalten wie vorher. Test 8 misst
 nach, dass die Abkuerzung ueberhaupt etwas bringt - ohne diese Messung
 waere Test 1 nur eine Gleichheitsaussage ueber zwei Funktionen, von
 denen eine grundlos existiert.
+
+## test_namensabgleich.py
+
+Zwei Aenderungen aus Build 117, die aus DERSELBEN Ursache kamen: der
+Nutzer hat eine andere USB-Festplatte angeschlossen.
+
+**Der Namensabgleich.** Gemeldet als "bei N64 und Sega 32X werden mir
+keine Boxarts mehr angezeigt" - das sah nach einem Fehler in einem der
+letzten Builds aus, war aber keiner. Die ROMs auf der neuen Platte
+tragen die alte GoodTools-Schreibweise, die heruntergeladenen Cover die
+No-Intro-Schreibweise:
+
+    007 - The World is Not Enough (U) [!]        (ROM)
+    007 - The World Is Not Enough (USA).art      (Cover)
+
+Zeichenweise passt davon nichts zusammen, nicht einmal "is" gegen "Is".
+`vergleichsname()` wirft alles in Klammern weg und behaelt nur
+Buchstaben und Ziffern in Grossschreibung - beide werden damit zu
+`007THEWORLDISNOTENOUGH`.
+
+Dasselbe gilt fuer die fremde Datenbank aus Build 115: sie ist
+durchgehend No-Intro benannt. Ohne den Abgleich haette jemand 21.198
+Cover auf der Karte, von denen keines gefunden wird.
+
+Getestet wird an den ECHTEN Namenspaaren vom Geraet - und in die
+Gegenrichtung: "Super Mario 64" darf nicht auf "Super Mario World"
+treffen, "Mortal Kombat" nicht auf "Mortal Kombat II". Dazu, dass der
+exakte Name immer gewinnt und dass bei mehreren gleichwertigen
+Kandidaten stabil derselbe genommen wird (`os.listdir()` liefert keine
+verlaessliche Reihenfolge).
+
+**Das Nachzieh-Netz.** Gemeldet als "bei jedem Frontendstart wird
+versucht, die Spieleliste neu aufzubauen, ich muss immer erst unter
+Wartung von Hand neu einlesen" - die neue Platte laeuft langsamer an.
+Dafuer gab es schon ein Sicherheitsnetz, es sah aber nur nach
+NETZLAUFWERKEN, weil es fuer einen NAS-Nutzer gebaut wurde.
+
+`ordner_sind_dazugekommen()` fragt jetzt allgemein, ob es Spieleordner
+gibt, die es beim letzten Einlesen noch nicht gab. Geprueft wird
+besonders, was NICHT ausloesen darf: ein geaenderter Zeitstempel (der
+passiert im Alltag staendig und wuerde das Netz in einen Dauerscanner
+verwandeln), ein weggefallener Ordner, und der allererste Start ohne
+vorheriges Einlesen. Ausserdem, dass die Zwischenfrage den NAS-Merker
+nicht ueberschreibt - er beschreibt das letzte echte Einlesen.
 
 ## test_bildlib.py
 

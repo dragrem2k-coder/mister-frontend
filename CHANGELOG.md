@@ -7,6 +7,57 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Eine andere USB-Platte — und zwei Probleme, die daraus folgten**
+(Build 117):
+
+Zwei Rückmeldungen, die zunächst nichts miteinander zu tun zu haben
+schienen. Sie haben dieselbe Ursache: eine ausgetauschte Festplatte.
+
+**„Bei N64 und Sega 32X werden keine Boxarts mehr angezeigt."** Das sah
+nach einem Fehler aus den letzten Builds aus, war aber keiner. Die ROMs
+auf der neuen Platte tragen die alte GoodTools-Schreibweise, die
+heruntergeladenen Cover die No-Intro-Schreibweise:
+
+```
+007 - The World is Not Enough (U) [!]        das ROM
+007 - The World Is Not Enough (USA).art      das Cover
+```
+
+Zeichenweise passt davon nichts zusammen — nicht einmal „is" gegen
+„Is". Neu ist deshalb ein **Ausweich-Vergleich**: alles in Klammern
+fällt weg, übrig bleiben Buchstaben und Ziffern in Großschreibung.
+Beide werden damit zu `007THEWORLDISNOTENOUGH`.
+
+Er greift **nur, wenn der exakte Name nichts gefunden hat** — dein
+eigenes Artwork behält also immer Vorrang. Der Preis: die
+Regionskennung fällt weg, die US- und die japanische Fassung desselben
+Spiels können auf denselben Namen fallen. Das ist bewusst bezahlt; ein
+Cover der falschen Region ist besser als gar keins. Verschiedene Spiele
+treffen sich dabei nicht, das ist geprüft: „Super Mario 64" bleibt von
+„Super Mario World" getrennt, „Mortal Kombat" von „Mortal Kombat II".
+
+**Nebenbei repariert das etwas Größeres:** die docs-Datenbank aus Build
+115 ist durchgehend No-Intro benannt. Wer seine ROMs anders benannt
+hat, hätte dort 21.198 Cover liegen gehabt, von denen keines gefunden
+wird.
+
+**„Bei jedem Frontendstart wird die Spieleliste neu aufgebaut."** Die
+neue Platte läuft langsamer an als die alte: beim Einlesen ist sie noch
+nicht da. Für genau dieses Problem gab es schon ein Sicherheitsnetz —
+es hat aber **nur nach Netzlaufwerken gesehen**, weil es für einen
+NAS-Nutzer gebaut wurde. Eine spät anlaufende USB-Platte fiel durchs
+Raster.
+
+Jetzt fragt es allgemein: gibt es jetzt Spieleordner, die es beim
+letzten Einlesen noch nicht gab? Wenn ja, wird **einmal** automatisch
+nachgezogen, genau wie bisher beim NAS. Der Gang ins Wartungsmenü
+entfällt.
+
+Bewusst nur „dazugekommen", nicht „verändert": ein geänderter
+Zeitstempel passiert im Alltag ständig — ein gestartetes Spiel reicht —
+und würde das Netz in einen Dauerscanner verwandeln.
+
+
 **Ein Fehler in Build 115 — und die Messung, die eine Vermutung
 widerlegt hat** (Build 116):
 

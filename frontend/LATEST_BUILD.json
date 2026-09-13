@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-13-116",
-  "summary": "Wichtiger Fix zu Build 115: 'Miniaturen vorbereiten' hat die neuen Cover aus der docs-Datenbank komplett uebergangen - jedes musste beim Zeichnen neu berechnet werden. Dazu dekodiert TurboJPEG jetzt gleich auf Kastenmass: ein kaltes JPG-Cover kostet auf CRT 10 statt 43 ms, auf HDMI 64 statt 105 ms."
+  "build_id": "2026-09-13-117",
+  "summary": "Cover werden jetzt auch gefunden, wenn die ROMs anders benannt sind als die Boxarts (GoodTools gegen No-Intro) - das betraf N64 und 32X und macht zugleich die docs-Datenbank fuer jeden nutzbar. Und eine spaet anlaufende USB-Platte loest das automatische Nachziehen der Spieleliste aus, nicht mehr nur ein NAS."
 }

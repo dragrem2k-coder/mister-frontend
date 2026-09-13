@@ -1793,6 +1793,72 @@ def _ohne_fuehrende_nummer(base):
     return base[j:] if j > i else base
 
 
+def vergleichsname(base):
+    """Ein Name, unter dem sich dasselbe Spiel aus verschiedenen
+    Sammlungen wiederfindet: alles in Klammern faellt weg, danach nur
+    noch Buchstaben und Ziffern in Grossschreibung.
+
+        "007 - The World is Not Enough (U) [!]"  ->  007THEWORLDISNOTENOUGH
+        "007 - The World Is Not Enough (USA)"    ->  007THEWORLDISNOTENOUGH
+
+    NEUES FEATURE (Build 117, Nutzer-Rueckmeldung: "bei N64 und Sega
+    32X werden mir keine Boxarts mehr angezeigt"). Die Ursache war
+    keine Aenderung am Code, sondern eine ausgetauschte USB-Platte:
+    die ROMs darauf tragen die alte GoodTools-Schreibweise mit "(U)"
+    und "[!]", die heruntergeladenen Cover die No-Intro-Schreibweise
+    mit "(USA)". Zeichenweise verglichen passt davon nichts zusammen -
+    auch nicht die Gross-/Kleinschreibung in "is"/"Is".
+
+    Dasselbe gilt fuer die fremde Datenbank aus Build 115: sie ist
+    durchgehend No-Intro benannt. Ohne diesen Abgleich trifft sie nur
+    bei Sammlungen, die zufaellig dieselbe Schreibweise benutzen.
+
+    WAS DAS KOSTET: die Regionskennung faellt weg, also koennen die
+    US- und die japanische Fassung desselben Spiels auf denselben
+    Namen fallen. Das ist der Preis und er ist bewusst bezahlt - er
+    faellt nur an, wenn der EXAKTE Name nichts gefunden hat, und ein
+    Cover der falschen Region ist besser als gar keins. Voellig
+    verschiedene Spiele treffen sich dabei nicht: "Super Mario 64"
+    und "Super Mario World" bleiben verschieden."""
+    aus = []
+    tief = 0
+    for c in base:
+        if c in "([{":
+            tief += 1
+            continue
+        if c in ")]}":
+            if tief:
+                tief -= 1
+            continue
+        if tief:
+            continue
+        if c.isalnum():
+            aus.append(c.upper())
+    return "".join(aus)
+
+
+def _index_ergaenzen(idx, namen, wert_fn):
+    """Die zwei Ausweich-Schreibweisen als LUECKENFUELLER nachtragen:
+    erst ohne fuehrende Nummer, dann der Vergleichsname.
+
+    Die Reihenfolge ist nicht beliebig. Der exakte Name muss immer
+    gewinnen, danach die Nummern-Variante, erst zuletzt der unscharfe
+    Vergleich - sonst schlaegt eine zufaellige Dateisystem-Reihenfolge
+    durch und mal trifft das eine, mal das andere Cover. Aus demselben
+    Grund werden die Namen vorher sortiert: bei zwei Dateien, die
+    denselben Vergleichsnamen ergeben, soll immer dieselbe gewinnen."""
+    for fn in sorted(namen):
+        base = fn.rsplit(".", 1)[0]
+        ohne = _ohne_fuehrende_nummer(base)
+        if ohne != base and ohne not in idx:
+            idx[ohne] = wert_fn(fn)
+    for fn in sorted(namen):
+        base = fn.rsplit(".", 1)[0]
+        knapp = vergleichsname(base)
+        if knapp and knapp not in idx:
+            idx[knapp] = wert_fn(fn)
+
+
 def _art_index(base_dir, syskey):
     """Index fuer <base_dir>/<syskey>: Dateiname OHNE ".art" (exakt
     UND ohne fuehrende "NNN "-Nummer) -> tatsaechlicher Dateiname.
@@ -1843,11 +1909,7 @@ def _art_index(base_dir, syskey):
                      if fn.endswith(".art")]
             for fn in names:
                 idx[fn[:-4]] = fn
-            for fn in names:
-                base = fn[:-4]
-                stripped = _ohne_fuehrende_nummer(base)
-                if stripped != base and stripped not in idx:
-                    idx[stripped] = fn
+            _index_ergaenzen(idx, names, lambda fn: fn)
         except OSError:
             pass
         _art_index_cache[key] = idx
@@ -1865,7 +1927,13 @@ def _art_path_in(base_dir, syskey, rom_basename):
     # aus run() herausflog - siehe dortigen Kommentar.
     if not syskey or not rom_basename:
         return None
-    fn = _art_index(base_dir, syskey).get(rom_basename)
+    idx = _art_index(base_dir, syskey)
+    fn = idx.get(rom_basename)
+    if fn is None:
+        # Build 117: zuletzt der unscharfe Vergleich - siehe
+        # vergleichsname(). Erst hier, damit der exakte Name immer
+        # gewinnt.
+        fn = idx.get(vergleichsname(rom_basename))
     if fn:
         return os.path.join(base_dir, syskey, fn)
     # NEU (Build 115): erst wenn es bei UNS nichts gibt, wird in der
@@ -2004,11 +2072,8 @@ def _docs_index(syskey):
                      if fn.rsplit(".", 1)[-1].lower() in ("jpg", "jpeg", "png")]
             for fn in namen:
                 idx[fn.rsplit(".", 1)[0]] = os.path.join(ordner, fn)
-            for fn in namen:
-                base = fn.rsplit(".", 1)[0]
-                ohne = _ohne_fuehrende_nummer(base)
-                if ohne != base and ohne not in idx:
-                    idx[ohne] = os.path.join(ordner, fn)
+            _index_ergaenzen(idx, namen,
+                             lambda fn: os.path.join(ordner, fn))
         except OSError:
             pass
     _docs_index_cache[syskey] = idx
@@ -2016,10 +2081,16 @@ def _docs_index(syskey):
 
 
 def docs_cover(syskey, rom_basename):
-    """Pfad zu einem fremden Cover, sonst None."""
+    """Pfad zu einem fremden Cover, sonst None.
+
+    Der unscharfe Vergleich (Build 117) ist hier besonders wichtig: die
+    Datenbank ist durchgehend No-Intro benannt. Wer seine ROMs anders
+    benannt hat, haette sonst 21.198 Cover auf der Karte, von denen
+    keines gefunden wird."""
     if not syskey or not rom_basename:
         return None
-    return _docs_index(syskey).get(rom_basename)
+    idx = _docs_index(syskey)
+    return idx.get(rom_basename) or idx.get(vergleichsname(rom_basename))
 
 
 def _docs_infos(syskey):
@@ -2057,6 +2128,12 @@ def _docs_infos(syskey):
                             eintrag[feld] = teile[spalte].strip()
                     if eintrag:
                         daten[teile[0]] = eintrag
+                        # Build 117: dieselbe Ausweich-Schreibweise wie
+                        # bei den Covern, sonst passt die Tabelle bei
+                        # anders benannten ROMs genauso wenig.
+                        knapp = vergleichsname(teile[0])
+                        if knapp and knapp not in daten:
+                            daten[knapp] = eintrag
         except OSError:
             pass
         except Exception:
@@ -2071,7 +2148,11 @@ def docs_meta(syskey, rom_basename):
     """Metadaten aus der fremden Datenbank, sonst {}."""
     if not syskey or not rom_basename:
         return {}
-    return _docs_infos(syskey).get(rom_basename, {})
+    daten = _docs_infos(syskey)
+    treffer = daten.get(rom_basename)
+    if treffer is None:
+        treffer = daten.get(vergleichsname(rom_basename))
+    return treffer or {}
 
 
 def docs_caches_leeren():
