@@ -7,6 +7,41 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Der letzte große Posten: das Verkleinern** (Build 118):
+
+Nach Build 115 und 116 war klar, woran es noch hängt. Von einem kalten
+Cover auf HDMI entfielen **97 von 101 ms** aufs Verkleinern — auf jedes
+Cover, in jedem Format, seit es das Frontend gibt.
+
+Der Gewinn kam am Ende aus einer einzigen Beobachtung. Bei einer
+Verkleinerung schwächer als 3:1 — und genau das ist der HDMI-Fall,
+424×768 in einen 360×420-Kasten sind Faktor 1,8 — entsteht **jede
+Zielspalte aus höchstens zwei Quellspalten**. Ein `sum()` über einen
+Ausschnitt von zwei Werten kostet dann mehr als die zwei Werte selbst:
+der Ausschnitt muss angelegt, der Aufruf gemacht werden. Jetzt werden
+die beiden Quellwerte direkt adressiert.
+
+| | vorher | nachher |
+|---|---|---|
+| HDMI, Faktor 1,8 | 98,8 ms | **45,4 ms** |
+| genau halb | 21,2 ms | **10,0 ms** |
+| CRT, Faktor 5 | 38,4 ms | 34,9 ms |
+
+Der letzte Fall läuft weiter über den allgemeinen Weg und hat nur
+Feinschliff bekommen (Kanalebenen statt Ausschnitten mit Schrittweite
+4, Zielzeile per Ausschnitt-Zuweisung statt Bildpunkt für Bildpunkt) —
+gut 10 %, quer über alle Faktoren.
+
+**Das Ergebnis ist bitgenau dasselbe wie vorher.** Das ist hier keine
+Formsache: eine Abweichung würde nicht auffallen, sie säße einfach für
+immer in den vorberechneten Miniaturen auf der Karte, gemischt mit den
+alten. Nachgewiesen über 120 Zufallsgrößen und eigens an der Grenze,
+an der der schnelle Weg an den allgemeinen abgibt.
+
+**Zusammengerechnet über die vier Builds** kostet ein kaltes JPG-Cover
+auf HDMI jetzt rund **43 ms statt 445** — und auf CRT 28 statt 385.
+
+
 **Eine andere USB-Platte — und zwei Probleme, die daraus folgten**
 (Build 117):
 

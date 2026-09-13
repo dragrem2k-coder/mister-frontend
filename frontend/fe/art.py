@@ -13,6 +13,7 @@ frontend.py importiert sie von hier zurueck, damit alle bisherigen
 Verwendungsstellen unveraendert weiterlaufen.
 """
 import os, re, struct, zlib, json, time, urllib.request, hashlib, threading
+import operator
 from fe.log import LOG
 from fe.translations import t
 
@@ -501,6 +502,13 @@ def _thumb_cache_key(path, w, h):
 THUMB_ALGO_VERSION = "2"
 
 
+# Die beiden Rechenoperationen als fertige Funktionen - map() ruft sie
+# dann in C auf, statt fuer jedes Element einen Python-Rahmen zu bauen.
+# Siehe _verkleinern_flaechenmittel().
+_addiere = operator.add
+_ganzzahlig = operator.floordiv
+
+
 def _verkleinern_flaechenmittel(pix, w, h, tw, th):
     """Bild auf tw x th verkleinern, indem ueber die zusammenfallenden
     Quellpixel GEMITTELT wird (Kastenfilter).
@@ -530,49 +538,83 @@ def _verkleinern_flaechenmittel(pix, w, h, tw, th):
         noch gelesen.
     Bewusst kein numpy o.ae. - das Frontend bleibt abhaengigkeitsfrei.
 
-    UMSETZUNG: getrennt nach Achsen. Die inneren Summen laufen ueber
-    sum() auf Ausschnitten mit Schrittweite 4 - das ist eine
-    C-Schleife statt einer Python-Schleife und macht in der Messung
-    den Unterschied zwischen 135 ms und rund 270 ms aus. Es wird immer
-    nur EINE Zielzeile im Speicher gehalten (kein kompletter
-    Zwischenpuffer) - auf einem Geraet mit ~1 GB RAM und HD-Covern ein
-    bewusster Verzicht."""
+    UMSETZUNG: getrennt nach Achsen. Es wird immer nur EINE Zielzeile
+    im Speicher gehalten (kein kompletter Zwischenpuffer) - auf einem
+    Geraet mit ~1 GB RAM und HD-Covern ein bewusster Verzicht.
+
+    UMGEBAUT (Build 118). Nach Build 115/116 war dieses Verkleinern der
+    ganze Rest: vom kalten Cover auf HDMI entfielen 97 von 101 ms
+    darauf. Gemessen steckten 73 % davon in der inneren Summenschleife,
+    19 % in den Divisionen.
+
+    Zwei Aenderungen, beide bitgenau ergebnisgleich (nachgewiesen in
+    tools/test_verkleinern.py ueber Zufallsgroessen):
+
+    1. EIN SCHNELLER WEG fuer den Fall, dass jede Zielspalte aus
+       hoechstens ZWEI Quellspalten entsteht - also fuer jede
+       Verkleinerung schwaecher als 3:1. Genau das ist der HDMI-Fall
+       (424x768 in einen 360x420-Kasten sind Faktor 1,8). Dort kostete
+       ein sum() auf einem Ausschnitt von zwei Werten mehr als die zwei
+       Werte selbst: der Ausschnitt muss angelegt, der Aufruf gemacht
+       werden. Jetzt werden die beiden Quellwerte direkt adressiert.
+       Gemessen 99 -> 46 ms.
+
+    2. Auch der allgemeine Weg arbeitet jetzt auf KANALEBENEN
+       (row[0::4] einmal je Zeile) statt auf Ausschnitten mit
+       Schrittweite 4, und die Zielzeile wird per Ausschnitt-Zuweisung
+       gesetzt statt Bildpunkt fuer Bildpunkt. Gemessen rund 10 %
+       weniger, quer ueber alle Verkleinerungsfaktoren.
+
+    Bewusst kein numpy o.ae. - das Frontend bleibt abhaengigkeitsfrei."""
     if tw <= 0 or th <= 0 or w <= 0 or h <= 0:
         return None
     # Quell-Spaltenbereich je Zielspalte, einmal vorab.
-    xr = []
+    grenzen = []
     nx = []
     for x in range(tw):
         a = int(x * w / tw)
         b = max(a + 1, int((x + 1) * w / tw))
-        xr.append((a * 4, b * 4))
+        grenzen.append((a, b))
         nx.append(b - a)
     rw = w * 4
     ro = tw * 4
     out = bytearray(tw * th * 4)
+    ziel = memoryview(out)
+    schmal = max(nx) <= 2
+
+    if schmal:
+        # Zwei feste Quellspalten je Zielspalte. Bei einer Ein-Pixel-
+        # Gruppe zeigen beide auf denselben Wert - er zaehlt dann
+        # doppelt, weshalb der Teiler unten ebenfalls verdoppelt wird.
+        # Das ist billiger als eine Fallunterscheidung im inneren
+        # Durchlauf, und das Ergebnis ist dasselbe.
+        paare = [(a, b - 1) for a, b in grenzen]
+        gewicht = [2 if v == 1 else v for v in nx]
+    else:
+        paare = None
+        gewicht = nx
+
     for ty in range(th):
         y0 = int(ty * h / th)
         y1 = max(y0 + 1, int((ty + 1) * h / th))
         n = y1 - y0
+        teiler = [v * n for v in gewicht]
         acc = None
         for y in range(y0, y1):
             row = pix[y * rw:(y + 1) * rw]
-            cur = []
-            _an = cur.append
-            for a, b in xr:
-                _an(sum(row[a:b:4]))        # Blau
-                _an(sum(row[a + 1:b:4]))    # Gruen
-                _an(sum(row[a + 2:b:4]))    # Rot
-            acc = cur if acc is None else [p + q for p, q in zip(acc, cur)]
-        o = ty * ro
-        i = 0
-        for x in range(tw):
-            d = nx[x] * n
-            out[o] = acc[i] // d
-            out[o + 1] = acc[i + 1] // d
-            out[o + 2] = acc[i + 2] // d
-            o += 4
-            i += 3
+            if schmal:
+                cur = [[e[i] + e[j] for i, j in paare]
+                       for e in (row[0::4], row[1::4], row[2::4])]
+            else:
+                cur = [[sum(e[a:b]) for a, b in grenzen]
+                       for e in (row[0::4], row[1::4], row[2::4])]
+            if acc is None:
+                acc = cur
+            else:
+                acc = [list(map(_addiere, p, q)) for p, q in zip(acc, cur)]
+        zeile = ziel[ty * ro:(ty + 1) * ro]
+        for k in (0, 1, 2):
+            zeile[k::4] = bytes(map(_ganzzahlig, acc[k], teiler))
     return bytes(out)
 
 

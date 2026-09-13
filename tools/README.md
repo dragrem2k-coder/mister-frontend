@@ -57,6 +57,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_suchtreffer.py \
   && python3 tools/test_bildlib.py \
   && python3 tools/test_namensabgleich.py \
+  && python3 tools/test_verkleinern.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -101,6 +102,7 @@ python3 tools/regression_test.py \
 | `test_kernel_wechsel.py` | Test (Pass/Fail) | Bildspeicher wird auf beiden MiSTer-Kerneln erkannt - sysfs zuerst, ioctl als Rueckfall |
 | `test_bildrand.py` | Test (Pass/Fail) | Einstellbarer Bildrand: Vorgabe unveraendert, kaputte Datei faellt zurueck, und der Wert kommt wirklich im Layout an |
 | `test_suchtreffer.py` | Test (Pass/Fail) | Positionsanzeige und Trefferwechsel: ASCII-Abkuerzung bewiesen gleichwertig, neuer Sprung trifft dasselbe wie der alte, leichter Pfad bitgleich |
+| `test_verkleinern.py` | Test (Pass/Fail) | Der umgebaute Verkleinerer liefert bitgenau dasselbe Bild wie vorher, und ist im HDMI-Fall doppelt so schnell |
 | `test_namensabgleich.py` | Test (Pass/Fail) | Cover trotz anderer ROM-Schreibweise (GoodTools gegen No-Intro), und das Nachzieh-Netz fuer spaet anlaufende Laufwerke |
 | `test_bildlib.py` | Test (Pass/Fail) | libpng/TurboJPEG ueber ctypes: bitgleich zum Python-Dekoder, Rueckfall ohne Bibliothek, fremde docs-Quelle nur als Luecken-Fueller |
 | `diag_kaltes_cover.py` | Diagnose (immer Rueckgabewert 0) | Woraus ein kaltes Cover besteht: lesen, dekodieren, verkleinern - laeuft auch auf dem MiSTer |
@@ -955,6 +957,40 @@ muss sich nach dem Umbau genauso verhalten wie vorher. Test 8 misst
 nach, dass die Abkuerzung ueberhaupt etwas bringt - ohne diese Messung
 waere Test 1 nur eine Gleichheitsaussage ueber zwei Funktionen, von
 denen eine grundlos existiert.
+
+## test_verkleinern.py
+
+Nach Build 115 und 116 war das Verkleinern der ganze Rest: von einem
+kalten Cover auf HDMI entfielen **97 von 101 ms** darauf. Gemessen
+steckten 73 % davon in der inneren Summenschleife, 19 % in den
+Divisionen.
+
+Der Gewinn kommt aus einer einzigen Beobachtung. Bei einer
+Verkleinerung schwaecher als 3:1 - und genau das ist der HDMI-Fall,
+424x768 in einen 360x420-Kasten sind Faktor 1,8 - entsteht jede
+Zielspalte aus hoechstens ZWEI Quellspalten. Ein `sum()` auf einem
+Ausschnitt von zwei Werten kostet dann mehr als die zwei Werte selbst:
+der Ausschnitt muss angelegt, der Aufruf gemacht werden.
+
+| | vorher | nachher |
+|---|---|---|
+| HDMI, Faktor 1,8 | 98,8 ms | **45,4 ms** |
+| genau halb | 21,2 ms | **10,0 ms** |
+| CRT, Faktor 5 | 38,4 ms | 34,9 ms |
+
+Der letzte Fall laeuft weiter ueber den allgemeinen Weg (drei
+Quellspalten und mehr) und hat nur den Feinschliff bekommen:
+Kanalebenen statt Ausschnitten mit Schrittweite 4, und die Zielzeile
+per Ausschnitt-Zuweisung statt Bildpunkt fuer Bildpunkt.
+
+**Was der Test beweisen muss, ist nicht das Tempo, sondern die
+Gleichheit.** Eine Abweichung faellt nicht auf - sie sitzt einfach fuer
+immer in den vorberechneten Miniaturen auf der Karte, gemischt mit den
+alten. Der Test traegt deshalb eine wortgleiche Kopie der alten Fassung
+und vergleicht ueber 120 Zufallsgroessen, dieselbe Beweisform wie beim
+Cover-Index in Build 110. Test 3 zielt eigens auf den Sprung zwischen
+schnellem und allgemeinem Weg - dort entscheidet sich, welcher genommen
+wird, und genau an solchen Grenzen laufen zwei Fassungen auseinander.
 
 ## test_namensabgleich.py
 

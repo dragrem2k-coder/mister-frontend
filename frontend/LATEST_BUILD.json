@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-13-117",
-  "summary": "Cover werden jetzt auch gefunden, wenn die ROMs anders benannt sind als die Boxarts (GoodTools gegen No-Intro) - das betraf N64 und 32X und macht zugleich die docs-Datenbank fuer jeden nutzbar. Und eine spaet anlaufende USB-Platte loest das automatische Nachziehen der Spieleliste aus, nicht mehr nur ein NAS."
+  "build_id": "2026-09-13-118",
+  "summary": "Das Verkleinern der Cover ist auf HDMI doppelt so schnell (98,8 -> 45,4 ms) - bei bitgenau demselben Bild. Damit kostet ein kaltes Cover nach den Builds 115 bis 118 rund 43 ms statt 445."
 }
