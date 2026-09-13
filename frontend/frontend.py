@@ -1198,6 +1198,46 @@ class Frontend:
             LOG("PREWARM: %d Kategorie-Abzeichen beim Start vorgemerkt"
                 % len(_logo_auftraege))
 
+        # Der Nachlade-Thread (Build 125). Holt FERTIGE Miniaturen von
+        # der Karte in den Arbeitsspeicher - siehe fe/nachladen.py fuer
+        # die Begruendung, warum das ein Thread sein darf, wo das
+        # Verkleinern einen eigenen Prozess brauchte.
+        #
+        # VERSCHOBEN (Build 127): stand bis eben 300 Zeilen weiter
+        # unten, bei den uebrigen Feldern. Das ging gut, solange ihn
+        # niemand vor dem Ende von __init__ brauchte - seit dem Absatz
+        # direkt darunter braucht ihn aber der Start selbst. Er muss
+        # also DA sein, bevor das erste Mal jemand danach greift.
+        self.lader = MiniaturLader(thumb_cache_lesen)
+        # Wieviele Spalten das Raster zuletzt hatte. Die Richtungstasten
+        # brauchen das, um "hoch" als GANZE REIHE zu deuten. Gesetzt
+        # wird es im Zeichenpfad; bis zum ersten Bild steht hier die
+        # einzige Zahl, die nie falsch ist.
+        self._raster_spalten = 1
+        self._kat_raster_spalten = 1
+
+        # NEU (Build 127): und die ANDERE Haelfte - die Abzeichen, die
+        # laengst auf der Karte liegen, aber nach einem Neustart nicht
+        # im Arbeitsspeicher. Der Vorauslader oben kann die nicht
+        # liefern: er rechnet nur, was fehlt, und er ist ein eigener
+        # Prozess.
+        #
+        # Bewusst HIER und nicht erst im ersten Ruhemoment: der
+        # Nachlade-Thread soll schon waehrend der Boot-Animation lesen,
+        # damit das Hauptmenue fertig ist, wenn es zum ersten Mal
+        # erscheint. Genau das war die Beschwerde ("die Icons muessen
+        # schon da sein und nicht jedesmal neu aufploppen").
+        try:
+            _logo_nachladen = [a for a in self.kategorie_logo_alle()
+                               if ART.nur_im_ram_fehlt(*a)]
+        except Exception:                            # noqa: BLE001
+            _logo_nachladen = []   # darf den Start nie zum Absturz bringen
+        if _logo_nachladen:
+            self.lader.start()
+            self.lader.uebergeben(_logo_nachladen)
+            LOG("NACHLADEN: %d Kategorie-Abzeichen beim Start vorgemerkt"
+                % len(_logo_nachladen))
+
         # NEU (Nutzerwunsch: "beim Scrollen fuehlt es sich laghaft an" -
         # echtes Profiling auf echter Hardware fand einen viel groesseren
         # Verdaechtigen als das eigentliche Scrollen: der ALLERERSTE
@@ -1465,11 +1505,6 @@ class Frontend:
         self._attract_game = None
         self._attract_change_next = 0.0
         self._attract_pool = None   # zwischengespeicherte flache Spieleliste
-        # NEU (Build 125): der Nachlade-Thread. Holt FERTIGE Miniaturen
-        # von der Karte in den Arbeitsspeicher - siehe fe/nachladen.py
-        # fuer die Begruendung, warum das ein Thread sein darf, wo das
-        # Verkleinern einen eigenen Prozess brauchte.
-        self.lader = MiniaturLader(thumb_cache_lesen)
         # Boot-Ueberwachung (Diagnose fuer das Soft-Reboot-Problem: manchmal
         # landet man nach einem Neustart im MiSTer-OSD statt im Frontend). In
         # den ersten Sekunden nach dem Start kann der noch hochfahrende
@@ -7942,6 +7977,32 @@ class Frontend:
         # Zurueckgegeben wird weiterhin nur, was tatsaechlich noch fehlt.
         return [a for a in alle if not thumb_cache_has(*a)]
 
+    def kategorie_logo_alle(self, ansicht=None):
+        """[(pfad, breite, hoehe), ...] fuer ALLE Kategorie-Abzeichen in
+        der Kastengroesse EINER Ansicht - unabhaengig davon, ob sie
+        schon auf der Karte liegen.
+
+        Unterschied zu kategorie_logo_auftraege(): die liefert nur, was
+        noch FEHLT (also zu rechnen ist). Hier geht es um die andere
+        Haelfte - was zwar da ist, aber nicht im Arbeitsspeicher. Genau
+        die fehlt nach einem Neustart, und genau das sieht man als
+        'die Logos ploppen einzeln auf' (Build 127)."""
+        if ansicht is None:
+            ansicht = self.aktuelle_ansicht_haupt()
+        breite, hoehe = self._kat_logo_kasten(ansicht)
+        if breite <= 0 or hoehe <= 0:
+            return []
+        raus = []
+        for name, _node, syskey in self.cats:
+            art_key = _category_art_key(name, syskey)
+            if not art_key:
+                continue
+            pfad = os.path.join(SYSART_BASE, "%s.art" % art_key)
+            eintrag = (pfad, breite, hoehe)
+            if eintrag not in raus:
+                raus.append(eintrag)
+        return raus
+
     def _kat_logo_kasten(self, ansicht, L=None):
         """(breite, hoehe) des Kastens, in den ein Kategorie-Abzeichen
         eingepasst wird - je Ansicht ein anderer. EINE Rechnung fuer
@@ -7975,6 +8036,32 @@ class Frontend:
                 if profiling_an():
                     LOG("PREWARM: %d Kategorie-Logos vorgemerkt"
                         % len(auftraege))
+            # NEU (Build 127, Nutzer-Rueckmeldung mit Aufnahme: "das
+            # passiert bei jedem Neustart vom MiSTer, die Icons/Logos
+            # muessen schon da sein und nicht jedesmal neu aufploppen").
+            #
+            # Build 125 hat den Nachlade-Thread gebaut, aber nur die
+            # SPIELELISTE daran angeschlossen. Die Hauptseite hatte
+            # weiterhin nur den Vorauslader - und der rechnet nur, was
+            # FEHLT. Ein Abzeichen, das laengst auf der Karte liegt,
+            # meldet er als "Treffer" und geht weiter; im
+            # Arbeitsspeicher liegt es deswegen trotzdem nicht.
+            #
+            # Nach einem Neustart ist der Speicher aber leer. Also kam
+            # jedes Abzeichen einzeln im Zeichenpfad an - genau das
+            # Aufploppen.
+            #
+            # Es sind rund zwei Dutzend Bilder, alle klein: die ganze
+            # Liste auf einmal ist hier richtig, keine Vorausschau
+            # noetig.
+            nachladen = [a for a in self.kategorie_logo_alle()
+                         if ART.nur_im_ram_fehlt(*a)]
+            if nachladen:
+                self.lader.start()
+                self.lader.uebergeben(nachladen)
+                if profiling_an():
+                    LOG("NACHLADEN: %d Kategorie-Abzeichen vorgemerkt"
+                        % len(nachladen))
             return
         if self.page != 1:
             return
@@ -12931,21 +13018,46 @@ class Frontend:
                 #
                 # In Liste und Galerie bleibt alles wie bisher
                 # (hoch/runter ein Schritt, links/rechts eine Seite).
-                hoch_runter = move_step
-                links_rechts = page_step
-                if self.page == 1 and self.aktuelle_ansicht() == "raster":
-                    hoch_runter = max(1, getattr(self, "_raster_spalten", 1))
-                    links_rechts = move_step
-                # Build 124: dasselbe fuer die Hauptseite. Dort laufen
-                # hoch/runter/links/rechts ueber cat_i statt item_i,
-                # deshalb zwei eigene Schrittweiten.
-                kat_hoch_runter = move_step
-                kat_links_rechts = page_step
-                if self.page == 0 \
-                        and self.aktuelle_ansicht_haupt() == "raster":
-                    kat_hoch_runter = max(
-                        1, getattr(self, "_kat_raster_spalten", 1))
-                    kat_links_rechts = move_step
+                # DIE RICHTUNGSTASTEN FOLGEN DEM, WAS MAN SIEHT.
+                #
+                # Nutzer-Rueckmeldung (Build 127): "wenn ich mit den
+                # neuen Ansichten durch die Menues scrolle, druecke ich
+                # oben und unten, um nach rechts und links zu gehen -
+                # das ist Mist, das muss aufs Joypad besser angepasst
+                # werden."
+                #
+                # Er hat recht, und der Fehler war ein Gedankenfehler:
+                # ich habe die Galerie wie die LISTE belegt (hoch/runter
+                # ein Schritt, links/rechts eine Seite), obwohl ihre
+                # Nachbarn WAAGERECHT nebeneinander liegen. Man sieht
+                # eine Reihe und drueckt nach oben - das kann sich nur
+                # falsch anfuehlen.
+                #
+                #   Liste     senkrecht   hoch/runter = ein Schritt
+                #                         links/rechts = eine Seite
+                #   Raster    Flaeche     hoch/runter = eine REIHE
+                #                         links/rechts = ein Nachbar
+                #   Galerie   waagerecht  links/rechts = ein Nachbar
+                #                         hoch/runter = eine Seite
+                #
+                # In der Galerie sind hoch/runter damit nicht tot: sie
+                # blaettern die Leiste weiter, also genau das, was in
+                # der Liste links/rechts tun. Vertauscht, weil die
+                # Ansicht vertauscht ist.
+                def _schritte(ansicht, spalten_merker):
+                    if ansicht == "raster":
+                        return (max(1, getattr(self, spalten_merker, 1)),
+                                move_step)
+                    if ansicht == "galerie":
+                        return page_step, move_step
+                    return move_step, page_step
+
+                hoch_runter, links_rechts = _schritte(
+                    self.aktuelle_ansicht() if self.page == 1 else "liste",
+                    "_raster_spalten")
+                kat_hoch_runter, kat_links_rechts = _schritte(
+                    self.aktuelle_ansicht_haupt() if self.page == 0
+                    else "liste", "_kat_raster_spalten")
 
                 if act == "select":
                     # GEAENDERT (Build 90, Nutzervorschlag: "dadurch dass

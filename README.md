@@ -956,10 +956,18 @@ tun:**
   offene Kategorie: wer im Raster stöbern und bei SNES trotzdem die
   Liste haben will, kann das.
 
-**Im Raster bedeuten die Richtungstasten etwas anderes:** hoch/runter
-wechselt die **Reihe**, links/rechts den **Nachbarn**. In Liste und
-Galerie bleibt es beim Gewohnten (hoch/runter ein Schritt, links/rechts
-eine Seite).
+**Die Richtungstasten folgen der Anordnung, nicht der Gewohnheit:**
+
+| Ansicht | hoch / runter | links / rechts |
+|---|---|---|
+| Liste | ein Eintrag | eine Seite |
+| Raster | eine ganze **Reihe** | ein Nachbar |
+| Galerie | eine **Seite** | ein Nachbar |
+
+In der Galerie liegen die Nachbarn waagerecht nebeneinander - also geht
+man mit links/rechts einen weiter. Hoch/runter sind dort nicht tot: sie
+blättern die Nachbarleiste eine Seite weiter, also genau das, was in
+der Liste links/rechts tun.
 
 **Eine reine Ordnerauswahl bleibt immer Liste.** Ordner haben praktisch
 nie ein eigenes Cover; ein Raster aus lauter Platzhaltern wäre keine

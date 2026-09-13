@@ -834,9 +834,17 @@ things:**
   open category only, so you can browse in grid view and still keep the
   list for SNES.
 
-**In grid view the direction keys mean something different:** up/down
-changes the **row**, left/right the **neighbour**. List and gallery keep
-the usual behaviour (up/down one step, left/right one page).
+**The direction keys follow the layout, not habit:**
+
+| View | up / down | left / right |
+|---|---|---|
+| List | one entry | one page |
+| Grid | a whole **row** | one neighbour |
+| Gallery | one **page** | one neighbour |
+
+In the gallery the neighbours sit side by side, so left/right is what
+moves you one along. Up/down are not dead there: they page the
+neighbour strip, which is exactly what left/right do in the list.
 
 **A folder-only level always stays a list.** Folders practically never
 have a cover of their own; a grid of nothing but placeholders would not

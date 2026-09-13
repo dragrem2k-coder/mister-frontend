@@ -7,6 +7,41 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Die Richtungstasten folgen jetzt der Anordnung, und die
+Kategorie-Logos sind beim Start schon da** (Build 127):
+
+Zwei Rückmeldungen zu den neuen Ansichten, beide berechtigt.
+
+*„ich drücke oben und unten, um nach rechts und links zu gehen, das ist
+mist"* — in der **Galerie** lagen die Tasten wie in der Liste
+verdrahtet, obwohl dort die Nachbarn **waagerecht** nebeneinander
+stehen. Wer ein Cover weiter will, drückte nach oben. Ab sofort
+entscheidet die Anordnung, nicht die Gewohnheit:
+
+| Ansicht | hoch / runter | links / rechts |
+|---|---|---|
+| Liste | ein Eintrag | eine Seite |
+| Raster | eine ganze **Reihe** | ein Nachbar |
+| Galerie | eine **Seite** | ein Nachbar |
+
+In der Galerie sind hoch/runter damit nicht tot — sie blättern die
+Nachbarleiste weiter, also genau das, was in der Liste links/rechts
+tun. Spieleliste und Hauptseite rechnen dabei jede mit ihrer eigenen
+Spaltenzahl. Der Test dazu führt die Zuordnung jetzt wirklich **aus**,
+statt im Quelltext nachzulesen: die alte Prüfung war grün, während die
+Bedienung falsch war.
+
+*„das passiert bei jedem Neustart vom MiSTer, das nervt — die Icons /
+Logos müssen schon da sein und nicht jedes Mal neu aufploppen"* — der
+Nachlade-Thread aus Build 125 hing nur an der **Spieleliste**. Die
+Hauptseite hatte weiterhin allein den Vorauslader, und der rechnet nur,
+was auf der Karte **fehlt**. Nach einem Neustart liegt aber alles auf
+der Karte und nichts im Arbeitsspeicher — genau diese Lücke sah man als
+Aufploppen. Jetzt werden die rund zwei Dutzend Abzeichen schon
+**während der Startanimation** von der Karte in den Speicher geholt,
+und im Leerlauf der Hauptseite noch einmal nachgezogen, falls die
+Ansicht gewechselt wurde.
+
 **Rot und Blau waren vertauscht** (Build 126):
 
 Rückmeldung mit Bildschirmfoto: *„die Farben von den Boxarts passen

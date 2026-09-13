@@ -1204,10 +1204,30 @@ greifen. Der zweite Teil ist der wichtigere: ein Test, der nur
 ueberall kaputt waere.
 
 Dazu die Bedienung: eine reine Ordnerauswahl faellt immer auf die Liste
-zurueck (ein Raster aus lauter Platzhaltern waere keine Ansicht),
-hoch/runter springt im Raster eine REIHE und links/rechts nur einen
-Nachbarn, und die Taste merkt sich die Ansicht je Kategorie, waehrend
-der Menuepunkt die Vorgabe wegschreibt.
+zurueck (ein Raster aus lauter Platzhaltern waere keine Ansicht), und
+die Taste merkt sich die Ansicht je Kategorie, waehrend der Menuepunkt
+die Vorgabe wegschreibt.
+
+**Test 6 ist seit Build 127 ein anderer Test.** Dort standen drei
+Zeichenketten-Vergleiche auf den Quelltext von `frontend.py` - und die
+waren gruen, waehrend die Bedienung falsch war: die Galerie lag wie die
+Liste verdrahtet, obwohl ihre Nachbarn WAAGERECHT liegen. Der Nutzer
+drueckte nach oben, um ein Cover weiter zu kommen. Ein
+Zeichenketten-Vergleich kann das nicht finden; er prueft, dass etwas
+dasteht, nicht was es bedeutet.
+
+Jetzt wird `_schritte()` aus dem Quelltext herausgeloest und mit einer
+Attrappe AUSGEFUEHRT. Geprueft wird die Zuordnung selbst:
+
+| Ansicht | hoch/runter | links/rechts |
+|---|---|---|
+| Liste | ein Eintrag | eine Seite |
+| Raster | eine ganze REIHE | ein Nachbar |
+| Galerie | eine Seite | ein Nachbar |
+
+Dazu die Aussage, die den Fehler beschreibt: Galerie und Liste sind
+NICHT gleich verdrahtet. Und dass die Hauptseite mit ihrer eigenen
+Spaltenzahl rechnet, nicht mit der der Spieleliste.
 
 **Seit Build 125 (Tests 14-18) auch der Galerie-Unterbau.** Drei
 Sachen, die zusammen das "die Boxarts laden trotz Vorbereiten nach"
@@ -1244,6 +1264,24 @@ Pfad, leichte Pfade halten sich raus), dazu:
   Geprueft ueber das, was die Funktion `thumb_cache_schuetzen()`
   uebergibt, nicht ueber ihre Rueckgabe - die enthaelt nur, was noch
   fehlt, und waere nach einem Zeichenversuch leer.
+
+**Test 19 (Build 127): die Abzeichen muessen VOR dem ersten Blick im
+Arbeitsspeicher liegen.** Nutzer mit Bildschirmaufnahme: *„das passiert
+bei jedem Neustart vom MiSTer, das nervt - die Icons / Logos muessen
+schon da sein und nicht jedes Mal neu aufploppen."*
+
+Build 125 hatte den Nachlade-Thread gebaut, aber nur an die
+SPIELELISTE angeschlossen. Die Hauptseite hing weiter allein am
+Vorauslader - und der rechnet nur, was auf der Karte FEHLT. Nach einem
+Neustart liegt alles auf der Karte und nichts im Speicher: genau diese
+Luecke sieht man als Aufploppen.
+
+Geprueft wird deshalb die Gegenliste `kategorie_logo_alle()`: dass sie
+fuer jede der drei Ansichten genau EINE Kastengroesse liefert, dass es
+dieselbe ist, die `_kat_logo_kasten()` beim Zeichnen benutzt, und - der
+Kern - dass sie eine **Obermenge** der Fehlliste ist. Waere sie
+dieselbe, haette der Lader nach einem Neustart nichts zu tun, und der
+Test waere trotzdem gruen.
 
 ## test_farbkanaele.py
 

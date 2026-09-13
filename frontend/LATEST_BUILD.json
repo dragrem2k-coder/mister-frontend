@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-13-126",
-  "summary": "Rot und Blau waren bei allen Covern vertauscht, die als PNG oder JPG vorliegen - der Bildspeicher des MiSTer ist BGRA, die drei Dekoder fuer PNG und JPEG lieferten aber RGBA. Bis Build 119 fiel das nicht auf, weil jedes Cover beim Download in .art umgewandelt wurde. Die RetroAchievements-Abzeichen sind gleich mit repariert. WICHTIG: einmal 'Miniaturen vorbereiten' laufen lassen - die bereits gerechneten Miniaturen tragen den Fehler weiter."
+  "build_id": "2026-09-13-127",
+  "summary": "Die Richtungstasten folgen jetzt der Anordnung statt der Gewohnheit: im Raster springen hoch/runter eine ganze Reihe, in der Galerie gehen links/rechts zum Nachbarn und hoch/runter blaettern eine Seite. Ausserdem sind die Kategorie-Logos auf der Hauptseite nach einem Neustart sofort da - sie werden schon waehrend der Startanimation von der Karte in den Arbeitsspeicher geholt, statt einzeln aufzuploppen."
 }
