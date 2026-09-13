@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-12-115",
-  "summary": "Der MiSTer hat libpng und libturbojpeg an Bord - jetzt nutzen wir sie: ein kaltes Cover faellt von 200-500 ms auf grob 30 ms. JPG wird zur vollwertigen Bildquelle, und die Artwork-/Spieledaten-Datenbank unter /media/fat/docs fuellt Luecken bei Covern und Spielinfos. Eigenes Artwork behaelt immer Vorrang."
+  "build_id": "2026-09-13-116",
+  "summary": "Wichtiger Fix zu Build 115: 'Miniaturen vorbereiten' hat die neuen Cover aus der docs-Datenbank komplett uebergangen - jedes musste beim Zeichnen neu berechnet werden. Dazu dekodiert TurboJPEG jetzt gleich auf Kastenmass: ein kaltes JPG-Cover kostet auf CRT 10 statt 43 ms, auf HDMI 64 statt 105 ms."
 }

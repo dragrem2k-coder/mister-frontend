@@ -101,6 +101,7 @@ python3 tools/regression_test.py \
 | `test_bildrand.py` | Test (Pass/Fail) | Einstellbarer Bildrand: Vorgabe unveraendert, kaputte Datei faellt zurueck, und der Wert kommt wirklich im Layout an |
 | `test_suchtreffer.py` | Test (Pass/Fail) | Positionsanzeige und Trefferwechsel: ASCII-Abkuerzung bewiesen gleichwertig, neuer Sprung trifft dasselbe wie der alte, leichter Pfad bitgleich |
 | `test_bildlib.py` | Test (Pass/Fail) | libpng/TurboJPEG ueber ctypes: bitgleich zum Python-Dekoder, Rueckfall ohne Bibliothek, fremde docs-Quelle nur als Luecken-Fueller |
+| `diag_kaltes_cover.py` | Diagnose (immer Rueckgabewert 0) | Woraus ein kaltes Cover besteht: lesen, dekodieren, verkleinern - laeuft auch auf dem MiSTer |
 | `diag_vorauslader.py` | Diagnose (immer Rueckgabewert 0) | Was der Vorauslader dem Zeichnen wegnimmt - Thread gegen Prozess |
 | `diag_zeilen_spuren.py` | Diagnose (immer Rueckgabewert 0) | Was das gezielte Freiraeumen bringt - ganze Spalte gegen Spuren |
 | `diag_hintergrundlast.py` | Diagnose (immer Rueckgabewert 0) | Was pro Tastendruck wirklich passiert: Dateizugriffe, Log-Zeilen, doppelte Arbeit |
@@ -994,6 +995,52 @@ Felder und eine fehlende Datenbank duerfen nichts umwerfen.
 Laeuft auch auf einem Rechner ohne diese Bibliotheken - die
 betroffenen Pruefungen melden sich dann ausdruecklich als "nicht
 pruefbar", statt stillschweigend zu bestehen.
+
+**Test 12 und 13 kamen mit Build 116 dazu** und decken den Fehler ab,
+der Build 115 fast wertlos gemacht haette: `prewarm_thumb()` kannte nur
+das eigene `.art`-Format und gab bei einem JPG "fehler" zurueck. Die
+21.198 neuen Cover wurden von "Miniaturen vorbereiten" also komplett
+uebergangen - jedes einzelne musste der Zeichenpfad rechnen, wieder und
+wieder. Test 12 prueft jetzt fuer PNG UND JPG, dass Vorbereitung und
+Zeichenpfad **bitgenau dasselbe** Bild ergeben, in beiden
+Kastengroessen. Dazu, dass `zielmass()` dieselben Masse liefert wie die
+Rechnung vor Build 116 - sonst passten alte Miniaturen nicht mehr zu
+neuen.
+
+Test 13 prueft das verkleinerte Dekodieren: kleiner als die Datei, aber
+nie unter die Zielgroesse; ohne Kastenangabe weiterhin volle Groesse;
+und ein einmal klein gelesenes Bild darf einem groesseren Kasten nicht
+untergeschoben werden.
+
+## diag_kaltes_cover.py
+
+DIAGNOSE, kein Pass/Fail-Test. **Laeuft auch auf dem MiSTer selbst** -
+dort ist die Messung, auf die es ankommt.
+
+Entstanden aus einer Vermutung, die sich als falsch herausstellte: nach
+Build 115 lag nahe, die Schutzschwellen aus den Builds 105 und 107
+seien jetzt zu vorsichtig, weil das Dekodieren um ein Vielfaches
+schneller geworden ist. Die Messung zeigte etwas anderes - ein kaltes
+Cover besteht aus zwei Teilen, und nur einer war schneller geworden:
+
+| | vorher | nach Build 115 |
+|---|---|---|
+| dekodieren | 341,8 ms | 3,5 ms |
+| auf Kastengroesse verkleinern | 97,7 ms | 97,7 ms |
+
+Damit sind es **97 % der Wartezeit auf HDMI und 91 % auf CRT**, die auf
+die Flaechenmittelung entfallen. Ein Lockern der Schwellen haette also
+nicht das Warten beendet, sondern das Ruckeln zurueckgebracht.
+
+Das Skript misst genau diese Aufteilung an ECHTEN Covern der jeweiligen
+Karte (`art_hd`, `art`, `docs`) und geht dabei durch denselben Weg wie
+der Zeichenpfad - einschliesslich des verkleinerten Dekodierens aus
+Build 116. Auf einem Rechner ohne diese Ordner erzeugt es sich Cover in
+typischer Groesse, damit die Aufteilung trotzdem sichtbar wird.
+
+Die Faustregel steht am Ende der Ausgabe: **steht "verkleinern" ueber
+der Haelfte, muss das Verkleinern billiger werden, nicht die Schwelle
+groesser.**
 
 ## diag_lightpath.py
 

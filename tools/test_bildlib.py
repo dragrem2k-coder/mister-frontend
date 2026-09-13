@@ -398,6 +398,100 @@ finally:
     A._meta_cache.clear()
 
 print()
+print("Test 12: Vorbereitung und Zeichenpfad ergeben DASSELBE (Build 116)")
+# Der Modul-Kommentar von fe/art.py verlangt, dass eine gespeicherte
+# Miniatur bit-identisch zu einer frisch berechneten ist. Bis Build 115
+# war das fuer JPG/PNG gar nicht pruefbar - prewarm_thumb() kannte nur
+# "ART1" und gab bei allem anderen "fehler" zurueck. Die fremden Cover
+# wurden von "Miniaturen vorbereiten" also komplett uebergangen; jedes
+# einzelne musste der Zeichenpfad rechnen, immer wieder.
+if not HAT_PIL:
+    ungeprueft("Vorbereitung gegen Zeichenpfad", "Pillow fehlt")
+else:
+    tmp = tempfile.mkdtemp(prefix="vorwaermen_")
+    _alt_thumb = A.THUMB_CACHE_DIR
+    try:
+        A.THUMB_CACHE_DIR = os.path.join(tmp, "thumbs")
+        os.makedirs(A.THUMB_CACHE_DIR)
+        gross = testbild("RGB", 424, 768)
+        proben = [("PNG", "c.png", als_png(gross))]
+        if B.verfuegbar():
+            proben.append(("JPG", "c.jpg", als_jpg(gross, quality=90)))
+        for name, dateiname, daten in proben:
+            pfad = os.path.join(tmp, dateiname)
+            open(pfad, "wb").write(daten)
+            for kasten, bw, bh in (("CRT", 110, 150), ("HDMI", 360, 420)):
+                ergebnis = A.prewarm_thumb(pfad, bw, bh)
+                check("%s/%s: Vorbereitung schafft es ueberhaupt"
+                      % (name, kasten), ergebnis == "fertig", repr(ergebnis))
+                vom_band = A.ArtCache().get_scaled(pfad, bw, bh)
+                aus_cache = A._thumb_cache_get(pfad, bw, bh)
+                check("%s/%s: und liefert bitgenau dasselbe Bild"
+                      % (name, kasten),
+                      vom_band is not None and aus_cache == vom_band,
+                      "vorbereitet=%s gezeichnet=%s"
+                      % (aus_cache[:2] if aus_cache else None,
+                         vom_band[:2] if vom_band else None))
+        # Und die Zielgroesse muss dieselbe sein wie vor Build 116,
+        # sonst passen alte Miniaturen nicht mehr zu neuen.
+        for nw, nh, bw, bh in ((424, 768, 360, 420), (424, 768, 110, 150),
+                               (300, 200, 360, 420), (1000, 100, 360, 420)):
+            sc = min(bw / nw, bh / nh)
+            alt = (max(1, int(nw * sc)), max(1, int(nh * sc)))
+            neu = A.zielmass(nw, nh, bw, bh)
+            if nw <= bw and nh <= bh:
+                check("%dx%d passt in %dx%d -> kein Verkleinern"
+                      % (nw, nh, bw, bh), neu is None, repr(neu))
+            else:
+                check("%dx%d in %dx%d -> %r wie bisher"
+                      % (nw, nh, bw, bh, alt), neu == alt, repr(neu))
+    finally:
+        A.THUMB_CACHE_DIR = _alt_thumb
+        shutil.rmtree(tmp, ignore_errors=True)
+
+print()
+print("Test 13: verkleinert dekodieren bringt wirklich etwas")
+if not (HAT_PIL and B.verfuegbar()):
+    ungeprueft("Gewinn durch Decode auf Mass", "Pillow oder TurboJPEG fehlt")
+else:
+    daten = als_jpg(testbild("RGB", 424, 768), quality=90)
+    tmp = tempfile.mkdtemp(prefix="aufmass_")
+    try:
+        pfad = os.path.join(tmp, "c.jpg")
+        open(pfad, "wb").write(daten)
+        for kasten, bw, bh in (("CRT", 110, 150), ("HDMI", 360, 420)):
+            c = A.ArtCache()
+            gelesen = c.get(pfad, bw, bh)
+            nativ = c.nativ.get(pfad)
+            ziel = A.zielmass(nativ[0], nativ[1], bw, bh)
+            check("%s: dekodiert kleiner als die Datei" % kasten,
+                  gelesen[0] < nativ[0] and gelesen[1] < nativ[1],
+                  "Datei %r -> dekodiert %r, Ziel %r"
+                  % (nativ, gelesen[:2], ziel))
+            check("%s: aber nie unter die Zielgroesse" % kasten,
+                  gelesen[0] >= ziel[0] and gelesen[1] >= ziel[1],
+                  "%r >= %r" % (gelesen[:2], ziel))
+        # Ohne Kastenangabe muss weiterhin alles in voller Groesse
+        # kommen - sonst bekaeme ein Aufrufer ohne Groesse (z.B. der
+        # Trophaeenraum) heimlich ein verkleinertes Bild.
+        c = A.ArtCache()
+        voll = c.get(pfad)
+        check("ohne Kastenangabe volle Groesse",
+              (voll[0], voll[1]) == c.nativ.get(pfad),
+              "%r" % (voll[:2],))
+        # Und ein einmal klein gelesenes Bild darf einem groesseren
+        # Kasten nicht untergeschoben werden.
+        c = A.ArtCache()
+        c.get(pfad, 110, 150)
+        gross = c.get(pfad, 360, 420)
+        ziel_gross = A.zielmass(c.nativ[pfad][0], c.nativ[pfad][1], 360, 420)
+        check("groesserer Kasten bekommt ein passendes Bild",
+              gross[0] >= ziel_gross[0] and gross[1] >= ziel_gross[1],
+              "%r fuer Ziel %r" % (gross[:2], ziel_gross))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+print()
 print("Test 11: Menuepunkt und Uebersetzungen")
 quelle = open(os.path.join(_REPO, "frontend", "frontend.py"),
               encoding="utf-8", errors="replace").read()

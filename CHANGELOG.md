@@ -7,6 +7,66 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Ein Fehler in Build 115 — und die Messung, die eine Vermutung
+widerlegt hat** (Build 116):
+
+Rückmeldung nach Build 115: Cover bleiben beim Scrollen häufiger weg
+als nötig. Meine Vermutung war, die Schutzschwellen aus den Builds 105
+und 107 seien jetzt zu vorsichtig — schließlich ist das Dekodieren
+achtzigmal schneller geworden. **Die Messung hat das widerlegt.**
+
+Ein kaltes Cover besteht aus zwei Teilen, und Build 115 hat nur einen
+davon angefasst:
+
+| | vorher | nach Build 115 |
+|---|---|---|
+| dekodieren | 341,8 ms | 3,5 ms |
+| auf Kastengröße verkleinern | 97,7 ms | 97,7 ms |
+
+Das Verkleinern ist Flächenmittelung in reinem Python und war früher
+der kleinere Posten. Jetzt sind es **97 % der Wartezeit auf HDMI und
+91 % auf CRT**. Die Schwellen zu lockern hätte also nicht das Warten
+beendet, sondern das Ruckeln zurückgebracht.
+
+**Der eigentliche Grund war ein Fehler.** `prewarm_thumb()` — die
+Funktion hinter „Miniaturen vorbereiten" und dem
+Hintergrund-Vorauslader — kannte nur unser eigenes `.art`-Format und
+gab bei einem JPG schlicht „fehler" zurück. Die 21.198 neuen Cover aus
+Build 115 wurden von der Vorbereitung damit **komplett übergangen**.
+Jedes einzelne musste der Zeichenpfad berechnen, immer wieder, jedes
+Mal wenn man daran vorbeikam. Genau das war zu sehen.
+
+Behoben, indem das Einlesen des Originals jetzt an **einer** Stelle
+steht (`original_lesen()`), die sich Zeichenpfad, Vorbereitung und
+Arbeitsprozess teilen. Der Modulkommentar verlangt seit jeher, dass
+eine gespeicherte Miniatur bitgenau einer frisch berechneten
+entspricht; mit drei Fassungen desselben Ablaufs war das eine Frage der
+Zeit.
+
+**Dazu der Hebel, den die Messung sichtbar gemacht hat.** TurboJPEG
+kann beim Dekodieren gleich verkleinern. Ein 424×768-Cover, das in
+einen 360×420-Kasten soll, wird am Ende 231×420 — es reicht also, es
+auf 265×480 zu dekodieren statt auf volle Größe. Der Python-Verkleinerer
+hat dann 2,6-mal weniger Bildpunkte vor sich:
+
+| JPG-Cover, kalt | vorher | jetzt |
+|---|---|---|
+| CRT | 43,2 ms | **10,0 ms** |
+| HDMI | 104,9 ms | **63,5 ms** |
+
+Eine Stelle war dabei nicht offensichtlich, und die erste Fassung ist
+hineingelaufen: als Dekodierziel darf **nicht der Kasten** genommen
+werden, sondern die tatsächliche Zielgröße. Mit dem Kasten (360×420)
+kommt 371×672 heraus statt 265×480 — der halbe Gewinn verschenkt, und
+die Messung hat es sofort gezeigt (89 statt 63 ms). Die Rechnung steht
+deshalb jetzt als `zielmass()` an genau einer Stelle, benutzt von allen
+dreien.
+
+Neu dabei: `tools/diag_kaltes_cover.py` zeigt diese Aufteilung — und
+läuft auch auf dem MiSTer selbst, damit die nächste Entscheidung nicht
+wieder auf einer Hochrechnung steht.
+
+
 **Der MiSTer kann Bilder dekodieren — wir haben es nur nie gefragt**
 (Build 115):
 

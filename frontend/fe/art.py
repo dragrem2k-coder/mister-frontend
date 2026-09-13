@@ -980,6 +980,14 @@ class ArtCache:
         # Arbeitsprozess zur Folge, dass ein Cover NIE erscheint - und
         # zwar lautlos.
         self._warte_start = {}
+        # NEU (Build 116): die ECHTEN Masse der Datei, getrennt vom
+        # gemerkten Bild. Bei JPEG kann verkleinert dekodiert werden -
+        # dann liegt im Cache etwas Kleineres als in der Datei, und jede
+        # Groessenrechnung muss sich trotzdem nach der Datei richten.
+        self.nativ = {}
+        # Pfade, deren gemerktes Bild die volle Groesse hat. Nur die
+        # taugen ohne weitere Pruefung fuer JEDEN Kasten.
+        self._voll = set()
 
     # Wie lange hoechstens auf den Arbeitsprozess gewartet wird, bevor
     # der Zeichen-Thread die Miniatur doch selbst berechnet. Grosszuegig:
@@ -1043,7 +1051,14 @@ class ArtCache:
                 return True
         return False
 
-    def get(self, path):
+    def get(self, path, ziel_b=0, ziel_h=0):
+        """Das Original als (breite, hoehe, pix) oder None.
+
+        ziel_b/ziel_h (Build 116): in welchen Kasten es spaeter soll.
+        Bei JPEG wird dann gleich verkleinert dekodiert - siehe
+        original_lesen(). Die ECHTEN Masse der Datei stehen danach in
+        self.nativ[path]; jede Groessenrechnung muss sich nach ihnen
+        richten, nicht nach dem, was hier zurueckkommt."""
         # ABSICHERUNG (siehe _art_path_in()): der Pfad kann jetzt None
         # sein, wenn es fuer einen Eintrag gar keinen Cover-Ordner gibt
         # (Sonderkategorie ohne Systemkey). Hier abfangen statt an jeder
@@ -1052,7 +1067,17 @@ class ArtCache:
         if not path:
             return None
         if path in self.cache:
-            return self.cache[path]
+            vorhanden = self.cache[path]
+            # Ein gemerktes Bild taugt nur, wenn es den jetzt
+            # verlangten Kasten noch ueberdeckt. Ein voll dekodiertes
+            # taugt immer; ein verkleinertes nur fuer Kaesten, die
+            # nicht groesser sind als beim ersten Mal. Ohne diese
+            # Pruefung bekaeme der Trophaeenraum die Miniatur aus der
+            # Spieleliste vorgesetzt und muesste sie hochrechnen.
+            if (vorhanden is None or path in self._voll
+                    or ziel_b <= 0 or ziel_h <= 0
+                    or (vorhanden[0] >= ziel_b and vorhanden[1] >= ziel_h)):
+                return vorhanden
         # WICHTIG (Bugfix): "Datei existiert nicht" (FileNotFoundError,
         # eine OSError-Unterklasse) ist ein STABILER Fall - sicher
         # dauerhaft zu cachen, da sich das waehrend der Sitzung normal-
@@ -1067,47 +1092,37 @@ class ArtCache:
         # vollstaendig und gueltig vorlag. Deshalb: bei einem
         # unerwarteten Format-/Dekomprimierungsfehler NICHT cachen -
         # naechster Zugriff versucht es einfach erneut.
-        art = None
-        cache_result = True
-        try:
-            with open(path, "rb") as f:
-                kopf = f.read(4)
-                if kopf == b"ART1":
-                    w, h = struct.unpack("<HH", f.read(4))
-                    pix = zlib.decompress(f.read())
-                    if len(pix) == w * h * 4:
-                        art = (w, h, pix)
-                elif _BILDLIB is not None:
-                    # NEU (Build 115): auch ein PNG oder JPG darf hier
-                    # stehen. Damit wird JEDE Aufrufstelle, die bisher
-                    # nur .art kannte, ohne eigene Aenderung zu einer,
-                    # die fremdes Artwork anzeigen kann - und alles
-                    # dahinter (Groesseneinpassung, Miniaturen-Cache,
-                    # Vorauslader) greift unveraendert weiter.
-                    #
-                    # FREMD_MAX_KANTE wirkt hier als Deckel, nicht als
-                    # Wunschgroesse: decode() sucht die kleinste
-                    # Verkleinerungsstufe, die das Mass noch ueberdeckt.
-                    # Ein normales Cover (424x768) hat gar keine solche
-                    # Stufe unter 1:1 und kommt deshalb voll heraus -
-                    # ein versehentlich abgelegtes 4000er Scan-Bild
-                    # dagegen landet bei rund 1200 statt mit 64 MB im
-                    # Speicher.
-                    art = _BILDLIB.decode(kopf + f.read(),
-                                          FREMD_MAX_KANTE, FREMD_MAX_KANTE)
-        except FileNotFoundError:
-            pass                     # stabil - Cache-Eintrag bleibt bestehen
-        except OSError:
-            cache_result = False    # z.B. Berechtigung/IO-Fehler - lieber erneut versuchen
-        except (struct.error, zlib.error, ValueError):
-            cache_result = False    # unvollstaendige/beschaedigte Datei - erneut versuchen
-        if not cache_result:
-            return art
+        #
+        # GEAENDERT (Build 116): das eigentliche Lesen steht jetzt in
+        # original_lesen(), gemeinsam mit prewarm_thumb(). Der
+        # Unterschied in der Fehlerbehandlung bleibt: existiert die
+        # Datei nicht, ist das ein STABILER Fall und wird gemerkt; ist
+        # sie kaputt oder gerade erst halb kopiert, wird nichts gemerkt,
+        # damit der naechste Zugriff es erneut versucht.
+        vorhanden = os.path.exists(path)
+        gelesen = original_lesen(path, ziel_b or FREMD_MAX_KANTE,
+                                 ziel_h or FREMD_MAX_KANTE)
+        if gelesen is None and vorhanden:
+            # Die Datei war da, ergab aber kein Bild - nicht merken.
+            return None
+        if gelesen is None:
+            art, nativ = None, None
+        else:
+            w, h, pix, nativ = gelesen
+            art = (w, h, pix)
         self.cache[path] = art
+        if nativ is not None:
+            self.nativ[path] = nativ
+            if (w, h) == nativ:
+                self._voll.add(path)
+            else:
+                self._voll.discard(path)
         self.order.append(path)
         if len(self.order) > self.LIMIT:
             old = self.order.pop(0)
             self.cache.pop(old, None)
+            self.nativ.pop(old, None)
+            self._voll.discard(old)
         return art
 
     # GEAENDERT (Build 74): frueher eine feste Stueckzahl (SCALED_LIMIT
@@ -1251,12 +1266,18 @@ class ArtCache:
             self._deferred_something = True
             self._defer_count += 1
             return None
-        base = self.get(path)
+        base = self.get(path, max_w, max_h)
         if not base:
             return None
         w, h, pix = base
+        # Build 116: Entscheidungen nach den ECHTEN Massen der Datei.
+        # Bei einem verkleinert dekodierten JPEG stimmt (w, h) nicht mehr
+        # damit ueberein - wuerde man danach rechnen, landete das Bild
+        # mal ein paar Bildpunkte neben der bisherigen Groesse und
+        # gelegentlich sogar im Hochskalier-Zweig.
+        nw, nh = self.nativ.get(path, (w, h))
 
-        if w <= max_w and h <= max_h:
+        if nw <= max_w and nh <= max_h:
             # Kein hartes Limit mehr wie in v1.8.1 (dort noch 4x) - seit
             # v1.9 hat die Boxart-Spalte deutlich mehr Platz, ein Deckel
             # von 4x liess kleine Cover unnoetig klein und von Leerraum
@@ -1265,7 +1286,7 @@ class ArtCache:
             # Rechenaufwand des Nearest-Neighbor-Upscales im Rahmen zu
             # halten (der Skalierungs-Cache ist ohnehin nach
             # Speicherbudget begrenzt, siehe SCALED_BUDGET).
-            scale = max(1, min(max_w // w, max_h // h, 10))
+            scale = max(1, min(max_w // nw, max_h // nh, 10))
             if scale == 1:
                 self._scaled_cache_put(box_key, base)
                 # BUGFIX (Build 92, Nutzer-Rueckmeldung: "das passiert bei
@@ -1339,9 +1360,11 @@ class ArtCache:
 
         # Bild ist in mindestens einer Richtung groesser als die Box -
         # verkleinern statt es unskaliert ueberstehen zu lassen.
-        scale = min(max_w / w, max_h / h)
-        tw = max(1, int(w * scale))
-        th = max(1, int(h * scale))
+        # Gerechnet nach den ECHTEN Massen (siehe oben), damit dieselbe
+        # Zielgroesse herauskommt wie vor Build 116 - die Miniatur auf
+        # der Karte traegt den Kasten im Schluessel, nicht die
+        # Zielgroesse, und muss ueber Fassungen hinweg dieselbe bleiben.
+        tw, th = zielmass(nw, nh, max_w, max_h)
         # Gleicher Bugfix wie beim Hochskalieren oben (siehe dortiger
         # Kommentar) - auch die (teurere) Verkleinerung wird waehrend
         # aktivem Scrollen verzoegert, wenn sie noch nicht im
@@ -1506,6 +1529,85 @@ def thumb_cache_has(path, w, h):
         return False
 
 
+def zielmass(nw, nh, max_w, max_h):
+    """Auf welche Groesse ein Bild von nw x nh in einem Kasten von
+    max_w x max_h landet - oder None, wenn es hineinpasst und
+    stattdessen ganzzahlig VERGROESSERT wird.
+
+    HERAUSGELOEST (Build 116). Diese Rechnung stand an drei Stellen
+    (Zeichenpfad, Vorbereitung, Arbeitsprozess) und muss ueberall
+    dasselbe ergeben - der Schluessel des Miniaturen-Caches enthaelt den
+    KASTEN, nicht die Zielgroesse. Laufen die Fassungen auseinander,
+    legt die eine Seite Bilder unter einem Schluessel ab, unter dem die
+    andere etwas anderes erwartet, und niemand merkt es.
+
+    Und seit Build 116 braucht sie noch jemand: das verkleinerte
+    Dekodieren. Der Unterschied ist nicht klein - ein 424x768-Cover in
+    einem 360x420-Kasten wird 231x420, nicht 360x420. Wer den KASTEN
+    als Dekodierziel nimmt, bekommt 371x672 statt 265x480 und verschenkt
+    den halben Gewinn. Genau so war die erste Fassung, und die Messung
+    hat es gezeigt: 89 statt 65 ms."""
+    if nw <= max_w and nh <= max_h:
+        return None
+    sc = min(max_w / float(nw), max_h / float(nh))
+    return max(1, int(nw * sc)), max(1, int(nh * sc))
+
+
+def original_lesen(path, ziel_b=0, ziel_h=0):
+    """Ein Bild von der Karte holen: (breite, hoehe, pix, (nb, nh)).
+    None, wenn daraus nichts wird - NIE eine Ausnahme nach aussen.
+
+    Das letzte Paar sind die ECHTEN Masse der Datei. Sie koennen von
+    (breite, hoehe) abweichen, wenn verkleinert dekodiert wurde (siehe
+    unten) - und jede Entscheidung ueber die Zielgroesse muss sich nach
+    ihnen richten, nicht nach dem, was gerade im Speicher liegt.
+
+    HERAUSGELOEST (Build 116), weil DREI Stellen dasselbe Bild lesen:
+    ArtCache.get(), prewarm_thumb() und der Arbeitsprozess. Der
+    Modul-Kommentar verlangt, dass eine gespeicherte Miniatur
+    bit-identisch zu einer frisch berechneten ist - mit drei Fassungen
+    desselben Ablaufs waere das irgendwann still auseinandergelaufen.
+    Genau das war bei prewarm_thumb() schon passiert: die Funktion
+    kannte NUR "ART1" und gab bei einem JPG "fehler" zurueck. Die
+    fremden Cover aus Build 115 wurden dadurch von "Miniaturen
+    vorbereiten" komplett uebergangen - jedes einzelne musste der
+    Zeichenpfad berechnen, wieder und wieder.
+
+    ziel_b/ziel_h: die KASTENGROESSE, in die das Bild spaeter soll.
+    Bei JPEG dekodiert TurboJPEG dann gleich verkleinert - so klein wie
+    moeglich, aber NIE unter der Groesse, die am Ende gebraucht wird.
+    Das spart nicht am Dekodieren (das ist ohnehin billig), sondern an
+    der Flaechenmittelung danach, und die ist nach Build 115 der ganze
+    Rest: gemessen 43,1 -> 13,8 ms auf CRT."""
+    try:
+        with open(path, "rb") as f:
+            kopf = f.read(4)
+            if kopf == b"ART1":
+                w, h = struct.unpack("<HH", f.read(4))
+                pix = zlib.decompress(f.read())
+                if len(pix) != w * h * 4 or w <= 0 or h <= 0:
+                    return None
+                return w, h, pix, (w, h)
+            if _BILDLIB is None:
+                return None
+            daten = kopf + f.read()
+    except (OSError, struct.error, zlib.error, ValueError):
+        return None
+    # Erst die echten Masse aus dem Dateikopf holen (kostet nichts),
+    # dann daraus das ECHTE Ziel rechnen - nicht den Kasten nehmen.
+    nativ = _BILDLIB.masse(daten)
+    dek_b = dek_h = 0
+    if nativ and ziel_b > 0 and ziel_h > 0:
+        ziel = zielmass(nativ[0], nativ[1], ziel_b, ziel_h)
+        if ziel:
+            dek_b, dek_h = ziel
+    bild = _BILDLIB.decode(daten, dek_b, dek_h)
+    if not bild:
+        return None
+    w, h, pix = bild
+    return w, h, pix, (nativ or (w, h))
+
+
 def prewarm_thumb(path, max_w, max_h):
     """Eine Miniatur berechnen und AUSSCHLIESSLICH auf der Karte ablegen.
 
@@ -1538,20 +1640,21 @@ def prewarm_thumb(path, max_w, max_h):
         return "uebersprungen"
     if thumb_cache_has(path, max_w, max_h):
         return "treffer"
-    # Original selbst einlesen - dieselben Schritte wie ArtCache.get(),
-    # aber ohne dessen Cache anzufassen (siehe Docstring).
-    try:
-        with open(path, "rb") as f:
-            if f.read(4) != b"ART1":
-                return "fehler"
-            w, h = struct.unpack("<HH", f.read(4))
-            pix = zlib.decompress(f.read())
-        if len(pix) != w * h * 4 or w <= 0 or h <= 0:
-            return "fehler"
-    except (OSError, struct.error, zlib.error, ValueError):
+    # Original selbst einlesen - ueber DIESELBE Funktion wie
+    # ArtCache.get(), aber ohne dessen Cache anzufassen (siehe
+    # Docstring). Bis Build 115 stand hier eine eigene Fassung, die nur
+    # "ART1" kannte; siehe original_lesen() fuer die Folgen.
+    gelesen = original_lesen(path, max_w, max_h)
+    if gelesen is None:
         return "fehler"
+    w, h, pix, (nw, nh) = gelesen
 
-    if w <= max_w and h <= max_h:
+    # Alle Groessenentscheidungen nach den ECHTEN Massen der Datei -
+    # nicht nach dem, was gerade im Speicher liegt. Sonst faellt ein
+    # verkleinert dekodiertes Bild in den Hochskalier-Zweig oder landet
+    # ein paar Bildpunkte neben der Groesse, die der Zeichenpfad
+    # erwartet, und die Miniatur waere fuer ihn wertlos.
+    if nw <= max_w and nh <= max_h:
         scale = max(1, min(max_w // w, max_h // h, 10))
         if scale == 1:
             # GEAENDERT (Build 92): hier stand "der Zeichenpfad gibt das
@@ -1568,9 +1671,7 @@ def prewarm_thumb(path, max_w, max_h):
         _thumb_cache_put(path, max_w, max_h, sw, sh, bytes(out))
         return "fertig"
 
-    scale = min(max_w / w, max_h / h)
-    tw = max(1, int(w * scale))
-    th = max(1, int(h * scale))
+    tw, th = zielmass(nw, nh, max_w, max_h)
     data = _verkleinern_flaechenmittel(pix, w, h, tw, th)
     if data is None:
         return "fehler"
