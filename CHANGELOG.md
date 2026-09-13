@@ -7,6 +7,79 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Warum die Cover trotz „Miniaturen vorbereiten" nachgeladen haben**
+(Build 125):
+
+Rückmeldung mit Bildschirmaufnahme: *„die Boxarts sind trotz Miniaturen
+vorbereiten nicht sofort sichtbar, das stört"* — in der Galerie waren
+die Kacheln der Nachbarleiste beim Scrollen schwarz. Drei Ursachen, alle
+meine:
+
+### 1. Die Nachbarleiste stand in keiner Vorbereitungsliste
+
+Die Galerie fragt **zwei** Bildgrößen an, das große Cover und die
+Miniaturen der Leiste. Vorbereitet wurde nur die erste:
+
+| | Größe | vorbereitet |
+|---|---|---|
+| großes Cover | 426 × 569 | ja |
+| Leisten-Miniatur | 124 × 166 | **nie, in keinem Build** |
+
+Elf Bilder pro Bildaufbau, alle kalt, alle beim Scrollen übersprungen.
+„Miniaturen vorbereiten" konnte laufen, so oft es wollte.
+
+### 2. Die Leiste lief bei jedem Schritt mit
+
+Sie stand mittig um den Cursor — was heißt, dass sie sich bei **jedem**
+Schritt um eine Kachel verschiebt und alle elf neu gezeichnet werden
+müssen, dazu das große Cover. Jetzt **blättert** sie seitenweise, wie
+das Raster seit Build 122. Damit steht sie die meiste Zeit still, und
+sie ist nebenbei ruhiger anzusehen.
+
+Erst dadurch wurde ein **schneller Pfad für die Galerie** möglich, den
+es vorher aus gutem Grund nicht gab: solange die Leiste steht, ändern
+sich pro Schritt nur das große Cover, der Text daneben und welche
+Kachel den Rahmen trägt. Gespart werden der Vollbild-`clear()` (auf
+1080p 8,3 MB) und elf Kachel-Kopien (rund 0,9 MB) — **pro Tastendruck**.
+
+Der Pixelvergleich dieses neuen Pfads hat gleich noch etwas gefunden:
+die Karte um das große Cover ragte 1 Punkt **in die Leiste hinein**
+(Polster plus Schlagschatten waren im Abstand nicht eingerechnet). Im
+vollen Aufbau unsichtbar, weil die Leiste danach gezeichnet wird — auf
+dem schnellen Pfad 2475 abweichende Bildpunkte. Vierter Fall derselben
+Sorte im Projekt.
+
+### 3. „Miniaturen vorbereiten" füllt die Karte, nicht den Arbeitsspeicher
+
+Das ist der Grund für das *„bei jedem Neustart"*. Nutzerfrage dazu:
+*„kann man nicht was anlegen, JSON oder txt, dass der RAM schnell
+gefüllt wird?"*
+
+Eine Datei mit Pfaden hilft nicht — teuer ist nicht das **Finden** einer
+Miniatur, sondern das **Auspacken**. Die Richtung stimmt aber, sie muss
+nur auf die richtige Stelle zielen: **ein Nachlade-Thread** holt fertige
+Miniaturen von der Karte in den Arbeitsspeicher, vorwärts vom Cursor,
+nur im Leerlauf, abgebrochen bei jeder Eingabe.
+
+Warum das der vorhandene Vorauslader nicht kann: der ist seit Build 102
+ein **eigener Prozess** — und ein eigener Prozess hat einen eigenen
+Adressraum, er *kann* unseren RAM gar nicht füllen. Er meldet eine
+vorhandene Miniatur als „Treffer" und geht weiter.
+
+Und warum hier ein Thread darf, wo das Verkleinern einen Prozess
+brauchte: das Verkleinern ist reines Python und hält die GIL die ganze
+Zeit. Das Auspacken ist zlib, ein C-Modul, und **gibt die GIL frei** —
+ein Nachlade-Thread nimmt dem Zeichnen also fast nichts weg. Eingetragen
+wird die fertige Miniatur trotzdem im Hauptthread; der Cache räumt beim
+Eintragen auch auf, und zwei Threads, die dieselbe Liste kürzen, sind
+eine Fehlerquelle, die man sich für eine reine Beschleunigung nicht
+einhandelt.
+
+Geprüft in `tools/test_ansichten.py`, jetzt 18 Prüfblöcke — darunter der
+bitgenaue Vergleich beider Galerie-Schnellpfade (Spieleliste und
+Hauptseite, beide Auflösungen, vorwärts und rückwärts) und der Nachweis,
+dass die Karte nicht mehr in die Leiste ragt.
+
 **Die Hauptseite bekommt dieselben drei Ansichten, F9 zieht um, und
 die README ist wieder auf Stand** (Build 124):
 

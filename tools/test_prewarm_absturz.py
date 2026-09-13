@@ -189,21 +189,35 @@ ordner = [g for g in spiele if "sub" in g[0]]
 # viele, wie es verschiedene KAESTEN gibt. Deshalb wird hier gegen die
 # Zahl der Ansichten geprueft und nicht gegen eine feste Zahl - und
 # zusaetzlich, dass es wirklich verschiedene Kaesten sind.
-_ansichten = len(fm.ANSICHTEN)
+# GEAENDERT (Build 125): "je Ansicht eine" stimmt nicht mehr - die
+# Galerie fragt ZWEI Groessen an (grosses Cover und die Miniaturen der
+# Nachbarleiste, siehe _ansicht_geometrien() in frontend.py). Statt
+# einer festen Zahl wird die Erwartung deshalb aus derselben Funktion
+# abgeleitet, die auch der Vorbereitungslauf benutzt.
+#
+# Worauf es diesem Test ankommt, bleibt unveraendert: aus 100
+# Vorkommen desselben Spiels werden nicht 100 Berechnungen, sondern so
+# viele, wie es verschiedene KAESTEN gibt.
+_erwartet = set()
+for _a in fm.ANSICHTEN:
+    for _g in f._ansicht_geometrien(_a, erzwingen=True):
+        _erwartet.add((_g[1], _g[2]) if _g[0] == "fest" else None)
+_erwartet.discard(None)          # die Liste rechnet je Eintrag, s.u.
+_anzahl = len(_erwartet) + 1     # + die Listenansicht
 _spiel_ziele = [g for g in spiele if g not in ordner]
-check("100 gleiche Eintraege ergeben %d Cover-Pruefungen (je Ansicht eine)"
-      % _ansichten,
-      len(_spiel_ziele) == _ansichten,
+check("100 gleiche Eintraege ergeben %d Cover-Pruefungen (je Kasten eine)"
+      % _anzahl,
+      len(_spiel_ziele) == _anzahl,
       "%d Spiel-Pruefungen (%d Ordner, %d Kategorie-Logos)"
       % (len(_spiel_ziele), len(ordner), len(gesehen) - len(spiele)))
-check("und es sind wirklich drei VERSCHIEDENE Kastengroessen",
-      len({(g[1], g[2]) for g in _spiel_ziele}) == _ansichten,
+check("und es sind wirklich lauter VERSCHIEDENE Kastengroessen",
+      len({(g[1], g[2]) for g in _spiel_ziele}) == _anzahl,
       repr(sorted({(g[1], g[2]) for g in _spiel_ziele})))
-check("es ist derselbe Pfad, nur in drei Groessen",
+check("es ist derselbe Pfad, nur in mehreren Groessen",
       len({g[0] for g in _spiel_ziele}) == 1,
       repr(sorted({g[0] for g in _spiel_ziele})))
 check("die Ordnerzeile selbst ist jetzt dabei (Build 87)",
-      len(ordner) == _ansichten, "%d Ordner-Pruefungen: %s"
+      len(ordner) == _anzahl, "%d Ordner-Pruefungen: %s"
       % (len(ordner), sorted({o[0] for o in ordner})))
 
 print()

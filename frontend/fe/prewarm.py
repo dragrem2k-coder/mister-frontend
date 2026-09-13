@@ -443,7 +443,7 @@ PREWARMER = CoverPrewarmer()
 
 
 def auftraege_bauen(eintraege, mitte, kastenmass, vorwaerts=True,
-                    voraus=20, zurueck=6):
+                    voraus=20, zurueck=6, schon_da=False):
     """Aus einer Eintragsliste die Reihenfolge bauen, in der die Cover
     voraussichtlich gebraucht werden.
 
@@ -459,6 +459,14 @@ def auftraege_bauen(eintraege, mitte, kastenmass, vorwaerts=True,
     schon heraus: die Pruefung ist ein reines os.path.exists() und damit
     um Groessenordnungen billiger, als sie erst im Arbeiter festzu-
     stellen.
+
+    schon_da=True dreht genau diese Pruefung UM (Build 125): dann kommen
+    nur die heraus, die schon auf der Karte liegen. Das ist die Liste
+    fuer den Nachlade-Thread (fe/nachladen.py) - fuer die muss niemand
+    mehr rechnen, es fehlt nur noch das Lesen und Auspacken in den
+    Arbeitsspeicher. Dieselbe Reihenfolge, dieselbe Vorausschau, damit
+    beide Listen dieselbe Vorstellung davon haben, was als naechstes
+    gebraucht wird.
     """
     if not eintraege:
         return []
@@ -484,7 +492,7 @@ def auftraege_bauen(eintraege, mitte, kastenmass, vorwaerts=True,
         pfad, bw, bh = mass
         if not pfad or bw <= 0 or bh <= 0:
             continue
-        if thumb_cache_has(pfad, bw, bh):
+        if thumb_cache_has(pfad, bw, bh) != schon_da:
             continue
         auftraege.append((pfad, bw, bh))
     return auftraege

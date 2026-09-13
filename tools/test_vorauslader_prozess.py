@@ -279,8 +279,25 @@ check("PREWARMER.beenden() steht im Aufraeumzweig von run()",
 # Und direkt vor dem Core-Start - dort ist es keine Aufraeumarbeit,
 # sondern die Zusage, dass waehrend eines laufenden Spiels nichts von
 # uns auf dem zweiten Kern sitzt.
-check("PREWARMER.beenden() steht vor launch_core()",
-      "PREWARMER.beenden()\n        launch_core(path)" in quelle)
+# GEAENDERT (Build 125): hier stand eine Nachbarschafts-Pruefung
+# ("PREWARMER.beenden() direkt gefolgt von launch_core"). Die ist beim
+# ersten Hintergrund-Helfer, der dazwischen abgeraeumt wird,
+# umgefallen - ohne dass irgendetwas falsch war. Geprueft wird jetzt
+# die REIHENFOLGE, und die ist die eigentliche Zusage: alles von uns
+# ist gestoppt, BEVOR der Core startet.
+_lc = quelle.index("launch_core(path)")
+_pb = quelle.rindex("PREWARMER.beenden()", 0, _lc)
+check("PREWARMER.beenden() steht vor launch_core()", _pb < _lc)
+_vorspann = quelle[_pb:_lc]
+check("und nichts dazwischen ausser weiterem Abraeumen",
+      all(z.strip() == "" or z.strip().startswith("#")
+          or z.strip().endswith(".beenden()")
+          for z in _vorspann.splitlines()),
+      repr(_vorspann.strip()[:120]))
+# Der Nachlade-Thread (Build 125) gehoert genauso dazu: er liest
+# waehrend eines laufenden Spiels sonst weiter von der SD-Karte.
+check("der Nachlade-Thread wird ebenfalls abgeraeumt",
+      "self.lader.beenden()" in _vorspann)
 
 shutil.rmtree(TMP, ignore_errors=True)
 

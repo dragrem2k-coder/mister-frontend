@@ -754,6 +754,16 @@ def _thumb_cache_get(path, w, h):
     except (struct.error, zlib.error, ValueError):
         return None
 
+def thumb_cache_lesen(path, w, h):
+    """Oeffentlicher Eingang zu _thumb_cache_get() (Build 125).
+
+    Gibt es, damit der Nachlade-Thread (fe/nachladen.py) eine fertige
+    Miniatur von der Karte holen kann, ohne dass dieses Modul den
+    privaten Namen exportieren muss - und damit in einem Test eine
+    Attrappe an dieselbe Stelle passt."""
+    return _thumb_cache_get(path, w, h)
+
+
 def _thumb_cache_put(path, w, h, tw, th, pix):
     """Speichert eine FRISCH vom Original berechnete Miniatur. Ueber
     eine temporaere Datei + os.replace() geschrieben (atomar) - ein
@@ -1250,6 +1260,32 @@ class ArtCache:
             alt = self.scaled.pop(old, None)
             if alt is not None:
                 self.scaled_bytes -= len(alt[2])
+
+    def nur_im_ram_fehlt(self, path, max_w, max_h):
+        """True, wenn die Miniatur auf der KARTE liegt, aber nicht im
+        Arbeitsspeicher.
+
+        Genau diese Faelle lohnt sich nachzuladen (Build 125): rechnen
+        muss dafuer niemand mehr, es fehlt nur das Lesen und Auspacken.
+        Alles andere - schon im RAM, oder ueberhaupt nicht vorhanden -
+        gehoert nicht in die Nachladeliste."""
+        if not path:
+            return False
+        if (path, "box", max_w, max_h) in getattr(self, "scaled", {}):
+            return False
+        return thumb_cache_has(path, max_w, max_h)
+
+    def nachgeladen_eintragen(self, path, max_w, max_h, ergebnis):
+        """Eine vom Nachlade-Thread gelesene Miniatur in den RAM-Cache
+        legen. AUSSCHLIESSLICH aus dem Hauptthread zu rufen - siehe den
+        Kopfkommentar von fe/nachladen.py fuer die Begruendung."""
+        if not ergebnis or len(ergebnis) != 3:
+            return False
+        box_key = (path, "box", max_w, max_h)
+        if box_key in getattr(self, "scaled", {}):
+            return False
+        self._scaled_cache_put(box_key, ergebnis)
+        return True
 
     def get_scaled(self, path, max_w, max_h, auslagern_ok=False):
         """auslagern_ok (Build 105): darf eine noch nicht berechnete

@@ -108,7 +108,7 @@ python3 tools/regression_test.py \
 | `test_bildrand.py` | Test (Pass/Fail) | Einstellbarer Bildrand: Vorgabe unveraendert, kaputte Datei faellt zurueck, und der Wert kommt wirklich im Layout an |
 | `test_suchtreffer.py` | Test (Pass/Fail) | Positionsanzeige und Trefferwechsel: ASCII-Abkuerzung bewiesen gleichwertig, neuer Sprung trifft dasselbe wie der alte, leichter Pfad bitgleich |
 | `test_quelle_png.py` | Test (Pass/Fail) | Zweite Cover-Quelle (png/-Baum des Mirrors): beide Ablageorte, Endung nach Inhalt, Klartext-HTTP, Reihenfolge der Quellen |
-| `test_ansichten.py` | Test (Pass/Fail) | Die drei Ansichten von Spieleliste UND Hauptseite: Kastengroesse stimmt mit dem Vorauslader ueberein, schneller Rasterpfad bitgenau, leichte Listenpfade halten sich raus |
+| `test_ansichten.py` | Test (Pass/Fail) | Die drei Ansichten von Spieleliste UND Hauptseite, dazu der Nachlade-Thread: Kastengroesse stimmt mit dem Vorauslader ueberein, schneller Rasterpfad bitgenau, leichte Listenpfade halten sich raus |
 | `test_zip.py` | Test (Pass/Fail) | ROMs in ZIP-Archiven: Archiv wird zum Ordner, Pfad laeuft durch das Archiv, nichts wird entpackt, kaputtes Archiv faellt still weg |
 | `test_artpacks.py` | Test (Pass/Fail) | Artwork aus Artpacks in allen ueblichen Ablageformen, Arcade beim Vorbereiten, Groesse des Bild-Zwischenspeichers |
 | `test_cover_original.py` | Test (Pass/Fail) | Download legt PNG/JPG im Original ab und das Frontend findet sie; Tauschschalter laesst Enter in Ruhe; USB-Wartezeit |
@@ -1206,6 +1206,26 @@ zurueck (ein Raster aus lauter Platzhaltern waere keine Ansicht),
 hoch/runter springt im Raster eine REIHE und links/rechts nur einen
 Nachbarn, und die Taste merkt sich die Ansicht je Kategorie, waehrend
 der Menuepunkt die Vorgabe wegschreibt.
+
+**Seit Build 125 (Tests 14-18) auch der Galerie-Unterbau.** Drei
+Sachen, die zusammen das "die Boxarts laden trotz Vorbereiten nach"
+aus der Nutzer-Aufnahme erklaeren:
+
+- **Die Galerie braucht ZWEI Kastengroessen** - das grosse Cover und
+  die Miniaturen der Nachbarleiste. `_art_panel_geometrie()` liefert
+  nur eine; die Leiste stand deshalb in keiner Vorbereitungsliste, in
+  keinem Build. Test 14 prueft, dass `_ansicht_geometrien()` beide
+  kennt UND dass der Zeichenpfad genau diese beiden anfragt.
+- **Die Leiste blaettert** (Test 15) statt bei jedem Schritt
+  mitzulaufen. Erst dadurch ist ein schneller Pfad moeglich; Test 16
+  vergleicht ihn bitgenau, fuer Spieleliste und Hauptseite.
+- **Test 17** haelt den Fund dieses Vergleichs fest: die Karte um das
+  grosse Cover ragte einen Punkt in die Leiste. Im vollen Aufbau
+  unsichtbar, auf dem schnellen Pfad 2475 abweichende Bildpunkte.
+- **Test 18** prueft den Nachlade-Thread mit einer Attrappe statt
+  echter Dateien - inklusive dessen, was er NICHT tut: eine fehlende
+  Miniatur wird gezaehlt und nicht weitergereicht, und eine schon im
+  RAM liegende kommt gar nicht erst auf die Liste.
 
 **Seit Build 124 dasselbe fuer die HAUPTSEITE** (Tests 10-13). Die
 Kachelrechnung ist dieselbe - moeglich, weil alle Sysart-Abzeichen

@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-13-124",
-  "summary": "Die Hauptseite bekommt dieselben drei Ansichten wie die Spieleliste: Liste, Raster und Galerie. Auf HDMI passen im Raster alle Kategorien auf ein Bild, ohne Blaettern. Eigener Menuepunkt unter 'Anzeige & Sound'. Die Ansichts-Taste liegt jetzt auf F10 statt F9 - F9 gehoert bei MiSTer dem Wechsel zwischen Konsole und Grafikmodus. Die Markierung um eine Kachel ist ein Rahmen statt einer gefuellten Flaeche. README (deutsch und englisch) wieder auf Stand."
+  "build_id": "2026-09-13-125",
+  "summary": "Die Cover in der Galerie laden nicht mehr nach. Die Miniaturen der Nachbarleiste standen in keiner Vorbereitungsliste - jetzt rechnet 'Miniaturen vorbereiten' sie mit. Die Leiste blaettert seitenweise statt mitzulaufen, dadurch gibt es auch fuer die Galerie einen schnellen Zeichenweg: statt zwoelf Bildern pro Tastendruck nur noch eines. Und ein Nachlade-Thread holt fertige Miniaturen im Leerlauf von der Karte in den Arbeitsspeicher - das ist der Teil, der nach jedem Neustart gefehlt hat."
 }

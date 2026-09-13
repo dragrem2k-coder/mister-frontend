@@ -836,7 +836,7 @@ from fe.art import (
     RA_BADGE_URL, BADGES, _category_art_key,
     prewarm_thumb, thumb_cache_has, thumb_cache_stand,
     thumb_cache_stand_modus, thumb_cache_leeren, thumb_cache_bilanz,
-    thumb_cache_schuetzen, thumb_cache_modus_setzen,
+    thumb_cache_schuetzen, thumb_cache_modus_setzen, thumb_cache_lesen,
     alten_flachen_cache_aufraeumen,
 )
 
@@ -844,6 +844,7 @@ from fe.art import (
 # ausfuehrliche Begruendung samt der beiden ehrlichen Einschraenkungen
 # steht im Kopf von fe/prewarm.py.
 from fe.prewarm import PREWARMER, auftraege_bauen
+from fe.nachladen import MiniaturLader
 
 # ----------------------------------------------------------------------------
 # KATEGORIEN & AKTIONEN
@@ -1464,6 +1465,11 @@ class Frontend:
         self._attract_game = None
         self._attract_change_next = 0.0
         self._attract_pool = None   # zwischengespeicherte flache Spieleliste
+        # NEU (Build 125): der Nachlade-Thread. Holt FERTIGE Miniaturen
+        # von der Karte in den Arbeitsspeicher - siehe fe/nachladen.py
+        # fuer die Begruendung, warum das ein Thread sein darf, wo das
+        # Verkleinern einen eigenen Prozess brauchte.
+        self.lader = MiniaturLader(thumb_cache_lesen)
         # Boot-Ueberwachung (Diagnose fuer das Soft-Reboot-Problem: manchmal
         # landet man nach einem Neustart im MiSTer-OSD statt im Frontend). In
         # den ersten Sekunden nach dem Start kann der noch hochfahrende
@@ -2752,6 +2758,7 @@ class Frontend:
             self._ansicht_haupt = None
         self._pgc_fast_key = None
         self._kat_raster_fast_key = None
+        self._kat_galerie_fast_key = None
         self._force_full_redraw = True
         self.fb.mark_full_redraw()
         return wert
@@ -2800,6 +2807,7 @@ class Frontend:
         # Puffer. Nach einem Ansichtswechsel stimmt davon nichts mehr.
         self._pgi_fast_key = None
         self._raster_fast_key = None
+        self._galerie_fast_key = None
         self._force_full_redraw = True
         self.fb.mark_full_redraw()
         return wert
@@ -2947,7 +2955,24 @@ class Frontend:
         #         Bild ist eine 23 Punkte breite Miniatur ein Fleck.
         leiste_h = max(8 * s, platz * (28 if fb.height < KOMPAKT_H
                                        else 22) // 100)
-        gross_h = max(1, platz - leiste_h - 8 * s)
+        # BUGFIX (Build 125, gefunden durch den Pixelvergleich des neuen
+        # schnellen Pfads): der Abstand zur Leiste stand auf 8*s - zu
+        # wenig. Die Karte um das grosse Cover ist naemlich groesser als
+        # das Cover: ART_CARD_PAD*s Polster ringsum plus 3*s
+        # Schlagschatten nach unten. Zusammen 9*s, also ragte die Karte
+        # 1*s IN die Leiste hinein.
+        #
+        # Im vollen Aufbau fiel das nicht auf - die Leiste wird danach
+        # gezeichnet und deckt es zu. Auf dem schnellen Pfad werden aber
+        # nur ZWEI Leistenkacheln neu gezeichnet, und die Karte radierte
+        # die obere Kante der uebrigen weg: 2475 abweichende Bildpunkte
+        # in einem 15 Zeilen hohen Band.
+        #
+        # Jetzt wird der Abstand aus den tatsaechlichen Bestandteilen
+        # abgeleitet statt geraten: Polster + Schatten + der Rand, den
+        # das Freiraeumen grosszuegig dazunimmt. Vierter Fall derselben
+        # Sorte im Projekt (siehe Build 80).
+        gross_h = max(1, platz - leiste_h - (ART_CARD_PAD + 3 + 6) * s)
         gross_b = max(1, gross_h * 3 // 4)
         # Die Leiste darf das grosse Cover nicht ueberragen - sonst
         # kippt das Bild optisch nach unten.
@@ -5842,10 +5867,19 @@ class Frontend:
         """Ansicht D: ein grosses Cover links, die Spieldaten rechts,
         die Nachbarn als Leiste darunter.
 
-        Hier gibt es keinen schnellen Pfad, und das ist kein Versaeumnis:
-        bei JEDEM Schritt wechselt das grosse Cover UND die Leiste
-        verschiebt sich. Es bleibt schlicht nichts stehen, das man
-        wiederverwenden koennte."""
+        SEIT BUILD 125 GIBT ES HIER EINEN SCHNELLEN PFAD - und der ist
+        erst durch die seitenweise Leiste (siehe unten) moeglich
+        geworden.
+
+        Solange die Leiste steht, aendern sich pro Schritt nur drei
+        Dinge: das grosse Cover, der Text daneben, und welche Kachel den
+        Rahmen traegt. Der Rest steht schon richtig im Puffer. Vorher
+        war das anders - die Leiste rutschte bei jedem Schritt um eine
+        Kachel, also musste alles neu, und der Kommentar, der hier
+        stand, sagte voellig zu Recht "es bleibt nichts stehen".
+
+        Was das spart: den Vollbild-clear() (auf 1080p 8,3 MB) und elf
+        Kachel-Blits (rund 0,9 MB) pro Tastendruck."""
         fb = self.fb
         geo = self.galerie_geometrie(L)
         s, ox = geo["s"], geo["ox"]
@@ -5855,17 +5889,52 @@ class Frontend:
         proleiste = max(1, (fb.width - 2 * ox)
                         // (geo["klein_b"] + geo["abstand"]))
         self.items_visible = proleiste
-        self.scroll = max(0, min(self.item_i - proleiste // 2,
-                                 max(0, total - proleiste)))
+        # GEAENDERT (Build 125): die Leiste BLAETTERT, sie laeuft nicht
+        # mehr mit.
+        #
+        # Vorher stand hier "mittig um den Cursor". Das sieht ruhig aus,
+        # heisst aber: bei JEDEM Schritt verschiebt sich die ganze
+        # Leiste um eine Kachel, also muessen alle elf neu gezeichnet
+        # werden - dazu das grosse Cover. Zwoelf Bilder pro Tastendruck,
+        # und waehrend schnellen Scrollens werden sie reihenweise
+        # uebersprungen (die schwarzen Luecken in der Aufnahme des
+        # Nutzers).
+        #
+        # Seitenweise bleibt die Leiste die meiste Zeit STEHEN - dann
+        # ist nur das grosse Cover neu, also EIN Bild statt zwoelf. Und
+        # sie ist nebenbei ruhiger anzusehen: das Auge verliert den
+        # gerade betrachteten Nachbarn nicht mehr bei jedem Schritt.
+        # Dieselbe Ueberlegung wie beim Raster in Build 122.
+        seite = self.item_i // proleiste
+        self.scroll = min(seite * proleiste, max(0, total - 1))
 
-        fb.clear(C_BG)
-        self._raster_kopf(L, items, total)
+        fast_key = (self.cat_i, tuple(self.nav_path), total, fb.width,
+                    fb.height, self.scroll, proleiste)
+        schnell = (getattr(self, "_galerie_fast_key", None) == fast_key
+                   and getattr(self, "_galerie_fast_gen", -1)
+                   == fb.full_redraw_gen
+                   and not self._force_full_redraw
+                   and not self._overlay_active())
+        alt_platz = getattr(self, "_galerie_markiert", None)
+
+        if not schnell:
+            fb.clear(C_BG)
+            self._raster_kopf(L, items, total)
+            self._galerie_fast_key = fast_key
+        self._galerie_fast_gen = fb.full_redraw_gen
 
         item = items[self.item_i]
         item_syskey = self._item_syskey(item, syskey)
         akzent = accent_for(item_syskey)
         oben, gb, gh = geo["oben"], geo["gross_b"], geo["gross_h"]
         pad = ART_CARD_PAD * s
+        if schnell:
+            # Nur die Flaeche der Karte freiraeumen, nicht den Schirm.
+            # Der Schatten reicht ueber die Karte hinaus, deshalb ein
+            # paar Punkte mehr Rand als das Polster.
+            self._restore_row_bg(ox - pad - 4 * s, oben - pad - 4 * s,
+                                 gb + 2 * pad + 8 * s,
+                                 gh + 2 * pad + 8 * s)
         fb.karte_mit_schatten(ox - pad, oben - pad, gb + 2 * pad,
                               gh + 2 * pad, 3 * s, C_PANEL,
                               fb._darken(C_BG, 0.55), 4 * s)
@@ -5883,6 +5952,15 @@ class Frontend:
         # ---- Titel und Daten rechts ----
         tx = geo["text_x"]
         maxc = max(6, (fb.width - ox - tx) // (8 * s))
+        if schnell:
+            # Der Text wechselt bei jedem Schritt und wird mal kuerzer,
+            # mal laenger - ohne Freiraeumen bliebe der Rest des vorigen
+            # Titels stehen. Genau der Fehler, der bei der Fusszeile
+            # schon einmal gefunden wurde.
+            self._restore_row_bg(tx, oben - 2 * s,
+                                 max(0, (fb.width - ox) - tx),
+                                 max(0, geo["leiste_y"] - 4 * s
+                                     - (oben - 2 * s)))
         titel = item[0]
         t_scale = 2 * s
         if len(titel) > max(4, maxc // 2):
@@ -5906,9 +5984,18 @@ class Frontend:
         # ---- Leiste mit den Nachbarn ----
         ly = geo["leiste_y"]
         kb, kh = geo["klein_b"], geo["klein_h"]
-        x = ox
-        idx = self.scroll
-        while x + kb <= fb.width - ox and idx < total:
+        platz_neu = self.item_i - self.scroll
+
+        def _leisten_kachel(platz, freiraeumen):
+            idx = self.scroll + platz
+            if idx < 0 or idx >= total:
+                return
+            x = ox + platz * (kb + geo["abstand"])
+            if x + kb > fb.width - ox:
+                return
+            if freiraeumen:
+                d = 3 * s
+                self._restore_row_bg(x - d, ly - d, kb + 2 * d, kh + 2 * d)
             if idx == self.item_i:
                 self._kachel_rahmen(x, ly, kb, kh, akzent, s)
             klein, klein_verzoegert = self._ansicht_cover(
@@ -5920,8 +6007,20 @@ class Frontend:
             elif not klein_verzoegert:
                 self._kachel_platzhalter(x, ly, kb, kh, items[idx][0], s,
                                          idx == self.item_i)
-            x += kb + geo["abstand"]
-            idx += 1
+
+        if schnell and alt_platz is not None:
+            # Nur die beiden betroffenen Kacheln - der Rest der Leiste
+            # steht unveraendert im Puffer.
+            if alt_platz != platz_neu:
+                _leisten_kachel(alt_platz, True)
+            _leisten_kachel(platz_neu, True)
+        else:
+            platz = 0
+            while (ox + platz * (kb + geo["abstand"]) + kb
+                   <= fb.width - ox) and self.scroll + platz < total:
+                _leisten_kachel(platz, False)
+                platz += 1
+        self._galerie_markiert = platz_neu
 
         self._fusszeile_zeichnen(ox, L["footer_y"], s, message)
         self._draw_search_overlay()
@@ -6088,16 +6187,31 @@ class Frontend:
         proleiste = max(1, (fb.width - 2 * ox)
                         // (geo["klein_b"] + geo["abstand"]))
         self.cats_visible = proleiste
-        self.cat_scroll = max(0, min(self.cat_i - proleiste // 2,
-                                     max(0, gesamt - proleiste)))
+        # Seitenweise, siehe _draw_items_galerie() - gleiche Begruendung.
+        seite = self.cat_i // proleiste
+        self.cat_scroll = min(seite * proleiste, max(0, gesamt - 1))
 
-        fb.clear(C_BG)
-        self._kat_kopf(KL)
+        fast_key = (gesamt, fb.width, fb.height, self.cat_scroll, proleiste)
+        schnell = (getattr(self, "_kat_galerie_fast_key", None) == fast_key
+                   and getattr(self, "_kat_galerie_fast_gen", -1)
+                   == fb.full_redraw_gen
+                   and not self._force_full_redraw
+                   and not self._overlay_active())
+        alt_platz = getattr(self, "_kat_galerie_markiert", None)
+        if not schnell:
+            fb.clear(C_BG)
+            self._kat_kopf(KL)
+            self._kat_galerie_fast_key = fast_key
+        self._kat_galerie_fast_gen = fb.full_redraw_gen
 
         name, node, syskey = self.cats[self.cat_i]
         akzent = accent_for(syskey)
         oben, gb, gh = geo["oben"], geo["gross_b"], geo["gross_h"]
         pad = ART_CARD_PAD * s
+        if schnell:
+            self._restore_row_bg(ox - pad - 4 * s, oben - pad - 4 * s,
+                                 gb + 2 * pad + 8 * s,
+                                 gh + 2 * pad + 8 * s)
         fb.karte_mit_schatten(ox - pad, oben - pad, gb + 2 * pad,
                               gh + 2 * pad, 3 * s, C_PANEL,
                               fb._darken(C_BG, 0.55), 4 * s)
@@ -6114,6 +6228,11 @@ class Frontend:
 
         tx = geo["text_x"]
         maxc = max(6, (fb.width - ox - tx) // (8 * s))
+        if schnell:
+            self._restore_row_bg(tx, oben - 2 * s,
+                                 max(0, (fb.width - ox) - tx),
+                                 max(0, geo["leiste_y"] - 4 * s
+                                     - (oben - 2 * s)))
         t_scale = 2 * s if len(name) <= max(4, maxc // 2) else s
         t_maxc = max(4, (fb.width - ox - tx) // (8 * t_scale))
         fb.text(tx, oben, name.upper()[:t_maxc], t_scale, C_TITLE)
@@ -6126,9 +6245,18 @@ class Frontend:
 
         ly = geo["leiste_y"]
         kb, kh = geo["klein_b"], geo["klein_h"]
-        x = ox
-        idx = self.cat_scroll
-        while x + kb <= fb.width - ox and idx < gesamt:
+        platz_neu = self.cat_i - self.cat_scroll
+
+        def _leisten_kachel(platz, freiraeumen):
+            idx = self.cat_scroll + platz
+            if idx < 0 or idx >= gesamt:
+                return
+            x = ox + platz * (kb + geo["abstand"])
+            if x + kb > fb.width - ox:
+                return
+            if freiraeumen:
+                d = 3 * s
+                self._restore_row_bg(x - d, ly - d, kb + 2 * d, kh + 2 * d)
             if idx == self.cat_i:
                 self._kachel_rahmen(x, ly, kb, kh, akzent, s)
             klein, klein_verzoegert = self._kat_logo(idx, kb, kh)
@@ -6139,8 +6267,18 @@ class Frontend:
             elif not klein_verzoegert:
                 self._kachel_platzhalter(x, ly, kb, kh, self.cats[idx][0],
                                          s, idx == self.cat_i)
-            x += kb + geo["abstand"]
-            idx += 1
+
+        if schnell and alt_platz is not None:
+            if alt_platz != platz_neu:
+                _leisten_kachel(alt_platz, True)
+            _leisten_kachel(platz_neu, True)
+        else:
+            platz = 0
+            while (ox + platz * (kb + geo["abstand"]) + kb
+                   <= fb.width - ox) and self.cat_scroll + platz < gesamt:
+                _leisten_kachel(platz, False)
+                platz += 1
+        self._kat_galerie_markiert = platz_neu
 
         self._kat_fusszeile(KL, message)
         self._force_full_redraw = False
@@ -7416,6 +7554,13 @@ class Frontend:
                 # ist jetzt weiter oben, VOR dem Nachzeichnen, und mit
                 # einer viel kuerzeren Ruhe-Schwelle - siehe dort und bei
                 # PREWARM_SETTLE.
+                # NEU (Build 125): was der Nachlade-Thread fertig hat,
+                # in den RAM-Cache eintragen. Das ist eine Zuweisung je
+                # Bild - der teure Teil (Lesen und Auspacken) ist im
+                # Thread passiert. Siehe fe/nachladen.py fuer die
+                # Begruendung, warum das Eintragen NICHT dort geschieht.
+                for _p, _bw, _bh, _erg in self.lader.abholen():
+                    ART.nachgeladen_eintragen(_p, _bw, _bh, _erg)
                 self._boot_watch()   # Diagnose: Anzeige-Zustand nach dem Boot
                 # WICHTIG: unabhaengige if-Abfragen statt einer elif-Kette.
                 # Mit elif haette "track_needs" (Songtitel muss scrollen -
@@ -7649,6 +7794,43 @@ class Frontend:
             return None
         return art_w, art_h, s
 
+    def _ansicht_geometrien(self, ansicht, erzwingen=False):
+        """ALLE Kastengroessen, die eine Ansicht beim Zeichnen anfragt -
+        nicht nur die wichtigste.
+
+        BUGFIX (Build 125, Nutzer-Rueckmeldung mit Bildschirmaufnahme:
+        "die Boxarts sind trotz Miniaturen vorbereiten nicht sofort
+        sichtbar, das stoert").
+
+        Die Galerie fragt ZWEI Groessen an: das grosse Cover und die
+        Miniaturen der Nachbarleiste. _art_panel_geometrie() liefert nur
+        die erste - also stand die Leiste in KEINER Vorbereitungsliste,
+        in keinem Build. Nachgerechnet auf HDMI:
+
+            grosses Cover     426 x 569   wurde vorbereitet
+            Leisten-Miniatur  124 x 166   wurde NIE vorbereitet
+
+        Elf Bilder pro Bildaufbau, alle kalt, alle waehrend des
+        Scrollens uebersprungen - genau die schwarzen Luecken in der
+        Aufnahme. "Miniaturen vorbereiten" konnte dabei so oft laufen
+        wie es wollte.
+
+        Liste und Raster brauchen nur eine Groesse; dort ist die Liste
+        einelementig und alles bleibt, wie es war."""
+        haupt = self._art_panel_geometrie(ansicht, erzwingen=erzwingen)
+        if haupt is None:
+            return []
+        raus = [haupt]
+        if ansicht == "galerie":
+            items = self._display_items()
+            _n, _r, syskey = self.cats[self.cat_i]
+            has_art = True if erzwingen else self.hat_artspalte(items, syskey)
+            g = self.galerie_geometrie(self.layout_items(has_art))
+            klein = ("fest", g["klein_b"], g["klein_h"], g["s"])
+            if klein[1] > 4 and klein[2] > 4 and klein not in raus:
+                raus.append(klein)
+        return raus
+
     def cover_pfad_und_kasten(self, item, cat_syskey, geo):
         """(Cover-Pfad, Kastenbreite, Kastenhoehe) fuer EINEN Eintrag -
         genau das Tripel, das der Zeichenpfad spaeter bei ART.get_scaled()
@@ -7799,9 +7981,11 @@ class Frontend:
         items = self._display_items()
         if not items:
             return
-        geo = self._art_panel_geometrie()
-        if geo is None:
+        _ansicht_jetzt = self.aktuelle_ansicht()
+        geos = self._ansicht_geometrien(_ansicht_jetzt)
+        if not geos:
             return
+        geo = geos[0]
         _name, _root_node, cat_syskey = self.cats[self.cat_i]
         # NEU (Build 122): im Raster wird weiter vorausgeschaut. Die
         # Liste braucht das naechste COVER, das Raster die naechste
@@ -7809,23 +7993,49 @@ class Frontend:
         # Standard-Vorausschau (20) waere ein Seitensprung immer halb
         # kalt.
         _voraus = 20
-        if self.aktuelle_ansicht() == "raster":
+        if _ansicht_jetzt == "raster":
             # items_visible ist im Raster genau eine Rasterseite (siehe
             # _draw_items_raster()) - zwei davon sind die aktuelle und
             # die naechste.
             _voraus = max(20, 2 * max(1, getattr(self, "items_visible", 28)))
-        auftraege = auftraege_bauen(
-            items, self.item_i,
-            lambda it: self.cover_pfad_und_kasten(it, cat_syskey, geo),
-            vorwaerts=getattr(self, "_last_scroll_dir", 1) >= 0,
-            voraus=_voraus)
+        auftraege = []
+        for _g in geos:
+            auftraege.extend(auftraege_bauen(
+                items, self.item_i,
+                lambda it, _gg=_g: self.cover_pfad_und_kasten(it,
+                                                              cat_syskey, _gg),
+                vorwaerts=getattr(self, "_last_scroll_dir", 1) >= 0,
+                voraus=_voraus))
+        # NEU (Build 125): die GEGENLISTE - alles, was schon auf der
+        # Karte liegt, aber nicht im Arbeitsspeicher. Dafuer muss
+        # niemand mehr rechnen, es fehlt nur Lesen und Auspacken; das
+        # erledigt der Nachlade-Thread im eigenen Prozess (siehe
+        # fe/nachladen.py).
+        #
+        # Genau diese Liste ist der Grund, warum es sich nach einem
+        # NEUSTART wieder langsam anfuehlt, obwohl "Miniaturen
+        # vorbereiten" laengst durchgelaufen ist: der Menuepunkt fuellt
+        # die Karte, nicht den RAM.
+        nachladen = []
+        for _g in geos:
+            for _n in auftraege_bauen(
+                    items, self.item_i,
+                    lambda it, _gg=_g: self.cover_pfad_und_kasten(
+                        it, cat_syskey, _gg),
+                    vorwaerts=getattr(self, "_last_scroll_dir", 1) >= 0,
+                    voraus=_voraus, schon_da=True):
+                if ART.nur_im_ram_fehlt(*_n):
+                    nachladen.append(_n)
+        if nachladen:
+            self.lader.start()
+            self.lader.uebergeben(nachladen)
         if not auftraege:
             return
         PREWARMER.start()
         PREWARMER.uebergeben(auftraege)
         if profiling_an():
-            LOG("PREWARM: %d Cover vorgemerkt (Position %d/%d)"
-                % (len(auftraege), self.item_i + 1, len(items)))
+            LOG("PREWARM: %d Cover vorgemerkt, %d nachzuladen (Position %d/%d)"
+                % (len(auftraege), len(nachladen), self.item_i + 1, len(items)))
 
     def _alle_spiel_eintraege(self):
         """Alle Eintraege aller Kategorien als [(eintrag, kategorie-
@@ -8035,9 +8245,13 @@ class Frontend:
             # heraus gerufen, und dort gibt es keine Cover-Spalte - ohne
             # das kaeme hier fuer beide neuen Ansichten None zurueck und
             # der ganze Absatz darueber waere wirkungslos.
-            _g = self._art_panel_geometrie(_a, erzwingen=True)
-            if _g is not None and _g not in geos:
-                geos.append(_g)
+            #
+            # GEAENDERT (Build 125): _ansicht_geometrien() statt
+            # _art_panel_geometrie() - die Galerie braucht ZWEI Groessen,
+            # und die zweite (die Nachbarleiste) fehlte hier bisher.
+            for _g in self._ansicht_geometrien(_a, erzwingen=True):
+                if _g not in geos:
+                    geos.append(_g)
 
         # Die Kategorie-Logos der Hauptseite zuerst: es sind nur rund
         # zwanzig, aber die groessten Bilder im Frontend (900 px breit),
@@ -8686,6 +8900,7 @@ class Frontend:
         # ins Menue faehrt _prewarm_anstossen() ihn von selbst wieder
         # hoch) und macht die Luecke zu null.
         PREWARMER.beenden()
+        self.lader.beenden()
         launch_core(path)
         t0 = time.monotonic()
         started = False
@@ -12276,6 +12491,7 @@ class Frontend:
                 # durch die jede Aktion muss, statt verteilt an den
                 # sieben Stellen, die _last_input_time setzen.
                 PREWARMER.abbrechen()
+                self.lader.abbrechen()
                 _rt2 = time.monotonic()
                 LOG("aktion: %s (Seite %d, confirm=%s)"
                     % (act, self.page, self.confirm_quit))
@@ -13593,6 +13809,7 @@ class Frontend:
             # beenden, damit beim Herunterfahren nichts uebrigbleibt, das
             # noch auf die SD-Karte schreibt.
             PREWARMER.beenden()
+            self.lader.beenden()
             if self.stream:
                 self.stream.stop()
             self.music.shutdown()
