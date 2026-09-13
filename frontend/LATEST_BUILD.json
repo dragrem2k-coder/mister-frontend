@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-12-114",
-  "summary": "Die Fusszeile zeigt jetzt 142/3500 - man sieht endlich, wo man in einer langen Liste steht. Die Suche blaettert mit hoch/runter durch die Treffer und zaehlt sie mit. F3/F4 (am Pad Select+L/R) springen an den Anfang bzw. ans Ende."
+  "build_id": "2026-09-12-115",
+  "summary": "Der MiSTer hat libpng und libturbojpeg an Bord - jetzt nutzen wir sie: ein kaltes Cover faellt von 200-500 ms auf grob 30 ms. JPG wird zur vollwertigen Bildquelle, und die Artwork-/Spieledaten-Datenbank unter /media/fat/docs fuellt Luecken bei Covern und Spielinfos. Eigenes Artwork behaelt immer Vorrang."
 }

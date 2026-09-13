@@ -29,7 +29,7 @@ from fe.settings import (
     attract_enabled, crt_menu_active, curated_only_active,
     dragend_logo_enabled, format_attract_delay, load_attract_delay,
     screen_mirror_enabled, stream_overlay_enabled,
-    fast_scroll_enabled, overscan_lesen,
+    fast_scroll_enabled, overscan_lesen, fremdquellen_enabled,
     pulse_effect_enabled, eq_effect_enabled,
     track_marquee_enabled, fb_size_label_key,
     autostart_enabled, rom_filter_enabled,
@@ -261,6 +261,12 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         # Anzeige-Punkten; wer eine Roehre hat, sucht genau hier.
         (t("sys_overscan_x", _ovx), "overscan_x", None),
         (t("sys_overscan_y", _ovy), "overscan_y", None),
+        # NEU (Build 115): fremde Artwork-/Datenquelle unter
+        # /media/fat/docs. Steht hier, weil es sichtbar die Anzeige
+        # betrifft - es entscheidet, ob bei einem Spiel ein Cover
+        # erscheint oder "kein Artwork".
+        (t("sys_fremdquellen_on") if fremdquellen_enabled()
+         else t("sys_fremdquellen_off"), "fremdquellen", None),
     ]
     if not crt:
         display_items.append((fb_size_label, "fb_size", None))

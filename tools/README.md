@@ -55,6 +55,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_kernel_wechsel.py \
   && python3 tools/test_bildrand.py \
   && python3 tools/test_suchtreffer.py \
+  && python3 tools/test_bildlib.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -99,6 +100,7 @@ python3 tools/regression_test.py \
 | `test_kernel_wechsel.py` | Test (Pass/Fail) | Bildspeicher wird auf beiden MiSTer-Kerneln erkannt - sysfs zuerst, ioctl als Rueckfall |
 | `test_bildrand.py` | Test (Pass/Fail) | Einstellbarer Bildrand: Vorgabe unveraendert, kaputte Datei faellt zurueck, und der Wert kommt wirklich im Layout an |
 | `test_suchtreffer.py` | Test (Pass/Fail) | Positionsanzeige und Trefferwechsel: ASCII-Abkuerzung bewiesen gleichwertig, neuer Sprung trifft dasselbe wie der alte, leichter Pfad bitgleich |
+| `test_bildlib.py` | Test (Pass/Fail) | libpng/TurboJPEG ueber ctypes: bitgleich zum Python-Dekoder, Rueckfall ohne Bibliothek, fremde docs-Quelle nur als Luecken-Fueller |
 | `diag_vorauslader.py` | Diagnose (immer Rueckgabewert 0) | Was der Vorauslader dem Zeichnen wegnimmt - Thread gegen Prozess |
 | `diag_zeilen_spuren.py` | Diagnose (immer Rueckgabewert 0) | Was das gezielte Freiraeumen bringt - ganze Spalte gegen Spuren |
 | `diag_hintergrundlast.py` | Diagnose (immer Rueckgabewert 0) | Was pro Tastendruck wirklich passiert: Dateizugriffe, Log-Zeilen, doppelte Arbeit |
@@ -950,6 +952,48 @@ muss sich nach dem Umbau genauso verhalten wie vorher. Test 8 misst
 nach, dass die Abkuerzung ueberhaupt etwas bringt - ohne diese Messung
 waere Test 1 nur eine Gleichheitsaussage ueber zwei Funktionen, von
 denen eine grundlos existiert.
+
+## test_bildlib.py
+
+Deckt Build 115 ab: die Systembibliotheken `libpng16` und
+`libturbojpeg`, die auf dem MiSTer liegen - nur eben weder als
+Python-Modul noch als Kommandozeilenwerkzeug, weshalb mehrere Suchen
+daran vorbeigingen. Ueber `ctypes` sind sie erreichbar.
+
+Der Unterschied ist kein Feinschliff. Unser eigener PNG-Dekoder in
+Python braucht fuer ein 400x560-Cover **210 ms**, libpng **2,6 ms** -
+Faktor 80 hier, auf dem Geraet 200-500 ms gegen grob 30. Genau diese
+Zahl ist der Grund fuer den Vorauslader im zweiten Prozess (Build
+104), die Notbremse nach zwei Sekunden (Build 105) und das Auslagern
+kalter Cover (Build 107).
+
+Zwei Fragen muss der Test beantworten:
+
+**Liefert die Bibliothek wirklich dasselbe Bild?** Ein Unterschied
+faellt nicht auf, er zeigt nur irgendwann ein falsches Cover. Geprueft
+wird deshalb bitgenau ueber RGB, RGBA, Graustufen und Palette - und in
+die Gegenrichtung an einem echten Adam7-verschachtelten PNG, das
+unserer gar nicht kann. Dieselbe Beweisform wie beim Cover-Index in
+Build 110. Das verschachtelte Testbild steht als Konstante im Test,
+weil Pillow keins schreiben kann und der Test nicht von einem
+zufaellig installierten ImageMagick abhaengen soll.
+
+**Kann die Aenderung etwas verschlechtern?** Test 3 schaltet die
+Bibliothek kuenstlich ab und prueft, dass trotzdem dasselbe Bild
+herauskommt - fehlt sie auf einem Geraet, uebernimmt der bisherige
+Dekoder unveraendert.
+
+Dazu die fremde Quelle unter `/media/fat/docs`: der Ordner wird sowohl
+ueber den Systemschluessel als auch ueber die Core-Namen aus unserer
+Systemliste gefunden (Mega Drive heisst dort `MegaDrive`), eigenes
+Artwork behaelt immer Vorrang, eigene Spieledaten auch - die fremde
+Tabelle fuellt nur Luecken und steuert das Feld bei, das unsere
+libretro-Quelle nie hatte (den Entwickler). Kaputte Zeilen, leere
+Felder und eine fehlende Datenbank duerfen nichts umwerfen.
+
+Laeuft auch auf einem Rechner ohne diese Bibliotheken - die
+betroffenen Pruefungen melden sich dann ausdruecklich als "nicht
+pruefbar", statt stillschweigend zu bestehen.
 
 ## diag_lightpath.py
 

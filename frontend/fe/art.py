@@ -16,10 +16,45 @@ import os, re, struct, zlib, json, time, urllib.request, hashlib, threading
 from fe.log import LOG
 from fe.translations import t
 
+# Systembibliotheken fuer Bilder (Build 115). Bewusst mit Netz und
+# doppeltem Boden geladen: fehlt das Modul oder laesst sich keine
+# Bibliothek finden, bleibt _BILDLIB None und alles laeuft wie vorher
+# ueber den Python-Dekoder weiter.
+try:
+    import fe.bildlib as _BILDLIB
+    if not (_BILDLIB.png_verfuegbar() or _BILDLIB.verfuegbar()):
+        _BILDLIB = None
+except Exception:       # pragma: no cover - nur auf kaputten Installationen
+    _BILDLIB = None
+
 ART_BASE    = "/media/fat/frontend/art"
 ART_HD      = "/media/fat/frontend/art_hd"
 SYSART_BASE = "/media/fat/frontend/sysart"
 META_BASE   = "/media/fat/frontend/meta"
+
+# FREMDE QUELLE (Build 115): die Handbuch-/Artwork-Datenbank, die viele
+# MiSTer-Nutzer ueber den Downloader installiert haben. Aufbau:
+#
+#   /media/fat/docs/<Core>/Artwork/<ROM-Name>.jpg
+#   /media/fat/docs/<Core>/Artwork/gameinfo.tsv
+#   /media/fat/docs/<Core>/Manuals/*.pdf
+#
+# Auf dem Geraet des Nutzers liegen dort 21.198 Cover und 147
+# Systemordner, benannt wie die MiSTer-Cores - also genau wie die
+# Ordnernamen, die unsere eigene Systemliste ohnehin schon fuehrt.
+# Gefunden wurde das erst, nachdem die Suche nach Ordnern namens
+# "*artwork*" und nach gamelist.xml zweimal ins Leere lief: der
+# Elternordner heisst "docs", dort wurden Handbuecher vermutet.
+#
+# WIR SCHREIBEN DORT NIE HIN. Reiner Lesepfad, und nur als Rueckfall -
+# eigenes Artwork hat immer Vorrang.
+DOCS_BASE   = "/media/fat/docs"
+DOCS_UNTER  = "Artwork"
+DOCS_INFO   = "gameinfo.tsv"
+
+# Obergrenze fuer fremde Bilder: ein Cover ist ein Cover, kein
+# Buchseiten-Scan. Siehe ArtCache.get().
+FREMD_MAX_KANTE = 1200
 
 # PNG-DECODER (Nutzerwunsch: RA-Erfolgs-Icons direkt im Frontend zeigen,
 # nicht nur im Browser-Overlay, das PNGs von selbst versteht). Reines
@@ -95,10 +130,36 @@ def _png_unfilter(raw, width, height, bpp):
 
 def decode_png(data):
     """Dekodiert eine PNG-Bilddatei (Bytes) zu (breite, hoehe,
-    rgba_bytes) - fuer RA-Erfolgs-Icons direkt im Frontend. Liefert
-    None bei JEDEM nicht unterstuetzten oder fehlerhaften Fall - NIE
-    eine Ausnahme nach aussen (siehe Modul-Kopfkommentar fuer die
-    bewussten Einschraenkungen)."""
+    rgba_bytes). Liefert None bei JEDEM nicht unterstuetzten oder
+    fehlerhaften Fall - NIE eine Ausnahme nach aussen.
+
+    GEAENDERT (Build 115): zuerst wird libpng ueber fe/bildlib.py
+    versucht. Auf dem MiSTer liegt die Bibliothek da, nur eben weder
+    als Python-Modul noch als Kommandozeilenwerkzeug - deshalb ist sie
+    jahrelang uebersehen worden. Der Unterschied ist kein Feinschliff:
+    gemessen 2,6 ms gegen 140 ms fuer dasselbe Bild, auf dem Geraet
+    also grob 30 ms statt 200-500 ms.
+
+    Die Fassung darunter bleibt vollstaendig erhalten und uebernimmt,
+    wenn die Bibliothek fehlt. Damit kann diese Aenderung nichts
+    verschlechtern: entweder es wird schneller, oder es bleibt genau
+    wie es war. Dass beide Wege dasselbe Bild liefern, ist ueber alle
+    Farbtypen bitgenau nachgewiesen (tools/test_bildlib.py)."""
+    if _BILDLIB is not None:
+        fertig = _BILDLIB.decode_png_lib(data)
+        if fertig is not None:
+            return fertig
+        # Kein stiller Verzicht: libpng kann an einem Bild scheitern,
+        # das unsere Fassung noch schafft (und umgekehrt). Wer hier
+        # ankommt, hat nichts verloren ausser ein paar Mikrosekunden.
+    return _decode_png_python(data)
+
+
+def _decode_png_python(data):
+    """Der urspruengliche, reine Python-Dekoder (siehe decode_png()).
+
+    BEWUSST EINGESCHRAENKT (lieber None als ein falsches Bild): nur
+    8-Bit Farbtiefe, nicht interlaced, Farbtypen 0/2/3/4/6."""
     try:
         if not data.startswith(b"\x89PNG\r\n\x1a\n"):
             return None
@@ -1010,11 +1071,30 @@ class ArtCache:
         cache_result = True
         try:
             with open(path, "rb") as f:
-                if f.read(4) == b"ART1":
+                kopf = f.read(4)
+                if kopf == b"ART1":
                     w, h = struct.unpack("<HH", f.read(4))
                     pix = zlib.decompress(f.read())
                     if len(pix) == w * h * 4:
                         art = (w, h, pix)
+                elif _BILDLIB is not None:
+                    # NEU (Build 115): auch ein PNG oder JPG darf hier
+                    # stehen. Damit wird JEDE Aufrufstelle, die bisher
+                    # nur .art kannte, ohne eigene Aenderung zu einer,
+                    # die fremdes Artwork anzeigen kann - und alles
+                    # dahinter (Groesseneinpassung, Miniaturen-Cache,
+                    # Vorauslader) greift unveraendert weiter.
+                    #
+                    # FREMD_MAX_KANTE wirkt hier als Deckel, nicht als
+                    # Wunschgroesse: decode() sucht die kleinste
+                    # Verkleinerungsstufe, die das Mass noch ueberdeckt.
+                    # Ein normales Cover (424x768) hat gar keine solche
+                    # Stufe unter 1:1 und kommt deshalb voll heraus -
+                    # ein versehentlich abgelegtes 4000er Scan-Bild
+                    # dagegen landet bei rund 1200 statt mit 64 MB im
+                    # Speicher.
+                    art = _BILDLIB.decode(kopf + f.read(),
+                                          FREMD_MAX_KANTE, FREMD_MAX_KANTE)
         except FileNotFoundError:
             pass                     # stabil - Cache-Eintrag bleibt bestehen
         except OSError:
@@ -1687,10 +1767,225 @@ def _art_path_in(base_dir, syskey, rom_basename):
     fn = _art_index(base_dir, syskey).get(rom_basename)
     if fn:
         return os.path.join(base_dir, syskey, fn)
+    # NEU (Build 115): erst wenn es bei UNS nichts gibt, wird in der
+    # fremden Datenbank nachgesehen. Diese Reihenfolge ist der ganze
+    # Sicherheitsgurt der Aenderung - eigenes Artwork behaelt immer
+    # Vorrang, und wer die Datenbank gar nicht hat, merkt von alldem
+    # nichts (ein os.listdir() je System, das leer zurueckkommt).
+    #
+    # Bewusst HIER und nicht an den acht Aufrufstellen: die bekommen
+    # damit alle denselben Rueckfall, ohne dass eine davon vergessen
+    # werden kann.
+    if fremdquellen_enabled():
+        fremd = docs_cover(syskey, rom_basename)
+        if fremd:
+            return fremd
     return os.path.join(base_dir, syskey, rom_basename + ".art")
 
 def art_path(syskey, rom_basename):
     return _art_path_in(ART_BASE, syskey, rom_basename)
+
+
+# ---------------------------------------------------------------------------
+# FREMDE ARTWORK-/METADATENQUELLE unter DOCS_BASE (Build 115)
+# ---------------------------------------------------------------------------
+
+_docs_ordner_cache = None     # normalisierter Name -> echter Ordnername
+_docs_index_cache = {}        # syskey -> {ROM-Name: voller Bildpfad}
+_docs_info_cache = {}         # syskey -> {ROM-Name: {year, genre, ...}}
+_fremd_an = None              # Schalterzustand, einmal je Sitzung
+
+
+def fremdquellen_enabled():
+    """Darf die fremde Datenbank gelesen werden?
+
+    Der Schalter selbst wohnt in fe/settings.py - das Modul importiert
+    aber seinerseits aus fe/art.py, ein Import oben im Kopf waere also
+    ein Ringschluss. Deshalb hier verzoegert geholt UND gemerkt: der
+    Wert wird bei jeder Cover-Suche gebraucht, und eine Dateiabfrage
+    je Eintrag waere genau die Sorte stiller Kosten, gegen die die
+    Builds 104 bis 110 angegangen sind. Ein Schalterwechsel ruft
+    docs_caches_leeren() und setzt ihn damit zurueck."""
+    global _fremd_an
+    if _fremd_an is None:
+        try:
+            from fe.settings import fremdquellen_enabled as _schalter
+            _fremd_an = bool(_schalter())
+        except Exception:
+            _fremd_an = True
+    return _fremd_an
+
+
+def _schlank(name):
+    """Nur Buchstaben und Ziffern, gross. "Mega Drive", "MegaDrive"
+    und "mega-drive" werden damit derselbe Name.
+
+    Dieselbe Vergleichsform wie bei den Kategorie-Abzeichen in Build
+    112 - dort hat sie sich bewaehrt, weil Ordnernamen auf fremden
+    Karten eben nicht genau so geschrieben sind wie bei uns."""
+    return "".join(c for c in name.upper() if c.isalnum())
+
+
+def _docs_ordner():
+    """Was unter DOCS_BASE tatsaechlich liegt, nach normalisiertem
+    Namen nachschlagbar. Einmal je Sitzung gelesen.
+
+    Bewusst dynamisch statt als feste Tabelle: welche Systeme dort
+    liegen, entscheidet der Nutzer mit dem, was er installiert hat -
+    eine einprogrammierte Liste waere schon beim naechsten
+    Datenbank-Update falsch."""
+    global _docs_ordner_cache
+    if _docs_ordner_cache is None:
+        gefunden = {}
+        try:
+            for name in os.listdir(DOCS_BASE):
+                if os.path.isdir(os.path.join(DOCS_BASE, name)):
+                    gefunden.setdefault(_schlank(name), name)
+        except OSError:
+            pass
+        _docs_ordner_cache = gefunden
+    return _docs_ordner_cache
+
+
+def _docs_ordner_fuer(syskey):
+    """Der DOCS_BASE-Ordner zu einem Systemschluessel, sonst None.
+
+    Gesucht wird in dieser Reihenfolge: der Systemschluessel selbst
+    (GBC findet so seinen eigenen Ordner, obwohl seine ROMs bei uns
+    unter GAMEBOY liegen), danach die ROM-Ordnernamen aus unserer
+    Systemliste (Mega Drive heisst dort MegaDrive ODER Genesis - beide
+    kommen vor, und beide gibt es auch in der Datenbank)."""
+    if not syskey:
+        return None
+    ordner = _docs_ordner()
+    if not ordner:
+        return None
+    kandidaten = [syskey]
+    try:
+        from fe.systems import GAME_SYSTEMS, OPTIONAL_GAME_SYSTEMS
+        alle = list(GAME_SYSTEMS) + list(OPTIONAL_GAME_SYSTEMS)
+    except Exception:
+        alle = []
+    for eintrag in alle:
+        if eintrag[1] != syskey:
+            continue
+        for rom_ordner in eintrag[2]:
+            # "SNES/SMW_HACKS" -> "SNES": Unterordner einer Sammlung
+            # haben in der Datenbank keinen eigenen Eintrag, ihre
+            # Spiele aber sehr wohl.
+            kandidaten.append(rom_ordner.split("/")[0])
+    for k in kandidaten:
+        echt = ordner.get(_schlank(k))
+        if echt:
+            return os.path.join(DOCS_BASE, echt)
+    return None
+
+
+def _docs_index(syskey):
+    """{ROM-Name ohne Endung: voller Bildpfad} fuer ein System.
+
+    Aufgebaut nach demselben Muster wie _art_index(): ein os.listdir()
+    je System, beim ersten Fehltreffer, danach gecacht. Zusaetzlich
+    wird - wie dort - die Fassung ohne fuehrende "NNN "-Nummer als
+    Luecke nachgetragen, damit kuratierte Sammlungen ihre Cover
+    wiederfinden."""
+    if not syskey:
+        return {}
+    idx = _docs_index_cache.get(syskey)
+    if idx is not None:
+        return idx
+    idx = {}
+    basis = _docs_ordner_fuer(syskey)
+    if basis:
+        ordner = os.path.join(basis, DOCS_UNTER)
+        try:
+            namen = [fn for fn in os.listdir(ordner)
+                     if fn.rsplit(".", 1)[-1].lower() in ("jpg", "jpeg", "png")]
+            for fn in namen:
+                idx[fn.rsplit(".", 1)[0]] = os.path.join(ordner, fn)
+            for fn in namen:
+                base = fn.rsplit(".", 1)[0]
+                ohne = _ohne_fuehrende_nummer(base)
+                if ohne != base and ohne not in idx:
+                    idx[ohne] = os.path.join(ordner, fn)
+        except OSError:
+            pass
+    _docs_index_cache[syskey] = idx
+    return idx
+
+
+def docs_cover(syskey, rom_basename):
+    """Pfad zu einem fremden Cover, sonst None."""
+    if not syskey or not rom_basename:
+        return None
+    return _docs_index(syskey).get(rom_basename)
+
+
+def _docs_infos(syskey):
+    """gameinfo.tsv eines Systems als {ROM-Name: {...}}.
+
+    Spalten laut Kopfzeile der Datei:
+        #key  name  year  genre  developer  players
+
+    Das ist dieselbe Schluesselung wie in unserem eigenen
+    meta/<system>.json (ROM-Basisname), nur mit einem Feld mehr - den
+    Entwickler kannte unsere libretro-Quelle nicht. Und es steht
+    bereits auf der Karte: wer seinen MiSTer nicht am Netz hat,
+    bekommt damit ueberhaupt zum ersten Mal Spieledaten."""
+    if not syskey:
+        return {}
+    daten = _docs_info_cache.get(syskey)
+    if daten is not None:
+        return daten
+    daten = {}
+    basis = _docs_ordner_fuer(syskey)
+    if basis:
+        pfad = os.path.join(basis, DOCS_UNTER, DOCS_INFO)
+        try:
+            with open(pfad, "r", encoding="utf-8", errors="replace") as fh:
+                for zeile in fh:
+                    if not zeile or zeile.startswith("#"):
+                        continue
+                    teile = zeile.rstrip("\r\n").split("\t")
+                    if len(teile) < 2 or not teile[0]:
+                        continue
+                    eintrag = {}
+                    for spalte, feld in ((2, "year"), (3, "genre"),
+                                         (4, "developer"), (5, "players")):
+                        if len(teile) > spalte and teile[spalte].strip():
+                            eintrag[feld] = teile[spalte].strip()
+                    if eintrag:
+                        daten[teile[0]] = eintrag
+        except OSError:
+            pass
+        except Exception:
+            # Eine kaputte Tabelle darf nichts umwerfen - lieber keine
+            # Zusatzdaten als ein Absturz beim Zeichnen einer Zeile.
+            daten = {}
+    _docs_info_cache[syskey] = daten
+    return daten
+
+
+def docs_meta(syskey, rom_basename):
+    """Metadaten aus der fremden Datenbank, sonst {}."""
+    if not syskey or not rom_basename:
+        return {}
+    return _docs_infos(syskey).get(rom_basename, {})
+
+
+def docs_caches_leeren():
+    """Nach einem erneuten Einlesen oder einem Schalterwechsel."""
+    global _docs_ordner_cache, _fremd_an
+    _docs_ordner_cache = None
+    _fremd_an = None
+    _docs_index_cache.clear()
+    _docs_info_cache.clear()
+    # Der eigene Cover-Index wird vorsichtshalber mit geleert. Noetig
+    # ist es nach heutigem Stand nicht - _art_path_in() fragt die
+    # fremde Quelle bei jedem Aufruf frisch -, aber ein Schalterwechsel
+    # passiert einmal im Jahr, und die Alternative waere, sich diese
+    # Feinheit dauerhaft merken zu muessen.
+    _art_index_cache.clear()
 
 def _category_art_key(name, syskey):
     """Kuenstlicher Schluessel NUR fuer die Sysart-Suche
@@ -1848,5 +2143,24 @@ def get_meta(syskey, rom_basename):
         _meta_cache[syskey] = data
         if len(_meta_cache) > 20:
             _meta_cache.pop(next(iter(_meta_cache)))
-    return _meta_cache[syskey].get(rom_basename, {})
+    eigene = _meta_cache[syskey].get(rom_basename, {})
+    # NEU (Build 115): die fremde Tabelle fuellt Luecken auf, ersetzt
+    # aber nichts. Sie kennt ein Feld mehr als unsere libretro-Quelle
+    # (den Entwickler), deshalb wird auch bei einem vorhandenen
+    # eigenen Eintrag nachgesehen - aber nur fuer Felder, die wir
+    # selbst nicht haben.
+    #
+    # Der Reihenfolge wegen: unsere eigenen Daten hat der Nutzer
+    # bewusst heruntergeladen, die fremden lagen zufaellig auf der
+    # Karte. Bei Widerspruch gewinnt das Gewollte.
+    if not fremdquellen_enabled():
+        return eigene
+    fremd = docs_meta(syskey, rom_basename)
+    if not fremd:
+        return eigene
+    if not eigene:
+        return fremd
+    zusammen = dict(fremd)
+    zusammen.update(eigene)
+    return zusammen
 

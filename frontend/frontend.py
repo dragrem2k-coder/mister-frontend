@@ -228,6 +228,7 @@ from fe.settings import (
     toggle_screen_mirror, toggle_stream_overlay,
     fast_scroll_enabled, toggle_fast_scroll,
     overscan_lesen, overscan_weiter,
+    fremdquellen_enabled, toggle_fremdquellen,
     FAST_SCROLL_WINDOW, pulse_effect_enabled, toggle_pulse_effect,
     CRT_CONFIRM_TIMEOUT, crt_pending_confirm, mark_crt_pending_confirm,
     clear_crt_pending_confirm, eq_effect_enabled, toggle_eq_effect,
@@ -828,6 +829,7 @@ from fe.input import (
 from fe.art import (
     decode_png, BadgeCache, ArtCache, _art_path_in, _art_index,
     art_path, mra_meta, get_meta, ART, ART_BASE,
+    docs_caches_leeren, docs_cover, docs_meta,
     ART_HD, SYSART_BASE, META_BASE, BADGE_DIR,
     RA_BADGE_URL, BADGES, _category_art_key,
     prewarm_thumb, thumb_cache_has, thumb_cache_stand,
@@ -12083,6 +12085,18 @@ class Frontend:
                             # Zeichnen geprueft, siehe _draw_page_items_impl()),
                             # kein Neustart noetig.
                             toggle_fast_scroll()
+                            self._refresh_system_category()
+                        elif kind == "fremdquellen":
+                            # NEU (Build 115): fremde Artwork-/Datenquelle
+                            # unter /media/fat/docs an oder aus. Wirkt
+                            # sofort - aber nur, wenn danach auch die
+                            # Zwischenspeicher fallen: der Schalterwert,
+                            # die Ordnerliste, die Cover-Indizes und die
+                            # Spieledaten-Tabellen haengen alle daran.
+                            toggle_fremdquellen()
+                            docs_caches_leeren()
+                            ART.cache.clear()
+                            ART.order[:] = []
                             self._refresh_system_category()
                         elif kind == "fb_size":
                             # NEUES FEATURE (Nutzerwunsch: "eventuell

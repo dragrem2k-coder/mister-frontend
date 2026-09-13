@@ -7,6 +7,84 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Der MiSTer kann Bilder dekodieren — wir haben es nur nie gefragt**
+(Build 115):
+
+Der Anlass war die Suche nach fremden Artwork-Quellen. Gefunden wurde
+etwas anderes, und zwar etwas, das das ganze Frontend betrifft.
+
+**Auf dem MiSTer liegen `libpng16` und `libturbojpeg`.** Nicht als
+Python-Modul, nicht als Kommandozeilenwerkzeug — deshalb sind mehrere
+Suchen daran vorbeigelaufen, meine eingeschlossen. Über `ctypes` sind
+sie trotzdem erreichbar: kein Compiler, keine Installation, keine neue
+Abhängigkeit.
+
+Der Unterschied ist kein Feinschliff. Unser eigener PNG-Dekoder in
+Python braucht für ein 400×560-Cover **210 ms**, libpng **2,6 ms** —
+hier gemessen, Faktor 80. Auf dem Gerät bedeutet das: **ein kaltes
+Cover fällt von 200–500 ms auf grob 30 ms.**
+
+Genau diese Zahl ist der Grund für den Vorauslader im zweiten Prozess
+(Build 104), die Notbremse nach zwei Sekunden (Build 105) und das
+Auslagern kalter Cover an den Arbeitsprozess (Build 107). Nichts davon
+wird entfernt — es wird nur vom Notbehelf zur Vorsichtsmaßnahme.
+
+**Verschlechtern kann das nichts.** Unser Python-Dekoder bleibt
+vollständig erhalten und übernimmt, wenn die Bibliothek fehlt. Dass
+beide dasselbe Bild liefern, ist bitgenau nachgewiesen — RGB, RGBA,
+Graustufen, Palette. In der Gegenrichtung kann libpng ein
+verschachteltes PNG, an dem unserer scheitert; es ist also eine echte
+Obermenge.
+
+**JPG wird damit zur vollwertigen Bildquelle.** Gemessen auf dem Gerät
+des Nutzers: 18,4 ms für ein 424×768-Cover, verkleinert 9,8 ms.
+TurboJPEG kann beim Dekodieren gleich auf 1/2 oder 1/4 heruntergehen,
+das nehmen wir mit. Eingehängt ist es an einer einzigen Stelle — dort,
+wo bisher nur unser `.art`-Format gelesen wurde. Dadurch können
+**alle** acht Cover-Aufrufstellen fremdes Artwork anzeigen, ohne dass
+eine davon angefasst werden musste.
+
+**Und die fremde Datenbank, um die es ursprünglich ging.** Viele
+MiSTer-Nutzer haben über den Downloader eine Handbuch- und
+Artwork-Sammlung installiert, ohne es zu merken. Auf der Karte des
+Nutzers lagen dort **21.198 Cover und eine vollständige
+Spieledaten-Tabelle**, ungenutzt:
+
+```
+/media/fat/docs/<Core>/Artwork/<ROM-Name>.jpg
+/media/fat/docs/<Core>/Artwork/gameinfo.tsv
+```
+
+Beides wird jetzt gelesen — **rein als Rückfall**. Eigenes Artwork hat
+immer Vorrang, eigene Spieledaten auch; die fremde Tabelle füllt nur
+Lücken und steuert ein Feld bei, das unsere libretro-Quelle nie hatte:
+den **Entwickler**. Für jeden, dessen MiSTer nicht am Netz hängt, ist
+das der Unterschied zwischen „keine Infos" und „alle Infos". Ein
+Schalter unter **Anzeige & Sound** schaltet das Ganze ab; Vorgabe ist
+an, weil es nur dort etwas zeigen kann, wo vorher „kein Artwork"
+stand.
+
+Die Zuordnung kostet fast nichts, weil unsere Systemliste die
+MiSTer-Core-Namen ohnehin schon führt — die Ordner dort heißen genau
+so. Verglichen wird auf Buchstaben und Ziffern eingedampft, wie bei den
+Kategorie-Abzeichen in Build 112, damit „MegaDrive", „Mega Drive" und
+„mega-drive" alle treffen.
+
+**Zwei Dinge, die beim Bauen wichtig waren.** Erstens: benutzt wird
+ausdrücklich TurboJPEG und nicht die klassische libjpeg-Schnittstelle.
+Die verlangt, eine große C-Struktur bitgenau nachzubauen, und beendet
+bei einem kaputten Bild den ganzen Prozess über `exit()` — aus Python
+heraus nicht abzufangen. TurboJPEG meldet Fehler als Rückgabewert.
+Dasselbe bei libpng: dort ist es die „vereinfachte" Schnittstelle von
+libpng 1.6, die ohne `setjmp` auskommt.
+
+Zweitens ein Fehler, den mir der eigene Test sofort nachgewiesen hat:
+TurboJPEG kennt auch Vergrößerungsstufen bis 2/1, und meine erste
+Fassung machte aus einem 600×800-Bild bei großem Zielmaß brav
+1050×1400 — mehr Arbeit als das Original, ohne ein einziges
+zusätzliches Bilddetail.
+
+
 **Wo bin ich in der Liste? Drei Antworten** (Build 114):
 
 **1. Die Fußzeile zeigt jetzt „142/3500".** Bisher nannte die Kopfzeile

@@ -659,6 +659,39 @@ FAST_SCROLL_WINDOW = 0.15   # s nach letzter Eingabe, in der Vsync beim
                             # beschreiben dasselbe "gerade aktiv am
                             # Scrollen"-Zeitfenster.
 
+# FREMDE ARTWORK-/DATENQUELLE (Build 115). Gemeint ist die
+# Handbuch-/Artwork-Datenbank unter /media/fat/docs, die viele Nutzer
+# ueber den MiSTer-Downloader installiert haben, ohne es zu merken -
+# beim Nutzer lagen dort 21.198 Cover und eine vollstaendige
+# Spieledaten-Tabelle, ungenutzt.
+#
+# Standard AN, und das ist anders als beim Turbo-Scroll oben bewusst
+# so: der Pfad wird ausschliesslich als RUECKFALL benutzt. Er kann
+# also nur dort etwas zeigen, wo bisher "kein Artwork" stand, und
+# nichts ersetzen, was jemand selbst hingelegt hat. Wer ihn trotzdem
+# nicht will (etwa weil ihm die fremden Cover nicht gefallen), schaltet
+# ihn hier ab.
+FREMDQUELLEN_AUS_FLAG = "/media/fat/frontend/fremdquellen_aus"
+
+
+def fremdquellen_enabled():
+    return not os.path.exists(FREMDQUELLEN_AUS_FLAG)
+
+
+def toggle_fremdquellen():
+    if fremdquellen_enabled():
+        try:
+            os.makedirs(os.path.dirname(FREMDQUELLEN_AUS_FLAG), exist_ok=True)
+            open(FREMDQUELLEN_AUS_FLAG, "w").close()
+        except OSError:
+            pass
+    else:
+        try:
+            os.remove(FREMDQUELLEN_AUS_FLAG)
+        except OSError:
+            pass
+
+
 def fast_scroll_enabled():
     return os.path.exists(FAST_SCROLL_ENABLED_FLAG)
 

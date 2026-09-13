@@ -664,6 +664,19 @@ TRANSLATIONS = {
                             "de": "Boot-Logo: Dragend -> auf neutral wechseln"},
     "sys_dragend_logo_off": {"en": "Boot logo: plain -> switch to Dragend",
                              "de": "Boot-Logo: neutral -> auf Dragend wechseln"},
+    # Build 115. Bewusst ohne den Pfad im Text - der interessiert
+    # niemanden, der das Menue bedient; wichtig ist, was der Schalter
+    # bewirkt und dass eigenes Artwork Vorrang behaelt.
+    "sys_fremdquellen_on": {
+        "en": "Foreign artwork/data: ON -> turn off (fills gaps from the "
+              "MiSTer docs database, never replaces your own)",
+        "de": "Fremdes Artwork/Daten: AN -> ausschalten (füllt Lücken aus der "
+              "MiSTer-docs-Datenbank, ersetzt nie eigenes)"},
+    "sys_fremdquellen_off": {
+        "en": "Foreign artwork/data: OFF -> turn on (covers and game data "
+              "from /media/fat/docs, if installed)",
+        "de": "Fremdes Artwork/Daten: AUS -> einschalten (Cover und Spieledaten "
+              "aus /media/fat/docs, falls vorhanden)"},
     "sys_fast_scroll_on": {"en": "Fast scroll: ON -> turn off (may cause brief tearing while scrolling)",
                            "de": "Schnelles Scrollen: AN -> ausschalten (kann beim Scrollen kurz Bildrisse verursachen)"},
     "sys_fast_scroll_off": {"en": "Fast scroll: OFF -> turn on (trades a small tearing risk for less scroll delay)",
