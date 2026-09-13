@@ -1081,6 +1081,81 @@ def _node_count(node):
         n += _node_count(sub)
     return n
 
+def _zip_baum(zip_pfad, syskey, rbf, extmap, filter_an):
+    """Ein ZIP-Archiv als Baumknoten - genau so, als waere es ein
+    Ordner. Unterordner im Archiv werden zu Unterordnern.
+
+    NEUES FEATURE (Build 121, Nutzerwunsch nach dem Vergleich mit
+    Degauss: "ZIP nehmen wir mit rein"). Bis dahin waren ROMs in
+    Archiven schlicht unsichtbar - der einzige Punkt aus dem Vergleich,
+    bei dem uns schlicht etwas fehlte.
+
+    WARUM DAS UEBERHAUPT GEHT, ohne irgendetwas zu entpacken: MiSTer
+    behandelt ein Archiv im MGL-Pfad wie einen Ordner. Die offizielle
+    Dokumentation zeigt es ausdruecklich so:
+
+        path="some/other.zip/path/dummy.gg"
+
+    Damit aendert sich am Startweg (write_mgl() in fe/launch.py) KEINE
+    Zeile - wir setzen den Pfad einfach durch das Archiv hindurch
+    zusammen. Das Archiv wird nie entpackt, nicht einmal teilweise;
+    gelesen wird nur das Inhaltsverzeichnis am Ende der Datei.
+
+    Zwei Dinge bewusst so und nicht anders:
+
+    - Ein Archiv OHNE passende ROMs taucht gar nicht erst auf. Viele
+      Sammlungen legen neben den ROMs noch Handbuecher oder Textdateien
+      als Archiv ab; ein leerer Ordner dafuer waere nur im Weg.
+    - Ein kaputtes oder halb kopiertes Archiv darf den ganzen Scan
+      nicht umwerfen. Es faellt still weg, so wie eine unlesbare Datei
+      auch.
+    """
+    node = _empty_node()
+    try:
+        import zipfile
+        with zipfile.ZipFile(zip_pfad) as archiv:
+            eintraege = archiv.namelist()
+    except Exception:                                    # noqa: BLE001
+        # Kaputt, kein echtes Archiv, zu gross, mitten im Kopieren -
+        # alles derselbe Fall: es gibt hier nichts zu sehen.
+        return node
+
+    for name in sorted(eintraege, key=str.lower):
+        if name.endswith("/"):
+            continue                                     # reiner Ordnereintrag
+        teile = [t for t in name.split("/") if t and t not in (".", "..")]
+        if not teile or any(t.startswith(".") for t in teile):
+            continue
+        basis, ext = os.path.splitext(teile[-1])
+        ext = ext.lower()
+        if ext not in extmap:
+            continue
+        if basis.lower() in IGNORE_ROM_BASENAMES:
+            continue
+        if filter_an and (_is_junk(basis) or _is_japan_only(basis)):
+            continue
+        # Bis zum Dateinamen absteigen, Unterordner im Archiv anlegen.
+        ziel = node
+        for ordner in teile[:-1]:
+            ziel = ziel["folders"].setdefault(ordner, _empty_node())
+        # Der Pfad laeuft DURCH das Archiv - genau die Schreibweise,
+        # die MGL erwartet.
+        voll = zip_pfad + "/" + "/".join(teile)
+        ziel["items"].append((basis, "game",
+                              (voll, ext, syskey, rbf, extmap[ext])))
+
+    def _aufraeumen(n):
+        n["items"] = _dedupe_items(n["items"])
+        for unter in list(n["folders"]):
+            _aufraeumen(n["folders"][unter])
+            if not (n["folders"][unter]["items"]
+                    or n["folders"][unter]["folders"]):
+                del n["folders"][unter]
+
+    _aufraeumen(node)
+    return node
+
+
 def _scan_folder_tree(path, syskey, rbf, extmap):
     """Rekursiv EINEN Ordner scannen, gibt einen Baumknoten zurueck -
     beliebig tief verschachtelt, spiegelt die eigene Ordnerstruktur/
@@ -1107,6 +1182,15 @@ def _scan_folder_tree(path, syskey, rbf, extmap):
         else:
             name, ext = os.path.splitext(entry)
             ext = ext.lower()
+            # NEU (Build 121): ein Archiv ist fuer uns ein Ordner. Kein
+            # System fuehrt ".zip" als ROM-Endung, ein Archiv war damit
+            # bisher schlicht unsichtbar. _zip_baum() liest nur das
+            # Inhaltsverzeichnis - entpackt wird nie etwas.
+            if ext == ".zip" and ext not in extmap:
+                sub = _zip_baum(full, syskey, rbf, extmap, _filter_an)
+                if sub["folders"] or sub["items"]:
+                    node["folders"][entry] = sub
+                continue
             if name.lower() in IGNORE_ROM_BASENAMES:
                 continue
             # NEU (Nutzerwunsch: "dass jeder wirklich das angezeigt

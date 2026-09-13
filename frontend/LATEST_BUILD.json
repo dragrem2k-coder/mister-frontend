@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-13-120",
-  "summary": "Arcade wird bei 'Miniaturen vorbereiten' nicht mehr uebergangen. Artwork wird jetzt auch in Artpacks gefunden - eigener Artwork-Ordner, Named_Boxarts oder gleich neben den ROMs. Der Bild-Zwischenspeicher fasst statt 60 nun rund 250 Cover, damit ein zweiter Durchlauf durch eine Liste nicht mehr spuerbar schneller ist als der erste. Und der Download sieht zuerst auf dem Geraet selbst nach."
+  "build_id": "2026-09-13-121",
+  "summary": "ROMs in ZIP-Archiven werden jetzt gefunden. Ein Archiv wird wie ein Ordner behandelt - Unterordner im Archiv werden zu Unterordnern, die Spiele starten ganz normal. Entpackt wird dabei nie etwas, gelesen wird nur das Inhaltsverzeichnis. Ein Archiv ohne passende ROMs taucht gar nicht erst auf, ein kaputtes faellt still weg."
 }

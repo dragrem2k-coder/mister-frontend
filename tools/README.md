@@ -60,6 +60,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_verkleinern.py \
   && python3 tools/test_cover_original.py \
   && python3 tools/test_artpacks.py \
+  && python3 tools/test_zip.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -104,6 +105,7 @@ python3 tools/regression_test.py \
 | `test_kernel_wechsel.py` | Test (Pass/Fail) | Bildspeicher wird auf beiden MiSTer-Kerneln erkannt - sysfs zuerst, ioctl als Rueckfall |
 | `test_bildrand.py` | Test (Pass/Fail) | Einstellbarer Bildrand: Vorgabe unveraendert, kaputte Datei faellt zurueck, und der Wert kommt wirklich im Layout an |
 | `test_suchtreffer.py` | Test (Pass/Fail) | Positionsanzeige und Trefferwechsel: ASCII-Abkuerzung bewiesen gleichwertig, neuer Sprung trifft dasselbe wie der alte, leichter Pfad bitgleich |
+| `test_zip.py` | Test (Pass/Fail) | ROMs in ZIP-Archiven: Archiv wird zum Ordner, Pfad laeuft durch das Archiv, nichts wird entpackt, kaputtes Archiv faellt still weg |
 | `test_artpacks.py` | Test (Pass/Fail) | Artwork aus Artpacks in allen ueblichen Ablageformen, Arcade beim Vorbereiten, Groesse des Bild-Zwischenspeichers |
 | `test_cover_original.py` | Test (Pass/Fail) | Download legt PNG/JPG im Original ab und das Frontend findet sie; Tauschschalter laesst Enter in Ruhe; USB-Wartezeit |
 | `test_verkleinern.py` | Test (Pass/Fail) | Der umgebaute Verkleinerer liefert bitgenau dasselbe Bild wie vorher, und ist im HDMI-Fall doppelt so schnell |
@@ -1124,6 +1126,39 @@ Test 13 prueft das verkleinerte Dekodieren: kleiner als die Datei, aber
 nie unter die Zielgroesse; ohne Kastenangabe weiterhin volle Groesse;
 und ein einmal klein gelesenes Bild darf einem groesseren Kasten nicht
 untergeschoben werden.
+
+## test_zip.py
+
+ROMs in ZIP-Archiven (Build 121). Bis dahin waren sie schlicht
+unsichtbar - der einzige Punkt aus dem Vergleich mit Degauss, bei dem
+uns wirklich etwas fehlte.
+
+Der ganze Trick steckt in einer Zeile der offiziellen MiSTer-
+Dokumentation: im MGL-Pfad darf ein Archiv wie ein Ordner stehen
+(`path="some/other.zip/path/dummy.gg"`). Deshalb aendert sich am
+Startweg **keine einzige Zeile** - Test 2 prueft das ausdruecklich mit,
+indem er nachsieht, dass in `fe/launch.py` das Wort "zip" gar nicht
+vorkommt. Geaendert hat sich nur der Scanner.
+
+Geprueft wird vor allem, was schiefgehen koennte:
+
+- **Es darf nichts entpackt werden.** Gelesen wird nur das Inhalts-
+  verzeichnis am Ende der Datei. Test 5 sieht deshalb nach dem Scan im
+  ROM-Ordner nach, ob eine Datei dazugekommen ist, und liest zusaetzlich
+  den Quelltext von `_zip_baum()` gegen. Wuerden wir entpacken, waere
+  ein Scan ueber ein paar hundert Archive nicht mehr zu ertragen.
+- **Ein kaputtes oder halb kopiertes Archiv darf den Scan nicht
+  umwerfen.** Es faellt still weg, so wie eine unlesbare Datei auch.
+- **Ein Archiv ohne passende ROMs erscheint gar nicht**, und ein leerer
+  Unterordner IM Archiv genauso wenig - sonst stuenden ueberall leere
+  Ordner herum. Sammlungen legen neben den ROMs gern Handbuecher ab.
+- **Die bekannten Filter greifen im Archiv wie daneben** - Boot-Dateien
+  immer, Beta/Proto/Hack nur bei eingeschaltetem ROM-Filter.
+
+Nebenbei erklaert das auch, warum Neo-Geo-Romsets nicht ploetzlich
+auseinanderfallen: dort zaehlt nur `.neo` als ROM-Endung, die Teile im
+Romset-Archiv passen auf keine davon, und das Archiv bleibt damit
+genau das, was es war.
 
 ## diag_kaltes_cover.py
 

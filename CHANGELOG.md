@@ -7,6 +7,43 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**ROMs in ZIP-Archiven** (Build 121):
+
+Aus dem Vergleich mit Degauss war das der einzige Punkt, bei dem uns
+wirklich etwas fehlte: liegen die ROMs in Archiven, zeigte das Frontend
+schlicht nichts an. Der Ordner sah leer aus.
+
+Ab jetzt ist ein Archiv für uns **ein Ordner wie jeder andere**.
+Unterordner im Archiv werden zu Unterordnern, die Spiele stehen darin,
+und man startet sie ganz normal.
+
+Der Grund, warum das so unaufwendig geht, steht in der offiziellen
+MiSTer-Dokumentation: im MGL-Pfad darf ein Archiv wie ein Ordner stehen
+(`path="some/other.zip/path/dummy.gg"`). Am **Startweg ändert sich
+deshalb keine einzige Zeile** — wir setzen den Pfad einfach durch das
+Archiv hindurch zusammen. Geändert hat sich nur das Einlesen.
+
+**Entpackt wird dabei nie etwas**, auch nicht teilweise. Gelesen wird
+nur das Inhaltsverzeichnis am Ende der Datei — das sind ein paar
+Bytes, kein Auspacken von hunderten Megabyte. Sonst wäre ein Scan über
+eine größere Sammlung nicht mehr auszuhalten.
+
+Drei Dinge bewusst so und nicht anders:
+
+- **Ein kaputtes oder halb kopiertes Archiv wirft den Scan nicht um.**
+  Es fällt still weg, so wie eine unlesbare Datei auch.
+- **Ein Archiv ohne passende ROMs taucht gar nicht erst auf.** Viele
+  Sammlungen legen Handbücher oder Textdateien als Archiv daneben; ein
+  leerer Ordner dafür wäre nur im Weg. Dasselbe gilt für leere
+  Unterordner im Archiv.
+- **Romsets bleiben Romsets.** Bei Neo Geo zählt nur `.neo` als
+  ROM-Endung; die Teile in einem Romset-Archiv passen auf keine davon,
+  und das Archiv bleibt damit genau das, was es vorher war.
+
+Geprüft in `tools/test_zip.py` (6 Prüfblöcke) — darunter ausdrücklich,
+dass nach einem Scan im ROM-Ordner keine einzige Datei dazugekommen
+ist.
+
 **Arcade, Artpacks, und ein Zwischenspeicher, der zu klein war**
 (Build 120):
 
