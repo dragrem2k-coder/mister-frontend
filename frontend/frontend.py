@@ -6728,11 +6728,25 @@ class Frontend:
             return None
         art_w, art_h, s = geo
         item_syskey = self._item_syskey(item, cat_syskey)
-        if item_syskey == "ARCADE":
-            # Arcade-Cover haengen an mra_meta(), es gibt hier keinen
-            # einfachen Dateipfad - dieselbe Ausnahme wie beim
-            # Nachbar-Vorabladen darueber.
-            return None
+        # ENTFERNT (Build 120, Nutzer-Rueckmeldung: "habe eine neue
+        # SD-Karte verbaut, noch keine ROMs drauf, aber Arcade ueber
+        # Update All bekommen - wenn ich jetzt Miniaturen dafuer
+        # vorbereiten will, sagt das Frontend 'keine Spiele gefunden'.
+        # Werden die Arcades nicht beruecksichtigt?").
+        #
+        # Wurden sie nicht. Hier stand eine Ausnahme fuer ARCADE mit der
+        # Begruendung "Arcade-Cover haengen an mra_meta(), es gibt hier
+        # keinen einfachen Dateipfad". Der erste Teil stimmt - die
+        # METADATEN kommen aus der MRA-Datei -, der Schluss war falsch:
+        # das COVER liegt wie bei jedem anderen System unter
+        # <art>/ARCADE/<Name>, und draw_art_panel() sucht es dort auch.
+        # Nur das Vorbereiten hat einen Bogen darum gemacht.
+        #
+        # cover_box_size() kennt den Arcade-Fall ohnehin schon (siehe
+        # dort, mra_meta()) - es genuegt also, die Ausnahme wegzulassen.
+        # Bei jemandem mit ausschliesslich Arcade-Spielen war die Liste
+        # der vorzubereitenden Cover dadurch leer, und das Frontend
+        # meldete voellig zu Recht "keine Spiele gefunden".
         lookup_name = item[2] if item[1] == "folder" else item[0]
         # Gleiche Regel wie in draw_art_panel(): im HD-Modus KEIN
         # Rueckfall auf das SD-Cover - fehlt die HD-Datei, wird gar

@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-13-119",
-  "summary": "Der Cover-Download legt PNG und JPG jetzt im Original ab statt sie umzuwandeln - schneller und in voller Aufloesung, dieselbe Datei bedient CRT und HDMI. Ausserdem: Bestaetigen/Abbrechen vertauschen laesst die Enter-Taste in Ruhe, und eine langsam anlaufende USB-Platte wird beim Start abgewartet statt die Spieleliste zweimal einzulesen."
+  "build_id": "2026-09-13-120",
+  "summary": "Arcade wird bei 'Miniaturen vorbereiten' nicht mehr uebergangen. Artwork wird jetzt auch in Artpacks gefunden - eigener Artwork-Ordner, Named_Boxarts oder gleich neben den ROMs. Der Bild-Zwischenspeicher fasst statt 60 nun rund 250 Cover, damit ein zweiter Durchlauf durch eine Liste nicht mehr spuerbar schneller ist als der erste. Und der Download sieht zuerst auf dem Geraet selbst nach."
 }

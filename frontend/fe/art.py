@@ -50,8 +50,35 @@ META_BASE   = "/media/fat/frontend/meta"
 # WIR SCHREIBEN DORT NIE HIN. Reiner Lesepfad, und nur als Rueckfall -
 # eigenes Artwork hat immer Vorrang.
 DOCS_BASE   = "/media/fat/docs"
-DOCS_UNTER  = "Artwork"
 DOCS_INFO   = "gameinfo.tsv"
+
+# Weitere Orte, an denen Artpacks landen (Build 120). Nicht jedes Paket
+# legt sich unter "docs" ab - manche bringen einen eigenen
+# Artwork-Ordner mit. Die Spiele-Wurzeln kommen zusaetzlich dazu, siehe
+# fremd_wurzeln().
+FREMD_ZUSATZ_WURZELN = (
+    "/media/fat/Artwork",
+    "/media/fat/artwork",
+    "/media/fat/boxart",
+    "/media/fat/Boxart",
+)
+
+# Unterordner, in denen ein Paket seine Bilder ablegt - "" steht fuer
+# "direkt im Systemordner", das kommt ebenfalls vor. Reihenfolge =
+# Suchreihenfolge.
+#
+# Die Named_*-Namen stammen aus der libretro-/EmulationStation-Welt und
+# sind bei Artpacks die verbreitetste Schreibweise. Bewusst NUR
+# Boxarts: Named_Snaps und Named_Titles sind Bildschirmfotos, und ein
+# Bildschirmfoto an der Stelle einer Verpackung waere eine unangenehme
+# Ueberraschung. Wer sie will, legt sie in einen der obigen Ordner.
+DOCS_UNTERORDNER = ("Artwork", "Named_Boxarts", "Boxarts", "boxart",
+                    "Covers", "covers", "")
+
+# Rueckwaertskompatibel: einzelner Unterordner, wie ihn Build 115
+# kannte. Bleibt erhalten, weil Tests und aeltere Fassungen ihn
+# benutzen.
+DOCS_UNTER  = "Artwork"
 
 # Obergrenze fuer fremde Bilder: ein Cover ist ein Cover, kein
 # Buchseiten-Scan. Siehe ArtCache.get().
@@ -1184,8 +1211,29 @@ class ArtCache:
     # Umgebung, in der man sich bewegt), auf HDMI weiterhin nur eine
     # Handvoll grosser Bilder. SCALED_MIN sorgt dafuer, dass selbst bei
     # sehr grossen Einzelbildern nie weniger Plaetze bleiben als frueher.
-    SCALED_BUDGET = 24 * 1024 * 1024   # rund 24 MB - auf einem MiSTer mit
-                                       # typischerweise ~1 GB RAM unkritisch
+    # ERHOEHT (Build 120, Nutzer-Rueckmeldung auf die Frage, ob der
+    # zweite Durchlauf durch eine Liste deshalb schneller ist, weil der
+    # erste noch rechnet: "ja, das stoert mich sehr").
+    #
+    # Er tut es, und dieser Wert war der Grund. Ein HDMI-Cover in der
+    # ueblichen Groesse (231x420) belegt rund 388 KB - mit 24 MB passten
+    # etwa sechzig Stueck hinein. Bei einer Liste mit tausenden
+    # Eintraegen faellt ein Cover damit laengst wieder heraus, bevor man
+    # es wiedersieht, und muss beim naechsten Vorbeikommen erneut von
+    # der Karte gelesen und entpackt werden (gemessen 5-7 ms je Cover).
+    # Genau das ist der Unterschied, den er zwischen erstem und zweitem
+    # Durchlauf spuert.
+    #
+    # 96 MB fassen rund 250 HDMI-Cover - genug fuer die ganze Umgebung,
+    # in der man sich beim Blaettern bewegt. Auf CRT belegt ein Cover
+    # rund 50 KB, dort sind es entsprechend Tausende.
+    #
+    # WARUM NICHT NOCH MEHR: der MiSTer hat rund 1 GB, das sich Linux
+    # mit dem FPGA-Kern teilt, und dieser Cache ist nicht der einzige -
+    # daneben liegen die unskalierten Originale (self.cache, 60 Stueck).
+    # 96 MB ist der Punkt, an dem der Nutzen praktisch ausgereizt ist,
+    # ohne dass der Speicher zum Thema wird.
+    SCALED_BUDGET = 96 * 1024 * 1024
     SCALED_MIN = 20                    # niemals weniger als bisher
 
     def _scaled_cache_put(self, key, result):
@@ -2049,9 +2097,44 @@ def _schlank(name):
     return "".join(c for c in name.upper() if c.isalnum())
 
 
+def fremd_wurzeln():
+    """Alle Orte, an denen fremdes Artwork liegen kann - in der
+    Reihenfolge, in der gesucht wird.
+
+    ERWEITERT (Build 120, Nutzerwunsch "Unterstuetzung fuer
+    MiSTer-Artpacks"). Bis dahin war nur die Handbuch-/Artwork-
+    Datenbank unter /media/fat/docs gemeint (Build 115). Artpacks
+    landen aber je nach Paket woanders - mal in einem eigenen
+    Artwork-Ordner, mal neben den ROMs.
+
+    DOCS_BASE steht bewusst zuerst und wird bei jedem Aufruf frisch
+    gelesen: die Tests setzen es um, und eine eingefrorene Kopie waere
+    genau die Falle, die in diesem Projekt schon mehrfach zugeschnappt
+    ist (siehe GAMES_BASES in fe/paths.py).
+
+    Die Spiele-Wurzeln kommen zuletzt: dort liegen die ROMs, und
+    manche Pakete legen ihre Bilder direkt daneben."""
+    wurzeln = [DOCS_BASE]
+    wurzeln.extend(FREMD_ZUSATZ_WURZELN)
+    try:
+        import fe.paths
+        wurzeln.extend(fe.paths.GAMES_BASES)
+    except Exception:                                    # noqa: BLE001
+        pass
+    # Reihenfolge erhalten, Doppelte raus.
+    gesehen = set()
+    ergebnis = []
+    for w in wurzeln:
+        if w and w not in gesehen:
+            gesehen.add(w)
+            ergebnis.append(w)
+    return ergebnis
+
+
 def _docs_ordner():
-    """Was unter DOCS_BASE tatsaechlich liegt, nach normalisiertem
-    Namen nachschlagbar. Einmal je Sitzung gelesen.
+    """Was unter den Fremdquellen tatsaechlich liegt: normalisierter
+    Systemname -> Liste der echten Ordnerpfade, in Suchreihenfolge.
+    Einmal je Sitzung gelesen.
 
     Bewusst dynamisch statt als feste Tabelle: welche Systeme dort
     liegen, entscheidet der Nutzer mit dem, was er installiert hat -
@@ -2060,29 +2143,41 @@ def _docs_ordner():
     global _docs_ordner_cache
     if _docs_ordner_cache is None:
         gefunden = {}
-        try:
-            for name in os.listdir(DOCS_BASE):
-                if os.path.isdir(os.path.join(DOCS_BASE, name)):
-                    gefunden.setdefault(_schlank(name), name)
-        except OSError:
-            pass
+        for wurzel in fremd_wurzeln():
+            try:
+                namen = os.listdir(wurzel)
+            except OSError:
+                continue
+            for name in namen:
+                voll = os.path.join(wurzel, name)
+                if os.path.isdir(voll):
+                    gefunden.setdefault(_schlank(name), []).append(voll)
         _docs_ordner_cache = gefunden
     return _docs_ordner_cache
 
 
 def _docs_ordner_fuer(syskey):
-    """Der DOCS_BASE-Ordner zu einem Systemschluessel, sonst None.
+    """Der ERSTE passende Fremdordner zu einem Systemschluessel, sonst
+    None. Fuer alle siehe _docs_ordner_alle().
 
     Gesucht wird in dieser Reihenfolge: der Systemschluessel selbst
     (GBC findet so seinen eigenen Ordner, obwohl seine ROMs bei uns
     unter GAMEBOY liegen), danach die ROM-Ordnernamen aus unserer
     Systemliste (Mega Drive heisst dort MegaDrive ODER Genesis - beide
     kommen vor, und beide gibt es auch in der Datenbank)."""
+    alle = _docs_ordner_alle(syskey)
+    return alle[0] if alle else None
+
+
+def _docs_ordner_alle(syskey):
+    """Alle passenden Fremdordner zu einem Systemschluessel, in
+    Suchreihenfolge. Ein System kann in mehreren Paketen vorkommen -
+    dann ergaenzen sie sich, statt dass eines gewinnt."""
     if not syskey:
-        return None
+        return []
     ordner = _docs_ordner()
     if not ordner:
-        return None
+        return []
     kandidaten = [syskey]
     try:
         from fe.systems import GAME_SYSTEMS, OPTIONAL_GAME_SYSTEMS
@@ -2097,11 +2192,14 @@ def _docs_ordner_fuer(syskey):
             # haben in der Datenbank keinen eigenen Eintrag, ihre
             # Spiele aber sehr wohl.
             kandidaten.append(rom_ordner.split("/")[0])
+    treffer = []
+    gesehen = set()
     for k in kandidaten:
-        echt = ordner.get(_schlank(k))
-        if echt:
-            return os.path.join(DOCS_BASE, echt)
-    return None
+        for pfad in ordner.get(_schlank(k), ()):
+            if pfad not in gesehen:
+                gesehen.add(pfad)
+                treffer.append(pfad)
+    return treffer
 
 
 def _docs_index(syskey):
@@ -2118,18 +2216,29 @@ def _docs_index(syskey):
     if idx is not None:
         return idx
     idx = {}
-    basis = _docs_ordner_fuer(syskey)
-    if basis:
-        ordner = os.path.join(basis, DOCS_UNTER)
-        try:
-            namen = [fn for fn in os.listdir(ordner)
-                     if fn.rsplit(".", 1)[-1].lower() in ("jpg", "jpeg", "png")]
+    # ERWEITERT (Build 120): mehrere Wurzeln, mehrere Unterordner. Der
+    # erste Fund gewinnt - deshalb ergaenzen weitere Pakete nur, was das
+    # erste nicht hatte, statt es zu ueberschreiben.
+    #
+    # Der Aufwand bleibt derselbe wie vorher: ein os.listdir() je
+    # tatsaechlich vorhandenem Ordner, beim ersten Fehltreffer, danach
+    # gecacht. Ordner, die es nicht gibt, kosten einen fehlschlagenden
+    # Systemaufruf.
+    for basis in _docs_ordner_alle(syskey):
+        for unter in DOCS_UNTERORDNER:
+            ordner = os.path.join(basis, unter) if unter else basis
+            try:
+                namen = [fn for fn in os.listdir(ordner)
+                         if fn.rsplit(".", 1)[-1].lower()
+                         in ("jpg", "jpeg", "png")]
+            except OSError:
+                continue
+            if not namen:
+                continue
             for fn in namen:
-                idx[fn.rsplit(".", 1)[0]] = os.path.join(ordner, fn)
+                idx.setdefault(fn.rsplit(".", 1)[0], os.path.join(ordner, fn))
             _index_ergaenzen(idx, namen,
-                             lambda fn: os.path.join(ordner, fn))
-        except OSError:
-            pass
+                             lambda fn, _o=ordner: os.path.join(_o, fn))
     _docs_index_cache[syskey] = idx
     return idx
 
@@ -2164,9 +2273,11 @@ def _docs_infos(syskey):
     if daten is not None:
         return daten
     daten = {}
-    basis = _docs_ordner_fuer(syskey)
-    if basis:
-        pfad = os.path.join(basis, DOCS_UNTER, DOCS_INFO)
+    # Build 120: dieselbe Tabelle kann in mehreren Paketen liegen. Die
+    # erste gefundene gewinnt - danach wird nicht weitergesucht, weil
+    # zwei Tabellen desselben Systems sich sonst gegenseitig
+    # ueberschreiben wuerden, je nach Reihenfolge mal so, mal so.
+    for pfad in _docs_info_pfade(syskey):
         try:
             with open(pfad, "r", encoding="utf-8", errors="replace") as fh:
                 for zeile in fh:
@@ -2189,13 +2300,26 @@ def _docs_infos(syskey):
                         if knapp and knapp not in daten:
                             daten[knapp] = eintrag
         except OSError:
-            pass
+            continue
         except Exception:
             # Eine kaputte Tabelle darf nichts umwerfen - lieber keine
             # Zusatzdaten als ein Absturz beim Zeichnen einer Zeile.
             daten = {}
+        if daten:
+            break
     _docs_info_cache[syskey] = daten
     return daten
+
+
+def _docs_info_pfade(syskey):
+    """Wo eine gameinfo.tsv fuer dieses System liegen koennte - in
+    Suchreihenfolge. Dieselben Ordner wie bei den Covern."""
+    pfade = []
+    for basis in _docs_ordner_alle(syskey):
+        for unter in DOCS_UNTERORDNER:
+            ordner = os.path.join(basis, unter) if unter else basis
+            pfade.append(os.path.join(ordner, DOCS_INFO))
+    return pfade
 
 
 def docs_meta(syskey, rom_basename):

@@ -7,6 +7,55 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Arcade, Artpacks, und ein Zwischenspeicher, der zu klein war**
+(Build 120):
+
+**Arcade wurde beim Vorbereiten übergangen.** Rückmeldung: *„habe eine
+neue SD-Karte verbaut, noch keine ROMs drauf, aber Arcade über Update
+All bekommen — wenn ich jetzt Miniaturen dafür vorbereiten will, sagt
+das Frontend ‚keine Spiele gefunden'."*
+
+Es hatte recht: die Arbeitsliste war leer. In der Funktion, die
+Vorauslader und „Miniaturen vorbereiten" den Cover-Pfad liefert, stand
+eine Ausnahme für Arcade mit der Begründung, Arcade-Cover hingen an der
+MRA-Datei und es gebe keinen einfachen Dateipfad. Der erste Teil
+stimmt — die **Metadaten** kommen von dort —, der Schluss war falsch:
+das **Cover** liegt wie bei jedem anderen System unter
+`<art>/ARCADE/<Name>`, und der Zeichenpfad sucht es auch genau dort.
+Nur das Vorbereiten machte einen Bogen darum. Wer ausschließlich
+Arcade hat, stand damit ganz ohne.
+
+**Artwork aus Artpacks.** Seit Build 115 lesen wir die Datenbank unter
+`/media/fat/docs`. Artpacks landen aber je nach Paket woanders. Gesucht
+wird jetzt in mehreren Wurzeln — `docs`, ein eigener `Artwork`- oder
+`Boxart`-Ordner, und die Spiele-Ordner selbst — und dort jeweils in den
+üblichen Unterordnern (`Artwork`, `Named_Boxarts`, `Covers`) oder gleich
+im Systemordner. Kommt ein Spiel in zwei Paketen vor, gewinnt immer
+dasselbe, nicht mal so und mal so.
+
+Bewusst **nur Boxarts**: `Named_Snaps` und `Named_Titles` sind
+Bildschirmfotos, und ein Bildschirmfoto an der Stelle einer Verpackung
+wäre eine unangenehme Überraschung.
+
+**Der Bild-Zwischenspeicher war zu klein.** Auf die Frage, ob der
+zweite Durchlauf durch eine Liste deshalb schneller ist, weil der erste
+noch rechnet: *„ja, das stört mich sehr."*
+
+Er tut es, und der Grund war eine Zahl. Ein HDMI-Cover belegt rund
+380 KB — in 24 MB passten etwa **sechzig** Stück. Bei einer Liste mit
+tausenden Einträgen fällt ein Cover damit längst wieder heraus, bevor
+man es wiedersieht, und muss beim nächsten Vorbeikommen erneut von der
+Karte gelesen und entpackt werden. Jetzt sind es 96 MB, also rund
+**250 Cover** — genug für die ganze Umgebung, in der man sich beim
+Blättern bewegt. Auf CRT belegt ein Cover rund 50 KB, dort sind es
+entsprechend Tausende.
+
+**Der Download sieht zuerst auf dem Gerät selbst nach.** Liegt das
+Cover bereits in einer der Artwork-Quellen, kommt es gar nicht erst in
+die Warteschlange — bei einer vollständig installierten Datenbank sind
+das zehntausende Einträge, die nicht geladen werden müssen.
+
+
 **Cover im Original, Enter bleibt Enter, und Geduld mit der USB-Platte**
 (Build 119):
 

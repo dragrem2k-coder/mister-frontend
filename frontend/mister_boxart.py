@@ -871,6 +871,19 @@ _convert_semaphore = threading.Semaphore(CONVERT_WORKERS)
 #   auf der Kommandozeile und bekommt das alte Verhalten.
 ORIGINAL_BEHALTEN = True
 
+# Die Artwork-Datenbank auf dem Geraet selbst (Build 115) als ERSTE
+# Quelle. Bewusst als weicher Import: dieses Skript laeuft auch
+# eigenstaendig per SSH, und eine aeltere Installation hat fe/art.py
+# vielleicht gar nicht in dieser Fassung. Dann bleibt _docs_cover None
+# und alles laeuft wie vorher.
+try:
+    import sys as _sys
+    if "/media/fat/frontend" not in _sys.path:
+        _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from fe.art import docs_cover as _docs_cover
+except Exception:                                        # noqa: BLE001
+    _docs_cover = None
+
 
 def process_one_rom_fallback(rom, sysname, idx_exact, idx_strip, tri, out_dir, box):
     cover, how = match_rom(rom, idx_exact, idx_strip, tri)
@@ -976,10 +989,29 @@ def process_system(syskey, roms, ext_sysname_map, art_base, remote_dir, box, ges
     # GEAENDERT (Build 119): auch ein PNG oder JPG zaehlt als
     # vorhandenes Cover. Ohne das wuerde ein zweiter Lauf alles noch
     # einmal herunterladen, was der erste als Original abgelegt hat.
+    #
+    # ERWEITERT (Build 120, Nutzerwunsch: "die Quelle auf dem MiSTer
+    # soll als erstes abgefragt werden, dann die anderen"): liegt das
+    # Cover bereits in der Artwork-Datenbank unter /media/fat/docs,
+    # gibt es nichts herunterzuladen. Das Frontend zeigt es ohnehin
+    # (siehe docs_cover() in fe/art.py) - ein Download waere reine
+    # Bandbreite und Platz fuer dasselbe Bild.
+    #
+    # Bei einer vollstaendig installierten Datenbank sind das
+    # zehntausende Eintraege, die gar nicht erst in die Warteschlange
+    # kommen. Faellt der Import aus (aeltere Installation, Modul
+    # fehlt), bleibt es beim bisherigen Verhalten - der Download laeuft
+    # dann eben wie vorher.
     def _schon_da(name):
         for endung in (".art", ".png", ".jpg", ".jpeg"):
             if os.path.exists(os.path.join(out_dir, name + endung)):
                 return True
+        if _docs_cover is not None:
+            try:
+                if _docs_cover(syskey, name):
+                    return True
+            except Exception:                            # noqa: BLE001
+                pass
         return False
 
     todo = [(name, ext) for name, ext in roms
