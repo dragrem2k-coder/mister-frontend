@@ -223,12 +223,13 @@ check("die Verbindung zum Vorauslader steht",
 # der Cover-Anzeige, sonst bekommt irgendwo anders jemand ein None,
 # mit dem er nicht rechnet.
 #
-# GEAENDERT (Build 122): bis dahin waren es zwei Fundstellen, beide in
-# draw_art_panel() (HD und SD). Dazu kam _ansicht_cover() - der
-# Cover-Zeichenpfad der neuen Raster- und Galerieansicht. Also derselbe
-# Fall, nur fuer eine zweite Ansicht; deshalb wird jetzt geprueft, in
+# GEAENDERT (Build 122, erweitert in Build 124): bis dahin waren es
+# zwei Fundstellen, beide in draw_art_panel() (HD und SD). Dazu kamen
+# _ansicht_cover() (Raster/Galerie der Spieleliste) und _kat_logo()
+# (Raster/Galerie der Hauptseite). Alle drei sind derselbe Fall - ein
+# Bild, auf das jemand gerade schaut -, deshalb wird geprueft, in
 # WELCHER Funktion die Fundstellen stehen statt nur, wie viele es sind.
-_erlaubt = ("draw_art_panel", "_ansicht_cover")
+_erlaubt = ("draw_art_panel", "_ansicht_cover", "_kat_logo")
 _akt = None
 _stellen = []
 for _zeile in quelle.splitlines():
@@ -240,7 +241,7 @@ for _zeile in quelle.splitlines():
 check("nur Cover-Zeichenpfade lagern aus",
       _stellen and all(n in _erlaubt for n in _stellen),
       "Fundstellen in %r" % (sorted(set(_stellen)),))
-check("und beide Ansichten sind dabei",
+check("und alle drei Zeichenpfade sind dabei",
       set(_stellen) == set(_erlaubt),
       "%r" % (sorted(set(_stellen)),))
 

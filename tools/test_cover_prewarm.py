@@ -508,9 +508,29 @@ check("es kommen ueberhaupt Logo-Auftraege heraus", len(auftraege) > 0,
 check("alle zeigen in den sysart-Ordner",
       all(p.startswith(A.SYSART_BASE) for p, _w, _h in auftraege),
       str(auftraege[:2]))
-check("alle haben dieselbe Kastengroesse (kein Text darunter)",
-      len({(w, h) for _p, w, h in auftraege}) == 1,
-      str({(w, h) for _p, w, h in auftraege}))
+# GEAENDERT (Build 124): "dieselbe Kastengroesse" heisst jetzt "eine
+# je ANSICHT".
+#
+# Die Aussage dahinter ist unveraendert und weiterhin der Punkt dieser
+# Pruefung: unter den Logos steht kein Text, der die Kastenhoehe
+# verschieben koennte - anders als bei den Spiel-Covern (siehe
+# cover_box_size()). Innerhalb EINER Ansicht haben deshalb alle Logos
+# exakt dieselbe Groesse. Seit die Hauptseite drei Ansichten hat
+# (Liste, Raster, Galerie), gibt es diese eine Groesse eben dreimal -
+# und alle drei muessen vorgewaermt werden, weil F10 ohne Speichern
+# umschaltet.
+_groessen = {(w, h) for _p, w, h in auftraege}
+check("es sind genau so viele Kastengroessen wie Ansichten",
+      len(_groessen) == len(A.ANSICHTEN) if hasattr(A, "ANSICHTEN")
+      else len(_groessen) == 3,
+      str(sorted(_groessen)))
+_je_groesse = {}
+for _p, w, h in auftraege:
+    _je_groesse.setdefault((w, h), set()).add(_p)
+check("und innerhalb einer Ansicht haben alle Logos dieselbe",
+      len({frozenset(v) for v in _je_groesse.values()}) == 1,
+      "%d verschiedene Pfadmengen" %
+      len({frozenset(v) for v in _je_groesse.values()}))
 
 # Gegenprobe wie bei Test 1: fragt der Zeichenpfad wirklich genau diese
 # Groesse an?

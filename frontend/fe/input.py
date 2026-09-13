@@ -156,11 +156,28 @@ KEYMAP = {
     # fe/hidraw.py), und der HID-Weg prueft seit jeher versehentlich
     # 0x44 - das ist F11, nicht F10. Die Aufgabe uebernimmt jetzt F1
     # (sofort, ueber die HID-Ebene); im Frontend selbst bleibt Esc.
-    # NEU (Build 122): F9 schaltet die Ansicht der Spieleliste live um
-    # (Liste -> Raster -> Galerie). F9 war die letzte noch freie
-    # Funktionstaste und stand hier ausdruecklich als "None" - also als
-    # reservierter Platz, nicht als Versehen.
-    KEY_F12: "osd", KEY_F9: "ansicht", KEY_F11: "random",
+    # NEU (Build 122, VERLEGT in Build 124): F10 schaltet die Ansicht
+    # live um (Liste -> Raster -> Galerie).
+    #
+    # In Build 122 stand hier F9, weil es die letzte noch freie
+    # Funktionstaste war. Das war ein Fehler, und er stand seit jeher in
+    # unserer eigenen README: F9 ist bei MiSTer fuer den Wechsel
+    # zwischen Konsole und Grafikmodus reserviert. Wir SELBST spielen
+    # die Taste ein, wenn wir in den Konsolenmodus wollen (siehe
+    # enter_console_mode() in frontend.py), und der
+    # Tastenbelegungs-Assistent lehnt ein erfasstes F9 ausdruecklich ab.
+    #
+    # In der Praxis waere es gutgegangen - solange das Frontend laeuft,
+    # greift es die Tastatur exklusiv, MiSTer sieht die Taste also gar
+    # nicht. Aber zwei Bedeutungen fuer dieselbe Taste, von denen eine
+    # in der eigenen Dokumentation als Problemfall steht, ist eine zu
+    # viel.
+    #
+    # F10 ist frei und hat bei MiSTer keine Bedeutung. Es stand hier
+    # frueher schon einmal (als "back_fe") und wurde in Build 77
+    # entfernt, weil es WAEHREND EINES LAUFENDEN CORES nie ankommen
+    # konnte - im Frontend selbst ist das kein Thema.
+    KEY_F12: "osd", KEY_F9: None, KEY_F10: "ansicht", KEY_F11: "random",
     KEY_F8: "favorite", BTN_TL2: "favorite", BTN_TR2: "favorite",
     AXIS_L2: "favorite", AXIS_R2: "favorite",
     KEY_F7: "completed",

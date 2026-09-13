@@ -111,6 +111,8 @@ Nachlesen (`CHANGELOG.md`).
    - 8o. CRT-Testbild
    - 8p. Mitwirkende
    - 8q. Autostart an/aus
+   - 8r. Ansichten: Liste, Raster, Galerie
+   - 8s. ROMs in ZIP-Archiven
 9. Sprache umschalten
 10. Eigene Tastenbelegung
 11. Boot-Animation (Startvideo)
@@ -381,6 +383,27 @@ python3 /media/fat/frontend/mister_boxart.py hd          # zusätzlich scharfe C
 python3 /media/fat/frontend/mister_boxart.py hd neu      # vorhandene Cover ERSETZEN
 python3 /media/fat/frontend/mister_gameinfo.py           # Jahr/Genre/Spieleranzahl
 ```
+
+**Woher die Cover kommen - vier Stufen, erster Treffer gewinnt:**
+
+1. **Vom MiSTer selbst.** Liegt das Cover schon in der
+   Artwork-Datenbank unter `/media/fat/docs` oder in einem Artpack,
+   gibt es nichts zu laden - das Frontend zeigt es ohnehin an.
+2. **Fertige PNG/JPG von einem Spiegel.** Werden 1:1 abgelegt, kein
+   Dekodieren, kein Umwandeln.
+3. **Fertig verkleinerte `.art` vom selben Spiegel.**
+4. **thumbnails.libretro.com**, unabhängig vom Spiegel, als letztes
+   Netz.
+
+Die Dateiendung wird nach dem **Inhalt** bestimmt, nicht nach dem
+Namen auf dem Server - manche Server melden für Bilder einen falschen
+Dateityp. Was kein Bild ist, wird nicht geschrieben, sondern an die
+nächste Stufe weitergereicht.
+
+**Fremdes Artwork und Spieldaten vom Gerät** lassen sich unter
+*System -> Anzeige & Sound -> "Fremdes Artwork/Daten"* ausschalten.
+Standard ist **an**: die Quelle füllt nur Lücken und ersetzt nie
+eigenes Artwork.
 
 **Einmalig empfehlenswert: der Lauf mit `neu`.** Beim Erzeugen der Cover
 wurde früher schlicht jede zweite oder dritte Bildzeile weggeworfen -
@@ -912,6 +935,71 @@ Die Datei findest du über die Netzwerkfreigabe unter
 direkt im Ordner `linux`. Es ist eine ganz normale Textdatei; die
 Autostart-Zeile heißt `frontend_boot.sh &`.
 
+## 8r. Ansichten: Liste, Raster, Galerie
+
+Spieleliste **und** Hauptseite gibt es in drei Ansichten:
+
+| | zeigt | gut wenn |
+|---|---|---|
+| **Liste** | Textliste plus ein großes Bild daneben | du lange Titel vollständig lesen willst - und die einzige Ansicht, die auch ganz ohne Cover noch etwas anzeigt |
+| **Raster** | nur Bilder, dicht gepackt; der Name des markierten Eintrags steht unten | du viel auf einen Blick sehen willst. Auf HDMI 28 Spiele bzw. **alle** Kategorien ohne einen einzigen Blätterschritt |
+| **Galerie** | ein großes Bild, Daten daneben, die Nachbarn als Leiste darunter | du Details sehen willst, ohne den Überblick über die Nachbarn zu verlieren |
+
+**Umgeschaltet wird auf zwei Wegen, die absichtlich nicht dasselbe
+tun:**
+
+- **Menü** unter *System -> Anzeige & Sound* -> "Ansicht Spieleliste"
+  bzw. "Ansicht Hauptseite". Das setzt die **Vorgabe** - sie gilt
+  überall und beim nächsten Start.
+- **F10** (am Pad **Select+Y**) schaltet **nur das gerade Sichtbare**
+  um und speichert nichts. In der Spieleliste gilt es nur für die
+  offene Kategorie: wer im Raster stöbern und bei SNES trotzdem die
+  Liste haben will, kann das.
+
+**Im Raster bedeuten die Richtungstasten etwas anderes:** hoch/runter
+wechselt die **Reihe**, links/rechts den **Nachbarn**. In Liste und
+Galerie bleibt es beim Gewohnten (hoch/runter ein Schritt, links/rechts
+eine Seite).
+
+**Eine reine Ordnerauswahl bleibt immer Liste.** Ordner haben praktisch
+nie ein eigenes Cover; ein Raster aus lauter Platzhaltern wäre keine
+Ansicht, sondern ein Fehler.
+
+> **Tipp:** Nach dem Umschalten lohnt sich *System -> Verhalten ->
+> "Miniaturen vorbereiten"* - die Bilder werden je Ansicht in einer
+> anderen Größe gebraucht. Der Menüpunkt rechnet alle drei Ansichten
+> mit vor, du musst ihn also nur einmal laufen lassen (aber einmal je
+> Bildmodus: CRT und HDMI haben eigene Größen).
+
+---
+
+## 8s. ROMs in ZIP-Archiven
+
+Liegen ROMs in ZIP-Archiven, werden sie ganz normal gelistet. Ein
+Archiv ist für das Frontend **ein Ordner wie jeder andere**:
+Unterordner im Archiv werden zu Unterordnern, die Spiele stehen darin
+und starten wie immer.
+
+**Entpackt wird dabei nie etwas**, auch nicht teilweise - gelesen wird
+nur das Inhaltsverzeichnis am Ende der Datei. Möglich ist das, weil
+MiSTer ein Archiv im Startpfad selbst wie einen Ordner behandelt
+(`path="some/other.zip/path/dummy.gg"` steht so in der offiziellen
+MiSTer-Dokumentation).
+
+Drei Dinge bewusst so:
+
+- Ein **kaputtes oder halb kopiertes Archiv** wirft den Scan nicht um -
+  es fällt still weg, wie eine unlesbare Datei auch.
+- Ein **Archiv ohne passende ROMs** taucht gar nicht erst auf. Viele
+  Sammlungen legen Handbücher als Archiv daneben; ein leerer Ordner
+  dafür wäre nur im Weg.
+- **Romsets bleiben Romsets.** Bei Neo Geo zählt nur `.neo` als
+  ROM-Endung, bei Arcade nur `.mra` - die Teile in einem
+  Romset-Archiv passen auf keine davon, und das Archiv bleibt genau
+  das, was es vorher war.
+
+---
+
 ## 9. Sprache umschalten
 
 System -> "Language: English -> switch to German" (bzw. umgekehrt auf
@@ -1110,6 +1198,8 @@ Rückkehr zum Menü selbst wird davon nie beeinträchtigt oder verzögert.
   überspringt die Abfrage statt endlos zu warten) und lehnt ein
   erfasstes F9 grundsätzlich als Belegung ab. Tritt es trotzdem noch
   auf: `tail -60 /tmp/frontend.log` direkt danach teilen.
+  **Aus demselben Grund belegt das Frontend F9 selbst nicht** - die
+  Ansichts-Umschaltung liegt auf **F10** (Abschnitt 8r).
 - **Nach einem Datei-Update** (neue Version installiert): immer den
   **kompletten** Ordner `frontend/` per WinSCP nach
   `/media/fat/frontend/` kopieren (überschreiben lassen), nicht nur
@@ -1154,7 +1244,6 @@ Rückkehr zum Menü selbst wird davon nie beeinträchtigt oder verzögert.
 
 ## 14. Bekannte Grenzen
 
-- ROMs in ZIP-Archiven werden aktuell nicht gelistet.
 - ROM-Suche geht beliebig tief, keine Ebenen-Begrenzung - die
   Erkennung, ob neu gescannt werden muss, prüft aus Tempogründen aber
   weiterhin nur die oberste ROM-Ordnerebene pro System. Änderst du

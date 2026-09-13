@@ -107,6 +107,8 @@ history to read up on (`CHANGELOG.md`).
    - 8n. Easter-egg system (secrets) + frontend levels
    - 8o. CRT test pattern
    - 8p. Contributors
+   - 8r. Views: list, grid, gallery
+   - 8s. ROMs inside ZIP archives
 9. Switching language
 10. Custom key mapping
 11. Boot animation (startup video)
@@ -388,6 +390,27 @@ python3 /media/fat/frontend/mister_boxart.py            # covers, CRT size
 python3 /media/fat/frontend/mister_boxart.py hd          # additionally sharp covers for HDMI
 python3 /media/fat/frontend/mister_gameinfo.py           # year/genre/player count
 ```
+
+**Where the covers come from - four stages, first hit wins:**
+
+1. **From the MiSTer itself.** If the cover is already in the artwork
+   database under `/media/fat/docs` or in an artpack, there is nothing
+   to download - the frontend shows it anyway.
+2. **Ready-made PNG/JPG from a mirror.** Stored as-is: no decoding, no
+   conversion.
+3. **Pre-scaled `.art` from the same mirror.**
+4. **thumbnails.libretro.com**, independent of the mirror, as the last
+   safety net.
+
+The file extension is determined from the **content**, not from the
+name on the server - some servers report the wrong file type for
+images. Anything that is not an image is not written but passed on to
+the next stage.
+
+**Foreign artwork and game data from the device** can be turned off
+under *System -> Display & sound -> "Foreign artwork/data"*. The default
+is **on**: the source only fills gaps and never replaces your own
+artwork.
 **If you use both CRT and HDMI, run both lines** - without the `hd` run,
 the frontend on HDMI simply upscales the small covers intended for the
 tube (looks pixelated). With `hd`, both sizes exist side by side (`art/`
@@ -790,6 +813,68 @@ Any key returns to the menu.
 System menu -> "Contributors" - who built the frontend and who helped. A
 small thank-you, not a secret like the developer room from section 8n.
 
+## 8r. Views: list, grid, gallery
+
+Both the game list **and** the main page come in three views:
+
+| | shows | good when |
+|---|---|---|
+| **List** | a text list plus one large image beside it | you want to read long titles in full - and the only view that still shows something with no covers at all |
+| **Grid** | images only, densely packed; the name of the selected entry is shown below | you want to see a lot at a glance. On HDMI that is 28 games, or **every** category without a single page turn |
+| **Gallery** | one large image, data beside it, the neighbours as a strip below | you want detail without losing sight of what is next to it |
+
+**There are two ways to switch, and they deliberately do different
+things:**
+
+- The **menu** under *System -> Display & sound* -> "Game list view" and
+  "Main page view" sets the **default** - it applies everywhere and
+  after the next start.
+- **F10** (or **Select+Y** on the pad) switches **only what you are
+  looking at** and saves nothing. In the game list it applies to the
+  open category only, so you can browse in grid view and still keep the
+  list for SNES.
+
+**In grid view the direction keys mean something different:** up/down
+changes the **row**, left/right the **neighbour**. List and gallery keep
+the usual behaviour (up/down one step, left/right one page).
+
+**A folder-only level always stays a list.** Folders practically never
+have a cover of their own; a grid of nothing but placeholders would not
+be a view, it would be a bug.
+
+> **Tip:** After switching, run *System -> Behaviour -> "Prepare
+> thumbnails"* - each view needs the images in a different size. The
+> menu item prepares all three views in one go, so you only need to run
+> it once (but once per video mode: CRT and HDMI have their own sizes).
+
+---
+
+## 8s. ROMs inside ZIP archives
+
+If your ROMs live inside ZIP archives, they are listed normally. An
+archive is **a folder like any other** to the frontend: folders inside
+the archive become folders, the games sit inside them and start as
+usual.
+
+**Nothing is ever extracted**, not even partially - only the table of
+contents at the end of the file is read. This works because MiSTer
+itself treats an archive in the launch path like a folder
+(`path="some/other.zip/path/dummy.gg"` is written exactly like that in
+the official MiSTer documentation).
+
+Three deliberate decisions:
+
+- A **broken or half-copied archive** does not break the scan - it is
+  skipped silently, just like an unreadable file.
+- An **archive without matching ROMs** does not show up at all. Many
+  collections keep manuals next to the ROMs as an archive; an empty
+  folder for those would only be in the way.
+- **Romsets stay romsets.** Neo Geo only counts `.neo` as a ROM
+  extension, arcade only `.mra` - the parts inside a romset archive
+  match neither, so the archive stays exactly what it was.
+
+---
+
 ## 9. Switching language
 
 System -> "Language: English -> switch to German" (or the other way
@@ -974,6 +1059,8 @@ affected or delayed by it.
   (20s, skips the query instead of waiting forever) and generally rejects
   a captured F9 as a mapping. If it still occurs: share
   `tail -60 /tmp/frontend.log` right afterwards.
+  **For the same reason the frontend does not use F9 itself** - the view
+  switch is on **F10** (section 8r).
 - **After a file update** (new version installed): simply run
   `/media/fat/Scripts/Frontend_Update.sh` (via SSH or from the MiSTer OSD
   under Scripts) - it ends the old instance cleanly and restarts
@@ -1001,7 +1088,6 @@ affected or delayed by it.
 
 ## 14. Known limitations
 
-- ROMs inside ZIP archives are currently not listed.
 - ROM search goes arbitrarily deep, no level limit - but for speed
   reasons, the detection of whether a rescan is needed still only checks
   the topmost ROM folder level per system. So if you only change files

@@ -1199,6 +1199,40 @@ def ansicht_schreiben(wert):
     return wert
 
 
+# NEU (Build 124, Nutzerwunsch: "das gleiche was wir jetzt gemacht
+# haben haette ich gerne noch auf der Hauptseite").
+#
+# Eigene Datei, NICHT derselbe Wert wie fuer die Spieleliste. Die
+# beiden Seiten zeigen Verschiedenes - dort Spiele-Cover, hier
+# Kategorie-Abzeichen -, und es gibt keinen Grund anzunehmen, dass wer
+# das eine als Raster will, auch das andere so will. Zwei Dateien sind
+# hier billiger als eine Regel, die man sich merken muss.
+ANSICHT_HAUPT_FILE = "/media/fat/frontend/ansicht_haupt"
+
+
+def ansicht_haupt_lesen():
+    """Die eingestellte Vorgabe-Ansicht der HAUPTSEITE (Kategorien)."""
+    try:
+        wert = open(ANSICHT_HAUPT_FILE).read().strip().lower()
+    except OSError:
+        return "liste"
+    return wert if wert in ANSICHTEN else "liste"
+
+
+def ansicht_haupt_schreiben(wert):
+    if wert not in ANSICHTEN:
+        wert = "liste"
+    try:
+        d = os.path.dirname(ANSICHT_HAUPT_FILE)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        with open(ANSICHT_HAUPT_FILE, "w") as f:
+            f.write(wert)
+    except OSError as e:
+        LOG("ansicht_haupt_schreiben: %s" % e)
+    return wert
+
+
 def ansicht_weiter():
     """Eine Ansicht weiterschalten (rundum). Liefert die neue."""
     jetzt = ansicht_lesen()

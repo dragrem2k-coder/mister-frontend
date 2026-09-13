@@ -230,8 +230,18 @@ check("F11 (0x44) ebenfalls nicht - genau der alte Fehlgriff",
 # Bewusst die TATSAECHLICHE Tabelle pruefen, nicht den Dateitext - der
 # enthaelt die alte Belegung noch als Kommentar, und genau so soll es
 # sein (dort steht, warum sie weg ist).
-check("F10 ist nicht mehr in der KEYMAP",
-      I.KEY_F10 not in I.KEYMAP, str(I.KEYMAP.get(I.KEY_F10)))
+# GEAENDERT (Build 124): F10 steht wieder in der KEYMAP - aber als
+# Ansichts-Umschaltung, NICHT als Ausstieg. Worum es diesem Test geht,
+# ist der Ausstieg (die HID-Pruefungen darueber), und der laeuft seit
+# Build 77 ueber F1. Geprueft wird deshalb die Bedeutung, nicht die
+# blosse Anwesenheit - sonst waere dieser Test ein Verbot, die Taste je
+# wieder fuer irgendetwas zu benutzen.
+check("F10 ist kein Ausstieg mehr (sondern die Ansicht)",
+      I.KEYMAP.get(I.KEY_F10) in (None, "ansicht"),
+      str(I.KEYMAP.get(I.KEY_F10)))
+# Und F9 gehoert MiSTer - siehe enter_console_mode() in frontend.py.
+check("F9 bleibt unbelegt",
+      I.KEYMAP.get(I.KEY_F9) is None, str(I.KEYMAP.get(I.KEY_F9)))
 # F1 taucht bewusst NICHT in der KEYMAP auf: die evdev-Ebene ist
 # waehrend eines laufenden Cores gesperrt (genau der Grund, warum F10
 # dort nie ankam). F1 laeuft ausschliesslich ueber die HID-Ebene.

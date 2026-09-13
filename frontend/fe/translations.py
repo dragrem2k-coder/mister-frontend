@@ -281,11 +281,11 @@ TRANSLATIONS = {
     "help_list_favorite_desc": {"en": "Toggle favorite", "de": "Favorit umschalten"},
     # NEU (Build 122): die Ansichts-Umschaltung gehoert genau hierhin -
     # "In der Spieleliste" ist die einzige Stelle, an der sie wirkt.
-    "help_list_ansicht_key": {"en": "F9 / Select+Y (pad)",
-                              "de": "F9 / Select+Y (Pad)"},
+    "help_list_ansicht_key": {"en": "F10 / Select+Y (pad)",
+                              "de": "F10 / Select+Y (Pad)"},
     "help_list_ansicht_desc": {
-        "en": "Switch view: list, grid, gallery",
-        "de": "Ansicht wechseln: Liste, Raster, Galerie"},
+        "en": "Switch view: list, grid, gallery (main page too)",
+        "de": "Ansicht wechseln: Liste, Raster, Galerie (auch Hauptseite)"},
     "help_list_random_key": {"en": "F11 (keyboard only)",
                              "de": "F11 (nur Tastatur)"},
     "help_list_random_desc": {"en": "Start a random game across all systems",
@@ -700,14 +700,17 @@ TRANSLATIONS = {
     # wie der Bildrand darueber. Die Taste steht mit im Text, sonst
     # findet sie niemand.
     "sys_ansicht": {
-        "en": "View: %s -> next (F9, or Select+Y on the pad, switches "
-              "live)",
-        "de": "Ansicht: %s -> weiter (F9, am Pad Select+Y, schaltet "
-              "sofort um)"},
+        "en": "Game list view: %s -> next (F10, or Select+Y on the pad, "
+              "switches live)",
+        "de": "Ansicht Spieleliste: %s -> weiter (F10, am Pad Select+Y, "
+              "schaltet sofort um)"},
+    "sys_ansicht_haupt": {
+        "en": "Main page view: %s -> next (F10 on the main page)",
+        "de": "Ansicht Hauptseite: %s -> weiter (F10 auf der Hauptseite)"},
     "ansicht_umgeschaltet": {"en": "View: %s", "de": "Ansicht: %s"},
     "ansicht_nur_spieleliste": {
-        "en": "The view switch only applies to the game list",
-        "de": "Die Ansicht lässt sich nur in der Spieleliste wechseln"},
+        "en": "No covers here - the view stays a list",
+        "de": "Hier gibt es keine Cover - die Ansicht bleibt eine Liste"},
     "ansicht_liste":   {"en": "list",    "de": "Liste"},
     "ansicht_raster":  {"en": "grid",    "de": "Raster"},
     "ansicht_galerie": {"en": "gallery", "de": "Galerie"},

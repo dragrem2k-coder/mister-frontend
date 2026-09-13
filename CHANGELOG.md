@@ -7,6 +7,88 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Die Hauptseite bekommt dieselben drei Ansichten, F9 zieht um, und
+die README ist wieder auf Stand** (Build 124):
+
+### Raster und Galerie jetzt auch für die Kategorien
+
+Nach der Spieleliste in Build 122 gibt es Liste, **Raster** und
+**Galerie** jetzt auch auf der Hauptseite. Der Gewinn ist hier sogar
+größer als bei den Spielen: auf HDMI passen **alle** Kategorien einer
+typisch bestückten Karte auf ein einziges Bild — 24 Abzeichen, kein
+Blättern. Die Liste zeigt dort je nach Auflösung 9 bis 16.
+
+Ein Glücksfall hat das billig gemacht: alle Sysart-Abzeichen sind
+320×420, also genau das hochkante 3:4, mit dem auch die Spiel-Cover
+arbeiten. Die Kachelrechnung aus Build 122 passt damit **unverändert** —
+es brauchte nur einen zweiten Aufrufer, kein zweites Layout. Zwei
+Layouts wären zwei Gelegenheiten gewesen, auseinanderzulaufen.
+
+**Eigene Einstellung, eigener Menüpunkt.** Unter *Anzeige & Sound*
+stehen jetzt zwei Zeilen: „Ansicht Spieleliste" und „Ansicht
+Hauptseite". Die beiden Seiten zeigen Verschiedenes, und es gibt keinen
+Grund anzunehmen, dass wer das eine als Raster will, auch das andere so
+will. **F10** schaltet weiterhin live um — auf der Seite, auf der man
+gerade steht.
+
+Die Galerie zeigt neben dem großen Abzeichen etwas, das heute nirgends
+auf der Hauptseite steht: **wie viele Spiele in einer Kategorie
+stecken**, wie viele davon Favoriten sind, und wie viele Unterordner es
+gibt.
+
+### F9 zieht auf F10 um
+
+In Build 122 lag die Ansichts-Umschaltung auf F9, weil das die letzte
+freie Funktionstaste war. Das war ein Fehler — und er stand seit jeher
+in unserer **eigenen README**: F9 ist bei MiSTer für den Wechsel
+zwischen Konsole und Grafikmodus reserviert. Wir spielen die Taste
+sogar selbst ein, wenn wir in den Konsolenmodus wollen, und der
+Tastenbelegungs-Assistent lehnt ein erfasstes F9 ausdrücklich ab.
+
+In der Praxis wäre es gutgegangen: solange das Frontend läuft, greift
+es die Tastatur exklusiv und MiSTer sieht die Taste gar nicht. Aber
+zwei Bedeutungen für dieselbe Taste, von denen eine in der eigenen
+Dokumentation als Problemfall steht, ist eine zu viel. **F10** ist frei
+und hat bei MiSTer keine Bedeutung.
+
+### Ein Farbklotz, der nie hätte da sein dürfen
+
+Beim Nachrendern der Hauptseite aufgefallen und gleich für beide Seiten
+behoben: die Markierung um eine Kachel war eine **gefüllte** Fläche in
+Systemfarbe, über die anschließend das Bild gelegt wurde — sichtbar
+blieb nur der Rand. Solange ein Bild kommt, sieht das gleich aus. Kommt
+keines, weil der Bild-Cache es während des Scrollens überspringt, stand
+dort ein vollflächiger Farbklotz, bis das Bild nachkam. Jetzt ist die
+Markierung ein **Rahmen**: das kann nicht mehr passieren, und sie malt
+nebenbei nur einen Bruchteil der Punkte.
+
+### README
+
+Die README hatte einiges verpasst. Nachgetragen bzw. richtiggestellt:
+
+- **„ROMs in ZIP-Archiven werden aktuell nicht gelistet"** stand noch
+  unter „Bekannte Grenzen" — seit Build 121 falsch. Raus, und ein
+  eigener Abschnitt dafür.
+- **Neuer Abschnitt zu den drei Ansichten** — welche was zeigt, die
+  zwei Umschaltwege und warum sie nicht dasselbe tun, und der Hinweis,
+  dass „Miniaturen vorbereiten" alle drei mitrechnet.
+- **Woher die Cover kommen** — die vier Stufen (Gerät, PNG-Spiegel,
+  art-Spiegel, libretro), die Erkennung nach Dateiinhalt statt
+  Servername, und der Schalter für fremdes Artwork.
+- **Der F9-Abschnitt** bei der Fehlerbehebung sagt jetzt auch, dass das
+  Frontend die Taste deshalb selbst nicht belegt.
+
+Beides, Deutsch und Englisch.
+
+Geprüft: `tools/test_ansichten.py` wuchs von 8 auf 13 Prüfblöcke —
+darunter der bitgenaue Vergleich des schnellen Rasterpfads der
+Hauptseite in beiden Auflösungen und der Nachweis, dass die
+Logo-Kastengröße der Ansicht folgt (dieselbe Falle wie bei den Covern).
+`tools/test_cover_prewarm.py` Test 8 angepasst: „alle Logos haben
+dieselbe Kastengröße" heißt jetzt „eine je Ansicht" — die Aussage
+dahinter (unter Logos steht kein Text, der die Höhe verschiebt) ist
+unverändert.
+
 **Zweite Cover-Quelle, und zwei Fehler aus Build 122** (Build 123):
 
 ### Die zweite Quelle ist da

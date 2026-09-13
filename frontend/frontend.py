@@ -229,6 +229,7 @@ from fe.settings import (
     fast_scroll_enabled, toggle_fast_scroll,
     overscan_lesen, overscan_weiter,
     ANSICHTEN, ansicht_lesen, ansicht_schreiben,
+    ansicht_haupt_lesen, ansicht_haupt_schreiben,
     fremdquellen_enabled, toggle_fremdquellen,
     FAST_SCROLL_WINDOW, pulse_effect_enabled, toggle_pulse_effect,
     CRT_CONFIRM_TIMEOUT, crt_pending_confirm, mark_crt_pending_confirm,
@@ -2728,17 +2729,44 @@ class Frontend:
         except (IndexError, AttributeError, TypeError):
             return ""
 
+    def aktuelle_ansicht_haupt(self):
+        """Welche Ansicht gilt gerade auf der HAUPTSEITE (Build 124).
+
+        Anders als bei der Spieleliste gibt es hier nichts je Kategorie
+        zu merken - es GIBT nur eine Hauptseite. Ein Merker fuer die
+        Sitzung (die Taste) und die Vorgabe aus der Datei (das Menue),
+        mehr braucht es nicht."""
+        gemerkt = getattr(self, "_ansicht_haupt", None)
+        if gemerkt in ANSICHTEN:
+            return gemerkt
+        return ansicht_haupt_lesen()
+
+    def ansicht_haupt_setzen(self, wert, merken=False):
+        if wert not in ANSICHTEN:
+            wert = "liste"
+        self._ansicht_haupt = wert
+        if merken:
+            ansicht_haupt_schreiben(wert)
+            # Die Vorgabe gilt ab jetzt - der Sitzungsmerker waere
+            # sonst ein stiller Widerspruch zu dem, was im Menue steht.
+            self._ansicht_haupt = None
+        self._pgc_fast_key = None
+        self._kat_raster_fast_key = None
+        self._force_full_redraw = True
+        self.fb.mark_full_redraw()
+        return wert
+
     def aktuelle_ansicht(self, has_art=None):
-        """Welche Ansicht gilt hier und jetzt.
+        """Welche Ansicht gilt hier und jetzt - fuer die SPIELELISTE.
 
-        Zwei Faelle geben IMMER "liste" zurueck, unabhaengig von der
-        Einstellung:
+        Die Hauptseite hat ihre eigene (aktuelle_ansicht_haupt()); hier
+        kommt fuer sie immer "liste" zurueck, damit kein Aufrufer aus
+        Versehen die eine Einstellung fuer die andere haelt.
 
-        - die Hauptseite (Seite 0) - dort gibt es keine Cover-Liste,
-          nur Kategorien;
-        - eine Liste ohne Boxart-Spalte (reine Ordnerauswahl, Scripts,
-          Systemmenue - siehe hat_artspalte()). Ein Kachelraster aus
-          lauter Platzhaltern waere keine Ansicht, sondern ein Fehler.
+        Ausserdem immer "liste": eine Liste ohne Boxart-Spalte (reine
+        Ordnerauswahl, Scripts, Systemmenue - siehe hat_artspalte()).
+        Ein Kachelraster aus lauter Platzhaltern waere keine Ansicht,
+        sondern ein Fehler.
         """
         if getattr(self, "page", 0) != 1:
             return "liste"
@@ -2777,9 +2805,17 @@ class Frontend:
         return wert
 
     def ansicht_umschalten(self):
-        """Eine Ansicht weiter (Liste -> Raster -> Galerie -> Liste).
+        """Eine Ansicht weiter (Liste -> Raster -> Galerie -> Liste) -
+        fuer die Seite, auf der man gerade steht.
+
         Liefert die neue Ansicht, oder None, wenn hier gar nichts
-        umzuschalten ist."""
+        umzuschalten ist. Gespeichert wird NICHTS: die Taste ist zum
+        Ausprobieren da, die Vorgabe stellt man im Menue."""
+        if getattr(self, "page", 0) == 0:
+            jetzt = self.aktuelle_ansicht_haupt()
+            idx = ANSICHTEN.index(jetzt) if jetzt in ANSICHTEN else 0
+            return self.ansicht_haupt_setzen(
+                ANSICHTEN[(idx + 1) % len(ANSICHTEN)])
         if getattr(self, "page", 0) != 1:
             return None
         items = self._display_items()
@@ -2862,6 +2898,27 @@ class Frontend:
                 "kachel_h": cov_h, "cov_b": cov_b,
                 "cov_h": cov_h, "name_y": unten + 3 * s,
                 "ox": raster_ox, "rand_ox": ox, "s": s}
+
+    def kat_layout(self):
+        """Die Layout-Angaben der HAUPTSEITE in der Form, die
+        raster_geometrie()/galerie_geometrie() erwarten.
+
+        Ein Adapter, kein zweites Layout: layout_cats() rechnet mit
+        y0/visible statt list_y/footer_y, die Kachelrechnung braucht
+        aber genau dieselben vier Zahlen wie auf der Spieleliste. Ein
+        eigenes Kachel-Layout fuer die Hauptseite waere die zweite
+        Stelle, an der dieselbe Rechnung steht - und damit die zweite
+        Gelegenheit, auseinanderzulaufen.
+
+        Ein Gluecksfall macht das moeglich: alle Sysart-Abzeichen sind
+        320x420, also genau das hochkante 3:4, mit dem auch die
+        Spiel-Cover arbeiten (siehe PC-Tools/sysart_abzeichen.py).
+        Dieselbe Kachelrechnung passt deshalb unveraendert."""
+        L = self.layout_cats()
+        H = self.fb.height
+        return {"s": L["s"], "ox": L["ox"], "oy": L["oy"],
+                "list_y": L["y0"],
+                "footer_y": H - L["oy"] - 13 * L["s"]}
 
     def galerie_geometrie(self, L):
         """Dasselbe fuer die Galerie: grosses Cover links, Daten rechts,
@@ -3381,6 +3438,15 @@ class Frontend:
         s, ox, oy = L["s"], L["ox"], L["oy"]
         rowh, y0, visible = L["rowh"], L["y0"], L["visible"]
         self.cats_visible = visible
+
+        # NEU (Build 124): Raster- und Galerieansicht der Hauptseite.
+        # Der Einsprung steht hier, weil erst ab dieser Zeile das
+        # Layout feststeht - und weil der Cover-Schutz darueber fuer
+        # alle drei Ansichten gleichermassen gilt.
+        _ansicht = self.aktuelle_ansicht_haupt()
+        if _ansicht != "liste" and self._draw_cats_kacheln(
+                _ansicht, message, flip):
+            return
 
         # NEU (Build 108, Nutzer-Rueckmeldung: "im Hauptmenue scrollt es
         # noch etwas langsam, wirkt etwas traege").
@@ -4209,6 +4275,11 @@ class Frontend:
         Bugfix-Kommentar in _draw_navigate_items()). Der bestehende Aufrufer
         (Puls-Tick weiter unten in next_action()) ruft weiterhin ohne
         Argument auf und verhaelt sich dadurch exakt wie bisher."""
+        # Build 124: in Raster und Galerie gibt es keine markierte
+        # ZEILE, die hier aufgefrischt werden koennte - der Tick wuerde
+        # mitten in die Kacheln zeichnen.
+        if self.aktuelle_ansicht_haupt() != "liste":
+            return None, None
         fb = self.fb
         H = fb.height
         L = self.layout_cats()
@@ -4360,6 +4431,11 @@ class Frontend:
         diesen Faellen den vollen, bewaehrten draw()-Pfad (gleiches Prinzip
         wie bei _draw_navigate_items())."""
         if self.page != 0:
+            return False
+        # Build 124: der leichte Pfad kennt nur Zeilen. Raster und
+        # Galerie der Hauptseite bauen ihren eigenen schnellen Weg
+        # (siehe _draw_cats_raster()).
+        if self.aktuelle_ansicht_haupt() != "liste":
             return False
         # Siehe _overlay_active() - gleiche Begruendung wie bei
         # _draw_navigate_items_impl().
@@ -5597,6 +5673,27 @@ class Frontend:
         fb.text(x + max(0, (w - tw) // 2), y + max(0, (h - 8 * s) // 2),
                 text, s, C_DIM, grund)
 
+    def _kachel_rahmen(self, x, y, w, h, farbe, s):
+        """Die Markierung um eine Kachel - als RAHMEN, nicht als
+        gefuellte Flaeche.
+
+        BUGFIX (Build 124, beim Nachrendern der Hauptseite aufgefallen):
+        hier stand ein rect_rounded() in Kachelgroesse, ueber das
+        anschliessend das Bild gelegt wurde - sichtbar blieb davon nur
+        der Rand. Solange ein Bild kommt, sieht das gleich aus.
+        Kommt keines - weil der Bild-Cache es waehrend des Scrollens
+        UEBERSPRINGT (siehe _ansicht_cover()) -, steht dort ein
+        vollflaechiger Farbklotz in Systemfarbe, bis das Bild
+        nachgeliefert wird.
+        Ein Rahmen kann das nicht passieren, und er malt nebenbei nur
+        einen Bruchteil der Punkte."""
+        d = 3 * s
+        fb = self.fb
+        fb.rect(x - d, y - d, w + 2 * d, d, farbe)
+        fb.rect(x - d, y + h, w + 2 * d, d, farbe)
+        fb.rect(x - d, y, d, h, farbe)
+        fb.rect(x + w, y, d, h, farbe)
+
     def _kachel_feld(self, geo, platz):
         """Der Bildschirmbereich EINER Kachel (Position im Raster, 0 ==
         oben links) inklusive des Randes, den die Markierung braucht.
@@ -5630,9 +5727,9 @@ class Frontend:
         cx = kx + (geo["kachel_b"] - cov_b) // 2
         item = items[idx]
         if markiert:
-            fb.rect_rounded(cx - 3 * s, ky - 3 * s, cov_b + 6 * s,
-                            cov_h + 6 * s, accent_for(
-                                self._item_syskey(item, cat_syskey)), 3 * s)
+            self._kachel_rahmen(cx, ky, cov_b, cov_h,
+                                accent_for(self._item_syskey(item,
+                                                             cat_syskey)), s)
         art, verzoegert = self._ansicht_cover(item, cat_syskey, cov_b,
                                               cov_h)
         if art:
@@ -5813,8 +5910,7 @@ class Frontend:
         idx = self.scroll
         while x + kb <= fb.width - ox and idx < total:
             if idx == self.item_i:
-                fb.rect_rounded(x - 2 * s, ly - 2 * s, kb + 4 * s,
-                                kh + 4 * s, akzent, 2 * s)
+                self._kachel_rahmen(x, ly, kb, kh, akzent, s)
             klein, klein_verzoegert = self._ansicht_cover(
                 items[idx], syskey, kb, kh)
             if klein:
@@ -5844,6 +5940,249 @@ class Frontend:
             self._draw_items_galerie(items, syskey, L, message, flip)
         else:
             self._draw_items_raster(items, syskey, L, message, flip)
+        return True
+
+    # ------------------------------------------------------------------
+    # Raster- und Galerieansicht der HAUPTSEITE (Build 124)
+    #
+    # Baut auf demselben Unterbau wie die Spieleliste auf: dieselbe
+    # Kachelrechnung (raster_geometrie()/galerie_geometrie() ueber
+    # kat_layout()), derselbe schnelle Pfad (nur zwei Kacheln bei einem
+    # Schritt innerhalb der Seite), dieselbe Behandlung uebersprungener
+    # Bilder. Was hier anders ist, ist genau eine Sache: das Bild kommt
+    # aus SYSART_BASE statt aus dem Cover-Ordner.
+    # ------------------------------------------------------------------
+    def _kat_logo(self, i, bw, bh):
+        """(Bild, nur_verzoegert) fuer das Abzeichen einer Kategorie.
+
+        Dieselbe Unterscheidung wie bei _ansicht_cover(): der Cache
+        UEBERSPRINGT waehrend schnellen Scrollens und liefert dann
+        dasselbe None wie bei "gibt es nicht". Wer das verwechselt,
+        malt einen Platzhalter, der gleich wieder verschwindet."""
+        name, _node, syskey = self.cats[i]
+        art_key = _category_art_key(name, syskey)
+        if not art_key:
+            return None, False
+        pfad = os.path.join(SYSART_BASE, "%s.art" % art_key)
+        vorher = getattr(ART, "_defer_count", 0)
+        art = ART.get_scaled(pfad, bw, bh, auslagern_ok=True)
+        return art, (art is None
+                     and getattr(ART, "_defer_count", 0) != vorher)
+
+    def _kat_kachel_zeichnen(self, geo, platz, i, markiert, freiraeumen):
+        fb = self.fb
+        s = geo["s"]
+        fx, fy, fw, fh = self._kachel_feld(geo, platz)
+        if freiraeumen:
+            self._restore_row_bg(fx, fy, fw, fh)
+        kx, ky = fx + 3 * s, fy + 3 * s
+        cov_b, cov_h = geo["cov_b"], geo["cov_h"]
+        name, _node, syskey = self.cats[i]
+        if markiert:
+            self._kachel_rahmen(kx, ky, cov_b, cov_h, accent_for(syskey), s)
+        art, verzoegert = self._kat_logo(i, cov_b, cov_h)
+        if art:
+            aw, ah, pix = art
+            self.blit(kx + max(0, (cov_b - aw) // 2),
+                      ky + max(0, (cov_h - ah) // 2), aw, ah, pix)
+        elif not verzoegert:
+            self._kachel_platzhalter(kx, ky, cov_b, cov_h, name, s, markiert)
+
+    def _kat_name_zeichnen(self, geo):
+        fb = self.fb
+        s, ox = geo["s"], geo.get("rand_ox", geo["ox"])
+        y = geo["name_y"]
+        breite = fb.width - 2 * ox
+        self._restore_row_bg(ox, y - s, breite, 11 * s)
+        label = self.cats[self.cat_i][0]
+        maxc = max(4, breite // (8 * s))
+        if len(label) > maxc:
+            label = label[:max(1, maxc - 1)] + "~"
+        fb.text(ox, y, label, s, C_TITLE)
+
+    def _kat_kopf(self, L):
+        fb = self.fb
+        s, ox, oy = L["s"], L["ox"], L["oy"]
+        fb.text(ox, oy, "MiSTer", 3 * s, C_TITLE, C_BG)
+        fb.text(ox, oy + 28 * s, t("categories", len(self.cats)), s,
+                C_DIM, C_BG)
+
+    def _draw_cats_raster(self, message, flip):
+        """Ansicht B der Hauptseite: alle Abzeichen als Raster.
+
+        Auf HDMI passen 8x3 = 24 Kacheln aufs Bild - bei einer typisch
+        bestueckten Karte ist das die KOMPLETTE Kategorienliste ohne
+        einen einzigen Blaetterschritt. Genau das ist der Gewinn dieser
+        Ansicht; die Liste zeigt dort je nach Aufloesung 9 bis 16."""
+        fb = self.fb
+        KL = self.kat_layout()
+        geo = self.raster_geometrie(KL)
+        proseite = max(1, geo["spalten"] * geo["zeilen"])
+        self.cats_visible = proseite
+        self._kat_raster_spalten = geo["spalten"]
+        gesamt = len(self.cats)
+
+        seite = self.cat_i // proseite
+        self.cat_scroll = seite * proseite
+        ende = min(self.cat_scroll + proseite, gesamt)
+        platz_neu = self.cat_i - self.cat_scroll
+
+        fast_key = (gesamt, fb.width, fb.height, self.cat_scroll,
+                    geo["spalten"], geo["zeilen"])
+        schnell = (getattr(self, "_kat_raster_fast_key", None) == fast_key
+                   and getattr(self, "_kat_raster_fast_gen", -1)
+                   == fb.full_redraw_gen
+                   and not self._force_full_redraw
+                   and not self._overlay_active())
+        alt = getattr(self, "_kat_raster_markiert", None)
+
+        if schnell and alt is not None and 0 <= alt < proseite:
+            if alt != platz_neu:
+                self._kat_kachel_zeichnen(geo, alt, self.cat_scroll + alt,
+                                          False, True)
+            self._kat_kachel_zeichnen(geo, platz_neu, self.cat_i, True, True)
+        else:
+            fb.clear(C_BG)
+            self._kat_kopf(KL)
+            for platz in range(ende - self.cat_scroll):
+                self._kat_kachel_zeichnen(geo, platz,
+                                          self.cat_scroll + platz,
+                                          platz == platz_neu, False)
+            self._kat_raster_fast_key = fast_key
+        self._kat_raster_fast_gen = fb.full_redraw_gen
+        self._kat_raster_markiert = platz_neu
+        self._force_full_redraw = False
+
+        self._kat_name_zeichnen(geo)
+        self._kat_fusszeile(KL, message)
+        if flip:
+            fb.flip(skip_vsync=self._vsync_ueberspringen(None))
+
+    def _kat_fusszeile(self, KL, message):
+        """Meldung und Statuszeile - dieselben zwei Dinge, die auch die
+        Listenansicht der Hauptseite unten zeigt."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s, ox, oy = KL["s"], KL["ox"], KL["oy"]
+        self._restore_row_bg(ox, H - oy - 14 * s, W - 2 * ox, 14 * s)
+        if message:
+            msg_scale = self._fit_scale(message, W - 2 * ox, s)
+            msg_w = len(message) * 8 * msg_scale
+            fb.text((W - msg_w) // 2, H - oy - 13 * s, message, msg_scale,
+                    C_DIM, C_BG)
+        self._draw_status_bar(self.layout_cats())
+        self._draw_search_overlay()
+
+    def _draw_cats_galerie(self, message, flip):
+        """Ansicht D der Hauptseite: grosses Abzeichen links, Zahlen
+        rechts, die Nachbarn als Leiste darunter.
+
+        Die Zahlen rechts sind der eigentliche Grund fuer diese Ansicht -
+        wie viele Spiele in einer Kategorie stecken, steht heute
+        nirgends auf der Hauptseite."""
+        fb = self.fb
+        KL = self.kat_layout()
+        geo = self.galerie_geometrie(KL)
+        s, ox = geo["s"], geo["ox"]
+        gesamt = len(self.cats)
+        proleiste = max(1, (fb.width - 2 * ox)
+                        // (geo["klein_b"] + geo["abstand"]))
+        self.cats_visible = proleiste
+        self.cat_scroll = max(0, min(self.cat_i - proleiste // 2,
+                                     max(0, gesamt - proleiste)))
+
+        fb.clear(C_BG)
+        self._kat_kopf(KL)
+
+        name, node, syskey = self.cats[self.cat_i]
+        akzent = accent_for(syskey)
+        oben, gb, gh = geo["oben"], geo["gross_b"], geo["gross_h"]
+        pad = ART_CARD_PAD * s
+        fb.karte_mit_schatten(ox - pad, oben - pad, gb + 2 * pad,
+                              gh + 2 * pad, 3 * s, C_PANEL,
+                              fb._darken(C_BG, 0.55), 4 * s)
+        art, verzoegert = self._kat_logo(self.cat_i, gb, gh)
+        if art:
+            aw, ah, pix = art
+            ax = ox + max(0, (gb - aw) // 2)
+            ay = oben + max(0, (gh - ah) // 2)
+            self.blit(ax, ay, aw, ah, pix)
+            fb.rect(ax - 2 * s, ay - 2 * s, aw + 4 * s, 2 * s, akzent)
+            fb.rect(ax - 2 * s, ay + ah, aw + 4 * s, 2 * s, akzent)
+        elif not verzoegert:
+            self._zeichne_kein_artwork(ox, oben, gb, gh, s)
+
+        tx = geo["text_x"]
+        maxc = max(6, (fb.width - ox - tx) // (8 * s))
+        t_scale = 2 * s if len(name) <= max(4, maxc // 2) else s
+        t_maxc = max(4, (fb.width - ox - tx) // (8 * t_scale))
+        fb.text(tx, oben, name.upper()[:t_maxc], t_scale, C_TITLE)
+        iy = oben + (12 if t_scale == s else 30) * s
+        for ln in self._kat_infozeilen(node, syskey, maxc):
+            if iy + 9 * s > geo["leiste_y"] - 4 * s:
+                break
+            fb.text(tx, iy, ln[:maxc], s, C_TEXT)
+            iy += 12 * s
+
+        ly = geo["leiste_y"]
+        kb, kh = geo["klein_b"], geo["klein_h"]
+        x = ox
+        idx = self.cat_scroll
+        while x + kb <= fb.width - ox and idx < gesamt:
+            if idx == self.cat_i:
+                self._kachel_rahmen(x, ly, kb, kh, akzent, s)
+            klein, klein_verzoegert = self._kat_logo(idx, kb, kh)
+            if klein:
+                aw, ah, pix = klein
+                self.blit(x + max(0, (kb - aw) // 2),
+                          ly + max(0, (kh - ah) // 2), aw, ah, pix)
+            elif not klein_verzoegert:
+                self._kachel_platzhalter(x, ly, kb, kh, self.cats[idx][0],
+                                         s, idx == self.cat_i)
+            x += kb + geo["abstand"]
+            idx += 1
+
+        self._kat_fusszeile(KL, message)
+        self._force_full_redraw = False
+        if flip:
+            fb.flip(skip_vsync=self._vsync_ueberspringen(None))
+
+    def _kat_infozeilen(self, node, syskey, maxc):
+        """Die Zahlen neben dem grossen Abzeichen.
+
+        Bewusst genau das, was ohne zusaetzliche Arbeit schon dasteht:
+        die Eintragszahl steckt bereits im Kategorienamen (siehe
+        _count_tree_items()), Favoriten und Spielzeit liegen ohnehin im
+        Speicher. Ein Zaehldurchlauf ueber tausende Eintraege bei JEDEM
+        Kategorieschritt waere genau die Sorte Aufwand, die wir uns in
+        den letzten Builds abgewoehnt haben."""
+        zeilen = []
+        anzahl = 0
+        for it in node.get("items", ()):
+            if it[1] in ("game", "core"):
+                anzahl += 1
+        unterordner = len(node.get("folders", ()))
+        if anzahl:
+            zeilen.append(t("entries", anzahl))
+        if unterordner:
+            zeilen.append(t("categories", unterordner))
+        if syskey and hasattr(self, "_favorites_set"):
+            favs = sum(1 for it in node.get("items", ())
+                       if it[0] in self._favorites_set)
+            if favs:
+                zeilen.append(t("favorites_cat") + ": %d" % favs)
+        return zeilen
+
+    def _draw_cats_kacheln(self, ansicht, message, flip):
+        """Verteiler fuer die beiden neuen Ansichten der Hauptseite."""
+        if not self.cats:
+            return False
+        if self.cat_i >= len(self.cats):
+            self.cat_i = 0
+        if ansicht == "galerie":
+            self._draw_cats_galerie(message, flip)
+        else:
+            self._draw_cats_raster(message, flip)
         return True
 
     def draw_confirm_dialog(self, msg=None, labels=None, max_lines=2):
@@ -7388,29 +7727,55 @@ class Frontend:
         fb = self.fb
         L = self.layout_cats()
         s, ox, oy = L["s"], L["ox"], L["oy"]
-        art_w = L["art_w"]
-        box_h = max(20, (fb.height - oy - 20 * s) - L["y0"])
-        breite = art_w - 2 * (6 * s)
-        if breite <= 0:
-            return []
+        # NEU (Build 124): die Kastengroesse haengt an der ANSICHT der
+        # Hauptseite - genau dieselbe Falle wie bei den Spiel-Covern
+        # (siehe _art_panel_geometrie()). Wer im Raster steht und hier
+        # den Kasten der Listenansicht vorrechnen laesst, legt Logos
+        # unter einer Groesse ab, die nie jemand abfragt.
+        #
+        # Vorbereitet wird fuer ALLE DREI - es sind rund zwei Dutzend
+        # Bilder, die Rechnung dafuer ist in Millisekunden erledigt,
+        # und die Taste schaltet ohne Speichern um.
         alle = []
-        for name, _node, syskey in self.cats:
-            art_key = _category_art_key(name, syskey)
-            if not art_key:
+        for _a in ANSICHTEN:
+            breite, box_h = self._kat_logo_kasten(_a, L)
+            if breite <= 0 or box_h <= 0:
                 continue
-            pfad = os.path.join(SYSART_BASE, "%s.art" % art_key)
-            alle.append((pfad, breite, box_h))
-        # NEU (Build 84): ALLE Logos vor der Verdraengung schuetzen, nicht
-        # nur die noch fehlenden. Genau das war der zweite Teil des
-        # gemeldeten Fehlers - die Logos lagen im Zwischenspeicher, wurden
-        # aber verdraengt, und der naechste Blick aufs Hauptmenue kostete
-        # dann 1.4 bis 3.7 Sekunden je Kategorie. Es sind rund vier
-        # Dutzend Dateien; sie belegen einen verschwindenden Teil des
-        # Zwischenspeichers und sind gleichzeitig die teuersten
-        # Neuberechnungen im ganzen Frontend.
+            for name, _node, syskey in self.cats:
+                art_key = _category_art_key(name, syskey)
+                if not art_key:
+                    continue
+                pfad = os.path.join(SYSART_BASE, "%s.art" % art_key)
+                eintrag = (pfad, breite, box_h)
+                if eintrag not in alle:
+                    alle.append(eintrag)
+        # Build 84: ALLE Logos vor der Verdraengung schuetzen, nicht nur
+        # die noch fehlenden. Genau das war der zweite Teil eines
+        # gemeldeten Fehlers - die Logos lagen im Zwischenspeicher,
+        # wurden aber verdraengt, und der naechste Blick aufs Hauptmenue
+        # kostete dann 1,4 bis 3,7 Sekunden je Kategorie. Sie belegen
+        # einen verschwindenden Teil des Speichers und sind gleichzeitig
+        # die teuersten Neuberechnungen im ganzen Frontend.
         thumb_cache_schuetzen(alle)
         # Zurueckgegeben wird weiterhin nur, was tatsaechlich noch fehlt.
         return [a for a in alle if not thumb_cache_has(*a)]
+
+    def _kat_logo_kasten(self, ansicht, L=None):
+        """(breite, hoehe) des Kastens, in den ein Kategorie-Abzeichen
+        eingepasst wird - je Ansicht ein anderer. EINE Rechnung fuer
+        Zeichenpfad und Vorauslader."""
+        if L is None:
+            L = self.layout_cats()
+        s, oy = L["s"], L["oy"]
+        if ansicht == "raster":
+            g = self.raster_geometrie(self.kat_layout())
+            return g["cov_b"], g["cov_h"]
+        if ansicht == "galerie":
+            g = self.galerie_geometrie(self.kat_layout())
+            return g["gross_b"], g["gross_h"]
+        art_w = L["art_w"]
+        box_h = max(20, (self.fb.height - oy - 20 * s) - L["y0"])
+        return art_w - 2 * (6 * s), box_h
 
     def _prewarm_anstossen(self):
         """Im Leerlauf die Cover der voraussichtlich naechsten Eintraege
@@ -12355,6 +12720,16 @@ class Frontend:
                 if self.page == 1 and self.aktuelle_ansicht() == "raster":
                     hoch_runter = max(1, getattr(self, "_raster_spalten", 1))
                     links_rechts = move_step
+                # Build 124: dasselbe fuer die Hauptseite. Dort laufen
+                # hoch/runter/links/rechts ueber cat_i statt item_i,
+                # deshalb zwei eigene Schrittweiten.
+                kat_hoch_runter = move_step
+                kat_links_rechts = page_step
+                if self.page == 0 \
+                        and self.aktuelle_ansicht_haupt() == "raster":
+                    kat_hoch_runter = max(
+                        1, getattr(self, "_kat_raster_spalten", 1))
+                    kat_links_rechts = move_step
 
                 if act == "select":
                     # GEAENDERT (Build 90, Nutzervorschlag: "dadurch dass
@@ -12415,26 +12790,26 @@ class Frontend:
                     # geht's zum letzten - erspart langes Zurueckscrollen.
                     self._last_scroll_dir = -1
                     if self.page == 0:
-                        self.cat_i = (self.cat_i - move_step) % len(self.cats)
+                        self.cat_i = (self.cat_i - kat_hoch_runter) % len(self.cats)
                     elif items:
                         self.item_i = (self.item_i - hoch_runter) % len(items)
                         self.marquee_reset()
                 elif act == "down":
                     self._last_scroll_dir = 1
                     if self.page == 0:
-                        self.cat_i = (self.cat_i + move_step) % len(self.cats)
+                        self.cat_i = (self.cat_i + kat_hoch_runter) % len(self.cats)
                     elif items:
                         self.item_i = (self.item_i + hoch_runter) % len(items)
                         self.marquee_reset()
                 elif act == "left":
                     if self.page == 0:
-                        self.cat_i = (self.cat_i - page_step) % len(self.cats)
+                        self.cat_i = (self.cat_i - kat_links_rechts) % len(self.cats)
                     elif items:
                         self.item_i = (self.item_i - links_rechts) % len(items)
                         self.marquee_reset()
                 elif act == "right":
                     if self.page == 0:
-                        self.cat_i = (self.cat_i + page_step) % len(self.cats)
+                        self.cat_i = (self.cat_i + kat_links_rechts) % len(self.cats)
                     elif items:
                         self.item_i = (self.item_i + links_rechts) % len(items)
                         self.marquee_reset()
@@ -12883,6 +13258,19 @@ class Frontend:
                             _idx = (ANSICHTEN.index(_jetzt)
                                     if _jetzt in ANSICHTEN else 0)
                             self.ansicht_setzen(
+                                ANSICHTEN[(_idx + 1) % len(ANSICHTEN)],
+                                merken=True)
+                            self._refresh_system_category()
+                        elif kind == "ansicht_haupt":
+                            # NEU (Build 124): Vorgabe-Ansicht der
+                            # HAUPTSEITE. Eigener Punkt und eigene
+                            # Datei - siehe ANSICHT_HAUPT_FILE in
+                            # fe/settings.py fuer die Begruendung,
+                            # warum das nicht derselbe Wert ist.
+                            _jetzt = ansicht_haupt_lesen()
+                            _idx = (ANSICHTEN.index(_jetzt)
+                                    if _jetzt in ANSICHTEN else 0)
+                            self.ansicht_haupt_setzen(
                                 ANSICHTEN[(_idx + 1) % len(ANSICHTEN)],
                                 merken=True)
                             self._refresh_system_category()

@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-13-123",
-  "summary": "Der Cover-Download hat eine zweite Quelle: fertige PNG/JPG vom Spiegel, abgefragt nach dem Geraet selbst und vor libretro. Dazu zwei Fehler aus Build 122: der Beenden-Dialog blieb nach 'Nein' im HDMI-Modus stehen, und im Raster lud pro Bild nur ein einziges Cover nach, weil der Vorauslader immer nur einen Auftrag annahm. 'Miniaturen vorbereiten' rechnet jetzt fuer alle drei Ansichten."
+  "build_id": "2026-09-13-124",
+  "summary": "Die Hauptseite bekommt dieselben drei Ansichten wie die Spieleliste: Liste, Raster und Galerie. Auf HDMI passen im Raster alle Kategorien auf ein Bild, ohne Blaettern. Eigener Menuepunkt unter 'Anzeige & Sound'. Die Ansichts-Taste liegt jetzt auf F10 statt F9 - F9 gehoert bei MiSTer dem Wechsel zwischen Konsole und Grafikmodus. Die Markierung um eine Kachel ist ein Rahmen statt einer gefuellten Flaeche. README (deutsch und englisch) wieder auf Stand."
 }

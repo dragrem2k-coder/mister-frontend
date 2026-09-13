@@ -108,14 +108,14 @@ python3 tools/regression_test.py \
 | `test_bildrand.py` | Test (Pass/Fail) | Einstellbarer Bildrand: Vorgabe unveraendert, kaputte Datei faellt zurueck, und der Wert kommt wirklich im Layout an |
 | `test_suchtreffer.py` | Test (Pass/Fail) | Positionsanzeige und Trefferwechsel: ASCII-Abkuerzung bewiesen gleichwertig, neuer Sprung trifft dasselbe wie der alte, leichter Pfad bitgleich |
 | `test_quelle_png.py` | Test (Pass/Fail) | Zweite Cover-Quelle (png/-Baum des Mirrors): beide Ablageorte, Endung nach Inhalt, Klartext-HTTP, Reihenfolge der Quellen |
-| `test_ansichten.py` | Test (Pass/Fail) | Die drei Ansichten der Spieleliste: Kastengroesse stimmt mit dem Vorauslader ueberein, schneller Rasterpfad bitgenau, leichte Listenpfade halten sich raus |
+| `test_ansichten.py` | Test (Pass/Fail) | Die drei Ansichten von Spieleliste UND Hauptseite: Kastengroesse stimmt mit dem Vorauslader ueberein, schneller Rasterpfad bitgenau, leichte Listenpfade halten sich raus |
 | `test_zip.py` | Test (Pass/Fail) | ROMs in ZIP-Archiven: Archiv wird zum Ordner, Pfad laeuft durch das Archiv, nichts wird entpackt, kaputtes Archiv faellt still weg |
 | `test_artpacks.py` | Test (Pass/Fail) | Artwork aus Artpacks in allen ueblichen Ablageformen, Arcade beim Vorbereiten, Groesse des Bild-Zwischenspeichers |
 | `test_cover_original.py` | Test (Pass/Fail) | Download legt PNG/JPG im Original ab und das Frontend findet sie; Tauschschalter laesst Enter in Ruhe; USB-Wartezeit |
 | `test_verkleinern.py` | Test (Pass/Fail) | Der umgebaute Verkleinerer liefert bitgenau dasselbe Bild wie vorher, und ist im HDMI-Fall doppelt so schnell |
 | `test_namensabgleich.py` | Test (Pass/Fail) | Cover trotz anderer ROM-Schreibweise (GoodTools gegen No-Intro), und das Nachzieh-Netz fuer spaet anlaufende Laufwerke |
 | `test_bildlib.py` | Test (Pass/Fail) | libpng/TurboJPEG ueber ctypes: bitgleich zum Python-Dekoder, Rueckfall ohne Bibliothek, fremde docs-Quelle nur als Luecken-Fueller |
-| `diag_ansichten.py` | Diagnose (immer Rueckgabewert 0) | Die drei Ansichten in beiden Aufloesungen als PNG - mit dem eingebauten Zeichenweg |
+| `diag_ansichten.py` | Diagnose (immer Rueckgabewert 0) | Die drei Ansichten von Spieleliste und Hauptseite in beiden Aufloesungen als PNG - mit dem eingebauten Zeichenweg |
 | `diag_kaltes_cover.py` | Diagnose (immer Rueckgabewert 0) | Woraus ein kaltes Cover besteht: lesen, dekodieren, verkleinern - laeuft auch auf dem MiSTer |
 | `diag_vorauslader.py` | Diagnose (immer Rueckgabewert 0) | Was der Vorauslader dem Zeichnen wegnimmt - Thread gegen Prozess |
 | `diag_zeilen_spuren.py` | Diagnose (immer Rueckgabewert 0) | Was das gezielte Freiraeumen bringt - ganze Spalte gegen Spuren |
@@ -1206,6 +1206,22 @@ zurueck (ein Raster aus lauter Platzhaltern waere keine Ansicht),
 hoch/runter springt im Raster eine REIHE und links/rechts nur einen
 Nachbarn, und die Taste merkt sich die Ansicht je Kategorie, waehrend
 der Menuepunkt die Vorgabe wegschreibt.
+
+**Seit Build 124 dasselbe fuer die HAUPTSEITE** (Tests 10-13). Die
+Kachelrechnung ist dieselbe - moeglich, weil alle Sysart-Abzeichen
+320x420 sind, also genau das hochkante 3:4 der Spiel-Cover. Geprueft
+werden dort dieselben drei Dinge (Kastengroesse, bitgenauer schneller
+Pfad, leichte Pfade halten sich raus), dazu:
+
+- **Die Taste liegt auf F10, nicht auf F9.** F9 gehoert bei MiSTer dem
+  Wechsel zwischen Konsole und Grafikmodus - wir spielen sie selbst ein
+  (`enter_console_mode()`), und der Tastenbelegungs-Assistent lehnt sie
+  ausdruecklich ab. Der Test prueft BEIDES: dass F10 schaltet UND dass
+  F9 wieder frei ist.
+- **`kategorie_logo_auftraege()` deckt alle drei Ansichten ab.**
+  Geprueft ueber das, was die Funktion `thumb_cache_schuetzen()`
+  uebergibt, nicht ueber ihre Rueckgabe - die enthaelt nur, was noch
+  fehlt, und waere nach einem Zeichenversuch leer.
 
 ## test_quelle_png.py
 

@@ -283,11 +283,28 @@ hilfe_texte = " ".join(
     for suffix in (([""] if art == "header" else ["_key", "_desc"]))
     for lang in ("de", "en")
     if (k + suffix) in TRANSLATIONS)
-# F10 ist seit Build 77 ersatzlos entfallen (lief ueber die von MiSTer
+# F10 ist seit Build 77 kein AUSSTIEG mehr (lief ueber die von MiSTer
 # gesperrte evdev-Ebene, und die HID-Pruefung verglich versehentlich
 # F11) - stand aber weiter als Ausstieg in der Hilfe.
+#
+# GEAENDERT (Build 124): "F10" darf in der Hilfe wieder vorkommen - die
+# Taste schaltet jetzt die Ansicht um (im Frontend selbst, wo die
+# evdev-Ebene nicht gesperrt ist). Geprueft wird deshalb genau das,
+# worum es hier ging: dass F10 nicht als AUSSTIEG beschrieben wird.
+_ausstieg_texte = " ".join(
+    TRANSLATIONS[k + suffix][lang]
+    for art, k in schluessel
+    for suffix in (([""] if art == "header" else ["_key", "_desc"]))
+    for lang in ("de", "en")
+    if (k + suffix) in TRANSLATIONS and "playing_exit" in k)
 check("F10 wird nicht mehr als Ausstieg genannt",
-      "F10" not in hilfe_texte)
+      "F10" not in _ausstieg_texte, _ausstieg_texte[:80])
+check("und taucht nur bei der Ansichts-Umschaltung auf",
+      all("ansicht" in k for art, k in schluessel
+          for suffix in ("_key", "_desc")
+          if art == "item" and (k + suffix) in TRANSLATIONS
+          and any("F10" in TRANSLATIONS[k + suffix][l]
+                  for l in ("de", "en"))))
 check("F1 als Ausstieg steht jetzt drin",
       "F1 " in hilfe_texte or "F1(" in hilfe_texte)
 check("die neuen Pad-Kombinationen stehen drin",
