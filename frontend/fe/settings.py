@@ -1144,3 +1144,66 @@ def toggle_curated_only():
             open(CURATED_FLAG, "w").close()
         except OSError:
             pass
+
+
+# NEUES FEATURE (Build 122, Nutzerwunsch nach den Kachel-Entwuerfen:
+# "B und D und das alte als Schalter einbauen" - und auf die Frage, wo
+# der Schalter hingehoert: "besser nur per Schalter unter Anzeige und
+# Sound").
+#
+# Drei Ansichten fuer die Spieleliste:
+#
+#   liste    das, was wir bisher hatten - Textliste links, ein grosses
+#            Cover mit Daten rechts. Bleibt die Vorgabe, und zwar
+#            bewusst: sie ist die einzige, die auch ohne ein einziges
+#            Cover noch etwas anzeigt, und die einzige, in der ein
+#            langer Titel vollstaendig lesbar ist.
+#   raster   Entwurf B - dichtes Kachelraster ohne Beschriftung an der
+#            einzelnen Kachel; der Name des markierten Spiels steht
+#            unten. Zeigt auf HDMI 28 Spiele auf einen Blick.
+#   galerie  Entwurf D - ein grosses Cover links, Spieldaten rechts,
+#            die Nachbarn als Leiste darunter.
+#
+# Eine Datei mit einem Wort, wie bei allen anderen Schaltern hier.
+# Bewusst KEINE Zahl: wer die Datei aufmacht, soll lesen koennen, was
+# drinsteht.
+ANSICHT_FILE = "/media/fat/frontend/ansicht"
+ANSICHTEN = ("liste", "raster", "galerie")
+
+
+def ansicht_lesen():
+    """Die eingestellte Vorgabe-Ansicht der Spieleliste.
+
+    Ein unbekannter oder kaputter Inhalt faellt auf "liste" zurueck -
+    dieselbe Regel wie bei overscan_lesen(): eine von Hand verstellte
+    Datei darf das Frontend nicht in einen Zustand bringen, aus dem man
+    ohne Texteditor nicht mehr herauskommt."""
+    try:
+        wert = open(ANSICHT_FILE).read().strip().lower()
+    except OSError:
+        return "liste"
+    return wert if wert in ANSICHTEN else "liste"
+
+
+def ansicht_schreiben(wert):
+    if wert not in ANSICHTEN:
+        wert = "liste"
+    try:
+        d = os.path.dirname(ANSICHT_FILE)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        with open(ANSICHT_FILE, "w") as f:
+            f.write(wert)
+    except OSError as e:
+        LOG("ansicht_schreiben: %s" % e)
+    return wert
+
+
+def ansicht_weiter():
+    """Eine Ansicht weiterschalten (rundum). Liefert die neue."""
+    jetzt = ansicht_lesen()
+    try:
+        idx = ANSICHTEN.index(jetzt)
+    except ValueError:
+        idx = 0
+    return ansicht_schreiben(ANSICHTEN[(idx + 1) % len(ANSICHTEN)])

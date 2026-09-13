@@ -7,6 +7,72 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Drei Ansichten für die Spieleliste** (Build 122):
+
+Aus den Kachel-Entwürfen ausgewählt: *„B und D und das alte als
+Schalter einbauen"*, und zur Bedienung *„besser nur per Schalter unter
+Anzeige und Sound"*. Genau so ist es geworden.
+
+- **Liste** — was wir bisher hatten, und weiter die Vorgabe. Sie ist
+  die einzige Ansicht, die auch ganz ohne Cover noch etwas anzeigt, und
+  die einzige, in der ein langer Titel vollständig lesbar ist.
+- **Raster** — 28 Cover auf einen Blick (HDMI 7×4, Röhre 5×3), an der
+  einzelnen Kachel steht nichts, der Name des markierten Spiels steht
+  darunter. Gescrollt wird **seitenweise**: ein Raster, das bei jedem
+  Schritt um eine Reihe wandert, lässt das Auge den gerade
+  angeschauten Titel verlieren.
+- **Galerie** — ein großes Cover links, die Spieldaten rechts, die
+  Nachbarn als Leiste darunter.
+
+**Umgeschaltet wird auf zwei Wegen, und die tun absichtlich nicht
+dasselbe.** Der Menüpunkt unter *Anzeige & Sound* setzt die **Vorgabe** —
+sie gilt überall und beim nächsten Start. **F9** (am Pad **Select+Y**)
+schaltet **nur die gerade offene Kategorie** um und speichert nichts.
+Wer im Raster stöbern und bei SNES trotzdem die Liste haben will, kann
+das; wer sich festlegt, tut es im Menü.
+
+**Im Raster bedeuten die Richtungstasten etwas anderes**: hoch/runter
+wechselt die **Reihe**, links/rechts den **Nachbarn**. Eine Seite
+weiterzuspringen, wenn man nach rechts drückt, wäre vor einem Raster
+schlicht falsch — das Auge folgt der Reihe, nicht der Seite. In Liste
+und Galerie bleibt alles wie bisher.
+
+**Eine reine Ordnerauswahl bleibt immer Liste.** Ordner haben praktisch
+nie ein eigenes Cover; ein Raster aus lauter Platzhaltern wäre keine
+Ansicht, sondern ein Fehler.
+
+Unter der Haube waren zwei Dinge wichtiger als das Aussehen:
+
+**Die Kastengröße.** Der Schlüssel des Miniatur-Zwischenspeichers
+enthält sie. Rechnet der Zeichenpfad mit einer anderen Größe als der
+Vorauslader, legt der Vorauslader fleißig Miniaturen an, die nie jemand
+findet — es ruckelt, obwohl „Miniaturen vorbereiten" durchgelaufen ist.
+Genau das ist schon einmal passiert (Build 73). Deshalb hat jede
+Ansicht **eine** Geometriefunktion, die beide Seiten benutzen, und ein
+Test, der genau das nachweist. **„Miniaturen vorbereiten" rechnet
+außerdem für die eingestellte Ansicht gleich mit** — sonst wäre der
+Durchlauf nach einem Wechsel wertlos gewesen.
+
+**Der schnelle Pfad im Raster.** Innerhalb einer Rasterseite werden nur
+**zwei** Kacheln neu gezeichnet, die alte und die neue Markierung; alles
+andere steht schon richtig im Speicher. Ohne das müsste jeder
+Tastendruck 28 Cover neu in den Bildspeicher kopieren. Der
+Pixelvergleich gegen den vollen Neuaufbau hat dabei sofort etwas
+gefunden: auf der Röhre lag der Rahmen der Markierung drei Punkte tief
+**in der Eintragszahl** der Kopfzeile — beim vollen Aufbau blieb sie
+darunter stehen, beim schnellen Pfad wurde sie weggewischt. Zwei
+verschiedene Bilder für denselben Zustand, und beide falsch. Der
+Startpunkt des Rasters wird jetzt abgeleitet statt geraten.
+
+Und: während schnellen Scrollens erscheint **kein** Platzhalter, wenn
+ein Cover nur übersprungen wurde. In einer einzelnen Box war das schon
+störend (Build 89); in einem Raster aus 28 Kacheln wäre es ein Flimmern
+über den halben Bildschirm.
+
+Geprüft in `tools/test_ansichten.py` (8 Prüfblöcke, u. a. der bitgenaue
+Vergleich in beiden Auflösungen); anschauen lässt es sich mit
+`tools/diag_ansichten.py`.
+
 **ROMs in ZIP-Archiven** (Build 121):
 
 Aus dem Vergleich mit Degauss war das der einzige Punkt, bei dem uns

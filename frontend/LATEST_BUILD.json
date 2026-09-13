@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-13-121",
-  "summary": "ROMs in ZIP-Archiven werden jetzt gefunden. Ein Archiv wird wie ein Ordner behandelt - Unterordner im Archiv werden zu Unterordnern, die Spiele starten ganz normal. Entpackt wird dabei nie etwas, gelesen wird nur das Inhaltsverzeichnis. Ein Archiv ohne passende ROMs taucht gar nicht erst auf, ein kaputtes faellt still weg."
+  "build_id": "2026-09-13-122",
+  "summary": "Drei Ansichten fuer die Spieleliste: die bisherige Liste, ein dichtes Kachelraster (28 Cover auf einen Blick) und eine Galerie mit grossem Cover, Spieldaten und einer Leiste der Nachbarn. Die Vorgabe stellt man unter 'Anzeige & Sound' ein, F9 (am Pad Select+Y) schaltet nur die gerade offene Kategorie um. Im Raster wechselt hoch/runter die Reihe und links/rechts den Nachbarn. 'Miniaturen vorbereiten' rechnet fuer die eingestellte Ansicht gleich mit."
 }

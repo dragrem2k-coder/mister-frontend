@@ -61,6 +61,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_cover_original.py \
   && python3 tools/test_artpacks.py \
   && python3 tools/test_zip.py \
+  && python3 tools/test_ansichten.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -105,12 +106,14 @@ python3 tools/regression_test.py \
 | `test_kernel_wechsel.py` | Test (Pass/Fail) | Bildspeicher wird auf beiden MiSTer-Kerneln erkannt - sysfs zuerst, ioctl als Rueckfall |
 | `test_bildrand.py` | Test (Pass/Fail) | Einstellbarer Bildrand: Vorgabe unveraendert, kaputte Datei faellt zurueck, und der Wert kommt wirklich im Layout an |
 | `test_suchtreffer.py` | Test (Pass/Fail) | Positionsanzeige und Trefferwechsel: ASCII-Abkuerzung bewiesen gleichwertig, neuer Sprung trifft dasselbe wie der alte, leichter Pfad bitgleich |
+| `test_ansichten.py` | Test (Pass/Fail) | Die drei Ansichten der Spieleliste: Kastengroesse stimmt mit dem Vorauslader ueberein, schneller Rasterpfad bitgenau, leichte Listenpfade halten sich raus |
 | `test_zip.py` | Test (Pass/Fail) | ROMs in ZIP-Archiven: Archiv wird zum Ordner, Pfad laeuft durch das Archiv, nichts wird entpackt, kaputtes Archiv faellt still weg |
 | `test_artpacks.py` | Test (Pass/Fail) | Artwork aus Artpacks in allen ueblichen Ablageformen, Arcade beim Vorbereiten, Groesse des Bild-Zwischenspeichers |
 | `test_cover_original.py` | Test (Pass/Fail) | Download legt PNG/JPG im Original ab und das Frontend findet sie; Tauschschalter laesst Enter in Ruhe; USB-Wartezeit |
 | `test_verkleinern.py` | Test (Pass/Fail) | Der umgebaute Verkleinerer liefert bitgenau dasselbe Bild wie vorher, und ist im HDMI-Fall doppelt so schnell |
 | `test_namensabgleich.py` | Test (Pass/Fail) | Cover trotz anderer ROM-Schreibweise (GoodTools gegen No-Intro), und das Nachzieh-Netz fuer spaet anlaufende Laufwerke |
 | `test_bildlib.py` | Test (Pass/Fail) | libpng/TurboJPEG ueber ctypes: bitgleich zum Python-Dekoder, Rueckfall ohne Bibliothek, fremde docs-Quelle nur als Luecken-Fueller |
+| `diag_ansichten.py` | Diagnose (immer Rueckgabewert 0) | Die drei Ansichten in beiden Aufloesungen als PNG - mit dem eingebauten Zeichenweg |
 | `diag_kaltes_cover.py` | Diagnose (immer Rueckgabewert 0) | Woraus ein kaltes Cover besteht: lesen, dekodieren, verkleinern - laeuft auch auf dem MiSTer |
 | `diag_vorauslader.py` | Diagnose (immer Rueckgabewert 0) | Was der Vorauslader dem Zeichnen wegnimmt - Thread gegen Prozess |
 | `diag_zeilen_spuren.py` | Diagnose (immer Rueckgabewert 0) | Was das gezielte Freiraeumen bringt - ganze Spalte gegen Spuren |
@@ -1159,6 +1162,56 @@ Nebenbei erklaert das auch, warum Neo-Geo-Romsets nicht ploetzlich
 auseinanderfallen: dort zaehlt nur `.neo` als ROM-Endung, die Teile im
 Romset-Archiv passen auf keine davon, und das Archiv bleibt damit
 genau das, was es war.
+
+## test_ansichten.py
+
+Die drei Ansichten der Spieleliste (Build 122): Liste, Raster (Entwurf
+B), Galerie (Entwurf D).
+
+Bei einer neuen Ansicht ist das Aussehen nicht das, was schiefgeht -
+das sieht man ja. Geprueft werden die drei Dinge, die man NICHT sieht:
+
+**Die Kastengroesse.** Der Schluessel des Miniatur-Zwischenspeichers
+enthaelt sie (`_thumb_cache_key()` in `fe/art.py`). Fragt der
+Zeichenpfad ein Cover in einer anderen Groesse an, als der Vorauslader
+vorberechnet, legt der Vorauslader fleissig Miniaturen an, die nie
+jemand findet - und es ruckelt, obwohl "Miniaturen vorbereiten"
+durchgelaufen ist. Genau das ist bei der Listenansicht schon einmal
+passiert (Build 73). Test 2 zeichnet deshalb mit einem Aufzeichner vor
+`ART.get_scaled()` und vergleicht die tatsaechlich angefragten Masse
+mit dem, was `cover_pfad_und_kasten()` dem Vorauslader nennt.
+
+**Der schnelle Pfad im Raster.** Innerhalb einer Rasterseite werden nur
+ZWEI Kacheln neu gezeichnet - die alte und die neue Markierung. Test 3
+vergleicht das Ergebnis bitgenau mit einem vollen Neuaufbau, vorwaerts
+und rueckwaerts. Dieser Test hat sofort etwas gefunden: auf CRT lag der
+3-Punkte-Ueberstand des Markierungsrahmens MITTEN in der Eintragszahl
+der Kopfzeile - beim vollen Aufbau blieb sie darunter stehen, beim
+schnellen Pfad radierte das Freiraeumen sie weg. 165 Bildpunkte,
+zwei verschiedene Bilder fuer denselben Zustand, und beide falsch.
+(Dritter Fall derselben Sorte im Projekt - siehe Build 80.)
+
+**Die leichten Pfade der Liste muessen sich raushalten.** Sie kennen
+nur Zeilen; griffen sie im Raster, wuerden sie mitten ins Bild
+zeichnen. Test 4 prueft, dass `_draw_navigate_items()` und die
+Laufschrift dort ablehnen - und dass sie in der Liste weiterhin
+greifen. Der zweite Teil ist der wichtigere: ein Test, der nur
+"lehnt ab" prueft, waere auch dann gruen, wenn der leichte Pfad
+ueberall kaputt waere.
+
+Dazu die Bedienung: eine reine Ordnerauswahl faellt immer auf die Liste
+zurueck (ein Raster aus lauter Platzhaltern waere keine Ansicht),
+hoch/runter springt im Raster eine REIHE und links/rechts nur einen
+Nachbarn, und die Taste merkt sich die Ansicht je Kategorie, waehrend
+der Menuepunkt die Vorgabe wegschreibt.
+
+## diag_ansichten.py
+
+DIAGNOSE, kein Pass/Fail-Test. Zeichnet die drei Ansichten in beiden
+Aufloesungen als PNG - mit dem EINGEBAUTEN Weg, nicht nachgebaut wie
+seinerzeit `entwurf_kacheln.py`. Fuer die Frage "sieht das auf der
+Roehre noch nach etwas aus?", die sich nicht messen, sondern nur
+anschauen laesst.
 
 ## diag_kaltes_cover.py
 

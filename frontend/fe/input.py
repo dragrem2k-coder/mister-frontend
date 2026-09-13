@@ -156,7 +156,11 @@ KEYMAP = {
     # fe/hidraw.py), und der HID-Weg prueft seit jeher versehentlich
     # 0x44 - das ist F11, nicht F10. Die Aufgabe uebernimmt jetzt F1
     # (sofort, ueber die HID-Ebene); im Frontend selbst bleibt Esc.
-    KEY_F12: "osd", KEY_F9: None, KEY_F11: "random",
+    # NEU (Build 122): F9 schaltet die Ansicht der Spieleliste live um
+    # (Liste -> Raster -> Galerie). F9 war die letzte noch freie
+    # Funktionstaste und stand hier ausdruecklich als "None" - also als
+    # reservierter Platz, nicht als Versehen.
+    KEY_F12: "osd", KEY_F9: "ansicht", KEY_F11: "random",
     KEY_F8: "favorite", BTN_TL2: "favorite", BTN_TR2: "favorite",
     AXIS_L2: "favorite", AXIS_R2: "favorite",
     KEY_F7: "completed",
@@ -452,6 +456,12 @@ SELECT_COMBOS = {
     # Richtung, nur weiter; das muss man sich nicht getrennt merken.
     "left": "list_start",       # Select + L  -> an den Anfang
     "right": "list_end",        # Select + R  -> ans Ende
+    # Build 122: Select + Y schaltet die Ansicht der Spieleliste um.
+    # Y ALLEIN ist der naechste Musiktitel - das ist der Grund, warum
+    # der Schluessel hier "music_next" heisst und nicht "y": diese
+    # Tabelle ist nach der GRUNDAKTION der Taste geschluesselt, nicht
+    # nach ihrer Beschriftung.
+    "music_next": "ansicht",    # Select + Y  -> Ansicht wechseln
 }
 # Select ALLEIN soll weiterhin wie Zurueck wirken (und den bestehenden
 # Dreifach-Select-Kurzbefehl fuers Beenden ausloesen). Damit sich beides

@@ -279,6 +279,13 @@ TRANSLATIONS = {
                                  "de": "Durchgespielt-Status umschalten"},
     "help_list_favorite_key": {"en": "F8 / L2 or R2", "de": "F8 / L2 oder R2"},
     "help_list_favorite_desc": {"en": "Toggle favorite", "de": "Favorit umschalten"},
+    # NEU (Build 122): die Ansichts-Umschaltung gehoert genau hierhin -
+    # "In der Spieleliste" ist die einzige Stelle, an der sie wirkt.
+    "help_list_ansicht_key": {"en": "F9 / Select+Y (pad)",
+                              "de": "F9 / Select+Y (Pad)"},
+    "help_list_ansicht_desc": {
+        "en": "Switch view: list, grid, gallery",
+        "de": "Ansicht wechseln: Liste, Raster, Galerie"},
     "help_list_random_key": {"en": "F11 (keyboard only)",
                              "de": "F11 (nur Tastatur)"},
     "help_list_random_desc": {"en": "Start a random game across all systems",
@@ -688,6 +695,22 @@ TRANSLATIONS = {
               "from /media/fat/docs, if installed)",
         "de": "Fremdes Artwork/Daten: AUS -> einschalten (Cover und Spieledaten "
               "aus /media/fat/docs, falls vorhanden)"},
+    # NEU (Build 122): Ansicht der Spieleliste. Der Menuepunkt zeigt,
+    # was gerade eingestellt ist, und schaltet eine Stufe weiter - genau
+    # wie der Bildrand darueber. Die Taste steht mit im Text, sonst
+    # findet sie niemand.
+    "sys_ansicht": {
+        "en": "View: %s -> next (F9, or Select+Y on the pad, switches "
+              "live)",
+        "de": "Ansicht: %s -> weiter (F9, am Pad Select+Y, schaltet "
+              "sofort um)"},
+    "ansicht_umgeschaltet": {"en": "View: %s", "de": "Ansicht: %s"},
+    "ansicht_nur_spieleliste": {
+        "en": "The view switch only applies to the game list",
+        "de": "Die Ansicht lässt sich nur in der Spieleliste wechseln"},
+    "ansicht_liste":   {"en": "list",    "de": "Liste"},
+    "ansicht_raster":  {"en": "grid",    "de": "Raster"},
+    "ansicht_galerie": {"en": "gallery", "de": "Galerie"},
     "sys_fast_scroll_on": {"en": "Fast scroll: ON -> turn off (may cause brief tearing while scrolling)",
                            "de": "Schnelles Scrollen: AN -> ausschalten (kann beim Scrollen kurz Bildrisse verursachen)"},
     "sys_fast_scroll_off": {"en": "Fast scroll: OFF -> turn on (trades a small tearing risk for less scroll delay)",

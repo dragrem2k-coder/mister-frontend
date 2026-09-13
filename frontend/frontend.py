@@ -228,6 +228,7 @@ from fe.settings import (
     toggle_screen_mirror, toggle_stream_overlay,
     fast_scroll_enabled, toggle_fast_scroll,
     overscan_lesen, overscan_weiter,
+    ANSICHTEN, ansicht_lesen, ansicht_schreiben,
     fremdquellen_enabled, toggle_fremdquellen,
     FAST_SCROLL_WINDOW, pulse_effect_enabled, toggle_pulse_effect,
     CRT_CONFIRM_TIMEOUT, crt_pending_confirm, mark_crt_pending_confirm,
@@ -2693,6 +2694,214 @@ class Frontend:
                 "y0": y0, "visible": visible,
                 "art_w": art_w, "list_right": list_right}
 
+    # ------------------------------------------------------------------
+    # Ansichten der Spieleliste (Build 122)
+    #
+    # Drei Ansichten, eine Taste, ein Menuepunkt - siehe ANSICHTEN in
+    # fe/settings.py fuer die Beschreibung der drei und die Begruendung,
+    # warum "liste" die Vorgabe bleibt.
+    #
+    # ZWEI STELLEN, an denen sich eine Ansicht auswirkt, und beide
+    # muessen zusammenpassen:
+    #
+    #   1. der Zeichenpfad, der die Cover in einer bestimmten
+    #      Kastengroesse anfragt, und
+    #   2. der Vorauslader, der genau diese Kastengroesse VORHER
+    #      ausrechnen koennen muss.
+    #
+    # Genau daran ist frueher schon einmal etwas auseinandergelaufen
+    # (siehe cover_box_size()): der Vorauslader legte Miniaturen unter
+    # einer Groesse ab, die der Zeichenpfad nie abfragte - unsichtbar,
+    # und es ruckelte trotz vollstaendig "vorbereiteter" Cover. Deshalb
+    # gibt es fuer jede Ansicht GENAU EINE Geometriefunktion
+    # (raster_geometrie() / galerie_geometrie()), und beide Seiten rufen
+    # sie auf.
+    # ------------------------------------------------------------------
+    def _ansicht_schluessel(self):
+        """Unter welchem Namen wird die Ansicht gemerkt.
+
+        Die KATEGORIE, nicht der Ordnerpfad: wer sich fuer SNES das
+        Raster wuenscht, will es auch in einem Unterordner davon - und
+        wer beim naechsten System wieder die Liste will, bekommt sie."""
+        try:
+            return self.cats[self.cat_i][0]
+        except (IndexError, AttributeError, TypeError):
+            return ""
+
+    def aktuelle_ansicht(self, has_art=None):
+        """Welche Ansicht gilt hier und jetzt.
+
+        Zwei Faelle geben IMMER "liste" zurueck, unabhaengig von der
+        Einstellung:
+
+        - die Hauptseite (Seite 0) - dort gibt es keine Cover-Liste,
+          nur Kategorien;
+        - eine Liste ohne Boxart-Spalte (reine Ordnerauswahl, Scripts,
+          Systemmenue - siehe hat_artspalte()). Ein Kachelraster aus
+          lauter Platzhaltern waere keine Ansicht, sondern ein Fehler.
+        """
+        if getattr(self, "page", 0) != 1:
+            return "liste"
+        if has_art is None:
+            items = self._display_items()
+            _n, _r, syskey = self.cats[self.cat_i]
+            has_art = self.hat_artspalte(items, syskey)
+        if not has_art:
+            return "liste"
+        gemerkt = getattr(self, "_ansicht_je_kat", None)
+        if gemerkt is None:
+            gemerkt = self._ansicht_je_kat = {}
+        return gemerkt.get(self._ansicht_schluessel(), ansicht_lesen())
+
+    def ansicht_setzen(self, wert, merken=False):
+        """Ansicht fuer die aktuelle Kategorie setzen. merken=True
+        schreibt sie zusaetzlich als neue Vorgabe fuer alle anderen -
+        das macht der Menuepunkt, die Taste nicht."""
+        if wert not in ANSICHTEN:
+            wert = "liste"
+        if getattr(self, "_ansicht_je_kat", None) is None:
+            self._ansicht_je_kat = {}
+        self._ansicht_je_kat[self._ansicht_schluessel()] = wert
+        if merken:
+            ansicht_schreiben(wert)
+            # Die Vorgabe gilt ab jetzt ueberall - die bisher einzeln
+            # gemerkten Ausnahmen waeren sonst stille Widersprueche zu
+            # dem, was im Menue steht.
+            self._ansicht_je_kat = {}
+        # Jeder schnelle Zeichenpfad rechnet mit dem BISHERIGEN Bild im
+        # Puffer. Nach einem Ansichtswechsel stimmt davon nichts mehr.
+        self._pgi_fast_key = None
+        self._raster_fast_key = None
+        self._force_full_redraw = True
+        self.fb.mark_full_redraw()
+        return wert
+
+    def ansicht_umschalten(self):
+        """Eine Ansicht weiter (Liste -> Raster -> Galerie -> Liste).
+        Liefert die neue Ansicht, oder None, wenn hier gar nichts
+        umzuschalten ist."""
+        if getattr(self, "page", 0) != 1:
+            return None
+        items = self._display_items()
+        _n, _r, syskey = self.cats[self.cat_i]
+        if not self.hat_artspalte(items, syskey):
+            return None
+        jetzt = self.aktuelle_ansicht(True)
+        idx = ANSICHTEN.index(jetzt) if jetzt in ANSICHTEN else 0
+        return self.ansicht_setzen(ANSICHTEN[(idx + 1) % len(ANSICHTEN)])
+
+    # Spalten und Zeilen des Rasters. Bewusst feste Zahlen je
+    # Aufloesungsklasse und nicht aus der Breite gerechnet: genau diese
+    # beiden Raster hat der Nutzer in den Entwuerfen gesehen und
+    # ausgewaehlt ("B"), und eine gerechnete Spaltenzahl waere bei
+    # 640x480 oder 720p unversehens eine dritte, nie angeschaute
+    # Variante. Auf CRT ist weniger mehr: bei 320x240 ist eine Kachel
+    # ohnehin nur noch gut 50 Punkte breit.
+    RASTER_HDMI = (7, 4)
+    RASTER_CRT = (5, 3)
+
+    def raster_geometrie(self, L):
+        """Alles, was fuer das Kachelraster gebraucht wird - EINE
+        Rechnung, benutzt vom Zeichenpfad UND vom Vorauslader.
+
+        Rueckgabe: dict mit Spalten/Zeilen, Kachelmassen, Cover-Kasten
+        und dem oberen linken Eckpunkt des Rasters."""
+        fb = self.fb
+        s, ox = L["s"], L["ox"]
+        spalten, zeilen = (self.RASTER_CRT if fb.height < KOMPAKT_H
+                           else self.RASTER_HDMI)
+        # BUGFIX, gefunden durch den Pixelvergleich in
+        # tools/test_ansichten.py (165 abweichende Punkte auf CRT, in
+        # drei Zeilen direkt ueber dem Raster):
+        #
+        # Der Rahmen um die markierte Kachel ragt 3*s nach OBEN ueber
+        # die Kachel hinaus. Mit einem nur knapp unter der Kopfzeile
+        # gewaehlten Startpunkt lag dieser Ueberstand auf CRT MITTEN IN
+        # der Eintragszahl - beim vollen Aufbau blieb sie darunter
+        # stehen, beim schnellen Pfad radierte das Freiraeumen sie weg.
+        # Zwei verschiedene Bilder fuer denselben Zustand, und beide
+        # falsch.
+        #
+        # Deshalb jetzt nicht geraten, sondern abgeleitet: list_y ist
+        # genau die Hoehe, ab der die Liste zeichnet - also die Stelle,
+        # die nachweislich frei ist. Der Ueberstand kommt oben drauf.
+        # Dritter Fall derselben Sorte im Projekt (siehe Build 80).
+        oben = L["list_y"] + 3 * s
+        # Unten bleibt eine Zeile fuer den Namen des markierten Spiels
+        # frei. DAS ist der Preis der Ansicht B: an der einzelnen Kachel
+        # steht nichts, also muss der Name irgendwo anders stehen - und
+        # eine einzige Zeile fuer den EINEN Titel, der gerade zaehlt,
+        # ist lesbarer als 28 abgehackte Kachelbeschriftungen.
+        name_h = 11 * s
+        unten = L["footer_y"] - 4 * s - name_h
+        breite = fb.width - 2 * ox
+        hoehe = unten - oben
+        abstand = 6 * s
+        platz_b = (breite - (spalten - 1) * abstand) // spalten
+        platz_h = (hoehe - (zeilen - 1) * abstand) // zeilen
+        # Cover sind hochkant (ungefaehr 3:4). Die Kachel bekommt GENAU
+        # die Cover-Groesse - nicht den ganzen rechnerischen Platz.
+        #
+        # Sonst passiert genau das, was der erste Durchlauf gezeigt hat:
+        # auf HDMI begrenzt die HOEHE (4 Reihen), die Breite haette
+        # Platz fuer 220 Punkte, das Cover ist aber nur 137 breit - und
+        # zwischen den Kacheln stehen 83 Punkte Nichts. Das Raster sah
+        # dadurch luftig statt dicht aus, also genau nicht das, wofuer
+        # es da ist. Jetzt ist die Kachel so breit wie ihr Cover, und
+        # der uebrig bleibende Rand wird gleichmaessig auf beide Seiten
+        # verteilt.
+        cov_h = max(1, platz_h)
+        cov_b = max(1, cov_h * 3 // 4)
+        if cov_b > platz_b:
+            cov_b = max(1, platz_b)
+            cov_h = max(1, cov_b * 4 // 3)
+        gesamt_b = spalten * cov_b + (spalten - 1) * abstand
+        raster_ox = ox + max(0, (breite - gesamt_b) // 2)
+        return {"spalten": spalten, "zeilen": zeilen, "oben": oben,
+                "unten": unten, "abstand": abstand, "kachel_b": cov_b,
+                "kachel_h": cov_h, "cov_b": cov_b,
+                "cov_h": cov_h, "name_y": unten + 3 * s,
+                "ox": raster_ox, "rand_ox": ox, "s": s}
+
+    def galerie_geometrie(self, L):
+        """Dasselbe fuer die Galerie: grosses Cover links, Daten rechts,
+        die Nachbarn als Leiste darunter."""
+        fb = self.fb
+        s, ox = L["s"], L["ox"]
+        # BUGFIX aus dem ersten Probebild: die Karte um das grosse Cover
+        # ragt um ART_CARD_PAD*s nach OBEN ueber - mit demselben
+        # Startwert wie das Raster schob sie sich dadurch ueber die
+        # Eintragszahl in der Kopfzeile. list_y ist genau die Hoehe, ab
+        # der die Liste zeichnet, also die Stelle, die nachweislich frei
+        # ist; das Kartenpolster kommt noch dazu.
+        oben = L["list_y"] + ART_CARD_PAD * s
+        unten = L["footer_y"] - 6 * s
+        platz = unten - oben
+        # Wie hoch die Nachbarleiste sein darf, ist ein Abwaegen und
+        # faellt auf CRT anders aus als auf HDMI:
+        #
+        #   HDMI  28 % ergaeben eine Leiste von 216 Punkten neben einem
+        #         "grossen" Cover von 550 - die Nachbarn waeren fast so
+        #         gross wie das Hauptbild, und der Unterschied, von dem
+        #         die Ansicht lebt, waere weg. 22 % stellen ihn wieder
+        #         her.
+        #   CRT   dort sind 28 % gerade einmal 43 Punkte. Weniger waere
+        #         nicht dezenter, sondern unlesbar - auf einem 320er
+        #         Bild ist eine 23 Punkte breite Miniatur ein Fleck.
+        leiste_h = max(8 * s, platz * (28 if fb.height < KOMPAKT_H
+                                       else 22) // 100)
+        gross_h = max(1, platz - leiste_h - 8 * s)
+        gross_b = max(1, gross_h * 3 // 4)
+        # Die Leiste darf das grosse Cover nicht ueberragen - sonst
+        # kippt das Bild optisch nach unten.
+        klein_h = max(1, leiste_h)
+        klein_b = max(1, klein_h * 3 // 4)
+        return {"oben": oben, "unten": unten, "gross_b": gross_b,
+                "gross_h": gross_h, "leiste_y": unten - leiste_h,
+                "klein_b": klein_b, "klein_h": klein_h,
+                "abstand": 6 * s, "ox": ox, "s": s,
+                "text_x": ox + gross_b + 14 * s}
+
     def layout_items(self, has_art):
         """Layout fuer Seite 1. Bei Systemen mit Boxart teilt sich der
         Platz in eine Listenspalte links und eine Boxart-Spalte rechts;
@@ -4256,6 +4465,11 @@ class Frontend:
         v = getattr(self, "view", None)
         if not v or not v["items"] or self.page != 1:
             return False
+        # Build 122: die leichten Pfade kennen nur Zeilen. In Raster
+        # und Galerie gibt es keine - dort baut die jeweilige Ansicht
+        # ihren eigenen schnellen Weg (siehe _draw_items_raster()).
+        if v.get("ansicht", "liste") != "liste":
+            return False
         # Siehe _overlay_active(): liegt eine Hinweisbox ueber der Seite
         # (oder ist gerade eine verschwunden), kann ein Teil-Redraw das
         # Bild nicht korrekt herstellen - dann der volle, sichere Aufbau.
@@ -4625,6 +4839,8 @@ class Frontend:
         v = getattr(self, "view", None)
         if not v or not v["items"]:
             return None, None
+        if v.get("ansicht", "liste") != "liste":
+            return None, None
         s, rowh = v["s"], v["rowh"]
         row = self.item_i - self.scroll
         if not (0 <= row < self.items_visible):
@@ -4890,6 +5106,26 @@ class Frontend:
         footer_y, visible = L["footer_y"], L["visible"]
         self.items_visible = visible
 
+        # NEU (Build 122): Raster- und Galerieansicht. Der Einsprung
+        # steht ABSICHTLICH hier und nicht weiter oben - erst ab dieser
+        # Zeile stehen items, syskey, has_art und das Layout fest, und
+        # genau die brauchen beide Ansichten auch. Alles darueber
+        # (Cover-Schutz, Layout) gilt fuer alle drei gleichermassen.
+        #
+        # self.view wird trotzdem gesetzt: die Positionsanzeige in der
+        # Fusszeile, die Laufschrift und der leichte Navigationspfad
+        # fragen sie ab. Der Eintrag "ansicht" ist deren Schalter - wer
+        # ihn nicht auf "liste" vorfindet, haelt sich raus (siehe
+        # _draw_navigate_items_impl() und marquee_needed()).
+        _ansicht = self.aktuelle_ansicht(has_art)
+        self.view = {"list_x": list_x, "list_y": list_y,
+                     "list_right": list_right, "rowh": rowh, "s": s,
+                     "items": items, "syskey": syskey,
+                     "ansicht": _ansicht}
+        if _ansicht != "liste" and self._draw_items_kacheln(
+                _ansicht, items, name, syskey, L, message, flip):
+            return
+
         # ENTFERNT (Build 87, Nutzerentscheidung: "grossen
         # Systembildhintergrund komplett rausnehmen, war eh bloede").
         # Hier wurde bisher ueber BG.get() das bildschirmfuellende
@@ -4975,9 +5211,8 @@ class Frontend:
         fb.text(ox, oy, header, header_scale, C_TITLE)
         fb.text(ox, oy + 22 * s, t("entries", total), s, C_DIM)
 
-        self.view = {"list_x": list_x, "list_y": list_y,
-                    "list_right": list_right, "rowh": rowh, "s": s,
-                    "items": items, "syskey": syskey}
+        # (self.view steht bereits weiter oben - siehe dort; hier wuerde
+        # es nur ein zweites Mal dasselbe eintragen.)
 
         if self.item_i < self.scroll:
             self.scroll = self.item_i
@@ -5311,6 +5546,306 @@ class Frontend:
         self._perf_art = 0
         self._perf_restore = 0.0
 
+    # ------------------------------------------------------------------
+    # Raster- und Galerieansicht (Build 122)
+    # ------------------------------------------------------------------
+    def _ansicht_cover(self, item, cat_syskey, bw, bh):
+        """(Cover, nur_verzoegert) - das fertig verkleinerte Cover eines
+        Eintrags, oder (None, ...) wenn es keines gibt.
+
+        Dieselbe Regel wie in draw_art_panel(): im HD-Modus KEIN
+        Rueckfall auf das SD-Bild. Ein auf 1080p hochgezogenes
+        320er-Cover ist sichtbar matschig, und in einem Raster aus 28
+        Kacheln faellt das noch staerker auf als in einer einzelnen
+        grossen Box.
+
+        DAS ZWEITE RUECKGABESTUECK ist nicht Beiwerk, sondern der Grund,
+        warum diese Funktion ueberhaupt existiert. Der Bild-Cache
+        UEBERSPRINGT waehrend schnellen Scrollens (siehe _defer_count in
+        fe/art.py) - er liefert dann genauso None wie bei einem Spiel
+        ganz ohne Cover. Wer das verwechselt, malt einen Platzhalter
+        hin, der 150 Millisekunden spaeter wieder verschwindet. In einer
+        einzelnen Box war das schon stoerend genug (Build 89: "es ploppt
+        immer erst 'kein Artwork' auf"); in einem Raster aus 28 Kacheln
+        waere es ein Flimmern ueber den halben Bildschirm."""
+        syskey = self._item_syskey(item, cat_syskey)
+        lookup = item[2] if item[1] == "folder" else item[0]
+        if self.fb.height >= 720:
+            pfad = _art_path_in(ART_HD, syskey, lookup)
+        else:
+            pfad = art_path(syskey, lookup)
+        if not pfad:
+            return None, False
+        vorher = getattr(ART, "_defer_count", 0)
+        art = ART.get_scaled(pfad, bw, bh, auslagern_ok=True)
+        return art, (art is None
+                     and getattr(ART, "_defer_count", 0) != vorher)
+
+    def _kachel_platzhalter(self, x, y, w, h, label, s, markiert):
+        """Was auf einer Kachel steht, solange es kein Cover gibt.
+
+        WICHTIG fuer die Bedienbarkeit: im Raster steht an der Kachel
+        sonst nichts. Ein leeres Rechteck waere nicht nur haesslich,
+        sondern schlicht nicht navigierbar - deshalb die ersten Zeichen
+        des Namens statt einer leeren Flaeche."""
+        fb = self.fb
+        grund = fb._darken(C_PANEL, 0.85 if not markiert else 1.0)
+        fb.rect_rounded(x, y, w, h, grund, 2 * s)
+        maxc = max(1, (w - 4 * s) // (8 * s))
+        text = (label or "?").strip()[:maxc]
+        tw = len(text) * 8 * s
+        fb.text(x + max(0, (w - tw) // 2), y + max(0, (h - 8 * s) // 2),
+                text, s, C_DIM, grund)
+
+    def _kachel_feld(self, geo, platz):
+        """Der Bildschirmbereich EINER Kachel (Position im Raster, 0 ==
+        oben links) inklusive des Randes, den die Markierung braucht.
+        Rueckgabe (x, y, breite, hoehe) - der Bereich, den ein
+        Neuzeichnen dieser Kachel anfasst."""
+        sp = platz % geo["spalten"]
+        ze = platz // geo["spalten"]
+        kx = geo["ox"] + sp * (geo["kachel_b"] + geo["abstand"])
+        ky = geo["oben"] + ze * (geo["kachel_h"] + geo["abstand"])
+        rand = 3 * geo["s"]
+        return (kx - rand, ky - rand,
+                geo["kachel_b"] + 2 * rand, geo["kachel_h"] + 2 * rand)
+
+    def _kachel_zeichnen(self, geo, platz, idx, items, cat_syskey,
+                         markiert, freiraeumen):
+        """Eine Kachel. freiraeumen=True stellt vorher den Hintergrund
+        wieder her - das braucht nur der schnelle Pfad, nach einem
+        vollen Aufbau ist die Flaeche ohnehin frisch."""
+        fb = self.fb
+        s = geo["s"]
+        fx, fy, fw, fh = self._kachel_feld(geo, platz)
+        if freiraeumen:
+            self._restore_row_bg(fx, fy, fw, fh)
+        # Die Kachel liegt genau um den Markierungsrand eingerueckt im
+        # Feld - EINE Positionsrechnung (in _kachel_feld()), nicht zwei.
+        # Zwei waeren zwei Gelegenheiten, um einen Bildpunkt
+        # auseinanderzulaufen, und genau den sieht man dann als
+        # stehengebliebenen Strich.
+        kx, ky = fx + 3 * s, fy + 3 * s
+        cov_b, cov_h = geo["cov_b"], geo["cov_h"]
+        cx = kx + (geo["kachel_b"] - cov_b) // 2
+        item = items[idx]
+        if markiert:
+            fb.rect_rounded(cx - 3 * s, ky - 3 * s, cov_b + 6 * s,
+                            cov_h + 6 * s, accent_for(
+                                self._item_syskey(item, cat_syskey)), 3 * s)
+        art, verzoegert = self._ansicht_cover(item, cat_syskey, cov_b,
+                                              cov_h)
+        if art:
+            aw, ah, pix = art
+            ax = cx + max(0, (cov_b - aw) // 2)
+            ay = ky + max(0, (cov_h - ah) // 2)
+            self.blit(ax, ay, aw, ah, pix)
+        elif not verzoegert:
+            self._kachel_platzhalter(cx, ky, cov_b, cov_h, item[0], s,
+                                     markiert)
+
+    def _kachel_name_zeichnen(self, geo, L, items, message=None):
+        """Der Name des markierten Spiels unter dem Raster. Das ist die
+        einzige Beschriftung der ganzen Ansicht - sie bekommt deshalb
+        die volle Breite und wird nicht abgekuerzt, solange sie passt."""
+        fb = self.fb
+        # Der Name steht ueber die VOLLE Breite, nicht nur ueber dem
+        # (mittig gestellten) Rasterblock - er ist die einzige
+        # Beschriftung und soll so viel Platz bekommen wie moeglich.
+        s, ox = geo["s"], geo.get("rand_ox", geo["ox"])
+        y = geo["name_y"]
+        breite = fb.width - 2 * ox
+        self._restore_row_bg(ox, y - s, breite, 11 * s)
+        if not items:
+            return
+        label = items[self.item_i][0]
+        maxc = max(4, breite // (8 * s))
+        if len(label) > maxc:
+            label = label[:max(1, maxc - 1)] + "~"
+        fb.text(ox, y, label, s, C_TITLE)
+
+    def _draw_items_raster(self, items, syskey, L, message, flip):
+        """Ansicht B: dichtes Kachelraster, Name des markierten Spiels
+        darunter.
+
+        Der schnelle Pfad ist hier genauso wichtig wie bei der Liste,
+        nur an einer anderen Stelle: solange sich der AUSSCHNITT nicht
+        verschiebt (also innerhalb einer Rasterseite bewegt), aendern
+        sich genau ZWEI Kacheln - die alte und die neue Markierung.
+        Alles andere steht schon richtig im Puffer. Ohne das muesste
+        jeder Tastendruck 28 Cover neu in den Bildspeicher kopieren."""
+        fb = self.fb
+        geo = self.raster_geometrie(L)
+        proseite = max(1, geo["spalten"] * geo["zeilen"])
+        self.items_visible = proseite
+        self._raster_spalten = geo["spalten"]
+        total = len(items)
+
+        # Seitenweise blaettern statt zeilenweise scrollen: ein Raster,
+        # das bei jedem Schritt um eine Reihe wandert, laesst das Auge
+        # den gerade angeschauten Titel verlieren. Seitenweise bleibt
+        # das Bild stehen, bis man es wirklich verlaesst.
+        seite = self.item_i // proseite
+        self.scroll = seite * proseite
+        ende = min(self.scroll + proseite, total)
+        platz_neu = self.item_i - self.scroll
+
+        fast_key = (self.cat_i, tuple(self.nav_path), total, fb.width,
+                    fb.height, self.scroll, geo["spalten"], geo["zeilen"])
+        schnell = (getattr(self, "_raster_fast_key", None) == fast_key
+                   and getattr(self, "_raster_fast_gen", -1)
+                   == fb.full_redraw_gen
+                   and not self._force_full_redraw
+                   and not self._overlay_active())
+        alt = getattr(self, "_raster_markiert", None)
+
+        if schnell and alt is not None and 0 <= alt < proseite:
+            # Nur die beiden betroffenen Kacheln.
+            if alt != platz_neu:
+                self._kachel_zeichnen(geo, alt, self.scroll + alt, items,
+                                      syskey, False, True)
+            self._kachel_zeichnen(geo, platz_neu, self.item_i, items,
+                                  syskey, True, True)
+        else:
+            fb.clear(C_BG)
+            self._raster_kopf(L, items, total)
+            for platz in range(ende - self.scroll):
+                self._kachel_zeichnen(geo, platz, self.scroll + platz, items,
+                                      syskey, platz == platz_neu, False)
+            self._raster_fast_key = fast_key
+        self._raster_fast_gen = fb.full_redraw_gen
+        self._raster_markiert = platz_neu
+        self._force_full_redraw = False
+
+        self._kachel_name_zeichnen(geo, L, items, message)
+        self._fusszeile_zeichnen(L["ox"], L["footer_y"], L["s"], message)
+        self._draw_search_overlay()
+        if flip:
+            fb.flip(skip_vsync=self._vsync_ueberspringen(None))
+
+    def _raster_kopf(self, L, items, total):
+        """Kopfzeile fuer die Kachelansichten - derselbe Text wie bei
+        der Liste, nur ueber die volle Breite (es gibt hier keine
+        Listenspalte, die ihn begrenzen wuerde)."""
+        fb = self.fb
+        s, ox, oy = L["s"], L["ox"], L["oy"]
+        name = self.cats[self.cat_i][0]
+        voll = (name if not self.nav_path
+                else name + " / " + " / ".join(self.nav_path)).upper()
+        maxc = max(4, (fb.width - 2 * ox) // (16 * s))
+        scale = 2 * s
+        if len(voll) > maxc:
+            blatt = (self.nav_path[-1] if self.nav_path else name).upper()
+            voll = blatt
+            scale = self._fit_scale(blatt, fb.width - 2 * ox, 2 * s)
+        fb.text(ox, oy, voll, scale, C_TITLE)
+        fb.text(ox, oy + 22 * s, t("entries", total), s, C_DIM)
+
+    def _draw_items_galerie(self, items, syskey, L, message, flip):
+        """Ansicht D: ein grosses Cover links, die Spieldaten rechts,
+        die Nachbarn als Leiste darunter.
+
+        Hier gibt es keinen schnellen Pfad, und das ist kein Versaeumnis:
+        bei JEDEM Schritt wechselt das grosse Cover UND die Leiste
+        verschiebt sich. Es bleibt schlicht nichts stehen, das man
+        wiederverwenden koennte."""
+        fb = self.fb
+        geo = self.galerie_geometrie(L)
+        s, ox = geo["s"], geo["ox"]
+        total = len(items)
+        # Fuer den Seitensprung links/rechts: so viele, wie in der
+        # Leiste stehen - das ist der Ausschnitt, den man ueberblickt.
+        proleiste = max(1, (fb.width - 2 * ox)
+                        // (geo["klein_b"] + geo["abstand"]))
+        self.items_visible = proleiste
+        self.scroll = max(0, min(self.item_i - proleiste // 2,
+                                 max(0, total - proleiste)))
+
+        fb.clear(C_BG)
+        self._raster_kopf(L, items, total)
+
+        item = items[self.item_i]
+        item_syskey = self._item_syskey(item, syskey)
+        akzent = accent_for(item_syskey)
+        oben, gb, gh = geo["oben"], geo["gross_b"], geo["gross_h"]
+        pad = ART_CARD_PAD * s
+        fb.karte_mit_schatten(ox - pad, oben - pad, gb + 2 * pad,
+                              gh + 2 * pad, 3 * s, C_PANEL,
+                              fb._darken(C_BG, 0.55), 4 * s)
+        art, verzoegert = self._ansicht_cover(item, syskey, gb, gh)
+        if art:
+            aw, ah, pix = art
+            ax = ox + max(0, (gb - aw) // 2)
+            ay = oben + max(0, (gh - ah) // 2)
+            self.blit(ax, ay, aw, ah, pix)
+            fb.rect(ax - 2 * s, ay - 2 * s, aw + 4 * s, 2 * s, akzent)
+            fb.rect(ax - 2 * s, ay + ah, aw + 4 * s, 2 * s, akzent)
+        elif not verzoegert:
+            self._zeichne_kein_artwork(ox, oben, gb, gh, s)
+
+        # ---- Titel und Daten rechts ----
+        tx = geo["text_x"]
+        maxc = max(6, (fb.width - ox - tx) // (8 * s))
+        titel = item[0]
+        t_scale = 2 * s
+        if len(titel) > max(4, maxc // 2):
+            # Auf CRT ist der Platz rechts schmal. Lieber kleiner und
+            # vollstaendig als gross und abgehackt - dieselbe Regel wie
+            # in der Kopfzeile.
+            t_scale = s
+        t_maxc = max(4, (fb.width - ox - tx) // (8 * t_scale))
+        fb.text(tx, oben, titel[:t_maxc], t_scale, C_TITLE)
+        # Dieselbe Quelle wie die Boxart-Spalte - siehe
+        # _spiel_infozeilen(). Zwei getrennte Listen waeren zwei
+        # Gelegenheiten, auseinanderzulaufen.
+        zeilen, _ra = self._spiel_infozeilen(item, item_syskey, maxc)
+        iy = oben + (12 if t_scale == s else 26) * s
+        for ln in zeilen:
+            if iy + 9 * s > geo["leiste_y"] - 4 * s:
+                break
+            fb.text(tx, iy, ln[:maxc], s, C_TEXT)
+            iy += 12 * s
+
+        # ---- Leiste mit den Nachbarn ----
+        ly = geo["leiste_y"]
+        kb, kh = geo["klein_b"], geo["klein_h"]
+        x = ox
+        idx = self.scroll
+        while x + kb <= fb.width - ox and idx < total:
+            if idx == self.item_i:
+                fb.rect_rounded(x - 2 * s, ly - 2 * s, kb + 4 * s,
+                                kh + 4 * s, akzent, 2 * s)
+            klein, klein_verzoegert = self._ansicht_cover(
+                items[idx], syskey, kb, kh)
+            if klein:
+                aw, ah, pix = klein
+                self.blit(x + max(0, (kb - aw) // 2),
+                          ly + max(0, (kh - ah) // 2), aw, ah, pix)
+            elif not klein_verzoegert:
+                self._kachel_platzhalter(x, ly, kb, kh, items[idx][0], s,
+                                         idx == self.item_i)
+            x += kb + geo["abstand"]
+            idx += 1
+
+        self._fusszeile_zeichnen(ox, L["footer_y"], s, message)
+        self._draw_search_overlay()
+        self._force_full_redraw = False
+        if flip:
+            fb.flip(skip_vsync=self._vsync_ueberspringen(None))
+
+    def _draw_items_kacheln(self, ansicht, items, name, syskey, L, message,
+                            flip):
+        """Verteiler fuer die beiden neuen Ansichten."""
+        if not items:
+            return False
+        if self.item_i >= len(items):
+            self.item_i = 0
+        if ansicht == "galerie":
+            self._draw_items_galerie(items, syskey, L, message, flip)
+        else:
+            self._draw_items_raster(items, syskey, L, message, flip)
+        return True
+
     def draw_confirm_dialog(self, msg=None, labels=None, max_lines=2):
         """Beenden-Bestaetigung (Standardaufruf ohne Argumente):
         ueberlagert die aktuelle Seite mit einem kleinen Dialog. Links
@@ -5599,6 +6134,10 @@ class Frontend:
     def marquee_needed(self):
         v = getattr(self, "view", None)
         if not v or self.page != 1 or not v["items"]:
+            return False
+        # Die Laufschrift gehoert zur Listenzeile. In Raster und
+        # Galerie gibt es die nicht.
+        if v.get("ansicht", "liste") != "liste":
             return False
         s = v["s"]
         label, kind, _arg = v["items"][self.item_i]
@@ -6691,13 +7230,26 @@ class Frontend:
     # seit Build 102 auf dem zweiten CPU-Kern. Diese Funktion war damit
     # die schwaechere Kopie am schlechteren Ort.
 
-    def _art_panel_geometrie(self):
-        """(breite, hoehe, s) der Boxart-Spalte auf der Spieleliste, oder
-        None, wenn dort gerade gar keine Spalte gezeichnet wird.
+    def _art_panel_geometrie(self, ansicht=None):
+        """Die Geometrie, aus der die Cover-Kastengroesse folgt - oder
+        None, wenn hier gerade gar kein Cover gezeichnet wird.
 
-        Dieselbe Rechnung wie in _draw_page_items_impl() - dort bleibt
-        sie stehen, weil sie dort noch die Position (x0/y0) braucht; hier
-        interessieren nur die Masse, die in die Kastengroesse eingehen."""
+        ZWEI FORMEN, und cover_pfad_und_kasten() unterscheidet sie:
+
+          (breite, hoehe, s)          Listenansicht. Die Kastengroesse
+                                      haengt am Text unter dem Cover und
+                                      wird erst dort ausgerechnet
+                                      (cover_box_size()).
+          ("fest", bw, bh, s)         Raster oder Galerie. Dort steht
+                                      kein Text unter dem Bild, die
+                                      Kastengroesse ist fuer alle
+                                      Eintraege gleich - und damit schon
+                                      hier bekannt.
+
+        Die Drei-Form ist absichtlich unveraendert geblieben: sie ist
+        genau das, was der Vorauslader seit Build 73 bekommt.
+
+        ansicht=None bedeutet "die, die gerade gilt"."""
         fb = self.fb
         W = fb.width
         items = self._display_items()
@@ -6707,6 +7259,18 @@ class Frontend:
             return None
         L = self.layout_items(has_art)
         s, ox, oy = L["s"], L["ox"], L["oy"]
+        if ansicht is None:
+            ansicht = self.aktuelle_ansicht(has_art)
+        if ansicht == "raster":
+            g = self.raster_geometrie(L)
+            if g["cov_b"] <= 4 or g["cov_h"] <= 4:
+                return None
+            return "fest", g["cov_b"], g["cov_h"], s
+        if ansicht == "galerie":
+            g = self.galerie_geometrie(L)
+            if g["gross_b"] <= 4 or g["gross_h"] <= 4:
+                return None
+            return "fest", g["gross_b"], g["gross_h"], s
         art_x0 = art_spalte_x0(L["list_right"], fb.height, s)
         art_w = (W - ox) - art_x0
         art_h = L["footer_y"] - 8 * s - oy
@@ -6726,7 +7290,16 @@ class Frontend:
         unter einem Schluessel, den nie jemand abfragt."""
         if geo is None:
             return None
-        art_w, art_h, s = geo
+        # NEU (Build 122): Raster und Galerie liefern die Kastengroesse
+        # schon fertig mit - dort steht kein Text unter dem Bild, an dem
+        # sie sich noch aendern koennte. Siehe _art_panel_geometrie().
+        fest = None
+        if len(geo) == 4 and geo[0] == "fest":
+            _tag, fest_b, fest_h, s = geo
+            fest = (fest_b, fest_h)
+            art_w = art_h = 0
+        else:
+            art_w, art_h, s = geo
         item_syskey = self._item_syskey(item, cat_syskey)
         # ENTFERNT (Build 120, Nutzer-Rueckmeldung: "habe eine neue
         # SD-Karte verbaut, noch keine ROMs drauf, aber Arcade ueber
@@ -6757,6 +7330,8 @@ class Frontend:
             pfad = art_path(item_syskey, lookup_name)
         if not pfad:
             return None
+        if fest is not None:
+            return pfad, fest[0], fest[1]
         try:
             bw, bh = self.cover_box_size(art_w, art_h, item_syskey, item, s)[:2]
         except Exception:                            # noqa: BLE001
@@ -6831,10 +7406,22 @@ class Frontend:
         if geo is None:
             return
         _name, _root_node, cat_syskey = self.cats[self.cat_i]
+        # NEU (Build 122): im Raster wird weiter vorausgeschaut. Die
+        # Liste braucht das naechste COVER, das Raster die naechste
+        # SEITE - und die sind auf HDMI 28 Stueck. Mit der
+        # Standard-Vorausschau (20) waere ein Seitensprung immer halb
+        # kalt.
+        _voraus = 20
+        if self.aktuelle_ansicht() == "raster":
+            # items_visible ist im Raster genau eine Rasterseite (siehe
+            # _draw_items_raster()) - zwei davon sind die aktuelle und
+            # die naechste.
+            _voraus = max(20, 2 * max(1, getattr(self, "items_visible", 28)))
         auftraege = auftraege_bauen(
             items, self.item_i,
             lambda it: self.cover_pfad_und_kasten(it, cat_syskey, geo),
-            vorwaerts=getattr(self, "_last_scroll_dir", 1) >= 0)
+            vorwaerts=getattr(self, "_last_scroll_dir", 1) >= 0,
+            voraus=_voraus)
         if not auftraege:
             return
         PREWARMER.start()
@@ -7015,6 +7602,32 @@ class Frontend:
                 return
             geo = (art_w, art_h, s)
 
+        # NEU (Build 122): vorbereitet wird fuer JEDE Ansicht, die
+        # tatsaechlich in Gebrauch ist - nicht nur fuer die, in der man
+        # gerade steht.
+        #
+        # Der Grund steckt im Schluessel des Miniatur-Zwischenspeichers:
+        # er enthaelt die KASTENGROESSE (siehe _thumb_cache_key() in
+        # fe/art.py). Raster und Galerie rechnen mit anderen Kaesten als
+        # die Liste. Wer also im Menue "Miniaturen vorbereiten" laufen
+        # laesst, danach auf Raster umschaltet und dann wieder alles
+        # nachrechnen muesste, haette voellig zu Recht das Gefuehl, der
+        # Durchlauf habe nichts gebracht.
+        #
+        # Vorbereitet werden deshalb die Listenansicht (die gilt immer -
+        # in jeder Kategorie ohne Cover-Spalte und ueberall dort, wo
+        # niemand umgeschaltet hat) UND die eingestellte Vorgabe, falls
+        # das eine der beiden neuen ist. Mehr nicht: alle drei
+        # vorzurechnen waere die dreifache Laufzeit fuer eine Ansicht,
+        # die vielleicht nie jemand aufruft.
+        geos = [geo]
+        for _a in (ansicht_lesen(),):
+            if _a == "liste":
+                continue
+            _g = self._art_panel_geometrie(_a)
+            if _g is not None and _g not in geos:
+                geos.append(_g)
+
         # Die Kategorie-Logos der Hauptseite zuerst: es sind nur rund
         # zwanzig, aber die groessten Bilder im Frontend (900 px breit),
         # und sie stehen auf der Seite, die man beim Start als erstes
@@ -7060,20 +7673,22 @@ class Frontend:
                 if self.inp.read_action(timeout=0) is not None:
                     self.draw(t("thumb_prewarm_aborted", 0, 0), prominent=True)
                     return
-            try:
-                ziel = self.cover_pfad_und_kasten(item, cat_syskey, geo)
-            except Exception:                        # noqa: BLE001
-                # ABSICHERUNG (siehe Kopfkommentar dieser Methode): ein
-                # einzelner ungewoehnlicher Eintrag darf den Durchlauf
-                # nicht beenden - und schon gar nicht das Frontend.
-                LOG("PREWARM: Eintrag uebersprungen (%r): %s"
-                    % (item[:2] if isinstance(item, tuple) else item,
-                       traceback.format_exc().strip().splitlines()[-1]))
-                continue
-            if not ziel or ziel in gesehen:
-                continue
-            gesehen.add(ziel)
-            ziele.append(ziel)
+            for _geo in geos:
+                try:
+                    ziel = self.cover_pfad_und_kasten(item, cat_syskey, _geo)
+                except Exception:                    # noqa: BLE001
+                    # ABSICHERUNG (siehe Kopfkommentar dieser Methode):
+                    # ein einzelner ungewoehnlicher Eintrag darf den
+                    # Durchlauf nicht beenden - und schon gar nicht das
+                    # Frontend.
+                    LOG("PREWARM: Eintrag uebersprungen (%r): %s"
+                        % (item[:2] if isinstance(item, tuple) else item,
+                           traceback.format_exc().strip().splitlines()[-1]))
+                    continue
+                if not ziel or ziel in gesehen:
+                    continue
+                gesehen.add(ziel)
+                ziele.append(ziel)
 
         gesamt = len(ziele)
         if not gesamt:
@@ -7196,6 +7811,50 @@ class Frontend:
             ty += 12 * s
         fb.flip()
 
+    def _spiel_infozeilen(self, item, syskey, maxc):
+        """(Datenzeilen, RA-Fortschritt) zu EINEM Eintrag - Spieler,
+        Jahr, Genre, Hersteller, Spielzeit, RA-Fortschritt,
+        "Durchgespielt".
+
+        HERAUSGELOEST (Build 122) aus cover_box_size(). Die Galerie
+        zeigt dieselben Angaben neben dem grossen Cover; haette sie
+        ihre eigene Liste gebaut, waeren es zwei Stellen, an denen eine
+        neue Angabe nachgetragen werden muesste - und eine davon haette
+        man irgendwann vergessen. Bitgleiches Verhalten fuer
+        cover_box_size(): derselbe Code, nur eine Ebene tiefer."""
+        name = item[0]
+        lookup_name = item[2] if item[1] == "folder" else name
+        if syskey == "ARCADE":
+            meta = mra_meta(item[2]) if item[1] == "core" else {}
+        else:
+            meta = get_meta(syskey, lookup_name)
+        info_src = []
+        if meta.get("players"):
+            info_src.append(t("players", meta["players"]))
+        if meta.get("year"):
+            info_src.append(t("year", meta["year"]))
+        if meta.get("genre"):
+            info_src.append(str(meta["genre"]))
+        if meta.get("manufacturer"):
+            info_src.append(str(meta["manufacturer"]))
+        played_entry = self._playtime_cache.get(name) \
+            if hasattr(self, "_playtime_cache") else None
+        played = format_playtime(played_entry.get("seconds")
+                                 if played_entry else None)
+        if played:
+            info_src.append(t("playtime_shown", played))
+        ra_progress = lookup_ra_progress(self._ra_lookup, name, syskey) \
+            if hasattr(self, "_ra_lookup") and self._ra_lookup else None
+        if ra_progress:
+            info_src.append(t("ra_progress_shown", ra_progress[0],
+                              ra_progress[1]))
+        if hasattr(self, "_completed_set") and name in self._completed_set:
+            info_src.append(t("completed_shown"))
+        info_lines = []
+        for ln in info_src:
+            info_lines.extend(self._wrap(ln, maxc, max_lines=1))
+        return info_lines, ra_progress
+
     def cover_box_size(self, w, h, syskey, item, s):
         """Die Kastengroesse, in die das Cover dieses EINEN Eintrags
         eingepasst wird: (breite, hoehe). Reine Rechnung, zeichnet nichts.
@@ -7225,36 +7884,8 @@ class Frontend:
         name = item[0]
         lookup_name = item[2] if item[1] == "folder" else name
 
-        if syskey == "ARCADE":
-            meta = mra_meta(item[2]) if item[1] == "core" else {}
-        else:
-            meta = get_meta(syskey, lookup_name)
-
         title_lines = self._wrap(display_name(name), maxc, max_lines=3)
-
-        info_src = []
-        if meta.get("players"):
-            info_src.append(t("players", meta["players"]))
-        if meta.get("year"):
-            info_src.append(t("year", meta["year"]))
-        if meta.get("genre"):
-            info_src.append(str(meta["genre"]))
-        if meta.get("manufacturer"):
-            info_src.append(str(meta["manufacturer"]))
-        played_entry = self._playtime_cache.get(name) \
-            if hasattr(self, "_playtime_cache") else None
-        played = format_playtime(played_entry.get("seconds") if played_entry else None)
-        if played:
-            info_src.append(t("playtime_shown", played))
-        ra_progress = lookup_ra_progress(self._ra_lookup, name, syskey) \
-            if hasattr(self, "_ra_lookup") and self._ra_lookup else None
-        if ra_progress:
-            info_src.append(t("ra_progress_shown", ra_progress[0], ra_progress[1]))
-        if hasattr(self, "_completed_set") and name in self._completed_set:
-            info_src.append(t("completed_shown"))
-        info_lines = []
-        for ln in info_src:
-            info_lines.extend(self._wrap(ln, maxc, max_lines=1))
+        info_lines, ra_progress = self._spiel_infozeilen(item, syskey, maxc)
 
         line_h = 12 * s
         text_h = len(title_lines) * line_h
@@ -9651,7 +10282,7 @@ class Frontend:
             ("item", "help_nav_select"),
             ("header", "help_section_list"), ("item", "help_list_showcase"),
             ("item", "help_list_completed"), ("item", "help_list_favorite"),
-            ("item", "help_list_random"),
+            ("item", "help_list_random"), ("item", "help_list_ansicht"),
             ("header", "help_section_menu"), ("item", "help_menu_continue"),
             ("item", "help_menu_collections"), ("item", "help_menu_hunter"),
             ("header", "help_section_system"), ("item", "help_system_stats"),
@@ -11663,6 +12294,22 @@ class Frontend:
                     else self.items_visible
                 page_step = max(1, base_page) * page_mult
 
+                # NEU (Build 122): im Kachelraster bedeuten die
+                # Richtungstasten etwas anderes, und zwar genau das, was
+                # man vor einem Raster erwartet - hoch/runter wechselt
+                # die REIHE, links/rechts den Nachbarn. Eine Seite
+                # weiterzuspringen, wenn man nach rechts drueckt, waere
+                # in einem Raster schlicht falsch: das Auge folgt der
+                # Reihe, nicht der Seite.
+                #
+                # In Liste und Galerie bleibt alles wie bisher
+                # (hoch/runter ein Schritt, links/rechts eine Seite).
+                hoch_runter = move_step
+                links_rechts = page_step
+                if self.page == 1 and self.aktuelle_ansicht() == "raster":
+                    hoch_runter = max(1, getattr(self, "_raster_spalten", 1))
+                    links_rechts = move_step
+
                 if act == "select":
                     # GEAENDERT (Build 90, Nutzervorschlag: "dadurch dass
                     # Select noch die Rueckwaerts-Funktion hat, ist es
@@ -11695,6 +12342,28 @@ class Frontend:
                     self.music.next_track()
                     self.draw()   # Anzeige des neuen Songs sofort aktualisieren
                     continue
+                elif act == "ansicht":
+                    # NEU (Build 122): F9 bzw. Select+Y schaltet die
+                    # Ansicht der Spieleliste live um. Gilt nur fuer
+                    # DIESE Kategorie und wird NICHT gespeichert - wer
+                    # sie dauerhaft moechte, stellt sie im Menue unter
+                    # "Anzeige & Sound" ein. Genau diese Trennung war
+                    # der Wunsch: ein Schalter im Menue, dazu eine Taste
+                    # zum Ausprobieren.
+                    move_streak = page_streak = 0
+                    neu = self.ansicht_umschalten()
+                    if neu is None:
+                        # Hauptmenue, reine Ordnerauswahl, Scripts: dort
+                        # gibt es keine Cover, und eine Kachelansicht
+                        # waere nur eine Flaeche voller Platzhalter. Das
+                        # kommentarlos zu verschlucken waere die
+                        # schlechtere Antwort - dann haelt man die Taste
+                        # fuer kaputt.
+                        self.draw(message=t("ansicht_nur_spieleliste"))
+                    else:
+                        self.draw(message=t("ansicht_umgeschaltet",
+                                            t("ansicht_" + neu)))
+                    continue
                 elif act == "up":
                     # Rundum-Navigation: vom ersten Eintrag nach oben
                     # geht's zum letzten - erspart langes Zurueckscrollen.
@@ -11702,26 +12371,26 @@ class Frontend:
                     if self.page == 0:
                         self.cat_i = (self.cat_i - move_step) % len(self.cats)
                     elif items:
-                        self.item_i = (self.item_i - move_step) % len(items)
+                        self.item_i = (self.item_i - hoch_runter) % len(items)
                         self.marquee_reset()
                 elif act == "down":
                     self._last_scroll_dir = 1
                     if self.page == 0:
                         self.cat_i = (self.cat_i + move_step) % len(self.cats)
                     elif items:
-                        self.item_i = (self.item_i + move_step) % len(items)
+                        self.item_i = (self.item_i + hoch_runter) % len(items)
                         self.marquee_reset()
                 elif act == "left":
                     if self.page == 0:
                         self.cat_i = (self.cat_i - page_step) % len(self.cats)
                     elif items:
-                        self.item_i = (self.item_i - page_step) % len(items)
+                        self.item_i = (self.item_i - links_rechts) % len(items)
                         self.marquee_reset()
                 elif act == "right":
                     if self.page == 0:
                         self.cat_i = (self.cat_i + page_step) % len(self.cats)
                     elif items:
-                        self.item_i = (self.item_i + page_step) % len(items)
+                        self.item_i = (self.item_i + links_rechts) % len(items)
                         self.marquee_reset()
                 elif act in ("list_start", "list_end"):
                     # NEUES FEATURE (Build 114, aus IDEEN_Bedienbarkeit
@@ -12152,6 +12821,24 @@ class Frontend:
                             # Zeichnen geprueft, siehe _draw_page_items_impl()),
                             # kein Neustart noetig.
                             toggle_fast_scroll()
+                            self._refresh_system_category()
+                        elif kind == "ansicht":
+                            # NEU (Build 122): Vorgabe-Ansicht der
+                            # Spieleliste eine Stufe weiter. Anders als
+                            # die Taste schreibt der Menuepunkt den Wert
+                            # WEG - er ist die Vorgabe fuer alle
+                            # Kategorien und fuer den naechsten Start,
+                            # und er raeumt die einzeln per Taste
+                            # gemerkten Ausnahmen mit ab (siehe
+                            # ansicht_setzen()); sonst stuende im Menue
+                            # etwas anderes, als man beim Reingehen
+                            # sieht.
+                            _jetzt = ansicht_lesen()
+                            _idx = (ANSICHTEN.index(_jetzt)
+                                    if _jetzt in ANSICHTEN else 0)
+                            self.ansicht_setzen(
+                                ANSICHTEN[(_idx + 1) % len(ANSICHTEN)],
+                                merken=True)
                             self._refresh_system_category()
                         elif kind == "fremdquellen":
                             # NEU (Build 115): fremde Artwork-/Datenquelle

@@ -217,9 +217,32 @@ check("und setzt den Einmal-Schalter zurueck",
       "self._settled_redrawn = False" in quelle)
 check("die Verbindung zum Vorauslader steht",
       "ART.auslagern = PREWARMER.dringend" in quelle)
-check("nur der Cover-Zeichenpfad lagert aus",
-      quelle.count("auslagern_ok=True") == 2,
-      "(%d Fundstellen)" % quelle.count("auslagern_ok=True"))
+# Der Punkt dieser Pruefung ist NICHT die Zahl, sondern die Frage
+# "wer darf ueberhaupt auslagern". Auslagern heisst: das Cover kommt
+# vielleicht erst nach dem Stillstand - das darf nur der Zeichenpfad
+# der Cover-Anzeige, sonst bekommt irgendwo anders jemand ein None,
+# mit dem er nicht rechnet.
+#
+# GEAENDERT (Build 122): bis dahin waren es zwei Fundstellen, beide in
+# draw_art_panel() (HD und SD). Dazu kam _ansicht_cover() - der
+# Cover-Zeichenpfad der neuen Raster- und Galerieansicht. Also derselbe
+# Fall, nur fuer eine zweite Ansicht; deshalb wird jetzt geprueft, in
+# WELCHER Funktion die Fundstellen stehen statt nur, wie viele es sind.
+_erlaubt = ("draw_art_panel", "_ansicht_cover")
+_akt = None
+_stellen = []
+for _zeile in quelle.splitlines():
+    _s = _zeile.strip()
+    if _s.startswith("def "):
+        _akt = _s[4:].split("(")[0]
+    if "auslagern_ok=True" in _zeile:
+        _stellen.append(_akt)
+check("nur Cover-Zeichenpfade lagern aus",
+      _stellen and all(n in _erlaubt for n in _stellen),
+      "Fundstellen in %r" % (sorted(set(_stellen)),))
+check("und beide Ansichten sind dabei",
+      set(_stellen) == set(_erlaubt),
+      "%r" % (sorted(set(_stellen)),))
 
 shutil.rmtree(TMP, ignore_errors=True)
 
