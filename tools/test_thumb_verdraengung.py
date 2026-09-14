@@ -275,11 +275,38 @@ check("die 13 losen Altdateien sind weg", entfernt == 13, "%d entfernt" % entfer
 check("die neue Ablage bleibt unangetastet", os.path.exists(neu_datei))
 
 print()
-print("Test 10: die Obergrenze ist auf 40000 angehoben")
+print("Test 10: die Obergrenze traegt die Sammlung, die es wirklich gibt")
+# GEAENDERT (Build 128). Hier stand die feste Zahl 40000. Der Test war
+# damit gruen, waehrend beim Nutzer ein Durchlauf von "Miniaturen
+# vorbereiten" nach SECHS STUNDEN nicht fertig war - er hatte 28517
+# Cover mal vier Kastengroessen, also 114068 Dateien bei einer Grenze
+# von 40000. Der Durchlauf konnte gar nicht fertig werden, und keine
+# Pruefung hat das gesagt.
+#
+# Eine Zahl gegen sich selbst zu pruefen sagt eben nichts. Geprueft
+# wird jetzt, wofuer die Grenze da ist: dass eine grosse, aber reale
+# Sammlung hineinpasst.
 import importlib
 A2 = importlib.reload(A)
-check("THUMB_CACHE_MAX_FILES = 40000", A2.THUMB_CACHE_MAX_FILES == 40000,
+COVER = 28517                      # gezaehlt auf dem Geraet des Nutzers
+KAESTEN_JE_COVER = 3               # Liste, Kachel, Galerie-Cover
+check("die Sammlung des Nutzers passt vollstaendig hinein",
+      COVER * KAESTEN_JE_COVER < A2.THUMB_CACHE_MAX_FILES,
+      "%d noetig, %d erlaubt"
+      % (COVER * KAESTEN_JE_COVER, A2.THUMB_CACHE_MAX_FILES))
+check("und es bleibt Luft fuer eine deutlich groessere",
+      A2.THUMB_CACHE_MAX_FILES >= COVER * KAESTEN_JE_COVER * 3 // 2,
       str(A2.THUMB_CACHE_MAX_FILES))
+# Die Verdraengung durchlaeuft im Ernstfall den ganzen Ordner mit einem
+# os.path.getmtime je Datei. Je hoeher die Grenze, desto teurer - also
+# darf das Nachzaehlen nicht haeufiger laufen als aufgeraeumt wird.
+check("das Nachzaehlen laeuft nicht haeufiger als die Verdraengung "
+      "freiraeumt",
+      A2._THUMB_CACHE_NACHZAEHLEN_ALLE
+      >= A2.THUMB_CACHE_MAX_FILES - int(A2.THUMB_CACHE_MAX_FILES * 0.9),
+      "alle %d Schreibvorgaenge, Verdraengung raeumt %d"
+      % (A2._THUMB_CACHE_NACHZAEHLEN_ALLE,
+         A2.THUMB_CACHE_MAX_FILES - int(A2.THUMB_CACHE_MAX_FILES * 0.9)))
 check("thumb_cache_stand() liefert auch die Belegung",
       len(A2.thumb_cache_stand()) == 3, str(A2.thumb_cache_stand()))
 

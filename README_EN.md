@@ -854,6 +854,18 @@ be a view, it would be a bug.
 > thumbnails"* - each view needs the images in a different size. The
 > menu item prepares all three views in one go, so you only need to run
 > it once (but once per video mode: CRT and HDMI have their own sizes).
+>
+> **How long it takes, and what drives it.** Three box sizes are
+> computed per cover, and the cost depends on the size of the *source
+> file*, not of the tile. Rough figures on the MiSTer, using both
+> cores: about half a second to a second per cover. With 5000 covers
+> that is roughly an hour; with 30 000, correspondingly more. The run
+> can be aborted with any key at any time and loses nothing - next time
+> it carries on where it stopped.
+>
+> **Card space:** budget about 0.3-0.8 MB per cover. If that gets too
+> much, *System -> Maintenance -> "Clear cache"* removes all of it
+> again; the only thing lost is computing time.
 
 ---
 

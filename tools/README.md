@@ -64,6 +64,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_ansichten.py \
   && python3 tools/test_quelle_png.py \
   && python3 tools/test_farbkanaele.py \
+  && python3 tools/test_vorbereiten_tempo.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -111,6 +112,7 @@ python3 tools/regression_test.py \
 | `test_farbkanaele.py` | Test (Pass/Fail) | Jeder Bildweg liefert BGRA - gemessen gegen fb.rect(), nicht gegen einen zweiten Dekoder |
 | `test_quelle_png.py` | Test (Pass/Fail) | Zweite Cover-Quelle (png/-Baum des Mirrors): beide Ablageorte, Endung nach Inhalt, Klartext-HTTP, Reihenfolge der Quellen |
 | `test_ansichten.py` | Test (Pass/Fail) | Die drei Ansichten von Spieleliste UND Hauptseite, dazu der Nachlade-Thread: Kastengroesse stimmt mit dem Vorauslader ueberein, schneller Rasterpfad bitgenau, leichte Listenpfade halten sich raus |
+| `test_vorbereiten_tempo.py` | Test (Pass/Fail) | Warum "Miniaturen vorbereiten" sechs Stunden lief: drei Kastengroessen statt vier, einmal dekodieren statt dreimal (bitgenau gleich), Marke statt Kopie, Obergrenze reicht fuer die Sammlung, zweiter Kern in der richtigen Reihenfolge |
 | `test_zip.py` | Test (Pass/Fail) | ROMs in ZIP-Archiven: Archiv wird zum Ordner, Pfad laeuft durch das Archiv, nichts wird entpackt, kaputtes Archiv faellt still weg |
 | `test_artpacks.py` | Test (Pass/Fail) | Artwork aus Artpacks in allen ueblichen Ablageformen, Arcade beim Vorbereiten, Groesse des Bild-Zwischenspeichers |
 | `test_cover_original.py` | Test (Pass/Fail) | Download legt PNG/JPG im Original ab und das Frontend findet sie; Tauschschalter laesst Enter in Ruhe; USB-Wartezeit |
@@ -1425,3 +1427,69 @@ weiterhin immer den Rueckgabewert 0 und dient als Messinstrument:
 
 Vor und nach einer Aenderung ausfuehren und BEIDE Zeilen
 (`Abweichungen` und `Abweichende Punkte`) vergleichen.
+
+## test_vorbereiten_tempo.py
+
+Warum "Miniaturen vorbereiten" beim Nutzer sechs Stunden lief - und
+warum es nicht am Tempo lag (Build 128).
+
+*"Miniaturen vorbereiten laeuft im HDMI-Modus jetzt schon 6 Stunden,
+das ist viel zu lange, das geht garnicht und schreckt ab."*
+
+Die Zahlen von seinem Geraet:
+
+```
+28517 Cover  x  4 Kastengroessen  =  114068 Cache-Dateien
+                  Obergrenze:            40000
+```
+
+Ab 40000 raeumt die Verdraengung auf 36000 herunter, und das Aelteste
+ist das, was derselbe Durchlauf zwei Stunden vorher gerechnet hat. Der
+Lauf konnte gar nicht fertig werden.
+
+**DIE MESSUNG, DIE DEN AUSSCHLAG GAB.** Die Flaechenmittelung liest
+JEDEN QUELLPUNKT, egal wie klein das Ziel ist. Bei einem 900x1200-PNG:
+
+| Kasten | | Zeit |
+|---|---|---|
+| 733x909 | Liste | 162 ms |
+| 411x548 | Galerie | 183 ms |
+| 128x171 | Raster | 68 ms |
+| 124x166 | Galerie-Leiste | 68 ms |
+
+Die winzige Kachel kostet 40 % der grossen, nicht 3 %. In Build 123
+stand als Begruendung fuer das Vorbereiten aller drei Ansichten das
+Gegenteil ("die Rasterkacheln sind klein, das Verkleinern kostet dort
+einen Bruchteil"). Das war falsch, und keine Pruefung hat es gesagt -
+`test_thumb_verdraengung.py` hielt damals `THUMB_CACHE_MAX_FILES ==
+40000` gegen sich selbst, was ueber nichts eine Aussage macht. Dieser
+Test prueft deshalb Verhaeltnisse statt Zahlen.
+
+**Test 2 ist der wichtigste.** `prewarm_thumb_mehrfach()` dekodiert das
+Original einmal und verkleinert daraus alle drei Kaesten. Die
+Beschleunigung waere wertlos, wenn dabei etwas anderes herauskaeme -
+also wird nachgerechnet statt behauptet: dieselben Kaesten einmal
+einzeln und einmal ueber die Mehrfach-Fassung, und die Cache-Dateien
+muessen byteweise uebereinstimmen. Drei Quellgroessen, damit alle drei
+Zweige drankommen (verkleinern, passt genau, hochskalieren).
+
+**Test 3 prueft die Marke** - und zwar an der Stelle, an der sie
+gefaehrlich waere. Der Passt-genau-Fall legte bis Build 127 eine
+vollstaendige Kopie ab (Build 92, aus gutem Grund: ohne Eintrag meldet
+`thumb_cache_has()` fuer immer "nicht da"). Gemessen war diese Kopie
+548 KB gross und mit 5.9 ms langsamer zu lesen, als das Original neu zu
+dekodieren (4.8 ms). Jetzt stehen dort acht Byte.
+
+Geprueft wird nicht nur, dass die Marke klein ist, sondern dass beide
+Gruende von Build 92 weiterhin gelten: `thumb_cache_has()` sagt "da",
+und die Marke umgeht die Ueberspring-Pruefung - sonst waere das
+Aufblitzen beim Scrollen zur Haelfte zurueck. Dazu die Probe aufs
+Exempel: der ZEICHENPFAD muss mit Marke dasselbe Bild liefern wie ohne.
+
+**Test 5 misst nicht den Gewinn des zweiten Kerns, sondern die
+REIHENFOLGE.** Wird erst selbst gerechnet und dann hinuebergereicht,
+ist der zweite Kern genau so lange untaetig, wie das eigene Cover
+dauert - der ganze Gewinn waere weg, und nichts wuerde davon berichten.
+Zum Schluss laeuft der echte Arbeitsprozess einmal an: das Protokoll
+hat zwei Seiten, und ein Tippfehler im Trennzeichen faellt sonst erst
+auf dem Geraet auf.

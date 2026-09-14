@@ -834,7 +834,8 @@ from fe.art import (
     docs_caches_leeren, docs_cover, docs_meta,
     ART_HD, SYSART_BASE, META_BASE, BADGE_DIR,
     RA_BADGE_URL, BADGES, _category_art_key,
-    prewarm_thumb, thumb_cache_has, thumb_cache_stand,
+    prewarm_thumb, prewarm_thumb_mehrfach, thumb_cache_has,
+    thumb_cache_stand,
     thumb_cache_stand_modus, thumb_cache_leeren, thumb_cache_bilanz,
     thumb_cache_schuetzen, thumb_cache_modus_setzen, thumb_cache_lesen,
     alten_flachen_cache_aufraeumen,
@@ -843,7 +844,7 @@ from fe.art import (
 # NEU (Build 73): Cover-Miniaturen im Leerlauf vorberechnen. Die
 # ausfuehrliche Begruendung samt der beiden ehrlichen Einschraenkungen
 # steht im Kopf von fe/prewarm.py.
-from fe.prewarm import PREWARMER, auftraege_bauen
+from fe.prewarm import PREWARMER, auftraege_bauen, Doppelkern
 from fe.nachladen import MiniaturLader
 
 # ----------------------------------------------------------------------------
@@ -2929,11 +2930,7 @@ class Frontend:
         # es da ist. Jetzt ist die Kachel so breit wie ihr Cover, und
         # der uebrig bleibende Rand wird gleichmaessig auf beide Seiten
         # verteilt.
-        cov_h = max(1, platz_h)
-        cov_b = max(1, cov_h * 3 // 4)
-        if cov_b > platz_b:
-            cov_b = max(1, platz_b)
-            cov_h = max(1, cov_b * 4 // 3)
+        cov_b, cov_h = self.kachel_cover_kasten(L)
         gesamt_b = spalten * cov_b + (spalten - 1) * abstand
         raster_ox = ox + max(0, (breite - gesamt_b) // 2)
         return {"spalten": spalten, "zeilen": zeilen, "oben": oben,
@@ -2941,6 +2938,78 @@ class Frontend:
                 "kachel_h": cov_h, "cov_b": cov_b,
                 "cov_h": cov_h, "name_y": unten + 3 * s,
                 "ox": raster_ox, "rand_ox": ox, "s": s}
+
+    def _raster_cover_natur(self, L):
+        """(breite, hoehe) des Coverkastens, den das RASTER von sich aus
+        haette - vor dem Abgleich mit der Galerie.
+
+        Herausgeloest (Build 128), damit kachel_cover_kasten() diese
+        Rechnung benutzen kann, ohne sie ein zweites Mal hinzuschreiben."""
+        fb = self.fb
+        s, ox = L["s"], L["ox"]
+        spalten, zeilen = (self.RASTER_CRT if fb.height < KOMPAKT_H
+                           else self.RASTER_HDMI)
+        oben = L["list_y"] + 3 * s
+        unten = L["footer_y"] - 4 * s - 11 * s
+        breite = fb.width - 2 * ox
+        hoehe = unten - oben
+        abstand = 6 * s
+        platz_b = (breite - (spalten - 1) * abstand) // spalten
+        platz_h = (hoehe - (zeilen - 1) * abstand) // zeilen
+        cov_h = max(1, platz_h)
+        cov_b = max(1, cov_h * 3 // 4)
+        if cov_b > platz_b:
+            cov_b = max(1, platz_b)
+            cov_h = max(1, cov_b * 4 // 3)
+        return cov_b, cov_h
+
+    def _galerie_leiste_h(self, L):
+        """Hoehe der Nachbarleiste in der Galerie.
+
+        Herausgeloest (Build 128) aus galerie_geometrie(), aus demselben
+        Grund wie _raster_cover_natur() daneben."""
+        fb = self.fb
+        s = L["s"]
+        oben = L["list_y"] + ART_CARD_PAD * s
+        unten = L["footer_y"] - 6 * s
+        platz = unten - oben
+        return max(8 * s, platz * (28 if fb.height < KOMPAKT_H
+                                   else 22) // 100)
+
+    def kachel_cover_kasten(self, L):
+        """DER Coverkasten fuer beide Kachelansichten - Raster UND
+        Galerie-Nachbarleiste benutzen denselben.
+
+        NEU (Build 128). Vorher hatte jede ihren eigenen, und die waren
+        fast, aber eben nicht ganz gleich: auf HDMI 128x171 gegen
+        124x166, auf CRT 33x45 gegen 32x43. Vier bzw. zwei Bildpunkte
+        Unterschied - und dadurch ZWEI voellig getrennte Miniaturen je
+        Cover, weil die Kastengroesse im Schluessel des
+        Zwischenspeichers steht.
+
+        Was das gekostet hat, wurde erst durch die Messung zu Build 128
+        sichtbar: die Flaechenmittelung liest JEDEN QUELLPUNKT, egal wie
+        klein das Ziel ist. Die zweite Kachel kostete damit fast
+        genausoviel wie die erste - bei einem 900x1200-Cover 70 von 490
+        ms, und dazu eine komplette zweite Datei auf der Karte.
+
+        Der Nutzer hatte 28517 Cover und einen Durchlauf von "Miniaturen
+        vorbereiten", der nach sechs Stunden nicht fertig war. Vier
+        Kastengroessen je Cover ergeben 114068 Dateien bei einer
+        Obergrenze von 40000 - der Durchlauf haette NIE fertig werden
+        koennen. Diese Zusammenlegung nimmt ein Viertel davon weg.
+
+        GENOMMEN WIRD DER KLEINERE der beiden. Nicht der groessere und
+        auch kein Mittelwert: ein Cover, das groesser ist als seine
+        Kachel, ragt darueber hinaus. Kleiner heisst hoechstens ein paar
+        Punkte mehr Luft (HDMI 171 -> 166, also 3 %), und die faellt
+        neben dem Gewinn nicht ins Gewicht."""
+        r_b, r_h = self._raster_cover_natur(L)
+        g_h = max(1, self._galerie_leiste_h(L))
+        g_b = max(1, g_h * 3 // 4)
+        if g_h < r_h:
+            return g_b, g_h
+        return r_b, r_h
 
     def kat_layout(self):
         """Die Layout-Angaben der HAUPTSEITE in der Form, die
@@ -2988,8 +3057,7 @@ class Frontend:
         #   CRT   dort sind 28 % gerade einmal 43 Punkte. Weniger waere
         #         nicht dezenter, sondern unlesbar - auf einem 320er
         #         Bild ist eine 23 Punkte breite Miniatur ein Fleck.
-        leiste_h = max(8 * s, platz * (28 if fb.height < KOMPAKT_H
-                                       else 22) // 100)
+        leiste_h = self._galerie_leiste_h(L)
         # BUGFIX (Build 125, gefunden durch den Pixelvergleich des neuen
         # schnellen Pfads): der Abstand zur Leiste stand auf 8*s - zu
         # wenig. Die Karte um das grosse Cover ist naemlich groesser als
@@ -3011,8 +3079,14 @@ class Frontend:
         gross_b = max(1, gross_h * 3 // 4)
         # Die Leiste darf das grosse Cover nicht ueberragen - sonst
         # kippt das Bild optisch nach unten.
-        klein_h = max(1, leiste_h)
-        klein_b = max(1, klein_h * 3 // 4)
+        #
+        # GEAENDERT (Build 128): derselbe Kasten wie im Raster, siehe
+        # kachel_cover_kasten(). Der Kasten kann dadurch etwas kleiner
+        # sein als die Leiste hoch ist - das Cover steht dann mittig
+        # darin, was ohnehin schon so gezeichnet wird.
+        klein_b, klein_h = self.kachel_cover_kasten(L)
+        klein_h = max(1, min(klein_h, leiste_h))
+        klein_b = max(1, min(klein_b, klein_h * 3 // 4))
         return {"oben": oben, "unten": unten, "gross_b": gross_b,
                 "gross_h": gross_h, "leiste_y": unten - leiste_h,
                 "klein_b": klein_b, "klein_h": klein_h,
@@ -8402,36 +8476,113 @@ class Frontend:
                 gesehen.add(ziel)
                 ziele.append(ziel)
 
+        # NEU (Build 128): nach COVER gruppieren, nicht nach Ziel.
+        #
+        # Bis Build 127 war "ziele" eine flache Liste aus (Pfad, Breite,
+        # Hoehe), und jeder Eintrag wurde einzeln gerechnet - also
+        # dreimal dieselbe Datei von der SD-Karte lesen und dreimal
+        # dasselbe PNG dekodieren, nur um danach dreimal anders zu
+        # verkleinern.
+        #
+        # Die Gruppierung ist ausserdem die Voraussetzung fuer den
+        # zweiten Kern weiter unten: ein Cover mit allen seinen Kaesten
+        # ist die Einheit, die sich am Stueck hinueberreichen laesst.
+        cover = []
+        nach_pfad = {}
+        for pfad, bw, bh in ziele:
+            liste = nach_pfad.get(pfad)
+            if liste is None:
+                liste = []
+                nach_pfad[pfad] = liste
+                cover.append((pfad, liste))
+            liste.append((bw, bh))
+
         gesamt = len(ziele)
         if not gesamt:
             self.draw(t("thumb_prewarm_nothing"), prominent=True)
             return
-        LOG("PREWARM: %d Eintraege gesamt -> %d verschiedene Cover zu pruefen"
-            % (len(vorbereitung), gesamt))
+        LOG("PREWARM: %d Eintraege gesamt -> %d verschiedene Cover, "
+            "%d Kastengroessen zu pruefen"
+            % (len(vorbereitung), len(cover), gesamt))
 
         gerechnet = lagen_da = uebersprungen = 0
         t0 = time.monotonic()
         abgebrochen = False
-        for i, (pfad, bw, bh) in enumerate(ziele):
-            # Abbruch: bei JEDEM Eintrag pruefen (nicht nur alle 20) -
-            # ein einzelnes Cover kann eine halbe Sekunde dauern, und
-            # ein Abbruch, der erst zehn Cover spaeter greift, fuehlt
-            # sich kaputt an.
-            if self.inp.read_action(timeout=0) is not None:
-                abgebrochen = True
-                break
-            if i % 10 == 0 or i == gesamt - 1:
-                self._draw_prewarm_progress(i, gesamt, gerechnet, t0)
-            if thumb_cache_has(pfad, bw, bh):
-                lagen_da += 1
-                continue
-            try:
-                if prewarm_thumb(pfad, bw, bh) == "fertig":
-                    gerechnet += 1
+        fertig_kaesten = 0
+
+        # NEU (Build 128): der zweite CPU-Kern.
+        #
+        # Der Menuepunkt ruft ganz oben PREWARMER.abbrechen() - richtig,
+        # der Leerlauf-Vorauslader wuerde sich sonst um dieselben Dateien
+        # streiten. Danach rechnete er aber ALLES selbst, einkernig,
+        # waehrend der zweite Kern des DE10-Nano brachlag. Bei sechs
+        # Stunden Laufzeit ist das die Haelfte.
+        #
+        # Das Verfahren steht in fe/prewarm.py bei Doppelkern: EIN
+        # Auftrag voraus, nie mehr - sonst liesse sich "Abbrechen" nicht
+        # mehr einhalten.
+        kern2 = Doppelkern()
+        zwei_kerne = kern2.start()
+        try:
+            i = 0
+            n = len(cover)
+            while i < n:
+                # Abbruch: bei JEDEM Cover pruefen - ein einzelnes kann
+                # eine halbe Sekunde dauern, und ein Abbruch, der erst
+                # zehn Cover spaeter greift, fuehlt sich kaputt an.
+                if self.inp.read_action(timeout=0) is not None:
+                    abgebrochen = True
+                    break
+                if i % 4 == 0 or i == n - 1:
+                    self._draw_prewarm_progress(fertig_kaesten, gesamt,
+                                                gerechnet, t0)
+
+                # Erst den zweiten Kern beschaeftigen, DANN selbst
+                # rechnen: nur in dieser Reihenfolge laufen beide
+                # gleichzeitig. Umgekehrt waere der zweite Kern genau so
+                # lange untaetig, wie das eigene Cover dauert.
+                drueben = None
+                if zwei_kerne and kern2.frei() and i + 1 < n:
+                    p2, k2 = cover[i + 1]
+                    if kern2.senden(p2, k2):
+                        drueben = i + 1
+                    else:
+                        zwei_kerne = False
+
+                pfad, kaesten = cover[i]
+                try:
+                    for erg in prewarm_thumb_mehrfach(pfad, kaesten):
+                        if erg == "fertig":
+                            gerechnet += 1
+                        elif erg == "treffer":
+                            lagen_da += 1
+                        else:
+                            uebersprungen += 1
+                except Exception:                    # noqa: BLE001
+                    uebersprungen += len(kaesten)
+                fertig_kaesten += len(kaesten)
+
+                if drueben is not None:
+                    antwort = kern2.abholen()
+                    if antwort:
+                        g2, l2, u2 = antwort
+                        gerechnet += g2
+                        lagen_da += l2
+                        uebersprungen += u2
+                    else:
+                        uebersprungen += len(cover[drueben][1])
+                    fertig_kaesten += len(cover[drueben][1])
+                    i += 2
                 else:
-                    uebersprungen += 1
-            except Exception:                        # noqa: BLE001
-                uebersprungen += 1
+                    i += 1
+        finally:
+            # Ein noch offener Auftrag drueben darf in Ruhe zu Ende
+            # laufen - was er schreibt, bleibt gueltig. Abgeholt wird die
+            # Antwort trotzdem, sonst haengt der Prozess beim Beenden im
+            # Schreiben auf ein Rohr, das niemand mehr liest.
+            if kern2.frei() is False:
+                kern2.abholen()
+            kern2.beenden()
 
         dauer = time.monotonic() - t0
         # Der Stand des Zwischenspeichers gehoert in dieselbe Zeile

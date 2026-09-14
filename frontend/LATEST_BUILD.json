@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-13-127",
-  "summary": "Die Richtungstasten folgen jetzt der Anordnung statt der Gewohnheit: im Raster springen hoch/runter eine ganze Reihe, in der Galerie gehen links/rechts zum Nachbarn und hoch/runter blaettern eine Seite. Ausserdem sind die Kategorie-Logos auf der Hauptseite nach einem Neustart sofort da - sie werden schon waehrend der Startanimation von der Karte in den Arbeitsspeicher geholt, statt einzeln aufzuploppen."
+  "build_id": "2026-09-14-128",
+  "summary": "\"Miniaturen vorbereiten\" lief bei 28517 Covern sechs Stunden und konnte gar nicht fertig werden: vier Kastengroessen je Cover ergaben 114068 Cache-Dateien bei einer Obergrenze von 40000 - der Durchlauf hat seine eigenen Ergebnisse wieder verdraengt. Jetzt drei Kastengroessen statt vier, ein Lesen und ein Dekodieren je Cover statt drei, der zweite CPU-Kern rechnet mit, und der Passt-genau-Fall legt acht Byte ab statt einer halben Megabyte. WICHTIG: einmal 'Zwischenspeicher leeren' vor dem naechsten Durchlauf - sonst bleiben die alten, groesseren Eintraege liegen."
 }

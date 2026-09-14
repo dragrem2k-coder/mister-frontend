@@ -157,13 +157,73 @@ print("Test 5: doppelte Eintraege werden nur EINMAL gerechnet")
 spiel = ("Spiel", "game", ("/f/a.sfc", ".sfc", "SNES", None, (1, "f", 0)))
 f = frontend_mit_eintraegen(eintraege=[spiel] * 25)
 gesehen = []
+# GEAENDERT (Build 128): der Beobachtungspunkt ist ein anderer.
+#
+# Bis Build 127 fragte die Schleife je ZIEL einmal thumb_cache_has() -
+# hier mitzuschreiben reichte also. Seit Build 128 wird nach COVER
+# gruppiert und je Cover einmal prewarm_thumb_mehrfach() mit allen
+# seinen Kastengroessen gerufen (ein Lesen, ein Dekodieren statt drei).
+# Der alte Haken sah davon nichts mehr und meldete null Spiele - der
+# Test war rot, obwohl die Sache in Ordnung war.
+#
+# Mitgeschrieben wird jetzt an beiden Stellen: die Kategorie-Logos
+# laufen weiterhin einzeln ueber thumb_cache_has(), die Spiele ueber
+# die Mehrfach-Fassung. Das ist sogar der ehrlichere Punkt - er misst,
+# wie oft wirklich GERECHNET wird, nicht wie oft nachgesehen wird.
+# UND DER ZWEITE KERN MUSS HIER AUS BLEIBEN.
+#
+# Das hat dieser Test beim Umbau selbst gefunden: mit laufendem
+# Doppelkern ging JEDES ZWEITE Cover an den Arbeitsprozess - und der
+# hat seinen eigenen Adressraum, sieht den Haken unten also nicht. Von
+# sechs erwarteten Zielen kamen drei an, die Ordnerzeile fehlte
+# vollstaendig, und es sah nach einem Fehler im Vorbereiten aus, wo in
+# Wirklichkeit nur der Beobachter die Haelfte nicht sehen konnte.
+#
+# Festgehalten, weil es fuer jeden kuenftigen Test an dieser Stelle
+# gilt: was ueber den zweiten Kern laeuft, ist mit einer Attrappe im
+# eigenen Prozess nicht zu messen. Hier geht es um die Zusammenfassung
+# doppelter Eintraege, nicht um Parallelitaet - also wird der zweite
+# Kern abgeschaltet und alles laeuft durch den Haken.
+_echt_doppel = fm.Doppelkern
+
+
+class _KeinZweiterKern(object):
+    def start(self):
+        return False
+
+    def frei(self):
+        return False
+
+    def senden(self, pfad, kaesten):
+        return False
+
+    def abholen(self):
+        return None
+
+    def beenden(self):
+        pass
+
+
+fm.Doppelkern = _KeinZweiterKern
 _echt_has = fm.thumb_cache_has
+_echt_mehr = fm.prewarm_thumb_mehrfach
+
+
+def _haken_mehrfach(pfad, kaesten):
+    for _bw, _bh in kaesten:
+        gesehen.append((pfad, _bw, _bh))
+    return ["treffer"] * len(kaesten)
+
+
 fm.thumb_cache_has = lambda p, bw, bh: (gesehen.append((p, bw, bh))
                                         or True)
+fm.prewarm_thumb_mehrfach = _haken_mehrfach
 try:
     f.run_thumb_prewarm_all()
 finally:
     fm.thumb_cache_has = _echt_has
+    fm.prewarm_thumb_mehrfach = _echt_mehr
+    fm.Doppelkern = _echt_doppel
 # Die Kategorie-Logos laufen ueber denselben Aufruf (siehe
 # kategorie_logo_auftraege()) - die gehoeren hier nicht dazu.
 spiele = [g for g in gesehen if fm.SYSART_BASE not in g[0]]

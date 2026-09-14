@@ -7,6 +7,79 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**„Miniaturen vorbereiten" lief sechs Stunden — und konnte gar nicht
+fertig werden** (Build 128):
+
+Rückmeldung: *„Miniaturen vorbereiten läuft im HDMI-Modus jetzt schon 6
+Stunden, das ist viel zu lange. Das geht garnicht und schreckt ab."*
+
+Die Zahlen vom Gerät machten daraus etwas anderes als ein
+Geschwindigkeitsproblem:
+
+```
+28517 Cover  ×  4 Kastengrößen  =  114 068 Cache-Dateien
+                  Obergrenze:          40 000
+```
+
+Ab 40 000 Dateien verdrängt der Zwischenspeicher das Älteste — also
+genau das, was derselbe Durchlauf zwei Stunden vorher gerechnet hat.
+**Der Lauf hat sich im Kreis gedreht.** Sichtbar gewesen wäre das an der
+Zeile `THUMB_CACHE Verdraengung` im Log; die steht in `/tmp` und ist
+nach einem Neustart weg.
+
+**Der Denkfehler dahinter, und er war meiner.** In Build 123 stand als
+Begründung, alle drei Ansichten vorzubereiten sei fast gratis: *„die
+Rasterkacheln sind klein, das Verkleinern kostet dort einen
+Bruchteil."* Nachgemessen an einem 900×1200-Cover:
+
+| Kasten | | Zeit |
+|---|---|---|
+| 733×909 | Liste | 162 ms |
+| 411×548 | Galerie | 183 ms |
+| 128×171 | Raster | 68 ms |
+| 124×166 | Galerie-Leiste | 68 ms |
+
+Die winzige Kachel kostet **40 % der großen, nicht 3 %**. Die
+Flächenmittelung liest jeden Quellpunkt, egal wie klein das Ziel ist —
+ich hatte nach der Zielgröße geurteilt, und die ist hier fast egal.
+
+**Vier Änderungen, zusammen gemessen 40 % weniger Zeit und 44 % weniger
+Platz auf der Karte** (600×800-Cover), dazu der zweite Kern:
+
+1. **Drei Kastengrößen statt vier.** Raster und Galerie-Leiste
+   unterschieden sich um vier Bildpunkte (128×171 gegen 124×166) — und
+   ergaben dadurch zwei komplett getrennte Miniaturen je Cover, weil die
+   Kastengröße im Cache-Schlüssel steht. Beide benutzen jetzt denselben
+   Kasten, und zwar den kleineren der beiden.
+2. **Einmal lesen, einmal dekodieren.** Statt dreimal dieselbe Datei von
+   der SD-Karte zu holen und dreimal dasselbe PNG zu dekodieren. Die
+   Ergebnisse sind bitgenau dieselben — jeder Kasten wird weiterhin aus
+   dem Original gerechnet, nie aus einer fertigen Miniatur.
+3. **Der zweite CPU-Kern rechnet mit.** Der Menüpunkt hatte den
+   Vorauslader-Prozess abgeschaltet (richtig) und danach alles selbst
+   gerechnet, einkernig (falsch). Der DE10-Nano hat zwei Kerne.
+4. **Acht Byte statt einer halben Megabyte.** Passt ein Cover ohne
+   Skalierung in den Kasten, wurde bisher eine vollständige Kopie
+   abgelegt. Gemessen: die Kopie war 548 KB groß und mit 5,9 ms
+   **langsamer** zu lesen, als das Original neu zu dekodieren (4,8 ms).
+   Dort steht jetzt eine Marke.
+
+Die Obergrenze steigt von 40 000 auf 150 000 Dateien — mit drei Kästen
+braucht die Sammlung 85 551, und es bleibt Luft.
+
+> **Einmalig nötig:** vor dem nächsten Durchlauf *System → Wartung →
+> „Zwischenspeicher leeren"*. Die alten Einträge sind nicht falsch, nur
+> größer als nötig — ohne Leeren bleiben sie liegen und der Platzgewinn
+> verpufft.
+
+**Und was der Test nicht konnte.** `tools/test_prewarm_absturz.py` hat
+beim Umbau gemeldet, die Hälfte der Cover werde nicht mehr vorbereitet.
+Das stimmte nicht — sie liefen über den zweiten Kern, und der hat einen
+eigenen Adressraum, in dem die Testattrappe nicht gilt. Festgehalten,
+weil es für jeden künftigen Test an dieser Stelle gilt.
+
+
+
 **Die Richtungstasten folgen jetzt der Anordnung, und die
 Kategorie-Logos sind beim Start schon da** (Build 127):
 

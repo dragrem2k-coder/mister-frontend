@@ -496,3 +496,152 @@ def auftraege_bauen(eintraege, mitte, kastenmass, vorwaerts=True,
             continue
         auftraege.append((pfad, bw, bh))
     return auftraege
+
+
+class Doppelkern(object):
+    """Ein zweiter Arbeitsprozess, ausschliesslich fuer "Miniaturen
+    vorbereiten" (Build 128).
+
+    WARUM ES DAS GIBT
+    =================
+
+    Nutzer-Rueckmeldung: "Miniaturen vorbereiten laeuft im HDMI-Modus
+    jetzt schon 6 Stunden, das ist viel zu lange, das geht garnicht und
+    schreckt ab."
+
+    Der Menuepunkt ruft als allererstes PREWARMER.abbrechen() - mit gutem
+    Grund, der Leerlauf-Vorauslader wuerde sich sonst um dieselben Dateien
+    streiten. Nur rechnete er danach ALLES selbst, in einem Prozess, auf
+    EINEM Kern. Der DE10-Nano hat zwei. Der zweite lag sechs Stunden lang
+    brach.
+
+    WARUM NICHT EINFACH DER VORHANDENE VORAUSLADER
+    ==============================================
+
+    Der ist auf etwas anderes ausgelegt: kurzlebige, staendig wieder
+    verworfene Auftragslisten fuer das, was gerade auf dem Schirm zu
+    sehen sein wird, mit sofortigem Abbruch bei jeder Eingabe. Hier geht
+    es um eine feste, lange Liste, die einmal komplett abgearbeitet
+    werden soll. Dieselbe Klasse fuer beides haette aus zwei einfachen
+    Ablaeufen einen komplizierten gemacht.
+
+    DAS VERFAHREN: EIN AUFTRAG VORAUS
+    =================================
+
+    Es waere verlockend, dem Arbeitsprozess die halbe Liste auf einmal
+    zu geben. Genau das darf nicht sein - "Abbrechen" muss weiter bei
+    jedem Eintrag greifen, und was einmal im Rohr steht, holt niemand
+    zurueck. Deshalb:
+
+        1. Auftrag i+1 an den Arbeitsprozess schicken (blockiert nicht,
+           es steht immer nur einer im Rohr)
+        2. Auftrag i selbst rechnen
+        3. Antwort zu i+1 abholen
+
+    Beide Kerne rechnen also gleichzeitig, und ein Abbruch verliert
+    hoechstens den einen Auftrag, der gerade drueben laeuft - der laeuft
+    zu Ende und landet trotzdem auf der Karte. Verloren geht nichts.
+
+    EHRLICH DAZU: das ist nicht exakt Faktor zwei. Beide teilen sich
+    SD-Karte und Speicherbus, und wer frueher fertig ist, wartet auf den
+    anderen. Bei ungleich grossen Covern ist das mal mehr, mal weniger.
+    Faktor zwei war nie zu erwarten; es geht um die Groessenordnung.
+
+    RUECKFALL: laesst sich der Prozess nicht starten, meldet sich() das
+    mit False, und der Aufrufer rechnet einfach alles selbst - also genau
+    wie bis Build 127. Schlechter als vorher wird es dadurch nie.
+    """
+
+    def __init__(self):
+        self._proc = None
+        self._offen = None        # der Auftrag, auf dessen Antwort wir warten
+
+    def start(self):
+        """True, wenn der zweite Kern benutzt werden kann."""
+        if self._proc is not None:
+            return True
+        if not os.path.isfile(WORKER):
+            LOG("VORBEREITEN: %s fehlt - es rechnet nur ein Kern" % WORKER)
+            return False
+        try:
+            self._proc = subprocess.Popen(
+                [sys.executable or "python3", WORKER],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                close_fds=True)
+        except Exception as e:                           # noqa: BLE001
+            LOG("VORBEREITEN: zweiter Kern nicht startbar (%s) - "
+                "es rechnet nur ein Kern" % e)
+            self._proc = None
+            return False
+        LOG("VORBEREITEN: zweiter Kern laeuft (PID %d)" % self._proc.pid)
+        return True
+
+    def frei(self):
+        """True, wenn gerade KEIN Auftrag drueben laeuft."""
+        return self._proc is not None and self._offen is None
+
+    def senden(self, pfad, kaesten):
+        """Ein Cover mit allen seinen Kastengroessen hinueberreichen.
+        False, wenn das nicht ging - dann muss der Aufrufer es selbst
+        rechnen.
+
+        Das Protokoll ist die Mehrfach-Zeile aus fe/prewarm_worker.py:
+            M \\t <cache-ordner> \\t <b>x<h>,<b>x<h>,... \\t <pfad>
+        """
+        if self._proc is None or self._offen is not None:
+            return False
+        masse = ",".join("%dx%d" % (b, h) for b, h in kaesten)
+        zeile = "M\t%s\t%s\t%s\n" % (_art.THUMB_CACHE_DIR, masse, pfad)
+        try:
+            self._proc.stdin.write(zeile.encode("utf-8", "surrogateescape"))
+            self._proc.stdin.flush()
+        except (OSError, ValueError, AttributeError) as e:
+            LOG("VORBEREITEN: zweiter Kern weg (%s) - ab jetzt ein Kern" % e)
+            self.beenden()
+            return False
+        self._offen = (pfad, kaesten)
+        return True
+
+    def abholen(self):
+        """Auf die Antwort zum offenen Auftrag warten.
+        Rueckgabe: (gerechnet, lagen_da, uebersprungen) oder None."""
+        if self._proc is None or self._offen is None:
+            return None
+        _pfad, kaesten = self._offen
+        self._offen = None
+        try:
+            antwort = self._proc.stdout.readline()
+        except (OSError, ValueError, AttributeError):
+            antwort = b""
+        if not antwort:
+            LOG("VORBEREITEN: zweiter Kern antwortet nicht mehr - "
+                "ab jetzt rechnet ein Kern")
+            self.beenden()
+            # Was drueben lief, ist moeglicherweise trotzdem fertig
+            # geworden. Als "uebersprungen" zaehlen statt als gerechnet:
+            # lieber untertreiben als eine Zahl melden, die nicht stimmt.
+            return (0, 0, len(kaesten))
+        text = antwort.decode("ascii", "replace").strip()
+        gerechnet = text.count("f")
+        lagen_da = text.count("t")
+        rest = len(kaesten) - gerechnet - lagen_da
+        return (gerechnet, lagen_da, max(0, rest))
+
+    def beenden(self):
+        p, self._proc = self._proc, None
+        self._offen = None
+        if p is None:
+            return
+        try:
+            if p.stdin:
+                p.stdin.close()
+        except OSError:
+            pass
+        try:
+            p.terminate()
+        except OSError:
+            pass
+        try:
+            p.wait(timeout=2)
+        except Exception:                                # noqa: BLE001
+            pass

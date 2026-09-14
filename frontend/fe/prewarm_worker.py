@@ -119,6 +119,51 @@ def main():
         zeile = zeile.rstrip("\n")
         if not zeile:
             continue
+        # NEU (Build 128): die MEHRFACH-Zeile fuer "Miniaturen
+        # vorbereiten".
+        #
+        #     M \t <cache-ordner> \t <b>x<h>,<b>x<h>,... \t <pfad>
+        #
+        # Ein Cover hat dort drei Kastengroessen (Liste, Kachel,
+        # Galerie-Cover). Als drei Einzelauftraege waeren das dreimal
+        # Lesen und dreimal Dekodieren derselben Datei; mit dieser Zeile
+        # einmal. Die Antwort ist ein Zeichen JE KASTEN, in derselben
+        # Reihenfolge - der Aufrufer zaehlt sie einfach.
+        #
+        # Die alte Vierfeld-Zeile bleibt unveraendert gueltig: der
+        # Leerlauf-Vorauslader benutzt sie weiter, und er schickt immer
+        # nur einen Kasten.
+        if zeile.startswith("M\t"):
+            teile = zeile.split("\t", 3)
+            if len(teile) != 4:
+                aus.write("e\n")
+                aus.flush()
+                continue
+            _m, cachedir, masse, pfad = teile
+            kaesten = []
+            try:
+                for stueck in masse.split(","):
+                    b, h = stueck.split("x")
+                    kaesten.append((int(b), int(h)))
+            except ValueError:
+                aus.write("e\n")
+                aus.flush()
+                continue
+            art.THUMB_CACHE_DIR = cachedir
+            try:
+                ergebnisse = art.prewarm_thumb_mehrfach(pfad, kaesten)
+            except Exception:                            # noqa: BLE001
+                ergebnisse = ["fehler"] * len(kaesten)
+            kurz = "".join({"fertig": "f", "treffer": "t",
+                            "uebersprungen": "u"}.get(e, "e")
+                           for e in ergebnisse)
+            try:
+                aus.write(kurz + "\n")
+                aus.flush()
+            except (BrokenPipeError, ValueError):
+                return 0
+            continue
+
         teile = zeile.split("\t", 3)
         if len(teile) != 4:
             aus.write("e\n")

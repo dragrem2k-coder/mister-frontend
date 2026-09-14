@@ -978,6 +978,19 @@ Ansicht, sondern ein Fehler.
 > anderen Größe gebraucht. Der Menüpunkt rechnet alle drei Ansichten
 > mit vor, du musst ihn also nur einmal laufen lassen (aber einmal je
 > Bildmodus: CRT und HDMI haben eigene Größen).
+>
+> **Wie lange das dauert, und wovon es abhängt.** Gerechnet werden drei
+> Kastengrößen je Cover, und der Preis hängt an der Größe der
+> *Quelldatei*, nicht an der der Kachel. Grobe Richtwerte auf dem
+> MiSTer, beide Kerne: rund eine halbe bis eine Sekunde je Cover. Bei
+> 5000 Covern ist das etwa eine Stunde, bei 30 000 entsprechend mehr.
+> Der Durchlauf lässt sich jederzeit mit einer Taste abbrechen und
+> verliert dabei nichts — beim nächsten Mal macht er dort weiter, wo er
+> aufgehört hat.
+>
+> **Platz auf der Karte:** rechne mit etwa 0,3–0,8 MB je Cover. Wird es
+> zu viel, leert *System -> Wartung -> "Zwischenspeicher leeren"* alles
+> wieder; verloren geht dabei nur Rechenzeit.
 
 ---
 

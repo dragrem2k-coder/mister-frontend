@@ -503,7 +503,44 @@ def alten_flachen_cache_aufraeumen():
 # auf einer 128-GB-Karte unkritisch, auf einer kleinen nicht. Wer knapp
 # bei Platz ist, setzt den Wert hier herunter; thumb_cache_stand()
 # schreibt die tatsaechliche Belegung nach jedem Durchlauf ins Log.
-THUMB_CACHE_MAX_FILES = 40000
+# GEAENDERT (Build 128): 40000 -> 150000.
+#
+# Der Nutzer, der Build 128 ausgeloest hat, meldete einen Durchlauf von
+# "Miniaturen vorbereiten", der nach SECHS STUNDEN nicht fertig war. Die
+# Zahlen von seinem Geraet:
+#
+#     28517 Cover
+#      x  4 Kastengroessen (Build 122-127)
+#     -------------------------------------
+#    114068 Dateien noetig  -  bei einer Obergrenze von 40000
+#
+# Das war kein Geschwindigkeitsproblem. Der Durchlauf haette NIE fertig
+# werden koennen: ab 40000 Dateien raeumt die Verdraengung auf 36000
+# herunter, und das Aelteste ist genau das, was derselbe Durchlauf zwei
+# Stunden vorher gerechnet hat. Er hat sich im Kreis gedreht, und die
+# Zeile "THUMB_CACHE Verdraengung" haette es gesagt - nur steht das Log
+# in /tmp und ist nach einem Neustart weg.
+#
+# Build 128 nimmt eine der vier Kastengroessen wieder heraus (siehe
+# kachel_cover_kasten() in frontend.py), es bleiben 85551. Die Grenze
+# muss also darueber liegen, mit Luft fuer eine groessere Sammlung.
+#
+# WARUM UEBERHAUPT EINE GRENZE, und warum diese: sie schuetzt nicht den
+# Speicherplatz - die Dateien sind klein und der Ordner darf jederzeit
+# von Hand geleert werden -, sondern die Verdraengung selbst. Die
+# durchlaeuft im Ernstfall den ganzen Ordner mit einem
+# os.path.getmtime je Datei. Bei 150000 Dateien auf einer SD-Karte
+# dauert das, und deshalb steht daneben, dass es hoechstens alle 15000
+# Schreibvorgaenge passiert (Zielfuellung 90 %).
+#
+# EHRLICH DAZU: bei sehr grossen Sammlungen braucht der Zwischenspeicher
+# Platz. Auf dem Geraet des Nutzers lagen bei 26403 Dateien 9.8 GB. Die
+# Marke aus Build 128 (siehe ORIGINAL_PASST) nimmt davon den groessten
+# Einzelposten weg, aber zweistellige Gigabyte bleiben moeglich. Wer das
+# nicht hat, kann den Ordner jederzeit loeschen oder ueber
+# "Zwischenspeicher leeren" im Menue leeren - es geht dabei nichts
+# verloren ausser Rechenzeit.
+THUMB_CACHE_MAX_FILES = 150000
 
 def _thumb_cache_key(path, w, h):
     """Cache-Schluessel aus Quellpfad + Zielgroesse + Dateigroesse/
@@ -759,16 +796,56 @@ def _benutzt_vermerken(cpath):
         _vor_uhrstellung_beruehrt.append(cpath)
 
 
+# NEU (Build 128): die Antwort "das Original passt, wie es ist".
+#
+# WARUM ES DAS GIBT. Bis Build 127 legte der Passt-genau-Fall eine
+# vollstaendige KOPIE des dekodierten Originals auf der Karte ab (siehe
+# die Begruendung von Build 92 in _get_scaled_impl()). Die Absicht war
+# richtig - ohne Eintrag meldet thumb_cache_has() fuer immer "nicht da"
+# -, der Preis war es nicht. Nachgemessen bei einem 600x800-Cover im
+# HDMI-Listenkasten (733x909):
+#
+#     Cache-Datei                548 KB
+#     Cache lesen + entpacken    5.9 ms
+#     Original-PNG dekodieren    4.8 ms
+#
+# Die gespeicherte Miniatur war also GROESSER als das Original und
+# gleichzeitig LANGSAMER als es einfach neu zu dekodieren. Ein halbes
+# Megabyte SD-Karte, um nichts zu sparen.
+#
+# Beim Nutzer, der das aufgebracht hat: 28517 Cover, 9.8 GB
+# Zwischenspeicher bei erst zwei Dritteln der Arbeit. Dieser eine Fall
+# war der groesste Posten darin.
+#
+# Jetzt steht dort eine acht Byte lange Marke. thumb_cache_has() sagt
+# weiterhin "da" (das war der ganze Zweck), "Miniaturen vorbereiten"
+# hakt das Cover ab, und der Zeichenpfad dekodiert das Original - was
+# er nach der Messung oben ohnehin lieber tut.
+ORIGINAL_PASST = "original_passt"
+
+_MARKE = b"ARTO"
+
+
 def _thumb_cache_get(path, w, h):
     """Liefert (breite, hoehe, pixelbytes) bei einem Treffer, sonst
     None. Vermerkt bei einem Treffer die Benutzung (dient als einfacher,
     robuster "zuletzt benutzt"-Zeitstempel fuer die Verdraengung weiter
     unten - keine separate Indexdatei noetig, die nach einem
-    Absturz/Stromausfall inkonsistent werden koennte)."""
+    Absturz/Stromausfall inkonsistent werden koennte).
+
+    Sonderfall seit Build 128: liegt dort die Marke ORIGINAL_PASST (acht
+    Byte statt einer halben Megabyte-Kopie), wird genau diese Zeichen-
+    kette zurueckgegeben. Jeder Aufrufer muss sie von einem echten
+    Bild-Treffer unterscheiden - siehe den Kommentarblock bei
+    ORIGINAL_PASST."""
     cpath = _thumb_cache_path(_thumb_cache_key(path, w, h))
     try:
         with open(cpath, "rb") as f:
-            if f.read(4) != b"ART1":
+            kopf = f.read(4)
+            if kopf == _MARKE:
+                _benutzt_vermerken(cpath)
+                return ORIGINAL_PASST
+            if kopf != b"ART1":
                 return None
             tw, th = struct.unpack("<HH", f.read(4))
             pix = zlib.decompress(f.read())
@@ -783,14 +860,44 @@ def _thumb_cache_get(path, w, h):
     except (struct.error, zlib.error, ValueError):
         return None
 
+
+def _thumb_cache_put_marke(path, w, h):
+    """Die Marke "das Original passt, wie es ist" ablegen - acht Byte
+    statt einer Kopie. Siehe den Kommentarblock bei ORIGINAL_PASST.
+
+    Geschrieben wird wie jede Cache-Datei ueber .tmp + os.replace(),
+    damit ein Abbruch mittendrin keine halbe Datei hinterlaesst."""
+    try:
+        cpath = _thumb_cache_path(_thumb_cache_key(path, w, h))
+        os.makedirs(os.path.dirname(cpath), exist_ok=True)
+        tmp = cpath + ".tmp%d_%d" % (os.getpid(), threading.get_ident())
+        with open(tmp, "wb") as f:
+            f.write(_MARKE + struct.pack("<HH", 0, 0))
+        os.replace(tmp, cpath)
+    except OSError as e:
+        LOG("THUMB_CACHE Schreibfehler (%s): %s" % (os.path.basename(path), e))
+        return
+    if not _uhr_verlaesslich and len(_vor_uhrstellung_beruehrt) < _VOR_UHRSTELLUNG_MAX:
+        _vor_uhrstellung_beruehrt.append(cpath)
+    _thumb_cache_evict_if_needed()
+
 def thumb_cache_lesen(path, w, h):
     """Oeffentlicher Eingang zu _thumb_cache_get() (Build 125).
 
     Gibt es, damit der Nachlade-Thread (fe/nachladen.py) eine fertige
     Miniatur von der Karte holen kann, ohne dass dieses Modul den
     privaten Namen exportieren muss - und damit in einem Test eine
-    Attrappe an dieselbe Stelle passt."""
-    return _thumb_cache_get(path, w, h)
+    Attrappe an dieselbe Stelle passt.
+
+    Die Marke ORIGINAL_PASST (Build 128) wird hier zu None: der
+    Nachlader soll Bilder in den Arbeitsspeicher holen, und eine Marke
+    ist kein Bild. Der Zeichenpfad dekodiert das Original dann selbst -
+    nachgemessen billiger, als die frueher dort abgelegte Kopie zu lesen
+    (4.8 gegen 5.9 ms), es geht also nichts verloren."""
+    ergebnis = _thumb_cache_get(path, w, h)
+    if ergebnis is ORIGINAL_PASST:
+        return None
+    return ergebnis
 
 
 def _thumb_cache_put(path, w, h, tw, th, pix):
@@ -841,6 +948,19 @@ def _thumb_cache_put(path, w, h, tw, th, pix):
         _vor_uhrstellung_beruehrt.append(cpath)
     _thumb_cache_evict_if_needed()
 
+def _thumb_cache_put_marke_async(path, w, h):
+    """Wie _thumb_cache_put_marke(), aber nicht-blockierend - gleicher
+    Grund wie bei _thumb_cache_put_async() darunter. Die Marke selbst
+    ist zwar winzig, aber _thumb_cache_evict_if_needed() haengt daran,
+    und das kann ein Verzeichnisdurchlauf sein."""
+    def _run():
+        try:
+            _thumb_cache_put_marke(path, w, h)
+        except Exception:                                # noqa: BLE001
+            pass
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def _thumb_cache_put_async(path, w, h, tw, th, pix):
     """Wie _thumb_cache_put(), aber nicht-blockierend.
 
@@ -887,7 +1007,15 @@ _thumb_cache_seit_zaehlung = 0
 # (was ausdruecklich erlaubt ist - der Ordner darf jederzeit von Hand
 # geleert werden). Alle 2000 Schreibvorgaenge ist oft genug, damit das
 # nie aus dem Ruder laeuft, und selten genug, dass es niemand merkt.
-_THUMB_CACHE_NACHZAEHLEN_ALLE = 2000
+#
+# GEAENDERT (Build 128): 2000 -> 15000. Das Nachzaehlen ist ein
+# Verzeichnisdurchlauf, und der kostet mit der neuen Obergrenze das
+# Vierfache. Bei 2000 waere "Miniaturen vorbereiten" ueber einen ganzen
+# Durchlauf hinweg 40 mal durch 150000 Dateien gelaufen, nur um eine
+# Zahl zu pruefen, die es selbst mitzaehlt. 15000 ist derselbe Abstand
+# wie die Menge, die eine Verdraengung freiraeumt - haeufiger nachsehen
+# als aufraeumen bringt nichts.
+_THUMB_CACHE_NACHZAEHLEN_ALLE = 15000
 
 
 # Cache-Dateien, die niemals verdraengt werden duerfen - siehe
@@ -1374,6 +1502,24 @@ class ArtCache:
         # und Fehltreffer direkt aus echten Log-Daten vergleichen lassen.
         _tcache_t0 = time.monotonic()
         disk_hit = _thumb_cache_get(path, max_w, max_h)
+        # NEU (Build 128): die Marke "das Original passt" ist KEIN
+        # Bildtreffer - sie sagt nur, dass hier nichts zu rechnen ist.
+        # Das Original muss trotzdem noch dekodiert werden.
+        #
+        # WICHTIG ist, was gleich darunter NICHT passiert: bei einer
+        # Marke wird die Ueberspring-Pruefung (_defer_uncached)
+        # uebergangen. Sonst waere genau der Fehler von Build 92 zur
+        # Haelfte zurueck - das Cover wuerde beim Scrollen wieder
+        # uebersprungen und danach nachgeladen, also das Aufblitzen aus
+        # dem Video des Nutzers.
+        #
+        # Das ist erlaubt, weil es messbar nichts kostet: die Marke
+        # ersetzt eine Cache-Datei, deren Lesen 5.9 ms brauchte, durch
+        # ein Dekodieren, das 4.8 ms braucht. Der Zeichenpfad wird an
+        # dieser Stelle also nicht langsamer, sondern schneller.
+        marke = disk_hit is ORIGINAL_PASST
+        if marke:
+            disk_hit = None
         if disk_hit is not None:
             _tcache_dt = (time.monotonic() - _tcache_t0) * 1000
             # GEAENDERT (Build 91): die Einzelzeile je Treffer lief bei
@@ -1395,7 +1541,7 @@ class ArtCache:
         # der schwachen CPU. Stattdessen ueberspringen; kurz nach dem
         # letzten Tastendruck laedt die Idle-Nachzeichnung es nach (siehe
         # COVER_SETTLE in der Hauptschleife).
-        if self._defer_uncached and path not in self.cache:
+        if not marke and self._defer_uncached and path not in self.cache:
             # NEU (siehe _settle_needed in frontend.py): festhalten,
             # DASS hier tatsaechlich etwas uebersprungen wurde. Nur dann
             # muss der COVER_SETTLE-Nachlader spaeter ueberhaupt neu
@@ -1416,7 +1562,7 @@ class ArtCache:
         # Bewusst NACH der Defer-Pruefung darueber: waehrend aktiv
         # gescrollt wird, ist der billige Sprung oben richtig - der
         # Eintrag wechselt ohnehin gleich wieder.
-        if (auslagern_ok and not self._defer_uncached
+        if (not marke and auslagern_ok and not self._defer_uncached
                 and self._auslagern_versuchen(box_key, path, max_w, max_h)):
             self._deferred_something = True
             self._defer_count += 1
@@ -1471,7 +1617,17 @@ class ArtCache:
                 # passen, aber nicht um einen GANZZAHLIGEN Faktor >= 2
                 # kleiner sind. Deshalb traf es nur die Systeme, deren
                 # Scans zufaellig in diesem Bereich liegen.
-                _thumb_cache_put_async(path, max_w, max_h, w, h, pix)
+                #
+                # GEAENDERT (Build 128): eine MARKE statt der Kopie. Die
+                # beiden oben genannten Folgen bleiben beide behoben -
+                # thumb_cache_has() sagt weiterhin "da", und der Treffer
+                # kommt weiterhin vor der Ueberspring-Pruefung (siehe
+                # dort). Was wegfaellt, ist nur die halbe Megabyte
+                # Kopie, die langsamer zu lesen war als das Original zu
+                # dekodieren. Siehe den Kommentarblock bei
+                # ORIGINAL_PASST.
+                if not marke:
+                    _thumb_cache_put_marke_async(path, max_w, max_h)
                 return base
             # BUGFIX (Nutzer-Rueckmeldung: "beim Scrollen durch viele
             # ROMs ruckelt es spuerbar"): die Defer-Pruefung oben
@@ -1802,6 +1958,74 @@ def prewarm_thumb(path, max_w, max_h):
     gelesen = original_lesen(path, max_w, max_h)
     if gelesen is None:
         return "fehler"
+    return _prewarm_aus_gelesenem(path, max_w, max_h, gelesen)
+
+
+def prewarm_thumb_mehrfach(path, kaesten):
+    """Mehrere Kastengroessen desselben Covers - mit EINEM Lesen und
+    EINEM Dekodieren. Rueckgabe: Liste der Einzelergebnisse, in der
+    Reihenfolge von "kaesten".
+
+    NEU (Build 128). "Miniaturen vorbereiten" rechnet je Cover drei
+    Kastengroessen (Liste, Kachel, Galerie-Cover). Bis Build 127 lief
+    dafuer dreimal prewarm_thumb() - also dreimal die Datei von der
+    SD-Karte lesen und dreimal dasselbe PNG dekodieren, um danach
+    dreimal unterschiedlich zu verkleinern.
+
+    Gemessen an einem 900x1200-PNG: Dekodieren 10.6 ms, Verkleinern
+    zusammen 482 ms. Das Mehrfach-Dekodieren ist also nicht der grosse
+    Posten - aber es ist reine Verschwendung, und auf der SD-Karte des
+    MiSTer wiegt das Lesen schwerer als auf der Messmaschine.
+
+    WICHTIG - was hier NICHT passiert: es wird keine fertige Miniatur
+    weiterverarbeitet. Jede Kastengroesse wird aus DEMSELBEN dekodierten
+    Original gerechnet, genau wie vorher. Die Regel aus dem
+    Modul-Kommentar ("eine gespeicherte Miniatur ist bit-identisch zu
+    einer frisch berechneten") bleibt damit unberuehrt; die Ergebnisse
+    sind bitgenau dieselben wie bei drei Einzelaufrufen. Nachgewiesen in
+    tools/test_vorbereiten_tempo.py."""
+    ergebnisse = []
+    offen = []
+    for (bw, bh) in kaesten:
+        if bw <= 0 or bh <= 0:
+            ergebnisse.append("uebersprungen")
+        elif thumb_cache_has(path, bw, bh):
+            ergebnisse.append("treffer")
+        else:
+            ergebnisse.append(None)
+            offen.append(len(ergebnisse) - 1)
+    if not offen:
+        return ergebnisse
+
+    # Dekodiert wird EINMAL, und zwar auf das GROESSTE offene Ziel.
+    #
+    # Warum das groesste: bei JPEG dekodiert TurboJPEG gleich
+    # verkleinert (siehe original_lesen()). Naehme man hier das
+    # kleinste, bekaeme der grosse Kasten ein zu kleines Bild und muesste
+    # es hochskalieren - das Ergebnis waere schlechter UND anders als
+    # bei einem Einzelaufruf. Das groesste Ziel ist fuer alle anderen
+    # immer noch gross genug.
+    max_b = max(kaesten[i][0] for i in offen)
+    max_h_ = max(kaesten[i][1] for i in offen)
+    gelesen = original_lesen(path, max_b, max_h_)
+    if gelesen is None:
+        for i in offen:
+            ergebnisse[i] = "fehler"
+        return ergebnisse
+    for i in offen:
+        bw, bh = kaesten[i]
+        try:
+            ergebnisse[i] = _prewarm_aus_gelesenem(path, bw, bh, gelesen)
+        except Exception:                                # noqa: BLE001
+            ergebnisse[i] = "fehler"
+    return ergebnisse
+
+
+def _prewarm_aus_gelesenem(path, max_w, max_h, gelesen):
+    """Der Rechenteil von prewarm_thumb(), losgeloest vom Lesen -
+    damit prewarm_thumb_mehrfach() dasselbe dekodierte Original
+    mehrfach benutzen kann, ohne dass die Rechnung ein zweites Mal
+    dasteht und auseinanderlaufen kann."""
     w, h, pix, (nw, nh) = gelesen
 
     # Alle Groessenentscheidungen nach den ECHTEN Massen der Datei -
@@ -1820,7 +2044,13 @@ def prewarm_thumb(path, max_w, max_h):
             # thumb_cache_has() fuer immer "nicht da", das Vorbereiten
             # hakt dieses Cover nie ab, und der Zeichenpfad ueberspringt
             # es beim Scrollen immer wieder neu.
-            _thumb_cache_put(path, max_w, max_h, w, h, pix)
+            #
+            # GEAENDERT (Build 128): eine MARKE statt der Kopie - acht
+            # Byte statt einer halben Megabyte. Siehe den
+            # Kommentarblock bei ORIGINAL_PASST; dort steht auch die
+            # Messung, nach der die Kopie nicht nur groesser, sondern
+            # sogar langsamer war als das Original neu zu dekodieren.
+            _thumb_cache_put_marke(path, max_w, max_h)
             return "fertig"
         sw, sh, out = _hochskalieren(pix, w, h, scale)
         _thumb_cache_put(path, max_w, max_h, sw, sh, bytes(out))
