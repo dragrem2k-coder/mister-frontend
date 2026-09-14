@@ -10,9 +10,10 @@ autostart - all in pure standard Python, without a single external
 dependency required on the MiSTer itself.
 
 **About the screenshots below:** rendered directly from the actual
-program code, not a photo montage - boxart and music titles are
-placeholders, the system logos on the left are real. A compact overview
-is additionally available in `VORSCHAU.md`.
+program code, not a photo montage - boxart, game titles and play stats
+are placeholders, the system logos are real. They are generated with
+`tools/screenshots_bauen.py` so they cannot go stale again. A compact
+overview is additionally available in `VORSCHAU.md`.
 
 <p align="center">
   <img src="screenshots/preview_1_kategorien.png" width="420" alt="Category menu with clock and network icon">
@@ -35,6 +36,30 @@ searchable:
 </p>
 <p align="center"><sub>Left: Trophy Room - cover of your most-played game, favorite system, achievement counter &nbsp;|&nbsp; Right: Year in Review - limited to the current calendar year, not "since records began"</sub></p>
 
+**Three views, everywhere** - both the game list *and* the main page can
+be switched between list, grid and gallery (section 8r):
+
+<p align="center">
+  <img src="screenshots/preview_9_liste_raster.png" width="280" alt="Game list as a dense grid">
+  &nbsp;
+  <img src="screenshots/preview_10_liste_galerie.png" width="280" alt="Game list as a gallery with a large cover and a neighbour strip">
+  &nbsp;
+  <img src="screenshots/preview_8_hauptseite_galerie.png" width="280" alt="Main page as a gallery with category badges">
+</p>
+<p align="center"><sub>Left: grid - 21 games at a glance on HDMI &nbsp;|&nbsp; Center: gallery - large cover, data beside it, neighbours as a strip &nbsp;|&nbsp; Right: the same gallery on the main page, with the category badges</sub></p>
+
+**And on a CRT?** That is the question a view lives or dies by, so here
+are the same views at 320x240:
+
+<p align="center">
+  <img src="screenshots/preview_crt_1_liste.png" width="240" alt="CRT: list">
+  &nbsp;
+  <img src="screenshots/preview_crt_2_raster.png" width="240" alt="CRT: grid">
+  &nbsp;
+  <img src="screenshots/preview_crt_3_galerie.png" width="240" alt="CRT: gallery">
+</p>
+<p align="center"><sub>CRT 320x240, original size - list, grid, gallery</sub></p>
+
 ## Why a custom frontend?
 
 The MiSTer community keeps debating whether a graphical frontend even
@@ -56,8 +81,8 @@ a very approachable solution that is fully controllable by gamepad
 (paired with the SuperStation One, but works on any MiSTer).
 
 What's different here:
-- **No system modification, reversible at any time** - this is a single
-  Python script that runs on a completely unmodified MiSTer. No swapping
+- **No system modification, reversible at any time** - this is a
+  Python program that runs on a completely unmodified MiSTer. No swapping
   of the kernel/Linux image, no additional hardware needed. Try it out
   without risk: one command uninstalls it cleanly (see `Scripts/Frontend_Uninstall.sh`),
   and your MiSTer is exactly as it was before.
@@ -65,8 +90,8 @@ What's different here:
   runs without a single additional package.
 - **CRT and HDMI treated equally** - both with specially tuned looks and
   speed, not just "HDMI with CRT compatibility as a side effect".
-- **Small and comprehensible** - a single Python file for the actual
-  frontend, no abstraction layers, easy to read for anyone who wants to
+- **Small and comprehensible** - `frontend/frontend.py` plus the
+  `frontend/fe/` package of cleanly separated modules, no abstraction layers, easy to read for anyone who wants to
   tweak something themselves.
 - **Your collection should feel alive, not just be quick to navigate** -
   Trophy Room, Year in Review, Game Diary, Collections and a small
@@ -260,7 +285,7 @@ page 2, where the game list is on the left and, for game systems, a wide
 boxart+info column is on the right.
 
 **The "System" category is divided into 7 thematic groups**
-(RetroAchievements, Statistics & Achievements, Display & Sound, Behavior,
+(RetroAchievements, Statistics & Achievements, Display & Sound, Options,
 Input & Language, Info, Maintenance) - just like with your own ROM
 subfolders, click in once, then select the desired setting. All the
 individual functions further down in this README ("System menu -> ...")
@@ -363,7 +388,7 @@ five channels (Game, OCReMix, Covers, Chiptune, All). It runs via the
 same `mpg123` as MP3 playback, so it needs no additional software - just
 an internet connection.
 
-**Switching:** In the System menu under **Behavior -> "Music source"**.
+**Switching:** In the System menu under **Display & Sound -> "Music source"**.
 The entry cycles in turn: MP3 (local files) -> Radio: Game -> OCReMix ->
 Covers -> Chiptune -> All -> back to MP3. The chosen setting persists
 across restarts.
@@ -430,7 +455,7 @@ match remain without a cover, as with the consoles, but end up in
 - Runs with several parallel downloads instead of one after another -
   makes a noticeable difference with large collections
 - Name matching: exact -> without region tags -> similarity search,
-  preferred in this order: Germany > Europe > World > USA > Japan
+  preferred in this order: USA > World > Europe > Japan > Germany
 - Can be aborted at any time with Ctrl+C, resumes exactly where it left
   off on the next start
 - ROMs without a found cover end up in `fehlend_<System>.txt` in the
@@ -454,8 +479,8 @@ structure:
 - Known boot/test files (`boot.rom`, `mister-boot.*` etc.) are hidden.
 - Beta/proto/demo/hack/bad-dump tags are filtered out.
 - Multiple regions of the same game ("Game (USA)", "Game (Europe)") are
-  merged into one entry - best region wins (Germany > Europe > World >
-  USA > Japan). With complete No-Intro sets this can noticeably reduce the
+  merged into one entry - best region wins (USA > World > Europe >
+  Japan > Germany). With complete No-Intro sets this can noticeably reduce the
   list size.
 - **Japan-only ROMs are hidden entirely** (not just merged, but filtered
   out in general) - detects "(Japan)"/"[Japan]" and "(J)". Multi-region
@@ -497,7 +522,7 @@ the list with the logo/cover of the currently highlighted system -
 changes live as you page up/down through the categories.
 
 **Already included in the build** (located in `frontend/sysart/`, no
-longer needs to be created yourself): **33 of the 48 systems** have a
+longer needs to be created yourself): **all 48 systems** have a
 real logo. Build 79 moved the logos that had been sitting in
 `frontend/sysart/_weitere_systeme_noch_nicht_unterstuetzt/` into place
 (Atari 5200/7800, Jaguar, ColecoVision, CD-i, Sega 32X, Super Game Boy,
@@ -554,7 +579,7 @@ notice disappears and nothing gets reset.
 
 Active automatically, no setup needed:
 - **"Recently played"**: a new category at the very top of the main menu
-  as soon as you've launched your first game - up to 15 entries, newest
+  as soon as you've launched your first game - up to 100 entries, newest
   first. Appears only after the first game launch.
 - **Loading progress**: shows a progress bar if the game list actually
   has to be re-read from disk. On a normal, fast cache hit, none of this
@@ -584,7 +609,8 @@ switch for those too.
 
 ## 8d. Attract mode / screensaver
 
-After 45 seconds without input, a random game automatically appears
+After 90 seconds without input (adjustable under *System -> Options
+-> "Attract delay"*, from 30 seconds to 15 minutes), a random game automatically appears
 full-screen with cover, title and system name - then changes every 6
 seconds (avoiding repeats as long as more than one game is present). Any
 key exits attract mode immediately and takes you back exactly to where
@@ -850,7 +876,7 @@ neighbour strip, which is exactly what left/right do in the list.
 have a cover of their own; a grid of nothing but placeholders would not
 be a view, it would be a bug.
 
-> **Tip:** After switching, run *System -> Behaviour -> "Prepare
+> **Tip:** After switching, run *System -> Options -> "Prepare
 > thumbnails"* - each view needs the images in a different size. The
 > menu item prepares all three views in one go, so you only need to run
 > it once (but once per video mode: CRT and HDMI have their own sizes).
@@ -862,6 +888,16 @@ be a view, it would be a bug.
 > that is roughly an hour; with 30 000, correspondingly more. The run
 > can be aborted with any key at any time and loses nothing - next time
 > it carries on where it stopped.
+>
+> **Faster since Build 129:** TurboJPEG can decode a JPEG straight to a
+> smaller size (1/2, 1/4, 1/8), libpng cannot. The same work from a JPEG
+> therefore costs 416 ms instead of 689 ms for a 900x1200 cover. The
+> downloader now writes a **JPEG working copy** next to every PNG it
+> fetches; the original is left untouched. For covers already on the
+> card there is `PC-Tools/arbeitskopien.py` - minutes on a PC, hours on
+> the MiSTer. It costs about 0.2-0.4 MB per cover on top of the
+> original; delete the `.jpg` files and the frontend goes back to the
+> PNGs.
 >
 > **Card space:** budget about 0.3-0.8 MB per cover. If that gets too
 > much, *System -> Maintenance -> "Clear cache"* removes all of it

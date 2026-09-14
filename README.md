@@ -9,9 +9,10 @@ HDMI-Unterstützung, Autostart - alles in reinem Standard-Python, keine
 einzige externe Abhängigkeit auf dem MiSTer selbst nötig.
 
 **Zu den Screenshots unten:** direkt aus dem echten Programmcode
-gerendert, keine Fotomontage - Boxart und Musiktitel sind Platzhalter,
-die Systemlogos links sind echt. Kompakter Überblick zusätzlich in
-`VORSCHAU.md`.
+gerendert, keine Fotomontage - Boxart, Spieltitel und Spielstände sind
+Platzhalter, die Systemlogos sind echt. Erzeugt werden sie mit
+`tools/screenshots_bauen.py`, damit sie nicht wieder veralten.
+Kompakter Überblick zusätzlich in `VORSCHAU.md`.
 
 <p align="center">
   <img src="screenshots/preview_1_kategorien.png" width="420" alt="Kategorien-Menue mit Uhrzeit und Netzwerksymbol">
@@ -33,6 +34,30 @@ nur durchsuchbar:
   <img src="screenshots/preview_6_jahresrueckblick.png" width="420" alt="Jahresrueckblick - Statistik fuer das laufende Kalenderjahr">
 </p>
 <p align="center"><sub>Links: Trophäenraum - Cover des meistgespielten Spiels, Lieblingssystem, Erfolgs-Zähler &nbsp;|&nbsp; Rechts: Jahresrückblick - eingegrenzt auf das laufende Kalenderjahr, nicht "seit Aufzeichnungsbeginn"</sub></p>
+
+**Drei Ansichten, überall** - Spieleliste *und* Hauptseite lassen sich
+zwischen Liste, Raster und Galerie umschalten (Abschnitt 8r):
+
+<p align="center">
+  <img src="screenshots/preview_9_liste_raster.png" width="280" alt="Spieleliste als dichtes Kachelraster">
+  &nbsp;
+  <img src="screenshots/preview_10_liste_galerie.png" width="280" alt="Spieleliste als Galerie mit grossem Cover und Nachbarleiste">
+  &nbsp;
+  <img src="screenshots/preview_8_hauptseite_galerie.png" width="280" alt="Hauptseite als Galerie mit Kategorie-Abzeichen">
+</p>
+<p align="center"><sub>Links: Raster - auf HDMI 21 Spiele auf einen Blick &nbsp;|&nbsp; Mitte: Galerie - großes Cover, Daten daneben, Nachbarn als Leiste &nbsp;|&nbsp; Rechts: dieselbe Galerie auf der Hauptseite, mit den Kategorie-Abzeichen</sub></p>
+
+**Und auf der Röhre?** Das ist die Frage, an der sich eine Ansicht
+entscheidet - deshalb hier dieselben Ansichten in 320×240:
+
+<p align="center">
+  <img src="screenshots/preview_crt_1_liste.png" width="240" alt="CRT: Liste">
+  &nbsp;
+  <img src="screenshots/preview_crt_2_raster.png" width="240" alt="CRT: Raster">
+  &nbsp;
+  <img src="screenshots/preview_crt_3_galerie.png" width="240" alt="CRT: Galerie">
+</p>
+<p align="center"><sub>CRT 320×240, Originalgröße - Liste, Raster, Galerie</sub></p>
 
 ## Warum ein eigenes Frontend?
 
@@ -58,7 +83,7 @@ SuperStation One gekoppelt, funktioniert aber auf jedem MiSTer).
 
 Was hier anders ist:
 - **Keine Systemänderung, jederzeit rückgängig** - das hier ist ein
-  einzelnes Python-Skript, das auf einem völlig unveränderten MiSTer
+  Python-Programm, das auf einem völlig unveränderten MiSTer
   läuft. Kein Austausch von Kernel/Linux-Image, keine zusätzliche
   Hardware nötig. Ausprobieren ohne Risiko: ein Befehl deinstalliert
   wieder rückstandslos (siehe `Frontend_Uninstall.sh`), dein MiSTer ist danach
@@ -68,8 +93,9 @@ Was hier anders ist:
 - **CRT und HDMI gleichwertig** - beide mit eigens abgestimmter Optik
   und Geschwindigkeit, nicht nur "HDMI mit CRT-Kompatibilität als
   Nebeneffekt".
-- **Klein und nachvollziehbar** - eine einzelne Python-Datei fürs
-  eigentliche Frontend, keine Abstraktionsschichten, gut lesbar für
+- **Klein und nachvollziehbar** - `frontend/frontend.py` plus das
+  Paket `frontend/fe/` mit klar geschnittenen Modulen (Eingabe, Bilder,
+  Menü, Spielstände ...), keine Abstraktionsschichten, gut lesbar für
   alle, die selbst was anpassen wollen.
 - **Die eigene Sammlung soll sich lebendig anfühlen, nicht nur schnell
   bedienbar** - Trophäenraum, Jahresrückblick, Spieltagebuch,
@@ -94,8 +120,8 @@ Nachlesen (`CHANGELOG.md`).
 7. System-Hintergrundbilder — mit Build 87 entfernt
    - 7b. System-Artbox im Kategorien-Menü
 8. CRT-Bildschirme (15 kHz) einrichten
-   - 8b. Optische Verfeinerungen
    - 8c. Zuletzt gespielt, Lade-Fortschritt
+   - 8b. Optische Verfeinerungen
    - 8d. Attract-Modus / Bildschirmschoner
    - 8e. Favoriten
    - 8f. Uhrzeit-Synchronisierung
@@ -142,6 +168,19 @@ Nachlesen (`CHANGELOG.md`).
 | Scripts/Frontend_Boxart_Download.sh | /media/fat/Scripts/          | Boxart-Download aus OSD/Frontend starten |
 | Scripts/Frontend_Gameinfo_Download.sh | /media/fat/Scripts/        | Spielinfo-Download aus OSD/Frontend starten |
 | Scripts/Frontend_Stream_Toggle.sh | /media/fat/Scripts/            | Stream-Overlay an/aus schalten (optional) |
+| frontend/fe/                    | /media/fat/frontend/fe/          | Das Modulpaket des Frontends (Eingabe, Bilder, Menü, Spielstände ...) - gehört vollständig mit dazu |
+| frontend/sysart/                | /media/fat/frontend/sysart/      | Die Kategorie-Abzeichen der Hauptseite (alle 48 Systeme) |
+| frontend/sfx/                   | /media/fat/frontend/sfx/         | Navigations-Klänge |
+| frontend/boot_logo/             | /media/fat/frontend/boot_logo/   | Bilder der Startanimation |
+| frontend/rainwave.py            | /media/fat/frontend/             | Internetradio als Musikquelle (optional) |
+| frontend/mister_wot.py          | /media/fat/frontend/             | Zufalls-Zock |
+| frontend/mister_ini_cleanup.py  | /media/fat/frontend/             | Aufräumhilfe für die MiSTer.ini |
+| frontend/VERSION, LATEST_BUILD.json | /media/fat/frontend/         | Für die Update-Prüfung im Frontend |
+| Scripts/Frontend_FB_Probe.sh    | /media/fat/Scripts/              | Bildspeicher-Diagnose (nur bei Anzeigeproblemen nötig) |
+| Scripts/MiSTer_RA.sh            | /media/fat/Scripts/              | RetroAchievements-Start |
+| PC-Tools/arbeitskopien.py       | bleibt auf dem PC (Python+Pillow) | **Neu (Build 129):** legt JPEG-Arbeitskopien neben vorhandene PNG-Cover - macht "Miniaturen vorbereiten" spürbar schneller |
+| PC-Tools/sysart_abzeichen.py    | bleibt auf dem PC (Python+Pillow) | Erzeugt die Kategorie-Abzeichen |
+| PC-Tools/sysart_convert.py      | bleibt auf dem PC (Python+Pillow) | Eigene System-Logos ins .art-Format bringen |
 | PC-Tools/art_convert.py         | bleibt auf dem PC (Python+Pillow) | Bilder -> .art-Format (die --bg-Option hat seit Build 87 keine Wirkung mehr) |
 | PC-Tools/boxart_fetch.py        | bleibt auf dem PC (optional)      | Alternative: Boxart-Download am PC statt MiSTer |
 | PC-Tools/video_to_bootanim.py   | bleibt auf dem PC (Python+Pillow) | Video/Bildfolge -> Boot-Animation |
@@ -267,17 +306,31 @@ ohne Rückfrage).
 ## 4. Bedienung
 
 Zwei Seiten: Seite 1 (Hauptmenü) zeigt nur die Kategorien (Systeme,
-Arcade, Scripts, System) als große Liste; Enter/A öffnet eine
+Arcade, Zufalls-Zock, System) als große Liste; Enter/A öffnet eine
 Kategorie auf Seite 2, wo links die Spieleliste steht und rechts bei
 Spiele-Systemen eine breite Boxart+Info-Spalte.
 
 **Die "System"-Kategorie ist in 7 thematische Gruppen unterteilt**
-(RetroAchievements, Statistiken & Erfolge, Anzeige & Sound, Verhalten,
+(RetroAchievements, Statistiken & Erfolge, Anzeige & Sound, Optionen,
 Eingabe & Sprache, Info, Wartung) - genau wie bei eigenen ROM-
 Unterordnern einmal reinklicken, dann die gewünschte Einstellung
 auswählen. Alle einzelnen Funktionen weiter unten in dieser README
 ("System-Menü -> ...") sind dadurch einen Klick tiefer als früher,
-sonst unverändert.
+sonst unverändert. Dazu kommen im Betrieb noch die Ordner **Cores** und
+**Scripts**.
+
+**Was in welcher Gruppe steckt** - die Übersicht, weil einzelne Punkte
+weiter unten erklärt werden, aber nirgends beisammenstehen:
+
+| Gruppe | Enthält unter anderem |
+|---|---|
+| RetroAchievements | RA an/aus, Anmeldedaten, *Popups & Anzeige* (die MiSTer-eigenen RA-Einstellungen, Build 95) |
+| Statistiken & Erfolge | Trophäenraum, Jahresrückblick, Spieltagebuch, Top-10-Listen, Meilensteine |
+| Anzeige & Sound | Theme, Menü-Auflösung, Lautstärke, **Musik-Quelle** (eigene MP3s oder Internetradio), **Bildrand X/Y** (Build 113), Ansicht Spieleliste/Hauptseite, schnelles Scrollen, Boot-Logo, Laufschrift |
+| Optionen | Autostart, **ROM-Filter**, **Attract-Verzögerung**, Miniaturen vorbereiten |
+| Eingabe & Sprache | Sprache, Tastenbelegungs-Assistent, A/B tauschen |
+| Info | Hilfe/Übersicht, Einrichtung erneut starten, Auf Updates prüfen, Mitwirkende, Geheimnisse |
+| Wartung | **Boxart herunterladen**, **Spieledaten herunterladen**, Miniaturen-Zwischenspeicher leeren (CRT/HDMI), Anzeige neu aufbauen, MiSTer neu starten |
 
 **"Weiterspielen" ganz oben im Hauptmenü** (falls vorhanden): schlägt
 gezielt das Spiel vor, das du zuletzt gestartet, aber noch nicht als
@@ -327,6 +380,9 @@ geprüft, ohne echten Netzwerkverkehr zu erzeugen.
 | F11                                 | Zufälliges Spiel/Kategorie ("weiß nicht was ich spielen soll") |
 | F8 / L2- oder R2-Taste               | Favorit umschalten (nur bei Spiele-Einträgen) |
 | F7                                  | Durchgespielt-Status umschalten (nur bei Spiele-Einträgen) |
+| **F10** (Tastatur) / **Select halten + Y** (Pad) | Ansicht umschalten: Liste -> Raster -> Galerie (Abschnitt 8r). Gilt nur für das gerade Sichtbare und speichert nichts |
+| **F3 / F4** (Tastatur) / **Select halten + L / R** (Pad) | An den Listenanfang bzw. ans Listenende springen (seit Build 114) |
+| **F6** (Tastatur) | RA-Erfolgs-Vitrine für das markierte Spiel (Abschnitt 8k) |
 | Im laufenden Spiel: **F1** auf der Tastatur | Sofort zurück ins Frontend, ohne Haltezeit und ohne Umweg über MiSTers OSD |
 | Im laufenden Spiel: Esc auf der Tastatur, ~0,6s halten | Dasselbe wie F1, nur mit Haltezeit - die ist nötig, weil viele Spiele Esc selbst für ihr Pausemenü benutzen |
 | Im laufenden Spiel: **F5** auf der Tastatur | Reset im laufenden Core, ohne Haltezeit (alle Cores, auch RA - lädt den Core NICHT neu, RA-Fortschritt bleibt erhalten) |
@@ -375,8 +431,9 @@ stumm - keine Fehlermeldung, läuft nur ohne Musik weiter.
 
 ## 6. Boxart und Spielinfos laden
 
-Direkt auf dem MiSTer, kein PC nötig (auch aus der Scripts-Kategorie
-im Frontend selbst startbar):
+Direkt auf dem MiSTer, kein PC nötig (bequemer geht es über
+*System -> Wartung -> "Boxart herunterladen"*, oder über den
+Scripts-Ordner im System-Menü):
 ```bash
 python3 /media/fat/frontend/mister_boxart.py            # Cover, CRT-Groesse
 python3 /media/fat/frontend/mister_boxart.py hd          # zusätzlich scharfe Cover für HDMI
@@ -433,11 +490,53 @@ Neustart. Beim Scrollen passiert das grundsätzlich nicht - dort werden
 noch nicht fertige Cover übersprungen und erst nachgeladen, wenn du
 stehen bleibst.
 
-Zum Verkleinern kommt es vor allem, wenn du im System-Menü unter
-Optionen → Anzeige die **Menü-Auflösung** auf halb oder viertel
-gestellt hast: die Cover-Fläche ist dann kleiner als das Cover. Bei
-voller Auflösung passen übliche Cover hinein und werden gar nicht erst
-angefasst.
+Verkleinert wird praktisch immer. Seit Build 119 liegen die Cover im
+Original auf der Karte (früher als fertig verkleinerte `.art`-Datei),
+und ein 900×1200-Scan muss in jeden der drei Kästen gerechnet werden -
+auf HDMI 733×909 für die Liste, 411×548 für die Galerie und 128×171
+für das Raster. Auch bei voller Menü-Auflösung.
+
+Das ist der Grund, warum *„Miniaturen vorbereiten"* Zeit braucht und
+warum Build 128/129 so viel Arbeit hineingesteckt haben. Die
+**Menü-Auflösung** selbst findest du unter *System -> Anzeige & Sound*;
+sie hilft hier übrigens kaum, weil die Rechenzeit an der **Quelle**
+hängt und nicht am Ziel.
+
+### JPEG-Arbeitskopien (seit Build 129)
+
+Genau daran setzt die Arbeitskopie an. TurboJPEG kann ein JPEG gleich
+**verkleinert dekodieren** (1/2, 1/4, 1/8 direkt aus dem Dekoder),
+libpng kann das nicht. Aus einem JPEG ist dieselbe Arbeit deshalb
+deutlich billiger - gemessen an einem 900×1200-Cover mit den drei
+HDMI-Kästen:
+
+| Quelle | „Miniaturen vorbereiten" |
+|---|---|
+| PNG | 689 ms |
+| JPEG | **416 ms** |
+
+Deshalb legt der Download seit Build 129 neben jedes heruntergeladene
+PNG eine **JPEG-Arbeitskopie**. Das Original wird dabei nicht
+angefasst - es bleibt liegen, genau wie seit Build 119 versprochen.
+Liegen beide Dateien nebeneinander, nimmt das Frontend die `.jpg`.
+
+**Für Cover, die schon auf der Karte liegen**, gibt es
+`PC-Tools/arbeitskopien.py`. Auf einem PC dauert das Minuten, auf dem
+MiSTer Stunden:
+
+```bash
+# Erst schauen, was passieren würde:
+python arbeitskopien.py --ordner "D:\MiSTer\frontend\art" --probe
+
+# Und dann wirklich:
+python arbeitskopien.py --ordner "D:\MiSTer\frontend\art" --jobs 8
+```
+
+**Was das kostet:** rund 0,2-0,4 MB je Cover, zusätzlich zum Original.
+Wer das nicht will, löscht die `.jpg`-Dateien einfach wieder - dann
+nimmt das Frontend wieder die PNG. Kategorie-Abzeichen werden
+übersprungen: JPEG kennt keine Transparenz, und die brauchen ihren
+durchsichtigen Rand.
 
 **Auch für Arcade** - läuft automatisch mit, keine eigene Option
 nötig. Findet alle `_Arcade`-Ordner, sammelt die MRA-Dateinamen (das
@@ -453,7 +552,7 @@ in `fehlend_ARCADE.txt`.
 - Läuft mit mehreren parallelen Downloads statt einem nach dem
   anderen - macht bei großen Sammlungen einen spürbaren Unterschied
 - Namensabgleich: exakt -> ohne Regions-Tags -> Ähnlichkeitssuche,
-  bevorzugt in dieser Reihenfolge: Germany > Europe > World > USA > Japan
+  bevorzugt in dieser Reihenfolge: USA > World > Europe > Japan > Germany
 - Jederzeit mit Strg+C abbrechbar, setzt beim nächsten Start genau
   dort fort, wo es aufgehört hat
 - ROMs ohne gefundenes Cover landen in `fehlend_<System>.txt` im
@@ -480,7 +579,7 @@ Ordnerstruktur anzutasten:
 - Beta/Proto/Demo/Hack/Bad-Dump-Tags werden ausgefiltert.
 - Mehrfach-Regionen desselben Spiels ("Spiel (USA)", "Spiel (Europe)")
   werden zu einem Eintrag zusammengefasst - beste Region gewinnt
-  (Germany > Europe > World > USA > Japan). Bei vollständigen
+  (USA > World > Europe > Japan > Germany). Bei vollständigen
   No-Intro-Sets kann das die Listengröße spürbar reduzieren.
 - **Rein japanische ROMs werden komplett ausgeblendet** (nicht nur
   zusammengefasst, sondern generell rausgefiltert) - erkennt
@@ -526,8 +625,8 @@ eine Artbox mit dem Logo/Cover des gerade markierten Systems - wechselt
 live beim Hoch/Runter-Blättern durch die Kategorien.
 
 **Bereits im Build enthalten** (liegt in `frontend/sysart/`, muss
-nicht mehr selbst erzeugt werden): **33 der 48 Systeme** haben ein
-echtes Logo. Seit Build 79 sind das neben den ursprünglichen 14 auch
+nicht mehr selbst erzeugt werden): **alle 48 Systeme** haben
+inzwischen ein echtes Logo. Seit Build 79 sind das neben den ursprünglichen 14 auch
 Atari 5200/7800, Jaguar, ColecoVision, CD-i, Sega 32X, Super Game Boy
 und TurboGrafx-CD - deren Logos lagen schon länger im Unterordner
 `_weitere_systeme_noch_nicht_unterstuetzt/` und sind jetzt an ihren
@@ -535,8 +634,9 @@ Platz gerückt, da es die Systeme nun wirklich gibt. Mit Build 80 kamen
 3DO, Atari 2600, Atari Lynx, Famicom Disk System, Gamate, Intellivision,
 Neo Geo CD, Vectrex und WonderSwan dazu.
 
-Die übrigen 15 zeigen den dezenten Platzhalter; welche das sind und in
-welchem Format Nachschub gehört, steht in `docs/LOGOS_NACHLIEFERN.md`.
+Einen Platzhalter bekommt damit nur noch, wer eine eigene Kategorie
+anlegt, für die es naturgemäß kein Logo gibt. In welchem Format
+Nachschub gehört, steht in `docs/LOGOS_NACHLIEFERN.md`.
 
 Eigene/weitere Bilder erzeugen - dafür gibt es seit Build 80 ein eigenes
 Werkzeug (`art_convert.py` ist für Boxart da und skaliert auf die
@@ -616,7 +716,7 @@ Röhre sofort.
 
 Automatisch aktiv, keine Einrichtung nötig:
 - **"Zuletzt gespielt"**: neue Kategorie ganz oben im Hauptmenü,
-  sobald du das erste Spiel gestartet hast - bis zu 15 Einträge,
+  sobald du das erste Spiel gestartet hast - bis zu 100 Einträge,
   neuestes zuerst. Erscheint erst nach dem ersten Spielstart.
 - **Lade-Fortschritt**: zeigt einen Fortschrittsbalken, falls die
   Spieleliste tatsächlich neu von der Platte eingelesen werden muss.
@@ -648,7 +748,9 @@ Menüschalter hättest.
 
 ## 8d. Attract-Modus / Bildschirmschoner
 
-Nach 45 Sekunden ohne Eingabe erscheint automatisch ein zufälliges
+Nach 90 Sekunden ohne Eingabe (einstellbar unter *System -> Optionen
+-> "Attract-Verzögerung"*, von 30 Sekunden bis 15 Minuten) erscheint
+automatisch ein zufälliges
 Spiel großflächig mit Cover, Titel und Systemname - wechselt danach
 alle 6 Sekunden weiter (vermeidet dabei Wiederholungen, solange mehr
 als ein Spiel vorhanden ist). Jede beliebige Taste beendet den
@@ -895,7 +997,7 @@ Entwicklerraum aus Abschnitt 8n.
 
 ## 8q. Autostart an/aus
 
-Ein Schalter unter System-Menü -> Optionen -> **Verhalten**.
+Ein Schalter unter System-Menü -> **Optionen**.
 
 > **Entfallen mit Build 77:** hier stand daneben ein zweiter Schalter,
 > der F4 im MiSTer-OSD auf den Frontend-Start legte. Die Funktion hat
@@ -973,7 +1075,7 @@ der Liste links/rechts tun.
 nie ein eigenes Cover; ein Raster aus lauter Platzhaltern wäre keine
 Ansicht, sondern ein Fehler.
 
-> **Tipp:** Nach dem Umschalten lohnt sich *System -> Verhalten ->
+> **Tipp:** Nach dem Umschalten lohnt sich *System -> Optionen ->
 > "Miniaturen vorbereiten"* - die Bilder werden je Ansicht in einer
 > anderen Größe gebraucht. Der Menüpunkt rechnet alle drei Ansichten
 > mit vor, du musst ihn also nur einmal laufen lassen (aber einmal je
@@ -1289,7 +1391,7 @@ Rückkehr zum Menü selbst wird davon nie beeinträchtigt oder verzögert.
   Tasten und Gamepad-Buttons); ein D-Pad, das als Analogachse
   ankommt, funktioniert bereits nativ und wird beim Assistenten
   automatisch übersprungen statt umbelegt.
-- Die drei geheimen Cheat-Codes (Abschnitt 8n) funktionieren bewusst
+- Die geheimen Cheat-Codes (Abschnitt 8n) funktionieren bewusst
   nur per angeschlossener Tastatur, nicht per Gamepad - im Hauptmenü
   haben "OK"/"Zurück" auf einem Pad immer eine echte Wirkung
   (Kategorie betreten bzw. Beenden-Dialog), ein Code könnte dadurch

@@ -127,6 +127,26 @@ def _bibliothek_laden():
             # Eine Bibliothek dieses Namens, aber ohne die erwarteten
             # Funktionen - dann lieber gar nicht als halb.
             continue
+        # NEU (Build 129): das SCHREIBEN von JPEG, fuer die
+        # Arbeitskopie. Bewusst in einem EIGENEN try: es ist die
+        # Kuer, nicht die Pflicht. Eine Bibliothek, die nur lesen kann,
+        # soll weiterhin zum Lesen benutzt werden - dann gibt es eben
+        # keine Arbeitskopien, und alles laeuft wie in Build 128.
+        try:
+            lib.tjInitCompress.restype = ctypes.c_void_p
+            lib.tjInitCompress.argtypes = []
+            lib.tjCompress2.restype = ctypes.c_int
+            lib.tjCompress2.argtypes = [
+                ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int,
+                ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                ctypes.POINTER(ctypes.POINTER(ctypes.c_ubyte)),
+                ctypes.POINTER(ctypes.c_ulong),
+                ctypes.c_int, ctypes.c_int, ctypes.c_int]
+            lib.tjFree.restype = None
+            lib.tjFree.argtypes = [ctypes.POINTER(ctypes.c_ubyte)]
+            lib._dragend_schreiben = True
+        except AttributeError:
+            lib._dragend_schreiben = False
         return lib
     return None
 
@@ -137,6 +157,78 @@ _LIB = _bibliothek_laden()
 def verfuegbar():
     """Kann dieses Geraet JPGs lesen? Einmal beim Start beantwortet."""
     return _LIB is not None
+
+
+def schreiben_verfuegbar():
+    """Kann dieses Geraet JPGs auch SCHREIBEN? (Build 129)
+
+    Getrennt von verfuegbar(), weil es eine eigene Antwort ist: das
+    Lesen ist Pflicht (ohne kein fremdes Cover), das Schreiben Kuer
+    (ohne keine Arbeitskopie, sonst alles wie gehabt)."""
+    return _LIB is not None and getattr(_LIB, "_dragend_schreiben", False)
+
+
+# Farbunterabtastung beim Schreiben. TJSAMP_444 = 0 heisst: KEINE.
+#
+# Der uebliche Wert waere 420 - halbe Farbaufloesung, deutlich kleinere
+# Dateien, bei Fotos kaum sichtbar. Boxart ist aber kein reines Foto:
+# darauf steht der Spieltitel, oft farbig auf farbigem Grund, und genau
+# an solchen Kanten macht 420 sichtbare Farbsaeume. Die Arbeitskopie
+# soll dem Original so nahe wie moeglich kommen; der Platz, den 444
+# mehr braucht, ist neben dem gesparten Rechenaufwand zweitrangig.
+TJSAMP_444 = 0
+
+
+def encode_jpeg(breite, hoehe, pix_bgra, guete=90):
+    """BGRA-Bildpunkte zu JPEG-Bytes. None, wenn das nicht geht.
+
+    NEU (Build 129), fuer die Arbeitskopie beim Cover-Download.
+
+    WOZU DAS GUT IST: TurboJPEG kann verkleinert DEKODIEREN (1/2, 1/4,
+    1/8 direkt aus dem Dekoder), libpng kann das nicht. Bei den kleinen
+    Kacheln muss die teure Flaechenmittelung dadurch nur ueber einen
+    Bruchteil der Bildpunkte laufen. Gemessen an einem 900x1200-Cover
+    mit den drei HDMI-Kaesten: 674 ms aus dem PNG, 438 ms aus dem JPEG.
+
+    "pix_bgra" ist der Puffer, wie ihn dieses Modul auch liefert - vier
+    Byte je Bildpunkt, Blau zuerst (der Bildspeicher des MiSTer ist
+    BGRA, siehe TJPF_BGRX oben). Das Alpha-Byte geht verloren; JPEG
+    kennt keine Transparenz. Deshalb wird diese Funktion fuer die
+    Kategorie-Abzeichen NICHT benutzt - die brauchen ihren
+    durchsichtigen Rand."""
+    if not schreiben_verfuegbar() or breite <= 0 or hoehe <= 0:
+        return None
+    if len(pix_bgra) < breite * hoehe * 4:
+        return None
+    griff = None
+    puffer = ctypes.POINTER(ctypes.c_ubyte)()
+    groesse = ctypes.c_ulong(0)
+    try:
+        griff = _LIB.tjInitCompress()
+        if not griff:
+            return None
+        if _LIB.tjCompress2(griff, bytes(pix_bgra), breite, breite * 4,
+                            hoehe, TJPF_BGRX, ctypes.byref(puffer),
+                            ctypes.byref(groesse), TJSAMP_444,
+                            int(guete), 0) != 0:
+            return None
+        return bytes(bytearray(puffer[:groesse.value]))
+    except Exception:                                    # noqa: BLE001
+        return None
+    finally:
+        # tjFree ist Pflicht: der Puffer kommt aus der Bibliothek, nicht
+        # von Python. Ohne das waechst der Speicher mit jedem Cover -
+        # und ein Durchlauf ueber 28000 Stueck merkt das.
+        try:
+            if puffer:
+                _LIB.tjFree(puffer)
+        except Exception:                                # noqa: BLE001
+            pass
+        try:
+            if griff:
+                _LIB.tjDestroy(griff)
+        except Exception:                                # noqa: BLE001
+            pass
 
 
 def _stufen():

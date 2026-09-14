@@ -7,6 +7,86 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**JPEG-Arbeitskopien, ein Fehler aus Build 128, und die ganze
+Dokumentation auf Stand** (Build 129):
+
+**Der Fehler zuerst, weil er meiner war.** Build 128 hat in
+`prewarm_thumb_mehrfach()` einmal auf das größte Ziel dekodiert und
+alle Kästen daraus gerechnet. Bei PNG ist das richtig und schneller.
+Bei JPEG war es beides nicht:
+
+Der **Zeichenpfad** fragt sein Bild je Kasten an und bekommt für eine
+kleine Kachel ein 1/8 dekodiertes Bild. Die Vorbereitung rechnete
+dieselbe Kachel aus dem großen — andere Bildpunkte. Die gespeicherte
+Miniatur war damit **nicht mehr bit-identisch** zu einer frisch
+berechneten, und genau das verlangt der Modulkommentar in `fe/art.py`.
+Aufgefallen ist es nicht, weil mein Test in Build 128 nur PNG-Quellen
+benutzt hat: die Bitgleichheit war geprüft, aber nur für das Format,
+bei dem sie ohnehin galt.
+
+Jetzt entscheidet das Format: kann die Bibliothek für dieses Bild
+verkleinert dekodieren, wird je Kasten einzeln gerechnet — derselbe
+Weg, den der Zeichenpfad geht. Nebenbei ist das auch schneller: 438
+statt 520 ms bei einem 900×1200-JPEG.
+
+**Und daraus folgt die Arbeitskopie.** TurboJPEG kann verkleinert
+dekodieren (1/2, 1/4, 1/8 direkt aus dem Dekoder), libpng kann das
+nicht. Dieselbe Arbeit kostet deshalb:
+
+| Quelle | „Miniaturen vorbereiten", drei HDMI-Kästen |
+|---|---|
+| PNG | 689 ms |
+| JPEG | **416 ms** |
+
+Der Download legt seit Build 129 neben jedes heruntergeladene PNG eine
+**JPEG-Arbeitskopie**. Das Original bleibt unangetastet — Build 119 hat
+ausdrücklich zugesagt, dass Cover im Original liegen bleiben, und dabei
+bleibt es. Liegen beide nebeneinander, nimmt das Frontend die `.jpg`;
+wer das nicht will, löscht sie und bekommt wieder das PNG.
+
+Für die Cover, die schon auf der Karte liegen, gibt es
+`PC-Tools/arbeitskopien.py` — auf einem PC Minuten, auf dem MiSTer
+Stunden. Kategorie-Abzeichen bleiben außen vor: JPEG kennt keine
+Transparenz.
+
+**Eine Größenbremse habe ich zweimal falsch eingebaut**, bevor die
+Messung es geklärt hat: erst „nur schreiben, wenn das JPEG kleiner ist",
+dann „höchstens doppelt so groß". Beide gehen davon aus, die
+Arbeitskopie solle Platz sparen. Tut sie nicht — sie spart Rechenzeit,
+und die hängt an der **Bildpunktzahl**, nicht an der Dateigröße. Ein
+PNG, das sich gut komprimieren lässt, ist klein auf der Karte und beim
+Verkleinern trotzdem genauso teuer. Die Bremse hätte die Arbeitskopie
+ausgerechnet dort verhindert, wo sie am meisten bringt. Sie ist raus;
+der Platzbedarf (0,2–0,4 MB je Cover) steht stattdessen in der README.
+
+**Noch ein stiller Fund:** die Reihenfolge unter den Cover-Formaten war
+die von `os.listdir()`, also dem Zufall überlassen. Liegen `.jpg` und
+`.png` zu einem Spiel, entschied das Dateisystem — zwei Karten mit
+demselben Inhalt konnten unterschiedlich schnell sein, ohne dass
+irgendetwas darauf hingedeutet hätte. Jetzt fest: `.art` → `.jpg` → `.png`.
+
+**Dokumentation und Screenshots.** Rückmeldung: *„aktualisiere auch mal
+die ganzen Dateien für mein GitHub-Rep, da ist vieles veraltet, auch
+die Screenshots sind veraltet."* Beides stimmte. Die Bilder zeigten die
+Spieleliste von Build 100; die drei Ansichten aus Build 122/124 kamen
+darauf überhaupt nicht vor.
+
+Neu ist `tools/screenshots_bauen.py`: es rendert alle README-Bilder aus
+dem **echten Zeichenpfad**, inklusive der drei Ansichten und der
+CRT-Fassungen. Ein Bild, das einmal von Hand entsteht, veraltet
+zwangsläufig — dieses lässt sich nach jedem Build in einer Minute neu
+erzeugen.
+
+Im README waren zwölf Aussagen sachlich falsch, darunter: die
+Regions-Reihenfolge stand verkehrt herum (tatsächlich USA > World >
+Europe > Japan > Germany), die Menügruppe heißt „Optionen" und nicht
+„Verhalten", „Zuletzt gespielt" führt 100 statt 15 Einträge, der
+Attract-Modus startet nach 90 statt 45 Sekunden, und es haben längst
+alle 48 Systeme ein Logo statt 33. Dazu fehlten F3/F4, F6 und F10 in
+der Tastentabelle sowie das halbe Systemmenü.
+
+
+
 **„Miniaturen vorbereiten" lief sechs Stunden — und konnte gar nicht
 fertig werden** (Build 128):
 

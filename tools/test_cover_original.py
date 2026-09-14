@@ -105,6 +105,27 @@ else:
             check("und unveraendert, Byte fuer Byte",
                   open(os.path.join(out, "Spiel (USA).png"), "rb").read() == png)
 
+            # NEU (Build 129): neben dem PNG entsteht eine
+            # JPEG-ARBEITSKOPIE. Sie ist der Grund, warum "Miniaturen
+            # vorbereiten" schneller wird - TurboJPEG dekodiert
+            # verkleinert, libpng nicht.
+            #
+            # Das Wichtigste steht in der Zeile darueber und bleibt
+            # unveraendert gueltig: das Original wird nicht angefasst.
+            _kopie = os.path.join(out, "Spiel (USA).jpg")
+            if MB._bildlib is not None and MB._bildlib.schreiben_verfuegbar():
+                check("daneben liegt die JPEG-Arbeitskopie",
+                      os.path.exists(_kopie),
+                      "%r" % (sorted(os.listdir(out)),))
+                check("und sie ist wirklich ein JPEG",
+                      open(_kopie, "rb").read(3) == b"\xff\xd8\xff")
+                check("das Original liegt unveraendert daneben",
+                      open(os.path.join(out, "Spiel (USA).png"),
+                           "rb").read() == png)
+            else:
+                print("       (kein JPEG-Schreiber vorhanden - "
+                      "uebersprungen)")
+
             # Die Endung richtet sich nach dem INHALT, nicht nach dem
             # Namen auf dem Server - der heisst dort immer ".png".
             MB.download_cover = lambda *a, **k: jpg
@@ -137,13 +158,36 @@ else:
             A.DOCS_BASE = os.path.join(tmp, "keine_docs")
             A.docs_caches_leeren()
             A._art_index_cache.clear()
-            for rom, endung in (("Spiel (USA)", ".png"),
+            # GEAENDERT (Build 129): "Spiel (USA)" liegt jetzt ZWEIMAL -
+            # als PNG (das Original) und als JPEG (die Arbeitskopie).
+            # Erwartet wird deshalb die .jpg: sie ist der Grund, warum
+            # sie ueberhaupt angelegt wurde.
+            _hat_kopie = os.path.exists(os.path.join(out, "Spiel (USA).jpg"))
+            for rom, endung in (("Spiel (USA)", ".jpg" if _hat_kopie
+                                 else ".png"),
                                 ("Zweites (USA)", ".jpg"),
                                 ("Drittes (USA)", ".art")):
                 p = A._art_path_in(tmp, "SNES", rom)
                 check("%-16s wird als %s gefunden" % (rom, endung),
                       p is not None and p.endswith(endung),
                       os.path.basename(p) if p else "None")
+
+            # UND DIE UMKEHRUNG, die dem Nutzer die Entscheidung
+            # zurueckgibt: wer die Arbeitskopie loescht, bekommt wieder
+            # sein PNG. Ohne diese Pruefung waere "loesch die .jpg,
+            # dann nimmt er wieder das PNG" nur eine Behauptung in der
+            # README.
+            if _hat_kopie:
+                _weg = os.path.join(out, "Spiel (USA).jpg")
+                _inhalt = open(_weg, "rb").read()
+                os.remove(_weg)
+                A._art_index_cache.clear()
+                p = A._art_path_in(tmp, "SNES", "Spiel (USA)")
+                check("ohne Arbeitskopie gilt wieder das PNG",
+                      p is not None and p.endswith(".png"),
+                      os.path.basename(p) if p else "None")
+                open(_weg, "wb").write(_inhalt)
+                A._art_index_cache.clear()
             # Und sie muessen sich auch lesen lassen.
             for rom in ("Spiel (USA)", "Zweites (USA)"):
                 p = A._art_path_in(tmp, "SNES", rom)

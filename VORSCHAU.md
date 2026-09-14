@@ -25,8 +25,25 @@ Rechts: Attract-Modus — nach kurzer Untätigkeit zeigt das Menü von selbst ei
 <p align="center"><sub>Links: Trophäenraum — Cover des meistgespielten Spiels, Lieblingssystem, Erfolgs-Zähler &nbsp;|&nbsp;
 Rechts: Jahresrückblick — eingegrenzt auf das laufende Kalenderjahr, nicht "seit Aufzeichnungsbeginn"</sub></p>
 
+<p align="center">
+  <img src="screenshots/preview_9_liste_raster.png" width="280" alt="Spieleliste als Raster">
+  &nbsp;
+  <img src="screenshots/preview_10_liste_galerie.png" width="280" alt="Spieleliste als Galerie">
+  &nbsp;
+  <img src="screenshots/preview_8_hauptseite_galerie.png" width="280" alt="Hauptseite als Galerie">
+</p>
+<p align="center"><sub>Die drei Ansichten (Build 122/124) — Raster, Galerie, und dieselbe Galerie auf der Hauptseite</sub></p>
+<p align="center">
+  <img src="screenshots/preview_crt_1_liste.png" width="240" alt="CRT: Liste">
+  &nbsp;
+  <img src="screenshots/preview_crt_2_raster.png" width="240" alt="CRT: Raster">
+  &nbsp;
+  <img src="screenshots/preview_crt_3_galerie.png" width="240" alt="CRT: Galerie">
+</p>
+<p align="center"><sub>Dieselben Ansichten auf der Röhre, 320×240 in Originalgröße</sub></p>
+
 *Screenshots direkt aus dem echten Programmcode gerendert, keine
-Fotomontage.*
+Fotomontage — erzeugt mit `tools/screenshots_bauen.py`.*
 
 ---
 

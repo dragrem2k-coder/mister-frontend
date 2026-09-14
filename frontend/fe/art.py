@@ -1961,6 +1961,24 @@ def prewarm_thumb(path, max_w, max_h):
     return _prewarm_aus_gelesenem(path, max_w, max_h, gelesen)
 
 
+def _skaliert_dekodierbar(path):
+    """True, wenn dieses Bild VERKLEINERT dekodiert werden kann - also
+    ein JPEG ist und die Bibliothek da ist.
+
+    Das ist der Unterschied, der ueber die Rechenzeit entscheidet:
+    TurboJPEG liefert 1/2, 1/4 oder 1/8 direkt aus dem Dekoder, libpng
+    kann das nicht (siehe decode() in fe/bildlib.py). Fuer ein Bild, das
+    verkleinert ankommt, muss die teure Flaechenmittelung nur noch ueber
+    einen Bruchteil der Bildpunkte laufen."""
+    if _BILDLIB is None:
+        return False
+    try:
+        with open(path, "rb") as f:
+            return f.read(3) == b"\xff\xd8\xff"
+    except OSError:
+        return False
+
+
 def prewarm_thumb_mehrfach(path, kaesten):
     """Mehrere Kastengroessen desselben Covers - mit EINEM Lesen und
     EINEM Dekodieren. Rueckgabe: Liste der Einzelergebnisse, in der
@@ -1995,6 +2013,37 @@ def prewarm_thumb_mehrfach(path, kaesten):
             ergebnisse.append(None)
             offen.append(len(ergebnisse) - 1)
     if not offen:
+        return ergebnisse
+
+    # KORRIGIERT (Build 129): bei JPEG ist gemeinsames Dekodieren FALSCH.
+    #
+    # Build 128 hat hier einmal auf das groesste Ziel dekodiert und alle
+    # Kaesten daraus gerechnet. Bei PNG ist das richtig und schneller.
+    # Bei JPEG war es beides nicht:
+    #
+    #   FALSCH, weil TurboJPEG verkleinert dekodiert (siehe
+    #   original_lesen()). Der ZEICHENPFAD fragt sein Bild je Kasten an
+    #   und bekommt fuer eine kleine Kachel ein 1/8 dekodiertes Bild.
+    #   Die Vorbereitung rechnete dieselbe Kachel aus dem grossen -
+    #   andere Bildpunkte. Die gespeicherte Miniatur war damit NICHT
+    #   mehr bit-identisch zu einer frisch berechneten, und genau das
+    #   verlangt der Modul-Kommentar oben. Aufgefallen ist es nicht,
+    #   weil mein Test in Build 128 nur PNG-Quellen benutzt hat.
+    #
+    #   LANGSAMER, weil die Flaechenmittelung danach ueber das GROSSE
+    #   Bild laufen musste. Gemessen an einem 900x1200-JPEG mit den drei
+    #   HDMI-Kaesten: 520 ms gemeinsam gegen 438 ms einzeln, bei
+    #   600x800 sogar 193 gegen 128 ms.
+    #
+    # Also: kann die Bibliothek fuer dieses Bild verkleinert dekodieren,
+    # wird je Kasten einzeln gerechnet - das ist zugleich der Weg, den
+    # der Zeichenpfad geht. Sonst bleibt es beim gemeinsamen Dekodieren.
+    if _skaliert_dekodierbar(path):
+        for i in offen:
+            try:
+                ergebnisse[i] = prewarm_thumb(path, *kaesten[i])
+            except Exception:                            # noqa: BLE001
+                ergebnisse[i] = "fehler"
         return ergebnisse
 
     # Dekodiert wird EINMAL, und zwar auf das GROESSTE offene Ziel.
@@ -2298,10 +2347,29 @@ def _art_index(base_dir, syskey):
             # Reihenfolge: unser eigenes Format zuerst. Liegt zu einem
             # Spiel beides, gewinnt die bereits fertig verkleinerte
             # .art-Datei - sie ist billiger zu zeichnen.
+            # KORRIGIERT (Build 129): die Reihenfolge unter den fremden
+            # Formaten war bisher die von os.listdir(), also dem Zufall
+            # ueberlassen. Liegen zu einem Spiel BEIDE Formate - und
+            # genau das passiert seit der JPEG-Arbeitskopie staendig -,
+            # entschied das Dateisystem, welches gewinnt. Auf zwei
+            # Karten mit demselben Inhalt konnte dasselbe Frontend
+            # unterschiedlich schnell sein, ohne dass irgendetwas
+            # darauf hingedeutet haette.
+            #
+            # Feste Reihenfolge: .art, dann JPEG, dann PNG.
+            #
+            # JPEG vor PNG, weil TurboJPEG verkleinert dekodieren kann
+            # und libpng nicht - bei den kleinen Kacheln ist das ein
+            # Vielfaches (siehe _skaliert_dekodierbar()). Wer das fuer
+            # ein bestimmtes Cover nicht will, loescht die .jpg daneben;
+            # das PNG bleibt ja liegen.
             alle = os.listdir(os.path.join(base_dir, syskey))
             names = [fn for fn in alle if fn.endswith(".art")]
-            fremde = [fn for fn in alle
-                      if fn.rsplit(".", 1)[-1].lower() in ("png", "jpg", "jpeg")]
+            _jpeg = sorted(fn for fn in alle
+                           if fn.rsplit(".", 1)[-1].lower() in ("jpg", "jpeg"))
+            _png = sorted(fn for fn in alle
+                          if fn.rsplit(".", 1)[-1].lower() == "png")
+            fremde = _jpeg + _png
             for fn in names:
                 idx[fn[:-4]] = fn
             for fn in fremde:

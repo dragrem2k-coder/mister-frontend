@@ -694,6 +694,99 @@ def endung_nach_inhalt(data):
     return None
 
 
+# NEU (Build 129): die JPEG-Arbeitskopie.
+#
+# WARUM. Ein Cover wird nach dem Download drei Mal verkleinert (Liste,
+# Kachel, Galerie). Die Flaechenmittelung liest dabei jeden QUELLPUNKT -
+# es zaehlt also, wie gross die Datei ist, aus der gerechnet wird.
+# TurboJPEG kann verkleinert DEKODIEREN (1/2, 1/4, 1/8 direkt aus dem
+# Dekoder), libpng kann das nicht. Gemessen an einem 900x1200-Cover mit
+# den drei HDMI-Kaesten: 674 ms aus dem PNG, 438 ms aus dem JPEG.
+#
+# WAS DABEI NICHT PASSIERT: das Original wird nicht angefasst. Build 119
+# hat ausdruecklich eingefuehrt, dass PNG/JPG im Original liegen bleiben
+# ("Cover im Original"), und dabei bleibt es - die Arbeitskopie kommt
+# DANEBEN. Wer sie nicht will, loescht die .jpg; das Frontend nimmt dann
+# wieder das PNG (siehe die Reihenfolge in _art_index() in fe/art.py).
+#
+# UND WAS SIE NICHT KANN: JPEG kennt keine Transparenz. Fuer die
+# Kategorie-Abzeichen wird deshalb nie eine Arbeitskopie angelegt - die
+# brauchen ihren durchsichtigen Rand. Dieser Weg hier laeuft nur ueber
+# Spiel-Cover.
+ARBEITSKOPIE_GUETE = 90
+
+try:
+    import fe.bildlib as _bildlib
+except Exception:                                        # noqa: BLE001
+    _bildlib = None
+
+
+def arbeitskopie_schreiben(pfad_png, daten):
+    """Neben einem frisch abgelegten PNG eine JPEG-Arbeitskopie
+    anlegen. Rueckgabe: der Pfad, oder None wenn nichts geschrieben
+    wurde.
+
+    Scheitert das aus irgendeinem Grund, ist das KEIN Fehler: dann gibt
+    es eben keine Arbeitskopie und alles laeuft wie in Build 128. Ein
+    Cover soll nie deshalb fehlen, weil eine Beschleunigung nicht
+    geklappt hat."""
+    if _bildlib is None or not _bildlib.schreiben_verfuegbar():
+        return None
+    if not daten or daten[:4] != b"\x89PNG":
+        return None                       # schon JPEG, oder kein PNG
+    try:
+        bild = _bildlib.decode_png_lib(daten)
+        if not bild:
+            return None
+        w, h, pix = bild
+        jpg = _bildlib.encode_jpeg(w, h, pix, ARBEITSKOPIE_GUETE)
+        if not jpg:
+            return None
+        # KEINE Groessenbremse - zweimal falsch angesetzt, bevor die
+        # Messung es geklaert hat.
+        #
+        # Erst stand hier "nur schreiben, wenn das JPEG kleiner ist als
+        # das PNG", dann "hoechstens doppelt so gross". Beides geht von
+        # der Annahme aus, die Arbeitskopie solle Platz sparen. Tut sie
+        # nicht - sie spart RECHENZEIT, und die haengt an der
+        # BILDPUNKTZAHL, nicht an der Dateigroesse.
+        #
+        # Ein PNG, das sich gut komprimieren laesst, ist klein auf der
+        # Karte und beim Verkleinern trotzdem genauso teuer wie jedes
+        # andere Bild derselben Masse. Eine Groessenbremse haette die
+        # Arbeitskopie ausgerechnet dort verhindert.
+        #
+        # Was sie kostet, steht in der README: rund 0.2-0.4 MB je Cover,
+        # zusaetzlich zum Original. Wer das nicht will, loescht die
+        # .jpg-Dateien - das Frontend nimmt dann wieder die PNG.
+        ziel = pfad_png[:-4] + ".jpg"
+        tmp = ziel + ".tmp%d" % os.getpid()
+        with open(tmp, "wb") as f:
+            f.write(jpg)
+        os.replace(tmp, ziel)
+        return ziel
+    except Exception:                                    # noqa: BLE001
+        return None
+
+
+def original_ablegen(out_dir, rom, daten):
+    """Ein heruntergeladenes Cover ablegen - Original plus, wenn es ein
+    PNG ist, die JPEG-Arbeitskopie daneben.
+
+    EINE Stelle fuer beide Quellen (Mirror und Fallback). Vorher stand
+    das Schreiben an zwei Stellen; mit der Arbeitskopie waeren es vier
+    geworden, und zwei davon haetten irgendwann auseinandergelebt."""
+    endung = endung_nach_inhalt(daten)
+    if endung is None:
+        return None
+    pfad = os.path.join(out_dir, rom + endung)
+    with open(pfad, "wb") as f:
+        f.write(daten)
+    if endung == ".png":
+        arbeitskopie_schreiben(pfad, daten)
+    return pfad
+
+
 def process_system_mirror_png(syskey, roms, sysname, out_dir, gesamt):
     """Cover als ORIGINAL (PNG/JPG) vom Mirror holen.
 
@@ -751,8 +844,9 @@ def process_system_mirror_png(syskey, roms, sysname, out_dir, gesamt):
                     offen.append(rom)
                 continue
             try:
-                with open(os.path.join(out_dir, rom + endung), "wb") as f:
-                    f.write(data)
+                # Legt das Original ab und, bei einem PNG, die
+                # JPEG-Arbeitskopie daneben (Build 129).
+                original_ablegen(out_dir, rom, data)
             except OSError as e:
                 print("  Schreibfehler (%s): %s" % (rom, e))
                 _speed.finish_one()
@@ -1117,10 +1211,12 @@ def process_one_rom_fallback(rom, sysname, idx_exact, idx_strip, tri, out_dir, b
         # Kein Dekodieren, kein Verkleinern, kein Umwandeln - die Datei
         # wird genommen, wie sie kommt. Die Endung richtet sich nach dem
         # tatsaechlichen Inhalt, nicht nach dem Namen auf dem Server.
-        endung = ".jpg" if png[:2] == b"\xff\xd8" else ".png"
+        # GEAENDERT (Build 129): ueber original_ablegen(), damit hier
+        # dasselbe passiert wie beim Mirror - Original hinlegen und bei
+        # einem PNG die JPEG-Arbeitskopie daneben.
         try:
-            with open(os.path.join(out_dir, rom + endung), "wb") as f:
-                f.write(png)
+            if original_ablegen(out_dir, rom, png) is None:
+                return (rom, "png_error", "kein Bild")
         except OSError as e:
             return (rom, "png_error", str(e))
         return (rom, "ok", (how, cover))

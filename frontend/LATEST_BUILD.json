@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-14-128",
-  "summary": "\"Miniaturen vorbereiten\" lief bei 28517 Covern sechs Stunden und konnte gar nicht fertig werden: vier Kastengroessen je Cover ergaben 114068 Cache-Dateien bei einer Obergrenze von 40000 - der Durchlauf hat seine eigenen Ergebnisse wieder verdraengt. Jetzt drei Kastengroessen statt vier, ein Lesen und ein Dekodieren je Cover statt drei, der zweite CPU-Kern rechnet mit, und der Passt-genau-Fall legt acht Byte ab statt einer halben Megabyte. WICHTIG: einmal 'Zwischenspeicher leeren' vor dem naechsten Durchlauf - sonst bleiben die alten, groesseren Eintraege liegen."
+  "build_id": "2026-09-14-129",
+  "summary": "JPEG-Arbeitskopien: TurboJPEG kann verkleinert dekodieren, libpng nicht - aus einem JPEG kostet 'Miniaturen vorbereiten' 416 statt 689 ms je Cover. Der Download legt die Kopie jetzt selbst an (das Original bleibt unangetastet), fuer vorhandene Cover gibt es PC-Tools/arbeitskopien.py. Ausserdem ein Fehler aus Build 128 behoben: bei JPEG wurde gemeinsam statt je Kasten dekodiert, wodurch die vorbereitete Miniatur nicht mehr zu der passte, die der Zeichenpfad selbst gerechnet haette. README, VORSCHAU und alle Screenshots sind auf Stand."
 }
