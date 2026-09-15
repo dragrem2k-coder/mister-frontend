@@ -3457,11 +3457,8 @@ class Frontend:
         # keine art_hd-Datei existiert - fehlt sie, bleibt art=None und
         # es wird schlicht kein Cover gezeigt statt eines matschig
         # hochskalierten SD-Bilds).
-        if H >= 720:
-            hd = _art_path_in(ART_HD, syskey, name)
-            art = ART.get_scaled(hd, cover_max_w, cover_max_h)
-        else:
-            art = ART.get_scaled(art_path(syskey, name), cover_max_w, cover_max_h)
+        art = ART.get_scaled(self.cover_quelle(syskey, name),
+                             cover_max_w, cover_max_h)
 
         if art:
             aw, ah, pix = art
@@ -5780,10 +5777,7 @@ class Frontend:
         waere es ein Flimmern ueber den halben Bildschirm."""
         syskey = self._item_syskey(item, cat_syskey)
         lookup = item[2] if item[1] == "folder" else item[0]
-        if self.fb.height >= 720:
-            pfad = _art_path_in(ART_HD, syskey, lookup)
-        else:
-            pfad = art_path(syskey, lookup)
+        pfad = self.cover_quelle(syskey, lookup)
         if not pfad:
             return None, False
         vorher = getattr(ART, "_defer_count", 0)
@@ -7940,6 +7934,59 @@ class Frontend:
                 raus.append(klein)
         return raus
 
+    def cover_quelle(self, syskey, name):
+        """DER Pfad, aus dem ein Cover geholt wird - eine Stelle fuer
+        alle sechs Zeichenwege (Boxart-Spalte, Kacheln, Attract,
+        Zufalls-Zock, Vorauslader).
+
+        NEU (Build 130). Gemeldeter Fehler: "wer die Menueaufloesung
+        halbiert und NUR art_hd pflegt, sieht ueberhaupt keine Cover
+        mehr". Stimmt - die Schwelle stand an sechs Stellen als
+        `if H >= 720`, und bei halber Aufloesung ist H rund 540. Damit
+        suchte das Frontend nur noch in art/, und wer dort nichts liegen
+        hat, bekam nichts.
+
+        DIE REGEL, und warum sie nicht symmetrisch ist:
+
+          H >= 720   nur art_hd/. KEIN Rueckfall auf art/ - ein auf
+                     1080p hochskaliertes SD-Bild ist sichtbar matschig,
+                     dann lieber gar keins (Build 89, ausdruecklicher
+                     Nutzerwunsch: "das sieht bloed aus").
+
+          H <  720   erst art/, und nur wenn dort nichts liegt, art_hd/.
+
+        Der Vorschlag zum gemeldeten Fehler lautete "immer zuerst
+        art_hd". Das haette den Fehler behoben und einen neuen gemacht:
+        es trifft naemlich auch die ECHTE Roehre mit H=240. Wer dort
+        sein art/ gepflegt hat - kleine, fertig verkleinerte Bilder -
+        bekaeme ab sofort jedes Cover aus der grossen HD-Datei, also
+        eine 900x1200-Flaechenmittelung statt eines fertigen 300x350-
+        Bildes. Auf der schwaechsten Hardware der teuerste Weg, und
+        genau der, gegen den Build 128/129 angearbeitet haben.
+
+        Herum bekommen beide, was sie brauchen: die Roehre mit
+        gepflegtem art/ behaelt den billigen Weg, die halbierte
+        Aufloesung sieht ihre HD-Cover (herunterskaliert, also scharf),
+        und eine Roehre OHNE art/ sieht jetzt auch etwas statt nichts.
+
+        Entschieden wird ueber die DATEIEXISTENZ, nicht ueber das
+        Ergebnis von get_scaled(): das liefert auch dann None, wenn beim
+        Scrollen bewusst uebersprungen wurde (siehe _defer_uncached in
+        fe/art.py). Ein Rueckfall an dieser Stelle waere genau der
+        Ruckler, den das Ueberspringen verhindern soll."""
+        if self.fb.height >= 720:
+            return _art_path_in(ART_HD, syskey, name)
+        sd = art_path(syskey, name)
+        if sd and os.path.exists(sd):
+            return sd
+        hd = _art_path_in(ART_HD, syskey, name)
+        if hd and os.path.exists(hd):
+            return hd
+        # Keins von beiden da: den SD-Pfad zurueckgeben, damit sich
+        # nichts am bisherigen Verhalten aendert (Platzhalter, und der
+        # Vorauslader traegt denselben Schluessel wie der Zeichenpfad).
+        return sd
+
     def cover_pfad_und_kasten(self, item, cat_syskey, geo):
         """(Cover-Pfad, Kastenbreite, Kastenhoehe) fuer EINEN Eintrag -
         genau das Tripel, das der Zeichenpfad spaeter bei ART.get_scaled()
@@ -7986,10 +8033,7 @@ class Frontend:
         # Gleiche Regel wie in draw_art_panel(): im HD-Modus KEIN
         # Rueckfall auf das SD-Cover - fehlt die HD-Datei, wird gar
         # nichts angezeigt, also gaebe es auch nichts vorzuberechnen.
-        if self.fb.height >= 720:
-            pfad = _art_path_in(ART_HD, item_syskey, lookup_name)
-        else:
-            pfad = art_path(item_syskey, lookup_name)
+        pfad = self.cover_quelle(item_syskey, lookup_name)
         if not pfad:
             return None
         if fest is not None:
@@ -8942,12 +8986,8 @@ class Frontend:
         # dann darf hier KEIN Platzhalter erscheinen, denn das Cover
         # kommt gleich (siehe _defer_count in fe/art.py).
         _defer_vorher = getattr(ART, "_defer_count", 0)
-        if H >= 720:
-            hd = _art_path_in(ART_HD, syskey, lookup_name)
-            art = ART.get_scaled(hd, avail_w, cover_h, auslagern_ok=True)
-        else:
-            art = ART.get_scaled(art_path(syskey, lookup_name), avail_w,
-                                 cover_h, auslagern_ok=True)
+        art = ART.get_scaled(self.cover_quelle(syskey, lookup_name),
+                             avail_w, cover_h, auslagern_ok=True)
         nur_verzoegert = (art is None
                           and getattr(ART, "_defer_count", 0) != _defer_vorher)
         if art:
@@ -9596,12 +9636,9 @@ class Frontend:
                         # Kommentar in draw_art_panel(): kein SD-Rueckfall
                         # mehr im HD-Modus - fehlende HD-Datei = kein Cover
                         # statt matschig hochskaliertem SD-Bild).
-                        if H >= 720:
-                            art = ART.get_scaled(_art_path_in(ART_HD, psys, prom_base),
-                                                 cell_w - 10 * s, covers_h)
-                        else:
-                            art = ART.get_scaled(art_path(psys, prom_base),
-                                                 cell_w - 10 * s, covers_h)
+                        art = ART.get_scaled(
+                            self.cover_quelle(psys, prom_base),
+                            cell_w - 10 * s, covers_h)
                         cover_cache[ckey] = art
                     art = cover_cache[ckey]
                     if not art:
@@ -9674,10 +9711,8 @@ class Frontend:
         # BUGFIX (Nutzer-Rueckmeldung, siehe ausfuehrlicher Kommentar in
         # draw_art_panel(): kein SD-Rueckfall mehr im HD-Modus - fehlende
         # HD-Datei = kein Cover statt matschig hochskaliertem SD-Bild).
-        if H >= 720:
-            wot_art = ART.get_scaled(_art_path_in(ART_HD, system, rom_base), cov_w, cov_h)
-        else:
-            wot_art = ART.get_scaled(art_path(system, rom_base), cov_w, cov_h)
+        wot_art = ART.get_scaled(self.cover_quelle(system, rom_base),
+                                 cov_w, cov_h)
         text_w = W - 2 * ox
         if wot_art:
             text_w = max(80 * s, W - 2 * ox - wot_art[0] - 20 * s)
@@ -11395,12 +11430,9 @@ class Frontend:
                 # im HD-Modus - fehlende HD-Datei = kein Cover statt
                 # matschig hochskaliertem SD-Bild; die "kein Artwork"-
                 # Anzeige direkt unten greift dann wie gewohnt).
-                if H >= 720:
-                    hd = _art_path_in(ART_HD, top_syskey, top_label)
-                    art = ART.get_scaled(hd, cover_w, cover_h)
-                else:
-                    art = ART.get_scaled(art_path(top_syskey, top_label),
-                                         cover_w, cover_h)
+                art = ART.get_scaled(
+                    self.cover_quelle(top_syskey, top_label),
+                    cover_w, cover_h)
         pad = 5 * s
         if art:
             aw, ah, pix = art
@@ -11504,12 +11536,9 @@ class Frontend:
                 # im HD-Modus - fehlende HD-Datei = kein Cover statt
                 # matschig hochskaliertem SD-Bild; die "kein Artwork"-
                 # Anzeige weiter unten greift dann wie gewohnt).
-                if H >= 720:
-                    hd = _art_path_in(ART_HD, top_syskey, top_label)
-                    art = ART.get_scaled(hd, cover_w, cover_h)
-                else:
-                    art = ART.get_scaled(art_path(top_syskey, top_label),
-                                         cover_w, cover_h)
+                art = ART.get_scaled(
+                    self.cover_quelle(top_syskey, top_label),
+                    cover_w, cover_h)
         pad = 5 * s
 
         text_x = ox + cover_w + 24 * s

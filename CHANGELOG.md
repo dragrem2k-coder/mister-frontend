@@ -7,6 +7,49 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Bei halbierter Menü-Auflösung verschwanden alle Boxarts** (Build 130):
+
+Gemeldet: wer die Menü-Auflösung halbiert (etwa gegen Flackern bei
+1080p) und **nur** `art_hd/` pflegt, sieht plötzlich gar keine Cover
+mehr — obwohl die Bilder da sind und die Miniaturen erzeugt wurden.
+
+Die Schwelle stand an **acht** Stellen als `if H >= 720`. Bei halber
+Auflösung ist `H` rund 540, also darunter — das Frontend suchte nur
+noch in `art/`. Wer dort nichts liegen hat, bekam nichts. Der alte
+„matschig hochskaliert"-Grund für die Schwelle greift hier auch nicht:
+HD-Bilder würden ja **herunter**skaliert, und das ist scharf.
+
+**Der naheliegende Fix wäre falsch gewesen.** „Immer zuerst `art_hd/`"
+behebt den gemeldeten Fall und macht einen neuen: die Regel trifft auch
+die *echte* Röhre mit H=240. Wer dort sein `art/` gepflegt hat — kleine,
+fertig verkleinerte Bilder — bekäme ab sofort jedes Cover aus der großen
+HD-Datei, also eine 900×1200-Flächenmittelung statt eines fertigen
+300×350-Bildes. Auf der schwächsten Hardware der teuerste Weg, und
+genau der, gegen den Build 128/129 angearbeitet haben.
+
+Die Regel ist deshalb **absichtlich nicht symmetrisch**:
+
+| Auflösung | Quelle |
+|---|---|
+| ab 720 Zeilen | nur `art_hd/`, **kein** Rückfall (Build 89: ein hochskaliertes SD-Bild „sieht blöd aus", dann lieber keins) |
+| darunter | erst `art/`, und nur wenn dort nichts liegt, `art_hd/` |
+
+Damit behält die Röhre mit gepflegtem `art/` ihren billigen Weg, die
+halbe Auflösung sieht ihre HD-Cover, und eine Röhre *ohne* `art/` sieht
+künftig auch etwas statt nichts.
+
+Entschieden wird über die **Dateiexistenz**, nicht über das Ergebnis des
+Zeichenversuchs — das liefert auch dann nichts, wenn beim Scrollen
+bewusst übersprungen wurde. Ein Rückfall an dieser Stelle wäre genau der
+Ruckler, den das Überspringen verhindern soll.
+
+Die acht Fundstellen gehen jetzt alle durch `cover_quelle()`; zwei davon
+(Trophäenraum und Jahresrückblick) standen in der Meldung noch gar
+nicht. Der Test prüft mit, dass niemand sonst mehr `art_hd/` direkt
+anfasst — sonst läuft in einem halben Jahr wieder eine Kopie davon
+auseinander.
+
+
 **JPEG-Arbeitskopien, ein Fehler aus Build 128, und die ganze
 Dokumentation auf Stand** (Build 129):
 
