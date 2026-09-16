@@ -5898,6 +5898,49 @@ class Frontend:
             self._kachel_platzhalter(cx, ky, cov_b, cov_h, item[0], s,
                                      markiert)
 
+    def _baender_flippen(self, felder, geo, L, skip_vsync):
+        """Nur die angefassten Zeilenbaender auf den Schirm bringen
+        (Build 133).
+
+        "felder" sind die (x, y, b, h)-Bereiche der neu gezeichneten
+        Kacheln - von diesen zaehlt hier nur die Hoehe, denn flip_rows()
+        arbeitet zeilenweise: ein Band geht immer ueber die volle
+        Breite. Dazu kommt der untere Streifen mit Spielname, Fusszeile
+        und Positionsanzeige, der bei jedem Schritt mitgeschrieben wird.
+
+        Ueberlappende oder direkt aneinandergrenzende Baender werden
+        zusammengefasst - zwei Aufrufe fuer zwei benachbarte Kacheln
+        waeren zwei Vsync-Wartezeiten statt einer, und genau daran ist
+        schon einmal Zeit verlorengegangen (siehe den Kommentar bei
+        _draw_navigate_items_impl())."""
+        fb = self.fb
+        spannen = []
+        for (_x, y, _b, h) in felder:
+            spannen.append((max(0, y), min(fb.height, y + h)))
+        # Der untere Streifen: ab der Namenszeile bis zum unteren Rand.
+        # Bewusst grosszuegig bis ganz unten statt auf den Punkt
+        # gerechnet - dort stehen je nach Zustand Name, Meldung,
+        # Songtitel und Position, und ein zu knapp bemessenes Band
+        # waere genau die Sorte Rest, die im Projekt schon viermal
+        # aufgetreten ist (siehe Build 80/122/125/128).
+        unten_ab = max(0, min(geo["name_y"] - geo["s"],
+                              L["footer_y"] - geo["s"]))
+        if unten_ab < fb.height:
+            spannen.append((unten_ab, fb.height))
+        spannen.sort()
+        zusammen = []
+        for a, b in spannen:
+            if b <= a:
+                continue
+            if zusammen and a <= zusammen[-1][1]:
+                zusammen[-1][1] = max(zusammen[-1][1], b)
+            else:
+                zusammen.append([a, b])
+        if not zusammen:
+            return
+        for a, b in zusammen:
+            fb.flip_rows(a, b - a, skip_vsync=skip_vsync)
+
     def _kachel_name_zeichnen(self, geo, L, items, message=None):
         """Der Name des markierten Spiels unter dem Raster. Das ist die
         einzige Beschriftung der ganzen Ansicht - sie bekommt deshalb
@@ -5953,13 +5996,17 @@ class Frontend:
                    and not self._overlay_active())
         alt = getattr(self, "_raster_markiert", None)
 
+        baender = None
         if schnell and alt is not None and 0 <= alt < proseite:
             # Nur die beiden betroffenen Kacheln.
+            baender = []
             if alt != platz_neu:
                 self._kachel_zeichnen(geo, alt, self.scroll + alt, items,
                                       syskey, False, True)
+                baender.append(self._kachel_feld(geo, alt))
             self._kachel_zeichnen(geo, platz_neu, self.item_i, items,
                                   syskey, True, True)
+            baender.append(self._kachel_feld(geo, platz_neu))
         else:
             fb.clear(C_BG)
             self._raster_kopf(L, items, total)
@@ -5975,7 +6022,30 @@ class Frontend:
         self._fusszeile_zeichnen(L["ox"], L["footer_y"], L["s"], message)
         self._draw_search_overlay()
         if flip:
-            fb.flip(skip_vsync=self._vsync_ueberspringen(None))
+            # NEU (Build 133): auf dem schnellen Pfad nur die geaenderten
+            # BAENDER auf den Schirm bringen, nicht den ganzen.
+            #
+            # Gefunden beim Nachmessen des Nutzerwunsches "das hin und
+            # her scrollen im neuen Raster soll schneller laufen". Der
+            # schnelle Pfad zeichnet seit Build 122 nur zwei Kacheln -
+            # danach lief aber trotzdem ein voller fb.flip(), also eine
+            # Kopie des KOMPLETTEN Bildspeichers (auf 1080p 8,3 MB, auf
+            # dem Geraet rund 13 ms). Zwei Kacheln neu zeichnen und dann
+            # den ganzen Schirm kopieren - das Sparen davor war damit zur
+            # Haelfte umsonst.
+            #
+            # Die Liste macht das laengst richtig (siehe die
+            # flip_rows()-Aufrufe in _draw_navigate_items_impl()); den
+            # Kachelansichten hat es bisher gefehlt.
+            #
+            # Zwei Baender reichen: die angefassten Kacheln, und unten
+            # der Streifen mit Spielname, Fusszeile und Position. Was
+            # dazwischen liegt, hat sich nicht geaendert.
+            _ueberspringen = self._vsync_ueberspringen(None)
+            if baender is not None and not self._search_mode:
+                self._baender_flippen(baender, geo, L, _ueberspringen)
+            else:
+                fb.flip(skip_vsync=_ueberspringen)
 
     def _raster_kopf(self, L, items, total):
         """Kopfzeile fuer die Kachelansichten - derselbe Text wie bei
@@ -6267,11 +6337,15 @@ class Frontend:
                    and not self._overlay_active())
         alt = getattr(self, "_kat_raster_markiert", None)
 
+        baender = None
         if schnell and alt is not None and 0 <= alt < proseite:
+            baender = []
             if alt != platz_neu:
                 self._kat_kachel_zeichnen(geo, alt, self.cat_scroll + alt,
                                           False, True)
+                baender.append(self._kachel_feld(geo, alt))
             self._kat_kachel_zeichnen(geo, platz_neu, self.cat_i, True, True)
+            baender.append(self._kachel_feld(geo, platz_neu))
         else:
             fb.clear(C_BG)
             self._kat_kopf(KL)
@@ -6287,7 +6361,14 @@ class Frontend:
         self._kat_name_zeichnen(geo)
         self._kat_fusszeile(KL, message)
         if flip:
-            fb.flip(skip_vsync=self._vsync_ueberspringen(None))
+            # Dasselbe wie im Raster der Spieleliste (Build 133): auf dem
+            # schnellen Pfad nur die geaenderten Baender auf den Schirm,
+            # nicht den kompletten Bildspeicher.
+            _ueberspringen = self._vsync_ueberspringen(None)
+            if baender is not None and not self._search_mode:
+                self._baender_flippen(baender, geo, KL, _ueberspringen)
+            else:
+                fb.flip(skip_vsync=_ueberspringen)
 
     def _kat_fusszeile(self, KL, message):
         """Meldung und Statuszeile - dieselben zwei Dinge, die auch die

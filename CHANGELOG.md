@@ -7,6 +7,48 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Das Raster kopierte bei jedem Schritt den ganzen Bildschirm** (Build 133):
+
+Wunsch: *„ich hätte gerne, dass das hin und her scrollen im neuen Raster
+schneller läuft."* Beim Nachmessen kam etwas heraus, das ich seit Build
+122 übersehen hatte.
+
+Der schnelle Pfad zeichnet nur **zwei** Kacheln neu — die alte und die
+neue Markierung. Danach lief aber trotzdem ein volles `fb.flip()`, also
+eine Kopie des **kompletten** Bildspeichers: 8,3 MB auf 1080p, auf deinem
+Gerät rund 13 ms. Zwei Kacheln sparen und dann den ganzen Schirm
+kopieren — das Sparen davor war damit zur Hälfte umsonst.
+
+Die Liste macht es seit Build 96 richtig (`flip_rows()` in
+`_draw_navigate_items_impl()`). Den Kachelansichten hat es schlicht
+gefehlt.
+
+Jetzt gehen nur noch die geänderten Bänder auf den Schirm — die
+angefassten Kacheln und der untere Streifen mit Spielname, Fußzeile und
+Position:
+
+| | kopierte Bildzeilen |
+|---|---|
+| links/rechts | 253 + 132 = **385 von 1080** |
+| hoch/runter | 506 + 132 = **638 von 1080** |
+
+Beim **Seitenwechsel** bleibt es beim vollen Bild — dort ändert sich
+alles, ein Band wäre dort ein Fehler und kein Gewinn. Dasselbe bei
+aktivem Suchbalken, der liegt oben außerhalb der Bänder.
+
+Gilt für das Raster der Spieleliste **und** der Hauptseite. Die Galerie
+bleibt bewusst beim vollen Bild: dort ändern sich mit einem Schritt das
+große Cover, der Infotext und die Leiste, also ohnehin fast der ganze
+Schirm.
+
+**Warum der Test `fb.mm` vergleicht und nicht `fb.buf`.** Ein Vergleich
+des Zeichenpuffers würde hier nichts beweisen — der ist in beiden Fällen
+gleich, egal wie viel davon anschließend auf den Schirm wandert.
+`tools/test_baender_flip.py` prüft deshalb, was wirklich angezeigt wird.
+Genau dort würde ein zu knapp bemessenes Band als stehengebliebener Rest
+auftauchen — die Sorte Fehler, die es hier schon viermal gab.
+
+
 **Größere Kacheln, und zwei weitere Kopierstellen entschärft** (Build 132):
 
 **Die Kacheln.** Rückmeldung mit Bildentwurf: *„hier hätte ich gerne

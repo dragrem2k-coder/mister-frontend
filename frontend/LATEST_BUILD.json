@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-16-132",
-  "summary": "Groessere Kacheln: das Raster rechnet auf HDMI jetzt mit 7x3 statt 7x4 und kommt damit auf 176x235 statt 124x166 - mehr als die doppelte Flaeche. Die Galerie-Leiste waechst mit, damit es bei drei Kastengroessen bleibt. WICHTIG: einmal 'Miniaturen vorbereiten' laufen lassen, die Kachelgroesse ist der Schluessel des Zwischenspeichers. Dazu zwei weitere Kopierstellen entschaerft: _restore_row_bg (-30 bis -47 Prozent) und text() - beide mit memoryview auf dem Ziel, bitgenau gleiches Ergebnis."
+  "build_id": "2026-09-16-133",
+  "summary": "Das Raster kopierte bei jedem Schritt den ganzen Bildschirm, obwohl nur zwei Kacheln neu gezeichnet wurden - 8,3 MB je Tastendruck auf 1080p. Jetzt gehen nur noch die geaenderten Baender auf den Schirm: 385 statt 1080 Bildzeilen bei links/rechts, 638 bei hoch/runter. Gilt fuer Spieleliste und Hauptseite; beim Seitenwechsel bleibt es beim vollen Bild, weil sich dort alles aendert."
 }
