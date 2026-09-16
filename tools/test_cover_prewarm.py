@@ -729,6 +729,10 @@ try:
         os.remove(S2.FAST_SCROLL_ENABLED_FLAG)
     except OSError:
         pass
+    # Der Schalter wird hier per Datei gesetzt, nicht ueber
+    # toggle_fast_scroll() - der Zwischenspeicher aus Build 135 weiss
+    # davon also nichts, und die Pruefstand-Uhr steht (siehe dort).
+    H._zwischenspeicher_leeren()
     fe.draw_page_items()                     # erster Aufbau (Hintergrund frisch)
     panel_aufrufe.clear()
     fe._last_input_time = H.NOW[0]           # "gerade eben gedrueckt"
@@ -739,6 +743,7 @@ try:
 
     # ---- mit "Schnelles Scrollen" und unveraendertem Hintergrund
     open(S2.FAST_SCROLL_ENABLED_FLAG, "w").close()
+    H._zwischenspeicher_leeren()
     fe.draw_page_items()                     # sorgt fuer _pgi_fast_taken
     panel_aufrufe.clear()
     A.ART._deferred_something = False

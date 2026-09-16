@@ -9,6 +9,7 @@ Spielenamen und RAs Datenbank. Ausgelagert aus frontend.py
 """
 import os, json, time, re, urllib.request, urllib.parse, urllib.error, threading
 from fe.log import LOG
+from fe.zwischenspeicher import hole as _hole, vergessen as _vergessen
 from fe.art import BADGES
 
 def _has_network():
@@ -93,6 +94,9 @@ def ra_toggle_enabled():
     return not os.path.exists(RA_DISABLED_FLAG)
 
 def toggle_ra_enabled():
+    # Der Zwischenspeicher muss weg, sonst wirkt das Umschalten erst
+    # nach einer halben Sekunde - und genau dort schaut man hin.
+    _vergessen()
     if ra_toggle_enabled():
         try:
             os.makedirs(os.path.dirname(RA_DISABLED_FLAG), exist_ok=True)
@@ -104,6 +108,7 @@ def toggle_ra_enabled():
             os.remove(RA_DISABLED_FLAG)
         except OSError:
             pass
+    _vergessen()
 
 def ra_enabled():
     """Kurzform: ist RetroAchievements gerade tatsaechlich aktiv? Das
@@ -118,8 +123,21 @@ def ra_enabled():
     Betreten eines Systems (fe/ra_core.py) - das ist ein unabhaengiger
     Mechanismus (welche Core-BINARY gestartet wird), der weiterhin
     unveraendert funktioniert, auch wenn hier pausiert wurde."""
-    u, k = load_ra_config()
-    return u is not None and k is not None and ra_toggle_enabled()
+    # GEAENDERT (Build 135): ueber den kurzlebigen Zwischenspeicher.
+    #
+    # Diese Funktion ist die EINE gemeinsame Pruefung fuer alles rund um
+    # RetroAchievements und wird entsprechend oft gerufen - unter
+    # anderem bei jedem Bild. Jeder Aufruf oeffnete dabei
+    # /media/fat/frontend/retroachievements.cfg. Auf einer SD-Karte
+    # kostet das 1-5 ms, gelegentlich mehr, und es war einer der fuenf
+    # Kartenzugriffe je Scrollschritt (siehe fe/zwischenspeicher.py).
+    #
+    # Gemerkt wird nur das ERGEBNIS (ja/nein), nicht die Zugangsdaten.
+    # Der Schreibweg dieser Datei bleibt voellig unberuehrt.
+    def _pruefen():
+        u, k = load_ra_config()
+        return u is not None and k is not None and ra_toggle_enabled()
+    return _hole(("ra_enabled", RA_CONFIG_FILE, RA_DISABLED_FLAG), _pruefen)
 
 RA_API_URL = "https://retroachievements.org/API/API_GetUserCompletionProgress.php"
 

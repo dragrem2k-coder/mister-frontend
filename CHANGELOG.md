@@ -7,6 +7,61 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Jeder Scrollschritt las fünfmal von der SD-Karte** (Build 135):
+
+Auf die Frage, ob ein Rust-Rewrite das Scrollen schneller machen würde,
+habe ich nachgemessen statt geantwortet. Ein einzelner Rasterschritt
+fasste die Karte **fünfmal** an:
+
+```
+open    /media/fat/frontend/retroachievements.cfg
+open    /media/fat/frontend/ansicht
+exists  /media/fat/frontend/profile
+exists  /media/fat/frontend/thumb_cache/hd
+exists  /media/fat/frontend/fast_scroll_enabled
+```
+
+Bei jedem Tastendruck — für Werte, die sich nur ändern, wenn der Nutzer
+im Menü etwas umstellt. In der Listenansicht kam noch
+`pulse_effect_disabled` dazu.
+
+**Warum das auf einer Entwicklungsmaschine unsichtbar ist:** dort liegen
+die Dateien im Dateisystem-Cache, ein Zugriff kostet Mikrosekunden. Auf
+dem MiSTer ist es exFAT auf einer SD-Karte — `open()` plus `read()`
+kostet dort 1–5 ms und deutlich mehr, wenn die Karte gerade beschäftigt
+ist. Vorauslader, Nachlader und Musik lesen von derselben Karte.
+
+**Das ist die Erklärung für „meistens flüssig, manchmal ein Hänger":**
+nicht der Durchschnitt, sondern der Ausreißer. Und ein Rust-Rewrite
+hätte daran exakt nichts geändert — er hätte dieselben fünf Dateien
+genauso oft geöffnet.
+
+Neu ist `fe/zwischenspeicher.py`: ein kurzlebiger Speicher für genau
+solche Schalter, eine halbe Sekunde gültig, mit ausdrücklichem
+Verwerfen bei jeder Änderung. Gemessen: **von 50 Zugriffen auf zehn
+Schritte auf null.**
+
+**Zwei Fehler dabei, beide vom Test gefunden:**
+
+*Das Verwerfen stand am Anfang der Schreibfunktionen* — und war damit
+wirkungslos. Die Umschalter lesen erst den alten Zustand („wenn an, dann
+ausschalten"), und genau dieses Lesen füllt den Speicher wieder, bevor
+die neue Datei geschrieben ist. Der Schalter im Menü tat dadurch eine
+halbe Sekunde lang scheinbar nichts. Jetzt erledigt das ein Dekorator
+`@_nach_aenderung` mit `finally` — also auch dann, wenn das Schreiben
+fehlschlägt.
+
+*Der Schlüssel hing nur am Namen, nicht am Pfad.* Tests biegen solche
+Konstanten auf Testpfade um; ein unter dem alten Pfad gemerkter Wert ist
+danach schlicht falsch. `tools/test_cover_prewarm.py` ist genau darüber
+gestolpert.
+
+Dazu eine Falle für künftige Tests, die jetzt dokumentiert ist: der
+Prüfstand friert `time.monotonic()` ein, die Gültigkeitsdauer läuft dort
+also **nie** ab. `tools/_harness.py` räumt deshalb bei jedem
+`make_frontend()` auf.
+
+
 **Die neuen Bänder warteten trotzdem auf den Bildwechsel** (Build 134):
 
 Rückmeldung: *„wenn ich schnell hintereinander nach links oder rechts

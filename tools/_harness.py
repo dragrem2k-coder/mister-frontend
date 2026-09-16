@@ -132,10 +132,28 @@ TITLES = [
 ]
 
 
+def _zwischenspeicher_leeren():
+    """Den Einstellungs-Zwischenspeicher (Build 135) verwerfen.
+
+    WICHTIG fuer jeden Test: dieser Pruefstand friert time.monotonic()
+    ein (siehe NOW oben). Der Zwischenspeicher wird aber ueber genau
+    diese Uhr ungueltig - bei stehender Uhr also NIE. Wer in einem Test
+    eine Einstellungsdatei direkt anlegt oder loescht, statt die
+    zugehoerige toggle-Funktion zu benutzen, muss deshalb hier
+    aufraeumen. Genau darueber ist tools/test_cover_prewarm.py beim Bau
+    von Build 135 gestolpert."""
+    try:
+        import fe.zwischenspeicher as _zs
+        _zs.vergessen()
+    except Exception:                                    # noqa: BLE001
+        pass
+
+
 def make_frontend(page=1, titles=None):
     """Echte Frontend()-Instanz mit einer festen, kuenstlichen
     Spieleliste - damit die Tests unabhaengig davon laufen, welche ROMs
     auf dem Testrechner liegen."""
+    _zwischenspeicher_leeren()
     fe = fm.Frontend()
     fe._last_input_time = NOW[0] - 10.0
     if page == 1:

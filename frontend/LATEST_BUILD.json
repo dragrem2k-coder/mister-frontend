@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-16-134",
-  "summary": "Die in Build 133 eingefuehrten Teilkopien warteten trotzdem jedes Mal auf den Bildwechsel: die Aufrufer fragten mit 'Vollbild' nach, und fuer ein Vollbild wird immer gewartet. Die Entscheidung faellt jetzt je Band nach dessen Hoehe - bei schnellem Scrollen entfaellt das Warten, bei einem einzelnen Tastendruck bleibt es (Absicht, sonst waere der Bildriss ohne Not sichtbar)."
+  "build_id": "2026-09-16-135",
+  "summary": "Jeder Scrollschritt las fuenfmal von der SD-Karte - RA-Konfiguration, eingestellte Ansicht, Profiling-Schalter, Schnelles-Scrollen-Schalter, Puls-Effekt. Auf einer SD-Karte kostet ein solcher Zugriff 1-5 ms und gelegentlich deutlich mehr; das ist die Erklaerung fuer 'meistens fluessig, manchmal ein Haenger'. Diese Schalter liegen jetzt in einem kurzlebigen Zwischenspeicher (eine halbe Sekunde, mit sofortigem Verwerfen bei jeder Aenderung): von 50 Zugriffen auf zehn Schritte auf null."
 }

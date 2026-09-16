@@ -62,6 +62,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Rate-Limit, keine JSON-Antwort noetig.
 
 from fe.log import LOGFILE, LOG
+from fe.zwischenspeicher import hole as _hole, vergessen as _einstellungen_vergessen
 
 from fe.single_instance import LOCKFILE, _pid_alive, acquire_single_instance, release_single_instance
 
@@ -321,8 +322,14 @@ PROFILE_FLAG = "/media/fat/frontend/profile"
 
 
 def profiling_an():
+    # GEAENDERT (Build 135): ueber den kurzlebigen Zwischenspeicher.
+    #
+    # Ausgerechnet der Schalter, mit dem man die Geschwindigkeit MISST,
+    # kostete selbst bei jedem Bild einen Zugriff auf die SD-Karte -
+    # auch dann, wenn er aus ist. Siehe fe/zwischenspeicher.py.
     return (os.environ.get("DRAGEND_PROFILE") == "1"
-            or os.path.exists(PROFILE_FLAG))
+            or _hole(("profile_flag", PROFILE_FLAG),
+                     lambda: os.path.exists(PROFILE_FLAG)))
 
 
 # NEU (Nutzerwunsch: "haben wir irgendwie ne Moeglichkeit, das Frontend

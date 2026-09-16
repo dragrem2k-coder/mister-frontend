@@ -10,6 +10,33 @@ verstreute kleine Bloecke hier sinnvoll zusammengefuehrt.
 """
 import os, glob, time, re
 from fe.log import LOG
+from fe.zwischenspeicher import hole as _hole, vergessen as _vergessen
+
+
+def _nach_aenderung(fn):
+    """Verwirft den Einstellungs-Zwischenspeicher, NACHDEM die Funktion
+    gelaufen ist (Build 135).
+
+    KORRIGIERT beim Testen: zuerst stand das Verwerfen am ANFANG jeder
+    Schreibfunktion - und war damit wirkungslos. Die Umschalter lesen
+    naemlich erst den alten Zustand ("wenn an, dann ausschalten"), und
+    genau dieses Lesen fuellt den Zwischenspeicher wieder, bevor die
+    neue Datei geschrieben ist. Ergebnis: der Schalter im Menue tat eine
+    halbe Sekunde lang scheinbar nichts.
+
+    Mit "finally" wird auch dann aufgeraeumt, wenn das Schreiben
+    fehlschlaegt - sonst haette man einen gemerkten Wert, der nicht zur
+    Karte passt."""
+    def _lauf(*a, **k):
+        try:
+            return fn(*a, **k)
+        finally:
+            _vergessen()
+    _lauf.__name__ = getattr(fn, "__name__", "_lauf")
+    _lauf.__doc__ = fn.__doc__
+    return _lauf
+
+
 from fe.art import get_meta, mra_meta
 
 DRAGEND_LOGO_FILE = "/media/fat/frontend/boot_logo/dragend_logo.art"
@@ -18,6 +45,7 @@ DRAGEND_LOGO_DISABLED_FLAG = "/media/fat/frontend/dragend_logo_disabled"
 def dragend_logo_enabled():
     return not os.path.exists(DRAGEND_LOGO_DISABLED_FLAG)
 
+@_nach_aenderung
 def toggle_dragend_logo():
     if dragend_logo_enabled():
         try:
@@ -54,8 +82,13 @@ def toggle_dragend_logo():
 PULSE_EFFECT_DISABLED_FLAG = "/media/fat/frontend/pulse_effect_disabled"
 
 def pulse_effect_enabled():
-    return not os.path.exists(PULSE_EFFECT_DISABLED_FLAG)
+    # Ueber den Zwischenspeicher (Build 135): auch dieser Schalter wurde
+    # bei jedem Bild von der Karte gelesen - in der Listenansicht war er
+    # nach dem Umbau der einzige verbliebene Kartenzugriff je Schritt.
+    return _hole(("pulse_effect", PULSE_EFFECT_DISABLED_FLAG),
+                 lambda: not os.path.exists(PULSE_EFFECT_DISABLED_FLAG))
 
+@_nach_aenderung
 def toggle_pulse_effect():
     if pulse_effect_enabled():
         try:
@@ -86,6 +119,7 @@ EQ_EFFECT_DISABLED_FLAG = "/media/fat/frontend/eq_effect_disabled"
 def eq_effect_enabled():
     return not os.path.exists(EQ_EFFECT_DISABLED_FLAG)
 
+@_nach_aenderung
 def toggle_eq_effect():
     if eq_effect_enabled():
         try:
@@ -114,6 +148,7 @@ TRACK_MARQUEE_DISABLED_FLAG = "/media/fat/frontend/track_marquee_disabled"
 def track_marquee_enabled():
     return not os.path.exists(TRACK_MARQUEE_DISABLED_FLAG)
 
+@_nach_aenderung
 def toggle_track_marquee():
     if track_marquee_enabled():
         try:
@@ -144,6 +179,7 @@ STREAM_ENABLED_FLAG = "/media/fat/frontend/stream_enabled"
 def stream_overlay_enabled():
     return os.path.exists(STREAM_ENABLED_FLAG)
 
+@_nach_aenderung
 def toggle_stream_overlay():
     if stream_overlay_enabled():
         try:
@@ -170,6 +206,7 @@ SCREEN_MIRROR_ENABLED_FLAG = "/media/fat/frontend/screen_mirror_enabled"
 def screen_mirror_enabled():
     return os.path.exists(SCREEN_MIRROR_ENABLED_FLAG)
 
+@_nach_aenderung
 def toggle_screen_mirror():
     if screen_mirror_enabled():
         try:
@@ -238,6 +275,7 @@ video_mode=320,8,32,24,240,4,3,16,6048
 CRT_MENU_OWNED_FLAG = "/media/fat/frontend/crt_menu_by_frontend"
 
 
+@_nach_aenderung
 def _mister_ini_schreiben(text):
     """MiSTer.ini sicher ersetzen. Rueckgabe True/False.
 
@@ -335,6 +373,7 @@ def crt_menu_active():
     except OSError:
         return False
 
+@_nach_aenderung
 def toggle_crt_menu():
     """[Menu]-Block in der MiSTer.ini setzen/entfernen.
     Rueckgabe: True wenn danach CRT-Modus aktiv ist."""
@@ -601,6 +640,7 @@ def overscan_lesen():
         return OVERSCAN_X_STD, OVERSCAN_Y_STD
     return x, y
 
+@_nach_aenderung
 def overscan_schreiben(x, y):
     try:
         os.makedirs(os.path.dirname(OVERSCAN_FILE), exist_ok=True)
@@ -678,6 +718,7 @@ def fremdquellen_enabled():
     return not os.path.exists(FREMDQUELLEN_AUS_FLAG)
 
 
+@_nach_aenderung
 def toggle_fremdquellen():
     if fremdquellen_enabled():
         try:
@@ -693,8 +734,19 @@ def toggle_fremdquellen():
 
 
 def fast_scroll_enabled():
-    return os.path.exists(FAST_SCROLL_ENABLED_FLAG)
+    # GEAENDERT (Build 135): ueber den kurzlebigen Zwischenspeicher.
+    # Diese Pruefung lief bei JEDEM Bild, also auch bei jedem einzelnen
+    # Scrollschritt - ein Kartenzugriff fuer einen Schalter, den nur
+    # das Menue aendert. Siehe fe/zwischenspeicher.py.
+    # Der Schluessel enthaelt den PFAD, nicht nur einen Namen: Tests
+    # (und die Umschaltung CRT/HDMI) biegen solche Konstanten um, und
+    # ein Wert, der unter dem alten Pfad gemerkt wurde, waere danach
+    # schlicht falsch. Genau darueber ist tools/test_cover_prewarm.py
+    # beim Bauen gestolpert.
+    return _hole(("fast_scroll", FAST_SCROLL_ENABLED_FLAG),
+                 lambda: os.path.exists(FAST_SCROLL_ENABLED_FLAG))
 
+@_nach_aenderung
 def toggle_fast_scroll():
     if fast_scroll_enabled():
         try:
@@ -962,6 +1014,7 @@ def autostart_enabled():
     return False
 
 
+@_nach_aenderung
 def _startup_schreiben(neue_zeilen, pruefung):
     """Schreibt user-startup.sh sicher neu. Liefert True bei Erfolg.
 
@@ -1034,6 +1087,7 @@ def set_autostart(an):
         behalten, lambda t: t.startswith("#!") and AUTOSTART_MARKER not in t)
 
 
+@_nach_aenderung
 def toggle_autostart():
     """Schaltet um. Liefert (erfolgreich, neuer_zustand)."""
     ziel = not autostart_enabled()
@@ -1073,6 +1127,7 @@ def rom_filter_enabled():
     return os.path.exists(ROM_FILTER_FLAG)
 
 
+@_nach_aenderung
 def toggle_rom_filter():
     """Schaltet um. Liefert den NEUEN Zustand.
 
@@ -1105,6 +1160,7 @@ def attract_enabled():
     nicht 'aktiviert'."""
     return not os.path.exists(ATTRACT_DISABLED_FLAG)
 
+@_nach_aenderung
 def toggle_attract_mode():
     existed_before = os.path.exists(ATTRACT_DISABLED_FLAG)
     if existed_before:
@@ -1130,6 +1186,7 @@ def toggle_attract_mode():
 def curated_only_active():
     return os.path.exists(CURATED_FLAG)
 
+@_nach_aenderung
 def toggle_curated_only():
     if os.path.exists(CURATED_FLAG):
         try:
@@ -1178,13 +1235,20 @@ def ansicht_lesen():
     dieselbe Regel wie bei overscan_lesen(): eine von Hand verstellte
     Datei darf das Frontend nicht in einen Zustand bringen, aus dem man
     ohne Texteditor nicht mehr herauskommt."""
-    try:
-        wert = open(ANSICHT_FILE).read().strip().lower()
-    except OSError:
-        return "liste"
-    return wert if wert in ANSICHTEN else "liste"
+    def _lesen():
+        try:
+            wert = open(ANSICHT_FILE).read().strip().lower()
+        except OSError:
+            return "liste"
+        return wert if wert in ANSICHTEN else "liste"
+    # GEAENDERT (Build 135): ueber den kurzlebigen Zwischenspeicher -
+    # aufgerufen wird das bei jedem Bild (siehe aktuelle_ansicht() in
+    # frontend.py), und ein open() auf der SD-Karte je Tastendruck war
+    # einer der Haenger beim Scrollen.
+    return _hole(("ansicht", ANSICHT_FILE), _lesen)
 
 
+@_nach_aenderung
 def ansicht_schreiben(wert):
     if wert not in ANSICHTEN:
         wert = "liste"
@@ -1212,13 +1276,16 @@ ANSICHT_HAUPT_FILE = "/media/fat/frontend/ansicht_haupt"
 
 def ansicht_haupt_lesen():
     """Die eingestellte Vorgabe-Ansicht der HAUPTSEITE (Kategorien)."""
-    try:
-        wert = open(ANSICHT_HAUPT_FILE).read().strip().lower()
-    except OSError:
-        return "liste"
-    return wert if wert in ANSICHTEN else "liste"
+    def _lesen():
+        try:
+            wert = open(ANSICHT_HAUPT_FILE).read().strip().lower()
+        except OSError:
+            return "liste"
+        return wert if wert in ANSICHTEN else "liste"
+    return _hole(("ansicht_haupt", ANSICHT_HAUPT_FILE), _lesen)
 
 
+@_nach_aenderung
 def ansicht_haupt_schreiben(wert):
     if wert not in ANSICHTEN:
         wert = "liste"
