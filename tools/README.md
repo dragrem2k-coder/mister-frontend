@@ -67,6 +67,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_vorbereiten_tempo.py \
   && python3 tools/test_arbeitskopie.py \
   && python3 tools/test_cover_quelle.py \
+  && python3 tools/test_blit.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -114,6 +115,7 @@ python3 tools/regression_test.py \
 | `test_farbkanaele.py` | Test (Pass/Fail) | Jeder Bildweg liefert BGRA - gemessen gegen fb.rect(), nicht gegen einen zweiten Dekoder |
 | `test_quelle_png.py` | Test (Pass/Fail) | Zweite Cover-Quelle (png/-Baum des Mirrors): beide Ablageorte, Endung nach Inhalt, Klartext-HTTP, Reihenfolge der Quellen |
 | `test_ansichten.py` | Test (Pass/Fail) | Die drei Ansichten von Spieleliste UND Hauptseite, dazu der Nachlade-Thread: Kastengroesse stimmt mit dem Vorauslader ueberein, schneller Rasterpfad bitgenau, leichte Listenpfade halten sich raus |
+| `test_blit.py` | Test (Pass/Fail) | blit() mit memoryview: bitgenau wie vorher, Randfaelle zerstoeren den Puffer nicht, und es ist messbar schneller |
 | `test_cover_quelle.py` | Test (Pass/Fail) | Woher ein Cover kommt (art/ oder art_hd/): halbe Aufloesung findet HD-Cover, die Roehre behaelt art/, volle Aufloesung ohne Rueckfall, und die Wahl steht nur an einer Stelle |
 | `test_arbeitskopie.py` | Test (Pass/Fail) | Die JPEG-Arbeitskopie: bei JPEG muss je Kasten einzeln dekodiert werden (Build-128-Fehler), der Encoder haelt die Kanaele, Download legt Original UND Kopie hin, feste Endungsreihenfolge |
 | `screenshots_bauen.py` | Werkzeug | Erzeugt alle Bilder fuer README/VORSCHAU aus dem echten Zeichenpfad |

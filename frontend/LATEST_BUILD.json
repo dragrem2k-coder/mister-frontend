@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-15-130",
-  "summary": "Bei halbierter Menue-Aufloesung verschwanden alle Cover, wenn nur art_hd/ gepflegt war: die Schwelle stand an acht Stellen als 'H >= 720', und halbe Aufloesung liegt darunter - gesucht wurde dann nur noch in art/. Jetzt entscheidet eine einzige Stelle: volle Aufloesung nimmt weiterhin ausschliesslich art_hd/, darunter erst art/ und nur bei Bedarf art_hd/. Die Roehre behaelt damit ihren billigen Weg, die halbe Aufloesung sieht ihre HD-Cover."
+  "build_id": "2026-09-16-131",
+  "summary": "blit() kopiert Cover jetzt ueber memoryview statt ueber Ausschnitte - bei einem 411x548-Cover entfielen damit 548 Zwischenkopien je Bild. Gemessen rund die Haelfte der Zeit, das Ergebnis Byte fuer Byte dasselbe. Gefunden im DRAGEND_PROFILE des Nutzers: ein Galerie-Aufbau kostete 144 ms, davon 75 ms allein in zwoelf blit-Aufrufen - der groesste Einzelposten, und anders als ein kalter Miniatur-Cache faellt er bei jedem Seitenaufbau an."
 }

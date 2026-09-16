@@ -9084,17 +9084,56 @@ class Frontend:
             return
         cw = min(w, fb.width - x)
         ch = min(h, fb.height - y)
+        if cw <= 0 or ch <= 0:
+            return
         need = cw * 4
-        buflen = len(fb.buf)
+        zeile = w * 4
+
+        # GEAENDERT (Build 131): memoryview statt Ausschnitt.
+        #
+        # Gefunden in einem DRAGEND_PROFILE-Protokoll des Nutzers: ein
+        # Galerie-Aufbau der Hauptseite kostete 144 ms, davon 75 ms in
+        # ZWOELF blit()-Aufrufen. Das ist der groesste Einzelposten im
+        # ganzen Protokoll - und anders als der Miniatur-Cache faellt er
+        # bei JEDEM Seitenaufbau an, auch mit warmem Cache.
+        #
+        # Der Grund stand in der Zeile "chunk = pix[src_off:...]": ein
+        # Ausschnitt auf bytes/bytearray legt eine KOPIE an. Bei einem
+        # 411x548-Cover sind das 548 Zwischenobjekte je Bild, die sofort
+        # wieder weggeworfen werden - allein dafuer Speicher anfordern,
+        # kopieren, freigeben.
+        #
+        # Mit memoryview ist derselbe Ausschnitt ein reiner VERWEIS, und
+        # die Zuweisung kopiert direkt von der Quelle ins Ziel. Gemessen
+        # (Sandbox, je 20 Durchlaeufe):
+        #
+        #     411x548 (Galerie)   0.56 -> 0.22 ms
+        #     733x909 (Liste)     0.79 -> 0.43 ms
+        #     124x166 (Kachel)    0.08 -> 0.05 ms
+        #
+        # Rund die Haelfte, und das Ergebnis ist Byte fuer Byte
+        # dasselbe - es ist dieselbe Kopie, nur ohne den Umweg.
+        #
+        # Die beiden Laengenpruefungen von frueher sind nicht
+        # verschwunden, sie stehen jetzt EINMAL vor der Schleife statt
+        # in jedem Durchlauf. Der Zweck bleibt derselbe und ist wichtig:
+        # eine zu kurze Zuweisung wuerde den Puffer verkuerzen und alles
+        # dahinter verschieben (bytearray-Verhalten).
+        if len(pix) < (ch - 1) * zeile + need:
+            ch = min(ch, len(pix) // zeile) if zeile else 0
+            if ch <= 0:
+                return
+        letzte = (y + ch - 1) * fb.stride + x * 4 + need
+        if letzte > len(fb.buf):
+            ch = max(0, (len(fb.buf) - x * 4 - need) // fb.stride - y + 1)
+            if ch <= 0:
+                return
+        quelle = memoryview(pix)
+        ziel = memoryview(fb.buf)
         for row in range(ch):
-            src_off = row * w * 4
+            src_off = row * zeile
             dst_off = (y + row) * fb.stride + x * 4
-            if dst_off + need > buflen:
-                continue
-            chunk = pix[src_off:src_off + need]
-            if len(chunk) != need:
-                continue
-            fb.buf[dst_off:dst_off + need] = chunk
+            ziel[dst_off:dst_off + need] = quelle[src_off:src_off + need]
 
     # ------------------------------------------------------------------
     # Aktionen

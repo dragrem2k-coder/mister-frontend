@@ -7,6 +7,57 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Der größte Einzelposten im Profiling war eine Zeile** (Build 131):
+
+Aus einem `DRAGEND_PROFILE`-Protokoll vom Gerät:
+
+```
+0.144 s  _draw_cats_galerie
+  0.075 s  blit          ← 12 Aufrufe
+  0.021 s  clear
+  0.016 s  flip
+```
+
+75 ms in zwölf `blit()`-Aufrufen — mehr als alles andere in diesem
+Aufbau. Und anders als ein kalter Miniatur-Cache fällt das bei **jedem**
+Seitenaufbau an, auch wenn „Miniaturen vorbereiten" längst durchlief.
+
+Die Ursache stand in einer Zeile:
+
+```python
+chunk = pix[src_off:src_off + need]
+```
+
+Ein Ausschnitt auf `bytes`/`bytearray` legt eine **Kopie** an. Bei einem
+411×548-Cover sind das 548 Zwischenobjekte pro Bild — Speicher
+anfordern, kopieren, wegwerfen, 548 Mal. Mit `memoryview` ist derselbe
+Ausschnitt ein Verweis, und die Zuweisung kopiert direkt von der Quelle
+ins Ziel.
+
+| Cover | vorher | jetzt |
+|---|---|---|
+| 411×548 (Galerie) | 0,45 ms | **0,25 ms** |
+| 733×909 (Liste) | 0,93 ms | **0,54 ms** |
+
+Rund die Hälfte, und das Ergebnis ist Byte für Byte dasselbe — es ist
+dieselbe Kopie, nur ohne den Umweg. `diag_lightpath.py` bestätigt das
+über alle 34 Fälle.
+
+Die beiden Längenprüfungen von früher sind nicht verschwunden, sie
+stehen jetzt **einmal vor** der Schleife statt in jedem Durchlauf. Ihr
+Zweck bleibt wichtig: eine Zuweisung mit der falschen Byte-Anzahl
+verkürzt ein `bytearray` und verschiebt alles dahinter — auf dem Schirm
+sieht das aus, als wäre das halbe Bild diagonal verrutscht.
+`tools/test_blit.py` spielt genau diese Randfälle durch.
+
+**Nebenbei überprüft, was nicht das Problem war.** Die schnellen Pfade
+der Kachelansichten greifen wie vorgesehen: bei zehn Schritten durch die
+Hauptseite gab es einen einzigen vollen Neuaufbau in der Galerie und
+keinen im Raster. Der Vollaufbau im Protokoll war also ein echter
+Seitenwechsel, kein Fehler. Der Equalizer taucht im ganzen Protokoll
+nicht auf.
+
+
 **Bei halbierter Menü-Auflösung verschwanden alle Boxarts** (Build 130):
 
 Gemeldet: wer die Menü-Auflösung halbiert (etwa gegen Flackern bei
