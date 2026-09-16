@@ -227,6 +227,72 @@ check("bei aktiver Suche ebenfalls volles Bild", not gezaehlt,
       repr(gezaehlt))
 f4._search_mode = False
 
+# ---------------------------------------------------------------------
+print()
+print("Test 5: das Vsync-Warten faellt je BAND, nicht pauschal")
+# KORRIGIERT (Build 134). In Build 133 berechneten die Aufrufer das
+# Ueberspringen mit _vsync_ueberspringen(None) - und None heisst dort
+# ausdruecklich "Vollbild", wofuer IMMER gewartet wird. Die neuen,
+# kleinen Baender haben dadurch trotzdem jedes Mal auf den Bildwechsel
+# gewartet, also genau die 8-17 ms, die Build 93 sparen wollte.
+#
+# Aufgefallen an einer Nutzerbeobachtung: "wenn ich schnell
+# hintereinander nach links oder rechts druecke, geht es schneller".
+# Genau so sieht es aus, wenn eine Kopie auf den Bildwechsel wartet.
+import fe.settings as S                                  # noqa: E402
+
+f5 = spieleliste(1920, 1080)
+f5.ansicht_setzen("raster")
+for i in range(25):
+    f5.item_i = i
+    f5.draw()
+notiert = []
+_echt5 = f5.fb.flip_rows
+
+
+def _haken5(y, h, skip_vsync=False):
+    notiert.append((h, skip_vsync))
+    return _echt5(y, h, skip_vsync)
+
+
+f5.fb.flip_rows = _haken5
+
+if not S.fast_scroll_enabled():
+    print("       ('Schnelles Scrollen' ist aus - uebersprungen)")
+else:
+    # Schnelle Folge: die letzte Eingabe liegt Millisekunden zurueck.
+    f5.item_i = 0
+    f5._force_full_redraw = True
+    f5.draw()
+    f5._last_input_time = fm.time.monotonic() - 0.05
+    notiert[:] = []
+    f5.item_i = 1
+    f5.draw()
+    check("bei schneller Folge wird nicht mehr gewartet",
+          notiert and all(skip for _h, skip in notiert),
+          repr(notiert))
+
+    # Einzelner Druck: die letzte Eingabe liegt lange zurueck. Hier MUSS
+    # gewartet werden - ein einzelner Schritt ist kein Scrollen, und der
+    # Bildriss waere ohne Not sichtbar.
+    f5.item_i = 0
+    f5._force_full_redraw = True
+    f5.draw()
+    f5._last_input_time = fm.time.monotonic() - 10.0
+    notiert[:] = []
+    f5.item_i = 1
+    f5.draw()
+    check("bei einem einzelnen Druck wird weiterhin gewartet",
+          notiert and not any(skip for _h, skip in notiert),
+          repr(notiert))
+
+# Und die Grenze selbst: ein Band ueber einem Viertel der Bildhoehe
+# darf NIE ueberspringen, egal wie schnell gescrollt wird - dort waere
+# der Riss sichtbar (siehe VSYNC_SKIP_MAX_ANTEIL).
+check("ein zu grosses Band ueberspringt nie",
+      f5._vsync_ueberspringen(1080) is False
+      and f5._vsync_ueberspringen(None) is False)
+
 shutil.rmtree(TMP, ignore_errors=True)
 
 print()

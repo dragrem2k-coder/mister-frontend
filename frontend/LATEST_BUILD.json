@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-16-133",
-  "summary": "Das Raster kopierte bei jedem Schritt den ganzen Bildschirm, obwohl nur zwei Kacheln neu gezeichnet wurden - 8,3 MB je Tastendruck auf 1080p. Jetzt gehen nur noch die geaenderten Baender auf den Schirm: 385 statt 1080 Bildzeilen bei links/rechts, 638 bei hoch/runter. Gilt fuer Spieleliste und Hauptseite; beim Seitenwechsel bleibt es beim vollen Bild, weil sich dort alles aendert."
+  "build_id": "2026-09-16-134",
+  "summary": "Die in Build 133 eingefuehrten Teilkopien warteten trotzdem jedes Mal auf den Bildwechsel: die Aufrufer fragten mit 'Vollbild' nach, und fuer ein Vollbild wird immer gewartet. Die Entscheidung faellt jetzt je Band nach dessen Hoehe - bei schnellem Scrollen entfaellt das Warten, bei einem einzelnen Tastendruck bleibt es (Absicht, sonst waere der Bildriss ohne Not sichtbar)."
 }

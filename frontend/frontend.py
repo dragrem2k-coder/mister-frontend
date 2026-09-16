@@ -5898,7 +5898,7 @@ class Frontend:
             self._kachel_platzhalter(cx, ky, cov_b, cov_h, item[0], s,
                                      markiert)
 
-    def _baender_flippen(self, felder, geo, L, skip_vsync):
+    def _baender_flippen(self, felder, geo, L):
         """Nur die angefassten Zeilenbaender auf den Schirm bringen
         (Build 133).
 
@@ -5939,7 +5939,29 @@ class Frontend:
         if not zusammen:
             return
         for a, b in zusammen:
-            fb.flip_rows(a, b - a, skip_vsync=skip_vsync)
+            # KORRIGIERT (Build 134): die Entscheidung ueber das
+            # Vsync-Warten faellt JE BAND, nach dessen Hoehe.
+            #
+            # In Build 133 stand hier ein von aussen hereingereichtes
+            # "skip_vsync", und die Aufrufer berechneten es mit
+            # _vsync_ueberspringen(None). None heisst dort aber
+            # ausdruecklich "Vollbild", und fuer ein Vollbild wird IMMER
+            # gewartet (siehe dort). Ergebnis: die neuen, kleinen Baender
+            # haben trotzdem jedes Mal auf den Bildwechsel gewartet -
+            # also genau die 8-17 ms, die Build 93 fuer kleine Kopien
+            # sparen wollte.
+            #
+            # Aufgefallen ist es an einer Nutzerbeobachtung: "wenn ich
+            # schnell hintereinander nach links oder rechts druecke, geht
+            # es schneller". Genau so sieht es aus, wenn eine Kopie auf
+            # den Bildwechsel wartet: bei schnellen Tastendruecken faellt
+            # die Wartezeit mit dem naechsten Bild zusammen, bei einem
+            # einzelnen Druck wartet man sie voll ab.
+            #
+            # Die Liste macht es seit Build 93 richtig und uebergibt ihre
+            # echte Bandhoehe. Jetzt auch die Kachelansichten.
+            fb.flip_rows(a, b - a,
+                         skip_vsync=self._vsync_ueberspringen(b - a))
 
     def _kachel_name_zeichnen(self, geo, L, items, message=None):
         """Der Name des markierten Spiels unter dem Raster. Das ist die
@@ -6041,11 +6063,10 @@ class Frontend:
             # Zwei Baender reichen: die angefassten Kacheln, und unten
             # der Streifen mit Spielname, Fusszeile und Position. Was
             # dazwischen liegt, hat sich nicht geaendert.
-            _ueberspringen = self._vsync_ueberspringen(None)
             if baender is not None and not self._search_mode:
-                self._baender_flippen(baender, geo, L, _ueberspringen)
+                self._baender_flippen(baender, geo, L)
             else:
-                fb.flip(skip_vsync=_ueberspringen)
+                fb.flip(skip_vsync=self._vsync_ueberspringen(None))
 
     def _raster_kopf(self, L, items, total):
         """Kopfzeile fuer die Kachelansichten - derselbe Text wie bei
@@ -6364,11 +6385,10 @@ class Frontend:
             # Dasselbe wie im Raster der Spieleliste (Build 133): auf dem
             # schnellen Pfad nur die geaenderten Baender auf den Schirm,
             # nicht den kompletten Bildspeicher.
-            _ueberspringen = self._vsync_ueberspringen(None)
             if baender is not None and not self._search_mode:
-                self._baender_flippen(baender, geo, KL, _ueberspringen)
+                self._baender_flippen(baender, geo, KL)
             else:
-                fb.flip(skip_vsync=_ueberspringen)
+                fb.flip(skip_vsync=self._vsync_ueberspringen(None))
 
     def _kat_fusszeile(self, KL, message):
         """Meldung und Statuszeile - dieselben zwei Dinge, die auch die

@@ -7,6 +7,32 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Die neuen Bänder warteten trotzdem auf den Bildwechsel** (Build 134):
+
+Rückmeldung: *„wenn ich schnell hintereinander nach links oder rechts
+drücke, geht es ja auch schneller."* Das ist genau die Beschreibung
+einer Kopie, die auf den Bildwechsel wartet — und es war ein Fehler von
+mir, einen Build alt.
+
+Build 133 bringt auf dem schnellen Pfad nur noch die geänderten Bänder
+auf den Schirm. Die Aufrufer berechneten das Vsync-Verhalten dabei aber
+mit `_vsync_ueberspringen(None)` — und `None` heißt dort ausdrücklich
+**„Vollbild"**, wofür seit Build 93 *immer* gewartet wird. Die neuen,
+kleinen Bänder haben dadurch jedes Mal die vollen 8–17 ms abgewartet,
+also genau das, was die Regel sparen soll.
+
+Die Entscheidung fällt jetzt **je Band, nach dessen Höhe** — so wie es
+die Liste seit Build 93 macht. Bei schnellem Scrollen entfällt das
+Warten für die 253- und 132-Zeilen-Bänder; bei einem einzelnen
+Tastendruck wird weiterhin gewartet, und ein Band über einem Viertel der
+Bildhöhe überspringt nie (`VSYNC_SKIP_MAX_ANTEIL`).
+
+Dass ein einzelner Druck spürbar anders ist als eine schnelle Folge,
+bleibt also — das ist Absicht. Ein einzelner Schritt ist kein Scrollen,
+und ein Bildriss wäre dort ohne Not sichtbar. Wem das egal ist, schaltet
+*System → Anzeige & Sound → „Schnelles Scrollen"*.
+
+
 **Das Raster kopierte bei jedem Schritt den ganzen Bildschirm** (Build 133):
 
 Wunsch: *„ich hätte gerne, dass das hin und her scrollen im neuen Raster
