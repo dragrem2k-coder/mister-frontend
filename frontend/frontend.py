@@ -3224,6 +3224,7 @@ class Frontend:
         self._maybe_rebuild_ra_categories()
         self._maybe_rescan_for_late_mount()
         self._perf_house = time.monotonic() - _th
+        self._seiten_aktionen_melden()
         if message and prominent:
             # NEUES FEATURE (siehe Kommentar bei self._prominent_message
             # in __init__): bewusst NICHT auch noch die kleine
@@ -8097,6 +8098,50 @@ class Frontend:
             if klein[1] > 4 and klein[2] > 4 and klein not in raus:
                 raus.append(klein)
         return raus
+
+    def _seiten_aktionen_melden(self):
+        """Der Eingabe sagen, welche Richtungen gerade eine ganze SEITE
+        bewegen (Build 136).
+
+        WOZU. Die Wiederholrate bei gehaltener Taste hat zwei Boeden:
+        einen normalen (0.08 s) und einen deutlich langsameren fuer
+        Seitenspruenge (0.25 s, also vier je Sekunde). Der langsame ist
+        richtig, wenn ein Druck eine ganze Seite weiterblaettert - mehr
+        kann niemand lesen.
+
+        Bis Build 135 galt er fest fuer links/rechts. Seit Build 127
+        folgen die Richtungstasten aber der Anordnung der Ansicht, und
+        im Raster ist links/rechts die BILLIGSTE Bewegung ueberhaupt:
+        eine Kachel weiter, zwei Kacheln neu gezeichnet. Die war damit
+        auf vier Schritte je Sekunde gedeckelt - genau das, was der
+        Nutzer als "kann schneller passieren, wenn ich die Richtung
+        gedrueckt halte" beschrieben hat.
+
+        Die Zuordnung ist dieselbe wie bei _schritte() in der
+        Ereignisschleife, und das ist Absicht: es ist dieselbe Frage,
+        einmal fuer die Schrittweite und einmal fuer das Tempo."""
+        if self.page == 0:
+            ansicht = self.aktuelle_ansicht_haupt()
+        elif self.page == 1:
+            ansicht = self.aktuelle_ansicht()
+        else:
+            ansicht = "liste"
+        if ansicht == "raster":
+            # Beide Richtungen sind billig: links/rechts eine Kachel,
+            # hoch/runter eine Reihe - gezeichnet werden so oder so nur
+            # zwei Kacheln.
+            seiten = ()
+        elif ansicht == "galerie":
+            # Hier blaettern hoch/runter die Nachbarleiste.
+            seiten = ("up", "down")
+        else:
+            seiten = ("left", "right")
+        try:
+            self.inp.seiten_aktionen_setzen(seiten)
+        except AttributeError:
+            # Aeltere Eingabefassung ohne diese Methode - dann bleibt es
+            # beim bisherigen Verhalten, kein Grund abzubrechen.
+            pass
 
     def cover_quelle(self, syskey, name):
         """DER Pfad, aus dem ein Cover geholt wird - eine Stelle fuer

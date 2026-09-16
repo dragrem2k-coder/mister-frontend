@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-16-135",
-  "summary": "Jeder Scrollschritt las fuenfmal von der SD-Karte - RA-Konfiguration, eingestellte Ansicht, Profiling-Schalter, Schnelles-Scrollen-Schalter, Puls-Effekt. Auf einer SD-Karte kostet ein solcher Zugriff 1-5 ms und gelegentlich deutlich mehr; das ist die Erklaerung fuer 'meistens fluessig, manchmal ein Haenger'. Diese Schalter liegen jetzt in einem kurzlebigen Zwischenspeicher (eine halbe Sekunde, mit sofortigem Verwerfen bei jeder Aenderung): von 50 Zugriffen auf zehn Schritte auf null."
+  "build_id": "2026-09-16-136",
+  "summary": "Links/rechts war im Raster auf vier Schritte je Sekunde gedeckelt - die langsame Wiederhol-Untergrenze fuer Seitenspruenge galt fest fuer links/rechts, obwohl das im Raster nur eine Kachel weitergeht. Sie folgt jetzt der Ansicht: in der Liste bremst links/rechts, in der Galerie hoch/runter, im Raster keines von beiden."
 }

@@ -766,6 +766,59 @@ check("beide fragen vorher, was im Speicher wirklich fehlt",
       and "nur_im_ram_fehlt" in _leer)
 
 print()
+print("Test 20: die Wiederholrate folgt der Ansicht (Build 136)")
+# Nutzer-Rueckmeldung: "das nach links und rechts scrollen kann trotzdem
+# schneller passieren, wenn ich die Richtung gedrueckt halte."
+#
+# Es gibt zwei Boeden fuer die Wiederholrate bei gehaltener Taste: den
+# normalen (0.08 s) und einen langsamen fuer Seitenspruenge (0.25 s,
+# also vier je Sekunde). Der langsame ist richtig, wenn ein Druck eine
+# ganze Seite weiterblaettert - mehr kann niemand lesen.
+#
+# Bis Build 135 galt er FEST fuer links/rechts. Seit Build 127 folgen
+# die Richtungstasten aber der Anordnung (Test 6), und im Raster ist
+# links/rechts die billigste Bewegung ueberhaupt: eine Kachel weiter,
+# zwei neu gezeichnet. Die war damit auf vier Schritte je Sekunde
+# gedeckelt.
+#
+# Die Zuordnung hier muss dieselbe sein wie bei _schritte() in Test 6 -
+# es ist dieselbe Frage, einmal fuer die Schrittweite und einmal fuer
+# das Tempo.
+H.set_screen(1920, 1080)
+f20 = H.make_frontend(page=1)
+ERWARTET = {
+    "liste":   (I.REPEAT_FLOOR_PAGE, I.REPEAT_FLOOR),
+    "raster":  (I.REPEAT_FLOOR,      I.REPEAT_FLOOR),
+    "galerie": (I.REPEAT_FLOOR,      I.REPEAT_FLOOR_PAGE),
+}
+for _a, (_lr, _hr) in ERWARTET.items():
+    f20.ansicht_setzen(_a)
+    f20.draw()
+    ist_lr = f20.inp._repeat_floor("left")
+    ist_hr = f20.inp._repeat_floor("up")
+    check("%-8s links/rechts %.2f s" % (_a, _lr), ist_lr == _lr,
+          "ist %.2f" % ist_lr)
+    check("%-8s hoch/runter  %.2f s" % (_a, _hr), ist_hr == _hr,
+          "ist %.2f" % ist_hr)
+
+# Der Kern der Beschwerde als eigene Aussage.
+f20.ansicht_setzen("raster")
+f20.draw()
+check("im Raster ist links/rechts nicht mehr gedeckelt",
+      f20.inp._repeat_floor("left") < I.REPEAT_FLOOR_PAGE,
+      "%.2f statt %.2f" % (f20.inp._repeat_floor("left"),
+                           I.REPEAT_FLOOR_PAGE))
+
+# Die Hauptseite hat ihre eigene Ansicht und darf nicht die der
+# Spieleliste erben.
+f21 = H.make_frontend(page=0)
+f21.ansicht_haupt_setzen("raster")
+f21.draw()
+check("die Hauptseite richtet sich nach IHRER Ansicht",
+      f21.inp._repeat_floor("left") == I.REPEAT_FLOOR,
+      "%.2f" % f21.inp._repeat_floor("left"))
+
+print()
 if fails:
     print("FEHLGESCHLAGEN (%d):" % len(fails))
     for f_ in fails:

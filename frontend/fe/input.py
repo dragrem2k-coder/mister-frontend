@@ -379,6 +379,31 @@ REPEAT_CONTINUE_WINDOW = 0.5   # so lange gilt ein Scrollvorgang als "laufend"
 # WIEDERHOLRATE bei gehaltener Taste. Nebeneffekt: man kann ueberhaupt
 # noch lesen, wo man gelandet ist.
 PAGE_ACTIONS      = {"left", "right"}
+
+# GEAENDERT (Build 136, Nutzer-Rueckmeldung: "das nach links und rechts
+# scrollen kann trotzdem schneller passieren wenn ich die Richtung
+# gedrueckt halte").
+#
+# Die Menge oben ist die VORGABE fuer die Listenansicht, und dort ist
+# sie richtig: links/rechts blaettert eine ganze Seite, und mehr als
+# vier Seiten je Sekunde kann niemand lesen.
+#
+# In den Kachelansichten stimmt sie nicht mehr. Seit Build 127 folgen
+# die Richtungstasten der Anordnung (siehe _schritte() in frontend.py):
+#
+#   Liste     links/rechts = eine Seite      -> langsamer Boden
+#   Raster    links/rechts = EIN Nachbar     -> normaler Boden
+#             hoch/runter  = eine Reihe      -> normaler Boden
+#   Galerie   links/rechts = EIN Nachbar     -> normaler Boden
+#             hoch/runter  = eine Seite      -> langsamer Boden
+#
+# Im Raster war links/rechts damit auf vier Schritte je Sekunde
+# gedeckelt - fuer die billigste Bewegung, die es ueberhaupt gibt (zwei
+# Kacheln, schneller Pfad). Genau das hat der Nutzer gespuert.
+#
+# Das Frontend meldet die passende Menge beim Zeichnen (siehe
+# seiten_aktionen_setzen unten und _seiten_aktionen_melden() in
+# frontend.py).
 REPEAT_FLOOR      = 0.08   # hoch/runter: eine Zeile pro Schritt
 REPEAT_FLOOR_PAGE = 0.25   # links/rechts: eine ganze Seite pro Schritt
 
@@ -557,6 +582,10 @@ class InputManager:
         # echten Wiederholung gesetzt: so gilt ein Scrollvorgang nur dann
         # als "laufend", wenn wirklich gescrollt wurde - einzelne
         # Tastendruecke hintereinander loesen die Verkuerzung nicht aus.
+        # Welche Richtungen gerade eine ganze SEITE bewegen - haengt an
+        # der Ansicht, siehe den Kommentar bei PAGE_ACTIONS. Vorgabe ist
+        # die Listenansicht; das Frontend meldet Abweichungen.
+        self.seiten_aktionen = set(PAGE_ACTIONS)
         self._last_repeat_time = 0.0
         self._last_repeat_act = None
         self._last_repeat_iv = REPEAT_INTERVAL
@@ -646,6 +675,19 @@ class InputManager:
         for d in self.devices.values():
             d.grab(on)
 
+    def seiten_aktionen_setzen(self, aktionen):
+        """Welche Richtungen gerade eine ganze Seite bewegen (Build 136).
+
+        Wird beim Zeichnen gemeldet, weil nur das Frontend weiss, welche
+        Ansicht offen ist. Aendert sich dabei nichts, passiert auch
+        nichts - der Aufruf ist billig genug, um ihn bei jedem Bild zu
+        machen."""
+        # getattr aus demselben Grund wie in _repeat_floor(): dieses
+        # Objekt kann ohne __init__ entstanden sein.
+        neu = set(aktionen or ())
+        if neu != getattr(self, "seiten_aktionen", None):
+            self.seiten_aktionen = neu
+
     def _repeat_floor(self, act):
         """Kleinstmoegliches Wiederhol-Intervall fuer eine Aktion - fuer
         links/rechts bewusst groesser, siehe REPEAT_FLOOR_PAGE.
@@ -656,7 +698,13 @@ class InputManager:
         noch nichts gemessen wurde - also beim allerersten Tastendruck
         nach dem Start - gelten unveraendert die bisherigen festen
         Werte; die Anpassung greift erst, wenn echte Zahlen vorliegen."""
-        if act in PAGE_ACTIONS:
+        # getattr mit Rueckfall auf die Vorgabe: tools/test_input_repeat.py
+        # baut einen InputManager bewusst ueber __new__, also ohne
+        # __init__ und damit ohne dieses Feld - und derselbe Fall kann
+        # bei einem Objekt aus einer aelteren Fassung auftreten. Ohne
+        # den Rueckfall waere die Wiederholrate dann gar nicht mehr
+        # berechenbar.
+        if act in getattr(self, "seiten_aktionen", PAGE_ACTIONS):
             basis = minimum = REPEAT_FLOOR_PAGE
         else:
             basis, minimum = REPEAT_FLOOR, REPEAT_FLOOR_MIN

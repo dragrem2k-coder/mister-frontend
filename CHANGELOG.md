@@ -7,6 +7,40 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Links/rechts im Raster war auf vier Schritte pro Sekunde gedeckelt**
+(Build 136):
+
+Rückmeldung: *„das nach links und rechts scrollen kann trotzdem
+schneller passieren, wenn ich die Richtung gedrückt halte."*
+
+Die Wiederholrate bei gehaltener Taste hat zwei Untergrenzen: die
+normale (0,08 s) und eine deutlich langsamere für Seitensprünge
+(0,25 s — vier pro Sekunde). Die langsame ist richtig, **wenn** ein
+Druck eine ganze Seite weiterblättert; mehr kann niemand lesen.
+
+Seit Build 93 galt sie fest für links/rechts. Seit Build 127 folgen die
+Richtungstasten aber der **Anordnung der Ansicht** — und im Raster ist
+links/rechts die billigste Bewegung, die es gibt: eine Kachel weiter,
+zwei Kacheln neu gezeichnet. Genau die war auf vier Schritte pro
+Sekunde gebremst.
+
+| Ansicht | links/rechts | hoch/runter |
+|---|---|---|
+| Liste | 0,25 s (eine Seite) | 0,08 s |
+| Raster | **0,08 s** | 0,08 s |
+| Galerie | **0,08 s** | 0,25 s (blättert die Leiste) |
+
+Das Frontend meldet die passende Menge jetzt beim Zeichnen — nur es
+weiß, welche Ansicht offen ist. Die Zuordnung ist dieselbe wie bei
+`_schritte()` aus Build 127, und das ist Absicht: es ist dieselbe
+Frage, einmal für die Schrittweite und einmal für das Tempo.
+
+Beide neuen Stellen greifen über `getattr` auf das Feld zu.
+`tools/test_input_repeat.py` baut den Eingabe-Manager nämlich bewusst
+über `__new__`, also ohne `__init__` — ohne den Rückfall wäre die
+Wiederholrate dort gar nicht mehr berechenbar.
+
+
 **Jeder Scrollschritt las fünfmal von der SD-Karte** (Build 135):
 
 Auf die Frage, ob ein Rust-Rewrite das Scrollen schneller machen würde,

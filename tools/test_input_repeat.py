@@ -160,3 +160,51 @@ if fails:
         print("   ", f)
     sys.exit(1)
 print("Alle Tests bestanden.")
+
+
+# ---------------------------------------------------------------------
+print()
+print("Test 8: welche Richtungen 'Seite' bedeuten, ist umstellbar (Build 136)")
+# Nutzer-Rueckmeldung: "das nach links und rechts scrollen kann trotzdem
+# schneller passieren, wenn ich die Richtung gedrueckt halte."
+#
+# Der langsame Boden (0.25 s) ist richtig, wenn ein Druck eine ganze
+# Seite blaettert. Bis Build 135 galt er FEST fuer links/rechts - auch
+# im Raster, wo links/rechts nur eine Kachel weitergeht und damit die
+# billigste Bewegung ueberhaupt ist. Vier Schritte je Sekunde fuer zwei
+# neu gezeichnete Kacheln.
+#
+# Hier wird nur die EINGABESEITE geprueft: dass sich die Menge
+# umstellen laesst und der Boden ihr folgt. Dass das Frontend je
+# Ansicht die richtige Menge meldet, prueft tools/test_ansichten.py -
+# dafuer braucht es den Pruefstand, den diese Datei bewusst nicht laedt.
+im.seiten_aktionen_setzen(("up", "down"))
+check("hoch/runter wird zur Seitenbewegung",
+      im._repeat_floor("up") == I.REPEAT_FLOOR_PAGE,
+      "%.2f" % im._repeat_floor("up"))
+check("und links/rechts damit zur normalen",
+      im._repeat_floor("left") == I.REPEAT_FLOOR,
+      "%.2f" % im._repeat_floor("left"))
+im.seiten_aktionen_setzen(())
+check("ohne Seitenbewegung sind beide schnell",
+      im._repeat_floor("left") == I.REPEAT_FLOOR
+      and im._repeat_floor("up") == I.REPEAT_FLOOR)
+im.seiten_aktionen_setzen(I.PAGE_ACTIONS)
+check("und zurueck auf die Vorgabe",
+      im._repeat_floor("left") == I.REPEAT_FLOOR_PAGE)
+
+# Ein Objekt OHNE das Feld (aeltere Fassung, oder wie hier ueber
+# __new__ gebaut) muss weiterhin rechnen koennen.
+_roh = I.InputManager.__new__(I.InputManager)
+_roh._zeichenzeit = {}
+check("ohne das Feld gilt die Vorgabe",
+      _roh._repeat_floor("left") == I.REPEAT_FLOOR_PAGE
+      and _roh._repeat_floor("up") == I.REPEAT_FLOOR)
+
+print()
+if fails:
+    print("FEHLGESCHLAGEN: %d" % len(fails))
+    for f_ in fails:
+        print("  -", f_)
+    sys.exit(1)
+print("Alle Tests bestanden.")
