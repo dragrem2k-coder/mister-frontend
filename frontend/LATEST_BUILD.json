@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-16-131",
-  "summary": "blit() kopiert Cover jetzt ueber memoryview statt ueber Ausschnitte - bei einem 411x548-Cover entfielen damit 548 Zwischenkopien je Bild. Gemessen rund die Haelfte der Zeit, das Ergebnis Byte fuer Byte dasselbe. Gefunden im DRAGEND_PROFILE des Nutzers: ein Galerie-Aufbau kostete 144 ms, davon 75 ms allein in zwoelf blit-Aufrufen - der groesste Einzelposten, und anders als ein kalter Miniatur-Cache faellt er bei jedem Seitenaufbau an."
+  "build_id": "2026-09-16-132",
+  "summary": "Groessere Kacheln: das Raster rechnet auf HDMI jetzt mit 7x3 statt 7x4 und kommt damit auf 176x235 statt 124x166 - mehr als die doppelte Flaeche. Die Galerie-Leiste waechst mit, damit es bei drei Kastengroessen bleibt. WICHTIG: einmal 'Miniaturen vorbereiten' laufen lassen, die Kachelgroesse ist der Schluessel des Zwischenspeichers. Dazu zwei weitere Kopierstellen entschaerft: _restore_row_bg (-30 bis -47 Prozent) und text() - beide mit memoryview auf dem Ziel, bitgenau gleiches Ergebnis."
 }

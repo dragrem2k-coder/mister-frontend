@@ -7,6 +7,59 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Größere Kacheln, und zwei weitere Kopierstellen entschärft** (Build 132):
+
+**Die Kacheln.** Rückmeldung mit Bildentwurf: *„hier hätte ich gerne
+größere Bilder, von der Anzahl passt es aber."* Das Raster rechnete auf
+HDMI mit **7×4 = 28** Kacheln und kam damit auf 124×166 — klein genug,
+dass ein Cover nur noch ein Farbfleck war. Jetzt **7×3 = 21** und
+**176×235**: knapp die anderthalbfache Kantenlänge, mehr als die
+doppelte Fläche.
+
+Die Nachbarleiste der Galerie wächst mit (22 % → 34 % der Höhe). Das ist
+keine Kosmetik, sondern der Kern der Sache: beide Kachelansichten teilen
+sich seit Build 128 **einen** Coverkasten, und `kachel_cover_kasten()`
+nimmt den *kleineren* von beiden. Wäre die Leiste stehen geblieben,
+hätte sie das Raster wieder heruntergezogen — die größeren Kacheln wären
+nie angekommen, und es gäbe dauerhaft vier statt drei Kastengrößen.
+
+> **Einmalig nötig:** *System → Optionen → „Miniaturen vorbereiten"*.
+> Die Kachelgröße **ist** der Schlüssel des Zwischenspeichers — eine
+> andere Größe heißt zwingend ein Durchlauf. Was vermieden wurde, ist
+> der *dauerhafte* Aufpreis: es bleibt bei drei Kastengrößen. Der Preis
+> auf der anderen Seite: das große Cover der Galerie schrumpft von 548
+> auf 456 Bildpunkte Höhe. CRT bleibt unverändert bei 5×3.
+
+**Und zwei weitere Kopierstellen.** Nach `blit()` in Build 131 zeigte
+dasselbe Protokoll noch zwei Posten mit demselben Muster:
+
+| | vorher | jetzt |
+|---|---|---|
+| `_restore_row_bg`, Listenspalte 700×880 | 0,441 ms | **0,308 ms** |
+| `_restore_row_bg`, volle Breite 1920×880 | 0,535 ms | **0,286 ms** |
+| `text()`, warmer Streifen-Cache | 0,008 ms | **0,005 ms** |
+
+Zweimal derselbe Griff: `memoryview` auch auf das **Ziel**. Eine
+Ausschnitt-Zuweisung auf ein `bytearray` muss den allgemeinen Fall
+abdecken, in dem sich die Länge ändert und der Puffer wachsen oder
+schrumpfen könnte; auf einem `memoryview` ist die Größe fest und es
+bleibt reines Kopieren. Dazu in `_restore_row_bg` eine Abkürzung: deckt
+der Bereich die volle Breite ab, ist er ein zusammenhängender Block und
+braucht überhaupt keine Schleife.
+
+`text()` stand im Protokoll mit 13 ms **eigener** Zeit bei 21 Aufrufen —
+bei Schriftgröße 3 sind das rund 500 Zeilenzuweisungen je Seitenaufbau.
+
+**Was der neue Test dabei gefunden hat, war der Test selbst.** Zwei
+Fälle schlugen fehl; beide Male lag es nicht am Code. `_restore_row_bg`
+lässt die unterste Zeile eines Bereichs aus, der über den rechten Rand
+hinausragt — sie würde hinter dem Pufferende landen. Das war schon immer
+so und ist richtig. Der zweite Fehlschlag war nur der liegengebliebene
+Rest des ersten, weil der Test zwischen den Fällen nicht aufräumte.
+Beides steht jetzt als eigene, ehrliche Aussage in
+`tools/test_kopierpfade.py`.
+
+
 **Der größte Einzelposten im Profiling war eine Zeile** (Build 131):
 
 Aus einem `DRAGEND_PROFILE`-Protokoll vom Gerät:
