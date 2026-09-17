@@ -228,6 +228,7 @@ from fe.settings import (
     toggle_curated_only, toggle_dragend_logo, screen_mirror_enabled,
     toggle_screen_mirror, toggle_stream_overlay,
     fast_scroll_enabled, toggle_fast_scroll,
+    cover_sofort_enabled, toggle_cover_sofort,
     overscan_lesen, overscan_weiter,
     ANSICHTEN, ansicht_lesen, ansicht_schreiben,
     ansicht_haupt_lesen, ansicht_haupt_schreiben,
@@ -5031,7 +5032,14 @@ class Frontend:
         derselben Bedingung waeren genau die Sorte stiller Abweichung,
         die man erst auf dem Geraet bemerkt."""
         has_art = self.hat_artspalte(v["items"], syskey)
-        defer_panel = has_art and self._scroll_skip_vsync()
+        # Build 138: mit "Cover sofort" wird die Spalte NICHT mehr
+        # pauschal ausgelassen - dann entscheidet wie in der Galerie
+        # jedes Cover fuer sich (ART._defer_uncached, siehe
+        # _sync_cover_defer()). Ein fertiges Cover ist damit sofort da,
+        # ein noch nicht gerechnetes kommt kurz darauf nach. Siehe
+        # COVER_SOFORT_FLAG in fe/settings.py.
+        defer_panel = (has_art and self._scroll_skip_vsync()
+                       and not cover_sofort_enabled())
         if defer_panel:
             # Das Panel wird bewusst ausgelassen - also gibt es nach dem
             # Stillstand etwas nachzuholen. Vermerken, damit der
@@ -5754,8 +5762,17 @@ class Frontend:
             # pro Schritt ist klein, der Aufschlag pro Stillstand nicht:
             # netto ist das Auslassen auf CRT ein Verlust. Es bleibt
             # deshalb dort, wo es nachgemessen hilft.
+            # Build 138: dieselbe Ausnahme wie bei defer_panel in
+            # _art_panel_aktualisieren() - mit "Cover sofort" wird die
+            # Spalte nicht mehr pauschal ausgelassen. Beide Stellen
+            # muessen es kennen, sonst haengt es davon ab, ueber welchen
+            # Weg gerade gezeichnet wurde (voller Aufbau oder leichter
+            # Navigationsschritt), ob das Cover erscheint - genau die
+            # Sorte stiller Abweichung, die man erst auf dem Geraet
+            # bemerkt.
             _spalte_auslassen = (self.fb.height >= KOMPAKT_H
                                  and self._scroll_skip_vsync()
+                                 and not cover_sofort_enabled()
                                  and getattr(self, "_pgi_fast_taken", False))
             if _spalte_auslassen:
                 # Nach dem Stillstand nachholen (COVER_SETTLE) - sonst
@@ -14066,6 +14083,15 @@ class Frontend:
                             # Zeichnen geprueft, siehe _draw_page_items_impl()),
                             # kein Neustart noetig.
                             toggle_fast_scroll()
+                            self._refresh_system_category()
+                        elif kind == "cover_sofort":
+                            # NEUES FEATURE (Build 138, Nutzerwunsch:
+                            # "ich haette gerne mal ausprobiert, ob wir
+                            # in der Listenansicht das Cover sofort
+                            # anzeigen lassen") - wirkt sofort, der
+                            # Schalter wird im Zeichenweg live gelesen
+                            # (siehe _art_panel_aktualisieren()).
+                            toggle_cover_sofort()
                             self._refresh_system_category()
                         elif kind == "ansicht":
                             # NEU (Build 122): Vorgabe-Ansicht der

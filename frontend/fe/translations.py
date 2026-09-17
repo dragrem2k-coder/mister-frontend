@@ -718,6 +718,14 @@ TRANSLATIONS = {
                            "de": "Schnelles Scrollen: AN -> ausschalten (kann beim Scrollen kurz Bildrisse verursachen)"},
     "sys_fast_scroll_off": {"en": "Fast scroll: OFF -> turn on (trades a small tearing risk for less scroll delay)",
                             "de": "Schnelles Scrollen: AUS -> einschalten (etwas Bildriss-Risiko gegen kürzere Scroll-Verzögerung)"},
+    # NEUES FEATURE (Build 138, Nutzerwunsch: "ich haette gerne mal
+    # ausprobiert, ob wir in der Listenansicht das Cover sofort anzeigen
+    # lassen"). Die Beschriftung nennt bewusst den Preis mit: waehrend
+    # des Scrollens wird mehr gezeichnet.
+    "sys_cover_sofort_on": {"en": "Cover while scrolling: ON -> turn off (list shows the cover only once you stop)",
+                            "de": "Cover beim Scrollen: AN -> ausschalten (Liste zeigt das Cover erst im Stillstand)"},
+    "sys_cover_sofort_off": {"en": "Cover while scrolling: OFF -> turn on (list shows the cover right away, like the gallery)",
+                             "de": "Cover beim Scrollen: AUS -> einschalten (Liste zeigt das Cover sofort, wie die Galerie)"},
     # NEUES FEATURE (Nutzerwunsch: Schalter fuer die Framebuffer-Groesse):
     # drei Stufen statt AN/AUS, deshalb keine on/off-Paare wie sonst -
     # jede Zeile nennt den AKTUELLEN Wert und wohin der naechste

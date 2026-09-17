@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-17-137",
-  "summary": "Erfolgs-Popups standen in Raster und Galerie nur rund 150 Millisekunden: der Cover-Nachlader baute die Seite danach komplett neu auf und kannte die Meldung nicht. Das Frontend merkt sie sich jetzt fuer zwei Sekunden - wer die Fusszeile zeichnet, holt sie sich von dort."
+  "build_id": "2026-09-17-138",
+  "summary": "Neuer Schalter \"Cover beim Scrollen\": die Listenansicht laesst die Cover-Spalte waehrend des Scrollens nicht mehr pauschal aus, sondern zeichnet sie wie die Galerie - ein fertiges Cover ist sofort da. Standard aus, wirkt ohne Neustart."
 }

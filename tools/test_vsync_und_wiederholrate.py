@@ -245,8 +245,12 @@ check("kein flip_rows(..., skip_vsync=self._scroll_skip_vsync())",
 # Entscheidungen, die gar nichts kopieren (defer_panel und
 # _spalte_auslassen). Wuerde es verschwinden, waere das Auslassen der
 # Boxart-Spalte mit weggefallen.
+# GEAENDERT (Build 138): die Bedingung hat einen zweiten Teil bekommen -
+# den Schalter "Cover beim Scrollen" (siehe tools/test_cover_sofort.py).
+# Geprueft wird deshalb weiter, dass _scroll_skip_vsync() hier ueberhaupt
+# noch vorkommt, nicht mehr der genaue Wortlaut der Zeile.
 check("_scroll_skip_vsync() weiterhin fuer defer_panel benutzt",
-      "defer_panel = has_art and self._scroll_skip_vsync()" in src)
+      "defer_panel = (has_art and self._scroll_skip_vsync()" in src)
 
 print()
 if fails:

@@ -29,7 +29,8 @@ from fe.settings import (
     attract_enabled, crt_menu_active, curated_only_active,
     dragend_logo_enabled, format_attract_delay, load_attract_delay,
     screen_mirror_enabled, stream_overlay_enabled,
-    fast_scroll_enabled, overscan_lesen, fremdquellen_enabled,
+    fast_scroll_enabled, cover_sofort_enabled,
+    overscan_lesen, fremdquellen_enabled,
     ansicht_lesen, ansicht_haupt_lesen,
     pulse_effect_enabled, eq_effect_enabled,
     track_marquee_enabled, fb_size_label_key,
@@ -167,6 +168,11 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         else t("sys_dragend_logo_off")
     fast_scroll_label = t("sys_fast_scroll_on") if fast_scroll_enabled() \
         else t("sys_fast_scroll_off")
+    # Build 138: steht direkt unter "Schnelles Scrollen" - beide
+    # beschreiben, was waehrend einer gehaltenen Richtungstaste
+    # passiert, und wer das eine sucht, meint oft das andere.
+    cover_sofort_label = t("sys_cover_sofort_on") if cover_sofort_enabled() \
+        else t("sys_cover_sofort_off")
     # NEUES FEATURE (Nutzerwunsch: Schalter fuer die Framebuffer-Groesse):
     # drei Stufen (voll / halb / viertel), die Zeile nennt den aktuellen
     # Wert - siehe fb_size_label_key() in fe/settings.py.
@@ -260,6 +266,7 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         (sfx_label, "sfx", None),
         (dragend_logo_label, "dragend_logo", None),
         (fast_scroll_label, "fast_scroll", None),
+        (cover_sofort_label, "cover_sofort", None),
         # NEU (Build 113): Bildrand. Steht direkt bei den anderen
         # Anzeige-Punkten; wer eine Roehre hat, sucht genau hier.
         # NEU (Build 122): Ansicht der Spieleliste. Steht direkt

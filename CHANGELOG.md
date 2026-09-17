@@ -7,6 +7,30 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Cover in der Listenansicht sofort statt erst im Stillstand**
+(Build 138, neuer Schalter):
+
+Wunsch: *„ich hätte gerne mal ausprobiert, ob wir in der Listenansicht
+das Cover sofort anzeigen lassen — in der Galerie klappt das ja
+mittlerweile sehr gut."*
+
+Der Unterschied lag nicht am Cover-Cache, sondern an einer Entscheidung
+davor. Die Liste lässt während des Scrollens die **ganze** Cover-Spalte
+aus — egal ob das Bild längst fertig im Speicher liegt. Das stammt aus
+Build 89/96, als ein nicht zwischengespeichertes Cover im Zeichenweg bis
+zu 1,2 Sekunden kosten konnte.
+
+Die Galerie macht es seit Build 125 feiner: sie zeichnet immer und
+überspringt nur das *einzelne* noch nicht gerechnete Bild (das übernimmt
+der zweite Kern und liefert es kurz darauf nach). Genau das ist der
+Unterschied, den man spürt.
+
+Neuer Menüpunkt **„Cover beim Scrollen"** direkt unter „Schnelles
+Scrollen": eingeschaltet verhält sich die Liste wie die Galerie.
+Standard **aus**, damit ein Update niemandem ungefragt das Scrollgefühl
+ändert; der Schalter wirkt sofort, ohne Neustart. Neuer Test:
+`tools/test_cover_sofort.py`.
+
 **Erfolgs-Popups waren in Raster und Galerie praktisch unsichtbar**
 (Build 137):
 

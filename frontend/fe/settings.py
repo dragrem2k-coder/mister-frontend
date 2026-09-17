@@ -699,6 +699,27 @@ FAST_SCROLL_WINDOW = 0.15   # s nach letzter Eingabe, in der Vsync beim
                             # beschreiben dasselbe "gerade aktiv am
                             # Scrollen"-Zeitfenster.
 
+# NEUES FEATURE (Build 138, Nutzerwunsch: "ich haette gerne mal
+# ausprobiert, ob wir in der Listenansicht das Cover sofort anzeigen
+# lassen - in der Galerie klappt das ja mittlerweile sehr gut").
+#
+# Worum es geht: in der Liste wird die GANZE Cover-Spalte waehrend des
+# Scrollens ausgelassen - unabhaengig davon, ob das Cover schon fertig
+# im Speicher liegt oder nicht. Das stammt aus Build 89/96, als jeder
+# Panel-Aufbau noch teuer war und ein nicht zwischengespeichertes Cover
+# im Zeichenweg bis zu 1,2 Sekunden kosten konnte.
+#
+# Die Galerie macht es seit Build 125 feiner: sie zeichnet immer, und
+# nur das EINZELNE nicht fertige Cover wird uebersprungen (und an den
+# zweiten Kern gegeben, siehe ArtCache._auslagern_versuchen()). Liegt
+# es im Speicher, ist es sofort da. Genau das ist der Unterschied, den
+# der Nutzer beschreibt.
+#
+# Standard AUS, damit ein Update niemandem ungefragt das Scrollgefuehl
+# aendert - wer es probieren will, schaltet es im System-Menue ein und
+# sieht es sofort, ohne Neustart.
+COVER_SOFORT_FLAG = "/media/fat/frontend/cover_sofort_enabled"
+
 # FREMDE ARTWORK-/DATENQUELLE (Build 115). Gemeint ist die
 # Handbuch-/Artwork-Datenbank unter /media/fat/docs, die viele Nutzer
 # ueber den MiSTer-Downloader installiert haben, ohne es zu merken -
@@ -745,6 +766,33 @@ def fast_scroll_enabled():
     # beim Bauen gestolpert.
     return _hole(("fast_scroll", FAST_SCROLL_ENABLED_FLAG),
                  lambda: os.path.exists(FAST_SCROLL_ENABLED_FLAG))
+
+def cover_sofort_enabled():
+    """Soll die Cover-Spalte der Liste auch WAEHREND des Scrollens
+    gezeichnet werden? Siehe COVER_SOFORT_FLAG oben.
+
+    Ueber denselben kurzlebigen Zwischenspeicher wie
+    fast_scroll_enabled() - die Abfrage liegt im Zeichenweg und lief
+    sonst je Scrollschritt einmal auf die SD-Karte. Der Schluessel
+    enthaelt den Pfad, aus demselben Grund wie dort."""
+    return _hole(("cover_sofort", COVER_SOFORT_FLAG),
+                 lambda: os.path.exists(COVER_SOFORT_FLAG))
+
+
+@_nach_aenderung
+def toggle_cover_sofort():
+    if cover_sofort_enabled():
+        try:
+            os.remove(COVER_SOFORT_FLAG)
+        except OSError:
+            pass
+    else:
+        try:
+            os.makedirs(os.path.dirname(COVER_SOFORT_FLAG), exist_ok=True)
+            open(COVER_SOFORT_FLAG, "w").close()
+        except OSError:
+            pass
+
 
 @_nach_aenderung
 def toggle_fast_scroll():
