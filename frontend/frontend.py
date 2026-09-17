@@ -839,7 +839,7 @@ from fe.input import (
 from fe.art import (
     decode_png, BadgeCache, ArtCache, _art_path_in, _art_index,
     art_path, mra_meta, get_meta, ART, ART_BASE,
-    docs_caches_leeren, docs_cover, docs_meta,
+    docs_caches_leeren, docs_cover, docs_meta, docs_synopsis,
     ART_HD, SYSART_BASE, META_BASE, BADGE_DIR,
     RA_BADGE_URL, BADGES, _category_art_key,
     prewarm_thumb, prewarm_thumb_mehrfach, thumb_cache_has,
@@ -6281,6 +6281,13 @@ class Frontend:
                 break
             fb.text(tx, iy, ln[:maxc], s, C_TEXT)
             iy += 12 * s
+        # NEUES FEATURE (Build 139): der Rest der Spalte bekommt die
+        # Spielbeschreibung - siehe _beschreibung_zeichnen(). Ein
+        # kleiner Absatz davor, damit sie nicht wie eine weitere
+        # Datenzeile aussieht.
+        self._beschreibung_zeichnen(tx, iy + 4 * s, geo["leiste_y"] - 4 * s,
+                                    max(0, (fb.width - ox) - tx),
+                                    item, item_syskey, s)
 
         # ---- Leiste mit den Nachbarn ----
         ly = geo["leiste_y"]
@@ -9055,6 +9062,65 @@ class Frontend:
         for ln in info_src:
             info_lines.extend(self._wrap(ln, maxc, max_lines=1))
         return info_lines, ra_progress
+
+    def _beschreibung_zeichnen(self, x, y, y_ende, breite, item, syskey, s):
+        """NEUES FEATURE (Build 139): die Spielbeschreibung aus der
+        fremden Datenbank in den freien Platz unter den Datenzeilen.
+
+        Der Nutzer hatte sich in der Galerie rechts neben dem Cover
+        etwas gewuenscht, "ohne dass irgendetwas vorbereitet oder
+        umgerechnet werden muss" - erst war ein Bildschirmfoto im
+        Gespraech, bis sich zeigte, dass in denselben Ordnern
+        synopsis_de.tsv und synopsis_en.tsv liegen (siehe
+        DOCS_SYNOPSIS in fe/art.py). Text statt Bild: kein Dekodieren,
+        keine Miniatur, kein Cache-Eintrag, keine neue Kastengroesse.
+
+        BEWUSST KLEINER GESETZT (s-1, auf CRT bleibt es s): bei 1080p
+        passen in die Spalte 52 Zeichen in Normalgroesse, aber 78 eine
+        Stufe kleiner - und darunter stehen schon bis zu sieben
+        Datenzeilen. Mit der Normalgroesse waeren es zwei bis drei
+        Zeilen Beschreibung gewesen, also ein angefangener Satz.
+
+        BEWUSST NICHT in der Boxart-Spalte der Liste: deren Hoehe geht
+        ueber cover_box_size() in den Schluessel des Miniatur-Caches
+        ein (siehe dort). Eine Zeile mehr oder weniger Text wuerde
+        jede vorberechnete Miniatur ungueltig machen - beim Nutzer
+        28.517 Stueck.
+
+        Liefert nichts zurueck; zeichnet nichts, wenn kein Platz ist
+        oder es zu dem Spiel keine Beschreibung gibt."""
+        skala = s - 1 if s > 1 else 1
+        zeilen_h = 11 * skala
+        platz = (y_ende - y) // zeilen_h
+        # Eine einzelne Zeile ist kein Text, sondern ein Fetzen - dann
+        # lieber der ruhige, leere Platz.
+        if platz < 2:
+            return
+        maxc = max(0, breite // (8 * skala))
+        if maxc < 12:
+            return
+        lookup_name = item[2] if item[1] == "folder" else item[0]
+        text = docs_synopsis(syskey, lookup_name, current_lang())
+        if not text:
+            return
+        zeilen = self._wrap(text, maxc, max_lines=platz)
+        # ABGESCHNITTEN SICHTBAR MACHEN. _wrap() haengt seine Tilde nur
+        # an, wenn die LETZTE Zeile selbst zu lang war - bricht es
+        # dagegen wegen max_lines mittendrin ab, endet der Text
+        # stillschweigend auf einem beliebigen Wort ("... gegen Bowser
+        # und die"). Bei einer einzeiligen Datenzeile faellt das nicht
+        # auf, bei einem Absatz von 640 Zeichen sehr wohl: man haelt
+        # ihn fuer vollstaendig. _wrap() selbst bleibt unangetastet -
+        # daran haengen die Pixelvergleiche aller anderen Zeilen.
+        if zeilen and len(" ".join(zeilen)) < len(text):
+            letzte = zeilen[-1]
+            if not letzte.endswith("~"):
+                if len(letzte) + 1 > maxc:
+                    letzte = letzte[:max(1, maxc - 1)]
+                zeilen[-1] = letzte + "~"
+        for ln in zeilen:
+            self.fb.text(x, y, ln, skala, C_DIM)
+            y += zeilen_h
 
     def cover_box_size(self, w, h, syskey, item, s):
         """Die Kastengroesse, in die das Cover dieses EINEN Eintrags

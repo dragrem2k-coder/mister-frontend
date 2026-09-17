@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-17-138",
-  "summary": "Neuer Schalter \"Cover beim Scrollen\": die Listenansicht laesst die Cover-Spalte waehrend des Scrollens nicht mehr pauschal aus, sondern zeichnet sie wie die Galerie - ein fertiges Cover ist sofort da. Standard aus, wirkt ohne Neustart."
+  "build_id": "2026-09-17-139",
+  "summary": "Die Galerie zeigt jetzt eine Spielbeschreibung neben dem Cover - auf Deutsch, aus den synopsis-Tabellen der Artwork-Datenbank unter /media/fat/docs, die dort ungenutzt lagen. 99 Prozent der Spiele haben einen Text, vorbereiten muss man dafuer nichts."
 }

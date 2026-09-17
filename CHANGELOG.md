@@ -7,6 +7,43 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Spielbeschreibungen in der Galerie — aus einer Quelle, die schon auf
+der Karte lag** (Build 139):
+
+Ursprünglich ging es um ein Bildschirmfoto neben dem Cover, *„ohne dass
+hier noch irgendetwas umgerechnet oder angepasst werden muss"*. Beim
+Durchsehen der Ordner unter `/media/fat/docs` kam etwas Besseres heraus:
+neben `gameinfo.tsv` liegt dort je Sprache eine `synopsis_<xx>.tsv` mit
+einer **Beschreibung pro Spiel** — sechs Sprachen, darunter Deutsch.
+
+Nachgemessen an der SNES-Datei: **1.785 von 1.802** Schlüsseln haben
+einen Text (99 %), das Einlesen dauert 4 ms, die Tabelle belegt 1,3 MB,
+ein Text ist im Mittel 640 Zeichen lang.
+
+Text statt Bild heißt: kein Dekodieren, keine Miniatur, kein
+Cache-Eintrag, keine neue Kastengröße — genau das, was gewünscht war.
+
+Gelesen werden nur **Deutsch und Englisch** (Nutzerentscheidung). Fehlt
+zu einem Spiel der deutsche Text, springt der englische ein; umgekehrt
+nie, sonst stünde in einer englischen Oberfläche ein deutscher Absatz.
+
+Drei Dinge, die bewusst so sind:
+
+- **Nur in der Galerie.** Die Boxart-Spalte der Liste geht über
+  `cover_box_size()` in den Schlüssel des Miniatur-Caches ein — eine
+  Zeile Text mehr würde dort jede vorberechnete Miniatur ungültig
+  machen (beim Nutzer 28.517 Stück).
+- **Eine Stufe kleiner gesetzt.** Bei 1080p passen in die Spalte 52
+  Zeichen in Normalgröße, aber 78 eine Stufe kleiner — mit der
+  Normalgröße wären zwei bis drei Zeilen übrig geblieben, also ein
+  angefangener Satz.
+- **Nicht während des Scrollens von der Karte gelesen.** Dieselbe Regel
+  wie für Cover: die 1,3-MB-Datei wird erst geholt, wenn man stehen
+  bleibt, sonst läge ein Kartenzugriff zwischen zwei Tastendrücken.
+
+Neuer Test: `tools/test_beschreibung.py`. Der Schalter „fremde Quellen"
+gilt auch hier.
+
 **Cover in der Listenansicht sofort statt erst im Stillstand**
 (Build 138, neuer Schalter):
 

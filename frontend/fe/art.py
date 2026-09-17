@@ -52,6 +52,34 @@ META_BASE   = "/media/fat/frontend/meta"
 DOCS_BASE   = "/media/fat/docs"
 DOCS_INFO   = "gameinfo.tsv"
 
+# NEUES FEATURE (Build 139, Nutzerfund): neben gameinfo.tsv liegt in
+# denselben Ordnern eine BESCHREIBUNG je Spiel - und zwar in sechs
+# Sprachen, eine Datei je Sprache:
+#
+#   synopsis_de.tsv  synopsis_en.tsv  synopsis_es.tsv
+#   synopsis_fr.tsv  synopsis_it.tsv  synopsis_pt.tsv
+#
+# Aufbau wie gameinfo.tsv: "#key<TAB>synopsis", ein Spiel je Zeile.
+#
+# NACHGEMESSEN an der SNES-Datei des Nutzers: 1785 von 1802
+# Schluesseln haben eine Beschreibung (99%), das Einlesen einer
+# Systemdatei dauert 4 ms, sie belegt danach 1,3 MB, und ein Text ist
+# im Mittel 640 Zeichen lang.
+#
+# Das Frontend fuehrt nur Deutsch und Englisch (siehe
+# fe/translations.py) - die uebrigen vier Dateien werden bewusst nicht
+# gelesen. Wer Deutsch eingestellt hat und fuer ein Spiel keinen
+# deutschen Text findet, bekommt den englischen; umgekehrt nicht, das
+# waere in einer englischen Oberflaeche ein deutscher Absatz.
+DOCS_SYNOPSIS = "synopsis_%s.tsv"
+DOCS_SPRACHEN = ("de", "en")
+# Wie viele Systemdateien gleichzeitig im Speicher bleiben duerfen.
+# Anders als gameinfo.tsv (168 kB) ist eine Synopsis-Datei 1,3 MB
+# gross - wer durch zwanzig Systeme blaettert, haette sonst 26 MB
+# Text im Speicher, den niemand mehr anschaut. Zwei reichen: das
+# aktuelle System und das, aus dem man gerade gekommen ist.
+DOCS_SYNOPSIS_MAX = 2
+
 # Weitere Orte, an denen Artpacks landen (Build 120). Nicht jedes Paket
 # legt sich unter "docs" ab - manche bringen einen eigenen
 # Artwork-Ordner mit. Die Spiele-Wurzeln kommen zusaetzlich dazu, siehe
@@ -2427,6 +2455,8 @@ def art_path(syskey, rom_basename):
 _docs_ordner_cache = None     # normalisierter Name -> echter Ordnername
 _docs_index_cache = {}        # syskey -> {ROM-Name: voller Bildpfad}
 _docs_info_cache = {}         # syskey -> {ROM-Name: {year, genre, ...}}
+_docs_syn_cache = {}          # (syskey, sprache) -> {ROM-Name: Text}
+_docs_syn_order = []          # aelteste zuerst, siehe DOCS_SYNOPSIS_MAX
 _fremd_an = None              # Schalterzustand, einmal je Sitzung
 
 
@@ -2696,6 +2726,111 @@ def docs_meta(syskey, rom_basename):
     return treffer or {}
 
 
+def _docs_synopsis_tabelle(syskey, sprache):
+    """synopsis_<sprache>.tsv eines Systems als {ROM-Name: Text}.
+
+    Gleiche Mechanik wie _docs_infos(): erste gefundene Datei gewinnt,
+    danach im Speicher. Der einzige Unterschied ist die Groesse -
+    deshalb der Verdraengungsteil unten (siehe DOCS_SYNOPSIS_MAX)."""
+    if not syskey or sprache not in DOCS_SPRACHEN:
+        return {}
+    schluessel = (syskey, sprache)
+    daten = _docs_syn_cache.get(schluessel)
+    if daten is not None:
+        return daten
+    # WAEHREND DES SCROLLENS NICHT EINLESEN. Dieselbe Regel wie fuer
+    # Cover (siehe _defer_uncached weiter oben): eine Synopsis-Datei
+    # ist 1,3 MB gross und liegt auf der SD-Karte - sie einzulesen
+    # kostet auf dem Geraet geschaetzt 100-200 ms. Das darf nicht
+    # zwischen zwei Tastendruecken passieren.
+    #
+    # Wie bei den Covern reicht es, den Nachlader zu wecken: der
+    # COVER_SETTLE-Redraw ~150 ms nach dem letzten Tastendruck zeichnet
+    # die Seite noch einmal, und DANN wird gelesen. Man sieht die
+    # Beschreibung also erst, wenn man stehen bleibt - genau wie das
+    # erste Cover eines Systems auch.
+    if ART._defer_uncached:
+        ART._deferred_something = True
+        return {}
+    daten = {}
+    for pfad in _docs_synopsis_pfade(syskey, sprache):
+        try:
+            with open(pfad, "r", encoding="utf-8", errors="replace") as fh:
+                for zeile in fh:
+                    if not zeile or zeile.startswith("#"):
+                        continue
+                    teile = zeile.rstrip("\r\n").split("\t", 1)
+                    if len(teile) < 2 or not teile[0] or not teile[1].strip():
+                        continue
+                    text = teile[1].strip()
+                    daten[teile[0]] = text
+                    # Dieselbe Ausweich-Schreibweise wie bei Covern und
+                    # gameinfo.tsv (Build 117) - ohne sie trifft die
+                    # durchgehend No-Intro benannte Datenbank nur
+                    # Sammlungen, die zufaellig genauso heissen.
+                    knapp = vergleichsname(teile[0])
+                    if knapp and knapp not in daten:
+                        daten[knapp] = text
+        except OSError:
+            continue
+        except Exception:
+            # Eine kaputte Tabelle darf nichts umwerfen - lieber keine
+            # Beschreibung als ein Absturz beim Zeichnen.
+            daten = {}
+        if daten:
+            break
+    _docs_syn_cache[schluessel] = daten
+    _docs_syn_order.append(schluessel)
+    while len(_docs_syn_order) > DOCS_SYNOPSIS_MAX:
+        alt = _docs_syn_order.pop(0)
+        if alt != schluessel:
+            _docs_syn_cache.pop(alt, None)
+    return daten
+
+
+def _docs_synopsis_pfade(syskey, sprache):
+    """Wo eine synopsis_<sprache>.tsv liegen koennte - dieselben Ordner
+    wie bei den Covern und bei gameinfo.tsv."""
+    datei = DOCS_SYNOPSIS % sprache
+    pfade = []
+    for basis in _docs_ordner_alle(syskey):
+        for unter in DOCS_UNTERORDNER:
+            ordner = os.path.join(basis, unter) if unter else basis
+            pfade.append(os.path.join(ordner, datei))
+    return pfade
+
+
+def docs_synopsis(syskey, rom_basename, sprache="en"):
+    """Beschreibung eines Spiels aus der fremden Datenbank, sonst "".
+
+    Reihenfolge: gewuenschte Sprache, dann Englisch als Rueckfall -
+    und zwar je Spiel, nicht je Datei: die deutsche Tabelle hat
+    einzelne Luecken, die die englische fuellt. Umgekehrt NICHT, damit
+    in einer englischen Oberflaeche kein deutscher Absatz auftaucht."""
+    if not syskey or not rom_basename:
+        return ""
+    # Der Schalter "fremde Quellen" gilt hier genauso wie fuer Cover
+    # und Spieledaten (siehe get_meta()). Bewusst HIER geprueft und
+    # nicht beim Aufrufer: eine Quelle, die man abschalten kann, darf
+    # nicht davon abhaengen, dass jeder Aufrufer daran denkt.
+    if not fremdquellen_enabled():
+        return ""
+    knapp = None
+    reihe = [sprache] if sprache == "en" else [sprache, "en"]
+    for spr in reihe:
+        tabelle = _docs_synopsis_tabelle(syskey, spr)
+        if not tabelle:
+            continue
+        treffer = tabelle.get(rom_basename)
+        if treffer is None:
+            if knapp is None:
+                knapp = vergleichsname(rom_basename)
+            treffer = tabelle.get(knapp)
+        if treffer:
+            return treffer
+    return ""
+
+
 def docs_caches_leeren():
     """Nach einem erneuten Einlesen oder einem Schalterwechsel."""
     global _docs_ordner_cache, _fremd_an
@@ -2703,6 +2838,8 @@ def docs_caches_leeren():
     _fremd_an = None
     _docs_index_cache.clear()
     _docs_info_cache.clear()
+    _docs_syn_cache.clear()
+    del _docs_syn_order[:]
     # Der eigene Cover-Index wird vorsichtshalber mit geleert. Noetig
     # ist es nach heutigem Stand nicht - _art_path_in() fragt die
     # fremde Quelle bei jedem Aufruf frisch -, aber ein Schalterwechsel
