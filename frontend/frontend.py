@@ -1452,6 +1452,30 @@ class Frontend:
         # verzichtet _draw_dynamic_track_marquee() bewusst auf ihren
         # eigenen Tick, statt die Meldung zu riskieren.
         self._popup_message_until = 0.0
+        # NEU (Build 137, Nutzer-Rueckmeldung: "die Popups fuer
+        # geschaffte Erfolge kommen nicht im Raster und Galerie"): das
+        # Schutzfenster darueber allein reichte nicht. Es bremst nur die
+        # beiden LEICHTEN Fusszeilen-Ticks (_fusszeile_auffrischen() und
+        # _draw_dynamic_track_marquee()) - ein VOLLER Seitenaufbau
+        # dagegen zeichnet die Fusszeile einfach ohne Meldung neu, und
+        # genau so einer laeuft ~150ms nach jeder Eingabe, wenn beim
+        # Zeichnen Cover uebersprungen wurden (der COVER_SETTLE-
+        # Nachlader in next_action(), self.draw_page_items() OHNE
+        # message).
+        #
+        # Warum das in der Liste kaum auffiel und in Raster/Galerie
+        # immer: die Liste zeigt EIN Cover (das Panel rechts), die
+        # Kachelansichten bis zu 21 auf einmal. Uebersprungen wird
+        # praktisch immer eines davon - also lief der Nachlader dort
+        # nach jeder Meldung, und die Meldung stand keine zwei
+        # Zehntelsekunden.
+        #
+        # Statt den Nachlader (und jeden kuenftigen weiteren
+        # Vollaufbau) einzeln abzusichern, merkt sich das Frontend die
+        # Meldung: wer die Fusszeile ohne eigene Meldung zeichnet, holt
+        # sie sich hier, solange das Fenster laeuft. Eine Wahrheit
+        # darueber, was unten steht - dieselbe Lehre wie in Build 114.
+        self._popup_message = None
         # NEU: siehe Kommentar bei layout_items() - Cache-Dict, nie
         # groesser als 2 Eintraege in der Praxis (has_art: True/False,
         # Aufloesung fest fuer die Sitzung), kein Verdraengungslimit
@@ -3242,6 +3266,9 @@ class Frontend:
             # koennen, aber kurz genug, dass die Laufschrift danach
             # zuegig wieder normal weiterlaeuft.
             self._popup_message_until = time.monotonic() + 2.0
+            # Build 137: die Meldung selbst mitmerken - siehe
+            # self._popup_message in __init__.
+            self._popup_message = message
         if self.attract_mode:
             self.draw_attract()
             return
@@ -3366,6 +3393,26 @@ class Frontend:
         wieder korrekt obendrauf."""
         return bool(self._prominent_message
                     and time.monotonic() < self._prominent_message_until)
+
+    def _fussmeldung(self, message):
+        """Welche Meldung gehoert JETZT in die Fusszeile (Build 137)?
+
+        Reicht der Aufrufer eine eigene herein, gilt die. Sonst die
+        zuletzt gezeigte, solange ihr Schutzfenster laeuft - damit ein
+        Vollaufbau, der zufaellig in dieses Fenster faellt, die Meldung
+        nicht wegputzt. Ausfuehrliche Begruendung bei
+        self._popup_message in __init__.
+
+        Bewusst EINE Funktion fuer alle drei Stellen, an denen eine
+        Meldung unten steht (Fusszeile Seite 1, Kachel-Fusszeile
+        Seite 0, Listenfuss Seite 0): drei Kopien derselben Bedingung
+        waeren drei Gelegenheiten, auseinanderzulaufen."""
+        if message:
+            return message
+        if (self._popup_message
+                and time.monotonic() < self._popup_message_until):
+            return self._popup_message
+        return None
 
     def _draw_prominent_message(self):
         """Auffaellige, mittig platzierte Infobox fuer wichtige,
@@ -3771,6 +3818,9 @@ class Frontend:
             LOG("PERF katlogo: %.0f ms (%s)"
                 % (_tab_dt * 1000, self.cats[self.cat_i][0]))
 
+        # Build 137: eine gerade gezeigte Meldung ueberlebt auch einen
+        # Vollaufbau - siehe _fussmeldung().
+        message = self._fussmeldung(message)
         if message:
             # BUGFIX (Nutzer-Rueckmeldung: Geheimcode-Popup erschien
             # links unten am Bildschirmrand statt zentriert): text
@@ -4944,6 +4994,9 @@ class Frontend:
         self._restore_row_bg(ox, footer_y, W - 2 * ox, 8 * s)
         self._perf_restore = (getattr(self, "_perf_restore", 0.0)
                               + (time.monotonic() - _t))
+        # Build 137: eine gerade gezeigte Meldung ueberlebt auch einen
+        # Vollaufbau - siehe _fussmeldung().
+        message = self._fussmeldung(message)
         if message:
             # BUGFIX (Nutzer-Rueckmeldung: Geheimcode-Popup erschien
             # links unten am Bildschirmrand statt zentriert) - gleicher
@@ -6405,6 +6458,9 @@ class Frontend:
         W, H = fb.width, fb.height
         s, ox, oy = KL["s"], KL["ox"], KL["oy"]
         self._restore_row_bg(ox, H - oy - 14 * s, W - 2 * ox, 14 * s)
+        # Build 137: eine gerade gezeigte Meldung ueberlebt auch einen
+        # Vollaufbau - siehe _fussmeldung().
+        message = self._fussmeldung(message)
         if message:
             msg_scale = self._fit_scale(message, W - 2 * ox, s)
             msg_w = len(message) * 8 * msg_scale
@@ -7876,6 +7932,18 @@ class Frontend:
                 if (self._prominent_message
                         and time.monotonic() >= self._prominent_message_until):
                     self._prominent_message = None
+                    self.draw()
+                # Dasselbe fuer die kleine Fusszeilen-Meldung (Build
+                # 137): seit sie einen Vollaufbau ueberlebt, muss sie
+                # nach Ablauf ihres Fensters auch aktiv weggeraeumt
+                # werden - sonst bliebe sie stehen, bis zufaellig
+                # irgendetwas anderes die Zeile anfasst. Genau EINMAL
+                # pro Meldung (_popup_message wird dabei geleert), und
+                # der Neuaufbau danach ist derselbe, den jede andere
+                # Meldung auch ausloest.
+                if (self._popup_message
+                        and time.monotonic() >= self._popup_message_until):
+                    self._popup_message = None
                     self.draw()
                 if redraw_marquee or redraw_dynamic:
                     if any_dialog:

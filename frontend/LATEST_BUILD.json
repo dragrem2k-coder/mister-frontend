@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-16-136",
-  "summary": "Links/rechts war im Raster auf vier Schritte je Sekunde gedeckelt - die langsame Wiederhol-Untergrenze fuer Seitenspruenge galt fest fuer links/rechts, obwohl das im Raster nur eine Kachel weitergeht. Sie folgt jetzt der Ansicht: in der Liste bremst links/rechts, in der Galerie hoch/runter, im Raster keines von beiden."
+  "build_id": "2026-09-17-137",
+  "summary": "Erfolgs-Popups standen in Raster und Galerie nur rund 150 Millisekunden: der Cover-Nachlader baute die Seite danach komplett neu auf und kannte die Meldung nicht. Das Frontend merkt sie sich jetzt fuer zwei Sekunden - wer die Fusszeile zeichnet, holt sie sich von dort."
 }

@@ -7,6 +7,33 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Erfolgs-Popups waren in Raster und Galerie praktisch unsichtbar**
+(Build 137):
+
+Rückmeldung: *„die Popups für geschaffte Erfolge kommen nicht im Raster
+und Galerie."*
+
+Sie kamen schon — nur rund 150 Millisekunden lang. Gezeichnet wurden sie
+korrekt; danach lief der Cover-Nachlader, der nach jeder Ruhepause die
+beim Scrollen übersprungenen Cover holt und dafür die Seite **komplett**
+neu aufbaut. Dieser Aufbau kennt die Meldung nicht — die kennt nur der
+eine `draw()`-Aufruf, der sie ausgelöst hat.
+
+Warum ausgerechnet Raster und Galerie: der Nachlader läuft nur, wenn
+beim Zeichnen wirklich etwas übersprungen wurde. Die Liste zeigt **ein**
+Cover (das Panel rechts), die Kachelansichten bis zu **21** gleichzeitig
+— dort ist praktisch immer eines dabei. In der Liste gab es den Fehler
+also auch, nur fiel er kaum auf.
+
+Das Schutzfenster, das es seit Build 89 gibt, half hier nicht: es bremst
+nur die beiden leichten Fußzeilen-Ticks (Laufschrift, Positionsanzeige),
+nicht einen vollen Seitenaufbau.
+
+Gelöst mit einer Stelle statt sechs: das Frontend merkt sich die zuletzt
+gezeigte Meldung für zwei Sekunden, und **wer immer** die Fußzeile ohne
+eigene Meldung zeichnet, holt sie sich von dort. Gilt für alle drei
+Ansichten auf beiden Seiten. Neuer Test: `tools/test_fussmeldung.py`.
+
 **Links/rechts im Raster war auf vier Schritte pro Sekunde gedeckelt**
 (Build 136):
 

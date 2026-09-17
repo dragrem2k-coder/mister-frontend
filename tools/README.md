@@ -71,6 +71,7 @@ python3 tools/regression_test.py \
   && python3 tools/test_kopierpfade.py \
   && python3 tools/test_baender_flip.py \
   && python3 tools/test_kartenzugriffe.py \
+  && python3 tools/test_fussmeldung.py \
   && python3 tools/diag_lightpath.py
 ```
 
@@ -119,6 +120,7 @@ python3 tools/regression_test.py \
 | `test_quelle_png.py` | Test (Pass/Fail) | Zweite Cover-Quelle (png/-Baum des Mirrors): beide Ablageorte, Endung nach Inhalt, Klartext-HTTP, Reihenfolge der Quellen |
 | `test_ansichten.py` | Test (Pass/Fail) | Die drei Ansichten von Spieleliste UND Hauptseite, dazu der Nachlade-Thread: Kastengroesse stimmt mit dem Vorauslader ueberein, schneller Rasterpfad bitgenau, leichte Listenpfade halten sich raus |
 | `test_kartenzugriffe.py` | Test (Pass/Fail) | Ein Scrollschritt liest keine Einstellung mehr von der SD-Karte; Menue-Aenderungen wirken trotzdem sofort; der Schluessel haengt am Pfad |
+| `test_fussmeldung.py` | Test (Pass/Fail) | Eine Fusszeilen-Meldung (Erfolgs-Popup, "Favorit hinzugefuegt") ueberlebt einen vollen Seitenaufbau - in allen drei Ansichten auf beiden Seiten - und verschwindet nach ihrem Fenster wieder
 | `test_baender_flip.py` | Test (Pass/Fail) | Der schnelle Pfad der Kachelansichten kopiert nur die geaenderten Baender auf den Schirm - geprueft an fb.mm, nicht am Zeichenpuffer |
 | `test_kopierpfade.py` | Test (Pass/Fail) | Die drei heissen Kopierstellen (blit, _restore_row_bg, text) liefern bitgenau dasselbe; dazu die groesseren Kacheln aus Build 132 und der Nachweis, dass es bei drei Kastengroessen bleibt |
 | `test_blit.py` | Test (Pass/Fail) | blit() mit memoryview: bitgenau wie vorher, Randfaelle zerstoeren den Puffer nicht, und es ist messbar schneller |
