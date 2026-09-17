@@ -58,9 +58,35 @@ SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
 # "install_offline.sh" (vor dem "Frontend_"-Praefix-Umzug) - so bleibt
 # ein bereits vorhandener, noch nicht durchgaengig aktualisierter
 # Paketordner ebenfalls zuverlaessig erkennbar.
+#
+# BUGFIX (Build 140, gemeldet von SuTe): der Marker wurde bisher NUR
+# direkt im Paketordner gesucht - im Paket liegt dieses Skript aber in
+# Scripts/. Wer es dort startete, wo es liegt
+# (MiSTer_Frontend/Scripts/Frontend_Install_Offline.sh), bekam
+# "Das Frontend-Paket wurde nicht gefunden" und musste es erst eine
+# Ebene hoeher kopieren. _find_src() prueft die Ebene ueber Scripts/
+# durchaus - nur hielt _is_pkg() sie nicht fuer ein Paket.
+#
+# Der Marker zaehlt deshalb jetzt auch in Scripts/. Das allein waere
+# aber ein schlimmerer Fehler als der behobene: sobald der Installer
+# wie vorgesehen nach /media/fat/Scripts/ kopiert ist (OSD-Aufruf),
+# haette MISTER_ROOT SELBST beide Merkmale - frontend/frontend.py (die
+# Installation) und Scripts/Frontend_Install_Offline.sh. _find_src()
+# testet "$SELF_DIR/.." vor dem echten Paketordner, beim OSD-Start
+# also genau /media/fat. Ergebnis waere gewesen: das Skript kopiert die
+# vorhandene Installation ueber sich selbst, meldet "Fertig." und
+# aktualisiert nichts. Nachgestellt und bestaetigt, siehe
+# tools/test_offline_installer.sh.
+#
+# Deshalb die Ausnahme zuerst: der Zielort ist nie das Paket.
 _is_pkg() {
+    case "$(cd "$1" 2>/dev/null && pwd)" in
+        "$MISTER_ROOT") return 1 ;;
+    esac
     [ -f "$1/frontend/frontend.py" ] || return 1
-    [ -f "$1/Frontend_Install_Offline.sh" ] || [ -f "$1/install_offline.sh" ]
+    [ -f "$1/Frontend_Install_Offline.sh" ] || [ -f "$1/install_offline.sh" ] \
+        || [ -f "$1/Scripts/Frontend_Install_Offline.sh" ] \
+        || [ -f "$1/Scripts/install_offline.sh" ]
 }
 
 # Quellpaket robust finden - egal ob dieses Skript aus dem Paketordner

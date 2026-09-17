@@ -45,7 +45,7 @@ zwischen Liste, Raster und Galerie umschalten (Abschnitt 8r):
   &nbsp;
   <img src="screenshots/preview_8_hauptseite_galerie.png" width="280" alt="Hauptseite als Galerie mit Kategorie-Abzeichen">
 </p>
-<p align="center"><sub>Links: Raster - auf HDMI 21 Spiele auf einen Blick &nbsp;|&nbsp; Mitte: Galerie - großes Cover, Daten daneben, Nachbarn als Leiste &nbsp;|&nbsp; Rechts: dieselbe Galerie auf der Hauptseite, mit den Kategorie-Abzeichen</sub></p>
+<p align="center"><sub>Links: Raster - auf HDMI 21 Spiele auf einen Blick &nbsp;|&nbsp; Mitte: Galerie - großes Cover, Daten und seit Build 139 eine deutsche Spielbeschreibung daneben, Nachbarn als Leiste &nbsp;|&nbsp; Rechts: dieselbe Galerie auf der Hauptseite, mit den Kategorie-Abzeichen</sub></p>
 
 **Und auf der Röhre?** Das ist die Frage, an der sich eine Ansicht
 entscheidet - deshalb hier dieselben Ansichten in 320×240:
@@ -58,6 +58,29 @@ entscheidet - deshalb hier dieselben Ansichten in 320×240:
   <img src="screenshots/preview_crt_3_galerie.png" width="240" alt="CRT: Galerie">
 </p>
 <p align="center"><sub>CRT 320×240, Originalgröße - Liste, Raster, Galerie</sub></p>
+
+## Installieren: eine Datei, ein Klick
+
+Du brauchst **nur eine einzige Datei** auf dem MiSTer, nicht das ganze
+Paket:
+
+1. [`Scripts/Frontend_Install.sh`](https://raw.githubusercontent.com/dragrem2k-coder/mister-frontend/main/Scripts/Frontend_Install.sh)
+   herunterladen (Rechtsklick → *Speichern unter*).
+2. Die Datei nach `/media/fat/Scripts/` kopieren — per WinSCP, oder
+   einfach die SD-Karte in den PC stecken.
+3. Auf dem MiSTer im OSD: **Scripts → „Frontend Install"** einmal
+   ausführen.
+
+Das war's. Das Skript lädt alles Weitere selbst herunter, richtet den
+Autostart ein und startet das Frontend am Ende von allein. Kein SSH,
+kein Terminal, kein Entpacken.
+
+Dasselbe Skript ist auch der **Update-Weg**: einfach noch einmal
+ausführen. Eigene Boxart, Musik und Einstellungen bleiben dabei
+unangetastet, nur die Programmdateien werden ersetzt.
+
+Ohne Internet am MiSTer → [Option C](#option-c-ohne-internet-offline-aus-dem-paket).
+Alle Wege im Detail stehen in [Abschnitt 3](#3-installation-schritt-für-schritt).
 
 ## Warum ein eigenes Frontend?
 
@@ -139,6 +162,8 @@ Nachlesen (`CHANGELOG.md`).
    - 8q. Autostart an/aus
    - 8r. Ansichten: Liste, Raster, Galerie
    - 8s. ROMs in ZIP-Archiven
+   - 8t. Spielbeschreibungen
+   - 8u. Cover beim Scrollen
 9. Sprache umschalten
 10. Eigene Tastenbelegung
 11. Boot-Animation (Startvideo)
@@ -259,6 +284,11 @@ oder aus dem OSD unter Scripts:
 cd /media/fat/MiSTer_Frontend   # Ordner, in den du das Paket kopiert hast
 ./Scripts/Frontend_Install_Offline.sh
 ```
+Seit Build 140 ist dabei egal, von wo aus du das Skript startest: aus
+dem Paketordner, direkt aus dessen `Scripts/`-Unterordner, oder als
+Kopie in `/media/fat/Scripts/` für den Aufruf über das OSD. Vorher
+fand es sein eigenes Paket nur, wenn es eine Ebene höher lag (danke an
+**SuTe** für den Fund).
 Fragt interaktiv nach Autostart und Stream-Overlay. Ohne Rückfragen:
 ```bash
 ./Scripts/Frontend_Install_Offline.sh --yes                # Autostart an, Overlay aus
@@ -461,6 +491,61 @@ nächste Stufe weitergereicht.
 *System -> Anzeige & Sound -> "Fremdes Artwork/Daten"* ausschalten.
 Standard ist **an**: die Quelle füllt nur Lücken und ersetzt nie
 eigenes Artwork.
+
+### Cover über Update All beziehen — geht auch, ist aber kein Muss
+
+Viele haben die Cover längst auf der Karte, ohne es zu wissen. **Update
+All** (das bekannte MiSTer-Wartungsskript) kann die *MiSTer Game
+Artwork Database* mitinstallieren; sie landet dann unter
+`/media/fat/docs/<System>/Artwork/`. Beim Nutzer, der das gemeldet hat,
+lagen dort **21.198 Cover** — ungenutzt.
+
+Das Frontend liest diesen Ordner seit Build 115 von sich aus. Es muss
+nichts kopiert, umbenannt oder umgewandelt werden: liegt das Cover
+dort, wird es angezeigt (Stufe 1 der Liste oben).
+
+**Das ist eine Möglichkeit, keine Voraussetzung.** Wer Update All nicht
+nutzt oder nicht nutzen will, lädt die Cover einfach wie oben
+beschrieben über *System → Wartung → „Boxart herunterladen"* — das
+Ergebnis ist dasselbe. Und wer beides hat, bekommt keinen Konflikt:
+eigenes Artwork hat immer Vorrang, die Datenbank füllt nur Lücken.
+
+Nebenbei kommen aus denselben Ordnern auch **Jahr, Genre, Entwickler
+und Spieleranzahl** (`gameinfo.tsv`) sowie seit Build 139 die
+**Spielbeschreibungen** (siehe Abschnitt 8t).
+
+### „Miniaturen vorbereiten" — was es tut und wann es sich lohnt
+
+Zu finden unter *System → Wartung → „Miniaturen vorbereiten"*.
+
+**Das Problem, das es löst.** Die Cover liegen im Original auf der
+Karte, oft 900×1200 Bildpunkte. Auf den Bildschirm kommen sie aber in
+drei viel kleineren Kästen — auf HDMI 733×909 für die Liste, 342×456
+für die Galerie und 176×235 für das Raster. Jedes Cover muss also beim
+allerersten Anschauen in *jeden* dieser Kästen gerechnet werden, und
+das dauert auf dem MiSTer ein bis zwei Sekunden. Genau dieser eine
+Moment ist das kurze Stocken, das man beim ersten Durchblättern einer
+neuen Sammlung merkt.
+
+**Was der Punkt macht.** Er rechnet diese Miniaturen einmal im Voraus
+durch und legt sie im Zwischenspeicher auf der SD-Karte ab. Ab dann
+sind sie sofort da — auch nach einem Neustart, denn der
+Zwischenspeicher überlebt das Ausschalten.
+
+**Was es kostet.** Zeit, einmalig, und Platz auf der Karte. Bei einer
+großen Sammlung läuft das durchaus eine Weile; es lässt sich jederzeit
+mit einer Taste abbrechen und später fortsetzen, und schon Berechnetes
+bleibt erhalten. CRT und HDMI haben getrennte Zwischenspeicher — wer
+beides nutzt, lässt es einmal je Betriebsart laufen.
+
+**Muss man das?** Nein. Ohne den Lauf funktioniert alles genauso, nur
+holt sich das Frontend jede Miniatur eben in dem Moment, in dem du das
+Spiel zum ersten Mal ansiehst. Wer eine kleine Sammlung hat, merkt
+kaum einen Unterschied. Wer mehrere tausend Spiele hat und flüssig
+durchblättern will, lässt es einmal über Nacht laufen.
+
+Leeren lässt sich der Zwischenspeicher unter *System → Wartung →
+„Miniaturen-Zwischenspeicher leeren"* — getrennt für CRT und HDMI.
 
 **Einmalig empfehlenswert: der Lauf mit `neu`.** Beim Erzeugen der Cover
 wurde früher schlicht jede zweite oder dritte Bildzeile weggeworfen -
@@ -1122,6 +1207,52 @@ Drei Dinge bewusst so:
   das, was es vorher war.
 
 ---
+
+## 8t. Spielbeschreibungen (seit Build 139)
+
+In der **Galerie** steht rechts neben dem Cover seit Build 139 eine
+kurze Beschreibung des Spiels — auf Deutsch, wenn die Oberfläche auf
+Deutsch steht.
+
+Sie kommt aus derselben Artwork-Datenbank wie die Cover: neben
+`gameinfo.tsv` liegt dort je Sprache eine `synopsis_<xx>.tsv`. Gelesen
+werden **Deutsch und Englisch**; fehlt der deutsche Text zu einem
+Spiel, springt der englische ein. Nachgemessen an der SNES-Tabelle:
+**1.785 von 1.802** Spielen haben eine Beschreibung.
+
+Vorbereiten muss man dafür **nichts**. Es ist Text, kein Bild — kein
+Dekodieren, keine Miniatur, kein Zwischenspeicher. Die Tabelle eines
+Systems wird beim ersten Hinschauen einmal gelesen und liegt danach im
+Arbeitsspeicher.
+
+Drei Dinge bewusst so:
+
+- **Nur in der Galerie.** Die Boxart-Spalte der Liste bestimmt über
+  ihre Höhe die Größe der vorberechneten Miniaturen — eine Zeile Text
+  mehr würde dort den ganzen Zwischenspeicher ungültig machen.
+- **Eine Schriftstufe kleiner.** Sonst wären es bei 1080p zwei bis
+  drei Zeilen, also ein angefangener Satz. Passt der Text trotzdem
+  nicht vollständig, endet er sichtbar mit `~`.
+- **Nicht während des Scrollens von der Karte gelesen.** Dieselbe
+  Regel wie bei den Covern: der Text erscheint, sobald du stehen
+  bleibst.
+
+Abschalten geht über denselben Schalter wie für das fremde Artwork:
+*System → Anzeige & Sound → „Fremdes Artwork/Daten"*.
+
+## 8u. Cover beim Scrollen (seit Build 138)
+
+*System → Anzeige & Sound → „Cover beim Scrollen"*, Standard **aus**.
+
+In der Listenansicht wird die Cover-Spalte während des Scrollens
+ausgelassen und erst gezeichnet, wenn du stehen bleibst — das stammt
+aus einer Zeit, in der ein Cover im Zeichenweg bis zu 1,2 Sekunden
+kosten konnte. Die Galerie macht es feiner: sie zeichnet immer und
+überspringt nur das einzelne, noch nicht fertige Bild.
+
+Eingeschaltet verhält sich die Liste wie die Galerie: ein Cover, das
+schon im Speicher liegt, erscheint sofort. Der Schalter wirkt ohne
+Neustart — einfach umlegen und eine große Liste durchscrollen.
 
 ## 9. Sprache umschalten
 

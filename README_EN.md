@@ -60,6 +60,29 @@ are the same views at 320x240:
 </p>
 <p align="center"><sub>CRT 320x240, original size - list, grid, gallery</sub></p>
 
+## Installing: one file, one click
+
+You only need **a single file** on the MiSTer, not the whole package:
+
+1. Download
+   [`Scripts/Frontend_Install.sh`](https://raw.githubusercontent.com/dragrem2k-coder/mister-frontend/main/Scripts/Frontend_Install.sh)
+   (right-click → *Save as*).
+2. Copy that file to `/media/fat/Scripts/` — via WinSCP, or just put
+   the SD card into your PC.
+3. On the MiSTer, in the OSD: run **Scripts → "Frontend Install"**
+   once.
+
+That's it. The script downloads everything else itself, sets up
+autostart and launches the frontend at the end. No SSH, no terminal,
+no unpacking.
+
+The same script is also the **update path**: just run it again. Your
+own boxart, music and settings stay untouched, only the program files
+are replaced.
+
+No internet on the MiSTer → [Option C](#option-c-without-internet-offline-from-the-package).
+All the ways in detail are in [section 3](#3-installation-step-by-step).
+
 ## Why a custom frontend?
 
 The MiSTer community keeps debating whether a graphical frontend even
@@ -134,6 +157,8 @@ history to read up on (`CHANGELOG.md`).
    - 8p. Contributors
    - 8r. Views: list, grid, gallery
    - 8s. ROMs inside ZIP archives
+   - 8t. Game descriptions
+   - 8u. Covers while scrolling
 9. Switching language
 10. Custom key mapping
 11. Boot animation (startup video)
@@ -236,6 +261,11 @@ Scripts:
 cd /media/fat/MiSTer_Frontend   # folder you copied the package into
 ./Scripts/Frontend_Install_Offline.sh
 ```
+Since Build 140 it no longer matters where you start the script from:
+the package folder, its `Scripts/` subfolder directly, or a copy in
+`/media/fat/Scripts/` for the OSD. Before that it only found its own
+package when it sat one level higher (thanks to **SuTe** for the
+report).
 Asks interactively about autostart and stream overlay. Without prompts:
 ```bash
 ./Scripts/Frontend_Install_Offline.sh --yes                # autostart on, overlay off
@@ -436,6 +466,58 @@ the next stage.
 under *System -> Display & sound -> "Foreign artwork/data"*. The default
 is **on**: the source only fills gaps and never replaces your own
 artwork.
+
+### Getting covers through Update All — possible, but not required
+
+Many people already have the covers on their card without knowing it.
+**Update All** (the well-known MiSTer maintenance script) can install
+the *MiSTer Game Artwork Database*, which then lands under
+`/media/fat/docs/<system>/Artwork/`. On the device of the user who
+reported this, **21,198 covers** were sitting there unused.
+
+The frontend has been reading that folder since Build 115. Nothing has
+to be copied, renamed or converted: if the cover is there, it is shown
+(stage 1 of the list above).
+
+**This is an option, not a requirement.** If you don't use Update All,
+simply download the covers as described above via *System →
+Maintenance → "Download boxart"* — the result is the same. And if you
+have both, there is no conflict: your own artwork always wins, the
+database only fills gaps.
+
+The same folders also provide **year, genre, developer and player
+count** (`gameinfo.tsv`) and, since Build 139, the **game
+descriptions** (see section 8t).
+
+### "Prepare thumbnails" — what it does and when it is worth it
+
+Found under *System → Maintenance → "Prepare thumbnails"*.
+
+**The problem it solves.** Covers are stored at original size, often
+900×1200 pixels. On screen they appear in three much smaller boxes —
+on HDMI 733×909 for the list, 342×456 for the gallery and 176×235 for
+the grid. So every cover has to be scaled into *each* of those boxes
+the first time you look at it, and that takes one to two seconds on the
+MiSTer. That single moment is the brief stutter you notice when
+browsing a new collection for the first time.
+
+**What the menu item does.** It computes those thumbnails in advance
+and stores them in a cache on the SD card. From then on they are
+instant — including after a reboot, because the cache survives power
+off.
+
+**What it costs.** Time, once, and space on the card. With a large
+collection it runs for a while; you can stop it with a key press at any
+time and continue later, and whatever was already computed is kept. CRT
+and HDMI have separate caches — if you use both, run it once per mode.
+
+**Do you have to?** No. Everything works without it; the frontend just
+computes each thumbnail the moment you first look at that game. With a
+small collection you will barely notice. With several thousand games
+and a wish for smooth browsing, let it run once overnight.
+
+The cache can be cleared under *System → Maintenance → "Clear
+thumbnail cache"* — separately for CRT and HDMI.
 **If you use both CRT and HDMI, run both lines** - without the `hd` run,
 the frontend on HDMI simply upscales the small covers intended for the
 tube (looks pixelated). With `hd`, both sizes exist side by side (`art/`
@@ -930,6 +1012,50 @@ Three deliberate decisions:
   match neither, so the archive stays exactly what it was.
 
 ---
+
+## 8t. Game descriptions (since Build 139)
+
+In the **gallery**, a short description of the game now sits to the
+right of the cover — in German when the interface is set to German,
+otherwise in English.
+
+It comes from the same artwork database as the covers: next to
+`gameinfo.tsv` there is a `synopsis_<xx>.tsv` per language. Only
+**German and English** are read; if a German text is missing for a
+game, the English one steps in. Measured against the SNES table:
+**1,785 of 1,802** games have a description.
+
+Nothing has to be prepared. It is text, not an image — no decoding, no
+thumbnail, no cache. A system's table is read once the first time you
+look at it and stays in memory afterwards.
+
+Three deliberate decisions:
+
+- **Gallery only.** The height of the list's boxart column determines
+  the size of the pre-computed thumbnails — one extra line of text
+  would invalidate the whole cache there.
+- **One font step smaller.** Otherwise it would be two or three lines
+  at 1080p, i.e. half a sentence. If the text still does not fit
+  completely, it visibly ends with `~`.
+- **Not read from the card while scrolling.** Same rule as for covers:
+  the text appears once you stop.
+
+It can be switched off with the same toggle as the foreign artwork:
+*System → Display & sound → "Foreign artwork/data"*.
+
+## 8u. Covers while scrolling (since Build 138)
+
+*System → Display & sound → "Cover while scrolling"*, default **off**.
+
+In list view the cover column is skipped while you scroll and only
+drawn once you stop — that dates back to a time when a cover could cost
+up to 1.2 seconds in the drawing path. The gallery does it more
+finely: it always draws and only skips the single image that is not
+ready yet.
+
+Turned on, the list behaves like the gallery: a cover that is already
+in memory appears immediately. The switch takes effect without a
+restart — just flip it and scroll through a large list.
 
 ## 9. Switching language
 

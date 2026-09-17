@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Installation und Update</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #101218; }
+  body {
+    font-family: Arial, Helvetica, "Segoe UI", sans-serif;
+    color: #ffffff;
+  }
+  :root {
+    --bg: #101218;
+    --panel: #181c28;
+    --blue: #4285f4;
+    --purple: #8572d1;
+    --gold: #d2af46;
+    --dim: #8c92a0;
+    --dim2: #c7ccd6;
+    --red: #ed2024;
+    --keybox: #1c2130;
+    --keyborder: #3a4258;
+  }
+  .page {
+    width: 210mm;
+    height: 297mm;
+    position: relative;
+    background: var(--bg);
+    page-break-after: always;
+    overflow: hidden;
+  }
+  .page:last-child { page-break-after: auto; }
+  .frame {
+    position: absolute;
+    left: 9mm; right: 9mm; top: 9mm; bottom: 9mm;
+    border: 1.6px solid var(--blue);
+    border-radius: 16px;
+  }
+  .topbar {
+    position: absolute;
+    left: 9mm; right: 9mm; top: 13mm;
+    height: 12mm;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 9mm;
+  }
+  .logo-chip {
+    width: 13mm; height: 13mm;
+    background: #000;
+    border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  .logo-chip img { width: 100%; height: 100%; object-fit: contain; }
+  .page-tag { font-family: "Courier New", monospace; font-size: 10.5px; color: var(--dim); letter-spacing: 0.5px; }
+  .footer {
+    position: absolute;
+    left: 9mm; right: 9mm; bottom: 9mm;
+    padding: 0 9mm 5mm;
+    display: flex;
+    justify-content: space-between;
+    font-family: "Courier New", monospace;
+    font-size: 9px;
+    color: var(--dim);
+  }
+  .footer-rule {
+    position: absolute;
+    left: 15mm; right: 15mm; bottom: 15mm;
+    border-top: 0.8px solid #262b3a;
+  }
+  .content { position: absolute; left: 15mm; right: 15mm; top: 28mm; bottom: 20mm; }
+
+  h1.section-title {
+    display: flex;
+    align-items: center;
+    gap: 6mm;
+    color: var(--blue);
+    font-size: 21px;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+    margin-bottom: 11mm;
+  }
+  h1.section-title::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: #262b3a;
+  }
+
+  /* ---------- Page 1 (Cover) ---------- */
+  .cover-logo { width: 65mm; margin: 14mm auto 0; display:block; }
+  .cover-title { text-align:center; font-size: 24px; font-weight: bold; margin-top: 6mm; }
+  .cover-tagline { text-align:center; color: var(--dim2); font-size: 12px; margin-top: 5mm; line-height: 1.6; }
+  .badges { display:flex; justify-content:center; gap: 11mm; margin-top: 11mm; }
+  .badge { display:flex; flex-direction:column; align-items:center; width: 30mm; }
+  .badge-circle {
+    width: 19mm; height: 19mm; border-radius: 50%;
+    border: 1.6px solid var(--gold); color: var(--gold);
+    display:flex; align-items:center; justify-content:center;
+    font-size: 14px; font-weight:bold; font-family:"Courier New",monospace;
+  }
+  .badge-label { margin-top: 3mm; font-size: 8.6px; color: var(--dim2); text-align:center; }
+  .demo-heading { text-align:center; color: var(--blue); letter-spacing: 2px; font-size: 12.5px; font-weight:bold; margin-top: 13mm; }
+  .mockup {
+    width: 155mm; margin: 6mm auto 0;
+    border: 1.6px solid var(--blue); border-radius: 10px;
+    overflow: hidden;
+  }
+  .mockup img { width: 100%; display:block; }
+
+  /* ---------- Page 2/3 (Tastatur/Joypad) ---------- */
+  .arrows { display:flex; align-items:flex-start; justify-content: space-between; margin-bottom: 13mm; padding: 0 4mm; }
+  .dpad { display:grid; grid-template-columns: repeat(3, 12mm); grid-template-rows: repeat(2, 12mm); gap: 2mm; justify-content:center; }
+  .key {
+    background: var(--keybox);
+    border: 1.2px solid var(--keyborder); border-radius: 4px;
+    display:flex; align-items:center; justify-content:center;
+    font-size: 13px; color:#fff;
+  }
+  .dpad .k-up { grid-column:2; grid-row:1; }
+  .dpad .k-left { grid-column:1; grid-row:2; }
+  .dpad .k-down { grid-column:2; grid-row:2; }
+  .dpad .k-right { grid-column:3; grid-row:2; }
+  .arrow-label { font-size: 11px; color: var(--dim2); margin-top: 4mm; text-align:center; }
+  .key-wide { background: var(--keybox); border:1.2px solid var(--keyborder); border-radius: 6px; padding: 4mm 8mm; font-family:"Courier New",monospace; font-size: 13px; font-weight:bold; text-align:center; }
+  .key-desc { font-size: 10px; color: var(--dim2); margin-top: 3mm; text-align:center; }
+  .ok-esc { display:flex; flex-direction:column; gap: 9mm; width: 62mm; }
+
+  .frow-title, .extra-title { font-size: 11px; color: var(--dim2); font-style: italic; margin: 11mm 0 6mm; }
+  .frow { display:flex; gap: 5mm; }
+  .fkey { flex:1; display:flex; flex-direction:column; align-items:center; }
+  .fkey .key-wide { width: 100%; padding: 4mm 2mm; }
+  .fkey .key-desc { font-size: 9px; }
+
+  .extra-row { display:flex; align-items:center; gap: 6mm; margin-bottom: 5.5mm; }
+  .extra-key { min-width: 46mm; background: var(--keybox); border:1.2px solid var(--keyborder); border-radius: 6px; padding: 3.2mm 4mm; font-family:"Courier New",monospace; font-size: 11px; font-weight:bold; text-align:center; }
+  .extra-desc { font-size: 10.5px; color: var(--dim2); line-height: 1.4; }
+  .extra-desc .sub { display:block; font-size: 9px; color: #caa74a; font-style: italic; margin-top: 1.2mm; }
+
+  .remap-note { margin-top: 9mm; font-size: 10px; color: var(--dim); font-style: italic; line-height: 1.5; }
+
+  /* Joypad grid */
+  .pad-intro { font-size: 11px; color: var(--dim2); font-style: italic; margin-bottom: 9mm; }
+  .pad-grid { display:grid; grid-template-columns: 1fr 1fr; gap: 6.5mm 9mm; }
+  .pad-item { display:flex; align-items:center; gap: 5mm; border-bottom: 0.6px solid #202537; padding-bottom: 4.5mm; }
+  .pad-btn { min-width: 21mm; height: 12mm; border-radius: 6mm; background: var(--keybox); border: 1.4px solid var(--gold); color: var(--gold);
+             display:flex; align-items:center; justify-content:center; font-family:"Courier New",monospace; font-size:10px; font-weight:bold; flex-shrink:0; padding: 0 2mm; text-align:center; line-height:1.15; }
+  .pad-desc { font-size: 9.8px; color: var(--dim2); line-height:1.4; }
+
+  /* Page 4 Funktionen */
+  .func-grid { display:flex; flex-direction:column; gap: 6mm; }
+  .func-row { display:flex; gap: 6mm; align-items:stretch; }
+  .func-shot { width: 50mm; height: 28mm; border: 1.4px solid var(--blue); border-radius: 6px; background: var(--panel); flex-shrink:0; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+  .func-shot img { width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+  .func-text { flex:1; padding-top: 1mm; }
+  .func-title { color: var(--blue); font-weight:bold; font-size: 12px; letter-spacing: 0.3px; margin-bottom: 2.5mm; }
+  .func-body { font-size: 10px; color: var(--dim2); line-height: 1.55; }
+</style>
+<style>
+  /* ---------- nur fuer diese Anleitung ---------- */
+  .lead { font-size: 11.5px; color: var(--dim2); line-height: 1.65; margin-bottom: 10mm; }
+  .ways { display:flex; gap: 6mm; margin-bottom: 11mm; }
+  .way { flex:1; border:1.4px solid var(--keyborder); border-radius: 8px; padding: 5mm; background: var(--panel); }
+  .way.best { border-color: var(--blue); }
+  .way-tag { font-family:"Courier New",monospace; font-size: 20px; font-weight:bold; color: var(--keyborder); float:right; line-height:1; }
+  .way.best .way-tag { color: var(--blue); }
+  .way-title { color: var(--blue); font-weight:bold; font-size: 11px; letter-spacing:0.3px; margin-bottom: 3mm; }
+  .way-body { font-size: 9.6px; color: var(--dim2); line-height:1.55; }
+  .steps { display:flex; flex-direction:column; gap: 5mm; margin-bottom: 9mm; }
+  .step { display:flex; gap: 5mm; align-items:flex-start; }
+  .step-no { width: 9mm; height: 9mm; flex-shrink:0; border-radius:50%; border:1.4px solid var(--gold); color: var(--gold);
+             display:flex; align-items:center; justify-content:center; font-family:"Courier New",monospace; font-size:11px; font-weight:bold; }
+  .step-title { font-weight:bold; font-size: 11.5px; margin-bottom: 1.5mm; }
+  .step-body { font-size: 10px; color: var(--dim2); line-height:1.5; }
+  code, .code { font-family:"Courier New",monospace; font-size: 9.6px; color: #a9d0ff; }
+  .codebox { background:#0b0d13; border:1px solid var(--keyborder); border-radius:5px; padding: 3.2mm 4mm; margin: 2.5mm 0;
+             font-family:"Courier New",monospace; font-size: 9.2px; color:#a9d0ff; word-break: break-all; line-height:1.5; }
+  .note { border-left: 2.5px solid var(--gold); padding: 2mm 0 2mm 5mm; margin: 7mm 0; font-size: 10px; color: var(--dim2); line-height:1.55; }
+  .note b { color: #e0c46a; }
+  .list { font-size: 10.2px; color: var(--dim2); line-height: 1.8; }
+  .list div::before { content: "\2022\00a0\00a0"; color: var(--blue); }
+  .twocol { display:flex; gap: 8mm; }
+  .twocol > div { flex:1; }
+  .subhead { color: var(--blue); font-weight:bold; font-size: 11.5px; margin: 8mm 0 3.5mm; }
+</style>
+</head>
+<body>
+
+<div class="page">
+  <div class="frame"></div>
+  <div class="topbar">
+    <div class="logo-chip"><img src="_anleitung_assets/logo.png"></div>
+    <span class="page-tag">1/4 &nbsp;-&nbsp; &Uuml;BERSICHT</span>
+  </div>
+  <div class="footer-rule"></div>
+  <div class="footer">
+    <span>github.com/dragrem2k-coder/mister-frontend</span>
+    <span>MiSTer Custom Frontend</span>
+  </div>
+  <div class="content">
+    <h1 class="section-title">INSTALLATION &amp; UPDATE</h1>
+
+    <div class="lead">
+      Kein SSH-Vorwissen n&ouml;tig. Der einfachste Weg braucht
+      <b>eine einzige Datei</b> und einen Klick im MiSTer-Men&uuml;e &ndash;
+      das Frontend selbst muss man gar nicht herunterladen.
+    </div>
+
+    <div class="subhead">WELCHER WEG PASST ZU DIR?</div>
+    <div class="ways">
+      <div class="way best">
+        <div class="way-tag">A</div>
+        <div class="way-title">AM EINFACHSTEN</div>
+        <div class="way-body">Eine kleine Datei auf die Karte, im OSD einmal antippen. Den Rest macht das Skript allein &ndash; herunterladen, einrichten, starten.</div>
+      </div>
+      <div class="way">
+        <div class="way-tag">B</div>
+        <div class="way-title">PER SSH</div>
+        <div class="way-body">Schon eine Sitzung offen? Ein Befehl erledigt genau dasselbe wie Weg&nbsp;A.</div>
+      </div>
+      <div class="way">
+        <div class="way-tag">C</div>
+        <div class="way-title">OHNE INTERNET</div>
+        <div class="way-body">Der MiSTer hat kein Netz, oder es soll eine bestimmte Fassung sein: komplettes Paket kopieren, vor Ort installieren.</div>
+      </div>
+    </div>
+
+    <div class="subhead">VORAUSSETZUNGEN</div>
+    <div class="list">
+      <div>MiSTer FPGA mit aktueller Firmware &ndash; Python&nbsp;3 ist dort immer schon dabei</div>
+      <div>Eine M&ouml;glichkeit, eine Datei auf die Karte zu bekommen: WinSCP, ein anderer SFTP-Client, oder einfach die SD-Karte im PC</div>
+      <div>F&uuml;r Weg A und B: Internetzugang am MiSTer (im Heimnetz meist automatisch da)</div>
+      <div>F&uuml;r Musik (freiwillig): <span class="code">mpg123</span> &ndash; geh&ouml;rt zur MiSTer-Firmware dazu</div>
+    </div>
+
+    <div class="note">
+      <b>Nichts wird am System ver&auml;ndert.</b> Das Frontend ist ein
+      Python-Programm, das auf einem v&ouml;llig unver&auml;nderten MiSTer
+      l&auml;uft &ndash; kein anderer Kernel, kein Linux-Abbild, keine
+      zus&auml;tzliche Hardware. <span class="code">Frontend_Uninstall.sh</span>
+      macht alles wieder r&uuml;ckg&auml;ngig.
+    </div>
+
+  </div>
+</div>
+
+<div class="page">
+  <div class="frame"></div>
+  <div class="topbar">
+    <div class="logo-chip"><img src="_anleitung_assets/logo.png"></div>
+    <span class="page-tag">2/4 &nbsp;-&nbsp; INSTALLATION</span>
+  </div>
+  <div class="footer-rule"></div>
+  <div class="footer">
+    <span>github.com/dragrem2k-coder/mister-frontend</span>
+    <span>MiSTer Custom Frontend</span>
+  </div>
+  <div class="content">
+    <h1 class="section-title">INSTALLATION &ndash; WEG A</h1>
+
+    <div class="lead">Am einfachsten, kein SSH n&ouml;tig. Du brauchst nur
+      <span class="code">Frontend_Install.sh</span> &ndash; nicht das ganze Paket.</div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-no">1</div>
+        <div>
+          <div class="step-title">Datei herunterladen</div>
+          <div class="step-body"><span class="code">Scripts/Frontend_Install.sh</span> von GitHub speichern (Rechtsklick &rarr; Speichern unter).</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-no">2</div>
+        <div>
+          <div class="step-title">Auf den MiSTer kopieren</div>
+          <div class="step-body">Die Datei nach <span class="code">/media/fat/Scripts/</span> legen &ndash; per WinSCP, oder die SD-Karte kurz in den PC stecken.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-no">3</div>
+        <div>
+          <div class="step-title">Im MiSTer-OSD ausf&uuml;hren</div>
+          <div class="step-body">Hauptmen&uuml;e &rarr; <b>Scripts</b> &rarr; <b>&bdquo;Frontend Install&ldquo;</b> antippen. Einmal, mehr nicht.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-no">4</div>
+        <div>
+          <div class="step-title">Fertig</div>
+          <div class="step-body">Das Skript l&auml;dt alles Weitere selbst, richtet den Autostart ein und startet das Frontend am Ende von allein. Ein Neustart von Hand ist nicht mehr n&ouml;tig.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      Dasselbe Skript ist auch der <b>Update-Weg</b>: einfach noch einmal
+      ausf&uuml;hren. Eigene Musik, Boxart und Einstellungen bleiben dabei
+      unangetastet, nur die Programmdateien werden ersetzt.
+    </div>
+
+    <div class="subhead">ALTERNATIVEN</div>
+    <div class="step-body"><b>B &ndash; per SSH, ein Befehl:</b></div>
+    <div class="codebox">curl -Ls https://raw.githubusercontent.com/dragrem2k-coder/mister-frontend/main/Scripts/Frontend_Install_Remote.sh | bash</div>
+    <div class="step-body"><b>C &ndash; ohne Internet, aus dem kopierten Paketordner:</b></div>
+    <div class="codebox">cd /media/fat/MiSTer_Frontend<br>./Scripts/Frontend_Install_Offline.sh --yes</div>
+    <div class="step-body" style="color:var(--dim)">Seit Build&nbsp;140 ist egal, von wo aus du den Offline-Installer startest &ndash; aus dem Paketordner, aus dessen <span class="code">Scripts/</span>, oder als Kopie in <span class="code">/media/fat/Scripts/</span> f&uuml;r das OSD.</div>
+
+  </div>
+</div>
+
+<div class="page">
+  <div class="frame"></div>
+  <div class="topbar">
+    <div class="logo-chip"><img src="_anleitung_assets/logo.png"></div>
+    <span class="page-tag">3/4 &nbsp;-&nbsp; COVER</span>
+  </div>
+  <div class="footer-rule"></div>
+  <div class="footer">
+    <span>github.com/dragrem2k-coder/mister-frontend</span>
+    <span>MiSTer Custom Frontend</span>
+  </div>
+  <div class="content">
+    <h1 class="section-title">NACH DER INSTALLATION</h1>
+
+    <div class="lead">Das Frontend l&auml;uft sofort. Sch&ouml;n wird es mit
+      Covern &ndash; und die gibt es auf zwei Wegen.</div>
+
+    <div class="subhead">1. SELBST HERUNTERLADEN</div>
+    <div class="step-body">Im Frontend: <b>System &rarr; Wartung &rarr; &bdquo;Boxart herunterladen&ldquo;</b>.
+      L&auml;uft direkt auf dem MiSTer, kein PC n&ouml;tig. Wer sowohl R&ouml;hre als
+      auch HDMI nutzt, l&auml;sst beide Gr&ouml;ssen laden &ndash; das Frontend
+      w&auml;hlt dann automatisch die passende.</div>
+
+    <div class="subhead">2. &Uuml;BER UPDATE ALL &ndash; WER MAG</div>
+    <div class="step-body"><b>Update All</b> kann die <i>MiSTer Game Artwork
+      Database</i> mitinstallieren. Sie landet unter
+      <span class="code">/media/fat/docs/&lt;System&gt;/Artwork/</span>, und das
+      Frontend liest sie von sich aus &ndash; nichts kopieren, nichts umbenennen.
+      Bei einem Nutzer lagen dort 21.198 Cover, ungenutzt.</div>
+    <div class="step-body" style="margin-top:3mm">Aus denselben Ordnern kommen
+      auch <b>Jahr, Genre, Entwickler, Spieleranzahl</b> und die
+      <b>Spielbeschreibungen</b>, die in der Galerie neben dem Cover stehen.</div>
+
+    <div class="note">
+      <b>Kein Muss.</b> Beide Wege f&uuml;hren zum selben Ergebnis, und sie
+      vertragen sich: eigenes Artwork hat immer Vorrang, die Datenbank
+      f&uuml;llt nur L&uuml;cken. Abschalten l&auml;sst sie sich unter
+      <i>System &rarr; Anzeige &amp; Sound &rarr; &bdquo;Fremdes Artwork/Daten&ldquo;</i>.
+    </div>
+
+    <div class="subhead">MINIATUREN VORBEREITEN &ndash; WOF&Uuml;R IST DAS?</div>
+    <div class="step-body">Cover liegen gross auf der Karte, oft 900&times;1200
+      Bildpunkte. Auf den Bildschirm kommen sie in drei viel kleineren
+      K&auml;sten &ndash; f&uuml;r Liste, Galerie und Raster. Jedes Cover muss
+      also beim <b>ersten</b> Anschauen verkleinert werden, und das dauert je
+      Spiel ein bis zwei Sekunden. Genau das ist das kurze Stocken, das man
+      beim ersten Durchbl&auml;ttern einer neuen Sammlung merkt.</div>
+    <div class="step-body" style="margin-top:3mm"><b>System &rarr; Wartung &rarr;
+      &bdquo;Miniaturen vorbereiten&ldquo;</b> erledigt das im Voraus und legt das
+      Ergebnis auf der Karte ab. Danach ist jedes Cover sofort da, auch nach
+      einem Neustart.</div>
+    <div class="step-body" style="margin-top:3mm">Bei grossen Sammlungen l&auml;uft
+      das eine Weile &ndash; Abbrechen und sp&auml;ter Fortsetzen geht jederzeit,
+      Berechnetes bleibt erhalten. R&ouml;hre und HDMI haben getrennte
+      Zwischenspeicher. <b>N&ouml;tig ist es nicht</b>: ohne den Lauf
+      funktioniert alles genauso, nur eben mit dem kurzen Moment beim ersten
+      Hinsehen.</div>
+
+  </div>
+</div>
+
+<div class="page">
+  <div class="frame"></div>
+  <div class="topbar">
+    <div class="logo-chip"><img src="_anleitung_assets/logo.png"></div>
+    <span class="page-tag">4/4 &nbsp;-&nbsp; UPDATE</span>
+  </div>
+  <div class="footer-rule"></div>
+  <div class="footer">
+    <span>github.com/dragrem2k-coder/mister-frontend</span>
+    <span>MiSTer Custom Frontend</span>
+  </div>
+  <div class="content">
+    <h1 class="section-title">UPDATE &amp; HILFE</h1>
+
+    <div class="lead">Das Frontend schaut im Leerlauf selbst&auml;ndig nach, ob
+      es eine neuere Fassung gibt, und sagt Bescheid.</div>
+
+    <div class="subhead">SO AKTUALISIERST DU</div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-no">1</div>
+        <div>
+          <div class="step-title">Denselben Weg noch einmal gehen</div>
+          <div class="step-body">Egal ob A, B oder C &ndash; einfach erneut ausf&uuml;hren. Bei Weg&nbsp;A also: im OSD <b>Scripts &rarr; &bdquo;Frontend Install&ldquo;</b>.</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-no">2</div>
+        <div>
+          <div class="step-title">Fertig</div>
+          <div class="step-body">Die Programmdateien werden ersetzt und vorher gesichert. Eigene Musik, Boxart, Metadaten, selbst ersetzte System-Logos und alle Einstellungen bleiben unangetastet.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step-body">Dateien von Hand per WinSCP ersetzt? Dann danach einmal:</div>
+    <div class="codebox">/media/fat/Scripts/Frontend_Update.sh</div>
+
+    <div class="subhead">SCHNELLE FEHLERBEHEBUNG</div>
+    <div class="twocol">
+      <div>
+        <div class="step-body"><b>Frontend reagiert nicht</b></div>
+        <div class="codebox">kill $(cat /tmp/frontend.lock)</div>
+        <div class="step-body"><b>Notaus (Autostart-Problem)</b></div>
+        <div class="codebox">touch /media/fat/frontend/disable</div>
+      </div>
+      <div>
+        <div class="step-body"><b>Diagnose-Log ansehen</b></div>
+        <div class="codebox">tail -50 /tmp/frontend.log</div>
+        <div class="step-body"><b>Wieder entfernen</b></div>
+        <div class="codebox">./Scripts/Frontend_Uninstall.sh</div>
+      </div>
+    </div>
+
+    <div class="note">
+      Das Deinstallieren fragt nach, ob eigene Boxart, Musik und
+      Einstellungen erhalten bleiben sollen. Danach ist der MiSTer genau so,
+      wie er vorher war.
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

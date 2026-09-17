@@ -7,6 +7,54 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Der Offline-Installer fand sein eigenes Paket nicht** (Build 140,
+gemeldet von SuTe):
+
+Startete man `Frontend_Install_Offline.sh` dort, wo es im Paket liegt —
+in `MiSTer_Frontend/Scripts/` —, brach es ab:
+
+> FEHLER: Das Frontend-Paket wurde nicht gefunden
+
+Ursache: `_is_pkg()` suchte den Marker nur **direkt** im Paketordner. Im
+Paket liegt das Skript aber in `Scripts/`. Der Behelf war, es eine Ebene
+höher zu kopieren.
+
+Der naheliegende Fix — den Marker auch in `Scripts/` gelten lassen — ist
+allein **nicht** richtig, und das ist der interessante Teil. Sobald der
+Installer wie vorgesehen für den OSD-Aufruf in `/media/fat/Scripts/`
+liegt, trägt `/media/fat` selbst beide Merkmale: `frontend/frontend.py`
+von der Installation und `Scripts/Frontend_Install_Offline.sh` von der
+Kopie. `_find_src()` prüft `$SELF_DIR/..` **vor** dem echten
+Paketordner. Ergebnis, nachgestellt: das Skript legt die vorhandene
+Installation über sich selbst, meldet **„Fertig."** und aktualisiert
+nichts. Ein stiller Fehlschlag statt einer Fehlermeldung.
+
+Deshalb kommt die Ausnahme zuerst: **der Zielort ist nie das Paket.**
+Danach funktionieren alle drei Startorte — Paketordner, dessen
+`Scripts/`, und die OSD-Kopie in `/media/fat/Scripts/`. Neuer Test:
+`tools/test_offline_installer.sh` (fällt mit der alten Fassung in 3
+Punkten durch, mit der vorgeschlagenen in 4).
+
+**Dokumentation komplett überarbeitet** (Build 140):
+
+- **Neue Screenshots**, alle aus dem echten Zeichenpfad
+  (`tools/screenshots_bauen.py`) — jetzt mit Spielbeschreibungen in der
+  Galerie.
+- **README und README\_EN**: ein Kasten ganz oben, wie man installiert
+  (eine Datei auf die Karte, im OSD einmal ausführen — mehr nicht),
+  Cover über **Update All** als Möglichkeit, ein eigener Abschnitt was
+  *„Miniaturen vorbereiten"* eigentlich tut, dazu die neuen Abschnitte
+  8t (Spielbeschreibungen) und 8u (Cover beim Scrollen).
+- **`Dragend_Anleitung.pdf`**: neue fünfte Seite *Ansichten & Cover*,
+  und F3/F4/F10 in der Tastenleiste — die fehlten dort seit Build 114
+  bzw. 122.
+- **`Installation_und_Update.pdf`**: komplett neu gebaut. Die alte
+  Fassung nannte noch `install_frontend.sh`, `install.sh` und
+  `install_offline.sh` — Namen, die es seit dem `Frontend_`-Umzug nicht
+  mehr gibt. Sie hatte keine HTML-Quelle im Repo, deshalb gibt es jetzt
+  `docs/installation_source.html`; ohne Quelle veraltet so ein Dokument
+  zwangsläufig.
+
 **Spielbeschreibungen in der Galerie — aus einer Quelle, die schon auf
 der Karte lag** (Build 139):
 

@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-17-139",
-  "summary": "Die Galerie zeigt jetzt eine Spielbeschreibung neben dem Cover - auf Deutsch, aus den synopsis-Tabellen der Artwork-Datenbank unter /media/fat/docs, die dort ungenutzt lagen. 99 Prozent der Spiele haben einen Text, vorbereiten muss man dafuer nichts."
+  "build_id": "2026-09-17-140",
+  "summary": "Der Offline-Installer findet sein Paket jetzt auch, wenn man ihn dort startet, wo er liegt - in Scripts/. Dazu die komplette Dokumentation ueberarbeitet: neue Screenshots, beide READMEs, die Anleitung mit einer neuen Seite und eine von Grund auf neue Installations-PDF."
 }

@@ -214,6 +214,82 @@ SPIELZEIT = {
 }
 
 
+# Beschreibungen als Platzhalter (Build 139). Auf dem Geraet kommen
+# sie aus synopsis_de.tsv/synopsis_en.tsv der Artwork-Datenbank unter
+# /media/fat/docs; hier wird genau so eine Datei in einem
+# Temporaerordner angelegt und DOCS_BASE darauf gezeigt. Damit laeuft
+# der Text durch denselben Weg wie spaeter auf dem MiSTer - inklusive
+# Namensabgleich und Umbruch.
+#
+# Die Texte sind eigene Kurzfassungen, nicht die der Datenbank: ein
+# Bilderverzeichnis im Repo ist nicht der Ort, fremde Texte zu
+# verbreiten.
+BESCHREIBUNG = {
+    "Super Mario World":
+        "Mario und Luigi im Dinosaurierland: 96 Ausgänge, zahlreiche "
+        "Geheimwege und der erstmals spielbare Yoshi, der Gegner "
+        "verschlucken und dadurch besondere Fähigkeiten erlangen kann. "
+        "Startspiel des Super Nintendo und bis heute eine der am "
+        "dichtesten gebauten Welten der Reihe.",
+    "The Legend of Zelda - A Link to the Past":
+        "Link zieht aus, um Zelda und die sieben Weisen zu retten. Das "
+        "Abenteuer führt durch eine helle Oberwelt und eine dunkle "
+        "Spiegelwelt, zwischen denen man hin und her wechselt, um "
+        "Rätsel zu lösen und Wege zu öffnen.",
+    "König der Löwen":
+        "Jump & Run zum Zeichentrickfilm, in zwei Lebensaltern: erst "
+        "als junger Simba, spaeter als ausgewachsener Löwe mit anderen "
+        "Fähigkeiten. Bekannt vor allem fuer seinen hohen "
+        "Schwierigkeitsgrad.",
+    "F-Zero":
+        "Rennspiel mit schwebenden Gleitern auf Hochgeschwindigkeits"
+        "kursen. Eines der ersten Spiele, das den Mode-7-Effekt des "
+        "Super Nintendo fuer eine drehbare Streckenansicht nutzte.",
+    "Chrono Trigger":
+        "Eine Gruppe von Helden reist durch mehrere Zeitalter, um eine "
+        "Katastrophe abzuwenden. Was in einer Epoche geschieht, "
+        "verändert die nächste - daraus ergeben sich mehrere "
+        "mögliche Enden.",
+    "Secret of Mana":
+        "Action-Rollenspiel, das bis zu drei Spieler gleichzeitig "
+        "zulässt. Statt eines Menüs wählt man Angriffe und Zauber "
+        "über einen Ring, der sich um die Figur legt.",
+    "Super Metroid":
+        "Samus Aran erkundet den Planeten Zebes. Neue Ausrüstung "
+        "öffnet Wege, an denen man vorher vorbeigelaufen ist - die "
+        "Vorlage fuer ein ganzes Genre.",
+    "Mega Man X":
+        "Schneller, beweglicher Ableger der Mega-Man-Reihe mit "
+        "Wandsprung und Sprint. Besiegte Gegner hinterlassen ihre "
+        "Waffe, und die Reihenfolge entscheidet über den "
+        "Schwierigkeitsgrad.",
+    "Star Fox":
+        "Raumkampf in echtem 3D, moeglich durch den Super-FX-Chip im "
+        "Modul. Drei Streckenzweige mit steigendem Schwierigkeitsgrad.",
+    "Earthbound":
+        "Rollenspiel in einer heutigen Vorstadt statt in einer "
+        "Fantasiewelt: Baseballschläger statt Schwert, Hamburger "
+        "statt Heiltrank, Bus statt Reitvogel.",
+}
+
+
+def beschreibungen_unterschieben():
+    """Eine synopsis_de.tsv anlegen und die Datenbank darauf zeigen."""
+    import fe.art as A
+    import fe.translations as T
+    ordner = os.path.join(_TMP, "docs", "SNES", "Artwork")
+    os.makedirs(ordner, exist_ok=True)
+    with open(os.path.join(ordner, "synopsis_de.tsv"), "w",
+              encoding="utf-8") as fh:
+        fh.write("#key\tsynopsis\n")
+        for titel, text in BESCHREIBUNG.items():
+            fh.write("%s\t%s\n" % (titel, text))
+    A.DOCS_BASE = os.path.join(_TMP, "docs")
+    A.FREMD_ZUSATZ_WURZELN = ()
+    A.docs_caches_leeren()
+    T.CURRENT_LANG = "de"
+
+
 def daten_unterschieben():
     """Platzhalter-Spieldaten einhaengen.
 
@@ -307,6 +383,7 @@ def main():
     os.makedirs(ZIEL, exist_ok=True)
     cover_vorbereiten()
     daten_unterschieben()
+    beschreibungen_unterschieben()
     print("Bilder nach %s" % ZIEL)
 
     print("  Hauptseite:")

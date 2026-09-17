@@ -32,7 +32,7 @@ Rechts: Jahresrückblick — eingegrenzt auf das laufende Kalenderjahr, nicht "s
   &nbsp;
   <img src="screenshots/preview_8_hauptseite_galerie.png" width="280" alt="Hauptseite als Galerie">
 </p>
-<p align="center"><sub>Die drei Ansichten (Build 122/124) — Raster, Galerie, und dieselbe Galerie auf der Hauptseite</sub></p>
+<p align="center"><sub>Die drei Ansichten (Build 122/124) — Raster, Galerie, und dieselbe Galerie auf der Hauptseite. In der Galerie steht seit Build 139 eine deutsche Spielbeschreibung neben dem Cover.</sub></p>
 <p align="center">
   <img src="screenshots/preview_crt_1_liste.png" width="240" alt="CRT: Liste">
   &nbsp;
