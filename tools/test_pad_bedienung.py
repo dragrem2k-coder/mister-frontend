@@ -90,7 +90,10 @@ def frischer_manager():
     mgr._last_repeat_time = 0.0
     mgr._last_repeat_act = None
     mgr._last_repeat_iv = I.REPEAT_INTERVAL
-    mgr._select_down = set()
+    # GEAENDERT (Build 142): aus der Menge ist ein Dict
+    # {Geraetepfad: Zeitpunkt} geworden - siehe SELECT_MAX_HOLD in
+    # fe/input.py und tools/test_select_wachhund.py.
+    mgr._select_down = {}
     mgr._select_kombiniert = False
     return mgr
 
@@ -173,7 +176,7 @@ mgr._translate(dev, EV_KEY, SELECT, 1)
 check("Select gilt als gehalten", dev.path in mgr._select_down)
 # rescan() raeumt normalerweise verschwundene Geraete ab - hier direkt
 # der Zweig, der dabei greift.
-mgr._select_down.discard(dev.path)
+mgr._select_down.pop(dev.path, None)
 if not mgr._select_down:
     mgr._select_kombiniert = False
 check("nach dem Abziehen ist der Modifikator wieder aus",

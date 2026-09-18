@@ -29,6 +29,7 @@ EV_SYN, EV_KEY, EV_ABS = 0, 1, 3
 KEY_ESC, KEY_ENTER = 1, 28
 KEY_BACKSPACE = 14
 KEY_SLASH = 53
+KEY_TAB = 15
 # BUGFIX (Nutzer-Rueckmeldung: "F2 Volltextsuche erkennt keine
 # Leertaste? Wenn ich super mario suchen will schreibt der
 # supermario"): die Leertaste war bisher komplett unbelegt (kein
@@ -187,6 +188,11 @@ KEYMAP = {
     # das letzte eingegebene Zeichen der Suchanfrage. Siehe
     # self._search_mode/self._search_query weiter unten.
     KEY_SLASH: "search",
+    # NEUES FEATURE (Build 142): Tabulator oeffnet den Listenfilter.
+    # Die F-Tasten sind voll (F9 ist bei MiSTer reserviert, siehe
+    # oben), Buchstaben gehen an den Buchstabensprung. Tab war die
+    # einzige naheliegende Taste, die noch voellig unbelegt war.
+    KEY_TAB: "filter",
     # NEUES FEATURE (Nutzerwunsch: "F2 als Taste fuer die Suche"): zweite,
     # gleichwertige Taste fuer denselben Suchmodus wie "/" oben - manche
     # finden eine dedizierte Funktionstaste intuitiver als "/". Loest
@@ -486,6 +492,31 @@ REPEAT_AXIS = {"up": "y", "down": "y", "left": "x", "right": "x"}
 # eine eigene Belegung eingerichtet hat (Menuepunkt "Tastenbelegung
 # anpassen"), behaelt die Kombination trotzdem, weil "die Taste, die
 # OK ausloest" mitwandert.
+# BUGFIX (Build 142, Nutzer-Rueckmeldung: "ab und zu, wenn ich lange
+# eine Richtung gedrueckt habe und dann wieder ins Hauptmenue gehe und
+# dann mit der Taste am Joypad in eine Kategorie will, oeffnet sich auf
+# einmal die Volltextsuche").
+#
+# Genau das, was der Kommentar bei der Geraete-Aufraeumung weiter unten
+# schon vorhergesagt hat: geht das LOSLASSEN von Select verloren, gilt
+# Select fuer den Rest der Sitzung als gehalten - und Select+A ist die
+# Suche. Abgeraeumt wurde bisher nur der eine Fall "Pad verschwindet".
+#
+# Verloren gehen kann es auch anders: ein langer Tastendruck erzeugt
+# hunderte Ereignisse, direkt danach laeuft der Nachlade-Redraw. Ist
+# das Frontend in dem Moment lange beschaeftigt - im Geraete-Profil des
+# Nutzers standen Faelle mit 1089 ms und 722 ms -, kann der
+# Eingabepuffer des Kernels ueberlaufen und ein Ereignis wegfallen.
+# Das erklaert das "ab und zu".
+#
+# Deshalb ein Wachhund statt einer weiteren Sonderbehandlung: Select,
+# das laenger als diese Zeit als "gehalten" gilt, ohne dass eine
+# Kombination ausgeloest hat, gilt als losgelassen. Niemand haelt
+# Select vier Sekunden und erwartet danach noch eine Kombination - und
+# selbst wer es taete, bekaeme nur die einzelne Aktion statt der
+# Kombination. Ein viel kleinerer Aerger als eine Suche aus dem Nichts.
+SELECT_MAX_HOLD = 4.0
+
 SELECT_COMBOS = {
     # "search_pad" statt "search": beides oeffnet dieselbe Suche, aber
     # nur der Pad-Weg blendet zusaetzlich den Buchstabenwaehler ein
@@ -504,6 +535,11 @@ SELECT_COMBOS = {
     # Tabelle ist nach der GRUNDAKTION der Taste geschluesselt, nicht
     # nach ihrer Beschriftung.
     "music_next": "ansicht",    # Select + Y  -> Ansicht wechseln
+    # Build 142: Select + L2/R2 oeffnet den Filter. L2/R2 ALLEIN sind
+    # der Favoritenschalter - dieselbe Ueberlegung wie bei "music_next"
+    # oben: der Schluessel ist die Grundaktion der Taste, nicht ihre
+    # Beschriftung.
+    "favorite": "filter",       # Select + L2/R2 -> Filter
 }
 # Select ALLEIN soll weiterhin wie Zurueck wirken (und den bestehenden
 # Dreifach-Select-Kurzbefehl fuers Beenden ausloesen). Damit sich beides
@@ -593,7 +629,9 @@ class InputManager:
         # Select-als-Modifikator (siehe SELECT_COMBOS): merkt sich, auf
         # welchem Geraet Select gerade gehalten wird, und ob waehrend
         # dieses Haltens schon eine Kombination ausgeloest hat.
-        self._select_down = set()      # Geraetepfade mit gehaltenem Select
+        # GEAENDERT (Build 142): Menge -> {Geraetepfad: Zeitpunkt}.
+        # Siehe SELECT_MAX_HOLD und _select_gehalten().
+        self._select_down = {}
         self._select_kombiniert = False
         # Build 93: gemessene Zeichendauer je Achse ("y" = hoch/runter,
         # "x" = links/rechts) als gleitendes Mittel in Sekunden. Leer =
@@ -665,7 +703,7 @@ class InputManager:
                 # (Funkverbindung weg, Kabel raus), kaeme das Loslassen
                 # nie an - Select bliebe fuer den Rest der Sitzung als
                 # Modifikator "haengen" und jedes A waere eine Suche.
-                self._select_down.discard(path)
+                self._select_down.pop(path, None)
         if not self._select_down:
             self._select_kombiniert = False
 
@@ -713,6 +751,28 @@ class InputManager:
             return basis
         return min(REPEAT_FLOOR_MAX,
                    max(minimum, gemessen * REPEAT_MESS_RESERVE))
+
+    def _select_gehalten(self):
+        """Wird Select JETZT noch gehalten? Siehe SELECT_MAX_HOLD.
+
+        Raeumt dabei abgelaufene Eintraege weg - das ist der einzige
+        Ort, der das tun muss: gefragt wird genau dann, wenn es darauf
+        ankommt (eine Kombination stuende an), und ein abgelaufener
+        Eintrag hat sonst keinerlei Wirkung."""
+        if not self._select_down:
+            return False
+        jetzt = time.monotonic()
+        for pfad, seit in list(self._select_down.items()):
+            if jetzt - seit > SELECT_MAX_HOLD:
+                self._select_down.pop(pfad, None)
+        if not self._select_down:
+            # Nichts mehr gehalten - dann ist auch die Merkung, dass
+            # eine Kombination gewirkt hat, hinfaellig. Sonst
+            # verschluckt das naechste echte Select-Loslassen sein
+            # "zurueck".
+            self._select_kombiniert = False
+            return False
+        return True
 
     def _hold(self, key_id, act):
         if act not in REPEAT_ACTIONS:
@@ -794,11 +854,11 @@ class InputManager:
             # wirkt Select weiterhin wie Zurueck.
             if act == "select":
                 if value == 1:
-                    self._select_down.add(dev.path)
+                    self._select_down[dev.path] = time.monotonic()
                     self._select_kombiniert = False
                     return None          # erst beim Loslassen melden
                 if value == 0:
-                    self._select_down.discard(dev.path)
+                    self._select_down.pop(dev.path, None)
                     if self._select_kombiniert:
                         # Die Kombination hat schon gewirkt - kein
                         # zusaetzliches "zurueck" hinterherschicken.
@@ -807,7 +867,7 @@ class InputManager:
                     self._cancel_repeat()
                     return "select"
                 return None
-            if value == 1 and self._select_down and act in SELECT_COMBOS:
+            if value == 1 and act in SELECT_COMBOS and self._select_gehalten():
                 self._select_kombiniert = True
                 self._cancel_repeat()
                 return SELECT_COMBOS[act]

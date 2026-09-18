@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-18-141",
-  "summary": "Vier Bremsen aus einem echten Geraete-Profil: die Spielbeschreibung kostete 159 ms je Galerie-Schritt und wird beim Scrollen jetzt ausgelassen, das Einlesen der Datenbank-Tabellen ist 19-mal schneller und laeuft im Hintergrund, und die Kategorie-Logos fliegen nicht mehr aus dem Speicher - das war der Haenger beim Zurueckgehen auf die Hauptseite."
+  "build_id": "2026-09-18-142",
+  "summary": "Die Volltextsuche ging manchmal von selbst auf, weil ein verlorenes Select-Loslassen die Taste dauerhaft als gehalten gelten liess - dagegen gibt es jetzt einen Wachhund. Dazu neu: ein Listenfilter nach Genre, Jahr, Spielerzahl und Entwickler, mit Tab oder Select+L2 zu oeffnen."
 }

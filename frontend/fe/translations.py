@@ -711,6 +711,26 @@ TRANSLATIONS = {
     "ansicht_nur_spieleliste": {
         "en": "No covers here - the view stays a list",
         "de": "Hier gibt es keine Cover - die Ansicht bleibt eine Liste"},
+    # NEUES FEATURE (Build 142): Listenfilter, siehe fe/filter.py.
+    "filter_titel": {"en": "FILTER", "de": "FILTER"},
+    "filter_genre": {"en": "Genre", "de": "Genre"},
+    "filter_jahr": {"en": "Year", "de": "Jahr"},
+    "filter_spieler": {"en": "Players", "de": "Spieler"},
+    "filter_entwickler": {"en": "Developer", "de": "Entwickler"},
+    "filter_alle": {"en": "all", "de": "alle"},
+    "filter_leer": {"en": "(no data)", "de": "(keine Daten)"},
+    "filter_spieler_min": {"en": "%d or more", "de": "ab %d"},
+    "filter_treffer": {"en": "%d of %d games", "de": "%d von %d Spielen"},
+    # Kurz genug, dass es auf der Roehre in zwei Zeilen passt (dort
+    # sind es 40 Zeichen je Zeile) - siehe filter_bildschirm().
+    "filter_hinweis": {
+        "en": "L/R changes · OK applies · Back cancels · "
+              "Favourite resets",
+        "de": "L/R ändert · OK übernimmt · Zurück verwirft · "
+              "Favorit setzt zurück"},
+    "filter_keine_daten": {
+        "en": "No game data for this category - nothing to filter",
+        "de": "Keine Spieledaten für diese Kategorie - nichts zu filtern"},
     "ansicht_liste":   {"en": "list",    "de": "Liste"},
     "ansicht_raster":  {"en": "grid",    "de": "Raster"},
     "ansicht_galerie": {"en": "gallery", "de": "Galerie"},

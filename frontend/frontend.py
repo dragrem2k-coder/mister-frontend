@@ -852,6 +852,7 @@ from fe.art import (
 # NEU (Build 73): Cover-Miniaturen im Leerlauf vorberechnen. Die
 # ausfuehrliche Begruendung samt der beiden ehrlichen Einschraenkungen
 # steht im Kopf von fe/prewarm.py.
+import fe.filter as FILTER
 from fe.prewarm import PREWARMER, auftraege_bauen, Doppelkern
 from fe.nachladen import MiniaturLader
 
@@ -1640,6 +1641,16 @@ class Frontend:
         # NEUES FEATURE (Nutzerwunsch: Volltextsuche statt nur
         # Anfangsbuchstaben-Sprung) - siehe jump_to_substring().
         self._search_mode = False
+        # NEUES FEATURE (Build 142): Listenfilter. Siehe fe/filter.py -
+        # die vier Felder stehen dank gameinfo.tsv ohnehin im Speicher,
+        # der Filter ist deshalb eine reine Abfrage ohne Kartenzugriff.
+        self._filter = {}
+        self._filter_zeile = 0
+        # Gefilterte Liste zwischenspeichern: _display_items() wird pro
+        # Bild MEHRFACH aufgerufen (Zeichnen, Vorauslader, Stream,
+        # Navigation). Ohne den Merker liefe der Filter bei jedem
+        # Aufruf erneut ueber die ganze Liste.
+        self._filter_cache = None
         self._search_query = ""
         # NEU (Build 114): alle Treffer der laufenden Suche, in
         # Listenreihenfolge. Bisher kannte die Suche nur "irgendein
@@ -2236,14 +2247,37 @@ class Frontend:
         risikoarme Prinzip wie schon beim Stream-Dirty-Flag."""
         node = self._current_node()
         cached = node.get("_display_items_cache")
-        if cached is not None:
+        if cached is None:
+            folder_names = sorted(node["folders"].keys(), key=str.lower)
+            folder_entries = [(fname + "/", "folder", fname)
+                              for fname in folder_names]
+            cached = folder_entries + node["items"]
+            node["_display_items_cache"] = cached
+        # NEU (Build 142): der Listenfilter. Bewusst NACH dem
+        # Knoten-Cache und in einen EIGENEN Merker - der Knoten-Cache
+        # gehoert dem Baum und ueberlebt Kategoriewechsel, der Filter
+        # ist ein Anzeigezustand und darf dort nichts hineinschreiben.
+        # Genau die Sorte Vermischung, die spaeter niemand mehr
+        # auseinanderbekommt.
+        if not FILTER.aktiv(self._filter):
             return cached
-        folder_names = sorted(node["folders"].keys(), key=str.lower)
-        folder_entries = [(fname + "/", "folder", fname)
-                          for fname in folder_names]
-        result = folder_entries + node["items"]
-        node["_display_items_cache"] = result
-        return result
+        schluessel = (id(cached), len(cached),
+                      tuple(sorted(self._filter.items(), key=lambda p: p[0])))
+        merker = self._filter_cache
+        if merker is not None and merker[0] == schluessel:
+            return merker[1]
+        gefiltert = FILTER.anwenden(cached, self._filter_meta, self._filter)
+        self._filter_cache = (schluessel, gefiltert)
+        return gefiltert
+
+    def _filter_meta(self, label):
+        """Die Spieledaten zu einem Eintrag - fuer den Filter.
+
+        Eigene kleine Methode, weil der Systemschluessel der Kategorie
+        hier NICHT immer stimmt: "Zuletzt gespielt" und "Favoriten"
+        mischen Systeme. get_meta() braucht aber einen."""
+        _name, _node, syskey = self.cats[self.cat_i]
+        return get_meta(syskey, label) if syskey else {}
 
     QUICK_GAME_MIN_LAUNCHES = 2       # mindestens 2 Starts, sonst zu
                                       # wenig Aussagekraft
@@ -5514,7 +5548,16 @@ class Frontend:
             header = leaf
             header_scale = self._fit_scale(leaf, list_right - ox, 2 * s)
         fb.text(ox, oy, header, header_scale, C_TITLE)
-        fb.text(ox, oy + 22 * s, t("entries", total), s, C_DIM)
+        # NEU (Build 142): ist ein Filter gesetzt, steht er hier neben
+        # der Eintragszahl. Ohne das waere eine kurze Liste nicht von
+        # einer kleinen Kategorie zu unterscheiden - und genau daran
+        # verzweifelt man, wenn man den Filter vergessen hat.
+        _zahl = t("entries", total)
+        fb.text(ox, oy + 22 * s, _zahl, s, C_DIM)
+        _filt = FILTER.beschriftung(self._filter, t)
+        if _filt:
+            fb.text(ox + (len(_zahl) + 2) * 8 * s, oy + 22 * s,
+                    _filt, s, accent_for(None))
 
         # (self.view steht bereits weiter oben - siehe dort; hier wuerde
         # es nur ein zweites Mal dasselbe eintragen.)
@@ -6162,7 +6205,16 @@ class Frontend:
             voll = blatt
             scale = self._fit_scale(blatt, fb.width - 2 * ox, 2 * s)
         fb.text(ox, oy, voll, scale, C_TITLE)
-        fb.text(ox, oy + 22 * s, t("entries", total), s, C_DIM)
+        # NEU (Build 142): ist ein Filter gesetzt, steht er hier neben
+        # der Eintragszahl. Ohne das waere eine kurze Liste nicht von
+        # einer kleinen Kategorie zu unterscheiden - und genau daran
+        # verzweifelt man, wenn man den Filter vergessen hat.
+        _zahl = t("entries", total)
+        fb.text(ox, oy + 22 * s, _zahl, s, C_DIM)
+        _filt = FILTER.beschriftung(self._filter, t)
+        if _filt:
+            fb.text(ox + (len(_zahl) + 2) * 8 * s, oy + 22 * s,
+                    _filt, s, accent_for(None))
 
     def _draw_items_galerie(self, items, syskey, L, message, flip):
         """Ansicht D: ein grosses Cover links, die Spieldaten rechts,
@@ -10722,6 +10774,135 @@ class Frontend:
         if msg:
             self.draw(message=msg)
 
+    def filter_bildschirm(self):
+        """Der Filter (Build 142) - siehe fe/filter.py.
+
+        BEWUSST EIN EIGENER, MODALER BILDSCHIRM mit eigener
+        Eingabeschleife, kein weiterer Zustand in der Hauptschleife.
+        Die traegt schon den Suchmodus, zwei Bestaetigungsdialoge und
+        den Attract-Modus; ein fuenfter Zweig dort waere die Stelle,
+        an der irgendwann etwas uebersehen wird. Dasselbe Muster wie
+        beim Erfolgs-Schaukasten und beim Einrichtungs-Assistenten.
+
+        Die Trefferzahl zaehlt beim Blaettern MIT. Das ist der
+        eigentliche Kniff: man sieht sofort, ob noch etwas uebrig
+        bleibt, statt den Filter zu setzen, herauszugehen und eine
+        leere Liste vorzufinden."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+        roh = self._display_items_ungefiltert()
+        werte = FILTER.werte_sammeln(roh, self._filter_meta)
+        werte["jahr"] = FILTER.jahr_kette(werte["jahr"])
+        if not any(werte[f] for f in FILTER.FELDER):
+            # Ohne Spieledaten gibt es nichts zu filtern. Das ehrlich
+            # sagen statt ein leeres Fenster zu zeigen.
+            self._force_full_redraw = True
+            self.draw(message=t("filter_keine_daten"))
+            return
+        # Mit dem Stand von JETZT anfangen, nicht bei null - wer den
+        # Filter wieder oeffnet, will ihn meist nachjustieren.
+        stand = dict(self._filter)
+        vorher = dict(self._filter)
+        zeile = min(self._filter_zeile, len(FILTER.FELDER) - 1)
+
+        while True:
+            treffer = len([e for e in roh
+                           if len(e) > 1 and e[1] == "game"
+                           and FILTER.passt(self._filter_meta(e[0]), stand)])
+            gesamt = len([e for e in roh if len(e) > 1 and e[1] == "game"])
+            fb.clear(C_BG)
+            fb.text(ox, oy, t("filter_titel"), 2 * s, C_TITLE)
+            fb.text(ox, oy + 22 * s,
+                    self.cats[self.cat_i][0].upper(), s, C_DIM)
+            y = oy + 46 * s
+            breite = W - 2 * ox
+            for i, feld in enumerate(FILTER.FELDER):
+                markiert = (i == zeile)
+                if markiert:
+                    fb.rect_rounded(ox - 2 * s, y - 3 * s, breite + 4 * s,
+                                    16 * s, C_PANEL)
+                farbe = C_TITLE if markiert else C_TEXT
+                fb.text(ox + 2 * s, y, t("filter_" + feld), s, farbe)
+                wert = FILTER.wert_text(feld, stand.get(feld), t)
+                if markiert:
+                    wert = "< %s >" % wert
+                wert_w = len(wert) * 8 * s
+                fb.text(W - ox - wert_w - 2 * s, y, wert, s,
+                        accent_for(None) if stand.get(feld) else farbe)
+                if not werte[feld]:
+                    # Ein Feld, zu dem es hier keine Daten gibt, bleibt
+                    # sichtbar - sonst wandern die Zeilen je Kategorie,
+                    # und man greift ins Leere.
+                    fb.text(ox + 2 * s + len(t("filter_" + feld)) * 8 * s
+                            + 8 * s, y, t("filter_leer"), s, C_DIM)
+                y += 20 * s
+            y += 8 * s
+            zahl = t("filter_treffer", treffer, gesamt)
+            fb.text(ox, y, zahl, s + 1,
+                    C_DIM if treffer else accent_for(None))
+            # Der Hinweis MUSS passen - auf der Roehre stehen 320
+            # Bildpunkte zur Verfuegung, auf HDMI 1920. Kleiner setzen
+            # reicht dort nicht (s ist schon 1), also umbrechen: zwei
+            # kurze Zeilen sind lesbarer als eine abgeschnittene.
+            _maxc = max(10, (W - 2 * ox) // (8 * s))
+            _zeilen = self._wrap(t("filter_hinweis"), _maxc, max_lines=3)
+            _hy = H - oy - 13 * s - (len(_zeilen) - 1) * 11 * s
+            for _z in _zeilen:
+                fb.text(ox, _hy, _z, s, C_DIM)
+                _hy += 11 * s
+            fb.flip()
+
+            akt = self.inp.read_action(timeout=1.0)
+            if akt is None:
+                continue
+            if akt == "up":
+                zeile = (zeile - 1) % len(FILTER.FELDER)
+            elif akt == "down":
+                zeile = (zeile + 1) % len(FILTER.FELDER)
+            elif akt in ("left", "right"):
+                feld = FILTER.FELDER[zeile]
+                if werte[feld]:
+                    stand[feld] = FILTER.naechster_wert(
+                        werte[feld], stand.get(feld),
+                        1 if akt == "right" else -1)
+            elif akt in ("favorite", "completed"):
+                # Eine Taste, die alles zuruecksetzt - sonst muesste
+                # man vier Zeilen einzeln auf "alle" zurueckblaettern.
+                stand = {}
+            elif akt == "ok":
+                self._filter = {k: v for k, v in stand.items() if v}
+                break
+            elif akt in ("back", "exit", "select", "filter"):
+                self._filter = vorher
+                break
+            self._filter_zeile = zeile
+
+        # Die Liste hat sich geaendert - der Merker aus _display_items()
+        # und die Position muessen mit.
+        self._filter_cache = None
+        neu_items = self._display_items()
+        if self.item_i >= len(neu_items):
+            self.item_i = max(0, len(neu_items) - 1)
+        self.scroll = 0
+        self._force_full_redraw = True
+        self.draw()
+
+    def _display_items_ungefiltert(self):
+        """Die Liste OHNE Filter - fuer den Filterbildschirm selbst.
+
+        Der muss die Werte aus dem vollen Bestand sammeln, sonst
+        schrumpft die Auswahl mit jedem gesetzten Filter und man kommt
+        nie wieder heraus."""
+        merker = self._filter
+        self._filter = {}
+        try:
+            return self._display_items()
+        finally:
+            self._filter = merker
+
     def draw_ra_showcase_screen(self, game_name, game_id):
         """RA-Erfolgs-Vitrine (Nutzerwunsch, BEWUSST als separate,
         eigenstaendige Option von der bisherigen RA-Anzeige gebaut -
@@ -13860,6 +14041,14 @@ class Frontend:
                                 else t("completed_removed"))
                             self.draw(message=msg)
                             continue
+                elif act == "filter":
+                    # NEUES FEATURE (Build 142): Listenfilter. Nur auf
+                    # Seite 1 sinnvoll - die Hauptseite zeigt
+                    # Kategorien, keine Spiele, und die haben keine
+                    # Spieledaten zum Filtern.
+                    if self.page == 1:
+                        self.filter_bildschirm()
+                    continue
                 elif act == "ra_showcase":
                     # RA-Erfolgs-Vitrine (Nutzerwunsch, separate Option) -
                     # zeigt bei einem Spiel mit RA-Unterstuetzung die

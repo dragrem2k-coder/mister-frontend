@@ -7,6 +7,76 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Die Suche ging manchmal von selbst auf** (Build 142):
+
+Rückmeldung: *„ab und zu, wenn ich lange eine Richtung gedrückt habe
+und dann wieder ins Hauptmenü gehe und dann mit der Taste am Joypad in
+eine Kategorie will, öffnet sich auf einmal die Volltextsuche."*
+
+`Select + A` ist die Suche. Ob Select gehalten wird, merkt sich
+`fe/input.py` in einer Menge von Geräten — und die wurde **nur** beim
+Loslass-Ereignis geleert. Fällt genau dieses Ereignis weg, gilt Select
+für den Rest der Sitzung als gehalten, und jedes A ist eine Suche.
+
+Der Kommentar an der einzigen Aufräumstelle sagte das wörtlich voraus:
+*„Select bliebe für den Rest der Sitzung als Modifikator hängen und
+jedes A wäre eine Suche."* Nur war der Schutz ausschließlich für den
+Fall „Pad verschwindet" gebaut.
+
+Verlieren kann man das Ereignis auch anders: ein langer Tastendruck
+erzeugt hunderte Ereignisse, direkt danach läuft der Nachlade-Redraw.
+Ist das Frontend in dem Moment lange beschäftigt — im Profil standen
+Fälle mit 1089 ms und 722 ms —, kann der Eingabepuffer des Kernels
+überlaufen. Daher das „ab und zu".
+
+Jetzt ein Wachhund statt einer weiteren Sonderbehandlung: Select, das
+länger als vier Sekunden als gehalten gilt, ohne dass eine Kombination
+ausgelöst hat, gilt als losgelassen. Neuer Test:
+`tools/test_select_wachhund.py`.
+
+**Listenfilter nach Genre, Jahr, Spielerzahl und Entwickler**
+(Build 142):
+
+Aus dem Vergleich mit einem anderen MiSTer-Frontend. Bei uns ist das
+**kein neuer Datenpfad, sondern eine Abfrage auf etwas, das ohnehin im
+Speicher liegt**: `gameinfo.tsv` liefert genau diese vier Felder seit
+Build 115. Kein Kartenzugriff, kein Dekodieren, keine neue Datei.
+
+Nachgemessen an der SNES-Tabelle: Jahr **99,2 %**, Genre **98,3 %**,
+Entwickler **99,7 %**, Spieler **99,8 %** belegt. Filtern von 1803
+Einträgen kostet hier 0,4–1,5 ms, und nur beim Ändern, nicht je Bild.
+
+Drei Dinge geben die Rohdaten aber nicht her, und `fe/filter.py` zieht
+sie gerade:
+
+- **Genre ist zusammengesetzt** und so unbrauchbar:
+  `"Adults/Mahjong/Asiatic board game"`. Der Teil nach dem letzten
+  Schrägstrich ist die Gattung — damit werden aus 160 Werten **41
+  bedienbare**.
+- **Spieler sind Bereiche** (`1-2`, `1-10`). Gefiltert wird nach
+  *mindestens N*, nicht nach Zeichenketten.
+- **Jahr** bietet Einzeljahre *und* Fünfjahres-Spannen, und die
+  Spannen entstehen aus den Daten — eine leere Spanne gibt es gar
+  nicht erst.
+
+**Bedienung:** Tab oder Select + L2/R2 öffnet den Filter. Hoch/runter
+wählt die Zeile, links/rechts blättert den Wert, OK übernimmt, Zurück
+verwirft, die Favoriten-Taste setzt alles zurück. Die Trefferzahl
+zählt beim Blättern **live mit** — man sieht sofort, ob etwas übrig
+bleibt, statt hinterher vor einer leeren Liste zu stehen. Ein gesetzter
+Filter steht danach in der Kopfzeile neben der Eintragszahl.
+
+Zwei Entscheidungen, die man leicht falsch trifft:
+
+- **Ordner bleiben immer drin.** Ein Filter, der die Navigation
+  wegfiltert, sperrt einen im Unterordner ein.
+- **Der Filter schreibt nicht in den Knoten-Cache** des Baums. Der
+  gehört dem Baum und überlebt Kategoriewechsel; der Filter ist ein
+  Anzeigezustand und bekommt einen eigenen Merker. Genau die Sorte
+  Vermischung, die man später nicht mehr auseinanderbekommt.
+
+Neuer Test: `tools/test_filter.py` (12 Blöcke).
+
 **Vier Bremsen, aus einem echten Profil vom Gerät** (Build 141):
 
 Dragrem: *„ich will noch mehr Speed."* Also `DRAGEND_PROFILE=1` auf dem
