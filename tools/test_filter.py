@@ -234,6 +234,59 @@ for key in ("filter_titel", "filter_genre", "filter_jahr", "filter_spieler",
           bool(eintrag) and "de" in eintrag and "en" in eintrag)
 
 print()
+print("Test 13: Filter als Kategorie merken (Build 143)")
+import tempfile                                          # noqa: E402
+F.KATEGORIEN_DATEI = os.path.join(tempfile.mkdtemp(prefix="dragend_filt_"),
+                                  "filter_kategorien.json")
+check("am Anfang ist nichts gemerkt", F.gemerkte_laden() == [])
+name = F.merken("SNES", {"genre": "Platform", "jahr": (1990, 1994)}, t)
+check("der Name entsteht aus der Bedingung",
+      name == "SNES / Platform / 1990-1994", str(name))
+check("und steht danach in der Datei",
+      [e["name"] for e in F.gemerkte_laden()] == [name])
+check("ist_gemerkt() findet ihn", F.ist_gemerkt(name))
+check("zweimal dasselbe merken geht nicht",
+      F.merken("SNES", {"genre": "Platform", "jahr": (1990, 1994)}, t)
+      is None)
+check("ohne Bedingung gibt es nichts zu merken",
+      F.merken("SNES", {}, t) is None)
+
+# Der Stolperstein: JSON kennt keine Tupel. Eine Jahres-Spanne kaeme
+# als Liste zurueck, und passt() vergliche danach gegen etwas anderes
+# als beim Speichern - der Filter traefe stillschweigend nichts mehr.
+geladen = F.gemerkte_laden()[0]["filter"]
+check("die Jahres-Spanne ist nach dem Laden wieder ein Tupel",
+      isinstance(geladen.get("jahr"), tuple), repr(geladen.get("jahr")))
+check("und sie filtert auch wirklich noch",
+      namen(F.anwenden(ITEMS, meta, geladen)) == ["Mario", "Bomber"],
+      "%r" % namen(F.anwenden(ITEMS, meta, geladen)))
+
+check("vergessen entfernt ihn", F.vergessen(name)
+      and not F.ist_gemerkt(name))
+check("etwas Unbekanntes zu vergessen ist kein Fehler",
+      F.vergessen("gibt es nicht") is False)
+
+# Eine kaputte Datei darf den Start nicht umwerfen.
+with open(F.KATEGORIEN_DATEI, "w", encoding="utf-8") as fh:
+    fh.write("{kaputt")
+check("eine kaputte Datei liefert eine leere Liste",
+      F.gemerkte_laden() == [])
+
+print()
+print("Test 14: die Kategorie wird auch gebaut")
+check("das Frontend kennt den Bauweg",
+      "def _gemerkte_kategorie(self, eintrag):" in quelle)
+check("und haengt sie beim Kategorienbau an",
+      "for _eintrag in FILTER.gemerkte_laden():" in quelle)
+check("die Kategorie wird ueber ihren NAMEN wiedergefunden",
+      "def _syskey_fuer_kat(self, kat_name):" in quelle
+      and "merkname = self.cats[self.cat_i][0]" in quelle)
+for key in ("filter_merken", "filter_vergessen", "filter_gemerkt"):
+    eintrag = T.TRANSLATIONS.get(key)
+    check("Text %-18s in beiden Sprachen" % key,
+          bool(eintrag) and "de" in eintrag and "en" in eintrag)
+
+print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))
     for x in fails:

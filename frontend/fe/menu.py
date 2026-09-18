@@ -29,7 +29,7 @@ from fe.settings import (
     attract_enabled, crt_menu_active, curated_only_active,
     dragend_logo_enabled, format_attract_delay, load_attract_delay,
     screen_mirror_enabled, stream_overlay_enabled,
-    fast_scroll_enabled, cover_sofort_enabled,
+    fast_scroll_enabled, cover_sofort_enabled, arbeitskopien_enabled,
     overscan_lesen, fremdquellen_enabled,
     ansicht_lesen, ansicht_haupt_lesen,
     pulse_effect_enabled, eq_effect_enabled,
@@ -173,6 +173,10 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     # passiert, und wer das eine sucht, meint oft das andere.
     cover_sofort_label = t("sys_cover_sofort_on") if cover_sofort_enabled() \
         else t("sys_cover_sofort_off")
+    # Build 143: gehoert zur Wartung, nicht zur Anzeige - es aendert
+    # nichts am Bild, sondern legt beim Vorbereiten Dateien an.
+    arbeitskopien_label = t("sys_arbeitskopien_on") if arbeitskopien_enabled() \
+        else t("sys_arbeitskopien_off")
     # NEUES FEATURE (Nutzerwunsch: Schalter fuer die Framebuffer-Groesse):
     # drei Stufen (voll / halb / viertel), die Zeile nennt den aktuellen
     # Wert - siehe fb_size_label_key() in fe/settings.py.
@@ -357,6 +361,10 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             # unter System/Wartung einmal leeren kann"). Bis dahin ging
             # das nur ueber SSH.
             (t("sys_thumb_clear"), "thumb_clear", None),
+            # Build 143: die JPEG-Arbeitskopien. Steht direkt beim
+            # Miniatur-Zwischenspeicher, weil es genau dort wirkt -
+            # geschrieben wird waehrend "Miniaturen vorbereiten".
+            (arbeitskopien_label, "arbeitskopien", None),
             (t("sys_boxart_download"), "boxart_download", None),
             (t("sys_gameinfo_download"), "gameinfo_download", None),
             (t("sys_redraw"), "redraw", None),

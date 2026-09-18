@@ -38,6 +38,16 @@ Dateizugriff: so laesst es sich vollstaendig pruefen, ohne den
 Pruefstand hochzufahren.
 """
 
+# Gemerkte Filter (Build 143, Nutzerwunsch "Filter als Kategorie
+# merken"). Eine kleine JSON-Datei neben den uebrigen Einstellungen -
+# kein neues Format, keine Datenbank. Jeder Eintrag ist
+# {"name":…, "kat":…, "filter":…}: der ANZEIGENAME, die Kategorie, aus
+# der gefiltert wird (ueber ihren Namen, nicht ihren Index - Indizes
+# verschieben sich, sobald eine Kategorie dazukommt), und die
+# Bedingung selbst.
+KATEGORIEN_DATEI = "/media/fat/frontend/filter_kategorien.json"
+KATEGORIEN_MAX = 20        # mehr waere kein Hauptmenue mehr
+
 # Die vier Felder in Anzeigereihenfolge. Die Namen sind zugleich die
 # Schluessel im Filter-Dict und (mit Vorsatz "filter_") die
 # Uebersetzungsschluessel.
@@ -257,3 +267,94 @@ def naechster_wert(werte, aktuell, richtung):
     except ValueError:
         i = 0
     return kette[(i + richtung) % len(kette)]
+
+
+# ----------------------------------------------------------------------
+# GEMERKTE FILTER
+#
+# Absichtlich ohne Texteingabe: der Name entsteht aus der Bedingung
+# ("SNES / Platform / 1990-1994"). Eine Tastatur hat am MiSTer nicht
+# jeder, und der Buchstabenwaehler fuer einen Namen waere drei
+# Bildschirme fuer etwas, das sich von selbst ergibt.
+# ----------------------------------------------------------------------
+
+def name_fuer(kat_name, filter_, t):
+    """Der Anzeigename einer gemerkten Kategorie."""
+    teile = beschriftung(filter_, t)
+    return "%s / %s" % (kat_name, teile) if teile else kat_name
+
+
+def gemerkte_laden():
+    """Die gemerkten Filter, oder eine leere Liste.
+
+    Eine kaputte oder halb geschriebene Datei darf den Start nicht
+    umwerfen - dann gibt es eben keine gemerkten Kategorien."""
+    import json
+    import os
+    try:
+        if not os.path.exists(KATEGORIEN_DATEI):
+            return []
+        with open(KATEGORIEN_DATEI, "r", encoding="utf-8") as fh:
+            daten = json.load(fh)
+        if not isinstance(daten, list):
+            return []
+        sauber = []
+        for e in daten:
+            if (isinstance(e, dict) and e.get("name") and e.get("kat")
+                    and isinstance(e.get("filter"), dict)):
+                # Jahres-Spannen sind in JSON Listen, keine Tupel -
+                # zurueckwandeln, sonst schlaegt der Vergleich in
+                # passt() fehl und niemand sieht, warum.
+                f = dict(e["filter"])
+                if isinstance(f.get("jahr"), list) and len(f["jahr"]) == 2:
+                    f["jahr"] = tuple(f["jahr"])
+                sauber.append({"name": e["name"], "kat": e["kat"],
+                               "filter": f})
+        return sauber[:KATEGORIEN_MAX]
+    except Exception:                                    # noqa: BLE001
+        return []
+
+
+def gemerkte_speichern(liste):
+    """Ueber eine .tmp-Datei und os.replace() - ein abgebrochener
+    Schreibvorgang darf keine halbe Datei hinterlassen, die beim
+    naechsten Start als kaputt gilt und alles verwirft."""
+    import json
+    import os
+    try:
+        os.makedirs(os.path.dirname(KATEGORIEN_DATEI), exist_ok=True)
+        tmp = KATEGORIEN_DATEI + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(liste[:KATEGORIEN_MAX], fh, ensure_ascii=False)
+        os.replace(tmp, KATEGORIEN_DATEI)
+        return True
+    except Exception:                                    # noqa: BLE001
+        return False
+
+
+def merken(kat_name, filter_, t):
+    """Einen Filter als Kategorie merken. Liefert den Namen, oder None
+    (nichts zu merken, oder schon vorhanden, oder voll)."""
+    if not aktiv(filter_) or not kat_name:
+        return None
+    name = name_fuer(kat_name, filter_, t)
+    liste = gemerkte_laden()
+    if any(e["name"] == name for e in liste):
+        return None
+    if len(liste) >= KATEGORIEN_MAX:
+        return None
+    liste.append({"name": name, "kat": kat_name, "filter": dict(filter_)})
+    return name if gemerkte_speichern(liste) else None
+
+
+def vergessen(name):
+    """Eine gemerkte Kategorie wieder entfernen."""
+    liste = gemerkte_laden()
+    rest = [e for e in liste if e["name"] != name]
+    if len(rest) == len(liste):
+        return False
+    return gemerkte_speichern(rest)
+
+
+def ist_gemerkt(name):
+    return any(e["name"] == name for e in gemerkte_laden())

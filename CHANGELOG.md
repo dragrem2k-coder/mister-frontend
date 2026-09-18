@@ -7,6 +7,55 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Filter als Kategorie merken, und JPEG-Arbeitskopien auf dem MiSTer**
+(Build 143):
+
+**Gemerkte Filter.** Im Filterfenster gibt es eine fünfte Zeile:
+*„Als Kategorie merken"*. Die Bedingung landet dann als eigene
+Kategorie im Hauptmenü — genau wie Favoriten oder Sammlungen. Öffnet
+man den Filter aus so einer Kategorie heraus, heißt dieselbe Zeile
+*„Diese Kategorie entfernen"*.
+
+Bewusst **ohne Texteingabe**: der Name entsteht aus der Bedingung
+(`SNES / Platform / 1990-1994`). Eine Tastatur hat am MiSTer nicht
+jeder, und der Buchstabenwähler für einen Namen wären drei Bildschirme
+für etwas, das sich von selbst ergibt.
+
+Drei Dinge, die man dabei falsch machen kann und die hier nicht
+passieren: die Quellkategorie wird über ihren **Namen** gemerkt, nicht
+über ihren Index (Indizes verschieben sich, sobald eine Kategorie
+dazukommt — und beim Merken kommt ja genau eine dazu); die gemerkte
+Kategorie ist **flach**, nicht als Baum (ein Filter beantwortet „zeig
+mir alle X", dafür durch Unterordner navigieren zu müssen wäre das
+Gegenteil); und eine Jahres-Spanne wird beim Laden **wieder zum
+Tupel** — JSON kennt keine, und als Liste hätte sie stillschweigend
+nichts mehr getroffen.
+
+**JPEG-Arbeitskopien beim Vorbereiten.** Rückfrage: *„kann man das
+nicht einmalig auf dem MiSTer als Option unter System laufen lassen,
+oder gleich bei Miniaturen vorbereiten mit drin?"*
+
+Die zweite Variante ist die bessere, und zwar deutlich:
+„Miniaturen vorbereiten" **dekodiert jedes PNG ohnehin in voller
+Größe**, weil libpng nicht verkleinert dekodieren kann. Die Bildpunkte
+liegen also schon im Speicher — übrig bleibt nur das JPEG-Kodieren. Ein
+eigener Durchlauf müsste beides tun und wäre grob doppelt so teuer.
+
+Was das bringt, steht im Geräte-Profil: PNG-Cover kosteten dort
+**353–410 ms**, JPEG-Cover **71–85 ms**.
+
+Neuer Schalter unter *System → Wartung → „JPEG-Arbeitskopien"*,
+Standard **aus** — es schreibt Dateien in die Cover-Ordner, und das
+gehört hinter einen Schalter. Drei Sicherungen: nur in unsere **eigenen**
+Ordner (nie in die fremde Datenbank unter `/media/fat/docs`), nur wenn
+noch keine Kopie da ist, und ein Fehler ist kein Fehler — klappt das
+Kodieren nicht, passiert einfach nichts.
+
+Nebenbei: die Schwelle in `tools/test_verkleinern.py` von 1,7 auf 1,5
+gesenkt. Der gemessene Faktor liegt bei 1,9–2,0; auf einer
+ausgelasteten Maschine rutschte er einmal auf 1,6 und ließ den Test
+ohne Anlass rot werden.
+
 **Die Suche ging manchmal von selbst auf** (Build 142):
 
 Rückmeldung: *„ab und zu, wenn ich lange eine Richtung gedrückt habe

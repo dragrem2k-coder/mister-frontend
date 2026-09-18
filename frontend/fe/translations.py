@@ -712,7 +712,24 @@ TRANSLATIONS = {
         "en": "No covers here - the view stays a list",
         "de": "Hier gibt es keine Cover - die Ansicht bleibt eine Liste"},
     # NEUES FEATURE (Build 142): Listenfilter, siehe fe/filter.py.
+    # NEUES FEATURE (Build 143): JPEG-Arbeitskopien beim Vorbereiten.
+    "sys_arbeitskopien_on": {
+        "en": "JPEG working copies: ON -> turn off (created while "
+              "preparing thumbnails, makes PNG covers ~5x faster)",
+        "de": "JPEG-Arbeitskopien: AN -> ausschalten (entstehen beim "
+              "Miniaturen-Vorbereiten, machen PNG-Cover ~5x schneller)"},
+    "sys_arbeitskopien_off": {
+        "en": "JPEG working copies: OFF -> turn on (writes a .jpg next "
+              "to each PNG cover while preparing thumbnails)",
+        "de": "JPEG-Arbeitskopien: AUS -> einschalten (legt beim "
+              "Miniaturen-Vorbereiten je PNG-Cover eine .jpg daneben)"},
     "filter_titel": {"en": "FILTER", "de": "FILTER"},
+    "filter_merken": {"en": "Save as category",
+                      "de": "Als Kategorie merken"},
+    "filter_vergessen": {"en": "Remove this category",
+                         "de": "Diese Kategorie entfernen"},
+    "filter_gemerkt": {"en": "Saved - now in the main menu",
+                       "de": "Gemerkt - steht jetzt im Hauptmenü"},
     "filter_genre": {"en": "Genre", "de": "Genre"},
     "filter_jahr": {"en": "Year", "de": "Jahr"},
     "filter_spieler": {"en": "Players", "de": "Spieler"},

@@ -720,6 +720,28 @@ FAST_SCROLL_WINDOW = 0.15   # s nach letzter Eingabe, in der Vsync beim
 # sieht es sofort, ohne Neustart.
 COVER_SOFORT_FLAG = "/media/fat/frontend/cover_sofort_enabled"
 
+# NEUES FEATURE (Build 143, Nutzerfrage: "kann man das nicht einmalig
+# auf dem MiSTer als Option unter System laufen lassen, oder es gleich
+# bei Miniaturen vorbereiten mit drin?").
+#
+# Gemeint sind die JPEG-Arbeitskopien aus Build 129. Sie machen aus
+# einem Cover, das beim Verkleinern 353-410 ms kostet, eines mit
+# 71-85 ms - gemessen im Geraete-Profil des Nutzers.
+#
+# Die zweite Haelfte der Frage ist die bessere: "Miniaturen
+# vorbereiten" dekodiert jedes PNG ohnehin in voller Groesse, weil
+# libpng nicht verkleinert dekodieren kann. Die Bildpunkte liegen also
+# schon im Speicher - die Arbeitskopie kostet dann nur noch das
+# JPEG-Kodieren, nicht das Dekodieren. Ein eigener Durchlauf muesste
+# beides tun und waere damit grob doppelt so teuer.
+#
+# Standard AUS, weil es DATEIEN IN DIE COVER-ORDNER SCHREIBT. Alles,
+# was ungefragt auf der Karte des Nutzers Dateien anlegt, gehoert
+# hinter einen Schalter - und nur in unsere eigenen Ordner, nie in die
+# fremde Datenbank unter /media/fat/docs (siehe dortiger Kommentar in
+# fe/art.py: "WIR SCHREIBEN DORT NIE HIN").
+ARBEITSKOPIEN_FLAG = "/media/fat/frontend/arbeitskopien_enabled"
+
 # FREMDE ARTWORK-/DATENQUELLE (Build 115). Gemeint ist die
 # Handbuch-/Artwork-Datenbank unter /media/fat/docs, die viele Nutzer
 # ueber den MiSTer-Downloader installiert haben, ohne es zu merken -
@@ -766,6 +788,28 @@ def fast_scroll_enabled():
     # beim Bauen gestolpert.
     return _hole(("fast_scroll", FAST_SCROLL_ENABLED_FLAG),
                  lambda: os.path.exists(FAST_SCROLL_ENABLED_FLAG))
+
+def arbeitskopien_enabled():
+    """Sollen beim Vorbereiten JPEG-Arbeitskopien entstehen?
+    Siehe ARBEITSKOPIEN_FLAG oben."""
+    return _hole(("arbeitskopien", ARBEITSKOPIEN_FLAG),
+                 lambda: os.path.exists(ARBEITSKOPIEN_FLAG))
+
+
+@_nach_aenderung
+def toggle_arbeitskopien():
+    if arbeitskopien_enabled():
+        try:
+            os.remove(ARBEITSKOPIEN_FLAG)
+        except OSError:
+            pass
+    else:
+        try:
+            os.makedirs(os.path.dirname(ARBEITSKOPIEN_FLAG), exist_ok=True)
+            open(ARBEITSKOPIEN_FLAG, "w").close()
+        except OSError:
+            pass
+
 
 def cover_sofort_enabled():
     """Soll die Cover-Spalte der Liste auch WAEHREND des Scrollens

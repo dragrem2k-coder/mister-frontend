@@ -2060,6 +2060,68 @@ def _skaliert_dekodierbar(path):
         return False
 
 
+def _arbeitskopie_aus_pixeln(path, w, h, pix):
+    """Neben einem PNG eine JPEG-Arbeitskopie anlegen - aus BEREITS
+    dekodierten Bildpunkten (Build 143).
+
+    Der Nutzer fragte, ob die Arbeitskopien aus Build 129 nicht
+    nachtraeglich auf dem MiSTer entstehen koennen. Das hier ist die
+    billige Antwort: "Miniaturen vorbereiten" dekodiert jedes PNG
+    ohnehin in voller Groesse (libpng kann nicht verkleinert
+    dekodieren), die Bildpunkte liegen also schon da. Uebrig bleibt
+    nur das JPEG-Kodieren. Ein eigener Durchlauf muesste beides tun.
+
+    Was der Zeichenpfad davon hat, steht im Geraete-Profil: PNG-Cover
+    kosteten dort 353-410 ms, JPEG-Cover 71-85 ms.
+
+    DREI SICHERUNGEN, jede aus einem eigenen Grund:
+
+    1. NUR IN UNSERE EIGENEN ORDNER. Die fremde Datenbank unter
+       DOCS_BASE gehoert uns nicht - siehe den Kopfkommentar dort:
+       "WIR SCHREIBEN DORT NIE HIN". Dasselbe gilt fuer Artpacks und
+       fuer die Spiele-Ordner.
+    2. NUR, WENN NOCH KEINE DA IST. Sonst schriebe jeder Durchlauf
+       dieselbe Datei neu.
+    3. FEHLER SIND KEINE FEHLER. Klappt das Kodieren oder Schreiben
+       nicht (Karte voll, schreibgeschuetzt, Bibliothek fehlt), passiert
+       einfach nichts. Ein Cover darf nie deshalb fehlen, weil eine
+       Beschleunigung nicht geklappt hat - dieselbe Regel wie in
+       mister_boxart.arbeitskopie_schreiben()."""
+    if not path or not pix or w <= 0 or h <= 0:
+        return False
+    if path[-4:].lower() != ".png":
+        return False
+    eigene = [b for b in (ART_BASE, ART_HD) if b]
+    if not any(path.startswith(b + os.sep) or path.startswith(b + "/")
+               for b in eigene):
+        return False
+    ziel = path[:-4] + ".jpg"
+    if os.path.exists(ziel):
+        return False
+    try:
+        from fe import bildlib as _bl
+        if not _bl.schreiben_verfuegbar():
+            return False
+        jpg = _bl.encode_jpeg(w, h, pix, 90)
+        if not jpg:
+            return False
+        # Ueber eine .tmp-Datei und os.replace(): ein abgebrochener
+        # Durchlauf darf kein halbes JPEG hinterlassen, das der
+        # Zeichenpfad danach dem PNG vorzieht.
+        tmp = ziel + ".tmp"
+        with open(tmp, "wb") as fh:
+            fh.write(jpg)
+        os.replace(tmp, ziel)
+        LOG("Arbeitskopie angelegt: %s" % os.path.basename(ziel))
+        return True
+    except Exception:                                    # noqa: BLE001
+        try:
+            os.remove(ziel + ".tmp")
+        except OSError:
+            pass
+        return False
+
+
 def prewarm_thumb_mehrfach(path, kaesten):
     """Mehrere Kastengroessen desselben Covers - mit EINEM Lesen und
     EINEM Dekodieren. Rueckgabe: Liste der Einzelergebnisse, in der
@@ -2142,6 +2204,17 @@ def prewarm_thumb_mehrfach(path, kaesten):
         for i in offen:
             ergebnisse[i] = "fehler"
         return ergebnisse
+    # Build 143: die Bildpunkte liegen jetzt ohnehin da - siehe
+    # _arbeitskopie_aus_pixeln(). Nur wenn der Nutzer es eingeschaltet
+    # hat; der Schalter wird hier gelesen und nicht weiter oben, damit
+    # er nichts kostet, solange es gar nichts zu schreiben gibt.
+    try:
+        from fe.settings import arbeitskopien_enabled as _ak_an
+        if _ak_an():
+            _arbeitskopie_aus_pixeln(path, gelesen[0], gelesen[1],
+                                     gelesen[2])
+    except Exception:                                    # noqa: BLE001
+        pass
     for i in offen:
         bw, bh = kaesten[i]
         try:

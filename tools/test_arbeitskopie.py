@@ -293,6 +293,90 @@ check("keine Groessenbremse (sie haette den Gewinn verhindert)",
 shutil.rmtree(TMP, ignore_errors=True)
 
 print()
+print("Build 143: Arbeitskopien beim Vorbereiten")
+# Nutzerfrage: "kann man das nicht einmalig auf dem MiSTer als Option
+# unter System laufen lassen oder gleich bei Miniaturen vorbereiten
+# mit drin?"
+#
+# Die zweite Variante ist fast gratis: "Miniaturen vorbereiten"
+# dekodiert jedes PNG ohnehin in voller Groesse (libpng kann nicht
+# verkleinert dekodieren), die Bildpunkte liegen also schon da. Uebrig
+# bleibt nur das JPEG-Kodieren.
+import os as _os                                          # noqa: E402
+import tempfile as _tf                                    # noqa: E402
+import fe.art as _A                                       # noqa: E402
+
+_tmp = _tf.mkdtemp(prefix="dragend_ak_")
+_alt_base, _alt_hd = _A.ART_BASE, _A.ART_HD
+try:
+    _A.ART_BASE = _os.path.join(_tmp, "art")
+    _A.ART_HD = _os.path.join(_tmp, "art_hd")
+    _os.makedirs(_os.path.join(_A.ART_BASE, "SNES"))
+    _eigen = _os.path.join(_A.ART_BASE, "SNES", "Spiel.png")
+    open(_eigen, "wb").write(b"\x89PNG platzhalter")
+    _pix = bytearray(b"\x40\x80\xc0\xff" * (8 * 8))
+
+    # 1. Fremde Ordner sind tabu - das ist die wichtigste der drei
+    #    Sicherungen. /media/fat/docs gehoert uns nicht.
+    _fremd = _os.path.join(_tmp, "docs", "SNES", "Artwork")
+    _os.makedirs(_fremd)
+    _fremd_png = _os.path.join(_fremd, "Spiel.png")
+    open(_fremd_png, "wb").write(b"\x89PNG platzhalter")
+    check("in fremde Ordner wird NIE geschrieben",
+          _A._arbeitskopie_aus_pixeln(_fremd_png, 8, 8, _pix) is False
+          and not _os.path.exists(_fremd_png[:-4] + ".jpg"))
+
+    # 2. Nur PNG-Quellen.
+    check("ein JPEG bekommt keine Arbeitskopie",
+          _A._arbeitskopie_aus_pixeln(
+              _os.path.join(_A.ART_BASE, "SNES", "Spiel.jpg"),
+              8, 8, _pix) is False)
+
+    # 3. Nichts ohne Bildpunkte.
+    check("ohne Bildpunkte passiert nichts",
+          _A._arbeitskopie_aus_pixeln(_eigen, 8, 8, b"") is False
+          and _A._arbeitskopie_aus_pixeln(_eigen, 0, 0, _pix) is False)
+
+    # 4. Eine vorhandene wird nicht neu geschrieben.
+    _ziel = _eigen[:-4] + ".jpg"
+    open(_ziel, "wb").write(b"schon da")
+    check("eine vorhandene Arbeitskopie bleibt unberuehrt",
+          _A._arbeitskopie_aus_pixeln(_eigen, 8, 8, _pix) is False
+          and open(_ziel, "rb").read() == b"schon da")
+    _os.remove(_ziel)
+
+    # 5. Der echte Weg - nur wenn die Bildbibliothek da ist. Auf einem
+    #    Rechner ohne libjpeg-turbo ist "kein Fehler" das richtige
+    #    Ergebnis, nicht ein roter Test.
+    from fe import bildlib as _bl
+    if _bl.schreiben_verfuegbar():
+        check("mit Bibliothek entsteht eine .jpg",
+              _A._arbeitskopie_aus_pixeln(_eigen, 8, 8, _pix) is True
+              and _os.path.exists(_ziel))
+        check("und sie ist ein echtes JPEG",
+              open(_ziel, "rb").read(3) == b"\xff\xd8\xff")
+        check("kein .tmp bleibt liegen",
+              not _os.path.exists(_ziel + ".tmp"))
+    else:
+        check("ohne Bildbibliothek ist es kein Fehler",
+              _A._arbeitskopie_aus_pixeln(_eigen, 8, 8, _pix) is False)
+
+    # 6. Der Schalter muss gefragt werden - sonst schreibt das
+    #    Vorbereiten ungefragt Dateien auf die Karte des Nutzers.
+    _quelle = open(_os.path.join(_REPO, "frontend", "fe", "art.py"),
+                   encoding="utf-8").read()
+    check("prewarm_thumb_mehrfach fragt den Schalter",
+          "arbeitskopien_enabled as _ak_an" in _quelle
+          and "_arbeitskopie_aus_pixeln(path, gelesen[0]" in _quelle)
+    import fe.settings as _S                              # noqa: E402
+    check("und der Schalter ist standardmaessig AUS",
+          not _os.path.exists(_S.ARBEITSKOPIEN_FLAG))
+finally:
+    _A.ART_BASE, _A.ART_HD = _alt_base, _alt_hd
+    import shutil as _sh
+    _sh.rmtree(_tmp, ignore_errors=True)
+
+print()
 if fails:
     print("FEHLGESCHLAGEN (%d):" % len(fails))
     for f_ in fails:

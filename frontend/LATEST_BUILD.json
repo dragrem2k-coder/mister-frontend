@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-18-142",
-  "summary": "Die Volltextsuche ging manchmal von selbst auf, weil ein verlorenes Select-Loslassen die Taste dauerhaft als gehalten gelten liess - dagegen gibt es jetzt einen Wachhund. Dazu neu: ein Listenfilter nach Genre, Jahr, Spielerzahl und Entwickler, mit Tab oder Select+L2 zu oeffnen."
+  "build_id": "2026-09-18-143",
+  "summary": "Ein Filter laesst sich jetzt als eigene Kategorie merken - er steht danach im Hauptmenue wie Favoriten. Dazu ein Schalter, der beim Miniaturen-Vorbereiten JPEG-Arbeitskopien anlegt: das PNG wird dort ohnehin dekodiert, also kostet die Kopie nur noch das Kodieren."
 }

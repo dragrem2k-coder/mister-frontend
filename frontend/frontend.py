@@ -229,6 +229,7 @@ from fe.settings import (
     toggle_screen_mirror, toggle_stream_overlay,
     fast_scroll_enabled, toggle_fast_scroll,
     cover_sofort_enabled, toggle_cover_sofort,
+    arbeitskopien_enabled, toggle_arbeitskopien,
     overscan_lesen, overscan_weiter,
     ANSICHTEN, ansicht_lesen, ansicht_schreiben,
     ansicht_haupt_lesen, ansicht_haupt_schreiben,
@@ -1871,6 +1872,20 @@ class Frontend:
             count = _count_tree_items(collections)
             self.cats.append(("%s (%d)" % (t("collections_cat"), count),
                               collections, None))
+        # NEUES FEATURE (Build 143, Nutzerwunsch "Filter als Kategorie
+        # merken"): jede gemerkte Bedingung wird eine eigene
+        # Top-Level-Kategorie - genau wie Favoriten oder Sammlungen.
+        # Steht bewusst HIER, nach den Systemen: die Quellkategorie
+        # muss schon gebaut sein, aus ihr wird gefiltert.
+        for _eintrag in FILTER.gemerkte_laden():
+            _knoten = self._gemerkte_kategorie(_eintrag)
+            if _knoten is None:
+                continue
+            _anz = _count_tree_items(_knoten)
+            if _anz:
+                self.cats.append(("%s (%d)" % (_eintrag["name"], _anz),
+                                  _knoten, self._syskey_fuer_kat(
+                                      _eintrag["kat"])))
         ra_hunter = self.build_ra_hunter_category()
         if ra_hunter:
             count = _count_tree_items(ra_hunter)
@@ -2283,6 +2298,51 @@ class Frontend:
                                       # wenig Aussagekraft
     QUICK_GAME_MAX_AVG_SECONDS = 900  # 15 Minuten durchschnittliche
                                       # Sitzungsdauer als Schwelle
+
+    def _syskey_fuer_kat(self, kat_name):
+        """Der Systemschluessel einer Kategorie ueber ihren Namen."""
+        for name, _node, syskey in self.cats:
+            if name == kat_name:
+                return syskey
+        return None
+
+    def _gemerkte_kategorie(self, eintrag):
+        """Aus einem gemerkten Filter einen Kategorieknoten bauen.
+
+        FLACH, nicht als Baum. Ein Filter beantwortet die Frage "zeig
+        mir alle X" - dafuer durch Unterordner navigieren zu muessen
+        waere genau das Gegenteil. Die Unterordner der Quellkategorie
+        werden deshalb eingesammelt und ihr Inhalt mit hineingelegt.
+
+        Liefert None, wenn es die Quellkategorie nicht (mehr) gibt -
+        etwa weil das System abgesteckt wurde. Der gemerkte Eintrag
+        bleibt dabei erhalten: steckt die Platte wieder dran, ist die
+        Kategorie beim naechsten Scan von selbst wieder da."""
+        quelle = None
+        syskey = None
+        for name, node, sk in self.cats:
+            if name == eintrag["kat"]:
+                quelle, syskey = node, sk
+                break
+        if quelle is None or not isinstance(quelle, dict):
+            return None
+        alle = []
+
+        def _sammeln(knoten):
+            alle.extend(knoten.get("items", []))
+            for unter in knoten.get("folders", {}).values():
+                _sammeln(unter)
+
+        _sammeln(quelle)
+        filt = eintrag["filter"]
+        treffer = [e for e in alle
+                   if len(e) > 1 and e[1] == "game"
+                   and FILTER.passt(get_meta(syskey, e[0]) if syskey else {},
+                                    filt)]
+        if not treffer:
+            return None
+        return {"folders": {}, "items": sorted(treffer,
+                                               key=lambda e: e[0].lower())}
 
     def build_collections_category(self):
         """Baut die "Sammlungen"-Kategorie (Nutzerwunsch: "digitales
@@ -10819,6 +10879,8 @@ class Frontend:
                     self.cats[self.cat_i][0].upper(), s, C_DIM)
             y = oy + 46 * s
             breite = W - 2 * ox
+            kat_name = self.cats[self.cat_i][0]
+            gemerkt = FILTER.ist_gemerkt(kat_name.rsplit(" (", 1)[0])
             for i, feld in enumerate(FILTER.FELDER):
                 markiert = (i == zeile)
                 if markiert:
@@ -10839,7 +10901,23 @@ class Frontend:
                     fb.text(ox + 2 * s + len(t("filter_" + feld)) * 8 * s
                             + 8 * s, y, t("filter_leer"), s, C_DIM)
                 y += 20 * s
-            y += 8 * s
+            # Fuenfte Zeile: merken bzw. wieder entfernen (Build 143).
+            # Als ZEILE und nicht als eigene Taste, weil sie selten
+            # gebraucht wird - eine Taste dafuer muesste man sich
+            # merken, eine Zeile sieht man.
+            if gemerkt:
+                aktions_text = t("filter_vergessen")
+                aktion_moeglich = True
+            else:
+                aktions_text = t("filter_merken")
+                aktion_moeglich = FILTER.aktiv(stand)
+            if zeile == len(FILTER.FELDER):
+                fb.rect_rounded(ox - 2 * s, y - 3 * s, breite + 4 * s,
+                                16 * s, C_PANEL)
+            fb.text(ox + 2 * s, y, aktions_text, s,
+                    C_TITLE if zeile == len(FILTER.FELDER)
+                    else (C_TEXT if aktion_moeglich else C_DIM))
+            y += 28 * s
             zahl = t("filter_treffer", treffer, gesamt)
             fb.text(ox, y, zahl, s + 1,
                     C_DIM if treffer else accent_for(None))
@@ -10858,11 +10936,12 @@ class Frontend:
             akt = self.inp.read_action(timeout=1.0)
             if akt is None:
                 continue
+            _zeilen = len(FILTER.FELDER) + 1
             if akt == "up":
-                zeile = (zeile - 1) % len(FILTER.FELDER)
+                zeile = (zeile - 1) % _zeilen
             elif akt == "down":
-                zeile = (zeile + 1) % len(FILTER.FELDER)
-            elif akt in ("left", "right"):
+                zeile = (zeile + 1) % _zeilen
+            elif akt in ("left", "right") and zeile < len(FILTER.FELDER):
                 feld = FILTER.FELDER[zeile]
                 if werte[feld]:
                     stand[feld] = FILTER.naechster_wert(
@@ -10872,6 +10951,20 @@ class Frontend:
                 # Eine Taste, die alles zuruecksetzt - sonst muesste
                 # man vier Zeilen einzeln auf "alle" zurueckblaettern.
                 stand = {}
+            elif akt == "ok" and zeile == len(FILTER.FELDER):
+                if gemerkt:
+                    FILTER.vergessen(kat_name.rsplit(" (", 1)[0])
+                    self._filter = vorher
+                    self._kategorien_neu_bauen()
+                    return
+                if FILTER.aktiv(stand):
+                    name = FILTER.merken(kat_name.rsplit(" (", 1)[0],
+                                         {k: v for k, v in stand.items()
+                                          if v}, t)
+                    self._filter = {k: v for k, v in stand.items() if v}
+                    if name:
+                        self._kategorien_neu_bauen(meldung=t("filter_gemerkt"))
+                        return
             elif akt == "ok":
                 self._filter = {k: v for k, v in stand.items() if v}
                 break
@@ -10889,6 +10982,31 @@ class Frontend:
         self.scroll = 0
         self._force_full_redraw = True
         self.draw()
+
+    def _kategorien_neu_bauen(self, meldung=None):
+        """Nach dem Merken/Vergessen: Kategorien neu aufbauen und die
+        aktuelle wiederfinden.
+
+        Ueber den NAMEN, nicht ueber den Index - es kommt ja gerade
+        eine Kategorie dazu oder faellt weg, und danach zeigt derselbe
+        Index woanders hin. Genau der Fehler, der bei den Favoriten
+        schon einmal dafuer gesorgt hat, dass man nach dem Markieren in
+        einer anderen Liste stand."""
+        merkname = self.cats[self.cat_i][0]
+        self.build_categories()
+        for i, (name, _node, _sk) in enumerate(self.cats):
+            if name == merkname:
+                self.cat_i = i
+                break
+        else:
+            self.cat_i = min(self.cat_i, len(self.cats) - 1)
+        self._filter_cache = None
+        items = self._display_items()
+        if self.item_i >= len(items):
+            self.item_i = max(0, len(items) - 1)
+        self.scroll = 0
+        self._force_full_redraw = True
+        self.draw(message=meldung)
 
     def _display_items_ungefiltert(self):
         """Die Liste OHNE Filter - fuer den Filterbildschirm selbst.
@@ -14358,6 +14476,14 @@ class Frontend:
                             # Zeichnen geprueft, siehe _draw_page_items_impl()),
                             # kein Neustart noetig.
                             toggle_fast_scroll()
+                            self._refresh_system_category()
+                        elif kind == "arbeitskopien":
+                            # NEUES FEATURE (Build 143): siehe
+                            # ARBEITSKOPIEN_FLAG in fe/settings.py.
+                            # Wirkt beim naechsten "Miniaturen
+                            # vorbereiten", nicht sofort - deshalb
+                            # steht der Preis in der Menuezeile.
+                            toggle_arbeitskopien()
                             self._refresh_system_category()
                         elif kind == "cover_sofort":
                             # NEUES FEATURE (Build 138, Nutzerwunsch:
