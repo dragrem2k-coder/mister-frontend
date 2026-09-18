@@ -530,9 +530,25 @@ TRANSLATIONS = {
     "wot_title": {"en": "ZUFALLS-ZOCK", "de": "ZUFALLS-ZOCK"},
     "wot_hint": {"en": "Up/Down: select   OK: confirm   ESC: back",
                  "de": "Hoch/Runter: wählen   OK: bestätigen   ESC: zurück"},
+    # GEAENDERT (Build 144): bis Build 143 bekamen zwei voellig verschiedene
+    # Lagen dieselbe Meldung - "gar keine Spiele gescannt" und "alle Spiele
+    # waren schon einmal dran". Im ersten Fall ist ein Scan faellig, im
+    # zweiten hilft nur das Zuruecksetzen der gespielt-Liste. Deshalb jetzt
+    # getrennte Texte, und im zweiten Fall eine Wahl statt einer Sackgasse.
     "wot_pool_empty": {
-        "en": "No unplayed game left in the list - everything has been rated!",
-        "de": "Kein noch nicht bewertetes Spiel mehr in der Liste - alles durchgespielt!"},
+        "en": "All %d games have been drawn already. The list remembers "
+              "every start.",
+        "de": "Alle %d Spiele waren schon dran. Die Liste merkt sich "
+              "jeden Start."},
+    "wot_pool_keine_spiele": {
+        "en": "No games found. Scan the game list first (System - Rescan game list).",
+        "de": "Keine Spiele gefunden. Bitte zuerst die Spieleliste einlesen "
+              "(System - Spieleliste neu einlesen)."},
+    "wot_reset_option": {
+        "en": "Reset list", "de": "Liste zurücksetzen"},
+    "wot_reset_done": {
+        "en": "List reset - all %d games are back in the pool.",
+        "de": "Liste zurückgesetzt - alle %d Spiele sind wieder dabei."},
     "wot_no_rom_match": {
         "en": "Drew several games but found no matching ROM file for any of them.",
         "de": "Mehrere Spiele gezogen, aber für keins eine passende ROM-Datei gefunden."},

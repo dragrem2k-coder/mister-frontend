@@ -7,6 +7,51 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Die fehlende Bedienhilfe auf dem CRT, und eine Sackgasse beim
+Zufalls-Zock** (Build 144):
+
+**Auf dem CRT fehlte in vielen Bildschirmen die untere Hinweiszeile —
+komplett.** Nicht abgeschnitten, sondern ersatzlos. An über einem
+Dutzend Stellen stand wörtlich dieselbe Rechnung:
+
+```
+hint_w = len(hint) * 8 * sc
+fb.text((W - hint_w) // 2, H - oy - 8 * sc, hint, sc, C_DIM, C_BG)
+```
+
+Passt der Hinweis nicht in eine Zeile, wird `(W - hint_w) // 2`
+**negativ** — und `text()` zeichnet bei negativem x überhaupt nichts.
+Auf 320×240 stehen bei Skalierung 1 genau 37 Zeichen zur Verfügung;
+**elf** der deutschen Hinweistexte sind länger, darunter die
+Bedienhilfe des Zufalls-Zock-Bildschirms (50 Zeichen), die des
+Einrichtungs-Assistenten (65) und die der Ja/Nein-Abfrage (51). Auf
+HDMI ist immer genug Platz — deshalb ist es nie jemandem aufgefallen.
+
+Statt achtzehnmal dieselbe Rechnung gibt es jetzt `_hinweis_unten()`:
+passt der Hinweis in eine Zeile, entsteht **Pixel für Pixel exakt das
+bisherige Bild** (der Prüfstand vergleicht das bitgenau), sonst wird er
+an Wortgrenzen auf höchstens zwei Zeilen umgebrochen. In der
+Ja/Nein-Abfrage sitzt der Hinweis innerhalb der Box — dort galt
+derselbe Fehler gegen `box_w` statt gegen `W`, auch das ist behoben.
+
+**Zufalls-Zock: „alles durchgespielt" war zweimal falsch.** Bisher lief
+alles in eine einzige Meldung, sobald nichts mehr ziehbar war. Dahinter
+steckten aber zwei völlig verschiedene Lagen: wer **noch nie gescannt**
+hatte, bekam „alles durchgespielt" zu lesen; und wer wirklich alles
+einmal gezogen hatte, saß in einer **Sackgasse**, weil sich die
+gespielt-Liste nirgends im Frontend zurücksetzen ließ — man musste
+`wot_played.json` von Hand löschen.
+
+Jetzt: leerer Bestand verweist auf den Scan, und „alles dran gewesen"
+bietet das Zurücksetzen gleich mit an, mit der Anzahl im Text. Dafür
+kann `_wizard_choice()` neuerdings einen Erklärtext zwischen Titel und
+Optionen setzen — sonst hätte jede Frage, die mehr als drei Worte
+Begründung braucht, auf zwei Bildschirme verteilt werden müssen.
+
+Zwei neue Prüfungen: `tools/test_hinweiszeile.py` (jeder Hinweistext in
+beiden Sprachen auf 320×240, plus der Nachweis, dass sich auf 1920×1080
+kein Pixel verschiebt) und `tools/test_zufallszock.py`.
+
 **Filter als Kategorie merken, und JPEG-Arbeitskopien auf dem MiSTer**
 (Build 143):
 

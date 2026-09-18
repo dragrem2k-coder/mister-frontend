@@ -282,7 +282,7 @@ import fe.paths
 import mister_wot
 mister_wot.configure(GAME_SYSTEMS, lambda: fe.paths.GAMES_BASES, LOG)
 from mister_wot import (
-    wot_mark_played, wot_normalize_title, wot_load_played,
+    wot_mark_played, wot_normalize_title, wot_load_played, wot_save_played,
 )
 
 from fe.ra_core import RA_CORES_DIR_ABS, RA_CORES_DIR_REL, RA_CORE_NAME_CANDIDATES, find_ra_core
@@ -6805,11 +6805,22 @@ class Frontend:
         btn_w = max(len(l) for l in labels) * 8 * s + 16 * s
         gap = 14 * s
         pad = 12 * s
-        hint_h = 10 * hint_s
+
+        # BUGFIX (Build 144): der Hinweis wurde bisher IMMER einzeilig
+        # gerechnet. Die Box ist aber auf W - 16*s gedeckelt - auf
+        # 320x240 passen dort 35 Zeichen hinein, der deutsche Hinweis
+        # hat 51. Damit wurde x0 + (box_w - hw) // 2 negativ, und
+        # text() zeichnet bei negativem x gar nichts: auf dem CRT stand
+        # in jeder Ja/Nein-Abfrage die Bedienhilfe schlicht nicht da.
+        # Jetzt wird sie innerhalb der Box umgebrochen (hoechstens zwei
+        # Zeilen); passt sie in eine, bleibt das Bild unveraendert.
+        hint_zeilen = self._wrap_text(
+            hint, max(8, (W - 16 * s - 2 * pad) // (8 * hint_s)))[:2]
+        hint_h = 10 * hint_s * len(hint_zeilen)
 
         text_w = max(len(ln) for ln in lines) * 8 * s
         buttons_w = btn_w * 2 + gap
-        hint_w = len(hint) * 8 * hint_s
+        hint_w = max(len(ln) for ln in hint_zeilen) * 8 * hint_s
         box_w = min(W - 16 * s, max(text_w, buttons_w, hint_w) + 2 * pad)
         box_h = pad + len(lines) * line_h + hint_h + gap + btn_h + pad
         x0 = (W - box_w) // 2
@@ -6824,8 +6835,11 @@ class Frontend:
             fb.text(x0 + (box_w - tw) // 2, ty, ln, s, C_TITLE, C_PANEL)
             ty += line_h
 
-        hw = len(hint) * 8 * hint_s
-        fb.text(x0 + (box_w - hw) // 2, ty, hint, hint_s, C_DIM, C_PANEL)
+        for _hln in hint_zeilen:
+            hw = len(_hln) * 8 * hint_s
+            fb.text(x0 + max(0, (box_w - hw) // 2), ty, _hln,
+                    hint_s, C_DIM, C_PANEL)
+            ty += 10 * hint_s
 
         bx = x0 + (box_w - buttons_w) // 2
         by = y0 + box_h - pad - btn_h
@@ -9955,8 +9969,7 @@ class Frontend:
                 y += 40 * s
             hint = t("core_choice_hint")
             sc = s - 1 if s > 1 else 1
-            hint_w = len(hint) * 8 * sc
-            fb.text((W - hint_w) // 2, H - oy - 8 * sc, hint, sc, C_DIM, C_BG)
+            self._hinweis_unten(hint, sc)
             fb.flip()
             act = self.inp.read_action()
             if act in ("up", "down", "left", "right"):
@@ -9998,7 +10011,9 @@ class Frontend:
         seine Menues aufbaut (_attract_games_pool()) - dadurch ist das Roulette
         immer deckungsgleich mit dem, was tatsaechlich auf dem MiSTer liegt,
         und aktualisiert sich automatisch mit jedem Rescan. Bereits gespielte
-        Spiele (wot_played.json) werden herausgefiltert."""
+        Spiele (wot_played.json) werden herausgefiltert; ist dadurch nichts
+        mehr uebrig, bietet der Bildschirm seit Build 144 das Zuruecksetzen
+        dieser Liste an, statt in einer Sackgasse zu enden."""
         fb = self.fb
         W, H = fb.width, fb.height
         s = max(1, H // 360)
@@ -10024,14 +10039,40 @@ class Frontend:
         # (system, title, genre, ra_id, rom, score) - genre/ra_id bleiben leer,
         # Ziehen/Anzeige/Start darunter bleiben unveraendert.
         played_set, _ = wot_load_played()
+        pool = self._attract_games_pool()
         playable = []
-        for label, syskey, arg in self._attract_games_pool():
+        for label, syskey, arg in pool:
             if (syskey, wot_normalize_title(label)) in played_set:
                 continue
             playable.append((syskey, label, "", "", arg[0], 1.0))
         if not playable:
-            self._wizard_info(t("wot_title"), [t("wot_pool_empty")], skippable=False)
-            return
+            # GEAENDERT (Build 144): bis Build 143 lief hier alles in EINE
+            # Meldung ("alles durchgespielt"), egal ob der Bestand leer war
+            # oder nur die gespielt-Liste voll. Wer noch gar nicht gescannt
+            # hatte, bekam also "durchgespielt" zu lesen; und wer wirklich
+            # alles einmal gezogen hatte, sass in einer Sackgasse, weil die
+            # gespielt-Liste nirgends im Frontend zurueckzusetzen war - man
+            # musste wot_played.json von Hand loeschen.
+            if not pool:
+                self._wizard_info(t("wot_title"),
+                                  [t("wot_pool_keine_spiele")],
+                                  skippable=False)
+                return
+            wahl = self._wizard_choice(
+                t("wot_title"),
+                [t("wot_reset_option"), t("wot_option_back")],
+                hint_key="wot_hint",
+                lines=[t("wot_pool_empty") % len(pool)])
+            if wahl != 0:
+                return
+            wot_save_played([])
+            LOG("Zufalls-Zock: gespielt-Liste zurueckgesetzt (%d Spiele wieder ziehbar)"
+                % len(pool))
+            playable = [(syskey, label, "", "", arg[0], 1.0)
+                        for label, syskey, arg in pool]
+            self._wizard_info(t("wot_title"),
+                              [t("wot_reset_done") % len(pool)],
+                              skippable=False)
 
         # Rotations-Queue: gemischte spielbare Liste, jeweils drei entnehmen;
         # ist sie fast leer, neu mischen -> keine Wiederholung, bis alle
@@ -10186,8 +10227,7 @@ class Frontend:
 
                 hint = t("wot_hint")
                 sc = s - 1 if s > 1 else 1
-                hint_w = len(hint) * 8 * sc
-                fb.text((W - hint_w) // 2, H - oy - 8 * sc, hint, sc, C_DIM, C_BG)
+                self._hinweis_unten(hint, sc)
                 fb.flip()
 
                 act = self.inp.read_action()
@@ -10289,8 +10329,7 @@ class Frontend:
                 fb.text(ox, y, prefix + label, s, color, C_BG)
                 y += option_row_h
             hint = t("wot_hint")
-            hint_w = len(hint) * 8 * sc
-            fb.text((W - hint_w) // 2, H - oy - 8 * sc, hint, sc, C_DIM, C_BG)
+            self._hinweis_unten(hint, sc)
             fb.flip()
             act = self.inp.read_action()
             if act == "up":
@@ -10342,10 +10381,7 @@ class Frontend:
         for key in ("ra_setup_line2", "ra_setup_line3", "ra_setup_line4"):
             fb.text(ox, y, t(key), s - 1 if s > 1 else 1, C_DIM, C_BG)
             y += 28 * s
-        hint = t("attract_hint")
-        hint_w = len(hint) * 8 * (s - 1 if s > 1 else 1)
-        fb.text((W - hint_w) // 2, H - oy - 8 * (s - 1 if s > 1 else 1),
-                hint, s - 1 if s > 1 else 1, C_DIM, C_BG)
+        self._hinweis_unten(t("attract_hint"), s - 1 if s > 1 else 1)
         fb.flip()
         while True:
             act = self.inp.read_action()
@@ -10361,13 +10397,22 @@ class Frontend:
     # Zeichencode zu duplizieren.
     # ------------------------------------------------------------------
 
-    def _wizard_choice(self, title, options, initial=0, hint_key=None):
+    def _wizard_choice(self, title, options, initial=0, hint_key=None,
+                       lines=None):
         """Generische Ein-aus-N-Auswahl (gleiches Muster wie
         draw_core_choice_screen()). Hoch/Runter wechselt, OK liefert
         den gewaehlten Index. ESC/back bricht den KOMPLETTEN
         Assistenten ab (liefert None) - der Aufrufer (run_setup_
         wizard()) muss darauf mit einem sofortigen Ruecksprung
-        reagieren, OHNE die "erledigt"-Markierung zu setzen."""
+        reagieren, OHNE die "erledigt"-Markierung zu setzen.
+
+        ERGAENZT (Build 144): optionaler Erklaertext zwischen Titel und
+        Optionen (lines=[...], umgebrochen wie in _wizard_info()). Ohne
+        ihn muss jede Frage, die mehr als drei Worte Begruendung
+        braucht, auf zwei Bildschirme verteilt werden - erst Info, dann
+        Auswahl -, was sich auf dem Pad wie ein Fehler anfuehlt. Die
+        Zeilen werden hart begrenzt, damit die Optionen und die
+        Hinweiszeile auch auf 320x240 nie verdraengt werden."""
         fb = self.fb
         W, H = fb.width, fb.height
         s = max(1, H // 360)
@@ -10375,26 +10420,59 @@ class Frontend:
         oy = H * OVERSCAN_Y // 100
         accent = accent_for(None)
         choice = initial
+        # GEAENDERT (Build 91): die Hinweiszeile ist waehlbar. Fest
+        # verdrahtet stand hier "ESC: Einrichtung abbrechen" - in
+        # jedem Aufrufer AUSSERHALB des Einrichtungs-Assistenten ist
+        # das schlicht falsch, und beim Leeren des Zwischenspeichers
+        # klang es, als wuerde man die Einrichtung wegwerfen.
+        hint = t(hint_key or "wizard_choice_hint")
+        sc = s - 1 if s > 1 else 1
+        # Der Hinweis kann auf CRT zwei bis drei Zeilen brauchen; sein
+        # Platz wird VOR dem Erklaertext abgezogen, sonst schiebt er
+        # sich ueber die unterste Option.
+        maxc_opt = max(8, (W - 2 * ox) // (8 * s) - 2)
         while True:
             fb.clear(C_BG)
             title_scale = self._fit_scale(title, W - 2 * ox, s + 1)
             fb.text(ox, oy, title, title_scale, C_TITLE, C_BG)
             y = oy + 70 * s
+            if lines:
+                # Platz, der nach Titel, allen Optionen und der
+                # Bedienhilfe uebrig bleibt - daraus die erlaubte
+                # Zeilenzahl. Lieber Text kuerzen als Optionen.
+                frei = ((H - oy - self._hinweis_hoehe(hint, sc))
+                        - (oy + 52 * s) - len(options) * 36 * s)
+                max_zeilen = max(0, frei // (24 * s))
+                if max_zeilen:
+                    maxc = max(8, (W - 2 * ox) // (8 * s))
+                    y = oy + 52 * s
+                    umbrochen = []
+                    for line in lines:
+                        umbrochen.extend(self._wrap_text(line, maxc))
+                    if len(umbrochen) > max_zeilen:
+                        # Lieber ein sichtbares "~" als ein Satz, der
+                        # mitten im Wort einfach aufhoert.
+                        umbrochen = umbrochen[:max_zeilen]
+                        letzte = umbrochen[-1]
+                        if len(letzte) + 1 > maxc:
+                            letzte = letzte[:max(1, maxc - 1)]
+                        umbrochen[-1] = letzte + "~"
+                    for wrapped in umbrochen:
+                        fb.text(ox, y, wrapped, s, C_TEXT, C_BG)
+                        y += 24 * s
+                    y += 18 * s
             for i, label in enumerate(options):
                 sel = i == choice
                 color = accent if sel else C_TEXT
                 prefix = "> " if sel else "  "
+                # Eine Option, die breiter als der Bildschirm ist, wurde
+                # bisher am rechten Rand einfach abgeschnitten - auf CRT
+                # sah man dann "Liste zuruecksetzen - wieder alles z".
+                if len(label) > maxc_opt:
+                    label = label[:max(1, maxc_opt - 1)] + "~"
                 fb.text(ox, y, prefix + label, s, color, C_BG)
                 y += 36 * s
-            # GEAENDERT (Build 91): die Hinweiszeile ist waehlbar. Fest
-            # verdrahtet stand hier "ESC: Einrichtung abbrechen" - in
-            # jedem Aufrufer AUSSERHALB des Einrichtungs-Assistenten ist
-            # das schlicht falsch, und beim Leeren des Zwischenspeichers
-            # klang es, als wuerde man die Einrichtung wegwerfen.
-            hint = t(hint_key or "wizard_choice_hint")
-            sc = s - 1 if s > 1 else 1
-            hint_w = len(hint) * 8 * sc
-            fb.text((W - hint_w) // 2, H - oy - 8 * sc, hint, sc, C_DIM, C_BG)
+            self._hinweis_unten(hint, sc)
             fb.flip()
             act = self.inp.read_action()
             if act in ("up", "left"):
@@ -10432,8 +10510,7 @@ class Frontend:
             y += 10 * s
         hint = t("wizard_skip_hint") if skippable else t("wizard_continue_hint")
         sc = s - 1 if s > 1 else 1
-        hint_w = len(hint) * 8 * sc
-        fb.text((W - hint_w) // 2, H - oy - 8 * sc, hint, sc, C_DIM, C_BG)
+        self._hinweis_unten(hint, sc)
         fb.flip()
         while True:
             act = self.inp.read_action()
@@ -11190,9 +11267,7 @@ class Frontend:
                         scroll_hint, hint_scale, C_DIM, C_BG)
             else:
                 hint = t("attract_hint")
-                hint_w = len(hint) * 8 * hint_scale
-                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
-                        hint, hint_scale, C_DIM, C_BG)
+                self._hinweis_unten(hint, hint_scale)
             fb.flip()
             act = self.inp.read_action()
             if act in ("up", "down") and max_scroll > 0:
@@ -11275,9 +11350,7 @@ class Frontend:
                         scroll_hint, hint_scale, C_DIM, C_BG)
             else:
                 hint = t("attract_hint")
-                hint_w = len(hint) * 8 * hint_scale
-                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
-                        hint, hint_scale, C_DIM, C_BG)
+                self._hinweis_unten(hint, hint_scale)
             fb.flip()
             act = self.inp.read_action()
             if act in ("up", "down") and max_scroll > 0:
@@ -11350,9 +11423,7 @@ class Frontend:
                         scroll_hint, hint_scale, C_DIM, C_BG)
             else:
                 hint = t("attract_hint")
-                hint_w = len(hint) * 8 * hint_scale
-                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
-                        hint, hint_scale, C_DIM, C_BG)
+                self._hinweis_unten(hint, hint_scale)
             fb.flip()
             act = self.inp.read_action()
             if act in ("up", "down") and max_scroll > 0:
@@ -11478,9 +11549,7 @@ class Frontend:
                 fb.text(ox, int(y), text, s, color, C_BG)
                 y += line_h * (1.0 + gap_after)
 
-            hint_w = len(hint) * 8 * hint_scale
-            fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
-                    hint, hint_scale, C_DIM, C_BG)
+            self._hinweis_unten(hint, hint_scale)
             fb.flip()
 
         render()
@@ -11979,9 +12048,7 @@ class Frontend:
                         scroll_hint, hint_scale, C_DIM, C_BG)
             else:
                 hint = t("attract_hint")
-                hint_w = len(hint) * 8 * hint_scale
-                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
-                        hint, hint_scale, C_DIM, C_BG)
+                self._hinweis_unten(hint, hint_scale)
             fb.flip()
             act = self.inp.read_action()
             if act in ("up", "down") and max_scroll > 0:
@@ -12018,9 +12085,7 @@ class Frontend:
                 y_empty += 22 * s
             hint = t("attract_hint")
             hint_scale = s - 1 if s > 1 else 1
-            hint_w = len(hint) * 8 * hint_scale
-            fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
-                    hint, hint_scale, C_DIM, C_BG)
+            self._hinweis_unten(hint, hint_scale)
             fb.flip()
             while True:
                 act = self.inp.read_action()
@@ -12082,9 +12147,7 @@ class Frontend:
                         scroll_hint, hint_scale, C_DIM, C_BG)
             else:
                 hint = t("attract_hint")
-                hint_w = len(hint) * 8 * hint_scale
-                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
-                        hint, hint_scale, C_DIM, C_BG)
+                self._hinweis_unten(hint, hint_scale)
             fb.flip()
             act = self.inp.read_action()
             if act in ("up", "down") and max_scroll > 0:
@@ -12122,9 +12185,7 @@ class Frontend:
                 y_empty += 22 * s
             hint = t("attract_hint")
             hint_scale = s - 1 if s > 1 else 1
-            hint_w = len(hint) * 8 * hint_scale
-            fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
-                    hint, hint_scale, C_DIM, C_BG)
+            self._hinweis_unten(hint, hint_scale)
             fb.flip()
             while True:
                 act = self.inp.read_action()
@@ -12200,9 +12261,7 @@ class Frontend:
 
         hint = t("attract_hint")
         hint_scale = s - 1 if s > 1 else 1
-        hint_w = len(hint) * 8 * hint_scale
-        fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
-                hint, hint_scale, C_DIM, C_BG)
+        self._hinweis_unten(hint, hint_scale)
         fb.flip()
         while True:
             act = self.inp.read_action()
@@ -12321,9 +12380,7 @@ class Frontend:
                         scroll_hint, hint_scale, C_DIM, C_BG)
             else:
                 hint = t("attract_hint")
-                hint_w = len(hint) * 8 * hint_scale
-                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
-                        hint, hint_scale, C_DIM, C_BG)
+                self._hinweis_unten(hint, hint_scale)
             fb.flip()
             act = self.inp.read_action()
             if act in ("up", "down") and max_scroll > 0:
@@ -12426,9 +12483,7 @@ class Frontend:
                         scroll_hint, hint_scale, C_DIM, C_BG)
             else:
                 hint = t("attract_hint")
-                hint_w = len(hint) * 8 * hint_scale
-                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
-                        hint, hint_scale, C_DIM, C_BG)
+                self._hinweis_unten(hint, hint_scale)
             fb.flip()
             act = self.inp.read_action()
             if act in ("up", "down") and max_scroll > 0:
@@ -12446,6 +12501,77 @@ class Frontend:
             if len(text) * 8 * scale <= max_width:
                 return scale
         return 1
+
+    def _hinweis_unten(self, hint, sc=None):
+        """Zeichnet die zentrierte Bedienhilfe am unteren Bildrand.
+
+        BUGFIX (Build 144). Bisher stand an ueber einem Dutzend Stellen
+        woertlich dieselbe Rechnung:
+
+            hint_w = len(hint) * 8 * sc
+            fb.text((W - hint_w) // 2, H - oy - 8 * sc, hint, sc, ...)
+
+        Passt der Hinweis nicht in eine Zeile, wird (W - hint_w) // 2
+        NEGATIV - und text() zeichnet bei negativem x ueberhaupt
+        nichts. Auf 320x240 (CRT) stehen bei Skalierung 1 genau 37
+        Zeichen zur Verfuegung; elf der deutschen Hinweistexte sind
+        laenger, darunter die Bedienhilfe des Zufalls-Zock-Bildschirms
+        (50 Zeichen), die des Einrichtungs-Assistenten (65) und die der
+        Ja/Nein-Abfrage (51). Auf dem CRT fehlte in all diesen
+        Bildschirmen die Bedienhilfe KOMPLETT - nicht abgeschnitten,
+        sondern ersatzlos. Auf HDMI ist genug Platz, deshalb ist es
+        nie aufgefallen.
+
+        Jetzt wird der Hinweis bei Bedarf an Wortgrenzen auf hoechstens
+        drei Zeilen umgebrochen und von unten nach oben gesetzt. Passt
+        er in eine Zeile - der Normalfall auf HDMI -, entsteht Pixel
+        fuer Pixel exakt das bisherige Bild."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        oy = H * OVERSCAN_Y // 100
+        if sc is None:
+            sc = s - 1 if s > 1 else 1
+        ox = W * OVERSCAN_X // 100
+        zeilen = self._hinweis_zeilen(hint, sc)
+        zeilen_h = 11 * sc
+        y = H - oy - 8 * sc - zeilen_h * (len(zeilen) - 1)
+        for ln in zeilen:
+            breite = len(ln) * 8 * sc
+            fb.text(max(ox, (W - breite) // 2), y, ln, sc, C_DIM, C_BG)
+            y += zeilen_h
+
+    HINWEIS_MAX_ZEILEN = 3
+
+    def _hinweis_zeilen(self, hint, sc):
+        """Die Zeilen, die _hinweis_unten() zeichnen wuerde.
+
+        Getrennt von der Zeichenroutine, damit ein Bildschirm den Platz
+        VORHER reservieren kann - sonst schiebt sich ein zweizeiliger
+        Hinweis ueber die unterste Option (genau das ist beim ersten
+        Anlauf von Build 144 passiert).
+
+        Mehrfache Leerzeichen trennen in den Hinweistexten die Tasten
+        voneinander ("Hoch/Runter: waehlen   OK: bestaetigen"). Beim
+        Umbrechen sind sie schaedlich: _wrap_text() zerlegt an jedem
+        einzelnen Leerzeichen, die leeren Stuecke fressen Zeilenlaenge,
+        und am Ende fiel das letzte Wort aus der Begrenzung heraus
+        ("ESC: Einrichtung" statt "ESC: Einrichtung abbrechen"). Passt
+        der Hinweis ohnehin in eine Zeile, bleibt er unangetastet -
+        nur beim Umbrechen werden die Abstaende eingeebnet."""
+        fb = self.fb
+        W = fb.width
+        ox = W * OVERSCAN_X // 100
+        maxc = max(8, (W - 2 * ox) // (8 * sc))
+        if len(hint) <= maxc:
+            return [hint]
+        knapp = " ".join(hint.split())
+        return self._wrap_text(knapp, maxc)[:self.HINWEIS_MAX_ZEILEN] or [""]
+
+    def _hinweis_hoehe(self, hint, sc):
+        """Hoehe, die die Bedienhilfe unten belegt - inklusive des
+        Abstands zum Inhalt darueber."""
+        return 11 * sc * len(self._hinweis_zeilen(hint, sc)) + 4 * sc
 
     def _wrap_text(self, text, maxc):
         """Bricht einen Text an WORTGRENZEN um, sodass jede Zeile
@@ -12541,9 +12667,7 @@ class Frontend:
                         scroll_hint, hint_scale, C_DIM, C_BG)
             else:
                 hint = t("attract_hint")
-                hint_w = len(hint) * 8 * hint_scale
-                fb.text((W - hint_w) // 2, H - oy - 8 * hint_scale,
-                        hint, hint_scale, C_DIM, C_BG)
+                self._hinweis_unten(hint, hint_scale)
             fb.flip()
             act = self.inp.read_action()
             if act in ("up", "down") and max_scroll > 0:

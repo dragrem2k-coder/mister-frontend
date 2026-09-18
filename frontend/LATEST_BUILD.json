@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-18-143",
-  "summary": "Ein Filter laesst sich jetzt als eigene Kategorie merken - er steht danach im Hauptmenue wie Favoriten. Dazu ein Schalter, der beim Miniaturen-Vorbereiten JPEG-Arbeitskopien anlegt: das PNG wird dort ohnehin dekodiert, also kostet die Kopie nur noch das Kodieren."
+  "build_id": "2026-09-18-144",
+  "summary": "Auf dem CRT fehlte in vielen Bildschirmen die untere Bedienhilfe komplett - war sie breiter als der Bildschirm, wurde die zentrierte x-Position negativ und es wurde gar nichts gezeichnet. Betraf elf Hinweistexte. Dazu: 'alles durchgespielt' beim Zufalls-Zock trennt jetzt den leeren Bestand vom wirklich durchgespielten und bietet das Zuruecksetzen an."
 }
