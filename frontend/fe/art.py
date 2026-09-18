@@ -1179,6 +1179,20 @@ def _thumb_cache_evict_if_needed():
         "diese Sammlung zu klein."
         % (to_remove, len(entries), THUMB_CACHE_MAX_FILES))
 
+def _ist_kategorie_logo(pfad):
+    """Gehoert dieses Bild zu einer Kategorie (SYSART_BASE)?
+
+    Wird bei JEDER Verdraengung im RAM-Bildspeicher gefragt (siehe
+    _scaled_cache_put()) - deshalb bewusst ein reiner
+    Praefix-Vergleich ohne Dateizugriff. SYSART_BASE wird bei jedem
+    Aufruf frisch gelesen: Tests und der CRT/HDMI-Wechsel biegen die
+    Konstante um, ein einmal gemerkter Wert waere danach falsch.
+
+    Siehe die ausfuehrliche Begruendung bei _scaled_cache_put()."""
+    return bool(pfad) and isinstance(pfad, str) \
+        and pfad.startswith(SYSART_BASE)
+
+
 class ArtCache:
     LIMIT = 60                       # max. Bilder im Speicher halten - moderat
                                       # erhoeht (vorher 40): die tolerante
@@ -1431,6 +1445,10 @@ class ArtCache:
     SCALED_BUDGET = 96 * 1024 * 1024
     SCALED_MIN = 20                    # niemals weniger als bisher
 
+    def _ist_logo_pfad(self, pfad):
+        """Nur damit Tests die Regel einzeln pruefen koennen."""
+        return _ist_kategorie_logo(pfad)
+
     def _scaled_cache_put(self, key, result):
         if not hasattr(self, "scaled"):
             self.scaled = {}
@@ -1441,7 +1459,42 @@ class ArtCache:
         self.scaled_bytes = getattr(self, "scaled_bytes", 0) + len(result[2])
         while (len(self.scaled_order) > self.SCALED_MIN
                and self.scaled_bytes > self.SCALED_BUDGET):
-            old = self.scaled_order.pop(0)
+            # GEAENDERT (Build 141, Nutzer-Rueckmeldung: "wenn man
+            # durch die Galerie scrollt und dann zurueck auf die
+            # Hauptseite geht, gibt es ab und zu einen kleinen
+            # Haenger - nicht immer, ab und zu").
+            #
+            # Die Verdraengung war reines FIFO: was zuerst hereinkam,
+            # flog zuerst raus. Die Kategorie-Logos kommen als ERSTE
+            # herein (beim Start, auf der Hauptseite) und sind mit bis
+            # zu 900 Bildpunkten Breite die GROESSTEN Bilder im ganzen
+            # Frontend. Ein Galerie-Cover belegt auf HDMI 624 KB - nach
+            # rund 150 gescrollten Eintraegen sind die 96 MB voll, und
+            # die Aeltesten, die fliegen, sind genau die Logos.
+            #
+            # Beim Zuruecksehen muss das Logo dann neu von der Karte
+            # gelesen und entpackt werden. Fuer genau diesen Fall steht
+            # weiter oben eine Messung vom Geraet: 722 ms fuer
+            # CONTINUE.art. Und es erklaert das "ab und zu" exakt: kurz
+            # gescrollt, Logo noch da, kein Haenger.
+            #
+            # Fuer den Festplatten-Cache gibt es diesen Schutz laengst
+            # (_geschuetzte_cache_dateien) - fuer den Arbeitsspeicher
+            # fehlte er. Es sind zwei Dutzend Bilder, und ausgerechnet
+            # die, zu denen man immer zurueckkommt.
+            old = None
+            for _i, _k in enumerate(self.scaled_order):
+                if not _ist_kategorie_logo(_k[0]):
+                    old = self.scaled_order.pop(_i)
+                    break
+            if old is None:
+                # Nur noch Logos drin - dann lieber das Budget
+                # ueberschreiten als das wegwerfen, was gleich wieder
+                # gebraucht wird. Kann in der Praxis nicht vorkommen
+                # (zwei Dutzend Logos sprengen keine 96 MB), steht hier
+                # aber, damit die Schleife unter keinen Umstaenden
+                # endlos laeuft.
+                break
             alt = self.scaled.pop(old, None)
             if alt is not None:
                 self.scaled_bytes -= len(alt[2])
@@ -2455,8 +2508,12 @@ def art_path(syskey, rom_basename):
 _docs_ordner_cache = None     # normalisierter Name -> echter Ordnername
 _docs_index_cache = {}        # syskey -> {ROM-Name: voller Bildpfad}
 _docs_info_cache = {}         # syskey -> {ROM-Name: {year, genre, ...}}
+_docs_info_knapp = {}         # syskey -> {vergleichsname: {...}}, faul
 _docs_syn_cache = {}          # (syskey, sprache) -> {ROM-Name: Text}
+_docs_syn_knapp = {}          # (syskey, sprache) -> {vergleichsname: Text}
 _docs_syn_order = []          # aelteste zuerst, siehe DOCS_SYNOPSIS_MAX
+_docs_syn_laeuft = set()      # gerade im Hintergrund eingelesen
+_docs_syn_sperre = threading.Lock()
 _fremd_an = None              # Schalterzustand, einmal je Sitzung
 
 
@@ -2686,12 +2743,17 @@ def _docs_infos(syskey):
                             eintrag[feld] = teile[spalte].strip()
                     if eintrag:
                         daten[teile[0]] = eintrag
-                        # Build 117: dieselbe Ausweich-Schreibweise wie
-                        # bei den Covern, sonst passt die Tabelle bei
-                        # anders benannten ROMs genauso wenig.
-                        knapp = vergleichsname(teile[0])
-                        if knapp and knapp not in daten:
-                            daten[knapp] = eintrag
+                        # ENTFERNT (Build 141): hier stand der
+                        # Ausweich-Schluessel aus Build 117 -
+                        # vergleichsname() JE ZEILE, beim Einlesen.
+                        #
+                        # Im DRAGEND_PROFILE des Nutzers kostete das
+                        # 803 ms von 1089 ms, also 74 % des ganzen
+                        # Einlesens, und zwar mitten im Zeichenweg.
+                        # Gebraucht wird der Schluessel aber nur, wenn
+                        # der exakte Name NICHT trifft - bei einer
+                        # No-Intro-benannten Sammlung also nie. Er
+                        # entsteht jetzt faul, siehe _knapp_index().
         except OSError:
             continue
         except Exception:
@@ -2715,43 +2777,54 @@ def _docs_info_pfade(syskey):
     return pfade
 
 
+def _knapp_index(daten, cache, schluessel):
+    """Der Ausweich-Index (Build 141): {vergleichsname: Wert}.
+
+    Wird ERST GEBAUT, wenn ihn jemand braucht - also wenn ein exakter
+    Name nicht getroffen hat. Vorher entstand er beim Einlesen, fuer
+    jede Zeile, ob gebraucht oder nicht: 1787 Aufrufe von
+    vergleichsname() fuer eine SNES-Tabelle, gemessen 803 ms auf dem
+    Geraet, mitten im Zeichenweg.
+
+    Wer seine ROMs wie die Datenbank benennt (No-Intro, der Normalfall
+    seit dem Boxart-Download), trifft immer exakt und zahlt jetzt gar
+    nichts mehr. Wer anders benennt, zahlt es einmal je System.
+
+    Der Index liegt im mitgegebenen Cache-Dict unter demselben
+    Schluessel wie die Tabelle - so verschwindet er zusammen mit ihr,
+    wenn docs_caches_leeren() oder die Verdraengung zuschlaegt."""
+    idx = cache.get(schluessel)
+    if idx is not None:
+        return idx
+    idx = {}
+    for name, wert in daten.items():
+        knapp = vergleichsname(name)
+        if knapp and knapp not in idx:
+            idx[knapp] = wert
+    cache[schluessel] = idx
+    return idx
+
+
 def docs_meta(syskey, rom_basename):
     """Metadaten aus der fremden Datenbank, sonst {}."""
     if not syskey or not rom_basename:
         return {}
     daten = _docs_infos(syskey)
+    if not daten:
+        return {}
     treffer = daten.get(rom_basename)
     if treffer is None:
-        treffer = daten.get(vergleichsname(rom_basename))
+        treffer = _knapp_index(daten, _docs_info_knapp,
+                               syskey).get(vergleichsname(rom_basename))
     return treffer or {}
 
 
-def _docs_synopsis_tabelle(syskey, sprache):
-    """synopsis_<sprache>.tsv eines Systems als {ROM-Name: Text}.
+def _docs_synopsis_lesen(syskey, sprache):
+    """Die eigentliche Lesearbeit - OHNE Cache, OHNE Verdraengung.
 
-    Gleiche Mechanik wie _docs_infos(): erste gefundene Datei gewinnt,
-    danach im Speicher. Der einzige Unterschied ist die Groesse -
-    deshalb der Verdraengungsteil unten (siehe DOCS_SYNOPSIS_MAX)."""
-    if not syskey or sprache not in DOCS_SPRACHEN:
-        return {}
-    schluessel = (syskey, sprache)
-    daten = _docs_syn_cache.get(schluessel)
-    if daten is not None:
-        return daten
-    # WAEHREND DES SCROLLENS NICHT EINLESEN. Dieselbe Regel wie fuer
-    # Cover (siehe _defer_uncached weiter oben): eine Synopsis-Datei
-    # ist 1,3 MB gross und liegt auf der SD-Karte - sie einzulesen
-    # kostet auf dem Geraet geschaetzt 100-200 ms. Das darf nicht
-    # zwischen zwei Tastendruecken passieren.
-    #
-    # Wie bei den Covern reicht es, den Nachlader zu wecken: der
-    # COVER_SETTLE-Redraw ~150 ms nach dem letzten Tastendruck zeichnet
-    # die Seite noch einmal, und DANN wird gelesen. Man sieht die
-    # Beschreibung also erst, wenn man stehen bleibt - genau wie das
-    # erste Cover eines Systems auch.
-    if ART._defer_uncached:
-        ART._deferred_something = True
-        return {}
+    Bewusst herausgeloest (Build 141), damit derselbe Code aus dem
+    Hintergrund-Thread laufen kann. Der Ausweich-Schluessel aus
+    Build 117 entsteht hier NICHT mehr mit: siehe _knapp_index()."""
     daten = {}
     for pfad in _docs_synopsis_pfade(syskey, sprache):
         try:
@@ -2762,15 +2835,7 @@ def _docs_synopsis_tabelle(syskey, sprache):
                     teile = zeile.rstrip("\r\n").split("\t", 1)
                     if len(teile) < 2 or not teile[0] or not teile[1].strip():
                         continue
-                    text = teile[1].strip()
-                    daten[teile[0]] = text
-                    # Dieselbe Ausweich-Schreibweise wie bei Covern und
-                    # gameinfo.tsv (Build 117) - ohne sie trifft die
-                    # durchgehend No-Intro benannte Datenbank nur
-                    # Sammlungen, die zufaellig genauso heissen.
-                    knapp = vergleichsname(teile[0])
-                    if knapp and knapp not in daten:
-                        daten[knapp] = text
+                    daten[teile[0]] = teile[1].strip()
         except OSError:
             continue
         except Exception:
@@ -2779,13 +2844,68 @@ def _docs_synopsis_tabelle(syskey, sprache):
             daten = {}
         if daten:
             break
+    return daten
+
+
+def _docs_synopsis_eintragen(schluessel, daten):
+    """Fertig gelesene Tabelle in den Speicher legen und verdraengen."""
     _docs_syn_cache[schluessel] = daten
     _docs_syn_order.append(schluessel)
     while len(_docs_syn_order) > DOCS_SYNOPSIS_MAX:
         alt = _docs_syn_order.pop(0)
         if alt != schluessel:
             _docs_syn_cache.pop(alt, None)
-    return daten
+            _docs_syn_knapp.pop(alt, None)
+
+
+def _docs_synopsis_tabelle(syskey, sprache, im_hintergrund=True):
+    """synopsis_<sprache>.tsv eines Systems als {ROM-Name: Text}.
+
+    GEAENDERT (Build 141, aus einem Profil vom Geraet): das Einlesen
+    stand vorher MITTEN IM ZEICHENWEG und kostete dort gemessen
+    1089 ms - einmal je System, aber als voll sichtbarer Haenger.
+    Davon entfielen 803 ms auf vergleichsname() je Zeile (jetzt faul,
+    siehe _knapp_index()) und der Rest auf das Lesen selbst.
+
+    Die verbleibenden rund 300 ms gehoeren trotzdem nicht in den
+    Zeichenweg. Sie laufen deshalb in einem Hintergrund-Thread; bis er
+    fertig ist, gibt es einfach noch keine Beschreibung, und der
+    COVER_SETTLE-Nachlader zeichnet sie nach - genau wie bei einem
+    Cover, das der zweite Kern gerade rechnet.
+
+    Der Thread liest nur (open/read), traegt das Ergebnis mit EINER
+    Zuweisung ein und fasst sonst nichts an. Deshalb braucht es hier
+    keine weitere Absicherung ausser dem Merker, dass derselbe
+    Schluessel nicht zweimal gleichzeitig gelesen wird."""
+    if not syskey or sprache not in DOCS_SPRACHEN:
+        return {}
+    schluessel = (syskey, sprache)
+    daten = _docs_syn_cache.get(schluessel)
+    if daten is not None:
+        return daten
+    if not im_hintergrund:
+        daten = _docs_synopsis_lesen(syskey, sprache)
+        _docs_synopsis_eintragen(schluessel, daten)
+        return daten
+    with _docs_syn_sperre:
+        if schluessel in _docs_syn_laeuft:
+            return {}
+        _docs_syn_laeuft.add(schluessel)
+
+    def _arbeit():
+        try:
+            erg = _docs_synopsis_lesen(syskey, sprache)
+        except Exception:                                    # noqa: BLE001
+            erg = {}
+        _docs_synopsis_eintragen(schluessel, erg)
+        with _docs_syn_sperre:
+            _docs_syn_laeuft.discard(schluessel)
+        # Den Nachlader wecken, damit die fertige Tabelle auch auf den
+        # Schirm kommt, ohne dass jemand eine Taste druecken muss.
+        ART._deferred_something = True
+
+    threading.Thread(target=_arbeit, daemon=True).start()
+    return {}
 
 
 def _docs_synopsis_pfade(syskey, sprache):
@@ -2815,17 +2935,33 @@ def docs_synopsis(syskey, rom_basename, sprache="en"):
     # nicht davon abhaengen, dass jeder Aufrufer daran denkt.
     if not fremdquellen_enabled():
         return ""
+    # Wir fuehren nur Deutsch und Englisch (DOCS_SPRACHEN). Kaeme doch
+    # einmal etwas anderes an, gilt Englisch - und die fremde Datei
+    # wird gar nicht erst gesucht.
+    if sprache not in DOCS_SPRACHEN:
+        sprache = "en"
     knapp = None
     reihe = [sprache] if sprache == "en" else [sprache, "en"]
     for spr in reihe:
         tabelle = _docs_synopsis_tabelle(syskey, spr)
         if not tabelle:
+            # Noch nicht da (wird gerade im Hintergrund gelesen) oder
+            # gibt es nicht. In BEIDEN Faellen hier aufhoeren statt zur
+            # naechsten Sprache zu gehen: sonst wuerde eine einzige
+            # fehlende deutsche Zeile die komplette englische Tabelle
+            # von der Karte holen. Genau das stand im Profil des
+            # Nutzers - _docs_synopsis_tabelle() zweimal, 1051 ms.
+            # Ist die deutsche Tabelle erst da, greift der Rueckfall
+            # beim naechsten Zeichnen ganz normal.
+            if spr == reihe[0]:
+                return ""
             continue
         treffer = tabelle.get(rom_basename)
         if treffer is None:
             if knapp is None:
                 knapp = vergleichsname(rom_basename)
-            treffer = tabelle.get(knapp)
+            treffer = _knapp_index(tabelle, _docs_syn_knapp,
+                                   (syskey, spr)).get(knapp)
         if treffer:
             return treffer
     return ""
@@ -2838,7 +2974,9 @@ def docs_caches_leeren():
     _fremd_an = None
     _docs_index_cache.clear()
     _docs_info_cache.clear()
+    _docs_info_knapp.clear()
     _docs_syn_cache.clear()
+    _docs_syn_knapp.clear()
     del _docs_syn_order[:]
     # Der eigene Cover-Index wird vorsichtshalber mit geleert. Noetig
     # ist es nach heutigem Stand nicht - _art_path_in() fragt die

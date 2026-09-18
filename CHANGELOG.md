@@ -7,6 +7,77 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Vier Bremsen, aus einem echten Profil vom Gerät** (Build 141):
+
+Dragrem: *„ich will noch mehr Speed."* Also `DRAGEND_PROFILE=1` auf dem
+MiSTer, 182 Seitenaufbauten mitgeschnitten und aufgeschlüsselt. Median
+63 ms — der Normalfall ist in Ordnung. Interessant waren die Ausreißer,
+und drei von vier gingen auf eigene Kappe.
+
+**Zuerst die gute Nachricht, weil sie alles andere einordnet.** Ein
+voller Seitenaufbau kostet 54 ms, davon sind 48 ms zwei `memcpy`
+(`clear` 23 ms, `flip` 25 ms). Das eigentliche Zeichnen — Zeilen, Text,
+Cover, Fußzeile — kostet **6 ms**. 8,3 MB in 22 ms sind 377 MB/s, mit
+Lesen und Schreiben rund 750 MB/s: das ist für den Cortex-A9 mit dem
+geteilten DDR3 die Grenze. Kein Rust, kein C und kein zweiter Kern
+ändert daran etwas; sie würden dieselben zwei `memcpy` machen. Auch
+Seitenumschaltung fällt aus — `virtual_size` meldet 1920,1080, der
+Treiber bietet gar keinen zweiten Puffer an.
+
+**1. Die Spielbeschreibung kostete 159 ms von 259 ms** eines
+Galerie-Schritts. 11 ms je Textzeile, bei 15 Zeilen. Im Prüfstand hatte
+ich 0,36 ms für sieben Zeilen gemessen und daraus in Build 139
+geschlossen, es sei billig — das war falsch. Der Textcache kann hier
+prinzipiell nie greifen: jede Zeile ist ein eigener Satz, also ist
+**jeder** Aufruf ein Fehltreffer zum vollen Preis. Sie wird jetzt
+während des Scrollens gar nicht mehr gezeichnet und vom
+COVER_SETTLE-Nachlader nachgeholt — dieselbe Regel wie für die Cover.
+Beim Scrollen kostet sie damit null.
+
+**2. Das Einlesen der Tabellen blockierte über eine Sekunde.** Im Profil
+standen 1089 ms für `synopsis_de.tsv` und 1214 ms für `gameinfo.tsv` —
+mitten im Zeichenweg. Davon entfielen **803 ms auf `vergleichsname()`
+je Zeile**: 1787 Aufrufe beim Einlesen, für einen Ausweich-Schlüssel,
+den man nur braucht, wenn der exakte Name nicht trifft — bei einer
+No-Intro-benannten Sammlung also nie. Der Index entsteht jetzt faul.
+Nachgemessen an der echten Datei des Nutzers: **54,2 ms → 2,8 ms**, ein
+Faktor 19. Der Rest läuft zusätzlich in einem Hintergrund-Thread,
+womit im Zeichenweg gar nichts mehr übrig bleibt.
+
+Nebenbei gefunden: fehlte zu einem Spiel der deutsche Text, holte der
+Rückfall die **komplette englische Tabelle** von der Karte — 1051 ms für
+einen einzelnen fehlenden Satz.
+
+**3. Der Hänger beim Zurückgehen auf die Hauptseite.** Rückmeldung:
+*„wenn man durch die Galerie scrollt und dann zurück geht, gibt es ab
+und zu einen kleinen Hänger — nicht immer, ab und zu."*
+
+Der RAM-Bildspeicher (96 MB) verdrängte nach reinem FIFO. Die
+Kategorie-Logos kommen als **Erste** herein und sind mit bis zu 900
+Bildpunkten Breite die größten Bilder im Frontend. Ein Galerie-Cover
+belegt 624 KB — nach rund 150 gescrollten Einträgen ist das Budget
+voll, und die Ältesten, die fliegen, sind genau die Logos. Beim
+Zurückgehen muss das Logo neu von der Karte gelesen und entpackt
+werden; für diesen Fall steht im Code eine Messung: **722 ms für
+CONTINUE.art**. Das „ab und zu" erklärt sich damit von selbst — wer
+kurz scrollt, hat sein Logo noch.
+
+Für den Festplatten-Cache gibt es diesen Schutz seit Build 91, für den
+Arbeitsspeicher fehlte er. Es sind zwei Dutzend Bilder, und ausgerechnet
+die, zu denen man immer zurückkommt.
+
+**4. Der Textcache wurde mit Einmal-Zeilen geflutet** — 502 Fehltreffer
+im Profil. `text()` und `_text_strip()` kennen jetzt `cachen=False`, und
+die Beschreibung nutzt es. Gezeichnet wird bitgenau dasselbe, es wandert
+nur nichts mehr in den Cache, was nie wieder getroffen wird.
+
+Was **nicht** repariert wurde, weil es kein Fehler ist: ein
+Raster-Seitenwechsel kostet 334 ms, davon 200 ms für 21 Cover. Eine neue
+Rasterseite *sind* nun mal 21 neue Bilder.
+
+Neue Tests: `tools/test_logo_schutz.py`, dazu vier weitere Blöcke in
+`tools/test_beschreibung.py`.
+
 **Der Offline-Installer fand sein eigenes Paket nicht** (Build 140,
 gemeldet von SuTe):
 

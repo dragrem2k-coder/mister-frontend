@@ -30,6 +30,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.dirname(_HERE)
@@ -43,6 +44,24 @@ import fe.settings as S                                 # noqa: E402
 import fe.translations as T                             # noqa: E402
 
 fails = []
+
+
+def syn(syskey, name, sprache, warten=2.0):
+    """docs_synopsis(), aber mit Geduld.
+
+    Seit Build 141 liest _docs_synopsis_tabelle() die 1,3-MB-Datei in
+    einem HINTERGRUND-Thread (sie kostete im Zeichenweg des Geraets
+    gemessen ueber eine Sekunde). Der erste Aufruf liefert deshalb
+    planmaessig "" und weckt den Nachlader. Fuer die inhaltlichen
+    Pruefungen hier interessiert das Ergebnis, nicht der Takt -
+    also kurz warten. Dass der erste Aufruf leer ist UND den Nachlader
+    weckt, prueft Test 4 ausdruecklich."""
+    ende = time.time() + warten
+    while True:
+        t = A.docs_synopsis(syskey, name, sprache)
+        if t or time.time() > ende:
+            return t
+        time.sleep(0.02)
 
 
 def check(label, cond, extra=""):
@@ -97,24 +116,24 @@ try:
 
     print("Test 1: finden")
     check("exakter Name",
-          A.docs_synopsis("SNES", "Super Mario World (USA)", "de") == DE)
+          syn("SNES", "Super Mario World (USA)", "de") == DE)
     check("anders benanntes ROM (unscharfer Abgleich)",
-          A.docs_synopsis("SNES", "Super Mario World (E) [!]", "de") == DE,
+          syn("SNES", "Super Mario World (E) [!]", "de") == DE,
           "GoodTools-Schreibweise")
     check("was es nicht gibt, gibt es nicht",
-          A.docs_synopsis("SNES", "Gibt es gar nicht", "de") == "")
+          syn("SNES", "Gibt es gar nicht", "de") == "")
     check("ohne System oder Namen kein Absturz",
-          A.docs_synopsis(None, "x", "de") == ""
-          and A.docs_synopsis("SNES", "", "de") == "")
+          syn(None, "x", "de") == ""
+          and syn("SNES", "", "de") == "")
 
     print()
     print("Test 2: Sprache")
     check("Deutsch wird bevorzugt",
-          A.docs_synopsis("SNES", "Super Mario World (USA)", "de") == DE)
+          syn("SNES", "Super Mario World (USA)", "de") == DE)
     check("Englisch bleibt Englisch",
-          A.docs_synopsis("SNES", "Super Mario World (USA)", "en") == EN)
+          syn("SNES", "Super Mario World (USA)", "en") == EN)
     check("eine Luecke im Deutschen fuellt das Englische",
-          A.docs_synopsis("SNES", "Nur Englisch (USA)", "de") == NUR_EN)
+          syn("SNES", "Nur Englisch (USA)", "de") == NUR_EN)
     # Der umgekehrte Weg waere ein deutscher Absatz in einer
     # englischen Oberflaeche - genau das soll nicht passieren.
     with open(os.path.join(art, "synopsis_de.tsv"), "a",
@@ -122,12 +141,12 @@ try:
         fh.write("Nur Deutsch (USA)\tEin deutscher Text.\n")
     A.docs_caches_leeren()
     check("aber Englisch faellt NIE auf Deutsch zurueck",
-          A.docs_synopsis("SNES", "Nur Deutsch (USA)", "en") == "")
+          syn("SNES", "Nur Deutsch (USA)", "en") == "")
     # Das Frontend fragt nur "de" oder "en" - kaeme doch einmal etwas
     # anderes an, gilt Englisch, und die franzoesische Datei bleibt
     # ungelesen (sie steht nicht in DOCS_SPRACHEN).
     check("eine fremde Sprache landet bei Englisch",
-          A.docs_synopsis("SNES", "Super Mario World (USA)", "fr") == EN)
+          syn("SNES", "Super Mario World (USA)", "fr") == EN)
     check("die franzoesische Datei wird nie eingelesen",
           not any(spr == "fr" for _sys, spr in A._docs_syn_cache))
 
@@ -140,34 +159,50 @@ try:
     # "fremdquellen"-Zweig in frontend.py), also hier genauso.
     A.docs_caches_leeren()
     check("aus heisst aus",
-          A.docs_synopsis("SNES", "Super Mario World (USA)", "de") == "")
+          syn("SNES", "Super Mario World (USA)", "de") == "")
     os.remove(S.FREMDQUELLEN_AUS_FLAG)
     H._zwischenspeicher_leeren()
     A.docs_caches_leeren()
     check("und wieder an heisst wieder an",
-          A.docs_synopsis("SNES", "Super Mario World (USA)", "de") == DE)
+          syn("SNES", "Super Mario World (USA)", "de") == DE)
 
     print()
-    print("Test 4: waehrend des Scrollens wird nicht von der Karte gelesen")
+    print("Test 4: die 1,3-MB-Datei blockiert den Zeichenweg nicht")
+    # Build 141: das Einlesen kostete im Profil des Geraets ueber eine
+    # Sekunde, MITTEN im Zeichenweg. Es laeuft jetzt im Hintergrund -
+    # der erste Aufruf liefert planmaessig nichts und weckt den
+    # Nachlader, der fertige Text kommt kurz darauf.
     A.docs_caches_leeren()
-    A.ART._defer_uncached = True
     A.ART._deferred_something = False
-    leer = A.docs_synopsis("SNES", "Super Mario World (USA)", "de")
-    check("es kommt kein Text", leer == "")
-    check("aber der Nachlader wird geweckt",
-          A.ART._deferred_something is True)
-    A.ART._defer_uncached = False
-    check("im Stillstand ist er dann da",
-          A.docs_synopsis("SNES", "Super Mario World (USA)", "de") == DE)
+    erster = A.docs_synopsis("SNES", "Super Mario World (USA)", "de")
+    check("der erste Aufruf liefert sofort und leer", erster == "")
+    check("der Nachlader wird geweckt",
+          syn("SNES", "Super Mario World (USA)", "de") == DE
+          and A.ART._deferred_something is True)
+
+    print()
+    print("Test 4b: der Ausweich-Index entsteht erst bei Bedarf")
+    # Der eigentliche Fund: vergleichsname() lief JE ZEILE beim
+    # Einlesen - 1787 Aufrufe, gemessen 803 ms von 1089 ms. Gebraucht
+    # wird er nur, wenn der exakte Name nicht trifft.
+    A.docs_caches_leeren()
+    syn("SNES", "Super Mario World (USA)", "de")      # exakter Treffer
+    check("nach einem exakten Treffer gibt es keinen Index",
+          ("SNES", "de") not in A._docs_syn_knapp)
+    syn("SNES", "Super Mario World (E) [!]", "de")    # unscharf
+    check("erst der unscharfe Treffer baut ihn",
+          ("SNES", "de") in A._docs_syn_knapp)
+    check("und er trifft auch", 
+          syn("SNES", "Super Mario World (E) [!]", "de") == DE)
 
     print()
     print("Test 5: hoechstens zwei Systemdateien im Speicher")
     # Eine Datei ist 1,3 MB gross - wer durch zwanzig Systeme blaettert,
     # haette sonst 26 MB Text im Speicher, den niemand mehr anschaut.
     A.docs_caches_leeren()
-    A.docs_synopsis("SNES", "Super Mario World (USA)", "de")   # de + nichts
-    A.docs_synopsis("SNES", "Nur Deutsch (USA)", "en")         # + en
-    A.docs_synopsis("NES", "Super Mario Bros. (World)", "de")  # + NES/de
+    syn("SNES", "Super Mario World (USA)", "de")   # de
+    syn("SNES", "Nur Englisch (USA)", "en")        # + en
+    syn("NES", "Super Mario Bros. (World)", "de")  # + NES/de
     check("nicht mehr als %d Tabellen gehalten" % A.DOCS_SYNOPSIS_MAX,
           len(A._docs_syn_cache) <= A.DOCS_SYNOPSIS_MAX,
           "%d" % len(A._docs_syn_cache))
@@ -196,6 +231,7 @@ try:
         return bytes(fb.buf[geo["oben"] * fb.stride:
                             geo["leiste_y"] * fb.stride])
 
+    syn("SNES", "Super Mario World (USA)", "de")   # Tabelle vorladen
     f.ansicht_setzen("galerie")
     f.item_i = 2                      # Spiel OHNE Beschreibung
     f._force_full_redraw = True
@@ -246,6 +282,8 @@ try:
     # war - bricht es wegen max_lines mittendrin ab, endet der Text
     # stillschweigend auf einem beliebigen Wort. Bei einer Datenzeile
     # egal, bei einem Absatz nicht: man haelt ihn fuer vollstaendig.
+    syn("SNES", "Super Mario World (USA)", "de")   # Tabelle wieder da
+    A.ART._defer_uncached = False
     roh = f._wrap(DE, 40, max_lines=3)
     check("_wrap() selbst markiert das nicht", not roh[-1].endswith("~"),
           roh[-1])
@@ -269,6 +307,63 @@ try:
     check("keine gezeichnete Zeile ist zu lang",
           all(len(z) <= 40 for z in gezeichnet),
           "max %d" % (max(len(z) for z in gezeichnet) if gezeichnet else 0))
+
+    print()
+    print("Test 8: beim Scrollen wird die Beschreibung NICHT gezeichnet")
+    # Der eigentliche Fund aus dem Geraete-Profil (Build 141): das
+    # Zeichnen kostete 159 ms von 259 ms eines Galerie-Schritts, weil
+    # der Textcache hier prinzipiell nie greifen kann - jede Zeile ist
+    # ein eigener Satz, also ist jeder Aufruf ein Fehltreffer zum
+    # vollen Preis. Beim Scrollen faellt sie deshalb jetzt weg, genau
+    # wie ein noch nicht gerechnetes Cover.
+    syn("SNES", "Super Mario World (USA)", "de")
+    gezeichnet = []
+    _echt = f.fb.text
+    f.fb.text = lambda x, y, txt, sk, *a, **k: (
+        gezeichnet.append(txt), _echt(x, y, txt, sk, *a, **k))[1]
+    args = (100, 100, 100 + 8 * 11 * 2, 40 * 8 * 2,
+            ("Super Mario World (USA)", "game", None), "SNES", 3)
+    try:
+        A.ART._defer_uncached = True          # "gerade am Scrollen"
+        A.ART._deferred_something = False
+        f._beschreibung_zeichnen(*args)
+        beim_scrollen = len(gezeichnet)
+        geweckt = A.ART._deferred_something
+        A.ART._defer_uncached = False         # Stillstand
+        f._beschreibung_zeichnen(*args)
+        im_stillstand = len(gezeichnet) - beim_scrollen
+    finally:
+        f.fb.text = _echt
+    check("waehrend des Scrollens keine einzige Zeile",
+          beim_scrollen == 0, "%d" % beim_scrollen)
+    check("aber der Nachlader wird geweckt", geweckt is True)
+    check("im Stillstand wird gezeichnet", im_stillstand > 0,
+          "%d Zeilen" % im_stillstand)
+
+    print()
+    print("Test 9: die Beschreibung verstopft den Textcache nicht")
+    # 502 Fehltreffer standen im Profil des Nutzers. Jeder davon legt
+    # einen Eintrag an, der nie wieder getroffen wird, und verdraengt
+    # dafuer einen, der getroffen wuerde.
+    fb = f.fb
+    vorher = len(fb._textcache)
+    fb.text(10, 10, "Ein einmaliger Satz, den es nie wieder gibt.", 2,
+            cachen=False)
+    check("mit cachen=False waechst der Cache nicht",
+          len(fb._textcache) == vorher, "%d -> %d" % (vorher,
+                                                      len(fb._textcache)))
+    fb.text(10, 40, "Ein zweiter einmaliger Satz.", 2)
+    check("ohne das Kennzeichen waechst er wie bisher",
+          len(fb._textcache) == vorher + 1)
+    # Und das BILD muss dasselbe sein - der Cache darf nur das
+    # Gedaechtnis aendern, nicht das Ergebnis.
+    fb.clear((0, 0, 0))
+    fb.text(10, 10, "Pruefsatz", 2, cachen=False)
+    a = bytes(fb.buf[10 * fb.stride:30 * fb.stride])
+    fb.clear((0, 0, 0))
+    fb.text(10, 10, "Pruefsatz", 2)
+    b = bytes(fb.buf[10 * fb.stride:30 * fb.stride])
+    check("gezeichnet wird bitgenau dasselbe", a == b)
 
 finally:
     A.DOCS_BASE, A.FREMD_ZUSATZ_WURZELN = _alt[0], _alt[1]

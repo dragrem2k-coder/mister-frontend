@@ -9087,8 +9087,25 @@ class Frontend:
         jede vorberechnete Miniatur ungueltig machen - beim Nutzer
         28.517 Stueck.
 
+        NICHT WAEHREND DES SCROLLENS (Build 141, aus einem Profil vom
+        Geraet). Das Zeichnen selbst kostet dort 159 ms von 259 ms
+        eines Galerie-Schritts - 11 ms je Textzeile, bei 15 Zeilen.
+        Im Pruefstand waren es 0,36 ms fuer sieben Zeilen, und genau
+        daraus hatte ich in Build 139 geschlossen, es sei billig. Das
+        war falsch: der Textcache kann hier prinzipiell nie greifen,
+        weil jede Zeile ein eigener Satz ist, also ist JEDER Aufruf
+        ein Fehltreffer zum vollen Preis.
+        
+        Deshalb dieselbe Regel wie fuer die Cover: waehrend aktiver
+        Navigation gar nicht erst zeichnen, und der
+        COVER_SETTLE-Nachlader holt es nach, sobald man stehen bleibt.
+        Beim Scrollen kostet die Beschreibung damit null.
+
         Liefert nichts zurueck; zeichnet nichts, wenn kein Platz ist
         oder es zu dem Spiel keine Beschreibung gibt."""
+        if ART._defer_uncached:
+            ART._deferred_something = True
+            return
         skala = s - 1 if s > 1 else 1
         zeilen_h = 11 * skala
         platz = (y_ende - y) // zeilen_h
@@ -9119,7 +9136,10 @@ class Frontend:
                     letzte = letzte[:max(1, maxc - 1)]
                 zeilen[-1] = letzte + "~"
         for ln in zeilen:
-            self.fb.text(x, y, ln, skala, C_DIM)
+            # cachen=False: siehe _text_strip() in fe/framebuffer.py -
+            # diese Zeilen kommen kein zweites Mal vor und wuerden nur
+            # nuetzliche Eintraege verdraengen.
+            self.fb.text(x, y, ln, skala, C_DIM, cachen=False)
             y += zeilen_h
 
     def cover_box_size(self, w, h, syskey, item, s):

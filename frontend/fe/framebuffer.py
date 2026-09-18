@@ -999,7 +999,7 @@ class Framebuffer:
             self._glyphcache[key] = row
         return row
 
-    def _text_strip(self, s, scale, fg, bg):
+    def _text_strip(self, s, scale, fg, bg, cachen=True):
         """Fertigen Pixel-Streifen fuer eine komplette Textzeile liefern -
         aus dem Cache, oder einmal gebaut und dort abgelegt. Rueckgabe ist
         eine Liste von 8*scale Byte-Zeilen.
@@ -1019,6 +1019,15 @@ class Framebuffer:
         strip = self._textcache.get(key)
         if strip is None:
             self._textcache_misses += 1
+            # cachen=False (Build 141): fuer Text, der GARANTIERT nur
+            # einmal vorkommt - die Spielbeschreibung in der Galerie.
+            # Jede ihrer Zeilen ist ein eigener Satz; ein Eintrag dafuer
+            # wird nie wieder getroffen, verdraengt aber einen, der
+            # getroffen wuerde. Im Profil des Nutzers standen 502
+            # Fehltreffer bei 78,7 % Trefferquote. Gebaut wird der
+            # Streifen natuerlich trotzdem - er wandert nur nicht in
+            # den Cache. Dieselbe Ueberlegung wie bei text_window()
+            # fuer die Laufschrift, nur andersherum geloest.
             # PERFORMANCE-FIX (Nutzer-Rueckmeldung: "muss unter HDMI
             # fluessiger laufen" - diesmal aus einer gezielten Messung
             # statt aus einer Vermutung). Der TEXTCACHE-Mitschnitt von
@@ -1079,16 +1088,17 @@ class Framebuffer:
                                  for _fnt, _base in glyphs])
                 for _rep in range(scale):
                     strip.append(grow)
-            self._textcache[key] = strip
-            self._textcache_order.append(key)
-            if len(self._textcache_order) > self._TEXTCACHE_LIMIT:
-                self._textcache_evictions += 1
-                self._textcache.pop(self._textcache_order.pop(0), None)
+            if cachen:
+                self._textcache[key] = strip
+                self._textcache_order.append(key)
+                if len(self._textcache_order) > self._TEXTCACHE_LIMIT:
+                    self._textcache_evictions += 1
+                    self._textcache.pop(self._textcache_order.pop(0), None)
         else:
             self._textcache_hits += 1
         return strip
 
-    def text(self, x, y, s, scale=2, fg=None, bg=None):
+    def text(self, x, y, s, scale=2, fg=None, bg=None, cachen=True):
         if fg is None:
             fg = C_TEXT
         if bg is None:
@@ -1107,7 +1117,7 @@ class Framebuffer:
             s = s[:maxch]
         if not s:
             return
-        strip = self._text_strip(s, scale, fg, bg)
+        strip = self._text_strip(s, scale, fg, bg, cachen)
         w4 = len(strip[0])
         xo = x * 4
         # GEAENDERT (Build 132): memoryview auf das Ziel.

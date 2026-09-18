@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-17-140",
-  "summary": "Der Offline-Installer findet sein Paket jetzt auch, wenn man ihn dort startet, wo er liegt - in Scripts/. Dazu die komplette Dokumentation ueberarbeitet: neue Screenshots, beide READMEs, die Anleitung mit einer neuen Seite und eine von Grund auf neue Installations-PDF."
+  "build_id": "2026-09-18-141",
+  "summary": "Vier Bremsen aus einem echten Geraete-Profil: die Spielbeschreibung kostete 159 ms je Galerie-Schritt und wird beim Scrollen jetzt ausgelassen, das Einlesen der Datenbank-Tabellen ist 19-mal schneller und laeuft im Hintergrund, und die Kategorie-Logos fliegen nicht mehr aus dem Speicher - das war der Haenger beim Zurueckgehen auf die Hauptseite."
 }
