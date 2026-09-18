@@ -1551,6 +1551,8 @@ class Frontend:
         self._last_vt_check = 0.0
         self._last_bootstate = None
         self._last_snapshot = 0.0
+        self._vt_nachgefasst = 0
+        self._letztes_nachfassen = 0.0
 
         # Optionaler Stream-Overlay-Server (nur wenn Freigabe-Datei da ist)
         self.stream = None
@@ -10756,16 +10758,57 @@ class Frontend:
         except OSError:
             return "?"
 
+    VT_KONSOLE = "tty1"
+    VT_NACHFASSEN_MAX = 3
+    VT_NACHFASSEN_ABSTAND = 2.0
+    # GEAENDERT (Build 146): von 30 auf 60 Sekunden. Beim Nutzer holte
+    # sich der MiSTer die Anzeige vier Sekunden nach dem Menue zurueck -
+    # das lag gut im alten Fenster. Ein langsamer Kaltstart mit USB- und
+    # NAS-Warten kann aber deutlich spaeter fertig werden, und genau
+    # dann waere das Fenster schon zu gewesen.
+    BOOT_WATCH_FENSTER = 60.0
+
     def _boot_watch(self):
-        """Reine Diagnose: die ersten 30s nach dem Start den Anzeige-
-        Zustand (aktive VT + CORENAME) protokollieren. Im Erfolgsfall
-        bleibt die VT auf tty1 (Konsolenmodus, Frontend sichtbar). Holt
-        der bootende MiSTer die Anzeige zurueck, taucht das hier als
-        VT-Wechsel auf - genau die Signatur, die fuer eine gezielte
-        Diagnose des Soft-Reboot-Problems gebraucht wird. Aendert selbst
-        nichts am Verhalten, protokolliert nur."""
+        """Die erste Minute nach dem Start den Anzeige-Zustand (aktive VT
+        + CORENAME) protokollieren - und ihn seit Build 146 auch
+        GERADEZIEHEN.
+
+        Im Erfolgsfall bleibt die VT auf tty1 (Konsolenmodus, Frontend
+        sichtbar). Holt der bootende MiSTer die Anzeige zurueck, steht
+        hier tty2.
+
+        WAS DAHINTERSTECKT (Nutzer-Rueckmeldung, Build 146: "bin im OSD
+        und hoere die Musik vom Frontend"): das Frontend schaltet den
+        MiSTer genau EINMAL per F9 in den Konsolenmodus, ganz zu Beginn
+        von run(). Danach baut es seine Kategorien auf. Dauert das lange
+        genug, ist der MiSTer inzwischen fertig gebootet und holt sich
+        die Anzeige zurueck - das Frontend zeichnet dann munter in einen
+        Framebuffer, den niemand sieht. Die Musik laeuft (eigener
+        Thread), das Bild zeigt das OSD. Es sieht aus wie ein Absturz,
+        ist aber ein verlorenes Wettrennen.
+
+        Im Log des Nutzers: "Start-Dauer bis Kategorien-Menue bereit:
+        44.08s", danach "boot-watch +04s: VT=tty2". Ausgeloest hatte es
+        ein geloeschter games-Ordner - der Neu-Scan verlangsamte den
+        Start so weit, dass der MiSTer gewann. Ein Neuling mit noch
+        leerem games-Ordner haette genau dasselbe erlebt, und niemand
+        waere je auf F9 gekommen.
+
+        Diese Funktion hatte die Signatur von Anfang an protokolliert,
+        aber bewusst nichts unternommen. Jetzt schickt sie F9 nach -
+        hoechstens dreimal, mit zwei Sekunden Abstand, und nur unter
+        zwei Bedingungen:
+
+          - Es laeuft KEIN Core (CORENAME == MENU). Laeuft ein Spiel,
+            gehoert die Anzeige dem Spiel; dort hineinzufunken waere
+            schlimmer als das Problem.
+          - Der Nutzer hat seit dem Start NICHTS gedrueckt. Wer selbst
+            per F12 ins OSD gegangen ist, will dort sein - ihn von dort
+            wegzuziehen waere genau die Sorte Bevormundung, die man
+            einem Frontend nicht verzeiht. Erkennbar daran, dass
+            _last_input_time noch auf dem Wert vom Programmstart steht."""
         el = time.monotonic() - self._boot_time
-        if el > 30.0:
+        if el > self.BOOT_WATCH_FENSTER:
             return
         now = time.monotonic()
         if now - self._last_vt_check < 1.0:
@@ -10783,6 +10826,31 @@ class Frontend:
                 % (el, vt, core, "   <-- AENDERUNG" if changed else ""))
             self._last_bootstate = state
             self._last_snapshot = now
+
+        unberuehrt = self._last_input_time <= self._boot_time + 1.0
+        if (core == "MENU" and vt != self.VT_KONSOLE and vt != "?"
+                and unberuehrt
+                and self._vt_nachgefasst < self.VT_NACHFASSEN_MAX
+                and now - self._letztes_nachfassen
+                >= self.VT_NACHFASSEN_ABSTAND):
+            self._vt_nachgefasst += 1
+            self._letztes_nachfassen = now
+            LOG("boot-watch: Anzeige haengt auf %s - F9 nachgeschickt (%d/%d)"
+                % (vt, self._vt_nachgefasst, self.VT_NACHFASSEN_MAX))
+            try:
+                self.enter_console_mode()
+                self.set_cursor_blink(False)
+                self.inp.flush()
+                self.inp.grab(True)
+                # Der Framebuffer steht noch voll da, aber die Seite
+                # wurde waehrenddessen ueberdeckt - die schnellen
+                # Seitenpfade halten ihren Hintergrund sonst fuer gueltig
+                # und frischen nur Zeilen auf.
+                self.fb.full_redraw_gen += 1
+                self.draw()
+            except Exception:                            # noqa: BLE001
+                LOG("boot-watch: Nachfassen fehlgeschlagen:\n"
+                    + traceback.format_exc())
 
     def _play_ducked_sfx(self, name):
         """Spielt EINEN Soundeffekt (SFX_DIR/<name>.mp3 bevorzugt, sonst

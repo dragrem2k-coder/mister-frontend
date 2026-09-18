@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-18-145",
-  "summary": "Die Miniaturen lassen sich jetzt von einem PC rechnen: das Frontend schreibt den Auftrag samt fertiger Cache-Schluessel, ein kleines Windows-Programm holt sich die Cover ueber das Netz, rechnet auf allen Kernen und legt die Ergebnisse zurueck. Aus Stunden werden Minuten."
+  "build_id": "2026-09-18-146",
+  "summary": "Dauerte der Start lange, holte sich der bootende MiSTer die Anzeige zurueck - das Frontend lief weiter, war aber nicht zu sehen: Musik lief, Bild zeigte das OSD. Sah aus wie ein Absturz, war ein verlorenes Wettrennen um den Konsolenmodus. Das Frontend erkennt das jetzt und schickt F9 nach."
 }

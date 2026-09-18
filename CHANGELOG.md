@@ -7,6 +7,52 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**„Ich bin im OSD und höre die Musik vom Frontend"** (Build 146):
+
+Sieht aus wie ein Absturz, ist aber ein **verlorenes Wettrennen**.
+
+Das Frontend schaltet den MiSTer genau einmal per F9 in den
+Konsolenmodus, ganz am Anfang von `run()` — sonst übermalt das
+MiSTer-Wallpaper unseren Framebuffer. Danach baut es seine Kategorien
+auf. Dauert das lange genug, ist der MiSTer inzwischen fertig gebootet
+und **holt sich die Anzeige zurück**. Das Frontend zeichnet dann munter
+in einen Framebuffer, den niemand sieht: die Musik läuft (eigener
+Thread), das Bild zeigt das OSD.
+
+Im Log des Nutzers stand alles drin:
+
+```
+Start-Dauer bis Kategorien-Menue bereit: 44.08s
+boot-watch +04s: VT=tty2 CORENAME=MENU   <-- AENDERUNG
+```
+
+`VT=tty2` statt `tty1` ist genau die Signatur, für die `_boot_watch()`
+damals eingebaut wurde. Sie hat sie auch brav protokolliert — und
+bewusst nichts unternommen. Ausgelöst hatte es ein gelöschter
+`games`-Ordner: der Neu-Scan verlangsamte den Start so weit, dass der
+MiSTer gewann. **Ein Neuling mit noch leerem `games`-Ordner hätte genau
+dasselbe erlebt**, und niemand wäre je von allein auf F9 gekommen.
+
+Jetzt fasst das Frontend nach: höchstens dreimal, mit zwei Sekunden
+Abstand, und nur unter zwei Bedingungen —
+
+- **Es läuft kein Core** (`CORENAME == MENU`). Läuft ein Spiel, gehört
+  die Anzeige dem Spiel.
+- **Der Nutzer hat seit dem Start nichts gedrückt.** Wer selbst per F12
+  ins OSD gegangen ist, will dort sein; ihn von dort wegzuziehen wäre
+  genau die Sorte Bevormundung, die man einem Frontend nicht verzeiht.
+
+Das Beobachtungsfenster wächst dabei von 30 auf 60 Sekunden — beim
+Nutzer schlug es nach 4 Sekunden zu, ein langsamer Kaltstart mit USB-
+und NAS-Warten kann aber deutlich später fertig werden.
+
+`tools/test_vt_nachfassen.py` prüft vor allem die Fälle, in denen
+**nicht** nachgefasst werden darf: laufender Core, Eingabe des Nutzers,
+außerhalb des Fensters, unlesbare VT — dazu die Obergrenze und den
+Mindestabstand.
+
+
+
 **Miniaturen am PC rechnen** (Build 145):
 
 Das Verkleinern der Cover ist auf dem MiSTer der teuerste Posten

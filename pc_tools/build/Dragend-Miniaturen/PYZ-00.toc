@@ -1,0 +1,1894 @@
+('C:\\Users\\Dragrem '
+ 'Stream\\Desktop\\MiSTer_Frontend\\pc_tools\\build\\Dragend-Miniaturen\\PYZ-00.pyz',
+ [('PIL',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\__init__.py',
+   'PYMODULE'),
+  ('PIL.AvifImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\AvifImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.BlpImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\BlpImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.BmpImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\BmpImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.BufrStubImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\BufrStubImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.CurImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\CurImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.DcxImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\DcxImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.DdsImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\DdsImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.EpsImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\EpsImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.ExifTags',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\ExifTags.py',
+   'PYMODULE'),
+  ('PIL.FitsImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\FitsImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.FliImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\FliImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.FpxImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\FpxImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.FtexImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\FtexImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.GbrImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\GbrImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.GifImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\GifImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.GimpGradientFile',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\GimpGradientFile.py',
+   'PYMODULE'),
+  ('PIL.GimpPaletteFile',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\GimpPaletteFile.py',
+   'PYMODULE'),
+  ('PIL.GribStubImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\GribStubImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.Hdf5StubImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\Hdf5StubImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.IcnsImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\IcnsImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.IcoImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\IcoImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.ImImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\ImImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.Image',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\Image.py',
+   'PYMODULE'),
+  ('PIL.ImageChops',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\ImageChops.py',
+   'PYMODULE'),
+  ('PIL.ImageCms',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\ImageCms.py',
+   'PYMODULE'),
+  ('PIL.ImageColor',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\ImageColor.py',
+   'PYMODULE'),
+  ('PIL.ImageFile',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\ImageFile.py',
+   'PYMODULE'),
+  ('PIL.ImageFilter',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\ImageFilter.py',
+   'PYMODULE'),
+  ('PIL.ImageMath',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\ImageMath.py',
+   'PYMODULE'),
+  ('PIL.ImageMode',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\ImageMode.py',
+   'PYMODULE'),
+  ('PIL.ImageOps',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\ImageOps.py',
+   'PYMODULE'),
+  ('PIL.ImagePalette',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\ImagePalette.py',
+   'PYMODULE'),
+  ('PIL.ImageQt',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\ImageQt.py',
+   'PYMODULE'),
+  ('PIL.ImageSequence',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\ImageSequence.py',
+   'PYMODULE'),
+  ('PIL.ImageShow',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\ImageShow.py',
+   'PYMODULE'),
+  ('PIL.ImageTk',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\ImageTk.py',
+   'PYMODULE'),
+  ('PIL.ImageWin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\ImageWin.py',
+   'PYMODULE'),
+  ('PIL.ImtImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\ImtImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.IptcImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\IptcImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.Jpeg2KImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\Jpeg2KImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.JpegImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\JpegImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.JpegPresets',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\JpegPresets.py',
+   'PYMODULE'),
+  ('PIL.McIdasImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\McIdasImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.MicImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\MicImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.MpegImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\MpegImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.MpoImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\MpoImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.MspImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\MspImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.PaletteFile',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\PaletteFile.py',
+   'PYMODULE'),
+  ('PIL.PalmImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\PalmImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.PcdImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\PcdImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.PcxImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\PcxImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.PdfImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\PdfImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.PdfParser',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\PdfParser.py',
+   'PYMODULE'),
+  ('PIL.PixarImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\PixarImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.PngImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\PngImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.PpmImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\PpmImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.PsdImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\PsdImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.QoiImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\QoiImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.SgiImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\SgiImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.SpiderImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\SpiderImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.SunImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\SunImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.TgaImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\TgaImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.TiffImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\TiffImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.TiffTags',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\TiffTags.py',
+   'PYMODULE'),
+  ('PIL.WebPImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\WebPImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.WmfImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\WmfImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.XVThumbImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\XVThumbImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.XbmImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\XbmImagePlugin.py',
+   'PYMODULE'),
+  ('PIL.XpmImagePlugin',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\XpmImagePlugin.py',
+   'PYMODULE'),
+  ('PIL._binary',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\_binary.py',
+   'PYMODULE'),
+  ('PIL._deprecate',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\_deprecate.py',
+   'PYMODULE'),
+  ('PIL._typing',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\_typing.py',
+   'PYMODULE'),
+  ('PIL._util',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\_util.py',
+   'PYMODULE'),
+  ('PIL._version',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\_version.py',
+   'PYMODULE'),
+  ('PIL.features',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\PIL\\features.py',
+   'PYMODULE'),
+  ('__future__',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\__future__.py',
+   'PYMODULE'),
+  ('_aix_support',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_aix_support.py',
+   'PYMODULE'),
+  ('_ast_unparse',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_ast_unparse.py',
+   'PYMODULE'),
+  ('_colorize',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_colorize.py',
+   'PYMODULE'),
+  ('_compat_pickle',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_compat_pickle.py',
+   'PYMODULE'),
+  ('_opcode_metadata',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_opcode_metadata.py',
+   'PYMODULE'),
+  ('_py_abc',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_py_abc.py',
+   'PYMODULE'),
+  ('_py_warnings',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_py_warnings.py',
+   'PYMODULE'),
+  ('_pydatetime',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_pydatetime.py',
+   'PYMODULE'),
+  ('_pydecimal',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_pydecimal.py',
+   'PYMODULE'),
+  ('_strptime',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_strptime.py',
+   'PYMODULE'),
+  ('_threading_local',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\_threading_local.py',
+   'PYMODULE'),
+  ('annotationlib',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\annotationlib.py',
+   'PYMODULE'),
+  ('argparse',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\argparse.py',
+   'PYMODULE'),
+  ('ast',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\ast.py',
+   'PYMODULE'),
+  ('asyncio',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\__init__.py',
+   'PYMODULE'),
+  ('asyncio.base_events',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\base_events.py',
+   'PYMODULE'),
+  ('asyncio.base_futures',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\base_futures.py',
+   'PYMODULE'),
+  ('asyncio.base_subprocess',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\base_subprocess.py',
+   'PYMODULE'),
+  ('asyncio.base_tasks',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\base_tasks.py',
+   'PYMODULE'),
+  ('asyncio.constants',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\constants.py',
+   'PYMODULE'),
+  ('asyncio.coroutines',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\coroutines.py',
+   'PYMODULE'),
+  ('asyncio.events',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\events.py',
+   'PYMODULE'),
+  ('asyncio.exceptions',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\exceptions.py',
+   'PYMODULE'),
+  ('asyncio.format_helpers',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\format_helpers.py',
+   'PYMODULE'),
+  ('asyncio.futures',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\futures.py',
+   'PYMODULE'),
+  ('asyncio.graph',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\graph.py',
+   'PYMODULE'),
+  ('asyncio.locks',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\locks.py',
+   'PYMODULE'),
+  ('asyncio.log',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\log.py',
+   'PYMODULE'),
+  ('asyncio.mixins',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\mixins.py',
+   'PYMODULE'),
+  ('asyncio.proactor_events',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\proactor_events.py',
+   'PYMODULE'),
+  ('asyncio.protocols',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\protocols.py',
+   'PYMODULE'),
+  ('asyncio.queues',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\queues.py',
+   'PYMODULE'),
+  ('asyncio.runners',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\runners.py',
+   'PYMODULE'),
+  ('asyncio.selector_events',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\selector_events.py',
+   'PYMODULE'),
+  ('asyncio.sslproto',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\sslproto.py',
+   'PYMODULE'),
+  ('asyncio.staggered',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\staggered.py',
+   'PYMODULE'),
+  ('asyncio.streams',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\streams.py',
+   'PYMODULE'),
+  ('asyncio.subprocess',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\subprocess.py',
+   'PYMODULE'),
+  ('asyncio.taskgroups',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\taskgroups.py',
+   'PYMODULE'),
+  ('asyncio.tasks',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\tasks.py',
+   'PYMODULE'),
+  ('asyncio.threads',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\threads.py',
+   'PYMODULE'),
+  ('asyncio.timeouts',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\timeouts.py',
+   'PYMODULE'),
+  ('asyncio.transports',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\transports.py',
+   'PYMODULE'),
+  ('asyncio.trsock',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\trsock.py',
+   'PYMODULE'),
+  ('asyncio.unix_events',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\unix_events.py',
+   'PYMODULE'),
+  ('asyncio.windows_events',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\windows_events.py',
+   'PYMODULE'),
+  ('asyncio.windows_utils',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\asyncio\\windows_utils.py',
+   'PYMODULE'),
+  ('base64',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\base64.py',
+   'PYMODULE'),
+  ('bcrypt',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\bcrypt\\__init__.py',
+   'PYMODULE'),
+  ('bisect',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\bisect.py',
+   'PYMODULE'),
+  ('bz2',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\bz2.py',
+   'PYMODULE'),
+  ('calendar',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\calendar.py',
+   'PYMODULE'),
+  ('codeop',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\codeop.py',
+   'PYMODULE'),
+  ('colorsys',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\colorsys.py',
+   'PYMODULE'),
+  ('compression',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\compression\\__init__.py',
+   'PYMODULE'),
+  ('compression._common',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\compression\\_common\\__init__.py',
+   'PYMODULE'),
+  ('compression._common._streams',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\compression\\_common\\_streams.py',
+   'PYMODULE'),
+  ('compression.zstd',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\compression\\zstd\\__init__.py',
+   'PYMODULE'),
+  ('compression.zstd._zstdfile',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\compression\\zstd\\_zstdfile.py',
+   'PYMODULE'),
+  ('concurrent',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\__init__.py',
+   'PYMODULE'),
+  ('concurrent.futures',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\futures\\__init__.py',
+   'PYMODULE'),
+  ('concurrent.futures._base',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\futures\\_base.py',
+   'PYMODULE'),
+  ('concurrent.futures.interpreter',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\futures\\interpreter.py',
+   'PYMODULE'),
+  ('concurrent.futures.process',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\futures\\process.py',
+   'PYMODULE'),
+  ('concurrent.futures.thread',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\futures\\thread.py',
+   'PYMODULE'),
+  ('concurrent.interpreters',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\interpreters\\__init__.py',
+   'PYMODULE'),
+  ('concurrent.interpreters._crossinterp',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\interpreters\\_crossinterp.py',
+   'PYMODULE'),
+  ('concurrent.interpreters._queues',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\concurrent\\interpreters\\_queues.py',
+   'PYMODULE'),
+  ('contextlib',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\contextlib.py',
+   'PYMODULE'),
+  ('contextvars',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\contextvars.py',
+   'PYMODULE'),
+  ('copy',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\copy.py',
+   'PYMODULE'),
+  ('cryptography',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\__init__.py',
+   'PYMODULE'),
+  ('cryptography.__about__',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\__about__.py',
+   'PYMODULE'),
+  ('cryptography.exceptions',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\exceptions.py',
+   'PYMODULE'),
+  ('cryptography.hazmat',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\__init__.py',
+   'PYMODULE'),
+  ('cryptography.hazmat._oid',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\_oid.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.backends',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\backends\\__init__.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.backends.openssl',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\backends\\openssl\\__init__.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.backends.openssl.backend',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\backends\\openssl\\backend.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.bindings',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\bindings\\__init__.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.bindings.openssl',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\bindings\\openssl\\__init__.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.bindings.openssl._conditional',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\bindings\\openssl\\_conditional.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.bindings.openssl.binding',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\bindings\\openssl\\binding.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.decrepit',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\decrepit\\__init__.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.decrepit.ciphers',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\decrepit\\ciphers\\__init__.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.decrepit.ciphers.algorithms',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\decrepit\\ciphers\\algorithms.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.decrepit.ciphers.modes',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\decrepit\\ciphers\\modes.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\__init__.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives._asymmetric',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\_asymmetric.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives._cipheralgorithm',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\_cipheralgorithm.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives._modes',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\_modes.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives._serialization',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\_serialization.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives.asymmetric',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\asymmetric\\__init__.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives.asymmetric.dh',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\asymmetric\\dh.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives.asymmetric.dsa',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\asymmetric\\dsa.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives.asymmetric.ec',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\asymmetric\\ec.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives.asymmetric.ed25519',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\asymmetric\\ed25519.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives.asymmetric.padding',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\asymmetric\\padding.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives.asymmetric.rsa',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\asymmetric\\rsa.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives.asymmetric.utils',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\asymmetric\\utils.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives.asymmetric.x25519',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\asymmetric\\x25519.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives.ciphers',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\ciphers\\__init__.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives.ciphers.aead',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\ciphers\\aead.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives.ciphers.algorithms',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\ciphers\\algorithms.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives.ciphers.base',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\ciphers\\base.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives.ciphers.modes',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\ciphers\\modes.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives.constant_time',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\constant_time.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives.hashes',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\hashes.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives.padding',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\padding.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives.serialization',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\serialization\\__init__.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives.serialization.base',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\serialization\\base.py',
+   'PYMODULE'),
+  ('cryptography.hazmat.primitives.serialization.ssh',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\hazmat\\primitives\\serialization\\ssh.py',
+   'PYMODULE'),
+  ('cryptography.utils',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\cryptography\\utils.py',
+   'PYMODULE'),
+  ('csv',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\csv.py',
+   'PYMODULE'),
+  ('ctypes',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\ctypes\\__init__.py',
+   'PYMODULE'),
+  ('ctypes._endian',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\ctypes\\_endian.py',
+   'PYMODULE'),
+  ('ctypes._layout',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\ctypes\\_layout.py',
+   'PYMODULE'),
+  ('ctypes.wintypes',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\ctypes\\wintypes.py',
+   'PYMODULE'),
+  ('dataclasses',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\dataclasses.py',
+   'PYMODULE'),
+  ('datetime',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\datetime.py',
+   'PYMODULE'),
+  ('decimal',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\decimal.py',
+   'PYMODULE'),
+  ('difflib',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\difflib.py',
+   'PYMODULE'),
+  ('dis',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\dis.py',
+   'PYMODULE'),
+  ('dragend_kern',
+   'C:\\Users\\Dragrem '
+   'Stream\\Desktop\\MiSTer_Frontend\\pc_tools\\dragend_kern.py',
+   'PYMODULE'),
+  ('email',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\__init__.py',
+   'PYMODULE'),
+  ('email._encoded_words',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\_encoded_words.py',
+   'PYMODULE'),
+  ('email._header_value_parser',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\_header_value_parser.py',
+   'PYMODULE'),
+  ('email._parseaddr',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\_parseaddr.py',
+   'PYMODULE'),
+  ('email._policybase',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\_policybase.py',
+   'PYMODULE'),
+  ('email.base64mime',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\base64mime.py',
+   'PYMODULE'),
+  ('email.charset',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\charset.py',
+   'PYMODULE'),
+  ('email.contentmanager',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\contentmanager.py',
+   'PYMODULE'),
+  ('email.encoders',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\encoders.py',
+   'PYMODULE'),
+  ('email.errors',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\errors.py',
+   'PYMODULE'),
+  ('email.feedparser',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\feedparser.py',
+   'PYMODULE'),
+  ('email.generator',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\generator.py',
+   'PYMODULE'),
+  ('email.header',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\header.py',
+   'PYMODULE'),
+  ('email.headerregistry',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\headerregistry.py',
+   'PYMODULE'),
+  ('email.iterators',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\iterators.py',
+   'PYMODULE'),
+  ('email.message',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\message.py',
+   'PYMODULE'),
+  ('email.parser',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\parser.py',
+   'PYMODULE'),
+  ('email.policy',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\policy.py',
+   'PYMODULE'),
+  ('email.quoprimime',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\quoprimime.py',
+   'PYMODULE'),
+  ('email.utils',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\email\\utils.py',
+   'PYMODULE'),
+  ('fnmatch',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\fnmatch.py',
+   'PYMODULE'),
+  ('fractions',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\fractions.py',
+   'PYMODULE'),
+  ('ftplib',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\ftplib.py',
+   'PYMODULE'),
+  ('getopt',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\getopt.py',
+   'PYMODULE'),
+  ('getpass',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\getpass.py',
+   'PYMODULE'),
+  ('gettext',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\gettext.py',
+   'PYMODULE'),
+  ('glob',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\glob.py',
+   'PYMODULE'),
+  ('gzip',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\gzip.py',
+   'PYMODULE'),
+  ('hashlib',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\hashlib.py',
+   'PYMODULE'),
+  ('hmac',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\hmac.py',
+   'PYMODULE'),
+  ('http',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\http\\__init__.py',
+   'PYMODULE'),
+  ('http.client',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\http\\client.py',
+   'PYMODULE'),
+  ('http.cookiejar',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\http\\cookiejar.py',
+   'PYMODULE'),
+  ('importlib',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\__init__.py',
+   'PYMODULE'),
+  ('importlib._abc',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\_abc.py',
+   'PYMODULE'),
+  ('importlib._bootstrap',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\_bootstrap.py',
+   'PYMODULE'),
+  ('importlib._bootstrap_external',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\_bootstrap_external.py',
+   'PYMODULE'),
+  ('importlib.abc',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\abc.py',
+   'PYMODULE'),
+  ('importlib.machinery',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\machinery.py',
+   'PYMODULE'),
+  ('importlib.metadata',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\metadata\\__init__.py',
+   'PYMODULE'),
+  ('importlib.metadata._adapters',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\metadata\\_adapters.py',
+   'PYMODULE'),
+  ('importlib.metadata._collections',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\metadata\\_collections.py',
+   'PYMODULE'),
+  ('importlib.metadata._functools',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\metadata\\_functools.py',
+   'PYMODULE'),
+  ('importlib.metadata._itertools',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\metadata\\_itertools.py',
+   'PYMODULE'),
+  ('importlib.metadata._meta',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\metadata\\_meta.py',
+   'PYMODULE'),
+  ('importlib.metadata._text',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\metadata\\_text.py',
+   'PYMODULE'),
+  ('importlib.readers',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\readers.py',
+   'PYMODULE'),
+  ('importlib.resources',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\resources\\__init__.py',
+   'PYMODULE'),
+  ('importlib.resources._adapters',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\resources\\_adapters.py',
+   'PYMODULE'),
+  ('importlib.resources._common',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\resources\\_common.py',
+   'PYMODULE'),
+  ('importlib.resources._functional',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\resources\\_functional.py',
+   'PYMODULE'),
+  ('importlib.resources._itertools',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\resources\\_itertools.py',
+   'PYMODULE'),
+  ('importlib.resources.abc',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\resources\\abc.py',
+   'PYMODULE'),
+  ('importlib.resources.readers',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\resources\\readers.py',
+   'PYMODULE'),
+  ('importlib.util',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\importlib\\util.py',
+   'PYMODULE'),
+  ('inspect',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\inspect.py',
+   'PYMODULE'),
+  ('invoke',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\__init__.py',
+   'PYMODULE'),
+  ('invoke.collection',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\collection.py',
+   'PYMODULE'),
+  ('invoke.completion',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\completion\\__init__.py',
+   'PYMODULE'),
+  ('invoke.completion.complete',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\completion\\complete.py',
+   'PYMODULE'),
+  ('invoke.config',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\config.py',
+   'PYMODULE'),
+  ('invoke.context',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\context.py',
+   'PYMODULE'),
+  ('invoke.env',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\env.py',
+   'PYMODULE'),
+  ('invoke.exceptions',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\exceptions.py',
+   'PYMODULE'),
+  ('invoke.executor',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\executor.py',
+   'PYMODULE'),
+  ('invoke.loader',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\loader.py',
+   'PYMODULE'),
+  ('invoke.parser',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\parser\\__init__.py',
+   'PYMODULE'),
+  ('invoke.parser.argument',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\parser\\argument.py',
+   'PYMODULE'),
+  ('invoke.parser.context',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\parser\\context.py',
+   'PYMODULE'),
+  ('invoke.parser.parser',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\parser\\parser.py',
+   'PYMODULE'),
+  ('invoke.program',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\program.py',
+   'PYMODULE'),
+  ('invoke.runners',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\runners.py',
+   'PYMODULE'),
+  ('invoke.tasks',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\tasks.py',
+   'PYMODULE'),
+  ('invoke.terminals',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\terminals.py',
+   'PYMODULE'),
+  ('invoke.util',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\util.py',
+   'PYMODULE'),
+  ('invoke.vendor',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\__init__.py',
+   'PYMODULE'),
+  ('invoke.vendor.fluidity',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\fluidity\\__init__.py',
+   'PYMODULE'),
+  ('invoke.vendor.fluidity.backwardscompat',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\fluidity\\backwardscompat.py',
+   'PYMODULE'),
+  ('invoke.vendor.fluidity.machine',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\fluidity\\machine.py',
+   'PYMODULE'),
+  ('invoke.vendor.lexicon',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\lexicon\\__init__.py',
+   'PYMODULE'),
+  ('invoke.vendor.lexicon._version',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\lexicon\\_version.py',
+   'PYMODULE'),
+  ('invoke.vendor.lexicon.alias_dict',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\lexicon\\alias_dict.py',
+   'PYMODULE'),
+  ('invoke.vendor.lexicon.attribute_dict',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\lexicon\\attribute_dict.py',
+   'PYMODULE'),
+  ('invoke.vendor.yaml',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\yaml\\__init__.py',
+   'PYMODULE'),
+  ('invoke.vendor.yaml.composer',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\yaml\\composer.py',
+   'PYMODULE'),
+  ('invoke.vendor.yaml.constructor',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\yaml\\constructor.py',
+   'PYMODULE'),
+  ('invoke.vendor.yaml.cyaml',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\yaml\\cyaml.py',
+   'PYMODULE'),
+  ('invoke.vendor.yaml.dumper',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\yaml\\dumper.py',
+   'PYMODULE'),
+  ('invoke.vendor.yaml.emitter',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\yaml\\emitter.py',
+   'PYMODULE'),
+  ('invoke.vendor.yaml.error',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\yaml\\error.py',
+   'PYMODULE'),
+  ('invoke.vendor.yaml.events',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\yaml\\events.py',
+   'PYMODULE'),
+  ('invoke.vendor.yaml.loader',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\yaml\\loader.py',
+   'PYMODULE'),
+  ('invoke.vendor.yaml.nodes',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\yaml\\nodes.py',
+   'PYMODULE'),
+  ('invoke.vendor.yaml.parser',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\yaml\\parser.py',
+   'PYMODULE'),
+  ('invoke.vendor.yaml.reader',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\yaml\\reader.py',
+   'PYMODULE'),
+  ('invoke.vendor.yaml.representer',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\yaml\\representer.py',
+   'PYMODULE'),
+  ('invoke.vendor.yaml.resolver',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\yaml\\resolver.py',
+   'PYMODULE'),
+  ('invoke.vendor.yaml.scanner',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\yaml\\scanner.py',
+   'PYMODULE'),
+  ('invoke.vendor.yaml.serializer',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\yaml\\serializer.py',
+   'PYMODULE'),
+  ('invoke.vendor.yaml.tokens',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\vendor\\yaml\\tokens.py',
+   'PYMODULE'),
+  ('invoke.watchers',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\invoke\\watchers.py',
+   'PYMODULE'),
+  ('ipaddress',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\ipaddress.py',
+   'PYMODULE'),
+  ('json',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\json\\__init__.py',
+   'PYMODULE'),
+  ('json.decoder',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\json\\decoder.py',
+   'PYMODULE'),
+  ('json.encoder',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\json\\encoder.py',
+   'PYMODULE'),
+  ('json.scanner',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\json\\scanner.py',
+   'PYMODULE'),
+  ('logging',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\logging\\__init__.py',
+   'PYMODULE'),
+  ('lzma',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\lzma.py',
+   'PYMODULE'),
+  ('mimetypes',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\mimetypes.py',
+   'PYMODULE'),
+  ('multiprocessing',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\__init__.py',
+   'PYMODULE'),
+  ('multiprocessing.connection',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\connection.py',
+   'PYMODULE'),
+  ('multiprocessing.context',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\context.py',
+   'PYMODULE'),
+  ('multiprocessing.dummy',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\dummy\\__init__.py',
+   'PYMODULE'),
+  ('multiprocessing.dummy.connection',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\dummy\\connection.py',
+   'PYMODULE'),
+  ('multiprocessing.forkserver',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\forkserver.py',
+   'PYMODULE'),
+  ('multiprocessing.heap',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\heap.py',
+   'PYMODULE'),
+  ('multiprocessing.managers',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\managers.py',
+   'PYMODULE'),
+  ('multiprocessing.pool',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\pool.py',
+   'PYMODULE'),
+  ('multiprocessing.popen_fork',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\popen_fork.py',
+   'PYMODULE'),
+  ('multiprocessing.popen_forkserver',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\popen_forkserver.py',
+   'PYMODULE'),
+  ('multiprocessing.popen_spawn_posix',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\popen_spawn_posix.py',
+   'PYMODULE'),
+  ('multiprocessing.popen_spawn_win32',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\popen_spawn_win32.py',
+   'PYMODULE'),
+  ('multiprocessing.process',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\process.py',
+   'PYMODULE'),
+  ('multiprocessing.queues',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\queues.py',
+   'PYMODULE'),
+  ('multiprocessing.reduction',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\reduction.py',
+   'PYMODULE'),
+  ('multiprocessing.resource_sharer',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\resource_sharer.py',
+   'PYMODULE'),
+  ('multiprocessing.resource_tracker',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\resource_tracker.py',
+   'PYMODULE'),
+  ('multiprocessing.shared_memory',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\shared_memory.py',
+   'PYMODULE'),
+  ('multiprocessing.sharedctypes',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\sharedctypes.py',
+   'PYMODULE'),
+  ('multiprocessing.spawn',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\spawn.py',
+   'PYMODULE'),
+  ('multiprocessing.synchronize',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\synchronize.py',
+   'PYMODULE'),
+  ('multiprocessing.util',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\multiprocessing\\util.py',
+   'PYMODULE'),
+  ('nacl',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\nacl\\__init__.py',
+   'PYMODULE'),
+  ('nacl.bindings',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\nacl\\bindings\\__init__.py',
+   'PYMODULE'),
+  ('nacl.bindings.crypto_aead',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\nacl\\bindings\\crypto_aead.py',
+   'PYMODULE'),
+  ('nacl.bindings.crypto_box',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\nacl\\bindings\\crypto_box.py',
+   'PYMODULE'),
+  ('nacl.bindings.crypto_core',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\nacl\\bindings\\crypto_core.py',
+   'PYMODULE'),
+  ('nacl.bindings.crypto_generichash',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\nacl\\bindings\\crypto_generichash.py',
+   'PYMODULE'),
+  ('nacl.bindings.crypto_hash',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\nacl\\bindings\\crypto_hash.py',
+   'PYMODULE'),
+  ('nacl.bindings.crypto_kx',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\nacl\\bindings\\crypto_kx.py',
+   'PYMODULE'),
+  ('nacl.bindings.crypto_pwhash',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\nacl\\bindings\\crypto_pwhash.py',
+   'PYMODULE'),
+  ('nacl.bindings.crypto_scalarmult',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\nacl\\bindings\\crypto_scalarmult.py',
+   'PYMODULE'),
+  ('nacl.bindings.crypto_secretbox',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\nacl\\bindings\\crypto_secretbox.py',
+   'PYMODULE'),
+  ('nacl.bindings.crypto_secretstream',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\nacl\\bindings\\crypto_secretstream.py',
+   'PYMODULE'),
+  ('nacl.bindings.crypto_shorthash',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\nacl\\bindings\\crypto_shorthash.py',
+   'PYMODULE'),
+  ('nacl.bindings.crypto_sign',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\nacl\\bindings\\crypto_sign.py',
+   'PYMODULE'),
+  ('nacl.bindings.randombytes',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\nacl\\bindings\\randombytes.py',
+   'PYMODULE'),
+  ('nacl.bindings.sodium_core',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\nacl\\bindings\\sodium_core.py',
+   'PYMODULE'),
+  ('nacl.bindings.utils',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\nacl\\bindings\\utils.py',
+   'PYMODULE'),
+  ('nacl.encoding',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\nacl\\encoding.py',
+   'PYMODULE'),
+  ('nacl.exceptions',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\nacl\\exceptions.py',
+   'PYMODULE'),
+  ('nacl.public',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\nacl\\public.py',
+   'PYMODULE'),
+  ('nacl.signing',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\nacl\\signing.py',
+   'PYMODULE'),
+  ('nacl.utils',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\nacl\\utils.py',
+   'PYMODULE'),
+  ('netrc',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\netrc.py',
+   'PYMODULE'),
+  ('numbers',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\numbers.py',
+   'PYMODULE'),
+  ('opcode',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\opcode.py',
+   'PYMODULE'),
+  ('paramiko',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\__init__.py',
+   'PYMODULE'),
+  ('paramiko._winapi',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\_winapi.py',
+   'PYMODULE'),
+  ('paramiko.agent',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\agent.py',
+   'PYMODULE'),
+  ('paramiko.auth_handler',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\auth_handler.py',
+   'PYMODULE'),
+  ('paramiko.auth_strategy',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\auth_strategy.py',
+   'PYMODULE'),
+  ('paramiko.buffered_pipe',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\buffered_pipe.py',
+   'PYMODULE'),
+  ('paramiko.channel',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\channel.py',
+   'PYMODULE'),
+  ('paramiko.client',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\client.py',
+   'PYMODULE'),
+  ('paramiko.common',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\common.py',
+   'PYMODULE'),
+  ('paramiko.compress',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\compress.py',
+   'PYMODULE'),
+  ('paramiko.config',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\config.py',
+   'PYMODULE'),
+  ('paramiko.ecdsakey',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\ecdsakey.py',
+   'PYMODULE'),
+  ('paramiko.ed25519key',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\ed25519key.py',
+   'PYMODULE'),
+  ('paramiko.file',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\file.py',
+   'PYMODULE'),
+  ('paramiko.hostkeys',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\hostkeys.py',
+   'PYMODULE'),
+  ('paramiko.kex_curve25519',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\kex_curve25519.py',
+   'PYMODULE'),
+  ('paramiko.kex_ecdh_nist',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\kex_ecdh_nist.py',
+   'PYMODULE'),
+  ('paramiko.kex_gex',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\kex_gex.py',
+   'PYMODULE'),
+  ('paramiko.kex_group14',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\kex_group14.py',
+   'PYMODULE'),
+  ('paramiko.kex_group16',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\kex_group16.py',
+   'PYMODULE'),
+  ('paramiko.message',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\message.py',
+   'PYMODULE'),
+  ('paramiko.packet',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\packet.py',
+   'PYMODULE'),
+  ('paramiko.pipe',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\pipe.py',
+   'PYMODULE'),
+  ('paramiko.pkey',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\pkey.py',
+   'PYMODULE'),
+  ('paramiko.primes',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\primes.py',
+   'PYMODULE'),
+  ('paramiko.proxy',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\proxy.py',
+   'PYMODULE'),
+  ('paramiko.rsakey',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\rsakey.py',
+   'PYMODULE'),
+  ('paramiko.server',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\server.py',
+   'PYMODULE'),
+  ('paramiko.sftp',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\sftp.py',
+   'PYMODULE'),
+  ('paramiko.sftp_attr',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\sftp_attr.py',
+   'PYMODULE'),
+  ('paramiko.sftp_client',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\sftp_client.py',
+   'PYMODULE'),
+  ('paramiko.sftp_file',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\sftp_file.py',
+   'PYMODULE'),
+  ('paramiko.sftp_handle',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\sftp_handle.py',
+   'PYMODULE'),
+  ('paramiko.sftp_server',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\sftp_server.py',
+   'PYMODULE'),
+  ('paramiko.sftp_si',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\sftp_si.py',
+   'PYMODULE'),
+  ('paramiko.ssh_exception',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\ssh_exception.py',
+   'PYMODULE'),
+  ('paramiko.transport',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\transport.py',
+   'PYMODULE'),
+  ('paramiko.util',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\util.py',
+   'PYMODULE'),
+  ('paramiko.win_openssh',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\win_openssh.py',
+   'PYMODULE'),
+  ('paramiko.win_pageant',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\site-packages\\paramiko\\win_pageant.py',
+   'PYMODULE'),
+  ('pathlib',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\pathlib\\__init__.py',
+   'PYMODULE'),
+  ('pathlib._os',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\pathlib\\_os.py',
+   'PYMODULE'),
+  ('pickle',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\pickle.py',
+   'PYMODULE'),
+  ('pkgutil',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\pkgutil.py',
+   'PYMODULE'),
+  ('platform',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\platform.py',
+   'PYMODULE'),
+  ('pprint',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\pprint.py',
+   'PYMODULE'),
+  ('pty',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\pty.py',
+   'PYMODULE'),
+  ('py_compile',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\py_compile.py',
+   'PYMODULE'),
+  ('queue',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\queue.py',
+   'PYMODULE'),
+  ('quopri',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\quopri.py',
+   'PYMODULE'),
+  ('random',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\random.py',
+   'PYMODULE'),
+  ('runpy',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\runpy.py',
+   'PYMODULE'),
+  ('secrets',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\secrets.py',
+   'PYMODULE'),
+  ('selectors',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\selectors.py',
+   'PYMODULE'),
+  ('shlex',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\shlex.py',
+   'PYMODULE'),
+  ('shutil',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\shutil.py',
+   'PYMODULE'),
+  ('signal',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\signal.py',
+   'PYMODULE'),
+  ('socket',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\socket.py',
+   'PYMODULE'),
+  ('ssl',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\ssl.py',
+   'PYMODULE'),
+  ('statistics',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\statistics.py',
+   'PYMODULE'),
+  ('string',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\string\\__init__.py',
+   'PYMODULE'),
+  ('stringprep',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\stringprep.py',
+   'PYMODULE'),
+  ('subprocess',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\subprocess.py',
+   'PYMODULE'),
+  ('sysconfig',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\sysconfig\\__init__.py',
+   'PYMODULE'),
+  ('tarfile',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\tarfile.py',
+   'PYMODULE'),
+  ('tempfile',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\tempfile.py',
+   'PYMODULE'),
+  ('textwrap',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\textwrap.py',
+   'PYMODULE'),
+  ('threading',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\threading.py',
+   'PYMODULE'),
+  ('tkinter',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\tkinter\\__init__.py',
+   'PYMODULE'),
+  ('tkinter.commondialog',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\tkinter\\commondialog.py',
+   'PYMODULE'),
+  ('tkinter.constants',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\tkinter\\constants.py',
+   'PYMODULE'),
+  ('tkinter.messagebox',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\tkinter\\messagebox.py',
+   'PYMODULE'),
+  ('tkinter.ttk',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\tkinter\\ttk.py',
+   'PYMODULE'),
+  ('token',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\token.py',
+   'PYMODULE'),
+  ('tokenize',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\tokenize.py',
+   'PYMODULE'),
+  ('tracemalloc',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\tracemalloc.py',
+   'PYMODULE'),
+  ('tty',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\tty.py',
+   'PYMODULE'),
+  ('typing',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\typing.py',
+   'PYMODULE'),
+  ('unittest',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\unittest\\__init__.py',
+   'PYMODULE'),
+  ('unittest._log',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\unittest\\_log.py',
+   'PYMODULE'),
+  ('unittest.async_case',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\unittest\\async_case.py',
+   'PYMODULE'),
+  ('unittest.case',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\unittest\\case.py',
+   'PYMODULE'),
+  ('unittest.loader',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\unittest\\loader.py',
+   'PYMODULE'),
+  ('unittest.main',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\unittest\\main.py',
+   'PYMODULE'),
+  ('unittest.mock',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\unittest\\mock.py',
+   'PYMODULE'),
+  ('unittest.result',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\unittest\\result.py',
+   'PYMODULE'),
+  ('unittest.runner',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\unittest\\runner.py',
+   'PYMODULE'),
+  ('unittest.signals',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\unittest\\signals.py',
+   'PYMODULE'),
+  ('unittest.suite',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\unittest\\suite.py',
+   'PYMODULE'),
+  ('unittest.util',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\unittest\\util.py',
+   'PYMODULE'),
+  ('urllib',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\urllib\\__init__.py',
+   'PYMODULE'),
+  ('urllib.error',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\urllib\\error.py',
+   'PYMODULE'),
+  ('urllib.parse',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\urllib\\parse.py',
+   'PYMODULE'),
+  ('urllib.request',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\urllib\\request.py',
+   'PYMODULE'),
+  ('urllib.response',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\urllib\\response.py',
+   'PYMODULE'),
+  ('xml',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\__init__.py',
+   'PYMODULE'),
+  ('xml.etree',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\etree\\__init__.py',
+   'PYMODULE'),
+  ('xml.etree.ElementInclude',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\etree\\ElementInclude.py',
+   'PYMODULE'),
+  ('xml.etree.ElementPath',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\etree\\ElementPath.py',
+   'PYMODULE'),
+  ('xml.etree.ElementTree',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\etree\\ElementTree.py',
+   'PYMODULE'),
+  ('xml.etree.cElementTree',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\etree\\cElementTree.py',
+   'PYMODULE'),
+  ('xml.parsers',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\parsers\\__init__.py',
+   'PYMODULE'),
+  ('xml.parsers.expat',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\parsers\\expat.py',
+   'PYMODULE'),
+  ('xml.sax',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\sax\\__init__.py',
+   'PYMODULE'),
+  ('xml.sax._exceptions',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\sax\\_exceptions.py',
+   'PYMODULE'),
+  ('xml.sax.expatreader',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\sax\\expatreader.py',
+   'PYMODULE'),
+  ('xml.sax.handler',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\sax\\handler.py',
+   'PYMODULE'),
+  ('xml.sax.saxutils',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\sax\\saxutils.py',
+   'PYMODULE'),
+  ('xml.sax.xmlreader',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xml\\sax\\xmlreader.py',
+   'PYMODULE'),
+  ('xmlrpc',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xmlrpc\\__init__.py',
+   'PYMODULE'),
+  ('xmlrpc.client',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\xmlrpc\\client.py',
+   'PYMODULE'),
+  ('zipfile',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\zipfile\\__init__.py',
+   'PYMODULE'),
+  ('zipfile._path',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\zipfile\\_path\\__init__.py',
+   'PYMODULE'),
+  ('zipfile._path.glob',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\zipfile\\_path\\glob.py',
+   'PYMODULE'),
+  ('zipimport',
+   'C:\\Users\\Dragrem '
+   'Stream\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\zipimport.py',
+   'PYMODULE')])
