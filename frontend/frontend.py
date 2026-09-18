@@ -844,6 +844,7 @@ from fe.art import (
     ART_HD, SYSART_BASE, META_BASE, BADGE_DIR,
     RA_BADGE_URL, BADGES, _category_art_key,
     prewarm_thumb, prewarm_thumb_mehrfach, thumb_cache_has,
+    _thumb_cache_key, THUMB_CACHE_BASE, THUMB_ALGO_VERSION,
     thumb_cache_stand,
     thumb_cache_stand_modus, thumb_cache_leeren, thumb_cache_bilanz,
     thumb_cache_schuetzen, thumb_cache_modus_setzen, thumb_cache_lesen,
@@ -8744,8 +8745,16 @@ class Frontend:
         self.draw(message=(t("thumb_clear_done", entfernt) if entfernt
                            else t("thumb_clear_empty")))
 
-    def run_thumb_prewarm_all(self):
+    def run_thumb_prewarm_all(self, nur_auftrag=False):
         """Menuepunkt "Miniaturen vorbereiten" - mit Sicherheitsnetz.
+
+        nur_auftrag=True (Build 145) rechnet NICHTS, sondern schreibt
+        die Liste der zu berechnenden Miniaturen als Auftragsdatei -
+        damit ein PC die Arbeit uebernehmen kann (pc_tools/). Bewusst
+        derselbe Code-Pfad bis zur fertigen Zielliste: eine zweite,
+        nachgebaute Fassung wuerde frueher oder spaeter andere Kaesten
+        liefern als die echte, und der Cache-Schluessel enthaelt genau
+        diese Kaesten.
 
         BUGFIX (Nutzer-Rueckmeldung: "wenn er mit Miniaturen erstellen
         fertig ist, springt das Frontend ins OSD. Wenn ich dann das
@@ -8769,7 +8778,7 @@ class Frontend:
         Fehlerbericht landet im Log, damit ein solcher Fall beim
         naechsten Mal nachweisbar ist statt nur spuerbar."""
         try:
-            self._thumb_prewarm_durchlauf()
+            self._thumb_prewarm_durchlauf(nur_auftrag=nur_auftrag)
         except Exception:                            # noqa: BLE001
             LOG("PREWARM ABGEBROCHEN durch Fehler:\n"
                 + traceback.format_exc())
@@ -8790,7 +8799,7 @@ class Frontend:
             except Exception:                        # noqa: BLE001
                 pass
 
-    def _thumb_prewarm_durchlauf(self):
+    def _thumb_prewarm_durchlauf(self, nur_auftrag=False):
         """Menuepunkt "Miniaturen vorbereiten": einmal alle Cover
         durchrechnen und auf der Karte ablegen.
 
@@ -8890,7 +8899,14 @@ class Frontend:
         # und sie stehen auf der Seite, die man beim Start als erstes
         # sieht. Wer den Durchlauf nach einer Minute abbricht, hat
         # wenigstens die schon erledigt.
+        logo_auftraege = []
         for pfad, bw, bh in self.kategorie_logo_auftraege():
+            if nur_auftrag:
+                # Beim PC-Auftrag nichts selbst rechnen - die Logos sind
+                # die groessten Bilder im Frontend und gehoeren damit
+                # erst recht auf den schnelleren Rechner.
+                logo_auftraege.append((pfad, bw, bh))
+                continue
             try:
                 prewarm_thumb(pfad, bw, bh)
             except Exception:                        # noqa: BLE001
@@ -8971,6 +8987,10 @@ class Frontend:
         gesamt = len(ziele)
         if not gesamt:
             self.draw(t("thumb_prewarm_nothing"), prominent=True)
+            return
+
+        if nur_auftrag:
+            self._prewarm_auftrag_schreiben(cover, logo_auftraege)
             return
         LOG("PREWARM: %d Eintraege gesamt -> %d verschiedene Cover, "
             "%d Kastengroessen zu pruefen"
@@ -9074,6 +9094,80 @@ class Frontend:
         schluessel = "thumb_prewarm_aborted" if abgebrochen \
             else "thumb_prewarm_done"
         self.draw(t(schluessel, gerechnet, int(dauer)), prominent=True)
+
+    AUFTRAG_DATEI = "/media/fat/frontend/miniatur_auftrag.json"
+
+    def _prewarm_auftrag_schreiben(self, cover, logos):
+        """Die Zielliste als Auftragsdatei ablegen, damit ein PC die
+        Miniaturen rechnen kann (Build 145).
+
+        WARUM UEBERHAUPT: das Verkleinern ist reines Python und auf dem
+        DE10-Nano der mit Abstand teuerste Posten - ein voller Durchlauf
+        dauert Stunden. Derselbe Bestand ist auf einem PC in Minuten
+        durch. Was dem PC dazu fehlt, ist NICHT die Rechenleistung,
+        sondern das Wissen, welche Kastengroessen ueberhaupt gebraucht
+        werden und unter welchem Schluessel sie abzulegen sind.
+
+        Beides steht hier bereits fertig da, und genau deshalb wird es
+        hier geschrieben statt auf dem PC nachgebaut:
+
+          - Die Kaesten haengen am Layout (Liste/Raster/Galerie, CRT
+            gegen HDMI, Bildrand, Kastenstufen). Eine zweite Fassung
+            dieser Rechnung wuerde irgendwann abweichen, und der
+            Cache-Schluessel enthaelt genau diese Kaesten - der PC
+            wuerde dann fleissig Miniaturen ablegen, die nie jemand
+            findet.
+          - Der Schluessel selbst enthaelt Pfad, Dateigroesse und
+            Aenderungszeit, wie SIE DIESES GERAET SIEHT. Ueber eine
+            Netzfreigabe koennen Pfadschreibweise und Zeitstempel
+            abweichen (Windows-Pfade, FAT32-Sekundenraster,
+            Zeitzonen-Versatz, Umlaute in anderer Kodierung). Deshalb
+            rechnet der Schluessel HIER und reist fertig mit.
+
+        Der PC muss danach nur noch: Bild holen, verkleinern, unter dem
+        mitgelieferten Schluessel ablegen. Keine Annahme ueber Pfade,
+        keine ueber Zeitstempel."""
+        auftrag = []
+        uebersprungen = 0
+        alle = list(cover)
+        if logos:
+            nach_pfad = {}
+            for pfad, bw, bh in logos:
+                nach_pfad.setdefault(pfad, []).append((bw, bh))
+            alle.extend(nach_pfad.items())
+        for pfad, kaesten in alle:
+            offen = []
+            for (bw, bh) in kaesten:
+                if bw <= 0 or bh <= 0:
+                    continue
+                if thumb_cache_has(pfad, bw, bh):
+                    uebersprungen += 1
+                    continue
+                offen.append({"b": bw, "h": bh,
+                              "k": _thumb_cache_key(pfad, bw, bh)})
+            if offen:
+                auftrag.append({"p": pfad, "k": offen})
+        daten = {
+            "version": 1,
+            "algo": THUMB_ALGO_VERSION,
+            "hd": self.fb.height >= 720,
+            "cache": THUMB_CACHE_BASE,
+            "cover": auftrag,
+        }
+        anzahl = sum(len(e["k"]) for e in auftrag)
+        try:
+            tmp = self.AUFTRAG_DATEI + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(daten, f, ensure_ascii=False)
+            os.replace(tmp, self.AUFTRAG_DATEI)
+        except OSError as e:
+            LOG("AUFTRAG: Schreibfehler: %s" % e)
+            self.draw(t("thumb_auftrag_failed"), prominent=True)
+            return
+        LOG("AUFTRAG: %d Miniaturen aus %d Covern nach %s "
+            "(%d lagen schon da)"
+            % (anzahl, len(auftrag), self.AUFTRAG_DATEI, uebersprungen))
+        self.draw(t("thumb_auftrag_done", anzahl), prominent=True)
 
     def _draw_prewarm_progress(self, i, gesamt, gerechnet, t0,
                                sammeln=False):
@@ -14449,6 +14543,8 @@ class Frontend:
                             continue
                         elif kind == "thumb_prewarm":
                             self.run_thumb_prewarm_all()
+                        elif kind == "thumb_auftrag":
+                            self.run_thumb_prewarm_all(nur_auftrag=True)
                             continue
                         elif kind == "thumb_clear":
                             self.thumb_cache_leeren_dialog()

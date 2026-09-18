@@ -557,6 +557,16 @@ TRANSLATIONS = {
     "wot_option_back": {"en": "Back", "de": "Zurück"},
     "wot_checking": {"en": "Checking games... %d/%d",
                      "de": "Prüfe Spiele... %d/%d"},
+    # NEU (Build 145): den Rechenauftrag an einen PC abgeben.
+    "sys_thumb_auftrag_action": {
+        "en": "Write thumbnail job for PC",
+        "de": "Miniaturen-Auftrag für PC schreiben"},
+    "thumb_auftrag_done": {
+        "en": "Job written: %d thumbnails. Now run the PC tool.",
+        "de": "Auftrag geschrieben: %d Miniaturen. Jetzt das PC-Programm starten."},
+    "thumb_auftrag_failed": {
+        "en": "Could not write the job file.",
+        "de": "Auftragsdatei konnte nicht geschrieben werden."},
     "sys_wot_action": {"en": "Zufalls-Zock - draw a game", "de": "Zufalls-Zock - Spiel ziehen"},
     "ra_setup_title": {"en": "RETROACHIEVEMENTS SETUP",
                        "de": "RETROACHIEVEMENTS EINRICHTEN"},

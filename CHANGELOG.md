@@ -7,6 +7,75 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Miniaturen am PC rechnen** (Build 145):
+
+Das Verkleinern der Cover ist auf dem MiSTer der teuerste Posten
+überhaupt — ein voller Durchlauf dauert Stunden. Derselbe Bestand ist
+auf einem PC in Minuten durch. Neu ist deshalb `pc_tools/`: ein kleines
+Windows-Programm, das sich über das Netz mit dem MiSTer verbindet, die
+Cover holt, auf allen Kernen rechnet und die fertigen Miniaturen
+zurücklegt.
+
+**Der naheliegende Weg wäre schiefgegangen, und zwar leise.** Das
+Programm einfach auf den Cover-Ordner der SD-Karte loszulassen
+funktioniert nicht, weil der Cache-Schlüssel
+
+```
+sha1(Pfad | Kastenbreite | Kastenhöhe | Dateigröße | Änderungszeit | Verfahrensnummer)
+```
+
+drei Bestandteile enthält, die vom PC aus nicht zuverlässig zu bekommen
+sind: den **Pfad** (`E:\...` gegen `/media/fat/...`, dazu Umlaute in
+anderer Kodierung), die **Änderungszeit** (FAT32 kennt nur
+Zwei-Sekunden-Schritte, dazu Zeitzonen-Versätze — eine Sekunde daneben
+genügt) und die **Kastengrößen** (sie hängen am Layout: Liste, Raster,
+Galerie, CRT gegen HDMI, Bildrand, Kastenstufen).
+
+Stimmt davon etwas nicht, legt der PC fleißig Miniaturen ab, die der
+MiSTer nie findet — und man merkt es erst, wenn nach Stunden nichts
+schneller geworden ist.
+
+Deshalb der neue Menüpunkt **System → Verhalten → „Miniaturen-Auftrag
+für PC schreiben"**: er rechnet nichts, sondern schreibt die Zielliste
+mit **fertig berechneten Schlüsseln**. Bewusst aus genau dem Code-Pfad,
+den *Miniaturen vorbereiten* auch sonst geht — eine zweite, nachgebaute
+Fassung würde früher oder später andere Kästen liefern. Das PC-Programm
+trifft keine einzige eigene Annahme.
+
+**Drei Details:**
+
+Das Verkleinern ist reines Python und damit an den Interpreter-Sperrriegel
+gebunden — mit Threads würde immer nur einer rechnen. Das PC-Programm
+legt das Rechnen deshalb auf **Arbeitsprozesse** und behält Threads nur
+für die Netzverbindungen: Herunterladen, Rechnen und Hochladen laufen
+gleichzeitig. (Gemessen: 145 ms für einen HDMI-Kasten aus einem
+900×1200-Cover, 67 ms für den Rasterkasten.)
+
+Geschrieben wird **atomar** (erst `.tmp`, dann umbenennen). Ein Abbruch
+mitten in der Übertragung darf keine halbe Datei hinterlassen — der
+MiSTer würde sie für eine gültige Miniatur halten.
+
+Stimmen die **Verfahrensnummern** von Frontend und Werkzeug nicht
+überein, bricht das Werkzeug ab, statt unauffindbare Miniaturen
+anzulegen.
+
+**Zwei neue Prüfungen.** `tools/test_pc_kern.py` vergleicht die
+Skalierroutinen des PC-Werkzeugs über Zufallsbilder **Byte für Byte**
+gegen `fe/art.py` — es sind Kopien, und Kopien laufen auseinander.
+`tools/test_pc_durchstich.py` schickt einen echten Auftrag durch die
+ganze Kette: PNG anlegen, Auftrag schreiben, am „PC" rechnen, ablegen,
+und dann `thumb_cache_has()` fragen. Inklusive Umlaut im Dateinamen und
+der Gegenprobe, dass ein geändertes Cover unter **neuen** Schlüsseln
+wieder im Auftrag landet.
+
+Ehrlich benannt: JPEG-Cover werden am PC in voller Auflösung dekodiert,
+der MiSTer lässt TurboJPEG verkleinert dekodieren. Die Zielgröße ist
+dieselbe, die Bildpunkte sind am PC die feineren — das Ergebnis ist
+minimal besser, aber nicht bitgleich. Bei PNG, dem Normalfall, ist es
+bitgenau identisch.
+
+
+
 **Die fehlende Bedienhilfe auf dem CRT, und eine Sackgasse beim
 Zufalls-Zock** (Build 144):
 

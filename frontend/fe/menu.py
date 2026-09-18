@@ -319,6 +319,9 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             # es aendert nichts am Aussehen, sondern nur daran, wie
             # schnell sich das Frontend anfuehlt.
             (t("sys_thumb_prewarm_action"), "thumb_prewarm", None),
+            # NEU (Build 145): dieselbe Arbeit, aber an einen PC
+            # abgegeben - schreibt nur die Auftragsdatei.
+            (t("sys_thumb_auftrag_action"), "thumb_auftrag", None),
             (curated_label, "curated", None),
             (rom_filter_label, "rom_filter", None),
             (attract_label, "attract", None),

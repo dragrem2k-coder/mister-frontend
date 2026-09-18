@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-18-144",
-  "summary": "Auf dem CRT fehlte in vielen Bildschirmen die untere Bedienhilfe komplett - war sie breiter als der Bildschirm, wurde die zentrierte x-Position negativ und es wurde gar nichts gezeichnet. Betraf elf Hinweistexte. Dazu: 'alles durchgespielt' beim Zufalls-Zock trennt jetzt den leeren Bestand vom wirklich durchgespielten und bietet das Zuruecksetzen an."
+  "build_id": "2026-09-18-145",
+  "summary": "Die Miniaturen lassen sich jetzt von einem PC rechnen: das Frontend schreibt den Auftrag samt fertiger Cache-Schluessel, ein kleines Windows-Programm holt sich die Cover ueber das Netz, rechnet auf allen Kernen und legt die Ergebnisse zurueck. Aus Stunden werden Minuten."
 }
