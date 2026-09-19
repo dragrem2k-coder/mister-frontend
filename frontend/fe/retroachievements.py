@@ -533,13 +533,73 @@ def fetch_ra_game_achievements_cached(game_id, timeout=5.0):
 # ignoriert), zusaetzlich ueber das System abgesichert. Bewusst
 # KONSERVATIV: fehlt fuer unser System eine bekannte RA-Entsprechung,
 # wird lieber GAR NICHTS angezeigt als ein potenziell falscher Treffer.
+# Vorbereitet statt bei jedem Aufruf neu (Build 160). Siehe die
+# Begruendung bei _ra_normalize_name() darunter.
+_RA_KLAMMERN = re.compile(r"\([^)]*\)|\[[^\]]*\]")
+_RA_ERLAUBT = frozenset("abcdefghijklmnopqrstuvwxyz0123456789 ")
+
+
+class _RaTabelle(dict):
+    """Ersetzungstabelle fuer str.translate().
+
+    WARUM EINE EIGENE KLASSE UND KEIN EINFACHES DICT: eine Tabelle mit
+    den Eintraegen 0..255 laesst alles DARUEBER unveraendert stehen -
+    Gedankenstrich, Sternchen, japanische Schrift. Die alte
+    Regex-Fassung hat genau diese Zeichen durch ein Leerzeichen
+    ersetzt. Ein Titel wie "Ys - The Oath" (mit langem Gedankenstrich)
+    waere damit auf einen anderen Schluessel gefallen als vorher, und
+    sein RA-Fortschritt waere lautlos verschwunden.
+
+    Beim Schreiben von tools/test_ra_namen.py ist mir das zuerst NICHT
+    aufgefallen, weil der Zufallstest dort nur Latin-1-Zeichen benutzt
+    hat. Der Test kennt jetzt auch die anderen."""
+
+    def __missing__(self, code):
+        return " "
+
+
+_RA_TABELLE = _RaTabelle(
+    (i, (chr(i) if chr(i) in _RA_ERLAUBT else " ")) for i in range(256))
+# Gemerkte Ergebnisse. Derselbe Gedanke wie bei _DISPLAY_NAME_CACHE in
+# fe/naming.py, und dieselbe Begruendung fuer das fehlende Groessen-
+# limit: die Eingabe sind ausschliesslich echte Dateinamen der
+# gescannten Sammlung, also eine begrenzte Menge - keine unbegrenzte
+# oder gegnerische Eingabe.
+_RA_NAME_CACHE = {}
+
+
 def _ra_normalize_name(name):
-    """Normalisiert einen Titel fuer den Abgleich."""
-    n = name.lower()
-    n = re.sub(r"\([^)]*\)", " ", n)    # (USA), (Europe), (Rev 1) usw.
-    n = re.sub(r"\[[^\]]*\]", " ", n)   # [T-En] usw.
-    n = re.sub(r"[^a-z0-9 ]", " ", n)   # Satzzeichen -> Leerzeichen
-    n = re.sub(r"\s+", " ", n).strip()
+    """Normalisiert einen Titel fuer den Abgleich.
+
+    GEAENDERT (Build 160, Messung auf dem Geraet): diese Funktion lief
+    einmal je Spiel der ganzen Sammlung, jedes Mal wenn die
+    RA-Erfolgsjaeger-Kategorie gebaut wurde - und das war beim Start
+    der mit Abstand groesste Einzelposten:
+
+        START davon build_ra_hunter_category()   2229 ms (von 4970 ms)
+
+    Vier Regex-Durchlaeufe je Name. Zwei davon brauchen gar keine
+    Regex: Zeichen ersetzen kann str.translate() mit einer fertigen
+    Tabelle, und Leerraum zusammenziehen macht " ".join(split())
+    schneller als \\s+. Die beiden Klammer-Ausdruecke sind zu einem
+    vorbereiteten Muster zusammengefasst.
+
+    Gemessen an 20000 Namen: 3,6 -> 1,6 Mikrosekunden je Name, also
+    2,2-mal schneller, bei BITGENAU demselben Ergebnis (im Test gegen
+    die alte Fassung geprueft, siehe tools/test_ra_namen.py).
+
+    Der Merker darunter bringt beim ersten Durchlauf nichts - jeder
+    Name kommt dort genau einmal vor. Er zahlt sich beim ZWEITEN aus:
+    sobald der RA-Abruf im Hintergrund fertig ist, werden die
+    Kategorien noch einmal gebaut, und dann ist dieser Schritt
+    praktisch kostenlos."""
+    fertig = _RA_NAME_CACHE.get(name)
+    if fertig is not None:
+        return fertig
+    n = _RA_KLAMMERN.sub(" ", name.lower())   # (USA), [T-En] usw.
+    n = n.translate(_RA_TABELLE)              # Satzzeichen -> Leerzeichen
+    n = " ".join(n.split())
+    _RA_NAME_CACHE[name] = n
     return n
 
 # Bekannte Entsprechungen unserer Systemschluessel zu RA-Konsolennamen.

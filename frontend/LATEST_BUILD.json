@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-19-159",
-  "summary": "Feinere Messpunkte beim Start: die 5,0 s teilen sich jetzt bis auf die einzelnen Bauschritte auf. Die erste Messung hat meine Vermutung widerlegt - scan_games() kostet nur 652 ms, die grossen 2793 ms liegen DANACH in build_categories(). Ausserdem protokolliert der Start jetzt, wer das Frontend gestartet hat (Autostart oder MiSTers Skript-Ausfuehrer) - das erklaert voraussichtlich den Unterschied zwischen 'landet im OSD' und 'press any key to continue' beim Beenden."
+  "build_id": "2026-09-19-160",
+  "summary": "Drei Dinge. Der RA-Namensabgleich ist rund doppelt so schnell - er war mit 2229 ms von 4970 ms der groesste Posten beim Start. Die Bildschirmschonung der Textkonsole ist abgeschaltet; dass der Kernel beim Aufwachen den Login-Gruss neu zeichnet, erklaert alle vier gemeldeten Stellen, an denen er ploetzlich auftaucht. Und ein freigeschalteter Erfolg erscheint jetzt als hervorgehobene Box, die in jeder Ansicht und auf jeder Ordnerebene sichtbar ist - vorher war er in einem ROM-Ordner nur zu hoeren."
 }

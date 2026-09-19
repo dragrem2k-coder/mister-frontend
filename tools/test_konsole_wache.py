@@ -268,6 +268,54 @@ f._konsole_aufraeumen()
 check("zum Termin wird gewischt", len(f._gewischt) == 1, str(f._gewischt))
 
 
+# ---------------------------------------------------------------------------
+print()
+print("Test 10: die Bildschirmschonung der Konsole ist abgeschaltet (Build 160)")
+# ---------------------------------------------------------------------------
+# Vier Meldungen an vier Stellen ohne Gemeinsamkeit im Code: beim
+# Neueinlesen, im System-Menue beim schnellen Scrollen, in der Galerie,
+# nach einem Skript. Gemeinsam haben sie nur, dass eine Taste gedrueckt
+# wird, nachdem laengere Zeit nichts passiert ist - das ist das
+# Aufwachen aus der Konsolen-Abdunklung, und dabei zeichnet der Kernel
+# den Konsoleninhalt (den Login-Gruss) neu.
+check("es gibt eine Funktion dafuer", "def konsole_ruhig_stellen" in quelle)
+ruhig = quelle.split("def konsole_ruhig_stellen")[1][:2600]
+check("sie schaltet die Abdunklung ab (ESC[9;0])", "9;0" in ruhig, ruhig[-200:])
+check("und das VESA-Abschalten (ESC[14;0])", "14;0" in ruhig)
+check("beim Start wird sie gerufen", "self.konsole_ruhig_stellen()" in quelle)
+boot = open(os.path.join(os.path.dirname(os.path.abspath(fm.__file__)),
+                         "frontend_boot.sh"), encoding="utf-8").read()
+check("das Boot-Skript macht dasselbe, bevor wir ueberhaupt laufen",
+      "9;0" in boot and "?25l" in boot)
+# Die Wache bleibt trotzdem - falls die Erklaerung falsch ist, steht es
+# beim naechsten Mal im Log statt in einer Rueckfrage.
+check("die Wache ist NICHT entfernt worden",
+      "def _konsole_wache" in quelle and "self._konsole_wache()" in quelle)
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 11: Erfolge sind in JEDER Ansicht zu sehen (Build 160)")
+# ---------------------------------------------------------------------------
+# Nutzer-Rueckmeldung: "wenn ich erfolg freischalte wird dieser nur ueber
+# denn sound signalisiert ... wenn ich dann noch mitten in einen rom
+# ordner bin egal in welcher ansicht sieht man nichts".
+#
+# Die Fusszeilen-Meldung hat nicht jede Ansicht. Die hervorgehobene Box
+# wird in draw() gezeichnet, nachdem die Seite steht - sie liegt ueber
+# jeder Ansicht und jeder Ordnerebene.
+melden = quelle.split("def _notify_new_achievements")[1][:1600]
+check("die Erfolgsmeldung nimmt die hervorgehobene Box",
+      "prominent=True" in melden, melden[-160:])
+check("und steht laenger als eine normale Meldung",
+      fm.Frontend.ERFOLG_BOX_SEK > 5.0,
+      "%.1f s" % fm.Frontend.ERFOLG_BOX_SEK)
+# Auch beim Favoriten- und Durchgespielt-Schalter: ein Erfolg ist
+# wichtiger als die Bestaetigung "Favorit hinzugefuegt".
+check("Favorit/Durchgespielt zeigen einen Erfolg ebenfalls als Box",
+      quelle.count("prominent_duration=self.ERFOLG_BOX_SEK") >= 3,
+      "%d Fundstellen" % quelle.count("prominent_duration=self.ERFOLG_BOX_SEK"))
+
+
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))

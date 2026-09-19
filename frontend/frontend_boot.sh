@@ -39,7 +39,17 @@
 # der Textkonsole, der im selben Bildspeicher liegt wie wir. Der bisher
 # dafuer zustaendige Schalter (cursor_blink) schaltet nur das BLINKEN
 # ab, nicht den Cursor selbst.
-printf '\033[2J\033[H\033[?25l' > /dev/tty1 2>/dev/null || true
+# ERGAENZT (Build 160): zusaetzlich die Bildschirmschonung der
+# Konsole abschalten (ESC[9;0] und ESC[14;0]). Der Kernel dunkelt
+# eine Textkonsole nach einigen Minuten ohne Eingabe ab und
+# ZEICHNET IHREN INHALT beim naechsten Tastendruck neu - ihr
+# Inhalt ist der Login-Gruss, und der landet in demselben
+# Bildspeicher wie unser Bild. Das ist die beste Erklaerung
+# dafuer, dass 'Welcome to MiSTer ... login:' an voellig
+# verschiedenen Stellen auftaucht, ohne dass dort irgendetwas
+# auf die Konsole schreibt. Siehe konsole_ruhig_stellen() in
+# frontend.py fuer die ausfuehrliche Begruendung.
+printf '\033[2J\033[H\033[?25l\033[9;0]\033[14;0]' > /dev/tty1 2>/dev/null || true
 
 # Sicherheitsnetz: falls die Log-Datei durch rohe Fehlerausgaben
 # (Python-Tracebacks ueber stderr, ausserhalb der eigenen LOG()-

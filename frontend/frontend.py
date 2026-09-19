@@ -979,6 +979,7 @@ class Frontend:
         self.enter_console_mode()
         self.set_cursor_blink(False)
         self.konsole_cursor_aus()   # Build 158: der Strich links oben
+        self.konsole_ruhig_stellen()  # Build 160: und die Abdunklung
         self.inp.grab(True)
         self.fb.clear((16, 18, 24))
         self.fb.flip()
@@ -11109,10 +11110,32 @@ class Frontend:
     def _notify_new_achievements(self):
         """Wie _check_achievement_popup(), zeigt eine gefundene
         Meldung aber direkt an - fuer Stellen ohne eigene
-        Standardmeldung (z.B. nach der Rueckkehr aus einem Spiel)."""
+        Standardmeldung (z.B. nach der Rueckkehr aus einem Spiel).
+
+        GEAENDERT (Build 160, Nutzer-Rueckmeldung: "wenn ich erfolg
+        freischalte wird dieser nur ueber denn sound signalisiert ...
+        wenn ich dann noch mitten in einen rom ordner bin egal in
+        welcher ansicht sieht man nichts").
+
+        Vorher lief das ueber die normale Fusszeilen-Meldung. Die hat
+        aber nicht jede Ansicht: in einem ROM-Ordner, im Raster und in
+        der Galerie ist unten kein Platz dafuer vorgesehen, und der
+        Erfolg blieb ein Geraeusch ohne Bild.
+
+        Die hervorgehobene Box (_draw_prominent_message()) wird
+        dagegen in draw() gezeichnet, NACHDEM die Seite steht - sie
+        liegt damit ueber jeder Ansicht und ueber jeder Ordnerebene.
+        Genau dafuer gibt es sie."""
         msg = self._check_achievement_popup()
         if msg:
-            self.draw(message=msg)
+            self.draw(message=msg, prominent=True,
+                      prominent_duration=self.ERFOLG_BOX_SEK)
+
+    # Wie lange die Erfolgs-Box stehen bleibt. Laenger als die
+    # Standard-Meldung (5 s): ein Erfolg ist der einzige Hinweis, der
+    # etwas MELDET statt etwas zu bestaetigen - wer ihn verpasst,
+    # bekommt ihn nie wieder zu sehen.
+    ERFOLG_BOX_SEK = 7.0
 
     def filter_bildschirm(self):
         """Der Filter (Build 142) - siehe fe/filter.py.
@@ -13442,6 +13465,52 @@ class Frontend:
     NACHFASSEN_SEK = 1.2
 
     @staticmethod
+    def konsole_ruhig_stellen():
+        """Der Textkonsole auf tty1 das Nachzeichnen abgewoehnen.
+
+        DIE FRAGE, DIE DAHINTERSTEHT (Build 160). Der Nutzer meldet
+        "Welcome to MiSTer ... login:" inzwischen an vier Stellen: beim
+        Neueinlesen, im System-Menue beim schnellen Scrollen, in der
+        Galerie, und nach einem Skript. Vier Stellen ohne
+        Gemeinsamkeit im Code - das spricht dagegen, dass EINE unserer
+        Funktionen es ausloest.
+
+        Was alle vier gemeinsam haben: eine Taste wird gedrueckt,
+        nachdem laengere Zeit nichts passiert ist.
+
+        DAS IST DIE BILDSCHIRMSCHONUNG DER LINUX-KONSOLE. Der Kernel
+        dunkelt eine Textkonsole nach einigen Minuten ohne Eingabe ab
+        und schaltet sie bei der naechsten Eingabe wieder an - und
+        beim Anschalten ZEICHNET er ihren Inhalt neu. Ihr Inhalt ist
+        der Login-Gruss. Er landet damit in demselben Bildspeicher, in
+        den wir zeichnen, ohne dass irgendjemand etwas geschrieben
+        haette.
+
+        Das erklaert alle vier Meldungen, und es erklaert auch, warum
+        es "ab und zu" passiert statt immer: es haengt daran, ob die
+        Abdunklungsuhr gerade abgelaufen war.
+
+        ESC [ 9 ; 0 ] setzt diese Zeitspanne auf null, schaltet die
+        Abdunklung also ab. Eine gewoehnliche Terminal-Sequenz, wie
+        das Bildschirmloeschen am Anfang von frontend_boot.sh - kein
+        Eingriff in den Grafikmodus, nichts, was einen schwarzen
+        Bildschirm hinterlassen kann.
+
+        EHRLICH: das ist die beste Erklaerung, die zu allen vier
+        Beobachtungen passt, kein Beweis. Bei genau dieser Fehlersuche
+        bin ich in den Builds 146-149 viermal falsch abgebogen. Die
+        Wache aus Build 157 bleibt deshalb als Netz bestehen - wenn im
+        Log weiterhin "Dauerwache, N Bildpunkte" auftaucht, war es das
+        nicht, und wir wissen es beim naechsten Mal ohne Rueckfrage."""
+        try:
+            with open("/dev/tty1", "wb", buffering=0) as tty:
+                tty.write(b"\033[9;0]"      # Abdunklung aus
+                          b"\033[14;0]"     # und auch kein VESA-Abschalten
+                          b"\033[?25l")     # Cursor aus (Build 158)
+        except OSError:
+            pass                      # darf den Betrieb nie stoeren
+
+    @staticmethod
     def konsole_cursor_aus():
         """Den Textcursor von tty1 ausblenden.
 
@@ -14870,10 +14939,16 @@ class Frontend:
                             else:
                                 self._favorites_set.discard(label)
                             self._sync_favorites_category()
-                            msg = self._check_achievement_popup() or (
+                            erfolg = self._check_achievement_popup()
+                            if erfolg:
+                                # Ein Erfolg ist wichtiger als die
+                                # Bestaetigung und braucht die Box.
+                                self.draw(message=erfolg, prominent=True,
+                                          prominent_duration=self.ERFOLG_BOX_SEK)
+                            else:
+                                self.draw(message=(
                                 t("favorite_added") if now_fav
-                                else t("favorite_removed"))
-                            self.draw(message=msg)
+                                else t("favorite_removed")))
                             continue
                 elif act == "completed":
                     # Durchgespielt-Status umschalten - genau wie bei
@@ -14887,10 +14962,16 @@ class Frontend:
                                 self._completed_set.add(label)
                             else:
                                 self._completed_set.discard(label)
-                            msg = self._check_achievement_popup() or (
+                            erfolg = self._check_achievement_popup()
+                            if erfolg:
+                                # Ein Erfolg ist wichtiger als die
+                                # Bestaetigung und braucht die Box.
+                                self.draw(message=erfolg, prominent=True,
+                                          prominent_duration=self.ERFOLG_BOX_SEK)
+                            else:
+                                self.draw(message=(
                                 t("completed_added") if now_completed
-                                else t("completed_removed"))
-                            self.draw(message=msg)
+                                else t("completed_removed")))
                             continue
                 elif act == "filter":
                     # NEUES FEATURE (Build 142): Listenfilter. Nur auf
