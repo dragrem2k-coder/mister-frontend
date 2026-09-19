@@ -316,6 +316,36 @@ check("Favorit/Durchgespielt zeigen einen Erfolg ebenfalls als Box",
       "%d Fundstellen" % quelle.count("prominent_duration=self.ERFOLG_BOX_SEK"))
 
 
+# ---------------------------------------------------------------------------
+print()
+print("Test 12: der Ausstieg laesst MiSTer Zeit fuer das F12 (Build 162)")
+# ---------------------------------------------------------------------------
+# Nutzer-Rueckmeldung: "frontend beenden bekomme ich jetzt einen
+# schwarzen bildschirm wo der _ am blinken ist".
+#
+# enter_console_mode() wartet nach seiner Tasteninjektion seit jeher
+# 0,4 s. Der Ausstieg schickt dieselbe Taste ueber denselben Weg - und
+# schloss das Eingabegeraet DIREKT danach. Kommt das F12 nicht an,
+# bleibt der gerade geschwaerzte Bildspeicher stehen, und darauf
+# blinkt der Konsolen-Cursor. Genau das gemeldete Bild.
+ausstieg = quelle.split('LOG("Exit: gebe Eingaben frei')[1][:1800]
+check("nach dem F12 wird gewartet, bevor geschlossen wird",
+      "EXIT_NACH_F12_SEK" in ausstieg
+      and ausstieg.index("EXIT_NACH_F12_SEK") < ausstieg.index("inp.close()"),
+      "sonst kann MiSTer die Taste nicht mehr entgegennehmen")
+check("und zwar so lange wie beim Konsolenwechsel",
+      fm.Frontend.EXIT_NACH_F12_SEK >= 0.4,
+      "%.1f s" % fm.Frontend.EXIT_NACH_F12_SEK)
+# Was wir beim Start abgeschaltet haben, muss beim Beenden zurueck -
+# eine Konsole, die nie mehr abdunkelt, waere ein Rueckstand.
+check("die Bildschirmschonung wird wieder eingeschaltet",
+      "def konsole_schonung_zurueck" in quelle
+      and "self.konsole_schonung_zurueck()" in quelle)
+zurueck = quelle.split("def konsole_schonung_zurueck")[1][:900]
+check("und zwar auf einen echten Wert, nicht wieder auf null",
+      "9;10" in zurueck, zurueck[-120:])
+
+
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))

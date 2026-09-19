@@ -2481,6 +2481,16 @@ class Frontend:
                                     # Kategorienstand gescannt wird,
                                     # nicht ein evtl. veralteter Cache
         pool = self._attract_games_pool()
+        # MESSPUNKTE (Build 162). Diese Funktion ist mit rund 2300 ms
+        # der groesste Posten des Starts, und ich habe ihre Ursache
+        # jetzt ZWEIMAL falsch geraten: erst scan_games(), dann den
+        # Namensabgleich. Beide Male lag die Zeit woanders. Also nicht
+        # noch einmal raten, sondern die Funktion in ihre zwei Haelften
+        # zerlegen - Pool aufbauen und Pool durchgehen. Die Zahlen in
+        # Klammern sagen zusaetzlich, WIE GROSS die Sammlung und die
+        # RA-Tabelle ueberhaupt sind; auch das stand bisher nirgends.
+        if hasattr(self, "_t_letzte_marke"):
+            self._startmarke("davon Spiele-Pool (%d Spiele)" % len(pool))
         by_system = {}
         almost_done = []   # (name, fehlend, total, arg) - systemuebergreifend
         for name, syskey, arg in pool:
@@ -2492,6 +2502,9 @@ class Frontend:
                 by_system.setdefault(syskey, []).append((name, total, arg))
             elif total > 0 and 0 < earned < total and (total - earned) <= 3:
                 almost_done.append((name, total - earned, arg))
+        if hasattr(self, "_t_letzte_marke"):
+            self._startmarke("davon RA-Abgleich (%d in der RA-Tabelle)"
+                             % len(self._ra_lookup))
         if not by_system and not almost_done:
             return None
         folders = {}
@@ -13537,6 +13550,25 @@ class Frontend:
             pass                      # darf den Betrieb nie stoeren
 
     @staticmethod
+    def konsole_schonung_zurueck():
+        """Die Bildschirmschonung der Konsole wieder einschalten.
+
+        Gegenstueck zu konsole_ruhig_stellen() (Build 160). Wir haben
+        sie abgeschaltet, weil ihr Aufwachen unseren Bildspeicher
+        ueberschreibt - aber wenn wir uns beenden, gehoert der
+        Bildschirm wieder dem System. Eine Konsole, die nie mehr
+        abdunkelt, waere ein Rueckstand, den wir hinterlassen; auf
+        einer Roehre ist eine dauerhaft stehende Anzeige sogar
+        schaedlich.
+
+        Zehn Minuten ist der uebliche Linux-Standardwert."""
+        try:
+            with open("/dev/tty1", "wb", buffering=0) as tty:
+                tty.write(b"\033[9;10]\033[14;10]")
+        except OSError:
+            pass
+
+    @staticmethod
     def konsole_cursor_an():
         """Gegenstueck zu konsole_cursor_aus() - beim Beenden. Wer das
         vergisst, hinterlaesst eine Konsole ohne sichtbaren Cursor, und
@@ -15686,6 +15718,7 @@ class Frontend:
             self.music.shutdown()
             self.set_cursor_blink(True)
             self.konsole_cursor_an()   # Build 158: Gegenstueck zum Start
+            self.konsole_schonung_zurueck()   # Build 162, siehe dort
             self.fb.clear((0, 0, 0))
             self.fb.flip()
             self.fb.close()
@@ -15697,8 +15730,37 @@ class Frontend:
                 self.inp.inject(KEY_F12)
             except OSError as e:
                 LOG("Exit-Injection fehlgeschlagen: %s" % e)
+            # BUGFIX (Build 162, Nutzer-Rueckmeldung: "frontend beenden
+            # bekomme ich jetzt einen schwarzen bildschirm wo der _ am
+            # blinken ist").
+            #
+            # Hier stand das Schliessen DIREKT hinter der Injektion.
+            # enter_console_mode() wartet nach seiner Injektion seit
+            # jeher 0,4 s - der Ausstieg nicht. Das ist dieselbe
+            # Tastensendung ueber denselben Weg, nur ohne die Pause, in
+            # der MiSTer sie entgegennehmen kann. Kommt das F12 nicht
+            # an, bleibt unser gerade geschwaerzter Bildspeicher stehen,
+            # und darauf blinkt der Cursor der Textkonsole - genau das
+            # gemeldete Bild.
+            #
+            # Warum es frueher weniger auffiel: bis Build 158 stand dort
+            # der Login-Gruss. Man sah also etwas und hielt es fuer
+            # normal. Jetzt ist die Konsole leer, und derselbe Zustand
+            # sieht aus wie ein Absturz.
+            #
+            # EHRLICH: dass die fehlende Pause die Ursache IST, ist
+            # damit nicht bewiesen - nur, dass die beiden Wege
+            # unterschiedlich waren, obwohl sie dasselbe tun. Die
+            # Log-Zeile darunter sagt beim naechsten Mal, ob die
+            # Injektion ueberhaupt durchging.
+            time.sleep(self.EXIT_NACH_F12_SEK)
             self.inp.close()
             LOG("Exit: fertig")
+
+    # Pause zwischen dem F12 und dem Schliessen der Eingaben - dieselbe
+    # Zeit, die enter_console_mode() seit jeher nach seiner Injektion
+    # wartet.
+    EXIT_NACH_F12_SEK = 0.4
 
 def _handle_sigterm(signum, frame):
     """kill sendet standardmaessig SIGTERM - Python fuehrt dabei OHNE

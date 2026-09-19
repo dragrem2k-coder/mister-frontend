@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-19-161",
-  "summary": "Die Installer kopieren LATEST_BUILD.json jetzt mit. Sie nahmen bisher nur *.py, *.sh und *.html - auf dem Geraet stand deshalb monatelang eine alte Build-Nummer, waehrend laengst neuerer Code lief. Funktional harmlos, aber die Datei sah aus wie eine Auskunft ueber den installierten Stand und war keine. Bewusst nur diese eine Datei und kein Sammelmuster: im selben Ordner liegen die zur Laufzeit erzeugten JSON-Dateien des Nutzers."
+  "build_id": "2026-09-19-162",
+  "summary": "Beim Beenden wartet das Frontend jetzt nach dem F12, bevor es die Eingaben schliesst - genauso lange wie beim Konsolenwechsel, wo diese Pause seit jeher steht. Ohne sie konnte MiSTer die Taste nicht mehr entgegennehmen, und es blieb ein schwarzes Bild mit blinkendem Cursor. Die Bildschirmschonung der Konsole wird beim Beenden wieder eingeschaltet. Ausserdem zerlegt der Erfolgsjaeger seine 2300 ms jetzt in Pool-Aufbau und Abgleich - zwei Vermutungen dazu lagen daneben, also wird gemessen statt geraten."
 }
