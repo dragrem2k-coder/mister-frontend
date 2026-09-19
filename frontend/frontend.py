@@ -930,8 +930,22 @@ class Frontend:
     """
 
     def __init__(self):
+        # MESSPUNKTE FUER DEN START (Build 158)
+        #
+        # Nutzerfrage: "koennten wir denn start vom frontend etwas
+        # schneller machen?". Gemessen wurden bisher nur die 5,78 s
+        # insgesamt - welcher Abschnitt sie verbraucht, stand nirgends.
+        # Jede Optimierung ohne diese Aufteilung waere Raten gewesen,
+        # und Raten hat in diesem Projekt schon zu Schaetzungen
+        # gefuehrt, die um Faktor 13 danebenlagen.
+        #
+        # Eine Handvoll Log-Zeilen einmal pro Start - das kostet nichts
+        # und beantwortet die Frage beim naechsten Boot von selbst.
+        self._t_start = time.monotonic()
+        self._t_letzte_marke = self._t_start
         self.fb = Framebuffer()
         self.inp = InputManager()
+        self._startmarke("Framebuffer und Eingaben offen")
         # WICHTIG: Erst auf unseren eigenen Bildschirm umschalten (F9),
         # DANACH erst den (potenziell langsamen) Scan starten - vorher
         # passierte das in umgekehrter Reihenfolge (in run(), also nach
@@ -1111,7 +1125,9 @@ class Frontend:
                         self._ra_retry_next = time.monotonic() + 30.0
             threading.Thread(target=_initial_ra_fetch, daemon=True).start()
 
+        self._startmarke("Musik, RA-Abruf angestossen")
         self.build_categories()
+        self._startmarke("Spieleliste eingelesen")
 
         def _prewarm_one_cat_art(name, syskey):
             """Waermt die Sysart-Datei fuer GENAU eine Kategorie vor -
@@ -1687,6 +1703,7 @@ class Frontend:
         # Raster gar nicht zu sehen.
         self._search_picker = False
         self._picker_i = 0
+        self._startmarke("Rest des Aufbaus")
         if self.music.available():
             self.music.tick()      # start playback right away
 
@@ -1823,6 +1840,12 @@ class Frontend:
         self.cats = scan_games(force=force_rescan,
                                progress_cb=self._draw_scan_progress,
                                warte_cb=self._draw_laufwerk_warten)
+        # Build 158: der Scan ist der groesste Einzelposten des Starts,
+        # und er hat zwei sehr verschiedene Faelle - Fingerabdruck passt
+        # (Pickle laden) oder Baum neu aufbauen. Ohne getrennte Zahl
+        # weiss man nicht, welchen man gerade misst.
+        if hasattr(self, "_t_letzte_marke"):
+            self._startmarke("davon scan_games()")
         # "Weiterspielen" (Nutzerwunsch): ganz oben ein einzelner,
         # hervorgehobener Vorschlag - das zuletzt gespielte Spiel, das
         # noch NICHT als durchgespielt markiert ist. Faellt weg, wenn
@@ -13463,6 +13486,22 @@ class Frontend:
         verschieben - hier genuegt eine Zuweisung."""
         global OVERSCAN_X, OVERSCAN_Y
         OVERSCAN_X, OVERSCAN_Y = overscan_lesen()
+
+    def _startmarke(self, was):
+        """Eine Zwischenzeit des Starts ins Log schreiben.
+
+        Format bewusst mit BEIDEN Zahlen - dem Abschnitt und der Summe
+        bis hierher. Nur die Summe zu loggen hiesse, beim Lesen
+        subtrahieren zu muessen; nur den Abschnitt zu loggen hiesse,
+        aufaddieren zu muessen. Beides macht man genau einmal falsch."""
+        jetzt = time.monotonic()
+        try:
+            LOG("START %-34s %6.0f ms   (gesamt %5.2f s)"
+                % (was, (jetzt - self._t_letzte_marke) * 1000.0,
+                   jetzt - self._t_start))
+        except Exception:                            # noqa: BLE001
+            pass                      # darf den Start nie stoeren
+        self._t_letzte_marke = jetzt
 
     @staticmethod
     def set_cursor_blink(on):

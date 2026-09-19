@@ -1,4 +1,4 @@
 {
   "build_id": "2026-09-19-158",
-  "summary": "Der Cursor der Textkonsole wird jetzt ausgeblendet (ESC[?25l) - das ist der kleine Strich, der im Bildschirmvideo beim Scrollen links oben aufblitzte. Der bisherige Schalter cursor_blink schaltete nur das Blinken ab, nicht den Cursor. Ausserdem wird nach jeder Rueckkehr aus Script, Core oder OSD noch einmal nachgefasst: das volle Neuzeichnen kommt zu frueh, der Login-Prozess meldet sich erst danach zurueck."
+  "summary": "Der Cursor der Textkonsole wird jetzt ausgeblendet (ESC[?25l) - das ist der kleine Strich, der im Bildschirmvideo beim Scrollen links oben aufblitzte. Der bisherige Schalter cursor_blink schaltete nur das Blinken ab, nicht den Cursor. Nach jeder Rueckkehr aus Script, Core oder OSD wird noch einmal nachgefasst: das volle Neuzeichnen kommt zu frueh, der Login-Prozess meldet sich erst danach zurueck. Ausserdem schreibt der Start jetzt Zwischenzeiten ins Log, damit die Frage nach dem schnelleren Start mit Zahlen statt mit Vermutungen beantwortet werden kann."
 }
