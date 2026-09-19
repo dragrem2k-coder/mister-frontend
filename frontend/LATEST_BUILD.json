@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-19-160",
-  "summary": "Drei Dinge. Der RA-Namensabgleich ist rund doppelt so schnell - er war mit 2229 ms von 4970 ms der groesste Posten beim Start. Die Bildschirmschonung der Textkonsole ist abgeschaltet; dass der Kernel beim Aufwachen den Login-Gruss neu zeichnet, erklaert alle vier gemeldeten Stellen, an denen er ploetzlich auftaucht. Und ein freigeschalteter Erfolg erscheint jetzt als hervorgehobene Box, die in jeder Ansicht und auf jeder Ordnerebene sichtbar ist - vorher war er in einem ROM-Ordner nur zu hoeren."
+  "build_id": "2026-09-19-161",
+  "summary": "Die Installer kopieren LATEST_BUILD.json jetzt mit. Sie nahmen bisher nur *.py, *.sh und *.html - auf dem Geraet stand deshalb monatelang eine alte Build-Nummer, waehrend laengst neuerer Code lief. Funktional harmlos, aber die Datei sah aus wie eine Auskunft ueber den installierten Stand und war keine. Bewusst nur diese eine Datei und kein Sammelmuster: im selben Ordner liegen die zur Laufzeit erzeugten JSON-Dateien des Nutzers."
 }

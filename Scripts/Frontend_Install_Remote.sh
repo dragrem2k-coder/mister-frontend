@@ -161,6 +161,25 @@ mkdir -p "$FRONTEND_DIR" "$SCRIPTS_DIR" "$FRONTEND_DIR/music"
 cp -f "$SRC_DIR"/frontend/*.py "$FRONTEND_DIR/" 2>/dev/null || true
 cp -f "$SRC_DIR"/frontend/*.sh "$FRONTEND_DIR/" 2>/dev/null || true
 cp -f "$SRC_DIR"/frontend/*.html "$FRONTEND_DIR/" 2>/dev/null || true
+# ERGAENZT (Build 161): LATEST_BUILD.json GEZIELT mitkopieren.
+#
+# Die Kopierzeilen darueber nehmen *.py, *.sh und *.html - JSON war
+# nie dabei. Auf dem Geraet des Nutzers stand deshalb monatelang die
+# Build-Nummer 153, waehrend laengst Build 159 lief. Das hat bei
+# einer Fehlersuche eine komplette Rueckfrage-Runde gekostet: die
+# Datei sah aus wie eine Auskunft ueber den installierten Stand und
+# war keine.
+#
+# BEWUSST NUR DIESE EINE DATEI, kein "*.json": im selben Ordner
+# liegen zur Laufzeit erzeugte JSON-Dateien des Nutzers
+# (games_cache.json, stream_config.json, keymap_custom.json). Ein
+# pauschales Muster wuerde die eines Tages mit ueberschreiben, wenn
+# jemand eine gleichnamige Datei ins Repo legt.
+#
+# Rein informativ - der Update-Hinweis im Frontend vergleicht gegen
+# eine eigene Zustandsdatei, nicht gegen diese hier. Sie soll nur
+# ehrlich sagen, was installiert ist.
+cp -f "$SRC_DIR/frontend/LATEST_BUILD.json" "$FRONTEND_DIR/" 2>/dev/null || true
 if [ -d "$SRC_DIR/frontend/sysart" ]; then
     # NUR fehlende Dateien ergaenzen (kein Ueberschreiben!) - sonst
     # wuerden eigene, per Hand ersetzte Logos bei jedem erneuten Lauf
