@@ -952,6 +952,10 @@ class Frontend:
         # Absicherung sitzt jetzt in _konsole_sichern().
         self._f9_wiederholt = 0
         self._f9_aufraeumen_ab = None
+        # Build 157: die Dauerwache gegen den Login-Prompt. Siehe den
+        # Kommentarblock bei _konsole_wache().
+        self._wache_naechste = 0.0
+        self._wache_verdacht = 0
         self._mister_pid = None
         self._mister_probe = None
         try:
@@ -8077,6 +8081,7 @@ class Frontend:
                 self._boot_watch()   # Diagnose: Anzeige-Zustand nach dem Boot
                 self._konsole_sichern()     # F9 absichern
                 self._konsole_aufraeumen()  # Build 150: Login-Prompt wegwischen
+                self._konsole_wache()       # Build 157: und zwar dauerhaft
                 # WICHTIG: unabhaengige if-Abfragen statt einer elif-Kette.
                 # Mit elif haette "track_needs" (Songtitel muss scrollen -
                 # trifft auf praktisch jeden echten Songnamen zu) den
@@ -13251,7 +13256,99 @@ class Frontend:
                 return
         except Exception:                            # noqa: BLE001
             pass                      # im Zweifel lieber aufraeumen
-        LOG("Konsolenmodus: Fremdausgabe im Bild - wische und baue neu auf")
+        self._konsole_wischen("nach eingespeistem F9")
+
+    # -----------------------------------------------------------------
+    # DAUERWACHE gegen den Login-Prompt (Build 157)
+    # -----------------------------------------------------------------
+    # Nutzer-Rueckmeldung mit Bildschirmfoto: "wenn ich spiele liste neu
+    # einlesen machen springt der manchmal um in denn welcome to mister
+    # ... auch so manchmal macht das frontend das im menue".
+    #
+    # ZWEI DINGE GREIFEN INEINANDER:
+    #
+    # 1. Der Login-Prozess auf tty1 schreibt in denselben Framebuffer
+    #    wie wir. Das war seit Build 150 bekannt - nur galt es als
+    #    Folge des EINGESPEISTEN F9 und wurde deshalb ausschliesslich
+    #    im Startfenster behandelt (_f9_aufraeumen_ab wird nur von
+    #    _konsole_sichern() gesetzt). Danach raeumte niemand mehr auf.
+    #
+    # 2. flip() kopiert zwar das ganze Bild und wischt den Prompt
+    #    dadurch mit weg - aber im Ruhezustand laeuft meistens nur
+    #    flip_rows() (Laufschrift, Uhr, Equalizer). Das fasst die
+    #    obersten Zeilen nicht an, und genau dort steht der Prompt.
+    #    Deshalb bleibt er stehen, bis zufaellig ein voller Aufbau
+    #    kommt.
+    #
+    # WAS DEN PROMPT AUSLOEST, WEISS ICH NICHT SICHER. Der Neueinlese-
+    # Punkt speist kein F9 ein; wahrscheinlich startet der Login-
+    # Prozess von sich aus neu. Bei genau dieser Fehlersuche bin ich in
+    # den Builds 146-149 viermal falsch abgebogen, weil ich aus einer
+    # Beobachtung eine Ursache gemacht habe. Deshalb hier bewusst
+    # andersherum: die Wache behandelt das SYMPTOM und ist dabei
+    # unabhaengig davon, wer geschrieben hat. Die Log-Zeile nennt die
+    # Zahl der gefundenen Bildpunkte - beim naechsten Auftreten steht
+    # der Ausloeser damit im Log, ohne dass jemand danach suchen muss.
+    KONSOLE_WACHE_TAKT = 1.0        # Sekunden zwischen zwei Blicken
+    KONSOLE_WACHE_ZEILEN = 48       # oberste Bildzeilen
+    KONSOLE_WACHE_SPALTEN = 512     # linke Bildspalten
+    KONSOLE_WACHE_MINDEST = 120     # Bildpunkte, etwa vier Zeichen
+    KONSOLE_WACHE_BESTAETIGUNGEN = 2
+
+    def _fremdausgabe_zaehlen(self):
+        """Bildpunkte, die auf dem SCHIRM hell sind, im gezeichneten
+        Bild aber dunkel - also Text, den nicht wir dort hingemalt
+        haben.
+
+        WARUM DIESE RICHTUNG UND KEIN BLOSSER VERGLEICH: ein blosser
+        Unterschied zwischen mm und buf entsteht auch mitten in einem
+        eigenen Bildaufbau (buf ist dann schon fertig, mm noch nicht).
+        In diesem Fall waere das Helle aber in buf, nicht in mm. Wer
+        nur auf "ungleich" prueft, baut sich genau daraus ein Flackern -
+        siehe Build 151, wo der Nutzer es gemeldet hat."""
+        fb = self.fb
+        hoehe = min(self.KONSOLE_WACHE_ZEILEN, fb.height)
+        breite4 = min(self.KONSOLE_WACHE_SPALTEN, fb.width) * 4
+        treffer = 0
+        try:
+            for y in range(hoehe):
+                off = y * fb.stride
+                schirm = fb.mm[off:off + breite4]
+                gemalt = fb.buf[off:off + breite4]
+                if schirm == gemalt:
+                    continue
+                # Gruenkanal genuegt: der Prompt ist weisser Text, und
+                # ein einzelner Kanal spart zwei Drittel der Arbeit.
+                treffer += sum(1 for a, b in zip(schirm[1::4], gemalt[1::4])
+                               if a > 0x40 >= b)
+        except Exception:                            # noqa: BLE001
+            return 0                  # darf den Betrieb nie stoeren
+        return treffer
+
+    def _konsole_wache(self):
+        """Regelmaessig nachsehen, ob fremder Text im Bild steht.
+
+        Zweimal hintereinander finden, bevor etwas passiert: einmal
+        koennte ein halber Bildaufbau sein, zweimal im Abstand einer
+        Sekunde ist Text, der dort steht und bleibt."""
+        jetzt = time.monotonic()
+        if jetzt < self._wache_naechste:
+            return
+        self._wache_naechste = jetzt + self.KONSOLE_WACHE_TAKT
+        treffer = self._fremdausgabe_zaehlen()
+        if treffer < self.KONSOLE_WACHE_MINDEST:
+            self._wache_verdacht = 0
+            return
+        self._wache_verdacht += 1
+        if self._wache_verdacht < self.KONSOLE_WACHE_BESTAETIGUNGEN:
+            return
+        self._wache_verdacht = 0
+        self._konsole_wischen("Dauerwache, %d Bildpunkte" % treffer)
+
+    def _konsole_wischen(self, grund):
+        """tty1 leeren und die Seite komplett neu aufbauen."""
+        LOG("Konsolenmodus: Fremdausgabe im Bild (%s) - wische und baue "
+            "neu auf" % grund)
         try:
             with open("/dev/tty1", "wb", buffering=0) as tty:
                 tty.write(b"\033[2J\033[H")

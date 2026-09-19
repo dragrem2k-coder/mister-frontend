@@ -38,6 +38,15 @@ picture was on screen at all — until it turned out that MiSTer's CPU
 load says exactly that: 100 % in the OSD, 1.4 % at the console. After
 that it was three lines of code.
 
+**The login prompt stays away.** "Welcome to MiSTer / login:" could
+appear at the top of the screen during normal use — while rescanning
+the game list, and sometimes just sitting in the menu. The login
+process on `tty1` writes into the same framebuffer as the frontend, and
+until now that was only cleaned up during startup. On top of that, an
+idle frontend usually transfers just a few rows at a time (marquee,
+clock) — never the topmost ones, which is exactly where the prompt
+sits. A watchdog now checks once a second and clears it within two.
+
 **A race that made thumbnails disappear.** Cache cleanup deleted
 leftover temporary files — including ones another thread was still
 writing to. The freshly computed thumbnail was gone, "prepare

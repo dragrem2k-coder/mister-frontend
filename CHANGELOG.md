@@ -37,6 +37,16 @@ Sackgassen. Das Frontend hatte keine Möglichkeit zu erkennen, ob sein Bild
 überhaupt sichtbar ist — bis sich zeigte, dass MiSTers CPU-Last genau das
 verrät: 100 % im OSD, 1,4 % in der Konsole. Danach war es ein Dreizeiler.
 
+**Der Login-Prompt bleibt weg.** „Welcome to MiSTer / login:" konnte
+mitten im Betrieb oben im Bild auftauchen — beim Neueinlesen der
+Spieleliste und manchmal einfach so im Menü. Der Login-Prozess auf
+`tty1` schreibt in denselben Bildspeicher wie das Frontend; weggewischt
+wurde das bisher nur im Startfenster. Dazu kommt, dass im Ruhezustand
+meist nur einzelne Bildzeilen übertragen werden (Laufschrift, Uhr) —
+die obersten fasst dabei niemand an, und genau dort steht der Prompt.
+Jetzt sieht eine Wache jede Sekunde nach und räumt innerhalb von zwei
+Sekunden auf.
+
 **Ein Wettlauf, der Miniaturen verschwinden liess.** Das Aufräumen im
 Zwischenspeicher hat liegengebliebene Zwischendateien gelöscht — auch
 solche, in die gerade ein anderer Thread schrieb. Die frisch gerechnete

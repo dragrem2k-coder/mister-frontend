@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-19-156",
-  "summary": "v4.5. Ordner mit genau einem Spiel werden aufgeloest - bei PSX, Mega CD und Saturn gibt es dort jetzt Cover, Raster und Galerie statt nur einer Ordnerliste. Dabei ist ein Wettlauf aufgefallen und behoben worden: das Aufraeumen im Miniaturen-Zwischenspeicher hat Zwischendateien geloescht, in die gerade geschrieben wurde. Doku neu geordnet: kurze README und kurzes Changelog, ausfuehrliche Fassungen unter docs/, alles zusaetzlich auf Englisch - auch die beiden PDFs."
+  "build_id": "2026-09-19-157",
+  "summary": "Der Login-Prompt von tty1 kann nicht mehr dauerhaft im Bild stehenbleiben. Eine Wache sieht jede Sekunde nach, ob heller Text auf dem Schirm steht, den wir nicht gemalt haben, und raeumt nach der zweiten Bestaetigung auf. Bisher lief das Aufraeumen nur im Startfenster - danach blieb der Prompt, weil im Ruhezustand nur einzelne Bildzeilen uebertragen werden und die obersten dabei nie drankommen."
 }
