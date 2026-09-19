@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-19-157",
-  "summary": "Der Login-Prompt von tty1 kann nicht mehr dauerhaft im Bild stehenbleiben. Eine Wache sieht jede Sekunde nach, ob heller Text auf dem Schirm steht, den wir nicht gemalt haben, und raeumt nach der zweiten Bestaetigung auf. Bisher lief das Aufraeumen nur im Startfenster - danach blieb der Prompt, weil im Ruhezustand nur einzelne Bildzeilen uebertragen werden und die obersten dabei nie drankommen."
+  "build_id": "2026-09-19-158",
+  "summary": "Der Cursor der Textkonsole wird jetzt ausgeblendet (ESC[?25l) - das ist der kleine Strich, der im Bildschirmvideo beim Scrollen links oben aufblitzte. Der bisherige Schalter cursor_blink schaltete nur das Blinken ab, nicht den Cursor. Ausserdem wird nach jeder Rueckkehr aus Script, Core oder OSD noch einmal nachgefasst: das volle Neuzeichnen kommt zu frueh, der Login-Prozess meldet sich erst danach zurueck."
 }

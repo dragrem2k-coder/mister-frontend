@@ -33,7 +33,13 @@
 # weise fehlt. Ein Schreibfehler (z.B. falls /dev/tty1 aus irgendeinem
 # Grund gerade nicht beschreibbar ist) wird bewusst stillschweigend
 # ignoriert - das darf den eigentlichen Start niemals verhindern.
-printf '\033[2J\033[H' > /dev/tty1 2>/dev/null || true
+# ERGAENZT (Build 158): zusaetzlich den Textcursor ausblenden (ESC[?25l).
+# Im Bildschirmvideo eines Nutzers blitzte beim Scrollen ein kleiner
+# Strich links oben auf - ausserhalb unseres Layouts. Das ist der Cursor
+# der Textkonsole, der im selben Bildspeicher liegt wie wir. Der bisher
+# dafuer zustaendige Schalter (cursor_blink) schaltet nur das BLINKEN
+# ab, nicht den Cursor selbst.
+printf '\033[2J\033[H\033[?25l' > /dev/tty1 2>/dev/null || true
 
 # Sicherheitsnetz: falls die Log-Datei durch rohe Fehlerausgaben
 # (Python-Tracebacks ueber stderr, ausserhalb der eigenen LOG()-

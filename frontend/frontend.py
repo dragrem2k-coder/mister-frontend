@@ -964,6 +964,7 @@ class Frontend:
             self._clk_tck = 100
         self.enter_console_mode()
         self.set_cursor_blink(False)
+        self.konsole_cursor_aus()   # Build 158: der Strich links oben
         self.inp.grab(True)
         self.fb.clear((16, 18, 24))
         self.fb.flip()
@@ -13351,7 +13352,11 @@ class Frontend:
             "neu auf" % grund)
         try:
             with open("/dev/tty1", "wb", buffering=0) as tty:
-                tty.write(b"\033[2J\033[H")
+                # Build 158: den Cursor gleich mit ausblenden. Ohne das
+                # steht er nach dem Wischen wieder oben links, die Wache
+                # schlaegt beim naechsten Blick erneut an, und daraus
+                # wird das Flackern aus Build 151.
+                tty.write(b"\033[2J\033[H\033[?25l")
         except OSError:
             pass                      # darf den Betrieb nie stoeren
         self.set_cursor_blink(False)
@@ -13378,10 +13383,69 @@ class Frontend:
     def back_to_frontend(self):
         self.enter_console_mode()
         self.set_cursor_blink(False)
+        self.konsole_cursor_aus()
         self.fb.refresh_geometry()
         self.inp.flush()
         self.inp.grab(True)
         self.draw()
+        # NEU (Build 158, Nutzer-Rueckmeldung: "wenn ich ueber frontend
+        # ein Script zum Beispiel Frontend_install ausgefuehrt hab
+        # ploppte der Welcome to misterfpga mit Login: auch auf").
+        #
+        # Das draw() oben schreibt das ganze Bild und wischt alles weg,
+        # was auf der Konsole steht - aber der Login-Prozess meldet sich
+        # ERST DANACH zurueck. Ein Skript endet, die Shell darunter
+        # endet, und der Login-Prozess startet neu und schreibt seinen
+        # Gruss. Wir waren da schon fertig.
+        #
+        # Deshalb hier ein Nachfass-Termin. Genau dafuer gibt es
+        # _f9_aufraeumen_ab seit Build 150 - das Feld wurde bisher nur
+        # beim Start gesetzt. back_to_frontend() ist der EINE Weg
+        # zurueck aus Skript, Core und OSD; ein Aufruf hier deckt alle
+        # drei ab.
+        self._f9_aufraeumen_ab = time.monotonic() + self.NACHFASSEN_SEK
+
+    # Wie lange nach der Rueckkehr noch einmal hingesehen wird. Der
+    # Login-Prozess braucht einen Moment, bis er seinen Gruss schreibt -
+    # wer zu frueh wischt, wischt vor ihm her (die Lehre aus Build 150).
+    NACHFASSEN_SEK = 1.2
+
+    @staticmethod
+    def konsole_cursor_aus():
+        """Den Textcursor von tty1 ausblenden.
+
+        NEU (Build 158). Im Bildschirmvideo des Nutzers blitzt beim
+        Scrollen ein kleiner grauer Strich links oben auf - ausserhalb
+        unseres Layouts, das erst bei x=112 beginnt. Das ist der Cursor
+        der Textkonsole: er liegt im selben Bildspeicher wie wir, und
+        der Kernel malt ihn nach jedem unserer Bilder wieder hin.
+
+        set_cursor_blink(False) allein genuegt NICHT und war die ganze
+        Zeit ein Missverstaendnis: das schaltet nur das BLINKEN ab, der
+        Cursor steht danach dauerhaft da. Ausgeblendet wird er mit der
+        Terminal-Sequenz ESC [ ? 25 l.
+
+        Warum nicht einfach beim Aufraeumen mitwischen: \\033[2J setzt
+        den Cursor nur an den Anfang, weg ist er damit nicht. Er waere
+        sofort wieder da, die Wache wuerde erneut anschlagen, und daraus
+        wuerde genau das Flackern, das in Build 151 schon einmal
+        gemeldet wurde."""
+        try:
+            with open("/dev/tty1", "wb", buffering=0) as tty:
+                tty.write(b"\033[?25l")
+        except OSError:
+            pass                      # darf den Betrieb nie stoeren
+
+    @staticmethod
+    def konsole_cursor_an():
+        """Gegenstueck zu konsole_cursor_aus() - beim Beenden. Wer das
+        vergisst, hinterlaesst eine Konsole ohne sichtbaren Cursor, und
+        das faellt erst auf, wenn jemand dort etwas eintippen will."""
+        try:
+            with open("/dev/tty1", "wb", buffering=0) as tty:
+                tty.write(b"\033[?25h")
+        except OSError:
+            pass
 
     @staticmethod
     def _overscan_anwenden():
@@ -15493,6 +15557,7 @@ class Frontend:
                 self.stream.stop()
             self.music.shutdown()
             self.set_cursor_blink(True)
+            self.konsole_cursor_an()   # Build 158: Gegenstueck zum Start
             self.fb.clear((0, 0, 0))
             self.fb.flip()
             self.fb.close()

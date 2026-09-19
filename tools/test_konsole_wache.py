@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Die Dauerwache gegen den Login-Prompt (Build 157).
+"""Die Dauerwache gegen den Login-Prompt (Build 157/158).
 
 NUTZER-RUECKMELDUNG MIT BILDSCHIRMFOTO: "wenn ich spiele liste neu
 einlesen machen springt der manchmal um in denn welcome to mister ...
@@ -31,6 +31,11 @@ darf diesen Fehler nicht wiederholen.
 Deshalb zaehlt _fremdausgabe_zaehlen() gerichtet: hell auf dem SCHIRM,
 dunkel im GEZEICHNETEN Bild. Ein eigener halbfertiger Aufbau hat es
 genau andersherum.
+
+BUILD 158 kam dazu, nachdem ein Bildschirmvideo zeigte, dass beim
+Scrollen ein kleiner Strich links oben aufblitzt - der CURSOR der
+Textkonsole. Tests 8 und 9 decken ihn und die Rueckkehr aus einem
+Script ab.
 
 Ausfuehren:
     python3 tools/test_konsole_wache.py
@@ -205,6 +210,63 @@ check("die Wache raeumt trotzdem auf", len(f._gewischt) == 1,
       str(f._gewischt))
 check("und nennt den Grund im Log", "Dauerwache" in (f._gewischt or [""])[0],
       str(f._gewischt))
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 8: der Cursor der Textkonsole (Build 158)")
+# ---------------------------------------------------------------------------
+# Im Bildschirmvideo des Nutzers blitzt beim Scrollen ein kleiner grauer
+# Strich links oben auf - ausserhalb unseres Layouts, das erst bei x=112
+# beginnt. Das ist der Cursor der Textkonsole.
+#
+# set_cursor_blink(False) allein genuegt NICHT: das schaltet nur das
+# Blinken ab, der Cursor steht danach dauerhaft da. Das war die ganze
+# Zeit ein Missverstaendnis im Code.
+quelle = open(os.path.join(os.path.dirname(os.path.abspath(fm.__file__)),
+                           "frontend.py"), encoding="utf-8").read()
+check("es gibt eine Funktion, die den Cursor ausblendet",
+      "def konsole_cursor_aus" in quelle)
+check("sie schickt die richtige Sequenz (ESC[?25l)",
+      "?25l" in quelle)
+check("und es gibt ein Gegenstueck fuers Beenden",
+      "def konsole_cursor_an" in quelle and "?25h" in quelle)
+check("beim Start wird sie gerufen",
+      "self.konsole_cursor_aus()" in quelle.split("self.inp.grab(True)")[0])
+check("beim Beenden wird der Cursor wiederhergestellt",
+      "self.konsole_cursor_an()" in quelle)
+# Beim Wischen muss der Cursor mitgehen - sonst steht er sofort wieder
+# oben links, die Wache schlaegt erneut an, und daraus wird das
+# Flackern aus Build 151.
+wisch = quelle.split("def _konsole_wischen")[1][:900]
+check("das Wischen blendet den Cursor gleich mit aus", "?25l" in wisch,
+      "sonst flackert es")
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 9: nach einem Script wird nachgefasst (Build 158)")
+# ---------------------------------------------------------------------------
+# Nutzer-Rueckmeldung: "wenn ich ueber frontend ein Script zum Beispiel
+# Frontend_install ausgefuehrt hab ploppte der Welcome to misterfpga mit
+# Login: auch auf". back_to_frontend() zeichnet zwar das ganze Bild neu
+# und wischt damit alles weg - aber der Login-Prozess meldet sich ERST
+# DANACH zurueck.
+zurueck = quelle.split("def back_to_frontend")[1][:1400]
+check("back_to_frontend setzt einen Nachfass-Termin",
+      "_f9_aufraeumen_ab" in zurueck, zurueck[:80])
+check("und blendet den Cursor aus", "konsole_cursor_aus" in zurueck)
+check("der Termin liegt nicht sofort, sondern etwas spaeter",
+      fm.Frontend.NACHFASSEN_SEK >= 0.5,
+      "%.1f s" % fm.Frontend.NACHFASSEN_SEK)
+
+f = aufbau()
+f._f9_aufraeumen_ab = H.NOW[0] + fm.Frontend.NACHFASSEN_SEK
+prompt_schreiben(f)
+f._konsole_aufraeumen()
+check("vor dem Termin passiert nichts", f._gewischt == [], str(f._gewischt))
+H.NOW[0] += fm.Frontend.NACHFASSEN_SEK + 0.1
+f._konsole_aufraeumen()
+check("zum Termin wird gewischt", len(f._gewischt) == 1, str(f._gewischt))
+
 
 print()
 if fails:
