@@ -15705,6 +15705,64 @@ class Frontend:
                     continue
                 self.draw()
         finally:
+            # ================================================
+            # HERUNTERFAHREN (umgestellt in Build 163)
+            # ================================================
+            # Nutzer-Rueckmeldung: "wenn ich auf der hauptseite bin und
+            # zurueck druecke und es kommt frontend beenden und ich es
+            # bestaetige kommt der schwarze bildschirm mit dem
+            # blinkenden _ dann kann ich druecken was ich will nix
+            # passiert mehr" - waehrend derselbe Beschluss ueber System
+            # -> Wartung sauber ins OSD zurueckfuehrt.
+            #
+            # Beide Wege setzen confirm_quit und verlassen die Schleife
+            # ueber DASSELBE break. Im Beenden-Code koennen sie sich
+            # also nicht unterscheiden. Was sich unterscheiden kann,
+            # ist der ZUSTAND: welcher Hintergrundprozess gerade
+            # arbeitet, wenn der Beschluss faellt.
+            #
+            # Und genau da lag die Reihenfolge falsch. Zuerst wurden
+            # Vorauslader, Nachlader, Stream und Musik abgeraeumt -
+            # alles Dinge, die auf einen Prozess oder Thread warten -
+            # und ERST DANACH die Tastatur freigegeben. Bleibt eines
+            # davon haengen, behaelt der Prozess den exklusiven Griff
+            # auf die Eingabegeraete, und nichts reagiert mehr. Der
+            # Bildschirm ist schwarz, weil wir ihn vorher geleert
+            # haben, und der Cursor der Textkonsole blinkt darauf.
+            # Das ist Bild fuer Bild die Beschreibung.
+            #
+            # JETZT: erst freigeben und F12 schicken, dann aufraeumen.
+            # Nichts im Aufraeumen braucht die Tastatur. Selbst wenn
+            # ein Schritt haengt, ist der Nutzer zu diesem Zeitpunkt
+            # laengst im OSD.
+            #
+            # Dazu eine Reissleine: haengt das Aufraeumen doch, beendet
+            # sich der Prozess nach HERUNTERFAHREN_MAX Sekunden hart.
+            # Lieber ein nicht ganz sauber beendeter Hintergrundprozess
+            # als ein Geraet, das der Nutzer nur noch per Stecker
+            # zuruecksetzen kann.
+            self._notausgang_stellen()
+            LOG("Exit: gebe Eingaben frei, injiziere F12")
+            self.inp.grab(False)
+            time.sleep(0.2)
+            try:
+                self.inp.inject(KEY_F12)
+            except OSError as e:
+                LOG("Exit-Injection fehlgeschlagen: %s" % e)
+            # Pause, damit MiSTer die Taste entgegennehmen kann -
+            # dieselbe, die enter_console_mode() seit jeher einhaelt
+            # (Build 162).
+            time.sleep(self.EXIT_NACH_F12_SEK)
+            self.inp.close()
+            # Die Konsole sofort wiederherstellen, nicht erst am Ende:
+            # das sind drei Schreibvorgaenge, die nicht haengen koennen,
+            # und wenn die Reissleine zieht, sollen sie trotzdem
+            # passiert sein. Sonst bliebe der Cursor unsichtbar und die
+            # Bildschirmschonung abgeschaltet.
+            self.set_cursor_blink(True)
+            self.konsole_cursor_an()          # Build 158
+            self.konsole_schonung_zurueck()   # Build 162
+            LOG("Exit: Eingaben frei, Konsole wiederhergestellt")
             # NEU (Build 102): der Vorauslader ist seit diesem Build ein
             # eigener Prozess (siehe fe/prewarm.py). Er beendet sich zwar
             # von selbst, sobald sein Rohr schliesst - aber nur, wenn er
@@ -15716,51 +15774,55 @@ class Frontend:
             if self.stream:
                 self.stream.stop()
             self.music.shutdown()
-            self.set_cursor_blink(True)
-            self.konsole_cursor_an()   # Build 158: Gegenstueck zum Start
-            self.konsole_schonung_zurueck()   # Build 162, siehe dort
+            LOG("Exit: Hintergrundarbeit beendet")
             self.fb.clear((0, 0, 0))
             self.fb.flip()
             self.fb.close()
-            # zurueck ins normale MiSTer-Menue
-            LOG("Exit: gebe Eingaben frei, injiziere F12")
-            self.inp.grab(False)
-            time.sleep(0.2)
-            try:
-                self.inp.inject(KEY_F12)
-            except OSError as e:
-                LOG("Exit-Injection fehlgeschlagen: %s" % e)
-            # BUGFIX (Build 162, Nutzer-Rueckmeldung: "frontend beenden
-            # bekomme ich jetzt einen schwarzen bildschirm wo der _ am
-            # blinken ist").
-            #
-            # Hier stand das Schliessen DIREKT hinter der Injektion.
-            # enter_console_mode() wartet nach seiner Injektion seit
-            # jeher 0,4 s - der Ausstieg nicht. Das ist dieselbe
-            # Tastensendung ueber denselben Weg, nur ohne die Pause, in
-            # der MiSTer sie entgegennehmen kann. Kommt das F12 nicht
-            # an, bleibt unser gerade geschwaerzter Bildspeicher stehen,
-            # und darauf blinkt der Cursor der Textkonsole - genau das
-            # gemeldete Bild.
-            #
-            # Warum es frueher weniger auffiel: bis Build 158 stand dort
-            # der Login-Gruss. Man sah also etwas und hielt es fuer
-            # normal. Jetzt ist die Konsole leer, und derselbe Zustand
-            # sieht aus wie ein Absturz.
-            #
-            # EHRLICH: dass die fehlende Pause die Ursache IST, ist
-            # damit nicht bewiesen - nur, dass die beiden Wege
-            # unterschiedlich waren, obwohl sie dasselbe tun. Die
-            # Log-Zeile darunter sagt beim naechsten Mal, ob die
-            # Injektion ueberhaupt durchging.
-            time.sleep(self.EXIT_NACH_F12_SEK)
-            self.inp.close()
             LOG("Exit: fertig")
 
     # Pause zwischen dem F12 und dem Schliessen der Eingaben - dieselbe
     # Zeit, die enter_console_mode() seit jeher nach seiner Injektion
     # wartet.
     EXIT_NACH_F12_SEK = 0.4
+
+    # Nach so vielen Sekunden im Herunterfahren zieht die Reissleine.
+    # Grosszuegig bemessen: der Vorauslader darf eine angefangene
+    # Miniatur zu Ende schreiben, eine haengende Netzwerkverbindung
+    # des Streams aber nicht das Geraet blockieren.
+    HERUNTERFAHREN_MAX = 8.0
+
+    def _notausgang_stellen(self):
+        """Ein Wachhund, der den Prozess hart beendet, falls das
+        Aufraeumen haengt.
+
+        WARUM DAS SEIN MUSS: PREWARMER.beenden(), lader.beenden(),
+        stream.stop() und music.shutdown() warten alle auf einen
+        anderen Prozess oder Thread. Bleibt einer davon haengen,
+        beendet sich das Frontend nie - und dann haelt es auch seinen
+        Griff auf die Eingabegeraete, bis jemand den Stecker zieht.
+        Genau das hat der Nutzer beschrieben: "dann kann ich druecken
+        was ich will nix passiert mehr".
+
+        Seit Build 163 gibt der Ausstieg die Eingaben zwar VOR dem
+        Aufraeumen frei, das Geraet bleibt also in jedem Fall
+        bedienbar. Der Wachhund sorgt zusaetzlich dafuer, dass kein
+        Prozess unsichtbar weiterlaeuft und beim naechsten Start die
+        Sperrdatei blockiert.
+
+        os._exit() statt sys.exit(): wir stecken bereits in einem
+        finally, eine weitere Ausnahme wuerde hier nur verschluckt.
+        Der Wachhund soll beenden, nicht verhandeln."""
+        def _wachen():
+            time.sleep(self.HERUNTERFAHREN_MAX)
+            LOG("Exit: Aufraeumen haengt seit %.0fs - harter Abbruch"
+                % self.HERUNTERFAHREN_MAX)
+            try:
+                release_single_instance()
+            except Exception:                        # noqa: BLE001
+                pass
+            os._exit(0)
+
+        threading.Thread(target=_wachen, daemon=True).start()
 
 def _handle_sigterm(signum, frame):
     """kill sendet standardmaessig SIGTERM - Python fuehrt dabei OHNE

@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-19-162",
-  "summary": "Beim Beenden wartet das Frontend jetzt nach dem F12, bevor es die Eingaben schliesst - genauso lange wie beim Konsolenwechsel, wo diese Pause seit jeher steht. Ohne sie konnte MiSTer die Taste nicht mehr entgegennehmen, und es blieb ein schwarzes Bild mit blinkendem Cursor. Die Bildschirmschonung der Konsole wird beim Beenden wieder eingeschaltet. Ausserdem zerlegt der Erfolgsjaeger seine 2300 ms jetzt in Pool-Aufbau und Abgleich - zwei Vermutungen dazu lagen daneben, also wird gemessen statt geraten."
+  "build_id": "2026-09-19-163",
+  "summary": "Beim Beenden werden die Eingaben jetzt ZUERST freigegeben und F12 geschickt, erst danach werden Vorauslader, Nachlader, Stream und Musik abgeraeumt. Bleibt eines davon haengen, behielt der Prozess bisher den exklusiven Griff auf die Tastatur - schwarzes Bild, blinkender Cursor, keine Taste wirkt mehr. Dazu eine Reissleine: haengt das Aufraeumen laenger als acht Sekunden, beendet sich der Prozess hart. Ausserdem misst der Erfolgsjaeger seine 2300 ms jetzt getrennt nach Pool-Aufbau und Abgleich."
 }

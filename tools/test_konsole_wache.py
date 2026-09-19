@@ -328,11 +328,55 @@ print("Test 12: der Ausstieg laesst MiSTer Zeit fuer das F12 (Build 162)")
 # schloss das Eingabegeraet DIREKT danach. Kommt das F12 nicht an,
 # bleibt der gerade geschwaerzte Bildspeicher stehen, und darauf
 # blinkt der Konsolen-Cursor. Genau das gemeldete Bild.
-ausstieg = quelle.split('LOG("Exit: gebe Eingaben frei')[1][:1800]
+ausstieg = quelle.split('LOG("Exit: gebe Eingaben frei')[1][:2600]
 check("nach dem F12 wird gewartet, bevor geschlossen wird",
       "EXIT_NACH_F12_SEK" in ausstieg
       and ausstieg.index("EXIT_NACH_F12_SEK") < ausstieg.index("inp.close()"),
       "sonst kann MiSTer die Taste nicht mehr entgegennehmen")
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 13: die Eingaben werden VOR dem Aufraeumen freigegeben (Build 163)")
+# ---------------------------------------------------------------------------
+# Nutzer-Rueckmeldung: ueber System -> Wartung landet er im OSD, ueber
+# Hauptseite -> Zurueck -> Beenden im schwarzen Bild, in dem keine
+# Taste mehr etwas bewirkt. Beide Wege verlassen die Schleife ueber
+# DASSELBE break - im Beenden-Code koennen sie sich nicht
+# unterscheiden. Unterscheiden kann sich nur, welcher
+# Hintergrundprozess gerade arbeitet.
+#
+# Und dort lag die Reihenfolge falsch: erst auf Vorauslader,
+# Nachlader, Stream und Musik warten, DANN die Tastatur freigeben.
+# Haengt eines davon, behaelt der Prozess den exklusiven Griff auf die
+# Eingabegeraete - und nichts reagiert mehr.
+# Anker ist der Kommentarkopf des Blocks - "finally:" kommt in der
+# Datei mehrfach vor, und der letzte Treffer war der falsche.
+block = quelle.split("HERUNTERFAHREN (umgestellt in Build 163)")[1][:4000]
+pos_frei = block.index("self.inp.close()")
+for langsam in ("PREWARMER.beenden()", "self.lader.beenden()",
+                "self.music.shutdown()"):
+    check("Eingaben sind frei, bevor %s laeuft" % langsam,
+          pos_frei < block.index(langsam), "sonst haengt das Geraet")
+check("die Konsole wird ebenfalls vor dem Aufraeumen zurueckgesetzt",
+      block.index("konsole_schonung_zurueck()") < block.index("PREWARMER.beenden()"),
+      "sonst faellt es bei der Reissleine unter den Tisch")
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 14: es gibt eine Reissleine fuer ein haengendes Aufraeumen")
+# ---------------------------------------------------------------------------
+check("der Wachhund wird gestellt", "_notausgang_stellen()" in block)
+check("und zwar als ALLERERSTES im finally",
+      block.index("_notausgang_stellen()") < pos_frei)
+wach = quelle.split("def _notausgang_stellen")[1][:1800]
+check("er beendet den Prozess hart", "os._exit(0)" in wach)
+check("gibt vorher die Sperrdatei frei", "release_single_instance" in wach,
+      "sonst blockiert sie den naechsten Start")
+check("laeuft als Daemon-Thread (haelt das Beenden nicht auf)",
+      "daemon=True" in wach)
+check("die Frist ist grosszuegig, aber endlich",
+      2.0 < fm.Frontend.HERUNTERFAHREN_MAX < 30.0,
+      "%.0f s" % fm.Frontend.HERUNTERFAHREN_MAX)
 check("und zwar so lange wie beim Konsolenwechsel",
       fm.Frontend.EXIT_NACH_F12_SEK >= 0.4,
       "%.1f s" % fm.Frontend.EXIT_NACH_F12_SEK)
