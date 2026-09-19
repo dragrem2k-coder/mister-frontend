@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Prueft die Absicherung des Konsolenmodus (Build 150).
+"""Prueft die Absicherung des Konsolenmodus (Build 152).
 
 Nutzer-Rueckmeldung ueber mehrere Builds: "bin im OSD und hoere die
 Musik vom Frontend". Kein Absturz - das Frontend laeuft, zeichnet und
@@ -38,6 +38,15 @@ Zwei Tasten, zwei Richtungen. Wiederholen ist also gefahrlos.
 
 Build 149 betrachtet Eingaben gar nicht mehr. Der Griff war ohnehin
 ueberfluessig: ein F9 bei bereits sichtbarer Konsole tut nichts.
+
+  Build 150 wischte den Login-Prompt weg, den jedes eingespeiste F9 auf
+  tty1 ausloest - Build 151 nur noch dann, wenn wirklich Fremdtext im
+  Bild steht, und mit vier Versuchen statt neun.
+
+Build 152 hat endlich das Signal: MiSTer laeuft auf 100 %, solange er
+sein eigenes Menue zeichnet, und faellt auf ~1 %, sobald unser Bild oben
+liegt (gemessen ueber je fuenf Sekunden: 500 Ticks gegen 7). Die
+Absicherung hoert damit auf, sobald sie gewirkt hat.
 
 Ausfuehren:
     python3 tools/test_konsole_start.py

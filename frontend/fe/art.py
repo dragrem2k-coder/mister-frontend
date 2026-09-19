@@ -626,11 +626,121 @@ THUMB_ALGO_VERSION = "3"
 # Die beiden Rechenoperationen als fertige Funktionen - map() ruft sie
 # dann in C auf, statt fuer jedes Element einen Python-Rahmen zu bauen.
 # Siehe _verkleinern_flaechenmittel().
+# ===========================================================================
+# libdragend - die beiden Bildrechnungen in C, falls vorhanden
+# ===========================================================================
+#
+# WARUM (gemessen auf dem Geraet des Nutzers, Build 153): ein 497x680-Cover
+# in den HDMI-Listenkasten zu verkleinern kostet in Python
+#
+#     1888 ms
+#
+# und in C
+#
+#       18 ms.
+#
+# Faktor 102. Beim Rasterkasten sind es 1748 gegen 12 ms, Faktor 143. Das
+# ist der Unterschied zwischen "das Cover poppt nach zwei Sekunden rein"
+# und "es ist einfach da". Meine frueheren 145 ms stammten von einer
+# Entwicklungsmaschine - der DE10-Nano ist an dieser Stelle dreizehnmal
+# langsamer, als ich geschaetzt hatte.
+#
+# BEWUSST ALS OPTION, NICHT ALS PFLICHT: fehlt die Bibliothek, passt sie
+# nicht zur libc oder meldet sie eine fremde Version, laeuft alles
+# unveraendert in Python weiter. Es gibt keinen Pfad, auf dem ein
+# fehlendes .so etwas kaputt macht - nur einen langsameren.
+#
+# Die Python-Fassungen bleiben vollstaendig erhalten (..._py) und sind
+# weiterhin die Wahrheit: tools/test_c_modul.py vergleicht beide ueber
+# Zufallsbilder BYTE FUER BYTE. Eine einzige Abweichung waere fatal und
+# unsichtbar zugleich - der Miniaturen-Zwischenspeicher verlangt, dass
+# eine gespeicherte Miniatur bit-identisch zu einer frisch berechneten
+# ist, und zweierlei Bilder unter demselben Schluessel wuerde niemandem
+# auffallen.
+#
+# Quelle und Bauanleitung: frontend/c/dragend.c und frontend/c/bauen.sh
+import ctypes as _ctypes
+
+DRAGEND_LIB_VERSION = 1
+_LIB = None
+
+
+def _lib_laden():
+    """Die Bibliothek suchen und pruefen. Liefert sie oder None."""
+    global _LIB
+    pfad = os.environ.get("DRAGEND_LIB") or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "libdragend.so")
+    if not os.path.exists(pfad):
+        return None
+    try:
+        lib = _ctypes.CDLL(pfad)
+        lib.dragend_version.restype = _ctypes.c_int
+        if lib.dragend_version() != DRAGEND_LIB_VERSION:
+            LOG("libdragend: Version %d erwartet, %d gefunden - ignoriert"
+                % (DRAGEND_LIB_VERSION, lib.dragend_version()))
+            return None
+        lib.skalieren_flaechenmittel.restype = _ctypes.c_int
+        lib.skalieren_flaechenmittel.argtypes = [
+            _ctypes.c_char_p, _ctypes.c_int, _ctypes.c_int,
+            _ctypes.c_int, _ctypes.c_int, _ctypes.c_char_p]
+        lib.hochskalieren.restype = _ctypes.c_int
+        lib.hochskalieren.argtypes = [
+            _ctypes.c_char_p, _ctypes.c_int, _ctypes.c_int,
+            _ctypes.c_int, _ctypes.c_char_p]
+    except (OSError, AttributeError) as e:
+        LOG("libdragend nicht nutzbar (%s) - rechne in Python" % e)
+        return None
+    LOG("libdragend geladen: %s" % pfad)
+    _LIB = lib
+    return lib
+
+
+_LIB = _lib_laden()
+
+
+def _als_bytes(pix):
+    """ctypes braucht ein bytes-Objekt. Ist es schon eines, kostet das
+    nichts - CPython gibt dasselbe Objekt zurueck."""
+    return pix if isinstance(pix, bytes) else bytes(pix)
+
+
+def _verkleinern_flaechenmittel(pix, w, h, tw, th):
+    """Verteiler: C, wenn verfuegbar - sonst Python. Ergebnis identisch."""
+    if _LIB is not None:
+        if tw <= 0 or th <= 0 or w <= 0 or h <= 0:
+            return None
+        try:
+            n = tw * th * 4
+            ziel = _ctypes.create_string_buffer(n)
+            if _LIB.skalieren_flaechenmittel(
+                    _als_bytes(pix), w, h, tw, th, ziel) == 0:
+                return ziel.raw[:n]
+        except Exception:                                # noqa: BLE001
+            LOG("libdragend: Verkleinern fehlgeschlagen, nehme Python")
+    return _verkleinern_flaechenmittel_py(pix, w, h, tw, th)
+
+
+def _hochskalieren(pix, w, h, scale):
+    """Verteiler wie oben. Rueckgabe wie die Python-Fassung:
+    (breite, hoehe, bytearray)."""
+    if _LIB is not None and w > 0 and h > 0 and scale > 0:
+        try:
+            sw, sh = w * scale, h * scale
+            n = sw * sh * 4
+            ziel = _ctypes.create_string_buffer(n)
+            if _LIB.hochskalieren(_als_bytes(pix), w, h, scale, ziel) == 0:
+                return sw, sh, bytearray(ziel.raw[:n])
+        except Exception:                                # noqa: BLE001
+            LOG("libdragend: Vergroessern fehlgeschlagen, nehme Python")
+    return _hochskalieren_py(pix, w, h, scale)
+
+
 _addiere = operator.add
 _ganzzahlig = operator.floordiv
 
 
-def _verkleinern_flaechenmittel(pix, w, h, tw, th):
+def _verkleinern_flaechenmittel_py(pix, w, h, tw, th):
     """Bild auf tw x th verkleinern, indem ueber die zusammenfallenden
     Quellpixel GEMITTELT wird (Kastenfilter).
 
@@ -2267,7 +2377,7 @@ def _prewarm_aus_gelesenem(path, max_w, max_h, gelesen):
     return "fertig"
 
 
-def _hochskalieren(pix, w, h, scale):
+def _hochskalieren_py(pix, w, h, scale):
     """Ganzzahliges Vergroessern (Pixel-Look, Nearest-Neighbor).
     Rueckgabe: (breite, hoehe, bytearray).
 

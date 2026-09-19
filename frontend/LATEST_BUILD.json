@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-19-152",
-  "summary": "Das gesuchte Signal ist gefunden: MiSTer laeuft auf 100 Prozent, solange er sein eigenes Menue zeichnet, und faellt auf ein Prozent, sobald unser Bild oben liegt. Die F9-Absicherung hoert damit auf, sobald sie gewirkt hat - kein Flackern mehr."
+  "build_id": "2026-09-19-153",
+  "summary": "Das Verkleinern der Cover laeuft jetzt in C, wenn libdragend.so daneben liegt: auf dem MiSTer gemessen 1888 ms gegen 18 ms fuer ein Cover, Faktor 102. Kalte Cover sind damit sofort da statt nach zwei Sekunden. Fehlt die Bibliothek, rechnet alles unveraendert in Python weiter."
 }

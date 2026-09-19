@@ -7,6 +7,45 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Cover-Verkleinern in C** (Build 153):
+
+Auf dem Gerät gemessen, an einem 497×680-Cover:
+
+| Kasten | Python | C | Faktor |
+|---|---|---|---|
+| Liste 360×420 | **1888 ms** | **18 ms** | 102× |
+| Raster 137×183 | 1748 ms | 12 ms | 143× |
+
+Das ist der Unterschied zwischen „das Cover poppt nach zwei Sekunden
+rein" und „es ist einfach da". Meine frühere Schätzung von 145 ms stammte
+von einer Entwicklungsmaschine — der DE10-Nano ist an dieser Stelle
+**dreizehnmal langsamer**, als ich angenommen hatte.
+
+`frontend/c/dragend.c`, rund 180 Zeilen ohne jede Abhängigkeit, per
+`ctypes` eingebunden. Dazu `bauen.sh` für die Kreuz-Übersetzung
+(`gcc-arm-linux-gnueabihf`), damit die Binärdatei nachvollziehbar bleibt.
+
+**Bewusst als Option, nicht als Pflicht.** Fehlt die Bibliothek, passt
+sie nicht zur libc oder meldet sie eine fremde Version, läuft alles
+unverändert in Python weiter — die Python-Fassungen bleiben vollständig
+erhalten (`_verkleinern_flaechenmittel_py`, `_hochskalieren_py`). Es gibt
+keinen Pfad, auf dem ein fehlendes `.so` etwas kaputt macht, nur einen
+langsameren.
+
+`tools/test_c_modul.py` vergleicht beide Fassungen über 190 Zufallsbilder
+**Byte für Byte** — getrennt für beide Rechenwege der Flächenmittelung,
+dazu der Alphakanal (bleibt beim Verkleinern 0, wird beim Vergrößern
+mitkopiert), unsinnige Maße, und die Gegenprobe, dass eine absichtlich
+kaputte Bibliothek sauber auf Python zurückfällt. Eine einzige Abweichung
+wäre fatal und unsichtbar zugleich: der Miniaturen-Zwischenspeicher
+verlangt Bit-Identität, und zweierlei Bilder unter demselben Schlüssel
+fielen niemandem auf.
+
+Getestet wurde außerdem, dass eine Bibliothek der **falschen Architektur**
+(ARM auf x86) nur eine Logzeile erzeugt und sonst nichts.
+
+
+
 **Das Signal, das es doch gibt** (Build 152):
 
 Zwei Tage lang lautete der Befund: MiSTer schreibt seinen Anzeigezustand

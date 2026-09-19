@@ -301,6 +301,13 @@ if [ -d "$SRC_DIR/frontend/fe" ]; then
     mkdir -p "$FRONTEND_DIR/fe"
     cp -f "$SRC_DIR"/frontend/fe/*.py "$FRONTEND_DIR/fe/" 2>/dev/null || true
 fi
+# NEU (Build 153): die C-Bibliothek, falls im Paket. Sie ist eine reine
+# Beschleunigung - fehlt sie, rechnet das Frontend wie bisher in Python
+# weiter (siehe _lib_laden() in fe/art.py). Deshalb bewusst OHNE
+# Fehlerabbruch, wenn sie nicht da ist.
+if [ -f "$SRC_DIR/frontend/libdragend.so" ]; then
+    cp -f "$SRC_DIR/frontend/libdragend.so" "$FRONTEND_DIR/" 2>/dev/null || true
+fi
 cp -f "$SRC_DIR"/Scripts/*.sh "$SCRIPTS_DIR/" 2>/dev/null || true
 chmod +x "$FRONTEND_DIR"/*.sh "$SCRIPTS_DIR"/*.sh 2>/dev/null || true
 # Sicherheitsnetz gegen Windows-Zeilenenden (CRLF): kopierte Shell-Skripte
