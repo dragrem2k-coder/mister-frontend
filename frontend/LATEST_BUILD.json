@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-19-153",
-  "summary": "Das Verkleinern der Cover laeuft jetzt in C, wenn libdragend.so daneben liegt: auf dem MiSTer gemessen 1888 ms gegen 18 ms fuer ein Cover, Faktor 102. Kalte Cover sind damit sofort da statt nach zwei Sekunden. Fehlt die Bibliothek, rechnet alles unveraendert in Python weiter."
+  "build_id": "2026-09-19-154",
+  "summary": "Der Miniaturen-Zwischenspeicher packt jetzt mit Stufe 1 statt 6 - gemessen halbiert das die Schreibzeit (23 auf 10 ms bei fotoaehnlichem Inhalt), die Dateien wachsen um drei Prozent. Das PC-Werkzeug bleibt bei Stufe 6, dort zaehlt die kleinere Datei mehr als die Rechenzeit."
 }

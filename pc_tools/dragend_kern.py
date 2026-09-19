@@ -125,7 +125,17 @@ MARKE_ORIGINAL_PASST = b"ARTO" + struct.pack("<HH", 0, 0)
 
 
 def art_bytes(tw, th, pix):
-    """Der Inhalt einer .art-Datei: Kennung, Masse, gepackte Bildpunkte."""
+    """Der Inhalt einer .art-Datei: Kennung, Masse, gepackte Bildpunkte.
+
+    BEWUSST PACKSTUFE 6, waehrend das Frontend seit Build 154 mit Stufe 1
+    schreibt. Auf dem MiSTer zaehlt die Rechenzeit (dort kostete Stufe 6
+    gemessen 201 ms je Miniatur), hier nicht: der PC packt in
+    Millisekunden, und die kleinere Datei muss anschliessend ueber das
+    Netz auf den MiSTer. Kleiner ist hier also doppelt richtig.
+
+    Auf die Gueltigkeit hat das keinen Einfluss - zlib entpackt jede
+    Stufe, und der Cache-Schluessel haengt am Bild, nicht an den
+    Dateibytes."""
     return b"ART1" + struct.pack("<HH", tw, th) + zlib.compress(pix, 6)
 
 

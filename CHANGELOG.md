@@ -7,6 +7,40 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Packstufe 1 statt 6 beim Miniaturen-Cache** (Build 154):
+
+Im Code stand die Messung vom Gerät schon lange daneben: von 380 ms für
+einen Schreibvorgang gingen **201 ms allein in `zlib.compress`**. Stufe 6
+ist für einen Zwischenspeicher auf SD-Karte zu ehrgeizig — hier wird
+nicht archiviert, hier wird zwischengelagert.
+
+Nachgemessen an einer 315×420-Miniatur:
+
+| Inhalt | Stufe 6 | Stufe 1 | Datei |
+|---|---|---|---|
+| fotoähnlich (wie Boxart) | 23,2 ms | **10,1 ms** | +3 % |
+| flächig (wie ein Logo) | 1,4 ms | **0,7 ms** | 0,5 → 2,5 KB |
+
+Rund **halb so lange**. Bei flächigen Bildern wächst die Datei prozentual
+stark, bleibt aber absolut winzig.
+
+**Bewusst nicht Stufe 0:** ungepackt wäre das Schreiben noch schneller,
+aber die Dateien 45 % größer — und gelesen wird eine Miniatur viel öfter
+als geschrieben. Das wäre am falschen Ende gespart.
+
+Bestehende Dateien bleiben gültig (zlib entpackt jede Stufe), und der
+Cache-Schlüssel hängt am Bild, nicht an den Dateibytes.
+
+**Das PC-Werkzeug bleibt bei Stufe 6.** Dort kostet das Packen
+Millisekunden, und die kleinere Datei muss anschließend über das Netz —
+kleiner ist dort doppelt richtig. `tools/test_pc_kern.py` prüft jetzt,
+dass beide Stufen von beiden Seiten lesbar sind.
+
+**Ehrliche Korrektur:** In meiner Einschätzung hatte ich „drei- bis
+viermal schneller" geschrieben. Gemessen sind es 2,3×.
+
+
+
 **Cover-Verkleinern in C** (Build 153):
 
 Auf dem Gerät gemessen, an einem 497×680-Cover:

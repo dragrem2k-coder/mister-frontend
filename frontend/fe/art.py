@@ -1074,7 +1074,34 @@ def _thumb_cache_put(path, w, h, tw, th, pix):
         os.makedirs(os.path.dirname(cpath), exist_ok=True)
         tmp = cpath + ".tmp%d_%d" % (os.getpid(), threading.get_ident())
         with open(tmp, "wb") as f:
-            f.write(b"ART1" + struct.pack("<HH", tw, th) + zlib.compress(pix, 6))
+            # GEAENDERT (Build 154): Packstufe 6 -> 1.
+            #
+            # Der Kommentar oben nennt die Messung vom Geraet: von 380 ms
+            # fuer einen Schreibvorgang gingen 201 ms allein in
+            # zlib.compress. Stufe 6 ist fuer einen Zwischenspeicher auf
+            # SD-Karte zu ehrgeizig - hier wird nicht archiviert, hier
+            # wird zwischengelagert.
+            #
+            # Nachgemessen an einer 315x420-Miniatur:
+            #
+            #   fotoaehnlich (wie Boxart)  Stufe 6: 23.2 ms / 363 KB
+            #                              Stufe 1: 10.1 ms / 373 KB
+            #   -> halb so lange, Datei 3 % groesser
+            #
+            #   flaechig (wie ein Logo)    Stufe 6:  1.4 ms / 0.5 KB
+            #                              Stufe 1:  0.7 ms / 2.5 KB
+            #   -> auch halb so lange; die Datei waechst prozentual
+            #      stark, bleibt aber absolut winzig
+            #
+            # BEWUSST NICHT Stufe 0: ungepackt waere das Schreiben noch
+            # schneller, aber die Dateien 45 % groesser - und GELESEN
+            # wird eine Miniatur viel oefter als geschrieben. Das waere
+            # am falschen Ende gespart.
+            #
+            # Bestehende Dateien bleiben gueltig: zlib entpackt jede
+            # Stufe. Und der Cache-Schluessel haengt am Bild, nicht an
+            # den Dateibytes - die entpackten Bildpunkte sind identisch.
+            f.write(b"ART1" + struct.pack("<HH", tw, th) + zlib.compress(pix, 1))
         os.replace(tmp, cpath)
     except OSError as e:
         LOG("THUMB_CACHE Schreibfehler (%s): %s" % (os.path.basename(path), e))

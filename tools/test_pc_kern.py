@@ -167,6 +167,22 @@ check("Inhalt entspricht der Flaechenmittelung",
       zlib.decompress(erg[8:])
       == ART._verkleinern_flaechenmittel(pix, w, h, sw, sh))
 
+# ---------------------------------------------------------------------------
+print("Test 8: Packstufen sind untereinander vertraeglich (Build 154)")
+# ---------------------------------------------------------------------------
+# Das Frontend schreibt seit Build 154 mit Stufe 1, das PC-Werkzeug
+# weiterhin mit 6. Beide Dateien muessen von beiden Seiten lesbar sein -
+# sonst waere der Zwischenspeicher zwischen MiSTer und PC gespalten.
+pix = bytes(random.getrandbits(8) for _ in range(20 * 15 * 4))
+vom_pc = KERN.art_bytes(20, 15, pix)
+vom_mister = b"ART1" + struct.pack("<HH", 20, 15) + zlib.compress(pix, 1)
+check("PC-Datei entpackt sich zu denselben Bildpunkten",
+      zlib.decompress(vom_pc[8:]) == pix)
+check("MiSTer-Datei entpackt sich zu denselben Bildpunkten",
+      zlib.decompress(vom_mister[8:]) == pix)
+check("Kopf ist in beiden gleich", vom_pc[:8] == vom_mister[:8])
+check("nur die Packung unterscheidet sich", vom_pc[8:] != vom_mister[8:])
+
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))
