@@ -1853,6 +1853,8 @@ class Frontend:
         # Eintrag fuer niemanden, der die Durchgespielt-Markierung gar
         # nicht nutzt oder gerade alles durch hat.
         continue_game = find_continue_game()
+        if hasattr(self, "_t_letzte_marke"):
+            self._startmarke("davon find_continue_game()")
         if continue_game:
             self.cats.insert(0, (t("continue_cat"), _wrap_flat([continue_game]), None))
 
@@ -1899,6 +1901,8 @@ class Frontend:
         # unten) - NICHT als Top-Level-Kategorie.
         top_level_core_cats, cores_subcats = self._partition_core_cats(
             marked_recent, force_rescan=force_rescan)
+        if hasattr(self, "_t_letzte_marke"):
+            self._startmarke("davon _partition_core_cats()")
         # GEAENDERT (Nutzerfrage: Arcade-Unterordner wie "alternatives"/
         # "organized"/"ST-V" fehlten im Frontend, siehe _arcade_folder_
         # tree() in fe/scan.py): scan_cores() liefert fuer Arcade jetzt
@@ -1912,6 +1916,8 @@ class Frontend:
             (n, it if isinstance(it, dict) else _wrap_flat(it), sk)
             for n, it, sk in top_level_core_cats)
         collections = self.build_collections_category()
+        if hasattr(self, "_t_letzte_marke"):
+            self._startmarke("davon build_collections_category()")
         if collections:
             count = _count_tree_items(collections)
             self.cats.append(("%s (%d)" % (t("collections_cat"), count),
@@ -1931,6 +1937,8 @@ class Frontend:
                                   _knoten, self._syskey_fuer_kat(
                                       _eintrag["kat"])))
         ra_hunter = self.build_ra_hunter_category()
+        if hasattr(self, "_t_letzte_marke"):
+            self._startmarke("davon build_ra_hunter_category()")
         if ra_hunter:
             count = _count_tree_items(ra_hunter)
             self.cats.append(("%s (%d)" % (t("ra_hunter_cat"), count),
@@ -15712,6 +15720,32 @@ if __name__ == "__main__":
     # Rueckfrage-Runde spart.
     try:
         LOG("MiSTer.ini beim Start: %s" % mister_ini_video_zustand())
+    except Exception:
+        pass
+    # DIAGNOSE (Build 159, Nutzer-Rueckmeldung: "wenn ich ueber system
+    # dann wartung und dann frontend beenden gehe kommt ein schwarzer
+    # bildschirm wo steht press any key to continue ... ueber joypad
+    # lande ich im osd").
+    #
+    # Beide Menuepunkte laufen im Code auf DENSELBEN Ausstieg hinaus -
+    # sie koennen sich also nicht unterschiedlich verhalten. Was sich
+    # unterscheiden kann, ist, WER das Frontend gestartet hat: per
+    # Autostart, oder aus MiSTers Skript-Menue heraus. Im zweiten Fall
+    # kehrt nach dem Beenden MiSTers eigener Skript-Ausfuehrer zurueck,
+    # und genau der schreibt "press any key to continue".
+    #
+    # Das stand bisher nirgends im Log, und ohne diese Zeile bleibt es
+    # beim Vermuten. Der Elternprozess sagt es eindeutig.
+    try:
+        _ppid = os.getppid()
+        try:
+            with open("/proc/%d/cmdline" % _ppid, "rb") as _f:
+                _eltern = _f.read().replace(b"\x00", b" ").decode(
+                    "utf-8", "replace").strip()
+        except OSError:
+            _eltern = "?"
+        LOG("Gestartet von PID %d (%s), stdin ist ein Terminal: %s"
+            % (_ppid, _eltern or "?", os.isatty(0)))
     except Exception:
         pass
     # DIAGNOSE (Nutzerfrage: "koennte man den Bootvorgang noch etwas
