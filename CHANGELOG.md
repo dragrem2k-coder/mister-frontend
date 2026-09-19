@@ -7,6 +7,214 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Das Signal, das es doch gibt** (Build 152):
+
+Zwei Tage lang lautete der Befund: MiSTer schreibt seinen Anzeigezustand
+nirgendwo hin. Stimmt auch — weder unter `/sys/class/graphics` noch in
+`/tmp` ändert sich beim Umschalten ein einziger Wert, und auch seine
+offenen Dateien bleiben gleich.
+
+**Aber er verhält sich unterschiedlich.** Gemessen über je fünf
+Sekunden:
+
+| Zustand | CPU-Zeit | Last |
+|---|---|---|
+| OSD sichtbar | 500 Ticks | **100 %** |
+| Konsole sichtbar | 7 Ticks | **1,4 %** |
+
+Solange MiSTer sein eigenes Menü zeichnet, läuft er auf Anschlag; sobald
+unser Framebuffer angezeigt wird, hat er nichts zu tun und schläft.
+Dazwischen liegt eine Lücke, in die jede Schwelle passt — gewählt sind
+25 %.
+
+Damit hört die F9-Absicherung auf, **sobald sie gewirkt hat**, statt
+ihren Zeitplan blind abzuarbeiten. Die drei Flackerer nach dem Erscheinen
+des Frontends sind weg. Im Gegenzug darf der Zeitplan wieder länger
+laufen (sieben Versuche bis Sekunde 45) — er kostet nichts mehr, wenn er
+sich selbst beendet.
+
+**Ehrliche Vorgeschichte:** In Build 148 wurde die CPU-Last als Signal
+ausdrücklich verworfen, weil sie „durchgehend auf 100 %" stand. Sie
+stand auf 100 %, weil beim Messen der Fehlerfall aktiv war — gemessen
+wurde also nur eine Hälfte der Wahrheit. Der Kommentar in `_mister_last()`
+hält das fest.
+
+Nebenbei abgehärtet: die Prozesssuche vergleicht jetzt `argv[0]` **exakt**
+statt den Pfad irgendwo in der Befehlszeile zu suchen. Beim Testen hatte
+genau dieser Fehlgriff eine falsche, schlafende PID geliefert und die
+Messung auf 0 % gezogen.
+
+
+
+**Das Flackern** (Build 151):
+
+Build 150 hat funktioniert — aber alle paar Sekunden zuckte das Bild.
+Erwartbar im Nachhinein: neun F9-Versuche über eine Minute, jeder weckt
+den Login-Prozess, jeder zieht einen vollen Neuaufbau nach sich. Auch
+lange, nachdem das Bild längst stand.
+
+Zwei Änderungen:
+
+**Vier Versuche statt neun**, und alle in den ersten 14 Sekunden (2, 5,
+9, 14 s). Sie fallen damit in die Startphase, in der sich das Bild
+ohnehin aufbaut, und decken den Zeitraum ab, in dem MiSTer seine
+Videoeinrichtung abschließt. Danach hat sich in allen Messungen nie
+wieder etwas geändert.
+
+**Aufgeräumt wird nur, wenn es etwas aufzuräumen gibt.** `flip()`
+gleicht `mm` an `buf` an — direkt nach einem Aufbau sind beide gleich.
+Steht oben im Bild etwas anderes, war ein Fremder am Werk. Nur dann wird
+gewischt und neu gezeichnet. Vorher passierte das nach jedem Versuch
+blind, auch wenn gar nichts passiert war.
+
+
+
+**Der Login-Prompt im Bild** (Build 150):
+
+Build 149 hat den Konsolenmodus endlich zuverlässig geholt — und damit
+das nächste Problem sichtbar gemacht: statt des Frontends stand
+*„Welcome to MiSTer (www.misterfpga.org) Login:"* im Bild.
+
+Das eingespeiste F9 erreicht nämlich nicht nur MiSTer, sondern auch den
+**Login-Prozess auf tty1**. Der wacht davon auf und schreibt seinen
+Prompt in denselben Framebuffer, in den wir zeichnen.
+
+Denselben Handgriff macht `frontend_boot.sh` seit langem ganz am Anfang
+jedes Starts (`printf '\033[2J\033[H' > /dev/tty1`) — dort, weil nach
+einem echten Neustart die rohe Konsole im Bild steht. Jetzt auch nach
+jedem Absicherungs-F9, mit 0,4 s Verzögerung (erst muss der Prompt da
+sein, sonst wischt man vor ihm her), dazu Cursor aus und ein **voller**
+Neuaufbau — die schnellen Seitenpfade hielten ihren Hintergrund sonst
+für gültig und der fremde Text bliebe zwischen den Zeilen stehen.
+
+
+
+**Die Absicherung schaltete sich selbst ab** (Build 149):
+
+Build 148 wiederholte das F9 — kam aber nie dazu. Im Log des Nutzers
+stand:
+
+```
+Konsolenmodus: Absicherung beendet - Nutzer bedient das Frontend,
+es ist also sichtbar
+```
+
+…während er im OSD saß. Die Abbruchbedingung hing an `_last_input_time`,
+und seine **Funkmaus meldet Achsen** (`achsen=[0, 1, 2, 5, 16, 17]` in
+der Gerätezeile des Logs). Ein Zucken auf dem Tisch reichte, und die
+Absicherung schaltete sich ab, **bevor der erste Schuss raus war**.
+Derselbe zu empfindliche Auslöser hatte schon Build 147 zerlegt.
+
+Der Griff war ohnehin überflüssig: ein F9 bei bereits sichtbarer Konsole
+tut nichts. Eingaben werden jetzt **gar nicht mehr betrachtet**.
+Geblieben ist nur: läuft ein Core, wird nichts geschickt.
+
+Dazu dichter und länger — neun Versuche über die erste Minute (3, 6, 10,
+15, 21, 28, 36, 45, 55 s) statt fünf. Kostet nichts: kein Grab-Lösen,
+keine Wartezeit, kein Neuzeichnen.
+
+**Der Fehler ist übrigens alt.** In `frontend_boot.sh` steht seit langem
+der Kommentar *„1 von 10 Fällen startet nicht richtig, bleibt im OSD"*.
+Das Startskript wartet auf `CORENAME == MENU` und dann eine Sekunde —
+aber MiSTer schreibt `MENU` lange bevor er mit der Videoeinrichtung
+fertig ist. Ein Rennen, das meistens gutging. Beim Nutzer ist es von
+„einer von zehn" auf „immer" gekippt, nachdem seine USB-Platte eine
+Dateisystem-Reparatur hinter sich hatte.
+
+
+
+**Der Konsolenmodus, endlich richtig** (Build 148):
+
+Die einfachste Lösung, die es die ganze Zeit gab: **das F9 in den ersten
+Sekunden ein paarmal wiederholen** (nach 6, 14, 24, 36 und 50 Sekunden)
+und aufhören, sobald es erkennbar nicht mehr gebraucht wird.
+
+Warum das erlaubt ist — und warum zwei Builds lang etwas anderes
+versucht wurde: Ich hatte F9 für einen **Umschalter** gehalten, bei dem
+ein zweiter Druck ein funktionierendes Bild wieder wegnimmt. Das ist
+falsch, und der eigene Code beweist es: `open_osd()` und der Exit-Pfad
+schalten mit **F12** ins MiSTer-Menü, zurück geht es mit **F9**. Zwei
+Tasten, zwei Richtungen. Ein zweites F9 bei bereits sichtbarer Konsole
+tut schlicht nichts.
+
+Aufgehört wird, sobald der Nutzer etwas gedrückt hat (dann bedient er
+das Frontend, sieht es also), ein Core läuft (dann gehört die Anzeige
+dem Spiel), oder die fünf Zeitpunkte durch sind.
+
+Die Absicherung kostet praktisch nichts: **kein Grab-Lösen, keine
+Wartezeiten, kein Neuzeichnen.** Dass die Einspeisung auch bei gepacktem
+Gerät bei MiSTer ankommt, ist auf dem Gerät nachgemessen — und `KEY_F9`
+ist in der Tastenbelegung ausdrücklich auf `None` gelegt, das
+eingespeiste Ereignis löst im Frontend also nichts aus.
+
+**Zurückgenommen: Build 147.** Das Warten auf ein MiSTer-Mindestalter
+ließ den Bildschirm eine halbe Minute leer — und eine einzige Regung der
+Funkmaus strich den Termin ersatzlos, dann kam das Frontend überhaupt
+nicht mehr. Schlechter als der Fehler. Der Start schickt sein F9 wieder
+sofort, wie seit jeher.
+
+**Was der Fehler wirklich war:** MiSTer nimmt das frühe F9 entgegen und
+macht den Wechsel im Zuge seiner eigenen Initialisierung wieder
+zunichte. Ob das passiert, hängt daran, wie lange MiSTer an diesem Tag
+zum Hochfahren braucht. Beim Nutzer änderte sich das, nachdem seine
+USB-Platte eine Dateisystem-Reparatur hinter sich hatte (620 MB in
+`found.000`) — gestern saß dasselbe F9, heute nicht. Der gelöschte
+`games`-Ordner, den ich zwei Builds lang verdächtigt hatte, war nie die
+Ursache.
+
+`tools/test_konsole_start.py` prüft die Wiederholungen, die drei
+Abbruchbedingungen, dass kein Grab angefasst wird — und hält die beiden
+Irrwege samt Begründung fest, damit sie niemand wiederholt.
+
+
+
+**Der Kaltstart-Fehler — richtig gefunden** (Build 147):
+
+Nach jedem Kaltstart blieb der Bildschirm im MiSTer-Menü, während das
+Frontend lief, zeichnete und Musik spielte. **Build 146 hat das nicht
+behoben, weil meine Diagnose falsch war** — der Fix hing an
+`VT != tty1`, und die VT stand durchgehend korrekt auf `tty1`. Die
+Bedingung konnte nie zutreffen.
+
+Was in mehreren Messrunden auf dem Gerät **ausgeschlossen** wurde:
+
+| Verdacht | Befund |
+|---|---|
+| Absturz | Nein — sauberer Durchlauf im Log |
+| Linux-Konsole | VT durchgehend `tty1`; `chvt 1` folglich wirkungslos |
+| Gelöschter `games`-Ordner | Nein — trat auch bei 6 s Startzeit auf |
+| Griff aufs Eingabegerät | `event0` ist gepackt, Einspeisung wirkt trotzdem |
+| Falscher Weg | Dieselbe Einspeisung wirkt später einwandfrei |
+| Ablesbarer Anzeigezustand | **Existiert nicht** — beim Umschalten ändert sich weder unter `/sys/class/graphics` noch in `/tmp` ein einziger Wert |
+
+Übrig blieb der **Zeitpunkt**. Gemessen: MiSTer läuft ab Boot+2,4 s, das
+Frontend ab Boot+11,4 s und schickte sein F9 rund eine Sekunde später.
+MiSTer war da **neun Sekunden alt**, mitten in seiner
+Video-Initialisierung — er nimmt das F9 entgegen und macht es gleich
+darauf wieder zunichte.
+
+Ein Testlauf mit F9-Schüssen bei MiSTer-Alter 30/45/60/90 s ergab: schon
+der Schuss bei **30 Sekunden** wirkt und bleibt.
+
+Also wartet das Frontend beim Start, bis MiSTer dieses Alter erreicht
+hat, und schickt sein F9 **genau dann — und genau einmal**. F9 ist ein
+Umschalter; ein zweites könnte ein funktionierendes Bild wieder
+wegnehmen, deshalb gibt es bewusst kein Nachfassen. Drückt der Nutzer in
+der Zwischenzeit selbst F9, wird der Termin ersatzlos gestrichen.
+
+Startet man das Frontend im laufenden Betrieb neu — der Fall, der seit
+jeher funktioniert —, ist MiSTer längst alt genug: es wird **gar nicht
+gewartet**, alles bleibt exakt wie bisher. Die Wartezeit trifft nur den
+Kaltstart, also genau den kaputten Fall.
+
+Das Nachfassen aus Build 146 ist entfernt; `_boot_watch()` protokolliert
+wieder nur. Die Zeilen bleiben trotzdem — sie haben bewiesen, dass das
+Frontend läuft, und damit die Suche überhaupt erst in die richtige
+Richtung gelenkt. `tools/test_vt_nachfassen.py` ist durch
+`tools/test_konsole_start.py` ersetzt.
+
+
+
 **„Ich bin im OSD und höre die Musik vom Frontend"** (Build 146):
 
 Sieht aus wie ein Absturz, ist aber ein **verlorenes Wettrennen**.

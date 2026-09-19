@@ -943,6 +943,20 @@ class Frontend:
         # unsichtbar. Jetzt sieht man sofort unseren Bildschirm samt
         # Lade-Fortschrittsbalken (siehe _draw_scan_progress()), auch
         # wenn der Scan mal laenger dauert.
+        #
+        # WIEDERHERGESTELLT (Build 148): sofort, wie seit jeher. Build
+        # 147 hatte hier gewartet, bis MiSTer ein Mindestalter erreicht
+        # - das war die falsche Antwort auf eine richtige Beobachtung
+        # und liess den Bildschirm eine halbe Minute leer. Die
+        # Absicherung sitzt jetzt in _konsole_sichern().
+        self._f9_wiederholt = 0
+        self._f9_aufraeumen_ab = None
+        self._mister_pid = None
+        self._mister_probe = None
+        try:
+            self._clk_tck = os.sysconf("SC_CLK_TCK") or 100
+        except (ValueError, OSError):
+            self._clk_tck = 100
         self.enter_console_mode()
         self.set_cursor_blink(False)
         self.inp.grab(True)
@@ -1551,8 +1565,6 @@ class Frontend:
         self._last_vt_check = 0.0
         self._last_bootstate = None
         self._last_snapshot = 0.0
-        self._vt_nachgefasst = 0
-        self._letztes_nachfassen = 0.0
 
         # Optionaler Stream-Overlay-Server (nur wenn Freigabe-Datei da ist)
         self.stream = None
@@ -8039,6 +8051,8 @@ class Frontend:
                 for _p, _bw, _bh, _erg in self.lader.abholen():
                     ART.nachgeladen_eintragen(_p, _bw, _bh, _erg)
                 self._boot_watch()   # Diagnose: Anzeige-Zustand nach dem Boot
+                self._konsole_sichern()     # F9 absichern
+                self._konsole_aufraeumen()  # Build 150: Login-Prompt wegwischen
                 # WICHTIG: unabhaengige if-Abfragen statt einer elif-Kette.
                 # Mit elif haette "track_needs" (Songtitel muss scrollen -
                 # trifft auf praktisch jeden echten Songnamen zu) den
@@ -10759,8 +10773,6 @@ class Frontend:
             return "?"
 
     VT_KONSOLE = "tty1"
-    VT_NACHFASSEN_MAX = 3
-    VT_NACHFASSEN_ABSTAND = 2.0
     # GEAENDERT (Build 146): von 30 auf 60 Sekunden. Beim Nutzer holte
     # sich der MiSTer die Anzeige vier Sekunden nach dem Menue zurueck -
     # das lag gut im alten Fenster. Ein langsamer Kaltstart mit USB- und
@@ -10769,44 +10781,27 @@ class Frontend:
     BOOT_WATCH_FENSTER = 60.0
 
     def _boot_watch(self):
-        """Die erste Minute nach dem Start den Anzeige-Zustand (aktive VT
-        + CORENAME) protokollieren - und ihn seit Build 146 auch
-        GERADEZIEHEN.
+        """Reine Diagnose: die erste Minute nach dem Start den
+        Anzeige-Zustand (aktive VT + CORENAME) protokollieren.
 
-        Im Erfolgsfall bleibt die VT auf tty1 (Konsolenmodus, Frontend
-        sichtbar). Holt der bootende MiSTer die Anzeige zurueck, steht
-        hier tty2.
+        Aendert selbst nichts am Verhalten. Build 146 hatte hier F9
+        nachgeschickt, sobald "VT != tty1" war - das war ein Irrtum und
+        ist in Build 147 wieder entfernt worden.
 
-        WAS DAHINTERSTECKT (Nutzer-Rueckmeldung, Build 146: "bin im OSD
-        und hoere die Musik vom Frontend"): das Frontend schaltet den
-        MiSTer genau EINMAL per F9 in den Konsolenmodus, ganz zu Beginn
-        von run(). Danach baut es seine Kategorien auf. Dauert das lange
-        genug, ist der MiSTer inzwischen fertig gebootet und holt sich
-        die Anzeige zurueck - das Frontend zeichnet dann munter in einen
-        Framebuffer, den niemand sieht. Die Musik laeuft (eigener
-        Thread), das Bild zeigt das OSD. Es sieht aus wie ein Absturz,
-        ist aber ein verlorenes Wettrennen.
+        WARUM DER IRRTUM LEHRREICH IST: beim Nutzer stand die VT
+        durchgehend auf tty1, waehrend der Bildschirm trotzdem MiSTers
+        Menue zeigte. Die aktive Linux-Konsole sagt also NICHT, was auf
+        dem Bildschirm landet - das entscheidet MiSTer fuer sich, und
+        er schreibt es nirgendwo hin (nachgemessen: beim Umschalten
+        aendert sich weder unter /sys/class/graphics noch in /tmp ein
+        einziger Wert). Die Bedingung konnte deshalb nie zutreffen, und
+        der Fix lief ins Leere.
 
-        Im Log des Nutzers: "Start-Dauer bis Kategorien-Menue bereit:
-        44.08s", danach "boot-watch +04s: VT=tty2". Ausgeloest hatte es
-        ein geloeschter games-Ordner - der Neu-Scan verlangsamte den
-        Start so weit, dass der MiSTer gewann. Ein Neuling mit noch
-        leerem games-Ordner haette genau dasselbe erlebt, und niemand
-        waere je auf F9 gekommen.
-
-        Diese Funktion hatte die Signatur von Anfang an protokolliert,
-        aber bewusst nichts unternommen. Jetzt schickt sie F9 nach -
-        hoechstens dreimal, mit zwei Sekunden Abstand, und nur unter
-        zwei Bedingungen:
-
-          - Es laeuft KEIN Core (CORENAME == MENU). Laeuft ein Spiel,
-            gehoert die Anzeige dem Spiel; dort hineinzufunken waere
-            schlimmer als das Problem.
-          - Der Nutzer hat seit dem Start NICHTS gedrueckt. Wer selbst
-            per F12 ins OSD gegangen ist, will dort sein - ihn von dort
-            wegzuziehen waere genau die Sorte Bevormundung, die man
-            einem Frontend nicht verzeiht. Erkennbar daran, dass
-            _last_input_time noch auf dem Wert vom Programmstart steht."""
+        Die Zeilen hier bleiben trotzdem: sie haben die Fehlersuche
+        ueberhaupt erst auf die richtige Spur gebracht, weil sie
+        beweisen, dass das Frontend laeuft und zeichnet. Die Loesung
+        sitzt jetzt bei _konsole_sichern(): das F9 wird in den ersten
+        Sekunden schlicht ein paarmal wiederholt."""
         el = time.monotonic() - self._boot_time
         if el > self.BOOT_WATCH_FENSTER:
             return
@@ -10827,30 +10822,15 @@ class Frontend:
             self._last_bootstate = state
             self._last_snapshot = now
 
-        unberuehrt = self._last_input_time <= self._boot_time + 1.0
-        if (core == "MENU" and vt != self.VT_KONSOLE and vt != "?"
-                and unberuehrt
-                and self._vt_nachgefasst < self.VT_NACHFASSEN_MAX
-                and now - self._letztes_nachfassen
-                >= self.VT_NACHFASSEN_ABSTAND):
-            self._vt_nachgefasst += 1
-            self._letztes_nachfassen = now
-            LOG("boot-watch: Anzeige haengt auf %s - F9 nachgeschickt (%d/%d)"
-                % (vt, self._vt_nachgefasst, self.VT_NACHFASSEN_MAX))
-            try:
-                self.enter_console_mode()
-                self.set_cursor_blink(False)
-                self.inp.flush()
-                self.inp.grab(True)
-                # Der Framebuffer steht noch voll da, aber die Seite
-                # wurde waehrenddessen ueberdeckt - die schnellen
-                # Seitenpfade halten ihren Hintergrund sonst fuer gueltig
-                # und frischen nur Zeilen auf.
-                self.fb.full_redraw_gen += 1
-                self.draw()
-            except Exception:                            # noqa: BLE001
-                LOG("boot-watch: Nachfassen fehlgeschlagen:\n"
-                    + traceback.format_exc())
+        # ZURUECKGENOMMEN (Build 147): Build 146 hat an dieser Stelle F9
+        # nachgeschickt, sobald "VT != tty1" war. Beim Nutzer hat das
+        # nie ausgeloest - und konnte es auch nicht: die VT stand
+        # durchgehend korrekt auf tty1, waehrend der Bildschirm trotzdem
+        # MiSTers Menue zeigte. Die VT ist schlicht nicht das Signal,
+        # an dem sich der Anzeigezustand ablesen laesst (ein ablesbares
+        # gibt es gar nicht, nachgemessen). Die Loesung
+        # sitzt jetzt dort, wo die Ursache liegt: beim ZEITPUNKT des
+        # ersten F9. Hier wird wieder nur protokolliert.
 
     def _play_ducked_sfx(self, name):
         """Spielt EINEN Soundeffekt (SFX_DIR/<name>.mp3 bevorzugt, sonst
@@ -13028,6 +13008,241 @@ class Frontend:
             self.draw(t("remap_done"))
         time.sleep(1.2)
         self.draw()
+
+    # Sekunden nach dem Start, zu denen F9 vorsichtshalber wiederholt
+    # wird. Frueh dicht, spaeter ausduennend - der Fehlerfall zeigt sich
+    # immer in den ersten Sekunden.
+    # GEAENDERT (Build 151): von neun Versuchen ueber eine Minute auf
+    # vier innerhalb der ersten 14 Sekunden.
+    #
+    # Jeder Versuch weckt den Login-Prozess auf tty1, dessen Prompt
+    # weggewischt und die Seite voll neu aufgebaut werden muss (siehe
+    # _konsole_aufraeumen()) - das sieht man. Neun davon ueber eine
+    # Minute verteilt ergaben beim Nutzer ein Flackern "alle paar
+    # Sekunden", und zwar noch lange, nachdem das Bild laengst stand.
+    #
+    # Vier Versuche in den ersten 14 Sekunden fallen dagegen in die
+    # Startphase, in der sich das Bild ohnehin aufbaut. Sie decken den
+    # Zeitraum ab, in dem MiSTer seine Videoeinrichtung abschliesst -
+    # danach hat sich nie wieder etwas geaendert.
+    F9_WIEDERHOLUNGEN = (2.0, 5.0, 9.0, 14.0, 21.0, 30.0, 45.0)
+
+    # Ab wieviel Prozent CPU gilt MiSTer als "zeichnet sein eigenes
+    # Menue"? Gemessen auf dem Geraet des Nutzers, ueber je fuenf
+    # Sekunden:
+    #
+    #     OSD sichtbar     500 Ticks  =  100 %
+    #     Konsole sichtbar   7 Ticks  =    1,4 %
+    #
+    # Dazwischen liegt eine Luecke, in die jede Schwelle passt. 25 % ist
+    # weit genug von beiden Seiten entfernt, um auch bei Lastspitzen
+    # durch andere Prozesse nicht zu kippen.
+    MISTER_BESCHAEFTIGT = 25.0
+    MISTER_MESSFENSTER = 1.0          # Sekunden je Messung
+    MISTER_PFAD = "/media/fat/MiSTer"
+
+    def _mister_last(self):
+        """CPU-Last des MiSTer-Prozesses in Prozent - oder None, solange
+        keine belastbare Spanne vorliegt.
+
+        DAS IST DAS SIGNAL, das zwei Tage lang gesucht wurde. MiSTer
+        schreibt seinen Anzeigezustand nirgendwo hin (nachgemessen:
+        beim Umschalten aendert sich weder unter /sys/class/graphics
+        noch in /tmp ein einziger Wert, und auch seine offenen Dateien
+        bleiben gleich). Aber er VERHAELT sich unterschiedlich: solange
+        er sein eigenes Menue zeichnet, laeuft er auf Anschlag; sobald
+        unser Framebuffer angezeigt wird, hat er nichts zu tun und
+        schlaeft.
+
+        EHRLICHE VORGESCHICHTE: in Build 148 wurde die CPU-Last als
+        Signal verworfen, weil sie "durchgehend auf 100 %" stand. Sie
+        stand auf 100 %, weil beim Messen der Fehlerfall aktiv war -
+        gemessen wurde also nur eine Haelfte der Wahrheit."""
+        if self._mister_pid is None:
+            try:
+                eintraege = os.listdir("/proc")
+            except OSError:
+                return None
+            for d in eintraege:
+                if not d.isdigit():
+                    continue
+                try:
+                    with open("/proc/%s/cmdline" % d, "rb") as f:
+                        roh = f.read().decode("utf-8", "replace")
+                except OSError:
+                    continue
+                # GENAU das Programm, nicht irgendein Prozess, in dessen
+                # Befehlszeile der Pfad vorkommt (ein Skript mit
+                # "/media/fat/MiSTer.ini" im Aufruf wuerde sonst passen -
+                # beim Testen hat genau so ein Fehlgriff eine falsche,
+                # schlafende PID geliefert und die Messung auf 0 % gezogen).
+                if roh.split("\0")[0] == self.MISTER_PFAD:
+                    self._mister_pid = d
+                    break
+            if self._mister_pid is None:
+                return None
+        try:
+            with open("/proc/%s/stat" % self._mister_pid) as f:
+                felder = f.read().rsplit(")", 1)[1].split()
+            zeit = (float(felder[11]) + float(felder[12])) / self._clk_tck
+        except (OSError, IndexError, ValueError):
+            self._mister_pid = None       # Prozess weg - neu suchen
+            return None
+        jetzt = time.monotonic()
+        vorher = self._mister_probe
+        if vorher is not None and jetzt - vorher[0] < self.MISTER_MESSFENSTER:
+            return None                   # zu kurze Spanne, Messpunkt halten
+        self._mister_probe = (jetzt, zeit)
+        if vorher is None:
+            return None
+        return (zeit - vorher[1]) / (jetzt - vorher[0]) * 100.0
+
+    def _konsole_sichern(self):
+        """F9 in den ersten Sekunden ein paarmal wiederholen.
+
+        DAS PROBLEM (Nutzer-Rueckmeldung ueber mehrere Builds: "bin im
+        OSD und hoere die Musik vom Frontend"): das Frontend schickt
+        sein F9 rund eine Sekunde nach dem eigenen Start - beim Nutzer
+        bei Boot+15s, MiSTer ist dann knapp 13 Sekunden alt. Mal sitzt
+        es, mal nicht: MiSTer nimmt die Taste entgegen und macht den
+        Wechsel im Zuge seiner eigenen Initialisierung wieder zunichte.
+        Ob das passiert, haengt davon ab, wie lange MiSTer an diesem Tag
+        zum Hochfahren braucht - beim Nutzer aenderte sich das, nachdem
+        seine USB-Platte eine Dateisystem-Reparatur hinter sich hatte
+        (620 MB in found.000). Gestern sass dasselbe F9, heute nicht.
+
+        WARUM EINFACH WIEDERHOLEN ERLAUBT IST - und warum zwei Builds
+        lang etwas anderes versucht wurde: ich hatte F9 fuer einen
+        UMSCHALTER gehalten, bei dem ein zweiter Druck ein
+        funktionierendes Bild wieder wegnimmt. Das ist falsch, und der
+        eigene Code beweist es: open_osd() und der Exit-Pfad schalten
+        mit **F12** ins MiSTer-Menue, zurueck geht es mit **F9**. Zwei
+        Tasten, zwei Richtungen. Ein zweites F9 bei bereits sichtbarer
+        Konsole tut schlicht nichts.
+
+        Deshalb jetzt die einfachste Loesung, die es die ganze Zeit gab:
+        das F9 ein paarmal wiederholen und aufhoeren, sobald es
+        erkennbar nicht mehr gebraucht wird.
+
+        Es kostet praktisch nichts: KEIN Grab-Loesen, KEINE Wartezeiten,
+        kein Neuzeichnen. Dass die Einspeisung auch bei GEPACKTEM Geraet
+        bei MiSTer ankommt, ist auf dem Geraet des Nutzers nachgemessen.
+        Und KEY_F9 ist in der Tastenbelegung ausdruecklich auf None
+        gelegt, das eingespeiste Ereignis loest im Frontend also nichts
+        aus - auch nicht die Eingabe-Uhr, an der die Abbruchbedingung
+        unten haengt.
+
+        KEINE ABBRUCHBEDINGUNG AUF EINGABEN (Build 149, und das ist die
+        Korrektur, die Build 148 gefehlt hat): dort wurde abgebrochen,
+        sobald _last_input_time sich bewegt hatte - "dann bedient der
+        Nutzer das Frontend, also sieht er es". Beim Nutzer stand
+        deshalb im Log
+
+            Konsolenmodus: Absicherung beendet - Nutzer bedient das
+            Frontend, es ist also sichtbar
+
+        waehrend er in Wahrheit im OSD sass. Seine FUNKMAUS meldet
+        Achsen ([0, 1, 2, 5, 16, 17], siehe Geraetezeile im Log), ein
+        Zucken auf dem Tisch reicht - und die Absicherung schaltete sich
+        ab, bevor der erste Schuss raus war. Genau derselbe zu
+        empfindliche Ausloeser hatte schon Build 147 zerlegt.
+
+        Der Griff war ohnehin ueberfluessig: ein F9 bei bereits
+        sichtbarer Konsole tut nichts. Eingaben werden jetzt gar nicht
+        mehr betrachtet.
+
+        Aufgehoert wird, sobald
+          - ein Core laeuft (dann gehoert die Anzeige dem Spiel), oder
+          - die Liste der Zeitpunkte abgearbeitet ist."""
+        if self._f9_wiederholt >= len(self.F9_WIEDERHOLUNGEN):
+            return
+        # NEU (Build 152): erst nachsehen, ob es ueberhaupt noch noetig
+        # ist. Siehe _mister_last() - schlaeft MiSTer, liegt unser Bild
+        # oben und jeder weitere Versuch waere nur ein Flackern.
+        last = self._mister_last()
+        if last is not None and last < self.MISTER_BESCHAEFTIGT:
+            self._f9_wiederholt = len(self.F9_WIEDERHOLUNGEN)
+            LOG("Konsolenmodus: MiSTer bei %.0f%% - unser Bild liegt oben, "
+                "Absicherung beendet" % last)
+            return
+        el = time.monotonic() - self._boot_time
+        if el < self.F9_WIEDERHOLUNGEN[self._f9_wiederholt]:
+            return
+        try:
+            core = open(CORENAME).read().strip("\x00 \n\r\t")
+        except OSError:
+            core = "MENU"
+        if core and core != "MENU":
+            self._f9_wiederholt = len(self.F9_WIEDERHOLUNGEN)
+            LOG("Konsolenmodus: Absicherung beendet - Core %s laeuft" % core)
+            return
+        self._f9_wiederholt += 1
+        LOG("Konsolenmodus: F9 zur Absicherung (%d/%d, +%.0fs)"
+            % (self._f9_wiederholt, len(self.F9_WIEDERHOLUNGEN), el))
+        try:
+            self.inp.inject(KEY_F9)
+        except OSError as e:
+            LOG("Konsolenmodus: Absicherung fehlgeschlagen: %s" % e)
+            return
+        # Das eingespeiste F9 erreicht nicht nur MiSTer, sondern auch den
+        # Login-Prozess auf tty1. Der wacht davon auf und schreibt
+        # "Welcome to MiSTer ... login:" mitten in unser Bild - der
+        # Nutzer sah nach Build 149 genau das. Gleich hinterher
+        # aufraeumen; siehe _konsole_aufraeumen().
+        self._f9_aufraeumen_ab = time.monotonic() + 0.4
+
+    def _konsole_aufraeumen(self):
+        """Die Konsolenausgabe wegwischen, die ein eingespeistes F9
+        ausgeloest hat, und die Seite neu zeichnen.
+
+        Denselben Handgriff macht frontend_boot.sh ganz am Anfang jedes
+        Starts ("printf '\\033[2J\\033[H' > /dev/tty1") - dort, weil nach
+        einem echten Linux-Neustart die rohe Konsole im Bild steht. Hier
+        aus demselben Grund, nur spaeter: jedes eingespeiste F9 weckt
+        den Login-Prozess, und der schreibt seinen Prompt in denselben
+        Framebuffer, in den wir zeichnen.
+
+        Die kurze Verzoegerung ist Absicht - erst muss der Prompt da
+        sein, sonst wischt man vor ihm her."""
+        if self._f9_aufraeumen_ab is None:
+            return
+        if time.monotonic() < self._f9_aufraeumen_ab:
+            return
+        self._f9_aufraeumen_ab = None
+        # Erst nachsehen, OB ueberhaupt jemand hineingeschrieben hat.
+        #
+        # flip() gleicht mm an buf an - direkt nach einem Aufbau sind
+        # beide gleich. Steht dort etwas anderes, war ein Fremder am
+        # Werk. Der Login-Prompt landet oben links (frontend_boot.sh
+        # setzt den Cursor ganz am Anfang auf Position 1), deshalb
+        # reichen die obersten Zeilen.
+        #
+        # Ohne diese Pruefung wird bei JEDEM Versuch neu aufgebaut, auch
+        # wenn gar nichts passiert ist - und genau das hat der Nutzer
+        # als Flackern gesehen.
+        try:
+            hoehe = min(40, self.fb.height)
+            n = hoehe * self.fb.stride
+            if bytes(self.fb.mm[:n]) == bytes(self.fb.buf[:n]):
+                return
+        except Exception:                            # noqa: BLE001
+            pass                      # im Zweifel lieber aufraeumen
+        LOG("Konsolenmodus: Fremdausgabe im Bild - wische und baue neu auf")
+        try:
+            with open("/dev/tty1", "wb", buffering=0) as tty:
+                tty.write(b"\033[2J\033[H")
+        except OSError:
+            pass                      # darf den Betrieb nie stoeren
+        self.set_cursor_blink(False)
+        # Die schnellen Seitenpfade halten ihren Hintergrund sonst fuer
+        # gueltig und frischen nur einzelne Zeilen auf - der fremde Text
+        # bliebe zwischen ihnen stehen.
+        self.fb.full_redraw_gen += 1
+        try:
+            self.draw()
+        except Exception:                            # noqa: BLE001
+            LOG("Konsolenmodus: Aufraeumen fehlgeschlagen:\n"
+                + traceback.format_exc())
 
     def enter_console_mode(self):
         """MiSTer per F9 in den Konsolenmodus schalten - sonst uebermalt

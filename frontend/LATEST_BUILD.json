@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-18-146",
-  "summary": "Dauerte der Start lange, holte sich der bootende MiSTer die Anzeige zurueck - das Frontend lief weiter, war aber nicht zu sehen: Musik lief, Bild zeigte das OSD. Sah aus wie ein Absturz, war ein verlorenes Wettrennen um den Konsolenmodus. Das Frontend erkennt das jetzt und schickt F9 nach."
+  "build_id": "2026-09-19-152",
+  "summary": "Das gesuchte Signal ist gefunden: MiSTer laeuft auf 100 Prozent, solange er sein eigenes Menue zeichnet, und faellt auf ein Prozent, sobald unser Bild oben liegt. Die F9-Absicherung hoert damit auf, sobald sie gewirkt hat - kein Flackern mehr."
 }
