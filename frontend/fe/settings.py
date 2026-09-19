@@ -1246,6 +1246,71 @@ def toggle_rom_filter():
     return True
 
 
+# ---------------------------------------------------------------------------
+# EINZELSPIEL-ORDNER AUFLOESEN (Build 156)
+# ---------------------------------------------------------------------------
+# Nutzer-Rueckmeldung: "meine psx roms liegen im ordner games/PSX dort
+# bekomme ich nur die listenansicht. und cover erscheint nur wenn ich in
+# denn ordner vom spiel reingehe. bei mega cd das gleiche und saturn
+# auch."
+#
+# Die Ursache ist keine Panne, sondern zwei bewusste Entscheidungen, die
+# sich hier unguenstig treffen: hat_artspalte() blendet die Cover-Spalte
+# aus, wenn eine Liste NUR aus Ordnern besteht (Build 89, auf seinen
+# eigenen Wunsch hin), und eine reine Ordnerauswahl faellt immer auf die
+# Listenansicht zurueck (Build 122). Bei CD-Systemen liegt aber
+# ueblicherweise jedes Spiel in einem eigenen Ordner, weil eine .cue
+# mehrere .bin-Dateien mitbringt - die erste Ebene besteht also
+# ausschliesslich aus Ordnern.
+#
+# Dieser Schalter loest einen Ordner auf, der GENAU EIN Spiel und keine
+# Unterordner enthaelt: das Spiel steht dann direkt in der Liste. Die
+# .bin-Dateien zaehlen dabei nicht mit, weil kein System sie als
+# ROM-Endung fuehrt - sie waren fuer den Scanner noch nie sichtbar.
+#
+# Mehrteilige Spiele (zwei .cue im selben Ordner) bleiben Ordner. Das
+# ist kein Kompromiss, sondern richtig: dort MUSS man auswaehlen.
+#
+# STANDARD AN. Anders als beim ROM-Filter wird hier nichts versteckt -
+# es faellt nur eine Ebene weg, hinter der ohnehin immer genau dasselbe
+# eine Spiel stand. Die Datei bedeutet deshalb "abgeschaltet".
+EINZELORDNER_AUS_FLAG = "/media/fat/frontend/einzelordner_aus"
+
+
+def einzelordner_aufloesen():
+    """True, wenn ein Ordner mit genau einem Spiel durch dieses Spiel
+    ersetzt werden soll. Standard: True."""
+    return not os.path.exists(EINZELORDNER_AUS_FLAG)
+
+
+@_nach_aenderung
+def toggle_einzelordner():
+    """Schaltet um. Liefert den NEUEN Zustand.
+
+    WICHTIG, genau wie bei toggle_rom_filter(): der Aufrufer MUSS
+    danach neu einlesen lassen. Der Schalter wirkt beim Einlesen, nicht
+    beim Anzeigen - er formt den Baum. Der Cache-Fingerabdruck traegt
+    den Zustand mit (siehe _games_signature() in fe/scan.py), ein
+    Neustart laese also ohnehin neu ein; der Menuepunkt stoesst es
+    sofort an."""
+    if einzelordner_aufloesen():
+        try:
+            d = os.path.dirname(EINZELORDNER_AUS_FLAG)
+            if d:
+                os.makedirs(d, exist_ok=True)
+            open(EINZELORDNER_AUS_FLAG, "w").close()
+        except OSError as e:
+            LOG("toggle_einzelordner: Anlegen fehlgeschlagen: %s" % e)
+            return True
+        return False
+    try:
+        os.remove(EINZELORDNER_AUS_FLAG)
+    except OSError as e:
+        LOG("toggle_einzelordner: Loeschen fehlgeschlagen: %s" % e)
+        return False
+    return True
+
+
 def attract_enabled():
     """Standardmaessig AN (im Gegensatz zu curated_only_active(), das
     standardmaessig AUS ist) - die Datei bedeutet hier 'abgeschaltet',

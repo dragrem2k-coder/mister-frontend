@@ -22,7 +22,7 @@ from fe.systems import (GAME_SYSTEMS, OPTIONAL_GAME_SYSTEMS,
                         optional_core_file)
 from fe.naming import IGNORE_ROM_BASENAMES, JUNK_TAGS, REGION_PRIORITY, nice_name, _is_junk, _is_japan_only
 from fe.game_state import _folder_items
-from fe.settings import rom_filter_enabled
+from fe.settings import rom_filter_enabled, einzelordner_aufloesen
 import fe.paths
 
 BASE = "/media/fat"
@@ -229,9 +229,10 @@ def scan_cores(skip_dir=None, force=False):
 # Release) von Hand hochgezaehlt wird - fliesst mit in die Signatur
 # ein, macht den Cache dadurch automatisch ungueltig, sobald sich die
 # Auswertung selbst geaendert hat, ganz unabhaengig von Datei-mtimes.
-SCAN_LOGIC_VERSION = 4   # 1 = Basis, 2 = "(unl)"/"(pirate)" nicht mehr Junk,
+SCAN_LOGIC_VERSION = 5   # 1 = Basis, 2 = "(unl)"/"(pirate)" nicht mehr Junk,
                          # 3 = OPTIONAL_GAME_SYSTEMS (SNES_Tracker-Core),
-                         # 4 = SMW Hacks (games/SNES/SMW_HACKS)
+                         # 4 = SMW Hacks (games/SNES/SMW_HACKS),
+                         # 5 = Einzelspiel-Ordner aufloesen (Build 156)
 
 def _games_signature():
     """Schneller Fingerabdruck der ROM-Ordner (ohne Tiefensuche):
@@ -356,6 +357,9 @@ def _games_signature():
     # erst beim naechsten ohnehin faelligen Neuscan sichtbar, und der
     # Nutzer haette den Eindruck, der Schalter tue nichts.
     sig.append(("__rom_filter__", 1 if rom_filter_enabled() else 0))
+    # Build 156: derselbe Grund - der Schalter formt den Baum beim
+    # Einlesen, nicht beim Anzeigen.
+    sig.append(("__einzelordner__", 1 if einzelordner_aufloesen() else 0))
     for sk in per_syskey:
         per_syskey[sk].sort(key=lambda t: (t[0], t[1] is None, t[1]))
     return sig, per_syskey
@@ -1073,6 +1077,24 @@ def _dedupe_items(raw_items):
     items.sort(key=lambda t: t[0].lower())
     return items
 
+def _einzelspiel(node):
+    """Das eine Spiel eines Knotens, der NUR dieses eine Spiel und
+    keinen Unterordner enthaelt - sonst None (Build 156).
+
+    Der Aufrufer setzt dieses Spiel dann an die Stelle des Ordners.
+    Siehe einzelordner_aufloesen() in fe/settings.py fuer das Warum.
+
+    Warum die Bedingung so eng ist: ein Ordner mit ZWEI Spielen ist
+    eine echte Auswahl (Disc 1 / Disc 2), und ein Ordner mit einem
+    Spiel UND einem Unterordner ist eine Sammlung. In beiden Faellen
+    wuerde das Aufloesen etwas unerreichbar machen."""
+    if node["folders"]:
+        return None
+    if len(node["items"]) != 1:
+        return None
+    return node["items"][0]
+
+
 def _node_count(node):
     """Rekursive Gesamtzahl aller Eintraege (inkl. aller Unterordner)
     fuer die Anzeige in der Kategorienliste."""
@@ -1144,13 +1166,24 @@ def _zip_baum(zip_pfad, syskey, rbf, extmap, filter_an):
         ziel["items"].append((basis, "game",
                               (voll, ext, syskey, rbf, extmap[ext])))
 
+    einzeln = einzelordner_aufloesen()
+
     def _aufraeumen(n):
-        n["items"] = _dedupe_items(n["items"])
+        # Von unten nach oben: erst der Unterordner, dann die Frage, ob
+        # er danach nur noch ein Spiel enthaelt. Andersherum bliebe ein
+        # zweistufiger Ordner stehen, dessen Inhalt sich gerade erst
+        # auf ein Spiel zusammengezogen hat.
+        hoch = []
         for unter in list(n["folders"]):
             _aufraeumen(n["folders"][unter])
-            if not (n["folders"][unter]["items"]
-                    or n["folders"][unter]["folders"]):
+            sub = n["folders"][unter]
+            nur = _einzelspiel(sub) if einzeln else None
+            if nur is not None:
+                hoch.append(nur)
                 del n["folders"][unter]
+            elif not (sub["items"] or sub["folders"]):
+                del n["folders"][unter]
+        n["items"] = _dedupe_items(n["items"] + hoch)
 
     _aufraeumen(node)
     return node
@@ -1170,6 +1203,12 @@ def _scan_folder_tree(path, syskey, rbf, extmap):
     # Dateisystem-Pruefung, und die soll bei mehreren tausend ROMs nicht
     # tausendfach laufen.
     _filter_an = rom_filter_enabled()
+    # NEU (Build 156): ein Ordner mit genau einem Spiel wird durch
+    # dieses Spiel ersetzt. Betrifft vor allem CD-Systeme, bei denen
+    # jedes Spiel in einem eigenen Ordner liegt, weil eine .cue
+    # mehrere .bin mitbringt - siehe _einzelspiel() und
+    # einzelordner_aufloesen() in fe/settings.py.
+    _einzeln = einzelordner_aufloesen()
     raw_items = []
     for entry in entries:
         if entry.startswith("."):
@@ -1177,7 +1216,10 @@ def _scan_folder_tree(path, syskey, rbf, extmap):
         full = os.path.join(path, entry)
         if os.path.isdir(full):
             sub = _scan_folder_tree(full, syskey, rbf, extmap)
-            if sub["folders"] or sub["items"]:
+            nur = _einzelspiel(sub) if _einzeln else None
+            if nur is not None:
+                raw_items.append(nur)
+            elif sub["folders"] or sub["items"]:
                 node["folders"][entry] = sub
         else:
             name, ext = os.path.splitext(entry)
@@ -1188,7 +1230,10 @@ def _scan_folder_tree(path, syskey, rbf, extmap):
             # Inhaltsverzeichnis - entpackt wird nie etwas.
             if ext == ".zip" and ext not in extmap:
                 sub = _zip_baum(full, syskey, rbf, extmap, _filter_an)
-                if sub["folders"] or sub["items"]:
+                nur = _einzelspiel(sub) if _einzeln else None
+                if nur is not None:
+                    raw_items.append(nur)
+                elif sub["folders"] or sub["items"]:
                     node["folders"][entry] = sub
                 continue
             if name.lower() in IGNORE_ROM_BASENAMES:

@@ -204,17 +204,34 @@ print()
 print("Test 6: liegengebliebene Zwischendateien werden aufgeraeumt")
 # Beim Nutzer standen 20008 Dateien im Ordner bei einer Obergrenze von
 # 20000 - die acht ueberzaehligen sind abgebrochene Schreibvorgaenge.
+#
+# GEAENDERT (Build 156): die Reste muessen jetzt ALT sein. Frische
+# Zwischendateien bleiben absichtlich liegen, weil sie zu einem
+# gerade laufenden Schreibvorgang in einem anderen Thread gehoeren
+# koennen - siehe tools/test_tmp_wettlauf.py. Dieser Test hier hat den
+# Unterschied nicht gekannt und die Reste frisch angelegt; er war
+# damit gruen, obwohl das Aufraeumen anderen Threads die Arbeit unter
+# den Fuessen weggezogen hat.
 zuruecksetzen(105, grenze=100)
+ordner = os.path.join(A.THUMB_CACHE_DIR, "re")
+os.makedirs(ordner, exist_ok=True)
+uralt = time.time() - A.TMP_REST_MINDESTALTER - 60
 for i in range(8):
-    ordner = os.path.join(A.THUMB_CACHE_DIR, "re")
-    os.makedirs(ordner, exist_ok=True)
-    with open(os.path.join(ordner, "rest%d.art.tmp1234_5678" % i), "wb") as f:
+    rp = os.path.join(ordner, "rest%d.art.tmp1234_5678" % i)
+    with open(rp, "wb") as f:
         f.write(b"kaputt")
+    os.utime(rp, (uralt, uralt))
+# Und einer, der GERADE geschrieben wird - der muss bleiben.
+laeuft_gerade = os.path.join(ordner, "aktiv.art.tmp4711_42")
+with open(laeuft_gerade, "wb") as f:
+    f.write(b"noch nicht fertig")
 A._thumb_cache_evict_if_needed()
 reste = [f for _d, _s, dateien in os.walk(A.THUMB_CACHE_DIR)
          for f in dateien if ".art.tmp" in f]
-check("keine .tmp-Reste mehr im Ordner", not reste,
-      "%d uebrig" % len(reste))
+check("die alten .tmp-Reste sind weg", reste == ["aktiv.art.tmp4711_42"],
+      "%d uebrig: %s" % (len(reste), reste[:3]))
+check("der laufende Schreibvorgang wurde nicht angefasst",
+      os.path.exists(laeuft_gerade))
 
 print()
 print("Test 7: getrennte Zwischenspeicher fuer CRT und HDMI")

@@ -846,6 +846,19 @@ TRANSLATIONS = {
     "sys_rom_filter_changed": {
         "en": "Filter changed - reading the game list again now.",
         "de": "Filter geändert - die Spieleliste wird jetzt neu eingelesen."},
+    # NEU (Build 156): Ordner, in denen genau ein Spiel liegt, werden
+    # aufgeloest. Der Text nennt bewusst den Grund und nicht nur den
+    # Schalter - "Einzelordner auflösen" allein sagt niemandem, warum
+    # er das wollen sollte.
+    "sys_einzelordner_on": {
+        "en": "Folders with a single game: shown as the game -> keep them as folders",
+        "de": "Ordner mit nur einem Spiel: als Spiel anzeigen -> als Ordner belassen"},
+    "sys_einzelordner_off": {
+        "en": "Folders with a single game: kept as folders -> show as the game (cover and grid/gallery work then)",
+        "de": "Ordner mit nur einem Spiel: als Ordner belassen -> als Spiel anzeigen (dann gibt es dort Cover, Raster und Galerie)"},
+    "sys_einzelordner_changed": {
+        "en": "Changed - reading the game list again now.",
+        "de": "Geändert - die Spieleliste wird jetzt neu eingelesen."},
     # NEU (Build 73): Cover-Miniaturen einmalig vorberechnen. Die Texte
     # sagen bewusst, WAS das bringt und WAS es kostet - ein Vorgang, der
     # Minuten dauern kann, darf nicht als harmloser Schalter aussehen.

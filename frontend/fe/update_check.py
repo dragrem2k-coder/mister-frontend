@@ -26,7 +26,7 @@ genau eine Quelle, die beiden anderen Stellen importieren von hier
 import os, json, urllib.request
 from fe.log import LOG
 
-FRONTEND_VERSION = "4.4"
+FRONTEND_VERSION = "4.5"
 
 UPDATE_CHECK_URL = ("https://raw.githubusercontent.com/dragrem2k-coder/"
                     "mister-frontend/main/frontend/VERSION")

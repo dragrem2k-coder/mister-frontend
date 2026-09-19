@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v4.4
+MiSTer Custom Frontend - v4.5
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
@@ -240,13 +240,13 @@ from fe.settings import (
     track_marquee_enabled, toggle_track_marquee,
     cycle_fb_size, fb_size_value, set_fb_size,
     toggle_autostart,
-    toggle_rom_filter, mister_ini_video_zustand,
+    toggle_rom_filter, toggle_einzelordner, mister_ini_video_zustand,
 )
 
 # NEUES FEATURE (Nutzerwunsch: Rainwave-Internetradio als zweite
 # Musikquelle neben den lokalen MP3s, uebernommen aus einem separat
 # vorbereiteten, auf echter MiSTer-Hardware getesteten Vorschlag -
-# siehe CHANGES_RAINWAVE.md). Eigenstaendiges stdlib-Modul
+# siehe docs/notizen/CHANGES_RAINWAVE.md). Eigenstaendiges stdlib-Modul
 # (frontend/rainwave.py, neben frontend.py) - komplett optional, damit
 # die MP3-Wiedergabe unveraendert weiterlaeuft, selbst falls die Datei
 # beim Kopieren mal fehlen sollte (gleiches defensives Muster wie
@@ -14842,6 +14842,26 @@ class Frontend:
                             # und der Punkt wirkt kaputt.
                             toggle_rom_filter()
                             self.draw(t("sys_rom_filter_changed"),
+                                      prominent=True)
+                            self.build_categories(force_rescan=True)
+                            self.cat_i = self.item_i = 0
+                            self.scroll = self.cat_scroll = 0
+                            self.page = 0
+                            continue
+                        elif kind == "einzelordner":
+                            # NEU (Build 156, Nutzer-Rueckmeldung: "meine
+                            # psx roms liegen im ordner games/PSX dort
+                            # bekomme ich nur die listenansicht und cover
+                            # erscheint nur wenn ich in denn ordner vom
+                            # spiel reingehe").
+                            #
+                            # Derselbe Ablauf wie beim ROM-Filter, und
+                            # aus demselben Grund: der Schalter formt
+                            # den Baum beim EINLESEN. Ohne den Neuscan
+                            # sieht man gar nichts und der Punkt wirkt
+                            # kaputt.
+                            toggle_einzelordner()
+                            self.draw(t("sys_einzelordner_changed"),
                                       prominent=True)
                             self.build_categories(force_rescan=True)
                             self.cat_i = self.item_i = 0

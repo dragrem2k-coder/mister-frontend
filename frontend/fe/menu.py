@@ -34,7 +34,7 @@ from fe.settings import (
     ansicht_lesen, ansicht_haupt_lesen,
     pulse_effect_enabled, eq_effect_enabled,
     track_marquee_enabled, fb_size_label_key,
-    autostart_enabled, rom_filter_enabled,
+    autostart_enabled, rom_filter_enabled, einzelordner_aufloesen,
 )
 from fe.timekeeping import format_timezone_offset, load_timezone_offset
 from fe.retroachievements import load_ra_config, ra_toggle_enabled
@@ -117,7 +117,7 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     Gruppierung/Anzeige aendert sich, kein bestehendes Verhalten.
 
     music_source/music_station (neu, Nutzerwunsch: Rainwave-
-    Internetradio als zweite Musikquelle, siehe CHANGES_RAINWAVE.md):
+    Internetradio als zweite Musikquelle, siehe docs/notizen/CHANGES_RAINWAVE.md):
     fuer die Beschriftung des neuen "Musik-Quelle"-Eintrags.
 
     ERWEITERT (Nutzerwunsch: Hauptmenue aufraeumen, "zu viele
@@ -224,6 +224,10 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     # rom_filter_enabled() in fe/settings.py. Standard AUS.
     rom_filter_label = t("sys_rom_filter_on") if rom_filter_enabled() \
         else t("sys_rom_filter_off")
+    # NEU (Build 156): Ordner mit genau einem Spiel aufloesen. Standard
+    # AN - siehe einzelordner_aufloesen() in fe/settings.py.
+    einzelordner_label = t("sys_einzelordner_on") if einzelordner_aufloesen() \
+        else t("sys_einzelordner_off")
     _ovx, _ovy = overscan_lesen()
     _ansicht = ansicht_lesen()
     _ansicht_haupt = ansicht_haupt_lesen()
@@ -324,6 +328,10 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             (t("sys_thumb_auftrag_action"), "thumb_auftrag", None),
             (curated_label, "curated", None),
             (rom_filter_label, "rom_filter", None),
+            # Direkt unter dem ROM-Filter: beide formen die Liste beim
+            # Einlesen, beide stossen danach einen Neuscan an. Wer den
+            # einen sucht, findet so den anderen gleich mit.
+            (einzelordner_label, "einzelordner", None),
             (attract_label, "attract", None),
             (attract_delay_label, "attract_delay", None),
             (tz_label, "timezone", None),

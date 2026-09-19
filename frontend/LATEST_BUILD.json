@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-19-155",
-  "summary": "Das Freiraeumen der Listenzeilen laeuft jetzt in libdragend - der Profillauf hatte diese Schleife mit 9-12 ms als groessten verbliebenen Python-Posten eines Seitenaufbaus ausgewiesen. Die Bibliotheksversion steigt auf 2, eine aeltere .so wird abgelehnt statt halb benutzt. 200 Zufallsfaelle vergleichen C und Python Byte fuer Byte."
+  "build_id": "2026-09-19-156",
+  "summary": "v4.5. Ordner mit genau einem Spiel werden aufgeloest - bei PSX, Mega CD und Saturn gibt es dort jetzt Cover, Raster und Galerie statt nur einer Ordnerliste. Dabei ist ein Wettlauf aufgefallen und behoben worden: das Aufraeumen im Miniaturen-Zwischenspeicher hat Zwischendateien geloescht, in die gerade geschrieben wurde. Doku neu geordnet: kurze README und kurzes Changelog, ausfuehrliche Fassungen unter docs/, alles zusaetzlich auf Englisch - auch die beiden PDFs."
 }

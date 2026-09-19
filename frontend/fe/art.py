@@ -1237,6 +1237,13 @@ _thumb_cache_seit_zaehlung = 0
 # als aufraeumen bringt nichts.
 _THUMB_CACHE_NACHZAEHLEN_ALLE = 15000
 
+# Wie alt eine liegengebliebene ".art.tmp"-Datei sein muss, bevor die
+# Verdraengung sie wegraeumen darf (Build 156). Siehe die ausfuehrliche
+# Begruendung an der Loeschstelle in _thumb_cache_evict_if_needed():
+# ohne diese Grenze hat das Aufraeumen Zwischendateien geloescht, in
+# die gerade ein anderer Thread schrieb.
+TMP_REST_MINDESTALTER = 60.0
+
 
 # Cache-Dateien, die niemals verdraengt werden duerfen - siehe
 # ausfuehrliche Begruendung in _thumb_cache_evict_if_needed().
@@ -1311,8 +1318,32 @@ def _thumb_cache_evict_if_needed():
     # hat sie niemand aufgeraeumt, weil die Verdraengung nur auf ".art"
     # sieht. Beim Nutzer standen 20008 Dateien im Ordner bei einer
     # Obergrenze von 20000.
+    #
+    # BUGFIX (Build 156): hier wurde JEDE gefundene Zwischendatei
+    # geloescht - auch eine, in die gerade ein anderer Thread schreibt.
+    # Danach schlug dort das os.replace() mit "No such file or
+    # directory" fehl, und die frisch gerechnete Miniatur war weg. Die
+    # Meldung landete im Log, der Nutzer sah nur: "Miniaturen
+    # vorbereiten sagt fertig, aber das Cover laedt trotzdem nach".
+    #
+    # Das ist genau der Fehlschlag, den tools/test_kaltes_cover.py seit
+    # Build 119 zweimal in einem Sammellauf gemeldet hat und der sich
+    # danach nie wiederholen liess (siehe dortiger Kommentar). Es war
+    # ein Wettlauf: _thumb_cache_put_async() schreibt im Hintergrund,
+    # waehrend der Vordergrund hier aufraeumt. Sichtbar wurde er erst,
+    # als libdragend das Rechnen so stark beschleunigt hat, dass sich
+    # die beiden Faeden zuverlaessig ueberholen.
+    #
+    # Das Alter unterscheidet die beiden Faelle sauber: eine Datei, in
+    # die gerade geschrieben wird, ist Sekunden alt; eine von einem
+    # Absturz liegengebliebene ueberdauert mindestens einen Neustart.
+    # Eine Minute ist grosszuegig - selbst ein 900x1200-Cover auf einer
+    # langsamen Karte ist weit darunter.
+    jetzt = time.time()
     for fp in reste:
         try:
+            if jetzt - os.path.getmtime(fp) < TMP_REST_MINDESTALTER:
+                continue
             os.remove(fp)
         except OSError:
             pass
