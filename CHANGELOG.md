@@ -7,6 +7,39 @@ Kommentarblock im Kopf von `frontend/frontend.py`).
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt
 
+**Das Freiräumen der Listenzeilen läuft jetzt in C** (Build 155):
+
+Der Profillauf auf dem Gerät hat `_restore_spuren` mit **9–12 ms** als
+größten verbliebenen Python-Posten eines Seitenaufbaus (43–66 ms)
+ausgewiesen. Die Funktion kopiert achtzehn Zeilenrechtecke aus der
+Hintergrundvorlage zurück — und zwar Bildzeile für Bildzeile, das sind
+gut vierhundert Schnittzuweisungen je Aufbau.
+
+Der Rumpf steht jetzt als `rechtecke_kopieren()` in `c/dragend.c`. Die
+Bibliotheksversion steigt dadurch auf **2**; eine ältere `libdragend.so`
+wird ab sofort abgelehnt statt halb benutzt.
+
+Auf meinem Rechner gemessen: 0,272 → **0,155 ms** (1,8×). Das ist
+weniger spektakulär als beim Skalieren (dort 102×), und der Grund ist
+lehrreich: hier wird fast nur Speicher geschoben, und `buf[a:b] = …`
+macht das in Python schon mit `memcpy`. Gespart wird allein der
+Schleifenaufwand — auf dem MiSTer, wo der Interpreter deutlich teurer
+ist als der Speicherdurchsatz, sollte der Anteil größer ausfallen. Die
+ehrliche Zahl liefert erst der nächste Profillauf auf dem Gerät.
+
+**Warum dann überhaupt?** Weil danach nichts Python-Gebundenes mehr oben
+steht: `clear` (20 ms) und `flip` (13–16 ms) sind je eine einzige große
+Speicherkopie und laufen schon mit voller Bandbreite. An denen ist mit C
+nichts zu holen.
+
+Geprüft wird das Ganze in `tools/test_c_modul.py` (Test 6): 200
+Zufallsfälle Byte für Byte, mit negativen Koordinaten, Breite 0,
+Zeilenrändern und einer absichtlich zu kurzen Vorlage. Letzteres ist die
+eigentliche Falle — Python rundet bei `//` nach unten ab, C schneidet
+zur Null hin ab, und genau an dieser Stelle steht ein negativer Zähler.
+Ohne die Handarbeit in `abrunden_div()` hätte C eine Bildzeile kopiert,
+die Python verwirft.
+
 **Packstufe 1 statt 6 beim Miniaturen-Cache** (Build 154):
 
 Im Code stand die Messung vom Gerät schon lange daneben: von 380 ms für

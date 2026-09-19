@@ -167,6 +167,67 @@ int hochskalieren(const unsigned char *pix, int w, int h, int scale,
     return 0;
 }
 
+
+/* Mehrere Rechtecke zeilenweise von einem Puffer in einen anderen
+ * kopieren - die C-Fassung von _restore_spuren() in frontend.py.
+ *
+ * WARUM: im Profillauf auf dem Geraet war das mit 9-12 ms der groesste
+ * verbliebene Python-Posten eines Seitenaufbaus (der selbst 43-66 ms
+ * dauert). Es sind achtzehn schmale Rechtecke, jedes ueber mehrere
+ * Zeilen, und jede einzelne Zeile war eine eigene Slice-Zuweisung mit
+ * allem Python-Vorlauf drumherum. Die Arbeit selbst ist ein memcpy je
+ * Zeile - hier bleibt davon genau das uebrig.
+ *
+ * ACHTUNG, die Begrenzungsrechnung muss WORTGLEICH zur Python-Fassung
+ * sein, sonst wird an anderer Stelle abgeschnitten:
+ *
+ *     max_rows = (grenze - (x * 4) - need) // stride + 1
+ *
+ * Python teilt mit ABRUNDEN (Richtung minus unendlich), C schneidet zur
+ * Null hin ab. Bei negativem Zaehler - genau der Notfall, den diese
+ * Zeile abfangen soll - kaemen sonst unterschiedliche Ergebnisse heraus
+ * und C wuerde eine Zeile kopieren, die Python verwirft. Deshalb wird
+ * hier von Hand abgerundet.
+ *
+ * rechtecke ist eine flache Liste aus je vier Werten: x, y, w, h.
+ */
+static int abrunden_div(int zaehler, int nenner)
+{
+    int q = zaehler / nenner;
+    if ((zaehler % nenner != 0) && ((zaehler < 0) != (nenner < 0))) q--;
+    return q;
+}
+
+int rechtecke_kopieren(const unsigned char *src, unsigned char *dst,
+                       int stride, int hoehe, int grenze,
+                       const int *rechtecke, int anzahl)
+{
+    int i;
+    if (!src || !dst || stride <= 0 || anzahl < 0) return -1;
+    for (i = 0; i < anzahl; i++) {
+        int x = rechtecke[i * 4 + 0];
+        int y = rechtecke[i * 4 + 1];
+        int w = rechtecke[i * 4 + 2];
+        int h = rechtecke[i * 4 + 3];
+        int need = w * 4;
+        int y0, y1, max_rows, off, r;
+
+        if (x < 0 || need <= 0) continue;
+        y0 = y > 0 ? y : 0;
+        y1 = (y + h) < hoehe ? (y + h) : hoehe;
+        if (y1 <= y0) continue;
+        max_rows = abrunden_div(grenze - (x * 4) - need, stride) + 1;
+        if (max_rows < y1) y1 = (max_rows > y0) ? max_rows : y0;
+        if (y1 <= y0) continue;
+        off = y0 * stride + x * 4;
+        for (r = 0; r < y1 - y0; r++) {
+            memcpy(dst + off, src + off, (size_t)need);
+            off += stride;
+        }
+    }
+    return 0;
+}
+
 /* Damit die Python-Seite pruefen kann, ob sie die passende Fassung
  * gefunden hat. Wird bei jeder inhaltlichen Aenderung hochgezaehlt. */
-int dragend_version(void) { return 1; }
+int dragend_version(void) { return 2; }

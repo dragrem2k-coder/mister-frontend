@@ -148,6 +148,9 @@ class _Kaputt(object):
     def hochskalieren(self, *a):
         raise OSError("absichtlich kaputt")
 
+    def rechtecke_kopieren(self, *a):
+        raise OSError("absichtlich kaputt")
+
 
 ART._LIB = _Kaputt()
 pix = bytes(random.getrandbits(8) for _ in range(30 * 30 * 4))
@@ -157,7 +160,97 @@ check("Verkleinern faellt auf Python zurueck",
 sw, sh, soll2 = ART._hochskalieren_py(pix, 30, 30, 2)
 check("Vergroessern faellt auf Python zurueck",
       bytes(ART._hochskalieren(pix, 30, 30, 2)[2]) == bytes(soll2))
+ziel = bytearray(40 * 16)
+check("Rechtecke melden ehrlich False statt halb zu kopieren",
+      ART.rechtecke_kopieren(bytes(40 * 16), ziel, 40, 16, 40 * 16,
+                             [(0, 0, 10, 16)]) is False)
 ART._LIB = echt
+
+# ---------------------------------------------------------------------------
+print("Test 6: Rechtecke kopieren - 200 Zufallsfaelle, Byte fuer Byte")
+# ---------------------------------------------------------------------------
+# Die Python-Fassung aus frontend.py::_restore_spuren_py(), hier
+# nachgebildet. Sie wird bewusst NICHT importiert: frontend.py zieht den
+# halben Bildschirmapparat mit, und der Rumpf ist kurz genug, um ihn
+# nebeneinander zu legen. Wer dort etwas aendert, muss es hier auch tun -
+# dafuer steht in frontend.py ein Verweis auf diesen Test.
+
+
+def kopieren_py(src, dst, stride, hoehe, grenze, spuren):
+    quelle = memoryview(bytes(src))
+    for x, y, w, h in spuren:
+        need = w * 4
+        if x < 0 or need <= 0:
+            continue
+        y0 = max(0, y)
+        y1 = min(hoehe, y + h)
+        if y1 <= y0:
+            continue
+        max_rows = (grenze - (x * 4) - need) // stride + 1
+        if max_rows < y1:
+            y1 = max(y0, max_rows)
+        off = y0 * stride + x * 4
+        for _ in range(y1 - y0):
+            dst[off:off + need] = quelle[off:off + need]
+            off += stride
+
+
+abw = []
+rand_getroffen = 0
+for nr in range(200):
+    breite = random.randint(8, 120)
+    hoehe = random.randint(4, 40)
+    stride = breite * 4 + (4 * random.randint(0, 3))     # auch mit Rand
+    gross = stride * hoehe
+    vorlage = bytes(random.getrandbits(8) for _ in range(gross))
+    start = bytes(random.getrandbits(8) for _ in range(gross))
+    # grenze absichtlich manchmal kuerzen - genau dann greift die
+    # max_rows-Klemme, und genau dort weicht C ohne abrunden_div() ab.
+    grenze = gross if nr % 3 else random.randint(0, gross)
+    spuren = []
+    for _ in range(random.randint(1, 8)):
+        x = random.randint(-2, breite)                   # auch negativ
+        w = random.randint(0, breite - max(0, x) + 2)    # auch 0 und zu breit
+        y = random.randint(-3, hoehe)                    # auch negativ
+        h = random.randint(0, hoehe + 2)
+        if x * 4 + w * 4 > stride:                       # nie ueber die Zeile
+            w = max(0, (stride - max(0, x) * 4) // 4)
+        spuren.append((x, y, w, h))
+        if x * 4 + w * 4 + (hoehe - 1) * stride > grenze:
+            rand_getroffen += 1
+
+    soll = bytearray(start)
+    kopieren_py(vorlage, soll, stride, hoehe, grenze, spuren)
+
+    ist = bytearray(start)
+    if not ART.rechtecke_kopieren(vorlage, ist, stride, hoehe, grenze,
+                                  spuren):
+        abw.append("Nr %d: C hat abgelehnt" % nr)
+        continue
+    if bytes(ist) != bytes(soll):
+        d = sum(1 for a, b in zip(soll, ist) if a != b)
+        abw.append("Nr %d: %d Byte (%d Rechtecke, grenze %d/%d)"
+                   % (nr, d, len(spuren), grenze, gross))
+
+check("alle 200 Faelle bitgenau gleich", not abw, "; ".join(abw[:3]))
+check("die max_rows-Klemme kam dran", rand_getroffen > 20,
+      "%d mal" % rand_getroffen)
+
+# Auch mit bytearray als Quelle (Vignette legt den Hintergrund so ab).
+vorlage = bytearray(random.getrandbits(8) for _ in range(40 * 16))
+soll = bytearray(40 * 16)
+ist = bytearray(40 * 16)
+spuren = [(0, 0, 10, 16), (2, 3, 5, 4)]
+kopieren_py(vorlage, soll, 40, 16, 40 * 16, spuren)
+check("Quelle darf ein bytearray sein",
+      ART.rechtecke_kopieren(vorlage, ist, 40, 16, 40 * 16, spuren)
+      and bytes(ist) == bytes(soll))
+
+# Leere Liste: nichts tun, und das ehrlich melden.
+ist = bytearray(40 * 16)
+check("leere Liste wird abgelehnt (Aufrufer macht nichts)",
+      ART.rechtecke_kopieren(vorlage, ist, 40, 16, 40 * 16, []) is False)
+check("dabei blieb der Puffer unberuehrt", set(ist) == {0})
 
 print()
 if fails:

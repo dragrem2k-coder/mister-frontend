@@ -849,6 +849,7 @@ from fe.art import (
     thumb_cache_stand_modus, thumb_cache_leeren, thumb_cache_bilanz,
     thumb_cache_schuetzen, thumb_cache_modus_setzen, thumb_cache_lesen,
     alten_flachen_cache_aufraeumen,
+    rechtecke_kopieren as _c_rechtecke_kopieren,
 )
 
 # NEU (Build 73): Cover-Miniaturen im Leerlauf vorberechnen. Die
@@ -7245,7 +7246,30 @@ class Frontend:
         Faellt die Vorlage aus (sollte im schnellen Pfad nicht
         vorkommen, siehe _restore_row_bg()), wird Rechteck fuer Rechteck
         an die Einzelfassung abgegeben - die hat den sicheren
-        Rueckfall."""
+        Rueckfall.
+
+        Seit Build 155 macht das libdragend, wenn sie da ist. Die
+        Messung mit DRAGEND_PROFILE zeigte diese Schleife mit 9-12 ms
+        als groessten verbliebenen Python-Posten eines Seitenaufbaus
+        (43-66 ms) - achtzehn Rechtecke, und fuer jede einzelne Bildzeile
+        ein Schnittaufruf. Der C-Rumpf steht in c/dragend.c, der
+        bitgenaue Vergleich in tools/test_c_modul.py."""
+        fb = self.fb
+        cur_bg = fb._rowcache.get(fb.bg_key(C_BG))
+        if cur_bg is None:
+            for x, y, w, h in spuren:
+                if w > 0 and h > 0:
+                    self._restore_row_bg(x, y, w, h)
+            return
+        if _c_rechtecke_kopieren(cur_bg, fb.buf, fb.stride, fb.height,
+                                 min(len(fb.buf), len(cur_bg)), spuren):
+            return
+        self._restore_spuren_py(spuren)
+
+    def _restore_spuren_py(self, spuren):
+        """Die Python-Fassung von _restore_spuren() - Rueckfall ohne
+        libdragend und Vergleichsmass fuer den Test. Muss bitgenau
+        dasselbe tun wie rechtecke_kopieren() in c/dragend.c."""
         fb = self.fb
         cur_bg = fb._rowcache.get(fb.bg_key(C_BG))
         if cur_bg is None:

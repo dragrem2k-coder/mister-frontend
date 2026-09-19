@@ -661,7 +661,7 @@ THUMB_ALGO_VERSION = "3"
 # Quelle und Bauanleitung: frontend/c/dragend.c und frontend/c/bauen.sh
 import ctypes as _ctypes
 
-DRAGEND_LIB_VERSION = 1
+DRAGEND_LIB_VERSION = 2
 _LIB = None
 
 
@@ -688,6 +688,13 @@ def _lib_laden():
         lib.hochskalieren.argtypes = [
             _ctypes.c_char_p, _ctypes.c_int, _ctypes.c_int,
             _ctypes.c_int, _ctypes.c_char_p]
+        # Hier bewusst c_void_p statt c_char_p: Quelle und Ziel sind mal
+        # bytes, mal bytearray. Die Adresse besorgt _roh_zeiger() - ohne
+        # Kopie, denn es geht um acht Megabyte je Seitenaufbau.
+        lib.rechtecke_kopieren.restype = _ctypes.c_int
+        lib.rechtecke_kopieren.argtypes = [
+            _ctypes.c_void_p, _ctypes.c_void_p, _ctypes.c_int,
+            _ctypes.c_int, _ctypes.c_int, _ctypes.c_void_p, _ctypes.c_int]
     except (OSError, AttributeError) as e:
         LOG("libdragend nicht nutzbar (%s) - rechne in Python" % e)
         return None
@@ -734,6 +741,54 @@ def _hochskalieren(pix, w, h, scale):
         except Exception:                                # noqa: BLE001
             LOG("libdragend: Vergroessern fehlgeschlagen, nehme Python")
     return _hochskalieren_py(pix, w, h, scale)
+
+
+def _roh_zeiger(puffer):
+    """Adresse des Speichers hinter bytes oder bytearray - OHNE Kopie.
+
+    Rueckgabe: (halter, zeiger). Der Halter muss bis zum Ende des
+    C-Aufrufs am Leben bleiben, sonst gibt Python den Puffer frei
+    waehrend C noch hineinschreibt. Deshalb wird er mit zurueckgegeben
+    und nicht verworfen - eine Zeile, die harmlos aussieht und es nicht
+    ist."""
+    if isinstance(puffer, bytes):
+        halter = _ctypes.c_char_p(puffer)
+    else:
+        halter = (_ctypes.c_char * len(puffer)).from_buffer(puffer)
+    return halter, _ctypes.cast(halter, _ctypes.c_void_p)
+
+
+def rechtecke_kopieren(src, dst, stride, hoehe, grenze, spuren):
+    """Mehrere Rechtecke zeilenweise aus src nach dst kopieren.
+
+    Das ist der Rumpf von frontend.py::_restore_spuren() in C. Gemessen
+    lag er bei 9-12 ms je Seitenaufbau (von 43-66 ms) - er kopiert
+    achtzehn Rechtecke Zeile fuer Zeile, und jede dieser Zeilen kostet
+    in Python einen Schnittaufruf.
+
+    spuren ist eine Folge von (x, y, w, h).
+
+    Rueckgabe: True, wenn C es erledigt hat. Bei False hat sich NICHTS
+    veraendert und der Aufrufer muss selbst kopieren."""
+    if _LIB is None or not spuren:
+        return False
+    try:
+        anzahl = len(spuren)
+        flach = (_ctypes.c_int * (4 * anzahl))()
+        i = 0
+        for x, y, w, h in spuren:
+            flach[i] = x
+            flach[i + 1] = y
+            flach[i + 2] = w
+            flach[i + 3] = h
+            i += 4
+        _halt_q, zeiger_q = _roh_zeiger(src)
+        _halt_z, zeiger_z = _roh_zeiger(dst)
+        return _LIB.rechtecke_kopieren(
+            zeiger_q, zeiger_z, stride, hoehe, grenze, flach, anzahl) == 0
+    except Exception:                                    # noqa: BLE001
+        LOG("libdragend: Rechtecke kopieren fehlgeschlagen, nehme Python")
+        return False
 
 
 _addiere = operator.add
