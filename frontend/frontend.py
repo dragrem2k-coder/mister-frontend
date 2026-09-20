@@ -1928,7 +1928,8 @@ class Frontend:
         # Top-Level-Kategorie - genau wie Favoriten oder Sammlungen.
         # Steht bewusst HIER, nach den Systemen: die Quellkategorie
         # muss schon gebaut sein, aus ihr wird gefiltert.
-        for _eintrag in FILTER.gemerkte_laden():
+        _gemerkte = FILTER.gemerkte_laden()
+        for _eintrag in _gemerkte:
             _knoten = self._gemerkte_kategorie(_eintrag)
             if _knoten is None:
                 continue
@@ -1937,6 +1938,29 @@ class Frontend:
                 self.cats.append(("%s (%d)" % (_eintrag["name"], _anz),
                                   _knoten, self._syskey_fuer_kat(
                                       _eintrag["kat"])))
+        # KORRIGIERTER MESSPUNKT (Build 164).
+        #
+        # Hier lag ein Fehler in MEINER Messung, und er hat uns drei
+        # Runden gekostet. Die naechste Marke hiess
+        # "davon build_ra_hunter_category()" und stand hinter dem
+        # Aufruf - gemessen wurde damit aber ALLES seit der Marke
+        # davor, also auch diese Schleife hier. Sie baut fuer jeden
+        # gemerkten Filter eine eigene Kategorie, und das heisst: die
+        # ganze Quellkategorie filtern und ihre Eintraege zaehlen.
+        #
+        # Dass der Erfolgsjaeger die 2200 ms NICHT verbraucht, stand
+        # sogar im Log - nur unsichtbar: seine beiden inneren Marken
+        # (Build 162) sind nie aufgetaucht. Er steigt in der ersten
+        # Zeile aus, solange self._ra_lookup leer ist, und leer ist er
+        # beim Start fast immer, weil der RA-Abruf in einem
+        # Hintergrund-Thread laeuft und nach vier Sekunden noch nicht
+        # zurueck ist.
+        #
+        # Eine Marke, die etwas anderes misst als ihr Name sagt, ist
+        # schlimmer als gar keine Marke.
+        if hasattr(self, "_t_letzte_marke"):
+            self._startmarke("davon gemerkte Filter (%d Stueck)"
+                             % len(_gemerkte))
         ra_hunter = self.build_ra_hunter_category()
         if hasattr(self, "_t_letzte_marke"):
             self._startmarke("davon build_ra_hunter_category()")
@@ -14083,7 +14107,18 @@ class Frontend:
         gezeigt. Fehlt am Ende trotzdem jeder passende Ordner, ist er
         leer, oder wurde die Animation in diesem Boot schon gezeigt,
         passiert einfach nichts - kein Fehler, direkt weiter ins Menue."""
+        # DIAGNOSE (Build 164, Nutzer-Rueckmeldung: "das boot logo wird
+        # nicht mehr angezeigt beim starten. das vermisse ich auch schon
+        # seid einigen builds").
+        #
+        # Diese Funktion hat vier Auswege, und bisher protokollierte nur
+        # EINER davon (der mit eigenen Frames). Alle anderen kehren
+        # stumm zurueck - man sieht nichts und erfaehrt nicht, warum.
+        # Genau die Sorte Stille, die eine Fehlersuche zum Raten macht.
         if os.path.exists(BOOTANIM_PLAYED_MARKER):
+            LOG("Boot-Animation: uebersprungen, %s liegt schon da "
+                "(wird nur einmal je MiSTer-Start gezeigt)"
+                % BOOTANIM_PLAYED_MARKER)
             return
         mode = "crt" if crt_menu_active() else "hdmi"
         bootanim_dir = BOOTANIM_DIR + "_" + mode
@@ -14102,8 +14137,13 @@ class Frontend:
             # siehe _draw_dragend_logo_boot()) - abschaltbar ueber
             # System -> Anzeige & Sound, faellt dann auf das alte,
             # neutrale D-Pad-Symbol zurueck.
+            _logo_an = dragend_logo_enabled()
+            _logo_da = os.path.exists(DRAGEND_LOGO_FILE)
+            LOG("Boot-Animation: keine eigenen Frames in %s - "
+                "Logo eingeschaltet: %s, Logodatei vorhanden: %s"
+                % (bootanim_dir, _logo_an, _logo_da))
             try:
-                if dragend_logo_enabled() and os.path.exists(DRAGEND_LOGO_FILE):
+                if _logo_an and _logo_da:
                     self._draw_dragend_logo_boot()
                 else:
                     self._draw_default_boot_icon()

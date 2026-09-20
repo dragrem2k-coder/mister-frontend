@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-19-163",
-  "summary": "Beim Beenden werden die Eingaben jetzt ZUERST freigegeben und F12 geschickt, erst danach werden Vorauslader, Nachlader, Stream und Musik abgeraeumt. Bleibt eines davon haengen, behielt der Prozess bisher den exklusiven Griff auf die Tastatur - schwarzes Bild, blinkender Cursor, keine Taste wirkt mehr. Dazu eine Reissleine: haengt das Aufraeumen laenger als acht Sekunden, beendet sich der Prozess hart. Ausserdem misst der Erfolgsjaeger seine 2300 ms jetzt getrennt nach Pool-Aufbau und Abgleich."
+  "build_id": "2026-09-20-164",
+  "summary": "Korrektur einer falschen Messung: die Marke hiess 'build_ra_hunter_category' und mass in Wahrheit auch die Schleife davor, die fuer jeden gemerkten Filter eine eigene Kategorie baut. Der Erfolgsjaeger selbst steigt beim Start fast immer sofort aus, weil der RA-Abruf im Hintergrund noch laeuft - seine inneren Messpunkte sind nie im Log aufgetaucht, und genau das war der Hinweis. Ausserdem protokolliert die Boot-Animation jetzt alle vier Auswege, statt bei dreien stumm zurueckzukehren."
 }

@@ -276,8 +276,17 @@ print()
 print("Test 14: die Kategorie wird auch gebaut")
 check("das Frontend kennt den Bauweg",
       "def _gemerkte_kategorie(self, eintrag):" in quelle)
+# GEAENDERT (Build 164): hier stand die woertliche Zeile
+# "for _eintrag in FILTER.gemerkte_laden():". Der Test wurde rot, als
+# die Schleife einen Messpunkt bekam und der Aufruf in eine eigene
+# Variable wanderte - obwohl sich am Verhalten nichts geaendert hat.
+# Ein Test, der an einer Formulierung haengt statt an dem, was sie
+# bewirkt, meldet Umbauten als Fehler und echte Fehler gar nicht.
+_bau = quelle.split("def build_categories")[1].split("\n    def ")[0]
 check("und haengt sie beim Kategorienbau an",
-      "for _eintrag in FILTER.gemerkte_laden():" in quelle)
+      "FILTER.gemerkte_laden()" in _bau
+      and "self._gemerkte_kategorie(" in _bau
+      and "self.cats.append(" in _bau)
 check("die Kategorie wird ueber ihren NAMEN wiedergefunden",
       "def _syskey_fuer_kat(self, kat_name):" in quelle
       and "merkname = self.cats[self.cat_i][0]" in quelle)
