@@ -63,6 +63,23 @@ stayed at the end — so we painted over MiSTer's freshly drawn OSD. The
 screen now belongs to MiSTer from the F12 onwards, and a test pins the
 order down.
 
+**A switch that silences the console machinery.** Everything the
+frontend writes to the text console (cursor, screen blanking, the
+watchdog against the login prompt) now goes through a single place —
+and that can be turned off with a file:
+`touch /media/fat/frontend/konsole_unberuehrt`. That restores the state
+before build 157 without reverting anything.
+
+**Quitting now checks whether the OSD actually appeared.** Since build
+152 the frontend knows that a single injected display-switch key does
+not always land on some devices — on the way out that was merely hoped
+for. Now MiSTer's load is measured and the key is retried up to three
+times.
+
+**The boot logo waits until someone can see it.** It was being drawn in
+full — our framebuffer just wasn't on screen yet. It now starts once
+MiSTer is demonstrably asleep.
+
 **Startup is fast again, saved filters included.** A single saved
 filter cost a measured 2.2 seconds — not the filtering itself (measured:
 8 ms for 1800 games) but the tables read from the card for the first

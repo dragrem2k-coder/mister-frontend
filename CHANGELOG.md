@@ -64,6 +64,23 @@ blieb aber hinten stehen — wir haben MiSTers gerade aufgebautes OSD
 sofort wieder schwarz übermalt. Jetzt gehört der Bildschirm ab dem F12
 MiSTer; ein Test hält die Reihenfolge fest.
 
+**Ein Schalter, der die Konsolen-Mechanik stilllegt.** Alles, was das
+Frontend auf die Textkonsole schreibt (Cursor, Bildschirmschonung, die
+Wache gegen den Login-Prompt), läuft jetzt durch eine einzige Stelle —
+und die lässt sich mit einer Datei abschalten:
+`touch /media/fat/frontend/konsole_unberuehrt`. Damit ist der Stand von
+vor Build 157 wieder da, ohne etwas zurückzubauen.
+
+**Beim Beenden wird nachgesehen, ob das OSD wirklich kommt.** Beim Start
+weiß das Frontend seit Build 152, dass ein einzelnes eingespeistes
+Umschalt-Ereignis auf manchen Geräten nicht sitzt — beim Beenden wurde
+das bisher gehofft. Jetzt wird MiSTers Last gemessen und bis zu dreimal
+nachgefasst.
+
+**Das Boot-Logo wartet, bis es jemand sehen kann.** Es wurde vollständig
+gezeichnet — nur lag unser Bildspeicher zu dem Zeitpunkt noch gar nicht
+auf dem Schirm. Jetzt startet es erst, wenn MiSTer nachweislich schläft.
+
 **Der Start ist wieder schnell, auch mit gemerkten Filtern.** Ein
 einziger gemerkter Filter kostete gemessene 2,2 Sekunden — nicht durch
 das Filtern selbst (nachgemessen: 8 ms für 1800 Spiele), sondern durch

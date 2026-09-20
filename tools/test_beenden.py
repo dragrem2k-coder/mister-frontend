@@ -84,21 +84,38 @@ p_reissleine = pos(r"self\._notausgang_stellen\(\)", "Reissleine")
 p_grab = pos(r"self\.inp\.grab\(False\)", "Griff loesen")
 p_clear = pos(r"self\.fb\.clear\(", "Bildschirm leeren")
 p_fbclose = pos(r"self\.fb\.close\(\)", "Framebuffer schliessen")
-p_f12 = pos(r"self\.inp\.inject\(KEY_F12\)", "F12")
+# Das F12 steckt seit Build 166 in einer eigenen Methode (dort wird
+# gemessen und notfalls nachgefasst) - im finally steht ihr Aufruf.
+p_f12 = pos(r"self\._f12_bis_das_osd_kommt\(\)", "F12-Abschnitt")
 p_inpclose = pos(r"self\.inp\.close\(\)", "Eingaben schliessen")
 p_konsole = pos(r"self\.konsole_cursor_an\(\)", "Konsole zurueck")
+p_schonung = pos(r"self\.konsole_schonung_zurueck\(\)", "Schonung zurueck")
+p_blink = pos(r"self\.set_cursor_blink\(True\)", "Cursorblinken zurueck")
 p_prewarm = pos(r"PREWARMER\.beenden\(\)", "Vorauslader beenden")
 p_musik = pos(r"self\.music\.shutdown\(\)", "Musik beenden")
 
 alle = [p_reissleine, p_grab, p_clear, p_fbclose, p_f12, p_inpclose,
-        p_konsole, p_prewarm, p_musik]
+        p_konsole, p_schonung, p_blink, p_prewarm, p_musik]
 
-print("Test 1: DIE REGEL - der Framebuffer ist weg, bevor F12 kommt")
-if None not in (p_clear, p_fbclose, p_f12):
+print("Test 1: DIE REGEL - nach dem F12 wird NICHTS mehr angefasst")
+# Build 165 hat die halbe Regel gebaut (Framebuffer), Build 166 die
+# andere Haelfte (tty1). Beides aus demselben Grund: was nach dem F12
+# noch schreibt, holt MiSTer die Anzeige wieder weg.
+if None not in (p_clear, p_fbclose, p_f12, p_konsole, p_schonung, p_blink):
     check("Bildschirm wird VOR dem F12 geleert", p_clear < p_f12)
     check("fb.close() passiert VOR dem F12", p_fbclose < p_f12)
-    check("nach dem F12 wird NICHTS mehr gezeichnet",
-          "fb.clear" not in code[p_f12:] and "fb.flip" not in code[p_f12:])
+    check("der Konsolen-Cursor wird VOR dem F12 zurueckgesetzt",
+          p_konsole < p_f12)
+    check("die Bildschirmschonung ebenfalls VOR dem F12",
+          p_schonung < p_f12)
+    check("das Cursorblinken ebenfalls VOR dem F12", p_blink < p_f12)
+    danach = code[p_f12:]
+    check("nach dem F12 wird nicht mehr gezeichnet",
+          "fb.clear" not in danach and "fb.flip" not in danach)
+    check("nach dem F12 wird nicht mehr auf die Konsole geschrieben",
+          "tty1_schreiben" not in danach
+          and "konsole_" not in danach
+          and "set_cursor_blink" not in danach)
 
 print()
 print("Test 2: was Build 162/163 gebracht hat, bleibt")
@@ -109,8 +126,6 @@ if None not in alle:
           p_grab < p_f12)
     check("die Eingaben werden erst NACH dem F12 geschlossen",
           p_inpclose > p_f12)
-    check("die Konsole wird wiederhergestellt, bevor langsam "
-          "aufgeraeumt wird", p_konsole < p_prewarm)
     check("das langsame Aufraeumen kommt zuletzt",
           p_prewarm > p_f12 and p_musik > p_f12)
 
@@ -118,10 +133,42 @@ print()
 print("Test 3: nichts davon darf den Ausstieg blockieren")
 check("das Freigeben des Framebuffers ist abgesichert",
       re.search(r"try:\s*\n\s*self\.fb\.clear\(", code) is not None)
-check("eine fehlgeschlagene F12-Einspeisung wird nur protokolliert",
-      "Exit-Injection fehlgeschlagen" in block)
 check("die Reissleine hat eine Obergrenze",
       "HERUNTERFAHREN_MAX" in quelle)
+
+print()
+print("Test 4: beim F12 wird nachgesehen, ob das OSD kommt (Build 166)")
+# Beim START wiederholt _konsole_sichern() sein F9 sieben Mal, weil
+# EIN eingespeistes Umschalt-Ereignis auf diesem Geraet oft nicht
+# sitzt. Beim BEENDEN wurde dieselbe Unzuverlaessigkeit bis Build 165
+# einfach gehofft weg zu sein.
+i = quelle.index("    def _f12_bis_das_osd_kommt(self")
+f12 = quelle[i:i + 3000]
+f12 = f12[:f12.index("\n    # Nach so vielen Sekunden")]
+check("es wird wirklich eingespeist", "self.inp.inject(KEY_F12)" in f12)
+check("danach wird gewartet, bevor gemessen wird",
+      f12.index("EXIT_NACH_F12_SEK") < f12.index("_anzeige_messen"))
+check("gemessen wird MiSTers Last", "_anzeige_messen()" in f12)
+check("die Schwelle ist dieselbe wie beim Start",
+      "MISTER_BESCHAEFTIGT" in f12)
+check("bei niedriger Last wird nachgefasst",
+      "EXIT_F12_VERSUCHE" in f12 and "for " in f12)
+check("eine fehlgeschlagene Einspeisung wird nur protokolliert",
+      "Exit-Injection fehlgeschlagen" in f12)
+check("ohne Messsignal wird NICHT blind wiederholt",
+      "keine Lastmessung moeglich" in f12)
+m = re.search(r"EXIT_F12_VERSUCHE = (\d+)", quelle)
+check("und zwar klein genug fuer die Reissleine",
+      m is not None and 1 <= int(m.group(1)) <= 5,
+      m.group(1) if m else "")
+mh = re.search(r"HERUNTERFAHREN_MAX = ([\d.]+)", quelle)
+if m and mh:
+    # Ein Versuch kostet hoechstens EXIT_NACH_F12_SEK + Messfenster.
+    schlimmst = int(m.group(1)) * (0.4 + 2.5) + 1.0
+    check("die Reissleine schneidet das Nachfassen nicht ab",
+          float(mh.group(1)) > schlimmst,
+          "%.0f s Frist, schlimmstenfalls %.1f s noetig"
+          % (float(mh.group(1)), schlimmst))
 
 # Der Notausgang selbst: ein daemon-Thread, der hart beendet.
 i = quelle.index("    def _notausgang_stellen(self")
@@ -133,7 +180,7 @@ check("er gibt vorher die Einzelinstanz frei",
       "release_single_instance()" in notausgang)
 
 print()
-print("Test 4: die zweite Haelfte derselben Sache - der Start")
+print("Test 5: die zweite Haelfte derselben Sache - der Start")
 # enter_console_mode() macht die Gegenrichtung (F9). Dort war die
 # Reihenfolge immer richtig und soll es bleiben: Griff loesen, kurz
 # warten, einspeisen.
@@ -142,6 +189,56 @@ ecm = quelle[j:j + 800]
 check("enter_console_mode loest den Griff vor dem F9",
       ecm.index("self.inp.grab(False)") < ecm.index("inject(KEY_F9)"))
 check("und wartet dazwischen", "time.sleep(0.1)" in ecm)
+
+print()
+print("Test 6: alle Schreibvorgaenge auf tty1 gehen durch EINE Stelle")
+# Bis Build 166 schrieb das Frontend an sechs Stellen direkt nach
+# /dev/tty1. Damit liess sich weder nachvollziehen noch abschalten,
+# was dort passiert - und genau das brauchte es, weil der Nutzer den
+# Beginn der ganzen Sache auf diese Builds datiert hat.
+offen = [z for z in quelle.splitlines()
+         if 'open("/dev/tty1"' in z]
+# Erlaubt: die eine Stelle in tty1_schreiben() und run_script(), das
+# einem Skript bewusst die echte Konsole gibt.
+check("hoechstens zwei Stellen oeffnen tty1 noch selbst",
+      len(offen) <= 2, "%d Stellen" % len(offen))
+check("es gibt einen gemeinsamen Weg", "def tty1_schreiben(" in quelle)
+check("und einen Schalter, der ihn stilllegt",
+      "KONSOLE_UNBERUEHRT_FLAG" in quelle
+      and "def konsole_unberuehrt(" in quelle)
+i = quelle.index("    def tty1_schreiben(")
+tw = quelle[i:i + 1200]
+check("der Schalter hat Vorrang vor jedem Schreibvorgang",
+      tw.index("konsole_unberuehrt()") < tw.index('open("/dev/tty1"'))
+check("die Wache wird vom Schalter ebenfalls stillgelegt",
+      "konsole_unberuehrt()" in quelle[quelle.index("def _konsole_wache"):
+                                       quelle.index("def _konsole_wache")
+                                       + 1200])
+
+print()
+print("Test 7: das Boot-Logo wartet, bis es jemand sehen kann")
+# Nutzer-Log nach Build 165: "Dragend-Logo: vollstaendig gezeigt" -
+# und er hat trotzdem nichts gesehen. Gezeichnet wurde in einen
+# Bildspeicher, der zu dem Zeitpunkt nicht auf dem Schirm lag.
+i = quelle.index("    def _auf_eigenes_bild_warten(self")
+warten = quelle[i:i + 3000]
+warten = warten[:warten.index("\n    def ")]
+check("es gibt das Warten", bool(warten))
+check("es misst dasselbe Signal wie beim Beenden",
+      "_mister_last()" in warten and "MISTER_BESCHAEFTIGT" in warten)
+check("eine Eingabe bricht das Warten ab", "read_action" in warten)
+check("ohne Messsignal wird nicht gewartet",
+      "keine Lastmessung moeglich" in warten)
+check("und es endet in jedem Fall", "BOOTLOGO_WARTEN_MAX" in warten)
+mb = re.search(r"BOOTLOGO_WARTEN_MAX = ([\d.]+)", quelle)
+check("die Obergrenze ist kurz genug, um nicht zu stoeren",
+      mb is not None and float(mb.group(1)) <= 10.0,
+      (mb.group(1) + " s") if mb else "")
+# Und es muss VOR dem Zeichnen stehen, nicht danach.
+pa = quelle.index("    def play_boot_animation(self")
+pb = quelle[pa:pa + 6000]
+check("gewartet wird, bevor gezeichnet wird",
+      pb.index("_auf_eigenes_bild_warten()") < pb.index("_logo_an"))
 
 print()
 if fails:

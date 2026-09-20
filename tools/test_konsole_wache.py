@@ -341,10 +341,23 @@ _h = quelle.split("HERUNTERFAHREN (umgestellt in Build 163)")[1]
 # festes Fenster haette dann nur noch Kommentar enthalten.
 _h = _h[:_h.index("\n    # Pause zwischen dem F12")]
 ausstieg = _h
-check("nach dem F12 wird gewartet, bevor geschlossen wird",
-      "EXIT_NACH_F12_SEK" in ausstieg
-      and ausstieg.index("EXIT_NACH_F12_SEK") < ausstieg.index("inp.close()"),
+# VERSCHOBEN (Build 166): das F12 samt Wartezeit steckt jetzt in
+# _f12_bis_das_osd_kommt() - dort wird ausserdem gemessen, ob das OSD
+# tatsaechlich gekommen ist, und notfalls nachgefasst. Der finally-
+# Block ruft die Methode nur noch auf. Die Zusage ist unveraendert:
+# nach dem F12 wird gewartet, BEVOR das Eingabegeraet zugeht.
+_i = quelle.index("    def _f12_bis_das_osd_kommt(self")
+_f12 = quelle[_i:]
+_f12 = _f12[:_f12.index("\n    # Nach so vielen Sekunden")]
+check("das F12 hat einen eigenen, benannten Abschnitt",
+      "_f12_bis_das_osd_kommt()" in ausstieg)
+check("nach dem F12 wird gewartet, bevor gemessen wird",
+      "EXIT_NACH_F12_SEK" in _f12
+      and _f12.index("EXIT_NACH_F12_SEK") < _f12.index("_anzeige_messen"),
       "sonst kann MiSTer die Taste nicht mehr entgegennehmen")
+check("das Eingabegeraet geht erst danach zu",
+      ausstieg.index("_f12_bis_das_osd_kommt()")
+      < ausstieg.index("self.inp.close()"))
 
 # ---------------------------------------------------------------------------
 print()
@@ -401,6 +414,40 @@ zurueck = quelle.split("def konsole_schonung_zurueck")[1][:900]
 check("und zwar auf einen echten Wert, nicht wieder auf null",
       "9;10" in zurueck, zurueck[-120:])
 
+
+print()
+print("Test 15: DER SCHALTER - das Frontend laesst tty1 in Ruhe (Build 166)")
+# Der Nutzer datiert den Beginn der Beenden-Probleme auf genau die
+# Builds, in denen diese Mechanik entstanden ist. Es muss deshalb
+# moeglich sein, sie in einem Griff stillzulegen und nachzusehen -
+# eine Antwort statt einer weiteren Vermutung.
+#
+#     touch /media/fat/frontend/konsole_unberuehrt
+_alt = fm.Frontend._konsole_unberuehrt
+try:
+    fm.Frontend._konsole_unberuehrt = True
+    check("der Schalter ist gesetzt", fm.Frontend.konsole_unberuehrt())
+    check("dann schreibt tty1_schreiben() nichts",
+          fm.Frontend.tty1_schreiben(b"\033[2J") is False)
+    # Und die Wache bleibt stumm, obwohl der Prompt im Bild steht.
+    f = aufbau()
+    prompt_schreiben(f)
+    check("es steht wirklich Fremdtext im Bild",
+          f._fremdausgabe_zaehlen() >= fm.Frontend.KONSOLE_WACHE_MINDEST)
+    takten(f, 10)
+    check("die Wache schlaegt trotzdem nicht an", f._gewischt == [],
+          str(f._gewischt))
+
+    fm.Frontend._konsole_unberuehrt = False
+    check("ohne Schalter ist alles wie bisher",
+          not fm.Frontend.konsole_unberuehrt())
+    f = aufbau()
+    prompt_schreiben(f)
+    takten(f, 4)
+    check("und die Wache wischt wieder", len(f._gewischt) >= 1,
+          str(f._gewischt))
+finally:
+    fm.Frontend._konsole_unberuehrt = _alt
 
 print()
 if fails:

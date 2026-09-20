@@ -13540,7 +13540,14 @@ class Frontend:
 
         Zweimal hintereinander finden, bevor etwas passiert: einmal
         koennte ein halber Bildaufbau sein, zweimal im Abstand einer
-        Sekunde ist Text, der dort steht und bleibt."""
+        Sekunde ist Text, der dort steht und bleibt.
+
+        Der Schalter aus Build 166 legt auch sie still - siehe
+        konsole_unberuehrt(). Sonst bliebe die teuerste Haelfte der
+        Mechanik an (Bildpunkte zaehlen, voller Neuaufbau), waehrend
+        das eigentliche Wischen ins Leere liefe."""
+        if self.konsole_unberuehrt():
+            return
         jetzt = time.monotonic()
         if jetzt < self._wache_naechste:
             return
@@ -13559,15 +13566,11 @@ class Frontend:
         """tty1 leeren und die Seite komplett neu aufbauen."""
         LOG("Konsolenmodus: Fremdausgabe im Bild (%s) - wische und baue "
             "neu auf" % grund)
-        try:
-            with open("/dev/tty1", "wb", buffering=0) as tty:
-                # Build 158: den Cursor gleich mit ausblenden. Ohne das
-                # steht er nach dem Wischen wieder oben links, die Wache
-                # schlaegt beim naechsten Blick erneut an, und daraus
-                # wird das Flackern aus Build 151.
-                tty.write(b"\033[2J\033[H\033[?25l")
-        except OSError:
-            pass                      # darf den Betrieb nie stoeren
+        # Build 158: den Cursor gleich mit ausblenden. Ohne das steht
+        # er nach dem Wischen wieder oben links, die Wache schlaegt
+        # beim naechsten Blick erneut an, und daraus wird das Flackern
+        # aus Build 151.
+        self.tty1_schreiben(b"\033[2J\033[H\033[?25l", "wischen")
         self.set_cursor_blink(False)
         # Die schnellen Seitenpfade halten ihren Hintergrund sonst fuer
         # gueltig und frischen nur einzelne Zeilen auf - der fremde Text
@@ -13619,6 +13622,76 @@ class Frontend:
     # wer zu frueh wischt, wischt vor ihm her (die Lehre aus Build 150).
     NACHFASSEN_SEK = 1.2
 
+    # ==================================================================
+    # ALLES, WAS AUF DIE TEXTKONSOLE SCHREIBT, GEHT HIER DURCH
+    # ==================================================================
+    # NEU (Build 166). Bis hierher hat das Frontend an sechs Stellen
+    # direkt nach /dev/tty1 geschrieben: Cursor aus, Cursor an,
+    # Bildschirmschonung aus, Bildschirmschonung zurueck, Wischen der
+    # Wache, Wischen nach einem F9. Jede Stelle mit eigenem open(),
+    # eigenem try/except, eigener Begruendung.
+    #
+    # Das hat zwei Dinge unmoeglich gemacht, die jetzt beide gebraucht
+    # werden:
+    #
+    #   1. NACHVOLLZIEHEN. Der Nutzer: "seit zwei Tagen komme ich beim
+    #      Beenden nicht mehr ins OSD, davor lief alles wunderbar" -
+    #      und das "davor" ist genau der Zeitpunkt, an dem diese
+    #      Schreibvorgaenge dazugekommen sind. Mit sechs verstreuten
+    #      Stellen kann man das weder ansehen noch ausschalten.
+    #
+    #   2. ABSCHALTEN. Genau das braucht es jetzt: eine Moeglichkeit,
+    #      die ganze Mechanik in einem Griff stillzulegen und
+    #      nachzusehen, ob das Beenden dann wieder geht. Eine Antwort
+    #      statt einer weiteren Vermutung.
+    #
+    # Der Schalter ist eine Datei. Per SSH:
+    #
+    #     touch /media/fat/frontend/konsole_unberuehrt
+    #
+    # Liegt sie da, schreibt das Frontend NIE auf tty1 und aendert
+    # weder Cursor noch Bildschirmschonung - der Stand von vor Build
+    # 157. Die Wache bleibt ebenfalls stumm. Wieder weg: Datei
+    # loeschen.
+    #
+    # Einmal gelesen und gemerkt: das hier kann waehrend des Zeichnens
+    # aufgerufen werden, und eine Dateiabfrage je Bild waere genau die
+    # Sorte stiller Kosten, gegen die die Builds 104-110 angegangen
+    # sind.
+    KONSOLE_UNBERUEHRT_FLAG = "/media/fat/frontend/konsole_unberuehrt"
+    _konsole_unberuehrt = None
+
+    @classmethod
+    def konsole_unberuehrt(cls):
+        """Darf ueberhaupt auf die Textkonsole geschrieben werden?"""
+        if cls._konsole_unberuehrt is None:
+            try:
+                cls._konsole_unberuehrt = os.path.exists(
+                    cls.KONSOLE_UNBERUEHRT_FLAG)
+            except OSError:
+                cls._konsole_unberuehrt = False
+            if cls._konsole_unberuehrt:
+                LOG("Konsole: %s liegt da - das Frontend fasst tty1 "
+                    "nicht an (Cursor, Bildschirmschonung und Wache aus)"
+                    % cls.KONSOLE_UNBERUEHRT_FLAG)
+        return cls._konsole_unberuehrt
+
+    @classmethod
+    def tty1_schreiben(cls, daten, zweck=""):
+        """Der EINZIGE Weg, auf die Textkonsole zu schreiben.
+
+        Liefert True, wenn geschrieben wurde. Ein Fehlschlag wird
+        verschluckt - das darf den Betrieb nie stoeren - und der
+        Schalter oben hat immer Vorrang."""
+        if cls.konsole_unberuehrt():
+            return False
+        try:
+            with open("/dev/tty1", "wb", buffering=0) as tty:
+                tty.write(daten)
+            return True
+        except OSError:
+            return False
+
     @staticmethod
     def konsole_ruhig_stellen():
         """Der Textkonsole auf tty1 das Nachzeichnen abgewoehnen.
@@ -13657,13 +13730,10 @@ class Frontend:
         Wache aus Build 157 bleibt deshalb als Netz bestehen - wenn im
         Log weiterhin "Dauerwache, N Bildpunkte" auftaucht, war es das
         nicht, und wir wissen es beim naechsten Mal ohne Rueckfrage."""
-        try:
-            with open("/dev/tty1", "wb", buffering=0) as tty:
-                tty.write(b"\033[9;0]"      # Abdunklung aus
-                          b"\033[14;0]"     # und auch kein VESA-Abschalten
-                          b"\033[?25l")     # Cursor aus (Build 158)
-        except OSError:
-            pass                      # darf den Betrieb nie stoeren
+        Frontend.tty1_schreiben(b"\033[9;0]"      # Abdunklung aus
+                                b"\033[14;0]"     # kein VESA-Abschalten
+                                b"\033[?25l",     # Cursor aus (Build 158)
+                                "ruhig stellen")
 
     @staticmethod
     def konsole_cursor_aus():
@@ -13685,11 +13755,7 @@ class Frontend:
         sofort wieder da, die Wache wuerde erneut anschlagen, und daraus
         wuerde genau das Flackern, das in Build 151 schon einmal
         gemeldet wurde."""
-        try:
-            with open("/dev/tty1", "wb", buffering=0) as tty:
-                tty.write(b"\033[?25l")
-        except OSError:
-            pass                      # darf den Betrieb nie stoeren
+        Frontend.tty1_schreiben(b"\033[?25l", "Cursor aus")
 
     @staticmethod
     def konsole_schonung_zurueck():
@@ -13704,22 +13770,15 @@ class Frontend:
         schaedlich.
 
         Zehn Minuten ist der uebliche Linux-Standardwert."""
-        try:
-            with open("/dev/tty1", "wb", buffering=0) as tty:
-                tty.write(b"\033[9;10]\033[14;10]")
-        except OSError:
-            pass
+        Frontend.tty1_schreiben(b"\033[9;10]\033[14;10]",
+                                "Schonung zurueck")
 
     @staticmethod
     def konsole_cursor_an():
         """Gegenstueck zu konsole_cursor_aus() - beim Beenden. Wer das
         vergisst, hinterlaesst eine Konsole ohne sichtbaren Cursor, und
         das faellt erst auf, wenn jemand dort etwas eintippen will."""
-        try:
-            with open("/dev/tty1", "wb", buffering=0) as tty:
-                tty.write(b"\033[?25h")
-        except OSError:
-            pass
+        Frontend.tty1_schreiben(b"\033[?25h", "Cursor an")
 
     @staticmethod
     def _overscan_anwenden():
@@ -14276,6 +14335,33 @@ class Frontend:
             self.inp.flush()
         except Exception:                                # noqa: BLE001
             pass
+        # NEU (Build 166). Nach Build 165 stand im Log des Nutzers:
+        #
+        #     01:00:21  Dragend-Logo: vollstaendig gezeigt
+        #
+        # und er hat trotzdem nichts gesehen. Damit war die Frage
+        # beantwortet: gezeichnet wird, eine ganze Sekunde lang - nur
+        # liegt unser Bildspeicher zu diesem Zeitpunkt noch gar nicht
+        # auf dem Schirm. MiSTer zeigt dann noch sein eigenes.
+        #
+        # Das passt zu allem, was seit Build 148 ueber dieses Geraet
+        # bekannt ist: EIN eingespeistes F9 sitzt hier oft nicht,
+        # _konsole_sichern() wiederholt es deshalb nach 2, 5, 9, 14,
+        # 21, 30 und 45 Sekunden. Das Logo faellt mit seinen gut drei
+        # Sekunden mitten in diese Luecke.
+        #
+        # Also warten, bis unser Bild nachweislich oben liegt -
+        # gemessen an MiSTers CPU-Last, demselben Signal wie in Build
+        # 152 (OSD = Anschlag, unser Bild = schlafend).
+        #
+        # Das kostet NIEMANDEN Zeit, bei dem es schon vorher ging: bei
+        # dem meldet die erste Messung sofort einen niedrigen Wert.
+        # Und es kostet auch niemanden etwas, bei dem gar keine
+        # Messung moeglich ist - dann wird nach kurzer Zeit einfach
+        # gespielt wie bisher. Waehrend des Wartens sieht der Nutzer
+        # MiSTers Menue, also genau das, was er ohne dieses Warten
+        # auch saehe - nur eben ohne ein Logo, das niemand sieht.
+        self._auf_eigenes_bild_warten()
         mode = "crt" if crt_menu_active() else "hdmi"
         bootanim_dir = BOOTANIM_DIR + "_" + mode
         if not os.path.isdir(bootanim_dir):
@@ -15966,11 +16052,47 @@ class Frontend:
             # dann F12, dann der Rest. Beides zusammen, nicht das eine
             # gegen das andere.
             # ---------------------------------------------------------
+            # ---------------------------------------------------------
+            # UND DIE ZWEITE HAELFTE (Build 166)
+            # ---------------------------------------------------------
+            # Nach Build 165 kam der Nutzer immer noch nicht ins OSD.
+            # Zwei Dinge fehlten:
+            #
+            # 1. NACH DEM F12 WURDE WEITER AUF tty1 GESCHRIEBEN.
+            #    konsole_cursor_an() und konsole_schonung_zurueck()
+            #    standen hinter der Einspeisung. Ein Schreibvorgang auf
+            #    die Textkonsole kann MiSTer die Anzeige wieder
+            #    zurueckholen - und danach steht dort der Login-Gruss.
+            #    Genau das gemeldete Bild. Jetzt passiert beides
+            #    davor, und nach dem F12 wird weder der Bildspeicher
+            #    noch tty1 noch angefasst.
+            #
+            # 2. ES WURDE NIE NACHGESEHEN, OB DAS F12 GESESSEN HAT.
+            #    Beim START weiss das Frontend seit Build 152, dass
+            #    ein einzelnes eingespeistes Umschalt-Ereignis auf
+            #    diesem Geraet oft NICHT sitzt - deshalb wiederholt
+            #    _konsole_sichern() sein F9 nach 2, 5, 9, 14, 21, 30
+            #    und 45 Sekunden. Beim BEENDEN wurde dieselbe
+            #    Unzuverlaessigkeit einfach gehofft weg zu sein.
+            #    Jetzt wird gemessen und notfalls nachgefasst.
+            #
+            # Das Messsignal ist dasselbe wie in Build 152: MiSTers
+            # CPU-Last. Zeichnet er sein OSD, laeuft er auf Anschlag
+            # (gemessen 100 %); liegt unser Bild oder die Konsole
+            # oben, schlaeft er (1,4 %). Nach dem F12 wollen wir HOHE
+            # Last sehen - sie ist der Beleg, dass das OSD da ist.
+            # ---------------------------------------------------------
             self._notausgang_stellen()
             LOG("Exit: gebe Eingaben und Bildschirm frei")
             self.inp.grab(False)
+            # Die Konsole ZUERST wiederherstellen - solange unser Bild
+            # noch oben liegt und ein Schreibvorgang auf tty1 nichts
+            # umwerfen kann. Danach ist damit Schluss.
+            self.set_cursor_blink(True)
+            self.konsole_cursor_an()          # Build 158
+            self.konsole_schonung_zurueck()   # Build 162
             # Der Bildschirm gehoert ab hier MiSTer. Muss VOR dem F12
-            # passieren - siehe oben.
+            # passieren - siehe Build 165 oben.
             try:
                 self.fb.clear((0, 0, 0))
                 self.fb.flip()
@@ -15979,26 +16101,8 @@ class Frontend:
                 LOG("Exit: Framebuffer freigeben fehlgeschlagen:\n"
                     + traceback.format_exc())
             time.sleep(0.2)
-            LOG("Exit: injiziere F12")
-            try:
-                self.inp.inject(KEY_F12)
-            except OSError as e:
-                LOG("Exit-Injection fehlgeschlagen: %s" % e)
-            # Pause, damit MiSTer die Taste entgegennehmen kann -
-            # dieselbe, die enter_console_mode() seit jeher einhaelt
-            # (Build 162).
-            time.sleep(self.EXIT_NACH_F12_SEK)
+            self._f12_bis_das_osd_kommt()
             self.inp.close()
-            # Die Konsole wiederherstellen, bevor das langsame
-            # Aufraeumen beginnt: das sind drei Schreibvorgaenge, die
-            # nicht haengen koennen, und wenn die Reissleine zieht,
-            # sollen sie trotzdem passiert sein. Sonst bliebe der
-            # Cursor unsichtbar und die Bildschirmschonung
-            # abgeschaltet.
-            self.set_cursor_blink(True)
-            self.konsole_cursor_an()          # Build 158
-            self.konsole_schonung_zurueck()   # Build 162
-            LOG("Exit: Eingaben frei, Konsole wiederhergestellt")
             # NEU (Build 102): der Vorauslader ist seit diesem Build ein
             # eigener Prozess (siehe fe/prewarm.py). Er beendet sich zwar
             # von selbst, sobald sein Rohr schliesst - aber nur, wenn er
@@ -16017,11 +16121,135 @@ class Frontend:
     # wartet.
     EXIT_NACH_F12_SEK = 0.4
 
+    # Wie oft beim Beenden hoechstens nachgefasst wird, wenn das OSD
+    # nicht kommt. Drei Versuche kosten im schlimmsten Fall rund vier
+    # Sekunden - und die fallen nur an, wenn es sonst gar nicht
+    # funktioniert haette.
+    EXIT_F12_VERSUCHE = 3
+
+    # Wie lange auf das eigene Bild gewartet wird, bevor die
+    # Boot-Animation trotzdem laeuft. Sechs Sekunden decken die ersten
+    # drei F9-Nachfasser aus _konsole_sichern() (2, 5, 9 s) mit ab.
+    BOOTLOGO_WARTEN_MAX = 6.0
+
+    def _auf_eigenes_bild_warten(self):
+        """Warten, bis MiSTer schlaeft - dann liegt unser Bild oben.
+
+        Siehe die ausfuehrliche Begruendung in play_boot_animation().
+        Kurz: ein Logo in einen Bildspeicher zu malen, der gerade
+        nicht angezeigt wird, ist verlorene Zeit fuer alle.
+
+        Bricht ab, sobald
+          - MiSTer nachweislich schlaeft (unser Bild liegt oben),
+          - der Nutzer etwas drueckt (dann will er ohnehin weiter),
+          - gar keine Messung moeglich ist (kein MiSTer-Prozess), oder
+          - BOOTLOGO_WARTEN_MAX um ist.
+
+        Liefert nichts - der Aufrufer spielt in JEDEM Fall weiter. Das
+        Logo darf den Start niemals verhindern, nur sein Erscheinen
+        verschieben."""
+        ende = time.monotonic() + self.BOOTLOGO_WARTEN_MAX
+        ohne_messung_bis = time.monotonic() + 2.5
+        gesehen = False
+        while time.monotonic() < ende:
+            last = self._mister_last()
+            if last is not None:
+                gesehen = True
+                if last < self.MISTER_BESCHAEFTIGT:
+                    LOG("Boot-Animation: MiSTer bei %.0f%% - unser Bild "
+                        "liegt oben, es kann losgehen" % last)
+                    return
+            elif not gesehen and time.monotonic() > ohne_messung_bis:
+                LOG("Boot-Animation: keine Lastmessung moeglich - "
+                    "spiele ohne Warten")
+                return
+            # Als Wartezeit gleich die Eingabe abfragen: wer in dieser
+            # Zeit etwas drueckt, will nicht auf ein Logo warten.
+            try:
+                if self.inp.read_action(timeout=0.25) is not None:
+                    LOG("Boot-Animation: Eingabe waehrend des Wartens - "
+                        "spiele sofort")
+                    return
+            except Exception:                            # noqa: BLE001
+                time.sleep(0.25)
+        LOG("Boot-Animation: nach %.0fs liegt unser Bild immer noch "
+            "nicht oben - spiele trotzdem" % self.BOOTLOGO_WARTEN_MAX)
+
+    def _anzeige_messen(self, hoechstens=2.5):
+        """MiSTers CPU-Last holen - oder None, wenn kein Wert kommt.
+
+        _mister_last() braucht ZWEI Messpunkte im Abstand von
+        MISTER_MESSFENSTER und liefert bis dahin None. Diese Huelle
+        wartet darauf, aber nicht ewig: gibt es MiSTers Prozess nicht
+        (anderer Pfad, andere Firmware), kommt NIE ein Wert, und dann
+        darf hier nichts haengenbleiben."""
+        ende = time.monotonic() + hoechstens
+        while time.monotonic() < ende:
+            wert = self._mister_last()
+            if wert is not None:
+                return wert
+            time.sleep(0.2)
+        return None
+
+    def _f12_bis_das_osd_kommt(self):
+        """F12 einspeisen und nachsehen, ob MiSTer wirklich aufwacht.
+
+        WARUM UEBERHAUPT NACHSEHEN. Beim Start weiss das Frontend seit
+        Build 152, dass ein einzelnes eingespeistes Umschalt-Ereignis
+        auf diesem Geraet oft nicht sitzt - _konsole_sichern()
+        wiederholt sein F9 deshalb sieben Mal ueber 45 Sekunden. Beim
+        Beenden wurde dieselbe Unzuverlaessigkeit bisher einfach
+        gehofft weg zu sein: einmal F12, 0,4 s warten, Schluss. Sass
+        es nicht, blieb der Nutzer auf einem schwarzen Bild sitzen, auf
+        dem gleich darauf der Login-Gruss erschien.
+
+        DAS SIGNAL. MiSTers CPU-Last, genau wie in Build 152: OSD
+        sichtbar heisst Anschlag (gemessen 100 %), unser Bild oder die
+        Konsole oben heisst schlafen (1,4 %). Nach dem F12 ist HOHE
+        Last der Beleg, dass es geklappt hat.
+
+        WENN ES KEIN SIGNAL GIBT (kein MiSTer-Prozess gefunden, andere
+        Firmware), wird EINMAL eingespeist und gut - dann ist es
+        derselbe Ablauf wie vorher, nur ohne blinde Wiederholungen.
+        Eine Messung, die nichts liefert, darf kein Grund sein, dem
+        Nutzer vier Sekunden zusaetzlich abzuverlangen."""
+        for versuch in range(1, self.EXIT_F12_VERSUCHE + 1):
+            LOG("Exit: injiziere F12 (%d/%d)"
+                % (versuch, self.EXIT_F12_VERSUCHE))
+            try:
+                self.inp.inject(KEY_F12)
+            except OSError as e:
+                LOG("Exit-Injection fehlgeschlagen: %s" % e)
+                return
+            # Pause, damit MiSTer die Taste entgegennehmen kann -
+            # dieselbe, die enter_console_mode() seit jeher einhaelt
+            # (Build 162).
+            time.sleep(self.EXIT_NACH_F12_SEK)
+            last = self._anzeige_messen()
+            if last is None:
+                LOG("Exit: keine Lastmessung moeglich - nehme an, das "
+                    "F12 hat gesessen")
+                return
+            if last >= self.MISTER_BESCHAEFTIGT:
+                LOG("Exit: MiSTer bei %.0f%% - das OSD ist da" % last)
+                return
+            LOG("Exit: MiSTer bei %.0f%% - das OSD ist NICHT gekommen, "
+                "fasse nach" % last)
+        LOG("Exit: das OSD kam nach %d Versuchen nicht - beende trotzdem"
+            % self.EXIT_F12_VERSUCHE)
+
     # Nach so vielen Sekunden im Herunterfahren zieht die Reissleine.
     # Grosszuegig bemessen: der Vorauslader darf eine angefangene
     # Miniatur zu Ende schreiben, eine haengende Netzwerkverbindung
     # des Streams aber nicht das Geraet blockieren.
-    HERUNTERFAHREN_MAX = 8.0
+    #
+    # ANGEHOBEN (Build 166): das Nachfassen beim F12 darf im
+    # schlechtesten Fall rund neun Sekunden brauchen (drei Versuche
+    # mit je Wartezeit und Messfenster). Mit den alten 8 s haette die
+    # Reissleine mitten hinein gezogen und ausgerechnet den Versuch
+    # abgeschnitten, der das OSD noch geholt haette. Eine Reissleine,
+    # die die Rettung abschneidet, ist keine.
+    HERUNTERFAHREN_MAX = 18.0
 
     def _notausgang_stellen(self):
         """Ein Wachhund, der den Prozess hart beendet, falls das
