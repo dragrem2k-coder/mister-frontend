@@ -1429,9 +1429,24 @@ class ArtCache:
                                       # das ein spuerbarer RAM-Batzen auf einem
                                       # MiSTer mit typischerweise ~1GB RAM.
 
+    # NEU (Build 170): dazu ein SPEICHER-Budget - siehe
+    # _originale_verdraengen() fuer die Begruendung. Die Stueckzahl
+    # oben bleibt, sie ist bei kleinen Covern weiterhin die Grenze,
+    # die zuerst greift.
+    #
+    # 48 MB neben den 96 MB des skalierten Caches: zusammen 144 MB
+    # fuer Bilder, auf einem Geraet mit rund 1 GB. ORIGINAL_MIN sorgt
+    # dafuer, dass auch bei sehr grossen Einzelbildern immer genug
+    # Plaetze bleiben, um eine Bildschirmseite zu bedienen - lieber
+    # kurz ueber dem Budget als ein Cache, der sich bei jedem Schritt
+    # selbst leert.
+    ORIGINAL_BUDGET = 48 * 1024 * 1024
+    ORIGINAL_MIN = 8
+
     def __init__(self):
         self.cache = {}              # pfad -> (w, h, pixelbytes) oder None
         self.order = []
+        self._original_bytes = 0     # Build 170, siehe ORIGINAL_BUDGET
         # Wird gesetzt, sobald wegen _defer_uncached wirklich etwas
         # uebersprungen wurde - siehe die drei Fundstellen unten und
         # den COVER_SETTLE-Handler in frontend.py.
@@ -1611,7 +1626,13 @@ class ArtCache:
         else:
             w, h, pix, nativ = gelesen
             art = (w, h, pix)
+        # Build 170: ein schon vorhandener Eintrag wird ueberschrieben -
+        # seine Bytes muessen vorher vom Zaehler runter, sonst zaehlt
+        # dasselbe Bild doppelt.
+        self._original_bytes = (getattr(self, "_original_bytes", 0)
+                                - self._bildbytes(self.cache.get(path)))
         self.cache[path] = art
+        self._original_bytes += self._bildbytes(art)
         if nativ is not None:
             self.nativ[path] = nativ
             if (w, h) == nativ:
@@ -1619,12 +1640,72 @@ class ArtCache:
             else:
                 self._voll.discard(path)
         self.order.append(path)
-        if len(self.order) > self.LIMIT:
+        self._originale_verdraengen()
+        return art
+
+    @staticmethod
+    def _bildbytes(art):
+        """Wieviel Speicher belegt ein gemerktes Bild? Ein Eintrag
+        'hier gibt es kein Cover' (None) belegt praktisch nichts.
+
+        Bewusst mit Typpruefung statt nur try/except: ein
+        versehentlich hineingeratener String waere indizierbar und
+        haette hier klaglos 1 geliefert - ein Zaehler, der leise
+        falsch zaehlt, ist schlimmer als einer, der 0 sagt. (Der
+        eigene Test hat genau das gefunden.)"""
+        if not isinstance(art, (tuple, list)) or len(art) < 3:
+            return 0
+        try:
+            return len(art[2])
+        except TypeError:
+            return 0
+
+    def _originale_verdraengen(self):
+        """Die unskalierten Originale begrenzen - nach Stueckzahl UND
+        nach Speicher.
+
+        WARUM DIE STUECKZAHL ALLEIN NICHT REICHT (Build 170, aus der
+        97.000-Spiele-Messung). LIMIT = 60 ist eine STUECKZAHL. Seit
+        Build 119 werden Cover im ORIGINAL geladen statt auf
+        Kastengroesse gestutzt - und ein Original ist eben nicht
+        gleich gross wie das naechste:
+
+            600x800   Cover  ->  1,9 MB   ->  60 Stueck = 115 MB
+            1200x1600 Scan   ->  7,7 MB   ->  60 Stueck = 460 MB
+
+        Auf einem Geraet mit rund 1 GB, das sich Linux mit dem
+        FPGA-Kern teilt, ist die zweite Zeile kein theoretischer Fall
+        mehr. Der Kommentar bei SCALED_BUDGET nennt diesen Cache
+        sogar ausdruecklich ("daneben liegen die unskalierten
+        Originale, 60 Stueck") - er war nur nie selbst begrenzt.
+
+        Gebaut wie die bereits bewaehrte Verdraengung des skalierten
+        Caches: ein Budget, dazu eine Mindestanzahl, damit auch bei
+        sehr grossen Einzelbildern nie weniger Plaetze bleiben als
+        zum Arbeiten noetig.
+
+        DIE ZUSAGE IST DESHALB NICHT "hoechstens ORIGINAL_BUDGET",
+        sondern "hoechstens das Groessere von ORIGINAL_BUDGET und
+        ORIGINAL_MIN mal dem groessten Bild". Bei 7,7-MB-Scans sind
+        das 62 MB statt der frueheren 460 MB. Die Mindestanzahl hat
+        Vorrang, und das ist Absicht: ein Cache, der sich bei jedem
+        Schritt selbst leert, liest jedes Cover neu von der Karte -
+        genau der Haenger aus Build 120. Wer kleine Cover hat, merkt nichts - bei
+        60 CRT-Covern (je ~60 KB) sind 3,6 MB weit unter dem Budget,
+        dort greift weiterhin nur die Stueckzahl."""
+        while self.order and (
+                len(self.order) > self.LIMIT
+                or (len(self.order) > self.ORIGINAL_MIN
+                    and getattr(self, "_original_bytes", 0)
+                    > self.ORIGINAL_BUDGET)):
             old = self.order.pop(0)
+            self._original_bytes = (getattr(self, "_original_bytes", 0)
+                                    - self._bildbytes(self.cache.get(old)))
+            if self._original_bytes < 0:
+                self._original_bytes = 0
             self.cache.pop(old, None)
             self.nativ.pop(old, None)
             self._voll.discard(old)
-        return art
 
     # GEAENDERT (Build 74): frueher eine feste Stueckzahl (SCALED_LIMIT
     # = 20). Das war fuer CRT viel zu wenig und fuer HDMI eher zu viel -

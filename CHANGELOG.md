@@ -64,6 +64,13 @@ blieb aber hinten stehen — wir haben MiSTers gerade aufgebautes OSD
 sofort wieder schwarz übermalt. Jetzt gehört der Bildschirm ab dem F12
 MiSTer; ein Test hält die Reihenfolge fest.
 
+**Der Cover-Zwischenspeicher hatte keine Speichergrenze.** Er hielt
+60 Bilder — eine *Stückzahl*. Seit v4.4 werden Cover im Original
+geladen, und ein 1200×1600-Scan sind 7,7 MB: 60 davon wären 460 MB auf
+einem Gerät mit rund 1 GB. Jetzt zusätzlich ein Budget von 48 MB,
+gebaut wie die bewährte Verdrängung des skalierten Caches. Bei kleinen
+Covern ändert sich nichts.
+
 **Auf Kernel 6.18 kommt das erste F12 beim Beenden nicht an.** Das ist
 der Kern der ganzen Sache, und er ist gemessen, nicht vermutet — auf
 einem zweiten Gerät mit 6.18.38 steht im Log: *„MiSTer bei 1 % — das OSD

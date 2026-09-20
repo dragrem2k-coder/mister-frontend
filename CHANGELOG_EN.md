@@ -63,6 +63,12 @@ stayed at the end — so we painted over MiSTer's freshly drawn OSD. The
 screen now belongs to MiSTer from the F12 onwards, and a test pins the
 order down.
 
+**The cover cache had no memory limit.** It held 60 images — a
+*count*. Since v4.4 covers load at full resolution, and a 1200×1600
+scan is 7.7 MB: 60 of those would be 460 MB on a device with about
+1 GB. There is now a 48 MB budget as well, built like the proven
+eviction of the scaled cache. With small covers nothing changes.
+
 **On kernel 6.18 the first F12 on quit does not land.** That is the
 heart of the matter, and it is measured rather than guessed — on a
 second device running 6.18.38 the log reads *"MiSTer bei 1% - das OSD
