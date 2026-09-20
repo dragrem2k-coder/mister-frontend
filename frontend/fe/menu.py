@@ -345,6 +345,9 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             # Einlesen, beide stossen danach einen Neuscan an. Wer den
             # einen sucht, findet so den anderen gleich mit.
             (einzelordner_label, "einzelordner", None),
+            # Build 174: Core-Fassung je System. Steht bei den
+            # Optionen, nicht bei der Anzeige - es geht ums Starten.
+            (t("sys_cores"), "cores", None),
             (attract_label, "attract", None),
             (attract_delay_label, "attract_delay", None),
             (tz_label, "timezone", None),

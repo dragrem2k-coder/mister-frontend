@@ -64,6 +64,16 @@ blieb aber hinten stehen — wir haben MiSTers gerade aufgebautes OSD
 sofort wieder schwarz übermalt. Jetzt gehört der Bildschirm ab dem F12
 MiSTer; ein Test hält die Reihenfolge fest.
 
+**Core-Verwaltung.** Liegen von einem Core mehrere Fassungen auf der
+Karte — beim NeXT-Core sind es schnell vier, mit sprechenden Namen wie
+`scsi_dma_csr_fix` — lässt sich unter *System → Optionen → Cores*
+wählen, welche ein System startet. Vorher schrieb das Frontend immer
+den Namen ohne Datum, und MiSTer entschied allein. Eine gewählte
+Fassung gilt nur, solange ihre Datei existiert: `update_all` löscht bei
+jedem Lauf alte Cores, und ein Spiel, das sich danach still nicht mehr
+starten lässt, wäre der schlechteste Tausch. Heruntergeladen wird hier
+nichts — das bleibt `update_all`.
+
 **Hochkant montierte Bildschirme (TATE), erster Schritt.** Das
 Frontend stürzte dort nie ab — es war unbrauchbar, weil die
 Vergrößerung des Layouts allein an der Höhe hing. Bei 1080×1920 blieben

@@ -63,6 +63,15 @@ stayed at the end — so we painted over MiSTer's freshly drawn OSD. The
 screen now belongs to MiSTer from the F12 onwards, and a test pins the
 order down.
 
+**Core management.** When several versions of a core sit on the card
+— the NeXT core easily has four, with telling names like
+`scsi_dma_csr_fix` — *System → Options → Cores* now lets you pick which
+one a system launches. Previously the frontend always wrote the undated
+name and MiSTer decided alone. A chosen version only applies while its
+file exists: `update_all` deletes old cores on every run, and a game
+that silently stops launching would be the worst trade. Nothing is
+downloaded here — that stays with `update_all`.
+
 **Portrait-mounted screens (TATE), first step.** The frontend never
 crashed there — it was unusable, because the layout scale depended on
 height alone. At 1080×1920 that left **23 characters per line** instead

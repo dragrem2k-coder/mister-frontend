@@ -267,6 +267,7 @@ from fe.naming import (
 )
 
 from fe.systems import GAME_SYSTEMS, OPTIONAL_GAME_SYSTEMS, system_display_name
+import fe.cores as CORES
 # ACHTUNG: NICHT mit fe/retroachievements.py verwechseln - das sind zwei
 # verschiedene Dateien mit demselben Namen, siehe den ausfuehrlichen
 # Kopf von fe/ra_settings.py. Deshalb hier als Modul importiert und
@@ -10863,7 +10864,11 @@ class Frontend:
                             LOG("Zufalls-Zock: gestartet mit RA-Core - %s (%s)"
                                 % (title, rom_path))
                         else:
-                            launch_rbf, setname = sysdef[3], None
+                            # Build 174: auch hier die gewaehlte
+                            # Fassung, falls es eine gibt - siehe
+                            # fe/cores.py.
+                            launch_rbf = CORES.aufloesen(sysdef[1], sysdef[3])
+                            setname = None
                             LOG("Zufalls-Zock: kein RA-Core fuer %s, Standard-Core - %s"
                                 % (system, title))
                         wot_mark_played(system, title)   # dauerhaft aus dem Pool nehmen
@@ -11486,6 +11491,124 @@ class Frontend:
     # will, schreibt es in die Datei.
     THEME_EDIT_SCHRITT = 8
     THEME_EDIT_KANAELE = ("R", "G", "B")
+
+    def cores_bildschirm(self):
+        """Welche Core-Fassung startet welches System? (Build 174)
+
+        Derselbe modale Aufbau wie beim Filter und beim
+        Farbschema-Editor - siehe dort.
+
+        GEZEIGT WERDEN NUR SYSTEME MIT MEHR ALS EINER FASSUNG. Eine
+        Liste mit fuenfzig Zeilen, bei denen ueberall "automatisch"
+        steht, waere keine Verwaltung, sondern eine Tapete. Wer nur
+        einen Core je System hat - der Normalfall nach einem
+        aufgeraeumten update_all - bekommt eine ehrliche Meldung
+        statt eines leeren Fensters.
+
+        Die eigentliche Arbeit steckt in fe/cores.py, samt der Regel,
+        die das Ganze ungefaehrlich macht: eine gewaehlte Fassung
+        gilt nur, solange ihre Datei existiert."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+
+        alle = CORES.uebersicht(list(GAME_SYSTEMS) + list(OPTIONAL_GAME_SYSTEMS))
+        mehrere = [e for e in alle if len(e[3]) > 1]
+        if not mehrere:
+            self._force_full_redraw = True
+            self.draw(message=t("cores_leer"))
+            return
+
+        wahl = CORES.wahl_laden()
+        zeile = 0
+        geaendert = False
+
+        while True:
+            fb.clear(C_BG)
+            fb.text(ox, oy, t("cores_titel"), 2 * s, C_TITLE)
+            y = oy + 30 * s
+            breite = W - 2 * ox
+            # Nur so viele Zeilen zeigen, wie hinpassen - der Rest
+            # scrollt mit der Auswahl mit.
+            platz = max(1, (H - oy - y - 26 * s) // (17 * s))
+            erste = max(0, min(zeile - platz // 2, len(mehrere) - platz))
+            for i in range(erste, min(erste + platz, len(mehrere))):
+                name, syskey, standard, fassungen = mehrere[i]
+                markiert = (i == zeile)
+                if markiert:
+                    fb.rect_rounded(ox - 2 * s, y - 3 * s, breite + 4 * s,
+                                    15 * s, C_PANEL)
+                fb.text(ox + 2 * s, y, name, s,
+                        C_TITLE if markiert else C_TEXT)
+                gewaehlt = wahl.get(syskey)
+                if not gewaehlt:
+                    wert = t("cores_automatisch")
+                    farbe = C_DIM
+                elif not CORES.core_existiert(gewaehlt):
+                    wert = t("cores_fehlt")
+                    farbe = C_DIM
+                else:
+                    wert = gewaehlt.rsplit("/", 1)[-1]
+                    farbe = accent_for(None)
+                if markiert:
+                    wert = "< %s >" % wert
+                # Von rechts abschneiden, nicht von links: der Anfang
+                # eines Core-Namens ist immer gleich, das Datum am
+                # Ende unterscheidet sie.
+                maxz = max(8, (breite - len(name) * 8 * s) // (8 * s) - 2)
+                if len(wert) > maxz:
+                    wert = wert[-maxz:]
+                fb.text(W - ox - len(wert) * 8 * s - 2 * s, y, wert, s,
+                        farbe)
+                y += 17 * s
+
+            fb.text(ox, H - oy - 26 * s,
+                    t("cores_anzahl", len(mehrere[zeile][3])), s, C_DIM)
+            _maxc = max(10, (W - 2 * ox) // (8 * s))
+            for _i, _z in enumerate(self._wrap(t("cores_hinweis"),
+                                               _maxc, max_lines=2)):
+                fb.text(ox, H - oy - 13 * s + _i * 11 * s, _z, s, C_DIM)
+            fb.flip()
+
+            akt = self.inp.read_action(timeout=1.0)
+            if akt is None:
+                continue
+            if akt == "up":
+                zeile = (zeile - 1) % len(mehrere)
+            elif akt == "down":
+                zeile = (zeile + 1) % len(mehrere)
+            elif akt in ("left", "right"):
+                _name, syskey, _standard, fassungen = mehrere[zeile]
+                # Die Kette ist "automatisch" plus alle Fassungen -
+                # so kommt man auf demselben Weg wieder zurueck, auf
+                # dem man hineingeraten ist.
+                kette = [None] + list(fassungen)
+                jetzt = wahl.get(syskey)
+                if jetzt not in kette:
+                    jetzt = None
+                i = kette.index(jetzt) + (1 if akt == "right" else -1)
+                neu_wert = kette[i % len(kette)]
+                if neu_wert:
+                    wahl[syskey] = neu_wert
+                else:
+                    wahl.pop(syskey, None)
+                geaendert = True
+            elif akt in ("back", "exit", "select", "ok"):
+                break
+
+        if geaendert:
+            try:
+                CORES.wahl_speichern(wahl)
+                self._force_full_redraw = True
+                self.draw(t("cores_gespeichert"))
+                return
+            except OSError:
+                LOG("Core-Auswahl speichern fehlgeschlagen:\n"
+                    + traceback.format_exc())
+        self._force_full_redraw = True
+        self.draw()
 
     def theme_editor(self):
         """Der Farbschema-Editor (Build 172).
@@ -15668,8 +15791,17 @@ class Frontend:
                             ra_choice = ra_core if use_ra else None
                         rom, ext, _sk, rbf, (dl, ft, ix) = rand_arg
                         setname = None
+                        # Build 174: liegt fuer dieses System eine
+                        # gewaehlte Core-Fassung vor, gilt sie - aber
+                        # nur, wenn ihre Datei noch existiert. Siehe
+                        # fe/cores.py: update_all loescht bei jedem
+                        # Lauf alte Cores, eine gemerkte Auswahl zeigt
+                        # danach ins Leere. Der RA-Core hat Vorrang,
+                        # der ist ja gerade ausdruecklich gewaehlt.
                         if ra_choice:
                             rbf, setname = ra_choice
+                        else:
+                            rbf = CORES.aufloesen(syskey, rbf)
                         LOG("Zufallsstart (F11): %s (%s)%s"
                             % (name, syskey, " [RA-Core]" if ra_choice else ""))
                         record_recent(name, rand_arg)
@@ -15844,8 +15976,13 @@ class Frontend:
                                 else:
                                     ra_choice = None
                             setname = None
+                            # Build 174 - siehe fe/cores.py und den
+                            # gleichlautenden Kommentar beim
+                            # Zufallsstart weiter oben.
                             if ra_choice:
                                 rbf, setname = ra_choice
+                            else:
+                                rbf = CORES.aufloesen(syskey, rbf)
                             LOG("Spielstart: %s (%s)%s" % (label, syskey,
                                 " [RA-Core]" if ra_choice else ""))
                             record_recent(label, arg)
@@ -16035,6 +16172,14 @@ class Frontend:
                             self._refresh_system_category()
                             self.fb._rowcache.clear()
                             self.fb._rectcache.clear()
+                        elif kind == "cores":
+                            try:
+                                self.cores_bildschirm()
+                            except Exception:            # noqa: BLE001
+                                LOG("cores_bildschirm CRASH:\n"
+                                    + traceback.format_exc())
+                                self._force_full_redraw = True
+                                self.draw()
                         elif kind == "theme_eigen_bearbeiten":
                             try:
                                 self.theme_editor()

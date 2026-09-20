@@ -899,6 +899,27 @@ TRANSLATIONS = {
     "sys_theme_eigen_bearbeiten": {
         "en": "Edit your own colour scheme",
         "de": "Eigenes Farbschema bearbeiten"},
+    # NEU (Build 174): Core-Verwaltung.
+    "sys_cores": {
+        "en": "Cores: choose a version per system",
+        "de": "Cores: Fassung je System waehlen"},
+    "cores_titel": {"en": "Cores", "de": "Cores"},
+    "cores_leer": {
+        "en": "No cores with several versions found. Nothing to choose "
+              "here - MiSTer then uses the one that is installed.",
+        "de": "Keine Cores mit mehreren Fassungen gefunden. Hier gibt es "
+              "nichts zu waehlen - MiSTer nimmt dann den, der da ist."},
+    "cores_automatisch": {"en": "automatic", "de": "automatisch"},
+    "cores_fehlt": {"en": "chosen version is gone - automatic",
+                    "de": "gewaehlte Fassung fehlt - automatisch"},
+    "cores_anzahl": {"en": "%d versions", "de": "%d Fassungen"},
+    "cores_hinweis": {
+        "en": "Left/Right: pick a version - ESC: back. A chosen version "
+              "only applies while its file exists.",
+        "de": "Links/Rechts: Fassung waehlen - ESC: zurueck. Eine "
+              "gewaehlte Fassung gilt nur, solange ihre Datei da ist."},
+    "cores_gespeichert": {"en": "Core selection saved.",
+                          "de": "Core-Auswahl gespeichert."},
     "sys_einzelordner_on": {
         "en": "Folders with a single game: shown as the game -> keep them as folders",
         "de": "Ordner mit nur einem Spiel: als Spiel anzeigen -> als Ordner belassen"},
