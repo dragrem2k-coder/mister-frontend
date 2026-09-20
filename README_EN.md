@@ -133,6 +133,54 @@ The full mapping is in the
 
 ---
 
+## ⚠ MiSTer Linux of 2026-09-07 (kernel 6.18) — known problem
+
+The MiSTer Linux update of **7 September 2026** moves the kernel from
+5.15.1 to 6.18.x and changed framebuffer access along the way. The
+MiSTer forum puts it plainly: *"Front Ends have to be patched due to
+framebuffer changes"* — **Degauss**, the **Zaparoo Frontend** and
+**Console Mode** were all affected, as were CIFS scripts, 8821AU WiFi
+dongles and Xbox/Xarcade controllers.
+
+You can recognise it by this line in `dmesg`:
+
+```
+fb0: sys_fillrect: framebuffer is not in virtual address space.
+```
+
+**Known effects on Dragend** (reproduced on a device and confirmed by
+rolling back to 5.15.1):
+
+- *Quit frontend* no longer returns to the MiSTer OSD — you get a black
+  screen with a blinking cursor, followed by the login greeting
+- the boot logo is drawn but never visible
+- on some devices mapping the framebuffer fails outright
+
+**What helps today:** go back to the old Linux. Set
+
+```
+update_linux = false
+```
+
+in `/media/fat/downloader.ini` and restore `linux.img` and `zImage_dtb`
+to release 20250402 (kernel 5.15.1). Alternatively use the "Stale
+Distribution" database, which holds Linux at that release.
+
+**What we have done so far:** Dragend now falls back to mapping the
+framebuffer through `/dev/mem` when `/dev/fb0` no longer allows it (the
+same route Degauss took). Returning to the OSD on quit is **not** fixed
+yet — that needs measurements from a device running 6.18. If you have
+one and want to help:
+
+```
+python3 /media/fat/frontend/kernel_probe.py
+```
+
+It runs without the frontend, changes nothing, and says in two minutes
+where the problem is.
+
+---
+
 ## Requirements
 
 - A MiSTer FPGA with a current Main and Linux image

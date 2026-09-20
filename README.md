@@ -132,6 +132,55 @@ Die vollständige Belegung steht in der
 
 ---
 
+## ⚠ MiSTer-Linux vom 07.09.2026 (Kernel 6.18) — bekanntes Problem
+
+Das MiSTer-Linux-Update vom **7. September 2026** hebt den Kernel von
+5.15.1 auf 6.18.x und hat dabei den Zugriff auf den Bildspeicher
+geändert. Im MiSTer-Forum steht dazu, dass *„Front Ends have to be
+patched due to framebuffer changes"* — betroffen waren unter anderem
+**Degauss**, das **Zaparoo Frontend** und **Console Mode**, dazu
+CIFS-Skripte, 8821AU-WLAN-Sticks und Xbox-/Xarcade-Controller.
+
+Erkennbar an dieser Zeile in `dmesg`:
+
+```
+fb0: sys_fillrect: framebuffer is not in virtual address space.
+```
+
+**Bekannte Auswirkungen auf Dragend** (auf einem Gerät nachgestellt und
+durch Rückbau auf 5.15.1 bestätigt):
+
+- *Frontend beenden* führt nicht mehr ins MiSTer-OSD zurück — es bleibt
+  ein schwarzes Bild mit blinkendem Cursor, kurz darauf der Login-Gruß
+- das Boot-Logo wird gezeichnet, ist aber nicht zu sehen
+- auf manchen Geräten scheitert schon das Einblenden des Bildspeichers
+
+**Was hilft heute:** zurück auf das alte Linux. In
+`/media/fat/downloader.ini`
+
+```
+update_linux = false
+```
+
+setzen und `linux.img` sowie `zImage_dtb` auf Release 20250402
+(Kernel 5.15.1) zurücklegen. Alternativ die „Stale Distribution"-
+Datenbank benutzen, die Linux auf diesem Release festhält.
+
+**Was wir bisher gemacht haben:** Dragend blendet den Bildspeicher
+jetzt ersatzweise über `/dev/mem` ein, wenn `/dev/fb0` es nicht mehr
+hergibt (derselbe Weg, den Degauss gebaut hat). Das Beenden ins OSD ist
+damit **noch nicht** repariert — dafür fehlen Messwerte von einem Gerät
+auf 6.18. Wer eines hat und helfen möchte:
+
+```
+python3 /media/fat/frontend/kernel_probe.py
+```
+
+Das Skript läuft ohne das Frontend, ändert nichts und sagt in zwei
+Minuten, woran es liegt.
+
+---
+
 ## Voraussetzungen
 
 - MiSTer FPGA mit aktuellem Main und Linux-Image

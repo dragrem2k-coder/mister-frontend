@@ -414,9 +414,106 @@ class Framebuffer:
                     LOG("FB-DIAGNOSE:   %s/%s nicht lesbar (%s)" % (k, name, e))
 
     def _map(self):
-        self.mm = mmap.mmap(self.fd, self.size, mmap.MAP_SHARED,
-                            mmap.PROT_READ | mmap.PROT_WRITE)
+        """Den Bildspeicher einblenden - mit Rueckfall ueber /dev/mem.
+
+        WOZU DER RUECKFALL (Build 168).
+
+        Das MiSTer-Linux-Update vom 07.09.2026 (Kernel 6.18.x) hat den
+        Treiber MiSTer_fb auf die System-Memory-Helfer umgestellt,
+        obwohl sein Speicher in einem iomem/CMA-Bereich liegt, der gar
+        nicht im virtuellen Adressraum des Kernels steht. Im Log des
+        Geraets steht dann woertlich:
+
+            fb0: sys_fillrect: framebuffer is not in virtual address
+            space.
+
+        Der Treiber bringt seither keine eigene mmap-Funktion mehr mit.
+        Bei manchen Programmen schlaegt das Einblenden von /dev/fb0
+        deshalb fehl (Console Mode meldet "Unable to memory map the
+        video hardware", Degauss startete gar nicht mehr). Degauss hat
+        genau diesen Rueckfall eingebaut: bleibt /dev/fb0 verschlossen,
+        wird die vom Treiber GEMELDETE physische Adresse ueber /dev/mem
+        eingeblendet - derselbe Weg, den MiSTers eigenes OSD benutzt.
+
+        EHRLICH DAZU: auf dem Geraet, an dem dieser Fehler gemeldet
+        wurde, ging der normale Weg weiterhin - das Frontend war ja
+        sichtbar. Dieser Rueckfall ist also KEINE Reparatur des dort
+        beobachteten Fehlers, sondern Vorsorge fuer die Geraete, auf
+        denen das Einblenden hart scheitert. Er kostet nichts, solange
+        der erste Versuch klappt, und auf dem alten Kernel wird er nie
+        betreten.
+
+        Unsere Zeichenweise passt ohnehin schon dazu: gezeichnet wird
+        in self.buf (normaler Arbeitsspeicher), und flip() kopiert das
+        Ergebnis in einem Rutsch hinueber. Genau darauf musste Degauss
+        bei physischer Einblendung erst umstellen - Schreibzugriffe
+        direkt in nicht gepufferten Gerätespeicher sind langsam."""
+        # refresh_geometry() ruft _map() ein zweites Mal (nach einem
+        # Aufloesungswechsel). Einen alten /dev/mem-Zeiger hier
+        # schliessen - sonst bliebe er bei jedem Wechsel liegen.
+        alt = getattr(self, "_mem_fd", None)
+        if alt is not None:
+            try:
+                os.close(alt)
+            except OSError:
+                pass
+        self._mem_fd = None
+        try:
+            self.mm = mmap.mmap(self.fd, self.size, mmap.MAP_SHARED,
+                                mmap.PROT_READ | mmap.PROT_WRITE)
+        except (OSError, ValueError) as e:
+            LOG("Framebuffer: mmap auf %s schlug fehl (%s) - versuche "
+                "den Weg ueber /dev/mem" % (self.fbdev, e))
+            self.mm = self._map_ueber_dev_mem()
         self.buf = bytearray(self.size)
+
+    def _map_ueber_dev_mem(self):
+        """Die physische Adresse des Bildspeichers direkt einblenden.
+
+        Die Adresse kommt aus FBIOGET_FSCREENINFO (smem_start), also
+        vom Treiber selbst - nicht geraten und nicht fest verdrahtet.
+
+        Ist sie nicht seitenausgerichtet, wird hier ABGEBROCHEN statt
+        mit einem Versatz weiterzumachen: der gesamte Zeichenweg
+        rechnet damit, dass Bildpunkt (0,0) bei Index 0 liegt. Ein
+        stillschweigender Versatz waere ein um ein paar Bytes
+        verschobenes Bild - der unangenehmste Fehler von allen, weil
+        er aussieht wie ein Grafikproblem und keines ist."""
+        fix = bytearray(160)
+        try:
+            fcntl.ioctl(self.fd, FBIOGET_FSCREENINFO, fix, True)
+        except OSError as e:
+            raise OSError("weder mmap noch FBIOGET_FSCREENINFO "
+                          "funktionieren (%s)" % e)
+        # fb_fix_screeninfo: char id[16]; unsigned long smem_start;
+        # __u32 smem_len; ... - auf 32-Bit-ARM ist unsigned long
+        # vier Bytes gross.
+        smem_start, smem_len = struct.unpack_from("<II", fix, 16)
+        LOG("Framebuffer: Treiber meldet smem_start=0x%08X, smem_len=%d "
+            "(gebraucht: %d)" % (smem_start, smem_len, self.size))
+        if not smem_start:
+            raise OSError("der Treiber meldet keine physische Adresse - "
+                          "der Rueckfall ueber /dev/mem ist nicht moeglich")
+        if smem_len and smem_len < self.size:
+            raise OSError("der Treiber meldet nur %d Bytes, gebraucht "
+                          "werden %d" % (smem_len, self.size))
+        if smem_start % mmap.PAGESIZE:
+            raise OSError("smem_start 0x%08X ist nicht seitenausgerichtet "
+                          "- abgebrochen, bevor ein verschobenes Bild "
+                          "entsteht" % smem_start)
+        self._mem_fd = os.open("/dev/mem", os.O_RDWR | os.O_SYNC)
+        try:
+            mm = mmap.mmap(self._mem_fd, self.size, mmap.MAP_SHARED,
+                           mmap.PROT_READ | mmap.PROT_WRITE,
+                           offset=smem_start)
+        except (OSError, ValueError):
+            os.close(self._mem_fd)
+            self._mem_fd = None
+            raise
+        LOG("Framebuffer: ueber /dev/mem eingeblendet - das Geraet laeuft "
+            "auf einem Kernel, dessen fb-Treiber kein eigenes mmap mehr "
+            "anbietet (Linux-Update vom 07.09.2026)")
+        return mm
 
     def refresh_geometry(self):
         """Nach Rueckkehr aus einem Core neu einlesen - die Aufloesung
@@ -1243,5 +1340,14 @@ class Framebuffer:
     def close(self):
         try:
             self.mm.close(); os.close(self.fd)
+        except Exception:
+            pass
+        # Build 168: der Rueckfall ueber /dev/mem haelt einen zweiten
+        # Dateizeiger. Eigener try-Block, damit ein Fehler oben ihn
+        # nicht ueberspringt - sonst bliebe /dev/mem offen.
+        try:
+            if getattr(self, "_mem_fd", None) is not None:
+                os.close(self._mem_fd)
+                self._mem_fd = None
         except Exception:
             pass

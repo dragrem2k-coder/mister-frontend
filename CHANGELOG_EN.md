@@ -63,12 +63,37 @@ stayed at the end — so we painted over MiSTer's freshly drawn OSD. The
 screen now belongs to MiSTer from the F12 onwards, and a test pins the
 order down.
 
-**A switch that silences the console machinery.** Everything the
-frontend writes to the text console (cursor, screen blanking, the
-watchdog against the login prompt) now goes through a single place —
-and that can be turned off with a file:
-`touch /media/fat/frontend/konsole_unberuehrt`. That restores the state
-before build 157 without reverting anything.
+**The MiSTer Linux update of 2026-09-07 (kernel 6.18) breaks
+frontends — this one included.** Rolling back to kernel 5.15.1 fixed
+every reported symptom without changing a single line of the frontend.
+You can spot it by `fb0: sys_fillrect: framebuffer is not in virtual
+address space` in `dmesg`. Degauss, the Zaparoo Frontend and Console
+Mode all had to be patched for it too. Dragend now falls back to
+mapping the framebuffer through `/dev/mem` when `/dev/fb0` no longer
+allows it. Returning to the OSD on quit is **still open** on that
+kernel — `frontend/kernel_probe.py` now measures, on an affected device
+and in two minutes, where the problem actually is. See the section at
+the top of the README.
+
+**Startup and shutdown behave like build 145 again.** After four
+builds of hunting the shutdown problem, that was the request — and the
+right call. Eleven builds' worth of machinery had accumulated in those
+two paths; every change had a reason, but together they broke something
+that used to work. The default is now back to: **one** F9 at startup,
+no watchdog, no touching the cursor or screen blanking, and on the way
+out clean up first, then close the screen, then release input and send
+**one** F12. The boot logo plays immediately again.
+
+**Nothing was deleted.** The machinery from builds 146–166 comes back
+with one file: `touch /media/fat/frontend/konsole_mechanik_an`. Its
+reasons were real and measured — above all "I'm in the OSD and I can
+hear the frontend's music". If that returns, the answer is a command
+rather than a build.
+
+**Everything that writes to the text console goes through a single
+place** (cursor, screen blanking, the watchdog against the login
+prompt). It used to be six scattered ones, which made it impossible to
+either inspect or switch off.
 
 **Quitting now checks whether the OSD actually appeared.** Since build
 152 the frontend knows that a single injected display-switch key does

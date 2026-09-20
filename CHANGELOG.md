@@ -64,12 +64,38 @@ blieb aber hinten stehen — wir haben MiSTers gerade aufgebautes OSD
 sofort wieder schwarz übermalt. Jetzt gehört der Bildschirm ab dem F12
 MiSTer; ein Test hält die Reihenfolge fest.
 
-**Ein Schalter, der die Konsolen-Mechanik stilllegt.** Alles, was das
-Frontend auf die Textkonsole schreibt (Cursor, Bildschirmschonung, die
-Wache gegen den Login-Prompt), läuft jetzt durch eine einzige Stelle —
-und die lässt sich mit einer Datei abschalten:
-`touch /media/fat/frontend/konsole_unberuehrt`. Damit ist der Stand von
-vor Build 157 wieder da, ohne etwas zurückzubauen.
+**Das MiSTer-Linux-Update vom 07.09.2026 (Kernel 6.18) bricht
+Frontends — auch dieses.** Der Rückbau auf Kernel 5.15.1 hat alle
+gemeldeten Probleme sofort behoben, ohne eine Zeile am Frontend zu
+ändern. Erkennbar an `fb0: sys_fillrect: framebuffer is not in virtual
+address space` im `dmesg`. Degauss, das Zaparoo-Frontend und Console
+Mode mussten dafür ebenfalls gepatcht werden. Dragend blendet den
+Bildspeicher jetzt ersatzweise über `/dev/mem` ein, wenn `/dev/fb0` es
+nicht mehr hergibt. Die Rückkehr ins OSD beim Beenden ist auf diesem
+Kernel **noch offen** — dafür gibt es jetzt `frontend/kernel_probe.py`,
+das auf einem betroffenen Gerät in zwei Minuten misst, woran es liegt.
+Siehe den Abschnitt oben in der README.
+
+**Start und Beenden verhalten sich wieder wie in Build 145.** Nach
+vier Builds Fehlersuche am Beenden war das der Wunsch — und die
+richtige Ansage. Zwischen 145 und heute sind in diese beiden Abläufe
+elf Builds Mechanik gelandet; jede Änderung hatte einen Grund, zusammen
+haben sie etwas kaputt gemacht, das vorher lief. Standard ist jetzt
+wieder: **ein** F9 beim Start, keine Dauerwache, kein Anfassen von
+Cursor und Bildschirmschonung, und beim Beenden erst aufräumen, dann
+Bildschirm schließen, dann Eingaben frei und **ein** F12. Das Boot-Logo
+startet wieder sofort.
+
+**Gelöscht ist nichts.** Die Mechanik aus den Builds 146–166 kommt mit
+einer Datei zurück: `touch /media/fat/frontend/konsole_mechanik_an`.
+Ihre Gründe waren echt und gemessen — allen voran „bin im OSD und höre
+die Musik vom Frontend". Kommt das wieder, ist die Antwort ein Befehl
+statt ein Build.
+
+**Alles, was auf die Textkonsole schreibt, läuft durch eine einzige
+Stelle** (Cursor, Bildschirmschonung, die Wache gegen den Login-Prompt).
+Vorher waren es sechs verstreute — dadurch ließ sich weder ansehen noch
+abschalten, was dort passiert.
 
 **Beim Beenden wird nachgesehen, ob das OSD wirklich kommt.** Beim Start
 weiß das Frontend seit Build 152, dass ein einzelnes eingespeistes
