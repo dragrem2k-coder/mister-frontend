@@ -63,6 +63,12 @@ stayed at the end — so we painted over MiSTer's freshly drawn OSD. The
 screen now belongs to MiSTer from the F12 onwards, and a test pins the
 order down.
 
+**Your own colour scheme.** *System → Display & Sound → Save current
+colours as your own scheme* writes the active colours to
+`frontend/theme_eigen.json` and switches to them right away. *Custom*
+then appears in the normal cycle; you can fine-tune the file by hand. A
+broken file simply means "no custom scheme" and never holds up startup.
+
 **The cover cache had no memory limit.** It held 60 images — a
 *count*. Since v4.4 covers load at full resolution, and a 1200×1600
 scan is 7.7 MB: 60 of those would be 460 MB on a device with about

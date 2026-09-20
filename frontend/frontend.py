@@ -671,6 +671,125 @@ THEMES = {
 }
 THEME_ORDER = ["dark", "light", "green"]
 
+# ======================================================================
+# DAS EIGENE FARBSCHEMA (Build 171)
+# ======================================================================
+# Nutzerwunsch aus dem Degauss-Vergleich: dort steht beim Theme-Editor
+# ein Haken, bei uns "teilweise". Die Bestandsaufnahme dazu liegt im
+# Projekt (EINSCHAETZUNG_Theme_Editor.md) und sagt das Entscheidende:
+#
+#     "Die eigentliche Arbeit liegt nicht bei den Farbreglern."
+#
+# Ein Theme wird heute an VIER Stellen eingetragen, davon eine in
+# fe/menu.py - das Modul haelt bewusst eine EIGENE, unabhaengige Kopie
+# der Themenamen, damit das Menue nicht am vollen Theme-System haengt.
+# Genau dort gab es schon einmal einen Fehler: die Kopie kannte die
+# neun Konsolen-Geheim-Themes nicht, und die Menuezeile behauptete
+# "Farbschema: Dunkel", waehrend laengst ein anderes aktiv war.
+#
+# DESHALB GIBT ES HIER NICHT "beliebig viele eigene Themes", SONDERN
+# GENAU EINES MIT EINEM FESTEN NAMEN. Der Name "eigen" steht ein
+# einziges Mal in jeder der Listen und aendert sich nie wieder; nur
+# die FARBEN kommen aus einer Datei. Damit kann die Kopie in
+# fe/menu.py gar nicht mehr veralten - der Fehler von damals ist
+# nicht behoben, sondern unmoeglich gemacht.
+#
+# tools/test_theme_eigen.py prueft zusaetzlich, dass beide Namens-
+# tabellen deckungsgleich sind - das faengt auch kuenftige
+# Abweichungen ab, nicht nur diese eine.
+THEME_EIGEN_FILE = "/media/fat/frontend/theme_eigen.json"
+THEME_EIGEN_NAME = "eigen"
+
+# Die sieben Eigenschaften, die ein Theme ausmachen (siehe
+# EINSCHAETZUNG_Theme_Editor.md) - sechs Farben und ein Schalter.
+THEME_FARBFELDER = ("C_BG", "C_PANEL", "C_TEXT", "C_DIM",
+                    "C_TITLE", "C_ACCENT")
+
+
+def _farbe_gueltig(wert):
+    """Drei ganze Zahlen von 0 bis 255 - sonst nichts.
+
+    Bewusst streng: eine halb gueltige Farbe wuerde spaeter mitten im
+    Zeichenpfad auffallen, wo niemand mehr an diese Datei denkt."""
+    if not isinstance(wert, (list, tuple)) or len(wert) != 3:
+        return False
+    for k in wert:
+        if isinstance(k, bool) or not isinstance(k, int) or not 0 <= k <= 255:
+            return False
+    return True
+
+
+def eigenes_theme_lesen(pfad=None):
+    """Die Farben des eigenen Themes aus der Datei - oder None.
+
+    Eine fehlende, kaputte oder unvollstaendige Datei ist KEIN Fehler,
+    sondern heisst schlicht "es gibt kein eigenes Theme". Sie darf den
+    Start unter keinen Umstaenden aufhalten: sie liegt auf der SD-Karte
+    und kann von einem abgebrochenen Schreibvorgang stammen."""
+    try:
+        with open(pfad or THEME_EIGEN_FILE, "r", encoding="utf-8") as fh:
+            daten = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(daten, dict):
+        return None
+    theme = {}
+    for feld in THEME_FARBFELDER:
+        wert = daten.get(feld)
+        if not _farbe_gueltig(wert):
+            LOG("Eigenes Farbschema: %s fehlt oder ist ungueltig (%r) - "
+                "Datei wird nicht benutzt" % (feld, wert))
+            return None
+        theme[feld] = tuple(wert)
+    theme["monochrome"] = bool(daten.get("monochrome", False))
+    return theme
+
+
+def eigenes_theme_laden(pfad=None):
+    """Das eigene Theme in THEMES eintragen, falls es eines gibt.
+
+    Liefert True, wenn danach ein eigenes Theme zur Verfuegung steht.
+    Wird beim Start gerufen und noch einmal nach dem Speichern."""
+    theme = eigenes_theme_lesen(pfad)
+    if theme is None:
+        THEMES.pop(THEME_EIGEN_NAME, None)
+        return False
+    THEMES[THEME_EIGEN_NAME] = theme
+    return True
+
+
+def eigenes_theme_speichern(theme, pfad=None):
+    """Farben als eigenes Theme ablegen - ueber .tmp und os.replace().
+
+    Dieselbe Vorsicht wie bei den gemerkten Filtern: ein abgebrochener
+    Schreibvorgang darf keine halbe Datei hinterlassen, die beim
+    naechsten Start als ungueltig gilt und das eigene Theme
+    verschwinden laesst."""
+    ziel = pfad or THEME_EIGEN_FILE
+    daten = {}
+    for feld in THEME_FARBFELDER:
+        wert = theme.get(feld)
+        if not _farbe_gueltig(wert):
+            raise ValueError("ungueltige Farbe fuer %s: %r" % (feld, wert))
+        daten[feld] = list(wert)
+    daten["monochrome"] = bool(theme.get("monochrome", False))
+    tmp = ziel + ".tmp"
+    ordner = os.path.dirname(ziel)
+    if ordner:
+        try:
+            os.makedirs(ordner, exist_ok=True)
+        except OSError:
+            pass
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(daten, fh, indent=1, sort_keys=True)
+    os.replace(tmp, ziel)
+    eigenes_theme_laden(ziel if pfad else None)
+    return True
+
+
+def eigenes_theme_vorhanden():
+    return THEME_EIGEN_NAME in THEMES
+
 # NEU: Metadaten fuer die 9 neuen Secret-Themes, an EINER Stelle
 # gebuendelt statt ueber mehrere if/elif-Ketten verteilt (secret_id ->
 # Theme-Name, Unlock-Spruch fuer die Flourish-Anzeige, optionale
@@ -713,9 +832,14 @@ SECRET_THEME_META = {
 # hier also gefahrlos direkt gezeigt werden, sobald es aktiv ist,
 # statt fuer immer geheimnisvoll zu bleiben.
 THEME_NAMES_DE = {"dark": "Dunkel (Standard)", "light": "Hell",
-                  "green": "Retro-Gruen", "secret_gold": "Gold (geheim)"}
+                  "green": "Retro-Gruen", "secret_gold": "Gold (geheim)",
+                  # Build 171 - EIN fester Name, siehe THEME_EIGEN_NAME.
+                  # Dieselbe Zeile steht in fe/menu.py; dass beide
+                  # uebereinstimmen, prueft tools/test_theme_eigen.py.
+                  "eigen": "Eigenes"}
 THEME_NAMES_EN = {"dark": "Dark (default)", "light": "Light",
-                  "green": "Retro Green", "secret_gold": "Gold (secret)"}
+                  "green": "Retro Green", "secret_gold": "Gold (secret)",
+                  "eigen": "Custom"}
 # Anzeigename je Geheim-Theme (siehe SECRET_THEME_META oben) - eine
 # Stelle, die sowohl hier als auch in fe/menu.py's eigener, bewusst
 # unabhaengiger Kopie (siehe dortiger Modul-Kommentar) gepflegt werden
@@ -742,6 +866,13 @@ def _available_theme_order():
     bleiben sie in der normalen Durchschalt-Reihenfolge (cycle_theme())
     unsichtbar, bis der zugehoerige Geheimcode gefunden wurde."""
     order = list(THEME_ORDER)
+    # Build 171: das eigene Theme steht direkt hinter den
+    # mitgelieferten - aber nur, wenn es wirklich eines gibt. Sonst
+    # wuerde cycle_theme() auf einen Namen schalten, den THEMES nicht
+    # kennt, und apply_theme() faellt still auf "dark" zurueck: ein
+    # Durchschalten, bei dem sich scheinbar nichts tut.
+    if eigenes_theme_vorhanden():
+        order.append(THEME_EIGEN_NAME)
     unlocked = _load_secrets_unlocked()
     if "secret_theme_1" in unlocked:
         order.append("secret_gold")
@@ -795,16 +926,30 @@ def cycle_theme():
     order = _available_theme_order()
     idx = order.index(cur) if cur in order else 0
     new_name = order[(idx + 1) % len(order)]
+    _theme_datei_schreiben(new_name)
+    apply_theme(new_name)
+    return new_name
+
+
+def _theme_datei_schreiben(name):
+    """Die Wahl merken. HERAUSGELOEST (Build 171): dasselbe brauchte
+    der neue Menuepunkt fuer das eigene Schema, und zwei Kopien
+    derselben vier Zeilen waeren zwei Stellen, an denen kuenftig eine
+    vergessen wird."""
     try:
         dirname = os.path.dirname(THEME_FILE)
         if dirname:
             os.makedirs(dirname, exist_ok=True)
         with open(THEME_FILE, "w") as f:
-            f.write(new_name)
+            f.write(name)
     except OSError:
         pass
-    apply_theme(new_name)
-    return new_name
+
+# Build 171: ein vorhandenes eigenes Schema MUSS hier eingetragen
+# sein, bevor current_theme_name() gefragt wird - sonst kennt THEMES
+# den Namen "eigen" noch nicht, current_theme_name() faellt auf
+# "dark" zurueck, und das eigene Schema waere nach jedem Neustart weg.
+eigenes_theme_laden()
 
 apply_theme(current_theme_name())   # beim Laden des Moduls sofort anwenden
 
@@ -15647,6 +15792,33 @@ class Frontend:
                             self._refresh_system_category()
                             self.fb._rowcache.clear()
                             self.fb._rectcache.clear()
+                        elif kind == "theme_eigen_speichern":
+                            # Build 171: die gerade aktiven Farben als
+                            # eigenes Schema ablegen und sofort darauf
+                            # umschalten. Damit ist es kein leerer
+                            # Menuepunkt mehr - man hat sofort ein
+                            # eigenes Schema, das man anpassen kann,
+                            # und es geht kein Schritt verloren, wenn
+                            # der Editor spaeter dazukommt.
+                            try:
+                                eigenes_theme_speichern({
+                                    "C_BG": C_BG, "C_PANEL": C_PANEL,
+                                    "C_TEXT": C_TEXT, "C_DIM": C_DIM,
+                                    "C_TITLE": C_TITLE,
+                                    "C_ACCENT": C_ACCENT,
+                                    "monochrome": CURRENT_THEME_MONOCHROME,
+                                })
+                                _theme_datei_schreiben(THEME_EIGEN_NAME)
+                                apply_theme(THEME_EIGEN_NAME)
+                                self._refresh_system_category()
+                                self.fb._rowcache.clear()
+                                self.fb._rectcache.clear()
+                                self.draw(t("sys_theme_eigen_gespeichert"))
+                            except (OSError, ValueError):
+                                LOG("Eigenes Farbschema speichern "
+                                    "fehlgeschlagen:\n"
+                                    + traceback.format_exc())
+                                self.draw(t("sys_theme_eigen_fehler"))
                         elif kind == "timezone":
                             cycle_timezone_offset()
                             # Sofort neu synchronisieren, damit die

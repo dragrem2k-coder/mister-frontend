@@ -64,6 +64,13 @@ blieb aber hinten stehen — wir haben MiSTers gerade aufgebautes OSD
 sofort wieder schwarz übermalt. Jetzt gehört der Bildschirm ab dem F12
 MiSTer; ein Test hält die Reihenfolge fest.
 
+**Ein eigenes Farbschema.** *System → Anzeige & Sound → Aktuelle Farben
+als eigenes Schema speichern* legt die gerade aktiven Farben in
+`frontend/theme_eigen.json` ab und schaltet sofort darauf um. Danach
+steht *Eigenes* in der normalen Durchschalt-Reihenfolge; die Datei kann
+man von Hand feiner einstellen. Eine kaputte Datei heißt schlicht „kein
+eigenes Schema" und hält den Start nie auf.
+
 **Der Cover-Zwischenspeicher hatte keine Speichergrenze.** Er hielt
 60 Bilder — eine *Stückzahl*. Seit v4.4 werden Cover im Original
 geladen, und ein 1200×1600-Scan sind 7,7 MB: 60 davon wären 460 MB auf

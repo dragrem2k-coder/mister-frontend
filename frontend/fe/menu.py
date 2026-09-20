@@ -66,6 +66,11 @@ _VALID_THEME_NAMES = {
     "dark", "light", "green", "secret_gold",
     "snes_16bit", "dmg_green", "gbc_neon", "n64_turbo", "ps1_classic",
     "sega_sonic", "sms_sonic", "gamegear_sonic", "saturn_sonic",
+    # Build 171: das eigene Farbschema. Bewusst EIN fester Name statt
+    # beliebig vieler - nur so kann diese Kopie nicht mehr veralten.
+    # Die Farben stehen in einer Datei (THEME_EIGEN_FILE in
+    # frontend.py), der Name nie woanders als hier und dort.
+    "eigen",
 }
 # Anzeigenamen: sobald ein Geheim-Theme HIER als current_theme_name()
 # auftaucht, ist es zwangslaeufig bereits gefunden (siehe Begruendung
@@ -82,7 +87,8 @@ THEME_NAMES_DE = {"dark": "Dunkel (Standard)", "light": "Hell",
                   "sega_sonic": "Mega Drive (geheim)",
                   "sms_sonic": "Master System (geheim)",
                   "gamegear_sonic": "Game Gear (geheim)",
-                  "saturn_sonic": "Saturn (geheim)"}
+                  "saturn_sonic": "Saturn (geheim)",
+                  "eigen": "Eigenes"}
 THEME_NAMES_EN = {"dark": "Dark (default)", "light": "Light",
                   "green": "Retro Green", "secret_gold": "Gold (secret)",
                   "snes_16bit": "SNES (secret)",
@@ -93,7 +99,8 @@ THEME_NAMES_EN = {"dark": "Dark (default)", "light": "Light",
                   "sega_sonic": "Mega Drive (secret)",
                   "sms_sonic": "Master System (secret)",
                   "gamegear_sonic": "Game Gear (secret)",
-                  "saturn_sonic": "Saturn (secret)"}
+                  "saturn_sonic": "Saturn (secret)",
+                  "eigen": "Custom"}
 
 def current_theme_name():
     """Schlanker, unabhaengiger Nachbau (siehe Modul-Kommentar oben) -
@@ -271,6 +278,9 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     display_items = [
         (video + t("sys_video_suffix"), "crtmenu", None),
         (theme_label, "theme", None),
+        # Build 171: aus dem gerade aktiven Schema ein eigenes machen.
+        # Steht direkt unter der Farbschema-Zeile - dort sucht man es.
+        (t("sys_theme_eigen_speichern"), "theme_eigen_speichern", None),
         (sfx_label, "sfx", None),
         (dragend_logo_label, "dragend_logo", None),
         (fast_scroll_label, "fast_scroll", None),

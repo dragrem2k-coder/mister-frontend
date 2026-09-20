@@ -850,6 +850,20 @@ TRANSLATIONS = {
     # aufgeloest. Der Text nennt bewusst den Grund und nicht nur den
     # Schalter - "Einzelordner auflösen" allein sagt niemandem, warum
     # er das wollen sollte.
+    # NEU (Build 171): das eigene Farbschema. Der Menuepunkt sagt
+    # ausdruecklich, WO die Datei liegt - wer die Farben feiner
+    # einstellen will, bearbeitet sie direkt, bis der Editor da ist.
+    "sys_theme_eigen_speichern": {
+        "en": "Save current colours as your own scheme",
+        "de": "Aktuelle Farben als eigenes Schema speichern"},
+    "sys_theme_eigen_gespeichert": {
+        "en": "Saved as your own scheme and activated. The colours are "
+              "in frontend/theme_eigen.json.",
+        "de": "Als eigenes Schema gespeichert und aktiviert. Die Farben "
+              "stehen in frontend/theme_eigen.json."},
+    "sys_theme_eigen_fehler": {
+        "en": "Could not save the colour scheme.",
+        "de": "Das Farbschema liess sich nicht speichern."},
     "sys_einzelordner_on": {
         "en": "Folders with a single game: shown as the game -> keep them as folders",
         "de": "Ordner mit nur einem Spiel: als Spiel anzeigen -> als Ordner belassen"},
