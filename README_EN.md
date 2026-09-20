@@ -222,6 +222,38 @@ tuned very closely to one machine that gets used every day.
 
 ---
 
+## Measure it yourself: `--bench`
+
+From build 177 the frontend can measure itself — one fixed,
+repeatable run instead of hand work with a profile switch and a log
+file:
+
+```
+killall -q python3                         # stop a running frontend
+python3 /media/fat/frontend/frontend.py --bench
+```
+
+The report goes to the console and to `/tmp/dragend_bench.txt`. It
+takes a minute or two depending on the device and has four parts:
+
+| | |
+|---|---|
+| **A Startup** | How long starting takes — also **per game**, so 2,000 and 97,000 games stay comparable |
+| **B Drawing** | Full page build and time per scroll step, for all three views on both pages, plus the raw frame transfer |
+| **C Image chain** | Downscaling in C versus Python, packing, writing and reading a thumbnail, decoding a PNG — on a **generated** image of fixed size, and therefore directly comparable between devices |
+| **D Real file** | The same on a cover from the card. It depends on that one file and is explicitly **not** comparable — the gap to C is itself the finding |
+
+The run **writes nothing to the SD card**. No thumbnail, no setting,
+no cache file; what it has to write in order to measure goes to a
+temporary folder that is removed afterwards.
+
+If something is wrong and you are sending feedback, `--bench` is the
+most useful thing to include. It states in one file which device,
+which resolution, and with or without the C module the numbers were
+taken on — exactly what otherwise has to be asked for every time.
+
+---
+
 ## Where things live
 
 | | |

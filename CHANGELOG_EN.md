@@ -13,6 +13,24 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## v4.5 — CD games in folders, a C module, a PC tool
 
+**The frontend measures itself: `--bench`.** Every number in this
+project since build 73 was hand work — set the profile switch,
+scroll, `grep PERF`, type it up. That yields numbers for one device
+on one day; nothing could be compared between two machines.
+`python3 frontend.py --bench` now runs one fixed sequence: startup
+time (also **per game**, so 2,000 and 97,000 games stay comparable),
+full page build and time per scroll step across all three views on
+both pages, the raw frame transfer, and the whole image chain —
+downscaling in C versus Python, packing, writing and reading a
+thumbnail, decoding a PNG. The trick is in the test image: it is
+**generated** rather than read from the card, and the sizes are
+fixed, so two devices really do measure the same thing. What cannot
+be compared in principle — a real cover file — sits in its own
+section with exactly that caveat next to it. The run **writes
+nothing to the SD card**; what it has to write in order to measure
+goes to a temporary folder that is removed afterwards. Report on the
+console and in `/tmp/dragend_bench.txt`.
+
 **Folders holding a single game are dissolved.** For PSX, Mega CD and
 Saturn, each game usually sits in its own folder because one `.cue`
 comes with several `.bin` files. That made the list nothing but folders

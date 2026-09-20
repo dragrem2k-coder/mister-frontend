@@ -12,6 +12,25 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## v4.5 — CD-Spiele in Ordnern, C-Modul, Werkzeug für den PC
 
+**Das Frontend vermisst sich selbst: `--bench`.** Jede Zahl in diesem
+Projekt seit Build 73 war Handarbeit — Profilschalter setzen,
+scrollen, `grep PERF`, abtippen. Das ergibt Zahlen für genau dieses
+Gerät an genau diesem Tag; zwischen zwei Geräten ließ sich damit
+nichts vergleichen. `python3 frontend.py --bench` fährt jetzt einen
+festen Ablauf: Startdauer (auch **je Spiel**, damit 2 000 und 97 000
+Spiele vergleichbar bleiben), voller Seitenaufbau und Zeit je
+Scrollschritt in allen drei Ansichten auf beiden Seiten, der reine
+Bildtransport, und die ganze Bildkette — Verkleinern in C gegen
+Python, Miniatur packen, schreiben, lesen, PNG dekodieren. Der Kniff
+steckt im Testbild: es wird **erzeugt** statt von der Karte gelesen,
+und die Maße stehen fest — zwei Geräte messen damit wirklich
+dasselbe. Was sich prinzipiell nicht vergleichen lässt, nämlich eine
+echte Cover-Datei, steht in einem eigenen Abschnitt mit genau diesem
+Hinweis daneben. Der Lauf **schreibt nichts auf die SD-Karte**; was
+er zum Messen schreiben muss, landet in einem temporären Ordner, der
+danach verschwindet. Bericht auf der Konsole und in
+`/tmp/dragend_bench.txt`.
+
 **Ordner mit nur einem Spiel werden aufgelöst.** Bei PSX, Mega CD und
 Saturn liegt meist jedes Spiel in einem eigenen Ordner, weil eine `.cue`
 mehrere `.bin` mitbringt. Die Liste bestand dort deshalb nur aus

@@ -324,6 +324,12 @@ OVERSCAN_Y = 5
 #     rm /media/fat/frontend/profile         # wieder aus
 PROFILE_FLAG = "/media/fat/frontend/profile"
 
+# Wohin "--bench" seinen Bericht zusaetzlich schreibt (Build 177).
+# Nach /tmp und nicht auf die Karte: der Bench soll nachweislich
+# NICHTS auf der SD-Karte anfassen, und die Datei ist ohnehin dazu da,
+# gleich per scp abgeholt zu werden.
+BENCH_AUSGABE = "/tmp/dragend_bench.txt"
+
 
 def profiling_an():
     # GEAENDERT (Build 135): ueber den kurzlebigen Zwischenspeicher.
@@ -17300,8 +17306,39 @@ if __name__ == "__main__":
     _t_boot = time.monotonic()
     try:
         _fe = Frontend()
-        LOG("Start-Dauer bis Kategorien-Menue bereit: %.2fs"
-            % (time.monotonic() - _t_boot))
+        _startdauer = time.monotonic() - _t_boot
+        LOG("Start-Dauer bis Kategorien-Menue bereit: %.2fs" % _startdauer)
+        if "--bench" in sys.argv:
+            # NEU (Build 177). Eine feste, wiederholbare Messung statt
+            # der bisherigen Handarbeit mit DRAGEND_PROFILE und "grep
+            # PERF" - siehe fe/bench.py, dort steht die Begruendung.
+            #
+            # BEWUSST HIER und nicht vor dem Frontend(): die Startdauer
+            # ist die erste Zahl, die der Bench ausgibt, und sie laesst
+            # sich nur messen, indem man wirklich startet. Der Preis
+            # ist, dass der Bench dieselbe Einzelinstanz-Sperre braucht
+            # wie das Frontend - wer ihn startet, muss ein laufendes
+            # Frontend vorher beenden. Das ist richtig so: zwei
+            # Instanzen am selben Bildspeicher wuerden sich gegenseitig
+            # messen.
+            # sys.modules["fe.art"] und nicht ART: ART ist der
+            # ArtCache, also eine Instanz, das Bench braucht aber das
+            # MODUL (original_lesen, _verkleinern..., art_path).
+            import fe.bench as BENCH
+            _text = BENCH.lauf(_fe, sys.modules[__name__],
+                               sys.modules["fe.art"],
+                               sys.modules["fe.settings"],
+                               startdauer=_startdauer, log=LOG)
+            try:
+                with open(BENCH_AUSGABE, "w") as _f:
+                    _f.write(_text)
+                print("")
+                print("Auch gespeichert in: %s" % BENCH_AUSGABE)
+            except OSError as _e:
+                print("(konnte %s nicht schreiben: %s)"
+                      % (BENCH_AUSGABE, _e))
+            _fe._beenden()
+            sys.exit(0)
         _fe.run()
     except Exception:
         _tb = traceback.format_exc()

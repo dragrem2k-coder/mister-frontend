@@ -223,6 +223,39 @@ die eigene, täglich genutzte Hardware abgestimmt.
 
 ---
 
+## Selbst nachmessen: `--bench`
+
+Ab Build 177 kann das Frontend sich selbst vermessen — ein fester,
+wiederholbarer Ablauf statt Handarbeit mit Profilschalter und
+Logdatei:
+
+```
+killall -q python3                         # laufendes Frontend beenden
+python3 /media/fat/frontend/frontend.py --bench
+```
+
+Der Bericht erscheint auf der Konsole und landet zusätzlich in
+`/tmp/dragend_bench.txt`. Er dauert je nach Gerät ein bis zwei
+Minuten und ist in vier Teile geteilt:
+
+| | |
+|---|---|
+| **A Start** | Wie lange der Start dauert — auch **je Spiel**, damit 2 000 und 97 000 Spiele vergleichbar bleiben |
+| **B Zeichnen** | Voller Seitenaufbau und Zeit je Scrollschritt, für alle drei Ansichten auf beiden Seiten, dazu der reine Bildtransport |
+| **C Bildkette** | Verkleinern in C gegen Python, Miniatur packen, schreiben, lesen, PNG dekodieren — an einem **erzeugten** Bild fester Größe und damit zwischen Geräten direkt vergleichbar |
+| **D Echte Datei** | Dasselbe an einem Cover von der Karte. Hängt an genau dieser Datei und ist ausdrücklich **nicht** vergleichbar — der Unterschied zu C ist selbst die Auskunft |
+
+Der Lauf **schreibt nichts auf die SD-Karte**. Keine Miniatur, keine
+Einstellung, keine Cache-Datei; was er zum Messen schreiben muss,
+landet in einem temporären Ordner, der danach wieder verschwindet.
+
+Wenn etwas klemmt und du eine Rückmeldung schickst: `--bench` ist das
+Nützlichste, was mitkommen kann. Es sagt in einer Datei, auf welchem
+Gerät, mit welcher Auflösung, mit oder ohne C-Modul gemessen wurde —
+genau die Angaben, die sonst jedes Mal nachgefragt werden müssen.
+
+---
+
 ## Wo was liegt
 
 | | |
