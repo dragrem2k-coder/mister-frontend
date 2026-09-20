@@ -236,11 +236,17 @@ check("es ist bei jedem Lauf dasselbe", pix == B.testbild(64, 48))
 farben = set(bytes(pix[i:i + 4]) for i in range(0, len(pix), 4))
 check("es hat viele verschiedene Farbwerte", len(farben) > 200,
       "%d" % len(farben))
-gepackt = len(zlib.compress(pix, 6))
-check("es laesst sich nicht unrealistisch gut packen",
-      gepackt * 20 > len(pix),
-      "%d von %d Bytes (%.0f %%)"
-      % (gepackt, len(pix), 100.0 * gepackt / len(pix)))
+# Das Packverhaeltnis MUSS an einem grossen Bild geprueft werden:
+# bei 64x48 hat zlib gar kein Fenster, dort kommt immer ~98 % heraus,
+# und die Pruefung wuerde nichts aussagen. Genau das war beim ersten
+# Anlauf der Fall.
+gross = B.testbild(600, 800)
+gepackt = len(zlib.compress(gross, 1))
+anteil = 100.0 * gepackt / len(gross)
+check("es packt sich wie ein Cover, nicht wie eine Flaeche",
+      25.0 <= anteil <= 80.0,
+      "%.0f %% bei Packstufe 1 - das Geraet meldete an einem echten "
+      "Cover 47 %%" % anteil)
 
 # Und das erzeugte PNG muss ein PNG sein, das unser eigener Leseweg
 # auch wirklich versteht - sonst misst Abschnitt C einen Fehlschlag.
@@ -262,7 +268,7 @@ finally:
     shutil.rmtree(ordner, ignore_errors=True)
 
 # Das eigene Format ebenso.
-art1 = B.testbild_art1(pix, 64, 48)
+art1 = B.testbild_art1(pix, 64, 48, 1)
 check("das erzeugte ART1 faengt mit der Kennung an",
       art1.startswith(b"ART1"))
 
@@ -322,6 +328,88 @@ bq = io.open(os.path.join(_REPO, "frontend", "fe", "bench.py"),
 check("fe/bench.py importiert das Frontend NICHT",
       "import frontend" not in bq,
       "sonst gaebe es zwei Ladewege fuer dieselbe Datei")
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 9: die Fehler aus dem ERSTEN Lauf auf echter Hardware")
+# ---------------------------------------------------------------------------
+# Build 177 lief einmal auf dem DE10-Nano. Der Lauf hat vier Fehler
+# im Messgeraet selbst aufgedeckt - dieser Block haelt jeden davon
+# einzeln fest.
+
+# (1) Die Packstufe MUSS dieselbe sein wie im echten Cache. Gemeldet
+#     wurden 1176 ms fuer etwas, das in Wirklichkeit halb so lange
+#     dauert - eine Zahl, die nach Produktionskosten aussah.
+art_quelle = io.open(os.path.join(_REPO, "frontend", "fe", "art.py"),
+                     encoding="utf-8").read()
+check("art.py hat eine benannte Packstufe", hasattr(A, "THUMB_PACKSTUFE"))
+check("und der echte Schreibweg benutzt sie",
+      "zlib.compress(pix, THUMB_PACKSTUFE)" in art_quelle,
+      "sonst kann sie wieder auseinanderlaufen")
+check("keine feste Stufe mehr im Bench",
+      "zlib.compress(pix, 6)" not in bq and "zlib.compress(pix, 1)" not in bq)
+gross_art = B.testbild_art1(B.testbild(64, 48), 64, 48, A.THUMB_PACKSTUFE)
+check("und testbild_art1 nimmt die Stufe entgegen",
+      gross_art.startswith(b"ART1"))
+
+# (2) Die Cover-Suche muss den ECHTEN Baum verstehen. Bei 30064
+#     Spielen meldete der Bench "kein Cover gefunden".
+baum = {"folders": {"Unter": {"folders": {},
+                              "items": [("Tief", "rom", ("a", "b", "c", "d",
+                                                         ()))]}},
+        "items": [("Oben", "rom", ("a", "b", "c", "d", ())),
+                  ("Ordner", "folder", ("a", "b", "c", "d", ()))]}
+namen = [e[0] for e in B._eintraege(baum)]
+check("Eintraege werden auch aus Unterordnern geholt",
+      "Oben" in namen and "Tief" in namen, str(namen))
+check("und Ordner zaehlen nicht als Spiel", "Ordner" not in namen)
+check("_zaehlen kommt auf dieselbe Zahl", B._zaehlen(baum) == 2,
+      "%d" % B._zaehlen(baum))
+check("ein Nicht-Dict bringt beide nicht um",
+      B._zaehlen(["kaputt"]) == 0 and list(B._eintraege("kaputt")) == [])
+
+# (3) Das Testbild darf nicht die halbe Laufzeit kosten. 1200x1600
+#     brauchte 25,5 Sekunden auf dem Geraet.
+# _ECHTE_UHR, nicht time.monotonic(): der Pruefstand hat die
+# eingefroren, sonst kaeme hier immer 0 ms heraus - und die
+# Pruefung waere genau die Sorte Gruen, die nichts bedeutet.
+_t = _ECHTE_UHR()
+B.testbild(1200, 1600)
+_dauer = (_ECHTE_UHR() - _t) * 1000.0
+# Der Entwicklungsrechner ist rund 30x schneller als der DE10-Nano
+# (nachgemessen, siehe Projektnotizen). 300 ms hier heissen also rund
+# 9 s dort - immer noch viel, aber nie wieder 25 s.
+check("1200x1600 entsteht in unter 300 ms", _dauer < 300.0,
+      "%.0f ms (auf dem Geraet rund %.0fx so viel)" % (_dauer, 30))
+
+# (4) Kalt und warm muessen GETRENNT im Bericht stehen.
+check("der Bericht weist kalt getrennt aus", "je Schritt kalt" in text)
+check("und warm getrennt", "je Schritt warm" in text)
+check("und sagt, was der Unterschied bedeutet",
+      "Miniatur muss erst gerechnet werden" in text)
+check("und nennt die Einschraenkung ehrlich",
+      "Obergrenze" in text,
+      "beim echten Scrollen wird die Boxart-Spalte ausgelassen")
+
+# (5) Der fuenfte Fehler, den erst das Nachlesen im Code zutage
+#     brachte: Zeichnen RECHNET Cover, und ein gerechnetes Cover wird
+#     weggeschrieben. Abschnitt B hat also sehr wohl auf die Karte
+#     geschrieben, waehrend im Bericht stand, er tue das nicht.
+check("es gibt eine Umleitung des Miniaturen-Caches",
+      "class _CacheUmleitung" in bq)
+check("und Abschnitt B laeuft darin",
+      "with _CacheUmleitung(" in bq)
+alt_dir = A.THUMB_CACHE_DIR
+with B._CacheUmleitung(A, True) as u:
+    check("waehrenddessen zeigt der Cache woanders hin",
+          A.THUMB_CACHE_DIR != alt_dir, A.THUMB_CACHE_DIR)
+    check("und zwar in einen temporaeren Ordner",
+          A.THUMB_CACHE_DIR.startswith(tempfile.gettempdir()))
+    _tmp_ordner = u.ordner
+check("danach steht er wieder auf dem Original",
+      A.THUMB_CACHE_DIR == alt_dir, A.THUMB_CACHE_DIR)
+check("und der temporaere Ordner ist weg",
+      not os.path.exists(_tmp_ordner or "/nichts"))
 
 print()
 if fails:

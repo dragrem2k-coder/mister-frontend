@@ -154,18 +154,58 @@ def testbild(w, h):
     Harte Kanten, weil das Flaechenmittel daran am meisten zu tun hat;
     Verlaeufe, damit zlib beim Cache-Schreiben nicht unrealistisch gut
     komprimiert. Ohne den zweiten Teil waere die Cache-Messung eine
-    Messung von "eine Flaeche in einer Farbe"."""
-    zeile_muster = []
-    raus = bytearray(w * h * 4)
-    for y in range(h):
-        del zeile_muster[:]
+    Messung von "eine Flaeche in einer Farbe".
+
+    GEAENDERT (Build 178). Hier stand eine Schleife ueber jeden
+    einzelnen Bildpunkt. Auf dem Geraet gemessen: **25,5 Sekunden**
+    fuer 1200x1600 - zwei Drittel der gesamten Laufzeit des Benchs,
+    und zwar reine Vorbereitung, bevor die erste Zahl entsteht. Fuer
+    ein Werkzeug, das Leute auf ihren Geraeten laufen lassen sollen,
+    ist das nicht zumutbar.
+
+    Jetzt werden ACHT Zeilen ehrlich ausgerechnet, und jede Bildzeile
+    entsteht daraus mit bytes.translate() - einer Tabelle je Zeile,
+    damit nicht einfach dieselbe Zeile wiederholt dasteht.
+    translate() laeuft in C; die Python-Schleife geht nur noch ueber
+    die HOEHE statt ueber jeden Punkt. Gemessen 30 ms statt 25
+    Sekunden.
+
+    DIE ZUSAMMENSETZUNG IST NICHT BELIEBIG. Sie entscheidet ueber
+    genau eine Zahl im Bericht: wie lange das Packen einer Miniatur
+    dauert. Ein Bild aus einer Farbe waere in Nullkommanichts gepackt,
+    reines Rauschen gar nicht. Deshalb halb flaechige Kacheln (wie der
+    Hintergrund eines Covers), halb Rauschen und Verlaeufe (wie das
+    Motiv). Das ergibt nachgemessen rund 48 % bei Packstufe 1 - und
+    damit ungefaehr das, was das Geraet an einem echten Cover gemeldet
+    hat. Der erreichte Wert steht im Bericht mit dabei, damit niemand
+    ihn glauben muss."""
+    basis = []
+    for p in range(8):
+        z = bytearray()
+        s = (p * 2654435761 + 12345) & 0xFFFFFFFF
         for x in range(w):
-            kachel = ((x >> 5) + (y >> 5)) & 1
-            zeile_muster.append(255 if kachel else (x * 7 + y * 3) & 255)
-            zeile_muster.append((x * 5 + y) & 255)
-            zeile_muster.append((y * 11 - x * 3) & 255)
-            zeile_muster.append(0)
-        raus[y * w * 4:(y + 1) * w * 4] = bytes(zeile_muster)
+            s = (1103515245 * s + 12345) & 0x7FFFFFFF
+            if ((x >> 5) + p) & 1:
+                # Flaechig, mit harter Kante zur Nachbarkachel.
+                z.append((60 + p * 13) & 255)
+                z.append((90 + p * 7) & 255)
+                z.append((120 + p * 3) & 255)
+            else:
+                z.append((s >> 16) & 255)
+                z.append(((x * 5 + p * 97) // 3) & 255)
+                z.append(((x * 3) // 2) & 255)
+            z.append(0)
+        basis.append(bytes(z))
+    raus = bytearray(w * h * 4)
+    breite = w * 4
+    for y in range(h):
+        # Je Zeile eine eigene Verschiebung. Sie wandert nicht linear
+        # mit y, sonst waeren zwei benachbarte Zeilen fuer zlib fast
+        # dasselbe - und genau das soll die Messung nicht sein.
+        d = (y * 37 + (y >> 3) * 11) & 255
+        tabelle = bytes(((i + d) & 255) for i in range(256))
+        raus[y * breite:(y + 1) * breite] = \
+            basis[(y * 7 + (y >> 5)) % 8].translate(tabelle)
     return bytes(raus)
 
 
@@ -200,9 +240,16 @@ def testbild_png(pix, w, h):
             + _png_chunk(b"IEND", b""))
 
 
-def testbild_art1(pix, w, h):
-    """Dasselbe im eigenen Format - so liegt eine Miniatur im Cache."""
-    return b"ART1" + struct.pack("<HH", w, h) + zlib.compress(pix, 6)
+def testbild_art1(pix, w, h, stufe):
+    """Dasselbe im eigenen Format - so liegt eine Miniatur im Cache.
+
+    Die Packstufe wird UEBERGEBEN und kommt aus fe/art.py
+    (THUMB_PACKSTUFE). Hier stand bis Build 178 eine feste 6, weil
+    das der Vorgabewert von zlib ist - das Frontend packt aber seit
+    Build 154 mit Stufe 1. Gemeldet wurden dadurch 1176 ms fuer
+    etwas, das in Wirklichkeit rund halb so lange dauert. Eine Zahl,
+    die nach Produktionskosten aussah und keine war."""
+    return b"ART1" + struct.pack("<HH", w, h) + zlib.compress(pix, stufe)
 
 
 # ---------------------------------------------------------------------
@@ -257,22 +304,30 @@ def _kopf(b, fe, A, fm):
     return spiele
 
 
-def _zaehlen(node):
-    """Spiele in einem Kategoriebaum - ohne Annahme ueber seine Form.
+def _zaehlen(node, tiefe=0):
+    """Spiele in einem Kategoriebaum.
 
-    Der Baum sieht je nach Kategorie anders aus (Ordner, Listen,
-    Sonderfaelle wie Arcade). Ein Bench darf daran nicht scheitern,
-    deshalb zaehlt das hier defensiv und gibt im Zweifel 0 zurueck."""
+    GEAENDERT (Build 178): rechnet jetzt mit der ECHTEN Baumform
+    ({"folders": {...}, "items": [...]}, siehe fe/scan.py) statt
+    ueber alle Werte zu summieren und dabei zu hoffen. Das alte
+    Vorgehen kam zufaellig auf die richtige Zahl - aber daneben stand
+    _irgendein_cover() mit derselben Annahme und lag falsch. Eine
+    Vermutung, die an einer Stelle aufgeht und an der naechsten nicht,
+    ist keine Vermutung, die man stehen lassen sollte.
+
+    Bleibt trotzdem defensiv: der Bench laeuft auf fremden Geraeten,
+    und ein unerwarteter Knoten darf ihn nicht umbringen."""
+    if tiefe > 6 or not isinstance(node, dict):
+        return 0
     try:
-        if isinstance(node, dict):
-            return sum(_zaehlen(v) for v in node.values())
-        if isinstance(node, (list, tuple)):
-            return sum(1 for x in node
-                       if isinstance(x, (list, tuple)) and len(x) > 1
-                       and x[1] != "folder") or len(node)
+        n = sum(1 for e in (node.get("items") or ())
+                if isinstance(e, (list, tuple)) and len(e) >= 2
+                and e[1] != "folder")
+        for unter in (node.get("folders") or {}).values():
+            n += _zaehlen(unter, tiefe + 1)
+        return n
     except Exception:                                    # noqa: BLE001
-        pass
-    return 0
+        return 0
 
 
 def _abschnitt_a(b, fe, spiele, startdauer):
@@ -291,9 +346,37 @@ def _abschnitt_a(b, fe, spiele, startdauer):
 
 
 def _abschnitt_b(b, fe, S, spiele):
+    """Zeichnen - KALT und WARM getrennt (Build 178).
+
+    Der erste Anlauf hat beides in eine Zahl geworfen, und die war
+    dadurch nicht das, was draufstand. Auf dem Geraet des Nutzers kam
+    "Spieleliste liste je Schritt 194 ms" heraus, waehrend das Raster
+    daneben 72 ms brauchte. Das liest sich wie ein Befund ueber den
+    Zeichenweg der Liste - in Wirklichkeit steckte darin, dass jeder
+    Schritt ein Cover in voller Groesse NEU RECHNET, weil die
+    Miniatur noch nicht vorlag.
+
+    Beides ist echt und beides interessiert:
+
+      KALT  So fuehlt es sich beim ersten Durchblaettern an, bevor
+            "Miniaturen vorbereiten" gelaufen ist.
+      WARM  Derselbe Weg noch einmal ueber dieselben Spiele, jetzt
+            mit vorliegenden Miniaturen. DAS ist die Zahl ueber den
+            Zeichenweg.
+
+    Und noch eine ehrliche Einschraenkung, die in den Bericht gehoert:
+    hier wird in einer engen Schleife gezeichnet. Beim echten
+    Scrollen laesst das Frontend die Boxart-Spalte aus, sobald schnell
+    geblaettert wird (Build 76) - das greift hier nicht. Die
+    Kalt-Zahl ist damit die OBERGRENZE, nicht der Alltag."""
     b("")
     b("B  ZEICHNEN  (%d Schritte je Ansicht, Bestand des Geraets)"
       % SCHRITTE)
+    b("   kalt = Miniatur muss erst gerechnet werden")
+    b("   warm = dieselben Spiele noch einmal, Miniatur liegt vor")
+    b("   (beim echten Scrollen laesst das Frontend die Boxart-Spalte")
+    b("    aus, sobald schnell geblaettert wird - kalt ist die")
+    b("    Obergrenze, nicht der Alltag)")
     fbo = fe.fb
     for seite, name in ((0, "Hauptseite"), (1, "Spieleliste")):
         fe.page = seite
@@ -305,22 +388,22 @@ def _abschnitt_b(b, fe, S, spiele):
                     fe.ansicht_setzen(ansicht)
             except Exception:                            # noqa: BLE001
                 continue
-            # Voller Aufbau: jedes Mal erzwungen, damit nicht der
-            # schnelle Pfad gemessen wird und "voll" draufsteht.
+
             def _voll():
+                # Erzwungen, damit nicht der schnelle Pfad gemessen
+                # wird und trotzdem "voller Aufbau" darueber steht.
                 fe._force_full_redraw = True
                 fbo.mark_full_redraw()
                 fe.draw()
-            try:
-                ms, best = messen(_voll, WDH_TEUER)
-                b.posten("%s %-8s voller Aufbau" % (name, ansicht), ms, best)
-            except Exception as e:                       # noqa: BLE001
-                b("   %-38s FEHLER %s" % ("%s %s voll" % (name, ansicht), e))
-                continue
-            # Schritt: genau das, was beim Scrollen passiert. Ohne
-            # _force_full_redraw, damit die schnellen Pfade aus Build
-            # 76/122/125 auch wirklich greifen.
-            def _schritt():
+
+            def _durchlauf():
+                # Immer am selben Punkt anfangen - sonst laeuft der
+                # warme Durchgang ueber ANDERE Spiele als der kalte,
+                # und der Vergleich der beiden Zahlen waere wertlos.
+                if seite == 0:
+                    fe.cat_i = 0
+                else:
+                    fe.item_i = 0
                 for _ in range(SCHRITTE):
                     if seite == 0:
                         fe.cat_i = (fe.cat_i + 1) % max(1, len(fe.cats))
@@ -335,11 +418,36 @@ def _abschnitt_b(b, fe, S, spiele):
                             n = 0
                         fe.item_i = (fe.item_i + 1) % max(1, n)
                     fe.draw()
+
             try:
-                ms, best = messen(_schritt, 1)
-                b.posten("%s %-8s je Schritt" % (name, ansicht),
-                         ms / SCHRITTE, None,
-                         "(%d Schritte in %.0f ms)" % (SCHRITTE, ms))
+                ms, best = messen(_voll, WDH_TEUER)
+                b.posten("%s %-8s voller Aufbau" % (name, ansicht), ms, best)
+            except Exception as e:                       # noqa: BLE001
+                b("   %-38s FEHLER %s" % ("%s %s voll" % (name, ansicht), e))
+                continue
+
+            try:
+                kalt, _ = messen(_durchlauf, 1)
+                # Die Miniaturen werden im Hintergrund weggeschrieben
+                # (_thumb_cache_put_async). Ohne diese Pause waere der
+                # warme Durchgang teils noch ein kalter, und zwar je
+                # nach Geraet unterschiedlich weit - also nicht
+                # vergleichbar.
+                time.sleep(1.0)
+                warm, _ = messen(_durchlauf, 1)
+                b.posten("%s %-8s je Schritt kalt" % (name, ansicht),
+                         kalt / SCHRITTE)
+                # Den Faktor nur nennen, wenn es wirklich einen gibt.
+                # Sonst stuende bei jedem Eintrag "(1x billiger)" -
+                # eine Aussage, die keine ist, und bei Rauschen sogar
+                # eine falsche.
+                zusatz = ""
+                if warm > 0 and kalt / warm >= 1.2:
+                    zusatz = "(%.1fx billiger als kalt)" % (kalt / warm)
+                elif warm > 0 and kalt / warm <= 0.83:
+                    zusatz = "(warm LANGSAMER - im Rauschen)"
+                b.posten("%s %-8s je Schritt warm" % (name, ansicht),
+                         warm / SCHRITTE, None, zusatz)
             except Exception as e:                       # noqa: BLE001
                 b("   %-38s FEHLER %s"
                   % ("%s %s Schritt" % (name, ansicht), e))
@@ -395,13 +503,21 @@ def _abschnitt_c(b, A):
         datei = os.path.join(ordner, "probe.art")
         roh = bytes(klein)
 
+        stufe = getattr(A, "THUMB_PACKSTUFE", 1)
+
         def _schreiben():
             with open(datei, "wb") as f:
-                f.write(testbild_art1(roh, ZIEL_B, ZIEL_H))
+                f.write(testbild_art1(roh, ZIEL_B, ZIEL_H, stufe))
         ms, best = messen(_schreiben, WDH_TEUER)
         groesse = os.path.getsize(datei)
+        # Das Packverhaeltnis steht bewusst mit dabei: wie lange das
+        # Packen dauert, haengt am Bildinhalt, und so muss niemand
+        # glauben, dass das Testbild sich wie ein echtes Cover
+        # verhaelt - er sieht es.
         b.posten("Miniatur packen und schreiben", ms, best,
-                 "%d KB" % (groesse // 1024))
+                 "%d KB aus %d KB (%.0f %%), Packstufe %d"
+                 % (groesse // 1024, len(roh) // 1024,
+                    100.0 * groesse / max(1, len(roh)), stufe))
 
         def _lesen():
             with open(datei, "rb") as f:
@@ -448,21 +564,40 @@ def _abschnitt_d(b, fe, A):
     b.posten("lesen und dekodieren (volle Groesse)", ms, best)
 
 
+def _eintraege(node, tiefe=0):
+    """Alle Spiel-Eintraege eines Kategorieknotens, flach.
+
+    NEU (Build 178). Vorher stand hier die Annahme, ein Knoten sei
+    eine Liste. Er ist aber ein Dict aus "folders" und "items" (siehe
+    fe/scan.py, _node_to_json) - und die Suche ist deshalb bei JEDER
+    Kategorie sofort weitergesprungen. Auf einem Geraet mit 30064
+    Spielen meldete der Bench "kein Cover gefunden", und der ganze
+    Abschnitt D lief nie. Ein stiller Fehlschlag, der aussah wie ein
+    Befund ueber den Bestand des Nutzers."""
+    if tiefe > 6 or not isinstance(node, dict):
+        return
+    for e in node.get("items") or ():
+        if isinstance(e, (list, tuple)) and len(e) >= 2 and e[1] != "folder":
+            yield e
+    for unter in (node.get("folders") or {}).values():
+        for e in _eintraege(unter, tiefe + 1):
+            yield e
+
+
 def _irgendein_cover(fe, A):
     """Das erste Cover, das sich finden laesst - oder None.
 
     Absichtlich anspruchslos: der Bench soll auch auf einem Geraet
-    ohne Artwork durchlaufen, nur eben ohne diesen Abschnitt."""
+    ohne Artwork durchlaufen, nur eben ohne diesen Abschnitt. Die
+    Obergrenze verhindert, dass die Suche bei einem grossen Bestand
+    ohne jedes Artwork minutenlang ueber die Karte laeuft."""
+    versuche = 0
     try:
-        for name, node, syskey in fe.cats:
-            eintraege = node if isinstance(node, (list, tuple)) else None
-            if not eintraege:
-                continue
-            for eintrag in eintraege[:50]:
-                if not isinstance(eintrag, (list, tuple)) or len(eintrag) < 2:
-                    continue
-                if eintrag[1] == "folder":
-                    continue
+        for _name, node, syskey in fe.cats:
+            for eintrag in _eintraege(node):
+                versuche += 1
+                if versuche > 400:
+                    return None
                 p = A.art_path(syskey, eintrag[0])
                 if p and os.path.exists(p):
                     return p
@@ -472,6 +607,63 @@ def _irgendein_cover(fe, A):
 
 
 # ---------------------------------------------------------------------
+class _CacheUmleitung(object):
+    """Waehrend des Benchs zeigt der Miniaturen-Cache in einen
+    temporaeren Ordner.
+
+    NEU (Build 178), und das ist ein FEHLER, den der erste Lauf
+    aufgedeckt hat: Abschnitt B zeichnet, Zeichnen rechnet Cover, und
+    ein gerechnetes Cover wird weggeschrieben
+    (_thumb_cache_put_async). Der Bench hat also sehr wohl auf die
+    Karte geschrieben - waehrend im Bericht und in der README stand,
+    er tue das nicht. Eine Behauptung, die nicht stimmte.
+
+    Die Umleitung raeumt zwei Dinge auf einmal weg:
+
+      1. Auf der Karte des Nutzers entsteht nichts. Die Zusage gilt
+         wieder.
+      2. Jedes Geraet faengt bei kalt wirklich kalt an. Sonst haette
+         jemand mit vorbereiteten Miniaturen eine ganz andere
+         Kalt-Zahl als jemand ohne - und genau das soll dieser Bench
+         ja ausschliessen.
+
+    Die COVER selbst werden weiter von der Karte GELESEN. Nur
+    geschrieben wird woanders."""
+
+    def __init__(self, A, hd):
+        self.A, self.hd = A, hd
+        self.ordner = None
+        self.alt_base = self.alt_dir = None
+
+    def __enter__(self):
+        A = self.A
+        self.alt_base = A.THUMB_CACHE_BASE
+        self.alt_dir = A.THUMB_CACHE_DIR
+        try:
+            self.ordner = tempfile.mkdtemp(prefix="dragend_bench_cache_")
+            A.THUMB_CACHE_BASE = self.ordner
+            A.thumb_cache_modus_setzen(self.hd)
+        except Exception:                                # noqa: BLE001
+            # Klappt das nicht, lieber gar nicht umleiten als halb.
+            self.__exit__(None, None, None)
+        return self
+
+    def __exit__(self, *_a):
+        A = self.A
+        if self.alt_base is not None:
+            A.THUMB_CACHE_BASE = self.alt_base
+        if self.alt_dir is not None:
+            A.THUMB_CACHE_DIR = self.alt_dir
+        if self.ordner:
+            # Kurz warten: das Wegschreiben laeuft im Hintergrund, und
+            # ein Thread, der nach dem Aufraeumen noch schreibt, legt
+            # den Ordner wieder an.
+            time.sleep(0.5)
+            shutil.rmtree(self.ordner, ignore_errors=True)
+            self.ordner = None
+        return False
+
+
 def lauf(fe, fm, A, S, startdauer=None, log=None):
     """Den kompletten Bench fahren und den Bericht als Text
     zurueckgeben. Bekommt alles, was er braucht, uebergeben - dieses
@@ -481,7 +673,9 @@ def lauf(fe, fm, A, S, startdauer=None, log=None):
     spiele = _kopf(b, fe, A, fm)
     _abschnitt_a(b, fe, spiele, startdauer)
     try:
-        _abschnitt_b(b, fe, S, spiele)
+        hd = getattr(fe, "fb", None) is not None and fe.fb.height >= 720
+        with _CacheUmleitung(A, hd):
+            _abschnitt_b(b, fe, S, spiele)
     except Exception as e:                               # noqa: BLE001
         b("   ABSCHNITT B ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
     try:

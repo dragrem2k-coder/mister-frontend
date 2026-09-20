@@ -31,6 +31,25 @@ er zum Messen schreiben muss, landet in einem temporären Ordner, der
 danach verschwindet. Bericht auf der Konsole und in
 `/tmp/dragend_bench.txt`.
 
+**Der erste Bench-Lauf auf echter Hardware hat als Erstes den Bench
+selbst überführt.** Fünf Fehler, alle im Messgerät, keiner im
+Frontend — der schlimmste: der Lauf **schrieb doch auf die Karte**.
+Zeichnen rechnet Cover, und ein gerechnetes Cover wird als Miniatur
+weggeschrieben; die Zusage im Bericht stimmte also nicht. Der
+Miniaturen-Cache zeigt während des Laufs jetzt in einen temporären
+Ordner — damit gilt die Zusage wieder, und jedes Gerät fängt beim
+kalten Durchgang wirklich kalt an. Dazu: das Packen einer Miniatur
+war mit Stufe 6 gemessen, das Frontend packt seit Build 154 mit
+Stufe 1 (gemeldet wurden 1 176 ms für etwas, das halb so lange
+dauert); die Cover-Suche erwartete eine Liste, wo ein
+Ordnerbaum steht, und meldete deshalb bei 30 064 Spielen „kein Cover
+gefunden"; das Testbild brauchte 25,5 Sekunden, zwei Drittel der
+ganzen Laufzeit, für reine Vorbereitung — jetzt rund eine Sekunde;
+und der Schrittwert warf Zeichnen und Cover-Rechnen in eine Zahl.
+**Kalt und warm stehen jetzt getrennt**, mit der ehrlichen Anmerkung
+daneben, dass kalt die Obergrenze ist und nicht der Alltag: beim
+echten Scrollen lässt das Frontend die Boxart-Spalte aus.
+
 **Ordner mit nur einem Spiel werden aufgelöst.** Bei PSX, Mega CD und
 Saturn liegt meist jedes Spiel in einem eigenen Ordner, weil eine `.cue`
 mehrere `.bin` mitbringt. Die Liste bestand dort deshalb nur aus

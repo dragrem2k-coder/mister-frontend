@@ -443,6 +443,21 @@ BADGES = BadgeCache()
 THUMB_CACHE_BASE = "/media/fat/frontend/thumb_cache"
 THUMB_CACHE_DIR = os.path.join(THUMB_CACHE_BASE, "hd")
 
+# Mit welcher Stufe eine Miniatur gepackt wird. Die Begruendung fuer
+# die 1 steht unten bei _thumb_cache_put() - hier steht nur die ZAHL,
+# und zwar aus einem Grund, der Build 178 gekostet hat:
+#
+# Der Bench-Modus hat das Schreiben einer Miniatur nachgebaut und
+# dabei Stufe 6 genommen, weil das der Vorgabewert von zlib ist. Die
+# gemeldeten 1176 ms waren dadurch rund doppelt so hoch wie das, was
+# das Frontend wirklich zahlt - eine Zahl, die nach Produktionskosten
+# aussah und keine war. Genau die Sorte Fehler, die eine Optimierung
+# an der falschen Stelle ausloest.
+#
+# Deshalb steht die Stufe ab jetzt an EINER Stelle, und wer sie
+# nachmisst, nimmt dieselbe.
+THUMB_PACKSTUFE = 1
+
 
 def thumb_cache_modus_setzen(hd):
     """Legt fest, ob der HD- oder der SD-Zwischenspeicher benutzt wird.
@@ -1265,7 +1280,8 @@ def _thumb_cache_put(path, w, h, tw, th, pix):
             # Bestehende Dateien bleiben gueltig: zlib entpackt jede
             # Stufe. Und der Cache-Schluessel haengt am Bild, nicht an
             # den Dateibytes - die entpackten Bildpunkte sind identisch.
-            f.write(b"ART1" + struct.pack("<HH", tw, th) + zlib.compress(pix, 1))
+            f.write(b"ART1" + struct.pack("<HH", tw, th)
+                    + zlib.compress(pix, THUMB_PACKSTUFE))
         os.replace(tmp, cpath)
     except OSError as e:
         LOG("THUMB_CACHE Schreibfehler (%s): %s" % (os.path.basename(path), e))

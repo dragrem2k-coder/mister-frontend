@@ -31,6 +31,24 @@ nothing to the SD card**; what it has to write in order to measure
 goes to a temporary folder that is removed afterwards. Report on the
 console and in `/tmp/dragend_bench.txt`.
 
+**The first bench run on real hardware convicted the bench itself
+first.** Five faults, all in the measuring tool, none in the
+frontend — the worst: the run **did write to the card**. Drawing
+computes covers, and a computed cover gets written out as a
+thumbnail, so the promise in the report was untrue. During a run the
+thumbnail cache now points at a temporary folder — the promise holds
+again, and every device really does start cold on the cold pass.
+Also: writing a thumbnail was measured at compression level 6 while
+the frontend has used level 1 since build 154 (1,176 ms was reported
+for something that takes half as long); the cover search expected a
+list where a folder tree stands, and so reported "no cover found" on
+a card with 30,064 games; the test image took 25.5 seconds, two
+thirds of the whole run, purely as preparation — now about one
+second; and the per-step figure lumped drawing together with
+computing covers. **Cold and warm are now reported separately**,
+with the honest note that cold is the upper bound and not everyday
+use: while scrolling for real, the frontend skips the cover column.
+
 **Folders holding a single game are dissolved.** For PSX, Mega CD and
 Saturn, each game usually sits in its own folder because one `.cue`
 comes with several `.bin` files. That made the list nothing but folders
