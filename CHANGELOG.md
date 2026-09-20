@@ -56,6 +56,21 @@ seit Build 119 zweimal gemeldet und liess sich nie wiederholen;
 sichtbar wurde es erst, als das C-Modul die beiden Fäden schnell genug
 gemacht hat, dass sie sich zuverlässig überholen.
 
+**Beenden führte nicht mehr ins OSD.** Zwei Tage lang blieb nach
+*Frontend beenden* ein schwarzes Bild mit blinkendem Cursor stehen, kurz
+darauf der Login-Gruß. Selbst verursacht: beim Umbau des Beenden-Ablaufs
+wanderte das F12 nach vorn, das Leeren und Schließen des Bildspeichers
+blieb aber hinten stehen — wir haben MiSTers gerade aufgebautes OSD
+sofort wieder schwarz übermalt. Jetzt gehört der Bildschirm ab dem F12
+MiSTer; ein Test hält die Reihenfolge fest.
+
+**Der Start ist wieder schnell, auch mit gemerkten Filtern.** Ein
+einziger gemerkter Filter kostete gemessene 2,2 Sekunden — nicht durch
+das Filtern selbst (nachgemessen: 8 ms für 1800 Spiele), sondern durch
+die Tabellen, die dabei zum ersten Mal von der Karte gelesen werden.
+Das passiert jetzt im Hintergrund, während die Spieleliste eingelesen
+wird.
+
 **Und sonst:** Listenfilter nach Genre, Jahr, Spielerzahl und Entwickler
 (Tab oder Select+L2/R2); Spielbeschreibungen in der Galerie; elf deutsche
 Hinweiszeilen waren auf CRT unsichtbar; Miniaturen schreiben sich doppelt

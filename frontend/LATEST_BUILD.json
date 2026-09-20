@@ -1,4 +1,4 @@
 {
-  "build_id": "2026-09-20-164",
-  "summary": "Korrektur einer falschen Messung: die Marke hiess 'build_ra_hunter_category' und mass in Wahrheit auch die Schleife davor, die fuer jeden gemerkten Filter eine eigene Kategorie baut. Der Erfolgsjaeger selbst steigt beim Start fast immer sofort aus, weil der RA-Abruf im Hintergrund noch laeuft - seine inneren Messpunkte sind nie im Log aufgetaucht, und genau das war der Hinweis. Ausserdem protokolliert die Boot-Animation jetzt alle vier Auswege, statt bei dreien stumm zurueckzukehren."
+  "build_id": "2026-09-20-165",
+  "summary": "Beenden fuehrt wieder ins OSD - der Fehler war meiner: Build 163 hat das F12 nach vorne gezogen, aber das Leeren und Schliessen des Bildspeichers hinten stehen lassen, wodurch MiSTers gerade aufgebautes OSD sofort wieder schwarz uebermalt wurde. Ausserdem gehen die 2,2 Sekunden, die ein einziger gemerkter Filter beim Start kostete, jetzt in einen Hintergrund-Thread: nicht das Filtern war teuer (8 ms fuer 1800 Spiele, nachgemessen), sondern die Tabellen, die dabei zum ersten Mal von der Karte gelesen werden. Und das Boot-Logo verraet endlich, wenn es uebersprungen wird, und wovon."
 }

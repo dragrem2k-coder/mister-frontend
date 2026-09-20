@@ -839,7 +839,7 @@ from fe.input import (
 
 from fe.art import (
     decode_png, BadgeCache, ArtCache, _art_path_in, _art_index,
-    art_path, mra_meta, get_meta, ART, ART_BASE,
+    art_path, mra_meta, get_meta, metadaten_vorwaermen, ART, ART_BASE,
     docs_caches_leeren, docs_cover, docs_meta, docs_synopsis,
     ART_HD, SYSART_BASE, META_BASE, BADGE_DIR,
     RA_BADGE_URL, BADGES, _category_art_key,
@@ -1126,6 +1126,7 @@ class Frontend:
                         self._ra_retry_next = time.monotonic() + 30.0
             threading.Thread(target=_initial_ra_fetch, daemon=True).start()
 
+        self._metadaten_vorwaermen_starten()
         self._startmarke("Musik, RA-Abruf angestossen")
         self.build_categories()
         self._startmarke("Spieleliste eingelesen")
@@ -1929,6 +1930,10 @@ class Frontend:
         # Steht bewusst HIER, nach den Systemen: die Quellkategorie
         # muss schon gebaut sein, aus ihr wird gefiltert.
         _gemerkte = FILTER.gemerkte_laden()
+        if _gemerkte:
+            self._auf_vorwaermen_warten()
+            if hasattr(self, "_t_letzte_marke"):
+                self._startmarke("davon Warten auf Vorwaermen")
         for _eintrag in _gemerkte:
             _knoten = self._gemerkte_kategorie(_eintrag)
             if _knoten is None:
@@ -2383,6 +2388,100 @@ class Frontend:
                 return syskey
         return None
 
+    def _metadaten_vorwaermen_starten(self):
+        """Die einmaligen Ladekosten der gemerkten Filter aus dem
+        Startweg nehmen (Build 165).
+
+        DER BEFUND. Ein gemerkter Filter kostete beim Start 2218 ms -
+        knapp die Haelfte der ganzen Startzeit. Gemessen, nicht
+        geschaetzt, und zwar erst nachdem eine falsch benannte Marke
+        (Build 164) drei Runden gekostet hatte.
+
+        Die Filterarbeit selbst ist es nachweislich nicht: in einem
+        Nachbau mit 1800 Spielen kosten get_meta()+passt() zusammen
+        8 ms. Uebrig bleiben die drei einmaligen Ladevorgaenge, die
+        der ERSTE get_meta()-Aufruf fuer ein System ausloest - siehe
+        metadaten_vorwaermen() in fe/art.py.
+
+        DIE IDEE. Diese Arbeit faellt sowieso an, sobald jemand das
+        System oeffnet. Sie muss nur nicht in den Sekunden passieren,
+        in denen der Nutzer auf ein leeres Bild sieht. Der Thread
+        startet VOR dem Einlesen der Spieleliste und hat damit die
+        ganze Scan-Zeit fuer sich; die Schleife in build_categories()
+        wartet danach nur noch auf den Rest.
+
+        WARUM ES SICHER IST. Der Thread liest ausschliesslich - und
+        das Einlesen der Spieleliste, das parallel laeuft, fasst
+        Metadaten nachweislich nirgends an (nachgesehen: in fe/scan.py
+        kommt weder get_meta noch docs_meta vor). Die Ergebnisse
+        landen mit je einer Zuweisung in den bestehenden Caches,
+        dasselbe Muster wie beim Synopsis-Thread aus Build 141.
+
+        WENN ES NICHT GREIFT, sieht man es: der Thread schreibt seine
+        drei Zeiten einzeln ins Log, und die Marke in
+        build_categories() zeigt, was danach noch uebrig war."""
+        self._meta_warm_thread = None
+        try:
+            gemerkte = FILTER.gemerkte_laden()
+        except Exception:                                # noqa: BLE001
+            return
+        if not gemerkte:
+            return
+        # Kategoriename -> Systemschluessel. self.cats gibt es hier
+        # noch nicht (die Spieleliste ist ja gerade der Punkt), also
+        # ueber die Systemtabelle - dieselben Anzeigenamen, aus denen
+        # build_categories() die Kategorien baut. Wer keinen Treffer
+        # hat (Arcade, Favoriten, ein abgestecktes System), faellt
+        # einfach raus: dann gibt es dort auch nichts vorzuwaermen.
+        namen = {}
+        for eintrag in list(GAME_SYSTEMS) + list(OPTIONAL_GAME_SYSTEMS):
+            namen.setdefault(eintrag[0], eintrag[1])
+            namen.setdefault(eintrag[1], eintrag[1])
+        keys = []
+        for e in gemerkte:
+            sk = namen.get(e.get("kat"))
+            if sk and sk not in keys:
+                keys.append(sk)
+        if not keys:
+            return
+
+        def _waermen():
+            for sk in keys:
+                try:
+                    eigen, fremd, index = metadaten_vorwaermen(sk)
+                except Exception:                        # noqa: BLE001
+                    LOG("Vorwaermen %s: fehlgeschlagen:\n"
+                        % sk + traceback.format_exc())
+                    continue
+                LOG("Vorwaermen %-10s eigene Tabelle %5.0f ms | fremde "
+                    "Tabelle %5.0f ms | Ausweich-Index %5.0f ms"
+                    % (sk, eigen, fremd, index))
+
+        self._meta_warm_thread = threading.Thread(target=_waermen,
+                                                  daemon=True)
+        self._meta_warm_thread.start()
+
+    def _auf_vorwaermen_warten(self):
+        """Vor der Filterschleife: den Vorwaerm-Thread einholen.
+
+        Ohne dies wuerden beide dieselbe Datei gleichzeitig lesen -
+        nicht gefaehrlich (die Caches vertragen es, der zweite
+        ueberschreibt den ersten mit demselben Inhalt), aber doppelte
+        Arbeit auf einer SD-Karte, und damit genau das Gegenteil von
+        dem, was hier erreicht werden soll.
+
+        Die Obergrenze ist ein Sicherheitsnetz, kein Zeitplan: haengt
+        das Lesen, startet das Frontend lieber ohne die gemerkten
+        Kategorien weiter, statt gar nicht."""
+        th = getattr(self, "_meta_warm_thread", None)
+        if th is None:
+            return
+        th.join(timeout=20.0)
+        if th.is_alive():
+            LOG("Vorwaermen: laeuft nach 20s immer noch - mache ohne "
+                "weiter, die gemerkten Kategorien koennen fehlen")
+        self._meta_warm_thread = None
+
     def _gemerkte_kategorie(self, eintrag):
         """Aus einem gemerkten Filter einen Kategorieknoten bauen.
 
@@ -2410,12 +2509,31 @@ class Frontend:
             for unter in knoten.get("folders", {}).values():
                 _sammeln(unter)
 
+        # MESSPUNKTE (Build 165). Bewusst DREI statt einer Gesamtzeit:
+        # beim letzten Mal stand eine Zahl unter einem Namen, der etwas
+        # anderes meinte, und das hat drei Runden gekostet. Hier ist
+        # jetzt einzeln nachlesbar, ob es der Baumdurchlauf, der erste
+        # (kalte) Metadaten-Zugriff oder das Filtern selbst war.
+        _t0 = time.monotonic()
         _sammeln(quelle)
+        _t1 = time.monotonic()
         filt = eintrag["filter"]
+        # Der erste Zugriff getrennt: er allein loest das Einlesen von
+        # meta/<system>.json und der fremden Tabelle aus - sofern der
+        # Vorwaerm-Thread nicht schon fertig war, dann kostet er nichts.
+        if syskey and alle:
+            get_meta(syskey, alle[0][0])
+        _t2 = time.monotonic()
         treffer = [e for e in alle
                    if len(e) > 1 and e[1] == "game"
                    and FILTER.passt(get_meta(syskey, e[0]) if syskey else {},
                                     filt)]
+        _t3 = time.monotonic()
+        LOG("Gemerkter Filter '%s': %d Eintraege | einsammeln %.0f ms | "
+            "erster Metadaten-Zugriff %.0f ms | filtern %.0f ms | "
+            "%d Treffer"
+            % (eintrag.get("name", "?"), len(alle), (_t1 - _t0) * 1000.0,
+               (_t2 - _t1) * 1000.0, (_t3 - _t2) * 1000.0, len(treffer)))
         if not treffer:
             return None
         return {"folders": {}, "items": sorted(treffer,
@@ -13971,6 +14089,8 @@ class Frontend:
         W, H = fb.width, fb.height
         art = ART.get(DRAGEND_LOGO_FILE)
         if not art:
+            LOG("Dragend-Logo: %s liegt da, laesst sich aber nicht "
+                "laden - zeige das D-Pad-Symbol" % DRAGEND_LOGO_FILE)
             self._draw_default_boot_icon()
             return
         lw, lh, pix = art
@@ -14014,8 +14134,16 @@ class Frontend:
             # vorgang statt flip(), da dieser fruehe Boot-Zeitpunkt
             # einen haengenden ioctl-Aufruf ausloesen kann.
             fb.mm[:] = fb.buf
-            if self.inp.read_action(timeout=hold) is not None:
+            # Build 165: der Abbruch war bisher STUMM. Man sah kein
+            # Logo und erfuhr nicht, ob es gar nicht erst gezeichnet
+            # wurde oder ob es jemand (oder etwas) uebersprungen hat -
+            # und in welcher Stufe. Beides steht jetzt im Log.
+            _akt = self.inp.read_action(timeout=hold)
+            if _akt is not None:
+                LOG("Dragend-Logo: uebersprungen bei Stufe %.2f durch '%s'"
+                    % (factor, _akt))
                 return
+        LOG("Dragend-Logo: vollstaendig gezeigt")
 
     def _draw_default_boot_icon(self):
         """Zeigt eine kurze, selbst gezeichnete Standard-Boot-Animation
@@ -14091,8 +14219,14 @@ class Frontend:
             # deutlich kleineres Uebel als ein moeglicher kompletter
             # Stillstand des gesamten Frontends.
             fb.mm[:] = fb.buf
-            if self.inp.read_action(timeout=hold) is not None:
-                return   # ESC/beliebige Taste ueberspringt den Rest
+            # Build 165: derselbe stumme Abbruch wie beim Logo - siehe
+            # dort. ESC/beliebige Taste ueberspringt den Rest, aber
+            # jetzt steht im Log, WAS uebersprungen hat.
+            _akt = self.inp.read_action(timeout=hold)
+            if _akt is not None:
+                LOG("D-Pad-Symbol: uebersprungen durch '%s'" % _akt)
+                return
+        LOG("D-Pad-Symbol: vollstaendig gezeigt")
 
     def play_boot_animation(self):
         """Spielt eine Bildsequenz ab (frame_0001.art, frame_0002.art,
@@ -14120,6 +14254,28 @@ class Frontend:
                 "(wird nur einmal je MiSTer-Start gezeigt)"
                 % BOOTANIM_PLAYED_MARKER)
             return
+        # NEU (Build 165, Nutzer-Rueckmeldung: "das boot logo wird nicht
+        # mehr angezeigt beim starten").
+        #
+        # Beide Animationen brechen bei der ERSTEN Eingabe ab - so soll
+        # es sein, man will sich das nicht jedes Mal ansehen muessen.
+        # Nur: was in der Warteschlange liegt, wenn die Animation
+        # beginnt, hat mit "der Nutzer drueckt etwas" nichts zu tun.
+        # Beim Start liegt dort einiges: enter_console_mode() hat
+        # gerade F9 eingespeist, die Geraete wurden frisch geoeffnet,
+        # und ein Gamepad mit leicht danebenstehendem Analogstick
+        # meldet beim ersten Blick sofort eine Richtung. Genau diese
+        # Ueberempfindlichkeit hat schon Build 147 und Build 149
+        # zerlegt (siehe _konsolenmodus_absichern(): "seine Funkmaus
+        # meldet Achsen, ein Zucken auf dem Tisch reicht").
+        #
+        # Die Warteschlange wird deshalb hier einmal geleert. Das
+        # kostet nichts und verwirft nur Ereignisse von VOR dem
+        # Moment, in dem es ueberhaupt etwas zu ueberspringen gab.
+        try:
+            self.inp.flush()
+        except Exception:                                # noqa: BLE001
+            pass
         mode = "crt" if crt_menu_active() else "hdmi"
         bootanim_dir = BOOTANIM_DIR + "_" + mode
         if not os.path.isdir(bootanim_dir):
@@ -15781,10 +15937,49 @@ class Frontend:
             # Lieber ein nicht ganz sauber beendeter Hintergrundprozess
             # als ein Geraet, das der Nutzer nur noch per Stecker
             # zuruecksetzen kann.
+            #
+            # ---------------------------------------------------------
+            # KORREKTUR IN BUILD 165 - UND DAS WAR MEIN FEHLER
+            # ---------------------------------------------------------
+            # Nach Build 163 kam der Nutzer aus KEINEM der beiden Wege
+            # mehr ins OSD: "erst der blinkende _, dann Welcome to
+            # MiSTer ... login:, dann passiert nichts mehr".
+            #
+            # Die Reihenfolge davor - jahrelang unauffaellig - war:
+            #
+            #     Bildschirm schwarz -> fb.close() -> DANN F12
+            #
+            # Build 163 hat das F12 nach vorne gezogen (richtig: der
+            # Griff auf die Eingaben muss frueh weg), aber das Leeren
+            # und Schliessen des Framebuffers hinten stehen lassen:
+            #
+            #     F12 -> 0,4 s -> Bildschirm schwarz -> fb.close()
+            #
+            # Damit malen wir den Bildschirm schwarz, NACHDEM MiSTer
+            # auf unser F12 hin sein OSD aufbaut. Wir uebermalen es.
+            # Uebrig bleibt genau das gemeldete Bild: schwarz,
+            # blinkender Cursor, kurz darauf der Login-Gruss der
+            # Textkonsole. Das F12 kam die ganze Zeit an - wir haben
+            # sein Ergebnis sofort wieder weggewischt.
+            #
+            # Jetzt: Griff loesen und Framebuffer freigeben ZUERST,
+            # dann F12, dann der Rest. Beides zusammen, nicht das eine
+            # gegen das andere.
+            # ---------------------------------------------------------
             self._notausgang_stellen()
-            LOG("Exit: gebe Eingaben frei, injiziere F12")
+            LOG("Exit: gebe Eingaben und Bildschirm frei")
             self.inp.grab(False)
+            # Der Bildschirm gehoert ab hier MiSTer. Muss VOR dem F12
+            # passieren - siehe oben.
+            try:
+                self.fb.clear((0, 0, 0))
+                self.fb.flip()
+                self.fb.close()
+            except Exception:                            # noqa: BLE001
+                LOG("Exit: Framebuffer freigeben fehlgeschlagen:\n"
+                    + traceback.format_exc())
             time.sleep(0.2)
+            LOG("Exit: injiziere F12")
             try:
                 self.inp.inject(KEY_F12)
             except OSError as e:
@@ -15794,11 +15989,12 @@ class Frontend:
             # (Build 162).
             time.sleep(self.EXIT_NACH_F12_SEK)
             self.inp.close()
-            # Die Konsole sofort wiederherstellen, nicht erst am Ende:
-            # das sind drei Schreibvorgaenge, die nicht haengen koennen,
-            # und wenn die Reissleine zieht, sollen sie trotzdem
-            # passiert sein. Sonst bliebe der Cursor unsichtbar und die
-            # Bildschirmschonung abgeschaltet.
+            # Die Konsole wiederherstellen, bevor das langsame
+            # Aufraeumen beginnt: das sind drei Schreibvorgaenge, die
+            # nicht haengen koennen, und wenn die Reissleine zieht,
+            # sollen sie trotzdem passiert sein. Sonst bliebe der
+            # Cursor unsichtbar und die Bildschirmschonung
+            # abgeschaltet.
             self.set_cursor_blink(True)
             self.konsole_cursor_an()          # Build 158
             self.konsole_schonung_zurueck()   # Build 162
@@ -15814,10 +16010,6 @@ class Frontend:
             if self.stream:
                 self.stream.stop()
             self.music.shutdown()
-            LOG("Exit: Hintergrundarbeit beendet")
-            self.fb.clear((0, 0, 0))
-            self.fb.flip()
-            self.fb.close()
             LOG("Exit: fertig")
 
     # Pause zwischen dem F12 und dem Schliessen der Eingaben - dieselbe

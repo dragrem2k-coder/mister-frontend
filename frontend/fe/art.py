@@ -3458,3 +3458,64 @@ def get_meta(syskey, rom_basename):
     zusammen.update(eigene)
     return zusammen
 
+
+def metadaten_vorwaermen(syskey):
+    """Alles laden, was get_meta() beim ALLERERSTEN Aufruf fuer ein
+    System einmalig laedt - damit es woanders passieren kann als im
+    Startweg.
+
+    WOZU (Build 165). Ein einziger gemerkter Filter kostete beim Start
+    des Nutzers gemessene 2218 ms. Die Filterarbeit selbst ist es
+    nicht: in einem Nachbau mit 1800 Spielen brauchen
+    get_meta()+passt() zusammen 8 ms, selbst im schlechtesten Fall
+    (kein Name trifft exakt, der Ausweich-Index muss gebaut werden).
+    Auch bei zehnfach langsamerer Hardware bleiben davon keine zwei
+    Sekunden uebrig.
+
+    Was 2218 ms kosten KANN, sind die drei einmaligen Ladevorgaenge,
+    die der erste get_meta()-Aufruf ausloest:
+
+        1. meta/<system>.json einlesen (unsere eigene Tabelle)
+        2. gameinfo.tsv der fremden Datenbank suchen und einlesen
+        3. deren Ausweich-Index bauen (Build 141)
+
+    Alle drei sind Platten- und Parsearbeit auf einer SD-Karte, alle
+    drei fallen sowieso an, sobald jemand das System oeffnet - sie
+    gehoeren nur nicht in die Sekunden, in denen der Nutzer auf ein
+    leeres Bild sieht.
+
+    Diese Funktion macht genau diese drei Schritte, misst sie einzeln
+    und liefert die Zeiten in Millisekunden zurueck. Der Aufrufer
+    startet sie in einem Hintergrund-Thread und schreibt die Zeiten
+    ins Log - damit ist zugleich beantwortet, welcher der drei
+    Schritte es war. Raten war in dieser Sache schon zweimal falsch.
+
+    Nur Lesen, und das Ergebnis wird mit je einer Zuweisung in die
+    bestehenden Caches gelegt - dasselbe Muster wie beim Synopsis-
+    Thread aus Build 141."""
+    if not syskey:
+        return (0.0, 0.0, 0.0)
+    t0 = time.perf_counter()
+    # Leerer ROM-Name: laedt meta/<system>.json und kehrt danach sofort
+    # zurueck (docs_meta() steigt bei leerem Namen in der ersten Zeile
+    # aus) - misst also sauber nur Schritt 1.
+    try:
+        get_meta(syskey, "")
+    except Exception:                                    # noqa: BLE001
+        pass
+    t1 = time.perf_counter()
+    daten = {}
+    try:
+        if fremdquellen_enabled():
+            daten = _docs_infos(syskey)
+    except Exception:                                    # noqa: BLE001
+        pass
+    t2 = time.perf_counter()
+    try:
+        if daten:
+            _knapp_index(daten, _docs_info_knapp, syskey)
+    except Exception:                                    # noqa: BLE001
+        pass
+    t3 = time.perf_counter()
+    return ((t1 - t0) * 1000.0, (t2 - t1) * 1000.0, (t3 - t2) * 1000.0)
+

@@ -328,7 +328,19 @@ print("Test 12: der Ausstieg laesst MiSTer Zeit fuer das F12 (Build 162)")
 # schloss das Eingabegeraet DIREKT danach. Kommt das F12 nicht an,
 # bleibt der gerade geschwaerzte Bildspeicher stehen, und darauf
 # blinkt der Konsolen-Cursor. Genau das gemeldete Bild.
-ausstieg = quelle.split('LOG("Exit: gebe Eingaben frei')[1][:2600]
+# ANKER GEAENDERT (Build 165): hier stand der Wortlaut einer
+# LOG-Zeile ('Exit: gebe Eingaben frei'). Build 165 hat genau diese
+# Zeile umformuliert, weil dort jetzt auch der Bildschirm freigegeben
+# wird - und der Test ging rot, obwohl das gepruefte Verhalten
+# unveraendert richtig war. Ein Test darf nicht an einer Formulierung
+# haengen. Jetzt derselbe Anker wie in Test 13: der Kommentarkopf des
+# Blocks.
+_h = quelle.split("HERUNTERFAHREN (umgestellt in Build 163)")[1]
+# Bis zum Ende des finally-Blocks, nicht "die naechsten N Zeichen":
+# der Kommentarkopf ist in Build 165 laenger geworden, und ein
+# festes Fenster haette dann nur noch Kommentar enthalten.
+_h = _h[:_h.index("\n    # Pause zwischen dem F12")]
+ausstieg = _h
 check("nach dem F12 wird gewartet, bevor geschlossen wird",
       "EXIT_NACH_F12_SEK" in ausstieg
       and ausstieg.index("EXIT_NACH_F12_SEK") < ausstieg.index("inp.close()"),
@@ -351,7 +363,7 @@ print("Test 13: die Eingaben werden VOR dem Aufraeumen freigegeben (Build 163)")
 # Eingabegeraete - und nichts reagiert mehr.
 # Anker ist der Kommentarkopf des Blocks - "finally:" kommt in der
 # Datei mehrfach vor, und der letzte Treffer war der falsche.
-block = quelle.split("HERUNTERFAHREN (umgestellt in Build 163)")[1][:4000]
+block = _h
 pos_frei = block.index("self.inp.close()")
 for langsam in ("PREWARMER.beenden()", "self.lader.beenden()",
                 "self.music.shutdown()"):

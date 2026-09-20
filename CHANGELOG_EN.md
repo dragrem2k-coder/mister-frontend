@@ -55,6 +55,20 @@ scrolling. A test had flagged this twice since build 119 and it could
 never be reproduced; it only became visible once the C module made both
 threads fast enough to reliably overtake each other.
 
+**Quitting no longer returned to the OSD.** For two days, *Quit
+frontend* left a black screen with a blinking cursor, followed by the
+login greeting. Self-inflicted: while reworking the shutdown sequence
+the F12 moved to the front, but clearing and releasing the framebuffer
+stayed at the end — so we painted over MiSTer's freshly drawn OSD. The
+screen now belongs to MiSTer from the F12 onwards, and a test pins the
+order down.
+
+**Startup is fast again, saved filters included.** A single saved
+filter cost a measured 2.2 seconds — not the filtering itself (measured:
+8 ms for 1800 games) but the tables read from the card for the first
+time while doing it. That now happens in the background, while the game
+list is being scanned.
+
 **Also:** filter the list by genre, year, player count and developer
 (Tab, or Select+L2/R2); game descriptions in the gallery view; eleven
 German hint lines were invisible on CRT; thumbnails are written twice as
