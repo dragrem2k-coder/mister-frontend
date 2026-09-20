@@ -63,6 +63,15 @@ stayed at the end — so we painted over MiSTer's freshly drawn OSD. The
 screen now belongs to MiSTer from the F12 onwards, and a test pins the
 order down.
 
+**On kernel 6.18 the first F12 on quit does not land.** That is the
+heart of the matter, and it is measured rather than guessed — on a
+second device running 6.18.38 the log reads *"MiSTer bei 1% - das OSD
+ist NICHT gekommen, fasse nach"*, and one second later *"MiSTer bei
+100% - das OSD ist da"*. The frontend therefore checks MiSTer's CPU
+load after the F12 to see whether the OSD really appeared, and retries
+up to three times. On the old kernel this costs nothing: there the
+first measurement reports 100 % straight away.
+
 **The MiSTer Linux update of 2026-09-07 (kernel 6.18) breaks
 frontends — this one included.** Rolling back to kernel 5.15.1 fixed
 every reported symptom without changing a single line of the frontend.
@@ -70,19 +79,16 @@ You can spot it by `fb0: sys_fillrect: framebuffer is not in virtual
 address space` in `dmesg`. Degauss, the Zaparoo Frontend and Console
 Mode all had to be patched for it too. Dragend now falls back to
 mapping the framebuffer through `/dev/mem` when `/dev/fb0` no longer
-allows it. Returning to the OSD on quit is **still open** on that
-kernel — `frontend/kernel_probe.py` now measures, on an affected device
-and in two minutes, where the problem actually is. See the section at
-the top of the README.
+allows it. And `frontend/kernel_probe.py` measures, on an affected
+device and in two minutes, where the problem actually is — that is how
+the item above was settled. See the section in the README.
 
-**Startup and shutdown behave like build 145 again.** After four
-builds of hunting the shutdown problem, that was the request — and the
-right call. Eleven builds' worth of machinery had accumulated in those
-two paths; every change had a reason, but together they broke something
-that used to work. The default is now back to: **one** F9 at startup,
-no watchdog, no touching the cursor or screen blanking, and on the way
-out clean up first, then close the screen, then release input and send
-**one** F12. The boot logo plays immediately again.
+**At startup the machinery from builds 146–166 is switched off again.**
+Eleven builds had piled up there; every change had a reason, but
+together they got in the way more than they helped. The default is back
+to: **one** F9 at startup, no watchdog, no touching the cursor or
+screen blanking, boot logo straight away. Only the exit measures —
+because there it is proven that one F12 is not enough.
 
 **Nothing was deleted.** The machinery from builds 146–166 comes back
 with one file: `touch /media/fat/frontend/konsole_mechanik_an`. Its
@@ -94,12 +100,6 @@ rather than a build.
 place** (cursor, screen blanking, the watchdog against the login
 prompt). It used to be six scattered ones, which made it impossible to
 either inspect or switch off.
-
-**Quitting now checks whether the OSD actually appeared.** Since build
-152 the frontend knows that a single injected display-switch key does
-not always land on some devices — on the way out that was merely hoped
-for. Now MiSTer's load is measured and the key is retried up to three
-times.
 
 **The boot logo waits until someone can see it.** It was being drawn in
 full — our framebuffer just wasn't on screen yet. It now starts once

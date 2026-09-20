@@ -58,18 +58,43 @@ def check(label, cond, extra=""):
 quelle = io.open(os.path.join(_REPO, "frontend", "frontend.py"),
                  encoding="utf-8").read()
 
-# Den finally-Block von run() herausschneiden: ab dem Marker bis zum
-# Ende der Methode.
-start = quelle.index("# HERUNTERFAHREN (umgestellt in Build 163)")
-rest = quelle[start:]
-ende = rest.index("\n    # Pause zwischen dem F12")
-block = rest[:ende]
+# GEAENDERT (Build 169): es gibt wieder nur EINEN Ausstieg.
+#
+# Build 167 hatte auf Wunsch den Ablauf von Build 145 als Standard
+# zurueckgeholt (ein F12, kein Nachsehen). Eine Messung auf einem
+# Geraet mit Kernel 6.18.38 hat danach gezeigt, dass genau das zu
+# wenig ist:
+#
+#   11:28:38  Exit: injiziere F12 (1/3)
+#   11:28:39  Exit: MiSTer bei   1% - das OSD ist NICHT gekommen
+#   11:28:39  Exit: injiziere F12 (2/3)
+#   11:28:40  Exit: MiSTer bei 100% - das OSD ist da
+#
+# Das erste eingespeiste F12 kommt auf dem neuen Kernel nicht an.
+# Der 145er-Weg ist deshalb entfernt - Code, von dem wir WISSEN,
+# dass er den gemeldeten Fehler erzeugt, gehoert nicht aufgehoben.
+# Die REIHENFOLGE von Build 145 gilt unveraendert weiter und wird
+# hier weiter geprueft; dazu kommen die Zusaetze aus 162-166.
 
-# Kommentare raus - sonst trifft die Suche die Erklaerung statt des
-# Codes. (Genau der Fehler, der test_filter.py rot gemacht hat: nach
-# Quelltext suchen, ohne zu pruefen, ob es der ausgefuehrte ist.)
-code = "\n".join(z for z in block.splitlines()
-                 if not z.strip().startswith("#"))
+
+def methode(name):
+    """Den Rumpf EINER Methode herausschneiden."""
+    anfang = quelle.index("    def %s(self" % name)
+    rest = quelle[anfang + 10:]
+    return rest[:rest.index("\n    def ")]
+
+
+def ohne_kommentare(text):
+    """Kommentare raus - sonst trifft die Suche die Erklaerung statt
+    des Codes. (Genau der Fehler, der test_filter.py rot gemacht
+    hat: nach Quelltext suchen, ohne zu pruefen, ob es der
+    ausgefuehrte ist.)"""
+    return "\n".join(z for z in text.splitlines()
+                     if not z.strip().startswith("#"))
+
+
+block = methode("_beenden")
+code = ohne_kommentare(block)
 
 
 def pos(muster, was):
@@ -80,12 +105,34 @@ def pos(muster, was):
     return m.start()
 
 
+print("Test 0: es gibt genau EINEN Ausstieg")
+check("der 145er-Weg ist entfernt", "_beenden_wie_145" not in quelle)
+check("und es gibt keine zweite Variante daneben",
+      "_beenden_mit_mechanik" not in quelle)
+lauf = methode("run")
+check("das finally ruft ihn ohne Fallunterscheidung",
+      "self._beenden()" in lauf
+      and "konsole_mechanik()" not in lauf.split("self._beenden()")[0]
+          .rsplit("finally:", 1)[-1])
+
+print()
+print("Test 0b: die REIHENFOLGE von Build 145 gilt unveraendert")
+# Was Build 145 machte, passiert weiterhin genau so und in dieser
+# Richtung - nur mit Messung und Nachfassen ergaenzt.
+for frueher, spaeter in (("self.fb.clear(", "self.fb.close()"),
+                         ("self.fb.close()", "_f12_bis_das_osd_kommt"),
+                         ("self.inp.grab(False)", "_f12_bis_das_osd_kommt"),
+                         ("_f12_bis_das_osd_kommt", "self.inp.close()"),
+                         ("_f12_bis_das_osd_kommt", "PREWARMER.beenden()"),
+                         ("_f12_bis_das_osd_kommt", "self.music.shutdown()")):
+    check("%-28s vor %s" % (frueher, spaeter),
+          code.index(frueher) < code.index(spaeter))
+
+print()
 p_reissleine = pos(r"self\._notausgang_stellen\(\)", "Reissleine")
 p_grab = pos(r"self\.inp\.grab\(False\)", "Griff loesen")
 p_clear = pos(r"self\.fb\.clear\(", "Bildschirm leeren")
 p_fbclose = pos(r"self\.fb\.close\(\)", "Framebuffer schliessen")
-# Das F12 steckt seit Build 166 in einer eigenen Methode (dort wird
-# gemessen und notfalls nachgefasst) - im finally steht ihr Aufruf.
 p_f12 = pos(r"self\._f12_bis_das_osd_kommt\(\)", "F12-Abschnitt")
 p_inpclose = pos(r"self\.inp\.close\(\)", "Eingaben schliessen")
 p_konsole = pos(r"self\.konsole_cursor_an\(\)", "Konsole zurueck")
@@ -124,10 +171,6 @@ if None not in alle:
           p_reissleine < min(p_grab, p_clear, p_f12))
     check("der Griff auf die Eingaben wird frueh geloest",
           p_grab < p_f12)
-    check("die Eingaben werden erst NACH dem F12 geschlossen",
-          p_inpclose > p_f12)
-    check("das langsame Aufraeumen kommt zuletzt",
-          p_prewarm > p_f12 and p_musik > p_f12)
 
 print()
 print("Test 3: nichts davon darf den Ausstieg blockieren")
@@ -203,17 +246,22 @@ offen = [z for z in quelle.splitlines()
 check("hoechstens zwei Stellen oeffnen tty1 noch selbst",
       len(offen) <= 2, "%d Stellen" % len(offen))
 check("es gibt einen gemeinsamen Weg", "def tty1_schreiben(" in quelle)
-check("und einen Schalter, der ihn stilllegt",
-      "KONSOLE_UNBERUEHRT_FLAG" in quelle
-      and "def konsole_unberuehrt(" in quelle)
+check("und einen Schalter, der ihn steuert",
+      "KONSOLE_MECHANIK_FLAG" in quelle
+      and "def konsole_mechanik(" in quelle)
 i = quelle.index("    def tty1_schreiben(")
 tw = quelle[i:i + 1200]
 check("der Schalter hat Vorrang vor jedem Schreibvorgang",
-      tw.index("konsole_unberuehrt()") < tw.index('open("/dev/tty1"'))
-check("die Wache wird vom Schalter ebenfalls stillgelegt",
-      "konsole_unberuehrt()" in quelle[quelle.index("def _konsole_wache"):
-                                       quelle.index("def _konsole_wache")
-                                       + 1200])
+      tw.index("konsole_mechanik()") < tw.index('open("/dev/tty1"'))
+check("ohne Schalter wird NICHT geschrieben",
+      "if not cls.konsole_mechanik():" in tw)
+check("die Wache haengt am selben Schalter",
+      "konsole_mechanik()" in quelle[quelle.index("def _konsole_wache"):
+                                     quelle.index("def _konsole_wache")
+                                     + 1400])
+check("und die drei Aufrufe in der Hauptschleife ebenfalls",
+      "if self.konsole_mechanik():\n                    "
+      "self._konsole_sichern()" in quelle)
 
 print()
 print("Test 7: das Boot-Logo wartet, bis es jemand sehen kann")
@@ -239,6 +287,9 @@ pa = quelle.index("    def play_boot_animation(self")
 pb = quelle[pa:pa + 6000]
 check("gewartet wird, bevor gezeichnet wird",
       pb.index("_auf_eigenes_bild_warten()") < pb.index("_logo_an"))
+check("aber nur mit eingeschalteter Mechanik - Build 145 wartete nicht",
+      pb.index("self.konsole_mechanik()")
+      < pb.index("_auf_eigenes_bild_warten()"))
 
 print()
 if fails:

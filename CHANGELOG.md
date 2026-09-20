@@ -64,6 +64,15 @@ blieb aber hinten stehen — wir haben MiSTers gerade aufgebautes OSD
 sofort wieder schwarz übermalt. Jetzt gehört der Bildschirm ab dem F12
 MiSTer; ein Test hält die Reihenfolge fest.
 
+**Auf Kernel 6.18 kommt das erste F12 beim Beenden nicht an.** Das ist
+der Kern der ganzen Sache, und er ist gemessen, nicht vermutet — auf
+einem zweiten Gerät mit 6.18.38 steht im Log: *„MiSTer bei 1 % — das OSD
+ist NICHT gekommen, fasse nach"*, und eine Sekunde später *„MiSTer bei
+100 % — das OSD ist da"*. Das Frontend prüft deshalb nach dem F12 an
+MiSTers CPU-Last, ob das OSD wirklich da ist, und fasst bis zu dreimal
+nach. Auf dem alten Kernel kostet das nichts: dort meldet die erste
+Messung sofort 100 %.
+
 **Das MiSTer-Linux-Update vom 07.09.2026 (Kernel 6.18) bricht
 Frontends — auch dieses.** Der Rückbau auf Kernel 5.15.1 hat alle
 gemeldeten Probleme sofort behoben, ohne eine Zeile am Frontend zu
@@ -71,20 +80,16 @@ gemeldeten Probleme sofort behoben, ohne eine Zeile am Frontend zu
 address space` im `dmesg`. Degauss, das Zaparoo-Frontend und Console
 Mode mussten dafür ebenfalls gepatcht werden. Dragend blendet den
 Bildspeicher jetzt ersatzweise über `/dev/mem` ein, wenn `/dev/fb0` es
-nicht mehr hergibt. Die Rückkehr ins OSD beim Beenden ist auf diesem
-Kernel **noch offen** — dafür gibt es jetzt `frontend/kernel_probe.py`,
-das auf einem betroffenen Gerät in zwei Minuten misst, woran es liegt.
-Siehe den Abschnitt oben in der README.
+nicht mehr hergibt. Und `frontend/kernel_probe.py` misst auf einem
+betroffenen Gerät in zwei Minuten, woran es liegt — genau damit wurde
+die Sache oben aufgeklärt. Siehe den Abschnitt in der README.
 
-**Start und Beenden verhalten sich wieder wie in Build 145.** Nach
-vier Builds Fehlersuche am Beenden war das der Wunsch — und die
-richtige Ansage. Zwischen 145 und heute sind in diese beiden Abläufe
-elf Builds Mechanik gelandet; jede Änderung hatte einen Grund, zusammen
-haben sie etwas kaputt gemacht, das vorher lief. Standard ist jetzt
+**Beim Start ist die Mechanik aus Build 146–166 wieder abgeschaltet.**
+Elf Builds hatten sich dort angesammelt; jede Änderung hatte einen
+Grund, zusammen haben sie mehr gestört als geholfen. Standard ist
 wieder: **ein** F9 beim Start, keine Dauerwache, kein Anfassen von
-Cursor und Bildschirmschonung, und beim Beenden erst aufräumen, dann
-Bildschirm schließen, dann Eingaben frei und **ein** F12. Das Boot-Logo
-startet wieder sofort.
+Cursor und Bildschirmschonung, Boot-Logo sofort. Nur der Ausstieg misst
+nach — weil dort nachgewiesen ist, dass ein F12 nicht reicht.
 
 **Gelöscht ist nichts.** Die Mechanik aus den Builds 146–166 kommt mit
 einer Datei zurück: `touch /media/fat/frontend/konsole_mechanik_an`.
@@ -96,12 +101,6 @@ statt ein Build.
 Stelle** (Cursor, Bildschirmschonung, die Wache gegen den Login-Prompt).
 Vorher waren es sechs verstreute — dadurch ließ sich weder ansehen noch
 abschalten, was dort passiert.
-
-**Beim Beenden wird nachgesehen, ob das OSD wirklich kommt.** Beim Start
-weiß das Frontend seit Build 152, dass ein einzelnes eingespeistes
-Umschalt-Ereignis auf manchen Geräten nicht sitzt — beim Beenden wurde
-das bisher gehofft. Jetzt wird MiSTers Last gemessen und bis zu dreimal
-nachgefasst.
 
 **Das Boot-Logo wartet, bis es jemand sehen kann.** Es wurde vollständig
 gezeichnet — nur lag unser Bildspeicher zu dem Zeitpunkt noch gar nicht

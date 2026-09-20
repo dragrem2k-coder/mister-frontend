@@ -132,14 +132,13 @@ Die vollständige Belegung steht in der
 
 ---
 
-## ⚠ MiSTer-Linux vom 07.09.2026 (Kernel 6.18) — bekanntes Problem
+## MiSTer-Linux ab 07.09.2026 (Kernel 6.18) — läuft, ab Build 169
 
 Das MiSTer-Linux-Update vom **7. September 2026** hebt den Kernel von
 5.15.1 auf 6.18.x und hat dabei den Zugriff auf den Bildspeicher
-geändert. Im MiSTer-Forum steht dazu, dass *„Front Ends have to be
-patched due to framebuffer changes"* — betroffen waren unter anderem
-**Degauss**, das **Zaparoo Frontend** und **Console Mode**, dazu
-CIFS-Skripte, 8821AU-WLAN-Sticks und Xbox-/Xarcade-Controller.
+geändert. Im MiSTer-Forum heißt es dazu, dass *„Front Ends have to be
+patched due to framebuffer changes"* — **Degauss**, das **Zaparoo
+Frontend** und **Console Mode** mussten alle nachziehen.
 
 Erkennbar an dieser Zeile in `dmesg`:
 
@@ -147,37 +146,43 @@ Erkennbar an dieser Zeile in `dmesg`:
 fb0: sys_fillrect: framebuffer is not in virtual address space.
 ```
 
-**Bekannte Auswirkungen auf Dragend** (auf einem Gerät nachgestellt und
-durch Rückbau auf 5.15.1 bestätigt):
+**Was auf diesem Kernel anders ist — nachgemessen, nicht vermutet:**
 
-- *Frontend beenden* führt nicht mehr ins MiSTer-OSD zurück — es bleibt
-  ein schwarzes Bild mit blinkendem Cursor, kurz darauf der Login-Gruß
-- das Boot-Logo wird gezeichnet, ist aber nicht zu sehen
-- auf manchen Geräten scheitert schon das Einblenden des Bildspeichers
-
-**Was hilft heute:** zurück auf das alte Linux. In
-`/media/fat/downloader.ini`
+Beim Beenden schickt das Frontend ein F12, damit MiSTer sein OSD
+zurückholt. Auf dem neuen Kernel **kommt dieses erste F12 nicht an.**
+Aus dem Log eines Geräts mit 6.18.38:
 
 ```
-update_linux = false
+Exit: injiziere F12 (1/3)
+Exit: MiSTer bei   1% - das OSD ist NICHT gekommen, fasse nach
+Exit: injiziere F12 (2/3)
+Exit: MiSTer bei 100% - das OSD ist da
 ```
 
-setzen und `linux.img` sowie `zImage_dtb` auf Release 20250402
-(Kernel 5.15.1) zurücklegen. Alternativ die „Stale Distribution"-
-Datenbank benutzen, die Linux auf diesem Release festhält.
+Deshalb prüft das Frontend seit Build 169 nach dem F12 an MiSTers
+CPU-Last, ob das OSD wirklich da ist, und fasst bis zu dreimal nach.
+Ohne das bleibt beim Beenden ein schwarzes Bild mit blinkendem Cursor
+stehen, kurz darauf der Login-Gruß — genau das war das Symptom.
 
-**Was wir bisher gemacht haben:** Dragend blendet den Bildspeicher
-jetzt ersatzweise über `/dev/mem` ein, wenn `/dev/fb0` es nicht mehr
-hergibt (derselbe Weg, den Degauss gebaut hat). Das Beenden ins OSD ist
-damit **noch nicht** repariert — dafür fehlen Messwerte von einem Gerät
-auf 6.18. Wer eines hat und helfen möchte:
+Dazu kommt ein Rückfall über `/dev/mem`, falls sich `/dev/fb0` auf
+einem Gerät gar nicht mehr einblenden lässt (derselbe Weg, den Degauss
+gebaut hat). Auf Geräten, wo das normale Einblenden noch geht, wird er
+nie betreten.
+
+**Etwas kaputt?** Dann bitte das Messwerkzeug laufen lassen — es
+braucht zwei Minuten, ändert nichts und sagt am Ende in Klartext,
+woran es liegt:
 
 ```
 python3 /media/fat/frontend/kernel_probe.py
 ```
 
-Das Skript läuft ohne das Frontend, ändert nichts und sagt in zwei
-Minuten, woran es liegt.
+**Lieber beim alten Kernel bleiben?** Geht auch:
+`update_linux = false` in `/media/fat/downloader.ini`, dann `linux.img`
+und `zImage_dtb` auf Release 20250402 (Kernel 5.15.1) zurücklegen.
+`update_all` stellt inzwischen von selbst auf eine Distribution um, die
+Linux auf einer stabilen Ausgabe hält — wer die neueste will, wählt
+*MiSTer-devel (Edge Linux)* im Einstellungsbildschirm.
 
 ---
 

@@ -8267,9 +8267,14 @@ class Frontend:
                 for _p, _bw, _bh, _erg in self.lader.abholen():
                     ART.nachgeladen_eintragen(_p, _bw, _bh, _erg)
                 self._boot_watch()   # Diagnose: Anzeige-Zustand nach dem Boot
-                self._konsole_sichern()     # F9 absichern
-                self._konsole_aufraeumen()  # Build 150: Login-Prompt wegwischen
-                self._konsole_wache()       # Build 157: und zwar dauerhaft
+                # Build 167: alle drei nur noch, wenn die Mechanik
+                # eingeschaltet ist - siehe konsole_mechanik(). Ohne
+                # Schalter ist das hier der Stand von Build 145: ein
+                # F9 beim Start, danach kein Anfassen mehr.
+                if self.konsole_mechanik():
+                    self._konsole_sichern()     # F9 absichern
+                    self._konsole_aufraeumen()  # Build 150: Prompt weg
+                    self._konsole_wache()       # Build 157: dauerhaft
                 # WICHTIG: unabhaengige if-Abfragen statt einer elif-Kette.
                 # Mit elif haette "track_needs" (Songtitel muss scrollen -
                 # trifft auf praktisch jeden echten Songnamen zu) den
@@ -13542,11 +13547,11 @@ class Frontend:
         koennte ein halber Bildaufbau sein, zweimal im Abstand einer
         Sekunde ist Text, der dort steht und bleibt.
 
-        Der Schalter aus Build 166 legt auch sie still - siehe
-        konsole_unberuehrt(). Sonst bliebe die teuerste Haelfte der
-        Mechanik an (Bildpunkte zaehlen, voller Neuaufbau), waehrend
-        das eigentliche Wischen ins Leere liefe."""
-        if self.konsole_unberuehrt():
+        Laeuft nur, wenn die Konsolen-Mechanik eingeschaltet ist -
+        siehe konsole_mechanik(). Sonst bliebe die teuerste Haelfte
+        an (Bildpunkte zaehlen, voller Neuaufbau), waehrend das
+        eigentliche Wischen ins Leere liefe."""
+        if not self.konsole_mechanik():
             return
         jetzt = time.monotonic()
         if jetzt < self._wache_naechste:
@@ -13645,36 +13650,74 @@ class Frontend:
     #      nachzusehen, ob das Beenden dann wieder geht. Eine Antwort
     #      statt einer weiteren Vermutung.
     #
-    # Der Schalter ist eine Datei. Per SSH:
-    #
-    #     touch /media/fat/frontend/konsole_unberuehrt
-    #
-    # Liegt sie da, schreibt das Frontend NIE auf tty1 und aendert
-    # weder Cursor noch Bildschirmschonung - der Stand von vor Build
-    # 157. Die Wache bleibt ebenfalls stumm. Wieder weg: Datei
-    # loeschen.
+    # Der Schalter ist eine Datei - seit Build 167 andersherum
+    # herum, siehe den Block weiter unten: OHNE Datei passiert nichts
+    # davon, MIT Datei laeuft die Mechanik.
     #
     # Einmal gelesen und gemerkt: das hier kann waehrend des Zeichnens
     # aufgerufen werden, und eine Dateiabfrage je Bild waere genau die
     # Sorte stiller Kosten, gegen die die Builds 104-110 angegangen
     # sind.
-    KONSOLE_UNBERUEHRT_FLAG = "/media/fat/frontend/konsole_unberuehrt"
-    _konsole_unberuehrt = None
+    # ==================================================================
+    # UMGEDREHT IN BUILD 167 - AUF AUSDRUECKLICHEN WUNSCH
+    # ==================================================================
+    # Der Nutzer, nach vier Builds Fehlersuche am Beenden:
+    #
+    #     "build 145 lief noch alles super das starten das beenden,
+    #      das boot logo auch. ich moechte das du das starten und
+    #      beenden verhalten von build 145 wieder herstellst und zwar
+    #      nur das mal schauen was das bringt"
+    #
+    # Das ist die richtige Ansage. Zwischen Build 145 und heute sind
+    # in diesen beiden Ablaeufen elf Builds Mechanik gelandet (146-152
+    # die F9-Wiederholungen, 157 die Dauerwache, 158 der Cursor, 160
+    # die Bildschirmschonung, 162/163/165/166 die Reihenfolge beim
+    # Beenden). Jede einzelne Aenderung hatte einen Grund und eine
+    # Messung. Zusammen haben sie etwas kaputt gemacht, das vorher
+    # funktioniert hat - und das wiegt schwerer.
+    #
+    # DESHALB IST DER SCHALTER JETZT ANDERSHERUM. Ohne Datei verhaelt
+    # sich Start und Beenden wie in Build 145:
+    #
+    #   Start:   EIN F9, sonst nichts. Kein Wiederholen, keine Wache,
+    #            kein Anfassen des Cursors, keine Bildschirmschonung.
+    #   Beenden: erst aufraeumen, dann Bildschirm schwarz und
+    #            schliessen, dann Eingaben frei und EIN F12.
+    #   Logo:    sofort, ohne Warten und ohne Leeren der Warteschlange.
+    #
+    # Die ganze Mechanik aus 146-166 kommt mit einer Datei zurueck:
+    #
+    #     touch /media/fat/frontend/konsole_mechanik_an
+    #
+    # NICHTS DAVON IST GELOESCHT. Die Builds 146-152 sind entstanden,
+    # weil der Nutzer "bin im OSD und hoere die Musik vom Frontend"
+    # gemeldet hat - ein echter Fehler, nachgemessen, mit einer
+    # Ursache (ein einzelnes F9 sitzt auf diesem Geraet nicht immer).
+    # Sollte er wiederkommen, ist die Antwort darauf einen Befehl
+    # entfernt statt einen Build.
+    #
+    # Einmal gelesen und gemerkt: das hier wird aus dem Zeichenweg
+    # gerufen, und eine Dateiabfrage je Bild waere genau die Sorte
+    # stiller Kosten, gegen die die Builds 104-110 angegangen sind.
+    KONSOLE_MECHANIK_FLAG = "/media/fat/frontend/konsole_mechanik_an"
+    _konsole_mechanik = None
 
     @classmethod
-    def konsole_unberuehrt(cls):
-        """Darf ueberhaupt auf die Textkonsole geschrieben werden?"""
-        if cls._konsole_unberuehrt is None:
+    def konsole_mechanik(cls):
+        """Laeuft die Konsolen-Mechanik aus den Builds 146-166?
+
+        Standard ist NEIN - dann verhaelt sich das Frontend beim
+        Starten und Beenden wie Build 145."""
+        if cls._konsole_mechanik is None:
             try:
-                cls._konsole_unberuehrt = os.path.exists(
-                    cls.KONSOLE_UNBERUEHRT_FLAG)
+                cls._konsole_mechanik = os.path.exists(
+                    cls.KONSOLE_MECHANIK_FLAG)
             except OSError:
-                cls._konsole_unberuehrt = False
-            if cls._konsole_unberuehrt:
-                LOG("Konsole: %s liegt da - das Frontend fasst tty1 "
-                    "nicht an (Cursor, Bildschirmschonung und Wache aus)"
-                    % cls.KONSOLE_UNBERUEHRT_FLAG)
-        return cls._konsole_unberuehrt
+                cls._konsole_mechanik = False
+            LOG("Konsole: Mechanik %s (%s)"
+                % ("AN" if cls._konsole_mechanik else "AUS - Verhalten "
+                   "wie Build 145", cls.KONSOLE_MECHANIK_FLAG))
+        return cls._konsole_mechanik
 
     @classmethod
     def tty1_schreiben(cls, daten, zweck=""):
@@ -13683,7 +13726,7 @@ class Frontend:
         Liefert True, wenn geschrieben wurde. Ein Fehlschlag wird
         verschluckt - das darf den Betrieb nie stoeren - und der
         Schalter oben hat immer Vorrang."""
-        if cls.konsole_unberuehrt():
+        if not cls.konsole_mechanik():
             return False
         try:
             with open("/dev/tty1", "wb", buffering=0) as tty:
@@ -14331,10 +14374,15 @@ class Frontend:
         # Die Warteschlange wird deshalb hier einmal geleert. Das
         # kostet nichts und verwirft nur Ereignisse von VOR dem
         # Moment, in dem es ueberhaupt etwas zu ueberspringen gab.
-        try:
-            self.inp.flush()
-        except Exception:                                # noqa: BLE001
-            pass
+        # Build 167: beides nur mit eingeschalteter Mechanik. In
+        # Build 145 lief die Animation sofort los, und der Nutzer
+        # sagt, dort hat er sie gesehen. Das ist das Verhalten, das
+        # er zurueckhaben will - also ist es der Standard.
+        if self.konsole_mechanik():
+            try:
+                self.inp.flush()
+            except Exception:                            # noqa: BLE001
+                pass
         # NEU (Build 166). Nach Build 165 stand im Log des Nutzers:
         #
         #     01:00:21  Dragend-Logo: vollstaendig gezeigt
@@ -14361,7 +14409,7 @@ class Frontend:
         # gespielt wie bisher. Waehrend des Wartens sieht der Nutzer
         # MiSTers Menue, also genau das, was er ohne dieses Warten
         # auch saehe - nur eben ohne ein Logo, das niemand sieht.
-        self._auf_eigenes_bild_warten()
+            self._auf_eigenes_bild_warten()
         mode = "crt" if crt_menu_active() else "hdmi"
         bootanim_dir = BOOTANIM_DIR + "_" + mode
         if not os.path.isdir(bootanim_dir):
@@ -16082,39 +16130,99 @@ class Frontend:
             # oben, schlaeft er (1,4 %). Nach dem F12 wollen wir HOHE
             # Last sehen - sie ist der Beleg, dass das OSD da ist.
             # ---------------------------------------------------------
-            self._notausgang_stellen()
-            LOG("Exit: gebe Eingaben und Bildschirm frei")
-            self.inp.grab(False)
-            # Die Konsole ZUERST wiederherstellen - solange unser Bild
-            # noch oben liegt und ein Schreibvorgang auf tty1 nichts
-            # umwerfen kann. Danach ist damit Schluss.
-            self.set_cursor_blink(True)
-            self.konsole_cursor_an()          # Build 158
-            self.konsole_schonung_zurueck()   # Build 162
-            # Der Bildschirm gehoert ab hier MiSTer. Muss VOR dem F12
-            # passieren - siehe Build 165 oben.
-            try:
-                self.fb.clear((0, 0, 0))
-                self.fb.flip()
-                self.fb.close()
-            except Exception:                            # noqa: BLE001
-                LOG("Exit: Framebuffer freigeben fehlgeschlagen:\n"
-                    + traceback.format_exc())
-            time.sleep(0.2)
-            self._f12_bis_das_osd_kommt()
-            self.inp.close()
-            # NEU (Build 102): der Vorauslader ist seit diesem Build ein
-            # eigener Prozess (siehe fe/prewarm.py). Er beendet sich zwar
-            # von selbst, sobald sein Rohr schliesst - aber nur, wenn er
-            # gerade nicht mitten in einer Miniatur steckt. Hier gezielt
-            # beenden, damit beim Herunterfahren nichts uebrigbleibt, das
-            # noch auf die SD-Karte schreibt.
-            PREWARMER.beenden()
-            self.lader.beenden()
-            if self.stream:
-                self.stream.stop()
-            self.music.shutdown()
+            # -----------------------------------------------------
+            # GEMESSEN, NICHT GERATEN (Build 169)
+            # -----------------------------------------------------
+            # Auf einem zweiten Geraet mit Kernel 6.18.38 steht im
+            # Log woertlich:
+            #
+            #   11:28:38  Exit: injiziere F12 (1/3)
+            #   11:28:39  Exit: MiSTer bei   1% - das OSD ist NICHT
+            #             gekommen, fasse nach
+            #   11:28:39  Exit: injiziere F12 (2/3)
+            #   11:28:40  Exit: MiSTer bei 100% - das OSD ist da
+            #
+            # Das ist die Antwort auf die ganze Woche. Auf dem neuen
+            # Kernel kommt das ERSTE eingespeiste F12 nicht an, das
+            # zweite schon. Beim Start war das seit Build 148 bekannt
+            # und behandelt (_konsole_sichern() wiederholt sein F9
+            # sieben Mal) - beim Beenden wurde es gehofft.
+            #
+            # Deshalb haengt der Ausstieg ab jetzt NICHT mehr am
+            # Schalter. Build 167 hatte ihn auf den Stand von Build
+            # 145 zurueckgesetzt (ein F12, kein Nachsehen) - genau
+            # das, was auf 6.18 nachweislich zu wenig ist.
+            #
+            # Auf dem alten Kernel kostet es nichts: dort meldet die
+            # erste Messung sofort 100 %, die Schleife ist nach einem
+            # Durchgang fertig.
+            #
+            # Der Rest der Mechanik (F9-Wiederholungen, Dauerwache,
+            # Cursor, Bildschirmschonung) bleibt abgeschaltet und am
+            # Schalter - dafuer gibt es keine Messung, die sie
+            # verlangt, und ohne sie laeuft beides.
+            # -----------------------------------------------------
+            self._beenden()
             LOG("Exit: fertig")
+
+    def _beenden(self):
+        """Der Ausstieg. Es gibt nur noch diesen einen (Build 169).
+
+        VORGESCHICHTE IN ZWEI ZEILEN. Build 167 hatte auf Wunsch den
+        Ablauf von Build 145 wiederhergestellt: ein F12, kein
+        Nachsehen. Eine Messung auf einem Geraet mit Kernel 6.18.38
+        hat danach gezeigt, dass genau das zu wenig ist - das erste
+        eingespeiste F12 kommt dort nicht an, das zweite schon. Der
+        145er-Weg ist deshalb entfernt und nicht aufgehoben: er waere
+        Code, von dem wir WISSEN, dass er auf dem neuen Kernel den
+        gemeldeten Fehler erzeugt.
+
+        Die Reihenfolge von damals steckt aber unveraendert hier
+        drin, sie hat sich nur um zwei Dinge erweitert. Was Build 145
+        machte - aufraeumen, Bildschirm schwarz, schliessen, Eingaben
+        frei, F12 - passiert weiterhin genau so und in dieser
+        Richtung. Dazu kommen:
+
+          162  Wartezeit nach dem F12, damit MiSTer die Taste
+               entgegennehmen kann
+          163  Griff auf die Eingaben frueh loesen, damit ein
+               haengendes Aufraeumen das Geraet nicht sperrt
+          165  Framebuffer VOR dem F12 freigeben, sonst uebermalen
+               wir MiSTers gerade aufgebautes OSD
+          166  nach dem F12 auch tty1 nicht mehr anfassen, und
+               messen, ob das OSD ueberhaupt gekommen ist"""
+        self._notausgang_stellen()
+        LOG("Exit: gebe Eingaben und Bildschirm frei")
+        self.inp.grab(False)
+        # Die Konsole ZUERST wiederherstellen - solange unser Bild
+        # noch oben liegt und ein Schreibvorgang auf tty1 nichts
+        # umwerfen kann. Danach ist damit Schluss.
+        self.set_cursor_blink(True)
+        self.konsole_cursor_an()          # Build 158
+        self.konsole_schonung_zurueck()   # Build 162
+        # Der Bildschirm gehoert ab hier MiSTer. Muss VOR dem F12
+        # passieren - siehe Build 165.
+        try:
+            self.fb.clear((0, 0, 0))
+            self.fb.flip()
+            self.fb.close()
+        except Exception:                                # noqa: BLE001
+            LOG("Exit: Framebuffer freigeben fehlgeschlagen:\n"
+                + traceback.format_exc())
+        time.sleep(0.2)
+        self._f12_bis_das_osd_kommt()
+        self.inp.close()
+        # NEU (Build 102): der Vorauslader ist seit diesem Build ein
+        # eigener Prozess (siehe fe/prewarm.py). Er beendet sich zwar
+        # von selbst, sobald sein Rohr schliesst - aber nur, wenn er
+        # gerade nicht mitten in einer Miniatur steckt. Hier gezielt
+        # beenden, damit beim Herunterfahren nichts uebrigbleibt, das
+        # noch auf die SD-Karte schreibt.
+        PREWARMER.beenden()
+        self.lader.beenden()
+        if self.stream:
+            self.stream.stop()
+        self.music.shutdown()
 
     # Pause zwischen dem F12 und dem Schliessen der Eingaben - dieselbe
     # Zeit, die enter_console_mode() seit jeher nach seiner Injektion

@@ -58,6 +58,12 @@ def check(label, cond, extra=""):
 
 
 def aufbau():
+    # Build 167: die ganze Mechanik ist jetzt standardmaessig AUS
+    # (Verhalten wie Build 145). Diese Tests pruefen sie, also wird
+    # sie hier ausdruecklich eingeschaltet - genau so, wie es auf dem
+    # Geraet die Datei konsole_mechanik_an tut. Test 15 prueft die
+    # andere Richtung.
+    fm.Frontend._konsole_mechanik = True
     f = H.make_frontend(page=0)
     f.draw()
     f.fb.mm[:] = f.fb.buf          # Schirm und Zeichnung sind gleich
@@ -335,12 +341,19 @@ print("Test 12: der Ausstieg laesst MiSTer Zeit fuer das F12 (Build 162)")
 # unveraendert richtig war. Ein Test darf nicht an einer Formulierung
 # haengen. Jetzt derselbe Anker wie in Test 13: der Kommentarkopf des
 # Blocks.
-_h = quelle.split("HERUNTERFAHREN (umgestellt in Build 163)")[1]
-# Bis zum Ende des finally-Blocks, nicht "die naechsten N Zeichen":
-# der Kommentarkopf ist in Build 165 laenger geworden, und ein
-# festes Fenster haette dann nur noch Kommentar enthalten.
-_h = _h[:_h.index("\n    # Pause zwischen dem F12")]
-ausstieg = _h
+# GEAENDERT (Build 167): der Beenden-Ablauf steht nicht mehr im
+# finally-Block, sondern in zwei Methoden - _beenden_wie_145() (der
+# Standard, wiederhergestelltes Verhalten von Build 145) und
+# _beenden_mit_mechanik() (der Stand aus 162-166, per Datei
+# einschaltbar). Diese Tests pruefen die zweite.
+def _methode(name):
+    i = quelle.index("    def %s(self" % name)
+    rest = quelle[i + 10:]
+    return rest[:rest.index("\n    def ")]
+
+
+ausstieg = _methode("_beenden")
+_h = ausstieg
 # VERSCHOBEN (Build 166): das F12 samt Wartezeit steckt jetzt in
 # _f12_bis_das_osd_kommt() - dort wird ausserdem gemessen, ob das OSD
 # tatsaechlich gekommen ist, und notfalls nachgefasst. Der finally-
@@ -416,21 +429,23 @@ check("und zwar auf einen echten Wert, nicht wieder auf null",
 
 
 print()
-print("Test 15: DER SCHALTER - das Frontend laesst tty1 in Ruhe (Build 166)")
-# Der Nutzer datiert den Beginn der Beenden-Probleme auf genau die
-# Builds, in denen diese Mechanik entstanden ist. Es muss deshalb
-# moeglich sein, sie in einem Griff stillzulegen und nachzusehen -
-# eine Antwort statt einer weiteren Vermutung.
+print("Test 15: DER SCHALTER - Standard ist das Verhalten von Build 145")
+# Der Nutzer, nach vier Builds Fehlersuche: "build 145 lief noch alles
+# super das starten das beenden, das boot logo auch ... stell das
+# wieder her". Seit Build 167 ist die ganze Mechanik deshalb
+# standardmaessig AUS und kommt mit einer Datei zurueck:
 #
-#     touch /media/fat/frontend/konsole_unberuehrt
-_alt = fm.Frontend._konsole_unberuehrt
+#     touch /media/fat/frontend/konsole_mechanik_an
+_alt = fm.Frontend._konsole_mechanik
 try:
-    fm.Frontend._konsole_unberuehrt = True
-    check("der Schalter ist gesetzt", fm.Frontend.konsole_unberuehrt())
+    fm.Frontend._konsole_mechanik = False
+    check("ohne Datei ist die Mechanik aus",
+          not fm.Frontend.konsole_mechanik())
     check("dann schreibt tty1_schreiben() nichts",
           fm.Frontend.tty1_schreiben(b"\033[2J") is False)
-    # Und die Wache bleibt stumm, obwohl der Prompt im Bild steht.
-    f = aufbau()
+    # Die Wache bleibt stumm, obwohl der Prompt im Bild steht.
+    f = aufbau()                      # schaltet ein
+    fm.Frontend._konsole_mechanik = False   # und hier wieder aus
     prompt_schreiben(f)
     check("es steht wirklich Fremdtext im Bild",
           f._fremdausgabe_zaehlen() >= fm.Frontend.KONSOLE_WACHE_MINDEST)
@@ -438,16 +453,36 @@ try:
     check("die Wache schlaegt trotzdem nicht an", f._gewischt == [],
           str(f._gewischt))
 
-    fm.Frontend._konsole_unberuehrt = False
-    check("ohne Schalter ist alles wie bisher",
-          not fm.Frontend.konsole_unberuehrt())
-    f = aufbau()
+    f = aufbau()                      # mit Mechanik
     prompt_schreiben(f)
     takten(f, 4)
-    check("und die Wache wischt wieder", len(f._gewischt) >= 1,
+    check("mit Datei wischt sie wieder", len(f._gewischt) >= 1,
           str(f._gewischt))
 finally:
-    fm.Frontend._konsole_unberuehrt = _alt
+    fm.Frontend._konsole_mechanik = _alt
+
+print()
+print("Test 16: der Ausstieg misst und fasst nach (Build 169)")
+# Gemessen auf einem Geraet mit Kernel 6.18.38: das ERSTE
+# eingespeiste F12 kommt dort nicht an, das zweite schon.
+#
+#   Exit: injiziere F12 (1/3)
+#   Exit: MiSTer bei   1% - das OSD ist NICHT gekommen, fasse nach
+#   Exit: injiziere F12 (2/3)
+#   Exit: MiSTer bei 100% - das OSD ist da
+#
+# Der Ausstieg von Build 145 (ein F12, kein Nachsehen) ist deshalb
+# entfernt und darf nicht zurueckkommen.
+check("es gibt nur noch einen Ausstieg",
+      "_beenden_wie_145" not in quelle
+      and "_beenden_mit_mechanik" not in quelle)
+check("und er haengt an keinem Schalter",
+      "konsole_mechanik()" not in ausstieg)
+check("er misst, ob das OSD gekommen ist",
+      "_f12_bis_das_osd_kommt()" in ausstieg)
+check("die Reihenfolge von Build 145 gilt weiter: Bildschirm zuerst",
+      ausstieg.index("self.fb.close()")
+      < ausstieg.index("_f12_bis_das_osd_kommt"))
 
 print()
 if fails:
