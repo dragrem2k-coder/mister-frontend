@@ -63,6 +63,13 @@ stayed at the end — so we painted over MiSTer's freshly drawn OSD. The
 screen now belongs to MiSTer from the F12 onwards, and a test pins the
 order down.
 
+**Portrait-mounted screens (TATE), first step.** The frontend never
+crashed there — it was unusable, because the layout scale depended on
+height alone. At 1080×1920 that left **23 characters per line** instead
+of the 68 everything is designed around, cutting every game title to a
+third. Landscape still uses the height; portrait now uses the width,
+the scarce side. That makes 38 characters instead of 23.
+
 **A colour scheme editor.** *System → Display & Sound → Edit your own
 colour scheme*: six colours and the monochrome switch, editable with
 the pad, with a preview below showing exactly the elements each colour

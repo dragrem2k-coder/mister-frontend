@@ -64,6 +64,14 @@ blieb aber hinten stehen — wir haben MiSTers gerade aufgebautes OSD
 sofort wieder schwarz übermalt. Jetzt gehört der Bildschirm ab dem F12
 MiSTer; ein Test hält die Reihenfolge fest.
 
+**Hochkant montierte Bildschirme (TATE), erster Schritt.** Das
+Frontend stürzte dort nie ab — es war unbrauchbar, weil die
+Vergrößerung des Layouts allein an der Höhe hing. Bei 1080×1920 blieben
+dadurch **23 Zeichen je Zeile** übrig statt der 68, auf die alles
+ausgelegt ist: jeder Spieltitel auf ein Drittel abgeschnitten. Quer
+rechnet weiter die Höhe, hochkant jetzt die Breite — die knappe Seite.
+Macht 38 statt 23 Zeichen.
+
 **Ein Farbschema-Editor.** *System → Anzeige & Sound → Eigenes
 Farbschema bearbeiten*: sechs Farben und der Monochrom-Schalter, am Pad
 einstellbar, mit einer Vorschau darunter, die genau die Elemente zeigt,

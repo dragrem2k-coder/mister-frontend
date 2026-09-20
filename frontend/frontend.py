@@ -575,6 +575,44 @@ CURRENT_THEME_MONOCHROME = False   # von apply_theme() gesetzt, siehe accent_for
 # werden.
 THEME_FILE = "/media/fat/frontend/theme"
 
+def _skala(w, h):
+    """Der Vergroesserungsfaktor des ganzen Layouts.
+
+    BISHER: _skala(W, H). Also allein die HOEHE. Das ist richtig,
+    solange der Bildschirm breiter als hoch ist - 1920x1080 ergibt 3,
+    640x480 ergibt 1, und die Zeilen fassen durchgehend rund 68
+    Zeichen. Genau darauf ist jedes Layout ausgelegt.
+
+    HOCHKANT KIPPT DIESE RECHNUNG (Build 173, Nutzerwunsch TATE/90
+    Grad). Bei 1080x1920 ist die Hoehe ploetzlich die GROSSE Seite:
+    s wird 5 statt 3, waehrend gleichzeitig nur noch 1080 Bildpunkte
+    Breite da sind. Beides zieht in dieselbe Richtung, und uebrig
+    bleiben - nachgemessen -
+
+        1920x1080   68 Zeichen je Zeile
+        1080x1920   23 Zeichen je Zeile
+
+    Ein Spieltitel wird damit auf ein Drittel abgeschnitten. Das
+    Frontend STUERZT hochkant nicht ab (nachgeprueft bei 1080x1920,
+    720x1280, 480x640, 240x320) - es ist nur unbrauchbar.
+
+    DIE REGEL HIER: quer bleibt alles, wie es war. Hochkant zaehlt
+    die BREITE, denn sie ist die knappe Seite und sie entscheidet,
+    wieviel Text in eine Zeile passt. Ergebnis:
+
+        1080x1920   38 Zeichen  (statt 23)
+        720x1280    38 Zeichen  (statt 25)
+
+    Mehr geht nicht: ein hochkantes Bild ist nun einmal schmaler.
+    38 Zeichen sind lesbar, 23 sind es nicht.
+
+    DASS QUER WIRKLICH UNVERAENDERT BLEIBT, ist keine Behauptung:
+    regression_test.py vergleicht 18 Kombinationen bitgenau, und
+    diag_lightpath.py 34 weitere. Waere hier etwas verrutscht, waeren
+    sie rot."""
+    return max(1, (w if h > w else h) // 360)
+
+
 THEMES = {
     "dark": {   # Standard (unveraendertes Erscheinungsbild von vorher)
         "C_BG": (16, 18, 24), "C_PANEL": (28, 32, 44),
@@ -1882,7 +1920,7 @@ class Frontend:
         Seiten-Infrastruktur ist also nicht benutzbar."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         fb.clear(C_BG)
@@ -1906,7 +1944,7 @@ class Frontend:
         normalen Boot (Cache passt) gar nicht aufgerufen."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         fb.clear(C_BG)
@@ -3186,7 +3224,7 @@ class Frontend:
         Gemessen kamen dadurch auf CRT nur 7 Kategorien aufs Bild,
         auf HDMI dagegen 12."""
         W, H = self.fb.width, self.fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         eng = H < KOMPAKT_H
@@ -3624,7 +3662,7 @@ class Frontend:
         if cached is not None:
             return cached
         W, H = self.fb.width, self.fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         # NEU (Nutzerwunsch: "das Frontend im CRT-Modus huebscher
@@ -3972,7 +4010,7 @@ class Frontend:
         beendet ihn sofort wieder (siehe run())."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         fb.clear((0, 0, 0))
         game = self._attract_game
         if game is None:
@@ -4352,7 +4390,7 @@ class Frontend:
             return
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         label = t("search_prompt") + self._search_query + "_"
         # NEU (Build 114): Trefferzaehler. Ohne ihn weiss man nicht, ob
         # sich Weitersuchen ueberhaupt lohnt - und genau das ist die
@@ -4412,7 +4450,7 @@ class Frontend:
         Boxart-Karte, was im Testbild sofort auffiel."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         zeilen = self._picker_zeilen()
@@ -5630,7 +5668,7 @@ class Frontend:
             return
         fb = self.fb
         W = fb.width
-        s = max(1, fb.height // 360)
+        s = _skala(fb.width, fb.height)
 
         if self.page == 0:
             L = self.layout_cats()
@@ -7143,7 +7181,7 @@ class Frontend:
         zwischen den beiden Optionen um)."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         if msg is None:
             msg = t("quit_confirm")
         maxc = max(10, (W - 40 * s) // (8 * s))
@@ -9562,7 +9600,7 @@ class Frontend:
         und Abbrechen."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         fb.clear(C_BG)
@@ -10426,7 +10464,7 @@ class Frontend:
         stimmt jetzt."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         accent = accent_for(syskey)
@@ -10493,7 +10531,7 @@ class Frontend:
         dieser Liste an, statt in einer Sackgasse zu enden."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         text_w = W - 2 * ox
@@ -10740,7 +10778,7 @@ class Frontend:
         aus dem frueheren Einzel-Screen uebernommen."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         # Gleicher CRT-Bugfix wie in draw_wot_screen() (siehe dortiger
@@ -10845,7 +10883,7 @@ class Frontend:
         Texteditor angelegt). Beliebige Taste kehrt zurueck."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         fb.clear(C_BG)
@@ -10892,7 +10930,7 @@ class Frontend:
         Hinweiszeile auch auf 320x240 nie verdraengt werden."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         accent = accent_for(None)
@@ -10972,7 +11010,7 @@ class Frontend:
         wichtig)."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         fb.clear(C_BG)
@@ -11005,7 +11043,7 @@ class Frontend:
         Frontend sei abgestuerzt/eingefroren."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
 
@@ -11479,7 +11517,7 @@ class Frontend:
         eigenem Risiko, und der Gewinn waere klein."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
 
@@ -11663,7 +11701,7 @@ class Frontend:
         leere Liste vorzufinden."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         roh = self._display_items_ungefiltert()
@@ -11846,7 +11884,7 @@ class Frontend:
         Listen (Top-10/Erfolge), falls nicht alles passt."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         hint_scale = s - 1 if s > 1 else 1
@@ -12028,7 +12066,7 @@ class Frontend:
         Abschneiden, UND scrollbar wie draw_milestones_screen()."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         title = t("secrets_title")
@@ -12110,7 +12148,7 @@ class Frontend:
         wie draw_milestones_screen()."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         title = t("credits_title")
@@ -12221,7 +12259,7 @@ class Frontend:
         passt) - unabhaengig von Sprache/Textlaenge/Aufloesung."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         maxc = max(8, (W - 2 * ox) // (8 * s))
@@ -12447,7 +12485,7 @@ class Frontend:
         dass die Aenderung beim naechsten Core-Start greift."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         accent = accent_for(None)
@@ -12685,7 +12723,7 @@ class Frontend:
         Kontexte, dieselbe physische Taste)."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         title = t("help_title")
@@ -12802,7 +12840,7 @@ class Frontend:
         darin wie in einer normalen Liste."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         title = t("diary_title")
@@ -12903,7 +12941,7 @@ class Frontend:
         irrefuehrender Werte."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         fb.clear(C_BG)
@@ -13025,7 +13063,7 @@ class Frontend:
         statt dass sich Text und Bild gegenseitig ueberlagern."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
 
@@ -13138,7 +13176,7 @@ class Frontend:
         getrennte Scroll-Bereiche zu verwalten."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         title = t("milestones_title")
@@ -13264,7 +13302,7 @@ class Frontend:
         fuer Pixel exakt das bisherige Bild."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         oy = H * OVERSCAN_Y // 100
         if sc is None:
             sc = s - 1 if s > 1 else 1
@@ -13358,7 +13396,7 @@ class Frontend:
         abgeschnitten - siehe _fit_scale()."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         title = t("top10_time_title") if by == "seconds" \
@@ -14488,7 +14526,7 @@ class Frontend:
             return
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         accent = THEMES.get(current_theme_name(), THEMES["dark"])["C_ACCENT"]
         msg = t("max_level_boot_effect")
         msg_scale = self._fit_scale(msg, W - 40 * s, s + 1)
@@ -14516,7 +14554,7 @@ class Frontend:
         auf dem Screen stehen (identischer Bug wie beim Suchbalken)."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         msg_scale = self._fit_scale(msg, W - 40 * s, s + 1)
         msg_w = len(msg) * 8 * msg_scale
         fb.clear((0, 0, 0))
@@ -14557,7 +14595,7 @@ class Frontend:
             if scaled:
                 dw, dh, pix = scaled
         ax = (W - dw) // 2
-        ay = (H - dh) // 2 - 10 * max(1, H // 360)
+        ay = (H - dh) // 2 - 10 * _skala(W, H)
 
         # Gleiche Flacker-Sequenz (Helligkeitsstufe, Wartezeit) wie
         # beim bisherigen D-Pad-Symbol - simuliert eine alte Roehre,
@@ -14567,7 +14605,7 @@ class Frontend:
         sequence = [0.06, 0.0, 0.35, 0.0, 0.7, 0.45, 1.0]
         holds =    [0.10, 0.05, 0.10, 0.05, 0.10, 0.06, 0.55]
         title = t("boot_default_title")
-        s = max(1, H // 360)
+        s = _skala(W, H)
         title_scale = self._fit_scale(title, W - 40 * s, s)
         title_w = len(title) * 8 * title_scale
         title_y = ay + dh + 14 * s
@@ -14617,7 +14655,7 @@ class Frontend:
         Konsolen-Boot-Logo (gleiche Vorsicht wie beim Soundthema)."""
         fb = self.fb
         W, H = fb.width, fb.height
-        s = max(1, H // 360)
+        s = _skala(W, H)
         cx, cy = W // 2, H // 2 - 20 * s
         arm = 10 * s       # Balkenbreite des Kreuzes
         length = 34 * s    # Gesamtlaenge je Achse
