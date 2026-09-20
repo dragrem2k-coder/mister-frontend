@@ -64,6 +64,14 @@ blieb aber hinten stehen — wir haben MiSTers gerade aufgebautes OSD
 sofort wieder schwarz übermalt. Jetzt gehört der Bildschirm ab dem F12
 MiSTer; ein Test hält die Reihenfolge fest.
 
+**Ein Farbschema-Editor.** *System → Anzeige & Sound → Eigenes
+Farbschema bearbeiten*: sechs Farben und der Monochrom-Schalter, am Pad
+einstellbar, mit einer Vorschau darunter, die genau die Elemente zeigt,
+in denen jede Farbe vorkommt. Hoch/Runter wählt die Zeile,
+Links/Rechts ändert, Enter schaltet zwischen R, G und B, ESC geht ohne
+Speichern zurück. Rundungen und Schriftgrößen bleiben bewusst außen
+vor.
+
 **Ein eigenes Farbschema.** *System → Anzeige & Sound → Aktuelle Farben
 als eigenes Schema speichern* legt die gerade aktiven Farben in
 `frontend/theme_eigen.json` ab und schaltet sofort darauf um. Danach

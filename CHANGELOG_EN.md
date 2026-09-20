@@ -63,6 +63,13 @@ stayed at the end — so we painted over MiSTer's freshly drawn OSD. The
 screen now belongs to MiSTer from the F12 onwards, and a test pins the
 order down.
 
+**A colour scheme editor.** *System → Display & Sound → Edit your own
+colour scheme*: six colours and the monochrome switch, editable with
+the pad, with a preview below showing exactly the elements each colour
+appears in. Up/Down picks the row, Left/Right changes it, Enter cycles
+R, G and B, ESC leaves without saving. Corner radii and font sizes are
+deliberately left out.
+
 **Your own colour scheme.** *System → Display & Sound → Save current
 colours as your own scheme* writes the active colours to
 `frontend/theme_eigen.json` and switches to them right away. *Custom*

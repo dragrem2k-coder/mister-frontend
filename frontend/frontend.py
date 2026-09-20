@@ -11442,6 +11442,211 @@ class Frontend:
     # bekommt ihn nie wieder zu sehen.
     ERFOLG_BOX_SEK = 7.0
 
+    # Schrittweite je Tastendruck beim Farbwert. Acht statt eins:
+    # von 0 bis 255 waeren es sonst 255 Tastendruecke je Kanal, und
+    # ein Unterschied von eins sieht ohnehin niemand. Wer genau 137
+    # will, schreibt es in die Datei.
+    THEME_EDIT_SCHRITT = 8
+    THEME_EDIT_KANAELE = ("R", "G", "B")
+
+    def theme_editor(self):
+        """Der Farbschema-Editor (Build 172).
+
+        DERSELBE MODALE AUFBAU wie beim Filter (siehe dort): eigene
+        Eingabeschleife, kein weiterer Zustand in der Hauptschleife.
+
+        WAS HIER DER KNIFF IST - die Vorschau. Sechs Farbwerte
+        einzustellen, ohne zu sehen, was sie tun, ist Raten mit
+        Zahlen. Die Vorschau unten zeigt deshalb genau die Elemente,
+        in denen jede der sechs Farben vorkommt: Hintergrund, eine
+        Karte, eine markierte und eine normale Zeile, Nebentext und
+        einen Titel. Man sieht beim Drehen sofort, ob der Nebentext
+        noch lesbar ist - und das ist der Fehler, den man sonst erst
+        nach dem Speichern bemerkt.
+
+        Gezeichnet wird die Vorschau mit den Farben AUS DEM EDITOR,
+        nicht ueber die globalen C_*-Variablen. Dadurch bleibt das
+        laufende Erscheinungsbild unangetastet, solange nicht
+        gespeichert wurde - ein Abbruch mit ESC muss nichts
+        zuruecksetzen, weil nie etwas gesetzt wurde. (Der umgekehrte
+        Weg - global setzen und beim Abbruch zuruecknehmen - waere
+        die Sorte Zustand, die man irgendwann irgendwo vergisst.)
+
+        Rundungen, Schatten und Schriftgroessen bleiben bewusst
+        aussen vor: siehe EINSCHAETZUNG_Theme_Editor.md im Projekt.
+        Diese Zahlen nimmt der Zeichenpfad an mehreren Stellen
+        unabhaengig voneinander an - das waere ein eigener Build mit
+        eigenem Risiko, und der Gewinn waere klein."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = max(1, H // 360)
+        ox = W * OVERSCAN_X // 100
+        oy = H * OVERSCAN_Y // 100
+
+        # Ausgangspunkt: das eigene Schema, falls es eines gibt -
+        # sonst das gerade aktive. So faengt man nie bei Schwarz an.
+        grundlage = current_theme_name()
+        stand = eigenes_theme_lesen()
+        if stand is None:
+            quelle = THEMES.get(grundlage, THEMES["dark"])
+            stand = {f: tuple(quelle[f]) for f in THEME_FARBFELDER}
+            stand["monochrome"] = bool(quelle.get("monochrome", False))
+        else:
+            grundlage = THEME_EIGEN_NAME
+        namen = THEME_NAMES_DE if current_lang() == "de" else THEME_NAMES_EN
+
+        zeilen = list(THEME_FARBFELDER) + ["monochrome", "speichern"]
+        zeile = 0
+        kanal = 0
+
+        while True:
+            fb.clear(C_BG)
+            fb.text(ox, oy, t("theme_edit_titel"), 2 * s, C_TITLE)
+            fb.text(ox, oy + 22 * s,
+                    t("theme_edit_grundlage",
+                      namen.get(grundlage, grundlage)), s, C_DIM)
+
+            y = oy + 42 * s
+            breite = W - 2 * ox
+            for i, feld in enumerate(zeilen):
+                markiert = (i == zeile)
+                if markiert:
+                    fb.rect_rounded(ox - 2 * s, y - 3 * s, breite + 4 * s,
+                                    15 * s, C_PANEL)
+                farbe = C_TITLE if markiert else C_TEXT
+                if feld == "speichern":
+                    fb.text(ox + 2 * s, y, t("theme_edit_speichern"), s,
+                            farbe)
+                elif feld == "monochrome":
+                    fb.text(ox + 2 * s, y, t("theme_edit_mono"), s, farbe)
+                    wert = t("theme_edit_ja") if stand["monochrome"] \
+                        else t("theme_edit_nein")
+                    if markiert:
+                        wert = "< %s >" % wert
+                    fb.text(W - ox - len(wert) * 8 * s - 2 * s, y, wert, s,
+                            farbe)
+                else:
+                    fb.text(ox + 2 * s, y, t("theme_edit_" + feld), s, farbe)
+                    rgb = stand[feld]
+                    # Die drei Kanaele rechtsbuendig, der aktive
+                    # hervorgehoben - so sieht man ohne Nachdenken,
+                    # was Links/Rechts gerade veraendert.
+                    text = "  ".join("%s%3d" % (self.THEME_EDIT_KANAELE[k],
+                                                rgb[k]) for k in range(3))
+                    breite_text = len(text) * 8 * s
+                    x = W - ox - breite_text - 22 * s
+                    if markiert:
+                        teil = len("R123  ") * 8 * s
+                        fb.rect(x + kanal * teil - 2 * s, y - 2 * s,
+                                len("R123") * 8 * s + 4 * s, 12 * s,
+                                accent_for(None))
+                    fb.text(x, y, text, s,
+                            C_TITLE if markiert else C_TEXT)
+                    # Farbtupfer ganz rechts: die Zahl sagt nichts,
+                    # der Fleck sagt alles.
+                    fb.rect(W - ox - 16 * s, y - 2 * s, 14 * s, 12 * s,
+                            tuple(rgb))
+                y += 17 * s
+
+            self._theme_vorschau(ox, y + 6 * s, W - 2 * ox,
+                                 H - oy - (y + 6 * s) - 14 * s, s, stand)
+
+            _maxc = max(10, (W - 2 * ox) // (8 * s))
+            for _i, _z in enumerate(self._wrap(t("theme_edit_hinweis"),
+                                               _maxc, max_lines=2)):
+                fb.text(ox, H - oy - 12 * s + _i * 11 * s, _z, s, C_DIM)
+            fb.flip()
+
+            akt = self.inp.read_action(timeout=1.0)
+            if akt is None:
+                continue
+            feld = zeilen[zeile]
+            if akt == "up":
+                zeile = (zeile - 1) % len(zeilen)
+                kanal = 0
+            elif akt == "down":
+                zeile = (zeile + 1) % len(zeilen)
+                kanal = 0
+            elif akt in ("left", "right"):
+                if feld == "monochrome":
+                    stand["monochrome"] = not stand["monochrome"]
+                elif feld != "speichern":
+                    schritt = self.THEME_EDIT_SCHRITT
+                    if akt == "left":
+                        schritt = -schritt
+                    rgb = list(stand[feld])
+                    rgb[kanal] = max(0, min(255, rgb[kanal] + schritt))
+                    stand[feld] = tuple(rgb)
+            elif akt == "ok":
+                if feld == "speichern":
+                    try:
+                        eigenes_theme_speichern(stand)
+                        _theme_datei_schreiben(THEME_EIGEN_NAME)
+                        apply_theme(THEME_EIGEN_NAME)
+                        self._refresh_system_category()
+                        self.fb._rowcache.clear()
+                        self.fb._rectcache.clear()
+                        self._force_full_redraw = True
+                        self.draw(t("theme_edit_gespeichert"))
+                        return
+                    except (OSError, ValueError):
+                        LOG("Farbschema speichern fehlgeschlagen:\n"
+                            + traceback.format_exc())
+                        self._force_full_redraw = True
+                        self.draw(t("sys_theme_eigen_fehler"))
+                        return
+                elif feld == "monochrome":
+                    stand["monochrome"] = not stand["monochrome"]
+                else:
+                    kanal = (kanal + 1) % 3
+            elif akt in ("back", "exit", "select"):
+                break
+
+        # Nichts gespeichert - es wurde auch nie etwas global gesetzt,
+        # also gibt es nichts zurueckzunehmen. Nur neu zeichnen.
+        self._force_full_redraw = True
+        self.draw()
+
+    def _theme_vorschau(self, x, y, w, h, s, stand):
+        """Die Vorschau: genau die Elemente, in denen jede der sechs
+        Farben vorkommt.
+
+        Bewusst mit den Farben AUS stand statt ueber die globalen
+        C_*-Variablen - siehe theme_editor(). Wird der Platz zu
+        knapp (Roehre mit grossem Bildrand), wird gar nichts
+        gezeichnet: eine abgeschnittene Vorschau waere irrefuehrender
+        als keine."""
+        if w < 80 * s or h < 34 * s:
+            return
+        fb = self.fb
+        bg = tuple(stand["C_BG"])
+        panel = tuple(stand["C_PANEL"])
+        text = tuple(stand["C_TEXT"])
+        dim = tuple(stand["C_DIM"])
+        titel = tuple(stand["C_TITLE"])
+        akzent = tuple(stand["C_ACCENT"])
+
+        fb.rect(x, y, w, h, bg)
+        # Karte links - dafuer steht C_PANEL.
+        karte_b = min(26 * s, w // 4)
+        fb.rect(x + 4 * s, y + 4 * s, karte_b, h - 8 * s, panel)
+        tx = x + 4 * s + karte_b + 6 * s
+        tb = w - (tx - x) - 4 * s
+        if tb < 40 * s:
+            return
+        fb.text(tx, y + 4 * s, t("theme_edit_v_titel")[:tb // (8 * s)],
+                s, titel)
+        # Markierte Zeile: Balken in C_ACCENT, Schrift in C_TITLE.
+        fb.rect(tx - 2 * s, y + 16 * s, tb + 2 * s, 11 * s, akzent)
+        fb.text(tx, y + 18 * s,
+                t("theme_edit_vorschau")[:tb // (8 * s)], s, titel)
+        # Normale Zeile und Nebentext.
+        fb.text(tx, y + 30 * s, t("theme_edit_v_zeile")[:tb // (8 * s)],
+                s, text)
+        if h >= 46 * s:
+            fb.text(tx, y + 42 * s, t("theme_edit_v_dim")[:tb // (8 * s)],
+                    s, dim)
+
     def filter_bildschirm(self):
         """Der Filter (Build 142) - siehe fe/filter.py.
 
@@ -15792,6 +15997,14 @@ class Frontend:
                             self._refresh_system_category()
                             self.fb._rowcache.clear()
                             self.fb._rectcache.clear()
+                        elif kind == "theme_eigen_bearbeiten":
+                            try:
+                                self.theme_editor()
+                            except Exception:            # noqa: BLE001
+                                LOG("theme_editor CRASH:\n"
+                                    + traceback.format_exc())
+                                self._force_full_redraw = True
+                                self.draw()
                         elif kind == "theme_eigen_speichern":
                             # Build 171: die gerade aktiven Farben als
                             # eigenes Schema ablegen und sofort darauf

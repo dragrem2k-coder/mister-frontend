@@ -281,6 +281,9 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         # Build 171: aus dem gerade aktiven Schema ein eigenes machen.
         # Steht direkt unter der Farbschema-Zeile - dort sucht man es.
         (t("sys_theme_eigen_speichern"), "theme_eigen_speichern", None),
+        # Build 172: der Editor. Steht direkt darunter - erst ein
+        # eigenes Schema anlegen, dann daran drehen.
+        (t("sys_theme_eigen_bearbeiten"), "theme_eigen_bearbeiten", None),
         (sfx_label, "sfx", None),
         (dragend_logo_label, "dragend_logo", None),
         (fast_scroll_label, "fast_scroll", None),

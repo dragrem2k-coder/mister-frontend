@@ -864,6 +864,41 @@ TRANSLATIONS = {
     "sys_theme_eigen_fehler": {
         "en": "Could not save the colour scheme.",
         "de": "Das Farbschema liess sich nicht speichern."},
+    # NEU (Build 172): der Farbschema-Editor.
+    "theme_edit_titel": {
+        "en": "Your own colour scheme", "de": "Eigenes Farbschema"},
+    "theme_edit_grundlage": {
+        "en": "Based on: %s", "de": "Grundlage: %s"},
+    "theme_edit_C_BG": {"en": "Background", "de": "Hintergrund"},
+    "theme_edit_C_PANEL": {"en": "Cards and boxes",
+                           "de": "Karten und Kaesten"},
+    "theme_edit_C_TEXT": {"en": "Text", "de": "Schrift"},
+    "theme_edit_C_DIM": {"en": "Secondary text", "de": "Nebentext"},
+    "theme_edit_C_TITLE": {"en": "Titles", "de": "Titel"},
+    "theme_edit_C_ACCENT": {"en": "Highlight", "de": "Akzent"},
+    "theme_edit_mono": {
+        "en": "Blend system colours towards the highlight",
+        "de": "Systemfarben zum Akzent hin abmischen"},
+    "theme_edit_ja": {"en": "yes", "de": "ja"},
+    "theme_edit_nein": {"en": "no", "de": "nein"},
+    "theme_edit_speichern": {
+        "en": "Save and activate", "de": "Speichern und aktivieren"},
+    "theme_edit_vorschau": {"en": "Preview", "de": "Vorschau"},
+    "theme_edit_v_titel": {"en": "Super Game Boy", "de": "Super Game Boy"},
+    "theme_edit_v_zeile": {"en": "Another game", "de": "Noch ein Spiel"},
+    "theme_edit_v_dim": {"en": "1992 - Platform - 2 players",
+                         "de": "1992 - Platform - 2 Spieler"},
+    "theme_edit_hinweis": {
+        "en": "Up/Down: row - Left/Right: change - Enter: next of R/G/B "
+              "- ESC: leave without saving",
+        "de": "Hoch/Runter: Zeile - Links/Rechts: aendern - Enter: "
+              "naechstes von R/G/B - ESC: ohne Speichern zurueck"},
+    "theme_edit_gespeichert": {
+        "en": "Colour scheme saved and activated.",
+        "de": "Farbschema gespeichert und aktiviert."},
+    "sys_theme_eigen_bearbeiten": {
+        "en": "Edit your own colour scheme",
+        "de": "Eigenes Farbschema bearbeiten"},
     "sys_einzelordner_on": {
         "en": "Folders with a single game: shown as the game -> keep them as folders",
         "de": "Ordner mit nur einem Spiel: als Spiel anzeigen -> als Ordner belassen"},

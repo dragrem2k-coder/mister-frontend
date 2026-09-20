@@ -97,6 +97,10 @@ print("Test 3: speichern und wieder laden")
 # ---------------------------------------------------------------------------
 tmp = tempfile.mkdtemp(prefix="test_theme_eigen_")
 pfad = os.path.join(tmp, "theme_eigen.json")
+# Auch die Zustandsdatei umlenken - ein Test hinterlaesst nichts
+# ausserhalb seines eigenen Ordners (siehe test_theme_editor.py).
+_ALTE_WAHL = fm.THEME_FILE
+fm.THEME_FILE = os.path.join(tmp, "theme")
 
 meins = {"C_BG": (10, 20, 30), "C_PANEL": (40, 50, 60),
          "C_TEXT": (200, 210, 220), "C_DIM": (90, 95, 100),
@@ -234,6 +238,7 @@ check("es wird beim Modulstart geladen, VOR apply_theme()",
       < quelle.index("apply_theme(current_theme_name())"))
 
 shutil.rmtree(tmp, ignore_errors=True)
+fm.THEME_FILE = _ALTE_WAHL
 
 print()
 if fails:
