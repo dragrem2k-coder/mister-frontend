@@ -87,6 +87,25 @@ of the 68 everything is designed around, cutting every game title to a
 third. Landscape still uses the height; portrait now uses the width,
 the scarce side. That makes 38 characters instead of 23.
 
+**Portrait, second step: how the area is divided.** After the first
+step the frontend was usable in portrait, but the layout was still
+proportioned for 16:9. Measured at 1080×1920: in the **grid view**,
+**993 of 1497 pixels of height stayed empty** — two thirds of the
+area the view exists for — and the tile, at 117×156, was the size it
+has in landscape on a 720p screen. In the **gallery**, the data
+column next to the big cover had **seven characters** instead of 52,
+because the cover is sized from the height and in portrait the height
+is vast. And the **cover panel** on the list was **68 %** empty
+(landscape 11 %) while the list beside it cut titles at 20
+characters. The grid now derives its layout from the tile size
+instead of fixing it (4×5 instead of 7×3, tile 213×285, height fully
+used), the gallery puts the data **below** the cover in portrait — 38
+characters instead of 7 — and the list column gets 62 % of the width
+instead of 52 %: 24 characters, and the cover is now proportionally
+the size it has in landscape rather than larger. Landscape does not
+change by a single pixel; the old measurements are pinned as fixed
+numbers in the test.
+
 **A colour scheme editor.** *System → Display & Sound → Edit your own
 colour scheme*: six colours and the monochrome switch, editable with
 the pad, with a preview below showing exactly the elements each colour

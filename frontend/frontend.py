@@ -385,6 +385,40 @@ def art_spalte_x0(list_right, H, s):
     return list_right + (8 if H < KOMPAKT_H else 20) * s
 
 
+def art_spalte_h(art_w, art_y0, footer_y, s, W, H):
+    """Hoehe der Boxart-Spalte. Quer unveraendert der ganze Platz
+    zwischen Kopf- und Fusszeile.
+
+    HOCHKANT gedeckelt (Build 176). Nachgemessen bei 1080x1920:
+
+        Karte 387 x 1665 Punkte
+        Cover 351 x  468   (3:4, also von der BREITE begrenzt)
+        Text          72
+        LEER        1125   -  68 % der Karte
+
+    Quer sind es 11 %. Der Unterschied ist kein Zufall: die Karte
+    nimmt sich die Hoehe zwischen Kopf und Fuss, das Cover darin
+    kann aber nur so hoch werden, wie die Breite es zulaesst. Quer
+    ist die Spalte breit und niedrig, da geht die Rechnung auf;
+    hochkant ist sie schmal und sehr hoch.
+
+    Deshalb hochkant nur so hoch, wie Cover und Text brauchen: das
+    Cover in voller Breite (3:4) plus 100*s fuer den Text darunter -
+    drei Titelzeilen und vier Datenzeilen zu 12*s.
+
+    100*s und nicht der laengste denkbare Text (140*s): mit dem
+    Hoechstwert waere die Karte bei JEDEM Spiel so hoch wie beim
+    laengsten, und 264 Punkte blieben in der Regel leer. Ein Eintrag
+    mit allen sieben Datenzeilen bekommt dafuer von cover_box_size()
+    ein etwas kleineres Cover - also zwei Kastengroessen statt einer,
+    was gegenueber den drei Stufen quer immer noch weniger ist."""
+    h = footer_y - 8 * s - art_y0
+    if H > W:
+        noetig = (art_w - 2 * ART_CARD_PAD * s) * 4 // 3 + 100 * s
+        h = min(h, max(60 * s, noetig))
+    return h
+
+
 def art_karte_x0(list_right, H, s):
     """Linke Kante der gezeichneten Boxart-KARTE - also der Punkt, ab dem
     draw_art_panel() den Bildschirm besitzt. Alles, was den Hintergrund
@@ -3414,6 +3448,53 @@ class Frontend:
     RASTER_HDMI = (7, 3)
     RASTER_CRT = (5, 3)
 
+    # HOCHKANT (Build 176). Zielhoehe EINER Kachel, in Promille der
+    # SCHMALEN Seite des Schirms. Nicht gewaehlt, sondern quer
+    # nachgemessen:
+    #
+    #   1920x1080  Kachel 235 hoch, schmale Seite 1080  ->  218
+    #    320x240   Kachel  43 hoch, schmale Seite  240  ->  179
+    #
+    # (Auf CRT sind es 5 statt 7 Spalten, die Kachel ist dort also
+    # von sich aus groesser - deshalb zwei Werte statt einem.)
+    RASTER_HOCH_PROMILLE = 218
+    RASTER_HOCH_PROMILLE_CRT = 179
+
+    def _raster_aufteilung(self, breite, hoehe, abstand):
+        """Wieviele Spalten und Zeilen das Kachelraster bekommt.
+
+        QUER unveraendert 7x3 (auf CRT 5x3) - diese Zahlen stehen seit
+        Build 132 und sind mit echten Bildern abgestimmt.
+
+        HOCHKANT wird gerechnet statt gesetzt, und der Grund ist eine
+        Messung (Build 176, zweiter Schritt TATE):
+
+            1080x1920   7x3   Kachel 117x156   993 von 1497 Punkten
+                                               Hoehe blieben LEER
+
+        Zwei Drittel der Flaeche, fuer die die Ansicht ueberhaupt da
+        ist. Und die Kachel war so gross wie quer auf 720p - auf einem
+        Schirm, der 1080 breit ist.
+
+        Der Fehler steckte in der festen ZAHL. Quer passt 7x3, weil
+        1652x741 nun einmal so aussieht; hochkant ist die Flaeche
+        930x1497, also fast das Gegenteil. Deshalb wird hier nicht die
+        Zahl der Kacheln festgelegt, sondern ihre GROESSE - und danach
+        passen so viele hinein, wie hineinpassen. Quer bleibt die Zahl
+        stehen, damit sich dort bitgenau nichts aendert."""
+        fb = self.fb
+        if fb.width >= fb.height:
+            return (self.RASTER_CRT if fb.height < KOMPAKT_H
+                    else self.RASTER_HDMI)
+        schmal = fb.width
+        promille = (self.RASTER_HOCH_PROMILLE_CRT if schmal < KOMPAKT_H
+                    else self.RASTER_HOCH_PROMILLE)
+        ziel_h = max(8, schmal * promille // 1000)
+        ziel_b = max(6, ziel_h * 3 // 4)
+        spalten = max(2, (breite + abstand) // (ziel_b + abstand))
+        zeilen = max(2, (hoehe + abstand) // (ziel_h + abstand))
+        return spalten, zeilen
+
     def raster_geometrie(self, L):
         """Alles, was fuer das Kachelraster gebraucht wird - EINE
         Rechnung, benutzt vom Zeichenpfad UND vom Vorauslader.
@@ -3422,8 +3503,6 @@ class Frontend:
         und dem oberen linken Eckpunkt des Rasters."""
         fb = self.fb
         s, ox = L["s"], L["ox"]
-        spalten, zeilen = (self.RASTER_CRT if fb.height < KOMPAKT_H
-                           else self.RASTER_HDMI)
         # BUGFIX, gefunden durch den Pixelvergleich in
         # tools/test_ansichten.py (165 abweichende Punkte auf CRT, in
         # drei Zeilen direkt ueber dem Raster):
@@ -3451,6 +3530,7 @@ class Frontend:
         breite = fb.width - 2 * ox
         hoehe = unten - oben
         abstand = 6 * s
+        spalten, zeilen = self._raster_aufteilung(breite, hoehe, abstand)
         platz_b = (breite - (spalten - 1) * abstand) // spalten
         platz_h = (hoehe - (zeilen - 1) * abstand) // zeilen
         # Cover sind hochkant (ungefaehr 3:4). Die Kachel bekommt GENAU
@@ -3481,13 +3561,12 @@ class Frontend:
         Rechnung benutzen kann, ohne sie ein zweites Mal hinzuschreiben."""
         fb = self.fb
         s, ox = L["s"], L["ox"]
-        spalten, zeilen = (self.RASTER_CRT if fb.height < KOMPAKT_H
-                           else self.RASTER_HDMI)
         oben = L["list_y"] + 3 * s
         unten = L["footer_y"] - 4 * s - 11 * s
         breite = fb.width - 2 * ox
         hoehe = unten - oben
         abstand = 6 * s
+        spalten, zeilen = self._raster_aufteilung(breite, hoehe, abstand)
         platz_b = (breite - (spalten - 1) * abstand) // spalten
         platz_h = (hoehe - (zeilen - 1) * abstand) // zeilen
         cov_h = max(1, platz_h)
@@ -3583,9 +3662,27 @@ class Frontend:
 
     def galerie_geometrie(self, L):
         """Dasselbe fuer die Galerie: grosses Cover links, Daten rechts,
-        die Nachbarn als Leiste darunter."""
+        die Nachbarn als Leiste darunter.
+
+        HOCHKANT stehen die Daten UNTER dem Cover statt daneben
+        (Build 176). Nicht aus Geschmack, sondern weil daneben nichts
+        mehr hinpasste - nachgemessen:
+
+            1920x1080   Datenspalte 1268 Punkte   52 Zeichen
+            1080x1920   Datenspalte  172 Punkte    7 Zeichen
+
+        Sieben Zeichen. "Super Ma". Der Grund ist eine Rechnung, die
+        quer stimmt und hochkant nicht: die Hoehe des grossen Covers
+        ergibt sich aus dem senkrechten Platz, die Breite dann aus 3:4.
+        Hochkant ist der senkrechte Platz riesig - also wurde das Cover
+        716 von 930 Punkten breit und nahm der Spalte daneben alles weg.
+
+        Unter dem Cover ist die volle Breite da: 38 Zeichen statt 7.
+        QUER bleibt alles wie es war, bis auf den letzten Bildpunkt."""
         fb = self.fb
         s, ox = L["s"], L["ox"]
+        hoch = fb.height > fb.width
+        breite = fb.width - 2 * ox
         # BUGFIX aus dem ersten Probebild: die Karte um das grosse Cover
         # ragt um ART_CARD_PAD*s nach OBEN ueber - mit demselben
         # Startwert wie das Raster schob sie sich dadurch ueber die
@@ -3607,6 +3704,15 @@ class Frontend:
         #         nicht dezenter, sondern unlesbar - auf einem 320er
         #         Bild ist eine 23 Punkte breite Miniatur ein Fleck.
         leiste_h = self._galerie_leiste_h(L)
+        # HOCHKANT (Build 176): die Leiste ist ein PROZENTSATZ des
+        # senkrechten Platzes - hochkant also riesig (515 Punkte bei
+        # 1080x1920), waehrend die Kacheln darin nur 285 hoch sind. Die
+        # Haelfte der Leiste war leer. Sie bekommt deshalb genau die
+        # Hoehe ihrer Kacheln; der frei werdende Platz geht an das
+        # grosse Cover und an die Daten darunter.
+        if hoch:
+            leiste_h = min(leiste_h,
+                           self.kachel_cover_kasten(L)[1] + 2 * s)
         # BUGFIX (Build 125, gefunden durch den Pixelvergleich des neuen
         # schnellen Pfads): der Abstand zur Leiste stand auf 8*s - zu
         # wenig. Die Karte um das grosse Cover ist naemlich groesser als
@@ -3624,8 +3730,37 @@ class Frontend:
         # abgeleitet statt geraten: Polster + Schatten + der Rand, den
         # das Freiraeumen grosszuegig dazunimmt. Vierter Fall derselben
         # Sorte im Projekt (siehe Build 80).
-        gross_h = max(1, platz - leiste_h - (ART_CARD_PAD + 3 + 6) * s)
-        gross_b = max(1, gross_h * 3 // 4)
+        verfuegbar = max(1, platz - leiste_h - (ART_CARD_PAD + 3 + 6) * s)
+        if hoch:
+            # Der senkrechte Platz teilt sich jetzt zwischen Cover UND
+            # Text: in der Regel 30 %, mindestens aber 62*s - das sind
+            # eine grosse Titelzeile (26*s) und drei Datenzeilen zu
+            # 12*s, weniger waere kein Datenblock mehr.
+            #
+            # Der Deckel bei 45 % ist der Grund dafuer, dass die
+            # Untergrenze nicht einfach so dastehen darf: bei 240x320
+            # bleiben nur 162 Punkte fuer beides zusammen: ein fester
+            # Mindesttext haette dem "grossen" Cover 34 Punkte
+            # uebriggelassen - kleiner als die Miniaturen in der
+            # Leiste darunter, also genau das Gegenteil der Ansicht.
+            text_h = min(max(62 * s, verfuegbar * 30 // 100),
+                         verfuegbar * 45 // 100)
+            gross_h = max(1, verfuegbar - text_h - 8 * s)
+            gross_b = max(1, gross_h * 3 // 4)
+            if gross_b > breite:
+                gross_b = breite
+                gross_h = max(1, gross_b * 4 // 3)
+            gross_x = ox + max(0, (breite - gross_b) // 2)
+            # 14*s statt 9*s Abstand: die Karte ragt mit Polster und
+            # Schatten 9*s unter das Cover (siehe unten), und das
+            # Freiraeumen des Textes nimmt 2*s nach oben dazu.
+            text_x, text_y, text_b = ox, oben + gross_h + 14 * s, breite
+        else:
+            gross_h = verfuegbar
+            gross_b = max(1, gross_h * 3 // 4)
+            gross_x = ox
+            text_x, text_y = ox + gross_b + 14 * s, oben
+            text_b = max(0, (fb.width - ox) - text_x)
         # Die Leiste darf das grosse Cover nicht ueberragen - sonst
         # kippt das Bild optisch nach unten.
         #
@@ -3637,10 +3772,11 @@ class Frontend:
         klein_h = max(1, min(klein_h, leiste_h))
         klein_b = max(1, min(klein_b, klein_h * 3 // 4))
         return {"oben": oben, "unten": unten, "gross_b": gross_b,
-                "gross_h": gross_h, "leiste_y": unten - leiste_h,
+                "gross_h": gross_h, "gross_x": gross_x,
+                "leiste_y": unten - leiste_h,
                 "klein_b": klein_b, "klein_h": klein_h,
                 "abstand": 6 * s, "ox": ox, "s": s,
-                "text_x": ox + gross_b + 14 * s}
+                "text_x": text_x, "text_y": text_y, "text_b": text_b}
 
     def layout_items(self, has_art):
         """Layout fuer Seite 1. Bei Systemen mit Boxart teilt sich der
@@ -3703,7 +3839,17 @@ class Frontend:
         # Karte (siehe art_gap()) fast vollstaendig ausgeglichen: die
         # nutzbare Cover-Breite sinkt nur von 101 auf 94 px, die Zeile
         # gewinnt dafuer 3 Zeichen.
-        list_w = int(avail_w * ((0.58 if eng else 0.52) if has_art else 1.0))
+        #
+        # HOCHKANT 62 % (Build 176). Nachgerechnet, nicht geschaetzt:
+        # quer ist das Cover in der Boxart-Spalte 578 von 1920 Punkten
+        # breit, also 30 % des Schirms. Hochkant waren es mit 52 %
+        # ploetzlich 351 von 1080 - ein Cover, das ANTEILIG groesser
+        # ist als quer, auf dem Schirm, wo die Breite knapp ist. Bezahlt
+        # hat es die Liste: 20 Zeichen je Zeile statt 35. Mit 62 %
+        # kommt das Cover auf 26 % der Breite (quer 30 %) und die Liste
+        # auf 24 Zeichen.
+        list_w = int(avail_w * ((0.62 if H > W else (0.58 if eng else 0.52))
+                                if has_art else 1.0))
         if not has_art:
             list_w = avail_w
         list_x = ox
@@ -5545,7 +5691,8 @@ class Frontend:
         art_x0 = art_spalte_x0(list_right, self.fb.height, s)
         art_y0 = oy
         art_w = (self.fb.width - ox) - art_x0
-        art_h = footer_y - 8 * s - art_y0
+        art_h = art_spalte_h(art_w, art_y0, footer_y, s,
+                             self.fb.width, self.fb.height)
         if art_w <= 20 or art_h <= 20:
             return None, None
         item_syskey = self._item_syskey(v["items"][item_i], syskey)
@@ -6216,7 +6363,8 @@ class Frontend:
             art_x0 = art_spalte_x0(list_right, self.fb.height, s)
             art_y0 = oy
             art_w = (W - ox) - art_x0
-            art_h = footer_y - 8 * s - art_y0
+            art_h = art_spalte_h(art_w, art_y0, footer_y, s, W,
+                                 self.fb.height)
             # NEU (Build 76, Messung im HDMI-Modus auf dem Geraet des
             # Nutzers):
             #
@@ -6734,40 +6882,41 @@ class Frontend:
         item_syskey = self._item_syskey(item, syskey)
         akzent = accent_for(item_syskey)
         oben, gb, gh = geo["oben"], geo["gross_b"], geo["gross_h"]
+        gx = geo["gross_x"]
         pad = ART_CARD_PAD * s
         if schnell:
             # Nur die Flaeche der Karte freiraeumen, nicht den Schirm.
             # Der Schatten reicht ueber die Karte hinaus, deshalb ein
             # paar Punkte mehr Rand als das Polster.
-            self._restore_row_bg(ox - pad - 4 * s, oben - pad - 4 * s,
+            self._restore_row_bg(gx - pad - 4 * s, oben - pad - 4 * s,
                                  gb + 2 * pad + 8 * s,
                                  gh + 2 * pad + 8 * s)
-        fb.karte_mit_schatten(ox - pad, oben - pad, gb + 2 * pad,
+        fb.karte_mit_schatten(gx - pad, oben - pad, gb + 2 * pad,
                               gh + 2 * pad, 3 * s, C_PANEL,
                               fb._darken(C_BG, 0.55), 4 * s)
         art, verzoegert = self._ansicht_cover(item, syskey, gb, gh)
         if art:
             aw, ah, pix = art
-            ax = ox + max(0, (gb - aw) // 2)
+            ax = gx + max(0, (gb - aw) // 2)
             ay = oben + max(0, (gh - ah) // 2)
             self.blit(ax, ay, aw, ah, pix)
             fb.rect(ax - 2 * s, ay - 2 * s, aw + 4 * s, 2 * s, akzent)
             fb.rect(ax - 2 * s, ay + ah, aw + 4 * s, 2 * s, akzent)
         elif not verzoegert:
-            self._zeichne_kein_artwork(ox, oben, gb, gh, s)
+            self._zeichne_kein_artwork(gx, oben, gb, gh, s)
 
-        # ---- Titel und Daten rechts ----
-        tx = geo["text_x"]
-        maxc = max(6, (fb.width - ox - tx) // (8 * s))
+        # ---- Titel und Daten: quer rechts daneben, hochkant darunter
+        # (Build 176, siehe galerie_geometrie) ----
+        tx, ty, tb = geo["text_x"], geo["text_y"], geo["text_b"]
+        maxc = max(6, tb // (8 * s))
         if schnell:
             # Der Text wechselt bei jedem Schritt und wird mal kuerzer,
             # mal laenger - ohne Freiraeumen bliebe der Rest des vorigen
             # Titels stehen. Genau der Fehler, der bei der Fusszeile
             # schon einmal gefunden wurde.
-            self._restore_row_bg(tx, oben - 2 * s,
-                                 max(0, (fb.width - ox) - tx),
+            self._restore_row_bg(tx, ty - 2 * s, tb,
                                  max(0, geo["leiste_y"] - 4 * s
-                                     - (oben - 2 * s)))
+                                     - (ty - 2 * s)))
         titel = item[0]
         t_scale = 2 * s
         if len(titel) > max(4, maxc // 2):
@@ -6775,13 +6924,13 @@ class Frontend:
             # vollstaendig als gross und abgehackt - dieselbe Regel wie
             # in der Kopfzeile.
             t_scale = s
-        t_maxc = max(4, (fb.width - ox - tx) // (8 * t_scale))
-        fb.text(tx, oben, titel[:t_maxc], t_scale, C_TITLE)
+        t_maxc = max(4, tb // (8 * t_scale))
+        fb.text(tx, ty, titel[:t_maxc], t_scale, C_TITLE)
         # Dieselbe Quelle wie die Boxart-Spalte - siehe
         # _spiel_infozeilen(). Zwei getrennte Listen waeren zwei
         # Gelegenheiten, auseinanderzulaufen.
         zeilen, _ra = self._spiel_infozeilen(item, item_syskey, maxc)
-        iy = oben + (12 if t_scale == s else 26) * s
+        iy = ty + (12 if t_scale == s else 26) * s
         for ln in zeilen:
             if iy + 9 * s > geo["leiste_y"] - 4 * s:
                 break
@@ -6792,8 +6941,7 @@ class Frontend:
         # kleiner Absatz davor, damit sie nicht wie eine weitere
         # Datenzeile aussieht.
         self._beschreibung_zeichnen(tx, iy + 4 * s, geo["leiste_y"] - 4 * s,
-                                    max(0, (fb.width - ox) - tx),
-                                    item, item_syskey, s)
+                                    tb, item, item_syskey, s)
 
         # ---- Leiste mit den Nachbarn ----
         ly = geo["leiste_y"]
@@ -7034,36 +7182,38 @@ class Frontend:
         name, node, syskey = self.cats[self.cat_i]
         akzent = accent_for(syskey)
         oben, gb, gh = geo["oben"], geo["gross_b"], geo["gross_h"]
+        gx = geo["gross_x"]
         pad = ART_CARD_PAD * s
         if schnell:
-            self._restore_row_bg(ox - pad - 4 * s, oben - pad - 4 * s,
+            self._restore_row_bg(gx - pad - 4 * s, oben - pad - 4 * s,
                                  gb + 2 * pad + 8 * s,
                                  gh + 2 * pad + 8 * s)
-        fb.karte_mit_schatten(ox - pad, oben - pad, gb + 2 * pad,
+        fb.karte_mit_schatten(gx - pad, oben - pad, gb + 2 * pad,
                               gh + 2 * pad, 3 * s, C_PANEL,
                               fb._darken(C_BG, 0.55), 4 * s)
         art, verzoegert = self._kat_logo(self.cat_i, gb, gh)
         if art:
             aw, ah, pix = art
-            ax = ox + max(0, (gb - aw) // 2)
+            ax = gx + max(0, (gb - aw) // 2)
             ay = oben + max(0, (gh - ah) // 2)
             self.blit(ax, ay, aw, ah, pix)
             fb.rect(ax - 2 * s, ay - 2 * s, aw + 4 * s, 2 * s, akzent)
             fb.rect(ax - 2 * s, ay + ah, aw + 4 * s, 2 * s, akzent)
         elif not verzoegert:
-            self._zeichne_kein_artwork(ox, oben, gb, gh, s)
+            self._zeichne_kein_artwork(gx, oben, gb, gh, s)
 
-        tx = geo["text_x"]
-        maxc = max(6, (fb.width - ox - tx) // (8 * s))
+        # Quer rechts daneben, hochkant darunter - dieselbe Rechnung
+        # wie bei den Spielen (Build 176, siehe galerie_geometrie).
+        tx, ty, tb = geo["text_x"], geo["text_y"], geo["text_b"]
+        maxc = max(6, tb // (8 * s))
         if schnell:
-            self._restore_row_bg(tx, oben - 2 * s,
-                                 max(0, (fb.width - ox) - tx),
+            self._restore_row_bg(tx, ty - 2 * s, tb,
                                  max(0, geo["leiste_y"] - 4 * s
-                                     - (oben - 2 * s)))
+                                     - (ty - 2 * s)))
         t_scale = 2 * s if len(name) <= max(4, maxc // 2) else s
-        t_maxc = max(4, (fb.width - ox - tx) // (8 * t_scale))
-        fb.text(tx, oben, name.upper()[:t_maxc], t_scale, C_TITLE)
-        iy = oben + (12 if t_scale == s else 30) * s
+        t_maxc = max(4, tb // (8 * t_scale))
+        fb.text(tx, ty, name.upper()[:t_maxc], t_scale, C_TITLE)
+        iy = ty + (12 if t_scale == s else 30) * s
         for ln in self._kat_infozeilen(node, syskey, maxc):
             if iy + 9 * s > geo["leiste_y"] - 4 * s:
                 break
@@ -8700,7 +8850,7 @@ class Frontend:
             return "fest", g["gross_b"], g["gross_h"], s
         art_x0 = art_spalte_x0(L["list_right"], fb.height, s)
         art_w = (W - ox) - art_x0
-        art_h = L["footer_y"] - 8 * s - oy
+        art_h = art_spalte_h(art_w, oy, L["footer_y"], s, W, fb.height)
         if art_w <= 20 or art_h <= 20:
             return None
         return art_w, art_h, s
@@ -9268,7 +9418,8 @@ class Frontend:
             s, ox, oy = L["s"], L["ox"], L["oy"]
             art_x0 = art_spalte_x0(L["list_right"], fb.height, s)
             art_w = (fb.width - ox) - art_x0
-            art_h = L["footer_y"] - 8 * s - oy
+            art_h = art_spalte_h(art_w, oy, L["footer_y"], s,
+                                 fb.width, fb.height)
             if art_w <= 20 or art_h <= 20:
                 self.draw(t("thumb_prewarm_failed"), prominent=True)
                 return
@@ -9830,6 +9981,32 @@ class Frontend:
         cover_h = h - text_h - 8 * s
         cover_h = max(int(h * 0.35), min(cover_h, int(h * 0.85)))
         cover_h = max(20, cover_h)
+
+        # HOCHKANT ein DECKEL statt der Stufen weiter unten (Build 176).
+        #
+        # Ein Cover ist 3:4 und damit von der BREITE begrenzt. Hochkant
+        # ist die Spalte schmal und sehr hoch, der Kasten wurde also
+        # viel hoeher, als das Bild darin je werden konnte: bei
+        # 1080x1920 ein Kasten von 508 fuer ein Cover von 344. Die 164
+        # Punkte Unterschied waren nicht nur leer - sie schoben auch den
+        # Text unter dem Cover so weit nach unten, dass er frei in der
+        # Karte schwebte.
+        #
+        # Und die Stufen aus Build 86 werden hochkant nicht gebraucht:
+        # sie sollten verhindern, dass die Kastenhoehe am TEXT haengt.
+        # Der Deckel haengt nur an der BREITE und tut damit dasselbe,
+        # nur genauer - hochkant gibt es im Regelfall genau EINE
+        # Kastenhoehe je Aufloesung statt drei Stufen. Nur ein Eintrag
+        # mit dem laengsten moeglichen Text bekommt eine zweite.
+        if self.fb.height > self.fb.width:
+            gedeckelt = max(20, min(cover_h, avail_w * 4 // 3))
+            if gedeckelt + text_h + 8 * s <= h:
+                cover_h = gedeckelt
+            else:
+                # Sicherheitsnetz wie bei den Stufen: lieber ein
+                # kleineres Cover als abgeschnittener Text.
+                cover_h = max(20, h - text_h - 8 * s)
+            return avail_w, cover_h, title_lines, info_lines, ra_progress
 
         # NEU (Build 86, Nutzerwunsch nach einem Vorher/Nachher-Vergleich:
         # "ich moechte bitte die drei Stufen einbauen ... zudem habe ich

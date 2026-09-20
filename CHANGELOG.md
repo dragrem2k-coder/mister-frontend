@@ -91,6 +91,24 @@ ausgelegt ist: jeder Spieltitel auf ein Drittel abgeschnitten. Quer
 rechnet weiter die Höhe, hochkant jetzt die Breite — die knappe Seite.
 Macht 38 statt 23 Zeichen.
 
+**Hochkant, zweiter Schritt: die Aufteilung der Fläche.** Nach dem
+ersten Schritt war das Frontend hochkant benutzbar, die Aufteilung
+aber weiter für 16:9 gedacht. Nachgemessen bei 1080×1920: im
+**Kachelraster** blieben **993 von 1497 Bildpunkten Höhe leer** — zwei
+Drittel der Fläche, für die die Ansicht da ist —, und die Kachel war
+mit 117×156 so groß wie quer auf 720p. In der **Galerie** hatte die
+Datenspalte neben dem großen Cover **sieben Zeichen** statt 52, weil
+das Cover aus der Höhe gerechnet wird und die hochkant riesig ist. Und
+die **Boxart-Karte** auf der Liste war zu **68 %** leer (quer 11 %),
+während die Liste daneben auf 20 Zeichen abschnitt. Jetzt rechnet das
+Raster seine Aufteilung aus der Kachelgröße statt sie festzulegen
+(4×5 statt 7×3, Kachel 213×285, Höhe voll genutzt), die Galerie setzt
+die Daten hochkant **unter** das Cover — 38 Zeichen statt 7 —, und die
+Listenspalte bekommt 62 statt 52 % der Breite: 24 Zeichen, und das
+Cover ist damit anteilig so groß wie quer statt größer. Quer ändert
+sich kein einziger Bildpunkt; die alten Meßwerte stehen als feste
+Zahlen im Test.
+
 **Ein Farbschema-Editor.** *System → Anzeige & Sound → Eigenes
 Farbschema bearbeiten*: sechs Farben und der Monochrom-Schalter, am Pad
 einstellbar, mit einer Vorschau darunter, die genau die Elemente zeigt,
