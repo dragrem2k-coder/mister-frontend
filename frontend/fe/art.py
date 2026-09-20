@@ -590,10 +590,12 @@ def _thumb_cache_key(path, w, h):
     ersetzt, danach lange nicht mehr angefasst) ist das unproblematisch."""
     try:
         st = os.stat(path)
-        sig = "%s|%d|%d|%d|%.6f|%s" % (path, w, h, st.st_size, st.st_mtime,
-                                       THUMB_ALGO_VERSION)
+        sig = "%s|%d|%d|%d|%.6f|%s%s" % (path, w, h, st.st_size,
+                                         st.st_mtime, THUMB_ALGO_VERSION,
+                                         verkleinern_modus_kuerzel())
     except OSError:
-        sig = "%s|%d|%d|%s" % (path, w, h, THUMB_ALGO_VERSION)
+        sig = "%s|%d|%d|%s%s" % (path, w, h, THUMB_ALGO_VERSION,
+                                 verkleinern_modus_kuerzel())
     return hashlib.sha1(sig.encode("utf-8", "surrogateescape")).hexdigest()[:24]
 
 # VERSION DES SKALIERVERFAHRENS - Teil des Cache-Schluessels.
@@ -661,7 +663,7 @@ THUMB_ALGO_VERSION = "3"
 # Quelle und Bauanleitung: frontend/c/dragend.c und frontend/c/bauen.sh
 import ctypes as _ctypes
 
-DRAGEND_LIB_VERSION = 2
+DRAGEND_LIB_VERSION = 3
 _LIB = None
 
 
@@ -682,6 +684,11 @@ def _lib_laden():
             return None
         lib.skalieren_flaechenmittel.restype = _ctypes.c_int
         lib.skalieren_flaechenmittel.argtypes = [
+            _ctypes.c_char_p, _ctypes.c_int, _ctypes.c_int,
+            _ctypes.c_int, _ctypes.c_int, _ctypes.c_char_p]
+        # Build 175: scharf verkleinern (Nearest-Neighbor).
+        lib.skalieren_nearest.restype = _ctypes.c_int
+        lib.skalieren_nearest.argtypes = [
             _ctypes.c_char_p, _ctypes.c_int, _ctypes.c_int,
             _ctypes.c_int, _ctypes.c_int, _ctypes.c_char_p]
         lib.hochskalieren.restype = _ctypes.c_int
@@ -726,6 +733,108 @@ def _verkleinern_flaechenmittel(pix, w, h, tw, th):
         except Exception:                                # noqa: BLE001
             LOG("libdragend: Verkleinern fehlgeschlagen, nehme Python")
     return _verkleinern_flaechenmittel_py(pix, w, h, tw, th)
+
+
+def _verkleinern_nearest_py(pix, w, h, tw, th):
+    """Scharf verkleinern ohne C: je Zielpunkt genau ein Quellpunkt.
+
+    Deutlich billiger als das Flaechenmittel - es wird nichts
+    summiert, nur ausgewaehlt. Die Zeile wird in einem Rutsch aus
+    Stuecken zusammengesetzt, damit nicht je Bildpunkt ein
+    Python-Rahmen entsteht.
+
+    Die Quellindizes sind GENAU dieselben wie in der C-Fassung und
+    liegen auf demselben Raster wie das Flaechenmittel: der
+    Umschalter aendert die Schaerfe, nicht den Ausschnitt."""
+    if tw <= 0 or th <= 0 or w <= 0 or h <= 0:
+        return None
+    mv = memoryview(pix if isinstance(pix, (bytes, bytearray))
+                    else bytes(pix))
+    spalten = []
+    for x in range(tw):
+        sx = min(w - 1, (x * w) // tw)
+        spalten.append(sx * 4)
+    raus = bytearray(tw * th * 4)
+    rw = w * 4
+    ro = tw * 4
+    for ty in range(th):
+        sy = min(h - 1, (ty * h) // th)
+        zeile = mv[sy * rw:(sy + 1) * rw]
+        ziel = ty * ro
+        for x, off in enumerate(spalten):
+            raus[ziel + x * 4:ziel + x * 4 + 4] = zeile[off:off + 4]
+    return bytes(raus)
+
+
+def _verkleinern_nearest(pix, w, h, tw, th):
+    """Verteiler: C, wenn verfuegbar - sonst Python."""
+    if _LIB is not None:
+        if tw <= 0 or th <= 0 or w <= 0 or h <= 0:
+            return None
+        try:
+            n = tw * th * 4
+            ziel = _ctypes.create_string_buffer(n)
+            if _LIB.skalieren_nearest(
+                    _als_bytes(pix), w, h, tw, th, ziel) == 0:
+                return ziel.raw[:n]
+        except Exception:                                # noqa: BLE001
+            LOG("libdragend: scharf Verkleinern fehlgeschlagen, "
+                "nehme Python")
+    return _verkleinern_nearest_py(pix, w, h, tw, th)
+
+
+def scharf_verkleinern_an():
+    """Ist "scharf verkleinern" eingeschaltet?
+
+    Wie fremdquellen_enabled() weiter unten verzoegert geholt UND
+    gemerkt: fe/settings.py importiert seinerseits aus fe/art.py, ein
+    Import oben im Kopf waere ein Ringschluss. Und die Antwort wird
+    je Cover gebraucht - eine Dateiabfrage je Bild waere genau die
+    Sorte stiller Kosten, gegen die die Builds 104-110 angegangen
+    sind.
+
+    Der Umschalter im Menue verwirft den Merker (siehe
+    verkleinern_modus_vergessen())."""
+    global _scharf_an
+    if _scharf_an is None:
+        try:
+            from fe.settings import scharf_verkleinern as _schalter
+            _scharf_an = bool(_schalter())
+        except Exception:                                # noqa: BLE001
+            _scharf_an = False
+    return _scharf_an
+
+
+def verkleinern_modus_vergessen():
+    """Nach einem Schalterwechsel - danach wird neu nachgesehen."""
+    global _scharf_an
+    _scharf_an = None
+
+
+def verkleinern_modus_kuerzel():
+    """Ein Zeichen fuer den Cache-Schluessel: "s" scharf, "f" weich.
+
+    DAS IST DER WICHTIGE TEIL DER GANZEN SACHE. Ohne diesen Buchstaben
+    im Schluessel wuerde nach dem Umschalten weiterhin die alte
+    Miniatur getroffen - das Bild bliebe unveraendert, der Schalter
+    schiene kaputt, und genau das haetten wir dann tagelang gesucht.
+
+    Beide Fassungen duerfen nebeneinander im Cache liegen: wer
+    zurueckschaltet, hat seine alten Miniaturen sofort wieder da,
+    statt sie neu rechnen zu muessen."""
+    return "s" if scharf_verkleinern_an() else "f"
+
+
+def _verkleinern(pix, w, h, tw, th):
+    """Verkleinern - weich (Flaechenmittel) oder scharf (Nearest).
+
+    DER EINE EINSTIEG fuer den ganzen Zeichenweg. Vorher riefen zwei
+    Stellen _verkleinern_flaechenmittel() direkt; mit zwei Verfahren
+    waeren daraus zwei Stellen geworden, an denen man den Schalter
+    vergessen kann."""
+    if scharf_verkleinern_an():
+        return _verkleinern_nearest(pix, w, h, tw, th)
+    return _verkleinern_flaechenmittel(pix, w, h, tw, th)
 
 
 def _hochskalieren(pix, w, h, scale):
@@ -2077,7 +2186,7 @@ class ArtCache:
             self._defer_count += 1
             return None
         _bilanz_zaehlen(False)
-        data = _verkleinern_flaechenmittel(pix, w, h, tw, th)
+        data = _verkleinern(pix, w, h, tw, th)
         if data is None:
             return None
         result = (tw, th, data)
@@ -2564,7 +2673,7 @@ def _prewarm_aus_gelesenem(path, max_w, max_h, gelesen):
         return "fertig"
 
     tw, th = zielmass(nw, nh, max_w, max_h)
-    data = _verkleinern_flaechenmittel(pix, w, h, tw, th)
+    data = _verkleinern(pix, w, h, tw, th)
     if data is None:
         return "fehler"
     _thumb_cache_put(path, max_w, max_h, tw, th, data)
@@ -2891,7 +3000,8 @@ _docs_syn_knapp = {}          # (syskey, sprache) -> {vergleichsname: Text}
 _docs_syn_order = []          # aelteste zuerst, siehe DOCS_SYNOPSIS_MAX
 _docs_syn_laeuft = set()      # gerade im Hintergrund eingelesen
 _docs_syn_sperre = threading.Lock()
-_fremd_an = None              # Schalterzustand, einmal je Sitzung
+_fremd_an = None
+_scharf_an = None   # Build 175, siehe scharf_verkleinern_an()              # Schalterzustand, einmal je Sitzung
 
 
 def fremdquellen_enabled():

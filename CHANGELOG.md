@@ -64,6 +64,15 @@ blieb aber hinten stehen — wir haben MiSTers gerade aufgebautes OSD
 sofort wieder schwarz übermalt. Jetzt gehört der Bildschirm ab dem F12
 MiSTer; ein Test hält die Reihenfolge fest.
 
+**Cover scharf verkleinern — für die Röhre.** Bisher wurde immer
+gemittelt: auf HDMI das bessere Bild, auf einer Röhre oft nicht, weil
+Pixelkunst zu weichem Brei wird. *System → Anzeige & Sound* schaltet
+jetzt auf Nearest-Neighbor um — in C gerechnet und dabei viermal
+billiger als das Mitteln. Der Modus hängt im Schlüssel des
+Miniaturen-Caches, sonst bliebe nach dem Umschalten die alte Miniatur
+stehen; beide Fassungen liegen nebeneinander, zurückschalten geht
+deshalb sofort.
+
 **Core-Verwaltung.** Liegen von einem Core mehrere Fassungen auf der
 Karte — beim NeXT-Core sind es schnell vier, mit sprechenden Namen wie
 `scsi_dma_csr_fix` — lässt sich unter *System → Optionen → Cores*

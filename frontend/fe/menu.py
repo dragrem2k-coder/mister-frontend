@@ -35,6 +35,7 @@ from fe.settings import (
     pulse_effect_enabled, eq_effect_enabled,
     track_marquee_enabled, fb_size_label_key,
     autostart_enabled, rom_filter_enabled, einzelordner_aufloesen,
+    scharf_verkleinern,
 )
 from fe.timekeeping import format_timezone_offset, load_timezone_offset
 from fe.retroachievements import load_ra_config, ra_toggle_enabled
@@ -233,6 +234,10 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         else t("sys_rom_filter_off")
     # NEU (Build 156): Ordner mit genau einem Spiel aufloesen. Standard
     # AN - siehe einzelordner_aufloesen() in fe/settings.py.
+    # Build 175: scharf/weich verkleinern. Steht bei der ANZEIGE, nicht
+    # bei den Optionen - es geht darum, wie das Bild aussieht.
+    scharf_label = t("sys_scharf_on") if scharf_verkleinern() \
+        else t("sys_scharf_off")
     einzelordner_label = t("sys_einzelordner_on") if einzelordner_aufloesen() \
         else t("sys_einzelordner_off")
     _ovx, _ovy = overscan_lesen()
@@ -288,6 +293,7 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         (dragend_logo_label, "dragend_logo", None),
         (fast_scroll_label, "fast_scroll", None),
         (cover_sofort_label, "cover_sofort", None),
+        (scharf_label, "scharf_verkleinern", None),
         # NEU (Build 113): Bildrand. Steht direkt bei den anderen
         # Anzeige-Punkten; wer eine Roehre hat, sucht genau hier.
         # NEU (Build 122): Ansicht der Spieleliste. Steht direkt

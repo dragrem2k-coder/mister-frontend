@@ -900,6 +900,23 @@ TRANSLATIONS = {
         "en": "Edit your own colour scheme",
         "de": "Eigenes Farbschema bearbeiten"},
     # NEU (Build 174): Core-Verwaltung.
+    # NEU (Build 175): scharf verkleinern. Der Text sagt, WOFUER es
+    # gedacht ist - auf einer Roehre ist hart oft das bessere Bild,
+    # auf HDMI meistens nicht.
+    "sys_scharf_on": {
+        "en": "Shrink covers: sharp (pixel look) -> soft (averaged)",
+        "de": "Cover verkleinern: scharf (Pixel-Look) -> weich (gemittelt)"},
+    "sys_scharf_off": {
+        "en": "Shrink covers: soft (averaged) -> sharp (pixel look, "
+              "often better on a CRT)",
+        "de": "Cover verkleinern: weich (gemittelt) -> scharf "
+              "(Pixel-Look, auf der Roehre oft besser)"},
+    "sys_scharf_changed": {
+        "en": "Changed. Thumbnails are recomputed as you browse - the "
+              "old ones stay, so switching back is instant.",
+        "de": "Geändert. Die Miniaturen werden beim Blättern neu "
+              "gerechnet - die alten bleiben liegen, zurückschalten "
+              "geht also sofort."},
     "sys_cores": {
         "en": "Cores: choose a version per system",
         "de": "Cores: Fassung je System waehlen"},

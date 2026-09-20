@@ -63,6 +63,14 @@ stayed at the end — so we painted over MiSTer's freshly drawn OSD. The
 screen now belongs to MiSTer from the F12 onwards, and a test pins the
 order down.
 
+**Sharp cover downscaling — for CRTs.** Until now covers were always
+averaged: the better picture on HDMI, often not on a CRT, where pixel
+art turns to mush. *System → Display & Sound* now switches to
+nearest-neighbour — computed in C and four times cheaper than
+averaging. The mode is part of the thumbnail cache key, otherwise the
+old thumbnail would simply stay; both variants live side by side, so
+switching back is instant.
+
 **Core management.** When several versions of a core sit on the card
 — the NeXT core easily has four, with telling names like
 `scsi_dma_csr_fix` — *System → Options → Cores* now lets you pick which

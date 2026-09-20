@@ -1274,6 +1274,48 @@ def toggle_rom_filter():
 # STANDARD AN. Anders als beim ROM-Filter wird hier nichts versteckt -
 # es faellt nur eine Ebene weg, hinter der ohnehin immer genau dasselbe
 # eine Spiel stand. Die Datei bedeutet deshalb "abgeschaltet".
+# NEU (Build 175): scharf verkleinern statt weich.
+#
+# Standard bleibt das Flaechenmittel - es ist auf HDMI das bessere
+# Bild und seit Build 118/155 sorgfaeltig optimiert. Die Datei
+# bedeutet "scharf", nicht "weich": wer nichts tut, bekommt genau das
+# bisherige Verhalten.
+SCHARF_VERKLEINERN_FLAG = "/media/fat/frontend/verkleinern_scharf"
+
+
+def scharf_verkleinern():
+    """True, wenn Cover ohne Mitteln verkleinert werden sollen
+    (Nearest-Neighbor). Standard: False."""
+    return os.path.exists(SCHARF_VERKLEINERN_FLAG)
+
+
+@_nach_aenderung
+def toggle_scharf_verkleinern():
+    """Schaltet um. Liefert den NEUEN Zustand.
+
+    KEIN Neu-Einlesen noetig, und auch kein Leeren des
+    Miniaturen-Caches: der Zustand steckt im Cache-Schluessel (siehe
+    _thumb_cache_key() in fe/art.py). Beide Fassungen duerfen
+    nebeneinander liegen - wer zurueckschaltet, hat seine alten
+    Miniaturen sofort wieder da, statt sie neu rechnen zu muessen."""
+    if scharf_verkleinern():
+        try:
+            os.remove(SCHARF_VERKLEINERN_FLAG)
+        except OSError as e:
+            LOG("toggle_scharf_verkleinern: Loeschen fehlgeschlagen: %s" % e)
+            return True
+        return False
+    try:
+        d = os.path.dirname(SCHARF_VERKLEINERN_FLAG)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        open(SCHARF_VERKLEINERN_FLAG, "w").close()
+    except OSError as e:
+        LOG("toggle_scharf_verkleinern: Anlegen fehlgeschlagen: %s" % e)
+        return False
+    return True
+
+
 EINZELORDNER_AUS_FLAG = "/media/fat/frontend/einzelordner_aus"
 
 

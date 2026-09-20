@@ -240,7 +240,8 @@ from fe.settings import (
     track_marquee_enabled, toggle_track_marquee,
     cycle_fb_size, fb_size_value, set_fb_size,
     toggle_autostart,
-    toggle_rom_filter, toggle_einzelordner, mister_ini_video_zustand,
+    toggle_rom_filter, toggle_einzelordner, toggle_scharf_verkleinern,
+    mister_ini_video_zustand,
 )
 
 # NEUES FEATURE (Nutzerwunsch: Rainwave-Internetradio als zweite
@@ -1034,6 +1035,7 @@ from fe.art import (
     thumb_cache_schuetzen, thumb_cache_modus_setzen, thumb_cache_lesen,
     alten_flachen_cache_aufraeumen,
     rechtecke_kopieren as _c_rechtecke_kopieren,
+    verkleinern_modus_vergessen,
 )
 
 # NEU (Build 73): Cover-Miniaturen im Leerlauf vorberechnen. Die
@@ -16172,6 +16174,28 @@ class Frontend:
                             self._refresh_system_category()
                             self.fb._rowcache.clear()
                             self.fb._rectcache.clear()
+                        elif kind == "scharf_verkleinern":
+                            # Build 175. KEIN Leeren des Caches und
+                            # kein Neu-Einlesen: der Zustand steckt im
+                            # Cache-Schluessel (siehe
+                            # verkleinern_modus_kuerzel() in
+                            # fe/art.py), beide Fassungen duerfen
+                            # nebeneinander liegen. Nur den gemerkten
+                            # Schalterzustand verwerfen, sonst zeichnet
+                            # das Frontend bis zum Neustart weiter im
+                            # alten Modus.
+                            toggle_scharf_verkleinern()
+                            verkleinern_modus_vergessen()
+                            ART.cache.clear()
+                            ART.order = []
+                            ART._original_bytes = 0
+                            if hasattr(ART, "scaled"):
+                                ART.scaled.clear()
+                                ART.scaled_order = []
+                                ART.scaled_bytes = 0
+                            self._refresh_system_category()
+                            self.fb.mark_full_redraw()
+                            self.draw(t("sys_scharf_changed"))
                         elif kind == "cores":
                             try:
                                 self.cores_bildschirm()

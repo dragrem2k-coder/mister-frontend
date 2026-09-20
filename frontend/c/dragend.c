@@ -228,6 +228,66 @@ int rechtecke_kopieren(const unsigned char *src, unsigned char *dst,
     return 0;
 }
 
+/* ------------------------------------------------------------------
+ * SCHARF VERKLEINERN (Build 175)
+ * ------------------------------------------------------------------
+ * Nearest-Neighbor: je Zielpunkt genau EIN Quellpunkt, ohne zu
+ * mitteln. Das Ergebnis ist haerter und koerniger als das
+ * Flaechenmittel darueber - und genau das ist auf einer Roehre oft
+ * das bessere Bild. Pixelkunst bleibt Pixelkunst, statt zu einem
+ * weichen Brei zu werden; die Maske der Roehre uebernimmt das
+ * Weichzeichnen ohnehin selbst.
+ *
+ * Es ist ausserdem deutlich billiger: keine Summen, keine Division,
+ * nur ein Zugriff je Zielpunkt.
+ *
+ * Die Quellindizes werden GENAUSO gerechnet wie beim Flaechenmittel
+ * (ganzzahlig aus dem Verhaeltnis) - so liegen beide Verfahren auf
+ * demselben Raster, und der Umschalter aendert die Bildschaerfe,
+ * nicht den Bildausschnitt.
+ */
+int skalieren_nearest(const unsigned char *pix, int w, int h,
+                      int tw, int th, unsigned char *out)
+{
+    int x, ty;
+    int rw, ro;
+    enum { MAXZIEL = 4096 };
+    static int s_sx[MAXZIEL];
+
+    if (tw <= 0 || th <= 0 || w <= 0 || h <= 0) return -1;
+    if (tw > MAXZIEL) return -1;
+
+    rw = w * 4;
+    ro = tw * 4;
+
+    /* Quellspalte je Zielspalte einmal vorrechnen - sonst steht
+     * dieselbe Division in der inneren Schleife. */
+    for (x = 0; x < tw; x++) {
+        int sx = (int)((double)(x * w) / (double)tw);
+        if (sx >= w) sx = w - 1;
+        s_sx[x] = sx * 4;
+    }
+
+    for (ty = 0; ty < th; ty++) {
+        int sy = (int)((double)(ty * h) / (double)th);
+        const unsigned char *zeile;
+        unsigned char *ziel;
+        if (sy >= h) sy = h - 1;
+        zeile = pix + (size_t)sy * (size_t)rw;
+        ziel = out + (size_t)ty * (size_t)ro;
+        for (x = 0; x < tw; x++) {
+            const unsigned char *q = zeile + s_sx[x];
+            unsigned char *z = ziel + x * 4;
+            z[0] = q[0];
+            z[1] = q[1];
+            z[2] = q[2];
+            z[3] = q[3];
+        }
+    }
+    return 0;
+}
+
 /* Damit die Python-Seite pruefen kann, ob sie die passende Fassung
- * gefunden hat. Wird bei jeder inhaltlichen Aenderung hochgezaehlt. */
-int dragend_version(void) { return 2; }
+ * gefunden hat. Wird bei jeder inhaltlichen Aenderung hochgezaehlt.
+ * 3 = skalieren_nearest() dazugekommen (Build 175). */
+int dragend_version(void) { return 3; }
