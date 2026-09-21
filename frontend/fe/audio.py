@@ -36,7 +36,7 @@ VOLUME_FILE = "/media/fat/frontend/volume"   # Lautstaerke 0-100 (Musik + Menue-
 # NEUES FEATURE (Nutzerwunsch: Lautstaerke-Regler fuer Musik UND
 # Menue-Sounds, uebernommen aus einem separat vorbereiteten, auf
 # echter MiSTer-Hardware getesteten Vorschlag - siehe
-# CHANGES_VOLUME.md). Zwei unterschiedliche Mechanismen, weil Musik
+# docs/notizen/CHANGES_VOLUME.md). Zwei unterschiedliche Mechanismen, weil Musik
 # und Menue-Sounds technisch verschieden abgespielt werden: Musik
 # laeuft ueber mpg123, das einen eingebauten Skalierungsfaktor
 # (-f 0..32768) hat. Menue-Sounds sind selbst erzeugte WAVs, abgespielt

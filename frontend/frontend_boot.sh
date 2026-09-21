@@ -49,7 +49,22 @@
 # verschiedenen Stellen auftaucht, ohne dass dort irgendetwas
 # auf die Konsole schreibt. Siehe konsole_ruhig_stellen() in
 # frontend.py fuer die ausfuehrliche Begruendung.
-printf '\033[2J\033[H\033[?25l\033[9;0]\033[14;0]' > /dev/tty1 2>/dev/null || true
+#
+# ZURUECKGENOMMEN (Build 167, auf Wunsch des Nutzers: "build 145 lief
+# noch alles super das starten das beenden, das boot logo auch ...
+# stell das wieder her"). Hier stand seit Build 158/160 zusaetzlich
+# ESC[?25l (Cursor aus), ESC[9;0] und ESC[14;0] (Bildschirmschonung
+# aus). Das Bildschirmloeschen selbst ist aelter als Build 145 und
+# bleibt - die drei Zusaetze nicht. Wer sie zurueck will, schaltet
+# die ganze Mechanik wieder ein:
+#
+#     touch /media/fat/frontend/konsole_mechanik_an
+#
+# Dann setzt frontend.py sie beim Start selbst (konsole_cursor_aus()
+# und konsole_ruhig_stellen()), eine Sekunde spaeter als hier - das
+# ist der einzige Unterschied, und er faellt in eine Phase, in der
+# ohnehin noch MiSTers eigenes Bild steht.
+printf '\033[2J\033[H' > /dev/tty1 2>/dev/null || true
 
 # Sicherheitsnetz: falls die Log-Datei durch rohe Fehlerausgaben
 # (Python-Tracebacks ueber stderr, ausserhalb der eigenen LOG()-
