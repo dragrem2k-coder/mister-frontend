@@ -49,6 +49,27 @@ computing covers. **Cold and warm are now reported separately**,
 with the honest note that cold is the upper bound and not everyday
 use: while scrolling for real, the frontend skips the cover column.
 
+**And the second run found the biggest fault — on the screen, not in
+the file.** "The bench always ends up in Super Game Boy, then
+nothing happens, no covers scroll." Exactly so: **which category got
+measured was an accident.** The cursor stayed wherever the loop over
+the main page had left it — PlayStation on the first run, Super Game
+Boy with a single entry on the second. There the selection never
+moves, the picture never changes, and what gets measured is a still
+image. That also explains the three figures 52.98 / 52.97 / 52.99
+from that run: three completely different drawing paths, identical
+to the hundredth, because none of them had anything to do. The
+largest category is now chosen **deliberately**, its name and entry
+count appear in the report, and a too-short list gets a warning. Two
+further findings: every per-step figure contained the **vsync wait**
+(50.0 ms is exactly three frame periods at 60 Hz — what was measured
+was the refresh rate), it is now outside the measurement and
+reported once on its own; and the cache redirect only applied to the
+parent process, because the prewarmer has been a **separate
+process** since build 102 — it kept writing to the card while the
+parent never found anything in the temporary folder. For the
+measurement the drawing path now computes covers itself.
+
 **Folders holding a single game are dissolved.** For PSX, Mega CD and
 Saturn, each game usually sits in its own folder because one `.cue`
 comes with several `.bin` files. That made the list nothing but folders

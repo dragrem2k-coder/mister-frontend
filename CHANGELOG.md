@@ -50,6 +50,28 @@ und der Schrittwert warf Zeichnen und Cover-Rechnen in eine Zahl.
 daneben, dass kalt die Obergrenze ist und nicht der Alltag: beim
 echten Scrollen lässt das Frontend die Boxart-Spalte aus.
 
+**Und der zweite Lauf fand den größten Fehler — am Bildschirm, nicht
+in der Datei.** „Der Bench landet immer im Super Game Boy, dann
+passiert nichts mehr, es werden keine Cover gescrollt." Genau so war
+es: **welche Kategorie gemessen wird, war Zufall.** Der Zeiger blieb
+stehen, wo die Schleife über die Hauptseite ihn liegen gelassen
+hatte — im ersten Lauf PlayStation, im zweiten Super Game Boy mit
+einem einzigen Eintrag. Dort bleibt die Auswahl auf demselben Spiel
+stehen, das Bild ändert sich nie, und gemessen wird ein Standbild.
+Damit erklären sich auch die drei Werte 52,98 / 52,97 / 52,99 aus
+jenem Lauf: drei völlig verschiedene Zeichenwege, identisch auf die
+Hundertstel, weil keiner etwas zu tun hatte. Jetzt wird die größte
+Kategorie **bewusst** gewählt, ihr Name und ihre Eintragszahl stehen
+im Bericht, und bei einer zu kurzen Liste warnt er. Dazu zwei
+weitere Funde: in jedem Schrittwert steckte das **Vsync-Warten**
+(50,0 ms sind bei 60 Hz exakt drei Bildperioden — gemessen wurde die
+Bildwiederholrate), es fällt jetzt aus der Messung heraus und steht
+einmal separat da; und die Cache-Umleitung wirkte nur im
+Elternprozess, weil der Vorauslader seit Build 102 ein **eigener
+Prozess** ist — er schrieb weiter auf die Karte, während der
+Elternprozess im temporären Ordner nie etwas fand. Für die Messung
+rechnet der Zeichenweg jetzt selbst.
+
 **Ordner mit nur einem Spiel werden aufgelöst.** Bei PSX, Mega CD und
 Saturn liegt meist jedes Spiel in einem eigenen Ordner, weil eine `.cue`
 mehrere `.bin` mitbringt. Die Liste bestand dort deshalb nur aus

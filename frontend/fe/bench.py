@@ -345,6 +345,29 @@ def _abschnitt_a(b, fe, spiele, startdauer):
         b("   (kein Bestand erkannt - je-Spiel-Wert entfaellt)")
 
 
+def _groesste_kategorie(fe):
+    """(Index, Eintragszahl, Name) der Kategorie mit den meisten
+    Eintraegen DIREKT in ihrer Liste - oder (None, 0, "").
+
+    Gezaehlt wird bewusst nur der Wurzelknoten und nicht der ganze
+    Baum: gemessen wird ja die Liste, die tatsaechlich auf dem Schirm
+    steht. Eine Kategorie mit 5000 Spielen in Unterordnern zeigt an
+    der Wurzel vielleicht zwoelf Ordner - und waere damit genauso
+    ungeeignet wie eine leere."""
+    best_i, best_n, best_name = None, 0, ""
+    try:
+        for i, eintrag in enumerate(fe.cats):
+            name, node = eintrag[0], eintrag[1]
+            if not isinstance(node, dict):
+                continue
+            n = len(node.get("items") or ())
+            if n > best_n:
+                best_i, best_n, best_name = i, n, name
+    except Exception:                                    # noqa: BLE001
+        pass
+    return best_i, best_n, best_name
+
+
 def _abschnitt_b(b, fe, S, spiele):
     """Zeichnen - KALT und WARM getrennt (Build 178).
 
@@ -368,7 +391,30 @@ def _abschnitt_b(b, fe, S, spiele):
     hier wird in einer engen Schleife gezeichnet. Beim echten
     Scrollen laesst das Frontend die Boxart-Spalte aus, sobald schnell
     geblaettert wird (Build 76) - das greift hier nicht. Die
-    Kalt-Zahl ist damit die OBERGRENZE, nicht der Alltag."""
+    Kalt-Zahl ist damit die OBERGRENZE, nicht der Alltag.
+
+    WELCHE KATEGORIE GEMESSEN WIRD (Build 179). Das stand hier
+    nirgends - und war deshalb ein Zufall: der Zeiger blieb einfach
+    dort stehen, wo die Schleife ueber die Hauptseite ihn liegen
+    gelassen hatte. Auf dem Geraet des Nutzers war das im ersten Lauf
+    PlayStation, im zweiten Super Game Boy. Seine Rueckmeldung:
+
+        "der bench landet immer im supergameboy dann passiert nichts
+         mehr, es werden keine covers gescrollt nichts. der erste
+         bench landete im playstation, dort scrollte er dann weiter"
+
+    Genau so ist es: eine Kategorie mit einem einzigen Eintrag laesst
+    item_i durch die Modulo-Rechnung auf 0 stehen, das Bild aendert
+    sich nie, und gemessen wird ein Standbild. Damit erklaeren sich
+    auch die drei Zahlen 52.98 / 52.97 / 52.99 aus jenem Lauf - drei
+    voellig verschiedene Zeichenwege, identisch auf die Hundertstel,
+    weil keiner von ihnen etwas zu tun hatte.
+
+    Und es macht den ganzen Abschnitt unvergleichbar: zwei Geraete
+    haetten in verschiedenen Kategorien gemessen, ohne dass es
+    irgendwo gestanden haette. Jetzt wird die groesste Kategorie
+    bewusst gewaehlt, und ihr Name und ihre Eintragszahl stehen im
+    Bericht."""
     b("")
     b("B  ZEICHNEN  (%d Schritte je Ansicht, Bestand des Geraets)"
       % SCHRITTE)
@@ -378,8 +424,22 @@ def _abschnitt_b(b, fe, S, spiele):
     b("    aus, sobald schnell geblaettert wird - kalt ist die")
     b("    Obergrenze, nicht der Alltag)")
     fbo = fe.fb
+    kat_i, kat_n, kat_name = _groesste_kategorie(fe)
+    if kat_i is None:
+        b("   -- keine Kategorie mit Eintraegen gefunden")
+    else:
+        b("   gemessen in: %s (%d Eintraege in der Liste)"
+          % (kat_name, kat_n))
+        if kat_n < 20:
+            b("   ACHTUNG: das ist WENIG. Die Zahlen der Spieleliste")
+            b("   sagen bei so kurzer Liste kaum etwas aus.")
     for seite, name in ((0, "Hauptseite"), (1, "Spieleliste")):
         fe.page = seite
+        if seite == 1 and kat_i is not None:
+            # NICHT dort messen, wo die Hauptseiten-Schleife den
+            # Zeiger zufaellig liegen gelassen hat - siehe oben.
+            fe.cat_i = kat_i
+            fe.nav_path = []
         for ansicht in S.ANSICHTEN:
             try:
                 if seite == 0:
@@ -454,9 +514,20 @@ def _abschnitt_b(b, fe, S, spiele):
     # Der reine Bildtransport, ohne alles davor. Die Zahl, gegen die
     # jede Zeichenoptimierung sich messen lassen muss - schneller als
     # das geht nicht.
+    #
+    # ZWEIMAL, und das ist der Punkt (Build 179): einmal ohne das
+    # Warten auf den Bildaufbau, einmal mit. Die Werte oben sind alle
+    # ohne gemessen, sonst raste jede Zahl auf ein Vielfaches der
+    # Bildperiode ein und man saehe nur noch die Bildwiederholrate.
+    # Was das Warten kostet, gehoert trotzdem in den Bericht - es ist
+    # ja echte Wartezeit, nur eben keine Rechenzeit.
     try:
-        ms, best = messen(fbo.flip, WDH_TEUER)
-        b.posten("Voller Flip (%.1f MB)" % (fbo.size / 1048576.0), ms, best)
+        ohne, best = messen(lambda: fbo.flip(skip_vsync=True), WDH_TEUER)
+        b.posten("Voller Flip ohne Vsync (%.1f MB)"
+                 % (fbo.size / 1048576.0), ohne, best)
+        mit, _ = messen(lambda: fbo.flip(skip_vsync=False), WDH_TEUER)
+        b.posten("Voller Flip mit Vsync", mit, None,
+                 "das Warten kostet %.1f ms" % max(0.0, mit - ohne))
     except Exception as e:                               # noqa: BLE001
         b("   Voller Flip: FEHLER %s" % e)
 
@@ -607,61 +678,98 @@ def _irgendein_cover(fe, A):
 
 
 # ---------------------------------------------------------------------
-class _CacheUmleitung(object):
-    """Waehrend des Benchs zeigt der Miniaturen-Cache in einen
-    temporaeren Ordner.
+class _Messbedingungen(object):
+    """Alles, was waehrend Abschnitt B anders sein muss als im
+    Normalbetrieb - an einer Stelle, mit Begruendung, und hinterher
+    wieder zurueckgestellt.
 
-    NEU (Build 178), und das ist ein FEHLER, den der erste Lauf
-    aufgedeckt hat: Abschnitt B zeichnet, Zeichnen rechnet Cover, und
-    ein gerechnetes Cover wird weggeschrieben
-    (_thumb_cache_put_async). Der Bench hat also sehr wohl auf die
-    Karte geschrieben - waehrend im Bericht und in der README stand,
-    er tue das nicht. Eine Behauptung, die nicht stimmte.
+    DREI DINGE, jedes aus einem Fehler im vorigen Lauf geboren:
 
-    Die Umleitung raeumt zwei Dinge auf einmal weg:
+    1. DER MINIATUREN-CACHE ZEIGT IN EINEN TEMPORAEREN ORDNER.
+       Zeichnen rechnet Cover, und ein gerechnetes Cover wird
+       weggeschrieben - der Bench hat also auf die Karte geschrieben,
+       waehrend im Bericht stand, er tue das nicht.
 
-      1. Auf der Karte des Nutzers entsteht nichts. Die Zusage gilt
-         wieder.
-      2. Jedes Geraet faengt bei kalt wirklich kalt an. Sonst haette
-         jemand mit vorbereiteten Miniaturen eine ganz andere
-         Kalt-Zahl als jemand ohne - und genau das soll dieser Bench
-         ja ausschliessen.
+    2. DAS AUSLAGERN AN DEN ARBEITSPROZESS WIRD ABGESCHALTET.
+       Der Vorauslader ist seit Build 102 ein EIGENER PROZESS
+       (subprocess.Popen in fe/prewarm.py). Punkt 1 wirkt deshalb
+       nur im Elternprozess: der Arbeitsprozess schrieb weiter auf
+       die Karte, und der Elternprozess suchte im temporaeren Ordner
+       und fand nie etwas. Ein dauerhafter Fehlschlag, bei dem jeder
+       Schritt sofort abbrach - gemessen wurde nichts mehr.
 
-    Die COVER selbst werden weiter von der Karte GELESEN. Nur
-    geschrieben wird woanders."""
+       Mit auslagern=None rechnet der Zeichenweg selbst, im selben
+       Prozess. Kalt misst damit die echte Berechnung, warm den
+       Lesevorgang aus dem Cache, und auf der Karte landet nichts.
 
-    def __init__(self, A, hd):
-        self.A, self.hd = A, hd
+    3. DAS VSYNC-WARTEN FAELLT WEG.
+       flip() wartet auf den Bildaufbau, im Code mit "8-17 ms auf
+       echter Hardware" beziffert. Bei 60 Hz rastet damit jeder
+       Schritt auf ein Vielfaches von 16,7 ms ein - im zweiten Lauf
+       standen drei Ansichten bei 49.94, 50.21 und 49.95 ms, also
+       exakt drei Bildperioden. Gemessen wurde die Bildwiederholrate,
+       nicht das Frontend. Das Warten wird darum uebersprungen und
+       weiter unten EINMAL separat ausgewiesen."""
+
+    def __init__(self, A, fm, fe, hd):
+        self.A, self.fm, self.fe, self.hd = A, fm, fe, hd
         self.ordner = None
         self.alt_base = self.alt_dir = None
+        self.alt_auslagern = self._kein_auslagern = None
+        self.alt_vsync = None
 
     def __enter__(self):
-        A = self.A
-        self.alt_base = A.THUMB_CACHE_BASE
-        self.alt_dir = A.THUMB_CACHE_DIR
+        A, fe = self.A, self.fe
+        self.alt_base, self.alt_dir = A.THUMB_CACHE_BASE, A.THUMB_CACHE_DIR
         try:
             self.ordner = tempfile.mkdtemp(prefix="dragend_bench_cache_")
             A.THUMB_CACHE_BASE = self.ordner
             A.thumb_cache_modus_setzen(self.hd)
         except Exception:                                # noqa: BLE001
-            # Klappt das nicht, lieber gar nicht umleiten als halb.
-            self.__exit__(None, None, None)
+            pass
+        # (2) Arbeitsprozess aus dem Spiel nehmen.
+        try:
+            self.alt_auslagern = A.ART.auslagern
+            A.ART.auslagern = None
+            self._kein_auslagern = True
+        except Exception:                                # noqa: BLE001
+            self._kein_auslagern = False
+        try:
+            self.fm.PREWARMER.beenden()
+        except Exception:                                # noqa: BLE001
+            pass
+        # (3) Kein Warten auf den Bildaufbau.
+        try:
+            self.alt_vsync = fe._vsync_ueberspringen
+            fe._vsync_ueberspringen = lambda *_a, **_k: True
+        except Exception:                                # noqa: BLE001
+            pass
         return self
 
     def __exit__(self, *_a):
-        A = self.A
+        A, fe = self.A, self.fe
+        if self.alt_vsync is not None:
+            try:
+                fe._vsync_ueberspringen = self.alt_vsync
+            except Exception:                            # noqa: BLE001
+                pass
+        if self._kein_auslagern:
+            try:
+                A.ART.auslagern = self.alt_auslagern
+            except Exception:                            # noqa: BLE001
+                pass
         if self.alt_base is not None:
             A.THUMB_CACHE_BASE = self.alt_base
         if self.alt_dir is not None:
             A.THUMB_CACHE_DIR = self.alt_dir
         if self.ordner:
-            # Kurz warten: das Wegschreiben laeuft im Hintergrund, und
-            # ein Thread, der nach dem Aufraeumen noch schreibt, legt
-            # den Ordner wieder an.
+            # Kurz warten: ein Hintergrund-Thread, der nach dem
+            # Aufraeumen noch schreibt, legt den Ordner wieder an.
             time.sleep(0.5)
             shutil.rmtree(self.ordner, ignore_errors=True)
             self.ordner = None
         return False
+
 
 
 def lauf(fe, fm, A, S, startdauer=None, log=None):
@@ -674,7 +782,7 @@ def lauf(fe, fm, A, S, startdauer=None, log=None):
     _abschnitt_a(b, fe, spiele, startdauer)
     try:
         hd = getattr(fe, "fb", None) is not None and fe.fb.height >= 720
-        with _CacheUmleitung(A, hd):
+        with _Messbedingungen(A, fm, fe, hd):
             _abschnitt_b(b, fe, S, spiele)
     except Exception as e:                               # noqa: BLE001
         b("   ABSCHNITT B ABGEBROCHEN: %s: %s" % (type(e).__name__, e))

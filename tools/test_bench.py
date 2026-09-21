@@ -395,19 +395,109 @@ check("und nennt die Einschraenkung ehrlich",
 #     brachte: Zeichnen RECHNET Cover, und ein gerechnetes Cover wird
 #     weggeschrieben. Abschnitt B hat also sehr wohl auf die Karte
 #     geschrieben, waehrend im Bericht stand, er tue das nicht.
-check("es gibt eine Umleitung des Miniaturen-Caches",
-      "class _CacheUmleitung" in bq)
+check("es gibt eigene Messbedingungen fuer Abschnitt B",
+      "class _Messbedingungen" in bq)
 check("und Abschnitt B laeuft darin",
-      "with _CacheUmleitung(" in bq)
+      "with _Messbedingungen(" in bq)
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 10: die Fehler aus dem ZWEITEN Lauf auf echter Hardware")
+# ---------------------------------------------------------------------------
+# Rueckmeldung des Nutzers: "der bench landet immer im supergameboy,
+# dann passiert nichts mehr, es werden keine covers gescrollt nichts.
+# der erste bench landete im playstation, dort scrollte er dann
+# weiter."
+#
+# Genau so war es: der Zeiger blieb dort stehen, wo die Schleife ueber
+# die Hauptseite ihn liegen gelassen hatte. In einer Kategorie mit
+# einem einzigen Eintrag steht item_i durch die Modulo-Rechnung fest
+# auf 0 - das Bild aendert sich nie, gemessen wird ein Standbild.
+# Daher auch die 52.98 / 52.97 / 52.99 aus jenem Lauf: drei voellig
+# verschiedene Zeichenwege, identisch auf die Hundertstel.
+
+class FakeFE(object):
+    def __init__(self, cats):
+        self.cats = cats
+
+
+def knoten(n, mit_ordner=0):
+    return {"folders": {"U%d" % i: {"folders": {}, "items": []}
+                        for i in range(mit_ordner)},
+            "items": [("S%d" % i, "rom", ("a", "b", "c", "d", ()))
+                      for i in range(n)]}
+
+
+f_ = FakeFE([("Super Game Boy", knoten(1), "sgb"),
+             ("PlayStation", knoten(800), "psx"),
+             ("Kaputt", "keine Ahnung", "x")])
+i_, n_, na_ = B._groesste_kategorie(f_)
+check("die groesste Kategorie wird BEWUSST gewaehlt",
+      (i_, n_, na_) == (1, 800, "PlayStation"), "%s" % ((i_, n_, na_),))
+check("ein unbrauchbarer Knoten dazwischen stoert nicht", i_ == 1)
+check("ohne jede Kategorie kommt (None, 0, '') zurueck",
+      B._groesste_kategorie(FakeFE([])) == (None, 0, ""))
+check("und eine Kategorie ohne Eintraege wird nicht gewaehlt",
+      B._groesste_kategorie(FakeFE([("Leer", knoten(0), "x")]))[0] is None)
+# Eine Kategorie, deren Spiele alle in UNTERordnern liegen, zeigt an
+# der Wurzel nur Ordner - sie waere zum Messen genauso ungeeignet wie
+# eine leere, obwohl _zaehlen() sie gross findet.
+tief = {"folders": {"A": knoten(500)}, "items": []}
+check("Spiele in Unterordnern zaehlen fuer die WAHL nicht mit",
+      B._groesste_kategorie(FakeFE([("Tief", tief, "x")]))[0] is None,
+      "gemessen wird die Liste auf dem Schirm, nicht der Baum")
+check("_zaehlen findet sie trotzdem", B._zaehlen(tief) == 500)
+
+check("der Bericht nennt die gemessene Kategorie",
+      "gemessen in:" in text, [z for z in text.splitlines()
+                               if "gemessen in" in z][:1])
+check("und warnt bei einer zu kurzen Liste",
+      "ACHTUNG" in bq and "sagen bei so kurzer Liste" in bq)
+
+# Das Vsync-Warten darf nicht mehr in den Schrittwerten stecken.
+check("die Messbedingungen schalten das Vsync-Warten ab",
+      "_vsync_ueberspringen" in bq)
+check("und der Flip wird getrennt mit und ohne ausgewiesen",
+      "ohne Vsync" in text and "mit Vsync" in text)
+check("mit der Angabe, was das Warten kostet",
+      "das Warten kostet" in text)
+
+# Und das Auslagern an den ARBEITSPROZESS muss aus sein, sonst
+# schreibt der weiter auf die Karte (eigener Prozess, sieht die
+# Umleitung nicht) und der Elternprozess findet nie etwas.
+check("das Auslagern an den Arbeitsprozess wird abgeschaltet",
+      "ART.auslagern = None" in bq)
+check("und der Vorauslader beendet",
+      "PREWARMER.beenden()" in bq)
+
+class FakeFM(object):
+    class PREWARMER(object):
+        @staticmethod
+        def beenden():
+            pass
+
+
+# ERST das Frontend bauen, DANN den Ausgangszustand merken: eine neue
+# Frontend-Instanz haengt ihren eigenen Vorauslader in ART.auslagern.
+# Andersherum verglichen der Test gegen einen Wert, den es zu dem
+# Zeitpunkt gar nicht mehr gab - und meldete Rot, obwohl das
+# Wiederherstellen stimmte.
+fe_ = H.make_frontend(page=0)
 alt_dir = A.THUMB_CACHE_DIR
-with B._CacheUmleitung(A, True) as u:
+alt_ausl = A.ART.auslagern
+with B._Messbedingungen(A, FakeFM, fe_, True) as u:
     check("waehrenddessen zeigt der Cache woanders hin",
           A.THUMB_CACHE_DIR != alt_dir, A.THUMB_CACHE_DIR)
     check("und zwar in einen temporaeren Ordner",
           A.THUMB_CACHE_DIR.startswith(tempfile.gettempdir()))
+    check("das Auslagern ist wirklich aus", A.ART.auslagern is None)
+    check("und das Vsync-Warten wird uebersprungen",
+          fe_._vsync_ueberspringen(None) is True)
     _tmp_ordner = u.ordner
-check("danach steht er wieder auf dem Original",
+check("danach steht der Cache wieder auf dem Original",
       A.THUMB_CACHE_DIR == alt_dir, A.THUMB_CACHE_DIR)
+check("das Auslagern ist wiederhergestellt",
+      A.ART.auslagern is alt_ausl)
 check("und der temporaere Ordner ist weg",
       not os.path.exists(_tmp_ordner or "/nichts"))
 
