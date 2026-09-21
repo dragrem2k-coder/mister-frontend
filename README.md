@@ -254,6 +254,8 @@ Nützlichste, was mitkommen kann. Es sagt in einer Datei, auf welchem
 Gerät, mit welcher Auflösung, mit oder ohne C-Modul gemessen wurde —
 genau die Angaben, die sonst jedes Mal nachgefragt werden müssen.
 
+**Ergebnisse auf dem DE10-Nano:** [docs/MESSUNG.md](docs/MESSUNG.md) — unter anderem C gegenüber Python beim Verkleinern: Faktor 121–124, über drei Läufe innerhalb von 2 %.
+
 ---
 
 ## Wo was liegt

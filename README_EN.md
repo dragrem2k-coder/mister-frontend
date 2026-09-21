@@ -252,6 +252,8 @@ most useful thing to include. It states in one file which device,
 which resolution, and with or without the C module the numbers were
 taken on — exactly what otherwise has to be asked for every time.
 
+**Results on the DE10-Nano:** [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md) — among them C versus Python for downscaling: factor 121–124, within 2 % across three runs.
+
 ---
 
 ## Where things live

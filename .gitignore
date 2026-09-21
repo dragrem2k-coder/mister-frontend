@@ -42,3 +42,10 @@ uninstall_test/
 # waehrend der Entwicklung) hat diese bislang versehentlich mit
 # ausgeschlossen, obwohl sie bewusst eingecheckt werden sollen.
 !screenshots/preview_*.png
+
+# Ein liegengebliebener Node-Ordner (jsdom) aus einer frueheren
+# HTML-Pruefung. Kein Teil des Frontends, von nichts im Repo benutzt -
+# aber 27 MB und ueber 2000 Dateien, die sonst in jedem Paket landen.
+node_modules/
+package.json
+package-lock.json
