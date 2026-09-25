@@ -43,6 +43,15 @@ written again, four times a second. On 1080p that is 491 KB, about
 0.8 ms — and it does **not** hang off the machinery switch, because
 the cause is not ours.
 
+**The covers from `gamelist.xml` are used too.** It holds not only
+year and genre but the image paths as well — and those point at files
+Skraper has already downloaded **and matched by the ROM file's
+checksum**. That is exactly what our fuzzy name matching has always
+been working around; for a curated folder it disappears entirely. The
+precedence stays: your own artwork wins, then the `gamelist.xml`, then
+the foreign database. An entry pointing at nothing is skipped rather
+than mistaken for a cover.
+
 **`gamelist.xml` is now read.** Anyone who has curated their ROM
 folder with Skraper, ScreenScraper or a similar tool has a
 `gamelist.xml` in EmulationStation format sitting there — year, genre,

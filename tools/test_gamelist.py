@@ -60,6 +60,18 @@ XML = """<?xml version="1.0"?>
     <publisher>Nintendo</publisher>
     <genre>Jump and Run</genre>
     <players>1-2</players>
+    <image>./media/images/Super Mario World.png</image>
+    <thumbnail>./media/thumbs/Super Mario World.png</thumbnail>
+  </game>
+  <game>
+    <path>./Nur Thumbnail.sfc</path>
+    <genre>Test</genre>
+    <thumbnail>./media/thumbs/Nur Thumbnail.png</thumbnail>
+  </game>
+  <game>
+    <path>./Bild Weg.sfc</path>
+    <genre>Test</genre>
+    <image>./media/images/gibtesnicht.png</image>
   </game>
   <game>
     <path>./Nur Entwickler.sfc</path>
@@ -77,13 +89,21 @@ XML = """<?xml version="1.0"?>
 """
 
 
-def aufbauen(text=XML, name="gamelist.xml"):
+def aufbauen(text=XML, name="gamelist.xml", mit_bildern=True):
     """Eine gamelist.xml an genau der Stelle, an der das Frontend
-    suchen wuerde."""
+    suchen wuerde - samt der Bilder, auf die sie zeigt."""
     basis = tempfile.mkdtemp(prefix="gamelist_test_")
     os.makedirs(os.path.join(basis, "SNES"))
     io.open(os.path.join(basis, "SNES", name), "w",
             encoding="utf-8").write(text)
+    if mit_bildern:
+        for unter, datei in (("images", "Super Mario World.png"),
+                             ("thumbs", "Super Mario World.png"),
+                             ("thumbs", "Nur Thumbnail.png")):
+            ordner = os.path.join(basis, "SNES", "media", unter)
+            os.makedirs(ordner, exist_ok=True)
+            # "gibtesnicht.png" wird mit Absicht NICHT angelegt.
+            open(os.path.join(ordner, datei), "wb").write(b"\x89PNG")
     return basis
 
 
@@ -248,6 +268,55 @@ try:
 finally:
     zurueck()
     shutil.rmtree(basis, ignore_errors=True)
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 7: die BILDER aus der gamelist.xml (Build 191)")
+# ---------------------------------------------------------------------------
+# Der eigentliche Gewinn: Skraper ordnet ueber die PRUEFSUMME der
+# ROM-Datei zu, nicht ueber den Namen. Fuer ein gepflegtes Verzeichnis
+# entfaellt damit genau das Problem, an dem der unscharfe Vergleich aus
+# Build 117 arbeitet.
+basis = aufbauen()
+try:
+    mit_basis(basis)
+    pfad = A.gamelist_cover("SNES", "Super Mario World")
+    check("das Cover wird gefunden", bool(pfad), pfad)
+    check("und es ist <image>, nicht <thumbnail>",
+          bool(pfad) and os.sep + "images" + os.sep in pfad, pfad)
+    check("der relative Pfad wurde gegen den gamelist-Ordner aufgeloest",
+          bool(pfad) and os.path.isabs(pfad) and os.path.isfile(pfad))
+
+    pfad = A.gamelist_cover("SNES", "Nur Thumbnail")
+    check("ohne <image> tut es auch das <thumbnail>",
+          bool(pfad) and os.sep + "thumbs" + os.sep in pfad, pfad)
+
+    check("ein Pfad ins Leere liefert None",
+          A.gamelist_cover("SNES", "Bild Weg") is None,
+          "sonst haelt der Aufrufer ihn fuer ein Cover und sucht nicht weiter")
+    check("und die Metadaten desselben Eintrags bleiben trotzdem",
+          A.gamelist_meta("SNES", "Bild Weg").get("genre") == "Test")
+
+    # Die eigentliche Einhaengestelle: _art_path_in() - eine Stelle,
+    # acht Aufrufer.
+    A._art_index_cache.clear()
+    erg = A._art_path_in("/gibt/es/nicht", "SNES", "Super Mario World")
+    check("die Cover-Suche benutzt es", bool(erg) and erg.endswith(".png"),
+          erg)
+finally:
+    A._art_index_cache.clear()
+    zurueck()
+    shutil.rmtree(basis, ignore_errors=True)
+
+quelle_art = io.open(os.path.join(_REPO, "frontend", "fe", "art.py"),
+                     encoding="utf-8").read()
+_block = quelle_art[quelle_art.index("def _art_path_in("):]
+_block = _block[:_block.index("\ndef ", 10)]
+check("eigenes Artwork kommt weiterhin ZUERST",
+      _block.index("idx.get(rom_basename)") < _block.index("gamelist_cover("),
+      "sonst ueberschreibt eine gamelist das, was der Nutzer selbst angelegt hat")
+check("und die gamelist vor der fremden Datenbank",
+      _block.index("gamelist_cover(") < _block.index("docs_cover("))
 
 print()
 if fails:

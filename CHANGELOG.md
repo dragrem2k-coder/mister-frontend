@@ -42,6 +42,15 @@ werden viermal je Sekunde einfach wieder hingeschrieben. Das sind auf
 1080p 491 KB, rund 0,8 ms — und es hängt **nicht** am Mechanik-
 Schalter, denn die Ursache liegt nicht bei uns.
 
+**Auch die Cover aus der `gamelist.xml` werden benutzt.** Dort stehen
+nicht nur Jahr und Genre, sondern auch die Bildpfade — und die zeigen
+auf Dateien, die Skraper bereits heruntergeladen **und über die
+Prüfsumme der ROM-Datei zugeordnet** hat. Genau daran arbeitet unser
+unscharfer Namensvergleich seit jeher; für ein gepflegtes Verzeichnis
+entfällt er damit komplett. Die Rangfolge bleibt: eigenes Artwork
+gewinnt, dann die `gamelist.xml`, dann die fremde Datenbank. Zeigt ein
+Eintrag ins Leere, wird er übergangen statt für ein Cover gehalten.
+
 **`gamelist.xml` wird mitgelesen.** Wer sein ROM-Verzeichnis mit
 Skraper, ScreenScraper oder einem ähnlichen Werkzeug gepflegt hat, hat
 dort eine `gamelist.xml` im EmulationStation-Format liegen — mit Jahr,

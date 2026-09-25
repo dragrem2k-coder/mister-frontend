@@ -148,16 +148,32 @@ print("Test 3: und es ist wirklich schneller")
 # nicht von der echten Zeit abhaengen. Beim ersten Anlauf massen beide
 # Fassungen dadurch 0.00 ms und der Test schlug fehl - die Messung lief
 # gegen eine Uhr, die sich nie bewegt.
+def _bestes(fn, laeufe=5, je=10):
+    """Der BESTE von mehreren Durchgaengen, nicht der erste.
+
+    GEAENDERT (Build 191). Vorher wurde einmal gemessen, und genau das
+    ist an einem Abend zweimal grundlos rot geworden ("alt 0.35 ms,
+    neu 0.35 ms"), weil nebenher die uebrige Testreihe lief. Der beste
+    Lauf ist der, in dem die Maschine am wenigsten dazwischenkam - und
+    fuer die Frage "ist der neue Weg schneller als der alte" ist genau
+    das die ehrliche Zahl.
+
+    Ein Test, der bei Last rot wird, ist schlimmer als keiner: man
+    gewoehnt sich an rote Zeilen und sieht die echte nicht mehr."""
+    beste = None
+    for _ in range(laeufe):
+        t0 = time.perf_counter()
+        for _ in range(je):
+            fn()
+        dt = (time.perf_counter() - t0) / je * 1000
+        beste = dt if beste is None else min(beste, dt)
+    return beste
+
+
 for w, h, name in ((411, 548, "Galerie-Cover"), (733, 909, "Listen-Cover")):
     pix = muster(w, h)
-    t0 = time.perf_counter()
-    for _ in range(10):
-        alt_blit(fb, 100, 100, w, h, pix)
-    a = (time.perf_counter() - t0) / 10 * 1000
-    t0 = time.perf_counter()
-    for _ in range(10):
-        f.blit(100, 100, w, h, pix)
-    b = (time.perf_counter() - t0) / 10 * 1000
+    a = _bestes(lambda: alt_blit(fb, 100, 100, w, h, pix))
+    b = _bestes(lambda: f.blit(100, 100, w, h, pix))
     # Bewusst nur "schneller", nicht "mindestens Faktor X": unter
     # paralleler Last schwanken solche Messungen, und ein Test, der
     # gelegentlich grundlos rot wird, wird irgendwann ignoriert.

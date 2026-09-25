@@ -3070,6 +3070,19 @@ def _art_path_in(base_dir, syskey, rom_basename):
     # Bewusst HIER und nicht an den acht Aufrufstellen: die bekommen
     # damit alle denselben Rueckfall, ohne dass eine davon vergessen
     # werden kann.
+    # NEU (Build 191): die Bilder aus der gamelist.xml des Nutzers.
+    # Dieselbe Rangfolge wie bei den Metadaten (siehe get_meta()):
+    # eigenes Artwork gewinnt, dann die gamelist, dann die fremde
+    # Datenbank. Und aus demselben Grund: was der Nutzer selbst
+    # gepflegt hat, wiegt schwerer als das, was auf der Karte lag.
+    #
+    # Der eigentliche Gewinn steckt aber woanders: Skraper ordnet ueber
+    # die PRUEFSUMME der ROM-Datei zu, nicht ueber den Namen. Damit
+    # entfaellt fuer ein gepflegtes Verzeichnis genau das Problem, an
+    # dem der unscharfe Vergleich aus Build 117 arbeitet.
+    bild = gamelist_cover(syskey, rom_basename)
+    if bild:
+        return bild
     if fremdquellen_enabled():
         fremd = docs_cover(syskey, rom_basename)
         if fremd:
@@ -3795,6 +3808,13 @@ def _gamelist_jahr(text):
     return ""
 
 
+# Aus welchen Feldern ein Bild kommen darf, in dieser Reihenfolge.
+# <image> ist bei Skraper das, was man sehen will; <thumbnail> ist oft
+# nur ein kleines Vorschaubild, <cover>/<boxart> kommen bei anderen
+# Werkzeugen vor. Wer mehrere hat, bekommt das beste zuerst.
+GAMELIST_BILDFELDER = ("image", "cover", "boxart", "thumbnail", "marquee")
+
+
 def _gamelist_lesen(pfad, raus, sprache_egal=True):
     """Eine gamelist.xml stromweise einlesen.
 
@@ -3824,6 +3844,24 @@ def _gamelist_lesen(pfad, raus, sprache_egal=True):
                     dev = (elem.findtext("developer") or "").strip()
                     if dev:
                         eintrag["manufacturer"] = dev
+                # NEU (Build 191): der Bildpfad. Skraper hat das Cover
+                # bereits heruntergeladen UND ueber die Pruefsumme der
+                # ROM-Datei richtig zugeordnet - das ist genau der
+                # Abgleich, an dem unser Namensvergleich seit Build 117
+                # arbeitet. Wer eine gepflegte gamelist.xml hat, braucht
+                # die ganze Kette gar nicht.
+                #
+                # Die Pfade stehen relativ zur gamelist.xml ("./media/
+                # images/Foo.png"), also wird hier gegen deren Ordner
+                # aufgeloest. Absolute Pfade laesst os.path.join in
+                # Ruhe.
+                for feld in GAMELIST_BILDFELDER:
+                    bild = (elem.findtext(feld) or "").strip()
+                    if not bild:
+                        continue
+                    eintrag["bild"] = os.path.normpath(
+                        os.path.join(os.path.dirname(pfad), bild))
+                    break
                 beschreibung = (elem.findtext("desc") or "").strip()
                 if beschreibung:
                     # Zeilenumbrueche aus der Datei sind Absatzreste und
@@ -3883,6 +3921,23 @@ def gamelist_meta(syskey, rom_basename):
         return _gamelist_laden(syskey).get(rom_basename.lower(), {})
     except Exception:                                    # noqa: BLE001
         return {}
+
+
+def gamelist_cover(syskey, rom_basename):
+    """Pfad zu einem Cover aus der gamelist.xml, sonst None.
+
+    Geprueft wird, ob die Datei WIRKLICH da ist. Eine gamelist.xml
+    ueberlebt das Aufraeumen eines Bilderordners muehelos, und ein
+    Pfad ins Leere waere schlimmer als gar keiner: der Aufrufer wuerde
+    ihn fuer ein Cover halten und den naechsten Kandidaten nicht mehr
+    ansehen."""
+    bild = gamelist_meta(syskey, rom_basename).get("bild")
+    if not bild:
+        return None
+    try:
+        return bild if os.path.isfile(bild) else None
+    except OSError:
+        return None
 
 
 def gamelist_synopsis(syskey, rom_basename):
