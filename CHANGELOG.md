@@ -10,7 +10,14 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ---
 
-## v4.5 — CD-Spiele in Ordnern, C-Modul, Werkzeug für den PC
+## v4.6 — Kernel 6.18, und sechs Erklärungen, die eine Messung überlebt haben
+
+Ein Release, in dem fast nichts geraten wurde. Der Kernel-Sprung auf
+6.18 hat drei Fehler ans Licht geholt, ein gemeldetes Zucken hat sechs
+Erklärungen verbraucht, bis die richtige übrig blieb, und zwei der
+gefundenen Fehler standen seit Monaten im eigenen Quelltext — sichtbar
+geworden sind sie erst, als jemand nachgemessen hat.
+
 
 **Der Login-Gruß, der beim Scrollen aufblitzt, ist weg — und diesmal
 weiß ich auch, warum.** Gemeldet nach dem Kernel-Update: nach 50–60
@@ -168,6 +175,10 @@ aus** und beide ohne jede Wirkung auf das Bild:
 Der Bildtransport in Häppchen bleibt als Schalter erhalten, damit sich
 die Messung nachvollziehen lässt: 56 Kombinationen aus Größen und
 Stückzahlen sind bitgleich zum bisherigen Weg.
+
+---
+
+## v4.5 — CD-Spiele in Ordnern, C-Modul, Werkzeug für den PC
 
 **Cover im Raster kamen bei 1080p nicht nach.** Gefunden über ein Video
 von SuTe: das Raster blieb fast leer, ein Cover erschien nur auf der

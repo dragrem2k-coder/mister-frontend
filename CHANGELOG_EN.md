@@ -11,7 +11,14 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ---
 
-## v4.5 — CD games in folders, a C module, a PC tool
+## v4.6 — Kernel 6.18, and six explanations that a measurement outlived
+
+A release in which almost nothing was guessed. The jump to kernel 6.18
+brought three faults to light, a reported twitch used up six
+explanations before the right one was left, and two of the faults found
+had been sitting in our own source for months — they only became
+visible once someone measured.
+
 
 **The login greeting that flashed up while scrolling is gone — and
 this time the cause is known.** Reported after the kernel update: after
@@ -160,6 +167,10 @@ without any effect on the picture:
 The chunked transfer stays as a switch so the measurement can be
 reproduced: 56 combinations of sizes and chunk counts are bit-identical
 to the previous path.
+
+---
+
+## v4.5 — CD games in folders, a C module, a PC tool
 
 **Grid covers did not load in at 1080p.** Found through a video from
 SuTe: the grid stayed nearly empty, a cover appeared only on the tile
