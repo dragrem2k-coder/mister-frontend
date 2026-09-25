@@ -169,6 +169,31 @@ On top of that there is a `/dev/mem` fallback in case `/dev/fb0` cannot
 be mapped at all on a given device (the same route Degauss took). Where
 normal mapping still works, it is never used.
 
+**And since build 184 the startup is covered on 6.18 too.** After the
+update a user reported *"I'm stuck in the OSD and hear the frontend's
+music"*, plus a login greeting that came back after 20-30 seconds of
+idling and stayed until the next key press. The cause is the same as
+with the F12: **a single F9 no longer lands reliably on this kernel.**
+MiSTer re-initialises the framebuffer several times — in one device's
+`dmesg` at second 3, 41, 48 and 51 — and knocking before that is
+knocking at a door that does not exist yet.
+
+So on **kernel 6 and newer the frontend now switches on the console
+machinery from builds 146-166 by itself**: the F9 is repeated, a watch
+wipes foreign output out of the picture, and console blanking stays
+off. On 5.15.1 **nothing changes** — the build-145 behaviour that has
+been running there for weeks stays.
+
+Either side can be forced without waiting for a build:
+
+```
+touch /media/fat/frontend/konsole_mechanik_an     # always on
+touch /media/fat/frontend/konsole_mechanik_aus    # always off
+```
+
+Which way it went is in `/tmp/frontend.log`:
+`Konsole: Mechanik AN (Kernel 6.18.38-MiSTer)`.
+
 **Something broken?** Run the probe — two minutes, changes nothing, and
 it states in plain words where the problem is:
 

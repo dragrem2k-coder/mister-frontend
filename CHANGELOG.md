@@ -12,6 +12,87 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## v4.5 — CD-Spiele in Ordnern, C-Modul, Werkzeug für den PC
 
+**Kernel 6.18: der Start hält sich jetzt selbst fest.** Nach dem
+MiSTer-Linux-Update kam die alte Meldung *„ich hänge im OSD und höre
+die Musik vom Frontend"* zurück, dazu ein Login-Gruß, der nach 20–30
+Sekunden Ruhe wieder auftauchte und bis zum nächsten Tastendruck
+stehen blieb. Ursache ist dieselbe wie beim Beenden: **ein einzelnes
+F9 sitzt auf diesem Kernel nicht mehr zuverlässig** — MiSTer richtet
+den Bildspeicher mehrfach neu ein, und wer vorher klopft, klopft an
+eine Tür, die es noch nicht gibt. Das Frontend schaltet deshalb **auf
+Kernel 6 und neuer von selbst** die Konsolen-Mechanik ein: das F9 wird
+wiederholt, eine Wache räumt fremde Ausgabe weg, die Bildschirmschonung
+der Textkonsole bleibt aus. Auf 5.15.1 ändert sich nichts. Erzwingen
+lässt sich beides mit `konsole_mechanik_an` bzw. `konsole_mechanik_aus`,
+und welcher Weg genommen wurde, steht im Log.
+
+**Das Zucken bei voller Auflösung ist mit demselben Kernel-Update
+verschwunden.** Es lag nie am Frontend. Sechs Erklärungen waren vorher
+durchgemessen und verworfen worden — Eingabe-Leck, übersprungenes
+Vsync, Speicherdurchsatz, der Cover-Weg, ein zweiter Bildspeicher und
+fremde Schreibzugriffe; die letzte Messung zeigte über 294 Sekunden,
+dass sich in unserem Bildspeicher **kein einziges Byte** änderte,
+während es sichtbar zuckte. Die dafür gebauten Messwerkzeuge bleiben
+erhalten (`flip_haeppchen`, `flip_rueckleser`, `fb_wacht.py`), alle
+standardmäßig aus.
+
+**Die Suche nach dem Zucken: vier Erklärungen ausgeschlossen.** Bei
+voller Auflösung blitzt achtmal je Minute MiSTers eigenes Menübild für
+ein bis zwei Bilder durch, immer dicht an einem Scrollschritt, bei
+halber Auflösung nie. Vier Vermutungen sind inzwischen **gemessen und
+widerlegt**, jede davon wäre plausibel gewesen:
+
+* *Unsere Eingaben erreichen MiSTer und wecken ihn.* Er wacht beim
+  Scrollen nicht öfter auf als im Leerlauf.
+* *Übersprungenes Vsync.* Vollbilder warten seit v2.2 ausnahmslos.
+* *Der Speicherbus ist dicht, weil 7,9 MB am Stück geschrieben werden.*
+  Mit dem Schalter `flip_haeppchen` (16 Stücke, 500 µs Pause) brauchte
+  der Bildtransport 34 ms statt 12,6 — dreimal so entzerrt, und das
+  Zucken blieb unverändert.
+* *Es hängt an den Covern.* Es zuckt auch in Kategorien ohne ein
+  einziges Cover.
+
+Übrig bleiben zwei Möglichkeiten, die einander ausschließen: jemand
+**schreibt** in den Bildspeicher hinein, oder die Anzeige-Ebene wird
+**weggeschaltet**. Dafür gibt es zwei Werkzeuge, beide **standardmäßig
+aus** und beide ohne jede Wirkung auf das Bild:
+
+* `flip_rueckleser` — das Frontend merkt sich beim Schreiben acht
+  Zeilen und sieht beim nächsten Bild nach, ob sie noch dastehen.
+  Abweichung heißt *geschrieben*; keine Abweichung bei sichtbarem
+  Zucken heißt *weggeschaltet*. Alle 30 Sekunden schreibt er eine
+  Bilanz ins Log, auch wenn nichts war — sonst ließe sich aus seinem
+  Schweigen nicht ablesen, ob er nichts gefunden hat oder gar nicht
+  lief, und ein Werkzeug, das nur bei Erfolg redet, kann eine
+  Vermutung nur bestätigen und nie widerlegen.
+* `fb_wacht.py` — dieselbe Frage ohne laufendes Frontend, mit einem
+  Prüfmuster im Bildspeicher. Es rechnet nebenbei aus, ob dort Platz
+  für eine zweite Bildseite ist; auf dem DE10-Nano ist er das nicht,
+  womit auch ein Umschalten zwischen zwei Seiten ausscheidet.
+
+Der Bildtransport in Häppchen bleibt als Schalter erhalten, damit sich
+die Messung nachvollziehen lässt: 56 Kombinationen aus Größen und
+Stückzahlen sind bitgleich zum bisherigen Weg.
+
+**Cover im Raster kamen bei 1080p nicht nach.** Gefunden über ein Video
+von SuTe: das Raster blieb fast leer, ein Cover erschien nur auf der
+Kachel, auf der man stehen blieb, nach einem Seitenwechsel war wieder
+alles leer, und in der Galerie fehlte oft das große Cover. Sein
+`--bench` zeigte, dass sein Gerät nicht langsamer ist — die Bildkette
+liegt auf 1–2 % bei den Werten eines zweiten Geräts. Es waren drei
+Fehler im Ablauf: das Nachzeichnen im Leerlauf malte im Raster nur
+zwei Kacheln, fertige Cover für die übrigen lagen auf der Karte und
+wurden nie gezeigt; eine Taste brach die Aufträge an den
+Arbeitsprozess ab, ließ aber deren Wartevermerke stehen, worauf die
+Hauptschleife im Leerlauf endlos nachzeichnete; und die Notbremse hielt
+den Arbeitsprozess nach zwei Sekunden für hängend, obwohl er 21
+Kacheln abzuarbeiten hatte — dann rechnete der Zeichenweg selbst, und
+100–500 ms je Kachel reagierte nichts. Bei halber Auflösung sind die
+Cover so klein, dass keiner dieser Fehler zum Tragen kam.
+*Nachtrag:* in einer früheren Fassung stand hier, das sei das Zucken
+gewesen. Das war falsch — die drei Fehler sind echt und behoben, aber
+das Zucken tritt auch in Kategorien ohne ein einziges Cover auf.
+
 **Das Frontend vermisst sich selbst: `--bench`.** Jede Zahl in diesem
 Projekt seit Build 73 war Handarbeit — Profilschalter setzen,
 scrollen, `grep PERF`, abtippen. Das ergibt Zahlen für genau dieses

@@ -13,6 +13,84 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## v4.5 — CD games in folders, a C module, a PC tool
 
+**Kernel 6.18: startup now holds on by itself.** After the MiSTer
+Linux update the old report came back — *"I'm stuck in the OSD and
+hear the frontend's music"* — plus a login greeting that reappeared
+after 20-30 seconds of idling and stayed until the next key press. The
+cause is the same as on quit: **a single F9 no longer lands reliably
+on this kernel.** MiSTer re-initialises the framebuffer several times,
+and knocking before that is knocking at a door that does not exist
+yet. So on **kernel 6 and newer the frontend switches the console
+machinery on by itself**: the F9 is repeated, a watch wipes foreign
+output away, console blanking stays off. On 5.15.1 nothing changes.
+Either side can be forced with `konsole_mechanik_an` or
+`konsole_mechanik_aus`, and the log says which way it went.
+
+**The twitch at full resolution disappeared with that same kernel
+update.** It was never the frontend. Six explanations had been
+measured and discarded before that — input leak, skipped vsync, memory
+bandwidth, the cover path, a second framebuffer page and foreign
+writes; the final measurement showed that over 294 seconds **not a
+single byte** changed in our framebuffer while it visibly twitched.
+The instruments built for it stay in place (`flip_haeppchen`,
+`flip_rueckleser`, `fb_wacht.py`), all off by default.
+
+**Hunting the twitch: four explanations ruled out.** At full
+resolution MiSTer's own menu picture flashes through eight times a
+minute for one or two frames, always close to a scroll step, never at
+half resolution. Four theories have now been **measured and
+disproved**, each of them plausible:
+
+* *Our input reaches MiSTer and wakes it.* It wakes no more often
+  while scrolling than when idle.
+* *Skipped vsync.* Full frames have waited without exception since
+  v2.2.
+* *The memory bus is saturated by writing 7.9 MB in one go.* With the
+  `flip_haeppchen` switch (16 chunks, 500 µs pause) the transfer took
+  34 ms instead of 12.6 — three times as spread out, and the twitch
+  was unchanged.
+* *It is the covers.* It twitches in categories without a single
+  cover too.
+
+Two possibilities remain, and they exclude each other: someone
+**writes** into the framebuffer, or the display layer is **switched
+away**. Two tools answer that, both **off by default** and both
+without any effect on the picture:
+
+* `flip_rueckleser` — on every write the frontend remembers eight
+  rows and checks on the next frame whether they are still there. A
+  difference means *written*; no difference while it visibly twitches
+  means *switched away*. Every 30 seconds it writes a tally to the
+  log even when nothing happened — otherwise its silence would not
+  say whether it found nothing or never ran, and a tool that only
+  speaks on success can confirm a theory but never disprove one.
+* `fb_wacht.py` — the same question without a running frontend, using
+  a test pattern in the framebuffer. It also works out whether there
+  is room for a second page there; on the DE10-Nano there is not,
+  which rules out page flipping as well.
+
+The chunked transfer stays as a switch so the measurement can be
+reproduced: 56 combinations of sizes and chunk counts are bit-identical
+to the previous path.
+
+**Grid covers did not load in at 1080p.** Found through a video from
+SuTe: the grid stayed nearly empty, a cover appeared only on the tile
+you stopped on, a page turn emptied everything again, and the gallery
+often lacked its big cover. His `--bench` showed his device is not
+slower — the image chain is within 1–2 % of a second device. There
+were three faults in the flow: the idle redraw painted only two tiles
+in the grid, so finished covers for the others sat on the card and
+never showed; a key press cancelled the jobs sent to the worker
+process but left their wait markers behind, after which the main loop
+redrew endlessly while idle; and the emergency brake took the worker
+for hung after two seconds although it had 21 tiles to work through —
+then the drawing path computed them itself, and for 100–500 ms per
+tile nothing responded. At half resolution the covers are small enough
+that none of these faults came into play. *Correction:* an earlier
+version said here that this was the twitching. That was wrong — the
+three faults are real and fixed, but the twitch also occurs in
+categories without a single cover.
+
 **The frontend measures itself: `--bench`.** Every number in this
 project since build 73 was hand work — set the profile switch,
 scroll, `grep PERF`, type it up. That yields numbers for one device

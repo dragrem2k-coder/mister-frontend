@@ -6543,6 +6543,35 @@ class Frontend:
         return art, (art is None
                      and getattr(ART, "_defer_count", 0) != vorher)
 
+    def _nachzeichnen_vorbereiten(self):
+        """Vor dem Nachzeichnen im Leerlauf (COVER_SETTLE): in Raster
+        und Galerie einen VOLLEN Aufbau erzwingen.
+
+        NEU (Build 180, SuTes Video bei 1080p). Das Nachzeichnen ging
+        bisher durch denselben schnellen Pfad wie ein Tastendruck - und
+        der zeichnet im Raster seit Build 122 nur ZWEI Kacheln: die
+        alte und die neue Markierung. Ein Cover, das der Arbeitsprozess
+        fuer irgendeine ANDERE Kachel fertig hatte, lag danach auf der
+        Karte, wurde aber nie gemalt. Im Video sieht man genau das: das
+        Raster bleibt leer, ein Cover erscheint nur auf der Kachel, auf
+        der man stehen bleibt, und nach einem Seitenwechsel ist wieder
+        alles leer.
+
+        In der Liste bleibt es beim schnellen Pfad. Dort ist pro Bild
+        genau ein Cover zu sehen, und das zeichnet der schnelle Pfad
+        ohnehin neu.
+
+        Was der volle Aufbau kostet, steht im Bench: rund 110-140 ms
+        fuer ein Raster auf 1080p - und zwar nur im Leerlauf, einmal je
+        gelieferter Miniatur, nie waehrend man scrollt."""
+        if self.page == 1:
+            ansicht = self.aktuelle_ansicht()
+        else:
+            ansicht = self.aktuelle_ansicht_haupt()
+        if ansicht in ("raster", "galerie"):
+            self._force_full_redraw = True
+        return ansicht
+
     def _kachel_platzhalter(self, x, y, w, h, label, s, markiert):
         """Was auf einer Kachel steht, solange es kein Cover gibt.
 
@@ -8590,6 +8619,7 @@ class Frontend:
                         and _nachzuholen
                         and time.monotonic() - self._last_input_time >= COVER_SETTLE):
                     ART._deferred_something = False
+                    self._nachzeichnen_vorbereiten()
                     if self.page == 1:
                         self.draw_page_items()
                     else:
@@ -14396,23 +14426,79 @@ class Frontend:
     # gerufen, und eine Dateiabfrage je Bild waere genau die Sorte
     # stiller Kosten, gegen die die Builds 104-110 angegangen sind.
     KONSOLE_MECHANIK_FLAG = "/media/fat/frontend/konsole_mechanik_an"
+    KONSOLE_MECHANIK_AUS_FLAG = "/media/fat/frontend/konsole_mechanik_aus"
     _konsole_mechanik = None
+
+    @staticmethod
+    def kernel_hauptnummer():
+        """Die Hauptnummer des laufenden Kernels, oder 0.
+
+        Absichtlich genuegsam: alles, was nicht eindeutig eine Zahl
+        ist, gilt als 0 und fuehrt damit zum alten Verhalten. Ein
+        Frontend, das wegen einer unerwarteten Versionszeile gar nicht
+        erst startet, waere schlimmer als jede Fehlentscheidung hier."""
+        try:
+            return int(str(os.uname().release).split(".")[0])
+        except (AttributeError, ValueError, IndexError, OSError):
+            return 0
 
     @classmethod
     def konsole_mechanik(cls):
         """Laeuft die Konsolen-Mechanik aus den Builds 146-166?
 
-        Standard ist NEIN - dann verhaelt sich das Frontend beim
-        Starten und Beenden wie Build 145."""
+        ENTSCHIEDEN WIRD AM KERNEL (Build 184), nicht mehr allein an
+        einer Datei. Vorher galt: ohne Datei kein Mechanismus, also
+        Verhalten wie Build 145.
+
+        WARUM DIE AENDERUNG - und das ist gemessen, nicht vermutet:
+
+        Mit dem MiSTer-Linux-Update auf Kernel 6.18.38 meldete der
+        Nutzer woertlich "ich haenge im OSD, hoere die Musik vom
+        Frontend", dazu einen Login-Prompt, der nach 20-30 Sekunden
+        Ruhe zurueckkam und bis zum naechsten Tastendruck stehen
+        blieb. Das sind Punkt fuer Punkt die drei Teile, die Build 167
+        stillgelegt hat: die F9-Wiederholungen, die Dauerwache aus
+        Build 157 und das Ruhigstellen der Textkonsole aus 158/160.
+
+        Ein "touch konsole_mechanik_an" hat alle drei Symptome
+        beseitigt, und das Beenden mit F12 ging weiterhin. Damit ist
+        die Frage aus Build 167 beantwortet: die Mechanik war nie die
+        Ursache des kaputten Beendens - der Kernelwechsel war es.
+
+        Der Grund, warum ein einzelnes F9 auf 6.18 nicht mehr sitzt,
+        steht im Log des Geraets: MiSTer richtet den Bildspeicher
+        mehrfach neu ein (dmesg "MiSTer_fb: width = 1920, height =
+        1080" bei Sekunde 3, 41, 48, 51), und wer vorher einmal
+        klopft, klopft an eine Tuer, die es noch nicht gibt.
+
+        WAS HIER NICHT GEMACHT WIRD: auf 5.15 etwas aendern. Dort
+        laeuft das Verhalten aus Build 145 seit Wochen bei zwei
+        Geraeten ohne Beanstandung. Eine Vermutung, dass die Mechanik
+        dort auch nicht schadet, ist keine Messung.
+
+        Beide Dateien behalten Vorrang vor der Kernelfrage, und zwar
+        in BEIDE Richtungen - wer auf 6.18 das alte Verhalten
+        zurueckwill, braucht dafuer keinen neuen Build:
+
+            touch /media/fat/frontend/konsole_mechanik_an    # immer AN
+            touch /media/fat/frontend/konsole_mechanik_aus   # immer AUS
+        """
         if cls._konsole_mechanik is None:
+            grund = ""
             try:
-                cls._konsole_mechanik = os.path.exists(
-                    cls.KONSOLE_MECHANIK_FLAG)
+                if os.path.exists(cls.KONSOLE_MECHANIK_AUS_FLAG):
+                    cls._konsole_mechanik, grund = False, "Datei erzwingt AUS"
+                elif os.path.exists(cls.KONSOLE_MECHANIK_FLAG):
+                    cls._konsole_mechanik, grund = True, "Datei erzwingt AN"
+                else:
+                    kern = cls.kernel_hauptnummer()
+                    cls._konsole_mechanik = kern >= 6
+                    grund = "Kernel %s" % (os.uname().release,)
             except OSError:
-                cls._konsole_mechanik = False
+                cls._konsole_mechanik, grund = False, "konnte nicht nachsehen"
             LOG("Konsole: Mechanik %s (%s)"
                 % ("AN" if cls._konsole_mechanik else "AUS - Verhalten "
-                   "wie Build 145", cls.KONSOLE_MECHANIK_FLAG))
+                   "wie Build 145", grund))
         return cls._konsole_mechanik
 
     @classmethod
@@ -15337,6 +15423,11 @@ class Frontend:
                 # sieben Stellen, die _last_input_time setzen.
                 PREWARMER.abbrechen()
                 self.lader.abbrechen()
+                # NEU (Build 180): die abgebrochenen Auftraege auch
+                # nicht mehr ERWARTEN. Sonst veralten ihre Vermerke,
+                # und im Raster zeichnete die Hauptschleife danach im
+                # Leerlauf endlos nach - siehe ArtCache.warten_vergessen().
+                ART.warten_vergessen()
                 _rt2 = time.monotonic()
                 LOG("aktion: %s (Seite %d, confirm=%s)"
                     % (act, self.page, self.confirm_quit))

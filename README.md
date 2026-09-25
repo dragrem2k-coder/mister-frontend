@@ -169,6 +169,32 @@ einem Gerät gar nicht mehr einblenden lässt (derselbe Weg, den Degauss
 gebaut hat). Auf Geräten, wo das normale Einblenden noch geht, wird er
 nie betreten.
 
+**Und seit Build 184: der Start ist auf 6.18 wieder abgesichert.**
+Gemeldet wurde nach dem Update *„ich hänge im OSD und höre die Musik
+vom Frontend"*, dazu ein Login-Gruß, der nach 20–30 Sekunden Ruhe
+zurückkam und bis zum nächsten Tastendruck stehen blieb. Ursache ist
+dieselbe wie beim F12: **ein einzelnes F9 sitzt auf diesem Kernel
+nicht mehr zuverlässig.** MiSTer richtet den Bildspeicher mehrfach neu
+ein — im `dmesg` eines Geräts bei Sekunde 3, 41, 48 und 51 — und wer
+vorher einmal klopft, klopft an eine Tür, die es noch nicht gibt.
+
+Das Frontend schaltet deshalb **auf Kernel 6 und neuer automatisch**
+die Konsolen-Mechanik aus den Builds 146–166 ein: das F9 wird
+wiederholt, eine Wache räumt fremde Ausgabe im Bild weg, und die
+Bildschirmschonung der Textkonsole bleibt aus. Auf 5.15.1 ändert sich
+**nichts** — dort gilt weiterhin das Verhalten aus Build 145, das dort
+seit Wochen läuft.
+
+Erzwingen lässt sich beides, ohne auf einen Build zu warten:
+
+```
+touch /media/fat/frontend/konsole_mechanik_an     # immer an
+touch /media/fat/frontend/konsole_mechanik_aus    # immer aus
+```
+
+Welcher Weg genommen wurde, steht in `/tmp/frontend.log`:
+`Konsole: Mechanik AN (Kernel 6.18.38-MiSTer)`.
+
 **Etwas kaputt?** Dann bitte das Messwerkzeug laufen lassen — es
 braucht zwei Minuten, ändert nichts und sagt am Ende in Klartext,
 woran es liegt:
