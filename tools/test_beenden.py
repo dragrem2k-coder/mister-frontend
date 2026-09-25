@@ -269,8 +269,12 @@ print("Test 7: das Boot-Logo wartet, bis es jemand sehen kann")
 # und er hat trotzdem nichts gesehen. Gezeichnet wurde in einen
 # Bildspeicher, der zu dem Zeitpunkt nicht auf dem Schirm lag.
 i = quelle.index("    def _auf_eigenes_bild_warten(self")
-warten = quelle[i:i + 3000]
-warten = warten[:warten.index("\n    def ")]
+# Bis zur naechsten Methode, ohne feste Fenstergroesse. Mit 3000
+# Zeichen lief das hier auf einen ValueError, sobald die Funktion durch
+# Build 186 laenger wurde - ein Test, der an der LAENGE des geprueften
+# Codes haengt, geht irgendwann kaputt, ohne dass etwas kaputt ist.
+warten = quelle[i:]
+warten = warten[:warten.index("\n    def ", 10)]
 check("es gibt das Warten", bool(warten))
 check("es misst dasselbe Signal wie beim Beenden",
       "_mister_last()" in warten and "MISTER_BESCHAEFTIGT" in warten)
@@ -279,9 +283,24 @@ check("ohne Messsignal wird nicht gewartet",
       "keine Lastmessung moeglich" in warten)
 check("und es endet in jedem Fall", "BOOTLOGO_WARTEN_MAX" in warten)
 mb = re.search(r"BOOTLOGO_WARTEN_MAX = ([\d.]+)", quelle)
+# ANGEHOBEN VON 10 AUF 15 (Build 186). Die Grenze stand auf 10, weil
+# eine lange Wartezeit auf dem alten Kernel niemandem genuetzt haette.
+# Auf 6.18 richtet MiSTer den Bildspeicher spaet ein, und mit 6 s
+# Warten kam das Logo gar nicht mehr (Nutzer: "das Bootlogo wird nicht
+# mehr eingeblendet"). Der Wert steht jetzt auf 12 und deckt die
+# F9-Nachfasser bei 2, 5 und 9 s ab.
+#
+# Warum das trotzdem niemanden aufhaelt: gewartet wird nur, solange
+# MiSTer noch sein eigenes Menue malt. Sobald er uebergibt, wenn
+# jemand eine Taste drueckt oder wenn gar nicht gemessen werden kann,
+# ist sofort Schluss. Die vollen 12 s laufen also nur dort ab, wo man
+# ohnehin auf MiSTers Menue sieht.
 check("die Obergrenze ist kurz genug, um nicht zu stoeren",
-      mb is not None and float(mb.group(1)) <= 10.0,
+      mb is not None and float(mb.group(1)) <= 15.0,
       (mb.group(1) + " s") if mb else "")
+check("und die Warteschleife loest die Uebergabe selbst aus",
+      "_konsole_sichern(" in warten,
+      "sonst wartet sie auf etwas, das nur die Hauptschleife ausloest")
 # Und es muss VOR dem Zeichnen stehen, nicht danach.
 pa = quelle.index("    def play_boot_animation(self")
 pb = quelle[pa:pa + 6000]

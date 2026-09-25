@@ -93,6 +93,21 @@ VIGNETTE_ENABLED = True    # dezente Randabdunkelung auf einfarbigen
                             # beim eigentlichen Zeichnen
 
 class Framebuffer:
+    # Der haeppchenweise Flip, siehe _flip_haeppchenweise(). Hier als
+    # KLASSENvorgabe und nicht nur in _map(): der Regressionstest und
+    # die Zeichen-Tests ersetzen __init__() durch eine Attrappe, die
+    # _map() nie ruft - ohne diese beiden Zeilen liefe flip() dort in
+    # einen AttributeError, und zwar in jedem einzelnen Test.
+    haeppchen = 1
+    haeppchen_pause = 0.0
+
+    # Der Rueckleser, siehe _rueckleser_pruefen(). Aus denselben
+    # Gruenden hier als Klassenvorgabe: eine Attrappe, die _map() nie
+    # ruft, soll flip() trotzdem ueberstehen.
+    rueckleser = 0
+    _rueck_offsets = ()
+    _rueck_proben = None
+
     # FBIO_WAITFORVSYNC (siehe linux/fb.h: _IOW('F', 0x20, __u32)) - wartet
     # auf den naechsten vertikalen Bildwechsel der Anzeige-Hardware, BEVOR
     # in den Framebuffer geschrieben wird. Ohne das kann ein Schreibvorgang
@@ -466,6 +481,206 @@ class Framebuffer:
                 "den Weg ueber /dev/mem" % (self.fbdev, e))
             self.mm = self._map_ueber_dev_mem()
         self.buf = bytearray(self.size)
+        self._haeppchen_einrichten()
+        self._rueckleser_einrichten()
+
+    def _haeppchen_einrichten(self):
+        """Den haeppchenweisen Flip vorbereiten - siehe
+        _flip_haeppchenweise().
+
+        EINMAL beim Oeffnen, nicht bei jedem Bild: der Schalter aendert
+        sich zur Laufzeit nicht, und die beiden memoryview-Objekte
+        haetten pro Bild sonst nichts zu tun, als erzeugt und wieder
+        weggeworfen zu werden.
+
+        Der Schalter wird hier direkt gelesen und NICHT ueber
+        fe.settings geholt: dieses Modul kommt bewusst ohne
+        Abhaengigkeit zum Einstellungsmodul aus (der Framebuffer muss
+        auch dann aufgehen, wenn oben etwas fehlt). Die Umgebungs-
+        variable steht daneben, damit sich zwei Laeufe vergleichen
+        lassen, ohne eine Datei anzulegen."""
+        self.haeppchen = 1
+        self.haeppchen_pause = 0.0
+        self._mv_mm = self._mv_buf = None
+        wert = os.environ.get("DRAGEND_FLIP_HAEPPCHEN")
+        if wert is None:
+            try:
+                with open("/media/fat/frontend/flip_haeppchen") as f:
+                    wert = f.read().strip() or "16"
+            except OSError:
+                return
+        wert = (wert or "").strip()
+        if not wert or wert in ("0", "1", "aus", "off"):
+            return
+        # "16" oder "16:200" - Haeppchen, und wieviele Mikrosekunden
+        # dazwischen gewartet wird.
+        teile = wert.split(":")
+        try:
+            n = int(teile[0])
+        except ValueError:
+            n = 16
+        us = 0
+        if len(teile) > 1:
+            try:
+                us = int(teile[1])
+            except ValueError:
+                us = 0
+        # Obergrenze mit Ansage: bei sehr vielen Haeppchen misst man
+        # vor allem den eigenen Mehraufwand.
+        self.haeppchen = max(2, min(n, 256))
+        self.haeppchen_pause = max(0.0, min(us, 5000)) / 1000000.0
+        try:
+            self._mv_mm = memoryview(self.mm)
+            self._mv_buf = memoryview(self.buf)
+        except TypeError as e:
+            LOG("Flip-Haeppchen: memoryview geht hier nicht (%s) - "
+                "bleibe beim Flip in einem Zug" % e)
+            self.haeppchen = 1
+            return
+        LOG("Flip-Haeppchen: %d Stuecke, %.0f us Pause dazwischen"
+            % (self.haeppchen, self.haeppchen_pause * 1000000))
+
+    def _rueckleser_einrichten(self):
+        """Den Rueckleser vorbereiten - siehe _rueckleser_pruefen().
+
+        MESSGEGENSTAND (Build 182), standardmaessig AUS. Geschaltet
+        ueber DRAGEND_FLIP_RUECKLESER oder die Datei
+        /media/fat/frontend/flip_rueckleser; der Wert ist die Anzahl
+        der Proben-Zeilen (leer = 8, Grenzen 1 bis 64).
+
+        Wie beim Haeppchen-Schalter wird hier direkt gelesen und nicht
+        ueber fe.settings: dieses Modul kommt ohne Abhaengigkeit nach
+        oben aus."""
+        self.rueckleser = 0
+        self._rueck_offsets = ()
+        self._rueck_proben = None
+        self._rueck_treffer = 0
+        self._rueck_bilder = 0
+        self._rueck_letzte_meldung = 0.0
+        self._rueck_letzte_bilanz = time.monotonic()
+        self._rueck_start = time.monotonic()
+        wert = os.environ.get("DRAGEND_FLIP_RUECKLESER")
+        if wert is None:
+            try:
+                with open("/media/fat/frontend/flip_rueckleser") as f:
+                    wert = f.read().strip() or "8"
+            except OSError:
+                return
+        wert = (wert or "").strip()
+        if not wert or wert in ("0", "aus", "off"):
+            return
+        try:
+            n = int(wert)
+        except ValueError:
+            n = 8
+        n = max(1, min(n, 64))
+        schritt = max(1, self.height // n)
+        self._rueck_offsets = tuple(z for z in range(0, self.height, schritt)
+                                    )[:n]
+        self._rueck_proben = [None] * len(self._rueck_offsets)
+        self.rueckleser = n
+        LOG("Rueckleser: %d Proben-Zeilen (%s) - es wird nach jedem Bild "
+            "geprueft, ob unser Inhalt noch im Bildspeicher steht"
+            % (len(self._rueck_offsets),
+               ",".join(str(z) for z in self._rueck_offsets[:8])))
+
+    def _rueckleser_pruefen(self):
+        """Nachsehen, ob im Bildspeicher noch steht, was wir zuletzt
+        hineingeschrieben haben.
+
+        WOZU (Build 182). Beim Zucken auf 1080p sind vier Erklaerungen
+        durchgemessen und tot: Eingabe-Leck, uebersprungenes Vsync,
+        Speicherdurchsatz (Build 181: dreifach entzerrter Flip aendert
+        nichts) und der Cover-Weg (es zuckt auch ohne ein einziges
+        Cover). Uebrig bleiben genau zwei, die einander ausschliessen:
+
+          A) Jemand SCHREIBT in den Bildspeicher hinein.
+          B) Niemand schreibt, die Anzeige-Ebene wird WEGGESCHALTET.
+
+        fb_wacht.py entscheidet das ohne Frontend - aber eben ohne
+        Frontend, und MiSTer verhaelt sich anders, wenn niemand sonst
+        zeichnet. Der Rueckleser stellt dieselbe Frage IM LAUFENDEN
+        BETRIEB: er merkt sich beim Schreiben ein paar Zeilen und
+        vergleicht sie beim naechsten Bild mit dem, was dort jetzt
+        steht.
+
+          Abweichung -> A, mit Zeitpunkt und Zeilennummern.
+          Nie eine Abweichung, waehrend es sichtbar zuckt -> B.
+
+        Warum nur Proben und nicht alles: gelesen wird aus
+        ungepuffertem Speicher. Acht Zeilen sind 61 KB je Bild und
+        damit bezahlbar; 7,9 MB waeren es nicht, und die Messung
+        wuerde vor allem sich selbst messen."""
+        proben = self._rueck_proben
+        if not proben:
+            return
+        zl = self.stride
+        kaputt = []
+        for i, z in enumerate(self._rueck_offsets):
+            soll = proben[i]
+            if soll is None:
+                continue
+            a = z * zl
+            if self.mm[a:a + zl] != soll:
+                kaputt.append(z)
+        self._rueck_bilder += 1
+        if not kaputt:
+            self._rueckleser_bilanz()
+            return
+        self._rueck_treffer += 1
+        jetzt = time.monotonic()
+        # Hoechstens eine Zeile je Sekunde: ein Dauerfeuer im Log waere
+        # unbrauchbar, und die Gesamtzahl steht ja daneben.
+        if jetzt - self._rueck_letzte_meldung < 1.0:
+            return
+        self._rueck_letzte_meldung = jetzt
+        LOG("RUECKLESER: nach %.1f s steht in %d von %d Proben-Zeilen "
+            "fremder Inhalt (Zeilen %s) - %d Treffer bei %d Bildern"
+            % (jetzt - self._rueck_start, len(kaputt),
+               len(self._rueck_offsets),
+               ",".join(str(z) for z in kaputt[:8]),
+               self._rueck_treffer, self._rueck_bilder))
+
+    def _rueckleser_bilanz(self):
+        """Alle 30 Sekunden eine Zeile ins Log, auch wenn nichts war.
+
+        NEU (Build 183), und der Grund ist ein Fehler in Build 182:
+        dort schrieb der Rueckleser nur bei einem TREFFER. Bleibt er
+        stumm, weiss niemand, ob er nichts gefunden hat oder ob er gar
+        nicht gelaufen ist - und aus 'kein Eintrag im Log' laesst sich
+        dann beides lesen. Genau das ist bei der ersten Messung
+        passiert: ein einzelner Treffer beim Start, danach Stille, und
+        die Stille war nicht auswertbar.
+
+        Ein Messgegenstand, der nur bei Erfolg redet, kann eine
+        Vermutung nur bestaetigen und nie widerlegen. Mit dieser Zeile
+        wird aus dem Schweigen eine Messung: so und so viele Bilder
+        geprueft, so und so viele Treffer."""
+        jetzt = time.monotonic()
+        if jetzt - self._rueck_letzte_bilanz < 30.0:
+            return
+        self._rueck_letzte_bilanz = jetzt
+        LOG("RUECKLESER-BILANZ: %.0f s, %d Bilder geprueft, %d Treffer"
+            % (jetzt - self._rueck_start, self._rueck_bilder,
+               self._rueck_treffer))
+
+    def _rueckleser_merken(self, y0=0, y1=None):
+        """Die Proben der gerade geschriebenen Zeilen auffrischen.
+
+        Muss nach JEDEM Schreiben geschehen, auch nach flip_rows() -
+        sonst meldete der Rueckleser die Laufschrift als fremden
+        Inhalt, und das waere ein Fehlalarm, der wie ein Befund
+        aussieht."""
+        proben = self._rueck_proben
+        if proben is None:
+            return
+        if y1 is None:
+            y1 = self.height
+        zl = self.stride
+        for i, z in enumerate(self._rueck_offsets):
+            if y0 <= z < y1:
+                a = z * zl
+                proben[i] = bytes(self.buf[a:a + zl])
 
     def _map_ueber_dev_mem(self):
         """Die physische Adresse des Bildspeichers direkt einblenden.
@@ -1316,11 +1531,71 @@ class Framebuffer:
         # Aufrufer automatisch beim bisherigen, sicheren Verhalten.
         if not skip_vsync:
             self._wait_vsync()
-        # Direkte Slice-Zuweisung: mmap nimmt das bytearray ohne die
-        # teure bytes()-Zwischenkopie (auf 1080p ~8 MB pro Frame).
-        self.mm[:] = self.buf
+        # Nach dem Warten, unmittelbar vor dem Schreiben: so ist das
+        # beobachtete Fenster so gross wie moeglich.
+        if self._rueck_proben is not None:
+            self._rueckleser_pruefen()
+        if self.haeppchen > 1:
+            self._flip_haeppchenweise()
+        else:
+            # Direkte Slice-Zuweisung: mmap nimmt das bytearray ohne die
+            # teure bytes()-Zwischenkopie (auf 1080p ~8 MB pro Frame).
+            self.mm[:] = self.buf
+        if self._rueck_proben is not None:
+            self._rueckleser_merken()
         self.flip_gen += 1
         self.flip_event.set()
+
+    def _flip_haeppchenweise(self):
+        """Dasselbe Bild, aber in mehreren Stuecken statt in einem Zug.
+
+        NEU (Build 181) - ein MESSGEGENSTAND, kein Feature. Standard
+        ist aus, siehe FLIP_HAEPPCHEN_FLAG in fe/settings.py.
+
+        WORUM ES GEHT
+
+        Bei 1920x1080 blitzt achtmal je Minute MiSTers eigenes
+        Menuebild durch, je ein bis zwei Bilder lang, jedes Mal dicht
+        an einem Scrollschritt. Bei halber Aufloesung nicht.
+        Nachgemessen (zuck_probe.py, zwei Abschnitte): MiSTer wacht
+        dabei nicht oefter auf als im Leerlauf - er zeichnet also
+        nicht dazwischen. Unsere Ebene faellt kurz aus.
+
+        DIE VERMUTUNG, DIE HIER GEPRUEFT WIRD
+
+        ARM und FPGA teilen sich beim DE10-Nano denselben Speicher.
+        Ein Vollbild sind 7,9 MB, und die schreiben wir in EINEM Zug -
+        gemessen 12,6 ms, also fast eine ganze Bildperiode am Stueck.
+        Bekommt der Scaler in dieser Zeit seine Zeilen nicht
+        rechtzeitig, faellt unsere Ebene weg. Bei halber Aufloesung
+        ist es ein Viertel davon, und es passt in die Luecken.
+
+        Trifft das zu, muss es besser werden, wenn derselbe Inhalt in
+        Haeppchen mit Atempausen dazwischen geschrieben wird. Trifft
+        es nicht zu, aendert sich nichts - und wir sind eine
+        Moeglichkeit los. Beides ist ein Ergebnis.
+
+        WARUM MEMORYVIEW
+
+        self.mm[a:b] = self.buf[a:b] waere der naheliegende Weg und
+        der falsche: das Stueck rechts erzeugt jedes Mal eine KOPIE
+        des Ausschnitts. Bei sechzehn Haeppchen waeren das sechzehn
+        Zwischenkopien von je einem halben Megabyte - die Messung
+        haette dann vor allem den Mehraufwand gemessen, den sie selbst
+        verursacht. Ueber memoryview geht es ohne Zwischenkopie."""
+        n = self.haeppchen
+        schritt = ((self.size + n - 1) // n + 3) & ~3    # 4-Byte-Raster
+        ziel, quelle = self._mv_mm, self._mv_buf
+        pause = self.haeppchen_pause
+        pos = 0
+        while pos < self.size:
+            ende = pos + schritt
+            if ende > self.size:
+                ende = self.size
+            ziel[pos:ende] = quelle[pos:ende]
+            pos = ende
+            if pause and pos < self.size:
+                time.sleep(pause)
 
     def flip_rows(self, y, h, skip_vsync=False):
         """Nur einen Zeilenbereich auf den Schirm bringen (Laufschrift).
@@ -1334,6 +1609,8 @@ class Framebuffer:
         off = y0 * self.stride
         end = y1 * self.stride
         self.mm[off:end] = self.buf[off:end]
+        if self._rueck_proben is not None:
+            self._rueckleser_merken(y0, y1)
         self.flip_gen += 1
         self.flip_event.set()
 

@@ -13,6 +13,31 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## v4.5 — CD games in folders, a C module, a PC tool
 
+**The frontend now notices when its own parts don't match.** On one
+device `frontend.py` from build 184 sat next to an `fe/art.py` older
+than build 180 — copied in by hand, that one file only. The crash came
+not at startup but on the first press of an arrow key, and on screen it
+looked like *"the frontend quits and I end up in the OSD"*, i.e. like a
+kernel or display problem. It cost an hour of searching in entirely the
+wrong place. At startup the frontend now checks once whether
+`frontend.py` and the `fe/` package fit together; if something is
+missing it says plainly **what** is missing, **since when** it belongs
+there and **how** to fix it. It does not abort — a frontend that
+refuses to start because of this check would be worse than the problem.
+
+**The boot logo is back on kernel 6.18.** Reported as *"I see the OSD
+a bit longer, then briefly the login prompt, then the frontend — the
+boot logo doesn't show any more"*. The fault was not the logo but the
+order: before the boot animation the frontend waits for MiSTer to hand
+over the screen — painting a logo into a framebuffer nobody is looking
+at is wasted time. But that handover is triggered by the F9 retries,
+and those run from the main loop, which only starts *after* the boot
+animation. So we waited for someone to knock while keeping our own
+hand still. On 5.15 it never showed, because there the first F9
+landed. The wait loop now retries by itself, and its ceiling goes from
+6 to 12 seconds. Press a key and you wait not at all; get the handover
+straight away and you notice nothing.
+
 **Kernel 6.18: startup now holds on by itself.** After the MiSTer
 Linux update the old report came back — *"I'm stuck in the OSD and
 hear the frontend's music"* — plus a login greeting that reappeared

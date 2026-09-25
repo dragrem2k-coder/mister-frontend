@@ -692,6 +692,50 @@ COVER_SETTLE = 0.15         # s nach letzter Eingabe, bis waehrend des
 # fe/framebuffer.py. Standard AUS (bewusster Opt-in) - Bildriss-Risiko
 # soll niemand ungefragt bekommen, der einfach nur aktualisiert.
 FAST_SCROLL_ENABLED_FLAG = "/media/fat/frontend/fast_scroll_enabled"
+
+# MESSGEGENSTAND (Build 181), kein Feature - siehe
+# _flip_haeppchenweise() in fe/framebuffer.py. Standard AUS.
+#
+# Ein Vollbild sind auf 1080p 7,9 MB, geschrieben in EINEM Zug
+# (gemessen 12,6 ms). Die Vermutung: der Scaler bekommt in dieser Zeit
+# seine Zeilen nicht, unsere Anzeige-Ebene faellt fuer ein bis zwei
+# Bilder aus, und darunter wird MiSTers eigenes Bild sichtbar - das
+# gemeldete Zucken. Mit dieser Datei wird dasselbe Bild in Haeppchen
+# geschrieben.
+#
+#     touch /media/fat/frontend/flip_haeppchen      # 16 Stuecke
+#     echo "16:200" > /media/fat/frontend/flip_haeppchen
+#            ^ Stuecke  ^ Mikrosekunden Pause dazwischen
+#
+# GELESEN WIRD DIE DATEI NUR BEIM START, nicht je Bild - der Schalter
+# aendert sich zur Laufzeit nicht, und eine Kartenabfrage je Bild war
+# schon einmal ein Fehler (siehe Build 135). Zum Vergleichen zweier
+# Laeufe ohne Datei gibt es DRAGEND_FLIP_HAEPPCHEN.
+FLIP_HAEPPCHEN_FLAG = "/media/fat/frontend/flip_haeppchen"
+
+# MESSGEGENSTAND (Build 182), kein Feature - siehe
+# _rueckleser_pruefen() in fe/framebuffer.py. Standard AUS.
+#
+# ERGEBNIS zum Haeppchen-Schalter oben: er hat NICHTS geaendert. Mit
+# 16 Stuecken und 500 us Pause brauchte der Flip 34 ms statt 12,6 -
+# dreimal so entzerrt, und das Zucken blieb. Der Speicherdurchsatz
+# ist damit als Ursache erledigt, ebenso der Cover-Weg (es zuckt auch
+# in Kategorien ohne ein einziges Cover).
+#
+# Uebrig bleiben zwei Moeglichkeiten, die einander ausschliessen:
+# jemand SCHREIBT in den Bildspeicher hinein, oder die Anzeige-Ebene
+# wird WEGGESCHALTET. Der Rueckleser merkt sich beim Schreiben ein
+# paar Zeilen und vergleicht sie beim naechsten Bild mit dem, was
+# dort jetzt steht. Abweichung = geschrieben. Nie eine Abweichung,
+# waehrend es sichtbar zuckt = weggeschaltet.
+#
+#     touch /media/fat/frontend/flip_rueckleser    # 8 Proben-Zeilen
+#     echo "16" > /media/fat/frontend/flip_rueckleser
+#
+# Gelesen wird die Datei nur beim Start. Zum Vergleichen ohne Datei
+# gibt es DRAGEND_FLIP_RUECKLESER. Die Treffer stehen im Log
+# (/tmp/frontend.log), hoechstens eine Zeile je Sekunde.
+RUECKLESER_FLAG = "/media/fat/frontend/flip_rueckleser"
 FAST_SCROLL_WINDOW = 0.15   # s nach letzter Eingabe, in der Vsync beim
                             # Scrollen uebersprungen wird (danach: normal
                             # synchronisiert, kein Tearing im Ruhezustand) -

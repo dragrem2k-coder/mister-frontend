@@ -14067,8 +14067,19 @@ class Frontend:
             return None
         return (zeit - vorher[1]) / (jetzt - vorher[0]) * 100.0
 
-    def _konsole_sichern(self):
+    _NICHT_GEMESSEN = object()
+
+    def _konsole_sichern(self, last=_NICHT_GEMESSEN):
         """F9 in den ersten Sekunden ein paarmal wiederholen.
+
+        last: eine bereits genommene Lastmessung. Der Grund dafuer ist
+        unscheinbar und war der eigentliche Fehler in Build 184:
+        _mister_last() haelt seinen Messpunkt, wenn seit der letzten
+        Abfrage weniger als MISTER_MESSFENSTER vergangen ist, und
+        liefert dann None. Zwei Aufrufe dicht hintereinander ergeben
+        also einen Wert und ein None - wer zweiter ist, ist blind.
+        Deshalb misst der Aufrufer einmal und reicht das Ergebnis
+        durch. Ohne Argument wird wie bisher selbst gemessen.
 
         DAS PROBLEM (Nutzer-Rueckmeldung ueber mehrere Builds: "bin im
         OSD und hoere die Musik vom Frontend"): das Frontend schickt
@@ -14129,7 +14140,8 @@ class Frontend:
         # NEU (Build 152): erst nachsehen, ob es ueberhaupt noch noetig
         # ist. Siehe _mister_last() - schlaeft MiSTer, liegt unser Bild
         # oben und jeder weitere Versuch waere nur ein Flackern.
-        last = self._mister_last()
+        if last is self._NICHT_GEMESSEN:
+            last = self._mister_last()
         if last is not None and last < self.MISTER_BESCHAEFTIGT:
             self._f9_wiederholt = len(self.F9_WIEDERHOLUNGEN)
             LOG("Konsolenmodus: MiSTer bei %.0f%% - unser Bild liegt oben, "
@@ -17102,9 +17114,25 @@ class Frontend:
     EXIT_F12_VERSUCHE = 3
 
     # Wie lange auf das eigene Bild gewartet wird, bevor die
-    # Boot-Animation trotzdem laeuft. Sechs Sekunden decken die ersten
-    # drei F9-Nachfasser aus _konsole_sichern() (2, 5, 9 s) mit ab.
-    BOOTLOGO_WARTEN_MAX = 6.0
+    # Boot-Animation trotzdem laeuft.
+    #
+    # ANGEHOBEN VON 6 AUF 12 SEKUNDEN (Build 185). Sechs Sekunden
+    # sollten die Nachfasser bei 2 und 5 Sekunden abdecken - auf
+    # Kernel 6.18 reicht das nicht: dort richtet MiSTer den
+    # Bildspeicher laut dmesg des Geraets erst spaet ein, und der
+    # Nutzer meldete "ich sehe etwas laenger das OSD, dann kurz den
+    # Login-Prompt, dann das Frontend - das Bootlogo kommt gar nicht
+    # mehr". Zwoelf Sekunden decken die Nachfasser bei 2, 5 und 9
+    # Sekunden ab.
+    #
+    # Das kostet NIEMANDEN Zeit, bei dem die Uebergabe frueh gelingt:
+    # gewartet wird nur, solange MiSTer noch sein eigenes Menue malt,
+    # und beendet wird sofort, wenn er schlaeft, wenn jemand eine
+    # Taste drueckt oder wenn gar nicht gemessen werden kann. Waehrend
+    # des Wartens sieht man MiSTers Menue - also genau das, was man
+    # ohne das Warten auch saehe, nur ohne ein Logo, das niemand
+    # sieht.
+    BOOTLOGO_WARTEN_MAX = 12.0
 
     def _auf_eigenes_bild_warten(self):
         """Warten, bis MiSTer schlaeft - dann liegt unser Bild oben.
@@ -17127,6 +17155,25 @@ class Frontend:
         gesehen = False
         while time.monotonic() < ende:
             last = self._mister_last()
+            # DER FEHLER, DEN BUILD 185 BEHEBT: hier wurde gewartet,
+            # dass MiSTer uebergibt - aber die F9-Nachfasser, die diese
+            # Uebergabe ueberhaupt erst ausloesen, laufen in
+            # _konsole_sichern(), und das wird aus der HAUPTSCHLEIFE
+            # gerufen. Die beginnt erst nach der Boot-Animation. Wir
+            # haben also darauf gewartet, dass jemand klopft, und
+            # dabei selbst die Hand stillgehalten.
+            #
+            # Auf 5.15 fiel das nicht auf, weil dort schon das erste
+            # F9 aus enter_console_mode() sass. Auf 6.18 sitzt es
+            # nicht, und deshalb war das Logo weg.
+            #
+            # Die Messung wird durchgereicht, siehe _konsole_sichern():
+            # zweimal dicht hintereinander messen liefert beim zweiten
+            # Mal None.
+            try:
+                self._konsole_sichern(last)
+            except Exception:                            # noqa: BLE001
+                pass            # ein Logo darf den Start nie verhindern
             if last is not None:
                 gesehen = True
                 if last < self.MISTER_BESCHAEFTIGT:
@@ -17283,6 +17330,101 @@ try:
 except (AttributeError, ValueError, OSError):
     pass   # SIGHUP nicht verfuegbar (z.B. andere Plattform) - kein Problem
 
+# ---------------------------------------------------------------------------
+# Passen frontend.py und das fe-Paket zusammen?
+# ---------------------------------------------------------------------------
+# Was frontend.py an fe/ VORAUSSETZT. Beim Start einmal nachgesehen -
+# lieber eine klare Meldung in einer Sekunde als ein AttributeError in
+# einer Stunde.
+FE_PAKET_MINDESTENS = 1
+
+# Die Zahl allein genuegt nicht: sie wird von Hand hochgesetzt, und von
+# Hand heisst irgendwann vergessen. Deshalb zusaetzlich ein paar
+# namentlich genannte Stuecke, die wirklich gebraucht werden - jedes
+# davon steht fuer einen Build, bei dem frontend.py und fe/ gemeinsam
+# geaendert wurden. Die Liste muss nicht vollstaendig sein; sie muss
+# nur die Faelle abdecken, die schon einmal auseinandergelaufen sind.
+FE_PAKET_BRAUCHT = (
+    ("fe.art", "ArtCache", "warten_vergessen", "Build 180"),
+    ("fe.art", None, "THUMB_PACKSTUFE", "Build 178"),
+    ("fe.framebuffer", "Framebuffer", "_haeppchen_einrichten", "Build 181"),
+    ("fe.framebuffer", "Framebuffer", "_rueckleser_pruefen", "Build 182"),
+)
+
+
+def _fe_paket_pruefen():
+    """Nachsehen, ob das fe-Paket zu dieser frontend.py passt.
+
+    DER ANLASS, woertlich aus dem Log eines Nutzers:
+
+        AttributeError: 'ArtCache' object has no attribute
+        'warten_vergessen'
+
+    Seine frontend.py war Build 184, sein fe/art.py aelter als Build
+    180 - er hatte ein Teil-ZIP von Hand eingespielt, das nur
+    frontend.py enthielt. Der Absturz kam nicht beim Start, sondern
+    beim ersten Druck auf eine Pfeiltaste, weil erst dort die
+    Vorauslader-Aufraeumung laeuft. Auf dem Bildschirm sah das aus wie
+    "das Frontend beendet sich und ich lande im OSD" - also wie ein
+    Anzeige- oder Kernelproblem. Es hat eine Stunde gekostet, und die
+    Suche lief die ganze Zeit an der falschen Stelle.
+
+    Es gibt HIER nichts zu reparieren: wer Dateien von Hand einspielt,
+    darf das. Aber es soll sofort auffallen und im Klartext dastehen,
+    statt spaeter als Absturz mit einem Namen, den niemand einordnen
+    kann.
+
+    Abgebrochen wird NICHT. Ein Frontend, das wegen dieser Pruefung gar
+    nicht mehr startet, waere schlimmer als das Problem - vielleicht
+    fehlt nur etwas, das dieser Nutzer nie anfasst. Gemeldet wird laut:
+    ins Log, auf die Konsole, und mit dem Hinweis, was zu tun ist."""
+    fehlt = []
+    try:
+        import fe
+        vorhanden = getattr(fe, "PAKET_VERSION", 0)
+    except Exception:                                    # noqa: BLE001
+        vorhanden = 0
+    if vorhanden < FE_PAKET_MINDESTENS:
+        fehlt.append("fe/__init__.py meldet Paket-Version %s, "
+                     "gebraucht wird mindestens %d"
+                     % (vorhanden or "gar keine", FE_PAKET_MINDESTENS))
+    for modulname, klasse, name, seit in FE_PAKET_BRAUCHT:
+        try:
+            modul = __import__(modulname, fromlist=["x"])
+            ziel = getattr(modul, klasse) if klasse else modul
+            if not hasattr(ziel, name):
+                raise AttributeError(name)
+        except Exception:                                # noqa: BLE001
+            fehlt.append("%s%s.%s fehlt (kam mit %s dazu)"
+                         % (modulname.replace("fe.", "fe/") + ".py: ",
+                            klasse or "", name, seit))
+    if not fehlt:
+        return
+    zeilen = [
+        "",
+        "ACHTUNG: frontend.py und das fe/-Paket passen nicht zusammen.",
+        "",
+    ]
+    zeilen += ["  - " + z for z in fehlt]
+    zeilen += [
+        "",
+        "Das passiert, wenn nur ein Teil der Dateien eingespielt wurde",
+        "(z.B. ein ZIP mit frontend.py, aber ohne frontend/fe/).",
+        "Das Frontend startet trotzdem, kann aber spaeter mitten im",
+        "Betrieb abstuerzen - typischerweise erst bei einem Tastendruck.",
+        "",
+        "Behoben mit einer vollstaendigen Installation:",
+        "  /media/fat/Scripts/Frontend_Update.sh",
+        "",
+    ]
+    for z in zeilen:
+        print(z)
+        try:
+            LOG("PAKET-PRUEFUNG: " + z if z else "PAKET-PRUEFUNG:")
+        except Exception:                                # noqa: BLE001
+            pass
+
+
 if __name__ == "__main__":
     # BUGFIX (Nutzer-Rueckmeldung, uebernommen aus einem Community-
     # Patch): startet man das Frontend manuell per SSH, waehrend
@@ -17314,6 +17456,9 @@ if __name__ == "__main__":
         print("WARNUNG: NTP-Zeitsync fehlgeschlagen (nicht kritisch):")
         traceback.print_exc()
     LOG("==== Frontend-Start ====")
+
+
+
     print("Log-Datei: %s (dort stehen alle weiteren Details)" % LOGFILE)
     try:
         _ensure_sfx_files()   # Sound-WAVs einmalig erzeugen, falls noch nicht vorhanden
@@ -17349,6 +17494,7 @@ if __name__ == "__main__":
         print("  kill %s ; rm -f %s" % (old_pid, LOCKFILE))
         sys.exit(0)
     print("Keine andere Instanz aktiv - starte Framebuffer/Eingaben ...")
+    _fe_paket_pruefen()
     # DIAGNOSE (Anlass: ein wackelndes HDMI-Bild bei einem Bekannten des
     # Nutzers, bei dem die naheliegende Vermutung - ein [Menu]-Block in
     # der MiSTer.ini - erst nach zwei Rueckfrage-Runden ausgeschlossen

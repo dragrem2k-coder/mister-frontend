@@ -12,6 +12,34 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## v4.5 — CD-Spiele in Ordnern, C-Modul, Werkzeug für den PC
 
+**Das Frontend merkt jetzt selbst, wenn seine Teile nicht
+zusammenpassen.** Auf einem Gerät lag `frontend.py` aus Build 184 neben
+einem `fe/art.py`, das älter war als Build 180 — von Hand eingespielt,
+nur die eine Datei. Der Absturz kam nicht beim Start, sondern beim
+ersten Druck auf eine Pfeiltaste, und sah auf dem Bildschirm aus wie
+*„das Frontend beendet sich und ich lande im OSD"*, also wie ein
+Kernel- oder Anzeigeproblem. Das hat eine Stunde Fehlersuche an der
+völlig falschen Stelle gekostet. Beim Start wird jetzt einmal
+nachgesehen, ob `frontend.py` und das `fe/`-Paket zueinander passen;
+fehlt etwas, steht im Klartext da, **was** fehlt, **seit wann** es
+dazugehört und **wie** man es behebt. Abgebrochen wird nicht — ein
+Frontend, das wegen dieser Prüfung gar nicht mehr startet, wäre
+schlimmer als das Problem.
+
+**Das Bootlogo ist auf Kernel 6.18 wieder da.** Gemeldet als *„ich
+sehe etwas länger das OSD, dann kurz den Login-Prompt, dann das
+Frontend — das Bootlogo kommt gar nicht mehr"*. Der Fehler war nicht
+das Logo, sondern die Reihenfolge: das Frontend wartet vor der
+Boot-Animation darauf, dass MiSTer den Bildschirm übergibt — ein Logo
+in einen Bildspeicher zu malen, den niemand sieht, ist verlorene Zeit.
+Ausgelöst wird diese Übergabe aber von den F9-Nachfassern, und die
+laufen aus der Hauptschleife, die erst *nach* der Boot-Animation
+beginnt. Wir haben also darauf gewartet, dass jemand klopft, und dabei
+selbst die Hand stillgehalten. Auf 5.15 fiel das nie auf, weil dort
+schon das erste F9 saß. Die Warteschleife fasst jetzt selbst nach, und
+ihre Obergrenze steigt von 6 auf 12 Sekunden. Wer eine Taste drückt,
+wartet gar nicht; wer die Übergabe sofort bekommt, merkt nichts.
+
 **Kernel 6.18: der Start hält sich jetzt selbst fest.** Nach dem
 MiSTer-Linux-Update kam die alte Meldung *„ich hänge im OSD und höre
 die Musik vom Frontend"* zurück, dazu ein Login-Gruß, der nach 20–30

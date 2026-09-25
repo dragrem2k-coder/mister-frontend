@@ -1621,6 +1621,10 @@ class ArtCache:
         # Arbeitsprozess zur Folge, dass ein Cover NIE erscheint - und
         # zwar lautlos.
         self._warte_start = {}
+        # NEU (Build 180): wann der Arbeitsprozess zuletzt etwas
+        # GELIEFERT hat. Die Geduld wird ab hier gemessen, nicht ab dem
+        # einzelnen Auftrag - siehe _geduld_am_ende().
+        self._letzte_lieferung = 0.0
         # NEU (Build 116): die ECHTEN Masse der Datei, getrennt vom
         # gemerkten Bild. Bei JPEG kann verkleinert dekodiert werden -
         # dann liegt im Cache etwas Kleineres als in der Datei, und jede
@@ -1653,7 +1657,7 @@ class ArtCache:
         if not os.path.isfile(path):
             return False
         t0 = self._warte_start.get(box_key)
-        if t0 is not None and time.monotonic() - t0 > self.AUSLAGERN_MAX:
+        if t0 is not None and self._geduld_am_ende(t0, time.monotonic()):
             # Notbremse: zu lange nichts gekommen. Eintrag loeschen und
             # selbst rechnen - lieber ein einmaliger Ruckler als ein
             # Cover, das gar nicht mehr auftaucht.
@@ -1685,12 +1689,59 @@ class ArtCache:
             pfad, _marke, mw, mh = box_key
             if thumb_cache_has(pfad, mw, mh):
                 self._warte_start.pop(box_key, None)
+                self._letzte_lieferung = jetzt
                 return True
-            if jetzt - t0 > self.AUSLAGERN_MAX:
+            if self._geduld_am_ende(t0, jetzt):
                 # Eintrag bleibt stehen - _auslagern_versuchen() sieht
                 # ihn, zieht die Notbremse und rechnet selbst.
                 return True
         return False
+
+    def _geduld_am_ende(self, t0, jetzt):
+        """Ist die Geduld mit dem Arbeitsprozess fuer diesen Auftrag am
+        Ende - so dass der Zeichenweg die Notbremse zieht und SELBST
+        rechnet?
+
+        GEAENDERT (Build 180). Bisher: AUSLAGERN_MAX Sekunden ab dem
+        Auftrag. Das war fuer die Listenansicht gedacht, und dort
+        stimmt es - es wartet immer genau ein Cover.
+
+        Im Raster warten 21 auf einmal. Der Arbeitsprozess rechnet sie
+        nacheinander, bei 1080p rund 150-300 ms je Stueck; die letzten
+        sind also nach fuenf Sekunden dran - und laengst ueber den zwei
+        Sekunden. Die Notbremse hielt den fleissig arbeitenden Prozess
+        fuer haengend und liess den ZEICHENWEG die restlichen Kacheln
+        selbst rechnen: dekodieren und verkleinern im Vordergrund,
+        100-500 ms je Kachel, in denen nichts auf Tasten reagiert.
+        Genau das Zucken aus SuTes Video.
+
+        Jetzt zaehlt die Zeit seit der LETZTEN LIEFERUNG. Liefert der
+        Prozess, lebt er, und es wird weiter gewartet. Liefert er zwei
+        Sekunden lang gar nichts, greift die Notbremse wie bisher. Bei
+        einem einzelnen wartenden Cover ist das dasselbe wie vorher."""
+        return jetzt - max(t0, self._letzte_lieferung) > self.AUSLAGERN_MAX
+
+    def warten_vergessen(self):
+        """Alle offenen Wartevermerke verwerfen.
+
+        NEU (Build 180). Gerufen, wenn eine Eingabe die Auftraege des
+        Arbeitsprozesses abbricht (PREWARMER.abbrechen()). Bisher wurde
+        dort nur die AUFTRAGSLISTE geleert - die Wartevermerke hier
+        blieben stehen.
+
+        Im Raster war das der eigentliche Fehler. Beim Betreten einer
+        Seite bekommen alle 21 Kacheln einen Vermerk. Die naechste
+        Taste bricht ihre Auftraege ab, der schnelle Pfad zeichnet aber
+        nur zwei Kacheln neu - die anderen 19 fragen nie wieder nach.
+        Ihre Vermerke veralteten, warte_pruefen() meldete ab da DAUERHAFT
+        "es gibt etwas nachzuzeichnen", und die Hauptschleife zeichnete
+        im Leerlauf immer und immer wieder, ohne dass je ein Cover kam.
+
+        Ein abgebrochener Auftrag kommt nicht mehr. Auf ihn zu warten
+        heisst, auf nichts zu warten. Was nach der Eingabe sichtbar ist,
+        fragt beim naechsten Zeichnen ohnehin neu an - mit frischem
+        Vermerk."""
+        self._warte_start.clear()
 
     def get(self, path, ziel_b=0, ziel_h=0):
         """Das Original als (breite, hoehe, pix) oder None.
