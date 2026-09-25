@@ -8659,6 +8659,11 @@ class Frontend:
                     self._konsole_sichern()     # F9 absichern
                     self._konsole_aufraeumen()  # Build 150: Prompt weg
                     self._konsole_wache()       # Build 157: dauerhaft
+                # UNABHAENGIG VOM SCHALTER (Build 190). Siehe
+                # _kopfzeilen_auffrischen() - die Ursache liegt
+                # nachweislich nicht bei uns, also darf die Abhilfe
+                # nicht an unserem Schalter haengen.
+                self._kopfzeilen_auffrischen()
                 # WICHTIG: unabhaengige if-Abfragen statt einer elif-Kette.
                 # Mit elif haette "track_needs" (Songtitel muss scrollen -
                 # trifft auf praktisch jeden echten Songnamen zu) den
@@ -14080,6 +14085,73 @@ class Frontend:
         return (zeit - vorher[1]) / (jetzt - vorher[0]) * 100.0
 
     _NICHT_GEMESSEN = object()
+
+    # Wie viele Bildzeilen oben regelmaessig aufgefrischt werden, und
+    # wie oft. 64 Zeilen sind vier Textzeilen der Konsole - der
+    # Login-Gruss braucht zwei, der Cursor sass gemessen bei 32-47.
+    KOPFZEILEN = 64
+    KOPFZEILEN_TAKT = 0.25
+
+    def _kopfzeilen_auffrischen(self):
+        """Die obersten Bildzeilen regelmaessig neu hinschreiben.
+
+        WARUM - und das ist diesmal keine Vermutung, sondern die
+        Messung, die zwei Tage gedauert hat:
+
+        Der Nutzer meldete einen Login-Gruss, der beim Scrollen
+        aufblitzt. Sein Log entlastete unsere Konsolen-Mechanik
+        vollstaendig (genau EIN F9, nach vier Sekunden beendet, keine
+        einzige Fremdausgabe-Meldung der Dauerwache), und mit
+        abgeschaltetem Schalter kam er trotzdem. Der Rueckleser hat
+        dann gesagt, wo er herkommt:
+
+            RUECKLESER: nach 104.6 s steht in 2 von 7 Proben-Zeilen
+            fremder Inhalt (Zeilen 0,32) - 10 Treffer bei 21 Bildern
+
+        Zehn Treffer bei einundzwanzig geprueften Bildern, und
+        AUSSCHLIESSLICH in den Zeilen 0 und 32. Die uebrigen fuenf
+        Proben (180, 360, 540, 720, 900) blieben sauber. Es schreibt
+        also jemand in den Bildspeicher, aber nur ganz oben - das ist
+        die Textkonsole, die MiSTer bei fb_terminal=1 selbst darstellt.
+
+        Warum unsere bisherigen Gegenmittel nicht greifen:
+
+          - konsole_cursor_aus() und konsole_ruhig_stellen() schicken
+            ANSI-Sequenzen an tty1. Auf Kernel 6.18 kann fbcon den
+            Bildspeicher gar nicht mehr bemalen ("sys_fillrect:
+            framebuffer is not in virtual address space"), MiSTer
+            stellt das Terminal selbst dar - und ob sein Terminal
+            diese Sequenzen ueberhaupt kennt, ist nichts, worauf wir
+            uns stuetzen koennen.
+          - Die Dauerwache (Build 157) laeuft nur im Ruhe-Zweig, nur
+            mit eingeschalteter Mechanik, und braucht zwei
+            Bestaetigungen im Abstand einer Sekunde. Genau das ist das
+            gemeldete "blitzt ganz kurz auf".
+
+        Was hier stattdessen passiert, ist die einfachste Sache von
+        allen: wir schreiben die obersten Zeilen einfach wieder hin.
+        Unser Puffer ist die Wahrheit, und diese Zeilen kosten fast
+        nichts - 64 Zeilen sind auf 1080p 491 KB, gemessen rund 0,8 ms,
+        viermal je Sekunde. Kein Vergleichen vorher: das Lesen aus
+        ungepuffertem Speicher waere teurer als das Schreiben.
+
+        Ohne Vsync-Warten, weil es ein schmales Band ist - genau der
+        Fall, fuer den Build 93 das Ueberspringen erlaubt. Mit Warten
+        waeren es viermal je Sekunde bis zu 16 ms Stillstand.
+
+        NICHT am Mechanik-Schalter: die Ursache liegt nachweislich
+        nicht bei uns, also darf die Abhilfe nicht davon abhaengen, ob
+        jemand unsere Startmechanik eingeschaltet hat."""
+        jetzt = time.monotonic()
+        if jetzt - getattr(self, "_kopfzeilen_letzte", 0.0) < \
+                self.KOPFZEILEN_TAKT:
+            return
+        self._kopfzeilen_letzte = jetzt
+        try:
+            self.fb.flip_rows(0, min(self.KOPFZEILEN, self.fb.height),
+                              skip_vsync=True)
+        except Exception:                                # noqa: BLE001
+            pass          # darf den Betrieb nie stoeren
 
     def _konsole_sichern(self, last=_NICHT_GEMESSEN):
         """F9 in den ersten Sekunden ein paarmal wiederholen.

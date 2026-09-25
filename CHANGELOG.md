@@ -12,6 +12,29 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## v4.5 — CD-Spiele in Ordnern, C-Modul, Werkzeug für den PC
 
+**Der Login-Gruß, der beim Scrollen aufblitzt, ist weg — und diesmal
+weiß ich auch, warum.** Gemeldet nach dem Kernel-Update: nach 50–60
+Sekunden blitzt kurz der Login-Gruß durch, danach unregelmäßig immer
+wieder. Drei Verdachtsrunden gingen an die falsche Stelle. Entschieden
+hat es eine Messung — das Frontend prüft auf Wunsch nach jedem Bild,
+ob im Bildspeicher noch steht, was es hingeschrieben hat:
+
+```
+RUECKLESER: nach 104.6 s steht in 2 von 7 Proben-Zeilen fremder
+Inhalt (Zeilen 0,32) - 10 Treffer bei 21 Bildern
+```
+
+Zehn Treffer bei einundzwanzig Bildern, **ausschließlich in den
+Zeilen 0 und 32** — die übrigen fünf Proben blieben sauber. Es
+schreibt also jemand hinein, aber nur ganz oben: die Textkonsole, die
+MiSTer selbst darstellt. Unsere eigene Konsolen-Mechanik ist damit
+entlastet, sie kam auch abgeschaltet.
+
+Die Abhilfe ist die einfachste denkbare: die obersten 64 Bildzeilen
+werden viermal je Sekunde einfach wieder hingeschrieben. Das sind auf
+1080p 491 KB, rund 0,8 ms — und es hängt **nicht** am Mechanik-
+Schalter, denn die Ursache liegt nicht bei uns.
+
 **`gamelist.xml` wird mitgelesen.** Wer sein ROM-Verzeichnis mit
 Skraper, ScreenScraper oder einem ähnlichen Werkzeug gepflegt hat, hat
 dort eine `gamelist.xml` im EmulationStation-Format liegen — mit Jahr,

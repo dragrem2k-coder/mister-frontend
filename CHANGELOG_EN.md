@@ -13,6 +13,29 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## v4.5 — CD games in folders, a C module, a PC tool
 
+**The login greeting that flashed up while scrolling is gone — and
+this time the cause is known.** Reported after the kernel update: after
+50-60 seconds the login greeting flashes through, then irregularly
+again and again. Three rounds of suspicion went to the wrong place. A
+measurement settled it — on request the frontend checks after every
+frame whether what it wrote is still in the framebuffer:
+
+```
+RUECKLESER: nach 104.6 s steht in 2 von 7 Proben-Zeilen fremder
+Inhalt (Zeilen 0,32) - 10 Treffer bei 21 Bildern
+```
+
+Ten hits in twenty-one frames, **only in rows 0 and 32** — the other
+five probes stayed clean. So something does write into it, but only at
+the very top: the text console that MiSTer renders itself. Our own
+console machinery is thereby cleared; the greeting appeared with it
+switched off too.
+
+The remedy is the simplest one available: the top 64 rows are simply
+written again, four times a second. On 1080p that is 491 KB, about
+0.8 ms — and it does **not** hang off the machinery switch, because
+the cause is not ours.
+
 **`gamelist.xml` is now read.** Anyone who has curated their ROM
 folder with Skraper, ScreenScraper or a similar tool has a
 `gamelist.xml` in EmulationStation format sitting there — year, genre,
