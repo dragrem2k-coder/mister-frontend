@@ -12,6 +12,29 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## v4.5 — CD-Spiele in Ordnern, C-Modul, Werkzeug für den PC
 
+**`gamelist.xml` wird mitgelesen.** Wer sein ROM-Verzeichnis mit
+Skraper, ScreenScraper oder einem ähnlichen Werkzeug gepflegt hat, hat
+dort eine `gamelist.xml` im EmulationStation-Format liegen — mit Jahr,
+Genre, Spielerzahl, Hersteller und einer Beschreibung. Genau das, was
+das Frontend sonst über die eigene Tabelle und die fremde Datenbank
+zusammensucht. Liegt sie da, wird sie benutzt; liegt sie nicht da,
+ändert sich nichts. Kein Werkzeug, kein Download, kein Vorbereiten.
+Die Rangfolge ist mit Absicht so: eigene Daten schlagen die
+`gamelist.xml`, die schlägt die fremde Datenbank — und gefüllt werden
+nur Lücken, ersetzt wird nie. Gelesen wird die Datei häppchenweise;
+eine Liste mit 10.000 Einträgen ist schnell 20 MB groß, und die gehört
+auf einem Gerät mit 1 GB RAM nicht am Stück in den Speicher.
+Abschalten geht mit `touch /media/fat/frontend/gamelist_aus`.
+
+**Der Bench kennt jetzt drei Zustände statt zwei.** Zwischen „kalt"
+(die Miniatur muss erst gerechnet werden) und „warm" (sie liegt im
+RAM) fehlte ausgerechnet der Fall, der beim Scrollen durch eine große
+Sammlung der häufigste ist: **die Miniatur liegt auf der Karte, aber
+nicht mehr im Speicher** — verdrängt, oder das Frontend wurde neu
+gestartet. Lesen, Entpacken, Eintragen. Diese Zahl stand bisher
+nirgends, dabei entscheidet gerade sie, wie sich das Gerät im Alltag
+anfühlt.
+
 **Der Installer hat sich selbst überschrieben.** Gemeldet von einem
 Nutzer beim Installieren: `syntax error near unexpected token 'fi'`,
 mitten im Lauf. Die Datei war in Ordnung — der Fehler entstand erst

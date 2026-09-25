@@ -1929,6 +1929,32 @@ class ArtCache:
         """Nur damit Tests die Regel einzeln pruefen koennen."""
         return _ist_kategorie_logo(pfad)
 
+    def ram_leeren(self):
+        """Beide Speicher-Caches leeren, ohne die Karte anzufassen.
+
+        NUR FUER MESSUNGEN (Build 188, siehe fe/bench.py). Im Betrieb
+        wird nichts davon gerufen - Verdraengung geschieht dort nach
+        Budget, nicht auf Zuruf.
+
+        WOZU. Der Bench kannte bisher zwei Zustaende: "kalt" (die
+        Miniatur muss erst gerechnet werden) und "warm" (sie liegt im
+        RAM). Dazwischen liegt aber der Fall, der beim Scrollen durch
+        eine grosse Sammlung der HAEUFIGSTE ist: die Miniatur liegt auf
+        der KARTE, aber nicht mehr im Speicher - verdraengt, oder das
+        Frontend wurde neu gestartet. Der Weg dorthin ist Lesen,
+        Entpacken und Eintragen, und der stand in keiner Zahl.
+
+        Geleert werden beide Ebenen, sonst misst man sich selbst in die
+        Tasche: 'scaled' haelt die fertigen Kaesten, 'cache' die
+        entpackten Originale. Bleibt eines davon stehen, ist der
+        naechste Durchgang immer noch halb warm."""
+        self.scaled = {}
+        self.scaled_order = []
+        self.scaled_bytes = 0
+        self.cache = {}
+        self.order = []
+        self._original_bytes = 0
+
     def _scaled_cache_put(self, key, result):
         if not hasattr(self, "scaled"):
             self.scaled = {}
@@ -3483,6 +3509,13 @@ def docs_synopsis(syskey, rom_basename, sprache="en"):
     in einer englischen Oberflaeche kein deutscher Absatz auftaucht."""
     if not syskey or not rom_basename:
         return ""
+    # NEU (Build 188): steht in der gamelist.xml des Nutzers eine
+    # Beschreibung, hat sie Vorrang - dieselbe Rangfolge wie bei
+    # get_meta(). Und sie gilt auch dann, wenn die fremden Quellen
+    # abgeschaltet sind: die gamelist ist keine fremde Quelle.
+    eigene_beschreibung = gamelist_synopsis(syskey, rom_basename)
+    if eigene_beschreibung:
+        return eigene_beschreibung
     # Der Schalter "fremde Quellen" gilt hier genauso wie fuer Cover
     # und Spieledaten (siehe get_meta()). Bewusst HIER geprueft und
     # nicht beim Aufrufer: eine Quelle, die man abschalten kann, darf
@@ -3675,6 +3708,188 @@ def mra_meta(path):
         _mra_cache.pop(next(iter(_mra_cache)))
     return meta
 
+# ---------------------------------------------------------------------------
+# gamelist.xml - die Metadatenquelle, die viele schon haben (Build 188)
+# ---------------------------------------------------------------------------
+# WOZU. Wer sein ROM-Verzeichnis mit Skraper, ScreenScraper oder einem
+# aehnlichen Werkzeug gepflegt hat, hat neben den Spielen eine
+# gamelist.xml im EmulationStation-Format liegen - mit Jahr, Genre,
+# Spielerzahl, Hersteller und einer Beschreibung. Das ist genau das,
+# was wir sonst ueber unsere eigene meta/<system>.json und die fremde
+# Datenbank zusammensuchen.
+#
+# Wir lesen sie mit. Kein Werkzeug, kein Download, kein Vorbereiten:
+# liegt die Datei da, wird sie benutzt; liegt sie nicht da, aendert
+# sich nichts.
+#
+# RANGFOLGE, und die ist mit Absicht so: eigene Daten schlagen die
+# gamelist, die gamelist schlaegt die fremde Datenbank. Begruendung wie
+# schon bei get_meta(): was der Nutzer selbst angelegt oder
+# heruntergeladen hat, wiegt schwerer als das, was zufaellig auf der
+# Karte lag - und eine gamelist.xml legt niemand aus Versehen an.
+#
+# GELESEN WIRD STROMWEISE (iterparse + clear). Eine gamelist.xml mit
+# 10.000 Eintraegen ist schnell 20 MB gross; sie am Stueck in einen
+# DOM-Baum zu laden waere auf einem Geraet mit 1 GB RAM genau die
+# Sorte stiller Kosten, gegen die die Builds 104-110 angegangen sind.
+GAMELIST_NAME = "gamelist.xml"
+GAMELIST_MAX_EINTRAEGE = 40000
+GAMELIST_AUS_FLAG = "/media/fat/frontend/gamelist_aus"
+
+_gamelist_cache = {}
+
+
+def gamelist_enabled():
+    """Aus, wenn jemand die Schalterdatei anlegt.
+
+    Absichtlich andersherum als bei den fremden Quellen: die gamelist
+    gehoert dem Nutzer, sie kostet nichts, solange keine da ist, und
+    wer sie angelegt hat, will sie auch benutzt sehen."""
+    try:
+        return not os.path.exists(GAMELIST_AUS_FLAG)
+    except OSError:
+        return True
+
+
+def _gamelist_dateien(syskey):
+    """Alle gamelist.xml, die zu diesem System gehoeren koennten.
+
+    Ein System kann mehrere Ordnernamen haben (MegaDrive/Genesis), und
+    ROMs koennen auf SD, USB oder einer Netzfreigabe liegen - deshalb
+    das Kreuzprodukt aus beidem. Gelesen werden ALLE gefundenen: wer
+    seine Sammlung auf zwei Laufwerke verteilt hat, hat dort auch zwei
+    Listen."""
+    try:
+        import fe.paths
+        import fe.systems
+        ordner = []
+        for _disp, key, folders, _rbf, _ext in fe.systems.alle_systeme():
+            if key == syskey:
+                ordner = list(folders)
+                break
+        if not ordner:
+            return []
+        raus = []
+        for basis in fe.paths.GAMES_BASES:
+            for o in ordner:
+                pfad = os.path.join(basis, o, GAMELIST_NAME)
+                if os.path.isfile(pfad) and pfad not in raus:
+                    raus.append(pfad)
+        return raus
+    except Exception:                                    # noqa: BLE001
+        return []
+
+
+def _gamelist_jahr(text):
+    """Aus <releasedate>19920101T000000</releasedate> wird 1992.
+
+    Nur die ersten vier Ziffern, und nur wenn sie wie eine Jahreszahl
+    aussehen. Ein falsch geratenes Jahr waere schlimmer als keines:
+    es steht danach in der Spielansicht, und niemand wuerde es
+    hinterfragen."""
+    if not text:
+        return ""
+    ziffern = "".join(c for c in text[:4] if c.isdigit())
+    if len(ziffern) == 4 and "1900" <= ziffern <= "2099":
+        return ziffern
+    return ""
+
+
+def _gamelist_lesen(pfad, raus, sprache_egal=True):
+    """Eine gamelist.xml stromweise einlesen.
+
+    Fehler werden geschluckt und nur geloggt. Eine kaputte oder halb
+    geschriebene Datei darf das Frontend nicht aufhalten - sie liegt
+    im Verzeichnis des Nutzers, und dort kann alles Moegliche stehen."""
+    import xml.etree.ElementTree as ET
+    n = 0
+    try:
+        for _ereignis, elem in ET.iterparse(pfad, events=("end",)):
+            if elem.tag != "game":
+                continue
+            try:
+                pfad_txt = (elem.findtext("path") or "").strip()
+                name_txt = (elem.findtext("name") or "").strip()
+                eintrag = {}
+                jahr = _gamelist_jahr(elem.findtext("releasedate") or "")
+                if jahr:
+                    eintrag["year"] = jahr
+                for tag, key in (("genre", "genre"),
+                                 ("players", "players"),
+                                 ("publisher", "manufacturer")):
+                    wert = (elem.findtext(tag) or "").strip()
+                    if wert:
+                        eintrag[key] = wert
+                if "manufacturer" not in eintrag:
+                    dev = (elem.findtext("developer") or "").strip()
+                    if dev:
+                        eintrag["manufacturer"] = dev
+                beschreibung = (elem.findtext("desc") or "").strip()
+                if beschreibung:
+                    # Zeilenumbrueche aus der Datei sind Absatzreste und
+                    # wuerden den Umbruch in der Galerie durcheinander-
+                    # bringen - dort wird selbst gebrochen.
+                    eintrag["desc"] = " ".join(beschreibung.split())
+                if not eintrag:
+                    continue
+                for roh in (pfad_txt, name_txt):
+                    if not roh:
+                        continue
+                    basis = os.path.splitext(os.path.basename(roh))[0]
+                    if basis:
+                        raus.setdefault(basis.lower(), eintrag)
+                n += 1
+                if n >= GAMELIST_MAX_EINTRAEGE:
+                    LOG("gamelist.xml: %s hat mehr als %d Eintraege - "
+                        "der Rest wird uebergangen"
+                        % (pfad, GAMELIST_MAX_EINTRAEGE))
+                    break
+            finally:
+                # OHNE DAS WAECHST DER BAUM WEITER, und dann ist das
+                # stromweise Lesen nur noch Zierde.
+                elem.clear()
+    except Exception as e:                               # noqa: BLE001
+        LOG("gamelist.xml: %s liess sich nicht lesen (%s)" % (pfad, e))
+    return n
+
+
+def _gamelist_laden(syskey):
+    if syskey in _gamelist_cache:
+        return _gamelist_cache[syskey]
+    raus = {}
+    if gamelist_enabled():
+        t0 = time.perf_counter()
+        dateien = _gamelist_dateien(syskey)
+        gesamt = 0
+        for pfad in dateien:
+            gesamt += _gamelist_lesen(pfad, raus)
+        if dateien:
+            LOG("gamelist.xml: %s - %d Eintraege aus %d Datei(en) in %.0f ms"
+                % (syskey, gesamt, len(dateien),
+                   (time.perf_counter() - t0) * 1000))
+    _gamelist_cache[syskey] = raus
+    # Dieselbe Obergrenze wie bei _meta_cache: mehr als eine Handvoll
+    # Systeme hat niemand gleichzeitig offen.
+    if len(_gamelist_cache) > 20:
+        _gamelist_cache.pop(next(iter(_gamelist_cache)))
+    return raus
+
+
+def gamelist_meta(syskey, rom_basename):
+    """Metadaten aus einer gamelist.xml, oder {}."""
+    if not syskey or not rom_basename:
+        return {}
+    try:
+        return _gamelist_laden(syskey).get(rom_basename.lower(), {})
+    except Exception:                                    # noqa: BLE001
+        return {}
+
+
+def gamelist_synopsis(syskey, rom_basename):
+    """Die Beschreibung aus einer gamelist.xml, oder ""."""
+    return gamelist_meta(syskey, rom_basename).get("desc", "")
+
+
 def get_meta(syskey, rom_basename):
     """Metadaten (players/year/genre) fuer ein Spiel, lazy geladen.
 
@@ -3705,6 +3920,14 @@ def get_meta(syskey, rom_basename):
     # Der Reihenfolge wegen: unsere eigenen Daten hat der Nutzer
     # bewusst heruntergeladen, die fremden lagen zufaellig auf der
     # Karte. Bei Widerspruch gewinnt das Gewollte.
+    # NEU (Build 188): die gamelist.xml des Nutzers, siehe
+    # gamelist_meta(). Sie fuellt Luecken und ersetzt nichts - genau
+    # wie die fremde Tabelle darunter, nur eine Stufe hoeher.
+    liste = gamelist_meta(syskey, rom_basename)
+    if liste:
+        zusammen = dict(liste)
+        zusammen.update(eigene)
+        eigene = zusammen
     if not fremdquellen_enabled():
         return eigene
     fremd = docs_meta(syskey, rom_basename)

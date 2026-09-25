@@ -501,6 +501,36 @@ check("das Auslagern ist wiederhergestellt",
 check("und der temporaere Ordner ist weg",
       not os.path.exists(_tmp_ordner or "/nichts"))
 
+# ---------------------------------------------------------------------------
+print()
+print("Block 11: der dritte Zustand - Miniatur auf der Karte, nicht im RAM")
+# ---------------------------------------------------------------------------
+# Zwischen "muss gerechnet werden" und "liegt im RAM" liegt der Fall,
+# der beim Scrollen durch eine grosse Sammlung der haeufigste ist.
+# Ohne ihn misst der Bench zwei Zustaende, die im Alltag beide selten
+# sind.
+import fe.art as _A                                      # noqa: E402
+
+check("ArtCache kann seinen RAM leeren", hasattr(_A.ART, "ram_leeren"))
+_A.ART._scaled_cache_put(("x",), (1, 1, b"\x00\x00\x00\xff"))
+_A.ART.cache["/irgendwas"] = (1, 1, b"\x00\x00\x00\xff")
+_A.ART.ram_leeren()
+check("danach ist der Kasten-Cache leer", not _A.ART.scaled)
+check("und der Original-Cache auch", not _A.ART.cache,
+      "bleibt einer stehen, ist der naechste Durchgang halb warm")
+check("die Buchhaltung wird mitgeleert",
+      _A.ART.scaled_bytes == 0 and _A.ART._original_bytes == 0
+      and not _A.ART.order and not _A.ART.scaled_order)
+
+_q = io.open(os.path.join(_REPO, "frontend", "fe", "bench.py"),
+             encoding="utf-8").read()
+check("der Bench misst den Zustand auch", "je Schritt Karte" in _q)
+check("und leert dafuer den RAM", "ram_leeren()" in _q)
+check("die Kopfzeile erklaert alle drei Zustaende",
+      "Karte = Miniatur liegt auf der Karte" in _q)
+check("ohne A bleibt der Bench lauffaehig", "if A is not None:" in _q,
+      "der Abschnitt wird auch aus Tests ohne Modul gerufen")
+
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))

@@ -368,7 +368,7 @@ def _groesste_kategorie(fe):
     return best_i, best_n, best_name
 
 
-def _abschnitt_b(b, fe, S, spiele):
+def _abschnitt_b(b, fe, S, spiele, A=None):
     """Zeichnen - KALT und WARM getrennt (Build 178).
 
     Der erste Anlauf hat beides in eine Zahl geworfen, und die war
@@ -418,8 +418,9 @@ def _abschnitt_b(b, fe, S, spiele):
     b("")
     b("B  ZEICHNEN  (%d Schritte je Ansicht, Bestand des Geraets)"
       % SCHRITTE)
-    b("   kalt = Miniatur muss erst gerechnet werden")
-    b("   warm = dieselben Spiele noch einmal, Miniatur liegt vor")
+    b("   kalt  = Miniatur muss erst gerechnet werden")
+    b("   Karte = Miniatur liegt auf der Karte, aber nicht im RAM")
+    b("   warm  = sie liegt im RAM")
     b("   (beim echten Scrollen laesst das Frontend die Boxart-Spalte")
     b("    aus, sobald schnell geblaettert wird - kalt ist die")
     b("    Obergrenze, nicht der Alltag)")
@@ -494,9 +495,31 @@ def _abschnitt_b(b, fe, S, spiele):
                 # nach Geraet unterschiedlich weit - also nicht
                 # vergleichbar.
                 time.sleep(1.0)
+                # DER DRITTE ZUSTAND (Build 188). Zwischen "muss
+                # gerechnet werden" und "liegt im RAM" liegt der Fall,
+                # der beim Scrollen durch eine grosse Sammlung der
+                # HAEUFIGSTE ist: die Miniatur liegt auf der Karte,
+                # aber nicht mehr im Speicher - verdraengt, oder das
+                # Frontend wurde neu gestartet. Der Weg dorthin ist
+                # Lesen, Entpacken und Eintragen, und der stand bisher
+                # in keiner Zahl. Genau dieser Zustand entscheidet
+                # aber, wie sich das Geraet im Alltag anfuehlt.
+                karte = None
+                if A is not None:
+                    try:
+                        A.ART.ram_leeren()
+                        karte, _ = messen(_durchlauf, 1)
+                    except Exception:                    # noqa: BLE001
+                        karte = None
                 warm, _ = messen(_durchlauf, 1)
                 b.posten("%s %-8s je Schritt kalt" % (name, ansicht),
                          kalt / SCHRITTE)
+                if karte is not None:
+                    zus = ""
+                    if warm > 0 and karte / warm >= 1.2:
+                        zus = "(%.1fx teurer als warm)" % (karte / warm)
+                    b.posten("%s %-8s je Schritt Karte" % (name, ansicht),
+                             karte / SCHRITTE, None, zus)
                 # Den Faktor nur nennen, wenn es wirklich einen gibt.
                 # Sonst stuende bei jedem Eintrag "(1x billiger)" -
                 # eine Aussage, die keine ist, und bei Rauschen sogar
@@ -783,7 +806,7 @@ def lauf(fe, fm, A, S, startdauer=None, log=None):
     try:
         hd = getattr(fe, "fb", None) is not None and fe.fb.height >= 720
         with _Messbedingungen(A, fm, fe, hd):
-            _abschnitt_b(b, fe, S, spiele)
+            _abschnitt_b(b, fe, S, spiele, A)
     except Exception as e:                               # noqa: BLE001
         b("   ABSCHNITT B ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
     try:

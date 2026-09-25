@@ -13,6 +13,27 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## v4.5 — CD games in folders, a C module, a PC tool
 
+**`gamelist.xml` is now read.** Anyone who has curated their ROM
+folder with Skraper, ScreenScraper or a similar tool has a
+`gamelist.xml` in EmulationStation format sitting there — year, genre,
+player count, publisher and a description. Exactly what the frontend
+otherwise assembles from its own table and the foreign database. If
+it's there it gets used; if it isn't, nothing changes. No tool, no
+download, no preparation. The precedence is deliberate: your own data
+beats the `gamelist.xml`, which beats the foreign database — and only
+gaps are filled, nothing is ever replaced. The file is read in chunks;
+a list with 10,000 entries is easily 20 MB, and that does not belong
+in memory all at once on a 1 GB device. Turn it off with
+`touch /media/fat/frontend/gamelist_aus`.
+
+**The bench now knows three states instead of two.** Between "cold"
+(the thumbnail has to be computed) and "warm" (it's in RAM) the one
+case that matters most while scrolling a large collection was missing:
+**the thumbnail is on the card but no longer in memory** — evicted, or
+the frontend was restarted. Read, decompress, insert. That number was
+nowhere, and it is precisely the one that decides how the device feels
+day to day.
+
 **The installer was overwriting itself.** Reported by a user during
 installation: `syntax error near unexpected token 'fi'`, mid-run. The
 file was fine — the fault appeared only while running. The script being
