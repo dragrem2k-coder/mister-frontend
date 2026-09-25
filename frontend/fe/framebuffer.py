@@ -574,9 +574,33 @@ class Framebuffer:
         except ValueError:
             n = 8
         n = max(1, min(n, 64))
-        schritt = max(1, self.height // n)
-        self._rueck_offsets = tuple(z for z in range(0, self.height, schritt)
-                                    )[:n]
+        # DIE PROBEN LIEGEN NICHT NUR GLEICHMAESSIG (Build 189).
+        #
+        # Vorher waren es schlicht n gleich verteilte Zeilen - bei acht
+        # Proben also 0, 135, 270, 405 ... Genau dazwischen liegt aber
+        # der Bereich, in dem fremde Ausgabe auf diesem Geraet
+        # nachweislich auftaucht: der Textcursor der Konsole sitzt in
+        # den Zeilen 32 bis 47 (gemessen mit fb_wacht --wache, 116
+        # Treffer in 30 Sekunden), und der Login-Gruss steht in
+        # denselben obersten Zeilen.
+        #
+        # Der Rueckleser war damit blind fuer genau das, wofuer man ihn
+        # am dringendsten braucht. Deshalb liegt jetzt ein Viertel der
+        # Proben dicht im oberen Textbereich, der Rest wie bisher
+        # gleichmaessig ueber das Bild - ein Vollbild-Ereignis faellt
+        # so weiterhin auf, ein Fleck oben aber eben auch.
+        # Verteilt ueber die obersten TEXTHOEHE Zeilen, nicht in den
+        # ersten paar: der Cursor sass bei 32-47, und eine Probe bei
+        # Zeile 0 und 8 haette ihn wieder verfehlt. Genau dieser Fehler
+        # war beim ersten Anlauf noch drin.
+        TEXTHOEHE = 64
+        dicht = max(1, n // 4)
+        abstand = max(1, TEXTHOEHE // dicht)
+        oben = [z for z in range(0, min(self.height, TEXTHOEHE), abstand)]
+        schritt = max(1, self.height // max(1, n - len(oben)))
+        gleich = [z for z in range(0, self.height, schritt)]
+        zusammen = sorted(set(oben + gleich))
+        self._rueck_offsets = tuple(zusammen[:n])
         self._rueck_proben = [None] * len(self._rueck_offsets)
         self.rueckleser = n
         LOG("Rueckleser: %d Proben-Zeilen (%s) - es wird nach jedem Bild "
