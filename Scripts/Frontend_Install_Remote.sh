@@ -277,7 +277,35 @@ fi
 if [ -f "$SRC_DIR/frontend/libdragend.so" ]; then
     cp -f "$SRC_DIR/frontend/libdragend.so" "$FRONTEND_DIR/" 2>/dev/null || true
 fi
-cp -f "$SRC_DIR"/Scripts/*.sh "$SCRIPTS_DIR/" 2>/dev/null || true
+# Die Hilfsskripte NICHT mit "cp" ueberschreiben, sondern daneben
+# schreiben und umbenennen.
+#
+# WARUM (Build 187, gemeldet von einem Nutzer beim Installieren):
+#
+#     Frontend_Install.sh: line 302: syntax error near unexpected token `fi'
+#
+# In diesem Ordner liegt das Skript, das GERADE LAEUFT. Bash liest ein
+# Skript nicht auf einmal ein, sondern haeppchenweise, und merkt sich
+# dabei seine Byte-Position in der Datei. "cp -f" schreibt in DIESELBE
+# Datei - derselbe Inode - und damit steht unter der gemerkten Position
+# ploetzlich anderer Inhalt. Bash liest mitten in einen Befehl hinein
+# und bricht mit einem Syntaxfehler ab, dessen Zeilennummer nichts
+# bedeutet.
+#
+# Dass es nur manchmal auftritt, passt genau dazu: es haengt daran, ob
+# sich die Datei an der gerade gelesenen Stelle ueberhaupt unterscheidet.
+#
+# "mv" tauscht dagegen nur den Verzeichniseintrag. Der laufende Bash
+# behaelt seinen geoeffneten Inode und liest ihn unbeschadet zu Ende -
+# er arbeitet mit der alten Fassung weiter, und das ist genau richtig:
+# die neue gilt ab dem naechsten Aufruf.
+for _s in "$SRC_DIR"/Scripts/*.sh; do
+    [ -f "$_s" ] || continue
+    _ziel="$SCRIPTS_DIR/$(basename "$_s")"
+    cp -f "$_s" "$_ziel.__neu__" 2>/dev/null \
+        && mv -f "$_ziel.__neu__" "$_ziel" 2>/dev/null \
+        || rm -f "$_ziel.__neu__" 2>/dev/null
+done
 chmod +x "$FRONTEND_DIR"/*.sh "$SCRIPTS_DIR"/*.sh 2>/dev/null || true
 # Sicherheitsnetz gegen Windows-Zeilenenden (CRLF): kopierte Shell-Skripte
 # auf Unix-LF normalisieren. Kommen die Dateien uebers Netz/Windows mit

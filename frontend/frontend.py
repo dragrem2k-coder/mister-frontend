@@ -1288,20 +1288,31 @@ class Frontend:
         # unabhaengigen Neuversuch, siehe _maybe_retry_clock().
         self._clock_retry_next = 0.0
         self._clock_retry_count = 0
-        if ra_enabled():
-            ra_data = fetch_ra_progress_bounded(timeout=3.0)
-            if ra_data is not None:
-                self._ra_lookup = build_ra_lookup(ra_data)
-                self._ra_fetch_ok = True
-            elif not get_ntp_sync_ok():
-                # Wahrscheinlichste Erklaerung fuer einen fehlgeschlagenen
-                # Abruf direkt beim Start: die Systemuhr war noch falsch
-                # (MiSTer hat keine batteriegepufferte Uhr), wodurch die
-                # HTTPS-Zertifikatspruefung fehlschlaegt - unabhaengig
-                # davon, ob der RA-Server eigentlich erreichbar waere.
-                # Neuversuch, sobald die Zeit sich (per _maybe_retry_ra())
-                # doch noch synchronisiert.
-                self._ra_retry_next = time.monotonic() + 30.0
+        # HIER STAND BIS BUILD 187 EIN ZWEITER, BLOCKIERENDER RA-ABRUF.
+        #
+        # Woertlich derselbe Aufruf wie unten, nur synchron:
+        #
+        #     if ra_enabled():
+        #         ra_data = fetch_ra_progress_bounded(timeout=3.0)
+        #         ...
+        #
+        # Als der Abruf seinerzeit in einen Hintergrund-Thread verlegt
+        # wurde (siehe den langen Kommentar gleich darunter), ist die
+        # alte Fassung stehengeblieben. Beide liefen also: erst der
+        # synchrone, der den Start bis zu 3,5 Sekunden anhielt, danach
+        # derselbe Abruf noch einmal im Thread. Die Verbesserung, die
+        # dieser Kommentar beschreibt, hat nie stattgefunden.
+        #
+        # Aufgefallen ist es nicht beim Lesen, sondern beim Vermessen:
+        # in der Startmarke "Musik, RA-Abruf angestossen" standen 797 ms,
+        # und das bei einem Geraet OHNE Netz - der Abruf scheitert dort
+        # sofort. Mit Netz und eingerichtetem RetroAchievements sind es
+        # bis zu 3,5 Sekunden, in denen der Bildschirm dunkel bleibt.
+        #
+        # Entfernt wurde die synchrone Fassung, nicht die im Thread:
+        # self._ra_lookup bleibt fuer den ersten Moment leer, und
+        # _maybe_apply_pending_ra_data() traegt die Daten nach, sobald
+        # sie da sind - genau so, wie es unten beschrieben ist.
         # PERFORMANCE (Nutzerwunsch: "mehr Performance rausholen", darf
         # dabei nichts kaputt machen): der RA-Fortschritts-Abruf
         # blockierte bisher SYNCHRON genau hier bis zu 3,5 Sekunden
@@ -1353,6 +1364,7 @@ class Frontend:
             threading.Thread(target=_initial_ra_fetch, daemon=True).start()
 
         self._metadaten_vorwaermen_starten()
+        self._startmarke("davon Metadaten-Vorwaermer angestossen")
         self._startmarke("Musik, RA-Abruf angestossen")
         self.build_categories()
         self._startmarke("Spieleliste eingelesen")

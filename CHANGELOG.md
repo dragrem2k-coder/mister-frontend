@@ -12,6 +12,27 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## v4.5 — CD-Spiele in Ordnern, C-Modul, Werkzeug für den PC
 
+**Der Installer hat sich selbst überschrieben.** Gemeldet von einem
+Nutzer beim Installieren: `syntax error near unexpected token 'fi'`,
+mitten im Lauf. Die Datei war in Ordnung — der Fehler entstand erst
+beim Ausführen. In `/media/fat/Scripts` liegt das Skript, das gerade
+läuft; Bash liest es häppchenweise und merkt sich seine Position darin.
+Ein `cp` schreibt in *dieselbe* Datei, und damit steht unter der
+gemerkten Stelle plötzlich anderer Inhalt. Dass es nur manchmal
+auftrat, passt dazu: es hing daran, ob sich die Datei an genau dieser
+Stelle unterschied. Alle drei Installer schreiben jetzt daneben und
+benennen um — ein Umbenennen tauscht nur den Verzeichniseintrag, das
+laufende Skript bleibt unberührt.
+
+**Der RetroAchievements-Abruf lief beim Start zweimal.** Im Quelltext
+steht seit Längerem ein ausführlicher Kommentar, warum dieser Abruf in
+einen Hintergrund-Thread verlegt wurde: er hielt den Start um bis zu
+3,5 Sekunden an, und der Bildschirm blieb dunkel. Nur stand die alte,
+blockierende Fassung vierzig Zeilen darüber weiterhin da. Beide liefen.
+Die Verbesserung, die der Kommentar beschreibt, hat nie stattgefunden.
+Aufgefallen ist es beim Vermessen, nicht beim Lesen. Jetzt ist es
+wirklich so, wie es dort steht.
+
 **Das Frontend merkt jetzt selbst, wenn seine Teile nicht
 zusammenpassen.** Auf einem Gerät lag `frontend.py` aus Build 184 neben
 einem `fe/art.py`, das älter war als Build 180 — von Hand eingespielt,

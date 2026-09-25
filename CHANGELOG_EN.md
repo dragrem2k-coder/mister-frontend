@@ -13,6 +13,25 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## v4.5 — CD games in folders, a C module, a PC tool
 
+**The installer was overwriting itself.** Reported by a user during
+installation: `syntax error near unexpected token 'fi'`, mid-run. The
+file was fine — the fault appeared only while running. The script being
+executed lives in `/media/fat/Scripts`; bash reads it in chunks and
+remembers its position in the file. A `cp` writes into *that same*
+file, so different content suddenly sits under the remembered position.
+That it only happened sometimes fits: it depended on whether the file
+differed at exactly that spot. All three installers now write alongside
+and rename — a rename only swaps the directory entry, leaving the
+running script untouched.
+
+**The RetroAchievements fetch ran twice at startup.** A long comment in
+the source explains why that fetch was moved to a background thread: it
+held the start up by as much as 3.5 seconds with the screen dark. But
+the old, blocking version was still sitting forty lines above it. Both
+ran. The improvement the comment describes never actually happened. It
+surfaced through measurement, not through reading. Now it is what the
+comment says it is.
+
 **The frontend now notices when its own parts don't match.** On one
 device `frontend.py` from build 184 sat next to an `fe/art.py` older
 than build 180 — copied in by hand, that one file only. The crash came
