@@ -12,6 +12,73 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.6 — noch nicht veröffentlicht
 
+**Ordner öffnen war zu 80 % das Cover — und die Ursache war eine
+Annahme, die richtig gemessen und dann still falsch geworden ist.**
+
+Gemeldet wurde ein Hänger beim Öffnen: im Mittel 476 ms, im Spitzenfall
+1769 ms. Ein Profillauf auf dem Gerät hat es aufgeschlüsselt:
+
+```
+_draw_page_items_impl        241 ms
+  draw_art_panel             197 ms
+    get_scaled               136 ms
+      _thumb_cache_get       132 ms
+        3x read()             66 ms   ← von der Karte lesen
+        zlib.decompress       64 ms   ← auspacken
+```
+
+Das ganze Öffnen war das Cover. Und im Kommentar an genau dieser Stelle
+stand die Annahme, die das jahrelang gedeckt hat: eine Cache-Datei zu
+lesen kostet **5,9 ms**. Das war damals korrekt gemessen — bei der
+damaligen Kastengröße. Auf 1080p sind daraus 132 ms geworden,
+zweiundzwanzigmal so viel. Niemand hat etwas falsch gemacht; die Zahl
+ist mit den größeren Covern aus dem Rahmen gewachsen, und weil sie als
+Kommentar dastand, hat sie weiter beruhigt.
+
+Miniaturen werden deshalb jetzt als **JPEG** abgelegt statt als
+zlib-gepackte Rohpixel — die Datei wird dreimal kleiner, und das
+Auspacken macht libjpeg in C statt zlib gegen einen halben Megabyte.
+
+Drei Dinge, die dabei absichtlich *nicht* pauschal gemacht werden, alle
+drei an echtem Material nachgemessen (320×420, HDMI-Kastengröße):
+
+| Bild | roh | zlib | JPEG 97 |
+|---|---|---|---|
+| echtes Abzeichen `3DO.art` | 525 KB | 111 KB / 2,06 ms | 38 KB / 1,3 ms |
+| glattes, gemaltes Cover | 525 KB | 42 KB / 1,03 ms | 12 KB / 1,0 ms |
+| Rauschen (Grenzfall) | 525 KB | 363 KB / 3,10 ms | 360 KB / 3,3 ms |
+
+- **Kleine Bilder bleiben verlustfrei.** Unter 64 KB gepackt gibt es
+  nichts zu holen.
+- **Und es muss sich lohnen.** Die letzte Zeile ist der Grund: dort
+  spart JPEG 3 von 363 KB und packt langsamer aus. Wer nicht mindestens
+  die Hälfte spart, bleibt bei der verlustfreien Fassung. Beide Größen
+  liegen beim Schreiben ohnehin vor, die Entscheidung ist gratis.
+- **Güte 97, nicht 92.** Gemessen an den eigenen Abzeichen, weil die das
+  Schwerste sind, was hier durch JPEG geht — große Flächen, harte Kanten,
+  Schrift. Bei 92 stehen einzelne Randpunkte um bis zu 31 von 255
+  daneben, ein schwacher Ring, den man finden *kann*. Bei 97 sind es
+  höchstens 12 und im Mittel 0,37 — unterhalb von allem, was ein
+  Bildschirm zeigt. Kostet 14 KB je Bild und ist es wert.
+
+**Nichts muss neu aufgebaut werden.** Beide Formate stehen in derselben
+Datei, der Kopf entscheidet — wie schon bei der Marke „Original passt".
+Alte Dateien werden weiter gelesen, und wer groß genug ist, wird
+*nebenher* als JPEG nachgezogen. Jeder Eintrag zahlt die alten Kosten
+genau einmal; bei 97.000 Einträgen ist das der Unterschied zwischen
+einem Umstellungslauf und gar keinem.
+
+Dazu: die Cache-Datei wird in **einem** `read()` gelesen statt in drei —
+im Profil standen dafür 66 ms.
+
+*Was ich mir dabei selbst korrigieren musste:* mein erstes Testbild war
+ein erzeugtes Muster, also hochfrequentes Rauschen — der schlechteste
+Fall für JPEG, und etwas, das kein Cover der Welt so aussieht. Der Test
+meldete „Faktor 1,1", und das wäre die falsche Schlussfolgerung aus
+einem falschen Bild gewesen. Mit echtem Material aus dem Repo sind es
+111 → 38 KB. Und meine erste Schätzung „132 → 30 ms" war zu optimistisch;
+realistisch ist etwa die Hälfte, nicht ein Viertel.
+
 **Eine Symlink-Schleife kann das Einlesen nicht mehr aufhängen.** Der
 Anstoß kam von Degauss, das in v0.9.0 dasselbe reparieren musste — beim
 Nachsehen stand es bei uns aber schlechter, und *das* ist der Fund. Die

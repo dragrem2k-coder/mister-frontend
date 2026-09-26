@@ -13,6 +13,71 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.6 — not yet released
 
+**Opening a folder was 80 % cover loading — and the cause was an
+assumption that was measured correctly and then quietly went stale.**
+
+A stutter on opening was reported: 476 ms on average, 1769 ms at worst. A
+profiling run on the device broke it down:
+
+```
+_draw_page_items_impl        241 ms
+  draw_art_panel             197 ms
+    get_scaled               136 ms
+      _thumb_cache_get       132 ms
+        3x read()             66 ms   ← reading from the card
+        zlib.decompress       64 ms   ← unpacking
+```
+
+The whole opening was the cover. And the comment at exactly that spot
+held the assumption that had covered this for years: reading a cache file
+costs **5.9 ms**. That was correctly measured back then — at the box size
+of the time. At 1080p it has become 132 ms, twenty-two times as much.
+Nobody did anything wrong; the number outgrew its frame along with the
+covers, and because it sat there as a comment, it kept reassuring.
+
+Thumbnails are therefore now stored as **JPEG** instead of zlib-packed
+raw pixels — the file gets three times smaller, and the unpacking is done
+by libjpeg in C rather than zlib against half a megabyte.
+
+Three things deliberately *not* done across the board, all three measured
+on real material (320×420, the HDMI box size):
+
+| Image | raw | zlib | JPEG 97 |
+|---|---|---|---|
+| real badge `3DO.art` | 525 KB | 111 KB / 2.06 ms | 38 KB / 1.3 ms |
+| smooth painted cover | 525 KB | 42 KB / 1.03 ms | 12 KB / 1.0 ms |
+| noise (boundary case) | 525 KB | 363 KB / 3.10 ms | 360 KB / 3.3 ms |
+
+- **Small images stay lossless.** Below 64 KB packed there is nothing to
+  gain.
+- **And it has to pay off.** The last row is why: there JPEG saves 3 of
+  363 KB and unpacks more slowly. Anything that does not save at least
+  half stays lossless. Both sizes are on hand when writing, so the
+  decision is free.
+- **Quality 97, not 92.** Measured against our own badges, because they
+  are the hardest thing going through JPEG here — large areas, hard
+  edges, lettering. At 92 individual edge pixels land up to 31 of 255 off,
+  a faint ring you *can* find. At 97 it is at most 12 and 0.37 on
+  average — below anything a screen shows. Costs 14 KB per image and is
+  worth it.
+
+**Nothing has to be rebuilt.** Both formats live in the same file and the
+header decides — just as it already does for the "original fits" marker.
+Old files are still read, and any large enough one is rewritten as JPEG
+*on the side*. Each entry pays the old cost exactly once; with 97,000
+entries that is the difference between a migration run and none at all.
+
+Also: the cache file is read in **one** `read()` instead of three — 66 ms
+in the profile.
+
+*What I had to correct in myself:* my first test image was a generated
+pattern, i.e. high-frequency noise — the worst case for JPEG, and
+something no cover on earth looks like. The test reported "factor 1.1",
+which would have been the wrong conclusion from the wrong image. With
+real material from the repo it is 111 → 38 KB. And my first estimate of
+"132 → 30 ms" was too optimistic; realistically it is about half, not a
+quarter.
+
 **A symlink loop can no longer hang the library scan.** The prompt came
 from Degauss, which had to fix the same thing in v0.9.0 — but on
 checking, ours was in worse shape, and *that* is the finding. The top

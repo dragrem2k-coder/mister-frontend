@@ -458,6 +458,150 @@ THUMB_CACHE_DIR = os.path.join(THUMB_CACHE_BASE, "hd")
 # nachmisst, nimmt dieselbe.
 THUMB_PACKSTUFE = 1
 
+# ---------------------------------------------------------------------
+# MINIATUREN ALS JPEG (Build 201)
+#
+# DER ANLASS, aus einem DRAGEND_PROFILE-Lauf des Nutzers auf dem Geraet.
+# Das Oeffnen eines Ordners kostete 241 ms, und die Aufschluesselung war
+# eindeutig:
+#
+#   _draw_page_items_impl        241 ms
+#     draw_art_panel             197 ms
+#       get_scaled               136 ms
+#         _thumb_cache_get       132 ms
+#           3x read()             66 ms   <- von der Karte lesen
+#           zlib.decompress       64 ms   <- auspacken
+#
+# Das ganze Oeffnen war das Cover. Und im Kommentar bei
+# _thumb_cache_get() stand die Annahme, die das jahrelang gedeckt hat:
+# eine Cache-Datei zu lesen koste gemessen 5.9 ms. Das WAR richtig - bei
+# der damaligen Kastengroesse. Auf 1080p sind daraus 132 ms geworden,
+# zweiundzwanzigmal so viel. Die Messung war korrekt und ist mit der
+# gewachsenen Cover-Groesse stillschweigend falsch geworden.
+#
+# WARUM NICHT EINFACH ALLES AUF JPEG. Nachgemessen an echtem Material
+# aus diesem Repo (320x420, also die HDMI-Kastengroesse) statt geraten:
+#
+#   Bild                       roh      zlib Stufe 1      JPEG Guete 97
+#   echtes Abzeichen 3DO.art   525 KB   111 KB / 2.06 ms   38 KB / 1.3 ms
+#   glattes, gemaltes Cover    525 KB    42 KB / 1.03 ms   12 KB / 1.0 ms
+#   Rauschen (Grenzfall)       525 KB   363 KB / 3.10 ms  253 KB / 3.3 ms
+#
+# Die dritte Zeile ist der Grund fuer eine Schwelle: bei einem Bild, das
+# sich NICHT packen laesst, ist JPEG beim Auspacken sogar langsamer und
+# spart nur ein Drittel der Datei. Und ein wirklich flaechiges Bild ist
+# gepackt so klein, dass dort ueberhaupt nichts zu holen ist.
+#
+# NEBENBEI KORRIGIERT: der alte Kommentar unten bei _thumb_cache_put()
+# fuehrt "flaechig (wie ein Logo)" mit 2.5 KB. Das mag fuer ein echtes
+# Logo stimmen - unsere Kategorie-Abzeichen sind mit 111 KB aber keine
+# flaechigen Logos, sondern ausgearbeitete Marken mit Schrift. Wer sich
+# auf die alte Zahl verlaesst, schaetzt sie um Faktor vierzig zu klein
+# ein.
+#
+# Entschieden wird deshalb nach GROESSE, nicht nach Vermutung: gepackt
+# wird beim Schreiben ohnehin, und nur wenn dabei mehr als
+# THUMB_JPEG_AB_BYTES herauskommen, lohnt JPEG.
+#
+# Beide Formate stehen in DERSELBEN Datei, der Kopf entscheidet - wie
+# schon bei der Marke ORIGINAL_PASST. Alte Dateien bleiben also gueltig,
+# es muss nichts neu aufgebaut werden, und die 97.000 Eintraege des
+# Nutzers behalten ihren Wert. Wer als ART1 gelesen wird und gross genug
+# ist, wird NEBENHER als JPG nachgezogen (siehe
+# _thumb_als_jpg_nachziehen) - jeder Eintrag zahlt die alten Kosten
+# genau einmal.
+_KOPF_ART = b"ART1"
+_KOPF_JPG = b"JPG1"
+
+# Guete 97 bei TJSAMP_444, also OHNE Farbunterabtastung (siehe
+# fe/bildlib.py). Die 97 sind NACHGEMESSEN, nicht gewaehlt - an den
+# echten Abzeichen dieses Repos, weil die das Schwerste sind, was hier
+# durch JPEG geht: grosse Flaechen mit harten Kanten und Schrift, wo
+# Ringing am ehesten auffaellt.
+#
+#   Bild                  Guete 92                     Guete 97
+#   3DO.art               24 KB, Fehler 0.63 / max 31  38 KB, 0.37 / 12
+#   ARCADE.art            21 KB, Fehler 0.56 / max 24  34 KB, 0.32 / 13
+#   SNES_ALTTP_TRACKER    26 KB, Fehler 0.66 / max 25  41 KB, 0.37 / 12
+#
+# (mittlerer und groesster Fehler je Farbkanal, von 255)
+#
+# Bei 92 stehen an harten Kanten einzelne Bildpunkte um bis zu 31 von
+# 255 daneben - ein schwacher Ring, den man bei einem Abzeichen in
+# Artbox-Groesse finden KANN, wenn man danach sucht. Bei 97 ist der
+# groesste Fehler 12 und der mittlere 0.37; das ist unterhalb von allem,
+# was ein Bildschirm zeigt. Der Preis sind 14 KB je Bild - die Datei
+# bleibt damit immer noch dreimal kleiner als die gepackte Fassung.
+# Lieber die drei statt zehn Prozent Ersparnis als ein Abzeichen, bei
+# dem der Nutzer zu Recht fragt, warum es jetzt schlechter aussieht.
+THUMB_JPEG_GUETE = 97
+
+# Ab welcher gepackten Groesse JPEG genommen wird. 64 KB liegt bequem
+# zwischen den beiden gemessenen Faellen (2.5 KB flaechig, 373 KB Foto)
+# und trennt sie damit ohne Grenzfaelle.
+THUMB_JPEG_AB_BYTES = 64 * 1024
+
+
+def _jpeg_moeglich():
+    """Kann dieses Geraet JPEG schreiben? Verzoegert geholt, weil
+    fe/bildlib.py die Bibliothek erst beim ersten Zugriff sucht."""
+    try:
+        from fe import bildlib as _bl
+        return _bl.schreiben_verfuegbar()
+    except Exception:                                    # noqa: BLE001
+        return False
+
+
+def _jpeg_packen(tw, th, pix):
+    """BGRA-Bildpunkte zu JPEG-Bytes, None wenn es nicht geht."""
+    try:
+        from fe import bildlib as _bl
+        return _bl.encode_jpeg(tw, th, pix, THUMB_JPEG_GUETE)
+    except Exception:                                    # noqa: BLE001
+        return None
+
+
+def _jpeg_auspacken(daten):
+    """JPEG-Bytes zu (breite, hoehe, bgra), None bei jedem Fehler."""
+    try:
+        from fe import bildlib as _bl
+        return _bl.decode_jpeg(daten)
+    except Exception:                                    # noqa: BLE001
+        return None
+
+
+# Welche Cache-Dateien in dieser Sitzung schon zum Nachziehen angemeldet
+# wurden. Gedeckelt, damit die Menge bei einem Riesenbestand nicht
+# selbst zum Speicherposten wird - und noetig, weil ein Nachziehen, das
+# fehlschlaegt (kein libjpeg, Karte voll), sonst bei JEDEM Lesen erneut
+# versucht wuerde.
+_jpg_nachgezogen = set()
+_JPG_NACHZIEHEN_MAX = 20000
+
+
+def _thumb_als_jpg_nachziehen(path, w, h, tw, th, pix, gepackt_bytes):
+    """Eine alte ART1-Miniatur nebenher als JPG neu schreiben.
+
+    NICHT hier im Zeichenweg packen und schreiben - genau das war der
+    Fehler, den _thumb_cache_put_async() schon einmal beheben musste
+    ("_thumb_cache_put: 380ms" mitten in einem Zeichenvorgang). Das
+    Umschreiben geht an denselben Weg: der Aufrufer hat sein Bild schon,
+    die Datei ist reine Vorsorge fuer das naechste Mal."""
+    if gepackt_bytes < THUMB_JPEG_AB_BYTES:
+        return                # flaechig und winzig - dort holt JPG nichts
+    if not _jpeg_moeglich():
+        return
+    schluessel = (path, w, h)
+    if schluessel in _jpg_nachgezogen:
+        return
+    if len(_jpg_nachgezogen) >= _JPG_NACHZIEHEN_MAX:
+        return
+    _jpg_nachgezogen.add(schluessel)
+    try:
+        _thumb_cache_put_async(path, w, h, tw, th, pix)
+    except Exception:                                    # noqa: BLE001
+        pass                  # Vorsorge darf den Betrieb nie stoeren
+
 
 def thumb_cache_modus_setzen(hd):
     """Legt fest, ob der HD- oder der SD-Zwischenspeicher benutzt wird.
@@ -1156,26 +1300,53 @@ def _thumb_cache_get(path, w, h):
     Bild-Treffer unterscheiden - siehe den Kommentarblock bei
     ORIGINAL_PASST."""
     cpath = _thumb_cache_path(_thumb_cache_key(path, w, h))
+    # BUILD 201: EIN read() statt drei.
+    #
+    # Im Profil des Nutzers standen "3 x read()" mit zusammen 66 ms. Die
+    # Datei wurde in Haeppchen gelesen (Kopf, Masse, Rest), und jeder
+    # Zugriff auf die SD-Karte kostet einzeln. Sie ist ohnehin komplett
+    # noetig - also in einem Zug.
     try:
         with open(cpath, "rb") as f:
-            kopf = f.read(4)
-            if kopf == _MARKE:
-                _benutzt_vermerken(cpath)
-                return ORIGINAL_PASST
-            if kopf != b"ART1":
-                return None
-            tw, th = struct.unpack("<HH", f.read(4))
-            pix = zlib.decompress(f.read())
-            if len(pix) != tw * th * 4:
-                return None
-        _benutzt_vermerken(cpath)
-        return (tw, th, pix)
+            rohdaten = f.read()
     except FileNotFoundError:
         return None
     except OSError:
         return None
+    if len(rohdaten) < 8:
+        return None
+    kopf = rohdaten[:4]
+    if kopf == _MARKE:
+        _benutzt_vermerken(cpath)
+        return ORIGINAL_PASST
+    try:
+        tw, th = struct.unpack("<HH", rohdaten[4:8])
+        nutzlast = rohdaten[8:]
+        if kopf == _KOPF_JPG:
+            erg = _jpeg_auspacken(nutzlast)
+            if erg is None:
+                return None
+            jb, jh, pix = erg
+            # Die Masse stehen im Kopf UND stecken im JPEG. Stimmen sie
+            # nicht ueberein, ist die Datei nicht die, fuer die wir sie
+            # halten - dann lieber neu rechnen als ein falsch grosses
+            # Bild in den Zeichenweg geben.
+            if (jb, jh) != (tw, th):
+                return None
+        elif kopf == _KOPF_ART:
+            pix = zlib.decompress(nutzlast)
+        else:
+            return None
+        if len(pix) != tw * th * 4:
+            return None
     except (struct.error, zlib.error, ValueError):
         return None
+    _benutzt_vermerken(cpath)
+    if kopf == _KOPF_ART:
+        # Alte Fassung gelesen - beim naechsten Mal soll es schneller
+        # gehen. Siehe _thumb_als_jpg_nachziehen(): nebenher, nicht hier.
+        _thumb_als_jpg_nachziehen(path, w, h, tw, th, pix, len(nutzlast))
+    return (tw, th, pix)
 
 
 def _thumb_cache_put_marke(path, w, h):
@@ -1280,8 +1451,29 @@ def _thumb_cache_put(path, w, h, tw, th, pix):
             # Bestehende Dateien bleiben gueltig: zlib entpackt jede
             # Stufe. Und der Cache-Schluessel haengt am Bild, nicht an
             # den Dateibytes - die entpackten Bildpunkte sind identisch.
-            f.write(b"ART1" + struct.pack("<HH", tw, th)
-                    + zlib.compress(pix, THUMB_PACKSTUFE))
+            # BUILD 201: gepackt wird ohnehin - und erst die gepackte
+            # Groesse sagt, ob JPEG hier etwas holt. Siehe den Block bei
+            # THUMB_JPEG_AB_BYTES: flaechige Bilder sind gepackt winzig
+            # (2.5 KB) und in 0.7 ms ausgepackt, dort waere JPEG groesser
+            # UND schlechter. Fotos sind 373 KB und kosten beim Lesen
+            # 132 ms - dort ist es der ganze Gewinn.
+            _gepackt = zlib.compress(pix, THUMB_PACKSTUFE)
+            _jpg = None
+            if len(_gepackt) >= THUMB_JPEG_AB_BYTES:
+                _jpg = _jpeg_packen(tw, th, pix)
+            # UND es muss sich lohnen. Beim Grenzfall "Bild laesst sich
+            # nicht packen" liefert JPEG 360 gegen 363 KB - also nichts -
+            # bei minimal langsamerem Auspacken. Beide Groessen liegen
+            # hier ohnehin vor, die Entscheidung ist damit gratis: wer
+            # nicht mindestens die Haelfte spart, bleibt verlustfrei.
+            # Beim gutartigen Material sind es 38 gegen 111 KB, das
+            # besteht die Huerde mit Abstand.
+            if _jpg is not None and len(_jpg) * 2 > len(_gepackt):
+                _jpg = None
+            if _jpg is not None:
+                f.write(_KOPF_JPG + struct.pack("<HH", tw, th) + _jpg)
+            else:
+                f.write(_KOPF_ART + struct.pack("<HH", tw, th) + _gepackt)
         os.replace(tmp, cpath)
     except OSError as e:
         LOG("THUMB_CACHE Schreibfehler (%s): %s" % (os.path.basename(path), e))
