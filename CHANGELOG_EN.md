@@ -11,6 +11,165 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ---
 
+## After v4.6 — not yet released
+
+**And in the system menu it still appeared — because these are two
+different faults.** Reported: scrolling down in System → Display & sound
+still brought the login greeting. The difference is measured:
+
+- **Takeover** — MiSTer re-initialises the framebuffer, *every* pixel
+  changes. The picture guard finds that reliably with eight probes.
+- **Text** — the login greeting is just a few rows of letters. In a test
+  with 2669 pixels set across rows 8–48 the guard did **not** find it:
+  the probes sit between the glyphs. More probes cannot cure that, it
+  would stay luck.
+
+For the text case the right remedy has existed for a long time — simply
+rewrite the topmost rows regularly, without detecting anything. It only
+sat in the idle branch of the main loop, and that branch is skipped as
+soon as input is pending. Which is exactly why the greeting came through
+while a key was **held** and never otherwise. It now also runs once per
+action; the throttle lives in the method itself (four times a second,
+0.8 ms), so calling it more often costs nothing.
+
+*Its test* now computes the real block extent in the source instead of
+"nearest preceding `if` plus indentation" — the old technique would have
+falsely reported the new call as part of a long-finished branch. That
+makes three times this one check had to be sharpened, every time for the
+same reason: it estimated where it could have calculated.
+
+**The login greeting while scrolling is a much older fault than it
+looked — and the frontend now takes its picture back by itself.**
+
+It was reported after the main menu got faster. I had three
+explanations, all wrong; again a measurement decided it. The read-back
+checker verifies after every frame that the framebuffer still holds what
+we wrote:
+
+```
+RUECKLESER: nach 26.9 s steht in 15 von 15 Proben-Zeilen fremder
+Inhalt (Zeilen 0,16,32,48,90,180,270,360) - 2 Treffer bei 109 Bildern
+```
+
+**Fifteen out of fifteen.** That is something entirely different from
+the finding behind the previous repair (two rows at the top, constantly).
+Nobody is writing text here — the *whole picture* is no longer ours:
+rarely, about once every hundred frames, but completely. It matches what
+`dmesg` says: MiSTer re-initialises the framebuffer during operation.
+Our picture is gone, and for anyone with `fb_terminal=1` the **Linux
+console is the layer underneath** — which is why it is the login
+greeting that appears and not something else.
+
+That also settles what speeding up the main menu really did: every
+scroll step used to copy 804 of 1080 screen rows, so such an outage was
+three quarters painted over within 80 ms and went unnoticed. Now it is
+120 rows, and the rest stays while a key is held. **The fault is older**,
+it was merely covered up by accident — at 85 ms per scroll step as the
+involuntary price.
+
+The remedy exploits the fact that our buffer stays intact: nothing needs
+redrawing, everything just needs copying once. After every partial flip,
+eight pixels on screen are checked against **what was last written** —
+not against the buffer, which legitimately runs ahead of the screen, and
+that distinction is the entire reason there are no false alarms. If one
+pixel does not match, someone else was at work, and the picture is
+copied in full. Two of the eight sit in the topmost rows, where the
+greeting appears.
+
+Measured, the check costs **0.001 ms per frame** (0.8 %). The repair
+itself only happens in the real case and is capped at five times per
+second — if MiSTer wipes continuously, every partial flip would
+otherwise become a full-screen copy and scrolling would end up slower
+than before. How often it happens appears as `BILDWAECHTER:` in the log.
+
+So the stopgap can go again:
+
+```
+rm /media/fat/frontend/artbox_aufschub_aus
+```
+
+The guard can be switched off with
+`touch /media/fat/frontend/bildwaechter_aus`.
+
+**The latency tally now names every action separately.** It used to be
+one mean across everything:
+
+```
+LATENZ-BILANZ: 125 Schritte, Mittel 126 ms, schlechtester 205 ms (right)
+```
+
+That line answers no question. It mixes a 6 ms scroll step in the main
+menu with a view switch that rebuilds a whole page — and so it could not
+even show whether the change below it had taken effect at all. A second
+line now comes with it:
+
+```
+LATENZ-JE-AKTION: ok/S1 1x Mittel 400 (max 400) | right/S1 4x Mittel 150
+                  (max 150) | down/S0 21x Mittel 6 (max 6)
+```
+
+Per action **and page**, because the same key triggers entirely
+different work in the main menu and in the game list. Sorted by the
+mean, not by the outlier — what is wanted is whatever is constantly too
+slow. The step count is included, because a mean over two steps is not a
+statement.
+
+That is the fourth measurement I had to sharpen today, and all four had
+the same cause: they summarised what you need separately.
+
+**Plus a single switch for the deferral below.** It was reported that
+the login greeting flashes up again while scrolling with a key held.
+Whether that is caused by the deferral could not be measured with
+"covers immediately" — that switches two things at once. Hence:
+
+```
+touch /media/fat/frontend/artbox_aufschub_aus
+```
+
+That restores exactly the pre-change behaviour in the main menu, and
+nothing else. Without the file the deferral stays on.
+
+**The main menu now scrolls noticeably more smoothly — and the very
+line that measured it buried a plan of mine.** The measuring tool from
+v4.6 produced this eight times in a row in the main menu, with a
+direction key held down:
+
+```
+RUCKLER: 85 ms busy (zeichnen=82 rest=3
+         | davon bg=11 rows=4 art=17 flip=50)
+```
+
+`rest=3` means: nothing is being waited for, computed or managed — it
+is being painted. That settled the planned decoupling of input and
+drawing **before** it was built. It would have gained nothing here.
+
+The breakdown shows that all three large items have *one* cause: the
+logo column on the right. It is cleared (11 ms) and redrawn (17 ms) on
+every single scroll step — and because the framebuffer can only be
+copied in whole screen rows, the copied strip has to span everything
+between the two changed text rows on the left and that column on the
+right. 120 rows become 804, and that copy is too large to still fit
+into one display change: it waits for the next one (50 ms). The two
+rows that scrolling is actually about cost 4 ms.
+
+So while a key is **held**, the logo now stays as it is and is brought
+up to date as soon as the cursor comes to rest — exactly how the game
+list has done it since build 96. The copied strip shrinks from 804 to
+120 rows and drops below the threshold above which the display change
+has to be waited for at all. A **single** key press is unaffected: the
+logo appears immediately there, as before. Anyone who has "covers
+immediately" switched on also keeps the old behaviour.
+
+*What nearly went wrong:* the fast page build does not clear the logo
+column — it may skip that, because all badges are exactly the same size
+and the new one fully covers the old. Except for a category with **no**
+badge: there a narrower placeholder appears instead of an image, and
+the edge of the old card would have been left behind. Until now that
+could not happen, because the clearing ran on every step. The test does
+the arithmetic: 58,131 pixels would have been wrong.
+
+---
+
 ## v4.6 — Kernel 6.18, and six explanations that a measurement outlived
 
 A release in which almost nothing was guessed. The jump to kernel 6.18
@@ -42,6 +201,45 @@ The remedy is the simplest one available: the top 64 rows are simply
 written again, four times a second. On 1080p that is 491 KB, about
 0.8 ms — and it does **not** hang off the machinery switch, because
 the cause is not ours.
+
+**And then I stopped retrofitting path by path.** First the main page
+was missing, then the grid and gallery views — each time the remainder
+sat at the full duration, each time another path got instrumented. Yet
+there is one place every drawing path goes through, and it was already
+timing itself. The line now carries `zeichnen=` as a top-level item —
+complete, whatever the view — with the individual items as its
+breakdown. One line now answers the question that matters: is the time
+in drawing at all, or outside it?
+
+**And it found the next gap immediately — in the main menu.** With
+the new remainder in place the log showed eleven identical lines,
+`82 ms busy (bg=0 restore=0 rows=0 art=0 flip=0 rest=82)`: the entire
+cost unaccounted for. The main page was the only one never measured at
+all — neither its fast navigation path nor its full build. That is
+what the remainder is for: it reports the gap itself instead of hiding
+it behind plausible numbers. Both paths now report.
+
+**The stutter breakdown was wrong — in exactly the path that runs
+while scrolling.** The log showed fourteen identical-looking lines,
+`202 ms busy (… bg=20 restore=6 rows=36 art=0 flip=22)`. Those items
+add up to 85 ms; where the other 117 went was written nowhere. And
+three of the numbers were letter-for-letter identical across all
+fourteen while the measured time varied — they were only set on a full
+page build and carried over as leftovers on the fast path. The line
+looked plausible and led straight to the wrong place. Now every item is
+zeroed before each action, the fast path reports its own, and the line
+carries a **remainder**: if that is large, the tool says so itself.
+
+**The frontend now measures what you actually feel.** There were two
+numbers — how long a draw takes, and how long processing plus drawing
+take together. Neither answers the question that matters: *key pressed
+— when is the picture there?* That one is in the log now, with a tally
+every 30 seconds even when nothing stood out. For a **held** key it
+counts from when the repeat was due, not from the moment it fired: you
+are not pressing again, you are holding — and what you feel is the gap
+between steps. This is the groundwork for decoupling input from
+drawing; the rework follows, aimed by these numbers rather than by a
+hunch.
 
 **The covers from `gamelist.xml` are used too.** It holds not only
 year and genre but the image paths as well — and those point at files

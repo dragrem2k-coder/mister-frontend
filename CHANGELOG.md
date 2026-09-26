@@ -10,6 +10,173 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ---
 
+## Nach v4.6 — noch nicht veröffentlicht
+
+**Und im Systemmenü kam er trotzdem noch — weil es zwei verschiedene
+Fehlerbilder sind.** Gemeldet: „in System und dann in Anzeigen/Sounds
+wenn ich dort runterscrolle kommt der login prompt noch". Der Unterschied
+ist nachgemessen:
+
+- **Übernahme** — MiSTer richtet den Bildspeicher neu ein, *jeder*
+  Bildpunkt ändert sich. Das findet der Bildwächter mit acht Proben
+  sicher.
+- **Text** — der Login-Gruß sind nur ein paar Zeilen Buchstaben. Im
+  Versuch mit 2669 gesetzten Bildpunkten in den Zeilen 8–48 hat der
+  Wächter ihn **nicht** gefunden: die Proben liegen zwischen den
+  Glyphen. Mit mehr Proben ist das nicht zu heilen, es bliebe Glück.
+
+Für den Textfall gibt es die richtige Abhilfe schon lange — die obersten
+Zeilen einfach regelmäßig neu hinschreiben, ohne irgendetwas zu erkennen.
+Sie stand nur im Leerlaufzweig der Hauptschleife, und der wird
+übersprungen, sobald eine Eingabe anliegt. Genau deshalb kam der Gruß
+beim **gehaltenen** Scrollen durch und sonst nie. Jetzt läuft sie
+zusätzlich einmal je Aktion; gedrosselt wird in der Methode selbst
+(viermal je Sekunde, 0,8 ms), häufigeres Rufen kostet also nichts.
+
+*Der Test dazu* prüft jetzt die echte Blockausdehnung im Quelltext statt
+„nächstes `if` davor plus Einrückung" — die alte Technik hätte den neuen
+Aufruf fälschlich als Teil eines längst beendeten Zweigs gemeldet. Damit
+hat diese eine Prüfung dreimal nachgeschärft werden müssen, jedes Mal aus
+demselben Grund: sie hat geschätzt, wo sie rechnen konnte.
+
+**Der Login-Gruß beim Scrollen ist ein viel älterer Fehler, als er
+aussah — und jetzt holt sich das Frontend sein Bild selbst zurück.**
+
+Gemeldet wurde er, nachdem das Hauptmenü schneller geworden war. Ich
+hatte drei Erklärungen, alle falsch; entschieden hat es wieder eine
+Messung. Der Rückleser prüft nach jedem Bild, ob im Bildspeicher noch
+steht, was wir hingeschrieben haben:
+
+```
+RUECKLESER: nach 26.9 s steht in 15 von 15 Proben-Zeilen fremder
+Inhalt (Zeilen 0,16,32,48,90,180,270,360) - 2 Treffer bei 109 Bildern
+```
+
+**Fünfzehn von fünfzehn.** Das ist etwas völlig anderes als der Befund,
+der zur letzten Reparatur geführt hat (damals zwei Zeilen oben,
+dauernd). Hier schreibt niemand Text hinein — hier ist das *ganze Bild*
+nicht mehr unseres: selten, rund einmal je hundert Bilder, aber
+vollständig. Dazu passt, was im `dmesg` steht: MiSTer richtet den
+Bildspeicher im Betrieb mehrfach neu ein. Dabei ist unser Bild weg, und
+wer `fb_terminal=1` gesetzt hat, bei dem ist die **Linux-Konsole die
+Ebene darunter** — deshalb erscheint ausgerechnet der Login-Gruß und
+nicht irgendetwas anderes.
+
+Damit ist auch klar, was die Beschleunigung des Hauptmenüs wirklich
+getan hat: vorher kopierte jeder Scrollschritt 804 von 1080 Bildzeilen,
+ein solcher Ausfall war binnen 80 ms zu drei Vierteln übermalt und fiel
+nicht auf. Jetzt sind es 120 Zeilen, und der Rest bleibt stehen, solange
+die Taste gehalten wird. **Der Fehler ist älter**, er war nur zufällig
+verdeckt — mit 85 ms pro Scrollschritt als unfreiwilligem Preis dafür.
+
+Die Abhilfe nutzt aus, dass unser Puffer dabei unversehrt bleibt: es ist
+nichts neu zu zeichnen, es muss nur einmal alles kopiert werden. Nach
+jedem Teil-Flip werden acht Bildpunkte auf dem Schirm gegen **das
+zuletzt Geschriebene** geprüft — nicht gegen den Puffer, denn der läuft
+dem Schirm völlig legitim voraus, und dieser Unterschied ist der ganze
+Grund, warum es keine Fehlalarme gibt. Stimmt ein Punkt nicht, war ein
+Fremder am Werk, und das Bild wird komplett neu kopiert. Zwei der acht
+Punkte liegen in den obersten Zeilen, wo der Gruß steht.
+
+Gemessen kostet die Prüfung **0,001 ms pro Bild** (0,8 %). Die Reparatur
+selbst fällt nur im Ernstfall an und ist auf fünfmal je Sekunde
+begrenzt — wischt MiSTer dauerhaft, wäre sonst jeder Teil-Flip eine
+Vollbildkopie und das Scrollen langsamer als vorher. Wie oft es
+passiert, steht als `BILDWAECHTER:` im Log.
+
+Damit kann die Notbremse wieder weg:
+
+```
+rm /media/fat/frontend/artbox_aufschub_aus
+```
+
+Abschalten lässt sich der Wächter mit
+`touch /media/fat/frontend/bildwaechter_aus`.
+
+**Die Latenz-Bilanz nennt jetzt jede Aktion einzeln.** Vorher stand dort
+ein Mittel über alles:
+
+```
+LATENZ-BILANZ: 125 Schritte, Mittel 126 ms, schlechtester 205 ms (right)
+```
+
+Diese Zeile beantwortet keine Frage. Sie mischt einen 6-ms-Scrollschritt
+im Hauptmenü mit einem Ansichtswechsel, der eine ganze Seite neu baut —
+und deshalb ließ sich an ihr nicht einmal ablesen, ob die Änderung
+darunter überhaupt gegriffen hat. Jetzt kommt eine zweite Zeile dazu:
+
+```
+LATENZ-JE-AKTION: ok/S1 1x Mittel 400 (max 400) | right/S1 4x Mittel 150
+                  (max 150) | down/S0 21x Mittel 6 (max 6)
+```
+
+Je Aktion **und Seite**, weil dieselbe Taste auf der Hauptseite und in
+der Spieleliste völlig verschiedene Arbeit auslöst. Sortiert nach dem
+Mittel, nicht nach dem Ausreißer — gesucht ist, was ständig zu lange
+braucht. Die Schrittzahl steht dabei, denn ein Mittel über zwei Schritte
+ist keine Aussage.
+
+Das ist heute die vierte Messung, die ich nachschärfen musste, und alle
+vier hatten dieselbe Ursache: sie fassten zusammen, was man einzeln
+braucht.
+
+**Dazu ein einzelner Schalter für den Aufschub darunter.** Gemeldet
+wurde, dass beim gehaltenen Scrollen wieder der Login-Gruß aufblitzt.
+Ob das am Aufschub hängt, ließe sich mit „Cover sofort" nicht messen —
+der schaltet zwei Dinge gleichzeitig um. Deshalb:
+
+```
+touch /media/fat/frontend/artbox_aufschub_aus
+```
+
+Damit steht im Hauptmenü wieder genau das Verhalten vor der Änderung,
+und nichts sonst. Ohne die Datei bleibt es beim Aufschub.
+
+**Das Hauptmenü scrollt jetzt deutlich flüssiger — und dieselbe Zeile,
+die das gemessen hat, hat einen Plan von mir beerdigt.** Das
+Messwerkzeug aus v4.6 hat im Hauptmenü achtmal hintereinander bei
+gehaltener Richtungstaste das hier geliefert:
+
+```
+RUCKLER: 85 ms busy (zeichnen=82 rest=3
+         | davon bg=11 rows=4 art=17 flip=50)
+```
+
+`rest=3` heißt: es wird nicht gewartet, nicht gerechnet und nicht
+verwaltet — es wird gemalt. Damit war die geplante Entkopplung von
+Eingabe und Zeichnen erledigt, **bevor** sie gebaut wurde. Sie hätte
+hier nichts gebracht.
+
+Die Aufteilung zeigt, dass alle drei großen Posten *eine* Ursache
+haben: die Logo-Spalte rechts. Sie wird bei jedem einzelnen
+Scrollschritt freigeräumt (11 ms) und neu gezeichnet (17 ms) — und weil
+der Bildspeicher nur in ganzen Bildzeilen kopiert werden kann, muss der
+kopierte Streifen alles zwischen den zwei geänderten Textzeilen links
+und der Spalte rechts umfassen. Aus 120 Bildzeilen werden so 804, und
+diese Kopie ist zu groß, um noch in einen Bildwechsel zu passen: sie
+wartet auf den nächsten (50 ms). Die zwei Zeilen, um die es beim
+Scrollen überhaupt geht, kosten 4 ms.
+
+Bei **gehaltener** Taste bleibt das Logo deshalb jetzt stehen und wird
+nachgezogen, sobald der Cursor stehenbleibt — genau so macht es die
+Spieleliste seit Build 96. Der kopierte Streifen schrumpft damit von
+804 auf 120 Bildzeilen und fällt unter die Grenze, ab der auf den
+Bildwechsel gar nicht mehr gewartet werden muss. Ein **einzelner**
+Tastendruck ist nicht betroffen: dort steht das Logo sofort da, wie
+bisher. Wer „Cover sofort" eingeschaltet hat, behält ebenfalls das alte
+Verhalten.
+
+*Was dabei fast schiefging:* der schnelle Seitenaufbau räumt die
+Logo-Spalte nicht frei — er darf das, weil alle Abzeichen exakt gleich
+groß sind und das neue das alte vollständig abdeckt. Nur gilt das nicht
+für eine Kategorie **ohne** Abzeichen: dort steht statt eines Bildes
+ein schmalerer Platzhalter, und der Rand der alten Karte wäre
+stehengeblieben. Bisher konnte das nicht passieren, weil das
+Freiräumen bei jedem Schritt lief. Der Test rechnet nach: 58 131
+Bildpunkte hätten falsch gestanden.
+
+---
+
 ## v4.6 — Kernel 6.18, und sechs Erklärungen, die eine Messung überlebt haben
 
 Ein Release, in dem fast nichts geraten wurde. Der Kernel-Sprung auf
@@ -41,6 +208,49 @@ Die Abhilfe ist die einfachste denkbare: die obersten 64 Bildzeilen
 werden viermal je Sekunde einfach wieder hingeschrieben. Das sind auf
 1080p 491 KB, rund 0,8 ms — und es hängt **nicht** am Mechanik-
 Schalter, denn die Ursache liegt nicht bei uns.
+
+**Und dann habe ich aufgehört, Pfad für Pfad nachzurüsten.** Erst
+fehlte die Hauptseite, dann Raster und Galerie — jedes Mal stand der
+Rest auf der vollen Zeit, jedes Mal kam ein weiterer vermessener Pfad
+dazu. Dabei gibt es eine Stelle, durch die **alle** Zeichenwege laufen,
+und dort wurde ohnehin schon gemessen. Die Zeile hat jetzt
+`zeichnen=` als Oberposten — vollständig, egal welche Ansicht — und
+die Einzelposten sind dessen Aufteilung. Damit beantwortet eine
+einzige Zeile die Frage, um die es geht: steckt die Zeit überhaupt im
+Zeichnen, oder außerhalb?
+
+**Und sie hat sofort die nächste Lücke gefunden — im Hauptmenü.** Mit
+dem neuen Rest-Posten stand im Log elfmal hintereinander
+`82 ms busy (bg=0 restore=0 rows=0 art=0 flip=0 rest=82)`: der
+gesamte Aufwand unbekannt. Die Hauptseite war als einzige überhaupt
+nicht vermessen — weder ihr schneller Navigationspfad noch ihr voller
+Aufbau. Genau dafür ist der Rest da: er meldet die Lücke selbst, statt
+sie hinter plausiblen Zahlen zu verstecken. Beide Pfade zählen jetzt
+mit.
+
+**Die Aufschlüsselung der Ruckler stimmte nicht — ausgerechnet dort,
+wo gescrollt wird.** Im Log stand vierzehnmal hintereinander
+`202 ms busy (… bg=20 restore=6 rows=36 art=0 flip=22)`. Die genannten
+Posten ergeben zusammen 85 ms; wo die übrigen 117 waren, stand
+nirgends. Und drei der Zahlen waren in allen vierzehn Zeilen
+buchstabengleich, während die gemessene Zeit schwankte — sie wurden nur
+beim vollen Seitenaufbau gesetzt und auf dem schnellen Pfad als Altlast
+weitergeschrieben. Die Zeile sah plausibel aus und hat prompt an die
+falsche Stelle geführt. Jetzt gehen alle Posten vor jeder Aktion auf
+null, der schnelle Pfad trägt seine eigenen ein, und die Zeile weist
+einen **Rest** aus: ist der groß, sagt das Werkzeug es selbst.
+
+**Das Frontend misst jetzt, was man tatsächlich spürt.** Es gab zwei
+Zahlen — wie lange ein Zeichenvorgang dauert und wie lange
+Verarbeitung plus Zeichnen zusammen brauchen. Keine davon beantwortet
+die Frage, um die es geht: *Taste gedrückt — wann steht das Bild?* Die
+steht jetzt im Log, samt einer Bilanz alle 30 Sekunden, auch wenn
+nichts auffällig war. Bei einer **gehaltenen** Taste zählt dabei der
+Fälligkeitstermin der Wiederholung, nicht der Augenblick: man drückt
+dort nicht neu, man hält — und was man spürt, ist der Abstand zwischen
+zwei Schritten. Das ist die Vorarbeit für das Entkoppeln von Eingabe
+und Zeichnen; der Umbau folgt, gezielt nach diesen Zahlen statt nach
+einer Vermutung.
 
 **Auch die Cover aus der `gamelist.xml` werden benutzt.** Dort stehen
 nicht nur Jahr und Genre, sondern auch die Bildpfade — und die zeigen

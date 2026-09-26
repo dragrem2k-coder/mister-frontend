@@ -163,24 +163,54 @@ def _einzug(zeile):
 _zeilen = quelle.splitlines()
 _ruf_i = [i for i, z in enumerate(_zeilen)
           if z.strip() == "self._kopfzeilen_auffrischen()"]
-check("der Aufruf steht genau einmal in der Hauptschleife",
-      len(_ruf_i) == 1, "%d Fundstellen" % len(_ruf_i))
-# Das NAECHSTGELEGENE if davor, nicht irgendeines: konsole_mechanik()
-# wird an mehreren Stellen abgefragt, unter anderem in
-# play_boot_animation() mit anderer Einrueckung. Beim zweiten Anlauf
-# hat dieser Test genau daran danebengegriffen.
-if _ruf_i:
-    _i = _ruf_i[0]
-    _vorher = [j for j in range(_i)
-               if _zeilen[j].strip() == "if self.konsole_mechanik():"]
-    _naechstes = _vorher[-1] if _vorher else None
-    check("und NICHT im Mechanik-Zweig",
-          _naechstes is None
-          or _einzug(_zeilen[_i]) <= _einzug(_zeilen[_naechstes]),
-          "Einzug %d gegen %d in Zeile %d"
-          % (_einzug(_zeilen[_i]),
-             _einzug(_zeilen[_naechstes]) if _naechstes else -1,
-             (_naechstes or 0) + 1))
+# ZWEI Fundstellen seit Build 199, und das ist der Kern der Sache.
+#
+# Nutzer-Rueckmeldung mit Build 198 drauf: "in System und dann in
+# Anzeigen/Sounds wenn ich dort runterscrolle kommt der login prompt
+# noch". Die Abhilfe von Build 190 stand NUR im Leerlaufzweig der
+# Hauptschleife - und der wird bei anliegender Eingabe mit "return act"
+# uebersprungen. Beim GEHALTENEN Scrollen lief sie deshalb nie, genau
+# dann also, wenn sie gebraucht wurde. Der zweite Aufruf steht einmal je
+# Aktion.
+#
+# Warum das nicht doppelt kostet: die Drosselung steckt in der Methode
+# selbst (KOPFZEILEN_TAKT), nicht beim Aufrufer - siehe Test 2.
+check("der Aufruf steht an ZWEI Stellen: Leerlauf und je Aktion",
+      len(_ruf_i) == 2, "%d Fundstellen" % len(_ruf_i))
+# Geprueft wird die ECHTE BLOCKAUSDEHNUNG, nicht "naechstes if davor
+# plus Einrueckung".
+#
+# Diese Datei hat an dieser Stelle jetzt dreimal danebengegriffen, und
+# jedes Mal feiner: erst nach Zeichenketten gesucht, dann nach dem
+# naechstgelegenen if - und beim zweiten Aufruf aus Build 199 fiel auf,
+# dass auch das nicht reicht. Der liegt rund 400 Zeilen HINTER einem
+# "if self.konsole_mechanik():", das laengst zu Ende ist; ueber die
+# Einrueckung allein sah er wie ein Kind davon aus. Ein Block endet bei
+# der ersten Zeile mit Einzug <= dem des if - genau das wird hier
+# ausgerechnet, und damit ist die Frage beantwortbar statt geschaetzt.
+def _block_ende(start):
+    """Bis wohin reicht der Block, der bei Zeile start (dem if) haengt?"""
+    tief = _einzug(_zeilen[start])
+    j = start + 1
+    while j < len(_zeilen):
+        z = _zeilen[j]
+        if z.strip() and not z.lstrip().startswith("#"):
+            if _einzug(z) <= tief:
+                return j
+        j += 1
+    return len(_zeilen)
+
+
+_mech_bloecke = [(j, _block_ende(j)) for j, z in enumerate(_zeilen)
+                 if z.strip() == "if self.konsole_mechanik():"]
+check("es gibt ueberhaupt Mechanik-Zweige zu pruefen", len(_mech_bloecke) >= 1,
+      "%d" % len(_mech_bloecke))
+for _nr, _i in enumerate(_ruf_i, 1):
+    _drin = [a for a, b in _mech_bloecke if a < _i < b]
+    check("Fundstelle %d (Zeile %d) steht NICHT im Mechanik-Zweig"
+          % (_nr, _i + 1),
+          not _drin,
+          "liegt im Block ab Zeile %s" % (_drin[0] + 1 if _drin else "-"))
 check("und die Begruendung steht dabei",
       "UNABHAENGIG VOM SCHALTER" in quelle)
 check("die Messung, die dazu gefuehrt hat, ist festgehalten",

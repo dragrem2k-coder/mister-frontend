@@ -228,7 +228,7 @@ from fe.settings import (
     toggle_curated_only, toggle_dragend_logo, screen_mirror_enabled,
     toggle_screen_mirror, toggle_stream_overlay,
     fast_scroll_enabled, toggle_fast_scroll,
-    cover_sofort_enabled, toggle_cover_sofort,
+    cover_sofort_enabled, toggle_cover_sofort, artbox_aufschub_aus,
     arbeitskopien_enabled, toggle_arbeitskopien,
     overscan_lesen, overscan_weiter,
     ANSICHTEN, ansicht_lesen, ansicht_schreiben,
@@ -461,6 +461,12 @@ C_ACCENT2= (40, 70, 120)
 # Bereich) NIE anschlagen, ein tatsaechlich sichtbares Stocken aber
 # sicher - unter etwa 50 ms nimmt man beim Scrollen nichts wahr.
 RUCKLER_SCHWELLE = 0.08
+
+# Wie viele Posten die Aufschluesselung der Latenz-Bilanz nennt (Build
+# 197, siehe _latenz_buchen()). Vier, weil die Zeile in ein Terminal
+# passen soll und die teuersten vier Aktionen die Frage beantworten -
+# was darunter liegt, ist ohnehin nicht das Problem.
+LATENZ_POSTEN_ZEILE = 4
 
 # NEU (Build 93, Nutzer-Rueckmeldung: "ich habe schnelles Scrollen
 # eigentlich standardmaessig an, und das fuehlt sich manchmal komisch
@@ -3261,6 +3267,85 @@ class Frontend:
             return False
         return bandhoehe <= hoehe * VSYNC_SKIP_MAX_ANTEIL
 
+    def _scroll_serie_aktiv(self):
+        """Wird NACHWEISLICH gerade gescrollt - also eine Richtungstaste
+        gehalten, nicht einmal gedrueckt?
+
+        BUILD 196. Die dritte Frage neben _scroll_skip_vsync() ("darf
+        Vsync entfallen?") und _vsync_ueberspringen() ("darf es fuer
+        DIESE Kopie entfallen?"), und bewusst eine eigene: jene beiden
+        haengen an fast_scroll_enabled() und damit an einer Abwaegung
+        ueber BILDRISSE. Die Frage hier hat damit nichts zu tun. Sie
+        entscheidet, ob teure Arbeit waehrend einer laufenden Bewegung
+        aufgeschoben werden darf - dabei kann nichts reissen, es kommt
+        nur ein Bild einen Augenblick spaeter. Beides an denselben
+        Schalter zu haengen hiesse, dass wer Bildrisse scheut, auch die
+        Ersparnis nicht bekommt. Genau das waere falsch.
+
+        _last_repeat_time ist der richtige Messpunkt, und er liegt schon
+        vor: fe/input.py setzt ihn AUSSCHLIESSLICH bei einer echten
+        Tastenwiederholung, nicht bei jedem Druck ("nur ein nachweislich
+        laufender Scrollvorgang", steht dort). Ein einzelner, bedachter
+        Tastendruck faellt damit nicht darunter - dort bleibt alles
+        sofort da. Erst beim Halten wird aufgeschoben.
+
+        Das Fenster ist FAST_SCROLL_WINDOW (0,15 s) und damit genau
+        COVER_SETTLE: was diese Methode aufschiebt, holt der Nachlader
+        im Leerlauf nach, sobald sie False sagt. Kein Loch, keine
+        Ueberschneidung - eine Zahl, zwei Seiten derselben Grenze."""
+        inp = getattr(self, "inp", None)
+        letzte = getattr(inp, "_last_repeat_time", 0.0) or 0.0
+        if letzte <= 0.0:
+            return False
+        return (time.monotonic() - letzte) < FAST_SCROLL_WINDOW
+
+    def _artbox_auslassen(self):
+        """Darf die Artbox der HAUPTSEITE fuer diesen Schritt ausgelassen
+        werden?
+
+        BUILD 196, und dies ist die gemessene Stelle. Aus dem Log des
+        Nutzers, achtmal hintereinander bei gehaltener Taste auf Seite 0:
+
+            RUCKLER: 85 ms busy (stream=1 haus=0 zeichnen=82 rest=3
+                     | davon bg=11 restore=0 rows=4 art=17 flip=50)
+
+        Alle drei grossen Posten sind EINE Ursache - die Artbox-Spalte:
+
+          bg=11    _bg_fill() raeumt die ganze Spalte frei, in einer
+                   Python-Schleife ueber rund 900 Bildzeilen.
+          art=17   das Abzeichen wird neu skaliert und gezeichnet.
+          flip=50  und das ist der eigentliche Preis: der kopierte
+                   Streifen muss ALLES zwischen den zwei geaenderten
+                   Textzeilen (links) und der Spalte (rechts)
+                   einschliessen - flip_rows() kennt nur Zeilen, keine
+                   Spalten. Aus zwei Zeilen von je 60 Punkten werden so
+                   rund 1000, das sind mehr als die 25 % aus
+                   VSYNC_SKIP_MAX_ANTEIL, also wird gewartet - und die
+                   Kopie ist so gross, dass sie den Bildwechsel verpasst
+                   und auf den naechsten wartet.
+
+        Die zwei Textzeilen, um die es beim Scrollen ueberhaupt geht,
+        kosten 4 ms. Die restlichen 78 gehen an ein Bild, das waehrend
+        einer gehaltenen Taste ohnehin niemand ansieht.
+
+        Seite 1 macht das seit Build 96 so (defer_panel in
+        _art_panel_aktualisieren()) - nur die Hauptseite nicht, und dort
+        sind die Abzeichen mit 900 Punkten Breite die groessten Bilder
+        im ganzen Frontend.
+
+        cover_sofort_enabled() hebt es auf, aus demselben Grund wie auf
+        Seite 1: wer "Cover sofort" einschaltet, will die Bilder sofort
+        sehen und nimmt den Preis dafuer in Kauf.
+
+        artbox_aufschub_aus() hebt es ebenfalls auf, und zwar als
+        EINZELNER Schalter (Build 197): damit sich nachmessen laesst, ob
+        eine Beobachtung an diesem Aufschub haengt, ohne gleichzeitig
+        das Cover-Panel der Spieleliste umzustellen. Siehe die
+        Begruendung bei ARTBOX_AUFSCHUB_AUS_FLAG in fe/settings.py."""
+        if artbox_aufschub_aus():
+            return False
+        return self._scroll_serie_aktiv() and not cover_sofort_enabled()
+
     # ------------------------------------------------------------------
     # Adaptives Layout: alles wird aus der Framebuffer-Hoehe abgeleitet.
     # 1080p -> Schrift 3x, 720p -> 2x, 480p -> 1x
@@ -4269,6 +4354,7 @@ class Frontend:
             r = fn(*args)
             _dt = time.monotonic() - _t0
             _pr.disable()
+            self._perf_zeichnen = (getattr(self, "_perf_zeichnen", 0) + _dt)
             if _dt > threshold:
                 LOG("PERF %s: %.0f ms" % (label, _dt * 1000))
                 _s = _io.StringIO()
@@ -4288,13 +4374,30 @@ class Frontend:
         _t0 = time.monotonic()
         r = fn(*args)
         _dt = time.monotonic() - _t0
+        # BUILD 195: hier laufen ALLE vier zentralen Zeichenwege durch -
+        # voller Aufbau und leichter Pfad, Seite 0 und Seite 1, und
+        # ueber draw_page_items() auch Raster und Galerie. Siehe
+        # _perf_zeichnen in der RUCKLER-Zeile.
+        self._perf_zeichnen = (getattr(self, "_perf_zeichnen", 0) + _dt)
         if _dt > threshold:
             LOG("PERF %s: %.0f ms" % (label, _dt * 1000))
         return r
 
     def draw_page_cats(self, message=None, flip=True):
-        return self._perf_profiled_call(
-            "draw_page_cats", self._draw_page_cats_impl, (message, flip))
+        # BUILD 194: auch der VOLLE Aufbau der Hauptseite zaehlt mit.
+        # Er laeuft immer dann, wenn der leichte Pfad nicht greift
+        # (Scrollen, Ansichtswechsel) - und war bisher genauso
+        # unvermessen wie der leichte. Grob als ein Posten: hier drin
+        # wird nichts einzeln gemessen, also waere eine feinere
+        # Aufteilung nur eine Behauptung.
+        _t = time.monotonic()
+        try:
+            return self._perf_profiled_call(
+                "draw_page_cats", self._draw_page_cats_impl,
+                (message, flip))
+        finally:
+            self._perf_rows = (getattr(self, "_perf_rows", 0)
+                               + (time.monotonic() - _t))
 
     def _draw_page_cats_impl(self, message=None, flip=True):
         # Cover-Schutz auf den aktuellen Stand bringen - siehe
@@ -5301,6 +5404,7 @@ class Frontend:
         Cursor-Sondereffekt) - gibt dann False zurueck, Aufrufer nutzt in
         diesen Faellen den vollen, bewaehrten draw()-Pfad (gleiches Prinzip
         wie bei _draw_navigate_items())."""
+        _tnav = time.monotonic()
         if self.page != 0:
             return False
         # Build 124: der leichte Pfad kennt nur Zeilen. Raster und
@@ -5377,16 +5481,85 @@ class Frontend:
         art_y0 = y0
         art_y_max = H - oy - 20 * s
         art_h = max(20, art_y_max - art_y0)
-        self._bg_fill(art_x0, art_y0, art_w, art_h)
-        # Die Flaeche ist gerade freigeraeumt worden - was auch
-        # immer dort stand, steht nicht mehr da.
-        self._artbox_karte = None
-        self._draw_cat_artbox(L)
-        y_min = min(y_min, art_y0)
-        y_max = max(y_max, art_y0 + art_h)
+        # BUILD 194: auch dieser Pfad traegt seine Posten ein.
+        #
+        # Vorher war Seite 0 als EINZIGE ueberhaupt nicht vermessen.
+        # Nach Build 193 stand deshalb im Log des Nutzers, elfmal
+        # hintereinander beim Halten der Richtungstaste:
+        #
+        #   RUCKLER: 82 ms busy (... bg=0 restore=0 rows=0 art=0
+        #            flip=0 rest=82 | vorige Aktion=down Seite=0)
+        #
+        # Rest gleich Gesamtzeit. Genau dafuer ist der Rest-Posten da:
+        # er hat die Luecke selbst gemeldet, statt sie hinter
+        # plausiblen Zahlen zu verstecken.
+        # BUILD 196: waehrend einer gehaltenen Taste bleibt die Artbox
+        # unberuehrt - siehe _artbox_auslassen() fuer die Messung, die
+        # das ausgeloest hat, und fuer den Grund, warum ausgerechnet
+        # dieser Block 78 der 85 ms gekostet hat.
+        if self._artbox_auslassen():
+            # NICHTS anfassen. Was im Puffer steht, gehoert zur vorigen
+            # Kategorie - falsch, aber nur fuer die Dauer der Bewegung.
+            # Zwei Vermerke ziehen das danach wieder gerade:
+            #
+            # 1. _deferred_something sagt dem Nachlader im Leerlauf, dass
+            #    er gebraucht wird (siehe COVER_SETTLE in run()). Ohne
+            #    ihn zeichnet er seit Build 104 gar nicht mehr nach.
+            ART._deferred_something = True
+            # 2. _pgc_fast_key auf None erzwingt, dass dieser Nachlader
+            #    VOLL aufbaut, mit fb.clear().
+            #
+            #    Das ist keine Vorsicht, sondern notwendig, und es ist
+            #    beim Bauen fast durchgerutscht: der schnelle Weg von
+            #    draw_page_cats() raeumt die Artbox-Spalte NICHT frei. Er
+            #    darf das, weil seit Build 99 alle Abzeichen exakt
+            #    320x420 gross sind und das neue das alte deshalb
+            #    vollstaendig abdeckt (siehe die Begruendung zu
+            #    karte_erhalten in _draw_cat_artbox()). Nur gilt das
+            #    genau dann nicht, wenn die naechste Kategorie GAR KEIN
+            #    Abzeichen hat: dann kommt statt eines Bildes der
+            #    Platzhalter, der schmaler ist als die Karte darunter -
+            #    und der linke Rand der alten Karte samt Schatten bliebe
+            #    stehen. Bisher konnte das nicht passieren, weil genau
+            #    das _bg_fill() drei Zeilen weiter unten die Spalte bei
+            #    JEDEM Schritt freigeraeumt hat. Wer es aufschiebt, muss
+            #    also auch dafuer sorgen, dass danach voll aufgebaut wird.
+            #
+            #    Kostet einmal je Stillstand rund 1,5 ms (gemessene
+            #    Tabelle bei _pgc_fast) - statt 11 ms je Schritt.
+            self._pgc_fast_key = None
+        else:
+            _tbg = time.monotonic()
+            self._bg_fill(art_x0, art_y0, art_w, art_h)
+            self._perf_bg = (getattr(self, "_perf_bg", 0)
+                             + (time.monotonic() - _tbg))
+            # Die Flaeche ist gerade freigeraeumt worden - was auch
+            # immer dort stand, steht nicht mehr da.
+            self._artbox_karte = None
+            _tart = time.monotonic()
+            self._draw_cat_artbox(L)
+            self._perf_art = (getattr(self, "_perf_art", 0)
+                              + (time.monotonic() - _tart))
+            # Nur wenn wirklich dort gezeichnet wurde, muss der kopierte
+            # Streifen bis zur Spalte reichen. Das ist der eigentliche
+            # Gewinn: ohne diese zwei Zeilen bleibt das Band bei den
+            # zwei Textzeilen und faellt unter VSYNC_SKIP_MAX_ANTEIL.
+            y_min = min(y_min, art_y0)
+            y_max = max(y_max, art_y0 + art_h)
 
+        _tf = time.monotonic()
         fb.flip_rows(y_min, y_max - y_min,
                      skip_vsync=self._vsync_ueberspringen(y_max - y_min))
+        self._perf_flip = (getattr(self, "_perf_flip", 0)
+                           + (time.monotonic() - _tf))
+        # Der Rest dieses Pfads - die beiden Zeilen (alt unmarkiert,
+        # neu markiert). Ohne diesen Posten saehe die teuerste Stelle
+        # des Hauptmenues weiterhin wie ein unbekannter Verbraucher aus.
+        self._perf_rows = (getattr(self, "_perf_rows", 0)
+                           + max(0.0, (time.monotonic() - _tnav)
+                                 - getattr(self, "_perf_bg", 0)
+                                 - getattr(self, "_perf_art", 0)
+                                 - getattr(self, "_perf_flip", 0)))
         return True
 
     def _draw_navigate_items(self, old_item_i):
@@ -5409,6 +5582,7 @@ class Frontend:
         Gibt True zurueck, wenn der leichte Pfad angewendet wurde,
         sonst False (Aufrufer soll dann den vollen, bewaehrten
         draw()-Pfad nutzen - z.B. bei Scrollen, Ordnerwechsel o.ae.)."""
+        _tnav = time.monotonic()
         v = getattr(self, "view", None)
         if not v or not v["items"] or self.page != 1:
             return False
@@ -5525,15 +5699,30 @@ class Frontend:
         # auch vom Scroll-Blitting gebraucht. Ausgelagert statt kopiert -
         # laufen die beiden Pfade auseinander, zeichnet einer von beiden
         # das Cover unter einer anderen Kastengroesse als der andere.
+        # BUILD 193: auch dieser Pfad traegt seine Posten ein.
+        #
+        # Bisher setzten nur _draw_page_items_impl() (der Vollaufbau)
+        # die Werte fuer bg/rows/art/flip. Auf DIESEM Pfad - dem, der
+        # beim Scrollen laeuft - behielten sie ihre alten Zahlen und
+        # wurden trotzdem geloggt. Im Log des Nutzers standen deshalb
+        # vierzehn Zeilen mit buchstabengleichem "bg=20 rows=36
+        # flip=22", waehrend die gemessene Zeit zwischen 202 und 240 ms
+        # schwankte. Siehe _perf_zuruecksetzen().
+        _tap = time.monotonic()
         art_y0, art_y1 = self._art_panel_aktualisieren(v, syskey, new_item_i)
+        self._perf_art = (getattr(self, "_perf_art", 0)
+                          + (time.monotonic() - _tap))
         if art_y0 is not None:
             regions.append((art_y0, art_y1))
 
         if regions:
             y0 = min(r[0] for r in regions)
             y1 = max(r[1] for r in regions)
+            _tf = time.monotonic()
             fb.flip_rows(y0, y1 - y0,
                          skip_vsync=self._vsync_ueberspringen(y1 - y0))
+            self._perf_flip = (getattr(self, "_perf_flip", 0)
+                               + (time.monotonic() - _tf))
         # NEU (Build 114): die Positionsanzeige aendert sich bei GENAU
         # diesem Schritt - stuende sie nur im vollen Aufbau, zeigte sie
         # beim Durchblaettern dauerhaft eine veraltete Zahl. Bewusst
@@ -5541,6 +5730,14 @@ class Frontend:
         # _position_auffrischen().
         _L = self.layout_items(has_art)
         self._position_auffrischen(_L["ox"], _L["footer_y"], _L["s"])
+        # Was auf diesem Pfad ausser Boxart und Flip noch anfiel - also
+        # die Zeilen selbst, die Fusszeile und die Positionsanzeige.
+        # Ohne diesen Posten landete alles davon im Rest und saehe aus
+        # wie ein unbekannter Verbraucher.
+        self._perf_rows = (getattr(self, "_perf_rows", 0)
+                           + max(0.0, (time.monotonic() - _tnav)
+                                 - getattr(self, "_perf_art", 0)
+                                 - getattr(self, "_perf_flip", 0)))
         return True
 
     def _positionstext(self):
@@ -14092,6 +14289,165 @@ class Frontend:
     KOPFZEILEN = 64
     KOPFZEILEN_TAKT = 0.25
 
+    # Ab wann eine einzelne Latenz ins Log geht, und wie oft eine
+    # Bilanz. Die Schwelle liegt bewusst ueber dem, was auf 1080p
+    # ueberhaupt erreichbar ist (Vollbild 13 ms plus Vsync-Warten) -
+    # sonst stuende bei jedem Schritt eine Zeile.
+    LATENZ_SCHWELLE = 0.150
+    LATENZ_BILANZ_TAKT = 30.0
+
+    # Die Posten, aus denen sich die RUCKLER-Aufschluesselung
+    # zusammensetzt. An EINER Stelle aufgezaehlt, damit ein neuer
+    # Posten nicht vergessen werden kann.
+    PERF_POSTEN = ("_perf_house", "_perf_bg", "_perf_restore",
+                   "_perf_rows", "_perf_art", "_perf_flip", "_perf_nrows",
+                   "_perf_zeichnen")
+
+    def _perf_zuruecksetzen(self):
+        """Alle Posten der Aufschluesselung auf null - einmal je Aktion.
+
+        WARUM (Build 193). Aus dem Log des Nutzers, vierzehnmal
+        hintereinander waehrend eines gehaltenen Scrollens:
+
+            RUCKLER: 202 ms busy (stream=1 haus=0 bg=20 restore=6
+                     rows=36 art=0 flip=22 ...)
+
+        Zwei Dinge stimmen daran nicht.
+
+        ERSTENS ergeben die Posten zusammen 85 ms, gemessen waren 202.
+        Ueber die Haelfte stand nirgends.
+
+        ZWEITENS sind bg, rows und flip in allen vierzehn Zeilen
+        BUCHSTABENGLEICH (20, 36, 22). Echte Messungen schwanken. Sie
+        werden in _draw_page_items_impl() gesetzt - also nur beim
+        VOLLAUFBAU. Auf dem schnellen Navigationspfad behielten sie
+        ihren alten Wert und wurden trotzdem mitgeloggt. restore
+        wiederum addierte sich auf und wurde nur am Ende des
+        Vollaufbaus zurueckgesetzt; im Log waechst er sichtbar von 6
+        auf 36.
+
+        Die Aufschluesselung war damit auf dem Pfad, der beim Scrollen
+        laeuft, schlicht falsch - und sie hat mich prompt an die
+        falsche Stelle geschickt: ich habe die Coverarbeit verdaechtigt,
+        obwohl art=0 danebenstand.
+
+        Ein Messwerkzeug, das plausibel aussieht und nicht stimmt, ist
+        schlimmer als keines. Deshalb hier: vor jeder Aktion alles auf
+        null, und in der Zeile ein ausgewiesener Rest (siehe dort)."""
+        for name in self.PERF_POSTEN:
+            setattr(self, name, 0)
+
+    def _latenz_buchen(self, act, eingabe_zeit, fertig):
+        """Wie lange von der Eingabe bis zum fertigen Bild.
+
+        WOZU (Build 192). Bisher gab es zwei Zahlen: wie lange ein
+        Zeichenvorgang dauert (PERF) und wie lange Verarbeitung plus
+        Zeichnen zusammen brauchen (RUCKLER). Was fehlte, ist die
+        Zahl, die der Nutzer tatsaechlich spuert:
+
+            Taste gedrueckt  ->  Bild steht
+
+        Ohne sie laesst sich nicht sagen, ob eine Aenderung etwas
+        bringt. Bei einer gehaltenen Taste zaehlt dabei nicht der
+        Augenblick der Wiederholung, sondern ihr FAELLIGKEITStermin
+        (siehe eingabe_zeit in fe/input.py) - gemessen wird also, wie
+        weit wir hinter dem eigenen Takt herlaufen.
+
+        Gebucht wird ohne eine einzige zusaetzliche Zeitabfrage: beide
+        Zeitstempel liegen ohnehin schon vor. Eine Log-Zeile gibt es
+        nur oberhalb der Schwelle, dazu alle 30 Sekunden eine Bilanz -
+        auch wenn nichts auffaellig war. Ein Messwerkzeug, das nur bei
+        Ausreissern redet, kann eine Verbesserung nicht belegen; genau
+        das war der Fehler in Build 182, und er hat einen Abend
+        gekostet."""
+        if not act or not eingabe_zeit:
+            return
+        d = fertig - eingabe_zeit
+        if d <= 0 or d > 10.0:
+            return            # Uhrensprung, oder ein Spiel lief dazwischen
+        self._latenz_n = getattr(self, "_latenz_n", 0) + 1
+        self._latenz_summe = getattr(self, "_latenz_summe", 0.0) + d
+        if d > getattr(self, "_latenz_max", 0.0):
+            self._latenz_max = d
+            self._latenz_max_act = act
+        # BUILD 197: zusaetzlich JE AKTION UND SEITE.
+        #
+        # Der Anlass steht im Log des Nutzers, drei Bilanzen in Folge:
+        #
+        #   LATENZ-BILANZ: 349 Schritte, Mittel  59 ms, schlechtester 1179 ms (ok)
+        #   LATENZ-BILANZ: 215 Schritte, Mittel 112 ms, schlechtester  357 ms (ansicht)
+        #   LATENZ-BILANZ: 125 Schritte, Mittel 126 ms, schlechtester  205 ms (right)
+        #
+        # Diese Zeilen beantworten keine einzige Frage. Ein Mittel ueber
+        # alles vermischt einen 6-ms-Scrollschritt im Hauptmenue mit
+        # einem Ansichtswechsel, der eine ganze Seite neu baut - und
+        # genau deshalb liess sich an ihnen NICHT ablesen, ob Build 196
+        # ueberhaupt gegriffen hat. Ein aufgeschobener Schritt kostet
+        # 6 ms, liegt damit unter RUCKLER_SCHWELLE (80 ms) und steht in
+        # keiner Zeile; im Mittel verschwindet er hinter den teuren
+        # Aktionen. Das Werkzeug war zu grob fuer seine eigene Frage.
+        #
+        # Das ist heute der vierte Fall derselben Sorte (Build 193, 194,
+        # 195 und dieser), und alle vier hatten dieselbe Ursache: die
+        # Messung fasste zusammen, was man einzeln braucht. Je Aktion
+        # UND Seite, weil dieselbe Taste auf Seite 0 und Seite 1 voellig
+        # verschiedene Arbeit ausloest.
+        #
+        # Die Seite ist die NACH der Aktion - bei "back" also die, auf
+        # der man gelandet ist. Das ist die Seite, die gezeichnet wurde,
+        # und damit die, deren Kosten hier stehen.
+        posten = getattr(self, "_latenz_posten", None)
+        if posten is None:
+            posten = self._latenz_posten = {}
+        schluessel = (act, getattr(self, "page", -1))
+        # Deckel gegen unbegrenztes Wachsen: die Aktionsnamen sind eine
+        # kleine feste Menge, aber verlassen will ich mich darauf nicht.
+        if schluessel in posten or len(posten) < 40:
+            e = posten.get(schluessel)
+            if e is None:
+                e = posten[schluessel] = [0, 0.0, 0.0]
+            e[0] += 1
+            e[1] += d
+            if d > e[2]:
+                e[2] = d
+        if d > self.LATENZ_SCHWELLE:
+            LOG("LATENZ: %s brauchte %.0f ms bis zum fertigen Bild"
+                % (act, d * 1000))
+        jetzt = time.monotonic()
+        if jetzt - getattr(self, "_latenz_bilanz", 0.0) < \
+                self.LATENZ_BILANZ_TAKT:
+            return
+        # Beim allerersten Mal nur den Takt stellen, nicht schon eine
+        # Bilanz ueber eine einzige Aktion schreiben.
+        if not getattr(self, "_latenz_bilanz", 0.0):
+            self._latenz_bilanz = jetzt
+            return
+        self._latenz_bilanz = jetzt
+        n = self._latenz_n
+        LOG("LATENZ-BILANZ: %d Schritte, Mittel %.0f ms, schlechtester "
+            "%.0f ms (%s)"
+            % (n, self._latenz_summe / n * 1000,
+               self._latenz_max * 1000,
+               getattr(self, "_latenz_max_act", "?")))
+        # BUILD 197: die Aufschluesselung, siehe oben. Sortiert nach dem
+        # MITTEL, nicht nach dem Hoechstwert - gesucht ist, was staendig
+        # zu lange braucht, nicht der einmalige Ausreisser (den nennt
+        # schon die Zeile darueber). Die Zahl der Schritte steht dabei,
+        # denn ein Mittel ueber zwei Schritte ist keine Aussage.
+        posten = getattr(self, "_latenz_posten", None)
+        if posten:
+            geordnet = sorted(posten.items(),
+                              key=lambda kv: -(kv[1][1] / max(1, kv[1][0])))
+            teile = ["%s/S%d %dx Mittel %.0f (max %.0f)"
+                     % (k[0], k[1], v[0], v[1] / max(1, v[0]) * 1000,
+                        v[2] * 1000)
+                     for k, v in geordnet[:LATENZ_POSTEN_ZEILE]]
+            LOG("LATENZ-JE-AKTION: " + " | ".join(teile))
+        self._latenz_posten = {}
+        self._latenz_n = 0
+        self._latenz_summe = 0.0
+        self._latenz_max = 0.0
+
     def _kopfzeilen_auffrischen(self):
         """Die obersten Bildzeilen regelmaessig neu hinschreiben.
 
@@ -15482,6 +15838,7 @@ class Frontend:
             page_last_time = 0.0
             _rt_prev = None     # Ruckler-Detektor, siehe unten
             _act_prev = None
+            _eingabe_prev = 0.0  # Build 192, siehe _latenz_buchen()
             while True:
                 # Zustand VOR dem Blockieren veroeffentlichen - spiegelt
                 # die aktuell ANGEZEIGTE Auswahl (Ergebnis der vorigen
@@ -15535,18 +15892,59 @@ class Frontend:
                     # dessen Wartezeit ist normal und kein Ruckler.
                     _busy = (_rt1 - _rt_prev) + (time.monotonic() - _rt2)
                     if _busy >= RUCKLER_SCHWELLE:
-                        LOG("RUCKLER: %.0f ms busy "
-                            "(stream=%.0f haus=%.0f bg=%.0f "
-                            "restore=%.0f rows=%.0f art=%.0f flip=%.0f | "
-                            "vorige Aktion=%s Seite=%d)"
-                            % (_busy * 1000, (_rt1 - _rt0) * 1000,
-                               getattr(self, "_perf_house", 0) * 1000,
-                               getattr(self, "_perf_bg", 0) * 1000,
-                               getattr(self, "_perf_restore", 0) * 1000,
-                               getattr(self, "_perf_rows", 0) * 1000,
-                               getattr(self, "_perf_art", 0) * 1000,
-                               getattr(self, "_perf_flip", 0) * 1000,
-                               _act_prev, self.page))
+                        # BUILD 193: rest= ist der wichtigste Posten.
+                        #
+                        # Aus dem Log des Nutzers, vierzehnmal
+                        # hintereinander:
+                        #
+                        #   RUCKLER: 202 ms busy (stream=1 haus=0 bg=20
+                        #   restore=6 rows=36 art=0 flip=22 ...)
+                        #
+                        # Die genannten Posten ergeben zusammen 85 ms.
+                        # Wo die uebrigen 117 ms waren, stand nirgends -
+                        # und drei der Zahlen waren obendrein Altlasten
+                        # vom letzten Vollaufbau (siehe
+                        # _perf_zuruecksetzen()). Eine Aufschluesselung,
+                        # die nicht aufgeht, schickt einen an die
+                        # falsche Stelle; genau das ist hier passiert
+                        # (erst die Cover verdaechtigt - art=0).
+                        #
+                        # Mit einem ausgewiesenen Rest kann das nicht
+                        # mehr geschehen: ist er gross, sagt das
+                        # Werkzeug es selbst.
+                        # BUILD 195: zeichnen= ist der OBERPOSTEN.
+                        #
+                        # Das Nachruesten einzelner Zeichenwege war eine
+                        # Tretmuehle: erst fehlte Seite 0, dann Raster
+                        # und Galerie - jedes Mal stand "rest" auf der
+                        # vollen Zeit, und jedes Mal habe ich einen
+                        # weiteren Pfad instrumentiert. Es gibt aber
+                        # eine Stelle, durch die ALLE laufen:
+                        # _perf_profiled_call(). Dort wird ohnehin schon
+                        # gemessen.
+                        #
+                        # zeichnen= ist damit vollstaendig, egal welche
+                        # Ansicht. bg/restore/rows/art/flip sind seine
+                        # AUFTEILUNG und bewusst NICHT in den Rest
+                        # eingerechnet - sonst zaehlte man sie doppelt.
+                        # Gehen sie nicht auf, sieht man das sofort:
+                        # dann fehlt die Aufteilung, nicht die Zeit.
+                        _oben = [(_rt1 - _rt0),
+                                 getattr(self, "_perf_house", 0),
+                                 getattr(self, "_perf_zeichnen", 0)]
+                        LOG("RUCKLER: %.0f ms busy (stream=%.0f haus=%.0f "
+                            "zeichnen=%.0f rest=%.0f | davon bg=%.0f "
+                            "restore=%.0f rows=%.0f art=%.0f flip=%.0f "
+                            "| vorige Aktion=%s Seite=%d)"
+                            % tuple([_busy * 1000]
+                                    + [x * 1000 for x in _oben]
+                                    + [max(0.0, _busy - sum(_oben)) * 1000,
+                                       getattr(self, "_perf_bg", 0) * 1000,
+                                       getattr(self, "_perf_restore", 0) * 1000,
+                                       getattr(self, "_perf_rows", 0) * 1000,
+                                       getattr(self, "_perf_art", 0) * 1000,
+                                       getattr(self, "_perf_flip", 0) * 1000,
+                                       _act_prev, self.page]))
                     # NEU (Build 93): dieselbe Messung, die oben nur im
                     # Ausnahmefall ins Log geht, treibt jetzt auch die
                     # Wiederholrate der gehaltenen Richtungstaste an -
@@ -15570,8 +15968,53 @@ class Frontend:
                         pass   # eine Messung darf die Bedienung nie
                                # stoppen - im Zweifel bleibt es bei den
                                # festen Boeden
+                    # BUILD 192: die ECHTE Latenz der vorigen Aktion -
+                    # von ihrer Entstehung bis zu dem Moment, in dem
+                    # ihr Bild fertig auf dem Schirm steht. Siehe
+                    # _latenz_buchen().
+                    self._latenz_buchen(_act_prev, _eingabe_prev, _rt0)
                 _rt_prev = time.monotonic()
                 _act_prev = act
+                _eingabe_prev = getattr(self.inp, "eingabe_zeit", 0.0)
+                # BUILD 193: die Posten der Aufschluesselung fuer die
+                # KOMMENDE Aktion auf null. Siehe _perf_zuruecksetzen()
+                # - ohne das zeigt die RUCKLER-Zeile auf dem schnellen
+                # Pfad Zahlen vom letzten Vollaufbau.
+                self._perf_zuruecksetzen()
+                # BUILD 199: die obersten Bildzeilen auch WAEHREND einer
+                # gehaltenen Taste auffrischen.
+                #
+                # Nutzer-Rueckmeldung: "in System und dann in
+                # Anzeigen/Sounds wenn ich dort runterscrolle kommt der
+                # login prompt noch" - und zwar mit Build 198 drauf, der
+                # das Aufblitzen im Hauptmenue nachweislich behoben hat
+                # (zwei BILDWAECHTER-Reparaturen im Log, kein Prompt).
+                #
+                # Das sind ZWEI verschiedene Fehlerbilder, und das ist
+                # nachgemessen:
+                #
+                #   UEBERNAHME - MiSTer richtet den Bildspeicher neu ein,
+                #       JEDER Bildpunkt aendert sich. Der Bildwaechter
+                #       findet das mit acht Proben sicher.
+                #   TEXT - der Login-Prompt ist nur ein paar Zeilen
+                #       Glyphen. In einem Versuch mit 2669 gesetzten
+                #       Bildpunkten in den Zeilen 8-48 hat der Waechter
+                #       ihn NICHT gefunden: die Proben liegen zwischen
+                #       den Buchstaben. Das ist keine Schwaeche, die man
+                #       mit mehr Proben wegbekommt - es bleibt Glueck.
+                #
+                # Fuer den Textfall gibt es die deterministische Abhilfe
+                # schon seit Build 190: die obersten KOPFZEILEN Zeilen
+                # einfach regelmaessig neu hinschreiben, ohne irgendetwas
+                # zu erkennen. Sie stand aber nur im Leerlaufzweig der
+                # Hauptschleife - und der wird bei anliegender Eingabe
+                # mit "return act" uebersprungen. Genau deshalb kam der
+                # Prompt beim GEHALTENEN Scrollen durch und sonst nicht.
+                #
+                # Hier, einmal je Aktion, ist der fehlende Ort. Eigene
+                # Drosselung steckt in der Methode (KOPFZEILEN_TAKT,
+                # viermal je Sekunde), oefteres Rufen kostet also nichts.
+                self._kopfzeilen_auffrischen()
 
                 # Geheimcode-Erkennung (siehe
                 # check_secret_code()) - beobachtet nur, greift nie in
