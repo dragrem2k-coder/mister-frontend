@@ -13,6 +13,29 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.6 — not yet released
 
+**A symlink loop can no longer hang the library scan.** The prompt came
+from Degauss, which had to fix the same thing in v0.9.0 — but on
+checking, ours was in worse shape, and *that* is the finding. The top
+level had long been protected; the recursive descent was not at all:
+`os.path.isdir()` follows symlinks, so a single link pointing upwards
+(`games/SNES/alles -> /media/fat/games`) made the scan circle until
+Python gave up. With 97,000 entries that hits the worst possible moment —
+rebuilding the library.
+
+The check is now against the **ancestors** of the current path, not
+against "seen before". The difference matters: a global set would also
+have skipped a folder that legitimately appears twice (two links to the
+same collection), quietly swallowing games. Only what already occurred on
+the way *here* is a loop. Plus a depth cap of 24 as a second belt, and
+every skipped spot is logged once — a silently omitted folder is exactly
+the kind of fault you notice only when games are missing.
+
+And it costs almost nothing: `realpath()` is expensive but is only needed
+for **symlinks**. An ordinary subfolder cannot form a loop; its real path
+is the parent's plus the name — computable without a single system call.
+In the test: twelve subfolders, exactly **one** `realpath()`, for the
+starting folder. All verified against a real loop on disk, not a mock.
+
 **And in the system menu it still appeared — because these are two
 different faults.** Reported: scrolling down in System → Display & sound
 still brought the login greeting. The difference is measured:
@@ -54,11 +77,25 @@ Inhalt (Zeilen 0,16,32,48,90,180,270,360) - 2 Treffer bei 109 Bildern
 **Fifteen out of fifteen.** That is something entirely different from
 the finding behind the previous repair (two rows at the top, constantly).
 Nobody is writing text here — the *whole picture* is no longer ours:
-rarely, about once every hundred frames, but completely. It matches what
-`dmesg` says: MiSTer re-initialises the framebuffer during operation.
-Our picture is gone, and for anyone with `fb_terminal=1` the **Linux
-console is the layer underneath** — which is why it is the login
-greeting that appears and not something else.
+rarely, about once every hundred frames, but completely. And for anyone
+with `fb_terminal=1` the **Linux console is the layer underneath** —
+which is why it is the login greeting that appears and not something
+else.
+
+> *Addendum, measured:* the cause given here at first was that MiSTer
+> re-initialises the framebuffer during operation. **That was wrong.**
+> The user's `dmesg` shows `MiSTer_fb` lines only at startup (12:47:54
+> and 12:48:12), while the guard's repairs happened at 12:49:09, 12:50:39
+> and 12:59:34 — not one re-initialisation among them. The real cause is
+> in the `inittab`:
+> `console::respawn:/sbin/agetty --nohostname -L tty1 linux`. The agetty
+> on `tty1` had PID **2725** while the one on `console` had 1126 — so it
+> had restarted, and a fresh agetty **clears the screen** and writes its
+> greeting. Clearing the console produces no `dmesg` line, but it does
+> explain why all fifteen probe rows were foreign. The guard is still
+> right and still useful — it takes the picture back whoever removed it.
+> Only the reasoning was guessed, and that belongs corrected rather than
+> quietly replaced.
 
 That also settles what speeding up the main menu really did: every
 scroll step used to copy 804 of 1080 screen rows, so such an outage was

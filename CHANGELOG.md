@@ -12,6 +12,33 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.6 — noch nicht veröffentlicht
 
+**Eine Symlink-Schleife kann das Einlesen nicht mehr aufhängen.** Der
+Anstoß kam von Degauss, das in v0.9.0 dasselbe reparieren musste — beim
+Nachsehen stand es bei uns aber schlechter, und *das* ist der Fund. Die
+obere Ebene war seit langem abgesichert, der rekursive Abstieg gar
+nicht: `os.path.isdir()` folgt Symlinks, also genügte ein Link, der nach
+oben zeigt (`games/SNES/alles -> /media/fat/games`), und das Einlesen
+kreiste, bis Python abbricht. Bei 97.000 Einträgen trifft das den
+unangenehmsten Moment überhaupt — den Neuaufbau der Bibliothek.
+
+Geprüft wird jetzt gegen die **Vorfahren** des aktuellen Weges, nicht
+gegen „schon mal gesehen". Der Unterschied ist wichtig: eine globale
+Merkliste hätte auch einen Ordner übersprungen, der völlig legitim ein
+zweites Mal auftaucht (zwei Links auf dieselbe Sammlung), und damit
+still Spiele verschluckt. Nur was auf dem Weg *hierher* schon vorkam,
+ist eine Schleife. Dazu ein Tiefendeckel von 24 als zweiter Gürtel, und
+jede übersprungene Stelle steht einmal im Log — ein stillschweigend
+weggelassener Ordner ist genau die Sorte Fehler, die man erst bemerkt,
+wenn Spiele fehlen.
+
+Und es kostet praktisch nichts: `realpath()` ist teuer, wird aber nur
+für **Symlinks** gebraucht. Ein gewöhnlicher Unterordner kann keine
+Schleife bauen, sein echter Pfad ist der des Vaters plus Name — das
+rechnet man ohne einen einzigen Systemaufruf aus. Im Test: bei zwölf
+Unterordnern genau **ein** `realpath()`, für den Startordner. Geprüft
+wird das an einer echten Schleife auf der Platte, nicht an einer
+Attrappe.
+
 **Und im Systemmenü kam er trotzdem noch — weil es zwei verschiedene
 Fehlerbilder sind.** Gemeldet: „in System und dann in Anzeigen/Sounds
 wenn ich dort runterscrolle kommt der login prompt noch". Der Unterschied
@@ -56,11 +83,24 @@ Inhalt (Zeilen 0,16,32,48,90,180,270,360) - 2 Treffer bei 109 Bildern
 der zur letzten Reparatur geführt hat (damals zwei Zeilen oben,
 dauernd). Hier schreibt niemand Text hinein — hier ist das *ganze Bild*
 nicht mehr unseres: selten, rund einmal je hundert Bilder, aber
-vollständig. Dazu passt, was im `dmesg` steht: MiSTer richtet den
-Bildspeicher im Betrieb mehrfach neu ein. Dabei ist unser Bild weg, und
-wer `fb_terminal=1` gesetzt hat, bei dem ist die **Linux-Konsole die
-Ebene darunter** — deshalb erscheint ausgerechnet der Login-Gruß und
-nicht irgendetwas anderes.
+vollständig. Und wer `fb_terminal=1` gesetzt hat, bei dem ist die
+**Linux-Konsole die Ebene darunter** — deshalb erscheint ausgerechnet
+der Login-Gruß und nicht irgendetwas anderes.
+
+> *Nachtrag, nachgemessen:* als Ursache stand hier zuerst, MiSTer richte
+> den Bildspeicher im Betrieb mehrfach neu ein. **Das war falsch.** Das
+> `dmesg` des Nutzers zeigt `MiSTer_fb`-Zeilen nur beim Start (12:47:54
+> und 12:48:12), die Reparaturen des Wächters lagen aber bei 12:49:09,
+> 12:50:39 und 12:59:34 — keine einzige Neueinrichtung dazu. Die
+> wirkliche Ursache steht in der `inittab`:
+> `console::respawn:/sbin/agetty --nohostname -L tty1 linux`. Der agetty
+> auf `tty1` hatte im Log PID **2725**, der auf `console` 1126 — er war
+> also neu gestartet, und ein frischer agetty **löscht den Schirm** und
+> schreibt seinen Gruß hin. Ein Konsolen-Löschen erzeugt keine
+> `dmesg`-Zeile, erklärt aber genau, warum alle fünfzehn Proben-Zeilen
+> fremd waren. Der Wächter ist trotzdem richtig und nützlich — er holt
+> das Bild zurück, egal wer es weggenommen hat. Nur die Begründung war
+> geraten, und das gehört korrigiert und nicht stillschweigend ersetzt.
 
 Damit ist auch klar, was die Beschleunigung des Hauptmenüs wirklich
 getan hat: vorher kopierte jeder Scrollschritt 804 von 1080 Bildzeilen,

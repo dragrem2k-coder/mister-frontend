@@ -1189,12 +1189,70 @@ def _zip_baum(zip_pfad, syskey, rbf, extmap, filter_an):
     return node
 
 
-def _scan_folder_tree(path, syskey, rbf, extmap):
+# Build 200: Schutz gegen Symlink-Schleifen beim Einlesen.
+#
+# ANLASS: Degauss hat in v0.9.0 genau das reparieren muessen ("Arcade
+# indexing now excludes top-level cores support directory, preventing
+# symlink loops from aborting library rebuilds"). Beim Nachsehen stand
+# es bei uns schlechter: die OBERE Ebene ist seit langem abgesichert
+# (seen_roots mit realpath in _scan_system()), der rekursive Abstieg
+# aber gar nicht. _scan_folder_tree() steigt in jeden Ordner, den
+# os.path.isdir() bejaht - und isdir() folgt Symlinks. Ein Link, der
+# nach oben zeigt (games/SNES/alles -> /media/fat/games), laesst das
+# Einlesen endlos kreisen, bis Python mit RecursionError abbricht. Bei
+# 97.000 Eintraegen ist das kein Gedankenspiel, und es trifft den
+# unangenehmsten Moment: den Neuaufbau der Bibliothek.
+#
+# GEPRUEFT WIRD GEGEN DIE VORFAHREN, nicht gegen "schon mal gesehen".
+# Der Unterschied ist wichtig: eine globale Menge wuerde auch einen
+# Ordner ueberspringen, der voellig legitim ein zweites Mal auftaucht
+# (zwei Links auf dieselbe Sammlung), und damit Eintraege verschwinden
+# lassen. Nur ein Ordner, der auf dem WEG HIERHER schon vorkam, ist eine
+# Schleife. Damit aendert sich fuer alle anderen nichts.
+#
+# UND FAST OHNE KOSTEN: realpath() ist teuer (mehrere Systemaufrufe je
+# Ordner), wird hier aber nur fuer SYMLINKS gebraucht. Ein normaler
+# Unterordner kann keine Schleife bauen, sein echter Pfad ist einfach
+# der des Vaters plus Name - das rechnet man ohne einen einzigen
+# Systemaufruf aus. Bezahlt wird also ein lstat je Ordner, nicht je
+# Datei.
+SCAN_MAX_TIEFE = 24
+
+_SCAN_GEMELDET = set()
+
+
+def _scan_schleife_melden(was, pfad):
+    """Eine uebersprungene Stelle EINMAL ins Log schreiben.
+
+    Einmal je Pfad, nicht je Versuch: bei einer Schleife kaeme dieselbe
+    Meldung sonst dutzendfach, und ein Log, das sich wiederholt, liest
+    niemand mehr. Gemeldet wird ueberhaupt, weil ein stillschweigend
+    weggelassener Ordner genau die Sorte Fehler ist, die man erst
+    bemerkt, wenn Spiele fehlen."""
+    if pfad in _SCAN_GEMELDET:
+        return
+    _SCAN_GEMELDET.add(pfad)
+    LOG("Einlesen: %s - uebersprungen: %s" % (was, pfad))
+
+
+def _scan_folder_tree(path, syskey, rbf, extmap, _tiefe=0, _vorfahren=(),
+                      _real=None):
     """Rekursiv EINEN Ordner scannen, gibt einen Baumknoten zurueck -
     beliebig tief verschachtelt, spiegelt die eigene Ordnerstruktur/
     Sortierung 1:1 wider. Bekannte Boot-/Testdateien, Beta/Proto/Hack-
-    Tags und rein japanische Titel werden wie bisher ausgefiltert."""
+    Tags und rein japanische Titel werden wie bisher ausgefiltert.
+
+    _tiefe, _vorfahren, _real sind der Schleifenschutz aus Build 200 und
+    gehen nur an die Rekursion - siehe SCAN_MAX_TIEFE oben. Aufrufer von
+    aussen lassen sie weg."""
     node = _empty_node()
+    if _real is None:
+        try:
+            _real = os.path.realpath(path)
+        except OSError:
+            _real = path
+    if not _vorfahren:
+        _vorfahren = (_real,)
     try:
         entries = sorted(os.listdir(path), key=str.lower)
     except OSError:
@@ -1215,7 +1273,26 @@ def _scan_folder_tree(path, syskey, rbf, extmap):
             continue
         full = os.path.join(path, entry)
         if os.path.isdir(full):
-            sub = _scan_folder_tree(full, syskey, rbf, extmap)
+            # Build 200: der Schleifenschutz, siehe SCAN_MAX_TIEFE.
+            if _tiefe + 1 >= SCAN_MAX_TIEFE:
+                _scan_schleife_melden("zu tief verschachtelt", full)
+                continue
+            if os.path.islink(full):
+                try:
+                    _kind_real = os.path.realpath(full)
+                except OSError:
+                    continue
+            else:
+                # Kein Link - dann ist der echte Pfad der des Vaters plus
+                # Name, ohne einen einzigen Systemaufruf.
+                _kind_real = os.path.join(_real, entry)
+            if _kind_real in _vorfahren:
+                _scan_schleife_melden("Symlink-Schleife", full)
+                continue
+            sub = _scan_folder_tree(full, syskey, rbf, extmap,
+                                    _tiefe + 1,
+                                    _vorfahren + (_kind_real,),
+                                    _kind_real)
             nur = _einzelspiel(sub) if _einzeln else None
             if nur is not None:
                 raw_items.append(nur)
