@@ -658,6 +658,160 @@ def _abschnitt_d(b, fe, A):
     b.posten("lesen und dekodieren (volle Groesse)", ms, best)
 
 
+def _abschnitt_e(b, fe):
+    """Lohnt Scroll-Blitting auf der Hauptseite - AUF DIESEM GERAET?
+
+    DIE FRAGE, UND WARUM SIE UEBERHAUPT NOCH EINMAL GESTELLT WIRD.
+
+    Rollt beim Scrollen im Hauptmenue die Liste weiter, gibt es keinen
+    leichten Zeichenweg: es laeuft ein voller Aufbau. Im Log des Nutzers
+    kostet das "rows=77", also 77 ms fuer zwoelf Zeilen Text.
+
+    Die naheliegende Abhilfe waere, den schon gezeichneten Block im
+    Speicher um eine Zeile zu verschieben und nur die neu freigewordene
+    Zeile zu setzen. Genau das gab es schon einmal (Build 96) und wurde
+    wieder entfernt (Build 102), mit Messwerten:
+
+        CRT  320x240    0.50 ms voll -> 0.65 ms geblittet
+        720p 1280x720   1.25 ms voll -> 1.63 ms geblittet
+        HDMI 1920x1080  2.04 ms voll -> 2.84 ms geblittet
+
+    Es kostete in jeder Aufloesung. Der Kommentar an der Fundstelle sagt
+    ausdruecklich, dass das festgehalten wurde, damit niemand dieselbe
+    Idee ein zweites Mal baut - und daran halte ich mich.
+
+    ABER: "2.04 ms voll" ist ein Wert vom Entwicklungsrechner. Auf dem
+    Geraet des Nutzers kostet derselbe Aufbau 77 ms. Das Verhaeltnis
+    zwischen Schrift setzen und Speicher schieben ist auf einer schwachen
+    ARM-CPU ein voellig anderes als auf einem PC - dort ist Text billig
+    und die Kopie teuer, hier umgekehrt. Ein Schluss, der auf dem einen
+    Rechner richtig ist, kann auf dem anderen falsch sein.
+
+    Deshalb wird hier NICHT das Feature nachgebaut, sondern es werden
+    seine ZUTATEN gemessen, jede einzeln und jede so einfach, dass an
+    ihrer Richtigkeit nichts zu deuten ist:
+
+        - was ein voller Aufbau der Hauptseite kostet,
+        - was das Verschieben des Listenblocks kostet,
+        - was EINE Kategoriezeile kostet.
+
+    Die Entscheidung folgt dann aus der Rechnung, nicht aus einer
+    Vermutung. Gezeichnet wird nur in den Puffer, nie auf den Schirm."""
+    b("")
+    b("E  SCROLL-BLITTING IM HAUPTMENUE: LOHNT ES HIER?")
+    b("   Gemessen werden die Zutaten, nicht das Feature. Siehe den")
+    b("   Kommentar im Quelltext: dieselbe Idee war schon einmal")
+    b("   gebaut und wurde als Verlust entfernt - allerdings mit")
+    b("   Messwerten vom Entwicklungsrechner.")
+    fb = getattr(fe, "fb", None)
+    if fb is None:
+        b("   -- kein Bildspeicher, uebersprungen")
+        return
+    try:
+        L = fe.layout_cats()
+    except Exception as e:                               # noqa: BLE001
+        b("   -- Layout nicht ermittelbar (%s), uebersprungen" % e)
+        return
+    visible = int(L.get("visible") or 0)
+    rowh = int(L.get("rowh") or 0)
+    y0 = int(L.get("y0") or 0)
+    if visible < 3 or rowh < 2:
+        b("   -- Liste zu kurz fuer eine Aussage, uebersprungen")
+        return
+    stride = fb.stride
+    hoehe = min(visible * rowh, max(0, fb.height - y0))
+    if hoehe <= rowh:
+        b("   -- Listenbereich zu klein, uebersprungen")
+        return
+    b("   Liste      : %d Zeilen a %d Punkte, Block %d Zeilen hoch"
+      % (visible, rowh, hoehe))
+
+    try:
+        ms_voll, best_voll = messen(lambda: fe.draw_page_cats(flip=False))
+        b.posten("voller Aufbau der Hauptseite", ms_voll, best_voll)
+
+        # Der Block um genau eine Zeile nach oben. Eine einzige
+        # Schnittzuweisung - mehr ist ein Verschieben nicht.
+        a = y0 * stride
+        e = (y0 + hoehe - rowh) * stride
+        q0 = a + rowh * stride
+        q1 = e + rowh * stride
+        if q1 > len(fb.buf):
+            b("   -- Block passt nicht, Verschieben uebersprungen")
+            return
+
+        def schieben():
+            fb.buf[a:e] = fb.buf[q0:q1]
+
+        ms_schieb, best_schieb = messen(schieben)
+        b.posten("Listenblock um eine Zeile verschieben",
+                 ms_schieb, best_schieb)
+
+        maxc = max(4, (int(L.get("list_right") or 0) - int(L.get("ox") or 0))
+                   // (8 * int(L.get("s") or 1)))
+
+        def eine_zeile():
+            fe._draw_cat_row(fe.cat_scroll, 0, L, maxc)
+
+        ms_zeile, best_zeile = messen(eine_zeile)
+        b.posten("eine Kategoriezeile zeichnen", ms_zeile, best_zeile)
+
+        # Die Rechnung, offen hingeschrieben: beim Weiterrollen muessen
+        # zwei Zeilen neu gesetzt werden (die neu freigewordene und die
+        # Markierung).
+        geblittet = ms_schieb + 2 * ms_zeile
+        b("")
+        b("   RECHNUNG   : verschieben %.1f + zwei Zeilen %.1f = %.1f ms"
+          % (ms_schieb, 2 * ms_zeile, geblittet))
+        b("                voller Aufbau                    = %.1f ms"
+          % ms_voll)
+        # KEIN URTEIL AUS NICHTS. Beim ersten Anlauf stand hier direkt
+        # der Vergleich - und im Pruefstand, der die Uhr einfriert, kamen
+        # drei Nullen heraus, woraufhin der Abschnitt seelenruhig "es
+        # lohnt NICHT" meldete. Ein Messwerkzeug, das aus fehlenden Daten
+        # ein Ergebnis macht, ist schlimmer als keines: es klingt wie ein
+        # Befund. Deshalb erst die Frage, ob ueberhaupt etwas gemessen
+        # wurde.
+        if ms_voll < 0.05:
+            b("   ERGEBNIS   : NICHT MESSBAR - der volle Aufbau kommt auf")
+            b("                %.3f ms heraus. Das ist keine Aussage,"
+              % ms_voll)
+            b("                sondern eine stehende oder zu grobe Uhr.")
+        elif geblittet < ms_voll * 0.8:
+            b("   ERGEBNIS   : es LOHNT hier - %.1f ms gespart je Schritt,"
+              % (ms_voll - geblittet))
+            b("                also Faktor %.1f. Auf dem Entwicklungs-"
+              % (ms_voll / max(0.01, geblittet)))
+            b("                rechner war es umgekehrt.")
+        elif geblittet < ms_voll:
+            b("   ERGEBNIS   : knapp besser (%.1f ms) - zu wenig fuer den"
+              % (ms_voll - geblittet))
+            b("                Aufwand und das Risiko. Finger weg.")
+        else:
+            b("   ERGEBNIS   : es lohnt NICHT, genau wie damals auf dem")
+            b("                Entwicklungsrechner. Build 102 bleibt")
+            b("                richtig, und zwar auch hier.")
+    except Exception as e:                               # noqa: BLE001
+        # UEBERSPRUNGEN, nicht ABGEBROCHEN - und das ist ein
+        # Unterschied, auf den tools/test_bench.py besteht. Ein
+        # Messabschnitt, der nicht messen kann, sagt das und laesst den
+        # Rest des Berichts stehen; beim ersten Anlauf ist genau das
+        # schiefgegangen (ein unlesbarer Kategoriebaum liess
+        # draw_page_cats() auffliegen, und der ganze Abschnitt meldete
+        # ABGEBROCHEN). Der Bench ist ein Werkzeug fuer den Notfall - er
+        # muss auch dann noch das liefern, was er messen KONNTE.
+        b("   -- nicht messbar (%s: %s), uebersprungen"
+          % (type(e).__name__, e))
+    finally:
+        # Der Puffer ist jetzt halb bemalt. Den naechsten echten Aufbau
+        # voll erzwingen, damit auf dem Schirm nichts Halbes landet.
+        try:
+            fb.mark_full_redraw()
+            fe._force_full_redraw = True
+        except Exception:                                # noqa: BLE001
+            pass
+
+
 def _eintraege(node, tiefe=0):
     """Alle Spiel-Eintraege eines Kategorieknotens, flach.
 
@@ -817,6 +971,10 @@ def lauf(fe, fm, A, S, startdauer=None, log=None):
         _abschnitt_d(b, fe, A)
     except Exception as e:                               # noqa: BLE001
         b("   ABSCHNITT D ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
+    try:
+        _abschnitt_e(b, fe)
+    except Exception as e:                               # noqa: BLE001
+        b("   ABSCHNITT E ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
     b("")
     b("=" * 62)
     b("Ende. Nichts auf der Karte wurde veraendert.")

@@ -13,6 +13,46 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.6 — not yet released
 
+**The bench now answers a question that was already answered wrongly once
+— on the development machine.**
+
+When the list rolls on while scrolling the main menu, there is no light
+drawing path: a full rebuild runs, `rows=77` in the user's log. The
+obvious remedy would be to shift the already drawn block up by one row in
+memory and only set the newly exposed row.
+
+That existed (build 96) and was removed again (build 102), with
+measurements — and with a comment that sits there expressly "so that
+nobody (myself included) builds the same idea a second time in six
+months". I had just proposed it for the second time; the comment worked.
+
+One number in it is suspicious though: **2.04 ms for a full page build**.
+On the user's device the same build costs 77 ms. Those are
+development-machine figures, and there the ratio between setting text and
+moving memory is the other way round — text is cheap, the copy expensive.
+On a weak ARM CPU it is reversed. Recomputed with the device's numbers:
+**8.5 ms copy + 13 ms for two rows against 77 ms** for the full rebuild.
+
+So what was built is *not* the feature but the measurement: a new bench
+section measures the three **ingredients** separately — full rebuild,
+shifting the block, one category row — and writes the arithmetic out in
+the open. Each individual measurement is simple enough that its
+correctness is not in question, and the decision follows from the
+arithmetic instead of from a hunch. It draws into the buffer only, never
+to the screen.
+
+Locally it reproduces build 102 cleanly: the shift alone costs 0.855 ms
+and is therefore **more expensive than the entire full rebuild**
+(0.479 ms). Whether that also holds on the device is what the bench will
+say there.
+
+*Two mistakes of my own along the way, both caught by tests:* with a
+stopped clock — the test harness freezes it — the section turned three
+zeros into "it does NOT pay off", i.e. a verdict from missing data. And
+with an unreadable category tree it *aborted* instead of reporting
+"skipped" and leaving the rest of the report standing. Both fixed, both
+now covered.
+
 **Opening a folder was 80 % cover loading — and the cause was an
 assumption that was measured correctly and then quietly went stale.**
 

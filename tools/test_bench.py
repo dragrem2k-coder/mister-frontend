@@ -522,6 +522,8 @@ check("die Buchhaltung wird mitgeleert",
       _A.ART.scaled_bytes == 0 and _A.ART._original_bytes == 0
       and not _A.ART.order and not _A.ART.scaled_order)
 
+import fe.bench as _BE  # noqa: E402
+
 _q = io.open(os.path.join(_REPO, "frontend", "fe", "bench.py"),
              encoding="utf-8").read()
 check("der Bench misst den Zustand auch", "je Schritt Karte" in _q)
@@ -530,6 +532,48 @@ check("die Kopfzeile erklaert alle drei Zustaende",
       "Karte = Miniatur liegt auf der Karte" in _q)
 check("ohne A bleibt der Bench lauffaehig", "if A is not None:" in _q,
       "der Abschnitt wird auch aus Tests ohne Modul gerufen")
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 12: Abschnitt E faellt KEIN Urteil aus fehlenden Daten")
+# ---------------------------------------------------------------------------
+# Das ist der Fehler, den dieser Abschnitt beim Bauen selbst hatte. Der
+# Pruefstand friert time.monotonic ein (siehe _harness.py), also kamen
+# fuer alle drei Zutaten Nullen heraus - und der Abschnitt meldete
+# seelenruhig "es lohnt NICHT". Ein Messwerkzeug, das aus fehlenden
+# Daten ein Ergebnis macht, ist schlimmer als keines: es klingt wie ein
+# Befund und beendet die Suche.
+_zeilen = []
+
+
+class _B(object):
+    def __call__(self, t):
+        _zeilen.append(t)
+
+    def posten(self, name, ms, best):
+        _zeilen.append("%s %s %s" % (name, ms, best))
+
+
+_fe_e = H.make_frontend(page=0)
+_BE._abschnitt_e(_B(), _fe_e)
+_txt = "\n".join(_zeilen)
+check("bei stehender Uhr sagt er NICHT MESSBAR",
+      "NICHT MESSBAR" in _txt,
+      "sonst faellt er ein Urteil ueber nichts")
+check("und kein Urteil in eine Richtung",
+      "es LOHNT hier" not in _txt and "lohnt NICHT" not in _txt, _txt[-200:])
+check("die alten Messwerte stehen als Warnung im Abschnitt",
+      "2.04 ms voll -> 2.84 ms geblittet" in _q,
+      "damit niemand die Idee ein drittes Mal baut")
+check("und dass sie vom Entwicklungsrechner stammen",
+      "Entwicklungsrechner" in _q,
+      "das ist der Grund, warum die Frage neu gestellt wird")
+check("er misst die Zutaten, nicht das Feature",
+      "Listenblock um eine Zeile verschieben" in _q
+      and "eine Kategoriezeile zeichnen" in _q)
+check("und er zeichnet nur in den Puffer",
+      "flip=False" in _q and "mark_full_redraw()" in _q,
+      "auf dem Schirm darf nichts Halbes landen")
 
 print()
 if fails:

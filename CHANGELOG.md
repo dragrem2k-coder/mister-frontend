@@ -12,6 +12,47 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.6 — noch nicht veröffentlicht
 
+**Der Bench beantwortet jetzt eine Frage, die auf dem Entwicklungsrechner
+schon einmal falsch beantwortet wurde.**
+
+Rollt beim Scrollen im Hauptmenü die Liste weiter, gibt es keinen
+leichten Zeichenweg — es läuft ein voller Aufbau, im Log des Nutzers
+`rows=77`. Die naheliegende Abhilfe wäre, den gezeichneten Block im
+Speicher um eine Zeile zu verschieben und nur die neue Zeile zu setzen.
+
+Genau das gab es schon (Build 96) und wurde wieder entfernt (Build 102),
+mit Messwerten — und mit einem Kommentar, der ausdrücklich dasteht,
+„damit niemand (ich eingeschlossen) dieselbe Idee in einem halben Jahr
+ein zweites Mal baut". Ich hatte sie gerade zum zweiten Mal
+vorgeschlagen; der Kommentar hat funktioniert.
+
+Eine Zahl darin ist aber verdächtig: **2,04 ms für einen vollen
+Seitenaufbau**. Auf dem Gerät des Nutzers kostet derselbe Aufbau 77 ms.
+Das sind Werte vom Entwicklungsrechner, und dort ist das Verhältnis
+zwischen Schrift setzen und Speicher schieben umgekehrt — Text ist
+billig, die Kopie teuer. Auf einer schwachen ARM-CPU ist es andersherum.
+Nachgerechnet mit den Gerätezahlen: **8,5 ms Kopie + 13 ms für zwei
+Zeilen gegen 77 ms** voller Aufbau.
+
+Gebaut wurde deshalb *nicht* das Feature, sondern die Messung: ein neuer
+Bench-Abschnitt misst die drei **Zutaten** einzeln — voller Aufbau,
+Verschieben des Blocks, eine Kategoriezeile — und schreibt die Rechnung
+offen hin. Jede Einzelmessung ist so simpel, dass an ihrer Richtigkeit
+nichts zu deuten ist, und die Entscheidung folgt aus der Rechnung statt
+aus einer Vermutung. Gezeichnet wird nur in den Puffer, nie auf den
+Schirm.
+
+Lokal reproduziert er Build 102 sauber: das Verschieben allein kostet
+0,855 ms und ist damit **teurer als der ganze volle Aufbau** (0,479 ms).
+Ob das auf dem Gerät auch gilt, sagt der Bench dort.
+
+*Zwei Fehler, die mir dabei selbst unterlaufen sind, beide von Tests
+gefangen:* der Abschnitt hat bei stehender Uhr — der Prüfstand friert sie
+ein — aus drei Nullen ein „es lohnt NICHT" gemacht, also ein Urteil aus
+fehlenden Daten. Und er hat bei einem unlesbaren Kategoriebaum
+*abgebrochen*, statt „übersprungen" zu melden und den Rest des Berichts
+stehen zu lassen. Beides ist behoben und beides jetzt geprüft.
+
 **Ordner öffnen war zu 80 % das Cover — und die Ursache war eine
 Annahme, die richtig gemessen und dann still falsch geworden ist.**
 
