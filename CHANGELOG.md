@@ -12,6 +12,68 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.6 — noch nicht veröffentlicht
 
+**Ich habe auf dem falschen Rechner gemessen — das wird hier korrigiert,
+und der Bench misst es künftig auf dem Gerät.**
+
+Build 209 hat den Bildwächter von acht Bildpunkten auf zwanzig ganze
+Zeilen umgestellt. Die Kosten habe ich auf dem Entwicklungsrechner
+ermittelt: 0,013 ms für 150 kB. Im Profillauf auf dem echten Gerät stand
+dann **2 Millisekunden je Blick**, zweimal je Scrollschritt. Der
+Unterschied ist nicht die CPU, sondern *welcher Speicher*: auf dem PC ist
+das ein Feld im normalen Arbeitsspeicher, auf dem Gerät der Bildspeicher —
+ungecacht, über den Bus, beim Lesen noch unangenehmer als beim Schreiben.
+
+Abhilfe, ohne an der Erkennung zu sparen: je Blick werden nur vier der
+zwanzig Proben angesehen, im Ringverfahren. Jede Probe ist nach fünf
+Blicken dran — beim Scrollen also mehrmals pro Sekunde, und der Login-Gruß
+steht ja, bis ihn jemand wegwischt. Aus 150 kB je Blick werden 30 kB.
+
+Damit sich das nicht wiederholt, gibt es **Bench-Abschnitt F**: er liest
+dieselbe Byte-Menge einmal aus dem Arbeitsspeicher und einmal aus dem
+Bildspeicher, nennt den Faktor dazwischen und dann die Kosten eines echten
+Wächter-Blicks. Die Zahl, an der ich mich verschätzt habe, kommt ab jetzt
+vom Gerät.
+
+**Das Raster kann große Kacheln zeigen.** Gewünscht war „die Boxart-Größe
+wie die großen in der Galerie, vielleicht acht auf einen Schirm".
+Nachgerechnet: die Rasterfläche ist bei 1080p 1652×741 Punkte, und von
+342×456 passt darin nur *eine* Reihe. Bei zwei Reihen wird die Kachel
+270×361 — 79 % der Galerie-Größe — und davon passen zehn hinein:
+
+```
+klein   7x3 = 21 Kacheln,  Cover 176x235
+groß    5x2 = 10 Kacheln,  Cover 270x361      (Galerie: 342x456)
+```
+
+Also zehn statt der erhofften acht. Gerechnet wird wie hochkant seit Build
+176: nicht die *Zahl* der Kacheln steht fest, sondern ihre *Größe*. Auf
+720p werden es 180×241, auf der Röhre 53×71, hochkant 298×397.
+
+Der Preis, ehrlich benannt: 270×361 ist eine neue Kastengröße, und der
+Miniaturen-Speicher merkt sich die Größe. Beim ersten Einschalten einmal
+„Miniaturen vorbereiten" laufen lassen. Standard aus:
+
+```
+touch /media/fat/frontend/raster_gross     # an
+rm    /media/fat/frontend/raster_gross     # aus
+```
+
+**Die Galerie aus der Rasterkachel ist wieder weg** — Urteil am Fernseher:
+„sieht blöd aus". Samt Hochskalierer und allen Verzweigungen; ein toter
+Schalter ist schlimmer als keiner.
+
+**Beim Beenden ist jetzt belegt, woran es liegt.** Dreimal eingespeistes
+F12, dreimal MiSTer bei 6–7 % Last, dreimal „das OSD ist NICHT gekommen".
+Das Messinstrument aus Build 166 arbeitet also korrekt — was nicht
+funktioniert, ist die *Einspeisung*, während F12 auf der Tastatur das Menü
+sehr wohl öffnet. Die richtige Abhilfe läuft über MiSTers eigenen
+Befehlskanal, dessen Formate jetzt bekannt sind; welcher davon das Menü
+holt, ist noch nicht belegt und wird deshalb nicht gebaut. Was dieser
+Build tut: aus der Sackgasse wird eine Anleitung. Schlägt die Übergabe
+endgültig fehl, steht auf der Konsole, dass F12 zu drücken ist.
+
+---
+
 **Der Bildwächter hat den Login-Prompt nie gefunden, weil er acht
 einzelne Bildpunkte angesehen hat.**
 

@@ -891,40 +891,48 @@ def artbox_aufschub_aus():
                  lambda: os.path.exists(ARTBOX_AUFSCHUB_AUS_FLAG))
 
 
-GALERIE_KACHELQUELLE_FLAG = "/media/fat/frontend/galerie_kachelquelle"
+RASTER_GROSS_FLAG = "/media/fat/frontend/raster_gross"
 
 
-def galerie_kachelquelle():
-    """Soll das grosse Bild der Galerie aus der RASTER-MINIATUR
-    hochskaliert werden, statt eine eigene Miniatur zu haben?
+def raster_gross():
+    """Soll die Rasteransicht GROSSE Kacheln zeigen?
 
-    PROBEWEISE (Build 207, Nutzerwunsch: "Galerie-gross (342x456) und
-    Raster-Kachel (176x235) liegen nah beieinander. Wuerde die Galerie
-    dieselbe Kachel nehmen und nur groesser anzeigen, probieren wir mal
-    aus ja").
+    NEUES FEATURE (Build 210, Nutzerwunsch: "raster ansicht haette ich
+    die boxartsgroesse bitte wie die von denn grossen wie sie in der
+    galerie ansicht sind. vielleicht kriegen wir dort in der groesse 8
+    auf einen schirm").
 
-    WAS ES BRINGT: der Schluessel des Miniaturen-Caches enthaelt die
-    Kastengroesse (siehe _thumb_cache_key() in fe/art.py) - Raster und
-    Galerie haben deshalb heute je Spiel ZWEI Dateien auf der Karte.
-    Bei 30.270 Spielen sind das 30.270 Dateien und einmal Rechenzeit
-    weniger, und der Wechsel zwischen den beiden Ansichten ist sofort
-    warm, weil beide auf dieselbe Datei greifen.
+    DIE ARITHMETIK, nachgerechnet statt gehofft. Die Rasterflaeche ist
+    bei 1080p 1652x741 Punkte. Die Galerie zeigt ihr grosses Bild in
+    342x456 - davon passt in 741 Punkte Hoehe nur EINE Reihe, also vier
+    Kacheln. Bei ZWEI Reihen bleibt je Kachel (741-6)/2 = 367 Punkte
+    Hoehe, bei 3:4 also 275x367 - und davon passen 5 in die Breite:
 
-    WAS ES KOSTET: 176 -> 342 ist Faktor 1,94, und hochskaliert wird
-    Nearest-Neighbor. Das Bild wird also sichtbar groeber als heute.
-    Ob das hinnehmbar aussieht, kann nur das Auge am Fernseher
-    entscheiden - deshalb ein Schalter und keine Entscheidung.
+        heute        7x3 = 21 Kacheln, Cover 176x235
+        gross        5x2 = 10 Kacheln, Cover 275x367
+        Galerie                        gross 342x456
 
-    Standard AUS: ohne Flagdatei bleibt alles genau wie in Build 206.
-    Einschalten mit
-        touch /media/fat/frontend/galerie_kachelquelle
-    und wieder aus mit
-        rm /media/fat/frontend/galerie_kachelquelle
+    Es sind also 10 statt der erhofften 8, und die Kachel ist 80 % der
+    Galerie-Groesse. Genau eine Reihe weniger waere moeglich (4 Kacheln
+    zu 399x532, groesser als die Galerie), sieht aber nach Blaettern
+    statt nach Uebersicht aus.
+
+    WAS ES KOSTET, und das ist keine Kleinigkeit: 275x367 ist eine NEUE
+    Kastengroesse, und der Miniaturen-Cache traegt den Kasten im
+    Schluessel (siehe _thumb_cache_key() in fe/art.py). Beim ersten
+    Einschalten ist also fuer jedes Spiel eine Miniatur zu rechnen -
+    einmal "Miniaturen vorbereiten" im Systemmenue laufen lassen, dann
+    ist es warm. Ausschalten kostet nichts, die alten Miniaturen bleiben
+    liegen.
+
+    Standard AUS: ohne Flagdatei bleibt das Raster genau wie bisher.
+        touch /media/fat/frontend/raster_gross     # an
+        rm    /media/fat/frontend/raster_gross     # aus
 
     Ueber denselben kurzlebigen Zwischenspeicher wie die Schalter
     darueber - die Abfrage liegt im Zeichenweg."""
-    return _hole(("galerie_kachelquelle", GALERIE_KACHELQUELLE_FLAG),
-                 lambda: os.path.exists(GALERIE_KACHELQUELLE_FLAG))
+    return _hole(("raster_gross", RASTER_GROSS_FLAG),
+                 lambda: os.path.exists(RASTER_GROSS_FLAG))
 
 
 @_nach_aenderung

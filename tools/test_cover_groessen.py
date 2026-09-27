@@ -21,10 +21,12 @@ Kasten der Cover-Spalte - fast dieselbe Hoehe (771 gegen 777, und die
 begrenzt bei hochkantigen Covern ohnehin), also sichtbar kaum eine
 Aenderung, aber kein eigener Eintrag mehr.
 
-Galerie und Raster liegen ebenfalls nah beieinander. Ob eine
-hochskalierte Kachel dort gut genug aussieht, kann nur das Auge am
-Fernseher entscheiden - deshalb ein SCHALTER
-(galerie_kachelquelle()), Standard aus.
+Galerie und Raster lagen ebenfalls nah beieinander, und Build 207 hat
+probeweise die Galerie auf die hochskalierte Rasterkachel gestellt. Das
+Urteil des Nutzers am Fernseher: "galerie sieht bloed aus lassen wir" -
+der Schalter ist in Build 210 samt Hochskalierer wieder entfernt. Was
+davon bleibt, ist der umgekehrte Weg: das RASTER kann jetzt grosse
+Kacheln zeigen (raster_gross(), Standard aus), und DAS wollte er.
 
 WAS DIESER TEST ABSICHERT
 
@@ -137,143 +139,117 @@ check("der Anteil von Build 206 steht als Vorgabe im Quelltext",
 
 # ---------------------------------------------------------------------------
 print()
-print("Test 4: der Schalter ist aus, solange die Flagdatei fehlt")
+print("Test 4: grosse Rasterkacheln - der Schalter ist aus ohne Flagdatei")
 # ---------------------------------------------------------------------------
 from fe import settings as S                              # noqa: E402
 
 check("Flagdatei-Pfad liegt unter /media/fat/frontend",
-      S.GALERIE_KACHELQUELLE_FLAG
-      == "/media/fat/frontend/galerie_kachelquelle",
-      S.GALERIE_KACHELQUELLE_FLAG)
-
-L = fe.layout_items(True)
+      S.RASTER_GROSS_FLAG == "/media/fat/frontend/raster_gross",
+      S.RASTER_GROSS_FLAG)
 H._zwischenspeicher_leeren()
-check("ohne Datei liefert galerie_quellkasten() None",
-      fe.galerie_quellkasten(L) is None)
+check("ohne Datei ist der Grossmodus aus", not fe._raster_gross_an())
+
+_echt_flag = S.raster_gross
+
+
+def mit_schalter(an):
+    """Frontend mit gesetztem/geloeschtem Schalter, frisch gerechnet."""
+    S.raster_gross = (lambda: an)
+    H._zwischenspeicher_leeren()
+    f = H.make_frontend(page=1)
+    L = f.layout_items(True)
+    return f, L
+
 
 # ---------------------------------------------------------------------------
 print()
-print("Test 5: eingeschaltet nehmen Zeichenweg UND Vorauslader die Kachel")
+print("Test 5: die Kacheln werden groesser, und zwar in JEDER Aufloesung")
 # ---------------------------------------------------------------------------
-_echt_flag = S.galerie_kachelquelle
 try:
-    S.galerie_kachelquelle = lambda: True
-    kk = fe.galerie_quellkasten(L)
-    raster = fe.raster_geometrie(L)
-    check("der Quellkasten ist der Raster-Kasten, unveraendert",
-          kk is not None and tuple(kk) == (raster["cov_b"], raster["cov_h"]),
-          "%r gegen %r" % (kk, (raster["cov_b"], raster["cov_h"])))
+    for w, h, name in ((1920, 1080, "HDMI 1080p"), (1280, 720, "720p"),
+                       (320, 240, "CRT"), (1080, 1920, "Hochkant")):
+        H.set_screen(w, h)
+        f0, L0 = mit_schalter(False)
+        g0 = f0.raster_geometrie(L0)
+        f1, L1 = mit_schalter(True)
+        g1 = f1.raster_geometrie(L1)
+        gal = f1.galerie_geometrie(L1)
+        anteil = 100 * g1["cov_h"] // max(1, gal["gross_h"])
+        print("    %-11s klein %dx%d=%2d a %3dx%3d  ->  gross %dx%d=%2d "
+              "a %3dx%3d  (%d%% der Galerie)"
+              % (name, g0["spalten"], g0["zeilen"],
+                 g0["spalten"] * g0["zeilen"], g0["cov_b"], g0["cov_h"],
+                 g1["spalten"], g1["zeilen"],
+                 g1["spalten"] * g1["zeilen"], g1["cov_b"], g1["cov_h"],
+                 anteil))
+        check("%s: Kachel wird groesser" % name,
+              g1["cov_h"] > g0["cov_h"],
+              "%d gegen %d" % (g1["cov_h"], g0["cov_h"]))
+        check("%s: und es sind weniger" % name,
+              g1["spalten"] * g1["zeilen"] < g0["spalten"] * g0["zeilen"])
+        # Der Deckel aus Build 176 in neuem Anzug: hochkant lieferte
+        # ohne ihn 1x2 - zwei Kacheln auf einem 1080 breiten Schirm.
+        check("%s: mindestens %d Spalten" % (name,
+                                             fm.Frontend.RASTER_GROSS_SPALTEN),
+              g1["spalten"] >= fm.Frontend.RASTER_GROSS_SPALTEN,
+              str(g1["spalten"]))
+        check("%s: die Kachel passt noch ins Bild" % name,
+              g1["cov_b"] * g1["spalten"] <= w
+              and g1["cov_h"] <= gal["gross_h"],
+              "%dx%d" % (g1["cov_b"], g1["cov_h"]))
 
-    gal = fe.galerie_geometrie(L)
-    check("und er ist KLEINER als der Galerie-Kasten - sonst waere hier "
-          "nichts zu gewinnen",
-          kk[0] < gal["gross_b"] and kk[1] < gal["gross_h"],
-          "%r gegen %dx%d" % (kk, gal["gross_b"], gal["gross_h"]))
-    print("    Kachel %dx%d, Galerie %dx%d, Faktor %.2f"
-          % (kk[0], kk[1], gal["gross_b"], gal["gross_h"],
-             gal["gross_b"] / float(kk[0])))
+    # ---------------------------------------------------------------------
+    print()
+    print("Test 6: die GALERIE bleibt unberuehrt - in jeder Aufloesung")
+    # ---------------------------------------------------------------------
+    # Das ist der Punkt, an dem der Bau beim ersten Anlauf falsch war:
+    # kachel_cover_kasten() nimmt seit Build 128 den kleineren von Raster
+    # und Galerie-Nachbarleiste, und dadurch hat der Raster-Schalter die
+    # LEISTE mitverschoben (bei 1080p 176x235 -> 193x258). Eine
+    # zusaetzliche Miniatur je Spiel fuer eine Ansicht, an der sich
+    # nichts aendern sollte. Deshalb hier fuer jede Aufloesung geprueft.
+    for w, h, name in ((1920, 1080, "HDMI 1080p"), (1280, 720, "720p"),
+                       (320, 240, "CRT"), (1080, 1920, "Hochkant")):
+        H.set_screen(w, h)
+        f0, L0 = mit_schalter(False)
+        leiste0 = f0.kachel_cover_kasten(L0)
+        gal0 = f0.galerie_geometrie(L0)
+        f1, L1 = mit_schalter(True)
+        leiste1 = f1.kachel_cover_kasten(L1)
+        gal1 = f1.galerie_geometrie(L1)
+        check("%s: Nachbarleiste unveraendert" % name,
+              tuple(leiste0) == tuple(leiste1),
+              "%r -> %r" % (leiste0, leiste1))
+        check("%s: grosses Galeriebild unveraendert" % name,
+              (gal0["gross_b"], gal0["gross_h"])
+              == (gal1["gross_b"], gal1["gross_h"]),
+              "%r -> %r" % ((gal0["gross_b"], gal0["gross_h"]),
+                            (gal1["gross_b"], gal1["gross_h"])))
 
-    fe.ansicht = "galerie"
-    vorbereitet = fe._art_panel_geometrie("galerie", erzwingen=True)
-    check("der Vorauslader bereitet GENAU diesen Kasten vor",
-          vorbereitet is not None and len(vorbereitet) == 4
-          and vorbereitet[0] == "fest"
-          and (vorbereitet[1], vorbereitet[2]) == tuple(kk),
-          repr(vorbereitet))
+    # ---------------------------------------------------------------------
+    print()
+    print("Test 7: Zeichenweg und Vorauslader nehmen denselben Kasten")
+    # ---------------------------------------------------------------------
+    # Die Falle aus Build 73: legt der Vorauslader unter einer Groesse
+    # ab, die der Zeichenweg nie abfragt, bereitet er ins Leere vor.
+    H.set_screen(1920, 1080)
+    f1, L1 = mit_schalter(True)
+    g1 = f1.raster_geometrie(L1)
+    f1.ansicht = "raster"
+    vor = f1._art_panel_geometrie("raster", erzwingen=True)
+    check("der Vorauslader bereitet GENAU den Kachelkasten vor",
+          vor is not None and len(vor) == 4 and vor[0] == "fest"
+          and (vor[1], vor[2]) == (g1["cov_b"], g1["cov_h"]),
+          "%r gegen %r" % (vor, (g1["cov_b"], g1["cov_h"])))
+
+    # Und die Ansicht laesst sich wirklich zeichnen.
+    f1.draw()
+    check("die Rasteransicht zeichnet mit grossen Kacheln", True)
 finally:
-    S.galerie_kachelquelle = _echt_flag
+    S.raster_gross = _echt_flag
+    H.set_screen(1920, 1080)
+    H._zwischenspeicher_leeren()
 
-# Und ausgeschaltet bereitet er wieder den Galerie-Kasten vor.
-H._zwischenspeicher_leeren()
-vorbereitet = fe._art_panel_geometrie("galerie", erzwingen=True)
-gal = fe.galerie_geometrie(L)
-check("ausgeschaltet wieder der Galerie-Kasten",
-      vorbereitet is not None and len(vorbereitet) == 4
-      and (vorbereitet[1], vorbereitet[2])
-      == (gal["gross_b"], gal["gross_h"]),
-      repr(vorbereitet))
-
-# ---------------------------------------------------------------------------
-print()
-print("Test 6: get_scaled_aus_kachel() vergroessert und merkt sich das")
-# ---------------------------------------------------------------------------
-from fe import art as A                                   # noqa: E402
-
-ART = A.ART
-ruf = [0]
-_echt_gs = ART.get_scaled
-
-
-def _zaehl_gs(path, w, h, auslagern_ok=False):
-    ruf[0] += 1
-    # Ein kuenstliches, quadratisches Bild in der Kachelgroesse.
-    return (w, h, bytes(bytearray(w * h * 4)))
-
-
-try:
-    ART.get_scaled = _zaehl_gs
-    ART.scaled = {}
-    ART.scaled_order = []
-    erg = ART.get_scaled_aus_kachel("/x/y.art", 176, 235, 342, 456)
-    check("liefert ein Bild", erg is not None)
-    bw, bh = erg[0], erg[1]
-    check("es ist groesser als die Kachel", bw > 176 and bh > 235,
-          "%dx%d" % (bw, bh))
-    check("und passt in den Galerie-Kasten", bw <= 342 and bh <= 456,
-          "%dx%d" % (bw, bh))
-    check("das Seitenverhaeltnis bleibt",
-          abs(bw / float(bh) - 176 / 235.0) < 0.01,
-          "%.4f gegen %.4f" % (bw / float(bh), 176 / 235.0))
-    check("die Datenmenge passt zur Groesse", len(erg[2]) == bw * bh * 4)
-    print("    176x235 -> %dx%d" % (bw, bh))
-
-    vorher = ruf[0]
-    erg2 = ART.get_scaled_aus_kachel("/x/y.art", 176, 235, 342, 456)
-    check("der zweite Aufruf rechnet nicht neu", ruf[0] == vorher)
-    check("und liefert dasselbe Bild", erg2 is erg)
-
-    # Angefragt wird GENAU der Kachel-Kasten - nicht etwa der Ziel-
-    # kasten. Sonst waere es eine dritte Groesse auf der Karte.
-    gefragt = []
-    ART.get_scaled = lambda p, w, h, auslagern_ok=False: (
-        gefragt.append((w, h)) or (w, h, bytes(bytearray(w * h * 4))))
-    ART.scaled = {}
-    ART.scaled_order = []
-    ART.get_scaled_aus_kachel("/x/z.art", 176, 235, 342, 456)
-    check("geholt wird unter dem KACHEL-Kasten", gefragt == [(176, 235)],
-          repr(gefragt))
-
-    # Nichts zu vergroessern: dann das Original, nicht ein Zerrbild.
-    ART.scaled = {}
-    ART.scaled_order = []
-    erg3 = ART.get_scaled_aus_kachel("/x/w.art", 400, 500, 342, 456)
-    check("ist die Kachel schon gross genug, bleibt sie unangetastet",
-          erg3 is not None and (erg3[0], erg3[1]) == (400, 500),
-          repr(erg3[:2] if erg3 else None))
-
-    # Kein Bild da (Vorauslader hat verzoegert): nichts merken.
-    ART.get_scaled = lambda p, w, h, auslagern_ok=False: None
-    ART.scaled = {}
-    ART.scaled_order = []
-    check("ohne Bild kommt None zurueck",
-          ART.get_scaled_aus_kachel("/x/v.art", 176, 235, 342, 456) is None)
-    check("und nichts wird gemerkt", not ART.scaled)
-finally:
-    ART.get_scaled = _echt_gs
-    ART.scaled = {}
-    ART.scaled_order = []
-
-# ---------------------------------------------------------------------------
-print()
-print("Test 7: auf die Karte wird dabei NICHTS geschrieben")
-# ---------------------------------------------------------------------------
-q = inspect.getsource(A.ArtCache.get_scaled_aus_kachel)
-check("kein _thumb_cache_put in get_scaled_aus_kachel",
-      "_thumb_cache_put" not in q)
-check("der Grund steht dabei",
-      "abgeleitet" in q and "billig" in q)
-
-# ---------------------------------------------------------------------------
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))

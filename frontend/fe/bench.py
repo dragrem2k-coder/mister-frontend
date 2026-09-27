@@ -1021,6 +1021,88 @@ class _Messbedingungen(object):
 
 
 
+def _abschnitt_f(b, fe):
+    """Was kostet ein Blick in den BILDSPEICHER - auf diesem Geraet?
+
+    DER ANLASS IST EIN FEHLER VON MIR, und deshalb steht dieser
+    Abschnitt hier. In Build 209 habe ich den Bildwaechter von acht
+    einzelnen Bildpunkten auf ganze Zeilen umgestellt und die Kosten auf
+    dem Entwicklungsrechner gemessen: 0,013 ms fuer 150 kB. Damit habe
+    ich sogar begruendet, dass sich C dafuer nicht lohnt.
+
+    Im Profillauf auf dem Geraet des Nutzers stand dann:
+
+        2   0.004   0.002   0.004   0.002   _waechter_pruefen
+
+    ZWEI MILLISEKUNDEN je Blick, das Hundertfuenfzigfache. Der
+    Unterschied ist nicht die CPU, sondern WELCHER SPEICHER: auf dem PC
+    ist mm ein bytearray im normalen RAM, auf dem Geraet ist es der
+    Bildspeicher - ungecacht, ueber den Bus, und beim Lesen noch
+    unangenehmer als beim Schreiben.
+
+    Genau diese Zahl kann nur das Geraet liefern. Der Abschnitt misst
+    deshalb drei Dinge nebeneinander, und die Verhaeltnisse sind die
+    Aussage:
+
+      - dieselbe Menge Bytes aus dem PUFFER lesen (normaler RAM),
+      - dieselbe Menge aus dem BILDSPEICHER lesen,
+      - und was ein Waechter-Blick in seiner jetzigen Form kostet.
+
+    Wer hier spaeter etwas an den Proben aendert, sieht in einer Zeile,
+    was es kostet - und muss es nicht auf dem falschen Rechner raten."""
+    b("")
+    b("-" * 62)
+    b(" F  Lesen aus dem Bildspeicher (der Fehler aus Build 209)")
+    b("-" * 62)
+    fb = fe.fb
+    if not getattr(fb, "_waechter_an", False):
+        b("   -- Bildwaechter ist aus, nichts zu messen")
+        return
+    zb = int(getattr(fb, "_waechter_zeile_bytes", 0) or 0)
+    proben = len(getattr(fb, "_waechter_offsets", ()) or ())
+    if zb <= 0 or proben <= 0:
+        b("   -- keine Proben eingerichtet, uebersprungen")
+        return
+    pro_blick = min(int(getattr(fb, "WAECHTER_PRO_BLICK", proben)), proben)
+    b("   Proben     : %d Zeilen a %d Byte, %d je Blick (%d kB)"
+      % (proben, zb, pro_blick, pro_blick * zb // 1024))
+
+    menge = pro_blick * zb
+    if menge > len(fb.buf) or menge > getattr(fb, "size", 0):
+        b("   -- Bild zu klein fuer diese Menge, uebersprungen")
+        return
+
+    # Die drei Messungen. Bewusst mit demselben Byte-Umfang, sonst
+    # vergleicht man Aepfel mit Birnen.
+    ziel = bytearray(menge)
+    mvz = memoryview(ziel)
+
+    def aus_puffer():
+        mvz[:] = memoryview(fb.buf)[0:menge]
+
+    def aus_bildspeicher():
+        mvz[:] = memoryview(fb.mm)[0:menge]
+
+    ms_buf, best_buf = messen(aus_puffer)
+    b.posten("%d kB aus dem Puffer (RAM)" % (menge // 1024),
+             ms_buf, best_buf)
+    ms_mm, best_mm = messen(aus_bildspeicher)
+    b.posten("%d kB aus dem Bildspeicher" % (menge // 1024),
+             ms_mm, best_mm)
+    if ms_buf > 0:
+        b("   %-38s %9.1fx" % ("Bildspeicher teurer als RAM um Faktor",
+                               ms_mm / ms_buf))
+
+    ms_w, best_w = messen(fb._waechter_pruefen)
+    b.posten("ein Waechter-Blick, wie er jetzt laeuft", ms_w, best_w)
+    b("")
+    b("   Zum Vergleich: im Profillauf des Nutzers stand der Blick mit")
+    b("   2,00 ms, als noch ALLE %d Proben je Blick angesehen wurden."
+      % proben)
+    ganz = ms_w * proben / float(max(1, pro_blick))
+    b("   Alle %d auf einmal waeren hier %.2f ms." % (proben, ganz))
+
+
 def lauf(fe, fm, A, S, startdauer=None, log=None):
     """Den kompletten Bench fahren und den Bericht als Text
     zurueckgeben. Bekommt alles, was er braucht, uebergeben - dieses
@@ -1047,6 +1129,10 @@ def lauf(fe, fm, A, S, startdauer=None, log=None):
         _abschnitt_e(b, fe)
     except Exception as e:                               # noqa: BLE001
         b("   ABSCHNITT E ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
+    try:
+        _abschnitt_f(b, fe)
+    except Exception as e:                               # noqa: BLE001
+        b("   ABSCHNITT F ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
     b("")
     b("=" * 62)
     b("Ende. Nichts auf der Karte wurde veraendert.")

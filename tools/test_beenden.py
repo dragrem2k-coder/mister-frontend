@@ -185,9 +185,30 @@ print("Test 4: beim F12 wird nachgesehen, ob das OSD kommt (Build 166)")
 # EIN eingespeistes Umschalt-Ereignis auf diesem Geraet oft nicht
 # sitzt. Beim BEENDEN wurde dieselbe Unzuverlaessigkeit bis Build 165
 # einfach gehofft weg zu sein.
-i = quelle.index("    def _f12_bis_das_osd_kommt(self")
-f12 = quelle[i:i + 3000]
-f12 = f12[:f12.index("\n    # Nach so vielen Sekunden")]
+# GEAENDERT (Build 210): den Block STRUKTURELL holen, nicht durch
+# Suche nach dem Kommentar, der zufaellig danach steht. Genau daran ist
+# dieser Test in Build 210 zerbrochen - dort kam eine Methode zwischen
+# die beiden, und die Textsuche fand ihre Marke nicht mehr. Vierter Fall
+# dieser Sorte im Projekt: ein Test, der Woerter sucht statt Struktur.
+import ast                                                # noqa: E402
+
+
+def methode(name):
+    """Der Quelltext EINER Methode, ueber den Syntaxbaum geholt.
+
+    Dieser Test liest frontend.py als Text und importiert sie nicht -
+    deshalb kein inspect, sondern ast. Beides ist strukturell, und genau
+    darauf kommt es hier an."""
+    baum = ast.parse(quelle)
+    zeilen = quelle.split("\n")
+    for knoten in ast.walk(baum):
+        if isinstance(knoten, ast.FunctionDef) and knoten.name == name:
+            return "\n".join(zeilen[knoten.lineno - 1:knoten.end_lineno])
+    return ""
+
+
+f12 = methode("_f12_bis_das_osd_kommt")
+check("der F12-Abschnitt wurde gefunden", bool(f12))
 check("es wird wirklich eingespeist", "self.inp.inject(KEY_F12)" in f12)
 check("danach wird gewartet, bevor gemessen wird",
       f12.index("EXIT_NACH_F12_SEK") < f12.index("_anzeige_messen"))
@@ -200,6 +221,32 @@ check("eine fehlgeschlagene Einspeisung wird nur protokolliert",
       "Exit-Injection fehlgeschlagen" in f12)
 check("ohne Messsignal wird NICHT blind wiederholt",
       "keine Lastmessung moeglich" in f12)
+# NEU (Build 210): schlaegt die Uebergabe endgueltig fehl, bekommt der
+# Nutzer eine Anleitung auf die Konsole statt einer Sackgasse. Sein
+# Exit-Log zeigte dreimal "das OSD ist NICHT gekommen", und danach sass
+# er auf einem stummen Login-Prompt.
+check("nach dem endgueltigen Fehlschlag gibt es einen Hinweis auf tty1",
+      "_exit_hinweis_auf_tty1()" in f12)
+hinweis = methode("_exit_hinweis_auf_tty1")
+check("der Hinweis geht ueber den einen erlaubten Weg",
+      "tty1_schreiben" in hinweis)
+check("und kann den Ausstieg nicht blockieren",
+      "except Exception" in hinweis)
+m_hin = re.search(r"EXIT_HINWEIS = \((.*?)\)\n", quelle, re.S)
+check("der Hinweistext steht als Vorgabe in der Klasse", m_hin is not None)
+if m_hin:
+    txt = m_hin.group(1)
+    check("er nennt die Taste, die beim Nutzer nachweislich funktioniert",
+          "F12" in txt)
+    check("und ist reines ASCII - das ist die rohe Linux-Konsole",
+          all(ord(c) < 128 for c in txt))
+# Die Regel aus Test 1 ("nach dem F12 nichts mehr anfassen") gilt
+# weiter. Dieser eine Schreibvorgang ist die begruendete Ausnahme: er
+# laeuft NUR, wenn dreimal gemessen wurde, dass MiSTer die Anzeige gar
+# nicht genommen hat - dann ist dort nichts, was man stoeren koennte.
+check("der Hinweis steht NACH der Schleife, nicht darin",
+      f12.index("_exit_hinweis_auf_tty1()")
+      > f12.index("beende trotzdem"))
 m = re.search(r"EXIT_F12_VERSUCHE = (\d+)", quelle)
 check("und zwar klein genug fuer die Reissleine",
       m is not None and 1 <= int(m.group(1)) <= 5,

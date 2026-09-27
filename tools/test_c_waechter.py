@@ -82,6 +82,27 @@ class Attrappe(Framebuffer):
         self._waechter_einrichten()
 
 
+def blicke_bis_fund(fb):
+    """Wieviele Blicke es braucht, bis der Waechter anschlaegt - oder
+    None, wenn er in einer vollen Runde nichts findet.
+
+    SEIT BUILD 210 sieht ein Blick nur WAECHTER_PRO_BLICK der Proben an,
+    im Ringverfahren (der Grund steht bei _waechter_pruefen(): auf dem
+    Geraet kostete ein voller Blick gemessene 2 ms, weil der
+    Bildspeicher gelesen wird und nicht normaler RAM). Die Zusage ist
+    deshalb nicht mehr "ein Blick findet es", sondern "eine RUNDE findet
+    es" - und genau das wird hier geprueft. Beim Scrollen sind fuenf
+    Blicke deutlich weniger als eine Sekunde, und der Login-Gruss steht,
+    bis ihn jemand wegwischt."""
+    anz = len(fb._waechter_offsets)
+    pro = max(1, min(fb.WAECHTER_PRO_BLICK, anz))
+    runde = (anz + pro - 1) // pro
+    for n in range(1, runde + 1):
+        if fb._waechter_pruefen():
+            return n
+    return None
+
+
 def zaehlen_py(fb, hoehe, breite4):
     """Die Referenz - dieselbe Rechnung wie
     frontend.py::_fremdausgabe_zaehlen_py()."""
@@ -172,7 +193,7 @@ fb.buf[:] = b"\x10" * fb.size
 fb.mm[:] = fb.buf
 fb._waechter_merken()
 check("frisch gemerkt findet der Waechter nichts",
-      not fb._waechter_pruefen())
+      blicke_bis_fund(fb) is None)
 
 # Jetzt schreibt der Login-Prozess: drei Textzeilen, je 16 Bildpunkte
 # hoch, ab Zeile 0 - aber nur 30 Zeichen breit, also die linken 240
@@ -182,7 +203,13 @@ for y in range(0, 48):
         off = y * fb.stride
         for x in range(0, 240 * 4, 8):      # jeder zweite Punkt hell
             fb.mm[off + x:off + x + 4] = b"\xff\xff\xff\xff"
-check("DEN findet der Zeilen-Waechter", fb._waechter_pruefen())
+_n = blicke_bis_fund(fb)
+check("DEN findet der Zeilen-Waechter", _n is not None,
+      "in einer ganzen Runde nicht gefunden")
+if _n:
+    print("    gefunden beim %d. Blick von hoechstens %d je Runde"
+          % (_n, (len(fb._waechter_offsets) + fb.WAECHTER_PRO_BLICK - 1)
+             // fb.WAECHTER_PRO_BLICK))
 
 # GEGENPROBE, und die musste ich zweimal schreiben. Beim ersten Versuch
 # stand hier EIN synthetischer Text und die Behauptung "acht Punkte
@@ -216,7 +243,7 @@ for _ in range(200):
             for zeichen in range(28):
                 x = (spalte + zeichen * 8) * 4
                 pr.mm[off + x:off + x + 8] = b"\xff" * 8
-    if pr._waechter_pruefen():
+    if blicke_bis_fund(pr) is not None:
         neu_treffer += 1
     # Die acht Punkte von Build 198, genau wie dort gerechnet.
     punkte = [min(pr.height - 1, 16), min(pr.height - 1, 40)]
@@ -230,8 +257,8 @@ for _ in range(200):
             break
 print("    von 200 Prompts gefunden: Zeilen-Waechter %d, acht Punkte %d"
       % (neu_treffer, alt_treffer))
-check("der Zeilen-Waechter findet jeden", neu_treffer == 200,
-      "%d von 200" % neu_treffer)
+check("der Zeilen-Waechter findet jeden - innerhalb einer Runde",
+      neu_treffer == 200, "%d von 200" % neu_treffer)
 check("acht Punkte finden fast keinen - das ist der Grund fuer den Umbau",
       alt_treffer <= 20, "%d von 200" % alt_treffer)
 
@@ -256,16 +283,17 @@ fb._waechter_merken()
 # zwischen zwei Teil-Flips.
 fb.buf[:] = b"\xaa" * fb.size
 check("der Waechter schlaegt NICHT an (er vergleicht gegen das zuletzt "
-      "Geschriebene)", not fb._waechter_pruefen())
+      "Geschriebene)", blicke_bis_fund(fb) is None)
 
 # Erst wenn wir das gemerkte Band auffrischen und danach jemand in mm
 # schreibt, ist es ein Fund.
 fb.mm[:] = fb.buf
 fb._waechter_merken()
-check("nach dem Auffrischen weiterhin still", not fb._waechter_pruefen())
+check("nach dem Auffrischen weiterhin still",
+      blicke_bis_fund(fb) is None)
 fb.mm[7 * fb.stride + 100:7 * fb.stride + 104] = b"\x00\x00\x00\x00"
 check("ein fremdes Byte in einer Probenzeile wird gefunden",
-      fb._waechter_pruefen())
+      blicke_bis_fund(fb) is not None)
 
 # ---------------------------------------------------------------------------
 print()
@@ -275,7 +303,7 @@ fb = Attrappe(640, 120)
 fb.buf[:] = b"\x30" * fb.size
 fb.mm[:] = b"\x99" * fb.size          # Schirm voellig anders
 # NICHTS gemerkt - alle Gueltig-Marken stehen auf 0.
-check("ohne jedes Merken kein Fund", not fb._waechter_pruefen())
+check("ohne jedes Merken kein Fund", blicke_bis_fund(fb) is None)
 # Nur das oberste Band merken, dann unten etwas veraendern.
 #
 # WICHTIG und beim ersten Schreiben falsch gemacht: veraendert werden
@@ -293,11 +321,11 @@ check("es gibt Proben in beiden Bereichen", gemerkt and nicht_gemerkt,
 z = nicht_gemerkt[-1]
 fb.mm[z * fb.stride:z * fb.stride + 4] = b"\x00\x00\x00\x00"
 check("eine Aenderung in einer NICHT gemerkten Probenzeile bleibt still",
-      not fb._waechter_pruefen(), "Zeile %d" % z)
+      blicke_bis_fund(fb) is None, "Zeile %d" % z)
 z = gemerkt[-1]
 fb.mm[z * fb.stride:z * fb.stride + 4] = b"\x00\x00\x00\x00"
-check("in einer gemerkten Probenzeile nicht", fb._waechter_pruefen(),
-      "Zeile %d" % z)
+check("in einer gemerkten Probenzeile nicht",
+      blicke_bis_fund(fb) is not None, "Zeile %d" % z)
 
 # ---------------------------------------------------------------------------
 print()
@@ -322,11 +350,17 @@ t0 = time.monotonic()
 for _ in range(200):
     fb._waechter_pruefen()
 dt = (time.monotonic() - t0) / 200 * 1000
-gesehen = len(fb._waechter_offsets) * fb._waechter_zeile_bytes
-print("    %d Proben, %d kB je Blick, %.4f ms" % (
-    len(fb._waechter_offsets), gesehen // 1024, dt))
-check("ein Blick kostet deutlich unter einer Millisekunde", dt < 1.0,
+pro = min(fb.WAECHTER_PRO_BLICK, len(fb._waechter_offsets))
+gesehen = pro * fb._waechter_zeile_bytes
+print("    %d Proben, %d je Blick = %d kB, %.4f ms AUF DIESEM RECHNER"
+      % (len(fb._waechter_offsets), pro, gesehen // 1024, dt))
+print("    (auf dem Geraet ist mm der BILDSPEICHER und damit viel")
+print("     teurer - dort misst es Bench-Abschnitt F, nicht dieser Test)")
+check("ein Blick kostet hier deutlich unter einer Millisekunde", dt < 1.0,
       "%.4f ms" % dt)
+check("und es wird wirklich nur ein TEIL je Blick angesehen",
+      pro < len(fb._waechter_offsets),
+      "%d von %d" % (pro, len(fb._waechter_offsets)))
 check("es gibt nur noch EINE Fassung (kein _waechter_pruefen_py mehr)",
       not hasattr(Framebuffer, "_waechter_pruefen_py"))
 check("und keine C-Funktion dafuer",
@@ -344,10 +378,11 @@ try:
     fb.mm[:] = fb.buf
     fb._waechter_merken()
     check("der Waechter laeuft weiter (er braucht C ohnehin nicht)",
-          not fb._waechter_pruefen())
+          blicke_bis_fund(fb) is None)
     z = sorted(off // fb.stride for off in fb._waechter_offsets)[1]
     fb.mm[z * fb.stride:z * fb.stride + 4] = b"\x00\x00\x00\x00"
-    check("und findet weiterhin", fb._waechter_pruefen(), "Zeile %d" % z)
+    check("und findet weiterhin", blicke_bis_fund(fb) is not None,
+          "Zeile %d" % z)
     check("fremd_zaehlen meldet ehrlich None",
           ART.fremd_zaehlen(fb.mm, fb.buf, fb.stride, 8, 320 * 4) is None)
 finally:

@@ -3626,6 +3626,26 @@ class Frontend:
     # dauerhaft 25 % mehr Vorbereitungszeit und 25 % mehr Dateien.
     RASTER_HDMI = (7, 3)
     RASTER_CRT = (5, 3)
+    # Build 210: bei grossen Kacheln zwei Reihen. Nicht die Zahl der
+    # Kacheln steht hier, sondern die Zahl der REIHEN - die Groesse
+    # folgt daraus, siehe _raster_aufteilung().
+    RASTER_GROSS_REIHEN = 2
+    # Mindestzahl der Spalten im Grossmodus. Ohne diesen Deckel liefert
+    # hochkant 1x2 - siehe _raster_aufteilung().
+    RASTER_GROSS_SPALTEN = 3
+
+    def _raster_gross_an(self):
+        """Schalter fuer die grossen Rasterkacheln - siehe
+        raster_gross() in fe/settings.py fuer Rechnung und Preis.
+
+        Ueber einen eigenen kleinen Umweg, damit ein fehlendes
+        fe/settings.py (halbes Update, siehe Build 204) hier nicht zum
+        Absturz fuehrt, sondern schlicht zum alten Raster."""
+        try:
+            from fe.settings import raster_gross
+            return bool(raster_gross())
+        except Exception:                                # noqa: BLE001
+            return False
 
     # HOCHKANT (Build 176). Zielhoehe EINER Kachel, in Promille der
     # SCHMALEN Seite des Schirms. Nicht gewaehlt, sondern quer
@@ -3639,7 +3659,7 @@ class Frontend:
     RASTER_HOCH_PROMILLE = 218
     RASTER_HOCH_PROMILLE_CRT = 179
 
-    def _raster_aufteilung(self, breite, hoehe, abstand):
+    def _raster_aufteilung(self, breite, hoehe, abstand, gross=None):
         """Wieviele Spalten und Zeilen das Kachelraster bekommt.
 
         QUER unveraendert 7x3 (auf CRT 5x3) - diese Zahlen stehen seit
@@ -3662,6 +3682,37 @@ class Frontend:
         passen so viele hinein, wie hineinpassen. Quer bleibt die Zahl
         stehen, damit sich dort bitgenau nichts aendert."""
         fb = self.fb
+        # NEU (Build 210, Nutzerwunsch: "raster ansicht haette ich die
+        # boxartsgroesse bitte wie die von denn grossen wie sie in der
+        # galerie ansicht sind. vielleicht kriegen wir dort in der
+        # groesse 8 auf einen schirm").
+        #
+        # Gerechnet wird wie im Hochkant-Zweig darunter, und aus demselben
+        # Grund: nicht die ZAHL der Kacheln wird festgelegt, sondern ihre
+        # GROESSE - danach passen so viele hinein, wie hineinpassen. Eine
+        # feste Zahl war schon in Build 176 der Fehler.
+        #
+        # Bei 1080p ergibt das 5x2 = 10 Kacheln zu 275x367. Es sind also
+        # 10 statt der erhofften 8, weil die HOEHE begrenzt: zwei Reihen
+        # in 741 Punkte heisst 367 je Kachel, und 275 Breite dazu passen
+        # fuenfmal in 1652. Die Begruendung samt der Zahl fuer die
+        # Galerie steht bei raster_gross() in fe/settings.py.
+        # ZWEI Deckel, und der zweite kam erst durch die Messung dazu.
+        # Ohne ihn liefert hochkant 1x2 - zwei Kacheln von 386 Punkten
+        # Breite auf einem 1080 breiten Schirm, also genau der Fehler aus
+        # Build 176 in neuem Anzug. Deshalb gilt zusaetzlich: mindestens
+        # RASTER_GROSS_SPALTEN Spalten. Von beiden Deckeln gewinnt der
+        # kleinere.
+        if self._raster_gross_an() if gross is None else gross:
+            reihen = self.RASTER_GROSS_REIHEN
+            aus_hoehe = (hoehe - (reihen - 1) * abstand) // reihen
+            mind_sp = self.RASTER_GROSS_SPALTEN
+            aus_breite = (((breite - (mind_sp - 1) * abstand) // mind_sp)
+                          * 4 // 3)
+            ziel_h = max(8, min(aus_hoehe, aus_breite))
+            ziel_b = max(6, ziel_h * 3 // 4)
+            spalten = max(mind_sp, (breite + abstand) // (ziel_b + abstand))
+            return spalten, reihen
         if fb.width >= fb.height:
             return (self.RASTER_CRT if fb.height < KOMPAKT_H
                     else self.RASTER_HDMI)
@@ -3723,7 +3774,21 @@ class Frontend:
         # es da ist. Jetzt ist die Kachel so breit wie ihr Cover, und
         # der uebrig bleibende Rand wird gleichmaessig auf beide Seiten
         # verteilt.
-        cov_b, cov_h = self.kachel_cover_kasten(L)
+        # Build 210: im Grossmodus den EIGENEN Kasten des Rasters.
+        #
+        # kachel_cover_kasten() nimmt seit Build 128 den KLEINEREN von
+        # Raster und Galerie-Nachbarleiste, damit beide dieselbe Miniatur
+        # benutzen - eine Ersparnis von einem Viertel aller Dateien, und
+        # die soll bleiben. Genau dieser Deckel macht aber im Grossmodus
+        # aus 275x367 wieder 193x258, weil die Nachbarleiste klein ist
+        # und klein bleiben soll. Dort also getrennt: das Raster nimmt
+        # seinen eigenen Kasten, die Nachbarleiste ihren. Das ist der
+        # Preis, der bei raster_gross() in fe/settings.py steht - eine
+        # zusaetzliche Kastengroesse.
+        if self._raster_gross_an():
+            cov_b, cov_h = self._raster_cover_natur(L)
+        else:
+            cov_b, cov_h = self.kachel_cover_kasten(L)
         gesamt_b = spalten * cov_b + (spalten - 1) * abstand
         raster_ox = ox + max(0, (breite - gesamt_b) // 2)
         return {"spalten": spalten, "zeilen": zeilen, "oben": oben,
@@ -3732,7 +3797,7 @@ class Frontend:
                 "cov_h": cov_h, "name_y": unten + 3 * s,
                 "ox": raster_ox, "rand_ox": ox, "s": s}
 
-    def _raster_cover_natur(self, L):
+    def _raster_cover_natur(self, L, gross=None):
         """(breite, hoehe) des Coverkastens, den das RASTER von sich aus
         haette - vor dem Abgleich mit der Galerie.
 
@@ -3745,7 +3810,8 @@ class Frontend:
         breite = fb.width - 2 * ox
         hoehe = unten - oben
         abstand = 6 * s
-        spalten, zeilen = self._raster_aufteilung(breite, hoehe, abstand)
+        spalten, zeilen = self._raster_aufteilung(breite, hoehe, abstand,
+                                                  gross=gross)
         platz_b = (breite - (spalten - 1) * abstand) // spalten
         platz_h = (hoehe - (zeilen - 1) * abstand) // zeilen
         cov_h = max(1, platz_h)
@@ -3811,7 +3877,15 @@ class Frontend:
         Kachel, ragt darueber hinaus. Kleiner heisst hoechstens ein paar
         Punkte mehr Luft (HDMI 171 -> 166, also 3 %), und die faellt
         neben dem Gewinn nicht ins Gewicht."""
-        r_b, r_h = self._raster_cover_natur(L)
+        # gross=False ist hier ABSICHT und keine Vergesslichkeit
+        # (Build 210): dieser Kasten gehoert der Galerie-Nachbarleiste,
+        # und die soll sich nicht veraendern, nur weil das RASTER auf
+        # grosse Kacheln gestellt wurde. Ohne das bekaeme die Leiste bei
+        # 1080p 193x258 statt 176x235 - eine zusaetzliche Miniatur je
+        # Spiel fuer eine Ansicht, an der sich nichts aendern sollte.
+        # Mit gross=False bleibt die Galerie bitgenau, wie sie ist, und
+        # der Schalter wirkt genau dort, wo er wirken soll.
+        r_b, r_h = self._raster_cover_natur(L, gross=False)
         g_h = max(1, self._galerie_leiste_h(L))
         g_b = max(1, g_h * 3 // 4)
         if g_h < r_h:
@@ -6879,7 +6953,7 @@ class Frontend:
     # ------------------------------------------------------------------
     # Raster- und Galerieansicht (Build 122)
     # ------------------------------------------------------------------
-    def _ansicht_cover(self, item, cat_syskey, bw, bh, kachel_kasten=None):
+    def _ansicht_cover(self, item, cat_syskey, bw, bh):
         """(Cover, nur_verzoegert) - das fertig verkleinerte Cover eines
         Eintrags, oder (None, ...) wenn es keines gibt.
 
@@ -6904,44 +6978,9 @@ class Frontend:
         if not pfad:
             return None, False
         vorher = getattr(ART, "_defer_count", 0)
-        if kachel_kasten is None:
-            art = ART.get_scaled(pfad, bw, bh, auslagern_ok=True)
-        else:
-            # Build 207 (Probeschalter galerie_kachelquelle): das Bild
-            # aus der kleineren Kachel-Miniatur hochziehen. Der
-            # Verzoegerungs-Zaehler wird weiterhin richtig ausgewertet,
-            # weil get_scaled_aus_kachel() intern ueber get_scaled()
-            # geht - das ist genau die Stelle, die zaehlt.
-            art = ART.get_scaled_aus_kachel(pfad, kachel_kasten[0],
-                                            kachel_kasten[1], bw, bh,
-                                            auslagern_ok=True)
+        art = ART.get_scaled(pfad, bw, bh, auslagern_ok=True)
         return art, (art is None
                      and getattr(ART, "_defer_count", 0) != vorher)
-
-    def galerie_quellkasten(self, L):
-        """Aus WELCHEM Kasten holt die Galerie ihr grosses Bild - oder
-        None fuer "aus ihrem eigenen", also dem Stand vor Build 207.
-
-        Eine Funktion, drei Benutzer: der Zeichenweg der Galerie, der
-        Vorauslader (ueber _art_panel_geometrie()) und der Test. Genau
-        die Trennung, an der Build 73 schon einmal fast auseinander-
-        gelaufen ist - legt der Vorauslader unter dem Galerie-Kasten ab,
-        waehrend der Zeichenweg den Kachel-Kasten abfragt, bereitet er
-        ins Leere vor, und niemand sieht warum.
-
-        Der Kasten ist der der Rasteransicht, unveraendert - nicht ein
-        eigener, sonst waere es eine dritte Groesse."""
-        try:
-            from fe.settings import galerie_kachelquelle
-            if not galerie_kachelquelle():
-                return None
-            g = self.raster_geometrie(L)
-            kb, kh = g["cov_b"], g["cov_h"]
-        except Exception:                            # noqa: BLE001
-            return None
-        if kb <= 4 or kh <= 4:
-            return None
-        return kb, kh
 
     def _nachzeichnen_vorbereiten(self):
         """Vor dem Nachzeichnen im Leerlauf (COVER_SETTLE): in Raster
@@ -7329,16 +7368,7 @@ class Frontend:
         fb.karte_mit_schatten(gx - pad, oben - pad, gb + 2 * pad,
                               gh + 2 * pad, 3 * s, C_PANEL,
                               fb._darken(C_BG, 0.55), 4 * s)
-        # Build 207, Probeschalter: das grosse Bild aus der Raster-
-        # Miniatur hochskalieren statt aus einer eigenen. Siehe
-        # galerie_quellkasten() - liefert None, wenn der Schalter aus
-        # ist, und dann ist dies Zeile fuer Zeile der Stand von 206.
-        _kk = self.galerie_quellkasten(L)
-        if _kk is None:
-            art, verzoegert = self._ansicht_cover(item, syskey, gb, gh)
-        else:
-            art, verzoegert = self._ansicht_cover(item, syskey, gb, gh,
-                                                  kachel_kasten=_kk)
+        art, verzoegert = self._ansicht_cover(item, syskey, gb, gh)
         if art:
             aw, ah, pix = art
             ax = gx + max(0, (gb - aw) // 2)
@@ -9300,14 +9330,6 @@ class Frontend:
             g = self.galerie_geometrie(L)
             if g["gross_b"] <= 4 or g["gross_h"] <= 4:
                 return None
-            # Build 207: bei eingeschaltetem Probeschalter holt die
-            # Galerie ihr Bild aus der Raster-Miniatur (siehe
-            # galerie_quellkasten()). Dann muss auch HIER dieser Kasten
-            # stehen, sonst bereitet der Vorauslader eine Groesse vor,
-            # die der Zeichenweg nie abfragt.
-            _kk = self.galerie_quellkasten(L)
-            if _kk is not None:
-                return "fest", _kk[0], _kk[1], s
             return "fest", g["gross_b"], g["gross_h"], s
         art_x0 = art_spalte_x0(L["list_right"], fb.height, s)
         art_w = (W - ox) - art_x0
@@ -18150,6 +18172,50 @@ class Frontend:
                 "fasse nach" % last)
         LOG("Exit: das OSD kam nach %d Versuchen nicht - beende trotzdem"
             % self.EXIT_F12_VERSUCHE)
+        self._exit_hinweis_auf_tty1()
+
+    # Was auf tty1 steht, wenn die Uebergabe an MiSTer nicht geklappt
+    # hat. ASCII und kurz - das ist die rohe Linux-Konsole, keine Stelle
+    # fuer Umlaute oder Rahmen.
+    EXIT_HINWEIS = (b"\r\n"
+                    b"  Dragend beendet. Das MiSTer-Menue kam nicht von\r\n"
+                    b"  selbst - bitte F12 auf der Tastatur druecken.\r\n"
+                    b"\r\n")
+
+    def _exit_hinweis_auf_tty1(self):
+        """Eine Zeile Anleitung auf die Konsole schreiben, wenn die
+        Uebergabe an MiSTer nicht geklappt hat.
+
+        NEU (Build 210). Der Nutzer, woertlich: "wenn ich frontend
+        beenden will komme ich immer noch ins login prompt anstatt ins
+        osd" und "dort haenge ich dann fest".
+
+        Sein Exit-Log sagt, was los ist - dreimal eingespeistes F12,
+        dreimal MiSTer bei 6-7 %:
+
+            Exit: injiziere F12 (1/3)
+            Exit: MiSTer bei 7% - das OSD ist NICHT gekommen, fasse nach
+            ...
+            Exit: das OSD kam nach 3 Versuchen nicht - beende trotzdem
+
+        Das Messinstrument aus Build 166 arbeitet also richtig und meldet
+        ehrlich einen Fehlschlag; was nicht funktioniert, ist die
+        Einspeisung selbst. Auf seiner TASTATUR oeffnet F12 das Menue
+        sehr wohl ("mit f12 komme ich ins osd das klappt noch").
+
+        Die richtige Abhilfe laeuft ueber /dev/MiSTer_cmd - MiSTers
+        eigenen Kanal, den wir fuer load_core schon benutzen. Welcher
+        Befehl dort das Menue holt, ist noch nicht belegt, und geraten
+        wird hier nicht (siehe Builds 146-149, viermal falsch abgebogen).
+
+        Bis das belegt ist, wenigstens das: aus einer Sackgasse wird eine
+        Anleitung. Es kostet einen Schreibvorgang auf tty1 und kann
+        nichts kaputtmachen - genau dorthin schreiben wir seit Build 150
+        ohnehin, um den Login-Gruss wegzuwischen."""
+        try:
+            self.tty1_schreiben(self.EXIT_HINWEIS, "Exit-Hinweis")
+        except Exception:                                # noqa: BLE001
+            pass                     # der Ausstieg darf daran nie haengen
 
     # Nach so vielen Sekunden im Herunterfahren zieht die Reissleine.
     # Grosszuegig bemessen: der Vorauslader darf eine angefangene
@@ -18247,8 +18313,7 @@ FE_PAKET_BRAUCHT = (
     # gemischter Stand BENANNT wird, und dort gehoert er hin.
     ("fe.settings", None, "artbox_aufschub_aus", "Build 197"),
     ("fe.framebuffer", "Framebuffer", "_waechter_pruefen", "Build 198"),
-    ("fe.settings", None, "galerie_kachelquelle", "Build 207"),
-    ("fe.art", "ArtCache", "get_scaled_aus_kachel", "Build 207"),
+    ("fe.settings", None, "raster_gross", "Build 210"),
     ("fe.input", "InputManager", "f9_gesehen", "Build 207"),
 )
 

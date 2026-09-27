@@ -136,6 +136,13 @@ class Framebuffer:
     # Textzeilen ab - der Login-Gruss braucht drei.
     WAECHTER_OBEN_BIS = 96
     WAECHTER_OBEN_ABSTAND = 8
+    # Wieviele Proben je Blick angesehen werden (Build 210, nach der
+    # Messung auf dem Geraet - siehe _waechter_pruefen()). Der Rest
+    # kommt beim naechsten Blick dran, im Ringverfahren. Vier von zwanzig
+    # heisst: jede Probe ist nach fuenf Blicken einmal dran, beim
+    # Scrollen also mehrmals je Sekunde.
+    WAECHTER_PRO_BLICK = 4
+    _waechter_zeiger = 0
     # Kuerzester Abstand zwischen zwei Reparaturen. Wischt MiSTer
     # dauerhaft, wuerde sonst jeder Teil-Flip zu einer Vollbildkopie -
     # aus 1 ms wuerden 13, und das Scrollen waere langsamer als vor
@@ -806,6 +813,7 @@ class Framebuffer:
         self._waechter_zeile_bytes = zeile_bytes
         self._waechter_soll = bytearray(len(offsets) * zeile_bytes)
         self._waechter_gueltig = [False] * len(offsets)
+        self._waechter_zeiger = 0
         self._waechter_an = True
 
     def _waechter_merken(self, y0=0, y1=None):
@@ -893,6 +901,32 @@ class Framebuffer:
         deshalb EINE Fassung, ohne Rueckfall und ohne zwei Wege, die
         auseinanderlaufen koennen.
 
+        UND DANN HAT MICH DAS GERAET KORRIGIERT (Build 210). Im
+        Profillauf des Nutzers stand:
+
+            2   0.004   0.002   0.004   0.002
+            fe/framebuffer.py:843(_waechter_pruefen)
+
+        ZWEI MILLISEKUNDEN je Blick, zweimal je Scrollschritt - von 46
+        ms Gesamtdauer. Auf meinem Rechner waren es 0,013 ms, und der
+        Unterschied ist der ganze Punkt: dort ist mm ein bytearray im
+        normalen Arbeitsspeicher, hier ist es der BILDSPEICHER. Aus dem
+        zu lesen ist ungecacht und langsam - 150 kB kosten dort so viel
+        wie 12 MB im RAM. Meine Messung war richtig und die
+        Schlussfolgerung fuer das Geraet trotzdem falsch, weil ich das
+        falsche Stueck Speicher gemessen habe.
+
+        ABHILFE, ohne die Erkennung aufzugeben: je Blick wird nur ein
+        TEIL der Proben angesehen, im Ringverfahren (siehe
+        WAECHTER_PRO_BLICK). Bei 20 Proben und 4 je Blick ist jede
+        Probe nach fuenf Blicken einmal dran - beim Scrollen also
+        mehrmals je Sekunde, und der Login-Gruss steht ja, bis ihn
+        jemand wegwischt. Aus 150 kB je Blick werden 30 kB, aus
+        gemessenen 2 ms rund 0,4 ms.
+
+        Damit das nicht wieder auf meinem Rechner "nachgemessen" wird,
+        misst es jetzt der Bench auf dem Geraet - Abschnitt F.
+
         Die Proben liegen bis Zeile WAECHTER_OBEN_BIS alle
         WAECHTER_OBEN_ABSTAND Bildzeilen - eng genug, dass keine
         Textzeile der Konsole hindurchpasst - und darunter gestreut
@@ -903,11 +937,18 @@ class Framebuffer:
         zb = self._waechter_zeile_bytes
         mm = self.mm
         gueltig = self._waechter_gueltig
-        for i, off in enumerate(self._waechter_offsets):
+        offsets = self._waechter_offsets
+        anz = len(offsets)
+        wieviele = min(self.WAECHTER_PRO_BLICK, anz)
+        start = self._waechter_zeiger % anz
+        self._waechter_zeiger = (start + wieviele) % anz
+        for k in range(wieviele):
+            i = (start + k) % anz
             # Die Marke ist die Antwort auf "dort haben wir noch nie
             # geschrieben" - so eine Probe darf nichts melden.
             if not gueltig[i]:
                 continue
+            off = offsets[i]
             if mm[off:off + zb] != soll[i * zb:(i + 1) * zb]:
                 return True
         return False

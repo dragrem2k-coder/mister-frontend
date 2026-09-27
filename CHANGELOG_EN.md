@@ -13,6 +13,65 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.6 — not yet released
 
+**I measured on the wrong machine — corrected here, and the bench now
+measures it on the device.**
+
+Build 209 moved the picture guard from eight pixels to twenty whole rows. I
+established the cost on the development machine: 0.013 ms for 150 kB. The
+profile run on the real device then showed **2 milliseconds per look**,
+twice per scroll step. The difference is not the CPU but *which memory*: on
+the PC that is an array in ordinary RAM, on the device it is the
+framebuffer — uncached, across the bus, and worse to read than to write.
+
+The remedy, without giving up detection: only four of the twenty probes are
+inspected per look, round-robin. Every probe comes up after five looks —
+several times a second while scrolling, and the login greeting stays until
+something wipes it. 150 kB per look becomes 30 kB.
+
+So this cannot repeat, there is now **bench section F**: it reads the same
+number of bytes once from RAM and once from the framebuffer, states the
+factor between them, and then the cost of a real guard look. The number I
+got wrong now comes from the device.
+
+**The grid can show large tiles.** The request was "the box art size like
+the large ones in the gallery, maybe eight on a screen". Worked out: the
+grid area at 1080p is 1652×741 points, and only *one* row of 342×456 fits
+in it. With two rows the tile becomes 270×361 — 79 % of the gallery size —
+and ten of those fit:
+
+```
+small   7x3 = 21 tiles,  cover 176x235
+large   5x2 = 10 tiles,  cover 270x361      (gallery: 342x456)
+```
+
+So ten rather than the hoped-for eight. It is computed the way portrait has
+been since Build 176: the tile *size* is fixed, not the *count*. On 720p it
+becomes 180×241, on a CRT 53×71, portrait 298×397.
+
+The price, named honestly: 270×361 is a new box size, and the thumbnail
+store keys on size. Run "prepare thumbnails" once after switching it on.
+Off by default:
+
+```
+touch /media/fat/frontend/raster_gross     # on
+rm    /media/fat/frontend/raster_gross     # off
+```
+
+**The gallery-from-grid-tile experiment is gone** — verdict at the TV:
+"looks bad". Upscaler and all branches with it; a dead switch is worse than
+none.
+
+**For quitting, the cause is now established.** Three injected F12s, MiSTer
+at 6–7 % load each time, "the OSD did NOT arrive" three times. So the
+instrument from Build 166 works correctly — what fails is the *injection*,
+while F12 on the keyboard does open the menu. The proper fix goes through
+MiSTer's own command channel, whose formats are now known; which one
+fetches the menu is not yet established, so it is not built. What this
+build does: the dead end becomes an instruction. If the handover finally
+fails, the console says to press F12.
+
+---
+
 **The picture guard never found the login prompt, because it was looking
 at eight single pixels.**
 
