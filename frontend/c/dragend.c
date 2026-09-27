@@ -289,5 +289,71 @@ int skalieren_nearest(const unsigned char *pix, int w, int h,
 
 /* Damit die Python-Seite pruefen kann, ob sie die passende Fassung
  * gefunden hat. Wird bei jeder inhaltlichen Aenderung hochgezaehlt.
- * 3 = skalieren_nearest() dazugekommen (Build 175). */
-int dragend_version(void) { return 3; }
+ * 3 = skalieren_nearest() dazugekommen (Build 175).
+ * 4 = fremd_zaehlen() dazugekommen (Build 209).
+ *     WICHTIG bei einem Teil-Update: eine alte libdragend.so meldet
+ *     hier 3, die Python-Seite verwirft sie dann mit einer Log-Zeile
+ *     und rechnet selbst. Es geht also nichts kaputt, es wird nur
+ *     langsamer - und im Log steht, warum. */
+int dragend_version(void) { return 4; }
+
+/* ------------------------------------------------------------------
+ * WAS HIER BEWUSST NICHT STEHT: DER BILDWAECHTER (Build 209)
+ * ------------------------------------------------------------------
+ * Der Waechter vergleicht seit Build 209 ganze ZEILEN statt acht
+ * einzelner Bildpunkte (siehe _waechter_pruefen() in
+ * fe/framebuffer.py). Ich hatte ihn zuerst hierher geholt, in der
+ * Annahme, 20 Proben mal 7680 Byte seien in Python zu teuer.
+ *
+ * Die Messung sagt etwas anderes, und sie hat gewonnen:
+ *
+ *     gleich         C 0.0158 ms   Python 0.0126 ms
+ *     spaeter Fund   C 0.0110 ms   Python 0.0110 ms
+ *
+ * Python ist sogar minimal SCHNELLER. Der Grund ist einfach und ich
+ * hatte ihn uebersehen: ein Schnittvergleich auf einem bytearray
+ * (mm[a:b] != soll[c:d]) IST bereits ein memcmp, und eine Zuweisung
+ * ist ein memcpy - der Python-Rahmen faellt genau einmal je Probe an,
+ * nicht je Byte. Zu holen war hier also nie etwas, und die
+ * ctypes-Aufrufkosten fressen den Rest.
+ *
+ * Deshalb steht der Waechter in Python, in EINER Fassung, ohne
+ * Rueckfall und ohne zwei Wege, die auseinanderlaufen koennen.
+ *
+ * Teuer war nur, was Python WIRKLICH je Bildpunkt anfassen muss -
+ * und das ist der Zaehler gleich darunter.
+ */
+
+/* ------------------------------------------------------------------
+ * FREMDE AUSGABE ZAEHLEN (Build 209)
+ * ------------------------------------------------------------------
+ * Der Rumpf von frontend.py::_fremdausgabe_zaehlen_py(): Bildpunkte,
+ * die auf dem SCHIRM hell sind, im gezeichneten Bild aber dunkel.
+ *
+ * Die Richtung ist wichtig und keine Bequemlichkeit: ein blosser
+ * Unterschied zwischen mm und buf entsteht auch mitten in einem
+ * eigenen Bildaufbau, dann ist das Helle aber in buf. Wer nur auf
+ * "ungleich" prueft, baut sich daraus ein Flackern - siehe Build 151.
+ *
+ * Nur der Gruenkanal (Byte 1 von 4) wird angesehen: der Prompt ist
+ * weisser Text, und ein Kanal spart zwei Drittel der Arbeit. Genau
+ * so macht es die Python-Fassung auch, und tools/test_c_modul.py
+ * vergleicht beide.
+ *
+ * Rueckgabe: Zahl der Treffer, -1 bei unsinnigen Argumenten.
+ */
+int fremd_zaehlen(const unsigned char *mm, const unsigned char *buf,
+                  int stride, int zeilen, int breite4, int hell, int dunkel)
+{
+    int y, x, treffer = 0;
+    if (!mm || !buf || stride <= 0 || zeilen < 0 || breite4 < 0) return -1;
+    for (y = 0; y < zeilen; y++) {
+        const unsigned char *s = mm + (size_t)y * stride;
+        const unsigned char *g = buf + (size_t)y * stride;
+        if (memcmp(s, g, (size_t)breite4) == 0) continue;
+        for (x = 1; x < breite4; x += 4) {
+            if (s[x] > hell && g[x] <= dunkel) treffer++;
+        }
+    }
+    return treffer;
+}

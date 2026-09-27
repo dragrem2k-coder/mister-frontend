@@ -85,12 +85,24 @@ check("er hat Proben", len(fb._waechter_offsets) >= 2,
 check("zwei davon liegen in den obersten Zeilen (dort steht der Prompt)",
       sum(1 for o in fb._waechter_offsets if o < 64 * fb.stride) >= 2,
       [o // fb.stride for o in fb._waechter_offsets])
-check("und sie stehen in verschiedenen Bildspalten",
-      len(set(o % fb.stride for o in fb._waechter_offsets))
-      == len(fb._waechter_offsets),
-      "sonst koennte eine einfarbige Spalte alle gleichzeitig taeuschen")
-check("noch kein Sollwert, es wurde ja nichts geschrieben",
-      all(s is None for s in fb._waechter_soll))
+# GEAENDERT (Build 209): die Proben sind ganze ZEILEN, keine einzelnen
+# Punkte mehr - siehe _waechter_pruefen() und tools/test_c_waechter.py,
+# wo gemessen steht, warum (200 von 200 gefundenen Prompts gegen 0 von
+# 200). Die Pruefung "verschiedene Bildspalten" war fuer Punkte da und
+# hat keinen Gegenstand mehr: eine ganze Zeile deckt ALLE Spalten ab,
+# eine einfarbige Spalte kann sie also nicht taeuschen. An ihre Stelle
+# tritt die Frage, die jetzt zaehlt - sind die Zeilen oben eng genug,
+# dass keine Konsolen-Textzeile (16 Bildpunkte) hindurchpasst?
+_oben = sorted(o // fb.stride for o in fb._waechter_offsets
+               if o // fb.stride < fb.WAECHTER_OBEN_BIS)
+_luecken = [b - a for a, b in zip(_oben, _oben[1:])]
+check("oben liegen die Zeilen enger als eine Konsolen-Textzeile",
+      _luecken and max(_luecken) <= 16,
+      "groesste Luecke %s" % (max(_luecken) if _luecken else "-"))
+check("eine Probe ist eine ganze Bildzeile breit",
+      fb._waechter_zeile_bytes == fb.width * 4, fb._waechter_zeile_bytes)
+check("noch keine Probe gueltig, es wurde ja nichts geschrieben",
+      not any(fb._waechter_gueltig), list(fb._waechter_gueltig))
 
 # ---------------------------------------------------------------------------
 print()

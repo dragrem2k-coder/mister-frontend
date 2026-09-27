@@ -1153,6 +1153,7 @@ from fe.art import (
     thumb_cache_schuetzen, thumb_cache_modus_setzen, thumb_cache_lesen,
     alten_flachen_cache_aufraeumen,
     rechtecke_kopieren as _c_rechtecke_kopieren,
+    fremd_zaehlen as _c_fremd_zaehlen,
     verkleinern_modus_vergessen,
 )
 
@@ -5485,6 +5486,27 @@ class Frontend:
         w = min(w, fb.width - x); h = min(h, fb.height - y)
         if w <= 0 or h <= 0:
             return
+        # GEAENDERT (Build 209): dasselbe macht rechtecke_kopieren() in
+        # c/dragend.c seit Build 155 fuer die Spuren-Liste - mit genau
+        # EINEM Rechteck ist es dieselbe Schleife. Aus dem Log des
+        # Nutzers (Build 196): "bg=11" von 85 ms je Scrollschritt, weil
+        # die Artbox-Spalte in einer Python-Schleife ueber rund 900
+        # Bildzeilen freigeraeumt wird. Genau die ist das hier.
+        #
+        # Die Grenzen sind dieselben, die _restore_spuren() uebergibt,
+        # damit C nicht ueber das Ende eines der beiden Puffer
+        # hinauslaeuft.
+        if _c_rechtecke_kopieren(bg_pattern, fb.buf, fb.stride, fb.height,
+                                 min(len(fb.buf), len(bg_pattern)),
+                                 ((x, y, w, h),)):
+            return
+        self._bg_fill_py(x, y, w, h, bg_pattern)
+
+    def _bg_fill_py(self, x, y, w, h, bg_pattern):
+        """Die Python-Fassung von _bg_fill() - Rueckfall ohne
+        libdragend und Vergleichsmass fuer den Test. Muss bitgenau
+        dasselbe tun wie rechtecke_kopieren() in c/dragend.c."""
+        fb = self.fb
         stride = fb.stride
         row_bytes = w * 4
         for yy in range(y, y + h):
@@ -14962,10 +14984,30 @@ class Frontend:
         eigenen Bildaufbau (buf ist dann schon fertig, mm noch nicht).
         In diesem Fall waere das Helle aber in buf, nicht in mm. Wer
         nur auf "ungleich" prueft, baut sich genau daraus ein Flackern -
-        siehe Build 151, wo der Nutzer es gemeldet hat."""
+        siehe Build 151, wo der Nutzer es gemeldet hat.
+
+        GEAENDERT (Build 209): in C, wenn libdragend da ist. Diese
+        Schleife lief seit Build 208 auch auf dem Aktions-Pfad, und
+        damit mitten im Scrollen - 48 Zeilen mal 512 Spalten sind
+        24576 Vergleiche in Python, je Sekunde einmal. Der Rumpf steht
+        in c/dragend.c, die Python-Fassung bleibt als Rueckfall UND als
+        Vergleichsmass fuer tools/test_c_modul.py stehen."""
         fb = self.fb
         hoehe = min(self.KONSOLE_WACHE_ZEILEN, fb.height)
         breite4 = min(self.KONSOLE_WACHE_SPALTEN, fb.width) * 4
+        try:
+            erg = _c_fremd_zaehlen(fb.mm, fb.buf, fb.stride, hoehe, breite4)
+        except Exception:                            # noqa: BLE001
+            erg = None
+        if erg is not None:
+            return erg
+        return self._fremdausgabe_zaehlen_py(hoehe, breite4)
+
+    def _fremdausgabe_zaehlen_py(self, hoehe, breite4):
+        """Die Python-Fassung von _fremdausgabe_zaehlen() - Rueckfall
+        ohne libdragend und Vergleichsmass fuer den Test. Muss genau
+        dasselbe zaehlen wie fremd_zaehlen() in c/dragend.c."""
+        fb = self.fb
         treffer = 0
         try:
             for y in range(hoehe):

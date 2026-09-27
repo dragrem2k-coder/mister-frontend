@@ -125,6 +125,17 @@ class Framebuffer:
     _waechter_repariert = 0
     _waechter_meldung = 0.0
     WAECHTER_PUNKTE = 8
+    # Build 209: die Proben sind ganze Zeilen. Klassenvorgaben aus
+    # demselben Grund wie alles darueber - eine Attrappe, die _map()
+    # nie ruft, soll flip_rows() trotzdem ueberstehen.
+    _waechter_zeile_bytes = 0
+    _waechter_gueltig = ()
+    # Bis zu welcher Bildzeile dicht geprobt wird und in welchem
+    # Abstand. Eine Textzeile der Linux-Konsole ist 16 Bildpunkte hoch;
+    # mit 8 kann keine uebersprungen werden. 96 deckt die ersten sechs
+    # Textzeilen ab - der Login-Gruss braucht drei.
+    WAECHTER_OBEN_BIS = 96
+    WAECHTER_OBEN_ABSTAND = 8
     # Kuerzester Abstand zwischen zwei Reparaturen. Wischt MiSTer
     # dauerhaft, wuerde sonst jeder Teil-Flip zu einer Vollbildkopie -
     # aus 1 ms wuerden 13, und das Scrollen waere langsamer als vor
@@ -755,26 +766,46 @@ class Framebuffer:
         n = max(2, min(n, 64))
         if self.height <= 0 or self.width <= 0:
             return
-        zeilen = [min(self.height - 1, 16), min(self.height - 1, 40)]
-        rest = max(1, n - len(zeilen))
+        # GEAENDERT (Build 209): ganze ZEILEN statt einzelner Punkte.
+        # Siehe den Kommentarblock bei _waechter_pruefen() - acht Punkte
+        # finden ein weggeschaltetes Bild sofort, einen
+        # hineingeschriebenen Login-Gruss praktisch nie.
+        zeilen = []
+        # Dicht im oberen Bereich: dort schreibt der Login-Prozess
+        # (frontend_boot.sh setzt den Cursor ganz am Anfang auf
+        # Position 1). Alle ZEILEN_OBEN_ABSTAND Bildzeilen eine Probe -
+        # eine Textzeile der Konsole ist 16 Bildpunkte hoch, ein
+        # Abstand von 8 kann sie also nicht ueberspringen.
+        y = 0
+        while y < min(self.height, self.WAECHTER_OBEN_BIS):
+            zeilen.append(y)
+            y += self.WAECHTER_OBEN_ABSTAND
+        # Und der Rest gestreut ueber die ganze Hoehe - das ist der
+        # Teil, der das WEGGESCHALTETE Bild findet (Build 198).
+        rest = max(1, n)
         for i in range(rest):
             zeilen.append((self.height * (2 * i + 1)) // (2 * rest))
-        punkte = []
-        anz = len(zeilen)
-        for k, z in enumerate(zeilen):
-            z = max(0, min(self.height - 1, z))
-            x = (self.width * (2 * k + 1)) // (2 * anz)
-            x = max(0, min(self.width - 1, x))
-            punkte.append(z * self.stride + x * 4)
-        # Doppelte entfernen, Reihenfolge behalten.
+        # Doppelte entfernen, Reihenfolge behalten, und keine Zeile, die
+        # ueber den Bildspeicher hinausragt.
         gesehen = set()
-        eindeutig = []
-        for p in punkte:
-            if p not in gesehen:
-                gesehen.add(p)
-                eindeutig.append(p)
-        self._waechter_offsets = tuple(eindeutig)
-        self._waechter_soll = [None] * len(self._waechter_offsets)
+        offsets = []
+        zeile_bytes = self.width * 4
+        grenze = self.height * self.stride
+        for z in zeilen:
+            z = max(0, min(self.height - 1, z))
+            if z in gesehen:
+                continue
+            off = z * self.stride
+            if off + zeile_bytes > grenze:
+                continue
+            gesehen.add(z)
+            offsets.append(off)
+        if not offsets:
+            return
+        self._waechter_offsets = tuple(offsets)
+        self._waechter_zeile_bytes = zeile_bytes
+        self._waechter_soll = bytearray(len(offsets) * zeile_bytes)
+        self._waechter_gueltig = [False] * len(offsets)
         self._waechter_an = True
 
     def _waechter_merken(self, y0=0, y1=None):
@@ -796,9 +827,18 @@ class Framebuffer:
             y1 = self.height
         a0 = y0 * self.stride
         a1 = y1 * self.stride
+        zb = self._waechter_zeile_bytes
+        buf = self.buf
+        gueltig = self._waechter_gueltig
+        # EINE Zuweisung je Probe, und die ist ein memcpy - der
+        # Python-Rahmen faellt je Probe an, nicht je Byte. Genau daran
+        # ist der Versuch gescheitert, das nach C zu holen; die Messung
+        # steht in c/dragend.c.
         for i, off in enumerate(self._waechter_offsets):
-            if a0 <= off < a1:
-                soll[i] = bytes(self.buf[off:off + 4])
+            if off < a0 or off + zb > a1:
+                continue
+            soll[i * zb:(i + 1) * zb] = buf[off:off + zb]
+            gueltig[i] = True
 
     def _waechter_pruefen(self):
         """Steht auf dem Schirm noch unser Bild?
@@ -831,16 +871,44 @@ class Framebuffer:
         der unfreiwillige Preis dafuer.
 
         Zu reparieren ist nichts: unser Puffer ist unversehrt. Es muss
-        nur einmal alles kopiert werden."""
+        nur einmal alles kopiert werden.
+
+        GEAENDERT (Build 209): ganze ZEILEN statt einzelner Punkte, und
+        der Vergleich in C.
+
+        WARUM. Der Nutzer hat ueber mehrere Builds dasselbe gemeldet:
+        "login prompt ploppt immer noch kurz zwischendurch auf". Der
+        Waechter hat das nie gefunden, und der Grund ist einfache
+        Wahrscheinlichkeit: acht EINZELNE Bildpunkte. Dass einer davon
+        genau auf einem Buchstaben des Grusses liegt, ist praktisch
+        ausgeschlossen - deshalb fand er nur den Fall, in dem das GANZE
+        Bild weg war (dort 15 von 15 Proben).
+
+        Ganze Zeilen finden beides. Ich hatte sie fuer zu teuer
+        gehalten und erst nach C geholt - die Messung hat das
+        widerlegt, Python ist dort sogar minimal schneller (ein
+        Schnittvergleich auf einem bytearray IST ein memcmp, der
+        Python-Rahmen faellt je PROBE an, nicht je Byte). Die Zahlen
+        und der ganze Irrweg stehen in c/dragend.c; hier steht
+        deshalb EINE Fassung, ohne Rueckfall und ohne zwei Wege, die
+        auseinanderlaufen koennen.
+
+        Die Proben liegen bis Zeile WAECHTER_OBEN_BIS alle
+        WAECHTER_OBEN_ABSTAND Bildzeilen - eng genug, dass keine
+        Textzeile der Konsole hindurchpasst - und darunter gestreut
+        ueber die ganze Hoehe."""
         soll = self._waechter_soll
         if not soll:
             return False
+        zb = self._waechter_zeile_bytes
         mm = self.mm
+        gueltig = self._waechter_gueltig
         for i, off in enumerate(self._waechter_offsets):
-            s = soll[i]
-            if s is None:
-                continue          # dort haben wir noch nie geschrieben
-            if mm[off:off + 4] != s:
+            # Die Marke ist die Antwort auf "dort haben wir noch nie
+            # geschrieben" - so eine Probe darf nichts melden.
+            if not gueltig[i]:
+                continue
+            if mm[off:off + zb] != soll[i * zb:(i + 1) * zb]:
                 return True
         return False
 

@@ -222,10 +222,15 @@ check("und niemand ruft das Flaechenmittel mehr direkt",
 print()
 print("Test 8: die Bibliothek passt zur Erwartung")
 # ---------------------------------------------------------------------------
-check("die Version wurde hochgezaehlt", A.DRAGEND_LIB_VERSION == 3,
+# GEAENDERT (Build 209): 4, seit fremd_zaehlen() dazugekommen ist. Die
+# Zahl steht hier absichtlich fest verdrahtet und nicht als Vergleich
+# gegen sich selbst - sie ist der Vertrag zwischen der .so auf der
+# Karte und der frontend.py, und wer die eine anfasst, soll hier
+# stolpern und die andere mitnehmen.
+check("die Version wurde hochgezaehlt", A.DRAGEND_LIB_VERSION == 4,
       str(A.DRAGEND_LIB_VERSION))
 check("die C-Datei meldet dieselbe",
-      "int dragend_version(void) { return 3; }" in quelle)
+      "int dragend_version(void) { return 4; }" in quelle)
 for datei in ("libdragend.so", "libdragend_x86.so"):
     p = os.path.join(_REPO, "frontend", datei)
     check("%s liegt neu gebaut bereit" % datei, os.path.exists(p))

@@ -864,7 +864,7 @@ THUMB_ALGO_VERSION = "3"
 # Quelle und Bauanleitung: frontend/c/dragend.c und frontend/c/bauen.sh
 import ctypes as _ctypes
 
-DRAGEND_LIB_VERSION = 3
+DRAGEND_LIB_VERSION = 4
 _LIB = None
 
 
@@ -903,6 +903,17 @@ def _lib_laden():
         lib.rechtecke_kopieren.argtypes = [
             _ctypes.c_void_p, _ctypes.c_void_p, _ctypes.c_int,
             _ctypes.c_int, _ctypes.c_int, _ctypes.c_void_p, _ctypes.c_int]
+        # Build 209: der Zaehler fuer fremde Ausgabe. Arbeitet auf mm
+        # und buf, also auf mmap und bytearray - deshalb c_void_p und
+        # _roh_zeiger(), wie bei rechtecke_kopieren darueber.
+        #
+        # Der BILDWAECHTER steht hier bewusst NICHT, obwohl er in
+        # derselben Ecke arbeitet - die Messung hat ihn in Python
+        # gelassen, siehe den Kommentarblock in c/dragend.c.
+        lib.fremd_zaehlen.restype = _ctypes.c_int
+        lib.fremd_zaehlen.argtypes = [
+            _ctypes.c_void_p, _ctypes.c_void_p, _ctypes.c_int,
+            _ctypes.c_int, _ctypes.c_int, _ctypes.c_int, _ctypes.c_int]
     except (OSError, AttributeError) as e:
         LOG("libdragend nicht nutzbar (%s) - rechne in Python" % e)
         return None
@@ -1099,6 +1110,26 @@ def rechtecke_kopieren(src, dst, stride, hoehe, grenze, spuren):
     except Exception:                                    # noqa: BLE001
         LOG("libdragend: Rechtecke kopieren fehlgeschlagen, nehme Python")
         return False
+
+
+def fremd_zaehlen(mm, buf, stride, zeilen, breite4, hell=0x40, dunkel=0x40):
+    """Bildpunkte, die auf dem Schirm hell und im Puffer dunkel sind.
+
+    Liefert die Zahl oder None, wenn C nicht da ist - dann muss der
+    Aufrufer selbst zaehlen (frontend.py::_fremdausgabe_zaehlen_py())."""
+    if _LIB is None:
+        return None
+    try:
+        _halt_m, zeiger_m = _roh_zeiger(mm)
+        _halt_b, zeiger_b = _roh_zeiger(buf)
+        erg = _LIB.fremd_zaehlen(zeiger_m, zeiger_b, stride, zeilen,
+                                 breite4, hell, dunkel)
+    except Exception:                                    # noqa: BLE001
+        LOG("libdragend: fremd_zaehlen fehlgeschlagen, nehme Python")
+        return None
+    if erg < 0:
+        return None
+    return erg
 
 
 _addiere = operator.add

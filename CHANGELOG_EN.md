@@ -13,6 +13,55 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.6 — not yet released
 
+**The picture guard never found the login prompt, because it was looking
+at eight single pixels.**
+
+That is the whole explanation for a nuisance that ran from Build 198 to
+208. The guard has compared correctly since Build 198 — against what we
+last wrote ourselves, which is why it has no false alarms. It just looked
+at *eight pixels*. A picture switched away entirely it finds at once (15
+of 15 probes were foreign on the user's device). But real text is made of
+thin strokes, and the chance that one of eight points lands on one is
+almost nil.
+
+The probes are now **whole rows**: up to row 96 every eight rows — a
+console text line is sixteen pixels tall and can no longer slip through —
+and spread over the full height below that. Instead of 32 bytes it now
+inspects 150 kB, 4800 times as much picture, and one look costs a measured
+0.013 ms. The test makes the case with 200 prompts at random positions:
+
+```
+found out of 200 prompts:  row guard 200,  eight points 0
+```
+
+**One wrong turn is documented rather than hidden.** I first moved the
+guard into C — 150 kB per look looks expensive. The measurement says
+otherwise: 0.0158 ms in C against 0.0126 ms in Python. Python is even
+marginally faster, because a slice comparison on a byte array *already is*
+a `memcmp`; the Python overhead is per probe, not per byte. So the C part
+came back out, bindings and fallback with it — the guard now has one
+implementation that cannot drift. The numbers are in the source so nobody
+"optimises" it again.
+
+**What did belong in C** are the two places Python has to touch per
+*pixel* and per *row*:
+
+| | before | now | |
+|---|---|---|---|
+| Counting foreign output | 0.813 ms | 0.027 ms | 31× |
+| Clearing an area (340×792) | 0.276 ms | 0.070 ms | 7× |
+
+The counting has been running mid-scroll since Build 208 — 48 rows by 512
+columns is 24576 comparisons. The clearing is the item that showed up in
+the log as `bg=11` out of 85 ms per scroll step. Both keep their Python
+version as a fallback and as a bit-exact reference in the test.
+
+`libdragend` is therefore version 4. An old file reports 3, is rejected
+with a log line, and the work is done in Python — so a half-applied update
+breaks nothing, it only gets slower.
+
+---
+
 **The login prompt while holding a key: the watch was never running at
 exactly that moment.**
 

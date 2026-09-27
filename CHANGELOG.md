@@ -12,6 +12,56 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.6 — noch nicht veröffentlicht
 
+**Der Bildwächter hat den Login-Prompt nie gefunden, weil er acht
+einzelne Bildpunkte angesehen hat.**
+
+Das ist die ganze Erklärung für ein Ärgernis, das sich über Builds 198
+bis 208 gezogen hat. Der Wächter vergleicht seit Build 198 richtig — gegen
+das, was wir zuletzt selbst geschrieben haben, weshalb er keine
+Fehlalarme kennt. Er sah dabei nur *acht Bildpunkte* an. Ein ganz
+weggeschaltetes Bild findet er damit sofort (beim Nutzer waren 15 von 15
+Proben fremd). Echter Text besteht aber aus dünnen Strichen, und dass
+einer von acht Punkten genau auf einem liegt, ist fast ausgeschlossen.
+
+Jetzt sind die Proben **ganze Zeilen**: bis Bildzeile 96 alle acht Zeilen
+— eine Konsolen-Textzeile ist sechzehn Bildpunkte hoch und kann also
+nicht mehr hindurchpassen — und darunter gestreut über die ganze Höhe.
+Statt 32 Byte werden 150 kB angesehen, 4800-mal so viel Bild, und ein
+Blick kostet gemessen 0,013 ms. Der Test macht die Probe mit 200 Prompts
+an zufälliger Stelle:
+
+```
+von 200 Prompts gefunden:  Zeilen-Wächter 200,  acht Punkte 0
+```
+
+**Ein Irrweg steht dokumentiert statt versteckt.** Ich hatte den Wächter
+zuerst nach C geholt — 150 kB je Blick sehen teuer aus. Die Messung sagt
+das Gegenteil: 0,0158 ms in C gegen 0,0126 ms in Python. Python ist sogar
+minimal schneller, weil ein Schnittvergleich auf einem Bytefeld *bereits*
+ein `memcmp` ist; der Python-Aufwand fällt je Probe an, nicht je Byte. Der
+C-Teil ist deshalb wieder rausgeflogen, samt Bindungen und Rückfall — der
+Wächter hat jetzt eine Fassung, die nicht auseinanderlaufen kann. Die
+Zahlen stehen im Quelltext, damit das niemand erneut „optimiert".
+
+**Was wirklich nach C gehörte,** sind die zwei Stellen, die Python je
+*Bildpunkt* beziehungsweise je *Bildzeile* anfassen muss:
+
+| | vorher | jetzt | |
+|---|---|---|---|
+| Fremdausgabe zählen | 0,813 ms | 0,027 ms | 31× |
+| Bereich freiräumen (340×792) | 0,276 ms | 0,070 ms | 7× |
+
+Das Zählen lief seit Build 208 auch mitten im Scrollen — 48 Zeilen mal 512
+Spalten sind 24576 Vergleiche. Das Freiräumen ist der Posten, der im Log
+als `bg=11` von 85 ms je Scrollschritt sichtbar war. Beide behalten ihre
+Python-Fassung als Rückfall und als bitgenaues Vergleichsmaß im Test.
+
+`libdragend` ist damit Fassung 4. Eine alte Datei meldet 3, wird mit einer
+Log-Zeile verworfen, und es wird in Python gerechnet — ein halbes Update
+macht also nichts kaputt, nur langsamer.
+
+---
+
 **Der Login-Prompt beim gehaltenen Scrollen: die Wache war an genau dieser
 Stelle nie aktiv.**
 

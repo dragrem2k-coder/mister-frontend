@@ -100,6 +100,14 @@ class Attrappe(object):
     haeppchen_pause = FBK.haeppchen_pause
     WAECHTER_PUNKTE = FBK.WAECHTER_PUNKTE
     WAECHTER_TAKT = FBK.WAECHTER_TAKT
+    # Build 209: die Proben sind ganze Zeilen, und dafuer braucht
+    # _waechter_einrichten() zwei weitere Vorgaben. Dritte Mal dieselbe
+    # Stelle, dritte Mal dieselbe Lehre (181, 198, jetzt 209): die
+    # Attrappe nachziehen, nicht die echte Klasse defensiv machen - ein
+    # fehlendes Stueck soll hier auffallen und nicht stillschweigend
+    # durchgehen.
+    WAECHTER_OBEN_BIS = FBK.WAECHTER_OBEN_BIS
+    WAECHTER_OBEN_ABSTAND = FBK.WAECHTER_OBEN_ABSTAND
 
 
 def mit_attrappe(fn):
