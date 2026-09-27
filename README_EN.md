@@ -1,4 +1,4 @@
-# Dragend — MiSTer Custom Frontend v4.5
+# Dragend — MiSTer Custom Frontend v4.7
 
 **By Dragrem2K**, with contributions from **TheRealSuTefan**, **Dfense**
 and **Dennsen**.
@@ -57,6 +57,7 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | | |
 |---|---|
 | **Three views** | List, grid, gallery — for the game list *and* the main page, switchable per category (F10 / Select+Y) |
+| **Large grid tiles** | Ten tiles of 270×361 instead of twenty-one of 176×235. Back to the small grid with `touch /media/fat/frontend/raster_klein` |
 | **Cover art & game info** | Your own set under `art/`, plus the database under `/media/fat/docs` if you have it. A download script is included |
 | **Game descriptions** | Shown next to the cover in gallery view |
 | **Filters** | By genre, year, player count and developer (Tab / Select+L2+R2), remembered per category |
@@ -85,6 +86,8 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | | |
 |---|---|
 | **CRT (15 kHz) and HDMI** | Each with its own look and layout, not one as a side effect of the other |
+| **Portrait (TATE)** | Its own layout for rotated screens — the tile size is computed, not hard-coded |
+| **Theme editor** | Change and save colours while running, no hand-edited file |
 | **Themes** | Colour schemes, accent colour, adjustable screen margin |
 | **Attract mode** | Screensaver showing cover art, delay from 30 s to 15 min |
 | **Boot animation** | Your own video, or the built-in D-pad animation |
@@ -103,6 +106,10 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | **Prepare thumbnails** | Pre-compute covers once so nothing loads in later |
 | **PC tool** | The same work on a Windows PC instead of the MiSTer — hours become minutes (`pc_tools/`) |
 | **C module** | `libdragend.so` scales images about 100× faster. Optional; without it Python does the work |
+| **Picture guard** | Brings the picture back when MiSTer re-initialises the framebuffer and the Linux console shows through (kernel 6.18) |
+| **JPEG thumbnails** | Large thumbnails are stored compactly — folders open noticeably faster |
+| **Scan protection** | Symlink loops and excessive nesting are detected instead of followed forever |
+| **Package check** | A half-applied update ends in an instruction, not a crash |
 
 All of it in detail: **[Manual](docs/MANUAL_EN.md)**.
 

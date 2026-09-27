@@ -10,7 +10,33 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ---
 
-## Nach v4.6 — noch nicht veröffentlicht
+## v4.7 — der Login-Prompt, große Kacheln, und was Messungen widerlegt haben
+
+Achtzehn Builds seit v4.6. Was man davon merkt, in vier Zeilen:
+
+- Der **Login-Prompt**, der seit Kernel 6.18 immer wieder ins Bild platzte,
+  ist gefunden und weg — der Wächter hatte acht einzelne Bildpunkte
+  angesehen statt ganzer Zeilen.
+- Die **Rasteransicht** zeigt jetzt große Boxart: zehn Kacheln à 270×361
+  statt einundzwanzig à 176×235.
+- **Frontend beenden** landet nicht mehr blind auf der Konsole, sondern
+  übergibt über MiSTers eigenen Befehlskanal — und sagt dir, was zu tun
+  ist, falls auch das nicht greift.
+- **Schneller** an mehreren Stellen, jede einzelne auf echter Hardware
+  nachgemessen: Teilbilder um Faktor 3,3, Miniaturen als JPEG, zwei
+  Rechenwege nach C.
+
+Und eine Zeile Selbstkritik, weil sie dazugehört: mehrere dieser Builds
+haben Fehler behoben, die ich zuvor selbst eingebaut hatte, weil ich auf
+dem Entwicklungsrechner gemessen habe statt auf dem MiSTer. Die
+Unterschiede sind dort keine Nuancen — der Bildspeicher des MiSTer ist
+beim Lesen etwa hundertmal teurer als normaler Arbeitsspeicher. Der Bench
+(`--bench`) misst deshalb inzwischen auch genau diese Stellen.
+
+**Wichtig nach dem Update:** einmal „Miniaturen vorbereiten" laufen
+lassen. Die großen Rasterkacheln haben eine neue Größe, und ohne
+Vorbereitung lädt das Raster beim ersten Durchblättern nach.
+
 
 **MiSTers Befehlstabelle löst zwei alte Rätsel auf einmal.**
 

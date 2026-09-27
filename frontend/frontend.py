@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v4.5
+MiSTer Custom Frontend - v4.7
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
@@ -1158,6 +1158,7 @@ from fe.art import (
     alten_flachen_cache_aufraeumen,
     rechtecke_kopieren as _c_rechtecke_kopieren,
     fremd_zaehlen as _c_fremd_zaehlen,
+    quelldaten_vergessen, marken_nachziehen,
     verkleinern_modus_vergessen,
 )
 
@@ -1275,6 +1276,9 @@ class Frontend:
         # Absicherung sitzt jetzt in _konsole_sichern().
         self._f9_wiederholt = 0
         self._f9_aufraeumen_ab = None
+        # Build 212: wann die naechste Portion "zuletzt benutzt"-Marken
+        # geschrieben wird. Siehe marken_nachziehen() in fe/art.py.
+        self._marken_naechste = 0.0
         # Build 207: das F9 des NUTZERS. Siehe _f9_nutzer_behandeln().
         self._f9_nutzer_letzte = 0.0
         self._f9_grund = "eingespeist"
@@ -2163,6 +2167,10 @@ class Frontend:
         # echte Unterordner haben, alle anderen bekommen einfach
         # folders={} (flach, wie bisher) - dadurch kann der Rest des
         # Codes (Rendering, Navigation) alle Kategorien gleich behandeln.
+        if force_rescan:
+            # Gleicher Grund wie bei der anderen Neueinlese-Stelle
+            # (Build 212, siehe _quelldaten() in fe/art.py).
+            quelldaten_vergessen()
         self.cats = scan_games(force=force_rescan,
                                progress_cb=self._draw_scan_progress,
                                warte_cb=self._draw_laufwerk_warten)
@@ -9107,6 +9115,23 @@ class Frontend:
                 # Begruendung, warum das Eintragen NICHT dort geschieht.
                 for _p, _bw, _bh, _erg in self.lader.abholen():
                     ART.nachgeladen_eintragen(_p, _bw, _bh, _erg)
+                # NEU (Build 212): die vorgemerkten "zuletzt benutzt"-
+                # Marken des Miniaturen-Caches auf die Karte schreiben.
+                # Genau hier gehoert es hin und nirgends sonst: dieser
+                # Zweig laeuft nur, wenn KEINE Eingabe anliegt - die
+                # Karte hat also nichts anderes zu tun. Im Lesepfad
+                # werden sie seit diesem Build nur noch vorgemerkt
+                # (siehe _benutzt_vermerken() in fe/art.py).
+                #
+                # Portionsweise und mit eigener Uhr: bei 0,1 ms je Marke
+                # (gemessen Build 74) sind 40 Stueck rund 4 ms, und
+                # oefter als MARKEN_TAKT passiert es nicht. Ein grosser
+                # Rueckstand wird also abgetragen, ohne einen
+                # Schreibstoss zu erzeugen.
+                _jetzt_marken = time.monotonic()
+                if _jetzt_marken >= self._marken_naechste:
+                    self._marken_naechste = _jetzt_marken + self.MARKEN_TAKT
+                    marken_nachziehen()
                 self._boot_watch()   # Diagnose: Anzeige-Zustand nach dem Boot
                 # Build 167: alle drei nur noch, wenn die Mechanik
                 # eingeschaltet ist - siehe konsole_mechanik(). Ohne
@@ -10189,6 +10214,24 @@ class Frontend:
         """Die Zielliste als Auftragsdatei ablegen, damit ein PC die
         Miniaturen rechnen kann (Build 145).
 
+        ZUERST WERDEN DIE GEMERKTEN QUELLDATEN VERWORFEN (Build 212),
+        und das ist keine Vorsicht, sondern eine gefundene Regression:
+        seit _quelldaten() Groesse und Aenderungszeit je Pfad nur EINMAL
+        holt, haette diese Funktion ein inzwischen AUSGETAUSCHTES Cover
+        nicht mehr bemerkt - sie haette den alten Schluessel gerechnet,
+        die alte Miniatur als "schon da" gesehen und das Cover aus dem
+        Auftrag gelassen. Der Nutzer haette am PC fleissig gerechnet und
+        auf dem MiSTer weiter das alte Bild gesehen.
+
+        Gefunden hat es tools/test_pc_durchstich.py, Test 5 ("ein
+        geaendertes Cover kommt wieder rein") - der Test war rot, bevor
+        diese Zeile hier stand.
+
+        Und es gilt allgemein: wer FESTSTELLEN will, was neu zu rechnen
+        ist, darf nicht auf gemerkten Dateidaten arbeiten. Der
+        Zeichenweg darf das (er zeigt hoechstens eine Sitzung lang ein
+        altes Bild), eine Bestandsaufnahme nicht.
+
         WARUM UEBERHAUPT: das Verkleinern ist reines Python und auf dem
         DE10-Nano der mit Abstand teuerste Posten - ein voller Durchlauf
         dauert Stunden. Derselbe Bestand ist auf einem PC in Minuten
@@ -10215,6 +10258,7 @@ class Frontend:
         Der PC muss danach nur noch: Bild holen, verkleinern, unter dem
         mitgelieferten Schluessel ablegen. Keine Annahme ueber Pfade,
         keine ueber Zeitstempel."""
+        quelldaten_vergessen()
         auftrag = []
         uebersprungen = 0
         alle = list(cover)
@@ -11757,6 +11801,10 @@ class Frontend:
             fb.text(ox, y, t("wizard_scan_progress", i, total, name), s, C_TEXT, C_BG)
             fb.flip()
 
+        # Build 212: der Zwischenspeicher der Quell-stat-Daten muss
+        # weg, sonst wuerde ein ausgetauschtes Cover weiterhin mit
+        # der alten Aenderungszeit bewertet - siehe _quelldaten().
+        quelldaten_vergessen()
         self.cats = scan_games(force=True, progress_cb=progress_cb)
         n_sys = len(self.cats)
         n_games = sum(_count_tree_items(node) for _n, node, _sk in self.cats
@@ -18106,6 +18154,12 @@ class Frontend:
     # Sekunden - und die fallen nur an, wenn es sonst gar nicht
     # funktioniert haette.
     EXIT_F12_VERSUCHE = 3
+
+    # Abstand zwischen zwei Portionen "zuletzt benutzt"-Marken im
+    # Leerlauf (Build 212). Eine halbe Sekunde reicht: 40 Marken je
+    # Portion raeumen auch einen Rueckstand von tausend Eintraegen in
+    # rund zwoelf Sekunden Stillstand ab.
+    MARKEN_TAKT = 0.5
 
     # Wie lange nach einem load_core auf das Menue gewartet wird. Ein
     # Core zu laden braucht deutlich laenger als eine Taste zu druecken.

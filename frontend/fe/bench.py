@@ -1103,6 +1103,92 @@ def _abschnitt_f(b, fe):
     b("   Alle %d auf einmal waeren hier %.2f ms." % (proben, ganz))
 
 
+def _abschnitt_g(b, fe, A):
+    """Was kostet die Dateisystem-Arbeit im Zeichenweg - auf DIESEM
+    Geraet?
+
+    ZWEI UMBAUTEN AUS BUILD 212 werden hier nachgemessen, und zwar
+    getrennt, weil sie unterschiedlich gut begruendet sind:
+
+    1. os.utime() je Cache-Treffer ist aus dem Lesepfad heraus. Fuer den
+       ZEITgewinn gibt es schon eine Zahl von diesem Geraet (Build 74:
+       0,1 ms je Marke) - der Umbau ist deshalb NICHT mit Geschwindigkeit
+       begruendet, sondern mit Schreibzugriffen auf die Karte waehrend
+       des Scrollens. Hier steht die Zahl trotzdem, damit niemand sie
+       spaeter schaetzen muss.
+
+    2. os.stat() je Nachschlagen ist aus dem Zeichenweg heraus. Dafuer
+       gibt es KEINE Messung von echter Hardware, also wird auch nichts
+       behauptet - das erledigt dieser Abschnitt.
+
+    Gemessen wird mit einer echten Datei im Miniaturen-Zwischenspeicher,
+    nicht mit einer erfundenen: nur so trifft es dieselbe Karte, dasselbe
+    Dateisystem und dieselben Puffer wie im Betrieb."""
+    b("")
+    b("-" * 62)
+    b(" G  Dateisystem im Zeichenweg (Build 212)")
+    b("-" * 62)
+    import os as _os
+    import tempfile as _tempfile
+    verz = getattr(A, "THUMB_CACHE_DIR", None)
+    if not verz or not _os.path.isdir(verz):
+        b("   -- kein Miniaturen-Verzeichnis, uebersprungen")
+        return
+    try:
+        fd, probe = _tempfile.mkstemp(prefix="bench_", dir=verz)
+        _os.write(fd, b"x" * 4096)
+        _os.close(fd)
+    except OSError as e:
+        b("   -- konnte keine Probedatei anlegen (%s), uebersprungen" % e)
+        return
+    try:
+        b("   Probedatei  : %s" % _os.path.basename(probe))
+
+        ms_utime, best_utime = messen(lambda: _os.utime(probe, None))
+        b.posten("os.utime auf die Karte (eine Marke)", ms_utime, best_utime)
+        b("   %-38s %9.2f ms" % ("21 Kacheln, wie bisher je Aufbau",
+                                 ms_utime * 21))
+
+        ms_stat, best_stat = messen(lambda: _os.stat(probe))
+        b.posten("os.stat, warm (Kernel kennt die Datei)", ms_stat, best_stat)
+        b("   %-38s %9.2f ms" % ("21 Kacheln, wie bisher je Aufbau",
+                                 ms_stat * 21))
+
+        # Und der Schluessel als Ganzes - stat plus Zeichenkette plus
+        # SHA1 -, einmal mit dem neuen Zwischenspeicher und einmal ohne.
+        if hasattr(A, "_thumb_cache_key") and hasattr(A, "_quell_stat"):
+            def mit_speicher():
+                A._thumb_cache_key(probe, 270, 361)
+
+            def ohne_speicher():
+                A._quell_stat.pop(probe, None)
+                A._thumb_cache_key(probe, 270, 361)
+
+            ms_ohne, best_ohne = messen(ohne_speicher)
+            b.posten("Cache-Schluessel OHNE Zwischenspeicher",
+                     ms_ohne, best_ohne)
+            A._thumb_cache_key(probe, 270, 361)     # einmal warmlaufen
+            ms_mit, best_mit = messen(mit_speicher)
+            b.posten("Cache-Schluessel MIT Zwischenspeicher",
+                     ms_mit, best_mit)
+            if ms_mit > 0:
+                b("   %-38s %9.1fx" % ("gespart je Schluessel, Faktor",
+                                       ms_ohne / ms_mit))
+            b("   %-38s %9.2f ms" % ("21 Kacheln gespart je Aufbau",
+                                     (ms_ohne - ms_mit) * 21))
+            A._quell_stat.pop(probe, None)
+        b("")
+        b("   Zur Einordnung: das LESEN einer Miniatur kostet auf diesem")
+        b("   Geraet laut Build 74 rund 11,2 ms, das Entpacken 1,3 ms.")
+        b("   Daran gemessen entscheidet sich, ob die Zahlen oben ueber-")
+        b("   haupt eine Rolle spielen.")
+    finally:
+        try:
+            _os.unlink(probe)
+        except OSError:
+            pass
+
+
 def lauf(fe, fm, A, S, startdauer=None, log=None):
     """Den kompletten Bench fahren und den Bericht als Text
     zurueckgeben. Bekommt alles, was er braucht, uebergeben - dieses
@@ -1133,6 +1219,10 @@ def lauf(fe, fm, A, S, startdauer=None, log=None):
         _abschnitt_f(b, fe)
     except Exception as e:                               # noqa: BLE001
         b("   ABSCHNITT F ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
+    try:
+        _abschnitt_g(b, fe, A)
+    except Exception as e:                               # noqa: BLE001
+        b("   ABSCHNITT G ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
     b("")
     b("=" * 62)
     b("Ende. Nichts auf der Karte wurde veraendert.")

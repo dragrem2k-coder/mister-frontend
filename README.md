@@ -1,4 +1,4 @@
-# Dragend — MiSTer Custom Frontend v4.5
+# Dragend — MiSTer Custom Frontend v4.7
 
 **Von Dragrem2K**, mit Beiträgen von **TheRealSuTefan**, **Dfense** und
 **Dennsen**.
@@ -56,6 +56,7 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | | |
 |---|---|
 | **Drei Ansichten** | Liste, Raster, Galerie — für Spieleliste *und* Hauptseite, je Kategorie umschaltbar (F10 / Select+Y) |
+| **Große Rasterkacheln** | Zehn Kacheln à 270×361 statt einundzwanzig à 176×235. Zurück zum kleinen Raster mit `touch /media/fat/frontend/raster_klein` |
 | **Boxart & Spielinfos** | Eigene Sammlung unter `art/`, dazu die Datenbank unter `/media/fat/docs`, falls vorhanden. Download-Skript liegt bei |
 | **Spielbeschreibungen** | Deutscher Text neben dem Cover in der Galerie |
 | **Filter** | Nach Genre, Jahr, Spielerzahl und Entwickler (Tab / Select+L2+R2), je Kategorie merkbar |
@@ -84,6 +85,8 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | | |
 |---|---|
 | **CRT (15 kHz) und HDMI** | Beide mit eigener Optik und eigenem Layout, nicht als Nebeneffekt |
+| **Hochkant (TATE)** | Eigene Aufteilung für gedrehte Bildschirme — die Kachelgröße wird gerechnet, nicht gesetzt |
+| **Theme-Editor** | Farben im laufenden Betrieb ändern und speichern, ohne Datei von Hand |
 | **Themes** | Farbschemata, Akzentfarbe, einstellbarer Bildrand |
 | **Attract-Modus** | Bildschirmschoner mit Cover-Schau, Verzögerung 30 s bis 15 min |
 | **Boot-Animation** | Eigenes Startvideo oder die eingebaute D-Pad-Animation |
@@ -102,6 +105,10 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | **Miniaturen vorbereiten** | Cover einmalig vorberechnen, damit nichts mehr nachlädt |
 | **PC-Werkzeug** | Dieselbe Arbeit am Windows-PC statt auf dem MiSTer — aus Stunden werden Minuten (`pc_tools/`) |
 | **C-Modul** | `libdragend.so` rechnet die Bildskalierung 100-fach schneller. Optional; fehlt sie, rechnet Python weiter |
+| **Bildwächter** | Holt das Bild zurück, wenn MiSTer den Bildspeicher neu einrichtet und die Linux-Konsole durchscheint (Kernel 6.18) |
+| **Miniaturen als JPEG** | Große Miniaturen werden platzsparend abgelegt — Ordner öffnen sich merkbar schneller |
+| **Schutz beim Einlesen** | Symlink-Schleifen und zu tiefe Verschachtelungen werden erkannt statt endlos verfolgt |
+| **Paket-Prüfung** | Ein halb eingespieltes Update endet in einer Anleitung, nicht in einem Absturz |
 
 Alles ausführlich: **[Handbuch](docs/HANDBUCH.md)**.
 

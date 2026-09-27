@@ -11,7 +11,33 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ---
 
-## After v4.6 — not yet released
+## v4.7 — the login prompt, large tiles, and what measurements disproved
+
+Eighteen builds since v4.6. What you notice, in four lines:
+
+- The **login prompt** that kept appearing since kernel 6.18 is found and
+  gone — the guard had been looking at eight single pixels instead of whole
+  rows.
+- The **grid view** now shows large box art: ten tiles of 270×361 instead
+  of twenty-one of 176×235.
+- **Quitting the frontend** no longer lands blindly on the console; it
+  hands over through MiSTer's own command channel — and tells you what to
+  do if even that fails.
+- **Faster** in several places, every one of them measured on real
+  hardware: partial frames by a factor of 3.3, JPEG thumbnails, two
+  computations moved to C.
+
+And one line of self-criticism, because it belongs here: several of these
+builds fixed faults I had introduced myself, by measuring on the
+development machine instead of on the MiSTer. The differences there are not
+nuances — reading the MiSTer's framebuffer is roughly a hundred times more
+expensive than ordinary RAM. The bench (`--bench`) now measures exactly
+those places.
+
+**Important after updating:** run "prepare thumbnails" once. The large grid
+tiles have a new size, and without it the grid will load covers as you
+first page through.
+
 
 **MiSTer's command table solves two old riddles at once.**
 

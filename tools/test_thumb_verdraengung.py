@@ -181,12 +181,29 @@ check("nach dem Uhrstellen ist die Marke nachgeholt",
 check("die Vormerkliste ist danach leer",
       not A._vor_uhrstellung_beruehrt)
 
-# Und ab jetzt ganz normal sofort
+# GEAENDERT (Build 212): auch bei stehender Uhr wird im LESEPFAD nicht
+# mehr gestempelt, sondern nur vorgemerkt - siehe _benutzt_vermerken().
+# Grund ist nicht die Zeit (ein utime kostet laut Build 74 auf dem
+# Geraet des Nutzers 0,1 ms), sondern dass beim Scrollen sonst je
+# Kachel ein Metadaten-Schreibvorgang auf dieselbe Karte geht, von der
+# gerade gelesen wird. Geschrieben wird im Leerlauf.
+#
+# Die ZUSAGE dieses Tests bleibt dieselbe: die Marke darf nicht
+# verlorengehen. Nur der Zeitpunkt hat sich verschoben, und genau das
+# wird hier jetzt geprueft.
 zweite = cache_datei("spaeter_gelesen", alter_sekunden=60)
 vorher2 = os.path.getmtime(zweite)
+A._marken_offen.clear()
 A._benutzt_vermerken(zweite)
-check("bei stehender Uhr wird sofort gestempelt",
-      os.path.getmtime(zweite) > vorher2 + 30)
+check("bei stehender Uhr wird NICHT mehr sofort gestempelt",
+      os.path.getmtime(zweite) <= vorher2 + 1,
+      "%.0f s juenger" % (os.path.getmtime(zweite) - vorher2))
+check("die Marke ist stattdessen vorgemerkt", A.marken_offen() == 1,
+      str(A.marken_offen()))
+A.marken_nachziehen()
+check("und im Leerlauf wird sie nachgeholt",
+      os.path.getmtime(zweite) > vorher2 + 30,
+      "%.0f s juenger" % (os.path.getmtime(zweite) - vorher2))
 
 print()
 print("Test 5: die Vormerkliste kann nicht unbegrenzt wachsen")

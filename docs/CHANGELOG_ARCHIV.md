@@ -7,6 +7,14 @@ dabei schiefging und was gemessen wurde.
 Die kurze Übersicht steht in [`CHANGELOG.md`](../CHANGELOG.md) im
 Wurzelverzeichnis. English: [`CHANGELOG_EN.md`](../CHANGELOG_EN.md).
 
+**Stand dieses Archivs: bis v4.4.** Ab v4.5 stehen die ausführlichen
+Einträge nicht mehr hier, sondern direkt in
+[`CHANGELOG.md`](../CHANGELOG.md) — dort ist jeder Build mit Messung,
+Fehlversuch und Begründung beschrieben, statt beides doppelt zu führen.
+Das ist bewusst so und keine Lücke: zwei Dateien mit demselben Inhalt
+laufen auseinander, und genau das ist in diesem Projekt schon mehrfach
+passiert (zuletzt bei der Versionsnummer, siehe v4.7).
+
 ---
 
 ## v4.4 — Reset-Feature, HDMI-Performance-Runde, Stream-Menüpunkt

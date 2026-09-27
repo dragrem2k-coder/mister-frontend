@@ -789,15 +789,69 @@ def _thumb_cache_key(path, w, h):
     die komplette Datei lesen muessen - genau der Aufwand, den der
     Cache ja vermeiden soll. Fuer den ueblichen Fall (Cover wird einmal
     ersetzt, danach lange nicht mehr angefasst) ist das unproblematisch."""
-    try:
-        st = os.stat(path)
-        sig = "%s|%d|%d|%d|%.6f|%s%s" % (path, w, h, st.st_size,
-                                         st.st_mtime, THUMB_ALGO_VERSION,
-                                         verkleinern_modus_kuerzel())
-    except OSError:
+    st = _quelldaten(path)
+    if st is None:
         sig = "%s|%d|%d|%s%s" % (path, w, h, THUMB_ALGO_VERSION,
                                  verkleinern_modus_kuerzel())
+    else:
+        sig = "%s|%d|%d|%d|%.6f|%s%s" % (path, w, h, st[0], st[1],
+                                         THUMB_ALGO_VERSION,
+                                         verkleinern_modus_kuerzel())
     return hashlib.sha1(sig.encode("utf-8", "surrogateescape")).hexdigest()[:24]
+
+
+# Groesse und Aenderungszeit der QUELLBILDER, einmal je Pfad und
+# Sitzung geholt. Siehe _quelldaten().
+_quell_stat = {}
+_QUELL_STAT_MAX = 6000
+
+
+def _quelldaten(path):
+    """(Groesse, Aenderungszeit) des Quellbildes - oder None.
+
+    NEU (Build 212). _thumb_cache_key() hat bis hierher bei JEDEM
+    Nachschlagen ein os.stat() auf das Cover gemacht, also im
+    Zeichenweg: bei einer Rasterseite mit 21 Kacheln 21 Dateisystem-
+    Abfragen je Aufbau, dazu bei jedem Blaettern erneut.
+
+    WAS ES BRINGT, SAGE ICH NICHT - ich habe dafuer keine Messung von
+    echter Hardware, und in diesem Projekt sind schon mehrfach
+    PC-Messungen zu falschen Schluessen geworden. Der Bench misst es
+    deshalb selbst (Abschnitt G): stat mit kaltem und mit warmem
+    Zwischenspeicher, nebeneinander.
+
+    DER PREIS, und der gehoert offen benannt: die Marke, an der ein
+    AUSGETAUSCHTES Cover erkannt wird, ist genau diese Aenderungszeit
+    (siehe Docstring von _thumb_cache_key()). Wird sie gemerkt, faellt
+    ein Austausch innerhalb derselben Sitzung nicht mehr auf - das Cover
+    wird erst nach "Spieleliste neu einlesen" oder einem Neustart
+    aktuell. Dafuer gibt es quelldaten_vergessen(), und der
+    Neueinlese-Pfad ruft es (siehe Aufrufstelle in frontend.py).
+
+    Die Obergrenze ist eine Notbremse gegen den Fall "jemand blaettert
+    durch 97000 Eintraege": ist sie erreicht, wird der Zwischenspeicher
+    geleert und neu gefuellt, statt unbegrenzt zu wachsen. Ein Eintrag
+    ist ein kurzer Pfad plus zwei Zahlen, 6000 davon liegen im Bereich
+    von einem Megabyte."""
+    daten = _quell_stat.get(path)
+    if daten is not None:
+        return daten
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    if len(_quell_stat) >= _QUELL_STAT_MAX:
+        _quell_stat.clear()
+    daten = (st.st_size, st.st_mtime)
+    _quell_stat[path] = daten
+    return daten
+
+
+def quelldaten_vergessen():
+    """Den Zwischenspeicher der Quelldaten verwerfen - nach einem
+    Neueinlesen der Spieleliste, damit ausgetauschte Cover wieder
+    erkannt werden. Siehe _quelldaten()."""
+    _quell_stat.clear()
 
 # VERSION DES SKALIERVERFAHRENS - Teil des Cache-Schluessels.
 #
@@ -1317,17 +1371,92 @@ def uhr_ist_gestellt():
             "richtige Uhrzeit gesetzt" % geholt)
 
 
+# Was noch auf seine "zuletzt benutzt"-Marke wartet. Eine geordnete
+# Abbildung Pfad -> None, damit derselbe Pfad nur EINMAL darin steht und
+# die Reihenfolge trotzdem erhalten bleibt (dict ist seit Python 3.7
+# geordnet).
+_marken_offen = {}
+_MARKEN_OFFEN_MAX = 4000
+_marken_je_durchgang = 40
+
+
 def _benutzt_vermerken(cpath):
-    """"Zuletzt benutzt"-Marke setzen - oder vormerken, falls die Uhr
-    noch nicht steht (siehe Kommentarblock oben)."""
-    if _uhr_verlaesslich:
+    """Vormerken, dass dieser Cache-Eintrag benutzt wurde.
+
+    GEAENDERT (Build 212): hier wird NICHTS mehr auf die Karte
+    geschrieben. Vorher stand an dieser Stelle ein os.utime() je
+    Cache-Treffer - bei einer Rasterseite mit 21 Kacheln also 21
+    Metadaten-Schreibvorgaenge je Seitenaufbau, mitten im Scrollen, auf
+    dieselbe Karte, von der gleichzeitig die Miniaturen gelesen werden.
+
+    EHRLICH ZUM GEWINN, denn die Messung dazu steht schon in diesem
+    Projekt (Build 74, auf dem Geraet des Nutzers, siehe
+    _thumb_cache_evict_if_needed()):
+
+        lesen     Schnitt 11.2 ms, max 26 ms
+        entpacken Schnitt  1.3 ms, max  2 ms
+        utime     Schnitt  0.1 ms, max  0 ms
+
+    Ein utime kostet also 0,1 ms. Bei 21 Kacheln sind das 2 ms von rund
+    227 ms Seitenaufbau - der Zeitgewinn ist NICHT der Grund fuer
+    diesen Umbau, und wer ihn als solchen verkauft, hat die eigene
+    Messung nicht gelesen. Der Grund ist der andere: Schreibzugriffe auf
+    die Karte, die auch die ROMs des Nutzers traegt, waehrend gescrollt
+    wird - Verschleiss und Schreib-Konkurrenz. Beides kostet nichts,
+    wenn es in den Stillstand verschoben wird.
+
+    Die Verdraengung braucht die Marken weiterhin (sie geht nach
+    Aenderungszeit, siehe _thumb_cache_evict_if_needed()) - deshalb
+    werden sie nachgeholt und nicht weggelassen:
+    marken_nachziehen() im Leerlaufzweig der Hauptschleife, und
+    ausserdem einmal vollstaendig unmittelbar VOR jeder Verdraengung.
+
+    Der Weg war ohnehin schon da: fuer den Fall "Uhr steht noch nicht"
+    gibt es diese Nachhol-Liste seit Build 91 (siehe
+    uhr_ist_gestellt()). Jetzt laeuft ALLES darueber."""
+    if len(_marken_offen) < _MARKEN_OFFEN_MAX:
+        _marken_offen[cpath] = None
+    if not _uhr_verlaesslich:
+        # Zusaetzlich in die alte Liste: dort wird ausdruecklich bei der
+        # Uhrstellung nachgeholt, und zwar auch dann, wenn der Eintrag
+        # bis dahin schon aus _marken_offen abgearbeitet wurde (mit der
+        # dann noch falschen Uhrzeit).
+        if len(_vor_uhrstellung_beruehrt) < _VOR_UHRSTELLUNG_MAX:
+            _vor_uhrstellung_beruehrt.append(cpath)
+
+
+def marken_offen():
+    """Wieviele "zuletzt benutzt"-Marken noch aussteheh - fuer Bench
+    und Test."""
+    return len(_marken_offen)
+
+
+def marken_nachziehen(hoechstens=None):
+    """Ein paar der vorgemerkten Marken auf die Karte schreiben.
+
+    Wird im LEERLAUF gerufen (siehe Aufrufstelle in frontend.py), also
+    genau dann, wenn die Karte nichts anderes zu tun hat. Portionsweise,
+    damit auch ein grosser Rueckstand keinen langen Schreibstoss
+    erzeugt: bei 0,1 ms je Marke sind 40 Stueck rund 4 ms.
+
+    Solange die Uhr nicht steht, wird NICHTS geschrieben - eine Marke
+    mit falscher Uhrzeit ist schlimmer als keine (siehe den
+    Kommentarblock bei _uhr_verlaesslich).
+
+    Rueckgabe: Zahl der geschriebenen Marken."""
+    if not _uhr_verlaesslich or not _marken_offen:
+        return 0
+    if hoechstens is None:
+        hoechstens = _marken_je_durchgang
+    geschrieben = 0
+    while _marken_offen and geschrieben < hoechstens:
+        cpath, _ = _marken_offen.popitem()
         try:
             os.utime(cpath, None)
+            geschrieben += 1
         except OSError:
             pass
-        return
-    if len(_vor_uhrstellung_beruehrt) < _VOR_UHRSTELLUNG_MAX:
-        _vor_uhrstellung_beruehrt.append(cpath)
+    return geschrieben
 
 
 # NEU (Build 128): die Antwort "das Original passt, wie es ist".
@@ -1677,6 +1806,20 @@ def _thumb_cache_evict_if_needed():
     Verzeichniszugriff mehr statt.
     """
     global _thumb_cache_anzahl, _thumb_cache_seit_zaehlung
+
+    # NEU (Build 212): erst die offenen "zuletzt benutzt"-Marken
+    # schreiben, DANN verdraengen. Seit Build 212 werden die Marken im
+    # Lesepfad nur vorgemerkt (siehe _benutzt_vermerken()); ohne diese
+    # Zeile wuerde die Verdraengung nach Aenderungszeit gehen, die Marke
+    # der gerade benutzten Dateien aber noch nicht sehen - und
+    # ausgerechnet sie wegwerfen. Genau dieser Fehler ist in Build 91
+    # schon einmal passiert, damals wegen der falschen Uhrzeit: "die
+    # Logos flogen raus, WEIL sie gerade benutzt wurden".
+    #
+    # Ohne Portionsgrenze, denn hier kommt es darauf an, dass NICHTS
+    # aussteht. Verdraengung ist ohnehin der teure, seltene Fall (ein
+    # os.listdir ueber tausende Dateien).
+    marken_nachziehen(hoechstens=_MARKEN_OFFEN_MAX)
 
     if _thumb_cache_anzahl is not None:
         _thumb_cache_anzahl += 1
