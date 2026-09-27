@@ -575,6 +575,29 @@ check("und er zeichnet nur in den Puffer",
       "flip=False" in _q and "mark_full_redraw()" in _q,
       "auf dem Schirm darf nichts Halbes landen")
 
+# ---------------------------------------------------------------------------
+print()
+print("Test 13: der Band-Flip wird gegen den Vollflip gestellt")
+# ---------------------------------------------------------------------------
+# Anlass: im Profillauf des Nutzers kostete ein Rasterschritt 68 ms,
+# davon 45 im Flippen - zwei Baender mit zusammen 2,8 MB und 28 ms
+# reiner Kopierzeit, wo die Rate des Vollflips 4,5 ms erwarten liesse.
+# Eine Erklaerung (die Zwischenkopie in flip_rows) ist auf dem
+# Entwicklungsrechner bereits widerlegt; dort ist mm aber ein bytearray
+# und kein mmap. Also misst es das Geraet.
+check("der Bench misst auch ein Band, nicht nur das Vollbild",
+      "Band-Flip ohne Vsync" in _q)
+check("und stellt beide JE MEGABYTE gegenueber",
+      "JE MEGABYTE" in _q,
+      "nur so sind zwei verschieden grosse Kopien vergleichbar")
+check("er faellt kein Urteil ohne Zahlen",
+      "if ohne > 0 and mb_band > 0" in _q)
+check("der alte Weg wird zum Vergleich mitgemessen",
+      "auf dem alten Weg" in _q and "MEMORYVIEW" in _q,
+      "der Gewinn soll belegt sein, nicht gerechnet")
+check("und warum das Geraet antworten muss, nicht der PC",
+      "bytearray und kein mmap" in _q)
+
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))

@@ -111,6 +111,13 @@ class Framebuffer:
     # DER BILDWAECHTER (Build 198), siehe _waechter_pruefen(). Aus
     # denselben Gruenden Klassenvorgaben: eine Attrappe, die _map() nie
     # ruft, soll flip_rows() trotzdem ueberstehen.
+    # Die beiden Ansichten auf Bildspeicher und Puffer. Klassenvorgabe
+    # aus demselben Grund wie bei haeppchen/rueckleser: eine Attrappe,
+    # die _map() nie ruft, soll flip_rows() trotzdem ueberstehen - die
+    # legt sie sich dann beim ersten Aufruf selbst an.
+    _mv_mm = None
+    _mv_buf = None
+
     _waechter_an = False
     _waechter_offsets = ()
     _waechter_soll = None
@@ -1810,7 +1817,49 @@ class Framebuffer:
                 self.flip_gen += 1
                 self.flip_event.set()
                 return
-        self.mm[off:end] = self.buf[off:end]
+        # BUILD 206: ueber memoryview - auf BEIDEN Seiten.
+        #
+        # WAS DEN ANSTOSS GAB: der Bench auf dem Geraet des Nutzers
+        # (Build 205) hat einen Unterschied gefunden, der kein Detail
+        # ist:
+        #
+        #   Voller Flip   7.9 MB in 14.06 ms  ->  1.78 ms je MB
+        #   Band-Flip     2.6 MB in 16.29 ms  ->  6.18 ms je MB
+        #
+        # Dreieinhalbmal teurer je Byte, und das betrifft JEDEN leichten
+        # Zeichenweg - Listennavigation, Kacheln, Laufschrift,
+        # Kopfzeilen.
+        #
+        # WELCHE HAELFTE ES WIRKLICH IST, und daran haette ich mich fast
+        # verlaufen. Der naheliegende Verdacht ist das Stueck RECHTS:
+        # "self.buf[off:end]" erzeugt eine Kopie des Ausschnitts, bevor
+        # ueberhaupt etwas geschrieben wird - genau davor warnt der
+        # Block "WARUM MEMORYVIEW" bei _flip_haeppchenweise() seit Build
+        # 181. Nachgemessen stimmt das aber NICHT (360 Zeilen):
+        #
+        #   mm[a:e] = buf[a:e]          0.392 ms   naiv
+        #   mm[a:e] = mv_buf[a:e]       0.395 ms   nur rechts  -> nichts
+        #   mv_mm[a:e] = mv_buf[a:e]    0.199 ms   beide       -> halb
+        #
+        # Der Gewinn kommt von LINKS: in eine memoryview zu schreiben
+        # statt in den Bildspeicher selbst zu schneiden. Die
+        # Zwischenkopie rechts kostet wirklich nichts.
+        #
+        # Das ist hier festgehalten, weil ich zuerst nur die rechte
+        # Seite gemessen, "kein Unterschied" gefunden und die ganze
+        # Erklaerung verworfen hatte. Beide Messungen waren richtig, die
+        # Schlussfolgerung war es nicht.
+        #
+        # Die Ansichten werden lazy angelegt und gemerkt: _map() erzeugt
+        # self.buf genau einmal, und die Attrappen der Tests ersetzen
+        # _map() komplett - ein "if None" ist hier also nicht Vorsicht,
+        # sondern der Weg, auf dem es auch dort funktioniert.
+        mvm = self._mv_mm
+        mvb = self._mv_buf
+        if mvm is None or mvb is None:
+            mvm = self._mv_mm = memoryview(self.mm)
+            mvb = self._mv_buf = memoryview(self.buf)
+        mvm[off:end] = mvb[off:end]
         if self._waechter_an:
             self._waechter_merken(y0, y1)
         if self._rueck_proben is not None:

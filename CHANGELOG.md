@@ -12,6 +12,113 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.6 — noch nicht veröffentlicht
 
+**Das F9 auf der Tastatur wird jetzt bemerkt — und der Attract-Modus hört
+auf, sich eigene Miniaturen zu bauen.**
+
+Gemeldet: „mit F12 komme ich ins OSD, das klappt noch, drücke ich dann F9,
+sollte das Frontend ja wieder kommen, ich bleibe dann aber im Login-Prompt
+hängen" — und dazu der entscheidende Nachtrag: „drücke ich im Login-Prompt
+nochmal F12, bin ich wieder im Frontend."
+
+Der eigene Quelltext sagt zu diesem Prompt seit Build 150, was ihn
+auslöst: *jedes* F9 weckt den Login-Prozess auf tty1, und der schreibt
+sein „Welcome to MiSTer … login:" in denselben Bildspeicher, in den das
+Frontend zeichnet. Für sein **eigenes** F9 beim Start räumt das Frontend
+darum hinterher auf. Beim F9 **des Nutzers** ist das nie passiert, und
+zwar aus einem einfachen Grund: F9 ist in der Tastenbelegung absichtlich
+auf *nichts* gelegt, weil MiSTer die Taste für den Anzeigewechsel braucht
+— der Tastendruck erreichte das Frontend also überhaupt nicht. Jetzt wird
+er vermerkt (wirkungslos bleibt er weiterhin) und dasselbe, seit Build 150
+bewährte Aufräumen angesetzt.
+
+Ob das reicht, ist damit noch nicht behauptet. In seinem Log steht während
+der ganzen F12/F9-Folge **keine einzige** Zeile — weder von der
+Dauerwache noch vom Bildwächter. Das lässt zwei Möglichkeiten offen: der
+Prompt steht in unserem Bildspeicher und die Wache zählt zu wenige
+Bildpunkte, oder er steht dort *gar nicht* und MiSTer zeigt schlicht eine
+andere Anzeige-Ebene, unser Bild unversehrt darunter. Dass F12 zurück ins
+Frontend führt statt ins OSD, passt zur zweiten. Bei genau dieser
+Fehlersuche bin ich in den Builds 146–149 viermal falsch abgebogen, weil
+aus einer Beobachtung eine Ursache wurde — deshalb wird hier nicht
+geraten: der Build schreibt die Zahl der gefundenen Bildpunkte ins Log.
+Die nächste Log-Zeile entscheidet.
+
+**Der Attract-Modus nimmt den Cover-Kasten der Spieleliste.** Bisher hatte
+er einen eigenen — 50 % der Breite, 72 % der Höhe, bei 1080p also
+960×777. Der Miniaturen-Cache trägt die Kastengröße im Schlüssel, und
+deshalb hat der Bildschirmschoner für *jedes* gezeigte Spiel eine eigene,
+sonst von niemandem gebrauchte Miniatur gerechnet und auf die Karte
+geschrieben. Die Cover-Spalte liefert 697×771 — fast dieselbe Höhe, und
+die begrenzt bei hochkantigen Covern ohnehin. Sichtbar ändert sich also
+kaum etwas, nur greift er ab jetzt auf die Datei, die die Spieleliste
+längst hat. Die Abzeichen der Hauptseite bleiben unverändert.
+
+**Neu zum Ausprobieren: die Galerie aus der Raster-Kachel.** Galerie-groß
+(342×456) und Raster-Kachel (176×235) liegen nah beieinander, Faktor 1,94.
+Nimmt die Galerie dieselbe Kachel und zeigt sie nur größer, fällt je Spiel
+eine zweite Datei weg und der Wechsel zwischen beiden Ansichten ist sofort
+warm. Der Preis ist Nearest-Neighbor-Vergrößerung, also ein sichtbar
+gröberes Bild — das kann nur das Auge am Fernseher entscheiden. Deshalb
+ein Schalter, standardmäßig **aus**:
+
+```
+touch /media/fat/frontend/galerie_kachelquelle     # an
+rm    /media/fat/frontend/galerie_kachelquelle     # aus
+```
+
+Ohne die Datei ist alles Zeile für Zeile der Stand von Build 206.
+
+---
+
+**Ein halb eingespieltes Update lässt das Frontend nicht mehr mit einem
+Traceback stehen — und der Fehler lag an meiner Auslieferung.**
+
+Bei einem Freund des Nutzers startete nach einem Update gar nichts mehr:
+
+```
+Traceback (most recent call last):
+  File "/media/fat/frontend/frontend.py", line 218, in <module>
+    from fe.settings import (
+ImportError: cannot import name 'artbox_aufschub_aus' from 'fe.settings'
+FEHLER: Frontend startet auch im zweiten Versuch sofort wieder ab.
+```
+
+Seine `frontend.py` kannte den Namen, seine `fe/settings.py` nicht. Der
+Name kam in einem Build in **beide** Dateien gleichzeitig — und meine
+Build-Pakete enthalten immer nur die *geänderten* Dateien. Ein Paket, das
+`frontend.py` mitbringt, aber die passende `fe/settings.py` nicht, ist
+deshalb nur dann sicher, wenn alle vorherigen Pakete schon drauf sind.
+Wer eines überspringt, bekommt genau diesen Absturz. Das ist kein
+Bedienfehler, das ist ein Verpackungsfehler von mir.
+
+Zwei Dinge dagegen:
+
+**Der Absturz ist jetzt eine Anleitung.** Es gab bereits eine Vorsorge —
+das Frontend vergleicht seit längerem namentlich, ob die Teile
+zusammenpassen, und druckt statt eines Absturzes, was zu tun ist. Sie kam
+nur nie zum Zug: ein fehlender Name in einem Import stirbt, *bevor* eine
+einzige Zeile eigener Code läuft. Ein Haken ganz oben in der Datei — vor
+dem ersten Import — schließt die Lücke jetzt für alle über dreißig
+Importe auf einmal:
+
+```
+ACHTUNG: frontend.py und das fe/-Paket passen nicht zusammen.
+  cannot import name 'artbox_aufschub_aus' from 'fe.settings'
+Behoben mit einer VOLLSTÄNDIGEN Installation:
+  /media/fat/Scripts/Frontend_Update.sh
+```
+
+Wichtig dabei: **alles andere wird unverändert durchgereicht.** Ein
+echter Programmfehler sieht weiterhin aus wie einer — ein Haken, der zu
+viel abfängt, macht aus jedem künftigen Fehler eine irreführende
+Update-Anleitung, und dann sucht man tagelang an der falschen Stelle.
+Geprüft wird das an einem echten, nachgebauten Mischstand auf der Platte,
+nicht nur an der Funktion.
+
+**Und es gibt wieder ein vollständiges Paket.** Für alle, die nicht jeden
+Zwischenstand mitgemacht haben, ist ein Komplettpaket der sichere Weg —
+inkrementelle Pakete sind etwas für den, der lückenlos dabei war.
+
 **Die Umstellung auf JPEG hat das Scrollen erst langsamer gemacht — das
 ist behoben, und der Fehler war meiner.**
 

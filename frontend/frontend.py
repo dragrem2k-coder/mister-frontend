@@ -1270,6 +1270,9 @@ class Frontend:
         # Absicherung sitzt jetzt in _konsole_sichern().
         self._f9_wiederholt = 0
         self._f9_aufraeumen_ab = None
+        # Build 207: das F9 des NUTZERS. Siehe _f9_nutzer_behandeln().
+        self._f9_nutzer_letzte = 0.0
+        self._f9_grund = "eingespeist"
         # Build 157: die Dauerwache gegen den Login-Prompt. Siehe den
         # Kommentarblock bei _konsole_wache().
         self._wache_naechste = 0.0
@@ -4327,6 +4330,66 @@ class Frontend:
         # Hintergrund garantiert komplett neu auf.
         fb.mark_full_redraw()
 
+    # Der Kasten, den der Attract-Modus BIS Build 206 benutzt hat.
+    # Bleibt als Rueckfall stehen (siehe attract_cover_kasten()).
+    ATTRACT_KASTEN_ANTEIL = (0.5, 0.72)
+
+    def attract_cover_kasten(self, name, syskey):
+        """Die Kastengroesse fuer das Cover im Attract-Modus.
+
+        GEAENDERT (Build 207, Nutzerwunsch: "wir sollten attract modus
+        die cover so gross machen wie spieleliste, coverspalte").
+
+        Bis Build 206 stand hier ein eigener Kasten, 50 % der Breite und
+        72 % der Hoehe - bei 1080p also 960x777. Die Cover-Spalte der
+        Spieleliste liefert fuer dasselbe Spiel 697x771. Fast dieselbe
+        HOEHE, und die begrenzt bei einem hochkantigen Cover ohnehin -
+        sichtbar aendert sich also wenig. Was sich aendert, ist der
+        Schluessel: der Miniaturen-Cache traegt die Kastengroesse (siehe
+        _thumb_cache_key() in fe/art.py), und deshalb hat der
+        Attract-Modus bisher fuer JEDES gezeigte Spiel eine EIGENE,
+        sonst von niemandem benutzte Miniatur berechnet und auf die
+        Karte geschrieben - bei 30.270 Spielen die groesste Sorte
+        Arbeit, die man sich einsparen kann. Ab jetzt greift er auf
+        genau die Datei, die die Spieleliste ohnehin schon hat.
+
+        DAS ATTRAPPEN-ITEM ist der Punkt, an dem das stehen oder fallen
+        koennte, deshalb ausdruecklich: cover_box_size() und das von ihr
+        gerufene _spiel_infozeilen() lesen aus dem Eintrag NUR item[0]
+        (Name), item[1] (Art) und item[2] (Nachschlage-Name). Ein
+        Spiel-Eintrag der Liste hat an diesen drei Stellen genau das,
+        was hier gebaut wird - der Kasten kommt damit BITGENAU so
+        heraus wie in der Liste, und nicht "so aehnlich". Waere es nur
+        aehnlich, waere es eine dritte Groesse und der Gewinn waere ins
+        Gegenteil verkehrt.
+
+        Der Attract-Pool haelt je Spiel (Name, syskey, Argument) - das
+        Argument ist der Nachschlage-Name, siehe _attract_games_pool().
+
+        Geht dabei irgendetwas schief (keine Kategorie geladen,
+        Sonderaufloesung), bleibt es beim Kasten von Build 206. Ein
+        Bildschirmschoner ohne Cover waere ein schlechter Tausch gegen
+        eine gesparte Datei."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        rueckfall = (int(W * self.ATTRACT_KASTEN_ANTEIL[0]),
+                     int(H * self.ATTRACT_KASTEN_ANTEIL[1]))
+        try:
+            geo = self._art_panel_geometrie("liste", erzwingen=True)
+            if not geo or len(geo) != 3:
+                return rueckfall
+            art_w, art_h, s = geo
+            if art_w <= 20 or art_h <= 20:
+                return rueckfall
+            attrappe = (name, "game", name)
+            bw, bh = self.cover_box_size(art_w, art_h, syskey,
+                                         attrappe, s)[:2]
+        except Exception:                            # noqa: BLE001
+            return rueckfall
+        if bw <= 4 or bh <= 4:
+            return rueckfall
+        return bw, bh
+
     def draw_attract(self):
         """Attract-Modus (Bildschirmschoner): zeigt grossflaechig ein
         zufaelliges Spiel mit Cover - startet automatisch nach
@@ -4343,8 +4406,7 @@ class Frontend:
         name, syskey, _arg = game
         accent = accent_for(syskey)
 
-        cover_max_w = int(W * 0.5)
-        cover_max_h = int(H * 0.72)
+        cover_max_w, cover_max_h = self.attract_cover_kasten(name, syskey)
         art = None
         # BUGFIX (Nutzer-Rueckmeldung, siehe ausfuehrlicher Kommentar in
         # draw_art_panel(): kein SD-Rueckfall mehr im HD-Modus, wenn
@@ -6795,7 +6857,7 @@ class Frontend:
     # ------------------------------------------------------------------
     # Raster- und Galerieansicht (Build 122)
     # ------------------------------------------------------------------
-    def _ansicht_cover(self, item, cat_syskey, bw, bh):
+    def _ansicht_cover(self, item, cat_syskey, bw, bh, kachel_kasten=None):
         """(Cover, nur_verzoegert) - das fertig verkleinerte Cover eines
         Eintrags, oder (None, ...) wenn es keines gibt.
 
@@ -6820,9 +6882,44 @@ class Frontend:
         if not pfad:
             return None, False
         vorher = getattr(ART, "_defer_count", 0)
-        art = ART.get_scaled(pfad, bw, bh, auslagern_ok=True)
+        if kachel_kasten is None:
+            art = ART.get_scaled(pfad, bw, bh, auslagern_ok=True)
+        else:
+            # Build 207 (Probeschalter galerie_kachelquelle): das Bild
+            # aus der kleineren Kachel-Miniatur hochziehen. Der
+            # Verzoegerungs-Zaehler wird weiterhin richtig ausgewertet,
+            # weil get_scaled_aus_kachel() intern ueber get_scaled()
+            # geht - das ist genau die Stelle, die zaehlt.
+            art = ART.get_scaled_aus_kachel(pfad, kachel_kasten[0],
+                                            kachel_kasten[1], bw, bh,
+                                            auslagern_ok=True)
         return art, (art is None
                      and getattr(ART, "_defer_count", 0) != vorher)
+
+    def galerie_quellkasten(self, L):
+        """Aus WELCHEM Kasten holt die Galerie ihr grosses Bild - oder
+        None fuer "aus ihrem eigenen", also dem Stand vor Build 207.
+
+        Eine Funktion, drei Benutzer: der Zeichenweg der Galerie, der
+        Vorauslader (ueber _art_panel_geometrie()) und der Test. Genau
+        die Trennung, an der Build 73 schon einmal fast auseinander-
+        gelaufen ist - legt der Vorauslader unter dem Galerie-Kasten ab,
+        waehrend der Zeichenweg den Kachel-Kasten abfragt, bereitet er
+        ins Leere vor, und niemand sieht warum.
+
+        Der Kasten ist der der Rasteransicht, unveraendert - nicht ein
+        eigener, sonst waere es eine dritte Groesse."""
+        try:
+            from fe.settings import galerie_kachelquelle
+            if not galerie_kachelquelle():
+                return None
+            g = self.raster_geometrie(L)
+            kb, kh = g["cov_b"], g["cov_h"]
+        except Exception:                            # noqa: BLE001
+            return None
+        if kb <= 4 or kh <= 4:
+            return None
+        return kb, kh
 
     def _nachzeichnen_vorbereiten(self):
         """Vor dem Nachzeichnen im Leerlauf (COVER_SETTLE): in Raster
@@ -7210,7 +7307,16 @@ class Frontend:
         fb.karte_mit_schatten(gx - pad, oben - pad, gb + 2 * pad,
                               gh + 2 * pad, 3 * s, C_PANEL,
                               fb._darken(C_BG, 0.55), 4 * s)
-        art, verzoegert = self._ansicht_cover(item, syskey, gb, gh)
+        # Build 207, Probeschalter: das grosse Bild aus der Raster-
+        # Miniatur hochskalieren statt aus einer eigenen. Siehe
+        # galerie_quellkasten() - liefert None, wenn der Schalter aus
+        # ist, und dann ist dies Zeile fuer Zeile der Stand von 206.
+        _kk = self.galerie_quellkasten(L)
+        if _kk is None:
+            art, verzoegert = self._ansicht_cover(item, syskey, gb, gh)
+        else:
+            art, verzoegert = self._ansicht_cover(item, syskey, gb, gh,
+                                                  kachel_kasten=_kk)
         if art:
             aw, ah, pix = art
             ax = gx + max(0, (gb - aw) // 2)
@@ -8926,6 +9032,9 @@ class Frontend:
                 # F9 beim Start, danach kein Anfassen mehr.
                 if self.konsole_mechanik():
                     self._konsole_sichern()     # F9 absichern
+                    # Build 207: VOR dem Aufraeumen - sonst liegt der
+                    # angesetzte Zeitpunkt erst eine Runde spaeter vor.
+                    self._f9_nutzer_behandeln()
                     self._konsole_aufraeumen()  # Build 150: Prompt weg
                     self._konsole_wache()       # Build 157: dauerhaft
                 # UNABHAENGIG VOM SCHALTER (Build 190). Siehe
@@ -9169,6 +9278,14 @@ class Frontend:
             g = self.galerie_geometrie(L)
             if g["gross_b"] <= 4 or g["gross_h"] <= 4:
                 return None
+            # Build 207: bei eingeschaltetem Probeschalter holt die
+            # Galerie ihr Bild aus der Raster-Miniatur (siehe
+            # galerie_quellkasten()). Dann muss auch HIER dieser Kasten
+            # stehen, sonst bereitet der Vorauslader eine Groesse vor,
+            # die der Zeichenweg nie abfragt.
+            _kk = self.galerie_quellkasten(L)
+            if _kk is not None:
+                return "fest", _kk[0], _kk[1], s
             return "fest", g["gross_b"], g["gross_h"], s
         art_x0 = art_spalte_x0(L["list_right"], fb.height, s)
         art_w = (W - ox) - art_x0
@@ -14685,6 +14802,63 @@ class Frontend:
         # aufraeumen; siehe _konsole_aufraeumen().
         self._f9_aufraeumen_ab = time.monotonic() + 0.4
 
+    # Wie lange nach einem F9 gewartet wird, bevor nachgesehen wird.
+    # Dieselben 0,4 s wie nach dem selbst eingespeisten F9 (siehe
+    # _konsole_sichern() am Ende) - erst muss der Prompt da sein,
+    # sonst wischt man vor ihm her.
+    F9_NUTZER_WARTEN = 0.4
+
+    def _f9_nutzer_behandeln(self):
+        """Hat der NUTZER F9 gedrueckt? Dann dasselbe Aufraeumen
+        ansetzen, das nach einem selbst eingespeisten F9 laeuft.
+
+        DIE NUTZER-BEOBACHTUNG, um die es geht: "mit f12 komme ich ins
+        osd das klappt noch, druecke ich dann f9 sollte das frontend ja
+        wieder kommen, ich bleibe dann aber im login prompt haengen" -
+        und dazu, entscheidend: "druecke ich im login prompt nochmal
+        f12 bin ich wieder im frontend".
+
+        WAS DER EIGENE QUELLTEXT DAZU SCHON SAGT, in _konsole_sichern()
+        am Ende, seit Build 150: "Das eingespeiste F9 erreicht nicht nur
+        MiSTer, sondern auch den Login-Prozess auf tty1. Der wacht davon
+        auf und schreibt 'Welcome to MiSTer ... login:' mitten in unser
+        Bild." Fuer das EIGENE F9 wird deshalb hinterher aufgeraeumt.
+        Beim F9 des Nutzers passiert im Framebuffer dasselbe - nur hat
+        es bisher niemand mitbekommen, weil KEY_F9 in der KEYMAP auf
+        None liegt (siehe fe/input.py) und der Tastendruck das Frontend
+        damit ueberhaupt nicht erreicht hat.
+
+        WARUM DIE DAUERWACHE ES NICHT GEFANGEN HAT, ist die offene
+        Frage, und ich beantworte sie hier absichtlich NICHT durch
+        Raten - bei genau dieser Fehlersuche bin ich in den Builds
+        146-149 viermal falsch abgebogen. Im Log des Nutzers stehen
+        waehrend der ganzen F12/F9-Folge NULL Zeilen, weder von der
+        Dauerwache noch vom Bildwaechter. Dafuer gibt es zwei
+        Erklaerungen, und sie fuehren zu verschiedenen Abhilfen:
+
+          A) Der Prompt steht in UNSEREM Bildspeicher, die Wache zaehlt
+             aber zu wenige Bildpunkte (KONSOLE_WACHE_MINDEST = 120 in
+             den obersten 48 Zeilen, 512 Spalten). Dann hilft genau
+             das, was hier passiert.
+          B) Der Prompt steht GAR NICHT in unserem Bildspeicher -
+             MiSTer zeigt eine andere Anzeige-Ebene, unser Bild liegt
+             unversehrt darunter. Dann kann kein Neuzeichnen helfen,
+             und dass F12 zurueckfuehrt statt ins OSD, passt dazu.
+
+        Deshalb zwei Dinge in einem: das Aufraeumen wird angesetzt (das
+        ist in Fall A die Abhilfe und in Fall B ein Blick, der nichts
+        kostet - _konsole_aufraeumen() vergleicht erst, OB jemand
+        geschrieben hat, und tut sonst nichts), und die Zahl der
+        gefundenen Bildpunkte wird GELOGGT. Die naechste Log-Zeile des
+        Nutzers entscheidet damit zwischen A und B, ohne dass noch
+        einmal jemand raten muss."""
+        t = getattr(self.inp, "f9_gesehen", 0.0) or 0.0
+        if t <= self._f9_nutzer_letzte:
+            return
+        self._f9_nutzer_letzte = t
+        self._f9_grund = "Nutzer"
+        self._f9_aufraeumen_ab = t + self.F9_NUTZER_WARTEN
+
     def _konsole_aufraeumen(self):
         """Die Konsolenausgabe wegwischen, die ein eingespeistes F9
         ausgeloest hat, und die Seite neu zeichnen.
@@ -14714,14 +14888,32 @@ class Frontend:
         # Ohne diese Pruefung wird bei JEDEM Versuch neu aufgebaut, auch
         # wenn gar nichts passiert ist - und genau das hat der Nutzer
         # als Flackern gesehen.
+        grund = self._f9_grund
+        self._f9_grund = "eingespeist"
         try:
             hoehe = min(40, self.fb.height)
             n = hoehe * self.fb.stride
             if bytes(self.fb.mm[:n]) == bytes(self.fb.buf[:n]):
+                # NEU (Build 207): beim F9 des Nutzers wird dieser Fall
+                # ausdruecklich vermerkt. "Oben nichts gefunden" ist
+                # hier naemlich ein BEFUND, nicht Langeweile - es
+                # unterscheidet die Faelle A und B in
+                # _f9_nutzer_behandeln(). Beim eigenen F9 bleibt es
+                # still wie bisher, das laeuft siebenmal beim Start.
+                if grund == "Nutzer":
+                    try:
+                        treffer = self._fremdausgabe_zaehlen()
+                    except Exception:                # noqa: BLE001
+                        treffer = -1
+                    LOG("Konsolenmodus: F9 vom Nutzer - oben KEIN "
+                        "fremder Text (%d Bildpunkte, Schwelle %d). "
+                        "Unser Bild steht unveraendert im Speicher, "
+                        "MiSTer zeigt also etwas anderes."
+                        % (treffer, self.KONSOLE_WACHE_MINDEST))
                 return
         except Exception:                            # noqa: BLE001
             pass                      # im Zweifel lieber aufraeumen
-        self._konsole_wischen("nach eingespeistem F9")
+        self._konsole_wischen("nach F9 (%s)" % grund)
 
     # -----------------------------------------------------------------
     # DAUERWACHE gegen den Login-Prompt (Build 157)
@@ -17954,6 +18146,9 @@ FE_PAKET_BRAUCHT = (
     # gemischter Stand BENANNT wird, und dort gehoert er hin.
     ("fe.settings", None, "artbox_aufschub_aus", "Build 197"),
     ("fe.framebuffer", "Framebuffer", "_waechter_pruefen", "Build 198"),
+    ("fe.settings", None, "galerie_kachelquelle", "Build 207"),
+    ("fe.art", "ArtCache", "get_scaled_aus_kachel", "Build 207"),
+    ("fe.input", "InputManager", "f9_gesehen", "Build 207"),
 )
 
 

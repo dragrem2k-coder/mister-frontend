@@ -111,8 +111,10 @@ check("und keine Proben", FB._rueck_proben is None)
 quelle = io.open(os.path.join(_REPO, "frontend", "fe", "framebuffer.py"),
                  encoding="utf-8").read()
 check("flip() prueft nur, wenn Proben da sind",
-      quelle.count("if self._rueck_proben is not None:") == 3,
-      "je einmal vor und nach dem Vollbild, einmal nach dem Band")
+      quelle.count("if self._rueck_proben is not None:") == 4,
+      "je einmal vor und nach dem Vollbild, einmal nach dem Band - und "
+      "seit Build 198 einmal in der Reparatur des Bildwaechters, die "
+      "ebenfalls alles schreibt und die Proben deshalb auffrischen muss")
 check("die Schalterdatei wird nur beim Start gelesen",
       quelle.count('flip_rueckleser") as f') == 1,
       "eine Kartenabfrage je Bild war schon einmal ein Fehler")
@@ -289,6 +291,38 @@ for br, ho in ((1920, 1080), (320, 240)):
     if ok:
         check("%dx%-5d und malt dasselbe" % (br, ho),
               bytes(f2.fb.buf) == ohne)
+
+# ---------------------------------------------------------------------------
+print()
+print("Test: flip_rows schreibt ueber memoryview (Build 206)")
+# ---------------------------------------------------------------------------
+# Der Bench auf dem Geraet des Nutzers hat gezeigt, dass ein Band je
+# Megabyte 3,5mal teurer war als ein Vollbild (6,18 gegen 1,78 ms) - und
+# das betrifft JEDEN leichten Zeichenweg. Nachgemessen bei 360 Zeilen:
+#
+#   mm[a:e] = buf[a:e]          0.392 ms   naiv
+#   mm[a:e] = mv_buf[a:e]       0.395 ms   nur rechts  -> bringt nichts
+#   mv_mm[a:e] = mv_buf[a:e]    0.199 ms   beide       -> halb so teuer
+#
+# Der Gewinn kommt von der LINKEN Seite. Wer das hier zurueckbaut,
+# verliert ihn wieder, ohne dass irgendein Bild anders aussaehe - genau
+# deshalb steht es als Test da und nicht nur als Kommentar.
+_qf = io.open(os.path.join(_REPO, "frontend", "fe", "framebuffer.py"),
+              encoding="utf-8").read()
+_fr = _qf[_qf.index("def flip_rows("):]
+_fr = _fr[:_fr.index("\n    def ", 10)]
+check("die Kopie laeuft ueber memoryview auf BEIDEN Seiten",
+      "mvm[off:end] = mvb[off:end]" in _fr,
+      "der Gewinn kommt von der linken Seite")
+check("und NICHT mehr ueber mm[off:end] = buf[off:end]",
+      "self.mm[off:end] = self.buf[off:end]" not in _fr)
+check("die Ansichten werden gemerkt, nicht je Aufruf gebaut",
+      "self._mv_mm = memoryview" in _fr)
+check("es gibt Klassenvorgaben dafuer",
+      "_mv_mm = None" in _qf and "_mv_buf = None" in _qf,
+      "sonst faellt jede Attrappe darueber")
+check("die Messung steht als Begruendung dabei",
+      "0.199 ms" in _fr or "mv_mm[a:e]" in _fr)
 
 print()
 if fails:

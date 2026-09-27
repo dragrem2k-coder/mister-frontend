@@ -65,6 +65,16 @@ class Attrappe(object):
         self.fd = -1
         self.fbdev = "/dev/fb0"
         self.size = size
+        # Build 198: eine Geometrie braucht die Attrappe jetzt auch. Der
+        # Bildwaechter ist standardmaessig AN (anders als Rueckleser und
+        # Haeppchen-Flip, die ohne ihre Schalter vorher aussteigen) und
+        # rechnet deshalb wirklich seine Probenpunkte aus - dafuer muss
+        # er wissen, wie breit und hoch das Bild ist. Aus size abgeleitet,
+        # damit beides zueinander passt und keine Probe hinter das
+        # Bildende zeigt.
+        self.width = 1920
+        self.stride = self.width * 4
+        self.height = max(1, size // self.stride)
         self._smem = (smem_start, smem_len)
         self._ioctl_geht = ioctl_geht
         self._mem_fd = None
@@ -74,6 +84,22 @@ class Attrappe(object):
     # echten Klasse geholt.
     _map = FBK._map
     _map_ueber_dev_mem = FBK._map_ueber_dev_mem
+    # Und alles, was _map() sonst noch anfasst. Diese Zeile kam mit
+    # Build 181 dazu: _map() richtet seither den haeppchenweisen Flip
+    # ein, und eine Attrappe, die nur die halbe Klasse nachbaut,
+    # scheitert daran. Lieber hier nachziehen als die echte Klasse
+    # defensiv machen - ein fehlendes Stueck soll auffallen.
+    _haeppchen_einrichten = FBK._haeppchen_einrichten
+    _rueckleser_einrichten = FBK._rueckleser_einrichten
+    # Build 198: der Bildwaechter kommt dazu - dieselbe Stelle, derselbe
+    # Grund. Genau hier ist der Test bei Build 181 schon einmal rot
+    # geworden, und die Lehre war dieselbe: die Attrappe nachziehen,
+    # nicht die echte Klasse defensiv machen.
+    _waechter_einrichten = FBK._waechter_einrichten
+    haeppchen = FBK.haeppchen
+    haeppchen_pause = FBK.haeppchen_pause
+    WAECHTER_PUNKTE = FBK.WAECHTER_PUNKTE
+    WAECHTER_TAKT = FBK.WAECHTER_TAKT
 
 
 def mit_attrappe(fn):

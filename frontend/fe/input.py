@@ -833,8 +833,35 @@ class InputManager:
         self._last_repeat_act = None
         self._last_repeat_iv = REPEAT_INTERVAL
 
+    # Wann zuletzt ein F9 ueber die Tastatur kam - 0.0 heisst "noch
+    # nie". Klassenvorgabe, damit Attrappen in den Tests (die den
+    # Konstruktor nicht durchlaufen) nicht darueber fallen.
+    f9_gesehen = 0.0
+
     def _translate(self, dev, etype, code, value):
         if etype == EV_KEY:
+            # NEU (Build 207). KEY_F9 ist in der KEYMAP auf None gelegt,
+            # weil MiSTer die Taste fuer den Anzeigewechsel braucht
+            # (siehe dort) - das Frontend erfaehrt davon deshalb bisher
+            # GAR NICHTS. Und genau das ist der Grund, warum nach einem
+            # F9 des Nutzers niemand aufraeumt:
+            #
+            # _konsole_sichern() in frontend.py schreibt es selbst hin -
+            # "jedes eingespeiste F9 weckt den Login-Prozess, und der
+            # schreibt seinen Prompt in denselben Framebuffer, in den
+            # wir zeichnen". Fuer das EIGENE F9 wird deshalb seit Build
+            # 150 gleich hinterher aufgeraeumt (_f9_aufraeumen_ab).
+            # Beim F9 des NUTZERS passiert dasselbe im Framebuffer -
+            # nur hat es bisher niemand mitbekommen.
+            #
+            # Hier wird nur der Zeitpunkt notiert, nichts entschieden
+            # und nichts zurueckgegeben: die Taste bleibt fuer das
+            # Frontend wirkungslos, wie sie es sein muss. Auch das
+            # selbst eingespeiste F9 landet hier, wenn es ueber die
+            # eigenen Geraete zurueckkommt - harmlos, denn dann ist das
+            # Aufraeumen ohnehin schon angesetzt.
+            if code == KEY_F9 and value == 1:
+                self.f9_gesehen = time.monotonic()
             if code in (BTN_DPAD_UP, BTN_DPAD_DOWN,
                         BTN_DPAD_LEFT, BTN_DPAD_RIGHT):
                 key_id = (dev.path, "k", code)

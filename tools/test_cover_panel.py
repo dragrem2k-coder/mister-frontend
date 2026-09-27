@@ -192,8 +192,17 @@ dunkel = fb._darken(fm.C_BG, 0.55)
 kw, kh, versatz, radius = 769, 945, 3 * s, 4 * s
 
 
-def zeit(fn, n=30, runden=5):
+def zeit(fn, n=30, runden=15):
     """Bestes Ergebnis aus mehreren Durchgaengen, nicht der Mittelwert.
+
+    ERHOEHT (Build 196): fuenf Runden waren zu wenig. Beim Durchlauf der
+    ganzen Suite - 95 Testdateien hintereinander auf einer belegten
+    Maschine - fiel der gemessene Faktor auf 1,4 und der Test wurde rot,
+    wieder ohne jede Codeaenderung. Genau die Begruendung von Build 114
+    gilt dann weiter: das Minimum ist die ehrlichere Zahl, es braucht
+    nur genug Versuche, um es zu finden. Die SCHWELLE bleibt bei 1,5 -
+    die Behauptung des Tests wird nicht abgeschwaecht, nur besser
+    gemessen. Kostet rund eine halbe Sekunde.
 
     GEAENDERT (Build 114): der Mittelwert machte diesen Test unter Last
     unzuverlaessig - laeuft die ganze Suite hintereinander, sank der

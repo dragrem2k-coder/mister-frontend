@@ -13,6 +13,99 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.6 — not yet released
 
+**F9 on the keyboard is now noticed — and attract mode stops building
+thumbnails of its own.**
+
+Reported: "F12 gets me to the OSD, that still works; then I press F9 and
+the frontend should come back, but I'm stuck at the login prompt" — plus
+the decisive addition: "if I press F12 again at the login prompt, I'm back
+in the frontend."
+
+Our own source has said since Build 150 what triggers that prompt: *any*
+F9 wakes the login process on tty1, and it writes its "Welcome to MiSTer …
+login:" into the very framebuffer the frontend draws into. For its **own**
+F9 at startup the frontend therefore cleans up afterwards. For the
+**user's** F9 that never happened, for a simple reason: F9 is deliberately
+mapped to *nothing*, because MiSTer needs the key for switching the
+display — so the keypress never reached the frontend at all. It is now
+recorded (and still does nothing), and the same cleanup that has worked
+since Build 150 is armed.
+
+Whether that is enough is not claimed here. His log contains **not a
+single line** during the whole F12/F9 sequence — neither from the standing
+watch nor from the picture guard. That leaves two possibilities: the
+prompt is in our framebuffer and the watch counts too few pixels, or it is
+*not* there at all and MiSTer is simply showing a different display layer
+with our picture intact underneath. That F12 returns to the frontend
+rather than opening the OSD fits the second. On exactly this hunt I took a
+wrong turn four times in Builds 146–149, because an observation became a
+cause — so nothing is guessed here: the build writes the pixel count to
+the log. The next log line decides.
+
+**Attract mode takes the game list's cover box.** It used to have its own
+— 50 % of the width, 72 % of the height, so 960×777 at 1080p. The
+thumbnail cache carries the box size in its key, which means the screen
+saver computed and wrote a private, otherwise unused thumbnail for *every*
+game it showed. The cover column yields 697×771 — nearly the same height,
+and height is the limit for portrait covers anyway. Visually almost
+nothing changes; it now reads the file the game list already has. The
+badges on the main page are unchanged.
+
+**New, to try out: the gallery from the grid tile.** Gallery-large
+(342×456) and grid tile (176×235) sit close together, a factor of 1.94. If
+the gallery takes that same tile and merely shows it bigger, a second file
+per game disappears and switching between the two views is warm
+immediately. The price is nearest-neighbour upscaling, so a visibly
+coarser picture — only your eye at the TV can decide that. Hence a switch,
+**off** by default:
+
+```
+touch /media/fat/frontend/galerie_kachelquelle     # on
+rm    /media/fat/frontend/galerie_kachelquelle     # off
+```
+
+Without the file everything is line for line the state of Build 206.
+
+---
+
+**A half-applied update no longer leaves the frontend dead with a
+traceback — and the fault was in how I ship it.**
+
+At a friend of the user's, nothing started at all after an update:
+
+```
+Traceback (most recent call last):
+  File "/media/fat/frontend/frontend.py", line 218, in <module>
+    from fe.settings import (
+ImportError: cannot import name 'artbox_aufschub_aus' from 'fe.settings'
+```
+
+His `frontend.py` knew the name, his `fe/settings.py` did not. The name
+arrived in **both** files in the same build — and my build packages only
+ever contain the *changed* files. A package carrying `frontend.py` but not
+the matching `fe/settings.py` is therefore only safe if every earlier
+package is already installed. Skip one and you get exactly this crash.
+That is not a user error, it is a packaging error of mine.
+
+Two things against it:
+
+**The crash is now an instruction.** A safeguard already existed — the
+frontend has long compared by name whether the parts match and printed
+what to do instead of crashing. It simply never got its turn: a missing
+name in an import dies *before* a single line of our own code runs. A
+hook at the very top of the file — ahead of the first import — now closes
+that gap for all thirty-odd imports at once.
+
+Importantly, **everything else is passed through untouched.** A genuine
+programming error still looks like one — a hook that catches too much
+turns every future fault into a misleading update instruction. That is
+verified against a real, reconstructed mixed state on disk, not just
+against the function.
+
+**And there is a complete package again.** For anyone who did not follow
+every intermediate step, a full package is the safe route; incremental
+ones are for those who were there without gaps.
+
 **The switch to JPEG made scrolling slower first — that is fixed, and the
 mistake was mine.**
 

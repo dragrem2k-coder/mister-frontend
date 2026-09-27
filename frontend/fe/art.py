@@ -2290,6 +2290,69 @@ class ArtCache:
             LOG("PERF cover: %.0f ms (%s)" % (_dt * 1000, os.path.basename(path)))
         return r
 
+    def get_scaled_aus_kachel(self, path, kb, kh, zb, zh,
+                              auslagern_ok=False):
+        """Das Bild fuer einen GROSSEN Kasten (zb x zh) aus der Miniatur
+        eines KLEINEN Kastens (kb x kh) hochskalieren.
+
+        Fuer den Probeschalter galerie_kachelquelle() (Build 207): die
+        Galerie nimmt dann dieselbe Miniatur wie die Rasteransicht und
+        zeigt sie nur groesser. Begruendung, Gewinn und Preis stehen bei
+        dem Schalter in fe/settings.py.
+
+        DREI DINGE, DIE HIER ABSICHT SIND:
+
+        1. Geholt wird ueber get_scaled() - also genau so, wie die
+           Rasteransicht es tut, mit demselben Kasten. Nicht mit einer
+           nachgebauten zweiten Rechnung. Nur dann ist es wirklich
+           DIESELBE Datei auf der Karte und der Gewinn tritt ein; sonst
+           waere es eine dritte Groesse und damit das Gegenteil.
+
+        2. Das Ergebnis wird NICHT auf die Karte geschrieben. Es ist
+           aus einer Datei abgeleitet, die schon dort liegt, und das
+           Hochskalieren ist billig (eine Auswahl je Bildpunkt, kein
+           Dekodieren). Eine eigene Datei waere genau der zweite
+           Eintrag, den dieser Schalter loswerden will.
+
+        3. Der Skalierungs-Cache im Arbeitsspeicher bekommt trotzdem
+           einen eigenen Schluessel ("kachel"), sonst wuerde bei jedem
+           Bildaufbau neu hochskaliert.
+
+        _verkleinern_nearest() heisst so, weil es dafuer gebaut wurde -
+        die Indexrechnung (sx = x * w // tw) ist aber richtungsfrei und
+        stimmt fuer tw > w genauso. Die C-Fassung ebenfalls; ihre
+        einzige Grenze ist MAXZIEL = 4096 Zielspalten, und daran kommt
+        eine Galeriekachel nicht heran."""
+        if not path or kb <= 0 or kh <= 0 or zb <= 0 or zh <= 0:
+            return None
+        if not hasattr(self, "scaled"):
+            self.scaled = {}
+            self.scaled_order = []
+        box_key = (path, "kachel", kb, kh, zb, zh)
+        if box_key in self.scaled:
+            return self.scaled[box_key]
+        basis = self.get_scaled(path, kb, kh, auslagern_ok)
+        if basis is None:
+            # auslagern_ok=True heisst "vielleicht spaeter" - dann muss
+            # hier nichts abgelegt werden, der Nachlader ruft erneut.
+            return None
+        bw, bh, pix = basis
+        sc = min(zb / float(bw), zh / float(bh))
+        if sc <= 1.0 or bw <= 0 or bh <= 0:
+            # Die Miniatur ist schon so gross wie der Zielkasten (oder
+            # groesser). Nichts zu vergroessern - dann ist das Original
+            # der beste Inhalt, den es gibt.
+            self._scaled_cache_put(box_key, basis)
+            return basis
+        tw = max(1, int(bw * sc))
+        th = max(1, int(bh * sc))
+        out = _verkleinern_nearest(pix, bw, bh, tw, th)
+        if out is None:
+            return basis
+        erg = (tw, th, out)
+        self._scaled_cache_put(box_key, erg)
+        return erg
+
     def _get_scaled_impl(self, path, max_w, max_h, auslagern_ok=False):
         """Bild in die verfuegbare Flaeche einpassen. Kleine Cover werden
         ganzzahlig hochskaliert (Pixel-Look). Cover, die groesser als die

@@ -551,6 +551,78 @@ def _abschnitt_b(b, fe, S, spiele, A=None):
         mit, _ = messen(lambda: fbo.flip(skip_vsync=False), WDH_TEUER)
         b.posten("Voller Flip mit Vsync", mit, None,
                  "das Warten kostet %.1f ms" % max(0.0, mit - ohne))
+        # BUILD 205: derselbe Transport, aber als BAND - und zwar in
+        # Millisekunden JE MEGABYTE, damit beide vergleichbar sind.
+        #
+        # DIE FRAGE, UND WARUM SIE HIER STEHT. Im Profillauf des Nutzers
+        # kostete ein Schritt in der Rasteransicht 68 ms, davon 45 im
+        # Flippen: zwei Baender mit zusammen 385 Bildzeilen, also rund
+        # 2,8 MB, mit 28 ms reiner Kopierzeit. Mit der Rate des vollen
+        # Flips (7,9 MB in 12,6 ms) waeren das 4,5 ms gewesen -
+        # sechsmal weniger. Entweder ist eine Teilkopie je Byte
+        # tatsaechlich viel teurer als eine ganze, oder eine meiner
+        # Annahmen stimmt nicht.
+        #
+        # Eine Erklaerung habe ich schon widerlegt: flip_rows() legt mit
+        # "self.buf[off:end]" eine Zwischenkopie an, flip() nicht. Auf
+        # dem Entwicklungsrechner kostet das nichts (Faktor 1,00-1,05
+        # gemessen) - dort ist mm aber ein bytearray und kein mmap auf
+        # ungepufferten Bildspeicher. Genau deshalb muss es das Geraet
+        # beantworten und nicht ich.
+        #
+        # Wenn ein Band je Megabyte deutlich teurer ist als ein
+        # Vollbild, betrifft das JEDEN leichten Zeichenweg im Frontend -
+        # dann waere das die wichtigste Zahl im ganzen Bericht.
+        try:
+            hoehe = max(1, min(fbo.height // 3, fbo.height))
+            mb_band = (hoehe * fbo.stride) / 1048576.0
+            mb_voll = fbo.size / 1048576.0
+            band, b_best = messen(
+                lambda: fbo.flip_rows(0, hoehe, skip_vsync=True),
+                WDH_TEUER)
+            b.posten("Band-Flip ohne Vsync (%.1f MB)" % mb_band,
+                     band, b_best)
+            # BUILD 206: der direkte A/B-Vergleich, damit der Gewinn
+            # belegt ist und nicht gerechnet. Links der alte Weg mit
+            # Zwischenkopie, rechts der neue ueber memoryview - dieselbe
+            # Datenmenge, derselbe Lauf, dieselbe Maschine.
+            try:
+                _off = 0
+                _ende = hoehe * fbo.stride
+
+                def _alt():
+                    fbo.mm[_off:_ende] = fbo.buf[_off:_ende]
+
+                alt_ms, alt_best = messen(_alt, WDH_TEUER)
+                b.posten("  derselbe Streifen auf dem alten Weg",
+                         alt_ms, alt_best)
+                if band > 0:
+                    b("   MEMORYVIEW   : spart %.1f ms auf %.1f MB "
+                      "(Faktor %.1f)"
+                      % (max(0.0, alt_ms - band), mb_band,
+                         alt_ms / band if band else 0))
+            except Exception as e:                       # noqa: BLE001
+                b("   Vergleich alt/neu: nicht messbar (%s)" % e)
+            if ohne > 0 and mb_band > 0 and mb_voll > 0:
+                r_voll = ohne / mb_voll
+                r_band = band / mb_band
+                b("   JE MEGABYTE : Vollbild %.2f ms, Band %.2f ms"
+                  % (r_voll, r_band))
+                if r_band > r_voll * 1.5:
+                    b("                 -> ein Band ist je Byte %.1fmal"
+                      % (r_band / r_voll))
+                    b("                    teurer. Das betrifft JEDEN")
+                    b("                    leichten Zeichenweg.")
+                elif r_band < r_voll * 0.67:
+                    b("                 -> ein Band ist sogar billiger")
+                    b("                    je Byte. Dann liegen die")
+                    b("                    45 ms aus dem Profil woanders.")
+                else:
+                    b("                 -> gleich teuer je Byte. Die")
+                    b("                    Teilkopie ist also nicht das")
+                    b("                    Problem.")
+        except Exception as e:                           # noqa: BLE001
+            b("   Band-Flip: nicht messbar (%s)" % e)
     except Exception as e:                               # noqa: BLE001
         b("   Voller Flip: FEHLER %s" % e)
 

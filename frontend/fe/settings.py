@@ -891,6 +891,42 @@ def artbox_aufschub_aus():
                  lambda: os.path.exists(ARTBOX_AUFSCHUB_AUS_FLAG))
 
 
+GALERIE_KACHELQUELLE_FLAG = "/media/fat/frontend/galerie_kachelquelle"
+
+
+def galerie_kachelquelle():
+    """Soll das grosse Bild der Galerie aus der RASTER-MINIATUR
+    hochskaliert werden, statt eine eigene Miniatur zu haben?
+
+    PROBEWEISE (Build 207, Nutzerwunsch: "Galerie-gross (342x456) und
+    Raster-Kachel (176x235) liegen nah beieinander. Wuerde die Galerie
+    dieselbe Kachel nehmen und nur groesser anzeigen, probieren wir mal
+    aus ja").
+
+    WAS ES BRINGT: der Schluessel des Miniaturen-Caches enthaelt die
+    Kastengroesse (siehe _thumb_cache_key() in fe/art.py) - Raster und
+    Galerie haben deshalb heute je Spiel ZWEI Dateien auf der Karte.
+    Bei 30.270 Spielen sind das 30.270 Dateien und einmal Rechenzeit
+    weniger, und der Wechsel zwischen den beiden Ansichten ist sofort
+    warm, weil beide auf dieselbe Datei greifen.
+
+    WAS ES KOSTET: 176 -> 342 ist Faktor 1,94, und hochskaliert wird
+    Nearest-Neighbor. Das Bild wird also sichtbar groeber als heute.
+    Ob das hinnehmbar aussieht, kann nur das Auge am Fernseher
+    entscheiden - deshalb ein Schalter und keine Entscheidung.
+
+    Standard AUS: ohne Flagdatei bleibt alles genau wie in Build 206.
+    Einschalten mit
+        touch /media/fat/frontend/galerie_kachelquelle
+    und wieder aus mit
+        rm /media/fat/frontend/galerie_kachelquelle
+
+    Ueber denselben kurzlebigen Zwischenspeicher wie die Schalter
+    darueber - die Abfrage liegt im Zeichenweg."""
+    return _hole(("galerie_kachelquelle", GALERIE_KACHELQUELLE_FLAG),
+                 lambda: os.path.exists(GALERIE_KACHELQUELLE_FLAG))
+
+
 @_nach_aenderung
 def toggle_cover_sofort():
     if cover_sofort_enabled():
