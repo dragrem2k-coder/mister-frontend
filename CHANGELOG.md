@@ -12,6 +12,41 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.6 — noch nicht veröffentlicht
 
+**Der Login-Prompt beim gehaltenen Scrollen: die Wache war an genau dieser
+Stelle nie aktiv.**
+
+Gemeldet: „ploppt das Login-Prompt wieder auf, wenn ich zum Beispiel in der
+Listenansicht nach unten scrolle bei gedrückter Taste."
+
+Die Ursache stand seit Build 199 halb in unserem eigenen Kommentar: der
+Leerlaufzweig der Hauptschleife wird übersprungen, solange eine Eingabe
+anliegt. Beim *Halten* einer Taste war deshalb alles abwesend, was gegen
+den Prompt gebaut wurde. Build 199 hat daraus nur **eine** Abhilfe
+mitgenommen — das regelmäßige Neuschreiben der obersten Zeilen. Und genau
+das reicht nicht: der Gruß des Login-Prozesses ist höher als diese Zeilen.
+Die Wache, die den Prompt *überall* im Bild erkennt, blieb im
+Leerlaufzweig stehen. Sie läuft jetzt auch einmal je Aktion, mit ihrer
+eigenen Drosselung — gemessen eine Prüfung bei zwanzig Tastenschritten in
+einer Sekunde.
+
+Der empfindliche Punkt dabei ist die *Reihenfolge*, und die ist im
+Quelltext begründet: die Wache vergleicht Schirm und gezeichnetes Bild,
+und beim Scrollen laufen die beiden außerhalb des kopierten Streifens
+auseinander. Vorher geprüft, hätte sie eigene, noch nicht kopierte Zeilen
+für fremden Text gehalten — das wäre das Flackern aus Build 151 zurück.
+Sie prüft deshalb *nach* dem Auffrischen der Kopfzeilen, die genau den
+Bereich frisch kopiert haben, den sie ansieht.
+
+**Und der F9-Befund ist eindeutig: es ist nicht unser Bild.** Fünfmal
+„0 Bildpunkte, Schwelle 120". Unser Bild steht unversehrt in unserem
+Bildspeicher; MiSTer zeigt schlicht eine andere Anzeige-Ebene. Damit ist
+klar, dass weder die Wache noch der Bildwächter das je reparieren können —
+beide kennen nur unseren eigenen Speicher. Das Umschalten muss über MiSTer
+selbst laufen. Welcher Weg das ist, wird nicht geraten; dafür sind
+Messungen auf dem Gerät unterwegs.
+
+---
+
 **Das F9 auf der Tastatur wird jetzt bemerkt — und der Attract-Modus hört
 auf, sich eigene Miniaturen zu bauen.**
 

@@ -16280,6 +16280,65 @@ class Frontend:
                 # viermal je Sekunde), oefteres Rufen kostet also nichts.
                 self._kopfzeilen_auffrischen()
 
+                # NACHTRAG (Build 208, Nutzer-Rueckmeldung: "ausserdem
+                # ploppt das login prompt wieder auf wenn ich zum
+                # beispiel in der listen ansicht nach unten scrolle bei
+                # gedrueckter taste").
+                #
+                # Der Kommentarblock direkt darueber hat die richtige
+                # Ursache benannt - "der Leerlaufzweig wird bei
+                # anliegender Eingabe mit return act uebersprungen" -
+                # und daraus in Build 199 nur die EINE Abhilfe
+                # hierhergezogen, die Kopfzeilen. Alles andere, was
+                # gegen den Prompt gebaut wurde, blieb im Leerlaufzweig
+                # stehen und ist beim gehaltenen Scrollen deshalb bis
+                # heute abwesend:
+                #
+                #   _konsole_wache()      Build 157, die einzige
+                #                         Stelle, die den Prompt
+                #                         UEBERALL im Bild erkennt und
+                #                         nicht nur die obersten Zeilen
+                #                         ueberschreibt.
+                #   _konsole_aufraeumen() Build 150/207, raeumt nach
+                #                         einem F9 auf.
+                #   _f9_nutzer_behandeln() Build 207.
+                #
+                # Die Kopfzeilen allein reichen nachweislich nicht: sie
+                # schreiben KOPFZEILEN Zeilen neu, der Gruss des
+                # Login-Prozesses ist hoeher. Deshalb jetzt dieselbe
+                # Verschiebung fuer die drei anderen.
+                #
+                # Kostet nichts: jede der drei bringt ihre eigene
+                # Drosselung mit (KONSOLE_WACHE_TAKT = 1 s, und die
+                # beiden anderen kehren sofort um, wenn nichts
+                # angesetzt ist). Und teuer wird es nur in dem einen
+                # Fall, in dem es teuer sein DARF - wenn zweimal
+                # hintereinander fremder Text gefunden wurde.
+                #
+                # Am Schalter konsole_mechanik() wie im Leerlaufzweig
+                # (Build 167).
+                #
+                # DIE REIHENFOLGE IST ABSICHT, und zwar genau hier:
+                # _fremdausgabe_zaehlen() vergleicht den Schirm (mm) mit
+                # dem gezeichneten Bild (buf), und beim gehaltenen
+                # Scrollen laufen die beiden AUSSERHALB des kopierten
+                # Streifens auseinander - flip_rows() kopiert nur das
+                # Band. Ein Zaehlen davor koennte deshalb eigene,
+                # noch nicht kopierte Zeilen als fremd lesen. Das
+                # _kopfzeilen_auffrischen() direkt darueber schreibt
+                # und KOPIERT aber genau die obersten Zeilen, und genau
+                # die sieht die Wache an (KONSOLE_WACHE_ZEILEN = 48).
+                # Danach sind mm und buf dort gleich. Die Wache wird
+                # deshalb nach dem Auffrischen gerufen, nicht davor.
+                # (Die Richtungspruefung "hell auf dem Schirm, dunkel
+                # im Puffer" und die zwei Bestaetigungen im Abstand
+                # einer Sekunde sichern denselben Punkt noch zweifach
+                # ab - siehe dort und Build 151.)
+                if self.konsole_mechanik():
+                    self._f9_nutzer_behandeln()
+                    self._konsole_aufraeumen()
+                    self._konsole_wache()
+
                 # Geheimcode-Erkennung (siehe
                 # check_secret_code()) - beobachtet nur, greift nie in
                 # die normale Verarbeitung ein. Absichtlich VOR jeder

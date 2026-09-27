@@ -13,6 +13,37 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.6 — not yet released
 
+**The login prompt while holding a key: the watch was never running at
+exactly that moment.**
+
+Reported: "the login prompt pops up again when I scroll down in the list
+view with the key held."
+
+The cause has been half-written in our own comment since Build 199: the
+main loop's idle branch is skipped while input is pending. So while a key
+is *held*, everything built against the prompt was absent. Build 199 moved
+only **one** remedy onto the per-action path — rewriting the topmost rows.
+And that is not enough: the login process's greeting is taller than those
+rows. The watch that detects the prompt *anywhere* on screen stayed in the
+idle branch. It now runs once per action too, with its own throttle —
+measured as one check per twenty key steps in a second.
+
+The delicate part is the *order*, and the source says why: the watch
+compares screen against drawn picture, and while scrolling those two
+diverge outside the copied band. Checked earlier, it would have read our
+own not-yet-copied rows as foreign text — the Build 151 flicker, back
+again. So it checks *after* the header rows are refreshed, since those
+have just re-copied exactly the area it looks at.
+
+**And the F9 finding is unambiguous: it is not our picture.** Five times
+"0 pixels, threshold 120". Our picture stands untouched in our own
+framebuffer; MiSTer is simply showing a different display layer. Neither
+the watch nor the picture guard can ever repair that — both only know our
+own memory. The switch has to go through MiSTer itself. Which way that is
+will not be guessed; measurements on the device are on their way.
+
+---
+
 **F9 on the keyboard is now noticed — and attract mode stops building
 thumbnails of its own.**
 

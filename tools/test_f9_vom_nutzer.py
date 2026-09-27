@@ -258,6 +258,55 @@ check("beide Erklaerungen stehen da, A und B",
 check("und dass hier NICHT geraten wird",
       "146-149" in qd)
 
+# ---------------------------------------------------------------------------
+print()
+print("Test 7: die Wache laeuft auch beim GEHALTENEN Scrollen (Build 208)")
+# ---------------------------------------------------------------------------
+# Nutzer-Rueckmeldung: "ausserdem ploppt das login prompt wieder auf wenn
+# ich zum beispiel in der listen ansicht nach unten scrolle bei
+# gedrueckter taste". Der Leerlaufzweig der Hauptschleife wird bei
+# anliegender Eingabe mit "return act" uebersprungen - Build 199 hat
+# daraus nur die Kopfzeilen hierhergezogen, die Wache blieb dort stehen.
+q = inspect.getsource(fm.Frontend.run)
+i_kopf = q.rfind("self._kopfzeilen_auffrischen()")
+i_wache = q.rfind("self._konsole_wache()")
+i_auf2 = q.rfind("self._konsole_aufraeumen()")
+i_f92 = q.rfind("self._f9_nutzer_behandeln()")
+check("_konsole_wache() steht auf dem Aktions-Pfad", i_wache > i_kopf > 0,
+      "%d / %d" % (i_wache, i_kopf))
+check("_konsole_aufraeumen() ebenfalls", i_auf2 > i_kopf)
+check("_f9_nutzer_behandeln() ebenfalls", i_f92 > i_kopf)
+check("und die Wache NACH dem Auffrischen der Kopfzeilen - sonst liest "
+      "sie eigene, noch nicht kopierte Zeilen als fremd",
+      i_kopf < i_wache, "%d / %d" % (i_kopf, i_wache))
+# Und wirklich hinter dem Schalter, nicht nur irgendwo dahinter.
+block = q[i_kopf:i_wache]
+check("dazwischen steht der Schalter konsole_mechanik()",
+      "if self.konsole_mechanik():" in block)
+check("der Grund fuer die Reihenfolge steht dabei",
+      "auseinander" in block and "KONSOLE_WACHE_ZEILEN" in block)
+
+# Die Drosselung muss die Kosten tragen: einmal je Sekunde nachsehen,
+# auch wenn die Aktion zwanzigmal je Sekunde kommt.
+NOW[0] = 9000.0
+fe = H.make_frontend(page=1)
+fe.inp = Mgr()
+gezaehlt = [0]
+_echt_zaehl = fm.Frontend._fremdausgabe_zaehlen
+try:
+    fm.Frontend._fremdausgabe_zaehlen = lambda self: (
+        gezaehlt.__setitem__(0, gezaehlt[0] + 1) or 0)
+    fe._wache_naechste = 0.0
+    for i in range(20):
+        NOW[0] = 9000.0 + i * 0.05      # 20 Aktionen in einer Sekunde
+        fe._konsole_wache()
+    check("20 Aktionen in einer Sekunde -> hoechstens 2 Zaehlungen",
+          gezaehlt[0] <= 2, "%d Zaehlungen" % gezaehlt[0])
+    print("    %d Zaehlungen bei 20 Aktionen (Takt %.1f s)"
+          % (gezaehlt[0], fm.Frontend.KONSOLE_WACHE_TAKT))
+finally:
+    fm.Frontend._fremdausgabe_zaehlen = _echt_zaehl
+
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))
