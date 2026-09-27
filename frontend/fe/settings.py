@@ -867,6 +867,30 @@ def cover_sofort_enabled():
                  lambda: os.path.exists(COVER_SOFORT_FLAG))
 
 
+# Build 197: der Aufschub der Artbox im Hauptmenue (Build 196) laesst
+# sich EINZELN abschalten.
+#
+# Warum nicht einfach COVER_SOFORT_FLAG dafuer nehmen, der den Aufschub
+# ohnehin aufhebt: der schaltet ZWEI Dinge gleichzeitig um (auf Seite 1
+# auch das Cover-Panel). Wer nachmessen will, ob eine Beobachtung an
+# Build 196 haengt, braucht einen Schalter, der nur das eine anfasst -
+# sonst ist die Messung wertlos. Genau diese Sorte Doppelaenderung hat
+# mich in dieser Sitzung mehrfach an die falsche Stelle geschickt.
+#
+# Standard AUS, also Aufschub AN.
+ARTBOX_AUFSCHUB_AUS_FLAG = "/media/fat/frontend/artbox_aufschub_aus"
+
+
+def artbox_aufschub_aus():
+    """Soll das Abzeichen im Hauptmenue auch bei gehaltener Taste bei
+    JEDEM Schritt neu gezeichnet werden (Verhalten vor Build 196)?
+
+    Ueber denselben kurzlebigen Zwischenspeicher wie die beiden
+    Schalter darueber - die Abfrage liegt im Zeichenweg."""
+    return _hole(("artbox_aufschub_aus", ARTBOX_AUFSCHUB_AUS_FLAG),
+                 lambda: os.path.exists(ARTBOX_AUFSCHUB_AUS_FLAG))
+
+
 @_nach_aenderung
 def toggle_cover_sofort():
     if cover_sofort_enabled():

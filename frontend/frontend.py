@@ -61,6 +61,78 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # raw.githubusercontent.com reicht als Versionspruefung, kein API-
 # Rate-Limit, keine JSON-Antwort noetig.
 
+# ---------------------------------------------------------------------
+# BUILD 204: ein nicht zusammenpassendes fe/-Paket darf keinen
+# Traceback auf den Bildschirm werfen.
+#
+# DER VORFALL, woertlich vom Bildschirm eines Freundes des Nutzers,
+# nachdem er Frontend_Install.sh zum Aktualisieren laufen liess:
+#
+#   Starte Frontend...
+#   Traceback (most recent call last):
+#     File "/media/fat/frontend/frontend.py", line 218, in <module>
+#       from fe.settings import (
+#   ImportError: cannot import name 'artbox_aufschub_aus' from
+#   'fe.settings' (/media/fat/frontend/fe/settings.py)
+#   FEHLER: Frontend startet auch im zweiten Versuch sofort wieder ab.
+#
+# Seine frontend.py kannte den Namen, seine fe/settings.py nicht - die
+# beiden Dateien kamen aus verschiedenen Staenden. Der Name kam in
+# Build 197 in BEIDE Dateien gleichzeitig; wer nur eine davon bekommt,
+# hat diesen Absturz.
+#
+# ES GAB BEREITS EINE VORSORGE DAFUER, und sie ist gut: seit Build 186
+# vergleicht _fe_paket_pruefen() namentlich, ob fe/ zu dieser
+# frontend.py passt, und druckt eine Anleitung statt eines Absturzes.
+# Nur kommt sie hier nie zum Zug - ein fehlender Name in einem
+# "from fe.x import y" fliegt beim IMPORT, also lange bevor auch nur
+# eine Zeile eigener Code laeuft.
+#
+# Dieser Haken schliesst genau diese Luecke, und zwar fuer ALLE
+# fe-Importe dieser Datei auf einmal (es sind ueber dreissig, quer
+# verteilt - jeden einzeln abzusichern waere die Sorte Aenderung, die
+# man an einer Stelle vergisst). Python legt den Modulnamen in
+# ImportError.name ab, "fe.settings" in diesem Fall; alles andere
+# reicht der Haken unveraendert an die normale Behandlung weiter, ein
+# echter Programmfehler sieht also weiterhin aus wie einer.
+# ---------------------------------------------------------------------
+def _fe_import_haken(typ, wert, spur):
+    name = str(getattr(wert, "name", "") or "")
+    if not (issubclass(typ, ImportError)
+            and (name == "fe" or name.startswith("fe."))):
+        sys.__excepthook__(typ, wert, spur)
+        return
+    datei = name.replace(".", "/") + ".py"
+    for z in ("",
+              "ACHTUNG: frontend.py und das fe/-Paket passen nicht",
+              "zusammen - das Frontend kann so nicht starten.",
+              "",
+              "  %s" % wert,
+              "",
+              "Das passiert, wenn nur ein Teil der Dateien eingespielt",
+              "wurde (z.B. ein ZIP mit frontend.py, aber ohne das",
+              "passende %s)." % datei,
+              "",
+              "Behoben mit einer VOLLSTAENDIGEN Installation:",
+              "  /media/fat/Scripts/Frontend_Update.sh",
+              "",
+              "Hilft das nicht, liegt auf der Karte ein gemischter",
+              "Stand - dann Frontend_Install.sh noch einmal laufen",
+              "lassen, das holt alle Dateien neu.",
+              ""):
+        print(z)
+    # Zusaetzlich ins Log, damit es auch der findet, der den Bildschirm
+    # nicht gesehen hat. Ohne fe.log, das hier ja gerade fehlen koennte.
+    try:
+        with open("/tmp/frontend.log", "a") as _f:
+            _f.write("PAKET-PRUEFUNG (Import): %s\n" % wert)
+    except Exception:                                    # noqa: BLE001
+        pass
+    sys.exit(1)
+
+
+sys.excepthook = _fe_import_haken
+
 from fe.log import LOGFILE, LOG
 from fe.zwischenspeicher import hole as _hole, vergessen as _einstellungen_vergessen
 
@@ -17876,6 +17948,12 @@ FE_PAKET_BRAUCHT = (
     ("fe.art", None, "THUMB_PACKSTUFE", "Build 178"),
     ("fe.framebuffer", "Framebuffer", "_haeppchen_einrichten", "Build 181"),
     ("fe.framebuffer", "Framebuffer", "_rueckleser_pruefen", "Build 182"),
+    # Build 204: der Name, an dem es beim Freund des Nutzers wirklich
+    # gescheitert ist. Der Import-Haken ganz oben faengt den Absturz
+    # zwar schon ab - aber diese Liste ist die Stelle, an der ein
+    # gemischter Stand BENANNT wird, und dort gehoert er hin.
+    ("fe.settings", None, "artbox_aufschub_aus", "Build 197"),
+    ("fe.framebuffer", "Framebuffer", "_waechter_pruefen", "Build 198"),
 )
 
 

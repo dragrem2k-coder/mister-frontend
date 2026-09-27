@@ -108,6 +108,23 @@ class Framebuffer:
     _rueck_offsets = ()
     _rueck_proben = None
 
+    # DER BILDWAECHTER (Build 198), siehe _waechter_pruefen(). Aus
+    # denselben Gruenden Klassenvorgaben: eine Attrappe, die _map() nie
+    # ruft, soll flip_rows() trotzdem ueberstehen.
+    _waechter_an = False
+    _waechter_offsets = ()
+    _waechter_soll = None
+    _waechter_letzte = 0.0
+    _waechter_repariert = 0
+    _waechter_meldung = 0.0
+    WAECHTER_PUNKTE = 8
+    # Kuerzester Abstand zwischen zwei Reparaturen. Wischt MiSTer
+    # dauerhaft, wuerde sonst jeder Teil-Flip zu einer Vollbildkopie -
+    # aus 1 ms wuerden 13, und das Scrollen waere langsamer als vor
+    # Build 196. Dann lieber das Band schreiben und die naechste
+    # Gelegenheit abwarten; die Zaehlung im Log sagt, dass es passiert.
+    WAECHTER_TAKT = 0.2
+
     # FBIO_WAITFORVSYNC (siehe linux/fb.h: _IOW('F', 0x20, __u32)) - wartet
     # auf den naechsten vertikalen Bildwechsel der Anzeige-Hardware, BEVOR
     # in den Framebuffer geschrieben wird. Ohne das kann ein Schreibvorgang
@@ -483,6 +500,7 @@ class Framebuffer:
         self.buf = bytearray(self.size)
         self._haeppchen_einrichten()
         self._rueckleser_einrichten()
+        self._waechter_einrichten()
 
     def _haeppchen_einrichten(self):
         """Den haeppchenweisen Flip vorbereiten - siehe
@@ -687,6 +705,137 @@ class Framebuffer:
         LOG("RUECKLESER-BILANZ: %.0f s, %d Bilder geprueft, %d Treffer"
             % (jetzt - self._rueck_start, self._rueck_bilder,
                self._rueck_treffer))
+
+    def _waechter_einrichten(self):
+        """Den Bildwaechter vorbereiten - siehe _waechter_pruefen().
+
+        Standardmaessig AN, abschaltbar ueber DRAGEND_BILDWAECHTER=0
+        oder die Datei /media/fat/frontend/bildwaechter_aus. Wie beim
+        Rueckleser wird hier direkt gelesen und nicht ueber fe.settings:
+        dieses Modul kommt ohne Abhaengigkeit nach oben aus.
+
+        Die Probenpunkte liegen bewusst so:
+
+          - ZWEI in den obersten Zeilen (16 und 40). Dort landet der
+            Login-Prompt (frontend_boot.sh setzt den Cursor ganz am
+            Anfang auf Position 1), dort ist also im Ernstfall heller
+            Text auf dunklem Grund - der deutlichste Unterschied, den
+            es gibt.
+          - SECHS ueber die restliche Bildhoehe verteilt, jeder in einer
+            anderen Bildspalte. Ein Wischen faerbt praktisch jeden
+            Bildpunkt um; die Streuung ist dagegen versichert, dass
+            eine einzelne Probe zufaellig auf eine Stelle faellt, die
+            vorher und nachher gleich aussieht."""
+        self._waechter_an = False
+        self._waechter_offsets = ()
+        self._waechter_soll = None
+        self._waechter_letzte = 0.0
+        self._waechter_repariert = 0
+        self._waechter_meldung = 0.0
+        wert = os.environ.get("DRAGEND_BILDWAECHTER")
+        if wert is None:
+            if os.path.exists("/media/fat/frontend/bildwaechter_aus"):
+                return
+            n = self.WAECHTER_PUNKTE
+        else:
+            wert = (wert or "").strip()
+            if wert in ("0", "aus", "off"):
+                return
+            try:
+                n = int(wert)
+            except ValueError:
+                n = self.WAECHTER_PUNKTE
+        n = max(2, min(n, 64))
+        if self.height <= 0 or self.width <= 0:
+            return
+        zeilen = [min(self.height - 1, 16), min(self.height - 1, 40)]
+        rest = max(1, n - len(zeilen))
+        for i in range(rest):
+            zeilen.append((self.height * (2 * i + 1)) // (2 * rest))
+        punkte = []
+        anz = len(zeilen)
+        for k, z in enumerate(zeilen):
+            z = max(0, min(self.height - 1, z))
+            x = (self.width * (2 * k + 1)) // (2 * anz)
+            x = max(0, min(self.width - 1, x))
+            punkte.append(z * self.stride + x * 4)
+        # Doppelte entfernen, Reihenfolge behalten.
+        gesehen = set()
+        eindeutig = []
+        for p in punkte:
+            if p not in gesehen:
+                gesehen.add(p)
+                eindeutig.append(p)
+        self._waechter_offsets = tuple(eindeutig)
+        self._waechter_soll = [None] * len(self._waechter_offsets)
+        self._waechter_an = True
+
+    def _waechter_merken(self, y0=0, y1=None):
+        """Was wir gerade geschrieben haben, als Sollwert festhalten.
+
+        Genau wie beim Rueckleser: verglichen wird spaeter gegen DAS
+        ZULETZT GESCHRIEBENE, nicht gegen den aktuellen Puffer. Das ist
+        der ganze Trick, und er macht Fehlalarme unmoeglich. Der Puffer
+        laeuft dem Schirm naemlich voellig legitim voraus - mehrere
+        Zeichenpfade malen erst alles in den Puffer und flippen dann
+        Band fuer Band. Wer gegen den Puffer vergleicht, meldet dieses
+        normale Vorauslaufen als Fremdschreiben; wer gegen das zuletzt
+        Geschriebene vergleicht, kann nur echte Fremdschreiber finden,
+        denn zwischen zwei Flips schreibt NIEMAND SONST in mm."""
+        soll = self._waechter_soll
+        if not soll:
+            return
+        if y1 is None:
+            y1 = self.height
+        a0 = y0 * self.stride
+        a1 = y1 * self.stride
+        for i, off in enumerate(self._waechter_offsets):
+            if a0 <= off < a1:
+                soll[i] = bytes(self.buf[off:off + 4])
+
+    def _waechter_pruefen(self):
+        """Steht auf dem Schirm noch unser Bild?
+
+        DER FUND, DER DAZU GEFUEHRT HAT (Build 198). Der Nutzer meldete
+        nach Build 196, dass beim gehaltenen Scrollen wieder der
+        Login-Gruss aufblitzt. Der Rueckleser hat gesagt, was los ist:
+
+            RUECKLESER: nach 26.9 s steht in 15 von 15 Proben-Zeilen
+            fremder Inhalt (Zeilen 0,16,32,48,90,180,270,360)
+            - 2 Treffer bei 109 Bildern
+
+        FUENFZEHN VON FUENFZEHN. Das ist kein Text, den jemand oben
+        hineinschreibt - das ist das ganze Bild, das nicht mehr unseres
+        ist. Selten (rund einmal je hundert Bilder), aber vollstaendig.
+        Dazu passt, was im dmesg des Nutzers steht: MiSTer richtet den
+        Bildspeicher im Betrieb mehrfach neu ein ("MiSTer_fb:
+        width = 1920, height = 1080" bei Sekunde 3, 41, 48, 51). Dabei
+        ist unser Bild weg, und weil bei ihm fb_terminal=1 steht, ist
+        die Linux-Konsole die Ebene darunter - deshalb erscheint
+        ausgerechnet der Login-Gruss.
+
+        WARUM ES ERST MIT BUILD 196 AUFFIEL, und das ist die eigentliche
+        Lehre: vorher kopierte jeder Scrollschritt 804 von 1080
+        Bildzeilen, ein Wischen war also binnen 80 ms zu drei Vierteln
+        uebermalt und fiel nicht auf. Seit Build 196 sind es 120 Zeilen,
+        und der Rest bleibt stehen, solange die Taste gehalten wird.
+        Der Fehler ist damit AELTER als Build 196 - der hat nur
+        aufgehoert, ihn zufaellig zu verdecken, und 85 ms je Schritt war
+        der unfreiwillige Preis dafuer.
+
+        Zu reparieren ist nichts: unser Puffer ist unversehrt. Es muss
+        nur einmal alles kopiert werden."""
+        soll = self._waechter_soll
+        if not soll:
+            return False
+        mm = self.mm
+        for i, off in enumerate(self._waechter_offsets):
+            s = soll[i]
+            if s is None:
+                continue          # dort haben wir noch nie geschrieben
+            if mm[off:off + 4] != s:
+                return True
+        return False
 
     def _rueckleser_merken(self, y0=0, y1=None):
         """Die Proben der gerade geschriebenen Zeilen auffrischen.
@@ -1565,6 +1714,13 @@ class Framebuffer:
             # Direkte Slice-Zuweisung: mmap nimmt das bytearray ohne die
             # teure bytes()-Zwischenkopie (auf 1080p ~8 MB pro Frame).
             self.mm[:] = self.buf
+        # BUILD 198: ein Vollbild schreibt ohnehin alles - hier ist
+        # nichts zu pruefen und nichts zu reparieren, nur der Sollwert
+        # des Waechters gehoert aufgefrischt. Ohne das meldete der
+        # naechste Teil-Flip das eben selbst geschriebene Bild als
+        # fremd, und zwar bei jedem Seitenaufbau.
+        if self._waechter_an:
+            self._waechter_merken()
         if self._rueck_proben is not None:
             self._rueckleser_merken()
         self.flip_gen += 1
@@ -1632,7 +1788,31 @@ class Framebuffer:
             self._wait_vsync()
         off = y0 * self.stride
         end = y1 * self.stride
+        # BUILD 198: erst nachsehen, ob auf dem Schirm ueberhaupt noch
+        # unser Bild steht - siehe _waechter_pruefen() fuer den Fund.
+        # VOR dem Schreiben, nicht danach: steht dort etwas Fremdes,
+        # wird gleich alles kopiert statt nur das Band, und das ist EIN
+        # Schreibvorgang statt zwei.
+        if self._waechter_an and self._waechter_pruefen():
+            jetzt = time.monotonic()
+            if jetzt - self._waechter_letzte >= self.WAECHTER_TAKT:
+                self._waechter_letzte = jetzt
+                self._waechter_repariert += 1
+                self.mm[:] = self.buf
+                self._waechter_merken()
+                if self._rueck_proben is not None:
+                    self._rueckleser_merken()
+                if jetzt - self._waechter_meldung >= 1.0:
+                    self._waechter_meldung = jetzt
+                    LOG("BILDWAECHTER: der Schirm war nicht mehr unser "
+                        "Bild - ganz neu kopiert (%d. Mal)"
+                        % self._waechter_repariert)
+                self.flip_gen += 1
+                self.flip_event.set()
+                return
         self.mm[off:end] = self.buf[off:end]
+        if self._waechter_an:
+            self._waechter_merken(y0, y1)
         if self._rueck_proben is not None:
             self._rueckleser_merken(y0, y1)
         self.flip_gen += 1

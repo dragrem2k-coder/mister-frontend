@@ -640,6 +640,12 @@ class InputManager:
         self._zeichenzeit = {}
         self.rescan(force=True)
 
+    # BUILD 192: wann die zuletzt gelieferte Aktion entstanden ist
+    # (time.monotonic()). Hier als KLASSENvorgabe, damit jede Attrappe
+    # in den Tests sie hat, ohne sie nachbauen zu muessen - die Lehre
+    # aus Build 181.
+    eingabe_zeit = 0.0
+
     def zeichenzeit_melden(self, act, dauer):
         """Build 93: das Frontend meldet nach jeder verarbeiteten Aktion,
         wie lange Verarbeitung + Neuzeichnen tatsaechlich gedauert haben.
@@ -1035,11 +1041,25 @@ class InputManager:
                     _, _, etype, code, value = struct.unpack(EVENT_FMT, data)
                     act = self._translate(dev, etype, code, value)
                     if act:
+                        # BUILD 192: wann diese Aktion entstanden ist.
+                        # Siehe eingabe_zeit - das ist die eine Zahl,
+                        # die bisher fehlte, um Latenz ueberhaupt
+                        # messen zu koennen.
+                        #
+                        # Bewusst time.monotonic() und NICHT der
+                        # Zeitstempel aus dem evdev-Ereignis: der laeuft
+                        # auf CLOCK_REALTIME, und auf dem MiSTer springt
+                        # die Uhr beim ersten NTP-Abgleich um Stunden.
+                        # Eine Messung, die davon abhaengt, misst
+                        # irgendwann Unsinn. Der Unterschied ist
+                        # bedeutungslos: wir haengen in select() und
+                        # sind sofort dran.
+                        self.eingabe_zeit = time.monotonic()
                         return act
                 if got_event:
                     continue      # erst die Warteschlange leeren, dann Repeat
             if self.held is not None and time.monotonic() >= self.held[2]:
-                kid, act, _t, iv = self.held
+                kid, act, _faellig, iv = self.held
                 # Untergrenze bewusst bei 0.08s (12.5/s) statt zuvor 0.05s
                 # (20/s) - auf HDMI dauert ein volles Neuzeichnen auf
                 # schwacher ARM-Hardware laenger als 0.05s, wodurch sich
@@ -1060,6 +1080,17 @@ class InputManager:
                 self._last_repeat_time = time.monotonic()
                 self._last_repeat_act = act
                 self._last_repeat_iv = iv
+                # BUILD 192: bei einer Wiederholung zaehlt der
+                # FAELLIGKEITStermin, nicht der Augenblick.
+                #
+                # Der Nutzer drueckt hier nicht neu - er haelt. Was er
+                # spuert, ist der Abstand zwischen zwei Schritten auf
+                # dem Schirm. Wuerde hier "jetzt" stehen, waere die
+                # gemessene Latenz per Bauart immer nahe null, egal wie
+                # spaet der Schritt kommt. Der Termin sagt dagegen
+                # genau, wie weit wir hinter dem Takt liegen - und das
+                # ist die Groesse, die besser werden soll.
+                self.eingabe_zeit = _faellig
                 return act
             if deadline is not None and time.monotonic() >= deadline:
                 return None
