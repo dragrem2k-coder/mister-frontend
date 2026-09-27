@@ -12,6 +12,42 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.6 — noch nicht veröffentlicht
 
+**Die Umstellung auf JPEG hat das Scrollen erst langsamer gemacht — das
+ist behoben, und der Fehler war meiner.**
+
+Nach der Umstellung waren die gemessenen Zahlen schlechter als davor:
+
+```
+vorher   down/S1  69x Mittel  72 ms (max  192)
+danach   down/S1   7x Mittel 492 ms (max  750)
+         right/S1 59x Mittel 265 ms (max 1831)
+```
+
+Das Lesen war nicht das Problem, das Nachziehen war es. Alte Miniaturen
+werden beim Lesen auf JPEG umgeschrieben, und das geht über eine
+Hilfsfunktion, die dafür **einen eigenen Thread pro Aufruf** startet.
+In deren Beschreibung steht ausdrücklich, dass das nur deshalb in Ordnung
+ist, weil es „nur beim Wegschreiben einer frisch berechneten Miniatur
+passiert (nicht bei jedem Scrollschritt)". Genau diese Annahme hatte ich
+gebrochen: beim Scrollen wurde je Schritt ein Thread gestartet, der
+packte, JPEG kodierte und dabei auch noch einen Verzeichnisdurchlauf
+mitzog. Auf zwei schwachen Kernen konkurriert das direkt mit dem
+Zeichnen — und um dieselbe SD-Karte.
+
+Ich hatte diese Beschreibung beim Bauen gelesen und bin trotzdem
+hineingelaufen.
+
+Jetzt zwei Bremsen:
+
+- **Nur im Stillstand.** Während geblättert wird, wird nichts
+  umgeschrieben. Umgezogen wird, wenn ohnehin Luft ist.
+- **Höchstens eine Umstellung alle zwei Sekunden.** Auch im Leerlauf soll
+  daraus kein Sturm werden.
+
+Bei 97.000 Einträgen wird die Umstellung damit eine Sache der normalen
+Nutzung über Wochen — und soll sich gar nicht anfühlen. Das Lesen selbst
+ist unverändert schnell; gedrosselt ist nur das Umschreiben.
+
 **Der Bench beantwortet jetzt eine Frage, die auf dem Entwicklungsrechner
 schon einmal falsch beantwortet wurde.**
 

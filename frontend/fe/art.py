@@ -579,6 +579,13 @@ _jpg_nachgezogen = set()
 _JPG_NACHZIEHEN_MAX = 20000
 
 
+# Wann zuletzt eine Miniatur nachgezogen wurde, und wie dicht das
+# ueberhaupt passieren darf. Siehe die Begruendung in
+# _thumb_als_jpg_nachziehen() - das ist die Lehre aus Build 203.
+_jpg_letzte = [0.0]
+JPG_NACHZIEHEN_TAKT = 2.0
+
+
 def _thumb_als_jpg_nachziehen(path, w, h, tw, th, pix, gepackt_bytes):
     """Eine alte ART1-Miniatur nebenher als JPG neu schreiben.
 
@@ -586,9 +593,43 @@ def _thumb_als_jpg_nachziehen(path, w, h, tw, th, pix, gepackt_bytes):
     Fehler, den _thumb_cache_put_async() schon einmal beheben musste
     ("_thumb_cache_put: 380ms" mitten in einem Zeichenvorgang). Das
     Umschreiben geht an denselben Weg: der Aufrufer hat sein Bild schon,
-    die Datei ist reine Vorsorge fuer das naechste Mal."""
+    die Datei ist reine Vorsorge fuer das naechste Mal.
+
+    ZWEI BREMSEN, UND SIE SIND TEUER BEZAHLT (Build 203).
+
+    Build 201 hat hier ohne Bremse nachgezogen, und die Zahlen des
+    Nutzers danach waren schlechter als vorher:
+
+        vorher   down/S1  69x Mittel  72 ms (max  192)
+        danach   down/S1   7x Mittel 492 ms (max  750)
+                 right/S1 59x Mittel 265 ms (max 1831)
+
+    Die Ursache steht im Docstring von _thumb_cache_put_async(), und ich
+    hatte sie gelesen: der startet einen eigenen Thread PRO AUFRUF, und
+    das ist ausdruecklich nur deshalb in Ordnung, weil es "nur beim
+    Wegschreiben einer frisch berechneten Miniatur passiert (nicht bei
+    jedem Scrollschritt)". Genau diese Annahme habe ich gebrochen - beim
+    Scrollen wurde je Schritt ein Thread gestartet, der packte, JPEG
+    kodierte und dabei _thumb_cache_evict_if_needed() mitzog, also einen
+    Verzeichnisdurchlauf. Auf zwei schwachen Kernen konkurriert das
+    direkt mit dem Zeichnen und um dieselbe SD-Karte.
+
+    Deshalb jetzt:
+
+      1. NICHT WAEHREND DER NAVIGATION. Der Aufrufer sagt es (siehe
+         nachziehen_erlaubt in _thumb_cache_get): waehrend aktiv
+         geblaettert wird, steht _defer_uncached, und dann wird nichts
+         umgeschrieben. Umgezogen wird im Stillstand, wo ohnehin Luft
+         ist.
+      2. HOECHSTENS EINE JE JPG_NACHZIEHEN_TAKT. Selbst im Leerlauf soll
+         daraus kein Sturm werden; bei 97.000 Eintraegen ist die
+         Umstellung ohnehin eine Sache von Wochen der normalen Nutzung,
+         und genau so soll sie sich anfuehlen: gar nicht."""
     if gepackt_bytes < THUMB_JPEG_AB_BYTES:
         return                # flaechig und winzig - dort holt JPG nichts
+    jetzt = time.monotonic()
+    if jetzt - _jpg_letzte[0] < JPG_NACHZIEHEN_TAKT:
+        return
     if not _jpeg_moeglich():
         return
     schluessel = (path, w, h)
@@ -597,6 +638,7 @@ def _thumb_als_jpg_nachziehen(path, w, h, tw, th, pix, gepackt_bytes):
     if len(_jpg_nachgezogen) >= _JPG_NACHZIEHEN_MAX:
         return
     _jpg_nachgezogen.add(schluessel)
+    _jpg_letzte[0] = jetzt
     try:
         _thumb_cache_put_async(path, w, h, tw, th, pix)
     except Exception:                                    # noqa: BLE001
@@ -1287,7 +1329,7 @@ ORIGINAL_PASST = "original_passt"
 _MARKE = b"ARTO"
 
 
-def _thumb_cache_get(path, w, h):
+def _thumb_cache_get(path, w, h, nachziehen_erlaubt=False):
     """Liefert (breite, hoehe, pixelbytes) bei einem Treffer, sonst
     None. Vermerkt bei einem Treffer die Benutzung (dient als einfacher,
     robuster "zuletzt benutzt"-Zeitstempel fuer die Verdraengung weiter
@@ -1342,9 +1384,10 @@ def _thumb_cache_get(path, w, h):
     except (struct.error, zlib.error, ValueError):
         return None
     _benutzt_vermerken(cpath)
-    if kopf == _KOPF_ART:
+    if kopf == _KOPF_ART and nachziehen_erlaubt:
         # Alte Fassung gelesen - beim naechsten Mal soll es schneller
-        # gehen. Siehe _thumb_als_jpg_nachziehen(): nebenher, nicht hier.
+        # gehen. Siehe _thumb_als_jpg_nachziehen(): nebenher, gedrosselt,
+        # und NUR wenn der Aufrufer es erlaubt (Build 203).
         _thumb_als_jpg_nachziehen(path, w, h, tw, th, pix, len(nutzlast))
     return (tw, th, pix)
 
@@ -2280,7 +2323,12 @@ class ArtCache:
         # Zeitschwelle - bewusst mit Zeitmessung, damit sich Treffer
         # und Fehltreffer direkt aus echten Log-Daten vergleichen lassen.
         _tcache_t0 = time.monotonic()
-        disk_hit = _thumb_cache_get(path, max_w, max_h)
+        # Build 203: das Nachziehen auf JPG darf nur im Stillstand
+        # laufen. _defer_uncached steht, solange aktiv geblaettert
+        # wird (siehe _sync_cover_defer in frontend.py) - genau dann
+        # hat das Geraet keine Luft fuer einen Schreib-Thread.
+        disk_hit = _thumb_cache_get(path, max_w, max_h,
+                                    not self._defer_uncached)
         # NEU (Build 128): die Marke "das Original passt" ist KEIN
         # Bildtreffer - sie sagt nur, dass hier nichts zu rechnen ist.
         # Das Original muss trotzdem noch dekodiert werden.

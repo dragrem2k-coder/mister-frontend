@@ -13,6 +13,40 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.6 — not yet released
 
+**The switch to JPEG made scrolling slower first — that is fixed, and the
+mistake was mine.**
+
+After the switch the measured figures were worse than before:
+
+```
+before   down/S1  69x mean  72 ms (max  192)
+after    down/S1   7x mean 492 ms (max  750)
+         right/S1 59x mean 265 ms (max 1831)
+```
+
+Reading was not the problem; the rewriting was. Old thumbnails are
+rewritten to JPEG when read, and that goes through a helper which starts
+**its own thread per call**. Its own description states expressly that
+this is only acceptable because it happens "only when writing away a
+freshly computed thumbnail (not on every scroll step)". That is exactly
+the assumption I had broken: while scrolling, every step started a thread
+that packed, JPEG-encoded and dragged a directory scan along with it. On
+two weak cores that competes directly with the drawing — and for the same
+SD card.
+
+I had read that description while building and still walked into it.
+
+Two brakes now:
+
+- **Only at rest.** Nothing is rewritten while you are navigating. The
+  move happens when there is slack anyway.
+- **At most one rewrite every two seconds.** Not even at idle should this
+  become a storm.
+
+With 97,000 entries the migration thus becomes a matter of normal use over
+weeks — and is meant to be unnoticeable. Reading itself is as fast as
+before; only the rewriting is throttled.
+
 **The bench now answers a question that was already answered wrongly once
 — on the development machine.**
 

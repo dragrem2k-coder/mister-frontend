@@ -219,8 +219,12 @@ try:
     gerufen = []
     _echt = A._thumb_cache_put_async
     A._thumb_cache_put_async = lambda *a: gerufen.append(a)
+    # nachziehen_erlaubt=True heisst "im Stillstand" - siehe Test 11.
+    # Waehrend der Navigation wird bewusst nichts umgeschrieben, und die
+    # Vorgabe des Parameters ist deshalb False.
+    A._jpg_letzte[0] = 0.0
     try:
-        erg = A._thumb_cache_get(quelle, TW, TH)
+        erg = A._thumb_cache_get(quelle, TW, TH, True)
     finally:
         A._thumb_cache_put_async = _echt
     check("die alte Datei wird gelesen", erg is not None and erg[2] == pix,
@@ -233,8 +237,9 @@ try:
     # fehlgeschlagenes Nachziehen bei jedem Bild neu versucht.
     del gerufen[:]
     A._thumb_cache_put_async = lambda *a: gerufen.append(a)
-    try:
-        A._thumb_cache_get(quelle, TW, TH)
+    A._jpg_letzte[0] = 0.0          # Takt bewusst frei, es soll der
+    try:                            # Eintrags-Merker greifen, nicht er
+        A._thumb_cache_get(quelle, TW, TH, True)
     finally:
         A._thumb_cache_put_async = _echt
     check("und nur einmal je Eintrag", not gerufen, gerufen)
@@ -254,8 +259,9 @@ try:
     gerufen = []
     _echt = A._thumb_cache_put_async
     A._thumb_cache_put_async = lambda *a: gerufen.append(a)
+    A._jpg_letzte[0] = 0.0
     try:
-        A._thumb_cache_get(quelle, TW, TH)
+        A._thumb_cache_get(quelle, TW, TH, True)
     finally:
         A._thumb_cache_put_async = _echt
     check("kein Nachziehen - dort ist nichts zu holen", not gerufen,
@@ -410,6 +416,73 @@ try:
           and len(erg[2]) == TW * TH * 4)
 finally:
     shutil.rmtree(basis, ignore_errors=True)
+
+print()
+print("Test 11: DIE ZWEI BREMSEN - das Nachziehen darf kein Sturm sein")
+# ---------------------------------------------------------------------------
+# Das ist die Lehre aus Build 203, und sie hat eine Verschlechterung
+# gekostet. Build 201 zog ohne Bremse nach, und die Zahlen des Nutzers
+# danach:
+#
+#   vorher   down/S1  69x Mittel  72 ms (max  192)
+#   danach   down/S1   7x Mittel 492 ms (max  750)
+#            right/S1 59x Mittel 265 ms (max 1831)
+#
+# Die Ursache stand im Docstring von _thumb_cache_put_async(): der
+# startet einen Thread PRO AUFRUF, ausdruecklich nur deshalb erlaubt,
+# weil das "nicht bei jedem Scrollschritt" passiert. Genau diese Annahme
+# war gebrochen.
+basis, quelle = aufbau()
+try:
+    pix = foto()
+    cpath = A._thumb_cache_path(A._thumb_cache_key(quelle, TW, TH))
+    os.makedirs(os.path.dirname(cpath), exist_ok=True)
+    alt = A._KOPF_ART + struct.pack("<HH", TW, TH) + zlib.compress(
+        pix, A.THUMB_PACKSTUFE)
+    io.open(cpath, "wb").write(alt)
+
+    gerufen = []
+    _echt = A._thumb_cache_put_async
+    A._thumb_cache_put_async = lambda *a: gerufen.append(a)
+    try:
+        # 1. Waehrend der Navigation: gar nicht.
+        A._jpg_nachgezogen.clear()
+        A._jpg_letzte[0] = 0.0
+        A._thumb_cache_get(quelle, TW, TH, False)
+        check("waehrend geblaettert wird, wird NICHT nachgezogen",
+              not gerufen,
+              "sonst startet je Scrollschritt ein Schreib-Thread")
+
+        # 2. Im Stillstand: ja, aber nur einer je Takt.
+        A._jpg_nachgezogen.clear()
+        A._jpg_letzte[0] = 0.0
+        A._thumb_cache_get(quelle, TW, TH, True)
+        check("im Stillstand schon", len(gerufen) == 1, len(gerufen))
+
+        del gerufen[:]
+        for i in range(25):
+            A._jpg_nachgezogen.clear()     # jedes Mal ein "neuer" Eintrag
+            io.open(cpath, "wb").write(alt)
+            A._thumb_cache_get(quelle, TW, TH, True)
+        check("aber hoechstens einer je Takt, auch bei 25 Versuchen",
+              not gerufen,
+              "%d Aufrufe - der Takt ist %.1f s"
+              % (len(gerufen), A.JPG_NACHZIEHEN_TAKT))
+
+        H.NOW[0] += A.JPG_NACHZIEHEN_TAKT + 0.1
+        A._jpg_nachgezogen.clear()
+        A._thumb_cache_get(quelle, TW, TH, True)
+        check("nach dem Takt wieder einer", len(gerufen) == 1, len(gerufen))
+    finally:
+        A._thumb_cache_put_async = _echt
+finally:
+    shutil.rmtree(basis, ignore_errors=True)
+
+check("die Vorgabe ist NICHT nachziehen",
+      "def _thumb_cache_get(path, w, h, nachziehen_erlaubt=False)"
+      in io.open(os.path.join(_REPO, "frontend", "fe", "art.py"),
+                 encoding="utf-8").read(),
+      "wer es will, muss es sagen - nicht umgekehrt")
 
 print()
 if fails:
