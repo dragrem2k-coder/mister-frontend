@@ -272,9 +272,16 @@ f = H.make_frontend(page=1)
 f.ansicht_setzen("raster")
 f.item_i = 0
 f.draw()
+# GEAENDERT (Build 211): NICHT mehr gegen RASTER_HDMI vergleichen. Seit
+# die grossen Kacheln der Standard sind, legt _raster_aufteilung() die
+# Spaltenzahl aus der KACHELGROESSE fest und nicht mehr aus einer festen
+# Zahl (dieselbe Regel wie hochkant seit Build 176). Verglichen wird
+# deshalb gegen die EINE Rechnung, die auch der Zeichenweg benutzt -
+# sonst prueft der Test eine Konstante, die gar nicht mehr gilt.
+_g = f.raster_geometrie(f.layout_items(True))
 check("und die Spaltenzahl steht nach dem Zeichnen fest",
-      getattr(f, "_raster_spalten", 0) == f.RASTER_HDMI[0],
-      str(getattr(f, "_raster_spalten", None)))
+      getattr(f, "_raster_spalten", 0) == _g["spalten"],
+      "%s gegen %s" % (getattr(f, "_raster_spalten", None), _g["spalten"]))
 # Bis zum ersten Bild darf nichts fehlen - sonst waere der erste
 # Tastendruck nach dem Start eine Ausnahme.
 f2 = H.make_frontend(page=1)
@@ -494,9 +501,12 @@ print("Test 13: Bedienung und Tasten")
 f = haupt(1920, 1080)
 f.ansicht_haupt_setzen("raster")
 f.draw()
+# Gleicher Grund wie oben (Build 211).
+_gk = f.raster_geometrie(f.kat_layout())
 check("die Spaltenzahl steht nach dem Zeichnen fest",
-      getattr(f, "_kat_raster_spalten", 0) == f.RASTER_HDMI[0],
-      str(getattr(f, "_kat_raster_spalten", None)))
+      getattr(f, "_kat_raster_spalten", 0) == _gk["spalten"],
+      "%s gegen %s" % (getattr(f, "_kat_raster_spalten", None),
+                       _gk["spalten"]))
 check("der leichte Listenpfad haelt sich raus",
       f._draw_navigate_cats(0) is False)
 check("und der Puls-Tick auch",

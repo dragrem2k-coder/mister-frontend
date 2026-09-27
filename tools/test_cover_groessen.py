@@ -139,15 +139,20 @@ check("der Anteil von Build 206 steht als Vorgabe im Quelltext",
 
 # ---------------------------------------------------------------------------
 print()
-print("Test 4: grosse Rasterkacheln - der Schalter ist aus ohne Flagdatei")
+print("Test 4: grosse Rasterkacheln sind der Standard (Build 211)")
 # ---------------------------------------------------------------------------
 from fe import settings as S                              # noqa: E402
 
+# GEAENDERT (Build 211): die grossen Kacheln sind jetzt der STANDARD -
+# Urteil des Nutzers: "das mit denn gross kacheln uebernehmen wir
+# fest!". Der Schalter dreht sich damit um und heisst raster_klein.
 check("Flagdatei-Pfad liegt unter /media/fat/frontend",
-      S.RASTER_GROSS_FLAG == "/media/fat/frontend/raster_gross",
-      S.RASTER_GROSS_FLAG)
+      S.RASTER_KLEIN_FLAG == "/media/fat/frontend/raster_klein",
+      S.RASTER_KLEIN_FLAG)
+check("der alte Schalter ist weg - kein toter Schalter",
+      not hasattr(S, "RASTER_GROSS_FLAG"))
 H._zwischenspeicher_leeren()
-check("ohne Datei ist der Grossmodus aus", not fe._raster_gross_an())
+check("ohne Datei sind die grossen Kacheln AN", fe._raster_gross_an())
 
 _echt_flag = S.raster_gross
 

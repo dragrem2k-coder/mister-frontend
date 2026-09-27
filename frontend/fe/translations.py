@@ -903,6 +903,17 @@ TRANSLATIONS = {
     # NEU (Build 175): scharf verkleinern. Der Text sagt, WOFUER es
     # gedacht ist - auf einer Roehre ist hart oft das bessere Bild,
     # auf HDMI meistens nicht.
+    # Build 211: das MiSTer-OSD laesst sich nicht von uns aus oeffnen -
+    # belegt durch das Exit-Log des Nutzers (dreimal F12 eingespeist,
+    # dreimal MiSTers Last bei 6-7 %). Statt einzufrieren sagt das
+    # Frontend jetzt, welche Taste hilft.
+    "osd_kam_nicht": {
+        "en": "The MiSTer menu did not open. Please press F12 on the "
+              "keyboard - injected keys do not reach MiSTer on this "
+              "device.",
+        "de": "Das MiSTer-Menue hat sich nicht geoeffnet. Bitte F12 auf "
+              "der Tastatur druecken - eingespeiste Tasten erreichen "
+              "MiSTer auf diesem Geraet nicht."},
     "sys_scharf_on": {
         "en": "Shrink covers: sharp (pixel look) -> soft (averaged)",
         "de": "Cover verkleinern: scharf (Pixel-Look) -> weich (gemittelt)"},

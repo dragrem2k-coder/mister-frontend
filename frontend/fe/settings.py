@@ -891,48 +891,48 @@ def artbox_aufschub_aus():
                  lambda: os.path.exists(ARTBOX_AUFSCHUB_AUS_FLAG))
 
 
-RASTER_GROSS_FLAG = "/media/fat/frontend/raster_gross"
+RASTER_KLEIN_FLAG = "/media/fat/frontend/raster_klein"
 
 
 def raster_gross():
-    """Soll die Rasteransicht GROSSE Kacheln zeigen?
+    """Zeigt die Rasteransicht GROSSE Kacheln? Ab Build 211 der
+    Standard - der Schalter dreht sich um und heisst jetzt
+    raster_klein.
 
-    NEUES FEATURE (Build 210, Nutzerwunsch: "raster ansicht haette ich
-    die boxartsgroesse bitte wie die von denn grossen wie sie in der
-    galerie ansicht sind. vielleicht kriegen wir dort in der groesse 8
-    auf einen schirm").
+    GESCHICHTE IN DREI ZEILEN. Build 210 hat die grossen Kacheln
+    probeweise gebaut, mit Flagdatei raster_gross und Standard aus.
+    Urteil des Nutzers: "das mit denn gross kacheln uebernehmen wir
+    fest!" - also Standard AN. Die alte Flagdatei wird nicht mehr
+    gelesen; wer zurueck will, legt raster_klein an.
 
     DIE ARITHMETIK, nachgerechnet statt gehofft. Die Rasterflaeche ist
     bei 1080p 1652x741 Punkte. Die Galerie zeigt ihr grosses Bild in
     342x456 - davon passt in 741 Punkte Hoehe nur EINE Reihe, also vier
     Kacheln. Bei ZWEI Reihen bleibt je Kachel (741-6)/2 = 367 Punkte
-    Hoehe, bei 3:4 also 275x367 - und davon passen 5 in die Breite:
+    Hoehe, bei 3:4 also 275 Breite - und damit passen fuenf hinein:
 
-        heute        7x3 = 21 Kacheln, Cover 176x235
-        gross        5x2 = 10 Kacheln, Cover 275x367
+        klein        7x3 = 21 Kacheln, Cover 176x235
+        gross        5x2 = 10 Kacheln, Cover 270x361
         Galerie                        gross 342x456
 
-    Es sind also 10 statt der erhofften 8, und die Kachel ist 80 % der
-    Galerie-Groesse. Genau eine Reihe weniger waere moeglich (4 Kacheln
-    zu 399x532, groesser als die Galerie), sieht aber nach Blaettern
-    statt nach Uebersicht aus.
+    Es sind also 10 statt der erhofften 8, und die Kachel ist 79 % der
+    Galerie-Groesse.
 
-    WAS ES KOSTET, und das ist keine Kleinigkeit: 275x367 ist eine NEUE
-    Kastengroesse, und der Miniaturen-Cache traegt den Kasten im
-    Schluessel (siehe _thumb_cache_key() in fe/art.py). Beim ersten
-    Einschalten ist also fuer jedes Spiel eine Miniatur zu rechnen -
-    einmal "Miniaturen vorbereiten" im Systemmenue laufen lassen, dann
-    ist es warm. Ausschalten kostet nichts, die alten Miniaturen bleiben
-    liegen.
+    WAS ES KOSTET, und das ist keine Kleinigkeit: 270x361 ist eine
+    andere Kastengroesse als die 176x235 von vorher, und der
+    Miniaturen-Cache traegt den Kasten im Schluessel (siehe
+    _thumb_cache_key() in fe/art.py). Nach dem Umstieg ist also fuer
+    jedes Spiel eine Miniatur neu zu rechnen - einmal "Miniaturen
+    vorbereiten" im Systemmenue laufen lassen, dann ist es warm. Die
+    alten Miniaturen bleiben liegen, ein Rueckweg kostet daher nichts.
 
-    Standard AUS: ohne Flagdatei bleibt das Raster genau wie bisher.
-        touch /media/fat/frontend/raster_gross     # an
-        rm    /media/fat/frontend/raster_gross     # aus
+        touch /media/fat/frontend/raster_klein     # zurueck zu 7x3
+        rm    /media/fat/frontend/raster_klein     # wieder gross
 
     Ueber denselben kurzlebigen Zwischenspeicher wie die Schalter
     darueber - die Abfrage liegt im Zeichenweg."""
-    return _hole(("raster_gross", RASTER_GROSS_FLAG),
-                 lambda: os.path.exists(RASTER_GROSS_FLAG))
+    return not _hole(("raster_klein", RASTER_KLEIN_FLAG),
+                     lambda: os.path.exists(RASTER_KLEIN_FLAG))
 
 
 @_nach_aenderung

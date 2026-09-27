@@ -116,11 +116,26 @@ A.THUMB_CACHE_DIR = os.path.join(TMP, "cache")
 os.makedirs(A.THUMB_CACHE_DIR)
 
 # ---------------------------------------------------------------------
-print("Test 1: drei Kastengroessen statt vier")
+print("Test 1: die Zahl der Kastengroessen, und was sie kostet")
 # Das Raster und die Nachbarleiste der Galerie hatten bis Build 127
 # eigene Kaesten, die sich um vier Bildpunkte unterschieden (HDMI
 # 128x171 gegen 124x166). Vier Punkte, und dadurch eine komplette
 # zweite Miniatur je Cover - die Kastengroesse steht im Schluessel.
+# Build 128 hat sie zusammengelegt: drei statt vier Groessen.
+#
+# GEAENDERT (Build 211): mit den grossen Rasterkacheln als Standard
+# (270x361 bei 1080p) sind es wieder VIER - die Nachbarleiste ist klein
+# und soll klein bleiben, teilen geht also nicht mehr. Der Nutzer hat
+# das nach Vorlage der Zahlen entschieden:
+#
+#     4 Groessen x 30270 Spiele = 121080 Dateien
+#     Obergrenze THUMB_CACHE_MAX_FILES = 150000
+#
+# Geprueft wird deshalb nicht mehr "drei", sondern dass es bei VIER
+# bleibt: eine fuenfte Groesse waere unbemerkt ein weiteres Viertel
+# Vorbereitungszeit, und genau das soll hier auffallen. Mit
+# raster_klein sind es weiterhin drei - auch das wird geprueft.
+KAESTEN_SOLL = 4
 for breite, hoehe, wie in ((1920, 1080, "HDMI"), (320, 240, "CRT")):
     H.set_screen(breite, hoehe)
     for seite, wo in ((1, "Spieleliste"), (0, "Hauptseite")):
@@ -134,26 +149,61 @@ for breite, hoehe, wie in ((1920, 1080, "HDMI"), (320, 240, "CRT")):
                     geos.append(g)
         masse = [(g[1], g[2]) if g[0] == "fest" else (g[0], g[1])
                  for g in geos]
-        check("%-4s %-12s drei Kaesten" % (wie, wo), len(geos) == 3,
-              repr(masse))
+        check("%-4s %-12s %d Kaesten" % (wie, wo, KAESTEN_SOLL),
+              len(geos) == KAESTEN_SOLL, repr(masse))
         check("%-4s %-12s und keiner doppelt" % (wie, wo),
-              len(set(masse)) == 3, repr(masse))
+              len(set(masse)) == len(masse), repr(masse))
 
 H.set_screen(1920, 1080)
 f = H.make_frontend(page=1)
 L = f.layout_items(True)
 r = f.raster_geometrie(L)
 g = f.galerie_geometrie(L)
-check("Raster und Galerie-Leiste benutzen denselben Kasten",
-      (r["cov_b"], r["cov_h"]) == (g["klein_b"], g["klein_h"]),
+check("das grosse Raster hat seinen eigenen, groesseren Kasten",
+      (r["cov_b"], r["cov_h"]) > (g["klein_b"], g["klein_h"]),
       "Raster %dx%d, Leiste %dx%d"
       % (r["cov_b"], r["cov_h"], g["klein_b"], g["klein_h"]))
-# Die Richtung stimmt auch: genommen wird der KLEINERE. Ein Cover, das
-# groesser ist als seine Kachel, wuerde darueber hinausragen.
-natur_b, natur_h = f._raster_cover_natur(L)
-check("und zwar der kleinere von beiden",
-      r["cov_h"] <= natur_h and r["cov_h"] <= g["leiste_y"] and True,
-      "Raster-Natur %d -> gemeinsam %d" % (natur_h, r["cov_h"]))
+
+# MIT raster_klein muss die Ersparnis von Build 128 unveraendert da
+# sein: dann teilen beide wieder denselben Kasten, und es sind drei
+# Groessen. Sonst waere der Rueckweg kein Rueckweg.
+from fe import settings as _S                              # noqa: E402
+
+_echt_rg = _S.raster_gross
+try:
+    _S.raster_gross = lambda: False
+    H._zwischenspeicher_leeren()
+    fk = H.make_frontend(page=1)
+    Lk = fk.layout_items(True)
+    rk = fk.raster_geometrie(Lk)
+    gk = fk.galerie_geometrie(Lk)
+    check("mit raster_klein teilen Raster und Leiste wieder einen Kasten",
+          (rk["cov_b"], rk["cov_h"]) == (gk["klein_b"], gk["klein_h"]),
+          "Raster %dx%d, Leiste %dx%d"
+          % (rk["cov_b"], rk["cov_h"], gk["klein_b"], gk["klein_h"]))
+    # Die Richtung stimmt auch: genommen wird der KLEINERE. Ein Cover,
+    # das groesser ist als seine Kachel, wuerde darueber hinausragen.
+    natur_b, natur_h = fk._raster_cover_natur(Lk, gross=False)
+    check("und zwar der kleinere von beiden",
+          rk["cov_h"] <= natur_h,
+          "Raster-Natur %d -> gemeinsam %d" % (natur_h, rk["cov_h"]))
+    geos_k = [fk._art_panel_geometrie(erzwingen=True)]
+    for a in fm.ANSICHTEN:
+        if a == "liste":
+            continue
+        for gg in fk._ansicht_geometrien(a, erzwingen=True):
+            if gg not in geos_k:
+                geos_k.append(gg)
+    check("und es sind dann wieder drei Groessen", len(geos_k) == 3,
+          "%d" % len(geos_k))
+finally:
+    _S.raster_gross = _echt_rg
+    H._zwischenspeicher_leeren()
+    H.set_screen(1920, 1080)
+    f = H.make_frontend(page=1)
+    L = f.layout_items(True)
+    r = f.raster_geometrie(L)
+    g = f.galerie_geometrie(L)
 check("die Leiste ist weiterhin hoch genug fuer ihren Kasten",
       g["klein_h"] <= (g["unten"] - g["leiste_y"]),
       "Kasten %d, Leiste %d" % (g["klein_h"], g["unten"] - g["leiste_y"]))

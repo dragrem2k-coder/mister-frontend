@@ -262,6 +262,10 @@ from fe.achievements import (
 )
 
 MISTER_CMD  = "/dev/MiSTer_cmd"
+# MiSTers Menue-Core. EINE Stelle fuer den Pfad, seit Build 211 von zwei
+# Seiten gebraucht: dem Rueckweg aus einem laufenden Spiel und dem
+# Beenden (siehe _menue_ueber_mister_cmd()).
+MENU_RBF    = "/media/fat/menu.rbf"
 
 from fe.hidraw import _find_keyboard_hidraws, _hid_report_has_exit_key
 
@@ -3633,6 +3637,11 @@ class Frontend:
     # Mindestzahl der Spalten im Grossmodus. Ohne diesen Deckel liefert
     # hochkant 1x2 - siehe _raster_aufteilung().
     RASTER_GROSS_SPALTEN = 3
+    # Und nach oben eine Schranke, damit die Suche in
+    # _raster_aufteilung() unter keinen Umstaenden endlos laeuft. Zehn
+    # Reihen waeren schon wieder kleine Kacheln - so weit kommt es nur
+    # auf einem absurd schmalen Bild.
+    RASTER_GROSS_REIHEN_MAX = 10
 
     def _raster_gross_an(self):
         """Schalter fuer die grossen Rasterkacheln - siehe
@@ -3704,15 +3713,36 @@ class Frontend:
         # RASTER_GROSS_SPALTEN Spalten. Von beiden Deckeln gewinnt der
         # kleinere.
         if self._raster_gross_an() if gross is None else gross:
-            reihen = self.RASTER_GROSS_REIHEN
-            aus_hoehe = (hoehe - (reihen - 1) * abstand) // reihen
+            # SO WENIGE REIHEN WIE MOEGLICH - das macht die Kacheln
+            # gross -, aber so viele, dass noch RASTER_GROSS_SPALTEN
+            # Spalten hineinpassen. Die Kachelhoehe folgt IMMER aus der
+            # Reihenzahl, damit die Hoehe restlos aufgeht.
+            #
+            # ZWEI ANLAEUFE HAT DAS GEBRAUCHT, und den Fehler des ersten
+            # hat der Test aus Build 176 gefunden. Dort stand die
+            # Reihenzahl FEST bei zwei, und die Kachel wurde zusaetzlich
+            # von der Breite gedeckelt - hochkant blieben dadurch 46 %
+            # der Hoehe leer (685 von 1497 Punkten), also genau der
+            # Fehler, den Build 176 mit 7x3 und zwei Dritteln leerer
+            # Flaeche schon einmal behoben hatte. Die Lehre steht dort
+            # ausdruecklich: in dieser Rechnung ist jede feste Zahl
+            # verdaechtig.
             mind_sp = self.RASTER_GROSS_SPALTEN
-            aus_breite = (((breite - (mind_sp - 1) * abstand) // mind_sp)
-                          * 4 // 3)
-            ziel_h = max(8, min(aus_hoehe, aus_breite))
-            ziel_b = max(6, ziel_h * 3 // 4)
-            spalten = max(mind_sp, (breite + abstand) // (ziel_b + abstand))
-            return spalten, reihen
+            reihen = max(1, self.RASTER_GROSS_REIHEN)
+            while True:
+                ziel_h = max(8, (hoehe - (reihen - 1) * abstand) // reihen)
+                ziel_b = max(6, ziel_h * 3 // 4)
+                spalten = (breite + abstand) // (ziel_b + abstand)
+                if spalten >= mind_sp:
+                    break
+                # Mehr Reihen heisst kleinere Kacheln heisst mehr
+                # Spalten. Zwei Schranken, damit das hier unter keinen
+                # Umstaenden endlos laeuft: die Reihenzahl und die
+                # Kachelhoehe.
+                if reihen >= self.RASTER_GROSS_REIHEN_MAX or ziel_h <= 8:
+                    break
+                reihen += 1
+            return max(1, spalten), reihen
         if fb.width >= fb.height:
             return (self.RASTER_CRT if fb.height < KOMPAKT_H
                     else self.RASTER_HDMI)
@@ -10960,7 +10990,7 @@ class Frontend:
                 LOG({"combo": "Start+Select erkannt - zurueck ins Menue",
                      "hid_combo": "F1/Esc (HID-Notausstieg) erkannt - "
                                   "zurueck ins Menue"}[res])
-                launch_core("/media/fat/menu.rbf")
+                launch_core(MENU_RBF)
                 t1 = time.monotonic()
                 while current_core() != "MENU" and time.monotonic() - t1 < 10:
                     time.sleep(0.3)
@@ -14292,10 +14322,60 @@ class Frontend:
             "(back_fe/exit/back/osd)")
         RETURN_ACTIONS = ("back_fe", "exit", "back", "osd")
         act = None
+        # BUGFIX (Build 211, Nutzer-Rueckmeldung, woertlich: "wenn ich
+        # denn menuepunkt osd oeffnen benutze hoert die musik auf und
+        # frontend bild bleibt stehen, kein osd kommt, dann hab ich auf
+        # alle tasten einmal nacheinander gedrueckt und ploetzlich
+        # oeffnet sich das osd").
+        #
+        # Hier stand ein "while True" ohne jedes Zeitlimit. Kommt das
+        # eingespeiste F12 bei MiSTer NICHT an, passiert genau das, was
+        # er beschreibt: kein OSD, die Musik bleibt pausiert (oben),
+        # das Bild steht ("MiSTer OSD active" ist gezeichnet), und der
+        # Prozess wartet fuer immer auf eine Rueckkehr-Aktion, die
+        # niemand ausloest. Erst irgendeine Taste aus RETURN_ACTIONS
+        # holt ihn heraus - deshalb "ploetzlich" nach dem Durchprobieren.
+        #
+        # UND DASS DAS F12 NICHT ANKOMMT, IST BELEGT, nicht vermutet.
+        # Sein Exit-Log zeigt dreimal dieselbe Einspeisung und dreimal
+        # MiSTers Last bei 6-7 % ("das OSD ist NICHT gekommen") - dabei
+        # oeffnet F12 auf seiner Tastatur das Menue sehr wohl. Die
+        # Einspeisung ist der kaputte Teil, siehe
+        # _f12_bis_das_osd_kommt().
+        #
+        # Zwei Absicherungen, und keine davon aendert etwas, wenn das
+        # OSD normal aufgeht:
+        #
+        #   1. Es wird NACHGESEHEN, ob das OSD ueberhaupt kam - mit
+        #      demselben Lastsignal wie beim Beenden (Build 166). Kam es
+        #      nicht, wird gar nicht gewartet: das Frontend kommt sofort
+        #      zurueck und sagt, was zu tun ist.
+        #   2. Die Schleife hat jetzt ein Zeitlimit. Selbst wenn die
+        #      Messung nichts liefert (andere Firmware), sitzt hier
+        #      niemand mehr fest.
+        last = self._anzeige_messen()
+        if last is not None and last < self.MISTER_BESCHAEFTIGT:
+            LOG("open_osd: MiSTer bei %.0f%% - das OSD ist nicht gekommen, "
+                "kehre sofort zurueck" % last)
+            self.music.resume_after_core()
+            self.back_to_frontend()
+            # Prominent, weil es eine Handlungsanweisung ist und keine
+            # Randnotiz: der Nutzer hat gerade auf einen Menuepunkt
+            # gedrueckt und muss erfahren, warum nichts passiert ist.
+            self.draw(t("osd_kam_nicht"), prominent=True)
+            return
+        grenze = time.monotonic() + self.OSD_WARTEN_MAX
         while True:
-            act = self.inp.read_action()
-            LOG("open_osd passthrough: %s" % act)
+            act = self.inp.read_action(timeout=0.5)
+            if act is not None:
+                LOG("open_osd passthrough: %s" % act)
             if act in RETURN_ACTIONS:
+                break
+            if time.monotonic() > grenze:
+                LOG("open_osd: nach %.0f s keine Rueckkehr-Aktion - "
+                    "hole das Frontend selbst zurueck"
+                    % self.OSD_WARTEN_MAX)
+                act = "zeitlimit"
                 break
         LOG("open_osd: Rueckkehr (ausgeloest durch %r)" % act)
         self.music.resume_after_core()
@@ -18027,6 +18107,19 @@ class Frontend:
     # funktioniert haette.
     EXIT_F12_VERSUCHE = 3
 
+    # Wie lange nach einem load_core auf das Menue gewartet wird. Ein
+    # Core zu laden braucht deutlich laenger als eine Taste zu druecken.
+    # Muss mit den drei F12-Versuchen zusammen unter HERUNTERFAHREN_MAX
+    # bleiben - der Test rechnet das nach.
+    EXIT_MENUE_WARTEN = 4.0
+
+    # Wie lange open_osd() hoechstens auf eine Rueckkehr-Aktion wartet,
+    # bevor es das Frontend selbst zurueckholt (Build 211). Grosszuegig:
+    # wer im OSD wirklich seinen Joystick einrichtet, braucht Zeit. Es
+    # ist die Absicherung gegen ein Haengenbleiben, keine Bedienhilfe -
+    # der normale Weg zurueck bleibt die Taste.
+    OSD_WARTEN_MAX = 180.0
+
     # Wie lange auf das eigene Bild gewartet wird, bevor die
     # Boot-Animation trotzdem laeuft.
     #
@@ -18170,9 +18263,95 @@ class Frontend:
                 return
             LOG("Exit: MiSTer bei %.0f%% - das OSD ist NICHT gekommen, "
                 "fasse nach" % last)
-        LOG("Exit: das OSD kam nach %d Versuchen nicht - beende trotzdem"
-            % self.EXIT_F12_VERSUCHE)
+        LOG("Exit: das OSD kam nach %d Versuchen nicht - versuche "
+            "MiSTers eigenen Befehlskanal" % self.EXIT_F12_VERSUCHE)
+        if self._menue_ueber_mister_cmd():
+            return
         self._exit_hinweis_auf_tty1()
+
+    def _menue_ueber_mister_cmd(self):
+        """MiSTers Menue ueber /dev/MiSTer_cmd holen statt ueber eine
+        eingespeiste Taste. Liefert True, wenn es gemessen geklappt hat.
+
+        WARUM DAS DER RICHTIGE WEG IST (Build 211), und diesmal ist es
+        nicht geraten, sondern aus dem Geraet des Nutzers gelesen.
+
+        Sein Exit-Log sagt, dass die Tastatur-Einspeisung nicht
+        funktioniert - dreimal F12 eingespeist, dreimal MiSTers Last bei
+        6-7 %, dreimal "das OSD ist NICHT gekommen". Auf seiner
+        TASTATUR oeffnet F12 das Menue sehr wohl.
+
+        Also die Frage, welche Befehle MiSTer auf /dev/MiSTer_cmd
+        annimmt. Die Antwort steht in seinem Binaergebilde, die Strings
+        liegen dort direkt beieinander:
+
+            MiSTer_cmd: %s
+            fb_cmd
+            video_mode
+            load_core
+            screenshot
+            scaled
+            volume
+            mute
+            unmute
+
+        EINEN "menu"-BEFEHL GIBT ES NICHT - das OSD laesst sich also
+        ueber diesen Kanal nicht aufklappen, und das ist der Grund,
+        warum open_osd() auf diesem Geraet nicht zuverlaessig sein kann.
+        Wohl aber "load_core", und damit laesst sich das MENU-Core
+        laden - und das IST MiSTers Menue.
+
+        Der Kanal selbst ist belegt: genau so kommt das Frontend seit
+        langem aus einem laufenden Spiel zurueck (launch_core(MENU_RBF)
+        im Spielstart-Pfad, ausgeloest durch Start+Select oder F1). Es
+        ist also kein neuer Mechanismus, sondern der vorhandene an einer
+        zweiten Stelle.
+
+        WAS NOCH NICHT BELEGT IST, und das steht hier, damit es niemand
+        (auch ich nicht) fuer erledigt haelt: dass load_core auch DANN
+        das Menue holt, wenn gar kein Spiel laeuft, sondern nur unsere
+        Anzeige-Ebene oben liegt. Ich hatte das schon behauptet und mich
+        dabei auf eine Nutzerantwort gestuetzt, die sich auf etwas
+        anderes bezog - das Menue kam bei ihm nach einem 'kill' des
+        Frontends, nicht nach diesem Befehl.
+
+        Deshalb ist das hier ein VERSUCH mit Messung und keine Loesung
+        mit Ansage: geht MiSTers Last nicht hoch, wird nichts behauptet
+        und der Hinweis auf tty1 greift wie in Build 210. Schlechter als
+        vorher kann es dadurch nicht werden, und die Log-Zeilen sagen
+        beim naechsten Mal, welcher der beiden Faelle es war.
+
+        DER ZWEITE FADEN, falls dieser hier nichts bringt: dass nach
+        einem 'kill' des Frontends MiSTers Menue sichtbar wurde, ist
+        selbst ein Befund. Unser Ausstieg ruft fb.close(), und das ist
+        offenbar NICHT dasselbe wie ein sterbender Prozess. Dem waere
+        dann nachzugehen - aber erst mit einer Messung, nicht mit einer
+        Vermutung.
+
+        Geprueft wird wie ueberall sonst mit MiSTers Last: kommt das
+        Menue, geht sie hoch. Bleibt sie unten, wird nichts behauptet -
+        dann greift der Hinweis auf tty1."""
+        if not os.path.exists(MENU_RBF):
+            LOG("Exit: %s gibt es nicht - kein Befehlsweg" % MENU_RBF)
+            return False
+        try:
+            LOG("Exit: load_core %s ueber %s" % (MENU_RBF, MISTER_CMD))
+            launch_core(MENU_RBF)
+        except OSError as e:
+            LOG("Exit: Befehlskanal fehlgeschlagen: %s" % e)
+            return False
+        # Das Laden eines Cores braucht deutlich laenger als eine Taste.
+        grenze = time.monotonic() + self.EXIT_MENUE_WARTEN
+        while time.monotonic() < grenze:
+            time.sleep(0.3)
+            last = self._anzeige_messen()
+            if last is None:
+                continue
+            if last >= self.MISTER_BESCHAEFTIGT:
+                LOG("Exit: MiSTer bei %.0f%% - das Menue ist da" % last)
+                return True
+        LOG("Exit: auch nach load_core kein Menue - bleibt beim Hinweis")
+        return False
 
     # Was auf tty1 steht, wenn die Uebergabe an MiSTer nicht geklappt
     # hat. ASCII und kurz - das ist die rohe Linux-Konsole, keine Stelle
@@ -18314,6 +18493,7 @@ FE_PAKET_BRAUCHT = (
     ("fe.settings", None, "artbox_aufschub_aus", "Build 197"),
     ("fe.framebuffer", "Framebuffer", "_waechter_pruefen", "Build 198"),
     ("fe.settings", None, "raster_gross", "Build 210"),
+    ("fe.settings", None, "RASTER_KLEIN_FLAG", "Build 211"),
     ("fe.input", "InputManager", "f9_gesehen", "Build 207"),
 )
 

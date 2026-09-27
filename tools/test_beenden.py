@@ -207,6 +207,39 @@ def methode(name):
     return ""
 
 
+def nur_code(quelltext):
+    """Derselbe Quelltext ohne Docstring und ohne Kommentarzeilen.
+
+    WARUM ES DAS BRAUCHT: das ist inzwischen der fuenfte Fall in diesem
+    Projekt, in dem eine Pruefung im KOMMENTAR fand, was sie im CODE
+    suchen wollte - und dann gruen oder rot war, ohne etwas ueber das
+    Programm zu sagen. Hier bei Build 211 zweimal am selben Tag: der
+    Docstring von _menue_ueber_mister_cmd() nennt den Menue-Pfad als
+    Beleg, und der Kommentar in open_osd() zitiert das alte
+    "while True", das er gerade abschafft.
+
+    Wer PRUEFEN will, dass etwas im Code steht, nimmt das hier. Wer
+    pruefen will, dass eine Begruendung festgehalten ist, nimmt den
+    vollen Text - beides ist erwuenscht, nur nicht durcheinander."""
+    raus = []
+    im_docstring = False
+    for zeile in quelltext.split("\n"):
+        blank = zeile.strip()
+        if im_docstring:
+            if blank.endswith('"""'):
+                im_docstring = False
+            continue
+        if blank.startswith('"""'):
+            # Einzeiler-Docstring? Dann nur diese Zeile weg.
+            if not (blank.endswith('"""') and len(blank) > 3):
+                im_docstring = True
+            continue
+        if blank.startswith("#"):
+            continue
+        raus.append(zeile)
+    return "\n".join(raus)
+
+
 f12 = methode("_f12_bis_das_osd_kommt")
 check("der F12-Abschnitt wurde gefunden", bool(f12))
 check("es wird wirklich eingespeist", "self.inp.inject(KEY_F12)" in f12)
@@ -246,7 +279,80 @@ if m_hin:
 # nicht genommen hat - dann ist dort nichts, was man stoeren koennte.
 check("der Hinweis steht NACH der Schleife, nicht darin",
       f12.index("_exit_hinweis_auf_tty1()")
-      > f12.index("beende trotzdem"))
+      > f12.index("versuche"))
+
+print()
+print("Test 4b: MiSTers eigener Befehlskanal als zweiter Weg (Build 211)")
+# Das Exit-Log des Nutzers zeigt dreimal "das OSD ist NICHT gekommen" bei
+# 6-7 % Last - die Tastatur-Einspeisung kommt nicht an, waehrend F12 auf
+# seiner Tastatur funktioniert. Die Befehlstabelle aus seinem
+# Binaergebilde nennt: fb_cmd, video_mode, load_core, screenshot,
+# scaled, volume, mute, unmute. KEIN "menu" - aber load_core, und damit
+# laesst sich das MENU-Core laden.
+cmd = methode("_menue_ueber_mister_cmd")
+check("es gibt den zweiten Weg", bool(cmd))
+check("er wird VOR dem Hinweis auf tty1 versucht",
+      f12.index("_menue_ueber_mister_cmd()")
+      < f12.index("_exit_hinweis_auf_tty1()"))
+check("er geht ueber launch_core, nicht ueber eine eigene Schreibroutine",
+      "launch_core(" in cmd)
+cmd_code = nur_code(cmd)
+check("und nimmt den Pfad aus der EINEN Konstante",
+      "MENU_RBF" in cmd_code and "media/fat/menu.rbf" not in cmd_code)
+check("der Pfad steht im CODE genau einmal - in der Konstante",
+      nur_code(quelle).count('"/media/fat/menu.rbf"') == 1,
+      "%d Fundstellen" % nur_code(quelle).count('"/media/fat/menu.rbf"'))
+check("eine fehlende menu.rbf wird abgefangen",
+      "os.path.exists(MENU_RBF)" in cmd)
+check("das Ergebnis wird GEMESSEN, nicht behauptet",
+      "_anzeige_messen()" in cmd and "MISTER_BESCHAEFTIGT" in cmd)
+check("ohne Messsignal wird nichts behauptet",
+      "if last is None" in cmd and "continue" in cmd)
+check("und es gibt ein Zeitlimit", "EXIT_MENUE_WARTEN" in cmd)
+check("die Befehlstabelle des Geraets ist festgehalten",
+      "load_core" in cmd and "unmute" in cmd
+      and 'menu"-BEFEHL GIBT ES NICHT' in cmd)
+
+print()
+print("Test 4c: open_osd() kann nicht mehr haengen (Build 211)")
+# Nutzer, woertlich: "wenn ich denn menuepunkt osd oeffnen benutze hoert
+# die musik auf und frontend bild bleibt stehen, kein osd kommt, dann
+# hab ich auf alle tasten einmal nacheinander gedrueckt und ploetzlich
+# oeffnet sich das osd". Dort stand ein while True ohne Zeitlimit.
+osd = methode("open_osd")
+check("der Quelltext von open_osd wurde gefunden", bool(osd))
+check("es gibt KEIN while True ohne Ausweg mehr",
+      "while True:" not in osd or "OSD_WARTEN_MAX" in osd)
+check("vor dem Warten wird gemessen, ob das OSD ueberhaupt kam",
+      "_anzeige_messen()" in osd)
+osd_code = nur_code(osd)
+check("kam es nicht, wird SOFORT zurueckgekehrt",
+      osd_code.index("kehre sofort zurueck") < osd_code.index("while True"))
+check("es gibt im CODE nur EINE Warteschleife",
+      osd_code.count("while True") == 1,
+      "%d Fundstellen" % osd_code.count("while True"))
+check("und der Nutzer erfaehrt, welche Taste hilft",
+      "osd_kam_nicht" in osd)
+check("die Musik wird auch auf diesem Weg wieder angeschaltet",
+      osd.count("resume_after_core") >= 2,
+      "%d Aufrufe" % osd.count("resume_after_core"))
+check("das Warten selbst hat ein Zeitlimit", "OSD_WARTEN_MAX" in osd)
+check("und read_action wartet nicht endlos", "timeout=" in osd)
+m_osd = re.search(r"OSD_WARTEN_MAX = ([\d.]+)", quelle)
+check("das Zeitlimit ist grosszuegig genug fuers Joystick-Einrichten",
+      m_osd is not None and float(m_osd.group(1)) >= 60.0,
+      m_osd.group(1) if m_osd else "")
+# Die Uebersetzungsdatei als TEXT lesen - dieser Test importiert das
+# Paket bewusst nicht (siehe Kopf), also auch hier nicht.
+uebers = io.open(os.path.join(_REPO, "frontend", "fe", "translations.py"),
+                 encoding="utf-8").read()
+i_key = uebers.find('"osd_kam_nicht"')
+check("die Meldung ist eingetragen", i_key > 0)
+if i_key > 0:
+    block = uebers[i_key:i_key + 600]
+    for spr in ("de", "en"):
+        check("die Meldung gibt es auf %s" % spr, '"%s":' % spr in block)
+    check("und sie nennt F12", "F12" in block)
 m = re.search(r"EXIT_F12_VERSUCHE = (\d+)", quelle)
 check("und zwar klein genug fuer die Reissleine",
       m is not None and 1 <= int(m.group(1)) <= 5,
@@ -254,7 +360,12 @@ check("und zwar klein genug fuer die Reissleine",
 mh = re.search(r"HERUNTERFAHREN_MAX = ([\d.]+)", quelle)
 if m and mh:
     # Ein Versuch kostet hoechstens EXIT_NACH_F12_SEK + Messfenster.
-    schlimmst = int(m.group(1)) * (0.4 + 2.5) + 1.0
+    # GEAENDERT (Build 211): nach den F12-Versuchen kommt noch der
+    # Versuch ueber /dev/MiSTer_cmd - der muss mit hinein, sonst
+    # verspricht diese Pruefung etwas, das nicht mehr stimmt.
+    m_menue = re.search(r"EXIT_MENUE_WARTEN = ([\d.]+)", quelle)
+    schlimmst = (int(m.group(1)) * (0.4 + 2.5) + 1.0
+                 + (float(m_menue.group(1)) if m_menue else 0.0))
     check("die Reissleine schneidet das Nachfassen nicht ab",
           float(mh.group(1)) > schlimmst,
           "%.0f s Frist, schlimmstenfalls %.1f s noetig"

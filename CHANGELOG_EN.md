@@ -13,6 +13,48 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.6 — not yet released
 
+**MiSTer's command table solves two old riddles at once.**
+
+It is in the program on the card, so what MiSTer accepts on its command
+channel is finally established: `fb_cmd`, `video_mode`, `load_core`,
+`screenshot`, `scaled`, `volume`, `mute`, `unmute`. **There is no `menu`
+command** — the OSD cannot be opened this way at all, which explains why
+the "open OSD" menu entry could never be reliable on this device. But
+`load_core` exists, and with it the menu core can be loaded — *that* is
+MiSTer's menu. It is how the frontend has long returned from a running
+game; not a new mechanism, just the existing one in a second place.
+
+**Quitting now tries that route.** The exit log showed three injected F12s
+and MiSTer at 6–7 % each time — the injection does not arrive, while F12 on
+the keyboard does open the menu. So after the three F12 attempts the menu
+core is loaded and MiSTer's load is checked. If the menu arrives, done; if
+not, the console hint from Build 210 remains.
+
+Deliberately an *attempt*, not a solution announced: whether `load_core`
+also fetches the menu when no game is running has not been measured yet — I
+had already claimed it, relying on an answer that referred to something
+else. It cannot be worse than before, and the log lines will say which case
+it was.
+
+**And "open OSD" can no longer freeze.** Reported: "the music stops and the
+frontend picture stays put, no OSD appears, then I pressed every key one
+after another and suddenly the OSD opens."
+
+There was a `while True` with **no timeout at all**. If the injected F12
+does not arrive there is no OSD — and the process waits forever for a
+return key, with music paused and the picture frozen. The "suddenly" was
+the first key that happens to count as a return. Now it checks *first*
+whether the OSD arrived at all: if not, the frontend is back immediately and
+says that F12 on the keyboard helps. And the wait loop itself has a
+timeout, so nobody gets stuck even without a load signal.
+
+**The large grid tiles are now the default** — adopted for good on request.
+At 1080p that is 10 tiles of 270×361, 79 % of the gallery size. Back to the
+old 7×3 grid with `touch /media/fat/frontend/raster_klein`. Run "prepare
+thumbnails" once after switching.
+
+---
+
 **I measured on the wrong machine — corrected here, and the bench now
 measures it on the device.**
 

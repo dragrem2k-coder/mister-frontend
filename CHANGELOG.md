@@ -12,6 +12,52 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.6 — noch nicht veröffentlicht
 
+**MiSTers Befehlstabelle löst zwei alte Rätsel auf einmal.**
+
+Sie steht im Programm auf der Karte, und damit ist endlich belegt, was
+MiSTer über seinen Befehlskanal annimmt: `fb_cmd`, `video_mode`,
+`load_core`, `screenshot`, `scaled`, `volume`, `mute`, `unmute`. **Einen
+`menu`-Befehl gibt es nicht** — das OSD lässt sich über diesen Weg also
+gar nicht aufklappen. Damit ist geklärt, warum der Menüpunkt „OSD öffnen"
+auf diesem Gerät nie zuverlässig sein konnte. `load_core` gibt es aber,
+und damit lässt sich das Menü-Core laden — *das* ist MiSTers Menü. Genau so
+kommt das Frontend seit langem aus einem laufenden Spiel zurück; es ist
+kein neuer Mechanismus, sondern der vorhandene an einer zweiten Stelle.
+
+**Beenden versucht jetzt diesen Weg.** Das Exit-Log zeigte dreimal
+eingespeistes F12 und dreimal MiSTers Last bei 6–7 % — die
+Tastatur-Einspeisung kommt nicht an, während F12 auf der Tastatur das Menü
+sehr wohl öffnet. Nach den drei F12-Versuchen wird deshalb das Menü-Core
+geladen und nachgesehen, ob MiSTers Last hochgeht. Kommt das Menü, ist
+Schluss; kommt es nicht, bleibt der Hinweis auf der Konsole.
+
+Ausdrücklich ein *Versuch*, keine Lösung mit Ansage: dass `load_core` auch
+dann das Menü holt, wenn gar kein Spiel läuft, ist noch nicht gemessen — ich
+hatte es schon behauptet und mich dabei auf eine Antwort gestützt, die sich
+auf etwas anderes bezog. Schlechter als vorher kann es nicht werden, und
+die Log-Zeilen sagen beim nächsten Mal, welcher Fall es war.
+
+**Und „OSD öffnen" kann nicht mehr einfrieren.** Gemeldet: „hört die Musik
+auf und das Frontend-Bild bleibt stehen, kein OSD kommt, dann hab ich auf
+alle Tasten nacheinander gedrückt und plötzlich öffnet sich das OSD."
+
+Dort stand ein `while True` **ohne jedes Zeitlimit**. Kommt das
+eingespeiste F12 nicht an, gibt es kein OSD — und der Prozess wartet für
+immer auf eine Rückkehrtaste, mit pausierter Musik und stehendem Bild. Das
+„plötzlich" war die erste Taste, die zufällig als Rückkehr zählt. Jetzt
+wird *vorher* gemessen, ob das OSD überhaupt kam: kam es nicht, ist das
+Frontend sofort zurück und sagt, dass F12 auf der Tastatur hilft. Und die
+Warteschleife selbst hat ein Zeitlimit, damit auch ohne Messsignal niemand
+mehr festsitzt.
+
+**Die großen Rasterkacheln sind jetzt der Standard** — auf Wunsch fest
+übernommen. Bei 1080p sind das 10 Kacheln à 270×361, also 79 % der
+Galerie-Größe. Zurück zum alten 7×3-Raster geht es mit
+`touch /media/fat/frontend/raster_klein`. Nach dem Umstieg einmal
+„Miniaturen vorbereiten" laufen lassen.
+
+---
+
 **Ich habe auf dem falschen Rechner gemessen — das wird hier korrigiert,
 und der Bench misst es künftig auf dem Gerät.**
 

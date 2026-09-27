@@ -175,23 +175,63 @@ print("Test 3: die Kachelansichten sind groesser geworden (Build 132)")
 # zwingend EINEN neuen Durchlauf. Was sich vermeiden liess, ist der
 # DAUERHAFTE Aufpreis - und genau das wird hier geprueft.
 H.set_screen(1920, 1080)
+def _leiste_gleich_raster_bei_klein():
+    """Teilen Raster und Nachbarleiste mit raster_klein wieder denselben
+    Kasten? Das ist die Ersparnis von Build 128, und sie soll auf dem
+    Rueckweg unveraendert vorhanden sein."""
+    from fe import settings as _S
+    _echt = _S.raster_gross
+    try:
+        _S.raster_gross = lambda: False
+        H._zwischenspeicher_leeren()
+        fk = H.make_frontend(page=1)
+        Lk = fk.layout_items(True)
+        rk = fk.raster_geometrie(Lk)
+        gk = fk.galerie_geometrie(Lk)
+        return (rk["cov_b"], rk["cov_h"]) == (gk["klein_b"], gk["klein_h"])
+    finally:
+        _S.raster_gross = _echt
+        H._zwischenspeicher_leeren()
+
+
 f2 = H.make_frontend(page=1)
 L = f2.layout_items(True)
 r = f2.raster_geometrie(L)
 g = f2.galerie_geometrie(L)
-check("Raster HDMI ist 7x3, nicht mehr 7x4",
+check("die Vorgabe fuer das kleine Raster ist weiterhin 7x3",
       f2.RASTER_HDMI == (7, 3), repr(f2.RASTER_HDMI))
 check("die Kachel ist deutlich groesser als die alten 124x166",
       r["cov_b"] >= 160 and r["cov_h"] >= 220,
       "%dx%d" % (r["cov_b"], r["cov_h"]))
-check("und die Galerie-Leiste traegt denselben Kasten",
-      (r["cov_b"], r["cov_h"]) == (g["klein_b"], g["klein_h"]),
+# GEAENDERT (Build 211), und das ist eine bewusst bezahlte Rechnung.
+#
+# Build 128 hat Raster und Galerie-Nachbarleiste auf DENSELBEN Kasten
+# gelegt und damit ein Viertel aller Miniaturdateien gespart - der
+# Anlass war ein Nutzer mit 28517 Covern, bei dem "Miniaturen
+# vorbereiten" nach sechs Stunden nicht fertig war.
+#
+# Seit Build 211 sind grosse Rasterkacheln der Standard (270x361 bei
+# 1080p, auf ausdruecklichen Wunsch). Die Nachbarleiste ist klein und
+# bleibt klein - beide koennen sich also nicht mehr denselben Kasten
+# teilen, und es sind wieder VIER Groessen. Der Nutzer hat das nach
+# Vorlage der Zahlen so entschieden:
+#
+#     4 Groessen x 30270 Spiele = 121080 Dateien
+#     Obergrenze THUMB_CACHE_MAX_FILES = 150000
+#
+# Es passt also, und "Miniaturen vorbereiten" laeuft einmalig ein
+# Viertel laenger. Was dieser Test ab jetzt absichert, ist nicht mehr
+# "drei", sondern dass es bei VIER bleibt und keine fuenfte dazukommt -
+# denn genau das waere unbemerkt teuer.
+check("die Galerie-Leiste hat jetzt IHREN eigenen, kleinen Kasten",
+      (g["klein_b"], g["klein_h"]) < (r["cov_b"], r["cov_h"]),
       "Raster %dx%d, Leiste %dx%d"
       % (r["cov_b"], r["cov_h"], g["klein_b"], g["klein_h"]))
+check("und mit raster_klein teilen sie ihn wieder",
+      _leiste_gleich_raster_bei_klein(),
+      "der Rueckweg soll die Ersparnis von Build 128 zurueckbringen")
 
-# DAS ist die eigentliche Zusage: es bleibt bei DREI Kastengroessen.
-# Waere die Leiste stehen geblieben, waeren es wieder vier - und damit
-# dauerhaft 25 % mehr Vorbereitungszeit und 25 % mehr Dateien.
+KAESTEN_SOLL = 4
 for breite, hoehe, wie in ((1920, 1080, "HDMI"), (320, 240, "CRT")):
     H.set_screen(breite, hoehe)
     ff = H.make_frontend(page=1)
@@ -203,8 +243,10 @@ for breite, hoehe, wie in ((1920, 1080, "HDMI"), (320, 240, "CRT")):
             if gg not in geos:
                 geos.append(gg)
     masse = [(x[1], x[2]) if x[0] == "fest" else (x[0], x[1]) for x in geos]
-    check("%-4s weiterhin nur drei Kastengroessen" % wie, len(geos) == 3,
-          repr(masse))
+    check("%-4s genau %d Kastengroessen, keine fuenfte"
+          % (wie, KAESTEN_SOLL), len(geos) == KAESTEN_SOLL, repr(masse))
+    check("%-4s und keine davon doppelt" % wie,
+          len(set(masse)) == len(masse), repr(masse))
 
 # CRT bleibt unangetastet - dort sind die Kacheln ohnehin winzig, und
 # 5x3 war nie das Problem.

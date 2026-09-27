@@ -78,19 +78,42 @@ ITEM = ("Super Mario World (USA)", "rom", "Super Mario World (USA)",
 # ---------------------------------------------------------------------------
 print("Test 1: QUER BLEIBT BITGENAU - Rasteraufteilung")
 # ---------------------------------------------------------------------------
-# Gemessen VOR Build 176. Diese Zahlen duerfen sich nie aendern.
-QUER_RASTER = {(1920, 1080): (7, 3, 176, 235),
-               (1280, 720): (7, 3, 117, 156),
-               (640, 480): (7, 3, 73, 97),
-               (320, 240): (5, 3, 32, 43)}
-for (b, h), (sp, ze, cb, ch) in QUER_RASTER.items():
-    f = frontend(b, h)
-    g = f.raster_geometrie(f.layout_items(True))
-    check("%4dx%-5d %dx%d Kacheln zu %dx%d" % (b, h, sp, ze, cb, ch),
-          (g["spalten"], g["zeilen"], g["cov_b"], g["cov_h"])
-          == (sp, ze, cb, ch),
-          "ist %dx%d zu %dx%d" % (g["spalten"], g["zeilen"],
-                                  g["cov_b"], g["cov_h"]))
+# Gemessen VOR Build 176.
+#
+# GEAENDERT (Build 211): seit diesem Build sind GROSSE Kacheln der
+# Standard - auf Wunsch des Nutzers ("das mit denn gross kacheln
+# uebernehmen wir fest!"). Die alten Zahlen sind damit nicht falsch
+# geworden, sie gelten jetzt fuer den Rueckweg raster_klein - und dort
+# werden sie weiterhin BITGENAU geprueft. Die Zusage von Build 176
+# ("diese Zahlen duerfen sich nie aendern") bleibt also fuer das kleine
+# Raster in Kraft; daneben steht die neue Tabelle fuer den Standard.
+QUER_RASTER_KLEIN = {(1920, 1080): (7, 3, 176, 235),
+                     (1280, 720): (7, 3, 117, 156),
+                     (640, 480): (7, 3, 73, 97),
+                     (320, 240): (5, 3, 32, 43)}
+QUER_RASTER_GROSS = {(1920, 1080): (5, 2, 270, 361),
+                     (1280, 720): (5, 2, 180, 241),
+                     (640, 480): (4, 2, 130, 174),
+                     (320, 240): (4, 2, 53, 71)}
+from fe import settings as _S                              # noqa: E402
+
+_echt_klein = _S.raster_gross
+try:
+    for tag, tabelle, gross in (("gross (Standard)", QUER_RASTER_GROSS, True),
+                                ("klein (raster_klein)", QUER_RASTER_KLEIN,
+                                 False)):
+        _S.raster_gross = (lambda v=gross: v)
+        print("  -- %s" % tag)
+        for (b, h), (sp, ze, cb, ch) in tabelle.items():
+            f = frontend(b, h)
+            g = f.raster_geometrie(f.layout_items(True))
+            check("%4dx%-5d %dx%d Kacheln zu %dx%d" % (b, h, sp, ze, cb, ch),
+                  (g["spalten"], g["zeilen"], g["cov_b"], g["cov_h"])
+                  == (sp, ze, cb, ch),
+                  "ist %dx%d zu %dx%d" % (g["spalten"], g["zeilen"],
+                                          g["cov_b"], g["cov_h"]))
+finally:
+    _S.raster_gross = _echt_klein
 
 # ---------------------------------------------------------------------------
 print()
