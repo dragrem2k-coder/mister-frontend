@@ -736,6 +736,14 @@ def _abschnitt_d(b, fe, A):
     b.posten("lesen und dekodieren (volle Groesse)", ms, best)
 
 
+class _KeinVergleich(Exception):
+    """Kein Vergleichswert zu holen - siehe _abschnitt_e().
+
+    Eine eigene Ausnahme und kein return: der Abschnitt hat einen
+    except-Zweig, der "uebersprungen" meldet und den Rest des Berichts
+    stehen laesst, und genau dort soll dieser Fall landen."""
+
+
 def _abschnitt_e(b, fe):
     """Lohnt Scroll-Blitting auf der Hauptseite - AUF DIESEM GERAET?
 
@@ -846,13 +854,43 @@ def _abschnitt_e(b, fe):
         # Es bleibt ein Gewinn, aber die richtige Zahl entscheidet, ob er
         # den Umbau wert ist. Deshalb wird der schnelle Pfad jetzt selbst
         # gemessen - EIN Schritt, so wie er beim Scrollen anfaellt.
+        # DIESER BLOCK IST BEIM ERSTEN LAUF AUF DEM GERAET GESTORBEN,
+        # und der Fehler war meiner: "nicht messbar (IndexError: list
+        # index out of range), uebersprungen" - und damit war das
+        # ERGEBNIS des ganzen Abschnitts weg, obwohl alle drei Zutaten
+        # darueber sauber gemessen waren.
+        #
+        # Die Ursache: draw() zeichnet die Seite, die gerade eingestellt
+        # ist. Abschnitt B laeuft VOR diesem hier und laesst fe.page auf
+        # 1 stehen, dazu einen item_i, der zu einer anderen Kategorie
+        # gehoerte. draw() ist dann in der Spieleliste gelandet und dort
+        # ueber das Ende gelaufen.
+        #
+        # Die Lehre steht schon zweimal in diesem Modul: ein Abschnitt
+        # darf sich NICHT darauf verlassen, in welchem Zustand der
+        # vorige ihn zuruecklaesst (siehe _groesste_kategorie() in
+        # Abschnitt B, Build 178). Also selbst einstellen - und
+        # hinterher zuruecksetzen, damit der naechste Abschnitt es
+        # ebenso vorfindet wie erwartet.
+        _alte_seite = getattr(fe, "page", 0)
+        _alter_cat = getattr(fe, "cat_i", 0)
+        fe.page = 0
+        if not getattr(fe, "cats", None):
+            b("   -- keine Kategorien, Schritt-Vergleich uebersprungen")
+            raise _KeinVergleich()
+        fe.cat_i = min(_alter_cat, len(fe.cats) - 1)
+
         def _schritt():
             fe.cat_i = (fe.cat_i + 1) % max(1, len(fe.cats))
             fe.draw()
 
-        for _ in range(4):
-            _schritt()                       # warmlaufen, nicht messen
-        ms_schritt, best_schritt = messen(_schritt)
+        try:
+            for _ in range(4):
+                _schritt()                   # warmlaufen, nicht messen
+            ms_schritt, best_schritt = messen(_schritt)
+        finally:
+            fe.page = _alte_seite
+            fe.cat_i = min(_alter_cat, max(0, len(fe.cats) - 1))
         b.posten("EIN Schritt, schneller Pfad (der Vergleich)",
                  ms_schritt, best_schritt)
 
@@ -1728,13 +1766,27 @@ def _abschnitt_j(b, fe, S, A, fm):
     echt_rect = getattr(fbo, "flip_rechtecke", None)
     echt_rows = fbo.flip_rows
     echt_voll = fbo.flip
+    echt_text = fbo.text
+    echt_beschr = getattr(K, "_beschreibung_zeichnen", None)
+    _KARTEN = [(fbo, n) for n in ("karte_mit_schatten",
+                                  "rect_rounded_schatten",
+                                  "rect_rounded", "rect")
+               if hasattr(fbo, n)]
+    _karten_echt = [(o, n, getattr(o, n)) for (o, n) in _KARTEN]
     konto = {}
+
+    # DIE POSTEN, und jeder ist eine andere SORTE Arbeit. Ohne diese
+    # Aufteilung stand in Build 216 ein "Rest" von 27 bis 63 ms da - der
+    # groesste Posten ueberall, und ohne Namen.
+    _POSTEN = ("restore", "blit", "flip", "text", "karten", "beschr")
 
     def _null():
         konto.clear()
-        for k in ("restore_ms", "restore_n", "restore_zeilen",
-                  "blit_ms", "blit_n", "blit_zeilen",
-                  "flip_ms", "flip_n", "flip_bytes"):
+        for p in _POSTEN:
+            konto[p + "_ms"] = 0.0
+            konto[p + "_n"] = 0.0
+        for k in ("restore_zeilen", "blit_zeilen", "flip_bytes",
+                  "text_zeichen", "text_in_beschr_ms", "in_beschr"):
             konto[k] = 0.0
 
     def h_restore(self, x, y, w, h):
@@ -1778,6 +1830,54 @@ def _abschnitt_j(b, fe, S, A, fm):
         konto["flip_bytes"] += fbo.size
         return r
 
+    # --- und die Posten, die bisher im "Rest" verschwunden sind -------
+    #
+    # TEXT. Gezaehlt werden auch die ZEICHEN: eine Zeile Beschreibung und
+    # eine Kopfzeile sind beides "ein text()-Aufruf", kosten aber nicht
+    # dasselbe.
+    def h_text(x, y, txt, *a, **k):
+        t0 = time.monotonic()
+        r = echt_text(x, y, txt, *a, **k)
+        dt = time.monotonic() - t0
+        konto["text_ms"] += dt
+        konto["text_n"] += 1
+        try:
+            konto["text_zeichen"] += len(txt)
+        except TypeError:
+            pass
+        # Laeuft dieser Aufruf INNERHALB der Beschreibung, wird er dort
+        # noch einmal mitgemessen - sonst stuende dieselbe Zeit zweimal
+        # in der Tabelle und der Rest waere zu klein. Siehe h_beschr().
+        if konto["in_beschr"]:
+            konto["text_in_beschr_ms"] += dt
+        return r
+
+    # KARTEN UND RAHMEN: abgerundete Rechtecke, Schatten, Flaechen. Auf
+    # dem Geraet sind das Python-Schleifen ueber Bildzeilen, genau wie
+    # restore - nur ohne Vorlage.
+    def _h_karte(echt):
+        def haken(*a, **k):
+            t0 = time.monotonic()
+            r = echt(*a, **k)
+            konto["karten_ms"] += time.monotonic() - t0
+            konto["karten_n"] += 1
+            return r
+        return haken
+
+    # DIE BESCHREIBUNG rechnet Umbrueche (reine Zeichenkettenarbeit) und
+    # zeichnet dann Zeilen. Ausgewiesen wird nur ihr EIGENER Anteil, die
+    # Textzeit darin gehoert zu "text".
+    def h_beschr(self, *a, **k):
+        t0 = time.monotonic()
+        konto["in_beschr"] += 1
+        try:
+            r = echt_beschr(self, *a, **k)
+        finally:
+            konto["in_beschr"] -= 1
+        konto["beschr_ms"] += time.monotonic() - t0
+        konto["beschr_n"] += 1
+        return r
+
     # ERST das Konto anlegen, DANN die Haken setzen. Andersherum lief
     # das Warmlaufen in einen KeyError, weil die Haken in ein leeres
     # Konto schreiben wollten - und weil der Abschnitt seine Ansichten
@@ -1789,17 +1889,43 @@ def _abschnitt_j(b, fe, S, A, fm):
     b("   %d Schritte je Ansicht, alles warm. Zeiten je SCHRITT."
       % schritte)
     b("")
-    b("   %-20s %7s %7s %7s %7s %7s"
-      % ("", "ges ms", "restore", "blit", "flip", "Rest"))
     K._restore_row_bg = h_restore
     K.blit = h_blit
     if echt_rect is not None:
         fbo.flip_rechtecke = h_rect
     fbo.flip_rows = h_rows
     fbo.flip = h_voll
+    fbo.text = h_text
+    for (_o, _n, _e) in _karten_echt:
+        setattr(_o, _n, _h_karte(_e))
+    if echt_beschr is not None:
+        K._beschreibung_zeichnen = h_beschr
+    # DIE GROESSTE KATEGORIE, genau wie Abschnitt B sie waehlt - und aus
+    # demselben Grund.
+    #
+    # BEIM ERSTEN LAUF AUF DEM GERAET WAR DAS DER FEHLER: hier stand nur
+    # "fe.page = 1", und der Zeiger blieb dort liegen, wo die
+    # Hauptseiten-Schleife ihn hatte. Ergebnis im Bericht: die drei
+    # "Liste"-Zeilen waren BUCHSTABENGLEICH (849 Zeilen, 0 blit, ein
+    # Vollbild) - dreimal dieselbe Messung, weil die Ansicht nie
+    # gewechselt hat. Sichtbar wurde es erst am Widerspruch zu Abschnitt
+    # B: der sagt fuer die Galerie 157,7 ms, dieser hier 59,3.
+    #
+    # Genau derselbe Fehler steckte in Build 178 schon einmal in
+    # Abschnitt B ("der bench landet immer im supergameboy"). Deshalb
+    # jetzt dieselbe Loesung an derselben Funktion.
+    kat_i, kat_n, kat_name = _groesste_kategorie(fe)
+    if kat_i is not None:
+        b("   gemessen in: %s (%d Eintraege)" % (kat_name, kat_n))
     try:
         for seite, name in ((0, "Haupt"), (1, "Liste")):
             fe.page = seite
+            if seite == 1:
+                if kat_i is None:
+                    b("   %-20s -- keine Kategorie mit Eintraegen" % "Liste")
+                    continue
+                fe.cat_i = kat_i
+                fe.nav_path = []
             for ansicht in S.ANSICHTEN:
                 try:
                     if seite == 0:
@@ -1836,24 +1962,43 @@ def _abschnitt_j(b, fe, S, A, fm):
                       % (name + " " + ansicht, type(e).__name__))
                     continue
                 _null()
+                _haus0 = getattr(fe, "_perf_house", 0.0)
                 t0 = time.monotonic()
                 for i in range(schritte):
                     _schritt(i)
                 ges = (time.monotonic() - t0) * 1000.0 / schritte
-                r = konto["restore_ms"] * 1000.0 / schritte
-                bl = konto["blit_ms"] * 1000.0 / schritte
-                fl = konto["flip_ms"] * 1000.0 / schritte
-                rest = max(0.0, ges - r - bl - fl)
-                b("   %-20s %7.2f %7.2f %7.2f %7.2f %7.2f"
-                  % (name + " " + ansicht, ges, r, bl, fl, rest))
-                b("   %-20s %7s %4d/%-4d %4d/%-4d %4d/%-4.1f"
-                  % ("  Aufrufe/Zeilen bzw. MB", "",
-                     konto["restore_n"] / schritte,
+                je = 1000.0 / schritte
+                r = konto["restore_ms"] * je
+                bl = konto["blit_ms"] * je
+                fl = konto["flip_ms"] * je
+                tx = konto["text_ms"] * je
+                ka = konto["karten_ms"] * je
+                # Die Textzeit INNERHALB der Beschreibung steht schon
+                # unter "text" - sonst zaehlte sie doppelt und der Rest
+                # waere zu klein.
+                be = max(0.0, (konto["beschr_ms"]
+                               - konto["text_in_beschr_ms"]) * je)
+                ha = max(0.0, (getattr(fe, "_perf_house", 0.0) - _haus0) * je)
+                rest = max(0.0, ges - r - bl - fl - tx - ka - be - ha)
+                b("   %-18s  ges %8.2f ms" % (name + " " + ansicht, ges))
+                b("     restore %6.2f   blit %6.2f   flip %6.2f"
+                  % (r, bl, fl))
+                b("     text    %6.2f   karten %5.2f   beschr %5.2f"
+                  "   haus %5.2f" % (tx, ka, be, ha))
+                b("     REST    %6.2f   (%.0f %% des Schritts)"
+                  % (rest, 100.0 * rest / max(0.01, ges)))
+                b("     Aufrufe: restore %d/%dz  blit %d/%dz  flip %d/%.1fMB"
+                  % (konto["restore_n"] / schritte,
                      konto["restore_zeilen"] / schritte,
                      konto["blit_n"] / schritte,
                      konto["blit_zeilen"] / schritte,
                      konto["flip_n"] / schritte,
                      konto["flip_bytes"] / schritte / 1048576.0))
+                b("              text %d/%dZeichen  karten %d  beschr %d"
+                  % (konto["text_n"] / schritte,
+                     konto["text_zeichen"] / schritte,
+                     konto["karten_n"] / schritte,
+                     konto["beschr_n"] / schritte))
     finally:
         K._restore_row_bg = echt_restore
         K.blit = echt_blit
@@ -1861,11 +2006,18 @@ def _abschnitt_j(b, fe, S, A, fm):
             fbo.flip_rechtecke = echt_rect
         fbo.flip_rows = echt_rows
         fbo.flip = echt_voll
+        fbo.text = echt_text
+        for (_o, _n, _e) in _karten_echt:
+            setattr(_o, _n, _e)
+        if echt_beschr is not None:
+            K._beschreibung_zeichnen = echt_beschr
     b("")
-    b("   Zu lesen als: ist 'Rest' der groesste Posten, liegt die")
-    b("   naechste Arbeit NICHT bei den Kopien. restore und blit sind")
-    b("   zeilenweise Kopien im RAM - bei ihnen zaehlt die Zahl der")
-    b("   ZEILEN, nicht die der Bytes (siehe Abschnitt I).")
+    b("   Zu lesen als: der groesste Posten sagt, wo die naechste Arbeit")
+    b("   liegt - und nur er. restore, blit und karten sind zeilenweise")
+    b("   Kopien bzw. Schleifen; bei ihnen zaehlt die Zahl der ZEILEN,")
+    b("   nicht die der Bytes (siehe Abschnitt I). Bleibt REST gross,")
+    b("   fehlt weiterhin ein Posten - dann ist die naechste Aufgabe,")
+    b("   ihn zu finden, und nicht, irgendwas zu beschleunigen.")
 
 def lauf(fe, fm, A, S, startdauer=None, log=None):
     """Den kompletten Bench fahren und den Bericht als Text

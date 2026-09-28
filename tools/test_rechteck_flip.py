@@ -303,14 +303,18 @@ VOLL_1080 = 1920 * 1080 * 4
 #
 #   Raster links/rechts   3,74 MB  ->  1,19 MB   (Faktor 3,1)
 #   Raster hoch/runter    6,50 MB  ->  1,19 MB   (Faktor 5,5)
-#   Galerie (Vollbild)    7,91 MB  ->  3,71 MB   (Faktor 2,1)
+#   Galerie (Vollbild)    7,91 MB  ->  1,74 MB   (Faktor 4,5)
 #
 # Die Kachelbaender bestehen zu zwei Dritteln aus den zwei Kacheln, der
 # Rest ist Namenszeile und Fusszeile - die gehen ueber die volle Breite
 # und lassen sich nicht schmaler machen.
+#
+# DIE GALERIE WAR IN BUILD 215 NOCH BEI 3,71 MB. Seit Build 217 raeumt
+# sie die Textspalte nur so hoch frei, wie beim letzten Mal wirklich
+# gezeichnet wurde (2,39 -> 0,42 MB) - siehe Test 12.
 for ansicht, ziel, grenze, tag in (("raster", 2, 1.3, "Raster links/rechts"),
                                    ("raster", 6, 1.3, "Raster hoch/runter "),
-                                   ("galerie", 2, 3.9, "Galerie            ")):
+                                   ("galerie", 2, 1.9, "Galerie            ")):
     fk = spieleliste(1920, 1080, ansicht)
     n, zahl = kopierbilanz(fk, _setz_item, 1, ziel)
     mb = n / 1048576.0
@@ -354,18 +358,20 @@ print("Test 6b: wer darf das Warten auslassen - und wer nicht")
 # gegen dieselbe eine Grenze VSYNC_SKIP_MAX_ANTEIL:
 #
 #   Raster   1,19 MB = 162 von 1080 Zeilen = 15 %  ->  laesst aus
-#   Galerie  3,71 MB = 506 von 1080 Zeilen = 47 %  ->  wartet
+#   Galerie  1,74 MB = 237 von 1080 Zeilen = 22 %  ->  laesst aus
 #
-# Die Galerie wartet also WEITERHIN, und das ist Absicht (Abwaegung aus
-# Build 93: ein Riss quer durch Cover und Textspalte ist sichtbar). Wer
+# DIE GALERIE HAT DAS IN BUILD 215 NOCH NICHT GEDURFT: dort waren es
+# 3,71 MB und damit 47 %, ueber der Grenze. Der Satz von damals steht
+# nicht mehr im Code, aber er war die Anleitung fuer diesen Build: "Wer
 # das aendern will, raeumt die Textspalte kleiner frei - er hebt nicht
-# die Grenze an.
+# die Grenze an." Genau das ist in Build 217 passiert, und deshalb
+# wartet die Galerie jetzt nicht mehr. Die Grenze selbst ist unberuehrt.
 _echt_fs = S.fast_scroll_enabled
 try:
     S.fast_scroll_enabled = (lambda: True)
     fm.fast_scroll_enabled = (lambda: True)
     for ansicht, erwartet, tag in (("raster", True, "Raster "),
-                                   ("galerie", False, "Galerie")):
+                                   ("galerie", True, "Galerie")):
         fv = spieleliste(1920, 1080, ansicht)
         fv.item_i = 1
         fv._force_full_redraw = True
@@ -579,6 +585,69 @@ try:
     check("in der Suche kein Rechteck-Flip", zahl["rect"] == 0, "%s" % zahl)
 finally:
     fq._search_mode = False
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 12: die Textspalte der Galerie - so hoch wie noetig")
+# ---------------------------------------------------------------------------
+# NEU IN BUILD 217, und der riskanteste Teil davon: freigeraeumt wird
+# nur noch bis zu dem Punkt, an dem beim LETZTEN Schritt Text stand
+# (2,39 -> 0,42 MB auf 1080p). Bleibt dabei etwas stehen, ist es ein
+# Rest des vorigen Spiels - genau die Sorte Fehler aus Build 80/122/
+# 125/128.
+#
+# DER GEFAEHRLICHE UEBERGANG ist von einem Spiel MIT langer
+# Beschreibung zu einem OHNE: dann muss die hohe Flaeche des vorigen
+# Schritts weg, obwohl der neue Schritt nur zwei Zeilen zeichnet. Genau
+# das wird hier durchgespielt, in beiden Richtungen und mehrfach
+# hintereinander.
+LANG = ("Ein Klempner rettet eine Prinzessin und muss dafuer durch acht "
+        "Welten voller Schildkroeten, Pflanzen und Abgruende springen. "
+        "Unterwegs sammelt er Muenzen, findet geheime Roehren und wird "
+        "durch einen Pilz groesser. Am Ende wartet Bowser auf einer "
+        "Bruecke ueber einem See aus Lava, und die Prinzessin ist "
+        "natuerlich in einem anderen Schloss. " * 3)
+_echt_syn = fm.docs_synopsis
+try:
+    # Nur die GERADEN Eintraege haben eine Beschreibung - damit jeder
+    # Schritt die Hoehe wechselt.
+    def _beschr_ja(name):
+        try:
+            return int(str(name).split()[-1]) % 2 == 0
+        except (ValueError, IndexError):
+            return False
+
+    fm.docs_synopsis = (lambda syskey, name, lang:
+                        LANG if _beschr_ja(name) else "")
+
+    gt = spieleliste(1920, 1080, "galerie")
+    # Ohne aktive Navigation wird die Beschreibung wirklich gezeichnet -
+    # waehrend des Scrollens laesst sie Build 141 ausdruecklich aus.
+    A.ART._defer_uncached = False
+    gt.item_i = 0
+    gt._force_full_redraw = True
+    gt.draw()
+    _hoch = gt._galerie_text_unten
+    check("mit Beschreibung reicht die Spalte weit nach unten",
+          _hoch is not None and _hoch > 400,
+          "unteres Ende bei %s" % _hoch)
+    gt.item_i = 1
+    gt.draw()
+    _niedrig = gt._galerie_text_unten
+    check("ohne Beschreibung deutlich weniger",
+          _niedrig is not None and _niedrig < _hoch,
+          "%s gegen %s" % (_niedrig, _hoch))
+    # Und jetzt der Beweis: am Schirm identisch zum vollen Aufbau, in
+    # beiden Richtungen, mehrfach hintereinander.
+    vergleich(gt, _setz_item, (1, 2, 3, 4, 5, 0, 2, 1), "Beschr.")
+    # Nach einem vollen Aufbau darf nichts Gemerktes nachwirken.
+    gt._galerie_text_unten = None
+    gt.item_i = 3
+    gt.draw()
+    check("ohne gemerktes Ende wird die ganze Spalte geraeumt",
+          gt._galerie_text_unten is not None)
+finally:
+    fm.docs_synopsis = _echt_syn
 
 shutil.rmtree(TMP, ignore_errors=True)
 

@@ -99,6 +99,24 @@ exactly why nothing here was built twice.
   which stood in the same report at 60 ms. The saving was overstated by
   23 ms. E now measures the fast path itself.
 
+**The gallery no longer waits for the display refresh.**
+
+- The text column on the right was cleared over its **entire height** on
+  every step — 1268x495 pixels, 2.39 of the 3.71 MB a step copies. That
+  space was being made for the description, which while scrolling has
+  deliberately not been drawn since v4.6. Now only the height that actually
+  held text on the previous step is cleared: **1.74 instead of 3.71 MB**.
+- A gallery step is therefore 22 % of the screen instead of 47 % — below the
+  limit above which the display refresh is waited for. With "fast scrolling"
+  on that saves another **12-16 ms per step** on the device. The limit itself
+  is unchanged: a tear across cover and text would be visible, so the area
+  was made smaller rather than the rule weaker.
+- **Two bench defects fixed**, both in sections I wrote myself: section E
+  died with an `IndexError` (it drew whichever page the previous section had
+  left set) and its verdict was lost; section J measured the same thing three
+  times on the game list because it did not select a category. And J now
+  breaks the "rest" down: text, cards, description, housekeeping.
+
 ---
 
 ## v4.7 — the login prompt, large tiles, and what measurements disproved

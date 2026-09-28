@@ -853,13 +853,29 @@ check("der Abschnitt steht im Bericht",
 check("und ist nicht abgebrochen", "ABSCHNITT J ABGEBROCHEN" not in text,
       [z for z in text.splitlines() if "ABSCHNITT J" in z][:1])
 check("die Bench-Nummer ist mitgewachsen", B.BENCH_VERSION >= 4)
-check("er weist restore, blit und flip einzeln aus",
-      "restore" in text and "blit" in text and "Rest" in text)
+# GEAENDERT (Build 217): die Aufteilung ist feiner geworden, und damit
+# auch diese Pruefungen. In Build 216 stand im Bericht ein "Rest" von 27
+# bis 63 ms - der groesste Posten ueberall und ohne Namen. Jetzt werden
+# Text, Karten/Rahmen, Beschreibung und Hausarbeit einzeln ausgewiesen.
+# Geprueft werden die POSTENNAMEN, nicht die Spaltenbreiten - sonst
+# faellt der Test bei jeder Formatierung um.
+for _posten in ("restore", "blit", "flip", "text", "karten", "beschr",
+                "haus", "REST"):
+    check("Abschnitt J weist '%s' aus" % _posten, _posten in text)
 check("und nennt Aufrufe UND Zeilen",
-      "Aufrufe/Zeilen" in text,
+      "Aufrufe: restore" in text and "z  blit" in text,
       "Zeilen sind geraeteunabhaengig, Millisekunden nicht")
+check("der Rest wird als Anteil beziffert",
+      "% des Schritts" in text,
+      "eine absolute Zahl allein sagt nicht, ob noch etwas fehlt")
 check("er sagt, wie die Tabelle zu lesen ist",
-      "ist 'Rest' der groesste Posten" in _q)
+      "der groesste Posten sagt, wo die naechste Arbeit" in _q)
+check("und was ein grosser Rest bedeutet",
+      "fehlt weiterhin ein Posten" in _q)
+# Die Textzeit INNERHALB der Beschreibung darf nicht zweimal zaehlen -
+# sonst waere der Rest zu klein und die Aufteilung eine Luege.
+check("die Textzeit der Beschreibung wird nicht doppelt gezaehlt",
+      "text_in_beschr_ms" in _q and "- konto[\"text_in_beschr_ms\"]" in _q)
 # Er misst mit Haken an den Verdaechtigen - der Betrieb darf davon
 # nichts merken. Also muessen die Haken danach wieder weg sein.
 check("die Haken werden in einem finally zurueckgehaengt",
@@ -891,7 +907,8 @@ check("und blit auch", type(_fe_j).blit is _vor_b,
       "sonst messen alle folgenden Abschnitte mit Haken")
 _txt_j = "\n".join(_zeilen_j)
 check("es kommt eine Tabelle heraus, keine Ausnahme",
-      "ges ms" in _txt_j and "ABGEBROCHEN" not in _txt_j)
+      "ges " in _txt_j and "REST" in _txt_j
+      and "ABGEBROCHEN" not in _txt_j)
 check("und sie enthaelt Zeilen fuer beide Seiten",
       "Haupt " in _txt_j and "Liste " in _txt_j, _txt_j[:200])
 # Der Abschnitt laeuft in den Messbedingungen - sonst schreibt das
@@ -899,6 +916,20 @@ check("und sie enthaelt Zeilen fuer beide Seiten",
 check("er laeuft in den Messbedingungen",
       "_Messbedingungen(A, fm, fe, hd2)" in _q,
       "sonst landen die Miniaturen des Warmlaufens im echten Cache")
+# DER FEHLER AUS DEM LAUF VOM 28.09.: J setzte nur fe.page = 1 und liess
+# den Zeiger dort liegen, wo die Hauptseiten-Schleife ihn hatte. Die drei
+# "Liste"-Zeilen im Bericht waren daraufhin buchstabengleich - dreimal
+# dieselbe Messung. Abschnitt B hat dasselbe Problem in Build 178 schon
+# einmal gehabt und mit _groesste_kategorie() geloest.
+_jq = _q[_q.index("def _abschnitt_j"):]
+check("J waehlt die groesste Kategorie, wie Abschnitt B",
+      "_groesste_kategorie(fe)" in _jq)
+check("und setzt den Navigationspfad zurueck",
+      "fe.nav_path = []" in _jq,
+      "sonst misst er in einem Unterordner, der gar keine Liste hat")
+check("die Vorgeschichte steht dabei",
+      "buchstabengleich" in _jq.lower()
+      or "BUCHSTABENGLEICH" in _jq)
 
 # ---------------------------------------------------------------------------
 print()
@@ -919,6 +950,18 @@ check("und der Bericht sagt, dass sich der Vergleich geaendert hat",
       "bis" in _q and "stand hier der volle Aufbau" in _q)
 check("die Warmlauf-Schritte werden nicht mitgemessen",
       "warmlaufen, nicht messen" in _q)
+# DER LAUF VOM 28.09. HAT E UMGEBRACHT: "nicht messbar (IndexError),
+# uebersprungen" - und damit war das ERGEBNIS weg, obwohl alle drei
+# Zutaten sauber gemessen waren. Ursache: draw() zeichnet die Seite, die
+# eingestellt ist, und Abschnitt B laesst fe.page auf 1 stehen.
+_eq = _q[_q.index("def _abschnitt_e"):]
+_eq = _eq[:_eq.index("\ndef ", 10)]
+check("E stellt die Seite selbst ein", "fe.page = 0" in _eq)
+check("und setzt sie hinterher zurueck",
+      "fe.page = _alte_seite" in _eq and "finally:" in _eq)
+check("ohne Kategorien steigt es sauber aus",
+      "_KeinVergleich" in _eq,
+      "sonst stuerzt es dort, wo es nichts zu messen gibt")
 
 # ---------------------------------------------------------------------------
 print()

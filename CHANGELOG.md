@@ -103,6 +103,25 @@ steht hier kein doppelt gebautes Feature.
   schnelle Pfad, und der stand im selben Bericht mit 60 ms. Die Ersparnis
   war um 23 ms zu groß angegeben. E misst den schnellen Pfad jetzt selbst.
 
+**Die Galerie wartet nicht mehr auf den Bildwechsel.**
+
+- Die Textspalte rechts wurde bei jedem Schritt auf ihrer **ganzen Höhe**
+  freigeräumt — 1268×495 Punkte, also 2,39 der 3,71 MB eines Schritts. Platz
+  gemacht wurde damit für die Beschreibung, die beim Scrollen seit v4.6
+  absichtlich *gar nicht gezeichnet* wird. Jetzt wird nur so hoch geräumt,
+  wie beim letzten Schritt wirklich Text stand: **1,74 statt 3,71 MB**.
+- Damit liegt ein Galerieschritt bei 22 % des Bildes statt 47 % — unter der
+  Grenze, ab der auf den Bildwechsel gewartet wird. Mit „schnelles Scrollen"
+  an spart das auf dem Gerät weitere **12–16 ms je Schritt**. Die Grenze
+  selbst ist unverändert: ein Riss quer durch Cover und Text wäre sichtbar,
+  also wurde die Fläche kleiner gemacht und nicht die Regel weicher.
+- **Zwei Defekte im Bench behoben**, beide in Abschnitten, die ich selbst
+  gebaut habe: Abschnitt E starb mit `IndexError` (er zeichnete die Seite,
+  die der vorige Abschnitt zufällig eingestellt hatte) und das Ergebnis war
+  weg; Abschnitt J maß auf der Spieleliste dreimal dasselbe, weil er die
+  Kategorie nicht wählte. Und J teilt den „Rest" jetzt auf: Text, Karten,
+  Beschreibung, Hausarbeit.
+
 ---
 
 ## v4.7 — der Login-Prompt, große Kacheln, und was Messungen widerlegt haben

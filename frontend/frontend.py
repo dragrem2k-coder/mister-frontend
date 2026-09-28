@@ -7519,6 +7519,11 @@ class Frontend:
             fb.text(ox + (len(_zahl) + 2) * 8 * s, oy + 22 * s,
                     _filt, s, accent_for(None))
 
+    # Das untere Ende der Textspalte aus dem VORIGEN Galerie-Aufbau.
+    # None heisst "nichts bekannt" - dann wird die ganze Spalte
+    # freigeraeumt. Siehe _draw_items_galerie().
+    _galerie_text_unten = None
+
     def _draw_items_galerie(self, items, syskey, L, message, flip):
         """Ansicht D: ein grosses Cover links, die Spieldaten rechts,
         die Nachbarn als Leiste darunter.
@@ -7652,9 +7657,39 @@ class Frontend:
             # mal laenger - ohne Freiraeumen bliebe der Rest des vorigen
             # Titels stehen. Genau der Fehler, der bei der Fusszeile
             # schon einmal gefunden wurde.
+            #
+            # NUR SO HOCH, WIE ZULETZT GEZEICHNET WURDE (Build 217,
+            # Nutzerwunsch: "schau trotzdem wegen scroll tempo ob da
+            # noch was drin ist").
+            #
+            # WAS DAS BRINGT UND WARUM GERADE HIER: freigeraeumt wurde
+            # bisher die GANZE Spalte bis zur Leiste - auf 1080p
+            # 1268x495 Punkte, also 2,39 der 3,71 MB, die ein
+            # Galerieschritt kopiert (gemessen, Build 215). Gezeichnet
+            # wird dort waehrend des Scrollens aber nur der Titel und
+            # ein paar Datenzeilen: die BESCHREIBUNG entfaellt bei
+            # aktiver Navigation seit Build 141 ausdruecklich (siehe
+            # _beschreibung_zeichnen, dort kostete sie auf dem Geraet
+            # 159 von 259 ms). Wir haben also Platz freigeraeumt fuer
+            # etwas, das gar nicht gezeichnet wird.
+            #
+            # DASS DER VORIGE STAND DIE RICHTIGE GRENZE IST, ist der
+            # ganze Trick: weggeraeumt werden muss genau das, was JETZT
+            # noch dasteht. Zeichnet dieser Schritt tiefer, ueberschreibt
+            # er die Stelle ohnehin selbst - und meldet sein neues Ende
+            # unten wieder an. Deshalb ist die Reihenfolge sicher, ohne
+            # dass irgendetwas vorausgesagt werden muss.
+            #
+            # Beim ersten Schritt nach einem vollen Aufbau ist nichts
+            # gemerkt: dann die ganze Spalte, wie bisher.
+            _unten = getattr(self, "_galerie_text_unten", None)
+            if _unten is None:
+                _unten = geo["leiste_y"] - 4 * s
+            # Ein Punkt Rand nach unten, damit eine Unterlaenge des
+            # letzten Zeichens nicht stehen bleibt.
+            _unten = min(geo["leiste_y"] - 4 * s, _unten + s)
             self._restore_row_bg(tx, ty - 2 * s, tb,
-                                 max(0, geo["leiste_y"] - 4 * s
-                                     - (ty - 2 * s)))
+                                 max(0, _unten - (ty - 2 * s)))
         titel = item[0]
         t_scale = 2 * s
         if len(titel) > max(4, maxc // 2):
@@ -7678,8 +7713,13 @@ class Frontend:
         # Spielbeschreibung - siehe _beschreibung_zeichnen(). Ein
         # kleiner Absatz davor, damit sie nicht wie eine weitere
         # Datenzeile aussieht.
-        self._beschreibung_zeichnen(tx, iy + 4 * s, geo["leiste_y"] - 4 * s,
-                                    tb, item, item_syskey, s)
+        _b_unten = self._beschreibung_zeichnen(
+            tx, iy + 4 * s, geo["leiste_y"] - 4 * s, tb, item, item_syskey, s)
+        # Das untere Ende der Textspalte fuer den NAECHSTEN Schritt
+        # festhalten - siehe die Begruendung beim Freiraeumen oben. Ohne
+        # Beschreibung endet die Spalte bei den Datenzeilen (iy), mit
+        # Beschreibung bei deren letzter Zeile.
+        self._galerie_text_unten = max(iy, _b_unten or 0)
 
         # ---- Leiste mit den Nachbarn ----
         ly = geo["leiste_y"]
@@ -10813,6 +10853,12 @@ class Frontend:
             # nuetzliche Eintraege verdraengen.
             self.fb.text(x, y, ln, skala, C_DIM, cachen=False)
             y += zeilen_h
+        # NEU (Build 217): das untere Ende zurueckgeben. Die Galerie
+        # merkt sich daran, wie hoch ihre Textspalte beim naechsten
+        # Schritt freigeraeumt werden muss - siehe dort. Alle frueheren
+        # Ausstiege liefern None ("nichts gezeichnet"), und genau das
+        # ist die richtige Auskunft.
+        return y
 
     def cover_box_size(self, w, h, syskey, item, s):
         """Die Kastengroesse, in die das Cover dieses EINEN Eintrags
