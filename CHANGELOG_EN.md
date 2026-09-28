@@ -138,6 +138,31 @@ exactly why nothing here was built twice.
   exist in that form. Section B keeps its series (comparable since v4.2) and
   now says that it is the full rebuild.
 
+**Filling areas in C — and a partial-update trap defused.**
+
+- On the device "cards" was the largest named item of a scroll step:
+  **47 ms** in the game list, 35 in the gallery, 28 on the main page — filled
+  and rounded rectangles with shadows, all loops over screen rows. The large
+  areas are now filled by `libdragend` (version 5).
+- **Only from 256 rows up**, and that is measured: the jump into C costs
+  something itself, and for small areas it costs more than the assignments it
+  saves (700×900 gets 2x faster, 60×40 three times slower). The large cards
+  are all above it, the many small frames below. New bench section I/3 shows
+  both side by side.
+- **An old `libdragend.so` no longer slows everything down.** Until now any
+  version whose number did not match exactly was discarded — so updating only
+  `frontend.py` meant *no* C at all, not even for scaling (a factor of 124 on
+  the device). A range now applies: a version-4 library is still used fully,
+  only the new function is missing.
+- Way out, should it not pay off on your card:
+  `touch /media/fat/frontend/flaechen_c_aus` — takes effect after a restart.
+- **Bench corrections**: section J now bounces inside the visible window;
+  otherwise half the steps ran as full rebuilds and the average was neither
+  number. And section E finally compares like with like: the light path
+  *without* the flip against blitting *without* the flip. Its "factor 2.9" in
+  the last report came from counting a full-screen flip and the housekeeping
+  on one side only.
+
 ---
 
 ## v4.7 — the login prompt, large tiles, and what measurements disproved

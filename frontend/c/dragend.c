@@ -291,11 +291,96 @@ int skalieren_nearest(const unsigned char *pix, int w, int h,
  * gefunden hat. Wird bei jeder inhaltlichen Aenderung hochgezaehlt.
  * 3 = skalieren_nearest() dazugekommen (Build 175).
  * 4 = fremd_zaehlen() dazugekommen (Build 209).
- *     WICHTIG bei einem Teil-Update: eine alte libdragend.so meldet
- *     hier 3, die Python-Seite verwirft sie dann mit einer Log-Zeile
- *     und rechnet selbst. Es geht also nichts kaputt, es wird nur
- *     langsamer - und im Log steht, warum. */
-int dragend_version(void) { return 4; }
+ * 5 = rechtecke_farben() dazugekommen (Build 219).
+ *
+ * WICHTIG BEI EINEM TEIL-UPDATE, und das ist seit Build 219 anders
+ * geloest: bisher verwarf die Python-Seite jede Fassung, deren Nummer
+ * nicht GENAU passte - eine alte .so neben einer neuen frontend.py
+ * bedeutete also KEIN C mehr, auch nicht fuer das Verkleinern, und das
+ * ist auf dem Geraet der Faktor 124. Jetzt gilt eine SPANNE (siehe
+ * DRAGEND_LIB_VERSION_MIN in fe/art.py): eine 4er-Fassung wird weiter
+ * voll genutzt, nur rechtecke_farben() fehlt dann und die betroffenen
+ * Zeichenwege rechnen in Python. Das ist der Unterschied zwischen
+ * "etwas langsamer" und "alles langsam". */
+int dragend_version(void) { return 5; }
+
+/* ------------------------------------------------------------------
+ * FLAECHEN FUELLEN (Build 219)
+ * ------------------------------------------------------------------
+ * Der Rumpf von fb.rect(), fb.rect_rounded(), rect_rounded_schatten()
+ * und karte_mit_schatten() in C. Alle vier tun am Ende dasselbe: sie
+ * schreiben ZEILEN EINER FARBE in den Puffer, eine Python-Zuweisung je
+ * Bildzeile.
+ *
+ * WARUM DAS DER NAECHSTE SCHRITT WAR: Abschnitt J des Benchs weist
+ * diese vier seit Build 216 gemeinsam als "karten" aus, und auf dem
+ * DE10-Nano war das der groesste benannte Posten eines Scrollschritts -
+ * 47,0 ms in der Spieleliste (37 % des Schritts), 35,2 in der Galerie,
+ * 28,7 auf der Hauptseite. Rund 4,7 ms je Aufruf.
+ *
+ * DIE SCHNITTSTELLE IST BEWUSST EINE LISTE MIT FARBE JE RECHTECK und
+ * nicht "ein Rechteck, eine Farbe": eine abgerundete Ecke besteht aus
+ * zwei mal radius Zeilen unterschiedlicher Breite, und eine Karte mit
+ * Schatten aus Kartenflaeche UND Schattenstreifen. So wird aus jedem
+ * der vier Aufrufe GENAU EIN Sprung nach C, statt eines je Zeile.
+ *
+ * rechtecke ist eine flache Liste aus je fuenf Werten:
+ *     x, y, w, h, farbe
+ * farbe sind die vier Bytes eines Bildpunktes in der Reihenfolge des
+ * Bildspeichers, als 32-Bit-Wert gelesen (beide Ziele sind
+ * little-endian; die Python-Seite baut ihn mit struct aus genau den
+ * Bytes, die px() liefert - siehe rechtecke_farben() in fe/art.py).
+ *
+ * Erst wird die oberste Zeile Punkt fuer Punkt gesetzt, danach werden
+ * die restlichen daraus kopiert: memcpy ist schneller als eine
+ * Schleife, und es ist genau das, was die Python-Fassung mit ihrem
+ * gecachten "row" tut.
+ */
+int rechtecke_farben(unsigned char *dst, int stride, int hoehe, int grenze,
+                     const int *rechtecke, int anzahl)
+{
+    int i;
+    if (!dst || stride <= 0 || anzahl < 0 || !rechtecke) return -1;
+    for (i = 0; i < anzahl; i++) {
+        int x = rechtecke[i * 5 + 0];
+        int y = rechtecke[i * 5 + 1];
+        int w = rechtecke[i * 5 + 2];
+        int h = rechtecke[i * 5 + 3];
+        unsigned int farbe = (unsigned int)rechtecke[i * 5 + 4];
+        int need = w * 4;
+        int y0, y1, max_rows, off, r, j;
+        unsigned char *erste;
+
+        if (x < 0 || y < 0 || need <= 0 || h <= 0) continue;
+        y0 = y;
+        y1 = (y + h) < hoehe ? (y + h) : hoehe;
+        if (y1 <= y0) continue;
+        /* Dieselbe Schranke wie in rechtecke_kopieren(): die letzte
+         * Zeile, die noch VOLLSTAENDIG in den Puffer passt. */
+        max_rows = abrunden_div(grenze - (x * 4) - need, stride) + 1;
+        if (max_rows < y1) y1 = (max_rows > y0) ? max_rows : y0;
+        if (y1 <= y0) continue;
+        off = y0 * stride + x * 4;
+        erste = dst + off;
+        /* Die oberste Zeile setzen. Ueber memcpy je Punkt und nicht
+         * ueber einen uint32-Zeiger: der Bildspeicher ist zwar
+         * ausgerichtet, aber das haengt an stride und x - und ein
+         * unausgerichteter Zugriff ist auf ARM nicht ueberall
+         * harmlos. memcpy von vier Byte uebersetzt der Compiler
+         * ohnehin in einen einzelnen Speicherzugriff, wenn er die
+         * Ausrichtung kennt. */
+        for (j = 0; j < w; j++) {
+            memcpy(erste + j * 4, &farbe, 4);
+        }
+        /* Und der Rest als Kopie davon. */
+        off += stride;
+        for (r = y0 + 1; r < y1; r++) {
+            memcpy(dst + off, erste, (size_t)need);
+            off += stride;
+        }
+    }
+    return 0;
+}
 
 /* ------------------------------------------------------------------
  * WAS HIER BEWUSST NICHT STEHT: DER BILDWAECHTER (Build 209)

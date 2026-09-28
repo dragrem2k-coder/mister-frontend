@@ -889,19 +889,53 @@ def _abschnitt_e(b, fe):
             raise _KeinVergleich()
         fe.cat_i = min(_alter_cat, len(fe.cats) - 1)
 
+        # DER VERGLEICH WAR NOCH IMMER SCHIEF, und das hat der Lauf vom
+        # 28.09. selbst gezeigt: "EIN Schritt, schneller Pfad = 123,06
+        # ms" bei einem VOLLEN Aufbau von 80,95 ms. Ein Schritt kann
+        # nicht teurer sein als der ganze Neuaufbau. Zwei Fehler steckten
+        # darin:
+        #
+        #   1. fe.draw() ruft den leichten Pfad der Hauptseite GAR NICHT
+        #      (_draw_navigate_cats haengt an run(), nicht an draw()) -
+        #      gemessen wurde also wieder der volle Aufbau.
+        #   2. Dazu kamen ein Vollbild-Flip und die Hausarbeit, waehrend
+        #      auf der anderen Seite der Rechnung (verschieben + zwei
+        #      Zeilen) NUR in den Puffer gezeichnet wird.
+        #
+        # Jetzt der leichte Pfad, und beide Seiten OHNE Flip: dessen Zeit
+        # ist in _perf_flip ausgewiesen und wird abgezogen. Damit stehen
+        # links und rechts dieselbe Sorte Arbeit.
+        _fenster_e = max(2, min(int(getattr(fe, "cats_visible", 0) or 0) - 2,
+                                len(fe.cats) - 1))
+        _zaehler_e = [0]
+        _flip_e = [0.0]
+
         def _schritt():
-            fe.cat_i = (fe.cat_i + 1) % max(1, len(fe.cats))
-            fe.draw()
+            _zaehler_e[0] += 1
+            alt = fe.cat_i
+            fe.cat_i = _zaehler_e[0] % _fenster_e
+            _f0 = getattr(fe, "_perf_flip", 0.0)
+            if not fe._draw_navigate_cats(alt):
+                fe.draw()
+            _flip_e[0] += getattr(fe, "_perf_flip", 0.0) - _f0
 
         try:
             for _ in range(4):
                 _schritt()                   # warmlaufen, nicht messen
+            _flip_e[0] = 0.0
+            _vorher = _zaehler_e[0]
             ms_schritt, best_schritt = messen(_schritt)
+            _laeufe = max(1, _zaehler_e[0] - _vorher)
+            ms_flip_e = _flip_e[0] * 1000.0 / _laeufe
         finally:
             fe.page = _alte_seite
             fe.cat_i = min(_alter_cat, max(0, len(fe.cats) - 1))
-        b.posten("EIN Schritt, schneller Pfad (der Vergleich)",
-                 ms_schritt, best_schritt)
+        b.posten("EIN Schritt, leichter Pfad", ms_schritt, best_schritt)
+        # best ausdruecklich als None: die Attrappe in tools/test_bench.py
+        # verlangt das dritte Argument, und ein Messabschnitt soll nicht
+        # daran haengen, welche Vorgabewerte der Bericht gerade hat.
+        b.posten("davon der Flip (wird abgezogen)", ms_flip_e, None)
+        ms_schritt = max(0.0, ms_schritt - ms_flip_e)
 
         # Die Rechnung, offen hingeschrieben: beim Weiterrollen muessen
         # zwei Zeilen neu gesetzt werden (die neu freigewordene und die
@@ -910,7 +944,7 @@ def _abschnitt_e(b, fe):
         b("")
         b("   RECHNUNG   : verschieben %.1f + zwei Zeilen %.1f = %.1f ms"
           % (ms_schieb, 2 * ms_zeile, geblittet))
-        b("                schneller Pfad, wie er laeuft    = %.1f ms"
+        b("                leichter Pfad OHNE Flip          = %.1f ms"
           % ms_schritt)
         b("                voller Aufbau (nur zum Einordnen)= %.1f ms"
           % ms_voll)
@@ -1678,7 +1712,59 @@ def _abschnitt_i(b, fe, A):
           % (name, mb, ms, (ms / mb) if mb > 0 else 0.0))
 
     # ------------------------------------------------------------------
-    # 3. Das Urteil - und nur, wenn es eines gibt.
+    # 3. Flaechen fuellen: Python gegen C (Build 219).
+    # ------------------------------------------------------------------
+    # DIE ANDERE HAELFTE DERSELBEN FRAGE. Teil 1 und 2 messen das
+    # KOPIEREN (Puffer -> Bildspeicher), hier geht es um das FUELLEN
+    # (eine Farbe in den Puffer) - fb.rect() und die Karte mit Schatten.
+    # Abschnitt J weist die vier zusammen als "karten" aus, und das war
+    # im Lauf vom 28.09. der groesste benannte Posten eines Schritts:
+    # 47,0 ms in der Spieleliste bei 10 Aufrufen.
+    #
+    # WARUM DAS HIER STEHEN MUSS: auf dem Entwicklungsrechner ist C
+    # EXAKT gleich schnell wie Python (0,53 gegen 0,51 ms auf 700x900) -
+    # dort kostet eine Zuweisung je Bildzeile fast nichts. Ob es auf
+    # diesem Geraet lohnt, haengt allein am Grundaufwand je Zeile, und
+    # den kennt nur dieses Geraet.
+    fueller = getattr(fb, "flaechen_fueller", None)
+    b("")
+    b("   3) Flaechen fuellen: Python gegen C (fb.rect)")
+    if fueller is None:
+        b("      -- kein C-Fueller eingehaengt (alte libdragend oder")
+        b("         flaechen_c_aus), nichts zu vergleichen")
+    else:
+        _mz = getattr(fb, "FLAECHEN_C_MIN_ZEILEN", 0)
+        b("      C wird ab %d Zeilen benutzt - darunter ist der Sprung"
+          % _mz)
+        b("      teurer als die gesparten Zuweisungen (siehe dort).")
+        b("   %-24s %9s %9s %9s %s" % ("Flaeche", "Python ms", "C ms",
+                                       "Faktor", "genutzt"))
+        for fw, fh in ((700, 900), (400, 300), (60, 40)):
+            fw = min(fw, breite)
+            fh = min(fh, hoehe)
+            if fw <= 0 or fh <= 0:
+                continue
+            _echt = fb.flaechen_fueller
+            try:
+                fb.flaechen_fueller = None
+                ms_py, _bp = messen(
+                    lambda _w=fw, _h=fh: fb.rect(0, 0, _w, _h, (7, 9, 11)),
+                    WDH_TEUER)
+                fb.flaechen_fueller = _echt
+                ms_c, _bc = messen(
+                    lambda _w=fw, _h=fh: fb.rect(0, 0, _w, _h, (7, 9, 11)),
+                    WDH_TEUER)
+            finally:
+                fb.flaechen_fueller = _echt
+            b("   %-24s %9.3f %9.3f %9s %s"
+              % ("%dx%d" % (fw, fh), ms_py, ms_c,
+                 ("%.1fx" % (ms_py / ms_c)) if ms_c > 0 else "-",
+                 "ja" if fh >= _mz else "nein"))
+        b("      (Gefuellt wird in den PUFFER, nicht auf den Schirm -")
+        b("       auf dem Bild landet davon nichts.)")
+
+    # ------------------------------------------------------------------
+    # 4. Das Urteil - und nur, wenn es eines gibt.
     # ------------------------------------------------------------------
     b("")
     if not hat_c:
@@ -1895,8 +1981,10 @@ def _abschnitt_j(b, fe, S, A, fm):
     # except verdeckt.
     _null()
     schritte = max(10, SCHRITTE // 2)
-    b("   %d Schritte je Ansicht, alles warm. Zeiten je SCHRITT."
+    b("   %d Schritte je Ansicht, alles warm, INNERHALB des sichtbaren"
       % schritte)
+    b("   Fensters (sonst laeuft die Haelfte als voller Aufbau, siehe")
+    b("   Quelltext). Zeiten je SCHRITT.")
     b("")
     K._restore_row_bg = h_restore
     K.blit = h_blit
@@ -1993,11 +2081,41 @@ def _abschnitt_j(b, fe, S, A, fm):
                     b("   %-20s -- uebersprungen (%s)"
                       % (name + " " + ansicht, type(e).__name__))
                     continue
+
+                # IM SICHTBAREN FENSTER PENDELN, nicht durch die Liste
+                # laufen - und das ist die Korrektur aus Build 219.
+                #
+                # WAS VORHER HERAUSKAM: der Zeiger lief mit i % n durch
+                # die Liste, und sobald das Fenster weiterscrollen muss,
+                # lehnt der leichte Pfad ab (scroll hat sich geaendert)
+                # und es laeuft ein VOLLER Aufbau. Bei 17 sichtbaren
+                # Zeilen waren das rund 13 von 30 Schritten. Im Bericht
+                # vom 28.09. stand deshalb "Liste liste 126,53 ms" mit
+                # einem Flip von 5,5 MB - ein Mittelwert aus leichten
+                # Schritten (3,12 MB) und vollen Aufbauten, also keine
+                # von beiden Zahlen.
+                #
+                # Genau dieselbe Sorte Fehler wie in Build 178 ("der
+                # bench landet immer im supergameboy") und in Build 216
+                # (J waehlte die Kategorie nicht): der Zustand, in dem
+                # gemessen wird, muss zur Frage passen.
+                if seite == 0:
+                    _fenster = int(getattr(fe, "cats_visible", 0) or 0)
+                    _gesamt = max(1, len(getattr(fe, "cats", ()) or ()))
+                else:
+                    _fenster = int(getattr(fe, "items_visible", 0) or 0)
+                    try:
+                        _gesamt = max(1, len(fe._display_items()))
+                    except Exception:                    # noqa: BLE001
+                        _gesamt = 1
+                # Ein Rand von zwei Zeilen: der leichte Pfad verlangt,
+                # dass ALTE und NEUE Zeile im Fenster liegen.
+                _fenster = max(2, min(_fenster - 2, _gesamt - 1))
                 _null()
                 _haus0 = getattr(fe, "_perf_house", 0.0)
                 t0 = time.monotonic()
                 for i in range(schritte):
-                    _schritt(i)
+                    _schritt(i % _fenster)
                 ges = (time.monotonic() - t0) * 1000.0 / schritte
                 je = 1000.0 / schritte
                 r = konto["restore_ms"] * je

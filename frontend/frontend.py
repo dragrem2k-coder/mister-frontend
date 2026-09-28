@@ -305,6 +305,7 @@ from fe.settings import (
     toggle_screen_mirror, toggle_stream_overlay,
     fast_scroll_enabled, toggle_fast_scroll,
     rechteck_flip_enabled,
+    flaechen_c_enabled,
     cover_sofort_enabled, toggle_cover_sofort, artbox_aufschub_aus,
     arbeitskopien_enabled, toggle_arbeitskopien,
     overscan_lesen, overscan_weiter,
@@ -1195,6 +1196,7 @@ from fe.art import (
     thumb_cache_schuetzen, thumb_cache_modus_setzen, thumb_cache_lesen,
     alten_flachen_cache_aufraeumen,
     rechtecke_kopieren as _c_rechtecke_kopieren,
+    rechtecke_farben as _c_rechtecke_farben,
     fremd_zaehlen as _c_fremd_zaehlen,
     quelldaten_vergessen, marken_nachziehen,
     verkleinern_modus_vergessen,
@@ -1215,6 +1217,16 @@ from fe.art import (
 # wie der Puffer. Bleibt der Haken ungesetzt (libdragend fehlt), laeuft
 # der Python-Weg in flip_rechtecke().
 Framebuffer.rechteck_kopierer = staticmethod(_c_rechtecke_kopieren)
+# NEU (Build 219): und der Fueller fuer die Flaechen, aus demselben Grund
+# hier statt dort - siehe Framebuffer.flaechen_fueller.
+#
+# EINMAL beim Laden gefragt, nicht je Aufruf: fb.rect() laeuft einige
+# hundert Mal je Seitenaufbau, und eine Dateiabfrage in dieser Schleife
+# waere genau die Sorte stiller Kosten, gegen die Build 212 angetreten
+# ist. Der Schalter wirkt deshalb erst nach einem Neustart - siehe
+# FLAECHEN_C_AUS_FLAG in fe/settings.py.
+if flaechen_c_enabled():
+    Framebuffer.flaechen_fueller = staticmethod(_c_rechtecke_farben)
 
 # NEU (Build 73): Cover-Miniaturen im Leerlauf vorberechnen. Die
 # ausfuehrliche Begruendung samt der beiden ehrlichen Einschraenkungen

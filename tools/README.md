@@ -976,6 +976,53 @@ leichten Pfad der Liste NIE (`_draw_navigate_items` haengt an `run()`).
 Abschnitt B und J des Benchs haben fuer die Liste deshalb bis Build 217
 den vollen Neuaufbau gemessen und "je Schritt" darueber geschrieben.
 
+## test_flaechen_in_c.py
+
+Das Fuellen von Flaechen in C (Build 219) - und die einzige Stelle in
+diesem Projekt, an der eine Optimierung ausdruecklich NUR ueber einer
+Schwelle gilt.
+
+Auf dem DE10-Nano war "karten" der groesste benannte Posten eines
+Scrollschritts (Abschnitt J): 47,0 ms in der Spieleliste, 35,2 in der
+Galerie, 28,7 auf der Hauptseite - gefuellte und abgerundete Rechtecke
+samt Schatten, alles Schleifen ueber Bildzeilen. Angeschlossen ist genau
+EINE Stelle, `fb.rect()`, und die erwischt fast alles: die abgerundeten
+Fassungen zeichnen nur ihre Eckenzeilen selbst und lassen den Mittelteil
+von dort fuellen - bei der Boxart-Karte 876 von 900 Zeilen.
+
+**Test 3 ist der eigentliche Punkt.** Der Sprung nach C kostet selbst
+etwas, gemessen auf dem Entwicklungsrechner:
+
+    700x900   Python 0,523 ms   C 0,266 ms   ->  2,0x schneller
+    400x300   Python 0,108 ms   C 0,140 ms   ->  0,8x LANGSAMER
+     60x40    Python 0,020 ms   C 0,077 ms   ->  0,3x viel langsamer
+
+Gespart wird eine Zuweisung je ZEILE - unter etwa hundert Zeilen ist die
+Summe davon kleiner als der eine Sprung. Deshalb steht die Schwelle in
+ZEILEN (`FLAECHEN_C_MIN_ZEILEN`, 256), und deshalb prueft der Test sie in
+BEIDE Richtungen: eine Zeile darunter darf NICHT nach C gehen. Eine
+Optimierung, die den haeufigen Fall verschlechtert, ist keine.
+
+**Test 4 entschaerft eine Falle, die es schon vorher gab.** Bis Build 218
+wurde jede libdragend verworfen, deren Version nicht GENAU passte. Ein
+Teil-Update (neue frontend.py, alte .so) hiess damit: kein C mehr, auch
+nicht fuer das Verkleinern - auf dem Geraet der Faktor 124. Jetzt gilt
+eine Spanne, und die neue Funktion wird in einem EIGENEN try angebunden;
+geprueft wird, dass ohne sie alles andere weiterlaeuft.
+
+**Test 6 bewacht die Bauanleitung.** `c/bauen.sh` baut seit Build 219
+alle drei Fassungen - auch die fuer den Entwicklungsrechner. Blieb sie
+aussen vor, verglich "C gegen Python" irgendwann eine alte Fassung mit
+neuem Python und meldete Gruen fuer etwas, das auf dem Geraet anders
+aussieht.
+
+Zwei bestehende Tests haben diesen Build mitbekommen, und beide zu Recht:
+`test_scharf_verkleinern.py` haelt die Versionsnummer fest verdrahtet
+("wer die eine anfasst, soll hier stolpern") - genau das ist passiert.
+Und `test_cover_panel.py` misst die Ersparnis von Build 97/98; die gilt
+fuer den Python-Weg, denn in C verschwindet sie im Grundaufwand des
+Sprungs. Gemessen wird sie jetzt dort, wo sie zutrifft.
+
 ## test_ra_einstellungen.py
 
 Die RA-Einstellungen der MiSTer-Hauptanwendung, bedienbar aus unserem

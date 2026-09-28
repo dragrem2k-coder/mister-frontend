@@ -1300,6 +1300,37 @@ class Framebuffer:
         stride = self.stride
         need = w * 4
         off = y * stride + x * 4
+        # NEU (Build 219): die Schleife nach C - siehe rechtecke_farben()
+        # in c/dragend.c.
+        #
+        # WARUM GERADE HIER: Abschnitt J des Benchs weist rect(),
+        # rect_rounded(), rect_rounded_schatten() und
+        # karte_mit_schatten() seit Build 216 gemeinsam als "karten" aus,
+        # und auf dem DE10-Nano war das der groesste benannte Posten
+        # eines Scrollschritts: 47,0 ms in der Spieleliste (37 % des
+        # Schritts), 35,2 in der Galerie, 28,7 auf der Hauptseite. Rund
+        # 4,7 ms je Aufruf.
+        #
+        # UND WARUM DIESE EINE STELLE FAST ALLES DAVON ERWISCHT: die
+        # abgerundeten Fassungen zeichnen nur ihre Eckenzeilen selbst
+        # (zweimal radius Stueck, meist zwei Dutzend) und lassen den
+        # ganzen Mittelteil von hier fuellen. Bei der Boxart-Karte sind
+        # das 876 von 900 Zeilen. Die Eckenzeilen bleiben absichtlich in
+        # Python: ihre Geometrie ist der heikle Teil, und sie kosten
+        # nichts.
+        #
+        # scanlines bleibt ebenfalls in Python - dort wechselt die Farbe
+        # je Zeile, und der Fall kommt nur bei reinen
+        # Hintergrundflaechen vor.
+        fueller = self.flaechen_fueller
+        if (fueller is not None and not scanlines
+                and h >= self.FLAECHEN_C_MIN_ZEILEN):
+            try:
+                if fueller(buf, stride, self.height, len(buf),
+                           ((x, y, w, h, self._farbwert(self.px(rgb))),)):
+                    return
+            except Exception:                            # noqa: BLE001
+                pass         # Meldung steht in fe/art.py, hier der Weg
         if scanlines:
             for yy in range(y, y + h):
                 buf[off:off + need] = row_dark if (yy % 2) else row
@@ -1416,6 +1447,23 @@ class Framebuffer:
         buf, stride = self.buf, self.stride
         need = (w + versatz) * 4
         off = band[0] * stride + x * 4
+        # Build 219: auch dieses Band in C - als ZWEI Rechtecke in EINEM
+        # Aufruf (Karte und Schattenstreifen liegen nebeneinander, siehe
+        # der Docstring oben). Das Ergebnis ist bitgenau dasselbe wie die
+        # vorgefertigte Doppelzeile darunter: dieselben Bytes an
+        # dieselben Stellen, nur ohne eine Python-Zuweisung je Bildzeile.
+        fueller = self.flaechen_fueller
+        if (fueller is not None
+                and band[1] - band[0] >= self.FLAECHEN_C_MIN_ZEILEN):
+            try:
+                if fueller(buf, stride, self.height, len(buf),
+                           ((x, band[0], w, band[1] - band[0],
+                             self._farbwert(self.px(karte_rgb))),
+                            (x + w, band[0], versatz, band[1] - band[0],
+                             self._farbwert(self.px(schatten_rgb))))):
+                    return
+            except Exception:                            # noqa: BLE001
+                pass
         for _ in range(band[1] - band[0]):
             buf[off:off + need] = zeile
             off += stride
@@ -2030,6 +2078,54 @@ class Framebuffer:
     # Notnagel, sondern der Weg, auf dem die Tests BEIDE Fassungen
     # gegeneinander pruefen koennen.
     rechteck_kopierer = None
+
+    # Der C-Fueller fuer rect() und die Karte mit Schatten, von aussen
+    # eingehaengt (Build 219) - aus demselben Grund wie der Kopierer
+    # darueber: dieses Modul kennt genau einen Import aus dem Projekt.
+    # frontend.py setzt das Feld auf fe.art.rechtecke_farben. Bleibt es
+    # None, laufen die Python-Schleifen darunter - und die sind
+    # gleichzeitig das Vergleichsmass der Tests.
+    flaechen_fueller = None
+
+    # AB WIE VIELEN ZEILEN SICH DER SPRUNG NACH C LOHNT - und diese Zahl
+    # ist gemessen, nicht geschaetzt (Abschnitt I, Teil 3 des Benchs).
+    #
+    # Der Aufruf selbst kostet etwas: die Rechtecke muessen in ein
+    # ctypes-Feld, und der Uebergang ist nicht gratis. Auf dem
+    # Entwicklungsrechner sind das rund 0,06 ms, und damit sieht die
+    # Rechnung so aus:
+    #
+    #     700x900   Python 0,523 ms   C 0,266 ms   ->  2,0x  schneller
+    #     400x300   Python 0,108 ms   C 0,140 ms   ->  0,8x  LANGSAMER
+    #      60x40    Python 0,020 ms   C 0,077 ms   ->  0,3x  viel langsamer
+    #
+    # Der Grundaufwand entscheidet also, nicht die Flaeche: gespart wird
+    # eine Python-Zuweisung JE ZEILE, und unter etwa hundert Zeilen ist
+    # die Summe davon kleiner als der eine Sprung. Deshalb steht die
+    # Schwelle in ZEILEN und nicht in Bytes.
+    #
+    # 256 ist bewusst mit Abstand gewaehlt. Die teuren Flaechen sind die
+    # grossen Karten - Boxart-Spalte 900 Zeilen, Listenspalte 880,
+    # Textspalte der Galerie 495, Rasterkachel 361 -, und die liegen alle
+    # klar darueber. Die vielen kleinen (Rahmen, Equalizer-Balken,
+    # Markierungen) liegen klar darunter und bleiben in Python, wo sie
+    # schneller sind. Auf dem Geraet liegt der Umschlagpunkt tiefer (die
+    # Zeile kostet dort rund 0,009 ms statt 0,0006), 256 ist dort also
+    # erst recht richtig.
+    FLAECHEN_C_MIN_ZEILEN = 256
+
+    @staticmethod
+    def _farbwert(pixel):
+        """Die vier Bytes eines Bildpunktes als 32-Bit-Wert, so wie die
+        C-Seite sie erwartet.
+
+        BEIDE ZIELE SIND LITTLE-ENDIAN (armv7l und x86_64), und deshalb
+        ist "<I" hier keine Bequemlichkeit, sondern die Zusage: der Wert
+        enthaelt genau die Bytes von px() in genau dieser Reihenfolge,
+        und C schreibt sie mit memcpy zurueck. Waere eines der beiden
+        Ziele big-endian, muesste hier ein Tausch stehen - dann waere
+        aber auch das Bild verkehrt, und das faellt sofort auf."""
+        return struct.unpack("<I", pixel)[0]
 
     def flip_rechtecke(self, rechtecke, skip_vsync=False):
         """Nur die angefassten RECHTECKE auf den Schirm bringen.

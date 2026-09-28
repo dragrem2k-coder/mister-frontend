@@ -918,8 +918,22 @@ THUMB_ALGO_VERSION = "3"
 # Quelle und Bauanleitung: frontend/c/dragend.c und frontend/c/bauen.sh
 import ctypes as _ctypes
 
-DRAGEND_LIB_VERSION = 4
+# GEAENDERT (Build 219): eine SPANNE statt einer festen Nummer.
+#
+# Bisher wurde jede Fassung verworfen, deren Nummer nicht genau passte.
+# Bei einem Teil-Update (neue frontend.py, alte libdragend.so) hiess das:
+# KEIN C mehr, auch nicht fuer das Verkleinern - und das ist auf dem
+# Geraet der Faktor 124 (Abschnitt C des Benchs). Der Preis fuer eine
+# hinzugefuegte Funktion war also, dass alle anderen ausfallen.
+#
+# Jetzt gilt: alles von MIN bis VERSION wird genommen, und die Funktionen
+# der neueren Fassungen werden einzeln nachgefragt. Fehlt eine, rechnet
+# genau ihr Aufrufer in Python weiter, der Rest laeuft in C.
+DRAGEND_LIB_VERSION = 5
+DRAGEND_LIB_VERSION_MIN = 4
 _LIB = None
+# Was die gefundene Fassung kann - wird beim Laden gesetzt.
+_HAT_FARBEN = False
 
 
 def _lib_laden():
@@ -933,9 +947,11 @@ def _lib_laden():
     try:
         lib = _ctypes.CDLL(pfad)
         lib.dragend_version.restype = _ctypes.c_int
-        if lib.dragend_version() != DRAGEND_LIB_VERSION:
-            LOG("libdragend: Version %d erwartet, %d gefunden - ignoriert"
-                % (DRAGEND_LIB_VERSION, lib.dragend_version()))
+        _v = lib.dragend_version()
+        if not (DRAGEND_LIB_VERSION_MIN <= _v <= DRAGEND_LIB_VERSION):
+            LOG("libdragend: Version %d bis %d erwartet, %d gefunden "
+                "- ignoriert"
+                % (DRAGEND_LIB_VERSION_MIN, DRAGEND_LIB_VERSION, _v))
             return None
         lib.skalieren_flaechenmittel.restype = _ctypes.c_int
         lib.skalieren_flaechenmittel.argtypes = [
@@ -968,6 +984,21 @@ def _lib_laden():
         lib.fremd_zaehlen.argtypes = [
             _ctypes.c_void_p, _ctypes.c_void_p, _ctypes.c_int,
             _ctypes.c_int, _ctypes.c_int, _ctypes.c_int, _ctypes.c_int]
+        # Build 219: das Fuellen von Flaechen. IN EINEM EIGENEN try, und
+        # das ist der Punkt: eine 4er-Fassung hat diese Funktion nicht,
+        # und sie darf deshalb nicht die ganze Bibliothek mitnehmen.
+        # Siehe DRAGEND_LIB_VERSION_MIN oben.
+        global _HAT_FARBEN
+        _HAT_FARBEN = False
+        try:
+            lib.rechtecke_farben.restype = _ctypes.c_int
+            lib.rechtecke_farben.argtypes = [
+                _ctypes.c_void_p, _ctypes.c_int, _ctypes.c_int,
+                _ctypes.c_int, _ctypes.c_void_p, _ctypes.c_int]
+            _HAT_FARBEN = True
+        except AttributeError:
+            LOG("libdragend: Version %d ohne rechtecke_farben - Flaechen "
+                "rechnet Python" % _v)
     except (OSError, AttributeError) as e:
         LOG("libdragend nicht nutzbar (%s) - rechne in Python" % e)
         return None
@@ -1163,6 +1194,45 @@ def rechtecke_kopieren(src, dst, stride, hoehe, grenze, spuren):
             zeiger_q, zeiger_z, stride, hoehe, grenze, flach, anzahl) == 0
     except Exception:                                    # noqa: BLE001
         LOG("libdragend: Rechtecke kopieren fehlgeschlagen, nehme Python")
+        return False
+
+
+def rechtecke_farben(dst, stride, hoehe, grenze, rechtecke):
+    """Mehrere Rechtecke mit je EINER Farbe fuellen - der Rumpf von
+    fb.rect() und der Karte mit Schatten in C.
+
+    rechtecke ist eine Folge von (x, y, w, h, farbe); farbe sind die vier
+    Bytes eines Bildpunktes als 32-Bit-Wert (siehe Framebuffer._farbwert,
+    beide Ziele sind little-endian).
+
+    Rueckgabe: True, wenn C es erledigt hat. Bei False hat sich NICHTS
+    veraendert und der Aufrufer muss selbst fuellen - das ist der Fall
+    ohne libdragend und mit einer Fassung vor Version 5."""
+    if _LIB is None or not _HAT_FARBEN or not rechtecke:
+        return False
+    try:
+        anzahl = len(rechtecke)
+        flach = (_ctypes.c_int * (5 * anzahl))()
+        i = 0
+        for x, y, w, h, farbe in rechtecke:
+            flach[i] = x
+            flach[i + 1] = y
+            flach[i + 2] = w
+            flach[i + 3] = h
+            # DER FARBWERT MUSS BITGENAU DURCH, alle 32. px() setzt das
+            # vierte Byte heute auf 0, der Wert bliebe also ohnehin unter
+            # 2^31 - aber darauf soll hier nichts beruhen: waere es
+            # einmal anders, muesste ein OverflowError kommen und nicht
+            # eine leise falsche Farbe. Deshalb wird umgerechnet und
+            # nicht maskiert.
+            flach[i + 4] = (farbe - 0x100000000
+                            if farbe >= 0x80000000 else farbe)
+            i += 5
+        _halt, zeiger = _roh_zeiger(dst)
+        return _LIB.rechtecke_farben(
+            zeiger, stride, hoehe, grenze, flach, anzahl) == 0
+    except Exception:                                    # noqa: BLE001
+        LOG("libdragend: Flaechen fuellen fehlgeschlagen, nehme Python")
         return False
 
 

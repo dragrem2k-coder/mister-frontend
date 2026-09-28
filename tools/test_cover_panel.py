@@ -225,28 +225,49 @@ def zeit(fn, n=30, runden=15):
     return bestes
 
 
-t_alt = zeit(lambda: fb.rect_rounded(40 + versatz, 20 + versatz, kw, kh,
-                                     dunkel, radius))
-t_neu = zeit(lambda: fb.rect_rounded_schatten(40, 20, kw, kh, versatz,
-                                              dunkel, radius))
-check("verkuerzter Schatten ist schneller", t_neu < t_alt,
-      "(alt %.3f ms, neu %.3f ms, Faktor %.1f)"
-      % (t_alt, t_neu, t_alt / t_neu if t_neu else 0))
-check("und zwar deutlich (mindestens Faktor 1,5)",
-      t_neu * 1.5 < t_alt,
-      "(Faktor %.1f)" % (t_alt / t_neu if t_neu else 0))
+# NEU (Build 219): diese drei Zeitvergleiche gelten fuer den
+# PYTHON-Weg, und nur dort.
+#
+# Build 97 und 98 haben Zeilenschleifen gespart - der verkuerzte Schatten
+# zeichnet weniger Zeilen, die zusammengefasste Karte schreibt eine
+# Doppelzeile statt zweier. Seit Build 219 fuellt libdragend die Flaechen,
+# und dann ist genau diese Ersparnis weg: C kopiert beide Rechtecke in
+# einem Aufruf, und was vorher der Gewinn war, verschwindet im
+# Grundaufwand des Sprungs.
+#
+# Die Optimierungen bleiben trotzdem richtig - sie greifen auf jedem
+# Geraet ohne libdragend und unter der Schwelle
+# FLAECHEN_C_MIN_ZEILEN. Genau dort werden sie hier gemessen. Dass der
+# C-Weg dasselbe BILD liefert, prueft tools/test_flaechen_in_c.py.
+_alt_fueller = fb.flaechen_fueller
+fb.flaechen_fueller = None
+try:
+    t_alt = zeit(lambda: fb.rect_rounded(40 + versatz, 20 + versatz, kw, kh,
+                                         dunkel, radius))
+    t_neu = zeit(lambda: fb.rect_rounded_schatten(40, 20, kw, kh, versatz,
+                                                  dunkel, radius))
+    check("verkuerzter Schatten ist schneller", t_neu < t_alt,
+          "(alt %.3f ms, neu %.3f ms, Faktor %.1f)"
+          % (t_alt, t_neu, t_alt / t_neu if t_neu else 0))
+    check("und zwar deutlich (mindestens Faktor 1,5)",
+          t_neu * 1.5 < t_alt,
+          "(Faktor %.1f)" % (t_alt / t_neu if t_neu else 0))
 
-hell = fm.C_PANEL
-t_getrennt = zeit(lambda: (fb.rect_rounded_schatten(40, 20, kw, kh, versatz,
-                                                    dunkel, radius),
-                           fb.rect_rounded(40, 20, kw, kh, hell, radius)))
-t_zusammen = zeit(lambda: fb.karte_mit_schatten(40, 20, kw, kh, versatz,
-                                                hell, dunkel, radius))
-check("Karte+Schatten zusammengefasst ist schneller als getrennt",
-      t_zusammen < t_getrennt,
-      "(getrennt %.3f ms, zusammen %.3f ms, Faktor %.1f)"
-      % (t_getrennt, t_zusammen,
-         t_getrennt / t_zusammen if t_zusammen else 0))
+    hell = fm.C_PANEL
+    t_getrennt = zeit(lambda: (fb.rect_rounded_schatten(40, 20, kw, kh,
+                                                        versatz, dunkel,
+                                                        radius),
+                               fb.rect_rounded(40, 20, kw, kh, hell,
+                                               radius)))
+    t_zusammen = zeit(lambda: fb.karte_mit_schatten(40, 20, kw, kh, versatz,
+                                                    hell, dunkel, radius))
+    check("Karte+Schatten zusammengefasst ist schneller als getrennt",
+          t_zusammen < t_getrennt,
+          "(getrennt %.3f ms, zusammen %.3f ms, Faktor %.1f)"
+          % (t_getrennt, t_zusammen,
+             t_getrennt / t_zusammen if t_zusammen else 0))
+finally:
+    fb.flaechen_fueller = _alt_fueller
 
 print("Test 5: kein vollflaechiges Schatten-Rechteck mehr im Zeichenpfad")
 # Regressionsschutz: wer den Aufruf spaeter versehentlich zurueckbaut,

@@ -145,6 +145,31 @@ steht hier kein doppelt gebautes Feature.
   Schritt, den es so nicht gibt. Abschnitt B behält seine Zahlenreihe
   (vergleichbar seit v4.2) und sagt jetzt dazu, dass es der volle Aufbau ist.
 
+**Flächen füllen in C — und eine Falle beim Teil-Update entschärft.**
+
+- Auf dem Gerät war „karten" der größte benannte Posten eines Scrollschritts:
+  **47 ms** in der Spieleliste, 35 in der Galerie, 28 auf der Hauptseite — das
+  sind gefüllte und abgerundete Rechtecke samt Schatten, alles Schleifen über
+  Bildzeilen. Die dicken Flächen füllt jetzt `libdragend` (Version 5).
+- **Erst ab 256 Zeilen**, und das ist gemessen: der Sprung nach C kostet
+  selbst etwas, und bei kleinen Flächen ist er teurer als die gesparten
+  Zuweisungen (700×900 wird 2× schneller, 60×40 dagegen dreimal langsamer).
+  Die großen Karten liegen alle darüber, die vielen kleinen Rahmen darunter.
+  Der neue Bench-Abschnitt I/3 zeigt beides nebeneinander.
+- **Eine alte `libdragend.so` bremst jetzt nicht mehr alles aus.** Bisher
+  wurde jede Fassung verworfen, deren Nummer nicht genau passte — wer nur
+  `frontend.py` aktualisierte, hatte damit *überhaupt kein* C mehr, auch nicht
+  beim Verkleinern (Faktor 124 auf dem Gerät). Jetzt gilt eine Spanne: eine
+  4er-Fassung wird weiter voll genutzt, nur die neue Funktion fehlt dann.
+- Notausgang, falls es auf deiner Karte nicht lohnt:
+  `touch /media/fat/frontend/flaechen_c_aus` — wirkt nach einem Neustart.
+- **Bench-Korrekturen**: Abschnitt J pendelt jetzt im sichtbaren Fenster,
+  sonst lief die Hälfte der Schritte als voller Aufbau und der Mittelwert war
+  keine von beiden Zahlen. Und Abschnitt E vergleicht endlich Gleiches mit
+  Gleichem: der leichte Pfad *ohne* Flip gegen das Blitten *ohne* Flip. Sein
+  „Faktor 2,9" aus dem letzten Bericht war dadurch zustande gekommen, dass
+  auf der einen Seite ein Vollbild-Flip und die Hausarbeit mitgezählt wurden.
+
 ---
 
 ## v4.7 — der Login-Prompt, große Kacheln, und was Messungen widerlegt haben

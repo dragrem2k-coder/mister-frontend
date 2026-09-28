@@ -852,6 +852,37 @@ def fast_scroll_enabled():
                  lambda: os.path.exists(FAST_SCROLL_ENABLED_FLAG))
 
 
+# NEU (Build 219): das Fuellen von Flaechen in C (fb.rect() und die
+# Karte mit Schatten, siehe rechtecke_farben() in c/dragend.c).
+#
+# Standard AN, und der Schalter hat einen anderen Grund als die beiden
+# darueber: hier ist NICHT die Wirkung unsicher, sondern ihre GROESSE.
+# Auf dem Entwicklungsrechner ist C exakt gleich schnell wie Python
+# (0,53 gegen 0,51 ms auf 700x900) - dort ist eine Zuweisung je Bildzeile
+# ohnehin fast umsonst. Auf dem DE10-Nano kostet dieselbe Zuweisung
+# gemessen rund 0,009 ms (Abschnitt I), bei 900 Zeilen also 8 ms, und
+# genau die nimmt C weg. Erwartet ist damit etwa der Faktor zwei -
+# bestaetigt oder widerlegt wird das von Abschnitt I, Teil 3.
+#
+# Sollte es dort NICHT lohnen, ist der Weg zurueck ein "touch":
+#
+#     touch /media/fat/frontend/flaechen_c_aus
+#
+# WIRKT NACH EINEM NEUSTART des Frontends, und das ist Absicht: der
+# Haken wird einmal beim Laden gesetzt. Eine Abfrage je Aufruf waere
+# genau die Sorte stiller Kosten, gegen die Build 212 angetreten ist -
+# fb.rect() laeuft einige hundert Mal je Seitenaufbau.
+FLAECHEN_C_AUS_FLAG = "/media/fat/frontend/flaechen_c_aus"
+
+
+def flaechen_c_enabled():
+    """Darf das Fuellen von Flaechen in C laufen? Standard ja.
+
+    Wird EINMAL beim Laden gefragt (siehe FLAECHEN_C_AUS_FLAG), nicht je
+    Aufruf - deshalb hier auch ohne den kurzlebigen Zwischenspeicher."""
+    return not os.path.exists(FLAECHEN_C_AUS_FLAG)
+
+
 def rechteck_flip_enabled():
     """Duerfen die Kachelansichten nur RECHTECKE auf den Schirm bringen?
 

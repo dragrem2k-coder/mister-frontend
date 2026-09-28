@@ -222,15 +222,27 @@ check("und niemand ruft das Flaechenmittel mehr direkt",
 print()
 print("Test 8: die Bibliothek passt zur Erwartung")
 # ---------------------------------------------------------------------------
-# GEAENDERT (Build 209): 4, seit fremd_zaehlen() dazugekommen ist. Die
-# Zahl steht hier absichtlich fest verdrahtet und nicht als Vergleich
-# gegen sich selbst - sie ist der Vertrag zwischen der .so auf der
-# Karte und der frontend.py, und wer die eine anfasst, soll hier
-# stolpern und die andere mitnehmen.
-check("die Version wurde hochgezaehlt", A.DRAGEND_LIB_VERSION == 4,
+# GEAENDERT (Build 219): 5, seit rechtecke_farben() dazugekommen ist
+# (vorher 4 mit fremd_zaehlen, Build 209). Die Zahl steht hier
+# absichtlich fest verdrahtet und nicht als Vergleich gegen sich selbst -
+# sie ist der Vertrag zwischen der .so auf der Karte und der
+# frontend.py, und wer die eine anfasst, soll hier stolpern und die
+# andere mitnehmen. GENAU DAS IST IN BUILD 219 PASSIERT, und der Test hat
+# seine Aufgabe erfuellt.
+#
+# NEU DAZU: seit Build 219 gibt es eine UNTERGRENZE. Bisher wurde jede
+# Fassung verworfen, deren Nummer nicht genau passte - eine alte .so
+# neben einer neuen frontend.py bedeutete also KEIN C mehr, auch nicht
+# fuer das Verkleinern, und das ist auf dem Geraet der Faktor 124. Jetzt
+# gilt eine Spanne, und die Funktionen der neueren Fassungen werden
+# einzeln nachgefragt. Naeheres in tools/test_flaechen_in_c.py.
+check("die Version wurde hochgezaehlt", A.DRAGEND_LIB_VERSION == 5,
       str(A.DRAGEND_LIB_VERSION))
 check("die C-Datei meldet dieselbe",
-      "int dragend_version(void) { return 4; }" in quelle)
+      "int dragend_version(void) { return 5; }" in quelle)
+check("und es gibt eine Untergrenze darunter",
+      getattr(A, "DRAGEND_LIB_VERSION_MIN", None) == 4,
+      "eine 4er-Fassung muss weiter voll nutzbar bleiben")
 for datei in ("libdragend.so", "libdragend_x86.so"):
     p = os.path.join(_REPO, "frontend", datei)
     check("%s liegt neu gebaut bereit" % datei, os.path.exists(p))

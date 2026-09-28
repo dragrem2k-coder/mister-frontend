@@ -65,6 +65,17 @@ arm-linux-gnueabihf-gcc $GEMEINSAM -O3 \
     -o libdragend_neon.so dragend.c
 echo "gebaut: libdragend_neon.so  $(ls -l libdragend_neon.so | awk '{print $5}') Byte"
 
+# NEU (Build 219): auch die Fassung fuer den Entwicklungsrechner. Sie
+# liegt seit Build 155 im Ordner, wurde aber von Hand gebaut - und genau
+# das ist ein Problem: die Tests in tools/ benutzen sie ueber
+# DRAGEND_LIB, um "C gegen Python" zu vergleichen. Bleibt sie beim Bauen
+# aussen vor, prueft dieser Vergleich irgendwann eine alte Fassung gegen
+# neues Python und meldet Gruen fuer etwas, das auf dem Geraet anders
+# aussieht.
+gcc $GEMEINSAM -O2 \
+    -o libdragend_x86.so dragend.c
+echo "gebaut: libdragend_x86.so   $(ls -l libdragend_x86.so | awk '{print $5}') Byte"
+
 echo
 echo "Vektorisierte Schleifen:"
 arm-linux-gnueabihf-gcc $GEMEINSAM -O3 \
