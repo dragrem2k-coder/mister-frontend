@@ -117,6 +117,27 @@ exactly why nothing here was built twice.
   times on the game list because it did not select a category. And J now
   breaks the "rest" down: text, cards, description, housekeeping.
 
+**The list view now copies only what changed, too.**
+
+- A navigation step in the list changes two text rows on the left and the box
+  art column on the right. Because a partial copy only knew about *rows*, it
+  spanned everything in between — **86 % of the screen for two rows and one
+  column** at 1080p. Both areas now go to the screen as rectangles:
+
+  | | before | now |
+  |---|---|---|
+  | Game list, one step | 6.83 MB | **3.12 MB** |
+  | Main page, one step | 5.89 MB | **1.30 MB** |
+
+- The rectangles are only used when they cover **every row** of the previous
+  strip; otherwise the old path stands. That check fired twice while building
+  and each time prevented a leftover before it could appear.
+- **Bench section J now measures the real step.** It used to call `draw()`,
+  which for the list is the *full* rebuild — its light path is never called
+  from there. The report therefore showed 132 ms for a step that does not
+  exist in that form. Section B keeps its series (comparable since v4.2) and
+  now says that it is the full rebuild.
+
 ---
 
 ## v4.7 — the login prompt, large tiles, and what measurements disproved

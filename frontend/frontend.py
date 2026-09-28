@@ -5724,6 +5724,18 @@ class Frontend:
         w = min(w, fb.width - x); h = min(h, fb.height - y)
         if w <= 0 or h <= 0:
             return
+        # NEU (Build 218): mitschreiben, genau wie _restore_row_bg() es
+        # seit Build 215 tut.
+        #
+        # WARUM DAS NACHGEZOGEN WERDEN MUSSTE: die beiden sind Zwillinge
+        # (siehe Build 216), und der leichte Pfad der LISTE raeumt die
+        # Boxart-Spalte ueber DIESEN hier frei. Sammelte nur der andere,
+        # fehlte in der Spurenliste genau das groesste Rechteck des
+        # Schritts - und ein Rechteck-Flip haette die Spalte stehen
+        # lassen.
+        _spuren = self._flip_spuren
+        if _spuren is not None:
+            _spuren.append((x, y, w, h))
         # GEAENDERT (Build 209): dasselbe macht rechtecke_kopieren() in
         # c/dragend.c seit Build 155 fuer die Spuren-Liste - mit genau
         # EINEM Rechteck ist es dieselbe Schleife. Aus dem Log des
@@ -5822,6 +5834,9 @@ class Frontend:
             return False
 
         fb = self.fb
+        # Build 218: ab hier mitschreiben - siehe
+        # _rechtecke_statt_band(). Das Sammeln endet unten am Flip.
+        self._flip_spuren = []
         s, ox, oy = L["s"], L["ox"], L["oy"]
         rowh, y0 = L["rowh"], L["y0"]
         list_right = L["list_right"]
@@ -5847,6 +5862,13 @@ class Frontend:
         self._draw_cat_row(old_cat_i, old_row, L, maxc)
         y_min = gy
         y_max = gy + gh
+        # Build 218: diese Zeile fuellt ihren Bereich SELBST (siehe der
+        # Kommentar darueber) - also gibt es dafuer keine Spur aus
+        # _restore_row_bg(). Hier von Hand eintragen, mit der Spalte, in
+        # der sie liegt. Siehe _spalten_rechteck().
+        _r = self._spalten_rechteck(gx, gw, gy, gy + gh)
+        if _r and self._flip_spuren is not None:
+            self._flip_spuren.append(_r)
 
         # Neue Auswahl (markierte Zeile inkl. Glow, Equalizer, Kopfzeilen-
         # Sonderfall) - siehe Docstring oben: flip=False zeichnet nur in
@@ -5855,6 +5877,10 @@ class Frontend:
         if new_y0 is not None:
             y_min = min(y_min, new_y0)
             y_max = max(y_max, new_y1)
+            # Build 218, derselbe Grund wie bei der alten Zeile.
+            _r = self._spalten_rechteck(gx, gw, new_y0, new_y1)
+            if _r and self._flip_spuren is not None:
+                self._flip_spuren.append(_r)
 
         # ENTFALLEN (Nutzerwunsch: "glow Effekt komplett raus"): der
         # Leucht-Rand der NEUEN Auswahl ragte auch nach UNTEN in die
@@ -5941,9 +5967,14 @@ class Frontend:
             y_min = min(y_min, art_y0)
             y_max = max(y_max, art_y0 + art_h)
 
+        _spuren = self._flip_spuren
+        self._flip_spuren = None
         _tf = time.monotonic()
-        fb.flip_rows(y_min, y_max - y_min,
-                     skip_vsync=self._vsync_ueberspringen(y_max - y_min))
+        # Build 218: wie im Pendant fuer die Spieleliste - zuerst die
+        # Rechtecke, sonst das Band aus Build 93.
+        if not self._rechtecke_statt_band(_spuren, y_min, y_max):
+            fb.flip_rows(y_min, y_max - y_min,
+                         skip_vsync=self._vsync_ueberspringen(y_max - y_min))
         self._perf_flip = (getattr(self, "_perf_flip", 0)
                            + (time.monotonic() - _tf))
         # Der Rest dieses Pfads - die beiden Zeilen (alt unmarkiert,
@@ -6039,6 +6070,11 @@ class Frontend:
         # hinterlassen haette. Ohne Glow genuegt die Zeile selbst - sie
         # fuellt ihren eigenen Bereich vollstaendig.
         old_y_top, old_max_p = self._zeilen_platz(old_item_i)
+        # Build 218: ab hier mitschreiben, welche Flaechen freigeraeumt
+        # werden - siehe _rechtecke_statt_band(). Das Sammeln endet
+        # unten am Flip, VOR _position_auffrischen(): die hat ihr eigenes
+        # schmales Band und darf nicht in diese Liste geraten.
+        self._flip_spuren = []
         regions = []
         if old_y_top is not None:
             self.draw_list_row(old_item_i)
@@ -6053,10 +6089,24 @@ class Frontend:
             flip_y0 = old_y_top - old_max_p
             flip_y1 = old_y_top + max(rowh - 2 * s, 11 * s) + old_max_p
             regions.append((flip_y0, flip_y1))
+            # Build 218: draw_list_row() fuellt ihren Bereich selbst -
+            # also gibt es keine Spur aus _restore_row_bg(). Von Hand
+            # eintragen, mit der Spalte. Siehe _spalten_rechteck() und
+            # das Pendant in _draw_navigate_cats_impl().
+            _lx = v["list_x"] - 4 * s
+            _lw = (v["list_right"] - v["list_x"]) + 8 * s
+            _r = self._spalten_rechteck(_lx, _lw, flip_y0, flip_y1)
+            if _r and self._flip_spuren is not None:
+                self._flip_spuren.append(_r)
 
         new_y0, new_y1 = self._draw_dynamic_items(flip=False)
         if new_y0 is not None:
             regions.append((new_y0, new_y1))
+            _lx = v["list_x"] - 4 * v["s"]
+            _lw = (v["list_right"] - v["list_x"]) + 8 * v["s"]
+            _r = self._spalten_rechteck(_lx, _lw, new_y0, new_y1)
+            if _r and self._flip_spuren is not None:
+                self._flip_spuren.append(_r)
 
         # Boxart-Panel fuer die neue Auswahl - zeichnet seinen
         # Hintergrund selbst (siehe draw_art_panel()), daher genuegt
@@ -6109,12 +6159,18 @@ class Frontend:
         if art_y0 is not None:
             regions.append((art_y0, art_y1))
 
+        _spuren = self._flip_spuren
+        self._flip_spuren = None
         if regions:
             y0 = min(r[0] for r in regions)
             y1 = max(r[1] for r in regions)
             _tf = time.monotonic()
-            fb.flip_rows(y0, y1 - y0,
-                         skip_vsync=self._vsync_ueberspringen(y1 - y0))
+            # Build 218: zuerst die Rechtecke. Sie decken auf 1080p rund
+            # 3,2 statt 6,83 MB ab; sagt die Deckungspruefung nein,
+            # bleibt es beim Band von Build 93 - unveraendert.
+            if not self._rechtecke_statt_band(_spuren, y0, y1):
+                fb.flip_rows(y0, y1 - y0,
+                             skip_vsync=self._vsync_ueberspringen(y1 - y0))
             self._perf_flip = (getattr(self, "_perf_flip", 0)
                                + (time.monotonic() - _tf))
         # NEU (Build 114): die Positionsanzeige aendert sich bei GENAU
@@ -6304,6 +6360,30 @@ class Frontend:
                              self.fb.width, self.fb.height)
         if art_w <= 20 or art_h <= 20:
             return None, None
+        # NEU (Build 218): die Spalte in die Spurenliste - siehe
+        # _rechtecke_statt_band().
+        #
+        # WARUM SIE HIER EINGETRAGEN WERDEN MUSS und nicht von selbst in
+        # der Liste landet: draw_art_panel() raeumt seinen Hintergrund
+        # SELBST frei (Karte mit Schatten ueber die ganze Spalte) und
+        # laeuft deshalb weder durch _restore_row_bg() noch durch
+        # _bg_fill() - die beiden Trichter, in denen seit Build 215
+        # gesammelt wird. Ohne diese Zeilen fehlte in der Liste genau
+        # das GROESSTE Rechteck des Schritts, und die Deckungspruefung
+        # hat folgerichtig jedes Mal abgelehnt (nachgemessen: Band
+        # 54..963, gesammelt nur die zwei Textzeilen).
+        #
+        # Ein paar Punkte Rand, weil der Schatten der Karte ueber ihre
+        # Masse hinausreicht. Zu viel Rand kostet nur ein paar Byte, zu
+        # wenig laesst einen Rest stehen.
+        _sp = self._flip_spuren
+        if _sp is not None:
+            _rand = 4 * s
+            _rx = max(0, art_x0 - _rand)
+            _ry = max(0, art_y0 - _rand)
+            _sp.append((_rx, _ry,
+                        min(self.fb.width, art_x0 + art_w + _rand) - _rx,
+                        min(self.fb.height, art_y0 + art_h + _rand) - _ry))
         item_syskey = self._item_syskey(v["items"][item_i], syskey)
         self.draw_art_panel(art_x0, art_w, art_y0, art_h,
                             item_syskey, v["items"][item_i], s)
@@ -7300,6 +7380,116 @@ class Frontend:
         zeilen = bytes_gesamt // stride
         fb.flip_rechtecke(spuren,
                           skip_vsync=self._vsync_ueberspringen(zeilen))
+        return True
+
+    def _spalten_rechteck(self, x, breite, y0, y1):
+        """Ein Zeilenband als Rechteck EINER Spalte - zugeschnitten.
+
+        NEU (Build 218). Die leichten Pfade kennen ihre geaenderten
+        Bereiche als Baender (y0, y1) und wissen genau, in welcher
+        Spalte sie liegen: Listenzeilen in der Listenspalte, das Panel
+        in der Boxart-Spalte. Diese Auskunft geht beim Weg ueber
+        flip_rows() verloren, denn ein Band ist immer voll breit.
+
+        BEWUSST NICHT AUS DEN GESAMMELTEN SPUREN ABGELEITET: die
+        Sammlung in _restore_row_bg()/_bg_fill() erfasst nur, was ueber
+        einen dieser beiden Trichter freigeraeumt wurde -
+        _draw_cat_row() und draw_list_row() fuellen ihren Zeilenbereich
+        aber SELBST (siehe dort). Genau daran ist der erste Anlauf
+        gescheitert: auf der Hauptseite fehlte das Rechteck der alten
+        Zeile, und weil die Deckungspruefung nur ZEILEN vergleicht, hat
+        das Rechteck der Boxart-Spalte dieselben Zeilen scheinbar
+        abgedeckt - 210.600 abweichende Bildpunkte auf dem Schirm, vom
+        Pixelvergleich in tools/test_rechteck_flip.py gefunden. Die
+        Lehre: die Spalte muss dazugesagt werden, sie laesst sich nicht
+        erraten."""
+        fb = self.fb
+        x0 = max(0, x)
+        x1 = min(fb.width, x + breite)
+        a = max(0, y0)
+        e = min(fb.height, y1)
+        if x1 <= x0 or e <= a:
+            return None
+        return (x0, a, x1 - x0, e - a)
+
+    def _rechtecke_statt_band(self, spuren, y_min, y_max):
+        """Die gesammelten Rechtecke statt EINES Bandes von y_min bis
+        y_max auf den Schirm bringen - aber nur, wenn das sicher ist.
+
+        NEU (Build 218, Nutzerwunsch: "kriegen wir in der listenansicht
+        das auch noch etwas besser hin schneller?").
+
+        WAS DIE LEICHTEN PFADE DER LISTE BISHER TATEN: sie sammeln ihre
+        geaenderten Bereiche als ZEILENBAENDER und kopieren am Ende EIN
+        Band von der obersten bis zur untersten geaenderten Zeile. Bei
+        einem einzelnen Tastendruck sind das zwei Textzeilen (links) und
+        die Boxart-Spalte (rechts) - und weil flip_rows() nur Zeilen
+        kennt, umfasst dieses eine Band alles dazwischen. Gemessen auf
+        1080p: 6,83 MB je Schritt, also 86 % des Bildes, fuer zwei
+        Textzeilen und eine Spalte.
+
+        Mit den Rechtecken aus Build 215 sind es rund 3,2 MB - und damit
+        auch unter der Grenze, ab der auf den Bildwechsel gewartet wird.
+
+        DIE DECKUNGSPRUEFUNG IST DER KERN DIESER FUNKTION, nicht das
+        Kopieren. Ein Rechteck-Flip ist nur dann richtig, wenn die
+        gesammelten Rechtecke ALLES enthalten, was dieser Schritt
+        gezeichnet hat. Gesammelt wird in _restore_row_bg() und
+        _bg_fill() - also dort, wo ein Pfad ankuendigt "ich zeichne
+        gleich hier neu". Zeichnet jemand OHNE vorher freizuraeumen,
+        fehlt sein Rechteck, und ein Rest des vorigen Bildes bliebe
+        stehen: genau die Sorte Fehler aus Build 80/122/125/128.
+
+        Deshalb wird hier nachgerechnet, ob die Rechtecke jede ZEILE des
+        Bandes abdecken. Tun sie es nicht, passiert nichts und der
+        Aufrufer nimmt den bewaehrten Bandweg. Das ist keine Vorsicht
+        auf Verdacht: es ist die Bedingung, unter der die Abkuerzung
+        ueberhaupt gleichwertig ist.
+
+        Rueckgabe: True, wenn geflippt wurde."""
+        if not spuren or y_max <= y_min:
+            return False
+        if not rechteck_flip_enabled():
+            return False
+        fb = self.fb
+        if not hasattr(fb, "flip_rechtecke"):
+            return False
+        # Die Zeilenbereiche der Rechtecke zusammenfassen.
+        spannen = []
+        for (_x, y, _w, h) in spuren:
+            a = max(0, y)
+            e = min(fb.height, y + h)
+            if e > a:
+                spannen.append((a, e))
+        if not spannen:
+            return False
+        spannen.sort()
+        zusammen = [list(spannen[0])]
+        for a, e in spannen[1:]:
+            if a <= zusammen[-1][1]:
+                zusammen[-1][1] = max(zusammen[-1][1], e)
+            else:
+                zusammen.append([a, e])
+        # Jede Zeile des Bandes muss in einem dieser Bereiche liegen.
+        y = max(0, y_min)
+        ende = min(fb.height, y_max)
+        for a, e in zusammen:
+            if a > y:
+                return False                 # Luecke - nicht gedeckt
+            if e >= ende:
+                y = ende
+                break
+            y = max(y, e)
+        if y < ende:
+            return False
+        stride = getattr(fb, "stride", 0) or 0
+        if stride <= 0:
+            return False
+        bytes_gesamt = sum(max(0, w) * 4 * max(0, h)
+                           for (_x, _y, w, h) in spuren)
+        fb.flip_rechtecke(
+            spuren,
+            skip_vsync=self._vsync_ueberspringen(bytes_gesamt // stride))
         return True
 
     def _baender_flippen(self, felder, geo, L):

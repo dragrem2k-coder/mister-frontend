@@ -430,6 +430,15 @@ def _abschnitt_b(b, fe, S, spiele, A=None):
     b("   (beim echten Scrollen laesst das Frontend die Boxart-Spalte")
     b("    aus, sobald schnell geblaettert wird - kalt ist die")
     b("    Obergrenze, nicht der Alltag)")
+    # EHRLICHKEIT UEBER DIE EIGENE MESSUNG (Build 218): diese Zahlen
+    # kommen aus fe.draw(), und das ist fuer die LISTE der volle
+    # Neuaufbau - ihr leichter Pfad (_draw_navigate_items) wird von
+    # draw() nie gerufen. Die Reihe bleibt absichtlich so, damit sie mit
+    # allen Laeufen seit Build 177 vergleichbar bleibt; wer den echten
+    # Schritt sehen will, liest Abschnitt J.
+    b("   HINWEIS: fuer die LISTE ist das der volle Neuaufbau (so wie")
+    b("   nach dem Stillstand). Den leichten Schritt, der beim Scrollen")
+    b("   laeuft, misst Abschnitt J.")
     fbo = fe.fb
     kat_i, kat_n, kat_name = _groesste_kategorie(fe)
     if kat_i is None:
@@ -1935,9 +1944,30 @@ def _abschnitt_j(b, fe, S, A, fm):
                 except Exception:                        # noqa: BLE001
                     continue
 
+                # DER SCHRITT, WIE IHN DIE BEDIENUNG MACHT - und das
+                # ist in Build 218 der eigentliche Umbau an diesem
+                # Abschnitt.
+                #
+                # Bisher stand hier nur fe.draw(). Das ist fuer Raster
+                # und Galerie richtig: dort baut die Ansicht ihren
+                # schnellen Weg INNERHALB von draw_page_items(). Fuer die
+                # LISTE ist es falsch - deren leichter Pfad heisst
+                # _draw_navigate_items() und wird von draw() nie
+                # gerufen. Gemessen wurde also der volle Neuaufbau, und
+                # im Bericht vom 28.09. stand fuer die Liste 132,87 ms,
+                # waehrend der echte Schritt ein voellig anderer ist.
+                #
+                # Jetzt genau die Reihenfolge aus run(): erst den
+                # leichten Pfad versuchen, und nur wenn der ablehnt, den
+                # vollen Aufbau. Fuer Raster und Galerie lehnt er immer
+                # ab (er kennt nur Zeilen), dort aendert sich also
+                # nichts.
                 def _schritt(i):
                     if seite == 0:
+                        alt = fe.cat_i
                         fe.cat_i = i % max(1, len(fe.cats))
+                        if not fe._draw_navigate_cats(alt):
+                            fe.draw()
                     else:
                         # Dieselbe Quelle wie in Abschnitt B - eine
                         # zweite waere eine zweite Gelegenheit,
@@ -1946,8 +1976,10 @@ def _abschnitt_j(b, fe, S, A, fm):
                             n = len(fe._display_items())
                         except Exception:                # noqa: BLE001
                             n = 0
+                        alt = fe.item_i
                         fe.item_i = i % max(1, n)
-                    fe.draw()
+                        if not fe._draw_navigate_items(alt):
+                            fe.draw()
 
                 # WARMLAUFEN, und zwar zweimal durch: beim ersten Mal
                 # werden die Miniaturen gerechnet, erst beim zweiten

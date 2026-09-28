@@ -649,6 +649,223 @@ try:
 finally:
     fm.docs_synopsis = _echt_syn
 
+# ---------------------------------------------------------------------------
+print()
+print("Test 13: die LISTENANSICHT - Rechtecke statt eines Unionsbandes")
+# ---------------------------------------------------------------------------
+# NEU IN BUILD 218. Die leichten Pfade der Liste sammeln ihre
+# geaenderten Bereiche als ZEILENBAENDER und kopierten am Ende EIN Band
+# von der obersten bis zur untersten geaenderten Zeile. Bei einem
+# Tastendruck sind das zwei Textzeilen (links) und die Boxart-Spalte
+# (rechts) - und weil flip_rows() nur Zeilen kennt, umfasste dieses eine
+# Band alles dazwischen. Gemessen auf 1080p:
+#
+#   Spieleliste, ein Schritt   6,83 MB  ->  3,12 MB
+#   Hauptseite,  ein Schritt   5,89 MB  ->  1,30 MB
+#
+# WICHTIG: der leichte Pfad heisst _draw_navigate_items() und wird von
+# draw() NIE gerufen. Wer ihn messen will, muss ihn selbst rufen - und
+# vorher die Einmal-Flagge _force_full_redraw verbrauchen, denn der Pfad
+# raeumt sie beim Aussteigen ab. Genau darauf bin ich beim ersten Anlauf
+# hereingefallen und habe eine Messung von NULL Operationen bekommen.
+fl = spieleliste(1920, 1080, "liste")
+
+
+def _leicht_items(f_, ziel):
+    alt = f_.item_i
+    f_.item_i = ziel
+    return f_._draw_navigate_items(alt)
+
+
+fl.item_i = 10
+fl._force_full_redraw = True
+fl.draw()
+check("der leichte Pfad lehnt beim ersten Mal ab (Flagge)",
+      _leicht_items(fl, 11) is False)
+check("und greift beim zweiten", _leicht_items(fl, 12) is True)
+
+# Bytes und Weg.
+def bilanz_leicht(f_, ruf):
+    fb_ = f_.fb
+    zahl = {"rect": 0, "rows": 0, "voll": 0}
+    byt = [0]
+    e_rect, e_rows, e_voll = fb_.flip_rechtecke, fb_.flip_rows, fb_.flip
+
+    def h_rect(r, skip_vsync=False):
+        r = list(r)
+        zahl["rect"] += 1
+        n = e_rect(r, skip_vsync=skip_vsync)
+        byt[0] += n or 0
+        return n
+
+    def h_rows(y, h, skip_vsync=False):
+        zahl["rows"] += 1
+        byt[0] += max(0, min(fb_.height, y + h) - max(0, y)) * fb_.stride
+        return e_rows(y, h, skip_vsync)
+
+    def h_voll(skip_vsync=False):
+        zahl["voll"] += 1
+        byt[0] += fb_.size
+        return e_voll(skip_vsync)
+
+    fb_.flip_rechtecke, fb_.flip_rows, fb_.flip = h_rect, h_rows, h_voll
+    try:
+        ruf()
+    finally:
+        fb_.flip_rechtecke, fb_.flip_rows, fb_.flip = e_rect, e_rows, e_voll
+    return byt[0] / 1048576.0, zahl
+
+
+_mb, _zahl = bilanz_leicht(fl, lambda: _leicht_items(fl, 13))
+check("Spieleliste: %.2f MB ueber Rechtecke" % _mb,
+      _mb < 4.0 and _zahl["rect"] == 1 and _zahl["voll"] == 0,
+      "%s" % _zahl)
+
+fh2 = hauptseite(1920, 1080, "liste")
+
+
+def _leicht_cats(f_, ziel):
+    alt = f_.cat_i
+    f_.cat_i = ziel
+    return f_._draw_navigate_cats(alt)
+
+
+_leicht_cats(fh2, 1)                      # Flagge verbrauchen
+_mb2, _zahl2 = bilanz_leicht(fh2, lambda: _leicht_cats(fh2, 2))
+check("Hauptseite: %.2f MB ueber Rechtecke" % _mb2,
+      _mb2 < 2.0 and _zahl2["rect"] == 1 and _zahl2["voll"] == 0,
+      "%s" % _zahl2)
+
+# AM SCHIRM IDENTISCH - der leichte Pfad gegen den vollen Aufbau. Das
+# ist dieselbe Frage, die tools/diag_lightpath.py ueber 34 Faelle
+# stellt; hier stehen die beiden Listen noch einmal einzeln.
+# DIE FALLE, IN DIE ICH ZWEIMAL GETRETEN BIN, und deshalb steht sie
+# hier als Ablauf und nicht als Kommentar: _force_full_redraw ist eine
+# EINMAL-Flagge, und der Listenpfad von draw() raeumt sie NICHT ab -
+# das tun nur die leichten Pfade beim Aussteigen (und die Kachel- und
+# Galerie-Ansichten). Wer also "voll aufbauen, dann leichten Schritt
+# messen" schreibt, misst nichts: die Flagge steht noch, der leichte
+# Pfad lehnt ab, das Bild bleibt stehen - und der Vergleich gegen einen
+# vollen Aufbau zeigt dann 839.175 abweichende Bytes, die nur von der
+# ausgelassenen Zeichnung kommen. Genau diese Zahl kam beim ersten
+# Anlauf heraus, mit Rechtecken UND mit Band, also voellig unabhaengig
+# von dem, was geprueft werden sollte.
+#
+# Richtiger Ablauf: voll aufbauen, Flagge mit einem leichten Aufruf
+# verbrauchen, OHNE Zwang noch einmal aufbauen (setzt sie nicht neu),
+# dann den leichten Schritt messen.
+for f_, name, leicht, setz in ((fl, "Spieleliste", _leicht_items,
+                                _setz_item),
+                               (fh2, "Hauptseite ", _leicht_cats,
+                                _setz_cat)):
+    for ziel in (3, 4, 5, 6):
+        setz(f_, 2)
+        f_._force_full_redraw = True
+        f_.draw()
+        leicht(f_, 3)                      # Flagge verbrauchen
+        setz(f_, 2)
+        f_.draw()                          # OHNE Zwang - Flagge bleibt weg
+        _lief = leicht(f_, ziel)
+        check("%s leichter Schritt auf %d lief" % (name, ziel), _lief is True,
+              "sonst prueft der Vergleich darunter gar nichts")
+        schnell = bytes(f_.fb.mm)
+        setz(f_, ziel)
+        f_._force_full_redraw = True
+        f_.draw()
+        voll = bytes(f_.fb.mm)
+        d = sum(1 for a, b in zip(schnell, voll) if a != b)
+        check("%s leichter Schritt auf %d identisch" % (name, ziel),
+              d == 0, "" if d == 0 else "%d abweichende Bytes" % d)
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 14: die Deckungspruefung - der Kern von Build 218")
+# ---------------------------------------------------------------------------
+# Ein Rechteck-Flip ist nur richtig, wenn die gesammelten Rechtecke
+# ALLES enthalten, was der Schritt gezeichnet hat. Fehlt eines, bliebe
+# ein Rest des vorigen Bildes stehen - die Sorte Fehler aus Build
+# 80/122/125/128. Deshalb rechnet _rechtecke_statt_band() nach, ob die
+# Rechtecke jede ZEILE des Bandes abdecken, und lehnt sonst ab.
+#
+# GENAU DAS HAT BEIM BAUEN GEGRIFFEN: die Boxart-Spalte wird von
+# draw_art_panel() selbst freigeraeumt und lief deshalb durch keinen der
+# beiden Sammel-Trichter. Die Pruefung hat jeden Schritt abgelehnt
+# (Band 54..963, gesammelt nur die zwei Textzeilen bei 723 und 768) -
+# und damit einen Fehler verhindert, statt ihn zu zeigen.
+fd = spieleliste(1920, 1080, "liste")
+_gr = []
+_e_rf = fd.fb.flip_rechtecke
+fd.fb.flip_rechtecke = (lambda r, skip_vsync=False, _e=_e_rf:
+                        (_gr.append(list(r)), _e(r, skip_vsync=skip_vsync))[1])
+try:
+    check("volle Deckung wird angenommen",
+          fd._rechtecke_statt_band([(0, 100, 200, 50)], 100, 150) is True)
+    _gr[:] = []
+    check("eine Luecke am Anfang wird abgelehnt",
+          fd._rechtecke_statt_band([(0, 120, 200, 30)], 100, 150) is False)
+    check("eine Luecke am Ende wird abgelehnt",
+          fd._rechtecke_statt_band([(0, 100, 200, 30)], 100, 150) is False)
+    check("eine Luecke in der Mitte wird abgelehnt",
+          fd._rechtecke_statt_band([(0, 100, 200, 10), (0, 130, 200, 20)],
+                                   100, 150) is False)
+    check("zwei aneinandergrenzende Rechtecke decken",
+          fd._rechtecke_statt_band([(0, 100, 200, 25), (0, 125, 200, 25)],
+                                   100, 150) is True)
+    check("ohne Rechtecke wird abgelehnt",
+          fd._rechtecke_statt_band([], 100, 150) is False)
+    check("und bei den abgelehnten Faellen wurde NICHT geflippt",
+          len(_gr) == 1, "%d Flips" % len(_gr))
+finally:
+    fd.fb.flip_rechtecke = _e_rf
+
+# Und die Gegenprobe am echten Pfad: ohne die Spur der Boxart-Spalte
+# MUSS es beim Band bleiben.
+fd2 = spieleliste(1920, 1080, "liste")
+fd2.item_i = 10
+fd2._force_full_redraw = True
+fd2.draw()
+_leicht_items(fd2, 11)
+K2 = type(fd2)
+_e_art = K2._art_panel_aktualisieren
+
+
+def _ohne_spur(self, v, syskey, item_i, L=None):
+    merk = self._flip_spuren
+    self._flip_spuren = None              # nichts sammeln
+    try:
+        return _e_art(self, v, syskey, item_i, L)
+    finally:
+        self._flip_spuren = merk
+
+
+K2._art_panel_aktualisieren = _ohne_spur
+try:
+    _mb3, _zahl3 = bilanz_leicht(fd2, lambda: _leicht_items(fd2, 12))
+    check("fehlt die Spur der Spalte, bleibt es beim Band",
+          _zahl3["rows"] >= 1 and _zahl3["rect"] == 0, "%s" % _zahl3)
+finally:
+    K2._art_panel_aktualisieren = _e_art
+
+# Und mit ausgeschaltetem Schalter ebenso.
+_alt_flag2 = S.RECHTECK_FLIP_AUS_FLAG
+try:
+    S.RECHTECK_FLIP_AUS_FLAG = _flag
+    open(_flag, "w").close()
+    H._zwischenspeicher_leeren()
+    fd3 = spieleliste(1920, 1080, "liste")
+    fd3.item_i = 10
+    fd3._force_full_redraw = True
+    fd3.draw()
+    _leicht_items(fd3, 11)
+    _mb4, _zahl4 = bilanz_leicht(fd3, lambda: _leicht_items(fd3, 12))
+    check("Schalter aus: die Liste nimmt wieder das Band",
+          _zahl4["rows"] >= 1 and _zahl4["rect"] == 0, "%s" % _zahl4)
+finally:
+    S.RECHTECK_FLIP_AUS_FLAG = _alt_flag2
+    if os.path.exists(_flag):
+        os.unlink(_flag)
+    H._zwischenspeicher_leeren()
+
 shutil.rmtree(TMP, ignore_errors=True)
 
 print()

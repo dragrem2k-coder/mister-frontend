@@ -59,6 +59,29 @@ fm = H.fm
 F = fm.Frontend
 NOW = H.NOW
 
+# NEU (Build 218): diese Datei prueft den BANDWEG - sie liest die Hoehe
+# des Streifens, den flip_rows() bekommt, und daran haengt ihre ganze
+# Aussage ("der Streifen schrumpft, wenn die Artbox aufgeschoben wird").
+# Seit Build 218 nehmen die leichten Pfade der Liste Rechtecke statt
+# eines Bandes, und dann gibt es keine Bandhoehe mehr zu lesen.
+#
+# BEWUSST SO und nicht umgeschrieben: der Bandweg ist der Rueckfall
+# (Geraet ohne libdragend, Schalter aus, unvollstaendige Deckung) und
+# muss weiter funktionieren - bliebe er ungetestet, waere er genau die
+# Sorte Pfad, die drei Builds spaeter still kaputt ist. Dass das
+# Aufschieben auch auf dem RECHTECK-Weg wirkt, prueft
+# tools/test_rechteck_flip.py (Block 13/14).
+import os as _os218                                      # noqa: E402
+import tempfile as _tf218                                # noqa: E402
+
+import fe.settings as _S218                              # noqa: E402
+
+_AUS218 = _os218.path.join(_tf218.mkdtemp(prefix="artbox_"),
+                           "rechteck_flip_aus")
+open(_AUS218, "w").close()
+_S218.RECHTECK_FLIP_AUS_FLAG = _AUS218
+H._zwischenspeicher_leeren()
+
 fails = []
 
 

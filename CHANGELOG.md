@@ -122,6 +122,29 @@ steht hier kein doppelt gebautes Feature.
   Kategorie nicht wählte. Und J teilt den „Rest" jetzt auf: Text, Karten,
   Beschreibung, Hausarbeit.
 
+**Auch die Listenansicht kopiert nur noch, was sich geändert hat.**
+
+- Ein Navigationsschritt in der Liste ändert zwei Textzeilen links und die
+  Boxart-Spalte rechts. Weil eine Teilkopie bisher nur *Zeilen* kannte,
+  umfasste sie alles dazwischen — auf 1080p **86 % des Bildes für zwei
+  Zeilen und eine Spalte**. Jetzt gehen beide Bereiche als Rechtecke auf den
+  Schirm:
+
+  | | vorher | jetzt |
+  |---|---|---|
+  | Spieleliste, ein Schritt | 6,83 MB | **3,12 MB** |
+  | Hauptseite, ein Schritt | 5,89 MB | **1,30 MB** |
+
+- Verwendet werden die Rechtecke nur, wenn sie **jede Zeile** des bisherigen
+  Streifens abdecken — sonst bleibt es beim alten Weg. Diese Prüfung hat beim
+  Bauen zweimal angeschlagen und jeweils einen stehengebliebenen Rest
+  verhindert, bevor er entstehen konnte.
+- **Abschnitt J des Benchs misst jetzt den echten Schritt.** Bisher rief er
+  `draw()`, und das ist für die Liste der *volle* Neuaufbau — ihr leichter
+  Pfad wird von dort nie gerufen. Im Bericht stand deshalb 132 ms für einen
+  Schritt, den es so nicht gibt. Abschnitt B behält seine Zahlenreihe
+  (vergleichbar seit v4.2) und sagt jetzt dazu, dass es der volle Aufbau ist.
+
 ---
 
 ## v4.7 — der Login-Prompt, große Kacheln, und was Messungen widerlegt haben

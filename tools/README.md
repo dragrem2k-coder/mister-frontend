@@ -936,6 +936,46 @@ ab, ist er ein zusammenhaengender Block und wird mit EINER Zuweisung
 kopiert, ohne C-Aufruf. Das steht seit Build 132 da und war schon damals
 gemessen.
 
+## test_rechteck_flip.py, Bloecke 13 und 14 (Build 218)
+
+Die Listenansicht. Ein Navigationsschritt aendert zwei Textzeilen LINKS
+und die Boxart-Spalte RECHTS - und weil eine Teilkopie bisher nur Zeilen
+kannte, umfasste sie alles dazwischen: auf 1080p 6,83 MB (Spieleliste)
+bzw. 5,89 MB (Hauptseite), also 86 und 75 Prozent des Bildes fuer zwei
+Zeilen und eine Spalte. Mit Rechtecken sind es 3,12 und 1,30 MB.
+
+**Block 14 prueft die Deckungspruefung, und die ist der Kern des
+Builds** - nicht das Kopieren. Rechtecke sind nur richtig, wenn sie
+alles enthalten, was der Schritt gezeichnet hat; sonst bleibt ein Rest
+des vorigen Bildes stehen (Build 80/122/125/128). Geprueft werden Luecke
+am Anfang, am Ende, in der Mitte, aneinandergrenzende Rechtecke, keine
+Rechtecke - und am echten Pfad, dass ohne die Spur der Boxart-Spalte
+beim Band bleibt.
+
+**Die Grenze dieser Pruefung steht ebenfalls im Test**, weil sie beim
+Bauen zugeschlagen hat: sie vergleicht ZEILEN. Auf der Hauptseite hat
+das Rechteck der Boxart-Spalte die Zeilen der Listenzeile scheinbar
+abgedeckt, obwohl es in einer anderen SPALTE liegt - 210.600 abweichende
+Bildpunkte, gefunden vom Pixelvergleich in Block 13. Seither tragen die
+leichten Pfade ihre Zeilenbaender ausdruecklich mit ihrer Spalte ein
+(`_spalten_rechteck()`).
+
+**UND DIE FALLE, IN DIE ICH ZWEIMAL GETRETEN BIN**, jetzt als Ablauf im
+Test: `_force_full_redraw` ist eine EINMAL-Flagge, und der Listenpfad
+von `draw()` raeumt sie NICHT ab - das tun nur die leichten Pfade beim
+Aussteigen. Wer "voll aufbauen, dann leichten Schritt messen" schreibt,
+misst nichts: die Flagge steht noch, der leichte Pfad lehnt ab, das Bild
+bleibt stehen, und der Vergleich zeigt 839.175 abweichende Bytes, die
+nur von der ausgelassenen Zeichnung kommen. Dieselbe Zahl kam mit
+Rechtecken UND mit Band heraus. Richtig ist: voll aufbauen, Flagge mit
+einem leichten Aufruf verbrauchen, OHNE Zwang noch einmal aufbauen, dann
+messen.
+
+Und noch ein Befund ueber das Messgeraet selbst: `fe.draw()` ruft den
+leichten Pfad der Liste NIE (`_draw_navigate_items` haengt an `run()`).
+Abschnitt B und J des Benchs haben fuer die Liste deshalb bis Build 217
+den vollen Neuaufbau gemessen und "je Schritt" darueber geschrieben.
+
 ## test_ra_einstellungen.py
 
 Die RA-Einstellungen der MiSTer-Hauptanwendung, bedienbar aus unserem
