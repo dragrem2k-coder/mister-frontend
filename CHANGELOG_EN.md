@@ -80,6 +80,24 @@ exactly why nothing here was built twice.
   output. Should short rows turn out to cost more per byte on your card,
   `touch /media/fat/frontend/rechteck_flip_aus` is enough — no update. The
   number for that comes from the new **bench section I**.
+  *Measured on the DE10-Nano: short rows cost only 1.2x as much in C, and a
+  scroll step 3.46 instead of 18.55 ms — a factor of 5.4.*
+
+**Clearing the background in C — the forgotten half of v4.6.**
+
+- Before drawing, the background is restored row by row. For the box-art
+  column that has run in C since v4.6; for **everything else** it still ran
+  in Python — and that is exactly what happens on every scroll step: 815
+  rows in the tile view, 1541 in the gallery. Both now go through the same
+  C function. On the device a short row costs 2.6x as much in Python as in C
+  (measured, bench section I), and clearing is close to a third of a step.
+- **Bench section J** is new and says what a step *consists of*: restore,
+  blit, flip and the remainder, per step, with call and row counts. Until
+  now the bench only said what a step costs, not where the time goes.
+- **Correction to section E**: it compared scroll blitting on the main page
+  against the *full* page rebuild (83 ms). But scrolling runs the fast path,
+  which stood in the same report at 60 ms. The saving was overstated by
+  23 ms. E now measures the fast path itself.
 
 ---
 

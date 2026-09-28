@@ -902,6 +902,40 @@ seit Build 210 nur 4 von 20 Proben je Blick an (Ringverfahren), die
 manipulierte Zeile war schlicht nicht dran. Jetzt so viele Blicke, wie
 der Ring braucht.
 
+## test_restore_in_c.py
+
+Das Freiraeumen des Hintergrunds in C (Build 216) - und eine vergessene
+Haelfte von Build 209.
+
+`_bg_fill()` und `_restore_row_bg()` sind Zwillinge: beide kopieren einen
+Ausschnitt der Hintergrund-Vorlage zeilenweise in den Puffer. Build 209
+hat den einen nach C geholt und den anderen stehen gelassen -
+ausgerechnet den, der in JEDEM Scrollschritt laeuft. Je Schritt sind das
+815 Bildzeilen in der Kachelansicht und 1541 in der Galerie.
+
+**Test 3 ist die einzige Zahl in dieser Datei, die etwas ueber Tempo
+sagt - und sie ist eine ZAEHLUNG.** Gezaehlt werden die Durchlaeufe der
+Python-Schleife; vorher waren das 815 bzw. 1541, jetzt muessen es null
+sein. Eine Zaehlung gilt auf jedem Rechner. Millisekunden von hier
+bedeuten fuer den DE10-Nano nichts: der Faktor ist bei reinem Python 39
+(gemessen an Abschnitt C des Benchs), bei zeilenweisen Kopien noch
+groesser.
+
+**Test 1 nimmt die schiefen Formen**, nicht die schoenen: ein Punkt, der
+letzte Punkt, Ueberhang rechts und unten, negative Ecken, dazu zwanzig
+zufaellige. Genau an den Raendern rechnet die C-Fassung selbst
+(`abrunden_div`, `max_rows`), und dort koennte sie um eine Zeile
+abweichen, ohne dass es in einer Ansicht auffiele.
+
+**Test 2 prueft, dass der Zeichenweg wirklich durch C geht.** Ein still
+fehlgeschlagener C-Aufruf waere richtig, aber ohne Gewinn - und Test 1
+saehe es nicht.
+
+**Test 5 haelt die Abkuerzung fest**: deckt der Bereich die ganze Breite
+ab, ist er ein zusammenhaengender Block und wird mit EINER Zuweisung
+kopiert, ohne C-Aufruf. Das steht seit Build 132 da und war schon damals
+gemessen.
+
 ## test_ra_einstellungen.py
 
 Die RA-Einstellungen der MiSTer-Hauptanwendung, bedienbar aus unserem

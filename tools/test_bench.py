@@ -840,6 +840,88 @@ check("und die Einstellung kennt sie",
 
 # ---------------------------------------------------------------------------
 print()
+print("Test 16: Abschnitt J - woraus besteht ein Schritt (Build 216)")
+# ---------------------------------------------------------------------------
+# Die Luecke, die er schliesst: Abschnitt B sagt seit Build 177, was ein
+# Schritt KOSTET (auf dem DE10-Nano 67 ms im Raster, 164 in der
+# Galerie), nicht woraus er besteht. Seit Build 215 ist die Kopie in den
+# Bildspeicher als Erklaerung erledigt (18,55 -> 3,46 ms), es bleiben
+# rund 150 ms ohne Namen - und die haben mich zweimal zu einer falschen
+# Vermutung verleitet.
+check("der Abschnitt steht im Bericht",
+      " J  Woraus besteht ein Scrollschritt" in text)
+check("und ist nicht abgebrochen", "ABSCHNITT J ABGEBROCHEN" not in text,
+      [z for z in text.splitlines() if "ABSCHNITT J" in z][:1])
+check("die Bench-Nummer ist mitgewachsen", B.BENCH_VERSION >= 4)
+check("er weist restore, blit und flip einzeln aus",
+      "restore" in text and "blit" in text and "Rest" in text)
+check("und nennt Aufrufe UND Zeilen",
+      "Aufrufe/Zeilen" in text,
+      "Zeilen sind geraeteunabhaengig, Millisekunden nicht")
+check("er sagt, wie die Tabelle zu lesen ist",
+      "ist 'Rest' der groesste Posten" in _q)
+# Er misst mit Haken an den Verdaechtigen - der Betrieb darf davon
+# nichts merken. Also muessen die Haken danach wieder weg sein.
+check("die Haken werden in einem finally zurueckgehaengt",
+      _q.count("K._restore_row_bg = echt_restore") == 1
+      and _q.count("K.blit = echt_blit") == 1)
+_fe_j = H.make_frontend(page=1)
+_vor_r = type(_fe_j)._restore_row_bg
+_vor_b = type(_fe_j).blit
+_zeilen_j = []
+
+
+class _BJ(object):
+    def __call__(self, t=""):
+        _zeilen_j.append(t)
+
+    def posten(self, name, ms, best=None, zusatz=""):
+        _zeilen_j.append("%s %s" % (name, ms))
+
+
+_gefroren = fm.time.monotonic
+fm.time.monotonic = _ECHTE_UHR
+try:
+    _BE._abschnitt_j(_BJ(), _fe_j, S, A, fm)
+finally:
+    fm.time.monotonic = _gefroren
+check("nach dem Abschnitt haengt _restore_row_bg wieder am Original",
+      type(_fe_j)._restore_row_bg is _vor_r)
+check("und blit auch", type(_fe_j).blit is _vor_b,
+      "sonst messen alle folgenden Abschnitte mit Haken")
+_txt_j = "\n".join(_zeilen_j)
+check("es kommt eine Tabelle heraus, keine Ausnahme",
+      "ges ms" in _txt_j and "ABGEBROCHEN" not in _txt_j)
+check("und sie enthaelt Zeilen fuer beide Seiten",
+      "Haupt " in _txt_j and "Liste " in _txt_j, _txt_j[:200])
+# Der Abschnitt laeuft in den Messbedingungen - sonst schreibt das
+# Warmlaufen Miniaturen auf die Karte des Nutzers.
+check("er laeuft in den Messbedingungen",
+      "_Messbedingungen(A, fm, fe, hd2)" in _q,
+      "sonst landen die Miniaturen des Warmlaufens im echten Cache")
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 17: Abschnitt E vergleicht gegen den SCHNELLEN Pfad")
+# ---------------------------------------------------------------------------
+# DER FEHLER WAR MEINER: E verglich das Blitten gegen den VOLLEN Aufbau
+# (83,1 ms im Lauf vom 28.09.), waehrend beim gehaltenen Scrollen der
+# schnelle Pfad laeuft - der stand im selben Bericht mit 59,7 ms. Die
+# Ersparnis war um 23 ms zu gross, aus Faktor 1,5 wurde 2,1.
+check("E misst den schnellen Pfad selbst",
+      "EIN Schritt, schneller Pfad" in _q)
+check("und rechnet dagegen, nicht gegen den vollen Aufbau",
+      "ms_voll = ms_schritt" in _q)
+check("der volle Aufbau bleibt zum Einordnen stehen",
+      "nur zum Einordnen" in _q,
+      "er ist nicht falsch, er war nur der falsche Vergleich")
+check("und der Bericht sagt, dass sich der Vergleich geaendert hat",
+      "bis" in _q and "stand hier der volle Aufbau" in _q)
+check("die Warmlauf-Schritte werden nicht mitgemessen",
+      "warmlaufen, nicht messen" in _q)
+
+# ---------------------------------------------------------------------------
+print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))
     for x in fails:

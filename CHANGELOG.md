@@ -83,6 +83,25 @@ steht hier kein doppelt gebautes Feature.
   dasselbe schreibt. Sollten kurze Zeilen auf deiner Karte je Byte zu teuer
   sein, genügt ein `touch /media/fat/frontend/rechteck_flip_aus` — kein
   Update. Die Zahl dazu liefert der neue **Bench-Abschnitt I**.
+  *Nachgemessen auf dem DE10-Nano: kurze Zeilen kosten in C nur das
+  1,2-fache, ein Scrollschritt 3,46 statt 18,55 ms — Faktor 5,4.*
+
+**Freiräumen in C — die vergessene Hälfte von v4.6.**
+
+- Vor jedem Zeichnen wird der Hintergrund freigeräumt, Zeile für Zeile. Für
+  die Boxart-Spalte lief das seit v4.6 in C, für **alles andere** weiter in
+  Python — und ausgerechnet das fällt bei jedem Scrollschritt an: 815
+  Bildzeilen in der Kachelansicht, 1541 in der Galerie. Jetzt laufen beide
+  über dieselbe C-Funktion. Auf dem Gerät kostet eine kurze Zeile in Python
+  2,6-mal so viel wie in C (gemessen, Bench-Abschnitt I), und das
+  Freiräumen ist knapp ein Drittel eines Schritts.
+- **Bench-Abschnitt J** ist neu und sagt, woraus ein Schritt *besteht*:
+  restore, blit, flip und Rest, je Schritt, mit Aufrufen und Zeilen. Bisher
+  stand im Bench nur, was ein Schritt kostet — nicht, wohin die Zeit geht.
+- **Korrektur an Abschnitt E**: er verglich das Scroll-Blitting im Hauptmenü
+  gegen den *vollen* Seitenaufbau (83 ms). Beim Scrollen läuft aber der
+  schnelle Pfad, und der stand im selben Bericht mit 60 ms. Die Ersparnis
+  war um 23 ms zu groß angegeben. E misst den schnellen Pfad jetzt selbst.
 
 ---
 

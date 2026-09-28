@@ -8686,15 +8686,60 @@ class Frontend:
         #
         # Das Ergebnis ist bitgenau dasselbe - es wird derselbe Bereich
         # aus derselben Vorlage kopiert, nur ohne Umweg.
-        src = memoryview(cur_bg)
-        ziel = memoryview(buf)
         if x == 0 and need == stride:
+            src = memoryview(cur_bg)
+            ziel = memoryview(buf)
             a = y0 * stride
             b = y1 * stride
             ziel[a:b] = src[a:b]
             return
+        # NEU (Build 216): die Schleife nach C, ueber dieselbe Funktion,
+        # die _bg_fill() seit Build 209 benutzt und _restore_spuren()
+        # seit Build 155 - rechtecke_kopieren() in c/dragend.c ist genau
+        # diese Schleife, und der Hintergrund-Vorlage liegt im selben
+        # Raster wie der Puffer.
+        #
+        # WARUM DAS HIER LANGE FEHLTE und was es kostet: _bg_fill() und
+        # diese Funktion sind Zwillinge - beide kopieren einen Ausschnitt
+        # der Hintergrund-Vorlage in den Puffer. Build 209 hat den einen
+        # umgestellt und den anderen stehengelassen, und genau der laeuft
+        # in JEDEM Scrollschritt.
+        #
+        # GEMESSEN, und zwar getrennt nach Geraet und nach Anteil:
+        #
+        #   - Anteil am Schritt (Entwicklungsrechner, Wanduhr, 40
+        #     Schritte je Ansicht): Kachelansicht 29 %, Galerie 34 %,
+        #     Liste 1 %. Die Zahl ist ein ANTEIL und damit uebertragbar,
+        #     die Millisekunden dahinter sind es nicht.
+        #   - Preis je Zeile auf dem GERAET (Bench-Abschnitt I, Build
+        #     215, DE10-Nano): 952 kurze Zeilen kosten ueber memoryview
+        #     8,34 ms, ueber rechtecke_kopieren in C 3,22 ms. Also 2,6x.
+        #
+        # Die Galerie raeumt je Schritt 1541 Bildzeilen frei (516 Cover-
+        # Karte, 495 Textspalte, 2x253 Leistenkacheln, 24 Fusszeile), die
+        # Kachelansicht 815. Das ist der Grund, warum es sich lohnt: es
+        # sind nicht die Bytes, es ist die ZAHL der Python-Zeilen.
+        #
+        # Was dabei NICHT behauptet wird: dass damit der ganze Schritt
+        # schnell ist. Abschnitt J (neu in diesem Build) sagt, was
+        # danach uebrig bleibt - auf dem Geraet, nicht hier.
+        if _c_rechtecke_kopieren(cur_bg, buf, stride, fb.height,
+                                 limit, ((x, y0, w, y1 - y0),)):
+            return
+        self._restore_row_bg_py(cur_bg, buf, stride, x, y0, need,
+                                y1 - y0)
+
+    def _restore_row_bg_py(self, cur_bg, buf, stride, x, y0, need, zeilen):
+        """Die Python-Fassung der Schleife aus _restore_row_bg().
+
+        Rueckfall ohne libdragend - und Vergleichsmass fuer den Test:
+        tools/test_restore_in_c.py stellt beide Wege gegeneinander und
+        verlangt ein bitgenau gleiches Ergebnis. Genau wie
+        _bg_fill_py() seit Build 209."""
+        src = memoryview(cur_bg)
+        ziel = memoryview(buf)
         off = y0 * stride + x * 4
-        for _ in range(y1 - y0):
+        for _ in range(zeilen):
             ziel[off:off + need] = src[off:off + need]
             off += stride
 

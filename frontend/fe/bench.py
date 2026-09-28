@@ -47,12 +47,13 @@ import tempfile
 import time
 import zlib
 
-# 3 ab Build 215 (Abschnitt I), 2 ab Build 214 (Abschnitt H). Die Nummer steht im Kopf
+# 4 ab Build 216 (Abschnitt J), 3 ab Build 215 (Abschnitt I),
+# 2 ab Build 214 (Abschnitt H). Die Nummer steht im Kopf
 # jedes Berichts, damit zwei Berichte vergleichbar SIND und nicht nur so
 # aussehen - wer eine 1 und eine 2 nebeneinanderlegt, sieht sofort, dass
 # in der einen ein Abschnitt fehlt. Die Abschnitte A bis G haben sich
 # dabei nicht geaendert, ihre Zahlen bleiben also vergleichbar.
-BENCH_VERSION = 3
+BENCH_VERSION = 4
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -833,6 +834,28 @@ def _abschnitt_e(b, fe):
         ms_zeile, best_zeile = messen(eine_zeile)
         b.posten("eine Kategoriezeile zeichnen", ms_zeile, best_zeile)
 
+        # DER VERGLEICHSWERT WAR FALSCH GEWAEHLT, und der Fehler ist
+        # meiner (bemerkt beim Nachrechnen des Laufs vom 28.09.2026).
+        #
+        # Verglichen wurde gegen den VOLLEN Aufbau (dort 83,1 ms). Beim
+        # gehaltenen Scrollen laeuft aber nicht der volle Aufbau, sondern
+        # der schnelle Pfad - und der stand im selben Bericht, in
+        # Abschnitt B, mit 59,7 ms. Die Ersparnis war damit um 23 ms zu
+        # gross angegeben, und aus Faktor 1,5 wurde Faktor 2,1.
+        #
+        # Es bleibt ein Gewinn, aber die richtige Zahl entscheidet, ob er
+        # den Umbau wert ist. Deshalb wird der schnelle Pfad jetzt selbst
+        # gemessen - EIN Schritt, so wie er beim Scrollen anfaellt.
+        def _schritt():
+            fe.cat_i = (fe.cat_i + 1) % max(1, len(fe.cats))
+            fe.draw()
+
+        for _ in range(4):
+            _schritt()                       # warmlaufen, nicht messen
+        ms_schritt, best_schritt = messen(_schritt)
+        b.posten("EIN Schritt, schneller Pfad (der Vergleich)",
+                 ms_schritt, best_schritt)
+
         # Die Rechnung, offen hingeschrieben: beim Weiterrollen muessen
         # zwei Zeilen neu gesetzt werden (die neu freigewordene und die
         # Markierung).
@@ -840,8 +863,13 @@ def _abschnitt_e(b, fe):
         b("")
         b("   RECHNUNG   : verschieben %.1f + zwei Zeilen %.1f = %.1f ms"
           % (ms_schieb, 2 * ms_zeile, geblittet))
-        b("                voller Aufbau                    = %.1f ms"
+        b("                schneller Pfad, wie er laeuft    = %.1f ms"
+          % ms_schritt)
+        b("                voller Aufbau (nur zum Einordnen)= %.1f ms"
           % ms_voll)
+        # Ab hier wird gegen den SCHNELLEN PFAD gerechnet, nicht gegen
+        # den vollen Aufbau.
+        ms_voll = ms_schritt
         # KEIN URTEIL AUS NICHTS. Beim ersten Anlauf stand hier direkt
         # der Vergleich - und im Pruefstand, der die Uhr einfriert, kamen
         # drei Nullen heraus, woraufhin der Abschnitt seelenruhig "es
@@ -860,6 +888,9 @@ def _abschnitt_e(b, fe):
             b("                also Faktor %.1f. Auf dem Entwicklungs-"
               % (ms_voll / max(0.01, geblittet)))
             b("                rechner war es umgekehrt.")
+            b("                (Verglichen mit dem SCHNELLEN Pfad - bis")
+            b("                 Build 215 stand hier der volle Aufbau,")
+            b("                 und die Ersparnis war zu gross.)")
         elif geblittet < ms_voll:
             b("   ERGEBNIS   : knapp besser (%.1f ms) - zu wenig fuer den"
               % (ms_voll - geblittet))
@@ -1641,6 +1672,201 @@ def _abschnitt_i(b, fe, A):
     except Exception:                                    # noqa: BLE001
         pass
 
+
+def _abschnitt_j(b, fe, S, A, fm):
+    """WORAUS besteht ein Scrollschritt? Auf DIESEM Geraet.
+
+    DER ANLASS IST EINE LUECKE IN MEINER EIGENEN BUCHFUEHRUNG. Abschnitt
+    B sagt seit Build 177, was ein Schritt KOSTET - auf dem DE10-Nano
+    zuletzt 67 ms in der Kachelansicht und 164 ms in der Galerie. Was
+    darin steckt, sagt er nicht. Und weil Build 215 die Kopie in den
+    Bildspeicher auf ein Fuenftel gebracht hat (gemessen: 18,55 -> 3,46
+    ms), ist die Kopie als Erklaerung erledigt: es bleiben rund 150 ms
+    ohne Namen.
+
+    Die haben mich zweimal zu einer falschen Vermutung verleitet, und
+    beide Male stand die Zahl auf dem Entwicklungsrechner - wo dieselben
+    Schritte 0,7 bis 1,7 ms brauchen, also das Sechzigfache schneller
+    sind. Deshalb steht hier kein Urteil, sondern eine Aufteilung.
+
+    GEMESSEN WIRD MIT HAKEN AN DEN VERDAECHTIGEN, nicht mit Zaehlern im
+    Zeichenweg: der Bench ist ein Messgeraet und darf umhaengen, der
+    Betrieb soll nichts davon merken. Drei Posten werden namentlich
+    ausgewiesen, weil sie die drei verschiedenen SORTEN Arbeit sind:
+
+      restore   Hintergrund freiraeumen - Kopie im RAM (Vorlage ->
+                Puffer), zeilenweise.
+      blit      ein fertiges Cover in den Puffer - Kopie im RAM, aber
+                aus einem ANDERS gerasterten Quellpuffer, deshalb
+                zeilenweise in Python.
+      flip      Puffer -> Bildspeicher, seit Build 215 ueber Rechtecke
+                und in C.
+
+    Dazu Zahl der Aufrufe und Zahl der ZEILEN - die sind
+    geraeteunabhaengig und damit das, was ein Vergleich zweier Geraete
+    ueberhaupt erlaubt.
+
+    Was NICHT ausgewiesen wird, steht als "Rest" da: Text, Rahmen,
+    Karten mit Schatten, die Beschreibung, Hausarbeit. Ist der Rest der
+    groesste Posten, ist das das Ergebnis dieses Abschnitts - dann ist
+    die naechste Messung dort faellig und nicht bei den Kopien."""
+    b("")
+    b("-" * 62)
+    b(" J  Woraus besteht ein Scrollschritt? (Build 216)")
+    b("-" * 62)
+    fbo = getattr(fe, "fb", None)
+    if fbo is None:
+        b("   -- kein Framebuffer, uebersprungen")
+        return
+    if not hasattr(fe, "ansicht_setzen") or not hasattr(S, "ANSICHTEN"):
+        b("   -- Ansichten nicht ansprechbar, uebersprungen")
+        return
+
+    K = type(fe)
+    echt_restore = K._restore_row_bg
+    echt_blit = K.blit
+    echt_rect = getattr(fbo, "flip_rechtecke", None)
+    echt_rows = fbo.flip_rows
+    echt_voll = fbo.flip
+    konto = {}
+
+    def _null():
+        konto.clear()
+        for k in ("restore_ms", "restore_n", "restore_zeilen",
+                  "blit_ms", "blit_n", "blit_zeilen",
+                  "flip_ms", "flip_n", "flip_bytes"):
+            konto[k] = 0.0
+
+    def h_restore(self, x, y, w, h):
+        t0 = time.monotonic()
+        r = echt_restore(self, x, y, w, h)
+        konto["restore_ms"] += time.monotonic() - t0
+        konto["restore_n"] += 1
+        konto["restore_zeilen"] += max(0, h)
+        return r
+
+    def h_blit(self, x, y, w, h, pix):
+        t0 = time.monotonic()
+        r = echt_blit(self, x, y, w, h, pix)
+        konto["blit_ms"] += time.monotonic() - t0
+        konto["blit_n"] += 1
+        konto["blit_zeilen"] += max(0, h)
+        return r
+
+    def h_rect(rechtecke, skip_vsync=False):
+        rechtecke = list(rechtecke)
+        t0 = time.monotonic()
+        n = echt_rect(rechtecke, skip_vsync=skip_vsync)
+        konto["flip_ms"] += time.monotonic() - t0
+        konto["flip_n"] += 1
+        konto["flip_bytes"] += n or 0
+        return n
+
+    def h_rows(y, h, skip_vsync=False):
+        t0 = time.monotonic()
+        r = echt_rows(y, h, skip_vsync)
+        konto["flip_ms"] += time.monotonic() - t0
+        konto["flip_n"] += 1
+        konto["flip_bytes"] += max(0, h) * fbo.stride
+        return r
+
+    def h_voll(skip_vsync=False):
+        t0 = time.monotonic()
+        r = echt_voll(skip_vsync)
+        konto["flip_ms"] += time.monotonic() - t0
+        konto["flip_n"] += 1
+        konto["flip_bytes"] += fbo.size
+        return r
+
+    # ERST das Konto anlegen, DANN die Haken setzen. Andersherum lief
+    # das Warmlaufen in einen KeyError, weil die Haken in ein leeres
+    # Konto schreiben wollten - und weil der Abschnitt seine Ansichten
+    # einzeln absichert, stand als Ergebnis "uebersprungen (KeyError)"
+    # statt einer Tabelle. Genau die Sorte Fehler, die ein grosszuegiges
+    # except verdeckt.
+    _null()
+    schritte = max(10, SCHRITTE // 2)
+    b("   %d Schritte je Ansicht, alles warm. Zeiten je SCHRITT."
+      % schritte)
+    b("")
+    b("   %-20s %7s %7s %7s %7s %7s"
+      % ("", "ges ms", "restore", "blit", "flip", "Rest"))
+    K._restore_row_bg = h_restore
+    K.blit = h_blit
+    if echt_rect is not None:
+        fbo.flip_rechtecke = h_rect
+    fbo.flip_rows = h_rows
+    fbo.flip = h_voll
+    try:
+        for seite, name in ((0, "Haupt"), (1, "Liste")):
+            fe.page = seite
+            for ansicht in S.ANSICHTEN:
+                try:
+                    if seite == 0:
+                        fe.ansicht_haupt_setzen(ansicht)
+                    else:
+                        fe.ansicht_setzen(ansicht)
+                except Exception:                        # noqa: BLE001
+                    continue
+
+                def _schritt(i):
+                    if seite == 0:
+                        fe.cat_i = i % max(1, len(fe.cats))
+                    else:
+                        # Dieselbe Quelle wie in Abschnitt B - eine
+                        # zweite waere eine zweite Gelegenheit,
+                        # auseinanderzulaufen.
+                        try:
+                            n = len(fe._display_items())
+                        except Exception:                # noqa: BLE001
+                            n = 0
+                        fe.item_i = i % max(1, n)
+                    fe.draw()
+
+                # WARMLAUFEN, und zwar zweimal durch: beim ersten Mal
+                # werden die Miniaturen gerechnet, erst beim zweiten
+                # liegen alle im RAM. Ohne das misst dieser Abschnitt
+                # das Rechnen von Covern und nennt es "Rest".
+                try:
+                    for _r in range(2):
+                        for i in range(schritte):
+                            _schritt(i)
+                except Exception as e:                   # noqa: BLE001
+                    b("   %-20s -- uebersprungen (%s)"
+                      % (name + " " + ansicht, type(e).__name__))
+                    continue
+                _null()
+                t0 = time.monotonic()
+                for i in range(schritte):
+                    _schritt(i)
+                ges = (time.monotonic() - t0) * 1000.0 / schritte
+                r = konto["restore_ms"] * 1000.0 / schritte
+                bl = konto["blit_ms"] * 1000.0 / schritte
+                fl = konto["flip_ms"] * 1000.0 / schritte
+                rest = max(0.0, ges - r - bl - fl)
+                b("   %-20s %7.2f %7.2f %7.2f %7.2f %7.2f"
+                  % (name + " " + ansicht, ges, r, bl, fl, rest))
+                b("   %-20s %7s %4d/%-4d %4d/%-4d %4d/%-4.1f"
+                  % ("  Aufrufe/Zeilen bzw. MB", "",
+                     konto["restore_n"] / schritte,
+                     konto["restore_zeilen"] / schritte,
+                     konto["blit_n"] / schritte,
+                     konto["blit_zeilen"] / schritte,
+                     konto["flip_n"] / schritte,
+                     konto["flip_bytes"] / schritte / 1048576.0))
+    finally:
+        K._restore_row_bg = echt_restore
+        K.blit = echt_blit
+        if echt_rect is not None:
+            fbo.flip_rechtecke = echt_rect
+        fbo.flip_rows = echt_rows
+        fbo.flip = echt_voll
+    b("")
+    b("   Zu lesen als: ist 'Rest' der groesste Posten, liegt die")
+    b("   naechste Arbeit NICHT bei den Kopien. restore und blit sind")
+    b("   zeilenweise Kopien im RAM - bei ihnen zaehlt die Zahl der")
+    b("   ZEILEN, nicht die der Bytes (siehe Abschnitt I).")
+
 def lauf(fe, fm, A, S, startdauer=None, log=None):
     """Den kompletten Bench fahren und den Bericht als Text
     zurueckgeben. Bekommt alles, was er braucht, uebergeben - dieses
@@ -1683,6 +1909,12 @@ def lauf(fe, fm, A, S, startdauer=None, log=None):
         _abschnitt_i(b, fe, A)
     except Exception as e:                               # noqa: BLE001
         b("   ABSCHNITT I ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
+    try:
+        hd2 = getattr(fe, "fb", None) is not None and fe.fb.height >= 720
+        with _Messbedingungen(A, fm, fe, hd2):
+            _abschnitt_j(b, fe, S, A, fm)
+    except Exception as e:                               # noqa: BLE001
+        b("   ABSCHNITT J ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
     b("")
     b("=" * 62)
     b("Ende. Nichts auf der Karte wurde veraendert.")
