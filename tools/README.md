@@ -776,9 +776,10 @@ JEDE Kopie, sobald der Schalter an war und gerade gescrollt wurde. Ein
 Bildriss in einem zwei Zeilen hohen Streifen sieht niemand - derselbe
 Riss quer durch ein 1080-Zeilen-Bild sieht jeder. Ab Build 93
 entscheidet zusaetzlich die GROESSE des Bandes
-(`VSYNC_SKIP_MAX_ANTEIL`, `Frontend._vsync_ueberspringen()`): bis 25 %
-der Bildhoehe wird uebersprungen, darueber und bei jedem Vollbild wird
-gewartet.
+(`VSYNC_SKIP_MAX_ANTEIL`, `Frontend._vsync_ueberspringen()`): bis zu
+einem festen Anteil der Bildhoehe wird uebersprungen, darueber und bei
+jedem Vollbild wird gewartet. Der Anteil war bis Build 213 25 % und ist
+seit Build 214 40 % - warum, steht bei `test_vsync_grenze.py`.
 
 Test 3 ist der wichtigste: er prueft nicht die Schwelle an sich,
 sondern dass die tatsaechlich GEMESSENEN Bandhoehen weit von ihr
@@ -810,6 +811,47 @@ schiefgehen kann, wenn man eine Regelgroesse aus Messwerten ableitet:
 Deckel nach oben, Verwerfen von Unsinn (Uhrensprung, ein
 zwischendurch gestartetes Spiel), und Traegheit gegen einen einzelnen
 Ausreisser.
+
+## test_vsync_grenze.py
+
+Die Fortsetzung des Absatzes darueber, neun Monate und 121 Builds
+spaeter - und ein Lehrstueck darueber, wie eine Zahl still falsch wird,
+ohne dass irgendwo etwas kaputtgeht.
+
+Rueckmeldung des Nutzers: "fast scroll enabled bringt gefuehlt
+garnichts beim links und rechts scrollen im raster und galerie."
+
+Das war kein Gefuehl. `VSYNC_SKIP_MAX_ANTEIL` stand auf 0.25, gesetzt
+fuer die Kacheln von Build 93 - 253 von 1080 Zeilen, 23,4 %, knapp
+drunter. Seit Build 211 sind die GROSSEN Kacheln der Standard, und
+dasselbe Band misst 379 Zeilen: 35,1 %. Darueber. Der Schalter konnte in
+der Kachelansicht gar nicht greifen, und der Absatz darueber sagt genau
+das voraus ("kein Grenzfall, der bei einer kleinen Layout-Aenderung
+zufaellig auf die andere Seite kippt") - die Aenderung war nur keine
+kleine.
+
+**Test 1 ist der eigentliche Wert dieser Datei.** Er rechnet die
+Bandhoehen aller acht Aufloesungen mit DERSELBEN Zusammenfassung wie
+`_baender_flippen()` und vergleicht sie gegen fest verdrahtete
+Messwerte (quer gross: 35,1 / 35,1 / 37,5 / 32,1 %). Messwerte in
+Kommentaren veralten still; hier werden sie rot. Wer an der
+Kachelgroesse, den Abstaenden oder der Fusszeile dreht, erfaehrt in
+dieser Ausgabe, dass er die Grenze mitverschoben hat.
+
+**Test 6 ist der einzige, der etwas beweist.** Die Tests 1 bis 5
+rechnen - und eine richtige Rechnung, die der Zeichenweg nicht
+benutzt, ist genau der Fehler aus Build 133 (die Aufrufer rechneten mit
+`None`, also "Vollbild", und bekamen deshalb immer ein Warten). Test 6
+haengt sich also in `flip_rows()` und sieht nach, was wirklich ankommt:
+mit Schalter `skip_vsync=True` fuer beide Baender, ohne Schalter fuer
+keines. Die Gegenprobe gehoert dazu - ein festes `True` im Zeichenweg
+waere sonst genauso gruen.
+
+**Test 7 haelt fest, was NICHT behoben ist.** Der Nutzer hat Raster und
+Galerie in einem Satz genannt; die Grenze hilft nur dem Raster, weil
+`_draw_items_galerie()` bei jedem Schritt das Vollbild kopiert. Solange
+das so ist, prueft der Test es - damit niemand (auch ich nicht) spaeter
+glaubt, Build 214 haette die Galerie mitgenommen.
 
 ## test_ra_einstellungen.py
 

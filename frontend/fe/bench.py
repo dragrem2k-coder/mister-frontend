@@ -47,7 +47,12 @@ import tempfile
 import time
 import zlib
 
-BENCH_VERSION = 1
+# 2 ab Build 214: seither gibt es Abschnitt H. Die Nummer steht im Kopf
+# jedes Berichts, damit zwei Berichte vergleichbar SIND und nicht nur so
+# aussehen - wer eine 1 und eine 2 nebeneinanderlegt, sieht sofort, dass
+# in der einen ein Abschnitt fehlt. Die Abschnitte A bis G haben sich
+# dabei nicht geaendert, ihre Zahlen bleiben also vergleichbar.
+BENCH_VERSION = 2
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -1189,6 +1194,253 @@ def _abschnitt_g(b, fe, A):
             pass
 
 
+
+def _abschnitt_h(b, fe):
+    """Die Uebertragungs-Matrix: was kostet eine Kopie in den
+    Bildspeicher, in Abhaengigkeit von GROESSE und ZAHL DER AUFRUFE?
+
+    WOZU DAS GEBRAUCHT WIRD, und zwar fuer eine ganz konkrete
+    Entscheidung. _baender_flippen() in frontend.py fasst zwei Baender
+    zusammen, wenn sie sich UEBERLAPPEN oder direkt aneinandergrenzen -
+    sonst kopiert es zweimal. Bei zwei Kacheln in derselben Reihe, aber
+    nicht nebeneinander, liegt dazwischen eine LUECKE: ein Streifen, der
+    sich nicht geaendert hat. Zwei Kopien heissen zwei Aufrufe (und ohne
+    Auslassen zwei Wartezeiten), eine Kopie heisst die Luecke mit
+    uebertragen. Ab welcher Luecke lohnt sich was?
+
+    Diese Frage ist mit einer Zahl beantwortet - aber nur mit einer von
+    DIESEM Geraet. Auf dem Entwicklungsrechner ist der Bildspeicher
+    normaler RAM, und genau dieser Unterschied hat in Build 209 schon
+    einmal zu einer falschen Entscheidung gefuehrt (siehe Abschnitt F).
+    Deshalb rechnet dieser Abschnitt die Schwelle nicht aus, er MISST
+    ihre drei Bestandteile:
+
+      1. den Preis JE BYTE, ueber die Groesse hinweg - denn wenn er
+         konstant ist, ist die Luecke einfach Bytes;
+      2. den Aufschlag JE AUFRUF - dieselbe Menge in einem Stueck gegen
+         dieselbe Menge in N Stuecken. Das ist der Teil, der eine
+         Zusammenfassung ueberhaupt lohnend macht;
+      3. die WARTEZEIT auf den Bildwechsel, allein gemessen.
+
+    Und daraus die Schwelle, in Bildzeilen, zweimal: mit Warten (Schalter
+    aus) und ohne (Schalter an). Zwei Zahlen, weil es zwei verschiedene
+    Antworten sind und nicht eine mit Sternchen.
+
+    WAS HIER IN DEN BILDSPEICHER GESCHRIEBEN WIRD: ausschliesslich der
+    INHALT DES EIGENEN PUFFERS, an dieselbe Stelle - also genau das, was
+    ein flip() auch schreiben wuerde. Kein Testmuster. Damit kann dieser
+    Abschnitt das Bild nicht beschaedigen, egal wo er abbricht; am Ende
+    steht trotzdem ein voller flip(), damit der Bildwaechter seinen
+    Sollwert wieder hat. NUR RAM->RAM und RAM->Bildspeicher: aus dem
+    Bildspeicher LESEN kostet laut Abschnitt F ein Vielfaches, und das
+    hier soll den Schreibweg vermessen, nicht ihn mit dem Lesepreis
+    verruehren."""
+    b("")
+    b("-" * 62)
+    b(" H  Uebertragungs-Matrix (Build 214)")
+    b("-" * 62)
+    fb = getattr(fe, "fb", None)
+    if fb is None or not hasattr(fb, "mm") or not hasattr(fb, "buf"):
+        b("   -- kein Bildspeicher, uebersprungen")
+        return
+    stride = int(getattr(fb, "stride", 0) or 0)
+    groesse = min(int(getattr(fb, "size", 0) or 0), len(fb.buf))
+    if stride <= 0 or groesse <= 0:
+        b("   -- Bildspeicher ohne Masse, uebersprungen")
+        return
+    mvm = memoryview(fb.mm)
+    mvb = memoryview(fb.buf)
+    ram = bytearray(groesse)
+    mvr = memoryview(ram)
+    b("   Bild       : %dx%d, %d Byte je Zeile, %.1f MB gesamt"
+      % (getattr(fb, "width", 0), getattr(fb, "height", 0), stride,
+         groesse / 1048576.0))
+
+    # ------------------------------------------------------------------
+    # 1. Der Preis je Byte ueber die Groesse hinweg.
+    # ------------------------------------------------------------------
+    b("")
+    b("   1) je Groesse - Preis je MB sagt, ob es linear ist")
+    b("   %-14s %10s %10s %10s %10s"
+      % ("Menge", "RAM ms", "je MB", "Bild ms", "je MB"))
+    stufen = [1024, 4096, 16384, 65536, 262144, 1048576, 4194304, groesse]
+    gesehen = set()
+    je_mb_bild = {}
+    for n in stufen:
+        n = min(n, groesse)
+        if n in gesehen or n <= 0:
+            continue
+        gesehen.add(n)
+
+        def r2r(_n=n):
+            mvr[0:_n] = mvb[0:_n]
+
+        def r2f(_n=n):
+            mvm[0:_n] = mvb[0:_n]
+
+        wdh = WDH_BILLIG if n <= 262144 else WDH_TEUER
+        ms_r, _best_r = messen(r2r, wdh)
+        ms_f, _best_f = messen(r2f, wdh)
+        mb = n / 1048576.0
+        je_mb_bild[n] = (ms_f / mb) if mb > 0 else 0.0
+        b("   %-14s %10.3f %10.2f %10.3f %10.2f"
+          % (_menge(n), ms_r, (ms_r / mb) if mb else 0.0,
+             ms_f, je_mb_bild[n]))
+
+    # ------------------------------------------------------------------
+    # 2. Der Aufschlag je Aufruf: dieselbe Menge, in N Stuecken.
+    # ------------------------------------------------------------------
+    b("")
+    b("   2) je Aufruf - DIESELBE Menge, in N Stuecken kopiert")
+    gesamt = min(1048576, groesse)
+    b("   %-14s %10s %10s" % ("Stuecke", "Bild ms", "Aufschlag"))
+    ms_eins = None
+    aufschlag = 0.0
+    ms_teile = {}
+    for teile in (1, 2, 4, 8, 16, 32, 64):
+        stueck = gesamt // teile
+        if stueck < 64:
+            continue
+        starts = [i * stueck for i in range(teile)]
+
+        def stueckweise(_s=starts, _l=stueck):
+            for _o in _s:
+                mvm[_o:_o + _l] = mvb[_o:_o + _l]
+
+        ms, _best = messen(stueckweise, WDH_BILLIG)
+        ms_teile[teile] = ms
+        if ms_eins is None:
+            ms_eins = ms
+            b("   %-14s %10.3f %10s" % ("1", ms, "-"))
+            continue
+        # Der Aufschlag JE ZUSAETZLICHEM Aufruf - nicht der Unterschied
+        # zum vorigen Zeile, sondern immer gegen das eine Stueck. Sonst
+        # steht in der Spalte das Rauschen zwischen zwei Nachbarn.
+        auf = (ms - ms_eins) / float(teile - 1)
+        b("   %-14s %10.3f %10.3f ms" % (str(teile), ms, auf))
+        # ACHT IST DIE ZAHL, MIT DER WEITERGERECHNET WIRD, und das ist
+        # eine Wahl mit Grund: bei zwei Stuecken verschwindet der eine
+        # zusaetzliche Aufruf im Rauschen, bei 64 misst man vor allem die
+        # Python-Schleife um die Kopie herum. Acht liegt dazwischen und
+        # entspricht der Groessenordnung, die im Betrieb vorkommt (die
+        # Kachelansicht kopiert zwei bis drei Baender). Faellt die
+        # Acht-Stufe aus, weil das Bild zu klein ist, gilt der letzte
+        # gemessene Wert - besser als gar keiner, und die Tabelle
+        # darueber zeigt, welcher es war.
+        if teile == 8 or aufschlag <= 0.0:
+            aufschlag = max(0.0, auf)
+
+    # ------------------------------------------------------------------
+    # 3. Die Wartezeit auf den Bildwechsel, allein.
+    # ------------------------------------------------------------------
+    b("")
+    ms_vsync = 0.0
+    if hasattr(fb, "_wait_vsync"):
+        ms_vsync, best_v = messen(fb._wait_vsync, WDH_BILLIG)
+        if getattr(fb, "_vsync_supported", None) is False:
+            b("   3) dieses Geraet kennt kein Vsync-Warten (0 ms)")
+            ms_vsync = 0.0
+        else:
+            b.posten("3) Warten auf den Bildwechsel", ms_vsync, best_v)
+        # Der Zaehler aus Build 214 darf von dieser Messung nichts
+        # behalten - sonst stuende sie in der naechsten RUCKLER-Zeile.
+        if hasattr(fb, "vsync_ms_und_zuruecksetzen"):
+            fb.vsync_ms_und_zuruecksetzen()
+    else:
+        b("   3) kein _wait_vsync vorhanden, uebersprungen")
+
+    # ------------------------------------------------------------------
+    # 4. Die Schwelle, in Bildzeilen.
+    # ------------------------------------------------------------------
+    b("")
+    b("   4) daraus die Luecken-Schwelle fuer _baender_flippen()")
+    # Der Preis einer Zeile: aus der Stufe, die einem echten Band am
+    # naechsten kommt (256 kB), nicht aus dem Vollbild - dort ist der
+    # Preis je Byte gemessen guenstiger, und mit einer zu guenstigen
+    # Zahl faellt die Schwelle zu gross aus.
+    bezug = 262144 if 262144 in je_mb_bild else max(je_mb_bild or {0: 0.0})
+    je_mb = je_mb_bild.get(bezug, 0.0)
+    ms_zeile = je_mb * stride / 1048576.0
+    b("   %-38s %9.4f ms" % ("eine Bildzeile (%s-Stufe)" % _menge(bezug),
+                             ms_zeile))
+    # KEIN URTEIL AUS RAUSCHEN, und diese Schranke steht hier aus einem
+    # Grund: auf dem Entwicklungsrechner ist mm ein bytearray im
+    # normalen RAM, eine Kopie von 128 kB kostet dort Mikrosekunden, und
+    # der "Aufschlag je Aufruf" faellt dann mal positiv, mal NEGATIV aus
+    # (gemessen: 4 Stuecke schneller als 1). Aus solchen Zahlen eine
+    # Schwelle zu rechnen ergibt eine Zahl, die aussieht wie ein Befund -
+    # genau der Fehler, den Abschnitt E schon einmal gemacht hat und
+    # seither ausdruecklich verweigert.
+    #
+    # Verlangt wird deshalb: der Aufschlag ist positiv UND acht Stuecke
+    # sind messbar teurer als eines (mindestens ein Zehntel). Trifft das
+    # nicht zu, steht hier NICHT MESSBAR und sonst nichts.
+    ms_acht = ms_teile.get(8, ms_teile.get(4, 0.0))
+    belastbar = (ms_zeile > 0 and aufschlag > 0 and ms_eins
+                 and ms_acht >= ms_eins * 1.10)
+    if ms_zeile <= 0:
+        b("   -- ohne Preis je Zeile keine Schwelle")
+    elif not belastbar:
+        b("   ERGEBNIS   : NICHT MESSBAR - der Aufschlag je Aufruf liegt")
+        b("                im Rauschen (1 Stueck %.3f ms, 8 Stuecke"
+          % (ms_eins or 0.0))
+        b("                %.3f ms). Das ist keine Schwelle, sondern eine"
+          % ms_acht)
+        b("                Kopie, die zu billig ist, um sie zu zaehlen -")
+        b("                auf dem Geraet ist sie es nicht. Dort messen.")
+    else:
+        mit = (aufschlag + ms_vsync) / ms_zeile
+        ohne = aufschlag / ms_zeile
+        b("   %-38s %9.0f Zeilen" % ("Schwelle MIT Warten (Schalter aus)",
+                                     mit))
+        b("   %-38s %9.0f Zeilen" % ("Schwelle OHNE Warten (Schalter an)",
+                                     ohne))
+        if ms_vsync <= 0:
+            b("   (beide gleich, weil dieses Geraet kein Vsync-Warten")
+            b("    kennt - dort ist der Schalter ohnehin ohne Wirkung.)")
+        b("")
+        b("   Zu lesen als: liegen zwei Baender weniger als so viele")
+        b("   Zeilen auseinander, ist EINE Kopie ueber die Luecke hinweg")
+        b("   billiger als zwei Kopien. Mehr nicht - ob es auch besser")
+        b("   AUSSIEHT, steht hier nicht, und die Entscheidung darueber")
+        b("   gehoert nicht in einen Bench.")
+
+    # ------------------------------------------------------------------
+    # Und einmal ueber den echten Weg, damit die Zahlen oben nicht in
+    # einer eigenen Welt leben: flip_rows() macht mehr als die Kopie
+    # (Bildwaechter, Rueckleser, Buchfuehrung).
+    # ------------------------------------------------------------------
+    hoehe = int(getattr(fb, "height", 0) or 0)
+    if hoehe >= 8 and hasattr(fb, "flip_rows"):
+        band = max(1, hoehe // 8)
+        b("")
+        b("   5) derselbe Umfang ueber flip_rows(), mit allem Drumherum")
+        for tag, skip in (("mit Warten", False), ("ohne Warten", True)):
+            ms, best = messen(
+                lambda _b=band, _s=skip: fb.flip_rows(0, _b, skip_vsync=_s),
+                WDH_BILLIG)
+            b.posten("%d Zeilen, %s" % (band, tag), ms, best)
+        if hasattr(fb, "vsync_ms_und_zuruecksetzen"):
+            fb.vsync_ms_und_zuruecksetzen()
+    # Sollwert des Bildwaechters wieder herstellen: oben wurde in mm
+    # geschrieben, ohne dass er es erfahren hat.
+    try:
+        fb.flip()
+        if hasattr(fb, "vsync_ms_und_zuruecksetzen"):
+            fb.vsync_ms_und_zuruecksetzen()
+    except Exception:                                    # noqa: BLE001
+        pass
+
+
+def _menge(n):
+    """1024 -> "1 kB", 1048576 -> "1,0 MB" - damit die Spalte lesbar
+    bleibt und nicht siebenstellig wird."""
+    if n >= 1048576:
+        return "%.1f MB" % (n / 1048576.0)
+    if n >= 1024:
+        return "%d kB" % (n // 1024)
+    return "%d B" % n
+
 def lauf(fe, fm, A, S, startdauer=None, log=None):
     """Den kompletten Bench fahren und den Bericht als Text
     zurueckgeben. Bekommt alles, was er braucht, uebergeben - dieses
@@ -1223,6 +1475,10 @@ def lauf(fe, fm, A, S, startdauer=None, log=None):
         _abschnitt_g(b, fe, A)
     except Exception as e:                               # noqa: BLE001
         b("   ABSCHNITT G ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
+    try:
+        _abschnitt_h(b, fe)
+    except Exception as e:                               # noqa: BLE001
+        b("   ABSCHNITT H ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
     b("")
     b("=" * 62)
     b("Ende. Nichts auf der Karte wurde veraendert.")

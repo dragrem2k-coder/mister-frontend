@@ -38,6 +38,7 @@ from fe.settings import (
     scharf_verkleinern,
 )
 from fe.timekeeping import format_timezone_offset, load_timezone_offset
+import fe.mister_system as MSYS
 from fe.retroachievements import load_ra_config, ra_toggle_enabled
 # ACHTUNG, zwei verschiedene Dateien mit demselben Namen - siehe den
 # ausfuehrlichen Kopf von fe/ra_settings.py. Deshalb hier auch der
@@ -238,6 +239,21 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     # bei den Optionen - es geht darum, wie das Bild aussieht.
     scharf_label = t("sys_scharf_on") if scharf_verkleinern() \
         else t("sys_scharf_off")
+    # Build 213: die Beschriftung des update_all-Eintrags. Drei Faelle,
+    # und alle drei sind ehrlich - "nicht installiert", "lief vor N
+    # Tagen", und "da, aber kein Protokoll gefunden".
+    _ua_pfad = MSYS.update_all_pfad()
+    if not _ua_pfad:
+        update_all_label = t("sys_update_all_fehlt")
+    else:
+        _ua_tage = MSYS.tage_seit(MSYS.update_all_letzter_lauf())
+        if _ua_tage is None:
+            update_all_label = t("sys_update_all")
+        elif _ua_tage == 0:
+            update_all_label = t("sys_update_all_lauf") % t("heute")
+        else:
+            update_all_label = t("sys_update_all_lauf") % (
+                t("vor_tagen") % _ua_tage)
     einzelordner_label = t("sys_einzelordner_on") if einzelordner_aufloesen() \
         else t("sys_einzelordner_off")
     _ovx, _ovy = overscan_lesen()
@@ -354,6 +370,13 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             # Build 174: Core-Fassung je System. Steht bei den
             # Optionen, nicht bei der Anzeige - es geht ums Starten.
             (t("sys_cores"), "cores", None),
+            # Build 213: update_all starten. Direkt neben der
+            # Core-Wahl, denn das ist derselbe Themenbereich - hier
+            # waehlt man eine Fassung, dort holt man neue. Die
+            # Beschriftung nennt den letzten Lauf, damit die
+            # Entscheidung "brauche ich das jetzt?" ohne Nachsehen
+            # moeglich ist; fehlt update_all, sagt sie das.
+            (update_all_label, "update_all", None),
             (attract_label, "attract", None),
             (attract_delay_label, "attract_delay", None),
             (tz_label, "timezone", None),

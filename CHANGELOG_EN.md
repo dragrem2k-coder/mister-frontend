@@ -11,6 +11,55 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ---
 
+## After v4.7 — not yet released
+
+**MiSTer's own favourites, `update_all` from the menu, and an eye on
+storage.**
+
+- **MiSTer favourites**: whatever you marked as a favourite in the MiSTer
+  OSD now sits **inside your favourites category** — one list, two sources.
+  Yours first, MiSTer's after, duplicates only once. The entries behave like
+  any other game: box art, description, play time, RetroAchievements, all of
+  it works. Nothing is written into your own favourites file: remove a
+  favourite in the MiSTer OSD and it is gone here too.
+- **Run `update_all`**: a menu entry next to the core selection, with the
+  last run in its label ("23 days ago"). It launches the existing script —
+  nothing is reimplemented. There is deliberately *no* network check for
+  "are updates available": that would mean rebuilding the MiSTer
+  downloader's databases, a second source of truth for the most important
+  files on the card.
+- **Storage watch**: plug in a USB stick while the frontend runs and it
+  says so. It does **not** rescan on its own — that takes minutes with
+  30,000 games and stays your decision.
+
+Two things I had to correct about my own claims while looking: the core
+management from Build 174 is fully wired after all, and the **core browser
+has existed all along** — System menu → *Cores*, where you pick the core
+version per system with left/right, including a warning when the chosen
+file was deleted by `update_all`. I checked both before building, which is
+exactly why nothing here was built twice.
+
+**Fast scrolling works again — and a number that was missing.**
+
+- **Tile view**: "fast scrolling" had had no effect in the tile view since
+  the large tiles arrived (v4.7). The cause was a single limit: a copy was
+  allowed to skip the wait for the display refresh up to a quarter of the
+  screen height — but a band of large tiles is a good third. The limit is
+  now 40 %, measured across all eight resolutions; a full page redraw
+  (84 %) still waits, because that is where the visible tear appears. With
+  the switch off nothing changes: everything still waits, as before.
+  The **gallery** copies the whole screen on every step and therefore still
+  waits — that is its own piece of work, not a number.
+- **Stutter line**: `flip=` was two things in one number, copying *and*
+  waiting. It now says "davon vsync=" beside it. That mix-up sent me to the
+  wrong place twice; from now on the line says which it was.
+- **Bench**: new section H, the transfer matrix — what a copy into the
+  framebuffer costs per size and per call, and what follows for merging
+  adjacent bands. On a PC it says "not measurable" rather than inventing a
+  number.
+
+---
+
 ## v4.7 — the login prompt, large tiles, and what measurements disproved
 
 Eighteen builds since v4.6. What you notice, in four lines:

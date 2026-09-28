@@ -10,6 +10,58 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ---
 
+## Nach v4.7 — noch nicht veröffentlicht
+
+**MiSTers eigene Favoriten, `update_all` aus dem Menü, und ein Blick auf
+den Speicher.**
+
+- **MiSTer-Favoriten**: was du im MiSTer-OSD als Favorit markiert hast,
+  steht jetzt **mit in deiner Favoriten-Kategorie** — eine Liste, zwei
+  Quellen. Deine eigenen zuerst, MiSTers dahinter, Doppelte nur einmal. Die
+  Einträge verhalten sich wie jedes andere Spiel: Boxart, Beschreibung,
+  Spielzeit, RetroAchievements, alles greift. In deine Favoritendatei wird
+  dabei **nichts** geschrieben: entfernst du einen Favoriten im MiSTer-OSD,
+  ist er auch hier weg.
+- **`update_all` starten**: ein Menüpunkt neben der Core-Wahl, mit dem
+  letzten Lauf in der Beschriftung („vor 23 Tagen"). Gestartet wird das
+  vorhandene Skript — nachgebaut wird nichts. Eine Netzabfrage „gibt es
+  Updates?" gibt es bewusst *nicht*: dafür müsste das Frontend die
+  Datenbanken des MiSTer-Downloaders nachbauen, und das wäre eine zweite
+  Quelle der Wahrheit für die wichtigsten Dateien auf der Karte.
+- **Speicher-Wächter**: steckst du im Betrieb einen USB-Stick ein, sagt das
+  Frontend Bescheid. Es liest **nicht** von selbst neu ein — das dauert bei
+  30.000 Spielen Minuten und bleibt deine Entscheidung.
+
+Zwei Dinge, die ich beim Hinsehen an mir selbst korrigieren musste: die
+Core-Verwaltung aus Build 174 ist entgegen meiner ersten Behauptung
+vollständig angeschlossen, und der **Core Browser existiert längst** —
+Systemmenü → *Cores*, dort wählst du je System die Core-Fassung, mit
+links/rechts, inklusive Warnung, wenn die gewählte Datei von `update_all`
+gelöscht wurde. Beides habe ich vor dem Bauen geprüft, und genau deshalb
+steht hier kein doppelt gebautes Feature.
+
+**Schnelles Scrollen wirkt wieder — und eine Zahl, die vorher fehlte.**
+
+- **Kachelansicht**: „Schnelles Scrollen" hatte seit den großen Kacheln
+  (v4.7) im Raster keine Wirkung mehr. Grund war eine einzelne Grenze: bis
+  zu einem Viertel der Bildhöhe durfte eine Kopie das Warten auf den
+  Bildwechsel auslassen — ein Band mit den großen Kacheln ist aber ein
+  gutes Drittel hoch. Die Grenze liegt jetzt bei 40 %, gemessen über alle
+  acht Auflösungen; der volle Seitenaufbau (84 %) wartet weiterhin, dort
+  entsteht der sichtbare Bildriss. Wer den Schalter aus hat, merkt nichts:
+  ohne ihn wird nach wie vor überall gewartet.
+  Die **Galerie** kopiert bei jedem Schritt das ganze Bild und wartet
+  deshalb weiter — das ist eine eigene Baustelle, keine Zahl.
+- **Ruckler-Zeile**: `flip=` war zweierlei in einer Zahl, Kopieren *und*
+  Warten. Jetzt steht „davon vsync=" daneben. Das hat mich zweimal an die
+  falsche Stelle geschickt; künftig steht es in der Zeile.
+- **Bench**: neuer Abschnitt H, die Übertragungs-Matrix — was eine Kopie in
+  den Bildspeicher je Größe und je Aufruf kostet, und was daraus für das
+  Zusammenfassen benachbarter Bänder folgt. Auf einem PC sagt er
+  ausdrücklich „nicht messbar", statt eine Zahl zu erfinden.
+
+---
+
 ## v4.7 — der Login-Prompt, große Kacheln, und was Messungen widerlegt haben
 
 Achtzehn Builds seit v4.6. Was man davon merkt, in vier Zeilen:

@@ -598,6 +598,109 @@ check("der alte Weg wird zum Vergleich mitgemessen",
 check("und warum das Geraet antworten muss, nicht der PC",
       "bytearray und kein mmap" in _q)
 
+# ---------------------------------------------------------------------------
+print()
+print("Test 14: Abschnitt H - die Uebertragungs-Matrix (Build 214)")
+# ---------------------------------------------------------------------------
+# Er soll die Frage beantworten, ab welcher LUECKE zwei Baender besser
+# zu einer Kopie zusammengefasst werden. Drei Dinge muss er dabei
+# aushalten, und alle drei sind hier festgehalten.
+
+check("der Abschnitt steht im Bericht", " H  Uebertragungs-Matrix" in text)
+check("und ist nicht abgebrochen", "ABSCHNITT H ABGEBROCHEN" not in text,
+      [z for z in text.splitlines() if "ABSCHNITT H" in z][:1])
+check("die Bench-Nummer wurde mit angehoben", B.BENCH_VERSION >= 2,
+      "sonst sehen zwei unvergleichbare Berichte gleich aus")
+
+# (1) DAS BILD DARF NICHT KAPUTTGEHEN. Der Abschnitt schreibt in den
+#     Bildspeicher - wenn er dabei ein Testmuster hineinschreibt, sieht
+#     der Nutzer waehrend des Benchs Streifen, und im schlimmsten Fall
+#     bleiben sie stehen.
+check("er schreibt NUR den eigenen Puffer in den Bildspeicher",
+      "mvm[0:_n] = mvb[0:_n]" in bq and "mvm[_o:_o + _l] = mvb[_o:_o + _l]"
+      in bq)
+check("und liest NICHT aus dem Bildspeicher",
+      "= mvm[" not in bq.split(" H  Uebertragungs-Matrix")[-1],
+      "das kostet laut Abschnitt F ein Vielfaches - Thema von F, nicht H")
+check("am Ende steht ein voller flip(), damit der Waechter stimmt",
+      "Sollwert des Bildwaechters wieder herstellen" in bq)
+
+_fe_h = H.make_frontend(page=0)
+# Ein erkennbares Muster in den PUFFER (nicht in den Bildspeicher):
+# danach muss der Bildspeicher genau dieses Muster zeigen. Waere der
+# Abschnitt mit einem eigenen Testmuster unterwegs, stimmte der
+# Vergleich unten nicht mehr. 997 ist eine Primzahl, damit das Muster
+# nicht zufaellig auf Zeilen- oder Punktgrenzen einrastet.
+for _i in range(0, len(_fe_h.fb.buf), 997):
+    _fe_h.fb.buf[_i] = (_i // 997) % 256
+_zeilen_h = []
+
+
+class _BH(object):
+    def __call__(self, t=""):
+        _zeilen_h.append(t)
+
+    def posten(self, name, ms, best=None, zusatz=""):
+        _zeilen_h.append("%s %s" % (name, ms))
+
+
+_gefroren = fm.time.monotonic
+fm.time.monotonic = _ECHTE_UHR
+try:
+    B._abschnitt_h(_BH(), _fe_h)
+finally:
+    fm.time.monotonic = _gefroren
+_txt_h = "\n".join(_zeilen_h)
+check("nach dem Abschnitt zeigt der Schirm genau den Puffer",
+      bytes(_fe_h.fb.mm) == bytes(_fe_h.fb.buf),
+      "sonst stehen Reste der Messung auf dem Bild")
+
+# (2) KEIN URTEIL AUS RAUSCHEN. Auf diesem Rechner ist mm ein bytearray
+#     im RAM; der Aufschlag je Aufruf faellt dort mal positiv, mal
+#     negativ aus. Genau darum darf hier KEINE Schwelle herauskommen -
+#     das ist derselbe Anspruch wie in Abschnitt E (Test 12).
+check("auf dem Entwicklungsrechner sagt er NICHT MESSBAR",
+      "NICHT MESSBAR" in _txt_h,
+      "sonst steht da eine Zahl, die nach Befund aussieht")
+check("und nennt beide Messwerte, aus denen das folgt",
+      "1 Stueck" in _txt_h and "8 Stuecke" in _txt_h)
+check("die Schranke steht im Code, nicht im Zufall",
+      "ms_acht >= ms_eins * 1.10" in bq)
+check("und der Grund dafuer ist dort aufgeschrieben",
+      "4 Stuecke schneller als 1" in bq)
+
+# (3) ER MUSS DIE DREI BESTANDTEILE EINZELN NENNEN. Eine Schwelle ohne
+#     ihre Zutaten kann niemand nachrechnen - und das ist der Punkt, an
+#     dem Build 209 schiefgegangen ist.
+for marke in ("je Groesse", "je Aufruf", "Luecken-Schwelle",
+              "eine Bildzeile"):
+    check("er weist '%s' einzeln aus" % marke, marke in _txt_h)
+check("er misst RAM und Bildspeicher nebeneinander",
+      "RAM ms" in _txt_h and "Bild ms" in _txt_h,
+      "der Unterschied IST die Aussage, nicht eine der zwei Zahlen")
+check("und rechnet je MB, damit Groessen vergleichbar sind",
+      "je MB" in _txt_h)
+check("die Wartezeit wird getrennt gemessen",
+      "Vsync" in _txt_h or "Bildwechsel" in _txt_h)
+check("und der Vsync-Zaehler aus Build 214 danach zurueckgesetzt",
+      _fe_h.fb.vsync_ms_und_zuruecksetzen() == 0.0,
+      "sonst steht die Bench-Wartezeit in der naechsten RUCKLER-Zeile")
+check("zum Schluss laeuft derselbe Umfang ueber flip_rows()",
+      "flip_rows()" in _txt_h,
+      "damit die rohen Zahlen nicht in einer eigenen Welt leben")
+
+# (4) Und er darf nicht umfallen, wenn der Bildspeicher fehlt - der
+#     Bench laeuft auf fremden Geraeten.
+class _OhneFB(object):
+    fb = None
+
+
+_zeilen_h[:] = []
+B._abschnitt_h(_BH(), _OhneFB())
+check("ohne Bildspeicher ueberspringt er sich selbst",
+      "uebersprungen" in "\n".join(_zeilen_h), "\n".join(_zeilen_h)[-80:])
+
+# ---------------------------------------------------------------------------
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))

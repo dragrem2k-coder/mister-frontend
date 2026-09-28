@@ -932,6 +932,24 @@ TRANSLATIONS = {
         "en": "Cores: choose a version per system",
         "de": "Cores: Fassung je System waehlen"},
     "cores_titel": {"en": "Cores", "de": "Cores"},
+    "heute": {"en": "today", "de": "heute"},
+    "vor_tagen": {"en": "%d days ago", "de": "vor %d Tagen"},
+    "sys_update_all": {
+        "en": "Run update_all (cores and firmware)",
+        "de": "update_all ausfuehren (Cores und Firmware)"},
+    "sys_update_all_fehlt": {
+        "en": "update_all is not installed - get it from the MiSTer "
+              "project and put it in Scripts/",
+        "de": "update_all ist nicht installiert - beim MiSTer-Projekt "
+              "holen und nach Scripts/ legen"},
+    "sys_update_all_lauf": {
+        "en": "update_all, last run: %s",
+        "de": "update_all, letzter Lauf: %s"},
+    "mount_neu": {
+        "en": "Storage changed (%s). Reload the game list to see new "
+              "games.",
+        "de": "Speicher geaendert (%s). Spieleliste neu einlesen, damit "
+              "neue Spiele erscheinen."},
     "cores_leer": {
         "en": "No cores with several versions found. Nothing to choose "
               "here - MiSTer then uses the one that is installed.",

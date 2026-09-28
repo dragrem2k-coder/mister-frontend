@@ -293,8 +293,31 @@ i_marken = fe_quelle.find("\n" + rufe[0] + "\n") if rufe else -1
 umfeld = fe_quelle[max(0, i_marken - 900):i_marken]
 check("hinter einer eigenen Uhr (kein Schreibstoss)",
       "MARKEN_TAKT" in umfeld)
-check("und im Leerlaufzweig, erkennbar an _boot_watch daneben",
-      "_boot_watch" in fe_quelle[i_marken:i_marken + 200])
+# NICHT ueber den ABSTAND zu _boot_watch pruefen - das war die erste
+# Fassung, und sie ist beim naechsten Build (213, Speicher-Waechter
+# dazwischen) rot geworden, ohne dass sich etwas Falsches geaendert
+# hatte. Stattdessen ueber die EINRUECKUNG: gleiche Einrueckung heisst
+# gleicher Block, und das ist die Aussage, um die es geht.
+def _einzug(zeile):
+    return len(zeile) - len(zeile.lstrip())
+
+
+_zeilen = fe_quelle.split("\n")
+_i_ruf = [i for i, z in enumerate(_zeilen)
+          if z.strip() == "marken_nachziehen()"][0]
+_i_boot = [i for i, z in enumerate(_zeilen)
+           if z.strip() == "self._boot_watch()   "
+           "# Diagnose: Anzeige-Zustand nach dem Boot"]
+check("_boot_watch() steht im Quelltext", bool(_i_boot))
+if _i_boot:
+    # marken_nachziehen() steht eine Ebene tiefer (im if der eigenen
+    # Uhr), sein umgebender if muss also auf Boot-Watch-Hoehe liegen.
+    _i_if = max(i for i, z in enumerate(_zeilen[:_i_ruf])
+                if z.strip().startswith("if _jetzt_marken"))
+    check("und im selben Block wie das Auffrischen der Marken",
+          _einzug(_zeilen[_i_if]) == _einzug(_zeilen[_i_boot[0]]),
+          "Einzug %d gegen %d" % (_einzug(_zeilen[_i_if]),
+                                  _einzug(_zeilen[_i_boot[0]])))
 
 print()
 if fails:

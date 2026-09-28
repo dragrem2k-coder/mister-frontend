@@ -345,6 +345,8 @@ from fe.naming import (
 
 from fe.systems import GAME_SYSTEMS, OPTIONAL_GAME_SYSTEMS, system_display_name
 import fe.cores as CORES
+import fe.mister_favs as MFAV
+import fe.mister_system as MSYS
 # ACHTUNG: NICHT mit fe/retroachievements.py verwechseln - das sind zwei
 # verschiedene Dateien mit demselben Namen, siehe den ausfuehrlichen
 # Kopf von fe/ra_settings.py. Deshalb hier als Modul importiert und
@@ -570,12 +572,47 @@ LATENZ_POSTEN_ZEILE = 4
 # jeder Vollbild-Kopie) wird gewartet. Der Schalter bleibt Vorbedingung
 # - wer ihn aus hat, bekommt weiterhin ueberall Vsync.
 #
-# 0.25 ist bewusst grosszuegig gewaehlt: der gemessene Navigations-Tick
+# 0.25 war bewusst grosszuegig gewaehlt: der gemessene Navigations-Tick
 # auf HDMI umfasst 114 von 1080 Zeilen (10,6 %), auf CRT 32 von 240
 # (13,3 %) - beide bleiben klar darunter, der volle Aufbau (84 % bzw.
 # 81 %) klar darueber. Es gibt also keinen Grenzfall, der zufaellig auf
 # die eine oder andere Seite kippt.
-VSYNC_SKIP_MAX_ANTEIL = 0.25
+#
+# ANGEHOBEN AUF 0.40 (Build 214, Nutzer-Rueckmeldung: "fast scroll
+# enabled bringt gefuehlt garnichts beim links und rechts scrollen im
+# raster und galerie").
+#
+# DAS WAR KEIN GEFUEHL, SONDERN ARITHMETIK. Seit Build 211 sind die
+# GROSSEN Kacheln der Standard, und damit ist das Band einer Kachelreihe
+# gewachsen. Nachgemessen (tools/test_vsync_grenze.py rechnet dieselbe
+# Zusammenfassung wie _baender_flippen(), Platz 0 und 1 derselben
+# Reihe, und nennt die Zahlen):
+#
+#                     Kachelband        alte Grenze    neue Grenze
+#   1920x1080 gross   379 von 1080  35,1 %   wartet       laesst aus
+#   1280x720  gross   253 von  720  35,1 %   wartet       laesst aus
+#    640x480  gross   180 von  480  37,5 %   wartet       laesst aus
+#    320x240  gross    77 von  240  32,1 %   wartet       laesst aus
+#   1920x1080 klein   253 von 1080  23,4 %   laesst aus   laesst aus
+#
+# Der Schalter war also seit Build 211 in der Kachelansicht QUER
+# wirkungslos, ohne dass irgendwo etwas kaputt war: die eine Zahl, an
+# der alles haengt, war fuer die kleinen Kacheln gesetzt worden. Genau
+# gesagt sind es fuenf der acht Aufloesungen (alle vier quer und
+# 480x640); hochkant ist die Bildhoehe so gross, dass das Band im
+# Verhaeltnis klein bleibt und schon vorher durchging. 37,5 % ist der
+# schlechteste der acht Faelle (640x480, gemessen), 0.40 deckt alle acht
+# ab. Der volle Seitenaufbau liegt bei 84 % und bleibt klar darueber,
+# und fb.flip() wartet ohnehin immer - es gibt also weiterhin keinen
+# Grenzfall, der zufaellig kippt.
+#
+# WAS DAS NICHT BEHEBT, und das gehoert hierher, weil der Nutzer beides
+# in einem Satz genannt hat: die GALERIE kopiert bei jedem Schritt das
+# VOLLBILD (_draw_items_galerie, eine einzige fb.flip()-Zeile), nicht
+# Baender. Dort wartet es also weiter, und zwar voellig unabhaengig von
+# dieser Grenze. Das ist eine eigene Baustelle (Baender fuer Cover,
+# Textspalte und Streifen) und keine Zahl.
+VSYNC_SKIP_MAX_ANTEIL = 0.40
 
 SYSTEM_ACCENT = {
     "NES":     (210, 70, 70),
@@ -1279,6 +1316,9 @@ class Frontend:
         # Build 212: wann die naechste Portion "zuletzt benutzt"-Marken
         # geschrieben wird. Siehe marken_nachziehen() in fe/art.py.
         self._marken_naechste = 0.0
+        # Build 213: merkt sich, was beim Einlesen eingehaengt war, und
+        # meldet eine Aenderung. Siehe fe/mister_system.py.
+        self._speicher = MSYS.SpeicherWaechter()
         # Build 207: das F9 des NUTZERS. Siehe _f9_nutzer_behandeln().
         self._f9_nutzer_letzte = 0.0
         self._f9_grund = "eingespeist"
@@ -2150,6 +2190,34 @@ class Frontend:
                 top_level.append((n, it, sk))
         return top_level, cores_subcats
 
+    def _favoriten_vereinen(self, eigene, mister):
+        """UNSERE Favoriten und MiSTers eigene zu EINER Liste (Build 214).
+
+        Bewusst eine eigene Methode und nicht ein Block mitten in
+        build_categories(): dort steckt sie zwischen vierhundert Zeilen
+        Kategorieaufbau und liesse sich nur ueber das halbe Frontend
+        pruefen. Hier ist sie eine Funktion mit zwei Listen hinein und
+        einer heraus - und tools/test_mister_integration.py prueft
+        genau das.
+
+        Die Begruendung der Reihenfolge, der Entdoppelung und des
+        NICHT-Speicherns steht ausfuehrlich an der Aufrufstelle."""
+        if not mister:
+            return eigene
+        schon = set(lab for lab, _k, _a in eigene)
+        dazu = [it for it in mister if it[0] not in schon]
+        # Die kleine Markierung in der Liste fragt gegen
+        # _favorites_set, und das kommt aus UNSERER Datei. Ohne die
+        # Namen hier stuenden MiSTers Favoriten in der Kategorie,
+        # haetten in der Spieleliste aber keinen Stern - derselbe
+        # Zustand, zwei verschiedene Bilder. Eine Mengenabfrage
+        # kostet nichts, ein Dateizugriff je Zeile schon.
+        if hasattr(self, "_favorites_set"):
+            self._favorites_set.update(it[0] for it in mister)
+        LOG("MiSTer-Favoriten: %d davon neu, %d schon bei uns"
+            % (len(dazu), len(mister) - len(dazu)))
+        return list(eigene) + dazu
+
     def build_categories(self, force_rescan=False):
         # Zwischengespeicherte Attract-Modus-Spieleliste verwerfen -
         # nach einem Rescan koennten sich neue Spiele dazugesellt oder
@@ -2171,6 +2239,7 @@ class Frontend:
             # Gleicher Grund wie bei der anderen Neueinlese-Stelle
             # (Build 212, siehe _quelldaten() in fe/art.py).
             quelldaten_vergessen()
+        self._speicher.merken()
         self.cats = scan_games(force=force_rescan,
                                progress_cb=self._draw_scan_progress,
                                warte_cb=self._draw_laufwerk_warten)
@@ -2213,7 +2282,46 @@ class Frontend:
             # (siehe _item_syskey()).
             pos = 1 if continue_game else 0
             self.cats.insert(pos, (t("recent_cat"), _wrap_flat(recent_items), None))
-        favorite_items = load_favorites()
+        # MiSTers EIGENE Favoriten (Build 213) gehen in UNSERE
+        # Favoriten-Kategorie hinein - nicht in eine eigene daneben.
+        #
+        # GEAENDERT (Build 214) nach dem Urteil des Nutzers: "bitte
+        # misters eigene Favoriten nicht als eigene Kategorie anzeigen,
+        # die koennen bei uns mit in die Kategorie rein". Build 213 hatte
+        # sie bewusst getrennt gehalten, mit der Begruendung "zwei
+        # Listen, an zwei Orten gepflegt". Das war eine Vermutung
+        # darueber, was der Nutzer unterscheiden will - und er will es
+        # nicht. Eine Favoritenliste, zwei Quellen.
+        #
+        # DREI DINGE, DIE DABEI ABSICHT SIND:
+        #
+        # 1. UNSERE zuerst, MiSTers danach. Unsere Reihenfolge ist
+        #    "zuletzt hinzugefuegt zuerst" und damit eine Aussage; die
+        #    aus dem Ordner ist alphabetisch und damit keine.
+        #
+        # 2. Doppelte werden nach dem NAMEN entfernt, genau wie
+        #    is_favorite() und toggle_favorite() Favoriten am Namen
+        #    erkennen (siehe fe/game_state.py - nach dem Speichern sind
+        #    es Listen, ein Tupelvergleich ist nicht moeglich). Steht ein
+        #    Spiel in beiden Listen, gewinnt unser Eintrag: sein arg
+        #    kommt aus unserem eigenen Einlesen und nicht aus einer
+        #    .mgl, die irgendein Werkzeug geschrieben haben kann.
+        #
+        # 3. NICHTS wird in unsere Favoritendatei geschrieben. Waere das
+        #    so, blieben MiSTers Favoriten bei uns stehen, nachdem er
+        #    sie in MiSTer entfernt hat - und der Nutzer haette keine
+        #    Stelle mehr, an der er sie loswird. Angezeigt wird
+        #    zusammen, gespeichert bleibt getrennt.
+        try:
+            mfav_items = MFAV.favoriten_lesen(
+                list(GAME_SYSTEMS) + list(OPTIONAL_GAME_SYSTEMS))
+        except Exception:                                # noqa: BLE001
+            LOG("MiSTer-Favoriten: Einlesen fehlgeschlagen:\n"
+                + traceback.format_exc())
+            mfav_items = []
+
+        favorite_items = self._favoriten_vereinen(load_favorites(),
+                                                  mfav_items)
         if favorite_items:
             # Direkt nach "Zuletzt gespielt"/"Weiterspielen" (je
             # nachdem, was vorhanden ist) - eigene, bewusst kuratierte
@@ -3407,7 +3515,8 @@ class Frontend:
                    Textzeilen (links) und der Spalte (rechts)
                    einschliessen - flip_rows() kennt nur Zeilen, keine
                    Spalten. Aus zwei Zeilen von je 60 Punkten werden so
-                   rund 1000, das sind mehr als die 25 % aus
+                   rund 1000, das sind 92 % der Bildhoehe und damit
+                   weit mehr als die Grenze aus
                    VSYNC_SKIP_MAX_ANTEIL, also wird gewartet - und die
                    Kopie ist so gross, dass sie den Bildwechsel verpasst
                    und auf den naechsten wartet.
@@ -9132,6 +9241,22 @@ class Frontend:
                 if _jetzt_marken >= self._marken_naechste:
                     self._marken_naechste = _jetzt_marken + self.MARKEN_TAKT
                     marken_nachziehen()
+                # NEU (Build 213): hat sich am Speicher etwas geaendert?
+                # Auch das gehoert genau hierher und nirgends sonst:
+                # /media abzufragen ist ein Dateisystemzugriff, und der
+                # darf nicht bei jedem Bild passieren. Eigene Uhr steckt
+                # in pruefen() (MOUNT_TAKT), gemeldet wird jede
+                # Aenderung nur einmal - und NICHT von selbst neu
+                # eingelesen: das dauert bei 30.000 Spielen Minuten und
+                # ist eine Entscheidung des Nutzers, keine des
+                # Programms. Siehe fe/mister_system.py.
+                try:
+                    _sp = self._speicher.pruefen()
+                except Exception:                        # noqa: BLE001
+                    _sp = None
+                if _sp:
+                    self._force_full_redraw = True
+                    self.draw(t("mount_neu") % _sp, prominent=True)
                 self._boot_watch()   # Diagnose: Anzeige-Zustand nach dem Boot
                 # Build 167: alle drei nur noch, wenn die Mechanik
                 # eingeschaltet ist - siehe konsole_mechanik(). Ohne
@@ -11805,6 +11930,7 @@ class Frontend:
         # weg, sonst wuerde ein ausgetauschtes Cover weiterhin mit
         # der alten Aenderungszeit bewertet - siehe _quelldaten().
         quelldaten_vergessen()
+        self._speicher.merken()
         self.cats = scan_games(force=True, progress_cb=progress_cb)
         n_sys = len(self.cats)
         n_games = sum(_count_tree_items(node) for _n, node, _sk in self.cats
@@ -16388,9 +16514,20 @@ class Frontend:
                         _oben = [(_rt1 - _rt0),
                                  getattr(self, "_perf_house", 0),
                                  getattr(self, "_perf_zeichnen", 0)]
+                        # Abholen UND zuruecksetzen in einem Schritt -
+                        # sonst zaehlte die naechste Zeile die Wartezeit
+                        # dieser mit. Auch dann abholen, wenn gar nicht
+                        # geloggt wird, damit der Zaehler nicht ueber
+                        # viele Schritte anwaechst; deshalb steht es
+                        # HIER und nicht in der Format-Zeile.
+                        try:
+                            _vsync_ms = self.fb.vsync_ms_und_zuruecksetzen()
+                        except AttributeError:
+                            _vsync_ms = 0.0
                         LOG("RUCKLER: %.0f ms busy (stream=%.0f haus=%.0f "
                             "zeichnen=%.0f rest=%.0f | davon bg=%.0f "
                             "restore=%.0f rows=%.0f art=%.0f flip=%.0f "
+                            "(davon vsync=%.0f) "
                             "| vorige Aktion=%s Seite=%d)"
                             % tuple([_busy * 1000]
                                     + [x * 1000 for x in _oben]
@@ -16400,6 +16537,15 @@ class Frontend:
                                        getattr(self, "_perf_rows", 0) * 1000,
                                        getattr(self, "_perf_art", 0) * 1000,
                                        getattr(self, "_perf_flip", 0) * 1000,
+                                       # NEU (Build 214): das Warten auf
+                                       # den Bildwechsel, herausgerechnet
+                                       # aus "flip". Ohne diese Zahl liest
+                                       # niemand aus "flip=27", dass davon
+                                       # 14 ms Stillstand sind - und
+                                       # schliesst dann auf die falsche
+                                       # Ursache. Siehe _wait_vsync() in
+                                       # fe/framebuffer.py.
+                                       _vsync_ms,
                                        _act_prev, self.page]))
                     # NEU (Build 93): dieselbe Messung, die oben nur im
                     # Ausnahmefall ins Log geht, treibt jetzt auch die
@@ -17322,6 +17468,25 @@ class Frontend:
                             continue
                         elif kind == "script":
                             self.run_script(arg)
+                            continue
+                        elif kind == "update_all":
+                            # Build 213: update_all ist ein Skript, und
+                            # Skripte startet das Frontend seit langem -
+                            # es wird also KEIN eigener Startweg gebaut,
+                            # sondern der vorhandene benutzt. Fehlt das
+                            # Skript, sagt das schon die Beschriftung;
+                            # hier wird es trotzdem geprueft, weil die
+                            # Beschriftung beim Aufbau des Menues
+                            # entstand und das Skript seither
+                            # verschwunden sein kann.
+                            _ua = MSYS.update_all_pfad()
+                            if _ua:
+                                LOG("update_all wird gestartet: %s" % _ua)
+                                self.run_script(_ua)
+                            else:
+                                self._force_full_redraw = True
+                                self.draw(t("sys_update_all_fehlt"),
+                                          prominent=True)
                             continue
                         elif kind == "osd":
                             self.open_osd()

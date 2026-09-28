@@ -311,11 +311,46 @@ class Framebuffer:
         Verhalten (ohne Vsync-Wartezeit) zurueck."""
         if self._vsync_supported is False:
             return
+        # NEU (Build 214): die Wartezeit wird MITGEZAEHLT.
+        #
+        # WARUM DAS NOETIG IST, und der Anlass sind zwei
+        # Fehldeutungen an einem Tag - eine fremde und eine von mir.
+        # In der RUCKLER-Zeile stand das Warten bisher INNERHALB von
+        # "flip", also zusammen mit dem eigentlichen Uebertragen.
+        # Aus "flip=27" liest niemand heraus, dass davon 14 ms reines
+        # Warten auf den Bildwechsel sind - und wer es nicht
+        # herausliest, schliesst aus einem warmen Schritt von 45 ms,
+        # die Renderkosten dominierten. Sie tun es nicht; ein Drittel
+        # ist Stillstand.
+        #
+        # Es ist ein Zaehler und eine Subtraktion, laeuft also auch im
+        # Zeichenweg ohne messbare Kosten. Die Summe holt
+        # vsync_ms_und_zuruecksetzen() ab.
+        _v0 = time.monotonic()
         try:
             fcntl.ioctl(self.fd, self.FBIO_WAITFORVSYNC, struct.pack("I", 0))
             self._vsync_supported = True
         except (OSError, AttributeError):
             self._vsync_supported = False
+            return
+        self._vsync_summe += time.monotonic() - _v0
+
+    # Aufsummierte Vsync-Wartezeit seit dem letzten Abholen, in
+    # Sekunden. Klassenvorgabe, damit Attrappen in den Tests, die
+    # _map() nie rufen, darueber nicht fallen - dieselbe Regel wie bei
+    # haeppchen, rueckleser und Bildwaechter.
+    _vsync_summe = 0.0
+
+    def vsync_ms_und_zuruecksetzen(self):
+        """Die gewartete Zeit seit dem letzten Abruf, in Millisekunden -
+        und danach bei null anfangen.
+
+        Abholen UND zuruecksetzen in einem Schritt, damit es keine zwei
+        Aufrufe gibt, von denen einer vergessen werden kann. Genau so
+        macht es _perf_zuruecksetzen() fuer die uebrigen Messpunkte."""
+        ms = self._vsync_summe * 1000.0
+        self._vsync_summe = 0.0
+        return ms
 
     def _geraet_oeffnen(self):
         """Den Bildspeicher oeffnen und sich merken, welcher es war.

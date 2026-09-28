@@ -216,6 +216,59 @@ for name in ("draw_page_cats", "draw_page_items",
     check("%s laeuft durch den Trichter" % name,
           "_perf_profiled_call" in _blk)
 
+# ---------------------------------------------------------------------------
+print()
+print("Test 8: vsync= in der Zeile (Build 214)")
+# ---------------------------------------------------------------------------
+# WARUM DAS DAZUKOMMT. "flip=50" ist zweierlei in einer Zahl: die Kopie
+# in den Bildspeicher UND das Warten auf den naechsten Bildwechsel. Das
+# hat in diesem Projekt schon zweimal zu einer falschen Schlussfolgerung
+# gefuehrt - man sieht eine grosse Zahl und verdaechtigt die Kopie,
+# waehrend die Haelfte davon Stillstand ist. Mit dem Ausweis daneben ist
+# die Frage "kopieren oder warten?" in der Zeile beantwortet.
+check("die Zeile nennt das Warten getrennt", "(davon vsync=%.0f)" in quelle,
+      "sonst stecken Kopie und Warten in einer Zahl")
+check("und es steht INNERHALB von flip, nicht daneben",
+      quelle.index("flip=%.0f") < quelle.index("(davon vsync=%.0f)"),
+      "'davon' sagt genau das - kein eigener Posten, kein doppeltes Zaehlen")
+
+_z8 = quelle[quelle.index("_oben = [(_rt1 - _rt0)"):]
+_z8 = _z8[:_z8.index("self.page]))") + 20]
+check("der Wert kommt vom Framebuffer, nicht aus einer eigenen Uhr",
+      "vsync_ms_und_zuruecksetzen()" in _z8,
+      "nur dort steht das Warten - hier waere es geschaetzt")
+check("er wird beim Abholen zurueckgesetzt",
+      "_vsync_ms = self.fb.vsync_ms_und_zuruecksetzen()" in _z8,
+      "sonst zaehlte die naechste Zeile das Warten dieser mit")
+check("und das Abholen steht VOR dem Logaufruf, nicht darin",
+      _z8.index("_vsync_ms = self.fb") < _z8.index("_vsync_ms,"),
+      "in der Format-Zeile wuerde es nur beim Loggen zurueckgesetzt - der "
+      "Zaehler wuechse zwischen zwei Rucklern unbemerkt an")
+check("ein fehlendes Attribut bringt die Zeile nicht um",
+      "except AttributeError:" in _z8,
+      "die Attrappen der Tests ersetzen den Framebuffer komplett")
+
+# Und die andere Haelfte: der Framebuffer muss das ueberhaupt zaehlen.
+fbq = io.open(os.path.join(_REPO, "frontend", "fe", "framebuffer.py"),
+              encoding="utf-8").read()
+check("_wait_vsync() summiert die Wartezeit auf", "_vsync_summe" in fbq)
+check("und es gibt genau einen Abholer",
+      fbq.count("def vsync_ms_und_zuruecksetzen") == 1)
+
+_fb = H.make_frontend(page=1).fb
+check("frisch ist der Zaehler null", _fb.vsync_ms_und_zuruecksetzen() == 0.0)
+_fb._vsync_summe = 0.012
+check("er rechnet in Millisekunden",
+      abs(_fb.vsync_ms_und_zuruecksetzen() - 12.0) < 1e-9)
+check("und ist danach wieder leer", _fb.vsync_ms_und_zuruecksetzen() == 0.0,
+      "zweimal abholen darf nicht zweimal dieselbe Zahl geben")
+# Auf einem Geraet OHNE Vsync (und in diesem Pruefstand) darf nichts
+# dazukommen - sonst stuende in der Zeile eine Wartezeit, die es nie gab.
+_fb._wait_vsync()
+check("ohne Vsync-Unterstuetzung bleibt er bei null",
+      _fb.vsync_ms_und_zuruecksetzen() == 0.0,
+      "hier schlaegt der ioctl fehl, also gibt es auch kein Warten")
+
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))
