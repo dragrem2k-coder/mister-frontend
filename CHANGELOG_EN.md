@@ -58,6 +58,29 @@ exactly why nothing here was built twice.
   adjacent bands. On a PC it says "not measurable" rather than inventing a
   number.
 
+**Scrolling: a fifth of the bytes onto the screen.**
+
+- **Rectangles instead of bands.** Until now every partial copy spanned the
+  *full width*, even when only two tiles had changed — `flip_rows()` knows
+  nothing about columns. Measured at 1080p per scroll step:
+
+  | | before | now |
+  |---|---|---|
+  | Tile view left/right | 3.74 MB | **1.19 MB** |
+  | Tile view up/down | 6.50 MB | **1.19 MB** |
+  | Gallery | 7.91 MB (full screen!) | **3.71 MB** |
+
+  The **gallery** had been copying the entire screen on every step since
+  v4.2, even though it only redraws the cover, the text and two strip tiles.
+  That is why "fast scrolling" never did anything there. It still waits for
+  the display refresh — 3.71 MB is 47 % of the screen, and a tear across
+  cover and text would be visible. The tile view, at 15 %, may skip it.
+- The copying runs in C (the same function that has restored the background
+  since v4.6); without `libdragend` a Python path writes bit-identical
+  output. Should short rows turn out to cost more per byte on your card,
+  `touch /media/fat/frontend/rechteck_flip_aus` is enough — no update. The
+  number for that comes from the new **bench section I**.
+
 ---
 
 ## v4.7 — the login prompt, large tiles, and what measurements disproved

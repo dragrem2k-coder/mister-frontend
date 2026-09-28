@@ -60,6 +60,30 @@ steht hier kein doppelt gebautes Feature.
   Zusammenfassen benachbarter Bänder folgt. Auf einem PC sagt er
   ausdrücklich „nicht messbar", statt eine Zahl zu erfinden.
 
+**Scrollen: ein Fünftel der Bytes auf den Schirm.**
+
+- **Rechtecke statt Bänder.** Bisher ging jede Teilkopie über die *volle
+  Breite*, auch wenn sich nur zwei Kacheln geändert hatten — `flip_rows()`
+  kennt keine Spalten. Gemessen auf 1080p je Scrollschritt:
+
+  | | vorher | jetzt |
+  |---|---|---|
+  | Kachelansicht links/rechts | 3,74 MB | **1,19 MB** |
+  | Kachelansicht hoch/runter | 6,50 MB | **1,19 MB** |
+  | Galerie | 7,91 MB (Vollbild!) | **3,71 MB** |
+
+  Die **Galerie** kopierte seit v4.2 bei *jedem* Schritt den ganzen Schirm,
+  obwohl sie längst nur Cover, Text und zwei Leistenkacheln neu zeichnet.
+  Das ist der Grund, warum „schnelles Scrollen" dort nie etwas gebracht hat.
+  Sie wartet auch jetzt noch auf den Bildwechsel — 3,71 MB sind 47 % des
+  Bildes, und ein Riss quer durch Cover und Text wäre sichtbar. Die
+  Kachelansicht darf mit 15 % auslassen.
+- Gerechnet wird in C (dieselbe Funktion, die seit v4.6 den Hintergrund
+  wiederherstellt); ohne `libdragend` läuft ein Python-Weg, der bitgenau
+  dasselbe schreibt. Sollten kurze Zeilen auf deiner Karte je Byte zu teuer
+  sein, genügt ein `touch /media/fat/frontend/rechteck_flip_aus` — kein
+  Update. Die Zahl dazu liefert der neue **Bench-Abschnitt I**.
+
 ---
 
 ## v4.7 — der Login-Prompt, große Kacheln, und was Messungen widerlegt haben

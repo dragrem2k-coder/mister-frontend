@@ -853,6 +853,55 @@ Galerie in einem Satz genannt; die Grenze hilft nur dem Raster, weil
 das so ist, prueft der Test es - damit niemand (auch ich nicht) spaeter
 glaubt, Build 214 haette die Galerie mitgenommen.
 
+## test_rechteck_flip.py
+
+Der Rechteck-Flip aus Build 215 - und die riskanteste Art von
+Optimierung, die es in diesem Frontend gibt: er kopiert WENIGER, und
+alles, was er zu wenig kopiert, bleibt als Rest des vorigen Bildes
+stehen. Genau diese Sorte Fehler gab es hier schon viermal (Build 80,
+122, 125, 128).
+
+Anlass war eine Rueckmeldung ohne Umschweife: "das scrollen koennte echt
+ueberall ob nach links rechts oben unten viel schneller sein." Die
+Ursache stand in einem Satz: `flip_rows()` kennt keine Spalten. Gemessen
+je Scrollschritt auf 1080p:
+
+    Kachelansicht links/rechts   3,74 MB  ->  1,19 MB
+    Kachelansicht hoch/runter    6,50 MB  ->  1,19 MB
+    Galerie (VOLLBILD)           7,91 MB  ->  3,71 MB
+
+**Der Kern des Tests sind die Bloecke 2 bis 5**: `fb.mm` gegen einen
+vollen Aufbau, in allen Ansichten, quer, hochkant und CRT, mit kurzen
+und langen Titeln und mit Fussmeldung. Der Puffer wuerde hier nichts
+beweisen - er ist in beiden Faellen gleich, egal wie viel davon
+anschliessend auf den Schirm wandert.
+
+**Block 6 hat eine Zahl im Quelltext ueberfuehrt.** Dort stand die
+Galerie mit 1,02 MB und daraus der Schluss, sie duerfe jetzt auch das
+Vsync-Warten auslassen. 1,02 MB sind die wirklich GEAENDERTEN
+Bildpunkte; kopiert werden die freigeraeumten RECHTECKE, und die
+Textspalte wird auf ihrer ganzen Hoehe freigeraeumt, weil der Titel mal
+kuerzer und mal laenger ist. Es sind 3,71 MB, also 47 % der Bildhoehe -
+ueber der Grenze. Die Galerie wartet weiterhin, und Block 6b prueft
+genau das, auf beiden Seiten.
+
+**Block 8 ist die subtilste Frage des Builds.** Die Proben des
+Bildwaechters sind ganze ZEILEN, ein Rechteck schreibt eine Zeile nur
+zum Teil. Der Sollwert wird trotzdem aus dem Puffer aufgefrischt - das
+ist nur richtig, solange der Puffer ausserhalb der Rechtecke schon
+vorher dem Schirm entsprach. Waere es nicht so, meldete der Waechter das
+eben selbst Geschriebene als fremdes Bild und kopierte zur "Reparatur"
+das Vollbild, bei jedem Schritt: das Bild bliebe richtig, der ganze
+Gewinn waere weg, und die Bloecke 2 bis 5 saehen es nicht. Geprueft
+werden 40 Schritte auf null Reparaturen - und danach, dass ein echter
+Fremdschreiber weiterhin auffaellt.
+
+Beim Bauen ist dieser Block einmal falsch rot geworden, und der Fehler
+war meiner: er rief `_waechter_pruefen()` genau EINMAL. Der sieht aber
+seit Build 210 nur 4 von 20 Proben je Blick an (Ringverfahren), die
+manipulierte Zeile war schlicht nicht dran. Jetzt so viele Blicke, wie
+der Ring braucht.
+
 ## test_ra_einstellungen.py
 
 Die RA-Einstellungen der MiSTer-Hauptanwendung, bedienbar aus unserem

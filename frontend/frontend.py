@@ -304,6 +304,7 @@ from fe.settings import (
     toggle_curated_only, toggle_dragend_logo, screen_mirror_enabled,
     toggle_screen_mirror, toggle_stream_overlay,
     fast_scroll_enabled, toggle_fast_scroll,
+    rechteck_flip_enabled,
     cover_sofort_enabled, toggle_cover_sofort, artbox_aufschub_aus,
     arbeitskopien_enabled, toggle_arbeitskopien,
     overscan_lesen, overscan_weiter,
@@ -1198,6 +1199,22 @@ from fe.art import (
     quelldaten_vergessen, marken_nachziehen,
     verkleinern_modus_vergessen,
 )
+
+# NEU (Build 215): den C-Kopierer in den Framebuffer einhaengen, damit
+# flip_rechtecke() ihn benutzen kann.
+#
+# WARUM HIER UND NICHT DORT: fe/framebuffer.py importiert bewusst nur
+# fe.log - es ist die unterste Schicht, und fe/art.py darueber bringt
+# libdragend, Zwischenspeicher und Dateisystem mit. Ein Import von dort
+# nach hier waere eine Abhaengigkeit in die falsche Richtung. Die
+# ausfuehrliche Begruendung steht bei Framebuffer.rechteck_kopierer.
+#
+# Es ist dieselbe Funktion, die seit Build 209 den Hintergrund IM PUFFER
+# wiederherstellt - sie kopiert Rechtecke zeilenweise zwischen zwei
+# gleich gerasterten Puffern, und der Bildspeicher ist genauso gerastert
+# wie der Puffer. Bleibt der Haken ungesetzt (libdragend fehlt), laeuft
+# der Python-Weg in flip_rechtecke().
+Framebuffer.rechteck_kopierer = staticmethod(_c_rechtecke_kopieren)
 
 # NEU (Build 73): Cover-Miniaturen im Leerlauf vorberechnen. Die
 # ausfuehrliche Begruendung samt der beiden ehrlichen Einschraenkungen
@@ -7242,6 +7259,49 @@ class Frontend:
             self._kachel_platzhalter(cx, ky, cov_b, cov_h, item[0], s,
                                      markiert)
 
+    # Sammelstelle fuer _restore_row_bg() - None heisst "nicht
+    # sammeln". Siehe dort und _rechtecke_flippen().
+    _flip_spuren = None
+
+    def _rechtecke_flippen(self, spuren):
+        """Nur die freigeraeumten RECHTECKE auf den Schirm bringen.
+
+        NEU (Build 215, Nutzer-Rueckmeldung: "das scrollen koennte echt
+        ueberall ob nach links rechts oben unten viel schneller sein").
+
+        Rueckgabe: True, wenn es erledigt ist. Bei False hat sich nichts
+        veraendert und der Aufrufer muss den bisherigen Bandweg nehmen -
+        das ist der Fall, wenn der Schalter aus ist, nichts gesammelt
+        wurde, oder der Framebuffer die Rechtecke nicht kennt (die
+        Attrappen einiger Tests).
+
+        WARUM DIE ENTSCHEIDUNG UEBER DAS VSYNC-WARTEN HIER MIT BYTES
+        RECHNET UND NICHT MIT ZEILEN: _vsync_ueberspringen() vergleicht
+        eine Bandhoehe gegen die Bildhoehe, und dahinter steht "wie viel
+        Bild fasst diese Kopie an". Ein Rechteck fasst nur einen Teil
+        der Zeile an, also waere die Zeilenzahl dort die falsche
+        Groesse - 379 Zeilen zu 1080 Byte sind ein Achtel von 379 Zeilen
+        zu 7680 Byte. Umgerechnet in "so viele VOLLE Zeilen waeren das"
+        bleibt es dieselbe eine Grenze an derselben einen Stelle."""
+        fb = self.fb
+        if not spuren or not rechteck_flip_enabled():
+            return False
+        if not hasattr(fb, "flip_rechtecke"):
+            return False
+        stride = getattr(fb, "stride", 0) or 0
+        if stride <= 0:
+            return False
+        # Bewusst UNGESCHNITTEN gerechnet: flip_rechtecke() schneidet
+        # selbst auf das Bild zu, und ein zu grosser Wert laesst
+        # hoechstens auf den Bildwechsel warten, wo es nicht noetig
+        # waere. Die andere Richtung waere ein Bildriss.
+        bytes_gesamt = sum(max(0, w) * 4 * max(0, h) for (_x, _y, w, h)
+                           in spuren)
+        zeilen = bytes_gesamt // stride
+        fb.flip_rechtecke(spuren,
+                          skip_vsync=self._vsync_ueberspringen(zeilen))
+        return True
+
     def _baender_flippen(self, felder, geo, L):
         """Nur die angefassten Zeilenbaender auf den Schirm bringen
         (Build 133).
@@ -7366,6 +7426,13 @@ class Frontend:
         if schnell and alt is not None and 0 <= alt < proseite:
             # Nur die beiden betroffenen Kacheln.
             baender = []
+            # Build 215: ab hier mitschreiben, welche Flaechen
+            # freigeraeumt werden - das sind genau die, die danach auf
+            # den Schirm muessen. Siehe _restore_row_bg() und
+            # _rechtecke_flippen(). Auch die Namenszeile und die
+            # Fusszeile weiter unten laufen noch in diese Liste, denn
+            # das Sammeln endet erst beim Flip.
+            self._flip_spuren = []
             if alt != platz_neu:
                 self._kachel_zeichnen(geo, alt, self.scroll + alt, items,
                                       syskey, False, True)
@@ -7387,6 +7454,13 @@ class Frontend:
         self._kachel_name_zeichnen(geo, L, items, message)
         self._fusszeile_zeichnen(L["ox"], L["footer_y"], L["s"], message)
         self._draw_search_overlay()
+        # Sammeln beenden, und zwar HIER und nicht im flip-Zweig: bliebe
+        # es an, wuechse die Liste ueber den naechsten Schritt hinaus und
+        # der wuerde Flaechen mitkopieren, die laengst auf dem Schirm
+        # stehen. Auch der Aufruf mit flip=False (Attract-Modus,
+        # Vorauslader) muss sie also loswerden.
+        _spuren = self._flip_spuren
+        self._flip_spuren = None
         if flip:
             # NEU (Build 133): auf dem schnellen Pfad nur die geaenderten
             # BAENDER auf den Schirm bringen, nicht den ganzen.
@@ -7408,7 +7482,13 @@ class Frontend:
             # der Streifen mit Spielname, Fusszeile und Position. Was
             # dazwischen liegt, hat sich nicht geaendert.
             if baender is not None and not self._search_mode:
-                self._baender_flippen(baender, geo, L)
+                # Build 215: zuerst der Weg mit den Rechtecken. Er
+                # kopiert auf 1080p gemessen 0,8 statt 3,7 MB
+                # (links/rechts) bzw. statt 6,5 MB (hoch/runter).
+                # Sagt er nein (Schalter aus, nichts gesammelt), bleibt
+                # es beim Bandweg aus Build 133 - unveraendert.
+                if not self._rechtecke_flippen(_spuren):
+                    self._baender_flippen(baender, geo, L)
             else:
                 fb.flip(skip_vsync=self._vsync_ueberspringen(None))
 
@@ -7497,6 +7577,43 @@ class Frontend:
             fb.clear(C_BG)
             self._raster_kopf(L, items, total)
             self._galerie_fast_key = fast_key
+        else:
+            # NEU (Build 215): mitschreiben, was freigeraeumt wird.
+            #
+            # DIE GALERIE WAR DER SCHLIMMSTE FALL IM GANZEN FRONTEND,
+            # und zwar seit Build 125. Sie hat seither einen schnellen
+            # Pfad, der nur das grosse Cover, die Textspalte und zwei
+            # Leistenkacheln neu zeichnet - und kopierte danach trotzdem
+            # das VOLLBILD: auf 1080p 7,91 MB je Schritt, gemessen. Also
+            # genau der Fehler, den das Raster in Build 133 losgeworden
+            # ist, nur an einer anderen Stelle und drei Builds spaeter
+            # eingebaut. Deshalb hat "schnelles Scrollen" hier auch nie
+            # etwas gebracht: ein Vollbild wartet IMMER auf den
+            # Bildwechsel (siehe _vsync_ueberspringen()).
+            #
+            # Mit den Rechtecken sind es gemessen 3,71 MB, also der
+            # Faktor 2,1.
+            #
+            # KORRIGIERT (beim Schreiben von tools/test_rechteck_flip.py,
+            # und die falsche Zahl stand vorher hier): 1,02 MB waeren es,
+            # wenn nur die wirklich GEAENDERTEN Bildpunkte kopiert
+            # wuerden. Kopiert werden aber die freigeraeumten RECHTECKE,
+            # und die Textspalte wird auf ihrer GANZEN Hoehe
+            # freigeraeumt, weil der Titel mal kuerzer und mal laenger
+            # ist - dabei faellt viel Hintergrund auf Hintergrund.
+            #
+            # Die Folge, und sie gehoert ausdruecklich hierher: 3,71 MB
+            # sind 506 volle Bildzeilen von 1080, also 47 % - UEBER der
+            # Grenze aus VSYNC_SKIP_MAX_ANTEIL. Die Galerie wartet damit
+            # weiterhin auf den Bildwechsel, der Schalter wirkt hier also
+            # nach wie vor nicht. Das ist kein Versehen, sondern die
+            # Abwaegung aus Build 93: ein Riss quer durch Cover und
+            # Textspalte ist sichtbar. Wer das aendern will, muss die
+            # Textspalte kleiner freiraeumen (sich die vorige Ausdehnung
+            # merken), nicht die Grenze anheben. Beide Tatsachen stehen
+            # als Pruefung in tools/test_rechteck_flip.py, damit hier nie
+            # wieder eine Zahl steht, die niemand nachgerechnet hat.
+            self._flip_spuren = []
         self._galerie_fast_gen = fb.full_redraw_gen
 
         item = items[self.item_i]
@@ -7608,8 +7725,17 @@ class Frontend:
         self._fusszeile_zeichnen(ox, L["footer_y"], s, message)
         self._draw_search_overlay()
         self._force_full_redraw = False
+        _spuren = self._flip_spuren
+        self._flip_spuren = None
         if flip:
-            fb.flip(skip_vsync=self._vsync_ueberspringen(None))
+            # Build 215: erst die Rechtecke, sonst wie bisher das
+            # Vollbild. Der Rueckfall ist hier wichtiger als im Raster,
+            # denn einen Bandweg hat die Galerie nie gehabt - ohne
+            # Rechtecke bleibt es also beim Vollbild und damit beim
+            # Verhalten aus Build 125.
+            if not (not self._search_mode
+                    and self._rechtecke_flippen(_spuren)):
+                fb.flip(skip_vsync=self._vsync_ueberspringen(None))
 
     def _draw_items_kacheln(self, ansicht, items, name, syskey, L, message,
                             flip):
@@ -7721,6 +7847,7 @@ class Frontend:
         baender = None
         if schnell and alt is not None and 0 <= alt < proseite:
             baender = []
+            self._flip_spuren = []            # Build 215, siehe dort
             if alt != platz_neu:
                 self._kat_kachel_zeichnen(geo, alt, self.cat_scroll + alt,
                                           False, True)
@@ -7741,12 +7868,16 @@ class Frontend:
 
         self._kat_name_zeichnen(geo)
         self._kat_fusszeile(KL, message)
+        _spuren = self._flip_spuren
+        self._flip_spuren = None
         if flip:
             # Dasselbe wie im Raster der Spieleliste (Build 133): auf dem
             # schnellen Pfad nur die geaenderten Baender auf den Schirm,
-            # nicht den kompletten Bildspeicher.
+            # nicht den kompletten Bildspeicher. Und seit Build 215
+            # zuerst der Weg mit den Rechtecken statt der Baender.
             if baender is not None and not self._search_mode:
-                self._baender_flippen(baender, geo, KL)
+                if not self._rechtecke_flippen(_spuren):
+                    self._baender_flippen(baender, geo, KL)
             else:
                 fb.flip(skip_vsync=self._vsync_ueberspringen(None))
 
@@ -8474,6 +8605,25 @@ class Frontend:
         war gerade ein System-Hintergrundbild aktiv, wurde stattdessen
         aus dessen Vollbildpuffer kopiert. Den gibt es nicht mehr, also
         bleibt genau eine Quelle."""
+        # NEU (Build 215): mitschreiben, WELCHE Flaechen dieser
+        # Zeichenschritt freigeraeumt hat.
+        #
+        # Diese Funktion ist der Trichter fuer "ich zeichne gleich hier
+        # neu" - jeder schnelle Pfad ruft sie, bevor er etwas
+        # ueberschreibt. Damit ist die Liste ihrer Aufrufe genau die
+        # Liste der Rechtecke, die anschliessend auf den Schirm muessen.
+        # Die Alternative waere gewesen, an jeder Zeichenstelle ein
+        # Rechteck von Hand mitzufuehren - also dieselbe Flaeche an zwei
+        # Orten zu berechnen, und das ist in diesem Projekt schon
+        # viermal schiefgegangen (Build 80/122/125/128: stehengebliebene
+        # Reste, weil ein Band zu knapp bemessen war).
+        #
+        # Gesammelt wird nur, wenn ein Pfad es ausdruecklich anschaltet
+        # (self._flip_spuren = []); sonst kostet es einen Vergleich
+        # gegen None.
+        spuren = self._flip_spuren
+        if spuren is not None:
+            spuren.append((x, y, w, h))
         fb = self.fb
         cur_bg = fb._rowcache.get(fb.bg_key(C_BG))
         if cur_bg is None:

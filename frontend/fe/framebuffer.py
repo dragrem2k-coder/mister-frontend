@@ -2011,6 +2011,156 @@ class Framebuffer:
         self.flip_gen += 1
         self.flip_event.set()
 
+    # Der C-Kopierer fuer flip_rechtecke(), von aussen eingehaengt.
+    #
+    # WARUM EINGEHAENGT UND NICHT IMPORTIERT: dieses Modul kennt genau
+    # einen Import aus dem Projekt (fe.log). Das ist Absicht - der
+    # Framebuffer ist die unterste Schicht, und fe/art.py darueber ist
+    # ein schweres Modul (libdragend, Zwischenspeicher, Dateisystem).
+    # Ein Import von dort nach hier waere eine Abhaengigkeit in die
+    # falsche Richtung, und die Testattrappen in tools/ wuerden sie
+    # mitschleppen.
+    #
+    # frontend.py setzt das Feld beim Laden auf
+    # fe.art.rechtecke_kopieren (dieselbe Funktion, die seit Build 209
+    # den Hintergrund im Puffer wiederherstellt - sie kopiert
+    # Rechtecke zeilenweise zwischen zwei gleich gerasterten Puffern
+    # und ist damit genau das, was hier gebraucht wird). Bleibt das
+    # Feld None, laeuft der Python-Weg darunter - das ist kein
+    # Notnagel, sondern der Weg, auf dem die Tests BEIDE Fassungen
+    # gegeneinander pruefen koennen.
+    rechteck_kopierer = None
+
+    def flip_rechtecke(self, rechtecke, skip_vsync=False):
+        """Nur die angefassten RECHTECKE auf den Schirm bringen.
+
+        NEU (Build 215, Nutzer-Rueckmeldung: "das scrollen koennte echt
+        ueberall ob nach links rechts oben unten viel schneller sein").
+
+        WARUM ES flip_rows() NICHT SCHON TAT: flip_rows() kennt nur
+        Zeilen. Ein Band geht immer ueber die VOLLE Breite, auch wenn
+        sich darin nur zwei Kacheln geaendert haben. Nachgemessen auf
+        1920x1080, je Scrollschritt:
+
+            Kachelansicht links/rechts   3,74 MB   ->  0,83 MB
+            Kachelansicht hoch/runter    6,50 MB   ->  0,83 MB
+            Galerie (Vollbild!)          7,91 MB   ->  1,02 MB
+
+        Es sind also nicht ein paar Prozent, sondern der Faktor acht.
+
+        DIE EINE ZAHL, DIE DAS GERAET LIEFERN MUSS: ein Rechteck von
+        270 Punkten Breite sind Zeilen von 1080 Byte, ein Band sind
+        Zeilen von 7680. Ist der Bildspeicher je Byte bei kurzen Zeilen
+        deutlich teurer, sind weniger Bytes trotzdem mehr Zeit. Die
+        Groessen-Tabelle in Abschnitt H des Benchs (Build 214) und der
+        direkte Vergleich in Abschnitt I messen genau das. Deshalb
+        gibt es den Schalter rechteck_flip_enabled() - nicht aus
+        Unsicherheit ueber die Richtigkeit, sondern weil eine
+        Geschwindigkeitsfrage auf dem Geraet entschieden wird und nicht
+        hier.
+
+        rechtecke: Folge von (x, y, w, h). Ueberlappungen sind
+        erlaubt und werden NICHT zusammengefasst - doppelt kopieren ist
+        billiger als die Flaechenrechnung, die das vermeiden wuerde.
+
+        Rueckgabe: die Zahl der kopierten Bytes (0, wenn nichts zu tun
+        war). Der Aufrufer braucht sie fuer die Ruckler-Zeile und der
+        Bench fuer den Vergleich."""
+        fertig = []
+        gesamt = 0
+        for stueck in rechtecke:
+            x, y, w, h = stueck
+            x0 = max(0, x)
+            y0 = max(0, y)
+            x1 = min(self.width, x + w)
+            y1 = min(self.height, y + h)
+            if x1 <= x0 or y1 <= y0:
+                continue
+            fertig.append((x0, y0, x1 - x0, y1 - y0))
+            gesamt += (x1 - x0) * 4 * (y1 - y0)
+        if not fertig:
+            return 0
+        if not skip_vsync:
+            self._wait_vsync()
+        # Genau wie in flip_rows(): VOR dem Schreiben nachsehen, ob auf
+        # dem Schirm ueberhaupt noch unser Bild steht. Steht dort etwas
+        # Fremdes, wird alles kopiert statt der Rechtecke - ein
+        # Schreibvorgang statt zwei, und die Rechtecke waeren ohnehin
+        # nur ein Flicken auf fremdem Grund.
+        if self._waechter_an and self._waechter_pruefen():
+            jetzt = time.monotonic()
+            if jetzt - self._waechter_letzte >= self.WAECHTER_TAKT:
+                self._waechter_letzte = jetzt
+                self._waechter_repariert += 1
+                self.mm[:] = self.buf
+                self._waechter_merken()
+                if self._rueck_proben is not None:
+                    self._rueckleser_merken()
+                if jetzt - self._waechter_meldung >= 1.0:
+                    self._waechter_meldung = jetzt
+                    LOG("BILDWAECHTER: der Schirm war nicht mehr unser "
+                        "Bild - ganz neu kopiert (%d. Mal)"
+                        % self._waechter_repariert)
+                self.flip_gen += 1
+                self.flip_event.set()
+                return self.size
+        kop = self.rechteck_kopierer
+        erledigt = False
+        if kop is not None:
+            try:
+                erledigt = bool(kop(self.buf, self.mm, self.stride,
+                                    self.height, self.size, fertig))
+            except Exception:                            # noqa: BLE001
+                # Nicht weiterwerfen: ein Fehler im C-Weg darf hoechstens
+                # Geschwindigkeit kosten, nie ein Bild. Die Meldung steht
+                # in fe/art.py, hier bleibt nur der Rueckfall.
+                erledigt = False
+        if not erledigt:
+            mvm = self._mv_mm
+            mvb = self._mv_buf
+            if mvm is None or mvb is None:
+                mvm = self._mv_mm = memoryview(self.mm)
+                mvb = self._mv_buf = memoryview(self.buf)
+            zl = self.stride
+            for (x, y, w, h) in fertig:
+                n = w * 4
+                off = y * zl + x * 4
+                # Ueber memoryview auf BEIDEN Seiten - aus demselben
+                # Grund wie in flip_rows() seit Build 206: der Gewinn
+                # kommt vom Schreiben in eine Ansicht, nicht vom
+                # Vermeiden der Zwischenkopie rechts.
+                for _ in range(h):
+                    mvm[off:off + n] = mvb[off:off + n]
+                    off += zl
+        # DER SUBTILE TEIL, und er hat einen eigenen Absatz verdient.
+        #
+        # Die Proben des Bildwaechters (und die des Rueckelesers) sind
+        # GANZE ZEILEN. Ein Rechteck schreibt eine Zeile nur zum Teil.
+        # Trotzdem muss der Sollwert fuer jede beruehrte Probenzeile
+        # aufgefrischt werden, und zwar aus dem PUFFER:
+        #
+        #   - Taete man es nicht, verglich der naechste Blick die neu
+        #     beschriebene Stelle gegen den alten Sollwert und meldete
+        #     das eben selbst Geschriebene als fremdes Bild. Bei jedem
+        #     Scrollschritt eine Vollbild-"Reparatur" - der Fehler aus
+        #     Build 198, nur umgekehrt.
+        #   - Dass der Puffer dabei die richtige Quelle ist, haengt an
+        #     einer Bedingung: ausserhalb der Rechtecke muss der Puffer
+        #     schon vorher dem Schirm entsprochen haben. Genau das ist
+        #     die Voraussetzung, unter der ein Rechteck-Flip ueberhaupt
+        #     erlaubt ist - und genau das prueft der Pixelvergleich in
+        #     tools/test_rechteck_flip.py, indem er fb.mm gegen einen
+        #     vollen Aufbau stellt.
+        if self._waechter_an or self._rueck_proben is not None:
+            for (_x, y, _w, h) in fertig:
+                if self._waechter_an:
+                    self._waechter_merken(y, y + h)
+                if self._rueck_proben is not None:
+                    self._rueckleser_merken(y, y + h)
+        self.flip_gen += 1
+        self.flip_event.set()
+        return gesamt
+
     def close(self):
         try:
             self.mm.close(); os.close(self.fd)

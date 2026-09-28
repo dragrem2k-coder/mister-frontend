@@ -693,6 +693,24 @@ COVER_SETTLE = 0.15         # s nach letzter Eingabe, bis waehrend des
 # soll niemand ungefragt bekommen, der einfach nur aktualisiert.
 FAST_SCROLL_ENABLED_FLAG = "/media/fat/frontend/fast_scroll_enabled"
 
+# NEU (Build 215, Nutzer-Rueckmeldung: "das scrollen koennte echt
+# ueberall ob nach links rechts oben unten viel schneller sein").
+#
+# Standard AN, und das ist der Unterschied zum Schalter darueber: dort
+# geht es um einen KOMPROMISS (Bildriss gegen Zeit), den niemand
+# ungefragt bekommen soll. Hier geht es um dasselbe Bild mit weniger
+# kopierten Bytes - gemessen der Faktor acht (siehe flip_rechtecke() in
+# fe/framebuffer.py). Es gibt nichts abzuwaegen, und deshalb ist es an.
+#
+# Die Datei ist trotzdem da, und zwar aus EINEM Grund: kurze Zeilen
+# koennten auf echter Hardware je Byte teurer sein als lange. Sollte
+# sich das zeigen, ist es ein "touch" und kein Update:
+#
+#     touch /media/fat/frontend/rechteck_flip_aus
+#
+# Die Zahl dazu liefern die Abschnitte H und I des Benchs.
+RECHTECK_FLIP_AUS_FLAG = "/media/fat/frontend/rechteck_flip_aus"
+
 # MESSGEGENSTAND (Build 181), kein Feature - siehe
 # _flip_haeppchenweise() in fe/framebuffer.py. Standard AUS.
 #
@@ -832,6 +850,18 @@ def fast_scroll_enabled():
     # beim Bauen gestolpert.
     return _hole(("fast_scroll", FAST_SCROLL_ENABLED_FLAG),
                  lambda: os.path.exists(FAST_SCROLL_ENABLED_FLAG))
+
+
+def rechteck_flip_enabled():
+    """Duerfen die Kachelansichten nur RECHTECKE auf den Schirm bringen?
+
+    Standard AN - siehe RECHTECK_FLIP_AUS_FLAG oben. Ueber denselben
+    kurzlebigen Zwischenspeicher wie fast_scroll_enabled(), aus
+    demselben Grund: die Frage faellt bei JEDEM Scrollschritt an, und
+    ein Kartenzugriff je Schritt ist genau die Sorte stiller Kosten,
+    gegen die Build 212 angetreten ist."""
+    return not _hole(("rechteck_flip_aus", RECHTECK_FLIP_AUS_FLAG),
+                     lambda: os.path.exists(RECHTECK_FLIP_AUS_FLAG))
 
 def arbeitskopien_enabled():
     """Sollen beim Vorbereiten JPEG-Arbeitskopien entstehen?

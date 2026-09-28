@@ -657,13 +657,58 @@ check("nach dem Abschnitt zeigt der Schirm genau den Puffer",
 
 # (2) KEIN URTEIL AUS RAUSCHEN. Auf diesem Rechner ist mm ein bytearray
 #     im RAM; der Aufschlag je Aufruf faellt dort mal positiv, mal
-#     negativ aus. Genau darum darf hier KEINE Schwelle herauskommen -
-#     das ist derselbe Anspruch wie in Abschnitt E (Test 12).
-check("auf dem Entwicklungsrechner sagt er NICHT MESSBAR",
-      "NICHT MESSBAR" in _txt_h,
-      "sonst steht da eine Zahl, die nach Befund aussieht")
-check("und nennt beide Messwerte, aus denen das folgt",
-      "1 Stueck" in _txt_h and "8 Stuecke" in _txt_h)
+#     negativ aus. Genau darum darf aus solchen Zahlen KEINE Schwelle
+#     herauskommen - derselbe Anspruch wie in Abschnitt E (Test 12).
+#
+#     GEPRUEFT UND EINMAL FALSCH GEBAUT (Build 215): hier stand zuerst
+#     "auf dem Entwicklungsrechner sagt er NICHT MESSBAR". Das ist eine
+#     Behauptung ueber MESSRAUSCHEN - und prompt lief der Test einmal
+#     rot, weil acht Stuecke zufaellig 12 % teurer ausfielen als eines
+#     und der Abschnitt voellig zu Recht eine Schwelle ausgab. Ein Test,
+#     der von der Tageslaune der Uhr abhaengt, ist schlimmer als keiner:
+#     er verlernt einem das Hinsehen. Jetzt werden BEIDE Zweige mit
+#     FESTEN Zahlen durchgespielt - messen() wird dafuer ersetzt.
+_echte_messen = _BE.messen
+try:
+    def _messen_fest(fn, wdh=None, _folge=[]):
+        """Feste Werte statt einer Messung - in der Reihenfolge, in der
+        Abschnitt H sie abholt."""
+        fn()                                   # einmal wirklich laufen
+        return (_folge.pop(0) if _folge else (1.0, 1.0))
+
+    # Fall A: der Aufschlag liegt im Rauschen (8 Stuecke nicht teurer).
+    _BE.messen = lambda fn, wdh=None: (fn(), (1.0, 1.0))[1]
+    _zeilen_h[:] = []
+    B._abschnitt_h(_BH(), H.make_frontend(page=0))
+    _txt_a = "\n".join(_zeilen_h)
+    check("bei gleichen Zeiten sagt er NICHT MESSBAR",
+          "NICHT MESSBAR" in _txt_a,
+          "sonst steht da eine Zahl, die nach Befund aussieht")
+    check("und nennt beide Messwerte, aus denen das folgt",
+          "1 Stueck" in _txt_a and "8 Stuecke" in _txt_a)
+
+    # Fall B: 8 Stuecke deutlich teurer - jetzt MUSS eine Schwelle
+    # herauskommen, sonst verweigert der Abschnitt jede Auskunft.
+    _zaehler = [0]
+
+    def _messen_steigend(fn, wdh=None):
+        fn()
+        _zaehler[0] += 1
+        # Die Stueck-Messungen sind die Aufrufe 9 bis 15 (nach acht
+        # Groessenstufen); grob steigend genuegt fuer die Schranke.
+        return (1.0 + 0.5 * max(0, _zaehler[0] - 9), 1.0)
+
+    _BE.messen = _messen_steigend
+    _zeilen_h[:] = []
+    B._abschnitt_h(_BH(), H.make_frontend(page=0))
+    _txt_b = "\n".join(_zeilen_h)
+    check("bei deutlichem Aufschlag nennt er eine Schwelle",
+          "Schwelle MIT Warten" in _txt_b and "NICHT MESSBAR" not in _txt_b,
+          _txt_b[-160:])
+    check("und zwar zwei - mit und ohne Warten",
+          "Schwelle OHNE Warten" in _txt_b)
+finally:
+    _BE.messen = _echte_messen
 check("die Schranke steht im Code, nicht im Zufall",
       "ms_acht >= ms_eins * 1.10" in bq)
 check("und der Grund dafuer ist dort aufgeschrieben",
@@ -699,6 +744,99 @@ _zeilen_h[:] = []
 B._abschnitt_h(_BH(), _OhneFB())
 check("ohne Bildspeicher ueberspringt er sich selbst",
       "uebersprungen" in "\n".join(_zeilen_h), "\n".join(_zeilen_h)[-80:])
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 15: Abschnitt I - kurze Zeilen gegen lange (Build 215)")
+# ---------------------------------------------------------------------------
+# Er entscheidet die einzige offene Frage aus Build 215: ein Rechteck-
+# Flip kopiert ein Fuenftel der Bytes, aber in Zeilen von 1080 statt
+# 7680 Byte - und laut Abschnitt H sind kleine Kopien je Byte auf dem
+# DE10-Nano bis zum 37-fachen teurer. Dass der Aufschlag je Stueck in C
+# verschwindet, ist eine Behauptung, bis dieses Geraet sie bestaetigt.
+check("der Abschnitt steht im Bericht",
+      " I  Kurze Zeilen gegen lange" in text)
+check("und ist nicht abgebrochen", "ABSCHNITT I ABGEBROCHEN" not in text,
+      [z for z in text.splitlines() if "ABSCHNITT I" in z][:1])
+check("die Bench-Nummer ist wieder mitgewachsen", B.BENCH_VERSION >= 3,
+      "sonst sehen zwei unvergleichbare Berichte gleich aus")
+
+_zeilen_i = []
+_fe_i = H.make_frontend(page=0)
+for _i in range(0, len(_fe_i.fb.buf), 997):
+    _fe_i.fb.buf[_i] = (_i // 997) % 256
+
+
+class _BI(object):
+    def __call__(self, t=""):
+        _zeilen_i.append(t)
+
+    def posten(self, name, ms, best=None, zusatz=""):
+        _zeilen_i.append("%s %s" % (name, ms))
+
+
+_gefroren = fm.time.monotonic
+fm.time.monotonic = _ECHTE_UHR
+try:
+    _BE._abschnitt_i(_BI(), _fe_i, A)
+finally:
+    fm.time.monotonic = _gefroren
+_txt_i = "\n".join(_zeilen_i)
+
+check("nach dem Abschnitt zeigt der Schirm genau den Puffer",
+      bytes(_fe_i.fb.mm) == bytes(_fe_i.fb.buf),
+      "sonst stehen Reste der Messung auf dem Bild")
+check("er vergleicht DENSELBEN Umfang anders geschnitten",
+      "langen Zeilen" in _txt_i and "kurzen Zeilen" in _txt_i)
+check("und nennt das Verhaeltnis, nicht nur zwei Zahlen",
+      "kurz/lang" in _txt_i,
+      "das Verhaeltnis IST die Antwort")
+check("alle drei Wege stehen nebeneinander",
+      "Python naiv" in _txt_i and "Python memoryview" in _txt_i
+      and "C rechtecke_kopieren" in _txt_i,
+      "ohne den naiven Weg fehlt der Bezug zu Build 206")
+check("er misst auch die ECHTEN Formen eines Schritts",
+      "Band (Build 133)" in _txt_i and "Rechtecke, C" in _txt_i,
+      "sonst steht da ein Verhaeltnis ohne Millisekunden")
+check("und rechnet je MB", "ms je MB" in _txt_i)
+check("es kommt ein klares Urteil heraus",
+      "ERGEBNIS" in _txt_i and ("lohnt" in _txt_i or "AUSSAGE" in _txt_i),
+      _txt_i[-200:])
+
+# OHNE libdragend darf er KEIN Urteil faellen - dann laeuft der
+# Rechteck-Flip in Python, und dort entscheidet der Aufschlag je Stueck.
+_alt_lib = A._LIB
+try:
+    A._LIB = None
+    _zeilen_i[:] = []
+    _fe_i2 = H.make_frontend(page=0)
+    fm.time.monotonic = _ECHTE_UHR
+    try:
+        _BE._abschnitt_i(_BI(), _fe_i2, A)
+    finally:
+        fm.time.monotonic = _gefroren
+    _txt_ohne = "\n".join(_zeilen_i)
+    check("ohne C sagt er KEINE AUSSAGE", "KEINE AUSSAGE" in _txt_ohne,
+          "sonst urteilt er ueber einen Weg, der so nicht laeuft")
+    check("und nennt den Grund", "libdragend" in _txt_ohne)
+finally:
+    A._LIB = _alt_lib
+
+# Und er muss - wie H - ohne Bildspeicher einfach durchlaufen.
+_zeilen_i[:] = []
+_BE._abschnitt_i(_BI(), _OhneFB(), A)
+check("ohne Bildspeicher ueberspringt er sich selbst",
+      "uebersprungen" in "\n".join(_zeilen_i))
+
+# Die Schalterdatei, die aus dem Urteil folgen kann, muss es geben.
+check("der Weg zurueck ist ein touch, kein Update",
+      "rechteck_flip_aus" in _q,
+      "der Abschnitt nennt sie im Urteil - dann muss sie auch wirken")
+import fe.settings as _S15                               # noqa: E402
+
+check("und die Einstellung kennt sie",
+      hasattr(_S15, "RECHTECK_FLIP_AUS_FLAG")
+      and hasattr(_S15, "rechteck_flip_enabled"))
 
 # ---------------------------------------------------------------------------
 print()

@@ -47,12 +47,12 @@ import tempfile
 import time
 import zlib
 
-# 2 ab Build 214: seither gibt es Abschnitt H. Die Nummer steht im Kopf
+# 3 ab Build 215 (Abschnitt I), 2 ab Build 214 (Abschnitt H). Die Nummer steht im Kopf
 # jedes Berichts, damit zwei Berichte vergleichbar SIND und nicht nur so
 # aussehen - wer eine 1 und eine 2 nebeneinanderlegt, sieht sofort, dass
 # in der einen ein Abschnitt fehlt. Die Abschnitte A bis G haben sich
 # dabei nicht geaendert, ihre Zahlen bleiben also vergleichbar.
-BENCH_VERSION = 2
+BENCH_VERSION = 3
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -1441,6 +1441,206 @@ def _menge(n):
         return "%d kB" % (n // 1024)
     return "%d B" % n
 
+
+def _abschnitt_i(b, fe, A):
+    """Kurze Zeilen gegen lange: was kostet der Rechteck-Flip wirklich?
+
+    DIE FRAGE, DIE DIESER ABSCHNITT ENTSCHEIDET, und sie ist die einzige
+    offene aus Build 215. Ein Rechteck-Flip kopiert weniger Bytes, aber
+    in kuerzeren Stuecken: eine Rasterkachel ist 270 Punkte breit, das
+    sind 1080 Byte je Zeile, ein Band hat 7680. Abschnitt H hat gezeigt,
+    dass kleine Kopien je Byte dramatisch teurer sind (auf dem DE10-Nano
+    59,79 ms/MB bei 1 kB gegen 1,68 bei 1 MB, Faktor 37). Damit ist die
+    Frage nicht mehr, ob weniger Bytes schneller sind - sondern ob der
+    Aufschlag je STUECK aus dem Weg ist.
+
+    Er ist es nur, wenn die Schleife in C laeuft. Genau das messen die
+    zwei Teile hier:
+
+      1. DERSELBE BYTE-UMFANG, einmal in langen und einmal in kurzen
+         Zeilen - und zwar je dreimal: naiv in Python, ueber memoryview,
+         und ueber rechtecke_kopieren() in C. Das Verhaeltnis "kurz zu
+         lang" IST die Antwort. Steht es in C bei etwa eins, ist der
+         Rechteck-Flip so schnell wie er aussieht; steht es bei fuenf,
+         ist er ein Verlust, und dann gehoert die Schalterdatei
+         rechteck_flip_aus auf die Karte.
+
+      2. DIE ECHTEN FORMEN eines Scrollschritts, damit nicht nur ein
+         Verhaeltnis dasteht, sondern die Millisekunden, die der Nutzer
+         erlebt: das Band aus Build 133 (888 Zeilen voll) gegen die
+         Rechtecke aus Build 215 (zwei Kacheln, Namenszeile, Fusszeile).
+
+    Geschrieben wird - wie in Abschnitt H - ausschliesslich der Inhalt
+    des EIGENEN Puffers an dieselbe Stelle, also genau das, was ein
+    Flip auch schreibt. Der Abschnitt kann das Bild deshalb nicht
+    beschaedigen; am Ende steht trotzdem ein voller flip(), damit der
+    Bildwaechter seinen Sollwert wiederhat."""
+    b("")
+    b("-" * 62)
+    b(" I  Kurze Zeilen gegen lange: der Rechteck-Flip (Build 215)")
+    b("-" * 62)
+    fb = getattr(fe, "fb", None)
+    if fb is None or not hasattr(fb, "mm") or not hasattr(fb, "buf"):
+        b("   -- kein Bildspeicher, uebersprungen")
+        return
+    stride = int(getattr(fb, "stride", 0) or 0)
+    breite = int(getattr(fb, "width", 0) or 0)
+    hoehe = int(getattr(fb, "height", 0) or 0)
+    if stride <= 0 or breite <= 0 or hoehe <= 0:
+        b("   -- Bildspeicher ohne Masse, uebersprungen")
+        return
+    kop = getattr(A, "rechtecke_kopieren", None) if A is not None else None
+    hat_c = bool(kop) and getattr(A, "_LIB", None) is not None
+    b("   Bild       : %dx%d, %d Byte je Zeile" % (breite, hoehe, stride))
+    b("   C-Kopierer : %s" % ("rechtecke_kopieren aus libdragend"
+                              if hat_c else "NICHT da - nur Python"))
+    mvm = memoryview(fb.mm)
+    mvb = memoryview(fb.buf)
+
+    def python_naiv(rechtecke):
+        for (x, y, w, h) in rechtecke:
+            n = w * 4
+            off = y * stride + x * 4
+            for _ in range(h):
+                fb.mm[off:off + n] = fb.buf[off:off + n]
+                off += stride
+
+    def python_mv(rechtecke):
+        for (x, y, w, h) in rechtecke:
+            n = w * 4
+            off = y * stride + x * 4
+            for _ in range(h):
+                mvm[off:off + n] = mvb[off:off + n]
+                off += stride
+
+    def ueber_c(rechtecke):
+        kop(fb.buf, fb.mm, stride, hoehe, fb.size, rechtecke)
+
+    def bytes_von(rechtecke):
+        return sum(w * 4 * h for (_x, _y, w, h) in rechtecke)
+
+    # ------------------------------------------------------------------
+    # 1. Derselbe Umfang, lange gegen kurze Zeilen.
+    # ------------------------------------------------------------------
+    # Ziel: rund ein MB, und zwar GENAU gleich viel in beiden Faellen -
+    # sonst vergleicht man zwei Sachen auf einmal. Die kurze Fassung ist
+    # ein Siebtel breit und bekommt dafuer siebenmal so viele Zeilen,
+    # verteilt auf sieben Rechtecke nebeneinander.
+    # EIN Siebtel breit, dafuer siebenmal so viele Zeilen - derselbe
+    # Byte-Umfang, nur anders geschnitten. Die Zeilenzahl der langen
+    # Fassung wird so gewaehlt, dass die kurze noch ins Bild passt
+    # (hoehe // 7), und zusaetzlich auf rund ein MB begrenzt.
+    #
+    # WARUM NUR EIN Rechteck und nicht sieben nebeneinander: sieben
+    # Rechtecke waeren siebenmal der Umfang, und dann verglichen wir
+    # zwei Dinge auf einmal. Was hier gemessen werden soll, ist allein
+    # die ZEILENLAENGE.
+    teiler = 7
+    schmal = max(1, breite // teiler)
+    zeilen_lang = max(1, min(hoehe // teiler, 1048576 // stride))
+    zeilen_kurz = min(hoehe, zeilen_lang * teiler)
+    lang = [(0, 0, breite, zeilen_lang)]
+    kurz = [(0, 0, schmal, zeilen_kurz)]
+    b("")
+    b("   1) einmal %d Byte in %d langen Zeilen a %d Byte,"
+      % (bytes_von(lang), zeilen_lang, breite * 4))
+    b("      einmal %d Byte in %d kurzen Zeilen a %d Byte"
+      % (bytes_von(kurz), zeilen_kurz, schmal * 4))
+    if bytes_von(lang) > 0:
+        _abw = 100.0 * abs(bytes_von(kurz) - bytes_von(lang)) / bytes_von(lang)
+        if _abw > 5.0:
+            b("      (Umfang weicht um %.0f %% ab - das Verhaeltnis unten"
+              % _abw)
+            b("       ist entsprechend zu lesen)")
+    b("   %-20s %10s %10s %10s" % ("", "lang ms", "kurz ms", "kurz/lang"))
+    ergebnis = {}
+    wege = [("Python naiv", python_naiv), ("Python memoryview", python_mv)]
+    if hat_c:
+        wege.append(("C rechtecke_kopieren", ueber_c))
+    for name, fn in wege:
+        ms_l, _bl = messen(lambda _f=fn: _f(lang), WDH_TEUER)
+        ms_k, _bk = messen(lambda _f=fn: _f(kurz), WDH_TEUER)
+        ergebnis[name] = (ms_l, ms_k)
+        b("   %-20s %10.2f %10.2f %10s"
+          % (name, ms_l, ms_k,
+             ("%.1fx" % (ms_k / ms_l)) if ms_l > 0 else "-"))
+
+    # ------------------------------------------------------------------
+    # 2. Die echten Formen eines Scrollschritts.
+    # ------------------------------------------------------------------
+    # Die Masse sind die gemessenen aus Build 215, auf diese Bildhoehe
+    # umgerechnet: eine Kachel ist 270x361 auf 1080p (plus 3*Skala Rand
+    # fuer die Markierung), die Namenszeile 11 und die Fusszeile 8
+    # Textzeilen hoch.
+    f = hoehe / 1080.0
+    kb = max(1, min(breite // 2, int(288 * (breite / 1920.0))))
+    kh = max(1, min(hoehe, int(379 * f)))
+    nz = max(1, int(33 * f))
+    fz = max(1, int(24 * f))
+    band = [(0, 0, breite, min(hoehe, max(1, int(888 * f))))]
+    rechte = []
+    for i in range(2):
+        x = min(breite - kb, i * (kb + 8))
+        rechte.append((max(0, x), 0, kb, kh))
+    rechte.append((0, min(hoehe - nz, int(880 * f)), breite, nz))
+    rechte.append((0, max(0, hoehe - fz), breite, fz))
+    b("")
+    b("   2) ein echter Scrollschritt, beide Wege")
+    b("   %-24s %9s %9s %9s" % ("", "MB", "ms", "ms je MB"))
+    for name, rechtecke, wie in (
+            ("Band (Build 133)", band, python_mv),
+            ("Rechtecke, Python", rechte, python_mv),
+            ("Rechtecke, C", rechte, ueber_c if hat_c else None)):
+        if wie is None:
+            continue
+        n = bytes_von(rechtecke)
+        mb = n / 1048576.0
+        ms, _best = messen(lambda _f=wie, _r=rechtecke: _f(_r), WDH_TEUER)
+        b("   %-24s %9.2f %9.2f %9.2f"
+          % (name, mb, ms, (ms / mb) if mb > 0 else 0.0))
+
+    # ------------------------------------------------------------------
+    # 3. Das Urteil - und nur, wenn es eines gibt.
+    # ------------------------------------------------------------------
+    b("")
+    if not hat_c:
+        b("   ERGEBNIS   : KEINE AUSSAGE - ohne libdragend laeuft der")
+        b("                Rechteck-Flip in Python, und dort entscheidet")
+        b("                der Aufschlag je Stueck. Dieses Geraet kann die")
+        b("                Frage also nicht beantworten.")
+    else:
+        ms_l, ms_k = ergebnis.get("C rechtecke_kopieren", (0.0, 0.0))
+        if ms_l <= 0:
+            b("   ERGEBNIS   : NICHT MESSBAR - die lange Fassung kam auf")
+            b("                0 ms heraus. Das ist eine stehende oder zu")
+            b("                grobe Uhr, kein Befund.")
+        else:
+            verh = ms_k / ms_l
+            b("   ERGEBNIS   : kurze Zeilen kosten in C das %.1f-fache"
+              % verh)
+            # Die Schwelle: der Rechteck-Weg kopiert beim Schritt nach
+            # oben/unten 1,19 gegen 6,50 MB, also ein Fuenftel. Bis zu
+            # einem Aufschlag von fuenf bleibt er also vorn.
+            if verh < 3.0:
+                b("                -> der Rechteck-Flip lohnt klar, er")
+                b("                   kopiert ein Fuenftel der Bytes.")
+            elif verh < 5.0:
+                b("                -> er lohnt noch, aber knapp. Die")
+                b("                   Zahlen aus Teil 2 sind hier die")
+                b("                   Entscheidung, nicht dieses")
+                b("                   Verhaeltnis.")
+            else:
+                b("                -> ER LOHNT NICHT. Dann gehoert")
+                b("                   /media/fat/frontend/rechteck_flip_aus")
+                b("                   angelegt, und Build 215 war ein")
+                b("                   Irrtum. Kein Update noetig.")
+    try:
+        fb.flip()
+        if hasattr(fb, "vsync_ms_und_zuruecksetzen"):
+            fb.vsync_ms_und_zuruecksetzen()
+    except Exception:                                    # noqa: BLE001
+        pass
+
 def lauf(fe, fm, A, S, startdauer=None, log=None):
     """Den kompletten Bench fahren und den Bericht als Text
     zurueckgeben. Bekommt alles, was er braucht, uebergeben - dieses
@@ -1479,6 +1679,10 @@ def lauf(fe, fm, A, S, startdauer=None, log=None):
         _abschnitt_h(b, fe)
     except Exception as e:                               # noqa: BLE001
         b("   ABSCHNITT H ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
+    try:
+        _abschnitt_i(b, fe, A)
+    except Exception as e:                               # noqa: BLE001
+        b("   ABSCHNITT I ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
     b("")
     b("=" * 62)
     b("Ende. Nichts auf der Karte wurde veraendert.")

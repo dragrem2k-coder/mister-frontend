@@ -98,6 +98,17 @@ def cover(pfad, w, h, nr):
 for i, t in enumerate(TITEL):
     cover(os.path.join(BASIS, "SNES", t + ".art"), 400, 533, i)
 
+# NEU (Build 215): Test 6 sieht am echten Zeichenweg nach, was bei
+# flip_rows() ankommt - also am BANDWEG. Den gibt es weiterhin (er ist
+# der Rueckfall des Rechteck-Flips), und die Grenze gilt fuer beide
+# Wege gleich. Damit hier Baender gemessen werden, ist der Rechteck-Flip
+# fuer diese Datei aus; dass die Grenze auch auf dem Rechteck-Weg
+# greift, prueft tools/test_rechteck_flip.py (Test 6b).
+_AUS215 = os.path.join(TMP, "rechteck_flip_aus")
+open(_AUS215, "w").close()
+S.RECHTECK_FLIP_AUS_FLAG = _AUS215
+H._zwischenspeicher_leeren()
+
 fm.ART_BASE = A.ART_BASE = BASIS
 fm.ART_HD = A.ART_HD = BASIS
 A._art_index_cache.clear()

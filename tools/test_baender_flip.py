@@ -32,6 +32,7 @@ Sorte Fehler, die es in diesem Projekt schon viermal gab (Build 80, 122,
 Ausfuehren:
     python3 tools/test_baender_flip.py
 """
+import io
 import os
 import shutil
 import struct
@@ -76,6 +77,24 @@ def cover(pfad, w, h, nr):
 
 for i, t in enumerate(TITEL):
     cover(os.path.join(BASIS, "SNES", t + ".art"), 400, 533, i)
+
+# NEU (Build 215): diese Datei prueft den BANDWEG aus Build 133, und
+# den gibt es weiterhin - er ist seit Build 215 der Rueckfall, wenn der
+# Rechteck-Flip aus ist (Schalterdatei) oder nicht greifen kann. Damit
+# hier wirklich Baender gemessen werden und nicht Rechtecke, wird der
+# Schalter fuer die ganze Datei umgelegt.
+#
+# BEWUSST SO und nicht "den Test auf Rechtecke umschreiben": der Bandweg
+# ist der Weg, auf dem ein Geraet ohne libdragend und jeder Nutzer mit
+# abgeschaltetem Rechteck-Flip laeuft. Bliebe er ungetestet, waere er
+# genau die Sorte Pfad, die drei Builds spaeter still kaputt ist. Der
+# Rechteck-Weg hat seinen eigenen Test: tools/test_rechteck_flip.py.
+import fe.settings as _S215                              # noqa: E402
+
+_AUS215 = os.path.join(TMP, "rechteck_flip_aus")
+io.open(_AUS215, "w").close()
+_S215.RECHTECK_FLIP_AUS_FLAG = _AUS215
+H._zwischenspeicher_leeren()
 
 fm.ART_BASE = A.ART_BASE = BASIS
 fm.ART_HD = A.ART_HD = BASIS

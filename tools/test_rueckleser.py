@@ -111,10 +111,12 @@ check("und keine Proben", FB._rueck_proben is None)
 quelle = io.open(os.path.join(_REPO, "frontend", "fe", "framebuffer.py"),
                  encoding="utf-8").read()
 check("flip() prueft nur, wenn Proben da sind",
-      quelle.count("if self._rueck_proben is not None:") == 4,
-      "je einmal vor und nach dem Vollbild, einmal nach dem Band - und "
-      "seit Build 198 einmal in der Reparatur des Bildwaechters, die "
-      "ebenfalls alles schreibt und die Proben deshalb auffrischen muss")
+      quelle.count("if self._rueck_proben is not None:") == 6,
+      "je einmal vor und nach dem Vollbild, einmal nach dem Band, seit "
+      "Build 198 einmal in der Reparatur des Bildwaechters (die ebenfalls "
+      "alles schreibt), und seit Build 215 zweimal in flip_rechtecke() - "
+      "dort aus denselben zwei Gruenden wie im Band: die Reparatur und "
+      "das Auffrischen der Proben nach dem Schreiben")
 check("die Schalterdatei wird nur beim Start gelesen",
       quelle.count('flip_rueckleser") as f') == 1,
       "eine Kartenabfrage je Bild war schon einmal ein Fehler")
