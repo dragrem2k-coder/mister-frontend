@@ -96,7 +96,7 @@ print("Test 2: C und Python schreiben BITGENAU dasselbe")
 # ---------------------------------------------------------------------------
 # Die Schwelle wird dafuer auf 1 gestellt - sonst prueft der Vergleich
 # bei kleinen Formen zweimal den Python-Weg.
-_alt_mz = fm.Framebuffer.FLAECHEN_C_MIN_ZEILEN
+_alt_mz = fm.Framebuffer.FLAECHEN_C_MIN_PUNKTE
 rng = random.Random(219)
 FORMEN = [(0, 0, 1920, 1080), (0, 0, 1, 1), (1919, 1079, 1, 1),
           (0, 0, 1920, 1), (0, 0, 1, 1080), (1900, 1000, 100, 200),
@@ -108,7 +108,7 @@ for _ in range(25):
 FARBEN = [(0, 0, 0), (255, 255, 255), (1, 2, 3), (255, 0, 0), (0, 255, 0),
           (0, 0, 255), (17, 34, 51)]
 try:
-    fm.Framebuffer.FLAECHEN_C_MIN_ZEILEN = 1
+    fm.Framebuffer.FLAECHEN_C_MIN_PUNKTE = 1
     abw = 0
     for (x, y, w, h) in FORMEN:
         rgb = FARBEN[(x + y + w + h) % len(FARBEN)]
@@ -160,19 +160,68 @@ try:
                       % (name, w, h, versatz, radius, d))
     check("auch die abgerundeten Fassungen und die Karte", abw == 0,
           "%d Faelle weichen ab" % abw)
+
+    # UND DER GEBUENDELTE RAHMEN (Build 220): ein rect_viele()-Aufruf
+    # muss Byte fuer Byte dasselbe hinterlassen wie die einzelnen
+    # rect()-Aufrufe, die dort vorher standen - auch dann, wenn die
+    # Balken sich an den Ecken UEBERLAPPEN und wenn sie ueber den
+    # Bildrand hinausragen.
+    RAHMEN = [
+        # Kachelrahmen der Rasteransicht (ueberlappende Ecken)
+        ((10, 10, 288, 9), (10, 362, 288, 9), (10, 10, 9, 361),
+         (289, 10, 9, 361)),
+        # Platzhalterrahmen der Boxart-Spalte, sehr schmal und hoch
+        ((100, 50, 697, 3), (100, 818, 697, 3), (100, 50, 3, 771),
+         (794, 50, 3, 771)),
+        # halb ausserhalb des Bildes, und ein leeres Rechteck dabei
+        ((-20, -20, 200, 40), (1850, 1040, 200, 200), (0, 0, 0, 50),
+         (500, 500, 50, 0)),
+        # nur ein einziger Balken
+        ((30, 30, 4, 900),),
+    ]
+    abw = 0
+    for i, rahmen in enumerate(RAHMEN):
+        rgb = FARBEN[i % len(FARBEN)]
+        fb.buf[:] = bytearray(len(fb.buf))
+        fb.rect_viele(rahmen, rgb)
+        mit = bytes(fb.buf)
+        fb.buf[:] = bytearray(len(fb.buf))
+        for (x, y, w, h) in rahmen:
+            fb.rect(x, y, w, h, rgb)
+        einzeln = bytes(fb.buf)
+        fb.flaechen_fueller = None
+        fb.buf[:] = bytearray(len(fb.buf))
+        fb.rect_viele(rahmen, rgb)
+        ohne = bytes(fb.buf)
+        del fb.flaechen_fueller
+        if not (mit == einzeln == ohne):
+            abw += 1
+            print("       Rahmen %d: C=%s wie einzeln=%s wie Python=%s"
+                  % (i, len(mit), len(einzeln), len(ohne)))
+    check("rect_viele schreibt dasselbe wie einzelne rect()-Aufrufe, "
+          "in C UND in Python", abw == 0, "%d Rahmen weichen ab" % abw)
 finally:
-    fm.Framebuffer.FLAECHEN_C_MIN_ZEILEN = _alt_mz
+    fm.Framebuffer.FLAECHEN_C_MIN_PUNKTE = _alt_mz
 
 # ---------------------------------------------------------------------------
 print()
 print("Test 3: die Schwelle wirkt in BEIDE Richtungen")
 # ---------------------------------------------------------------------------
-# Ohne sie waere jede kleine Flaeche langsamer als vorher - gemessen das
-# Dreifache bei 60x40. Eine Optimierung, die den haeufigen Fall
-# verschlechtert, ist keine.
-mz = fm.Framebuffer.FLAECHEN_C_MIN_ZEILEN
-check("die Schwelle ist gesetzt und plausibel", 16 <= mz <= 1024,
-      "%r" % mz)
+# Ohne sie waere jede kleine Flaeche langsamer als vorher: 60x40 kostet
+# in C 0,015 ms gegen 0,013 in Python - der Sprung selbst schlaegt dort
+# schon durch. Eine Optimierung, die den haeufigen Fall verschlechtert,
+# ist keine.
+#
+# UND DIE SCHWELLE ZAEHLT PUNKTE, NICHT ZEILEN, und das ist der Fund aus
+# Build 220: 700x32 hat nur 32 Zeilen und lohnt trotzdem (1,3x), 60x40
+# hat mehr Zeilen und lohnt nicht (0,8x). Die Zeilenzahl war das falsche
+# Mass.
+mz = fm.Framebuffer.FLAECHEN_C_MIN_PUNKTE
+mzz = fm.Framebuffer.FLAECHEN_C_MIN_ZEILEN
+check("die Flaechenschwelle ist gesetzt und plausibel",
+      1024 <= mz <= 262144, "%r" % mz)
+check("die Zeilenschwelle ist gesetzt und plausibel",
+      8 <= mzz <= 128, "%r" % mzz)
 gezaehlt = [0]
 _echt = fb.flaechen_fueller
 
@@ -184,18 +233,67 @@ def _haken(*a, **k):
 
 fb.flaechen_fueller = _haken
 try:
+    # ERSTE SCHWELLE: die FLAECHE. Breit und flach zaehlt hier, und
+    # genau diesen Fall haette eine Schwelle in Zeilen verpasst
+    # (700x32 lohnt 1,3x).
+    breit = max(1, -(-mz // (mzz - 1)))   # aufrunden, nicht ab
     gezaehlt[0] = 0
-    fb.rect(0, 0, 100, mz - 1, (1, 2, 3))
-    check("eine Zeile unter der Schwelle geht NICHT nach C",
-          gezaehlt[0] == 0, "%d Aufrufe" % gezaehlt[0])
+    fb.rect(0, 0, breit, mzz - 1, (1, 2, 3))
+    check("breit und flach, genau auf der Flaechenschwelle: nach C",
+          gezaehlt[0] == 1,
+          "%d Aufrufe bei %dx%d = %d Punkten"
+          % (gezaehlt[0], breit, mzz - 1, breit * (mzz - 1)))
     gezaehlt[0] = 0
-    fb.rect(0, 0, 100, mz, (1, 2, 3))
-    check("genau auf der Schwelle schon", gezaehlt[0] == 1,
+    fb.rect(0, 0, breit // 4, mzz - 1, (1, 2, 3))
+    check("dieselbe Hoehe, ein Viertel der Flaeche: bleibt in Python",
+          gezaehlt[0] == 0,
+          "%d Aufrufe bei %dx%d" % (gezaehlt[0], breit // 4, mzz - 1))
+    # ZWEITE SCHWELLE: die ZEILEN. Ein 3x771-Balken hat nur 2314 Punkte
+    # und kostet Python trotzdem 771 Zuweisungen - das ist der Fund aus
+    # Build 220, und eine Schwelle allein in Punkten hat ihn verpasst.
+    gezaehlt[0] = 0
+    fb.rect(0, 0, 3, mzz, (1, 2, 3))
+    check("schmal und hoch, genau auf der Zeilenschwelle: nach C",
+          gezaehlt[0] == 1,
+          "%d Aufrufe bei 3x%d = %d Punkten - weit unter der "
+          "Flaechenschwelle" % (gezaehlt[0], mzz, 3 * mzz))
+    gezaehlt[0] = 0
+    fb.rect(0, 0, 3, mzz - 1, (1, 2, 3))
+    check("eine Zeile darunter bleibt es in Python", gezaehlt[0] == 0,
           "%d Aufrufe" % gezaehlt[0])
+    gezaehlt[0] = 0
+    fb.rect(0, 0, 697, 3, (1, 2, 3))
+    check("wenige Zeilen UND kleine Flaeche (697x3) bleibt in Python",
+          gezaehlt[0] == 0,
+          "%d Aufrufe - in C gemessen 0,3x, also dreimal langsamer"
+          % gezaehlt[0])
     gezaehlt[0] = 0
     fb.rect(0, 0, 100, 1000, (1, 2, 3), scanlines=True)
     check("mit Scanlines bleibt es in Python", gezaehlt[0] == 0,
           "dort wechselt die Farbe je Zeile")
+    # Und die gebuendelten Eckenzeilen (Build 220): EIN Aufruf fuer die
+    # ganze Rundung, nicht einer je Zeile.
+    gezaehlt[0] = 0
+    fb.rect_rounded(10, 10, 769, 945, (40, 60, 80), 96)
+    check("die Rundung geht als EIN Bund nach C, plus der Mittelteil",
+          gezaehlt[0] == 2,
+          "%d Aufrufe - erwartet: Ecken gebuendelt und die Mitte"
+          % gezaehlt[0])
+    # UND DER RAHMEN (Build 220): vier Balken, von denen einzeln KEINER
+    # die Schwelle erreicht - zusammen schon. Das ist der ganze Sinn von
+    # rect_viele(), und der Kachelrahmen der Rasteransicht sieht genau so
+    # aus.
+    gezaehlt[0] = 0
+    fb.rect_viele(((10, 10, 288, 9), (10, 362, 288, 9),
+                   (10, 10, 9, 361), (289, 10, 9, 361)), (1, 2, 3))
+    check("ein Rahmen aus vier Balken geht als EIN Aufruf nach C",
+          gezaehlt[0] == 1,
+          "%d Aufrufe - einzeln erreicht keiner der vier die Schwelle"
+          % gezaehlt[0])
+    gezaehlt[0] = 0
+    fb.rect_viele(((10, 10, 40, 4), (10, 20, 40, 4)), (1, 2, 3))
+    check("zwei winzige Balken bleiben zusammen in Python",
+          gezaehlt[0] == 0, "%d Aufrufe" % gezaehlt[0])
 finally:
     del fb.flaechen_fueller
 

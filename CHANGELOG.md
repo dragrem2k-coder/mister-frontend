@@ -170,6 +170,39 @@ steht hier kein doppelt gebautes Feature.
   „Faktor 2,9" aus dem letzten Bericht war dadurch zustande gekommen, dass
   auf der einen Seite ein Vollbild-Flip und die Hausarbeit mitgezählt wurden.
 
+**Die Rahmen — der Posten, den die Flächenschwelle übersehen hat.**
+
+- Ein Mitschnitt *eines* Scrollschritts zeigte, welche Flächen nach Build 219
+  noch in Python liefen, und es waren fast nur **Rahmen**: die Markierung um
+  die Kachel, der Platzhalter „kein Artwork". Ein solcher Balken ist
+  3 Punkte breit und 771 hoch — winzige Fläche, und trotzdem 771 Zuweisungen.
+  Genau das hatte eine Schwelle in *Flächen* übersehen, so wie die vorige in
+  *Zeilen* die breiten flachen Flächen übersehen hatte.
+- Jetzt **zwei Schwellen mit ODER**: viele Zeilen lohnen, viel Fläche lohnt,
+  wenig von beidem bleibt in Python. Und ein Rahmen geht als **ein** Aufruf
+  weg statt als vier. Gemessen: 3×771 ist 14× schneller, ein Kachelrahmen
+  14×, der Platzhalterrahmen 22×.
+- Gezählt statt geschätzt — Python-Zeilen je Scrollschritt auf 1080p:
+
+  | | vorher | jetzt |
+  |---|---|---|
+  | Spieleliste | 1557 | **9** |
+  | Kachelansicht | 740 | **0** |
+  | Galerie | 1415 | **9** |
+
+  Auf dem Gerät kostet eine solche Zeile rund 0,009 ms; die Rechnung sagt
+  also gut 13 ms je Schritt in der Liste und 12 in der Galerie. Was davon
+  ankommt, sagt der Bench — nicht ich.
+- **Die Eckenrundung besteht aus zwei Stufen, nicht aus zweihundert Zeilen.**
+  Beim Nachmessen fiel auf, dass die Einzugstabelle einer Rundung nur zwei
+  verschiedene Werte hat: die 192 Eckenzeilen der Boxart-Karte sind in
+  Wahrheit vier Rechtecke. Senkrecht aneinandergrenzende Zeilen gleicher
+  Breite werden jetzt zusammengefasst, bevor sie nach C gehen — das Aufbauen
+  der Liste war danach teurer als das Zeichnen selbst.
+- Ein leichter Scrollschritt auf dem Entwicklungsrechner: **Liste 1,4–1,9×,
+  Galerie 1,2–1,5×** schneller; die Kachelansicht liegt hier im Rauschen,
+  hat aber als einzige gar keine Python-Zeile mehr übrig.
+
 ---
 
 ## v4.7 — der Login-Prompt, große Kacheln, und was Messungen widerlegt haben

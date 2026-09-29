@@ -7298,11 +7298,17 @@ class Frontend:
         Ein Rahmen kann das nicht passieren, und er malt nebenbei nur
         einen Bruchteil der Punkte."""
         d = 3 * s
-        fb = self.fb
-        fb.rect(x - d, y - d, w + 2 * d, d, farbe)
-        fb.rect(x - d, y + h, w + 2 * d, d, farbe)
-        fb.rect(x - d, y, d, h, farbe)
-        fb.rect(x + w, y, d, h, farbe)
+        # EIN Aufruf fuer alle vier Balken (Build 220). Einzeln waren sie
+        # zu klein fuer den Sprung nach C und blieben in Python: bei
+        # einer HDMI-Kachel 740 Bildzeilen je Schritt, auf dem Geraet
+        # rund 6,5 ms - fuer einen Rahmen. Zusammen sind sie gross
+        # genug; gemessen 0,199 ms gegen 0,014 ms. Es ist EINE Farbe,
+        # die Reihenfolge ist also gleichgueltig, und der Rueckfall
+        # zeichnet genau dieselben vier Rechtecke.
+        self.fb.rect_viele(((x - d, y - d, w + 2 * d, d),
+                            (x - d, y + h, w + 2 * d, d),
+                            (x - d, y, d, h),
+                            (x + w, y, d, h)), farbe)
 
     def _kachel_feld(self, geo, platz):
         """Der Bildschirmbereich EINER Kachel (Position im Raster, 0 ==
@@ -11194,10 +11200,16 @@ class Frontend:
         sind es vier schmale Balken."""
         fb = self.fb
         rahmen = max(1, s)
-        fb.rect(x0, cy, avail_w, rahmen, C_ACCENT2)
-        fb.rect(x0, cy + cover_h - rahmen, avail_w, rahmen, C_ACCENT2)
-        fb.rect(x0, cy, rahmen, cover_h, C_ACCENT2)
-        fb.rect(x0 + avail_w - rahmen, cy, rahmen, cover_h, C_ACCENT2)
+        # Die vier Balken in EINEM Aufruf (Build 220) - siehe
+        # _kachel_rahmen(). Die beiden senkrechten sind auf HDMI 3x771:
+        # 771 Python-Zuweisungen von je zwoelf Byte, der teuerste Fall
+        # ueberhaupt. Gemessen 0,404 ms gegen 0,018 ms (22x), und die
+        # Liste zeichnet diesen Rahmen bei jedem Eintrag ohne Cover neu.
+        fb.rect_viele(((x0, cy, avail_w, rahmen),
+                       (x0, cy + cover_h - rahmen, avail_w, rahmen),
+                       (x0, cy, rahmen, cover_h),
+                       (x0 + avail_w - rahmen, cy, rahmen, cover_h)),
+                      C_ACCENT2)
         # Mittig statt links angeschlagen - im leeren Rahmen wirkt
         # linksbuendiger Text wie ein Rest.
         for zeile, versatz in ((t("no_artwork_1"), -4 * s),

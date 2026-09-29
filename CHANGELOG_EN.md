@@ -163,6 +163,39 @@ exactly why nothing here was built twice.
   the last report came from counting a full-screen flip and the housekeeping
   on one side only.
 
+**The frames — the item the area threshold missed.**
+
+- A recording of *one* scroll step showed which areas still ran in Python
+  after build 219, and they were almost all **frames**: the marker around a
+  tile, the "no artwork" placeholder. Such a bar is 3 points wide and 771
+  tall — a tiny area, and still 771 assignments. That is exactly what a
+  threshold in *area* missed, just as the previous one in *rows* had missed
+  wide flat areas.
+- Now **two thresholds with OR**: many rows pay off, much area pays off, a
+  little of both stays in Python. And a frame goes off as **one** call
+  instead of four. Measured: 3×771 is 14× faster, a tile frame 14×, the
+  placeholder frame 22×.
+- Counted, not guessed — Python rows per scroll step at 1080p:
+
+  | | before | now |
+  |---|---|---|
+  | Game list | 1557 | **9** |
+  | Tile view | 740 | **0** |
+  | Gallery | 1415 | **9** |
+
+  On the device such a row costs about 0.009 ms, so the arithmetic says a
+  good 13 ms per step in the list and 12 in the gallery. What actually
+  arrives is for the bench to say, not me.
+- **A rounded corner consists of two steps, not two hundred rows.** While
+  measuring it turned out that the indent table of a rounding has only two
+  distinct values: the 192 corner rows of the box-art card are really four
+  rectangles. Vertically adjacent rows of equal width are now merged before
+  they go into C — building that list had become more expensive than the
+  drawing itself.
+- One light scroll step on the development machine: **list 1.4–1.9×, gallery
+  1.2–1.5×** faster; the tile view is within the noise here, but is the only
+  one left with no Python row at all.
+
 ---
 
 ## v4.7 — the login prompt, large tiles, and what measurements disproved

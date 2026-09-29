@@ -362,16 +362,34 @@ int rechtecke_farben(unsigned char *dst, int stride, int hoehe, int grenze,
         if (y1 <= y0) continue;
         off = y0 * stride + x * 4;
         erste = dst + off;
-        /* Die oberste Zeile setzen. Ueber memcpy je Punkt und nicht
-         * ueber einen uint32-Zeiger: der Bildspeicher ist zwar
-         * ausgerichtet, aber das haengt an stride und x - und ein
-         * unausgerichteter Zugriff ist auf ARM nicht ueberall
-         * harmlos. memcpy von vier Byte uebersetzt der Compiler
-         * ohnehin in einen einzelnen Speicherzugriff, wenn er die
-         * Ausrichtung kennt. */
-        for (j = 0; j < w; j++) {
-            memcpy(erste + j * 4, &farbe, 4);
+        /* DIE OBERSTE ZEILE, UND DIE IST DER HEIKLE TEIL (Build 220).
+         *
+         * Hier stand zuerst eine Schleife, die den Farbwert Punkt fuer
+         * Punkt schrieb - bei 700 Punkten also 700 Aufrufe von memcpy
+         * mit vier Byte. Das ist fuer ein hohes Rechteck gleichgueltig
+         * (danach folgen 899 grosse Kopien), aber seit Build 220 kommen
+         * die ECKENZEILEN der abgerundeten Kaesten gebuendelt hier an -
+         * und das sind rund 200 Rechtecke von je EINER Zeile. Dann
+         * besteht die ganze Arbeit aus diesen Vier-Byte-Schreibvorgaengen,
+         * und die Python-Fassung war mit ihrer fertig gecachten Zeile
+         * schneller.
+         *
+         * Jetzt wird verdoppelt: vier Byte setzen, dann das Gesetzte
+         * hinter sich selbst kopieren, und das immer weiter. Aus 700
+         * Aufrufen werden zehn, und der letzte kopiert nur den Rest.
+         * Ueber memcpy und nicht ueber einen uint32-Zeiger, weil die
+         * Ausrichtung an stride und x haengt und ein unausgerichteter
+         * Zugriff auf ARM nicht ueberall harmlos ist. */
+        memcpy(erste, &farbe, 4);
+        {
+            int gesetzt = 1;                 /* in Punkten */
+            while (gesetzt < w) {
+                int n = (gesetzt <= w - gesetzt) ? gesetzt : (w - gesetzt);
+                memcpy(erste + gesetzt * 4, erste, (size_t)n * 4);
+                gesetzt += n;
+            }
         }
+        (void)j;
         /* Und der Rest als Kopie davon. */
         off += stride;
         for (r = y0 + 1; r < y1; r++) {

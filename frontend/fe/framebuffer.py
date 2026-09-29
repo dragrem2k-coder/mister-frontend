@@ -1250,6 +1250,19 @@ class Framebuffer:
         w = min(w, self.width - x); h = min(h, self.height - y)
         if w <= 0 or h <= 0:
             return
+        # ERST DER WEG NACH C, DANN DER ZEILENPUFFER - in dieser
+        # Reihenfolge, und das ist Absicht (Build 220). Vorher stand der
+        # Zwischenspeicher fuer die Musterzeile darueber, und der Weg
+        # nach C baute sich eine Zeile, die er nie anfasst: bei der
+        # Boxart-Karte 700 Punkte, also 2800 Byte je Aufruf fuer nichts.
+        if self._nach_c(w, h, scanlines):
+            try:
+                if self.flaechen_fueller(
+                        self.buf, self.stride, self.height, len(self.buf),
+                        ((x, y, w, h, self._farbwert(self.px(rgb))),)):
+                    return
+            except Exception:                            # noqa: BLE001
+                pass         # Meldung steht in fe/art.py, hier der Weg
         # WICHTIG (Bugfix): _rectcache cacht nach (Farbe, EXAKTER Breite)
         # - bei leicht wechselnden Breiten (z.B. je nach Cover-
         # Seitenverhaeltnis, Glow-Ring-Position, Info-Textlaenge) sammelt
@@ -1322,15 +1335,6 @@ class Framebuffer:
         # scanlines bleibt ebenfalls in Python - dort wechselt die Farbe
         # je Zeile, und der Fall kommt nur bei reinen
         # Hintergrundflaechen vor.
-        fueller = self.flaechen_fueller
-        if (fueller is not None and not scanlines
-                and h >= self.FLAECHEN_C_MIN_ZEILEN):
-            try:
-                if fueller(buf, stride, self.height, len(buf),
-                           ((x, y, w, h, self._farbwert(self.px(rgb))),)):
-                    return
-            except Exception:                            # noqa: BLE001
-                pass         # Meldung steht in fe/art.py, hier der Weg
         if scanlines:
             for yy in range(y, y + h):
                 buf[off:off + need] = row_dark if (yy % 2) else row
@@ -1339,6 +1343,86 @@ class Framebuffer:
             for _ in range(h):
                 buf[off:off + need] = row
                 off += stride
+
+    @staticmethod
+    def _zeilen_buendeln(zeilen):
+        """Senkrecht aneinandergrenzende Zeilen gleicher Startspalte und
+        Breite zu EINEM Rechteck zusammenfassen (Build 220).
+
+        DER FUND, DER DAZU GEFUEHRT HAT: die Einzugstabelle einer
+        Eckenrundung besteht aus genau ZWEI Stufen (siehe
+        _rounded_indents) - die 192 Eckenzeilen der Boxart-Karte sind
+        also in Wahrheit vier Rechtecke. Vorher wanderten sie als 192
+        Einzeleintraege in das ctypes-Feld, und dessen Aufbau war danach
+        der groesste Posten des Aufrufs (gemessen 53 von 60
+        Mikrosekunden). Auch wenn die Rundung eines Tages eine echte
+        Rundung wird, bleibt die Zusammenfassung richtig: eine Rundung
+        hat immer Plateaus.
+
+        Die Reihenfolge der Ausgabe kann von der Eingabe abweichen. Das
+        ist zulaessig und wird ausgenutzt, weil sich die Zeilen einer
+        Rundung nicht ueberlappen - geprueft in tools/test_flaechen_in_c.py
+        (bitgenauer Vergleich mit dem Python-Weg)."""
+        offen = {}
+        fertig = []
+        for (zx, zy, zw, zh) in zeilen:
+            schluessel = (zx, zw)
+            stelle = offen.get(schluessel)
+            if stelle is not None:
+                (fx, fy, fw, fh) = fertig[stelle]
+                if fy + fh == zy:
+                    fertig[stelle] = (fx, fy, fw, fh + zh)
+                    continue
+            offen[schluessel] = len(fertig)
+            fertig.append((zx, zy, zw, zh))
+        return fertig
+
+    def rect_viele(self, rechtecke, rgb):
+        """MEHRERE Flaechen EINER Farbe in EINEM Aufruf (Build 220).
+
+        Gedacht fuer Rahmen: vier Balken, die zusammen einen Rand bilden.
+        Bisher waren das vier rect()-Aufrufe, und jeder einzelne war zu
+        klein fuer den Sprung nach C - zusammen sind sie es nicht. Der
+        Kachelrahmen in der Rasteransicht (288x361, 9 breit) kostet als
+        vier Python-Schleifen 0,199 ms und als ein C-Aufruf 0,014 ms, der
+        Platzhalterrahmen der Boxart-Spalte (697x771, 3 breit) 0,404
+        gegen 0,018 ms. Auf dem Geraet sind das je Scrollschritt rund
+        1550 Zeilen in der Liste und 1415 in der Galerie, also je Schritt
+        gut 13 ms.
+
+        `rechtecke` ist eine Folge von (x, y, w, h). Ueberlappen sie
+        sich, ist das gleichgueltig - es ist EINE Farbe. Das Ergebnis ist
+        bitgenau dasselbe wie einzelne rect()-Aufrufe in derselben
+        Reihenfolge, und genau so prueft es tools/test_flaechen_in_c.py.
+        """
+        fertig = []
+        zeilen = 0
+        punkte = 0
+        for (x, y, w, h) in rechtecke:
+            # DIESELBE Beschneidung wie rect() - sonst waere das Ergebnis
+            # an den Bildschirmraendern ein anderes, und genau dort
+            # zeichnet ein Rahmen.
+            x = max(0, x); y = max(0, y)
+            w = min(w, self.width - x); h = min(h, self.height - y)
+            if w <= 0 or h <= 0:
+                continue
+            fertig.append((x, y, w, h))
+            zeilen += h
+            punkte += w * h
+        if not fertig:
+            return
+        if self._nach_c_viele(zeilen, punkte):
+            farbe = self._farbwert(self.px(rgb))
+            try:
+                if self.flaechen_fueller(
+                        self.buf, self.stride, self.height, len(self.buf),
+                        tuple((x, y, w, h, farbe)
+                              for (x, y, w, h) in fertig)):
+                    return
+            except Exception:                            # noqa: BLE001
+                pass
+        for (x, y, w, h) in fertig:
+            self.rect(x, y, w, h, rgb)
 
     def _rounded_indents(self, radius):
         """Einzug je Randzeile fuer eine Eckenrundung dieses Radius -
@@ -1453,8 +1537,7 @@ class Framebuffer:
         # vorgefertigte Doppelzeile darunter: dieselben Bytes an
         # dieselben Stellen, nur ohne eine Python-Zuweisung je Bildzeile.
         fueller = self.flaechen_fueller
-        if (fueller is not None
-                and band[1] - band[0] >= self.FLAECHEN_C_MIN_ZEILEN):
+        if self._nach_c(w + versatz, band[1] - band[0]):
             try:
                 if fueller(buf, stride, self.height, len(buf),
                            ((x, band[0], w, band[1] - band[0],
@@ -1538,14 +1621,22 @@ class Framebuffer:
 
         stride, buf, breite = self.stride, self.buf, self.width
 
+        # NEU (Build 220): gesammelt statt sofort geschrieben, und am
+        # Ende EIN Aufruf nach C - dieselbe Ueberlegung wie bei den Ecken
+        # in rect_rounded(). Bei der Boxart-Karte ist der Radius 96, also
+        # laufen hier rund 200 Zeilen durch; auf dem Geraet kostet jede
+        # als Python-Zuweisung rund 0,009 ms.
+        #
+        # Die Reihenfolge bleibt erhalten, und die Zeilen ueberlappen
+        # sich nicht - das Ergebnis ist deshalb bitgenau dasselbe.
+        _gesammelt = []
+
         def zeile(zy, a, b):
             a = max(a, 0)
             b = min(b, breite)
             if b <= a:
                 return
-            n = b - a
-            o = zy * stride + a * 4
-            buf[o:o + n * 4] = self._zeilenband(rgb, n)
+            _gesammelt.append((a, zy, b - a, 1))
 
         # SCHNELLER WEG fuer den Normalfall: solange beide Kaesten
         # unbeschnitten und gleich geformt sind, ist in jeder Zeile, in
@@ -1571,9 +1662,28 @@ class Framebuffer:
             else:
                 gerade_von, gerade_bis = None, None
 
-        for j in range(sh):
-            if gerade_von is not None and gerade_von <= j < gerade_bis:
-                continue
+        # NEU (Build 220): nur ueber die Zeilen laufen, die ueberhaupt
+        # etwas zu tun haben.
+        #
+        # Hier stand "for j in range(sh)" mit einem continue fuer den
+        # geraden Mittelteil - bei der Boxart-Karte also 945 Durchlaeufe,
+        # von denen rund 750 sofort wieder aussteigen. Die Schleife ist
+        # damit fast vollstaendig Leerlauf, und auf dem Geraet kostet
+        # jeder Durchlauf trotzdem seinen Python-Rahmen (Aufruf von
+        # einzug(), zwei Vergleiche, ein continue).
+        #
+        # Gemessen auf dem Entwicklungsrechner war die Karte mit allen
+        # Flaechen in C GENAUSO teuer wie ganz in Python (1,14 gegen
+        # 1,13 ms) - ihre Kosten liegen also nicht im Schreiben, sondern
+        # in dieser Schleife. Jetzt werden die beiden Enden einzeln
+        # durchlaufen; welche Zeilen dabei herauskommen, ist bitgenau
+        # dieselbe Menge (das continue tat nichts anderes).
+        if gerade_von is not None:
+            _bereich = list(range(0, gerade_von)) + list(range(gerade_bis,
+                                                              sh))
+        else:
+            _bereich = range(sh)
+        for j in _bereich:
             zy = sy + j
             if zy < 0 or zy >= self.height:
                 continue
@@ -1590,6 +1700,30 @@ class Framebuffer:
             cx, _cy, cw = karte[0], karte[1], karte[2]
             zeile(zy, s0, min(s1, cx + ce))
             zeile(zy, max(s0, cx + cw - ce), s1)
+
+        # Und jetzt alles auf einmal. Der Rueckfall schreibt genau das,
+        # was zeile() vorher direkt geschrieben hat.
+        if _gesammelt:
+            _gesammelt = self._zeilen_buendeln(_gesammelt)
+            fueller = self.flaechen_fueller
+            erledigt = False
+            if self._nach_c_viele(sum(z[3] for z in _gesammelt),
+                                  sum(z[2] * z[3] for z in _gesammelt)):
+                _f = self._farbwert(self.px(rgb))
+                try:
+                    erledigt = bool(fueller(
+                        buf, stride, self.height, len(buf),
+                        tuple((zx, zy_, zw, zh, _f)
+                              for (zx, zy_, zw, zh) in _gesammelt)))
+                except Exception:                        # noqa: BLE001
+                    erledigt = False
+            if not erledigt:
+                for (zx, zy_, zw, zh) in _gesammelt:
+                    band = self._zeilenband(rgb, zw)
+                    o = zy_ * stride + zx * 4
+                    for _ in range(zh):
+                        buf[o:o + zw * 4] = band
+                        o += stride
 
     def rect_rounded(self, x, y, w, h, rgb, radius=None, ohne=None):
         """Wie rect(), aber mit abgerundeten Ecken. radius in Pixeln
@@ -1643,24 +1777,57 @@ class Framebuffer:
             def _ausgespart(zy):
                 return _oa <= zy < _ob
 
+        # NEU (Build 219, erweitert in Build 220): die Eckenzeilen als EIN
+        # Bund nach C, statt eine Python-Zuweisung je Zeile.
+        #
+        # WARUM DAS NACHGEZOGEN WERDEN MUSSTE: Build 219 hat den
+        # MITTELTEIL nach C geholt (er laeuft ueber rect()), die Ecken
+        # blieben in Python. Das ist bei einem kleinen Radius auch
+        # richtig - bei der Boxart-Karte ist der Radius aber
+        # min(w,h)//8 = 96, und dann sind es 192 Zeilen je Aufruf, in
+        # der Liste zweimal (Schatten und Karte). Gemessen auf dem
+        # Geraet kostet eine solche Zeile rund 0,009 ms, das sind also
+        # gut drei Millisekunden je Schritt fuer die Rundung allein.
+        #
+        # Gesammelt wird in derselben Reihenfolge, in der die Schleife
+        # sonst schreibt - das Ergebnis ist bitgenau dasselbe, denn die
+        # Zeilen ueberlappen sich nicht.
+        ecken = []
         for i, indent in enumerate(indents):
             rw = w - 2 * indent
             if rw <= 0:
                 continue
-            row_key = (rgb, rw)
-            row = self._rectcache.get(row_key)
-            if row is None:
-                row = self.px(rgb) * rw
-                self._rectcache[row_key] = row
             yy_top = y + i
             yy_bot = y + h - 1 - i
             if 0 <= yy_top < self.height and not _ausgespart(yy_top):
-                off = yy_top * self.stride + (x + indent) * 4
-                self.buf[off:off + rw * 4] = row
+                ecken.append((x + indent, yy_top, rw, 1))
             if (yy_bot != yy_top and 0 <= yy_bot < self.height
                     and not _ausgespart(yy_bot)):
-                off = yy_bot * self.stride + (x + indent) * 4
-                self.buf[off:off + rw * 4] = row
+                ecken.append((x + indent, yy_bot, rw, 1))
+        ecken = self._zeilen_buendeln(ecken)
+        fueller = self.flaechen_fueller
+        erledigt = False
+        if ecken and self._nach_c_viele(sum(e[3] for e in ecken),
+                                        sum(e[2] * e[3] for e in ecken)):
+            _f = self._farbwert(self.px(rgb))
+            try:
+                erledigt = bool(fueller(
+                    self.buf, self.stride, self.height, len(self.buf),
+                    tuple((ex, ey, ew, eh, _f)
+                          for (ex, ey, ew, eh) in ecken)))
+            except Exception:                            # noqa: BLE001
+                erledigt = False
+        if not erledigt:
+            for (ex, ey, ew, eh) in ecken:
+                row_key = (rgb, ew)
+                row = self._rectcache.get(row_key)
+                if row is None:
+                    row = self.px(rgb) * ew
+                    self._rectcache[row_key] = row
+                off = ey * self.stride + ex * 4
+                for _ in range(eh):
+                    self.buf[off:off + ew * 4] = row
+                    off += self.stride
         mid_top = y + radius
         mid_h = h - 2 * radius
         if mid_h > 0:
@@ -2087,32 +2254,81 @@ class Framebuffer:
     # gleichzeitig das Vergleichsmass der Tests.
     flaechen_fueller = None
 
-    # AB WIE VIELEN ZEILEN SICH DER SPRUNG NACH C LOHNT - und diese Zahl
-    # ist gemessen, nicht geschaetzt (Abschnitt I, Teil 3 des Benchs).
+    # WANN DER SPRUNG NACH C SICH LOHNT - und das sind ZWEI Fragen, nicht
+    # eine. Beide Zahlen sind gemessen (Abschnitt I Teil 3 des Benchs und
+    # die Messreihe unten), und der Weg dorthin ging ueber zwei Irrtuemer.
     #
-    # Der Aufruf selbst kostet etwas: die Rechtecke muessen in ein
-    # ctypes-Feld, und der Uebergang ist nicht gratis. Auf dem
-    # Entwicklungsrechner sind das rund 0,06 ms, und damit sieht die
-    # Rechnung so aus:
+    # DER AUFRUF SELBST KOSTET: die Rechtecke muessen in ein ctypes-Feld,
+    # und der Uebergang ist nicht gratis - auf dem Entwicklungsrechner
+    # rund 0,007 ms. Dagegen steht die Arbeit, die Python haette: EINE
+    # Zuweisung je Bildzeile, jede so breit wie das Rechteck.
     #
-    #     700x900   Python 0,523 ms   C 0,266 ms   ->  2,0x  schneller
-    #     400x300   Python 0,108 ms   C 0,140 ms   ->  0,8x  LANGSAMER
-    #      60x40    Python 0,020 ms   C 0,077 ms   ->  0,3x  viel langsamer
+    # ERSTER IRRTUM (Build 219): die Schwelle stand in ZEILEN (256).
     #
-    # Der Grundaufwand entscheidet also, nicht die Flaeche: gespart wird
-    # eine Python-Zuweisung JE ZEILE, und unter etwa hundert Zeilen ist
-    # die Summe davon kleiner als der eine Sprung. Deshalb steht die
-    # Schwelle in ZEILEN und nicht in Bytes.
+    #     700x900   Python 0,396 ms   C 0,226 ms   ->  1,8x
+    #     400x300   Python 0,075 ms   C 0,027 ms   ->  2,8x
+    #     700x32    Python 0,010 ms   C 0,007 ms   ->  1,4x
+    #      60x40    Python 0,006 ms   C 0,062 ms   ->  0,1x
     #
-    # 256 ist bewusst mit Abstand gewaehlt. Die teuren Flaechen sind die
-    # grossen Karten - Boxart-Spalte 900 Zeilen, Listenspalte 880,
-    # Textspalte der Galerie 495, Rasterkachel 361 -, und die liegen alle
-    # klar darueber. Die vielen kleinen (Rahmen, Equalizer-Balken,
-    # Markierungen) liegen klar darunter und bleiben in Python, wo sie
-    # schneller sind. Auf dem Geraet liegt der Umschlagpunkt tiefer (die
-    # Zeile kostet dort rund 0,009 ms statt 0,0006), 256 ist dort also
-    # erst recht richtig.
-    FLAECHEN_C_MIN_ZEILEN = 256
+    # 700x32 hat NUR 32 Zeilen und lohnt trotzdem, 60x40 hat mehr Zeilen
+    # und lohnt nicht. Also nicht die Zeilenzahl, sondern die FLAECHE.
+    #
+    # ZWEITER IRRTUM (Build 220): eine Schwelle in Punkten ALLEIN ist
+    # genauso falsch, nur andersherum. Der Mitschnitt eines leichten
+    # Scrollschritts zeigte, welche Flaechen im Python-Weg uebrig
+    # geblieben sind - und es sind fast nur RAHMEN:
+    #
+    #       3x771   Python 0,195 ms   C 0,014 ms   -> 14,5x   (2314 Punkte)
+    #       9x361   Python 0,092 ms   C 0,017 ms   ->  5,6x
+    #       4x128   Python 0,032 ms   C 0,008 ms   ->  4,1x
+    #      60x40    Python 0,011 ms   C 0,008 ms   ->  1,4x
+    #      16x32    Python 0,009 ms   C 0,007 ms   ->  1,2x
+    #     288x9     Python 0,004 ms   C 0,008 ms   ->  0,6x   LANGSAMER
+    #     697x3     Python 0,002 ms   C 0,007 ms   ->  0,3x   LANGSAMER
+    #       4x16    Python 0,005 ms   C 0,007 ms   ->  0,7x   LANGSAMER
+    #
+    # Ein 3x771-Balken hat nur 2314 Punkte und lag damit klar unter der
+    # Flaechenschwelle - er kostet Python aber 771 Zuweisungen von je
+    # zwoelf Byte, und das ist der teuerste Fall, den es gibt: fast nur
+    # Grundaufwand je Zeile, fast keine Nutzlast. Die Liste zeichnet zwei
+    # davon je Schritt.
+    #
+    # DAHER ZWEI SCHWELLEN, UND OR DAZWISCHEN: viele ZEILEN lohnen (der
+    # Grundaufwand je Zeile faellt weg), UND viel FLAECHE lohnt (die
+    # Nutzlast wandert in memcpy). Nur wenig von beidem bleibt in Python.
+    # Der Umschlagpunkt in Zeilen liegt hier bei 24 bis 32; 32 ist die
+    # vorsichtige Wahl. Auf dem Geraet liegt er TIEFER - eine Zuweisung
+    # kostet dort rund 0,0088 ms statt 0,0006 -, dort laesst die Schwelle
+    # also etwas liegen, und das ist der bewusste Preis dafuer, dass sie
+    # auf dem Entwicklungsrechner nichts verschlechtert.
+    #
+    # WICHTIG FUER DIE GEBUENDELTEN AUFRUFE: fuer die Eckenzeilen der
+    # abgerundeten Kaesten und fuer rect_viele() zaehlt die SUMME - bei
+    # einem Kachelrahmen aus vier Balken also 740 Zeilen in EINEM Aufruf
+    # statt vier Schleifen (gemessen 0,199 ms gegen 0,014 ms, 14x).
+    FLAECHEN_C_MIN_PUNKTE = 16384
+    FLAECHEN_C_MIN_ZEILEN = 32
+
+    def _nach_c(self, w, h, scanlines=False):
+        """Geht eine Flaeche dieser Groesse nach C? Eine Stelle fuer die
+        Entscheidung, damit rect(), die Rundungen, die Karte und
+        rect_viele() nicht vier leicht verschiedene Bedingungen haben -
+        genau so sind in Build 219 die Ecken durchs Raster gefallen.
+
+        scanlines bleibt immer in Python: dort wechselt die Farbe je
+        Zeile, und der Fall kommt nur bei Hintergrundflaechen vor."""
+        if scanlines:
+            return False
+        return self._nach_c_viele(h, w * h)
+
+    def _nach_c_viele(self, zeilen, punkte):
+        """Dieselbe Frage fuer einen BUND aus mehreren Rechtecken: dann
+        zaehlen die Summe der Zeilen und die Summe der Flaechen, denn
+        bezahlt wird der EINE Aufruf."""
+        if self.flaechen_fueller is None:
+            return False
+        return (zeilen >= self.FLAECHEN_C_MIN_ZEILEN
+                or punkte >= self.FLAECHEN_C_MIN_PUNKTE)
 
     @staticmethod
     def _farbwert(pixel):

@@ -53,7 +53,7 @@ import zlib
 # aussehen - wer eine 1 und eine 2 nebeneinanderlegt, sieht sofort, dass
 # in der einen ein Abschnitt fehlt. Die Abschnitte A bis G haben sich
 # dabei nicht geaendert, ihre Zahlen bleiben also vergleichbar.
-BENCH_VERSION = 4
+BENCH_VERSION = 5
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -1734,12 +1734,19 @@ def _abschnitt_i(b, fe, A):
         b("         flaechen_c_aus), nichts zu vergleichen")
     else:
         _mz = getattr(fb, "FLAECHEN_C_MIN_ZEILEN", 0)
-        b("      C wird ab %d Zeilen benutzt - darunter ist der Sprung"
-          % _mz)
-        b("      teurer als die gesparten Zuweisungen (siehe dort).")
+        _mp = getattr(fb, "FLAECHEN_C_MIN_PUNKTE", 0)
+        b("      C wird ab %d Zeilen ODER ab %d Punkten benutzt -"
+          % (_mz, _mp))
+        b("      darunter ist der Sprung teurer als die gesparten")
+        b("      Zuweisungen. ZWEI Schwellen, weil es zwei Gruende gibt:")
+        b("      viele ZEILEN (der Aufwand je Zeile faellt weg) und viel")
+        b("      FLAECHE (die Nutzlast wandert in memcpy). Ein 3x771-")
+        b("      Balken hat nur 2314 Punkte und kostet Python trotzdem")
+        b("      771 Zuweisungen - das ist der Fund aus Build 220.")
         b("   %-24s %9s %9s %9s %s" % ("Flaeche", "Python ms", "C ms",
                                        "Faktor", "genutzt"))
-        for fw, fh in ((700, 900), (400, 300), (60, 40)):
+        for fw, fh in ((700, 900), (400, 300), (60, 40),
+                       (3, 771), (9, 361), (697, 3), (128, 128)):
             fw = min(fw, breite)
             fh = min(fh, hoehe)
             if fw <= 0 or fh <= 0:
@@ -1759,7 +1766,31 @@ def _abschnitt_i(b, fe, A):
             b("   %-24s %9.3f %9.3f %9s %s"
               % ("%dx%d" % (fw, fh), ms_py, ms_c,
                  ("%.1fx" % (ms_py / ms_c)) if ms_c > 0 else "-",
-                 "ja" if fh >= _mz else "nein"))
+                 "ja" if (fh >= _mz or fw * fh >= _mp) else "nein"))
+        # UND DER RAHMEN - vier Balken, von denen einzeln keiner die
+        # Schwelle erreicht. Genau so zeichnet die Rasteransicht die
+        # Markierung um die Kachel, und das ist der Posten, den Build
+        # 220 angegangen ist.
+        _rahmen = [(0, 0, min(288, breite), 9),
+                   (0, 352, min(288, breite), 9),
+                   (0, 0, 9, min(361, hoehe)),
+                   (min(279, breite - 9), 0, 9, min(361, hoehe))]
+        _rahmen = [r for r in _rahmen if r[2] > 0 and r[3] > 0]
+        if _rahmen and hasattr(fb, "rect_viele"):
+            _echt = fb.flaechen_fueller
+            try:
+                fb.flaechen_fueller = None
+                ms_py, _bp = messen(
+                    lambda: [fb.rect(*r, (7, 9, 11)) for r in _rahmen],
+                    WDH_TEUER)
+                fb.flaechen_fueller = _echt
+                ms_c, _bc = messen(
+                    lambda: fb.rect_viele(_rahmen, (7, 9, 11)), WDH_TEUER)
+            finally:
+                fb.flaechen_fueller = _echt
+            b("   %-24s %9.3f %9.3f %9s %s"
+              % ("Rahmen aus 4 Balken", ms_py, ms_c,
+                 ("%.1fx" % (ms_py / ms_c)) if ms_c > 0 else "-", "ja"))
         b("      (Gefuellt wird in den PUFFER, nicht auf den Schirm -")
         b("       auf dem Bild landet davon nichts.)")
 
@@ -1881,7 +1912,8 @@ def _abschnitt_j(b, fe, S, A, fm):
             konto[p + "_ms"] = 0.0
             konto[p + "_n"] = 0.0
         for k in ("restore_zeilen", "blit_zeilen", "flip_bytes",
-                  "text_zeichen", "text_in_beschr_ms", "in_beschr"):
+                  "text_zeichen", "text_in_beschr_ms", "in_beschr",
+                  "in_karte", "karten_innen"):
             konto[k] = 0.0
 
     def h_restore(self, x, y, w, h):
@@ -1950,10 +1982,26 @@ def _abschnitt_j(b, fe, S, A, fm):
     # KARTEN UND RAHMEN: abgerundete Rechtecke, Schatten, Flaechen. Auf
     # dem Geraet sind das Python-Schleifen ueber Bildzeilen, genau wie
     # restore - nur ohne Vorlage.
+    #
+    # UND DIESE VIER RUFEN SICH GEGENSEITIG: karte_mit_schatten() ruft
+    # rect_rounded_schatten() und rect_rounded(), und die rufen rect().
+    # Ohne Zaehler stand dieselbe Zeit deshalb bis zu dreimal in
+    # "karten" - der Posten war zu gross und der REST um denselben
+    # Betrag zu klein, also genau dort falsch, wo ich als naechstes
+    # suche. Gezaehlt wird nur der AEUSSERSTE Aufruf; die inneren
+    # stecken in seiner Zeit schon drin. Dieselbe Bauweise wie bei
+    # h_beschr() und "text".
     def _h_karte(echt):
         def haken(*a, **k):
+            if konto["in_karte"]:
+                konto["karten_innen"] += 1
+                return echt(*a, **k)
             t0 = time.monotonic()
-            r = echt(*a, **k)
+            konto["in_karte"] += 1
+            try:
+                r = echt(*a, **k)
+            finally:
+                konto["in_karte"] -= 1
             konto["karten_ms"] += time.monotonic() - t0
             konto["karten_n"] += 1
             return r
@@ -2144,10 +2192,12 @@ def _abschnitt_j(b, fe, S, A, fm):
                      konto["blit_zeilen"] / schritte,
                      konto["flip_n"] / schritte,
                      konto["flip_bytes"] / schritte / 1048576.0))
-                b("              text %d/%dZeichen  karten %d  beschr %d"
+                b("              text %d/%dZeichen  karten %d(+%d innen)"
+                  "  beschr %d"
                   % (konto["text_n"] / schritte,
                      konto["text_zeichen"] / schritte,
                      konto["karten_n"] / schritte,
+                     konto["karten_innen"] / schritte,
                      konto["beschr_n"] / schritte))
     finally:
         K._restore_row_bg = echt_restore

@@ -990,18 +990,37 @@ EINE Stelle, `fb.rect()`, und die erwischt fast alles: die abgerundeten
 Fassungen zeichnen nur ihre Eckenzeilen selbst und lassen den Mittelteil
 von dort fuellen - bei der Boxart-Karte 876 von 900 Zeilen.
 
-**Test 3 ist der eigentliche Punkt.** Der Sprung nach C kostet selbst
-etwas, gemessen auf dem Entwicklungsrechner:
+**Test 3 ist der eigentliche Punkt**, und er hat zwei Irrtuemer
+ueberlebt. Der Sprung nach C kostet selbst etwas, also gilt er erst ab
+einer Schwelle - und die richtige Schwelle zu finden hat zwei Anlaeufe
+gebraucht:
 
-    700x900   Python 0,523 ms   C 0,266 ms   ->  2,0x schneller
-    400x300   Python 0,108 ms   C 0,140 ms   ->  0,8x LANGSAMER
-     60x40    Python 0,020 ms   C 0,077 ms   ->  0,3x viel langsamer
+    Build 219, Schwelle in ZEILEN (256):
+        700x32    Python 0,010 ms   C 0,007 ms   ->  1,4x   verpasst!
+         60x40    Python 0,006 ms   C 0,062 ms   ->  0,1x
 
-Gespart wird eine Zuweisung je ZEILE - unter etwa hundert Zeilen ist die
-Summe davon kleiner als der eine Sprung. Deshalb steht die Schwelle in
-ZEILEN (`FLAECHEN_C_MIN_ZEILEN`, 256), und deshalb prueft der Test sie in
-BEIDE Richtungen: eine Zeile darunter darf NICHT nach C gehen. Eine
-Optimierung, die den haeufigen Fall verschlechtert, ist keine.
+    Build 220, Schwelle in PUNKTEN (16384) - und was sie verpasst:
+          3x771   Python 0,195 ms   C 0,014 ms   -> 14,5x   verpasst!
+          9x361   Python 0,092 ms   C 0,017 ms   ->  5,6x
+        288x9     Python 0,004 ms   C 0,008 ms   ->  0,6x
+        697x3     Python 0,002 ms   C 0,007 ms   ->  0,3x
+
+Eine Zahl war fuer zwei Gruende zustaendig, und deshalb lag sie beide
+Male falsch. Gespart wird (a) eine Zuweisung JE ZEILE - dafuer zaehlt die
+Zeilenzahl - und (b) die Nutzlast, die in `memcpy` wandert - dafuer
+zaehlt die Flaeche. Ein 3x771-Balken hat 2314 Punkte und trotzdem 771
+Zuweisungen. Jetzt gilt `h >= FLAECHEN_C_MIN_ZEILEN` (32) ODER
+`w*h >= FLAECHEN_C_MIN_PUNKTE` (16384), und der Test prueft beide
+Schwellen in BEIDE Richtungen: eine Zeile bzw. einen Punkt darunter darf
+es NICHT nach C gehen. Eine Optimierung, die den haeufigen Fall
+verschlechtert, ist keine.
+
+**Und der Rahmen.** Vier Balken, von denen einzeln keiner die Schwelle
+erreicht - zusammen schon. `fb.rect_viele()` schickt sie in EINEM Aufruf
+weg (Kachelrahmen 0,199 -> 0,014 ms, Platzhalterrahmen 0,404 -> 0,018
+ms). Test 2 prueft, dass dabei Byte fuer Byte dasselbe herauskommt wie
+bei einzelnen `rect()`-Aufrufen, auch mit ueberlappenden Ecken, halb
+ausserhalb des Bildes und mit leeren Rechtecken dazwischen.
 
 **Test 4 entschaerft eine Falle, die es schon vorher gab.** Bis Build 218
 wurde jede libdragend verworfen, deren Version nicht GENAU passte. Ein
