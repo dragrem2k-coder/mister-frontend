@@ -1149,6 +1149,36 @@ def _hochskalieren(pix, w, h, scale):
     return _hochskalieren_py(pix, w, h, scale)
 
 
+# ADRESSEN, DIE SICH NICHT AENDERN - zwischengespeichert (Build 221).
+#
+# WARUM: der Bericht vom 29.09. zeigt in Abschnitt I/3, was EIN Sprung
+# nach C auf dem DE10-Nano kostet, wenn man die Arbeit wegrechnet: ein
+# 3x771-Balken braucht dort 1,142 ms, und gefuellt werden 2314 Punkte.
+# Der Sprung selbst ist also rund eine ganze Millisekunde, und ein
+# leichter Scrollschritt macht acht bis sechzehn davon.
+#
+# Auf dem Entwicklungsrechner besteht dieser Grundaufwand zu ueber der
+# Haelfte aus diesen zwei Zeilen: from_buffer() und cast() zusammen
+# 2,29 Mikrosekunden, mit Zwischenspeicher 0,15. Und es sind IMMER
+# dieselben Puffer - der Bildspeicher, die Hintergrundkopie, die mmap.
+#
+# DIE FALLE, DIE HIER UMGANGEN WIRD: ueber id() allein darf so ein
+# Zwischenspeicher nicht gehen. Wird ein bytearray freigegeben, kann ein
+# neues dieselbe id bekommen - und dann zeigt der gemerkte Zeiger auf
+# fremden Speicher, in den C dann schreibt. Deshalb haelt jeder Eintrag
+# eine echte Referenz auf den Puffer: solange er im Speicher steht, kann
+# seine id gar nicht neu vergeben werden. Geprueft wird zusaetzlich mit
+# "is".
+#
+# Der Preis dafuer: ein gemerkter Puffer bleibt am Leben und laesst sich
+# nicht in der Groesse aendern (BufferError). Beides ist hier
+# unschaedlich - es sind langlebige Puffer, und ihre Groesse haengt an
+# der Bildschirmaufloesung, die einen neuen Framebuffer baut. Die
+# Obergrenze raeumt den alten dann weg.
+_ZEIGER = {}
+_ZEIGER_MAX = 6
+
+
 def _roh_zeiger(puffer):
     """Adresse des Speichers hinter bytes oder bytearray - OHNE Kopie.
 
@@ -1159,9 +1189,17 @@ def _roh_zeiger(puffer):
     ist."""
     if isinstance(puffer, bytes):
         halter = _ctypes.c_char_p(puffer)
-    else:
-        halter = (_ctypes.c_char * len(puffer)).from_buffer(puffer)
-    return halter, _ctypes.cast(halter, _ctypes.c_void_p)
+        return halter, _ctypes.cast(halter, _ctypes.c_void_p)
+    schluessel = id(puffer)
+    eintrag = _ZEIGER.get(schluessel)
+    if eintrag is not None and eintrag[0] is puffer:
+        return eintrag[1], eintrag[2]
+    halter = (_ctypes.c_char * len(puffer)).from_buffer(puffer)
+    eintrag = (puffer, halter, _ctypes.cast(halter, _ctypes.c_void_p))
+    if len(_ZEIGER) >= _ZEIGER_MAX:
+        _ZEIGER.clear()
+    _ZEIGER[schluessel] = eintrag
+    return eintrag[1], eintrag[2]
 
 
 def rechtecke_kopieren(src, dst, stride, hoehe, grenze, spuren):
@@ -1197,6 +1235,10 @@ def rechtecke_kopieren(src, dst, stride, hoehe, grenze, spuren):
         return False
 
 
+_FELDER = {}
+_FELDER_MAX = 64
+
+
 def rechtecke_farben(dst, stride, hoehe, grenze, rechtecke):
     """Mehrere Rechtecke mit je EINER Farbe fuellen - der Rumpf von
     fb.rect() und der Karte mit Schatten in C.
@@ -1212,6 +1254,21 @@ def rechtecke_farben(dst, stride, hoehe, grenze, rechtecke):
         return False
     try:
         anzahl = len(rechtecke)
+        # DIESELBEN RECHTECKE WIE EBEN? Dann steht das ctypes-Feld schon
+        # fertig da (Build 221). Beim Scrollen ist das der Normalfall und
+        # nicht die Ausnahme: die Boxart-Karte, der Kachelrahmen und der
+        # Platzhalter liegen bei jedem Schritt an derselben Stelle, in
+        # derselben Farbe. Gebaut wird das Feld sonst mit einer
+        # Python-Schleife je Rechteck - bei einer echten Eckenrundung
+        # sind das rund 160 Stueck, auf dem Geraet also Millisekunden.
+        # C liest nur daraus, nie hinein; ein fertiges Feld
+        # wiederzuverwenden ist deshalb unbedenklich.
+        schluessel = tuple(rechtecke)
+        flach = _FELDER.get(schluessel)
+        if flach is not None:
+            _halt, zeiger = _roh_zeiger(dst)
+            return _LIB.rechtecke_farben(
+                zeiger, stride, hoehe, grenze, flach, anzahl) == 0
         flach = (_ctypes.c_int * (5 * anzahl))()
         i = 0
         for x, y, w, h, farbe in rechtecke:
@@ -1228,6 +1285,9 @@ def rechtecke_farben(dst, stride, hoehe, grenze, rechtecke):
             flach[i + 4] = (farbe - 0x100000000
                             if farbe >= 0x80000000 else farbe)
             i += 5
+        if len(_FELDER) >= _FELDER_MAX:
+            _FELDER.clear()
+        _FELDER[schluessel] = flach
         _halt, zeiger = _roh_zeiger(dst)
         return _LIB.rechtecke_farben(
             zeiger, stride, hoehe, grenze, flach, anzahl) == 0

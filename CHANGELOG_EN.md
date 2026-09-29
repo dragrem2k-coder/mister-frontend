@@ -196,6 +196,51 @@ exactly why nothing here was built twice.
   1.2–1.5×** faster; the tile view is within the noise here, but is the only
   one left with no Python row at all.
 
+**The real brake: on the device, a jump into C costs a millisecond.**
+
+- Both of these can be derived from the 29.09. report:
+
+      C      = 1.00 ms + 0.0000057 × points
+      Python = 0.25 ms + rows × (0.0080 + 0.000012 × width)
+
+  Checked against all seven measured shapes. The first number is the
+  important one: **one C call costs about a millisecond on the DE10-Nano**,
+  and 0.007 on the development machine. A scroll step makes eight to
+  fifteen of them — that adds up before anything is drawn.
+- **Addresses and ctypes arrays are now reused.** Before every call the
+  memory address was looked up again and the rectangle list written into a
+  fresh C array — although it is always the same buffers, and while
+  scrolling the same rectangles in the same places. Counted in the real
+  draw path: 8 (list), 11 (tiles), 15 (gallery) address lookups and 2–5
+  arrays per step, **all served from the cache, not a single miss**.
+- **The threshold from build 220 was too low**, and the report showed it in
+  black and white: `60x40 … 0.6x — used: yes`. An area that passed the
+  threshold and is slower in C. The numbers now come from the device (96
+  rows / 65536 points instead of 32/16384). That also keeps `853x21` in
+  Python — the **row marker of the list**, twice per step, which was losing
+  about 0.5 ms per call in C.
+- **New in section J: `cover`.** REST sits at 38–79 ms per step and is the
+  largest item everywhere. The cover lookup is now measured, including its
+  accesses to the card (`os.stat`, `open`) — section G had already shown an
+  `os.stat` costs 0.20 ms there. If REST stays large afterwards, the next
+  item is still missing, and finding it is *the* job.
+- None of this shows on the development machine (three runs: −3 % to
+  +21 %, i.e. noise) — a jump costs 0.007 ms there. **The prediction is in
+  the build and can be checked**: the `3x771` line in section I/3 is almost
+  pure overhead and must drop, and `60x40` must now read "used: no". If it
+  does not, the reasoning was wrong.
+
+**And the corners are really round now.**
+
+- The stop condition for the corner rounding had been inverted for a long
+  time: it could only produce "fully indented" or "not at all", never
+  anything in between. The cards therefore had **rectangular notches** cut
+  out of their corners. It only surfaced when build 220 merged the corner
+  rows — the table had just two steps.
+- **It costs nothing**: the box-art card takes 0.304 instead of 0.322 ms,
+  because the corner rows of a quarter circle are narrower on average than
+  those of the notch. They still go off in a single C call.
+
 ---
 
 ## v4.7 — the login prompt, large tiles, and what measurements disproved

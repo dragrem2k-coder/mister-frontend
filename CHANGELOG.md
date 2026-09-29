@@ -203,6 +203,55 @@ steht hier kein doppelt gebautes Feature.
   Galerie 1,2–1,5×** schneller; die Kachelansicht liegt hier im Rauschen,
   hat aber als einzige gar keine Python-Zeile mehr übrig.
 
+**Die eigentliche Bremse: der Sprung nach C kostet auf dem Gerät eine
+Millisekunde.**
+
+- Aus deinem Bericht vom 29.09. lässt sich beides ausrechnen:
+
+      C      = 1,00 ms + 0,0000057 × Punkte
+      Python = 0,25 ms + Zeilen × (0,0080 + 0,000012 × Breite)
+
+  Geprüft an allen sieben gemessenen Formen. Die erste Zahl ist die
+  wichtige: **ein C-Aufruf kostet auf dem DE10-Nano rund eine
+  Millisekunde**, auf dem Entwicklungsrechner 0,007. Ein Scrollschritt
+  macht acht bis fünfzehn davon — das läuft auf, bevor irgendetwas
+  gezeichnet ist.
+- **Adressen und ctypes-Felder werden jetzt wiederverwendet.** Vor jedem
+  Aufruf wurde die Speicheradresse neu ermittelt und die Rechteckliste neu
+  in ein C-Feld geschrieben — obwohl es immer dieselben Puffer sind und
+  beim Scrollen dieselben Rechtecke an derselben Stelle. Nachgezählt im
+  echten Zeichenpfad: 8 (Liste), 11 (Raster), 15 (Galerie) Adressabfragen
+  und 2–5 Felder je Schritt, **alle aus dem Zwischenspeicher, kein
+  einziger Fehltreffer**.
+- **Die Schwelle aus Build 220 war zu niedrig**, und dein Bericht hat es
+  schwarz auf weiß gezeigt: `60x40 … 0,6x — genutzt: ja`. Eine Fläche, die
+  durch die Schwelle kam und in C langsamer ist. Die Zahlen stammen jetzt
+  vom Gerät (96 Zeilen bzw. 65536 Punkte statt 32/16384). Damit bleibt
+  auch `853x21` in Python — das ist die **Zeilenmarkierung der Liste**,
+  zweimal je Schritt, und sie hat in C je Aufruf rund 0,5 ms verloren.
+- **Neu in Abschnitt J: `cover`.** Der REST liegt bei 38–79 ms je Schritt
+  und ist überall der größte Posten. Gemessen wird jetzt die Coversuche
+  samt Zugriffen auf die Karte (`os.stat`, `open`) — Abschnitt G hat
+  vorher schon gezeigt, dass ein `os.stat` dort 0,20 ms kostet. Bleibt der
+  REST danach groß, fehlt der nächste Posten, und dann ist *das* die
+  Aufgabe.
+- Auf dem Entwicklungsrechner ist von alldem nichts zu sehen (drei Läufe:
+  −3 % bis +21 %, also Rauschen) — dort kostet der Sprung eben 0,007 ms.
+  **Die Vorhersage steht im Build und ist prüfbar**: die Zeile `3x771` in
+  Abschnitt I/3 ist fast reiner Grundaufwand und muss fallen, `60x40` muss
+  „genutzt: nein" zeigen. Tut sie es nicht, war die Überlegung falsch.
+
+**Und die Ecken sind jetzt wirklich rund.**
+
+- Die Abbruchbedingung für die Eckenrundung war seit v1.x umgedreht: sie
+  konnte nur „ganz eingerückt" oder „gar nicht" ergeben, nie etwas
+  dazwischen. Die Karten hatten deshalb **rechteckig ausgeschnittene
+  Ecken**. Aufgefallen ist es erst, als Build 220 die Eckenzeilen
+  zusammenfasste — die Tabelle hatte nur zwei Stufen.
+- **Es kostet nichts**: die Boxart-Karte braucht 0,304 statt 0,322 ms, weil
+  die Eckenzeilen eines Viertelkreises im Mittel schmaler sind als die der
+  Kerbe. Sie gehen weiterhin in einem einzigen C-Aufruf weg.
+
 ---
 
 ## v4.7 — der Login-Prompt, große Kacheln, und was Messungen widerlegt haben

@@ -221,7 +221,7 @@ mzz = fm.Framebuffer.FLAECHEN_C_MIN_ZEILEN
 check("die Flaechenschwelle ist gesetzt und plausibel",
       1024 <= mz <= 262144, "%r" % mz)
 check("die Zeilenschwelle ist gesetzt und plausibel",
-      8 <= mzz <= 128, "%r" % mzz)
+      32 <= mzz <= 512, "%r" % mzz)
 gezaehlt = [0]
 _echt = fb.flaechen_fueller
 
@@ -267,6 +267,18 @@ try:
           gezaehlt[0] == 0,
           "%d Aufrufe - in C gemessen 0,3x, also dreimal langsamer"
           % gezaehlt[0])
+    # DIE ZWEI FORMEN, DIE DEM GERAET NICHT GEFALLEN HABEN (Build 221).
+    # Beide standen mit einer Schwelle aus PC-Messungen auf der
+    # C-Seite. 60x40 stand im Bericht vom 29.09. mit "0,6x - genutzt:
+    # ja", also schwarz auf weiss als Verschlechterung; 853x21 ist die
+    # Zeilenmarkierung der Liste, zweimal je Scrollschritt, und kam
+    # wegen ihrer 17919 Punkte durch.
+    for (pw, ph, warum) in ((60, 40, "im Bericht vom 29.09. mit 0,6x"),
+                            (853, 21, "die Zeilenmarkierung der Liste")):
+        gezaehlt[0] = 0
+        fb.rect(0, 0, pw, ph, (1, 2, 3))
+        check("%dx%d bleibt in Python" % (pw, ph), gezaehlt[0] == 0,
+              "%d Aufrufe - %s" % (gezaehlt[0], warum))
     gezaehlt[0] = 0
     fb.rect(0, 0, 100, 1000, (1, 2, 3), scanlines=True)
     check("mit Scanlines bleibt es in Python", gezaehlt[0] == 0,

@@ -860,7 +860,7 @@ check("die Bench-Nummer ist mitgewachsen", B.BENCH_VERSION >= 4)
 # Geprueft werden die POSTENNAMEN, nicht die Spaltenbreiten - sonst
 # faellt der Test bei jeder Formatierung um.
 for _posten in ("restore", "blit", "flip", "text", "karten", "beschr",
-                "haus", "REST"):
+                "haus", "cover", "REST"):
     check("Abschnitt J weist '%s' aus" % _posten, _posten in text)
 check("und nennt Aufrufe UND Zeilen",
       "Aufrufe: restore" in text and "z  blit" in text,

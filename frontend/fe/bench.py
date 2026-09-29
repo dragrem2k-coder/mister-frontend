@@ -1894,6 +1894,14 @@ def _abschnitt_j(b, fe, S, A, fm):
     echt_voll = fbo.flip
     echt_text = fbo.text
     echt_beschr = getattr(K, "_beschreibung_zeichnen", None)
+    echt_cover = getattr(K, "_ansicht_cover", None)
+    # os.stat UND builtins.open - nicht io.open: der eingebaute open()
+    # ist eine eigene Bindung, ein Haken an io.open ginge daran vorbei.
+    # os.path.exists() und isfile() gehen ueber os.stat und sind damit
+    # mitgezaehlt.
+    _os = __import__("os")
+    _bi = __import__("builtins")
+    _datei_echt = [(_os, "stat", _os.stat), (_bi, "open", _bi.open)]
     _KARTEN = [(fbo, n) for n in ("karte_mit_schatten",
                                   "rect_rounded_schatten",
                                   "rect_rounded", "rect")
@@ -1904,7 +1912,8 @@ def _abschnitt_j(b, fe, S, A, fm):
     # DIE POSTEN, und jeder ist eine andere SORTE Arbeit. Ohne diese
     # Aufteilung stand in Build 216 ein "Rest" von 27 bis 63 ms da - der
     # groesste Posten ueberall, und ohne Namen.
-    _POSTEN = ("restore", "blit", "flip", "text", "karten", "beschr")
+    _POSTEN = ("restore", "blit", "flip", "text", "karten", "beschr",
+               "cover", "datei")
 
     def _null():
         konto.clear()
@@ -2007,6 +2016,35 @@ def _abschnitt_j(b, fe, S, A, fm):
             return r
         return haken
 
+    # DAS COVER SUCHEN - und das ist der erste Verdaechtige fuer den
+    # REST (Build 221). _ansicht_cover() fragt den Bild-Cache, baut
+    # Cache-Schluessel, vergleicht Namen und fasst dabei die KARTE an.
+    # Abschnitt G hat gemessen, was das dort kostet: ein os.stat 0,20 ms
+    # warm, 21 Kacheln 4,24 ms. Im Bericht vom 29.09. steht REST mit 38
+    # bis 79 ms je Schritt, also mehr als alle benannten Posten
+    # zusammen - und wer nicht misst, raet.
+    def h_cover(self, *a, **k):
+        t0 = time.monotonic()
+        try:
+            return echt_cover(self, *a, **k)
+        finally:
+            konto["cover_ms"] += time.monotonic() - t0
+            konto["cover_n"] += 1
+
+    # UND DIE KARTE SELBST, eine Ebene tiefer: os.stat und open im
+    # Zeichenweg. Gezaehlt wird beides zusammen, denn beide gehen auf
+    # dieselbe SD-Karte. Liegt "datei" hoch, ist der naechste Schritt
+    # ein Zwischenspeicher und keine schnellere Schleife.
+    def _h_datei(echt):
+        def haken(*a, **k):
+            t0 = time.monotonic()
+            try:
+                return echt(*a, **k)
+            finally:
+                konto["datei_ms"] += time.monotonic() - t0
+                konto["datei_n"] += 1
+        return haken
+
     # DIE BESCHREIBUNG rechnet Umbrueche (reine Zeichenkettenarbeit) und
     # zeichnet dann Zeilen. Ausgewiesen wird nur ihr EIGENER Anteil, die
     # Textzeit darin gehoert zu "text".
@@ -2045,6 +2083,10 @@ def _abschnitt_j(b, fe, S, A, fm):
         setattr(_o, _n, _h_karte(_e))
     if echt_beschr is not None:
         K._beschreibung_zeichnen = h_beschr
+    if echt_cover is not None:
+        K._ansicht_cover = h_cover
+    for (_o, _n, _e) in _datei_echt:
+        setattr(_o, _n, _h_datei(_e))
     # DIE GROESSTE KATEGORIE, genau wie Abschnitt B sie waehlt - und aus
     # demselben Grund.
     #
@@ -2177,12 +2219,18 @@ def _abschnitt_j(b, fe, S, A, fm):
                 be = max(0.0, (konto["beschr_ms"]
                                - konto["text_in_beschr_ms"]) * je)
                 ha = max(0.0, (getattr(fe, "_perf_house", 0.0) - _haus0) * je)
-                rest = max(0.0, ges - r - bl - fl - tx - ka - be - ha)
+                co = konto["cover_ms"] * je
+                # Die Dateizeit steckt zum groessten Teil IN "cover" -
+                # sie wird deshalb nur ausgewiesen, nicht abgezogen.
+                da = konto["datei_ms"] * je
+                rest = max(0.0, ges - r - bl - fl - tx - ka - be - ha - co)
                 b("   %-18s  ges %8.2f ms" % (name + " " + ansicht, ges))
                 b("     restore %6.2f   blit %6.2f   flip %6.2f"
                   % (r, bl, fl))
                 b("     text    %6.2f   karten %5.2f   beschr %5.2f"
                   "   haus %5.2f" % (tx, ka, be, ha))
+                b("     cover   %6.2f   (davon Karte %.2f in %d Zugriffen)"
+                  % (co, da, konto["datei_n"] / schritte))
                 b("     REST    %6.2f   (%.0f %% des Schritts)"
                   % (rest, 100.0 * rest / max(0.01, ges)))
                 b("     Aufrufe: restore %d/%dz  blit %d/%dz  flip %d/%.1fMB"
@@ -2211,6 +2259,10 @@ def _abschnitt_j(b, fe, S, A, fm):
             setattr(_o, _n, _e)
         if echt_beschr is not None:
             K._beschreibung_zeichnen = echt_beschr
+        if echt_cover is not None:
+            K._ansicht_cover = echt_cover
+        for (_o, _n, _e) in _datei_echt:
+            setattr(_o, _n, _e)
     b("")
     b("   Zu lesen als: der groesste Posten sagt, wo die naechste Arbeit")
     b("   liegt - und nur er. restore, blit und karten sind zeilenweise")

@@ -1429,7 +1429,35 @@ class Framebuffer:
         einmal berechnet, dann aus dem Zwischenspeicher. Ausgelagert in
         Build 97, weil rect_rounded_schatten() dieselbe Tabelle braucht:
         nur mit exakt derselben Rundung laesst sich ausrechnen, welcher
-        Teil des Schattens von der Karte verdeckt wird."""
+        Teil des Schattens von der Karte verdeckt wird.
+
+        KORRIGIERT (Build 221) - und zwar ein Fehler, der seit Build 97
+        drinsteckt. Die Abbruchbedingung war umgedreht:
+
+            while dx < radius and (radius-dx-1)**2 + dy*dy <= r2:
+
+        Diese Bedingung ist bei dx=0 entweder falsch - dann bleibt der
+        Einzug bei `radius` - oder sie wird mit jedem Schritt noch
+        wahrer und laeuft bis dx=radius durch, dann ist der Einzug 0.
+        Etwas dazwischen kann nicht herauskommen. Die Tabelle hatte
+        deshalb fuer JEDEN Radius genau ZWEI Werte, und die "Rundung"
+        war in Wirklichkeit eine rechteckige Kerbe: bei der Boxart-Karte
+        (Radius 96) waren die obersten 82 Zeilen um 96 Punkte auf JEDER
+        Seite eingerueckt, die restlichen 14 gar nicht. Gefunden beim
+        Buendeln der Eckenzeilen in Build 220 - die Tabelle hatte nur
+        zwei Laeufe, und das war die Spur.
+
+        Richtig ist: die kleinste Zahl von Punkten suchen, die von links
+        wegfallen muessen, damit der erste gezeichnete Punkt INNERHALB
+        des Kreises liegt. Also so lange weitergehen, wie er ausserhalb
+        ist - `>` statt `<=`, und der Einzug ist dx selbst.
+
+        Gemessen kostet die echte Rundung nichts: die Boxart-Karte
+        769x945 braucht mit C 0,304 ms statt 0,322 ms, weil die
+        Eckenzeilen eines Viertelkreises im Mittel SCHMALER sind als die
+        der Kerbe. Die Zahl der Laeufe steigt von 2 auf 56, aber sie
+        gehen weiterhin in EINEM Aufruf nach C, und das ctypes-Feld
+        dafuer wird seit Build 221 wiederverwendet."""
         key_ind = ("rounded_indent", radius)
         indents = self._rectcache.get(key_ind)
         if indents is None:
@@ -1438,9 +1466,9 @@ class Framebuffer:
             for ry in range(radius):
                 dy = radius - ry - 1
                 dx = 0
-                while dx < radius and (radius - dx - 1) ** 2 + dy * dy <= r2:
+                while dx < radius and (radius - dx - 1) ** 2 + dy * dy > r2:
                     dx += 1
-                indents.append(radius - dx)
+                indents.append(dx)
             self._rectcache[key_ind] = indents
         return indents
 
@@ -2306,8 +2334,36 @@ class Framebuffer:
     # abgerundeten Kaesten und fuer rect_viele() zaehlt die SUMME - bei
     # einem Kachelrahmen aus vier Balken also 740 Zeilen in EINEM Aufruf
     # statt vier Schleifen (gemessen 0,199 ms gegen 0,014 ms, 14x).
-    FLAECHEN_C_MIN_PUNKTE = 16384
-    FLAECHEN_C_MIN_ZEILEN = 32
+    #
+    # DIE ZAHLEN SIND JETZT DIE DES GERAETS (Build 221). Build 220 hat
+    # sie auf dem Entwicklungsrechner bestimmt, und der Bericht vom
+    # 29.09. hat gezeigt, dass das nicht reicht: dort steht 60x40 mit
+    # "0,6x - genutzt: ja", also eine Flaeche, die durch die Schwelle
+    # kam und in C LANGSAMER ist. Aus den sieben Zeilen von Abschnitt
+    # I/3 laesst sich beides ausrechnen:
+    #
+    #   C      = 1,00 ms + 0,0000057 * Punkte
+    #   Python = 0,25 ms + Zeilen * (0,0080 + 0,000012 * Breite)
+    #
+    # (geprueft an allen sieben: 700x900 15,0 gegen gemessene 15,9;
+    #  400x300 4,09 gegen 4,32; 60x40 0,60 gegen 0,58; 3x771 6,4 gegen
+    #  6,0; C bei 128x128 1,09 gegen gemessene 1,090.)
+    #
+    # Der Sprung kostet auf dem DE10-Nano also rund eine MILLISEKUNDE,
+    # nicht 0,007 wie hier - das ist der ganze Unterschied. C lohnt ab
+    #
+    #   0,008 * Zeilen + 0,0000063 * Punkte > 0,75
+    #
+    # also ab rund 94 Zeilen (bei schmalen Formen) oder ab rund 119.000
+    # Punkten (bei flachen). Daraus 96 und 65536, beide mit Abstand nach
+    # unten. Geprueft gegen alle gemessenen Formen: 700x900, 400x300,
+    # 3x771, 9x361, 128x128 und der Rahmen gehen nach C (Faktoren 1,4
+    # bis 5,2), waehrend 60x40 und 697x3 in Python bleiben - und mit
+    # ihnen 853x21, die Zeilenmarkierung der Liste, die bisher wegen
+    # ihrer 17919 Punkte nach C ging und dort nach diesem Modell rund
+    # 0,5 ms JE AUFRUF verloren hat.
+    FLAECHEN_C_MIN_PUNKTE = 65536
+    FLAECHEN_C_MIN_ZEILEN = 96
 
     def _nach_c(self, w, h, scanlines=False):
         """Geht eine Flaeche dieser Groesse nach C? Eine Stelle fuer die

@@ -1015,6 +1015,21 @@ Schwellen in BEIDE Richtungen: eine Zeile bzw. einen Punkt darunter darf
 es NICHT nach C gehen. Eine Optimierung, die den haeufigen Fall
 verschlechtert, ist keine.
 
+**Die Zahlen stammen seit Build 221 vom GERAET**, und das ist der
+wichtigste Satz hier. Aus Abschnitt I/3 eines echten Berichts lassen
+sich beide Kostenkurven bestimmen:
+
+    C      = 1,00 ms + 0,0000057 * Punkte
+    Python = 0,25 ms + Zeilen * (0,0080 + 0,000012 * Breite)
+
+Der Sprung nach C kostet auf dem DE10-Nano also rund eine MILLISEKUNDE,
+auf dem Entwicklungsrechner 0,007. Eine Schwelle, die hier gemessen
+wird, ist dort um mehr als den Faktor hundert daneben - genau das ist
+Build 220 passiert, und der Bericht hat es gezeigt: "60x40 ... 0,6x -
+genutzt: ja". Deshalb halten zwei Pruefungen die Formen namentlich fest,
+die dem Geraet nicht gefallen haben (60x40 und 853x21, die
+Zeilenmarkierung der Liste).
+
 **Und der Rahmen.** Vier Balken, von denen einzeln keiner die Schwelle
 erreicht - zusammen schon. `fb.rect_viele()` schickt sie in EINEM Aufruf
 weg (Kachelrahmen 0,199 -> 0,014 ms, Platzhalterrahmen 0,404 -> 0,018
