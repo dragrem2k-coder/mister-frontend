@@ -252,6 +252,60 @@ Millisekunde.**
   die Eckenzeilen eines Viertelkreises im Mittel schmaler sind als die der
   Kerbe. Sie gehen weiterhin in einem einzigen C-Aufruf weg.
 
+**Ein Spiel ohne Cover fragte bei jedem Scrollschritt erneut die Karte.**
+
+- Der neue Posten aus Build 221 hat es gezeigt: in der Spieleliste
+  **20 Zugriffe auf die SD-Karte je Schritt, 13,44 ms** — und daneben
+  „cover 0,00". Die Zugriffe liefen also an der Messung vorbei, mitten
+  durch den REST.
+- Nachgestellt und gezählt: ein Eintrag **ohne** Cover kostete drei
+  Zugriffe, und zwar bei jedem Schritt wieder — auch beim zehnten Mal auf
+  denselben Eintrag. Gemerkt wurde bisher nur ein *Treffer*; ein **Nein**
+  wurde nie gemerkt, und bei 30273 Spielen hat nicht jedes ein Cover.
+  Dazu fragte eine zweite Stelle dieselbe Datei gleich noch einmal ab.
+- Jetzt wird das Nein genauso gemerkt wie das Ja. Gezählt beim Hoch- und
+  Runterscrollen: **2,00 → 0,00 Zugriffe je Schritt**; beim Vorwärtslaufen
+  durch lauter neue Einträge 3 → 2 (der doppelte ist weg, der erste bleibt
+  nötig).
+- **Und das Nein bleibt nicht stehen.** Während du blätterst, rechnet der
+  Arbeitsprozess Miniaturen auf die Karte — bliebe unser Nein darüber
+  bestehen, tauchte das Cover nie auf. Sobald du die Taste loslässt, wird
+  es weggeräumt und einmal richtig nachgesehen: einmal je Loslassen, nicht
+  je Schritt. Wer während des Betriebs Artwork auf die Karte kopiert, sieht
+  es damit nach dem Loslassen statt erst nach einem Neustart.
+- **Abschnitt J nennt jetzt die Rufer**: unter der cover-Zeile stehen die
+  drei häufigsten Aufrufer mit ihrer Zahl je Schritt. „Zwanzig Zugriffe"
+  allein sagt nicht, welche.
+
+**MiSTers eigene Schriften — als zweite Wahl.**
+
+- Du wolltest eine andere Schrift, und dein eigener Einwand war der
+  bessere Weg: **MiSTer bringt seine OSD-Schriften mit**, und was auf deiner
+  Karte liegt, steht jetzt auch hier zur Wahl. Systemmenü → *Schrift*, direkt
+  neben scharf/weich: die eigene (Vorgabe), **„wie im MiSTer-OSD"** (liest
+  `font=` aus deiner MiSTer.ini) oder jede einzelne Datei aus
+  `/media/fat/font`.
+- **Mitgeliefert wird keine einzige.** Die verlinkte Schrift von der
+  Download-Seite ist eine Digitalisierung der deutschen
+  Kfz-Kennzeichenschrift; der Staat hat nie eine digitale Fassung
+  veröffentlicht, die kursierenden Dateien sind Nachbauten mit unklarer
+  Lizenz — und dieses Paket liegt öffentlich. Gelesen wird deshalb nur, was
+  auf *deiner* Karte ohnehin liegt. Dieselbe Haltung wie bei der fremden
+  Artwork-Datenbank.
+- Das Format passte ohne Umweg: eine `.pf` ist 768 Byte, 96 Zeichen zu je
+  8 Byte ab Leerzeichen — also genau unsere 8×8-Tabelle, nur mit
+  umgekehrter Bitfolge.
+- **Deine MiSTer.ini wird dabei nur gelesen**, nie geschrieben. Der Test
+  prüft die Datei danach Byte für Byte.
+- **Umlaute bleiben aus der eigenen Schrift.** Eine `.pf` endet beim „z";
+  käme der Rest auch von dort, stünde „König der Löwen" voller Fragezeichen
+  da.
+- Ehrlich dazu: nicht jede `.pf` ist eine Textschrift. Ein paar (etwa aus
+  Trackern) haben an den Buchstabenplätzen Symbole — das sieht man sofort
+  und schaltet weiter.
+
+
+
 ---
 
 ## v4.7 — der Login-Prompt, große Kacheln, und was Messungen widerlegt haben

@@ -36,6 +36,7 @@ from fe.settings import (
     track_marquee_enabled, fb_size_label_key,
     autostart_enabled, rom_filter_enabled, einzelordner_aufloesen,
     scharf_verkleinern,
+    schrift_lesen, SCHRIFT_OSD,
 )
 from fe.timekeeping import format_timezone_offset, load_timezone_offset
 import fe.mister_system as MSYS
@@ -239,6 +240,23 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     # bei den Optionen - es geht darum, wie das Bild aussieht.
     scharf_label = t("sys_scharf_on") if scharf_verkleinern() \
         else t("sys_scharf_off")
+    # Build 223: die Schrift. Steht bei der ANZEIGE, direkt neben
+    # scharf/weich - es geht darum, wie das Bild aussieht.
+    #
+    # Gewaehlt wird aus dem, was AUF DER KARTE LIEGT: MiSTer bringt
+    # seine OSD-Schriften in /media/fat/font mit, und die Datei, die in
+    # der MiSTer.ini steht, steht hier als "wie im OSD" an zweiter
+    # Stelle. Mitgeliefert wird keine einzige - siehe schrift_lesen()
+    # in fe/settings.py.
+    _schrift = schrift_lesen()
+    if not _schrift:
+        schrift_label = t("sys_schrift", t("sys_schrift_eigen"))
+    elif _schrift == SCHRIFT_OSD:
+        schrift_label = t("sys_schrift", t("sys_schrift_osd"))
+    else:
+        _kurz = _schrift[:-3] if _schrift.lower().endswith(".pf") \
+            else _schrift
+        schrift_label = t("sys_schrift", _kurz)
     # Build 213: die Beschriftung des update_all-Eintrags. Drei Faelle,
     # und alle drei sind ehrlich - "nicht installiert", "lief vor N
     # Tagen", und "da, aber kein Protokoll gefunden".
@@ -310,6 +328,7 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         (fast_scroll_label, "fast_scroll", None),
         (cover_sofort_label, "cover_sofort", None),
         (scharf_label, "scharf_verkleinern", None),
+        (schrift_label, "schrift", None),
         # NEU (Build 113): Bildrand. Steht direkt bei den anderen
         # Anzeige-Punkten; wer eine Roehre hat, sucht genau hier.
         # NEU (Build 122): Ansicht der Spieleliste. Steht direkt

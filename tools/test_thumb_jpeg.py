@@ -478,11 +478,21 @@ try:
 finally:
     shutil.rmtree(basis, ignore_errors=True)
 
+# GEAENDERT (Build 222): geprueft wird die VORGABE, nicht die ganze
+# Zeile. Hier stand die komplette def-Zeile als Zeichenkette, und als
+# _thumb_cache_get() einen weiteren Schalter bekam (nein_gilt, siehe
+# tools/test_negativ_merken.py), wurde dieser Test rot, obwohl die
+# gepruefte Behauptung unveraendert galt. Ein Test, der bei jeder
+# Erweiterung umfaellt, erzieht dazu, ihn zu ignorieren.
+_defzeile = ""
+for _z in io.open(os.path.join(_REPO, "frontend", "fe", "art.py"),
+                  encoding="utf-8"):
+    if _z.startswith("def _thumb_cache_get("):
+        _defzeile = _z.strip()
+        break
 check("die Vorgabe ist NICHT nachziehen",
-      "def _thumb_cache_get(path, w, h, nachziehen_erlaubt=False)"
-      in io.open(os.path.join(_REPO, "frontend", "fe", "art.py"),
-                 encoding="utf-8").read(),
-      "wer es will, muss es sagen - nicht umgekehrt")
+      "nachziehen_erlaubt=False" in _defzeile,
+      "wer es will, muss es sagen - nicht umgekehrt: %r" % _defzeile)
 
 print()
 if fails:

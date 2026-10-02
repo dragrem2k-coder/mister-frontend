@@ -311,6 +311,7 @@ from fe.settings import (
     overscan_lesen, overscan_weiter,
     ANSICHTEN, ansicht_lesen, ansicht_schreiben,
     ansicht_haupt_lesen, ansicht_haupt_schreiben,
+    schrift_lesen, schrift_weiter, schrift_pfad, schrift_auswahl,
     fremdquellen_enabled, toggle_fremdquellen,
     FAST_SCROLL_WINDOW, pulse_effect_enabled, toggle_pulse_effect,
     CRT_CONFIRM_TIMEOUT, crt_pending_confirm, mark_crt_pending_confirm,
@@ -1158,7 +1159,8 @@ apply_theme(current_theme_name())   # beim Laden des Moduls sofort anwenden
 # FRAMEBUFFER (siehe fe/framebuffer.py - Zeichen-Grundfunktionen +
 # 8x8-Bitmap-Font komplett ausgelagert)
 # ----------------------------------------------------------------------------
-from fe.framebuffer import FBDEV, Framebuffer
+from fe.framebuffer import (FBDEV, Framebuffer,
+                            schrift_laden as fb_schrift_laden)
 
 # ----------------------------------------------------------------------------
 # EINGABE: Tastatur + Gamepads parallel, mit Hotplug und exklusivem Grab
@@ -1198,7 +1200,7 @@ from fe.art import (
     rechtecke_kopieren as _c_rechtecke_kopieren,
     rechtecke_farben as _c_rechtecke_farben,
     fremd_zaehlen as _c_fremd_zaehlen,
-    quelldaten_vergessen, marken_nachziehen,
+    quelldaten_vergessen, negativ_vergessen, marken_nachziehen,
     verkleinern_modus_vergessen,
 )
 
@@ -1216,6 +1218,28 @@ from fe.art import (
 # gleich gerasterten Puffern, und der Bildspeicher ist genauso gerastert
 # wie der Puffer. Bleibt der Haken ungesetzt (libdragend fehlt), laeuft
 # der Python-Weg in flip_rechtecke().
+def schrift_anwenden(fb):
+    """Die eingestellte Schrift laden und einschalten (Build 223).
+
+    Rueckgabe True, wenn sich etwas geaendert hat. Faellt die Datei aus
+    (geloescht, umbenannt, kaputt), bleibt es bei der eigenen Schrift -
+    ohne Fehlermeldung im Bild. Eine fehlende Schriftdatei ist kein
+    Grund, ein Frontend nicht zu starten; der Hinweis steht im Log.
+
+    Mitgeliefert wird keine fremde Schrift. Gelesen wird nur, was auf
+    der Karte des Nutzers ohnehin liegt - MiSTers eigene OSD-Schriften
+    in /media/fat/font, auf Wunsch genau die aus seiner MiSTer.ini.
+    Dieselbe Haltung wie bei /media/fat/docs: fremde Daten lesen wir,
+    verteilen sie aber nicht weiter."""
+    pfad = schrift_pfad()
+    tabelle = None
+    if pfad:
+        tabelle = fb_schrift_laden(pfad)
+        if tabelle is None:
+            LOG("Schrift %r nicht lesbar - bleibe bei der eigenen" % pfad)
+    return fb.schrift_setzen(tabelle)
+
+
 Framebuffer.rechteck_kopierer = staticmethod(_c_rechtecke_kopieren)
 # NEU (Build 219): und der Fueller fuer die Flaechen, aus demselben Grund
 # hier statt dort - siehe Framebuffer.flaechen_fueller.
@@ -1320,6 +1344,12 @@ class Frontend:
         self._t_start = time.monotonic()
         self._t_letzte_marke = self._t_start
         self.fb = Framebuffer()
+        # Build 223: die eingestellte Schrift, bevor das erste Zeichen
+        # faellt. Steht hier und nicht in Framebuffer(): das Modul
+        # fe/framebuffer.py kennt genau EINEN Import aus dem Projekt
+        # (fe.log), und die Einstellungen gehoeren nicht dazu - siehe
+        # den Kommentar bei rechteck_kopierer.
+        schrift_anwenden(self.fb)
         self.inp = InputManager()
         self._startmarke("Framebuffer und Eingaben offen")
         # WICHTIG: Erst auf unseren eigenen Bildschirm umschalten (F9),
@@ -4430,8 +4460,22 @@ class Frontend:
         aktuell, egal ueber welchen Weg gezeichnet wurde. Uebersprungene
         Cover holt wie gehabt der COVER_SETTLE-Nachlader ~150ms spaeter
         (der dafuer jetzt auch auf Seite 0 laeuft, siehe dort)."""
+        _vorher = ART._defer_uncached
         ART._defer_uncached = (time.monotonic() - self._last_input_time
                                < COVER_SETTLE)
+        # BEIM LOSLASSEN DAS GEMERKTE NEIN WEGWERFEN (Build 222).
+        #
+        # Waehrend des Blaetterns merkt sich fe/art.py, welche Cover und
+        # welche Miniaturen NICHT da sind - sonst fragt jeder Schritt
+        # dieselben Dateien erneut ab (gemessen auf dem Geraet: 20
+        # Zugriffe und 13,44 ms JE SCHRITT in der Spieleliste). Dieses
+        # Nein darf aber nicht stehenbleiben: der Arbeitsprozess
+        # schreibt genau waehrenddessen Miniaturen auf die Karte, und
+        # nach dem Loslassen muss der Nachlader sie finden. Also genau
+        # hier, an der Flanke, einmal vergessen - nicht je Schritt, und
+        # nicht erst beim Neueinlesen.
+        if _vorher and not ART._defer_uncached:
+            negativ_vergessen()
 
     def _overlay_active(self):
         """True, solange eine Ueberlagerung ueber der normalen Seite
@@ -18122,6 +18166,20 @@ class Frontend:
                             self._refresh_system_category()
                             self.fb._rowcache.clear()
                             self.fb._rectcache.clear()
+                        elif kind == "schrift":
+                            # Build 223. Die Schrift wechselt sofort -
+                            # und mit ihr muessen die Zeichen-
+                            # Zwischenspeicher weg, sonst bleiben die
+                            # haeufigen Texte in der alten Schrift
+                            # stehen (siehe schrift_setzen()).
+                            if len(schrift_auswahl()) <= 1:
+                                self.draw(t("sys_schrift_keine"))
+                            else:
+                                schrift_weiter()
+                                schrift_anwenden(self.fb)
+                                self._refresh_system_category()
+                                self.fb.mark_full_redraw()
+                                self.draw(t("sys_schrift_changed"))
                         elif kind == "scharf_verkleinern":
                             # Build 175. KEIN Leeren des Caches und
                             # kein Neu-Einlesen: der Zustand steckt im

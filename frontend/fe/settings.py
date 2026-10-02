@@ -1672,6 +1672,139 @@ def ansicht_haupt_schreiben(wert):
     return wert
 
 
+# ===========================================================================
+# DIE SCHRIFT (Build 223)
+# ===========================================================================
+#
+# MiSTer bringt eigene OSD-Schriften mit, einstellbar in der MiSTer.ini,
+# und der Nutzer hat gefragt, ob wir die nicht nutzen koennen. Koennen
+# wir, und es ist der sauberste Weg: die Dateien liegen bereits auf
+# SEINER Karte. Wir legen keine fremde Schrift ins Paket, wir lesen nur,
+# was da ist - dieselbe Haltung wie bei /media/fat/docs.
+#
+# Das Format passt ohne Umweg: eine .pf-Datei ist 768 Byte, 96 Zeichen zu
+# je 8 Byte, ein Byte je Bildzeile, ab Leerzeichen (0x20) aufsteigend -
+# also genau unser FONT8X8, nur mit umgekehrter Bitfolge (dort ist das
+# oberste Bit links, bei uns das unterste). Siehe schrift_laden() in
+# fe/framebuffer.py.
+#
+# DREI EINSTELLUNGEN, und die mittlere ist die, nach der gefragt wurde:
+#   ""      - die eigene Schrift des Frontends (Vorgabe)
+#   "osd"   - die, die in der MiSTer.ini unter font= steht
+#   <Datei> - eine bestimmte Datei aus /media/fat/font/
+SCHRIFT_FILE = "/media/fat/frontend/schrift"
+SCHRIFT_DIR = "/media/fat/font"
+SCHRIFT_EIGEN = ""
+SCHRIFT_OSD = "osd"
+
+
+def schrift_lesen():
+    """Welche Schrift ist eingestellt - "", "osd" oder ein Dateiname."""
+    def _lesen():
+        try:
+            return open(SCHRIFT_FILE).read().strip()
+        except OSError:
+            return SCHRIFT_EIGEN
+    return _hole(("schrift", SCHRIFT_FILE), _lesen)
+
+
+@_nach_aenderung
+def schrift_schreiben(wert):
+    wert = (wert or "").strip()
+    try:
+        d = os.path.dirname(SCHRIFT_FILE)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        with open(SCHRIFT_FILE, "w") as f:
+            f.write(wert)
+    except OSError as e:
+        LOG("schrift_schreiben: %s" % e)
+    return wert
+
+
+def schrift_aus_ini():
+    """Der Wert hinter font= in der MiSTer.ini - oder None.
+
+    NUR GELESEN. In die MiSTer.ini schreibt dieses Frontend an genau
+    einer Stelle (dem [Menu]-Block fuer den Roehrenmodus), und das ist
+    eine bewusste Ausnahme mit Sicherungskopie. Die Schriftwahl des
+    Nutzers fassen wir nicht an - wir sehen nur nach, was er gewaehlt
+    hat.
+
+    MiSTer schreibt dort einen Pfad relativ zu /media/fat, also
+    typischerweise "font/Arcade_Pacman.pf"."""
+    try:
+        with open(MISTER_INI, encoding="utf-8", errors="replace") as f:
+            inhalt = f.read()
+    except OSError:
+        return None
+    for zeile in inhalt.splitlines():
+        z = zeile.strip()
+        if z.startswith(";") or z.startswith("#") or "=" not in z:
+            continue
+        name, _, wert = z.partition("=")
+        if name.strip().lower() != "font":
+            continue
+        wert = wert.split(";")[0].strip().strip('"')
+        return wert or None
+    return None
+
+
+def schrift_dateien():
+    """Die verfuegbaren .pf-Dateien, sortiert. Leer, wenn es den Ordner
+    nicht gibt - dann bleibt es bei der eigenen Schrift."""
+    try:
+        namen = [n for n in os.listdir(SCHRIFT_DIR)
+                 if n.lower().endswith(".pf")]
+    except OSError:
+        return []
+    namen.sort(key=lambda n: n.lower())
+    return namen
+
+
+def schrift_pfad(wert=None):
+    """Der Dateipfad zur eingestellten Schrift - oder None fuer die
+    eigene. Prueft NICHT, ob die Datei existiert; das tut der Lader,
+    der ohnehin auf die eigene Schrift zurueckfaellt."""
+    if wert is None:
+        wert = schrift_lesen()
+    if not wert or wert == SCHRIFT_EIGEN:
+        return None
+    if wert == SCHRIFT_OSD:
+        aus_ini = schrift_aus_ini()
+        if not aus_ini:
+            return None
+        if os.path.isabs(aus_ini):
+            return aus_ini
+        return os.path.join("/media/fat", aus_ini)
+    if os.path.isabs(wert):
+        return wert
+    return os.path.join(SCHRIFT_DIR, wert)
+
+
+def schrift_auswahl():
+    """Alle waehlbaren Werte in der Reihenfolge des Durchschaltens."""
+    werte = [SCHRIFT_EIGEN]
+    if schrift_aus_ini():
+        werte.append(SCHRIFT_OSD)
+    werte.extend(schrift_dateien())
+    return werte
+
+
+def schrift_weiter(rueckwaerts=False):
+    """Eine Schrift weiterschalten (rundum). Liefert die neue."""
+    werte = schrift_auswahl()
+    if not werte:
+        return SCHRIFT_EIGEN
+    jetzt = schrift_lesen()
+    try:
+        idx = werte.index(jetzt)
+    except ValueError:
+        idx = 0
+    idx = (idx - 1 if rueckwaerts else idx + 1) % len(werte)
+    return schrift_schreiben(werte[idx])
+
+
 def ansicht_weiter():
     """Eine Ansicht weiterschalten (rundum). Liefert die neue."""
     jetzt = ansicht_lesen()

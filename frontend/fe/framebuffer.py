@@ -72,6 +72,61 @@ FONT8X8 = bytes.fromhex('0000000000000000000000000000000000000000000000000000000
 # Akzente in Spielnamen/Texten echt dargestellt werden statt als "?".
 FONT_EXTRA = bytes.fromhex('0000000000000000181800181818180018187e03037e18181c36260f06673f000000633e363e630033331e3f0c3f0c0c18181800181818007cc61c36361c331e33000000000000003c4299858599423c3c36367c0000000000cc663366cc00000000003f3030000000000000000000003c429da59da5423c7e000000000000001c36361c0000000018187e1818007e001c30180c3c0000001c3018301c000000180c00000000000000006666663e0603fedbdbded8d8d8000000001818000000000000000018301e080c081c000000001c36361c00000000003366cc66330000c36333bdecf6f303c363337bcc6633f003c463b4dbace6800c000c0603331e0007001c36637f630070001c36637f63001c36003e637f63006e3b003e637f6300631c36637f6363000c0c001e333f33007c36337f333373001e3303331e18301e07003f061e063f0038003f061e063f000c123f061e063f0036003f061e063f0007001e0c0c0c1e0038001e0c0c0c1e000c12001e0c0c1e0033001e0c0c0c1e003f666f6f66663f003f0033373f3b33000e00183c663c18007000183c663c18003c66183c663c18006e3b003e63633e00c3183c66663c180000361c081c3600005c36737b6f361d000e00666666663c007000666666663c003c66006666663c003300333333331e00700066663c1818000f063e66663e060f001e331f331f030307001e303e337e0038001e303e337e007ec33c607c66fc006e3b1e303e337e0033001e303e337e000c0c1e303e337e000000fe30fe33fe0000001e03031e301c07001e333f031e0038001e333f031e007ec33c667e063c0033001e333f031e0007000e0c0c0c1e001c000e0c0c0c1e003e631c1818183c0033000e0c0c0c1e001b0e1b303e331e00001f001f333333000007001e33331e000038001e33331e001e33001e33331e006e3b001e33331e000033001e33331e001818007e0018180000603c767e6e3c060007003333337e000038003333337e001e33003333337e000033003333337e0000380033333e301f0000063e663e060000330033333e301f')
 
+# DIE AKTIVE 8x8-TABELLE (Build 223).
+#
+# None heisst "unsere eigene" - dann gilt FONT8X8 wie bisher. Steht hier
+# eine andere Tabelle, wurde sie aus einer MiSTer-OSD-Schrift geladen
+# (siehe schrift_laden()). Umgeschaltet wird genau an einer Stelle, und
+# die Zeichen-Zwischenspeicher muessen dabei mit - siehe
+# Framebuffer.schrift_setzen().
+FONT_AKTIV = None
+
+
+def schrift_laden(pfad):
+    """Eine MiSTer-OSD-Schrift (.pf) in unsere Tabellenform bringen.
+
+    Rueckgabe: 1024 Byte wie FONT8X8 (128 Zeichen zu 8 Byte) - oder None,
+    wenn die Datei fehlt oder nicht passt. Dann bleibt es bei der eigenen
+    Schrift, ohne Aufhebens: eine fehlende Schriftdatei ist kein Grund,
+    ein Frontend nicht zu starten.
+
+    DAS FORMAT, nachgesehen am Werkzeug pf2png.py aus MiSTer-devel/
+    Fonts_MiSTer: 768 Byte, 96 Zeichen zu je 8 Byte, ein Byte je
+    Bildzeile, beginnend beim Leerzeichen (0x20). Also genau unsere
+    Form - mit EINEM Unterschied: dort ist das oberste Bit der linke
+    Bildpunkt (`for bit in range(7, -1, -1)`), bei uns das unterste
+    (siehe _glyph_row: `bits >> i & 1` fuer i von 0 bis 7). Jedes Byte
+    wird deshalb gespiegelt.
+
+    Geprueft wurde das an einer echten Datei: in
+    Arcade_Afterburner_(Sega).pf steht an Index 33 ein "A" und an Index
+    16 eine "0" - 0x20+33 = 'A', 0x20+16 = '0'. Die Zuordnung ist also
+    schlicht ASCII ab 0x20.
+
+    0x00 bis 0x1F sind in einer .pf nicht enthalten; dort bleibt es bei
+    unserer Tabelle (dort stehen ohnehin nur Steuerzeichen und ein paar
+    Symbole, die das Frontend selbst zeichnet)."""
+    try:
+        with open(pfad, "rb") as f:
+            roh = f.read()
+    except OSError:
+        return None
+    if len(roh) < 96 * 8:
+        return None
+    tabelle = bytearray(FONT8X8)
+    for i in range(96):
+        ziel = (0x20 + i) * 8
+        for z in range(8):
+            b = roh[i * 8 + z]
+            # Bits spiegeln: 0b10000000 -> 0b00000001 usw.
+            g = 0
+            for k in range(8):
+                if b >> (7 - k) & 1:
+                    g |= 1 << k
+            tabelle[ziel + z] = g
+    return bytes(tabelle)
+
+
 # ----------------------------------------------------------------------------
 # FRAMEBUFFER
 # ----------------------------------------------------------------------------
@@ -1869,6 +1924,25 @@ class Framebuffer:
                     if b > a:
                         self.rect(x, a, w, b - a, rgb)
 
+    def schrift_setzen(self, tabelle):
+        """Die aktive 8x8-Tabelle wechseln und die Zwischenspeicher
+        leeren.
+
+        DIE ZWEITE HAELFTE IST DER PUNKT: _glyphcache und _textcache
+        halten FERTIG GERECHNETE Bildpunkte. Wird nur die Tabelle
+        getauscht, bleibt jeder schon einmal gezeichnete Text in der
+        alten Schrift stehen - und zwar genau die haeufigen Texte, denn
+        die liegen sicher im Zwischenspeicher. Das saehe aus wie ein
+        halb umgestelltes Frontend und waere schwer zu finden."""
+        global FONT_AKTIV
+        if tabelle is FONT_AKTIV:
+            return False
+        FONT_AKTIV = tabelle
+        self._glyphcache.clear()
+        self._textcache.clear()
+        del self._textcache_order[:]
+        return True
+
     def _glyph_row(self, bits, scale, fg, bg):
         key = (bits, scale, fg, bg)
         row = self._glyphcache.get(key)
@@ -1952,14 +2026,20 @@ class Framebuffer:
             # den Latin-1-Bereich 0xA0-0xFF ab; alles ausserhalb bleibt
             # beim bisherigen "?"-Rueckfall.
             glyphs = []
+            _f8 = FONT_AKTIV or FONT8X8
             for ch in s:
                 code = ord(ch)
                 if code <= 127:
-                    glyphs.append((FONT8X8, code * 8))
+                    glyphs.append((_f8, code * 8))
                 elif 0xA0 <= code <= 0xFF:
+                    # UMLAUTE KOMMEN IMMER AUS UNSERER EIGENEN TABELLE,
+                    # auch wenn eine MiSTer-Schrift gewaehlt ist: eine
+                    # .pf-Datei hat 96 Zeichen und endet bei 0x7F. Ohne
+                    # diese Zeile stuenden "Koenig der Loewen" und jeder
+                    # zweite deutsche Titel voller Fragezeichen da.
                     glyphs.append((FONT_EXTRA, (code - 0xA0) * 8))
                 else:
-                    glyphs.append((FONT8X8, 0x3F * 8))
+                    glyphs.append((_f8, 0x3F * 8))
             _glyph_row = self._glyph_row
             strip = []
             for gy in range(8):

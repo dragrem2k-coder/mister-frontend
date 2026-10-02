@@ -241,6 +241,56 @@ exactly why nothing here was built twice.
   because the corner rows of a quarter circle are narrower on average than
   those of the notch. They still go off in a single C call.
 
+**A game without cover art asked the card again on every scroll step.**
+
+- The new item from build 221 showed it: in the game list, **20 accesses to
+  the SD card per step, 13.44 ms** — right next to "cover 0.00". The
+  accesses were slipping past the measurement, straight through REST.
+- Reproduced and counted: an entry **without** cover art cost three
+  accesses, and did so on every step again — even the tenth time on the
+  same entry. Only a *hit* was ever remembered; a **no** never was, and
+  with 30273 games not every one has cover art. On top of that, a second
+  place asked about the very same file once more.
+- Now the no is remembered just like the yes. Counted while scrolling up and
+  down: **2.00 → 0.00 accesses per step**; walking forward through nothing
+  but new entries, 3 → 2 (the duplicate is gone, the first one is still
+  needed).
+- **And the no does not stay.** While you scroll, the worker process is
+  computing thumbnails onto the card — if our no about its file stayed, the
+  cover would never appear. The moment you let go of the key it is dropped
+  and one proper look is taken: once per release, not per step. Copy artwork
+  onto the card while the frontend runs and you will see it after releasing
+  the key instead of after a restart.
+- **Section J now names the callers**: under the cover line it lists the
+  three most frequent ones with their count per step. "Twenty accesses"
+  alone does not say which.
+
+**MiSTer's own fonts — as a second choice.**
+
+- You wanted a different font, and your own objection was the better route:
+  **MiSTer ships its OSD fonts**, and whatever sits on your card can now be
+  picked here too. System menu → *Font*, right next to sharp/soft: Dragend's
+  own (default), **"like the MiSTer OSD"** (reads `font=` from your
+  MiSTer.ini), or any single file from `/media/fat/font`.
+- **Not one font is shipped with this.** The font you linked is a
+  digitisation of the German licence-plate typeface; the state never
+  published a digital version, the files in circulation are re-creations
+  with an unclear licence — and this package is public. So only what is
+  already on *your* card is read. The same stance as with the foreign
+  artwork database.
+- The format fit without detours: a `.pf` is 768 bytes, 96 characters of 8
+  bytes each starting at space — exactly our 8×8 table, only with the bit
+  order reversed.
+- **Your MiSTer.ini is only read**, never written. The test checks the file
+  byte for byte afterwards.
+- **Accented characters keep coming from Dragend's own font.** A `.pf` ends
+  at "z"; if the rest came from there too, half the German titles would be
+  question marks.
+- Honestly: not every `.pf` is a text font. A few (tracker fonts, say) have
+  symbols where the letters should be — you see it at once and move on.
+
+
+
 ---
 
 ## v4.7 — the login prompt, large tiles, and what measurements disproved

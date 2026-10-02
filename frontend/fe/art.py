@@ -800,6 +800,15 @@ def _thumb_cache_key(path, w, h):
     return hashlib.sha1(sig.encode("utf-8", "surrogateescape")).hexdigest()[:24]
 
 
+# "Diese Datei gibt es nicht" - als Eintrag, nicht als Luecke. Siehe
+# _quelldaten() und negativ_vergessen().
+_NICHTS = object()
+
+# Cache-Dateien, die nachweislich fehlen. Dasselbe in Gruen fuer den
+# Karten-Cache: ein Eintrag ohne Miniatur liess _thumb_cache_get() bei
+# jedem Schritt ein open() ins Leere laufen.
+_thumb_fehlt = set()
+
 # Groesse und Aenderungszeit der QUELLBILDER, einmal je Pfad und
 # Sitzung geholt. Siehe _quelldaten().
 _quell_stat = {}
@@ -835,10 +844,27 @@ def _quelldaten(path):
     von einem Megabyte."""
     daten = _quell_stat.get(path)
     if daten is not None:
-        return daten
+        return None if daten is _NICHTS else daten
     try:
         st = os.stat(path)
     except OSError:
+        # AUCH DAS NEIN WIRD GEMERKT (Build 222), und das ist der
+        # eigentliche Gewinn. Bis hierher wurde nur ein TREFFER gemerkt -
+        # ein Spiel OHNE Cover fragte die Karte bei JEDEM Scrollschritt
+        # erneut, und zwar zweimal (hier und in
+        # _auslagern_versuchen()). Im Bericht vom 29.09. steht fuer die
+        # Spieleliste "davon Karte 13,44 ms in 20 Zugriffen" JE SCHRITT,
+        # und der Posten "cover" daneben mit 0,00 - die Zugriffe liefen
+        # also an der Messung vorbei, mitten durch den REST.
+        #
+        # Das Nein gilt bis zum naechsten Stillstand: negativ_vergessen()
+        # raeumt es weg, sobald nicht mehr geblaettert wird (siehe
+        # _sync_cover_defer in frontend.py). Wer waehrend des Scrollens
+        # ein Cover auf die Karte kopiert, sieht es also nach dem
+        # Loslassen - nicht erst nach einem Neustart.
+        if len(_quell_stat) >= _QUELL_STAT_MAX:
+            _quell_stat.clear()
+        _quell_stat[path] = _NICHTS
         return None
     if len(_quell_stat) >= _QUELL_STAT_MAX:
         _quell_stat.clear()
@@ -852,6 +878,25 @@ def quelldaten_vergessen():
     Neueinlesen der Spieleliste, damit ausgetauschte Cover wieder
     erkannt werden. Siehe _quelldaten()."""
     _quell_stat.clear()
+    _thumb_fehlt.clear()
+
+
+def negativ_vergessen():
+    """Nur das gemerkte NEIN wegwerfen - die Treffer bleiben stehen.
+
+    Gerufen wird das beim Stillstand (siehe _sync_cover_defer in
+    frontend.py), und zwar aus zwei Gruenden. Erstens schreibt der
+    ARBEITSPROZESS Miniaturen in den Karten-Cache, waehrend wir hier
+    blaettern - unser Nein ueber seine Datei waere danach falsch, und
+    das Cover wuerde nie auftauchen. Zweitens kann jemand waehrend des
+    Betriebs Artwork auf die Karte kopieren.
+
+    Waehrend des Blaetterns steht das Nein also, und beim Loslassen
+    wird noch einmal richtig nachgesehen - genau EINMAL, nicht je
+    Schritt."""
+    for _p in [k for k, v in _quell_stat.items() if v is _NICHTS]:
+        _quell_stat.pop(_p, None)
+    _thumb_fehlt.clear()
 
 # VERSION DES SKALIERVERFAHRENS - Teil des Cache-Schluessels.
 #
@@ -1619,7 +1664,7 @@ ORIGINAL_PASST = "original_passt"
 _MARKE = b"ARTO"
 
 
-def _thumb_cache_get(path, w, h, nachziehen_erlaubt=False):
+def _thumb_cache_get(path, w, h, nachziehen_erlaubt=False, nein_gilt=True):
     """Liefert (breite, hoehe, pixelbytes) bei einem Treffer, sonst
     None. Vermerkt bei einem Treffer die Benutzung (dient als einfacher,
     robuster "zuletzt benutzt"-Zeitstempel fuer die Verdraengung weiter
@@ -1632,6 +1677,20 @@ def _thumb_cache_get(path, w, h, nachziehen_erlaubt=False):
     Bild-Treffer unterscheiden - siehe den Kommentarblock bei
     ORIGINAL_PASST."""
     cpath = _thumb_cache_path(_thumb_cache_key(path, w, h))
+    # DAS GEMERKTE NEIN (Build 222): fehlt die Datei, muss nicht bei
+    # jedem Schritt erneut danach gegriffen werden. Siehe
+    # negativ_vergessen() - beim Stillstand wird neu nachgesehen.
+    #
+    # nein_gilt=False SCHALTET ES AB, und dafuer gibt es genau einen
+    # Grund: wir WARTEN auf den Arbeitsprozess, der diese Datei gerade
+    # schreibt. Sein Ergebnis entsteht in einem anderen Prozess, unser
+    # Nein kann davon nichts wissen - und bliebe es stehen, taeuchte das
+    # Cover nie auf. Genau das haben tools/test_kaltes_cover.py und
+    # test_cover_prewarm.py beim Bauen gemeldet, bevor diese Zeile hier
+    # stand. Der haeufige Fall (es gibt ueberhaupt kein Cover) wartet auf
+    # niemanden und behaelt die Ersparnis.
+    if nein_gilt and cpath in _thumb_fehlt:
+        return None
     # BUILD 201: EIN read() statt drei.
     #
     # Im Profil des Nutzers standen "3 x read()" mit zusammen 66 ms. Die
@@ -1642,6 +1701,7 @@ def _thumb_cache_get(path, w, h, nachziehen_erlaubt=False):
         with open(cpath, "rb") as f:
             rohdaten = f.read()
     except FileNotFoundError:
+        _thumb_fehlt.add(cpath)
         return None
     except OSError:
         return None
@@ -1682,6 +1742,15 @@ def _thumb_cache_get(path, w, h, nachziehen_erlaubt=False):
     return (tw, th, pix)
 
 
+def _nein_fuer(path, w, h):
+    """Das gemerkte "fehlt" fuer genau diese Cache-Datei zuruecknehmen -
+    zu rufen, sobald sie geschrieben wurde (Build 222)."""
+    try:
+        _thumb_fehlt.discard(_thumb_cache_path(_thumb_cache_key(path, w, h)))
+    except Exception:                                    # noqa: BLE001
+        _thumb_fehlt.clear()
+
+
 def _thumb_cache_put_marke(path, w, h):
     """Die Marke "das Original passt, wie es ist" ablegen - acht Byte
     statt einer Kopie. Siehe den Kommentarblock bei ORIGINAL_PASST.
@@ -1695,6 +1764,9 @@ def _thumb_cache_put_marke(path, w, h):
         with open(tmp, "wb") as f:
             f.write(_MARKE + struct.pack("<HH", 0, 0))
         os.replace(tmp, cpath)
+        # Ab jetzt ist sie da - ein frueher gemerktes "fehlt" waere
+        # falsch (Build 222).
+        _thumb_fehlt.discard(cpath)
     except OSError as e:
         LOG("THUMB_CACHE Schreibfehler (%s): %s" % (os.path.basename(path), e))
         return
@@ -1808,6 +1880,9 @@ def _thumb_cache_put(path, w, h, tw, th, pix):
             else:
                 f.write(_KOPF_ART + struct.pack("<HH", tw, th) + _gepackt)
         os.replace(tmp, cpath)
+        # Ab jetzt ist sie da - ein frueher gemerktes "fehlt" waere
+        # falsch (Build 222).
+        _thumb_fehlt.discard(cpath)
     except OSError as e:
         LOG("THUMB_CACHE Schreibfehler (%s): %s" % (os.path.basename(path), e))
         return
@@ -2190,10 +2265,16 @@ class ArtCache:
         # gibt. Ohne diese Pruefung wuerde ein Spiel OHNE Cover - in
         # einer frisch installierten Sammlung der Normalfall - zwei
         # Sekunden lang auf einen Arbeitsprozess warten, der nichts
-        # finden kann, statt sofort "kein Artwork" zu zeigen. Ein
-        # os.path.isfile() ist hier vernachlaessigbar: wir sind bereits
-        # im teuren Zweig, der sonst das ganze Bild dekodieren wuerde.
-        if not os.path.isfile(path):
+        # finden kann, statt sofort "kein Artwork" zu zeigen.
+        #
+        # GEAENDERT (Build 222): ueber _quelldaten() statt mit einem
+        # eigenen os.path.isfile(). Es ist DIESELBE Datei, nach der
+        # _thumb_cache_key() eine Zeile vorher schon gefragt hat - die
+        # Antwort lag also bereits vor, und trotzdem ging die Frage ein
+        # zweites Mal auf die Karte. Zweimal dasselbe fragen ist auf
+        # dieser SD-Karte nichts, was man sich je Scrollschritt leisten
+        # sollte.
+        if _quelldaten(path) is None:
             return False
         t0 = self._warte_start.get(box_key)
         if t0 is not None and self._geduld_am_ende(t0, time.monotonic()):
@@ -2229,6 +2310,15 @@ class ArtCache:
             if thumb_cache_has(pfad, mw, mh):
                 self._warte_start.pop(box_key, None)
                 self._letzte_lieferung = jetzt
+                # DER ARBEITSPROZESS HAT GELIEFERT, also ist unser
+                # gemerktes "fehlt" ueber SEINE Datei falsch - und
+                # moeglicherweise auch ueber andere, die er nebenbei
+                # fertig gerechnet hat. Einmal alles vergessen, hier
+                # ist der richtige Ort dafuer: es passiert selten, und
+                # direkt danach wird ohnehin neu gezeichnet. Ohne diese
+                # Zeile meldete tools/test_kaltes_cover.py "und der
+                # naechste Aufruf hat das Bild" als FEHL - zu Recht.
+                _thumb_fehlt.clear()
                 return True
             if self._geduld_am_ende(t0, jetzt):
                 # Eintrag bleibt stehen - _auslagern_versuchen() sieht
@@ -2631,8 +2721,12 @@ class ArtCache:
         # laufen. _defer_uncached steht, solange aktiv geblaettert
         # wird (siehe _sync_cover_defer in frontend.py) - genau dann
         # hat das Geraet keine Luft fuer einen Schreib-Thread.
+        # nein_gilt: das gemerkte "fehlt" NICHT verwenden, solange wir
+        # auf den Arbeitsprozess warten - er schreibt die Datei gerade,
+        # und zwar in einem anderen Prozess (Build 222).
         disk_hit = _thumb_cache_get(path, max_w, max_h,
-                                    not self._defer_uncached)
+                                    not self._defer_uncached,
+                                    box_key not in self._warte_start)
         # NEU (Build 128): die Marke "das Original passt" ist KEIN
         # Bildtreffer - sie sagt nur, dass hier nichts zu rechnen ist.
         # Das Original muss trotzdem noch dekodiert werden.

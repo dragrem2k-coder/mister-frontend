@@ -928,6 +928,28 @@ TRANSLATIONS = {
         "de": "Geändert. Die Miniaturen werden beim Blättern neu "
               "gerechnet - die alten bleiben liegen, zurückschalten "
               "geht also sofort."},
+    "sys_schrift": {
+        "en": "Font: %s",
+        "de": "Schrift: %s"},
+    "sys_schrift_eigen": {
+        "en": "Dragend's own",
+        "de": "eigene"},
+    "sys_schrift_osd": {
+        "en": "like the MiSTer OSD",
+        "de": "wie im MiSTer-OSD"},
+    "sys_schrift_changed": {
+        "en": "Font changed. Accented characters keep coming from "
+              "Dragend's own font - a MiSTer .pf file has 96 characters "
+              "and ends at 'z'.",
+        "de": "Schrift geändert. Umlaute kommen weiterhin aus der "
+              "eigenen Schrift - eine MiSTer-.pf-Datei hat 96 Zeichen "
+              "und endet beim 'z'."},
+    "sys_schrift_keine": {
+        "en": "No fonts found in /media/fat/font - MiSTer brings its "
+              "own, and whatever is there can be picked here.",
+        "de": "Keine Schriften in /media/fat/font gefunden - MiSTer "
+              "bringt eigene mit, und was dort liegt, steht hier zur "
+              "Wahl."},
     "sys_cores": {
         "en": "Cores: choose a version per system",
         "de": "Cores: Fassung je System waehlen"},

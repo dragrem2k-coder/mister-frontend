@@ -1901,6 +1901,8 @@ def _abschnitt_j(b, fe, S, A, fm):
     # mitgezaehlt.
     _os = __import__("os")
     _bi = __import__("builtins")
+    _sys = __import__("sys")
+    _wer = {}
     _datei_echt = [(_os, "stat", _os.stat), (_bi, "open", _bi.open)]
     _KARTEN = [(fbo, n) for n in ("karte_mit_schatten",
                                   "rect_rounded_schatten",
@@ -1920,6 +1922,7 @@ def _abschnitt_j(b, fe, S, A, fm):
         for p in _POSTEN:
             konto[p + "_ms"] = 0.0
             konto[p + "_n"] = 0.0
+        _wer.clear()
         for k in ("restore_zeilen", "blit_zeilen", "flip_bytes",
                   "text_zeichen", "text_in_beschr_ms", "in_beschr",
                   "in_karte", "karten_innen"):
@@ -2043,6 +2046,21 @@ def _abschnitt_j(b, fe, S, A, fm):
             finally:
                 konto["datei_ms"] += time.monotonic() - t0
                 konto["datei_n"] += 1
+                # WER FRAGT? (Build 222) Ohne diese Zeile stand im
+                # Bericht nur "20 Zugriffe" und niemand wusste, welche.
+                # Genommen wird der Rahmen des Aufrufers, NICHT
+                # traceback.extract_stack(): das liest die
+                # Quelltextzeilen ueber linecache und ruft dabei selbst
+                # os.stat - also eine Endlosschleife in genau diesem
+                # Haken. Ein f_code-Zugriff kostet nichts.
+                try:
+                    _f = _sys._getframe(1)
+                    _w = _f.f_code.co_name
+                    if _f.f_back is not None:
+                        _w = _f.f_back.f_code.co_name + " > " + _w
+                    _wer[_w] = _wer.get(_w, 0) + 1
+                except Exception:                        # noqa: BLE001
+                    pass
         return haken
 
     # DIE BESCHREIBUNG rechnet Umbrueche (reine Zeichenkettenarbeit) und
@@ -2231,6 +2249,9 @@ def _abschnitt_j(b, fe, S, A, fm):
                   "   haus %5.2f" % (tx, ka, be, ha))
                 b("     cover   %6.2f   (davon Karte %.2f in %d Zugriffen)"
                   % (co, da, konto["datei_n"] / schritte))
+                for _w, _k in sorted(_wer.items(), key=lambda e: -e[1])[:3]:
+                    b("        %5.1f/Schritt  %s" % (_k / float(schritte),
+                                                     _w[-52:]))
                 b("     REST    %6.2f   (%.0f %% des Schritts)"
                   % (rest, 100.0 * rest / max(0.01, ges)))
                 b("     Aufrufe: restore %d/%dz  blit %d/%dz  flip %d/%.1fMB"

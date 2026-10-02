@@ -976,6 +976,67 @@ leichten Pfad der Liste NIE (`_draw_navigate_items` haengt an `run()`).
 Abschnitt B und J des Benchs haben fuer die Liste deshalb bis Build 217
 den vollen Neuaufbau gemessen und "je Schritt" darueber geschrieben.
 
+## test_schrift.py
+
+Die zweite Schrift (Build 223) - MiSTers eigene OSD-Schriften.
+
+Der Nutzer hatte eine Schrift von einer Download-Seite verlinkt und
+gefragt, ob wir sie einbauen koennen. Sein eigener Einwand war der
+bessere Weg: MiSTer bringt seine OSD-Schriften mit, einstellbar in der
+MiSTer.ini. Die liegen bereits auf SEINER Karte - wir lesen nur.
+
+**Test 8 ist der Grund fuer das Ganze.** Er geht durch das komplette
+Paket und meldet JEDE .pf-, .ttf-, .otf- oder .woff-Datei. Eine fremde
+Schrift mit unklarer Lizenz hat in einem oeffentlichen Repository nichts
+verloren, und ein Test ist hier verlaesslicher als ein Vorsatz.
+
+**Test 2 prueft die einzige Formatfrage.** Eine .pf ist 768 Byte, 96
+Zeichen zu je 8 Byte ab Leerzeichen - also genau unser FONT8X8. Nur die
+Bitfolge ist umgekehrt: dort ist das oberste Bit der linke Bildpunkt.
+Der Test schreibt eine Diagonale in eine Datei und liest nach, dass sie
+in dieselbe Richtung laeuft. Uebersieht man das, steht jeder Buchstabe
+spiegelverkehrt da.
+
+**Test 5 ist die Haelfte, die man vergisst.** _glyphcache und _textcache
+halten fertig gerechnete Bildpunkte. Wird nur die Tabelle getauscht,
+bleibt jeder schon gezeichnete Text in der alten Schrift stehen - und
+zwar genau die haeufigen, denn die liegen sicher im Zwischenspeicher.
+
+**Test 7 haelt fest, dass die MiSTer.ini nur GELESEN wird.** In diese
+Datei schreibt das Frontend an genau einer Stelle (dem [Menu]-Block fuer
+den Roehrenmodus, mit Sicherungskopie). Die Schriftwahl des Nutzers
+fassen wir nicht an - der Test vergleicht die Datei danach byteweise.
+
+
+## test_negativ_merken.py
+
+Das gemerkte NEIN (Build 222) - und der Stillstand, der es vergisst.
+
+Abschnitt J sagte im Bericht vom 29.09. fuer die Spieleliste:
+
+    cover 0.00   (davon Karte 13.44 in 20 Zugriffen)
+
+Zwanzig Zugriffe auf die SD-Karte JE SCROLLSCHRITT, und der Posten
+"cover" daneben mit 0,00 - die Zugriffe liefen also an der Messung
+vorbei, mitten durch den REST. Nachgestellt auf dem
+Entwicklungsrechner: ein Eintrag OHNE Cover kostete drei Zugriffe, bei
+JEDEM Schritt wieder, auch beim zehnten Mal auf denselben Eintrag.
+Gemerkt wurde naemlich nur ein TREFFER.
+
+**Die Gegenprobe ist der eigentliche Test.** Das Nein darf nicht
+stehenbleiben: der Arbeitsprozess schreibt Miniaturen auf die Karte,
+waehrend hier geblaettert wird. Deshalb pruefen Test 3 und 6, dass eine
+Datei, die WAEHRENDDESSEN entsteht, nach dem Loslassen gefunden wird -
+und dass ein Wartefall dem Nein gar nicht erst traut. Genau diese
+beiden Faelle haben beim Bauen test_kaltes_cover.py und
+test_cover_prewarm.py rot gemeldet, bevor die Ausnahmen drin waren.
+
+Test 5 prueft, dass negativ_vergessen() an der FLANKE haengt (von
+"blaettert" nach "steht") und nicht bei jedem Seitenaufbau laeuft - ein
+Zwischenspeicher, den niemand leert, ist ein Fehler mit Ansage, und
+einer, der bei jedem Aufbau geleert wird, ist keiner.
+
+
 ## test_flaechen_in_c.py
 
 Das Fuellen von Flaechen in C (Build 219) - und die einzige Stelle in
