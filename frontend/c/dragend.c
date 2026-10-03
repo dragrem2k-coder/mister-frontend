@@ -433,6 +433,151 @@ int zeilen_kopieren(unsigned char *dst, int dst_stride, int dst_grenze,
 }
 
 /* ------------------------------------------------------------------
+ * TEXT ZEICHNEN (Build 227)
+ * ------------------------------------------------------------------
+ * DER GROESSTE VERBLIEBENE POSTEN. Im Bericht vom 02.10. steht `text`
+ * mit 15,57 ms je Scrollschritt in der Spieleliste/Galerie - acht
+ * Aufrufe, 191 Zeichen. Gemessen wurde vorher, WOFUER die Zeit draufgeht
+ * (tools/diag_textkosten.py), und es sind zwei verschiedene Dinge:
+ *
+ *   STREIFEN BAUEN  ein Fehltreffer im Textcache. Acht b"".join() ueber
+ *                   alle Zeichen, dazu je Zeichen und Glyphenzeile ein
+ *                   Griff in den Glyphencache. Teuer.
+ *   BLITTEN         die Schleife am Ende von text(): 8*scale
+ *                   Schnittzuweisungen. Billig, faellt aber immer an.
+ *
+ * Auf dem Geraet ueberwiegt der erste Posten deutlich - der Textcache
+ * kann beim Scrollen prinzipiell kaum greifen, weil jeder Schritt einen
+ * anderen Titel und andere Datenzeilen zeigt. Build 141 hat dafuer
+ * einmal 11 ms JE ZEILE gemessen.
+ *
+ * Diese Funktion ueberspringt den Streifen ganz: sie bekommt die acht
+ * Schriftbytes je Zeichen und schreibt die Bildpunkte direkt in den
+ * Puffer. Kein Zwischenbild, kein Cache-Eintrag, keine Python-Schleife.
+ *
+ * SIE NIMMT EINE LISTE VON AUFTRAEGEN und nicht einen einzigen Text,
+ * und das ist nach Build 221 der eigentliche Punkt: ein Sprung nach C
+ * kostet auf dem DE10-Nano rund EINE Millisekunde. Acht Textzeilen
+ * einzeln waeren acht Millisekunden allein an Aufrufen - gebuendelt ist
+ * es eine. Die Datenzeilen unter dem Cover und die Beschreibung in der
+ * Galerie kommen deshalb als Bund hier an.
+ *
+ * auftraege ist eine flache Liste aus je SIEBEN Werten:
+ *     x, y, glyph_off (in ZEICHEN), zeichen, scale, fg, bg
+ * fg/bg sind die vier Bytes eines Bildpunktes als 32-Bit-Wert, genau
+ * wie bei rechtecke_farben().
+ *
+ * ERST PRUEFEN, DANN ZEICHNEN: ist auch nur ein Auftrag unsinnig, wird
+ * NICHTS gezeichnet und -1 gemeldet. Sonst haette Python einen halb
+ * gefuellten Puffer und muesste raten, wo es aufgehoert hat.
+ *
+ * Das ABSCHNEIDEN am rechten Rand ist kein Fehler, sondern genau das,
+ * was fb.text() auch tut: maxch = (breite - x) / cw. Dieselbe Regel,
+ * dieselbe Stelle - sonst stuende mit C ein Zeichen mehr oder weniger
+ * da als ohne, und tools/test_text_in_c.py vergleicht Byte fuer Byte.
+ */
+#define TEXT_FELDER 7
+#define TEXT_MAXSCALE 8
+
+int texte_zeichnen(unsigned char *dst, int stride, int grenze,
+                   int breite, int hoehe,
+                   const unsigned char *glyphen, int glyphen_len,
+                   const int *auftraege, int anzahl)
+{
+    /* Eine fertige Glyphenzeile je Bytewert - dieselbe Ueberlegung wie
+     * bei _glyph_row() in Python: in einem Text kommen dieselben
+     * Zeichen und damit dieselben Bitmuster staendig wieder, und ein
+     * memcpy von 8*scale Punkten ist billiger als 8*scale einzelne
+     * Vier-Byte-Schreibvorgaenge. Gueltig ist der Vorrat immer nur fuer
+     * EINE Kombination aus scale, fg und bg; wechselt sie innerhalb des
+     * Bundes, wird er verworfen (ein memset ueber 256 Byte). */
+    static unsigned char stueck[256][8 * TEXT_MAXSCALE * 4];
+    unsigned char gueltig[256];
+    int i, akt_scale = -1;
+    unsigned int akt_fg = 0, akt_bg = 0;
+
+    if (!dst || !glyphen || !auftraege) return -1;
+    if (stride <= 0 || breite <= 0 || hoehe <= 0 || anzahl < 0) return -1;
+    if (glyphen_len < 0) return -1;
+
+    /* ---- erster Durchgang: nur pruefen ---- */
+    for (i = 0; i < anzahl; i++) {
+        const int *a = auftraege + i * TEXT_FELDER;
+        int glyph_off = a[2], zeichen = a[3], scale = a[4];
+        if (scale < 1 || scale > TEXT_MAXSCALE) return -1;
+        if (zeichen < 0 || glyph_off < 0) return -1;
+        if (zeichen > 0 &&
+            ((long)glyph_off + zeichen) * 8 > (long)glyphen_len) return -1;
+    }
+
+    memset(gueltig, 0, sizeof(gueltig));
+
+    /* ---- zweiter Durchgang: zeichnen ---- */
+    for (i = 0; i < anzahl; i++) {
+        const int *a = auftraege + i * TEXT_FELDER;
+        int x = a[0], y = a[1], glyph_off = a[2], zeichen = a[3];
+        int scale = a[4];
+        unsigned int fg = (unsigned int)a[5];
+        unsigned int bg = (unsigned int)a[6];
+        int cw = 8 * scale;              /* Zeichenbreite in Punkten */
+        int zeilen = 8 * scale;          /* Zeilen des fertigen Textes */
+        int maxch, need, off, gy, c, r;
+        unsigned char *erste;
+
+        if (zeichen <= 0) continue;
+        /* GENAU DIE PRUEFUNGEN AUS fb.text(), in genau dieser
+         * Reihenfolge - siehe den Kopfkommentar. */
+        if (x < 0 || y < 0 || y + zeilen > hoehe) continue;
+        maxch = (breite - x) / cw;
+        if (maxch <= 0) continue;
+        if (zeichen > maxch) zeichen = maxch;
+        need = zeichen * cw * 4;
+        off = y * stride + x * 4;
+        if (off < 0) continue;
+        /* Die LETZTE Zeile muss noch vollstaendig hineinpassen. */
+        if ((long)off + (long)(zeilen - 1) * stride + need > (long)grenze)
+            continue;
+
+        if (scale != akt_scale || fg != akt_fg || bg != akt_bg) {
+            memset(gueltig, 0, sizeof(gueltig));
+            akt_scale = scale; akt_fg = fg; akt_bg = bg;
+        }
+
+        for (gy = 0; gy < 8; gy++) {
+            erste = dst + off;
+            for (c = 0; c < zeichen; c++) {
+                unsigned int bits = glyphen[(glyph_off + c) * 8 + gy];
+                unsigned char *vorrat = stueck[bits];
+                if (!gueltig[bits]) {
+                    /* Acht Bits, jedes scale Punkte breit. Ueber memcpy
+                     * und nicht ueber einen uint32-Zeiger, weil ein
+                     * unausgerichteter Zugriff auf ARM nicht ueberall
+                     * harmlos ist - dieselbe Ueberlegung wie bei
+                     * rechtecke_farben(). */
+                    int b, k;
+                    unsigned char *p = vorrat;
+                    for (b = 0; b < 8; b++) {
+                        unsigned int farbe = (bits >> b & 1u) ? fg : bg;
+                        for (k = 0; k < scale; k++) {
+                            memcpy(p, &farbe, 4);
+                            p += 4;
+                        }
+                    }
+                    gueltig[bits] = 1;
+                }
+                memcpy(erste + c * cw * 4, vorrat, (size_t)cw * 4);
+            }
+            /* Dieselbe Zeile scale-mal: im Streifen stehen die
+             * Wiederholungen ebenfalls als dasselbe Bytemuster. */
+            for (r = 1; r < scale; r++)
+                memcpy(erste + (size_t)r * stride, erste, (size_t)need);
+            off += (size_t)scale * stride;
+        }
+    }
+    return 0;
+}
+
+/* ------------------------------------------------------------------
  * SCHARF VERKLEINERN (Build 175)
  * ------------------------------------------------------------------
  * Nearest-Neighbor: je Zielpunkt genau EIN Quellpunkt, ohne zu
@@ -496,6 +641,9 @@ int skalieren_nearest(const unsigned char *pix, int w, int h,
  * 3 = skalieren_nearest() dazugekommen (Build 175).
  * 4 = fremd_zaehlen() dazugekommen (Build 209).
  * 5 = rechtecke_farben() dazugekommen (Build 219).
+ * 6 = zeilen_kopieren() dazugekommen (Build 225).
+ * 7 = rechtecke_maske() dazugekommen (Build 226).
+ * 8 = texte_zeichnen() dazugekommen (Build 227).
  *
  * WICHTIG BEI EINEM TEIL-UPDATE, und das ist seit Build 219 anders
  * geloest: bisher verwarf die Python-Seite jede Fassung, deren Nummer
@@ -506,7 +654,7 @@ int skalieren_nearest(const unsigned char *pix, int w, int h,
  * voll genutzt, nur rechtecke_farben() fehlt dann und die betroffenen
  * Zeichenwege rechnen in Python. Das ist der Unterschied zwischen
  * "etwas langsamer" und "alles langsam". */
-int dragend_version(void) { return 7; }
+int dragend_version(void) { return 8; }
 
 /* ------------------------------------------------------------------
  * FLAECHEN FUELLEN (Build 219)

@@ -237,6 +237,196 @@ check("und ein Absturz dort schaltet sie ab",
       "self.fb.maske = None" in quelle_f.split("masken_bildschirm CRASH")[1]
       [:300] if "masken_bildschirm CRASH" in quelle_f else False)
 
+# ---------------------------------------------------------------------------
+print()
+print("Test 7: die ORDNERSTRUKTUR, nicht eine Liste aus 1207 Zeilen")
+# ---------------------------------------------------------------------------
+# NACHGEREICHT IN BUILD 227, auf Zuruf des Nutzers: "lochmasken in
+# unterordner anzeigen sonst zuviel auswahl, die ordnerstruktur wie sie
+# dort selbst angezeigt ist". MiSTers Sammlung ist bereits sortiert -
+# diese Ordnung ist die Arbeit von jemandem, der die Masken kennt.
+with tempfile.TemporaryDirectory() as tmp:
+    gut = "v2\n1,1\n407\n"
+    for rel in ("Complex/CRT Styles/Sony PVM.txt",
+                "Complex/CRT Styles/Commodore 1084.txt",
+                "Complex/Fein/Aperture.txt",
+                "Simple/Scanlines.txt",
+                "Direkt.txt",
+                "Ohne Masken/liesmich.md"):
+        voll = os.path.join(tmp, rel)
+        os.makedirs(os.path.dirname(voll), exist_ok=True)
+        open(voll, "w").write(gut)
+
+    wurzel = M.masken_eintraege("", tmp)
+    check("die Wurzel zeigt Ordner und lose Dateien",
+          [e[1] for e in wurzel] == ["Complex", "Simple", "Direkt"],
+          "%r" % ([e[1] for e in wurzel],))
+    check("Ordner stehen VORN", wurzel[0][0] is True and wurzel[-1][0] is False)
+    check("ein Ordner sagt, wieviel darin liegt",
+          wurzel[0][3] == 3, "%r" % (wurzel[0][3],))
+    check("ein Ordner OHNE Maske faellt weg",
+          all(e[1] != "Ohne Masken" for e in wurzel),
+          "sonst laeuft man in eine Sackgasse")
+
+    tiefer = M.masken_eintraege("Complex", tmp)
+    check("eine Ebene tiefer stehen die Unterordner",
+          [e[1] for e in tiefer] == ["CRT Styles", "Fein"],
+          "%r" % ([e[1] for e in tiefer],))
+    blatt = M.masken_eintraege("Complex/CRT Styles", tmp)
+    check("und ganz unten die Masken, alphabetisch",
+          [e[1] for e in blatt] == ["Commodore 1084", "Sony PVM"],
+          "%r" % ([e[1] for e in blatt],))
+    check("der Pfad eines Blattes ist relativ zur Wurzel",
+          blatt[0][2] == os.path.join("Complex/CRT Styles",
+                                      "Commodore 1084.txt"),
+          "%r" % (blatt[0][2],))
+    check("und er laesst sich auch wirklich lesen",
+          M.maske_lesen(os.path.join(tmp, blatt[0][2])) is not None)
+
+    check("ein Ordner, den es nicht gibt, liefert eine leere Liste",
+          M.masken_eintraege("gibt/es/nicht", tmp) == [])
+
+# DER WEG HINAUF. Ohne ihn kaeme man in einen Ordner hinein und nicht
+# wieder heraus - und genau das waere schlimmer als die lange Liste.
+check("eine Ebene hoch aus zwei Ebenen",
+      M.oberordner("Complex/CRT Styles") == "Complex")
+check("eine Ebene hoch aus einer", M.oberordner("Complex") == "")
+check("und ueber die Wurzel hinaus geht es nicht",
+      M.oberordner("") == "")
+
+check("der Bildschirm baut die Liste je EBENE",
+      "MASKEN.ebene(ordner, {" in quelle_f,
+      "und zwar in fe/masken.py, nicht in der Zeichenschleife")
+check("Zurueck geht erst an der Wurzel aus der Seite heraus",
+      "if ordner:" in quelle_f.split("elif akt in (\"back\", \"exit\")")[1]
+      [:400], "sonst waere man aus Versehen draussen")
+check("und der Cursor landet auf dem Ordner, aus dem man kommt",
+      quelle_f.count('if e[0] in ("ordner", "presets")') == 2,
+      "sonst sucht man ihn in einer langen Liste wieder")
+check("die flache Liste ist WEG, nicht nur ungenutzt",
+      not hasattr(M, "masken_dateien"),
+      "zwei Wege in dieselbe Sammlung sind einer zuviel")
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 8: MiSTers PRESETS - die kuerzeste Antwort auf 'zuviel Auswahl'")
+# ---------------------------------------------------------------------------
+# NACHGESCHAUT AUF ZURUF DES NUTZERS: "die sachen dafuer liegen in ordner
+# /media/fat/Presets einmal nachschauen bitte". Ein Preset ist eine
+# winzige INI mit einem ganzen Satz Videoeinstellungen. Die Filterzeilen
+# gehen MiSTers Scaler an und uns nichts - die Zeile "mask=" dagegen
+# nennt genau eine Datei aus /media/fat/Shadow_Masks.
+with tempfile.TemporaryDirectory() as tmp:
+    mk = os.path.join(tmp, "masks")
+    pr = os.path.join(tmp, "presets")
+    os.makedirs(os.path.join(mk, "Complex", "CRT Styles"))
+    os.makedirs(pr)
+    open(os.path.join(mk, "Complex", "CRT Styles", "Sony PVM.txt"),
+         "w").write("v2\n1,1\n407\n")
+
+    def _preset(name, inhalt):
+        open(os.path.join(pr, name), "w").write(inhalt)
+
+    _preset("Sony PVM 1080p.ini",
+            "# Kommentar\n[Video]\nhfilter=Upscaling/lanczos2_10.txt\n"
+            "vfilter=same\ngamma=off\n"
+            "mask=Complex/CRT Styles/Sony PVM.txt\nmaskmode=1x\n")
+    _preset("Mit Praefix.ini",
+            "mask=Shadow_Masks/Complex/CRT Styles/Sony PVM.txt\n")
+    _preset("Nur Filter.ini", "vfilter=same\nmask=off\n")
+    _preset("Zeigt ins Leere.ini", "mask=Gibt/Es/Nicht.txt\n")
+    _preset("keine_ini.txt", "mask=Complex/CRT Styles/Sony PVM.txt\n")
+
+    gefunden = M.preset_masken(pr, mk)
+    namen = [e[0] for e in gefunden]
+    check("ein Preset mit Maske wird gefunden", "Sony PVM 1080p" in namen,
+          "%r" % (namen,))
+    check("auch mit vorangestelltem Ordner", "Mit Praefix" in namen)
+    check("'mask=off' faellt weg", "Nur Filter" not in namen,
+          "ein Eintrag, der nichts tut, ist schlimmer als keiner")
+    check("eine Maske, die nicht da ist, faellt weg",
+          "Zeigt ins Leere" not in namen)
+    check("und was keine .ini ist, wird gar nicht angefasst",
+          "keine_ini" not in namen)
+    check("der Pfad zeigt auf die echte Datei",
+          os.path.isfile(os.path.join(mk, gefunden[0][1])))
+    check("kein Preset-Ordner heisst: leere Liste, kein Absturz",
+          M.preset_masken(os.path.join(tmp, "weg"), mk) == [])
+    check("der Ordner ist MiSTers eigener",
+          M.PRESETS_DIR == "/media/fat/Presets")
+
+check("geoeffnet werden sie wie ein Ordner",
+      'if art in ("ordner", "presets"):' in quelle_f)
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 9: DER WEG DURCH DEN BAUM, wirklich durchlaufen")
+# ---------------------------------------------------------------------------
+# Hier wird nicht im Quelltext gesucht, sondern navigiert. ebene() steht
+# genau deshalb in fe/masken.py und nicht in der Zeichenschleife: was
+# oben steht, was nach unten fuehrt und wie der Weg zurueck aussieht,
+# soll pruefbar sein, ohne einen Bildschirm zu bauen.
+with tempfile.TemporaryDirectory() as tmp:
+    mk = os.path.join(tmp, "masks")
+    pr = os.path.join(tmp, "presets")
+    os.makedirs(os.path.join(mk, "Complex", "CRT Styles"))
+    os.makedirs(os.path.join(mk, "Simple"))
+    os.makedirs(pr)
+    for rel in ("Complex/CRT Styles/Sony PVM.txt",
+                "Complex/CRT Styles/Commodore 1084.txt",
+                "Simple/Scanlines.txt"):
+        open(os.path.join(mk, rel), "w").write("v2\n1,1\n407\n")
+    open(os.path.join(pr, "Sony PVM 1080p.ini"), "w").write(
+        "mask=Complex/CRT Styles/Sony PVM.txt\n")
+
+    TEXTE = {"zurueck": "zurueck", "keine": "keine", "presets": "Presets"}
+
+    def _ebene(ordner):
+        return M.ebene(ordner, TEXTE, mk, pr)
+
+    wurzel = _ebene("")
+    check("oben steht 'keine'", wurzel[0][0] == "keine")
+    check("danach die Presets", wurzel[1][0] == "presets",
+          "%r" % ([e[0] for e in wurzel],))
+    check("und KEIN Weg nach oben, wo keiner hinfuehrt",
+          all(e[0] != "hoch" for e in wurzel))
+
+    # Hinein in die Presets und wieder heraus.
+    presets = _ebene(wurzel[1][2])
+    check("die Presetebene fuehrt zurueck", presets[0][0] == "hoch")
+    check("und enthaelt nur Masken",
+          [e[0] for e in presets[1:]] == ["maske"],
+          "%r" % ([e[0] for e in presets],))
+    check("von dort geht es zur Wurzel",
+          M.oberordner(wurzel[1][2]) == "")
+
+    # Zwei Ebenen hinunter und Schritt fuer Schritt zurueck.
+    tief = [e for e in wurzel if e[0] == "ordner"][0][2]
+    stufe1 = _ebene(tief)
+    check("ein Ordner fuehrt in einen Ordner", stufe1[1][0] == "ordner",
+          "%r" % ([e[0] for e in stufe1],))
+    stufe2 = _ebene(stufe1[1][2])
+    check("und der zu den Masken",
+          [e[0] for e in stufe2[1:]] == ["maske", "maske"],
+          "%r" % ([e[0] for e in stufe2],))
+    check("zurueck geht es Stufe fuer Stufe",
+          M.oberordner(stufe1[1][2]) == tief
+          and M.oberordner(tief) == "")
+
+    # Und die Wahl am Ende ist ein Pfad, der sich lesen laesst.
+    wahl = stufe2[1][2]
+    check("die gewaehlte Maske laesst sich lesen",
+          M.maske_lesen(os.path.join(mk, wahl)) is not None, wahl)
+
+    # OHNE Presets verschwindet die Zeile - und nur sie.
+    leer = M.ebene("", TEXTE, mk, os.path.join(tmp, "weg"))
+    check("ohne Presetordner steht die Zeile nicht da",
+          all(e[0] != "presets" for e in leer),
+          "%r" % ([e[0] for e in leer],))
+    check("der Rest bleibt unveraendert",
+          [e[0] for e in leer] == ["keine", "ordner", "ordner"],
+          "%r" % ([e[0] for e in leer],))
+
 print()
 if fails:
     print("FEHLGESCHLAGEN (%d):" % len(fails))

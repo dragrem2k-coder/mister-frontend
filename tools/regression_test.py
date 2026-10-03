@@ -82,6 +82,8 @@ def _fake_fb_init(self, bpp=32):
     self._glyphcache = {}
     self._textcache = {}
     self._textcache_order = []
+    # Build 227: das gemerkte "schon einmal da" des Textzeichners.
+    self._text_einmal = set()
     self._TEXTCACHE_LIMIT = 400
     self._vsync_supported = False       # ioctl erst gar nicht versuchen
     self.full_redraw_gen = 0            # siehe Framebuffer.mark_full_redraw()

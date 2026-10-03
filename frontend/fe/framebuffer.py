@@ -81,6 +81,48 @@ FONT_EXTRA = bytes.fromhex('0000000000000000181800181818180018187e03037e18181c36
 # Framebuffer.schrift_setzen().
 FONT_AKTIV = None
 
+# DIE ACHT SCHRIFTBYTES JE ZEICHEN (Build 227).
+#
+# Fuer den Weg nach C wird nicht mehr ein fertiger Pixelstreifen
+# gebraucht, sondern nur noch die Bitmuster - acht Byte je Zeichen. Das
+# ist der billigste Teil der ganzen Textarbeit und laesst sich deshalb
+# unbesehen merken: ein Eintrag sind acht Byte, nicht dreissig Kilobyte
+# wie beim Streifen, und die Zahl der Eintraege ist durch den
+# Zeichenvorrat gedeckelt.
+#
+# GELEERT WIRD ER MIT DER SCHRIFT (Framebuffer.schrift_setzen) - genau
+# wie _glyphcache und _textcache, und genau das ist die Haelfte, die man
+# vergisst.
+_GLYPHBYTES = {}
+
+
+def _glyphbytes(s):
+    """Die Schriftbytes aller Zeichen von s hintereinander (8 je Zeichen).
+
+    Die Zuordnung ist dieselbe wie in _text_strip(): bis 0x7F die aktive
+    Tabelle, 0xA0 bis 0xFF immer unsere eigene Latin-1-Ergaenzung (eine
+    MiSTer-.pf hat 96 Zeichen und endet bei 0x7F - ohne diese Zeile
+    stuende "Koenig der Loewen" voller Fragezeichen da), alles andere
+    als "?"."""
+    tab = _GLYPHBYTES
+    teile = []
+    for ch in s:
+        g = tab.get(ch)
+        if g is None:
+            code = ord(ch)
+            if code <= 127:
+                quelle, basis = (FONT_AKTIV or FONT8X8), code * 8
+            elif 0xA0 <= code <= 0xFF:
+                quelle, basis = FONT_EXTRA, (code - 0xA0) * 8
+            else:
+                quelle, basis = (FONT_AKTIV or FONT8X8), 0x3F * 8
+            g = bytes(quelle[basis:basis + 8])
+            if len(g) != 8:
+                g = b"\x00" * 8
+            tab[ch] = g
+        teile.append(g)
+    return b"".join(teile)
+
 
 def schrift_laden(pfad):
     """Eine MiSTer-OSD-Schrift (.pf) in unsere Tabellenform bringen.
@@ -272,6 +314,14 @@ class Framebuffer:
         self._glyphcache = {}
         self._textcache = {}          # (text, scale, fg, bg) -> Liste von Byte-Zeilen
         self._textcache_order = []
+        # DAS GEMERKTE "SCHON EINMAL DA" (Build 227). Ein Text, den es
+        # zum ersten Mal gibt, wird ueber C gezeichnet und NICHT
+        # gecacht - das ist der billige Weg fuer die Titel und
+        # Datenzeilen, die beim Scrollen staendig wechseln und nie
+        # wiederkommen. Wer ZWEIMAL kommt, bekommt beim zweiten Mal
+        # seinen Streifen und danach Treffer. Dieselbe Ueberlegung wie
+        # beim gemerkten Nein aus Build 222, nur andersherum.
+        self._text_einmal = set()
         # BUGFIX (Nutzerwunsch "Scrollen soll butterweich sein" fuehrte zu
         # echten DRAGEND_PROFILE-Logs auf echter Hardware - siehe TEXTCACHE-
         # Zeilen dort): die fruehere Vermutung aus dem Kommentar unten
@@ -1947,7 +1997,12 @@ class Framebuffer:
         getauscht, bleibt jeder schon einmal gezeichnete Text in der
         alten Schrift stehen - und zwar genau die haeufigen Texte, denn
         die liegen sicher im Zwischenspeicher. Das saehe aus wie ein
-        halb umgestelltes Frontend und waere schwer zu finden."""
+        halb umgestelltes Frontend und waere schwer zu finden.
+
+        DRITTER UND VIERTER ZWISCHENSPEICHER (Build 227): _GLYPHBYTES
+        haelt die Schriftbytes je Zeichen, _text_einmal die Schluessel,
+        die schon einmal ueber C gezeichnet wurden. Beide haengen
+        genauso an der Schrift wie die zwei darueber."""
         global FONT_AKTIV
         if tabelle is FONT_AKTIV:
             return False
@@ -1955,6 +2010,8 @@ class Framebuffer:
         self._glyphcache.clear()
         self._textcache.clear()
         del self._textcache_order[:]
+        _GLYPHBYTES.clear()
+        self._text_einmal.clear()
         return True
 
     def _glyph_row(self, bits, scale, fg, bg):
@@ -2071,6 +2128,60 @@ class Framebuffer:
             self._textcache_hits += 1
         return strip
 
+    def text_viele(self, auftraege):
+        """Mehrere Textzeilen in EINEM Sprung nach C zeichnen.
+
+        auftraege: Folge von (x, y, s, scale, fg, bg) - fg und bg sind
+        Farbtupel wie bei text(), nicht None.
+
+        WARUM GEBUENDELT, und das ist nach Build 221 der ganze Punkt:
+        ein Sprung nach C kostet auf dem DE10-Nano rund eine
+        Millisekunde. Die acht Zeilen unter dem Cover (Titel und
+        Datenzeilen) einzeln waeren acht Millisekunden allein an
+        Aufrufen - zusammen ist es eine.
+
+        Rueckgabe True, wenn C es erledigt hat. Bei False hat sich
+        NICHTS veraendert, und der Aufrufer muss selbst zeichnen -
+        deshalb darf diese Methode nichts halb erledigen.
+
+        DAS ABSCHNEIDEN AM RECHTEN RAND macht C, mit genau derselben
+        Regel wie text() (maxch = (Breite - x) // cw). Stuende sie hier
+        noch einmal, waere sie zweimal da und liefe irgendwann
+        auseinander - tools/test_text_in_c.py vergleicht Byte fuer
+        Byte."""
+        if self.text_zeichner is None or not auftraege:
+            return False
+        try:
+            teile = []
+            jobs = []
+            off = 0                       # in ZEICHEN
+            for x, y, s, scale, fg, bg in auftraege:
+                if not s:
+                    continue
+                g = _glyphbytes(s)
+                teile.append(g)
+                jobs.append((x, y, off, len(s), scale,
+                             self._farbwert(self.px(fg)),
+                             self._farbwert(self.px(bg))))
+                off += len(s)
+            if not jobs:
+                return True               # nichts zu tun ist erledigt
+            return bool(self.text_zeichner(
+                self.buf, self.stride, len(self.buf), self.width,
+                self.height, b"".join(teile), jobs))
+        except Exception:                                # noqa: BLE001
+            return False
+
+    def _text_nach_c(self, zeichen, scale):
+        """Lohnt der Sprung nach C fuer einen Streifen dieser Groesse?
+
+        Gezaehlt werden die Punkte des fertigen Textes: Zeichen mal
+        8*scale breit, 8*scale hoch. Die Begruendung der Schwelle steht
+        bei TEXT_C_MIN_PUNKTE."""
+        if self.text_zeichner is None:
+            return False
+        return zeichen * 8 * scale * 8 * scale >= self.TEXT_C_MIN_PUNKTE
+
     def text(self, x, y, s, scale=2, fg=None, bg=None, cachen=True):
         if fg is None:
             fg = C_TEXT
@@ -2090,6 +2201,31 @@ class Framebuffer:
             s = s[:maxch]
         if not s:
             return
+        # DER ERSTE AUFTRITT GEHT NACH C (Build 227), und zwar OHNE
+        # Streifen und ohne Cache-Eintrag. Beim Scrollen ist das der
+        # Normalfall: jeder Schritt zeigt einen anderen Titel und andere
+        # Datenzeilen, der Textcache kann dort prinzipiell kaum greifen,
+        # und ein Fehltreffer ist auf dem Geraet um ein Vielfaches
+        # teurer als der Sprung nach C.
+        #
+        # WER ZWEIMAL KOMMT, BEKOMMT SEINEN STREIFEN. Menuepunkte,
+        # Kopfzeilen, Spaltenueberschriften - alles, was bei jedem Bild
+        # wieder da ist - faellt beim zweiten Mal in den Weg darunter,
+        # wird gecacht und kostet danach nur noch die Blit-Schleife, und
+        # die ist billiger als ein C-Aufruf.
+        #
+        # cachen=False (die Beschreibung in der Galerie) geht IMMER nach
+        # C: diese Zeilen kommen kein zweites Mal vor.
+        schluessel = (s, scale, fg, bg)
+        if schluessel not in self._textcache:
+            if ((not cachen or schluessel not in self._text_einmal)
+                    and self._text_nach_c(len(s), scale)):
+                if self.text_viele(((x, y, s, scale, fg, bg),)):
+                    if cachen:
+                        if len(self._text_einmal) >= self.TEXT_EINMAL_MAX:
+                            self._text_einmal.clear()
+                        self._text_einmal.add(schluessel)
+                    return
         strip = self._text_strip(s, scale, fg, bg, cachen)
         w4 = len(strip[0])
         xo = x * 4
@@ -2161,6 +2297,23 @@ class Framebuffer:
             # Rueckfall auf das bisherige Verhalten, siehe Obergrenze oben.
             self.text(x, y, full[off:off + maxc], scale, fg, bg)
             return
+        # DERSELBE ERSTE AUFTRITT WIE IN text() (Build 227): solange es
+        # den Streifen des vollen Titels noch nicht gibt, zeichnet C
+        # schlicht den sichtbaren Ausschnitt. Beim zweiten Mal wird der
+        # Streifen gebaut - und ab dann greift wieder das, wofuer es
+        # text_window() ueberhaupt gibt: die Laufschrift rueckt im
+        # fertigen Streifen nur ihr Fenster weiter.
+        schluessel = (full, scale, fg, bg)
+        if (schluessel not in self._textcache
+                and schluessel not in self._text_einmal):
+            o = max(0, min(off, max(0, len(full) - maxc)))
+            teil = full[o:o + maxc]
+            if teil and self._text_nach_c(len(teil), scale):
+                if self.text_viele(((x, y, teil, scale, fg, bg),)):
+                    if len(self._text_einmal) >= self.TEXT_EINMAL_MAX:
+                        self._text_einmal.clear()
+                    self._text_einmal.add(schluessel)
+                    return
         strip = self._text_strip(full, scale, fg, bg)
         total = len(strip[0]) // (cw * 4)
         off = max(0, min(off, max(0, total - maxc)))
@@ -2479,6 +2632,39 @@ class Framebuffer:
     # 0,5 ms JE AUFRUF verloren hat.
     FLAECHEN_C_MIN_PUNKTE = 65536
     FLAECHEN_C_MIN_ZEILEN = 96
+
+    # DER TEXTZEICHNER (Build 227), von frontend.py auf
+    # fe.art.texte_zeichnen gesetzt - wie die beiden Haken darueber.
+    # Bleibt er None, laeuft der Weg ueber den Streifen, und der ist
+    # gleichzeitig das Vergleichsmass der Tests.
+    text_zeichner = None
+
+    # UND SEINE EIGENE SCHWELLE, denn hier wird etwas anderes bezahlt als
+    # beim Fuellen. Eine Flaeche kostet Python eine Zuweisung je Zeile;
+    # ein noch nicht gesehener Text kostet zusaetzlich das BAUEN des
+    # Streifens, und das ist der teure Teil - Build 141 hat dafuer auf
+    # dem Geraet 11 ms je Zeile gemessen (15 Zeilen Beschreibung, 159 ms).
+    # Nach dem Umbau auf acht b"".join() ist es rund ein Drittel davon,
+    # also etwa 3 ms fuer einen Streifen von 1248 x 16 Punkten.
+    #
+    # Dagegen steht dasselbe Modell wie oben: C = 1,00 ms + 0,0000057 je
+    # Punkt. Gleichgesetzt mit 0,25 ms + 0,000138 je Punkt (die 3 ms auf
+    # 19968 Punkte umgelegt) ergibt den Umschlagpunkt bei rund 5700
+    # Punkten. Gewaehlt: 6000, mit Abstand nach oben.
+    #
+    # Was das praktisch heisst:
+    #   HDMI, Groesse 3, 40 Zeichen -> 960 x 24 = 23040 Punkte -> C
+    #   HDMI, Groesse 3, 10 Zeichen ->  240 x 24 =  5760 Punkte -> Python
+    #   CRT,  Groesse 1, 30 Zeichen ->  240 x  8 =  1920 Punkte -> Python
+    # Auf der Roehre bleibt also fast alles in Python, und das ist
+    # richtig so: dort sind die Streifen klein und der Sprung nach C
+    # waere der groesste Posten der Rechnung.
+    TEXT_C_MIN_PUNKTE = 6000
+
+    # Obergrenze fuer das gemerkte "schon einmal da". Laeuft es voll,
+    # wird es GANZ geleert - ein zweites Mal ueber C ist harmlos, eine
+    # Verdraengungsliste waere teurer als das, was sie spart.
+    TEXT_EINMAL_MAX = 4096
 
     def _nach_c(self, w, h, scanlines=False):
         """Geht eine Flaeche dieser Groesse nach C? Eine Stelle fuer die

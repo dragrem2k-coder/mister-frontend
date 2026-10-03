@@ -974,13 +974,14 @@ import ctypes as _ctypes
 # Jetzt gilt: alles von MIN bis VERSION wird genommen, und die Funktionen
 # der neueren Fassungen werden einzeln nachgefragt. Fehlt eine, rechnet
 # genau ihr Aufrufer in Python weiter, der Rest laeuft in C.
-DRAGEND_LIB_VERSION = 7
+DRAGEND_LIB_VERSION = 8
 DRAGEND_LIB_VERSION_MIN = 4
 _LIB = None
 # Was die gefundene Fassung kann - wird beim Laden gesetzt.
 _HAT_FARBEN = False
 _HAT_ZEILEN = False
 _HAT_MASKE = False
+_HAT_TEXT = False
 
 
 def _lib_laden():
@@ -1075,6 +1076,23 @@ def _lib_laden():
         except AttributeError:
             LOG("libdragend: Version %d ohne zeilen_kopieren - Bilder und "
                 "Text kopiert Python" % _v)
+        # Build 227: der Textzeichner. Zum fuenften Mal ein EIGENES try,
+        # und zum fuenften Mal aus demselben Grund - eine 7er-Fassung
+        # kennt ihn nicht und darf weder die Bibliothek noch die vier
+        # Funktionen darueber mitnehmen.
+        global _HAT_TEXT
+        _HAT_TEXT = False
+        try:
+            lib.texte_zeichnen.restype = _ctypes.c_int
+            lib.texte_zeichnen.argtypes = [
+                _ctypes.c_void_p, _ctypes.c_int, _ctypes.c_int,
+                _ctypes.c_int, _ctypes.c_int,
+                _ctypes.c_void_p, _ctypes.c_int,
+                _ctypes.c_void_p, _ctypes.c_int]
+            _HAT_TEXT = True
+        except AttributeError:
+            LOG("libdragend: Version %d ohne texte_zeichnen - Text baut "
+                "Python" % _v)
     except (OSError, AttributeError) as e:
         LOG("libdragend nicht nutzbar (%s) - rechne in Python" % e)
         return None
@@ -1378,6 +1396,54 @@ def zeilen_kopieren(dst, dst_stride, src, src_stride, x, y, breite, hoehe):
                                     x, y, breite, hoehe) == 0
     except Exception:                                    # noqa: BLE001
         LOG("libdragend: Zeilen kopieren fehlgeschlagen, nehme Python")
+        return False
+
+
+_TEXTFELD = [None]          # ein wiederverwendetes ctypes-Feld, siehe unten
+
+
+def texte_zeichnen(dst, stride, grenze, breite, hoehe, glyphen, auftraege):
+    """Mehrere Textzeilen in EINEM Sprung nach C zeichnen.
+
+    `glyphen` sind die acht Schriftbytes je Zeichen, hintereinander;
+    `auftraege` eine Folge von (x, y, glyph_off, zeichen, scale, fg, bg),
+    wobei glyph_off in ZEICHEN zaehlt und fg/bg die vier Bytes eines
+    Bildpunktes als 32-Bit-Wert sind (wie bei rechtecke_farben).
+
+    WARUM EINE LISTE UND NICHT EINE ZEILE: ein Sprung nach C kostet auf
+    dem DE10-Nano rund eine Millisekunde (Build 221). Acht Datenzeilen
+    einzeln waeren acht Millisekunden allein an Aufrufen.
+
+    Rueckgabe True, wenn C es erledigt hat. Bei False hat sich NICHTS
+    veraendert und der Aufrufer muss selbst zeichnen."""
+    if _LIB is None or not _HAT_TEXT or not auftraege:
+        return False
+    try:
+        anzahl = len(auftraege)
+        n = 7 * anzahl
+        # Das Feld wird wiederverwendet, solange es gross genug ist -
+        # beim Scrollen kommt hier je Schritt derselbe Bund an, und ein
+        # frisches ctypes-Feld je Aufruf waere genau die Python-Arbeit,
+        # die wir loswerden wollen (dieselbe Ueberlegung wie bei
+        # _FELDER in Build 221, nur ohne Schluessel: der Inhalt wechselt
+        # ja, nur die Groesse nicht).
+        feld = _TEXTFELD[0]
+        if feld is None or len(feld) < n:
+            feld = (_ctypes.c_int * max(n, 64))()
+            _TEXTFELD[0] = feld
+        i = 0
+        for x, y, goff, zeichen, scale, fg, bg in auftraege:
+            feld[i] = x; feld[i + 1] = y; feld[i + 2] = goff
+            feld[i + 3] = zeichen; feld[i + 4] = scale
+            feld[i + 5] = fg; feld[i + 6] = bg
+            i += 7
+        _halt_z, zeiger_z = _roh_zeiger(dst)
+        _halt_g, zeiger_g = _roh_zeiger(glyphen)
+        return _LIB.texte_zeichnen(zeiger_z, stride, grenze, breite, hoehe,
+                                   zeiger_g, len(glyphen),
+                                   feld, anzahl) == 0
+    except Exception:                                    # noqa: BLE001
+        LOG("libdragend: Text zeichnen fehlgeschlagen, nehme Python")
         return False
 
 

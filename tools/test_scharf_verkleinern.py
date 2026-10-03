@@ -236,13 +236,13 @@ print("Test 8: die Bibliothek passt zur Erwartung")
 # fuer das Verkleinern, und das ist auf dem Geraet der Faktor 124. Jetzt
 # gilt eine Spanne, und die Funktionen der neueren Fassungen werden
 # einzeln nachgefragt. Naeheres in tools/test_flaechen_in_c.py.
-# GEAENDERT (Build 226): 7, seit rechtecke_maske() dazugekommen ist -
-# MiSTers Lochmasken auf dem Weg zum Bildspeicher. Davor (Build 225) war
-# es 6 fuer zeilen_kopieren(), die Zeilenkopie mit ZWEI Schrittweiten.
-check("die Version wurde hochgezaehlt", A.DRAGEND_LIB_VERSION == 7,
+# GEAENDERT (Build 227): 8, seit texte_zeichnen() dazugekommen ist -
+# der Textzeichner in C. Davor: 7 fuer rechtecke_maske() (Build 226,
+# MiSTers Lochmasken), 6 fuer zeilen_kopieren() (Build 225).
+check("die Version wurde hochgezaehlt", A.DRAGEND_LIB_VERSION == 8,
       str(A.DRAGEND_LIB_VERSION))
 check("die C-Datei meldet dieselbe",
-      "int dragend_version(void) { return 7; }" in quelle)
+      "int dragend_version(void) { return 8; }" in quelle)
 check("und es gibt eine Untergrenze darunter",
       getattr(A, "DRAGEND_LIB_VERSION_MIN", None) == 4,
       "eine 4er-Fassung muss weiter voll nutzbar bleiben")

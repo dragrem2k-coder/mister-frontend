@@ -373,6 +373,54 @@ Millisekunde.**
 - Der Text folgt im nächsten Build — er braucht dieselbe Funktion, aber eine
   Umstellung am Textspeicher, und die will sorgfältig gemacht werden.
 
+**Der Textzeichner läuft jetzt in C.**
+
+- Der letzte große Posten aus deinem Bericht vom 02.10.: `text` mit 15,57 ms
+  je Scrollschritt in der Galerie, 31 % des ganzen Schritts. Mehrere Zeilen
+  gehen jetzt als **ein Bund** nach C statt als acht einzelne
+  Python-Schleifen — die Datenzeilen unter dem Cover und die Beschreibung
+  sind die beiden Aufrufer.
+- **Die Schwelle ist aus Gerätezahlen gerechnet**, nicht geraten: ein
+  C-Aufruf kostet auf dem DE10-Nano rund 1 ms (Build 221), ein Streifen zu
+  bauen rund 3 ms für 1248×16 Punkte. Umschlagpunkt bei ~5700 Punkten,
+  gewählt 6000. Auf der Röhre bleibt damit fast alles in Python, und das ist
+  richtig so — dort sind die Streifen klein.
+- **Neu dabei: ein Text wird erst beim zweiten Auftritt gemerkt.** Beim
+  Scrollen kommt jeder Titel genau einmal vor; Menüpunkte und Kopfzeilen
+  kommen bei jedem Bild wieder. Vorher verdrängten die Einmaligen genau die,
+  die getroffen worden wären.
+- Was ankommt, sagt dein Bench — hier auf dem PC ist Text ohnehin billig.
+  Bewiesen ist die Richtigkeit: derselbe Text, beide Wege, Byte für Byte
+  verglichen über den ganzen ASCII- und Latin-1-Bereich, alle Schriftgrößen
+  und die Ränder.
+
+**Die Lochmasken stehen jetzt in Ordnern — und MiSTers Presets sind dabei.**
+
+- Du hattest recht: eine Liste aus 1207 Zeilen ist keine Auswahl. Die Seite
+  zeigt jetzt **die Ordnerstruktur, wie die Sammlung selbst sie anlegt** —
+  hoch/runter wählt, **OK öffnet einen Ordner oder nimmt eine Maske**,
+  Zurück geht **eine Ebene hoch** und erst an der Wurzel aus der Seite
+  heraus. Hinter jedem Ordner steht, wie viele Masken darin liegen; wo du
+  herkommst, steht unter dem Titel; und der Cursor landet beim Zurückgehen
+  wieder auf dem Ordner, aus dem du kommst. Ordner ohne eine einzige Maske
+  werden weggelassen.
+- Öffnest du die Seite, startest du **dort, wo deine aktuelle Maske liegt** —
+  nicht wieder ganz oben.
+- **In `/media/fat/Presets` lag tatsächlich etwas für uns.** Ein Preset ist
+  eine winzige INI mit einem ganzen Satz Videoeinstellungen, und eine ihrer
+  Zeilen heißt `mask=` — die nennt genau eine Datei aus deinem
+  `Shadow_Masks`. Ganz oben in der Liste steht deshalb jetzt
+  **MiSTer-Presets (Empfehlungen)**: fertige, benannte Vorschläge von
+  Leuten, die die Masken kennen. Presets ohne Maske und solche, deren Maske
+  nicht auf der Karte liegt, fallen weg — ein Eintrag, der beim Drücken
+  nichts tut, ist schlimmer als keiner.
+- **`/media/fat/Filters` geht nicht**, und das ist keine Faulheit: das sind
+  Koeffizienten für MiSTers **Scaler** (vier Abgriffe, sechzehn Phasen,
+  −128…128). Sie bedeuten nur etwas, während ein Bild *skaliert* wird.
+  Dragend malt direkt in der Auflösung des Bildschirms — es gibt bei uns
+  keine Skalierstufe, in die man sie einhängen könnte. Scanlines in Dragend
+  sind dagegen schlicht eine 1×2-Maske, und die hat die Sammlung bereits.
+
 **MiSTers Lochmasken liegen jetzt auf Dragends Bild.**
 
 - Systemmenü → **Lochmaske**. Eigene Seite, denn MiSTers Sammlung hat über

@@ -957,11 +957,18 @@ TRANSLATIONS = {
     "sys_maske_keine": {"en": "none chosen", "de": "keine gewaehlt"},
     "masken_titel": {"en": "Shadow mask", "de": "Lochmaske"},
     "masken_keine": {"en": "none", "de": "keine"},
+    "masken_zurueck": {"en": "back", "de": "zurueck"},
+    "masken_presets": {
+        "en": "MiSTer presets (recommended)",
+        "de": "MiSTer-Presets (Empfehlungen)"},
+    "masken_wurzel": {"en": "all folders", "de": "alle Ordner"},
     "masken_an": {"en": "Effect: ON", "de": "Effekt: AN"},
     "masken_aus": {"en": "Effect: OFF", "de": "Effekt: AUS"},
     "masken_hinweis": {
-        "en": "up/down choose, left/right on/off, OK keeps it",
-        "de": "hoch/runter waehlen, links/rechts an/aus, OK uebernimmt"},
+        "en": "up/down choose, OK opens/takes, back one level up, "
+              "left/right on/off",
+        "de": "hoch/runter waehlen, OK oeffnet/uebernimmt, Zurueck eine "
+              "Ebene hoch, links/rechts an/aus"},
     "masken_leer": {
         "en": "No shadow masks found in /media/fat/Shadow_Masks - MiSTer "
               "brings its own, install them with update_all.",

@@ -352,6 +352,48 @@ exactly why nothing here was built twice.
 - Text follows in the next build — it needs the same function but a change
   to the text cache, and that deserves care.
 
+**The text drawer now runs in C.**
+
+- The last big item from the 02.10. report: `text` at 15.57 ms per scroll
+  step in the gallery, 31 % of the whole step. Several lines now go to C as
+  **one bundle** instead of eight separate Python loops — the data lines
+  under the cover and the description are the two callers.
+- **The threshold is computed from device numbers**, not guessed: a C call
+  costs about 1 ms on the DE10-Nano (build 221), building a strip about 3 ms
+  for 1248×16 points. Break-even at ~5700 points, chosen 6000. On a CRT
+  almost everything stays in Python, and rightly so — the strips are small
+  there.
+- **New: a text is only remembered on its second appearance.** While
+  scrolling, every title occurs exactly once; menu entries and headers come
+  back with every frame. Before, the one-offs evicted exactly the entries
+  that would have been hit.
+- What arrives on the device is for your bench to say. What is proven is
+  correctness: the same text drawn both ways and compared byte for byte
+  across ASCII and Latin-1, every size, and the edges.
+
+**The shadow masks are now browsed by folder — and MiSTer's presets are in there.**
+
+- You were right: a list of 1207 lines is not a choice. The page now shows
+  **the folder structure the collection itself uses** — up/down selects,
+  **OK opens a folder or takes a mask**, back goes **one level up** and only
+  leaves the page at the root. Each folder says how many masks are inside,
+  the path is shown under the title, and going back puts the cursor on the
+  folder you came from. Folders without a single mask are left out.
+- Opening the page starts you **where your current mask lives**, not at the
+  top again.
+- **There really was something for us in `/media/fat/Presets`.** A preset is
+  a tiny INI holding a whole set of video settings, and one of its lines is
+  `mask=` — naming exactly one file from your `Shadow_Masks`. So the top of
+  the list now offers **MiSTer presets (recommended)**: ready-made, named
+  suggestions by people who know these masks. Presets without a mask, or
+  whose mask is not on the card, are dropped.
+- **`/media/fat/Filters` cannot be used**, and that is not laziness: those
+  are coefficients for MiSTer's **scaler** (four taps, sixteen phases,
+  −128…128). They only mean something while an image is being *scaled*.
+  Dragend paints straight at the screen's own resolution — there is no
+  scaling stage of ours to feed them into. Scanlines in Dragend are simply a
+  1×2 mask, and the collection already has those.
+
 **MiSTer's shadow masks now sit on Dragend's own picture.**
 
 - System menu → **Shadow mask**. Its own page, because MiSTer's collection

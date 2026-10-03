@@ -71,6 +71,43 @@ def check(label, cond, extra=""):
         fails.append(label)
 
 
+def _text_mitschreiben(f, ziel):
+    """Beide Textwege mitschreiben - fb.text() UND fb.text_viele().
+
+    SEIT BUILD 227 gibt es zwei. Mehrere Zeilen auf einmal gehen als
+    Bund nach C (fb.text_viele), einzelne und kurze weiterhin durch
+    fb.text(). Ein Haken auf nur einem der beiden sieht je nach
+    Textmenge alles oder nichts - und meldet dann einen Fehler, wo
+    keiner ist.
+
+    Rueckgabe: eine Funktion, die beide Haken wieder loest."""
+    echt_text = f.fb.text
+    echt_viele = f.fb.text_viele
+
+    def _text(x, y, txt, sk, *a, **k):
+        ziel.append(txt)
+        return echt_text(x, y, txt, sk, *a, **k)
+
+    def _viele(auftraege):
+        auftraege = list(auftraege)
+        ergebnis = echt_viele(auftraege)
+        if ergebnis:
+            # Nur was wirklich gezeichnet wurde: lehnt C den Bund ab,
+            # zeichnet der Aufrufer ihn einzeln - und dann zaehlt ihn
+            # schon der andere Haken.
+            ziel.extend(auftrag[2] for auftrag in auftraege)
+        return ergebnis
+
+    f.fb.text = _text
+    f.fb.text_viele = _viele
+
+    def _loesen():
+        f.fb.text = echt_text
+        f.fb.text_viele = echt_viele
+
+    return _loesen
+
+
 DE = ("Super Mario World fuehrt Mario und Luigi ins Dinosaurierland, wo sie "
       "gemeinsam mit Yoshi gegen Bowser und die Koopalinge antreten. Das "
       "Spiel bietet 96 Ausgaenge und zahlreiche Geheimwege.")
@@ -289,16 +326,19 @@ try:
           roh[-1])
     # Der Zeichenweg tut es. Geprueft wird er ueber die Pixel: mit
     # wenig Platz muss die Spalte anders aussehen als mit viel.
+    # GEAENDERT (Build 227): seit der Textzeichner in C sitzt, gehen
+    # mehrere Zeilen als EIN Bund durch fb.text_viele() und einzelne
+    # weiterhin durch fb.text(). Mitgeschrieben werden muessen deshalb
+    # beide Wege - ein Haken nur auf fb.text() hat hier nichts mehr
+    # gesehen und den Test rot gemeldet, obwohl das Bild stimmte.
     gezeichnet = []
-    _echt_text = f.fb.text
-    f.fb.text = lambda x, y, txt, sk, *a, **k: (
-        gezeichnet.append(txt), _echt_text(x, y, txt, sk, *a, **k))[1]
+    _loesen = _text_mitschreiben(f, gezeichnet)
     try:
         f._beschreibung_zeichnen(100, 100, 100 + 3 * 11 * 2, 40 * 8 * 2,
                                  ("Super Mario World (USA)", "game", None),
                                  "SNES", 3)
     finally:
-        f.fb.text = _echt_text
+        _loesen()
     check("gezeichnet wurde ueberhaupt etwas", bool(gezeichnet),
           "%d Zeilen" % len(gezeichnet))
     check("und die letzte Zeile ist als gekappt markiert",
@@ -318,9 +358,7 @@ try:
     # wie ein noch nicht gerechnetes Cover.
     syn("SNES", "Super Mario World (USA)", "de")
     gezeichnet = []
-    _echt = f.fb.text
-    f.fb.text = lambda x, y, txt, sk, *a, **k: (
-        gezeichnet.append(txt), _echt(x, y, txt, sk, *a, **k))[1]
+    _loesen = _text_mitschreiben(f, gezeichnet)
     args = (100, 100, 100 + 8 * 11 * 2, 40 * 8 * 2,
             ("Super Mario World (USA)", "game", None), "SNES", 3)
     try:
@@ -333,7 +371,7 @@ try:
         f._beschreibung_zeichnen(*args)
         im_stillstand = len(gezeichnet) - beim_scrollen
     finally:
-        f.fb.text = _echt
+        _loesen()
     check("waehrend des Scrollens keine einzige Zeile",
           beim_scrollen == 0, "%d" % beim_scrollen)
     check("aber der Nachlader wird geweckt", geweckt is True)
@@ -352,9 +390,22 @@ try:
     check("mit cachen=False waechst der Cache nicht",
           len(fb._textcache) == vorher, "%d -> %d" % (vorher,
                                                       len(fb._textcache)))
-    fb.text(10, 40, "Ein zweiter einmaliger Satz.", 2)
-    check("ohne das Kennzeichen waechst er wie bisher",
-          len(fb._textcache) == vorher + 1)
+    # GEAENDERT (Build 227): "ohne das Kennzeichen waechst er" stimmt
+    # so nicht mehr, und zwar zum Besseren. Seit dem Textzeichner in C
+    # legt der ERSTE Auftritt eines Textes keinen Eintrag mehr an - er
+    # wird nur gemerkt; der Streifen entsteht beim ZWEITEN. Das ist
+    # dieselbe Absicht wie bei cachen=False, nur ohne dass der Aufrufer
+    # sie aussprechen muss: beim Scrollen kommt jeder Titel genau
+    # einmal vor, Menuepunkte und Kopfzeilen bei jedem Bild wieder.
+    einmalig = "Ein zweiter einmaliger Satz."
+    fb.text(10, 40, einmalig, 2)
+    check("ein Satz, den es nur einmal gibt, bleibt draussen",
+          len(fb._textcache) == vorher,
+          "%d -> %d" % (vorher, len(fb._textcache)))
+    fb.text(10, 40, einmalig, 2)
+    check("beim zweiten Mal wird er behalten",
+          len(fb._textcache) == vorher + 1,
+          "%d -> %d" % (vorher, len(fb._textcache)))
     # Und das BILD muss dasselbe sein - der Cache darf nur das
     # Gedaechtnis aendern, nicht das Ergebnis.
     fb.clear((0, 0, 0))

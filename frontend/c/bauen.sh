@@ -76,6 +76,16 @@ gcc $GEMEINSAM -O2 \
     -o libdragend_x86.so dragend.c
 echo "gebaut: libdragend_x86.so   $(ls -l libdragend_x86.so | awk '{print $5}') Byte"
 
+# NEU (Build 227): und sofort eine Ebene hoeher kopieren. DIESE Kopie
+# laedt frontend.py (fe/art.py sucht sie neben frontend.py, nicht in
+# c/) - der Schritt war bisher Handarbeit, und genau das ist in Build
+# 227 schiefgegangen: die neue Fassung lag in c/, geladen wurde die
+# alte, und das Frontend meldete still "Version 7 ohne texte_zeichnen"
+# und rechnete weiter in Python. Ein Gewinn, den niemand sieht, ist
+# schlimmer als keiner - also tut es jetzt das Skript.
+cp -f libdragend.so libdragend_neon.so libdragend_x86.so ..
+echo "kopiert nach frontend/: alle drei"
+
 echo
 echo "Vektorisierte Schleifen:"
 arm-linux-gnueabihf-gcc $GEMEINSAM -O3 \

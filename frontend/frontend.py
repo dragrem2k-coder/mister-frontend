@@ -1203,6 +1203,7 @@ from fe.art import (
     rechtecke_farben as _c_rechtecke_farben,
     zeilen_kopieren as _c_zeilen_kopieren,
     rechtecke_maske as _c_rechtecke_maske,
+    texte_zeichnen as _c_texte_zeichnen,
     fremd_zaehlen as _c_fremd_zaehlen,
     quelldaten_vergessen, negativ_vergessen, marken_nachziehen,
     verkleinern_modus_vergessen,
@@ -1282,6 +1283,12 @@ Framebuffer.rechteck_kopierer = staticmethod(_c_rechtecke_kopieren)
 # FLAECHEN_C_AUS_FLAG in fe/settings.py.
 if flaechen_c_enabled():
     Framebuffer.flaechen_fueller = staticmethod(_c_rechtecke_farben)
+
+# NEU (Build 227): der Textzeichner. Haengt am SELBEN Schalter wie der
+# Flaechenfueller - wer C abschaltet, will es ganz abgeschaltet haben,
+# und zwei Schalter fuer dieselbe Frage waeren eine Falle.
+if flaechen_c_enabled():
+    Framebuffer.text_zeichner = staticmethod(_c_texte_zeichnen)
 
 # NEU (Build 73): Cover-Miniaturen im Leerlauf vorberechnen. Die
 # ausfuehrliche Begruendung samt der beiden ehrlichen Einschraenkungen
@@ -11189,12 +11196,23 @@ class Frontend:
                 if len(letzte) + 1 > maxc:
                     letzte = letzte[:max(1, maxc - 1)]
                 zeilen[-1] = letzte + "~"
-        for ln in zeilen:
-            # cachen=False: siehe _text_strip() in fe/framebuffer.py -
-            # diese Zeilen kommen kein zweites Mal vor und wuerden nur
-            # nuetzliche Eintraege verdraengen.
-            self.fb.text(x, y, ln, skala, C_DIM, cachen=False)
-            y += zeilen_h
+        # AUCH HIER EIN BUND (Build 227). Diese Zeilen sind der Fall,
+        # an dem Build 141 gemessen hat, was ein Fehltreffer auf dem
+        # Geraet wirklich kostet: 11 ms je Zeile, 159 ms fuer fuenfzehn.
+        # Ein Streifen entsteht fuer sie gar nicht mehr - C bekommt die
+        # Schriftbytes und schreibt die Bildpunkte, in EINEM Sprung fuer
+        # den ganzen Absatz.
+        auftraege = [(x, y + i * zeilen_h, ln, skala, C_DIM, C_BG)
+                     for i, ln in enumerate(zeilen)]
+        zeichen = sum(len(j[2]) for j in auftraege)
+        if not (len(auftraege) > 1 and self.fb._text_nach_c(zeichen, skala)
+                and self.fb.text_viele(auftraege)):
+            for (_tx, _ty, _ln, _s, _vg, _hg) in auftraege:
+                # cachen=False: siehe _text_strip() in fe/framebuffer.py
+                # - diese Zeilen kommen kein zweites Mal vor und wuerden
+                # nur nuetzliche Eintraege verdraengen.
+                self.fb.text(_tx, _ty, _ln, _s, _vg, cachen=False)
+        y += len(zeilen) * zeilen_h
         # NEU (Build 217): das untere Ende zurueckgeben. Die Galerie
         # merkt sich daran, wie hoch ihre Textspalte beim naechsten
         # Schritt freigeraeumt werden muss - siehe dort. Alle frueheren
@@ -11532,10 +11550,21 @@ class Frontend:
         iy = max(cy + cover_h, art_bottom) + 6 * s
         y_max = y0 + h - 2 * s
 
+        # EIN BUND STATT ACHT AUFRUFEN (Build 227). Genau diese Zeilen
+        # sind der groesste Textposten des Geraets: im Bericht vom
+        # 02.10. steht `text` mit 15,57 ms je Schritt bei acht Aufrufen
+        # und 191 Zeichen, und das sind der Titel und die Datenzeilen
+        # hier. Jeder Sprung nach C kostet dort rund eine Millisekunde
+        # (Build 221) - zusammen ist es einer statt acht.
+        #
+        # Erst sammeln, dann zeichnen, und die Abbruchbedingung bleibt
+        # Zeile fuer Zeile dieselbe wie vorher: was nicht mehr in die
+        # Spalte passt, kommt gar nicht erst in den Bund.
+        auftraege = []
         for ln in title_lines:
             if iy + 9 * s > y_max:
                 break
-            fb.text(x0, iy, ln, s, C_TITLE, C_PANEL)
+            auftraege.append((x0, iy, ln, s, C_TITLE, C_PANEL))
             iy += line_h
 
         if info_lines:
@@ -11543,8 +11572,17 @@ class Frontend:
             for ln in info_lines:
                 if iy + 9 * s > y_max:
                     break
-                fb.text(x0, iy, ln, s, C_TEXT, C_PANEL)
+                auftraege.append((x0, iy, ln, s, C_TEXT, C_PANEL))
                 iy += line_h
+
+        # Und nur, wenn genug zusammenkommt - sonst ist der Sprung
+        # teurer als die Arbeit. Lehnt C ab, wird einzeln gezeichnet;
+        # das Ergebnis ist dasselbe, nur langsamer.
+        zeichen = sum(len(a[2]) for a in auftraege)
+        if not (len(auftraege) > 1 and fb._text_nach_c(zeichen, s)
+                and fb.text_viele(auftraege)):
+            for (_tx, _ty, _ln, _s, _vg, _hg) in auftraege:
+                fb.text(_tx, _ty, _ln, _s, _vg, _hg)
 
     def blit(self, x, y, w, h, pix):
         """Vordekodierte BGRA-Pixel zeilenweise in den Puffer kopieren.
@@ -13101,47 +13139,77 @@ class Frontend:
         W, H = fb.width, fb.height
         s = _skala(W, H)
         ox, oy = 12 * s, 10 * s
-        dateien = MASKEN.masken_dateien()
-        if not dateien:
+        if not MASKEN.masken_eintraege():
             self._force_full_redraw = True
             self.draw(message=t("masken_leer"))
             return
-        # "keine" steht vorn - der Weg zurueck muss derselbe sein wie
-        # der hinein.
-        kette = [(t("masken_keine"), "")] + [
-            (name, os.path.relpath(pfad, MASKEN.MASKEN_DIR))
-            for name, pfad in dateien]
-        jetzt = maske_lesen()
+
+        gewaehlt = maske_lesen()
+        an = maske_an()
+        _alte_maske = fb.maske
+        _alte_wahl = gewaehlt
+
+        # EINSTIEG DORT, WO DIE AKTUELLE MASKE LIEGT. Wer eine Maske
+        # aus "Complex (Multichromatic)/CRT Styles" benutzt und die
+        # Seite oeffnet, will nicht wieder oben anfangen.
+        ordner = os.path.dirname(gewaehlt) if gewaehlt else ""
+
+        def _zeilen_bauen(ordner):
+            """Eine Ebene holen - gebaut wird sie in fe/masken.py.
+
+            Hier steht nur noch, wie die Zeilen HEISSEN; was eine Ebene
+            enthaelt und wie der Weg zurueck aussieht, ist dort geprueft
+            (tools/test_masken.py, Test 7 und 8)."""
+            return MASKEN.ebene(ordner, {
+                "zurueck": t("masken_zurueck"),
+                "keine": t("masken_keine"),
+                "presets": t("masken_presets")})
+
+        kette = _zeilen_bauen(ordner)
         zeile = 0
-        for i, (_n, rel) in enumerate(kette):
-            if rel == jetzt:
+        for i, (art, _n, rel) in enumerate(kette):
+            if art == "maske" and rel == gewaehlt:
                 zeile = i
                 break
-        _alte_maske = fb.maske
-        _alte_wahl = jetzt
-        an = maske_an()
         try:
             while True:
-                maske_anwenden(fb, kette[zeile][1] if an else "")
+                art, _name, rel = kette[zeile]
+                # VORSCHAU: auf einer Maske sie selbst, auf einem Ordner
+                # die gerade gueltige. Beim Durchlaufen der Ordner soll
+                # das Bild nicht staendig umspringen.
+                vorschau = rel if art == "maske" else gewaehlt
+                maske_anwenden(fb, vorschau if an else "")
                 fb.clear(C_BG)
                 fb.text(ox, oy, t("masken_titel"), 2 * s, C_TITLE)
-                y = oy + 30 * s
+                # Der Weg steht unter dem Titel - sonst weiss man nach
+                # zwei Ebenen nicht mehr, wo man ist.
+                if ordner == MASKEN.PRESET_EBENE:
+                    weg = t("masken_presets")
+                elif ordner:
+                    weg = ordner.replace(os.sep, " / ")
+                else:
+                    weg = t("masken_wurzel")
+                fb.text(ox, oy + 20 * s, weg, s, C_DIM)
+                y = oy + 38 * s
                 breite = W - 2 * ox
                 platz = max(1, (H - oy - y - 60 * s) // (17 * s))
                 erste = max(0, min(zeile - platz // 2, len(kette) - platz))
                 for i in range(erste, min(erste + platz, len(kette))):
-                    name = kette[i][0]
+                    eintrag = kette[i]
+                    name = eintrag[1]
                     markiert = (i == zeile)
                     if markiert:
                         fb.rect_rounded(ox - 2 * s, y - 3 * s,
                                         breite + 4 * s, 15 * s, C_PANEL)
                     maxz = max(10, breite // (8 * s) - 2)
-                    # Von LINKS kuerzen: die Sammlung legt die Masken in
-                    # Unterordnern ab, und der unterscheidende Teil
-                    # steht hinten.
-                    kurz = name if len(name) <= maxz else "~" + name[-(maxz - 1):]
-                    fb.text(ox + 2 * s, y, kurz, s,
-                            C_TITLE if markiert else C_TEXT)
+                    # Von LINKS kuerzen: der unterscheidende Teil eines
+                    # Maskennamens steht hinten.
+                    kurz = name if len(name) <= maxz \
+                        else "~" + name[-(maxz - 1):]
+                    farbe = C_TITLE if markiert else (
+                        C_DIM if eintrag[0] in ("ordner", "hoch", "presets")
+                        else C_TEXT)
+                    fb.text(ox + 2 * s, y, kurz, s, farbe)
                     y += 17 * s
 
                 # DIE VORSCHAU: ein Verlauf von schwarz nach weiss plus
@@ -13178,19 +13246,59 @@ class Frontend:
                     # die Auswahl zu verlieren - genau das hat der
                     # Nutzer verlangt.
                     an = not an
-                elif akt in ("back", "exit", "select", "ok"):
+                elif akt in ("select", "ok"):
+                    if art in ("ordner", "presets"):
+                        ordner = rel
+                        kette = _zeilen_bauen(ordner)
+                        zeile = 0
+                        continue
+                    if art == "hoch":
+                        zurueck = ordner
+                        ordner = MASKEN.oberordner(ordner)
+                        kette = _zeilen_bauen(ordner)
+                        zeile = 0
+                        # Den Cursor auf den Ordner setzen, aus dem man
+                        # kommt - sonst sucht man ihn in einer langen
+                        # Liste wieder.
+                        for i, e in enumerate(kette):
+                            if e[0] in ("ordner", "presets") \
+                                    and e[2] == zurueck:
+                                zeile = i
+                                break
+                        continue
+                    # "keine" oder eine Maske: das ist die Wahl.
+                    gewaehlt = rel if art == "maske" else ""
+                    break
+                elif akt in ("back", "exit"):
+                    # IN EINEM ORDNER geht Zurueck eine Ebene hoch, nicht
+                    # gleich aus der Seite heraus. Erst an der Wurzel ist
+                    # Zurueck wirklich Zurueck.
+                    if ordner:
+                        zurueck = ordner
+                        ordner = MASKEN.oberordner(ordner)
+                        kette = _zeilen_bauen(ordner)
+                        zeile = 0
+                        for i, e in enumerate(kette):
+                            if e[0] in ("ordner", "presets") \
+                                    and e[2] == zurueck:
+                                zeile = i
+                                break
+                        continue
+                    gewaehlt = _alte_wahl
                     break
         finally:
             fb.maske = _alte_maske
-        neu = kette[zeile][1]
-        if neu != _alte_wahl:
-            maske_schreiben(neu)
+        if gewaehlt != _alte_wahl:
+            maske_schreiben(gewaehlt)
         if an != maske_an():
             toggle_maske()
         maske_anwenden(fb, maske_pfad_oder_leer())
         self._force_full_redraw = True
-        self.draw(t("masken_gewaehlt", kette[zeile][0]) if neu
-                  else t("masken_keine_gewaehlt"))
+        if gewaehlt:
+            name = os.path.splitext(os.path.basename(gewaehlt))[0]
+            self.draw(t("masken_gewaehlt", name))
+        else:
+            self.draw(t("masken_keine_gewaehlt"))
 
     def theme_editor(self):
         """Der Farbschema-Editor (Build 172).

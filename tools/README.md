@@ -1013,6 +1013,33 @@ Die Zahlen decken sich mit dem Geraet: Hauptseite Liste 1,83 MB
 (Geraet 1,8), Spieleliste Liste 3,39 (3,5), Hauptseite Raster 1,35
 (1,3). Das ist der Grund, dem Werkzeug zu glauben.
 
+## test_text_in_c.py
+
+Der Textzeichner in C (Build 227).
+
+Bis Build 226 ging JEDE Textzeile des Frontends durch dieselbe
+Python-Schleife. Jetzt gibt es einen zweiten Weg, der dieselben
+Bildpunkte erzeugen MUSS - sonst steht derselbe Text je nach Weg zwei
+Punkte weiter rechts, und gefunden wird das erst auf dem Fernseher des
+Nutzers. Der Kern des Tests ist deshalb ein stumpfer Vergleich:
+dieselbe Zeile zweimal zeichnen, einmal ueber C und einmal ueber
+Python, und die Puffer Byte fuer Byte gegeneinanderhalten - ueber den
+ganzen ASCII- und Latin-1-Bereich, ueber alle Schriftgroessen, ueber
+die Grenzfaelle am rechten und unteren Rand.
+
+**Test 5 ist der, der weh tun wuerde.** In Python schuetzt der Puffer
+sich selbst; in C gibt es nur den Zeiger. Ein Auftrag, der nicht
+hineinpasst, verwirft den GANZEN Bund - sonst stuende die Haelfte da
+und der Aufrufer zeichnete sie in Python noch einmal darueber.
+Geprueft mit einem Wachposten hinter dem Nutzbereich.
+
+**Test 7 haelt das gemerkte "schon einmal da" fest.** Der erste
+Auftritt eines Textes legt KEINEN Cache-Eintrag an, der zweite schon:
+beim Scrollen kommt jeder Titel genau einmal vor, Menuepunkte und
+Kopfzeilen bei jedem Bild wieder. Vorher verdraengten die Einmaligen
+genau die Eintraege, die getroffen worden waeren.
+
+
 ## test_zeilen_in_c.py
 
 Die Zeilenkopie mit ZWEI Schrittweiten (Build 225, libdragend 6).
@@ -1100,7 +1127,7 @@ fassen wir nicht an - der Test vergleicht die Datei danach byteweise.
 
 ## test_masken.py
 
-MiSTers Lochmasken im Frontend (Build 226).
+MiSTers Lochmasken im Frontend (Build 226, erweitert in Build 227).
 
 Die Dateien liegen in `/media/fat/Shadow_Masks` auf der Karte des
 Nutzers - wir lesen sie nur. **Test 6 geht das ganze Paket durch und
@@ -1127,6 +1154,25 @@ darueberlegt), beide Bildwaechter muessen sich mit Maske den SCHIRM
 merken statt des Puffers (sonst melden sie in jedem Bild fremden Inhalt
 und kopieren alles neu), und faellt C aus, wird ohne Maske kopiert -
 lieber ein Bild ohne Effekt als gar keines.
+
+**Test 7 bis 9 kamen mit Build 227 dazu** - auf Zuruf des Nutzers:
+"lochmasken in unterordner anzeigen sonst zuviel auswahl". Eine Liste
+aus 1207 Zeilen ist keine Auswahl.
+
+- **Test 7** prueft eine Ebene des Baums: Ordner vorn, Masken dahinter,
+  je mit der Zahl der Masken darin; ein Ordner ohne eine einzige Maske
+  faellt weg (die Sammlung hat solche - Vorlagen, Lesetexte), und der
+  Weg nach oben endet an der Wurzel statt darueber hinauszulaufen.
+- **Test 8 ist der Fund in `/media/fat/Presets`.** Ein Preset ist eine
+  winzige INI mit einem ganzen Satz Videoeinstellungen; ihre Zeile
+  `mask=` nennt genau eine Datei aus `Shadow_Masks`. Geprueft wird vor
+  allem, was WEGFALLEN muss: `mask=off`, eine Maske, die nicht auf der
+  Karte liegt, und alles, was keine `.ini` ist. Ein Eintrag, der beim
+  Druecken nichts tut, ist schlimmer als keiner.
+- **Test 9 laeuft den Baum wirklich ab**, statt im Quelltext zu suchen:
+  Wurzel, hinein in die Presets, zurueck, zwei Ebenen hinunter und
+  Stufe fuer Stufe wieder herauf. Genau dafuer steht `ebene()` in
+  `fe/masken.py` und nicht in der Zeichenschleife.
 
 
 ## test_negativ_merken.py

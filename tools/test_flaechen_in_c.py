@@ -363,10 +363,17 @@ try:
 finally:
     S.FLAECHEN_C_AUS_FLAG = _altf
 _qf = open(os.path.join(_REPO, "frontend", "frontend.py")).read()
-check("gefragt wird EINMAL beim Laden, nicht je Aufruf",
-      "if flaechen_c_enabled():" in _qf
-      and _qf.count("flaechen_c_enabled()") == 1,
-      "fb.rect() laeuft einige hundert Mal je Seitenaufbau")
+# GEAENDERT (Build 227): es gibt jetzt ZWEI Stellen - der Fueller und
+# der Textzeichner haengen am selben Schalter. Gezaehlt wird deshalb
+# nicht mehr, wie oft gefragt wird, sondern WO: jede Frage muss am
+# Rand stehen, also beim Laden des Moduls. Steht eine davon eingerueckt,
+# sitzt sie in einer Funktion und damit womoeglich in einer Schleife -
+# und genau das ist gemeint. fb.rect() laeuft einige hundert Mal je
+# Seitenaufbau.
+_fragen = [z for z in _qf.splitlines() if "flaechen_c_enabled()" in z]
+check("gefragt wird beim Laden, nicht je Aufruf",
+      _fragen and all(z == "if flaechen_c_enabled():" for z in _fragen),
+      "%r" % (_fragen,))
 
 # ---------------------------------------------------------------------------
 print()
@@ -379,13 +386,32 @@ print("Test 6: die Bauanleitung baut alle drei Fassungen")
 _qb = open(os.path.join(_REPO, "frontend", "c", "bauen.sh")).read()
 for datei in ("libdragend.so", "libdragend_neon.so", "libdragend_x86.so"):
     check("bauen.sh baut %s" % datei, "-o %s" % datei in _qb)
+# NEU (Build 227): und sie muessen auch DORT ankommen, wo frontend.py
+# sie sucht. fe/art.py laedt libdragend.so NEBEN frontend.py, nicht in
+# c/ - das Kopieren war Handarbeit und ist genau einmal vergessen
+# worden. Ergebnis waere: neue Fassung in c/, alte im Einsatz, und das
+# Frontend meldet still "Version 7 ohne texte_zeichnen" und rechnet
+# weiter in Python. Ein Gewinn, den niemand sieht, faellt sonst keinem
+# auf - diesem Test schon.
+check("bauen.sh kopiert sie eine Ebene hoeher",
+      "cp -f libdragend.so libdragend_neon.so libdragend_x86.so .." in _qb,
+      "sonst laedt das Frontend die alte Fassung")
+for datei in ("libdragend.so", "libdragend_neon.so", "libdragend_x86.so"):
+    _a = os.path.join(_REPO, "frontend", "c", datei)
+    _b = os.path.join(_REPO, "frontend", datei)
+    check("%-22s ist in beiden Ordnern dieselbe" % datei,
+          os.path.exists(_b)
+          and open(_a, "rb").read() == open(_b, "rb").read(),
+          "frontend/c/ gebaut, frontend/ geladen")
+
 _qc = open(os.path.join(_REPO, "frontend", "c", "dragend.c")).read()
 check("die C-Fassung ist hochgezaehlt",
-      "return 7; }" in _qc or "return 7;" in _qc)
+      "return 8; }" in _qc or "return 8;" in _qc)
 check("und rechtecke_farben steht drin", "int rechtecke_farben(" in _qc)
 check("und zeilen_kopieren ebenfalls (Build 225)",
       "int zeilen_kopieren(" in _qc)
 check("und rechtecke_maske (Build 226)", "int rechtecke_maske(" in _qc)
+check("und texte_zeichnen (Build 227)", "int texte_zeichnen(" in _qc)
 
 print()
 if fails:

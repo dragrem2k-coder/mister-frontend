@@ -52,6 +52,10 @@ from fe.log import LOG
 
 MASKEN_DIR = "/media/fat/Shadow_Masks"
 
+# MiSTers eigene Videovorlagen. Siehe preset_masken() - uns interessiert
+# daran genau eine Zeile.
+PRESETS_DIR = "/media/fat/Presets"
+
 # Groesser laesst MiSTer sie nicht zu, und wir auch nicht: das Muster
 # wird je Bildpunkt ausgewertet und gehoert deshalb in den Cache des
 # Prozessors.
@@ -202,29 +206,199 @@ def ist_neutral(maske):
     return all(w == 16 for w in maske[2])
 
 
-def masken_dateien(wurzel=None):
-    """Alle .txt-Masken unter MASKEN_DIR, sortiert.
+def masken_eintraege(unterordner="", wurzel=None):
+    """EINE Ebene des Maskenbaums - Ordner und Dateien getrennt.
 
-    Rueckgabe: Liste von (anzeigename, vollpfad). MiSTers Sammlung legt
-    sie in Unterordnern ab ("Complex (Multichromatic)/CRT Styles/..."),
-    deshalb wird der Baum durchlaufen und der Unterordner in den Namen
-    aufgenommen - sonst stuenden drei gleichnamige Eintraege
-    nebeneinander."""
+    NACHGEREICHT IN BUILD 227, auf Zuruf des Nutzers: "lochmasken in
+    unterordner anzeigen sonst zuviel auswahl, die ordnerstruktur wie
+    sie dort selbst angezeigt ist".
+
+    Er hat recht, und masken_dateien() war der falsche Weg: eine flache
+    Liste aus 1207 Eintraegen ist keine Auswahl. MiSTers Sammlung ist
+    selbst schon sortiert ("Complex (Multichromatic)/CRT Styles/..."),
+    und diese Ordnung ist die Arbeit von jemandem, der die Masken kennt
+    - wir bauen sie nicht nach, wir zeigen sie.
+
+    Rueckgabe: Liste von (ist_ordner, anzeigename, relativer Pfad,
+    anzahl). anzahl ist bei einem Ordner die Zahl der Masken DARIN,
+    mitsamt seiner Unterordner - ohne sie waehlt man einen Ordner
+    blind. Ordner stehen vorn, beides fuer sich sortiert.
+
+    Ein Ordner OHNE eine einzige Maske wird weggelassen: er waere eine
+    Sackgasse, und die Sammlung hat solche (Vorlagen, Lesetexte)."""
+    wurzel = wurzel or MASKEN_DIR
+    basis = os.path.join(wurzel, unterordner) if unterordner else wurzel
+    ordner, dateien = [], []
+    try:
+        for name in os.listdir(basis):
+            voll = os.path.join(basis, name)
+            rel = os.path.join(unterordner, name) if unterordner else name
+            if os.path.isdir(voll):
+                n = _zaehlen(voll)
+                if n:
+                    ordner.append((True, name, rel, n))
+            elif name.lower().endswith(".txt"):
+                dateien.append((False, os.path.splitext(name)[0], rel, 0))
+    except OSError:
+        return []
+    ordner.sort(key=lambda e: e[1].lower())
+    dateien.sort(key=lambda e: e[1].lower())
+    return ordner + dateien
+
+
+def _zaehlen(ordner):
+    """Wieviele .txt liegen in diesem Ordner, mitsamt Unterordnern?"""
+    n = 0
+    try:
+        for _w, _u, dateien in os.walk(ordner):
+            n += sum(1 for d in dateien if d.lower().endswith(".txt"))
+    except OSError:
+        return 0
+    return n
+
+
+def preset_masken(presets=None, wurzel=None):
+    """Welche Maske steckt in welchem MiSTer-PRESET? (Build 227)
+
+    NACHGESCHAUT AUF ZURUF DES NUTZERS: "die sachen dafuer liegen in
+    ordner /media/fat/Presets einmal nachschauen bitte".
+
+    Und dort liegt tatsaechlich etwas fuer uns. Ein Preset ist eine
+    winzige INI, die einen ganzen Satz Videoeinstellungen auf einmal
+    setzt (MiSTer-devel/Presets_MiSTer):
+
+        hfilter=Upscaling - Lanczos Bicubic etc/lanczos2_10.txt
+        vfilter=same
+        gamma=off
+        mask=Complex (Multichromatic)/CRT Styles/Sony PVM.txt
+        maskmode=1x
+
+    Die Filterzeilen sind fuer MiSTers Scaler und fuer uns ohne Sinn -
+    wir skalieren nichts, wir zeichnen gleich in der Groesse des
+    Bildschirms. Die Zeile "mask=" dagegen nennt GENAU eine Datei aus
+    /media/fat/Shadow_Masks, also genau das, was Build 226 lesen kann.
+
+    DAS IST DER GEWINN: ein Preset ist eine von Hand zusammengestellte
+    Empfehlung mit einem Namen, den jemand vergeben hat, der sich damit
+    auskennt. Wer nicht durch 1207 Masken blaettern will, nimmt eine
+    davon - und das ist dieselbe Antwort, die auch MiSTers eigenes OSD
+    gibt.
+
+    Rueckgabe: Liste von (presetname, relativer Maskenpfad), nach Namen
+    sortiert. Presets ohne Maske ("off", "same", fehlende Zeile) und
+    solche, deren Maske nicht auf der Karte liegt, fallen weg: ein
+    Eintrag, der beim Druecken nichts tut, ist schlimmer als keiner."""
+    presets = presets or PRESETS_DIR
     wurzel = wurzel or MASKEN_DIR
     gefunden = []
     try:
-        for ordner, _unter, dateien in os.walk(wurzel):
-            for d in dateien:
-                if not d.lower().endswith(".txt"):
-                    continue
-                voll = os.path.join(ordner, d)
-                rel = os.path.relpath(voll, wurzel)
-                anzeige = os.path.splitext(rel)[0].replace(os.sep, " / ")
-                gefunden.append((anzeige, voll))
+        namen = sorted(os.listdir(presets))
     except OSError:
         return []
+    for name in namen:
+        if not name.lower().endswith(".ini"):
+            continue
+        wert = _preset_maske(os.path.join(presets, name))
+        if not wert:
+            continue
+        # Manche Presets schreiben den Ordner mit davor - beides gelten
+        # lassen ist eine Zeile und erspart ein Raetsel.
+        for kandidat in (wert, wert.split("Shadow_Masks/", 1)[-1]):
+            voll = os.path.join(wurzel, kandidat)
+            if os.path.isfile(voll):
+                gefunden.append((os.path.splitext(name)[0], kandidat))
+                break
     gefunden.sort(key=lambda e: e[0].lower())
     return gefunden
+
+
+def _preset_maske(pfad):
+    """Die Zeile "mask=" einer Preset-INI - oder None."""
+    try:
+        with open(pfad, encoding="utf-8", errors="replace") as f:
+            for roh in f:
+                z = roh.strip()
+                if not z or z[0] in "#;[":
+                    continue
+                if "=" not in z:
+                    continue
+                schluessel, wert = z.split("=", 1)
+                if schluessel.strip().lower() != "mask":
+                    continue
+                wert = wert.strip().strip('"')
+                if not wert or wert.lower() in ("off", "same", "none"):
+                    return None
+                return wert
+    except OSError:
+        return None
+    return None
+
+
+def oberordner(unterordner):
+    """Eine Ebene hoeher - "" ist die Wurzel und das Ende des Weges."""
+    if not unterordner:
+        return ""
+    if unterordner == PRESET_EBENE:
+        return ""
+    return os.path.dirname(unterordner.rstrip(os.sep))
+
+
+# Eine Ebene, die es als Ordner nicht gibt: MiSTers Presets. Der Name
+# faengt mit einem Zeichen an, das in keinem Dateinamen vorkommen kann -
+# so ist eine Verwechslung mit einem echten Ordner ausgeschlossen.
+PRESET_EBENE = "\x00presets"
+
+
+def ebene(ordner="", texte=None, wurzel=None, presets=None):
+    """Die sichtbare Liste EINER Ebene - fertig zum Hinmalen.
+
+    HIER UND NICHT IM BILDSCHIRM, weil das die Logik ist, die man
+    pruefen will: was steht oben, was ist ein Weg nach unten, was ist
+    der Weg zurueck. Der Bildschirm soll nur noch zeichnen.
+
+    texte: {"zurueck": .., "keine": .., "presets": ..} - die
+    uebersetzten Beschriftungen. Uebersetzen tut dieses Modul nicht.
+
+    Rueckgabe: Liste von (art, anzeige, rel). art ist
+
+        "hoch"    - eine Ebene hoeher (steht nur unterhalb der Wurzel)
+        "keine"   - keine Maske (steht nur AUF der Wurzel)
+        "presets" - MiSTers Empfehlungen (nur, wenn es welche gibt)
+        "ordner"  - eine Ebene tiefer
+        "maske"   - eine waehlbare Maske
+
+    Gebaut wird sie beim Wechsel der Ebene, nicht je Tastendruck: das
+    Zaehlen laeuft ueber os.walk() und gehoert nicht an die
+    Pfeiltasten."""
+    texte = texte or {}
+    zurueck = ("hoch", ".. %s" % texte.get("zurueck", "zurueck"), "")
+
+    if ordner == PRESET_EBENE:
+        zeilen = [zurueck]
+        for name, rel in preset_masken(presets, wurzel):
+            zeilen.append(("maske", name, rel))
+        return zeilen
+
+    if ordner:
+        zeilen = [zurueck]
+    else:
+        zeilen = [("keine", texte.get("keine", "keine"), "")]
+        # GANZ OBEN, weil es die kuerzeste Antwort auf "zuviel Auswahl"
+        # ist: ein Preset ist eine fertige Empfehlung mit Namen,
+        # zusammengestellt von jemandem, der die Masken kennt. Liegt
+        # nichts in /media/fat/Presets, steht die Zeile auch nicht da.
+        anzahl = len(preset_masken(presets, wurzel))
+        if anzahl:
+            zeilen.append(("presets", "%s   (%d)"
+                           % (texte.get("presets", "Presets"), anzahl),
+                           PRESET_EBENE))
+
+    for ist_ordner, name, rel, n in masken_eintraege(ordner, wurzel):
+        if ist_ordner:
+            zeilen.append(("ordner", "%s/   (%d)" % (name, n), rel))
+        else:
+            zeilen.append(("maske", name, rel))
+    return zeilen
 
 
 def maske_fuer(pfad, bildhoehe=None):
