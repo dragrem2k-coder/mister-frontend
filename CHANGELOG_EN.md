@@ -352,7 +352,16 @@ exactly why nothing here was built twice.
 - Text follows in the next build — it needs the same function but a change
   to the text cache, and that deserves care.
 
-**`--show` now exists: the report, as opposed to the measuring instrument.**
+**`--show`: the crash is gone, and it now also appears on the TV.**
+
+- The crash: a category entry has **three** fields, I unpacked two. On the
+  test bench the category list was **empty**, so the loop never ran and the
+  test reported green. That was the real mistake — a test with an empty list
+  does not test the loop.
+- The report now also runs **on the TV**, page by page, in the current colour
+  scheme. It advances on its own, any key skips ahead, back aborts.
+
+**`--show`: the report, as opposed to the measuring instrument.**
 
 - Five sections, built to be read out loud: your collection, what it can look
   like, what can be set (with the values in force right now), how fast it

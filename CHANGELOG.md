@@ -373,7 +373,23 @@ Millisekunde.**
 - Der Text folgt im nächsten Build — er braucht dieselbe Funktion, aber eine
   Umstellung am Textspeicher, und die will sorgfältig gemacht werden.
 
-**`--show` gibt es jetzt: der Bericht statt des Messgeräts.**
+**`--show`: der Absturz ist weg, und jetzt steht es auch auf dem Fernseher.**
+
+- **Der Absturz.** `--show` ist bei dir in der zweiten Überschrift gestorben:
+  `ValueError: too many values to unpack (expected 2)`. Ein Kategorieeintrag
+  hat **drei** Felder (Name, Baum, Systemkey), ich habe zwei ausgepackt. Auf
+  meinem Prüfstand war die Kategorieliste **leer** — die Schleife lief dort
+  nie, und der Test meldete grün. Das war der eigentliche Fehler: ein Test
+  mit einer leeren Liste prüft die Schleife nicht. Jetzt steht dort eine
+  Kategorieliste, die der echten gleicht.
+- **„ich dachte bei show sieht man was auf dem bildschirm" — stimmt.** Der
+  Bericht läuft jetzt auch **auf dem Fernseher**, Seite für Seite, im
+  eingestellten Farbschema. Es blättert von selbst weiter (eine Vorführung
+  soll laufen), jede Taste geht sofort weiter, **Zurück bricht ab**. Auf der
+  Konsole steht er weiterhin — zum Mitschicken taugt eine Textdatei besser
+  als ein Foto vom Bildschirm.
+
+**`--show`: der Bericht statt des Messgeräts.**
 
     python3 /media/fat/frontend/frontend.py --show
 

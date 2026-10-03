@@ -60,6 +60,28 @@ class LeeresFrontend(object):
     item_i = 0
 
 
+class EchtesFrontend(LeeresFrontend):
+    """Mit Kategorien, wie sie wirklich aussehen.
+
+    DAS IST DIE LEHRE AUS BUILD 231. Dort stand in _abschnitt_bestand()
+    "for name, node in kats" - ein Kategorieeintrag hat aber DREI
+    Felder (Name, Baum, Systemkey). Auf dem Pruefstand war die Liste
+    LEER, also lief die Schleife nie, und der Test meldete gruen. Beim
+    Nutzer stuerzte --show in der zweiten Ueberschrift ab:
+
+        ValueError: too many values to unpack (expected 2)
+
+    Ein Test mit einer leeren Liste prueft die Schleife nicht. Seitdem
+    steht hier eine, die der echten gleicht."""
+    cats = [
+        ("Arcade", {"items": [1] * 1041, "folders": {}}, None),
+        ("SNES", {"items": [1] * 900,
+                  "folders": {"Hacks": {"items": [1] * 20,
+                                        "folders": {}}}}, "snes"),
+        ("Leer", {"items": [], "folders": {}}, None),
+    ]
+
+
 zeilen = []
 _echt_print = __builtins__["print"] if isinstance(__builtins__, dict) \
     else __builtins__.print
@@ -89,6 +111,24 @@ check("ohne Framebuffer wird das Tempo uebersprungen, nicht gerechnet",
       "kein Framebuffer" in text,
       "ein Bericht, der abstuerzt, ist schlimmer als keiner")
 check("die Startdauer steht drin", "1.5 s" in text, )
+# DER ABSTURZ AUS BUILD 231 - mit Kategorien, wie sie wirklich sind.
+builtins.print = _still
+try:
+    text2 = SHOW.lauf(EchtesFrontend(), None,
+                      __import__("fe.art", fromlist=["x"]),
+                      S, MENU, MASKEN, SCHRIFTEN, BENCH)
+finally:
+    builtins.print = _echt_print
+check("mit ECHTEN Kategorien laeuft er auch durch", len(text2) > 500,
+      "ein Eintrag hat DREI Felder, nicht zwei")
+check("und zaehlt sie richtig", "1.961" in text2 or "1961" in text2,
+      "1041 + 900 + 20 = 1961")
+check("eine leere Kategorie wird nicht aufgezaehlt",
+      "Leer" not in text2.split("WIE ES AUSSEHEN")[0],
+      "sie steht in keiner Liste, die jemand liest")
+check("und die Zahl der Kategorien zaehlt nur die vollen",
+      "in 2 Kategorien" in text2, text2.splitlines()[14:16])
+
 check("keine Zeile ist unangenehm lang",
       max(len(z) for z in text.splitlines()) <= 110,
       "max %d - das soll man vorlesen koennen"
@@ -194,6 +234,107 @@ check("die Optionspruefung steht VOR der ersten Startmeldung",
       qf.index("_unbekannt = [a for a in sys.argv")
       < qf.index('print("Frontend-Start: initialisiere ...")'),
       "sonst holt ein --help die Einzelinstanz-Sperre")
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 5: der Bericht steht auch AUF DEM FERNSEHER (Build 232)")
+# ---------------------------------------------------------------------------
+# NUTZERMELDUNG ZU BUILD 231: "ich dachte bei show sieht man was auf
+# dem bildschirm, der ist schwarz". Er hat recht - wer vor dem
+# Fernseher sitzt und "zeig mal, was du kannst" meint, will es dort
+# sehen und nicht in einer SSH-Sitzung.
+class Schirm(object):
+    """Gerade so viel Framebuffer, wie auf_schirm() anfasst."""
+
+    def __init__(self, breite=1920, hoehe=1080):
+        self.width, self.height = breite, hoehe
+        self.gemalt = []
+        self.bilder = 0
+        self.geleert = 0
+
+    def clear(self, farbe):
+        self.geleert += 1
+
+    def text(self, x, y, s, skala, farbe=None, *a, **k):
+        self.gemalt.append((x, y, s, skala))
+
+    def flip(self, *a, **k):
+        self.bilder += 1
+
+
+class Taster(object):
+    """Gibt nach n Abfragen eine Taste - sonst liefe der Test sieben
+    Sekunden je Seite."""
+
+    def __init__(self, antwort="ok"):
+        self.antwort = antwort
+        self.gefragt = 0
+
+    def read_action(self, timeout=None):
+        self.gefragt += 1
+        return self.antwort
+
+
+class SchirmFrontend(EchtesFrontend):
+    pass
+
+
+_fe = SchirmFrontend()
+_fe.fb = Schirm()
+_fe.inp = Taster("ok")
+ok = SHOW.auf_schirm(_fe, text2, sekunden=5.0)
+check("er malt etwas", ok and _fe.fb.bilder > 0,
+      "%d Seiten" % _fe.fb.bilder)
+check("und zwar mehrere Seiten", _fe.fb.bilder > 1,
+      "ein Bericht passt nicht auf eine Seite")
+check("jede Seite wird vorher geleert",
+      _fe.fb.geleert == _fe.fb.bilder,
+      "%d geleert, %d Bilder - sonst steht die alte Seite darunter"
+      % (_fe.fb.geleert, _fe.fb.bilder))
+check("keine Zeile ragt ueber den Rand",
+      all(x + len(s) * 8 * sk <= _fe.fb.width + 8 * sk
+          for (x, y, s, sk) in _fe.fb.gemalt),
+      "lange Zeilen werden umgebrochen, nicht abgeschnitten")
+check("und keine unter den unteren Rand",
+      all(y + 9 * sk <= _fe.fb.height for (x, y, s, sk) in _fe.fb.gemalt),
+      "max y %d von %d"
+      % (max(y for (x, y, s, sk) in _fe.fb.gemalt), _fe.fb.height))
+check("die Seitenzahl steht dabei",
+      any("Seite " in s for (x, y, s, sk) in _fe.fb.gemalt),
+      "sonst weiss man nicht, wie lange es noch dauert")
+
+# ZURUECK BRICHT AB - eine Vorfuehrung, die sich nicht abbrechen
+# laesst, ist eine Zumutung.
+_fe2 = SchirmFrontend()
+_fe2.fb = Schirm()
+_fe2.inp = Taster("back")
+SHOW.auf_schirm(_fe2, text2, sekunden=5.0)
+check("Zurueck bricht ab", _fe2.fb.bilder == 1,
+      "%d Seiten - nach der ersten muss Schluss sein" % _fe2.fb.bilder)
+
+# OHNE Bildspeicher passiert nichts, und zwar ohne Absturz.
+check("ohne Bildspeicher passiert nichts",
+      SHOW.auf_schirm(LeeresFrontend(), text2) is False)
+
+# Und ein Fehler beim Zeichnen beendet die Vorfuehrung, statt das
+# Frontend mitzunehmen.
+class Kaputt(Schirm):
+    def text(self, *a, **k):
+        raise RuntimeError("kaputt")
+
+
+_fe3 = SchirmFrontend()
+_fe3.fb = Kaputt()
+_fe3.inp = Taster("ok")
+check("ein Zeichenfehler nimmt nichts mit",
+      SHOW.auf_schirm(_fe3, text2, sekunden=0.1) is False,
+      "der Bericht auf der Konsole steht da schon")
+
+check("der Aufruf steht in frontend.py",
+      "SHOW.auf_schirm(_fe, _text, sys.modules[__name__]" in qf)
+check("und ist gegen Abstuerze gesichert",
+      "--show auf dem Schirm" in qf,
+      "eine Vorfuehrung darf das Frontend nicht mitnehmen")
 
 print()
 if fails:

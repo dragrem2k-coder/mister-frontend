@@ -104,7 +104,17 @@ def _abschnitt_bestand(b, fe):
     kats = list(getattr(fe, "cats", ()) or ())
     gesamt = 0
     zeilen = []
-    for name, node in kats:
+    # ABSTURZ AUF DEM GERAET (Build 232): hier stand "for name, node in
+    # kats". Ein Kategorieeintrag hat aber DREI Felder (Name, Baum,
+    # Systemkey) - auf dem Pruefstand war die Liste leer, deshalb ist
+    # es hier nie aufgefallen und beim Nutzer sofort. Dieselbe
+    # vorsichtige Entnahme wie in bench.py::_groesste_kategorie(): nach
+    # Index, nicht nach Form.
+    for eintrag in kats:
+        try:
+            name, node = eintrag[0], eintrag[1]
+        except Exception:                                # noqa: BLE001
+            continue
         n = _zaehlen(node)
         gesamt += n
         if n:
@@ -294,6 +304,98 @@ def _wo(b, S, MASKEN, SCHRIFTEN):
     b("   /media/fat/frontend/ - MiSTers eigene Ordner werden gelesen")
     b("   und nicht angefasst.")
     b("")
+
+
+def auf_schirm(fe, text, fm=None, sekunden=7.0, log=None):
+    """Den Bericht auch AUF DEN FERNSEHER bringen, Seite fuer Seite.
+
+    NUTZERMELDUNG ZU BUILD 231: "ich dachte bei show sieht man was auf
+    dem bildschirm, der ist schwarz". Er hat recht - wer vor dem
+    Fernseher sitzt und "zeig mal, was du kannst" meint, will es dort
+    sehen und nicht in einer SSH-Sitzung. Der Text bleibt trotzdem auf
+    der Konsole: zum Mitschicken taugt eine Textdatei besser als ein
+    Foto vom Bildschirm.
+
+    Geblaettert wird von selbst, damit man nichts bedienen muss - eine
+    Vorfuehrung soll laufen. Jede Taste geht eine Seite weiter, Zurueck
+    bricht ab.
+
+    GEZEICHNET WIRD MIT DEM, WAS DA IST: fb.text() und fb.flip(). Kein
+    eigener Zeichenweg, keine neue Schriftgroesse - sonst waere das
+    hier eine zweite Fassung der Textausgabe und wuerde beim naechsten
+    Umbau vergessen."""
+    fbo = getattr(fe, "fb", None)
+    if fbo is None:
+        return False
+    try:
+        from fe.framebuffer import FONT_AKTIV            # noqa: F401
+    except Exception:                                    # noqa: BLE001
+        pass
+    skala = max(1, min(3, fbo.height // 420))
+    zeilenhoehe = 9 * skala
+    rand = 10 * skala
+    platz = max(4, (fbo.height - 2 * rand - 2 * zeilenhoehe) // zeilenhoehe)
+    spalte = max(20, (fbo.width - 2 * rand) // (8 * skala))
+
+    # Lange Zeilen umbrechen statt abschneiden - abgeschnitten waere
+    # genau die Zahl weg, wegen der man hinsieht.
+    zeilen = []
+    for roh in text.splitlines():
+        if len(roh) <= spalte:
+            zeilen.append(roh)
+            continue
+        rest = roh
+        while rest:
+            zeilen.append(rest[:spalte])
+            rest = "  " + rest[spalte:] if len(rest) > spalte else ""
+    seiten = [zeilen[i:i + platz] for i in range(0, len(zeilen), platz)] \
+        or [[""]]
+
+    # Die Farben holen wir uns aus dem Frontend, damit die Vorfuehrung
+    # im eingestellten Farbschema laeuft und nicht in einem eigenen.
+    hg = getattr(fm, "C_BG", (0, 0, 0)) if fm else (0, 0, 0)
+    vg = getattr(fm, "C_TEXT", (220, 220, 220)) if fm else (220, 220, 220)
+    titel = getattr(fm, "C_TITLE", (255, 255, 255)) if fm else vg
+    dim = getattr(fm, "C_DIM", (140, 140, 140)) if fm else vg
+
+    inp = getattr(fe, "inp", None)
+    for nr, seite in enumerate(seiten, 1):
+        try:
+            fbo.clear(hg)
+            y = rand
+            for z in seite:
+                # Ueberschriften etwas heller - das ist die ganze
+                # Gestaltung, die so eine Seite braucht.
+                farbe = titel if (z.startswith(" ") and z.strip()
+                                  and z.strip() == z.strip().upper()) else vg
+                if set(z.strip()) in ({"-"}, {"="}):
+                    farbe = dim
+                fbo.text(rand, y, z, skala, farbe)
+                y += zeilenhoehe
+            fbo.text(rand, fbo.height - rand - zeilenhoehe,
+                     "Seite %d von %d   -   Taste: weiter, Zurueck: Ende"
+                     % (nr, len(seiten)), skala, dim)
+            fbo.flip()
+        except Exception as e:                           # noqa: BLE001
+            if log:
+                log("--show auf dem Schirm: %s" % e)
+            return False
+        # Warten, aber auf eine Taste hoerend - eine Vorfuehrung, die
+        # sich nicht abbrechen laesst, ist eine Zumutung.
+        ende = time.monotonic() + sekunden
+        while time.monotonic() < ende:
+            if inp is None:
+                time.sleep(0.1)
+                continue
+            try:
+                akt = inp.read_action(timeout=0.2)
+            except Exception:                            # noqa: BLE001
+                akt = None
+            if akt in ("back", "exit"):
+                return True
+            if akt is not None:
+                break
+    return True
 
 
 def lauf(fe, fm, A, S, MENU, MASKEN, SCHRIFTEN, BENCH, startdauer=None,

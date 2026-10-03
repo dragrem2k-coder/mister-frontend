@@ -2082,3 +2082,18 @@ den Schritt nicht noch einmal nachbaut.
 **Test 1 laeuft den ganzen Bericht durch** - ohne Framebuffer und ohne
 Spiele, also genau in dem Fall, in dem so etwas gern mit einer Ausnahme
 endet. Ein Bericht, der abstuerzt, ist schlimmer als keiner.
+
+**Und seit Build 232 mit einer Kategorieliste, die der echten gleicht.**
+Das ist die Lehre aus Build 231: dort stand im Bericht
+`for name, node in kats`, ein Kategorieeintrag hat aber DREI Felder
+(Name, Baum, Systemkey). Auf dem Pruefstand war die Liste LEER - die
+Schleife lief nie, der Test meldete gruen, und beim Nutzer stuerzte
+`--show` in der zweiten Ueberschrift ab. **Ein Test mit einer leeren
+Liste prueft die Schleife nicht.**
+
+**Test 5 prueft die Vorfuehrung auf dem Fernseher** (Build 232, auf
+"ich dachte bei show sieht man was auf dem bildschirm, der ist
+schwarz"). Gemessen wird mit einem Bildspeicher, der mitschreibt:
+mehrere Seiten, jede vorher geleert, keine Zeile ueber den rechten oder
+unteren Rand, die Seitenzahl dabei, Zurueck bricht ab - und ein
+Zeichenfehler beendet die Vorfuehrung, statt das Frontend mitzunehmen.

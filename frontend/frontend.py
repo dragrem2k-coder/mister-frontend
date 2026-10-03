@@ -20052,6 +20052,16 @@ if __name__ == "__main__":
             except OSError as _e:
                 print("(konnte %s nicht schreiben: %s)"
                       % (SHOW_AUSGABE, _e))
+            # UND AUF DEN FERNSEHER (Build 232), auf Nutzermeldung:
+            # "ich dachte bei show sieht man was auf dem bildschirm,
+            # der ist schwarz". Wer vor dem Fernseher sitzt und "zeig
+            # mal, was du kannst" meint, will es dort sehen. Der Text
+            # bleibt trotzdem auf der Konsole - zum Mitschicken taugt
+            # eine Textdatei besser als ein Foto.
+            try:
+                SHOW.auf_schirm(_fe, _text, sys.modules[__name__], log=LOG)
+            except Exception:                            # noqa: BLE001
+                LOG("--show auf dem Schirm:\n" + traceback.format_exc())
             _fe._beenden()
             sys.exit(0)
         _fe.run()
