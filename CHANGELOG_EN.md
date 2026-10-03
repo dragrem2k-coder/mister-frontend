@@ -352,6 +352,20 @@ exactly why nothing here was built twice.
 - Text follows in the next build — it needs the same function but a change
   to the text cache, and that deserves care.
 
+**`--demo`: three minutes that show everything once.**
+
+    python3 /media/fat/frontend/frontend.py --demo
+
+- Nine stations: the main page in list, grid and gallery, then the biggest
+  category in all three views — with covers — then the System menu, then a
+  closing card. A short title card announces each station.
+- **It runs the real frontend.** No separate drawing path: the same page
+  builds, the same font, the same mask, your categories, your covers. Only
+  the cursor moves, using the very step function the bench uses.
+- **Any key aborts**, and afterwards everything is back where it was — page,
+  category, entry, folder path, both views. Even when aborted mid-way.
+- The length is **one number**: the stations share the total by weight.
+
 **`--show`: the crash is gone, and it now also appears on the TV.**
 
 - The crash: a category entry has **three** fields, I unpacked two. On the

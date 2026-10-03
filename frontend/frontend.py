@@ -19866,6 +19866,7 @@ if __name__ == "__main__":
         "--bench": "eine feste, wiederholbare Messung ausgeben",
         "--show": "zeigen, was drin ist, wie es eingestellt ist "
                   "und wie schnell es laeuft",
+        "--demo": "drei Minuten Vorfuehrung auf dem Bildschirm",
         "--help": "diese Liste zeigen",
         "-h": "diese Liste zeigen",
     }
@@ -19878,7 +19879,7 @@ if __name__ == "__main__":
         print("Dragend - Aufrufe:")
         print("")
         print("  frontend.py            das Frontend starten")
-        for _o in ("--bench", "--show", "--help"):
+        for _o in ("--bench", "--show", "--demo", "--help"):
             print("  frontend.py %-10s %s" % (_o, _OPTIONEN[_o]))
         print("")
         sys.exit(2 if _unbekannt else 0)
@@ -20062,6 +20063,29 @@ if __name__ == "__main__":
                 SHOW.auf_schirm(_fe, _text, sys.modules[__name__], log=LOG)
             except Exception:                            # noqa: BLE001
                 LOG("--show auf dem Schirm:\n" + traceback.format_exc())
+            _fe._beenden()
+            sys.exit(0)
+        if "--demo" in sys.argv:
+            # NEU (Build 233), auf Wunsch des Nutzers: "eventuell
+            # sollte man auf dem bildschirm auch dort einmal die
+            # menuepunkte kategorien ect angezeigt bekommen, am besten
+            # als so 3 min demo die alles einmal zeigt".
+            #
+            # Der Unterschied zu --show steht im Kopf von fe/demo.py:
+            # --show BERICHTET, --demo ZEIGT. Gezeichnet wird dabei
+            # nichts Eigenes - es laeuft das echte Frontend, bewegt
+            # wird nur der Zeiger.
+            import fe.bench as BENCH
+            import fe.demo as DEMO
+            print("")
+            print("Vorfuehrung laeuft auf dem Bildschirm "
+                  "(jede Taste bricht ab) ...")
+            try:
+                DEMO.lauf(_fe, sys.modules[__name__],
+                          sys.modules["fe.settings"], BENCH, log=LOG)
+            except Exception:                            # noqa: BLE001
+                LOG("--demo:\n" + traceback.format_exc())
+                print("(Vorfuehrung abgebrochen - Details im Log)")
             _fe._beenden()
             sys.exit(0)
         _fe.run()

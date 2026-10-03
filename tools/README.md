@@ -2097,3 +2097,35 @@ schwarz"). Gemessen wird mit einem Bildspeicher, der mitschreibt:
 mehrere Seiten, jede vorher geleert, keine Zeile ueber den rechten oder
 unteren Rand, die Seitenzahl dabei, Zurueck bricht ab - und ein
 Zeichenfehler beendet die Vorfuehrung, statt das Frontend mitzunehmen.
+
+
+## test_demo.py
+
+`--demo`: drei Minuten, die alles einmal zeigen (Build 233).
+
+"Fehlerfrei" heisst bei einer Vorfuehrung vor allem drei Dinge, und um
+die ist dieser Test gebaut:
+
+1. **Sie muss sich abbrechen lassen.** Drei Minuten ohne Ausweg waeren
+   auf einem Geraet ohne Tastatur ein Grund zum Stromziehen. Geprueft
+   wird der Abbruch bei der ersten Abfrage UND mitten im Scrollen.
+2. **Sie darf nichts hinterlassen.** Sie stellt Seite, Kategorie,
+   Eintrag, Ordnerpfad und beide Ansichten um; danach muss alles stehen
+   wie vorher - auch nach einem Abbruch mittendrin.
+3. **Sie darf das Frontend nicht mitnehmen.** Kein Bildspeicher, keine
+   Kategorien, ein Zeichenfehler, eine klemmende Eingabe: nichts davon
+   ist ein Grund fuer einen Absturz. Eine Vorfuehrung ist Zubehoer.
+
+**Test 5 haelt fest, dass es keinen zweiten Zeichenweg gibt.** Gezeigt
+wird, was das Frontend ohnehin zeichnet; `fe/demo.py` malt nur die
+Titelkarten selbst und bewegt sonst nur den Zeiger.
+
+**Die beiden Notbremsen in `fe/demo.py` sind beim Bauen dieses Tests
+entstanden** - und sie sind kein Testzubehoer. Beide Schleifen warten
+auf die Uhr; steht die Uhr, liefe die Vorfuehrung ewig. Der Pruefstand
+friert `time.monotonic()` ein (siehe `_harness.py`), und dieselbe Lage
+entsteht im Betrieb, wenn der Eingabe-Faden klemmt und jeder
+`read_action()` sofort mit einem Fehler zurueckkommt: dann schlaeft
+auch niemand mehr. Der Taster im Test dreht die Uhr deshalb absichtlich
+weiter - sonst pruefte er nur noch die Notbremse statt der
+Zeiteinteilung.

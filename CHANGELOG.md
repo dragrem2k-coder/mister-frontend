@@ -373,6 +373,28 @@ Millisekunde.**
 - Der Text folgt im nächsten Build — er braucht dieselbe Funktion, aber eine
   Umstellung am Textspeicher, und die will sorgfältig gemacht werden.
 
+**`--demo`: drei Minuten, die alles einmal zeigen.**
+
+    python3 /media/fat/frontend/frontend.py --demo
+
+- Neun Stationen: Hauptseite in **Liste, Raster und Galerie**, dann die
+  größte Kategorie in allen drei Ansichten — mit Covern, so wie du scrollst
+  —, dann das **Systemmenü**, und zum Schluss eine Abschlusskarte. Vor jeder
+  Station eine kurze Titelkarte, die sagt, was gleich kommt.
+- **Es läuft das echte Frontend.** Kein eigener Zeichenweg, keine
+  nachgebauten Bildschirme: dieselben Seitenaufbauten, dieselbe Schrift,
+  dieselbe Maske, deine Kategorien, deine Cover. Bewegt wird nur der Zeiger —
+  mit genau der Schrittfunktion, die auch der Bench benutzt. Ein Demo-Modus,
+  der sein eigenes Bild malt, zeigt am Ende etwas, das es gar nicht gibt.
+- **Die Einblendung steht zwischen den Stationen, nicht darüber.** Eine
+  dauerhafte Überlagerung müsste bei jedem Schritt neu gezeichnet werden und
+  würde genau das verfälschen, was sie zeigen soll: die Geschwindigkeit.
+- **Jede Taste bricht ab**, und danach steht alles wieder, wo es war —
+  Seite, Kategorie, Eintrag, Ordnerpfad, beide Ansichten. Auch beim Abbruch
+  mittendrin.
+- Die Länge ist **eine Zahl**: die Stationen teilen sich die Gesamtzeit nach
+  Gewicht.
+
 **`--show`: der Absturz ist weg, und jetzt steht es auch auf dem Fernseher.**
 
 - **Der Absturz.** `--show` ist bei dir in der zweiten Überschrift gestorben:
