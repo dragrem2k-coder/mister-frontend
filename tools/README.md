@@ -2157,3 +2157,30 @@ sichtbar erst auf dem Fernseher des Nutzers.
 Pruefstand friert `monotonic()` ein (siehe `_harness.py`), und eine
 stehende Uhr taugt zum Messen nicht. Beim ersten Lauf standen deshalb
 ueberall 0,00 ms.
+
+
+## test_hintergrund.py
+
+Das eigene Hintergrundbild (Build 235).
+
+**Die Performance-Zusage ist der Kern dieses Tests**, und sie ist
+ueberpruefbar statt behauptet. `fb.clear()` kopiert schon heute einen
+Vollbildpuffer - die "einfarbige" Flaeche traegt die Vignette und ist
+deshalb gar nicht einfarbig. Dasselbe gilt fuer `_restore_row_bg()` und
+`_bg_fill()` beim Scrollen. Was in dieser Vorlage steht, ist dem
+Kopieren egal.
+
+**Test 4 misst genau das**: dieselbe Zahl von `clear()`-Aufrufen einmal
+mit Farb- und einmal mit Bildvorlage. Weicht es um mehr als ein Drittel
+ab, ist die Zusage gebrochen und der Test rot.
+
+**Test 2 ist die zweite Gefahr**: eine falsch grosse Vorlage.
+`fb.clear()` macht `buf[:] = bg` - eine Vorlage mit falscher
+Schrittweite oder Groesse verschoebe das ganze Bild, und zwar still.
+Geprueft wird, dass jede unpassende Vorlage abgewiesen wird und der
+Puffer danach noch seine Laenge hat.
+
+**Test 3** haelt fest, dass das Bild im Cache-Schluessel steckt. Ohne
+das zeigten `_restore_row_bg()` und `_bg_fill()` nach einem Wechsel
+weiter den alten Hintergrund - genau die Sorte Fehler, vor der der
+Kommentar bei `bg_key()` schon einmal gewarnt hat.

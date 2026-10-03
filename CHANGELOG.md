@@ -373,6 +373,29 @@ Millisekunde.**
 - Der Text folgt im nächsten Build — er braucht dieselbe Funktion, aber eine
   Umstellung am Textspeicher, und die will sorgfältig gemacht werden.
 
+**Dein eigenes Hintergrundbild — und es kostet beim Zeichnen nichts.**
+
+- Systemmenü → Anzeige & Sound → **Hintergrundbild**. Eigene Seite mit
+  Ordnern, genau wie bei Maske und Schrift. Lege deine `.png` oder `.jpg` in
+  **`/media/fat/frontend/backgrounds`** (Unterordner werden angezeigt). Das
+  Bild wirkt **sofort beim Durchgehen** — die Seite, auf der du stehst, *ist*
+  die Vorschau. Links/rechts schaltet an und aus, ohne die Auswahl zu
+  verlieren.
+- **Zur Performance-Frage, und die Antwort ist besser als gedacht: es kostet
+  nichts.** `fb.clear()` kopiert schon heute einen **Vollbildpuffer** — die
+  „einfarbige" Fläche ist nämlich gar nicht einfarbig, sie trägt die Vignette.
+  Dasselbe gilt für die Teilwiederherstellung beim Scrollen. Was in dieser
+  Vorlage steht, ist dem Kopieren egal. Nachgemessen: **0,680 ms mit
+  Farbvorlage, 0,667 ms mit Bildvorlage.** Ein Test prüft genau das und wird
+  rot, wenn es je auseinandergeht.
+- Zugeschnitten wird **füllend** (keine Balken, Überstand fällt mittig weg),
+  und es gibt eine **Abdunklung** in fünf Stufen — Text auf einem Foto ist
+  sonst schwer zu lesen. Auch sie kostet nichts: sie wird **einmal beim
+  Laden** ins Bild gerechnet, nicht bei jedem Bildaufbau.
+- **Mitgeliefert wird kein Bild.** Dieselbe Haltung wie bei Masken und
+  Schriften — und ein Test geht das ganze Paket durch und meldet jedes, das
+  sich einschleicht.
+
 **Die Listenansicht mit Covern: drei Viertel einer Fläche fielen weg, die
 sofort wieder übermalt wurde.**
 

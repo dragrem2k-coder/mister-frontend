@@ -955,6 +955,33 @@ TRANSLATIONS = {
         "de": "Lochmaske: %s"},
     "sys_maske_aus": {"en": "off", "de": "aus"},
     "sys_maske_keine": {"en": "none chosen", "de": "keine gewaehlt"},
+    "sys_hg": {"en": "Background: %s", "de": "Hintergrundbild: %s"},
+    "sys_hg_aus": {"en": "off", "de": "aus"},
+    "sys_hg_keiner": {"en": "none chosen", "de": "keines gewaehlt"},
+    "hg_titel": {"en": "Background image", "de": "Hintergrundbild"},
+    "hg_keiner": {"en": "none (plain colour)",
+                  "de": "keines (einfarbig)"},
+    "hg_dim": {"en": "Darken", "de": "Abdunkeln"},
+    "hg_an": {"en": "Background: ON", "de": "Hintergrund: AN"},
+    "hg_aus": {"en": "Background: OFF", "de": "Hintergrund: AUS"},
+    "hg_hinweis": {
+        "en": "up/down choose, OK opens/takes, back one level up, "
+              "left/right on/off",
+        "de": "hoch/runter waehlen, OK oeffnet/uebernimmt, Zurueck eine "
+              "Ebene hoch, links/rechts an/aus"},
+    "hg_leer": {
+        "en": "No images found in %s - put your own .png or .jpg there, "
+              "Dragend ships none.",
+        "de": "Keine Bilder in %s gefunden - lege eigene .png oder .jpg "
+              "hinein, Dragend liefert keine mit."},
+    "hg_gewaehlt": {
+        "en": "Background: %s. It costs nothing while drawing - the "
+              "screen is copied from a template either way.",
+        "de": "Hintergrundbild: %s. Es kostet beim Zeichnen nichts - "
+              "der Hintergrund wird ohnehin aus einer Vorlage kopiert."},
+    "hg_keiner_gewaehlt": {
+        "en": "Background image off.",
+        "de": "Hintergrundbild aus."},
     "schriften_titel": {"en": "Font", "de": "Schrift"},
     "schriften_probe": {
         "en": "0O 1lI 8B 5S  Gg Qq  123 ABC abc",

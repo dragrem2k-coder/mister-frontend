@@ -1797,6 +1797,98 @@ def schrift_pfad(wert=None):
 # "Auswahl UND an/aus Schalter" gewuenscht. Wer die Maske kurz abschaltet,
 # soll seine Auswahl nicht verlieren und sie nicht wieder heraussuchen
 # muessen.
+# ===========================================================================
+# DAS EIGENE HINTERGRUNDBILD (Build 235)
+# ===========================================================================
+#
+# NUTZERWUNSCH: "das benutzer ihr gewuenschtes background bild selbst in
+# einen ordner legen koennen und dieses statt jetzt schwarzen hintergrund
+# dann hier background bild an und ausschalten koennen".
+#
+# DREI Einstellungen, aus demselben Grund wie bei der Lochmaske: wer den
+# Hintergrund kurz abschaltet, soll seine Auswahl behalten. Die dritte
+# ist die Abdunklung - Text auf einem Foto ist schwer zu lesen, und das
+# ist die einzige Schraube, die man dafuer wirklich braucht.
+HINTERGRUND_FILE = "/media/fat/frontend/hintergrund"
+HINTERGRUND_AUS_FLAG = "/media/fat/frontend/hintergrund_aus"
+HINTERGRUND_DIM_FILE = "/media/fat/frontend/hintergrund_dim"
+
+
+def hintergrund_lesen():
+    """Der gewaehlte Pfad, relativ zum Bilderordner - oder ""."""
+    def _lesen():
+        try:
+            return open(HINTERGRUND_FILE).read().strip()
+        except OSError:
+            return ""
+    return _hole(("hintergrund", HINTERGRUND_FILE), _lesen)
+
+
+@_nach_aenderung
+def hintergrund_schreiben(wert):
+    wert = (wert or "").strip()
+    try:
+        d = os.path.dirname(HINTERGRUND_FILE)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        with open(HINTERGRUND_FILE, "w") as f:
+            f.write(wert)
+    except OSError as e:
+        LOG("hintergrund_schreiben: %s" % e)
+    return wert
+
+
+def hintergrund_an():
+    """Der Schalter - unabhaengig von der Auswahl. Dieselbe Trennung
+    wie bei der Lochmaske: wer kurz abschaltet, behaelt seine Wahl."""
+    return not _hole(("hintergrund_aus", HINTERGRUND_AUS_FLAG),
+                     lambda: os.path.exists(HINTERGRUND_AUS_FLAG))
+
+
+@_nach_aenderung
+def toggle_hintergrund():
+    if hintergrund_an():
+        try:
+            d = os.path.dirname(HINTERGRUND_AUS_FLAG)
+            if d:
+                os.makedirs(d, exist_ok=True)
+            open(HINTERGRUND_AUS_FLAG, "w").close()
+        except OSError:
+            pass
+    else:
+        try:
+            os.remove(HINTERGRUND_AUS_FLAG)
+        except OSError:
+            pass
+    return hintergrund_an()
+
+
+def hintergrund_dim_lesen():
+    """Die Abdunklung in Prozent - immer eine der angebotenen Stufen."""
+    try:
+        wert = int(open(HINTERGRUND_DIM_FILE).read().strip())
+    except (OSError, ValueError):
+        return 40
+    return wert if 0 <= wert <= 100 else 40
+
+
+@_nach_aenderung
+def hintergrund_dim_schreiben(wert):
+    try:
+        wert = max(0, min(100, int(wert)))
+    except (TypeError, ValueError):
+        wert = 40
+    try:
+        d = os.path.dirname(HINTERGRUND_DIM_FILE)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        with open(HINTERGRUND_DIM_FILE, "w") as f:
+            f.write(str(wert))
+    except OSError as e:
+        LOG("hintergrund_dim_schreiben: %s" % e)
+    return wert
+
+
 MASKE_FILE = "/media/fat/frontend/maske"
 MASKE_AUS_FLAG = "/media/fat/frontend/maske_aus"
 

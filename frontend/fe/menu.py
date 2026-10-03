@@ -38,6 +38,7 @@ from fe.settings import (
     scharf_verkleinern,
     schrift_lesen, SCHRIFT_OSD,
     maske_lesen, maske_an,
+    hintergrund_lesen, hintergrund_an,
 )
 from fe.timekeeping import format_timezone_offset, load_timezone_offset
 import fe.mister_system as MSYS
@@ -261,6 +262,21 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         _mk = _maske.rsplit("/", 1)[-1]
         masken_label = t("sys_maske",
                          _mk[:-4] if _mk.lower().endswith(".txt") else _mk)
+    # Build 235: das eigene Hintergrundbild. Eigener Eintrag mit
+    # eigener Seite, aus demselben Grund wie bei der Maske - und weil
+    # man ein Bild sehen will, bevor man es nimmt.
+    _hg = hintergrund_lesen()
+    if not hintergrund_an():
+        hg_label = t("sys_hg", t("sys_hg_aus"))
+    elif not _hg:
+        hg_label = t("sys_hg", t("sys_hg_keiner"))
+    else:
+        _hk = _hg.rsplit("/", 1)[-1]
+        for _e in (".png", ".jpg", ".jpeg"):
+            if _hk.lower().endswith(_e):
+                _hk = _hk[:-len(_e)]
+                break
+        hg_label = t("sys_hg", _hk)
     _schrift = schrift_lesen()
     if not _schrift:
         schrift_label = t("sys_schrift", t("sys_schrift_eigen"))
@@ -342,6 +358,7 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         (cover_sofort_label, "cover_sofort", None),
         (scharf_label, "scharf_verkleinern", None),
         (schrift_label, "schrift", None),
+        (hg_label, "hintergrund", None),
         (masken_label, "masken", None),
         # NEU (Build 113): Bildrand. Steht direkt bei den anderen
         # Anzeige-Punkten; wer eine Roehre hat, sucht genau hier.

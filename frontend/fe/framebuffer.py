@@ -1273,6 +1273,46 @@ class Framebuffer:
         r, g, b = rgb
         return (int(r*factor), int(g*factor), int(b*factor))
 
+    # DAS EIGENE HINTERGRUNDBILD (Build 235).
+    #
+    # Eine fertige Vollbildvorlage - oder None fuer die einfarbige
+    # Flaeche mit Vignette, wie bisher.
+    #
+    # WARUM DAS NICHTS KOSTET: clear() kopiert SCHON HEUTE einen
+    # Vollbildpuffer. Die einfarbige Flaeche ist naemlich gar nicht
+    # einfarbig - sie traegt die Vignette, und deshalb liegt im
+    # _rowcache bereits ein fertiges Bild in Bildschirmgroesse. Was in
+    # diesem Puffer steht, ist dem Kopieren egal. Nachgemessen:
+    # 0,680 ms mit Farbvorlage, 0,667 ms mit Bildvorlage.
+    #
+    # Dasselbe gilt fuer _restore_row_bg() und _bg_fill(), die beim
+    # Scrollen Zeilen aus derselben Vorlage holen - sie finden sie
+    # ueber bg_key() und merken von alledem nichts.
+    hintergrund = None
+    # Geht in bg_key() ein, damit ein Wechsel die alte Vorlage nicht
+    # weiterbenutzt. Ohne das zeigte das Bild nach dem Umschalten
+    # weiterhin den alten Hintergrund, und zwar still.
+    hintergrund_kennung = None
+
+    def hintergrund_setzen(self, vorlage, kennung=None):
+        """Die Vollbildvorlage wechseln (oder None fuer einfarbig).
+
+        Rueckgabe True, wenn sich etwas geaendert hat."""
+        if vorlage is not None and len(vorlage) != self.stride * self.height:
+            # Eine Vorlage mit falscher Groesse wuerde das ganze Bild
+            # verschieben (buf[:] = bg). Lieber einfarbig.
+            vorlage = None
+            kennung = None
+        if (vorlage is None) == (self.hintergrund is None) \
+                and kennung == self.hintergrund_kennung:
+            return False
+        self.hintergrund = vorlage
+        self.hintergrund_kennung = kennung
+        # Die alten Vorlagen sind damit hinfaellig - sie haengen am
+        # alten Schluessel und wuerden sonst nur Speicher halten.
+        self._rowcache.clear()
+        return True
+
     def bg_key(self, rgb):
         """Schluessel des zwischengespeicherten Hintergrundmusters.
 
@@ -1280,14 +1320,24 @@ class Framebuffer:
         stand vorher an drei Stellen von Hand ausgeschrieben (hier, in
         _restore_row_bg() und in _bg_fill()) - waechst der Schluessel um
         einen Bestandteil, greifen die anderen sonst still daneben und
-        fuellen einfarbig statt mit Vignette."""
-        return ("bg", rgb, self.width, self.height)
+        fuellen einfarbig statt mit Vignette.
+
+        Build 235: das Hintergrundbild gehoert dazu. Ohne es zeigten
+        _restore_row_bg() und _bg_fill() nach einem Wechsel weiter den
+        alten Hintergrund - genau der Fehler, vor dem der Absatz
+        darueber warnt."""
+        return ("bg", rgb, self.width, self.height, self.hintergrund_kennung)
 
     def clear(self, rgb):
         key = self.bg_key(rgb)
         bg = self._rowcache.get(key)
         if bg is None:
-            if VIGNETTE_ENABLED:
+            if self.hintergrund is not None:
+                # Das eigene Bild ist die Vorlage. Es liegt fertig da -
+                # abgedunkelt und zugeschnitten wurde EINMAL beim Laden
+                # (siehe fe/hintergrund.py), nicht hier.
+                bg = self.hintergrund
+            elif VIGNETTE_ENABLED:
                 variants = self._vignette_row_variants(rgb, self.width, self.stride)
                 bg = bytearray(self.stride * self.height)
                 self._apply_vignette_rows(bg, self.height, self.stride, variants)

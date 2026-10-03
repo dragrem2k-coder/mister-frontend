@@ -352,6 +352,22 @@ exactly why nothing here was built twice.
 - Text follows in the next build — it needs the same function but a change
   to the text cache, and that deserves care.
 
+**Your own background image — and it costs nothing while drawing.**
+
+- System menu → Display & Sound → **Background image**. Its own page with
+  folders, like masks and fonts. Put your `.png` or `.jpg` into
+  **`/media/fat/frontend/backgrounds`**. It takes effect **as you move**, and
+  left/right switches it on and off without losing your choice.
+- **On the performance question: it costs nothing.** `fb.clear()` already
+  copies a **full-screen template** — the "plain" background is not plain, it
+  carries the vignette. What is in that template is irrelevant to the copy.
+  Measured: **0.680 ms with a colour template, 0.667 ms with an image.** A
+  test checks exactly this and goes red if it ever drifts.
+- Cropped to **fill** (no bars), with a **darkening** in five steps — text on
+  a photo is otherwise hard to read. That too is free: computed **once at
+  load time**.
+- **No image is shipped.**
+
 **The list view with covers: three quarters of an area that was painted and
 immediately painted over.**
 

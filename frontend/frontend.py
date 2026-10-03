@@ -314,6 +314,9 @@ from fe.settings import (
     schrift_lesen, schrift_pfad,
     schrift_schreiben, schrift_aus_ini, SCHRIFT_EIGEN, SCHRIFT_OSD,
     maske_lesen, maske_schreiben, maske_an, toggle_maske, maske_pfad,
+    hintergrund_lesen, hintergrund_schreiben, hintergrund_an,
+    toggle_hintergrund, hintergrund_dim_lesen,
+    hintergrund_dim_schreiben,
     fremdquellen_enabled, toggle_fremdquellen,
     FAST_SCROLL_WINDOW, pulse_effect_enabled, toggle_pulse_effect,
     CRT_CONFIRM_TIMEOUT, crt_pending_confirm, mark_crt_pending_confirm,
@@ -1166,6 +1169,7 @@ apply_theme(current_theme_name())   # beim Laden des Moduls sofort anwenden
 # ----------------------------------------------------------------------------
 import fe.masken as MASKEN
 import fe.schriften as SCHRIFTEN
+import fe.hintergrund as HG
 from fe.framebuffer import (FBDEV, Framebuffer,
                             schrift_laden as fb_schrift_laden)
 
@@ -1258,6 +1262,49 @@ def maske_anwenden(fb, pfad_oder_rel, modus=None):
     m = MASKEN.maske_fuer(pfad, fb.height, modus)
     fb.maske = (m[0], m[1], m[2]) if m else None
     return fb.maske is not None
+
+
+def hintergrund_anwenden(fb, pfad_oder_rel=None, dim=None):
+    """Das eigene Hintergrundbild laden und einschalten (Build 235).
+
+    pfad_oder_rel ist ein Pfad relativ zu HG.HINTERGRUND_DIR, ein
+    voller Pfad, "" fuer keinen - oder None fuer "nimm die
+    Einstellung". dim=None heisst ebenso: die eingestellte Abdunklung.
+
+    Rueckgabe True, wenn sich etwas geaendert hat. Faellt das Bild aus
+    (geloescht, kaputt, zu klein), bleibt es bei der einfarbigen
+    Flaeche - ohne Meldung im Bild, mit einer Zeile im Log. Ein
+    Hintergrundbild ist Zubehoer.
+
+    WAS ES IM ZEICHENWEG KOSTET: nichts. fb.clear() kopiert ohnehin
+    eine Vollbildvorlage (die Vignette ist nicht einfarbig), und was
+    darin steht, ist dem Kopieren egal - nachgemessen 0,680 gegen
+    0,667 ms. Siehe den Kopf von fe/hintergrund.py."""
+    if pfad_oder_rel is None:
+        pfad_oder_rel = hintergrund_lesen() if hintergrund_an() else ""
+    if dim is None:
+        dim = hintergrund_dim_lesen()
+    if not pfad_oder_rel:
+        return fb.hintergrund_setzen(None, None)
+    pfad = pfad_oder_rel
+    if not os.path.isabs(pfad):
+        pfad = os.path.join(HG.HINTERGRUND_DIR, pfad)
+    # Die Kennung traegt alles, was das Bild bestimmt - Pfad, Groesse,
+    # Abdunklung und der Zeitstempel der Datei. Ohne den Zeitstempel
+    # zeigte ein ausgetauschtes Bild unter demselben Namen weiterhin
+    # das alte, und zwar still.
+    try:
+        marke = int(os.path.getmtime(pfad))
+    except OSError:
+        marke = 0
+    kennung = (pfad_oder_rel, fb.width, fb.height, int(dim), marke)
+    if kennung == fb.hintergrund_kennung and fb.hintergrund is not None:
+        return False
+    vorlage = HG.vorlage_bauen(pfad, fb.width, fb.height, dim,
+                               ART=sys.modules["fe.art"], stride=fb.stride)
+    if vorlage is None:
+        return fb.hintergrund_setzen(None, None)
+    return fb.hintergrund_setzen(vorlage, kennung)
 
 
 def schrift_anwenden(fb):
@@ -1402,6 +1449,14 @@ class Frontend:
         # abgeschaltet ist.
         Framebuffer.masken_kopierer = staticmethod(_c_rechtecke_maske)
         maske_anwenden(self.fb, maske_pfad_oder_leer())
+        # Build 235: das eigene Hintergrundbild, falls eines gewaehlt
+        # und nicht abgeschaltet ist. Hier und nicht spaeter: der erste
+        # Bildaufbau soll schon damit laufen, sonst blitzt einmal die
+        # einfarbige Flaeche auf. Faellt es aus, bleibt es dabei.
+        try:
+            hintergrund_anwenden(self.fb)
+        except Exception:                                # noqa: BLE001
+            LOG("Hintergrundbild:\n" + traceback.format_exc())
         self.inp = InputManager()
         self._startmarke("Framebuffer und Eingaben offen")
         # WICHTIG: Erst auf unseren eigenen Bildschirm umschalten (F9),
@@ -13535,6 +13590,171 @@ class Frontend:
             tabelle = fb_schrift_laden(pfad)
         self.fb.schrift_setzen(tabelle)
 
+    def hintergrund_bildschirm(self):
+        """Das eigene Hintergrundbild waehlen (Build 235).
+
+        NUTZERWUNSCH: "das benutzer ihr gewuenschtes background bild
+        selbst in einen ordner legen koennen und dieses statt jetzt
+        schwarzen hintergrund dann hier background bild an und
+        ausschalten koennen ... die performence soll dadurch aber nicht
+        beeintraechtigt werden!"
+
+        Derselbe Aufbau wie bei der Lochmaske, und aus demselben Grund:
+        es wirkt SOFORT. Diese Seite ist ihre eigene Vorschau - der
+        Hintergrund, auf dem die Liste steht, IST das gewaehlte Bild.
+        Ein Bild nach Dateinamen auszuwaehlen und erst danach zu sehen,
+        waere Raten.
+
+        DIE ABDUNKLUNG hat eine eigene Zeile. Text auf einem Foto ist
+        schwer zu lesen, und das ist die einzige Schraube, die man
+        dafuer wirklich braucht - sie kostet nichts, weil sie EINMAL
+        beim Laden in die Vorlage gerechnet wird.
+
+        MITGELIEFERT WIRD KEIN BILD."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        ox, oy = 12 * s, 10 * s
+
+        gewaehlt = hintergrund_lesen()
+        an = hintergrund_an()
+        dim = hintergrund_dim_lesen()
+        _alte_wahl, _alt_an, _alt_dim = gewaehlt, an, dim
+        _alte_vorlage = fb.hintergrund
+        _alte_kennung = fb.hintergrund_kennung
+
+        if not HG.hintergrund_eintraege() and not gewaehlt:
+            self._force_full_redraw = True
+            self.draw(message=t("hg_leer", HG.HINTERGRUND_DIR))
+            return
+
+        ordner = os.path.dirname(gewaehlt) if gewaehlt else ""
+
+        def _zeilen_bauen(ordner):
+            zeilen = HG.ebene(ordner, {"zurueck": t("masken_zurueck"),
+                                       "keine": t("hg_keiner")})
+            if not ordner:
+                zeilen.insert(1, ("dim", "%s  < %d %% >" % (t("hg_dim"), dim),
+                                  ""))
+            return zeilen
+
+        kette = _zeilen_bauen(ordner)
+        zeile = 0
+        for i, (art, _n, rel) in enumerate(kette):
+            if art == "datei" and rel == gewaehlt:
+                zeile = i
+                break
+        try:
+            while True:
+                art, _name, rel = kette[zeile]
+                vorschau = rel if art == "datei" else gewaehlt
+                hintergrund_anwenden(fb, vorschau if an else "", dim)
+                fb.clear(C_BG)
+                fb.text(ox, oy, t("hg_titel"), 2 * s, C_TITLE)
+                weg = ordner.replace(os.sep, " / ") if ordner \
+                    else t("masken_wurzel")
+                fb.text(ox, oy + 20 * s, weg, s, C_DIM)
+                y = oy + 38 * s
+                breite = W - 2 * ox
+                platz = max(1, (H - oy - y - 30 * s) // (17 * s))
+                erste = max(0, min(zeile - platz // 2, len(kette) - platz))
+                for i in range(erste, min(erste + platz, len(kette))):
+                    eintrag = kette[i]
+                    markiert = (i == zeile)
+                    if markiert:
+                        fb.rect_rounded(ox - 2 * s, y - 3 * s,
+                                        breite + 4 * s, 15 * s, C_PANEL)
+                    maxz = max(10, breite // (8 * s) - 2)
+                    name = eintrag[1]
+                    kurz = name if len(name) <= maxz \
+                        else "~" + name[-(maxz - 1):]
+                    farbe = C_TITLE if markiert else (
+                        C_DIM if eintrag[0] in ("ordner", "hoch", "dim")
+                        else C_TEXT)
+                    fb.text(ox + 2 * s, y, kurz, s, farbe)
+                    y += 17 * s
+
+                zustand = t("hg_an") if an else t("hg_aus")
+                fb.text(ox, H - oy - 13 * s,
+                        "%s   %s" % (zustand, t("hg_hinweis")), s, C_DIM)
+                fb.flip()
+
+                akt = self.inp.read_action(timeout=1.0)
+                if akt is None:
+                    continue
+                if akt == "up":
+                    zeile = (zeile - 1) % len(kette)
+                elif akt == "down":
+                    zeile = (zeile + 1) % len(kette)
+                elif akt in ("left", "right"):
+                    if art == "dim":
+                        stufen = list(HG.DIM_STUFEN)
+                        try:
+                            i2 = stufen.index(dim)
+                        except ValueError:
+                            i2 = 0
+                        i2 = (i2 - 1 if akt == "left" else i2 + 1) % len(stufen)
+                        dim = stufen[i2]
+                        kette = _zeilen_bauen(ordner)
+                    else:
+                        an = not an
+                elif akt in ("select", "ok"):
+                    if art == "dim":
+                        stufen = list(HG.DIM_STUFEN)
+                        try:
+                            i2 = stufen.index(dim)
+                        except ValueError:
+                            i2 = 0
+                        dim = stufen[(i2 + 1) % len(stufen)]
+                        kette = _zeilen_bauen(ordner)
+                        continue
+                    if art == "ordner":
+                        ordner = rel
+                        kette = _zeilen_bauen(ordner)
+                        zeile = 0
+                        continue
+                    if art == "hoch":
+                        zurueck = ordner
+                        ordner = HG.oberordner(ordner)
+                        kette = _zeilen_bauen(ordner)
+                        zeile = 0
+                        for i, e in enumerate(kette):
+                            if e[0] == "ordner" and e[2] == zurueck:
+                                zeile = i
+                                break
+                        continue
+                    gewaehlt = rel if art == "datei" else ""
+                    break
+                elif akt in ("back", "exit"):
+                    if ordner:
+                        zurueck = ordner
+                        ordner = HG.oberordner(ordner)
+                        kette = _zeilen_bauen(ordner)
+                        zeile = 0
+                        for i, e in enumerate(kette):
+                            if e[0] == "ordner" and e[2] == zurueck:
+                                zeile = i
+                                break
+                        continue
+                    gewaehlt, dim = _alte_wahl, _alt_dim
+                    break
+        finally:
+            fb.hintergrund_setzen(_alte_vorlage, _alte_kennung)
+
+        if gewaehlt != _alte_wahl:
+            hintergrund_schreiben(gewaehlt)
+        if dim != _alt_dim:
+            hintergrund_dim_schreiben(dim)
+        if an != hintergrund_an():
+            toggle_hintergrund()
+        hintergrund_anwenden(fb)
+        self._refresh_system_category()
+        self.fb.mark_full_redraw()
+        self._force_full_redraw = True
+        self.draw(t("hg_gewaehlt", os.path.splitext(
+            os.path.basename(gewaehlt))[0]) if gewaehlt
+            else t("hg_keiner_gewaehlt"))
+
     def theme_editor(self):
         """Der Farbschema-Editor (Build 172).
 
@@ -18726,6 +18946,19 @@ class Frontend:
                             self._refresh_system_category()
                             self.fb._rowcache.clear()
                             self.fb._rectcache.clear()
+                        elif kind == "hintergrund":
+                            # Build 235. Faellt dort etwas aus, zurueck
+                            # auf die einfarbige Flaeche - ein
+                            # Hintergrundbild ist Zubehoer.
+                            try:
+                                self.hintergrund_bildschirm()
+                            except Exception:            # noqa: BLE001
+                                LOG("hintergrund_bildschirm CRASH:\n"
+                                    + traceback.format_exc())
+                                self.fb.hintergrund_setzen(None, None)
+                                self.fb.mark_full_redraw()
+                                self._force_full_redraw = True
+                                self.draw()
                         elif kind == "masken":
                             try:
                                 self.masken_bildschirm()
