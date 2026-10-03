@@ -304,6 +304,46 @@ Millisekunde.**
   Trackern) haben an den Buchstabenplätzen Symbole — das sieht man sofort
   und schaltet weiter.
 
+**Die Update-Info kam seit neunzehn Builds nicht mehr an.**
+
+- In deinem Log stand bei jedem Start `Build-Check fehlgeschlagen:
+  Unterminated string`, und in deiner `update_check_state.json` stand als
+  letzter gemeldeter Build **`2026-09-27-204`**. Beides zusammen war die
+  Diagnose: die Antwort von GitHub wurde mit `read(2000)` gelesen — und das
+  Feld mit der ausführlichen Build-Beschreibung ist seit Build 205 mehrere
+  Kilobyte lang. Gelesen wurden also 2000 Byte **mitten aus einem Text**,
+  und das Ergebnis war kein gültiges JSON mehr.
+- Tückisch war, dass der Versions-Check daneben weiterlief (die
+  VERSION-Datei ist vier Byte groß) und die Logzeile nach kaputtem JSON
+  aussah statt nach einer zu kleinen Grenze. Die Grenze liegt jetzt bei
+  256 kB, und bei einem Lesefehler nennt das Log die gelesene Länge **und**
+  die Grenze.
+- Ein Test prüft jetzt die **echte Datei im Paket** gegen die Grenze, mit
+  mindestens dem Vierfachen Luft. Genau diese Prüfung hat gefehlt — sie
+  wäre bei Build 205 angeschlagen.
+
+**Und drei Dauerfrager aus dem Zeichenweg.**
+
+- Zuerst der Grund, warum sie überhaupt sichtbar wurden: auf deinem Gerät
+  lag noch die Datei `/media/fat/frontend/profile` aus einer früheren
+  Fehlersuche. Damit lief um **jeden** Seitenaufbau ein vollständiges
+  cProfile. Nach dem Löschen halbierten sich die Zahlen: Spieleliste 97,7 →
+  **47,2 ms** je Schritt, Hauptseite-Galerie 106,7 → **58,3**, Hauptseite
+  Liste 68,3 → **28,9**. Der Bench **warnt jetzt im Kopf**, wenn die
+  Profilierung an ist — mit dem Befehl zum Abstellen daneben. Ein Messgerät,
+  das seinen eigenen Zustand verschweigt, ist ein schlechtes Messgerät.
+- `_games_signature` fragte mit **20,9 Zugriffen je Schritt** nach den
+  ROM-Ordnern. Die Funktion sperrt sich jetzt selbst für acht Sekunden —
+  unabhängig davon, ob der Aufrufer richtig zählt.
+- `eq_effect_enabled` las einmal je Schritt von der Karte, nur um einen
+  Schalter zu erfahren, den beim Blättern niemand umlegt. Jetzt aus dem
+  Zwischenspeicher.
+- Die PERF-Logzeile schrieb bei **jedem** Schritt ins Log, weil ein Schritt
+  über ihrer 20-ms-Schwelle liegt — und jede Zeile ist ein Dateizugriff.
+  Sie kommt jetzt höchstens einmal pro Sekunde und sagt dazu, wie viele sie
+  verschluckt hat.
+
+
 
 
 ---

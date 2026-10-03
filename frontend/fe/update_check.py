@@ -58,6 +58,30 @@ UPDATE_CHECK_DISABLED_FLAG_FILE = "/media/fat/frontend/update_check_disabled"
 BUILD_CHECK_URL = ("https://raw.githubusercontent.com/dragrem2k-coder/"
                    "mister-frontend/main/frontend/LATEST_BUILD.json")
 
+# WIEVIEL VON DER ANTWORT GELESEN WIRD - und diese Zahl hat zwischen
+# Build 205 und 223 die ganze Update-Info lahmgelegt (gefunden in Build
+# 224, im Log des Nutzers).
+#
+# Hier stand resp.read(2000). Die Obergrenze ist richtig - eine
+# Netzantwort unbesehen komplett einzulesen waere leichtsinnig -, aber
+# 2000 Byte waren zu knapp: das "details"-Feld in LATEST_BUILD.json ist
+# die ausfuehrliche Build-Beschreibung und seit Build 205 mehrere
+# Kilobyte lang. Gelesen wurden also 2000 Byte MITTEN AUS EINEM STRING,
+# json.loads() sagte voellig zu Recht "Unterminated string starting at:
+# line 4 column 14", und der Aufrufer bekam None.
+#
+# Das Tueckische daran: der Versions-Check daneben lief weiter (die
+# VERSION-Datei ist vier Byte gross), im Log stand eine Zeile, die nach
+# kaputtem JSON aussah statt nach einer zu kleinen Grenze, und auf dem
+# Geraet blieb schlicht der Hinweis aus. Beim Nutzer stand
+# "notified_build_id": "2026-09-27-204" - der letzte Build, dessen
+# Beschreibung noch unter 2000 Byte passte.
+#
+# 256 kB sind grosszuegig gegen alles, was diese Datei je sein wird (die
+# groesste bisher: rund 6 kB), und immer noch eine harte Grenze.
+# tools/test_update_check.py prueft die ECHTE Datei im Paket dagegen.
+BUILD_CHECK_MAX = 256 * 1024
+
 def update_check_enabled():
     return not os.path.exists(UPDATE_CHECK_DISABLED_FLAG_FILE)
 
@@ -147,8 +171,23 @@ def check_for_build_update(timeout=5.0):
     stoeren"-Regel wie beim Versions-Check."""
     try:
         with urllib.request.urlopen(BUILD_CHECK_URL, timeout=timeout) as resp:
-            raw = resp.read(2000).decode("utf-8", "ignore")
-        data = json.loads(raw)
+            roh = resp.read(BUILD_CHECK_MAX)
+        raw = roh.decode("utf-8", "ignore")
+        try:
+            data = json.loads(raw)
+        except ValueError as e:
+            # DIE ZAHL GEHOERT IN DIE MELDUNG (Build 224). Vorher stand
+            # hier nur "Unterminated string starting at: line 4 column
+            # 14" - richtig, aber nicht verwertbar. Mit der gelesenen
+            # Laenge daneben ist in einer Zeile zu sehen, ob die Datei
+            # ABGESCHNITTEN wurde oder ob sie wirklich kaputt ist.
+            LOG("Build-Check: JSON unlesbar nach %d Byte (Grenze %d): %s"
+                % (len(roh), BUILD_CHECK_MAX, e))
+            if len(roh) >= BUILD_CHECK_MAX:
+                LOG("Build-Check: die Antwort war offenbar laenger als "
+                    "die Grenze - genau daran ist der Check von Build "
+                    "205 bis 223 gescheitert.")
+            return None
         build_id = data.get("build_id")
         summary = data.get("summary")
         if not build_id or not summary:

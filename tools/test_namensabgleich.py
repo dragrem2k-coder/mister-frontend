@@ -182,22 +182,32 @@ check("aber die echten Ordner schon",
       S._LETZTE_ORDNER == {"usb:SNES", "fat:NES"}, "%r" % (S._LETZTE_ORDNER,))
 
 echt = S._games_signature
+# GEAENDERT (Build 224): vor jeder Frage die Selbstsperre loesen.
+# ordner_sind_dazugekommen() merkt sich seine Antwort acht Sekunden lang
+# (siehe dort - im Bericht des Nutzers stand sie mit 20,9 Zugriffen JE
+# SCROLLSCHRITT). Dieser Test prueft die ERKENNUNG, nicht die Sperre;
+# dass es sie gibt, prueft tools/test_negativ_merken.py.
+def _frisch():
+    S.dazu_sperre_loesen()
+    return S.ordner_sind_dazugekommen()
+
+
 try:
     S._games_signature = lambda: ([("usb:SNES", 999), ("fat:NES", 222)], {})
     check("ein NEUER Zeitstempel allein loest nichts aus",
-          S.ordner_sind_dazugekommen() is False)
+          _frisch() is False)
     S._games_signature = lambda: ([("usb:SNES", 111)], {})
     check("ein WEGGEFALLENER Ordner loest auch nichts aus",
-          S.ordner_sind_dazugekommen() is False)
+          _frisch() is False)
     S._games_signature = lambda: ([("usb:SNES", 111), ("fat:NES", 222),
                                    ("usb:N64", 333)], {})
     check("ein DAZUGEKOMMENER Ordner loest aus",
-          S.ordner_sind_dazugekommen() is True)
+          _frisch() is True)
     # Die Abfrage darf den NAS-Merker nicht ueberschreiben - er
     # beschreibt das letzte echte Einlesen, nicht diese Zwischenfrage.
     S._LETZTE_SIGNATUR_MIT_NAS = True
     S._games_signature = lambda: ([("usb:SNES", 111)], {})
-    S.ordner_sind_dazugekommen()
+    _frisch()
     check("der NAS-Merker bleibt unangetastet",
           S.letzter_scan_hatte_nas() is True)
     S._LETZTE_SIGNATUR_MIT_NAS = False
@@ -206,7 +216,7 @@ try:
         raise OSError("Laufwerk weg")
     S._games_signature = _kaputt
     check("ein Fehler beim Nachsehen wirft nichts um",
-          S.ordner_sind_dazugekommen() is False)
+          _frisch() is False)
 finally:
     S._games_signature = echt
     S._LETZTE_ORDNER = set()

@@ -976,6 +976,40 @@ leichten Pfad der Liste NIE (`_draw_navigate_items` haengt an `run()`).
 Abschnitt B und J des Benchs haben fuer die Liste deshalb bis Build 217
 den vollen Neuaufbau gemessen und "je Schritt" darueber geschrieben.
 
+## test_update_check.py
+
+Die Update-Info (Build 224) - und die Zahl, die sie neunzehn Builds lang
+lahmgelegt hat.
+
+Im Log des Nutzers stand bei jedem Start:
+
+    Update-Check: GitHub meldet Version '4.7' (lokal: '4.7')
+    Build-Check fehlgeschlagen: Unterminated string starting at:
+        line 4 column 14 (char 229)
+
+und in seinem update_check_state.json:
+
+    "notified_build_id": "2026-09-27-204"
+
+Beides zusammen war die Diagnose. check_for_build_update() las die
+Antwort mit resp.read(2000); das Feld "details" in LATEST_BUILD.json ist
+die ausfuehrliche Build-Beschreibung und seit Build 205 mehrere Kilobyte
+lang. Gelesen wurden also 2000 Byte MITTEN AUS EINEM STRING.
+
+**Test 2 ist der, der gefehlt hat.** Er nimmt die ECHTE Datei aus dem
+Paket und prueft sie gegen die Grenze - mit mindestens dem Vierfachen
+Luft. Er waere bei Build 205 angeschlagen, als die Beschreibung
+hinueberwuchs. Dazu prueft er, dass die Kurzbeschreibung in den Dialog
+passt (rund 216 Zeichen auf HDMI); auch das ist schon einmal mitten im
+Satz abgeschnitten worden.
+
+**Test 3 trennt zwei Fehler, die gleich aussehen.** Eine abgeschnittene
+Antwort und echtes kaputtes JSON melden beide "kein gueltiges JSON" -
+nur fuehrt das eine zu einer groesseren Grenze und das andere zur Suche
+nach der kaputten Datei. Der Check sagt jetzt im Log, welcher der beiden
+Faelle vorliegt, und der Test haelt die Unterscheidung fest.
+
+
 ## test_schrift.py
 
 Die zweite Schrift (Build 223) - MiSTers eigene OSD-Schriften.

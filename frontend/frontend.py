@@ -4809,7 +4809,30 @@ class Frontend:
         # _perf_zeichnen in der RUCKLER-Zeile.
         self._perf_zeichnen = (getattr(self, "_perf_zeichnen", 0) + _dt)
         if _dt > threshold:
-            LOG("PERF %s: %.0f ms" % (label, _dt * 1000))
+            # GEDROSSELT (Build 224). Die Schwelle steht auf 20 ms, und
+            # ein Scrollschritt liegt auf dem DE10-Nano darueber - also
+            # schrieb diese Zeile JEDEN Schritt eine Zeile ins Log, und
+            # jede Zeile ist ein open() auf die SD-Karte. Im Bericht vom
+            # 02.10. stand sie mit "1.0/Schritt _perf_profiled_call >
+            # LOG".
+            #
+            # Weggeworfen wird sie nicht: sie ist der einzige Hinweis im
+            # Alltag, wenn ein Seitenaufbau entgleist. Aber einmal je
+            # Sekunde reicht dafuer voellig, und die verschluckten
+            # werden mitgezaehlt - eine Zahl, die fehlt, ist schlimmer
+            # als eine, die sagt, dass sie fehlt.
+            _jetzt = time.monotonic()
+            self._perf_log_stumm = getattr(self, "_perf_log_stumm", 0)
+            if _jetzt >= getattr(self, "_perf_log_naechste", 0.0):
+                _stumm = self._perf_log_stumm
+                self._perf_log_stumm = 0
+                self._perf_log_naechste = _jetzt + 1.0
+                LOG("PERF %s: %.0f ms%s"
+                    % (label, _dt * 1000,
+                       ("  (+%d weitere in der letzten Sekunde)" % _stumm)
+                       if _stumm else ""))
+            else:
+                self._perf_log_stumm += 1
         return r
 
     def draw_page_cats(self, message=None, flip=True):

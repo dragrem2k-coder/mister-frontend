@@ -302,6 +302,41 @@ def _kopf(b, fe, A, fm):
     except Exception:                                    # noqa: BLE001
         pass
     b("Bestand    : %d Spiele in %d Kategorien" % (spiele, systeme))
+    # DIE PROFILIERUNG MUSS HIER STEHEN, und zwar laut (Build 224).
+    #
+    # WAS PASSIERT IST: auf dem Geraet des Nutzers lag seit einer
+    # frueheren Fehlersuche die Datei /media/fat/frontend/profile. Damit
+    # laeuft um JEDEN Seitenaufbau ein vollstaendiges cProfile, und
+    # danach gehen PERF-Zeile, zwoelf PROFILE-Zeilen und die
+    # TEXTCACHE-Bilanz EINZELN auf die SD-Karte - achtzehn Dateizugriffe
+    # je Scrollschritt. Aufgefallen ist es erst, als Abschnitt J in
+    # Build 222 anfing, die Rufer der Dateizugriffe zu nennen.
+    #
+    # Die Zahlen davor waren dadurch rund doppelt so hoch wie die
+    # Wirklichkeit: Spieleliste 97,7 gegen 47,2 ms je Schritt,
+    # Hauptseite-Galerie 106,7 gegen 58,3. Mehrere Builds lang wurde an
+    # Zehntelmillisekunden gefeilt, waehrend daneben ein Profiler lief.
+    #
+    # Ein Messgeraet, das seinen eigenen Zustand verschweigt, ist ein
+    # schlechtes Messgeraet. Deshalb steht es jetzt im Kopf, mit
+    # Ausrufezeichen und mit dem Befehl zum Abstellen daneben.
+    # fm ist das Frontend-Modul selbst (dort liegt auch _skala und die
+    # LATEST_BUILD.json daneben) - der Schalter wird also direkt dort
+    # gefragt, nicht ueber sys.modules und den Klassennamen.
+    try:
+        _an = bool(fm.profiling_an())
+        _flagge = getattr(fm, "PROFILE_FLAG", "?")
+    except Exception:                                    # noqa: BLE001
+        _an, _flagge = False, "?"
+    if _an:
+        b("")
+        b("!!! ACHTUNG: DIE PROFILIERUNG IST EINGESCHALTET !!!")
+        b("    Um jeden Seitenaufbau laeuft ein vollstaendiges cProfile,")
+        b("    und jede Messung darunter ist dadurch ZU HOCH - auf dem")
+        b("    DE10-Nano gemessen rund um das Doppelte.")
+        b("    Abstellen:  rm %s" % _flagge)
+        b("    (oder DRAGEND_PROFILE aus der Umgebung nehmen), dann")
+        b("    diesen Bench noch einmal laufen lassen.")
     b("")
     b("Die Abschnitte A und B haengen vom Bestand ab und sind deshalb")
     b("JE SPIEL normiert. Abschnitt C rechnet mit einem ERZEUGTEN Bild")

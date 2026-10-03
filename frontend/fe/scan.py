@@ -381,6 +381,23 @@ def letzter_scan_hatte_nas():
 # Kennungen, ohne Zeitstempel). Siehe ordner_sind_dazugekommen().
 _LETZTE_ORDNER = set()
 
+# Die Selbstsperre von ordner_sind_dazugekommen() - siehe dort.
+DAZU_SPERRE = 8.0
+_DAZU_BIS = 0.0
+_DAZU_WERT = False
+
+
+def dazu_sperre_loesen():
+    """Die Selbstsperre sofort aufheben.
+
+    Zwei Aufrufer, und beide aus gutem Grund: nach einem echten
+    Einlesen aendert sich _LETZTE_ORDNER, die gemerkte Antwort waere
+    also auf eine andere Frage gegeben worden - und die Tests pruefen
+    die Erkennung selbst, nicht die Sperre."""
+    global _DAZU_BIS, _DAZU_WERT
+    _DAZU_BIS = 0.0
+    _DAZU_WERT = False
+
 
 def ordner_sind_dazugekommen():
     """Gibt es JETZT Spieleordner, die es beim letzten Einlesen noch
@@ -407,9 +424,30 @@ def ordner_sind_dazugekommen():
 
     Der Aufruf kostet dasselbe wie der Fingerabdruck beim Start: ein
     os.path.isdir() je Basispfad und Systemordner, keine Tiefensuche."""
-    global _LETZTE_SIGNATUR_MIT_NAS
+    global _LETZTE_SIGNATUR_MIT_NAS, _DAZU_BIS, _DAZU_WERT
     if not _LETZTE_ORDNER:
         return False        # noch gar nicht eingelesen - nichts zu vergleichen
+    # EIGENE SPERRE, unabhaengig vom Aufrufer (Build 224).
+    #
+    # Der Aufrufer in frontend.py drosselt diese Frage bereits auf alle
+    # acht Sekunden - und trotzdem stand im Bericht des Nutzers vom
+    # 02.10. in Abschnitt J "20,9/Schritt _games_signature > getmtime",
+    # also rund ein kompletter Durchlauf JE SCROLLSCHRITT. Woran die
+    # Drosselung dort vorbeigeht, liess sich hier nicht nachstellen (der
+    # Pruefstand friert die Uhr ein, siehe tools/_harness.py).
+    #
+    # Statt weiter zu raten, sperrt die Funktion sich jetzt SELBST: wer
+    # auch immer sie ruft, bekommt innerhalb von acht Sekunden dieselbe
+    # Antwort ohne einen einzigen Zugriff auf die Karte. Das ist genau
+    # die Zusicherung, die der Zeichenweg braucht, und sie haengt nicht
+    # mehr daran, dass eine zweite Stelle richtig zaehlt.
+    #
+    # Die Frage lautet "ist ein Ordner DAZUGEKOMMEN" - eine Antwort, die
+    # acht Sekunden alt ist, war noch nie ein Problem: es geht um ein
+    # Laufwerk, das ohnehin irgendwann auftaucht.
+    jetzt = time.monotonic()
+    if jetzt < _DAZU_BIS:
+        return _DAZU_WERT
     # _games_signature() setzt _LETZTE_SIGNATUR_MIT_NAS als Nebenwirkung.
     # Diese Abfrage hier ist aber nur eine ZWISCHENDURCH-Frage und darf
     # den Merker des letzten echten Einlesens nicht ueberschreiben -
@@ -422,7 +460,9 @@ def ordner_sind_dazugekommen():
         return False
     finally:
         _LETZTE_SIGNATUR_MIT_NAS = merker
-    return bool(_ordner_kennungen(sig) - _LETZTE_ORDNER)
+    _DAZU_WERT = bool(_ordner_kennungen(sig) - _LETZTE_ORDNER)
+    _DAZU_BIS = jetzt + DAZU_SPERRE
+    return _DAZU_WERT
 
 
 def _ordner_kennungen(sig):
@@ -437,6 +477,9 @@ def ordner_merken(sig):
     waren - Grundlage fuer ordner_sind_dazugekommen()."""
     global _LETZTE_ORDNER
     _LETZTE_ORDNER = _ordner_kennungen(sig)
+    # Die Vergleichsgrundlage ist eine andere - was eben gemerkt wurde,
+    # war die Antwort auf eine andere Frage (Build 224).
+    dazu_sperre_loesen()
 
 
 def _netz_mountpunkte():

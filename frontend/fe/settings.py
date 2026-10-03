@@ -117,7 +117,15 @@ def toggle_pulse_effect():
 EQ_EFFECT_DISABLED_FLAG = "/media/fat/frontend/eq_effect_disabled"
 
 def eq_effect_enabled():
-    return not os.path.exists(EQ_EFFECT_DISABLED_FLAG)
+    # UEBER DEN KURZLEBIGEN ZWISCHENSPEICHER (Build 224), genau wie der
+    # Pulseffekt darueber. Im Bericht des Nutzers vom 02.10. stand in
+    # Abschnitt J "1.0/Schritt eq_effect_enabled > exists" - ein
+    # Zugriff auf die SD-Karte JE SCROLLSCHRITT, nur um zu erfahren, ob
+    # ein Schalter gesetzt ist, den niemand waehrend des Blaetterns
+    # umlegt. Ein warmes os.stat kostet auf dem Geraet rund 0,2 ms
+    # (Abschnitt G).
+    return not _hole(("eq_effect", EQ_EFFECT_DISABLED_FLAG),
+                     lambda: os.path.exists(EQ_EFFECT_DISABLED_FLAG))
 
 @_nach_aenderung
 def toggle_eq_effect():

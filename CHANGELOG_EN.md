@@ -289,6 +289,42 @@ exactly why nothing here was built twice.
 - Honestly: not every `.pf` is a text font. A few (tracker fonts, say) have
   symbols where the letters should be — you see it at once and move on.
 
+**The update notice had been failing for nineteen builds.**
+
+- Your log said `Build-Check fehlgeschlagen: Unterminated string` on every
+  start, and your `update_check_state.json` listed **`2026-09-27-204`** as
+  the last build you were told about. Together that was the diagnosis: the
+  reply from GitHub was read with `read(2000)` — and the field holding the
+  long build description has been several kilobytes since build 205. So
+  2000 bytes were read **from the middle of a string**, and the result was
+  no longer valid JSON.
+- What made it nasty: the version check next to it kept working (the
+  VERSION file is four bytes), and the log line looked like broken JSON
+  rather than a limit set too low. The limit is now 256 kB, and on a read
+  error the log names the length read **and** the limit.
+- A test now checks the **actual file in the package** against the limit,
+  with at least four times the headroom. That check was missing — it would
+  have fired at build 205.
+
+**And three repeat offenders in the draw path.**
+
+- First, why they became visible at all: your device still had
+  `/media/fat/frontend/profile` from an earlier debugging session, which
+  runs a full cProfile around **every** page build. After deleting it the
+  numbers halved: game list 97.7 → **47.2 ms** per step, main page gallery
+  106.7 → **58.3**, main page list 68.3 → **28.9**. The bench now **warns in
+  its header** when profiling is on, with the command to switch it off. A
+  measuring instrument that hides its own state is a bad instrument.
+- `_games_signature` was asking about the ROM folders **20.9 times per
+  step**. It now throttles itself for eight seconds, regardless of whether
+  the caller counts correctly.
+- `eq_effect_enabled` read from the card once per step just to learn a
+  setting nobody flips while scrolling. Now from the cache.
+- The PERF log line wrote on **every** step, because a step sits above its
+  20 ms threshold — and each line is a file access. It now appears at most
+  once a second and says how many it swallowed.
+
+
 
 
 ---

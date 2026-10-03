@@ -204,6 +204,42 @@ check("und eine selbst geschriebene Datei ebenso",
       quelle_art.count("_thumb_fehlt.discard(cpath)") >= 2,
       "beide Schreibwege: Miniatur und Marke")
 
+# ---------------------------------------------------------------------------
+print()
+print("Test 7: die drei Dauerfrager aus dem Zeichenweg (Build 224)")
+# ---------------------------------------------------------------------------
+# ALLE DREI STANDEN IM BERICHT DES NUTZERS VOM 02.10., Abschnitt J, mit
+# ihrer Zahl JE SCROLLSCHRITT - und keiner von ihnen hat dort etwas zu
+# suchen.
+import fe.scan as SC                                      # noqa: E402
+import fe.settings as SE                                  # noqa: E402
+
+check("ordner_sind_dazugekommen() sperrt sich selbst",
+      hasattr(SC, "DAZU_SPERRE") and SC.DAZU_SPERRE >= 1.0,
+      "%r s - 20,9 getmtime je Schritt standen im Bericht"
+      % getattr(SC, "DAZU_SPERRE", None))
+_q = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                       "..", "frontend", "fe", "scan.py"),
+          encoding="utf-8", errors="replace").read()
+check("und zwar unabhaengig vom Aufrufer",
+      "if jetzt < _DAZU_BIS:" in _q,
+      "die Drosselung in frontend.py allein hat nicht gereicht")
+
+_s = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                       "..", "frontend", "fe", "settings.py"),
+          encoding="utf-8", errors="replace").read()
+check("eq_effect_enabled geht ueber den Zwischenspeicher",
+      '_hole(("eq_effect"' in _s,
+      "stand mit 1,0 Zugriffen je Schritt im Bericht")
+
+_f = open(H.FRONTEND_PY, encoding="utf-8", errors="replace").read()
+check("die PERF-Zeile ist gedrosselt",
+      "_perf_log_naechste" in _f,
+      "jede Logzeile ist ein open() auf die Karte")
+check("und sagt, wie viele sie verschluckt hat",
+      "weitere in der letzten Sekunde" in _f,
+      "eine Zahl, die fehlt, ist schlimmer als eine, die sagt dass sie fehlt")
+
 print()
 if fails:
     print("FEHLGESCHLAGEN (%d):" % len(fails))
