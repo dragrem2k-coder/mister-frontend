@@ -39,6 +39,7 @@ from fe.settings import (
     schrift_lesen, SCHRIFT_OSD,
     maske_lesen, maske_an,
     hintergrund_lesen, hintergrund_an,
+    feinheiten_an,
 )
 from fe.timekeeping import format_timezone_offset, load_timezone_offset
 import fe.mister_system as MSYS
@@ -358,6 +359,8 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         (cover_sofort_label, "cover_sofort", None),
         (scharf_label, "scharf_verkleinern", None),
         (schrift_label, "schrift", None),
+        (t("sys_fein_an") if feinheiten_an() else t("sys_fein_aus"),
+         "feinheiten", None),
         (hg_label, "hintergrund", None),
         (masken_label, "masken", None),
         # NEU (Build 113): Bildrand. Steht direkt bei den anderen

@@ -352,6 +352,20 @@ exactly why nothing here was built twice.
 - Text follows in the next build — it needs the same function but a change
   to the text cache, and that deserves care.
 
+**The four visual touches — three new ones, one had been there all along.**
+
+- **Scrollbar on the right**, **accent bars on the rows** (on every row, not
+  just the selected one — the selected row's background already *is* the
+  system colour), and a **hairline** between the list and the cover column.
+- **Frame and shadow on the cover already exist** — since build 98 on the
+  panel, since build 124 on the tiles. A second frame would just be a double
+  frame; I pinned the existing one with a test instead.
+- **Measured, as you asked** (`tools/diag_feinheiten.py`, each element on and
+  off, interleaved, median run): **+0.04 to +0.06 ms** per scroll step in the
+  list views, **nothing** in grid and gallery. Scrollbar and hairline hang on
+  the *window*, not the cursor, so they are drawn only on a page build.
+- **One switch for all three**: System menu → Display & Sound → Fine details.
+
 **Your own background image — and it costs nothing while drawing.**
 
 - System menu → Display & Sound → **Background image**. Its own page with

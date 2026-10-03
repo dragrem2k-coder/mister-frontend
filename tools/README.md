@@ -2184,3 +2184,32 @@ Puffer danach noch seine Laenge hat.
 das zeigten `_restore_row_bg()` und `_bg_fill()` nach einem Wechsel
 weiter den alten Hintergrund - genau die Sorte Fehler, vor der der
 Kommentar bei `bg_key()` schon einmal gewarnt hat.
+
+
+## test_feinheiten.py  /  diag_feinheiten.py
+
+Scrollbalken, Akzentbalken, Haarlinie (Build 236).
+
+Die Bedingung des Nutzers war eindeutig: "alles aber nur wenn absolut
+keine Performance Verluste merkbar sind". Der Test haelt deshalb nicht
+fest, dass die drei Elemente huebsch aussehen - das kann er nicht -,
+sondern die drei Eigenschaften, von denen abhaengt, ob die Bedingung
+erfuellt BLEIBT:
+
+1. **Scrollbalken und Haarlinie haengen am Fenster, nicht am Zeiger.**
+   Sie werden nur beim Seitenaufbau gezeichnet. Rutschten sie je in den
+   leichten Pfad, kosteten sie bei JEDEM Scrollschritt.
+2. **Es gibt sie nur in der Listenansicht.** Beim ersten Entwurf liefen
+   sie auch in Raster und Galerie, wo es gar keine Liste gibt - der
+   Messlauf zeigte dort prompt einen Unterschied, der nichts mit ihnen
+   zu tun hatte.
+3. **Der Schalter kostet nichts.** Er steht als Modulvariable da; eine
+   Dateiabfrage je Zeile waere genau die Sorte stiller Kosten, gegen
+   die Build 212 angetreten ist.
+
+`diag_feinheiten.py` misst jedes Element einzeln, an und aus - und zwar
+**abwechselnd**: misst man erst alles ohne und dann alles mit, traegt
+jede Haelfte den Zustand des Rechners in genau diesem Moment. Beim
+ersten Entwurf stand dort -32 Prozent fuer ein Element, das in der
+gemessenen Ansicht gar nicht gezeichnet wird. Genommen wird der
+mittlere Lauf, nicht der beste und nicht der Mittelwert.

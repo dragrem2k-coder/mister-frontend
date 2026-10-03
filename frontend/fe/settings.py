@@ -1809,6 +1809,37 @@ def schrift_pfad(wert=None):
 # Hintergrund kurz abschaltet, soll seine Auswahl behalten. Die dritte
 # ist die Abdunklung - Text auf einem Foto ist schwer zu lesen, und das
 # ist die einzige Schraube, die man dafuer wirklich braucht.
+# DIE FEINHEITEN (Build 236): Scrollbalken, Akzentbalken an den Zeilen,
+# Haarlinie zwischen Liste und Coverspalte.
+#
+# EIN Schalter fuer alle drei, nicht drei. Es ist eine Frage ("soll es
+# schlichter sein?"), und drei Schalter fuer eine Frage sind zwei zuviel.
+FEINHEITEN_AUS_FLAG = "/media/fat/frontend/feinheiten_aus"
+
+
+def feinheiten_an():
+    return not _hole(("feinheiten_aus", FEINHEITEN_AUS_FLAG),
+                     lambda: os.path.exists(FEINHEITEN_AUS_FLAG))
+
+
+@_nach_aenderung
+def toggle_feinheiten():
+    if feinheiten_an():
+        try:
+            d = os.path.dirname(FEINHEITEN_AUS_FLAG)
+            if d:
+                os.makedirs(d, exist_ok=True)
+            open(FEINHEITEN_AUS_FLAG, "w").close()
+        except OSError:
+            pass
+    else:
+        try:
+            os.remove(FEINHEITEN_AUS_FLAG)
+        except OSError:
+            pass
+    return feinheiten_an()
+
+
 HINTERGRUND_FILE = "/media/fat/frontend/hintergrund"
 HINTERGRUND_AUS_FLAG = "/media/fat/frontend/hintergrund_aus"
 HINTERGRUND_DIM_FILE = "/media/fat/frontend/hintergrund_dim"

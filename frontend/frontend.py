@@ -314,6 +314,7 @@ from fe.settings import (
     schrift_lesen, schrift_pfad,
     schrift_schreiben, schrift_aus_ini, SCHRIFT_EIGEN, SCHRIFT_OSD,
     maske_lesen, maske_schreiben, maske_an, toggle_maske, maske_pfad,
+    feinheiten_an, toggle_feinheiten,
     hintergrund_lesen, hintergrund_schreiben, hintergrund_an,
     toggle_hintergrund, hintergrund_dim_lesen,
     hintergrund_dim_schreiben,
@@ -1264,6 +1265,23 @@ def maske_anwenden(fb, pfad_oder_rel, modus=None):
     return fb.maske is not None
 
 
+# DIE FEINHEITEN (Build 236) - Scrollbalken, Akzentbalken, Haarlinie.
+#
+# EINE Modulvariable und keine Dateiabfrage im Zeichenweg. Der Schalter
+# wird beim Start gelesen und beim Umschalten direkt hier gesetzt; so
+# wirkt er sofort UND kostet beim Zeichnen nichts. Eine Abfrage je
+# Zeile waere genau die Sorte stiller Kosten, gegen die Build 212
+# angetreten ist.
+FEIN = True
+
+
+def feinheiten_uebernehmen():
+    """Den Schalter aus den Einstellungen in die Modulvariable holen."""
+    global FEIN
+    FEIN = bool(feinheiten_an())
+    return FEIN
+
+
 def hintergrund_anwenden(fb, pfad_oder_rel=None, dim=None):
     """Das eigene Hintergrundbild laden und einschalten (Build 235).
 
@@ -1457,6 +1475,8 @@ class Frontend:
             hintergrund_anwenden(self.fb)
         except Exception:                                # noqa: BLE001
             LOG("Hintergrundbild:\n" + traceback.format_exc())
+        # Build 236: die Feinheiten einmal lesen - siehe FEIN.
+        feinheiten_uebernehmen()
         self.inp = InputManager()
         self._startmarke("Framebuffer und Eingaben offen")
         # WICHTIG: Erst auf unseren eigenen Bildschirm umschalten (F9),
@@ -7234,6 +7254,42 @@ class Frontend:
         self._perf_rows = time.monotonic() - _tr
         self._perf_nrows = end - self.scroll
 
+        # DER SCROLLBALKEN UND DIE HAARLINIE (Build 236, Wunsch des
+        # Nutzers).
+        #
+        # BEIDE STEHEN HIER UND NICHT IM LEICHTEN PFAD, und das ist der
+        # ganze Trick an ihren Kosten: sie haengen am FENSTER (scroll),
+        # nicht am Zeiger (item_i). Beim leichten Navigationsschritt
+        # aendert sich das Fenster per Definition nicht - der Pfad
+        # laeuft ja nur, wenn NICHT gescrollt werden musste. Sie werden
+        # also genau dann neu gezeichnet, wenn sich auch wirklich etwas
+        # an ihnen aendert, und kosten je Scrollschritt nichts.
+        #
+        # Der Balken sagt bei 21.203 Eintraegen in einer Kategorie das,
+        # was sonst niemand sagt: wo man ist. Die Haarlinie trennt
+        # Liste und Coverspalte - der Unterschied zwischen "zwei
+        # Spalten" und "ein Durcheinander".
+        if FEIN and _ansicht == "liste" and len(items) > self.items_visible:
+            _bx = list_right - 3 * s
+            _by = list_y - 3 * s
+            _bh = max(8, self.items_visible * rowh)
+            # Die Bahn dezent, der Laeufer in Textfarbe - mehr braucht
+            # es nicht, und mehr waere auch teurer.
+            fb.rect(_bx, _by, 2 * s, _bh, C_PANEL)
+            _anteil = float(self.items_visible) / max(1, len(items))
+            _lh = max(6 * s, int(_bh * _anteil))
+            _frei = max(0, len(items) - self.items_visible)
+            _pos = int((_bh - _lh) * (float(self.scroll) / _frei)) if _frei \
+                else 0
+            fb.rect(_bx, _by + _pos, 2 * s, _lh, C_DIM)
+        if FEIN and has_art and _ansicht == "liste":
+            # Genau EIN Punkt breit (mal Skalierung): eine Trennlinie
+            # soll trennen, nicht auffallen.
+            _hx = art_karte_x0(list_right, fb.height, s) - 4 * s
+            if _hx > list_right:
+                fb.rect(_hx, list_y - 3 * s, max(1, s),
+                        max(8, self.items_visible * rowh), C_PANEL)
+
         # Vorbelegt fuer den Fall ohne Boxart-Spalte: dann gibt es
         # nichts auszulassen.
         _spalte_auslassen = False
@@ -8735,6 +8791,26 @@ class Frontend:
             self._restore_row_bg(x0, y_top, rw, band_h)
             if sel:
                 fb.rect_rounded(x0, y_top, rw, band_h, bg, sel_radius)
+
+        # DER AKZENTBALKEN (Build 236, Wunsch des Nutzers: "akzentbalken
+        # an der markierten zeile ... aber nur wenn absolut keine
+        # Performance Verluste merkbar sind").
+        #
+        # Er steht an JEDER Zeile, nicht nur an der markierten - und das
+        # ist nicht Geschmack, sondern der Grund, warum er ueberhaupt
+        # etwas nuetzt: der Hintergrund der MARKIERTEN Zeile IST bereits
+        # die Systemfarbe (bg = _pulsed(accent)), ein Balken darauf waere
+        # unsichtbar. An den uebrigen Zeilen dagegen sagt er auf einen
+        # Blick, zu welchem System ein Eintrag gehoert - und genau das
+        # weiss man in gemischten Listen (Favoriten, Suche, Sammlungen)
+        # sonst nicht.
+        #
+        # WAS ER KOSTET: ein Rechteck je Zeile. Im leichten Pfad sind
+        # das zwei je Schritt (alte und neue Zeile), beim vollen Aufbau
+        # so viele wie Zeilen. Gemessen in tools/diag_feinheiten.py.
+        if FEIN and not sel:
+            fb.rect(x0, y_top + 2 * s, 3 * s, max(1, band_h - 4 * s),
+                    accent)
 
         # GEAENDERT (Nutzerwunsch: "glow Effekt komplett raus"): hier
         # standen drei konzentrische Leucht-Ringe um die markierte Zeile
@@ -18946,6 +19022,17 @@ class Frontend:
                             self._refresh_system_category()
                             self.fb._rowcache.clear()
                             self.fb._rectcache.clear()
+                        elif kind == "feinheiten":
+                            # Build 236. Wirkt sofort: der Schalter
+                            # steht als Modulvariable da und wird hier
+                            # direkt nachgezogen - keine Dateiabfrage
+                            # im Zeichenweg.
+                            toggle_feinheiten()
+                            feinheiten_uebernehmen()
+                            self._refresh_system_category()
+                            self.fb.mark_full_redraw()
+                            self._force_full_redraw = True
+                            self.draw(t("sys_fein_changed"))
                         elif kind == "hintergrund":
                             # Build 235. Faellt dort etwas aus, zurueck
                             # auf die einfarbige Flaeche - ein

@@ -373,6 +373,36 @@ Millisekunde.**
 - Der Text folgt im nächsten Build — er braucht dieselbe Funktion, aber eine
   Umstellung am Textspeicher, und die will sorgfältig gemacht werden.
 
+**Die vier Verschönerungen — drei neue, eine gab es längst.**
+
+- **Scrollbalken rechts.** Bei 21.203 Einträgen in Arcade sagt er das, was
+  sonst niemand sagt: wo du bist. Dünne Bahn, Läufer in Textfarbe.
+- **Akzentbalken an den Zeilen.** Ein 3 Punkte breiter Streifen in der Farbe
+  des Systems — an **jeder** Zeile, nicht nur an der markierten. Das ist
+  nicht Geschmack: der Hintergrund der markierten Zeile *ist* bereits die
+  Systemfarbe, ein Balken darauf wäre unsichtbar. An den übrigen Zeilen sagt
+  er dir in gemischten Listen (Favoriten, Suche, Sammlungen) auf einen Blick,
+  wozu ein Eintrag gehört.
+- **Haarlinie zwischen Liste und Coverspalte.** Ein Punkt breit, gedämpfte
+  Farbe — der Unterschied zwischen „zwei Spalten" und „ein Durcheinander".
+- **Rahmen und Schatten am Cover gibt es längst** — seit Build 98 am Panel,
+  seit Build 124 an den Kacheln. Ein zweiter Rahmen darüber wäre kein
+  Gewinn, sondern ein Doppelrahmen. Ich habe es stattdessen mit einem Test
+  festgehalten, damit es nicht still verschwindet.
+- **Gemessen, wie du es verlangt hast** (`tools/diag_feinheiten.py`, jedes
+  Element einzeln an und aus, abwechselnd gemessen und als mittlerer Lauf):
+  Im Scrollschritt **+0,04 bis +0,06 ms** in den Listenansichten, in Raster
+  und Galerie **nichts** (dort werden sie gar nicht gezeichnet). Der Grund:
+  Scrollbalken und Haarlinie hängen am **Fenster**, nicht am Zeiger — beim
+  leichten Scrollschritt ändert sich das Fenster per Definition nicht, sie
+  werden also nur beim Seitenaufbau gezeichnet. Übrig bleibt der
+  Akzentbalken mit zwei kleinen Rechtecken je Schritt.
+- **Ein Schalter für alle drei**: Systemmenü → Anzeige & Sound →
+  **Feinheiten**. Er wirkt sofort und kostet beim Zeichnen nichts — er steht
+  als Modulvariable da, nicht als Dateiabfrage je Zeile. Wenn dein Bench
+  einen echten Verlust zeigt, schalte ihn ab und sag Bescheid; dann fliegt
+  der Akzentbalken wieder raus.
+
 **Dein eigenes Hintergrundbild — und es kostet beim Zeichnen nichts.**
 
 - Systemmenü → Anzeige & Sound → **Hintergrundbild**. Eigene Seite mit

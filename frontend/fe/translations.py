@@ -955,6 +955,21 @@ TRANSLATIONS = {
         "de": "Lochmaske: %s"},
     "sys_maske_aus": {"en": "off", "de": "aus"},
     "sys_maske_keine": {"en": "none chosen", "de": "keine gewaehlt"},
+    "sys_fein_an": {
+        "en": "Fine details: ON -> switch off (scrollbar, accent bars, "
+              "divider)",
+        "de": "Feinheiten: AN -> ausschalten (Scrollbalken, "
+              "Akzentbalken, Trennlinie)"},
+    "sys_fein_aus": {
+        "en": "Fine details: OFF -> switch on (scrollbar, accent bars, "
+              "divider)",
+        "de": "Feinheiten: AUS -> einschalten (Scrollbalken, "
+              "Akzentbalken, Trennlinie)"},
+    "sys_fein_changed": {
+        "en": "Fine details switched. They are drawn with the page, not "
+              "with every scroll step.",
+        "de": "Feinheiten umgeschaltet. Sie werden mit der Seite "
+              "gezeichnet, nicht bei jedem Scrollschritt."},
     "sys_hg": {"en": "Background: %s", "de": "Hintergrundbild: %s"},
     "sys_hg_aus": {"en": "off", "de": "aus"},
     "sys_hg_keiner": {"en": "none chosen", "de": "keines gewaehlt"},
