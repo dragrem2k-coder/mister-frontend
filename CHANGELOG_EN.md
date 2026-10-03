@@ -352,6 +352,22 @@ exactly why nothing here was built twice.
 - Text follows in the next build — it needs the same function but a change
   to the text cache, and that deserves care.
 
+**Two stutters you reported — both found, both fixed.**
+
+- Switching folders and categories could stall. Your report shows
+  `20.9/Schritt _games_signature > getmtime`: roughly 630 file probes over 30
+  steps, at 0.18 ms per warm `os.stat` — about **110 ms in a single step**.
+  It is the ROM-folder fingerprint used to notice a late-mounted USB drive.
+  It is postponed while a key is **held**, so it ran exactly when you stop
+  scrolling or change category. It now runs **on its own thread**; the draw
+  path gets the last known answer, at most eight seconds old.
+- Entries without boxart appeared late or looked recomputed. The remembered
+  "nothing there" from build 222 was thrown away at **every** standstill — so
+  every time you stop, which is exactly when you look. It now lasts **up to
+  30 seconds**. New artwork copied onto the card shows up within half a
+  minute, and the worker still clears its own entry **immediately** when it
+  finishes a thumbnail.
+
 **The font gets the same page as the shadow mask — and the mask gets
 MiSTer's four modes.**
 

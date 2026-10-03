@@ -17,6 +17,7 @@ Import. _wait_for_network_ready() haelt fe.paths.GAMES_BASES bei
 jeder Neuermittlung synchron.
 """
 import os, glob, re, time, pickle, socket
+import threading as _threading
 from fe.log import LOG
 from fe.systems import (GAME_SYSTEMS, OPTIONAL_GAME_SYSTEMS,
                         optional_core_file)
@@ -386,6 +387,34 @@ DAZU_SPERRE = 8.0
 _DAZU_BIS = 0.0
 _DAZU_WERT = False
 
+# NEU (Build 229): der Fingerabdruck wird NEBENHER gebildet.
+#
+# DER BEFUND DES NUTZERS: "ab und an wenn ich ordner und kategorien
+# wechseln hab ich manchmal denn eindruck das es kleine haenger gibt."
+# Im Bericht vom 03.10. steht dazu, Abschnitt J, Liste galerie:
+#
+#     20.9/Schritt  _games_signature > getmtime
+#      0.6/Schritt  _games_signature > isdir
+#
+# Ueber 30 Schritte sind das rund 630 getmtime-Aufrufe. Abschnitt G
+# nennt ein warmes os.stat mit 0,18 ms - also rund 110 ms, und zwar in
+# EINEM einzigen Schritt. Das ist kein Rauschen, das ist genau der
+# Haenger, den er beschreibt.
+#
+# WARUM AUSGERECHNET BEIM WECHSELN: der Aufrufer in frontend.py schiebt
+# die Frage auf, solange eine Taste gehalten wird (_nav_active()). Sie
+# laeuft also genau dann, wenn man AUFHOERT zu scrollen oder die
+# Kategorie wechselt.
+#
+# Die Sperre von Build 224 war richtig, aber sie macht die Frage nur
+# selten - nicht billig. Jetzt laeuft die Arbeit in einem eigenen
+# Faden, und der Zeichenweg bekommt sofort die zuletzt bekannte
+# Antwort. Die ist hoechstens acht Sekunden alt, und genau das stand
+# schon bei Build 224 hier: es geht um ein Laufwerk, das ohnehin erst
+# irgendwann auftaucht.
+_DAZU_FADEN = None
+_DAZU_SPERRE_OBJ = _threading.Lock()
+
 
 def dazu_sperre_loesen():
     """Die Selbstsperre sofort aufheben.
@@ -397,6 +426,39 @@ def dazu_sperre_loesen():
     global _DAZU_BIS, _DAZU_WERT
     _DAZU_BIS = 0.0
     _DAZU_WERT = False
+
+
+def dazu_fertig_abwarten(sekunden=5.0):
+    """Auf einen laufenden Hintergrundfaden warten - NUR fuer Tests.
+
+    Im Betrieb wartet niemand: der Zeichenweg nimmt die zuletzt
+    bekannte Antwort. Ein Test, der die ERKENNUNG prueft, braucht aber
+    ein Ergebnis und keine Zusage."""
+    faden = _DAZU_FADEN
+    if faden is not None and faden.is_alive():
+        faden.join(sekunden)
+    return faden is None or not faden.is_alive()
+
+
+def _dazu_nachsehen():
+    """Der Fingerabdruck - laeuft im Hintergrundfaden.
+
+    _games_signature() setzt _LETZTE_SIGNATUR_MIT_NAS als Nebenwirkung.
+    Diese Abfrage hier ist aber nur eine ZWISCHENDURCH-Frage und darf
+    den Merker des letzten echten Einlesens nicht ueberschreiben -
+    sonst haette letzter_scan_hatte_nas() nach dem ersten Aufruf eine
+    andere Bedeutung als sein Name sagt."""
+    global _DAZU_WERT, _LETZTE_SIGNATUR_MIT_NAS
+    merker = _LETZTE_SIGNATUR_MIT_NAS
+    try:
+        sig, _per = _games_signature()
+    except Exception:                                    # noqa: BLE001
+        return
+    finally:
+        _LETZTE_SIGNATUR_MIT_NAS = merker
+    # EINE Zuweisung, und zwar die letzte: wer die Antwort liest,
+    # bekommt entweder die alte oder die neue, nie etwas dazwischen.
+    _DAZU_WERT = bool(_ordner_kennungen(sig) - _LETZTE_ORDNER)
 
 
 def ordner_sind_dazugekommen():
@@ -448,20 +510,22 @@ def ordner_sind_dazugekommen():
     jetzt = time.monotonic()
     if jetzt < _DAZU_BIS:
         return _DAZU_WERT
-    # _games_signature() setzt _LETZTE_SIGNATUR_MIT_NAS als Nebenwirkung.
-    # Diese Abfrage hier ist aber nur eine ZWISCHENDURCH-Frage und darf
-    # den Merker des letzten echten Einlesens nicht ueberschreiben -
-    # sonst haette letzter_scan_hatte_nas() nach dem ersten Aufruf eine
-    # andere Bedeutung als sein Name sagt.
-    merker = _LETZTE_SIGNATUR_MIT_NAS
-    try:
-        sig, _per = _games_signature()
-    except Exception:                                    # noqa: BLE001
-        return False
-    finally:
-        _LETZTE_SIGNATUR_MIT_NAS = merker
-    _DAZU_WERT = bool(_ordner_kennungen(sig) - _LETZTE_ORDNER)
-    _DAZU_BIS = jetzt + DAZU_SPERRE
+    # GEAENDERT (Build 229): hier wird nichts mehr GERECHNET, hier wird
+    # nur angestossen. Der Aufrufer sitzt im Zeichenweg und bekommt die
+    # zuletzt bekannte Antwort - siehe den Block bei _DAZU_FADEN.
+    global _DAZU_FADEN
+    with _DAZU_SPERRE_OBJ:
+        if _DAZU_FADEN is None or not _DAZU_FADEN.is_alive():
+            _DAZU_BIS = jetzt + DAZU_SPERRE
+            _DAZU_FADEN = _threading.Thread(target=_dazu_nachsehen,
+                                            name="dragend-ordnerblick",
+                                            daemon=True)
+            try:
+                _DAZU_FADEN.start()
+            except RuntimeError:
+                # Kein Faden mehr zu haben ist kein Grund, das Frontend
+                # aufzuhalten - dann eben beim naechsten Mal.
+                _DAZU_FADEN = None
     return _DAZU_WERT
 
 

@@ -1252,6 +1252,16 @@ Zwischenspeicher, den niemand leert, ist ein Fehler mit Ansage, und
 einer, der bei jedem Aufbau geleert wird, ist keiner.
 
 
+**Test 8 kam mit Build 229 dazu**, auf den Befund des Nutzers: "die roms
+die keine boxarts haben ploppen immer etwas spaeter auf oder werden
+nachgerechnet". Das Nein wurde bei JEDEM Stillstand weggeworfen - also
+jedesmal beim Aufhoeren zu scrollen, und damit genau in dem Moment, in
+dem man hinsieht. Jetzt hoechstens alle `NEGATIV_TAKT` Sekunden.
+Geprueft wird beides: dass gedrosselt wird UND dass wirklich geraeumt
+wird, wenn es dran ist - aus "zu oft" darf nicht "nie" werden, denn ein
+Cover, das jemand nachtraeglich hinlegt, taeuchte sonst nie auf. Und der
+Arbeitsprozess raeumt sein eigenes Nein weiterhin sofort weg.
+
 ## test_flaechen_in_c.py
 
 Das Fuellen von Flaechen in C (Build 219) - und die einzige Stelle in

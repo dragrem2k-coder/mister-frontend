@@ -881,19 +881,54 @@ def quelldaten_vergessen():
     _thumb_fehlt.clear()
 
 
-def negativ_vergessen():
+# WIE OFT das Nein hoechstens weggeworfen wird (Build 229).
+#
+# DER BEFUND DES NUTZERS: "wenn ich durch eine grosse sammlung scrolle,
+# die roms die keine boxarts haben ploppen immer etwas spaeter auf oder
+# werden nachgerechnet."
+#
+# Er beschreibt genau das, was hier passiert ist. negativ_vergessen()
+# lief bei JEDEM Stillstand - also jedesmal, wenn man aufhoert zu
+# scrollen. Das gemerkte Nein aus Build 222 galt damit nur WAEHREND des
+# Blaetterns; kaum hielt man an, wurden fuer jeden Eintrag ohne Artwork
+# wieder drei Dateizugriffe faellig. Im Bericht vom 03.10. steht dazu in
+# Abschnitt J fuer die Galerie: "cover 1.91 (davon Karte 2.83 in 23
+# Zugriffen)" - 23 Zugriffe auf die Karte, und sichtbar wird das als
+# Nachladen genau in dem Moment, in dem man hinschaut.
+#
+# Weggeworfen werden MUSS es trotzdem, aus zwei Gruenden: der
+# Arbeitsprozess schreibt Miniaturen, waehrend wir blaettern, und jemand
+# kann waehrend des Betriebs Artwork auf die Karte kopieren. Der erste
+# Grund ist aber schon anders geloest - wer liefert, raeumt selbst auf
+# (siehe _thumb_fehlt.clear() im Warteblock). Bleibt der zweite, und der
+# vertraegt eine halbe Minute: wer Dateien auf die Karte kopiert, hat
+# ohnehin gerade etwas anderes zu tun.
+NEGATIV_TAKT = 30.0
+_NEGATIV_ZULETZT = -1e9
+
+
+def negativ_faellig(jetzt=None):
+    """Ist ein neuer Blick faellig? Beantwortet die Frage, raeumt nicht.
+
+    Steht hier und nicht im Aufrufer, damit die REGEL pruefbar ist,
+    ohne einen Bildschirm zu bauen."""
+    if jetzt is None:
+        jetzt = time.monotonic()
+    return (jetzt - _NEGATIV_ZULETZT) >= NEGATIV_TAKT
+
+
+def negativ_vergessen(jetzt=None):
     """Nur das gemerkte NEIN wegwerfen - die Treffer bleiben stehen.
 
     Gerufen wird das beim Stillstand (siehe _sync_cover_defer in
-    frontend.py), und zwar aus zwei Gruenden. Erstens schreibt der
-    ARBEITSPROZESS Miniaturen in den Karten-Cache, waehrend wir hier
-    blaettern - unser Nein ueber seine Datei waere danach falsch, und
-    das Cover wuerde nie auftauchen. Zweitens kann jemand waehrend des
-    Betriebs Artwork auf die Karte kopieren.
+    frontend.py), aber hoechstens alle NEGATIV_TAKT Sekunden - die
+    Begruendung steht dort.
 
-    Waehrend des Blaetterns steht das Nein also, und beim Loslassen
-    wird noch einmal richtig nachgesehen - genau EINMAL, nicht je
-    Schritt."""
+    Raeumt IMMER, wenn es gerufen wird: ueber das "ob" entscheidet
+    negativ_faellig(). Zwei Fragen in einer Funktion waeren eine, die
+    man irgendwann falsch beantwortet."""
+    global _NEGATIV_ZULETZT
+    _NEGATIV_ZULETZT = time.monotonic() if jetzt is None else jetzt
     for _p in [k for k, v in _quell_stat.items() if v is _NICHTS]:
         _quell_stat.pop(_p, None)
     _thumb_fehlt.clear()

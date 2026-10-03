@@ -1207,7 +1207,8 @@ from fe.art import (
     rechtecke_maske as _c_rechtecke_maske,
     texte_zeichnen as _c_texte_zeichnen,
     fremd_zaehlen as _c_fremd_zaehlen,
-    quelldaten_vergessen, negativ_vergessen, marken_nachziehen,
+    quelldaten_vergessen, negativ_vergessen, negativ_faellig,
+    marken_nachziehen,
     verkleinern_modus_vergessen,
 )
 
@@ -4522,7 +4523,16 @@ class Frontend:
         # nach dem Loslassen muss der Nachlader sie finden. Also genau
         # hier, an der Flanke, einmal vergessen - nicht je Schritt, und
         # nicht erst beim Neueinlesen.
-        if _vorher and not ART._defer_uncached:
+        #
+        # GEAENDERT (Build 229), auf Befund des Nutzers: "die roms die
+        # keine boxarts haben ploppen immer etwas spaeter auf oder
+        # werden nachgerechnet". An der Flanke war zu oft - das ist
+        # JEDES Mal, wenn man aufhoert zu scrollen, und damit genau der
+        # Moment, in dem man hinsieht. Jetzt hoechstens alle
+        # NEGATIV_TAKT Sekunden; die Begruendung steht bei
+        # negativ_faellig() in fe/art.py. Der Arbeitsprozess raeumt sein
+        # eigenes Nein ohnehin selbst weg, wenn er geliefert hat.
+        if _vorher and not ART._defer_uncached and negativ_faellig():
             negativ_vergessen()
 
     def _overlay_active(self):

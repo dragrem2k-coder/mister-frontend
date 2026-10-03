@@ -42,6 +42,8 @@ import _harness as H          # noqa: E402,F401  (setzt den Pfad)
 
 import fe.art as A            # noqa: E402
 
+_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 fails = []
 
 
@@ -239,6 +241,71 @@ check("die PERF-Zeile ist gedrosselt",
 check("und sagt, wie viele sie verschluckt hat",
       "weitere in der letzten Sekunde" in _f,
       "eine Zahl, die fehlt, ist schlimmer als eine, die sagt dass sie fehlt")
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 8: das Nein ueberlebt den Stillstand (Build 229)")
+# ---------------------------------------------------------------------------
+# BEFUND DES NUTZERS: "wenn ich durch eine grosse sammlung scrolle, die
+# roms die keine boxarts haben ploppen immer etwas spaeter auf oder
+# werden nachgerechnet."
+#
+# Das Nein wurde bei JEDEM Stillstand weggeworfen - also jedesmal, wenn
+# man aufhoert zu scrollen, und damit genau in dem Moment, in dem man
+# hinsieht. Fuer jeden Eintrag ohne Artwork wurden dann wieder drei
+# Dateizugriffe faellig. Im Geraetebericht vom 03.10. stand dazu fuer die
+# Galerie: "cover 1.91 (davon Karte 2.83 in 23 Zugriffen)".
+#
+# Geprueft wird die REGEL, nicht der Bildschirm: negativ_faellig()
+# beantwortet das "ob", negativ_vergessen() raeumt. Zwei Fragen in einer
+# Funktion waeren eine, die man irgendwann falsch beantwortet.
+# Der Startwert liegt mit Absicht weit in der Vergangenheit: der ERSTE
+# Stillstand nach dem Start muss nachsehen, sonst traegt das Frontend
+# ein Nein mit sich herum, das es nie geprueft hat. (Weiter oben in
+# diesem Test wurde schon geraeumt - also hier ausdruecklich auf den
+# Startzustand zuruecksetzen, statt sich auf die Reihenfolge zu
+# verlassen.)
+A._NEGATIV_ZULETZT = -1e9
+check("der allererste Blick ist faellig",
+      A.negativ_faellig(0.0) is True,
+      "beim Start darf nichts von gestern stehenbleiben")
+
+A.negativ_vergessen(1000.0)
+check("direkt danach nicht mehr",
+      A.negativ_faellig(1000.0) is False)
+check("auch nach einer Sekunde nicht",
+      A.negativ_faellig(1001.0) is False,
+      "genau das war der Fehler: jeder Stillstand raeumte auf")
+check("kurz vor dem Takt noch nicht",
+      A.negativ_faellig(1000.0 + A.NEGATIV_TAKT - 0.1) is False)
+check("mit dem Takt wieder",
+      A.negativ_faellig(1000.0 + A.NEGATIV_TAKT) is True,
+      "wer Artwork auf die Karte kopiert, wartet hoechstens %g s"
+      % A.NEGATIV_TAKT)
+
+# UND ES MUSS WIRKLICH RAEUMEN, wenn es dran ist - sonst waere aus dem
+# Fehler "zu oft" der Fehler "nie" geworden, und der ist schlimmer:
+# ein Cover, das jemand nachtraeglich hinlegt, taeuchte nie auf.
+A._thumb_fehlt.add("/irgendwo/fehlt.bin")
+A.negativ_vergessen(2000.0)
+check("und wenn es raeumt, raeumt es wirklich",
+      "/irgendwo/fehlt.bin" not in A._thumb_fehlt)
+check("der Takt faengt dabei neu an",
+      A.negativ_faellig(2000.0) is False)
+
+# Der Arbeitsprozess raeumt sein eigenes Nein unabhaengig davon weg -
+# sonst haette die Drosselung ihn ausgebremst.
+_a = open(os.path.join(_REPO, "frontend", "fe", "art.py"),
+          encoding="utf-8").read()
+check("der Warteblock raeumt weiterhin SOFORT",
+      "_thumb_fehlt.clear()" in _a.split("DER ARBEITSPROZESS HAT GELIEFERT")
+      [1][:600],
+      "wer liefert, raeumt selbst auf - unabhaengig vom Takt")
+
+_f2 = open(H.FRONTEND_PY, encoding="utf-8", errors="replace").read()
+check("und der Stillstand fragt vorher nach",
+      "and negativ_faellig():" in _f2,
+      "nicht mehr an jeder Flanke")
 
 print()
 if fails:

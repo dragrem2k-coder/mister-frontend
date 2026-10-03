@@ -187,9 +187,17 @@ echt = S._games_signature
 # (siehe dort - im Bericht des Nutzers stand sie mit 20,9 Zugriffen JE
 # SCROLLSCHRITT). Dieser Test prueft die ERKENNUNG, nicht die Sperre;
 # dass es sie gibt, prueft tools/test_negativ_merken.py.
+# GEAENDERT (Build 229): der Fingerabdruck laeuft jetzt NEBENHER.
+# ordner_sind_dazugekommen() stoesst nur noch an und liefert sofort die
+# zuletzt bekannte Antwort - genau deswegen haengt das Umschalten der
+# Kategorie nicht mehr. Ein Test, der die ERKENNUNG prueft, braucht
+# aber ein Ergebnis: also anstossen, abwarten, dann fragen.
 def _frisch():
+    S.dazu_fertig_abwarten()            # einen alten Faden auslaufen lassen
     S.dazu_sperre_loesen()
-    return S.ordner_sind_dazugekommen()
+    S.ordner_sind_dazugekommen()        # stoesst den neuen an
+    assert S.dazu_fertig_abwarten(), "Hintergrundfaden haengt"
+    return S._DAZU_WERT
 
 
 try:
@@ -227,6 +235,25 @@ quelle = open(os.path.join(_REPO, "frontend", "frontend.py"),
               encoding="utf-8", errors="replace").read()
 check("die Abfrage ist verdrahtet",
       "elif ordner_sind_dazugekommen():" in quelle)
+# NEU (Build 229): und sie RECHNET im Zeichenweg nichts mehr. Der
+# Fingerabdruck laeuft in einem eigenen Faden; der Aufrufer bekommt die
+# zuletzt bekannte Antwort. Das ist der Unterschied zwischen "selten
+# teuer" (Build 224) und "nie teuer" - und nur Letzteres loest den
+# Haenger beim Kategoriewechsel, den der Nutzer gemeldet hat.
+_qs = open(os.path.join(_REPO, "frontend", "fe", "scan.py"),
+           encoding="utf-8").read()
+_rumpf = _qs.split("def ordner_sind_dazugekommen")[1].split("\ndef ")[0]
+check("der Fingerabdruck laeuft NEBENHER",
+      "_threading.Thread(target=_dazu_nachsehen" in _rumpf,
+      "sonst haengt der Zeichenweg an os.stat je Systemordner")
+check("und wird im Zeichenweg nicht mehr gerechnet",
+      "_games_signature()" not in _rumpf,
+      "genau diese Zeile stand im Bericht mit 20,9 Zugriffen je Schritt")
+check("der Faden ist ein Daemon",
+      "daemon=True" in _rumpf,
+      "er darf das Beenden des Frontends nicht aufhalten")
+check("und ein fehlgeschlagener Start haelt nichts auf",
+      "except RuntimeError:" in _rumpf)
 check("der Netzlaufwerk-Weg bleibt bestehen",
       "if _has_network_mount():" in quelle
       and "letzter_scan_hatte_nas():" in quelle)

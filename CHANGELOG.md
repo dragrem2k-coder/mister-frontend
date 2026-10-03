@@ -373,6 +373,32 @@ Millisekunde.**
 - Der Text folgt im nächsten Build — er braucht dieselbe Funktion, aber eine
   Umstellung am Textspeicher, und die will sorgfältig gemacht werden.
 
+**Zwei Hänger, die du gemeldet hast — beide gefunden und beide behoben.**
+
+- *„ab und an wenn ich ordner und kategorien wechseln hab ich manchmal denn
+  eindruck das es kleine hänger gibt"* — **den gab es wirklich.** In deinem
+  Bericht steht `20.9/Schritt _games_signature > getmtime`. Über 30 Schritte
+  sind das rund 630 Dateiabfragen, und bei 0,18 ms je warmem `os.stat`
+  (Abschnitt G) sind das **rund 110 ms — in einem einzigen Schritt**. Es ist
+  der Fingerabdruck der ROM-Ordner, mit dem das Frontend eine spät
+  angelaufene USB-Platte erkennt. Er wird aufgeschoben, solange du eine Taste
+  **hältst** — lief also genau dann, wenn du aufhörst zu scrollen oder die
+  Kategorie wechselst. Jetzt läuft er **nebenher in einem eigenen Faden**;
+  der Zeichenweg bekommt sofort die zuletzt bekannte Antwort. Die ist
+  höchstens acht Sekunden alt, und das war schon immer in Ordnung — es geht
+  um ein Laufwerk, das ohnehin erst irgendwann auftaucht.
+- *„die roms die keine boxarts haben ploppen immer etwas später auf oder
+  werden nachgerechnet"* — **auch das stimmte.** Das gemerkte „da ist nichts"
+  aus Build 222 wurde bei **jedem** Stillstand weggeworfen, also jedesmal,
+  wenn du aufhörst zu scrollen — und damit genau in dem Moment, in dem du
+  hinsiehst. Für jeden Eintrag ohne Artwork wurden dann wieder drei
+  Dateizugriffe fällig (im Bericht: `cover 1.91, davon Karte 2.83 in 23
+  Zugriffen`). Jetzt hält das Nein **höchstens 30 Sekunden**, statt bei jedem
+  Anhalten zu verfallen. Legst du neue Artwork auf die Karte, ist sie
+  spätestens eine halbe Minute später da — und wenn der Arbeitsprozess eine
+  Miniatur fertig rechnet, räumt er sein eigenes Nein weiterhin **sofort**
+  weg, daran ändert sich nichts.
+
 **Die Schrift bekommt dieselbe Seite wie die Lochmaske — und die Maske
 die vier Modi vom MiSTer.**
 
