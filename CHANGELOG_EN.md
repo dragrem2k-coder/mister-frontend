@@ -352,6 +352,20 @@ exactly why nothing here was built twice.
 - Text follows in the next build — it needs the same function but a change
   to the text cache, and that deserves care.
 
+**The gallery cleared a whole text column on every step — for a few lines of
+text.**
+
+- Your report lists `restore` on the main page/gallery at **12.99 ms**, the
+  largest single item anywhere. A new measuring run says why: **1259×507
+  points, every step** — the entire text column. On 1080p it is now
+  **507 → 138 rows**.
+- **The flip drops with it**, since the flip rectangles come from the
+  clearing: **3.92 → 2.81 MB** per step (−28 %).
+- **The coverage check caught me, rightly.** When the new caption is taller
+  than the old one, its lower lines fell outside the cleared area — correct
+  in the buffer, never on screen: **5184 uncovered points**. The region
+  actually written is now recorded as a track by hand.
+
 **The four visual touches — three new ones, one had been there all along.**
 
 - **Scrollbar on the right**, **accent bars on the rows** (on every row, not

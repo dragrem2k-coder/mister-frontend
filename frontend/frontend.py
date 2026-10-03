@@ -8452,10 +8452,32 @@ class Frontend:
         # wie bei den Spielen (Build 176, siehe galerie_geometrie).
         tx, ty, tb = geo["text_x"], geo["text_y"], geo["text_b"]
         maxc = max(6, tb // (8 * s))
+        # NUR SO VIEL FREIRAEUMEN, WIE BESCHRIEBEN WAR (Build 237).
+        #
+        # Hier stand die ganze Textspalte: auf 1080p sind das 1259x507
+        # Punkte, in JEDEM Schritt - und tools/diag_restore_flip.py
+        # weist sie als groessten Einzelposten von "restore" aus, auf
+        # dem Geraet mit 12,99 ms der groesste Posten des ganzen
+        # Berichts. Beschrieben sind davon ein Titel und ein paar
+        # Infozeilen, zusammen selten mehr als ein Drittel der Hoehe.
+        #
+        # Freigeraeumt werden muss genau das, was ZULETZT dort stand -
+        # nicht die Spalte, in der es stehen koennte. Also wird es
+        # gemerkt. Beim ersten schnellen Schritt nach einem vollen
+        # Aufbau gibt es noch nichts Gemerktes; dann die ganze Spalte,
+        # wie bisher.
+        #
+        # Die Geometrie geht mit in den Merker: aendert sich Aufloesung
+        # oder Ansicht, passt der alte Bereich nicht mehr, und ein zu
+        # kleiner Bereich liesse Reste stehen. Im Zweifel die Spalte.
+        _voll_h = max(0, geo["leiste_y"] - 4 * s - (ty - 2 * s))
         if schnell:
-            self._restore_row_bg(tx, ty - 2 * s, tb,
-                                 max(0, geo["leiste_y"] - 4 * s
-                                     - (ty - 2 * s)))
+            _alt = getattr(self, "_gal_textbereich", None)
+            if _alt is not None and _alt[0] == (tx, ty, tb, _voll_h):
+                _ax, _ay, _aw, _ah = _alt[1]
+                self._restore_row_bg(_ax, _ay, _aw, _ah)
+            else:
+                self._restore_row_bg(tx, ty - 2 * s, tb, _voll_h)
         t_scale = 2 * s if len(name) <= max(4, maxc // 2) else s
         t_maxc = max(4, tb // (8 * t_scale))
         fb.text(tx, ty, name.upper()[:t_maxc], t_scale, C_TITLE)
@@ -8465,6 +8487,28 @@ class Frontend:
                 break
             fb.text(tx, iy, ln[:maxc], s, C_TEXT)
             iy += 12 * s
+        # Was jetzt dort steht - vom oberen Rand des Titels bis unter
+        # die letzte Zeile. Mit demselben Rand nach oben und unten, den
+        # das Freiraeumen bisher hatte.
+        _unten = min(ty - 2 * s + _voll_h, iy + 2 * s)
+        _neu = (tx, ty - 2 * s, tb, max(0, _unten - (ty - 2 * s)))
+
+        # UND DIE SPUR VON HAND EINTRAGEN (Build 237).
+        #
+        # DAS HAT MICH DIE DECKUNGSPRUEFUNG GEKOSTET, und zwar zu
+        # Recht: die Spuren fuer den Flip entstehen aus
+        # _restore_row_bg() - geraeumt wird aber nur noch, was ZULETZT
+        # dort stand. Ist der neue Text HOEHER als der alte (von einer
+        # kurzen Kategoriebeschriftung auf eine lange), liegen seine
+        # unteren Zeilen ausserhalb der geraeumten Flaeche. Im Puffer
+        # stehen sie richtig, auf den Schirm kommen sie nie.
+        # tools/diag_flip_deckung.py meldete 5184 ungedeckte Punkte.
+        #
+        # Dasselbe Mittel wie bei draw_list_row() (siehe dort): den
+        # tatsaechlich beschriebenen Bereich selbst eintragen.
+        if schnell and self._flip_spuren is not None:
+            self._flip_spuren.append(_neu)
+        self._gal_textbereich = ((tx, ty, tb, _voll_h), _neu)
 
         ly = geo["leiste_y"]
         kb, kh = geo["klein_b"], geo["klein_h"]

@@ -348,6 +348,61 @@ for w, h, name in ((320, 240, "CRT"), (1920, 1080, "HDMI")):
           "%d von %d Bildpunkten (%.0f%%)"
           % (spuren, ganz, spuren * 100.0 / ganz))
 
+# ---------------------------------------------------------------------------
+print()
+print("Die Textspalte der Galerie (Build 237)")
+# ---------------------------------------------------------------------------
+# tools/diag_restore_flip.py hat sie als groessten Einzelposten von
+# "restore" ausgewiesen: auf 1080p wurde die GANZE Textspalte
+# freigeraeumt, 1259x507 Punkte, in JEDEM Schritt - beschrieben sind
+# davon ein Titel und ein paar Infozeilen. Im Geraetebericht vom 03.10.
+# stand "restore" damit mit 12,99 ms als groesster Posten ueberhaupt.
+#
+# Freigeraeumt wird jetzt genau das, was ZULETZT dort stand. Das ist
+# die Sorte Aenderung, bei der ein Rest stehenbleibt, wenn man sich
+# vertut - deshalb wird hier beides geprueft: dass der Bereich kleiner
+# geworden ist UND dass trotzdem nichts stehenbleibt.
+_qf = open(H.FRONTEND_PY, encoding="utf-8", errors="replace").read()
+check("der Bereich wird gemerkt", "self._gal_textbereich = (" in _qf)
+check("und die Geometrie steht mit darin",
+      "_alt[0] == (tx, ty, tb, _voll_h)" in _qf,
+      "aendert sich die Aufloesung, passt der alte Bereich nicht mehr")
+check("ohne Gemerktes wird die ganze Spalte geraeumt",
+      "self._restore_row_bg(tx, ty - 2 * s, tb, _voll_h)" in _qf,
+      "der erste schnelle Schritt nach einem vollen Aufbau")
+
+# DIE GEGENPROBE: von einer langen Beschriftung auf eine kurze
+# wechseln. Bleibt vom langen Text etwas stehen, faellt es hier auf -
+# und genau das waere der Fehler, den man sonst erst auf dem Fernseher
+# sieht.
+fe2 = H.make_frontend(page=0)
+fe2.ansicht_haupt_setzen("galerie")
+fe2._force_full_redraw = True
+fe2.draw()
+_lang = max(range(len(fe2.cats)), key=lambda i: len(str(fe2.cats[i][0])))
+_kurz = min(range(len(fe2.cats)), key=lambda i: len(str(fe2.cats[i][0])))
+if _lang != _kurz:
+    # erst kurz, voller Aufbau - das ist das Soll
+    fe2.cat_i = _kurz
+    fe2._force_full_redraw = True
+    fe2.draw()
+    soll = bytes(fe2.fb.buf)
+    # dann lang, dann ueber den schnellen Weg zurueck auf kurz
+    fe2.cat_i = _lang
+    fe2._force_full_redraw = True
+    fe2.draw()
+    alt_i = fe2.cat_i
+    fe2.cat_i = _kurz
+    if not fe2._draw_navigate_cats(alt_i):
+        fe2.draw()
+    ist = bytes(fe2.fb.buf)
+    n = sum(1 for a, b in zip(soll, ist) if a != b)
+    check("von langer auf kurze Beschriftung bleibt nichts stehen",
+          n == 0, "%d Bytes anders - Rest der langen Zeile" % n)
+else:
+    check("von langer auf kurze Beschriftung bleibt nichts stehen",
+          True, "(nur eine Laenge vorhanden - uebersprungen)")
+
 print()
 if fails:
     print("FEHLGESCHLAGEN (%d):" % len(fails))

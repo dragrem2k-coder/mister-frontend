@@ -2213,3 +2213,27 @@ jede Haelfte den Zustand des Rechners in genau diesem Moment. Beim
 ersten Entwurf stand dort -32 Prozent fuer ein Element, das in der
 gemessenen Ansicht gar nicht gezeichnet wird. Genommen wird der
 mittlere Lauf, nicht der beste und nicht der Mittelwert.
+
+
+## diag_restore_flip.py
+
+Woraus bestehen "restore" und "flip"? (Build 237)
+
+Abschnitt J des Bench nennt die **Summe** und die Zahl der Zeilen -
+welche Flaeche das ist, sagt er nicht. Dieselbe Luecke gab es bei
+"karten", und `diag_kartenkosten.py` hat sie geschlossen.
+
+Dieses Werkzeug schreibt je Aufruf von `_restore_row_bg()` und
+`_bg_fill()` Groesse, Ort, Zahl und Zeit mit - und sagt zusaetzlich,
+welcher Anteil der **geflippten** Bytes sich zwischen zwei Schritten
+ueberhaupt unterscheidet. Alles darunter ist Flaeche, die umsonst in
+den Bildspeicher geht, und der ist laut Abschnitt H das Teuerste, was
+es hier gibt.
+
+**Der Fund von Build 237 stand gleich im ersten Lauf**: in der Galerie
+der Hauptseite wurde die komplette Textspalte freigeraeumt, 1259x507
+Punkte, in JEDEM Schritt - fuer einen Titel und ein paar Infozeilen.
+
+**Achtung bei der Prozentzahl:** der Pruefstand hat keine Cover. Was
+sich dort "nicht aendert", aendert sich auf dem Geraet sehr wohl. Die
+Zahl taugt fuer die Richtung, nicht als Beweis.

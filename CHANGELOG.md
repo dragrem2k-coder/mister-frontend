@@ -373,6 +373,29 @@ Millisekunde.**
 - Der Text folgt im nächsten Build — er braucht dieselbe Funktion, aber eine
   Umstellung am Textspeicher, und die will sorgfältig gemacht werden.
 
+**Die Galerie räumte bei jedem Schritt eine ganze Textspalte frei — für
+ein paar Zeilen Text.**
+
+- Dein Bericht nennt `restore` in der Hauptseite/Galerie mit **12,99 ms** als
+  größten Einzelposten überhaupt (5 Aufrufe, 1595 Zeilen). Ein neuer Messlauf
+  (`tools/diag_restore_flip.py`) sagt, woher: **1259×507 Punkte, in jedem
+  Schritt** — die komplette Textspalte neben dem Kategoriebild. Beschrieben
+  sind davon ein Titel und ein paar Infozeilen.
+- Freigeräumt wird jetzt genau das, was **zuletzt** dort stand, nicht die
+  Spalte, in der es stehen könnte. Auf 1080p: **507 → 138 Zeilen**.
+- **Und damit fällt auch der Flip**: die Spuren für den Bildspeicher entstehen
+  aus dem Freiräumen, also wird weniger kopiert — **3,92 → 2,81 MB je
+  Schritt** (−28 %). Der Bildspeicher ist laut Abschnitt H das Teuerste, was
+  es hier gibt.
+- **Die Deckungsprüfung hat mich dabei erwischt, und zwar zu Recht.** Ist die
+  neue Beschriftung höher als die alte, lagen ihre unteren Zeilen außerhalb
+  der freigeräumten Fläche — im Puffer richtig, auf dem Schirm nie:
+  **5184 ungedeckte Punkte**. Der tatsächlich beschriebene Bereich wird jetzt
+  von Hand als Spur eingetragen, wie es `draw_list_row()` auch tut. Danach:
+  0 ungedeckte Punkte, Lightpath bitgenau, und ein Test wechselt eigens von
+  einer langen auf eine kurze Beschriftung und vergleicht gegen den vollen
+  Aufbau.
+
 **Die vier Verschönerungen — drei neue, eine gab es längst.**
 
 - **Scrollbalken rechts.** Bei 21.203 Einträgen in Arcade sagt er das, was
