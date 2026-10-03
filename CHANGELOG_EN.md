@@ -352,6 +352,19 @@ exactly why nothing here was built twice.
 - Text follows in the next build — it needs the same function but a change
   to the text cache, and that deserves care.
 
+**The list view with covers: three quarters of an area that was painted and
+immediately painted over.**
+
+- In your report `karten` is the largest item of a scroll step there, at
+  **13.75 ms**, from only 5 calls. A new measuring run says why: **one card,
+  769×945 points, in EVERY step** — with the cover landing right on top of it.
+- The card now leaves that rectangle out, but only when the cover is already
+  in memory, big enough, and going exactly there; otherwise it fills as
+  before.
+- **That the image stays identical is compared, not claimed**: 35 cases across
+  five card sizes and seven cover aspect ratios, byte for byte. Here: 0.343 →
+  **0.151 ms**.
+
 **`--demo`: three minutes that show everything once.**
 
     python3 /media/fat/frontend/frontend.py --demo

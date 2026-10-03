@@ -11446,9 +11446,11 @@ class Frontend:
         # direkt neben der Karte liegt. karte_mit_schatten() schreibt in
         # den geraden Mittelzeilen eine einzige vorgefertigte Zeile aus
         # beiden Farben. Bitgenau dasselbe Bild, gemessen 0,636 -> 0,45 ms.
-        fb.karte_mit_schatten(x0 - pad, y0 - pad, w + 2 * pad, h + 2 * pad,
-                              shadow_off, C_PANEL, fb._darken(C_BG, 0.55),
-                              card_radius)
+        # VERSCHOBEN (Build 234): die Karte wird erst gezeichnet, wenn
+        # feststeht, WO das Cover hinkommt - siehe unten bei
+        # _karte_zeichnen(). Zwischen hier und dort wird nichts in den
+        # Puffer geschrieben, die Reihenfolge im Bild aendert sich also
+        # nicht; nur die Flaeche, die umsonst gefuellt wurde, faellt weg.
         # GEAENDERT (Build 73): Kastengroesse und Textzeilen kommen jetzt
         # aus cover_box_size() - dieselbe Funktion, die auch der
         # Vorauslader und "Miniaturen vorbereiten" benutzen. Vorher stand
@@ -11499,10 +11501,43 @@ class Frontend:
                              avail_w, cover_h, auslagern_ok=True)
         nur_verzoegert = (art is None
                           and getattr(ART, "_defer_count", 0) != _defer_vorher)
+
+        # DIE KARTE - UND DIE FLAECHE, DIE SIE SICH SPAREN KANN.
+        #
+        # Im Bericht vom 03.10. ist "karten" mit 13,75 ms der groesste
+        # Posten eines Scrollschritts in der Listenansicht.
+        # tools/diag_kartenkosten.py sagt, woher: EINE Karte, 769x945
+        # Punkte, in JEDEM Schritt - und darueber liegt gleich darauf
+        # das Cover. Rund drei Viertel der Flaeche werden also gefuellt
+        # und sofort wieder uebermalt.
+        #
+        # Ausgespart wird nur, was SICHER verdeckt wird: das Cover liegt
+        # schon im Speicher (art ist nicht None), und self.blit()
+        # schreibt genau dieses Rechteck. Ohne Cover - oder wenn es
+        # waehrend des Scrollens uebersprungen wurde - wird die Karte
+        # voll gefuellt wie bisher.
+        #
+        # Derselbe Fund wie in Build 97 beim Schatten, nur eine Ebene
+        # hoeher: "er war nur die falsche Frage".
+        _luecke = None
         if art:
             aw, ah, pix = art
             ax = x0 + max(0, (avail_w - aw) // 2)
             ay = cy + max(0, (cover_h - ah) // 2)
+            # NUR wenn blit() dieses Rechteck auch WIRKLICH ganz
+            # schreibt. Es kuerzt die Zeilenzahl, wenn die Quelle zu
+            # kurz ist (siehe dort - eine zu kurze Zuweisung wuerde den
+            # Puffer verschieben), und genau dann bliebe hier ein
+            # Streifen Hintergrund stehen. Dieselbe Bedingung wie dort,
+            # und im Zweifel wird voll gefuellt.
+            if (aw > 0 and ah > 0
+                    and len(pix) >= (ah - 1) * aw * 4 + aw * 4
+                    and ax + aw <= fb.width and ay + ah <= fb.height):
+                _luecke = (ax, ay, aw, ah)
+        fb.karte_mit_schatten(x0 - pad, y0 - pad, w + 2 * pad, h + 2 * pad,
+                              shadow_off, C_PANEL, fb._darken(C_BG, 0.55),
+                              card_radius, aussparen=_luecke)
+        if art:
             # Schlagschatten: dunkler, leicht versetzter Bereich UNTER
             # dem Cover, VOR dem eigentlichen Bild gezeichnet.
             fb.blend_rect_fast(ax + 3 * s, ay + ah - 4 * s, aw, 10 * s,

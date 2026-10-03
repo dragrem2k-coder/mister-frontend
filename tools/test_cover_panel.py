@@ -165,9 +165,11 @@ for w, h, name in ((320, 240, "CRT"), (1920, 1080, "HDMI")):
     echt = f.fb.karte_mit_schatten
 
     def alter_weg(x, y, kw, kh, versatz, karte_rgb, schatten_rgb,
-                  radius=None, _fb=f.fb):
+                  radius=None, aussparen=None, _fb=f.fb):
         # So sah es vor Build 97/98 aus: volles Schattenrechteck,
-        # danach die Karte darueber.
+        # danach die Karte darueber. Die Aussparung aus Build 234
+        # kennt dieser Weg nicht - er fuellt voll, und genau darum
+        # geht es beim Vergleich: dasselbe Bild muss herauskommen.
         _fb.rect_rounded(x + versatz, y + versatz, kw, kh, schatten_rgb,
                          radius)
         _fb.rect_rounded(x, y, kw, kh, karte_rgb, radius)
@@ -277,6 +279,68 @@ check("draw_art_panel() benutzt karte_mit_schatten()",
       "fb.karte_mit_schatten(" in src)
 check("und malt den Schatten nicht mehr als volles rect_rounded()",
       "shadow_off, y0 - pad + shadow_off" not in src)
+
+# ---------------------------------------------------------------------------
+print()
+print("Die AUSSPARUNG (Build 234): gefuellt wird nur, was man sieht")
+# ---------------------------------------------------------------------------
+# Im Bericht vom 03.10. ist "karten" mit 13,75 ms der groesste Posten
+# eines Scrollschritts in der Listenansicht. tools/diag_kartenkosten.py
+# sagt, woher: EINE Karte, 769x945 Punkte, in JEDEM Schritt - und
+# darueber liegt gleich darauf das Cover. Rund drei Viertel der Flaeche
+# werden gefuellt und sofort wieder uebermalt. Derselbe Fund wie in
+# Build 97 beim Schatten, nur eine Ebene hoeher.
+#
+# DAS BILD MUSS DASSELBE BLEIBEN, und das wird hier verglichen, nicht
+# behauptet. Ueber viele Cover-Groessen geht tools/diag_karte_aussparen.py.
+fb2 = fm.Framebuffer()
+X, Y, W, Hh, V, R = 1035, 36, 769, 945, 9, 12
+AW, AH = 600, 740
+AX, AY = X + (W - AW) // 2, Y + (Hh - AH) // 2
+
+
+def _malen(luecke):
+    fb2.buf[:] = b"\x11" * len(fb2.buf)
+    fb2.karte_mit_schatten(X, Y, W, Hh, V, (40, 44, 60), (10, 10, 14), R,
+                           aussparen=luecke)
+    fb2.rect(AX, AY, AW, AH, (200, 30, 90))      # das Cover darueber
+    return bytes(fb2.buf)
+
+
+check("mit Aussparung entsteht bitgenau dasselbe Bild",
+      _malen(None) == _malen((AX, AY, AW, AH)),
+      "sonst bleibt ein Streifen Hintergrund stehen")
+
+# Und sie darf NUR greifen, wo die Form gerade ist. Eine Aussparung,
+# die in die Eckenrundung ragt, muesste die Rundung kennen - und das
+# waere eine zweite Stelle, an der die Form beschrieben steht.
+for name, luecke in (
+        ("ragt links hinaus", (X - 50, AY, AW, AH)),
+        ("ragt rechts hinaus", (AX, AY, W, AH)),
+        ("ragt nach oben", (AX, Y, AW, AH)),
+        ("ragt nach unten", (AX, AY, AW, Hh)),
+        ("ist leer", (AX, AY, 0, 0)),
+        ("ist negativ", (AX, AY, -10, -10)),
+):
+    ohne = _malen(None)
+    fb2.buf[:] = b"\x11" * len(fb2.buf)
+    fb2.karte_mit_schatten(X, Y, W, Hh, V, (40, 44, 60), (10, 10, 14), R,
+                           aussparen=luecke)
+    fb2.rect(AX, AY, AW, AH, (200, 30, 90))
+    check("%-20s wird abgelehnt" % name, bytes(fb2.buf) == ohne,
+          "im Zweifel voll fuellen")
+
+# DER AUFRUFER gibt sie nur mit, wenn blit() das Rechteck auch wirklich
+# ganz schreibt - es kuerzt die Zeilenzahl bei zu kurzer Quelle.
+check("der Aufrufer prueft die Laenge der Quelle",
+      "len(pix) >= (ah - 1) * aw * 4 + aw * 4" in src,
+      "sonst bliebe bei einem kurzen Cover ein Streifen stehen")
+check("und zeichnet die Karte erst, wenn das Cover bekannt ist",
+      src.index("art = ART.get_scaled(")
+      < src.index("card_radius, aussparen=_luecke)"),
+      "vorher wusste niemand, wo das Cover hinkommt")
+check("ohne Cover wird voll gefuellt wie bisher",
+      "_luecke = None" in src)
 
 print()
 if fails:

@@ -2129,3 +2129,31 @@ entsteht im Betrieb, wenn der Eingabe-Faden klemmt und jeder
 auch niemand mehr. Der Taster im Test dreht die Uhr deshalb absichtlich
 weiter - sonst pruefte er nur noch die Notbremse statt der
 Zeiteinteilung.
+
+
+## diag_kartenkosten.py  /  diag_karte_aussparen.py
+
+Woraus besteht der Posten "karten"? (Build 234)
+
+Abschnitt J des Bench nennt die **Summe**: in der Listenansicht der
+Spieleliste ist `karten` mit 13,75 ms der groesste Posten eines
+Scrollschritts. Welche Karte davon wie viel kostet, sagt er nicht - und
+ohne das waere jede Aenderung geraten.
+
+`diag_kartenkosten.py` haengt sich an die vier Zeichenfunktionen und
+schreibt je Aufruf mit, **wie gross** die Flaeche war, **wo** sie lag
+und **wie oft** sie kam. Der Befund: EINE Karte, 769x945 Punkte, in
+JEDEM Schritt - und darueber liegt gleich darauf das Cover.
+
+`diag_karte_aussparen.py` ist der Gegenbeweis zur daraus folgenden
+Aenderung: dieselbe Karte 35-mal gezeichnet, einmal mit und einmal ohne
+Aussparung, ueber fuenf Kartengroessen und sieben
+Cover-Seitenverhaeltnisse, Byte fuer Byte verglichen. Das ist genau die
+Sorte Aenderung, bei der man sich irrt und es nicht merkt: ein Punkt zu
+viel ausgespart, und es bleibt ein Streifen Hintergrund stehen -
+sichtbar erst auf dem Fernseher des Nutzers.
+
+**Beide benutzen `time.perf_counter()`, nicht `monotonic()`**: der
+Pruefstand friert `monotonic()` ein (siehe `_harness.py`), und eine
+stehende Uhr taugt zum Messen nicht. Beim ersten Lauf standen deshalb
+ueberall 0,00 ms.

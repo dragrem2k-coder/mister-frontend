@@ -373,6 +373,29 @@ Millisekunde.**
 - Der Text folgt im nächsten Build — er braucht dieselbe Funktion, aber eine
   Umstellung am Textspeicher, und die will sorgfältig gemacht werden.
 
+**Die Listenansicht mit Covern: drei Viertel einer Fläche fielen weg, die
+sofort wieder übermalt wurde.**
+
+- Dein Wunsch war *„wenn noch was zu holen ist in der listenansicht das man
+  mit eingeschalteten cover scrollen es noch schneller läuft"*. In deinem
+  Bericht ist `karten` mit **13,75 ms** der größte Posten eines
+  Scrollschritts dort — bei nur 5 Aufrufen. Ein neuer Messlauf
+  (`tools/diag_kartenkosten.py`) sagt, woher: **eine einzige Karte, 769×945
+  Punkte, in JEDEM Schritt.** Und direkt darauf landet das Cover.
+- **Rund drei Viertel dieser Fläche wurden also gefüllt und sofort wieder
+  übermalt.** Die Karte spart dieses Rechteck jetzt aus. Genau derselbe Fund
+  wie damals in Build 97 beim Schatten — der alte Kommentar dort passt
+  wieder: *„er war nur die falsche Frage"*.
+- **Ausgespart wird nur, was sicher verdeckt wird.** Das Cover muss schon im
+  Speicher liegen, groß genug sein und genau dorthin kommen; sonst wird voll
+  gefüllt wie bisher. Ohne Cover ändert sich gar nichts.
+- **Dass das Bild dasselbe bleibt, wird verglichen, nicht behauptet**:
+  `tools/diag_karte_aussparen.py` zeichnet dieselbe Karte 35-mal mit und ohne
+  Aussparung, über fünf Kartengrößen und sieben Cover-Seitenverhältnisse,
+  und hält die Puffer Byte für Byte gegeneinander. Hier auf dem PC: 0,343 →
+  **0,151 ms**. Was auf dem DE10-Nano ankommt, sagt dein Bench — dort kostet
+  Füllen laut Abschnitt I rund 4,1 ms für 700×900.
+
 **`--demo`: drei Minuten, die alles einmal zeigen.**
 
     python3 /media/fat/frontend/frontend.py --demo

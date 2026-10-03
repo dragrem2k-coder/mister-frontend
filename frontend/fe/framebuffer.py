@@ -1615,7 +1615,7 @@ class Framebuffer:
         return tuple(teile)
 
     def karte_mit_schatten(self, x, y, w, h, versatz, karte_rgb,
-                           schatten_rgb, radius=None):
+                           schatten_rgb, radius=None, aussparen=None):
         """Einen abgerundeten Kasten MIT Schlagschatten zeichnen -
         bitgenau dasselbe Ergebnis wie
 
@@ -1642,7 +1642,29 @@ class Framebuffer:
         Ausserhalb der geraden Mittelzeilen (Eckenrundungen, die
         Schattenzeilen unterhalb der Karte) bleibt alles beim
         bewaehrten Weg - dort ueberlappen die beiden Formen nicht so
-        einfach, und es sind nur wenige Dutzend Zeilen."""
+        einfach, und es sind nur wenige Dutzend Zeilen.
+
+        aussparen=(ax, ay, aw, ah) (Build 234): dieses Rechteck NICHT
+        fuellen.
+
+        WARUM ES DAS GIBT. Im Bericht vom 03.10. ist "karten" mit 13,75
+        ms der groesste Posten eines Scrollschritts in der Listenansicht,
+        und tools/diag_kartenkosten.py sagt, woher: EINE Karte, 769x945
+        Punkte, in JEDEM Schritt. Darueber liegt gleich darauf das
+        Cover - rund drei Viertel der Flaeche werden also gefuellt und
+        sofort wieder uebermalt. Genau derselbe Fund wie in Build 97
+        beim Schatten, nur eine Ebene hoeher.
+
+        Ausgespart wird nur, was wirklich sicher verdeckt wird: der
+        Aufrufer gibt das Rechteck erst mit, wenn das Cover schon im
+        Speicher liegt und genau dorthin kommt. Liegt es ausserhalb der
+        geraden Mittelzeilen, wird nichts ausgespart - dort ist die
+        Form gerundet, und eine Aussparung muesste die Rundung kennen.
+
+        Das Bild ist bitgenau dasselbe. Nachgewiesen wird das nicht
+        durch Nachdenken, sondern von tools/diag_karte_aussparen.py:
+        dieselbe Seite zweimal gezeichnet, einmal mit und einmal ohne
+        Aussparung, Byte fuer Byte verglichen."""
         if w <= 0 or h <= 0:
             return
         if versatz <= 0:
@@ -1675,6 +1697,34 @@ class Framebuffer:
         if zeile is None:
             zeile = self.px(karte_rgb) * w + self.px(schatten_rgb) * versatz
             self._rectcache[key] = zeile
+        # DIE AUSSPARUNG (Build 234) - siehe Docstring. Sie gilt nur,
+        # wenn sie VOLLSTAENDIG in den geraden Mittelzeilen liegt; sonst
+        # muesste sie die Eckenrundung kennen, und das waere eine zweite
+        # Stelle, an der die Form beschrieben steht.
+        lueck = None
+        if aussparen:
+            _ax, _ay, _aw, _ah = (int(v) for v in aussparen)
+            if (_aw > 0 and _ah > 0 and _ax >= x and _ay >= band[0]
+                    and _ax + _aw <= x + w and _ay + _ah <= band[1]):
+                lueck = (_ax, _ay, _aw, _ah)
+
+        # Die Kartenflaeche als Rechtecke: eines ohne Aussparung, sonst
+        # die bis zu vier Streifen darum herum. Der Schattenstreifen
+        # rechts bleibt unberuehrt - die Aussparung liegt in der Karte.
+        if lueck is None:
+            karten_teile = [(x, band[0], w, band[1] - band[0])]
+        else:
+            _ax, _ay, _aw, _ah = lueck
+            karten_teile = []
+            if _ay > band[0]:
+                karten_teile.append((x, band[0], w, _ay - band[0]))
+            if _ax > x:
+                karten_teile.append((x, _ay, _ax - x, _ah))
+            if _ax + _aw < x + w:
+                karten_teile.append((_ax + _aw, _ay, x + w - _ax - _aw, _ah))
+            if _ay + _ah < band[1]:
+                karten_teile.append((x, _ay + _ah, w, band[1] - _ay - _ah))
+
         buf, stride = self.buf, self.stride
         need = (w + versatz) * 4
         off = band[0] * stride + x * 4
@@ -1684,19 +1734,32 @@ class Framebuffer:
         # vorgefertigte Doppelzeile darunter: dieselben Bytes an
         # dieselben Stellen, nur ohne eine Python-Zuweisung je Bildzeile.
         fueller = self.flaechen_fueller
-        if self._nach_c(w + versatz, band[1] - band[0]):
+        _kf = self._farbwert(self.px(karte_rgb))
+        _sf = self._farbwert(self.px(schatten_rgb))
+        _zeilen = sum(t[3] for t in karten_teile) + (band[1] - band[0])
+        _punkte = (sum(t[2] * t[3] for t in karten_teile)
+                   + versatz * (band[1] - band[0]))
+        if self._nach_c_viele(_zeilen, _punkte):
             try:
                 if fueller(buf, stride, self.height, len(buf),
-                           ((x, band[0], w, band[1] - band[0],
-                             self._farbwert(self.px(karte_rgb))),
-                            (x + w, band[0], versatz, band[1] - band[0],
-                             self._farbwert(self.px(schatten_rgb))))):
+                           tuple([(tx, ty, tw, th, _kf)
+                                  for (tx, ty, tw, th) in karten_teile]
+                                 + [(x + w, band[0], versatz,
+                                     band[1] - band[0], _sf)])):
                     return
             except Exception:                            # noqa: BLE001
                 pass
-        for _ in range(band[1] - band[0]):
-            buf[off:off + need] = zeile
-            off += stride
+        if lueck is None:
+            for _ in range(band[1] - band[0]):
+                buf[off:off + need] = zeile
+                off += stride
+            return
+        # Der Weg ohne C, mit Aussparung: Streifen fuer Streifen. Er
+        # laeuft nur, wenn libdragend fehlt - dann ist ohnehin alles
+        # langsamer, und richtig ist wichtiger als schnell.
+        for (tx, ty, tw, th) in karten_teile:
+            self.rect(tx, ty, tw, th, karte_rgb)
+        self.rect(x + w, band[0], versatz, band[1] - band[0], schatten_rgb)
 
     def rect_rounded_schatten(self, x, y, w, h, versatz, rgb,
                               radius=None, ohne=None):
