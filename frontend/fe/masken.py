@@ -48,6 +48,7 @@ Zubehoer; eine kaputte darf das Frontend nicht aufhalten.
 """
 import os
 
+import fe.dateibaum as BAUM
 from fe.log import LOG
 
 MASKEN_DIR = "/media/fat/Shadow_Masks"
@@ -207,54 +208,18 @@ def ist_neutral(maske):
 
 
 def masken_eintraege(unterordner="", wurzel=None):
-    """EINE Ebene des Maskenbaums - Ordner und Dateien getrennt.
+    """EINE Ebene des Maskenbaums - siehe fe/dateibaum.py.
 
     NACHGEREICHT IN BUILD 227, auf Zuruf des Nutzers: "lochmasken in
     unterordner anzeigen sonst zuviel auswahl, die ordnerstruktur wie
-    sie dort selbst angezeigt ist".
+    sie dort selbst angezeigt ist". MiSTers Sammlung ist selbst schon
+    sortiert ("Complex (Multichromatic)/CRT Styles/..."), und diese
+    Ordnung ist die Arbeit von jemandem, der die Masken kennt - wir
+    bauen sie nicht nach, wir zeigen sie.
 
-    Er hat recht, und masken_dateien() war der falsche Weg: eine flache
-    Liste aus 1207 Eintraegen ist keine Auswahl. MiSTers Sammlung ist
-    selbst schon sortiert ("Complex (Multichromatic)/CRT Styles/..."),
-    und diese Ordnung ist die Arbeit von jemandem, der die Masken kennt
-    - wir bauen sie nicht nach, wir zeigen sie.
-
-    Rueckgabe: Liste von (ist_ordner, anzeigename, relativer Pfad,
-    anzahl). anzahl ist bei einem Ordner die Zahl der Masken DARIN,
-    mitsamt seiner Unterordner - ohne sie waehlt man einen Ordner
-    blind. Ordner stehen vorn, beides fuer sich sortiert.
-
-    Ein Ordner OHNE eine einzige Maske wird weggelassen: er waere eine
-    Sackgasse, und die Sammlung hat solche (Vorlagen, Lesetexte)."""
-    wurzel = wurzel or MASKEN_DIR
-    basis = os.path.join(wurzel, unterordner) if unterordner else wurzel
-    ordner, dateien = [], []
-    try:
-        for name in os.listdir(basis):
-            voll = os.path.join(basis, name)
-            rel = os.path.join(unterordner, name) if unterordner else name
-            if os.path.isdir(voll):
-                n = _zaehlen(voll)
-                if n:
-                    ordner.append((True, name, rel, n))
-            elif name.lower().endswith(".txt"):
-                dateien.append((False, os.path.splitext(name)[0], rel, 0))
-    except OSError:
-        return []
-    ordner.sort(key=lambda e: e[1].lower())
-    dateien.sort(key=lambda e: e[1].lower())
-    return ordner + dateien
-
-
-def _zaehlen(ordner):
-    """Wieviele .txt liegen in diesem Ordner, mitsamt Unterordnern?"""
-    n = 0
-    try:
-        for _w, _u, dateien in os.walk(ordner):
-            n += sum(1 for d in dateien if d.lower().endswith(".txt"))
-    except OSError:
-        return 0
-    return n
+    SEIT BUILD 228 steht das Blaettern in fe/dateibaum.py, weil die
+    Schriften es genauso machen."""
+    return BAUM.eintraege(wurzel or MASKEN_DIR, unterordner, ".txt")
 
 
 def preset_masken(presets=None, wurzel=None):
@@ -336,17 +301,11 @@ def _preset_maske(pfad):
 
 def oberordner(unterordner):
     """Eine Ebene hoeher - "" ist die Wurzel und das Ende des Weges."""
-    if not unterordner:
-        return ""
-    if unterordner == PRESET_EBENE:
-        return ""
-    return os.path.dirname(unterordner.rstrip(os.sep))
+    return BAUM.oberordner(unterordner)
 
 
-# Eine Ebene, die es als Ordner nicht gibt: MiSTers Presets. Der Name
-# faengt mit einem Zeichen an, das in keinem Dateinamen vorkommen kann -
-# so ist eine Verwechslung mit einem echten Ordner ausgeschlossen.
-PRESET_EBENE = "\x00presets"
+# Die Presets sind eine Ebene, die es als Ordner nicht gibt.
+PRESET_EBENE = BAUM.VIRTUELL + "presets"
 
 
 def ebene(ordner="", texte=None, wurzel=None, presets=None):
@@ -356,53 +315,153 @@ def ebene(ordner="", texte=None, wurzel=None, presets=None):
     pruefen will: was steht oben, was ist ein Weg nach unten, was ist
     der Weg zurueck. Der Bildschirm soll nur noch zeichnen.
 
-    texte: {"zurueck": .., "keine": .., "presets": ..} - die
-    uebersetzten Beschriftungen. Uebersetzen tut dieses Modul nicht.
+    texte: {"zurueck": .., "keine": .., "presets": .., "modus": ..} -
+    die uebersetzten Beschriftungen. Uebersetzen tut dieses Modul nicht.
 
-    Rueckgabe: Liste von (art, anzeige, rel). art ist
+    Rueckgabe: Liste von (art, anzeige, rel). Zu den Arten aus
+    fe/dateibaum.py ("hoch", "ordner", "datei") kommen hier drei eigene:
 
-        "hoch"    - eine Ebene hoeher (steht nur unterhalb der Wurzel)
         "keine"   - keine Maske (steht nur AUF der Wurzel)
+        "modus"   - 1x / 2x / gedreht (dito)
         "presets" - MiSTers Empfehlungen (nur, wenn es welche gibt)
-        "ordner"  - eine Ebene tiefer
-        "maske"   - eine waehlbare Maske
-
-    Gebaut wird sie beim Wechsel der Ebene, nicht je Tastendruck: das
-    Zaehlen laeuft ueber os.walk() und gehoert nicht an die
-    Pfeiltasten."""
+    """
     texte = texte or {}
-    zurueck = ("hoch", ".. %s" % texte.get("zurueck", "zurueck"), "")
-
     if ordner == PRESET_EBENE:
-        zeilen = [zurueck]
+        liste = [("hoch", ".. %s" % texte.get("zurueck", "zurueck"), "")]
         for name, rel in preset_masken(presets, wurzel):
-            zeilen.append(("maske", name, rel))
-        return zeilen
+            liste.append(("datei", name, rel))
+        return liste
 
-    if ordner:
-        zeilen = [zurueck]
-    else:
-        zeilen = [("keine", texte.get("keine", "keine"), "")]
-        # GANZ OBEN, weil es die kuerzeste Antwort auf "zuviel Auswahl"
-        # ist: ein Preset ist eine fertige Empfehlung mit Namen,
-        # zusammengestellt von jemandem, der die Masken kennt. Liegt
-        # nichts in /media/fat/Presets, steht die Zeile auch nicht da.
-        anzahl = len(preset_masken(presets, wurzel))
-        if anzahl:
-            zeilen.append(("presets", "%s   (%d)"
-                           % (texte.get("presets", "Presets"), anzahl),
-                           PRESET_EBENE))
-
-    for ist_ordner, name, rel, n in masken_eintraege(ordner, wurzel):
-        if ist_ordner:
-            zeilen.append(("ordner", "%s/   (%d)" % (name, n), rel))
-        else:
-            zeilen.append(("maske", name, rel))
-    return zeilen
+    kopf = [("keine", texte.get("keine", "keine"), "")]
+    # NEU (Build 228): der Modus. Eigene Zeile und nicht eine weitere
+    # Taste, weil die Seite schon vier Tasten belegt - und weil man den
+    # Unterschied zwischen 1x und 2x nur SIEHT, also beim Drehen an der
+    # Zeile die Vorschau danebenhaben will.
+    if texte.get("modus"):
+        kopf.append(("modus", texte["modus"], ""))
+    # GANZ OBEN, weil es die kuerzeste Antwort auf "zuviel Auswahl"
+    # ist: ein Preset ist eine fertige Empfehlung mit Namen,
+    # zusammengestellt von jemandem, der die Masken kennt. Liegt nichts
+    # in /media/fat/Presets, steht die Zeile auch nicht da.
+    anzahl = len(preset_masken(presets, wurzel))
+    if anzahl:
+        kopf.append(("presets", "%s   (%d)"
+                     % (texte.get("presets", "Presets"), anzahl),
+                     PRESET_EBENE))
+    return BAUM.zeilen(wurzel or MASKEN_DIR, ordner, ".txt", texte, kopf)
 
 
-def maske_fuer(pfad, bildhoehe=None):
-    """Lesen mit Protokollzeile - der Weg, den das Frontend nimmt."""
+# ===========================================================================
+# DIE VIER MODI (Build 228)
+# ===========================================================================
+#
+# ZURUF DES NUTZERS: "bei denn masken ist mir noch aufgefallen das man
+# mehrere optionen hat shadow mask 1x, shadow mask 2x, shadow mask 1x
+# rotated und shadow mask 2x rotated, kriegen wir das auch noch mit
+# eingebracht?"
+#
+# Das sind MiSTers eigene vier Einstellungen (in einer Preset-INI steht
+# dasselbe als "maskmode="), und beide sind reine UMFORMUNGEN des
+# Musters:
+#
+#   2x       - jede Zelle deckt 2x2 Bildpunkte statt einem. Auf 1080p
+#              ist eine 1x-Maske so fein, dass man sie kaum sieht; 2x
+#              ist das, was auf einem grossen Bild nach Lochmaske
+#              aussieht.
+#   gedreht  - das Muster um 90 Grad gekippt. Gedacht fuer hochkant
+#              stehende Bildschirme, aber auch sonst ein anderer Look:
+#              aus senkrechten Streifen werden waagerechte.
+#
+# WARUM DAS NICHTS KOSTET: beides passiert EINMAL beim Laden der Maske,
+# nicht je Bildpunkt. Danach liegt wieder nur eine Tabelle da, und C
+# rechnet genau wie vorher. Eine 16x16-Maske wird in 2x zu 32x32 - die
+# C-Fassung nimmt bis 64x64, da ist Luft.
+MODI = ("1x", "2x", "1x_gedreht", "2x_gedreht")
+MODUS_FILE = "/media/fat/frontend/maske_modus"
+
+
+def modus_lesen():
+    """Der eingestellte Modus - immer einer aus MODI."""
+    try:
+        wert = open(MODUS_FILE).read().strip()
+    except OSError:
+        return MODI[0]
+    return wert if wert in MODI else MODI[0]
+
+
+def modus_schreiben(wert):
+    if wert not in MODI:
+        wert = MODI[0]
+    try:
+        d = os.path.dirname(MODUS_FILE)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        with open(MODUS_FILE, "w") as f:
+            f.write(wert)
+    except OSError as e:
+        LOG("modus_schreiben: %s" % e)
+    return wert
+
+
+def modus_weiter(jetzt, rueckwaerts=False):
+    """Einen Modus weiterschalten (rundum)."""
+    try:
+        i = MODI.index(jetzt)
+    except ValueError:
+        i = 0
+    return MODI[(i - 1 if rueckwaerts else i + 1) % len(MODI)]
+
+
+def _gedreht(maske):
+    """Das Muster um 90 Grad kippen - aus (b,h) wird (h,b).
+
+    neu[y][x] = alt[x][y]. Die Kanalreihenfolge bleibt: gedreht wird
+    das MUSTER, nicht die Farbe."""
+    b, h, werte = maske[0], maske[1], maske[2]
+    neu = []
+    for x in range(b):                       # neue Zeilen = alte Spalten
+        for y in range(h):                   # neue Spalten = alte Zeilen
+            i = (y * b + x) * 3
+            neu.extend(werte[i:i + 3])
+    return (h, b, neu) + tuple(maske[3:])
+
+
+def _verdoppelt(maske):
+    """Jede Zelle auf 2x2 aufblasen - aus (b,h) wird (2b,2h)."""
+    b, h, werte = maske[0], maske[1], maske[2]
+    neu = []
+    for y in range(h):
+        zeile = []
+        for x in range(b):
+            i = (y * b + x) * 3
+            zelle = werte[i:i + 3]
+            zeile.extend(zelle)
+            zeile.extend(zelle)
+        neu.extend(zeile)
+        neu.extend(zeile)                    # dieselbe Zeile zweimal
+    return (b * 2, h * 2, neu) + tuple(maske[3:])
+
+
+def modus_anwenden(maske, modus):
+    """Die Umformung auf eine gelesene Maske anwenden.
+
+    Reihenfolge: erst drehen, dann verdoppeln. Andersherum kaeme
+    dasselbe heraus - gedreht wird ein Quadrat aus vier gleichen Zellen
+    zu einem Quadrat aus vier gleichen Zellen -, aber eine feste
+    Reihenfolge erspart die Frage."""
+    if not maske or modus == MODI[0]:
+        return maske
+    if "gedreht" in modus:
+        maske = _gedreht(maske)
+    if modus.startswith("2x"):
+        maske = _verdoppelt(maske)
+    return maske
+
+
+def maske_fuer(pfad, bildhoehe=None, modus=None):
+    """Lesen mit Protokollzeile - der Weg, den das Frontend nimmt.
+
+    modus: einer aus MODI, oder None fuer den eingestellten."""
     if not pfad:
         return None
     m = maske_lesen(pfad, bildhoehe)
@@ -412,5 +471,13 @@ def maske_fuer(pfad, bildhoehe=None):
     if ist_neutral(m):
         LOG("Maske %r veraendert nichts - zeichne ohne" % pfad)
         return None
-    LOG("Maske geladen: %s (%dx%d)" % (m[4], m[0], m[1]))
+    if modus is None:
+        modus = modus_lesen()
+    roh = (m[0], m[1])
+    m = modus_anwenden(m, modus)
+    if roh == (m[0], m[1]):
+        LOG("Maske geladen: %s (%dx%d)" % (m[4], m[0], m[1]))
+    else:
+        LOG("Maske geladen: %s (%dx%d aus %dx%d, %s)"
+            % (m[4], m[0], m[1], roh[0], roh[1], modus))
     return m

@@ -373,6 +373,30 @@ Millisekunde.**
 - Der Text folgt im nächsten Build — er braucht dieselbe Funktion, aber eine
   Umstellung am Textspeicher, und die will sorgfältig gemacht werden.
 
+**Die Schrift bekommt dieselbe Seite wie die Lochmaske — und die Maske
+die vier Modi vom MiSTer.**
+
+- **Schrift**: Systemmenü → *Schrift* öffnet jetzt eine eigene Seite mit
+  **Ordnern**, genau wie bei den Masken. Oben stehen die eigene Schrift des
+  Frontends und „wie im OSD" (die aus deiner MiSTer.ini), darunter der
+  Ordnerbaum aus `/media/fat/font`. Die Schrift wechselt **sofort beim
+  Durchgehen** — Titel, Liste und eine Probezeile (`0O 1lI 8B 5S …`) stehen
+  schon in der Schrift, auf der der Balken steht. Das Durchschalten mit
+  links/rechts ist entfallen.
+- **Die vier Maskenmodi**: `1x`, `2x`, `1x gedreht`, `2x gedreht` — dieselben
+  vier wie im MiSTer-OSD. Eigene Zeile oben in der Maskenauswahl,
+  links/rechts dreht sie durch, und die Vorschau daneben zeigt sofort den
+  Unterschied. Auf 1080p ist eine 1×-Maske so fein, dass man sie kaum sieht;
+  **2× ist meist das, was man will**. „Gedreht" kippt das Muster um 90° —
+  aus senkrechten Streifen werden waagerechte.
+- **Das kostet beim Zeichnen nichts.** Beides ist eine Umformung der
+  Mustertabelle **beim Laden**, nicht je Bildpunkt. Danach rechnet C genau
+  wie vorher. Eine 16×16-Maske wird in 2× zu 32×32; die C-Fassung nimmt bis
+  64×64.
+- Unter der Haube: das Blättern durch Ordner steht jetzt **einmal** da
+  (`fe/dateibaum.py`) und wird von beiden benutzt. Zwei Stellen mit
+  derselben Aufgabe laufen sonst auseinander.
+
 **Der Textzeichner läuft jetzt in C.**
 
 - Der letzte große Posten aus deinem Bericht vom 02.10.: `text` mit 15,57 ms

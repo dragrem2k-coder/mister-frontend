@@ -311,7 +311,8 @@ from fe.settings import (
     overscan_lesen, overscan_weiter,
     ANSICHTEN, ansicht_lesen, ansicht_schreiben,
     ansicht_haupt_lesen, ansicht_haupt_schreiben,
-    schrift_lesen, schrift_weiter, schrift_pfad, schrift_auswahl,
+    schrift_lesen, schrift_pfad,
+    schrift_schreiben, schrift_aus_ini, SCHRIFT_EIGEN, SCHRIFT_OSD,
     maske_lesen, maske_schreiben, maske_an, toggle_maske, maske_pfad,
     fremdquellen_enabled, toggle_fremdquellen,
     FAST_SCROLL_WINDOW, pulse_effect_enabled, toggle_pulse_effect,
@@ -1161,6 +1162,7 @@ apply_theme(current_theme_name())   # beim Laden des Moduls sofort anwenden
 # 8x8-Bitmap-Font komplett ausgelagert)
 # ----------------------------------------------------------------------------
 import fe.masken as MASKEN
+import fe.schriften as SCHRIFTEN
 from fe.framebuffer import (FBDEV, Framebuffer,
                             schrift_laden as fb_schrift_laden)
 
@@ -1229,7 +1231,7 @@ def maske_pfad_oder_leer():
     return p or ""
 
 
-def maske_anwenden(fb, pfad_oder_rel):
+def maske_anwenden(fb, pfad_oder_rel, modus=None):
     """Die Maske laden und einschalten (Build 226).
 
     pfad_oder_rel ist entweder ein voller Pfad, ein Pfad relativ zu
@@ -1238,14 +1240,18 @@ def maske_anwenden(fb, pfad_oder_rel):
     Zeile im Log. Eine Maskendatei ist Zubehoer.
 
     Die Bildhoehe wird mitgegeben: eine Maskendatei kann mehrere Muster
-    fuer verschiedene Hoehen enthalten (siehe fe/masken.py)."""
+    fuer verschiedene Hoehen enthalten (siehe fe/masken.py).
+
+    modus (Build 228): einer aus MASKEN.MODI - 1x, 2x, gedreht. Das ist
+    eine Umformung des Musters BEIM LADEN und kostet beim Zeichnen
+    nichts. None heisst: der eingestellte."""
     if not pfad_oder_rel:
         fb.maske = None
         return False
     pfad = pfad_oder_rel
     if not os.path.isabs(pfad):
         pfad = os.path.join(MASKEN.MASKEN_DIR, pfad)
-    m = MASKEN.maske_fuer(pfad, fb.height)
+    m = MASKEN.maske_fuer(pfad, fb.height, modus)
     fb.maske = (m[0], m[1], m[2]) if m else None
     return fb.maske is not None
 
@@ -13146,8 +13152,10 @@ class Frontend:
 
         gewaehlt = maske_lesen()
         an = maske_an()
+        modus = MASKEN.modus_lesen()
         _alte_maske = fb.maske
         _alte_wahl = gewaehlt
+        _alter_modus = modus
 
         # EINSTIEG DORT, WO DIE AKTUELLE MASKE LIEGT. Wer eine Maske
         # aus "Complex (Multichromatic)/CRT Styles" benutzt und die
@@ -13163,12 +13171,14 @@ class Frontend:
             return MASKEN.ebene(ordner, {
                 "zurueck": t("masken_zurueck"),
                 "keine": t("masken_keine"),
-                "presets": t("masken_presets")})
+                "presets": t("masken_presets"),
+                "modus": "%s  < %s >" % (t("masken_modus"),
+                                         t("masken_modus_" + modus))})
 
         kette = _zeilen_bauen(ordner)
         zeile = 0
         for i, (art, _n, rel) in enumerate(kette):
-            if art == "maske" and rel == gewaehlt:
+            if art == "datei" and rel == gewaehlt:
                 zeile = i
                 break
         try:
@@ -13177,8 +13187,8 @@ class Frontend:
                 # VORSCHAU: auf einer Maske sie selbst, auf einem Ordner
                 # die gerade gueltige. Beim Durchlaufen der Ordner soll
                 # das Bild nicht staendig umspringen.
-                vorschau = rel if art == "maske" else gewaehlt
-                maske_anwenden(fb, vorschau if an else "")
+                vorschau = rel if art == "datei" else gewaehlt
+                maske_anwenden(fb, vorschau if an else "", modus)
                 fb.clear(C_BG)
                 fb.text(ox, oy, t("masken_titel"), 2 * s, C_TITLE)
                 # Der Weg steht unter dem Titel - sonst weiss man nach
@@ -13242,11 +13252,23 @@ class Frontend:
                 elif akt == "down":
                     zeile = (zeile + 1) % len(kette)
                 elif akt in ("left", "right"):
-                    # Links/rechts schaltet den Effekt an und aus, ohne
-                    # die Auswahl zu verlieren - genau das hat der
-                    # Nutzer verlangt.
-                    an = not an
+                    if art == "modus":
+                        # AUF DER MODUSZEILE dreht links/rechts den
+                        # Modus. Das ist der einzige Ort, an dem man
+                        # den Unterschied zwischen 1x und 2x sieht -
+                        # die Vorschau steht daneben.
+                        modus = MASKEN.modus_weiter(modus, akt == "left")
+                        kette = _zeilen_bauen(ordner)
+                    else:
+                        # Sonst schaltet links/rechts den Effekt an und
+                        # aus, ohne die Auswahl zu verlieren - genau
+                        # das hat der Nutzer verlangt.
+                        an = not an
                 elif akt in ("select", "ok"):
+                    if art == "modus":
+                        modus = MASKEN.modus_weiter(modus)
+                        kette = _zeilen_bauen(ordner)
+                        continue
                     if art in ("ordner", "presets"):
                         ordner = rel
                         kette = _zeilen_bauen(ordner)
@@ -13267,7 +13289,7 @@ class Frontend:
                                 break
                         continue
                     # "keine" oder eine Maske: das ist die Wahl.
-                    gewaehlt = rel if art == "maske" else ""
+                    gewaehlt = rel if art == "datei" else ""
                     break
                 elif akt in ("back", "exit"):
                     # IN EINEM ORDNER geht Zurueck eine Ebene hoch, nicht
@@ -13292,6 +13314,8 @@ class Frontend:
             maske_schreiben(gewaehlt)
         if an != maske_an():
             toggle_maske()
+        if modus != _alter_modus:
+            MASKEN.modus_schreiben(modus)
         maske_anwenden(fb, maske_pfad_oder_leer())
         self._force_full_redraw = True
         if gewaehlt:
@@ -13299,6 +13323,169 @@ class Frontend:
             self.draw(t("masken_gewaehlt", name))
         else:
             self.draw(t("masken_keine_gewaehlt"))
+
+    def schrift_bildschirm(self):
+        """MiSTers OSD-Schriften waehlen (Build 228).
+
+        ZURUF DES NUTZERS: "das was wir mit masken gemacht haben sollte
+        auch mit denn fonts also der schrift passieren". Build 223 hatte
+        nur das Durchschalten mit links/rechts im Systemmenue - das geht
+        bei drei Dateien, nicht bei einer Sammlung in Unterordnern.
+
+        WAS HIER DER KNIFF IST, und es ist derselbe wie bei den Masken:
+        die Schrift wechselt SOFORT. Diese Seite ist deshalb ihre eigene
+        Vorschau - Titel, Liste und Beispielzeile stehen schon in der
+        Schrift, auf der der Balken steht. Eine Schrift nach Dateinamen
+        auszuwaehlen und erst danach zu sehen, waere Raten.
+
+        GELIEFERT WIRD KEINE EINZIGE. Gelesen wird, was in
+        /media/fat/font liegt."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        ox, oy = 12 * s, 10 * s
+        osd = bool(schrift_aus_ini())
+        if not SCHRIFTEN.schrift_eintraege() and not osd:
+            self._force_full_redraw = True
+            self.draw(message=t("sys_schrift_keine"))
+            return
+
+        gewaehlt = schrift_lesen()
+        _alte_wahl = gewaehlt
+        # EINSTIEG DORT, WO DIE AKTUELLE SCHRIFT LIEGT - wie bei den
+        # Masken. Wer eine Schrift aus einem Unterordner benutzt, will
+        # nicht wieder oben anfangen.
+        ordner = ""
+        if gewaehlt and gewaehlt not in (SCHRIFT_EIGEN, SCHRIFT_OSD):
+            ordner = os.path.dirname(gewaehlt)
+
+        def _zeilen_bauen(ordner):
+            """Eine Ebene holen - gebaut wird sie in fe/schriften.py."""
+            return SCHRIFTEN.ebene(ordner, {
+                "zurueck": t("masken_zurueck"),
+                "eigen": t("sys_schrift_eigen"),
+                "osd": t("sys_schrift_osd")}, osd_vorhanden=osd)
+
+        def _wert(art, rel):
+            """Was in die Einstellung geschrieben wuerde."""
+            if art == "eigen":
+                return SCHRIFT_EIGEN
+            if art == "osd":
+                return SCHRIFT_OSD
+            return rel
+
+        kette = _zeilen_bauen(ordner)
+        zeile = 0
+        for i, (art, _n, rel) in enumerate(kette):
+            if _wert(art, rel) == gewaehlt and art != "ordner":
+                zeile = i
+                break
+
+        _alte_tabelle = fb.schrift_tabelle()
+        try:
+            while True:
+                art, _name, rel = kette[zeile]
+                # VORSCHAU: auf einer Schrift sie selbst, auf einem
+                # Ordner die gerade gueltige. Beim Durchlaufen der
+                # Ordner soll das Bild nicht staendig umspringen.
+                vorschau = _wert(art, rel) if art != "ordner" else gewaehlt
+                self._schrift_vorschau(vorschau)
+                fb.clear(C_BG)
+                fb.text(ox, oy, t("schriften_titel"), 2 * s, C_TITLE)
+                weg = ordner.replace(os.sep, " / ") if ordner \
+                    else t("masken_wurzel")
+                fb.text(ox, oy + 20 * s, weg, s, C_DIM)
+                y = oy + 38 * s
+                breite = W - 2 * ox
+                platz = max(1, (H - oy - y - 46 * s) // (17 * s))
+                erste = max(0, min(zeile - platz // 2, len(kette) - platz))
+                for i in range(erste, min(erste + platz, len(kette))):
+                    eintrag = kette[i]
+                    name = eintrag[1]
+                    markiert = (i == zeile)
+                    if markiert:
+                        fb.rect_rounded(ox - 2 * s, y - 3 * s,
+                                        breite + 4 * s, 15 * s, C_PANEL)
+                    maxz = max(10, breite // (8 * s) - 2)
+                    kurz = name if len(name) <= maxz \
+                        else "~" + name[-(maxz - 1):]
+                    farbe = C_TITLE if markiert else (
+                        C_DIM if eintrag[0] in ("ordner", "hoch") else C_TEXT)
+                    fb.text(ox + 2 * s, y, kurz, s, farbe)
+                    y += 17 * s
+
+                # DIE PROBEZEILE. Eine Schrift beurteilt man an Ziffern
+                # und an den Zeichen, die sich aehneln - 0/O und 1/l/I
+                # sind die, an denen schmale OSD-Schriften scheitern.
+                fb.text(ox, H - oy - 30 * s, t("schriften_probe"), 2 * s,
+                        C_TEXT)
+                fb.text(ox, H - oy - 13 * s, t("schriften_hinweis"), s,
+                        C_DIM)
+                fb.flip()
+
+                akt = self.inp.read_action(timeout=1.0)
+                if akt is None:
+                    continue
+                if akt == "up":
+                    zeile = (zeile - 1) % len(kette)
+                elif akt == "down":
+                    zeile = (zeile + 1) % len(kette)
+                elif akt in ("select", "ok"):
+                    if art == "ordner":
+                        ordner = rel
+                        kette = _zeilen_bauen(ordner)
+                        zeile = 0
+                        continue
+                    if art == "hoch":
+                        zurueck = ordner
+                        ordner = SCHRIFTEN.oberordner(ordner)
+                        kette = _zeilen_bauen(ordner)
+                        zeile = 0
+                        for i, e in enumerate(kette):
+                            if e[0] == "ordner" and e[2] == zurueck:
+                                zeile = i
+                                break
+                        continue
+                    gewaehlt = _wert(art, rel)
+                    break
+                elif akt in ("back", "exit"):
+                    # IN EINEM ORDNER geht Zurueck eine Ebene hoch, nicht
+                    # gleich aus der Seite heraus - wie bei den Masken.
+                    if ordner:
+                        zurueck = ordner
+                        ordner = SCHRIFTEN.oberordner(ordner)
+                        kette = _zeilen_bauen(ordner)
+                        zeile = 0
+                        for i, e in enumerate(kette):
+                            if e[0] == "ordner" and e[2] == zurueck:
+                                zeile = i
+                                break
+                        continue
+                    gewaehlt = _alte_wahl
+                    break
+        finally:
+            # Was auch immer passiert ist: erst den Vorschauzustand
+            # zuruecknehmen, dann unten die wirkliche Wahl setzen.
+            fb.schrift_setzen(_alte_tabelle)
+
+        if gewaehlt != _alte_wahl:
+            schrift_schreiben(gewaehlt)
+        schrift_anwenden(fb)
+        self._refresh_system_category()
+        self.fb.mark_full_redraw()
+        self._force_full_redraw = True
+        self.draw(t("sys_schrift_changed"))
+
+    def _schrift_vorschau(self, wert):
+        """Die Schrift der Vorschau setzen - ohne sie zu speichern.
+
+        Faellt die Datei aus, bleibt es bei der eigenen Schrift; der
+        Bildschirm laeuft weiter. Eine kaputte .pf ist Zubehoer."""
+        pfad = schrift_pfad(wert)
+        tabelle = None
+        if pfad:
+            tabelle = fb_schrift_laden(pfad)
+        self.fb.schrift_setzen(tabelle)
 
     def theme_editor(self):
         """Der Farbschema-Editor (Build 172).
@@ -18501,19 +18688,25 @@ class Frontend:
                                 self._force_full_redraw = True
                                 self.draw()
                         elif kind == "schrift":
-                            # Build 223. Die Schrift wechselt sofort -
-                            # und mit ihr muessen die Zeichen-
+                            # GEAENDERT (Build 228): eine eigene Seite
+                            # statt links/rechts durchschalten. Der
+                            # Grund ist derselbe wie bei den Masken -
+                            # MiSTers Schriftsammlung liegt in
+                            # Unterordnern, und durchschalten waere dort
+                            # keine Auswahl. Die Schrift wechselt dabei
+                            # sofort, und mit ihr muessen die Zeichen-
                             # Zwischenspeicher weg, sonst bleiben die
                             # haeufigen Texte in der alten Schrift
                             # stehen (siehe schrift_setzen()).
-                            if len(schrift_auswahl()) <= 1:
-                                self.draw(t("sys_schrift_keine"))
-                            else:
-                                schrift_weiter()
-                                schrift_anwenden(self.fb)
-                                self._refresh_system_category()
+                            try:
+                                self.schrift_bildschirm()
+                            except Exception:            # noqa: BLE001
+                                LOG("schrift_bildschirm CRASH:\n"
+                                    + traceback.format_exc())
+                                self.fb.schrift_setzen(None)
                                 self.fb.mark_full_redraw()
-                                self.draw(t("sys_schrift_changed"))
+                                self._force_full_redraw = True
+                                self.draw()
                         elif kind == "scharf_verkleinern":
                             # Build 175. KEIN Leeren des Caches und
                             # kein Neu-Einlesen: der Zustand steckt im

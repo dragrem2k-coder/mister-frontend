@@ -35,6 +35,7 @@ import _harness as H          # noqa: E402
 
 import fe.framebuffer as fm   # noqa: E402
 import fe.settings as S       # noqa: E402
+import fe.schriften as SCH    # noqa: E402
 
 fails = []
 
@@ -230,6 +231,79 @@ check("die Schrift wird beim Start angewandt",
       "schrift_anwenden(self.fb)" in quelle)
 check("und ein Fehlschlag faellt still auf die eigene zurueck",
       "bleibe bei der eigenen" in quelle)
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 9: DIE AUSWAHL IST EINE SEITE MIT ORDNERN (Build 228)")
+# ---------------------------------------------------------------------------
+# ZURUF DES NUTZERS: "das was wir mit masken gemacht haben sollte auch
+# mit denn fonts also der schrift passieren". Build 223 hatte nur
+# links/rechts im Systemmenue - das geht bei drei Dateien, nicht bei
+# MiSTers Sammlung in Unterordnern.
+with tempfile.TemporaryDirectory() as tmp:
+    for rel in ("Arcade/Pacman.pf", "Arcade/Galaga.pf",
+                "Compute/C64.pf", "Direkt.pf", "Leer/liesmich.txt"):
+        voll = os.path.join(tmp, rel)
+        os.makedirs(os.path.dirname(voll), exist_ok=True)
+        open(voll, "wb").write(b"\x00" * 768)
+
+    TEXTE = {"zurueck": "zurueck", "eigen": "eigene", "osd": "wie im OSD"}
+    wurzel = SCH.ebene("", TEXTE, tmp, osd_vorhanden=True)
+    check("oben steht die eigene Schrift", wurzel[0][0] == "eigen")
+    check("danach die aus der MiSTer.ini", wurzel[1][0] == "osd")
+    check("dann die Ordner, dann die losen Dateien",
+          [e[0] for e in wurzel[2:]] == ["ordner", "ordner", "datei"],
+          "%r" % ([e[0] for e in wurzel],))
+    check("ein Ordner ohne .pf faellt weg",
+          all("Leer" not in e[1] for e in wurzel),
+          "sonst laeuft man in eine Sackgasse")
+
+    ohne_osd = SCH.ebene("", TEXTE, tmp, osd_vorhanden=False)
+    check("ohne font= in der MiSTer.ini faellt die Zeile weg",
+          all(e[0] != "osd" for e in ohne_osd),
+          "ein Eintrag, der nichts tut, ist schlimmer als keiner")
+
+    tiefer = SCH.ebene("Arcade", TEXTE, tmp, osd_vorhanden=True)
+    check("eine Ebene tiefer fuehrt der erste Eintrag zurueck",
+          tiefer[0][0] == "hoch")
+    check("und die eigene Schrift steht dort NICHT mehr",
+          all(e[0] not in ("eigen", "osd") for e in tiefer),
+          "sie gehoert auf die Wurzel")
+    check("die Schriften stehen alphabetisch",
+          [e[1] for e in tiefer[1:]] == ["Galaga", "Pacman"],
+          "%r" % ([e[1] for e in tiefer],))
+    check("ihr Pfad traegt den Ordner mit",
+          tiefer[1][2] == os.path.join("Arcade", "Galaga.pf"),
+          tiefer[1][2])
+    check("und laesst sich als Schrift lesen",
+          S.schrift_pfad(tiefer[1][2])
+          == os.path.join(S.SCHRIFT_DIR, "Arcade", "Galaga.pf"),
+          S.schrift_pfad(tiefer[1][2]))
+    check("zurueck geht es zur Wurzel", SCH.oberordner("Arcade") == "")
+
+check("es gibt eine eigene Seite dafuer",
+      "def schrift_bildschirm" in quelle,
+      "ueber hundert Schriften lassen sich nicht durchblaettern")
+_seite = quelle.split("def schrift_bildschirm")[1].split("\n    def ")[0]
+check("sie zeigt eine Probezeile",
+      't("schriften_probe")' in _seite,
+      "0O und 1lI sind die Zeichen, an denen schmale Schriften scheitern")
+check("die Vorschau wirkt sofort",
+      "self._schrift_vorschau(vorschau)" in _seite,
+      "eine Schrift nach Dateinamen zu waehlen waere Raten")
+check("und wird beim Verlassen zurueckgenommen",
+      "fb.schrift_setzen(_alte_tabelle)" in _seite
+      and "finally:" in _seite,
+      "auch wenn unterwegs etwas schiefgeht")
+check("Zurueck geht erst an der Wurzel aus der Seite heraus",
+      "if ordner:" in _seite.split('elif akt in ("back", "exit")')[1][:400])
+check("das Durchschalten im Menue ist WEG",
+      not hasattr(S, "schrift_weiter") and not hasattr(S, "schrift_auswahl"),
+      "zwei Wege in dieselbe Sammlung sind einer zuviel")
+check("und ein Absturz dort faellt auf die eigene Schrift zurueck",
+      "self.fb.schrift_setzen(None)" in
+      quelle.split("schrift_bildschirm CRASH")[1][:300]
+      if "schrift_bildschirm CRASH" in quelle else False)
 
 print()
 if fails:

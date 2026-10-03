@@ -955,9 +955,22 @@ TRANSLATIONS = {
         "de": "Lochmaske: %s"},
     "sys_maske_aus": {"en": "off", "de": "aus"},
     "sys_maske_keine": {"en": "none chosen", "de": "keine gewaehlt"},
+    "schriften_titel": {"en": "Font", "de": "Schrift"},
+    "schriften_probe": {
+        "en": "0O 1lI 8B 5S  Gg Qq  123 ABC abc",
+        "de": "0O 1lI 8B 5S  Gg Qq  123 ABC abc"},
+    "schriften_hinweis": {
+        "en": "up/down choose, OK opens/takes, back one level up",
+        "de": "hoch/runter waehlen, OK oeffnet/uebernimmt, Zurueck eine "
+              "Ebene hoch"},
     "masken_titel": {"en": "Shadow mask", "de": "Lochmaske"},
     "masken_keine": {"en": "none", "de": "keine"},
     "masken_zurueck": {"en": "back", "de": "zurueck"},
+    "masken_modus": {"en": "Mode", "de": "Modus"},
+    "masken_modus_1x": {"en": "1x", "de": "1x"},
+    "masken_modus_2x": {"en": "2x", "de": "2x"},
+    "masken_modus_1x_gedreht": {"en": "1x rotated", "de": "1x gedreht"},
+    "masken_modus_2x_gedreht": {"en": "2x rotated", "de": "2x gedreht"},
     "masken_presets": {
         "en": "MiSTer presets (recommended)",
         "de": "MiSTer-Presets (Empfehlungen)"},
@@ -966,9 +979,9 @@ TRANSLATIONS = {
     "masken_aus": {"en": "Effect: OFF", "de": "Effekt: AUS"},
     "masken_hinweis": {
         "en": "up/down choose, OK opens/takes, back one level up, "
-              "left/right on/off",
+              "left/right on/off (mode on its own line)",
         "de": "hoch/runter waehlen, OK oeffnet/uebernimmt, Zurueck eine "
-              "Ebene hoch, links/rechts an/aus"},
+              "Ebene hoch, links/rechts an/aus (Modus in seiner Zeile)"},
     "masken_leer": {
         "en": "No shadow masks found in /media/fat/Shadow_Masks - MiSTer "
               "brings its own, install them with update_all.",

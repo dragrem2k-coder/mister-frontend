@@ -360,6 +360,100 @@ check("geoeffnet werden sie wie ein Ordner",
 
 # ---------------------------------------------------------------------------
 print()
+print("Test 10: DIE VIER MODI - 1x, 2x, gedreht (Build 228)")
+# ---------------------------------------------------------------------------
+# ZURUF DES NUTZERS: "bei denn masken ist mir noch aufgefallen das man
+# mehrere optionen hat shadow mask 1x, shadow mask 2x, shadow mask 1x
+# rotated und shadow mask 2x rotated". Das sind MiSTers eigene vier
+# Einstellungen, und beide Umformungen passieren EINMAL beim Laden -
+# danach rechnet C genau wie vorher.
+check("es sind genau diese vier",
+      M.MODI == ("1x", "2x", "1x_gedreht", "2x_gedreht"), "%r" % (M.MODI,))
+
+# Ein Muster, in dem jede Zelle eindeutig ist: 2 breit, 1 hoch,
+# links Rot, rechts Gruen.
+ROH = (2, 1, [16, 0, 0,  0, 16, 0], 0, "Probe")
+
+check("1x laesst alles, wie es ist",
+      M.modus_anwenden(ROH, "1x") == ROH)
+
+gedreht = M.modus_anwenden(ROH, "1x_gedreht")
+check("gedreht tauscht Breite und Hoehe", gedreht[:2] == (1, 2),
+      "%r" % (gedreht[:2],))
+check("aus nebeneinander wird uebereinander",
+      gedreht[2] == [16, 0, 0,  0, 16, 0],
+      "oben Rot, darunter Gruen - %r" % (gedreht[2],))
+
+doppelt = M.modus_anwenden(ROH, "2x")
+check("2x verdoppelt beide Kanten", doppelt[:2] == (4, 2),
+      "%r" % (doppelt[:2],))
+check("jede Zelle deckt jetzt 2x2 Punkte",
+      doppelt[2][:12] == [16, 0, 0, 16, 0, 0, 0, 16, 0, 0, 16, 0]
+      and doppelt[2][12:] == doppelt[2][:12],
+      "zweite Zeile muss der ersten gleichen")
+
+beides = M.modus_anwenden(ROH, "2x_gedreht")
+check("2x gedreht ist beides", beides[:2] == (2, 4), "%r" % (beides[:2],))
+
+check("Name und Aufloesung bleiben dran",
+      beides[3:] == ROH[3:], "%r" % (beides[3:],))
+check("zweimal drehen ergibt das Muster zurueck",
+      M._gedreht(M._gedreht(ROH)) == ROH,
+      "sonst stimmt die Reihenfolge der Zellen nicht")
+
+# DAS IST DER PUNKT DER GANZEN SACHE: die Umformung darf nur das
+# MUSTER aendern, nie die Faktoren - sonst stuende in der Tabelle
+# etwas, das C ablehnt (erlaubt sind 0..31).
+for name in M.MODI:
+    um = M.modus_anwenden((2, 2, [31, 0, 16, 7, 8, 9,
+                                  0, 31, 2, 5, 16, 16], 0, "x"), name)
+    check("%-12s haelt alle Faktoren in 0..31" % name,
+          all(0 <= w <= 31 for w in um[2])
+          and len(um[2]) == um[0] * um[1] * 3,
+          "%d Werte fuer %dx%d" % (len(um[2]), um[0], um[1]))
+
+check("und 2x bleibt unter der C-Grenze von 64",
+      M.modus_anwenden((16, 16, [16] * 768, 0, "x"), "2x_gedreht")[0] == 32,
+      "16x16 ist die groesste Maske, 2x macht 32x32")
+
+# Der eingestellte Modus ueberlebt - und ein Unfug darin nicht.
+import tempfile as _tf                                      # noqa: E402
+with _tf.TemporaryDirectory() as tmp:
+    _alt = M.MODUS_FILE
+    try:
+        M.MODUS_FILE = os.path.join(tmp, "maske_modus")
+        check("ohne Datei ist es 1x", M.modus_lesen() == "1x")
+        M.modus_schreiben("2x_gedreht")
+        check("und was geschrieben wurde, kommt zurueck",
+              M.modus_lesen() == "2x_gedreht")
+        open(M.MODUS_FILE, "w").write("3x_kopfueber")
+        check("Unfug in der Datei faellt auf 1x zurueck",
+              M.modus_lesen() == "1x",
+              "lieber die Vorgabe als eine Maske, die C ablehnt")
+        M.modus_schreiben("gibtsnicht")
+        check("und schreiben laesst sich auch nur Gueltiges",
+              M.modus_lesen() == "1x")
+    finally:
+        M.MODUS_FILE = _alt
+
+check("die Moduszeile steht im Bildschirm",
+      '"modus"' in quelle_f and "MASKEN.modus_weiter(modus" in quelle_f)
+# Gesucht wird IM MASKENBILDSCHIRM, nicht irgendwo in frontend.py -
+# "links/rechts" kommt in mehreren Seiten vor (Cores zum Beispiel).
+_seite = quelle_f.split("def masken_bildschirm")[1].split("\n    def ")[0]
+check("links/rechts dreht dort den Modus statt an/aus",
+      'if art == "modus":' in _seite.split('elif akt in ("left", "right")')
+      [1][:500],
+      "auf jeder anderen Zeile bleibt es der An/Aus-Schalter")
+check("und OK tut auf der Zeile dasselbe",
+      'if art == "modus":' in _seite.split('elif akt in ("select", "ok")')
+      [1][:300],
+      "wer OK drueckt, erwartet keine Auswahl einer Zeile ohne Datei")
+check("und er wird beim Verlassen gespeichert",
+      "MASKEN.modus_schreiben(modus)" in quelle_f)
+
+# ---------------------------------------------------------------------------
+print()
 print("Test 9: DER WEG DURCH DEN BAUM, wirklich durchlaufen")
 # ---------------------------------------------------------------------------
 # Hier wird nicht im Quelltext gesucht, sondern navigiert. ebene() steht
@@ -395,7 +489,7 @@ with tempfile.TemporaryDirectory() as tmp:
     presets = _ebene(wurzel[1][2])
     check("die Presetebene fuehrt zurueck", presets[0][0] == "hoch")
     check("und enthaelt nur Masken",
-          [e[0] for e in presets[1:]] == ["maske"],
+          [e[0] for e in presets[1:]] == ["datei"],
           "%r" % ([e[0] for e in presets],))
     check("von dort geht es zur Wurzel",
           M.oberordner(wurzel[1][2]) == "")
@@ -407,7 +501,7 @@ with tempfile.TemporaryDirectory() as tmp:
           "%r" % ([e[0] for e in stufe1],))
     stufe2 = _ebene(stufe1[1][2])
     check("und der zu den Masken",
-          [e[0] for e in stufe2[1:]] == ["maske", "maske"],
+          [e[0] for e in stufe2[1:]] == ["datei", "datei"],
           "%r" % ([e[0] for e in stufe2],))
     check("zurueck geht es Stufe fuer Stufe",
           M.oberordner(stufe1[1][2]) == tief

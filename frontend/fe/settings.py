@@ -1700,6 +1700,12 @@ def ansicht_haupt_schreiben(wert):
 #   ""      - die eigene Schrift des Frontends (Vorgabe)
 #   "osd"   - die, die in der MiSTer.ini unter font= steht
 #   <Datei> - eine bestimmte Datei aus /media/fat/font/
+# GEAENDERT (Build 228): das Durchschalten mit links/rechts
+# (schrift_dateien/schrift_auswahl/schrift_weiter) ist entfallen. Die
+# Auswahl ist jetzt eine eigene Seite mit Ordnern - siehe
+# fe/schriften.py und schrift_bildschirm() in frontend.py. Zwei Wege in
+# dieselbe Sammlung sind einer zuviel; bei den Masken stand genau
+# dieselbe Entscheidung an (Build 227).
 SCHRIFT_FILE = "/media/fat/frontend/schrift"
 SCHRIFT_DIR = "/media/fat/font"
 SCHRIFT_EIGEN = ""
@@ -1758,18 +1764,6 @@ def schrift_aus_ini():
     return None
 
 
-def schrift_dateien():
-    """Die verfuegbaren .pf-Dateien, sortiert. Leer, wenn es den Ordner
-    nicht gibt - dann bleibt es bei der eigenen Schrift."""
-    try:
-        namen = [n for n in os.listdir(SCHRIFT_DIR)
-                 if n.lower().endswith(".pf")]
-    except OSError:
-        return []
-    namen.sort(key=lambda n: n.lower())
-    return namen
-
-
 def schrift_pfad(wert=None):
     """Der Dateipfad zur eingestellten Schrift - oder None fuer die
     eigene. Prueft NICHT, ob die Datei existiert; das tut der Lader,
@@ -1788,29 +1782,6 @@ def schrift_pfad(wert=None):
     if os.path.isabs(wert):
         return wert
     return os.path.join(SCHRIFT_DIR, wert)
-
-
-def schrift_auswahl():
-    """Alle waehlbaren Werte in der Reihenfolge des Durchschaltens."""
-    werte = [SCHRIFT_EIGEN]
-    if schrift_aus_ini():
-        werte.append(SCHRIFT_OSD)
-    werte.extend(schrift_dateien())
-    return werte
-
-
-def schrift_weiter(rueckwaerts=False):
-    """Eine Schrift weiterschalten (rundum). Liefert die neue."""
-    werte = schrift_auswahl()
-    if not werte:
-        return SCHRIFT_EIGEN
-    jetzt = schrift_lesen()
-    try:
-        idx = werte.index(jetzt)
-    except ValueError:
-        idx = 0
-    idx = (idx - 1 if rueckwaerts else idx + 1) % len(werte)
-    return schrift_schreiben(werte[idx])
 
 
 # ===========================================================================

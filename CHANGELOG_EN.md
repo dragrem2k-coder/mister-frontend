@@ -352,6 +352,26 @@ exactly why nothing here was built twice.
 - Text follows in the next build — it needs the same function but a change
   to the text cache, and that deserves care.
 
+**The font gets the same page as the shadow mask — and the mask gets
+MiSTer's four modes.**
+
+- **Font**: System menu → *Font* now opens its own page with **folders**,
+  just like the masks. At the top: the frontend's own font and "as in the
+  OSD" (the one from your MiSTer.ini); below that the folder tree from
+  `/media/fat/font`. The font switches **as you move** — title, list and a
+  sample line (`0O 1lI 8B 5S …`) already appear in the font the bar is on.
+  The old left/right cycling is gone.
+- **The four mask modes**: `1x`, `2x`, `1x rotated`, `2x rotated` — the same
+  four as in MiSTer's OSD. Its own line at the top of the mask page,
+  left/right cycles, and the preview beside it shows the difference at once.
+  At 1080p a 1× mask is so fine you can barely see it; **2× is usually what
+  you want**. "Rotated" tips the pattern by 90°.
+- **It costs nothing while drawing.** Both are transformations of the
+  pattern table **at load time**, not per pixel. A 16×16 mask becomes 32×32
+  at 2×; the C side takes up to 64×64.
+- Under the hood, folder browsing now lives in **one** place
+  (`fe/dateibaum.py`) and is used by both.
+
 **The text drawer now runs in C.**
 
 - The last big item from the 02.10. report: `text` at 15.57 ms per scroll

@@ -1125,6 +1125,16 @@ den Roehrenmodus, mit Sicherungskopie). Die Schriftwahl des Nutzers
 fassen wir nicht an - der Test vergleicht die Datei danach byteweise.
 
 
+**Test 9 kam mit Build 228 dazu.** Die Auswahl ist jetzt eine eigene
+Seite mit Ordnern statt links/rechts im Systemmenue - derselbe Grund
+wie bei den Masken: MiSTers Schriftsammlung liegt in Unterordnern.
+Geprueft wird der Aufbau einer Ebene (eigene Schrift und "wie im OSD"
+nur auf der Wurzel, Ordner davor, Dateien dahinter), dass die
+OSD-Zeile wegfaellt, wenn in der MiSTer.ini gar kein `font=` steht,
+und dass die Vorschau in einem `finally` zurueckgenommen wird - auch
+wenn unterwegs etwas schiefgeht, darf das Frontend nicht in einer
+halb gewechselten Schrift stehenbleiben.
+
 ## test_masken.py
 
 MiSTers Lochmasken im Frontend (Build 226, erweitert in Build 227).
@@ -1155,6 +1165,14 @@ merken statt des Puffers (sonst melden sie in jedem Bild fremden Inhalt
 und kopieren alles neu), und faellt C aus, wird ohne Maske kopiert -
 lieber ein Bild ohne Effekt als gar keines.
 
+**Test 10 kam mit Build 228 dazu**: die vier Modi (1x, 2x, gedreht).
+Geprueft wird nicht nur, dass gedreht und verdoppelt wird, sondern die
+Eigenschaft, an der C haengt - nach JEDER Umformung muessen alle
+Faktoren in 0..31 liegen und die Tabelle genau breite*hoehe*3 Werte
+haben. Steht dort etwas anderes, lehnt C den ganzen Aufruf ab und das
+Bild bliebe ohne Maske. Mitgeprueft: 16x16 (die groesste Maske) wird in
+2x zu 32x32 und bleibt damit unter der C-Grenze von 64.
+
 **Test 7 bis 9 kamen mit Build 227 dazu** - auf Zuruf des Nutzers:
 "lochmasken in unterordner anzeigen sonst zuviel auswahl". Eine Liste
 aus 1207 Zeilen ist keine Auswahl.
@@ -1174,6 +1192,36 @@ aus 1207 Zeilen ist keine Auswahl.
   Stufe fuer Stufe wieder herauf. Genau dafuer steht `ebene()` in
   `fe/masken.py` und nicht in der Zeichenschleife.
 
+
+
+## test_dateibaum.py
+
+Der gemeinsame Dateibaum von Masken und Schriften (Build 228).
+
+Build 227 hat die Lochmasken in Ordnern gezeigt, statt 1207 Dateien in
+eine Liste zu kippen. Der Nutzer hat daraufhin gesagt: "das was wir mit
+masken gemacht haben sollte auch mit denn fonts also der schrift
+passieren." Damit gibt es zwei Sammlungen mit derselben Aufgabe - und
+zwei Stellen, die dasselbe tun, laufen auseinander. Also steht das
+Blaettern EINMAL in `fe/dateibaum.py`.
+
+Geprueft werden die vier Entscheidungen, die den Baum brauchbar machen:
+
+1. **Ordner vorn, jeder mit seiner Anzahl** (rekursiv gezaehlt). Einen
+   Ordner blind zu waehlen waere genau das Blaettern, das abgeschafft
+   werden sollte.
+2. **Leere Ordner fallen weg.** Beide Sammlungen haben welche
+   (Vorlagen, Lesetexte, Bilder) - sie waeren Sackgassen.
+3. **Der Weg zurueck endet an der Wurzel** und laeuft nicht darueber
+   hinaus. Wer hineinkommt und nicht wieder heraus, ist schlechter
+   dran als mit der langen Liste.
+4. **Jeder Fehler endet in einer leeren Liste**, nie in einem Absturz -
+   auch eine Datei an der Stelle, an der ein Ordner erwartet wird.
+
+**Test 6 ist der eigentliche Zweck.** Er sieht nach, dass beide Module
+den Baum wirklich benutzen und keine eigene `os.listdir`-Schleife mehr
+haben. Gaebe es daneben eine zweite Implementierung, waere nichts
+gewonnen.
 
 ## test_negativ_merken.py
 

@@ -1988,6 +1988,17 @@ class Framebuffer:
                     if b > a:
                         self.rect(x, a, w, b - a, rgb)
 
+    @staticmethod
+    def schrift_tabelle():
+        """Die gerade aktive Tabelle - oder None fuer die eigene.
+
+        Gibt es, damit eine VORSCHAU sie sich merken und am Ende
+        zuruecksetzen kann (Build 228, Schriftauswahl). Ohne sie muesste
+        der Bildschirm die Einstellung erneut lesen und die Datei
+        nochmals laden - und bei einer inzwischen kaputten Datei saehe
+        das Frontend nach dem Abbrechen anders aus als davor."""
+        return FONT_AKTIV
+
     def schrift_setzen(self, tabelle):
         """Die aktive 8x8-Tabelle wechseln und die Zwischenspeicher
         leeren.
