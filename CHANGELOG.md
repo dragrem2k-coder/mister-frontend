@@ -373,7 +373,32 @@ Millisekunde.**
 - Der Text folgt im nächsten Build — er braucht dieselbe Funktion, aber eine
   Umstellung am Textspeicher, und die will sorgfältig gemacht werden.
 
-**`--show` gibt es noch nicht — jetzt sagt das Frontend das auch.**
+**`--show` gibt es jetzt: der Bericht statt des Messgeräts.**
+
+    python3 /media/fat/frontend/frontend.py --show
+
+- Fünf Abschnitte, zum Vorlesen gebaut: **deine Sammlung** (Spiele,
+  Kategorien, die zehn größten), **wie es aussehen kann** (Farbschemata,
+  Ansichten, wie viele Lochmasken und Schriften auf deiner Karte liegen,
+  die vier Maskenmodi), **was sich einstellen lässt** — und zwar mit den
+  Werten, die gerade gelten —, **wie schnell es scrollt** (ms je Schritt
+  und Schritte pro Sekunde, je Ansicht) und **wo was liegt**.
+- **Keine von Hand gepflegte Funktionsliste.** So eine Liste ist nach drei
+  Builds falsch, und zwar still. Alles kommt aus dem, was das Frontend
+  ohnehin weiß: die Einstellungen sind **genau die Liste aus deinem
+  Systemmenü**, die Masken und Schriften werden auf der Karte gezählt, der
+  Bestand kommt aus dem laufenden Frontend.
+- **Gemessen wird mit derselben Schrittfunktion wie im Bench.** Zwei
+  Fassungen desselben Scrollschritts wären zwei Gelegenheiten
+  auseinanderzulaufen — genau daran ist Abschnitt J in Build 218 schon
+  einmal gescheitert (gemessen wurde der volle Neuaufbau statt des leichten
+  Pfads). Der Bericht landet zusätzlich in `/tmp/dragend_show.txt`.
+- Und: `--help` holt jetzt **nicht mehr die Einzelinstanz-Sperre**. In 230
+  kam die Meldung erst hinter „Keine andere Instanz aktiv — starte
+  Framebuffer/Eingaben …", für ein bloßes `--help` lief also der halbe
+  Start. Jetzt steht die Prüfung vor allem anderen.
+
+**`--show` gab es noch nicht — jetzt sagt das Frontend das auch.**
 
 - Du hast `frontend.py --show` probiert und es startete einfach normal. Das
   lag an mir: die Option **gibt es noch nicht** (sie steht als Nächstes an),

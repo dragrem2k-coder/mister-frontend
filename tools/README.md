@@ -2052,3 +2052,33 @@ dauert - der ganze Gewinn waere weg, und nichts wuerde davon berichten.
 Zum Schluss laeuft der echte Arbeitsprozess einmal an: das Protokoll
 hat zwei Seiten, und ein Tippfehler im Trennzeichen faellt sonst erst
 auf dem Geraet auf.
+
+
+## test_show.py
+
+`--show`: der Bericht statt des Messgeraets (Build 231).
+
+`--bench` ist ein **Messgeraet** - seine Zahlen sind auf
+Vergleichbarkeit gebaut und fuer jemanden gedacht, der an diesem
+Frontend arbeitet. `--show` ist ein **Bericht** fuer jemanden, der
+wissen will, was das Ding kann und ob es schnell ist.
+
+**Die eine Gefahr, um die herum dieser Test gebaut ist:** eine von Hand
+gepflegte Funktionsliste. So eine Liste ist nach drei Builds falsch,
+und zwar still - sie behauptet dann Dinge ueber ein Frontend, das
+anders aussieht. **Test 2** sieht deshalb nach, dass alles aus dem
+gelesen wird, was das Frontend ohnehin weiss, und nimmt die Probe aufs
+Exempel: die ersten 25 Eintraege des echten Systemmenues muessen im
+Bericht stehen.
+
+**Test 3 ist die zweite Gefahr:** zwei Fassungen desselben
+Scrollschritts. Genau daran ist Abschnitt J des Bench in Build 218
+gescheitert - gemessen wurde der volle Neuaufbau statt des leichten
+Pfads, 132,87 ms statt des echten Schritts. Seit Build 231 stehen
+`schritt_funktion()` und `fenster_spanne()` einmal in `fe/bench.py`,
+und der Test prueft, dass **beide** Seiten sie benutzen und `fe/show.py`
+den Schritt nicht noch einmal nachbaut.
+
+**Test 1 laeuft den ganzen Bericht durch** - ohne Framebuffer und ohne
+Spiele, also genau in dem Fall, in dem so etwas gern mit einer Ausnahme
+endet. Ein Bericht, der abstuerzt, ist schlimmer als keiner.

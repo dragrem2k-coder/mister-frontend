@@ -1872,6 +1872,61 @@ def _abschnitt_i(b, fe, A):
         pass
 
 
+def schritt_funktion(fe, seite):
+    """EIN Scrollschritt, genau wie ihn die Bedienung ausloest.
+
+    HERAUSGELOEST (Build 231), weil fe/show.py dieselbe Messung
+    braucht. Zwei Fassungen desselben Schritts waeren zwei Gelegenheiten
+    auseinanderzulaufen - und genau daran ist Abschnitt J in Build 218
+    schon einmal gescheitert (gemessen wurde der volle Neuaufbau statt
+    des leichten Pfads, 132,87 ms statt des echten Schritts).
+
+    Die Reihenfolge ist die aus run(): erst den leichten Pfad
+    versuchen, und nur wenn der ablehnt, den vollen Aufbau. Fuer Raster
+    und Galerie lehnt er immer ab (er kennt nur Zeilen)."""
+    if seite == 0:
+        def _schritt(i):
+            alt = fe.cat_i
+            fe.cat_i = i % max(1, len(fe.cats))
+            if not fe._draw_navigate_cats(alt):
+                fe.draw()
+    else:
+        def _schritt(i):
+            # Dieselbe Quelle wie in Abschnitt B - eine zweite waere
+            # eine zweite Gelegenheit, auseinanderzulaufen.
+            try:
+                n = len(fe._display_items())
+            except Exception:                            # noqa: BLE001
+                n = 0
+            alt = fe.item_i
+            fe.item_i = i % max(1, n)
+            if not fe._draw_navigate_items(alt):
+                fe.draw()
+    return _schritt
+
+
+def fenster_spanne(fe, seite):
+    """Wie weit darf der Zeiger pendeln, ohne das Fenster zu verlassen?
+
+    IM SICHTBAREN FENSTER PENDELN, nicht durch die Liste laufen - die
+    Korrektur aus Build 219. Sobald das Fenster weiterscrollen muss,
+    lehnt der leichte Pfad ab und es laeuft ein VOLLER Aufbau; gemessen
+    waere dann ein Mittelwert aus beidem, also keine von beiden Zahlen.
+
+    Ein Rand von zwei Zeilen, weil der leichte Pfad verlangt, dass ALTE
+    und NEUE Zeile im Fenster liegen."""
+    if seite == 0:
+        fenster = int(getattr(fe, "cats_visible", 0) or 0)
+        gesamt = max(1, len(getattr(fe, "cats", ()) or ()))
+    else:
+        fenster = int(getattr(fe, "items_visible", 0) or 0)
+        try:
+            gesamt = max(1, len(fe._display_items()))
+        except Exception:                                # noqa: BLE001
+            gesamt = 1
+    return max(2, min(fenster - 2, gesamt - 1))
+
+
 def _abschnitt_j(b, fe, S, A, fm):
     """WORAUS besteht ein Scrollschritt? Auf DIESEM Geraet.
 
@@ -2193,24 +2248,9 @@ def _abschnitt_j(b, fe, S, A, fm):
                 # vollen Aufbau. Fuer Raster und Galerie lehnt er immer
                 # ab (er kennt nur Zeilen), dort aendert sich also
                 # nichts.
-                def _schritt(i):
-                    if seite == 0:
-                        alt = fe.cat_i
-                        fe.cat_i = i % max(1, len(fe.cats))
-                        if not fe._draw_navigate_cats(alt):
-                            fe.draw()
-                    else:
-                        # Dieselbe Quelle wie in Abschnitt B - eine
-                        # zweite waere eine zweite Gelegenheit,
-                        # auseinanderzulaufen.
-                        try:
-                            n = len(fe._display_items())
-                        except Exception:                # noqa: BLE001
-                            n = 0
-                        alt = fe.item_i
-                        fe.item_i = i % max(1, n)
-                        if not fe._draw_navigate_items(alt):
-                            fe.draw()
+                # Build 231: der Schritt steht jetzt in
+                # schritt_funktion() - fe/show.py misst denselben.
+                _schritt = schritt_funktion(fe, seite)
 
                 # WARMLAUFEN, und zwar zweimal durch: beim ersten Mal
                 # werden die Miniaturen gerechnet, erst beim zweiten
@@ -2242,18 +2282,7 @@ def _abschnitt_j(b, fe, S, A, fm):
                 # bench landet immer im supergameboy") und in Build 216
                 # (J waehlte die Kategorie nicht): der Zustand, in dem
                 # gemessen wird, muss zur Frage passen.
-                if seite == 0:
-                    _fenster = int(getattr(fe, "cats_visible", 0) or 0)
-                    _gesamt = max(1, len(getattr(fe, "cats", ()) or ()))
-                else:
-                    _fenster = int(getattr(fe, "items_visible", 0) or 0)
-                    try:
-                        _gesamt = max(1, len(fe._display_items()))
-                    except Exception:                    # noqa: BLE001
-                        _gesamt = 1
-                # Ein Rand von zwei Zeilen: der leichte Pfad verlangt,
-                # dass ALTE und NEUE Zeile im Fenster liegen.
-                _fenster = max(2, min(_fenster - 2, _gesamt - 1))
+                _fenster = fenster_spanne(fe, seite)
                 _null()
                 _haus0 = getattr(fe, "_perf_house", 0.0)
                 t0 = time.monotonic()

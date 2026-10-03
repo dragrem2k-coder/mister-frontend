@@ -407,6 +407,9 @@ OVERSCAN_Y = 5
 #     rm /media/fat/frontend/profile         # wieder aus
 PROFILE_FLAG = "/media/fat/frontend/profile"
 
+# Wohin "--show" seinen Bericht zusaetzlich schreibt (Build 231).
+SHOW_AUSGABE = "/tmp/dragend_show.txt"
+
 # Wohin "--bench" seinen Bericht zusaetzlich schreibt (Build 177).
 # Nach /tmp und nicht auf die Karte: der Bench soll nachweislich
 # NICHTS auf der SD-Karte anfassen, und die Datei ist ohnehin dazu da,
@@ -19851,6 +19854,35 @@ if __name__ == "__main__":
     # konkurrierende Instanzen ist. Jetzt gibt jede Startphase eine
     # sichtbare Meldung aus, und der Sperr-Fall zeigt direkt einen
     # fertigen Befehl zum Beenden der alten Instanz.
+    # UNBEKANNTE OPTIONEN SAGEN ES - UND ZWAR ALS ERSTES (Build 231).
+    #
+    # NUTZERMELDUNG ZU BUILD 230: die Meldung kam, aber erst hinter
+    # "Frontend-Start: initialisiere ..." und "Keine andere Instanz
+    # aktiv - starte Framebuffer/Eingaben ...". Also wurde fuer ein
+    # blosses --help die Einzelinstanz-Sperre geholt und der halbe
+    # Start durchlaufen. Jetzt steht die Pruefung VOR allem anderen:
+    # wer sich vertippt, bekommt drei Zeilen und sonst nichts.
+    _OPTIONEN = {
+        "--bench": "eine feste, wiederholbare Messung ausgeben",
+        "--show": "zeigen, was drin ist, wie es eingestellt ist "
+                  "und wie schnell es laeuft",
+        "--help": "diese Liste zeigen",
+        "-h": "diese Liste zeigen",
+    }
+    _unbekannt = [a for a in sys.argv[1:]
+                  if a.startswith("-") and a not in _OPTIONEN]
+    if _unbekannt or "--help" in sys.argv or "-h" in sys.argv:
+        if _unbekannt:
+            print("Unbekannte Option: %s" % " ".join(_unbekannt))
+            print("")
+        print("Dragend - Aufrufe:")
+        print("")
+        print("  frontend.py            das Frontend starten")
+        for _o in ("--bench", "--show", "--help"):
+            print("  frontend.py %-10s %s" % (_o, _OPTIONEN[_o]))
+        print("")
+        sys.exit(2 if _unbekannt else 0)
+
     print("Frontend-Start: initialisiere ...")
     # Systemuhr per NTP synchronisieren - MiSTer hat keine batterie-
     # gepufferte Echtzeituhr, ohne das waeren Log-Zeitstempel und die
@@ -19955,36 +19987,6 @@ if __name__ == "__main__":
     # das Kategorien-Menue zum ersten Mal gezeichnet wird) auf echter
     # Hardware tatsaechlich dauert - jede weitere Optimierung waere ohne
     # diese Zahl nur Raten. Jetzt einmalig pro Start geloggt.
-    # UNBEKANNTE OPTIONEN SAGEN ES (Build 230).
-    #
-    # NUTZERMELDUNG: "python3 /media/fat/frontend/frontend.py --show der
-    # befehl startet das frontend sonst passiert garnichts". Genau so
-    # war es: alles, was nicht --bench hiess, wurde stillschweigend
-    # ignoriert und das Frontend startete normal. Wer sich vertippt oder
-    # eine Option von frueher benutzt, sitzt dann vor einem Frontend und
-    # weiss nicht, warum nichts passiert ist.
-    #
-    # Also lieber vorher und ohne Umschweife - und zwar BEVOR der
-    # Framebuffer geoeffnet wird, sonst liegt die Meldung unter dem Bild.
-    _OPTIONEN = {
-        "--bench": "eine feste, wiederholbare Messung ausgeben",
-        "--help": "diese Liste zeigen",
-        "-h": "diese Liste zeigen",
-    }
-    _unbekannt = [a for a in sys.argv[1:]
-                  if a.startswith("-") and a not in _OPTIONEN]
-    if _unbekannt or "--help" in sys.argv or "-h" in sys.argv:
-        if _unbekannt:
-            print("Unbekannte Option: %s" % " ".join(_unbekannt))
-            print("")
-        print("Dragend - Aufrufe:")
-        print("")
-        print("  frontend.py            das Frontend starten")
-        for _o in ("--bench", "--help"):
-            print("  frontend.py %-10s %s" % (_o, _OPTIONEN[_o]))
-        print("")
-        sys.exit(2 if _unbekannt else 0)
-
     _t_boot = time.monotonic()
     try:
         _fe = Frontend()
@@ -20019,6 +20021,37 @@ if __name__ == "__main__":
             except OSError as _e:
                 print("(konnte %s nicht schreiben: %s)"
                       % (BENCH_AUSGABE, _e))
+            _fe._beenden()
+            sys.exit(0)
+        if "--show" in sys.argv:
+            # NEU (Build 231), auf Wunsch des Nutzers: "kann man ein
+            # zweites benchmark machen was die funktionen
+            # einstellmoeglichkeiten design und so zeigt auch wie
+            # schnell das scrollen mittlerweile ist? als vorfuehrung
+            # quasi?"
+            #
+            # Der Unterschied zu --bench steht im Kopf von fe/show.py:
+            # --bench ist ein Messgeraet, --show ein Bericht. Beide
+            # messen den Schritt mit DERSELBEN Funktion (fe/bench.py:
+            # schritt_funktion) - zwei Fassungen waeren zwei
+            # Gelegenheiten auseinanderzulaufen.
+            import fe.bench as BENCH
+            import fe.show as SHOW
+            _text = SHOW.lauf(_fe, sys.modules[__name__],
+                              sys.modules["fe.art"],
+                              sys.modules["fe.settings"],
+                              sys.modules["fe.menu"],
+                              sys.modules["fe.masken"],
+                              sys.modules["fe.schriften"],
+                              BENCH, startdauer=_startdauer, log=LOG)
+            try:
+                with open(SHOW_AUSGABE, "w") as _f:
+                    _f.write(_text)
+                print("")
+                print("Auch gespeichert in: %s" % SHOW_AUSGABE)
+            except OSError as _e:
+                print("(konnte %s nicht schreiben: %s)"
+                      % (SHOW_AUSGABE, _e))
             _fe._beenden()
             sys.exit(0)
         _fe.run()

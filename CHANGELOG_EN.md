@@ -352,7 +352,20 @@ exactly why nothing here was built twice.
 - Text follows in the next build — it needs the same function but a change
   to the text cache, and that deserves care.
 
-**`--show` does not exist yet — now the frontend says so.**
+**`--show` now exists: the report, as opposed to the measuring instrument.**
+
+- Five sections, built to be read out loud: your collection, what it can look
+  like, what can be set (with the values in force right now), how fast it
+  scrolls (ms per step and steps per second, per view), and where things live.
+- **No hand-maintained feature list.** Such a list is quietly wrong after
+  three builds. Everything comes from what the frontend already knows — the
+  settings section is literally your System menu.
+- **Measured with the same step function as the bench.** Two versions of the
+  same scroll step would be two chances to drift apart. The report is also
+  written to `/tmp/dragend_show.txt`.
+- Also: `--help` no longer takes the single-instance lock.
+
+**`--show` did not exist yet — now the frontend says so.**
 
 - An unknown option used to be ignored silently and the frontend just
   started. It now reports the unknown option, prints the list of options it
