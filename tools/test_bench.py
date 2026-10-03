@@ -964,6 +964,28 @@ check("ohne Kategorien steigt es sauber aus",
       "sonst stuerzt es dort, wo es nichts zu messen gibt")
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+print()
+print("Test: unbekannte Optionen sagen es (Build 230)")
+# ---------------------------------------------------------------------------
+# NUTZERMELDUNG: "python3 /media/fat/frontend/frontend.py --show der
+# befehl startet das frontend sonst passiert garnichts". Genau so war
+# es - alles ausser --bench wurde stillschweigend ignoriert und das
+# Frontend startete normal. Wer sich vertippt, sitzt dann davor und
+# weiss nicht, warum nichts passiert ist.
+_qf = open(H.FRONTEND_PY, encoding="utf-8", errors="replace").read()
+check("es gibt eine Liste der Optionen", '_OPTIONEN = {' in _qf)
+check("eine unbekannte wird gemeldet",
+      'print("Unbekannte Option: %s"' in _qf)
+check("und zwar VOR dem Framebuffer",
+      _qf.index("_unbekannt = [a for a in sys.argv")
+      < _qf.index("_fe = Frontend()"),
+      "sonst liegt die Meldung unter dem Bild")
+check("--help zeigt dieselbe Liste ohne Fehler",
+      'sys.exit(2 if _unbekannt else 0)' in _qf,
+      "2 fuer einen Fehler, 0 fuer eine Frage")
+check("--bench steht in der Liste", '"--bench":' in _qf)
+
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))

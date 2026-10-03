@@ -352,6 +352,26 @@ exactly why nothing here was built twice.
 - Text follows in the next build — it needs the same function but a change
   to the text cache, and that deserves care.
 
+**`--show` does not exist yet — now the frontend says so.**
+
+- An unknown option used to be ignored silently and the frontend just
+  started. It now reports the unknown option, prints the list of options it
+  knows, and does **not** start. `--help` does the same without an error.
+
+**Measured again: off the draw path was not enough — now it barely runs at all.**
+
+- Your build-229 bench shows both sides. Good: REST in the gallery fell from
+  **14.04 to 6.83 ms**. Bad: `cover 1.91 (davon Karte 19.68 in 22
+  Zugriffen)`, against **2.83 ms** for the same accesses before — the work
+  was not gone, it sat **next door** and competed for the same SD card.
+- So: into the function instead of moving it again. The question is "has a
+  folder **appeared**", and only the **names** are compared — yet it fetched
+  a timestamp for every system folder under every base path. Around 630 file
+  probes per pass, all thrown away.
+- A new name can only appear if something changed at a **base path**. That is
+  **13 probes instead of 630**, and the expensive pass only runs when
+  something actually moved. Normally: not at all.
+
 **Two stutters you reported — both found, both fixed.**
 
 - Switching folders and categories could stall. Your report shows

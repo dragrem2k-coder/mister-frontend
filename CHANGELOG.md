@@ -373,6 +373,36 @@ Millisekunde.**
 - Der Text folgt im nächsten Build — er braucht dieselbe Funktion, aber eine
   Umstellung am Textspeicher, und die will sorgfältig gemacht werden.
 
+**`--show` gibt es noch nicht — jetzt sagt das Frontend das auch.**
+
+- Du hast `frontend.py --show` probiert und es startete einfach normal. Das
+  lag an mir: die Option **gibt es noch nicht** (sie steht als Nächstes an),
+  und alles außer `--bench` wurde bisher stillschweigend ignoriert. Jetzt
+  meldet sich das Frontend bei einer unbekannten Option, zeigt die Liste
+  dessen, was es kennt, und startet **nicht**. `--help` tut dasselbe ohne
+  Fehler.
+
+**Nachgemessen: nebenher war nicht genug — jetzt wird gar nicht mehr gesucht.**
+
+- Dein Bench mit 229 zeigt beides. **Gut:** REST in der Galerie von
+  **14,04 auf 6,83 ms** — der Zeichenweg wartet wirklich nicht mehr.
+  **Schlecht:** `cover 1.91 (davon Karte 19.68 in 22 Zugriffen)`, vorher
+  **2,83 ms** für dieselben Zugriffe. Die Arbeit war nicht weg, sie lag
+  **nebenan** — und stritt sich mit dem Zeichenweg um dieselbe SD-Karte.
+  `20.8/Schritt _games_signature > getmtime` stand unverändert da.
+- Also in die Funktion geschaut statt noch einmal zu verlagern — und dort
+  steht der eigentliche Fehler: die Frage lautet *„ist ein Ordner
+  dazugekommen"*, verglichen werden nur die **Namen** — und trotzdem holte
+  die Funktion für **jeden** Systemordner **jedes** Basispfads einen
+  Zeitstempel. Rund 630 Dateiabfragen je Durchgang, deren Ergebnis danach
+  weggeworfen wird.
+- Ein neuer Name kann nur auftauchen, wenn sich an einem **Basispfad** etwas
+  getan hat: entweder ist einer aufgetaucht (die spät angelaufene
+  USB-Platte, um die es geht), oder in einem ist etwas angelegt worden — und
+  das steht in seinem eigenen Zeitstempel. Das sind **13 Abfragen statt 630**,
+  und nur wenn sich dort etwas gerührt hat, läuft überhaupt noch ein
+  Durchgang. Im Normalfall: **gar keiner.**
+
 **Zwei Hänger, die du gemeldet hast — beide gefunden und beide behoben.**
 
 - *„ab und an wenn ich ordner und kategorien wechseln hab ich manchmal denn

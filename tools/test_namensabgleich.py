@@ -44,6 +44,7 @@ import _harness as H                                    # noqa: E402,F401
 
 sys.path.insert(0, os.path.join(_REPO, "frontend"))
 import fe.art as A                                      # noqa: E402
+import fe.paths as FP
 import fe.scan as S                                     # noqa: E402
 
 fails = []
@@ -195,6 +196,11 @@ echt = S._games_signature
 def _frisch():
     S.dazu_fertig_abwarten()            # einen alten Faden auslaufen lassen
     S.dazu_sperre_loesen()
+    # Build 230: die billige Vorfrage ueberspringen. Sie prueft, ob sich
+    # an den Basispfaden etwas geruehrt hat; hier wird die ERKENNUNG
+    # geprueft, und die Vorfrage hat ihren eigenen Abschnitt weiter
+    # unten. None ist nie gleich einem Tupel - also laeuft der Durchgang.
+    S._LETZTE_BASEN = None
     S.ordner_sind_dazugekommen()        # stoesst den neuen an
     assert S.dazu_fertig_abwarten(), "Hintergrundfaden haengt"
     return S._DAZU_WERT
@@ -243,6 +249,63 @@ check("die Abfrage ist verdrahtet",
 _qs = open(os.path.join(_REPO, "frontend", "fe", "scan.py"),
            encoding="utf-8").read()
 _rumpf = _qs.split("def ordner_sind_dazugekommen")[1].split("\ndef ")[0]
+# ---------------------------------------------------------------------------
+# DIE BILLIGE VORFRAGE (Build 230)
+# ---------------------------------------------------------------------------
+# Build 229 hat den Fingerabdruck in einen eigenen Faden gelegt. Der
+# Bericht vom 03.10., 10:43, zeigte, dass das nicht reichte: REST fiel
+# von 14,04 auf 6,83 ms, aber "cover 1.91 (davon Karte 19.68 in 22
+# Zugriffen)" - vorher 2,83 ms fuer dieselben Zugriffe. Die Arbeit lag
+# nur nebenan und stritt sich mit dem Zeichenweg um die Karte.
+#
+# Jetzt wird vorher gefragt, ob sich an den Basispfaden ueberhaupt etwas
+# geruehrt hat - eine Handvoll stat-Aufrufe statt rund sechshundert.
+_zaehler = {"n": 0}
+_echt_sig = S._games_signature
+
+
+def _gezaehlt():
+    _zaehler["n"] += 1
+    return ([("usb:SNES", 1)], {})
+
+
+try:
+    S._games_signature = _gezaehlt
+    # Nicht leer: ohne ein vorheriges Einlesen steigt
+    # ordner_sind_dazugekommen() gleich zu Beginn aus - es gaebe nichts
+    # zu vergleichen.
+    S._LETZTE_ORDNER = {"fat:NES"}
+    S.dazu_fertig_abwarten()
+    # Gleiches Merkmal -> gar kein Durchgang.
+    S._LETZTE_BASEN = S._basen_merkmal()
+    S.dazu_sperre_loesen()
+    S.ordner_sind_dazugekommen()
+    S.dazu_fertig_abwarten()
+    check("ruehrt sich an den Basispfaden nichts, wird NICHT gesucht",
+          _zaehler["n"] == 0,
+          "%d Durchgaenge - genau das waren die 630 stat-Aufrufe"
+          % _zaehler["n"])
+    # Anderes Merkmal -> jetzt lohnt der teure Blick.
+    S._LETZTE_BASEN = (("/gibt/es/nicht", 1),)
+    S.dazu_sperre_loesen()
+    S.ordner_sind_dazugekommen()
+    S.dazu_fertig_abwarten()
+    check("hat sich etwas geruehrt, wird gesucht",
+          _zaehler["n"] == 1, "%d Durchgaenge" % _zaehler["n"])
+finally:
+    S._games_signature = _echt_sig
+    S._LETZTE_BASEN = ()
+    S.dazu_sperre_loesen()
+
+check("das Merkmal sind nur die Basispfade",
+      len(S._basen_merkmal()) <= len(FP.GAMES_BASES),
+      "%d Pfade - nicht jeder Systemordner darunter"
+      % len(FP.GAMES_BASES))
+check("und es wird beim Einlesen mitgemerkt",
+      "_LETZTE_BASEN = _basen_merkmal()" in _qs,
+      "sonst vergleicht die eine Haelfte mit einem Stand, den die "
+      "andere nie gesehen hat")
+
 check("der Fingerabdruck laeuft NEBENHER",
       "_threading.Thread(target=_dazu_nachsehen" in _rumpf,
       "sonst haengt der Zeichenweg an os.stat je Systemordner")

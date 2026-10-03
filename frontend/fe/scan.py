@@ -415,6 +415,46 @@ _DAZU_WERT = False
 _DAZU_FADEN = None
 _DAZU_SPERRE_OBJ = _threading.Lock()
 
+# NACHGEMESSEN (Build 230): nebenher war nicht genug.
+#
+# Der Bericht vom 03.10., 10:43, mit Build 229: REST in der Galerie von
+# 14,04 auf 6,83 ms - der Zeichenweg wartet also wirklich nicht mehr.
+# ABER: "cover 1.91 (davon Karte 19.68 in 22 Zugriffen)", vorher 2,83 ms
+# fuer dieselben 23 Zugriffe. Die Arbeit war nicht weg, sie lag jetzt
+# NEBENAN - und streitet sich mit dem Zeichenweg um dieselbe SD-Karte.
+# "20.8/Schritt _games_signature > getmtime" steht unveraendert da.
+#
+# Also der Blick in die Funktion statt noch eine Verlagerung, und dort
+# steht der eigentliche Fehler schwarz auf weiss: die Frage lautet "ist
+# ein Ordner DAZUGEKOMMEN", verglichen werden ueber _ordner_kennungen()
+# nur die NAMEN - und trotzdem holt _games_signature() fuer jeden
+# Systemordner jedes Basispfads einen Zeitstempel. Rund 630 stat-Aufrufe
+# je Durchgang, deren Ergebnis anschliessend weggeworfen wird.
+#
+# Ein neuer Name kann aber nur auftauchen, wenn sich an einem BASISPFAD
+# etwas getan hat: entweder ist einer aufgetaucht (die spaet angelaufene
+# USB-Platte, um die es hier geht), oder in einem ist etwas angelegt
+# worden - und das steht in seinem eigenen Zeitstempel. Das sind eine
+# Handvoll stat-Aufrufe statt sechshundert. Erst wenn sich dort etwas
+# geruehrt hat, lohnt der teure Durchgang.
+_LETZTE_BASEN = ()
+
+
+def _basen_merkmal():
+    """Welche Basispfade gibt es, und wann wurden sie zuletzt angefasst?
+
+    Eine Handvoll stat-Aufrufe - die billige Vorfrage zu
+    ordner_sind_dazugekommen(). Ein Basispfad, den es nicht gibt, faellt
+    weg; taucht er auf, ist das Merkmal allein dadurch ein anderes."""
+    merkmal = []
+    for base in fe.paths.GAMES_BASES:
+        try:
+            merkmal.append((base, int(os.path.getmtime(base))))
+        except OSError:
+            continue
+    merkmal.sort()
+    return tuple(merkmal)
+
 
 def dazu_sperre_loesen():
     """Die Selbstsperre sofort aufheben.
@@ -510,13 +550,23 @@ def ordner_sind_dazugekommen():
     jetzt = time.monotonic()
     if jetzt < _DAZU_BIS:
         return _DAZU_WERT
+    _DAZU_BIS = jetzt + DAZU_SPERRE
+    # DIE BILLIGE VORFRAGE (Build 230): hat sich an den Basispfaden
+    # ueberhaupt etwas geruehrt? Wenn nicht, kann kein Ordner
+    # dazugekommen sein - und der teure Durchgang entfaellt ganz. Siehe
+    # den Block bei _basen_merkmal(): das sind eine Handvoll
+    # stat-Aufrufe statt rund sechshundert.
+    try:
+        if _basen_merkmal() == _LETZTE_BASEN:
+            return _DAZU_WERT
+    except Exception:                                    # noqa: BLE001
+        return _DAZU_WERT
     # GEAENDERT (Build 229): hier wird nichts mehr GERECHNET, hier wird
     # nur angestossen. Der Aufrufer sitzt im Zeichenweg und bekommt die
     # zuletzt bekannte Antwort - siehe den Block bei _DAZU_FADEN.
     global _DAZU_FADEN
     with _DAZU_SPERRE_OBJ:
         if _DAZU_FADEN is None or not _DAZU_FADEN.is_alive():
-            _DAZU_BIS = jetzt + DAZU_SPERRE
             _DAZU_FADEN = _threading.Thread(target=_dazu_nachsehen,
                                             name="dragend-ordnerblick",
                                             daemon=True)
@@ -539,8 +589,12 @@ def _ordner_kennungen(sig):
 def ordner_merken(sig):
     """Festhalten, welche Ordner beim jetzt verwendeten Einlesen da
     waren - Grundlage fuer ordner_sind_dazugekommen()."""
-    global _LETZTE_ORDNER
+    global _LETZTE_ORDNER, _LETZTE_BASEN
     _LETZTE_ORDNER = _ordner_kennungen(sig)
+    # Build 230: dieselbe Momentaufnahme fuer die billige Vorfrage -
+    # beide muessen vom selben Zeitpunkt stammen, sonst vergleicht die
+    # eine Haelfte mit einem Stand, den die andere nie gesehen hat.
+    _LETZTE_BASEN = _basen_merkmal()
     # Die Vergleichsgrundlage ist eine andere - was eben gemerkt wurde,
     # war die Antwort auf eine andere Frage (Build 224).
     dazu_sperre_loesen()

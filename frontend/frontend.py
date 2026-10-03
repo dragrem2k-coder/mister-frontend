@@ -19955,6 +19955,36 @@ if __name__ == "__main__":
     # das Kategorien-Menue zum ersten Mal gezeichnet wird) auf echter
     # Hardware tatsaechlich dauert - jede weitere Optimierung waere ohne
     # diese Zahl nur Raten. Jetzt einmalig pro Start geloggt.
+    # UNBEKANNTE OPTIONEN SAGEN ES (Build 230).
+    #
+    # NUTZERMELDUNG: "python3 /media/fat/frontend/frontend.py --show der
+    # befehl startet das frontend sonst passiert garnichts". Genau so
+    # war es: alles, was nicht --bench hiess, wurde stillschweigend
+    # ignoriert und das Frontend startete normal. Wer sich vertippt oder
+    # eine Option von frueher benutzt, sitzt dann vor einem Frontend und
+    # weiss nicht, warum nichts passiert ist.
+    #
+    # Also lieber vorher und ohne Umschweife - und zwar BEVOR der
+    # Framebuffer geoeffnet wird, sonst liegt die Meldung unter dem Bild.
+    _OPTIONEN = {
+        "--bench": "eine feste, wiederholbare Messung ausgeben",
+        "--help": "diese Liste zeigen",
+        "-h": "diese Liste zeigen",
+    }
+    _unbekannt = [a for a in sys.argv[1:]
+                  if a.startswith("-") and a not in _OPTIONEN]
+    if _unbekannt or "--help" in sys.argv or "-h" in sys.argv:
+        if _unbekannt:
+            print("Unbekannte Option: %s" % " ".join(_unbekannt))
+            print("")
+        print("Dragend - Aufrufe:")
+        print("")
+        print("  frontend.py            das Frontend starten")
+        for _o in ("--bench", "--help"):
+            print("  frontend.py %-10s %s" % (_o, _OPTIONEN[_o]))
+        print("")
+        sys.exit(2 if _unbekannt else 0)
+
     _t_boot = time.monotonic()
     try:
         _fe = Frontend()
