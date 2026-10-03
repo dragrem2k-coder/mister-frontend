@@ -974,12 +974,13 @@ import ctypes as _ctypes
 # Jetzt gilt: alles von MIN bis VERSION wird genommen, und die Funktionen
 # der neueren Fassungen werden einzeln nachgefragt. Fehlt eine, rechnet
 # genau ihr Aufrufer in Python weiter, der Rest laeuft in C.
-DRAGEND_LIB_VERSION = 6
+DRAGEND_LIB_VERSION = 7
 DRAGEND_LIB_VERSION_MIN = 4
 _LIB = None
 # Was die gefundene Fassung kann - wird beim Laden gesetzt.
 _HAT_FARBEN = False
 _HAT_ZEILEN = False
+_HAT_MASKE = False
 
 
 def _lib_laden():
@@ -1048,6 +1049,20 @@ def _lib_laden():
         # Build 225: Zeilen mit ZWEI Schrittweiten (blit und text).
         # Wieder ein EIGENES try - eine 5er-Fassung hat sie nicht, und
         # sie darf weder die Bibliothek noch rechtecke_farben mitnehmen.
+        # Build 226: die Shadow Mask. Wieder ein eigenes try.
+        global _HAT_MASKE
+        _HAT_MASKE = False
+        try:
+            lib.rechtecke_maske.restype = _ctypes.c_int
+            lib.rechtecke_maske.argtypes = [
+                _ctypes.c_void_p, _ctypes.c_void_p, _ctypes.c_int,
+                _ctypes.c_int, _ctypes.c_int, _ctypes.c_void_p,
+                _ctypes.c_int, _ctypes.c_void_p, _ctypes.c_int,
+                _ctypes.c_int]
+            _HAT_MASKE = True
+        except AttributeError:
+            LOG("libdragend: Version %d ohne rechtecke_maske - keine "
+                "Lochmaske" % _v)
         global _HAT_ZEILEN
         _HAT_ZEILEN = False
         try:
@@ -1293,6 +1308,48 @@ def rechtecke_kopieren(src, dst, stride, hoehe, grenze, spuren):
             zeiger_q, zeiger_z, stride, hoehe, grenze, flach, anzahl) == 0
     except Exception:                                    # noqa: BLE001
         LOG("libdragend: Rechtecke kopieren fehlgeschlagen, nehme Python")
+        return False
+
+
+_MASKEN_FELD = {}
+
+
+def rechtecke_maske(src, dst, stride, hoehe, grenze, rechtecke, maske):
+    """Rechtecke kopieren UND dabei die Lochmaske anwenden.
+
+    `maske` ist (breite, hoehe, faktoren) - die Faktoren in Sechzehnteln
+    aus fe/masken.py. Rueckgabe True, wenn C es erledigt hat; bei False
+    hat sich NICHTS veraendert, und der Aufrufer muss ohne Maske
+    kopieren (das sieht dann aus wie vorher, nur ohne Effekt - besser
+    als ein schwarzes Bild)."""
+    if _LIB is None or not _HAT_MASKE or not rechtecke or not maske:
+        return False
+    try:
+        mb, mh, faktoren = maske[0], maske[1], maske[2]
+        anzahl = len(rechtecke)
+        flach = (_ctypes.c_int * (4 * anzahl))()
+        i = 0
+        for x, y, w, h in rechtecke:
+            flach[i] = x; flach[i + 1] = y
+            flach[i + 2] = w; flach[i + 3] = h
+            i += 4
+        # Die Faktorentabelle aendert sich nur beim Umschalten der
+        # Maske - sie wird deshalb gemerkt und nicht je Bild neu
+        # gebaut (dieselbe Ueberlegung wie bei _FELDER in Build 221).
+        schluessel = id(faktoren)
+        feld = _MASKEN_FELD.get(schluessel)
+        if feld is None or feld[0] is not faktoren:
+            tab = (_ctypes.c_int * len(faktoren))(*faktoren)
+            feld = (faktoren, tab)
+            _MASKEN_FELD.clear()
+            _MASKEN_FELD[schluessel] = feld
+        _halt_q, zeiger_q = _roh_zeiger(src)
+        _halt_z, zeiger_z = _roh_zeiger(dst)
+        return _LIB.rechtecke_maske(zeiger_q, zeiger_z, stride, hoehe,
+                                    grenze, flach, anzahl, feld[1],
+                                    mb, mh) == 0
+    except Exception:                                    # noqa: BLE001
+        LOG("libdragend: Maske fehlgeschlagen, kopiere ohne")
         return False
 
 

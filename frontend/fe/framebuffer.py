@@ -932,10 +932,21 @@ class Framebuffer:
         # Python-Rahmen faellt je Probe an, nicht je Byte. Genau daran
         # ist der Versuch gescheitert, das nach C zu holen; die Messung
         # steht in c/dragend.c.
+        # MIT MASKE IST DER SCHIRM NICHT MEHR DER PUFFER (Build 226).
+        # Beide Waechter vergleichen byteweise gegen diese Proben - und
+        # auf dem Schirm steht Puffer MAL Maske. Gemerkt wird deshalb,
+        # was tatsaechlich dort steht, sonst meldete der Waechter bei
+        # eingeschalteter Maske in jedem Bild "das ist nicht mehr unser
+        # Bild" und kopierte alles neu.
+        #
+        # Das Lesen aus dem Bildspeicher kostet etwa das Doppelte des
+        # Puffers (Abschnitt F) - das faellt nur an, wenn eine Maske
+        # laeuft, und nur beim Auffrischen der Proben, nicht je Schritt.
+        quelle = self.mm if self.maske is not None else buf
         for i, off in enumerate(self._waechter_offsets):
             if off < a0 or off + zb > a1:
                 continue
-            soll[i * zb:(i + 1) * zb] = buf[off:off + zb]
+            soll[i * zb:(i + 1) * zb] = quelle[off:off + zb]
             gueltig[i] = True
 
     def _waechter_pruefen(self):
@@ -1056,10 +1067,13 @@ class Framebuffer:
         if y1 is None:
             y1 = self.height
         zl = self.stride
+        # Siehe _waechter_merken(): mit Maske steht auf dem Schirm
+        # Puffer MAL Maske, und genau das muss die Probe sein.
+        quelle = self.mm if self.maske is not None else self.buf
         for i, z in enumerate(self._rueck_offsets):
             if y0 <= z < y1:
                 a = z * zl
-                proben[i] = bytes(self.buf[a:a + zl])
+                proben[i] = bytes(quelle[a:a + zl])
 
     def _map_ueber_dev_mem(self):
         """Die physische Adresse des Bildspeichers direkt einblenden.
@@ -2187,7 +2201,10 @@ class Framebuffer:
         else:
             # Direkte Slice-Zuweisung: mmap nimmt das bytearray ohne die
             # teure bytes()-Zwischenkopie (auf 1080p ~8 MB pro Frame).
-            self.mm[:] = self.buf
+            # Mit Maske geht es ueber C, sonst waere das Vollbild die
+            # einzige Stelle ohne Effekt (Build 226).
+            if not self._maske_kopieren(((0, 0, self.width, self.height),)):
+                self.mm[:] = self.buf
         # BUILD 198: ein Vollbild schreibt ohnehin alles - hier ist
         # nichts zu pruefen und nichts zu reparieren, nur der Sollwert
         # des Waechters gehoert aufgefrischt. Ohne das meldete der
@@ -2272,7 +2289,9 @@ class Framebuffer:
             if jetzt - self._waechter_letzte >= self.WAECHTER_TAKT:
                 self._waechter_letzte = jetzt
                 self._waechter_repariert += 1
-                self.mm[:] = self.buf
+                if not self._maske_kopieren(
+                        ((0, 0, self.width, self.height),)):
+                    self.mm[:] = self.buf
                 self._waechter_merken()
                 if self._rueck_proben is not None:
                     self._rueckleser_merken()
@@ -2326,7 +2345,10 @@ class Framebuffer:
         if mvm is None or mvb is None:
             mvm = self._mv_mm = memoryview(self.mm)
             mvb = self._mv_buf = memoryview(self.buf)
-        mvm[off:end] = mvb[off:end]
+        # Mit Maske als EIN Rechteck ueber die volle Breite - sonst
+        # waere das Band der eine Weg ohne Effekt (Build 226).
+        if not self._maske_kopieren(((0, y0, self.width, y1 - y0),)):
+            mvm[off:end] = mvb[off:end]
         if self._waechter_an:
             self._waechter_merken(y0, y1)
         if self._rueck_proben is not None:
@@ -2361,6 +2383,19 @@ class Framebuffer:
     # None, laufen die Python-Schleifen darunter - und die sind
     # gleichzeitig das Vergleichsmass der Tests.
     flaechen_fueller = None
+
+    # DIE LOCHMASKE (Build 226) - MiSTers eigene Shadow Masks, angewandt
+    # auf unser Bild. `maske` ist (breite, hoehe, faktoren) aus
+    # fe/masken.py, `masken_kopierer` wird von frontend.py auf
+    # fe.art.rechtecke_maske gesetzt. Beides None heisst "ohne Maske",
+    # und das ist die Vorgabe.
+    #
+    # ANGEWANDT WIRD SIE AUF DEM WEG ZUM BILDSPEICHER, nicht im Puffer:
+    # der Puffer muss sauber bleiben, sonst legte der naechste
+    # Teilaufbau die Maske ein zweites Mal darueber und das Bild wuerde
+    # mit jedem Scrollschritt dunkler.
+    maske = None
+    masken_kopierer = None
 
     # WANN DER SPRUNG NACH C SICH LOHNT - und das sind ZWEI Fragen, nicht
     # eine. Beide Zahlen sind gemessen (Abschnitt I Teil 3 des Benchs und
@@ -2479,6 +2514,20 @@ class Framebuffer:
         aber auch das Bild verkehrt, und das faellt sofort auf."""
         return struct.unpack("<I", pixel)[0]
 
+    def _maske_kopieren(self, rechtecke):
+        """Rechtecke MIT Maske in den Bildspeicher. True, wenn erledigt.
+
+        False heisst "ohne Maske weiterkopieren" - lieber ein Bild ohne
+        Effekt als gar keines."""
+        if self.maske is None or self.masken_kopierer is None:
+            return False
+        try:
+            return bool(self.masken_kopierer(
+                self.buf, self.mm, self.stride, self.height, self.size,
+                rechtecke, self.maske))
+        except Exception:                                # noqa: BLE001
+            return False
+
     def flip_rechtecke(self, rechtecke, skip_vsync=False):
         """Nur die angefassten RECHTECKE auf den Schirm bringen.
 
@@ -2540,7 +2589,9 @@ class Framebuffer:
             if jetzt - self._waechter_letzte >= self.WAECHTER_TAKT:
                 self._waechter_letzte = jetzt
                 self._waechter_repariert += 1
-                self.mm[:] = self.buf
+                if not self._maske_kopieren(
+                        ((0, 0, self.width, self.height),)):
+                    self.mm[:] = self.buf
                 self._waechter_merken()
                 if self._rueck_proben is not None:
                     self._rueckleser_merken()
@@ -2553,8 +2604,8 @@ class Framebuffer:
                 self.flip_event.set()
                 return self.size
         kop = self.rechteck_kopierer
-        erledigt = False
-        if kop is not None:
+        erledigt = self._maske_kopieren(fertig)
+        if not erledigt and kop is not None:
             try:
                 erledigt = bool(kop(self.buf, self.mm, self.stride,
                                     self.height, self.size, fertig))

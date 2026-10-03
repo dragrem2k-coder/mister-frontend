@@ -37,6 +37,7 @@ from fe.settings import (
     autostart_enabled, rom_filter_enabled, einzelordner_aufloesen,
     scharf_verkleinern,
     schrift_lesen, SCHRIFT_OSD,
+    maske_lesen, maske_an,
 )
 from fe.timekeeping import format_timezone_offset, load_timezone_offset
 import fe.mister_system as MSYS
@@ -248,6 +249,18 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     # der MiSTer.ini steht, steht hier als "wie im OSD" an zweiter
     # Stelle. Mitgeliefert wird keine einzige - siehe schrift_lesen()
     # in fe/settings.py.
+    # Build 226: die Lochmaske. Eigener Eintrag mit eigener Seite -
+    # bei ueber tausend Masken in MiSTers Sammlung waere ein
+    # Durchschalten mit links/rechts keine Auswahl, sondern eine Strafe.
+    _maske = maske_lesen()
+    if not maske_an():
+        masken_label = t("sys_maske", t("sys_maske_aus"))
+    elif not _maske:
+        masken_label = t("sys_maske", t("sys_maske_keine"))
+    else:
+        _mk = _maske.rsplit("/", 1)[-1]
+        masken_label = t("sys_maske",
+                         _mk[:-4] if _mk.lower().endswith(".txt") else _mk)
     _schrift = schrift_lesen()
     if not _schrift:
         schrift_label = t("sys_schrift", t("sys_schrift_eigen"))
@@ -329,6 +342,7 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         (cover_sofort_label, "cover_sofort", None),
         (scharf_label, "scharf_verkleinern", None),
         (schrift_label, "schrift", None),
+        (masken_label, "masken", None),
         # NEU (Build 113): Bildrand. Steht direkt bei den anderen
         # Anzeige-Punkten; wer eine Roehre hat, sucht genau hier.
         # NEU (Build 122): Ansicht der Spieleliste. Steht direkt

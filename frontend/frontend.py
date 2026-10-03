@@ -312,6 +312,7 @@ from fe.settings import (
     ANSICHTEN, ansicht_lesen, ansicht_schreiben,
     ansicht_haupt_lesen, ansicht_haupt_schreiben,
     schrift_lesen, schrift_weiter, schrift_pfad, schrift_auswahl,
+    maske_lesen, maske_schreiben, maske_an, toggle_maske, maske_pfad,
     fremdquellen_enabled, toggle_fremdquellen,
     FAST_SCROLL_WINDOW, pulse_effect_enabled, toggle_pulse_effect,
     CRT_CONFIRM_TIMEOUT, crt_pending_confirm, mark_crt_pending_confirm,
@@ -1159,6 +1160,7 @@ apply_theme(current_theme_name())   # beim Laden des Moduls sofort anwenden
 # FRAMEBUFFER (siehe fe/framebuffer.py - Zeichen-Grundfunktionen +
 # 8x8-Bitmap-Font komplett ausgelagert)
 # ----------------------------------------------------------------------------
+import fe.masken as MASKEN
 from fe.framebuffer import (FBDEV, Framebuffer,
                             schrift_laden as fb_schrift_laden)
 
@@ -1200,6 +1202,7 @@ from fe.art import (
     rechtecke_kopieren as _c_rechtecke_kopieren,
     rechtecke_farben as _c_rechtecke_farben,
     zeilen_kopieren as _c_zeilen_kopieren,
+    rechtecke_maske as _c_rechtecke_maske,
     fremd_zaehlen as _c_fremd_zaehlen,
     quelldaten_vergessen, negativ_vergessen, marken_nachziehen,
     verkleinern_modus_vergessen,
@@ -1219,6 +1222,33 @@ from fe.art import (
 # gleich gerasterten Puffern, und der Bildspeicher ist genauso gerastert
 # wie der Puffer. Bleibt der Haken ungesetzt (libdragend fehlt), laeuft
 # der Python-Weg in flip_rechtecke().
+def maske_pfad_oder_leer():
+    """Der Pfad der aktiven Maske, oder "" - fuer maske_anwenden()."""
+    p = maske_pfad()
+    return p or ""
+
+
+def maske_anwenden(fb, pfad_oder_rel):
+    """Die Maske laden und einschalten (Build 226).
+
+    pfad_oder_rel ist entweder ein voller Pfad, ein Pfad relativ zu
+    /media/fat/Shadow_Masks, oder "" fuer keine Maske. Faellt die Datei
+    aus, wird ohne Maske gezeichnet - ohne Meldung im Bild, mit einer
+    Zeile im Log. Eine Maskendatei ist Zubehoer.
+
+    Die Bildhoehe wird mitgegeben: eine Maskendatei kann mehrere Muster
+    fuer verschiedene Hoehen enthalten (siehe fe/masken.py)."""
+    if not pfad_oder_rel:
+        fb.maske = None
+        return False
+    pfad = pfad_oder_rel
+    if not os.path.isabs(pfad):
+        pfad = os.path.join(MASKEN.MASKEN_DIR, pfad)
+    m = MASKEN.maske_fuer(pfad, fb.height)
+    fb.maske = (m[0], m[1], m[2]) if m else None
+    return fb.maske is not None
+
+
 def schrift_anwenden(fb):
     """Die eingestellte Schrift laden und einschalten (Build 223).
 
@@ -1351,6 +1381,10 @@ class Frontend:
         # (fe.log), und die Einstellungen gehoeren nicht dazu - siehe
         # den Kommentar bei rechteck_kopierer.
         schrift_anwenden(self.fb)
+        # Build 226: die Lochmaske, falls eine gewaehlt und nicht
+        # abgeschaltet ist.
+        Framebuffer.masken_kopierer = staticmethod(_c_rechtecke_maske)
+        maske_anwenden(self.fb, maske_pfad_oder_leer())
         self.inp = InputManager()
         self._startmarke("Framebuffer und Eingaben offen")
         # WICHTIG: Erst auf unseren eigenen Bildschirm umschalten (F9),
@@ -13047,6 +13081,117 @@ class Frontend:
         self._force_full_redraw = True
         self.draw()
 
+    def masken_bildschirm(self):
+        """MiSTers Lochmasken waehlen (Build 226).
+
+        Derselbe modale Aufbau wie bei den Cores und beim
+        Farbschema-Editor - siehe dort.
+
+        WAS HIER DER KNIFF IST: die Maske wirkt SOFORT. Sie liegt auf
+        dem Weg zum Bildspeicher, also zeigt schon dieser Bildschirm,
+        was man auswaehlt - samt der Farbverlaufsleiste unten, an der
+        man eine Lochmaske am ehesten beurteilen kann. Eine Maske nach
+        Dateinamen auszuwaehlen und erst danach zu sehen, waere Raten.
+
+        GELIEFERT WIRD KEINE EINZIGE. Gelesen wird, was in
+        /media/fat/Shadow_Masks liegt - MiSTers eigene Sammlung, auf
+        der Karte des Nutzers. Dieselbe Haltung wie bei den Schriften
+        aus Build 223."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        ox, oy = 12 * s, 10 * s
+        dateien = MASKEN.masken_dateien()
+        if not dateien:
+            self._force_full_redraw = True
+            self.draw(message=t("masken_leer"))
+            return
+        # "keine" steht vorn - der Weg zurueck muss derselbe sein wie
+        # der hinein.
+        kette = [(t("masken_keine"), "")] + [
+            (name, os.path.relpath(pfad, MASKEN.MASKEN_DIR))
+            for name, pfad in dateien]
+        jetzt = maske_lesen()
+        zeile = 0
+        for i, (_n, rel) in enumerate(kette):
+            if rel == jetzt:
+                zeile = i
+                break
+        _alte_maske = fb.maske
+        _alte_wahl = jetzt
+        an = maske_an()
+        try:
+            while True:
+                maske_anwenden(fb, kette[zeile][1] if an else "")
+                fb.clear(C_BG)
+                fb.text(ox, oy, t("masken_titel"), 2 * s, C_TITLE)
+                y = oy + 30 * s
+                breite = W - 2 * ox
+                platz = max(1, (H - oy - y - 60 * s) // (17 * s))
+                erste = max(0, min(zeile - platz // 2, len(kette) - platz))
+                for i in range(erste, min(erste + platz, len(kette))):
+                    name = kette[i][0]
+                    markiert = (i == zeile)
+                    if markiert:
+                        fb.rect_rounded(ox - 2 * s, y - 3 * s,
+                                        breite + 4 * s, 15 * s, C_PANEL)
+                    maxz = max(10, breite // (8 * s) - 2)
+                    # Von LINKS kuerzen: die Sammlung legt die Masken in
+                    # Unterordnern ab, und der unterscheidende Teil
+                    # steht hinten.
+                    kurz = name if len(name) <= maxz else "~" + name[-(maxz - 1):]
+                    fb.text(ox + 2 * s, y, kurz, s,
+                            C_TITLE if markiert else C_TEXT)
+                    y += 17 * s
+
+                # DIE VORSCHAU: ein Verlauf von schwarz nach weiss plus
+                # drei Farbbalken. An einem Verlauf sieht man, was eine
+                # Maske mit dunklen und hellen Flaechen macht; an den
+                # Farbbalken, was sie mit den Kanaelen macht.
+                vy = H - oy - 46 * s
+                vh = 20 * s
+                stufen = max(8, breite // (4 * s))
+                for k in range(stufen):
+                    w = breite // stufen
+                    g = int(255 * k / max(1, stufen - 1))
+                    fb.rect(ox + k * w, vy, w + 1, vh, (g, g, g))
+                vy += vh + 2 * s
+                for k, farbe in enumerate(((220, 40, 40), (40, 220, 40),
+                                           (40, 40, 220))):
+                    w = breite // 3
+                    fb.rect(ox + k * w, vy, w, 10 * s, farbe)
+
+                zustand = t("masken_an") if an else t("masken_aus")
+                fb.text(ox, H - oy - 13 * s,
+                        "%s   %s" % (zustand, t("masken_hinweis")), s, C_DIM)
+                fb.flip()
+
+                akt = self.inp.read_action(timeout=1.0)
+                if akt is None:
+                    continue
+                if akt == "up":
+                    zeile = (zeile - 1) % len(kette)
+                elif akt == "down":
+                    zeile = (zeile + 1) % len(kette)
+                elif akt in ("left", "right"):
+                    # Links/rechts schaltet den Effekt an und aus, ohne
+                    # die Auswahl zu verlieren - genau das hat der
+                    # Nutzer verlangt.
+                    an = not an
+                elif akt in ("back", "exit", "select", "ok"):
+                    break
+        finally:
+            fb.maske = _alte_maske
+        neu = kette[zeile][1]
+        if neu != _alte_wahl:
+            maske_schreiben(neu)
+        if an != maske_an():
+            toggle_maske()
+        maske_anwenden(fb, maske_pfad_oder_leer())
+        self._force_full_redraw = True
+        self.draw(t("masken_gewaehlt", kette[zeile][0]) if neu
+                  else t("masken_keine_gewaehlt"))
+
     def theme_editor(self):
         """Der Farbschema-Editor (Build 172).
 
@@ -18238,6 +18383,15 @@ class Frontend:
                             self._refresh_system_category()
                             self.fb._rowcache.clear()
                             self.fb._rectcache.clear()
+                        elif kind == "masken":
+                            try:
+                                self.masken_bildschirm()
+                            except Exception:            # noqa: BLE001
+                                LOG("masken_bildschirm CRASH:\n"
+                                    + traceback.format_exc())
+                                self.fb.maske = None
+                                self._force_full_redraw = True
+                                self.draw()
                         elif kind == "schrift":
                             # Build 223. Die Schrift wechselt sofort -
                             # und mit ihr muessen die Zeichen-

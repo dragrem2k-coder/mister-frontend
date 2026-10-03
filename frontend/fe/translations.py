@@ -950,6 +950,31 @@ TRANSLATIONS = {
         "de": "Keine Schriften in /media/fat/font gefunden - MiSTer "
               "bringt eigene mit, und was dort liegt, steht hier zur "
               "Wahl."},
+    "sys_maske": {
+        "en": "Shadow mask: %s",
+        "de": "Lochmaske: %s"},
+    "sys_maske_aus": {"en": "off", "de": "aus"},
+    "sys_maske_keine": {"en": "none chosen", "de": "keine gewaehlt"},
+    "masken_titel": {"en": "Shadow mask", "de": "Lochmaske"},
+    "masken_keine": {"en": "none", "de": "keine"},
+    "masken_an": {"en": "Effect: ON", "de": "Effekt: AN"},
+    "masken_aus": {"en": "Effect: OFF", "de": "Effekt: AUS"},
+    "masken_hinweis": {
+        "en": "up/down choose, left/right on/off, OK keeps it",
+        "de": "hoch/runter waehlen, links/rechts an/aus, OK uebernimmt"},
+    "masken_leer": {
+        "en": "No shadow masks found in /media/fat/Shadow_Masks - MiSTer "
+              "brings its own, install them with update_all.",
+        "de": "Keine Lochmasken in /media/fat/Shadow_Masks gefunden - "
+              "MiSTer bringt eigene mit, zu holen ueber update_all."},
+    "masken_gewaehlt": {
+        "en": "Shadow mask: %s. It is applied to Dragend's own picture, "
+              "not to the games.",
+        "de": "Lochmaske: %s. Sie liegt auf Dragends eigenem Bild, nicht "
+              "auf den Spielen."},
+    "masken_keine_gewaehlt": {
+        "en": "Shadow mask off.",
+        "de": "Lochmaske aus."},
     "sys_cores": {
         "en": "Cores: choose a version per system",
         "de": "Cores: Fassung je System waehlen"},

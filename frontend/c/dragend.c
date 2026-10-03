@@ -229,6 +229,158 @@ int rechtecke_kopieren(const unsigned char *src, unsigned char *dst,
 }
 
 /* ------------------------------------------------------------------
+ * SHADOW MASK (Build 226)
+ * ------------------------------------------------------------------
+ * MiSTers eigene Lochmasken, angewandt auf UNSER Bild. Die Muster
+ * liegen als Textdateien auf der Karte des Nutzers (siehe
+ * fe/masken.py); hier kommt nur noch die fertige Faktorentabelle an:
+ * je Zelle drei Zahlen in SECHZEHNTELN, also 16 = unveraendert,
+ * 32 = doppelt so hell, 0 = aus.
+ *
+ * WARUM DAS BEIM KOPIEREN PASSIERT UND NICHT DANACH: der Puffer muss
+ * sauber bleiben. Wuerde die Maske dort hineingerechnet, legte der
+ * naechste Teilaufbau sie ein zweites Mal darueber, und das Bild
+ * wuerde mit jedem Scrollschritt dunkler. Auf dem Weg zum Bildspeicher
+ * angewandt stimmt es immer: der Schirm ist Puffer mal Maske, egal wie
+ * oft und in welchen Stuecken kopiert wird.
+ *
+ * UND DESHALB ZAEHLT DIE ABSOLUTE POSITION. Das Muster wird an der
+ * Bildschirmkoordinate ausgerichtet (x % breite, y % hoehe), nicht am
+ * Rechteck - sonst saesse es in jedem Teilstueck woanders und das Bild
+ * zerfiele in sichtbare Kacheln.
+ *
+ * Die Reihenfolge im Speicher ist BGRA (siehe fb.px), die Tabelle
+ * steht als R,G,B - das wird hier umgedreht und nicht dort, damit die
+ * Tabelle so aussieht wie die Datei.
+ */
+/* EINE TABELLE STATT EINER MULTIPLIKATION JE KANAL (Build 226).
+ *
+ * Der erste Entwurf hat je Bildpunkt dreimal multipliziert, geschoben
+ * und geklemmt. Gemessen kostete das auf dem Entwicklungsrechner das
+ * NEUNFACHE einer blossen Kopie (7,9 MB: 0,68 -> 5,88 ms), und auf dem
+ * DE10-Nano waere es ein Vielfaches davon - mehr, als die ganze
+ * Scroll-Arbeit der letzten zehn Builds eingespart hat.
+ *
+ * Es gibt nur 32 moegliche Faktoren (0/16 bis 31/16) und 256 moegliche
+ * Werte. Die ganze Rechnung passt also in 8 kB, die einmal je Aufruf
+ * gefuellt werden - 8192 Schritte gegen Millionen Bildpunkte. Danach
+ * ist der innere Rumpf ein Tabellenzugriff, und das Klemmen steckt
+ * schon darin.
+ */
+#define MASKE_FAKTOREN 32
+
+static void _maskentabelle(unsigned char tab[MASKE_FAKTOREN][256])
+{
+    int f, v;
+    for (f = 0; f < MASKE_FAKTOREN; f++) {
+        for (v = 0; v < 256; v++) {
+            int w = (v * f) >> 4;
+            tab[f][v] = (unsigned char)(w > 255 ? 255 : w);
+        }
+    }
+}
+
+int rechtecke_maske(const unsigned char *src, unsigned char *dst,
+                    int stride, int hoehe, int grenze,
+                    const int *rechtecke, int anzahl,
+                    const int *maske, int mb, int mh)
+{
+    int i;
+    static unsigned char tab[MASKE_FAKTOREN][256];
+    static int tab_fertig = 0;
+    if (!src || !dst || !maske || stride <= 0 || anzahl < 0) return -1;
+    if (mb <= 0 || mh <= 0 || mb > 64 || mh > 64) return -1;
+    /* Die Tabelle haengt an nichts ausser den Zahlen 0..31 und 0..255 -
+     * sie wird deshalb genau einmal gefuellt und nicht je Aufruf. */
+    if (!tab_fertig) {
+        _maskentabelle(tab);
+        tab_fertig = 1;
+    }
+    /* Ein Faktor ausserhalb 0..31 waere ein Lesefehler in fe/masken.py -
+     * hier wird er abgewiesen, nicht stillschweigend verbogen. */
+    for (i = 0; i < mb * mh * 3; i++) {
+        if (maske[i] < 0 || maske[i] >= MASKE_FAKTOREN) return -1;
+    }
+    for (i = 0; i < anzahl; i++) {
+        int x = rechtecke[i * 4 + 0];
+        int y = rechtecke[i * 4 + 1];
+        int w = rechtecke[i * 4 + 2];
+        int h = rechtecke[i * 4 + 3];
+        int need = w * 4;
+        int y0, y1, max_rows, r;
+
+        if (x < 0 || need <= 0) continue;
+        y0 = y > 0 ? y : 0;
+        y1 = (y + h) < hoehe ? (y + h) : hoehe;
+        if (y1 <= y0) continue;
+        max_rows = abrunden_div(grenze - (x * 4) - need, stride) + 1;
+        if (max_rows < y1) y1 = (max_rows > y0) ? max_rows : y0;
+        if (y1 <= y0) continue;
+
+        for (r = y0; r < y1; r++) {
+            int off = r * stride + x * 4;
+            const int *zeile = maske + ((r % mh) * mb) * 3;
+            int sp = x % mb;
+            int c;
+            /* EINE ZEILE, EIN FAKTOR - der haeufigste Fall.
+             *
+             * Scanline-Masken sind eine Spalte breit, und auch sonst
+             * sind in vielen Mustern alle Zellen einer Zeile gleich.
+             * Dann faellt das Weiterzaehlen der Musterspalte weg und
+             * der Rumpf wird zu drei Tabellenzugriffen in einer
+             * Schleife, die der Uebersetzer ausrollen kann. */
+            int gleich = 1;
+            {
+                int k;
+                for (k = 1; k < mb; k++) {
+                    if (zeile[k * 3 + 0] != zeile[0]
+                            || zeile[k * 3 + 1] != zeile[1]
+                            || zeile[k * 3 + 2] != zeile[2]) {
+                        gleich = 0;
+                        break;
+                    }
+                }
+            }
+            if (gleich && zeile[0] == 16 && zeile[1] == 16
+                    && zeile[2] == 16) {
+                /* Diese Bildzeile laesst die Maske in Ruhe - dann ist
+                 * es eine gewoehnliche Kopie. Bei Scanline-Masken ist
+                 * das jede zweite Zeile, also die halbe Arbeit. */
+                memcpy(dst + off, src + off, (size_t)need);
+                continue;
+            }
+            if (gleich) {
+                const unsigned char *tb = tab[zeile[2]];
+                const unsigned char *tg = tab[zeile[1]];
+                const unsigned char *tr = tab[zeile[0]];
+                for (c = 0; c < w; c++) {
+                    dst[off + 0] = tb[src[off + 0]];
+                    dst[off + 1] = tg[src[off + 1]];
+                    dst[off + 2] = tr[src[off + 2]];
+                    dst[off + 3] = src[off + 3];
+                    off += 4;
+                }
+                continue;
+            }
+            for (c = 0; c < w; c++) {
+                const int *f = zeile + sp * 3;
+                /* BGRA im Speicher, die Tabelle ist R,G,B */
+                const unsigned char *tb = tab[f[2]];
+                const unsigned char *tg = tab[f[1]];
+                const unsigned char *tr = tab[f[0]];
+                dst[off + 0] = tb[src[off + 0]];
+                dst[off + 1] = tg[src[off + 1]];
+                dst[off + 2] = tr[src[off + 2]];
+                dst[off + 3] = src[off + 3];
+                off += 4;
+                if (++sp >= mb) sp = 0;
+            }
+        }
+    }
+    return 0;
+}
+
+/* ------------------------------------------------------------------
  * ZEILEN MIT ZWEI SCHRITTWEITEN (Build 225)
  * ------------------------------------------------------------------
  * rechtecke_kopieren() oben kann nur Puffer mit DERSELBEN Schrittweite
@@ -354,7 +506,7 @@ int skalieren_nearest(const unsigned char *pix, int w, int h,
  * voll genutzt, nur rechtecke_farben() fehlt dann und die betroffenen
  * Zeichenwege rechnen in Python. Das ist der Unterschied zwischen
  * "etwas langsamer" und "alles langsam". */
-int dragend_version(void) { return 6; }
+int dragend_version(void) { return 7; }
 
 /* ------------------------------------------------------------------
  * FLAECHEN FUELLEN (Build 219)

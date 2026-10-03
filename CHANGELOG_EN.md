@@ -352,6 +352,31 @@ exactly why nothing here was built twice.
 - Text follows in the next build — it needs the same function but a change
   to the text cache, and that deserves care.
 
+**MiSTer's shadow masks now sit on Dragend's own picture.**
+
+- System menu → **Shadow mask**. Its own page, because MiSTer's collection
+  holds over a thousand of them — stepping through that with left/right
+  would be a punishment, not a choice. Up/down selects, **left/right turns
+  the effect on and off without losing your selection**, OK keeps it.
+- The mask takes effect **immediately on that page**, with a grey ramp and
+  three colour bars as a preview. Picking a mask by filename and only then
+  seeing it would be guesswork.
+- **Not one is shipped.** Only what sits in `/media/fat/Shadow_Masks` is
+  read — MiSTer's own collection, on your card. A test walks the whole
+  package and reports any mask file that sneaks in.
+- Reading them held a surprise: one file can contain **several patterns** for
+  different screen heights. The first attempt knew only the first one and
+  discarded 106 of 1207 files — precisely the elaborate ones (Sony PVM,
+  Commodore 1084). Now **1207 of 1207** are read.
+- **What it costs is stated here and measured.** The first attempt multiplied
+  per pixel — a factor of nine over a plain copy. With a lookup table instead
+  of multiplication, and a separate path for uniform pattern rows (with
+  scanlines every second row is neutral, i.e. an ordinary copy), a scroll
+  step costs **+0.7 to +1.6 ms** here with a fine pattern and **+0.2 to
+  +0.4 ms** with scanlines. On the DE10-Nano per-pixel work is dearer —
+  that is what the switch is for.
+
+
 
 
 

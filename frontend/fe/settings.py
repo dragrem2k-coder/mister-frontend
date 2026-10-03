@@ -1813,6 +1813,87 @@ def schrift_weiter(rueckwaerts=False):
     return schrift_schreiben(werte[idx])
 
 
+# ===========================================================================
+# DIE LOCHMASKE (Build 226)
+# ===========================================================================
+#
+# MiSTers eigene Shadow Masks, angewandt auf UNSER Bild. Dieselbe
+# Haltung wie bei den Schriften: die Dateien liegen in
+# /media/fat/Shadow_Masks auf der Karte des Nutzers, wir lesen sie nur
+# und liefern keine einzige mit.
+#
+# ZWEI EINSTELLUNGEN, und das ist Absicht - der Nutzer hat ausdruecklich
+# "Auswahl UND an/aus Schalter" gewuenscht. Wer die Maske kurz abschaltet,
+# soll seine Auswahl nicht verlieren und sie nicht wieder heraussuchen
+# muessen.
+MASKE_FILE = "/media/fat/frontend/maske"
+MASKE_AUS_FLAG = "/media/fat/frontend/maske_aus"
+
+
+def maske_lesen():
+    """Die gewaehlte Maskendatei (Pfad relativ zu /media/fat/Shadow_Masks)
+    oder "" fuer keine."""
+    def _lesen():
+        try:
+            return open(MASKE_FILE).read().strip()
+        except OSError:
+            return ""
+    return _hole(("maske", MASKE_FILE), _lesen)
+
+
+@_nach_aenderung
+def maske_schreiben(wert):
+    wert = (wert or "").strip()
+    try:
+        d = os.path.dirname(MASKE_FILE)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        with open(MASKE_FILE, "w") as f:
+            f.write(wert)
+    except OSError as e:
+        LOG("maske_schreiben: %s" % e)
+    return wert
+
+
+def maske_an():
+    """Der Schalter - unabhaengig von der Auswahl. Standard AN, damit
+    eine gewaehlte Maske auch wirkt; ohne Auswahl passiert ohnehin
+    nichts."""
+    return not _hole(("maske_aus", MASKE_AUS_FLAG),
+                     lambda: os.path.exists(MASKE_AUS_FLAG))
+
+
+@_nach_aenderung
+def toggle_maske():
+    if maske_an():
+        try:
+            d = os.path.dirname(MASKE_AUS_FLAG)
+            if d:
+                os.makedirs(d, exist_ok=True)
+            open(MASKE_AUS_FLAG, "w").close()
+        except OSError:
+            pass
+    else:
+        try:
+            os.remove(MASKE_AUS_FLAG)
+        except OSError:
+            pass
+    return maske_an()
+
+
+def maske_pfad():
+    """Vollpfad der aktiven Maske - oder None (keine gewaehlt oder
+    abgeschaltet)."""
+    if not maske_an():
+        return None
+    wert = maske_lesen()
+    if not wert:
+        return None
+    if os.path.isabs(wert):
+        return wert
+    return os.path.join("/media/fat/Shadow_Masks", wert)
+
+
 def ansicht_weiter():
     """Eine Ansicht weiterschalten (rundum). Liefert die neue."""
     jetzt = ansicht_lesen()

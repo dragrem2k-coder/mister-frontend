@@ -373,6 +373,32 @@ Millisekunde.**
 - Der Text folgt im nächsten Build — er braucht dieselbe Funktion, aber eine
   Umstellung am Textspeicher, und die will sorgfältig gemacht werden.
 
+**MiSTers Lochmasken liegen jetzt auf Dragends Bild.**
+
+- Systemmenü → **Lochmaske**. Eigene Seite, denn MiSTers Sammlung hat über
+  tausend Masken — mit links/rechts durchzuschalten wäre keine Auswahl,
+  sondern eine Strafe. Hoch/runter wählt, **links/rechts schaltet den Effekt
+  an und aus, ohne die Auswahl zu verlieren**, OK übernimmt.
+- Die Maske wirkt **sofort auf dieser Seite**, samt Graukeil und drei
+  Farbbalken als Vorschau. Eine Maske nach Dateinamen auszuwählen und erst
+  danach zu sehen, wäre Raten.
+- **Mitgeliefert wird keine einzige.** Gelesen wird, was in
+  `/media/fat/Shadow_Masks` liegt — MiSTers eigene Sammlung, auf deiner
+  Karte. Ein Test geht das ganze Paket durch und meldet jede Maskendatei,
+  die sich einschleicht.
+- Beim Lesen gab es eine Überraschung: eine Datei kann **mehrere Muster** für
+  verschiedene Bildhöhen enthalten. Der erste Entwurf kannte nur das erste
+  und warf 106 von 1207 Dateien weg — ausgerechnet die aufwendigsten (Sony
+  PVM, Commodore 1084). Jetzt werden **1207 von 1207** gelesen.
+- **Was es kostet, steht hier und ist gemessen.** Der erste Entwurf
+  multiplizierte je Bildpunkt — Faktor neun gegenüber einer bloßen Kopie.
+  Mit einer Tabelle statt Multiplikation und einem eigenen Weg für
+  gleichförmige Musterzeilen (bei Scanlines ist jede zweite Zeile neutral,
+  also eine normale Kopie) kostet ein Scrollschritt hier **+0,7 bis +1,6 ms**
+  mit einem feinen Muster und **+0,2 bis +0,4 ms** mit Scanlines. Auf dem
+  DE10-Nano ist Rechnen je Bildpunkt teurer — dafür ist der Schalter da.
+
+
 
 
 

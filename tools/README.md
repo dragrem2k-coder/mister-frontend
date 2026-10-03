@@ -1098,6 +1098,37 @@ den Roehrenmodus, mit Sicherungskopie). Die Schriftwahl des Nutzers
 fassen wir nicht an - der Test vergleicht die Datei danach byteweise.
 
 
+## test_masken.py
+
+MiSTers Lochmasken im Frontend (Build 226).
+
+Die Dateien liegen in `/media/fat/Shadow_Masks` auf der Karte des
+Nutzers - wir lesen sie nur. **Test 6 geht das ganze Paket durch und
+meldet jede Maskendatei, die sich einschleicht.** Ein Test ist hier
+verlaesslicher als ein Vorsatz, genau wie bei den Schriften.
+
+**Test 2 ist der, den die Wirklichkeit erzwungen hat.** Eine Maskendatei
+kann MEHRERE Muster enthalten, je eines fuer eine Bildhoehe - 106 von
+1207 Dateien der echten Sammlung tun das. Der erste Leser kannte nur den
+ersten Block und warf ausgerechnet die aufwendigsten Masken weg (Sony
+PVM, Commodore 1084, Mitsubishi Megaview).
+
+**Test 4 prueft die Phase.** Das Muster richtet sich an der absoluten
+Bildschirmposition aus, nicht an der Ecke des kopierten Rechtecks -
+sonst saesse es in jedem Teilstueck woanders und das Bild zerfiele beim
+Scrollen in sichtbare Kacheln. Geprueft wird das so: zwei Haelften
+einzeln kopiert muessen Byte fuer Byte dasselbe ergeben wie eine Kopie
+am Stueck.
+
+**Test 5 haelt die drei Stellen fest, an denen es kippen koennte:** die
+Maske darf NICHT in den Puffer (sonst wird das Bild mit jedem
+Scrollschritt dunkler, weil der naechste Teilaufbau sie erneut
+darueberlegt), beide Bildwaechter muessen sich mit Maske den SCHIRM
+merken statt des Puffers (sonst melden sie in jedem Bild fremden Inhalt
+und kopieren alles neu), und faellt C aus, wird ohne Maske kopiert -
+lieber ein Bild ohne Effekt als gar keines.
+
+
 ## test_negativ_merken.py
 
 Das gemerkte NEIN (Build 222) - und der Stillstand, der es vergisst.

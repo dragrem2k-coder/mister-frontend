@@ -76,6 +76,13 @@ class Attrappe(object):
     _rueckleser_merken = FB._rueckleser_merken
     _rueckleser_bilanz = FB._rueckleser_bilanz
 
+    # Build 226: ohne Maske ist der Schirm der Puffer - genau das prueft
+    # dieser Test. Mit einer Maske merkt sich der Rueckleser statt des
+    # Puffers den SCHIRM (siehe _rueckleser_merken), denn dort steht
+    # dann "Puffer mal Maske". Die Attrappe muss das Feld haben, sonst
+    # prueft sie eine Framebuffer-Fassung, die es nicht gibt.
+    maske = None
+
     def __init__(self, breite=64, hoehe=32, proben="8"):
         self.width, self.height = breite, hoehe
         self.stride = breite * 4
