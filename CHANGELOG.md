@@ -343,6 +343,37 @@ Millisekunde.**
   Sie kommt jetzt höchstens einmal pro Sekunde und sagt dazu, wie viele sie
   verschluckt hat.
 
+**Die Hauptseiten-Galerie war der letzte blinde Fleck.**
+
+- Sie ist die **einzige** Ansicht, an der die Umbauten aus v4.7 nie
+  vorbeigekommen sind: bei jedem Schritt ging das **ganze Bild** auf den
+  Schirm, 7,9 MB und 14,8 ms, während die Spielelisten-Galerie daneben mit
+  2,5 MB auskommt. Die Spuren wurden dort längst gesammelt — nur nie
+  benutzt. Jetzt **3,92 statt 7,91 MB**.
+- **Und ein Werkzeug, das die Frage mechanisch beantwortet**, an der ich in
+  v4.7 schon einmal gescheitert bin: deckt der Rechteck-Flip wirklich alles
+  ab, was sich geändert hat? Es vergleicht die *geänderten* Bildpunkte eines
+  Schritts mit den *gemeldeten* Rechtecken; die Differenz sind Reste, die
+  auf dem Schirm stehenbleiben, während der Puffer richtig aussieht. Damals
+  waren das 210.600 Punkte, und gefunden wurden sie durch Zufall. Heute:
+  alle sechs Ansichten, beide Auflösungen, **null ungedeckte Punkte**.
+
+**Cover kopieren jetzt in C.**
+
+- Für Cover und Textstreifen fehlte eine C-Funktion mit **zwei**
+  Schrittweiten: ein dekodiertes Cover liegt dicht gepackt, das Ziel hat die
+  Schrittweite des Bildschirms — die bisherige C-Kopie kann nur gleiche
+  Raster. Beide liefen deshalb als Python-Schleife über die Bildzeilen, und
+  im Bericht steht `blit` mit 6–12 ms je Schritt in **jeder** Ansicht.
+- Gemessen am einzelnen Cover: Galerie 0,31 → **0,06 ms** (4,8×), Liste 0,64
+  → **0,24 ms** (2,7×). Am Scrollschritt ist das hier nicht zu messen, und
+  der Grund ist eindeutig: der Prüfstand hat gar keine Cover, `blit` läuft
+  dort nie (nachgezählt: 0,0 Aufrufe je Schritt). Was ankommt, sagt dein
+  Bench.
+- Der Text folgt im nächsten Build — er braucht dieselbe Funktion, aber eine
+  Umstellung am Textspeicher, und die will sorgfältig gemacht werden.
+
+
 
 
 

@@ -974,11 +974,12 @@ import ctypes as _ctypes
 # Jetzt gilt: alles von MIN bis VERSION wird genommen, und die Funktionen
 # der neueren Fassungen werden einzeln nachgefragt. Fehlt eine, rechnet
 # genau ihr Aufrufer in Python weiter, der Rest laeuft in C.
-DRAGEND_LIB_VERSION = 5
+DRAGEND_LIB_VERSION = 6
 DRAGEND_LIB_VERSION_MIN = 4
 _LIB = None
 # Was die gefundene Fassung kann - wird beim Laden gesetzt.
 _HAT_FARBEN = False
+_HAT_ZEILEN = False
 
 
 def _lib_laden():
@@ -1044,6 +1045,21 @@ def _lib_laden():
         except AttributeError:
             LOG("libdragend: Version %d ohne rechtecke_farben - Flaechen "
                 "rechnet Python" % _v)
+        # Build 225: Zeilen mit ZWEI Schrittweiten (blit und text).
+        # Wieder ein EIGENES try - eine 5er-Fassung hat sie nicht, und
+        # sie darf weder die Bibliothek noch rechtecke_farben mitnehmen.
+        global _HAT_ZEILEN
+        _HAT_ZEILEN = False
+        try:
+            lib.zeilen_kopieren.restype = _ctypes.c_int
+            lib.zeilen_kopieren.argtypes = [
+                _ctypes.c_void_p, _ctypes.c_int, _ctypes.c_int,
+                _ctypes.c_void_p, _ctypes.c_int, _ctypes.c_int,
+                _ctypes.c_int, _ctypes.c_int, _ctypes.c_int, _ctypes.c_int]
+            _HAT_ZEILEN = True
+        except AttributeError:
+            LOG("libdragend: Version %d ohne zeilen_kopieren - Bilder und "
+                "Text kopiert Python" % _v)
     except (OSError, AttributeError) as e:
         LOG("libdragend nicht nutzbar (%s) - rechne in Python" % e)
         return None
@@ -1277,6 +1293,34 @@ def rechtecke_kopieren(src, dst, stride, hoehe, grenze, spuren):
             zeiger_q, zeiger_z, stride, hoehe, grenze, flach, anzahl) == 0
     except Exception:                                    # noqa: BLE001
         LOG("libdragend: Rechtecke kopieren fehlgeschlagen, nehme Python")
+        return False
+
+
+def zeilen_kopieren(dst, dst_stride, src, src_stride, x, y, breite, hoehe):
+    """Ein dicht gepacktes Bild (oder einen Textstreifen) zeilenweise in
+    den Puffer kopieren - QUELLE UND ZIEL HABEN VERSCHIEDENE
+    Schrittweiten.
+
+    Genau das kann rechtecke_kopieren() nicht: dort sind beide Puffer
+    gleich gerastert. Ein dekodiertes Cover liegt aber dicht gepackt
+    (Breite * 4), ein fertiger Textstreifen ebenso - beide hatten
+    deshalb bis Build 225 eine Python-Schleife ueber die Bildzeilen.
+
+    `breite` ist in BYTE, nicht in Bildpunkten. Rueckgabe True, wenn C
+    es erledigt hat; bei False hat sich nichts veraendert und der
+    Aufrufer muss selbst kopieren."""
+    if _LIB is None or not _HAT_ZEILEN:
+        return False
+    if breite <= 0 or hoehe <= 0 or x < 0 or y < 0:
+        return False
+    try:
+        _halt_d, zeiger_d = _roh_zeiger(dst)
+        _halt_q, zeiger_q = _roh_zeiger(src)
+        return _LIB.zeilen_kopieren(zeiger_d, dst_stride, len(dst),
+                                    zeiger_q, src_stride, len(src),
+                                    x, y, breite, hoehe) == 0
+    except Exception:                                    # noqa: BLE001
+        LOG("libdragend: Zeilen kopieren fehlgeschlagen, nehme Python")
         return False
 
 

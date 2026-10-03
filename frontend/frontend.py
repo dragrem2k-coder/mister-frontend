@@ -1199,6 +1199,7 @@ from fe.art import (
     alten_flachen_cache_aufraeumen,
     rechtecke_kopieren as _c_rechtecke_kopieren,
     rechtecke_farben as _c_rechtecke_farben,
+    zeilen_kopieren as _c_zeilen_kopieren,
     fremd_zaehlen as _c_fremd_zaehlen,
     quelldaten_vergessen, negativ_vergessen, marken_nachziehen,
     verkleinern_modus_vergessen,
@@ -8244,6 +8245,13 @@ class Frontend:
             fb.clear(C_BG)
             self._kat_kopf(KL)
             self._kat_galerie_fast_key = fast_key
+        else:
+            # Build 225: ab hier mitschreiben, was freigeraeumt wird -
+            # dasselbe wie in _draw_items_galerie(). Ohne diese Zeile
+            # bleibt _flip_spuren None, und None heisst "nichts
+            # gesammelt", nicht "nichts veraendert": der Rechteck-Flip
+            # lehnt dann ab und es ginge weiter das ganze Bild hinaus.
+            self._flip_spuren = []
         self._kat_galerie_fast_gen = fb.full_redraw_gen
 
         name, node, syskey = self.cats[self.cat_i]
@@ -8326,8 +8334,33 @@ class Frontend:
 
         self._kat_fusszeile(KL, message)
         self._force_full_redraw = False
+        _spuren = self._flip_spuren
+        self._flip_spuren = None
         if flip:
-            fb.flip(skip_vsync=self._vsync_ueberspringen(None))
+            # BUILD 225: die letzte Ansicht, die noch das ganze Bild auf
+            # den Schirm geschoben hat.
+            #
+            # Im Bericht vom 02.10. stand fuer sie "flip 1/7.9MB" - 14,84
+            # ms je Schritt, waehrend die Spielelisten-Galerie daneben
+            # mit 2,5 MB auskommt und das Raster der Hauptseite mit 1,3.
+            # Der Grund war schlicht, dass Build 215 und 218 hier nie
+            # vorbeigekommen sind: dieselben Spuren werden laengst
+            # gesammelt (ueber _restore_row_bg und _bg_fill), nur nie
+            # benutzt.
+            #
+            # NUR IM SCHNELLEN FALL. Lief der volle Aufbau (fb.clear()
+            # und Kopfzeile), hat sich alles geaendert - dann waeren die
+            # Rechtecke eine Luege, und es bleibt beim Vollbild. Genau
+            # diese Unterscheidung fehlte in Build 218 und hat 210.600
+            # stehengebliebene Bildpunkte gekostet.
+            #
+            # Geprueft wird das jetzt mechanisch: tools/diag_flip_
+            # deckung.py vergleicht die GEAENDERTEN Bildpunkte eines
+            # Schritts mit den gemeldeten Rechtecken und zaehlt, was
+            # nicht abgedeckt ist.
+            if not (schnell and not self._search_mode
+                    and self._rechtecke_flippen(_spuren)):
+                fb.flip(skip_vsync=self._vsync_ueberspringen(None))
 
     def _kat_infozeilen(self, node, syskey, maxc):
         """Die Zahlen neben dem grossen Abzeichen.
@@ -11533,6 +11566,22 @@ class Frontend:
             ch = max(0, (len(fb.buf) - x * 4 - need) // fb.stride - y + 1)
             if ch <= 0:
                 return
+        # NEU (Build 225): die Schleife nach C, wenn sie sich lohnt.
+        #
+        # Im Bericht vom 02.10. steht blit mit 6 bis 12 ms je
+        # Scrollschritt in jeder Ansicht - bei 400 bis 900 Bildzeilen je
+        # Schritt. Was hier fehlte, war eine C-Funktion mit ZWEI
+        # Schrittweiten: das Cover liegt dicht gepackt, das Ziel hat die
+        # Schrittweite des Bildschirms, und rechtecke_kopieren() kann
+        # nur gleiche Raster.
+        #
+        # Dieselbe Schwelle wie beim Fuellen (siehe _nach_c_viele in
+        # fe/framebuffer.py): viele ZEILEN oder viel FLAECHE. Ein Cover
+        # hat beides, ein Abzeichen von 32x32 keines von beidem.
+        if (fb._nach_c_viele(ch, cw * ch)
+                and _c_zeilen_kopieren(fb.buf, fb.stride, pix, zeile,
+                                       x, y, need, ch)):
+            return
         quelle = memoryview(pix)
         ziel = memoryview(fb.buf)
         for row in range(ch):

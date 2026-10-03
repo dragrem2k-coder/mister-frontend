@@ -229,6 +229,58 @@ int rechtecke_kopieren(const unsigned char *src, unsigned char *dst,
 }
 
 /* ------------------------------------------------------------------
+ * ZEILEN MIT ZWEI SCHRITTWEITEN (Build 225)
+ * ------------------------------------------------------------------
+ * rechtecke_kopieren() oben kann nur Puffer mit DERSELBEN Schrittweite
+ * - Hintergrundkopie und Bildspeicher sind gleich gerastert, dort
+ * stimmt das. Zwei Stellen im Zeichenweg sind es nicht:
+ *
+ *   blit()  - ein dekodiertes Cover liegt dicht gepackt (Breite * 4),
+ *             das Ziel hat die Schrittweite des Bildschirms.
+ *   text()  - ein fertiger Textstreifen ist genauso dicht gepackt.
+ *
+ * Beide haben deshalb bis hierher eine Python-Schleife ueber die
+ * Bildzeilen gehabt, und beide stehen im Bericht vom 02.10. weit oben:
+ * "text 15,56 ms" in der Galerie (8 Aufrufe, 191 Zeichen - also sehr
+ * BREITE Zeilen) und "blit 6 bis 12 ms" in jeder Ansicht.
+ *
+ * Die Pruefungen sind dieselben wie oben, und sie sind der Grund,
+ * warum hier ueberhaupt C steht statt eines Einzeilers: eine zu kurze
+ * Quelle oder ein zu weit rechts liegendes Ziel darf NICHT ueber das
+ * Ende schreiben. Beide Grenzen werden mitgegeben und beide werden
+ * geprueft; im Zweifel werden weniger Zeilen kopiert, nie mehr.
+ */
+int zeilen_kopieren(unsigned char *dst, int dst_stride, int dst_grenze,
+                    const unsigned char *src, int src_stride, int src_grenze,
+                    int x, int y, int breite, int hoehe)
+{
+    int r, dst_off, src_off, max_rows;
+    if (!dst || !src) return -1;
+    if (dst_stride <= 0 || src_stride <= 0) return -1;
+    if (breite <= 0 || hoehe <= 0 || x < 0 || y < 0) return -1;
+
+    /* Wie viele Zeilen passen in die Quelle? */
+    max_rows = abrunden_div(src_grenze - breite, src_stride) + 1;
+    if (max_rows < hoehe) hoehe = max_rows;
+    if (hoehe <= 0) return -1;
+
+    /* Und wie viele ins Ziel? */
+    dst_off = y * dst_stride + x * 4;
+    if (dst_off < 0) return -1;
+    max_rows = abrunden_div(dst_grenze - (x * 4) - breite, dst_stride) + 1 - y;
+    if (max_rows < hoehe) hoehe = max_rows;
+    if (hoehe <= 0) return -1;
+
+    src_off = 0;
+    for (r = 0; r < hoehe; r++) {
+        memcpy(dst + dst_off, src + src_off, (size_t)breite);
+        dst_off += dst_stride;
+        src_off += src_stride;
+    }
+    return 0;
+}
+
+/* ------------------------------------------------------------------
  * SCHARF VERKLEINERN (Build 175)
  * ------------------------------------------------------------------
  * Nearest-Neighbor: je Zielpunkt genau EIN Quellpunkt, ohne zu
@@ -302,7 +354,7 @@ int skalieren_nearest(const unsigned char *pix, int w, int h,
  * voll genutzt, nur rechtecke_farben() fehlt dann und die betroffenen
  * Zeichenwege rechnen in Python. Das ist der Unterschied zwischen
  * "etwas langsamer" und "alles langsam". */
-int dragend_version(void) { return 5; }
+int dragend_version(void) { return 6; }
 
 /* ------------------------------------------------------------------
  * FLAECHEN FUELLEN (Build 219)

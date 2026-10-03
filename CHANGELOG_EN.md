@@ -324,6 +324,35 @@ exactly why nothing here was built twice.
   20 ms threshold — and each line is a file access. It now appears at most
   once a second and says how many it swallowed.
 
+**The main page gallery was the last blind spot.**
+
+- It is the **only** view the rework in v4.7 never reached: every step
+  pushed the **whole image** to the screen, 7.9 MB and 14.8 ms, while the
+  game-list gallery next to it manages with 2.5 MB. The traces were being
+  collected there all along — just never used. Now **3.92 instead of
+  7.91 MB**.
+- **And a tool that answers mechanically** the question I already got wrong
+  once in v4.7: does the rectangle flip really cover everything that
+  changed? It compares the *changed* pixels of a step against the *reported*
+  rectangles; the difference is what stays on screen while the buffer looks
+  correct. Back then that was 210,600 pixels, found by accident. Today: all
+  six views, both resolutions, **zero uncovered pixels**.
+
+**Cover art is now copied in C.**
+
+- Covers and text strips needed a C function with **two** strides: a decoded
+  cover sits tightly packed, the target has the screen's stride — the
+  existing C copy only handles equal rasters. Both ran as a Python loop over
+  the rows, and the report lists `blit` at 6–12 ms per step in **every**
+  view.
+- Measured on a single cover: gallery 0.31 → **0.06 ms** (4.8×), list 0.64 →
+  **0.24 ms** (2.7×). It cannot be measured at step level here, and the
+  reason is plain: the test rig has no cover art at all, so `blit` never
+  runs there (counted: 0.0 calls per step). Your bench will tell.
+- Text follows in the next build — it needs the same function but a change
+  to the text cache, and that deserves care.
+
+
 
 
 

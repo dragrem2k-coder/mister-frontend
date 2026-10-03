@@ -236,10 +236,12 @@ print("Test 8: die Bibliothek passt zur Erwartung")
 # fuer das Verkleinern, und das ist auf dem Geraet der Faktor 124. Jetzt
 # gilt eine Spanne, und die Funktionen der neueren Fassungen werden
 # einzeln nachgefragt. Naeheres in tools/test_flaechen_in_c.py.
-check("die Version wurde hochgezaehlt", A.DRAGEND_LIB_VERSION == 5,
+# GEAENDERT (Build 225): 6, seit zeilen_kopieren() dazugekommen ist -
+# die Zeilenkopie mit ZWEI Schrittweiten fuer blit() und text().
+check("die Version wurde hochgezaehlt", A.DRAGEND_LIB_VERSION == 6,
       str(A.DRAGEND_LIB_VERSION))
 check("die C-Datei meldet dieselbe",
-      "int dragend_version(void) { return 5; }" in quelle)
+      "int dragend_version(void) { return 6; }" in quelle)
 check("und es gibt eine Untergrenze darunter",
       getattr(A, "DRAGEND_LIB_VERSION_MIN", None) == 4,
       "eine 4er-Fassung muss weiter voll nutzbar bleiben")

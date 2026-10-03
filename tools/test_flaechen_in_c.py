@@ -381,8 +381,10 @@ for datei in ("libdragend.so", "libdragend_neon.so", "libdragend_x86.so"):
     check("bauen.sh baut %s" % datei, "-o %s" % datei in _qb)
 _qc = open(os.path.join(_REPO, "frontend", "c", "dragend.c")).read()
 check("die C-Fassung ist hochgezaehlt",
-      "return 5; }" in _qc or "return 5;" in _qc)
+      "return 6; }" in _qc or "return 6;" in _qc)
 check("und rechtecke_farben steht drin", "int rechtecke_farben(" in _qc)
+check("und zeilen_kopieren ebenfalls (Build 225)",
+      "int zeilen_kopieren(" in _qc)
 
 print()
 if fails:

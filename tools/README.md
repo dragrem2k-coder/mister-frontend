@@ -976,6 +976,62 @@ leichten Pfad der Liste NIE (`_draw_navigate_items` haengt an `run()`).
 Abschnitt B und J des Benchs haben fuer die Liste deshalb bis Build 217
 den vollen Neuaufbau gemessen und "je Schritt" darueber geschrieben.
 
+## diag_flip_deckung.py
+
+DIAGNOSE (kein Pass/Fail-Test): deckt der Rechteck-Flip wirklich alles
+ab, was sich geaendert hat?
+
+**Die Frage, an der Build 218 gescheitert ist.** Seit Build 215 geht
+nicht mehr das ganze Bild auf den Schirm, sondern nur noch die
+Rechtecke, die der Zeichenweg als veraendert gemeldet hat
+(_flip_spuren). Meldet eine Stelle ihr Rechteck NICHT, bleibt dort der
+alte Inhalt stehen - im Puffer sieht alles richtig aus, auf dem Bild
+nicht. In Build 218 waren das 210.600 Bildpunkte auf der Hauptseite,
+und gefunden wurden sie durch Zufall.
+
+Das Werkzeug fragt es mechanisch: einen leichten Schritt zeichnen, den
+Puffer vorher und nachher vergleichen (welche Punkte haben sich
+GEAENDERT), die gemeldeten Rechtecke dagegenhalten (was ginge auf den
+Schirm), Differenz bilden. Ausgegeben wird je Ansicht die Zahl der
+ungedeckten Punkte und ihr umschliessendes Rechteck - damit man weiss,
+WO man suchen muss.
+
+**Zwei Fallen stecken im Werkzeug selbst**, beide beim Bauen
+aufgelaufen und beide im Quelltext vermerkt:
+
+1. Gehakt werden muessen die drei flip-Wege SELBST, nicht
+   _rechtecke_flippen(). Die Listenansicht schickt ihre Rechtecke am
+   Verteiler vorbei direkt an fb.flip_rechtecke() - ein Haken eine
+   Ebene zu hoch meldet fuer sie "VOLLBILD", also das Gegenteil dessen,
+   was auf dem Geraet passiert.
+2. Warmgelaufen werden muss mit ECHTEN Schritten, nicht mit zwei
+   draw(). _force_full_redraw ist ein Einmal-Schalter, den der
+   Listenpfad von draw() nicht loescht (der Fund aus Build 218) - wer
+   nur zweimal zeichnet, misst zweimal den vollen Aufbau.
+
+Die Zahlen decken sich mit dem Geraet: Hauptseite Liste 1,83 MB
+(Geraet 1,8), Spieleliste Liste 3,39 (3,5), Hauptseite Raster 1,35
+(1,3). Das ist der Grund, dem Werkzeug zu glauben.
+
+## test_zeilen_in_c.py
+
+Die Zeilenkopie mit ZWEI Schrittweiten (Build 225, libdragend 6).
+
+rechtecke_kopieren() aus Build 215 kann nur Puffer mit DERSELBEN
+Schrittweite. Ein dekodiertes Cover liegt dicht gepackt (Breite * 4),
+ein Textstreifen ebenso, das Ziel hat die Schrittweite des Bildschirms
+- beide hatten deshalb eine Python-Schleife ueber die Bildzeilen.
+
+**Test 3 ist der eigentliche Inhalt.** Acht Faelle, in denen C
+absichtlich mehr angeboten bekommt, als hineinpasst: Hoehe weit zu
+gross, Quelle zu kurz, x und y hinter dem Rand, Breite groesser als die
+Zeile, negative Masse, Schrittweite null. Hinter dem Zielpuffer steht
+ein Wachposten, und der muss unveraendert bleiben. In C gibt es kein
+bytearray, das sich beschwert - es gibt nur einen Speicherfehler, und
+den sieht man unter Umstaenden erst Wochen spaeter an ganz anderer
+Stelle.
+
+
 ## test_update_check.py
 
 Die Update-Info (Build 224) - und die Zahl, die sie neunzehn Builds lang
