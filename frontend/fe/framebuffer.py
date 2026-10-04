@@ -1580,7 +1580,7 @@ class Framebuffer:
             punkte += w * h
         if not fertig:
             return
-        if self._nach_c_viele(zeilen, punkte):
+        if self._nach_c_viele(zeilen, punkte, len(fertig)):
             farbe = self._farbwert(self.px(rgb))
             try:
                 if self.flaechen_fueller(
@@ -1902,7 +1902,8 @@ class Framebuffer:
         _zeilen = sum(t[3] for t in karten_teile) + (band[1] - band[0])
         _punkte = (sum(t[2] * t[3] for t in karten_teile)
                    + versatz * (band[1] - band[0]))
-        if self._nach_c_viele(_zeilen, _punkte):
+        if self._nach_c_viele(_zeilen, _punkte,
+                              len(karten_teile) + 1):
             try:
                 if fueller(buf, stride, self.height, len(buf),
                            tuple([(tx, ty, tw, th, _kf)
@@ -2081,7 +2082,8 @@ class Framebuffer:
             fueller = self.flaechen_fueller
             erledigt = False
             if self._nach_c_viele(sum(z[3] for z in _gesammelt),
-                                  sum(z[2] * z[3] for z in _gesammelt)):
+                                  sum(z[2] * z[3] for z in _gesammelt),
+                                  len(_gesammelt)):
                 _f = self._farbwert(self.px(rgb))
                 try:
                     erledigt = bool(fueller(
@@ -2181,7 +2183,8 @@ class Framebuffer:
         fueller = self.flaechen_fueller
         erledigt = False
         if ecken and self._nach_c_viele(sum(e[3] for e in ecken),
-                                        sum(e[2] * e[3] for e in ecken)):
+                                        sum(e[2] * e[3] for e in ecken),
+                                        len(ecken)):
             _f = self._farbwert(self.px(rgb))
             try:
                 erledigt = bool(fueller(
@@ -2869,6 +2872,13 @@ class Framebuffer:
     # 0,5 ms JE AUFRUF verloren hat.
     FLAECHEN_C_MIN_PUNKTE = 65536
     FLAECHEN_C_MIN_ZEILEN = 96
+    # Build 247: die dritte Schwelle, und bei einem BUND die
+    # wichtigste. Gemessen im Bericht vom 04.10., Abschnitt I.3:
+    # "Rahmen aus 4 Balken  Python 6.441  C 0.764  8.4x" - vier
+    # Streifen, von denen einzeln keiner eine der beiden Schwellen
+    # darueber erreicht, und C ist achtmal schneller. Begruendung
+    # vollstaendig bei _nach_c_viele().
+    FLAECHEN_C_MIN_STUECKE = 4
 
     # DER TEXTZEICHNER (Build 227), von frontend.py auf
     # fe.art.texte_zeichnen gesetzt - wie die beiden Haken darueber.
@@ -2915,14 +2925,44 @@ class Framebuffer:
             return False
         return self._nach_c_viele(h, w * h)
 
-    def _nach_c_viele(self, zeilen, punkte):
+    def _nach_c_viele(self, zeilen, punkte, stuecke=0):
         """Dieselbe Frage fuer einen BUND aus mehreren Rechtecken: dann
         zaehlen die Summe der Zeilen und die Summe der Flaechen, denn
-        bezahlt wird der EINE Aufruf."""
+        bezahlt wird der EINE Aufruf.
+
+        stuecke (Build 247): die ZAHL der Rechtecke im Bund - und das
+        ist bei einem Bund das eigentliche Mass.
+
+        WARUM DAS DAZUKAM, und es steht als Messwert im Bericht vom
+        04.10. (Abschnitt I.3, letzte Zeile):
+
+            Rahmen aus 4 Balken   Python 6.441   C 0.764   8.4x   ja
+
+        Vier Balken, von denen einzeln keiner eine der beiden Schwellen
+        erreicht - und C ist trotzdem achtmal schneller. Der Grund ist
+        nicht die Flaeche, sondern dass Python JE RECHTECK eine eigene
+        Zeilenschleife fahren muss, waehrend C alle vier in einem
+        Aufruf erledigt. Genau deshalb reichen Zeilen und Punkte als
+        Mass nicht aus: ein Bund aus vielen kleinen Streifen hat von
+        beidem wenig und kostet trotzdem.
+
+        VIER IST DIE GEMESSENE ZAHL, nicht eine geschaetzte - bei vier
+        Balken gewinnt C auf diesem Geraet 8,4-fach. Fuer zwei oder
+        drei steht keine Messung da, und darum greift es dort nicht.
+
+        WAS DAS KONKRET LOEST: die Eckenrundung. Ein
+        karte_mit_schatten()-Aufruf sammelt rund 21 Streifen fuer die
+        vier Ecken und die Schattenkante - 33 Zeilen, ein paar tausend
+        Punkte, also unter BEIDEN alten Schwellen. Im Bericht vom
+        04.10. ist das der ungeklaerte Rest, den Abschnitt K bei jedem
+        Kartenaufruf mit rund 5 ms ausweist, und zwar unabhaengig von
+        der Kartengroesse - weil er nicht an der Flaeche haengt,
+        sondern am Radius."""
         if self.flaechen_fueller is None:
             return False
         return (zeilen >= self.FLAECHEN_C_MIN_ZEILEN
-                or punkte >= self.FLAECHEN_C_MIN_PUNKTE)
+                or punkte >= self.FLAECHEN_C_MIN_PUNKTE
+                or (stuecke and stuecke >= self.FLAECHEN_C_MIN_STUECKE))
 
     @staticmethod
     def _farbwert(pixel):

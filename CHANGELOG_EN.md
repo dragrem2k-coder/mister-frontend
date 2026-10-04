@@ -832,6 +832,89 @@ All four sit behind the **fine-details switch** (System → Display & sound).
 This build makes no draw path faster. It makes three places measurable where
 guessing was the only option.
 
+**The draw actually runs now — Build 246 was broken, by a single line.**
+
+Reported: “I don't hear the sound in random pick" and “the titles don't spin
+like a wheel either". **Both were the same bug.** The draw painted one frame
+and then *stood still* until a button was pressed — at which point it ended
+as “skipped", and the sound with it. Cause: `read_action()` is **blocking
+without a timeout**; it waits for the next input, however long that takes. I
+called it without one inside the wait loop.
+
+- It now **waits and listens in one call** — `read_action` with the frame's
+  remaining time as its timeout. The wheel spins, and a button still skips.
+- Plus a **0.35 s button lockout** at the start: you reach this screen by
+  pressing OK, and that same press is still there on the first look at the
+  input queue. Without the lockout it ended the draw immediately.
+- **The test bench could not see this**, because the test had replaced
+  `read_action` with a non-blocking stand-in. That stand-in now raises when
+  called without a timeout — the same bug cannot come back without turning a
+  test red.
+- **And a second, independent reason for silence:** I had also tied the draw
+  sound to the “navigation sounds" switch. Anyone who turns the scroll clicks
+  off — and many do — had a silent draw. That was my own addition and wrong:
+  there is now **one** switch for the whole feature, the suspense duration.
+- `_play_ducked_sfx` used to return **silently** when no sound file existed.
+  Now it logs a line naming both paths it looked for. Plus a probe that walks
+  the whole chain and plays once at the end:
+  `python3 /media/fat/frontend/sound_probe.py`.
+
+**Writing thumbnails was occupying both cores.**
+
+- Section B of the bench says it in one line: **590 ms of packing and writing
+  per scroll step**, with the step itself at 294 ms. Over 60 steps that is 35
+  seconds of background work inside 18 seconds of measured time — on a device
+  with **two** cores. That explains the unnamed “rest" of 156.9 ms: it is the
+  CPU time the draw loop is missing.
+- The cause was **one thread per cover**. The comment in the source argued it
+  “only happens on a real cache miss, not on every scroll step" — the number
+  refutes that: **44 writes in 60 steps.**
+- There is now **one queue and one worker thread**. Writing occupies at most
+  one core and leaves the other to drawing. The queue is bounded by **bytes**
+  (24 MB), and on overflow the **oldest** entry is dropped — permissible,
+  because the disk cache is pure optimisation: a dropped entry only means that
+  cover is recomputed next time you scroll past it.
+- “Prepare thumbnails" does **not** go through the queue; it still writes
+  directly and synchronously. Nothing may be dropped there — that is the whole
+  point of the run.
+
+**The rounded corners were the unexplained rest.**
+
+- Section K reported about **5 ms** per card call that the area does not
+  explain — and **independently of the card size** (list 5.40 ms, gallery
+  4.93 ms, at three times the area difference). A fixed price per call, then,
+  not an area problem.
+- The trail was in the same report: the same dimensions cost 2.036 ms as
+  `rect_rounded` and only 0.860 as `rect` — **the rounding alone is 1.18 ms.**
+  One card call collects about 21 narrow strips for the four corners, and all
+  of them ran in Python: 33 rows, a few thousand points — below **both**
+  thresholds for moving a fill into C.
+- There is now a **third threshold: the number of rectangles.** Measured, not
+  guessed — section I.3 has said since Build 220: “frame of 4 bars: Python
+  6.441 ms, C 0.764 ms, 8.4x". Four strips, none of which reaches a threshold
+  on its own, and C is eight times faster. From four rectangles a bundle goes
+  to C. Measured on the test bench: **21 Python strips per card call → zero.**
+
+**The short path only applied in one third of the steps.**
+
+- The control number from Build 245 delivered on its first run: 531,383
+  filled points, where 174,240 (applies) or 710,410 (does not) were the
+  expected values. Computed over points **and** rows, independently the same:
+  **33.4 % and 33.3 %.**
+- The cause was the **initial letter**: it was part of the comparison, and in
+  a real arcade list it changes often (“1942", “1943", “Aero Fighters",
+  “Alien Syndrome"). On the test bench every entry was called “Spiel
+  000…059" — always the same letter, which is why the measurement looked
+  perfect. **The same blindness as before, one level up: the test data were
+  too uniform.**
+- The letter is no longer part of the comparison — it is **drawn along** on
+  the short path. It may be, because text with a background colour paints its
+  own cell, and that cell is the same for every letter. Cost: **one character**
+  instead of the whole card.
+- Measured in the hardest case (letter changes in *every* step): filled bytes
+  **2.86 → 0.82 MB**, the same value as with an unchanging letter. The short
+  path now applies in every step.
+
 **Random pick: the draw now runs, with sound.**
 
 - While drawing, the titles spin across the screen like a **wheel** — slowing

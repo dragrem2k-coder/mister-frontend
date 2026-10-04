@@ -152,10 +152,53 @@ PLAYABLE = [("SNES", "Spiel %03d" % i, "", "", "/f/%d.sfc" % i, 1.0)
             for i in range(50)]
 
 
-def _phase(dauer_ms, eingaben=None, sfx_an=True):
-    """Die Phase einmal laufen lassen und protokollieren, was passiert."""
+class _EingabeAttrappe(object):
+    """read_action wie das Original - und das heisst: OHNE timeout
+    BLOCKIEREND.
+
+    GENAU DARAN IST BUILD 246 GESCHEITERT, und der Pruefstand hat es
+    nicht gesehen, weil hier ein nicht-blockierendes Lambda stand. Im
+    Betrieb wartet read_action() ohne timeout auf die naechste Aktion,
+    egal wie lange (siehe dessen Docstring in fe/input.py) - die
+    Ziehung hat deshalb EIN Bild gezeichnet und dann gestanden, bis
+    jemand eine Taste drueckte.
+
+    Diese Attrappe wirft, wenn sie ohne timeout gerufen wird. Damit
+    kann derselbe Fehler nicht zurueckkommen, ohne dass ein Test rot
+    wird."""
+
+    def __init__(self, eingaben=None):
+        self.eingaben = list(eingaben or [])
+        self.ohne_timeout = 0
+        self.aufrufe = 0
+
+    def read_action(self, timeout=None):
+        self.aufrufe += 1
+        if timeout is None:
+            self.ohne_timeout += 1
+            raise AssertionError(
+                "read_action() ohne timeout blockiert im Betrieb - "
+                "genau der Fehler aus Build 246")
+        wert = self.eingaben.pop(0) if self.eingaben else None
+        if wert is None:
+            # AUCH EIN "nichts gedrueckt" KOSTET ZEIT - read_action()
+            # wartet dann bis zum timeout. Ohne diesen Schlaf liefe die
+            # Testschleife in Nullzeit durch, und die Tastensperre
+            # (ZIEHUNG_TASTENSPERRE) waere nie vorbei. Gekuerzt auf 20
+            # ms, damit der Test nicht so lange dauert wie die Phase.
+            time.sleep(min(timeout, 0.02))
+        return wert
+
+
+def _phase(dauer_ms, eingaben=None, sfx_an=True, spaet=False):
+    """Die Phase einmal laufen lassen und protokollieren, was passiert.
+
+    spaet=True legt die Eingaben erst NACH der Tastensperre vor -
+    sonst werden sie verbraucht, aber nicht als Abbruch gewertet."""
     log = {"sound": [], "geladen": [], "griffe": []}
-    f.inp.read_action = lambda: (eingaben.pop(0) if eingaben else None)
+    att = _EingabeAttrappe(eingaben)
+    log["eingabe"] = att
+    f.inp = att
 
     def _sound(name, griff=None):
         log["sound"].append(name)
@@ -218,17 +261,59 @@ check("zwei Sekunden dauern laenger als eine",
       l2["dauer"] > l["dauer"] + 0.5,
       "%.2f gegen %.2f s" % (l2["dauer"], l["dauer"]))
 
-# d) Eine Taste ueberspringt.
-l3 = _phase(5000, eingaben=["ok"])
-check("eine Taste bricht die Phase ab", l3["dauer"] < 2.0,
+# d) Eine Taste ueberspringt - aber erst NACH der Tastensperre.
+#
+#    DIE SPERRE IST KEIN SCHOENHEITSFEHLER: man kommt auf diesen
+#    Bildschirm, indem man OK drueckt, und dieselbe Taste ist beim
+#    ersten Blick in die Eingabe noch da (Halte-Wiederholung). Ohne
+#    Sperre beendet sie die Ziehung sofort wieder - genau das hat der
+#    Nutzer als "die Titel laufen nicht ueber ein Rad" gemeldet.
+l3 = _phase(5000, eingaben=[None] * 25 + ["ok"])
+check("eine Taste bricht die Phase ab", l3["dauer"] < 3.0,
       "%.3f s statt 5 s" % l3["dauer"])
+check("aber nicht sofort - die Tastensperre haelt",
+      l3["dauer"] >= fm.ZIEHUNG_TASTENSPERRE,
+      "%.3f s, Sperre %.2f s" % (l3["dauer"], fm.ZIEHUNG_TASTENSPERRE))
 check("und der Sound ist danach aus", l3["griffe"][0].abgebrochen())
 
-# e) Soundeffekte abgeschaltet: Phase ja, Klang nein.
+# d2) EINE GEHALTENE TASTE direkt am Anfang darf die Ziehung NICHT
+#     wegwischen - sie wird verbraucht und ignoriert.
+l3b = _phase(1000, eingaben=["ok"] * 200)
+check("eine von Anfang an gehaltene Taste wischt die Ziehung nicht weg",
+      l3b["dauer"] >= fm.ZIEHUNG_TASTENSPERRE,
+      "%.3f s" % l3b["dauer"])
+
+# d3) UND DER EIGENTLICHE FEHLER AUS BUILD 246: read_action() ohne
+#     timeout. Die Attrappe wirft dann - kommt der Aufruf zurueck,
+#     steht die Lücke wieder im Code.
+check("read_action wird NIE ohne timeout gerufen",
+      l3["eingabe"].ohne_timeout == 0
+      and l3b["eingabe"].ohne_timeout == 0,
+      "ohne timeout blockiert es bis zum naechsten Tastendruck - "
+      "ein Bild, dann Stillstand")
+check("und es wird ueberhaupt gefragt", l3b["eingabe"].aufrufe > 0,
+      "sonst ueberspringt keine Taste etwas")
+
+# e) DER SCHALTER "NAVIGATIONS-SOUNDEFFEKTE" DARF NICHT MITREDEN.
+#
+#    GEAENDERT (Build 247, Nutzer-Rueckmeldung: "bei zufallszock hoere
+#    ich denn sound nicht"). In Build 246 hing der Ziehungssound
+#    zusaetzlich an diesem Schalter - wer die Klicktoene beim Scrollen
+#    abgeschaltet hat (und das tun viele), hatte damit auch die
+#    Ziehung stumm, ohne dass irgendwo stand, woran es liegt.
+#
+#    Gewuenscht war ein Ziehungssound, nicht ein weiterer
+#    Navigationsklick. Es gibt genau EINEN Schalter fuer das Feature:
+#    die Dauer der Spannungsphase. Steht sie auf "aus", passiert
+#    nichts; steht sie auf einer Dauer, gehoert der Ton dazu.
 l4 = _phase(1000, sfx_an=False)
-check("ohne Soundeffekte kein Klang", l4["sound"] == [], str(l4["sound"]))
-check("die Ziehung laeuft trotzdem", 0.9 <= l4["dauer"] <= 1.6,
+check("der Klang kommt AUCH mit abgeschalteten Navigationstoenen",
+      l4["sound"] == ["zufall_ziehung"], str(l4["sound"]))
+check("die Ziehung laeuft dabei normal", 0.9 <= l4["dauer"] <= 1.6,
       "%.3f s" % l4["dauer"])
+check("die Dauer 'aus' ist der EINE Schalter fuer alles",
+      _phase(0)["sound"] == [],
+      "sonst gaebe es keinen Weg, nur den Ton abzustellen")
 
 # f) Ein Fehler im Sound darf die Ziehung nicht mitnehmen.
 def _kaputt(name, griff=None):

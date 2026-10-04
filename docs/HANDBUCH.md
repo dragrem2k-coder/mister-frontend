@@ -947,8 +947,27 @@ gehaltener OK-Knopf startet also nicht gleich ein Spiel.
 Die Datei liegt bei; wer einen anderen Klang will, legt einfach seine
 eigene MP3 unter diesem Namen dorthin. Fehlt die Datei, erzeugt das
 Frontend einen Ersatzklang (einen beschleunigenden Wirbel) — stumm
-bleibt die Ziehung nie. Steht "Navigations-Soundeffekte" auf AUS, läuft
-die Ziehung ohne Ton.
+bleibt die Ziehung nie.
+
+**Der Schalter "Navigations-Soundeffekte" redet NICHT mit** (korrigiert
+in Build 247). In Build 246 hing der Ziehungssound zusätzlich daran —
+wer die Klicktöne beim Scrollen abgeschaltet hatte, hatte damit auch
+die Ziehung stumm, ohne dass irgendwo stand, woran es liegt. Es gibt
+genau einen Schalter für das ganze Feature: die Dauer oben. Steht sie
+auf "aus", passiert nichts; steht sie auf einer Dauer, gehört der Ton
+dazu.
+
+**Hörst du nichts?** Dann sagt diese Probe in Klartext, woran es liegt
+— sie geht die ganze Kette durch (Ordner, Datei, Abspielprogramm,
+Einstellungen, belegte Soundkarte) und spielt am Ende einmal ab:
+
+```
+python3 /media/fat/frontend/sound_probe.py
+```
+
+Seit Build 247 steht außerdem eine Zeile in `/tmp/frontend.log`, wenn
+für einen Klang gar keine Datei gefunden wurde — vorher kam dort
+nichts, und genau das machte die Suche unnötig schwer.
 
 ## 8i. Spielzeit-Tracker
 

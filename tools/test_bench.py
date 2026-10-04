@@ -1166,6 +1166,22 @@ check("und es wird NICHT vom Schritt abgezogen",
 check("die Bench-Nummer ist fuer Build 245 mitgewachsen",
       B.BENCH_VERSION >= 8, str(B.BENCH_VERSION))
 
+# ---------------------------------------------------------------------------
+print()
+print("Build 247: die Schreib-Warteschlange im Bericht")
+# ---------------------------------------------------------------------------
+check("der kalte Fall nennt den Stand der Schlange",
+      "Schlange: %d wartend" in _bb,
+      "ohne 'verworfen' weiss niemand, ob die Karte mitkommt")
+check("und sagt, dass es EIN Arbeitsfaden ist",
+      "EIN Arbeitsfaden" in _bb,
+      "vorher einer je Cover - das hat auf zwei Kernen beide belegt")
+check("der Stand wird abgefragt, nicht behauptet",
+      'getattr(A, "thumb_schreib_stand", None)' in _bb,
+      "eine aeltere fe/art.py hat die Funktion nicht")
+check("die Bench-Nummer ist fuer Build 247 mitgewachsen",
+      B.BENCH_VERSION >= 9, str(B.BENCH_VERSION))
+
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))

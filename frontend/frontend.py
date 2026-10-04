@@ -278,6 +278,14 @@ from fe.audio import (
     _ensure_sfx_files, SoundGriff,
 )
 
+# Wie lange die Ziehung in Zufalls-Zock nach ihrem Start NICHT auf
+# Tasten hoert (Build 247). Man kommt auf diesen Bildschirm, indem man
+# OK drueckt - und dieselbe Taste ist beim ersten Blick in die Eingabe
+# noch da. Ohne diese Sperre beendet sie die Ziehung sofort wieder.
+# 0,35 s ist laenger als eine normale Tastenbetaetigung und kuerzer als
+# die kleinste einstellbare Dauer (1 s).
+ZIEHUNG_TASTENSPERRE = 0.35
+
 BOOTANIM_DIR = "/media/fat/frontend/bootanim"
 BOOTANIM_PLAYED_MARKER = "/tmp/frontend_bootanim_played"
 
@@ -11997,13 +12005,49 @@ class Frontend:
             _kasten = ("bild", _quelle_fuer_stand, _aw0, _ah0, len(_pix0))
         elif nur_verzoegert:
             _kasten = ("marke", self.schnellmarke_text(name) if FEIN else "")
+        # DER BUCHSTABE GEHOERT NICHT MEHR IN DEN VERGLEICH
+        # (Build 247), und das ist der ganze Unterschied zu Build 244.
+        #
+        # WARUM, und die Zahl stammt vom Geraet. Abschnitt K des Bench
+        # vom 04.10. zaehlt fuer den Fall "Taste gedrueckt" 531.383
+        # gefuellte Punkte je Schritt. Greift der kurze Weg, sind es
+        # 174.240; greift er nie, 710.410. Die Rechnung geht ueber
+        # Punkte UND Zeilen unabhaengig auf:
+        #
+        #     (710.410 - 531.383) / (710.410 - 174.240) = 33,4 %
+        #     (  2.080 -   1.824) / (  2.592 -   1.824) = 33,3 %
+        #
+        # Er greift also in genau EINEM DRITTEL der Schritte. Der Grund
+        # ist der Anfangsbuchstabe: in einer echten Arcade-Liste
+        # wechselt der oft ("1942", "1943", "Aero Fighters", "Alien
+        # Syndrome"), und bis Build 246 stand er mit im Vergleich. Auf
+        # dem Pruefstand hiessen alle Eintraege "Spiel 000...059" -
+        # dort war der Buchstabe immer derselbe, und deshalb sah die
+        # Messung dort perfekt aus. Dieselbe Blindheit wie zuvor, nur
+        # eine Ebene hoeher: die Testdaten waren zu gleichmaessig.
+        #
+        # WARUM ER JETZT DRAUSSEN SEIN DARF: der Buchstabe wird mit
+        # fb.text(..., C_DIM, C_PANEL) gezeichnet, und text() mit
+        # Hintergrundfarbe malt seine eigene Zelle mit. Die Zelle haengt
+        # ausserdem nur an x0/cy/avail_w/cover_h/s - nicht am Zeichen
+        # selbst (siehe _schnellmarke_zeichnen()). Ein neuer Buchstabe
+        # ueberdeckt den alten also vollstaendig, und es genuegt, ihn
+        # auf dem kurzen Weg MITZUZEICHNEN. Die Flaeche um ihn herum ist
+        # schon richtig - dort steht derselbe leere Kasten wie im
+        # Schritt davor.
+        #
+        # Mit Cover bleibt alles wie in Build 244: dort gehoert der
+        # Inhalt in den Vergleich, denn das Bild wechselt wirklich.
+        _kasten_art = _kasten[0] if _kasten else None
+        _kasten_inhalt = (_kasten[1:] if _kasten_art == "bild" else ())
         _stand = (x0, w, y0, h, s, cy, cover_h, avail_w,
-                  C_PANEL, C_BG, accent, bool(FEIN), _kasten,
+                  C_PANEL, C_BG, accent, bool(FEIN),
+                  _kasten_art, _kasten_inhalt,
                   getattr(fb, "full_redraw_gen", 0))
         # NUR OHNE COVER. Mit Cover wechselt das Bild von Schritt zu
         # Schritt ohnehin - dann gibt es nichts zu sparen, und der
         # Vergleich kostete nur.
-        _kurz = (_kasten is not None and _kasten[0] == "marke"
+        _kurz = (_kasten_art == "marke"
                  and getattr(self, "_panel_stand", None) == _stand)
         self._panel_stand = _stand
 
@@ -12204,10 +12248,21 @@ class Frontend:
             # Karte einfach leer - der Platzhalter waere eine Luege fuer
             # einen Sekundenbruchteil, und genau die hat geblitzt.
             if _kurz:
-                # DER KASTEN STEHT SCHON RICHTIG DA - genau das ist der
-                # kurze Weg. Buchstabe, Hintergrund, alles unveraendert;
-                # _stand oben hat es garantiert.
-                pass
+                # DIE FLAECHE STEHT SCHON RICHTIG DA - genau das ist der
+                # kurze Weg: derselbe leere Kasten wie im Schritt davor,
+                # und _stand oben hat das garantiert.
+                #
+                # GEAENDERT (Build 247): NUR die Flaeche steht, der
+                # Buchstabe nicht. Er darf wechseln, und dann wird er
+                # hier mitgezeichnet - fb.text() mit Hintergrundfarbe
+                # malt seine eigene Zelle mit, und die Zelle ist fuer
+                # jeden Buchstaben dieselbe. Das kostet EIN Zeichen
+                # statt der ganzen Karte und hebt die Trefferquote des
+                # kurzen Wegs von einem Drittel auf praktisch jeden
+                # Schritt (Begruendung samt Zahlen bei _stand oben).
+                if FEIN:
+                    self._schnellmarke_zeichnen(x0, cy, avail_w, cover_h,
+                                                name, s)
             elif not nur_verzoegert:
                 self._zeichne_kein_artwork(x0, cy, avail_w, cover_h, s)
             elif FEIN:
@@ -12815,15 +12870,29 @@ class Frontend:
             self._wot_cover_sichern(picks, cover_cache, cell_w, covers_h, s)
             return
         griff = SoundGriff()
-        # Der Klang folgt dem normalen Soundeffekt-Schalter: die Ziehung
-        # ist nichts Seltenes wie ein Geheimcode, sondern etwas, das man
-        # oft macht. Wer die Effekte abgeschaltet hat, will sie nicht.
-        if sfx_enabled_flag():
-            try:
-                self._play_ducked_sfx("zufall_ziehung", griff=griff)
-            except Exception:                            # noqa: BLE001
-                pass
-        else:
+        # KORRIGIERT (Build 247, Nutzer-Rueckmeldung: "bei zufallszock
+        # hoere ich denn sound nicht wird nicht abgespielt").
+        #
+        # In Build 246 hing der Klang hier zusaetzlich am Schalter
+        # "Navigations-Soundeffekte". Das war meine eigene Zutat und
+        # falsch: wer die Klicktoene beim Scrollen abgeschaltet hat -
+        # und das tun viele, sie sind beim Durchblaettern laut - hatte
+        # damit auch den Ziehungssound aus, OHNE dass irgendwo stand,
+        # woran es liegt. Gewuenscht war ausdruecklich ein
+        # Ziehungssound, nicht ein weiterer Navigationsklick.
+        #
+        # Jetzt gibt es EINEN Schalter fuer das ganze Feature: die
+        # Dauer der Spannungsphase. Steht sie auf "aus", passiert
+        # nichts - weder Warten noch Ton. Steht sie auf einer Dauer,
+        # gehoert der Ton dazu. Genauso hält es der Geheimcode-Sound
+        # (_play_ducked_sfx spielt bewusst unabhaengig vom
+        # Effekt-Schalter, siehe dessen Docstring).
+        try:
+            self._play_ducked_sfx("zufall_ziehung", griff=griff)
+        except Exception:                                # noqa: BLE001
+            # Ein stummer Bildschirm ist besser als keiner - aber er
+            # soll im Log stehen, nicht lautlos bleiben.
+            LOG("Zufalls-Zock: Ziehungssound konnte nicht starten")
             griff.stoppen()
         try:
             ende = time.monotonic() + dauer_ms / 1000.0
@@ -12855,6 +12924,17 @@ class Frontend:
             # Bild zu Bild: am Anfang hetzen die Titel, zum Schluss
             # klicken sie nur noch weiter.
             pause = 0.07
+            # DIE TASTE, DIE HIERHER GEFUEHRT HAT, ZAEHLT NICHT
+            # (Build 247, Nutzer-Rueckmeldung: "die titel laufen auch
+            # nicht ueber ein rad oder aehnlichen").
+            #
+            # Man kommt auf diesen Bildschirm, indem man OK drueckt -
+            # im Menue oder auf "Neu ziehen". Dieselbe Taste ist beim
+            # ersten Blick in die Eingabe hier noch da (Halte-
+            # Wiederholung), und "jede Taste ueberspringt" hat die
+            # Ziehung damit sofort wieder beendet. Die ersten
+            # Millisekunden hoeren deshalb nicht zu.
+            frei_ab = time.monotonic() + ZIEHUNG_TASTENSPERRE
             # NOTBREMSE: die Schleife haengt an time.monotonic(). Stuende
             # die Uhr still, liefe sie endlos - und das waere ein
             # Bildschirm, aus dem keine Taste mehr herausfuehrt. Bei der
@@ -12869,25 +12949,46 @@ class Frontend:
                 if rest <= 0:
                     break
                 _vorher = time.monotonic()
-                time.sleep(min(pause, rest))
+                # WARTEN UND ZUHOEREN IN EINEM AUFRUF - und genau hier
+                # stand der Fehler aus Build 246.
+                #
+                # Dort stand time.sleep() und danach ein nackter
+                # self.inp.read_action(). read_action() ist OHNE timeout
+                # aber BLOCKIEREND (siehe dessen Docstring): es wartet
+                # auf die naechste Aktion, egal wie lange. Die Ziehung
+                # hat also EIN Bild gezeichnet und dann gestanden, bis
+                # der Nutzer eine Taste drueckte - woraufhin sie als
+                # "uebersprungen" endete. Von aussen sah das so aus:
+                # kein Rad, und der Sound nur als Knacken, weil die
+                # Phase sofort wieder vorbei war. Ein Fehler, zwei
+                # Symptome.
+                #
+                # DER PRUEFSTAND KONNTE ES NICHT SEHEN: der Test hatte
+                # read_action durch ein nicht-blockierendes Lambda
+                # ersetzt. Jetzt blockiert die Attrappe ohne timeout
+                # genauso wie das Original - sonst findet dieselbe
+                # Luecke beim naechsten Mal wieder niemand.
+                try:
+                    akt = self.inp.read_action(timeout=min(pause, rest))
+                except Exception:                        # noqa: BLE001
+                    akt = None
+                    time.sleep(min(pause, rest))
                 if time.monotonic() <= _vorher:
                     # DIE UHR STEHT. Im Pruefstand ist time.monotonic()
                     # eingefroren (tools/_harness.py), und eine Phase,
                     # die auf eine stehende Uhr wartet, wartet ewig -
                     # die Obergrenze darueber faengt das zwar ab, aber
-                    # erst nach vierhundert Bildern und einer knappen
-                    # Minute echten Schlafens. Hier ist der Ausstieg
-                    # sofort, und auf dem Geraet kommt er nie vor.
+                    # erst nach vierhundert Bildern. Hier ist der
+                    # Ausstieg sofort, und auf dem Geraet kommt er nie
+                    # vor.
                     break
-                # Eine Taste waehrend der Ziehung ueberspringt sie -
-                # und wird dabei verbraucht, damit ein gehaltener
-                # OK-Knopf nicht gleich ein Spiel startet.
-                try:
-                    if self.inp.read_action():
-                        abbruch = True
-                        break
-                except Exception:                        # noqa: BLE001
-                    pass
+                # Eine Taste waehrend der Ziehung ueberspringt sie - und
+                # wird dabei verbraucht, damit ein gehaltener OK-Knopf
+                # nicht gleich ein Spiel startet. Vor frei_ab wird sie
+                # ebenfalls verbraucht, aber nicht als Abbruch gewertet.
+                if akt and time.monotonic() >= frei_ab:
+                    abbruch = True
+                    break
                 if ende - time.monotonic() > 0:
                     _rahmen(_zufalls_zeilen())
                 pause = min(0.28, pause * 1.25)
@@ -13702,6 +13803,13 @@ class Frontend:
         wav_path = os.path.join(SFX_DIR, name + ".wav")
         use_mp3 = os.path.exists(mp3_path) and os.path.exists(MPG123_BIN)
         if not use_mp3 and not os.path.exists(wav_path):
+            # GEAENDERT (Build 247): das stand hier als stilles return.
+            # Genau dadurch war "ich hoere den Sound nicht" nicht
+            # nachzuvollziehen - es gab keine einzige Zeile im Log, die
+            # gesagt haette, dass gar keine Datei da ist. Jetzt sagt
+            # sie es, mit beiden Pfaden, nach denen gesucht wurde.
+            LOG("Sound '%s': keine Datei gefunden (%s / %s)"
+                % (name, mp3_path, wav_path))
             if griff is not None:
                 # Sonst wartet der Aufrufer auf ein Ende, das nie kommt.
                 griff.stoppen()

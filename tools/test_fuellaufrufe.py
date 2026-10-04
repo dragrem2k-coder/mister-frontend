@@ -285,6 +285,174 @@ check("die Wer-fragt-Zeilen nennen jetzt auch die ZEIT",
 check("und sie werden nach ZEIT sortiert, nicht nach Zahl",
       "key=lambda e: -e[1][1]" in BQ)
 
+# ---------------------------------------------------------------------------
+print()
+print("Test 6: der kurze Weg im Cover-Panel (Build 244)")
+# ---------------------------------------------------------------------------
+# DER BEFUND KOMMT AUS ABSCHNITT K, Lauf vom 04.10. auf dem DE10-Nano:
+#
+#     karte_mit_schatten  769x945    8,295 ms je Schritt
+#
+# Beim gehaltenen Scrollen mit "Cover sofort" an wird das Cover
+# uebersprungen, die Karte aber JEDEN Schritt komplett gefuellt -
+# obwohl der Cover-Kasten genauso aussieht wie im Schritt davor:
+# derselbe leere Kasten, derselbe Anfangsbuchstabe. Nur der Text
+# darunter wechselt.
+_p6 = QF.split("def draw_art_panel")[1].split("\n    def ")[0]
+_p6_code = "\n".join(z for z in _p6.split("\n")
+                     if not z.strip().startswith("#"))
+check("es gibt den kurzen Weg", "_kurz = (" in _p6_code)
+check("er haengt an drei Bedingungen",
+      "full_redraw_gen" in _p6_code and "_panel_stand" in _p6_code
+      and "_kasten" in _p6_code,
+      "voller Aufbau dazwischen, Geometrie/Farben, Inhalt des Kastens")
+check("die Kennung des Covers kommt vom PFAD, nicht von id()",
+      "id(_pix0)" not in _p6_code and "_quelle_fuer_stand" in _p6_code,
+      "CPython gibt die Adresse eines aufgeraeumten Objekts wieder aus")
+check("er greift NUR ohne Cover",
+      '_kasten_art == "marke"' in _p6_code,
+      "mit Cover wechselt das Bild ohnehin jeden Schritt - dann gibt "
+      "es nichts zu sparen, und der Vergleich kostete nur")
+# GEAENDERT (Build 247): der Buchstabe steht NICHT mehr im Vergleich.
+# Mit Cover muss der Inhalt des Kastens weiter mit hinein - dort
+# wechselt das Bild wirklich.
+check("der Inhalt zaehlt nur MIT Cover",
+      "_kasten_inhalt = (_kasten[1:] if _kasten_art == \"bild\" else ())"
+      in _p6_code,
+      "ohne Cover ist es der Anfangsbuchstabe, und der darf wechseln")
+
+# DER WEG SELBST: die Karte wird GEZEICHNET, nur der Kasten ausgespart.
+check("ausgespart wird ueber den vorhandenen Mechanismus",
+      "_kasten_luecke" in _p6_code
+      and "aussparen=(_kasten_luecke if _kurz" in _p6_code,
+      "karte_mit_schatten(aussparen=...) gibt es seit Build 234/238")
+check("die Karte wird also weiter gezeichnet",
+      _p6_code.count("fb.karte_mit_schatten(") == 1,
+      "DAS war der Fehler des ersten Entwurfs - siehe unten")
+check("und in den Kasten kommt nur noch der Buchstabe",
+      "if _kurz:" in _p6_code.split("art_bottom = cy + cover_h")[0][-900:],
+      "die Flaeche steht schon richtig da")
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 6b: warum die ganze Karte NICHT weggelassen werden darf")
+# ---------------------------------------------------------------------------
+# DER ERSTE ENTWURF HAT GENAU DAS GEMACHT - Karte weglassen, nur den
+# Textblock malen. Gemessen sah es gut aus (gefuellt 2,71 auf 0,44 MB,
+# geflippt 3,62 auf 1,13 MB). Dann hat tools/test_rechteck_flip.py ihn
+# ueberfuehrt: 69 Bytes Unterschied zwischen Puffer und Schirm, an der
+# unteren rechten Kartenecke.
+#
+# DER GRUND: die Umgebung der Eckenrundung wird NICHT von der Karte
+# gefuellt - sie liegt ausserhalb der Kurve. Ohne den Kartenaufruf
+# blieb dort, was der vorige Schritt hinterlassen hatte, und ein
+# voller Aufbau malt dort etwas anderes. Siebzehn Bildpunkte in einer
+# Ecke; genau die Sorte Rest, die dieses Projekt fuenfmal gejagt hat
+# (Build 80, 122, 125, 128, 237).
+check("die Begruendung steht im Quelltext",
+      "69 Bytes" in _p6 or "69 Bytes Unterschied" in QF,
+      "ein Fehler, der einmal gefunden wurde, gehoert aufgeschrieben")
+check("und es gibt keinen Pfad mehr, der die Karte auslaesst",
+      "self._panel_text_zeichnen(" in QF
+      and QF.count("self._panel_text_zeichnen(") == 1,
+      "der Textblock hat einen Namen, aber nur einen Aufrufer")
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 7: er greift wirklich - und nur dann, wenn er darf")
+# ---------------------------------------------------------------------------
+H.set_screen(1920, 1080)
+fe7 = H.make_frontend(page=1)
+
+
+def _uebersprungen():
+    """get_scaled() verhaelt sich wie beim Schnellscrollen: es liefert
+    NICHTS und zaehlt _defer_count hoch.
+
+    AUF DER INSTANZ, nicht am Modul - frontend.py importiert ART aus
+    fe.art und meint damit den ArtCache. Am Modul gezaehlt blieb
+    nur_verzoegert falsch, und die Messung zeigte brav, dass der kurze
+    Weg nichts bringt."""
+    echt = ART.ART.get_scaled
+
+    def _ersatz(quelle, breite, hoehe, **k):
+        ART.ART._defer_count = getattr(ART.ART, "_defer_count", 0) + 1
+        return None
+
+    ART.ART.get_scaled = _ersatz
+    return lambda: setattr(ART.ART, "get_scaled", echt)
+
+
+def _gefuellt(fe, n=10):
+    """n Scrollschritte, und wieviele Bytes dabei gefuellt wurden."""
+    schritt = BENCH.schritt_funktion(fe, 1)
+    schritt(0)
+    spanne = BENCH.fenster_spanne(fe, 1)
+    for i in range(6):
+        schritt(i % spanne)
+    konto = {"bytes": 0}
+    echt = fe.fb.flaechen_fueller
+
+    def _h(buf, stride, hoehe, grenze, rechtecke):
+        for r in rechtecke:
+            konto["bytes"] += r[2] * r[3] * 4
+        return echt(buf, stride, hoehe, grenze, rechtecke)
+
+    fe.fb.flaechen_fueller = _h
+    try:
+        for i in range(n):
+            schritt(i % spanne)
+    finally:
+        fe.fb.flaechen_fueller = echt
+    return konto["bytes"] / float(n) / 1048576.0
+
+
+def _liste_setzen(fe, muster):
+    _, node, _ = fe.cats[fe.cat_i]
+    node["items"] = [
+        (muster(i), "game", ("/f/%d.sfc" % i, ".sfc", "SNES", None, None))
+        for i in range(60)]
+    node.pop("_display_items_cache", None)
+    fe.item_i = 0
+    fe.scroll = 0
+    fe.ansicht_setzen("liste")
+
+
+zurueck7 = _uebersprungen()
+try:
+    fe7.page = 1
+    fe7.cat_i = 0
+    fe7.nav_path = []
+    _liste_setzen(fe7, lambda i: "Super Mario %03d" % i)
+    gleich = _gefuellt(fe7)
+    _liste_setzen(fe7, lambda i: "%s%03d" % (chr(65 + (i % 26)), i))
+    wechsel = _gefuellt(fe7)
+    print("   gleicher Buchstabe: %.2f MB je Schritt" % gleich)
+    print("   wechselnder:        %.2f MB je Schritt" % wechsel)
+    # GEAENDERT (Build 247). Bis Build 246 stand hier die Erwartung,
+    # dass der wechselnde Buchstabe den VOLLEN Weg nimmt - und genau
+    # das war der Fehler, den der Bench auf dem Geraet gefunden hat:
+    #
+    #     Abschnitt K, "Taste gedrueckt": 531.383 gefuellte Punkte,
+    #     wo 174.240 (greift) oder 710.410 (greift nicht) zu
+    #     erwarten waren. Also griff er in genau EINEM DRITTEL der
+    #     Schritte - weil in einer echten Arcade-Liste der
+    #     Anfangsbuchstabe oft wechselt.
+    #
+    # Seit Build 247 gehoert der Buchstabe nicht mehr in den
+    # Vergleich; er wird auf dem kurzen Weg mitgezeichnet. Beide
+    # Faelle muessen deshalb GLEICH guenstig sein.
+    check("der wechselnde Buchstabe kostet nicht mehr als der gleiche",
+          wechsel <= gleich * 1.25,
+          "%.2f gegen %.2f MB - genau das war der Fund vom Geraet"
+          % (wechsel, gleich))
+    check("und beide liegen klar unter der ganzen Karte",
+          max(gleich, wechsel) < 1.5,
+          "%.2f MB - die ganze Karte waere rund 2,7 MB"
+          % max(gleich, wechsel))
+finally:
+    zurueck7()
+
 print()
 if fails:
     print("FEHLGESCHLAGEN (%d):" % len(fails))

@@ -990,6 +990,98 @@ wird.**
 Dieses Build macht keinen Zeichenweg schneller. Es macht drei Stellen
 messbar, an denen bisher geraten werden musste.
 
+**Die Ziehung läuft wirklich — Build 246 war kaputt, und zwar an einer
+einzigen Zeile.**
+
+Gemeldet wurde: „bei zufallszock höre ich den sound nicht" und „die titel
+laufen auch nicht über ein rad oder ähnlichen". **Beides war derselbe
+Fehler.** Die Ziehung hat ein Bild gezeichnet und dann *gestanden*, bis man
+eine Taste drückte — woraufhin sie als „übersprungen" endete und der Ton
+mit ihr. Ursache: `read_action()` ist **ohne Zeitangabe blockierend**, es
+wartet auf die nächste Eingabe, egal wie lange. Ich hatte es in der
+Warteschleife ohne Zeitangabe gerufen.
+
+- Jetzt wird **gewartet und zugehört in einem Aufruf** — `read_action` mit
+  der Restzeit des Bildes als Zeitangabe. Das Rad läuft, und eine Taste
+  überspringt weiterhin.
+- Dazu eine **Tastensperre von 0,35 s** am Anfang: man kommt auf diesen
+  Bildschirm, indem man OK drückt, und dieselbe Taste ist beim ersten Blick
+  in die Eingabe noch da. Ohne die Sperre hätte sie die Ziehung sofort
+  wieder beendet.
+- **Der Prüfstand konnte das nicht sehen**, weil der Test `read_action`
+  durch eine nicht-blockierende Attrappe ersetzt hatte. Die Attrappe wirft
+  jetzt, wenn sie ohne Zeitangabe gerufen wird — derselbe Fehler kann nicht
+  zurückkommen, ohne dass ein Test rot wird.
+- **Und ein zweiter, unabhängiger Grund für Stille:** ich hatte den
+  Ziehungssound zusätzlich an den Schalter „Navigations-Soundeffekte"
+  gehängt. Wer die Klicktöne beim Scrollen abgeschaltet hat — und das tun
+  viele — hatte damit auch die Ziehung stumm. Das war meine Zutat und
+  falsch: es gibt jetzt **einen** Schalter für das ganze Feature, die Dauer
+  der Spannungsphase.
+- `_play_ducked_sfx` kehrte bisher **stillschweigend** zurück, wenn gar keine
+  Klangdatei da war. Jetzt steht eine Zeile mit beiden gesuchten Pfaden im
+  Log. Dazu eine Probe, die die ganze Kette durchgeht und am Ende einmal
+  abspielt: `python3 /media/fat/frontend/sound_probe.py`.
+
+**Das Wegschreiben der Miniaturen belegte beide Kerne.**
+
+- Abschnitt B des Bench sagt es in einer Zeile: **590 ms Packen und Schreiben
+  je Scrollschritt**, bei einem Schritt von 294 ms. Über 60 Schritte sind das
+  35 Sekunden Hintergrundarbeit in knapp 18 Sekunden Messzeit — auf einem
+  Gerät mit **zwei** Kernen. Damit ist der unbenannte „Rest" von 156,9 ms
+  erklärt: es ist die Rechenzeit, die der Zeichenschleife fehlt.
+- Grund war **ein eigener Thread je Cover**. Die Begründung im Quelltext
+  lautete, das passiere „ohnehin nur bei einem echten Fehltreffer, nicht bei
+  jedem Scrollschritt" — die Zahl widerlegt das: **44 Schreibvorgänge in 60
+  Schritten.**
+- Jetzt gibt es **eine Warteschlange und einen Arbeitsfaden**. Damit belegt
+  das Wegschreiben höchstens einen Kern und lässt den anderen dem Zeichnen.
+  Die Schlange ist nach **Bytes** begrenzt (24 MB), und läuft sie über, fällt
+  der **älteste** Eintrag heraus — erlaubt, weil der Festplatten-Cache reine
+  Optimierung ist: ein verworfener Eintrag heißt nur, dass dieses Cover beim
+  nächsten Vorbeiscrollen noch einmal gerechnet wird.
+- „Miniaturen vorbereiten" geht **nicht** über die Schlange, sondern weiter
+  direkt und synchron. Dort darf nichts verworfen werden — das ist der Zweck
+  des Durchlaufs.
+
+**Die Eckenrundung war der ungeklärte Rest.**
+
+- Abschnitt K wies bei *jedem* Kartenaufruf rund **5 ms** aus, die die Fläche
+  nicht erklärt — und zwar **unabhängig von der Kartengröße** (Liste 5,40 ms,
+  Galerie 4,93 ms, bei dreifach verschiedener Fläche). Ein fester Preis je
+  Aufruf also, kein Flächenproblem.
+- Die Spur stand im selben Bericht: dasselbe Maß kostet als `rect_rounded`
+  2,036 ms und als `rect` nur 0,860 — **die Rundung allein 1,18 ms.** Ein
+  Kartenaufruf sammelt rund 21 schmale Streifen für die vier Ecken, und die
+  liefen alle in Python: 33 Zeilen, ein paar tausend Punkte — unter **beiden**
+  Schwellen, ab denen das Füllen nach C geht.
+- Es gibt jetzt eine **dritte Schwelle: die Zahl der Rechtecke.** Auch die
+  ist gemessen und nicht geschätzt — Abschnitt I.3 sagt seit Build 220:
+  „Rahmen aus 4 Balken: Python 6,441 ms, C 0,764 ms, 8,4x". Vier Streifen, von
+  denen einzeln keiner eine Schwelle erreicht, und C ist achtmal schneller.
+  Ab vier Rechtecken geht ein Bund deshalb nach C. Gemessen am Prüfstand:
+  **21 Python-Streifen je Kartenaufruf → null.**
+
+**Der kurze Weg griff nur in einem Drittel der Schritte.**
+
+- Die Kontrollzahl aus Build 245 hat beim ersten Lauf geliefert: 531.383
+  gefüllte Punkte, wo 174.240 (greift) oder 710.410 (greift nicht) zu
+  erwarten waren. Über Punkte **und** Zeilen gerechnet unabhängig dasselbe:
+  **33,4 % bzw. 33,3 %.**
+- Grund war der **Anfangsbuchstabe**: er stand im Vergleich, und in einer
+  echten Arcade-Liste wechselt er oft („1942", „1943", „Aero Fighters",
+  „Alien Syndrome"). Auf dem Prüfstand hießen alle Einträge „Spiel
+  000…059" — dort war er immer derselbe, und deshalb sah die Messung
+  perfekt aus. **Dieselbe Blindheit wie zuvor, nur eine Ebene höher: die
+  Testdaten waren zu gleichmäßig.**
+- Jetzt gehört der Buchstabe nicht mehr in den Vergleich — er wird auf dem
+  kurzen Weg **mitgezeichnet**. Das darf er, weil Text mit Hintergrundfarbe
+  seine eigene Zelle mitmalt und die Zelle für jeden Buchstaben dieselbe
+  ist. Kosten: **ein Zeichen** statt der ganzen Karte.
+- Gemessen im härtesten Fall (Buchstabe wechselt in *jedem* Schritt):
+  gefüllte Bytes **2,86 → 0,82 MB**, also derselbe Wert wie bei
+  gleichbleibendem Buchstaben. Der kurze Weg greift jetzt in jedem Schritt.
+
 **Zufalls-Zock: die Ziehung läuft jetzt, mit Ton.**
 
 - Beim Ziehen laufen die Titel wie auf einem **Rad** über den Schirm — immer

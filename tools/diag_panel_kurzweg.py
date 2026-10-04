@@ -323,10 +323,20 @@ def main():
         print("   (null ist der einzige gute Wert - eine geaenderte,")
         print("    nicht geflippte Zeile bleibt als Rest stehen)")
 
-        # 3) UND DIE GEGENPROBE: wechselt der Anfangsbuchstabe, MUSS
-        #    der volle Weg laufen - sonst stuende der alte Buchstabe da.
+        # 3) DER WECHSELNDE ANFANGSBUCHSTABE - und das ist seit
+        #    Build 247 der WICHTIGSTE Fall, nicht die Gegenprobe.
+        #
+        #    DIE ZAHL VOM GERAET: Abschnitt K des Bench vom 04.10.
+        #    zaehlt fuer "Taste gedrueckt" 531.383 gefuellte Punkte je
+        #    Schritt. Greift der kurze Weg, sind es 174.240; greift er
+        #    nie, 710.410. Also griff er in genau einem Drittel der
+        #    Schritte - weil in einer echten Arcade-Liste der
+        #    Anfangsbuchstabe oft wechselt und bis Build 246 mit im
+        #    Vergleich stand. Hier mit 26 wechselnden Buchstaben
+        #    nachgestellt: wechselt er in JEDEM Schritt, ist das der
+        #    schlechteste denkbare Fall.
         print("")
-        print(" GEGENPROBE: wechselnder Anfangsbuchstabe")
+        print(" DER HAERTESTE FALL: Anfangsbuchstabe wechselt JEDEN Schritt")
         _, node, _ = fe.cats[fe.cat_i]
         node["items"] = [
             ("%s%03d" % (chr(65 + (i % 26)), i), "game",
@@ -356,17 +366,41 @@ def main():
         print("   der Textblock wurde %d mal gezeichnet (%d Schritte) -"
               % (_voll["n"], SCHRITTE))
         print("   er laeuft auf BEIDEN Wegen, das ist richtig so.")
+        # Und jetzt die Zahl, auf die es ankommt: greift der kurze Weg
+        # auch dann? Gemessen wird wie oben - gefuellte Bytes je
+        # Schritt. Sie haengen an keiner Uhr.
+        fe.item_i = 0
+        fe.scroll = 0
+        k_wechsel = _zaehlen(fe, "Buchstabe wechselt")
+        print("")
+        print("   gefuellte Bytes je Schritt   %.2f MB"
+              % _mb(k_wechsel["fuell_bytes"]))
+        print("   gefuellte Zeilen je Schritt  %.0f z"
+              % k_wechsel["fuell_zeilen"])
+        print("   Zu lesen als: liegt das bei den 0,66 MB von oben, dann")
+        print("   greift der kurze Weg AUCH bei wechselndem Buchstaben -")
+        print("   genau das ist die Aenderung aus Build 247. Liegt es bei")
+        print("   2,7 MB, wird wieder die ganze Karte gefuellt.")
     finally:
         zurueck()
 
     print("")
     print("=" * 72)
-    print(" Zu lesen als: der kurze Weg greift nur, wenn der")
-    print(" Cover-Kasten GLEICH AUSSIEHT - gleiches Bild oder gleicher")
-    print(" Buchstabe, gleiche Geometrie, gleiche Farben, kein voller")
-    print(" Aufbau dazwischen. Beim Blaettern durch eine sortierte")
-    print(" Liste ist das der Normalfall; bei jedem Buchstabenwechsel")
-    print(" laeuft einmal der volle Weg, und das muss er auch.")
+    print(" Zu lesen als: der kurze Weg greift, wenn die FLAECHE des")
+    print(" Cover-Kastens gleich bleibt - gleiche Geometrie, gleiche")
+    print(" Farben, kein voller Aufbau dazwischen, und kein Cover.")
+    print("")
+    print(" SEIT BUILD 247 GEHOERT DER BUCHSTABE NICHT MEHR DAZU. Er")
+    print(" wird auf dem kurzen Weg mitgezeichnet - fb.text() mit")
+    print(" Hintergrundfarbe malt seine eigene Zelle mit, und die Zelle")
+    print(" ist fuer jeden Buchstaben dieselbe. Vorher stand er im")
+    print(" Vergleich, und weil er in einer echten Arcade-Liste oft")
+    print(" wechselt, griff der kurze Weg nur in einem DRITTEL der")
+    print(" Schritte (gemessen auf dem Geraet, Abschnitt K des Bench")
+    print(" vom 04.10.: 531.383 Punkte statt 174.240 oder 710.410).")
+    print(" Der Pruefstand konnte das nicht sehen, weil hier alle")
+    print(" Eintraege 'Spiel 000...059' hiessen - immer derselbe")
+    print(" Buchstabe. Deshalb steht oben jetzt der haerteste Fall.")
     print("=" * 72)
 
 

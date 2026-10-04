@@ -2095,17 +2095,176 @@ def _thumb_cache_put(path, w, h, tw, th, pix):
         _vor_uhrstellung_beruehrt.append(cpath)
     _thumb_cache_evict_if_needed()
 
+# ======================================================================
+# DIE SCHREIB-WARTESCHLANGE (Build 247)
+# ======================================================================
+#
+# DER BEFUND, der sie noetig gemacht hat, steht im Bench vom 04.10.
+# (Abschnitt B, neu seit Build 245):
+#
+#     Spieleliste liste    je Schritt kalt      294.61 ms
+#        davon dekodieren 94.4, verkleinern 43.3, Rest 156.9 ms
+#        DANEBEN (eigene Threads, nicht im Schritt enthalten):
+#          Miniaturen packen und schreiben 590.1 ms (44 x)
+#
+# 590 ms Hintergrundarbeit JE SCHRITT, bei einem Schritt von 294 ms.
+# Ueber 60 Schritte sind das 35 Sekunden Packen und Schreiben waehrend
+# eines Durchlaufs von knapp 18 Sekunden - auf einem Geraet mit ZWEI
+# Kernen. Beide Kerne sind also durchgehend mit zlib und SD-Schreiben
+# belegt, waehrend daneben gezeichnet wird. Damit ist der unbenannte
+# Rest von 156,9 ms erklaert: es ist die Rechenzeit, die der
+# Zeichenschleife fehlt.
+#
+# WAS VORHER DASTAND, und die Begruendung war nicht falsch, nur
+# widerlegt: "Bewusst ein eigener, kurzlebiger Thread PRO AUFRUF statt
+# eines dauerhaften Warteschlangen-Worker-Threads: das Schreiben
+# passiert ohnehin nur bei einem echten Skalierungs-Fehltreffer (nicht
+# bei jedem Scrollschritt)". Die Zahl sagt: 44 Schreibvorgaenge in 60
+# Schritten. Beim Scrollen durch neues Gebiet ist es fast jeder.
+#
+# JETZT: EIN Arbeitsfaden, eine Warteschlange. Damit belegt das
+# Wegschreiben hoechstens einen Kern und laesst den anderen dem
+# Zeichnen.
+#
+# ZWEI ENTSCHEIDUNGEN DAZU, beide bewusst:
+#
+# 1. DIE SCHLANGE IST BEGRENZT, und zwar nach BYTES, nicht nach
+#    Eintraegen. Ein Boxart-Cover der Listenansicht sind 578x770x4 =
+#    1,78 MB, eine Rasterkachel 176x235x4 = 165 kB - eine Grenze "20
+#    Eintraege" waere also einmal 3 MB und einmal 36 MB. Ohne Grenze
+#    waechst die Schlange beim Schnellscrollen durch neues Gebiet
+#    schneller, als die Karte schreiben kann, und der Speicher laeuft
+#    voll.
+#
+# 2. IST SIE VOLL, FAELLT DER AELTESTE EINTRAG HERAUS - und das ist
+#    hier erlaubt, weil der Festplatten-Cache REINE OPTIMIERUNG fuer
+#    spaetere Zugriffe ist. Ein verworfener Eintrag heisst: dieses
+#    Cover wird beim naechsten Vorbeiscrollen noch einmal gerechnet.
+#    Nichts geht kaputt, nichts fehlt auf dem Schirm.
+#
+#    WICHTIG ZUR ABGRENZUNG: "Miniaturen vorbereiten" (prewarm_thumb()
+#    und _prewarm_aus_gelesenem()) schreibt NICHT ueber diese Schlange,
+#    sondern direkt und synchron ueber _thumb_cache_put(). Dort darf
+#    nichts verworfen werden - genau das ist der Zweck des Durchlaufs.
+#    Diese Schlange bedient ausschliesslich den ZEICHENWEG
+#    (ArtCache.get_scaled() und _thumb_als_jpg_nachziehen()).
+#
+# Beim Beenden gehen noch wartende Eintraege verloren. Das war vorher
+# genauso (daemon=True), und es ist aus demselben Grund in Ordnung.
+SCHREIB_QUEUE_MAX_BYTES = 24 * 1024 * 1024
+
+_schreib_lock = threading.Condition()
+_schreib_queue = []            # [("bild"|"marke", ...)], aeltestes vorn
+_schreib_bytes = 0
+_schreib_faden = None
+# Buchfuehrung fuer das Bench und fuer thumb_schreib_stand(). Ohne sie
+# waere "die Schlange verwirft" eine Behauptung ohne Zahl.
+_schreib_erledigt = 0
+_schreib_verworfen = 0
+
+
+def _auftrag_bytes(auftrag):
+    """Was ein Auftrag in der Schlange an Speicher belegt. Eine Marke
+    belegt nichts Nennenswertes (drei Zahlen und ein Pfad), ein Bild
+    seine Bildpunkte - und nur die zaehlen gegen die Grenze.
+
+    EIGENE FUNKTION, weil die Groesse an DREI Stellen gebraucht wird:
+    beim Einstellen, beim Verwerfen und beim Abarbeiten. Stuende die
+    Rechnung dreimal da, ginge sie irgendwann an einer Stelle
+    auseinander - und dann waechst oder schrumpft der Zaehler, ohne
+    dass die Schlange sich aendert."""
+    return len(auftrag[6]) if auftrag[0] == "bild" else 0
+
+
+def _schreib_arbeiter():
+    """Der EINE Arbeitsfaden. Nimmt den aeltesten Auftrag und fuehrt
+    ihn aus - ausserhalb des Locks, denn das Packen und Schreiben
+    dauert auf diesem Geraet Hunderte von Millisekunden, und solange
+    darf der Zeichenweg nicht am Einstellen gehindert werden."""
+    global _schreib_bytes, _schreib_erledigt
+    while True:
+        with _schreib_lock:
+            while not _schreib_queue:
+                _schreib_lock.wait()
+            auftrag = _schreib_queue.pop(0)
+            _schreib_bytes -= _auftrag_bytes(auftrag)
+        try:
+            if auftrag[0] == "bild":
+                _, path, w, h, tw, th, pix = auftrag
+                _thumb_cache_put(path, w, h, tw, th, pix)
+            else:
+                _thumb_cache_put_marke(auftrag[1], auftrag[2], auftrag[3])
+        except Exception:                                # noqa: BLE001
+            # Genau wie vorher: ein Fehlschlag beim Wegschreiben ist
+            # nicht Sache des Aufrufers. _thumb_cache_put() loggt ihn
+            # selbst.
+            pass
+        with _schreib_lock:
+            _schreib_erledigt += 1
+
+
+def _schreib_einstellen(auftrag):
+    """Einen Auftrag anhaengen und den Arbeitsfaden wecken. Laeuft im
+    ZEICHENWEG und muss deshalb billig sein: ein Anhaengen, ein
+    notify, fertig."""
+    global _schreib_faden, _schreib_bytes, _schreib_verworfen
+    groesse = _auftrag_bytes(auftrag)
+    with _schreib_lock:
+        if _schreib_faden is None:
+            _schreib_faden = threading.Thread(
+                target=_schreib_arbeiter, daemon=True,
+                name="dragend-thumbschreiber")
+            _schreib_faden.start()
+        # Platz machen: der AELTESTE geht, nicht der neue. Was gerade
+        # auf dem Schirm war, ist wahrscheinlicher gleich wieder
+        # gebraucht als etwas von vor zwanzig Schritten.
+        while (_schreib_bytes + groesse > SCHREIB_QUEUE_MAX_BYTES
+               and _schreib_queue):
+            alt = _schreib_queue.pop(0)
+            _schreib_bytes -= _auftrag_bytes(alt)
+            _schreib_verworfen += 1
+        _schreib_queue.append(auftrag)
+        _schreib_bytes += groesse
+        _schreib_lock.notify()
+
+
+def thumb_schreib_stand():
+    """(wartende Auftraege, wartende Bytes, erledigt, verworfen).
+
+    Fuer das Bench und fuer die Fehlersuche. 'verworfen' ist die Zahl,
+    auf die es ankommt: steht sie dauerhaft hoch, ist die Karte
+    langsamer als das Scrollen, und dann werden Cover mehrfach
+    gerechnet."""
+    with _schreib_lock:
+        return (len(_schreib_queue), _schreib_bytes,
+                _schreib_erledigt, _schreib_verworfen)
+
+
+def thumb_schreib_abwarten(timeout=10.0):
+    """Warten, bis die Schlange leer ist (hoechstens 'timeout'
+    Sekunden). NUR fuer Pruefstand und Bench - im Betrieb wartet
+    niemand auf den Festplatten-Cache."""
+    ende = time.monotonic() + timeout
+    while time.monotonic() < ende:
+        with _schreib_lock:
+            if not _schreib_queue:
+                return True
+        time.sleep(0.02)
+    with _schreib_lock:
+        return not _schreib_queue
+
+
 def _thumb_cache_put_marke_async(path, w, h):
     """Wie _thumb_cache_put_marke(), aber nicht-blockierend - gleicher
     Grund wie bei _thumb_cache_put_async() darunter. Die Marke selbst
     ist zwar winzig, aber _thumb_cache_evict_if_needed() haengt daran,
-    und das kann ein Verzeichnisdurchlauf sein."""
-    def _run():
-        try:
-            _thumb_cache_put_marke(path, w, h)
-        except Exception:                                # noqa: BLE001
-            pass
-    threading.Thread(target=_run, daemon=True).start()
+    und das kann ein Verzeichnisdurchlauf sein.
+
+    GEAENDERT (Build 247): laeuft ueber dieselbe Warteschlange wie die
+    Bilder. Das ist nicht nur Aufraeumen - die Marke und das Bild
+    desselben Covers gehoeren in dieselbe Reihenfolge, und zwei
+    getrennte Wege haetten genau das nicht garantiert."""
+    _schreib_einstellen(("marke", path, w, h))
 
 
 def _thumb_cache_put_async(path, w, h, tw, th, pix):
@@ -2135,13 +2294,19 @@ def _thumb_cache_put_async(path, w, h, tw, th, pix):
     werden bewusst verschluckt (nicht Aufgabe des Aufrufers, auf
     einen Hintergrund-Schreibvorgang zu warten oder zu reagieren -
     _thumb_cache_put() selbst loggt einen etwaigen Fehlschlag ja
-    bereits, siehe deren Docstring oben)."""
-    def _run():
-        try:
-            _thumb_cache_put(path, w, h, tw, th, pix)
-        except Exception:
-            pass
-    threading.Thread(target=_run, daemon=True).start()
+    bereits, siehe deren Docstring oben).
+
+    GEAENDERT (Build 247): statt eines Threads JE AUFRUF geht der
+    Auftrag in die Schreib-Warteschlange oben, die EIN Arbeitsfaden
+    abarbeitet. Die vollstaendige Begruendung samt der Messung, die
+    den alten Weg widerlegt hat, steht dort - kurz: 44 Schreibvorgaenge
+    in 60 Scrollschritten, 590 ms Hintergrundarbeit je Schritt auf
+    einem Geraet mit zwei Kernen.
+
+    Der Aufruf bleibt genauso billig wie vorher (Anhaengen und
+    notify statt Thread-Start) und wirft genauso nie etwas nach
+    aussen."""
+    _schreib_einstellen(("bild", path, w, h, tw, th, pix))
 
 # Mitgefuehrter Dateizaehler - siehe die lange Begruendung in
 # _thumb_cache_evict_if_needed(). None = "noch nie gezaehlt".

@@ -53,7 +53,7 @@ import zlib
 # aussehen - wer eine 1 und eine 2 nebeneinanderlegt, sieht sofort, dass
 # in der einen ein Abschnitt fehlt. Die Abschnitte A bis G haben sich
 # dabei nicht geaendert, ihre Zahlen bleiben also vergleichbar.
-BENCH_VERSION = 8
+BENCH_VERSION = 9
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -680,15 +680,37 @@ def _abschnitt_b(b, fe, S, spiele, A=None):
                           % (_kh[1] * 1000.0 / SCHRITTE, _kh[0]))
                     if _kalt_put:
                         _ps = sum(_kalt_put)
-                        b("      DANEBEN (eigene Threads, nicht im"
-                          " Schritt enthalten):")
+                        b("      DANEBEN (Schreib-Warteschlange, nicht"
+                          " im Schritt enthalten):")
                         b("        Miniaturen packen und schreiben"
-                          " %5.1f ms (%d x) - auf zwei Kernen"
+                          " %5.1f ms (%d x)"
                           % (_ps * 1000.0 / SCHRITTE, len(_kalt_put)))
                         b("        Das ist Rechenzeit, die der"
                           " Zeichenschleife gleichzeitig fehlt. Sie")
                         b("        gehoert NICHT abgezogen - sie"
                           " erklaert den Rest, sie ist nicht er.")
+                        # Build 247: seit die Schlange da ist, laeuft
+                        # das in EINEM Faden statt in einem je Cover.
+                        # Die Zahl, die das belegt, ist nicht die Zeit
+                        # (die bleibt dieselbe Summe), sondern ob die
+                        # Schlange mitkommt. 'verworfen' ist der Wert,
+                        # auf den es ankommt: steht er hoch, ist die
+                        # Karte langsamer als das Scrollen, und dann
+                        # werden Cover spaeter noch einmal gerechnet.
+                        _st = getattr(A, "thumb_schreib_stand", None)
+                        if _st is not None:
+                            try:
+                                _w, _wb, _er, _vw = _st()
+                                b("        Schlange: %d wartend"
+                                  " (%.1f MB), %d erledigt,"
+                                  " %d verworfen"
+                                  % (_w, _wb / 1048576.0, _er, _vw))
+                                b("        EIN Arbeitsfaden - vorher"
+                                  " einer JE COVER, und das hat auf")
+                                b("        zwei Kernen beide belegt"
+                                  " (Build 247).")
+                            except Exception:            # noqa: BLE001
+                                pass
                 if karte is not None:
                     zus = ""
                     if warm > 0 and karte / warm >= 1.2:

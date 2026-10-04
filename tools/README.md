@@ -2966,3 +2966,53 @@ Testfehler, sondern eine echte Luecke: eine Schleife, aus der keine
 Taste herausfuehrt, wenn die Uhr nicht weiterlaeuft. Im Frontend steht
 deshalb jetzt eine Obergrenze von 400 Bildern daneben, und der Test
 stellt die Uhr ausdruecklich auf echte Zeit (wie `test_bench.py`).
+
+
+## diag_schreibschlange.py / test_schreibschlange.py (Build 247)
+
+Abschnitt B des Bench vom 04.10. sagt es in einer Zeile:
+
+```
+   Spieleliste liste    je Schritt kalt      294.61 ms
+      davon dekodieren 94.4, verkleinern 43.3, Rest 156.9 ms
+      DANEBEN (eigene Threads, nicht im Schritt enthalten):
+        Miniaturen packen und schreiben 590.1 ms (44 x) - auf zwei Kernen
+```
+
+**590 ms Hintergrundarbeit je Schritt, bei einem Schritt von 294 ms.**
+Ueber 60 Schritte: 35 Sekunden Packen und Schreiben in knapp 18
+Sekunden Messzeit - auf einem Geraet mit **zwei** Kernen. Beide waren
+also durchgehend mit zlib und SD-Schreiben belegt, waehrend daneben
+gezeichnet wurde. Damit ist der unbenannte Rest von 156,9 ms erklaert.
+
+Grund war **ein eigener Thread je Cover**. Die Begruendung im
+Quelltext lautete, das passiere "ohnehin nur bei einem echten
+Fehltreffer, nicht bei jedem Scrollschritt" - die Zahl widerlegt das:
+**44 Schreibvorgaenge in 60 Schritten**.
+
+### Die uebertragbare Zahl ist 1
+
+`diag_schreibschlange.py` haengt sich an `_thumb_cache_put` und zaehlt,
+wie viele Schreibvorgaenge **gleichzeitig** laufen. Vorher so viele wie
+Cover, jetzt genau einer. Diese Zahl haengt an keiner Uhr und gilt auf
+jedem Rechner.
+
+### Woran die Aenderung scheitern kann
+
+`test_schreibschlange.py` prueft genau das:
+
+1. es laufen trotzdem mehrere gleichzeitig - dann ist nichts gewonnen
+2. die Schlange waechst unbegrenzt (ein Cover der Boxart-Spalte sind
+   1,78 MB)
+3. beim Verwerfen fliegt der FALSCHE heraus - der neue statt des
+   aeltesten
+4. die Buchfuehrung driftet: der Byte-Zaehler passt nicht mehr zur
+   Schlange
+5. **"Miniaturen vorbereiten" verliert Eintraege.** Das darf nicht
+   passieren, und darum geht der Vorbereiter weiter direkt und
+   synchron ueber `_thumb_cache_put()` - die Schlange bedient
+   ausschliesslich den Zeichenweg.
+
+Die Grenze liegt nach **Bytes** (24 MB) und nicht nach Eintraegen: ein
+Cover der Listenspalte sind 1,78 MB, eine Rasterkachel 165 kB - "20
+Eintraege" waere einmal 3 MB und einmal 36 MB.
