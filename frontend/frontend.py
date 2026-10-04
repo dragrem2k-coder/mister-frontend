@@ -275,7 +275,7 @@ from fe.audio import (
     _apply_volume_async, MPG123_BIN, ACHIEVEMENT_SFX_SOURCE, SFX_DIR,
     SFX_ENABLED_FLAG_FILE, SFX_MIN_GAP, SFX_DEFS, SFX_CHIME_DEFS,
     play_sfx, sfx_enabled_flag, toggle_sfx, MusicPlayer, get_volume,
-    _ensure_sfx_files,
+    _ensure_sfx_files, SoundGriff,
 )
 
 BOOTANIM_DIR = "/media/fat/frontend/bootanim"
@@ -298,6 +298,7 @@ from fe.settings import (
     DRAGEND_LOGO_FILE, MISTER_INI, SETUP_WIZARD_DONE_FILE,
     _filter_node_curated, _node_has_any_meta, attract_enabled,
     crt_menu_active, curated_only_active, cycle_attract_delay,
+    cycle_ziehung_spannung, load_ziehung_spannung,
     dragend_logo_enabled, filter_curated, format_attract_delay,
     load_attract_delay, mark_setup_wizard_done, save_attract_delay,
     setup_wizard_done, toggle_attract_mode, toggle_crt_menu,
@@ -12738,6 +12739,161 @@ class Frontend:
         fb.text(ox, oy, t("wot_title"),
                 self._fit_scale(t("wot_title"), text_w, s + 1), C_TITLE, C_BG)
 
+    def _wot_cover_sichern(self, picks, cover_cache, cell_w, covers_h, s):
+        """Die Cover der drei gezogenen Spiele in den Zwischenspeicher
+        holen - genau EINE Stelle dafuer.
+
+        NEU (Build 246). Vorher stand dieser Griff mitten in der
+        Zeichenschleife von draw_wot_screen(), beim ersten Durchlauf
+        also gleich dreimal hintereinander - und der erste fb.flip()
+        kam erst danach. Genau DAS ist die Wartezeit, die der
+        Ziehungssound ueberdecken soll, und die Spannungsphase muss
+        dieselbe Arbeit tun wie die Schleife, sonst wartet man
+        hinterher noch ein zweites Mal.
+
+        Deshalb hier herausgezogen: die Phase ruft es, die Schleife
+        ruft es, und was dort geladen wird, findet die Schleife
+        fertig vor. Der Zwischenspeicher gilt ueber "Neu ziehen"
+        hinweg (siehe cover_cache in draw_wot_screen), ein zweites
+        Mal dasselbe Spiel kostet also nichts."""
+        for p in picks:
+            psys = p[0]
+            prom_base = os.path.splitext(os.path.basename(p[4]))[0]
+            ckey = (psys, prom_base)
+            if ckey in cover_cache:
+                continue
+            # BUGFIX (Nutzer-Rueckmeldung, siehe ausfuehrlicher
+            # Kommentar in draw_art_panel(): kein SD-Rueckfall mehr im
+            # HD-Modus - fehlende HD-Datei = kein Cover statt matschig
+            # hochskaliertem SD-Bild).
+            try:
+                cover_cache[ckey] = ART.get_scaled(
+                    self.cover_quelle(psys, prom_base),
+                    cell_w - 10 * s, covers_h)
+            except Exception:                            # noqa: BLE001
+                # Ein kaputtes Cover darf die Ziehung nicht abbrechen -
+                # die Zeile ohne Bild ist immer noch spielbar.
+                cover_cache[ckey] = None
+
+    def _wot_ziehung_zeigen(self, fb, ox, oy, text_w, s, games_top,
+                            row_h, rows_scale, maxchars, playable,
+                            picks, cover_cache, cell_w, covers_h):
+        """Die Ziehung VORFUEHREN: wechselnde Titel, Sound dazu, und am
+        Ende stehen die drei gezogenen Spiele da (Build 246).
+
+        Der Nutzerwunsch war ein "Ziehungssound, der abgespielt wird
+        bis die Spiele erscheinen". Das Erscheinen dauert aber fast
+        nichts - deshalb gibt es hier eine Spannungsphase, deren Dauer
+        in den Einstellungen steht (System -> Verhalten & Optionen).
+        0 ms heisst: gar keine Phase, kein Sound, und alles verhaelt
+        sich wie vor Build 246.
+
+        DER ABLAUF, und die Reihenfolge ist wichtig:
+
+          1. Sound starten (laeuft in einem eigenen Faden, duckt die
+             Musik wie jeder andere bewusste Klang)
+          2. ein erstes Bild sofort auf den Schirm - sonst sieht der
+             Nutzer waehrend des Ladens noch die alte Seite, und der
+             Sound kaeme aus dem Nichts
+          3. die Cover laden (die EIGENTLICHE Arbeit; sie laeuft also
+             INNERHALB der Phase und kostet keine zusaetzliche Zeit)
+          4. die Restzeit mit wechselnden Titeln auffuellen, immer
+             langsamer werdend - ein Rad, das auslaeuft
+          5. Sound beenden, Tasten verwerfen
+
+        WARUM DER SOUND EINEN GRIFF BRAUCHT: die MP3 des Nutzers ist
+        7,9 Sekunden lang, die Phase dauert eine bis fuenf. Ohne das
+        vorzeitige Beenden (audio.SoundGriff) wuerde der Klang noch
+        laufen, wenn die Spiele schon lange dastehen.
+
+        Jede Taste bricht die Phase ab und wird dabei VERBRAUCHT - wer
+        sie nicht sehen will, drueckt durch, und ein gehaltener
+        OK-Knopf startet nicht gleich ein Spiel."""
+        dauer_ms = load_ziehung_spannung()
+        if dauer_ms <= 0:
+            # Aus: nur laden, nichts zeigen, nichts spielen.
+            self._wot_cover_sichern(picks, cover_cache, cell_w, covers_h, s)
+            return
+        griff = SoundGriff()
+        # Der Klang folgt dem normalen Soundeffekt-Schalter: die Ziehung
+        # ist nichts Seltenes wie ein Geheimcode, sondern etwas, das man
+        # oft macht. Wer die Effekte abgeschaltet hat, will sie nicht.
+        if sfx_enabled_flag():
+            try:
+                self._play_ducked_sfx("zufall_ziehung", griff=griff)
+            except Exception:                            # noqa: BLE001
+                pass
+        else:
+            griff.stoppen()
+        try:
+            ende = time.monotonic() + dauer_ms / 1000.0
+            titel = [" ".join(p[1].split()) for p in playable[:400]] \
+                or [" ".join(p[1].split()) for p in picks]
+            hint_sc = s - 1 if s > 1 else 1
+            abbruch = False
+
+            def _rahmen(zeilen):
+                """Ein Bild der laufenden Ziehung."""
+                fb.clear(C_BG)
+                self._draw_wot_title(fb, ox, oy, text_w, s)
+                y = games_top
+                for ln in zeilen:
+                    if len(ln) > maxchars:
+                        ln = ln[:maxchars - 1] + "~"
+                    fb.text(ox, y, "  " + ln, rows_scale, C_DIM, C_BG)
+                    y += row_h
+                self._hinweis_unten(t("wot_drawing"), hint_sc)
+                fb.flip()
+
+            def _zufalls_zeilen():
+                return [random.choice(titel) for _ in range(len(picks))]
+
+            _rahmen(_zufalls_zeilen())
+            # Jetzt die echte Arbeit - sie laeuft INNERHALB der Phase.
+            self._wot_cover_sichern(picks, cover_cache, cell_w, covers_h, s)
+            # Und die Restzeit auffuellen. Der Abstand waechst von
+            # Bild zu Bild: am Anfang hetzen die Titel, zum Schluss
+            # klicken sie nur noch weiter.
+            pause = 0.07
+            # NOTBREMSE: die Schleife haengt an time.monotonic(). Stuende
+            # die Uhr still, liefe sie endlos - und das waere ein
+            # Bildschirm, aus dem keine Taste mehr herausfuehrt. Bei der
+            # groessten Stufe (5 s) und der kuerzesten Pause (0,07 s)
+            # sind rund 72 Bilder moeglich; 400 ist weit darueber und
+            # trotzdem eine Grenze. Gefunden hat diese Luecke der
+            # Pruefstand: dort IST die Uhr eingefroren.
+            for _ in range(400):
+                if abbruch:
+                    break
+                rest = ende - time.monotonic()
+                if rest <= 0:
+                    break
+                _vorher = time.monotonic()
+                time.sleep(min(pause, rest))
+                if time.monotonic() <= _vorher:
+                    # DIE UHR STEHT. Im Pruefstand ist time.monotonic()
+                    # eingefroren (tools/_harness.py), und eine Phase,
+                    # die auf eine stehende Uhr wartet, wartet ewig -
+                    # die Obergrenze darueber faengt das zwar ab, aber
+                    # erst nach vierhundert Bildern und einer knappen
+                    # Minute echten Schlafens. Hier ist der Ausstieg
+                    # sofort, und auf dem Geraet kommt er nie vor.
+                    break
+                # Eine Taste waehrend der Ziehung ueberspringt sie -
+                # und wird dabei verbraucht, damit ein gehaltener
+                # OK-Knopf nicht gleich ein Spiel startet.
+                try:
+                    if self.inp.read_action():
+                        abbruch = True
+                        break
+                except Exception:                        # noqa: BLE001
+                    pass
+                if ende - time.monotonic() > 0:
+                    _rahmen(_zufalls_zeilen())
+                pause = min(0.28, pause * 1.25)
+        finally:
+            griff.stoppen()
+
     def draw_wot_screen(self):
         """'Zufalls-Zock': bietet drei zufaellige Spiele GLEICHZEITIG zur Wahl
         an (je Zeile voller Name + System; die drei Cover nebeneinander unten).
@@ -12908,6 +13064,31 @@ class Frontend:
             covers_h = max(covers_min, bottom_limit - action_top)
             cell_w = covers_block_w // max(1, n_games)
 
+            # DIE SPANNUNGSPHASE (Build 246, Nutzerwunsch: "kann man bei
+            # zufalls zock wenn man spiele zieht noch ein ziehungssound
+            # einbauen? der abgespielt wird bis die spiele erscheinen!").
+            #
+            # WARUM SIE UEBERHAUPT GEBRAUCHT WIRD: das Ziehen selbst
+            # dauert nichts (_next_three() nimmt drei Eintraege aus einer
+            # gemischten Liste). Was Zeit braucht, sind die drei Cover -
+            # und die liegen bei warmem Zwischenspeicher in
+            # Millisekunden da. Ein Sound "bis die Spiele erscheinen"
+            # waere dann nach einem Wimpernschlag abgebrochen.
+            #
+            # Also wird hier bewusst gewartet: wechselnde Titel wie bei
+            # einem Rad, der Sound dazu, und erst danach stehen die drei
+            # Spiele da. Die Cover werden WAEHREND der Phase geladen,
+            # also kostet sie nur, was ueber die Ladezeit hinausgeht.
+            # Dauer einstellbar, 0 schaltet beides ab (Sound und Warten)
+            # und stellt genau das Verhalten vor Build 246 her.
+            #
+            # Jede Taste ueberspringt - wer das nicht sehen will, muss
+            # nicht warten, und die Einstellung findet er trotzdem.
+            self._wot_ziehung_zeigen(fb, ox, oy, text_w, s, games_top,
+                                     row_h, rows_scale, maxchars,
+                                     playable, picks, cover_cache,
+                                     cell_w, covers_h)
+
             sel = 0
             redraw = False
             back_to_menu = False
@@ -12935,21 +13116,17 @@ class Frontend:
 
                 # Drei Cover nebeneinander (rechts, auf Hoehe der Aktionen);
                 # das markierte Spiel bekommt einen farbigen Rahmen.
+                # Build 246: das Laden steht jetzt in
+                # _wot_cover_sichern() - die Spannungsphase ruft
+                # dieselbe Funktion, also ist hier beim ersten
+                # Durchlauf schon alles da. Ist die Phase abgeschaltet,
+                # laedt dieser Aufruf wie bisher beim ersten Bild.
+                self._wot_cover_sichern(picks, cover_cache, cell_w,
+                                        covers_h, s)
                 for i, p in enumerate(picks):
                     psys = p[0]
                     prom_base = os.path.splitext(os.path.basename(p[4]))[0]
-                    ckey = (psys, prom_base)
-                    if ckey not in cover_cache:
-                        art = None
-                        # BUGFIX (Nutzer-Rueckmeldung, siehe ausfuehrlicher
-                        # Kommentar in draw_art_panel(): kein SD-Rueckfall
-                        # mehr im HD-Modus - fehlende HD-Datei = kein Cover
-                        # statt matschig hochskaliertem SD-Bild).
-                        art = ART.get_scaled(
-                            self.cover_quelle(psys, prom_base),
-                            cell_w - 10 * s, covers_h)
-                        cover_cache[ckey] = art
-                    art = cover_cache[ckey]
+                    art = cover_cache.get((psys, prom_base))
                     if not art:
                         continue
                     caw, cah, cpix = art
@@ -13471,7 +13648,7 @@ class Frontend:
         # sitzt jetzt dort, wo die Ursache liegt: beim ZEITPUNKT des
         # ersten F9. Hier wird wieder nur protokolliert.
 
-    def _play_ducked_sfx(self, name):
+    def _play_ducked_sfx(self, name, griff=None):
         """Spielt EINEN Soundeffekt (SFX_DIR/<name>.mp3 bevorzugt, sonst
         <name>.wav) GARANTIERT hoerbar ab - unabhaengig von der SFX-Ein/
         Aus-Einstellung und unabhaengig davon, ob gerade Musik laeuft
@@ -13512,11 +13689,22 @@ class Frontend:
         Musik an, nur der LETZTE startet sie wieder, und
         music._jingle_play_lock sorgt dafuer, dass die Sound-Dateien
         selbst bei mehreren nahezu gleichzeitigen Aufrufen strikt
-        NACHEINANDER abgespielt werden statt sich zu ueberlagern."""
+        NACHEINANDER abgespielt werden statt sich zu ueberlagern.
+
+        griff (Build 246, optional): ein audio.SoundGriff. Damit laesst
+        sich der Klang VORZEITIG beenden - gebraucht fuer den
+        Ziehungssound in Zufalls-Zock, der nur so lange laufen soll,
+        bis die Spiele dastehen. Ohne griff bleibt alles wie bisher:
+        der Klang laeuft bis zum Ende, und kein Aufrufer merkt einen
+        Unterschied. Siehe die Begruendung in audio.SoundGriff, warum
+        dafuer nicht einfach der Prozess gemerkt wird."""
         mp3_path = os.path.join(SFX_DIR, name + ".mp3")
         wav_path = os.path.join(SFX_DIR, name + ".wav")
         use_mp3 = os.path.exists(mp3_path) and os.path.exists(MPG123_BIN)
         if not use_mp3 and not os.path.exists(wav_path):
+            if griff is not None:
+                # Sonst wartet der Aufrufer auf ein Ende, das nie kommt.
+                griff.stoppen()
             return   # kein Sound fuer diesen Namen hinterlegt
         music = self.music
 
@@ -13540,17 +13728,28 @@ class Frontend:
                 # sauber nacheinander, ohne dass die Musik zwischendurch
                 # (faelschlich) wieder anspringt.
                 with music._jingle_play_lock:
-                    try:
-                        if use_mp3:
-                            cmd = [MPG123_BIN, "-q", "-f", _mpg_scale(), mp3_path]
-                        else:
-                            cmd = ["aplay", "-q", wav_path]
-                        proc = subprocess.Popen(
-                            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                            stdin=subprocess.DEVNULL)
-                        proc.wait()
-                    except OSError:
-                        pass
+                    # Schon abgebrochen, bevor es anfing? Dann gar nicht
+                    # erst starten - bei warmen Covern ist die
+                    # Spannungsphase regelmaessig vorbei, bevor mpg123
+                    # hochgefahren ist.
+                    if griff is None or not griff.abgebrochen():
+                        try:
+                            if use_mp3:
+                                cmd = [MPG123_BIN, "-q", "-f",
+                                       _mpg_scale(), mp3_path]
+                            else:
+                                cmd = ["aplay", "-q", wav_path]
+                            proc = subprocess.Popen(
+                                cmd, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                stdin=subprocess.DEVNULL)
+                            # setzen() liefert False, wenn in genau
+                            # diesem Moment abgebrochen wurde - der
+                            # Prozess ist dann schon beendet.
+                            if griff is None or griff.setzen(proc):
+                                proc.wait()
+                        except OSError:
+                            pass
             finally:
                 with music._jingle_count_lock:
                     music._jingle_depth -= 1
@@ -19551,6 +19750,13 @@ class Frontend:
                         elif kind == "attract_delay":
                             cycle_attract_delay()
                             self._attract_delay_check_next = 0.0   # sofort neu einlesen
+                            self._refresh_system_category()
+                        elif kind == "ziehung_spannung":
+                            # Build 246. Wird bei jedem Betreten von
+                            # Zufalls-Zock frisch gelesen - kein
+                            # Zwischenspeicher noetig, der Bildschirm
+                            # wird selten geoeffnet.
+                            cycle_ziehung_spannung()
                             self._refresh_system_category()
                         elif kind == "theme":
                             cycle_theme()

@@ -1,4 +1,10 @@
-# MiSTer Custom Frontend — Vorschau (Stand v3.2)
+# MiSTer Custom Frontend — Vorschau (Stand v3.2, VERALTET)
+
+> **Diese Seite ist alt.** Sie beschreibt v3.2 und wird nicht mehr
+> nachgezogen — die Funktionsliste, die Installation und die Bedienung
+> stehen vollständig und aktuell in der [README](README.md), die
+> Einzelheiten im [Handbuch](docs/HANDBUCH.md). Sie bleibt nur liegen,
+> damit alte Verweise darauf nicht ins Leere laufen.
 
 Mein selbstgebautes Frontend für den MiSTer FPGA, komplett in purem
 Standard-Python — keine einzige externe Abhängigkeit auf dem MiSTer

@@ -2937,3 +2937,32 @@ Zahl, die man abziehen darf, ist es nicht. Aus den Threads wird mit
 `list.append` gesammelt und nicht mit `+=` addiert - `+=` auf ein
 Listenfeld ist nicht unteilbar, und bei 60 Threads geht sonst lautlos
 eine Messung verloren.
+
+
+## test_ziehungssound.py (Build 246)
+
+Die Ziehung in Zufalls-Zock mit Ton. Geprueft wird nicht, dass es
+klingt - geprueft wird, woran dieses Feature scheitern kann:
+
+1. **Der Sound laeuft weiter, wenn die Spiele schon dastehen.** Die MP3
+   des Nutzers ist 7,9 Sekunden lang, die Phase dauert eine bis fuenf.
+2. **Der Sound wird erst gestartet, nachdem abgebrochen wurde.** Er
+   laeuft in einem eigenen Faden; bei warmem Zwischenspeicher ist die
+   Phase regelmaessig vorbei, bevor mpg123 hochgefahren ist. Dann
+   faengt der Ton an, wenn er aufhoeren soll - und niemand haelt ihn
+   mehr. Genau dafuer gibt es `audio.SoundGriff`, und genau das prueft
+   Test 1 ("nach dem Abbruch wird ein Prozess NICHT angenommen").
+3. **Die Phase laedt die Cover nicht** - dann wartet man zweimal.
+4. **Die Einstellung 0 kostet trotzdem Zeit** - dann gibt es kein
+   Zurueck zum Verhalten von vor Build 246.
+5. **Eine von Hand verstellte Datei blockiert den Bildschirm.**
+
+### Und was der Test selbst gefunden hat
+
+Der erste Lauf **lief zehn Minuten, bis er abgebrochen wurde**. Die
+Phase laeuft, bis `time.monotonic()` die Dauer erreicht - im
+Pruefstand steht diese Uhr aber still (`_harness.NOW`). Das war kein
+Testfehler, sondern eine echte Luecke: eine Schleife, aus der keine
+Taste herausfuehrt, wenn die Uhr nicht weiterlaeuft. Im Frontend steht
+deshalb jetzt eine Obergrenze von 400 Bildern daneben, und der Test
+stellt die Uhr ausdruecklich auf echte Zeit (wie `test_bench.py`).

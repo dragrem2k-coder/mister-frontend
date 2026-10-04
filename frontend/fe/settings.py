@@ -674,6 +674,61 @@ def overscan_weiter(achse):
     overscan_schreiben(x, y)
     return x, y
 
+# NEUES FEATURE (Nutzerwunsch: "kann man bei zufalls zock wenn man
+# spiele zieht noch ein ziehungssound einbauen? der abgespielt wird bis
+# die spiele erscheinen!").
+#
+# WARUM DARAUS EINE EINSTELLUNG WURDE und nicht nur ein Sound: das
+# Ziehen selbst dauert nichts. Drei Spiele aus einer gemischten Liste
+# zu nehmen ist eine Listenoperation; was ueberhaupt Zeit braucht, sind
+# die drei Cover, und die liegen bei warmem Zwischenspeicher in
+# Millisekunden da. Ein Ziehungssound haette also nach einem Bruchteil
+# einer Sekunde abgebrochen - und der Sound des Nutzers ist 7,9
+# Sekunden lang.
+#
+# Deshalb gibt es eine SPANNUNGSPHASE: nach dem Druck auf "Neu ziehen"
+# laeuft fuer diese Zeit eine Ziehung ueber den Schirm (wechselnde
+# Titel, wie bei einem Rad), der Sound laeuft dazu, und danach stehen
+# die drei Spiele da. Das ist bewusst Wartezeit, die es vorher nicht
+# gab - darum ist sie einstellbar UND abschaltbar, und 0 stellt genau
+# das Verhalten von vorher wieder her (kein Warten, kein Sound).
+#
+# Gleiches Muster wie die Attract-Verzoegerung darueber: Lesen,
+# Schreiben, Weiterschalten mit einer festen Stufenliste.
+ZIEHUNG_SPANNUNG_FILE = "/media/fat/frontend/ziehung_spannung"
+ZIEHUNG_SPANNUNG_STUFEN = (0, 1000, 2000, 3000, 5000)   # Millisekunden
+ZIEHUNG_SPANNUNG_STD = 2000
+
+def load_ziehung_spannung():
+    """Dauer der Spannungsphase in Millisekunden; 0 = aus."""
+    try:
+        with open(ZIEHUNG_SPANNUNG_FILE) as f:
+            val = int(f.read().strip())
+    except (OSError, ValueError):
+        return ZIEHUNG_SPANNUNG_STD
+    # Eine von Hand verstellte Datei darf den Bildschirm nicht
+    # minutenlang blockieren - deshalb nur bekannte Stufen.
+    return val if val in ZIEHUNG_SPANNUNG_STUFEN else ZIEHUNG_SPANNUNG_STD
+
+def save_ziehung_spannung(ms):
+    try:
+        os.makedirs(os.path.dirname(ZIEHUNG_SPANNUNG_FILE), exist_ok=True)
+        with open(ZIEHUNG_SPANNUNG_FILE, "w") as f:
+            f.write(str(int(ms)))
+    except OSError:
+        pass
+
+def cycle_ziehung_spannung():
+    """Naechste Stufe waehlen (wrap-around). Liefert den neuen Wert."""
+    current = load_ziehung_spannung()
+    try:
+        idx = ZIEHUNG_SPANNUNG_STUFEN.index(current)
+    except ValueError:
+        idx = -1
+    neu = ZIEHUNG_SPANNUNG_STUFEN[(idx + 1) % len(ZIEHUNG_SPANNUNG_STUFEN)]
+    save_ziehung_spannung(neu)
+    return neu
+
 def format_attract_delay(seconds):
     """z.B. '30s', '2min', '10min' - fuer die Menu-Beschriftung."""
     if seconds < 60:

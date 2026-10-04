@@ -61,7 +61,7 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | **Spielbeschreibungen** | Deutscher Text neben dem Cover in der Galerie |
 | **Filter** | Nach Genre, Jahr, Spielerzahl und Entwickler (Tab / Select+L2+R2), je Kategorie merkbar |
 | **Suche** | Tippen filtert die Liste sofort |
-| **Favoriten & Sammlungen** | Eigene Listen quer über alle Systeme |
+| **Favoriten & Sammlungen** | Eigene Listen quer über alle Systeme — **einschließlich der Favoriten, die du im MiSTer-OSD markiert hast** (eine Liste, zwei Quellen; in deine Favoritendatei wird nichts geschrieben) |
 | **Zuletzt gespielt** | Eigene Kategorie, sortiert nach letztem Start |
 | **ZIP-Archive** | ROMs in Archiven werden gefunden und gestartet, ohne je etwas zu entpacken |
 | **Ordner mit einem Spiel** | Werden aufgelöst — wichtig bei PSX, Mega CD und Saturn, wo jedes Spiel in einem eigenen Ordner liegt |
@@ -79,6 +79,7 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | **Durchgespielt & eigene Erfolge** | Auch für Spiele ohne RA-Unterstützung |
 | **Easter Eggs & Frontend-Level** | Versteckte Erfolge, Jubiläums-Hinweise, saisonale Dekorationen |
 | **Zufalls-Zock / Wonne oder Tonne** | Zufälliges, noch nicht gespieltes bzw. noch nicht bewertetes Spiel |
+| **Ziehung mit Ton** | Beim Ziehen laufen die Titel wie auf einem Rad, dazu ein Ziehungssound — Dauer 1–5 s einstellbar oder ganz aus |
 
 ### Anzeige & Ton
 
@@ -92,6 +93,10 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | **Boot-Animation** | Eigenes Startvideo oder die eingebaute D-Pad-Animation |
 | **Musik** | Eigene MP3s oder Rainwave-Internetradio (fünf Sender), gemeinsamer Lautstärkeregler |
 | **Navigations-Sounds** | Selbst erzeugte Klänge, abschaltbar |
+| **MiSTers eigene Schriften** | Die `.pf`-Zeichensätze aus `/media/fat/font` werden gelesen und im Frontend benutzt — dieselbe Schrift wie im OSD |
+| **Lochmasken** | MiSTers eigene `.png`-Masken als Gitter über das Bild, vier Stärken |
+| **Hintergrundbilder** | Eigene Bilder hinter der Liste, abgedunkelt und zugeschnitten; mehrere werden durchgeschaltet |
+| **Feinheiten** | Akzentbalken je Zeile, Akzentstrich über der Liste, Anfangsbuchstabe beim Schnellscrollen — in einem Schalter zusammengefasst |
 | **CRT-Testbild** | Zum Einstellen von Geometrie und Schärfe |
 
 ### Technik & Bedienung
@@ -108,6 +113,10 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | **Bildwächter** | Holt das Bild zurück, wenn MiSTer den Bildspeicher neu einrichtet und die Linux-Konsole durchscheint (Kernel 6.18) |
 | **Miniaturen als JPEG** | Große Miniaturen werden platzsparend abgelegt — Ordner öffnen sich merkbar schneller |
 | **Schutz beim Einlesen** | Symlink-Schleifen und zu tiefe Verschachtelungen werden erkannt statt endlos verfolgt |
+| **`update_all` aus dem Menü** | Startet das vorhandene Skript; die Beschriftung nennt den letzten Lauf („vor 23 Tagen“) |
+| **Core-Browser** | Je System die Core-Fassung wählen, mit Warnung, wenn die gewählte Datei von `update_all` gelöscht wurde |
+| **Speicher-Wächter** | Ein im Betrieb eingesteckter USB-Stick wird gemeldet. Neu eingelesen wird **nicht** von selbst — das dauert bei 30 000 Spielen Minuten |
+| **Vorführung** | `--demo` führt das Frontend selbst vor: Ansichten, Filter, Trophäenraum und die Einstellungsgruppen |
 | **Paket-Prüfung** | Ein halb eingespieltes Update endet in einer Anleitung, nicht in einem Absturz |
 
 Alles ausführlich: **[Handbuch](docs/HANDBUCH.md)**.
@@ -268,15 +277,30 @@ python3 /media/fat/frontend/frontend.py --bench
 ```
 
 Der Bericht erscheint auf der Konsole und landet zusätzlich in
-`/tmp/dragend_bench.txt`. Er dauert je nach Gerät ein bis zwei
-Minuten und ist in vier Teile geteilt:
+`/tmp/dragend_bench.txt`. Er dauert je nach Gerät zwei bis vier Minuten
+und besteht inzwischen aus elf Abschnitten — jeder ist entstanden, weil
+eine Zahl fehlte, die eine Entscheidung gebraucht hätte:
 
 | | |
 |---|---|
 | **A Start** | Wie lange der Start dauert — auch **je Spiel**, damit 2 000 und 97 000 Spiele vergleichbar bleiben |
-| **B Zeichnen** | Voller Seitenaufbau und Zeit je Scrollschritt, für alle drei Ansichten auf beiden Seiten, dazu der reine Bildtransport |
+| **B Zeichnen** | Voller Seitenaufbau und Zeit je Scrollschritt, für alle drei Ansichten auf beiden Seiten. Getrennt nach **kalt / von der Karte / warm**, mit Aufteilung des kalten Falls in Dekodieren, Verkleinern und Rest |
 | **C Bildkette** | Verkleinern in C gegen Python, Miniatur packen, schreiben, lesen, PNG dekodieren — an einem **erzeugten** Bild fester Größe und damit zwischen Geräten direkt vergleichbar |
 | **D Echte Datei** | Dasselbe an einem Cover von der Karte. Hängt an genau dieser Datei und ist ausdrücklich **nicht** vergleichbar — der Unterschied zu C ist selbst die Auskunft |
+| **E Scroll-Blitting** | Ob sich das Verschieben des Listenblocks gegenüber dem Neuzeichnen lohnt. Misst abwechselnd über drei Runden und sagt **„zu knapp"**, wenn der Unterschied in der Streuung liegt |
+| **F Bildspeicher lesen** | Was ein Blick des Bildwächters kostet — der Posten, der in Build 209 einmal 2 ms je Bild gekostet hat |
+| **G Dateisystem** | `os.stat` und `os.utime` im Zeichenweg, mit und ohne Zwischenspeicher |
+| **H Übertragungs-Matrix** | Preis je Megabyte und je Aufruf, in acht Größen — die Grundlage für jede Entscheidung über Teilkopien |
+| **I Kurze Zeilen gegen lange** | Warum der Rechteck-Flip lohnt, und ab welcher Fläche das Füllen nach C gehört |
+| **J Woraus besteht ein Scrollschritt** | Jeder Posten einzeln: Wiederherstellen, Kopieren, Flip, Text, Karten, Cover — und der **Rest**. Bleibt der groß, fehlt noch ein Posten |
+| **K Welche Füllaufrufe** | Jeder äußerste Füllaufruf mit Maß, Anzahl und Zeit, je Ansicht zweimal: mit Cover und mit übersprungenem Cover (so, wie es sich beim Schnellscrollen verhält). Der größte Posten steht neben dem, was seine Fläche nach dem Kostenmodell erklärt |
+
+Die Abschnitte J und K sind der Grund, warum hier überhaupt etwas
+schneller geworden ist: sie nennen den **größten Einzelposten mit Namen
+und Zahl**, statt eine Gesamtzeit zu zeigen. Und sie haben mehr als
+einmal einen Fehler im Messwerkzeug selbst überführt — zuletzt in
+Build 245, als sich zeigte, dass Abschnitt K den Fall gar nicht
+herstellte, in dem die Verbesserung aus Build 244 überhaupt greift.
 
 Der Lauf **schreibt nichts auf die SD-Karte**. Keine Miniatur, keine
 Einstellung, keine Cache-Datei; was er zum Messen schreiben muss,

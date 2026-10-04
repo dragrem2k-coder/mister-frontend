@@ -554,6 +554,9 @@ TRANSLATIONS = {
         "de": "Mehrere Spiele gezogen, aber für keins eine passende ROM-Datei gefunden."},
     "wot_option_start": {"en": "Start", "de": "Starten"},
     "wot_option_redraw": {"en": "Draw again", "de": "Neu ziehen"},
+    # NEU (Build 246): Hinweiszeile während der Ziehung.
+    "wot_drawing": {"en": "Drawing...   any button: skip",
+                    "de": "Es wird gezogen...   beliebige Taste: überspringen"},
     "wot_option_back": {"en": "Back", "de": "Zurück"},
     "wot_checking": {"en": "Checking games... %d/%d",
                      "de": "Prüfe Spiele... %d/%d"},
@@ -675,6 +678,12 @@ TRANSLATIONS = {
                         "de": "Attract-Modus (Bildschirmschoner): AUS -> einschalten"},
     "sys_attract_delay": {"en": "Attract mode delay: %s -> next",
                           "de": "Attract-Modus Verzögerung: %s -> nächste"},
+    # NEU (Build 246): Dauer der Ziehung in Zufalls-Zock. Steht bei
+    # "Verhalten & Optionen" neben der Attract-Verzögerung - beides
+    # sind Zeiten, die bestimmen, wie sich das Frontend anfühlt.
+    "sys_ziehung_spannung": {"en": "Draw suspense: %s -> next",
+                             "de": "Ziehung Spannung: %s -> nächste"},
+    "sys_ziehung_aus": {"en": "off", "de": "aus"},
     "sys_theme": {"en": "Color theme: %s -> next",
                   "de": "Farbschema: %s -> nächstes"},
     "sys_timezone": {"en": "Timezone: %s -> next",

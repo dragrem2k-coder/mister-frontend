@@ -155,6 +155,7 @@ Nachlesen (`CHANGELOG.md`).
    - 8f-2. ROMs auf einem NAS/Netzlaufwerk
    - 8g. Themes/Farbschemata
    - 8h. Navigations-Soundeffekte
+   - 8h-2. Zufalls-Zock: die Ziehung mit Ton
    - 8i. Spielzeit-Tracker
    - 8j. Top-10-Listen
    - 8k. RetroAchievements-Fortschritt
@@ -916,6 +917,38 @@ Im System-Menü: "Navigations-Soundeffekte" schaltet kurze Klicktöne
 beim Bewegen/Bestätigen/Zurückgehen ein oder aus (Standard: AN). Die
 Töne werden beim ersten Start selbst erzeugt (keine Downloads nötig)
 und laufen parallel zur Hintergrundmusik.
+
+## 8h-2. Zufalls-Zock: die Ziehung mit Ton (Build 246)
+
+Im System-Menü unter *Verhalten & Optionen*: **"Ziehung Spannung"**,
+Stufen `aus / 1,0s / 2,0s / 3,0s / 5,0s`, Standard **2,0s**.
+
+Drückt man in Zufalls-Zock auf *Neu ziehen* (oder betritt den
+Bildschirm), laufen die Titel für diese Zeit wie auf einem Rad über den
+Schirm — immer langsamer werdend — und dazu läuft ein Ziehungssound.
+Danach stehen die drei gezogenen Spiele da.
+
+**Warum es diese Einstellung überhaupt gibt:** das Ziehen selbst dauert
+nichts. Drei Spiele aus einer gemischten Liste zu nehmen ist eine
+Listenoperation; Zeit brauchen nur die drei Cover, und die liegen bei
+warmem Zwischenspeicher in Millisekunden da. Ein Sound „bis die Spiele
+erscheinen" wäre also nach einem Wimpernschlag abgebrochen. Die
+Spannungsphase ist deshalb **bewusst Wartezeit** — und damit etwas, das
+man abschalten können muss. `aus` stellt genau das Verhalten von vor
+Build 246 wieder her: kein Warten, kein Ton.
+
+Die Cover werden **während** der Phase geladen. Die Phase kostet also
+nur, was über die Ladezeit hinausgeht, und nicht beides hintereinander.
+
+**Jede Taste überspringt** die Ziehung und wird dabei verbraucht — ein
+gehaltener OK-Knopf startet also nicht gleich ein Spiel.
+
+**Eigener Klang:** gespielt wird `/media/fat/frontend/sfx/zufall_ziehung.mp3`.
+Die Datei liegt bei; wer einen anderen Klang will, legt einfach seine
+eigene MP3 unter diesem Namen dorthin. Fehlt die Datei, erzeugt das
+Frontend einen Ersatzklang (einen beschleunigenden Wirbel) — stumm
+bleibt die Ziehung nie. Steht "Navigations-Soundeffekte" auf AUS, läuft
+die Ziehung ohne Ton.
 
 ## 8i. Spielzeit-Tracker
 

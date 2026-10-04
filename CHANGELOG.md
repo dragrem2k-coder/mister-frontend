@@ -990,6 +990,44 @@ wird.**
 Dieses Build macht keinen Zeichenweg schneller. Es macht drei Stellen
 messbar, an denen bisher geraten werden musste.
 
+**Zufalls-Zock: die Ziehung läuft jetzt, mit Ton.**
+
+- Beim Ziehen laufen die Titel wie auf einem **Rad** über den Schirm — immer
+  langsamer werdend — und dazu läuft ein **Ziehungssound**. Danach stehen die
+  drei Spiele da. Einstellbar unter *System → Verhalten & Optionen → „Ziehung
+  Spannung“*: `aus / 1,0s / 2,0s / 3,0s / 5,0s`, Standard 2 Sekunden.
+- **Warum das eine Einstellung ist und kein fester Wert:** das Ziehen selbst
+  dauert nichts — drei Spiele aus einer gemischten Liste zu nehmen ist eine
+  Listenoperation. Zeit brauchen nur die drei Cover, und die liegen bei warmem
+  Zwischenspeicher in Millisekunden da. Ein Sound „bis die Spiele erscheinen“
+  wäre nach einem Wimpernschlag abgebrochen. Die Spannungsphase ist deshalb
+  **bewusst Wartezeit** — und `aus` stellt genau das Verhalten von vorher
+  wieder her.
+- Die Cover werden **während** der Phase geladen, nicht danach. Sie kostet
+  also nur, was über die Ladezeit hinausgeht.
+- **Jede Taste überspringt** die Ziehung — und wird dabei verbraucht, damit
+  ein gehaltener OK-Knopf nicht gleich ein Spiel startet.
+- Der Klang kommt aus `sfx/zufall_ziehung.mp3` und lässt sich durch eine
+  eigene MP3 unter demselben Namen ersetzen. Fehlt die Datei, erzeugt das
+  Frontend einen Ersatzklang — stumm bleibt die Ziehung nie. Steht
+  „Navigations-Soundeffekte“ auf AUS, läuft sie ohne Ton.
+
+**Zwei Dinge, die beim Bauen aufgefallen sind.**
+
+- **Der Sound hätte in den Auswahlbildschirm hineingespielt.** Die MP3 ist 7,9
+  Sekunden lang, die Phase dauert eine bis fünf. Die bisherigen Wege spielen
+  einen Klang immer **bis zum Ende** — es gab gar keine Möglichkeit, einen
+  abzubrechen. Jetzt gibt es sie, und sie muss den Fall abfangen, dass
+  abgebrochen wird, **bevor** der Klang überhaupt angefangen hat: er läuft in
+  einem eigenen Faden, und bei warmen Covern ist die Ziehung regelmäßig vorbei,
+  bevor das Abspielprogramm hochgefahren ist. Ohne diese Vorkehrung fängt der
+  Ton genau dann an, wenn er aufhören sollte.
+- **Eine Schleife, aus der keine Taste herausführt.** Die Ziehung läuft, bis
+  die Uhr abgelaufen ist. Stünde die Uhr still, liefe sie endlos. Gefunden hat
+  das der Prüfstand, denn dort **steht** die Uhr still — der Test lief zehn
+  Minuten, bis er abgebrochen wurde. Jetzt steht eine Obergrenze für die Zahl
+  der Bilder daneben.
+
 **Das Wasserzeichen gibt es nicht — und der Grund gehört dazu.**
 
 Gewünscht war das System-Logo dezent *hinter der Liste*. Dort liegt der

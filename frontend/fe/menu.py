@@ -28,6 +28,7 @@ from fe.audio import get_volume, sfx_enabled_flag
 from fe.settings import (
     attract_enabled, crt_menu_active, curated_only_active,
     dragend_logo_enabled, format_attract_delay, load_attract_delay,
+    load_ziehung_spannung,
     screen_mirror_enabled, stream_overlay_enabled,
     fast_scroll_enabled, cover_sofort_enabled, arbeitskopien_enabled,
     overscan_lesen, fremdquellen_enabled,
@@ -160,6 +161,15 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     attract_label = t("sys_attract_on") if attract_enabled() \
         else t("sys_attract_off")
     attract_delay_label = t("sys_attract_delay", format_attract_delay(load_attract_delay()))
+    # NEU (Build 246): Dauer der Ziehung in Zufalls-Zock. Die
+    # Beschriftung nennt den Wert, damit man ihn nicht durchprobieren
+    # muss - genau wie bei der Attract-Verzoegerung darueber. 0 wird
+    # ausdruecklich als "aus" geschrieben und nicht als "0,0 s": der
+    # Unterschied ist keine Dauer, sondern ein abgeschaltetes Feature.
+    _zieh_ms = load_ziehung_spannung()
+    ziehung_label = t("sys_ziehung_spannung",
+                      t("sys_ziehung_aus") if _zieh_ms <= 0
+                      else "%.1fs" % (_zieh_ms / 1000.0))
     theme_names = THEME_NAMES_DE if current_lang() == "de" else THEME_NAMES_EN
     theme_label = t("sys_theme", theme_names.get(current_theme_name(), "?"))
     tz_label = t("sys_timezone", format_timezone_offset(load_timezone_offset()))
@@ -432,6 +442,7 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             (update_all_label, "update_all", None),
             (attract_label, "attract", None),
             (attract_delay_label, "attract_delay", None),
+            (ziehung_label, "ziehung_spannung", None),
             (tz_label, "timezone", None),
             (netwait_label, "network_wait", None),
             (autostart_label, "autostart", None),

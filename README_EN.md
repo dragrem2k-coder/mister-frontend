@@ -62,7 +62,7 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | **Game descriptions** | Shown next to the cover in gallery view |
 | **Filters** | By genre, year, player count and developer (Tab / Select+L2+R2), remembered per category |
 | **Search** | Type to narrow the list instantly |
-| **Favourites & collections** | Your own lists across all systems |
+| **Favourites & collections** | Your own lists across all systems — **including the favourites you marked in the MiSTer OSD** (one list, two sources; nothing is written to your favourites file) |
 | **Recently played** | Its own category, sorted by last launch |
 | **ZIP archives** | ROMs inside archives are found and launched without ever extracting anything |
 | **Single-game folders** | Dissolved automatically — matters for PSX, Mega CD and Saturn, where each game sits in its own folder |
@@ -80,6 +80,7 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | **Completed & custom achievements** | Also for games RA does not support |
 | **Easter eggs & frontend level** | Hidden achievements, anniversary notes, seasonal decorations |
 | **Random pick / rate-it** | A random game you have not played, or not yet rated |
+| **The draw, with sound** | Titles spin like a wheel while a draw sound plays — duration 1–5 s, adjustable or off |
 
 ### Display & sound
 
@@ -93,6 +94,10 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | **Boot animation** | Your own video, or the built-in D-pad animation |
 | **Music** | Your MP3s or Rainwave internet radio (five stations), one shared volume control |
 | **Navigation sounds** | Generated tones, can be switched off |
+| **MiSTer's own fonts** | The `.pf` character sets in `/media/fat/font` are read and used — the same typeface as the OSD |
+| **Shadow masks** | MiSTer's own `.png` masks as a grid over the picture, four strengths |
+| **Background images** | Your own images behind the list, dimmed and cropped; several are cycled |
+| **Fine details** | Accent bar per row, accent rule above the list, initial letter while fast-scrolling — one switch for all of it |
 | **CRT test pattern** | For setting geometry and sharpness |
 
 ### Technical & control
@@ -109,6 +114,10 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | **Picture guard** | Brings the picture back when MiSTer re-initialises the framebuffer and the Linux console shows through (kernel 6.18) |
 | **JPEG thumbnails** | Large thumbnails are stored compactly — folders open noticeably faster |
 | **Scan protection** | Symlink loops and excessive nesting are detected instead of followed forever |
+| **`update_all` from the menu** | Launches the existing script; the label names the last run (“23 days ago”) |
+| **Core browser** | Pick the core build per system, with a warning when `update_all` has deleted the chosen file |
+| **Storage watch** | A USB stick plugged in while running is reported. Nothing is re-read on its own — that takes minutes with 30,000 games |
+| **Demo mode** | `--demo` shows the frontend off by itself: views, filters, trophy room and the settings groups |
 | **Package check** | A half-applied update ends in an instruction, not a crash |
 
 All of it in detail: **[Manual](docs/MANUAL_EN.md)**.
@@ -266,14 +275,30 @@ python3 /media/fat/frontend/frontend.py --bench
 ```
 
 The report goes to the console and to `/tmp/dragend_bench.txt`. It
-takes a minute or two depending on the device and has four parts:
+takes two to four minutes depending on the device and now has eleven
+sections — each one exists because a number was missing that a
+decision needed:
 
 | | |
 |---|---|
 | **A Startup** | How long starting takes — also **per game**, so 2,000 and 97,000 games stay comparable |
-| **B Drawing** | Full page build and time per scroll step, for all three views on both pages, plus the raw frame transfer |
+| **B Drawing** | Full page build and time per scroll step, for all three views on both pages. Split into **cold / from the card / warm**, with the cold case broken down into decoding, scaling and rest |
 | **C Image chain** | Downscaling in C versus Python, packing, writing and reading a thumbnail, decoding a PNG — on a **generated** image of fixed size, and therefore directly comparable between devices |
 | **D Real file** | The same on a cover from the card. It depends on that one file and is explicitly **not** comparable — the gap to C is itself the finding |
+| **E Scroll blitting** | Whether shifting the list block beats redrawing it. Measures alternately over three rounds and says **“too close to call”** when the difference is inside the spread |
+| **F Reading the framebuffer** | What one look by the frame watchdog costs — the item that cost 2 ms per frame in Build 209 |
+| **G Filesystem** | `os.stat` and `os.utime` in the draw path, with and without the cache |
+| **H Transfer matrix** | Price per megabyte and per call, in eight sizes — the basis for every decision about partial copies |
+| **I Short rows versus long** | Why the rectangle flip pays off, and from what area filling belongs in C |
+| **J What a scroll step is made of** | Every item separately: restore, copy, flip, text, cards, cover — and the **rest**. If that stays large, an item is still missing |
+| **K Which fill calls** | Every outermost fill call with size, count and time, twice per view: with a cover and with the cover skipped (the way fast scrolling behaves). The largest item stands next to what its area explains under the cost model |
+
+Sections J and K are the reason anything here got faster at all: they
+name the **largest single item, with a name and a number**, instead of
+showing a total. And more than once they have convicted the measuring
+tool itself — most recently in Build 245, when it turned out that
+section K never produced the case in which Build 244's improvement
+applies at all.
 
 The run **writes nothing to the SD card**. No thumbnail, no setting,
 no cache file; what it has to write in order to measure goes to a

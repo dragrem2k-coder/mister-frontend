@@ -277,6 +277,26 @@ SFX_CHIME_DEFS = {
     "theme_sms": [(300, 300, 40), (450, 450, 40), (600, 600, 40), (900, 900, 60)],
     "theme_gamegear": [(800, 1100, 30), (1100, 900, 30), (1400, 1400, 50)],
     "theme_saturn": [(200, 200, 70), (200, 700, 90), (700, 300, 60)],
+
+    # NEU (Nutzerwunsch: "kann man bei zufalls zock wenn man spiele
+    # zieht noch ein ziehungssound einbauen?") - der ERSATZKLANG fuer
+    # die Ziehung. Bevorzugt wird SFX_DIR/zufall_ziehung.mp3 (siehe
+    # play_sfx()/_play_ducked_sfx(): MP3 geht immer vor); dieser Eintrag
+    # greift, wenn die MP3 fehlt oder von Hand geloescht wurde - dann
+    # bleibt die Ziehung nicht stumm.
+    #
+    # Bewusst anders gebaut als die Eintraege darueber: kein Jingle,
+    # sondern ein BESCHLEUNIGENDER Wirbel - fuenfzehn flache, immer
+    # kuerzer werdende Toene, die zum Schluss einen Ton hoeher gehen.
+    # Das klingt nach einem Rad, das auslaeuft, und genau so sieht die
+    # Spannungsphase auf dem Schirm aus (wechselnde Titel, die langsamer
+    # werden). Gesamtlaenge rund 1,1 s - kurz genug, dass auch die
+    # kleinste Stufe (1 s) nicht mitten im Klang abbricht.
+    "zufall_ziehung": [(330, 330, 90), (392, 392, 85), (330, 330, 80),
+                       (392, 392, 75), (330, 330, 70), (392, 392, 65),
+                       (440, 440, 60), (392, 392, 55), (440, 440, 50),
+                       (494, 494, 45), (440, 440, 40), (494, 494, 38),
+                       (587, 587, 36), (523, 523, 34), (659, 784, 170)],
 }
 
 def _ensure_sfx_files():
@@ -314,6 +334,74 @@ def _ensure_sfx_files():
                     _write_wav_chime(path, segments, volume=0.35 * VOLUME / 100.0)
             except OSError:
                 pass
+
+class SoundGriff(object):
+    """Griff auf einen laufenden Sound, der sich VORZEITIG beenden
+    laesst.
+
+    NEU (Build 246, fuer den Ziehungssound in Zufalls-Zock). Die
+    bestehenden Wege spielen einen Klang immer bis zum Ende ab:
+    play_sfx() startet und vergisst, _play_ducked_sfx() wartet in
+    seinem Thread auf proc.wait(). Fuer die Ziehung reicht das nicht -
+    der Sound des Nutzers ist 7,9 Sekunden lang, die Spannungsphase
+    dauert eine bis fuenf, und danach sollen die Spiele OHNE weiteren
+    Klang dastehen.
+
+    DIE FALLE, DIE ES HIER ZU VERMEIDEN GILT, und sie ist der ganze
+    Grund fuer diese Klasse: der Sound wird in einem eigenen Thread
+    gestartet, das Abbrechen kommt aus dem Hauptfaden. Wird abgebrochen,
+    BEVOR der Thread seinen Prozess ueberhaupt gestartet hat, dann darf
+    der Prozess gar nicht mehr anfangen - sonst spielt der Klang
+    weiter, obwohl die Spiele schon auf dem Schirm stehen. Genau das
+    passiert bei warmem Zwischenspeicher regelmaessig, weil das Laden
+    der Cover schneller fertig ist als das Hochfahren von mpg123.
+
+    Deshalb wird nicht der Prozess gemerkt, sondern der ZUSTAND: wer
+    zuerst da ist, gewinnt. setzen() liefert False, wenn schon
+    abgebrochen wurde, und beendet den gerade erzeugten Prozess
+    gleich selbst."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._proc = None
+        self._abgebrochen = False
+
+    def abgebrochen(self):
+        with self._lock:
+            return self._abgebrochen
+
+    def setzen(self, proc):
+        """Den gestarteten Prozess eintragen. False heisst: war schon
+        abgebrochen - der Prozess ist bereits beendet, nicht warten."""
+        with self._lock:
+            if not self._abgebrochen:
+                self._proc = proc
+                return True
+        _still_beenden(proc)
+        return False
+
+    def stoppen(self):
+        """Abbrechen. Darf mehrfach und aus jedem Faden kommen."""
+        with self._lock:
+            self._abgebrochen = True
+            proc = self._proc
+            self._proc = None
+        _still_beenden(proc)
+
+
+def _still_beenden(proc):
+    """Einen Sound-Prozess beenden, ohne je eine Ausnahme nach aussen
+    zu lassen - genau wie play_sfx() mit allen Audiofehlern umgeht.
+    Ein nicht beendbarer mpg123 ist ein Schoenheitsfehler, kein Grund,
+    einen Bildschirm abzubrechen."""
+    if proc is None:
+        return
+    try:
+        if proc.poll() is None:
+            proc.terminate()
+    except Exception:                                    # noqa: BLE001
+        pass
+
 
 _last_sfx_time = 0.0
 _sfx_enabled_cache = True

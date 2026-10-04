@@ -832,6 +832,41 @@ All four sit behind the **fine-details switch** (System → Display & sound).
 This build makes no draw path faster. It makes three places measurable where
 guessing was the only option.
 
+**Random pick: the draw now runs, with sound.**
+
+- While drawing, the titles spin across the screen like a **wheel** — slowing
+  down as they go — with a **draw sound** playing. Then the three games
+  appear. Adjustable under *System → Behaviour & options → “Draw
+  suspense”*: `off / 1.0s / 2.0s / 3.0s / 5.0s`, default 2 seconds.
+- **Why that is a setting and not a fixed value:** the draw itself takes no
+  time — taking three games out of a shuffled list is a list operation. Only
+  the three covers cost anything, and with a warm cache they are there in
+  milliseconds. A sound “until the games appear” would have been cut off in a
+  blink. The suspense phase is therefore **deliberate waiting** — and `off`
+  restores exactly the previous behaviour.
+- The covers are loaded **during** the phase, not after it. So it only costs
+  whatever exceeds the loading time.
+- **Any button skips** the draw — and is consumed doing so, so a held OK
+  button does not immediately launch a game.
+- The sound comes from `sfx/zufall_ziehung.mp3` and can be replaced by your
+  own MP3 under the same name. Without the file the frontend generates a
+  substitute — the draw is never silent. With “navigation sounds” off it runs
+  without sound.
+
+**Two things that surfaced while building it.**
+
+- **The sound would have played into the selection screen.** The MP3 is 7.9
+  seconds long, the phase lasts one to five. The existing paths always play a
+  sound **to the end** — there was no way to stop one at all. Now there is, and
+  it has to handle being cancelled **before** the sound has even started: it
+  runs in its own thread, and with warm covers the draw is regularly over
+  before the player process is up. Without that, the sound starts exactly when
+  it should stop.
+- **A loop no button leads out of.** The draw runs until the clock runs out.
+  If the clock stood still, it would run forever. The test bench found that,
+  because there the clock **does** stand still — the test ran for ten minutes
+  before it was killed. There is now an upper bound on the number of frames.
+
 **There is no watermark — and the reason belongs here.**
 
 The wish was the system logo subtly *behind the list*. That is where the
