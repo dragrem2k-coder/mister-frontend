@@ -4126,6 +4126,95 @@ def _docs_index(syskey):
     return idx
 
 
+INDEX_WARM_WURZELN = (ART_HD, ART_BASE)
+
+
+def index_warm_offen(syskeys):
+    """Die Systeme aus syskeys, deren Namensverzeichnisse noch FEHLEN -
+    in der uebergebenen Reihenfolge, ohne Doppelte.
+
+    GEFRAGT WERDEN DIE VERZEICHNISSE SELBST, und ein eigener Merker
+    "dieses System ist durch" waere genau der Fehler, den der erste
+    Entwurf gemacht hat: er stand hier, er stand VOR der Abfrage der
+    Verzeichnisse, und damit gewann er gegen die Wirklichkeit. Sobald
+    die Verzeichnisse irgendwo geleert werden ("Zwischenspeicher
+    leeren" im Menue tut das), behauptete er weiter, alles sei warm -
+    und der Warmlauf haette nie wieder gearbeitet. Aufgefallen ist es
+    in tools/diag_kategorie_betreten.py: dort war im Raster nach dem
+    Ruhemoment alles kalt, obwohl in der Liste davor alles gewarmt
+    worden war.
+
+    Die Abfrage kostet drei Wortbuch-Zugriffe je System. Dagegen war
+    kein Merker noetig; was teuer ist, ist das ABTASTEN der Eintraege,
+    und das verhindert der Aufrufer (siehe _warmlauf_tick() in
+    frontend.py)."""
+    offen = []
+    gesehen = set()
+    for sk in syskeys:
+        if not sk or sk in gesehen:
+            continue
+        gesehen.add(sk)
+        if (sk in _docs_index_cache
+                and all((w, sk) in _art_index_cache
+                        for w in INDEX_WARM_WURZELN)):
+            continue
+        offen.append(sk)
+    return offen
+
+
+def index_warmlaufen(syskeys, hoechstens=1):
+    """Die Namensverzeichnisse fuer bis zu "hoechstens" Systeme JETZT
+    aufbauen. Liefert die Zahl der tatsaechlich aufgebauten Systeme.
+
+    WOFUER DAS DA IST, steht in tools/diag_kategorie_betreten.py und
+    kommt von einer Meldung vom Geraet, die fuenf Kategorien nannte und
+    keine sechste: "wenn ich in die kategorie weiterspielen gehe haengt
+    er am anfang ganz schoen bis das frontend wahrscheinlich die covers
+    dort geladen hat. RA-Erfolgsjaeger genauso. bei sammlung und 2026
+    entdeckt sowie kurzweilige spiele genauso."
+
+    Alle fuenf haben eine Eigenschaft, die kein Systemordner hat: ihre
+    Eintraege kommen aus VERSCHIEDENEN Systemen. Und beide
+    Namensverzeichnisse werden je System gebaut, beim ersten
+    Fehltreffer. Gemessen im Raster: ein System = 1
+    Verzeichnisdurchlauf, zwoelf Systeme = 10 - alle in dem einen
+    Moment, in dem die Seite zum ersten Mal gezeichnet wird. Auf dem
+    Geraet kostet ein Durchlauf ueber einen Cover-Ordner rund 167 ms
+    (Abschnitt H). Das ist die Wartezeit, die gemeldet wurde, und sie
+    steckt nicht im Zeichnen.
+
+    WARUM "hoechstens 1" DIE VORGABE IST und kein Hintergrund-Thread,
+    der einfach alles durchlaeuft: der Aufbau ist nur zum Teil Warten
+    auf die Karte. Der andere Teil ist eine Python-Schleife ueber
+    JEDEN Dateinamen, und die haelt durchgehend die GIL. Genau daran
+    ist Build 107 schon einmal haengengeblieben - "warum ist nach einem
+    Neustart das Hauptmenue so traege?" war ein Hintergrund-Thread, der
+    waehrend der ersten Sekunden Bedienung Namen zerlegte. Ein System je
+    Ruhemoment kostet dagegen nichts, was jemand sehen kann: es laeuft
+    nur, wenn gerade keine Taste kommt, und zwischen zwei Systemen darf
+    jederzeit wieder gezeichnet werden.
+
+    EHRLICH DAZU: wer eine gemischte Kategorie SOFORT betritt, ohne auf
+    ihr stehenzubleiben, wartet weiter - nur eben nicht mehr fuer alle
+    Systeme, sondern fuer die, die bis dahin nicht fertig wurden. Wer
+    einen Moment stehenbleibt (und das tut man, wenn man eine Kategorie
+    aussucht), wartet gar nicht mehr."""
+    gebaut = 0
+    for sk in index_warm_offen(syskeys):
+        if gebaut >= hoechstens:
+            break
+        try:
+            for wurzel in INDEX_WARM_WURZELN:
+                _art_index(wurzel, sk)
+            _docs_index(sk)
+        except Exception:                                # noqa: BLE001
+            # Ein Warmlauf darf NIE etwas kaputtmachen, was ohne ihn
+            # funktioniert haette - er ist reine Vorarbeit.
+            pass
+        gebaut += 1
+    return gebaut
+
+
 def docs_cover(syskey, rom_basename):
     """Pfad zu einem fremden Cover, sonst None.
 

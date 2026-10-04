@@ -36,6 +36,16 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.dirname(_HERE)
 sys.path.insert(0, _HERE)
 
+# DIE C-BIBLIOTHEK BESORGT DER PRUEFSTAND (siehe DRAGEND_LIB in
+# tools/_harness.py, Build 239). Hier stand das einmal selbst, und das
+# waere ein zweiter Ort fuer dieselbe Wahrheit gewesen.
+#
+# WARUM ES UEBERHAUPT DARAUF ANKOMMT: Test 9 weiter unten prueft eine
+# Zusage, die es nur MIT dem Textzeichner in C gibt - der erste
+# Auftritt eines Textes legt keinen Cache-Eintrag an, der zweite schon
+# (Build 227). Ohne die Bibliothek faellt text() in den Streifen-Weg,
+# der schon beim ersten Mal cacht, und der Test schlug fehl, ohne dass
+# am Frontend etwas falsch war.
 import _harness as H                                    # noqa: E402
 
 sys.path.insert(0, os.path.join(_REPO, "frontend"))

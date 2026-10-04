@@ -714,6 +714,71 @@ die vier Modi vom MiSTer.**
   mit einem feinen Muster und **+0,2 bis +0,4 ms** mit Scanlines. Auf dem
   DE10-Nano ist Rechnen je Bildpunkt teurer — dafür ist der Schalter da.
 
+**Gemischte Kategorien hängen nicht mehr beim Betreten.**
+
+- Die Meldung war ungewöhnlich präzise, weil sie fünf Kategorien nannte und
+  keine sechste: Weiterspielen, RA-Erfolgsjäger, Sammlung, 2026 entdeckt,
+  Kurzweilige Spiele. **Kein** Systemordner — obwohl die bei 30278 Spielen
+  die größeren sind. Mehr Einträge konnten es also nicht sein.
+- Was diese fünf unterscheidet, ist eine einzige Eigenschaft: ihre Einträge
+  kommen aus **verschiedenen Systemen**. Und die beiden Namensverzeichnisse,
+  über die ein Cover gefunden wird, werden **je System** gebaut — bei einer
+  gemischten Kategorie also alle in dem einen Moment, in dem die Seite zum
+  ersten Mal gezeichnet wird. Gezählt im Raster: ein System = **1**
+  Verzeichnisdurchlauf, zwölf Systeme = **10**. Auf dem DE10-Nano kostet ein
+  Durchlauf über einen Cover-Ordner rund 167 ms. Das war die Wartezeit, und
+  sie steckte nicht im Zeichnen.
+- Jetzt wird **im Ruhemoment vorgearbeitet**: während der Zeiger auf einer
+  Kategorie steht, wird je Leerlauf-Tick **ein** System vorbereitet. Nach dem
+  Ruhemoment kostet das Betreten **null** Durchläufe — in Raster und Galerie
+  gemessen, in der Listenansicht gab es das Problem nie (dort hängt genau ein
+  Cover am Panel, also genau ein System).
+- **Ein System je Ruhemoment, kein Hintergrund-Thread, der alles durchläuft.**
+  Der Aufbau ist nur zum Teil Warten auf die Karte; der andere Teil ist eine
+  Schleife über jeden Dateinamen, und die hält durchgehend die GIL. Genau
+  daran ist Build 107 schon einmal hängengeblieben („warum ist nach einem
+  Neustart das Hauptmenü so träge?"). Der Warmlauf bricht sofort ab, sobald
+  wieder eine Taste kommt.
+- **Ehrlich dazu:** wer eine gemischte Kategorie *sofort* betritt, ohne einen
+  Moment auf ihr zu stehen, wartet weiter — nur eben nicht mehr für alle
+  Systeme. Wer sie aussucht, wartet gar nicht mehr.
+
+**Der Demo-Modus zeigt jetzt wirklich etwas.**
+
+- Gemeldet wurde: „zuckt in der Listenansicht nur in den ersten drei Zeilen
+  rum, System-Menü und Einstellungen werden gar nicht gezeigt, dann öffnet er
+  nur Zufalls-Zock und bleibt dort stehen". Alle drei Punkte hatten je eine
+  eigene Ursache, und zwei davon waren derselbe Denkfehler.
+- **Das Zucken in den ersten drei Zeilen**: wie viele Zeilen ins Fenster
+  passen, wird **während** des Zeichnens festgelegt. Die Demo hat danach
+  gefragt, **bevor** in der neuen Ansicht einmal gezeichnet wurde — und bekam
+  den Startwert 5, also ein Fenster von drei Zeilen. Jetzt wird erst
+  gezeichnet, dann gefragt: 13 Zeilen statt 3.
+- **Das System-Menü**: die Station stand auf der obersten Ebene, und die hat
+  bei wenigen Einträgen nichts zu zeigen. Jetzt steigt sie in den
+  vollsten Unterordner ab, wenn dort mindestens vier Einträge liegen.
+- **„öffnet nur Zufalls-Zock und bleibt dort stehen"** war kein Fehler der
+  Vorführung, sondern ihre **Folge** — und der überraschendste Befund des
+  Builds. Der Attract-Modus heißt im Menü „Zufalls-Zock — Spiel ziehen" und
+  startet nach voreingestellt 90 Sekunden ohne Eingabe. Die Vorführung läuft
+  180 Sekunden und hat ihre eigene Schleife: die Eingabe-Uhr stand danach
+  drei Minuten in der Vergangenheit, und der **erste** Leerlauf-Tick nach der
+  Vorführung erfüllte die Bedingung sofort. Jetzt wird die Uhr am Ende
+  nachgestellt — an einer Stelle, die auch beim Abbruch durch eine Taste
+  läuft.
+
+**Und etwas Unangenehmes über die eigene Arbeit.**
+
+- Die Testsuite lief die ganze Zeit **ohne die C-Bibliothek** — also auf
+  einem Weg, den der MiSTer nie geht. Die mitgelieferte `libdragend.so` ist
+  die ARM-Fassung für das Gerät und lädt auf einem PC gar nicht. **Vier
+  Tests** sind daran gescheitert, ohne dass am Frontend etwas falsch war, und
+  sie haben es sogar wörtlich gesagt („ohne sie prüft dieser Test nichts") —
+  nur hat niemand die Zeile als Befund gelesen. Der Prüfstand nimmt jetzt die
+  zur Architektur passende Fassung. **Das ändert am Frontend nichts** und
+  gehört hier nur deshalb hin, weil der vorige Build mit vier roten Tests
+  ausgeliefert wurde.
+
 
 
 

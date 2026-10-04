@@ -29,6 +29,7 @@ Ausfuehren:
 """
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _harness as H          # noqa: E402
@@ -317,6 +318,165 @@ check("und die Vorgabe sind drei Minuten",
       "sekunden=180.0" in quelle, "so hat der Nutzer es gewuenscht")
 check("eine laengere Vorfuehrung braucht nur eine Zahl",
       "je = float(sekunden) / _gewicht_summe()" in quelle)
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 7: sie nutzt das GANZE Fenster, nicht die ersten drei Zeilen")
+# ---------------------------------------------------------------------------
+# NUTZERMELDUNG ZU BUILD 233: "der demo mode zuckt in der listen
+# ansicht nur in denn ersten drei zeilen rum".
+#
+# Genau so war es. cats_visible und items_visible werden WAEHREND des
+# Zeichnens gesetzt; wer sie vorher liest, bekommt den Startwert 5 -
+# und fenster_spanne() macht daraus max(2, 5-2) = drei Zeilen. Der
+# Zeiger pendelte zwischen Zeile 0, 1 und 2, die ganze Vorfuehrung
+# lang. Dieser Test haelt die Lehre fest: ERST zeichnen, DANN die
+# Fenstergroesse holen.
+class ZeilenMerker(Attrappe):
+    """Schreibt mit, auf welchen Zeilen der Zeiger wirklich war - und
+    setzt die Fenstergroesse erst beim Zeichnen, wie das echte
+    Frontend."""
+
+    def __init__(self):
+        Attrappe.__init__(self)
+        self.cats_visible = 5         # der Startwert aus frontend.py
+        self.items_visible = 5
+        self.besucht = set()
+
+    def _echtes_fenster(self):
+        self.cats_visible = 14
+        self.items_visible = 17
+
+    def _draw_navigate_cats(self, alt):
+        self._echtes_fenster()
+        self.besucht.add(self.cat_i)
+        self.gezeichnet += 1
+        return True
+
+    def _draw_navigate_items(self, alt):
+        self._echtes_fenster()
+        self.besucht.add(self.item_i)
+        self.gezeichnet += 1
+        return True
+
+    def draw(self, *a, **k):
+        self._echtes_fenster()
+        self.gezeichnet += 1
+
+
+fe6 = ZeilenMerker()
+DEMO.lauf(fe6, FM(), S, BENCH, sekunden=6.0)
+check("der Zeiger besucht mehr als drei Zeilen",
+      len(fe6.besucht) > 3,
+      "%d Zeilen: %r" % (len(fe6.besucht), sorted(fe6.besucht)[:20]))
+check("und zwar deutlich mehr",
+      len(fe6.besucht) >= 10,
+      "%d - das Fenster ist 14 bis 17 Zeilen hoch" % len(fe6.besucht))
+
+_q = open(os.path.join(_REPO, "frontend", "fe", "demo.py"),
+          encoding="utf-8").read()
+_scr = _q.split("def _scrollen")[1].split("\ndef ")[0]
+# Gesucht wird der AUFRUF, nicht die Erwaehnung im Kommentar - der
+# erklaert den Fehler ja gerade und nennt den Namen deshalb zuerst.
+check("erst zeichnen, dann die Fenstergroesse holen",
+      _scr.index("schritt(0)")
+      < _scr.index("BENCH.fenster_spanne(fe, seite)"),
+      "andersherum steht dort noch der Startwert 5")
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 8: das Systemmenue zeigt EINSTELLUNGEN, nicht Ordnernamen")
+# ---------------------------------------------------------------------------
+# NUTZERMELDUNG: "system menue und einstellung werden garnicht
+# gezeigt". Die Wurzel der System-Kategorie besteht fast nur aus
+# Ordnern - wer dort scrollt, sieht sechs Ordnernamen und keine
+# einzige Einstellung.
+class MitSystem(Attrappe):
+    def __init__(self):
+        Attrappe.__init__(self)
+        self.cats = [
+            ("Arcade", {"items": [("A%d" % i, "game", None)
+                                  for i in range(300)],
+                        "folders": {}}, None),
+            ("System", {"items": [("Beenden", "x", None)],
+                        "folders": {
+                            "Anzeige & Sound": {
+                                "items": [("Option %d" % i, "x", None)
+                                          for i in range(25)],
+                                "folders": {}},
+                            "Info": {"items": [("Hilfe", "x", None)],
+                                     "folders": {}}}}, None),
+        ]
+
+
+fe7 = MitSystem()
+seite, ansicht = DEMO._station_einstellen(fe7, S, "system",
+                                          0, DEMO._system_kategorie(fe7))
+check("die System-Kategorie wird gefunden",
+      DEMO._system_kategorie(fe7) == 1)
+check("und es geht eine Ebene tiefer",
+      fe7.nav_path == ["Anzeige & Sound"],
+      "%r - sonst sieht man nur Ordnernamen" % (fe7.nav_path,))
+check("in den Ordner mit dem meisten Inhalt",
+      "_station_einstellen" in _q and "key=lambda e: -len(" in _q)
+
+# Ohne genug Inhalt bleibt es bei der Wurzel - eine Vorfuehrung darf
+# daran nicht scheitern.
+fe8 = MitSystem()
+fe8.cats[1][1]["folders"]["Anzeige & Sound"]["items"] = [("A", "x", None)]
+fe8.cats[1][1]["folders"]["Info"]["items"] = []
+DEMO._station_einstellen(fe8, S, "system", 0, 1)
+check("ohne genug Inhalt bleibt es bei der Wurzel",
+      fe8.nav_path == [], "%r" % (fe8.nav_path,))
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 9: nach der Vorfuehrung startet nicht sofort Zufalls-Zock")
+# ---------------------------------------------------------------------------
+# DIE DRITTE HAELFTE DER MELDUNG ZU BUILD 233: "dann oeffnet er nur
+# zufalls zock und bleibt dort stehen".
+#
+# Das war kein Fehler der Vorfuehrung, sondern ihre Folge. Der
+# Attract-Modus (im Menue "Zufalls-Zock - Spiel ziehen") startet nach
+# ATTRACT_DELAY Sekunden ohne Eingabe, voreingestellt 90. Die
+# Vorfuehrung laeuft 180 Sekunden mit eigener Schleife -
+# _last_input_time stand danach drei Minuten in der Vergangenheit, und
+# der erste Leerlauf-Tick danach erfuellte die Bedingung sofort.
+#
+# Geprueft wird die EIGENSCHAFT, nicht die Zeile: nach dem Lauf darf
+# die Eingabe-Uhr nicht aelter sein als ein Wimpernschlag.
+import fe.settings as _S9                                  # noqa: E402
+print("   ATTRACT_DELAY_STEPS beginnt bei %d s, die Vorfuehrung laeuft"
+      " %d s" % (min(_S9.ATTRACT_DELAY_STEPS), 180))
+
+
+class UhrFrontend(Attrappe):
+    """Wie die Attrappe, aber mit einer Eingabe-Uhr, die alt ist -
+    genau wie sie nach 180 Sekunden Vorfuehrung dasteht."""
+
+    def __init__(self, nach=10**9):
+        Attrappe.__init__(self)
+        self.inp = Taster(nach=nach)
+        self._last_input_time = time.monotonic() - 500.0
+
+
+for nach, was in ((10**9, "nach dem vollen Lauf"),
+                  (3, "und auch nach dem Abbruch durch eine Taste")):
+    fe9 = UhrFrontend(nach=nach)
+    vorher9 = time.monotonic() - fe9._last_input_time
+    try:
+        DEMO.lauf(fe9, FM(), S, BENCH, sekunden=2.0)
+    except Exception as e:                                 # noqa: BLE001
+        print("       %s: %s" % (type(e).__name__, e))
+    jung = time.monotonic() - fe9._last_input_time
+    check("%s ist die Eingabe-Uhr frisch" % was, jung < 5.0,
+          "%.1f s alt (vorher %.1f s)" % (jung, vorher9))
+
+check("die Uhr wird im finally nachgestellt, nicht an mehreren Stellen",
+      open(os.path.join(_REPO, "frontend", "fe", "demo.py"),
+           encoding="utf-8").read().count("_last_input_time = time.monotonic()")
+      == 1,
+      "jeder zweite Ort waere einer, der beim Abbruch nicht laeuft")
 
 print()
 if fails:

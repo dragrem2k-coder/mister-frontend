@@ -132,6 +132,21 @@ def _scrollen(fe, BENCH, seite, sekunden):
     Frontend ist (derselbe Grund wie in Abschnitt J des Bench)."""
     try:
         schritt = BENCH.schritt_funktion(fe, seite)
+        # ERST ZEICHNEN, DANN DIE FENSTERGROESSE HOLEN (Build 239).
+        #
+        # NUTZERMELDUNG ZU BUILD 233: "der demo mode zuckt in der
+        # listen ansicht nur in denn ersten drei zeilen rum".
+        #
+        # Genau so war es, und der Grund steht in frontend.py:
+        # cats_visible und items_visible werden WAEHREND des Zeichnens
+        # gesetzt. Wer sie vorher liest, bekommt den Startwert 5 - und
+        # fenster_spanne() macht daraus max(2, 5-2) = drei Zeilen. Der
+        # Zeiger pendelte also zwischen Zeile 0, 1 und 2, in jeder
+        # Ansicht, die ganze Vorfuehrung lang.
+        #
+        # Ein Schritt zeichnet die Seite und setzt die Werte; erst
+        # danach steht die richtige Spanne da.
+        schritt(0)
         spanne = BENCH.fenster_spanne(fe, seite)
     except Exception:                                    # noqa: BLE001
         return True
@@ -243,6 +258,28 @@ def lauf(fe, fm, S, BENCH, sekunden=180.0, log=None):
                 setattr(fe, feld, wert)
             except Exception:                            # noqa: BLE001
                 pass
+        # DIE EINGABE-UHR NACHSTELLEN (Build 239) - und das ist die
+        # dritte Haelfte der Nutzermeldung zu Build 233:
+        #
+        #   "dann oeffnet er nur zufalls zock und bleibt dort stehen"
+        #
+        # Das war kein Fehler der Vorfuehrung, sondern ihre Folge. Der
+        # Attract-Modus (im Menue heisst er "Zufalls-Zock - Spiel
+        # ziehen") startet nach ATTRACT_DELAY Sekunden ohne Eingabe,
+        # voreingestellt 90. Die Vorfuehrung laeuft 180 Sekunden und
+        # hat ihre eigene Schleife - _last_input_time stand danach also
+        # drei Minuten in der Vergangenheit, und der ERSTE Leerlauf-
+        # Tick nach der Vorfuehrung erfuellte die Bedingung sofort. Was
+        # er sah, war ein zufaellig gezogenes Spiel gross im Bild, und
+        # was er daraus schloss, war genau richtig benannt.
+        #
+        # EINE ZEILE, UND SIE GEHOERT HIERHIN: der finally-Block laeuft
+        # auch beim Abbruch durch eine Taste und beim Abbruch in einer
+        # Titelkarte. Jeder andere Ort waere einer von mehreren.
+        try:
+            fe._last_input_time = time.monotonic()
+        except Exception:                                # noqa: BLE001
+            pass
         if log:
             log("--demo beendet")
     return True
@@ -264,9 +301,31 @@ def _station_einstellen(fe, S, schluessel, kat_i, sys_i):
                 return None, None
             fe.page = 1
             fe.cat_i = sys_i
-            fe.nav_path = []
             fe.item_i = 0
             fe.ansicht_setzen("liste")
+            # IN EINEN UNTERORDNER HINEIN (Build 239).
+            #
+            # NUTZERMELDUNG ZU BUILD 233: "system menue und einstellung
+            # werden garnicht gezeigt". Die Wurzel der System-Kategorie
+            # besteht fast nur aus ORDNERN ("Anzeige & Sound",
+            # "Optionen", ...) - wer dort scrollt, sieht sechs
+            # Ordnernamen und keine einzige Einstellung. Gezeigt werden
+            # soll aber, was sich einstellen laesst.
+            #
+            # Also eine Ebene tiefer, in den ersten Ordner mit genug
+            # Inhalt. Geht das nicht, bleibt es bei der Wurzel - eine
+            # Vorfuehrung darf an so etwas nicht scheitern.
+            fe.nav_path = []
+            try:
+                knoten = fe.cats[sys_i][1]
+                ordner = sorted((knoten.get("folders", {}) or {}).items(),
+                                key=lambda e: -len(
+                                    (e[1] or {}).get("items", ()) or ()))
+                if ordner and len(
+                        (ordner[0][1] or {}).get("items", ()) or ()) >= 4:
+                    fe.nav_path = [ordner[0][0]]
+            except Exception:                            # noqa: BLE001
+                fe.nav_path = []
             return 1, "liste"
         if kat_i is None:
             return None, None

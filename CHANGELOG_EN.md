@@ -583,6 +583,66 @@ MiSTer's four modes.**
   +0.4 ms** with scanlines. On the DE10-Nano per-pixel work is dearer —
   that is what the switch is for.
 
+**Mixed categories no longer stall when you enter them.**
+
+- The report was unusually precise, because it named five categories and no
+  sixth: Continue Playing, RA Achievement Hunter, Collection, Discovered in
+  2026, Short Games. **No** system folder — even though with 30278 games
+  those are the larger ones. So it could not be the number of entries.
+- What sets those five apart is a single property: their entries come from
+  **different systems**. And the two name indexes a cover is found through
+  are built **per system** — for a mixed category that means all of them in
+  the one moment the page is first drawn. Counted in the grid view: one
+  system = **1** directory pass, twelve systems = **10**. On the DE10-Nano a
+  pass over a cover folder costs roughly 167 ms. That was the wait, and it
+  was not in the drawing.
+- Now the work happens **while nothing is going on**: as long as the cursor
+  rests on a category, **one** system is prepared per idle tick. After that
+  pause, entering costs **zero** passes — measured in grid and gallery view;
+  the list view never had the problem (there exactly one cover hangs on the
+  panel, so exactly one system).
+- **One system per idle moment, not a background thread that walks them all.**
+  Building an index is only partly waiting on the card; the rest is a loop
+  over every file name, and that holds the GIL throughout. Build 107 already
+  got caught by exactly that ("why is the main menu so sluggish after a
+  restart?"). The warm-up stops the moment a key arrives.
+- **Honestly:** enter a mixed category *immediately*, without resting on it,
+  and you still wait — just no longer for every system. Pick it out, and you
+  do not wait at all.
+
+**Demo mode now actually shows something.**
+
+- The report: "jiggles around in the first three rows in list view, the
+  system menu and settings are not shown at all, then it just opens Random
+  Play and stops there". Each point had its own cause, and two were the same
+  mistake.
+- **The jiggle in the first three rows**: how many rows fit the window is
+  decided **while** drawing. The demo asked **before** anything had been
+  drawn in the new view, and got the initial value 5 — a window of three
+  rows. Now it draws first and asks after: 13 rows instead of 3.
+- **The system menu**: the stop sat on the top level, which has little to
+  show when there are few entries. It now descends into the fullest
+  subfolder when that holds at least four entries.
+- **"then it just opens Random Play and stops there"** was not a fault of the
+  demo but its **consequence** — the most surprising find of this build.
+  Attract mode is called "Random Play — draw a game" in the menu and starts
+  after 90 idle seconds by default. The demo runs for 180 seconds with a loop
+  of its own: the input clock was three minutes stale afterwards, and the
+  **first** idle tick after the demo met the condition at once. The clock is
+  now refreshed at the end — in one place, which also runs when a key aborts
+  the demo.
+
+**And something uncomfortable about my own work.**
+
+- The test suite had been running **without the C library** all along — on a
+  path the MiSTer never takes. The shipped `libdragend.so` is the ARM build
+  for the device and does not load on a PC at all. **Four tests** were
+  failing because of it with nothing wrong in the frontend, and they even
+  said so verbatim ("without it this test checks nothing") — nobody read the
+  line as a finding. The harness now picks the build matching the
+  architecture. **This changes nothing in the frontend** and is listed only
+  because the previous build shipped with four failing tests.
+
 
 
 

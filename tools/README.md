@@ -2237,3 +2237,112 @@ Punkte, in JEDEM Schritt - fuer einen Titel und ein paar Infozeilen.
 **Achtung bei der Prozentzahl:** der Pruefstand hat keine Cover. Was
 sich dort "nicht aendert", aendert sich auf dem Geraet sehr wohl. Die
 Zahl taugt fuer die Richtung, nicht als Beweis.
+
+
+## test_kategorie_warmlauf.py  /  diag_kategorie_betreten.py
+
+Warum haengt das Betreten einer **gemischten** Kategorie? (Build 239)
+
+Die Meldung vom Geraet war ungewoehnlich praezise, weil sie fuenf
+Kategorien nannte und keine sechste: *"wenn ich in die kategorie
+weiterspielen gehe haengt er am anfang ganz schoen bis das frontend
+wahrscheinlich die covers dort geladen hat. RA-Erfolgsjaeger genauso.
+bei sammlung und 2026 entdeckt sowie kurzweilige spiele genauso."*
+
+Weiterspielen, RA-Erfolgsjaeger, Sammlung, 2026 entdeckt, Kurzweilige
+Spiele - und **kein** Systemordner, obwohl die bei 30278 Spielen die
+groesseren sind. Mehr Eintraege konnten es also nicht sein. Was diese
+fuenf unterscheidet, ist eine einzige Eigenschaft: ihre Eintraege kommen
+aus **verschiedenen Systemen**.
+
+Und daran haengt der Cover-Zugriff. Beide Namensverzeichnisse werden **je
+System** gebaut, beim ersten Fehltreffer:
+
+| | |
+|---|---|
+| `_art_index(basis, syskey)` | ein `os.listdir` je Cover-Wurzel |
+| `_docs_index(syskey)` | ein `os.listdir` je Fremdordner x Unterordner |
+
+`diag_kategorie_betreten.py` **zaehlt** das - es behauptet keine
+Millisekunden, die stehen auf dem Geraet. Gemessen im Container:
+
+```
+ ANSICHT RASTER
+   ein System (wie SNES)                    1 os.listdir
+   zwoelf Systeme, sofort betreten         10 os.listdir   -> auf dem Geraet 1,7 s
+   zwoelf Systeme, nach Ruhemoment          0 os.listdir
+```
+
+Die Abhilfe ist `index_warmlaufen()` in `fe/art.py`, gerufen aus dem
+Leerlauf-Zweig von `run()`: **ein** System je Ruhemoment, und nur wenn
+weder eine Taste noch ein Dialog im Weg ist. Warum nicht einfach ein
+Hintergrund-Thread, der alles durchlaeuft: der Aufbau ist nur zum Teil
+Warten auf die Karte, der andere Teil ist eine Python-Schleife ueber
+jeden Dateinamen, und die haelt durchgehend die GIL. Genau daran ist
+Build 107 schon einmal haengengeblieben ("warum ist nach einem Neustart
+das Hauptmenue so traege?").
+
+**Zwei Fehler hat dieses Werkzeug beim Bauen gefunden**, beide in der
+eigenen Arbeit:
+
+1. Der erste Entwurf der Messung leerte zu wenig und zeigte daraufhin
+   das **Gegenteil**: der gemischte Lauf kam auf einen einzigen
+   Durchlauf, weil `_thumb_fehlt` noch voll war und deshalb gar nicht
+   erst nach einem Cover gesucht wurde.
+2. Der erste Entwurf des Warmlaufs hatte ein eigenes
+   `_index_warm_fertig`-Set, und die Abfrage stand **vor** der Abfrage
+   der Verzeichnisse. Wer "Zwischenspeicher leeren" benutzte, haette nie
+   wieder einen Warmlauf bekommen. Aufgefallen, weil im Raster nach dem
+   Ruhemoment alles kalt war, obwohl in der Liste davor alles gewarmt
+   worden war. Das Set ist weg; gefragt werden die Verzeichnisse selbst,
+   und Test 4 haelt genau das fest.
+
+`test_kategorie_warmlauf.py` prueft: dass der Warmlauf die Systeme einer
+gemischten Kategorie findet, dass er **eins** je Ruhemoment nimmt, dass
+das Betreten danach keinen Durchlauf mehr kostet, dass kein Merker
+zwischen ihm und der Wirklichkeit steht, dass er nur im Stillstand
+laeuft - und dass er bei leeren, kaputten oder systemlosen Eintraegen
+nichts wirft. Ein Warmlauf ist reine Vorarbeit und darf nie etwas
+kaputtmachen, was ohne ihn funktioniert haette.
+
+**In der Listenansicht gibt es das Problem nicht** und hat es nie
+gegeben: dort haengt genau **ein** Cover am Panel, also genau ein
+System. Der Befund gilt fuer Raster und Galerie.
+
+
+## Der Pruefstand nimmt jetzt die passende C-Bibliothek (Build 239)
+
+Das ist kein Werkzeug, sondern ein **Befund** - und der unangenehmste
+dieses Builds.
+
+`tools/_harness.py` setzt jetzt `DRAGEND_LIB` auf die zur Architektur
+passende Fassung, **bevor** es `frontend.py` laedt (`fe/art.py` laedt
+die Bibliothek beim Import; ein spaeter gesetzter Wert kommt zu spaet).
+Ein bereits vorhandenes `DRAGEND_LIB` wird **nie** ueberschrieben -
+`test_c_modul.py` und Geschwister setzen es selbst.
+
+**Warum das noetig war:** `frontend/libdragend.so` ist die
+**ARM**-Fassung fuer das Geraet und laedt auf einem PC gar nicht
+(`wrong ELF class: ELFCLASS32`). Die ganze Suite lief damit **ohne C** -
+also auf einem Weg, den das Geraet nie geht. Vier Tests sind daran
+gescheitert, ohne dass am Frontend etwas falsch war:
+
+| Test | was er dadurch nicht pruefen konnte |
+|---|---|
+| `test_masken.py` | die Masken-Schleife in C |
+| `test_text_in_c.py` | `texte_zeichnen` ueberhaupt |
+| `test_zeilen_in_c.py` | `zeilen_kopieren` ueberhaupt |
+| `test_beschreibung.py` | dass der erste Auftritt eines Textes keinen Cache-Eintrag anlegt (Build 227) |
+
+**Und sie haben es gesagt.** In `test_text_in_c.py` stand die Zeile
+`FEHL libdragend geladen - ohne sie prueft dieser Test nichts`
+wortwoertlich im Protokoll. Nur hat niemand sie als Befund gelesen,
+sondern als Rauschen - Build 238 ist mit vier roten Tests
+ausgeliefert worden.
+
+**Wer die Python-Fassung pruefen will**, setzt `DRAGEND_LIB` auf einen
+Pfad, der nicht existiert:
+
+```sh
+DRAGEND_LIB=/kein/pfad python3 tools/test_text_in_c.py
+```

@@ -40,6 +40,44 @@ if not os.path.exists(FRONTEND_PY):
 # so die Unterordner (art/, meta/ ...) genauso wie auf dem MiSTer.
 os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(FRONTEND_PY))))
 
+# DIE PASSENDE C-BIBLIOTHEK FUER DIESEN RECHNER (Build 239).
+#
+# MUSS VOR DEM LADEN DES FRONTENDS STEHEN: fe/art.py laedt die
+# Bibliothek beim Import, ein spaeter gesetztes DRAGEND_LIB kommt zu
+# spaet.
+#
+# WARUM DAS HIER STEHT UND NICHT IN EINZELNEN TESTS: frontend/
+# libdragend.so ist die ARM-Fassung fuer das Geraet und laedt auf einem
+# PC gar nicht ("wrong ELF class: ELFCLASS32"). Ohne diesen Griff lief
+# die GANZE Suite ohne C - also auf einem Weg, den das Geraet nie geht.
+# Vier Tests sind daran gescheitert, ohne dass am Frontend etwas falsch
+# war (test_masken, test_text_in_c, test_zeilen_in_c,
+# test_beschreibung), und sie haben es sogar gesagt: "libdragend geladen
+# - ohne sie prueft dieser Test nichts". Gefunden beim Bau von Build
+# 239; rot waren sie schon vorher, und Build 238 ist damit rausgegangen.
+#
+# EINIGE TESTS SETZEN DIE VARIABLE SELBST (test_c_modul.py und
+# Geschwister) - genau deshalb wird ein vorhandener Wert hier NIE
+# ueberschrieben. Wer die Python-Fassung pruefen will, setzt
+# DRAGEND_LIB auf einen Pfad, der nicht existiert.
+if not os.environ.get("DRAGEND_LIB"):
+    import platform as _plat
+    _m = _plat.machine().lower()
+    _kandidaten = []
+    if _m in ("x86_64", "amd64", "i386", "i686"):
+        _kandidaten = ["libdragend_x86.so"]
+    elif _m.startswith("arm") or _m.startswith("aarch"):
+        _kandidaten = ["libdragend_neon.so", "libdragend.so"]
+    _wurzel = os.path.dirname(_HERE)
+    for _name in _kandidaten:
+        for _ort in (os.path.join(_wurzel, "frontend", "c", _name),
+                     os.path.join(_wurzel, "frontend", _name)):
+            if os.path.exists(_ort):
+                os.environ["DRAGEND_LIB"] = _ort
+                break
+        if os.environ.get("DRAGEND_LIB"):
+            break
+
 _spec = importlib.util.spec_from_file_location("frontend_mod", FRONTEND_PY)
 fm = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(fm)

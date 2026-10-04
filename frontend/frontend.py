@@ -1216,6 +1216,7 @@ from fe.art import (
     texte_zeichnen as _c_texte_zeichnen,
     fremd_zaehlen as _c_fremd_zaehlen,
     quelldaten_vergessen, negativ_vergessen, negativ_faellig,
+    index_warmlaufen, index_warm_offen,
     marken_nachziehen,
     verkleinern_modus_vergessen,
 )
@@ -2425,6 +2426,7 @@ class Frontend:
             # Gleicher Grund wie bei der anderen Neueinlese-Stelle
             # (Build 212, siehe _quelldaten() in fe/art.py).
             quelldaten_vergessen()
+            self._warmlauf_fertig_fuer = None
         self._speicher.merken()
         self.cats = scan_games(force=force_rescan,
                                progress_cb=self._draw_scan_progress,
@@ -4612,6 +4614,92 @@ class Frontend:
         # eigenes Nein ohnehin selbst weg, wenn er geliefert hat.
         if _vorher and not ART._defer_uncached and negativ_faellig():
             negativ_vergessen()
+
+    # Wieviele Eintraege einer Kategorie werden nach Systemen
+    # abgetastet? 60 ist die Zahl, bei der eine gemischte Kategorie ihre
+    # Systeme zuverlaessig zeigt, ohne dass das Abtasten selbst Zeit
+    # kostet - es ist eine Schleife ueber eine Liste, die schon im
+    # Speicher liegt, kein Dateizugriff.
+    WARMLAUF_PROBE = 60
+
+    def _warmlauf_systeme(self):
+        """Die Systeme, deren Namensverzeichnisse als naechstes
+        gebraucht werden - oder eine leere Liste, wenn gerade keine
+        Vorarbeit ansteht.
+
+        DIE REIHENFOLGE IST DER GANZE WITZ: gewarmt wird, was der
+        Nutzer als naechstes SEHEN wird, nicht was alphabetisch zuerst
+        kommt. Auf Seite 0 ist das die Kategorie unter dem Zeiger - wer
+        sie aussucht, steht einen Moment auf ihr, und genau dieser
+        Moment wird benutzt. Auf Seite 1 ist es die Kategorie, in der
+        man steht (fuer die Eintraege, die noch nicht im Fenster sind).
+
+        ABGETASTET WIRD DIE ROHE LISTE, nicht _display_items(): die
+        wuerde fuer eine Kategorie, in der man NICHT steht, erst
+        aufgebaut und sortiert werden muessen - das waere eine neue
+        Wartezeit an genau der Stelle, an der hier eine abgebaut werden
+        soll. Fuer die Frage "welche Systeme kommen hier vor" ist die
+        Reihenfolge ohnehin gleichgueltig, deshalb wird ueber die ganze
+        Liste verteilt abgetastet und nicht nur vorne: eine gemischte
+        Kategorie hat ihre seltenen Systeme oft nicht auf den ersten
+        Plaetzen."""
+        try:
+            if self.page == 0:
+                if not self.cats or not (0 <= self.cat_i < len(self.cats)):
+                    return []
+                knoten = self.cats[self.cat_i][1]
+            elif self.page == 1:
+                if not self.cats or not (0 <= self.cat_i < len(self.cats)):
+                    return []
+                knoten = self.cats[self.cat_i][1]
+            else:
+                return []
+            eintraege = list(knoten.get("items", ()) or ())
+            # Unterordner mitnehmen, aber nur ihre Eintraege, nicht ihre
+            # Namen - ein Ordner hat kein Cover.
+            if not eintraege:
+                for _n, unter in sorted((knoten.get("folders", {})
+                                         or {}).items()):
+                    eintraege = list((unter or {}).get("items", ()) or ())
+                    if eintraege:
+                        break
+            if not eintraege:
+                return []
+            n = len(eintraege)
+            schritt = max(1, n // self.WARMLAUF_PROBE)
+            systeme = []
+            gesehen = set()
+            for i in range(0, n, schritt):
+                e = eintraege[i]
+                try:
+                    sk = e[2][2]
+                except (IndexError, TypeError):
+                    continue
+                if sk and sk not in gesehen:
+                    gesehen.add(sk)
+                    systeme.append(sk)
+            return index_warm_offen(systeme)
+        except Exception:                                # noqa: BLE001
+            return []
+
+    def _warmlauf_tick(self):
+        """Im Ruhemoment EIN System vorbereiten. Nicht mehr - die
+        Begruendung steht bei index_warmlaufen() in fe/art.py.
+
+        DER MERKER IST KEIN SCHMUCK: dieser Tick kommt im Leerlauf etwa
+        alle 0.08 s. Ohne ihn wuerde die Abtastung ueber 60 Eintraege
+        auch dann wieder und wieder laufen, wenn laengst alles fertig
+        ist - eine stille Dauerlast fuer nichts, genau die Sorte, gegen
+        die Build 212 angetreten ist. Sobald sich Seite oder Kategorie
+        aendert, ist der Merker hinfaellig."""
+        stelle = (self.page, self.cat_i)
+        if getattr(self, "_warmlauf_fertig_fuer", None) == stelle:
+            return False
+        systeme = self._warmlauf_systeme()
+        if not systeme:
+            self._warmlauf_fertig_fuer = stelle
+            return False
+        return index_warmlaufen(systeme, hoechstens=1) > 0
 
     def _overlay_active(self):
         """True, solange eine Ueberlagerung ueber der normalen Seite
@@ -9892,6 +9980,27 @@ class Frontend:
                 # dort bleibt alles exakt wie bisher.
                 nav_active = (time.monotonic() - self._last_input_time
                               < FAST_SCROLL_WINDOW)
+                # DIE NAMENSVERZEICHNISSE IM RUHEMOMENT VORBEREITEN
+                # (Build 239, auf Meldung vom Geraet: "wenn ich in die
+                # kategorie weiterspielen gehe haengt er am anfang ganz
+                # schoen ... RA-Erfolgsjaeger genauso ... sammlung und
+                # 2026 entdeckt sowie kurzweilige spiele genauso").
+                #
+                # Alle fuenf genannten Kategorien sind GEMISCHT, und
+                # keine Systemkategorie wurde genannt, obwohl die die
+                # groesseren sind. Woran das haengt und wie es gemessen
+                # wurde, steht in tools/diag_kategorie_betreten.py und
+                # bei index_warmlaufen() in fe/art.py.
+                #
+                # GENAU HIER und nirgends sonst: nav_active ist bereits
+                # das Zeitfenster "es wird gerade bedient" (150 ms), und
+                # darauf kommt es an. Ein System je Durchlauf, und nur
+                # wenn weder eine Taste noch ein Dialog im Weg ist -
+                # damit kostet der Warmlauf nichts, was jemand sehen
+                # kann, und bricht sofort ab, sobald wieder gescrollt
+                # wird.
+                if not any_dialog and not nav_active:
+                    self._warmlauf_tick()
                 if need_mq and not any_dialog and not nav_active:
                     self.marquee_tick()
                 # Beim schnellen Scrollen uebersprungene Cover ~COVER_SETTLE
@@ -12802,6 +12911,9 @@ class Frontend:
         # weg, sonst wuerde ein ausgetauschtes Cover weiterhin mit
         # der alten Aenderungszeit bewertet - siehe _quelldaten().
         quelldaten_vergessen()
+        # Nach dem Neueinlesen sind die Kategorien andere - also auch
+        # die Frage, welche Systeme vorbereitet gehoeren (Build 239).
+        self._warmlauf_fertig_fuer = None
         self._speicher.merken()
         self.cats = scan_games(force=True, progress_cb=progress_cb)
         n_sys = len(self.cats)
