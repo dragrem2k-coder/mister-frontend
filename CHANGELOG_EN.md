@@ -705,6 +705,40 @@ MiSTer's four modes.**
   across 30 steps, so Build 229's self-throttle does hold. **Nothing to fix
   here**, and without the time next to it that was not visible. Those lines
   now carry the time and are sorted by it.
+
+**Three things the first report with section K said about the bench itself —
+two of them my own mistakes.**
+
+- **Section K ran into nothing, silently.** The report said "no image cache —
+  skipped": the function that supplies the cover lives on the image cache
+  itself, while the bench is deliberately handed the module. The whole section
+  bailed out — with a line that reads like a device property rather than a
+  programming error. Both cases are now handled.
+- **The `karten` item got smaller because I looked away.** Build 241 merged
+  four calls into one; `karten` fell from 13.81 to 13.02 ms — but the new call
+  was in **no** counter. So part of the saving was not a saving but blindness.
+  *An item that shrinks because you stop looking is worse than a large one.*
+- **Section E reversed its verdict.** Two runs, same device, two days apart:
+  once "marginally better (7.9 ms)", once "not worth it". Nothing had changed —
+  both sides vary by about 15 percent and the threshold was sharp. Now the two
+  sides are measured **alternately**, the median is taken across several
+  rounds, and the **spread is printed**; if the difference is not larger than
+  it, the section says "TOO CLOSE" instead of ruling. That is the honest
+  answer and the more useful one: what lies in the noise, nobody notices while
+  scrolling.
+
+**And a real gap: what is the cold case made of?**
+
+- `game list, list view, per step cold 296.82 ms` is the largest single value
+  in the whole report, and what it consists of was written nowhere. Adding up
+  two other sections got me to 180 ms — the remaining **116 were guesswork**.
+  Whether the next piece of work belongs at the decoder or the scaler depends
+  on it.
+- Section B now **takes the cold pass apart itself**, on the device's real
+  files at its real box sizes: decoding, scaling, remainder — each with its
+  call count. The counters are released immediately afterwards; left in place,
+  every following section would measure through them, and that would be a
+  measurement error that looks like a finding.
 - **"then it just opens Random Play and stops there"** was not a fault of the
   demo but its **consequence** — the most surprising find of this build.
   Attract mode is called "Random Play — draw a game" in the menu and starts

@@ -214,19 +214,27 @@ check("und ist abgesichert wie die anderen",
 check("BENCH_VERSION wurde hochgezaehlt", BENCH.BENCH_VERSION >= 7,
       "%d" % BENCH.BENCH_VERSION)
 _k = BQ.split("def _abschnitt_k")[1].split("\ndef ")[0]
-check("er schiebt ein Cover unter", "A.get_scaled = _cover" in _k,
+check("er schiebt ein Cover unter", "_traeger.get_scaled = _cover" in _k,
       "ohne Cover waere er so blind wie die Messung vorher")
+# BUILD 242: und er findet get_scaled auch dann, wenn ihm das MODUL
+# uebergeben wird statt der Instanz. Im ersten Bericht mit Abschnitt K
+# stand "kein Bild-Zwischenspeicher - uebersprungen": das Bench bekommt
+# absichtlich das Modul (siehe frontend.py), get_scaled sitzt aber auf
+# dem ArtCache darin. Der ganze Abschnitt lief lautlos ins Leere.
+check("er findet den ArtCache auch im Modul",
+      'getattr(A, "ART", None)' in _k,
+      "sonst laeuft der Abschnitt lautlos ins Leere")
 # DASS ES WIRKLICH ZURUECKGESETZT WIRD, prueft weiter unten der LAUF
 # selbst (die Pruefung "danach liefert get_scaled wieder echte Cover").
 # Hier nur, dass es im finally steht und nicht am Ende des try-Blocks -
 # sonst bliebe das Frontend nach einem Abbruch mitten im Bench ohne
 # echte Cover, und das waere ein Fehler, den niemand mehr mit dem
 # Bench in Verbindung bringt.
-_nach_cover = _k.split("A.get_scaled = _cover", 1)[1]
+_nach_cover = _k.split("_traeger.get_scaled = _cover", 1)[1]
 _finally_teil = _nach_cover.split("finally:")[-1] if "finally:" in \
     _nach_cover else ""
 check("und gibt es im finally zurueck",
-      "A.get_scaled = echt_scaled" in _finally_teil,
+      "_traeger.get_scaled = echt_scaled" in _finally_teil,
       "sonst bliebe das Frontend nach einem Abbruch ohne echte Cover")
 check("die Haken werden auch im finally geloest",
       _k.split("finally:")[-1].count("setattr(fbo, n, _e)") >= 1)

@@ -1013,6 +1013,77 @@ check("und er wird vom REST abgezogen",
 check("die Bench-Nummer ist mitgewachsen", B.BENCH_VERSION >= 6,
       str(B.BENCH_VERSION))
 
+# ---------------------------------------------------------------------------
+print()
+print("Abschnitt E: kein Urteil, wenn der Unterschied im Rauschen liegt")
+# ---------------------------------------------------------------------------
+# DER ANLASS SIND ZWEI LAEUFE DES NUTZERS auf demselben Geraet, zwei
+# Tage auseinander, mit UMGEKEHRTEM Urteil:
+#
+#   03.10.  verschieben 39,0 + 3,7 = 42,7   Schritt 50,7  -> "knapp besser"
+#   04.10.  verschieben 37,8 + 3,6 = 41,4   Schritt 37,9  -> "lohnt NICHT"
+#
+# Nicht weil sich etwas geaendert hat, sondern weil beide Seiten um rund
+# 15 Prozent streuen und die Schwelle scharf ist. Ein Bench, der bei
+# gleicher Lage mal so und mal so urteilt, ist an dieser Stelle kein
+# Werkzeug, sondern ein Wuerfel.
+_e = _q.split("def _abschnitt_e")[1].split("\ndef ")[0]
+check("er misst ABWECHSELND, nicht erst alles von einer Seite",
+      "for _r in range(_runden_e):" in _e
+      and _e.index("_schieb.append") < _e.index("_schrit.append"),
+      "sonst traegt jede Haelfte den Zustand des Geraets in dem Moment")
+check("er nimmt den Median ueber die Runden",
+      "_median(_schieb)" in _e and "_median(_schrit)" in _e)
+check("und gibt die STREUUNG aus", "STREUUNG" in _e,
+      "ohne sie ist der Unterschied unten nicht zu beurteilen")
+check("das Urteil haengt an der Streuung",
+      "abs(ms_voll - geblittet) <= _rauschen" in _e)
+check("und der Zweig sagt ZU KNAPP statt lohnt/lohnt nicht",
+      "ZU KNAPP" in _e)
+# Die Sperre gegen die stehende Uhr muss VOR dem neuen Zweig stehen -
+# sonst machte der Pruefstand aus drei Nullen ein "ZU KNAPP" statt
+# "NICHT MESSBAR".
+check("die Nicht-messbar-Sperre steht vor dem Streuungs-Zweig",
+      _e.index("if ms_voll < 0.05:")
+      < _e.index("abs(ms_voll - geblittet) <= _rauschen"),
+      "sonst machte eine stehende Uhr aus drei Nullen ein Ergebnis")
+
+# ---------------------------------------------------------------------------
+print()
+print("Abschnitt B: woraus besteht der kalte Fall?")
+# ---------------------------------------------------------------------------
+# "Spieleliste liste je Schritt kalt 296,82 ms" ist der groesste
+# Einzelwert des ganzen Berichts, und was darin steckt, stand nirgends.
+# Zusammengerechnet aus Abschnitt C und D kam ich auf 180 ms - die
+# restlichen 116 waren geraten.
+_bb = _q.split("def _abschnitt_b")[1].split("\ndef ")[0]
+check("der kalte Durchlauf wird zerlegt", "_kalt_konto" in _bb)
+check("dekodieren und verkleinern getrennt",
+      '"lesen"' in _bb and '"klein"' in _bb)
+# Der Haken MUSS im finally geloest werden, das direkt auf die Messung
+# folgt - bleibt er stehen, messen alle folgenden Abschnitte durch ihn
+# hindurch, und das waere ein Messfehler, der nach einem Befund aussieht.
+_nach_kalt = _bb.split("kalt, _ = messen(_durchlauf, 1)", 1)[1][:300]
+check("die Haken werden direkt danach im finally geloest",
+      "finally:" in _nach_kalt and "setattr(A, _n, _e)" in _nach_kalt,
+      "sonst messen alle folgenden Abschnitte durch den Haken")
+check("und die Zeile nennt auch den Rest", "Rest %5.1f ms" in _bb,
+      "sonst sieht man nicht, ob die Aufteilung vollstaendig ist")
+
+# ---------------------------------------------------------------------------
+print()
+print("Abschnitt K und der karten-Posten")
+# ---------------------------------------------------------------------------
+check("rect_viele haengt im karten-Haken", '"rect", "rect_viele")' in _q,
+      "Build 241 hat vier rect() zu einem rect_viele gemacht - ohne "
+      "Haken faellt der Posten, weil man wegsieht")
+check("Abschnitt K findet den ArtCache auch im Modul",
+      'getattr(A, "ART", None)' in _q,
+      "im ersten Bericht stand 'kein Bild-Zwischenspeicher - "
+      "uebersprungen': das Bench bekommt absichtlich das MODUL")
+check("die Bench-Nummer ist erneut mitgewachsen", B.BENCH_VERSION >= 7,
+      str(B.BENCH_VERSION))
+
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))

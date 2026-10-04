@@ -847,6 +847,43 @@ die vier Modi vom MiSTer.**
   greift also. **Hier war nichts zu beheben**, und ohne die Zeit daneben war
   das nicht zu sehen. Die Zeilen nennen jetzt die Zeit und sind nach Zeit
   sortiert.
+
+**Drei Dinge, die der erste Bericht mit Abschnitt K über den Bench selbst
+gesagt hat — zwei davon eigene Fehler.**
+
+- **Abschnitt K lief lautlos ins Leere.** Im Bericht stand „kein
+  Bild-Zwischenspeicher — übersprungen": die Funktion, die das Cover liefert,
+  sitzt auf dem Bild-Zwischenspeicher selbst, das Bench bekommt aber
+  absichtlich das Modul übergeben. Der ganze Abschnitt sprang ab — mit einer
+  Zeile, die wie eine Geräte-Eigenschaft klingt statt wie ein
+  Programmierfehler. Jetzt werden beide Fälle bedient.
+- **Der Posten `karten` wurde kleiner, weil ich weggesehen habe.** Build 241
+  hat vier Aufrufe zu einem zusammengefasst; `karten` fiel von 13,81 auf
+  13,02 ms — aber der neue Aufruf stand in **keinem** Zähler. Ein Teil der
+  Ersparnis war also keine, sondern Blindheit. *Ein Posten, der kleiner wird,
+  weil man wegsieht, ist schlimmer als ein großer.*
+- **Abschnitt E hat sein Urteil umgedreht.** Zwei Läufe, dasselbe Gerät, zwei
+  Tage auseinander: einmal „knapp besser (7,9 ms)", einmal „es lohnt NICHT".
+  Nichts hatte sich geändert — beide Seiten streuen um rund 15 Prozent, und
+  die Schwelle war scharf. Jetzt wird **abwechselnd** gemessen, der Median
+  über mehrere Runden genommen und die **Streuung mit ausgegeben**; liegt der
+  Unterschied nicht über ihr, sagt der Abschnitt „ZU KNAPP" statt zu urteilen.
+  Das ist die ehrliche Antwort und zugleich die nützlichere: was im Rauschen
+  liegt, merkt beim Scrollen niemand.
+
+**Und eine echte Lücke: woraus besteht der kalte Fall?**
+
+- `Spieleliste liste je Schritt kalt 296,82 ms` ist der größte Einzelwert des
+  ganzen Berichts, und was darin steckt, stand nirgends. Aus zwei anderen
+  Abschnitten zusammengerechnet kam ich auf 180 ms — die restlichen **116
+  waren geraten**. Davon hängt ab, ob die nächste Arbeit am Dekodierer oder am
+  Verkleinerer ansetzt.
+- Abschnitt B **zerlegt den kalten Durchlauf jetzt selbst**, an den echten
+  Dateien des Geräts in den echten Kastengrößen: dekodieren, verkleinern,
+  Rest — jeweils mit der Zahl der Aufrufe. Die Zähler werden direkt danach
+  wieder gelöst; blieben sie stehen, würden alle folgenden Abschnitte durch
+  sie hindurch messen, und das wäre ein Messfehler, der nach einem Befund
+  aussieht.
 - **„öffnet nur Zufalls-Zock und bleibt dort stehen"** war kein Fehler der
   Vorführung, sondern ihre **Folge** — und der überraschendste Befund des
   Builds. Der Attract-Modus heißt im Menü „Zufalls-Zock — Spiel ziehen" und

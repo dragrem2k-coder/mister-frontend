@@ -2564,3 +2564,84 @@ Geraet laeuft sie.
    also. **Hier war nichts zu beheben**, und das war ohne die Zeit
    daneben nicht zu sehen. Jetzt steht sie da, und sortiert wird nach
    Zeit statt nach Zahl.
+
+
+## Was der erste Bericht mit Abschnitt K ueber den Bench selbst sagte (Build 242)
+
+Der Lauf vom 04.10. hat drei Dinge gezeigt, und zwei davon waren Fehler
+im Bench, nicht im Frontend.
+
+### 1. Abschnitt K lief lautlos ins Leere
+
+```
+ K  Welche Fuellaufrufe macht ein Scrollschritt? (Build 241)
+    kein Bild-Zwischenspeicher - uebersprungen
+```
+
+`get_scaled()` sitzt auf der ArtCache-**Instanz**, nicht am Modul - und
+das Bench bekommt absichtlich das **Modul** uebergeben (dort liegen
+`original_lesen`, `_verkleinern`, `art_path`; die Begruendung steht an
+der Aufrufstelle in `frontend.py`). Der ganze Abschnitt sprang ab, und
+zwar mit einer Zeile, die wie eine Geraete-Eigenschaft klingt statt wie
+ein Programmierfehler. Jetzt werden beide Faelle bedient.
+
+### 2. Der Posten `karten` wurde kleiner, weil ich weggesehen habe
+
+Build 241 hat vier `rect()`-Aufrufe zu einem `rect_viele()`
+zusammengefasst. `karten` fiel daraufhin von 13,81 auf 13,02 ms - aber
+`rect_viele` stand in **keinem** Haken. Ein Teil der Ersparnis war also
+keine, sondern Blindheit. **Ein Posten, der kleiner wird, weil man
+wegsieht, ist schlimmer als ein grosser.** `rect_viele` haengt jetzt mit
+im `karten`-Haken.
+
+### 3. Abschnitt E hat sein Urteil umgedreht
+
+Zwei Laeufe, dasselbe Geraet, zwei Tage auseinander:
+
+| | verschieben + 2 Zeilen | leichter Pfad | Urteil |
+|---|---|---|---|
+| 03.10. | 42,7 ms | 50,7 ms | "knapp besser (7,9 ms)" |
+| 04.10. | 41,4 ms | 37,9 ms | "es lohnt NICHT" |
+
+Nichts hatte sich geaendert - beide Seiten streuen um rund 15 Prozent,
+und die Schwelle war scharf. **Ein Bench, der bei gleicher Lage mal so
+und mal so urteilt, ist an dieser Stelle kein Werkzeug, sondern ein
+Wuerfel.**
+
+Zwei Aenderungen, und beide standen schon in
+`tools/diag_feinheiten.py`, wo derselbe Fehler gemacht und behoben
+wurde: **abwechselnd** messen (sonst traegt jede Haelfte den Zustand des
+Geraets in genau diesem Moment) und die **Streuung** mit ausgeben. Liegt
+der Unterschied nicht ueber ihr, sagt der Abschnitt jetzt:
+
+```
+   STREUUNG   : 3 Runden, geblittet +-2.1 ms, Schritt +-4.3 ms
+   ERGEBNIS   : ZU KNAPP - der Unterschied (3.5 ms) ist
+                nicht groesser als die Streuung (4.3 ms).
+                Daraus folgt kein Umbau: was im Rauschen
+                liegt, merkt beim Scrollen niemand.
+```
+
+Das ist die ehrliche Antwort und zugleich die nuetzlichere.
+
+### Und eine echte Luecke: woraus besteht der kalte Fall?
+
+`Spieleliste liste je Schritt kalt 296,82 ms` ist der groesste
+Einzelwert des ganzen Berichts. Was darin steckt, stand nirgends.
+Zusammengerechnet aus Abschnitt C (Flaechenmittel 110 ms) und D
+(dekodieren 70 ms) kam ich auf 180 - die restlichen **116 ms waren
+geraten**, und davon haengt ab, ob die naechste Arbeit am Dekodierer
+oder am Verkleinerer ansetzt.
+
+Abschnitt B zerlegt den kalten Durchlauf jetzt selbst, an den **echten**
+Dateien dieses Geraets in den **echten** Kastengroessen:
+
+```
+   Spieleliste liste    je Schritt kalt      296.82 ms
+      davon dekodieren  ... ms (19 x), verkleinern ... ms (19 x),
+      Rest ... ms
+```
+
+Die Haken werden direkt danach im `finally` geloest - bleiben sie
+stehen, messen alle folgenden Abschnitte durch sie hindurch, und das
+waere ein Messfehler, der nach einem Befund aussieht.

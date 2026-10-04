@@ -538,7 +538,48 @@ def _abschnitt_b(b, fe, S, spiele, A=None):
                 continue
 
             try:
-                kalt, _ = messen(_durchlauf, 1)
+                # WORAUS BESTEHT DER KALTE FALL? (Build 242)
+                #
+                # Im Bericht vom 04.10. steht "Spieleliste liste je
+                # Schritt kalt 296,82 ms" - der groesste Einzelwert des
+                # ganzen Berichts. Was darin steckt, stand bisher
+                # nirgends, und zusammengerechnet aus Abschnitt C und D
+                # kam ich auf 180 ms: Dekodieren rund 70, Verkleinern
+                # mit Flaechenmittel rund 110. Die restlichen 116 ms
+                # waren geraten, und geraten ist hier zuwenig: davon
+                # haengt ab, ob die naechste Arbeit am Dekodierer oder
+                # am Verkleinerer ansetzt.
+                #
+                # Gemessen wird im KALTEN Durchlauf selbst, nicht an
+                # einem erzeugten Bild - es sind die echten Dateien
+                # dieses Geraets, in den echten Kastengroessen.
+                _kalt_konto = {"lesen": [0, 0.0], "klein": [0, 0.0]}
+                _kalt_echt = []
+                if A is not None:
+                    for _n, _schl in (("original_lesen", "lesen"),
+                                      ("_verkleinern", "klein")):
+                        _e = getattr(A, _n, None)
+                        if _e is None:
+                            continue
+                        _kalt_echt.append((_n, _e))
+
+                        def _h_kalt(echt=_e, schl=_schl):
+                            def haken(*a, **k):
+                                t0 = time.monotonic()
+                                try:
+                                    return echt(*a, **k)
+                                finally:
+                                    _kalt_konto[schl][0] += 1
+                                    _kalt_konto[schl][1] += (
+                                        time.monotonic() - t0)
+                            return haken
+
+                        setattr(A, _n, _h_kalt())
+                try:
+                    kalt, _ = messen(_durchlauf, 1)
+                finally:
+                    for _n, _e in _kalt_echt:
+                        setattr(A, _n, _e)
                 # Die Miniaturen werden im Hintergrund weggeschrieben
                 # (_thumb_cache_put_async). Ohne diese Pause waere der
                 # warme Durchgang teils noch ein kalter, und zwar je
@@ -564,6 +605,15 @@ def _abschnitt_b(b, fe, S, spiele, A=None):
                 warm, _ = messen(_durchlauf, 1)
                 b.posten("%s %-8s je Schritt kalt" % (name, ansicht),
                          kalt / SCHRITTE)
+                _kl = _kalt_konto["lesen"]
+                _kk = _kalt_konto["klein"]
+                if _kl[0] or _kk[0]:
+                    b("      davon dekodieren %5.1f ms (%d x),"
+                      " verkleinern %5.1f ms (%d x), Rest %5.1f ms"
+                      % (_kl[1] * 1000.0 / SCHRITTE, _kl[0],
+                         _kk[1] * 1000.0 / SCHRITTE, _kk[0],
+                         max(0.0, (kalt - (_kl[1] + _kk[1]) * 1000.0)
+                             / SCHRITTE)))
                 if karte is not None:
                     zus = ""
                     if warm > 0 and karte / warm >= 1.2:
@@ -954,14 +1004,46 @@ def _abschnitt_e(b, fe):
                 fe.draw()
             _flip_e[0] += getattr(fe, "_perf_flip", 0.0) - _f0
 
+        # ABWECHSELND MESSEN, UND DIE STREUUNG MIT AUSGEBEN
+        # (Build 242). Der Anlass sind zwei Laeufe des Nutzers auf
+        # demselben Geraet, zwei Tage auseinander:
+        #
+        #   03.10.  verschieben 39,0 + 3,7 = 42,7   Schritt 50,7
+        #           -> "knapp besser (7,9 ms)"
+        #   04.10.  verschieben 37,8 + 3,6 = 41,4   Schritt 37,9
+        #           -> "es lohnt NICHT"
+        #
+        # Dasselbe Geraet, dieselbe Frage, umgekehrtes Urteil. Nicht
+        # weil sich etwas geaendert hat, sondern weil beide Seiten um
+        # rund 15 Prozent streuen und die Schwelle scharf ist. Ein
+        # Bench, der bei gleicher Lage mal so und mal so urteilt, ist
+        # an dieser Stelle kein Werkzeug, sondern ein Wuerfel.
+        #
+        # ZWEI AENDERUNGEN, und beide stehen schon in
+        # tools/diag_feinheiten.py, wo derselbe Fehler gemacht wurde:
+        # erstens abwechselnd messen statt erst alles von der einen und
+        # dann alles von der anderen Seite - sonst traegt jede Haelfte
+        # den Zustand des Geraets in genau diesem Moment. Zweitens die
+        # Streuung ausgeben, damit sichtbar ist, ob der Unterschied
+        # groesser ist als sie.
+        _runden_e = 3
+        _schieb, _zeil, _schrit, _flips = [], [], [], []
         try:
             for _ in range(4):
                 _schritt()                   # warmlaufen, nicht messen
-            _flip_e[0] = 0.0
-            _vorher = _zaehler_e[0]
-            ms_schritt, best_schritt = messen(_schritt)
-            _laeufe = max(1, _zaehler_e[0] - _vorher)
-            ms_flip_e = _flip_e[0] * 1000.0 / _laeufe
+            for _r in range(_runden_e):
+                _schieb.append(messen(schieben)[0])
+                _zeil.append(messen(eine_zeile)[0])
+                _flip_e[0] = 0.0
+                _vorher = _zaehler_e[0]
+                _schrit.append(messen(_schritt)[0])
+                _laeufe = max(1, _zaehler_e[0] - _vorher)
+                _flips.append(_flip_e[0] * 1000.0 / _laeufe)
+            ms_schieb = _median(_schieb)
+            ms_zeile = _median(_zeil)
+            ms_schritt = _median(_schrit)
+            best_schritt = min(_schrit)
+            ms_flip_e = _median(_flips)
         finally:
             fe.page = _alte_seite
             fe.cat_i = min(_alter_cat, max(0, len(fe.cats) - 1))
@@ -976,6 +1058,13 @@ def _abschnitt_e(b, fe):
         # zwei Zeilen neu gesetzt werden (die neu freigewordene und die
         # Markierung).
         geblittet = ms_schieb + 2 * ms_zeile
+        # DIE STREUUNG BEIDER SEITEN, als Spanne ueber die Runden. Sie
+        # ist das Mass dafuer, ob der Unterschied unten ueberhaupt eine
+        # Aussage ist.
+        _sp_blit = ((max(_schieb) - min(_schieb))
+                    + 2 * (max(_zeil) - min(_zeil))) if _schieb else 0.0
+        _sp_schr = (max(_schrit) - min(_schrit)) if _schrit else 0.0
+        _rauschen = max(_sp_blit, _sp_schr)
         b("")
         b("   RECHNUNG   : verschieben %.1f + zwei Zeilen %.1f = %.1f ms"
           % (ms_schieb, 2 * ms_zeile, geblittet))
@@ -983,6 +1072,8 @@ def _abschnitt_e(b, fe):
           % ms_schritt)
         b("                voller Aufbau (nur zum Einordnen)= %.1f ms"
           % ms_voll)
+        b("   STREUUNG   : %d Runden, geblittet +-%.1f ms, Schritt"
+          " +-%.1f ms" % (_runden_e, _sp_blit, _sp_schr))
         # Ab hier wird gegen den SCHNELLEN PFAD gerechnet, nicht gegen
         # den vollen Aufbau.
         ms_voll = ms_schritt
@@ -998,6 +1089,22 @@ def _abschnitt_e(b, fe):
             b("                %.3f ms heraus. Das ist keine Aussage,"
               % ms_voll)
             b("                sondern eine stehende oder zu grobe Uhr.")
+        elif abs(ms_voll - geblittet) <= _rauschen:
+            # KEIN URTEIL, WENN DER UNTERSCHIED IM RAUSCHEN LIEGT
+            # (Build 242). Genau hier hat der Abschnitt zwischen zwei
+            # Laeufen des Nutzers das Urteil umgedreht, ohne dass sich
+            # etwas geaendert hatte. "Zu knapp zum Entscheiden" ist die
+            # ehrliche Antwort und zugleich die nuetzlichere: sie sagt,
+            # dass hier nichts zu holen ist, was den Umbau wert waere.
+            b("   ERGEBNIS   : ZU KNAPP - der Unterschied (%.1f ms) ist"
+              % abs(ms_voll - geblittet))
+            b("                nicht groesser als die Streuung (%.1f ms)."
+              % _rauschen)
+            b("                Daraus folgt kein Umbau: was im Rauschen")
+            b("                liegt, merkt beim Scrollen niemand.")
+            b("                (Genau hier hat dieser Abschnitt vor")
+            b("                 Build 242 zwischen zwei Laeufen das")
+            b("                 Urteil umgedreht.)")
         elif geblittet < ms_voll * 0.8:
             b("   ERGEBNIS   : es LOHNT hier - %.1f ms gespart je Schritt,"
               % (ms_voll - geblittet))
@@ -2002,9 +2109,16 @@ def _abschnitt_j(b, fe, S, A, fm):
     _sys = __import__("sys")
     _wer = {}
     _datei_echt = [(_os, "stat", _os.stat), (_bi, "open", _bi.open)]
+    # rect_viele GEHOERT DAZU (Build 242), und das Fehlen war ein
+    # Messfehler, den Build 241 selbst erzeugt hat: dort wurde der
+    # Cover-Rahmen von vier rect()-Aufrufen auf einen rect_viele()
+    # zusammengefasst. Der Posten "karten" fiel daraufhin von 13,81 auf
+    # 13,02 ms - und ein Teil davon war keine Ersparnis, sondern
+    # Blindheit: der neue Aufruf stand in keinem Haken. Ein Posten, der
+    # kleiner wird, weil man wegsieht, ist schlimmer als ein grosser.
     _KARTEN = [(fbo, n) for n in ("karte_mit_schatten",
                                   "rect_rounded_schatten",
-                                  "rect_rounded", "rect")
+                                  "rect_rounded", "rect", "rect_viele")
                if hasattr(fbo, n)]
     _karten_echt = [(o, n, getattr(o, n)) for (o, n) in _KARTEN]
     konto = {}
@@ -2464,7 +2578,21 @@ def _abschnitt_k(b, fe, S, A):
     # Das Cover unterschieben. Die Groesse wechselt von Schritt zu
     # Schritt, wie bei echten Boxarts - sonst waere die Aussparung in
     # der Karte immer dieselbe, und das ist der Fall, den es nicht gibt.
-    echt_scaled = getattr(A, "get_scaled", None)
+    #
+    # WO get_scaled() WIRKLICH SITZT (Build 242): auf der ArtCache-
+    # INSTANZ, nicht am Modul. Das Bench bekommt absichtlich das MODUL
+    # uebergeben (siehe die Begruendung an der Aufrufstelle in
+    # frontend.py: original_lesen, _verkleinern und art_path liegen
+    # dort), und deshalb stand im ersten Bericht mit Abschnitt K die
+    # Zeile "kein Bild-Zwischenspeicher - uebersprungen" - der ganze
+    # Abschnitt lief ins Leere, und zwar lautlos.
+    #
+    # Beide Faelle werden jetzt bedient: ein Modul mit .ART darin, und
+    # die Instanz selbst (so ruft tools/test_fuellaufrufe.py es auf).
+    _traeger = A
+    if not hasattr(_traeger, "get_scaled"):
+        _traeger = getattr(A, "ART", None)
+    echt_scaled = getattr(_traeger, "get_scaled", None)
     if echt_scaled is None:
         b("   kein Bild-Zwischenspeicher - uebersprungen")
         return
@@ -2510,7 +2638,7 @@ def _abschnitt_k(b, fe, S, A):
         return ersatz
 
     schritte = max(10, SCHRITTE // 3)
-    A.get_scaled = _cover
+    _traeger.get_scaled = _cover
     try:
         fe.page = 1
         fe.cat_i = kat_i
@@ -2554,7 +2682,7 @@ def _abschnitt_k(b, fe, S, A):
                      sek * 1000.0 / schritte))
             b("")
     finally:
-        A.get_scaled = echt_scaled
+        _traeger.get_scaled = echt_scaled
         for n, _e in echte:
             setattr(fbo, n, _e)
 
