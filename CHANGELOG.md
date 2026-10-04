@@ -373,6 +373,32 @@ Millisekunde.**
 - Der Text folgt im nächsten Build — er braucht dieselbe Funktion, aber eine
   Umstellung am Textspeicher, und die will sorgfältig gemacht werden.
 
+**Die Aussparung aus Build 234 hat nie gegriffen — drei Punkte zu hoch.**
+
+- `karten` stand in deinem Bericht nach Build 234 unverändert bei 14,4 ms. Das
+  war **kein Messfehler**: die Aussparung wurde verworfen, sobald sie auch nur
+  einen Punkt über die geraden Mittelzeilen der Karte hinausragte — und genau
+  das ist in der Listenansicht **immer** der Fall. Die Karte liegt bei y=36,
+  das gerade Band beginnt bei y=57, die Oberkante des Covers bei **y=54**.
+  Drei Punkte, und die ganze Ersparnis fiel weg.
+- Jetzt wird **beschnitten statt abgewiesen**. Das ist genauso sicher: was
+  übrigbleibt, ist eine *Teilmenge* dessen, was der Aufrufer als „wird gleich
+  übermalt" zugesagt hat — weniger auszusparen ist immer erlaubt, mehr nie.
+  Auf 1080p bleiben **76 % der Karte** ausgespart statt 0 %.
+- Der Test prüft jetzt genau diese Zusage statt der alten Ablehnung: er malt
+  **genau das Rechteck**, das er mitgegeben hat, und vergleicht Byte für Byte.
+
+**Abschnitt J nennt die Boxart-Karte der Liste jetzt beim Namen.**
+
+- Der Posten `cover` hatte nur den Weg von Raster und Galerie am Haken. In der
+  Listenansicht kommt das Cover über `draw_art_panel()` — dessen Arbeit stand
+  namenlos im `REST`. Dort steht `karten 14,4` und `REST 9,8 ms`, und genau
+  dort habe ich drei Builds lang an der Stelle vorbeigemessen, die im Alltag
+  ständig läuft.
+- Neu: **`panel`**, mit dem *eigenen* Anteil (Karten, Kopien und Text darin
+  haben ihre eigenen Posten und würden sonst doppelt zählen), und vom `REST`
+  abgezogen. Bench-Nummer auf 6.
+
 **Die Galerie räumte bei jedem Schritt eine ganze Textspalte frei — für
 ein paar Zeilen Text.**
 

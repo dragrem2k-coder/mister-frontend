@@ -53,7 +53,7 @@ import zlib
 # aussehen - wer eine 1 und eine 2 nebeneinanderlegt, sieht sofort, dass
 # in der einen ein Abschnitt fehlt. Die Abschnitte A bis G haben sich
 # dabei nicht geaendert, ihre Zahlen bleiben also vergleichbar.
-BENCH_VERSION = 5
+BENCH_VERSION = 6
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -1985,6 +1985,14 @@ def _abschnitt_j(b, fe, S, A, fm):
     echt_text = fbo.text
     echt_beschr = getattr(K, "_beschreibung_zeichnen", None)
     echt_cover = getattr(K, "_ansicht_cover", None)
+    # NEU (Build 238): die Boxart-Karte der LISTENANSICHT. Bis hierher
+    # hatte "cover" nur _ansicht_cover() am Haken - das ist der Weg von
+    # Raster und Galerie. In der Liste kommt das Cover ueber
+    # draw_art_panel(), und dessen Arbeit stand deshalb namenlos im
+    # REST. Genau dort steht in der Listenansicht "karten 14,4 ms" und
+    # "REST 9,8 ms", und genau dort haben wir drei Builds lang an der
+    # Stelle vorbeigemessen, die im Alltag staendig laeuft.
+    echt_panel = getattr(K, "draw_art_panel", None)
     # os.stat UND builtins.open - nicht io.open: der eingebaute open()
     # ist eine eigene Bindung, ein Haken an io.open ginge daran vorbei.
     # os.path.exists() und isfile() gehen ueber os.stat und sind damit
@@ -2005,7 +2013,7 @@ def _abschnitt_j(b, fe, S, A, fm):
     # Aufteilung stand in Build 216 ein "Rest" von 27 bis 63 ms da - der
     # groesste Posten ueberall, und ohne Namen.
     _POSTEN = ("restore", "blit", "flip", "text", "karten", "beschr",
-               "cover", "datei")
+               "cover", "datei", "panel")
 
     def _null():
         konto.clear()
@@ -2156,6 +2164,22 @@ def _abschnitt_j(b, fe, S, A, fm):
     # DIE BESCHREIBUNG rechnet Umbrueche (reine Zeichenkettenarbeit) und
     # zeichnet dann Zeilen. Ausgewiesen wird nur ihr EIGENER Anteil, die
     # Textzeit darin gehoert zu "text".
+    # DIE BOXART-KARTE DER LISTE. Ausgewiesen wird nur ihr EIGENER
+    # Anteil: Karten, Kopien und Text darin haben ihre eigenen Posten
+    # und wuerden sonst doppelt zaehlen. Uebrig bleibt, was wirklich
+    # nur hier passiert - vor allem das Beschaffen des Bildes.
+    def h_panel(self, *a, **k):
+        t0 = time.monotonic()
+        _vor = (konto["karten_ms"] + konto["blit_ms"] + konto["text_ms"]
+                + konto["restore_ms"])
+        try:
+            return echt_panel(self, *a, **k)
+        finally:
+            _innen = (konto["karten_ms"] + konto["blit_ms"]
+                      + konto["text_ms"] + konto["restore_ms"]) - _vor
+            konto["panel_ms"] += max(0.0, time.monotonic() - t0 - _innen)
+            konto["panel_n"] += 1
+
     def h_beschr(self, *a, **k):
         t0 = time.monotonic()
         konto["in_beschr"] += 1
@@ -2193,6 +2217,8 @@ def _abschnitt_j(b, fe, S, A, fm):
         K._beschreibung_zeichnen = h_beschr
     if echt_cover is not None:
         K._ansicht_cover = h_cover
+    if echt_panel is not None:
+        K.draw_art_panel = h_panel
     for (_o, _n, _e) in _datei_echt:
         setattr(_o, _n, _h_datei(_e))
     # DIE GROESSTE KATEGORIE, genau wie Abschnitt B sie waehlt - und aus
@@ -2305,14 +2331,20 @@ def _abschnitt_j(b, fe, S, A, fm):
                 # Die Dateizeit steckt zum groessten Teil IN "cover" -
                 # sie wird deshalb nur ausgewiesen, nicht abgezogen.
                 da = konto["datei_ms"] * je
-                rest = max(0.0, ges - r - bl - fl - tx - ka - be - ha - co)
+                # Build 238: die Boxart-Karte der Liste. Ihr EIGENER
+                # Anteil - Karten, Kopien und Text darin stehen schon in
+                # den eigenen Posten (siehe h_panel).
+                pa = konto["panel_ms"] * je
+                rest = max(0.0,
+                           ges - r - bl - fl - tx - ka - be - ha - co - pa)
                 b("   %-18s  ges %8.2f ms" % (name + " " + ansicht, ges))
                 b("     restore %6.2f   blit %6.2f   flip %6.2f"
                   % (r, bl, fl))
                 b("     text    %6.2f   karten %5.2f   beschr %5.2f"
                   "   haus %5.2f" % (tx, ka, be, ha))
-                b("     cover   %6.2f   (davon Karte %.2f in %d Zugriffen)"
-                  % (co, da, konto["datei_n"] / schritte))
+                b("     cover   %6.2f   panel %5.2f"
+                  "   (davon Karte %.2f in %d Zugriffen)"
+                  % (co, pa, da, konto["datei_n"] / schritte))
                 for _w, _k in sorted(_wer.items(), key=lambda e: -e[1])[:3]:
                     b("        %5.1f/Schritt  %s" % (_k / float(schritte),
                                                      _w[-52:]))
@@ -2346,6 +2378,8 @@ def _abschnitt_j(b, fe, S, A, fm):
             K._beschreibung_zeichnen = echt_beschr
         if echt_cover is not None:
             K._ansicht_cover = echt_cover
+        if echt_panel is not None:
+            K.draw_art_panel = echt_panel
         for (_o, _n, _e) in _datei_echt:
             setattr(_o, _n, _e)
     b("")

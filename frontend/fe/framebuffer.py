@@ -1754,9 +1754,29 @@ class Framebuffer:
         lueck = None
         if aussparen:
             _ax, _ay, _aw, _ah = (int(v) for v in aussparen)
-            if (_aw > 0 and _ah > 0 and _ax >= x and _ay >= band[0]
-                    and _ax + _aw <= x + w and _ay + _ah <= band[1]):
-                lueck = (_ax, _ay, _aw, _ah)
+            # BESCHNEIDEN STATT ABWEISEN (Build 238).
+            #
+            # In Build 234 wurde die Aussparung verworfen, sobald sie
+            # auch nur einen Punkt ueber die geraden Mittelzeilen
+            # hinausragte. Genau das war in der Listenansicht IMMER der
+            # Fall: die Karte liegt bei (1035,36,769,945) mit Versatz 9
+            # und Radius 12, das Band beginnt also bei y=57 - die
+            # Oberkante des Covers liegt bei y=54. Drei Punkte zu hoch,
+            # und die ganze Ersparnis fiel weg. Im Geraetebericht stand
+            # "karten" danach unveraendert bei 14,4 ms, und das war kein
+            # Messfehler, sondern die Wahrheit: die Aussparung hat nie
+            # gegriffen.
+            #
+            # Beschneiden ist genauso sicher wie Abweisen und ungleich
+            # nuetzlicher: was uebrigbleibt, ist eine TEILMENGE dessen,
+            # was der Aufrufer als "wird gleich uebermalt" zugesagt hat.
+            # Weniger auszusparen ist immer erlaubt, mehr nie.
+            _x1 = max(_ax, x)
+            _y1 = max(_ay, band[0])
+            _x2 = min(_ax + _aw, x + w)
+            _y2 = min(_ay + _ah, band[1])
+            if _aw > 0 and _ah > 0 and _x2 > _x1 and _y2 > _y1:
+                lueck = (_x1, _y1, _x2 - _x1, _y2 - _y1)
 
         # Die Kartenflaeche als Rechtecke: eines ohne Aussparung, sonst
         # die bis zu vier Streifen darum herum. Der Schattenstreifen

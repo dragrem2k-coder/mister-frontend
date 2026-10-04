@@ -352,6 +352,22 @@ exactly why nothing here was built twice.
 - Text follows in the next build — it needs the same function but a change
   to the text cache, and that deserves care.
 
+**The cut-out from build 234 never applied — three points too high.**
+
+- `karten` stayed at 14.4 ms in your report after build 234, and that was no
+  measurement error: the cut-out was rejected as soon as it stuck out of the
+  card's straight middle rows by even one point — which in the list view is
+  **always** the case (card at y=36, band from y=57, cover top at y=54).
+- It is now **clipped instead of rejected**. Just as safe: what remains is a
+  *subset* of what the caller promised would be painted over. On 1080p **76 %
+  of the card** is skipped instead of 0 %.
+
+**Section J now names the list view's boxart panel.**
+
+- `cover` only hooked the grid/gallery path; in the list view the cover comes
+  via `draw_art_panel()`, whose work sat nameless in `REST`. New post
+  **`panel`** with its *own* share, subtracted from `REST`. Bench number 6.
+
 **The gallery cleared a whole text column on every step — for a few lines of
 text.**
 

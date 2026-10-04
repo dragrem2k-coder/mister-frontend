@@ -311,24 +311,41 @@ check("mit Aussparung entsteht bitgenau dasselbe Bild",
       _malen(None) == _malen((AX, AY, AW, AH)),
       "sonst bleibt ein Streifen Hintergrund stehen")
 
-# Und sie darf NUR greifen, wo die Form gerade ist. Eine Aussparung,
-# die in die Eckenrundung ragt, muesste die Rundung kennen - und das
-# waere eine zweite Stelle, an der die Form beschrieben steht.
+# GEAENDERT (Build 238): BESCHNITTEN statt abgewiesen. In Build 234
+# fiel die ganze Ersparnis weg, sobald die Aussparung auch nur einen
+# Punkt ueber die geraden Mittelzeilen hinausragte - und genau das war
+# in der Listenansicht IMMER der Fall (Karte bei y=36, Band ab y=57,
+# Cover-Oberkante bei y=54). Im Geraetebericht stand "karten" danach
+# unveraendert bei 14,4 ms: die Aussparung hat nie gegriffen.
+#
+# DIE ZUSAGE IST DIESELBE GEBLIEBEN und wird hier geprueft: ausgespart
+# wird hoechstens eine TEILMENGE dessen, was der Aufrufer als "wird
+# gleich uebermalt" zugesagt hat. Gemalt wird deshalb GENAU das
+# Rechteck, das auch mitgegeben wurde - alles andere waere eine andere
+# Zusage.
 for name, luecke in (
         ("ragt links hinaus", (X - 50, AY, AW, AH)),
         ("ragt rechts hinaus", (AX, AY, W, AH)),
         ("ragt nach oben", (AX, Y, AW, AH)),
         ("ragt nach unten", (AX, AY, AW, Hh)),
+        ("deckt die ganze Karte", (X, Y, W, Hh)),
         ("ist leer", (AX, AY, 0, 0)),
         ("ist negativ", (AX, AY, -10, -10)),
 ):
-    ohne = _malen(None)
+    lx, ly, lw, lh = luecke
+    fb2.buf[:] = b"\x11" * len(fb2.buf)
+    fb2.karte_mit_schatten(X, Y, W, Hh, V, (40, 44, 60), (10, 10, 14), R)
+    if lw > 0 and lh > 0:
+        fb2.rect(lx, ly, lw, lh, (200, 30, 90))
+    ohne = bytes(fb2.buf)
+
     fb2.buf[:] = b"\x11" * len(fb2.buf)
     fb2.karte_mit_schatten(X, Y, W, Hh, V, (40, 44, 60), (10, 10, 14), R,
                            aussparen=luecke)
-    fb2.rect(AX, AY, AW, AH, (200, 30, 90))
-    check("%-20s wird abgelehnt" % name, bytes(fb2.buf) == ohne,
-          "im Zweifel voll fuellen")
+    if lw > 0 and lh > 0:
+        fb2.rect(lx, ly, lw, lh, (200, 30, 90))
+    check("%-22s bleibt bitgenau" % name, bytes(fb2.buf) == ohne,
+          "ausgespart wird hoechstens, was der Aufrufer zusagt")
 
 # DER AUFRUFER gibt sie nur mit, wenn blit() das Rechteck auch wirklich
 # ganz schreibt - es kuerzt die Zeilenzahl bei zu kurzer Quelle.

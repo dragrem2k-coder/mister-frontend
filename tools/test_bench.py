@@ -986,6 +986,33 @@ check("--help zeigt dieselbe Liste ohne Fehler",
       "2 fuer einen Fehler, 0 fuer eine Frage")
 check("--bench steht in der Liste", '"--bench":' in _qf)
 
+# ---------------------------------------------------------------------------
+print()
+print("Abschnitt J: die Boxart-Karte der LISTE hat jetzt einen Namen")
+# ---------------------------------------------------------------------------
+# BIS BUILD 237 hatte der Posten "cover" nur _ansicht_cover() am Haken -
+# das ist der Weg von Raster und Galerie. In der Listenansicht kommt das
+# Cover ueber draw_art_panel(), und dessen Arbeit stand deshalb namenlos
+# im REST. Genau dort steht "karten 14,4 ms" und "REST 9,8 ms", und
+# genau dort haben wir drei Builds lang an der Stelle vorbeigemessen,
+# die im Alltag staendig laeuft.
+_qb = open(os.path.join(_REPO, "frontend", "fe", "bench.py"),
+           encoding="utf-8").read()
+check("draw_art_panel haengt am Haken",
+      "K.draw_art_panel = h_panel" in _qb)
+check("und wird danach wieder geloest",
+      "K.draw_art_panel = echt_panel" in _qb,
+      "ein Messgeraet darf nichts zurueecklassen")
+check("der Posten steht in der Liste", '"panel"' in _qb)
+check("nur der EIGENE Anteil wird ausgewiesen",
+      "max(0.0, time.monotonic() - t0 - _innen)" in _qb,
+      "Karten, Kopien und Text darin haben eigene Posten")
+check("und er wird vom REST abgezogen",
+      "- co - pa)" in _qb,
+      "sonst stuende er doppelt da")
+check("die Bench-Nummer ist mitgewachsen", B.BENCH_VERSION >= 6,
+      str(B.BENCH_VERSION))
+
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))
