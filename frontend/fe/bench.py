@@ -53,7 +53,7 @@ import zlib
 # aussehen - wer eine 1 und eine 2 nebeneinanderlegt, sieht sofort, dass
 # in der einen ein Abschnitt fehlt. Die Abschnitte A bis G haben sich
 # dabei nicht geaendert, ihre Zahlen bleiben also vergleichbar.
-BENCH_VERSION = 7
+BENCH_VERSION = 8
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -76,6 +76,24 @@ WDH_TEUER = 3
 # Zeichenschritte je Ansicht. 60 ist keine runde Zahl aus Bequem-
 # lichkeit: darunter dominiert der erste, kalte Schritt das Ergebnis.
 SCHRITTE = 60
+
+# DAS KOSTENMODELL DES GERAETS (Build 245), aus Abschnitt I.1 des
+# Berichts vom 04.10.: dort kostet derselbe Umfang einmal in 136 langen
+# Zeilen a 7680 Byte und einmal in 952 kurzen a 1096 Byte, in C 2,36
+# gegen 2,83 ms. Daraus die beiden Anteile - der Grundaufwand JE ZEILE
+# und der Preis JE MEGABYTE Nutzlast.
+#
+# WOFUER DAS DA IST: um einen gemessenen Posten gegen das zu halten,
+# was seine Flaeche erklaert. Abschnitt K nennt karte_mit_schatten mit
+# 8,840 ms; gezaehlte Zeilen und Punkte ergeben nach diesem Modell gut
+# 3 ms. Die Luecke ist die eigentliche Auskunft, und sie steht nur da,
+# wenn beide Zahlen nebeneinander stehen.
+#
+# Es sind Werte DIESES Geraets (DE10-Nano, 1080p). Auf einem anderen
+# stimmen sie nicht - deshalb steht neben dem Modell immer auch die
+# Messung, und die Luecke wird nie allein berichtet.
+MS_JE_ZEILE = 0.000576
+MS_JE_MB = 2.1
 
 
 # ---------------------------------------------------------------------
@@ -553,11 +571,52 @@ def _abschnitt_b(b, fe, S, spiele, A=None):
                 # Gemessen wird im KALTEN Durchlauf selbst, nicht an
                 # einem erzeugten Bild - es sind die echten Dateien
                 # dieses Geraets, in den echten Kastengroessen.
-                _kalt_konto = {"lesen": [0, 0.0], "klein": [0, 0.0]}
+                # DER REST WIRD WEITER AUFGETEILT (Build 245). Im
+                # Bericht vom 04.10. steht der kalte Schritt der
+                # Spieleliste mit 309,54 ms, davon dekodieren 88,9 und
+                # verkleinern 47,0 - und "Rest 173,6 ms". Der Rest ist
+                # damit der groesste unbenannte Posten des ganzen
+                # Berichts, groesser als die beiden benannten zusammen.
+                #
+                # WAS DARIN STECKEN KANN, und das ist keine Vermutung,
+                # sondern aus Abschnitt C ablesbar: dort kostet
+                # "Miniatur packen und schreiben" 741 ms und "Miniatur
+                # lesen und entpacken" 97 ms. Geschrieben wird in einem
+                # eigenen Thread je Cover (_thumb_cache_put_async), und
+                # dieses Geraet hat zwei Kerne - die Zeit taucht also
+                # NICHT als Aufruf im Zeichenweg auf, sondern als
+                # Rechenzeit, die der Zeichenschleife gleichzeitig
+                # fehlt. Genau so sieht ein unbenannter Rest aus.
+                #
+                # Gezaehlt wird deshalb beides: das Nachsehen auf der
+                # Karte (laeuft im Zeichenweg) und das Wegschreiben
+                # (laeuft daneben). Das Wegschreiben wird ausdruecklich
+                # NICHT vom Schritt abgezogen - es liegt parallel, und
+                # eine Zahl, die man abziehen darf, ist es nicht.
+                _kalt_konto = {"lesen": [0, 0.0], "klein": [0, 0.0],
+                               "holen": [0, 0.0]}
+                # Aus Threads geschrieben: angehaengt statt addiert.
+                # list.append ist unteilbar, "+=" auf ein Listenfeld
+                # nicht - bei 60 Threads geht sonst gelegentlich eine
+                # Messung verloren, und zwar lautlos.
+                _kalt_put = []
                 _kalt_echt = []
                 if A is not None:
+                    _echt_put = getattr(A, "_thumb_cache_put", None)
+                    if _echt_put is not None:
+                        _kalt_echt.append(("_thumb_cache_put", _echt_put))
+
+                        def _h_put(*a, **k):
+                            t0 = time.monotonic()
+                            try:
+                                return _echt_put(*a, **k)
+                            finally:
+                                _kalt_put.append(time.monotonic() - t0)
+
+                        A._thumb_cache_put = _h_put
                     for _n, _schl in (("original_lesen", "lesen"),
-                                      ("_verkleinern", "klein")):
+                                      ("_verkleinern", "klein"),
+                                      ("_thumb_cache_get", "holen")):
                         _e = getattr(A, _n, None)
                         if _e is None:
                             continue
@@ -607,6 +666,7 @@ def _abschnitt_b(b, fe, S, spiele, A=None):
                          kalt / SCHRITTE)
                 _kl = _kalt_konto["lesen"]
                 _kk = _kalt_konto["klein"]
+                _kh = _kalt_konto["holen"]
                 if _kl[0] or _kk[0]:
                     b("      davon dekodieren %5.1f ms (%d x),"
                       " verkleinern %5.1f ms (%d x), Rest %5.1f ms"
@@ -614,6 +674,21 @@ def _abschnitt_b(b, fe, S, spiele, A=None):
                          _kk[1] * 1000.0 / SCHRITTE, _kk[0],
                          max(0.0, (kalt - (_kl[1] + _kk[1]) * 1000.0)
                              / SCHRITTE)))
+                    if _kh[0]:
+                        b("      davon im Rest: auf der Karte nachsehen"
+                          " %5.1f ms (%d x)"
+                          % (_kh[1] * 1000.0 / SCHRITTE, _kh[0]))
+                    if _kalt_put:
+                        _ps = sum(_kalt_put)
+                        b("      DANEBEN (eigene Threads, nicht im"
+                          " Schritt enthalten):")
+                        b("        Miniaturen packen und schreiben"
+                          " %5.1f ms (%d x) - auf zwei Kernen"
+                          % (_ps * 1000.0 / SCHRITTE, len(_kalt_put)))
+                        b("        Das ist Rechenzeit, die der"
+                          " Zeichenschleife gleichzeitig fehlt. Sie")
+                        b("        gehoert NICHT abgezogen - sie"
+                          " erklaert den Rest, sie ist nicht er.")
                 if karte is not None:
                     zus = ""
                     if warm > 0 and karte / warm >= 1.2:
@@ -1936,6 +2011,87 @@ def _abschnitt_i(b, fe, A):
         b("      (Gefuellt wird in den PUFFER, nicht auf den Schirm -")
         b("       auf dem Bild landet davon nichts.)")
 
+        # ------------------------------------------------------------
+        # 3b) BREIT UND NIEDRIG - die Luecke in den Schwellen
+        #     (Build 245)
+        # ------------------------------------------------------------
+        # WARUM DAS HIER DAZUKOMMT. Im Bericht vom 04.10. nennt
+        # Abschnitt K den zweitgroessten Fuellposten der Listenansicht:
+        #
+        #     rect_rounded  853x39  ->  2,146 ms, in JEDEM Schritt
+        #
+        # Das ist die Zeilenhervorhebung. 853x39 sind 39 Zeilen (unter
+        # der Zeilenschwelle 96) und 33.267 Punkte (unter der
+        # Punktschwelle 65.536) - sie geht also in Python, und zwar
+        # absichtlich. Die Tabelle darueber sagt aber, dass die
+        # Entscheidung in diesem Bereich gar nicht geprueft ist: sie
+        # misst 60x40 (2.400 Punkte, Python und C gleich teuer) und
+        # 128x128 (16.384 Punkte, C 2,8x besser - aber mit 128 Zeilen
+        # ohnehin ueber der Zeilenschwelle). Zwischen 2.400 und 33.267
+        # Punkten bei WENIGEN Zeilen steht keine einzige Zahl.
+        #
+        # Genau diese Luecke wird hier gefuellt, mit den Massen der
+        # echten Aufrufer: die Zeilenhervorhebung der Spieleliste
+        # (853x39), dieselbe auf der Hauptseite (1300x54), und
+        # daneben schmalere und niedrigere Varianten, damit der
+        # Umschlagpunkt zwischen ihnen liegt und nicht geraten werden
+        # muss. Was dabei herauskommt, entscheidet ueber
+        # FLAECHEN_C_MIN_PUNKTE - und zwar als Messwert, nicht als
+        # Schaetzung.
+        b("")
+        b("   3b) breit und niedrig - wo faengt C an zu lohnen?")
+        b("       Die Zeilenhervorhebung der Liste ist 853x39: wenige")
+        b("       Zeilen, viel Flaeche. Dieser Bereich war bisher")
+        b("       ungemessen, und dort liegt die Entscheidung.")
+        b("   %-24s %9s %9s %9s %s" % ("Flaeche", "Python ms", "C ms",
+                                       "Faktor", "genutzt"))
+        _bn_treffer = []
+        for fw, fh in ((853, 39), (1300, 54), (853, 20), (853, 10),
+                       (400, 39), (200, 39)):
+            fw = min(fw, breite)
+            fh = min(fh, hoehe)
+            if fw <= 0 or fh <= 0:
+                continue
+            _echt = fb.flaechen_fueller
+            try:
+                fb.flaechen_fueller = None
+                ms_py, _bp = messen(
+                    lambda _w=fw, _h=fh: fb.rect(0, 0, _w, _h, (7, 9, 11)),
+                    WDH_TEUER)
+                fb.flaechen_fueller = _echt
+                ms_c, _bc = messen(
+                    lambda _w=fw, _h=fh: fb.rect(0, 0, _w, _h, (7, 9, 11)),
+                    WDH_TEUER)
+            finally:
+                fb.flaechen_fueller = _echt
+            _genutzt = (fh >= _mz or fw * fh >= _mp)
+            b("   %-24s %9.3f %9.3f %9s %s"
+              % ("%dx%d (%d Punkte)" % (fw, fh, fw * fh), ms_py, ms_c,
+                 ("%.1fx" % (ms_py / ms_c)) if ms_c > 0 else "-",
+                 "ja" if _genutzt else "nein"))
+            if ms_c > 0 and not _genutzt:
+                _bn_treffer.append((fw * fh, ms_py / ms_c, ms_py - ms_c))
+        # Das Urteil in einem Satz - und nur, wenn die Zahlen eines
+        # hergeben. Gesucht ist die KLEINSTE ungenutzte Flaeche, bei
+        # der C deutlich gewinnt: unterhalb davon darf die Schwelle
+        # nicht fallen, oberhalb verschenkt sie Zeit.
+        _lohnt = [t for t in _bn_treffer if t[1] >= 1.5]
+        if _lohnt:
+            _lohnt.sort()
+            _pkt, _fak, _diff = _lohnt[0]
+            b("   ERGEBNIS 3b : ab %d Punkten gewinnt C schon %.1fx"
+              " (%.2f ms),"% (_pkt, _fak, _diff))
+            b("                 und dort wird es NICHT benutzt. Die")
+            b("                 Punktschwelle steht auf %d und ist damit"
+              % _mp)
+            b("                 zu hoch - gemessen gewinnt C bereits bei")
+            b("                 %d Punkten, also gehoert sie dorthin und"
+              % _pkt)
+            b("                 nicht auf einen geschaetzten Wert.")
+        elif _bn_treffer:
+            b("   ERGEBNIS 3b : kein Gewinn - unter der Schwelle ist")
+            b("                 Python zu Recht im Spiel. Finger weg.")
+
     # ------------------------------------------------------------------
     # 4. Das Urteil - und nur, wenn es eines gibt.
     # ------------------------------------------------------------------
@@ -2553,13 +2709,48 @@ def _abschnitt_k(b, fe, S, A):
     soll der Zeichenweg, nicht das Dekodieren (das steht in Abschnitt
     C und D).
 
+    ZWEI DURCHGAENGE SEIT BUILD 245 - und der zweite fehlte, was ein
+    ganzes Build unsichtbar gemacht hat. Build 244 spart beim
+    Schnellscrollen die Flaeche des Cover-Kastens aus; gemessen
+    (tools/diag_panel_kurzweg.py) fallen die gefuellten Bytes dabei von
+    2,71 auf 0,66 MB. Im Geraetebericht vom 04.10. war davon NICHTS zu
+    sehen - karte_mit_schatten stand mit 8,840 ms sogar minimal ueber
+    den 8,295 ms des Vorberichts. Der Grund ist dieser Abschnitt
+    selbst: er schiebt bei JEDEM Aufruf ein Cover unter, und der kurze
+    Weg greift ausdruecklich nur, wenn KEINES da ist. Gemessen wurde
+    also zweimal derselbe Pfad, und der Unterschied war Rauschen.
+
+    Deshalb laeuft jede Ansicht jetzt zweimal:
+
+        mit Cover        get_scaled() liefert ein erzeugtes Bild
+        Taste gedrueckt  get_scaled() liefert NICHTS und zaehlt
+                         _defer_count hoch - genau so verhaelt es
+                         sich beim Schnellscrollen mit "Cover sofort"
+
+    Der zweite Durchgang ist der Alltag beim Durchblaettern einer
+    grossen Kategorie, und er ist der einzige, in dem der kurze Weg
+    ueberhaupt vorkommt. _defer_count wird auf der ArtCache-INSTANZ
+    gezaehlt, nicht am Modul - derselbe Fehler hat in Build 244 schon
+    einmal eine Messung stillschweigend entwertet.
+
+    UND DER GROESSTE POSTEN WIRD AUFGESCHLUESSELT. 8,840 ms fuer eine
+    Karte von 769x945 liessen sich mit dem Kostenmodell aus Abschnitt
+    I.1 nicht erklaeren: die Aussparung lag damals schon drin, gezaehlt
+    kommt man auf rund 2.450 Zeilen und 0,8 MB, und das Modell (je
+    Zeile 0,000576 ms, je MB 2,1 ms) sagt dafuer gut 3 ms. Die Luecke
+    ist groesser als der Posten, den Build 244 herausgeholt hat - also
+    wird sie benannt, bevor irgendwer sie wegoptimiert: fuer den
+    teuersten Aufruf stehen jetzt die C-Aufrufe, die Zeilen, die
+    Punkte, das Modell daraus und der ungeklaerte Rest daneben.
+
     DIE ZAHL DER AUFRUFE IST DIE UEBERTRAGBARE GROESSE. Abschnitt I.3
     misst eine 60x40-Flaeche mit 0,489 ms in C und eine 697x3 mit
     0,318 ms - beides winzige Flaechen. Das ist nicht die Flaeche, das
     ist der Aufruf."""
     b("")
     b("-" * 62)
-    b(" K  Welche Fuellaufrufe macht ein Scrollschritt? (Build 241)")
+    b(" K  Welche Fuellaufrufe macht ein Scrollschritt? (Build 241,"
+      " 245)")
     b("-" * 62)
     fbo = getattr(fe, "fb", None)
     if fbo is None:
@@ -2573,6 +2764,11 @@ def _abschnitt_k(b, fe, S, A):
     b("   Zeichenweg, nicht um das Dekodieren (Abschnitt C und D).")
     b("   Gezaehlt wird nur der AEUSSERSTE Aufruf - karte_mit_schatten()")
     b("   ruft rect_rounded(), und die ruft rect().")
+    b("   ZWEI DURCHGAENGE je Ansicht (Build 245): einmal MIT Cover,")
+    b("   einmal mit uebersprungenem Cover - so, wie es sich beim")
+    b("   Schnellscrollen verhaelt. Nur im zweiten kommt der kurze Weg")
+    b("   aus Build 244 ueberhaupt vor; im Bericht vom 04.10. wurde")
+    b("   deshalb zweimal derselbe Pfad gemessen.")
     b("")
 
     # Das Cover unterschieben. Die Groesse wechselt von Schritt zu
@@ -2609,11 +2805,29 @@ def _abschnitt_k(b, fe, S, A):
             puffer[(aw, ah)] = pix
         return (aw, ah, pix)
 
+    # DER ZWEITE DURCHGANG (Build 245): das Cover wird UEBERSPROCHEN,
+    # nicht weggelassen. Der Unterschied entscheidet, welchen Zweig
+    # draw_art_panel() nimmt - bei einem fehlenden Cover kommt der
+    # Platzhalter, bei einem uebersprungenen der Anfangsbuchstabe aus
+    # Build 243, und nur dort kann der kurze Weg aus Build 244 greifen.
+    # Gezaehlt wird auf der INSTANZ, denn genau dort liest
+    # frontend.py den Zaehler.
+    def _cover_uebersprungen(quelle, breite, hoehe, **k):
+        _i = _traeger
+        _i._defer_count = getattr(_i, "_defer_count", 0) + 1
+        return None
+
     _NAMEN = ("karte_mit_schatten", "rect_rounded_schatten",
               "rect_rounded", "rect", "rect_viele")
     echte = [(n, getattr(fbo, n)) for n in _NAMEN if hasattr(fbo, n)]
     konto = {}
     tiefe = [0]
+    # Was INNERHALB des gerade laufenden aeussersten Aufrufs nach C
+    # geht: Aufrufe, Zeilen, Punkte. Damit laesst sich der groesste
+    # Posten gegen das Kostenmodell aus Abschnitt I.1 halten, statt
+    # ihn nur zu benennen.
+    aktuell = [None]
+    innen = {}
 
     def _haken(name, echt):
         def ersatz(*a, **k):
@@ -2628,64 +2842,161 @@ def _abschnitt_k(b, fe, S, A):
                 masse = "?"
             t0 = time.monotonic()
             tiefe[0] += 1
+            aktuell[0] = (name, masse)
             try:
                 return echt(*a, **k)
             finally:
+                aktuell[0] = None
                 tiefe[0] -= 1
                 e = konto.setdefault((name, masse), [0, 0.0])
                 e[0] += 1
                 e[1] += time.monotonic() - t0
         return ersatz
 
+    # Der C-Fueller ist die EINE Stelle, an der die Nutzlast wirklich
+    # geschrieben wird - rect(), rect_viele(), die Eckenbuendel und das
+    # Karte-und-Schatten-Band gehen alle dort hinein. Wer ihn zaehlt,
+    # bekommt Zeilen und Punkte ohne jede Schaetzung.
+    echt_fueller = getattr(fbo, "flaechen_fueller", None)
+
+    def _haken_fueller(buf, stride, hoehe_, grenze, rechtecke):
+        wer = aktuell[0]
+        if wer is not None:
+            try:
+                _rl = tuple(rechtecke)
+            except Exception:                            # noqa: BLE001
+                _rl = ()
+            e = innen.setdefault(wer, [0, 0, 0])
+            e[0] += 1
+            e[1] += sum(int(r[3]) for r in _rl)
+            e[2] += sum(int(r[2]) * int(r[3]) for r in _rl)
+            return echt_fueller(buf, stride, hoehe_, grenze, _rl)
+        return echt_fueller(buf, stride, hoehe_, grenze, rechtecke)
+
+    def _durchgang(ansicht, titel):
+        """Eine Ansicht einmal durchmessen und berichten. Gibt False
+        zurueck, wenn die Ansicht uebersprungen wurde."""
+        try:
+            fe.ansicht_setzen(ansicht)
+        except Exception:                                # noqa: BLE001
+            return False
+        try:
+            schritt = schritt_funktion(fe, 1)
+            schritt(0)                  # erst zeichnen (siehe Build 239)
+            spanne = fenster_spanne(fe, 1)
+            for i in range(schritte):           # warmlaufen
+                schritt(i % spanne)
+        except Exception as e:                           # noqa: BLE001
+            b("   %-8s uebersprungen (%s)" % (ansicht, type(e).__name__))
+            return False
+        konto.clear()
+        innen.clear()
+        aktuell[0] = None
+        for n, _e in echte:
+            setattr(fbo, n, _haken(n, getattr(fbo, n)))
+        if echt_fueller is not None:
+            fbo.flaechen_fueller = _haken_fueller
+        try:
+            t0 = time.monotonic()
+            for i in range(schritte):
+                schritt(i % spanne)
+            ges = (time.monotonic() - t0) * 1000.0 / schritte
+        finally:
+            for n, _e in echte:
+                setattr(fbo, n, _e)
+            if echt_fueller is not None:
+                fbo.flaechen_fueller = echt_fueller
+            aktuell[0] = None
+        aufrufe = sum(e[0] for e in konto.values()) / float(schritte)
+        summe = sum(e[1] for e in konto.values()) * 1000.0 / schritte
+        b("   Liste %-8s %-16s Schritt %7.2f ms, davon Fuellen %6.2f ms"
+          % (ansicht, titel, ges, summe))
+        b("      %.1f Aufrufe je Schritt, im Schnitt %.3f ms je Aufruf"
+          % (aufrufe, summe / max(0.001, aufrufe)))
+        geordnet = sorted(konto.items(), key=lambda e: -e[1][1])
+        for (name, masse), (n, sek) in geordnet[:6]:
+            b("        %-22s %-13s %5.2f x  %7.3f ms"
+              % (name, masse, n / float(schritte),
+                 sek * 1000.0 / schritte))
+        # DER GROESSTE POSTEN GEGEN DAS KOSTENMODELL. Nur fuer den
+        # teuersten Aufruf, und nur wenn er ueberhaupt nach C geht -
+        # sonst ist genau das die Auskunft.
+        if geordnet:
+            (gname, gmasse), (gn, gsek) = geordnet[0]
+            e = innen.get((gname, gmasse))
+            gms = gsek * 1000.0 / schritte
+            b("      davon im groessten Posten (%s):" % gname)
+            if not e or not e[0]:
+                b("        KEIN C-Aufruf - das Fuellen laeuft hier in")
+                b("        Python, und dann erklaert die Flaeche nichts.")
+            else:
+                _n_c = e[0] / float(schritte)
+                _zl = e[1] / float(schritte)
+                _pk = e[2] / float(schritte)
+                _modell = _zl * MS_JE_ZEILE + (_pk * 4.0 / 1048576.0) * MS_JE_MB
+                b("        %.1f C-Aufrufe, %.0f Zeilen, %.0f Punkte"
+                  " (%.2f MB)" % (_n_c, _zl, _pk, _pk * 4.0 / 1048576.0))
+                b("        Modell daraus (I.1: %.6f ms/Zeile,"
+                  " %.1f ms/MB)  %6.2f ms"
+                  % (MS_JE_ZEILE, MS_JE_MB, _modell))
+                b("        gemessen                                "
+                  "      %6.2f ms" % gms)
+                b("        ungeklaert                              "
+                  "      %6.2f ms" % (gms - _modell))
+                if gms < _modell:
+                    # Sonst liest sich eine negative Zahl wie ein
+                    # Fehler. Das Modell sind Messwerte des DE10-Nano;
+                    # auf einem schnelleren Rechner ist es zu hoch,
+                    # und die Zeile sagt dann genau das.
+                    b("        (negativ = dieser Rechner ist schneller")
+                    b("         als das Modell - es sind Werte des")
+                    b("         DE10-Nano. Nur dort ist die Luecke")
+                    b("         eine Aussage.)")
+        b("")
+        return True
+
     schritte = max(10, SCHRITTE // 3)
-    _traeger.get_scaled = _cover
     try:
         fe.page = 1
         fe.cat_i = kat_i
         fe.nav_path = []
         for ansicht in S.ANSICHTEN:
+            # Durchgang 1: mit Cover - wie seit Build 241.
+            _traeger.get_scaled = _cover
             try:
-                fe.ansicht_setzen(ansicht)
-            except Exception:                            # noqa: BLE001
-                continue
-            try:
-                schritt = schritt_funktion(fe, 1)
-                schritt(0)              # erst zeichnen (siehe Build 239)
-                spanne = fenster_spanne(fe, 1)
-                for i in range(schritte):       # warmlaufen
-                    schritt(i % spanne)
-            except Exception as e:                       # noqa: BLE001
-                b("   %-8s uebersprungen (%s)" % (ansicht,
-                                                  type(e).__name__))
-                continue
-            konto.clear()
-            for n, _e in echte:
-                setattr(fbo, n, _haken(n, getattr(fbo, n)))
-            try:
-                t0 = time.monotonic()
-                for i in range(schritte):
-                    schritt(i % spanne)
-                ges = (time.monotonic() - t0) * 1000.0 / schritte
+                if not _durchgang(ansicht, "mit Cover"):
+                    continue
             finally:
-                for n, _e in echte:
-                    setattr(fbo, n, _e)
-            aufrufe = sum(e[0] for e in konto.values()) / float(schritte)
-            summe = sum(e[1] for e in konto.values()) * 1000.0 / schritte
-            b("   Liste %-8s Schritt %7.2f ms, davon Fuellen %6.2f ms"
-              % (ansicht, ges, summe))
-            b("      %.1f Aufrufe je Schritt, im Schnitt %.3f ms je Aufruf"
-              % (aufrufe, summe / max(0.001, aufrufe)))
-            for (name, masse), (n, sek) in sorted(
-                    konto.items(), key=lambda e: -e[1][1])[:6]:
-                b("        %-22s %-13s %5.2f x  %7.3f ms"
-                  % (name, masse, n / float(schritte),
-                     sek * 1000.0 / schritte))
-            b("")
+                _traeger.get_scaled = echt_scaled
+            # Durchgang 2: Taste gedrueckt, Cover uebersprungen.
+            _merk_defer = getattr(_traeger, "_defer_count", None)
+            _traeger.get_scaled = _cover_uebersprungen
+            try:
+                _durchgang(ansicht, "Taste gedrueckt")
+            finally:
+                _traeger.get_scaled = echt_scaled
+                if _merk_defer is None:
+                    try:
+                        del _traeger._defer_count
+                    except Exception:                    # noqa: BLE001
+                        pass
+                else:
+                    _traeger._defer_count = _merk_defer
     finally:
         _traeger.get_scaled = echt_scaled
         for n, _e in echte:
             setattr(fbo, n, _e)
+        if echt_fueller is not None:
+            fbo.flaechen_fueller = echt_fueller
 
+    b("   WAS IN DER ZEILE 'Taste gedrueckt' STEHEN MUSS: der kurze")
+    b("   Weg aus Build 244 spart dort die Flaeche des Cover-Kastens")
+    b("   aus. Greift er, zaehlt karte_mit_schatten rund 174.000")
+    b("   Punkte (0,66 MB) bei etwa 2.600 Zeilen; greift er nicht,")
+    b("   wird die ganze Karte gefuellt - dann stehen dort rund")
+    b("   678.000 Punkte (2,71 MB). Die Punktzahl ist damit die")
+    b("   Kontrolle, und sie haengt an keiner Uhr.")
+    b("")
     b("   Zu lesen als: 'ms je Aufruf' ist die Zahl, auf die es")
     b("   ankommt. Liegt sie deutlich ueber dem, was die Flaechen")
     b("   erklaeren (Abschnitt I.3: eine 60x40-Flaeche kostet in C")

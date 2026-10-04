@@ -2828,3 +2828,112 @@ Cover des vorigen Spiels stehengeblieben. Jetzt kommt sie aus
 `cover_quelle()` plus Kastengroesse. (Der kurze Weg greift inzwischen
 ohnehin nur ohne Cover - aber ein Schluessel, der luegen kann, bleibt
 ein Schluessel, der luegen kann.)
+
+
+## Bench 8 - die drei Messluecken des Berichts vom 04.10. (Build 245)
+
+Der Bericht zu Build 244 hat etwas gezeigt, das wichtiger ist als jede
+einzelne Zahl darin: **Build 244 kam in ihm nicht vor.**
+`karte_mit_schatten` stand mit 8,840 ms sogar minimal ueber den 8,295 ms
+des Vorberichts, obwohl `tools/diag_panel_kurzweg.py` fuer denselben
+Schritt 2,71 -> 0,66 MB gefuellte Bytes misst.
+
+Der Grund ist Abschnitt K selbst: er schiebt bei **jedem** Aufruf ein
+Cover unter, und der kurze Weg aus Build 244 greift ausdruecklich nur,
+wenn **keines** da ist. Gemessen wurde also zweimal derselbe Pfad, und
+der Unterschied war Rauschen. Das ist dasselbe Muster wie schon
+zweimal vorher: **der Pruefstand ist blind, wo er keine Cover hat.**
+
+Dieses Build macht keinen Zeichenweg schneller. Es macht drei Stellen
+messbar, an denen der Bericht eine Luecke hatte - und erst danach darf
+an ihnen gearbeitet werden.
+
+### 1. Abschnitt K laeuft jede Ansicht zweimal
+
+```
+   Liste liste   mit Cover        get_scaled() liefert ein Bild
+   Liste liste   Taste gedrueckt  get_scaled() liefert NICHTS und
+                                  zaehlt _defer_count hoch
+```
+
+Der zweite Durchgang ist der Alltag beim Durchblaettern einer grossen
+Kategorie, und der einzige, in dem der kurze Weg ueberhaupt vorkommt.
+Gezaehlt wird `_defer_count` auf der ArtCache-**Instanz** - am Modul
+gezaehlt hat in Build 244 schon einmal eine ganze Messung entwertet.
+
+**Die Kontrollzahl haengt an keiner Uhr:** greift der kurze Weg, zaehlt
+`karte_mit_schatten` rund 174.000 Punkte (0,66 MB) bei etwa 2.600
+Zeilen. Greift er nicht, wird die ganze Karte gefuellt - dann stehen
+dort rund 678.000 Punkte (2,71 MB).
+
+### 2. Der groesste Posten wird gegen das Kostenmodell gehalten
+
+```
+      davon im groessten Posten (karte_mit_schatten):
+        1.0 C-Aufrufe, 2587 Zeilen, 182330 Punkte (0.70 MB)
+        Modell daraus (I.1: 0.000576 ms/Zeile, 2.1 ms/MB)    2.95 ms
+        gemessen                                             8.84 ms
+        ungeklaert                                           5.89 ms
+```
+
+8,840 ms fuer eine Karte von 769x945 liessen sich mit dem Kostenmodell
+nicht erklaeren - die Aussparung lag damals schon drin. **Die Luecke
+ist groesser als der Posten, den Build 244 herausgeholt hat.** Also
+steht sie jetzt im Bericht, mit Zeilen, Punkten, Modell und Rest
+daneben, bevor irgendwer sie wegoptimiert. Geht der Posten gar nicht
+nach C, steht genau das dort - dann erklaert die Flaeche nichts.
+
+Das Modell sind Messwerte **dieses** Geraets (`MS_JE_ZEILE`,
+`MS_JE_MB`, aus Abschnitt I.1). Auf einem schnelleren Rechner wird der
+Rest negativ, und dann sagt die Zeile genau das.
+
+### 3. Abschnitt I.3b: breit und niedrig
+
+Der zweitgroesste Fuellposten der Listenansicht ist die
+Zeilenhervorhebung:
+
+```
+   rect_rounded  853x39  ->  2,146 ms, in JEDEM Schritt
+```
+
+853x39 sind 39 Zeilen (unter der Zeilenschwelle 96) und 33.267 Punkte
+(unter der Punktschwelle 65.536) - sie geht also in Python, und zwar
+absichtlich. Nur war diese Entscheidung **nie gemessen**: Abschnitt I.3
+kannte 60x40 (2.400 Punkte, Python und C gleich teuer) und 128x128
+(16.384 Punkte, C 2,8x besser - aber mit 128 Zeilen ohnehin ueber der
+Zeilenschwelle). Zwischen 2.400 und 33.267 Punkten bei wenigen Zeilen
+stand keine einzige Zahl.
+
+I.3b misst jetzt die Masse der echten Aufrufer - 853x39, 1300x54,
+853x20, 853x10, 400x39, 200x39 - und nennt den Punkt, ab dem C
+gewinnt. **Danach** wird `FLAECHEN_C_MIN_PUNKTE` gesetzt, als Messwert
+und nicht als Schaetzung.
+
+### 4. Der kalte Fall: der Rest wird weiter aufgeteilt
+
+Im Bericht steht der kalte Schritt der Spieleliste mit 309,54 ms, davon
+dekodieren 88,9 und verkleinern 47,0 - und **Rest 173,6 ms**. Der Rest
+ist damit der groesste unbenannte Posten des ganzen Berichts, groesser
+als die beiden benannten zusammen.
+
+Was darin stecken kann, ist aus Abschnitt C ablesbar: "Miniatur packen
+und schreiben" 741 ms, "Miniatur lesen und entpacken" 97 ms.
+Geschrieben wird in einem **eigenen Thread je Cover**
+(`_thumb_cache_put_async`), und dieses Geraet hat zwei Kerne - die Zeit
+taucht also nicht als Aufruf im Zeichenweg auf, sondern als Rechenzeit,
+die der Zeichenschleife gleichzeitig fehlt. Genau so sieht ein
+unbenannter Rest aus.
+
+Gezaehlt wird deshalb beides getrennt:
+
+```
+      davon im Rest: auf der Karte nachsehen   X ms (N x)
+      DANEBEN (eigene Threads, nicht im Schritt enthalten):
+        Miniaturen packen und schreiben        Y ms (N x) - auf zwei Kernen
+```
+
+Das Wegschreiben wird **nicht** abgezogen. Es laeuft parallel; eine
+Zahl, die man abziehen darf, ist es nicht. Aus den Threads wird mit
+`list.append` gesammelt und nicht mit `+=` addiert - `+=` auf ein
+Listenfeld ist nicht unteilbar, und bei 60 Threads geht sonst lautlos
+eine Messung verloren.

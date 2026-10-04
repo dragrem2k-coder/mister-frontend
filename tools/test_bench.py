@@ -1084,6 +1084,88 @@ check("Abschnitt K findet den ArtCache auch im Modul",
 check("die Bench-Nummer ist erneut mitgewachsen", B.BENCH_VERSION >= 7,
       str(B.BENCH_VERSION))
 
+# ---------------------------------------------------------------------------
+print()
+print("Build 245: die drei Messluecken des Berichts vom 04.10.")
+# ---------------------------------------------------------------------------
+# 1. ABSCHNITT K MISST BEIDE FAELLE.
+#
+# Der Bericht vom 04.10. hat Build 244 nicht gesehen, und zwar nicht
+# aus Rauschen: Abschnitt K schiebt bei JEDEM Aufruf ein Cover unter,
+# und der kurze Weg greift ausdruecklich nur ohne. Gemessen wurde also
+# zweimal derselbe Pfad. Genau das darf nicht zurueckkommen.
+check("Abschnitt K hat einen Durchgang mit uebersprungenem Cover",
+      "_cover_uebersprungen" in _q,
+      "ohne ihn ist der kurze Weg aus Build 244 im Bericht unsichtbar")
+check("und er zaehlt _defer_count hoch statt nur None zu liefern",
+      "_defer_count" in _q,
+      "ein FEHLENDES Cover nimmt den Platzhalter-Zweig, ein "
+      "UEBERSPRUNGENES den Anfangsbuchstaben - nur dort greift 244")
+check("gezaehlt wird auf dem Traeger, den auch frontend.py liest",
+      "_i = _traeger" in _q and "_i._defer_count" in _q,
+      "am Modul statt an der Instanz gezaehlt hat in Build 244 schon "
+      "einmal eine ganze Messung entwertet")
+check("beide Durchgaenge sind im Bericht unterscheidbar",
+      '"mit Cover"' in _q and '"Taste gedrueckt"' in _q)
+check("der zweite Durchgang stellt get_scaled wieder her",
+      _q.count("_traeger.get_scaled = echt_scaled") >= 3,
+      "sonst sieht jeder folgende Abschnitt kein Cover mehr")
+check("und _defer_count wird auf den alten Stand zurueckgesetzt",
+      "_merk_defer" in _q,
+      "der Zaehler steuert im Betrieb das Nachladen - ein vom Bench "
+      "hinterlassener Wert waere eine Nebenwirkung")
+
+# 2. DER GROESSTE POSTEN WIRD GEGEN DAS MODELL GEHALTEN.
+check("der teuerste Fuellaufruf wird aufgeschluesselt",
+      "davon im groessten Posten" in _q)
+check("mit Zeilen UND Punkten, nicht nur mit einer Zeit",
+      "C-Aufrufe, %.0f Zeilen, %.0f Punkte" in _q,
+      "Zeilen und Punkte haengen an keiner Uhr und gelten auf jedem "
+      "Rechner - die Zeit nicht")
+check("das Kostenmodell steht als benannte Konstante da",
+      hasattr(B, "MS_JE_ZEILE") and hasattr(B, "MS_JE_MB"),
+      "sonst stehen die Zahlen des DE10 mitten im Formatstring")
+check("und der Bericht nennt sie, damit die Rechnung nachvollziehbar ist",
+      "Modell daraus (I.1:" in _q)
+check("ein negativer Rest wird erklaert, nicht nur gedruckt",
+      "negativ = dieser Rechner ist schneller" in _q,
+      "auf dem Entwicklungsrechner ist das Modell zu hoch - ohne den "
+      "Satz liest sich die Zahl wie ein Fehler")
+check("kein C-Aufruf ist selbst die Auskunft",
+      "KEIN C-Aufruf" in _q,
+      "dann erklaert die Flaeche gar nichts, und das muss dastehen")
+check("und die Punktzahl steht als Kontrolle fuer Build 244 daneben",
+      "678.000 Punkte" in _q and "174.000" in _q,
+      "greift der kurze Weg nicht, steht dort die vierfache Punktzahl")
+
+# 3. DIE SCHWELLENLUECKE UND DER KALTE REST.
+_bi = _q.split("def _abschnitt_i")[1].split("\ndef ")[0]
+check("Abschnitt I misst jetzt auch breit-und-niedrig",
+      "3b) breit und niedrig" in _bi,
+      "853x39 kostet auf dem Geraet 2,146 ms in Python und liegt "
+      "unter BEIDEN Schwellen - gemessen war dieser Bereich nie")
+check("mit den Massen der echten Aufrufer",
+      "(853, 39)" in _bi and "(1300, 54)" in _bi,
+      "die Zeilenhervorhebung der Spieleliste und die der Hauptseite")
+check("und das Urteil nennt den gemessenen Punkt, nicht einen geschaetzten",
+      "gemessen gewinnt C bereits bei" in _bi
+      and "nicht auf einen geschaetzten Wert" in _bi)
+check("der kalte Fall zaehlt auch das Nachsehen auf der Karte",
+      '"holen"' in _bb and "_thumb_cache_get" in _bb,
+      "Rest 173,6 ms war der groesste unbenannte Posten des Berichts")
+check("und das Wegschreiben der Miniaturen",
+      "_thumb_cache_put" in _bb and "_kalt_put" in _bb)
+check("aus Threads wird angehaengt, nicht addiert",
+      "_kalt_put.append" in _bb,
+      "list.append ist unteilbar, '+=' auf ein Listenfeld nicht - bei "
+      "60 Threads geht sonst lautlos eine Messung verloren")
+check("und es wird NICHT vom Schritt abgezogen",
+      "gehoert NICHT abgezogen" in _bb,
+      "es laeuft parallel auf dem zweiten Kern - abziehen waere eine "
+      "Rechnung, die nicht stimmt")
+check("die Bench-Nummer ist fuer Build 245 mitgewachsen",
+      B.BENCH_VERSION >= 8, str(B.BENCH_VERSION))
+
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))

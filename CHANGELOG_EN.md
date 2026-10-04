@@ -795,6 +795,43 @@ All four sit behind the **fine-details switch** (System → Display & sound).
   different covers of the same size would have shared an identity, and the
   previous game's cover would have stayed on screen. The path decides now.
 
+**The report did not see the last build — and that was the finding.**
+
+- After Build 244 another `--bench` ran on the device. `karte_mit_schatten`
+  came in at **8.840 ms** — marginally *above* the 8.295 ms before it, even
+  though the same step measures 2.71 → **0.66 MB** of filled bytes on the PC.
+- **The cause is the test bench, not the build.** The section that counts fill
+  calls slips a cover in on *every* call — and Build 244's spared area applies
+  only when there is **none**. So the same path was measured twice, and the
+  difference was noise. The same pattern as twice before: **the test bench is
+  blind where it has no covers.**
+- Each view now runs **twice**: once with a cover, once with the cover
+  skipped — the way it behaves when scrolling fast. The check does not depend
+  on any clock: if the sparing applies, the card counts about **174,000**
+  filled points; if it does not, about **678,000**.
+
+**Three numbers the report could not give before.**
+
+- **The largest item now stands next to what its area explains.** For the
+  cover card that is 2,587 rows and 0.70 MB — barely 3 ms by the device's cost
+  model, 8.84 ms measured. **The gap is larger than everything Build 244 took
+  out**, and it is written down before anyone optimises it away.
+- **The row highlight** (`853x39`, 2.146 ms in *every* step) sits below both
+  thresholds for moving a fill into C, so it stays in Python. That decision
+  was never measured: 2,400 points (equally fast) and 16,384 (C clearly
+  better, but for a different reason) were known. Nothing in between. The real
+  callers' dimensions are measured now, and the threshold gets set **after**
+  that.
+- **The cold case** stood at 309 ms — 89 decoding, 47 scaling, and **173.6 ms
+  "rest"**, more than the two named parts together. Thumbnails being packed
+  and written in a thread *per cover* while drawing continues alongside
+  explains exactly that kind of rest. Both are counted and reported
+  separately now — the writing explicitly **not** subtracted, because it runs
+  in parallel.
+
+This build makes no draw path faster. It makes three places measurable where
+guessing was the only option.
+
 **There is no watermark — and the reason belongs here.**
 
 The wish was the system logo subtly *behind the list*. That is where the

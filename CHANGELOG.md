@@ -950,6 +950,46 @@ wird.**
   Kennung bekommen, und dann wäre das Cover des vorigen Spiels stehen
   geblieben. Jetzt entscheidet der Pfad.
 
+**Der Bericht hat das letzte Build nicht gesehen — und das war der Befund.**
+
+- Nach Build 244 lief wieder ein `--bench` auf dem Gerät. `karte_mit_schatten`
+  stand darin mit **8,840 ms** — minimal *über* den 8,295 ms davor, obwohl
+  dieselbe Messung am PC für denselben Schritt 2,71 → **0,66 MB** gefüllte
+  Bytes zeigt.
+- **Der Grund ist der Prüfstand, nicht das Build.** Der Abschnitt, der die
+  Füllaufrufe zählt, schiebt bei *jedem* Aufruf ein Cover unter — und die
+  Aussparung aus Build 244 greift ausdrücklich nur, wenn **keines** da ist.
+  Gemessen wurde also zweimal derselbe Weg, und der Unterschied war Rauschen.
+  Dasselbe Muster wie schon zweimal vorher: **der Prüfstand ist blind, wo er
+  keine Cover hat.**
+- Jetzt läuft jede Ansicht **zweimal**: einmal mit Cover, einmal mit
+  übersprungenem Cover — so, wie es sich beim Schnellscrollen verhält. Die
+  Kontrolle hängt dabei an keiner Uhr: greift die Aussparung, zählt die Karte
+  rund **174.000** gefüllte Punkte; greift sie nicht, rund **678.000**.
+
+**Drei Zahlen, die der Bericht bisher nicht hergab.**
+
+- **Der größte Posten steht jetzt neben dem, was seine Fläche erklärt.** Für
+  die Cover-Karte sind das 2.587 Zeilen und 0,70 MB — nach dem Kostenmodell
+  des Geräts knapp 3 ms, gemessen 8,84. **Die Lücke ist größer als alles, was
+  Build 244 herausgeholt hat**, und sie steht da, bevor jemand sie
+  wegoptimiert.
+- **Die Zeilenhervorhebung** (`853x39`, 2,146 ms in *jedem* Schritt) liegt
+  unter beiden Schwellen, ab denen das Füllen nach C geht — bleibt also in
+  Python. Diese Entscheidung war nie gemessen: geprüft waren 2.400 Punkte
+  (gleich teuer) und 16.384 (C klar besser, aber aus einem anderen Grund).
+  Dazwischen stand nichts. Jetzt werden die Maße der echten Aufrufer
+  gemessen, und **danach** wird die Schwelle gesetzt.
+- **Der kalte Fall** stand mit 309 ms, davon 89 dekodieren, 47 verkleinern —
+  und **173,6 ms „Rest"**, mehr als die beiden benannten zusammen. Dass die
+  Miniaturen in einem eigenen Thread *je Cover* gepackt und geschrieben
+  werden, während daneben gezeichnet wird, erklärt genau so einen Rest. Beides
+  wird jetzt gezählt und getrennt ausgewiesen — das Wegschreiben
+  ausdrücklich **nicht** abgezogen, denn es läuft parallel.
+
+Dieses Build macht keinen Zeichenweg schneller. Es macht drei Stellen
+messbar, an denen bisher geraten werden musste.
+
 **Das Wasserzeichen gibt es nicht — und der Grund gehört dazu.**
 
 Gewünscht war das System-Logo dezent *hinter der Liste*. Dort liegt der
