@@ -175,8 +175,12 @@ print("Test 6: Rahmen und Schatten am Cover gibt es laengst")
 # Der vierte Wunsch war "Rahmen und Schatten am Cover". Den gibt es
 # seit Build 98 (Panel) bzw. Build 124 (Kacheln) - ein zweiter Rahmen
 # darueber waere kein Gewinn, sondern ein Doppelrahmen.
+# GEAENDERT (Build 241): der Rahmen ist jetzt EIN rect_viele()-Aufruf
+# statt vier rect() - siehe tools/test_fuellaufrufe.py. Dasselbe Bild,
+# drei Aufrufe weniger je Schritt.
 check("das Cover-Panel hat einen Rahmen in Systemfarbe",
-      "fb.rect(ax - 2 * s, ay - 2 * s, aw + 4 * s, 2 * s, accent)" in QF)
+      "fb.rect_viele(((ax - 2 * s, ay - 2 * s, aw + 4 * s, 2 * s)," in QF
+      and "accent)" in QF.split("fb.rect_viele(((ax - 2 * s")[1][:400])
 check("und einen Schlagschatten darunter",
       "fb.blend_rect_fast(ax + 3 * s, ay + ah - 4 * s" in QF)
 check("die Kacheln haben einen eigenen Rahmen",

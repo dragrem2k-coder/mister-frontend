@@ -11827,10 +11827,41 @@ class Frontend:
             fb.blend_rect_fast(ax + 3 * s, ay + ah - 4 * s, aw, 10 * s,
                               C_BG, (0, 0, 0), 0.35)
             self.blit(ax, ay, aw, ah, pix)
-            fb.rect(ax - 2 * s, ay - 2 * s, aw + 4 * s, 2 * s, accent)
-            fb.rect(ax - 2 * s, ay + ah, aw + 4 * s, 2 * s, accent)
-            fb.rect(ax - 2 * s, ay - 2 * s, 2 * s, ah + 4 * s, accent)
-            fb.rect(ax + aw, ay - 2 * s, 2 * s, ah + 4 * s, accent)
+            # DER RAHMEN IN EINEM AUFRUF (Build 241).
+            #
+            # HIER STANDEN VIER rect()-AUFRUFE, und der Beweis, dass das
+            # teuer ist, steht im Bench des Nutzers selbst - in
+            # Abschnitt I.3:
+            #
+            #     60x40      Python 0.543 ms   C 0.489 ms
+            #     697x3      Python 0.329 ms   C 0.318 ms
+            #
+            # Beides sind winzige Flaechen, und beide kosten in C rund
+            # ein Drittel bis eine halbe Millisekunde. Das ist nicht die
+            # Flaeche, das ist der AUFRUF: ctypes-Feld bauen, Grenzen
+            # pruefen, hinein und heraus. Und "karten" zaehlt rect()
+            # mit - im Bericht vom 04.10. steht der Posten in der
+            # Listenansicht mit 13,81 ms bei SECHS Aufrufen je Schritt.
+            #
+            # Die beiden senkrechten Balken sind 706 Zeilen hoch und
+            # gehen deshalb einzeln nach C (Schwelle 96 Zeilen), die
+            # beiden waagerechten mit 6 Zeilen bleiben in Python.
+            # Zusammen ist es EIN Aufruf.
+            #
+            # DAS IST GENAU DER GRIFF AUS BUILD 220, nur an der Stelle,
+            # die damals uebersehen wurde: dort wurde der
+            # PLATZHALTER-Rahmen der Boxart-Spalte zusammengefasst
+            # (siehe rect_viele()), der Rahmen um das TATSAECHLICHE
+            # Cover blieb vierteilig.
+            #
+            # Es ist EINE Farbe, die Reihenfolge ist also gleichgueltig,
+            # und rect_viele() zeichnet bitgenau dieselben vier
+            # Rechtecke - so prueft es tools/test_flaechen_in_c.py.
+            fb.rect_viele(((ax - 2 * s, ay - 2 * s, aw + 4 * s, 2 * s),
+                           (ax - 2 * s, ay + ah, aw + 4 * s, 2 * s),
+                           (ax - 2 * s, ay - 2 * s, 2 * s, ah + 4 * s),
+                           (ax + aw, ay - 2 * s, 2 * s, ah + 4 * s)),
+                          accent)
             # NEU (Nutzerwunsch: "100%-Trophaeen-Icon auf dem Cover"):
             # kleines goldenes Abzeichen oben rechts auf dem Cover,
             # NUR wenn dieses Spiel bei RetroAchievements zu 100%

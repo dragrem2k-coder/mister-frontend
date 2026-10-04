@@ -671,6 +671,40 @@ MiSTer's four modes.**
   attributed there to attract mode. That was wrong — `--demo` quits the
   frontend right after the demo, so the idle branch never runs again. That
   line stays as a tidy-up and is now labelled as one.
+
+**Scrolling with covers: three fill calls fewer per step.**
+
+- Asked: "when I go into the arcade folder with cover switching on and hold
+  down to scroll, is there anything left to gain in display time or speed?"
+- **The test bench was blind here.** It has no cover files — so `art` stays
+  empty and the frame around the cover is never drawn. Four separate calls
+  that happen on the MiSTer in *every* step appeared in no measurement. The
+  diagnostic now **slips a cover in**, so the same path runs as on the device.
+- The frame is now **one** call instead of four: in list view **8 → 5** fill
+  calls per step. That this helps is in the owner's own bench, section I.3: a
+  60×40 area costs 0.489 ms in C, a 697×3 one 0.318 ms — both *tiny* areas.
+  That is not the area, that is the call. Three calls fewer are roughly
+  **1.2 ms per step** on the device. What gets drawn is bit-for-bit identical,
+  checked byte by byte across five geometries.
+- It is exactly the move from Build 220 — which batched the tile frame and the
+  *placeholder* frame. The frame around the *actual* cover was missed and has
+  been running four-part ever since.
+
+**The bench gains a section K — and loses two reporting bugs.**
+
+- **What is not explained yet now says so.** By the cost model `karten` in
+  list view should cost about 3 ms; the report says 13.81. Ten milliseconds
+  with no name, every step — and not reproducible on the development machine,
+  where the same step takes 1.4 ms instead of 39. So section K measures **on
+  the device**, with a cover slipped in, reporting per view the number of calls
+  and the **ms per call**.
+- **`(davon Karte 3.35 in 0 Zugriffen)`** was not a contradiction in the
+  frontend but `%d` applied to 0.7. It now prints a decimal.
+- **`0.6/step _basen_merkmal > getmtime`** looked like an item. 0.6 accesses ×
+  0.18 ms is **0.1 ms per step** — a single pass over the game roots spread
+  across 30 steps, so Build 229's self-throttle does hold. **Nothing to fix
+  here**, and without the time next to it that was not visible. Those lines
+  now carry the time and are sorted by it.
 - **"then it just opens Random Play and stops there"** was not a fault of the
   demo but its **consequence** — the most surprising find of this build.
   Attract mode is called "Random Play — draw a game" in the menu and starts

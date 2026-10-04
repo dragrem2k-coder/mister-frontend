@@ -808,6 +808,45 @@ die vier Modi vom MiSTer.**
   Frontend direkt nach der Vorführung, der Leerlauf kommt nie mehr dran. Die
   Zeile von damals bleibt als Aufräumzeile stehen und ist jetzt auch so
   benannt.
+
+**Scrollen mit Cover: drei Füllaufrufe weniger je Schritt.**
+
+- Gefragt: „wenn ich in arcade ordner gehe mit cover wechsel anzeigen und nach
+  unten gedrückt scrolle, kann man da noch was an anzeigezeit bzw
+  geschwindigkeit rausholen?"
+- **Der Prüfstand war an dieser Stelle blind.** Er hat keine Cover-Dateien —
+  damit bleibt `art` leer, und der Rahmen um das Cover wird gar nicht
+  gezeichnet. Vier Einzelaufrufe, die es auf dem MiSTer in *jedem* Schritt
+  gibt, tauchten in keiner Messung auf. Die Diagnose **schiebt jetzt ein
+  Cover unter**, und damit läuft derselbe Weg wie auf dem Gerät.
+- Der Rahmen ist jetzt **ein** Aufruf statt vier: in der Listenansicht
+  **8 → 5** Füllaufrufe je Schritt. Dass das etwas bringt, steht im eigenen
+  Bench, Abschnitt I.3: eine 60×40-Fläche kostet in C 0,489 ms, eine 697×3
+  0,318 ms — beides *winzige* Flächen. Das ist nicht die Fläche, das ist der
+  Aufruf. Drei Aufrufe weniger sind auf dem Gerät rund **1,2 ms je Schritt**.
+  Gezeichnet wird bitgenau dasselbe, über fünf Geometrien Byte für Byte
+  geprüft.
+- Es ist genau der Griff aus Build 220 — dort wurden der Kachelrahmen und der
+  *Platzhalter*-Rahmen zusammengefasst. Der Rahmen um das *tatsächliche* Cover
+  war dabei übersehen worden und ist seit zwanzig Builds mitgelaufen.
+
+**Der Bench bekommt einen Abschnitt K — und zwei Berichtsfehler weniger.**
+
+- **Was noch nicht erklärt ist, steht jetzt auch so da.** Nach dem
+  Kostenmodell müsste `karten` in der Listenansicht rund 3 ms kosten; im
+  Bericht stehen 13,81. Zehn Millisekunden ohne Namen, in jedem Schritt — und
+  auf dem Entwicklungsrechner nicht nachstellbar, weil derselbe Schritt hier
+  1,4 statt 39 ms braucht. Abschnitt K misst deshalb **auf dem Gerät**, mit
+  untergeschobenem Cover, je Ansicht die Zahl der Aufrufe und die **ms je
+  Aufruf**.
+- **`(davon Karte 3.35 in 0 Zugriffen)`** war kein Widerspruch im Frontend,
+  sondern `%d` auf 0,7. Steht jetzt mit Dezimalstelle da.
+- **`0.6/Schritt _basen_merkmal > getmtime`** sah nach einem Posten aus. 0,6
+  Zugriffe × 0,18 ms sind **0,1 ms je Schritt** — ein einziger Durchlauf über
+  die Spielewurzeln, über 30 Schritte verteilt; die Selbstsperre von Build 229
+  greift also. **Hier war nichts zu beheben**, und ohne die Zeit daneben war
+  das nicht zu sehen. Die Zeilen nennen jetzt die Zeit und sind nach Zeit
+  sortiert.
 - **„öffnet nur Zufalls-Zock und bleibt dort stehen"** war kein Fehler der
   Vorführung, sondern ihre **Folge** — und der überraschendste Befund des
   Builds. Der Attract-Modus heißt im Menü „Zufalls-Zock — Spiel ziehen" und

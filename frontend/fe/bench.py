@@ -53,7 +53,7 @@ import zlib
 # aussehen - wer eine 1 und eine 2 nebeneinanderlegt, sieht sofort, dass
 # in der einen ein Abschnitt fehlt. Die Abschnitte A bis G haben sich
 # dabei nicht geaendert, ihre Zahlen bleiben also vergleichbar.
-BENCH_VERSION = 6
+BENCH_VERSION = 7
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -2156,7 +2156,24 @@ def _abschnitt_j(b, fe, S, A, fm):
                     _w = _f.f_code.co_name
                     if _f.f_back is not None:
                         _w = _f.f_back.f_code.co_name + " > " + _w
-                    _wer[_w] = _wer.get(_w, 0) + 1
+                    # AUCH DIE ZEIT, nicht nur die Zahl (Build 241).
+                    #
+                    # Hier stand nur ein Zaehler, und dadurch war die
+                    # Zeile nicht zu beurteilen. Im Bericht vom 04.10.
+                    # stand "0.6/Schritt _basen_merkmal > getmtime", und
+                    # das sah nach einem Posten aus - bis man
+                    # nachrechnet: 0,6 Zugriffe mal 0,18 ms (Abschnitt
+                    # G, os.stat warm) sind 0,1 ms je Schritt. Eine
+                    # Zahl, die man erst mit einem anderen Abschnitt
+                    # multiplizieren muss, um sie zu lesen, ist eine
+                    # Einladung zur falschen Vermutung. Jetzt steht die
+                    # Zeit daneben.
+                    _e = _wer.get(_w)
+                    if _e is None:
+                        _wer[_w] = [1, time.monotonic() - t0]
+                    else:
+                        _e[0] += 1
+                        _e[1] += time.monotonic() - t0
                 except Exception:                        # noqa: BLE001
                     pass
         return haken
@@ -2342,12 +2359,18 @@ def _abschnitt_j(b, fe, S, A, fm):
                   % (r, bl, fl))
                 b("     text    %6.2f   karten %5.2f   beschr %5.2f"
                   "   haus %5.2f" % (tx, ka, be, ha))
+                # %.1f STATT %d (Build 241): hier stand "davon Karte
+                # 3.35 in 0 Zugriffen" - 3,35 ms fuer null Zugriffe.
+                # Das war kein Widerspruch im Frontend, sondern ein
+                # Formatfehler: %d auf 0,7 schreibt 0.
                 b("     cover   %6.2f   panel %5.2f"
-                  "   (davon Karte %.2f in %d Zugriffen)"
-                  % (co, pa, da, konto["datei_n"] / schritte))
-                for _w, _k in sorted(_wer.items(), key=lambda e: -e[1])[:3]:
-                    b("        %5.1f/Schritt  %s" % (_k / float(schritte),
-                                                     _w[-52:]))
+                  "   (davon Karte %.2f in %.1f Zugriffen)"
+                  % (co, pa, da, konto["datei_n"] / float(schritte)))
+                for _w, _e in sorted(_wer.items(),
+                                     key=lambda e: -e[1][1])[:3]:
+                    b("        %5.1f/Schritt %6.2f ms  %s"
+                      % (_e[0] / float(schritte),
+                         _e[1] * 1000.0 / schritte, _w[-40:]))
                 b("     REST    %6.2f   (%.0f %% des Schritts)"
                   % (rest, 100.0 * rest / max(0.01, ges)))
                 b("     Aufrufe: restore %d/%dz  blit %d/%dz  flip %d/%.1fMB"
@@ -2389,6 +2412,160 @@ def _abschnitt_j(b, fe, S, A, fm):
     b("   nicht die der Bytes (siehe Abschnitt I). Bleibt REST gross,")
     b("   fehlt weiterhin ein Posten - dann ist die naechste Aufgabe,")
     b("   ihn zu finden, und nicht, irgendwas zu beschleunigen.")
+
+def _abschnitt_k(b, fe, S, A):
+    """Welche Fuellaufrufe macht ein Scrollschritt - und wieviele?
+    (Build 241)
+
+    WARUM DIESER ABSCHNITT NOETIG WURDE, und das ist eine Rechnung, die
+    nicht aufging. Im Bericht vom 04.10. steht fuer die Listenansicht
+    "karten 13,81 ms". Nach dem Kostenmodell aus Abschnitt H und I
+    muessten es rund drei sein:
+
+        5 Aufrufe x 0,40 ms Aufruf-Overhead      = 2,0 ms
+        174.000 Punkte x 0,0000057 ms            = 1,0 ms
+
+    Zwischen 3 und 13,81 liegen zehn Millisekunden, und die sind in
+    JEDEM Schritt da. Woran das liegt, liess sich auf dem
+    Entwicklungsrechner nicht feststellen - dort kostet derselbe
+    Schritt 1,36 ms statt 39, und die Unterschiede verschwinden im
+    Rauschen. Also wird es hier gemessen, auf dem Geraet.
+
+    DAS COVER WIRD UNTERGESCHOBEN. Ohne Cover ist diese Messung blind:
+    der Rahmen um das Cover, der Schlagschatten darunter und die
+    Aussparung in der Karte entstehen nur, wenn get_scaled() etwas
+    liefert. Genau diese Teile sind der Gegenstand. Es wird ein
+    ERZEUGTES Bild benutzt, nicht eines von der Karte - gemessen werden
+    soll der Zeichenweg, nicht das Dekodieren (das steht in Abschnitt
+    C und D).
+
+    DIE ZAHL DER AUFRUFE IST DIE UEBERTRAGBARE GROESSE. Abschnitt I.3
+    misst eine 60x40-Flaeche mit 0,489 ms in C und eine 697x3 mit
+    0,318 ms - beides winzige Flaechen. Das ist nicht die Flaeche, das
+    ist der Aufruf."""
+    b("")
+    b("-" * 62)
+    b(" K  Welche Fuellaufrufe macht ein Scrollschritt? (Build 241)")
+    b("-" * 62)
+    fbo = getattr(fe, "fb", None)
+    if fbo is None:
+        b("   kein Bildspeicher - uebersprungen")
+        return
+    kat_i, kat_n, kat_name = _groesste_kategorie(fe)
+    if kat_i is None:
+        b("   keine Kategorie mit Eintraegen - uebersprungen")
+        return
+    b("   Das Cover ist ERZEUGT, nicht gelesen: hier geht es um den")
+    b("   Zeichenweg, nicht um das Dekodieren (Abschnitt C und D).")
+    b("   Gezaehlt wird nur der AEUSSERSTE Aufruf - karte_mit_schatten()")
+    b("   ruft rect_rounded(), und die ruft rect().")
+    b("")
+
+    # Das Cover unterschieben. Die Groesse wechselt von Schritt zu
+    # Schritt, wie bei echten Boxarts - sonst waere die Aussparung in
+    # der Karte immer dieselbe, und das ist der Fall, den es nicht gibt.
+    echt_scaled = getattr(A, "get_scaled", None)
+    if echt_scaled is None:
+        b("   kein Bild-Zwischenspeicher - uebersprungen")
+        return
+    zaehler = [0]
+    puffer = {}
+
+    def _cover(quelle, breite, hoehe, **k):
+        zaehler[0] += 1
+        aw = max(8, int(breite) - (zaehler[0] % 3) * 7)
+        ah = max(8, int(hoehe) - (zaehler[0] % 4) * 5)
+        pix = puffer.get((aw, ah))
+        if pix is None:
+            pix = bytes(bytearray([40, 90, 160, 0])) * aw * ah
+            puffer[(aw, ah)] = pix
+        return (aw, ah, pix)
+
+    _NAMEN = ("karte_mit_schatten", "rect_rounded_schatten",
+              "rect_rounded", "rect", "rect_viele")
+    echte = [(n, getattr(fbo, n)) for n in _NAMEN if hasattr(fbo, n)]
+    konto = {}
+    tiefe = [0]
+
+    def _haken(name, echt):
+        def ersatz(*a, **k):
+            if tiefe[0]:
+                return echt(*a, **k)
+            try:
+                if name == "rect_viele":
+                    masse = "%d Rechtecke" % len(list(a[0]))
+                else:
+                    masse = "%dx%d" % (int(a[2]), int(a[3]))
+            except Exception:                            # noqa: BLE001
+                masse = "?"
+            t0 = time.monotonic()
+            tiefe[0] += 1
+            try:
+                return echt(*a, **k)
+            finally:
+                tiefe[0] -= 1
+                e = konto.setdefault((name, masse), [0, 0.0])
+                e[0] += 1
+                e[1] += time.monotonic() - t0
+        return ersatz
+
+    schritte = max(10, SCHRITTE // 3)
+    A.get_scaled = _cover
+    try:
+        fe.page = 1
+        fe.cat_i = kat_i
+        fe.nav_path = []
+        for ansicht in S.ANSICHTEN:
+            try:
+                fe.ansicht_setzen(ansicht)
+            except Exception:                            # noqa: BLE001
+                continue
+            try:
+                schritt = schritt_funktion(fe, 1)
+                schritt(0)              # erst zeichnen (siehe Build 239)
+                spanne = fenster_spanne(fe, 1)
+                for i in range(schritte):       # warmlaufen
+                    schritt(i % spanne)
+            except Exception as e:                       # noqa: BLE001
+                b("   %-8s uebersprungen (%s)" % (ansicht,
+                                                  type(e).__name__))
+                continue
+            konto.clear()
+            for n, _e in echte:
+                setattr(fbo, n, _haken(n, getattr(fbo, n)))
+            try:
+                t0 = time.monotonic()
+                for i in range(schritte):
+                    schritt(i % spanne)
+                ges = (time.monotonic() - t0) * 1000.0 / schritte
+            finally:
+                for n, _e in echte:
+                    setattr(fbo, n, _e)
+            aufrufe = sum(e[0] for e in konto.values()) / float(schritte)
+            summe = sum(e[1] for e in konto.values()) * 1000.0 / schritte
+            b("   Liste %-8s Schritt %7.2f ms, davon Fuellen %6.2f ms"
+              % (ansicht, ges, summe))
+            b("      %.1f Aufrufe je Schritt, im Schnitt %.3f ms je Aufruf"
+              % (aufrufe, summe / max(0.001, aufrufe)))
+            for (name, masse), (n, sek) in sorted(
+                    konto.items(), key=lambda e: -e[1][1])[:6]:
+                b("        %-22s %-13s %5.2f x  %7.3f ms"
+                  % (name, masse, n / float(schritte),
+                     sek * 1000.0 / schritte))
+            b("")
+    finally:
+        A.get_scaled = echt_scaled
+        for n, _e in echte:
+            setattr(fbo, n, _e)
+
+    b("   Zu lesen als: 'ms je Aufruf' ist die Zahl, auf die es")
+    b("   ankommt. Liegt sie deutlich ueber dem, was die Flaechen")
+    b("   erklaeren (Abschnitt I.3: eine 60x40-Flaeche kostet in C")
+    b("   0,489 ms, eine 697x3 0,318 ms - beides fast reiner")
+    b("   Aufruf-Overhead), dann ist ZUSAMMENFASSEN die Abhilfe und")
+    b("   nicht eine kleinere Flaeche. Steht sie darunter, steckt die")
+    b("   Zeit in der Flaeche, und dann zaehlt die Aussparung.")
+
 
 def lauf(fe, fm, A, S, startdauer=None, log=None):
     """Den kompletten Bench fahren und den Bericht als Text
@@ -2438,6 +2615,12 @@ def lauf(fe, fm, A, S, startdauer=None, log=None):
             _abschnitt_j(b, fe, S, A, fm)
     except Exception as e:                               # noqa: BLE001
         b("   ABSCHNITT J ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
+    try:
+        hd3 = getattr(fe, "fb", None) is not None and fe.fb.height >= 720
+        with _Messbedingungen(A, fm, fe, hd3):
+            _abschnitt_k(b, fe, S, A)
+    except Exception as e:                               # noqa: BLE001
+        b("   ABSCHNITT K ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
     b("")
     b("=" * 62)
     b("Ende. Nichts auf der Karte wurde veraendert.")

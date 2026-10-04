@@ -2479,3 +2479,88 @@ Vorfuehrung laeuft 180 s). **Das war falsch:** `--demo` ruft nach
 `lauf()` sofort `_beenden()` und `sys.exit(0)` - der Leerlauf-Zweig von
 `run()` kommt nie mehr dran. Die Zeile, die die Eingabe-Uhr nachstellt,
 bleibt als Aufraeumzeile stehen und ist jetzt auch so benannt.
+
+
+## diag_cover_panel.py  /  test_fuellaufrufe.py  /  Abschnitt K
+
+Woraus besteht ein Scrollschritt **mit Cover**? (Build 241)
+
+Die Frage vom Geraet: *"wenn ich in arcade ordner gehe mit cover wechsel
+anzeigen und nach unten gedrueckt scrolle, kann man da noch was an
+anzeigezeit bzw geschwindigkeit rausholen?"*
+
+### Der Pruefstand war an dieser Stelle BLIND
+
+`diag_kartenkosten.py` gibt es seit Build 234 - und es hat den Rahmen um
+das Cover nie gesehen. Der Grund: **der Pruefstand hat keine
+Cover-Dateien.** `get_scaled()` liefert None, `art` bleibt None, und
+damit entstehen der Rahmen, der Schlagschatten darunter und die
+Aussparung in der Karte gar nicht. Vier `rect()`-Aufrufe, die es auf dem
+Geraet in jedem Schritt gibt, tauchten in keiner Messung auf.
+
+`diag_cover_panel.py` **schiebt ein Cover unter** - ein erzeugtes Bild in
+der angefragten Groesse, mit wechselndem Seitenverhaeltnis, wie echte
+Boxarts. Damit laeuft derselbe Weg wie auf dem Geraet.
+
+### Der Befund
+
+```
+  Liste liste    5.0 Aufrufe je Schritt  (vor Build 241: 8)
+        karte_mit_schatten  769x945    1.00 x
+        rect_rounded        853x39     1.00 x
+        rect_viele          4 Rechtecke 1.00 x   <- war 4 x rect()
+        rect                9x27       1.00 x
+        rect                ~690x30    1.00 x
+```
+
+**Warum die Zahl der Aufrufe zaehlt und nicht die Flaeche** - aus
+Abschnitt I.3 seines eigenen Bench:
+
+| Flaeche | Python | C |
+|---|---|---|
+| 60x40 | 0,543 ms | **0,489 ms** |
+| 697x3 | 0,329 ms | **0,318 ms** |
+
+Beides sind winzige Flaechen. Das ist nicht die Flaeche, das ist der
+**Aufruf**: ctypes-Feld bauen, Grenzen pruefen, hinein und heraus. Drei
+Aufrufe weniger sind auf dem Geraet rund **1,2 ms je Schritt**.
+
+Es ist genau der Griff aus Build 220 - dort wurden der Kachelrahmen und
+der **Platzhalter**-Rahmen zusammengefasst; der Rahmen um das
+**tatsaechliche** Cover blieb vierteilig und ist seitdem durchgerutscht.
+
+### Und was NICHT erklaert ist
+
+Nach dem Kostenmodell aus Abschnitt H und I muesste `karten` in der
+Listenansicht rund 3 ms kosten:
+
+```
+    5 Aufrufe x 0,40 ms Aufruf-Overhead    = 2,0 ms
+    174.000 Punkte x 0,0000057 ms          = 1,0 ms
+```
+
+Im Bericht stehen **13,81 ms**. Zehn Millisekunden ohne Namen, in jedem
+Schritt - und auf dem Entwicklungsrechner nicht nachstellbar, weil
+derselbe Schritt hier 1,4 statt 39 ms braucht. Deshalb gibt es jetzt
+**Abschnitt K** im Bench: dieselbe Messung, auf dem Geraet, mit
+untergeschobenem Cover. Er nennt je Ansicht die Zahl der Aufrufe und die
+**ms je Aufruf** - liegt die deutlich ueber dem, was die Flaechen
+erklaeren, ist Zusammenfassen die Abhilfe; liegt sie darunter, steckt
+die Zeit in der Flaeche und die Aussparung zaehlt.
+
+Auf dem Pruefstand stehen in Abschnitt K **Nullen**, weil
+`tools/_harness.py` die Uhr einfriert. Das ist kein Fehler - auf dem
+Geraet laeuft sie.
+
+### Zwei Berichtsfehler, beim Messen aufgefallen
+
+1. **`(davon Karte 3.35 in 0 Zugriffen)`** - 3,35 ms fuer null Zugriffe.
+   Kein Widerspruch im Frontend, sondern `%d` auf 0,7. Jetzt `%.1f`.
+2. **`0.6/Schritt _basen_merkmal > getmtime`** - eine Zahl, die man erst
+   mit einem anderen Abschnitt multiplizieren muss, um sie zu lesen.
+   0,6 Zugriffe x 0,18 ms (Abschnitt G, `os.stat` warm) sind **0,1 ms je
+   Schritt**: ein einziger Durchlauf ueber die Spielewurzeln, ueber 30
+   Schritte verteilt - die 8-Sekunden-Selbstsperre aus Build 229 greift
+   also. **Hier war nichts zu beheben**, und das war ohne die Zeit
+   daneben nicht zu sehen. Jetzt steht sie da, und sortiert wird nach
+   Zeit statt nach Zahl.
