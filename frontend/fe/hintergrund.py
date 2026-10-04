@@ -124,19 +124,49 @@ def _fuellend(qb, qh, zb, zh):
 def _abdunkeln(pix, prozent):
     """Das fertige Bild EINMAL abdunkeln - nicht je Bildaufbau.
 
-    Ueber eine Tabelle mit 256 Werten, genau wie bei der Lochmaske:
-    eine Multiplikation je Byte waere hier zwar auch nur einmal faellig,
-    aber die Tabelle ist kuerzer zu lesen und schneller."""
+    Ueber eine Tabelle mit 256 Werten, genau wie bei der Lochmaske.
+
+    GEAENDERT (Build 240), auf Meldung vom Geraet: "wenn ich mehrere
+    background bilder in denn ordner packe und diese dann durchklicke
+    dauert das immer sehr lang bis es angezeigt wird."
+
+    HIER STAND DIE URSACHE, und zwar als einzige von Bedeutung.
+    tools/diag_hintergrundbild.py hat den Weg in seine Teile zerlegt:
+
+        skalieren      0 bis 26 ms
+        zuschneiden    2 bis  5 ms
+        abdunkeln    214 bis 233 ms   <- 90 bis 98 Prozent
+
+    DER GRUND WAR DIE SCHREIBWEISE, nicht die Idee. Hier stand dreimal
+    "bytes(tab[b] for b in aus[k::4])" - ein Generator, also eine
+    PYTHON-Schleife ueber jedes Byte. Bei 1920x1080 sind das 8,3
+    Millionen Bytes, davon drei Viertel angefasst. Auf dem DE10-Nano
+    ist Rechnen je Bildpunkt ein Vielfaches teurer; das waren die
+    Sekunden, die gemeldet wurden.
+
+    bytes.translate() macht genau dasselbe - eine Tabelle mit 256
+    Werten auf jedes Byte anwenden - aber in C, in einer Schleife, die
+    nie in den Interpreter zurueckkehrt. Gemessen 14,6-mal schneller
+    (214 -> 15 ms), und das Ergebnis ist BITGENAU dasselbe.
+
+    Der Schnitt [k::4] bleibt, damit die Deckkraft im vierten Byte
+    unangetastet bleibt; Herausziehen, Uebersetzen und Zurueckschreiben
+    sind alle drei C-Schritte.
+
+    GLEICHWERTIGKEIT IST HIER NICHT VERHANDELBAR: ein Unterschied
+    faellt nicht auf, das Bild sieht nur etwas anders aus.
+    tools/test_hintergrund.py vergleicht deshalb gegen die alte
+    Schreibweise, nicht gegen eine Erwartung - ueber alle Stufen und
+    alle 256 Bytewerte."""
     if not prozent:
         return pix
     f = max(0, min(100, int(prozent)))
-    tab = bytes(((i * (100 - f)) // 100) for i in range(256))
+    tab = bytes(bytearray(((i * (100 - f)) // 100) for i in range(256)))
     aus = bytearray(pix)
     # Nur die drei Farbkanaele, nicht das vierte Byte - dort steht die
     # Deckkraft, und die bleibt.
-    aus[0::4] = bytes(tab[b] for b in aus[0::4])
-    aus[1::4] = bytes(tab[b] for b in aus[1::4])
-    aus[2::4] = bytes(tab[b] for b in aus[2::4])
+    for k in range(3):
+        aus[k::4] = bytes(aus[k::4]).translate(tab)
     return aus
 
 
@@ -152,9 +182,19 @@ def vorlage_bauen(pfad, breite, hoehe, dim=0, ART=None, stride=None):
     verschoebe das ganze Bild.
 
     ALLES, WAS SCHIEFGEHEN KANN, ENDET IN None. Ein Hintergrundbild ist
-    Zubehoer; ein kaputtes darf das Frontend nicht aufhalten."""
+    Zubehoer; ein kaputtes darf das Frontend nicht aufhalten.
+
+    DIE TEILZEITEN STEHEN IM LOG (Build 240), und das hat einen
+    Grund. Nach der Aenderung an _abdunkeln() ist der groesste Posten
+    das DEKODIEREN der Datei, und das ist der einzige, den dieses
+    Modul nicht in der Hand hat - er haengt am Format, an der Groesse
+    und an der Karte. Ohne Zahl vom Geraet waere jeder weitere Schritt
+    geraten. Eine Zeile je Bildwechsel kostet nichts: sie laeuft genau
+    dann, wenn ohnehin ein Bild geladen wird."""
     if not pfad or ART is None:
         return None
+    import time as _t
+    _t0 = _t.monotonic()
     try:
         gelesen = ART.original_lesen(pfad, breite, hoehe)
     except Exception as e:                               # noqa: BLE001
@@ -163,8 +203,10 @@ def vorlage_bauen(pfad, breite, hoehe, dim=0, ART=None, stride=None):
     if not gelesen:
         LOG("Hintergrund %r nicht lesbar" % pfad)
         return None
+    _ms_lesen = (_t.monotonic() - _t0) * 1000.0
     qb, qh, pix = gelesen[0], gelesen[1], gelesen[2]
     zb, zh = _fuellend(qb, qh, breite, hoehe)
+    _t1 = _t.monotonic()
     try:
         if (zb, zh) != (qb, qh):
             pix = ART._verkleinern(pix, qb, qh, zb, zh)
@@ -177,8 +219,11 @@ def vorlage_bauen(pfad, breite, hoehe, dim=0, ART=None, stride=None):
             % (pfad, qb, qh))
         return None
 
+    _ms_skalieren = (_t.monotonic() - _t1) * 1000.0
+
     # Mittig zuschneiden - der Ueberstand faellt links/rechts bzw.
     # oben/unten gleichmaessig weg.
+    _t2 = _t.monotonic()
     x0 = (qb - breite) // 2
     y0 = (qh - hoehe) // 2
     zeile = breite * 4
@@ -193,7 +238,14 @@ def vorlage_bauen(pfad, breite, hoehe, dim=0, ART=None, stride=None):
         d = y * schritt
         ziel[d:d + zeile] = quelle[s:s + zeile]
     del ziel, quelle
+    _ms_schneiden = (_t.monotonic() - _t2) * 1000.0
+    _t3 = _t.monotonic()
     vorlage = _abdunkeln(vorlage, dim)
-    LOG("Hintergrund geladen: %s (%dx%d, %d %% abgedunkelt)"
-        % (os.path.basename(pfad), breite, hoehe, dim))
+    _ms_dunkel = (_t.monotonic() - _t3) * 1000.0
+    LOG("Hintergrund geladen: %s (%dx%d, %d %% abgedunkelt) - "
+        "%.0f ms gesamt: dekodieren %.0f, skalieren %.0f, "
+        "zuschneiden %.0f, abdunkeln %.0f"
+        % (os.path.basename(pfad), breite, hoehe, dim,
+           (_t.monotonic() - _t0) * 1000.0, _ms_lesen, _ms_skalieren,
+           _ms_schneiden, _ms_dunkel))
     return vorlage

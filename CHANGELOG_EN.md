@@ -623,6 +623,54 @@ MiSTer's four modes.**
 - **The system menu**: the stop sat on the top level, which has little to
   show when there are few entries. It now descends into the fullest
   subfolder when that holds at least four entries.
+
+**Background images appear immediately now.**
+
+- Reported: "when I put several background images in the folder and click
+  through them it always takes very long until one shows. **are they still
+  being prepared? and every time anew?**" — both questions were the right
+  ones to ask.
+- The path was taken apart, and **a single item was 90 to 98 percent of it**:
+  the dimming. Scaling 0–26 ms, cropping 2–5 ms, **dimming 214–233 ms**. And
+  it was not the idea but the spelling — a **Python loop over every byte**,
+  8.3 million of them at 1920×1080. The same work done in C: **14.6 times
+  faster, bit-for-bit the same picture** (214 → 15 ms). On the MiSTer
+  per-pixel work is dearer still; that is where the seconds were.
+- **What was NOT shipped, although it was finished:** storing the prepared
+  templates on the card — the suggestion in the report itself. It was built,
+  with twelve passing tests. Then came the measurement: **the warm path cost
+  more than the cold one** (decoding a 1080p JPEG takes 33.9 ms, re-reading
+  the PNG 19.0 ms). So it came out again **before** it shipped. Instead the
+  **per-part timings now go to the log**, one line per image change: after the
+  change the largest item is decoding, and that depends on the format and the
+  card — the number from the device decides whether anything else is needed.
+
+**The demo is now about the settings.**
+
+- Reported: "at the end I still see Random Play instead of a few settings
+  being shown there under the category. I think that's bad!"
+- **The cause was last build's heuristic.** The stop descended into the
+  subfolder with the *most content*. On the test bench that is "Display &
+  sound" with 27 entries — which is why the test passed. On a real card
+  **Scripts and the standalone cores** count too, and 45 scripts beat 27
+  settings. The demo was showing script names.
+- **Five settings groups are now named explicitly** — Display & sound,
+  Options, Statistics & achievements, Input & language, Maintenance — each
+  with a title card saying what you can do there. If a group is missing on the
+  device its stop is **skipped**; nothing is substituted. A demo that shows
+  something other than what it announced is worse than one that leaves a stop
+  out.
+- **The time is redistributed**, exactly as asked: views from 7.8 down to
+  **4.6**, settings from 1.4 up to **6.2**.
+- **Every stop logs what it actually shows** (page, view, category, entry
+  count, folder path). Twice in a row the demo showed something other than
+  announced, and both times that was not determinable from outside — it
+  depended on things that are only that way on the owner's device. One line
+  per stop answers it in the next report.
+- And a **correction to the last build**: "just opens Random Play" was
+  attributed there to attract mode. That was wrong — `--demo` quits the
+  frontend right after the demo, so the idle branch never runs again. That
+  line stays as a tidy-up and is now labelled as one.
 - **"then it just opens Random Play and stops there"** was not a fault of the
   demo but its **consequence** — the most surprising find of this build.
   Attract mode is called "Random Play — draw a game" in the menu and starts

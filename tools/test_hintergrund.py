@@ -286,6 +286,72 @@ check("ein ausgetauschtes Bild wird erkannt",
       "marke = int(os.path.getmtime(pfad))" in qf,
       "sonst zeigte es unter demselben Namen still das alte")
 
+# ---------------------------------------------------------------------------
+print()
+print("Test 9: das Abdunkeln laeuft in C, nicht Byte fuer Byte in Python")
+# ---------------------------------------------------------------------------
+# DAS WAR DIE URSACHE der gemeldeten Wartezeit: "wenn ich mehrere
+# background bilder in denn ordner packe und diese dann durchklicke
+# dauert das immer sehr lang bis es angezeigt wird."
+#
+# tools/diag_hintergrundbild.py hat den Weg zerlegt - Skalieren 0 bis
+# 26 ms, Zuschneiden 2 bis 5 ms, Abdunkeln 214 bis 233 ms. Das waren
+# 90 bis 98 Prozent, und es war eine Python-Schleife ueber 8,3
+# Millionen Bytes.
+_hq = open(os.path.join(_REPO, "frontend", "fe", "hintergrund.py"),
+           encoding="utf-8").read()
+_fkt = _hq.split("def _abdunkeln")[1].split("\ndef ")[0]
+# NUR DER CODE, NICHT DIE ERKLAERUNG: dort steht die alte Schreibweise
+# wortwoertlich drin, damit nachlesbar bleibt, was der Fund war. Eine
+# Pruefung, die darauf anspringt, prueft die Dokumentation.
+_code = _fkt.split('"""')[2] if _fkt.count('"""') >= 2 else _fkt
+check("es benutzt translate()", ".translate(tab)" in _code)
+check("und KEINE Schleife je Byte", "for b in" not in _code,
+      "gemessen 14,6x schneller - 214 ms auf 15 ms")
+check("die Deckkraft wird nicht uebersetzt", "[k::4]" in _code,
+      "das vierte Byte ist die Deckkraft und bleibt")
+
+# GLEICHWERTIGKEIT GEGEN DIE ALTE SCHREIBWEISE, Byte fuer Byte. Ein
+# Unterschied faellt nicht auf - das Bild sieht nur etwas anders aus.
+def _alt_abdunkeln(pix, prozent):
+    """Die Fassung aus Build 235, nur zum Vergleich."""
+    if not prozent:
+        return pix
+    f = max(0, min(100, int(prozent)))
+    tab = bytes(bytearray(((i * (100 - f)) // 100) for i in range(256)))
+    aus = bytearray(pix)
+    aus[0::4] = bytes(bytearray(tab[b] for b in aus[0::4]))
+    aus[1::4] = bytes(bytearray(tab[b] for b in aus[1::4]))
+    aus[2::4] = bytes(bytearray(tab[b] for b in aus[2::4]))
+    return aus
+
+
+# Alle 256 Bytewerte, in allen vier Stellungen.
+probe = bytearray(bytes(bytearray(range(256))) * 64)
+for dim in (0, 1, 25, 40, 55, 70, 99, 100):
+    a = _alt_abdunkeln(bytearray(probe), dim)
+    b = HG._abdunkeln(bytearray(probe), dim)
+    check("%3d %% ist bitgenau wie vorher" % dim, bytes(a) == bytes(b))
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 10: die Teilzeiten stehen im Log")
+# ---------------------------------------------------------------------------
+# WARUM DAS EINE PRUEFUNG WERT IST: nach der Aenderung an _abdunkeln()
+# ist der groesste Posten das DEKODIEREN, und den hat dieses Modul
+# nicht in der Hand. Ohne Zahl vom Geraet waere jeder weitere Schritt
+# geraten - und ein Zwischenspeicher fuer fertige Vorlagen war beim
+# Bau von Build 240 schon fertig und ist nach der Messung wieder
+# herausgeflogen, weil er LANGSAMER war als neu rechnen (JPEG
+# dekodieren 33,9 ms gegen PNG 19,0 ms).
+_vb = _hq.split("def vorlage_bauen")[1]
+check("die Gesamtzeit wird gemessen", "_t.monotonic()" in _vb)
+for teil in ("dekodieren", "skalieren", "zuschneiden", "abdunkeln"):
+    check("das Log nennt %s" % teil, teil in _vb)
+check("und es ist EINE Zeile je Bildwechsel, nicht je Teil",
+      _vb.count("LOG(\"Hintergrund geladen") == 1,
+      "vier Zeilen waeren vier Dateizugriffe fuer eine Auskunft")
+
 print()
 if fails:
     print("FEHLGESCHLAGEN (%d):" % len(fails))

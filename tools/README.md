@@ -2346,3 +2346,136 @@ Pfad, der nicht existiert:
 ```sh
 DRAGEND_LIB=/kein/pfad python3 tools/test_text_in_c.py
 ```
+
+
+## diag_hintergrundbild.py
+
+Warum dauert das Durchklicken der Hintergrundbilder so lange? (Build 240)
+
+Die Meldung vom Geraet stellte gleich die richtige Frage mit:
+
+> "wenn ich mehrere background bilder in denn ordner packe und diese
+> dann durchklicke dauert das immer sehr lang bis es angezeigt wird.
+> **werden diese noch vorbereitet? und jedesmal neu?** sollten dann
+> passen abgelegt werden als miniaturen?"
+
+Dieses Werkzeug zerlegt den Weg, den jeder Klick geht, in seine Teile -
+damit die Abhilfe an der richtigen Stelle ansetzt und nicht an der, die
+man zuerst vermutet. Der erste Lauf:
+
+```
+ QUELLE 1920x1080
+    skalieren           0.0 ms  ( 0.0 % des Wegs)
+    zuschneiden         5.0 ms  ( 2.3 % des Wegs)
+    abdunkeln         213.6 ms  (97.7 % des Wegs)
+```
+
+**Ein einziger Posten, 90 bis 98 Prozent.** Und es war nicht die Idee,
+sondern die Schreibweise: dort stand dreimal
+`bytes(tab[b] for b in aus[k::4])` - ein Generator, also eine
+**Python-Schleife ueber jedes Byte**. Bei 1920x1080 sind das 8,3
+Millionen. `bytes.translate()` macht genau dasselbe in C: **14,6x
+schneller, bitgenau dasselbe Ergebnis** (214 -> 15 ms).
+
+### Und was NICHT gebaut wurde, obwohl es fertig war
+
+Der Nutzer hatte selbst vorgeschlagen, die fertigen Vorlagen abzulegen.
+Das war gebaut - eigener Ordner, Schluessel aus Pfad/mtime/Groesse/
+Zielmass/Abdunklung, JPEG mit Guete 97, Schreiben nebenher, Verdraengung,
+zwoelf Tests gruen. Dann kam die Messung:
+
+```
+    erster Klick (nichts liegt da)         33.3 ms
+    jeder weitere (Vorlage liegt da)       38.1 ms   -> 0.9x
+```
+
+**Der warme Weg war teurer als der kalte.** Zerlegt:
+
+| | |
+|---|---|
+| Vorlage lesen (2.5 MB) | 0.6 ms |
+| JPEG dekodieren (1080p) | **33.9 ms** |
+| vierten Kanal herstellen | 2.4 ms |
+| dagegen: PNG neu lesen und dekodieren | **19.0 ms** |
+
+Ein 1080p-JPEG zu dekodieren kostet mehr, als das PNG neu zu lesen. Der
+Vorteil, den JPEG bei den Miniaturen hat - verkleinert dekodieren, siehe
+`_skaliert_dekodierbar()` -, gibt es hier nicht: gebraucht wird die volle
+Groesse. Also ist der Zwischenspeicher **wieder herausgeflogen, bevor er
+ausgeliefert wurde**. Das ist die Lehre aus Build 234 (eine Aussparung,
+die drei Builds lang nie gegriffen hat), angewandt vor dem Ausliefern
+statt drei Builds spaeter.
+
+Was statt dessen eingebaut ist: **die Teilzeiten stehen im Log**, eine
+Zeile je Bildwechsel. Nach der Aenderung an `_abdunkeln()` ist der
+groesste Posten das Dekodieren, und den hat das Modul nicht in der Hand -
+er haengt am Format, an der Groesse und an der Karte. Die Zahl vom Geraet
+entscheidet, ob noch etwas zu tun ist.
+
+**Achtung beim Testbild:** es ist erzeugt, nicht fotografiert. Ein echtes
+Wallpaper packt sich schlechter, das PNG wird groesser und sein
+Dekodieren teurer - auf dem Geraet steht in Abschnitt C des Bench
+"PNG lesen und dekodieren 258 ms". Die Teile oben uebertragen sich der
+Groessenordnung nach, nicht als Zahl.
+
+
+## test_demo.py - die Stationen heissen jetzt, wohin sie gehen (Build 240)
+
+Zwei Meldungen hintereinander zu derselben Stelle:
+
+> Build 233: "system menue und einstellung werden garnicht gezeigt"
+>
+> Build 239: "ich sehe am ende immer noch zufalls zock anstatt dass dort
+> unter der kategorie ein paar einstellungs sachen gezeigt werden. finde
+> ich bloed! dann lieber weniger zeit ind denn ansichten zeigen dafuer
+> mehr auf die einstellungen hinweisen durchscrollen was man alles
+> machen kann mit dem frontend als vorfuehrung!"
+
+**Build 239 hat eine Heuristik eingebaut, und die war der Fehler:** die
+Station stieg in den Unterordner mit dem MEISTEN Inhalt ab. Auf dem
+Pruefstand ist das "Anzeige & Sound" mit 27 Eintraegen - deshalb war der
+Test gruen. Auf einem echten Geraet zaehlen aber `Scripts` und die
+Standalone-Cores mit:
+
+```
+   Anzeige & Sound          27
+   Optionen                 13
+   Wartung                   9
+   Scripts                  45   <- gewinnt
+```
+
+45 Skripte auf der Karte schlagen 27 Einstellungen. Die Vorfuehrung
+zeigte Skriptnamen.
+
+**Jetzt stehen die fuenf Gruppen namentlich da**, ueber ihren
+Uebersetzungsschluessel (damit es in beiden Sprachen stimmt, siehe Test
+8b). Fehlt eine Gruppe auf diesem Geraet, wird ihre Station
+**uebersprungen** - es wird nichts ersetzt. Eine Vorfuehrung, die etwas
+anderes zeigt als angekuendigt, ist schlimmer als eine, die eine Station
+weglaesst.
+
+**Die Gewichte sind verschoben**, wie gewuenscht: Ansichten von 7,8 auf
+4,6, Einstellungen von 1,4 auf 6,2. Jede Einstellungs-Station nennt in
+ihrer Titelkarte, was man dort machen kann.
+
+**Und jede Station schreibt ins Log, was sie wirklich zeigt:**
+
+```
+--demo Station einst:sys_group_display  Seite 1 liste  zeigt 'System'
+       (27 Eintraege, nav=['Anzeige & Sound'])
+```
+
+Der Grund dafuer steht in Test 8e: zweimal hintereinander hat die
+Vorfuehrung etwas anderes gezeigt als angekuendigt, und beide Male war
+von hier aus nicht feststellbar WAS - es hing an Dingen, die nur auf dem
+Geraet des Nutzers so sind. Eine Zeile je Station beantwortet das beim
+naechsten Bericht, statt dass wieder geraten wird.
+
+### Eine Korrektur zu Build 239
+
+Build 239 hat "dann oeffnet er nur zufalls zock und bleibt dort stehen"
+dem Attract-Modus zugeschrieben (startet nach 90 s ohne Eingabe, die
+Vorfuehrung laeuft 180 s). **Das war falsch:** `--demo` ruft nach
+`lauf()` sofort `_beenden()` und `sys.exit(0)` - der Leerlauf-Zweig von
+`run()` kommt nie mehr dran. Die Zeile, die die Eingabe-Uhr nachstellt,
+bleibt als Aufraeumzeile stehen und ist jetzt auch so benannt.

@@ -158,9 +158,17 @@ check("alle drei Ansichten kommen vor",
       "%r" % (sorted({w for _s, w in fe.gesetzt}),))
 check("Hauptseite UND Spieleliste",
       {"haupt", "liste"} <= {s for s, _w in fe.gesetzt})
-check("das Systemmenue ist dabei",
-      any(st[0] == "system" for st in DEMO.STATIONEN)
-      and "Systemmenue" in fe.fb.texte)
+# GEAENDERT (Build 240): aus der einen Station "system" sind fuenf
+# namentlich benannte Einstellungs-Stationen geworden - siehe Test 8.
+check("die Einstellungen sind dabei",
+      sum(1 for st in DEMO.STATIONEN if st[0].startswith("einst:")) == 5,
+      "%r" % ([st[0] for st in DEMO.STATIONEN],))
+check("und jede hat ihre eigene Titelkarte",
+      all(st[1] in fe.fb.texte
+          for st in DEMO.STATIONEN if st[0].startswith("einst:")),
+      "%r" % ([st[1] for st in DEMO.STATIONEN
+               if st[0].startswith("einst:")
+               and st[1] not in fe.fb.texte],))
 
 # ---------------------------------------------------------------------------
 print()
@@ -365,7 +373,11 @@ class ZeilenMerker(Attrappe):
 
 
 fe6 = ZeilenMerker()
-DEMO.lauf(fe6, FM(), S, BENCH, sekunden=6.0)
+# GEAENDERT (Build 240): 6 -> 14 Sekunden. Die Gewichte der Ansichten
+# sind gesunken (siehe Test 8c), die Station bekommt von 6 Sekunden
+# also weniger ab als vorher - geprueft werden soll aber der ZEIGER,
+# nicht die Zeiteinteilung.
+DEMO.lauf(fe6, FM(), S, BENCH, sekunden=14.0)
 check("der Zeiger besucht mehr als drei Zeilen",
       len(fe6.besucht) > 3,
       "%d Zeilen: %r" % (len(fe6.besucht), sorted(fe6.besucht)[:20]))
@@ -385,66 +397,214 @@ check("erst zeichnen, dann die Fenstergroesse holen",
 
 # ---------------------------------------------------------------------------
 print()
-print("Test 8: das Systemmenue zeigt EINSTELLUNGEN, nicht Ordnernamen")
+print("Test 8: die Einstellungs-Stationen gehen dorthin, wo sie sagen")
 # ---------------------------------------------------------------------------
-# NUTZERMELDUNG: "system menue und einstellung werden garnicht
-# gezeigt". Die Wurzel der System-Kategorie besteht fast nur aus
-# Ordnern - wer dort scrollt, sieht sechs Ordnernamen und keine
-# einzige Einstellung.
+# ZWEI MELDUNGEN HINTEREINANDER zu derselben Stelle:
+#
+#   Build 233: "system menue und einstellung werden garnicht gezeigt"
+#   Build 239: "ich sehe am ende immer noch zufalls zock anstatt dass
+#               dort unter der kategorie ein paar einstellungs sachen
+#               gezeigt werden. finde ich bloed!"
+#
+# Build 239 stieg in den Unterordner mit dem MEISTEN Inhalt ab. Auf dem
+# Pruefstand ist das "Anzeige & Sound" mit 27 Eintraegen - auf einem
+# echten Geraet zaehlen aber "Scripts" und die Standalone-Cores mit,
+# und 45 Skripte auf der Karte gewinnen gegen 27 Einstellungen. Die
+# Vorfuehrung zeigte dann Skriptnamen.
+#
+# JETZT STEHEN DIE GRUPPEN NAMENTLICH DA. Dieser Test haelt genau das
+# fest - und zwar mit einem Systemmenue, in dem Scripts gewinnen
+# WUERDE.
+import fe.translations as T                                # noqa: E402
+
+
 class MitSystem(Attrappe):
-    def __init__(self):
+    def __init__(self, skripte=45):
         Attrappe.__init__(self)
+
+        def grp(n):
+            return {"items": [("Eintrag %d" % i, "x", None)
+                              for i in range(n)], "folders": {}}
+
         self.cats = [
             ("Arcade", {"items": [("A%d" % i, "game", None)
                                   for i in range(300)],
                         "folders": {}}, None),
-            ("System", {"items": [("Beenden", "x", None)],
+            ("System", {"items": [],
                         "folders": {
-                            "Anzeige & Sound": {
-                                "items": [("Option %d" % i, "x", None)
-                                          for i in range(25)],
-                                "folders": {}},
-                            "Info": {"items": [("Hilfe", "x", None)],
-                                     "folders": {}}}}, None),
+                            T.t("sys_group_display"): grp(27),
+                            T.t("sys_group_behavior"): grp(13),
+                            T.t("sys_group_stats"): grp(6),
+                            T.t("sys_group_input"): grp(4),
+                            T.t("sys_group_maintenance"): grp(9),
+                            "Scripts": grp(skripte),
+                        }}, None),
         ]
 
 
 fe7 = MitSystem()
-seite, ansicht = DEMO._station_einstellen(fe7, S, "system",
-                                          0, DEMO._system_kategorie(fe7))
 check("die System-Kategorie wird gefunden",
       DEMO._system_kategorie(fe7) == 1)
-check("und es geht eine Ebene tiefer",
-      fe7.nav_path == ["Anzeige & Sound"],
-      "%r - sonst sieht man nur Ordnernamen" % (fe7.nav_path,))
-check("in den Ordner mit dem meisten Inhalt",
-      "_station_einstellen" in _q and "key=lambda e: -len(" in _q)
+check("Scripts WUERDE die Mehrheit haben",
+      len(fe7.cats[1][1]["folders"]["Scripts"]["items"]) >
+      len(fe7.cats[1][1]["folders"][T.t("sys_group_display")]["items"]),
+      "genau deshalb ist die Heuristik raus")
 
-# Ohne genug Inhalt bleibt es bei der Wurzel - eine Vorfuehrung darf
-# daran nicht scheitern.
+for schluessel, titel, _erkl, _gew in DEMO.EINSTELLUNGEN:
+    seite, ansicht = DEMO._station_einstellen(
+        fe7, S, "einst:" + schluessel, 0, 1)
+    erwartet = [T.t(schluessel)]
+    check("%-24s -> %s" % (schluessel, T.t(schluessel)),
+          seite == 1 and ansicht == "liste" and fe7.nav_path == erwartet,
+          "%r statt %r" % (fe7.nav_path, erwartet))
+
+check("es sind fuenf Einstellungs-Stationen",
+      len(DEMO.EINSTELLUNGEN) == 5, "%d" % len(DEMO.EINSTELLUNGEN))
+check("keine davon landet in Scripts",
+      all(DEMO._gruppe_finden(fe7, 1, k) != "Scripts"
+          for k, _t2, _e, _g in DEMO.EINSTELLUNGEN))
+check("die Heuristik ist weg",
+      "key=lambda e: -len(" not in _q,
+      "der vollste Ordner ist nicht der richtige Ordner")
+
+# FEHLT EINE GRUPPE, FAELLT IHRE STATION AUS - es wird NICHTS
+# ersetzt. Eine Vorfuehrung, die etwas anderes zeigt als angekuendigt,
+# ist schlimmer als eine, die eine Station weglaesst.
 fe8 = MitSystem()
-fe8.cats[1][1]["folders"]["Anzeige & Sound"]["items"] = [("A", "x", None)]
-fe8.cats[1][1]["folders"]["Info"]["items"] = []
-DEMO._station_einstellen(fe8, S, "system", 0, 1)
-check("ohne genug Inhalt bleibt es bei der Wurzel",
-      fe8.nav_path == [], "%r" % (fe8.nav_path,))
+del fe8.cats[1][1]["folders"][T.t("sys_group_stats")]
+seite, _a = DEMO._station_einstellen(fe8, S, "einst:sys_group_stats", 0, 1)
+check("eine fehlende Gruppe wird uebersprungen", seite is None,
+      "und NICHT durch eine andere ersetzt")
+check("die anderen gehen weiter",
+      DEMO._station_einstellen(fe8, S, "einst:sys_group_display",
+                               0, 1)[0] == 1)
+
+# OHNE SYSTEM-KATEGORIE ueberhaupt.
+fe9 = MitSystem()
+fe9.cats = fe9.cats[:1]
+check("ohne Systemmenue fallen alle Einstellungs-Stationen aus",
+      all(DEMO._station_einstellen(fe9, S, "einst:" + k, 0, None)[0] is None
+          for k, _t3, _e, _g in DEMO.EINSTELLUNGEN))
 
 # ---------------------------------------------------------------------------
 print()
-print("Test 9: nach der Vorfuehrung startet nicht sofort Zufalls-Zock")
+print("Test 8b: die Gruppe wird ueber den Uebersetzungsschluessel"
+      " gefunden")
 # ---------------------------------------------------------------------------
-# DIE DRITTE HAELFTE DER MELDUNG ZU BUILD 233: "dann oeffnet er nur
-# zufalls zock und bleibt dort stehen".
+# Der Ordner heisst auf Englisch "Display & sound" und auf Deutsch
+# "Anzeige & Sound". Ein fest eingetragener Text waere auf der jeweils
+# anderen Sprache tot, und die Station fiele still aus - ohne dass
+# jemand den Zusammenhang zur Spracheinstellung sieht.
+_sprache_alt = T.CURRENT_LANG
+try:
+    for lang in ("de", "en"):
+        T.CURRENT_LANG = lang
+        feL = MitSystem()
+        gefunden = DEMO._gruppe_finden(feL, 1, "sys_group_display")
+        check("Sprache %s findet %r" % (lang, T.t("sys_group_display")),
+              gefunden == T.t("sys_group_display"),
+              "%r" % (gefunden,))
+    # Und auch dann, wenn die Schreibweise abweicht.
+    T.CURRENT_LANG = "de"
+    feK = MitSystem()
+    inhalt = feK.cats[1][1]["folders"].pop(T.t("sys_group_display"))
+    feK.cats[1][1]["folders"]["anzeige & sound"] = inhalt
+    check("Gross- und Kleinschreibung ist egal",
+          DEMO._gruppe_finden(feK, 1, "sys_group_display")
+          == "anzeige & sound")
+finally:
+    T.CURRENT_LANG = _sprache_alt
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 8c: die Gewichte liegen jetzt bei den Einstellungen")
+# ---------------------------------------------------------------------------
+# NUTZERWUNSCH: "dann lieber weniger zeit ind denn ansichten zeigen
+# dafuer mehr auf die einstellungen hinweisen durchscrollen was man
+# alles machen kann mit dem frontend als vorfuehrung!"
+_ansichten = sum(g for k, _t4, _e, g in DEMO.STATIONEN
+                 if k.startswith("haupt") or k.startswith("liste"))
+_einst = sum(g for k, _t5, _e, g in DEMO.STATIONEN
+             if k.startswith("einst:"))
+print("   Ansichten %.1f, Einstellungen %.1f (vorher 7,8 gegen 1,4)"
+      % (_ansichten, _einst))
+check("die Einstellungen bekommen mehr Zeit als die Ansichten",
+      _einst > _ansichten, "%.1f gegen %.1f" % (_einst, _ansichten))
+check("und die Ansichten deutlich weniger als vorher",
+      _ansichten < 7.8 * 0.7, "%.1f statt 7,8" % _ansichten)
+check("jede Einstellungs-Station sagt, was man dort machen kann",
+      all(len(e) > 25 for _k, _t6, e, _g in DEMO.EINSTELLUNGEN),
+      "ein Titel allein ist kein Hinweis")
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 8d: eine winzige Kategorie ist keine Vorfuehrung")
+# ---------------------------------------------------------------------------
+# _groesste_kategorie() zaehlt die Eintraege direkt in der Wurzel. Auf
+# einer Karte, auf der alles in Unterordnern liegt, kann die groesste
+# davon winzig sein - und dann drei Stationen lang auf einem Eintrag
+# herumzuscrollen sieht nach einem Fehler aus.
+class NurWinzige(MitSystem):
+    def __init__(self):
+        MitSystem.__init__(self)
+        self.cats = [("ZUFALLS-ZOCK",
+                      {"items": [("Spiel ziehen", "wot_draw", None)],
+                       "folders": {}}, None)] + self.cats[1:]
+
+
+_zeilen = []
+feW = NurWinzige()
+DEMO.lauf(feW, FM(), S, BENCH, sekunden=2.0, log=_zeilen.append)
+check("die Grenze steht als Zahl da",
+      isinstance(DEMO.LISTE_MIN_EINTRAEGE, int)
+      and DEMO.LISTE_MIN_EINTRAEGE >= 2)
+check("und das Log sagt, dass die Stationen ausfallen",
+      any("groesste Kategorie" in z and "Eintraege" in z
+          for z in _zeilen),
+      "sonst sucht man den Grund im Zeichenweg")
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 8e: jede Station schreibt ins Log, was sie zeigt")
+# ---------------------------------------------------------------------------
+# WARUM: zwei Builds hintereinander hat die Vorfuehrung etwas anderes
+# gezeigt als angekuendigt, und beide Male war von hier aus nicht
+# feststellbar, WAS - es hing an Dingen, die nur auf dem Geraet so
+# sind. Eine Zeile je Station beantwortet das beim naechsten Bericht.
+_zeilen2 = []
+DEMO.lauf(MitSystem(), FM(), S, BENCH, sekunden=4.0,
+          log=_zeilen2.append)
+_stationen_im_log = [z for z in _zeilen2 if "Station" in z]
+check("es stehen Stationszeilen im Log",
+      len(_stationen_im_log) >= 5, "%d" % len(_stationen_im_log))
+check("sie nennen die Seite, die Ansicht und was zu sehen ist",
+      any("zeigt" in z and "Eintraege" in z and "nav=" in z
+          for z in _stationen_im_log),
+      "\n      ".join(_stationen_im_log[:3]))
+check("eine uebersprungene Station sagt das auch",
+      "UEBERSPRUNGEN" in "".join(_zeilen2)
+      or all("UEBERSPRUNGEN" not in z for z in _zeilen2),
+      "hier gibt es nichts zu ueberspringen, der Zweig steht aber")
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 9: die Vorfuehrung laesst die Eingabe-Uhr nicht alt stehen")
+# ---------------------------------------------------------------------------
+# GEAENDERT (Build 240): DIESER TEST HAT EINEN ANDEREN GRUND ALS
+# ANGENOMMEN, und das gehoert hierhin.
 #
-# Das war kein Fehler der Vorfuehrung, sondern ihre Folge. Der
-# Attract-Modus (im Menue "Zufalls-Zock - Spiel ziehen") startet nach
-# ATTRACT_DELAY Sekunden ohne Eingabe, voreingestellt 90. Die
-# Vorfuehrung laeuft 180 Sekunden mit eigener Schleife -
-# _last_input_time stand danach drei Minuten in der Vergangenheit, und
-# der erste Leerlauf-Tick danach erfuellte die Bedingung sofort.
+# Build 239 hat die Zeile eingebaut, um "dann oeffnet er nur zufalls
+# zock und bleibt dort stehen" zu erklaeren: der Attract-Modus startet
+# nach voreingestellt 90 Sekunden ohne Eingabe, die Vorfuehrung laeuft
+# 180 Sekunden mit eigener Schleife.
 #
-# Geprueft wird die EIGENSCHAFT, nicht die Zeile: nach dem Lauf darf
-# die Eingabe-Uhr nicht aelter sein als ein Wimpernschlag.
+# DIE ERKLAERUNG WAR FALSCH. --demo ruft nach lauf() sofort _beenden()
+# und sys.exit(0) - der Leerlauf-Zweig von run() kommt nie mehr dran.
+# Die wirkliche Ursache stand in der Stationswahl (siehe Test 8).
+#
+# DER TEST BLEIBT, als das was er ist: eine Vorfuehrung soll keinen
+# drei Minuten alten Eingabezeitpunkt hinterlassen. Heute faellt das
+# nicht auf; wird die Vorfuehrung je aus dem Menue aufrufbar, sofort.
 import fe.settings as _S9                                  # noqa: E402
 print("   ATTRACT_DELAY_STEPS beginnt bei %d s, die Vorfuehrung laeuft"
       " %d s" % (min(_S9.ATTRACT_DELAY_STEPS), 180))

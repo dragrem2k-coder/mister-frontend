@@ -28,29 +28,79 @@ ist eine Zumutung.
 """
 import time
 
-DEMO_VERSION = 1
+DEMO_VERSION = 2
+
+# Ab wievielen Eintraegen eine Kategorie fuer die Spieleliste-Stationen
+# taugt. Acht ist die Zahl, bei der im kleinsten Fenster (CRT, grosse
+# Schrift) ueberhaupt gescrollt wird - darunter steht der Zeiger nur
+# herum. Begruendung bei kat_n in lauf().
+LISTE_MIN_EINTRAEGE = 8
 
 # Die Vorfuehrung in Stationen. Das Gewicht sagt, welchen ANTEIL der
 # Gesamtzeit eine Station bekommt - so bleibt die Laenge einstellbar,
 # ohne dass man neun Zahlen von Hand nachzieht.
 #
 # (schluessel, titel, erklaerung, gewicht)
+# WAS DIE EINSTELLUNGS-STATIONEN ZEIGEN, und zwar NAMENTLICH.
+#
+# NUTZERMELDUNG ZU BUILD 239: "ich sehe am ende immer noch zufalls zock
+# anstatt dass dort unter der kategorie ein paar einstellungs sachen
+# gezeigt werden. finde ich bloed! dann lieber weniger zeit in denn
+# ansichten zeigen dafuer mehr auf die einstellungen hinweisen
+# durchscrollen was man alles machen kann mit dem frontend als
+# vorfuehrung!"
+#
+# HIER STAND EINE HEURISTIK, und das war der Fehler: Build 239 stieg in
+# den Unterordner mit dem MEISTEN Inhalt ab. Auf dem Pruefstand ist das
+# "Anzeige & Sound" mit 27 Eintraegen - auf einem echten Geraet aber
+# zaehlen "Scripts" und die Standalone-Cores mit, und die sind bei
+# jemandem mit einer gewachsenen Karte schnell groesser. Die
+# Vorfuehrung zeigte dann eine Liste von Skriptnamen, und das ist
+# genau nicht, was sie zeigen soll.
+#
+# JETZT STEHEN DIE GRUPPEN NAMENTLICH DA - ueber ihren
+# Uebersetzungsschluessel, damit es in beiden Sprachen stimmt. Findet
+# sich eine Gruppe auf diesem Geraet nicht, wird ihre Station
+# uebersprungen; es wird NICHTS ersetzt. Eine Vorfuehrung, die etwas
+# anderes zeigt als angekuendigt, ist schlimmer als eine, die eine
+# Station weglaesst.
+#
+# (schluessel der Gruppe, Titel, Erklaerung, Gewicht)
+EINSTELLUNGEN = (
+    ("sys_group_display", "Anzeige & Sound",
+     "Thema, Schrift, Lochmaske, Hintergrundbild, Ansicht, Overscan.", 1.6),
+    ("sys_group_behavior", "Optionen",
+     "CRT-Test, Miniaturen vorbereiten, Cores, Filter, Autostart.", 1.4),
+    ("sys_group_stats", "Statistiken & Erfolge",
+     "Spielzeit, Meilensteine, Pokalregal, Jahresrueckblick, Tagebuch.", 1.0),
+    ("sys_group_input", "Eingabe & Sprache",
+     "Tasten belegen, Sprache, OK/Zurueck tauschen.", 1.0),
+    ("sys_group_maintenance", "Wartung",
+     "Neu einlesen, Zwischenspeicher, Boxarts und Spieldaten nachladen.", 1.2),
+)
+
+# DIE GEWICHTE SIND NEU VERTEILT (Build 240), genau wie gewuenscht:
+# "lieber weniger zeit in denn ansichten zeigen dafuer mehr auf die
+# einstellungen hinweisen". Vorher 7,8 Gewicht fuer die Ansichten und
+# 1,4 fuer die Einstellungen; jetzt 4,6 gegen 6,2 - die Vorfuehrung
+# dreht sich damit um das, was man machen KANN, und nicht mehr um
+# Scrollen in sechs Varianten.
 STATIONEN = (
     ("titel", "Dragend", "", 0.5),
     ("haupt_liste", "Hauptseite - Liste",
-     "Deine Kategorien. Rechts das Cover zum markierten Eintrag.", 1.4),
+     "Deine Kategorien. Rechts das Cover zum markierten Eintrag.", 0.8),
     ("haupt_raster", "Hauptseite - Raster",
-     "Dieselbe Seite als Kachelwand.", 1.1),
+     "Dieselbe Seite als Kachelwand.", 0.6),
     ("haupt_galerie", "Hauptseite - Galerie",
-     "Und als Galerie, mit grossem Bild.", 1.1),
+     "Und als Galerie, mit grossem Bild.", 0.6),
     ("liste_liste", "Spieleliste - Liste",
-     "Die groesste Kategorie, Eintrag fuer Eintrag.", 1.6),
+     "Die groesste Kategorie, Eintrag fuer Eintrag.", 1.0),
     ("liste_raster", "Spieleliste - Raster",
-     "Dieselben Spiele als Kacheln.", 1.3),
+     "Dieselben Spiele als Kacheln.", 0.8),
     ("liste_galerie", "Spieleliste - Galerie",
-     "Und als Galerie, mit Beschreibung.", 1.3),
-    ("system", "Systemmenue",
-     "Alles, was sich einstellen laesst - an einer Stelle.", 1.4),
+     "Und als Galerie, mit Beschreibung.", 0.8),
+) + tuple(("einst:" + schluessel, "Einstellungen - " + titel, erkl, gew)
+          for schluessel, titel, erkl, gew in EINSTELLUNGEN) + (
     ("ende", "Ende der Vorfuehrung", "", 0.5),
 )
 
@@ -201,6 +251,18 @@ def lauf(fe, fm, S, BENCH, sekunden=180.0, log=None):
         kat_i, kat_n, kat_name = BENCH._groesste_kategorie(fe)
     except Exception:                                    # noqa: BLE001
         kat_i, kat_n, kat_name = None, 0, ""
+    # EINE KATEGORIE MIT DREI EINTRAEGEN IST KEINE VORFUEHRUNG
+    # (Build 240). _groesste_kategorie() zaehlt die Eintraege direkt in
+    # der Wurzel - bei einer Karte, auf der alles in Unterordnern
+    # liegt, kann die groesste davon winzig sein, und dann drei
+    # Stationen lang auf einem Eintrag herumzuscrollen sieht nach
+    # einem Fehler aus. Lieber weglassen und es ins Log schreiben.
+    if kat_i is not None and kat_n < LISTE_MIN_EINTRAEGE:
+        if log:
+            log("--demo: groesste Kategorie %r hat nur %d Eintraege - "
+                "die drei Spieleliste-Stationen fallen aus"
+                % (kat_name, kat_n))
+        kat_i, kat_n, kat_name = None, 0, ""
     sys_i = _system_kategorie(fe)
     spiele = _spiele_zaehlen(fe)
 
@@ -239,8 +301,35 @@ def lauf(fe, fm, S, BENCH, sekunden=180.0, log=None):
             seite, ansicht = _station_einstellen(fe, S, schluessel,
                                                  kat_i, sys_i)
             if seite is None:
+                if log:
+                    log("--demo Station %s UEBERSPRUNGEN (auf diesem "
+                        "Geraet nicht vorhanden)" % schluessel)
                 continue
+            # WAS DIESE STATION WIRKLICH ZEIGT, ins Log (Build 240).
+            #
+            # WARUM DAS HIER STEHT: zwei Builds hintereinander hat die
+            # Vorfuehrung etwas anderes gezeigt als angekuendigt, und
+            # beide Male war von hier aus nicht feststellbar, WAS - es
+            # hing an Dingen, die nur auf dem Geraet des Nutzers so
+            # sind (welche Kategorie die groesste ist, welche
+            # Einstellungsgruppen es gibt, wieviele Skripte auf der
+            # Karte liegen). Eine Zeile je Station beantwortet das beim
+            # naechsten Bericht, statt dass wieder geraten wird.
+            if log:
+                try:
+                    _wo = ("Kategorieliste" if seite == 0
+                           else str(fe.cats[fe.cat_i][0]))
+                    _n = len(fe._display_items() or ())
+                except Exception:                        # noqa: BLE001
+                    _wo, _n = "?", -1
+                log("--demo Station %-22s Seite %d %-8s zeigt %r "
+                    "(%d Eintraege, nav=%r)"
+                    % (schluessel, seite, ansicht, _wo, _n,
+                       getattr(fe, "nav_path", None)))
             if not _scrollen(fe, BENCH, seite, dauer - vorlauf):
+                if log:
+                    log("--demo bei Station %s abgebrochen (Taste)"
+                        % schluessel)
                 return False
     finally:
         # Zurueck auf den Stand von vorher - in dieser Reihenfolge:
@@ -258,24 +347,33 @@ def lauf(fe, fm, S, BENCH, sekunden=180.0, log=None):
                 setattr(fe, feld, wert)
             except Exception:                            # noqa: BLE001
                 pass
-        # DIE EINGABE-UHR NACHSTELLEN (Build 239) - und das ist die
-        # dritte Haelfte der Nutzermeldung zu Build 233:
+        # DIE EINGABE-UHR NACHSTELLEN (Build 239).
         #
-        #   "dann oeffnet er nur zufalls zock und bleibt dort stehen"
+        # WARUM SIE HIER STEHT, und was daran falsch begruendet war:
+        # Build 239 hat sie eingebaut, um die Meldung "dann oeffnet er
+        # nur zufalls zock und bleibt dort stehen" zu erklaeren - der
+        # Attract-Modus (im Menue "Zufalls-Zock - Spiel ziehen")
+        # startet nach voreingestellt 90 Sekunden ohne Eingabe, und die
+        # Vorfuehrung laeuft 180 Sekunden mit eigener Schleife.
         #
-        # Das war kein Fehler der Vorfuehrung, sondern ihre Folge. Der
-        # Attract-Modus (im Menue heisst er "Zufalls-Zock - Spiel
-        # ziehen") startet nach ATTRACT_DELAY Sekunden ohne Eingabe,
-        # voreingestellt 90. Die Vorfuehrung laeuft 180 Sekunden und
-        # hat ihre eigene Schleife - _last_input_time stand danach also
-        # drei Minuten in der Vergangenheit, und der ERSTE Leerlauf-
-        # Tick nach der Vorfuehrung erfuellte die Bedingung sofort. Was
-        # er sah, war ein zufaellig gezogenes Spiel gross im Bild, und
-        # was er daraus schloss, war genau richtig benannt.
+        # DIE ERKLAERUNG WAR FALSCH, und das ist beim Bau von Build 240
+        # herausgekommen: --demo ruft nach lauf() sofort _beenden() und
+        # sys.exit(0) (siehe den --demo-Zweig in frontend.py). Der
+        # Leerlauf-Zweig von run() kommt danach ueberhaupt nicht mehr
+        # dran, der Attract-Modus also auch nicht. Die WIRKLICHE
+        # Ursache stand in _station_einstellen() und steht dort jetzt
+        # auch beschrieben: die Station stieg in den Unterordner mit
+        # dem meisten Inhalt ab, und das sind auf einem echten Geraet
+        # die Skripte.
         #
-        # EINE ZEILE, UND SIE GEHOERT HIERHIN: der finally-Block laeuft
-        # auch beim Abbruch durch eine Taste und beim Abbruch in einer
-        # Titelkarte. Jeder andere Ort waere einer von mehreren.
+        # DIE ZEILE BLEIBT TROTZDEM, aber als das, was sie ist: eine
+        # Aufraeumzeile und keine Fehlerbehebung. Eine Vorfuehrung soll
+        # keinen drei Minuten alten Eingabezeitpunkt hinterlassen -
+        # heute faellt das nicht auf, weil --demo danach beendet; wird
+        # die Vorfuehrung je aus dem Menue heraus aufrufbar, faellt es
+        # sofort auf. Der finally-Block laeuft auch beim Abbruch durch
+        # eine Taste und beim Abbruch in einer Titelkarte; jeder andere
+        # Ort waere einer von mehreren.
         try:
             fe._last_input_time = time.monotonic()
         except Exception:                                # noqa: BLE001
@@ -296,36 +394,20 @@ def _station_einstellen(fe, S, schluessel, kat_i, sys_i):
             fe.page = 0
             fe.ansicht_haupt_setzen(ansicht)
             return 0, ansicht
-        if schluessel == "system":
+        if schluessel.startswith("einst:"):
+            # EINE NAMENTLICH BENANNTE EINSTELLUNGSGRUPPE (Build 240).
+            # Begruendung bei EINSTELLUNGEN oben - hier wird NICHT
+            # geraten und NICHT ersetzt.
             if sys_i is None:
+                return None, None
+            ordner = _gruppe_finden(fe, sys_i, schluessel[6:])
+            if not ordner:
                 return None, None
             fe.page = 1
             fe.cat_i = sys_i
             fe.item_i = 0
+            fe.nav_path = [ordner]
             fe.ansicht_setzen("liste")
-            # IN EINEN UNTERORDNER HINEIN (Build 239).
-            #
-            # NUTZERMELDUNG ZU BUILD 233: "system menue und einstellung
-            # werden garnicht gezeigt". Die Wurzel der System-Kategorie
-            # besteht fast nur aus ORDNERN ("Anzeige & Sound",
-            # "Optionen", ...) - wer dort scrollt, sieht sechs
-            # Ordnernamen und keine einzige Einstellung. Gezeigt werden
-            # soll aber, was sich einstellen laesst.
-            #
-            # Also eine Ebene tiefer, in den ersten Ordner mit genug
-            # Inhalt. Geht das nicht, bleibt es bei der Wurzel - eine
-            # Vorfuehrung darf an so etwas nicht scheitern.
-            fe.nav_path = []
-            try:
-                knoten = fe.cats[sys_i][1]
-                ordner = sorted((knoten.get("folders", {}) or {}).items(),
-                                key=lambda e: -len(
-                                    (e[1] or {}).get("items", ()) or ()))
-                if ordner and len(
-                        (ordner[0][1] or {}).get("items", ()) or ()) >= 4:
-                    fe.nav_path = [ordner[0][0]]
-            except Exception:                            # noqa: BLE001
-                fe.nav_path = []
             return 1, "liste"
         if kat_i is None:
             return None, None
@@ -337,6 +419,38 @@ def _station_einstellen(fe, S, schluessel, kat_i, sys_i):
         return 1, ansicht
     except Exception:                                    # noqa: BLE001
         return None, None
+
+
+def _gruppe_finden(fe, sys_i, schluessel):
+    """Der Ordnername der Einstellungsgruppe zu einem
+    Uebersetzungsschluessel - oder "".
+
+    UEBER DEN SCHLUESSEL UND NICHT UEBER DEN DEUTSCHEN TEXT: der
+    Ordner heisst auf Englisch "Display & sound" und auf Deutsch
+    "Anzeige & Sound". Ein fest eingetragener Text waere auf der
+    jeweils anderen Sprache tot, und die Station fiele still aus -
+    ohne dass jemand den Zusammenhang zur Spracheinstellung sieht.
+
+    ZWEI VERSUCHE, dann ist Schluss: der uebersetzte Name genau so,
+    und derselbe Name ohne Ruecksicht auf Gross- und Kleinschreibung.
+    Danach wird NICHT auf einen anderen Ordner ausgewichen - siehe
+    EINSTELLUNGEN oben, genau das war der Fehler von Build 239."""
+    try:
+        knoten = fe.cats[sys_i][1]
+        ordner = (knoten.get("folders", {}) or {})
+        if not ordner:
+            return ""
+        from fe.translations import t as _t
+        name = _t(schluessel)
+        if name in ordner:
+            return name
+        klein = str(name).strip().lower()
+        for vorhanden in ordner:
+            if str(vorhanden).strip().lower() == klein:
+                return vorhanden
+        return ""
+    except Exception:                                    # noqa: BLE001
+        return ""
 
 
 def _system_kategorie(fe):

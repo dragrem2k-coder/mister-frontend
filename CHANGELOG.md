@@ -757,6 +757,57 @@ die vier Modi vom MiSTer.**
 - **Das System-Menü**: die Station stand auf der obersten Ebene, und die hat
   bei wenigen Einträgen nichts zu zeigen. Jetzt steigt sie in den
   vollsten Unterordner ab, wenn dort mindestens vier Einträge liegen.
+
+**Hintergrundbilder erscheinen jetzt sofort.**
+
+- Gemeldet: „wenn ich mehrere background bilder in denn ordner packe und
+  diese dann durchklicke dauert das immer sehr lang bis es angezeigt wird.
+  **werden diese noch vorbereitet? und jedesmal neu?**" — beide Fragen waren
+  richtig gestellt.
+- Der Weg wurde zerlegt, und **ein einziger Posten war 90 bis 98 Prozent**:
+  das Abdunkeln. Skalieren 0–26 ms, Zuschneiden 2–5 ms, **Abdunkeln
+  214–233 ms**. Und es war nicht die Idee, sondern die Schreibweise — dort
+  stand eine **Python-Schleife über jedes Byte**, bei 1920×1080 also über 8,3
+  Millionen. Dieselbe Arbeit in C erledigt: **14,6-mal schneller, bitgenau
+  dasselbe Bild** (214 → 15 ms). Auf dem MiSTer ist Rechnen je Bildpunkt ein
+  Vielfaches teurer; dort waren das die Sekunden.
+- **Was NICHT eingebaut wurde, obwohl es fertig war:** die fertigen Vorlagen
+  auf der Karte ablegen — der eigene Vorschlag aus der Meldung. Das war
+  gebaut, mit zwölf grünen Tests. Dann kam die Messung: **der warme Weg war
+  teurer als der kalte** (ein 1080p-JPEG zu dekodieren kostet 33,9 ms, das PNG
+  neu zu lesen 19,0 ms). Also ist es wieder herausgeflogen, **bevor** es
+  ausgeliefert wurde. Statt dessen stehen jetzt die **Teilzeiten im Log**, eine
+  Zeile je Bildwechsel: nach der Änderung ist der größte Posten das
+  Dekodieren, und das hängt am Format und an der Karte — die Zahl vom Gerät
+  entscheidet, ob noch etwas zu tun ist.
+
+**Die Vorführung dreht sich jetzt um die Einstellungen.**
+
+- Gemeldet: „ich sehe am ende immer noch zufalls zock anstatt dass dort unter
+  der kategorie ein paar einstellungs sachen gezeigt werden. finde ich blöd!"
+- **Die Ursache war die Heuristik aus dem letzten Build.** Die Station stieg
+  in den Unterordner mit dem *meisten Inhalt* ab. Auf dem Prüfstand ist das
+  „Anzeige & Sound" mit 27 Einträgen — deshalb war der Test grün. Auf einer
+  echten Karte zählen aber **Scripts und die Standalone-Cores** mit, und
+  45 Skripte schlagen 27 Einstellungen. Die Vorführung zeigte Skriptnamen.
+- **Jetzt stehen fünf Einstellungsgruppen namentlich da** — Anzeige & Sound,
+  Optionen, Statistiken & Erfolge, Eingabe & Sprache, Wartung — jede mit einer
+  Titelkarte, die sagt, was man dort machen kann. Fehlt eine Gruppe auf dem
+  Gerät, wird ihre Station **übersprungen**; ersetzt wird nichts. Eine
+  Vorführung, die etwas anderes zeigt als angekündigt, ist schlimmer als eine,
+  die eine Station weglässt.
+- **Die Zeit ist umverteilt**, genau wie gewünscht: Ansichten von 7,8 auf
+  **4,6**, Einstellungen von 1,4 auf **6,2**.
+- **Jede Station schreibt ins Log, was sie wirklich zeigt** (Seite, Ansicht,
+  Kategorie, Zahl der Einträge, Ordnerpfad). Zweimal hintereinander hat die
+  Vorführung etwas anderes gezeigt als angekündigt, und beide Male war das von
+  außen nicht feststellbar — es hing an Dingen, die nur auf dem eigenen Gerät
+  so sind. Eine Zeile je Station beantwortet das beim nächsten Bericht.
+- Und eine **Korrektur zum letzten Build**: „öffnet nur Zufalls-Zock" wurde
+  dort dem Attract-Modus zugeschrieben. Das war falsch — `--demo` beendet das
+  Frontend direkt nach der Vorführung, der Leerlauf kommt nie mehr dran. Die
+  Zeile von damals bleibt als Aufräumzeile stehen und ist jetzt auch so
+  benannt.
 - **„öffnet nur Zufalls-Zock und bleibt dort stehen"** war kein Fehler der
   Vorführung, sondern ihre **Folge** — und der überraschendste Befund des
   Builds. Der Attract-Modus heißt im Menü „Zufalls-Zock — Spiel ziehen" und
