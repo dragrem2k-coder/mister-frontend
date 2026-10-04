@@ -884,6 +884,50 @@ gesagt hat — zwei davon eigene Fehler.**
   wieder gelöst; blieben sie stehen, würden alle folgenden Abschnitte durch
   sie hindurch messen, und das wäre ein Messfehler, der nach einem Befund
   aussieht.
+
+**Vier Verschönerungen — und was sie kosten, steht dabei.**
+
+Alle vier hängen am **Feinheiten-Schalter** (System → Anzeige & Sound), den
+du dir ausdrücklich gewünscht hast.
+
+- **Die Systemfarbe in den feinen Elementen**: der Läufer des Scrollbalkens
+  und die Haarlinie zwischen Liste und Coverspalte nehmen jetzt den Ton des
+  Systems an, gedämpft statt pur. Das **kostet nichts** — es ist eine Farbe,
+  und die Elemente werden ohnehin gezeichnet.
+- **Ein dünner Akzentstrich unter der Kopfzeile**, in derselben Farbe: er
+  sagt auf einen Blick, in welchem System du bist. Kostet **einmal je
+  Seitenaufbau** und je Scrollschritt nichts.
+- **Abgerundete Cover-Ecken**: Rahmen und Cover bekommen eine gemeinsame
+  Rundung. Gemessen **ein** Füllaufruf mit 16 Rechtecken, auf dem MiSTer rund
+  **0,71 ms** — und nur dann, wenn ein Cover da ist; beim schnellen Scrollen
+  wird die Boxart ohnehin ausgelassen. In allen drei Ansichten liegt der
+  Unterschied im Rauschen.
+- **Der Anfangsbuchstabe beim Schnellscrollen**, groß in der Coverspalte. Bei
+  1041 Einträgen in Arcade sagt er, wo du gerade bist — und er steht genau an
+  der Stelle, an der die Karte beim Scrollen **ohnehin leer** ist: kein
+  zusätzliches Freiräumen, kein zusätzlicher Flip. Beim Loslassen zeichnet
+  das echte Cover darüber.
+
+**Das Wasserzeichen gibt es nicht — und der Grund gehört dazu.**
+
+Gewünscht war das System-Logo dezent *hinter der Liste*. Dort liegt der
+Hintergrund, und den holt der Scrollweg aus seinem Zeilenspeicher zurück —
+ein Logo müsste also **in** der Vollbildvorlage stehen, eine je Kategorie,
+**8,3 MB das Stück**. Genau diesen Posten hat Build 235 herausgenommen. Das
+Systemlogo gibt es außerdem schon dort, wo Platz dafür ist: auf der
+Kategorienseite, neben der Liste. Statt dessen der Akzentstrich oben.
+
+**Und ein Fund über das eigene Werkzeug.**
+
+Der Akzentstrich hat **drei Anläufe** gebraucht, und jeder sah beim Hinsehen
+richtig aus: einmal lag er im Band der ersten Listenzeile (2617 abweichende
+Bildpunkte), einmal richtig — aber er *wanderte*, weil die Listenposition vom
+markierten Eintrag abhängt (2737), einmal passte er auf 1080p und lag bei
+320×240 zwei Punkte zu tief (160). Gefunden hat alle drei dasselbe Werkzeug,
+das jeden leichten Zeichenweg gegen einen vollen Neuaufbau vergleicht.
+**Dabei kam heraus, dass der Scrollbalken-Läufer dieselbe Eigenschaft hat** —
+mit der alten grauen Farbe fiel das nie auf. Jetzt wird es für alle vier
+Auflösungen geprüft.
 - **„öffnet nur Zufalls-Zock und bleibt dort stehen"** war kein Fehler der
   Vorführung, sondern ihre **Folge** — und der überraschendste Befund des
   Builds. Der Attract-Modus heißt im Menü „Zufalls-Zock — Spiel ziehen" und

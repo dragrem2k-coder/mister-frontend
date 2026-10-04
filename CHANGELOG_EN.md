@@ -739,6 +739,46 @@ two of them my own mistakes.**
   call count. The counters are released immediately afterwards; left in place,
   every following section would measure through them, and that would be a
   measurement error that looks like a finding.
+
+**Four cosmetic additions — and what each costs is stated.**
+
+All four sit behind the **fine-details switch** (System → Display & sound).
+
+- **The system colour in the fine elements**: the scrollbar's runner and the
+  hairline between list and cover column now take the system's tone, muted
+  rather than pure. This **costs nothing** — it is a colour, and those
+  elements are drawn anyway.
+- **A thin accent rule under the header**, in the same colour: it tells you at
+  a glance which system you are in. Costs **once per page build** and nothing
+  per scroll step.
+- **Rounded cover corners**: frame and cover get one shared rounding. Measured
+  as **one** fill call with 16 rectangles, roughly **0.71 ms** on the MiSTer —
+  and only when a cover is present; during fast scrolling the box art is
+  skipped anyway. In all three views the difference is within the noise.
+- **The initial letter while fast-scrolling**, large in the cover column. With
+  1041 entries in Arcade it tells you where you are — and it sits exactly
+  where the card is **already blank** while scrolling: no extra clearing, no
+  extra flip. On release the real cover is drawn over it.
+
+**There is no watermark — and the reason belongs here.**
+
+The wish was the system logo subtly *behind the list*. That is where the
+background lives, and the scroll path restores it from its row cache — so a
+logo would have to be **inside** the full-screen template, one per category,
+**8.3 MB each**. Build 235 removed exactly that cost. The system logo also
+already exists where there is room for it: on the category page, next to the
+list. The accent rule up top stands in its place.
+
+**And a finding about my own tooling.**
+
+The accent rule took **three attempts**, and each looked right on inspection:
+once it sat inside the first list row's band (2617 differing pixels), once it
+sat correctly but *moved*, because the list position depends on the selected
+entry (2737), once it fit at 1080p and sat two pixels too low at 320×240
+(160). All three were found by the same tool that compares every light draw
+path against a full rebuild. **It also turned out that the scrollbar runner
+has the same property** — with the old grey colour that never showed. It is
+now checked at all four resolutions.
 - **"then it just opens Random Play and stops there"** was not a fault of the
   demo but its **consequence** — the most surprising find of this build.
   Attract mode is called "Random Play — draw a game" in the menu and starts

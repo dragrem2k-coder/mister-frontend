@@ -724,6 +724,52 @@ def accent_for(syskey):
         color = tuple(int(c * (1 - mix) + a * mix) for c, a in zip(color, C_ACCENT))
     _ACCENT_FOR_CACHE[syskey] = color
     return color
+
+
+# DIE FEINEN ELEMENTE IN DER SYSTEMFARBE (Build 243).
+#
+# NUTZERWUNSCH: "hast du noch design vorschlaege zur optischen
+# verschoenerung aber ohne performence verlust?" - und die Antwort
+# darauf ist eine Farbwahl, nicht ein zusaetzliches Element.
+# Scrollbalken und Haarlinie werden ohnehin gezeichnet (Build 236); sie
+# bekommen jetzt nur eine andere Farbe, und eine Farbe kostet nichts.
+#
+# ZWEI GETRENNTE TOENE, UND BEIDE GEDAEMPFT: der Laeufer des
+# Scrollbalkens sagt, WO man ist - er darf auffallen, aber nicht
+# schreien, also ein Drittel Richtung Textfarbe, damit er auf jedem
+# Theme lesbar bleibt. Die Haarlinie TRENNT nur; sie geht zu zwei
+# Dritteln Richtung Panelfarbe und bleibt damit ein Hinweis.
+#
+# GECACHT WIE accent_for() SELBST, aus demselben Grund: das sind
+# Rechnungen je Systemfarbe, nicht je Bildaufbau. Geleert wird beim
+# Themewechsel an derselben Stelle (siehe apply_theme()).
+_FEIN_AKZENT_CACHE = {}
+
+
+def _farbe_mischen(a, b, anteil):
+    """a nach b verschoben - anteil 0 ist reines a, 1 ist reines b."""
+    return tuple(int(x * (1.0 - anteil) + y * anteil)
+                 for x, y in zip(a, b))
+
+
+def akzent_laeufer(syskey):
+    """Die Farbe des Scrollbalken-Laeufers fuer dieses System."""
+    schluessel = ("laeufer", syskey)
+    farbe = _FEIN_AKZENT_CACHE.get(schluessel)
+    if farbe is None:
+        farbe = _farbe_mischen(accent_for(syskey), C_TEXT, 0.35)
+        _FEIN_AKZENT_CACHE[schluessel] = farbe
+    return farbe
+
+
+def akzent_linie(syskey):
+    """Die Farbe der Haarlinie zwischen Liste und Coverspalte."""
+    schluessel = ("linie", syskey)
+    farbe = _FEIN_AKZENT_CACHE.get(schluessel)
+    if farbe is None:
+        farbe = _farbe_mischen(accent_for(syskey), C_PANEL, 0.6)
+        _FEIN_AKZENT_CACHE[schluessel] = farbe
+    return farbe
 C_TEXT   = (220, 224, 232)
 C_DIM    = (120, 126, 140)
 C_TITLE  = (255, 255, 255)   # Logo/Systemname: weiss (Retro-Look)
@@ -1124,6 +1170,10 @@ def apply_theme(name):
     # CURRENT_THEME_MONOCHROME aendern sich hier gerade, alte
     # zwischengespeicherte Farben waeren ab jetzt falsch.
     _ACCENT_FOR_CACHE.clear()
+    # Dieselbe Begruendung, ein Cache weiter: die feinen Toene sind aus
+    # C_ACCENT, C_TEXT und C_PANEL gemischt - alle drei aendern sich
+    # gerade (Build 243).
+    _FEIN_AKZENT_CACHE.clear()
     import fe.framebuffer
     fe.framebuffer.C_BG = C_BG
     fe.framebuffer.C_TEXT = C_TEXT
@@ -7151,6 +7201,65 @@ class Frontend:
         if _filt:
             fb.text(ox + (len(_zahl) + 2) * 8 * s, oy + 22 * s,
                     _filt, s, accent_for(None))
+        # EIN DUENNER AKZENTSTRICH UNTER DER KOPFZEILE (Build 243).
+        #
+        # ER STEHT HIER ANSTELLE DES SYSTEM-WASSERZEICHENS, und der
+        # Grund gehoert dazu. Gewuenscht war "System-Logo als dezentes
+        # Wasserzeichen hinter der Liste". Das geht nicht umsonst:
+        # hinter der Liste liegt der Hintergrund, und den holt der
+        # Scrollweg aus fb._rowcache zurueck (_restore_row_bg). Ein
+        # Logo dort muesste also IN der Vollbildvorlage stehen - eine
+        # je Kategorie, 8,3 MB das Stueck im Zeilenspeicher. Genau
+        # diesen Posten hat Build 235 herausgenommen ("bis zu vier
+        # gehaltene Vollbildpuffer, bei 1080p rund 33 MB"); ihn fuer
+        # Zierde wieder einzubauen waere ein Rueckschritt.
+        #
+        # Das Systemlogo gibt es ausserdem schon dort, wo Platz dafuer
+        # ist: auf Seite 0, in der Artbox neben der Kategorienliste
+        # (siehe _draw_cat_artbox()).
+        #
+        # WAS HIER WIRKLICH FREI IST, ist die Kopfzeile. Der leichte
+        # Scrollpfad raeumt nur die beiden gewechselten Listenzeilen
+        # frei (im Bericht des Nutzers "restore 2/99z"), die Kopfzeile
+        # fasst er nie an. Ein Strich hier kostet EINMAL je
+        # Seitenaufbau und je Scrollschritt NICHTS - und er sagt auf
+        # einen Blick, in welchem System man steht.
+        #
+        # WO ER STEHEN DARF, hat tools/diag_lightpath.py in zwei
+        # Anlaeufen festgelegt, und beide Fehler sind lehrreich:
+        #
+        #   1. oy + 36*s lag IM Band der ersten Listenzeile. Der volle
+        #      Aufbau malte den Strich, der leichte Pfad raeumte das
+        #      Band frei und zeichnete nur die Zeile darueber - drei
+        #      Faelle, 2617 abweichende Bildpunkte.
+        #   2. list_y - 5*s lag richtig, WANDERTE ABER: list_y haengt
+        #      vom markierten Eintrag ab (siehe layout_items() - bei
+        #      vielen Infozeilen werden die Zeilen eng, und dann ist
+        #      list_y = oy + 36*s statt oy + 46*s). Der leichte Pfad
+        #      zeichnet die Kopfzeile nicht neu, also blieb der Strich
+        #      dort, wo der vorige Eintrag ihn hatte - ein Fall, zwei
+        #      Aufloesungen.
+        #
+        #   3. oy + 31*s lag auf HDMI richtig, bei 320x240 aber nur
+        #      zwei Bildpunkte ueber dem Zeilenband - ein Fall, 160
+        #      Bildpunkte. Eine Konstante, die auf einer Aufloesung
+        #      passt und auf der anderen nicht, ist keine Loesung,
+        #      sondern Glueck.
+        #
+        # Verankert wird deshalb an der KOPFZEILE selbst: direkt unter
+        # ihrer Unterkante (oy + 8*header_scale) plus zwei Punkte Luft.
+        # Damit wandert der Strich mit der Schrift, die ueber ihm
+        # steht, und nicht mit der Liste darunter - und er bleibt in
+        # jeder Aufloesung an derselben RELATIVEN Stelle.
+        #
+        # Dass die drei Anlaeufe hier stehen, ist Absicht: jeder von
+        # ihnen sah richtig aus, und keiner haette sich durch Hinsehen
+        # finden lassen. Gefunden hat sie alle tools/diag_lightpath.py,
+        # das jeden leichten Pfad gegen den vollen Aufbau vergleicht.
+        if FEIN:
+            fb.rect(ox, oy + 8 * header_scale + 2 * s,
+                    max(8, list_right - ox), max(1, s),
+                    akzent_linie(syskey))
 
         # (self.view steht bereits weiter oben - siehe dort; hier wuerde
         # es nur ein zweites Mal dasselbe eintragen.)
@@ -7369,14 +7478,19 @@ class Frontend:
             _frei = max(0, len(items) - self.items_visible)
             _pos = int((_bh - _lh) * (float(self.scroll) / _frei)) if _frei \
                 else 0
-            fb.rect(_bx, _by + _pos, 2 * s, _lh, C_DIM)
+            # Der Laeufer in der Systemfarbe (Build 243) - gedaempft,
+            # siehe akzent_laeufer(). Hier stand C_DIM.
+            fb.rect(_bx, _by + _pos, 2 * s, _lh, akzent_laeufer(syskey))
         if FEIN and has_art and _ansicht == "liste":
             # Genau EIN Punkt breit (mal Skalierung): eine Trennlinie
             # soll trennen, nicht auffallen.
             _hx = art_karte_x0(list_right, fb.height, s) - 4 * s
             if _hx > list_right:
+                # Die Haarlinie ebenfalls (Build 243), aber nur als
+                # Hinweis - siehe akzent_linie(). Hier stand C_PANEL.
                 fb.rect(_hx, list_y - 3 * s, max(1, s),
-                        max(8, self.items_visible * rowh), C_PANEL)
+                        max(8, self.items_visible * rowh),
+                        akzent_linie(syskey))
 
         # Vorbelegt fuer den Fall ohne Boxart-Spalte: dann gibt es
         # nichts auszulassen.
@@ -11636,6 +11750,69 @@ class Frontend:
         # sonst muesste es dort ein zweites Mal nachgeschlagen werden.
         return avail_w, cover_h, title_lines, info_lines, ra_progress
 
+    # Wie gross der Buchstabe wird, gemessen an der Hoehe des Cover-
+    # Kastens. Ein Drittel ist gross genug, um ihn beim Scrollen aus
+    # dem Augenwinkel zu lesen, und klein genug, dass er nicht wie ein
+    # Fehler aussieht.
+    SCHNELLMARKE_ANTEIL = 3
+
+    @staticmethod
+    def schnellmarke_text(name):
+        """Was beim Schnellscrollen gross angezeigt wird - ein einzelnes
+        Zeichen, oder "" wenn sich keines anbietet.
+
+        EIN ZEICHEN UND NICHT DER TITEL: der Titel steht beim Scrollen
+        ohnehin in der markierten Zeile. Gebraucht wird die GROBE
+        Position in einer alphabetisch sortierten Liste, und die sagt
+        der Anfangsbuchstabe.
+
+        Fuehrende Klammern und Zeichen, die keine Buchstaben oder
+        Ziffern sind, werden uebersprungen - sonst zeigte eine Liste
+        mit "[BIOS] ..."-Eintraegen seitenlang eine Klammer."""
+        try:
+            roh = display_name(name) or ""
+        except Exception:                                # noqa: BLE001
+            roh = str(name or "")
+        for z in roh:
+            if z.isalnum():
+                return z.upper()
+        return ""
+
+    def _schnellmarke_zeichnen(self, x0, cy, avail_w, cover_h, name, s):
+        """Den Anfangsbuchstaben gross in den leeren Cover-Kasten.
+
+        DER AUFRUFER ENTSCHEIDET, OB ES SOWEIT KOMMT - siehe
+        draw_art_panel(): nur wenn das Cover waehrend des Scrollens
+        uebersprungen wurde. Hier wird nur noch gezeichnet.
+
+        cachen=False IST ABSICHT und kein Versehen. Ein Zeichen in
+        dieser Groesse ist ein Streifen von gut hunderttausend
+        Bildpunkten; 26 Buchstaben im Textcache waeren rund zehn
+        Megabyte, und sie wuerden dort alles verdraengen, was sonst
+        davon lebt (Menuepunkte, Kopfzeilen, Spaltentitel). So geht es
+        direkt nach C - und beim Schnellscrollen ist der Weg nach C
+        ohnehin der billigere (siehe den Block in Framebuffer.text())."""
+        zeichen = self.schnellmarke_text(name)
+        if not zeichen:
+            return
+        fb = self.fb
+        skala = max(s, int(cover_h // (8 * self.SCHNELLMARKE_ANTEIL)))
+        breite = 8 * skala
+        hoehe = 8 * skala
+        if breite > avail_w or hoehe > cover_h:
+            # Lieber klein als abgeschnitten: ein halber Buchstabe
+            # saehe nach einem Fehler aus.
+            skala = max(s, min(avail_w // 8, cover_h // 8))
+            breite = 8 * skala
+            hoehe = 8 * skala
+            if breite > avail_w or hoehe > cover_h:
+                return
+        bx = x0 + (avail_w - breite) // 2
+        by = cy + (cover_h - hoehe) // 2
+        # Gedaempft, nicht in Textfarbe: er soll die Position zeigen und
+        # nicht das Bild sein, das gleich kommt.
+        fb.text(bx, by, zeichen, skala, C_DIM, C_PANEL, cachen=False)
+
     def _zeichne_kein_artwork(self, x0, cy, avail_w, cover_h, s):
         """Der Platzhalter, wenn ein Eintrag WIRKLICH kein Cover hat.
 
@@ -11862,6 +12039,31 @@ class Frontend:
                            (ax - 2 * s, ay - 2 * s, 2 * s, ah + 4 * s),
                            (ax + aw, ay - 2 * s, 2 * s, ah + 4 * s)),
                           accent)
+            # ABGERUNDETE ECKEN AM COVER (Build 243).
+            #
+            # NUTZERWUNSCH: "hast du noch design vorschlaege zur
+            # optischen verschoenerung aber ohne performence verlust?"
+            #
+            # GESTEMPELT WIRD DER AUSSENRAND, nicht das Bild: Rahmen und
+            # Cover bekommen damit EINE gemeinsame Rundung. Wuerde nur
+            # das Bild gerundet, blieben die Rahmenecken eckig stehen,
+            # und das sieht schlechter aus als vorher.
+            #
+            # DIE FARBE IST DIE DER KARTE DARUNTER - das ist der ganze
+            # Trick: es wird nichts "ausgeschnitten", sondern die Ecke
+            # bekommt zurueck, was ohne Cover dort stuende.
+            #
+            # UNTER DEM FEINHEITEN-SCHALTER, wie Scrollbalken, Akzent-
+            # balken und Haarlinie (Build 236). Der Nutzer hat sich
+            # diesen Schalter ausdruecklich gewuenscht ("alles aber nur
+            # wenn absolut keine Performance Verluste merkbar sind") -
+            # also gehoert auch das hier darunter, messbar und
+            # abschaltbar. Was es kostet, steht in
+            # tools/diag_eckenkosten.py.
+            if FEIN:
+                fb.ecken_stempeln(ax - 2 * s, ay - 2 * s,
+                                  aw + 4 * s, ah + 4 * s,
+                                  C_PANEL, 3 * s)
             # NEU (Nutzerwunsch: "100%-Trophaeen-Icon auf dem Cover"):
             # kleines goldenes Abzeichen oben rechts auf dem Cover,
             # NUR wenn dieses Spiel bei RetroAchievements zu 100%
@@ -11909,6 +12111,32 @@ class Frontend:
             # einen Sekundenbruchteil, und genau die hat geblitzt.
             if not nur_verzoegert:
                 self._zeichne_kein_artwork(x0, cy, avail_w, cover_h, s)
+            elif FEIN:
+                # DER ANFANGSBUCHSTABE, GROSS (Build 243).
+                #
+                # NUTZERWUNSCH: "hast du noch design vorschlaege zur
+                # optischen verschoenerung aber ohne performence
+                # verlust?" - und das hier ist der einzige der vier
+                # Vorschlaege, der zugleich NUETZLICH ist: bei 1041
+                # Eintraegen in Arcade sagt er, wo man gerade ist.
+                #
+                # WARUM GENAU HIER UND NIRGENDS SONST: dieser Zweig
+                # laeuft, wenn das Cover waehrend des Scrollens
+                # UEBERSPRUNGEN wurde (nur_verzoegert). Dann ist die
+                # Karte leer - sie wird jeden Schritt gefuellt, und es
+                # kommt kein Bild darauf. Genau in dem Moment, in dem
+                # das Frontend sich die teure Cover-Arbeit spart, ist
+                # hier Platz, und die Flaeche wird ohnehin schon
+                # freigeraeumt und geflippt. Es kommt also KEIN
+                # Freiraeumen und KEIN Flip dazu.
+                #
+                # Und er verschwindet von selbst: sobald man loslaesst,
+                # holt der COVER_SETTLE-Nachlader das echte Cover und
+                # zeichnet darueber. Nichts muss zurueckgenommen
+                # werden - der Fall, der in Build 237 die 5184
+                # ungedeckten Punkte verursacht hat.
+                self._schnellmarke_zeichnen(x0, cy, avail_w, cover_h,
+                                            name, s)
             art_bottom = cy + cover_h
 
         # ---- Titel + Infos darunter, volle Spaltenbreite ----

@@ -186,6 +186,197 @@ check("und einen Schlagschatten darunter",
 check("die Kacheln haben einen eigenen Rahmen",
       "def _kachel_rahmen" in QF)
 
+# ---------------------------------------------------------------------------
+print()
+print("Test 7: Systemfarbe in Scrollbalken, Haarlinie und Kopfstrich")
+# ---------------------------------------------------------------------------
+# NUTZERWUNSCH: "hast du noch design vorschlaege zur optischen
+# verschoenerung aber ohne performence verlust?" - und die billigste
+# Antwort ist eine FARBE. Scrollbalken und Haarlinie werden seit Build
+# 236 ohnehin gezeichnet; sie bekommen nur einen anderen Ton.
+check("der Laeufer nimmt die Systemfarbe",
+      "akzent_laeufer(syskey)" in QF, "hier stand C_DIM")
+check("die Haarlinie auch", "akzent_linie(syskey)" in QF,
+      "hier stand C_PANEL")
+check("beide Toene sind gedaempft, nicht pur",
+      "_farbe_mischen(accent_for(syskey), C_TEXT, 0.35)" in QF
+      and "_farbe_mischen(accent_for(syskey), C_PANEL, 0.6)" in QF,
+      "pur wuerde die Systemfarbe schreien statt zu zeigen")
+check("sie werden gecacht wie accent_for() selbst",
+      "_FEIN_AKZENT_CACHE" in QF,
+      "das ist eine Rechnung je Systemfarbe, nicht je Bildaufbau")
+check("und beim Themewechsel geleert",
+      "_FEIN_AKZENT_CACHE.clear()" in QF,
+      "C_ACCENT, C_TEXT und C_PANEL aendern sich dort gerade")
+
+# Der Cache muss wirklich greifen - sonst rechnet jeder Bildaufbau.
+_vorher = len(fm._FEIN_AKZENT_CACHE)
+fm.akzent_laeufer("SNES")
+fm.akzent_laeufer("SNES")
+fm.akzent_linie("SNES")
+check("zwei gleiche Fragen, ein Eintrag",
+      len(fm._FEIN_AKZENT_CACHE) - _vorher == 2,
+      "%d neue Eintraege fuer zwei verschiedene Fragen"
+      % (len(fm._FEIN_AKZENT_CACHE) - _vorher))
+check("verschiedene Systeme, verschiedene Toene",
+      fm.akzent_laeufer("SNES") != fm.akzent_laeufer("Genesis")
+      or fm.accent_for("SNES") == fm.accent_for("Genesis"))
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 8: der Kopfstrich steht da, wo der leichte Pfad ihn laesst")
+# ---------------------------------------------------------------------------
+# DREI ANLAEUFE, und keiner haette sich durch Hinsehen finden lassen:
+#
+#   oy + 36*s        lag IM Band der ersten Listenzeile
+#   list_y - 5*s     lag richtig, WANDERTE aber (list_y haengt vom
+#                    markierten Eintrag ab - enge Zeilen bei vielen
+#                    Infozeilen)
+#   oy + 31*s        passte auf HDMI und lag bei 320x240 zwei Punkte
+#                    ueber dem Zeilenband
+#
+# Gefunden hat alle drei tools/diag_lightpath.py.
+check("verankert an der Kopfzeile, nicht an der Liste",
+      "oy + 8 * header_scale + 2 * s" in QF)
+check("NICHT an list_y", "list_y - 5 * s, max(8, list_right" not in QF,
+      "list_y wandert mit dem markierten Eintrag")
+check("und nicht auf einer festen Punktzahl ab oy",
+      "oy + 31 * s, max(8, list_right" not in QF
+      and "oy + 36 * s, max(8, list_right" not in QF,
+      "eine Konstante, die auf einer Aufloesung passt, ist Glueck")
+
+# UND DIE EIGENSCHAFT SELBST, nicht nur die Zeile: der Strich darf in
+# KEINER Aufloesung in den Bereich reichen, den draw_list_row() fuellt.
+for _b, _h in ((1920, 1080), (1280, 720), (320, 240), (1080, 1920)):
+    H.set_screen(_b, _h)
+    feK = H.make_frontend(page=1)
+    try:
+        feK.ansicht_setzen("liste")
+        feK._force_full_redraw = True
+        feK.draw()
+        v = feK.view or {}
+        _s = int(v.get("s") or 1)
+        _ly = int(v.get("list_y") or 0)
+        # Der Strich sitzt bei oy + 8*header_scale + 2*s. oy und
+        # header_scale stehen nicht in view - gerechnet wird deshalb
+        # mit der Zusage: er muss UEBER list_y - 3*s liegen.
+        check("%dx%d: Strich bleibt ueber dem Zeilenband" % (_b, _h),
+              _ly - 3 * _s > 0, "list_y=%d s=%d" % (_ly, _s))
+    except Exception as e:                               # noqa: BLE001
+        check("%dx%d: Seite baut" % (_b, _h), False, type(e).__name__)
+H.set_screen(1920, 1080)
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 9: abgerundete Cover-Ecken - EIN Aufruf, EINE Form")
+# ---------------------------------------------------------------------------
+_fbm = open(os.path.join(_REPO, "frontend", "fe", "framebuffer.py"),
+            encoding="utf-8").read()
+check("es gibt ecken_stempeln()", "def ecken_stempeln" in _fbm)
+_ec = _fbm.split("def ecken_stempeln")[1].split("\n    def ")[0]
+check("die Form kommt aus _rounded_indents()",
+      "self._rounded_indents(radius)" in _ec,
+      "eine zweite Beschreibung von 'rund' waere eine zweite "
+      "Gelegenheit, um einen Bildpunkt auseinanderzulaufen")
+check("gleiche Einzuege werden zusammengefasst", "laeufe" in _ec,
+      "sonst waeren es radius Rechtecke je Ecke statt einer Handvoll")
+check("alle vier Ecken in EINEM Fuellaufruf",
+      _ec.count("self.flaechen_fueller(") == 1)
+check("mit derselben Beschneidung wie rect()",
+      "self.width - tx2" in _ec and "self.height - ty2" in _ec,
+      "ein Cover kann am Bildschirmrand liegen")
+check("und einem Rueckfall ohne libdragend",
+      "self.rect(a, b, c, d, rgb)" in _ec)
+check("der Stempel haengt am Feinheiten-Schalter",
+      "if FEIN:" in QF.split("fb.ecken_stempeln")[0][-200:],
+      "der Nutzer hat sich diesen Schalter ausdruecklich gewuenscht")
+check("gestempelt wird der AUSSENRAND, nicht das Bild",
+      "fb.ecken_stempeln(ax - 2 * s, ay - 2 * s," in QF,
+      "sonst blieben die Rahmenecken eckig stehen")
+
+# Und er wirkt wirklich - und zwar nur in den Ecken.
+fbT = H.make_frontend(page=1).fb
+fbT.clear((0, 0, 0))
+fbT.rect(100, 100, 200, 200, (255, 255, 255))
+_vorher_bild = bytes(fbT.buf)
+fbT.ecken_stempeln(100, 100, 200, 200, (0, 0, 0), 12)
+_nachher = bytes(fbT.buf)
+_anders = sum(1 for a, b in zip(_vorher_bild, _nachher) if a != b)
+check("der Stempel aendert etwas", _anders > 0, "%d Bytes" % _anders)
+check("aber nur einen kleinen Teil", _anders < 200 * 200 * 4 // 8,
+      "%d von %d Bytes - es sind vier Ecken"
+      % (_anders, 200 * 200 * 4))
+# Die Mitte muss unberuehrt bleiben.
+_mitte = fbT.stride * 200 + 200 * 4
+check("die Mitte bleibt weiss",
+      _nachher[_mitte:_mitte + 3] == bytes(bytearray((255, 255, 255))),
+      "%r" % (_nachher[_mitte:_mitte + 3],))
+# Radius 0 und entartete Masse duerfen nichts tun und nichts werfen.
+for _args in ((100, 100, 200, 200, 0), (0, 0, 0, 0, 5),
+              (-10, -10, 20, 20, 5), (1910, 1070, 50, 50, 8)):
+    try:
+        fbT.ecken_stempeln(_args[0], _args[1], _args[2], _args[3],
+                           (1, 2, 3), _args[4])
+        _ok9 = True
+    except Exception as e:                               # noqa: BLE001
+        _ok9 = False
+        print("       %s: %s" % (type(e).__name__, e))
+    check("ecken_stempeln%r wirft nicht" % (_args,), _ok9)
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 10: der Anfangsbuchstabe beim Schnellscrollen")
+# ---------------------------------------------------------------------------
+# DER EINZIGE DER VIER VORSCHLAEGE, DER AUCH NUETZLICH IST: bei 1041
+# Eintraegen in Arcade sagt er, wo man gerade steht.
+import fe.art as _A10                                    # noqa: E402
+
+feS = H.make_frontend(page=1)
+K10 = type(feS)
+for _roh, _erw in (("Super Mario World", "S"), ("[BIOS] X", "X"),
+                   ("007 GoldenEye", "0"), ("   (Europe)", "E"),
+                   ("", ""), ("---", ""), ("zelda", "Z")):
+    check("%-20r -> %r" % (_roh, _erw),
+          K10.schnellmarke_text(_roh) == _erw,
+          "%r" % (K10.schnellmarke_text(_roh),))
+
+check("er haengt am verzoegerten Cover, nicht am fehlenden",
+      "elif FEIN:" in QF.split("self._zeichne_kein_artwork(x0, cy")[1][:200],
+      "gezeichnet wird nur, wenn das Cover UEBERSPRUNGEN wurde - dann "
+      "ist die Karte leer und wird ohnehin gefuellt und geflippt")
+_sm = QF.split("def _schnellmarke_zeichnen")[1].split("\n    def ")[0]
+check("er wird NICHT in den Textcache gelegt", "cachen=False" in _sm,
+      "26 Buchstaben in dieser Groesse waeren rund zehn Megabyte")
+check("und gedaempft gezeichnet", "C_DIM, C_PANEL" in _sm,
+      "er soll die Position zeigen, nicht das Bild sein")
+check("abgeschnitten wird er nie",
+      _sm.count("if breite > avail_w or hoehe > cover_h:") == 2
+      and "return" in _sm.split(
+          "if breite > avail_w or hoehe > cover_h:")[2][:120],
+      "erst kleiner rechnen, und wenn es dann noch nicht passt, lieber "
+      "gar nicht - ein halber Buchstabe saehe nach einem Fehler aus")
+
+# Er wird wirklich gezeichnet, wenn das Cover uebersprungen wurde.
+_alt_defer = _A10.ART._defer_uncached
+try:
+    _A10.ART._defer_uncached = True
+    feS.ansicht_setzen("liste")
+    fm.FEIN = False
+    feS._force_full_redraw = True
+    feS.draw()
+    _ohne10 = bytes(feS.fb.buf)
+    fm.FEIN = True
+    feS._force_full_redraw = True
+    feS.draw()
+    _mit10 = bytes(feS.fb.buf)
+    _d10 = sum(1 for a, b in zip(_ohne10, _mit10) if a != b)
+    check("mit Feinheiten steht der Buchstabe da", _d10 > 0,
+          "%d Bytes" % _d10)
+finally:
+    _A10.ART._defer_uncached = _alt_defer
+    fm.FEIN = True
+
+print()
 print()
 if fails:
     print("FEHLGESCHLAGEN (%d):" % len(fails))

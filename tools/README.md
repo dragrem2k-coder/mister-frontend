@@ -2645,3 +2645,85 @@ Dateien dieses Geraets in den **echten** Kastengroessen:
 Die Haken werden direkt danach im `finally` geloest - bleiben sie
 stehen, messen alle folgenden Abschnitte durch sie hindurch, und das
 waere ein Messfehler, der nach einem Befund aussieht.
+
+
+## diag_eckenkosten.py und die vier Verschoenerungen (Build 243)
+
+NUTZERWUNSCH: "hast du noch design vorschlaege zur optischen
+verschoenerung aber ohne performence verlust?" - vier Vorschlaege, alle
+vier gebaut, alle vier unter dem **Feinheiten-Schalter** aus Build 236.
+
+| | kostet je Scrollschritt |
+|---|---|
+| Akzentfarbe je System (Laeufer, Haarlinie) | **nichts** - es ist eine Farbe |
+| Strich unter der Kopfzeile | **nichts** - der leichte Pfad fasst die Kopfzeile nie an |
+| Abgerundete Cover-Ecken | rund **0,71 ms**, und nur wenn ein Cover da ist |
+| Anfangsbuchstabe beim Schnellscrollen | ein Textaufruf, genau dann wenn das Cover **ausgelassen** wird |
+
+### Die Ecken: ein Aufruf, 16 Rechtecke
+
+`diag_eckenkosten.py` zaehlt erst den Stempel selbst und misst dann
+abwechselnd mit und ohne:
+
+```
+ DER STEMPEL SELBST: 1 Aufruf(e), 16 Rechtecke
+ -> auf dem Geraet rund 0.71 ms (1 x 0.39 + 16 x 0.02)
+
+   liste    1.197 ms   1.292 ms   +0.096 ms  (Streuung 0.290, im Rauschen)
+   raster   0.593 ms   0.549 ms   -0.044 ms  (Streuung 0.136, im Rauschen)
+   galerie  0.883 ms   0.935 ms   +0.052 ms  (Streuung 0.796, im Rauschen)
+```
+
+Die Form kommt aus `_rounded_indents()` - derselben Tabelle, die
+`rect_rounded()` benutzt. **Es gibt im Frontend genau EINE Beschreibung
+davon, was "rund" heisst**; eine zweite waere eine zweite Gelegenheit,
+um einen Bildpunkt auseinanderzulaufen. Gestempelt wird der
+**Aussenrand** (Rahmen plus Cover), nicht das Bild allein - sonst
+blieben die Rahmenecken eckig stehen.
+
+### Der Buchstabe: an der Stelle, an der die Karte ohnehin leer ist
+
+Beim gehaltenen Scrollen laesst das Frontend die Boxart aus
+(`ART._defer_uncached`) - die Karte wird jeden Schritt gefuellt und
+bleibt leer. Genau dort steht jetzt der Anfangsbuchstabe: **kein
+zusaetzliches Freiraeumen, kein zusaetzlicher Flip**, und beim
+Loslassen zeichnet der COVER_SETTLE-Nachlader das echte Cover darueber.
+Es muss nichts zurueckgenommen werden - der Fall, der in Build 237 die
+5184 ungedeckten Punkte verursacht hat.
+
+`cachen=False` ist Absicht: ein Zeichen in dieser Groesse ist ein
+Streifen von gut hunderttausend Bildpunkten, 26 Buchstaben waeren rund
+**zehn Megabyte** im Textcache - und sie wuerden dort alles
+verdraengen, was sonst davon lebt.
+
+### Der Kopfstrich: DREI falsche Anker, alle von diag_lightpath gefunden
+
+Das ist der lehrreichste Teil dieses Builds. Gewuenscht war ein
+**System-Logo als Wasserzeichen hinter der Liste**. Das geht nicht
+umsonst: hinter der Liste liegt der Hintergrund, und den holt der
+Scrollweg aus `fb._rowcache` zurueck. Ein Logo dort muesste **in** der
+Vollbildvorlage stehen - eine je Kategorie, 8,3 MB das Stueck. Genau
+diesen Posten hat Build 235 herausgenommen ("bis zu vier gehaltene
+Vollbildpuffer, bei 1080p rund 33 MB"). Und das Systemlogo gibt es
+ohnehin schon dort, wo Platz dafuer ist: auf Seite 0, in der Artbox.
+
+Also ein Strich unter der Kopfzeile - und der hat **drei Anlaeufe**
+gebraucht:
+
+| Anker | was passierte |
+|---|---|
+| `oy + 36*s` | lag IM Band der ersten Listenzeile. Voller Aufbau malte ihn, der leichte Pfad raeumte das Band frei → 3 Faelle, **2617** abweichende Punkte |
+| `list_y - 5*s` | lag richtig, **wanderte aber**: `list_y` haengt vom markierten Eintrag ab (enge Zeilen bei vielen Infozeilen) → 2 Faelle, **2737** Punkte |
+| `oy + 31*s` | passte auf 1080p, lag bei 320x240 zwei Punkte ueber dem Zeilenband → 1 Fall, **160** Punkte |
+| `oy + 8*header_scale + 2*s` | **0 Faelle, 0 Punkte** |
+
+Jeder der drei sah beim Hinsehen richtig aus. Keiner haette sich durch
+Lesen finden lassen. Gefunden hat alle drei `diag_lightpath.py`, das
+jeden leichten Pfad gegen den vollen Aufbau vergleicht - **das ist der
+Grund, warum dieses Werkzeug existiert.**
+
+**Nebenbefund:** der Scrollbalken-Laeufer hat dieselbe Eigenschaft
+(seine Laenge haengt an `items_visible`, und das haengt am markierten
+Eintrag). Bei `C_DIM` fiel das nicht auf; in der Systemfarbe schon. Die
+Pruefung in `test_feinheiten.py` Test 8 haelt das jetzt fuer alle vier
+Aufloesungen fest.

@@ -1593,6 +1593,99 @@ class Framebuffer:
         for (x, y, w, h) in fertig:
             self.rect(x, y, w, h, rgb)
 
+    def ecken_stempeln(self, x, y, w, h, rgb, radius=None):
+        """Die vier Ecken eines Rechtecks in rgb uebermalen, damit es
+        abgerundet AUSSIEHT (Build 243).
+
+        WOFUER: ein Cover wird als Rechteck in den Puffer kopiert
+        (self.blit) - eine Rundung laesst sich dort nicht einbauen, ohne
+        je Bildpunkt zu entscheiden, und das waere der teuerste
+        denkbare Weg. Stattdessen wird HINTERHER gestempelt: die Ecken
+        bekommen die Farbe der Karte darunter, und fertig ist die
+        Rundung.
+
+        DIE FORM KOMMT AUS _rounded_indents(), und das ist der ganze
+        Punkt an dieser Funktion. Es gibt im Frontend genau EINE
+        Beschreibung davon, was "abgerundet" heisst; eine zweite waere
+        eine zweite Gelegenheit, um einen Bildpunkt auseinanderzulaufen.
+        Dieselbe Tabelle benutzen rect_rounded() und
+        rect_rounded_schatten().
+
+        EIN AUFRUF FUER ALLE VIER ECKEN, und gleiche Einzuege werden
+        vorher zu einem Rechteck zusammengefasst. Die Begruendung steht
+        in Abschnitt I.3 des Bench: ein C-Fuellaufruf kostet auf dem
+        DE10-Nano rund 0,39 ms Grundpreis, ein weiteres Rechteck im
+        selben Aufruf dagegen rund 0,02 ms (Abschnitt H.2). Vier
+        einzelne Aufrufe je Ecke waeren also teurer als die Rundung
+        wert ist.
+
+        Gezeichnet wird nur in den PUFFER; auf den Schirm kommt es mit
+        dem naechsten Flip."""
+        x = int(x); y = int(y)
+        w = int(w); h = int(h)
+        if w <= 0 or h <= 0:
+            return
+        if radius is None:
+            radius = max(1, min(w, h) // 8)
+        radius = max(0, min(int(radius), w // 2, h // 2))
+        if radius <= 0:
+            return
+        indents = self._rounded_indents(radius)
+        # GLEICHE EINZUEGE ZU EINEM RECHTECK: die Tabelle ist monoton,
+        # benachbarte Zeilen haben oft denselben Einzug. Aus 2 x radius
+        # Zeilen werden dadurch typischerweise eine Handvoll Rechtecke
+        # je Ecke statt radius Stueck.
+        laeufe = []
+        start = 0
+        for i in range(1, radius + 1):
+            if i == radius or indents[i] != indents[start]:
+                laeufe.append((start, i - start, indents[start]))
+                start = i
+        teile = []
+        for (off, hoch, ein) in laeufe:
+            if ein <= 0:
+                continue
+            breit = min(ein, w)
+            # oben links / oben rechts
+            teile.append((x, y + off, breit, hoch))
+            teile.append((x + w - breit, y + off, breit, hoch))
+            # unten links / unten rechts - gespiegelt
+            uy = y + h - off - hoch
+            teile.append((x, uy, breit, hoch))
+            teile.append((x + w - breit, uy, breit, hoch))
+        if not teile:
+            return
+        # DIESELBE BESCHNEIDUNG WIE rect(), sonst waere das Ergebnis am
+        # Bildschirmrand ein anderes - und ein Cover kann dort liegen.
+        fertig = []
+        zeilen = 0
+        punkte = 0
+        for (tx, ty, tw, th) in teile:
+            tx2 = max(0, tx); ty2 = max(0, ty)
+            tw2 = min(tw - (tx2 - tx), self.width - tx2)
+            th2 = min(th - (ty2 - ty), self.height - ty2)
+            if tw2 <= 0 or th2 <= 0:
+                continue
+            fertig.append((tx2, ty2, tw2, th2))
+            zeilen += th2
+            punkte += tw2 * th2
+        if not fertig:
+            return
+        if self.flaechen_fueller is not None:
+            farbe = self._farbwert(self.px(rgb))
+            try:
+                if self.flaechen_fueller(
+                        self.buf, self.stride, self.height, len(self.buf),
+                        tuple((a, b, c, d, farbe)
+                              for (a, b, c, d) in fertig)):
+                    return
+            except Exception:                            # noqa: BLE001
+                pass
+        # Ohne libdragend: einzeln. Bitgenau dasselbe, nur langsamer -
+        # und richtig ist wichtiger als schnell.
+        for (a, b, c, d) in fertig:
+            self.rect(a, b, c, d, rgb)
+
     def _rounded_indents(self, radius):
         """Einzug je Randzeile fuer eine Eckenrundung dieses Radius -
         einmal berechnet, dann aus dem Zwischenspeicher. Ausgelagert in
