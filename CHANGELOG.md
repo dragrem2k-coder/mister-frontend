@@ -908,6 +908,48 @@ du dir ausdrücklich gewünscht hast.
   zusätzliches Freiräumen, kein zusätzlicher Flip. Beim Loslassen zeichnet
   das echte Cover darüber.
 
+**Scrollen mit Cover: die Karte spart den Cover-Kasten aus.**
+
+- Abschnitt K hat geliefert, wofür er gebaut wurde — den größten Einzelposten
+  eines Scrollschritts, mit Namen und Zahl: **die Cover-Karte, 8,295 ms**, bei
+  einem Schritt von 39,42 ms.
+- **Was dabei passierte:** hältst du die Taste gedrückt und ist „Cover sofort"
+  an, wird das Cover übersprungen — die Karte aber **jeden Schritt** komplett
+  neu gefüllt. Dabei sieht der Cover-Kasten genauso aus wie im Schritt davor:
+  derselbe leere Kasten, derselbe Anfangsbuchstabe. Nur der **Text** darunter
+  wechselt.
+- Jetzt wird die Karte weiter gezeichnet — Ecken, Schatten, Rand, Textbereich
+  —, aber die **Fläche des Cover-Kastens ausgespart**. Den Mechanismus dafür
+  gibt es seit Build 234/238. Gemessen: gefüllte Bytes **2,71 → 0,66 MB**.
+  Nach dem Kostenmodell aus dem Bench sind das auf dem MiSTer **6,73 → 2,89
+  ms** je Schritt.
+- Es greift nur **ohne** Cover: mit Cover wechselt das Bild ohnehin jeden
+  Schritt, da gibt es nichts zu sparen.
+
+**Und etwas, das fertig und schneller war — und trotzdem nicht ausgeliefert
+wird.**
+
+- Der erste Entwurf ließ die Karte **ganz** weg und malte nur den Textblock.
+  Gemessen war er besser: gefüllt 2,71 → 0,44 MB, geflippt 3,62 → **1,13 MB**.
+  Dafür waren zusätzlich der Flip umgebaut (getrennte Bänder statt einer
+  Spanne) und eine Rückmeldung aus dem Panel eingebaut. Beides war fertig und
+  grün.
+- **Dann hat ein byte-genauer Test es überführt:** 69 Bytes Unterschied
+  zwischen Puffer und Bildschirm, an der unteren rechten Kartenecke — ein
+  Dreieck von 17 Bildpunkten. Die Umgebung der Eckenrundung wird nämlich
+  *nicht* von der Karte gefüllt; ohne den Kartenaufruf blieb dort, was der
+  vorige Schritt hinterlassen hatte. Genau die Sorte Rest, die dieses Projekt
+  fünfmal gejagt hat.
+- Die Aussparung ist der kleinere, aber **erklärbare** Gewinn. Der Flip-Umbau
+  ist wieder **ausgebaut** — er war für einen Entwurf gebaut, den es nicht
+  mehr gibt, und unbenutzte Maschinerie im Flip-Pfad ist genau dort, wo man
+  sie nicht haben will.
+- **Ein Fehler, vor dem Ausliefern gefunden:** die Kennung des Covers stand
+  erst als Speicheradresse da. Python gibt die Adresse eines aufgeräumten
+  Objekts wieder aus — zwei verschiedene Cover gleicher Größe hätten dieselbe
+  Kennung bekommen, und dann wäre das Cover des vorigen Spiels stehen
+  geblieben. Jetzt entscheidet der Pfad.
+
 **Das Wasserzeichen gibt es nicht — und der Grund gehört dazu.**
 
 Gewünscht war das System-Logo dezent *hinter der Liste*. Dort liegt der

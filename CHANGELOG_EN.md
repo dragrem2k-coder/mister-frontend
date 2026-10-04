@@ -760,6 +760,41 @@ All four sit behind the **fine-details switch** (System → Display & sound).
   where the card is **already blank** while scrolling: no extra clearing, no
   extra flip. On release the real cover is drawn over it.
 
+**Scrolling with covers: the card now spares the cover box.**
+
+- Section K delivered what it was built for — the largest single item of a
+  scroll step, with a name and a number: **the cover card, 8.295 ms**, out of
+  a 39.42 ms step.
+- **What was happening:** hold the key down with "covers immediately" on and
+  the cover is skipped — yet the card was refilled completely **every step**,
+  while the cover box looked exactly as it did the step before: same empty
+  box, same initial letter. Only the **text** below changes.
+- The card is now still drawn — corners, shadow, border, text area — but the
+  **area of the cover box is spared**. The mechanism for that has existed
+  since Build 234/238. Measured: filled bytes **2.71 → 0.66 MB**. By the
+  bench's cost model that is **6.73 → 2.89 ms** per step on the MiSTer.
+- It only applies **without** a cover: with one, the picture changes every
+  step anyway, so there is nothing to save.
+
+**And something that was finished and faster — and still is not shipped.**
+
+- The first attempt dropped the card **entirely** and painted only the text
+  block. It measured better: filled 2.71 → 0.44 MB, flipped 3.62 → **1.13
+  MB**. It also required rebuilding the flip (separate bands instead of one
+  span) and a report back from the panel. All of it was finished and passing.
+- **Then a byte-exact test convicted it:** 69 bytes of difference between
+  buffer and screen, at the card's bottom-right corner — a triangle of 17
+  pixels. The surroundings of the corner rounding are *not* filled by the
+  card; without the card call, whatever the previous step left stayed there.
+  Exactly the kind of remnant this project has chased five times.
+- Sparing the box is the smaller but **explicable** gain. The flip rebuild has
+  been **removed again** — it was built for a design that no longer exists, and
+  unused machinery in the flip path is precisely where you do not want it.
+- **One bug caught before shipping:** the cover's identity was first keyed on
+  a memory address. Python reuses the address of a collected object — two
+  different covers of the same size would have shared an identity, and the
+  previous game's cover would have stayed on screen. The path decides now.
+
 **There is no watermark — and the reason belongs here.**
 
 The wish was the system logo subtly *behind the list*. That is where the

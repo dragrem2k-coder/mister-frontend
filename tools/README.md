@@ -2727,3 +2727,104 @@ Grund, warum dieses Werkzeug existiert.**
 Eintrag). Bei `C_DIM` fiel das nicht auf; in der Systemfarbe schon. Die
 Pruefung in `test_feinheiten.py` Test 8 haelt das jetzt fuer alle vier
 Aufloesungen fest.
+
+
+## diag_panel_kurzweg.py (Build 244)
+
+Abschnitt K hat geliefert, wofuer er gebaut wurde - den groessten
+Einzelposten eines Scrollschritts, mit Namen und Zahl:
+
+```
+ Liste liste   ges 39,42 ms
+   karte_mit_schatten  769x945    8,295 ms
+```
+
+**Was dabei passiert**, wenn man die Taste gedrueckt haelt und "Cover
+sofort" an ist (die Einstellung des Nutzers): das Cover wird
+uebersprungen, die Karte wird trotzdem **jeden Schritt** komplett
+gefuellt. Dabei sieht der Cover-Kasten genauso aus wie im Schritt davor
+- derselbe leere Kasten, derselbe Anfangsbuchstabe. Nur der **Text**
+darunter wechselt.
+
+### Was der kurze Weg tut
+
+Er zeichnet die Karte **weiter** - Ecken, Schatten, Rand, Textbereich -,
+spart aber die Flaeche des Cover-Kastens aus. Dafuer gibt es den
+Mechanismus schon: `karte_mit_schatten(aussparen=...)` aus Build
+234/238.
+
+```
+                         ohne          mit      gespart
+   gefuellte Zeilen      1824 z       2592 z      -768 z
+   gefuellte Bytes       2.71 MB      0.66 MB     2.04 MB
+   geflippte Bytes       3.39 MB      3.39 MB     0.00 MB
+   Schritt (hier)        1.065 ms     0.833 ms    0.233 ms
+```
+
+Nach dem Kostenmodell aus Abschnitt I.1 (je Zeile 0,000576 ms, je MB
+2,1 ms - gewonnen aus 136 langen gegen 952 kurze Zeilen in C):
+
+| | |
+|---|---|
+| ohne | 1824 Zeilen + 2,71 MB = **6,73 ms** |
+| mit | 2592 Zeilen + 0,66 MB = **2,89 ms** |
+
+Die Zeilenzahl **steigt** (die Aussparung zerlegt das Band in schmale
+Streifen), die Bytes fallen auf ein Viertel - und auf diesem Geraet
+ueberwiegen die Bytes deutlich.
+
+**Der Flip aendert sich nicht, und das ist Absicht:** die Karte wird
+weiter gezeichnet, also ist die angefasste Flaeche dieselbe.
+
+### Und was NICHT gebaut wurde, obwohl es fertig und schneller war
+
+Der erste Entwurf liess die Karte **ganz** weg und malte nur den
+Textblock. Gemessen sah er besser aus:
+
+```
+   gefuellte Bytes       2.71 MB      0.44 MB     2.27 MB
+   geflippte Bytes       3.62 MB      1.13 MB     2.49 MB   <-- !
+```
+
+Dafuer musste zusaetzlich der Flip umgebaut werden
+(`_baender_oder_rechtecke()`: getrennte Baender statt einer Spanne,
+Deckungspruefung je Band) und `draw_art_panel()` musste melden, was es
+angefasst hat. Beides war gebaut und gruen.
+
+**Dann hat `tools/test_rechteck_flip.py` es ueberfuehrt:** 69 Bytes
+Unterschied zwischen Puffer und Schirm, an der unteren rechten
+Kartenecke, ein Dreieck von 17 Bildpunkten.
+
+Der Grund: die Umgebung der Eckenrundung wird **nicht** von der Karte
+gefuellt - sie liegt ausserhalb der Kurve. Ohne den Kartenaufruf blieb
+dort, was der vorige Schritt hinterlassen hatte, und ein voller Aufbau
+malt dort etwas anderes. Genau die Sorte Rest, die dieses Projekt
+fuenfmal gejagt hat (Build 80, 122, 125, 128, 237).
+
+Die Aussparung ist der kleinere, aber erklaerbare Gewinn. Der Rest -
+getrennte Baender, Bereichsmeldung - ist **wieder ausgebaut**: er war
+fuer einen Entwurf gebaut, den es nicht mehr gibt, und unbenutzte
+Maschinerie im Flip-Pfad ist genau dort, wo man sie nicht haben will.
+
+### Drei eigene Messfehler auf dem Weg
+
+1. **Der Pruefstand zaehlte am falschen Objekt.** `_defer_count` sitzt
+   auf der ArtCache-**Instanz**; der erste Entwurf setzte es am Modul.
+   `nur_verzoegert` blieb falsch, und die Messung zeigte brav, dass der
+   kurze Weg nichts bringt.
+2. **`flip_rows` fehlte am Haken.** Bei kleiner Aenderungsflaeche
+   waehlt das Frontend den Zeilen-Flip statt der Rechtecke. Der erste
+   Entwurf meldete daraufhin "0,00 MB geflippt" - er sah besser aus,
+   als er war.
+3. **Die Bisektion war irrefuehrend**, weil ich drei Teile gleichzeitig
+   zurueckgedreht habe. Erst das Zurueckdrehen EINES Teils hat gezeigt,
+   dass der kurze Weg selbst die Ursache war und nicht der Flip-Umbau.
+
+Und einer im Frontend, vor dem Ausliefern gefunden: die Kennung des
+Covers stand als `id(pix)` da. CPython gibt die Adresse eines
+aufgeraeumten Objekts wieder aus - zwei verschiedene Cover gleicher
+Groesse haetten dieselbe Kennung bekommen, und auf dem Schirm waere das
+Cover des vorigen Spiels stehengeblieben. Jetzt kommt sie aus
+`cover_quelle()` plus Kastengroesse. (Der kurze Weg greift inzwischen
+ohnehin nur ohne Cover - aber ein Schluessel, der luegen kann, bleibt
+ein Schluessel, der luegen kann.)

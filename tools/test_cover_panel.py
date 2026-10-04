@@ -352,9 +352,13 @@ for name, luecke in (
 check("der Aufrufer prueft die Laenge der Quelle",
       "len(pix) >= (ah - 1) * aw * 4 + aw * 4" in src,
       "sonst bliebe bei einem kurzen Cover ein Streifen stehen")
+# GEAENDERT (Build 244): der Aufruf heisst jetzt
+# "aussparen=(_kasten_luecke if _kurz else _luecke)" - es gibt zwei
+# Aussparungen, die Cover-Flaeche (Build 234) und die Flaeche des
+# ganzen Cover-Kastens auf dem kurzen Weg. Die Zusage bleibt dieselbe.
 check("und zeichnet die Karte erst, wenn das Cover bekannt ist",
       src.index("art = ART.get_scaled(")
-      < src.index("card_radius, aussparen=_luecke)"),
+      < src.index("aussparen=(_kasten_luecke if _kurz"),
       "vorher wusste niemand, wo das Cover hinkommt")
 check("ohne Cover wird voll gefuellt wie bisher",
       "_luecke = None" in src)

@@ -6515,9 +6515,9 @@ class Frontend:
         _spuren = self._flip_spuren
         self._flip_spuren = None
         if regions:
+            _tf = time.monotonic()
             y0 = min(r[0] for r in regions)
             y1 = max(r[1] for r in regions)
-            _tf = time.monotonic()
             # Build 218: zuerst die Rechtecke. Sie decken auf 1080p rund
             # 3,2 statt 6,83 MB ab; sagt die Deckungspruefung nein,
             # bleibt es beim Band von Build 93 - unveraendert.
@@ -11958,10 +11958,97 @@ class Frontend:
         # dann darf hier KEIN Platzhalter erscheinen, denn das Cover
         # kommt gleich (siehe _defer_count in fe/art.py).
         _defer_vorher = getattr(ART, "_defer_count", 0)
-        art = ART.get_scaled(self.cover_quelle(syskey, lookup_name),
+        # EINMAL gerechnet, zweimal gebraucht: einmal fuer das Bild,
+        # einmal als Kennung fuer den kurzen Weg (siehe _kasten unten).
+        _quelle_fuer_stand = self.cover_quelle(syskey, lookup_name)
+        art = ART.get_scaled(_quelle_fuer_stand,
                              avail_w, cover_h, auslagern_ok=True)
         nur_verzoegert = (art is None
                           and getattr(ART, "_defer_count", 0) != _defer_vorher)
+
+        # DER STAND DES PANELS (Build 244) - die Grundlage fuer den
+        # kurzen Weg weiter unten. Drei Bedingungen, und jede einzelne
+        # ist noetig:
+        #
+        #   1. fb.full_redraw_gen unveraendert. Jeder volle Aufbau
+        #      schreibt den Puffer neu (clear() oder die
+        #      Hintergrundkopie) - danach ist von der Karte nichts mehr
+        #      da, was man wiederverwenden koennte. Der Zaehler steht
+        #      seit Build 182 genau dafuer bereit.
+        #   2. Geometrie und Farben gleich. Themewechsel,
+        #      Aufloesungswechsel, andere Spaltenbreite - alles Faelle,
+        #      in denen die alte Karte nicht mehr passt.
+        #   3. Der Inhalt des Kastens gleich. Mit Cover ist das die
+        #      Identitaet des Bildes, ohne Cover der Buchstabe aus
+        #      Build 243. Beim Blaettern durch eine sortierte Liste
+        #      bleibt der oft seitenlang derselbe.
+        #
+        # DIE IDENTITAET DES COVERS KOMMT VOM PFAD, NICHT VON id(pix).
+        # Im ersten Entwurf stand dort die Objektadresse - und CPython
+        # gibt die Adresse eines aufgeraeumten Objekts wieder aus. Zwei
+        # verschiedene Cover gleicher Groesse haetten dieselbe Kennung
+        # bekommen, der kurze Weg haette sie fuer dasselbe Bild
+        # gehalten, und auf dem Schirm waere das Cover des vorigen
+        # Spiels stehengeblieben.
+        _kasten = None
+        if art:
+            _aw0, _ah0, _pix0 = art
+            _kasten = ("bild", _quelle_fuer_stand, _aw0, _ah0, len(_pix0))
+        elif nur_verzoegert:
+            _kasten = ("marke", self.schnellmarke_text(name) if FEIN else "")
+        _stand = (x0, w, y0, h, s, cy, cover_h, avail_w,
+                  C_PANEL, C_BG, accent, bool(FEIN), _kasten,
+                  getattr(fb, "full_redraw_gen", 0))
+        # NUR OHNE COVER. Mit Cover wechselt das Bild von Schritt zu
+        # Schritt ohnehin - dann gibt es nichts zu sparen, und der
+        # Vergleich kostete nur.
+        _kurz = (_kasten is not None and _kasten[0] == "marke"
+                 and getattr(self, "_panel_stand", None) == _stand)
+        self._panel_stand = _stand
+
+        # ---- DER KURZE WEG: DIE KARTE OHNE DEN COVER-KASTEN ----
+        #
+        # DER BEFUND KOMMT AUS ABSCHNITT K des Bench vom 04.10., und es
+        # ist der groesste Einzelposten eines Scrollschritts:
+        #
+        #     karte_mit_schatten  769x945    8,295 ms je Schritt
+        #
+        # WAS DABEI PASSIERT, wenn man die Taste gedrueckt haelt und
+        # "Cover sofort" an ist (die Einstellung des Nutzers): das Cover
+        # wird uebersprungen, die Karte wird trotzdem JEDEN Schritt
+        # komplett gefuellt, der Anfangsbuchstabe kommt hinein. Dabei
+        # sieht der Cover-Kasten genauso aus wie im Schritt davor -
+        # derselbe leere Kasten, derselbe Buchstabe. Nur der TEXT
+        # darunter wechselt.
+        #
+        # ALSO WIRD DER KASTEN AUSGESPART, mit genau dem Mechanismus,
+        # den es dafuer schon gibt (karte_mit_schatten(aussparen=...),
+        # Build 234/238). Die Karte wird gezeichnet wie immer - Ecken,
+        # Schatten, Rand, Textbereich -, nur die Flaeche des Kastens
+        # bleibt stehen.
+        #
+        # WARUM NICHT DIE GANZE KARTE WEGLASSEN: genau das war der
+        # erste Entwurf, und tools/test_rechteck_flip.py hat ihn
+        # ueberfuehrt - 69 Bytes Unterschied zur unteren rechten
+        # Kartenecke. Die Umgebung der Eckenrundung wird naemlich NICHT
+        # von der Karte gefuellt (sie liegt ausserhalb der Kurve), und
+        # ohne den Kartenaufruf blieb dort, was der vorige Schritt
+        # hinterlassen hatte. Ein voller Aufbau malt dort etwas
+        # anderes. Siebzehn Bildpunkte in einer Ecke - genau die Sorte
+        # Rest, die dieses Projekt fuenfmal gejagt hat.
+        #
+        # DIE ZUSAGE DER AUSSPARUNG IST HIER ERFUELLT, nur anders als
+        # sonst: ueblich ist "der Aufrufer malt gleich darueber". Hier
+        # steht dort schon das Richtige, und _stand oben garantiert
+        # das - gleiche Geometrie, gleiche Farben, gleicher Inhalt,
+        # kein voller Aufbau dazwischen.
+        _kasten_luecke = None
+        if _kurz:
+            _kl_y = cy
+            _kl_h = cover_h
+            if _kl_h > 0 and avail_w > 0:
+                _kasten_luecke = (x0, _kl_y, avail_w, _kl_h)
+
 
         # DIE KARTE - UND DIE FLAECHE, DIE SIE SICH SPAREN KANN.
         #
@@ -11995,9 +12082,15 @@ class Frontend:
                     and len(pix) >= (ah - 1) * aw * 4 + aw * 4
                     and ax + aw <= fb.width and ay + ah <= fb.height):
                 _luecke = (ax, ay, aw, ah)
+        # Auf dem kurzen Weg wird der ganze Cover-Kasten ausgespart -
+        # siehe _kasten_luecke oben. Es gibt dort kein Cover, also auch
+        # keine Cover-Aussparung; die beiden koennen nie gleichzeitig
+        # auftreten.
         fb.karte_mit_schatten(x0 - pad, y0 - pad, w + 2 * pad, h + 2 * pad,
                               shadow_off, C_PANEL, fb._darken(C_BG, 0.55),
-                              card_radius, aussparen=_luecke)
+                              card_radius,
+                              aussparen=(_kasten_luecke if _kurz
+                                         else _luecke))
         if art:
             # Schlagschatten: dunkler, leicht versetzter Bereich UNTER
             # dem Cover, VOR dem eigentlichen Bild gezeichnet.
@@ -12109,7 +12202,12 @@ class Frontend:
             # 150 ms von selbst (COVER_SETTLE). Bis dahin bleibt die
             # Karte einfach leer - der Platzhalter waere eine Luege fuer
             # einen Sekundenbruchteil, und genau die hat geblitzt.
-            if not nur_verzoegert:
+            if _kurz:
+                # DER KASTEN STEHT SCHON RICHTIG DA - genau das ist der
+                # kurze Weg. Buchstabe, Hintergrund, alles unveraendert;
+                # _stand oben hat es garantiert.
+                pass
+            elif not nur_verzoegert:
                 self._zeichne_kein_artwork(x0, cy, avail_w, cover_h, s)
             elif FEIN:
                 # DER ANFANGSBUCHSTABE, GROSS (Build 243).
@@ -12144,6 +12242,28 @@ class Frontend:
         # falls das Bild (z.B. wegen krummer Rundung) doch groesser als
         # cover_h ausfaellt, verhindert das trotzdem zuverlaessig eine
         # Ueberlappung mit den Infos.
+        self._panel_text_zeichnen(x0, y0, h, s, cy, cover_h,
+                                  art_bottom, line_h, title_lines,
+                                  info_lines)
+
+    def _panel_text_zeichnen(self, x0, y0, h, s, cy, cover_h,
+                             art_bottom, line_h, title_lines,
+                             info_lines):
+        """Titel und Datenzeilen unter dem Cover.
+
+        HERAUSGELOEST IN BUILD 244, als draw_art_panel() zu lang
+        wurde, um die beiden Aussparungen (Cover und Cover-Kasten)
+        noch ueberblicken zu koennen. Reine Umstellung: dieselben
+        Zeilen, dieselbe Reihenfolge, derselbe Abbruch - geprueft mit
+        tools/diag_lightpath.py (34 Faelle bitgenau) und
+        tools/test_rechteck_flip.py (Puffer gegen Schirm).
+
+        Der eigentliche Grund, warum sie einen Namen bekommen hat:
+        der Textblock ist der Teil, der beim Scrollen IMMER neu muss,
+        und der Kasten darueber der Teil, der oft bleiben kann. Das
+        auseinanderzuhalten ist leichter, wenn beide heissen.
+        """
+        fb = self.fb
         iy = max(cy + cover_h, art_bottom) + 6 * s
         y_max = y0 + h - 2 * s
 
