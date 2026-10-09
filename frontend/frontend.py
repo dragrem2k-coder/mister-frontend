@@ -6738,17 +6738,49 @@ class Frontend:
         # Ein paar Punkte Rand, weil der Schatten der Karte ueber ihre
         # Masse hinausreicht. Zu viel Rand kostet nur ein paar Byte, zu
         # wenig laesst einen Rest stehen.
+        # GEAENDERT (Build 249): erst zeichnen, dann eintragen.
+        #
+        # Vorher stand die Spur VOR dem Aufruf, und sie musste deshalb
+        # die ganze Spalte nennen - vorher weiss niemand, was das Panel
+        # anfassen wird. Seit Build 244 faellt damit der groesste
+        # Posten des Flips fuer nichts an: der Cover-Kasten wird auf
+        # dem kurzen Weg ausgespart, aber mitkopiert. Gemessen 2,69 von
+        # 3,21 MB je Schritt, davon rund 2,0 MB der Kasten.
+        #
+        # Jetzt meldet draw_art_panel() in self._panel_bereiche, was es
+        # wirklich beschrieben hat (siehe dort), und nur das wird
+        # eingetragen. Meldet es nichts - mit Cover, beim vollen
+        # Aufbau, oder wenn irgendetwas unklar ist -, bleibt es bei der
+        # ganzen Spalte. Ein unbekannter Bereich muss immer der ganze
+        # sein; alles andere laesst Reste stehen.
+        item_syskey = self._item_syskey(v["items"][item_i], syskey)
+        self._panel_bereiche = None
+        self.draw_art_panel(art_x0, art_w, art_y0, art_h,
+                            item_syskey, v["items"][item_i], s)
         _sp = self._flip_spuren
         if _sp is not None:
             _rand = 4 * s
-            _rx = max(0, art_x0 - _rand)
-            _ry = max(0, art_y0 - _rand)
-            _sp.append((_rx, _ry,
-                        min(self.fb.width, art_x0 + art_w + _rand) - _rx,
-                        min(self.fb.height, art_y0 + art_h + _rand) - _ry))
-        item_syskey = self._item_syskey(v["items"][item_i], syskey)
-        self.draw_art_panel(art_x0, art_w, art_y0, art_h,
-                            item_syskey, v["items"][item_i], s)
+            _gemeldet = getattr(self, "_panel_bereiche", None)
+            if _gemeldet:
+                # Ein paar Punkte Rand je Streifen, aus demselben Grund
+                # wie bei der ganzen Spalte: der Schatten der Karte
+                # reicht ueber ihre Masse hinaus. Zu viel Rand kostet
+                # ein paar Byte, zu wenig laesst einen Rest stehen.
+                for _bx, _by, _bw, _bh in _gemeldet:
+                    _x0 = max(0, _bx - _rand)
+                    _y0 = max(0, _by - _rand)
+                    _x1 = min(self.fb.width, _bx + _bw + _rand)
+                    _y1 = min(self.fb.height, _by + _bh + _rand)
+                    if _x1 > _x0 and _y1 > _y0:
+                        _sp.append((_x0, _y0, _x1 - _x0, _y1 - _y0))
+            else:
+                _rx = max(0, art_x0 - _rand)
+                _ry = max(0, art_y0 - _rand)
+                _sp.append(
+                    (_rx, _ry,
+                     min(self.fb.width, art_x0 + art_w + _rand) - _rx,
+                     min(self.fb.height, art_y0 + art_h + _rand) - _ry))
+        self._panel_bereiche = None
         return art_y0, art_y0 + art_h
 
     def _zeilen_platz(self, item_i):
@@ -11821,6 +11853,15 @@ class Frontend:
         # Gedaempft, nicht in Textfarbe: er soll die Position zeigen und
         # nicht das Bild sein, das gleich kommt.
         fb.text(bx, by, zeichen, skala, C_DIM, C_PANEL, cachen=False)
+        # UND DIE ZELLE MELDEN (Build 249). Sie liegt mitten in der
+        # Flaeche, die der kurze Weg aussport - wird sie nicht
+        # gemeldet, kopiert der Flip sie nicht, und auf dem Schirm
+        # bleibt der ALTE Buchstabe stehen, waehrend im Puffer der neue
+        # steht. Siehe die Begruendung bei _panel_bereiche in
+        # draw_art_panel().
+        _ber = getattr(self, "_panel_bereiche", None)
+        if _ber is not None:
+            _ber.append((bx, by, breite, hoehe))
 
     def _zeichne_kein_artwork(self, x0, cy, avail_w, cover_h, s):
         """Der Platzhalter, wenn ein Eintrag WIRKLICH kein Cover hat.
@@ -12136,6 +12177,55 @@ class Frontend:
                               card_radius,
                               aussparen=(_kasten_luecke if _kurz
                                          else _luecke))
+        # WAS DIESER AUFBAU WIRKLICH ANGEFASST HAT (Build 249).
+        #
+        # DER BEFUND, und er ist der groesste Posten, den der Bericht
+        # vom 09.10. noch hergibt: in der Listenansicht traegt
+        # _art_panel_aktualisieren() die GANZE Boxart-Spalte als EIN
+        # Rechteck fuer den Flip ein - 757x933, also 2,69 von 3,21 MB
+        # je Scrollschritt (gemessen, 84 %). Das war richtig, solange
+        # die Karte die ganze Spalte neu fuellte.
+        #
+        # SEIT BUILD 244 STIMMT ES NICHT MEHR: auf dem kurzen Weg wird
+        # die Flaeche des Cover-Kastens AUSGESPART - dort steht schon
+        # das Richtige, und es wird nicht angefasst. Trotzdem wurde sie
+        # jeden Schritt mitkopiert. Der Kasten ist 697x729, also rund
+        # 2,0 MB der 2,69.
+        #
+        # Deshalb sagt das Panel jetzt selbst, was es beschrieben hat:
+        # die vier Streifen um den Kasten herum statt der ganzen
+        # Spalte. Mit Cover bleibt es bei der ganzen Spalte (dort kommt
+        # das Bild hinein, und das wechselt), und ohne gemerkten
+        # Bereich ebenso - ein unbekannter Bereich muss immer der
+        # ganze sein.
+        #
+        # WARUM DER BUCHSTABE DAZUGEHOERT: seit Build 247 wird er auf
+        # dem kurzen Weg MITGEZEICHNET (er darf wechseln). Er liegt
+        # mitten im ausgesparten Kasten - fehlt seine Zelle hier,
+        # bleibt auf dem Schirm der alte Buchstabe stehen, waehrend im
+        # Puffer der neue steht. Genau die Sorte Rest, die dieses
+        # Projekt fuenfmal gejagt hat.
+        self._panel_bereiche = None
+        if _kurz and _kasten_luecke:
+            _kx, _ky, _kw, _kh = _kasten_luecke
+            _px0, _py0 = x0 - pad, y0 - pad
+            _pw = w + 2 * pad
+            _ph = h + 2 * pad
+            _teile = []
+            if _ky > _py0:
+                _teile.append((_px0, _py0, _pw + shadow_off,
+                               _ky - _py0))
+            if _kx > _px0:
+                _teile.append((_px0, _ky, _kx - _px0, _kh))
+            _rechts = _px0 + _pw + shadow_off
+            if _kx + _kw < _rechts:
+                _teile.append((_kx + _kw, _ky, _rechts - (_kx + _kw),
+                               _kh))
+            if _ky + _kh < _py0 + _ph + shadow_off:
+                _teile.append((_px0, _ky + _kh, _pw + shadow_off,
+                               (_py0 + _ph + shadow_off) - (_ky + _kh)))
+            self._panel_bereiche = [t for t in _teile
+                                    if t[2] > 0 and t[3] > 0]
         if art:
             # Schlagschatten: dunkler, leicht versetzter Bereich UNTER
             # dem Cover, VOR dem eigentlichen Bild gezeichnet.

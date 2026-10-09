@@ -110,7 +110,7 @@ python3 tools/regression_test.py \
 | `test_vsync_und_wiederholrate.py` | Test (Pass/Fail) | Vsync-Auslassen nur noch bei schmalen Baendern, Wiederholrate folgt der gemessenen Zeichendauer |
 | `test_hinweisbox_flackern.py` | Test (Pass/Fail) | Hinweisbox: genau ein Flip pro Aufbau, und der kommt NACH der Box |
 | `test_ra_einstellungen.py` | Test (Pass/Fail) | MiSTers RA-Datei: nur die gemeinte Zeile wird angefasst, Zugangsdaten und Kommentare bleiben |
-| `test_cover_panel.py` | Test (Pass/Fail) | Verkuerzter Schlagschatten ergibt bitgenau dasselbe Bild und ist schneller |
+| `test_cover_panel.py` | Test (Pass/Fail) | Verkuerzter Schlagschatten ergibt bitgenau dasselbe Bild und spart gezaehlte Zeilen bzw. Bytes (bis Build 249 mit einer Stoppuhr, die unter Last kippte) |
 | `test_kategorie_abzeichen.py` | Test (Pass/Fail) | Alle Kategorie-Abzeichen gleich gross, gleicher Hintergrund, gleiche Stelle auf dem Schirm |
 | `test_abzeichen_verteilung.py` | Test (Pass/Fail) | Die echten Installer-Bloecke ersetzen die alten Logos wirklich - einmal, und danach nie wieder |
 | `test_vorauslader_prozess.py` | Test (Pass/Fail) | Vorauslader als eigener Prozess: rechnet, schreibt in den richtigen Ordner, faellt sauber auf den Thread zurueck |
@@ -152,6 +152,10 @@ python3 tools/regression_test.py \
 | `diag_zeilen_spuren.py` | Diagnose (immer Rueckgabewert 0) | Was das gezielte Freiraeumen bringt - ganze Spalte gegen Spuren |
 | `diag_hintergrundlast.py` | Diagnose (immer Rueckgabewert 0) | Was pro Tastendruck wirklich passiert: Dateizugriffe, Log-Zeilen, doppelte Arbeit |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
+| `test_panel_bereiche.py` | Test (Pass/Fail) | Das Cover-Panel meldet, welche Rechtecke es WIRKLICH beschrieben hat - samt Anfangsbuchstabe, und mit Cover bleibt es bei der ganzen Spalte |
+| `test_systemkategorie_auffrischen.py` | Test (Pass/Fail) | _refresh_system_category() trifft 'System' und keine andere Kategorie mit syskey=None, ruft keinen Neuaufbau, und die Beschriftung folgt der Einstellung |
+| `diag_ungeprueft.py` | Diagnose (immer Rueckgabewert 0) | Welche Funktionen betritt KEIN Test - gemessen mit sys.setprofile, nicht ueber Namen im Testtext |
+| `_spur.py` | Hilfsmodul | Laesst eine einzelne Testdatei unter sys.setprofile laufen und schreibt jede betretene Funktion mit |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
 
 ## regression_test.py
@@ -3067,3 +3071,147 @@ Unfug mit gueltigem Zeiger, in der Mitte abgeschnitten, Zeiger hinter
 das Dateiende verbogen) werfen eine Ausnahme, die `scan_games()` auch
 faengt - und ein abgebrochener Schreibvorgang hinterlaesst weder eine
 `.tmp`-Leiche noch eine halbe Cache-Datei.
+
+
+## diag_ungeprueft.py / _spur.py (Build 249)
+
+**Welche Funktionen betritt kein Test?** Zweimal in zwei Tagen hat
+dieselbe Luecke zugeschlagen: `scan_games()` war halb umgebaut und warf
+einen NameError (Build 248), und die Ziehung rief `read_action()` ohne
+Zeitangabe und blieb stehen (Build 247). Beide haette EINE Liste
+gefunden.
+
+```
+python3 tools/diag_ungeprueft.py sammeln    # 125 Tests mit Spur, ~18 min
+python3 tools/diag_ungeprueft.py 20         # auswerten
+```
+
+### Der erste Entwurf hat beide Anlassfaelle durchgelassen
+
+Er suchte die Namen im Text von `tools/` und fand:
+
+```
+   scan_games     Programm   8, Tests  16
+   read_action    Programm  41, Tests  33
+```
+
+Beide Namen stehen reichlich in den Tests. Nur **gerufen** wurde die
+echte Funktion nie - einmal nur beschrieben, einmal durch eine
+Attrappe ersetzt. Eine Liste, die ihre eigenen Anlassfaelle
+durchlaesst, ist keine Liste, sondern eine Beruhigung.
+
+Gemessen wird deshalb, **was wirklich laeuft**: jede Testdatei laeuft
+unter `sys.setprofile` (siehe `tools/_spur.py`, auch in Nebenfaeden),
+aufgeschrieben wird jede betretene Funktion. Kein Fremdpaket
+(`coverage` gibt es hier nicht und soll es nicht geben).
+
+### Das Ergebnis vom 09.10.
+
+**1279 Definitionen in `frontend/`, davon 754 von der Suite betreten -
+59 %.** Und oben auf der Liste der ungeprueften stand:
+
+```
+   GEWICHT NAME                      DATEI                ZEILE
+        35 _refresh_system_category  frontend/frontend.py  2799
+```
+
+35 Aufrufstellen, von keinem Test betreten - die Funktion, die nach
+**jedem** Umschalter im Systemmenue die Kategorie neu beschriftet. Und
+sie hat genau dort schon einmal versagt (v1.73 traf die falsche
+Kategorie, weil `syskey=None` nicht eindeutig ist). Dafuer gibt es
+jetzt `tools/test_systemkategorie_auffrischen.py`.
+
+### Auch die Gewichtung war erst falsch
+
+Global gezaehlt stand oben `sagen` mit 96 (aus `kernel_probe.py`) und
+`close` mit 78 (vier unabhaengige Funktionen dieses Namens). Gezaehlt
+wird jetzt **je Datei** - dann steht dort, was diese eine Datei
+wirklich oft benutzt.
+
+Die Liste ist eine **Spur, kein Urteil**: manches gehoert mit Recht
+nicht in einen Test (Neustart, Abschalten, fremde Dateien mit
+Passwort). Was davon mit Absicht ungeprueft bleibt, steht in
+`MIT_ABSICHT` im Skript - mit Begruendung, damit man nicht jedes Mal
+darueber hinwegliest.
+
+
+## test_panel_bereiche.py (Build 249)
+
+Das Panel sagt jetzt selbst, was es angefasst hat. Der Befund aus dem
+Bench vom 09.10.: ein Scrollschritt in der Listenansicht kopiert
+**3,21 MB** auf den Schirm, und **2,69 MB davon sind die Boxart-Spalte
+als EIN Rechteck** - 84 %. Eingetragen wurde sie, *bevor* das Panel
+gezeichnet war, denn vorher weiss niemand, was es anfassen wird.
+
+Seit Build 244 stimmt das nicht mehr: auf dem kurzen Weg wird die
+Flaeche des Cover-Kastens **ausgespart** (697x729, rund 2,0 MB) - dort
+steht schon das Richtige. Mitkopiert wurde sie trotzdem.
+
+`draw_art_panel()` meldet deshalb in `self._panel_bereiche`, was es
+beschrieben hat, und `_art_panel_aktualisieren()` traegt nur das ein:
+**erst zeichnen, dann eintragen.** Gemessen 3,21 -> **1,91 MB** je
+Schritt.
+
+Vier Arten, wie das schiefgehen kann, und alle vier stehen im Test:
+
+1. Die gemeldeten Streifen decken **nicht alles** ab, was gezeichnet
+   wurde - dann bleibt auf dem Schirm ein Rest stehen, waehrend im
+   Puffer das Richtige steht. Die Sorte Fehler, die dieses Projekt
+   fuenfmal gejagt hat (Build 80, 122, 125, 128, 237), und Build 244
+   hat sie sich mit 69 Bytes an einer Kartenecke eingefangen.
+2. Der **Anfangsbuchstabe** wird vergessen. Er liegt mitten im
+   ausgesparten Kasten und wird seit Build 247 mitgezeichnet - fehlt
+   seine Zelle, bleibt der alte Buchstabe stehen.
+3. **Mit Cover** wird auch nur ein Teil gemeldet - dort kommt das Bild
+   hinein, und das wechselt jeden Schritt.
+4. Die Meldung bleibt von einem Schritt im naechsten stehen und wird
+   fuer einen anderen Fall benutzt.
+
+Die Pixelgleichheit selbst pruefen weiter `test_rechteck_flip.py`
+(Puffer gegen Schirm) und `diag_flip_deckung.py` (ungedeckte Punkte,
+gemessen: 0). Diese Datei prueft die **Meldung**.
+
+## Die Stoppuhr in test_cover_panel.py ist raus (Build 249)
+
+Im Suite-Durchlauf vom 09.10. war **ein** Test rot, und zwar dieser:
+
+```
+FEHL Karte+Schatten zusammengefasst ist schneller als getrennt
+     (getrennt 0,640 ms, zusammen 0,760 ms, Faktor 0,8)
+```
+
+Allein gelaufen war die Datei gruen, mit 20 und mit 60 Vorlaeufern
+auch - rot wurde sie **unter paralleler Rechenlast**. Dieselbe Zusage
+war schon **zweimal** nachgebessert worden: Build 114 nahm das Minimum
+statt des Mittelwerts, Build 196 erhoehte auf 15 Runden. Eine dritte
+Nachbesserung derselben Art waere nur ein Aufschub gewesen - Abschnitt
+E des Benchs sagt seit Build 242, dass eine scharfe Schwelle auf einer
+verrauschten Messung ihr Urteil wechselt.
+
+**Gezaehlt wird jetzt, was die Optimierung wirklich tut.** Build 97 und
+98 haben Zeilenschleifen gespart; Zeilen und Bytes am Bildpuffer sind
+ganze Zahlen, auf jedem Geraet dieselben, und von fremder Last nicht
+beeinflussbar. Gezaehlt wird am Puffer selbst (eine `bytearray`-
+Unterklasse zaehlt jede Scheibenzuweisung), also unabhaengig davon,
+welchen Weg die Funktion innen nimmt. Dass weniger Zeilen schneller
+sind, behauptet der Test nicht mehr - das hat das Geraet gemessen:
+`MS_JE_ZEILE = 0,000576` und `MS_JE_MB = 2,1` in `fe/bench.py`,
+Abschnitt I.1.
+
+**Und das Zaehlen hat sofort etwas aufgedeckt**, was die Uhr verdeckt
+hatte:
+
+| | Zeilen | Bytes |
+|---|---|---|
+| volles Schattenrechteck | 945 | 2838 kB |
+| verkuerzter Schatten | **945** | **60 kB** |
+| Karte+Schatten getrennt | 1890 | 2898 kB |
+| zusammengefasst | **978** | **2898 kB** |
+
+Beim Schatten ist die Zeilen**zahl** gleich - gespart wird die Zeilen-
+**laenge** (der sichtbare Schatten ist ein L: in den Mittelzeilen nur
+die 9 Punkte rechts neben der Karte statt 769). Beim Zusammenfassen ist
+es genau umgekehrt: die Bytes bleiben gleich, **912 Schleifendurchlaeufe
+fallen weg**. Zwei verschiedene Ersparnisse - und die Stoppuhr hatte
+beide zu "schneller" verrechnet, weshalb nicht auffiel, dass eine davon
+an einer Zahl haengt, die sich nie geaendert hat.

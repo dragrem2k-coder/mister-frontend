@@ -29,7 +29,6 @@ Ausfuehren:
 """
 import os
 import sys
-import time
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
@@ -182,7 +181,7 @@ for w, h, name in ((320, 240, "CRT"), (1920, 1080, "HDMI")):
     check("%s: Panel bitgenau wie vorher" % name, d == 0,
           "(%d abweichende Bytes)" % d)
 
-print("Test 4: und es ist wirklich schneller")
+print("Test 4: und es spart messbar Arbeit (gezaehlt, nicht gestoppt)")
 # Kein Selbstzweck: die Aenderung hat nur dann einen Sinn, wenn sie
 # tatsaechlich Zeit spart. Grosszuegige Schwelle, damit der Test nicht
 # an der Tagesform des Rechners scheitert - gemessen war der Gewinn
@@ -194,41 +193,59 @@ dunkel = fb._darken(fm.C_BG, 0.55)
 kw, kh, versatz, radius = 769, 945, 3 * s, 4 * s
 
 
-def zeit(fn, n=30, runden=15):
-    """Bestes Ergebnis aus mehreren Durchgaengen, nicht der Mittelwert.
+def zeilen(fn):
+    """(Zahl der Zeilen-Zuweisungen, geschriebene Bytes) eines Aufrufs.
 
-    ERHOEHT (Build 196): fuenf Runden waren zu wenig. Beim Durchlauf der
-    ganzen Suite - 95 Testdateien hintereinander auf einer belegten
-    Maschine - fiel der gemessene Faktor auf 1,4 und der Test wurde rot,
-    wieder ohne jede Codeaenderung. Genau die Begruendung von Build 114
-    gilt dann weiter: das Minimum ist die ehrlichere Zahl, es braucht
-    nur genug Versuche, um es zu finden. Die SCHWELLE bleibt bei 1,5 -
-    die Behauptung des Tests wird nicht abgeschwaecht, nur besser
-    gemessen. Kostet rund eine halbe Sekunde.
+    GEAENDERT (Build 249): hier stand eine STOPPUHR, und sie hat genau
+    das getan, was Abschnitt E des Benchs seit Build 242 lehrt - unter
+    Last ihr Urteil gewechselt. Im Suite-Durchlauf vom 09.10., 127
+    Testdateien auf einer belegten Maschine:
 
-    GEAENDERT (Build 114): der Mittelwert machte diesen Test unter Last
-    unzuverlaessig - laeuft die ganze Suite hintereinander, sank der
-    gemessene Faktor schon mal von 1,8 auf 1,3 und der Test wurde rot,
-    ohne dass sich am Code etwas geaendert hatte. Ein roter Test, der
-    nichts bedeutet, ist schlimmer als gar keiner: man gewoehnt sich
-    an, ihn zu ignorieren. Das Minimum ist bei Mikromessungen ohnehin
-    die ehrlichere Zahl - Stoerungen von aussen koennen nur bremsen,
-    nie beschleunigen."""
-    for _ in range(5):
+        FEHL Karte+Schatten zusammengefasst ist schneller als getrennt
+             (getrennt 0,640 ms, zusammen 0,760 ms, Faktor 0,8)
+
+    Allein gelaufen war dieselbe Datei gruen, auch mit 60 Vorlaeufern.
+    Build 114 und Build 196 haben dieselbe Zusage schon zweimal
+    nachgebessert - erst Minimum statt Mittelwert, dann 15 Runden statt
+    5. Eine dritte Nachbesserung derselben Art waere nur ein
+    Aufschub: eine scharfe Schwelle auf einer verrauschten Messung
+    kippt irgendwann wieder.
+
+    GEZAEHLT WIRD DESHALB DAS, WAS DIE OPTIMIERUNG WIRKLICH TUT. Build
+    97 und 98 haben ZEILENSCHLEIFEN gespart - der verkuerzte Schatten
+    zeichnet weniger Bildzeilen, die zusammengefasste Karte schreibt
+    eine Doppelzeile statt zweier einzelner. Beides sind ganze Zahlen,
+    auf jedem Geraet dieselben, und von fremder Last nicht
+    beeinflussbar. Dass weniger Zeilen auch schneller sind, ist keine
+    Behauptung dieses Tests mehr, sondern eine Messung des Geraets:
+    MS_JE_ZEILE = 0,000576 ms in fe/bench.py, Abschnitt I.1.
+
+    Gezaehlt wird am Puffer selbst - jede Scheibenzuweisung auf
+    fb.buf - und damit unabhaengig davon, welchen Weg die Funktion
+    innen nimmt."""
+
+    class _Zaehl(bytearray):
+        n = 0
+        bytes = 0
+
+        def __setitem__(self, k, v):
+            _Zaehl.n += 1
+            _Zaehl.bytes += len(v) if isinstance(k, slice) else 1
+            bytearray.__setitem__(self, k, v)
+
+    fn()                      # Zeilenpuffer fuellen, sonst zaehlt der
+    echt = fb.buf             # erste Aufruf den Cache-Aufbau mit
+    fb.buf = _Zaehl(echt)
+    try:
+        _Zaehl.n = _Zaehl.bytes = 0
         fn()
-    bestes = None
-    for _ in range(runden):
-        t0 = time.perf_counter()
-        for _ in range(n):
-            fn()
-        dauer = (time.perf_counter() - t0) / n * 1000
-        if bestes is None or dauer < bestes:
-            bestes = dauer
-    return bestes
+        return (_Zaehl.n, _Zaehl.bytes)
+    finally:
+        fb.buf = echt
 
 
-# NEU (Build 219): diese drei Zeitvergleiche gelten fuer den
-# PYTHON-Weg, und nur dort.
+# NEU (Build 219): diese drei Vergleiche gelten fuer den PYTHON-Weg,
+# und nur dort.
 #
 # Build 97 und 98 haben Zeilenschleifen gespart - der verkuerzte Schatten
 # zeichnet weniger Zeilen, die zusammengefasste Karte schreibt eine
@@ -244,30 +261,56 @@ def zeit(fn, n=30, runden=15):
 _alt_fueller = fb.flaechen_fueller
 fb.flaechen_fueller = None
 try:
-    t_alt = zeit(lambda: fb.rect_rounded(40 + versatz, 20 + versatz, kw, kh,
-                                         dunkel, radius))
-    t_neu = zeit(lambda: fb.rect_rounded_schatten(40, 20, kw, kh, versatz,
-                                                  dunkel, radius))
-    check("verkuerzter Schatten ist schneller", t_neu < t_alt,
-          "(alt %.3f ms, neu %.3f ms, Faktor %.1f)"
-          % (t_alt, t_neu, t_alt / t_neu if t_neu else 0))
-    check("und zwar deutlich (mindestens Faktor 1,5)",
-          t_neu * 1.5 < t_alt,
-          "(Faktor %.1f)" % (t_alt / t_neu if t_neu else 0))
+    n_alt, b_alt = zeilen(lambda: fb.rect_rounded(40 + versatz, 20 + versatz,
+                                                  kw, kh, dunkel, radius))
+    n_neu, b_neu = zeilen(lambda: fb.rect_rounded_schatten(40, 20, kw, kh,
+                                                           versatz, dunkel,
+                                                           radius))
+    # WAS DAS ZAEHLEN SOFORT AUFGEDECKT HAT (Build 249). Die alte
+    # Stoppuhr sagte "schneller" und liess offen, woran. Gezaehlt steht
+    # da: 945 Zeilen gegen 945 Zeilen - die ZEILENZAHL ist gleich,
+    # gespart wird die Zeilen-LAENGE. Der sichtbare Schatten ist ein
+    # L: in den Mittelzeilen nur der Streifen rechts neben der Karte
+    # (versatz=9 Punkte breit), statt der vollen 769. 60 gegen 2838 kB,
+    # Faktor 47.
+    #
+    # Beim Zusammenfassen weiter unten ist es genau umgekehrt: dort
+    # bleiben die Bytes gleich und die SCHLEIFE faellt weg. Zwei
+    # verschiedene Ersparnisse, und die Stoppuhr hat beide zu
+    # "schneller" verrechnet - weshalb nicht auffiel, dass eine davon
+    # an einer Zahl haengt, die sich nie geaendert hat.
+    check("verkuerzter Schatten schreibt deutlich weniger Bytes",
+          b_neu * 4 < b_alt,
+          "(voll %.0f kB, verkuerzt %.0f kB, Faktor %.0f)"
+          % (b_alt / 1024.0, b_neu / 1024.0,
+             float(b_alt) / b_neu if b_neu else 0))
+    check("und dabei keine Zeile mehr als das volle Rechteck",
+          n_neu <= n_alt,
+          "(%d gegen %d Zeilen - die Zahl ist gleich, gespart wird "
+          "ihre Laenge; je Byte zaehlt das Geraet 2,1 ms/MB, "
+          "siehe Abschnitt I.1)" % (n_neu, n_alt))
 
     hell = fm.C_PANEL
-    t_getrennt = zeit(lambda: (fb.rect_rounded_schatten(40, 20, kw, kh,
-                                                        versatz, dunkel,
-                                                        radius),
-                               fb.rect_rounded(40, 20, kw, kh, hell,
-                                               radius)))
-    t_zusammen = zeit(lambda: fb.karte_mit_schatten(40, 20, kw, kh, versatz,
-                                                    hell, dunkel, radius))
-    check("Karte+Schatten zusammengefasst ist schneller als getrennt",
-          t_zusammen < t_getrennt,
-          "(getrennt %.3f ms, zusammen %.3f ms, Faktor %.1f)"
-          % (t_getrennt, t_zusammen,
-             t_getrennt / t_zusammen if t_zusammen else 0))
+    n_getrennt, b_getrennt = zeilen(
+        lambda: (fb.rect_rounded_schatten(40, 20, kw, kh, versatz, dunkel,
+                                          radius),
+                 fb.rect_rounded(40, 20, kw, kh, hell, radius)))
+    n_zusammen, b_zusammen = zeilen(
+        lambda: fb.karte_mit_schatten(40, 20, kw, kh, versatz, hell, dunkel,
+                                      radius))
+    check("Karte+Schatten zusammengefasst schreibt weniger Zeilen",
+          n_zusammen < n_getrennt,
+          "(getrennt %d Zeilen, zusammen %d, gespart %d)"
+          % (n_getrennt, n_zusammen, n_getrennt - n_zusammen))
+    check("gespart wird etwa eine Zeilenschleife ueber die Kartenhoehe",
+          (n_getrennt - n_zusammen) > (kh - 4 * radius),
+          "(%d gespart, Karte ist %d Punkte hoch)"
+          % (n_getrennt - n_zusammen, kh))
+    check("und die Bytezahl bleibt dabei annaehernd gleich",
+          abs(b_zusammen - b_getrennt) < b_getrennt * 0.05,
+          "(getrennt %.0f kB, zusammen %.0f kB) - gespart wird die "
+          "SCHLEIFE, nicht das Kopieren"
+          % (b_getrennt / 1024.0, b_zusammen / 1024.0))
 finally:
     fb.flaechen_fueller = _alt_fueller
 

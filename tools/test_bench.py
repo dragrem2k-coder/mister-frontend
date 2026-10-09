@@ -459,8 +459,14 @@ check("die Messbedingungen schalten das Vsync-Warten ab",
       "_vsync_ueberspringen" in bq)
 check("und der Flip wird getrennt mit und ohne ausgewiesen",
       "ohne Vsync" in text and "mit Vsync" in text)
-check("mit der Angabe, was das Warten kostet",
-      "das Warten kostet" in text)
+# GEAENDERT (Build 249): die Zeile sagt jetzt, dass es der
+# SCHLECHTESTE Fall ist, und verweist auf H.3. Vorher stand dort "das
+# Warten kostet X ms" und widersprach damit H.3 - beide Zahlen waren
+# richtig gemessen, nur war die eine der beste und die andere der
+# schlechteste Fall derselben Sache.
+check("die Angabe nennt den schlechtesten Fall und verweist auf H.3",
+      "Warten im schlechtesten Fall" in text and "siehe H.3" in text,
+      "eine einzelne Vsync-Zahl sagt nur, wieviel Arbeit davor lag")
 
 # Und das Auslagern an den ARBEITSPROZESS muss aus sein, sonst
 # schreibt der weiter auf die Karte (eigener Prozess, sieht die
@@ -1181,6 +1187,27 @@ check("der Stand wird abgefragt, nicht behauptet",
       "eine aeltere fe/art.py hat die Funktion nicht")
 check("die Bench-Nummer ist fuer Build 247 mitgewachsen",
       B.BENCH_VERSION >= 9, str(B.BENCH_VERSION))
+
+# ---------------------------------------------------------------------------
+print()
+print("Build 249: das Vsync-Warten mit verteilter Phase")
+# ---------------------------------------------------------------------------
+_bh = _q.split("def _abschnitt_h")[1].split("\ndef ")[0]
+check("H.3 misst mit wechselnder Vorarbeit",
+      "verteilte Phase" in _bh,
+      "ohne sie liegen alle Proben in derselben Phase - einmal der "
+      "beste, einmal der schlechteste Fall, und beides sieht nach "
+      "einer Messung aus")
+check("und nennt kleinsten, mittleren und groessten Wert",
+      "kleinster %.2f ms, groesster %.2f ms" in _bh)
+check("aus dem groessten wird die Bildperiode abgeleitet",
+      "daraus die Bildperiode" in _bh,
+      "laenger als ein Bild kann niemand warten - das ist die Probe "
+      "auf die Messung selbst")
+check("und der Bericht erklaert, warum eine Zahl allein falsch ist",
+      "ZU LESEN ALS: das Warten ist, was vom Bild noch" in _bh)
+check("mindestens zwei Dutzend Proben",
+      "for _i in range(24)" in _bh)
 
 print()
 if fails:

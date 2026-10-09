@@ -832,6 +832,84 @@ All four sit behind the **fine-details switch** (System → Display & sound).
 This build makes no draw path faster. It makes three places measurable where
 guessing was the only option.
 
+**Scrolling: the largest item of the flip was paid for nothing — 3.21 → 1.91 MB.**
+
+- A scroll step in the list copied **3.21 MB** to the screen, and **2.69 MB of
+  that was the box-art column as a single rectangle** — 84 %. It was
+  registered *before* the panel was drawn: beforehand nobody knows what it
+  will touch.
+- **Since Build 244 that is no longer true.** There, fast scrolling spares the
+  area of the cover box — 697×729, about 2.0 MB — because the right thing is
+  already there. It was copied anyway, every step.
+- The panel now reports what it actually wrote: the four strips around the box
+  instead of the whole column. Measured **3.21 → 1.91 MB** per step (−40 %),
+  about **2.6 ms** of a 47.7 ms step by the device's cost model.
+- **The initial letter belongs in that report**, and that is where it could
+  have gone wrong: it sits in the middle of the spared box and has been drawn
+  along since Build 247. If its cell were missing from the report, the old
+  letter would stay on screen while the buffer holds the new one — exactly the
+  kind of leftover this project has chased five times.
+- With a cover it stays the whole column: that is where the image goes, and it
+  changes anyway. And if the panel reports nothing, it also stays the whole
+  column — **an unknown area must always be the whole one.**
+
+**The vsync figure contradicted itself.**
+
+- The report carried two values for the same thing: section B said "the wait
+  costs 16.7 ms", section H.3 reported 3.26 ms. **Both were measured
+  correctly** — and both are artefacts of what ran *before* them.
+- The wait is whatever is left of the frame: between 0 and one full frame
+  period. Section B copies 7.9 MB first, which takes almost exactly one frame
+  → it then waits almost a whole frame, the **worst** case. H.3 only waited,
+  with nothing in between → two waits are exactly one frame apart, the second
+  returns immediately, the **best** case.
+- H.3 now measures with **distributed phase** (24 samples, varying prior work)
+  and reports smallest, median and largest — and from the largest the **frame
+  period**, because nobody can wait longer than one frame. That is also the
+  check on the measurement itself. Section B now says "worst case" explicitly
+  and points at H.3.
+
+**And the question of which functions no test touches at all.**
+
+- Twice in two days the same gap bit: `scan_games()` was half-converted and
+  would have crashed, and the draw stood still because a call blocks. **One
+  list would have found both.**
+- The first draft of that list **let both of its own founding cases through**:
+  it searched for the names in the tests' text, and there they appear plenty —
+  but the real function was never called (once only described, once replaced by
+  a stand-in). What is measured now is **what actually runs**: every test file
+  runs under a profiler, and every function entered is recorded.
+- The result: **1279 functions in the program, 754 entered by the suite —
+  59 %.** And at the top of the untested list stood `_refresh_system_category`
+  with **35 call sites** — the function that rebuilds the labels after *every*
+  toggle in the system menu. It has failed there before (v1.73 hit the wrong
+  category). It now has a test.
+- The weighting was wrong at first too: counted globally, a helper called
+  `sagen` from a diagnostic script sat on top with 96. It is counted per file
+  now.
+
+**And a test that changed its verdict under load.**
+
+- `test_cover_panel.py` used a **stopwatch** to assert that two drawing paths
+  are faster than their predecessors. In the suite run it went red
+  ("separate 0.640 ms, combined 0.760 ms") — green on its own, even with
+  sixty predecessors. The same assertion had already been patched **twice**
+  (minimum instead of mean, then 15 rounds instead of 5); a third patch of
+  that kind would only have postponed it.
+- What is counted now is **what the optimisation actually does**: rows and
+  bytes at the framebuffer, whole numbers, identical on every device. The
+  test no longer claims that fewer rows are faster — the device measured
+  that (0.000576 ms per row, 2.1 ms/MB).
+- **And counting revealed something immediately** that the stopwatch had
+  hidden: for the shortened shadow the row **count** is the same (945 vs
+  945), what is saved is the row **length** — 60 vs 2838 kB. For merging
+  card and shadow it is exactly the other way round: the bytes stay the
+  same, 912 loop iterations disappear. Two different savings, and the clock
+  had folded both into "faster".
+- **`VORSCHAU.md`** still said v3.2 and is now a slim pointer to README,
+  handbook and changelog. The file stays so that old links from forums do
+  not break.
+
 **The memory peak on rescan: 55 → 24 MB at 50,000 games.**
 
 - This had been measured for a while and never acted on: at rest a game costs

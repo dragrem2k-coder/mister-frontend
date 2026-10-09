@@ -746,8 +746,16 @@ def _abschnitt_b(b, fe, S, spiele, A=None):
         b.posten("Voller Flip ohne Vsync (%.1f MB)"
                  % (fbo.size / 1048576.0), ohne, best)
         mit, _ = messen(lambda: fbo.flip(skip_vsync=False), WDH_TEUER)
+        # GENAUER BENANNT (Build 249): das ist der SCHLECHTESTE Fall,
+        # nicht "das Warten". Ein voller Flip dauert hier knapp eine
+        # Bildperiode; danach ist der Bildwechsel gerade vorbei, und es
+        # wird fast ein ganzes Bild gewartet. Abschnitt H.3 misst
+        # denselben Vorgang mit verteilter Phase und nennt deshalb eine
+        # kleinere Zahl - beide sind richtig, und der Bericht hat sich
+        # vor Build 249 an dieser Stelle selbst widersprochen.
         b.posten("Voller Flip mit Vsync", mit, None,
-                 "das Warten kostet %.1f ms" % max(0.0, mit - ohne))
+                 "Warten im schlechtesten Fall %.1f ms (siehe H.3)"
+                 % max(0.0, mit - ohne))
         # BUILD 205: derselbe Transport, aber als BAND - und zwar in
         # Millisekunden JE MEGABYTE, damit beide vergleichbar sind.
         #
@@ -1692,7 +1700,61 @@ def _abschnitt_h(b, fe):
             b("   3) dieses Geraet kennt kein Vsync-Warten (0 ms)")
             ms_vsync = 0.0
         else:
-            b.posten("3) Warten auf den Bildwechsel", ms_vsync, best_v)
+            # EINE ZAHL FUER DAS VSYNC-WARTEN IST IMMER FALSCH
+            # (Build 249), und zwei Stellen dieses Berichts haben sich
+            # darueber widersprochen:
+            #
+            #     Abschnitt B:  "das Warten kostet 16,7 ms"
+            #     Abschnitt H.3: "Warten auf den Bildwechsel 3,26 ms"
+            #
+            # BEIDE WAREN RICHTIG GEMESSEN und beide sind Artefakte
+            # dessen, was DAVOR lief. Das Warten ist, was vom Bild noch
+            # uebrig ist - zwischen 0 und einer ganzen Bildperiode:
+            #
+            #   * Abschnitt B flippt vorher 7,9 MB, und das dauert
+            #     15,65 ms, also fast genau ein Bild. Danach ist der
+            #     Bildwechsel eben vorbei, und es wird fast ein ganzes
+            #     Bild gewartet. Deterministisch der SCHLECHTESTE Fall.
+            #   * H.3 hat bisher nur gewartet, ohne irgendetwas dazwi-
+            #     schen. Zwei aufeinanderfolgende Wartevorgaenge liegen
+            #     dann genau ein Bild auseinander, der zweite kehrt
+            #     sofort zurueck. Deterministisch der BESTE Fall.
+            #
+            # Gemessen wird deshalb jetzt mit WECHSELNDER Vorarbeit:
+            # vor jedem Warten wird unterschiedlich lange gerechnet, so
+            # dass die Messpunkte ueber die Bildperiode verteilt
+            # liegen. Berichtet werden kleinster, mittlerer und
+            # groesster Wert - und aus dem groessten die Bildperiode,
+            # denn laenger als ein Bild kann niemand warten.
+            _proben = []
+            for _i in range(24):
+                # Vorarbeit von 0 bis rund einer Bildperiode, in
+                # Schritten, die kein Teiler davon sind - sonst
+                # laufen alle Proben wieder in dieselbe Phase.
+                _ziel = time.monotonic() + (_i % 12) * 0.0017
+                while time.monotonic() < _ziel:
+                    pass
+                _t0 = time.monotonic()
+                fb._wait_vsync()
+                _proben.append((time.monotonic() - _t0) * 1000.0)
+            _proben.sort()
+            _klein = _proben[0]
+            _mitte = _median(_proben)
+            _gross = _proben[-1]
+            b.posten("3) Warten auf den Bildwechsel (Mittelwert)",
+                     _mitte)
+            b("      kleinster %.2f ms, groesster %.2f ms"
+              " (24 Proben, verteilte Phase)" % (_klein, _gross))
+            if _gross > 1.0:
+                b("      daraus die Bildperiode: rund %.1f ms"
+                  " (%.1f Hz)" % (_gross, 1000.0 / _gross))
+            b("      ZU LESEN ALS: das Warten ist, was vom Bild noch")
+            b("      uebrig ist - zwischen 0 und einer ganzen Periode.")
+            b("      Eine einzelne Zahl sagt nur, wieviel Arbeit")
+            b("      davor lag. Abschnitt B nennt deshalb den")
+            b("      schlechtesten Fall (dort wird vorher ein ganzes")
+            b("      Bild kopiert), nicht denselben Wert wie hier.")
+            ms_vsync = _mitte
         # Der Zaehler aus Build 214 darf von dieser Messung nichts
         # behalten - sonst stuende sie in der naechsten RUCKLER-Zeile.
         if hasattr(fb, "vsync_ms_und_zuruecksetzen"):

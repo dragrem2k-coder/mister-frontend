@@ -990,6 +990,89 @@ wird.**
 Dieses Build macht keinen Zeichenweg schneller. Es macht drei Stellen
 messbar, an denen bisher geraten werden musste.
 
+**Scrollen: der größte Posten des Flips fiel für nichts an — 3,21 → 1,91 MB.**
+
+- Ein Scrollschritt in der Liste kopierte **3,21 MB** auf den Schirm, und
+  **2,69 MB davon waren die Boxart-Spalte als ein einziges Rechteck** — 84 %.
+  Eingetragen wurde sie, *bevor* das Panel gezeichnet war: vorher weiß
+  niemand, was es anfassen wird.
+- **Seit Build 244 stimmt das nicht mehr.** Dort wird beim Schnellscrollen die
+  Fläche des Cover-Kastens ausgespart — 697×729, rund 2,0 MB — weil dort schon
+  das Richtige steht. Mitkopiert wurde sie trotzdem, jeden Schritt.
+- Jetzt sagt das Panel selbst, was es beschrieben hat: die vier Streifen um
+  den Kasten herum statt der ganzen Spalte. Gemessen **3,21 → 1,91 MB** je
+  Schritt (−40 %), nach dem Kostenmodell des Geräts rund **2,6 ms** von
+  einem 47,7-ms-Schritt.
+- **Der Anfangsbuchstabe gehört dazu**, und das ist die Stelle, an der es
+  schiefgehen konnte: er liegt mitten im ausgesparten Kasten und wird seit
+  Build 247 mitgezeichnet. Fände seine Zelle sich nicht in der Meldung,
+  bliebe auf dem Schirm der alte Buchstabe stehen, während im Puffer der neue
+  steht — genau die Sorte Rest, die dieses Projekt fünfmal gejagt hat.
+- Mit Cover bleibt es bei der ganzen Spalte: dort kommt das Bild hinein, und
+  das wechselt ohnehin. Und meldet das Panel nichts, bleibt es ebenfalls bei
+  der ganzen Spalte — **ein unbekannter Bereich muss immer der ganze sein.**
+
+**Die Vsync-Zahl hat sich selbst widersprochen.**
+
+- Im Bericht standen zwei Werte für dieselbe Sache: Abschnitt B sagte „das
+  Warten kostet 16,7 ms", Abschnitt H.3 nannte 3,26 ms. **Beide waren richtig
+  gemessen** — und beide sind Artefakte dessen, was *davor* lief.
+- Das Warten ist, was vom Bild noch übrig ist: zwischen 0 und einer ganzen
+  Bildperiode. Abschnitt B kopiert vorher 7,9 MB, und das dauert fast genau
+  ein Bild → danach wird fast ein ganzes Bild gewartet, der **schlechteste**
+  Fall. H.3 hat nur gewartet, ohne etwas dazwischen → zwei Wartevorgänge
+  liegen genau ein Bild auseinander, der zweite kehrt sofort zurück, der
+  **beste** Fall.
+- H.3 misst jetzt mit **verteilter Phase** (24 Proben, wechselnde Vorarbeit)
+  und nennt kleinsten, mittleren und größten Wert — und aus dem größten die
+  **Bildperiode**, denn länger als ein Bild kann niemand warten. Das ist
+  zugleich die Probe auf die Messung selbst. Abschnitt B sagt jetzt
+  ausdrücklich „schlechtester Fall" und verweist auf H.3.
+
+**Und die Frage, welche Funktionen überhaupt kein Test anfässt.**
+
+- Zweimal in zwei Tagen hat dieselbe Lücke zugeschlagen: `scan_games()` war
+  halb umgebaut und hätte einen Absturz geworfen, und die Ziehung blieb
+  stehen, weil ein Aufruf blockiert. **Beide hätte eine Liste gefunden.**
+- Der erste Entwurf dieser Liste hat **beide Anlassfälle durchgelassen**: er
+  suchte die Namen im Text der Tests, und dort stehen sie reichlich — nur
+  gerufen wurde die echte Funktion nie (einmal nur beschrieben, einmal durch
+  eine Attrappe ersetzt). Gemessen wird jetzt, **was wirklich läuft**: jede
+  Testdatei läuft unter einem Profiler, aufgeschrieben wird jede betretene
+  Funktion.
+- Das Ergebnis: **1279 Funktionen im Programm, 754 von der Suite betreten —
+  59 %.** Und oben auf der Liste der ungeprüften stand
+  `_refresh_system_category` mit **35 Aufrufstellen** — die Funktion, die nach
+  *jedem* Umschalter im Systemmenü die Beschriftungen neu baut. Sie hat dort
+  schon einmal versagt (v1.73 traf die falsche Kategorie). Dafür gibt es
+  jetzt einen Test.
+- Auch die Gewichtung war erst falsch: global gezählt stand `sagen` aus einem
+  Diagnoseskript mit 96 oben. Gezählt wird jetzt je Datei.
+
+**Und ein Test, der sein Urteil unter Last gewechselt hat.**
+
+- `test_cover_panel.py` prüfte mit einer **Stoppuhr**, dass zwei
+  Zeichenwege schneller sind als ihre Vorgänger. Im Suite-Durchlauf
+  wurde er rot („getrennt 0,640 ms, zusammen 0,760 ms") — allein
+  gelaufen grün, auch mit sechzig Vorläufern. Dieselbe Zusage war
+  schon **zweimal** nachgebessert worden (Minimum statt Mittelwert,
+  dann 15 Runden statt 5); eine dritte Nachbesserung wäre nur ein
+  Aufschub gewesen.
+- Gezählt wird jetzt, **was die Optimierung wirklich tut**: Zeilen und
+  Bytes am Bildpuffer, ganze Zahlen, auf jedem Gerät dieselben. Dass
+  weniger Zeilen schneller sind, behauptet der Test nicht mehr — das
+  hat das Gerät gemessen (0,000576 ms je Zeile, 2,1 ms/MB).
+- **Und das Zählen hat sofort etwas aufgedeckt**, was die Stoppuhr
+  verdeckt hatte: beim verkürzten Schatten ist die Zeilen**zahl**
+  gleich (945 gegen 945), gespart wird die Zeilen**länge** — 60 gegen
+  2838 kB. Beim Zusammenfassen von Karte und Schatten ist es genau
+  umgekehrt: die Bytes bleiben gleich, 912 Schleifendurchläufe fallen
+  weg. Zwei verschiedene Ersparnisse, und die Uhr hatte beide zu
+  „schneller" verrechnet.
+- **`VORSCHAU.md`** stand noch auf v3.2 und ist jetzt ein schlanker
+  Verweis auf README, Handbuch und Changelog. Die Datei bleibt, damit
+  alte Verweise aus Foren nicht ins Leere laufen.
+
 **Die Speicherspitze beim Rescan: 55 → 24 MB bei 50.000 Spielen.**
 
 - Gemessen war das schon lange, nur nie angegangen: im Betrieb kostet ein
