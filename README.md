@@ -59,7 +59,8 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | **Große Rasterkacheln** | Zehn Kacheln à 270×361 statt einundzwanzig à 176×235. Zurück zum kleinen Raster mit `touch /media/fat/frontend/raster_klein` |
 | **Boxart & Spielinfos** | Eigene Sammlung unter `art/`, dazu die Datenbank unter `/media/fat/docs`, falls vorhanden. Download-Skript liegt bei |
 | **Spielbeschreibungen** | Deutscher Text neben dem Cover in der Galerie |
-| **Filter** | Nach Genre, Jahr, Spielerzahl und Entwickler (Tab / Select+L2+R2), je Kategorie merkbar |
+| **Filter** | Nach Genre, Jahr, Spielerzahl und Entwickler (Tab / Select+L2+R2), je Kategorie merkbar — mit automatischem oder **eigenem Namen** |
+| **Hauptseite einrichten** | Reihenfolge und Sichtbarkeit der Kategorien selbst bestimmen. „System“ bleibt immer, zuletzt |
 | **Suche** | Tippen filtert die Liste sofort |
 | **Favoriten & Sammlungen** | Eigene Listen quer über alle Systeme — **einschließlich der Favoriten, die du im MiSTer-OSD markiert hast** (eine Liste, zwei Quellen; in deine Favoritendatei wird nichts geschrieben) |
 | **Zuletzt gespielt** | Eigene Kategorie, sortiert nach letztem Start |

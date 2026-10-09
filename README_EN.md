@@ -60,7 +60,8 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | **Large grid tiles** | Ten tiles of 270×361 instead of twenty-one of 176×235. Back to the small grid with `touch /media/fat/frontend/raster_klein` |
 | **Cover art & game info** | Your own set under `art/`, plus the database under `/media/fat/docs` if you have it. A download script is included |
 | **Game descriptions** | Shown next to the cover in gallery view |
-| **Filters** | By genre, year, player count and developer (Tab / Select+L2+R2), remembered per category |
+| **Filters** | By genre, year, player count and developer (Tab / Select+L2+R2), remembered per category — under an automatic or **your own name** |
+| **Arrange the home page** | Decide the order and visibility of the categories yourself. “System” always stays, last |
 | **Search** | Type to narrow the list instantly |
 | **Favourites & collections** | Your own lists across all systems — **including the favourites you marked in the MiSTer OSD** (one list, two sources; nothing is written to your favourites file) |
 | **Recently played** | Its own category, sorted by last launch |

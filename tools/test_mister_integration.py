@@ -217,7 +217,21 @@ fe_quelle = open(os.path.join(_REPO, "frontend", "frontend.py"),
                  encoding="utf-8").read()
 i_ua = fe_quelle.find('elif kind == "update_all":')
 check("die Aktion gibt es", i_ua > 0)
-block = fe_quelle[i_ua:i_ua + 1400]
+# BIS ZUM NAECHSTEN ZWEIG, NICHT 1400 ZEICHEN WEIT (korrigiert in Build
+# 250). Hier stand fe_quelle[i_ua:i_ua + 1400], und das ist eine
+# Zusage, die vom LAYOUT abhaengt statt von der Sache: Build 250 hat
+# dem Zweig den Core-Vergleich hinzugefuegt, damit sind
+# "self.run_script(" und der Fehlerfall aus dem Fenster gerutscht, und
+# der Test wurde rot, obwohl beides unveraendert da steht.
+#
+# Dasselbe Muster, das dieses Projekt schon mehrfach bezahlt hat:
+# Build 244 bei den Kommentaren, Build 249 bei der Stoppuhr. Eine
+# Pruefung muss an dem haengen, was sie behauptet - hier also am
+# Zweig, und der endet beim naechsten "elif kind ==".
+block = fe_quelle[i_ua:]
+_ende = block.find("elif kind ==", 10)
+if _ende > 0:
+    block = block[:_ende]
 check("sie benutzt den vorhandenen Skript-Starter",
       "self.run_script(" in block)
 check("und prueft vorher, ob das Skript noch da ist",

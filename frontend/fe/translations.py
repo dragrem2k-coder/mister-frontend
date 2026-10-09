@@ -1046,6 +1046,66 @@ TRANSLATIONS = {
     "masken_keine_gewaehlt": {
         "en": "Shadow mask off.",
         "de": "Lochmaske aus."},
+    # Build 250: die Hauptseite selbst einrichten.
+    # Build 250: eigener Name fuer eine gemerkte Filter-Kategorie.
+    "filter_merken_name": {
+        "en": "...or remember it under a name of your own",
+        "de": "...oder mit eigenem Namen merken"},
+    "filter_umbenennen": {
+        "en": "Rename this category",
+        "de": "Diese Kategorie umbenennen"},
+    "filter_name_titel": {
+        "en": "A name for this category",
+        "de": "Ein Name fuer diese Kategorie"},
+    "filter_umbenannt": {"en": "Category renamed.",
+                         "de": "Kategorie umbenannt."},
+    "filter_name_belegt": {
+        "en": "That name is already taken - the old one stays.",
+        "de": "Der Name ist schon vergeben - der alte bleibt."},
+    # Build 250: was update_all geaendert hat.
+    "sys_core_neu": {
+        "en": "Core updates: what is new (%d)",
+        "de": "Core-Updates: was ist neu (%d)"},
+    "core_neu_titel": {"en": "What update_all changed",
+                       "de": "Was update_all geaendert hat"},
+    "core_neu_gruppe_neu": {"en": "New (%d)", "de": "Neu (%d)"},
+    "core_neu_gruppe_weg": {"en": "Gone (%d)", "de": "Weg (%d)"},
+    "core_neu_gruppe_aktualisiert": {"en": "Updated (%d)",
+                                     "de": "Aktualisiert (%d)"},
+    "core_neu_von": {"en": "%d-%d of %d", "de": "%d-%d von %d"},
+    "core_neu_hinweis": {
+        "en": "Up/Down scrolls - any other key goes back. Compared is "
+              "the card with itself, before and after the run.",
+        "de": "Hoch/Runter blaettert - jede andere Taste geht zurueck. "
+              "Verglichen wird die Karte mit sich selbst, vor und nach "
+              "dem Lauf."},
+    "core_neu_nichts": {
+        "en": "No core files changed.",
+        "de": "Keine Core-Dateien haben sich geaendert."},
+    "sys_hauptseite": {
+        "en": "Home page: order and hide categories",
+        "de": "Hauptseite: Kategorien sortieren und ausblenden"},
+    "hauptseite_titel": {"en": "Home page", "de": "Hauptseite"},
+    "hauptseite_an": {"en": "shown", "de": "an"},
+    "hauptseite_aus": {"en": "hidden", "de": "aus"},
+    "hauptseite_anzahl": {"en": "%d of %d shown",
+                          "de": "%d von %d sichtbar"},
+    "hauptseite_hinweis": {
+        "en": "Enter: pick up an entry to move it - Left/Right: show or "
+              "hide - ESC: save. System always stays, at the end.",
+        "de": "Enter: Eintrag aufnehmen und verschieben - Links/Rechts: "
+              "ein/aus - ESC: speichern. System bleibt immer, zuletzt."},
+    "hauptseite_hinweis_griff": {
+        "en": "Entry picked up - Up/Down moves it, Enter puts it down.",
+        "de": "Eintrag aufgenommen - Hoch/Runter verschiebt ihn, Enter "
+              "legt ihn ab."},
+    "hauptseite_gespeichert": {"en": "Home page saved.",
+                               "de": "Hauptseite gespeichert."},
+    "hauptseite_leer": {
+        "en": "There is nothing to arrange yet - the game list has not "
+              "been read in.",
+        "de": "Hier gibt es noch nichts zu ordnen - die Spieleliste ist "
+              "nicht eingelesen."},
     "sys_cores": {
         "en": "Cores: choose a version per system",
         "de": "Cores: Fassung je System waehlen"},

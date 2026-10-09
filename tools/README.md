@@ -152,7 +152,11 @@ python3 tools/regression_test.py \
 | `diag_zeilen_spuren.py` | Diagnose (immer Rueckgabewert 0) | Was das gezielte Freiraeumen bringt - ganze Spalte gegen Spuren |
 | `diag_hintergrundlast.py` | Diagnose (immer Rueckgabewert 0) | Was pro Tastendruck wirklich passiert: Dateizugriffe, Log-Zeilen, doppelte Arbeit |
 | `diag_lightpath.py` | Diagnose (immer Rueckgabewert 0) | Leichter Zeichenpfad gegen vollen Neuaufbau |
-| `test_panel_bereiche.py` | Test (Pass/Fail) | Das Cover-Panel meldet, welche Rechtecke es WIRKLICH beschrieben hat - samt Anfangsbuchstabe, und mit Cover bleibt es bei der ganzen Spalte |
+| `test_panel_bereiche.py` | Test (Pass/Fail) | Das Cover-Panel meldet, welche Rechtecke es WIRKLICH beschrieben hat - und seit Build 250 wird in der ausgesparten Kastenflaeche nichts mehr geschrieben; mit Cover bleibt es bei der ganzen Spalte |
+| `test_keine_buchstaben.py` | Test (Pass/Fail) | Der Anfangsbuchstabe beim Schnellscrollen ist raus und bleibt raus - samt gezaehlter Ersparnis, und der Platzhalter 'kein Artwork' kommt NICHT an seine Stelle |
+| `test_hauptseite.py` | Test (Pass/Fail) | Reihenfolge und Sichtbarkeit der Kategorien: 'System' bleibt immer und zuletzt, das Kuerzel ueberlebt Sprachwechsel und Zaehler, und die Sync-Funktionen zerstoeren die Reihenfolge nicht |
+| `test_filtername.py` | Test (Pass/Fail) | Eigener Name fuer eine gemerkte Filter-Kategorie: Namensdialog mit dem Waehler aus der Suche, Umbenennen laesst die Bedingung in Ruhe, doppelte Namen werden abgewiesen |
+| `test_core_neu.py` | Test (Pass/Fail) | Was update_all geaendert hat - neu/weg/aktualisiert aus dem Vergleich der Karte mit sich selbst, kein fremdes Protokoll gelesen, und der erste Lauf meldet nichts |
 | `test_systemkategorie_auffrischen.py` | Test (Pass/Fail) | _refresh_system_category() trifft 'System' und keine andere Kategorie mit syskey=None, ruft keinen Neuaufbau, und die Beschriftung folgt der Einstellung |
 | `diag_ungeprueft.py` | Diagnose (immer Rueckgabewert 0) | Welche Funktionen betritt KEIN Test - gemessen mit sys.setprofile, nicht ueber Namen im Testtext |
 | `_spur.py` | Hilfsmodul | Laesst eine einzelne Testdatei unter sys.setprofile laufen und schreibt jede betretene Funktion mit |
@@ -3215,3 +3219,137 @@ es genau umgekehrt: die Bytes bleiben gleich, **912 Schleifendurchlaeufe
 fallen weg**. Zwei verschiedene Ersparnisse - und die Stoppuhr hatte
 beide zu "schneller" verrechnet, weshalb nicht auffiel, dass eine davon
 an einer Zahl haengt, die sich nie geaendert hat.
+
+
+## test_keine_buchstaben.py / test_hauptseite.py / test_filtername.py / test_core_neu.py (Build 250)
+
+Vier Dinge in einem Build, und drei davon sind Features - die
+ausfuehrliche Bedienung steht im Handbuch (Abschnitte 8h-3 bis 8h-5),
+hier steht, was die Tests pruefen und warum gerade das.
+
+### test_keine_buchstaben.py - der Buchstabe ist raus
+
+Auf Nutzerwunsch: "nimm bitte die Buchstaben in der listen ansicht raus
+ich finde das bloed das die angezeigt werden wenn ich nach unten mit
+gedrueckter taste mit angezeigt werden!"
+
+Er war Build 243. **Kein Schalter, sondern weg**, und das ist eine
+Kostenrechnung: ein abschaltbarer Buchstabe haette ein `fb.text()` je
+Scrollschritt, ein zusaetzliches Rechteck im Flip (Build 249 musste
+seine Zelle gerade erst eintragen, weil sie mitten in der ausgesparten
+Kastenflaeche liegt) und einen Menuepunkt behalten muessen - alles drei
+auch fuer jeden, der ihn aus hat.
+
+Gemessen: **1,91 -> 1,79 MB** je Scrollschritt. GEZAEHLT, nicht
+gestoppt - dieselbe Lehre wie in Build 249 bei `test_cover_panel.py`.
+
+Zwei Fallen, die der Test im ERSTEN Entwurf selbst hatte:
+
+1. Er zaehlte **jeden** Text in der Boxart-Spalte und meldete zwoelf
+   Aufrufe als Fehler - darunter stehen Titel und Infozeilen, und die
+   sollen bleiben. Gezaehlt wird jetzt nur, was der Buchstabe war: EIN
+   Zeichen in Schriftgroesse >= 10 (er war `cover_h // 24`, auf 1080p
+   rund 30; normaler Text ist `s` = 3).
+2. `"if _kurz:"` steht in `draw_art_panel()` **zweimal** - erst fuer die
+   Kastenluecke, dann fuer den Zeichenzweig. Der erste Entwurf nahm die
+   erste und pruefte damit den falschen Block.
+
+Geprueft wird ausserdem, dass der Platzhalter "kein Artwork" NICHT an
+die frei gewordene Stelle kommt. Das ist die naheliegende, falsche
+Reparatur: Build 89 hat sie schon einmal zurueckgenommen, auf Meldung
+des Nutzers ("ploppt immer erst kein Artwork auf und dann wird das
+Cover nachgeladen").
+
+### test_hauptseite.py - die Reihenfolge der Kategorien
+
+Sechs Arten, wie das Feature scheitern kann, und alle sechs stehen im
+Test:
+
+1. **"System" wird ausgeblendet oder vorgezogen.** Dann sitzt man ohne
+   Einstellungen da, und ohne Bildschirmtastatur kommt man an die Datei
+   nicht heran. Muss auch bei einer VON HAND verstellten Datei
+   unmoeglich sein - `laden()` raeumt es schon auf dem Weg heraus,
+   `speichern()` schreibt es nie hinein, und `anwenden()` haengt es
+   immer hinten an.
+2. **Der Schluessel haengt am Anzeigenamen.** Die besonderen Kategorien
+   sind uebersetzt (`Favoriten`/`Favorites`), mehrere tragen einen
+   Zaehler (`Sammlungen (37)`). Gespeichert wird deshalb ein Kuerzel
+   aus dem Uebersetzungsschluessel, gebildet ueber ALLE Sprachen.
+3. **Ein gemerkter Filter und sein Quellsystem bekommen dasselbe
+   Kuerzel.** Ein Filter ueber SNES traegt `syskey="SNES"` - genau wie
+   das System SNES. Geprueft wird auch der boeseste Fall: der Filter
+   heisst genau wie sein System.
+4. **Die Sync-Funktionen zerstoeren die Reihenfolge wieder.** Der
+   wichtigste Punkt, weil es STILL passiert waere - die Einstellung
+   stuende weiter in der Datei. Geprueft am Quelltext (ruft die
+   Funktion `_hauptseite_anwenden()`, und zwar VOR dem Wiederfinden von
+   `cat_i`?) und am echten Frontend (nach `_sync_favorites_category()`
+   steht die vorgezogene Kategorie noch vorne?).
+5. **Eine kaputte Datei nimmt den Start mit** - fuenf Sorten kaputt.
+6. **Eine neu hinzugekommene Kategorie ist unsichtbar**, weil sie in
+   der gespeicherten Reihenfolge nicht steht.
+
+Und eine Falle des Tests selbst: **der Pruefstand hat nur zwei
+Kategorien** (Zufalls-Zock und System). Damit kann man eine Reihenfolge
+nicht pruefen, und der erste Entwurf versuchte deshalb, "System"
+auszublenden. Es werden jetzt Kategorien dazugestellt.
+
+### test_filtername.py - eigener Name fuer eine gemerkte Kategorie
+
+Hier wird **nicht** doppelt gebaut: Build 143 merkt eine
+Filterbedingung schon als eigene Kategorie, und das bleibt ein
+Tastendruck. Neu ist nur der freie Name - und die Korrektur an einer
+eigenen Begruendung, die im Kopf von `fe/filter.py` stand ("der
+Buchstabenwaehler fuer einen Namen waere drei Bildschirme"). Der
+Waehler ist seit Build 88 da, samt Zeichnen fuer Roehre und HDMI.
+
+Die Eingabe-Attrappe des Tests **wirft, wenn sie leer laeuft**, und das
+ist Absicht: ein Dialog, der seine Abbruchtaste nicht kennt, wuerde
+sonst ewig drehen - genau der Fehler, der in Build 246 die Ziehung zum
+Stillstand gebracht und den Test zehn Minuten laufen lassen hat. Sie
+hat sich sofort bezahlt: der erste Entwurf der Hilfsfunktion `_zu()`
+rechnete den Weg zum Zielfeld immer von Feld 0 los, obwohl der Waehler
+nach einem Buchstabendruck noch auf diesem Buchstaben steht. Der Test
+landete in der Notbremse ("18 Tasten verbraucht und kehrt nicht
+zurueck") statt in einer Endlosschleife.
+
+### test_core_neu.py - was update_all geaendert hat
+
+**Verglichen wird die Karte mit sich selbst**, nicht update_alls
+Protokoll gelesen. Das ist die Entscheidung dieses Punktes, und Test 7
+haelt sie fest: `fe/corestand.py` darf `/media/fat/Scripts`,
+`UPDATE_ALL_SPUREN`, `.log` und `downloader` nicht benutzen, und
+`fe/mister_system.py` muss weiterhin nur den Zeitstempel lesen
+(`getmtime`), nie den Inhalt.
+
+Vier Punkte, die der Test erzwingt:
+
+1. **Der erste Lauf meldet nichts.** `stand_lesen()` liefert
+   `(None, None)` und nicht `(None, [])` - "nie nachgesehen" ist etwas
+   anderes als "damals lag dort nichts". Wer das verwechselt, meldet
+   beim ersten Mal mehrere Hundert Cores als neu.
+2. **Die Praefix-Falle** aus `fe/cores.py`: nach dem Unterstrich muss
+   eine ZIFFER kommen, sonst waere `SNES_Tracker` dasselbe wie `SNES`.
+3. **Der Ordner gehoert zum Schluessel.** Derselbe Dateiname in
+   `_Console` und `_Arcade` ist nicht dieselbe Datei - ein verschobener
+   Core ist "weg UND neu", und das ist die ehrliche Auskunft.
+4. **Der Stand wird VOR dem Start geschrieben.** Danach ist es zu spaet:
+   dann liegt schon der neue Stand auf der Karte. Geprueft an der
+   Reihenfolge im Quelltext.
+
+Drei eigene Fehler, die dieser Test beim Schreiben gemacht hat, und
+alle drei derselbe Typ - **Teilstring statt genauer Name**:
+
+* `if "NES" in x` wurde rot an `_Console/SNES`. Dieselbe Praefix-Falle,
+  die das Programm an dieser Stelle schon abfaengt.
+* `Doppelt_1.rbf` ist nach den Regeln von `kopf_und_fassung()` gar kein
+  Datum (es braucht vier Ziffern) - der Testfall prueffte damit nicht,
+  was er sollte.
+* Die Suche nach `"update_all"` im Quelltext wurde rot am **eigenen
+  Docstring**, der erklaert, warum das Protokoll nicht gelesen wird.
+  Ein Test, der die Begruendung als Verstoss zaehlt, ist kein Test.
+
+Der vierte Fund ging ans Programm, nicht an den Test: `bericht_lesen()`
+lieferte bei einer kaputten Datei ein Dict mit drei leeren Listen statt
+`None`. Im Systemmenue haette dann "was ist neu (0)" gestanden - ein
+Menuepunkt, der sagt, dass er nichts zu sagen hat.

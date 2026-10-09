@@ -969,6 +969,96 @@ Seit Build 247 steht außerdem eine Zeile in `/tmp/frontend.log`, wenn
 für einen Klang gar keine Datei gefunden wurde — vorher kam dort
 nichts, und genau das machte die Suche unnötig schwer.
 
+## 8h-3. Die Hauptseite selbst einrichten (Build 250)
+
+Im System-Menü unter *Verhalten & Optionen*: **„Hauptseite: Kategorien
+sortieren und ausblenden"**.
+
+Du bekommst eine Liste aller Kategorien in ihrer jetzigen Reihenfolge.
+Bedienung:
+
+| Taste | Was sie tut |
+|---|---|
+| Hoch/Runter | Auswahl bewegen |
+| Links/Rechts | Kategorie **ein- oder ausblenden** |
+| Enter | Eintrag **aufnehmen** — dann verschiebt Hoch/Runter ihn; Enter legt ihn wieder ab |
+| Zurück / ESC | speichern und zurück |
+
+Der aufgenommene Eintrag steht in der Zeile als `= Name =`, man sieht
+ihn also wandern. Die Nummer links sagt, wie weit man gekommen ist,
+ohne zählen zu müssen.
+
+**„System" steht nicht in der Liste, und das ist Absicht.** Es bleibt
+immer sichtbar und immer zuletzt. Wer es ausblenden oder vorziehen
+könnte, käme an die Einstellungen nicht mehr heran — und um die Datei
+von Hand zu löschen, bräuchte man SSH. Auch eine von Hand verstellte
+`/media/fat/frontend/hauptseite.json` kann es nicht ausblenden.
+
+**Eine neu hinzugekommene Kategorie bleibt sichtbar.** Stellst du ein
+System dazu oder merkst einen Filter, erscheint es am Ende (vor
+„System") und kann von dort verschoben werden — es verschwindet nicht,
+nur weil es in der gespeicherten Reihenfolge noch nicht steht.
+
+Ausgeblendet ist nicht gelöscht: die Kategorie steht im Editor weiter
+in der Liste, nur in Grau, und ein Druck auf Links/Rechts holt sie
+zurück.
+
+## 8h-4. Gemerkte Filter mit eigenem Namen (Build 250)
+
+Seit Build 143 kann man eine Filterbedingung als eigene Kategorie
+merken — der Name entstand dabei automatisch aus der Bedingung („SNES /
+Platform / 1990-1994"). **Das bleibt genau so**, ein Tastendruck.
+
+Neu ist eine zweite Zeile darunter: **„…oder mit eigenem Namen
+merken"**, und bei einer schon gemerkten Kategorie **„Diese Kategorie
+umbenennen"**. Dort kommt der Buchstabenwähler aus der Suche — derselbe,
+der auf Röhre und HDMI funktioniert. Vorbelegt ist der automatische
+Name: wer ihn behalten will, drückt zweimal; wer ihn nicht will, löscht
+ihn mit `<` und tippt „Beste Jump'n'Runs".
+
+Ein Name kann nur einmal vorkommen — der Name ist der Schlüssel, über
+den das Frontend die Kategorie wiederfindet. Ist er vergeben, sagt das
+Frontend es und lässt den alten stehen. Ein leeres Feld ist ein
+Abbruch, keine Kategorie ohne Beschriftung.
+
+**Umbenennen ändert nur den Namen.** Die Bedingung und die
+Quellkategorie bleiben, die Kategorie zeigt also weiterhin dieselben
+Spiele und bleibt weiterhin aktuell.
+
+## 8h-5. Core-Updates: was ist neu (Build 250)
+
+`update_all` kann man seit Build 213 aus dem System-Menü starten.
+Danach stand da bisher nichts — das Skript schreibt Hunderte Zeilen auf
+die Konsole, und wer nicht mitgelesen hat, wusste hinterher nicht, ob
+überhaupt etwas passiert ist.
+
+Jetzt sieht das Frontend **vor** dem Start nach, welche `.rbf`-Dateien
+in `_Console`, `_Computer`, `_Other`, `_Utility` und `_Arcade` liegen,
+und **danach** noch einmal. Der Unterschied erscheint sofort als Liste
+in drei Gruppen:
+
+- **Neu** — diesen Core gab es vorher nicht
+- **Weg** — diesen Core gibt es jetzt nicht mehr
+- **Aktualisiert** — derselbe Core, andere Fassung (`20260603 -> 20260915`)
+
+Die Gruppe **Weg** steht bewusst direkt nach „Neu" und nicht am Ende:
+`update_all` räumt alte Cores weg, und ein verschwundener Core ist
+genau das, was man wissen will, wenn ein Spiel danach nicht mehr
+startet.
+
+Hat sich nichts geändert, sagt das Frontend auch das — sonst steht man
+vor dem alten Bild und weiß nicht, ob der Lauf durch ist. Der Bericht
+bleibt danach als Menüpunkt **„Core-Updates: was ist neu (N)"**
+erreichbar; gibt es keinen, erscheint der Punkt gar nicht.
+
+**Gelesen wird kein Protokoll von `update_all`.** Verglichen wird die
+Karte mit sich selbst — eine Beobachtung an unserem eigenen
+Dateisystem, die richtig bleibt, egal in welcher Fassung `update_all`
+vorliegt oder was es intern tut. Eine Abfrage „gibt es Updates?" über
+das Netz gibt es weiterhin bewusst **nicht**: dafür müsste das Frontend
+die Datenbanken des MiSTer-Downloaders nachbauen, und das wäre eine
+zweite Quelle der Wahrheit für die wichtigsten Dateien auf der Karte.
+
 ## 8i. Spielzeit-Tracker
 
 Ganz automatisch, ohne etwas einzustellen: das Frontend merkt sich pro

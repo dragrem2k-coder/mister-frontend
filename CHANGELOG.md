@@ -1049,6 +1049,90 @@ messbar, an denen bisher geraten werden musste.
 - Auch die Gewichtung war erst falsch: global gezählt stand `sagen` aus einem
   Diagnoseskript mit 96 oben. Gezählt wird jetzt je Datei.
 
+**Die Hauptseite ist jetzt deine.**
+
+- **Systemmenü → Verhalten & Optionen → „Hauptseite: Kategorien
+  sortieren und ausblenden".** Links/Rechts blendet eine Kategorie ein
+  oder aus, Enter nimmt einen Eintrag auf — dann verschiebt Hoch/Runter
+  ihn, und man sieht ihn wandern. Die Nummer links sagt, wie weit man
+  gekommen ist.
+- **„System" steht nicht in der Liste**, und das ist Absicht: es bleibt
+  immer sichtbar und immer zuletzt. Wer es ausblenden könnte, käme an
+  die Einstellungen nicht mehr heran — und um die Datei von Hand zu
+  löschen, bräuchte man SSH. Auch eine von Hand verstellte Datei kann es
+  nicht.
+- **Eine neu hinzugekommene Kategorie bleibt sichtbar** und landet am
+  Ende, vor „System". Sie verschwindet nicht, nur weil sie in der
+  gespeicherten Reihenfolge noch nicht steht.
+- Angewendet wird das an **einer** Stelle, am Ende des
+  Kategorienaufbaus. Die Reihenfolge entsteht dort an zehn verteilten
+  `insert()`/`append()`-Stellen; die einzeln umzubauen wäre zehnmal
+  dieselbe Fehlergelegenheit gewesen.
+- **Und die Stelle, an der es still kaputtgegangen wäre:** nach jedem
+  Favoriten-Druck und nach jedem Spiel setzen zwei Auffrisch-Funktionen
+  „Favoriten", „Zuletzt gespielt" und „Weiterspielen" mit einem harten
+  `insert(0, …)` zurück an den Anfang — ausdrücklich, um nicht alles neu
+  bauen zu müssen. Ohne einen Aufruf dort hätte die Einstellung weiter
+  in der Datei gestanden und wäre auf dem Schirm nach dem ersten Toggle
+  verschwunden.
+
+**Gemerkte Filter dürfen jetzt heißen, wie du willst.**
+
+- Die Zeile aus Build 143 bleibt **ein** Tastendruck, Name automatisch
+  („SNES / Platform / 1990-1994"). Darunter steht neu **„…oder mit
+  eigenem Namen merken"** — und bei einer schon gemerkten Kategorie
+  **„Diese Kategorie umbenennen"**.
+- Getippt wird mit dem **Buchstabenwähler aus der Suche**, vorbelegt mit
+  dem automatischen Namen: zweimal drücken behält ihn. Hier habe ich
+  mich selbst korrigiert — im Kopf der Filterdatei stand seit Build 143,
+  ein Namenswähler wäre „drei Bildschirme für etwas, das sich von selbst
+  ergibt". Der erste Teil stimmt weiter. Der zweite war falsch: der
+  Wähler existiert seit Build 88, samt Zeichnen für Röhre *und* HDMI.
+  Herausgezogen statt neu gebaut sind es rund zwanzig Zeilen.
+- **Umbenennen ändert nur den Namen** — Bedingung und Quellkategorie
+  bleiben, die Kategorie zeigt weiter dieselben Spiele und bleibt
+  aktuell. Ein vergebener Name wird abgewiesen *und gemeldet*: der Name
+  ist der Schlüssel, über den das Frontend die Kategorie wiederfindet.
+
+**`update_all` sagt jetzt, was es geändert hat.**
+
+- Vor dem Start wird aufgeschrieben, welche `.rbf`-Dateien in den
+  Core-Ordnern liegen, danach wird nachgesehen. Der Unterschied erscheint
+  sofort in drei Gruppen: **Neu**, **Weg**, **Aktualisiert**
+  (`20260603 -> 20260915`). Danach bleibt der Bericht als Menüpunkt
+  erreichbar; gibt es keinen, erscheint der Punkt gar nicht.
+- **„Weg" steht direkt nach „Neu" und nicht am Ende.** `update_all`
+  räumt alte Cores weg, und ein verschwundener Core ist genau das, was
+  man wissen will, wenn ein Spiel danach nicht mehr startet.
+- **Gelesen wird kein Protokoll von `update_all`.** Verglichen wird die
+  Karte mit sich selbst. Ein Logleser hinge am Zeilenformat einer
+  fremden Datei — dieselbe zweite Quelle der Wahrheit, die die
+  Core-Verwaltung ausschließt. Eine Netzabfrage „gibt es Updates?" gibt
+  es weiterhin bewusst nicht.
+- Hat sich nichts geändert, sagt das Frontend auch das. Ohne diese
+  Auskunft steht man vor dem alten Bild und weiß nicht, ob der Lauf
+  durch ist.
+
+**Und die Buchstaben beim Schnellscrollen sind raus.**
+
+- Auf Wunsch, wörtlich: „nimm bitte die Buchstaben in der listen ansicht
+  raus ich finde das blöd das die angezeigt werden wenn ich nach unten
+  mit gedrückter taste mit angezeigt werden!"
+- Sie waren Build 243, und die Begründung damals war nicht falsch, aber
+  sie war **meine**: beim Scrollen steht der Titel ohnehin in der
+  markierten Zeile, und wer die Liste bedient, liest dort. Ein großes
+  Zeichen, das bei jedem Schritt wechselt, ist dann Unruhe und kein
+  Hinweis.
+- **Kein Schalter, sondern weg** — ein abschaltbarer Buchstabe hätte
+  drei Dinge behalten müssen, die auch jeden kosten, der ihn aus hat:
+  ein Zeichen je Scrollschritt, ein zusätzliches Rechteck im Flip
+  (Build 249 musste seine Zelle gerade erst eintragen, weil sie mitten
+  in der ausgesparten Kastenfläche liegt), und einen Menüpunkt für
+  etwas, das niemand sucht.
+- Gemessen: der Flip in der Listenansicht geht von **1,91 auf 1,79 MB**
+  je Scrollschritt, und in der Boxart-Spalte wird beim Schnellscrollen
+  jetzt **gar nichts** mehr geschrieben.
+
 **Und ein Test, der sein Urteil unter Last gewechselt hat.**
 
 - `test_cover_panel.py` prüfte mit einer **Stoppuhr**, dass zwei

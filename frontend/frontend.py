@@ -1429,6 +1429,8 @@ if flaechen_c_enabled():
 # ausfuehrliche Begruendung samt der beiden ehrlichen Einschraenkungen
 # steht im Kopf von fe/prewarm.py.
 import fe.filter as FILTER
+import fe.hauptseite as HS
+import fe.corestand as CSTAND
 from fe.prewarm import PREWARMER, auftraege_bauen, Doppelkern
 from fe.nachladen import MiniaturLader
 
@@ -2617,6 +2619,13 @@ class Frontend:
         # Steht bewusst HIER, nach den Systemen: die Quellkategorie
         # muss schon gebaut sein, aus ihr wird gefiltert.
         _gemerkte = FILTER.gemerkte_laden()
+        # DIE NAMEN DER GEMERKTEN FILTER MERKEN (Build 250). Der
+        # Hauptseiten-Editor braucht sie fuer sein Kuerzel: ein
+        # gemerkter Filter traegt den syskey seiner Quellkategorie, ein
+        # Filter ueber SNES also "SNES" - genau wie das System SNES
+        # selbst. Ohne diese Liste waeren beide dasselbe Kuerzel, und
+        # wer den Filter ausblendet, verlore das System mit.
+        self._gemerkte_namen = set(e["name"] for e in _gemerkte)
         if _gemerkte:
             self._auf_vorwaermen_warten()
             if hasattr(self, "_t_letzte_marke"):
@@ -2681,6 +2690,24 @@ class Frontend:
             # System, Core-Ordner) unveraendert - nur echte Spiele-
             # Systeme werden eingeschraenkt.
             self.cats = [filter_curated(n, it, sk) for n, it, sk in self.cats]
+        # DIE HAUPTSEITE, WIE DER NUTZER SIE WILL (Build 250).
+        #
+        # AN GENAU EINER STELLE, und das war die Entscheidung, die
+        # diese Aenderung klein gehalten hat. Die Reihenfolge entsteht
+        # oben an zehn verschiedenen insert()- und append()-Stellen
+        # (Weiterspielen bei 0, Zuletzt gespielt bei 0 oder 1,
+        # Favoriten dahinter, dann Systeme, Core-Ordner, Sammlungen,
+        # gemerkte Filter, Erfolgsjaeger, Zufalls-Zock, System). Diese
+        # zehn Stellen einzeln umzubauen waere zehnmal dieselbe
+        # Fehlergelegenheit gewesen. Stattdessen bleibt die
+        # Grundreihenfolge genau wie sie war und wird hier umsortiert -
+        # dieselbe Haltung wie bei curated_only_active() direkt
+        # darueber.
+        #
+        # "System" bleibt dabei immer sichtbar und immer zuletzt (siehe
+        # fe/hauptseite.py) - wer es ausblenden koennte, saesse ohne
+        # Einstellungen da.
+        self._hauptseite_anwenden()
 
     def _go_back_or_confirm_quit(self):
         """ESC/B (und der 3x-Select-Kurzbefehl): auf Seite 1 zuerst
@@ -2796,6 +2823,36 @@ class Frontend:
         return (time.monotonic() - self._confirm_dialog_opened_at
                 < CONFIRM_DIALOG_IGNORE_OK_WINDOW)
 
+    def _hauptseite_anwenden(self):
+        """Reihenfolge und Sichtbarkeit der Kategorien aus der
+        Einstellung anwenden (Build 250).
+
+        WIRD AN DREI STELLEN GERUFEN, und die beiden hinteren sind der
+        Grund, warum es eine eigene Methode ist: build_categories()
+        baut die Liste neu, aber _sync_favorites_category() und
+        _sync_recent_category() setzen Favoriten und Zuletzt gespielt
+        mit einem harten insert(0 bzw. 1, ...) zurueck an den Anfang -
+        sie tun das ausdruecklich, um nicht alles neu bauen zu muessen.
+        Ohne diesen Aufruf wuerde eine eigene Reihenfolge nach jedem
+        Favoriten-Toggle und nach jedem Spiel wieder zerfallen, und
+        zwar still: die Einstellung stuende weiter in der Datei und
+        waere auf dem Schirm nicht zu sehen.
+
+        BILLIG GENUG FUER DEN WEG, auf dem sie liegt: es sind rund
+        zwanzig Eintraege, ein Schluessel je Eintrag und ein stabiles
+        sorted(). Der Grund, aus dem die beiden Sync-Funktionen
+        existieren, ist der Scan aller Spiele-Systeme - nicht das
+        Sortieren einer Liste von zwanzig Tupeln."""
+        try:
+            self.cats = HS.anwenden(
+                self.cats, getattr(self, "_gemerkte_namen", ()))
+        except Exception:                                # noqa: BLE001
+            # EINE KAPUTTE EINSTELLUNG DARF DAS HAUPTMENUE NICHT
+            # KOSTEN. Dann steht eben die Vorgabe da - sichtbar, und
+            # mit einer Zeile im Log, die sagt warum.
+            LOG("Hauptseiten-Reihenfolge nicht angewendet:\n"
+                + traceback.format_exc())
+
     def _refresh_system_category(self):
         """Nach dem Umschalten einer System-Menue-Einstellung (z.B.
         Attract-Modus) die 'System'-Kategorie in self.cats mit frisch
@@ -2852,6 +2909,12 @@ class Frontend:
             recent_name = t("recent_cat")
             pos = 1 if (self.cats and self.cats[0][0] == recent_name) else 0
             self.cats.insert(pos, (fav_name, _wrap_flat(favs), None))
+        # UND DANACH DIE EIGENE REIHENFOLGE WIEDER DARUEBER (Build
+        # 250). Das insert() oben ist hart auf 0 oder 1 - wer Favoriten
+        # woanders haben will, bekaeme sie sonst nach jedem Toggle
+        # zurueck an den Anfang. Muss VOR dem Wiederfinden von cat_i
+        # stehen, sonst zeigt die Auswahl auf die alte Position.
+        self._hauptseite_anwenden()
 
         if current_ref is not None:
             for i, c in enumerate(self.cats):
@@ -2924,6 +2987,12 @@ class Frontend:
             self.cats.insert(0, (recent_name, _wrap_flat(recent_items), None))
         if continue_game:
             self.cats.insert(0, (continue_name, _wrap_flat([continue_game]), None))
+        # Und danach die eigene Reihenfolge wieder darueber (Build
+        # 250) - aus demselben Grund wie in _sync_favorites_category():
+        # die beiden insert(0, ...) oben sind hart, und ohne diesen
+        # Aufruf stuenden Weiterspielen und Zuletzt gespielt nach jedem
+        # Spiel wieder ganz vorne.
+        self._hauptseite_anwenden()
 
         if current_ref is not None:
             for i, c in enumerate(self.cats):
@@ -5520,6 +5589,95 @@ class Frontend:
         if hw <= raster_b:
             fb.text(px + (platte_b - hw) // 2,
                     y0 + raster_h + 2 * s, hinweis, hinweis_s, C_DIM, C_PANEL)
+
+    # Wie lang ein selbst gewaehlter Name werden darf. Grosszuegig
+    # genug fuer "Beste Jump n Runs der 90er" und knapp genug, dass er
+    # auf der Roehre noch in eine Kategorienzeile passt.
+    NAME_MAX = 28
+
+    def name_abfragen(self, titel, vorschlag="", maxlen=None):
+        """Einen Namen abfragen - mit dem Buchstabenwaehler aus der
+        Suche (Build 250). Liefert den Namen oder None bei Abbruch.
+
+        WARUM ES DAS ERST JETZT GIBT, und das ist eine Korrektur an mir
+        selbst. In Build 143 steht im Kopf von fe/filter.py: "Absichtlich
+        ohne Texteingabe ... der Buchstabenwaehler fuer einen Namen waere
+        drei Bildschirme fuer etwas, das sich von selbst ergibt." Der
+        erste Teil stimmt weiter - der automatische Name aus der
+        Bedingung bleibt ein Tastendruck. Der zweite war falsch: der
+        Waehler ist seit Build 88 da, samt Zeichnen fuer Roehre UND
+        HDMI, und ihn hier zu benutzen statt einen zweiten zu bauen
+        sind rund zwanzig Zeilen.
+
+        DREI WEGE HINEIN, und alle drei muessen gehen, weil am MiSTer
+        beides vorkommt - Pad und Tastatur:
+
+          * das Raster mit hoch/runter/links/rechts und Enter,
+          * echte Buchstabentasten (sie kommen als "letter:X" an),
+          * Rueckschritt ("search_backspace").
+
+        GEZEICHNET WIRD MIT _draw_letter_picker(), demselben Raster wie
+        in der Suche. Es rechnet seine Feldgroesse aus dem verfuegbaren
+        Platz, laeuft also auf 320 Bildpunkten genauso wie auf 1920 -
+        genau deshalb wird es hier benutzt und nicht nachgebaut."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        grenze = int(maxlen or self.NAME_MAX)
+        name = str(vorschlag or "")[:grenze]
+        # Der Waehler merkt sich seine Stelle im Suchmodus; dieser
+        # Dialog darf sie nicht ueberschreiben.
+        _alt_i = self._picker_i
+        self._picker_i = 0
+        try:
+            while True:
+                fb.clear(C_BG)
+                _zeile = name + "_"
+                _skal = self._fit_scale(_zeile, W - 40 * s, s + 1)
+                balken_h = 22 * _skal
+                fb.rect(0, 0, W, balken_h, accent_for(None))
+                _tw = len(_zeile) * 8 * _skal
+                fb.text((W - _tw) // 2, 3 * _skal, _zeile, _skal, C_BG,
+                        accent_for(None))
+                _ts = self._fit_scale(titel, W - 40 * s, s)
+                fb.text((W - len(titel) * 8 * _ts) // 2,
+                        balken_h + 3 * s, titel, _ts, C_DIM, C_BG)
+                self._draw_letter_picker(balken_h + 14 * s)
+                fb.flip()
+
+                akt = self.inp.read_action(timeout=1.0)
+                if akt is None:
+                    continue
+                if akt in ("up", "down", "left", "right"):
+                    self._picker_bewegen(akt)
+                    continue
+                if akt in ("back", "exit", "select", "search",
+                           "search_pad"):
+                    return None
+                if akt == "search_backspace":
+                    name = name[:-1]
+                    continue
+                if isinstance(akt, str) and akt.startswith("letter:"):
+                    _z = akt.split(":", 1)[1]
+                    if len(name) < grenze:
+                        name += _z
+                    continue
+                if akt != "ok":
+                    continue
+                art, wert = self.PICKER_FELDER[self._picker_i]
+                if art == "done":
+                    # EIN LEERER NAME IST EIN ABBRUCH, kein leerer
+                    # Name. Sonst entstuende eine Kategorie ohne
+                    # Beschriftung, und die findet man nicht wieder.
+                    name = name.strip()
+                    return name or None
+                if art == "del":
+                    name = name[:-1]
+                elif len(name) < grenze:
+                    name += wert
+        finally:
+            self._picker_i = _alt_i
+            self._force_full_redraw = True
 
     def _draw_cat_row(self, i, row, L, maxc, bg_fresh=False):
         """Eine einzelne Zeile der Kategorienliste (Seite 0) zeichnen -
@@ -11791,77 +11949,31 @@ class Frontend:
         # sonst muesste es dort ein zweites Mal nachgeschlagen werden.
         return avail_w, cover_h, title_lines, info_lines, ra_progress
 
-    # Wie gross der Buchstabe wird, gemessen an der Hoehe des Cover-
-    # Kastens. Ein Drittel ist gross genug, um ihn beim Scrollen aus
-    # dem Augenwinkel zu lesen, und klein genug, dass er nicht wie ein
-    # Fehler aussieht.
-    SCHNELLMARKE_ANTEIL = 3
-
-    @staticmethod
-    def schnellmarke_text(name):
-        """Was beim Schnellscrollen gross angezeigt wird - ein einzelnes
-        Zeichen, oder "" wenn sich keines anbietet.
-
-        EIN ZEICHEN UND NICHT DER TITEL: der Titel steht beim Scrollen
-        ohnehin in der markierten Zeile. Gebraucht wird die GROBE
-        Position in einer alphabetisch sortierten Liste, und die sagt
-        der Anfangsbuchstabe.
-
-        Fuehrende Klammern und Zeichen, die keine Buchstaben oder
-        Ziffern sind, werden uebersprungen - sonst zeigte eine Liste
-        mit "[BIOS] ..."-Eintraegen seitenlang eine Klammer."""
-        try:
-            roh = display_name(name) or ""
-        except Exception:                                # noqa: BLE001
-            roh = str(name or "")
-        for z in roh:
-            if z.isalnum():
-                return z.upper()
-        return ""
-
-    def _schnellmarke_zeichnen(self, x0, cy, avail_w, cover_h, name, s):
-        """Den Anfangsbuchstaben gross in den leeren Cover-Kasten.
-
-        DER AUFRUFER ENTSCHEIDET, OB ES SOWEIT KOMMT - siehe
-        draw_art_panel(): nur wenn das Cover waehrend des Scrollens
-        uebersprungen wurde. Hier wird nur noch gezeichnet.
-
-        cachen=False IST ABSICHT und kein Versehen. Ein Zeichen in
-        dieser Groesse ist ein Streifen von gut hunderttausend
-        Bildpunkten; 26 Buchstaben im Textcache waeren rund zehn
-        Megabyte, und sie wuerden dort alles verdraengen, was sonst
-        davon lebt (Menuepunkte, Kopfzeilen, Spaltentitel). So geht es
-        direkt nach C - und beim Schnellscrollen ist der Weg nach C
-        ohnehin der billigere (siehe den Block in Framebuffer.text())."""
-        zeichen = self.schnellmarke_text(name)
-        if not zeichen:
-            return
-        fb = self.fb
-        skala = max(s, int(cover_h // (8 * self.SCHNELLMARKE_ANTEIL)))
-        breite = 8 * skala
-        hoehe = 8 * skala
-        if breite > avail_w or hoehe > cover_h:
-            # Lieber klein als abgeschnitten: ein halber Buchstabe
-            # saehe nach einem Fehler aus.
-            skala = max(s, min(avail_w // 8, cover_h // 8))
-            breite = 8 * skala
-            hoehe = 8 * skala
-            if breite > avail_w or hoehe > cover_h:
-                return
-        bx = x0 + (avail_w - breite) // 2
-        by = cy + (cover_h - hoehe) // 2
-        # Gedaempft, nicht in Textfarbe: er soll die Position zeigen und
-        # nicht das Bild sein, das gleich kommt.
-        fb.text(bx, by, zeichen, skala, C_DIM, C_PANEL, cachen=False)
-        # UND DIE ZELLE MELDEN (Build 249). Sie liegt mitten in der
-        # Flaeche, die der kurze Weg aussport - wird sie nicht
-        # gemeldet, kopiert der Flip sie nicht, und auf dem Schirm
-        # bleibt der ALTE Buchstabe stehen, waehrend im Puffer der neue
-        # steht. Siehe die Begruendung bei _panel_bereiche in
-        # draw_art_panel().
-        _ber = getattr(self, "_panel_bereiche", None)
-        if _ber is not None:
-            _ber.append((bx, by, breite, hoehe))
+    # DER ANFANGSBUCHSTABE BEIM SCHNELLSCROLLEN IST RAUS (Build 250).
+    #
+    # NUTZERWUNSCH, woertlich: "nimm bitte die Buchstaben in der listen
+    # ansicht raus ich finde das bloed das die angezeigt werden wenn ich
+    # nach unten mit gedrueckter taste mit angezeigt werden!"
+    #
+    # Er war Build 243 - gedacht als Positionsanzeige in langen
+    # alphabetischen Listen ("bei 1041 Eintraegen in Arcade sagt er, wo
+    # man gerade ist"). Die Begruendung war nicht falsch, aber sie war
+    # MEINE: der Titel steht beim Scrollen ohnehin in der markierten
+    # Zeile, und wer die Liste bedient, liest dort und nicht in der
+    # Cover-Spalte. Ein grosses Zeichen, das bei jedem Schritt wechselt,
+    # ist dann kein Hinweis mehr, sondern Unruhe.
+    #
+    # ES WIRD KEIN SCHALTER DARAUS, und das ist Absicht. Ein Schalter
+    # haette drei Dinge gekostet, die alle bleiben muessten: ein Zeichen
+    # je Schritt auf dem kurzen Weg, ein zusaetzliches Rechteck im Flip
+    # (Build 249 hat es gerade erst eingetragen), und einen Menuepunkt
+    # fuer etwas, das niemand sucht. Entfernt ist billiger als
+    # abschaltbar - gemessen in tools/test_keine_buchstaben.py.
+    #
+    # Was weg ist: SCHNELLMARKE_ANTEIL, schnellmarke_text() und
+    # _schnellmarke_zeichnen(). Der leere Cover-Kasten bleibt beim
+    # Schnellscrollen jetzt leer, bis COVER_SETTLE das echte Cover
+    # nachliefert - genau wie vor Build 243.
 
     def _zeichne_kein_artwork(self, x0, cy, avail_w, cover_h, s):
         """Der Platzhalter, wenn ein Eintrag WIRKLICH kein Cover hat.
@@ -12045,37 +12157,32 @@ class Frontend:
             _aw0, _ah0, _pix0 = art
             _kasten = ("bild", _quelle_fuer_stand, _aw0, _ah0, len(_pix0))
         elif nur_verzoegert:
-            _kasten = ("marke", self.schnellmarke_text(name) if FEIN else "")
-        # DER BUCHSTABE GEHOERT NICHT MEHR IN DEN VERGLEICH
-        # (Build 247), und das ist der ganze Unterschied zu Build 244.
+            # Nur noch die Art, kein Inhalt: der leere Kasten sieht fuer
+            # jeden Eintrag gleich aus, seit der Buchstabe raus ist
+            # (Build 250).
+            _kasten = ("marke",)
+        # DER KASTEN OHNE COVER HAT KEINEN INHALT MEHR (Build 250).
         #
-        # WARUM, und die Zahl stammt vom Geraet. Abschnitt K des Bench
-        # vom 04.10. zaehlt fuer den Fall "Taste gedrueckt" 531.383
-        # gefuellte Punkte je Schritt. Greift der kurze Weg, sind es
-        # 174.240; greift er nie, 710.410. Die Rechnung geht ueber
-        # Punkte UND Zeilen unabhaengig auf:
+        # Build 244 hatte den Anfangsbuchstaben im Vergleich, und das
+        # kostete zwei Drittel aller kurzen Wege: in einer echten
+        # Arcade-Liste wechselt er oft ("1942", "1943", "Aero Fighters",
+        # "Alien Syndrome"). Abschnitt K des Bench vom 04.10. hat das
+        # ueber Punkte UND Zeilen unabhaengig belegt - er griff in genau
+        # einem Drittel der Schritte:
         #
         #     (710.410 - 531.383) / (710.410 - 174.240) = 33,4 %
         #     (  2.080 -   1.824) / (  2.592 -   1.824) = 33,3 %
         #
-        # Er greift also in genau EINEM DRITTEL der Schritte. Der Grund
-        # ist der Anfangsbuchstabe: in einer echten Arcade-Liste
-        # wechselt der oft ("1942", "1943", "Aero Fighters", "Alien
-        # Syndrome"), und bis Build 246 stand er mit im Vergleich. Auf
-        # dem Pruefstand hiessen alle Eintraege "Spiel 000...059" -
+        # Auf dem Pruefstand hiessen alle Eintraege "Spiel 000...059" -
         # dort war der Buchstabe immer derselbe, und deshalb sah die
-        # Messung dort perfekt aus. Dieselbe Blindheit wie zuvor, nur
-        # eine Ebene hoeher: die Testdaten waren zu gleichmaessig.
+        # Messung dort perfekt aus. Build 247 nahm ihn aus dem Vergleich
+        # und zeichnete ihn auf dem kurzen Weg mit; Build 250 nimmt ihn
+        # ganz heraus, und damit faellt auch das Mitzeichnen weg.
         #
-        # WARUM ER JETZT DRAUSSEN SEIN DARF: der Buchstabe wird mit
-        # fb.text(..., C_DIM, C_PANEL) gezeichnet, und text() mit
-        # Hintergrundfarbe malt seine eigene Zelle mit. Die Zelle haengt
-        # ausserdem nur an x0/cy/avail_w/cover_h/s - nicht am Zeichen
-        # selbst (siehe _schnellmarke_zeichnen()). Ein neuer Buchstabe
-        # ueberdeckt den alten also vollstaendig, und es genuegt, ihn
-        # auf dem kurzen Weg MITZUZEICHNEN. Die Flaeche um ihn herum ist
-        # schon richtig - dort steht derselbe leere Kasten wie im
-        # Schritt davor.
+        # Was bleibt, ist der einfachste moegliche Fall: ohne Cover ist
+        # der Kasten leer, und ein leerer Kasten sieht fuer jeden
+        # Eintrag gleich aus. Der kurze Weg greift dadurch in JEDEM
+        # Schritt und muss nichts mehr nachzeichnen.
         #
         # Mit Cover bleibt alles wie in Build 244: dort gehoert der
         # Inhalt in den Vergleich, denn das Bild wechselt wirklich.
@@ -12199,12 +12306,15 @@ class Frontend:
         # Bereich ebenso - ein unbekannter Bereich muss immer der
         # ganze sein.
         #
-        # WARUM DER BUCHSTABE DAZUGEHOERT: seit Build 247 wird er auf
-        # dem kurzen Weg MITGEZEICHNET (er darf wechseln). Er liegt
-        # mitten im ausgesparten Kasten - fehlt seine Zelle hier,
-        # bleibt auf dem Schirm der alte Buchstabe stehen, waehrend im
-        # Puffer der neue steht. Genau die Sorte Rest, die dieses
-        # Projekt fuenfmal gejagt hat.
+        # UND SEIT BUILD 250 IST ES WIRKLICH NUR NOCH DER RAHMEN. Bis
+        # dahin wurde mitten im ausgesparten Kasten der
+        # Anfangsbuchstabe mitgezeichnet, und seine Zelle musste
+        # zusaetzlich gemeldet werden - fehlte sie, blieb auf dem Schirm
+        # der alte Buchstabe stehen, waehrend im Puffer der neue stand
+        # (genau die Sorte Rest, die dieses Projekt fuenfmal gejagt
+        # hat). Der Buchstabe ist auf Nutzerwunsch raus; damit faellt
+        # diese Fehlerquelle weg, und im Kasten wird nichts mehr
+        # beschrieben.
         self._panel_bereiche = None
         if _kurz and _kasten_luecke:
             _kx, _ky, _kw, _kh = _kasten_luecke
@@ -12342,45 +12452,25 @@ class Frontend:
                 # kurze Weg: derselbe leere Kasten wie im Schritt davor,
                 # und _stand oben hat das garantiert.
                 #
-                # GEAENDERT (Build 247): NUR die Flaeche steht, der
-                # Buchstabe nicht. Er darf wechseln, und dann wird er
-                # hier mitgezeichnet - fb.text() mit Hintergrundfarbe
-                # malt seine eigene Zelle mit, und die Zelle ist fuer
-                # jeden Buchstaben dieselbe. Das kostet EIN Zeichen
-                # statt der ganzen Karte und hebt die Trefferquote des
-                # kurzen Wegs von einem Drittel auf praktisch jeden
-                # Schritt (Begruendung samt Zahlen bei _stand oben).
-                if FEIN:
-                    self._schnellmarke_zeichnen(x0, cy, avail_w, cover_h,
-                                                name, s)
+                # UND JETZT STEHT WIRKLICH ALLES DA (Build 250). Bis
+                # Build 249 wurde hier noch der Anfangsbuchstabe
+                # mitgezeichnet, weil er wechseln durfte; mit ihm ist
+                # dieser Zweig leer. Das ist kein Versehen, sondern das
+                # Ziel: ein Scrollschritt mit uebersprungenem Cover
+                # zeichnet in der Boxart-Spalte NICHTS mehr.
+                pass
             elif not nur_verzoegert:
                 self._zeichne_kein_artwork(x0, cy, avail_w, cover_h, s)
-            elif FEIN:
-                # DER ANFANGSBUCHSTABE, GROSS (Build 243).
-                #
-                # NUTZERWUNSCH: "hast du noch design vorschlaege zur
-                # optischen verschoenerung aber ohne performence
-                # verlust?" - und das hier ist der einzige der vier
-                # Vorschlaege, der zugleich NUETZLICH ist: bei 1041
-                # Eintraegen in Arcade sagt er, wo man gerade ist.
-                #
-                # WARUM GENAU HIER UND NIRGENDS SONST: dieser Zweig
-                # laeuft, wenn das Cover waehrend des Scrollens
-                # UEBERSPRUNGEN wurde (nur_verzoegert). Dann ist die
-                # Karte leer - sie wird jeden Schritt gefuellt, und es
-                # kommt kein Bild darauf. Genau in dem Moment, in dem
-                # das Frontend sich die teure Cover-Arbeit spart, ist
-                # hier Platz, und die Flaeche wird ohnehin schon
-                # freigeraeumt und geflippt. Es kommt also KEIN
-                # Freiraeumen und KEIN Flip dazu.
-                #
-                # Und er verschwindet von selbst: sobald man loslaesst,
-                # holt der COVER_SETTLE-Nachlader das echte Cover und
-                # zeichnet darueber. Nichts muss zurueckgenommen
-                # werden - der Fall, der in Build 237 die 5184
-                # ungedeckten Punkte verursacht hat.
-                self._schnellmarke_zeichnen(x0, cy, avail_w, cover_h,
-                                            name, s)
+            # SONST: das Cover wurde beim Scrollen uebersprungen
+            # (nur_verzoegert) - dann bleibt der Kasten leer, bis
+            # COVER_SETTLE das echte Bild nachliefert.
+            #
+            # HIER STAND DER ANFANGSBUCHSTABE (Build 243 bis 249). Er
+            # ist auf Nutzerwunsch raus - die Begruendung steht oben bei
+            # den entfernten Hilfsfunktionen. Der Platzhalter "kein
+            # Artwork" kommt hier ausdruecklich NICHT hin: er waere eine
+            # Luege fuer einen Sekundenbruchteil, und genau die hat in
+            # Build 89 geblitzt.
             art_bottom = cy + cover_h
 
         # ---- Titel + Infos darunter, volle Spaltenbreite ----
@@ -14118,6 +14208,283 @@ class Frontend:
     THEME_EDIT_SCHRITT = 8
     THEME_EDIT_KANAELE = ("R", "G", "B")
 
+    def core_neu_bildschirm(self, bericht=None):
+        """Was update_all geaendert hat (Build 250).
+
+        Eine reine Leseseite - hoch/runter blaettert, jede andere
+        Taste geht zurueck. Es gibt nichts einzustellen, also auch
+        keinen Griff und keine Werte: wer hier ist, will wissen, was
+        passiert ist.
+
+        `bericht` kommt direkt nach einem update_all-Lauf mit; ohne
+        Angabe wird der letzte gespeicherte gelesen (Menuepunkt "was
+        ist neu").
+
+        DREI GRUPPEN, und die dritte ist die wichtigste: WEG. update_all
+        raeumt alte Cores weg, und ein verschwundener Core ist genau
+        das, was man wissen will, wenn ein Spiel danach nicht mehr
+        startet. Sie steht deshalb nicht am Ende, sondern direkt nach
+        den neuen."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        ox, oy = 12 * s, 10 * s
+        if bericht is None:
+            bericht = CSTAND.bericht_lesen()
+        if CSTAND.leer(bericht):
+            self._force_full_redraw = True
+            self.draw(message=t("core_neu_nichts"))
+            return
+
+        # Eine flache Liste aus Ueberschriften und Posten - dann
+        # braucht das Blaettern nur einen Index, und die Ueberschriften
+        # scrollen mit statt oben zu kleben.
+        zeilen = []
+        for _schl, _titel in (("neu", "core_neu_gruppe_neu"),
+                              ("weg", "core_neu_gruppe_weg"),
+                              ("aktualisiert",
+                               "core_neu_gruppe_aktualisiert")):
+            _posten = bericht.get(_schl) or ()
+            if not _posten:
+                continue
+            zeilen.append(("kopf", t(_titel, len(_posten)), ""))
+            for _p in _posten:
+                if _schl == "aktualisiert":
+                    _kopf, _alt, _neu = _p
+                    zeilen.append(("posten", _kopf,
+                                   ("%s -> %s" % (_alt, _neu)) if _alt
+                                   else _neu))
+                else:
+                    zeilen.append(("posten", _p, ""))
+
+        erste = 0
+        while True:
+            fb.clear(C_BG)
+            fb.text(ox, oy, t("core_neu_titel"), 2 * s, C_TITLE)
+            y = oy + 30 * s
+            platz = max(1, (H - oy - y - 26 * s) // (14 * s))
+            erste = max(0, min(erste, max(0, len(zeilen) - platz)))
+            for i in range(erste, min(erste + platz, len(zeilen))):
+                art, links, rechts = zeilen[i]
+                if art == "kopf":
+                    fb.text(ox, y, links, s, accent_for(None))
+                else:
+                    # Der Ordner steht davor ("_Console/SNES") - er
+                    # gehoert dazu, denn derselbe Name kann in zwei
+                    # Ordnern liegen.
+                    fb.text(ox + 6 * s, y, links, s, C_TEXT)
+                    if rechts:
+                        _rw = len(rechts) * 8 * s
+                        fb.text(max(ox, W - ox - _rw - 2 * s), y, rechts,
+                                s, C_DIM)
+                y += 14 * s
+
+            _von = min(erste + 1, len(zeilen))
+            fb.text(ox, H - oy - 26 * s,
+                    t("core_neu_von", _von,
+                      min(erste + platz, len(zeilen)), len(zeilen)),
+                    s, C_DIM)
+            _maxc = max(10, (W - 2 * ox) // (8 * s))
+            for _i, _z in enumerate(self._wrap(t("core_neu_hinweis"),
+                                               _maxc, max_lines=2)):
+                fb.text(ox, H - oy - 13 * s + _i * 11 * s, _z, s, C_DIM)
+            fb.flip()
+
+            akt = self.inp.read_action(timeout=1.0)
+            if akt is None:
+                continue
+            if akt == "up":
+                erste = max(0, erste - 1)
+            elif akt == "down":
+                erste = min(max(0, len(zeilen) - platz), erste + 1)
+            elif akt == "left":
+                erste = max(0, erste - platz)
+            elif akt == "right":
+                erste = min(max(0, len(zeilen) - platz), erste + platz)
+            else:
+                break
+
+        self._force_full_redraw = True
+        self.draw()
+
+    def hauptseite_bildschirm(self):
+        """Die Hauptseite einrichten: Reihenfolge und Sichtbarkeit der
+        Kategorien (Build 250).
+
+        Derselbe modale Aufbau wie cores_bildschirm() - Zeilenliste,
+        Scrollfenster, "geaendert"-Merker, gespeichert wird beim
+        Verlassen. Was es dort nicht gab, ist das VERSCHIEBEN, und
+        dafuer gibt es einen Griff:
+
+            ok          Eintrag aufnehmen / wieder ablegen
+            hoch/runter Auswahl - oder der aufgenommene Eintrag wandert
+            links/rechts ein/aus
+            zurueck     speichern und zurueck
+
+        WARUM EIN GRIFF UND NICHT "LINKS/RECHTS VERSCHIEBT". Verschoben
+        wird senkrecht, und eine waagerechte Taste dafuer haette man
+        sich merken muessen. Mit dem Griff bewegt dieselbe Taste, die
+        sonst die Auswahl bewegt, auch den Eintrag - man sieht ihn
+        wandern. Dass er aufgenommen ist, steht in der Zeile selbst
+        ("= Name ="), nicht nur in der Hinweiszeile unten.
+
+        "SYSTEM" STEHT NICHT IN DER LISTE, und das ist kein Versehen:
+        es bleibt immer sichtbar und immer zuletzt (fe/hauptseite.py
+        setzt das durch, auch bei einer von Hand verstellten Datei).
+        Wer es ausblenden oder vorziehen koennte, saesse ohne
+        Einstellungen da - und eine Bildschirmtastatur, um die Datei
+        zu loeschen, hat am MiSTer nicht jeder. Dass es weiter unten
+        steht, sagt die Hinweiszeile.
+
+        GESPEICHERT WIRD, WAS MAN SIEHT: die Kuerzel in der
+        Reihenfolge der Liste, nicht Indizes und nicht Anzeigenamen
+        (die sind uebersetzt und tragen Zaehler - siehe den Kopf von
+        fe/hauptseite.py)."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        ox, oy = 12 * s, 10 * s
+        _gemerkte = getattr(self, "_gemerkte_namen", ())
+
+        # Gearbeitet wird auf einer EIGENEN Liste, nicht auf self.cats.
+        # Ein Abbruch muss nichts zuruecknehmen - dieselbe Designregel
+        # wie im Farbschema-Editor.
+        aus, _folge = HS.laden()
+        zeilen = []
+        for _eintrag in self.cats:
+            _k = HS.schluessel(_eintrag[0], _eintrag[2], _gemerkte)
+            if _k == HS.SYSTEM:
+                continue
+            zeilen.append((_k, HS.ohne_zaehler(_eintrag[0])))
+        # Ausgeblendete Kategorien sind in self.cats nicht mehr drin -
+        # sie muessen trotzdem in der Liste stehen, sonst kann man sie
+        # nie wieder einschalten. Sie kommen aus der gespeicherten
+        # Reihenfolge, mit dem Kuerzel als Notnamen, falls sie dort
+        # nicht steht.
+        _da = set(k for k, _n in zeilen)
+        for _k in _folge:
+            if _k not in _da and _k != HS.SYSTEM:
+                zeilen.append((_k, _k.split(":", 1)[-1]))
+                _da.add(_k)
+        for _k in sorted(aus):
+            if _k not in _da:
+                zeilen.append((_k, _k.split(":", 1)[-1]))
+                _da.add(_k)
+        if not zeilen:
+            self._force_full_redraw = True
+            self.draw(message=t("hauptseite_leer"))
+            return
+
+        # Die gespeicherte Reihenfolge gilt auch fuer die
+        # ausgeblendeten: sonst springen sie beim Einschalten an eine
+        # andere Stelle als die, an der man sie gesehen hat.
+        if _folge:
+            _platz = {k: i for i, k in enumerate(_folge)}
+            zeilen = [z for _i, z in sorted(
+                enumerate(zeilen),
+                key=lambda p: (_platz.get(p[1][0], len(_platz) + p[0]),
+                               p[0]))]
+
+        zeile = 0
+        griff = False
+        geaendert = False
+
+        while True:
+            fb.clear(C_BG)
+            fb.text(ox, oy, t("hauptseite_titel"), 2 * s, C_TITLE)
+            y = oy + 30 * s
+            breite = W - 2 * ox
+            platz = max(1, (H - oy - y - 26 * s) // (17 * s))
+            erste = max(0, min(zeile - platz // 2, len(zeilen) - platz))
+            for i in range(erste, min(erste + platz, len(zeilen))):
+                k, name = zeilen[i]
+                markiert = (i == zeile)
+                sichtbar = k not in aus
+                if markiert:
+                    fb.rect_rounded(ox - 2 * s, y - 3 * s, breite + 4 * s,
+                                    15 * s, C_PANEL)
+                # DIE NUMMER STEHT DABEI, und zwar aus einem
+                # praktischen Grund: wer vier Eintraege nach oben
+                # schiebt, will sehen, wie weit er gekommen ist, ohne
+                # zu zaehlen.
+                _text = "%2d  %s" % (i + 1, name)
+                if markiert and griff:
+                    _text = "= %s =" % _text
+                fb.text(ox + 2 * s, y, _text, s,
+                        C_TITLE if markiert else
+                        (C_TEXT if sichtbar else C_DIM))
+                _wert = t("hauptseite_an") if sichtbar \
+                    else t("hauptseite_aus")
+                fb.text(W - ox - len(_wert) * 8 * s - 2 * s, y, _wert, s,
+                        accent_for(None) if sichtbar else C_DIM)
+                y += 17 * s
+
+            _sichtbar = len([1 for k, _n in zeilen if k not in aus])
+            fb.text(ox, H - oy - 26 * s,
+                    t("hauptseite_anzahl", _sichtbar, len(zeilen)), s,
+                    C_DIM)
+            _maxc = max(10, (W - 2 * ox) // (8 * s))
+            _hinweis = t("hauptseite_hinweis_griff") if griff \
+                else t("hauptseite_hinweis")
+            for _i, _z in enumerate(self._wrap(_hinweis, _maxc,
+                                               max_lines=2)):
+                fb.text(ox, H - oy - 13 * s + _i * 11 * s, _z, s, C_DIM)
+            fb.flip()
+
+            akt = self.inp.read_action(timeout=1.0)
+            if akt is None:
+                continue
+            if akt in ("up", "down"):
+                _richtung = -1 if akt == "up" else 1
+                if griff:
+                    _ziel = zeile + _richtung
+                    # KEIN Umlauf beim Verschieben: ein Eintrag, der
+                    # oben hinausgeschoben wird und unten wieder
+                    # auftaucht, sieht nach einem Fehler aus. Die
+                    # Auswahl darf umlaufen, der Griff nicht.
+                    if 0 <= _ziel < len(zeilen):
+                        zeilen[zeile], zeilen[_ziel] = (zeilen[_ziel],
+                                                        zeilen[zeile])
+                        zeile = _ziel
+                        geaendert = True
+                else:
+                    zeile = (zeile + _richtung) % len(zeilen)
+            elif akt in ("left", "right"):
+                k, _name = zeilen[zeile]
+                if k in aus:
+                    aus.discard(k)
+                else:
+                    aus.add(k)
+                geaendert = True
+            elif akt == "ok":
+                griff = not griff
+            elif akt in ("back", "exit", "select"):
+                # Ein aufgenommener Eintrag wird beim Verlassen
+                # abgelegt, nicht festgehalten.
+                griff = False
+                break
+
+        if geaendert:
+            if HS.speichern(aus, [k for k, _n in zeilen]):
+                # NEU GEBAUT, NICHT NUR SORTIERT: eine ausgeblendete
+                # Kategorie ist aus self.cats verschwunden, und eine
+                # wieder eingeschaltete muss erst wieder entstehen -
+                # ihr Knoten wurde beim letzten Bau gar nicht erzeugt.
+                # Derselbe Weg wie beim Umschalten von "curated".
+                self.build_categories()
+                self.scroll = self.cat_scroll = 0
+                self.cat_i = 0
+                self.item_i = 0
+                self.page = 0
+                self.nav_path = []
+                self._nav_position_stack = []
+                self._force_full_redraw = True
+                self.draw(t("hauptseite_gespeichert"))
+                return
+            LOG("Hauptseiten-Reihenfolge speichern fehlgeschlagen")
+        self._force_full_redraw = True
+        self.draw()
+
     def cores_bildschirm(self):
         """Welche Core-Fassung startet welches System? (Build 174)
 
@@ -15044,6 +15411,29 @@ class Frontend:
             fb.text(ox + 2 * s, y, aktions_text, s,
                     C_TITLE if zeile == len(FILTER.FELDER)
                     else (C_TEXT if aktion_moeglich else C_DIM))
+            y += 20 * s
+            # SECHSTE ZEILE: EIGENER NAME (Build 250).
+            #
+            # Zwei Zeilen und nicht eine mit Zusatztaste: die obere
+            # bleibt genau, was sie seit Build 143 war - ein
+            # Tastendruck, Name entsteht aus der Bedingung. Wer einen
+            # eigenen Namen will, nimmt die untere. Niemand muss sich
+            # eine zweite Taste merken, und der gewohnte Weg wird nicht
+            # laenger.
+            #
+            # Je nachdem, ob die Kategorie schon gemerkt ist, heisst
+            # die Zeile "umbenennen" oder "mit eigenem Namen merken" -
+            # es ist dieselbe Handlung, nur der Ausgangspunkt
+            # unterscheidet sich.
+            _name_text = t("filter_umbenennen") if gemerkt \
+                else t("filter_merken_name")
+            _name_moeglich = gemerkt or FILTER.aktiv(stand)
+            if zeile == len(FILTER.FELDER) + 1:
+                fb.rect_rounded(ox - 2 * s, y - 3 * s, breite + 4 * s,
+                                16 * s, C_PANEL)
+            fb.text(ox + 2 * s, y, _name_text, s,
+                    C_TITLE if zeile == len(FILTER.FELDER) + 1
+                    else (C_TEXT if _name_moeglich else C_DIM))
             y += 28 * s
             zahl = t("filter_treffer", treffer, gesamt)
             fb.text(ox, y, zahl, s + 1,
@@ -15063,7 +15453,9 @@ class Frontend:
             akt = self.inp.read_action(timeout=1.0)
             if akt is None:
                 continue
-            _zeilen = len(FILTER.FELDER) + 1
+            # ZWEI Aktionszeilen seit Build 250: merken/vergessen und
+            # der eigene Name.
+            _zeilen = len(FILTER.FELDER) + 2
             if akt == "up":
                 zeile = (zeile - 1) % _zeilen
             elif akt == "down":
@@ -15092,6 +15484,51 @@ class Frontend:
                     if name:
                         self._kategorien_neu_bauen(meldung=t("filter_gemerkt"))
                         return
+            elif akt == "ok" and zeile == len(FILTER.FELDER) + 1:
+                # DER EIGENE NAME (Build 250). Zwei Faelle, dieselbe
+                # Handlung: ist die Kategorie schon gemerkt, wird sie
+                # umbenannt; sonst wird sie mit dem Namen angelegt.
+                #
+                # VORBELEGT WIRD MIT DEM AUTOMATISCHEN NAMEN. Wer ihn
+                # behalten will, drueckt zweimal; wer ihn nicht will,
+                # loescht ihn mit "<". Ein leeres Feld ist ein Abbruch -
+                # eine Kategorie ohne Beschriftung findet man nicht
+                # wieder (siehe name_abfragen()).
+                _alt_name = kat_name.rsplit(" (", 1)[0]
+                _stand_jetzt = {k: v for k, v in stand.items() if v}
+                if gemerkt:
+                    _neu = self.name_abfragen(t("filter_name_titel"),
+                                              _alt_name)
+                    if _neu and _neu != _alt_name:
+                        if FILTER.umbenennen(_alt_name, _neu):
+                            self._filter = _stand_jetzt
+                            self._kategorien_neu_bauen(
+                                meldung=t("filter_umbenannt"))
+                            return
+                        # Abgewiesen heisst: der Name ist schon
+                        # vergeben. Das muss man erfahren - sonst
+                        # drueckt man dreimal und glaubt an einen
+                        # Haenger.
+                        self._force_full_redraw = True
+                        self.draw(t("filter_name_belegt"))
+                        return
+                elif FILTER.aktiv(stand):
+                    _vorschlag = FILTER.name_fuer(_alt_name, _stand_jetzt,
+                                                  t)
+                    _neu = self.name_abfragen(t("filter_name_titel"),
+                                              _vorschlag)
+                    if _neu:
+                        _name = FILTER.merken_mit_namen(
+                            _alt_name, _stand_jetzt, _neu)
+                        self._filter = _stand_jetzt
+                        if _name:
+                            self._kategorien_neu_bauen(
+                                meldung=t("filter_gemerkt"))
+                            return
+                        self._force_full_redraw = True
+                        self.draw(t("filter_name_belegt"))
+                        return
+                self._force_full_redraw = True
             elif akt == "ok":
                 self._filter = {k: v for k, v in stand.items() if v}
                 break
@@ -19769,7 +20206,50 @@ class Frontend:
                             _ua = MSYS.update_all_pfad()
                             if _ua:
                                 LOG("update_all wird gestartet: %s" % _ua)
+                                # ERST AUFSCHREIBEN, WAS DA IST (Build
+                                # 250). Danach ist es zu spaet: dann
+                                # liegt schon der neue Stand auf der
+                                # Karte, und ein Vergleich haette
+                                # nichts, womit er vergleichen koennte.
+                                # Siehe fe/corestand.py - verglichen
+                                # wird die Karte mit sich selbst, nicht
+                                # das Protokoll von update_all
+                                # gelesen.
+                                try:
+                                    CSTAND.stand_schreiben(
+                                        CSTAND.cores_jetzt())
+                                except Exception:        # noqa: BLE001
+                                    LOG("Core-Stand vor update_all "
+                                        "nicht geschrieben:\n"
+                                        + traceback.format_exc())
                                 self.run_script(_ua)
+                                # UND JETZT NACHSEHEN. Das Skript ist
+                                # durch (run_script() kehrt erst dann
+                                # zurueck), die Karte steht also still.
+                                try:
+                                    _ber = CSTAND.nachsehen()
+                                except Exception:        # noqa: BLE001
+                                    _ber = None
+                                    LOG("Core-Vergleich nach update_all "
+                                        "fehlgeschlagen:\n"
+                                        + traceback.format_exc())
+                                self._refresh_system_category()
+                                if _ber and not CSTAND.leer(_ber):
+                                    try:
+                                        self.core_neu_bildschirm(_ber)
+                                    except Exception:    # noqa: BLE001
+                                        LOG("core_neu_bildschirm "
+                                            "CRASH:\n"
+                                            + traceback.format_exc())
+                                        self._force_full_redraw = True
+                                        self.draw()
+                                else:
+                                    # AUCH "NICHTS GEAENDERT" IST EINE
+                                    # AUSKUNFT. Ohne sie steht man vor
+                                    # dem alten Bild und weiss nicht,
+                                    # ob update_all gelaufen ist.
+                                    self._force_full_redraw = True
+                                    self.draw(t("core_neu_nichts"))
                             else:
                                 self._force_full_redraw = True
                                 self.draw(t("sys_update_all_fehlt"),
@@ -20036,6 +20516,29 @@ class Frontend:
                             self._refresh_system_category()
                             self.fb.mark_full_redraw()
                             self.draw(t("sys_scharf_changed"))
+                        elif kind == "core_neu":
+                            # Build 250: den letzten Bericht noch
+                            # einmal ansehen.
+                            try:
+                                self.core_neu_bildschirm()
+                            except Exception:            # noqa: BLE001
+                                LOG("core_neu_bildschirm CRASH:\n"
+                                    + traceback.format_exc())
+                                self._force_full_redraw = True
+                                self.draw()
+                        elif kind == "hauptseite":
+                            # Build 250. Mit demselben Netz wie die
+                            # anderen modalen Bildschirme: ein Fehler
+                            # darin darf nicht das ganze Frontend
+                            # mitnehmen, er gehoert ins Log und das
+                            # Bild wird neu gezeichnet.
+                            try:
+                                self.hauptseite_bildschirm()
+                            except Exception:            # noqa: BLE001
+                                LOG("hauptseite_bildschirm CRASH:\n"
+                                    + traceback.format_exc())
+                                self._force_full_redraw = True
+                                self.draw()
                         elif kind == "cores":
                             try:
                                 self.cores_bildschirm()

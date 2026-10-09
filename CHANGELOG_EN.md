@@ -888,6 +888,82 @@ guessing was the only option.
   `sagen` from a diagnostic script sat on top with 96. It is counted per file
   now.
 
+**The home page is yours now.**
+
+- **System menu → Behaviour & options → "Home page: order and hide
+  categories".** Left/Right shows or hides a category, Enter picks an
+  entry up — Up/Down then moves it and you watch it travel. The number
+  on the left says how far you have got.
+- **"System" is not in the list**, deliberately: it always stays visible
+  and always last. Anyone who could hide it would lock themselves out of
+  the settings — and deleting the file by hand would need SSH. A
+  hand-edited file cannot hide it either.
+- **A newly added category stays visible** and lands at the end, before
+  "System". It does not disappear just because it is not in the saved
+  order yet.
+- This is applied in **one** place, at the end of building the
+  categories. The order is created there across ten scattered
+  `insert()`/`append()` sites; rebuilding those individually would have
+  been the same mistake ten times over.
+- **And the place where it would have broken silently:** after every
+  favourite toggle and after every game, two refresh functions put
+  "Favourites", "Recently played" and "Continue" back at the front with
+  a hard `insert(0, …)` — deliberately, to avoid rebuilding everything.
+  Without a call there the setting would have stayed in the file and
+  vanished from the screen after the first toggle.
+
+**Remembered filters may now be called whatever you like.**
+
+- The row from Build 143 stays **one** keypress, name automatic ("SNES /
+  Platform / 1990-1994"). Below it there is now **"…or remember it under
+  a name of your own"** — and for an already remembered category,
+  **"Rename this category"**.
+- Typing uses the **letter picker from the search**, prefilled with the
+  automatic name: press twice to keep it. Here I corrected myself — the
+  header of the filter file has said since Build 143 that a name picker
+  would be "three screens for something that produces itself". The first
+  part still holds. The second was wrong: the picker has existed since
+  Build 88, with drawing for CRT *and* HDMI. Pulled out instead of
+  rebuilt, it is about twenty lines.
+- **Renaming only changes the name** — condition and source category
+  stay, so the category still shows the same games and stays current. A
+  taken name is refused *and reported*: the name is the key the frontend
+  finds the category by.
+
+**`update_all` now says what it changed.**
+
+- Before the run, which `.rbf` files are in the core folders is written
+  down; afterwards it is checked again. The difference appears at once in
+  three groups: **New**, **Gone**, **Updated** (`20260603 -> 20260915`).
+  The report then stays reachable as a menu item; if there is none, the
+  item does not appear at all.
+- **"Gone" comes right after "New", not at the end.** `update_all`
+  removes old cores, and a core that has disappeared is exactly what you
+  want to know when a game no longer starts.
+- **No `update_all` log is read.** The card is compared with itself. A
+  log reader would hang on the line format of a foreign file — the same
+  second source of truth that the core management rules out. A network
+  query "are there updates?" still deliberately does not exist.
+- If nothing changed, the frontend says that too. Without it you stand in
+  front of the old screen not knowing whether the run finished.
+
+**And the letters while fast-scrolling are gone.**
+
+- By request, verbatim: "please take the letters out of the list view, I
+  think it's silly that they show up when I hold the key going down!"
+- They were Build 243, and the reasoning back then was not wrong, but it
+  was **mine**: while scrolling the title is in the highlighted row
+  anyway, and whoever is operating the list reads there. A large
+  character that changes every step is then noise, not a hint.
+- **Not a switch, but gone** — a switchable letter would have kept three
+  things that cost even those who turn it off: one text call per scroll
+  step, an extra rectangle in the flip (Build 249 had just had to
+  register its cell, because it sits in the middle of the omitted card
+  area), and a menu item for something nobody looks for.
+- Measured: the flip in list view goes from **1.91 to 1.79 MB** per
+  scroll step, and in the boxart column **nothing at all** is written
+  while fast-scrolling now.
+
 **And a test that changed its verdict under load.**
 
 - `test_cover_panel.py` used a **stopwatch** to assert that two drawing paths

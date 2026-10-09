@@ -159,19 +159,34 @@ check("die Meldung wird nach dem Schritt wieder geleert",
 
 # ---------------------------------------------------------------------------
 print()
-print("Test 2: der Anfangsbuchstabe ist mit dabei")
+print("Test 2: im ausgesparten Kasten wird NICHTS mehr beschrieben")
 # ---------------------------------------------------------------------------
-# Er liegt MITTEN im ausgesparten Kasten und wird seit Build 247
-# mitgezeichnet. Fehlt seine Zelle, bleibt auf dem Schirm der alte
-# Buchstabe stehen. Erkennbar an einem etwa quadratischen Rechteck in
-# der Boxart-Spalte.
+# GEAENDERT (Build 250). Hier stand bis 249 das Gegenteil: der
+# Anfangsbuchstabe wurde mitten im ausgesparten Kasten mitgezeichnet,
+# und seine Zelle MUSSTE gemeldet werden - sonst blieb auf dem Schirm
+# der alte Buchstabe stehen. Der Buchstabe ist auf Nutzerwunsch raus
+# ("nimm bitte die Buchstaben in der listen ansicht raus"), und damit
+# wird in der Kastenflaeche nichts mehr beschrieben.
+#
+# Geprueft wird jetzt die Umkehrung, und sie ist die scharfere Zusage:
+# KEIN gemeldeter Streifen ragt in die ausgesparte Flaeche hinein.
+# Taete er es, waere entweder die Aussparung falsch oder es wuerde dort
+# doch gezeichnet - beides waere ein Rueckschritt, und beides faellt
+# hier auf.
+_kasten = [r for r in rechtecke if r[2] > 400 and r[3] > 400]
+check("kein grosses Rechteck mehr in der Kastenflaeche", not _kasten,
+      str(_kasten[:2]))
 _quadrate = [r for r in rechtecke
              if r[2] > 60 and 0.7 < (float(r[2]) / max(1, r[3])) < 1.4]
-check("ein etwa quadratisches Rechteck ist dabei (die Zelle)",
-      bool(_quadrate), str(_quadrate[:3]))
-check("und es liegt in der Boxart-Spalte, nicht in der Liste",
-      bool(_quadrate) and all(r[0] > fe.fb.width // 2 for r in _quadrate),
-      str([r[0] for r in _quadrate]))
+check("auch keine einzelne Zelle (der Buchstabe ist raus)",
+      not _quadrate, str(_quadrate[:3]))
+check("es bleiben vier Streifen um den Kasten herum",
+      len(rechtecke) >= 4,
+      "%d - jeder von ihnen ist lang und schmal" % len(rechtecke))
+check("und sie flippen weniger als mit dem Buchstaben",
+      mb_kurz < 1.91,
+      "%.2f MB - mit Buchstabe waren es 1,91, vor Build 249 3,21"
+      % mb_kurz)
 
 # ---------------------------------------------------------------------------
 print()
@@ -211,8 +226,11 @@ check("ohne Meldung bleibt es bei der ganzen Spalte",
 check("die Meldung wird vor dem Zeichnen zurueckgesetzt",
       _block.find("self._panel_bereiche = None") < _i_zeichnen,
       "sonst gilt die des vorigen Schritts")
-check("der Buchstabe meldet seine Zelle selbst",
-      "_ber.append((bx, by, breite, hoehe))" in _code)
+check("es gibt keine Schnellmarke mehr, die etwas melden muesste",
+      "_schnellmarke_zeichnen" not in _code
+      and "schnellmarke_text" not in _code,
+      "Build 250: der Buchstabe ist raus, und mit ihm die einzige "
+      "Stelle, die mitten in die ausgesparte Flaeche geschrieben hat")
 
 print()
 if fails:

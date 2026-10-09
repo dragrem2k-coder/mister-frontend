@@ -312,6 +312,20 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         else:
             update_all_label = t("sys_update_all_lauf") % (
                 t("vor_tagen") % _ua_tage)
+    # Build 250: der Bericht des letzten update_all-Laufs. Der Punkt
+    # erscheint nur, wenn es etwas zu berichten gibt - vor dem ersten
+    # Lauf aus dem Menue gibt es keinen Bericht, und ein Menuepunkt,
+    # der "nichts da" sagt, ist einer zu viel.
+    _core_neu_eintraege = ()
+    try:
+        import fe.corestand as _CSTAND
+        _ber = _CSTAND.bericht_lesen()
+        _anz = _CSTAND.anzahl(_ber)
+        if _anz:
+            _core_neu_eintraege = ((t("sys_core_neu", _anz),
+                                    "core_neu", None),)
+    except Exception:                                    # noqa: BLE001
+        _core_neu_eintraege = ()
     einzelordner_label = t("sys_einzelordner_on") if einzelordner_aufloesen() \
         else t("sys_einzelordner_off")
     _ovx, _ovy = overscan_lesen()
@@ -432,6 +446,12 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             (einzelordner_label, "einzelordner", None),
             # Build 174: Core-Fassung je System. Steht bei den
             # Optionen, nicht bei der Anzeige - es geht ums Starten.
+            # Build 250: die Hauptseite einrichten. Steht bei den
+            # Optionen und nicht bei der Anzeige - es geht nicht
+            # darum, WIE die Kategorien aussehen, sondern WELCHE es
+            # gibt und in welcher Reihenfolge.
+            (t("sys_hauptseite"), "hauptseite", None),
+            *_core_neu_eintraege,
             (t("sys_cores"), "cores", None),
             # Build 213: update_all starten. Direkt neben der
             # Core-Wahl, denn das ist derselbe Themenbereich - hier
@@ -440,6 +460,10 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             # Entscheidung "brauche ich das jetzt?" ohne Nachsehen
             # moeglich ist; fehlt update_all, sagt sie das.
             (update_all_label, "update_all", None),
+            # Build 250: was der letzte Lauf geaendert hat. Der
+            # Punkt erscheint nur, wenn es einen Bericht gibt - vor dem
+            # ersten update_all aus dem Menue gibt es nichts zu zeigen,
+            # und ein Punkt, der "nichts da" sagt, ist einer zu viel.
             (attract_label, "attract", None),
             (attract_delay_label, "attract_delay", None),
             (ziehung_label, "ziehung_spannung", None),

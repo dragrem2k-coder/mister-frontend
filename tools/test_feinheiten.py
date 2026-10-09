@@ -325,56 +325,32 @@ for _args in ((100, 100, 200, 200, 0), (0, 0, 0, 0, 5),
 
 # ---------------------------------------------------------------------------
 print()
-print("Test 10: der Anfangsbuchstabe beim Schnellscrollen")
+print("Test 10: der Anfangsbuchstabe beim Schnellscrollen ist RAUS")
 # ---------------------------------------------------------------------------
-# DER EINZIGE DER VIER VORSCHLAEGE, DER AUCH NUETZLICH IST: bei 1041
-# Eintraegen in Arcade sagt er, wo man gerade steht.
-import fe.art as _A10                                    # noqa: E402
-
-feS = H.make_frontend(page=1)
-K10 = type(feS)
-for _roh, _erw in (("Super Mario World", "S"), ("[BIOS] X", "X"),
-                   ("007 GoldenEye", "0"), ("   (Europe)", "E"),
-                   ("", ""), ("---", ""), ("zelda", "Z")):
-    check("%-20r -> %r" % (_roh, _erw),
-          K10.schnellmarke_text(_roh) == _erw,
-          "%r" % (K10.schnellmarke_text(_roh),))
-
-check("er haengt am verzoegerten Cover, nicht am fehlenden",
-      "elif FEIN:" in QF.split("self._zeichne_kein_artwork(x0, cy")[1][:200],
-      "gezeichnet wird nur, wenn das Cover UEBERSPRUNGEN wurde - dann "
-      "ist die Karte leer und wird ohnehin gefuellt und geflippt")
-_sm = QF.split("def _schnellmarke_zeichnen")[1].split("\n    def ")[0]
-check("er wird NICHT in den Textcache gelegt", "cachen=False" in _sm,
-      "26 Buchstaben in dieser Groesse waeren rund zehn Megabyte")
-check("und gedaempft gezeichnet", "C_DIM, C_PANEL" in _sm,
-      "er soll die Position zeigen, nicht das Bild sein")
-check("abgeschnitten wird er nie",
-      _sm.count("if breite > avail_w or hoehe > cover_h:") == 2
-      and "return" in _sm.split(
-          "if breite > avail_w or hoehe > cover_h:")[2][:120],
-      "erst kleiner rechnen, und wenn es dann noch nicht passt, lieber "
-      "gar nicht - ein halber Buchstabe saehe nach einem Fehler aus")
-
-# Er wird wirklich gezeichnet, wenn das Cover uebersprungen wurde.
-_alt_defer = _A10.ART._defer_uncached
-try:
-    _A10.ART._defer_uncached = True
-    feS.ansicht_setzen("liste")
-    fm.FEIN = False
-    feS._force_full_redraw = True
-    feS.draw()
-    _ohne10 = bytes(feS.fb.buf)
-    fm.FEIN = True
-    feS._force_full_redraw = True
-    feS.draw()
-    _mit10 = bytes(feS.fb.buf)
-    _d10 = sum(1 for a, b in zip(_ohne10, _mit10) if a != b)
-    check("mit Feinheiten steht der Buchstabe da", _d10 > 0,
-          "%d Bytes" % _d10)
-finally:
-    _A10.ART._defer_uncached = _alt_defer
-    fm.FEIN = True
+# GEAENDERT (Build 250). Hier stand bis 249 das Gegenteil - zehn
+# Pruefungen dafuer, dass der Buchstabe richtig gezeichnet wird. Er war
+# Build 243, einer von vier "optischen Verschoenerungen", und der
+# einzige davon, den ich zugleich fuer NUETZLICH hielt.
+#
+# Der Nutzer sieht das anders, und zwar woertlich: "nimm bitte die
+# Buchstaben in der listen ansicht raus ich finde das bloed das die
+# angezeigt werden wenn ich nach unten mit gedrueckter taste mit
+# angezeigt werden!"
+#
+# Das ist keine Geschmacksfrage, ueber die man streiten muesste: beim
+# Scrollen steht der Titel ohnehin in der markierten Zeile, und wer
+# die Liste bedient, liest dort. Ein grosses Zeichen, das bei jedem
+# Schritt wechselt, ist dann Unruhe und kein Hinweis.
+#
+# Geprueft wird jetzt, dass er WEG BLEIBT. Die ausfuehrliche Begruendung
+# und die Messung stehen in tools/test_keine_buchstaben.py; hier bleibt
+# nur der Riegel an der Stelle, an der die Feinheiten geprueft werden -
+# wer den Buchstaben an die Feinheiten haengt, stolpert hier.
+for _weg in ("_schnellmarke_zeichnen", "schnellmarke_text",
+             "SCHNELLMARKE_ANTEIL"):
+    check("%s gibt es nicht mehr" % _weg,
+          ("def " + _weg) not in QF and (_weg + " =") not in QF,
+          "Build 250, auf Nutzerwunsch entfernt")
 
 print()
 print()

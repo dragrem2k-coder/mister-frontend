@@ -276,6 +276,18 @@ def naechster_wert(werte, aktuell, richtung):
 # ("SNES / Platform / 1990-1994"). Eine Tastatur hat am MiSTer nicht
 # jeder, und der Buchstabenwaehler fuer einen Namen waere drei
 # Bildschirme fuer etwas, das sich von selbst ergibt.
+#
+# NACHTRAG (Build 250). Der erste Satz stimmt weiterhin fuer den
+# NORMALFALL - der automatische Name bleibt ein Tastendruck, und daran
+# aendert sich nichts. Was dazukommt, ist ein zweiter Weg fuer den
+# Fall, den der Nutzer gemeldet hat: "Beste Jump'n'Runs" sagt mehr als
+# "SNES / Platform / 1990-1994", und wer zwanzig gemerkte Filter hat,
+# findet sich mit eigenen Namen besser zurecht.
+#
+# UND DER BUCHSTABENWAEHLER WAR KEINE DREI BILDSCHIRME WERT - das war
+# die Fehleinschaetzung: er existiert seit Build 88 fuer die Suche,
+# samt Zeichnen fuer Roehre UND HDMI. Herausgezogen statt neu gebaut
+# (name_abfragen() in frontend.py) sind es rund zwanzig Zeilen.
 # ----------------------------------------------------------------------
 
 def name_fuer(kat_name, filter_, t):
@@ -354,6 +366,55 @@ def vergessen(name):
     if len(rest) == len(liste):
         return False
     return gemerkte_speichern(rest)
+
+
+def umbenennen(alt, neu):
+    """Eine gemerkte Kategorie umbenennen (Build 250).
+
+    Geaendert wird NUR der Anzeigename; die Bedingung und die
+    Quellkategorie bleiben, wie sie sind - die Kategorie zeigt also
+    weiterhin dieselben Spiele und bleibt auch weiterhin aktuell.
+
+    DER NAME IST DER SCHLUESSEL, und daran haengt mehr als man denkt:
+    vergessen() findet den Eintrag ueber ihn, der Hauptseiten-Editor
+    bildet sein Kuerzel daraus (siehe fe/hauptseite.py). Ein doppelter
+    Name waere deshalb kein Schoenheitsfehler, sondern zwei Kategorien,
+    die man nicht mehr auseinanderhalten kann - er wird abgewiesen."""
+    alt = str(alt or "").strip()
+    neu = str(neu or "").strip()
+    if not alt or not neu:
+        return False
+    if neu == alt:
+        return True
+    liste = gemerkte_laden()
+    if any(e["name"] == neu for e in liste):
+        return False
+    gefunden = False
+    for e in liste:
+        if e["name"] == alt:
+            e["name"] = neu
+            gefunden = True
+    if not gefunden:
+        return False
+    return gemerkte_speichern(liste)
+
+
+def merken_mit_namen(kat_name, filter_, name):
+    """Wie merken(), aber mit einem selbst gewaehlten Namen.
+
+    Liefert den Namen oder None. Ein leerer Name, ein schon vergebener
+    und eine volle Liste werden abgewiesen - aus denselben Gruenden wie
+    in merken()."""
+    name = str(name or "").strip()
+    if not aktiv(filter_) or not kat_name or not name:
+        return None
+    liste = gemerkte_laden()
+    if any(e["name"] == name for e in liste):
+        return None
+    if len(liste) >= KATEGORIEN_MAX:
+        return None
+    liste.append({"name": name, "kat": kat_name, "filter": dict(filter_)})
+    return name if gemerkte_speichern(liste) else None
 
 
 def ist_gemerkt(name):
