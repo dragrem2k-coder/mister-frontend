@@ -990,6 +990,51 @@ wird.**
 Dieses Build macht keinen Zeichenweg schneller. Es macht drei Stellen
 messbar, an denen bisher geraten werden musste.
 
+**Die Speicherspitze beim Rescan: 55 → 24 MB bei 50.000 Spielen.**
+
+- Gemessen war das schon lange, nur nie angegangen: im Betrieb kostet ein
+  Spiel rund **500 Byte** — 50.000 ROMs sind 24 MB, auf einem Gerät mit 1 GB
+  nichts. Beim **Rescan** waren es aber **1158 Byte je Spiel**, weil der alte
+  Baum noch im Speicher lag, während der neue entstand, und obendrauf kam der
+  Pickle-Puffer zum Wegschreiben.
+- **Zwei Änderungen, beide klein:** der alte Baum wird freigegeben, *bevor*
+  der neue gebaut wird (das sind 36 %), und der Cache wird **je System**
+  geschrieben statt in einem Stück (zusammen **57 %**).
+
+| 50.000 Spiele | Spitze | je Eintrag |
+|---|---|---|
+| bisher | 55,2 MB | 1158 B |
+| nur die Freigabe | 35,6 MB | 746 B |
+| **dazu je System geschrieben** | **23,8 MB** | **498 B** |
+
+- Hochgerechnet: bei 250.000 Spielen **124 statt 290 MB**. Das verschiebt die
+  Obergrenze für den größten denkbaren Bestand, und zwar genau dort, wo sie
+  wirklich lag — nicht im Ruhezustand, sondern in der Spitze.
+- Die Cache-Datei kann jetzt **einzelne Systeme** lesen. Beim inkrementellen
+  Rescan (ein System geändert, die anderen nicht) werden nur die
+  **unveränderten** aus der Datei geholt; die geänderten sind gerade frisch
+  von der Platte gelesen worden und müssen nicht doppelt im Speicher liegen.
+- **Deine alte Cache-Datei wird weiter gelesen.** Ohne diesen Rückfall hätte
+  jeder nach dem Update einen vollen Scan — bei 30.000 Spielen Minuten, für
+  nichts. Beim ersten Schreiben stellt sie sich von selbst um.
+
+**Und etwas Unangenehmes, das dabei herauskam.**
+
+- Die Funktion, die die **ganze Spieleliste** baut, war **halb umgebaut und
+  kaputt**: drei Cache-Helfer wurden gerufen, aber nie geschrieben. Der erste
+  Aufruf hätte einen `NameError` geworfen — also ein Frontend ohne
+  Spieleliste.
+- Es ist nie ausgeliefert worden (seit Build 230 war `fe/scan.py` in keinem
+  ZIP), dein Gerät und dein Repo waren nie betroffen. Aber **gefunden hat es
+  niemand**, und der Grund ist der eigentliche Befund: **kein einziger Test
+  hat `scan_games()` jemals aufgerufen.** Die 124 Prüfungen der Suite gingen
+  an der zentralsten Funktion des Programms vorbei.
+- Der erste Test der neuen Datei ist deshalb der billigste: *läuft sie
+  überhaupt durch?* Dazu kommen Hin-und-zurück, das teilweise Lesen, die alte
+  Dateifassung, fünf Sorten beschädigte Datei und ein abgebrochener
+  Schreibvorgang — der darf weder eine `.tmp`-Leiche noch eine halbe
+  Cache-Datei hinterlassen.
+
 **Die Ziehung läuft wirklich — Build 246 war kaputt, und zwar an einer
 einzigen Zeile.**
 

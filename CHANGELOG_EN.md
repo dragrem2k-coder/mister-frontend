@@ -832,6 +832,48 @@ All four sit behind the **fine-details switch** (System → Display & sound).
 This build makes no draw path faster. It makes three places measurable where
 guessing was the only option.
 
+**The memory peak on rescan: 55 → 24 MB at 50,000 games.**
+
+- This had been measured for a while and never acted on: at rest a game costs
+  about **500 bytes** — 50,000 ROMs are 24 MB, nothing on a 1 GB device. On a
+  **rescan** it was **1158 bytes per game**, because the old tree was still in
+  memory while the new one was being built, with the pickle write buffer on
+  top.
+- **Two changes, both small:** the old tree is released *before* the new one
+  is built (36 %), and the cache is written **per system** instead of in one
+  piece (together **57 %**).
+
+| 50,000 games | peak | per entry |
+|---|---|---|
+| before | 55.2 MB | 1158 B |
+| release only | 35.6 MB | 746 B |
+| **plus per-system writing** | **23.8 MB** | **498 B** |
+
+- Extrapolated: at 250,000 games **124 instead of 290 MB**. That moves the
+  ceiling for the largest conceivable collection, and it moves it where the
+  ceiling actually was — not at rest, but at the peak.
+- The cache file can now read **individual systems**. On an incremental rescan
+  only the **unchanged** systems are read from the file; the changed ones have
+  just been read from disk and need not be held twice.
+- **Your existing cache file is still read.** Without that fallback everyone
+  would get one full scan after the update — minutes at 30,000 games, for
+  nothing. The first write converts it.
+
+**And something uncomfortable that surfaced on the way.**
+
+- The function that builds the **entire game list** was **half-converted and
+  broken**: three cache helpers were called but never written. The first call
+  would have raised a `NameError` — a frontend with no game list.
+- It was never shipped (`fe/scan.py` has not been in a ZIP since Build 230),
+  so neither your device nor your repo was ever affected. But **nobody caught
+  it**, and that is the real finding: **not one test had ever called
+  `scan_games()`.** The suite's 124 checks walked straight past the most
+  central function in the program.
+- So the first check in the new test file is the cheapest one: *does it run at
+  all?* Then round-trip, partial reads, the old file format, five kinds of
+  corrupted file, and an aborted write — which must leave neither a `.tmp`
+  corpse nor half a cache file.
+
 **The draw actually runs now — Build 246 was broken, by a single line.**
 
 Reported: “I don't hear the sound in random pick" and “the titles don't spin

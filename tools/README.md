@@ -3016,3 +3016,54 @@ jedem Rechner.
 Die Grenze liegt nach **Bytes** (24 MB) und nicht nach Eintraegen: ein
 Cover der Listenspalte sind 1,78 MB, eine Rasterkachel 165 kB - "20
 Eintraege" waere einmal 3 MB und einmal 36 MB.
+
+
+## diag_startspitze.py / test_scan_cache.py (Build 248)
+
+Die Messung vom 18.09. (`claude/FUND_Speicher_je_Eintrag.md`) hatte die
+Posten aufgeteilt, aber nur als Scratchpad-Skript - ein Befund, der
+nicht wiederholbar ist, ist halb verloren. `diag_startspitze.py` ist
+dieselbe Messung als Werkzeug, mit frei waehlbarer Eintragszahl:
+
+```
+python3 tools/diag_startspitze.py          # 50.000
+python3 tools/diag_startspitze.py 100000
+```
+
+Gemessen wird VmRSS durch genau die Abfolge, die `scan_games()` nimmt,
+wenn der Cache nicht mehr passt - alter Baum lesen, neuen Baum bauen,
+wegschreiben - und daneben dieselbe Abfolge mit Freigabe und mit
+stueckweisem Schreiben. Bei 50.000 Eintraegen:
+
+| | Spitze | je Eintrag |
+|---|---|---|
+| wie bisher | 55,2 MB | 1158 B |
+| nur die Freigabe | 35,6 MB | 746 B |
+| dazu je System geschrieben | **23,8 MB** | **498 B** |
+
+**'je Eintrag' ist die uebertragbare Zahl** - damit laesst sich jede
+Bestandsgroesse hochrechnen. Die DAUERLAST war nie das Problem (50.000
+Spiele sind im Betrieb rund 24 MB); die Spitze beim Rescan ist es.
+
+### Und der Grund, warum es diese Testdatei gibt
+
+`scan_games()` baut die komplette Spieleliste - die Funktion, ohne die
+das Frontend nichts anzeigt. Beim Umbau auf das neue Cache-Format waren
+die Aufrufstellen fertig und **die drei Funktionen fehlten**:
+`_cache_kopf_lesen`, `_cache_systeme_lesen`, `_cache_schreiben` wurden
+an sieben Stellen gerufen und nirgends definiert. Der erste Aufruf
+haette einen `NameError` geworfen.
+
+Ausgeliefert wurde das nie. Aber **kein einziger Test hat
+`scan_games()` je aufgerufen** - die ganze Suite ging an der
+zentralsten Funktion des Programms vorbei. Test 1 in
+`test_scan_cache.py` ist deshalb die billigste denkbare Pruefung:
+*laeuft sie ueberhaupt durch?* Einmal ohne Cache-Datei, einmal mit.
+
+Der Rest prueft, woran das Format scheitern kann: Hin-und-zurueck,
+`nur=` liest wirklich nur die verlangten Systeme, die alte Dateifassung
+wird weiter gelesen, fuenf Sorten beschaedigte Datei (leer, Nullbytes,
+Unfug mit gueltigem Zeiger, in der Mitte abgeschnitten, Zeiger hinter
+das Dateiende verbogen) werfen eine Ausnahme, die `scan_games()` auch
+faengt - und ein abgebrochener Schreibvorgang hinterlaesst weder eine
+`.tmp`-Leiche noch eine halbe Cache-Datei.

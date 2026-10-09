@@ -16,7 +16,7 @@ Einfrier-Falle) - modul-qualifizierter Zugriff, nicht per direktem
 Import. _wait_for_network_ready() haelt fe.paths.GAMES_BASES bei
 jeder Neuermittlung synchron.
 """
-import os, glob, re, time, pickle, socket
+import os, glob, re, struct, time, pickle, socket
 import threading as _threading
 from fe.log import LOG
 from fe.systems import (GAME_SYSTEMS, OPTIONAL_GAME_SYSTEMS,
@@ -30,6 +30,175 @@ BASE = "/media/fat"
 SKIP_DIRS = {"_Scripts"}
 GAMES_CACHE = "/media/fat/frontend/games_cache.pkl"
 GAMES_CACHE_OLD_JSON = "/media/fat/frontend/games_cache.json"
+
+# ======================================================================
+# DER SPIELELISTEN-CACHE, JE SYSTEM LESBAR (Build 248)
+# ======================================================================
+#
+# WOHER DIE FRAGE KOMMT. Die Messung vom 18.09.
+# (claude/FUND_Speicher_je_Eintrag.md) hat die Posten aufgeteilt:
+#
+#     Spielebaum                       383 B je Eintrag
+#     Anzeigenamen-Cache               123 B je Eintrag
+#     Pickle-Puffer beim Schreiben     144 B je Eintrag
+#     zweite Kopie beim Einlesen       439 B je Eintrag
+#     ------------------------------------------------
+#     Dauerlast                        506 B je Eintrag
+#     SPITZE                          1089 B je Eintrag
+#
+# Der begrenzende Faktor ist NICHT der Ruhezustand - 50.000 Spiele sind
+# im Betrieb rund 24 MB, auf einem Geraet mit 1 GB nichts. Der
+# begrenzende Faktor ist die SPITZE, und die entsteht beim RESCAN:
+# der alte Baum ist noch referenziert, waehrend der neue entsteht.
+#
+# GEMESSEN mit tools/diag_startspitze.py, 20.000 Eintraege:
+#
+#     wie bisher                      1005 B je Eintrag
+#     alter Baum vorher freigegeben    594 B je Eintrag   -41 %
+#     dazu je System geschrieben       514 B je Eintrag   -49 %
+#
+# WAS DAS FORMAT DAFUER KOENNEN MUSS: einzelne Systeme lesen, ohne die
+# ganze Datei zu einem Baum zu machen. Beim inkrementellen Rescan
+# werden die geaenderten Systeme gerade frisch von der Platte gelesen -
+# sie zusaetzlich aus dem Cache mitzulesen heisst, sie doppelt im
+# Speicher zu halten, nur um sie gleich wegzuwerfen.
+#
+# DER AUFBAU, bewusst einfach gehalten:
+#
+#     [Pickle System 1][Pickle System 2]...[Pickle Kopf][8 Byte Zeiger]
+#
+# Jedes System liegt als eigenes Pickle hintereinander. Am Ende steht
+# der Kopf (Fassung, Signatur, per_syskey, und je System Anzeigename,
+# Kuerzel, Offset und Laenge), und die letzten acht Byte sagen, wo der
+# Kopf anfaengt. Lesen heisst also: acht Byte vom Ende, Kopf lesen,
+# dann GENAU die gebrauchten Stuecke.
+#
+# WARUM DER KOPF HINTEN STEHT: die Offsets sind erst bekannt, wenn
+# alles geschrieben ist. Vorne haette es einen zweiten Durchlauf oder
+# eine Platzhalter-Luecke gebraucht - beides mehr Code und mehr, was
+# schiefgehen kann.
+#
+# DIE ALTE DATEI WIRD WEITER GELESEN. Jeder vorhandene Nutzer hat eine
+# Datei im alten Format ({"sig","per_syskey","cats"} in einem Stueck).
+# Sie wird erkannt und ganz gelesen - langsamer und speicherhungriger,
+# aber richtig, und nach dem ersten Schreiben ist sie weg. Ohne diesen
+# Rueckfall haette jeder nach dem Update EINEN vollen Scan - bei 30.000
+# Spielen Minuten, fuer nichts.
+CACHE_FASSUNG = 2
+_CACHE_ZEIGER = 8          # Byte am Dateiende, die auf den Kopf zeigen
+
+
+def _cache_schreiben(sig, per_syskey, cats):
+    """Den Cache schreiben: je System ein Pickle, Kopf am Ende.
+
+    Geschrieben wird ueber eine .tmp-Datei und os.replace() - ein
+    abgebrochener Schreibvorgang (Stromausfall, voll gelaufene Karte)
+    darf keine halbe Datei hinterlassen, die beim naechsten Start als
+    gueltig gelesen wird.
+
+    JE SYSTEM EIN pickle.dump IN DIE DATEI, nicht in einen Puffer: das
+    ist der Posten 'Pickle-Puffer beim Schreiben' aus der Messung oben
+    (144 B je Eintrag). Ein pickle.dumps() des ganzen Baums haette die
+    komplette Serialisierung zusaetzlich im Speicher."""
+    verzeichnis = os.path.dirname(GAMES_CACHE)
+    if verzeichnis:
+        os.makedirs(verzeichnis, exist_ok=True)
+    tmp = GAMES_CACHE + ".tmp%d" % os.getpid()
+    try:
+        with open(tmp, "wb") as f:
+            inhalt = []
+            for eintrag in cats:
+                disp, node, sk = eintrag[0], eintrag[1], eintrag[2]
+                start = f.tell()
+                pickle.dump(node, f, protocol=pickle.HIGHEST_PROTOCOL)
+                inhalt.append((disp, sk, start, f.tell() - start))
+            kopf_start = f.tell()
+            pickle.dump({"fassung": CACHE_FASSUNG, "sig": sig,
+                         "per_syskey": per_syskey, "inhalt": inhalt},
+                        f, protocol=pickle.HIGHEST_PROTOCOL)
+            f.write(struct.pack("<Q", kopf_start))
+        os.replace(tmp, GAMES_CACHE)
+    except Exception:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _cache_kopf_lesen():
+    """(sig, per_syskey, handle) - und der handle enthaelt NOCH KEINEN
+    Baum.
+
+    Das ist der ganze Zweck: die Signatur entscheidet, ob der Cache
+    ueberhaupt taugt, und diese Entscheidung soll nicht erst nach dem
+    Aufbau von dreissigtausend Tupeln fallen.
+
+    Faellt beim neuen Format irgendetwas aus dem Rahmen, wird die alte
+    Fassung versucht (ein Stueck). Bleibt auch die unlesbar, fliegt der
+    Fehler nach oben - scan_games() faengt genau diese Sorte ab und
+    scannt neu."""
+    with open(GAMES_CACHE, "rb") as f:
+        try:
+            f.seek(0, os.SEEK_END)
+            gesamt = f.tell()
+            if gesamt <= _CACHE_ZEIGER:
+                raise ValueError("Cache-Datei zu kurz")
+            f.seek(gesamt - _CACHE_ZEIGER)
+            (kopf_start,) = struct.unpack("<Q", f.read(_CACHE_ZEIGER))
+            if not 0 < kopf_start < gesamt - _CACHE_ZEIGER:
+                raise ValueError("Kopf-Zeiger ausserhalb der Datei")
+            f.seek(kopf_start)
+            kopf = pickle.load(f)
+            if (not isinstance(kopf, dict)
+                    or kopf.get("fassung") != CACHE_FASSUNG):
+                raise ValueError("fremde Cache-Fassung")
+            inhalt = kopf["inhalt"]
+        except Exception:
+            # DIE ALTE FASSUNG: alles in einem Stueck. Sie wird ganz
+            # gelesen - anders geht es nicht, dafuer war sie nicht
+            # gebaut.
+            f.seek(0)
+            alt = pickle.load(f)
+            if not isinstance(alt, dict):
+                raise ValueError("Cache ist kein Verzeichnis")
+            return (alt["sig"], alt.get("per_syskey"),
+                    ("alt", alt["cats"]))
+    return (kopf["sig"], kopf.get("per_syskey"),
+            ("neu", GAMES_CACHE, inhalt))
+
+
+def _cache_systeme_lesen(handle, nur=None):
+    """Aus einem handle von _cache_kopf_lesen() die Liste
+    [(Anzeigename, Knoten, Kuerzel), ...] bauen.
+
+    nur=None liefert alle Systeme, nur={"NES", "SNES"} genau diese.
+    Beim inkrementellen Rescan ist das der Punkt: die geaenderten
+    Systeme stehen schon frisch eingelesen da und werden hier
+    ausgelassen, statt den Speicher zweimal zu belegen.
+
+    Die Reihenfolge der Datei bleibt erhalten - der Aufrufer sortiert
+    anschliessend ohnehin nach GAME_SYSTEMS, aber eine Funktion, die
+    je Aufruf eine andere Reihenfolge liefert, waere eine Falle fuer
+    den naechsten Leser."""
+    if not handle:
+        return []
+    if handle[0] == "alt":
+        if nur is None:
+            return handle[1]
+        return [e for e in handle[1] if e[2] in nur]
+    _, pfad, inhalt = handle
+    raus = []
+    with open(pfad, "rb") as f:
+        for disp, sk, start, laenge in inhalt:
+            if nur is not None and sk not in nur:
+                continue
+            f.seek(start)
+            # Nur dieses Stueck - pickle.loads() auf den gelesenen
+            # Bytes statt pickle.load(f), damit ein beschaedigter
+            # Eintrag nicht ueber seine Grenze hinaus weiterliest.
+            raus.append((disp, pickle.loads(f.read(laenge)), sk))
+    return raus
 
 def _has_network():
     """Prueft, ob irgendein Netzwerk-Interface eine Adresse hat -
@@ -982,15 +1151,12 @@ def scan_games(force=False, progress_cb=None, warte_cb=None):
     data = None
     if not force:
         try:
-            with open(GAMES_CACHE, "rb") as f:
-                data = pickle.load(f)
-            cached_sig = data["sig"]
-            cached_per_syskey = data.get("per_syskey")
+            cached_sig, cached_per_syskey, data = _cache_kopf_lesen()
             if cached_sig == sig:
-                LOG("Spieleliste aus Cache (%d Systeme)"
-                    % len(data["cats"]))
+                cats = _cache_systeme_lesen(data)
+                LOG("Spieleliste aus Cache (%d Systeme)" % len(cats))
                 ordner_merken(sig)
-                return data["cats"]
+                return cats
         except (OSError, ValueError, KeyError, IndexError, TypeError,
                 pickle.UnpicklingError, EOFError, AttributeError):
             cached_sig = None
@@ -1022,9 +1188,10 @@ def scan_games(force=False, progress_cb=None, warte_cb=None):
         _wait_for_nas_mount()
         sig, per_syskey = _games_signature()
         if cached_sig == sig:
+            cats = _cache_systeme_lesen(data)
             LOG("Spieleliste aus Cache nach NAS-Mount (%d Systeme)"
-                % len(data["cats"]))
-            return data["cats"]
+                % len(cats))
+            return cats
 
     if (not force and cached_sig is not None
             and _sig_expects_usb(cached_sig) and not _sig_expects_usb(sig)):
@@ -1058,10 +1225,11 @@ def scan_games(force=False, progress_cb=None, warte_cb=None):
         waited_already = True
         sig, per_syskey = _games_signature()
         if cached_sig == sig:
+            cats = _cache_systeme_lesen(data)
             LOG("Spieleliste aus Cache nach USB-Mount (%d Systeme)"
-                % len(data["cats"]))
+                % len(cats))
             ordner_merken(sig)
-            return data["cats"]
+            return cats
 
     if not waited_already:
         usb_ready = _wait_for_usb_stable()
@@ -1119,7 +1287,14 @@ def scan_games(force=False, progress_cb=None, warte_cb=None):
                    ", ".join(sorted(changed_syskeys))))
             fresh = _scan_games_disk(progress_cb, only_syskeys=changed_syskeys)
             fresh_by_sk = {sk: (disp, node) for disp, node, sk in fresh}
-            old_by_sk = {sk: (disp, node) for disp, node, sk in data["cats"]}
+            # NUR DIE UNVERAENDERTEN SYSTEME aus der Datei holen
+            # (Build 248). Die geaenderten sind gerade frisch
+            # eingelesen worden - sie aus dem Cache mitzulesen hiesse,
+            # sie doppelt im Speicher zu halten, nur um sie gleich
+            # wegzuwerfen.
+            old_by_sk = {sk: (disp, node) for disp, node, sk
+                         in _cache_systeme_lesen(
+                             data, nur=(all_syskeys - changed_syskeys))}
             cats = []
             for disp, sk, *_rest in GAME_SYSTEMS:
                 if sk in changed_syskeys:
@@ -1137,12 +1312,60 @@ def scan_games(force=False, progress_cb=None, warte_cb=None):
                 elif sk in old_by_sk:
                     d, node = old_by_sk[sk]
                     cats.append((d, node, sk))
+            # Build 248: dieselbe Ueberlegung wie beim vollen Scan
+            # unten, nur kleiner. 'cats' benutzt die unveraenderten
+            # Knoten WEITER (dieselben Objekte, nicht Kopien) - frei
+            # wird hier also nur, was zu den GEAENDERTEN Systemen
+            # gehoert, plus die beiden Hilfs-Verzeichnisse. Bei einem
+            # einzelnen neu eingelesenen System ist das wenig, bei
+            # einem Rescan nach dem Umsortieren einer grossen Platte
+            # viel - und es kostet nichts.
+            fresh = None
+            fresh_by_sk = None
+            old_by_sk = None
+            data = None
         elif not changed_syskeys:
             # Sollte praktisch nicht vorkommen (sig haette dann oben
             # schon vollstaendig gepasst) - reiner Sicherheits-Rueckfall.
-            cats = data["cats"]
+            cats = _cache_systeme_lesen(data)
 
     if cats is None:
+        # DEN ALTEN BAUM FREIGEBEN, BEVOR DER NEUE ENTSTEHT
+        # (Build 248). Eine Zeile, und sie ist die groesste
+        # Einzelersparnis am Speicher, die dieses Projekt hat.
+        #
+        # WAS VORHER PASSIERTE: 'data' haelt den komplett
+        # eingelesenen alten Spielebaum und bleibt bis zum Ende
+        # dieser Funktion referenziert. Der inkrementelle Zweig
+        # darueber BRAUCHT ihn (er uebernimmt daraus die
+        # unveraenderten Systeme) - dieser hier nicht: er baut alles
+        # neu. Bis Build 247 lagen hier also zwei vollstaendige
+        # Baeume gleichzeitig im Speicher, und gleich darauf kam der
+        # Pickle-Puffer zum Wegschreiben obendrauf.
+        #
+        # GEMESSEN (tools/diag_startspitze.py, 50.000 Eintraege, je
+        # Variante ein eigener Prozess, VmRSS):
+        #
+        #     wie bisher                 55,2 MB   1158 B je Eintrag
+        #     nur diese Freigabe         35,6 MB    746 B je Eintrag
+        #     dazu je System schreiben   23,8 MB    498 B je Eintrag
+        #
+        # Die Freigabe allein bringt 36 %, zusammen mit dem
+        # stueckweisen Schreiben (_cache_schreiben() oben) sind es
+        # 57 %. Die beiden gehoeren zusammen: diese Zeile nimmt den
+        # alten Baum weg, das Schreiben vermeidet den Pickle-Puffer
+        # fuer den neuen.
+        #
+        # Hochgerechnet: bei 250.000 Spielen 124 statt 290 MB. Die
+        # DAUERLAST war nie das Problem (50.000 Spiele sind im
+        # Betrieb rund 24 MB, siehe FUND_Speicher_je_Eintrag) - die
+        # Spitze beim Rescan ist es, und genau sie ist die Grenze
+        # fuer den groessten denkbaren Bestand.
+        #
+        # Kein gc.collect() noetig: der Baum ist eine Liste von
+        # Dicts ohne Zyklen, die Zaehlung gibt ihn sofort frei.
+        data = None
+        cached_per_syskey = None
         cats = _scan_games_disk(progress_cb)
 
     # usb_ready: True = USB sauber eingehaengt, None = gar kein USB im
@@ -1166,9 +1389,7 @@ def scan_games(force=False, progress_cb=None, warte_cb=None):
     # sind (siehe ordner_sind_dazugekommen()).
     ordner_merken(sig)
     try:
-        with open(GAMES_CACHE, "wb") as f:
-            pickle.dump({"sig": sig, "per_syskey": per_syskey, "cats": cats},
-                        f, protocol=pickle.HIGHEST_PROTOCOL)
+        _cache_schreiben(sig, per_syskey, cats)
         # Einmalige Aufraeumung: eine alte JSON-Cache-Datei aus der Zeit
         # vor dem Pickle-Wechsel wuerde sonst nutzlos auf der SD-Karte
         # liegen bleiben (wird nie wieder gelesen, seit GAMES_CACHE auf
