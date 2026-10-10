@@ -58,6 +58,10 @@
         <input type="color" id="bg"></div>
       <div class="row"><label>Hintergrund transparent</label>
         <label class="sw"><input type="checkbox" id="transparent"><span class="sl"></span></label></div>
+      <!-- Build 254: der Spieltitel selbst. Steht ueber dem Cover,
+           weil er das Auffaelligste auf der Karte ist. -->
+      <div class="row"><label>Spieltitel</label>
+        <label class="sw"><input type="checkbox" id="show_name"><span class="sl"></span></label></div>
       <div class="row"><label>Cover anzeigen</label>
         <label class="sw"><input type="checkbox" id="show_boxart"><span class="sl"></span></label></div>
       <div class="row"><label>System-Badge</label>
@@ -89,6 +93,10 @@
         </select></div>
       <div class="row"><label>Wand: Kacheln je Zeile <span id="colsval">12</span></label>
         <input type="range" id="ra_wall_cols" min="4" max="24" step="1"></div>
+      <!-- Build 254, Nutzerwunsch: nicht alles auf einmal zeigen. 0
+           heisst "alle Zeilen", sonst laeuft das Raster langsam durch. -->
+      <div class="row"><label>Wand: sichtbare Zeilen <span id="rowsval">alle</span></label>
+        <input type="range" id="ra_wall_rows" min="0" max="20" step="1"></div>
       <div class="hint">Die Wand erscheint nur, waehrend ein Spiel mit
         RetroAchievements laeuft. Beim allerersten Mal holt das Frontend
         die Erfolgs-Icons im Hintergrund nach - danach liegen sie auf der
@@ -134,7 +142,8 @@
 const F = ["title","accent","bg","transparent","show_boxart","show_system",
            "show_list","show_nowplaying","show_genre","show_playtime",
            "show_ra","show_ra_badges","show_favorite","corner","scale",
-           "show_ra_wall","ra_wall_corner","ra_wall_cols",
+           "show_name",
+           "show_ra_wall","ra_wall_corner","ra_wall_cols","ra_wall_rows",
            "obs_control_enabled","obs_host","obs_port","obs_password",
            "obs_game_scene","obs_frontend_scene"];
 const $ = id => document.getElementById(id);
@@ -153,12 +162,15 @@ function fillForm(c){
   $("show_genre").checked = c.show_genre!==false;
   $("show_playtime").checked = c.show_playtime!==false;
   $("show_ra").checked = c.show_ra!==false;
+  $("show_name").checked = c.show_name!==false;
   $("show_ra_badges").checked = c.show_ra_badges!==false;
   // Build 253: Vorgabe AUS - also ===true und nicht !==false.
   $("show_ra_wall").checked = c.show_ra_wall===true;
   $("ra_wall_corner").value = c.ra_wall_corner||"top-right";
   $("ra_wall_cols").value = c.ra_wall_cols||12;
   $("colsval").textContent = c.ra_wall_cols||12;
+  $("ra_wall_rows").value = c.ra_wall_rows||0;
+  $("rowsval").textContent = (c.ra_wall_rows||0) ? c.ra_wall_rows : "alle";
   $("show_favorite").checked = c.show_favorite!==false;
   $("corner").value = c.corner||"bottom-left";
   $("scale").value = c.scale||100;
@@ -174,7 +186,8 @@ function fillForm(c){
 function collect(){
   return {
     title:$("title").value, accent:$("accent").value, bg:$("bg").value,
-    transparent:$("transparent").checked, show_boxart:$("show_boxart").checked,
+    transparent:$("transparent").checked, show_name:$("show_name").checked,
+    show_boxart:$("show_boxart").checked,
     show_system:$("show_system").checked, show_list:$("show_list").checked,
     show_nowplaying:$("show_nowplaying").checked,
     show_genre:$("show_genre").checked, show_playtime:$("show_playtime").checked,
@@ -184,6 +197,7 @@ function collect(){
     show_ra_wall:$("show_ra_wall").checked,
     ra_wall_corner:$("ra_wall_corner").value,
     ra_wall_cols:parseInt($("ra_wall_cols").value,10)||12,
+    ra_wall_rows:parseInt($("ra_wall_rows").value,10)||0,
     scale:parseInt($("scale").value,10),
     obs_control_enabled:$("obs_control_enabled").checked,
     obs_host:$("obs_host").value,
@@ -211,6 +225,9 @@ F.forEach(id=>{
     // sieht beim Ziehen nicht, wo man ist.
     if(id==="ra_wall_cols")
       $("colsval").textContent=$("ra_wall_cols").value;
+    if(id==="ra_wall_rows")
+      $("rowsval").textContent =
+        $("ra_wall_rows").value==="0" ? "alle" : $("ra_wall_rows").value;
     save();
   };
   // "input" fuer Text/Farbe/Regler, "change" fuer Checkboxen und das

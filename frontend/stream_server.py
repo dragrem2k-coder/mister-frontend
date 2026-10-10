@@ -45,6 +45,10 @@ DEFAULT_CONFIG = {
     "accent": "#e0b64a",         # Akzentfarbe
     "bg": "#0d0f14",             # Hintergrund (OBS kann per Chroma/Alpha)
     "transparent": True,         # Overlay-Hintergrund transparent lassen
+    # Build 254: der Spieltitel selbst. Bisher stand er immer da -
+    # wer den Titel schon im Bild hat (Capture-Karte) oder ihn
+    # bewusst nicht verraten will, konnte ihn nicht abschalten.
+    "show_name": True,
     "show_boxart": True,
     "show_system": True,
     "show_list": True,           # kleine Vorschau-Liste um die Auswahl
@@ -59,6 +63,10 @@ DEFAULT_CONFIG = {
     "show_ra_wall": False,       # Vorgabe AUS - sie belegt Platz
     "ra_wall_corner": "top-right",   # wie corner, eigene Wahl
     "ra_wall_cols": 12,          # Kacheln je Zeile
+    # Build 254: wie viele Zeilen sichtbar sind. 0 = alle (kein
+    # Scrollen). Sonst wird das Raster auf diese Hoehe begrenzt
+    # und laeuft langsam durch.
+    "ra_wall_rows": 0,
     "show_favorite": True,       # Favoriten-Stern neben dem Titel
     "scale": 100,                # Prozent
     "corner": "bottom-left",     # bottom-left|bottom-right|top-left|top-right

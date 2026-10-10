@@ -1637,6 +1637,41 @@ Zwei Dinge, die du wissen solltest:
 - Die Wand erscheint **nur, während ein Spiel mit RetroAchievements
   läuft**. Nach der Rückkehr ins Menü verschwindet sie wieder.
 
+**Sie ist jetzt gleich beim Spielstart da (Build 254):** vorher
+erschien die Wand bei einem Spiel, in dem du **noch keinen Erfolg**
+hast, überhaupt nicht — und beim nächsten Start dann doch. Der Grund:
+die RA-Spielnummer kam aus der Liste der Spiele, mit denen du schon
+einmal zu tun hattest, und ein völlig neues Spiel steht da nicht
+drin. Das Frontend sucht die Nummer jetzt selbst im RA-Katalog des
+Systems und merkt sie dauerhaft in
+`/media/fat/frontend/ra_spielnummern.json`. Beim ersten Mal je System
+kostet das einen Katalog-Abruf (ein paar Sekunden im Hintergrund),
+danach steht die Wand sofort — mit 0 / 98 und einer komplett grauen
+Wand, aus der du sie dir freispielst.
+
+**Sichtbare Zeilen, der Rest läuft durch (Build 254):** bei 98
+Erfolgen und 12 Kacheln je Zeile sind das 9 Zeilen — auf einer
+1080p-Leinwand ist das eine halbe Bildschirmhöhe. Im Backend steht
+darum neben den Kacheln je Zeile ein zweiter Regler, **Sichtbare
+Zeilen**:
+
+- **auf 0 (Vorgabe)** wird die Wand ganz gezeigt, so wie bisher.
+- **auf 2 bis 20** ist nur dieser Ausschnitt zu sehen, und die Wand
+  **läuft langsam von oben nach unten durch** — oben und unten hält
+  sie kurz an, damit man die Ränder auch sieht, dann geht es zurück.
+- Schaltest du dabei einen Erfolg frei, **fährt die Wand zu genau
+  dieser Kachel und bleibt drei Sekunden dort stehen**. Sonst blitzte
+  sie womöglich gerade in einem Bereich auf, der nicht im Ausschnitt
+  liegt — und dann sähe man das Aufblitzen gar nicht, worum es bei der
+  Wand ja geht.
+
+**Der Spieltitel lässt sich abschalten (Build 254):** im Backend
+*Spieltitel anzeigen*. Aus heißt: die ganze Titelzeile verschwindet,
+Stern und Spielzeit inbegriffen — sinnvoll, wenn der Titel im Stream
+schon anderswo steht oder das Spiel selbst ihn einblendet. Cover,
+Kategorie und System bleiben davon unberührt und haben weiter ihre
+eigenen Schalter.
+
 **Einrichtung:**
 1. Einschalten - zwei gleichwertige Wege:
    - **Direkt im Frontend-Menü** (neu, kein SSH nötig): System ->

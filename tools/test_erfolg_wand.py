@@ -412,6 +412,93 @@ check("und die beiden anderen haben Vorgaben",
       DEFAULT_CONFIG.get("ra_wall_corner") == "top-right"
       and DEFAULT_CONFIG.get("ra_wall_cols") == 12)
 
+# ---------------------------------------------------------------------------
+print()
+print("Test 7: das Durchlaufen (Build 254)")
+# ---------------------------------------------------------------------------
+# Nutzerwunsch: nicht alles auf einmal zeigen, sondern eine feste Hoehe,
+# durch die die Icons laufen. Bei 98 Erfolgen auf 1080p ist das der
+# Unterschied zwischen einer Wand, die ein Drittel des Bildes einnimmt,
+# und einem ruhigen Streifen.
+check("es gibt ein Fenster um das Raster", "#ra-wall-view" in _CSS
+      and 'id="ra-wall-view"' in _OV)
+check("und es schneidet ab", "overflow:hidden" in
+      _CSS.split("#ra-wall-view{")[1][:60])
+check("gescrollt wird mit requestAnimationFrame",
+      "function wandScrollStarten" in _JS
+      and "requestAnimationFrame(schritt)" in _JS,
+      "die Strecke haengt davon ab, wie hoch das Raster geworden ist - "
+      "eine CSS-Animation braeuchte die Zahl im Voraus")
+check("und laesst sich anhalten", "function wandScrollStoppen" in _JS)
+check("passt alles hinein, wird nicht gescrollt",
+      "if(strecke <= 1)" in _JS)
+check("dabei wird die Verschiebung zurueckgesetzt",
+      "grid.style.transform = 'none'" in _JS,
+      "sonst bleibt ein halb hochgeschobenes Raster stehen, wenn ein "
+      "kleineres Spiel folgt")
+check("oben und unten gibt es eine Pause", "WAND_PAUSE" in _JS)
+check("grosse Zeitspruenge werden gekappt",
+      "Math.min(100, jetzt - wandZuletzt)" in _JS,
+      "nach einem Szenenwechsel in OBS liefert der Browser den ersten "
+      "Zeitstempel oft Sekunden spaeter - ohne Kappung springt die "
+      "Wand dann an ihr Ende")
+# UND DER PUNKT, um den es bei einer durchlaufenden Wand geht.
+check("zur frisch freigeschalteten Kachel wird hingefahren",
+      "function wandZuKachel" in _JS and "frischeKachel" in _JS,
+      "sonst blitzt sie womoeglich ausserhalb des sichtbaren "
+      "Ausschnitts auf, und man sieht nichts")
+check("und dort einen Moment gewartet", "WAND_HALT" in _JS)
+check("die Fensterhoehe kommt aus der ECHTEN Kachelhoehe",
+      "getBoundingClientRect().height" in _JS,
+      "die 26 Punkte im Stylesheet haengen an --scale - wer das "
+      "Overlay auf 150 % stellt, bekaeme sonst ein Fenster, das zu "
+      "zwei Dritteln leer ist")
+check("samt Zwischenraum", "rowGap" in _JS)
+check("gestartet wird ERST, wenn die Wand sichtbar ist",
+      _JS.index("wall.className = 'wall-'") < _JS.index("wandScrollStarten();"),
+      "vorher steht sie auf display:none, und dann sind scrollHeight "
+      "und clientHeight beide 0")
+check("0 Zeilen heisst: alles zeigen",
+      "parseInt(cfg.ra_wall_rows, 10) || 0" in _JS)
+# AUF DER GANZEN ZEILE GEPRUEFT, nicht auf dem Stueck DAHINTER: die
+# Begrenzung steht links vom Feldnamen ("Math.min(40, parseInt(...))"),
+# und ein Blick nach rechts findet sie nie. Derselbe Schnittfehler wie
+# zweimal zuvor in diesem Build.
+_zeile_rows = [z for z in _JS.split("\n") if "ra_wall_rows" in z]
+check("und die Zeilenzahl ist begrenzt",
+      any("Math.min(40," in z for z in _zeile_rows),
+      str(_zeile_rows[:1]))
+from stream_server import DEFAULT_CONFIG as _DC2         # noqa: E402
+check("die Vorgabe ist 'alle Zeilen'", _DC2.get("ra_wall_rows") == 0,
+      repr(_DC2.get("ra_wall_rows")))
+for _f in ("ra_wall_rows",):
+    _speicher2 = _AD.split("  return {")[1].split("};")[0]
+    check("%s im Backend: Feldliste" % _f,
+          ('"%s"' % _f) in _AD.split("const F = [")[1].split("]")[0])
+    check("%s im Backend: geladen" % _f, ('$("%s").' % _f) in _AD)
+    check("%s im Backend: gespeichert" % _f, ("%s:" % _f) in _speicher2)
+check("der Regler zeigt 'alle' statt 0",
+      '"alle"' in _AD, "eine 0 saehe nach 'keine Zeilen' aus")
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 8: der Spieltitel laesst sich abschalten (Build 254)")
+# ---------------------------------------------------------------------------
+check("es gibt den Schalter", "show_name" in _DC2,
+      "Vorgabe AN - wer ihn nie anfasst, merkt nichts")
+check("und er ist von Haus aus AN", _DC2.get("show_name") is True)
+check("das Overlay versteckt die ganze Zeile",
+      "cfg.show_name !== false" in _JS
+      and "$('title').style.display" in _JS,
+      "ein leerer Platzhalter '-' waere schlechter als gar nichts, und "
+      "der Stern ohne Titel saehe nach einem Fehler aus")
+_speicher3 = _AD.split("  return {")[1].split("};")[0]
+check("im Backend: Feldliste",
+      '"show_name"' in _AD.split("const F = [")[1].split("]")[0])
+check("im Backend: geladen", '$("show_name").checked = c.show_name!==false;'
+      in _AD)
+check("im Backend: gespeichert", "show_name:" in _speicher3)
+
 shutil.rmtree(_TMP, ignore_errors=True)
 print()
 if fails:

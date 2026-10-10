@@ -186,7 +186,13 @@
     background:rgba(255,255,255,.12);overflow:hidden}
   #ra-wall-bar i{display:block;height:100%;width:0;border-radius:999px;
     background:var(--accent);transition:width .6s ease}
-  #ra-wall-grid{display:grid;gap:calc(3px*var(--scale))}
+  /* Build 254: ein Fenster um das Raster. Ist "Zeilen" gesetzt, wird
+     es auf diese Hoehe begrenzt und laeuft langsam durch - sonst
+     waere eine Wand mit 98 Erfolgen auf 1080p entweder winzig oder
+     halb so hoch wie das Bild. */
+  #ra-wall-view{overflow:hidden}
+  #ra-wall-grid{display:grid;gap:calc(3px*var(--scale));
+    will-change:transform}
   #ra-wall-grid img{
     width:calc(26px*var(--scale));height:calc(26px*var(--scale));
     border-radius:calc(4px*var(--scale));display:block;
@@ -279,7 +285,7 @@
       <span class="pts" id="ra-wall-points"></span>
     </div>
     <div id="ra-wall-bar"><i id="ra-wall-fill"></i></div>
-    <div id="ra-wall-grid"></div>
+    <div id="ra-wall-view"><div id="ra-wall-grid"></div></div>
   </div>
   <div id="achievement-toast">
     <img id="achievement-badge" class="badge hidden" alt="">
@@ -442,6 +448,84 @@ function punkteHochzaehlen(punkte){
 //     Erfolge - die sollen einfach da sein und nicht alle 74
 //     nacheinander aufleuchten.
 
+// DAS DURCHLAUFEN DER WAND (Build 254)
+//
+// Nutzerwunsch: nicht alles auf einmal zeigen, sondern eine feste
+// Hoehe, durch die die Icons von oben nach unten laufen. Bei 98
+// Erfolgen auf 1080p ist das der Unterschied zwischen einer Wand, die
+// ein Drittel des Bildes einnimmt, und einem ruhigen Streifen.
+//
+// WARUM NICHT MIT EINER CSS-ANIMATION: die Strecke haengt davon ab,
+// wie hoch das Raster tatsaechlich geworden ist, und das weiss erst
+// der Browser, nachdem er es gesetzt hat. Eine Keyframe-Animation
+// braeuchte diese Zahl im Voraus. Mit requestAnimationFrame laesst
+// sich ausserdem anhalten - und genau das braucht der naechste Absatz.
+//
+// UND DAS IST DER PUNKT, an dem ein durchlaufendes Raster sonst
+// aergerlich waere: schaltest du einen Erfolg frei, waehrend die Wand
+// gerade woanders steht, siehst du das Aufblitzen nicht. Deshalb
+// faehrt sie zu der Kachel und bleibt dort einen Moment stehen.
+
+const WAND_TEMPO = 9;        // Bildpunkte je Sekunde - langsam
+const WAND_PAUSE = 2200;     // Pause oben und unten, in Millisekunden
+const WAND_HALT = 3000;      // Pause bei einer frisch freigeschalteten
+
+let wandLauf = null;         // Kennung der laufenden Animation
+let wandY = 0;               // jetzige Verschiebung
+let wandRichtung = 1;
+let wandWartetBis = 0;
+let wandZuletzt = 0;
+
+function wandScrollStoppen(){
+  if(wandLauf){ cancelAnimationFrame(wandLauf); wandLauf = null; }
+}
+
+function wandScrollStarten(){
+  wandScrollStoppen();
+  const view = $('ra-wall-view');
+  const grid = $('ra-wall-grid');
+  const strecke = grid.scrollHeight - view.clientHeight;
+  if(strecke <= 1){
+    // Passt ohnehin - dann nicht scrollen, und die Verschiebung
+    // zuruecksetzen (sonst bleibt ein halb hochgeschobenes Raster
+    // stehen, wenn ein kleineres Spiel folgt).
+    wandY = 0;
+    grid.style.transform = 'none';
+    return;
+  }
+  wandZuletzt = 0;
+  const schritt = (jetzt) => {
+    if(!wandZuletzt) wandZuletzt = jetzt;
+    const dt = Math.min(100, jetzt - wandZuletzt);   // Sprünge kappen
+    wandZuletzt = jetzt;
+    if(jetzt >= wandWartetBis){
+      wandY += wandRichtung * WAND_TEMPO * dt / 1000;
+      if(wandY >= strecke){
+        wandY = strecke; wandRichtung = -1; wandWartetBis = jetzt + WAND_PAUSE;
+      } else if(wandY <= 0){
+        wandY = 0; wandRichtung = 1; wandWartetBis = jetzt + WAND_PAUSE;
+      }
+    }
+    grid.style.transform = 'translateY(' + (-wandY).toFixed(1) + 'px)';
+    wandLauf = requestAnimationFrame(schritt);
+  };
+  wandLauf = requestAnimationFrame(schritt);
+}
+
+function wandZuKachel(node){
+  // Die frisch freigeschaltete Kachel ins Fenster holen und dort einen
+  // Moment stehenbleiben. Ohne das blitzt sie womoeglich ausserhalb
+  // des sichtbaren Ausschnitts auf, und man sieht nichts.
+  const view = $('ra-wall-view');
+  const grid = $('ra-wall-grid');
+  const strecke = grid.scrollHeight - view.clientHeight;
+  if(strecke <= 1) return;
+  const mitte = node.offsetTop + node.offsetHeight / 2 - view.clientHeight / 2;
+  wandY = Math.max(0, Math.min(strecke, mitte));
+  grid.style.transform = 'translateY(' + (-wandY).toFixed(1) + 'px)';
+  wandWartetBis = performance.now() + WAND_HALT;
+}
+
 let wandStand = null;     // Badge-Name -> an/aus, Stand von eben
 let wandAufbau = null;    // Badge-Name -> Element
 
@@ -451,12 +535,14 @@ function renderWall(daten){
     wall.classList.remove('on');
     wandStand = null;
     wandAufbau = null;
+    wandScrollStoppen();
     $('ra-wall-grid').innerHTML = '';
     return;
   }
   const items = Array.isArray(daten.items) ? daten.items : [];
   if(!items.length){
     wall.classList.remove('on');
+    wandScrollStoppen();
     return;
   }
 
@@ -493,6 +579,7 @@ function renderWall(daten){
     wandStand = null;
   }
 
+  let frischeKachel = null;
   items.forEach((e, i) => {
     const node = wandAufbau.el[i];
     if(!node || node.classList.contains('leer')) return;
@@ -505,9 +592,30 @@ function renderWall(daten){
       node.classList.remove('frisch');
       void node.offsetWidth;
       node.classList.add('frisch');
+      // Und hinfahren, falls die Wand durchlaeuft - sonst blitzt sie
+      // womoeglich ausserhalb des sichtbaren Ausschnitts auf.
+      frischeKachel = node;
     }
   });
   wandStand = items.map(e => !!e.an);
+
+  // DIE FENSTERHOEHE (Build 254). 0 heisst "alles zeigen"; sonst wird
+  // auf so viele Zeilen begrenzt und der Rest laeuft durch.
+  //
+  // Gerechnet wird aus der TATSAECHLICHEN Hoehe der ersten Kachel, und
+  // nicht aus den 26 Punkten im Stylesheet: die haengen an --scale,
+  // und wer das Overlay auf 150 % stellt, bekaeme sonst ein Fenster,
+  // das zu zwei Dritteln leer ist.
+  const view = $('ra-wall-view');
+  const zeilen = Math.max(0, Math.min(40, parseInt(cfg.ra_wall_rows, 10) || 0));
+  const erste = wandAufbau.el[0];
+  const kh = erste ? erste.getBoundingClientRect().height : 0;
+  if(zeilen > 0 && kh > 0){
+    const luecke = parseFloat(getComputedStyle(grid).rowGap) || 0;
+    view.style.height = (zeilen * kh + (zeilen - 1) * luecke) + 'px';
+  } else {
+    view.style.height = '';
+  }
 
   const [an, gesamt] = Array.isArray(daten.anzahl) ? daten.anzahl : [0, 0];
   const [pa, pg] = Array.isArray(daten.punkte) ? daten.punkte : [0, 0];
@@ -518,6 +626,18 @@ function renderWall(daten){
 
   wall.className = 'wall-' + (cfg.ra_wall_corner || 'top-right') +
                    (cfg.transparent === false ? ' solid' : '') + ' on';
+
+  // ERST JETZT das Durchlaufen (neu) anwerfen: vorher stand die Wand
+  // noch auf display:none, und dann sind scrollHeight und
+  // clientHeight beide 0 - die Strecke waere 0, und sie liefe nie.
+  if(zeilen > 0){
+    wandScrollStarten();
+    if(frischeKachel) wandZuKachel(frischeKachel);
+  } else {
+    wandScrollStoppen();
+    wandY = 0;
+    grid.style.transform = 'none';
+  }
 }
 
 function applyConfig(c){
@@ -545,6 +665,12 @@ function applyState(s){
   lastState = s;
   const card = $('card');
   $('cat').textContent = '';
+  // Build 254: der Spieltitel laesst sich abschalten. Versteckt wird
+  // die ganze Zeile samt Stern - ein leerer Platzhalter "-" waere
+  // schlechter als gar nichts, und der Stern ohne Titel daneben saehe
+  // nach einem Fehler aus.
+  const zeigeName = cfg.show_name !== false;
+  $('title').style.display = zeigeName ? '' : 'none';
   $('titletext').textContent = s.name || '-';
 
   const star = $('star');

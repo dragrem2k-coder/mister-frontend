@@ -888,6 +888,36 @@ guessing was the only option.
   `sagen` from a diagnostic script sat on top with 96. It is counted per file
   now.
 
+**The achievement wall now shows up right at game start — and scrolls if
+you want it to.**
+
+- **The bug, and it was not in the overlay:** for a game where you have
+  **no achievement yet**, the wall did not appear at all — and then did on
+  the next start. The watcher that observes achievements only started if it
+  **already knew** the RA game number, and that came solely from the list
+  of games you had *already interacted with*. A brand-new game is not in
+  it. As soon as one achievement dropped, it was — hence the "only on the
+  next start".
+- **Fixed at the root:** the watcher now starts as soon as
+  RetroAchievements is configured and **finds the number itself** — first
+  in the progress list (already at hand), then in the RA catalogue of the
+  system. The catalogue is **cached permanently**, one fetch per system
+  instead of per game start: the RA docs say "cache aggressively" about it
+  explicitly. The lookup runs **in the background thread** — a game start
+  does not wait for it.
+- **Visible rows:** with 98 achievements and 12 tiles per row that is 9
+  rows, half the screen height at 1080p. New slider in the backend: at 0
+  everything stays as before, at 2 to 20 only that window is shown and the
+  wall **scrolls slowly from top to bottom**, pausing briefly at each end
+  before turning around.
+- **The case that matters here:** unlock an achievement mid-scroll and the
+  tile may be *outside* the window — and that flash is the whole point of
+  the wall. So it **drives to that tile and holds there for three seconds**
+  before carrying on.
+- **The game title can be switched off**, from the backend. Off means the
+  entire title row goes, star and play time included — just emptying the
+  text would leave a gap and a lone star behind.
+
 **The achievement wall: every achievement of the running game as a grid.**
 
 - Built from a screenshot: a wall of RA achievement icons at the side,

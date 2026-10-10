@@ -223,7 +223,8 @@ from fe.retroachievements import (
     _save_ra_achievements_cache, build_ra_lookup, fetch_ra_game_achievements,
     fetch_ra_game_achievements_bounded, fetch_ra_game_achievements_cached, fetch_ra_progress,
     fetch_ra_progress_bounded, load_ra_config, lookup_ra_game_id,
-    lookup_ra_progress, ra_enabled, toggle_ra_enabled,
+    lookup_ra_progress, ra_enabled, ra_spiel_nummer_finden,
+    toggle_ra_enabled,
 )
 from fe.playtime import (
     DIARY_FILE, DIARY_RETENTION_DAYS, FIRST_PLAYED_FILE, MILESTONE_DEFS,
@@ -12696,7 +12697,8 @@ class Frontend:
                                     # genug, dass sich ein Erfolg fuer
                                     # Zuschauer noch "frisch" anfuehlt
 
-    def _watch_ra_achievements_during_play(self, game_id, stop_event):
+    def _watch_ra_achievements_during_play(self, game_id, stop_event,
+                                           label=None, syskey=None):
         """Laeuft als Hintergrund-Thread WAEHREND ein Spiel laeuft
         (siehe run_core()) - fragt periodisch RAs Erfolgsliste fuer
         GENAU DIESES Spiel ab und pusht neu freigeschaltete Erfolge
@@ -12710,6 +12712,33 @@ class Frontend:
         _ensure_achievements_seen_initialized() fuer unsere eigenen
         Erfolge, sonst wuerden bereits laengst freigeschaltete Erfolge
         beim Sitzungsstart faelschlich als "neu" gemeldet."""
+        # DIE SPIEL-NUMMER ZUERST, UND ZWAR HIER IM FADEN (Build 254).
+        #
+        # Sie kam bisher vom Aufrufer, und der hatte sie nur, wenn das
+        # Spiel in RAs Fortschrittsliste stand - also nur, wenn darin
+        # schon einmal ein Erfolg gefallen war. Fuer alles andere
+        # startete dieser Faden gar nicht erst, und es gab weder Wand
+        # noch Einblendung (siehe die Begruendung in run_core()).
+        #
+        # Gesucht wird jetzt hier: erst in der Fortschrittsliste, die
+        # ohnehin im Speicher liegt und nichts kostet, dann im Katalog
+        # der Konsole. Der zweite Weg kann ins Netz gehen - und genau
+        # deshalb steht er in diesem Faden und nicht im Spielstart.
+        if not game_id:
+            try:
+                game_id = ra_spiel_nummer_finden(self._ra_lookup, label,
+                                                 syskey)
+            except Exception:                            # noqa: BLE001
+                game_id = None
+                LOG("RA-Spielnummer nicht ermittelbar:\n"
+                    + traceback.format_exc())
+            if not game_id:
+                LOG("RA: keine Spielnummer fuer %r (%s) - kein Waechter"
+                    % (label, syskey))
+                return
+            if stop_event.is_set():
+                return      # das Spiel ist schon wieder vorbei
+
         seen_titles = None
         # Build 253: woran erkannt wird, dass sich die WAND geaendert
         # hat. Die Liste selbst zu vergleichen waere teuer und unnoetig -
@@ -12878,14 +12907,35 @@ class Frontend:
         # ueberhaupt laeuft (sonst pollt niemand zu, unnoetiger
         # Netzwerk-/API-Aufwand) UND fuer dieses Spiel eine RA-GameID
         # bekannt ist. Siehe _watch_ra_achievements_during_play().
+        # GEAENDERT (Build 254), und das war ein echter Fehler. Aus der
+        # Rueckmeldung des Nutzers: "wenn ich ein Spiel starte, wo ich
+        # noch keine Achievements geholt habe, sehe ich kein Raster im
+        # OBS. Erst wenn ich was freigespielt habe, laedt das Raster
+        # beim naechsten Spielstart mit rein."
+        #
+        # Hier stand "game_id = lookup_ra_game_id(...)" und daneben
+        # "if game_id:" - der Waechter startete also gar nicht erst,
+        # wenn die Nummer unbekannt war. Und unbekannt war sie fuer
+        # jedes Spiel, in dem noch nie ein Erfolg gefallen ist: die
+        # Fortschrittsliste von RA enthaelt nur, womit der Nutzer schon
+        # einmal zu tun hatte. Sobald ein Erfolg faellt, nimmt RA das
+        # Spiel auf - und beim naechsten Start des Frontends war es
+        # dann da. Genau das beschriebene Verhalten.
+        #
+        # Jetzt startet der Waechter, sobald RA ueberhaupt eingerichtet
+        # ist, und sucht die Nummer SELBST - erst in der
+        # Fortschrittsliste (kostet nichts), dann im Katalog der
+        # Konsole (siehe ra_spiel_nummer_finden() in
+        # fe/retroachievements.py). Das Suchen gehoert in den Faden und
+        # nicht hierher: es kann ins Netz gehen, und der Spielstart
+        # darf darauf nicht warten.
         ra_watch_stop = None
         if self.stream and self._ra_lookup and label:
-            game_id = lookup_ra_game_id(self._ra_lookup, label, syskey)
-            if game_id:
-                ra_watch_stop = threading.Event()
-                threading.Thread(
-                    target=self._watch_ra_achievements_during_play,
-                    args=(game_id, ra_watch_stop), daemon=True).start()
+            ra_watch_stop = threading.Event()
+            threading.Thread(
+                target=self._watch_ra_achievements_during_play,
+                args=(None, ra_watch_stop), daemon=True,
+                kwargs={"label": label, "syskey": syskey}).start()
         while current_core() != "MENU":
             res = self.inp.wait_game_exit()
             # "f10" gibt es seit Build 77 nicht mehr (siehe KEYMAP in

@@ -161,7 +161,8 @@ python3 tools/regression_test.py \
 | `test_zaparoo.py` | Test (Pass/Fail) | NFC-Tags ueber Zaparoo: Pfade gegen die Quelle, alter Name TapTo, der ZapScript-Befehl - und die Unterlassung, dass in /media/fat/zaparoo nichts geschrieben wird |
 | `test_nachscan.py` | Test (Pass/Fail) | Nur das Geaenderte nachlesen: der Punkt erscheint nur nach einer Speicher-Aenderung und ruft build_categories OHNE force - force=True schaltet den inkrementellen Zweig ab |
 | `test_erfolg_toast.py` | Test (Pass/Fail) | Die Erfolgs-Einblendung im OBS-Overlay: Warteschlange, zaehlende Punkte, und der zweite Toast loest wirklich eine Animation aus |
-| `test_erfolg_wand.py` | Test (Pass/Fail) | Die Erfolgs-Wand: geprueft GEGEN DEN ECHTEN SERVER ueber eine SSE-Verbindung - nur bei Aenderung gesendet, Wand im Begruessungspaket, Icons gedrosselt vorgeholt |
+| `test_erfolg_wand.py` | Test (Pass/Fail) | Die Erfolgs-Wand: geprueft GEGEN DEN ECHTEN SERVER ueber eine SSE-Verbindung - nur bei Aenderung gesendet, Wand im Begruessungspaket, Icons gedrosselt vorgeholt, der Ausschnitt laeuft durch und faehrt zur frisch freigeschalteten Kachel |
+| `test_ra_spielnummer.py` | Test (Pass/Fail) | Die RA-Spielnummer auch OHNE Fortschrittsliste: Reihenfolge, dauerhaft gemerkter Katalog, .tmp-Schreiben, keine zweite Zuordnungstabelle - und die Aufloesung laeuft IM Faden, nicht vor dem Spielstart |
 | `test_systemkategorie_auffrischen.py` | Test (Pass/Fail) | _refresh_system_category() trifft 'System' und keine andere Kategorie mit syskey=None, ruft keinen Neuaufbau, und die Beschriftung folgt der Einstellung |
 | `diag_ungeprueft.py` | Diagnose (immer Rueckgabewert 0) | Welche Funktionen betritt KEIN Test - gemessen mit sys.setprofile, nicht ueber Namen im Testtext |
 | `_spur.py` | Hilfsmodul | Laesst eine einzelne Testdatei unter sys.setprofile laufen und schreibt jede betretene Funktion mit |
@@ -3596,3 +3597,84 @@ eine Pruefung, die enger formuliert war als die Zusage:
   der ohnehin laeuft.
 * Er suchte das Speichern eines Zahlenfelds als `feld:$(` - durch
   `parseInt()` steht dort aber `feld:parseInt($(`.
+
+## test_ra_spielnummer.py (Build 254)
+
+Die RA-Spielnummer, wenn sie **nicht** in der Fortschrittsliste steht.
+
+**Der Fehler, den dieser Test festhaelt:** der Waechter, der die
+Erfolge beobachtet, startete nur, wenn die RA-Spielnummer **schon
+bekannt** war - und die kam allein aus `API_GetUserCompletionProgress`,
+also aus der Liste der Spiele, mit denen der Nutzer **schon einmal zu
+tun hatte**. Bei einem voellig neuen Spiel startete der Waechter nicht,
+und damit gab es weder Toast noch Erfolgs-Wand. Sobald ein Erfolg fiel,
+stand das Spiel in der Liste - daher die Beobachtung des Nutzers, dass
+die Wand "erst beim naechsten Spielstart" da war.
+
+**Der Test laeuft komplett gegen einen Stub - KEIN Netzzugriff.**
+`_ra_json()` wird ersetzt, der Test zaehlt die Aufrufe mit und
+beantwortet sie aus einer eigenen Tabelle. Ein Test, der RA wirklich
+anfragt, waere von der Erreichbarkeit der Seite abhaengig und damit
+kein Test.
+
+Geprueft wird:
+
+1. **Die Reihenfolge.** `ra_spiel_nummer_finden()` nimmt zuerst die
+   Fortschrittsliste - die liegt vor und kostet nichts. Steht das Spiel
+   dort, wird **gar nicht** gesucht: der Stub darf in diesem Fall
+   keinen einzigen Aufruf sehen.
+2. **Der Katalog wird gemerkt.** Die RA-Doku sagt zu `GetGameList`
+   ausdruecklich "cache aggressively". Der zweite Aufruf fuer dasselbe
+   System fragt nichts mehr an, sondern liest
+   `/media/fat/frontend/ra_spielnummern.json`.
+3. **Geschrieben wird per `.tmp` + `os.replace()`** - ein Stromausfall
+   beim Schreiben darf keine halbe Datei hinterlassen, und bei 3000
+   Titeln je Konsole ist die Datei nicht klein.
+4. **Es gibt keine zweite Zuordnungstabelle.** Benutzt wird die
+   vorhandene `RA_CONSOLE_MAP` samt `_ra_console_matches()` aus
+   demselben Modul. Eine zweite Tabelle waere eine zweite Quelle der
+   Wahrheit fuer dieselbe Frage - und die eine, die niemand pflegt,
+   waere bald falsch.
+5. **Gesucht wird IM FADEN, nicht davor.** Der Test schneidet den
+   Waechter-Start aus `frontend.py` heraus und prueft, dass dort keine
+   Aufloesung steht: sie kostet beim ersten Mal je System ein paar
+   Sekunden, und ein Spielstart darf darauf nicht warten.
+6. **Direkt nach der Aufloesung wird `stop_event` geprueft.** Wer ein
+   Spiel sofort wieder verlaesst, soll keinen Waechter zuruecklassen,
+   der einem bereits beendeten Spiel nachlaeuft.
+7. **Ohne Netz wird nicht gesucht** (`_has_network()`), sonst stuende
+   bei jedem Spielstart ein Zeitlimit im Weg.
+
+**Ein eigener Fehler beim Schreiben:**
+`_rq.split("RA_CONSOLES_URL")[1]` **ohne `maxsplit=1`**. Der Name kommt
+zweimal vor (Definition und Benutzung), und `[1]` liefert dann nur den
+Text **zwischen** beiden Vorkommen - rund 3000 Zeichen, in denen das
+Gesuchte nicht stand. Dieselbe Sorte Fehler wie das feste
+1400-Zeichen-Fenster in `test_mister_integration.py`: eine Pruefung
+haengt an der Textlage statt an der Zusage.
+
+### Nachtrag Build 254 zu test_erfolg_wand.py
+
+Zwei Tests dazu:
+
+* **Test 7, das Durchlaufen.** Bei `ra_wall_rows > 0` ist nur ein
+  Ausschnitt zu sehen und die Wand laeuft durch. Geprueft wird, dass
+  die Hoehe des Ausschnitts aus der **gemessenen** Hoehe der ersten
+  Kachel kommt und nicht aus einer geschaetzten Kachelgroesse - die
+  Kachel skaliert mit der Spaltenzahl, eine feste Zahl waere bei 6
+  Spalten zu klein und bei 20 zu gross. Dazu: der Zeitschritt ist
+  begrenzt (liegt der Tab im Hintergrund, kaeme sonst nach Minuten ein
+  einziger riesiger Schritt), und `wandZuKachel()` faehrt bei einem
+  frisch freigeschalteten Erfolg zu **genau dieser** Kachel und haelt
+  dort an. Ohne das blitzte die Kachel womoeglich ausserhalb des
+  Ausschnitts auf - und das Aufblitzen ist der ganze Reiz der Wand.
+* **Test 8, der Spieltitel laesst sich abschalten.** Geprueft wird, dass
+  die **ganze Zeile** verschwindet, nicht nur der Text: Stern und
+  Spielzeit stehen in derselben Zeile, ein geleerter Text liesse eine
+  Luecke und einen einsamen Stern stehen. Dazu Vorgabe an, Feld im
+  Admin, und der Weg vom Haken bis ins Gespeicherte.
+
+**Ein eigener Fehler beim Schreiben:**
+`_JS.split("ra_wall_rows")[1][:200]` sah nach **rechts** vom
+Feldnamen - das gesuchte `Math.min(40,` steht aber **links** davon.
+Gepruft wird jetzt die ganze Zeile.

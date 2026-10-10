@@ -1049,6 +1049,37 @@ messbar, an denen bisher geraten werden musste.
 - Auch die Gewichtung war erst falsch: global gezählt stand `sagen` aus einem
   Diagnoseskript mit 96 oben. Gezählt wird jetzt je Datei.
 
+**Die Erfolgs-Wand ist jetzt gleich beim Spielstart da — und läuft auf
+Wunsch durch.**
+
+- **Der Fehler, und er lag nicht im Overlay:** bei einem Spiel, in dem du
+  **noch keinen Erfolg** hast, erschien die Wand überhaupt nicht — und
+  beim nächsten Start dann doch. Der Wächter, der die Erfolge beobachtet,
+  startete nur, wenn er die RA-Spielnummer **schon kannte**, und die kam
+  allein aus der Liste der Spiele, mit denen du *schon einmal zu tun
+  hattest*. Ein völlig neues Spiel steht da nicht drin. Sobald ein Erfolg
+  fiel, stand es drin — daher das „erst beim nächsten Start".
+- **Behoben an der Wurzel:** der Wächter startet jetzt, sobald
+  RetroAchievements eingerichtet ist, und **sucht die Nummer selbst** —
+  erst in der Fortschrittsliste (liegt ohnehin vor), dann im RA-Katalog
+  des Systems. Der Katalog wird **dauerhaft gemerkt**, ein Abruf je
+  System statt je Spielstart: die RA-Doku sagt dazu ausdrücklich „cache
+  aggressively". Gesucht wird **im Hintergrundfaden** — ein Spielstart
+  wartet darauf nicht.
+- **Sichtbare Zeilen:** bei 98 Erfolgen und 12 Kacheln je Zeile sind das
+  9 Zeilen, auf 1080p eine halbe Bildschirmhöhe. Neuer Regler im Backend:
+  auf 0 bleibt alles wie bisher, auf 2 bis 20 ist nur dieser Ausschnitt
+  zu sehen und die Wand **läuft langsam von oben nach unten durch**, hält
+  oben und unten kurz an und kehrt um.
+- **Der Fall, auf den es dabei ankommt:** schaltest du während des
+  Durchlaufs einen Erfolg frei, liegt die Kachel womöglich gerade
+  *außerhalb* des Ausschnitts — und genau das Aufblitzen ist der Reiz der
+  Wand. Sie **fährt deshalb zu der Kachel und bleibt drei Sekunden dort**,
+  bevor es weitergeht.
+- **Der Spieltitel lässt sich abschalten**, Schalter im Backend. Aus heißt:
+  die ganze Titelzeile weg, Stern und Spielzeit inbegriffen — nur den Text
+  zu leeren ließe eine Lücke und einen einsamen Stern stehen.
+
 **Die Erfolgs-Wand: alle Erfolge des laufenden Spiels als Raster.**
 
 - Nach einem Screenshot gebaut: rechts im Bild eine Wand aus

@@ -646,6 +646,243 @@ def _ra_console_matches(expected, ra_console_normalized):
             return True
     return False
 
+# ----------------------------------------------------------------------------
+# DIE SPIEL-NUMMER FUER EIN SPIEL, DAS NOCH NIE GESPIELT WURDE
+# (Build 254)
+#
+# DER FEHLER, den der Nutzer gemeldet hat: "wenn ich ein Spiel starte,
+# wo ich noch keine Achievements geholt habe, sehe ich kein Raster im
+# OBS. Erst wenn ich was freigespielt habe, laedt das Raster beim
+# naechsten Spielstart mit rein."
+#
+# Die Ursache liegt eine Ebene tiefer als das Overlay. Der Waechter,
+# der waehrend des Spielens die Erfolge beobachtet, braucht die
+# RA-GameID, und die kam bisher ausschliesslich aus
+# lookup_ra_game_id() - also aus der Fortschrittsliste des Nutzers
+# (API_GetUserCompletionProgress). Die enthaelt die Spiele, mit denen
+# er SCHON EINMAL ZU TUN HATTE. Ein Spiel, in dem er noch nie einen
+# Erfolg hatte, steht dort nicht; der Waechter startete gar nicht
+# erst, und es gab weder Wand noch Einblendung. Sobald ein Erfolg
+# faellt, nimmt RA das Spiel in die Liste auf - und beim naechsten
+# Start des Frontends war es dann da. Genau das Verhalten.
+#
+# DER WEG DORTHIN, und er benutzt nur, was RA oeffentlich anbietet:
+#
+#   1. API_GetConsoleIDs.php?a=1&g=1  -> welche Konsole hat welche
+#      Nummer. Klein, aendert sich praktisch nie.
+#   2. API_GetGameList.php?i=<nr>&f=1 -> alle Spiele DIESER Konsole,
+#      die ueberhaupt Erfolge haben. f=1 ist dabei wichtig: ohne den
+#      Schalter kaemen auch alle Spiele ohne Erfolge mit, und die
+#      interessieren hier niemanden.
+#
+# BEIDES WIRD DAUERHAFT AUF DER KARTE GEMERKT. Die RA-Dokumentation
+# sagt das ausdruecklich selbst ("cache aggressively, responses can be
+# very large and the data changes infrequently"), und sie hat recht:
+# die Spieleliste einer Konsole hat schnell tausend Eintraege.
+#
+# DIE ZUORDNUNG UNSERER SYSTEME ZU RAs KONSOLEN GIBT ES SCHON -
+# RA_CONSOLE_MAP und _ra_console_matches() oben, seit der
+# Fortschrittsanzeige. Hier wird nichts Neues geraten, sondern
+# dieselbe Tabelle benutzt; ein System, das dort nicht steht, bekommt
+# weiterhin keine Nummer (bewusst kein Rateversuch).
+#
+# GEHOLT WIRD NUR AUF VERLANGEN: wenn ein Spiel startet, dessen Nummer
+# die Fortschrittsliste nicht kennt - und dann einmal je Konsole, nie
+# wieder. Wer nie etwas startet, laedt auch nichts.
+RA_CONSOLES_URL = "https://retroachievements.org/API/API_GetConsoleIDs.php"
+RA_GAMELIST_URL = "https://retroachievements.org/API/API_GetGameList.php"
+RA_SPIELNUMMERN_FILE = "/media/fat/frontend/ra_spielnummern.json"
+
+# Wie lange ein gemerkter Konsolen-Katalog gilt. Ein halbes Jahr: neue
+# Spiele bekommen bei RA staendig Erfolge, aber ein Katalog, der ein
+# paar Monate alt ist, kennt alles, was der Nutzer besitzt. Wer ein
+# ganz frisch unterstuetztes Spiel startet, bekommt die Wand eben erst
+# nach dem naechsten Auffrischen - das ist besser, als bei jedem
+# Spielstart eine Liste mit tausend Eintraegen zu laden.
+RA_SPIELNUMMERN_TTL = 180 * 24 * 3600
+
+
+def _spielnummern_laden(pfad=None):
+    """{"konsolen": {...}, "spiele": {konsole: {titel: id}}, ...}"""
+    p = pfad or RA_SPIELNUMMERN_FILE
+    try:
+        if not os.path.exists(p):
+            return {}
+        with open(p, "r", encoding="utf-8") as fh:
+            d = json.load(fh)
+        return d if isinstance(d, dict) else {}
+    except Exception:                                    # noqa: BLE001
+        return {}
+
+
+def _spielnummern_speichern(daten, pfad=None):
+    """Ueber .tmp und os.replace() - wie ueberall in diesem Projekt."""
+    p = pfad or RA_SPIELNUMMERN_FILE
+    try:
+        ordner = os.path.dirname(p)
+        if ordner:
+            os.makedirs(ordner, exist_ok=True)
+        tmp = p + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(daten, fh, ensure_ascii=False)
+        os.replace(tmp, p)
+        return True
+    except Exception:                                    # noqa: BLE001
+        return False
+
+
+def _ra_json(url, params, timeout):
+    """Eine RA-Abfrage, die NIE eine Ausnahme nach aussen laesst -
+    dasselbe Muster wie die uebrigen Abfragen in dieser Datei."""
+    try:
+        voll = url + "?" + urllib.parse.urlencode(params)
+        req = urllib.request.Request(
+            voll, headers={"User-Agent": "MiSTerFrontend/1.0"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if resp.status != 200:
+                LOG("RA-Abfrage %s: HTTP-Status %d" % (url, resp.status))
+                return None
+            return json.loads(resp.read())
+    except (urllib.error.URLError, TimeoutError, ValueError, OSError) as e:
+        LOG("RA-Abfrage %s fehlgeschlagen: %s" % (url, e))
+        return None
+
+
+def ra_konsolennummer(syskey, timeout=8.0, pfad=None):
+    """RAs Konsolennummer fuer eines UNSERER Systeme, oder None.
+
+    Einmal geholt und dann gemerkt. Steht das System nicht in
+    RA_CONSOLE_MAP, gibt es keine Nummer - und ausdruecklich keinen
+    Rateversuch."""
+    erwartet = RA_CONSOLE_MAP.get(syskey)
+    if not erwartet:
+        return None
+    daten = _spielnummern_laden(pfad)
+    konsolen = daten.get("konsolen")
+    if not isinstance(konsolen, dict) or not konsolen:
+        _user, api_key = load_ra_config()
+        if api_key is None:
+            return None
+        roh = _ra_json(RA_CONSOLES_URL,
+                       {"y": api_key, "a": 1, "g": 1}, timeout)
+        if not isinstance(roh, list):
+            return None
+        konsolen = {}
+        for e in roh:
+            if not isinstance(e, dict):
+                continue
+            name = e.get("Name") or e.get("name")
+            nr = e.get("ID") or e.get("id")
+            if name and nr is not None:
+                try:
+                    konsolen[str(name)] = int(nr)
+                except (TypeError, ValueError):
+                    continue
+        if not konsolen:
+            return None
+        daten["konsolen"] = konsolen
+        _spielnummern_speichern(daten, pfad)
+    for name, nr in konsolen.items():
+        if _ra_console_matches(erwartet, _ra_normalize_name(name)):
+            return nr
+    return None
+
+
+def ra_spiel_nummer(our_name, syskey, timeout=12.0, pfad=None):
+    """Die RA-GameID eines Spiels, das nicht in der Fortschrittsliste
+    steht - aus dem Katalog seiner Konsole. None, wenn es sie nicht
+    gibt.
+
+    Der Katalog wird einmal je Konsole geholt und dann gemerkt. Das
+    ist der teure Teil (RA liefert fuer SNES weit ueber tausend
+    Eintraege), und genau deshalb passiert er nur, wenn ein Spiel
+    startet, dessen Nummer sonst niemand kennt."""
+    if not our_name or not syskey:
+        return None
+    schluessel = _ra_normalize_name(our_name)
+    if not schluessel:
+        return None
+    daten = _spielnummern_laden(pfad)
+    spiele = daten.get("spiele")
+    if not isinstance(spiele, dict):
+        spiele = {}
+    zeiten = daten.get("geholt")
+    if not isinstance(zeiten, dict):
+        zeiten = {}
+    katalog = spiele.get(syskey)
+    alt = (time.time() - float(zeiten.get(syskey) or 0)
+           > RA_SPIELNUMMERN_TTL)
+    if isinstance(katalog, dict) and katalog and not alt:
+        wert = katalog.get(schluessel)
+        return int(wert) if wert is not None else None
+
+    nr = ra_konsolennummer(syskey, timeout=timeout, pfad=pfad)
+    if nr is None:
+        return None
+    _user, api_key = load_ra_config()
+    if api_key is None:
+        return None
+    roh = _ra_json(RA_GAMELIST_URL,
+                   {"y": api_key, "i": nr, "f": 1}, timeout)
+    if not isinstance(roh, list):
+        return None
+    katalog = {}
+    for e in roh:
+        if not isinstance(e, dict):
+            continue
+        titel = e.get("Title") or e.get("title")
+        gid = e.get("ID") or e.get("id")
+        if not titel or gid is None:
+            continue
+        try:
+            gid = int(gid)
+        except (TypeError, ValueError):
+            continue
+        # setdefault: bei mehreren Eintraegen gleichen Namens gewinnt
+        # der erste. RA listet gelegentlich Varianten (Demo,
+        # Prototype) unter aehnlichem Titel - eine davon ist besser
+        # als keine, und raten welche waere schlimmer.
+        katalog.setdefault(_ra_normalize_name(titel), gid)
+    if not katalog:
+        return None
+    # Neu geholte Katalogdaten frisch von der Platte zusammenfuehren -
+    # zwischen Laden und Speichern kann eine andere Konsole dazu-
+    # gekommen sein (der Waechter laeuft in einem eigenen Faden).
+    daten = _spielnummern_laden(pfad)
+    spiele = daten.get("spiele")
+    if not isinstance(spiele, dict):
+        spiele = {}
+    zeiten = daten.get("geholt")
+    if not isinstance(zeiten, dict):
+        zeiten = {}
+    spiele[syskey] = katalog
+    zeiten[syskey] = time.time()
+    daten["spiele"] = spiele
+    daten["geholt"] = zeiten
+    _spielnummern_speichern(daten, pfad)
+    LOG("RA: Katalog fuer %s geholt (%d Spiele mit Erfolgen)"
+        % (syskey, len(katalog)))
+    wert = katalog.get(schluessel)
+    return int(wert) if wert is not None else None
+
+
+def ra_spiel_nummer_finden(lookup, our_name, our_syskey, timeout=12.0,
+                           pfad=None):
+    """Die RA-GameID - erst aus der Fortschrittsliste, dann aus dem
+    Konsolen-Katalog.
+
+    DIE REIHENFOLGE IST DER GANZE PUNKT: die Fortschrittsliste liegt
+    ohnehin im Speicher und kostet nichts. Nur wenn sie das Spiel
+    nicht kennt - weil nie ein Erfolg darin faellig war -, wird
+    nachgesehen. Wer seine Spiele kennt, geht also nie ins Netz."""
+    gid = lookup_ra_game_id(lookup, our_name, our_syskey)
+    if gid:
+        return gid
+    if not _has_network():
+        return None
+    return ra_spiel_nummer(our_name, our_syskey, timeout=timeout, pfad=pfad)
+
+
 RA_PROGRESS_SUMMARY_FILE = "/media/fat/frontend/ra_progress_summary.json"
 
 def build_ra_lookup(ra_entries):
