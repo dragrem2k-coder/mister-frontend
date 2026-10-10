@@ -888,6 +888,27 @@ guessing was the only option.
   `sagen` from a diagnostic script sat on top with 96. It is counted per file
   now.
 
+**The achievement popup in the OBS overlay is a moment now.**
+
+- **Several achievements in a row no longer get lost.** The second toast
+  used to overwrite the first and reset the timer — in a burst you saw
+  *one* of them. They now appear one after another, with a note of how many
+  are still waiting ("+3 more").
+- **The points count up**, from 0 to the value over 600 ms, easing out at
+  the end. The number was always in the event — counting it up pulls the
+  eye to where it is.
+- **The entrance itself:** the card springs back instead of arriving
+  linearly, the badge rotates in out of depth, and a sheen sweeps across it.
+  Anyone with "reduce motion" set in their system gets the plain version
+  from before.
+- **And the bug that nearly happened:** the second achievement would have
+  played no animation at all, because the CSS class is already applied. The
+  main card solved exactly this with its `flash` class once before — the
+  same way, and the test pins it down.
+- **No change to the data path.** The same event, the same four fields, the
+  same badge cache. The overlay runs unchanged with any existing frontend,
+  and you can look at it in a browser without restarting the frontend.
+
 **The measuring tool misled itself.**
 
 - Two lines from the log, for **the same** drawing step:

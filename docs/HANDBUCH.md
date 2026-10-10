@@ -1592,8 +1592,27 @@ lässt sich über die Backend-Oberfläche getrennt ein-/ausschalten.
 **RA-Erfolge in Echtzeit:** Wird während des Spielens ein
 RetroAchievements-Erfolg freigeschaltet, zeigt das Overlay das direkt
 an - Icon, Titel, Beschreibung, Punkte, oben rechts eingeblendet, nach
-8 Sekunden automatisch wieder weg. Kein Warten bis zur Rückkehr ins
+7 Sekunden automatisch wieder weg. Kein Warten bis zur Rückkehr ins
 Menü nötig. Eigener Admin-Schalter, falls nicht gewünscht.
+
+**Überarbeitet in Build 252**, damit es im Stream auch als Moment
+ankommt und nicht nur als Hinweis:
+
+- **Mehrere Erfolge hintereinander** gehen nicht mehr verloren. Vorher
+  überschrieb der zweite den ersten; jetzt werden sie nacheinander
+  gezeigt, und daneben steht, wie viele noch warten („+3 weitere").
+- **Die Punkte zählen hoch**, von 0 auf den Wert.
+- Die Karte **federt beim Einblenden zurück**, das Icon dreht sich aus
+  der Tiefe herein, und ein Lichtstreifen läuft einmal quer darüber.
+
+Wer in seinem System *„weniger Bewegung"* eingestellt hat, bekommt
+automatisch die schlichte Fassung von vorher — das Overlay fragt die
+Einstellung ab.
+
+Alles davon steckt in `stream_overlay.html`. Die Datenleitung ist
+unverändert, du kannst die Datei also austauschen, ohne sonst etwas
+anzufassen — und sie im Browser ansehen, ohne das Frontend neu zu
+starten.
 
 **Einrichtung:**
 1. Einschalten - zwei gleichwertige Wege:

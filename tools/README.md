@@ -160,6 +160,7 @@ python3 tools/regression_test.py \
 | `test_ruckler_posten.py` | Test (Pass/Fail) | Die RUCKLER-Zeile verliert ihre Posten nicht mehr: genullt wird an EINER Stelle, und die Posten summieren sich innerhalb einer Aktion |
 | `test_zaparoo.py` | Test (Pass/Fail) | NFC-Tags ueber Zaparoo: Pfade gegen die Quelle, alter Name TapTo, der ZapScript-Befehl - und die Unterlassung, dass in /media/fat/zaparoo nichts geschrieben wird |
 | `test_nachscan.py` | Test (Pass/Fail) | Nur das Geaenderte nachlesen: der Punkt erscheint nur nach einer Speicher-Aenderung und ruft build_categories OHNE force - force=True schaltet den inkrementellen Zweig ab |
+| `test_erfolg_toast.py` | Test (Pass/Fail) | Die Erfolgs-Einblendung im OBS-Overlay: Warteschlange, zaehlende Punkte, und der zweite Toast loest wirklich eine Animation aus |
 | `test_systemkategorie_auffrischen.py` | Test (Pass/Fail) | _refresh_system_category() trifft 'System' und keine andere Kategorie mit syskey=None, ruft keinen Neuaufbau, und die Beschriftung folgt der Einstellung |
 | `diag_ungeprueft.py` | Diagnose (immer Rueckgabewert 0) | Welche Funktionen betritt KEIN Test - gemessen mit sys.setprofile, nicht ueber Namen im Testtext |
 | `_spur.py` | Hilfsmodul | Laesst eine einzelne Testdatei unter sys.setprofile laufen und schreibt jede betretene Funktion mit |
@@ -3487,3 +3488,52 @@ gebaut**. Beim Nachsehen kamen drei Luecken heraus:
    Leser gruen.
 3. **Die Quelle fehlte in der Doku** - jetzt im Handbuch, Abschnitt
    8h-8.
+
+
+## test_erfolg_toast.py (Build 252)
+
+Drei Aenderungen an der Erfolgs-Einblendung des OBS-Overlays, **alle
+im Overlay und keine an der Datenleitung**: dasselbe Ereignis, dieselben
+vier Felder, derselbe Badge-Zwischenspeicher. Die Datei laeuft damit
+unveraendert mit jedem bestehenden Frontend.
+
+**Warum dieser Test keinen Browser braucht.** `stream_overlay.html` ist
+eine einzige Datei ohne Fremdpakete; geprueft wird ihr Inhalt, und das
+JavaScript zusaetzlich mit `node` auf Syntax - falls node da ist, sonst
+wird der Punkt uebersprungen und es bleibt bei der Klammerprobe. Ein
+echter Browsertest waere ein Fremdpaket und eine zweite Baustelle fuer
+etwas, das in drei Funktionen passt. Die Syntaxpruefung ist dabei nicht
+Zierde: ein Tippfehler im Skript laesst das Overlay **schwarz**, und in
+OBS sieht niemand die Browser-Konsole.
+
+**Der Fehler, der dabei fast passiert waere**, und deshalb hat er einen
+eigenen Testabschnitt: beim ZWEITEN Erfolg waere gar keine Animation
+gelaufen, weil die CSS-Klasse `show` schon dran ist. Das ist der
+klassische Fehler bei CSS-Animationen, und dieses Projekt hat ihn bei
+der `flash`-Klasse der Hauptkarte schon einmal geloest. Derselbe Weg:
+
+```js
+toast.classList.remove('show');
+void toast.offsetWidth;        // erzwingt das Neuberechnen
+toast.classList.add('show');
+```
+
+Der Test prueft die **Reihenfolge** dieser drei Zeilen, nicht nur ihr
+Vorhandensein.
+
+**Zwei Zahlen, die zueinander passen muessen:** die Luecke zwischen
+zwei Toasts (420 ms) ist laenger als die Ausblendzeit (280 ms) - sonst
+laufen sie ineinander. Beide werden aus der Datei gelesen und
+verglichen, statt sie im Test noch einmal hinzuschreiben.
+
+**Der Test hatte selbst einen Rechenfehler:** `.28s` sind 280 ms und
+nicht 2800. Der erste Entwurf nahm die Nachkommastellen als ganze Zahl
+und multiplizierte mit 100 - und meldete prompt "420 ms Pause gegen
+2800 ms Ausblenden" als Fehler. Die Zusage stimmte, die Rechnung nicht.
+
+Weiter abgesichert: die Notbremse der Warteschlange (12 Eintraege,
+abgeschnitten werden die **aeltesten**), dass der Admin-Schalter
+`show_ra_badges` **vor** dem Einreihen wirkt (sonst sammelt sich eine
+Schlange an, die niemand sieht, und beim Einschalten kaeme alles auf
+einmal), dass ohne Punktangabe nichts statt "0 Punkte" dasteht, und
+dass `prefers-reduced-motion` beruecksichtigt wird.

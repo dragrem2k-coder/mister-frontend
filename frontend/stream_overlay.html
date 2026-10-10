@@ -99,6 +99,62 @@
     pointer-events:none;
   }
   #achievement-toast.show{opacity:1;transform:translateX(0)}
+
+  /* DER EINBLEND-MOMENT (Build 252).
+     Vorher: nur opacity plus 20 Punkte von rechts. Das ist eine
+     Benachrichtigung und kein Moment - gerade auf einem Stream, wo
+     der Zuschauer nicht weiss, dass gleich etwas kommt, braucht es
+     einen Akzent im ersten Drittel.
+     Drei Zutaten, alle rein in CSS:
+       1. Zurueckfedern statt linearem Ankommen (cubic-bezier mit
+          Ueberschwinger).
+       2. Das Badge dreht sich einmal aus der Tiefe herein.
+       3. Ein Lichtstreifen laeuft einmal quer ueber die Karte.
+     KEINE neue Datenleitung, kein zusaetzliches Feld im Ereignis -
+     deshalb laeuft es auch mit jedem bestehenden Frontend. */
+  #achievement-toast.show{
+    transition:opacity .28s ease,
+               transform .55s cubic-bezier(.17,.89,.32,1.28)}
+  #achievement-toast.show .badge{animation:badge-in .7s
+    cubic-bezier(.2,.8,.25,1) both}
+  @keyframes badge-in{
+    from{transform:perspective(600px) rotateY(-90deg) scale(.6);opacity:0}
+    60%{transform:perspective(600px) rotateY(12deg) scale(1.06);opacity:1}
+    to{transform:none;opacity:1}}
+  /* Der Lichtstreifen liegt UEBER der Karte und faengt keine Klicks
+     ab - das ganze Overlay ist pointer-events:none, aber ein
+     Pseudoelement erbt das nicht zuverlaessig in jedem Browser. */
+  #achievement-toast::after{
+    content:"";position:absolute;inset:0;border-radius:inherit;
+    pointer-events:none;overflow:hidden;opacity:0;
+    background:linear-gradient(105deg,transparent 35%,
+      rgba(255,212,82,.22) 48%,rgba(255,255,255,.30) 52%,
+      transparent 66%);
+    background-size:260% 100%;background-position:120% 0}
+  #achievement-toast.show::after{animation:sheen .85s ease-out .18s both}
+  @keyframes sheen{
+    from{opacity:0;background-position:120% 0}
+    25%{opacity:1}
+    to{opacity:0;background-position:-40% 0}}
+
+  /* MEHRERE ERFOLGE HINTEREINANDER (Build 252).
+     Bei einem Erfolgs-Schub ueberschrieb der zweite Toast den ersten
+     und setzte den Timer neu - man sah EINEN davon. Jetzt gibt es
+     eine Warteschlange, und waehrend sie laeuft steht die Zahl der
+     wartenden daneben. */
+  #achievement-toast .achievement-rest{
+    font-size:calc(10px*var(--scale));color:var(--dim);
+    letter-spacing:.06em}
+  #achievement-toast .achievement-rest.hidden{display:none}
+
+  /* Damit das Zurueckfedern nicht bei jedem stoert, der es nicht
+     mag: wer im System "weniger Bewegung" eingestellt hat, bekommt
+     den schlichten Weg von vorher. */
+  @media (prefers-reduced-motion: reduce){
+    #achievement-toast.show{transition:opacity .3s ease}
+    #achievement-toast.show .badge{animation:none}
+    #achievement-toast.show::after{animation:none}
+  }
   #achievement-toast .badge{
     width:calc(56px*var(--scale));height:calc(56px*var(--scale));
     flex:none;border-radius:calc(8px*var(--scale));
@@ -143,6 +199,7 @@
       <div id="achievement-title" class="achievement-title"></div>
       <div id="achievement-desc" class="achievement-desc"></div>
       <div id="achievement-points" class="achievement-points"></div>
+      <div id="achievement-rest" class="achievement-rest hidden"></div>
     </div>
   </div>
 </div>
@@ -151,15 +208,60 @@ const $ = id => document.getElementById(id);
 const root = document.documentElement.style;
 let cfg = {};
 let lastState = null;
-let achievementTimer = null;
+
+// ERFOLGE: WARTESCHLANGE, ZAEHLENDE PUNKTE, EINBLEND-MOMENT
+// (Build 252)
+//
+// Vorher war das hier eine Funktion: Felder setzen, einblenden, nach
+// acht Sekunden ausblenden. Drei Dinge fehlten.
+//
+// 1. MEHRERE ERFOLGE HINTEREINANDER. Der zweite Toast ueberschrieb den
+//    ersten und setzte den Timer neu - bei einem Erfolgs-Schub (und die
+//    gibt es, wenn ein Abschnitt im Spiel mehrere auf einmal
+//    freischaltet) sah man einen davon. Jetzt werden sie in eine
+//    Schlange gestellt und nacheinander gezeigt; waehrenddessen steht
+//    daneben, wie viele noch warten.
+// 2. DIE PUNKTE ZAEHLEN HOCH. Die Zahl steht schon im Ereignis - sie
+//    von 0 heraufzuzaehlen zieht das Auge genau dorthin, wo sie steht.
+// 3. Der Einblend-Moment selbst - der steckt im CSS (siehe dort).
+//
+// ALLES IM OVERLAY, KEINE AENDERUNG AN DER DATENLEITUNG: dasselbe
+// Ereignis wie bisher, dieselben Felder. Das Overlay laeuft damit
+// unveraendert mit jedem Frontend, und man kann es im Browser ansehen,
+// ohne das Frontend neu zu starten.
+
+const ACH_STANDZEIT = 7000;   // wie lange ein Toast steht
+const ACH_LUECKE    = 420;    // Pause zwischen zwei Toasts
+const ACH_SCHLANGE_MAX = 12;  // Notbremse, siehe unten
+
+let achQueue = [];
+let achLaeuft = false;
+let achTimer = null;
+let achZaehlTimer = null;
 
 function showAchievementToast(data){
   // Respektiert den Admin-Schalter "show_ra_badges" - Standard AN,
   // wie bei den anderen show_*-Optionen (fehlend/undefined = an).
   if(cfg.show_ra_badges === false) return;
+  // NOTBREMSE: ein Spiel, das aus irgendeinem Grund hundert Ereignisse
+  // schickt, soll das Overlay nicht minutenlang blockieren. Die
+  // aeltesten fliegen heraus, nicht die neuesten - was gerade passiert
+  // ist, ist das Interessantere.
+  achQueue.push(data);
+  if(achQueue.length > ACH_SCHLANGE_MAX){
+    achQueue = achQueue.slice(-ACH_SCHLANGE_MAX);
+  }
+  if(!achLaeuft) achNaechster();
+}
+
+function achNaechster(){
+  const data = achQueue.shift();
+  if(!data){ achLaeuft = false; return; }
+  achLaeuft = true;
+
   $('achievement-title').textContent = data.title || '';
   $('achievement-desc').textContent = data.description || '';
-  $('achievement-points').textContent = data.points ? (data.points + ' Punkte') : '';
+
   const badge = $('achievement-badge');
   if(data.badge){
     badge.src = '/badge?name=' + encodeURIComponent(data.badge);
@@ -167,12 +269,64 @@ function showAchievementToast(data){
   } else {
     badge.classList.add('hidden');
   }
+
+  // Wie viele warten noch? Steht nur da, wenn es welche gibt.
+  const rest = $('achievement-rest');
+  if(achQueue.length > 0){
+    rest.textContent = '+' + achQueue.length + ' weitere';
+    rest.classList.remove('hidden');
+  } else {
+    rest.classList.add('hidden');
+  }
+
   const toast = $('achievement-toast');
+  // NEU EINBLENDEN, AUCH WENN ER SCHON STAND: ohne das Zuruecksetzen
+  // laeuft bei zwei Erfolgen hintereinander keine Animation, weil die
+  // Klasse "show" ja schon dran ist. Das erzwungene Auslesen von
+  // offsetWidth dazwischen ist der uebliche Weg, den Browser die
+  // Aenderung wirklich anwenden zu lassen - dasselbe macht die
+  // "flash"-Klasse der Hauptkarte weiter unten.
+  toast.classList.remove('show');
+  void toast.offsetWidth;
   toast.classList.add('show');
-  if(achievementTimer) clearTimeout(achievementTimer);
-  achievementTimer = setTimeout(() => {
+
+  punkteHochzaehlen(data.points);
+
+  if(achTimer) clearTimeout(achTimer);
+  achTimer = setTimeout(() => {
     toast.classList.remove('show');
-  }, 8000);
+    // Die Luecke ist laenger als die Ausblendzeit (.28s), damit zwei
+    // Toasts nicht ineinanderlaufen.
+    setTimeout(achNaechster, ACH_LUECKE);
+  }, ACH_STANDZEIT);
+}
+
+function punkteHochzaehlen(punkte){
+  const el = $('achievement-points');
+  if(achZaehlTimer){ cancelAnimationFrame(achZaehlTimer); achZaehlTimer = null; }
+  const ziel = parseInt(punkte, 10);
+  if(!ziel || ziel < 0 || !isFinite(ziel)){
+    // Kein oder ein unbrauchbarer Wert: wie bisher nichts anzeigen,
+    // statt eine 0 hinzuschreiben, die nichts bedeutet.
+    el.textContent = punkte ? (punkte + ' Punkte') : '';
+    return;
+  }
+  // Bei wenigen Punkten lohnt das Zaehlen nicht - ein Sprung von 0 auf
+  // 2 sieht nach einem Fehler aus, nicht nach einer Animation.
+  if(ziel <= 3){ el.textContent = ziel + ' Punkte'; return; }
+  const dauer = 600;
+  const start = performance.now();
+  const schritt = (jetzt) => {
+    const t = Math.min(1, (jetzt - start) / dauer);
+    // Am Ende langsamer werden - sonst wirkt der letzte Wert
+    // abgeschnitten statt angekommen.
+    const e = 1 - Math.pow(1 - t, 3);
+    el.textContent = Math.round(ziel * e) + ' Punkte';
+    if(t < 1){ achZaehlTimer = requestAnimationFrame(schritt); }
+    else { achZaehlTimer = null; el.textContent = ziel + ' Punkte'; }
+  };
+  el.textContent = '0 Punkte';
+  achZaehlTimer = requestAnimationFrame(schritt);
 }
 
 function applyConfig(c){

@@ -1049,6 +1049,28 @@ messbar, an denen bisher geraten werden musste.
 - Auch die Gewichtung war erst falsch: global gezählt stand `sagen` aus einem
   Diagnoseskript mit 96 oben. Gezählt wird jetzt je Datei.
 
+**Die Erfolgs-Einblendung im OBS-Overlay ist jetzt ein Moment.**
+
+- **Mehrere Erfolge hintereinander gehen nicht mehr verloren.** Bisher
+  überschrieb der zweite Toast den ersten und setzte den Timer neu — bei
+  einem Schub sah man *einen* davon. Jetzt werden sie nacheinander gezeigt,
+  und daneben steht, wie viele noch warten („+3 weitere").
+- **Die Punkte zählen hoch**, von 0 auf den Wert in 600 ms und am Ende
+  langsamer werdend. Die Zahl stand schon immer im Ereignis — sie
+  heraufzuzählen zieht das Auge dorthin, wo sie steht.
+- **Der Einblend-Moment selbst:** die Karte federt zurück statt linear
+  anzukommen, das Badge dreht sich einmal aus der Tiefe herein, und ein
+  Lichtstreifen läuft quer darüber. Wer im System „weniger Bewegung"
+  eingestellt hat, bekommt den schlichten Weg von vorher.
+- **Und der Fehler, der dabei fast passiert wäre:** beim zweiten Erfolg
+  wäre gar keine Animation gelaufen, weil die CSS-Klasse schon dran ist.
+  Dasselbe Problem hat die Hauptkarte mit ihrer `flash`-Klasse schon
+  einmal gelöst — derselbe Weg, und der Test hält ihn fest.
+- **Keine Änderung an der Datenleitung.** Dasselbe Ereignis, dieselben vier
+  Felder, derselbe Badge-Zwischenspeicher. Das Overlay läuft unverändert
+  mit jedem bestehenden Frontend, und man kann es im Browser ansehen, ohne
+  das Frontend neu zu starten.
+
 **Das Messwerkzeug hat sich selbst in die Irre geführt.**
 
 - Aus dem Log zwei Zeilen zu **demselben** Zeichenschritt:
