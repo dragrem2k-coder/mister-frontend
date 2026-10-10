@@ -308,6 +308,105 @@ finally:
     zurueck()
     shutil.rmtree(basis, ignore_errors=True)
 
+# ---------------------------------------------------------------------------
+print()
+print("Nachtrag (Build 251): DOCTYPE/ENTITY wird abgewiesen")
+# ---------------------------------------------------------------------------
+# DIE EINZIGE FLANKE, die beim Nachsehen offen war. ElementTree aus der
+# Standardbibliothek holt keine externen Dateien nachgeladen (kein
+# XXE), expandiert aber INTERNE Entities - zehn verschachtelte, die
+# sich je zehnmal aufeinander beziehen, werden beim Einlesen zu einem
+# Gigabyte Text ("Billion Laughs"). Auf einem Geraet mit 1 GB RAM ist
+# das Frontend dann weg, mitten im Start.
+#
+# Niemand baut so eine Datei versehentlich. Aber eine gamelist.xml
+# kommt aus dem Verzeichnis des Nutzers, und der ganze Rest dieses
+# Lesers ist genau darauf gebaut ("dort kann alles Moegliche stehen").
+_bombe = tempfile.mkdtemp(prefix="gamelist_bombe_")
+try:
+    _p = os.path.join(_bombe, "gamelist.xml")
+    io.open(_p, "w", encoding="utf-8").write(
+        '<?xml version="1.0"?>\n'
+        '<!DOCTYPE gameList [\n'
+        '  <!ENTITY a "aaaaaaaaaa">\n'
+        '  <!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">\n'
+        ']>\n'
+        '<gameList><game><path>./x.sfc</path>'
+        '<genre>&b;</genre></game></gameList>\n')
+    _raus = {}
+    try:
+        _n = A._gamelist_lesen(_p, _raus)
+        _lief, _fehler = True, ""
+    except Exception as e:                               # noqa: BLE001
+        _n, _lief, _fehler = -1, False, "%s: %s" % (type(e).__name__, e)
+    check("der Leser wirft nicht", _lief, _fehler)
+    check("und liest NICHTS daraus", _n == 0 and not _raus,
+          "%d Eintraege, %d Namen" % (_n, len(_raus)))
+
+    # Die Gegenprobe: dieselbe Datei OHNE die Erklaerung wird gelesen.
+    # Ohne sie wuerde dieser Test auch bei einem kaputten Leser gruen.
+    _p2 = os.path.join(_bombe, "gut.xml")
+    io.open(_p2, "w", encoding="utf-8").write(
+        '<?xml version="1.0"?>\n'
+        '<gameList><game><path>./x.sfc</path>'
+        '<genre>Platform</genre></game></gameList>\n')
+    _raus2 = {}
+    _n2 = A._gamelist_lesen(_p2, _raus2)
+    check("eine gewoehnliche Datei wird weiterhin gelesen",
+          _n2 == 1 and _raus2.get("x", {}).get("genre") == "Platform",
+          "%d Eintraege, %r" % (_n2, _raus2))
+
+    # Eine Datei, die es nicht gibt, darf auch nichts werfen.
+    check("eine fehlende Datei wirft nicht",
+          A._gamelist_lesen(os.path.join(_bombe, "gibtsnicht.xml"), {}) == 0)
+finally:
+    shutil.rmtree(_bombe, ignore_errors=True)
+
+# ---------------------------------------------------------------------------
+print()
+print("Nachtrag (Build 251): der Entwickler kommt im Filter an")
+# ---------------------------------------------------------------------------
+# EIN FEHLER, DER SEIT BUILD 188 DRIN WAR. Die Quellen benutzen zwei
+# Schluessel fuer dieselbe Sache: gameinfo.tsv schreibt "developer",
+# die gamelist.xml und die .mra-Dateien schreiben "manufacturer". Der
+# Filter fragte nur nach "developer" - wer seine Metadaten aus einer
+# gamelist bezieht, hatte den Entwickler-Filter dauerhaft leer, und in
+# ARCADE ebenfalls. Angezeigt wurde der Hersteller die ganze Zeit.
+#
+# Das sieht nach "es gibt keine Daten" aus und nicht nach einem Fehler -
+# genau deshalb ist es nie gemeldet worden.
+import fe.filter as FILTER                                 # noqa: E402
+
+for _meta, _erw, _was in (
+        ({"developer": "Nintendo"}, "Nintendo", "gameinfo.tsv"),
+        ({"manufacturer": "Capcom"}, "Capcom", "gamelist/Arcade"),
+        ({"developer": "Rare", "manufacturer": "Nintendo"}, "Rare",
+         "beides - developer gewinnt"),
+        ({"developer": "  ", "manufacturer": "Sega"}, "Sega",
+         "leer zaehlt nicht"),
+        ({}, "", "nichts da")):
+    check("%-24s -> %r" % (_was, _erw),
+          FILTER.entwickler_von(_meta) == _erw,
+          repr(FILTER.entwickler_von(_meta)))
+
+_eintraege = [("A", "game", None), ("B", "game", None), ("C", "game", None)]
+_metas = {"A": {"manufacturer": "Capcom"},
+          "B": {"developer": "Konami"},
+          "C": {}}
+_werte = FILTER.werte_sammeln(_eintraege, lambda n: _metas.get(n, {}))
+check("beide Schreibweisen stehen in der Auswahlliste",
+      _werte["entwickler"] == ["Capcom", "Konami"],
+      str(_werte["entwickler"]))
+_treffer = FILTER.anwenden(_eintraege, lambda n: _metas.get(n, {}),
+                           {"entwickler": "Capcom"})
+check("und ein gamelist-Hersteller wird wirklich gefiltert",
+      [e[0] for e in _treffer] == ["A"],
+      str([e[0] for e in _treffer]))
+check("die Rohfassung wuerde hier nichts finden",
+      not [e for e in _eintraege
+           if (_metas.get(e[0], {}).get("developer") or "") == "Capcom"],
+      "so sah es vor Build 251 aus - leere Liste, kein Fehler")
+
 quelle_art = io.open(os.path.join(_REPO, "frontend", "fe", "art.py"),
                      encoding="utf-8").read()
 _block = quelle_art[quelle_art.index("def _art_path_in("):]

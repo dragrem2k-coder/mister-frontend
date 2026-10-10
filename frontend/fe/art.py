@@ -4914,9 +4914,44 @@ def _gamelist_lesen(pfad, raus, sprache_egal=True):
 
     Fehler werden geschluckt und nur geloggt. Eine kaputte oder halb
     geschriebene Datei darf das Frontend nicht aufhalten - sie liegt
-    im Verzeichnis des Nutzers, und dort kann alles Moegliche stehen."""
+    im Verzeichnis des Nutzers, und dort kann alles Moegliche stehen.
+
+    KEINE DOCTYPE- UND ENTITY-ERKLAERUNGEN (Build 251). Das ist die
+    einzige Flanke, die beim Nachsehen offen war, und sie gehoert
+    geschlossen, obwohl sie kaum jemand trifft:
+
+    ElementTree aus der Standardbibliothek holt KEINE externen Dateien
+    nachgeladen (kein XXE), expandiert aber INTERNE Entities. Eine
+    Datei mit zehn verschachtelten Entities, die sich je zehnmal auf
+    die naechste beziehen, wird beim Einlesen zu einem Gigabyte Text -
+    "Billion Laughs". Auf einem Geraet mit 1 GB RAM heisst das: das
+    Frontend ist weg, mitten im Start.
+
+    Niemand baut so eine Datei versehentlich. Aber eine gamelist.xml
+    kommt aus dem Verzeichnis des Nutzers und kann aus einem Forum,
+    einem Sammelpaket oder von einem fremden Rechner stammen - und der
+    Rest dieser Funktion ist genau darauf gebaut ("dort kann alles
+    Moegliche stehen"). Ein Fremdpaket (defusedxml) dafuer zu
+    verlangen waere unverhaeltnismaessig; abgewiesen wird deshalb
+    einfach jede Datei, die eine solche Erklaerung ueberhaupt enthaelt.
+    Eine echte gamelist von Skraper oder EmulationStation hat keine.
+
+    Geprueft wird auf den ersten vier Kilobyte: eine
+    DOCTYPE-Erklaerung steht am Anfang eines XML-Dokuments, nach ihr
+    ist sie wirkungslos."""
     import xml.etree.ElementTree as ET
     n = 0
+    try:
+        with open(pfad, "rb") as _fh:
+            _kopf = _fh.read(4096).upper()
+        if b"<!DOCTYPE" in _kopf or b"<!ENTITY" in _kopf:
+            LOG("gamelist.xml: %s uebergangen - sie enthaelt eine "
+                "DOCTYPE/ENTITY-Erklaerung, und die wird nicht "
+                "ausgewertet" % pfad)
+            return 0
+    except OSError as e:
+        LOG("gamelist.xml: %s liess sich nicht oeffnen (%s)" % (pfad, e))
+        return 0
     try:
         for _ereignis, elem in ET.iterparse(pfad, events=("end",)):
             if elem.tag != "game":

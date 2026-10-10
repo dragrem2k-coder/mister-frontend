@@ -1431,6 +1431,7 @@ if flaechen_c_enabled():
 import fe.filter as FILTER
 import fe.hauptseite as HS
 import fe.corestand as CSTAND
+import fe.zaparoo as ZAP
 from fe.prewarm import PREWARMER, auftraege_bauen, Doppelkern
 from fe.nachladen import MiniaturLader
 
@@ -2684,6 +2685,7 @@ class Frontend:
             rainwave.station_name(self.music.radio.sid) if self.music.radio else "",
             cores_subcats=cores_subcats,
             scripts_items=scan_scripts(),
+            nachscan_grund=getattr(self, "_nachscan_grund", None),
         ), None))
         if curated_only_active():
             # filter_curated() laesst Kategorien ohne syskey (Scripts,
@@ -2884,6 +2886,11 @@ class Frontend:
                     rainwave.station_name(self.music.radio.sid) if self.music.radio else "",
                     cores_subcats=cores_subcats,
                     scripts_items=scan_scripts(),
+                    # Build 251: beide Stellen muessen den Grund
+                    # durchreichen, sonst verschwindet der
+                    # Nachscan-Punkt beim naechsten Umschalten einer
+                    # beliebigen Einstellung wieder.
+                    nachscan_grund=getattr(self, "_nachscan_grund", None),
                 ), sk)
                 LOG("_refresh_system_category: System-Kategorie an Position %d aktualisiert" % i)
                 return
@@ -7353,7 +7360,8 @@ class Frontend:
             fb.clear(C_BG)
             self._pgi_fast_key = _fast_key
             self._pgi_fast_gen = fb.full_redraw_gen
-        self._perf_bg = time.monotonic() - _tb
+        self._perf_bg = (getattr(self, "_perf_bg", 0)
+                         + (time.monotonic() - _tb))
 
         # Breadcrumb: Kategorie + aktueller Ordnerpfad (falls in einen
         # Unterordner gewechselt wurde), z.B. "SNES / 1 US-A-E".
@@ -7587,7 +7595,8 @@ class Frontend:
             self._restore_row_bg(list_x - _lm, list_y - _lm_oben,
                                  (list_right - list_x) + _lm + _lm_rechts,
                                  visible * rowh + _lm_oben + _lm)
-        self._perf_restore = time.monotonic() - _tre
+        self._perf_restore = (getattr(self, "_perf_restore", 0.0)
+                              + (time.monotonic() - _tre))
 
         _tr = time.monotonic()
         for idx in range(self.scroll, end):
@@ -7647,7 +7656,8 @@ class Frontend:
         # ueber die eigene Zeile hinausragte und auf beide Nachbarn
         # blutete. Ohne Glow gibt es keinen Ueberstand mehr - beide
         # Zusatz-Durchgaenge sind hinfaellig.
-        self._perf_rows = time.monotonic() - _tr
+        self._perf_rows = (getattr(self, "_perf_rows", 0)
+                           + (time.monotonic() - _tr))
         self._perf_nrows = end - self.scroll
 
         # DER SCROLLBALKEN UND DIE HAARLINIE (Build 236, Wunsch des
@@ -7769,7 +7779,8 @@ class Frontend:
                 _ta = time.monotonic()
                 self.draw_art_panel(art_x0, art_w, art_y0, art_h,
                                     item_syskey, items[self.item_i], s)
-                self._perf_art = time.monotonic() - _ta
+                self._perf_art = (getattr(self, "_perf_art", 0)
+                                  + (time.monotonic() - _ta))
 
         # ABSICHERUNG fuer den neuen schnellen Pfad oben: dieser Bereich
         # (Nachricht ODER Musiktitel) kann sich AUCH bei reinem Scrollen
@@ -7832,7 +7843,28 @@ class Frontend:
         # Auch fuer den Ruckler-Detektor in run() festhalten (die
         # PERF-Zeile unten sieht den Wert ohnehin, sie wird aber nur bei
         # ohnehin langsamen Bildern ueberhaupt geschrieben).
-        self._perf_flip = _fdt
+        #
+        # SUMMIERT, NICHT UEBERSCHRIEBEN (Build 251), und dafuer gibt es
+        # eine Zahl aus dem Log des Nutzers vom 09.10.:
+        #
+        #     flip=16 (davon vsync=53)
+        #     flip=27 (davon vsync=644)
+        #
+        # "Davon" kann nicht groesser sein als das Ganze. Der Grund:
+        # das Warten auf den Bildwechsel wird von
+        # vsync_ms_und_zuruecksetzen() als SUMME ueber den ganzen
+        # Schritt abgeholt, "flip" stand hier aber auf dem Wert des
+        # LETZTEN Aufrufs. Geschieht in einem Schritt mehr als ein Flip
+        # - beim Cover-Nachladen ist das der Normalfall -, war die eine
+        # Zahl eine Summe und die andere eine Momentaufnahme, und
+        # miteinander verrechnet ergaben sie Unsinn.
+        #
+        # Jetzt summieren beide ueber denselben Zeitraum, und
+        # _perf_zuruecksetzen() nullt sie gemeinsam vor jeder Aktion.
+        # Dieselbe Lehre wie Build 193, nur eine Zahl weiter: ein
+        # Messwerkzeug, das plausibel aussieht und nicht stimmt, ist
+        # schlimmer als keines.
+        self._perf_flip = getattr(self, "_perf_flip", 0) + _fdt
         _bg = getattr(self, "_perf_bg", 0); _rw = getattr(self, "_perf_rows", 0)
         _ar = getattr(self, "_perf_art", 0); _nr = getattr(self, "_perf_nrows", 0)
         _re = getattr(self, "_perf_restore", 0)
@@ -7843,8 +7875,31 @@ class Frontend:
                 "art=%.0f flip=%.0f ms"
                 % (_bg * 1000, _re * 1000, _rw * 1000, _nr,
                    _ar * 1000, _fdt * 1000))
-        self._perf_art = 0
-        self._perf_restore = 0.0
+        # HIER STANDEN ZWEI NULLUNGEN (bis Build 251), und sie waren
+        # der Grund, warum der Ruckler-Detektor seine zwei Posten nicht
+        # mehr fand. Aus dem Log des Nutzers vom 09.10., dieselben
+        # beiden Zeilen zu DEMSELBEN Schritt:
+        #
+        #     PERF split: bg=0 restore=3 rows=9(17) art=107 flip=16 ms
+        #     RUCKLER:   142 ms busy (... restore=0 rows=9 art=0 flip=16 ...)
+        #
+        # 107 gegen 0, und 3 gegen 0. Diese Zeile hier hat die Werte
+        # benutzt und danach weggeraeumt; die RUCKLER-Zeile in run()
+        # liest sie erst danach und bekam die Null. Der GROESSTE Posten
+        # des Schritts stand damit als 0 da und versteckte sich im
+        # "zeichnen=142" - wer die Zeile liest, sucht an der falschen
+        # Stelle. Genau das ist passiert: ich habe daraus auf einen
+        # kaputten Cache-Schluessel geschlossen, und der Cache hatte
+        # 100 % Treffer.
+        #
+        # Genullt wird jetzt an EINER Stelle: _perf_zuruecksetzen(), vor
+        # jeder Aktion, zusammen mit allen anderen Posten (_perf_restore
+        # steht dort seit Build 193 ohnehin schon mit drin, die Nullung
+        # hier war also doppelt und nur schaedlich). Zwei Stellen, die
+        # denselben Zaehler zuruecksetzen, sind eine zu viel - dieselbe
+        # Regel wie bei vsync_ms_und_zuruecksetzen(): "Abholen UND
+        # zuruecksetzen in einem Schritt, damit es keine zwei Aufrufe
+        # gibt, von denen einer vergessen werden kann."
 
     # ------------------------------------------------------------------
     # Raster- und Galerieansicht (Build 122)
@@ -10455,6 +10510,23 @@ class Frontend:
                 except Exception:                        # noqa: BLE001
                     _sp = None
                 if _sp:
+                    # NEU (Build 251): die Meldung wird MERKBAR. Bis
+                    # dahin stand sie einmal da und war danach weg -
+                    # und wer sie verpasst hatte, musste "Spieleliste
+                    # neu einlesen" nehmen, also den vollen Scan ueber
+                    # ALLE Systeme. Bei 30.000 Spielen sind das
+                    # Minuten, obwohl sich nur ein Stick geaendert hat.
+                    #
+                    # Jetzt merkt sich das Frontend den Grund, und im
+                    # Systemmenue erscheint ein zweiter Punkt, der NUR
+                    # das Geaenderte nachliest. Die Mechanik dafuer gibt
+                    # es seit Build 248 schon: scan_games() vergleicht
+                    # die Signatur je System und liest den Rest aus dem
+                    # Cache - sie wurde nur von niemandem benutzt, weil
+                    # jeder Rescan force=True setzt und damit genau
+                    # diesen Zweig abschaltet.
+                    self._nachscan_grund = _sp
+                    self._refresh_system_category()
                     self._force_full_redraw = True
                     self.draw(t("mount_neu") % _sp, prominent=True)
                 self._boot_watch()   # Diagnose: Anzeige-Zustand nach dem Boot
@@ -14208,6 +14280,152 @@ class Frontend:
     THEME_EDIT_SCHRITT = 8
     THEME_EDIT_KANAELE = ("R", "G", "B")
 
+    def zaparoo_bildschirm(self):
+        """Zaparoo (NFC): Stand zeigen und den ZapScript-Befehl nennen
+        (Build 251).
+
+        WAS DIESER BILDSCHIRM LEISTET, und das ist bewusst wenig: er
+        sagt, ob Zaparoo installiert und der Dienst eingetragen ist,
+        und er nennt fuer die zuletzt gespielten Spiele den einen
+        Befehl, den man in der Zaparoo-App auf einen Tag schreibt.
+
+        WARUM "ZULETZT GESPIELT" UND KEINE SPIELEAUSWAHL. Einen Tag
+        legt man fuer ein Spiel an, das man gerade gespielt hat - genau
+        dafuer gibt es diese Liste schon. Ein eigener Auswahlbaum waere
+        ein zweiter Weg durch die Spieleliste, und die hat das Frontend
+        bereits; eine zusaetzliche Taste in der Liste waere eine, die
+        man sich merken muesste.
+
+        GESCHRIEBEN WIRD NICHTS. Nicht in /media/fat/zaparoo (fremdes
+        Verzeichnis, siehe den Kopf von fe/zaparoo.py), und auch kein
+        Tag - Tags beschreibt die Zaparoo-App am Telefon. Dort fehlt
+        nur die eine Zeile, und die steht hier.
+
+        Der Befehl steht ABTIPPBAR da, in der groessten Schrift, die
+        auf die Zeile passt. Das ist kein Schoenheitsdetail: ein
+        ROM-Pfad hat gut siebzig Zeichen, und auf der Roehre sind 320
+        Bildpunkte breit. Passt er nicht, wird er umgebrochen statt
+        abgeschnitten - ein halber Pfad waere wertlos."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        ox, oy = 12 * s, 10 * s
+        _stand = ZAP.stand()
+
+        # Die Liste: zuletzt gespielte Spiele mit Pfad. Ohne Pfad kein
+        # Tag, also fliegen sie hier heraus statt in der Zeile eine
+        # leere Zusage zu machen.
+        _spiele = []
+        try:
+            for _label, _kind, _arg in load_recent():
+                if _kind != "game":
+                    continue
+                _p = ZAP.spiel_pfad(_arg)
+                if _p:
+                    _spiele.append((_label, _p))
+        except Exception:                                # noqa: BLE001
+            LOG("Zaparoo: Zuletzt-gespielt nicht lesbar:\n"
+                + traceback.format_exc())
+
+        zeile = 0
+        while True:
+            fb.clear(C_BG)
+            fb.text(ox, oy, t("zaparoo_titel"), 2 * s, C_TITLE)
+            y = oy + 30 * s
+
+            # ---- Stand ----
+            if not _stand["installiert"]:
+                _maxc = max(10, (W - 2 * ox) // (8 * s))
+                for _z in self._wrap(t("zaparoo_fehlt"), _maxc,
+                                     max_lines=4):
+                    fb.text(ox, y, _z, s, C_DIM)
+                    y += 11 * s
+            else:
+                _an = accent_for(None)
+                fb.text(ox, y, t("zaparoo_installiert"), s, C_TEXT)
+                y += 14 * s
+                _d = t("zaparoo_dienst_an") if _stand["dienst"] \
+                    else t("zaparoo_dienst_aus")
+                fb.text(ox, y, _d, s, _an if _stand["dienst"] else C_DIM)
+                y += 14 * s
+                _l = t("zaparoo_laeuft") if _stand["laeuft"] \
+                    else t("zaparoo_laeuft_nicht")
+                fb.text(ox, y, _l, s, _an if _stand["laeuft"] else C_DIM)
+                y += 14 * s
+                fb.text(ox, y, t("zaparoo_tags", _stand["tags"]), s, C_DIM)
+                y += 20 * s
+
+            # ---- Die Spiele ----
+            if _spiele:
+                fb.text(ox, y, t("zaparoo_spiele"), s, accent_for(None))
+                y += 16 * s
+                # Platz fuer die Liste, und zwei Zeilen fuer den Befehl
+                # darunter reserviert.
+                _platz = max(1, (H - oy - y - 54 * s) // (14 * s))
+                _erste = max(0, min(zeile - _platz // 2,
+                                    len(_spiele) - _platz))
+                _breite = W - 2 * ox
+                for i in range(_erste, min(_erste + _platz, len(_spiele))):
+                    _name = _spiele[i][0]
+                    _markiert = (i == zeile)
+                    if _markiert:
+                        fb.rect_rounded(ox - 2 * s, y - 2 * s,
+                                        _breite + 4 * s, 13 * s, C_PANEL)
+                    _maxz = max(8, _breite // (8 * s) - 1)
+                    fb.text(ox + 2 * s, y, _name[:_maxz], s,
+                            C_TITLE if _markiert else C_TEXT)
+                    y += 14 * s
+                # ---- Der Befehl, abtippbar ----
+                _befehl = ZAP.zapscript_fuer(_spiele[zeile][1])
+                _by = H - oy - 40 * s
+                fb.text(ox, _by, t("zaparoo_befehl"), s, C_DIM)
+                _by += 12 * s
+                _maxc = max(10, (W - 2 * ox) // (8 * s))
+                for _z in self._wrap(_befehl, _maxc, max_lines=2):
+                    fb.text(ox, _by, _z, s, accent_for(None), C_BG)
+                    _by += 11 * s
+            else:
+                _maxc = max(10, (W - 2 * ox) // (8 * s))
+                for _z in self._wrap(t("zaparoo_keine_spiele"), _maxc,
+                                     max_lines=3):
+                    fb.text(ox, y, _z, s, C_DIM)
+                    y += 11 * s
+
+            _maxc = max(10, (W - 2 * ox) // (8 * s))
+            _hinweis = t("zaparoo_hinweis") if _stand["installiert"] \
+                else t("zaparoo_hinweis_fehlt")
+            for _i, _z in enumerate(self._wrap(_hinweis, _maxc,
+                                               max_lines=2)):
+                fb.text(ox, H - oy - 13 * s + _i * 11 * s, _z, s, C_DIM)
+            fb.flip()
+
+            akt = self.inp.read_action(timeout=1.0)
+            if akt is None:
+                continue
+            if akt == "up" and _spiele:
+                zeile = (zeile - 1) % len(_spiele)
+            elif akt == "down" and _spiele:
+                zeile = (zeile + 1) % len(_spiele)
+            elif akt == "ok" and _stand["installiert"]:
+                # DAS SKRIPT STARTEN - ueber den vorhandenen Weg, nicht
+                # ueber einen eigenen. Dasselbe wie bei update_all: das
+                # Skript gehoert Zaparoo, der Start gehoert
+                # run_script().
+                _p = _stand["pfad"]
+                if _p:
+                    LOG("Zaparoo wird gestartet: %s" % _p)
+                    self.run_script(_p)
+                    # Der Stand kann danach anders sein (der Dienst
+                    # wurde vielleicht gerade eingetragen).
+                    _stand = ZAP.stand()
+                    self._refresh_system_category()
+                    self._force_full_redraw = True
+            elif akt in ("back", "exit", "select"):
+                break
+
+        self._force_full_redraw = True
+        self.draw()
+
     def core_neu_bildschirm(self, bericht=None):
         """Was update_all geaendert hat (Build 250).
 
@@ -17517,6 +17735,32 @@ class Frontend:
     def _perf_zuruecksetzen(self):
         """Alle Posten der Aufschluesselung auf null - einmal je Aktion.
 
+        ERWEITERT (Build 251): hier wird jetzt WIRKLICH alles genullt,
+        und zwar nur hier. Bis dahin hat draw_page_items() am Ende
+        zusaetzlich _perf_art und _perf_restore auf null gesetzt -
+        nachdem die PERF-Zeile sie benutzt hatte, aber BEVOR die
+        RUCKLER-Zeile in run() sie liest. Im Log des Nutzers vom 09.10.
+        stehen beide Zeilen zu demselben Schritt untereinander:
+
+            PERF split: bg=0 restore=3 rows=9(17) art=107 flip=16 ms
+            RUCKLER:   142 ms busy (... restore=0 art=0 flip=16 ...)
+
+        107 gegen 0. Es ist genau derselbe Fehler, den dieser Docstring
+        unten beschreibt - nur andersherum: damals behielten die Posten
+        einen ALTEN Wert, jetzt verloren zwei von ihnen den RICHTIGEN.
+        Und er hat dasselbe angerichtet: ich habe auf einen kaputten
+        Cache-Schluessel geschlossen, weil art=0 danebenstand, und der
+        Cache hatte 100 % Treffer.
+
+        Dazu summieren die Posten jetzt INNERHALB einer Aktion, statt
+        sich zu ueberschreiben. Geschieht in einem Schritt mehr als ein
+        Aufbau - beim Cover-Nachladen ist das der Normalfall -, stand
+        bisher nur der letzte in der Zeile, und die Summe der Posten lag
+        unter dem gemessenen "zeichnen". Dasselbe gilt fuer flip: das
+        Warten auf den Bildwechsel kommt als SUMME ueber den Schritt
+        (vsync_ms_und_zuruecksetzen()), waehrend flip der letzte Aufruf
+        war - daher die unmoegliche Zeile "flip=16 (davon vsync=53)".
+
         WARUM (Build 193). Aus dem Log des Nutzers, vierzehnmal
         hintereinander waehrend eines gehaltenen Scrollens:
 
@@ -20516,6 +20760,32 @@ class Frontend:
                             self._refresh_system_category()
                             self.fb.mark_full_redraw()
                             self.draw(t("sys_scharf_changed"))
+                        elif kind == "nachscan":
+                            # Build 251: NUR das Geaenderte neu
+                            # einlesen. force_rescan bleibt FALSE, und
+                            # das ist der ganze Trick: nur dann
+                            # vergleicht scan_games() die Signatur je
+                            # System und liest alles Unveraenderte aus
+                            # dem Cache.
+                            self.draw(t("nachscan_laeuft"))
+                            self._nachscan_grund = None
+                            self.build_categories()
+                            self.cat_i = self.item_i = 0
+                            self.scroll = self.cat_scroll = 0
+                            self.page = 0
+                            self.nav_path = []
+                            self._nav_position_stack = []
+                            self._force_full_redraw = True
+                            self.draw(t("nachscan_fertig"))
+                            continue
+                        elif kind == "zaparoo":
+                            try:
+                                self.zaparoo_bildschirm()
+                            except Exception:            # noqa: BLE001
+                                LOG("zaparoo_bildschirm CRASH:\n"
+                                    + traceback.format_exc())
+                                self._force_full_redraw = True
+                                self.draw()
                         elif kind == "core_neu":
                             # Build 250: den letzten Bericht noch
                             # einmal ansehen.

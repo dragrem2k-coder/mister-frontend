@@ -73,6 +73,40 @@ MEDIA = "/media"
 # verbindet, und selten genug, dass es nicht auffaellt.
 MOUNT_TAKT = 3.0
 
+# WAS FUER EIN MEDIUM IST DAS? (Build 251)
+#
+# Der Waechter meldete bisher nur den Namen ("usb0 dazu"). Der Name
+# sagt einem Kenner alles und einem Nutzer nichts - und er entscheidet,
+# was man als naechstes tun will.
+#
+# UND EIN WORT ZU "PHYSISCHEN DISCS", weil das als Wunsch kam: MiSTer
+# hat keine Unterstuetzung fuer optische Laufwerke. Ein USB-Laufwerk
+# mit einer CD darin erscheint unter /media wie jeder andere
+# USB-Datentraeger, und eine Spiele-CD fuer PSX oder Mega CD liegt
+# ohnehin als Abbild (.cue/.chd) auf der Karte. Es gibt hier also
+# nichts eigenes zu erkennen - was es gibt, ist die ehrliche Auskunft,
+# WAS dazugekommen ist. Mehr zu behaupten waere erfunden.
+MEDIUM_ARTEN = (
+    ("usb", ("usb",)),
+    ("netz", ("cifs", "nfs", "smb", "net")),
+    ("karte", ("fat", "sdcard", "mmc")),
+)
+
+
+def medium_art(name):
+    """"usb0" -> "usb", "cifs1" -> "netz", alles andere -> "".
+
+    Nur eine grobe Einordnung ueber den Namen, und bewusst nicht mehr:
+    was dort eingehaengt ist, wuesste man erst, wenn man es liest - und
+    dafuer ist der Waechter nicht da ("Nur die NAMEN, nicht der
+    Inhalt", siehe eingehaengt())."""
+    n = str(name or "").strip().lower()
+    for art, anfaenge in MEDIUM_ARTEN:
+        for a in anfaenge:
+            if n.startswith(a):
+                return art
+    return ""
+
 
 def update_all_pfad():
     """Das update_all-Skript - oder None, wenn es nicht da ist."""

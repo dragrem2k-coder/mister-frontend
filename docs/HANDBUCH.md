@@ -1059,6 +1059,114 @@ das Netz gibt es weiterhin bewusst **nicht**: dafür müsste das Frontend
 die Datenbanken des MiSTer-Downloaders nachbauen, und das wäre eine
 zweite Quelle der Wahrheit für die wichtigsten Dateien auf der Karte.
 
+## 8h-6. NFC-Tags über Zaparoo (Build 251)
+
+[Zaparoo](https://zaparoo.org) (früher TapTo) ist ein **eigenes
+Projekt**, nicht Teil von Dragend: es liest am MiSTer NFC-Tags und
+startet das Spiel, das darauf steht. Kärtchen auflegen, Spiel läuft.
+
+Im System-Menü unter *Verhalten & Optionen* steht jetzt ein Punkt, der
+den Stand nennt — **nicht installiert**, **Dienst nicht eingetragen**,
+**läuft nicht** oder **läuft**. Du musst also nicht erst hineingehen, um
+zu sehen, ob es bereit ist.
+
+Darin:
+
+- **Enter startet das Zaparoo-Skript.** Beim ersten Start richtet es
+  sich selbst als Dienst ein. Gestartet wird über denselben Weg wie
+  `update_all` — es wird kein eigener Startweg gebaut.
+- **Deine zuletzt gespielten Spiele** stehen als Liste da, und für das
+  gewählte zeigt das Frontend unten die eine Zeile, die du in der
+  Zaparoo-App auf einen Tag schreibst:
+
+  ```
+  **launch:/media/fat/games/SNES/Super Mario World.sfc
+  ```
+
+  Sie wird umgebrochen und nicht abgeschnitten — ein halber Pfad wäre
+  wertlos.
+
+**Warum „zuletzt gespielt" und keine Spieleauswahl:** einen Tag legt man
+für ein Spiel an, das man gerade gespielt hat. Ein zweiter Weg durch die
+ganze Spieleliste wäre überflüssig, und eine zusätzliche Taste in der
+Liste müsste man sich merken.
+
+**In Zaparoos eigenen Ordner wird nichts geschrieben.** In
+`/media/fat/zaparoo` liegen Konfiguration und Zuordnungen eines fremden
+Programms — dieselbe Haltung wie bei der fremden Artwork-Datenbank unter
+`/media/fat/docs` und bei MiSTers Favoritendatei: wir lesen, wir
+schreiben nicht. Dazu kommt: Zaparoo muss nach einer Änderung an diesen
+Dateien neu gestartet werden, damit sie gilt — wir könnten also etwas
+hinschreiben, das erst später wirkt, und dir bliebe unklar, ob es
+angekommen ist. Tags beschreibt man mit der App am Telefon; dort fehlt
+nur die eine Zeile, und die steht jetzt hier.
+
+Wer noch das alte **TapTo** installiert hat, wird auch erkannt.
+
+## 8h-7. Nur das Geänderte nachlesen (Build 251)
+
+Steckst du im Betrieb einen USB-Stick ein, sagt das Frontend Bescheid.
+Diese Meldung ist jetzt **nicht mehr flüchtig**: im System-Menü
+erscheint danach ein zusätzlicher Punkt direkt über *„Spieleliste neu
+einlesen"* —
+
+> **Nur das Geänderte nachlesen (USB: +usb0)**
+
+Der Unterschied ist groß. *„Spieleliste neu einlesen"* liest **alle**
+Systeme von der Karte; bei 30.000 Spielen sind das Minuten. Der neue
+Punkt vergleicht je System, was sich geändert hat, und holt alles
+Unveränderte aus dem Zwischenspeicher — für einen eingesteckten Stick
+also Sekunden.
+
+Beide Wege bleiben: der eine schnell, der andere gründlich. Wenn etwas
+nicht stimmt und du dir unsicher bist, nimm weiter das volle
+Neueinlesen.
+
+Die Meldung sagt außerdem, **was** dazugekommen ist: USB, Netzlaufwerk,
+Karte oder allgemein Speicher.
+
+**Zu physischen CDs/DVDs:** MiSTer unterstützt keine optischen
+Laufwerke. Ein USB-Laufwerk mit einer CD darin erscheint wie jeder
+andere USB-Datenträger, und eine Spiele-CD für PSX oder Mega CD liegt
+ohnehin als Abbild (`.cue`/`.chd`) auf der Karte. Es gibt also nichts
+eigenes zu erkennen — was es gibt, ist die ehrliche Auskunft, was
+dazukam.
+
+## 8h-8. Metadaten aus einer `gamelist.xml` (seit Build 188)
+
+Das ist nicht neu, stand aber bisher nur im Changelog. Wer sein
+ROM-Verzeichnis mit **Skraper** oder einem ähnlichen Werkzeug gepflegt
+hat, hat dort eine `gamelist.xml` im EmulationStation-Format liegen —
+mit Jahr, Genre, Spielerzahl, Hersteller, Beschreibung und oft auch dem
+Cover. Liegt sie da, wird sie gelesen. Kein Werkzeug, kein Download,
+keine Einstellung.
+
+**Die Rangfolge, und die ist bewusst so:**
+
+1. deine eigenen Daten (`/media/fat/frontend/meta/<SYSTEM>.json`)
+2. die `gamelist.xml`
+3. die fremde Datenbank unter `/media/fat/docs`
+
+Gefüllt wird **feldweise**: eine Quelle ergänzt nur, was die vorige
+nicht hatte, und ersetzt nie. Beim Cover genauso — dein eigenes
+Artwork kommt immer zuerst.
+
+Abschalten, falls du sie nicht willst:
+`touch /media/fat/frontend/gamelist_aus` — kein Update nötig.
+
+**Korrigiert in Build 251:** der **Entwickler-Filter** war für
+gamelist-Sammlungen und für Arcade dauerhaft leer. Die Quellen benutzen
+zwei Namen für dieselbe Sache (`developer` bzw. `manufacturer`), und
+gefiltert wurde nur nach dem einen. Angezeigt wurde der Hersteller die
+ganze Zeit — es sah also nach „keine Daten" aus und nicht nach einem
+Fehler.
+
+Außerdem werden `gamelist.xml`-Dateien mit einer DOCTYPE- oder
+ENTITY-Erklärung jetzt übergangen (mit einer Zeile im Log). Eine echte
+gamelist von Skraper hat keine; eine Datei mit verschachtelten Entities
+kann dagegen beim Einlesen auf ein Gigabyte anwachsen, und auf einem
+Gerät mit 1 GB RAM wäre das Frontend dann weg.
+
 ## 8i. Spielzeit-Tracker
 
 Ganz automatisch, ohne etwas einzustellen: das Frontend merkt sich pro

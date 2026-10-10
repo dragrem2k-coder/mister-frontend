@@ -121,7 +121,8 @@ def current_theme_name():
     return "dark"
 
 def system_items(music_enabled=None, music_source="mp3", music_station="",
-                 cores_subcats=None, standalone_items=None, scripts_items=None):
+                 cores_subcats=None, standalone_items=None, scripts_items=None,
+                 nachscan_grund=None):
     """Liefert die Inhalte der 'System'-Kategorie als Baumknoten mit
     thematischen Unterordnern (Nutzerwunsch: die Liste war auf 23
     flache Eintraege angewachsen, kaum noch ueberschaubar) - nutzt
@@ -316,6 +317,37 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     # erscheint nur, wenn es etwas zu berichten gibt - vor dem ersten
     # Lauf aus dem Menue gibt es keinen Bericht, und ein Menuepunkt,
     # der "nichts da" sagt, ist einer zu viel.
+    # Build 251: Zaparoo (NFC-Tags). Die Beschriftung sagt den Stand,
+    # damit man nicht erst hineingehen muss, um zu sehen, ob der Dienst
+    # laeuft - dieselbe Haltung wie bei update_all ("letzter Lauf: ...").
+    try:
+        import fe.zaparoo as _ZAP
+        _z = _ZAP.stand()
+        if not _z["installiert"]:
+            zaparoo_label = t("sys_zaparoo_fehlt")
+        elif _z["laeuft"]:
+            zaparoo_label = t("sys_zaparoo", t("zaparoo_laeuft"))
+        elif _z["dienst"]:
+            zaparoo_label = t("sys_zaparoo", t("zaparoo_laeuft_nicht"))
+        else:
+            zaparoo_label = t("sys_zaparoo", t("zaparoo_dienst_aus"))
+    except Exception:                                    # noqa: BLE001
+        zaparoo_label = t("sys_zaparoo_fehlt")
+    # Build 251: "nur das Geaenderte nachlesen" - und zwar NUR, wenn
+    # der Speicher-Waechter wirklich etwas gemeldet hat. Ein Punkt, der
+    # immer dasteht und meistens nichts zu tun hat, ist einer zu viel;
+    # dieselbe Regel wie beim Core-Bericht darunter.
+    _nachscan_eintraege = ()
+    if nachscan_grund:
+        try:
+            import fe.mister_system as _MSYS2
+            _erstes = str(nachscan_grund).lstrip("+-").split(",")[0].strip()
+            _art = _MSYS2.medium_art(_erstes)
+        except Exception:                                # noqa: BLE001
+            _art = ""
+        _was = t("medium_" + _art) if _art else t("medium_unbekannt")
+        _nachscan_eintraege = ((t("sys_nachscan", _was, nachscan_grund),
+                                "nachscan", None),)
     _core_neu_eintraege = ()
     try:
         import fe.corestand as _CSTAND
@@ -451,6 +483,9 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             # darum, WIE die Kategorien aussehen, sondern WELCHE es
             # gibt und in welcher Reihenfolge.
             (t("sys_hauptseite"), "hauptseite", None),
+            # Build 251: NFC-Tags. Steht bei den Optionen neben der
+            # Core-Wahl, denn es geht ums Starten von Spielen.
+            (zaparoo_label, "zaparoo", None),
             *_core_neu_eintraege,
             (t("sys_cores"), "cores", None),
             # Build 213: update_all starten. Direkt neben der
@@ -491,6 +526,10 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         ),
         t("sys_group_maintenance"): folder(
             (t("sys_osd"), "osd", None),
+            # Build 251: der gezielte Nachscan steht DIREKT ueber dem
+            # vollen Neueinlesen. Wer das eine sucht, findet das andere
+            # gleich mit - und sieht, dass es die schnellere Wahl gibt.
+            *_nachscan_eintraege,
             (t("sys_rescan"), "rescan", None),
             # NEU (Build 88, Nutzerwunsch: "Boxarts nachladen sowie
             # Spieledaten nachladen ebenso machen"). Beide Skripte liefen

@@ -888,6 +888,88 @@ guessing was the only option.
   `sagen` from a diagnostic script sat on top with 96. It is counted per file
   now.
 
+**The measuring tool misled itself.**
+
+- Two lines from the log, for **the same** drawing step:
+
+  ```
+  PERF split: bg=0 restore=3 rows=9(17) art=107 flip=16 ms
+  RUCKLER:   142 ms busy (... restore=0 rows=9 art=0 flip=16 ...)
+  ```
+
+  **107 against 0, and 3 against 0.** `draw_page_items()` zeroed two
+  counters at the end — after the PERF line had used them, but *before* the
+  stutter line reads them. The largest item of the step therefore read **0**
+  and hid inside `zeichnen=142`.
+- **What that cost:** I concluded from "art=0" that the cover work could not
+  be it, and went through four theories — a feedback loop in the skipping, a
+  broken cache key, missing JPEG thumbnails. Then the balance line reported
+  **100 % hits** and the PERF line next to it 107 ms of cover work. It was
+  the cover all along.
+- **And it is a repeat.** Build 193 fixed exactly this class of bug, the
+  other way round: the items kept an *old* value. Its docstring has carried
+  the sentence that applies again now — *"a measuring tool that looks
+  plausible and is wrong is worse than none."*
+- Zeroing now happens in **one** place, and the items **accumulate** within
+  an action. That also removes the second impossibility: `flip=16 (of which
+  vsync=53)` — the waiting arrived as a sum over the step, `flip` was the
+  last call.
+
+**`gamelist.xml` already existed — but three real gaps did too.**
+
+- The frontend has read that source since Build 188. **Nothing is rebuilt
+  here**; while checking, though, I found a bug that had been in since then:
+- **The developer filter was blind to half of all collections.** The sources
+  use two names for the same thing — `gameinfo.tsv` writes `developer`,
+  `gamelist.xml` and the `.mra` files write `manufacturer`. Only `developer`
+  was filtered on. Anyone taking metadata from a gamelist had a
+  **permanently empty** filter, and so did **Arcade** — while the
+  manufacturer was displayed all along. That looks like "no data", not like
+  a bug, which is exactly why nobody ever reported it.
+- **Entity bombs are refused.** The standard library's XML reader fetches no
+  external files, but it does expand *internal* entities: ten nested ones
+  become a gigabyte of text while reading. On a 1 GB device the frontend is
+  then gone. Nobody builds such a file by accident — but a `gamelist.xml`
+  comes from the user's own directory, and the whole rest of that reader is
+  built on exactly that.
+
+**NFC tags: Zaparoo is detected, started, and tells you the command.**
+
+- A new system-menu item whose **label states the status** — installed,
+  service entered, running. Plus a screen listing recently played games that
+  names, for the selected one, the single command you write on a tag with
+  the Zaparoo app: `**launch:/media/fat/games/SNES/Mario.sfc`
+- **Started through the existing script path**, not a new one — the same as
+  `update_all`.
+- **Nothing is written.** Not into `/media/fat/zaparoo` (another program's
+  config and mappings live there — the same stance as `/media/fat/docs` and
+  MiSTer's own favourites file), and Zaparoo's log is not parsed. Tags are
+  written with the phone app; all that was missing there is the one line,
+  and it is here now.
+- The old name **TapTo** counts too — anyone coming from back then still has
+  the script under it.
+
+**And after plugging in a stick, only what changed is read.**
+
+- Since Build 213 the frontend reports a storage change — once, and then the
+  message was gone. Anyone who missed it had to use "Rescan game list": the
+  full scan across **all** systems, minutes at 30,000 games, for a change to
+  **one** folder.
+- **The mechanism for this has been sitting there finished since Build 248
+  and nobody ever used it.** `scan_games()` compares the signature per
+  system and reads everything unchanged from the cache — but every rescan
+  path in the frontend sets `force=True`, and that switches off precisely
+  that branch.
+- Now the frontend remembers the reason, and the system menu **then** shows
+  a second item right above the full rescan: *"Rescan only what changed
+  (USB: +usb0)"*. It works without `force`. Both ways remain — one fast, one
+  thorough.
+- The message also says **what** arrived (USB, network drive, storage)
+  instead of just "usb0". On **physical discs**: MiSTer has no support for
+  optical drives. A USB drive with a CD in it appears like any other USB
+  volume, and a game CD lives on the card as an image anyway — there is
+  nothing of its own to detect here, and claiming more would be invented.
+
 **The home page is yours now.**
 
 - **System menu → Behaviour & options → "Home page: order and hide

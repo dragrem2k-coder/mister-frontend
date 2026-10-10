@@ -67,6 +67,8 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | **ZIP-Archive** | ROMs in Archiven werden gefunden und gestartet, ohne je etwas zu entpacken |
 | **Ordner mit einem Spiel** | Werden aufgelöst — wichtig bei PSX, Mega CD und Saturn, wo jedes Spiel in einem eigenen Ordner liegt |
 | **ROMs auf NAS/USB** | Netzlaufwerke und USB-Nummern über 5 werden dynamisch gefunden |
+| **NFC-Tags** | Zaparoo wird erkannt und gestartet; das Frontend nennt dir den Befehl für den Tag. In Zaparoos Ordner wird nichts geschrieben |
+| **Speicher-Wächter** | Stick eingesteckt? Das Frontend sagt es — und liest auf Wunsch **nur das Geänderte** nach statt alles |
 
 ### Persönliches
 

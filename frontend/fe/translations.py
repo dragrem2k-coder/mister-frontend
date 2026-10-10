@@ -1082,6 +1082,68 @@ TRANSLATIONS = {
     "core_neu_nichts": {
         "en": "No core files changed.",
         "de": "Keine Core-Dateien haben sich geaendert."},
+    # Build 251: Zaparoo (NFC-Tags).
+    # Build 251: gezielter Nachscan nach einer Speicher-Aenderung.
+    "sys_nachscan": {
+        "en": "Rescan only what changed (%s: %s)",
+        "de": "Nur das Geaenderte nachlesen (%s: %s)"},
+    "nachscan_laeuft": {"en": "Rescanning what changed ...",
+                        "de": "Lese das Geaenderte nach ..."},
+    "nachscan_fertig": {"en": "Rescan done.",
+                        "de": "Nachlesen fertig."},
+    "medium_usb": {"en": "USB", "de": "USB"},
+    "medium_netz": {"en": "network drive", "de": "Netzlaufwerk"},
+    "medium_karte": {"en": "card", "de": "Karte"},
+    "medium_unbekannt": {"en": "storage", "de": "Speicher"},
+    "sys_zaparoo": {
+        "en": "Zaparoo (NFC tags): %s",
+        "de": "Zaparoo (NFC-Tags): %s"},
+    "sys_zaparoo_fehlt": {
+        "en": "Zaparoo (NFC tags) is not installed",
+        "de": "Zaparoo (NFC-Tags) ist nicht installiert"},
+    "zaparoo_titel": {"en": "Zaparoo (NFC tags)",
+                      "de": "Zaparoo (NFC-Tags)"},
+    "zaparoo_installiert": {"en": "Script found.",
+                            "de": "Skript gefunden."},
+    "zaparoo_dienst_an": {
+        "en": "Service entered in user-startup.sh",
+        "de": "Dienst in user-startup.sh eingetragen"},
+    "zaparoo_dienst_aus": {
+        "en": "Service not entered - start the script once and let it "
+              "set itself up",
+        "de": "Dienst nicht eingetragen - Skript einmal starten und "
+              "einrichten lassen"},
+    "zaparoo_laeuft": {"en": "Running", "de": "Laeuft"},
+    "zaparoo_laeuft_nicht": {"en": "Not running", "de": "Laeuft nicht"},
+    "zaparoo_tags": {"en": "%d mapping files (at least)",
+                     "de": "%d Zuordnungsdateien (mindestens)"},
+    "zaparoo_spiele": {"en": "Recently played - pick one for a tag:",
+                       "de": "Zuletzt gespielt - eines fuer einen Tag:"},
+    "zaparoo_befehl": {"en": "Write this on the tag:",
+                       "de": "Das hier auf den Tag schreiben:"},
+    "zaparoo_keine_spiele": {
+        "en": "Nothing played yet - start a game, then its command "
+              "appears here.",
+        "de": "Noch nichts gespielt - starte ein Spiel, dann steht "
+              "hier sein Befehl."},
+    "zaparoo_fehlt": {
+        "en": "Zaparoo is not installed. It is a separate project that "
+              "reads NFC tags on the MiSTer and starts the game written "
+              "on them. Get it from zaparoo.org and put zaparoo.sh in "
+              "Scripts/.",
+        "de": "Zaparoo ist nicht installiert. Es ist ein eigenes "
+              "Projekt, das am MiSTer NFC-Tags liest und das Spiel "
+              "startet, das darauf steht. Bei zaparoo.org holen und "
+              "zaparoo.sh nach Scripts/ legen."},
+    "zaparoo_hinweis": {
+        "en": "Up/Down picks a game - Enter starts the Zaparoo script - "
+              "ESC: back. Nothing is written to Zaparoo's own folder.",
+        "de": "Hoch/Runter waehlt ein Spiel - Enter startet das "
+              "Zaparoo-Skript - ESC: zurueck. In Zaparoos eigenen "
+              "Ordner wird nichts geschrieben."},
+    "zaparoo_hinweis_fehlt": {
+        "en": "ESC: back.",
+        "de": "ESC: zurueck."},
     "sys_hauptseite": {
         "en": "Home page: order and hide categories",
         "de": "Hauptseite: Kategorien sortieren und ausblenden"},

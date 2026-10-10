@@ -68,6 +68,8 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | **ZIP archives** | ROMs inside archives are found and launched without ever extracting anything |
 | **Single-game folders** | Dissolved automatically — matters for PSX, Mega CD and Saturn, where each game sits in its own folder |
 | **ROMs on NAS/USB** | Network shares and USB numbers above 5 are discovered dynamically |
+| **NFC tags** | Zaparoo is detected and launched; the frontend tells you the command for the tag. Nothing is written into Zaparoo's folder |
+| **Storage watch** | Plugged a stick in? The frontend says so — and on request reads back **only what changed** instead of everything |
 
 ### Personal
 

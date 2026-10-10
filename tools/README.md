@@ -157,6 +157,9 @@ python3 tools/regression_test.py \
 | `test_hauptseite.py` | Test (Pass/Fail) | Reihenfolge und Sichtbarkeit der Kategorien: 'System' bleibt immer und zuletzt, das Kuerzel ueberlebt Sprachwechsel und Zaehler, und die Sync-Funktionen zerstoeren die Reihenfolge nicht |
 | `test_filtername.py` | Test (Pass/Fail) | Eigener Name fuer eine gemerkte Filter-Kategorie: Namensdialog mit dem Waehler aus der Suche, Umbenennen laesst die Bedingung in Ruhe, doppelte Namen werden abgewiesen |
 | `test_core_neu.py` | Test (Pass/Fail) | Was update_all geaendert hat - neu/weg/aktualisiert aus dem Vergleich der Karte mit sich selbst, kein fremdes Protokoll gelesen, und der erste Lauf meldet nichts |
+| `test_ruckler_posten.py` | Test (Pass/Fail) | Die RUCKLER-Zeile verliert ihre Posten nicht mehr: genullt wird an EINER Stelle, und die Posten summieren sich innerhalb einer Aktion |
+| `test_zaparoo.py` | Test (Pass/Fail) | NFC-Tags ueber Zaparoo: Pfade gegen die Quelle, alter Name TapTo, der ZapScript-Befehl - und die Unterlassung, dass in /media/fat/zaparoo nichts geschrieben wird |
+| `test_nachscan.py` | Test (Pass/Fail) | Nur das Geaenderte nachlesen: der Punkt erscheint nur nach einer Speicher-Aenderung und ruft build_categories OHNE force - force=True schaltet den inkrementellen Zweig ab |
 | `test_systemkategorie_auffrischen.py` | Test (Pass/Fail) | _refresh_system_category() trifft 'System' und keine andere Kategorie mit syskey=None, ruft keinen Neuaufbau, und die Beschriftung folgt der Einstellung |
 | `diag_ungeprueft.py` | Diagnose (immer Rueckgabewert 0) | Welche Funktionen betritt KEIN Test - gemessen mit sys.setprofile, nicht ueber Namen im Testtext |
 | `_spur.py` | Hilfsmodul | Laesst eine einzelne Testdatei unter sys.setprofile laufen und schreibt jede betretene Funktion mit |
@@ -3353,3 +3356,134 @@ Der vierte Fund ging ans Programm, nicht an den Test: `bericht_lesen()`
 lieferte bei einer kaputten Datei ein Dict mit drei leeren Listen statt
 `None`. Im Systemmenue haette dann "was ist neu (0)" gestanden - ein
 Menuepunkt, der sagt, dass er nichts zu sagen hat.
+
+
+## Build 251 - drei Tests, und einer gegen mein eigenes Messwerkzeug
+
+### test_ruckler_posten.py - die Zeile hat ihren groessten Posten weggeworfen
+
+Aus dem Log des Nutzers zwei Zeilen zu **demselben** Zeichenschritt:
+
+```
+PERF split: bg=0 restore=3 rows=9(17) art=107 flip=16 ms
+RUCKLER:   142 ms busy (... restore=0 rows=9 art=0 flip=16 ...)
+```
+
+**107 gegen 0, und 3 gegen 0.** `draw_page_items()` hat am Ende
+`_perf_art` und `_perf_restore` genullt - nachdem die PERF-Zeile sie
+benutzt hatte, aber BEVOR die RUCKLER-Zeile in `run()` sie liest.
+
+**WAS DAS GEKOSTET HAT.** Ich habe aus `art=0` geschlossen, die
+Coverarbeit koenne es nicht sein, und bin ueber vier Vermutungen
+gelaufen: eine Rueckkopplung beim Ueberspringen, einen falschen
+Cache-Schluessel, fehlende JPEG-Miniaturen. Dann meldete die
+Bilanzzeile 100 % Treffer und die PERF-Zeile daneben 107 ms. Es war von
+Anfang an das Cover.
+
+**UND ES IST EINE WIEDERHOLUNG.** Build 193 hat genau diese Klasse
+Fehler schon behoben, damals andersherum - die Posten behielten einen
+ALTEN Wert vom letzten Vollaufbau. Der Satz aus seinem Docstring gilt
+unveraendert:
+
+> Ein Messwerkzeug, das plausibel aussieht und nicht stimmt, ist
+> schlimmer als keines.
+
+Genullt wird jetzt an EINER Stelle (`_perf_zuruecksetzen()`, vor jeder
+Aktion), und die Posten **summieren** sich innerhalb einer Aktion statt
+sich zu ueberschreiben. Das raeumt auch die zweite Unmoeglichkeit weg:
+
+```
+flip=16 (davon vsync=53)
+flip=27 (davon vsync=644)
+```
+
+"Davon" kann nicht groesser sein als das Ganze. Das Warten kam als Summe
+ueber den Schritt (`vsync_ms_und_zuruecksetzen()`), `flip` war der
+letzte Aufruf - bei mehr als einem Flip je Schritt (Cover-Nachladen) war
+die eine Zahl eine Summe und die andere eine Momentaufnahme.
+
+**Die Falle des Tests selbst:** der Pruefstand friert `time.monotonic()`
+auf `NOW = [1000.0]` ein, und das ist fuer die Zeichentests richtig.
+Messen kann man damit nicht - jedes `time.monotonic() - _t0` ist exakt
+0, und genau diese Nullen pruefen wir hier. Der erste Entwurf war
+deshalb komplett rot. Gesetzt wird die echte Uhr nur im Modul des
+Frontends, nicht global; dasselbe macht `test_bench.py`.
+
+### test_zaparoo.py - eine Unterlassung als wichtigste Zusage
+
+Zaparoo (vormals TapTo) ist ein **eigenes Projekt**: es liest NFC-Tags
+und startet das Spiel, das darauf steht. Wir binden es an - erkennen,
+starten, und den einen ZapScript-Befehl nennen.
+
+**Die wichtigste Zusage ist eine Unterlassung:** in
+`/media/fat/zaparoo` wird NICHTS geschrieben. Dort liegen Konfiguration
+und Zuordnungen eines fremden Programms - dieselbe Haltung wie bei
+`/media/fat/docs` und MiSTers Favoritendatei. Geprueft wird das am
+Quelltext und nicht am Verhalten: ein Verhaltenstest koennte nur
+zeigen, dass dieser EINE Durchlauf nichts geschrieben hat.
+
+Die **Pfade stehen im Test noch einmal ausgeschrieben**, statt gegen die
+Konstanten des Moduls geprueft zu werden - ein Test, der eine Konstante
+gegen sich selbst prueft, prueft nichts. Sie stammen aus
+zaparoo.org/docs; wer sie aendert, soll hier stolpern und noch einmal
+nachsehen. Dasselbe fuer die Befehlsform `**launch:<Pfad>`: ist sie
+falsch, tippt der Nutzer sie ab und nichts passiert.
+
+Und zwei Faelle, die leicht vergessen werden:
+
+* **Der alte Name TapTo.** Wer von damals kommt, hat das Skript noch so
+  liegen.
+* **Eine auskommentierte Zeile** in `user-startup.sh` zaehlt NICHT als
+  eingetragener Dienst - sonst meldet das Frontend einen Dienst, den
+  niemand startet.
+
+Der erste Entwurf dieses Tests wurde rot an seinem **eigenen
+Modulkopf**: er suchte `core.log` im Quelltext, und der Docstring
+erklaert, warum das Protokoll nicht gelesen wird. Derselbe Fehler wie
+in Build 250 bei `test_core_neu.py` - ein Test, der die Begruendung als
+Verstoss zaehlt, ist kein Test. Jetzt wird der Docstring vorher
+abgeschnitten.
+
+### test_nachscan.py - die Mechanik lag seit Build 248 unbenutzt da
+
+Seit Build 213 meldet der Speicher-Waechter eine Aenderung - einmal,
+und dann war die Meldung weg. Wer sie verpasste, musste "Spieleliste neu
+einlesen" nehmen, und das ist `force_rescan=True`:
+
+```
+build_categories(force_rescan=True) -> scan_games(force=True)
+```
+
+`force=True` schaltet in `scan_games()` den INKREMENTELLEN Zweig ab -
+den, der die Signatur je System vergleicht und alles Unveraenderte aus
+dem Cache liest. Gebaut wurde er in Build 248, und benutzt hat ihn
+niemand, weil JEDER Rescan-Weg im Frontend `force=True` setzt.
+
+Bei 30.000 Spielen ist das der Unterschied zwischen Minuten und
+Sekunden - fuer eine Aenderung an EINEM Ordner.
+
+Geprueft wird deshalb vor allem, dass der neue Punkt `force` NICHT
+setzt, dass der alte es weiterhin tut (beide Wege sollen es geben), und
+dass **beide** Aufrufe von `system_items()` den Grund durchreichen -
+sonst verschwindet der Punkt beim naechsten Umschalten einer beliebigen
+Einstellung wieder.
+
+### Und die drei gamelist-Nachtraege in test_gamelist.py
+
+`gamelist.xml` liest das Frontend seit Build 188 - **nicht doppelt
+gebaut**. Beim Nachsehen kamen drei Luecken heraus:
+
+1. **Der Entwickler-Filter war blind.** `gameinfo.tsv` schreibt
+   `developer`, `gamelist.xml` und die `.mra`-Dateien schreiben
+   `manufacturer`, gefiltert wurde nur nach `developer`. Wer seine
+   Metadaten aus einer gamelist bezieht, hatte den Filter dauerhaft
+   leer - und in ARCADE ebenfalls. Angezeigt wurde der Hersteller die
+   ganze Zeit, es sah also nach "keine Daten" aus und nicht nach einem
+   Fehler. Deshalb hat es seit Build 188 nie jemand gemeldet.
+2. **Entity-Bomben.** `ElementTree` holt keine externen Dateien nach
+   (kein XXE), expandiert aber interne Entities. Der Test baut eine
+   solche Datei und prueft, dass nichts gelesen wird - **mit
+   Gegenprobe**, denn ohne sie waere der Test auch bei einem kaputten
+   Leser gruen.
+3. **Die Quelle fehlte in der Doku** - jetzt im Handbuch, Abschnitt
+   8h-8.

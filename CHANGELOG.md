@@ -1049,6 +1049,92 @@ messbar, an denen bisher geraten werden musste.
 - Auch die Gewichtung war erst falsch: global gezählt stand `sagen` aus einem
   Diagnoseskript mit 96 oben. Gezählt wird jetzt je Datei.
 
+**Das Messwerkzeug hat sich selbst in die Irre geführt.**
+
+- Aus dem Log zwei Zeilen zu **demselben** Zeichenschritt:
+
+  ```
+  PERF split: bg=0 restore=3 rows=9(17) art=107 flip=16 ms
+  RUCKLER:   142 ms busy (... restore=0 rows=9 art=0 flip=16 ...)
+  ```
+
+  **107 gegen 0, und 3 gegen 0.** `draw_page_items()` hat am Ende zwei
+  Zähler auf null gesetzt — nachdem die PERF-Zeile sie benutzt hatte, aber
+  *bevor* die Ruckler-Zeile sie liest. Der größte Posten des Schritts stand
+  damit als **0** da und versteckte sich in `zeichnen=142`.
+- **Was das gekostet hat:** ich habe aus „art=0" geschlossen, die
+  Coverarbeit könne es nicht sein, und bin über vier Vermutungen gelaufen —
+  Rückkopplung beim Überspringen, falscher Cache-Schlüssel, fehlende
+  JPEG-Miniaturen. Dann meldete die Bilanzzeile **100 % Treffer** und die
+  PERF-Zeile daneben 107 ms Coverarbeit. Es war von Anfang an das Cover.
+- **Und es ist eine Wiederholung.** Build 193 hat genau diese Klasse Fehler
+  schon behoben, damals andersherum: die Posten behielten einen *alten*
+  Wert. Im Docstring steht seitdem der Satz, der auch jetzt gilt — *„Ein
+  Messwerkzeug, das plausibel aussieht und nicht stimmt, ist schlimmer als
+  keines."*
+- Genullt wird jetzt an **einer** Stelle, und die Posten **summieren** sich
+  innerhalb einer Aktion. Damit ist auch die zweite Unmöglichkeit weg:
+  `flip=16 (davon vsync=53)` — das Warten kam als Summe über den Schritt,
+  `flip` war der letzte Aufruf.
+
+**`gamelist.xml` gab es schon — dafür drei echte Lücken.**
+
+- Die Quelle liest das Frontend seit Build 188. **Hier wird nichts doppelt
+  gebaut**; gefunden habe ich beim Nachsehen aber einen Fehler, der seit
+  damals drin war:
+- **Der Entwickler-Filter war für halbe Sammlungen blind.** Die Quellen
+  benutzen zwei Namen für dieselbe Sache — `gameinfo.tsv` schreibt
+  `developer`, `gamelist.xml` und die `.mra`-Dateien schreiben
+  `manufacturer`. Gefiltert wurde nur nach `developer`. Wer seine Metadaten
+  aus einer gamelist bezieht, hatte den Filter **dauerhaft leer**, und in
+  **Arcade** ebenfalls — angezeigt wurde der Hersteller die ganze Zeit. Das
+  sieht nach „keine Daten" aus und nicht nach einem Fehler, und genau
+  deshalb hat es nie jemand gemeldet.
+- **Entity-Bomben werden abgewiesen.** Der XML-Leser der Standardbibliothek
+  holt keine fremden Dateien nach, expandiert aber *interne* Entities: zehn
+  verschachtelte werden beim Einlesen zu einem Gigabyte Text. Auf einem
+  Gerät mit 1 GB RAM ist das Frontend dann weg. Niemand baut so eine Datei
+  versehentlich — aber eine `gamelist.xml` kommt aus dem Verzeichnis des
+  Nutzers, und der ganze Rest des Lesers ist genau darauf gebaut.
+
+**NFC-Tags: Zaparoo wird erkannt, gestartet, und sagt dir den Befehl.**
+
+- Neuer Punkt im Systemmenü, und die **Beschriftung nennt den Stand** —
+  installiert, Dienst eingetragen, läuft. Dazu ein Bildschirm, der die
+  zuletzt gespielten Spiele zeigt und für das gewählte den einen Befehl
+  nennt, den du in der Zaparoo-App auf einen Tag schreibst:
+  `**launch:/media/fat/games/SNES/Mario.sfc`
+- **Gestartet wird über den vorhandenen Skript-Weg**, nicht über einen
+  eigenen — dasselbe wie bei `update_all`.
+- **Geschrieben wird nichts.** Nicht in `/media/fat/zaparoo` (dort liegen
+  Konfiguration und Zuordnungen eines fremden Programms — dieselbe Haltung
+  wie bei `/media/fat/docs` und MiSTers Favoritendatei), und Zaparoos
+  Protokoll wird nicht ausgewertet. Tags beschreibt man mit der App am
+  Telefon; dort fehlt nur die eine Zeile, und die steht jetzt hier.
+- Der alte Name **TapTo** zählt mit — wer von damals kommt, hat das Skript
+  noch so liegen.
+
+**Und nach einem eingesteckten Stick wird nur noch das Geänderte gelesen.**
+
+- Seit Build 213 meldet das Frontend eine Speicher-Änderung — einmal, und
+  dann war die Meldung weg. Wer sie verpasst hatte, musste „Spieleliste neu
+  einlesen" nehmen: den vollen Scan über **alle** Systeme, bei 30.000
+  Spielen Minuten, für eine Änderung an **einem** Ordner.
+- **Die Mechanik dafür lag seit Build 248 fertig da und hat nie jemand
+  benutzt.** `scan_games()` vergleicht die Signatur je System und liest
+  alles Unveränderte aus dem Cache — aber jeder Rescan-Weg im Frontend
+  setzt `force=True`, und das schaltet genau diesen Zweig ab.
+- Jetzt merkt sich das Frontend den Grund, und im Systemmenü erscheint
+  **dann** ein zweiter Punkt direkt über dem vollen Neueinlesen: *„Nur das
+  Geänderte nachlesen (USB: +usb0)"*. Er arbeitet ohne `force`. Beide Wege
+  bleiben — der eine schnell, der andere gründlich.
+- Die Meldung sagt außerdem, **was** dazukam (USB, Netzlaufwerk, Speicher)
+  statt nur „usb0". Zu **physischen Discs**: MiSTer unterstützt keine
+  optischen Laufwerke. Ein USB-Laufwerk mit CD erscheint wie jeder andere
+  USB-Datenträger, und eine Spiele-CD liegt ohnehin als Abbild auf der
+  Karte — da gibt es nichts eigenes zu erkennen, und mehr zu behaupten wäre
+  erfunden.
+
 **Die Hauptseite ist jetzt deine.**
 
 - **Systemmenü → Verhalten & Optionen → „Hauptseite: Kategorien

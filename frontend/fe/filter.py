@@ -59,6 +59,38 @@ FELDER = ("genre", "jahr", "spieler", "entwickler")
 ZU_VIELE = 40
 
 
+def entwickler_von(meta):
+    """Wer das Spiel gemacht hat - aus "developer" ODER "manufacturer".
+
+    EIN FEHLER, DEN ERST BUILD 251 GEFUNDEN HAT, und er war seit Build
+    188 drin. Die drei Metadatenquellen benutzen zwei verschiedene
+    Schluessel fuer dieselbe Sache:
+
+        gameinfo.tsv (fremde Datenbank)   -> "developer"
+        gamelist.xml (Skraper/ES)         -> "manufacturer"
+        .mra-Dateien (Arcade)             -> "manufacturer"
+
+    Der Filter fragte nur nach "developer". Wer seine Metadaten aus
+    einer gamelist.xml bezieht, hatte den Entwickler-Filter damit
+    dauerhaft leer - und in ARCADE, wo der Hersteller die naechstbeste
+    Sortierung nach dem Namen ist, ebenfalls. Angezeigt wurde er die
+    ganze Zeit (frontend.py zeigt "manufacturer"), nur filtern konnte
+    man nicht danach. Das sieht nach "es gibt keine Daten" aus und
+    nicht nach einem Fehler, und genau deshalb ist es nie gemeldet
+    worden.
+
+    Zusammengelegt wird HIER und nicht in den Quellen: "developer" und
+    "manufacturer" sind nicht dasselbe (wer es gebaut hat, wer es
+    verkauft hat), und die Anzeige soll den Unterschied behalten
+    duerfen. Fuers Filtern genuegt eine Angabe - und eine ist besser
+    als keine."""
+    for schluessel in ("developer", "manufacturer"):
+        wert = (meta.get(schluessel) or "").strip()
+        if wert:
+            return wert
+    return ""
+
+
 def genre_kurz(roh):
     """Die grobe Gattung aus einem zusammengesetzten Genre-Feld.
 
@@ -163,7 +195,7 @@ def werte_sammeln(eintraege, meta_fn):
         s = spieler_max(meta.get("players"))
         if s:
             spieler.add(s)
-        e = (meta.get("developer") or "").strip()
+        e = entwickler_von(meta)
         if e:
             entwickler.add(e)
     return {
@@ -201,7 +233,7 @@ def passt(meta, filter_, ):
     if wunsch and spieler_max(meta.get("players")) < wunsch:
         return False
     wunsch = filter_.get("entwickler")
-    if wunsch and (meta.get("developer") or "").strip() != wunsch:
+    if wunsch and entwickler_von(meta) != wunsch:
         return False
     return True
 
