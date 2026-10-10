@@ -109,7 +109,7 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | **Sprache** | Deutsch / Englisch, jederzeit umschaltbar |
 | **Eigene Tastenbelegung** | Tastatur und Joypad frei belegbar |
 | **Autostart** | An/aus, jederzeit im Menü |
-| **Stream-Overlay für OBS** | Zeigt Spiel, Cover und Musiktitel im Browser |
+| **Stream-Overlay für OBS** | Zeigt Spiel, Cover und Musiktitel im Browser. Dazu die **Erfolgs-Wand**: alle RA-Erfolge des laufenden Spiels als Raster, und die frisch freigeschaltete Kachel blitzt auf |
 | **Miniaturen vorbereiten** | Cover einmalig vorberechnen, damit nichts mehr nachlädt |
 | **PC-Werkzeug** | Dieselbe Arbeit am Windows-PC statt auf dem MiSTer — aus Stunden werden Minuten (`pc_tools/`) |
 | **C-Modul** | `libdragend.so` rechnet die Bildskalierung 100-fach schneller. Optional; fehlt sie, rechnet Python weiter |

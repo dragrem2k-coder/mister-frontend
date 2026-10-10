@@ -53,6 +53,12 @@ DEFAULT_CONFIG = {
     "show_playtime": True,       # Spielzeit in der Fakten-Zeile
     "show_ra": True,             # RetroAchievements-Fortschritt (falls eingerichtet)
     "show_ra_badges": True,      # Erfolgs-Einblendung mit Icon bei neuem Erfolg
+    # NEU (Build 253, Nutzerwunsch nach einem Screenshot): die
+    # Erfolgs-Wand - alle Erfolge des laufenden Spiels als Raster,
+    # freigeschaltete in Farbe, die uebrigen ausgegraut.
+    "show_ra_wall": False,       # Vorgabe AUS - sie belegt Platz
+    "ra_wall_corner": "top-right",   # wie corner, eigene Wahl
+    "ra_wall_cols": 12,          # Kacheln je Zeile
     "show_favorite": True,       # Favoriten-Stern neben dem Titel
     "scale": 100,                # Prozent
     "corner": "bottom-left",     # bottom-left|bottom-right|top-left|top-right
@@ -95,6 +101,17 @@ class StreamServer:
 
         self._lock = threading.Lock()
         self._clients = set()            # set[queue.Queue]
+        # Build 253: der zuletzt veroeffentlichte Stand der Erfolgs-Wand.
+        #
+        # GEMERKT, NICHT NUR DURCHGEREICHT, und das ist der Grund: ein
+        # Overlay, das sich MITTEN im Spiel neu verbindet (OBS-Szene
+        # gewechselt, Browserquelle neu geladen), bekaeme sonst eine
+        # leere Wand und muesste bis zum naechsten Abruf warten - und
+        # der kommt erst in RA_WATCH_POLL_INTERVAL Sekunden. Der
+        # gemerkte Stand geht deshalb im Begruessungspaket mit, genau
+        # wie config und state.
+        self._erfolge = None
+        self._badge_vorrat = set()       # schon geholte/versuchte Icons
         self._state = {"category": "", "name": "", "system": "",
                        "kind": "", "index": 0, "total": 0,
                        "nowplaying": None}
@@ -279,6 +296,117 @@ class StreamServer:
                     dead.append(q)
             for q in dead:
                 self._clients.discard(q)
+
+    # Wie viele Icons auf einmal im Hintergrund geholt werden, und wie
+    # lange dazwischen Pause ist.
+    #
+    # DAS IST DER EINE ECHTE HAKEN DIESER WAND, und er gehoert
+    # gedrosselt: ein Spiel mit 98 Erfolgen heisst beim allerersten Mal
+    # 98 Icons von retroachievements.org. Danach liegen sie dauerhaft
+    # auf der Karte (Icons aendern sich nicht mehr, siehe
+    # _badge_png()), es ist also wirklich nur das erste Mal - aber in
+    # genau diesem Moment laeuft ein Spiel, und der Abruf-Faden, der
+    # die neuen Erfolge erkennt, darf dabei nicht haengen.
+    #
+    # Deshalb: ein EIGENER Faden, zwei Icons gleichzeitig, eine halbe
+    # Sekunde Pause zwischen den Paketen. Bei 98 Icons sind das rund
+    # 25 Sekunden im Hintergrund, und niemand merkt etwas davon.
+    BADGE_VORRAT_GLEICHZEITIG = 2
+    BADGE_VORRAT_PAUSE = 0.5
+
+    def _badges_vorholen(self, namen):
+        """Die Icons der Wand im Hintergrund in den Cache holen.
+
+        WARUM UEBERHAUPT VORHOLEN, wo das Overlay sie doch selbst
+        anfragt: der Browser fragt alle auf einmal an, und jede
+        Anfrage, die nicht im Cache liegt, laedt sie dann im
+        HTTP-Faden von RA nach - mit 5 Sekunden Zeitlimit. Bei einer
+        frischen Karte stehen dann Dutzende Anfragen gleichzeitig an,
+        und der Browser gibt einen Teil davon auf. Das Ergebnis waere
+        eine Wand mit Loechern, die erst nach mehrmaligem Neuladen
+        voll wird.
+
+        Vorgeholt wird deshalb hier, langsam und im Hintergrund.
+        Was schon da ist, kostet nichts - _badge_png() liest dann nur
+        die Datei."""
+        offen = []
+        with self._lock:
+            for n in namen:
+                if n and n not in self._badge_vorrat:
+                    self._badge_vorrat.add(n)
+                    offen.append(n)
+        if not offen:
+            return
+
+        def arbeiter():
+            for i in range(0, len(offen), self.BADGE_VORRAT_GLEICHZEITIG):
+                paket = offen[i:i + self.BADGE_VORRAT_GLEICHZEITIG]
+                faeden = []
+                for n in paket:
+                    t = threading.Thread(target=self._badge_png, args=(n,),
+                                         daemon=True)
+                    t.start()
+                    faeden.append(t)
+                for t in faeden:
+                    t.join(timeout=8.0)
+                time.sleep(self.BADGE_VORRAT_PAUSE)
+            self.log("Overlay: %d Erfolgs-Icons vorgeholt" % len(offen))
+
+        threading.Thread(target=arbeiter, daemon=True).start()
+
+    def publish_achievements(self, daten):
+        """Die ganze Erfolgsliste des laufenden Spiels ans Overlay -
+        die "Wand" (Build 253).
+
+        daten: dict mit
+            "items":  Liste aus {"badge": str, "an": bool, "titel": str,
+                                 "punkte": int}
+            "anzahl": (freigeschaltet, gesamt)
+            "punkte": (erreicht, gesamt)
+
+        EIGENER EREIGNISTYP, nicht an publish() angehaengt: der
+        Auswahl-Zustand wird bei jeder Bewegung im Menue geschickt, die
+        Erfolgsliste aber nur, wenn sie sich wirklich geaendert hat.
+        Beides zusammen hiesse, bei jedem Scrollschritt hundert
+        Eintraege ueber die Leitung zu schicken.
+
+        GEMERKT WIRD SIE AUSSERDEM, damit ein Overlay, das sich mitten
+        im Spiel neu verbindet, sofort die volle Wand hat."""
+        with self._lock:
+            self._erfolge = daten
+            msg = ("event: achievements\ndata: " +
+                   json.dumps(daten) + "\n\n")
+            dead = []
+            for q in self._clients:
+                try:
+                    q.put_nowait(msg)
+                except queue.Full:
+                    dead.append(q)
+            for q in dead:
+                self._clients.discard(q)
+        try:
+            self._badges_vorholen([e.get("badge") for e in
+                                   (daten.get("items") or ())])
+        except Exception:                                # noqa: BLE001
+            pass      # Vorholen ist Beiwerk, nie kritisch
+
+    def clear_achievements(self):
+        """Die Wand leeren - wenn kein Spiel mehr laeuft.
+
+        Ohne das stuende nach der Rueckkehr ins Menue die Wand des
+        zuletzt gespielten Spiels weiter da, und zwar bis zum naechsten
+        Spielstart. Das saehe nicht nach "fertig" aus, sondern nach
+        einem haengengebliebenen Bild."""
+        with self._lock:
+            if self._erfolge is None:
+                return
+            self._erfolge = None
+            msg = "event: achievements\ndata: null\n\n"
+            for q in list(self._clients):
+                try:
+                    q.put_nowait(msg)
+                except queue.Full:
+                    pass
 
     def _push_config(self):
         with self._lock:
@@ -501,6 +629,15 @@ class StreamServer:
                                json.dumps(srv._config) + "\n\n" +
                                "event: state\ndata: " +
                                json.dumps(srv._state) + "\n\n")
+                    # Build 253: die Erfolgs-Wand gehoert mit ins
+                    # Begruessungspaket. Verbindet sich ein Overlay
+                    # MITTEN im Spiel neu (OBS-Szene gewechselt,
+                    # Browserquelle neu geladen), haette es sonst eine
+                    # leere Wand bis zum naechsten Abruf - und der
+                    # kommt erst Sekunden spaeter.
+                    if srv._erfolge is not None:
+                        initial += ("event: achievements\ndata: " +
+                                    json.dumps(srv._erfolge) + "\n\n")
                 try:
                     self.send_response(200)
                     self.send_header("Content-Type", "text/event-stream")

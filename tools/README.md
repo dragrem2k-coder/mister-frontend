@@ -161,6 +161,7 @@ python3 tools/regression_test.py \
 | `test_zaparoo.py` | Test (Pass/Fail) | NFC-Tags ueber Zaparoo: Pfade gegen die Quelle, alter Name TapTo, der ZapScript-Befehl - und die Unterlassung, dass in /media/fat/zaparoo nichts geschrieben wird |
 | `test_nachscan.py` | Test (Pass/Fail) | Nur das Geaenderte nachlesen: der Punkt erscheint nur nach einer Speicher-Aenderung und ruft build_categories OHNE force - force=True schaltet den inkrementellen Zweig ab |
 | `test_erfolg_toast.py` | Test (Pass/Fail) | Die Erfolgs-Einblendung im OBS-Overlay: Warteschlange, zaehlende Punkte, und der zweite Toast loest wirklich eine Animation aus |
+| `test_erfolg_wand.py` | Test (Pass/Fail) | Die Erfolgs-Wand: geprueft GEGEN DEN ECHTEN SERVER ueber eine SSE-Verbindung - nur bei Aenderung gesendet, Wand im Begruessungspaket, Icons gedrosselt vorgeholt |
 | `test_systemkategorie_auffrischen.py` | Test (Pass/Fail) | _refresh_system_category() trifft 'System' und keine andere Kategorie mit syskey=None, ruft keinen Neuaufbau, und die Beschriftung folgt der Einstellung |
 | `diag_ungeprueft.py` | Diagnose (immer Rueckgabewert 0) | Welche Funktionen betritt KEIN Test - gemessen mit sys.setprofile, nicht ueber Namen im Testtext |
 | `_spur.py` | Hilfsmodul | Laesst eine einzelne Testdatei unter sys.setprofile laufen und schreibt jede betretene Funktion mit |
@@ -3537,3 +3538,61 @@ abgeschnitten werden die **aeltesten**), dass der Admin-Schalter
 Schlange an, die niemand sieht, und beim Einschalten kaeme alles auf
 einmal), dass ohne Punktangabe nichts statt "0 Punkte" dasteht, und
 dass `prefers-reduced-motion` beruecksichtigt wird.
+
+
+## test_erfolg_wand.py (Build 253)
+
+Die Erfolgs-Wand: alle Erfolge des laufenden Spiels als Raster,
+freigeschaltete in Farbe, die uebrigen ausgegraut.
+
+**Geprueft wird GEGEN DEN ECHTEN SERVER.** Der Test startet einen
+`StreamServer` auf einem freien Port, haengt sich als SSE-Klient daran
+und liest mit, was wirklich ueber die Leitung geht. Eine Textsuche
+haette drei dieser Faelle nicht gefunden:
+
+1. **Ein Overlay, das sich MITTEN im Spiel neu verbindet** (OBS-Szene
+   gewechselt, Browserquelle neu geladen) bekaeme eine leere Wand und
+   muesste bis zum naechsten Abruf warten - und der ist 25 Sekunden
+   entfernt. Der Test oeffnet deshalb eine ZWEITE Verbindung, waehrend
+   eine Wand steht, und liest ihr Begruessungspaket.
+2. **Nach dem Spiel muss die Wand geleert werden** - `null` ueber die
+   Leitung. Sonst bleibt die des letzten Spiels stehen und sieht nach
+   einem haengengebliebenen Bild aus.
+3. **Geschickt wird nur bei Aenderung.** Ohne das gingen alle 25
+   Sekunden hundert Eintraege ueber die Leitung, auch wenn sich nichts
+   getan hat.
+
+**Das Drosseln der Icons** ist der eine echte Haken dieser Wand und hat
+einen eigenen Abschnitt: beim ersten Mal sind es rund 98 Icons von
+retroachievements.org, und in genau diesem Moment laeuft ein Spiel.
+Geprueft wird, dass es in einem eigenen Faden passiert, paketweise, mit
+Pause - und dass jedes Icon nur EINMAL versucht wird, sonst liefe bei
+jedem Abruf dasselbe Vorholen wieder los. Das Vorholen selbst laeuft im
+Test mit einer Attrappe statt Netz.
+
+**`_ra_wand_daten()` ist bewusst eine eigene, statische Funktion**,
+damit sie ohne Netz und ohne Overlay aufgerufen werden kann - der
+Abruf-Faden daneben braucht beides. Der Test schneidet sie aus dem
+Quelltext heraus und fuehrt sie einzeln aus. Das ist haesslich, aber
+ehrlicher als die Logik im Test nachzubauen: dann prueft man die Kopie
+und nicht das Original.
+
+**Zwei Zusagen, die man beim Bauen gern vergisst**, beide im Overlay:
+
+* Das Raster wird nur bei einem **anderen Spiel** neu gebaut. Baute man
+  es jedes Mal neu, legte der Browser jedes `<img>` neu an - und die
+  frisch freigeschaltete Kachel blitzte auf einem Element auf, das es
+  im Bild vorher gar nicht gab. Man saehe nichts aufblitzen, sondern
+  nur ein fertiges neues Raster.
+* **Beim ersten Anzeigen blitzt nichts.** Wer mitten im Spiel neu
+  laedt, hat vielleicht 74 freigeschaltete Erfolge, und die sollen da
+  sein statt nacheinander aufzuleuchten.
+
+**Zwei eigene Fehler beim Schreiben dieses Tests**, beide derselbe Typ -
+eine Pruefung, die enger formuliert war als die Zusage:
+
+* Er fragte nach **null** Abrufen im Schleifenblock. Gemeint war "kein
+  ZWEITER Netzzugriff", und der Block enthaelt natuerlich den einen,
+  der ohnehin laeuft.
+* Er suchte das Speichern eines Zahlenfelds als `feld:$(` - durch
+  `parseInt()` steht dort aber `feld:parseInt($(`.

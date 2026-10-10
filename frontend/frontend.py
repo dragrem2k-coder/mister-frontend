@@ -12711,6 +12711,11 @@ class Frontend:
         Erfolge, sonst wuerden bereits laengst freigeschaltete Erfolge
         beim Sitzungsstart faelschlich als "neu" gemeldet."""
         seen_titles = None
+        # Build 253: woran erkannt wird, dass sich die WAND geaendert
+        # hat. Die Liste selbst zu vergleichen waere teuer und unnoetig -
+        # was sie aussehen laesst, sind die Badge-Namen und wer davon
+        # freigeschaltet ist.
+        wand_stand = None
         while not stop_event.is_set():
             achievements = fetch_ra_game_achievements_bounded(game_id, timeout=5.0)
             if achievements:
@@ -12730,7 +12735,70 @@ class Frontend:
                                 except Exception:
                                     pass   # Overlay-Push ist nie kritisch
                     seen_titles = earned_now
+                # DIE WAND (Build 253, Nutzerwunsch nach einem
+                # Screenshot): alle Erfolge des Spiels als Raster,
+                # freigeschaltete in Farbe, die uebrigen ausgegraut.
+                #
+                # DIE DATEN SIND SCHON DA - genau dieser Abruf oben
+                # liefert die KOMPLETTE Liste, er wird bisher nur fuer
+                # die Differenz benutzt. Hinzu kommt also eine
+                # Weitergabe, kein zweiter Netzzugriff.
+                #
+                # GESCHICKT WIRD NUR BEI AENDERUNG. Der Abruf laeuft
+                # alle paar Sekunden; ohne diesen Vergleich gingen
+                # hundert Eintraege ueber die Leitung, auch wenn sich
+                # nichts getan hat.
+                if self.stream:
+                    try:
+                        _stand = tuple(sorted(
+                            (a[3] or a[0], bool(a[4])) for a in achievements))
+                        if _stand != wand_stand:
+                            wand_stand = _stand
+                            self.stream.publish_achievements(
+                                self._ra_wand_daten(achievements))
+                    except Exception:
+                        pass   # Overlay-Push ist nie kritisch
             stop_event.wait(self.RA_WATCH_POLL_INTERVAL)
+
+    @staticmethod
+    def _ra_wand_daten(achievements):
+        """Die Erfolgsliste in die Form bringen, die das Overlay
+        braucht (Build 253).
+
+        Eigene Funktion und nicht inline, damit der Test sie ohne Netz
+        und ohne Overlay aufrufen kann - der Abruf-Faden daneben
+        braucht beides.
+
+        NUR WAS DIE WAND ZEIGT: Badge-Name, freigeschaltet ja/nein,
+        Titel (fuer den Mauszeiger im Browser) und Punkte. Die
+        Beschreibung bleibt draussen - sie steht in keiner Kachel und
+        waere bei hundert Erfolgen der groesste Teil der Nachricht.
+
+        Die REIHENFOLGE bleibt die von RetroAchievements. Nach
+        freigeschaltet zu sortieren waere verlockend, waere aber
+        falsch: dann springen beim Freischalten alle anderen Kacheln
+        mit, und man sieht nicht mehr, WELCHE es war."""
+        items = []
+        erreicht = gesamt_punkte = 0
+        an = 0
+        for eintrag in (achievements or ()):
+            try:
+                name, _desc, punkte, badge, frei = eintrag[:5]
+            except (TypeError, ValueError):
+                continue
+            try:
+                p = int(punkte or 0)
+            except (TypeError, ValueError):
+                p = 0
+            gesamt_punkte += p
+            if frei:
+                an += 1
+                erreicht += p
+            items.append({"badge": badge or "", "an": bool(frei),
+                          "titel": name or "", "punkte": p})
+        return {"items": items,
+                "anzahl": [an, len(items)],
+                "punkte": [erreicht, gesamt_punkte]}
 
     def run_core(self, path, label=None, syskey=None):
         """label (optional): Anzeigename fuer die Spielzeit-Aufzeichnung
@@ -12840,6 +12908,16 @@ class Frontend:
             self.stream.obs_switch_to_frontend()
         if ra_watch_stop:
             ra_watch_stop.set()
+            # Build 253: und die Erfolgs-Wand leeren. Ohne das stuende
+            # nach der Rueckkehr ins Menue die Wand des zuletzt
+            # gespielten Spiels weiter da - bis zum naechsten
+            # Spielstart. Das saehe nicht nach "fertig" aus, sondern
+            # nach einem haengengebliebenen Bild.
+            if self.stream:
+                try:
+                    self.stream.clear_achievements()
+                except Exception:                        # noqa: BLE001
+                    pass
         played_seconds = time.monotonic() - play_start
         record_playtime(label, played_seconds, syskey=syskey)
         record_yearly_playtime(label, played_seconds, syskey=syskey)

@@ -1049,6 +1049,37 @@ messbar, an denen bisher geraten werden musste.
 - Auch die Gewichtung war erst falsch: global gezählt stand `sagen` aus einem
   Diagnoseskript mit 96 oben. Gezählt wird jetzt je Datei.
 
+**Die Erfolgs-Wand: alle Erfolge des laufenden Spiels als Raster.**
+
+- Nach einem Screenshot gebaut: rechts im Bild eine Wand aus
+  RA-Erfolgs-Icons, die freigeschalteten in Farbe, die übrigen ausgegraut,
+  darüber **„74 / 98"**, die Punkte und ein Fortschrittsbalken. Im Backend
+  einzuschalten, mit eigener Ecke und Kacheln-je-Zeile. **Vorgabe aus** —
+  sie belegt Platz.
+- **Und das ist der eigentliche Reiz:** schaltest du einen Erfolg frei,
+  **blitzt genau die eine Kachel auf** und schlägt von grau auf Farbe um.
+  Man sieht, welche es war. Sonst wäre die Wand nur eine Tabelle.
+- **Die Daten waren schon da.** Der Abruf, der die neuen Erfolge erkennt,
+  holt ohnehin die *komplette* Liste des Spiels — er wurde bisher nur für
+  die Differenz benutzt. Hinzu kommt eine Weitergabe, **kein zweiter
+  Netzzugriff**. Geschickt wird nur, wenn sich wirklich etwas geändert hat.
+- **Ausgegraut wird mit einem Filter, nicht mit zweiten Bildern.**
+  RetroAchievements hat zwar eigene „lock"-Icons, aber derselbe farbige
+  Icon plus `grayscale()` gibt denselben Look — ohne eine zweite
+  Download-Sorte und ohne Abhängigkeit von einer Namenskonvention, die ich
+  nicht nachgeprüft habe.
+- **Der eine echte Haken, und er ist gedrosselt:** beim allerersten Mal
+  müssen ~98 Icons von RetroAchievements geholt werden. Das läuft in einem
+  **eigenen Faden**, zwei auf einmal, mit einer halben Sekunde Pause — rund
+  25 Sekunden im Hintergrund, und der Abruf, der die neuen Erfolge erkennt,
+  hängt dabei nicht. Danach liegen die Icons dauerhaft auf der Karte.
+- Drei Fälle, die leicht vergessen werden und abgesichert sind: ein Overlay,
+  das sich **mitten im Spiel neu verbindet**, bekommt die volle Wand sofort
+  (sie geht im Begrüßungspaket mit); nach der Rückkehr ins Menü wird sie
+  **geleert**, statt als hängengebliebenes Bild stehenzubleiben; und beim
+  ersten Anzeigen blitzen **nicht** alle 74 schon freigeschalteten Kacheln
+  nacheinander auf.
+
 **Die Erfolgs-Einblendung im OBS-Overlay ist jetzt ein Moment.**
 
 - **Mehrere Erfolge hintereinander gehen nicht mehr verloren.** Bisher

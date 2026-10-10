@@ -76,6 +76,23 @@
         <label class="sw"><input type="checkbox" id="show_ra_badges"><span class="sl"></span></label></div>
       <div class="row"><label>Favoriten-Stern</label>
         <label class="sw"><input type="checkbox" id="show_favorite"><span class="sl"></span></label></div>
+      <!-- Build 253: die Erfolgs-Wand. Vorgabe AUS - sie belegt Platz,
+           und wer sie will, soll sie bewusst einschalten. -->
+      <div class="row"><label>Erfolgs-Wand (alle Erfolge als Raster)</label>
+        <label class="sw"><input type="checkbox" id="show_ra_wall"><span class="sl"></span></label></div>
+      <div class="row"><label>Wand: Ecke</label>
+        <select id="ra_wall_corner">
+          <option value="top-right">oben rechts</option>
+          <option value="top-left">oben links</option>
+          <option value="bottom-right">unten rechts</option>
+          <option value="bottom-left">unten links</option>
+        </select></div>
+      <div class="row"><label>Wand: Kacheln je Zeile <span id="colsval">12</span></label>
+        <input type="range" id="ra_wall_cols" min="4" max="24" step="1"></div>
+      <div class="hint">Die Wand erscheint nur, waehrend ein Spiel mit
+        RetroAchievements laeuft. Beim allerersten Mal holt das Frontend
+        die Erfolgs-Icons im Hintergrund nach - danach liegen sie auf der
+        Karte.</div>
       <div class="row"><label>Ecke</label>
         <select id="corner">
           <option value="bottom-left">unten links</option>
@@ -117,6 +134,7 @@
 const F = ["title","accent","bg","transparent","show_boxart","show_system",
            "show_list","show_nowplaying","show_genre","show_playtime",
            "show_ra","show_ra_badges","show_favorite","corner","scale",
+           "show_ra_wall","ra_wall_corner","ra_wall_cols",
            "obs_control_enabled","obs_host","obs_port","obs_password",
            "obs_game_scene","obs_frontend_scene"];
 const $ = id => document.getElementById(id);
@@ -136,6 +154,11 @@ function fillForm(c){
   $("show_playtime").checked = c.show_playtime!==false;
   $("show_ra").checked = c.show_ra!==false;
   $("show_ra_badges").checked = c.show_ra_badges!==false;
+  // Build 253: Vorgabe AUS - also ===true und nicht !==false.
+  $("show_ra_wall").checked = c.show_ra_wall===true;
+  $("ra_wall_corner").value = c.ra_wall_corner||"top-right";
+  $("ra_wall_cols").value = c.ra_wall_cols||12;
+  $("colsval").textContent = c.ra_wall_cols||12;
   $("show_favorite").checked = c.show_favorite!==false;
   $("corner").value = c.corner||"bottom-left";
   $("scale").value = c.scale||100;
@@ -158,6 +181,9 @@ function collect(){
     show_ra:$("show_ra").checked, show_ra_badges:$("show_ra_badges").checked,
     show_favorite:$("show_favorite").checked,
     corner:$("corner").value,
+    show_ra_wall:$("show_ra_wall").checked,
+    ra_wall_corner:$("ra_wall_corner").value,
+    ra_wall_cols:parseInt($("ra_wall_cols").value,10)||12,
     scale:parseInt($("scale").value,10),
     obs_control_enabled:$("obs_control_enabled").checked,
     obs_host:$("obs_host").value,
@@ -180,6 +206,11 @@ function save(){
 F.forEach(id=>{
   const h=()=>{
     if(id==="scale") $("scaleval").textContent=$("scale").value+"%";
+    // Build 253: derselbe Weg fuer den zweiten Regler - ohne
+    // das steht die Zahl neben dem Schieber still, und man
+    // sieht beim Ziehen nicht, wo man ist.
+    if(id==="ra_wall_cols")
+      $("colsval").textContent=$("ra_wall_cols").value;
     save();
   };
   // "input" fuer Text/Farbe/Regler, "change" fuer Checkboxen und das

@@ -1614,6 +1614,29 @@ unverändert, du kannst die Datei also austauschen, ohne sonst etwas
 anzufassen — und sie im Browser ansehen, ohne das Frontend neu zu
 starten.
 
+**Die Erfolgs-Wand (Build 253):** zusätzlich lässt sich eine Wand aus
+*allen* Erfolgen des laufenden Spiels einblenden — die
+freigeschalteten in Farbe, die übrigen ausgegraut, darüber „74 / 98",
+die Punkte und ein Fortschrittsbalken.
+
+Im Backend unter *Erfolgs-Wand*: **Vorgabe aus**, denn sie belegt
+Platz. Dazu eine eigene Ecke (unabhängig von der Auswahl-Karte) und
+die Zahl der Kacheln je Zeile, 4 bis 24.
+
+Schaltest du einen Erfolg frei, **blitzt genau die eine Kachel auf**
+und schlägt von grau auf Farbe um. Darum geht es — sonst wäre die Wand
+nur eine Tabelle.
+
+Zwei Dinge, die du wissen solltest:
+
+- **Beim allerersten Mal** holt das Frontend die Erfolgs-Icons im
+  Hintergrund von RetroAchievements nach — bei einem Spiel mit 98
+  Erfolgen dauert das rund eine halbe Minute, währenddessen füllt sich
+  die Wand nach und nach. Danach liegen die Icons dauerhaft auf der
+  Karte, und sie ist sofort da.
+- Die Wand erscheint **nur, während ein Spiel mit RetroAchievements
+  läuft**. Nach der Rückkehr ins Menü verschwindet sie wieder.
+
 **Einrichtung:**
 1. Einschalten - zwei gleichwertige Wege:
    - **Direkt im Frontend-Menü** (neu, kein SSH nötig): System ->

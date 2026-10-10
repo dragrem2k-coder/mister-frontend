@@ -888,6 +888,34 @@ guessing was the only option.
   `sagen` from a diagnostic script sat on top with 96. It is counted per file
   now.
 
+**The achievement wall: every achievement of the running game as a grid.**
+
+- Built from a screenshot: a wall of RA achievement icons at the side,
+  unlocked ones in colour, the rest greyed out, with **"74 / 98"**, the
+  points and a progress bar above. Switched on in the backend, with its own
+  corner and tiles-per-row. **Off by default** — it takes up space.
+- **And this is the real point:** unlock an achievement and **exactly that
+  one tile flashes** and flips from grey to colour. You see which one it
+  was. Otherwise the wall would just be a table.
+- **The data was already there.** The poll that detects new achievements
+  fetches the *complete* list of the game anyway — it was only ever used for
+  the difference. What is added is a hand-off, **not a second network
+  request**. It is only sent when something actually changed.
+- **Greying out uses a filter, not second images.** RetroAchievements does
+  have its own "lock" icons, but the same colour icon plus `grayscale()`
+  gives the same look — without a second kind of download and without
+  depending on a naming convention I have not verified.
+- **The one real catch, and it is throttled:** the very first time, ~98
+  icons have to be fetched from RetroAchievements. That runs in its **own
+  thread**, two at a time, half a second apart — about 25 seconds in the
+  background, and the poll that detects new achievements does not stall.
+  After that the icons stay on the card.
+- Three cases that are easy to forget, all covered: an overlay that
+  **reconnects mid-game** gets the full wall immediately (it rides along in
+  the greeting packet); after returning to the menu it is **cleared**
+  instead of lingering as a stale image; and on first display the 74
+  already-unlocked tiles do **not** all flash in sequence.
+
 **The achievement popup in the OBS overlay is a moment now.**
 
 - **Several achievements in a row no longer get lost.** The second toast

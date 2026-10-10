@@ -110,7 +110,7 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | **Language** | German / English, switchable at any time |
 | **Custom key mapping** | Keyboard and gamepad freely assignable |
 | **Autostart** | On/off from the menu |
-| **Stream overlay for OBS** | Shows game, cover and music track in a browser source |
+| **Stream overlay for OBS** | Shows game, cover and music track in a browser source. Plus the **achievement wall**: every RA achievement of the running game as a grid, and the tile you just unlocked flashes |
 | **Prepare thumbnails** | Pre-compute covers once so nothing loads in later |
 | **PC tool** | The same work on a Windows PC instead of the MiSTer — hours become minutes (`pc_tools/`) |
 | **C module** | `libdragend.so` scales images about 100× faster. Optional; without it Python does the work |

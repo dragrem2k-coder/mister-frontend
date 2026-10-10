@@ -137,6 +137,87 @@
     25%{opacity:1}
     to{opacity:0;background-position:-40% 0}}
 
+  /* DIE ERFOLGS-WAND (Build 253).
+     Alle Erfolge des laufenden Spiels als Raster, freigeschaltete in
+     Farbe, die uebrigen ausgegraut - nach einem Screenshot des
+     Nutzers.
+
+     AUSGEGRAUT WIRD MIT EINEM FILTER, nicht mit einem zweiten Bild.
+     RetroAchievements hat zwar eigene "lock"-Icons, aber dasselbe
+     farbige Icon plus grayscale() gibt denselben Look - ohne eine
+     zweite Download-Sorte und ohne Abhaengigkeit von einer
+     Namenskonvention, die wir nicht nachgeprueft haben. */
+  #ra-wall{
+    position:absolute;display:none;flex-direction:column;
+    gap:calc(8px*var(--scale));
+    padding:calc(12px*var(--scale)) calc(14px*var(--scale));
+    background:linear-gradient(135deg,rgba(13,15,20,.92),rgba(13,15,20,.74));
+    border:1px solid rgba(255,255,255,.08);
+    border-radius:calc(12px*var(--scale));
+    box-shadow:0 calc(14px*var(--scale)) calc(40px*var(--scale))
+      rgba(0,0,0,.55);
+    backdrop-filter:blur(6px);
+    pointer-events:none;
+  }
+  #ra-wall.on{display:flex}
+  #ra-wall.solid{background:var(--bg)}
+  /* Eigene Ecke, unabhaengig von der Auswahl-Karte - sonst liegen sie
+     uebereinander, und welche oben ist, haengt von der Reihenfolge im
+     Dokument ab. */
+  #ra-wall.wall-top-right{right:calc(30px*var(--scale));
+    top:calc(30px*var(--scale))}
+  #ra-wall.wall-top-left{left:calc(30px*var(--scale));
+    top:calc(30px*var(--scale))}
+  #ra-wall.wall-bottom-right{right:calc(30px*var(--scale));
+    bottom:calc(30px*var(--scale))}
+  #ra-wall.wall-bottom-left{left:calc(30px*var(--scale));
+    bottom:calc(30px*var(--scale))}
+  /* Steht die Wand oben rechts, muss der Erfolgs-Toast ihr ausweichen -
+     sonst liegt er darauf. */
+  #ra-wall.wall-top-right ~ #achievement-toast{
+    top:auto;bottom:calc(30px*var(--scale))}
+  #ra-wall-head{display:flex;align-items:baseline;
+    gap:calc(10px*var(--scale));
+    font-size:calc(12px*var(--scale));color:var(--dim);
+    white-space:nowrap}
+  #ra-wall-head b{color:var(--fg);font-size:calc(13px*var(--scale))}
+  #ra-wall-head .pts{color:var(--accent);font-weight:600}
+  #ra-wall-bar{height:calc(3px*var(--scale));border-radius:999px;
+    background:rgba(255,255,255,.12);overflow:hidden}
+  #ra-wall-bar i{display:block;height:100%;width:0;border-radius:999px;
+    background:var(--accent);transition:width .6s ease}
+  #ra-wall-grid{display:grid;gap:calc(3px*var(--scale))}
+  #ra-wall-grid img{
+    width:calc(26px*var(--scale));height:calc(26px*var(--scale));
+    border-radius:calc(4px*var(--scale));display:block;
+    background:#1a1e27;
+    /* Ausgegraut ist der Normalfall - die meisten Erfolge hat man
+       noch nicht. */
+    filter:grayscale(1) brightness(.42) contrast(.9);
+    opacity:.75;
+    transition:filter .9s ease, opacity .9s ease, transform .5s ease}
+  #ra-wall-grid img.an{filter:none;opacity:1}
+  /* DER MOMENT, UM DEN ES GEHT: eine Kachel, die gerade umgeschlagen
+     ist, soll man SEHEN. Sonst ist die Wand nur eine Tabelle. */
+  #ra-wall-grid img.frisch{animation:kachel-an 1.1s
+    cubic-bezier(.2,.8,.25,1) both}
+  @keyframes kachel-an{
+    0%{filter:grayscale(1) brightness(.42);opacity:.75;transform:none}
+    18%{filter:grayscale(0) brightness(2.2);opacity:1;
+        transform:scale(1.45)}
+    45%{filter:none;opacity:1;transform:scale(1.12)}
+    100%{filter:none;opacity:1;transform:none}}
+  /* Eine leere Kachel (Erfolg ohne Icon) soll kein Loch reissen. */
+  #ra-wall-grid .leer{
+    width:calc(26px*var(--scale));height:calc(26px*var(--scale));
+    border-radius:calc(4px*var(--scale));
+    background:rgba(255,255,255,.05)}
+
+  @media (prefers-reduced-motion: reduce){
+    #ra-wall-grid img.frisch{animation:none}
+    #ra-wall-bar i{transition:none}
+  }
+
   /* MEHRERE ERFOLGE HINTEREINANDER (Build 252).
      Bei einem Erfolgs-Schub ueberschrieb der zweite Toast den ersten
      und setzte den Timer neu - man sah EINEN davon. Jetzt gibt es
@@ -192,6 +273,14 @@
       <div id="np" class="np hidden"><span class="dot"></span><span id="npname"></span></div>
     </div>
   </div>
+  <div id="ra-wall">
+    <div id="ra-wall-head">
+      <b id="ra-wall-count">0 / 0</b>
+      <span class="pts" id="ra-wall-points"></span>
+    </div>
+    <div id="ra-wall-bar"><i id="ra-wall-fill"></i></div>
+    <div id="ra-wall-grid"></div>
+  </div>
   <div id="achievement-toast">
     <img id="achievement-badge" class="badge hidden" alt="">
     <div class="achievement-meta">
@@ -208,6 +297,7 @@ const $ = id => document.getElementById(id);
 const root = document.documentElement.style;
 let cfg = {};
 let lastState = null;
+let lastWall = null;
 
 // ERFOLGE: WARTESCHLANGE, ZAEHLENDE PUNKTE, EINBLEND-MOMENT
 // (Build 252)
@@ -329,6 +419,107 @@ function punkteHochzaehlen(punkte){
   achZaehlTimer = requestAnimationFrame(schritt);
 }
 
+// DIE ERFOLGS-WAND (Build 253)
+//
+// Alle Erfolge des laufenden Spiels als Raster, freigeschaltete in
+// Farbe, die uebrigen ausgegraut. Die Daten kommen als eigenes
+// Ereignis ("achievements"), und zwar NUR wenn sie sich geaendert
+// haben - der Abruf auf der Python-Seite laeuft alle 25 Sekunden.
+//
+// ZWEI DINGE, DIE HIER LEICHT FALSCH GEHEN, und beide sind der Grund
+// fuer den Aufbau unten:
+//
+//  1. DAS RASTER JEDES MAL NEU ZU BAUEN waere einfacher - und wuerde
+//     jedes <img> neu anlegen. Der Browser laedt dann alle hundert
+//     Icons erneut an (aus seinem eigenen Cache, aber doch), und die
+//     Animation der frisch freigeschalteten Kachel faende auf einem
+//     Element statt, das es im Bild vorher gar nicht gab: man saehe
+//     nichts aufblitzen, sondern nur ein fertiges neues Raster.
+//     Gebaut wird deshalb EINMAL, danach werden nur noch Klassen
+//     umgeschaltet.
+//  2. BEIM ERSTEN MAL DARF NICHTS BLITZEN. Wer mitten in einem Spiel
+//     das Overlay neu laedt, hat vielleicht 74 freigeschaltete
+//     Erfolge - die sollen einfach da sein und nicht alle 74
+//     nacheinander aufleuchten.
+
+let wandStand = null;     // Badge-Name -> an/aus, Stand von eben
+let wandAufbau = null;    // Badge-Name -> Element
+
+function renderWall(daten){
+  const wall = $('ra-wall');
+  if(!daten || cfg.show_ra_wall !== true){
+    wall.classList.remove('on');
+    wandStand = null;
+    wandAufbau = null;
+    $('ra-wall-grid').innerHTML = '';
+    return;
+  }
+  const items = Array.isArray(daten.items) ? daten.items : [];
+  if(!items.length){
+    wall.classList.remove('on');
+    return;
+  }
+
+  const grid = $('ra-wall-grid');
+  const spalten = Math.max(1, Math.min(40, parseInt(cfg.ra_wall_cols, 10) || 12));
+  grid.style.gridTemplateColumns = 'repeat(' + spalten + ', max-content)';
+
+  // Das Raster nur dann neu bauen, wenn es ein ANDERES Spiel ist -
+  // erkennbar daran, dass sich die Menge der Badges geaendert hat.
+  const schluessel = items.map(e => e.badge || '-').join(',');
+  const neuesSpiel = (wandAufbau === null || wandAufbau.schluessel !== schluessel);
+  const erstesMal = neuesSpiel;
+
+  if(neuesSpiel){
+    grid.innerHTML = '';
+    wandAufbau = {schluessel: schluessel, el: []};
+    items.forEach((e) => {
+      let node;
+      if(e.badge){
+        node = document.createElement('img');
+        node.src = '/badge?name=' + encodeURIComponent(e.badge);
+        node.alt = '';
+        // Ein Icon, das sich nicht laden laesst (noch nicht im Cache,
+        // RA nicht erreichbar), soll kein zerbrochenes Bild zeigen.
+        node.onerror = () => { node.style.visibility = 'hidden'; };
+      } else {
+        node = document.createElement('div');
+        node.className = 'leer';
+      }
+      node.title = (e.titel || '') + (e.punkte ? ' (' + e.punkte + ')' : '');
+      grid.appendChild(node);
+      wandAufbau.el.push(node);
+    });
+    wandStand = null;
+  }
+
+  items.forEach((e, i) => {
+    const node = wandAufbau.el[i];
+    if(!node || node.classList.contains('leer')) return;
+    const an = !!e.an;
+    const vorher = wandStand ? wandStand[i] : null;
+    node.classList.toggle('an', an);
+    // Nur was GERADE umgeschlagen ist, blitzt auf - und beim ersten
+    // Mal gar nichts.
+    if(an && vorher === false && !erstesMal){
+      node.classList.remove('frisch');
+      void node.offsetWidth;
+      node.classList.add('frisch');
+    }
+  });
+  wandStand = items.map(e => !!e.an);
+
+  const [an, gesamt] = Array.isArray(daten.anzahl) ? daten.anzahl : [0, 0];
+  const [pa, pg] = Array.isArray(daten.punkte) ? daten.punkte : [0, 0];
+  $('ra-wall-count').textContent = an + ' / ' + gesamt;
+  $('ra-wall-points').textContent = pg ? (pa + ' / ' + pg + ' Punkte') : '';
+  $('ra-wall-fill').style.width =
+    (gesamt ? Math.round(an * 100 / gesamt) : 0) + '%';
+
+  wall.className = 'wall-' + (cfg.ra_wall_corner || 'top-right') +
+                   (cfg.transparent === false ? ' solid' : '') + ' on';
+}
+
 function applyConfig(c){
   cfg = c || {};
   if(cfg.accent) root.setProperty('--accent', cfg.accent);
@@ -342,6 +533,12 @@ function applyConfig(c){
   // greifen (nicht erst beim naechsten Zustandswechsel am MiSTer), den
   // zuletzt bekannten Zustand jetzt gleich neu rendern.
   if(lastState) applyState(lastState);
+  // Build 253: die Wand haengt an drei Schaltern (an/aus, Ecke,
+  // Spalten) - sie muss also mit, sobald sich etwas aendert. Ohne das
+  // wirkte eine Aenderung erst beim naechsten Abruf, also bis zu 25
+  // Sekunden spaeter, und im Backend saehe es nach einem kaputten
+  // Schalter aus.
+  renderWall(lastWall);
 }
 
 function applyState(s){
@@ -416,6 +613,13 @@ function connect(){
   es.addEventListener('config', e => applyConfig(JSON.parse(e.data)));
   es.addEventListener('state',  e => applyState(JSON.parse(e.data)));
   es.addEventListener('achievement', e => showAchievementToast(JSON.parse(e.data)));
+  // Build 253: die Erfolgs-Wand. 'null' heisst "kein Spiel mehr" -
+  // dann wird sie geleert (siehe clear_achievements()).
+  es.addEventListener('achievements', e => {
+    try { lastWall = JSON.parse(e.data); }
+    catch(err) { lastWall = null; }
+    renderWall(lastWall);
+  });
   es.onerror = () => { es.close(); setTimeout(connect, 2000); };
 }
 connect();
