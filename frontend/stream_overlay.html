@@ -81,9 +81,14 @@
   @keyframes flash{from{transform:translateY(calc(6px*var(--scale)));opacity:.55}
     to{transform:translateY(0);opacity:1}}
 
-  /* Erfolgs-Einblendung: eigener Toast, immer oben rechts - unabhaengig
-     von der "corner"-Einstellung der normalen Auswahl-Karte, damit sich
-     beide nie ueberschneiden koennen, egal welche Ecke dort gewaehlt ist. */
+  /* Erfolgs-Einblendung: eigener Toast mit EIGENER Ecke (Build 255,
+     Nutzerwunsch). Bis dahin stand er fest oben rechts - unabhaengig
+     von der "corner"-Einstellung der Auswahl-Karte, damit sich beide
+     nie ueberschneiden konnten. Wer ihn jetzt bewusst in dieselbe Ecke
+     wie die Karte legt, darf das; die Vorgabe bleibt oben rechts, also
+     merkt niemand etwas, der den Schalter nie anfasst.
+     Die Werte hier gelten als Rueckfall, falls keine ach-*-Klasse
+     gesetzt ist (altes Config-Paket, Datei im Browser direkt geoeffnet). */
   #achievement-toast{
     position:absolute;top:calc(30px*var(--scale));right:calc(30px*var(--scale));
     display:flex;gap:calc(14px*var(--scale));align-items:center;
@@ -99,6 +104,29 @@
     pointer-events:none;
   }
   #achievement-toast.show{opacity:1;transform:translateX(0)}
+
+  /* DIE VIER ECKEN. Gesetzt wird die Klasse in applyConfig(), damit
+     sie beim ersten Config-Paket schon steht und nicht erst beim
+     ersten Erfolg. */
+  #achievement-toast.ach-top-right{top:calc(30px*var(--scale));
+    right:calc(30px*var(--scale));left:auto;bottom:auto}
+  #achievement-toast.ach-top-left{top:calc(30px*var(--scale));
+    left:calc(30px*var(--scale));right:auto;bottom:auto}
+  #achievement-toast.ach-bottom-right{bottom:calc(30px*var(--scale));
+    right:calc(30px*var(--scale));left:auto;top:auto}
+  #achievement-toast.ach-bottom-left{bottom:calc(30px*var(--scale));
+    left:calc(30px*var(--scale));right:auto;top:auto}
+  /* Steht er links, kommt er auch von LINKS herein und traegt den
+     Farbbalken an der linken Kante - sonst zeigt die Karte in die
+     falsche Richtung, und das sieht man sofort, auch wenn man nicht
+     sagen kann, woran es liegt. */
+  #achievement-toast.ach-top-left,
+  #achievement-toast.ach-bottom-left{
+    transform:translateX(calc(-20px*var(--scale)));
+    border-right:1px solid rgba(255,255,255,.10);
+    border-left:calc(4px*var(--scale)) solid #ffd452}
+  #achievement-toast.ach-top-left.show,
+  #achievement-toast.ach-bottom-left.show{transform:translateX(0)}
 
   /* DER EINBLEND-MOMENT (Build 252).
      Vorher: nur opacity plus 20 Punkte von rechts. Das ist eine
@@ -172,10 +200,19 @@
     bottom:calc(30px*var(--scale))}
   #ra-wall.wall-bottom-left{left:calc(30px*var(--scale));
     bottom:calc(30px*var(--scale))}
-  /* Steht die Wand oben rechts, muss der Erfolgs-Toast ihr ausweichen -
-     sonst liegt er darauf. */
-  #ra-wall.wall-top-right ~ #achievement-toast{
+  /* Liegt die Wand in DERSELBEN Ecke wie der Erfolgs-Toast, weicht der
+     Toast nach oben bzw. unten aus - sonst liegt er auf der Wand, und
+     die ist hoch. Seit Build 255 haben beide eine eigene Ecke, also
+     wird das je Paarung geprueft und nicht mehr pauschal: wer sie
+     bewusst in verschiedene Ecken legt, soll seine Wahl behalten.
+     ".on" gehoert dazu - eine Wand, die gar nicht angezeigt wird, darf
+     den Toast nicht verschieben. */
+  #ra-wall.on.wall-top-right ~ #achievement-toast.ach-top-right,
+  #ra-wall.on.wall-top-left ~ #achievement-toast.ach-top-left{
     top:auto;bottom:calc(30px*var(--scale))}
+  #ra-wall.on.wall-bottom-right ~ #achievement-toast.ach-bottom-right,
+  #ra-wall.on.wall-bottom-left ~ #achievement-toast.ach-bottom-left{
+    bottom:auto;top:calc(30px*var(--scale))}
   #ra-wall-head{display:flex;align-items:baseline;
     gap:calc(10px*var(--scale));
     font-size:calc(12px*var(--scale));color:var(--dim);
@@ -475,9 +512,74 @@ let wandY = 0;               // jetzige Verschiebung
 let wandRichtung = 1;
 let wandWartetBis = 0;
 let wandZuletzt = 0;
+let wandFensterLauf = null;  // Nachversuch fuer die Fensterhoehe
+let wandFensterRest = 0;     // wie viele Nachversuche noch erlaubt sind
+let wandFrischMerk = null;   // Kachel, die noch angefahren werden will
 
 function wandScrollStoppen(){
   if(wandLauf){ cancelAnimationFrame(wandLauf); wandLauf = null; }
+  // Auch einen haengenden Nachversuch fuer die Fensterhoehe abraeumen -
+  // sonst liefe er weiter, nachdem die Wand schon wieder aus ist.
+  if(wandFensterLauf){
+    cancelAnimationFrame(wandFensterLauf);
+    wandFensterLauf = null;
+  }
+}
+
+// DIE FENSTERHOEHE (Build 254, hierher gezogen und abgesichert in 255).
+//
+// Gerechnet wird aus der TATSAECHLICHEN Hoehe der ersten Kachel und
+// nicht aus den 26 Punkten im Stylesheet: die haengen an --scale, und
+// wer das Overlay auf 150 % stellt, bekaeme sonst ein Fenster, das zu
+// zwei Dritteln leer ist.
+//
+// DER FEHLER, DEN DAS BEHEBT: gemessen wurde, SOLANGE DIE WAND NOCH
+// AUF display:none STAND. Ein Element in einem ausgeblendeten Teilbaum
+// hat kein Kaestchen - getBoundingClientRect() liefert 0. Dann griff
+// der else-Zweig, die Hoehe blieb leer, und die Wand stand in voller
+// Hoehe da, ohne zu laufen. Zu sehen war das genau beim WECHSEL DES
+// SPIELS im laufenden Frontend: beim Verlassen wird die Wand geleert
+// (also ausgeblendet), und beim naechsten Spiel wurde im
+// ausgeblendeten Zustand gemessen. Wer den Regler dagegen bei
+// LAUFENDEM Spiel verstellte, sah es wirken - die Wand war da ja
+// schon sichtbar. Deshalb sah es nach "wird nicht gespeichert" aus,
+// obwohl gespeichert war.
+function wandFensterSetzen(zeilen){
+  const view = $('ra-wall-view');
+  const grid = $('ra-wall-grid');
+  if(wandFensterLauf){
+    cancelAnimationFrame(wandFensterLauf);
+    wandFensterLauf = null;
+  }
+  if(!(zeilen > 0)){ view.style.height = ''; return true; }
+  const erste = wandAufbau && wandAufbau.el[0];
+  const kh = erste ? erste.getBoundingClientRect().height : 0;
+  if(kh <= 0){
+    // Noch nichts zu messen. Nach dem Sichtbarmachen darf das nicht
+    // mehr vorkommen, aber ein paar Rahmen Nachsicht kosten nichts -
+    // BEGRENZT, denn eine Kette aus requestAnimationFrame, die nie
+    // aufhoert, ist schlimmer als eine Wand ohne Fenster.
+    if(wandFensterRest > 0){
+      wandFensterRest -= 1;
+      wandFensterLauf = requestAnimationFrame(() => {
+        wandFensterLauf = null;
+        if(!wandFensterSetzen(zeilen)) return;
+        wandScrollStarten();
+        // Eine Kachel, die beim Aufblitzen noch nicht angefahren
+        // werden konnte, wird jetzt nachgeholt - sonst waere der
+        // Moment, um den es bei der Wand geht, genau dann verloren,
+        // wenn der erste Erfolg eines Spiels faellt.
+        if(wandFrischMerk){
+          wandZuKachel(wandFrischMerk);
+          wandFrischMerk = null;
+        }
+      });
+    }
+    return false;
+  }
+  const luecke = parseFloat(getComputedStyle(grid).rowGap) || 0;
+  view.style.height = (zeilen * kh + (zeilen - 1) * luecke) + 'px';
+  return true;
 }
 
 function wandScrollStarten(){
@@ -535,6 +637,7 @@ function renderWall(daten){
     wall.classList.remove('on');
     wandStand = null;
     wandAufbau = null;
+    wandFrischMerk = null;
     wandScrollStoppen();
     $('ra-wall-grid').innerHTML = '';
     return;
@@ -599,24 +702,6 @@ function renderWall(daten){
   });
   wandStand = items.map(e => !!e.an);
 
-  // DIE FENSTERHOEHE (Build 254). 0 heisst "alles zeigen"; sonst wird
-  // auf so viele Zeilen begrenzt und der Rest laeuft durch.
-  //
-  // Gerechnet wird aus der TATSAECHLICHEN Hoehe der ersten Kachel, und
-  // nicht aus den 26 Punkten im Stylesheet: die haengen an --scale,
-  // und wer das Overlay auf 150 % stellt, bekaeme sonst ein Fenster,
-  // das zu zwei Dritteln leer ist.
-  const view = $('ra-wall-view');
-  const zeilen = Math.max(0, Math.min(40, parseInt(cfg.ra_wall_rows, 10) || 0));
-  const erste = wandAufbau.el[0];
-  const kh = erste ? erste.getBoundingClientRect().height : 0;
-  if(zeilen > 0 && kh > 0){
-    const luecke = parseFloat(getComputedStyle(grid).rowGap) || 0;
-    view.style.height = (zeilen * kh + (zeilen - 1) * luecke) + 'px';
-  } else {
-    view.style.height = '';
-  }
-
   const [an, gesamt] = Array.isArray(daten.anzahl) ? daten.anzahl : [0, 0];
   const [pa, pg] = Array.isArray(daten.punkte) ? daten.punkte : [0, 0];
   $('ra-wall-count').textContent = an + ' / ' + gesamt;
@@ -624,15 +709,28 @@ function renderWall(daten){
   $('ra-wall-fill').style.width =
     (gesamt ? Math.round(an * 100 / gesamt) : 0) + '%';
 
+  // SICHTBAR MACHEN, UND ZWAR VOR DEM MESSEN. Alles, was unten eine
+  // Hoehe braucht - die Fensterhoehe genauso wie die Laufstrecke -
+  // misst ein Element, das noch auf display:none steht, als 0. Die
+  // Reihenfolge dieser drei Absaetze ist deshalb kein Zufall, und der
+  // Test haelt sie fest.
   wall.className = 'wall-' + (cfg.ra_wall_corner || 'top-right') +
                    (cfg.transparent === false ? ' solid' : '') + ' on';
 
-  // ERST JETZT das Durchlaufen (neu) anwerfen: vorher stand die Wand
-  // noch auf display:none, und dann sind scrollHeight und
-  // clientHeight beide 0 - die Strecke waere 0, und sie liefe nie.
+  // 0 heisst "alles zeigen"; sonst wird auf so viele Zeilen begrenzt
+  // und der Rest laeuft durch (siehe wandFensterSetzen()).
+  const zeilen = Math.max(0, Math.min(40, parseInt(cfg.ra_wall_rows, 10) || 0));
+  wandFensterRest = 5;
+  const sitzt = wandFensterSetzen(zeilen);
+
   if(zeilen > 0){
-    wandScrollStarten();
-    if(frischeKachel) wandZuKachel(frischeKachel);
+    if(sitzt){
+      wandScrollStarten();
+      if(frischeKachel) wandZuKachel(frischeKachel);
+      wandFrischMerk = null;
+    } else {
+      wandFrischMerk = frischeKachel;
+    }
   } else {
     wandScrollStoppen();
     wandY = 0;
@@ -649,6 +747,14 @@ function applyConfig(c){
   card.className = 'card corner-' + (cfg.corner||'bottom-left') +
                   (cfg.transparent===false ? ' solid' : '');
   $('brand').textContent = cfg.title || '';
+  // Die Ecke des Erfolgs-Toasts (Build 255). Bewusst ueber classList
+  // und NICHT ueber className: auf demselben Element sitzt 'show',
+  // und ein className-Zuweisen mitten in einer laufenden Einblendung
+  // wuerde sie abbrechen - genau dann, wenn man hinsieht.
+  const toast = $('achievement-toast');
+  ['top-right', 'top-left', 'bottom-right', 'bottom-left'].forEach(e => {
+    toast.classList.toggle('ach-' + e, (cfg.ach_corner || 'top-right') === e);
+  });
   // Die show_*-Schalter wirken erst in applyState() - damit sie SOFORT
   // greifen (nicht erst beim naechsten Zustandswechsel am MiSTer), den
   // zuletzt bekannten Zustand jetzt gleich neu rendern.

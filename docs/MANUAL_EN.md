@@ -151,6 +151,21 @@ history to read up on (`CHANGELOG.md`).
    - 8f-2. ROMs on a NAS/network drive
    - 8g. Themes/color schemes
    - 8h. Navigation sound effects
+   - 8h-2. Random Pick: the draw with sound
+   - 8h-3. Arranging the main page yourself
+   - 8h-4. Remembered filters with a name of your own
+   - 8h-5. Core updates: what's new
+   - 8h-6. NFC tags via Zaparoo
+   - 8h-7. Re-reading only what changed
+   - 8h-8. Metadata from a `gamelist.xml`
+   - 8b-2. Portrait mode (TATE)
+   - 8g-2. Your own colour scheme: save and edit
+   - 8v. MiSTer's own fonts
+   - 8w. Shadow masks
+   - 8x. Your own background images
+   - 8y. MiSTer's own favourites
+   - 8z. Cores: choosing a build and updating
+   - 8q. Autostart on/off
    - 8i. Playtime tracker
    - 8j. Top 10 lists
    - 8k. RetroAchievements progress
@@ -168,7 +183,10 @@ history to read up on (`CHANGELOG.md`).
 11. Boot animation (startup video)
 12. Stream overlay for OBS (optional)
 13. Troubleshooting
+   - 13b. MiSTer Linux from 2026-09-07 (kernel 6.18)
 14. Known limitations
+15. Start options (`--show`, `--bench`, `--demo`, `--help`)
+16. The system menu from A to Z — everything in one place
 
 ---
 
@@ -176,7 +194,7 @@ history to read up on (`CHANGELOG.md`).
 
 | File                            | Destination on the MiSTer        | Purpose |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | The frontend itself (v4.4) |
+| frontend/frontend.py            | /media/fat/frontend/             | The frontend itself (v4.8) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart wrapper (on every boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart downloader (runs on the MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Game-info downloader (runs on the MiSTer) |
@@ -769,6 +787,338 @@ or off when moving/confirming/going back (default: ON). The tones are
 generated on the first start (no downloads needed) and run alongside the
 background music.
 
+## 8h-2. Random Pick: the draw with sound (Build 246)
+
+*Random Pick — draw a game* can take its time instead of answering at
+once. Under *Options*: **Draw suspense** — off, or 1 to 5 seconds.
+
+While it draws, the titles run past like a wheel and a sound plays with
+them; the covers of the candidates are shown. Any key cancels, and
+cancelling **before** the draw has finished does not pick anything.
+
+Set to *off*, nothing happens and no sound plays. If you hear nothing,
+this probe says in plain words where the chain breaks (folder, file,
+player, settings, sound card in use) and plays once at the end:
+
+```
+python3 /media/fat/frontend/sound_probe.py
+```
+
+---
+
+## 8h-3. Arranging the main page yourself (Build 250)
+
+System menu, under *Options*: **"Main page: sort and hide categories"**.
+
+You get a list of all categories in their current order:
+
+| Key | What it does |
+|---|---|
+| Up/Down | move the selection |
+| Left/Right | **show or hide** a category |
+| Enter | **pick up** an entry — Up/Down then moves it, Enter puts it down |
+| Back / ESC | save and return |
+
+The picked-up entry reads `= Name =` in its row, so you can watch it
+travel. The number on the left says how far you have come without
+counting.
+
+**"System" is not in the list, and that is deliberate.** It always stays
+visible and always last. Anyone who could hide it or move it up would
+lose access to the settings — and deleting the file by hand needs SSH.
+A hand-edited `/media/fat/frontend/hauptseite.json` cannot hide it
+either.
+
+**A newly added category stays visible.** Add a system or remember a
+filter and it appears at the end (before "System"), ready to be moved —
+it does not vanish just because the saved order does not know it yet.
+
+Hidden is not deleted: the category stays in the editor's list, only in
+grey, and one press of Left/Right brings it back.
+
+---
+
+## 8h-4. Remembered filters with a name of your own (Build 250)
+
+Since Build 143 a filter condition can be remembered as a category of
+its own — the name was built from the condition automatically ("SNES /
+Platform / 1990-1994"). **That stays exactly as it was**, one keypress.
+
+New is a second line below it: **"…or remember with your own name"**,
+and for a category you already have, **"Rename this category"**. You get
+the letter picker from the search — the same one that works on a CRT and
+on HDMI. The automatic name is pre-filled, so renaming means correcting
+rather than typing from scratch.
+
+---
+
+## 8h-5. Core updates: what's new (Build 250)
+
+`update_all` can be started from the system menu (since Build 213).
+Afterwards there used to be nothing to see — the script writes hundreds
+of lines to the console, and if you were not watching you had no idea
+whether anything had happened.
+
+Now the frontend looks at which `.rbf` files are in `_Console`,
+`_Computer`, `_Other`, `_Utility` and `_Arcade` **before** the run, and
+again **afterwards**. The difference appears at once, in three groups:
+
+- **New** — this core was not there before
+- **Updated** — the core was there, with a different build
+- **Gone** — `update_all` removed it
+
+The third case is not theoretical: `update_all` clears old cores away,
+and a core that disappeared is exactly what you want to know when a game
+stops starting. If nothing changed, the frontend says that too. The
+report stays reachable as **"Core updates: what's new (N)"**; if there is
+no report, the entry does not appear at all.
+
+**No log of `update_all` is parsed.** What is compared is the card with
+itself — an observation of our own filesystem, which stays correct
+whatever version of `update_all` you have and whatever it does
+internally. A network query "are there updates?" is still deliberately
+**absent**: that would mean rebuilding the MiSTer downloader's databases,
+a second source of truth for the most important files on the card.
+
+---
+
+## 8h-6. NFC tags via Zaparoo (Build 251)
+
+[Zaparoo](https://zaparoo.org) (formerly TapTo) is a **separate
+project**, not part of Dragend: it reads NFC tags on the MiSTer and
+starts whatever game is written on them. Put the card down, the game
+runs.
+
+The system menu entry under *Options* names the state — **not
+installed**, **service not registered**, **not running** or **running** —
+so you do not have to go in to find out whether it is ready.
+
+Inside:
+
+- **Enter launches the Zaparoo script.** On first start it registers
+  itself as a service. It is launched the same way as `update_all` — no
+  separate launch path is built.
+- **Your recently played games** are listed, and for the selected one
+  the frontend shows the single line you write onto a tag with the
+  Zaparoo app:
+
+  ```
+  **launch:/media/fat/games/SNES/Super Mario World.sfc
+  ```
+
+  It is wrapped, not truncated — half a path would be worthless.
+
+**Why "recently played" and not a game browser:** you make a tag for a
+game you have just played. A second path through the whole game list
+would be redundant, and an extra key in the list would be one more thing
+to remember.
+
+**Nothing is written into Zaparoo's own folder.** `/media/fat/zaparoo`
+holds another program's configuration and mappings — the same stance as
+with the foreign artwork database under `/media/fat/docs` and MiSTer's
+favourites file: we read, we do not write. On top of that, Zaparoo has to
+be restarted for a change to those files to take effect, so we could
+write something that only applies later, and you would be left unsure
+whether it arrived. Tags are written with the phone app; all that was
+missing there was the one line, and now it is here.
+
+If you still have the old **TapTo** installed, it is recognised too.
+
+---
+
+## 8h-7. Re-reading only what changed (Build 251)
+
+Plug in a USB stick while the frontend runs and it tells you. That
+message is **no longer fleeting**: an extra entry appears in the system
+menu, right above *"Rescan game list"* —
+
+> **Re-read only what changed (USB: +usb0)**
+
+The difference is large. *"Rescan game list"* reads **all** systems from
+the card; with 30,000 games that is minutes. The new entry compares each
+system's signature and takes everything unchanged from the cache — for
+one plugged-in stick, seconds.
+
+Both ways stay: one fast, one thorough. If something looks wrong and you
+are unsure, keep using the full rescan.
+
+The message also says **what** appeared: USB, network drive, card, or
+storage in general.
+
+**On physical CDs/DVDs:** the MiSTer has no optical drives. A USB drive
+with a CD in it appears like any other USB volume, and a game CD for PSX
+or Mega CD is an image (`.cue`/`.chd`) on the card anyway. So there is
+nothing of its own to detect — what there is, is an honest statement of
+what was added.
+
+---
+
+## 8h-8. Metadata from a `gamelist.xml` (since Build 188)
+
+Not new, but it was only ever in the changelog. If you curate your ROM
+folders with **Skraper** or a similar tool, there is a `gamelist.xml` in
+EmulationStation format sitting there — with year, genre, player count,
+manufacturer, description and often the cover as well. If it is there,
+it is read. No tool, no download, no setting.
+
+**The order of precedence, and it is deliberate:**
+
+1. your own data (`/media/fat/frontend/meta/<SYSTEM>.json`)
+2. the `gamelist.xml`
+3. the foreign database under `/media/fat/docs`
+
+Filling happens **field by field**: a source only adds what the previous
+one did not have, and never replaces. Same for covers — your own artwork
+always comes first.
+
+To switch it off: `touch /media/fat/frontend/gamelist_aus` — no update
+needed.
+
+---
+
+## 8b-2. Portrait mode (TATE) — without a switch
+
+Turn the screen (TATE, 90 degrees) and the **width** suddenly becomes the
+tight side. The frontend notices this from the framebuffer's dimensions
+and computes differently — there is no switch for it, because there is
+no decision for you to make.
+
+What changes:
+
+- **Text width is measured against the width, not the height.** Without
+  that rule only 23 characters per line would be left at 1080×1920 — a
+  game title cut to a third. With it there are 38, and that is readable.
+- **Grid tile size is computed, not hard-coded.** In portrait the tiles
+  stand 1×2 instead of side by side.
+
+Verified at 1080×1920, 720×1280, 480×640 and 240×320. That **landscape**
+stays unchanged is not a claim: `regression_test.py` compares 18
+combinations bit for bit, `diag_lightpath.py` another 34.
+
+---
+
+## 8g-2. Your own colour scheme: save and edit
+
+Under *Display & Sound*, directly below the colour-scheme line, there are
+two more entries:
+
+| Entry | Action | What it does |
+|---|---|---|
+| Save current colours as your own scheme | `theme_eigen_speichern` | Takes the active scheme as a basis and makes one of your own from it |
+| Edit your own colour scheme | `theme_eigen_bearbeiten` | Opens the editor |
+
+In the editor you change the colours **while the frontend runs** and see
+the effect immediately on a preview row — no editing files, no restart.
+You can also choose whether the system colours are **blended towards the
+accent** (a calmer overall picture) or whether every system keeps its own
+colour. *Save and activate* stores it.
+
+---
+
+## 8v. MiSTer's own fonts
+
+The frontend reads the `.pf` character sets from **`/media/fat/font`** —
+the same ones MiSTer's OSD uses — and can draw in one of them.
+
+- Entry *Font* (action `schrift`) under *Display & Sound*.
+- Three choices: **own** (the frontend's built-in font), **like the
+  MiSTer OSD** (whichever MiSTer is using) or a specific file.
+- The picker shows a **sample line** (`0O 1lI 8B 5S Gg Qq 123 ABC abc`) —
+  with pixel fonts those exact characters decide whether a font is usable.
+- If the fonts sit in **subfolders**, you navigate into them; "all
+  folders" shows them together.
+- **Read, not modified.** Nothing is written into `/media/fat/font`; the
+  choice is remembered in `/media/fat/frontend/schrift`.
+
+---
+
+## 8w. Shadow masks
+
+MiSTer's own `.png` masks can be laid over the frontend's picture as a
+grid — the same look the cores reproduce on a tube.
+
+- Entry *Shadow mask* (action `masken`) under *Display & Sound*.
+- Read from **`/media/fat/Shadow_Masks`**, plus the **MiSTer presets**
+  from `/media/fat/Presets` as an entry of their own ("MiSTer presets
+  (recommendations)") — exactly the selection MiSTer itself recommends.
+- **Four modes**: `1x`, `1x rotated`, `2x`, `2x rotated`. Rotated is for
+  masks meant for portrait use, `2x` for high resolutions.
+- *Effect: ON/OFF* disables the chosen mask without losing the choice.
+- **Read, not modified.** Nothing is written into `Shadow_Masks` or
+  `Presets`, and `MiSTer.ini` is only **read** for this.
+
+---
+
+## 8x. Your own background images
+
+Your own images behind the list — not to be confused with the system
+backgrounds from section 7, which have been gone since Build 87.
+
+- Put images into **`/media/fat/frontend/backgrounds`** (PNG or JPEG).
+- Entry *Background image* (action `hintergrund`) under *Display &
+  Sound*: pick one, cycle through all of them, or *off*.
+- The image is **dimmed and cropped** so the text on top stays readable;
+  with several present they are cycled.
+- **It costs nothing while drawing.** The background lives in the shadow
+  buffer and is not recomputed while scrolling — measured, not assumed.
+
+---
+
+## 8y. MiSTer's own favourites
+
+Whatever you marked as a favourite in the **MiSTer OSD** sits inside your
+favourites category: **one list, two sources.** Yours first, MiSTer's
+after, duplicates only once.
+
+The entries behave like any other game — box art, description, play
+time, RetroAchievements, all of it works.
+
+**Nothing is written into MiSTer's favourites file.** Remove a favourite
+in the OSD and it is gone here too. Your own favourites (F8 / L2 / R2)
+stay in the frontend's own file.
+
+---
+
+## 8z. Cores: choosing a build and updating
+
+Two entries under *Options*:
+
+| Entry | Action | What it does |
+|---|---|---|
+| Cores: choose the build per system | `cores` | If several builds of a core are on the card, you pick per system which one is launched — with left/right. "automatic" takes the newest. If the chosen file is missing because `update_all` cleared it away, the line says so and the choice falls back to automatic |
+| Run update_all (cores and firmware) | `update_all` | Launches the **existing** script — nothing is reimplemented. The label names the last run ("23 days ago") so that "do I need this now?" can be answered without looking. If `update_all` is not installed, the line says that |
+
+**A network query "are there core updates?" is deliberately absent.**
+That would mean rebuilding the MiSTer downloader's databases, a second
+source of truth for the most important files on the card.
+
+What a run changed is then under *Core updates: what's new* — see
+**section 8h-5**.
+
+### The storage watch
+
+Plug in a USB stick while the frontend runs, or add a network drive, and
+the frontend says so and names the kind (USB / network drive / card).
+**Nothing is re-read on its own** — with large collections that takes
+minutes and stays your decision. Afterwards the entry *Re-read only what
+changed* sits in the system menu until you use it; what it does exactly
+is in **section 8h-7**.
+
+---
+
+## 8q. Autostart on/off
+
+System menu, under *Options*: **Autostart: ON/OFF**. On means the
+frontend starts together with the MiSTer; off means it does not, and you
+start it from the OSD under *Scripts*.
+
+The switch takes effect from the next reboot, and it writes to
+`/media/fat/linux/user-startup.sh`. If that file is not writable, the
+frontend says so and leaves autostart unchanged rather than claiming
+success.
+
+---
+
 ## 8i. Playtime tracker
 
 Fully automatic, without setting anything up: the frontend remembers per
@@ -1139,9 +1489,89 @@ interface.
 
 **RA achievements in real time:** If a RetroAchievements achievement is
 unlocked while playing, the overlay shows it directly - icon, title,
-description, points, faded in at the top right, gone again automatically
-after 8 seconds. No need to wait until returning to the menu. Its own
+description, points, faded in after 7 seconds and gone again
+automatically. No need to wait until returning to the menu. Its own
 admin switch, if not desired.
+
+**Reworked in Build 252**, so that it lands as a moment in the stream
+and not just as a notice:
+
+- **Several achievements in a row** no longer get lost. The second one
+  used to overwrite the first; now they appear one after another, with a
+  note of how many are still waiting ("+3 more").
+- **The points count up**, from 0 to the value.
+- The card **springs back as it enters**, the icon rotates in out of
+  depth, and a sheen sweeps across it once.
+
+Anyone with *"reduce motion"* set in their system automatically gets the
+plain version from before — the overlay asks the setting.
+
+**Its corner is yours (Build 255):** in the backend under *Popup:
+corner*, directly below its switch. Default stays top right, so anyone
+who never touches it notices nothing. Placed on the **left** it enters
+from the left and carries the accent bar on its left edge. It has a
+corner of its own, independent of the info card and of the achievement
+wall; put it deliberately on top of the card and that is your call. One
+exception: in the same corner as the **wall** it steps aside, because the
+wall is tall and the popup in the middle of it would be unreadable.
+
+**The achievement wall (Build 253):** a wall of *all* achievements of the
+running game can be shown as well — the unlocked ones in colour, the rest
+greyed out, with "74 / 98", the points and a progress bar above.
+
+In the backend under *Achievement wall*: **off by default**, because it
+takes up space. Plus a corner of its own (independent of the info card)
+and the number of tiles per row, 4 to 24.
+
+Unlock an achievement and **exactly that one tile flashes** and flips
+from grey to colour. That is the point of it — otherwise the wall would
+just be a table.
+
+Two things worth knowing:
+
+- **The very first time**, the frontend fetches the achievement icons
+  from RetroAchievements in the background — for a game with 98
+  achievements that takes about half a minute, and the wall fills up as
+  it goes. After that the icons stay on the card and it is there at once.
+- The wall only appears **while a game with RetroAchievements is
+  running**. It disappears when you return to the menu.
+
+**It is there right at game start (Build 254):** previously the wall did
+not appear at all for a game where you had **no achievement yet** — and
+then did on the next start. The reason: the RA game number came from the
+list of games you had already interacted with, and a brand-new game is
+not in it. The frontend now finds the number itself in the RA catalogue
+of the system and remembers it permanently in
+`/media/fat/frontend/ra_spielnummern.json`. The first time per system
+that costs one catalogue fetch (a few seconds in the background); after
+that the wall is there immediately — at 0 / 98, fully grey, and you
+unlock it yourself.
+
+**Visible rows, the rest scrolls (Build 254):** with 98 achievements and
+12 tiles per row that is 9 rows — half the screen height on a 1080p
+canvas. So next to the tiles-per-row there is a second slider,
+**Visible rows**:
+
+- at **0 (default)** the wall is shown in full, as before.
+- at **2 to 20** only that window is visible and the wall **scrolls
+  slowly from top to bottom** — pausing briefly at each end so you see
+  the edges too, then back.
+- Unlock an achievement while it scrolls and **the wall drives to that
+  tile and holds there for three seconds**. Otherwise it might flash in
+  a region outside the window — and then you would not see the flash,
+  which is the whole point of the wall.
+
+The setting **survives a change of game** (from Build 255). In Build 254
+it was lost as soon as you switched games in the running frontend, and
+the wall stood at full height again. It was always saved, it just was
+not applied; if you ran into that, the new `stream_overlay.html` is
+enough.
+
+**The game title can be switched off (Build 254):** in the backend,
+*Show game title*. Off means the whole title row disappears, star and
+play time included — useful when the title is already elsewhere in the
+stream or the game itself shows it. Cover, category and system are
+unaffected and keep their own switches.
 
 **Setup:**
 1. Turn on - two equivalent ways:
@@ -1272,6 +1702,66 @@ affected or delayed by it.
   reports "no more data" after 15s and the cancel button kills the
   process) - always use a real SSH session (`ssh root@<MiSTer-IP>`).
 
+## 13b. MiSTer Linux from 2026-09-07 (kernel 6.18)
+
+The MiSTer Linux update of **7 September 2026** raises the kernel from
+5.15.1 to 6.18.x and changed how the framebuffer is accessed. This is
+not specific to this frontend: **Degauss**, the **Zaparoo Frontend** and
+**Console Mode** all had to follow. Dragend runs on both kernels - there
+is nothing to set. This section is here for the case where something
+does go wrong.
+
+The new kernel shows itself with this line in `dmesg`:
+
+```
+fb0: sys_fillrect: framebuffer is not in virtual address space.
+```
+
+**On exit: the first F12 does not arrive.** When leaving, the frontend
+sends an F12 so MiSTer brings its OSD back. On 6.18 that first F12 does
+not get through - without a countermeasure you are left with a black
+screen and a blinking cursor, followed by the login greeting. The
+frontend therefore checks **MiSTer's CPU load** to see whether the OSD
+really is there, and retries up to three times:
+
+```
+Exit: injiziere F12 (1/3)
+Exit: MiSTer bei   1% - das OSD ist NICHT gekommen, fasse nach
+Exit: injiziere F12 (2/3)
+Exit: MiSTer bei 100% - das OSD ist da
+```
+
+**The same on startup, with F9.** After booting, MiSTer sets up the
+framebuffer **several times** (in one device's `dmesg` at seconds 3, 41,
+48 and 51). Knocking once, early, means knocking at a door that does not
+exist yet - the symptom was *"I am stuck in the OSD and can hear the
+frontend's music"*. On **kernel 6 and newer** the frontend therefore
+switches the console mechanics on automatically: the F9 is repeated, a
+guard clears foreign output from the picture, and console blanking stays
+off. On 5.15.1 **nothing changes**.
+
+Both can be forced without waiting for a build:
+
+```bash
+touch /media/fat/frontend/konsole_mechanik_an     # always on
+touch /media/fat/frontend/konsole_mechanik_aus    # always off
+```
+
+Which way was taken is in the log:
+
+```bash
+grep Konsole /tmp/frontend.log
+# Konsole: Mechanik AN (Kernel 6.18.38-MiSTer)
+```
+
+**If the screen stays black anyway**, run the framebuffer probe - it
+takes two minutes, changes nothing and says in plain words what the
+cause is:
+
+```bash
+/media/fat/Scripts/Frontend_FB_Probe.sh
+```
+
 ## 14. Known limitations
 
 - ROM search goes arbitrarily deep, no level limit - but for speed
@@ -1298,6 +1788,159 @@ affected or delayed by it.
   connected keyboard, not via gamepad - in the main menu, "OK"/"Back" on
   a pad always have a real effect (entering a category or the quit
   dialog), so a code could never be entered fully.
+
+---
+
+## 15. Start options
+
+The frontend is normally started without options (autostart, or
+`Scripts -> Frontend`). For diagnosis and demonstration there are four:
+
+| Option | What it does |
+|---|---|
+| `--show` | Says **what is installed, how it is configured and how fast it runs** — on screen and additionally as a file in `/tmp/dragend_show.txt`. The fastest way to report a state without hunting over SSH |
+| `--bench` | A **fixed, repeatable measurement** across all drawing paths; report on screen and in `/tmp/dragend_bench.txt`. It deliberately touches **nothing** on the SD card |
+| `--demo` | Three minutes of **guided tour**: views, filters, trophy room and the settings groups, played through by itself. Any key aborts |
+| `--help` | This list. The check runs **before** everything else: a typo gets you three lines and nothing more — no half start, no lock left behind |
+
+There is also a switch without an option: if the file
+`/media/fat/frontend/profile` exists, the frontend writes `PERF` lines
+into `/tmp/frontend.log`.
+
+```bash
+touch /media/fat/frontend/profile     # on
+# ... use it normally, reproduce the problem ...
+grep PERF /tmp/frontend.log           # look
+rm /media/fat/frontend/profile        # off again
+```
+
+The switch lives in the short-lived cache: the very switch you use to
+*measure* speed used to cost an SD-card access on every frame — even
+when it was off.
+
+---
+
+## 16. The system menu from A to Z
+
+Everything the frontend can do, in one place — in the order of the groups
+as they appear in the menu. The *Action* column names the internal
+identifier; it is useful when reporting something ("with `masken` it
+does …") and it does not change with the language.
+
+### RetroAchievements
+
+| Entry | Action |
+|---|---|
+| RetroAchievements: configured as … (reload) / *not configured* | `ra_status`, `ra_setup` |
+| RetroAchievements: ON/OFF | `ra_toggle` |
+| Popups & display (MiSTer RA settings) | `ra_settings` |
+
+The last line configures the popups **MiSTer itself** shows, so it hangs
+on MiSTer's own file — not on our Web-API credentials. Anyone who has RA
+set up in MiSTer but no key stored with us can still use it (and
+conversely nobody ends up in a menu that cannot do anything).
+
+### Statistics & achievements
+
+| Entry | Action |
+|---|---|
+| Top 10: most played | `top10_time` |
+| Top 10: most launched | `top10_launches` |
+| My achievements | `milestones` |
+| My trophy room | `trophy_room` |
+| Year in review | `year_review` |
+| Game diary | `diary` |
+
+### Display & Sound
+
+| Entry | Action |
+|---|---|
+| Menu video: CRT / HDMI (restart) | `crtmenu` |
+| Colour scheme | `theme` |
+| Save current colours as your own scheme | `theme_eigen_speichern` |
+| Edit your own colour scheme | `theme_eigen_bearbeiten` |
+| Navigation sound effects: ON/OFF | `sfx` |
+| Boot logo: Dragend / neutral | `dragend_logo` |
+| Fast scrolling: ON/OFF | `fast_scroll` |
+| Covers while scrolling: ON/OFF | `cover_sofort` |
+| Cover downscaling: sharp / smooth | `scharf_verkleinern` |
+| Font | `schrift` |
+| Fine details: ON/OFF (scrollbar, accent bars, divider) | `feinheiten` |
+| Background image | `hintergrund` |
+| Shadow mask | `masken` |
+| Game list view | `ansicht` |
+| Main page view | `ansicht_haupt` |
+| Side / top-bottom margin | `overscan_x`, `overscan_y` |
+| Foreign artwork/data: ON/OFF | `fremdquellen` |
+| Menu resolution: full / half / quarter (HDMI only) | `fb_size` |
+| Selection shimmer: ON/OFF | `pulse_effect` |
+| Equalizer bars: ON/OFF | `eq_effect` |
+| Music title marquee: ON/OFF | `track_marquee` |
+| Stream overlay: ON/OFF (restart) | `stream_overlay` |
+| Screen mirror: ON/OFF (restart) | `screen_mirror` |
+| Music: on/off, source, volume | `music`, `music_source`, `volume` |
+
+### Options
+
+| Entry | Action |
+|---|---|
+| CRT test pattern | `crt_test` |
+| Prepare thumbnails (once) | `thumb_prewarm` |
+| Write a thumbnail job for the PC | `thumb_auftrag` |
+| Curated list (database hits only): ON/OFF | `curated` |
+| Hide beta/proto/demo and Japan-only: ON/OFF | `rom_filter` |
+| Folders with a single game: as a game / as a folder | `einzelordner` |
+| Main page: sort and hide categories | `hauptseite` |
+| Zaparoo (NFC tags) | `zaparoo` |
+| Core updates: what's new (N) — only when a report exists | `core_neu` |
+| Cores: choose the build per system | `cores` |
+| Run update_all (cores and firmware) | `update_all` |
+| Re-read only what changed — only after a storage change | `nachscan` |
+| Attract mode (screensaver): ON/OFF, delay | `attract`, `attract_delay` |
+| Draw suspense (Random Pick with sound) | `ziehung_spannung` |
+| Time zone | `timezone` |
+| Wait for NAS/network at startup: ON/OFF | `network_wait` |
+| Autostart: ON/OFF | `autostart` |
+
+### Input & language
+
+| Entry | Action |
+|---|---|
+| Language: German / English | `language` |
+| Configure key mapping | `remap` |
+| Reset to default mapping | `remap_reset` |
+| Swap confirm/cancel: ON/OFF | `swap_ok_back` |
+
+### Info
+
+| Entry | Action |
+|---|---|
+| Help / overview | `help` |
+| Run setup again | `setup_wizard` |
+| Secrets | `secrets` |
+| Contributors | `credits` |
+| Check for updates: ON/OFF | `update_check` |
+
+### Maintenance
+
+| Entry | Action |
+|---|---|
+| Open the MiSTer OSD (settings/buttons) | `osd` |
+| Rescan game list | `rescan` |
+| Clear the thumbnail cache (CRT / HDMI) | `thumb_clear` |
+| JPEG working copies: ON/OFF | `arbeitskopien` |
+| Download box art (needs network) | `boxart_download` |
+| Download game data (needs network) | `gameinfo_download` |
+| Redraw the display | `redraw` |
+| Reboot the MiSTer | `reboot` |
+| Quit the frontend | `quit` |
+
+Some entries appear **only under conditions**, and that is deliberate:
+`fb_size` only on HDMI (in CRT mode the framebuffer is 320×240 anyway),
+`core_neu` only when a report exists, `nachscan` only after a reported
+storage change, and for Zaparoo the label names the state (not installed
+/ service not registered / not running / running) instead of an entry
+that leads nowhere.
 
 ---
 

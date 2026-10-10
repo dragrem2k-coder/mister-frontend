@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v4.7
+MiSTer Custom Frontend - v4.8
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 

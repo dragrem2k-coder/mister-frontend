@@ -3678,3 +3678,103 @@ Zwei Tests dazu:
 `_JS.split("ra_wall_rows")[1][:200]` sah nach **rechts** vom
 Feldnamen - das gesuchte `Math.min(40,` steht aber **links** davon.
 Gepruft wird jetzt die ganze Zeile.
+
+### Nachtrag Build 255 zu test_erfolg_wand.py
+
+**Test 9: das Fenster ueberlebt den Spielwechsel.**
+
+Der gemeldete Fehler war einer aus Build 254: die Fensterhoehe wurde
+gemessen, **solange die Wand noch auf `display:none` stand**. Ein
+Element in einem ausgeblendeten Teilbaum hat kein Kaestchen -
+`getBoundingClientRect()` liefert 0 -, also griff der else-Zweig, die
+Hoehe blieb leer, und die Wand stand in voller Hoehe da, ohne zu
+laufen.
+
+Zu sehen war das beim **Wechsel des Spiels** im laufenden Frontend:
+beim Verlassen wird die Wand geleert (also ausgeblendet), beim
+naechsten Spiel wurde im ausgeblendeten Zustand gemessen. Wer den
+Regler dagegen bei *laufendem* Spiel verstellte, sah ihn wirken - die
+Wand war da schon sichtbar. Fuer den Nutzer sah das aus wie "das
+Backend speichert meine Einstellung nicht", obwohl gespeichert war.
+
+**EINE TEXTSUCHE HAETTE DAS NICHT GEFUNDEN**, denn jede einzelne Zeile
+war richtig - nur ihre Reihenfolge nicht. Geprueft wird deshalb mit
+einem **Stub-DOM unter node**: das echte Overlay-Skript wird geladen,
+die Ereignisse gehen in derselben Folge hinein wie vom Server (`config`
+-> `achievements` -> `null` -> `achievements`), und **eine**
+Browser-Regel ist nachgebildet - die, um die es geht: in einem
+ausgeblendeten Teilbaum sind `getBoundingClientRect().height`,
+`scrollHeight` und `clientHeight` gleich 0. Der Rest (Kachelhoehe 26,
+Zwischenraum 3) ist ein Modell und wird im Test auch so genannt.
+
+**Gegengeprueft, und das ist der Teil, der die Probe erst wertvoll
+macht:** dieselbe Probe laeuft gegen die **ausgelieferte**
+`stream_overlay.html` aus Build 254 und ist dort rot - Fenster leer,
+kein Durchlauf, und zwar schon beim ersten Spiel. Ein Test, der auch
+auf dem kaputten Stand gruen ist, prueft nichts.
+
+**Zwei eigene Fehler beim Schreiben**, beide schon bekannter Sorte:
+
+* Die Reihenfolge-Pruefungen liefen mit `_JS.index(...)` ueber das
+  **ganze** Skript. `.index()` findet einen Namen aber zuerst in seiner
+  **Funktionsdefinition** weiter oben, nicht an der Aufrufstelle in
+  `renderWall()` - die Pruefung sagte also etwas ueber die Textlage und
+  nicht ueber die Zusage. Jetzt wird der Rumpf von `renderWall()`
+  einmal herausgeschnitten (`_RW`) und nur darin verglichen. Dasselbe
+  Muster wie das feste Fenster in `test_mister_integration.py` und die
+  beiden Schnittfehler in Build 254 - der dritte Fall in zwei Builds,
+  deshalb steht der Grund jetzt als Kommentar an `_RW`.
+* Die Probe lief mit **16 ms je Rahmen**. Der Lauf haelt am Rand
+  `WAND_PAUSE` = 2200 ms an, also kam er in 40 Rahmen nie aus der
+  Anfangspause heraus, und die Probe meldete "laeuft nicht", obwohl sie
+  nur zu kurz hingesehen hatte. Jetzt 100 ms je Rahmen - dieselbe
+  Obergrenze, die das Overlay selbst gegen Zeitspruenge setzt.
+
+### Nachtrag Build 255 zu test_erfolg_toast.py
+
+**Test 8: die Einblendung hat eine eigene Ecke.**
+
+Nutzerwunsch. Bis Build 254 stand der Toast **fest** oben rechts, und
+zwar bewusst: so konnte er sich nie mit der Auswahl-Karte
+ueberschneiden, egal welche Ecke dort gewaehlt war. Diese Zusage faellt
+jetzt teilweise - wer beide in dieselbe Ecke legt, darf das. Geprueft
+wird deshalb vor allem das, was dabei leicht kaputtgeht:
+
+* **Die Vorgabe bleibt die alte Ecke.** Sonst springt die Einblendung
+  bei allen, die nie etwas eingestellt haben - eine Aenderung, die
+  niemand bestellt hat.
+* **Links kommt sie auch von links herein**, und der Farbbalken wandert
+  an die linke Kante. Eine Karte, die nach rechts zeigt und von links
+  einfaehrt, sieht man sofort als falsch, auch wenn man nicht sagen
+  kann, woran es liegt.
+* **Gesetzt wird die Ecke ueber `classList.toggle()` und NICHT ueber
+  `className`.** Auf demselben Element sitzt `show`; ein
+  `className`-Zuweisen mitten in einer laufenden Einblendung bricht sie
+  ab - genau dann, wenn man hinsieht. Der Test verbietet die
+  `className`-Form ausdruecklich.
+* **Und zwar schon im Config-Paket**, nicht erst beim ersten Erfolg -
+  sonst stuende die Ecke erst, wenn es zu spaet ist, sie zu pruefen.
+* **Das Ausweichen vor der Wand gilt nur noch bei GLEICHER Paarung**
+  und nur, wenn die Wand ueberhaupt angezeigt wird (`.on`). Pauschal
+  wie bis 254 naehme es dem Nutzer seine Wahl wieder weg, und eine Wand,
+  die aus ist, darf den Toast nicht verschieben. Geprueft wird das ueber
+  alle Ausweich-Regeln im Stylesheet auf einmal (jede muss `.ach-` und
+  `#ra-wall.on.` enthalten) - eine neue Regel ohne beides faellt damit
+  auf, auch wenn niemand den Test anpasst.
+
+### Nachtrag Build 255 zu test_vorauslader_prozess.py
+
+**Eine wacklige Pruefung abgestellt.** `check("als 'gerechnet'
+gezaehlt", pw.gerechnet >= 1)` stand direkt hinter dem Warten auf die
+Cache-Datei - und das ist ein Wettlauf: der Arbeitsprozess schreibt die
+Datei, und **erst danach** erfaehrt der Elternprozess davon und zaehlt
+hoch. Unter Last (volle Suite parallel) war die Datei da und der Zaehler
+noch 0, also wurde der Test rot, obwohl alles richtig lief - allein
+gestartet war er gruen.
+
+Das ist die schlechteste Sorte Befund, weil sie nach einem echten
+Fehler aussieht und keiner ist: man sucht im Vorauslader, und der ist in
+Ordnung. Gewartet wird jetzt auf den Zaehler
+(`warten_bis(lambda: pw.gerechnet >= 1)`) statt sofort zu fragen -
+dieselbe Regel wie seit Build 249: an einer gezaehlten Zahl haengen,
+nicht an einem Zeitpunkt.

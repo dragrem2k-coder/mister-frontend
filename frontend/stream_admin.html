@@ -78,6 +78,16 @@
         <label class="sw"><input type="checkbox" id="show_ra"><span class="sl"></span></label></div>
       <div class="row"><label>Erfolgs-Einblendung</label>
         <label class="sw"><input type="checkbox" id="show_ra_badges"><span class="sl"></span></label></div>
+      <!-- Build 255: eigene Ecke fuer die Einblendung. Steht direkt
+           unter ihrem Schalter - wer sie ausmacht, braucht die Ecke
+           nicht zu suchen, um zu verstehen, dass sie dazugehoert. -->
+      <div class="row"><label>Einblendung: Ecke</label>
+        <select id="ach_corner">
+          <option value="top-right">oben rechts</option>
+          <option value="top-left">oben links</option>
+          <option value="bottom-right">unten rechts</option>
+          <option value="bottom-left">unten links</option>
+        </select></div>
       <div class="row"><label>Favoriten-Stern</label>
         <label class="sw"><input type="checkbox" id="show_favorite"><span class="sl"></span></label></div>
       <!-- Build 253: die Erfolgs-Wand. Vorgabe AUS - sie belegt Platz,
@@ -141,7 +151,8 @@
 <script>
 const F = ["title","accent","bg","transparent","show_boxart","show_system",
            "show_list","show_nowplaying","show_genre","show_playtime",
-           "show_ra","show_ra_badges","show_favorite","corner","scale",
+           "show_ra","show_ra_badges","ach_corner",
+           "show_favorite","corner","scale",
            "show_name",
            "show_ra_wall","ra_wall_corner","ra_wall_cols","ra_wall_rows",
            "obs_control_enabled","obs_host","obs_port","obs_password",
@@ -164,6 +175,7 @@ function fillForm(c){
   $("show_ra").checked = c.show_ra!==false;
   $("show_name").checked = c.show_name!==false;
   $("show_ra_badges").checked = c.show_ra_badges!==false;
+  $("ach_corner").value = c.ach_corner||"top-right";
   // Build 253: Vorgabe AUS - also ===true und nicht !==false.
   $("show_ra_wall").checked = c.show_ra_wall===true;
   $("ra_wall_corner").value = c.ra_wall_corner||"top-right";
@@ -192,6 +204,7 @@ function collect(){
     show_nowplaying:$("show_nowplaying").checked,
     show_genre:$("show_genre").checked, show_playtime:$("show_playtime").checked,
     show_ra:$("show_ra").checked, show_ra_badges:$("show_ra_badges").checked,
+    ach_corner:$("ach_corner").value,
     show_favorite:$("show_favorite").checked,
     corner:$("corner").value,
     show_ra_wall:$("show_ra_wall").checked,

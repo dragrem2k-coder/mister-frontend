@@ -57,6 +57,11 @@ DEFAULT_CONFIG = {
     "show_playtime": True,       # Spielzeit in der Fakten-Zeile
     "show_ra": True,             # RetroAchievements-Fortschritt (falls eingerichtet)
     "show_ra_badges": True,      # Erfolgs-Einblendung mit Icon bei neuem Erfolg
+    # Build 255 (Nutzerwunsch: "erfolgseinblendung sollte auch frei
+    # waehlbar sein wo es angezeigt wird"): die Ecke des Erfolgs-Toasts.
+    # Bis dahin stand er fest oben rechts. Vorgabe bleibt genau das -
+    # wer den Schalter nie anfasst, merkt nichts.
+    "ach_corner": "top-right",   # wie corner, eigene Wahl
     # NEU (Build 253, Nutzerwunsch nach einem Screenshot): die
     # Erfolgs-Wand - alle Erfolge des laufenden Spiels als Raster,
     # freigeschaltete in Farbe, die uebrigen ausgegraut.

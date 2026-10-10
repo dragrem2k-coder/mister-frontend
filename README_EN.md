@@ -1,4 +1,4 @@
-# Dragend — MiSTer Custom Frontend v4.7
+# Dragend — MiSTer Custom Frontend v4.8
 
 **By Dragrem2K**, with contributions from **TheRealSuTefan**, **Dfense**
 and **Dennsen**.
@@ -24,6 +24,31 @@ Plain standard Python — not a single extra dependency on the MiSTer.
   <img src="screenshots/preview_5_trophaeenraum.png" width="280" alt="Trophy room">
 </p>
 <p align="center"><sub>List, grid, gallery — and the trophy room. Every image rendered straight from the program code (<code>tools/screenshots_bauen.py</code>); cover art and save data are placeholders.</sub></p>
+
+---
+
+## New in v4.8
+
+The longest gap between two releases in this project. The essentials in
+six lines — everything else is in the [changelog](CHANGELOG_EN.md):
+
+- **The main page is yours.** You decide the order and the visibility of
+  the categories, and filters may carry a **name of your own**.
+- **Scrolling is noticeably smoother** — a fifth of the bytes onto the
+  screen, areas, frames, text and covers moved to C, peak memory during
+  a rescan down from 55 to 24 MB. Every number measured on the device.
+- **The stream overlay grew up:** the **achievement popup** is a moment
+  rather than a notification, and beside it stands the **achievement
+  wall** — every achievement of the running game as a grid, and the tile
+  you just unlocked flashes.
+- **MiSTer is used, not reimplemented:** its own favourites, its `.pf`
+  fonts, its shadow masks, `update_all` from the menu, the core report
+  "what's new", NFC tags via Zaparoo.
+- **Visible polish:** your own background images, portrait mode (TATE),
+  a theme editor, the draw with sound, `--demo` as a guided tour and
+  `--show` as a report.
+- **The screen watchdog** pulls the picture back when MiSTer rebuilds the
+  framebuffer under kernel 6.18.
 
 ---
 
@@ -63,6 +88,8 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | **Filters** | By genre, year, player count and developer (Tab / Select+L2+R2), remembered per category — under an automatic or **your own name** |
 | **Arrange the home page** | Decide the order and visibility of the categories yourself. “System” always stays, last |
 | **Search** | Type to narrow the list instantly |
+| **List cleanup** | Boot files, beta/proto/hack tags and duplicate regions drop out during the scan — the best region wins. Plus an optional “only games with a database match” |
+| **`gamelist.xml`** | If you curated your ROM folder with Skraper, the file is read: year, genre, players, publisher, description, cover. No setting needed, and your own data always wins |
 | **Favourites & collections** | Your own lists across all systems — **including the favourites you marked in the MiSTer OSD** (one list, two sources; nothing is written to your favourites file) |
 | **Recently played** | Its own category, sorted by last launch |
 | **ZIP archives** | ROMs inside archives are found and launched without ever extracting anything |
@@ -93,6 +120,7 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | **Portrait (TATE)** | Its own layout for rotated screens — the tile size is computed, not hard-coded |
 | **Theme editor** | Change and save colours while running, no hand-edited file |
 | **Themes** | Colour schemes, accent colour, adjustable screen margin |
+| **System art box** | The category menu shows the highlighted system's logo on the right — all 48 are included |
 | **Attract mode** | Screensaver showing cover art, delay from 30 s to 15 min |
 | **Boot animation** | Your own video, or the built-in D-pad animation |
 | **Music** | Your MP3s or Rainwave internet radio (five stations), one shared volume control |
@@ -100,7 +128,7 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | **MiSTer's own fonts** | The `.pf` character sets in `/media/fat/font` are read and used — the same typeface as the OSD |
 | **Shadow masks** | MiSTer's own `.png` masks as a grid over the picture, four strengths |
 | **Background images** | Your own images behind the list, dimmed and cropped; several are cycled |
-| **Fine details** | Accent bar per row, accent rule above the list, initial letter while fast-scrolling — one switch for all of it |
+| **Fine details** | Scrollbar on the right, accent bar per row, hairline to the cover column, accent rule above the list — one switch for all of it, cost measured (+0.04 ms per scroll step) |
 | **CRT test pattern** | For setting geometry and sharpness |
 
 ### Technical & control
@@ -110,7 +138,9 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | **Language** | German / English, switchable at any time |
 | **Custom key mapping** | Keyboard and gamepad freely assignable |
 | **Autostart** | On/off from the menu |
-| **Stream overlay for OBS** | Shows game, cover and music track in a browser source. Plus the **achievement wall**: every RA achievement of the running game as a grid, and the tile you just unlocked flashes |
+| **Stream overlay for OBS** | Shows game, cover and music track in a browser source; every row can be switched off individually, the game title included. The **achievement popup** shows new RA achievements at once — with a queue, counting points and a corner of its own. Plus the **achievement wall**: every achievement of the running game as a grid, the tile you just unlocked flashes, and it can scroll through a fixed window |
+| **Screen mirror** | On CRT? `:8080/mirror` shows the frontend screen in a browser — phone, second monitor, stream. The running game comes from the FPGA and is not part of it |
+| **Clock** | MiSTer has no battery clock; the frontend fetches the time over SNTP, and you set the time zone once in half-hour steps |
 | **Prepare thumbnails** | Pre-compute covers once so nothing loads in later |
 | **PC tool** | The same work on a Windows PC instead of the MiSTer — hours become minutes (`pc_tools/`) |
 | **C module** | `libdragend.so` scales images about 100× faster. Optional; without it Python does the work |
@@ -119,7 +149,8 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | **Scan protection** | Symlink loops and excessive nesting are detected instead of followed forever |
 | **`update_all` from the menu** | Launches the existing script; the label names the last run (“23 days ago”) |
 | **Core browser** | Pick the core build per system, with a warning when `update_all` has deleted the chosen file |
-| **Storage watch** | A USB stick plugged in while running is reported. Nothing is re-read on its own — that takes minutes with 30,000 games |
+| **Core updates: what’s new** | After an `update_all` run: which cores are new, changed or gone. Its log is **not** parsed — what is compared is the state of the core folders before and after, which is correct whatever version of `update_all` you have |
+| **Report on itself** | `--show` says what is installed, how it is configured and how fast it runs — on the TV and as a file in `/tmp` |
 | **Demo mode** | `--demo` shows the frontend off by itself: views, filters, trophy room and the settings groups |
 | **Package check** | A half-applied update ends in an instruction, not a crash |
 

@@ -4,13 +4,49 @@ Kurz gehalten: je Version ein Block mit dem, was man merkt.
 
 Wer die Details will — welche Messung wozu geführt hat, welcher Versuch
 danebenging, was ein Test gefunden hat — findet sie im
-[ausführlichen Archiv](docs/CHANGELOG_ARCHIV.md) (alle Builds seit v1.1).
+[ausführlichen Archiv](docs/CHANGELOG_ARCHIV.md) (jeder Build von v1.1
+bis v4.4) — und ab v4.5 gleich hier, in den Blöcken weiter unten.
 
 English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ---
 
-## Nach v4.7 — noch nicht veröffentlicht
+## v4.8 — die Hauptseite nach deiner Ordnung, RetroAchievements im Stream, und viel gemessene Geschwindigkeit
+
+Der längste Abstand zwischen zwei Veröffentlichungen in diesem Projekt —
+über siebzig Einträge stehen darunter. Was man davon merkt, in sechs
+Zeilen:
+
+- **Die Hauptseite gehört dir.** Reihenfolge und Sichtbarkeit der
+  Kategorien bestimmst du selbst, Filter dürfen einen **eigenen Namen**
+  tragen, und „System" bleibt immer, zuletzt.
+- **Scrollen ist spürbar flüssiger**, und zwar nicht geschätzt: ein
+  Fünftel der Bytes auf den Schirm, Flächen, Rahmen, Text und Cover nach
+  C verlagert, der Spitzenverbrauch beim Neueinlesen von 55 auf 24 MB.
+  Jede Zahl auf dem Gerät nachgemessen.
+- **Das Stream-Overlay ist erwachsen geworden:** die
+  **Erfolgs-Einblendung** ist ein Moment statt einer Benachrichtigung
+  (Warteschlange, zählende Punkte, freie Ecke), und daneben steht die
+  **Erfolgs-Wand** — alle Erfolge des laufenden Spiels als Raster, und
+  die frisch freigeschaltete Kachel blitzt auf.
+- **MiSTer wird mitbenutzt statt nachgebaut:** seine eigenen Favoriten,
+  seine `.pf`-Schriften, seine Lochmasken, `update_all` aus dem Menü,
+  der Core-Bericht „was ist neu", NFC-Tags über Zaparoo.
+- **Sichtbare Politur:** eigene Hintergrundbilder, Hochkant (TATE),
+  Theme-Editor, die Ziehung mit Ton, `--demo` als Vorführung und
+  `--show` als Bericht auf dem Fernseher.
+- **Und der Bildwächter** holt das Bild zurück, wenn MiSTer unter Kernel
+  6.18 den Bildspeicher neu einrichtet.
+
+Zwei Zeilen Selbstkritik, weil sie dazugehören: mein eigenes
+**Messwerkzeug** hat in dieser Reihe zweimal gelogen (Build 193 und
+wieder 251) und mich dabei an die falsche Stelle geschickt; eine
+Scroll-Diagnose hat vier Vermutungen gekostet, bis die Daten zeigten,
+dass es von Anfang an das Cover war. Und mehrere dieser Builds haben
+Fehler behoben, die ich zuvor selbst eingebaut hatte — fast immer, weil
+ich auf dem Entwicklungsrechner gemessen habe statt auf dem MiSTer.
+Beides steht unten ausführlich: ein Werkzeug, das plausibel aussieht und
+nicht stimmt, ist schlimmer als keines.
 
 **MiSTers eigene Favoriten, `update_all` aus dem Menü, und ein Blick auf
 den Speicher.**
@@ -1048,6 +1084,48 @@ messbar, an denen bisher geraten werden musste.
   jetzt einen Test.
 - Auch die Gewichtung war erst falsch: global gezählt stand `sagen` aus einem
   Diagnoseskript mit 96 oben. Gezählt wird jetzt je Datei.
+
+**Die Erfolgs-Einblendung darf jetzt hin, wo du sie willst.**
+
+- Sie stand fest **oben rechts**. Jetzt steht im Backend direkt unter
+  ihrem Schalter eine eigene **Ecke** — vier zur Wahl, Vorgabe bleibt
+  oben rechts, wer den Schalter nie anfasst merkt nichts.
+- Legst du sie **links** hin, kommt sie auch von links herein und trägt
+  den Farbbalken an der linken Kante. Eine Karte, die nach rechts
+  zeigt und von links kommt, sieht man sofort als falsch, auch wenn man
+  nicht sagen kann, woran es liegt.
+- Sie hat eine **eigene** Ecke, unabhängig von Auswahl-Karte und
+  Erfolgs-Wand. Wer sie bewusst auf die Karte legt, darf das — **eine**
+  Ausnahme bleibt: liegt sie in derselben Ecke wie die *Wand*, weicht
+  sie ihr aus. Die Wand ist hoch, und die Einblendung mitten darauf
+  wäre unlesbar. Bis Build 254 galt dieses Ausweichen pauschal; jetzt
+  nur noch bei gleicher Paarung, sonst nähme eine Regel dir die Wahl
+  wieder weg.
+
+**Die sichtbaren Zeilen der Erfolgs-Wand gehen beim Spielwechsel nicht
+mehr verloren.**
+
+- **Was es für dich hieß:** du stellst die Wand ein — Größe, Kacheln je
+  Zeile, sichtbare Zeilen —, wechselst im laufenden Frontend das Spiel,
+  und die Begrenzung ist weg: die Wand steht wieder in voller Höhe da und
+  läuft nicht. Es sah aus, als würde das Backend nichts speichern.
+  **Gespeichert war es immer** — es wurde nur nicht angewendet.
+- **Die Ursache ist eine Reihenfolge, nicht eine Einstellung.** Die Höhe
+  des Fensters wird aus der tatsächlichen Höhe einer Kachel gerechnet.
+  Gemessen wurde sie aber, **während die Wand noch ausgeblendet war** —
+  und ein ausgeblendetes Element hat keine Größe, da kommt 0 zurück. Also
+  griff der Zweig „keine Begrenzung". Beim Verlassen eines Spiels wird
+  die Wand geleert, also ausgeblendet; beim nächsten Spiel wurde im
+  ausgeblendeten Zustand gemessen. Verstellte man den Regler dagegen bei
+  *laufendem* Spiel, wirkte er sofort — die Wand war ja schon sichtbar.
+  Genau diese Mischung ließ es nach einem Speicherfehler aussehen.
+- **Jede einzelne Zeile war richtig, nur ihre Reihenfolge nicht** — und
+  eine Textsuche hätte das nie gefunden. Der Test lädt deshalb das echte
+  Overlay-Skript und schickt die Ereignisse in derselben Folge hinein wie
+  der Server, mit **einer** nachgebildeten Browser-Regel: ausgeblendet
+  heißt Größe 0. Gegengeprüft an der **ausgelieferten Datei aus Build
+  254**, auf der er rot ist — ein Test, der auch auf dem kaputten Stand
+  grün wäre, prüft nichts.
 
 **Die Erfolgs-Wand ist jetzt gleich beim Spielstart da — und läuft auf
 Wunsch durch.**

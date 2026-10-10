@@ -4,14 +4,47 @@ Kept short: one block per release, covering what you actually notice.
 
 If you want the details — which measurement led where, which attempt
 failed, what a test caught — they are in the
-[full archive](docs/CHANGELOG_ARCHIV.md) (every build since v1.1, in
-German).
+[full archive](docs/CHANGELOG_ARCHIV.md) (every build from v1.1 to v4.4,
+in German) — and from v4.5 on, right here in the blocks below.
 
 Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ---
 
-## After v4.7 — not yet released
+## v4.8 — the main page in your order, RetroAchievements in the stream, and a lot of measured speed
+
+The longest gap between two releases in this project — over seventy
+entries sit below this one. What you actually notice, in six lines:
+
+- **The main page is yours.** You decide the order and the visibility of
+  the categories, filters may carry a **name of your own**, and "System"
+  always stays, last.
+- **Scrolling is noticeably smoother**, and not by guesswork: a fifth of
+  the bytes onto the screen, areas, frames, text and covers moved to C,
+  peak memory during a rescan down from 55 to 24 MB. Every number
+  measured on the device.
+- **The stream overlay grew up:** the **achievement popup** is a moment
+  rather than a notification (queue, counting points, a corner of its
+  own), and beside it stands the **achievement wall** — every
+  achievement of the running game as a grid, and the tile you just
+  unlocked flashes.
+- **MiSTer is used, not reimplemented:** its own favourites, its `.pf`
+  fonts, its shadow masks, `update_all` from the menu, the core report
+  "what's new", NFC tags via Zaparoo.
+- **Visible polish:** your own background images, portrait mode (TATE),
+  a theme editor, the draw with sound, `--demo` as a guided tour and
+  `--show` as a report on the TV.
+- **And the screen watchdog** pulls the picture back when MiSTer
+  rebuilds the framebuffer under kernel 6.18.
+
+Two lines of self-criticism, because they belong here: my own
+**measuring tool** lied twice in this series (Build 193 and again 251)
+and sent me to the wrong place each time; one scrolling diagnosis cost
+four theories before the data showed it had been the cover all along.
+And several of these builds fixed bugs I had introduced myself — almost
+always because I measured on the development machine instead of the
+MiSTer. Both are spelled out below: a tool that looks plausible and is
+wrong is worse than none.
 
 **MiSTer's own favourites, `update_all` from the menu, and an eye on
 storage.**
@@ -887,6 +920,46 @@ guessing was the only option.
 - The weighting was wrong at first too: counted globally, a helper called
   `sagen` from a diagnostic script sat on top with 96. It is counted per file
   now.
+
+**The achievement popup can now go wherever you want it.**
+
+- It was fixed to the **top right**. There is now a **corner** of its
+  own in the backend, right below its switch — four to choose from,
+  default stays top right, so anyone who never touches it notices
+  nothing.
+- Put it on the **left** and it enters from the left and carries the
+  accent bar on its left edge. A card pointing right while entering
+  from the left reads as wrong immediately, even if you cannot say why.
+- It has its **own** corner, independent of the info card and the
+  achievement wall. Put it deliberately on top of the card and that is
+  your call — **one** exception stays: in the same corner as the *wall*
+  it steps aside. The wall is tall, and the popup in the middle of it
+  would be unreadable. Until Build 254 that dodge applied across the
+  board; now only for the matching pair, otherwise a rule would take
+  your choice away again.
+
+**The achievement wall's visible rows no longer get lost when you switch
+games.**
+
+- **What it meant for you:** you set the wall up — size, tiles per row,
+  visible rows — switch games in the running frontend, and the limit is
+  gone: the wall stands at full height again and does not scroll. It
+  looked as if the backend saved nothing. **It always saved** — the
+  setting just was not applied.
+- **The cause is an order, not a setting.** The window height is computed
+  from the actual height of one tile. But it was measured **while the
+  wall was still hidden** — and a hidden element has no box, so 0 comes
+  back. So the "no limit" branch took over. Leaving a game clears the
+  wall, i.e. hides it; on the next game the measurement happened while
+  hidden. Move the slider during a *running* game and it worked at once —
+  the wall was already visible. That mix is exactly what made it look
+  like a saving bug.
+- **Every single line was right, only their order was not** — and a text
+  search would never have caught it. So the test loads the real overlay
+  script and feeds it the events in the same order the server does, with
+  **one** browser rule modelled: hidden means size 0. Counter-checked
+  against the **shipped file from Build 254**, where it is red — a test
+  that would be green on the broken version proves nothing.
 
 **The achievement wall now shows up right at game start — and scrolls if
 you want it to.**

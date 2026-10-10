@@ -142,6 +142,7 @@ Nachlesen (`CHANGELOG.md`).
 3. Installation Schritt für Schritt
 4. Bedienung
 5. Hintergrundmusik einrichten
+   - 5b. Internetradio (Rainwave)
 6. Boxart und Spielinfos laden
    - 6b. Automatische Listen-Bereinigung + kuratierte Liste
 7. System-Hintergrundbilder — mit Build 87 entfernt
@@ -156,6 +157,19 @@ Nachlesen (`CHANGELOG.md`).
    - 8g. Themes/Farbschemata
    - 8h. Navigations-Soundeffekte
    - 8h-2. Zufalls-Zock: die Ziehung mit Ton
+   - 8h-3. Die Hauptseite selbst einrichten
+   - 8h-4. Gemerkte Filter mit eigenem Namen
+   - 8h-5. Core-Updates: was ist neu
+   - 8h-6. NFC-Tags über Zaparoo
+   - 8h-7. Nur das Geänderte nachlesen
+   - 8h-8. Metadaten aus einer `gamelist.xml`
+   - 8b-2. Hochkant (TATE)
+   - 8g-2. Eigenes Farbschema: speichern und bearbeiten
+   - 8v. MiSTers eigene Schriften
+   - 8w. Lochmasken (Shadow Masks)
+   - 8x. Eigene Hintergrundbilder
+   - 8y. MiSTers eigene Favoriten
+   - 8z. Cores: Fassung wählen und aktualisieren
    - 8i. Spielzeit-Tracker
    - 8j. Top-10-Listen
    - 8k. RetroAchievements-Fortschritt
@@ -174,7 +188,10 @@ Nachlesen (`CHANGELOG.md`).
 11. Boot-Animation (Startvideo)
 12. Stream-Overlay für OBS (optional)
 13. Fehlerbehebung
+   - 13b. MiSTer-Linux ab 07.09.2026 (Kernel 6.18)
 14. Bekannte Grenzen
+15. Startoptionen (`--show`, `--bench`, `--demo`, `--help`)
+16. Das Systemmenü von A bis Z — alles an einer Stelle
 
 ---
 
@@ -182,7 +199,7 @@ Nachlesen (`CHANGELOG.md`).
 
 | Datei                          | Zielort auf dem MiSTer          | Zweck |
 |----------------------------------|----------------------------------|-------|
-| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v4.4) |
+| frontend/frontend.py            | /media/fat/frontend/             | Das Frontend selbst (v4.8) |
 | frontend/frontend_boot.sh       | /media/fat/frontend/             | Autostart-Wrapper (bei jedem Boot) |
 | frontend/mister_boxart.py       | /media/fat/frontend/             | Boxart-Downloader (läuft auf dem MiSTer) |
 | frontend/mister_gameinfo.py     | /media/fat/frontend/             | Spielinfo-Downloader (läuft auf dem MiSTer) |
@@ -463,6 +480,34 @@ Menü wechselt, übernimmt das Frontend automatisch wieder.
 
 Ohne MP3s im Ordner oder ohne `mpg123` bleibt das Frontend einfach
 stumm - keine Fehlermeldung, läuft nur ohne Musik weiter.
+
+## 5b. Internetradio (Rainwave)
+
+Neben eigenen MP3s kann auch ein **Internetradio** als Hintergrundmusik
+laufen: **Rainwave** (rainwave.cc), ein kostenloser Sender für
+Videospielmusik - mit fünf Kanälen (*Game*, *OCReMix*, *Covers*,
+*Chiptune*, *All*). Es läuft über dasselbe `mpg123` wie die
+MP3-Wiedergabe, braucht also **keine zusätzliche Software** - nur eine
+Internetverbindung.
+
+**Umschalten:** im Systemmenü unter **Anzeige & Sound -> „Musikquelle"**.
+Der Eintrag schaltet der Reihe nach weiter: MP3 (eigene Dateien) ->
+Radio: Game -> OCReMix -> Covers -> Chiptune -> All -> zurück zu MP3.
+Die Wahl bleibt über Neustarts erhalten.
+
+Der An/Aus-Schalter („Music: On/Off") bleibt davon unberührt - er regelt
+nur, *ob* Musik läuft; die Quelle wählst du getrennt.
+
+**Laufender Titel:** im Radiobetrieb zeigt die Laufschrift den
+**wirklich gerade gespielten Titel** des Senders (Interpret - Titel)
+statt eines Dateinamens - dieselbe Anzeige wie bei MP3s, oben neben dem
+„MiSTer"-Logo und im Boxart-Block. Für Streamer praktisch: der Titel
+geht **automatisch** auch ins OBS-Overlay (Abschnitt 12), ohne dass du
+dort etwas einrichten musst.
+
+Ohne Internetverbindung, oder wenn der Stream kurz abreißt, versucht das
+Frontend von allein, sich wieder zu verbinden. Rainwave ist ein
+kostenloser Dienst - wir hören hier nur passiv zu (anonym, ohne Konto).
 
 ## 6. Boxart und Spielinfos laden
 
@@ -1167,6 +1212,149 @@ gamelist von Skraper hat keine; eine Datei mit verschachtelten Entities
 kann dagegen beim Einlesen auf ein Gigabyte anwachsen, und auf einem
 Gerät mit 1 GB RAM wäre das Frontend dann weg.
 
+## 8b-2. Hochkant (TATE) — ohne Schalter
+
+Dreht man den Bildschirm (TATE, 90 Grad), ist die **Breite** plötzlich
+die knappe Seite. Das Frontend erkennt das an den Maßen des
+Bildspeichers und rechnet dann anders — einen Schalter dafür gibt es
+nicht, weil es keine Entscheidung gibt, die du treffen müsstest.
+
+Was sich ändert:
+
+- **Die Textbreite wird an der Breite gemessen, nicht an der Höhe.**
+  Ohne das blieben bei 1080×1920 nur 23 Zeichen je Zeile übrig — ein
+  Spieltitel wäre auf ein Drittel abgeschnitten. Mit der Regel sind es
+  38, und das ist lesbar.
+- **Die Kachelgröße im Raster wird gerechnet, nicht gesetzt.** Hochkant
+  stehen die Kacheln 1×2 statt nebeneinander.
+
+Geprüft bei 1080×1920, 720×1280, 480×640 und 240×320. Dass **quer**
+dabei unverändert bleibt, ist keine Behauptung: `regression_test.py`
+vergleicht 18 Kombinationen bitgenau, `diag_lightpath.py` 34 weitere.
+
+---
+
+## 8g-2. Eigenes Farbschema: speichern und bearbeiten
+
+Unter *Anzeige & Sound* stehen direkt unter der Farbschema-Zeile zwei
+weitere Punkte:
+
+| Menüpunkt | Aktion | Was er tut |
+|---|---|---|
+| Aktuelle Farben als eigenes Schema speichern | `theme_eigen_speichern` | Nimmt das gerade aktive Schema als Grundlage und legt daraus ein eigenes an |
+| Eigenes Farbschema bearbeiten | `theme_eigen_bearbeiten` | Öffnet den Editor |
+
+Im Editor änderst du die Farben **im laufenden Betrieb** und siehst die
+Wirkung sofort an einer Vorschauzeile — keine Datei von Hand, kein
+Neustart. Zusätzlich lässt sich dort einstellen, ob die Systemfarben
+**zum Akzent hin abgemischt** werden (ein ruhigeres Gesamtbild) oder ob
+jedes System seine eigene Farbe behält. Gespeichert wird mit *Speichern
+und aktivieren*.
+
+---
+
+## 8v. MiSTers eigene Schriften
+
+Das Frontend liest die `.pf`-Zeichensätze aus **`/media/fat/font`** —
+dieselben, die MiSTers OSD benutzt — und kann in einer davon zeichnen.
+
+- Menüpunkt *Schrift* (Aktion `schrift`) unter *Anzeige & Sound*.
+- Drei Möglichkeiten: **eigene** (die eingebaute Schrift des Frontends),
+  **wie im MiSTer-OSD** (nimmt die, die MiSTer gerade benutzt) oder eine
+  bestimmte Datei.
+- Der Auswahl-Bildschirm zeigt eine **Probezeile**
+  (`0O 1lI 8B 5S Gg Qq 123 ABC abc`) — gerade bei Pixelschriften
+  entscheidet sich an diesen Zeichen, ob eine Schrift taugt.
+- Liegen die Schriften in **Unterordnern**, wird dorthin navigiert; „alle
+  Ordner" zeigt sie zusammen.
+- **Gelesen, nicht verändert.** In `/media/fat/font` wird nichts
+  geschrieben; gemerkt wird die Auswahl in
+  `/media/fat/frontend/schrift`.
+
+---
+
+## 8w. Lochmasken (Shadow Masks)
+
+MiSTers eigene `.png`-Masken lassen sich als Gitter über das Bild des
+Frontends legen — derselbe Look, den die Cores auf einer Röhre
+nachbilden.
+
+- Menüpunkt *Lochmaske* (Aktion `masken`) unter *Anzeige & Sound*.
+- Gelesen wird aus **`/media/fat/Shadow_Masks`**, dazu die
+  **MiSTer-Presets** aus `/media/fat/Presets` als eigener Eintrag
+  („MiSTer-Presets (Empfehlungen)") — also genau die Auswahl, die MiSTer
+  selbst empfiehlt.
+- **Vier Modi**: `1x`, `1x gedreht`, `2x`, `2x gedreht`. Gedreht ist für
+  hochkant gedachte Masken, `2x` für hohe Auflösungen.
+- *Effekt: AN/AUS* schaltet die gewählte Maske aus, ohne die Auswahl zu
+  verlieren.
+- **Gelesen, nicht verändert.** Weder in `Shadow_Masks` noch in
+  `Presets` wird geschrieben, und `MiSTer.ini` wird dafür nur
+  **gelesen**.
+
+---
+
+## 8x. Eigene Hintergrundbilder
+
+Eigene Bilder hinter der Liste — nicht zu verwechseln mit den
+System-Hintergründen aus Abschnitt 7, die es seit Build 87 nicht mehr
+gibt.
+
+- Bilder ablegen in **`/media/fat/frontend/backgrounds`** (PNG oder
+  JPEG).
+- Menüpunkt *Hintergrundbild* (Aktion `hintergrund`) unter *Anzeige &
+  Sound*: eines auswählen, alle durchschalten oder *aus*.
+- Das Bild wird **abgedunkelt und zugeschnitten**, damit die Schrift
+  darauf lesbar bleibt; liegen mehrere vor, werden sie durchgeschaltet.
+- **Es kostet beim Zeichnen nichts.** Der Hintergrund steht im
+  Schattenpuffer und wird beim Scrollen nicht neu gerechnet — gemessen,
+  nicht geschätzt.
+
+---
+
+## 8y. MiSTers eigene Favoriten
+
+Was du im **MiSTer-OSD** als Favorit markiert hast, steht mit in deiner
+Favoriten-Kategorie: **eine Liste, zwei Quellen.** Deine eigenen zuerst,
+MiSTers dahinter, Doppelte nur einmal.
+
+Die Einträge verhalten sich wie jedes andere Spiel — Boxart,
+Beschreibung, Spielzeit, RetroAchievements, alles greift.
+
+**In MiSTers Favoritendatei wird nichts geschrieben.** Entfernst du
+einen Favoriten im OSD, ist er auch hier weg. Deine eigenen Favoriten
+(F8 / L2 / R2) liegen weiter in der Datei des Frontends.
+
+---
+
+## 8z. Cores: Fassung wählen und aktualisieren
+
+Zwei Punkte unter *Optionen*:
+
+| Menüpunkt | Aktion | Was er tut |
+|---|---|---|
+| Cores: Fassung je System wählen | `cores` | Liegen mehrere Fassungen eines Cores auf der Karte, wählst du hier je System die, die gestartet wird — mit links/rechts. „automatisch" nimmt die neueste. Fehlt die gewählte Datei, weil `update_all` sie weggeräumt hat, sagt die Zeile das und es wird automatisch gewählt |
+| update_all ausführen (Cores und Firmware) | `update_all` | Startet das **vorhandene** Skript — nachgebaut wird nichts. Die Beschriftung nennt den letzten Lauf („vor 23 Tagen"), damit die Frage „brauche ich das jetzt?" ohne Nachsehen zu beantworten ist. Ist `update_all` nicht installiert, sagt die Zeile das |
+
+**Eine Netzabfrage „gibt es Core-Updates?" gibt es bewusst nicht.**
+Dafür müsste das Frontend die Datenbanken des MiSTer-Downloaders
+nachbauen, und das wäre eine zweite Quelle der Wahrheit für die
+wichtigsten Dateien auf der Karte.
+
+Was ein Lauf geändert hat, steht danach unter *Core-Updates: was ist
+neu* — siehe **Abschnitt 8h-5**.
+
+### Der Speicher-Wächter
+
+Steckst du im Betrieb einen USB-Stick ein oder kommt ein Netzlaufwerk
+dazu, sagt das Frontend Bescheid und nennt die Art (USB / Netzlaufwerk /
+Karte). **Neu eingelesen wird nicht von selbst** — das dauert bei großen
+Sammlungen Minuten und bleibt deine Entscheidung. Danach steht der Punkt
+*Nur das Geänderte nachlesen* im Systemmenü, bis du ihn benutzt; was er
+genau tut, steht in **Abschnitt 8h-7**.
+
+---
+
 ## 8i. Spielzeit-Tracker
 
 Ganz automatisch, ohne etwas einzustellen: das Frontend merkt sich pro
@@ -1605,6 +1793,21 @@ ankommt und nicht nur als Hinweis:
 - Die Karte **federt beim Einblenden zurück**, das Icon dreht sich aus
   der Tiefe herein, und ein Lichtstreifen läuft einmal quer darüber.
 
+**Die Ecke ist frei wählbar (Build 255):** im Backend unter
+*Einblendung: Ecke*, direkt unter ihrem Schalter. Vorher stand die
+Einblendung fest oben rechts.
+
+- **Vorgabe bleibt oben rechts** — wer den Schalter nie anfasst, merkt
+  nichts.
+- Legst du sie **links** hin, kommt sie auch von links herein und trägt
+  den Farbbalken an der linken Kante.
+- Sie hat eine **eigene** Ecke, unabhängig von der Auswahl-Karte und
+  von der Erfolgs-Wand. Legst du sie bewusst in dieselbe Ecke wie die
+  Karte, dürfen sie sich überschneiden — das ist dann deine
+  Entscheidung. **Eine Ausnahme:** liegt sie in derselben Ecke wie die
+  **Erfolgs-Wand**, weicht sie dieser nach oben bzw. unten aus. Die
+  Wand ist hoch, und die Einblendung mitten darauf wäre unlesbar.
+
 Wer in seinem System *„weniger Bewegung"* eingestellt hat, bekommt
 automatisch die schlichte Fassung von vorher — das Overlay fragt die
 Einstellung ab.
@@ -1664,6 +1867,12 @@ Zeilen**:
   sie womöglich gerade in einem Bereich auf, der nicht im Ausschnitt
   liegt — und dann sähe man das Aufblitzen gar nicht, worum es bei der
   Wand ja geht.
+
+Die Einstellung **bleibt beim Spielwechsel erhalten** (ab Build 255).
+In Build 254 ging sie verloren, sobald du im laufenden Frontend das
+Spiel gewechselt hast — die Wand stand dann wieder in voller Höhe da.
+Gespeichert war sie immer, sie wurde nur nicht angewendet; wenn dir das
+begegnet ist, genügt die neue `stream_overlay.html`.
 
 **Der Spieltitel lässt sich abschalten (Build 254):** im Backend
 *Spieltitel anzeigen*. Aus heißt: die ganze Titelzeile verschwindet,
@@ -1827,6 +2036,66 @@ Rückkehr zum Menü selbst wird davon nie beeinträchtigt oder verzögert.
   killt den Prozess) - immer eine echte SSH-Sitzung nutzen
   (`ssh root@<MiSTer-IP>`).
 
+## 13b. MiSTer-Linux ab 07.09.2026 (Kernel 6.18)
+
+Das MiSTer-Linux-Update vom **7. September 2026** hebt den Kernel von
+5.15.1 auf 6.18.x und hat dabei den Zugriff auf den Bildspeicher
+geaendert. Das betrifft nicht nur dieses Frontend: **Degauss**, das
+**Zaparoo Frontend** und **Console Mode** mussten alle nachziehen.
+Dragend laeuft auf beiden Kerneln - du musst nichts einstellen. Was
+hier steht, ist zum Nachsehen, falls doch etwas klemmt.
+
+Erkennbar ist der neue Kernel an dieser Zeile in `dmesg`:
+
+```
+fb0: sys_fillrect: framebuffer is not in virtual address space.
+```
+
+**Beim Beenden: das erste F12 kommt nicht an.** Das Frontend schickt
+beim Verlassen ein F12, damit MiSTer sein OSD zurueckholt. Auf 6.18
+kommt dieses erste F12 nicht durch - ohne Gegenmassnahme bleibt ein
+schwarzes Bild mit blinkendem Cursor stehen, kurz darauf der
+Login-Gruss. Das Frontend prueft deshalb **an MiSTers CPU-Last**, ob
+das OSD wirklich da ist, und fasst bis zu dreimal nach:
+
+```
+Exit: injiziere F12 (1/3)
+Exit: MiSTer bei   1% - das OSD ist NICHT gekommen, fasse nach
+Exit: injiziere F12 (2/3)
+Exit: MiSTer bei 100% - das OSD ist da
+```
+
+**Beim Starten dasselbe mit F9.** MiSTer richtet den Bildspeicher nach
+dem Start **mehrfach** neu ein (im `dmesg` eines Geraets bei Sekunde 3,
+41, 48 und 51). Wer vorher einmal klopft, klopft an eine Tuer, die es
+noch nicht gibt - das Symptom war *"ich haenge im OSD und hoere die
+Musik vom Frontend"*. Auf **Kernel 6 und neuer** schaltet das Frontend
+darum automatisch die Konsolen-Mechanik ein: das F9 wird wiederholt,
+eine Wache raeumt fremde Ausgabe im Bild weg, und die Bildschirmschonung
+der Textkonsole bleibt aus. Auf 5.15.1 aendert sich **nichts**.
+
+Erzwingen laesst sich beides, ohne auf einen Build zu warten:
+
+```bash
+touch /media/fat/frontend/konsole_mechanik_an     # immer an
+touch /media/fat/frontend/konsole_mechanik_aus    # immer aus
+```
+
+Welcher Weg genommen wurde, steht im Log:
+
+```bash
+grep Konsole /tmp/frontend.log
+# Konsole: Mechanik AN (Kernel 6.18.38-MiSTer)
+```
+
+**Wenn das Bild trotzdem schwarz bleibt**, hilft die Bildspeicher-
+Diagnose - sie braucht zwei Minuten, aendert nichts und sagt am Ende in
+Klartext, woran es liegt:
+
+```bash
+/media/fat/Scripts/Frontend_FB_Probe.sh
+```
+
 ## 14. Bekannte Grenzen
 
 - ROM-Suche geht beliebig tief, keine Ebenen-Begrenzung - die
@@ -1858,6 +2127,160 @@ Rückkehr zum Menü selbst wird davon nie beeinträchtigt oder verzögert.
   haben "OK"/"Zurück" auf einem Pad immer eine echte Wirkung
   (Kategorie betreten bzw. Beenden-Dialog), ein Code könnte dadurch
   nie vollständig eingegeben werden.
+
+---
+
+## 15. Startoptionen
+
+Das Frontend wird normalerweise ohne Optionen gestartet (Autostart oder
+`Scripts -> Frontend`). Für Diagnose und Vorführung gibt es vier:
+
+| Option | Was sie tut |
+|---|---|
+| `--show` | Sagt, **was drin ist, wie es eingestellt ist und wie schnell es läuft** — auf dem Bildschirm und zusätzlich als Datei in `/tmp/dragend_show.txt`. Der schnellste Weg, einen Zustand zu melden, ohne per SSH zu suchen |
+| `--bench` | Eine **feste, wiederholbare Messung** über alle Zeichenwege; Bericht auf dem Bildschirm und in `/tmp/dragend_bench.txt`. Fasst bewusst **nichts** auf der SD-Karte an |
+| `--demo` | Drei Minuten **Vorführung**: Ansichten, Filter, Trophäenraum und die Einstellungsgruppen, von allein durchgespielt. Jede Taste bricht ab |
+| `--help` | Diese Liste. Die Prüfung steht **vor** allem anderen: wer sich vertippt, bekommt drei Zeilen und sonst nichts — kein halber Start, keine Sperre, die liegenbleibt |
+
+Zum Messen gibt es außerdem einen Schalter ohne Option: liegt die Datei
+`/media/fat/frontend/profile`, schreibt das Frontend `PERF`-Zeilen in
+`/tmp/frontend.log`.
+
+```bash
+touch /media/fat/frontend/profile     # an
+# ... normal benutzen, das Problem nachstellen ...
+grep PERF /tmp/frontend.log           # ansehen
+rm /media/fat/frontend/profile        # wieder aus
+```
+
+Der Schalter liegt im kurzlebigen Zwischenspeicher: ausgerechnet der
+Schalter, mit dem man die Geschwindigkeit *misst*, kostete früher bei
+jedem Bild einen Zugriff auf die SD-Karte — auch dann, wenn er aus war.
+
+---
+
+## 16. Das Systemmenü von A bis Z
+
+Alles, was das Frontend kann, an einer Stelle — in der Reihenfolge der
+Gruppen, wie sie im Menü stehen. Die Spalte *Aktion* nennt den internen
+Namen; der ist nützlich, wenn du etwas melden willst („bei `masken`
+passiert …"), und er ändert sich nicht mit der Sprache.
+
+### RetroAchievements
+
+| Menüpunkt | Aktion |
+|---|---|
+| RetroAchievements: eingerichtet als … (neu laden) bzw. *nicht eingerichtet* | `ra_status`, `ra_setup` |
+| RetroAchievements: AN/AUS | `ra_toggle` |
+| Popups & Anzeige (MiSTer-RA-Einstellungen) | `ra_settings` |
+
+Die letzte Zeile stellt die Popups ein, die **MiSTer selbst** anzeigt,
+und hängt deshalb an MiSTers eigener Datei — nicht an unseren
+Web-API-Zugangsdaten. Wer RA in MiSTer eingerichtet hat, aber bei uns
+keinen Schlüssel hinterlegt hat, kann sie trotzdem benutzen (und
+umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
+
+### Statistiken & Erfolge
+
+| Menüpunkt | Aktion |
+|---|---|
+| Top 10: meistgespielt | `top10_time` |
+| Top 10: meistgestartet | `top10_launches` |
+| Meine Erfolge | `milestones` |
+| Mein Trophäenraum | `trophy_room` |
+| Jahresrückblick | `year_review` |
+| Spieltagebuch | `diary` |
+
+### Anzeige & Sound
+
+| Menüpunkt | Aktion |
+|---|---|
+| Menü-Video: CRT / HDMI (Neustart) | `crtmenu` |
+| Farbschema | `theme` |
+| Aktuelle Farben als eigenes Schema speichern | `theme_eigen_speichern` |
+| Eigenes Farbschema bearbeiten | `theme_eigen_bearbeiten` |
+| Navigations-Soundeffekte: AN/AUS | `sfx` |
+| Boot-Logo: Dragend / neutral | `dragend_logo` |
+| Schnelles Scrollen: AN/AUS | `fast_scroll` |
+| Cover beim Scrollen: AN/AUS | `cover_sofort` |
+| Cover verkleinern: scharf / weich | `scharf_verkleinern` |
+| Schrift | `schrift` |
+| Feinheiten: AN/AUS (Scrollbalken, Akzentbalken, Trennlinie) | `feinheiten` |
+| Hintergrundbild | `hintergrund` |
+| Lochmaske | `masken` |
+| Ansicht Spieleliste | `ansicht` |
+| Ansicht Hauptseite | `ansicht_haupt` |
+| Rand seitlich / oben-unten | `overscan_x`, `overscan_y` |
+| Fremdes Artwork/Daten: AN/AUS | `fremdquellen` |
+| Menü-Auflösung: voll / halb / viertel (nur HDMI) | `fb_size` |
+| Markierungs-Schimmer: AN/AUS | `pulse_effect` |
+| Equalizer-Balken: AN/AUS | `eq_effect` |
+| Musik-Titel-Laufschrift: AN/AUS | `track_marquee` |
+| Stream-Overlay: AN/AUS (Neustart) | `stream_overlay` |
+| Bildschirmspiegel: AN/AUS (Neustart) | `screen_mirror` |
+| Musik: an/aus, Quelle, Lautstärke | `music`, `music_source`, `volume` |
+
+### Optionen
+
+| Menüpunkt | Aktion |
+|---|---|
+| CRT-Testbild | `crt_test` |
+| Miniaturen vorbereiten (einmalig) | `thumb_prewarm` |
+| Miniaturen-Auftrag für PC schreiben | `thumb_auftrag` |
+| Kuratierte Liste (nur DB-Treffer): AN/AUS | `curated` |
+| Beta/Proto/Demo und Nur-Japan ausblenden: AN/AUS | `rom_filter` |
+| Ordner mit nur einem Spiel: als Spiel / als Ordner | `einzelordner` |
+| Hauptseite: Kategorien sortieren und ausblenden | `hauptseite` |
+| Zaparoo (NFC-Tags) | `zaparoo` |
+| Core-Updates: was ist neu (N) — nur wenn es einen Bericht gibt | `core_neu` |
+| Cores: Fassung je System wählen | `cores` |
+| update_all ausführen (Cores und Firmware) | `update_all` |
+| Nur das Geänderte nachlesen — nur nach einer Speicher-Änderung | `nachscan` |
+| Attract-Modus (Bildschirmschoner): AN/AUS, Verzögerung | `attract`, `attract_delay` |
+| Ziehung Spannung (Zufalls-Zock mit Ton) | `ziehung_spannung` |
+| Zeitzone | `timezone` |
+| Beim Start auf NAS/Netzwerk warten: AN/AUS | `network_wait` |
+| Autostart: AN/AUS | `autostart` |
+
+### Eingabe & Sprache
+
+| Menüpunkt | Aktion |
+|---|---|
+| Sprache: Deutsch / Englisch | `language` |
+| Tastenbelegung anpassen | `remap` |
+| Auf Standardbelegung zurücksetzen | `remap_reset` |
+| Bestätigen/Abbrechen vertauschen: AN/AUS | `swap_ok_back` |
+
+### Info
+
+| Menüpunkt | Aktion |
+|---|---|
+| Hilfe / Übersicht | `help` |
+| Einrichtung erneut starten | `setup_wizard` |
+| Geheimnisse | `secrets` |
+| Mitwirkende | `credits` |
+| Auf Updates prüfen: AN/AUS | `update_check` |
+
+### Wartung
+
+| Menüpunkt | Aktion |
+|---|---|
+| MiSTer-OSD öffnen (Settings/Buttons) | `osd` |
+| Spieleliste neu einlesen | `rescan` |
+| Miniaturen-Zwischenspeicher leeren (CRT / HDMI) | `thumb_clear` |
+| JPEG-Arbeitskopien: AN/AUS | `arbeitskopien` |
+| Boxarts nachladen (braucht Netz) | `boxart_download` |
+| Spieledaten nachladen (braucht Netz) | `gameinfo_download` |
+| Anzeige neu aufbauen | `redraw` |
+| MiSTer neu starten | `reboot` |
+| Frontend beenden | `quit` |
+
+Einige Punkte erscheinen **nur unter Bedingungen**, und das ist
+Absicht: `fb_size` nur auf HDMI (im CRT-Modus ist der Bildspeicher
+ohnehin 320×240), `core_neu` nur, wenn ein Bericht vorliegt, `nachscan`
+nur nach einer gemeldeten Speicher-Änderung, und bei Zaparoo nennt die
+Beschriftung den Stand (nicht installiert / Dienst nicht eingetragen /
+läuft nicht / läuft) statt eines Punktes, der ins Leere führt.
 
 ---
 

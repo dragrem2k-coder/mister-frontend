@@ -233,6 +233,67 @@ check("und das Frontend schickt dieselben vier Felder",
       '"title": name, "description": desc,' in _fe
       and '"points": points, "badge": badge,' in _fe)
 
+# ---------------------------------------------------------------------------
+print()
+print("Test 8: die Einblendung hat eine eigene Ecke (Build 255)")
+# ---------------------------------------------------------------------------
+# Nutzerwunsch: "erfolgseinblendung sollte auch frei waehlbar sein wo es
+# angezeigt wird". Bis Build 254 stand der Toast FEST oben rechts -
+# bewusst, damit er sich nie mit der Auswahl-Karte ueberschneiden kann,
+# egal welche Ecke dort gewaehlt ist. Diese Zusage faellt jetzt
+# teilweise: wer beide in dieselbe Ecke legt, darf das. Die VORGABE
+# bleibt oben rechts, also merkt niemand etwas, der den Schalter nie
+# anfasst - und genau das prueft die erste Zeile.
+import sys as _sys2                                        # noqa: E402
+_sys2.path.insert(0, os.path.join(_REPO, "frontend"))
+from stream_server import DEFAULT_CONFIG as _DC            # noqa: E402
+
+check("es gibt den Schalter", "ach_corner" in _DC)
+check("und die Vorgabe ist die alte Ecke",
+      _DC.get("ach_corner") == "top-right",
+      "sonst springt die Einblendung bei allen, die nie etwas "
+      "eingestellt haben")
+for _e in ("top-right", "top-left", "bottom-right", "bottom-left"):
+    check("%-13s hat eine Regel im Stylesheet" % _e,
+          ("#achievement-toast.ach-%s{" % _e) in _CSS)
+check("links kommt er auch von LINKS herein",
+      "translateX(calc(-20px*var(--scale)))" in _CSS,
+      "sonst zeigt die Karte in die falsche Richtung")
+check("und der Farbbalken wandert an die linke Kante",
+      "border-left:calc(4px*var(--scale)) solid #ffd452" in _CSS)
+check("die Ecke wird ueber classList gesetzt, nicht ueber className",
+      "toast.classList.toggle('ach-'" in _JS
+      and "$('achievement-toast').className =" not in _JS,
+      "auf demselben Element sitzt 'show' - ein className-Zuweisen "
+      "mitten in einer laufenden Einblendung bricht sie ab")
+check("und zwar schon beim Config-Paket",
+      "toast.classList.toggle('ach-'"
+      in _JS.split("function applyConfig(c){")[1].split("\nfunction ")[0],
+      "sonst steht die Ecke erst beim ersten Erfolg")
+
+# DAS AUSWEICHEN VOR DER WAND. Bis 254 galt es pauschal: lag die Wand
+# oben rechts, rutschte der Toast nach unten - er stand ja immer dort.
+# Jetzt haben beide eine eigene Ecke, also darf nur noch die GLEICHE
+# Paarung ausweichen, sonst nimmt eine Regel dem Nutzer seine Wahl weg.
+_weich = [z for z in _CSS.split("\n") if "~ #achievement-toast" in z]
+check("das Ausweichen gilt nur bei GLEICHER Ecke",
+      bool(_weich) and all(".ach-" in z for z in _weich),
+      str(_weich[:2]))
+check("und nur, wenn die Wand ueberhaupt angezeigt wird",
+      all("#ra-wall.on." in z for z in _weich),
+      "eine Wand, die aus ist, darf den Toast nicht verschieben")
+
+_AD = io.open(os.path.join(_REPO, "frontend", "stream_admin.html"),
+              encoding="utf-8").read()
+check("im Backend: Feldliste",
+      '"ach_corner"' in _AD.split("const F = [")[1].split("]")[0])
+check("im Backend: geladen", '$("ach_corner").value = c.ach_corner' in _AD)
+check("im Backend: gespeichert",
+      "ach_corner:" in _AD.split("  return {")[1].split("};")[0])
+check("im Backend: vier Ecken zur Wahl",
+      _AD.split('id="ach_corner"')[1].split("</select>")[0].count(
+          "<option") == 4)
+
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))

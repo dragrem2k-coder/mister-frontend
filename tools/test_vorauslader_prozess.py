@@ -136,7 +136,16 @@ check("vorher liegt nichts im Zwischenspeicher",
 pw.uebergeben([(BILD, 90, 126)])
 check("Miniatur kommt an",
       warten_bis(lambda: art.thumb_cache_has(BILD, 90, 126)))
-check("als 'gerechnet' gezaehlt", pw.gerechnet >= 1, "(%d)" % pw.gerechnet)
+# GEWARTET, NICHT SOFORT GEFRAGT (Build 255). Vorher stand hier
+# "pw.gerechnet >= 1" direkt hinter dem Warten auf die Cache-Datei - und
+# das ist ein Wettlauf: der Arbeitsprozess schreibt die Datei, und erst
+# danach erfaehrt der Elternprozess davon und zaehlt hoch. Unter Last
+# (volle Suite parallel) war die Datei da und der Zaehler noch 0, also
+# wurde der Test rot, obwohl alles richtig lief. Allein lief er gruen -
+# die schlechteste Sorte Befund, weil sie nach einem echten Fehler
+# aussieht und keiner ist.
+check("als 'gerechnet' gezaehlt", warten_bis(lambda: pw.gerechnet >= 1),
+      "(%d)" % pw.gerechnet)
 
 print("Test 3: der Auftrag bestimmt den Ordner (HD/SD-Umschaltung)")
 # Punkt 1 von oben. Die Klasse schickt art.THUMB_CACHE_DIR mit JEDEM

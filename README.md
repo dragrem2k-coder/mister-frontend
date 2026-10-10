@@ -1,4 +1,4 @@
-# Dragend — MiSTer Custom Frontend v4.7
+# Dragend — MiSTer Custom Frontend v4.8
 
 **Von Dragrem2K**, mit Beiträgen von **TheRealSuTefan**, **Dfense** und
 **Dennsen**.
@@ -24,6 +24,34 @@ Standard-Python, keine einzige zusätzliche Abhängigkeit auf dem MiSTer.
   <img src="screenshots/preview_5_trophaeenraum.png" width="280" alt="Trophaeenraum">
 </p>
 <p align="center"><sub>Liste, Raster, Galerie — und der Trophäenraum. Alle Bilder direkt aus dem Programmcode gerendert (<code>tools/screenshots_bauen.py</code>), Boxart und Spielstände sind Platzhalter.</sub></p>
+
+---
+
+## Neu in v4.8
+
+Der längste Abstand zwischen zwei Veröffentlichungen in diesem Projekt.
+Das Wichtigste in sechs Zeilen — alles Weitere im
+[Changelog](CHANGELOG.md):
+
+- **Die Hauptseite gehört dir.** Reihenfolge und Sichtbarkeit der
+  Kategorien bestimmst du selbst, Filter dürfen einen **eigenen Namen**
+  tragen.
+- **Scrollen ist spürbar flüssiger** — ein Fünftel der Bytes auf den
+  Schirm, Flächen, Rahmen, Text und Cover nach C verlagert, der
+  Spitzenverbrauch beim Neueinlesen von 55 auf 24 MB. Jede Zahl auf dem
+  Gerät nachgemessen.
+- **Das Stream-Overlay ist erwachsen geworden:** die
+  **Erfolgs-Einblendung** ist ein Moment statt einer Benachrichtigung,
+  und daneben steht die **Erfolgs-Wand** — alle Erfolge des laufenden
+  Spiels als Raster, die frisch freigeschaltete Kachel blitzt auf.
+- **MiSTer wird mitbenutzt statt nachgebaut:** seine eigenen Favoriten,
+  seine `.pf`-Schriften, seine Lochmasken, `update_all` aus dem Menü,
+  der Core-Bericht „was ist neu", NFC-Tags über Zaparoo.
+- **Sichtbare Politur:** eigene Hintergrundbilder, Hochkant (TATE),
+  Theme-Editor, die Ziehung mit Ton, `--demo` als Vorführung und
+  `--show` als Bericht.
+- **Der Bildwächter** holt das Bild zurück, wenn MiSTer unter Kernel
+  6.18 den Bildspeicher neu einrichtet.
 
 ---
 
@@ -62,6 +90,8 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | **Filter** | Nach Genre, Jahr, Spielerzahl und Entwickler (Tab / Select+L2+R2), je Kategorie merkbar — mit automatischem oder **eigenem Namen** |
 | **Hauptseite einrichten** | Reihenfolge und Sichtbarkeit der Kategorien selbst bestimmen. „System“ bleibt immer, zuletzt |
 | **Suche** | Tippen filtert die Liste sofort |
+| **Listen-Bereinigung** | Boot-Dateien, Beta/Proto/Hack-Tags und doppelte Regionen fallen beim Einlesen weg — beste Region gewinnt. Dazu auf Wunsch „nur Spiele mit Datenbank-Treffer“ |
+| **`gamelist.xml`** | Hast du dein ROM-Verzeichnis mit Skraper gepflegt, wird die Datei gelesen: Jahr, Genre, Spielerzahl, Hersteller, Beschreibung, Cover. Ohne Einstellung, und deine eigenen Daten haben immer Vorrang |
 | **Favoriten & Sammlungen** | Eigene Listen quer über alle Systeme — **einschließlich der Favoriten, die du im MiSTer-OSD markiert hast** (eine Liste, zwei Quellen; in deine Favoritendatei wird nichts geschrieben) |
 | **Zuletzt gespielt** | Eigene Kategorie, sortiert nach letztem Start |
 | **ZIP-Archive** | ROMs in Archiven werden gefunden und gestartet, ohne je etwas zu entpacken |
@@ -92,6 +122,7 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | **Hochkant (TATE)** | Eigene Aufteilung für gedrehte Bildschirme — die Kachelgröße wird gerechnet, nicht gesetzt |
 | **Theme-Editor** | Farben im laufenden Betrieb ändern und speichern, ohne Datei von Hand |
 | **Themes** | Farbschemata, Akzentfarbe, einstellbarer Bildrand |
+| **System-Artbox** | Im Kategorien-Menü steht rechts das Logo des markierten Systems — alle 48 liegen bei |
 | **Attract-Modus** | Bildschirmschoner mit Cover-Schau, Verzögerung 30 s bis 15 min |
 | **Boot-Animation** | Eigenes Startvideo oder die eingebaute D-Pad-Animation |
 | **Musik** | Eigene MP3s oder Rainwave-Internetradio (fünf Sender), gemeinsamer Lautstärkeregler |
@@ -99,7 +130,7 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | **MiSTers eigene Schriften** | Die `.pf`-Zeichensätze aus `/media/fat/font` werden gelesen und im Frontend benutzt — dieselbe Schrift wie im OSD |
 | **Lochmasken** | MiSTers eigene `.png`-Masken als Gitter über das Bild, vier Stärken |
 | **Hintergrundbilder** | Eigene Bilder hinter der Liste, abgedunkelt und zugeschnitten; mehrere werden durchgeschaltet |
-| **Feinheiten** | Akzentbalken je Zeile, Akzentstrich über der Liste, Anfangsbuchstabe beim Schnellscrollen — in einem Schalter zusammengefasst |
+| **Feinheiten** | Scrollbalken rechts, Akzentbalken je Zeile, Haarlinie zur Coverspalte, Akzentstrich über der Liste — in einem Schalter zusammengefasst, Kosten gemessen (+0,04 ms je Scrollschritt) |
 | **CRT-Testbild** | Zum Einstellen von Geometrie und Schärfe |
 
 ### Technik & Bedienung
@@ -109,7 +140,9 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | **Sprache** | Deutsch / Englisch, jederzeit umschaltbar |
 | **Eigene Tastenbelegung** | Tastatur und Joypad frei belegbar |
 | **Autostart** | An/aus, jederzeit im Menü |
-| **Stream-Overlay für OBS** | Zeigt Spiel, Cover und Musiktitel im Browser. Dazu die **Erfolgs-Wand**: alle RA-Erfolge des laufenden Spiels als Raster, und die frisch freigeschaltete Kachel blitzt auf |
+| **Stream-Overlay für OBS** | Zeigt Spiel, Cover und Musiktitel im Browser; jede Zeile einzeln abschaltbar, Spieltitel inbegriffen. Die **Erfolgs-Einblendung** zeigt neue RA-Erfolge sofort — mit Warteschlange, zählenden Punkten und eigener Ecke. Dazu die **Erfolgs-Wand**: alle Erfolge des laufenden Spiels als Raster, die frisch freigeschaltete Kachel blitzt auf, und auf Wunsch läuft sie in einem festen Ausschnitt durch |
+| **Bildschirmspiegel** | Auf CRT unterwegs? `:8080/mirror` zeigt den Frontend-Bildschirm im Browser — Handy, zweiter Monitor, Stream. Das laufende Spiel kommt vom FPGA und ist darin nicht zu sehen |
+| **Uhrzeit** | MiSTer hat keine Batterieuhr; das Frontend holt die Zeit per SNTP, die Zeitzone stellst du einmal in halben Stunden ein |
 | **Miniaturen vorbereiten** | Cover einmalig vorberechnen, damit nichts mehr nachlädt |
 | **PC-Werkzeug** | Dieselbe Arbeit am Windows-PC statt auf dem MiSTer — aus Stunden werden Minuten (`pc_tools/`) |
 | **C-Modul** | `libdragend.so` rechnet die Bildskalierung 100-fach schneller. Optional; fehlt sie, rechnet Python weiter |
@@ -118,7 +151,8 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | **Schutz beim Einlesen** | Symlink-Schleifen und zu tiefe Verschachtelungen werden erkannt statt endlos verfolgt |
 | **`update_all` aus dem Menü** | Startet das vorhandene Skript; die Beschriftung nennt den letzten Lauf („vor 23 Tagen“) |
 | **Core-Browser** | Je System die Core-Fassung wählen, mit Warnung, wenn die gewählte Datei von `update_all` gelöscht wurde |
-| **Speicher-Wächter** | Ein im Betrieb eingesteckter USB-Stick wird gemeldet. Neu eingelesen wird **nicht** von selbst — das dauert bei 30 000 Spielen Minuten |
+| **Core-Updates: was ist neu** | Nach einem `update_all`-Lauf: welche Cores neu sind, geändert oder weg. Das Protokoll von `update_all` wird dafür **nicht** gelesen — verglichen wird der Stand der Core-Ordner vorher und nachher, und der ist richtig, egal in welcher Fassung `update_all` vorliegt |
+| **Bericht über sich selbst** | `--show` sagt, was drin ist, wie es eingestellt ist und wie schnell es läuft — auf dem Fernseher und als Datei in `/tmp` |
 | **Vorführung** | `--demo` führt das Frontend selbst vor: Ansichten, Filter, Trophäenraum und die Einstellungsgruppen |
 | **Paket-Prüfung** | Ein halb eingespieltes Update endet in einer Anleitung, nicht in einem Absturz |
 
