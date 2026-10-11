@@ -163,6 +163,7 @@ Nachlesen (`CHANGELOG.md`).
    - 8h-6. NFC-Tags über Zaparoo
    - 8h-7. Nur das Geänderte nachlesen
    - 8h-8. Metadaten aus einer `gamelist.xml`
+   - 8h-9. Der ROM-Wächter
    - 8b-2. Hochkant (TATE)
    - 8g-2. Eigenes Farbschema: speichern und bearbeiten
    - 8v. MiSTers eigene Schriften
@@ -1215,6 +1216,47 @@ ENTITY-Erklärung jetzt übergangen (mit einer Zeile im Log). Eine echte
 gamelist von Skraper hat keine; eine Datei mit verschachtelten Entities
 kann dagegen beim Einlesen auf ein Gigabyte anwachsen, und auf einem
 Gerät mit 1 GB RAM wäre das Frontend dann weg.
+
+## 8h-9. Der ROM-Wächter (Build 258)
+
+**Das Problem:** du legst im laufenden Betrieb per WinSCP oder MiSTer
+Companion ein ROM dazu oder nimmst eines weg — und das Frontend merkt
+nichts davon, bis du die Spieleliste neu einliest.
+
+**Jetzt sagt es Bescheid.** Im Ruhemoment, also wenn du gerade nichts
+drückst, sieht das Frontend alle 20 Sekunden nach, ob sich an den
+ROM-Ordnern etwas getan hat. Hat sich etwas geändert, erscheint eine
+Meldung, und im Systemmenü unter *Wartung* steht dann **„Nur das
+Geänderte nachlesen (SNES)"** — derselbe Punkt, den auch der
+Speicher-Wächter benutzt.
+
+**Es wird nichts von selbst nachgelesen.** Das dauert bei einer großen
+Sammlung Sekunden bis Minuten, und mitten im Scrollen wäre es ein
+sichtbarer Hänger. Es ist außerdem deine Entscheidung und nicht die des
+Programms — dieselbe Linie wie beim Speicher-Wächter.
+
+**Was erkannt wird und was nicht.** Der Wächter sieht
+
+- **die oberste Ebene jedes Systemordners** — ein ROM, das direkt in
+  `games/SNES/` landet, wird erkannt;
+- **den Ordner, den du gerade ansiehst** — auch tief in einer
+  Sammlung.
+
+Er sieht **nicht** jeden Unterordner. Das ist kein Versehen: ein
+rekursiver Blick wurde in v1.32 schon einmal gebaut und wieder
+entfernt, weil bei einer großen Sammlung über USB jeder *Start*
+minutenlang dauerte, bevor überhaupt ein Bild kam. Ein ROM, das in
+`games/SNES/Hacks/` landet, während du woanders stehst, bemerkt er
+also erst, wenn du diesen Ordner öffnest — oder beim nächsten
+Einlesen.
+
+Und was prinzipiell nie geht: Karte raus, am PC bearbeiten, wieder
+rein. Dann läuft das Frontend nicht.
+
+**Was es kostet:** ein `getmtime()` je System, bei 34 Systemen also 34
+Zugriffe — alle 20 Sekunden, und nur, wenn du gerade nichts tust. Wer
+auch das vermeiden will (sehr langsame USB-Platte, Netzlaufwerk im
+Standby), schaltet ihn im Systemmenü unter *Wartung → ROM-Wächter* ab.
 
 ## 8b-2. Hochkant (TATE) — ohne Schalter
 
@@ -2323,6 +2365,7 @@ umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
 | Ansicht Hauptseite | `ansicht_haupt` |
 | Scrollgeschwindigkeit (0,5x bis 2x) | `scroll_tempo` |
 | Tastenlegende: AN/AUS | `tastenlegende` |
+| ROM-Wächter: AN/AUS | `romwacht` |
 | Ordner: zuerst / hinter den Spielen | `ordner_zuerst` |
 | Favoriten zuerst: AN/AUS | `favoriten_zuerst` |
 | Spielzahl am Ordner: AN/AUS | `ordner_zahlen` |

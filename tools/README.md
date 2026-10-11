@@ -167,6 +167,7 @@ python3 tools/regression_test.py \
 | `test_listen_kleinzeug.py` | Test (Pass/Fail) | Die vier Kleinigkeiten aus Build 256: der schnelle Weg bleibt unveraendert, der Merker haengt am Zaehler, die Ordnerzahl wird gemerkt statt gezaehlt - und das Scroll-Tempo wird NIE schneller als die gemessene Zeichendauer |
 | `test_kontextmenue.py` | Test (Pass/Fail) | Das Kontextmenue: X bleibt 'back_fe', der Ausstieg aus dem Spiel laeuft weiter ueber rohe HID-Auswertung, das Menue liefert nur NAMEN vorhandener Aktionen, und der Inhalt richtet sich nach dem Markierten |
 | `test_tastenlegende.py` | Test (Pass/Fail) | Die Tastenlegende unten rechts: AM ECHTEN BILD geprueft (zwei Aufbauten im Vergleich) - auf HDMI da, auf CRT nicht, weicht jeder Meldung, und der Teil-Neuaufbau raeumt sie mit frei |
+| `test_romwacht.py` | Test (Pass/Fail) | Der ROM-Waechter: meldet jede Aenderung genau EINMAL, behaelt den alten Stand bis zum Nachlesen, liest NICHTS von selbst nach - und ein Blick kostet GEZAEHLT hoechstens zwei Zugriffe je System |
 | `diag_ungeprueft.py` | Diagnose (immer Rueckgabewert 0) | Welche Funktionen betritt KEIN Test - gemessen mit sys.setprofile, nicht ueber Namen im Testtext |
 | `_spur.py` | Hilfsmodul | Laesst eine einzelne Testdatei unter sys.setprofile laufen und schreibt jede betretene Funktion mit |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
@@ -3922,3 +3923,65 @@ rueckgaengig gemacht.
 mit `tools/screenshots_bauen.py` gerendert und das Bild betrachtet.
 Ein Test sagt "da ist etwas anders"; ob es auch gut aussieht, sagt nur
 ein Blick.
+
+## test_romwacht.py (Build 258)
+
+Der ROM-Waechter: faellt es auf, wenn im laufenden Betrieb per WinSCP
+oder MiSTer Companion ein ROM dazukommt oder verschwindet?
+
+**Die wichtigste Pruefung ist eine GEZAEHLTE Obergrenze** - und sie
+steht gegen einen Fehler, den dieses Projekt schon gemacht hat. v1.32
+hat denselben Fingerabdruck **rekursiv** gebaut und musste
+zurueckgerollt werden, weil bei einer grossen Sammlung ueber USB jeder
+*Start* minutenlang dauerte, bevor ueberhaupt ein Bild kam (die
+Begruendung steht woertlich im Docstring von `_games_signature()`).
+Wuerde jemand das wieder einbauen, waere der Waechter das erste, was
+es merkt - er fragt alle 20 Sekunden.
+
+Der Test zaehlt deshalb die `os.path.getmtime()`-Aufrufe eines Blicks
+und verlangt hoechstens zwei je System (gemessen: 34 Aufrufe bei 34
+Systemen, also genau einer). **Gezaehlt, nicht gestoppt:** wie lange
+das dauert, haengt an der Karte und gehoert auf das Geraet gemessen -
+die ZAHL ist auf jedem Geraet dieselbe. Dieselbe Regel wie seit Build
+249.
+
+**Drei Zusagen aus dem Verhalten:**
+
+* **Jede Aenderung wird genau EINMAL gemeldet.** Der Ruhemoment laeuft
+  staendig durch; ohne Sperre stuende die Meldung bei jedem Durchgang
+  wieder da.
+* **Der gemerkte Stand bleibt ALT, bis nachgelesen wurde.** Uebernimmt
+  der Waechter ihn schon beim Melden, ist die Meldung nach einmal
+  Wegklicken endgueltig weg - und wer sie verpasst hat, sitzt wieder
+  vor einer Liste, die nicht stimmt. Genau das hat Build 251 beim
+  Speicher-Waechter behoben.
+* **Ein Ordnerwechsel ist keine Aenderung.** Der beobachtete Ordner
+  wechselt staendig; beim ersten Blick auf einen neuen Ordner darf er
+  nicht melden.
+
+**Drei Zusagen aus der Anbindung**, geprueft am Quelltext:
+
+* Gefragt wird **im selben Ruhemoment** wie beim Speicher-Waechter -
+  ein Fingerabdruck hat im Zeichenweg nichts verloren.
+* Es wird **nicht von selbst nachgelesen**: im Zweig kommt weder
+  `build_categories` noch `scan_games` vor.
+* Es gibt **keinen zweiten Weg zum Nachlesen**. Gesetzt wird derselbe
+  Grund wie beim Speicher-Waechter, und der Menuepunkt aus Build 251
+  erledigt den Rest - geprueft wird, dass es weiterhin genau EINEN
+  `nachscan`-Zweig gibt.
+
+**Und eine Kleinigkeit, die sonst peinlich waere:** der Nachlese-Punkt
+nennt bei einem ROM-Grund kein Medium. `medium_art()` macht aus
+"SNES" sonst ein "unbekanntes Medium: SNES" - richtig fuer "usb0",
+falsch fuer ein Systemkuerzel.
+
+### Nachtrag zu test_cache_dateisystem.py
+
+Dort suchte eine Pruefung `quelldaten_vergessen()` in einem **festen
+Fenster von 400 Zeichen** vor `scan_games(...)`. Build 258 fuegte dort
+vier Zeilen ein (der ROM-Waechter), und schon lag der Aufruf
+ausserhalb des Fensters - rot, ohne dass sich an der Zusage etwas
+geaendert hatte. Geschnitten wird jetzt bis zum Anfang der
+umgebenden Funktion. Derselbe Fehler wie in Build 251 bei
+`test_mister_integration.py`: eine Pruefung haengt an dem, was sie
+behauptet, nicht an einer Zeichenzahl.

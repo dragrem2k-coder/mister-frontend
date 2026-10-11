@@ -332,6 +332,8 @@ from fe.settings import (
     ordner_zahlen_an, toggle_ordner_zahlen,
     # Build 257: die Tastenlegende.
     tastenlegende_an, toggle_tastenlegende,
+    # Build 258: der ROM-Waechter.
+    romwacht_an, toggle_romwacht,
     hintergrund_lesen, hintergrund_schreiben, hintergrund_an,
     toggle_hintergrund, hintergrund_dim_lesen,
     hintergrund_dim_schreiben,
@@ -1439,6 +1441,7 @@ if flaechen_c_enabled():
 import fe.filter as FILTER
 import fe.hauptseite as HS
 import fe.versteckt as VERSTECKT
+import fe.romwacht as ROMWACHT
 import fe.corestand as CSTAND
 import fe.zaparoo as ZAP
 from fe.prewarm import PREWARMER, auftraege_bauen, Doppelkern
@@ -1577,6 +1580,13 @@ class Frontend:
         # Build 213: merkt sich, was beim Einlesen eingehaengt war, und
         # meldet eine Aenderung. Siehe fe/mister_system.py.
         self._speicher = MSYS.SpeicherWaechter()
+        # Build 258: der ROM-Waechter. Direkt neben dem
+        # Speicher-Waechter, weil er dasselbe tut - nur eine Ebene
+        # tiefer: der eine merkt, dass ein Datentraeger dazukommt,
+        # der andere, dass sich auf einem vorhandenen etwas
+        # geaendert hat. Beide melden und lesen NICHT von selbst
+        # nach.
+        self._romwacht = ROMWACHT.RomWaechter()
         # Build 207: das F9 des NUTZERS. Siehe _f9_nutzer_behandeln().
         self._f9_nutzer_letzte = 0.0
         self._f9_grund = "eingespeist"
@@ -2499,6 +2509,10 @@ class Frontend:
             quelldaten_vergessen()
             self._warmlauf_fertig_fuer = None
         self._speicher.merken()
+        # Build 258: derselbe Zeitpunkt, derselbe Grund - sonst
+        # meldet der ROM-Waechter die gerade eingelesene Aenderung
+        # gleich noch einmal.
+        self._romwacht.merken(self._beobachtete_ordner())
         self.cats = scan_games(force=force_rescan,
                                progress_cb=self._draw_scan_progress,
                                warte_cb=self._draw_laufwerk_warten)
@@ -2695,6 +2709,7 @@ class Frontend:
             cores_subcats=cores_subcats,
             scripts_items=scan_scripts(),
             nachscan_grund=getattr(self, "_nachscan_grund", None),
+            nachscan_rom=getattr(self, "_nachscan_rom", False),
         ), None))
         if curated_only_active():
             # filter_curated() laesst Kategorien ohne syskey (Scripts,
@@ -2900,6 +2915,7 @@ class Frontend:
                     # Nachscan-Punkt beim naechsten Umschalten einer
                     # beliebigen Einstellung wieder.
                     nachscan_grund=getattr(self, "_nachscan_grund", None),
+                    nachscan_rom=getattr(self, "_nachscan_rom", False),
                 ), sk)
                 LOG("_refresh_system_category: System-Kategorie an Position %d aktualisiert" % i)
                 return
@@ -3080,6 +3096,43 @@ class Frontend:
             self.item_i = 0
             self.scroll = 0
         self.marquee_reset()
+
+    def _beobachtete_ordner(self):
+        """Der Ordner, den der Nutzer GERADE ANSIEHT - als Zugabe fuer
+        den ROM-Waechter (Build 258).
+
+        WARUM UEBERHAUPT. Der Fingerabdruck in fe/scan.py erfasst nur
+        die oberste Ebene eines Systemordners; ein ROM in
+        games/SNES/Hacks/ aendert ihn nicht. Rekursiv zu pruefen wurde
+        in v1.32 gebaut und wieder entfernt (jeder Start dauerte bei
+        einer grossen Sammlung ueber USB minutenlang). Der Ordner, in
+        dem man gerade steht, ist der eine, bei dem die Erwartung "das
+        muesste jetzt auftauchen" wirklich besteht - und er kostet
+        genau einen zusaetzlichen getmtime().
+
+        DER PFAD KOMMT AUS EINEM EINTRAG, nicht aus dem Knoten: die
+        Baumknoten tragen ihren Pfad nicht mit sich (sie bestehen nur
+        aus "folders" und "items"). Der erste Eintrag weiss aber, wo
+        er liegt - und sein Ordner IST der gesuchte.
+
+        NUR BEI EINER ECHTEN SYSTEMKATEGORIE. "Favoriten" und
+        "Zuletzt gespielt" mischen Systeme; der Ordner des ersten
+        Eintrags waere dort ein zufaelliger und wuerde eine Aenderung
+        melden, die mit dem Gesehenen nichts zu tun hat."""
+        try:
+            if self.page != 1 or not self.cats:
+                return ()
+            if not self.cats[self.cat_i][2]:
+                return ()
+            for eintrag in self._current_node().get("items", ()):
+                if eintrag[1] != "game":
+                    continue
+                pfad = eintrag[2][0] if eintrag[2] else None
+                if pfad:
+                    return (os.path.dirname(pfad),)
+            return ()
+        except Exception:                                # noqa: BLE001
+            return ()
 
     def _current_node(self):
         """Baumknoten, der der aktuellen Navigationstiefe (nav_path)
@@ -11005,9 +11058,39 @@ class Frontend:
                     # jeder Rescan force=True setzt und damit genau
                     # diesen Zweig abschaltet.
                     self._nachscan_grund = _sp
+                    self._nachscan_rom = False
                     self._refresh_system_category()
                     self._force_full_redraw = True
                     self.draw(t("mount_neu") % _sp, prominent=True)
+                # NEU (Build 258): hat sich an den ROMs selbst etwas
+                # geaendert? Eine Ebene tiefer als der Waechter
+                # darueber: der merkt, dass ein Datentraeger dazukommt,
+                # dieser, dass auf einem vorhandenen Dateien dazu- oder
+                # weggekommen sind (WinSCP, MiSTer Companion).
+                #
+                # GENAU HIER UND NIRGENDS SONST, aus demselben Grund:
+                # ein Fingerabdruck ist ein Dutzend Zugriffe auf die
+                # Karte, und die haben im Zeichenweg nichts verloren.
+                # Eigene Uhr steckt in pruefen() (ROMWACHT_TAKT).
+                #
+                # Und genau wie oben wird NICHT von selbst nachgelesen:
+                # das dauert bei einer grossen Sammlung Sekunden bis
+                # Minuten und ist eine Entscheidung des Nutzers. Der
+                # Grund ist derselbe wie beim Speicher-Waechter, der
+                # Menuepunkt aus Build 251 erledigt den Rest - es gibt
+                # also keinen zweiten Weg zum Nachlesen.
+                if romwacht_an():
+                    try:
+                        _rw = self._romwacht.pruefen(
+                            self._beobachtete_ordner())
+                    except Exception:                    # noqa: BLE001
+                        _rw = None
+                    if _rw:
+                        self._nachscan_grund = _rw
+                        self._nachscan_rom = True
+                        self._refresh_system_category()
+                        self._force_full_redraw = True
+                        self.draw(t("rom_geaendert") % _rw, prominent=True)
                 self._boot_watch()   # Diagnose: Anzeige-Zustand nach dem Boot
                 # Build 167: alle drei nur noch, wenn die Mechanik
                 # eingeschaltet ist - siehe konsole_mechanik(). Ohne
@@ -14430,6 +14513,10 @@ class Frontend:
         # die Frage, welche Systeme vorbereitet gehoeren (Build 239).
         self._warmlauf_fertig_fuer = None
         self._speicher.merken()
+        # Build 258: derselbe Zeitpunkt, derselbe Grund - sonst
+        # meldet der ROM-Waechter die gerade eingelesene Aenderung
+        # gleich noch einmal.
+        self._romwacht.merken(self._beobachtete_ordner())
         self.cats = scan_games(force=True, progress_cb=progress_cb)
         n_sys = len(self.cats)
         n_games = sum(_count_tree_items(node) for _n, node, _sk in self.cats
@@ -21345,6 +21432,9 @@ class Frontend:
                             toggle_favoriten_zuerst()
                             self._anzeige_geaendert()
                             self._refresh_system_category()
+                        elif kind == "romwacht":
+                            toggle_romwacht()
+                            self._refresh_system_category()
                         elif kind == "tastenlegende":
                             toggle_tastenlegende()
                             self._refresh_system_category()
@@ -21450,6 +21540,7 @@ class Frontend:
                             # dem Cache.
                             self.draw(t("nachscan_laeuft"))
                             self._nachscan_grund = None
+                            self._nachscan_rom = False
                             self.build_categories()
                             self.cat_i = self.item_i = 0
                             self.scroll = self.cat_scroll = 0

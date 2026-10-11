@@ -32,6 +32,7 @@ from fe.settings import (
     load_scroll_tempo, ordner_zuerst, favoriten_zuerst,
     ordner_zahlen_an,
     tastenlegende_an,
+    romwacht_an,
     screen_mirror_enabled, stream_overlay_enabled,
     fast_scroll_enabled, cover_sofort_enabled, arbeitskopien_enabled,
     overscan_lesen, fremdquellen_enabled,
@@ -125,7 +126,7 @@ def current_theme_name():
 
 def system_items(music_enabled=None, music_source="mp3", music_station="",
                  cores_subcats=None, standalone_items=None, scripts_items=None,
-                 nachscan_grund=None):
+                 nachscan_grund=None, nachscan_rom=False):
     """Liefert die Inhalte der 'System'-Kategorie als Baumknoten mit
     thematischen Unterordnern (Nutzerwunsch: die Liste war auf 23
     flache Eintraege angewachsen, kaum noch ueberschaubar) - nutzt
@@ -183,6 +184,8 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
                         else "sys_favoriten_zuerst_aus")
     ordnerzahl_label = t("sys_ordner_zahlen_an" if ordner_zahlen_an()
                          else "sys_ordner_zahlen_aus")
+    romwacht_label = t("sys_romwacht_an" if romwacht_an()
+                       else "sys_romwacht_aus")
     legende_label = t("sys_tastenlegende_an" if tastenlegende_an()
                       else "sys_tastenlegende_aus")
     try:
@@ -362,15 +365,24 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     # dieselbe Regel wie beim Core-Bericht darunter.
     _nachscan_eintraege = ()
     if nachscan_grund:
-        try:
-            import fe.mister_system as _MSYS2
-            _erstes = str(nachscan_grund).lstrip("+-").split(",")[0].strip()
-            _art = _MSYS2.medium_art(_erstes)
-        except Exception:                                # noqa: BLE001
-            _art = ""
-        _was = t("medium_" + _art) if _art else t("medium_unbekannt")
-        _nachscan_eintraege = ((t("sys_nachscan", _was, nachscan_grund),
-                                "nachscan", None),)
+        if nachscan_rom:
+            # Build 258: der Grund kommt vom ROM-Waechter, nicht vom
+            # Speicher-Waechter. Dort steht ein Systemkuerzel ("SNES")
+            # und kein Datentraeger - medium_art() wuerde daraus
+            # "unbekanntes Medium: SNES" machen, und das waere schlicht
+            # falsch. Eigener Text, eine Zeile.
+            _nachscan_eintraege = ((t("sys_nachscan_rom", nachscan_grund),
+                                    "nachscan", None),)
+        else:
+            try:
+                import fe.mister_system as _MSYS2
+                _erstes = str(nachscan_grund).lstrip("+-").split(",")[0].strip()
+                _art = _MSYS2.medium_art(_erstes)
+            except Exception:                            # noqa: BLE001
+                _art = ""
+            _was = t("medium_" + _art) if _art else t("medium_unbekannt")
+            _nachscan_eintraege = ((t("sys_nachscan", _was, nachscan_grund),
+                                    "nachscan", None),)
     _core_neu_eintraege = ()
     try:
         import fe.corestand as _CSTAND
@@ -561,6 +573,10 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             # Build 251: der gezielte Nachscan steht DIREKT ueber dem
             # vollen Neueinlesen. Wer das eine sucht, findet das andere
             # gleich mit - und sieht, dass es die schnellere Wahl gibt.
+            # Build 258: der Schalter steht beim Nachlesen und
+            # nicht bei den Anzeige-Punkten - es geht um das
+            # Einlesen der Spieleliste, nicht um das Aussehen.
+            (romwacht_label, "romwacht", None),
             *_nachscan_eintraege,
             (t("sys_rescan"), "rescan", None),
             # NEU (Build 88, Nutzerwunsch: "Boxarts nachladen sowie

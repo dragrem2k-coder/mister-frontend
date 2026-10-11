@@ -681,6 +681,14 @@ TRANSLATIONS = {
     # NEU (Build 246): Dauer der Ziehung in Zufalls-Zock. Steht bei
     # "Verhalten & Optionen" neben der Attract-Verzögerung - beides
     # sind Zeiten, die bestimmen, wie sich das Frontend anfühlt.
+    # Build 258: der ROM-Waechter.
+    "rom_geaendert": {
+        "en": "ROMs changed (%s) - System -> re-read what changed",
+        "de": "ROMs ge\u00e4ndert (%s) - System -> nur Ge\u00e4ndertes nachlesen"},
+    "sys_romwacht_an": {"en": "Watch for ROM changes: ON",
+                        "de": "ROM-W\u00e4chter: AN"},
+    "sys_romwacht_aus": {"en": "Watch for ROM changes: OFF",
+                         "de": "ROM-W\u00e4chter: AUS"},
     # Build 257: die Tastenlegende unten rechts.
     "legende_a": {"en": "A", "de": "A"},
     "legende_b": {"en": "B", "de": "B"},
@@ -1157,6 +1165,9 @@ TRANSLATIONS = {
     "sys_nachscan": {
         "en": "Rescan only what changed (%s: %s)",
         "de": "Nur das Geaenderte nachlesen (%s: %s)"},
+    "sys_nachscan_rom": {
+        "en": "Rescan only what changed (%s)",
+        "de": "Nur das Ge\u00e4nderte nachlesen (%s)"},
     "nachscan_laeuft": {"en": "Rescanning what changed ...",
                         "de": "Lese das Geaenderte nach ..."},
     "nachscan_fertig": {"en": "Rescan done.",

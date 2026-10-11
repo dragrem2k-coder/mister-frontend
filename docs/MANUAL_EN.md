@@ -158,6 +158,7 @@ history to read up on (`CHANGELOG.md`).
    - 8h-6. NFC tags via Zaparoo
    - 8h-7. Re-reading only what changed
    - 8h-8. Metadata from a `gamelist.xml`
+   - 8h-9. The ROM watch
    - 8b-2. Portrait mode (TATE)
    - 8g-2. Your own colour scheme: save and edit
    - 8v. MiSTer's own fonts
@@ -979,6 +980,46 @@ To switch it off: `touch /media/fat/frontend/gamelist_aus` — no update
 needed.
 
 ---
+
+## 8h-9. The ROM watch (Build 258)
+
+**The problem:** you add or remove a ROM while the frontend is running
+— over WinSCP or MiSTer Companion — and the frontend notices nothing
+until you re-read the game list.
+
+**Now it says so.** In its idle moment, that is whenever you are not
+pressing anything, the frontend checks every 20 seconds whether
+anything about the ROM folders has changed. If something did, a message
+appears, and the system menu under *Maintenance* then offers **"Rescan
+only what changed (SNES)"** — the same entry the storage watch uses.
+
+**Nothing is re-read on its own.** With a large collection that takes
+seconds to minutes, and in the middle of scrolling it would be a
+visible stall. It is also your decision, not the program's — the same
+line as the storage watch.
+
+**What it sees and what it does not.** The watch looks at
+
+- **the top level of every system folder** — a ROM landing directly in
+  `games/SNES/` is noticed;
+- **the folder you are currently looking at** — even deep inside a
+  collection.
+
+It does **not** look at every subfolder. That is not an oversight: a
+recursive check was built in v1.32 and removed again, because with a
+large collection over USB every *start* took minutes before a picture
+appeared at all. So a ROM landing in `games/SNES/Hacks/` while you are
+elsewhere is noticed when you open that folder — or at the next full
+read.
+
+And what can never work: card out, edited on a PC, card back in. The
+frontend is not running then.
+
+**What it costs:** one `getmtime()` per system, so 34 calls with 34
+systems — every 20 seconds, and only while you are doing nothing. If
+you want to avoid even that (a very slow USB drive, a network share
+that spins down), switch it off under *Maintenance → Watch for ROM
+changes*.
 
 ## 8b-2. Portrait mode (TATE) — without a switch
 
@@ -1978,6 +2019,7 @@ conversely nobody ends up in a menu that cannot do anything).
 | Main page view | `ansicht_haupt` |
 | Scroll speed (0.5x to 2x) | `scroll_tempo` |
 | Button legend: ON/OFF | `tastenlegende` |
+| Watch for ROM changes: ON/OFF | `romwacht` |
 | Folders: first / after the games | `ordner_zuerst` |
 | Favourites first: ON/OFF | `favoriten_zuerst` |
 | Game count on folders: ON/OFF | `ordner_zahlen` |

@@ -13,6 +13,15 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.8 — not yet released
 
+**The ROM watch: new ROMs are noticed while the frontend runs.**
+
+- **The problem:** you add a ROM over WinSCP or MiSTer Companion — and the frontend notices nothing until you re-read the whole game list.
+- **Now it says so.** In its idle moment it looks every 20 seconds; if something changed, the system menu offers “Rescan only what changed (SNES)” — exactly the entry the storage watch already uses. **There is deliberately no second way to re-read.**
+- **It never re-reads on its own.** With a large collection that takes minutes, in the middle of scrolling it would be a visible stall — and it is your decision.
+- **What it costs is counted, not estimated:** *one* `getmtime()` per system, so 34 calls with 34 systems, every 20 seconds and only while idle. The test pins that ceiling down — against a mistake this project has already made: v1.32 built the same fingerprint **recursively** and had to be rolled back, because every *start* took minutes as a result.
+- **So it only sees the top level** — plus the folder you are looking at. That one costs exactly one more call and is where you actually expect a change. A ROM landing in a subfolder you do not have open is noticed when you open it.
+- Switchable under *Maintenance → Watch for ROM changes*.
+
 **The button legend, bottom right.**
 
 - Next to the network symbol and the clock you now get **"A:Open  B:Back  X:Menu  Y:Music"**. Switchable in the system menu, on by default.

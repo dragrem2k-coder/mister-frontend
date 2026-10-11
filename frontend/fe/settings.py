@@ -2214,3 +2214,23 @@ def tastenlegende_an():
 def toggle_tastenlegende():
     _flag_setzen(TASTENLEGENDE_AUS_FLAG, tastenlegende_an())
     return tastenlegende_an()
+
+
+# BUILD 258: der ROM-Waechter (siehe fe/romwacht.py).
+#
+# Vorgabe AN. Er kostet alle 20 Sekunden ein Dutzend getmtime()-Aufrufe
+# im Ruhemoment und liest NICHTS von selbst nach - wer trotzdem jeden
+# zusaetzlichen Zugriff auf die Karte vermeiden will (sehr langsame
+# USB-Platte, Netzlaufwerk im Standby), schaltet ihn hier ab.
+ROMWACHT_AUS_FLAG = "/media/fat/frontend/romwacht_aus"
+
+
+def romwacht_an():
+    return not _hole(("romwacht_aus", ROMWACHT_AUS_FLAG),
+                     lambda: os.path.exists(ROMWACHT_AUS_FLAG))
+
+
+@_nach_aenderung
+def toggle_romwacht():
+    _flag_setzen(ROMWACHT_AUS_FLAG, romwacht_an())
+    return romwacht_an()

@@ -13,6 +13,15 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.8 — noch nicht veröffentlicht
 
+**Der ROM-Wächter: neue ROMs fallen jetzt im laufenden Betrieb auf.**
+
+- **Das Problem:** du legst per WinSCP oder MiSTer Companion ein ROM dazu — und das Frontend merkt nichts davon, bis du die ganze Spieleliste neu einliest.
+- **Jetzt sagt es Bescheid.** Im Ruhemoment sieht es alle 20 Sekunden nach; hat sich etwas geändert, steht im Systemmenü „Nur das Geänderte nachlesen (SNES)“ — genau der Punkt, den der Speicher-Wächter schon benutzt. **Einen zweiten Weg zum Nachlesen gibt es bewusst nicht.**
+- **Es liest nichts von selbst nach.** Bei einer großen Sammlung dauert das Minuten, mitten im Scrollen wäre es ein sichtbarer Hänger — und es ist deine Entscheidung.
+- **Was es kostet, ist gezählt und nicht geschätzt:** *ein* `getmtime()` je System, bei 34 Systemen also 34 Zugriffe, alle 20 Sekunden und nur im Leerlauf. Der Test hält diese Obergrenze fest — und zwar gegen einen Fehler, den dieses Projekt schon gemacht hat: v1.32 hat denselben Fingerabdruck **rekursiv** gebaut und musste zurückgerollt werden, weil jeder *Start* dadurch minutenlang dauerte.
+- **Deshalb sieht er nur die oberste Ebene** — plus den Ordner, den du gerade ansiehst. Der kostet genau einen Zugriff mehr und ist die Stelle, an der du eine Änderung auch wirklich erwartest. Ein ROM, das in einem Unterordner landet, den du gerade nicht offen hast, fällt erst beim Öffnen auf.
+- Abschaltbar unter *Wartung → ROM-Wächter*.
+
 **Die Tastenlegende unten rechts.**
 
 - Neben Netzwerksymbol und Uhr steht jetzt **„A:Öffnen  B:Zurück  X:Menü  Y:Musik"**. Abschaltbar im Systemmenü, Vorgabe an.

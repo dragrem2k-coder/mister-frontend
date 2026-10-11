@@ -103,6 +103,7 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | **ROMs auf NAS/USB** | Netzlaufwerke und USB-Nummern über 5 werden dynamisch gefunden |
 | **NFC-Tags** | Zaparoo wird erkannt und gestartet; das Frontend nennt dir den Befehl für den Tag. In Zaparoos Ordner wird nichts geschrieben |
 | **Speicher-Wächter** | Stick eingesteckt? Das Frontend sagt es — und liest auf Wunsch **nur das Geänderte** nach statt alles |
+| **ROM-Wächter** | Legst du im laufenden Betrieb per WinSCP oder MiSTer Companion ein ROM dazu oder nimmst eines weg, sagt das Frontend Bescheid — und liest auf Wunsch **nur das betroffene System** nach. Von selbst liest es nichts |
 
 ### Persönliches
 

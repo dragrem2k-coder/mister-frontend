@@ -260,10 +260,23 @@ check("frontend.py importiert quelldaten_vergessen",
 check("und ruft es an ZWEI Stellen (beide Neueinlese-Pfade)",
       fe_quelle.count("quelldaten_vergessen()") >= 2,
       "%d Aufrufe" % fe_quelle.count("quelldaten_vergessen()"))
+# GESCHNITTEN BIS ZUM ANFANG DER FUNKTION, nicht 400 Zeichen zurueck.
+#
+# Hier stand ein festes Fenster von 400 Zeichen vor der Fundstelle.
+# Das hielt genau so lange, bis jemand ein paar Zeilen davor
+# einfuegte: in Build 258 kam dort der ROM-Waechter dazu (drei Zeilen
+# Kommentar und ein Aufruf), und schon lag quelldaten_vergessen()
+# ausserhalb des Fensters - rot, ohne dass sich an der geprueften
+# Zusage irgendetwas geaendert hatte. Derselbe Fehler wie in Build 251
+# bei test_mister_integration.py. Eine Pruefung haengt an dem, was sie
+# behauptet ("in derselben Funktion davor"), nicht an einer
+# Zeichenzahl.
 for stelle in ("scan_games(force=True", "scan_games(force=force_rescan"):
     i = fe_quelle.find(stelle)
+    anfang = fe_quelle.rfind("\n    def ", 0, i) if i > 0 else -1
     check("vor %s..." % stelle[:26],
-          i > 0 and "quelldaten_vergessen()" in fe_quelle[max(0, i - 400):i])
+          i > 0 and anfang >= 0
+          and "quelldaten_vergessen()" in fe_quelle[anfang:i])
 
 # Die Notbremse gegen unbegrenztes Wachsen.
 A.quelldaten_vergessen()
