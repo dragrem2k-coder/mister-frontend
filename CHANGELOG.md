@@ -13,6 +13,16 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.8 — noch nicht veröffentlicht
 
+**Die Vorführung zeigt jetzt die echten Bildschirme — vier Minuten.**
+
+- **Dein Wunsch:** „einmal durch das Frontend scrollen, Ansichten zeigen und alle Features einmal zeigen — nicht nur per Text einblenden."
+- **Genau das war der Mangel.** Zufalls-Zock, Trophäenraum, Meilensteine, Top 10, Jahresrückblick, Tagebuch, Hilfe, CRT-Testbild, Kontextmenü und die Suche kamen bisher nur als **Wort auf einer Titelkarte** vor. Jetzt laufen sie wirklich: zehn Stationen mehr, insgesamt 23 in vier Minuten.
+- **Das Hindernis war, dass diese Bildschirme Warteschleifen sind** — sie zeichnen und warten auf einen Menschen. Statt zwölf erprobte Bildschirme aufzuschneiden, legt die Vorführung eine **Hand ans Pad**: ein Eingabe-Objekt, das die Tasten liefert, die ein Vorführender drücken würde. **An den Bildschirmen ändert sich keine Zeile** — sie wissen nicht einmal, dass sie vorgeführt werden.
+- **Jede Taste bricht weiter ab.** Die echte Eingabe wird die ganze Zeit mitgelesen; diese Zusage darf nicht ausgerechnet dort aufhören, wo eine Hand am Pad liegt.
+- **Die Suche tippt sich selbst**, Buchstabe für Buchstabe, mit dem Buchstabenwähler.
+- **Nicht dabei, mit Absicht:** die RA-Erfolgsvitrine. Sie holt ihre Daten bei jedem Aufruf live von retroachievements.org — in einer Vorführung wäre das im besten Fall Warten und im schlechtesten ein leerer Bildschirm. RetroAchievements kommt stattdessen dort vor, wo die Daten schon auf der Karte liegen: Trophäenraum und Meilensteine.
+
+
 **Nachgereicht: Cover auch aus „Zuletzt gespielt", „Weiterspielen", Zufalls-Zock, RA-Erfolgsjäger und Sammlungen.**
 
 - **Der gemeldete Fall:** „aus den Kategorien geht es jetzt super, wenn ich die Spiele aber aus Zuletzt gespielt, Weiterspielen, Zufalls-Zock, RA-Erfolgsjäger, Sammlungen starte, werden keine Covers mit angezeigt."

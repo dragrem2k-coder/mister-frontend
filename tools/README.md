@@ -171,6 +171,7 @@ python3 tools/regression_test.py \
 | `test_multidisc.py` | Test (Pass/Fail) | Mehrteilige Spiele: aus neun Zeilen werden sechs, zwei Fassungen bleiben zwei, ein einzelnes '(Disc 1)' behaelt seinen Namen, Disc 2 steht vor Disc 10 - und die Auswahl beim Starten kostet genau EIN os.listdir() |
 | `test_overlay_cover.py` | Test (Pass/Fail) | Die Cover im Overlay: AM ECHTEN SERVER ueber echte HTTP-Abrufe - JPEG und PNG kommen Byte fuer Byte unveraendert an, unser .art gewandelt als PNG, HD vor Standard, und es gibt nur noch EINE Cover-Suche |
 | `test_overlay_zustand.py` | Test (Pass/Fail) | stream_state(): in gemischten Kategorien (Zuletzt gespielt, Sammlungen, ...) kommt der Systemkey vom EINTRAG und nicht von der Kategorie - sonst fehlen Cover, Genre, Jahr und RA-Fortschritt |
+| `test_demo_schirme.py` | Test (Pass/Fail) | Die Vorfuehrung zeigt die ECHTEN Bildschirme: die gescriptete Hand am Pad scrollt, hoert puenktlich auf, weicht jeder echten Taste - und die zehn Bildschirme der Tabelle gibt es wirklich und werden wirklich gerufen |
 | `diag_ungeprueft.py` | Diagnose (immer Rueckgabewert 0) | Welche Funktionen betritt KEIN Test - gemessen mit sys.setprofile, nicht ueber Namen im Testtext |
 | `_spur.py` | Hilfsmodul | Laesst eine einzelne Testdatei unter sys.setprofile laufen und schreibt jede betretene Funktion mit |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
@@ -4287,3 +4288,71 @@ Geprueft wird jetzt, was auf jedem Rechner gleich ausfaellt: die Datei
 ist deutlich kleiner, und es sind **gezaehlt** weniger Bytes zu lesen
 (39.035 gegen 114.671). Die Zeiten stehen weiterhin im Protokoll - als
 Auskunft, nicht als Zusage.
+
+## test_demo_schirme.py (Build 262)
+
+Nutzerwunsch: „kannst du eine erstellen die einmal durch das Frontend
+scrollt, Ansichten zeigt und alle Features einmal zeigt? Nicht nur per
+Text einblenden ... Sollte so 4 Minuten gehen."
+
+Bis Build 261 konnte die Vorfuehrung zwei Dinge: eine Titelkarte malen
+und den Zeiger durch eine Liste laufen lassen. Zufalls-Zock,
+Trophaeenraum, Meilensteine, Top 10, Jahresrueckblick, Tagebuch, Hilfe,
+Testbild, Kontextmenue und Suche kamen darin nur als **Wort auf einer
+Titelkarte** vor.
+
+**Das Hindernis:** diese Bildschirme sind Warteschleifen - sie
+zeichnen, rufen `inp.read_action()` ohne Zeitgrenze und warten auf
+einen Menschen. Von aussen aufgerufen bleibt die Vorfuehrung im ersten
+davon stehen.
+
+**Die Loesung ist eine Hand am Pad**, kein Aufschneiden der zwoelf
+erprobten Bildschirme: ein Eingabe-Objekt, das sich wie das echte
+verhaelt und die Tasten liefert, die ein Vorfuehrender druecken wuerde.
+An den Bildschirmen aendert sich dadurch **keine Zeile**. Alles, was
+nicht `read_action()` ist (`grab()`, `flush()`), geht unveraendert ans
+echte Objekt weiter - eine zweite Fassung des Eingabe-Managers waere
+genau die Sorte Nachbau, die uns in Build 260 eingeholt hat.
+
+**Warum dieser Test NEBEN test_demo.py steht und nicht darin:** jener
+arbeitet mit einer Attrappe, die nur kann, was die Vorfuehrung
+FRUEHER angefasst hat. Die zehn neuen Stationen wuerden dort
+stillschweigend uebersprungen, und der Test bliebe gruen. Ein Test,
+der die neue Faehigkeit gar nicht erreicht, prueft sie auch nicht.
+
+**Geprueft werden die beiden echten Schleifenformen**, denn genau ihr
+Unterschied begruendet die Tabelle in `demo.py`:
+
+* **scrollbar** (Trophaeenraum, Meilensteine, Top 10, Tagebuch,
+  Hilfe): `runter` scrollt **nur, wenn es etwas zu scrollen gibt** -
+  sonst ist es eine beliebige Taste und der Bildschirm geht zurueck.
+  Auf HDMI passt aber oft alles auf eine Seite. `_schirm()` faengt das
+  ab, indem es das fertige Bild stehen laesst, statt die Station zu
+  verschlucken; der Test misst, dass die Station trotzdem ihre Zeit
+  bekommt.
+* **einfach** (Jahresrueckblick, Testbild): jede Taste schliesst sie.
+  Sie bekommen deshalb **gar keine**.
+
+**Die wichtigste Zusage** ist Test 2: eine ECHTE Taste bricht alles ab.
+„Jede Taste bricht ab" steht seit Build 233 im Modulkopf - sie darf
+nicht ausgerechnet dort aufhoeren zu gelten, wo eine gescriptete Hand
+am Pad liegt. Dazu der sture Bildschirm (Test 4), der auch auf
+„zurueck" nicht zurueckkommt: nach fuenf vergeblichen Versuchen
+verlaesst die Hand ihn mit einer Ausnahme - lieber eine Station
+abbrechen als die Vorfuehrung.
+
+**Zwei stille Fehler, gegen die hier eigens geprueft wird:**
+
+* `_schirm_station()` holt die Methode mit `getattr(..., None)` und
+  ueberspringt still, wenn es sie nicht gibt. **Test 7** haelt fest,
+  dass es alle zehn in `frontend.py` wirklich gibt - wird eine
+  umbenannt, fiele die Station sonst fuer immer aus, ohne dass etwas
+  rot wird. **Test 8** ruft sie zusaetzlich alle einmal auf (die
+  Top 10 mit ihrem Parameter).
+* Die Hand bleibt am Frontend haengen, wenn `fe.inp` nicht
+  zurueckgegeben wird. Geprueft nach jedem Durchlauf.
+
+Zum Schluss druckt der Test die **Zeiteinteilung** aller 23 Stationen
+auf 240 Sekunden und besteht darauf, dass keine unter vier Sekunden
+faellt - mit zehn Stationen mehr ist das die Zahl, die als erste
+kippt.

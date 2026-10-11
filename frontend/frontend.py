@@ -22758,7 +22758,7 @@ if __name__ == "__main__":
         "--bench": "eine feste, wiederholbare Messung ausgeben",
         "--show": "zeigen, was drin ist, wie es eingestellt ist "
                   "und wie schnell es laeuft",
-        "--demo": "drei Minuten Vorfuehrung auf dem Bildschirm",
+        "--demo": "vier Minuten Vorfuehrung auf dem Bildschirm",
         "--help": "diese Liste zeigen",
         "-h": "diese Liste zeigen",
     }

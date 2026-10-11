@@ -28,7 +28,36 @@ ist eine Zumutung.
 """
 import time
 
-DEMO_VERSION = 2
+DEMO_VERSION = 3
+
+# BUILD 262: DIE VORFUEHRUNG ZEIGT JETZT DIE ECHTEN BILDSCHIRME.
+#
+# NUTZERWUNSCH: "kannst du eine erstellen die einmal durch das Frontend
+# scrollt, Ansichten zeigt und alle Features einmal zeigt? Nicht nur
+# per Text einblenden - einmal durch scrollen Optionen, System,
+# Zufalls-Zock, RA, alles einmal einblenden. Sollte so 4 Minuten
+# gehen."
+#
+# Bis hierher konnte die Vorfuehrung nur zwei Dinge: eine Titelkarte
+# malen und den Zeiger durch eine Liste laufen lassen. Alles, was ein
+# EIGENER Bildschirm ist - Zufalls-Zock, Trophaeenraum, Meilensteine,
+# Jahresrueckblick, Tagebuch, Top-10, Hilfe, Testbild, Kontextmenue -
+# kam darin nur als Wort auf einer Titelkarte vor. Genau das war die
+# Kritik.
+#
+# DAS HINDERNIS, und warum es keine Kleinigkeit ist: diese Bildschirme
+# sind Schleifen. Sie zeichnen, rufen self.inp.read_action() OHNE
+# Zeitgrenze auf und warten auf einen Menschen. Von aussen aufgerufen
+# bleibt die Vorfuehrung im ersten davon stehen.
+#
+# ZWEI WEGE GAB ES. Jeden Bildschirm in "zeichnen" und "warten"
+# zerlegen - zwoelf Eingriffe in erprobten Code, jeder davon eine
+# Gelegenheit, etwas kaputtzumachen. Oder eine HAND ans Pad legen: ein
+# Eingabe-Objekt, das sich wie das echte verhaelt und die Tasten
+# liefert, die ein Vorfuehrender druecken wuerde. Der zweite Weg
+# aendert an den Bildschirmen KEINE ZEILE - sie wissen nicht einmal,
+# dass sie vorgefuehrt werden. Das ist dieselbe Linie wie oben: kein
+# zweiter Zeichenweg, und was gezeigt wird, ist das Echte.
 
 # Ab wievielen Eintraegen eine Kategorie fuer die Spieleliste-Stationen
 # taugt. Acht ist die Zahl, bei der im kleinsten Fenster (CRT, grosse
@@ -85,6 +114,54 @@ EINSTELLUNGEN = (
 # 1,4 fuer die Einstellungen; jetzt 4,6 gegen 6,2 - die Vorfuehrung
 # dreht sich damit um das, was man machen KANN, und nicht mehr um
 # Scrollen in sechs Varianten.
+# DIE ECHTEN BILDSCHIRME (Build 262).
+#
+# (schluessel, titel, erklaerung, gewicht, methode, schritte, pause)
+#
+# "schritte" sind die Tasten, die die Hand druckt. Hier steckt der
+# einzige Punkt, an dem man sich vertun kann, und darum steht er
+# ausgeschrieben: die scrollbaren Bildschirme behandeln "runter" nur
+# dann als Scrollen, wenn es etwas zu scrollen GIBT - sonst ist es
+# fuer sie eine beliebige Taste und sie gehen zurueck. Deshalb
+# bekommen Jahresrueckblick und Testbild GAR KEINE Taste (sie kennen
+# kein Scrollen und wuerden sich sofort schliessen), und bei den
+# uebrigen faengt _schirm() den fruehen Rueckweg ab, indem es das
+# fertige Bild stehen laesst.
+#
+# NICHT DABEI, und zwar mit Absicht: die RA-Erfolgsvitrine
+# (draw_ra_showcase_screen). Sie holt ihre Daten bei JEDEM Aufruf live
+# von retroachievements.org - in einer Vorfuehrung waere das im besten
+# Fall eine Wartezeit und im schlechtesten ein leerer Bildschirm, je
+# nach Netz. RetroAchievements kommt stattdessen dort vor, wo die
+# Daten schon auf der Karte liegen: Trophaeenraum und Meilensteine.
+SCHIRME = (
+    ("suche", "Suche", "Buchstabe fuer Buchstabe - Select+A am Pad, "
+     "kein USB-Keyboard noetig.", 1.0, None, (), 0),
+    ("kontext", "Kontextmenue",
+     "X am Pad zeigt, was mit diesem Eintrag gerade geht.",
+     1.0, "kontextmenue", ("down",), 1.1),
+    ("wot", "Zufalls-Zock", "Drei Spiele werden gezogen - mit Ton, "
+     "und am Ende stehen sie da.", 1.6, "draw_wot_screen",
+     ("down",), 2.2),
+    ("trophy", "Trophaeenraum", "Meistgespieltes Spiel, "
+     "Lieblingssystem, Erfolgs-Zaehler.", 1.2,
+     "draw_trophy_room_screen", ("down",), 1.8),
+    ("meilen", "Meilensteine", "Eigene Erfolge - erreichte hell, "
+     "offene mit Fortschritt.", 1.2, "draw_milestones_screen",
+     ("down",), 1.3),
+    ("top10", "Top 10", "Die zehn meistgespielten Spiele.", 1.0,
+     "draw_top10_screen", ("down",), 1.3),
+    ("jahr", "Jahresrueckblick", "Was dieses Jahr gespielt wurde.",
+     1.0, "draw_year_review_screen", (), 0),
+    ("tagebuch", "Spieltagebuch", "Was wann gespielt wurde, "
+     "Eintrag fuer Eintrag.", 1.0, "draw_diary_screen", ("down",), 1.5),
+    ("hilfe", "Hilfe", "Alle Tasten und Kniffe, im Frontend selbst.",
+     1.2, "draw_help_screen", ("down",), 1.5),
+    ("crt", "CRT-Testbild", "Geometrie, Linearitaet, Farbabgleich - "
+     "zum Einstellen der Roehre.", 0.8,
+     "draw_crt_test_pattern_screen", (), 0),
+)
+
 STATIONEN = (
     ("titel", "Dragend", "", 0.5),
     ("haupt_liste", "Hauptseite - Liste",
@@ -100,9 +177,12 @@ STATIONEN = (
     ("liste_galerie", "Spieleliste - Galerie",
      "Und als Galerie, mit Beschreibung.", 0.8),
 ) + tuple(("einst:" + schluessel, "Einstellungen - " + titel, erkl, gew)
-          for schluessel, titel, erkl, gew in EINSTELLUNGEN) + (
+          for schluessel, titel, erkl, gew in EINSTELLUNGEN) + tuple(
+    ("schirm:" + st[0], st[1], st[2], st[3]) for st in SCHIRME) + (
     ("ende", "Ende der Vorfuehrung", "", 0.5),
 )
+
+_SCHIRM_NACH_SCHLUESSEL = dict((st[0], st) for st in SCHIRME)
 
 
 def _gewicht_summe():
@@ -223,7 +303,7 @@ def _scrollen(fe, BENCH, seite, sekunden):
     return True
 
 
-def lauf(fe, fm, S, BENCH, sekunden=180.0, log=None):
+def lauf(fe, fm, S, BENCH, sekunden=240.0, log=None):
     """Die Vorfuehrung. Rueckgabe True, wenn sie durchgelaufen ist.
 
     sekunden ist die GESAMTdauer; die Stationen teilen sie sich nach
@@ -287,16 +367,32 @@ def lauf(fe, fm, S, BENCH, sekunden=180.0, log=None):
                     return False
                 continue
 
-            # Zwei Drittel der Station gehoeren dem Bild, ein Drittel
-            # der Ankuendigung - und die Ankuendigung hoechstens drei
-            # Sekunden, sonst wird es zaeh.
-            vorlauf = min(3.0, dauer / 3.0)
+            # Drei Viertel der Station gehoeren dem Bild, ein Viertel
+            # der Ankuendigung - und die Ankuendigung hoechstens zwei
+            # ein halb Sekunden, sonst wird es zaeh.
+            #
+            # BUILD 262: vorher ein Drittel und bis drei Sekunden. Mit
+            # zehn Bildschirmen mehr waeren das ueber eine Minute der
+            # vier gewesen, die man Titelkarten ansieht statt des
+            # Frontends - und die Vorfuehrung soll ja gerade NICHT aus
+            # Text bestehen.
+            vorlauf = min(2.5, dauer / 4.0)
             zeilen = (erklaerung,)
             if schluessel.startswith("liste") and kat_name:
                 zeilen = (erklaerung,
                           "%s - %s Eintraege" % (kat_name, _menge(kat_n)))
             if not _titelkarte(fe, fm, titel, zeilen, vorlauf):
                 return False
+
+            if schluessel.startswith("schirm:"):
+                if not _schirm_station(fe, S, schluessel[7:],
+                                       dauer - vorlauf, kat_i, sys_i,
+                                       log):
+                    if log:
+                        log("--demo bei Station %s abgebrochen (Taste)"
+                            % schluessel)
+                    return False
+                continue
 
             seite, ansicht = _station_einstellen(fe, S, schluessel,
                                                  kat_i, sys_i)
@@ -381,6 +477,215 @@ def lauf(fe, fm, S, BENCH, sekunden=180.0, log=None):
         if log:
             log("--demo beendet")
     return True
+
+
+# ---------------------------------------------------------------------------
+# DIE HAND AM PAD
+# ---------------------------------------------------------------------------
+# Wieviele "zurueck" ein Bildschirm bekommt, bevor die Vorfuehrung ihn
+# mit einer Ausnahme verlaesst. Fuenf, weil ein Bildschirm durchaus
+# eine Rueckfrage stellen darf ("wirklich?") - aber nicht fuenf.
+_GEDULD = 5
+
+
+class _Raus(Exception):
+    """Notausgang: ein Bildschirm, der auch auf 'zurueck' nicht
+    zurueckkommt. Lieber die Station abbrechen als die Vorfuehrung."""
+
+
+class _Hand:
+    """Ein Eingabe-Objekt, das sich wie das echte verhaelt und die
+    Tasten liefert, die ein Vorfuehrender druecken wuerde.
+
+    DREI DINGE MUSS SIE KOENNEN, und jedes hat seinen Grund:
+
+      1. ZEIGEN. Alle "pause" Sekunden kommt die naechste Taste aus
+         "schritte" (meist ein "runter"), damit sich auf dem Bildschirm
+         etwas bewegt und man sieht, dass die Liste weitergeht.
+      2. AUFHOEREN. Ist die Zeit der Station um, liefert sie "zurueck",
+         und der Bildschirm beendet seine Schleife von selbst - so, wie
+         er es bei einem Menschen auch taete.
+      3. WEICHEN. Drueckt waehrenddessen jemand WIRKLICH eine Taste,
+         bricht die ganze Vorfuehrung ab. Dafuer wird die echte Eingabe
+         die ganze Zeit mitgelesen; das ist dieselbe Zusage wie oben
+         im Modulkopf ("jede Taste bricht ab") - sie darf nicht
+         ausgerechnet dort gelten, wo die Hand am Pad liegt.
+
+    WAS SIE NICHT IST: eine Nachbildung des Eingabe-Managers. Alles,
+    was nicht read_action() ist (grab(), flush(), ...), geht
+    unveraendert ans echte Objekt weiter - eine zweite Fassung davon
+    waere genau die Sorte Nachbau, die uns in Build 260 eingeholt hat.
+    """
+
+    def __init__(self, echt, schritte, pause, ende):
+        self._echt = echt
+        self._schritte = tuple(schritte or ())
+        self._pause = max(0.2, float(pause))
+        self._ende = ende
+        self._i = 0
+        self._geduld = _GEDULD
+        self.abbruch = False
+
+    def __getattr__(self, name):
+        # Nur fuer das, was hier NICHT definiert ist - also alles ausser
+        # read_action(). self._echt steht schon, bevor das hier je
+        # gerufen werden kann (erste Zuweisung in __init__).
+        return getattr(self._echt, name)
+
+    def read_action(self, timeout=None):
+        jetzt = time.monotonic()
+        faellig = jetzt + self._pause
+        frist = None if timeout is None else jetzt + timeout
+        while True:
+            jetzt = time.monotonic()
+            if jetzt >= self._ende:
+                self._geduld -= 1
+                if self._geduld < 0:
+                    raise _Raus()
+                return "back"
+            if frist is not None and jetzt >= frist:
+                # Ein Bildschirm, der mit Zeitgrenze fragt, zeichnet
+                # zwischendurch (eine Laufschrift, eine Ziehung). Dem
+                # darf man nicht die Zeit stehlen.
+                return None
+            if jetzt >= faellig:
+                faellig = jetzt + self._pause
+                if self._schritte:
+                    akt = self._schritte[self._i % len(self._schritte)]
+                    self._i += 1
+                    return akt
+            if self._echt is not None:
+                try:
+                    if self._echt.read_action(timeout=TAKT) is not None:
+                        self.abbruch = True
+                        return "back"
+                    continue
+                except Exception:                        # noqa: BLE001
+                    self._echt = None
+            time.sleep(TAKT)
+
+
+def _schirm(fe, aufruf, dauer, schritte=(), pause=1.5, name="", log=None):
+    """Einen echten Bildschirm vorfuehren. False = abbrechen.
+
+    BLEIBT DAS BILD STEHEN, WENN DER BILDSCHIRM FRUEHER ZURUECKKOMMT -
+    und das ist kein Schoenheitsfehler, sondern noetig: die
+    scrollbaren Bildschirme (Trophaeenraum, Meilensteine, Top-10,
+    Tagebuch, Hilfe) behandeln "runter" NUR DANN als Scrollen, wenn es
+    ueberhaupt etwas zu scrollen gibt - sonst ist es fuer sie eine
+    beliebige Taste und sie gehen zurueck. Auf HDMI passt aber oft
+    alles auf eine Seite. Ohne diese Zeile waere die Station dort nach
+    anderthalb Sekunden vorbei; so steht das fertige Bild die
+    vorgesehene Zeit, und auf der Roehre wird gescrollt. Gezeichnet
+    wird dabei nichts mehr - der Bildschirminhalt bleibt einfach."""
+    echt = getattr(fe, "inp", None)
+    ende = time.monotonic() + dauer
+    hand = _Hand(echt, schritte, pause, ende)
+    try:
+        fe.inp = hand
+    except Exception:                                    # noqa: BLE001
+        return True
+    try:
+        aufruf()
+    except _Raus:
+        if log:
+            log("--demo: %s kam nicht von selbst zurueck" % (name or "?"))
+    except Exception as e:                               # noqa: BLE001
+        if log:
+            log("--demo: %s uebersprungen (%s: %s)"
+                % (name or "?", type(e).__name__, e))
+    finally:
+        fe.inp = echt
+    if hand.abbruch:
+        return False
+    rest = ende - time.monotonic()
+    return _warten(fe, rest) if rest > 0.05 else True
+
+
+def _suche_zeigen(fe, dauer, log=None):
+    """Die Suche mit dem Buchstabenwaehler - kein eigener Bildschirm,
+    sondern ein ZUSTAND, den der normale Seitenaufbau zeichnet (siehe
+    _search_mode in frontend.py). Deshalb braucht es hier keine Hand,
+    nur das Setzen und das saubere Zuruecknehmen."""
+    merk = {}
+    felder = ("_search_mode", "_search_query", "_such_treffer",
+              "_search_picker", "_picker_i", "_search_start_i")
+    for f in felder:
+        merk[f] = getattr(fe, f, None)
+    try:
+        fe._search_mode = True
+        fe._search_picker = True
+        fe._search_query = ""
+        fe._such_treffer = []
+        fe._picker_i = 0
+        fe._search_start_i = getattr(fe, "item_i", 0)
+        # Buchstabe fuer Buchstabe, damit man sieht, wie es sich
+        # anfuehlt - und nicht ein fertiges Wort, das vom Himmel faellt.
+        schritt = max(0.35, min(1.0, dauer / 8.0))
+        for ch in "MARIO":
+            fe._search_query += ch
+            try:
+                fe.draw()
+            except Exception:                            # noqa: BLE001
+                return True
+            if not _warten(fe, schritt):
+                return False
+        rest = dauer - 5 * schritt
+        return _warten(fe, rest) if rest > 0.05 else True
+    finally:
+        for f, w in merk.items():
+            try:
+                setattr(fe, f, w)
+            except Exception:                            # noqa: BLE001
+                pass
+
+
+def _schirm_station(fe, S, name, dauer, kat_i, sys_i, log=None):
+    """Eine Bildschirm-Station. False = die Vorfuehrung abbrechen.
+
+    FEHLT DER BILDSCHIRM AUF DIESEM GERAET, wird die Station
+    uebersprungen und das ins Log geschrieben - dieselbe Regel wie bei
+    den Einstellungsgruppen: nichts ersetzen, nichts vortaeuschen."""
+    st = _SCHIRM_NACH_SCHLUESSEL.get(name)
+    if st is None:
+        return True
+    _k, _titel, _erkl, _gew, methode, schritte, pause = st
+
+    # Die Suche und das Kontextmenue brauchen eine Spieleliste unter
+    # sich - ohne markierten Eintrag haette das Kontextmenue nichts zu
+    # zeigen und die Suche nichts zu durchsuchen.
+    if name in ("suche", "kontext"):
+        if kat_i is None:
+            if log:
+                log("--demo Station schirm:%s UEBERSPRUNGEN "
+                    "(keine Kategorie mit genug Eintraegen)" % name)
+            return True
+        seite, _a = _station_einstellen(fe, S, "liste_liste", kat_i, sys_i)
+        if seite is None:
+            return True
+        try:
+            fe.draw()
+        except Exception:                                # noqa: BLE001
+            return True
+
+    if name == "suche":
+        if log:
+            log("--demo Station schirm:suche zeigt den Buchstabenwaehler")
+        return _suche_zeigen(fe, dauer, log)
+
+    fn = getattr(fe, methode, None)
+    if fn is None:
+        if log:
+            log("--demo Station schirm:%s UEBERSPRUNGEN (%s() gibt es "
+                "hier nicht)" % (name, methode))
+        return True
+    aufruf = fn
+    if name == "top10":
+        aufruf = lambda: fn("seconds")                   # noqa: E731
+    if log:
+        log("--demo Station schirm:%-10s %s() fuer %.1f s"
+            % (name, methode, dauer))
+    return _schirm(fe, aufruf, dauer, schritte, pause or 1.5, name, log)
 
 
 def _station_einstellen(fe, S, schluessel, kat_i, sys_i):

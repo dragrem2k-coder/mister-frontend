@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""--demo: drei Minuten, die alles einmal zeigen (Build 233).
+"""--demo: vier Minuten, die alles einmal zeigen (Build 233/262).
 
 WUNSCH DES NUTZERS: "eventuell sollte man auf dem bildschirm auch dort
 einmal die menuepunkte kategorien ect angezeigt bekommen, am besten als
@@ -322,8 +322,10 @@ print("Test 6: die Laenge laesst sich einstellen, ohne neun Zahlen")
 check("die Stationen haben Gewichte",
       all(isinstance(st[3], (int, float)) and st[3] > 0
           for st in DEMO.STATIONEN))
-check("und die Vorgabe sind drei Minuten",
-      "sekunden=180.0" in quelle, "so hat der Nutzer es gewuenscht")
+check("und die Vorgabe sind vier Minuten",
+      "sekunden=240.0" in quelle,
+      "Build 262, Nutzerwunsch: 'sollte so 4 Minuten gehen' - "
+      "vorher 180")
 check("eine laengere Vorfuehrung braucht nur eine Zahl",
       "je = float(sekunden) / _gewicht_summe()" in quelle)
 
@@ -596,7 +598,7 @@ print("Test 9: die Vorfuehrung laesst die Eingabe-Uhr nicht alt stehen")
 # Build 239 hat die Zeile eingebaut, um "dann oeffnet er nur zufalls
 # zock und bleibt dort stehen" zu erklaeren: der Attract-Modus startet
 # nach voreingestellt 90 Sekunden ohne Eingabe, die Vorfuehrung laeuft
-# 180 Sekunden mit eigener Schleife.
+# 240 Sekunden mit eigener Schleife.
 #
 # DIE ERKLAERUNG WAR FALSCH. --demo ruft nach lauf() sofort _beenden()
 # und sys.exit(0) - der Leerlauf-Zweig von run() kommt nie mehr dran.
@@ -607,7 +609,7 @@ print("Test 9: die Vorfuehrung laesst die Eingabe-Uhr nicht alt stehen")
 # nicht auf; wird die Vorfuehrung je aus dem Menue aufrufbar, sofort.
 import fe.settings as _S9                                  # noqa: E402
 print("   ATTRACT_DELAY_STEPS beginnt bei %d s, die Vorfuehrung laeuft"
-      " %d s" % (min(_S9.ATTRACT_DELAY_STEPS), 180))
+      " %d s" % (min(_S9.ATTRACT_DELAY_STEPS), 240))
 
 
 class UhrFrontend(Attrappe):

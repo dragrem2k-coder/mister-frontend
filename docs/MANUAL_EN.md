@@ -2005,7 +2005,7 @@ The frontend is normally started without options (autostart, or
 |---|---|
 | `--show` | Says **what is installed, how it is configured and how fast it runs** — on screen and additionally as a file in `/tmp/dragend_show.txt`. The fastest way to report a state without hunting over SSH |
 | `--bench` | A **fixed, repeatable measurement** across all drawing paths; report on screen and in `/tmp/dragend_bench.txt`. It deliberately touches **nothing** on the SD card |
-| `--demo` | Three minutes of **guided tour**: views, filters, trophy room and the settings groups, played through by itself. Any key aborts |
+| `--demo` | **Four minutes of guided tour**, played through by itself: the three views on the main page and the game list, the five settings groups — and since Build 262 the **real screens**: search, context menu, random pick with its draw, trophy room, milestones, top 10, year review, diary, help and the CRT test pattern. Any key aborts |
 | `--help` | This list. The check runs **before** everything else: a typo gets you three lines and nothing more — no half start, no lock left behind |
 
 There is also a switch without an option: if the file

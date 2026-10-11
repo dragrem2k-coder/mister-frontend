@@ -13,6 +13,16 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.8 — not yet released
 
+**The guided tour now shows the real screens — four minutes.**
+
+- **Your wish:** "scroll through the frontend once, show the views and every feature once — not just faded in as text."
+- **That was exactly what was missing.** Random pick, trophy room, milestones, top 10, year review, diary, help, CRT test pattern, context menu and search used to appear only as a **word on a title card**. Now they actually run: ten more stations, 23 in four minutes.
+- **The obstacle was that these screens are waiting loops** — they draw and wait for a human. Instead of cutting twelve proven screens open, the tour puts a **hand on the pad**: an input object that supplies the keys a presenter would press. **Not one line of those screens changed** — they do not even know they are being demonstrated.
+- **Any key still aborts.** The real input is read all the way through; that promise must not stop precisely where a scripted hand is on the pad.
+- **Search types itself**, letter by letter, with the on-screen picker.
+- **Deliberately not included:** the RA showcase. It fetches its data live from retroachievements.org on every call — in a tour that is waiting at best and an empty screen at worst. RetroAchievements appears where the data is already on the card instead: trophy room and milestones.
+
+
 **Added: covers from "Recently played", "Continue playing", Random pick, RA hunter and Collections too.**
 
 - **The reported case:** "from the categories it works great now, but when I start games from Recently played, Continue playing, Random pick, RA hunter, Collections, no covers are shown."
