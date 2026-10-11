@@ -1971,6 +1971,19 @@ kommt dabei nicht aus dem Videoausgang, sondern wird direkt im
 Browser gerendert und von OBS ins Bild gesetzt. Jede einzelne Anzeige
 lässt sich über die Backend-Oberfläche getrennt ein-/ausschalten.
 
+**Die Cover im Overlay (berichtigt in Build 260):** Das Overlay zeigt
+dieselben Cover wie das Frontend — und zwar in **jedem** Format, das
+das Frontend selbst liest: unser `.art`, **JPEG** und **PNG**, dazu die
+Bilder aus einer `gamelist.xml` und aus der fremden Artwork-Datenbank.
+
+Bis Build 259 hatte der Stream-Server dafür eine **eigene, nachgebaute
+Suche**, und die kannte nur `.art`. Wer seine Cover auf JPEG/PNG
+umgestellt hatte, bekam im Overlay gar kein Bild — weder die große
+Karte noch (seit Build 259) das Cover an der Erfolgswand. Gefragt wird
+jetzt dieselbe Stelle, die auch das Frontend fragt; eine zweite Suche
+gibt es nicht mehr. JPEG und PNG gehen dabei **unverändert** an den
+Browser, nur unser `.art` wird in PNG gewandelt.
+
 **RA-Erfolge in Echtzeit:** Wird während des Spielens ein
 RetroAchievements-Erfolg freigeschaltet, zeigt das Overlay das direkt
 an - Icon, Titel, Beschreibung, Punkte, oben rechts eingeblendet, nach

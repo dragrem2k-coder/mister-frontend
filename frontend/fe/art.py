@@ -4098,6 +4098,39 @@ def art_path(syskey, rom_basename):
     return _art_path_in(ART_BASE, syskey, rom_basename)
 
 
+def cover_datei(syskey, rom_basename, basen=None):
+    """Der tatsaechlich VORHANDENE Cover-Pfad zu einem Spiel - oder
+    None, wenn es keinen gibt. HD zuerst, dann der Standardordner.
+
+    WARUM ES DIESE FUNKTION GIBT (Build 260, Nutzer-Rueckmeldung: "das
+    cover wird nicht angezeigt, egal welche rom ich starte" - und die
+    Vermutung, die sich als richtig herausstellte: "oder liegt es daran,
+    dass wir die Covers alle von .art weg in c-modul als png und jpg
+    geaendert haben?"). Der Stream-Server hatte seine EIGENE Cover-Suche
+    nachgebaut, und die kannte nur ".art". Seit das Frontend auch JPEG
+    und PNG liest (und die gamelist.xml und die fremde Datenbank),
+    suchte der Server nach einer Datei, die es bei vielen gar nicht mehr
+    gibt, und lieferte "no art" - im Overlay also weder das grosse Cover
+    noch das neue Cover an der Erfolgswand.
+
+    Eine zweite, nachgebaute Suche GEHT IRGENDWANN IMMER AUSEINANDER.
+    Deshalb hier eine gemeinsame Stelle statt einer dritten Fassung:
+    _art_path_in() traegt die ganze Rangfolge (exakter Name, dann der
+    unscharfe Vergleich, dann gamelist, dann die fremde Datenbank), und
+    die bekommt der Server nun mit, ohne davon etwas wissen zu muessen.
+
+    "basen" gibt es, weil der Stream-Server seine Ordner als Parameter
+    bekommt (die Tests arbeiten in temporaeren Verzeichnissen) - ohne
+    Angabe gelten ART_HD und ART_BASE."""
+    for base in (basen if basen is not None else (ART_HD, ART_BASE)):
+        if not base:
+            continue
+        pfad = _art_path_in(base, syskey, rom_basename)
+        if pfad and os.path.exists(pfad):
+            return pfad
+    return None
+
+
 # ---------------------------------------------------------------------------
 # FREMDE ARTWORK-/METADATENQUELLE unter DOCS_BASE (Build 115)
 # ---------------------------------------------------------------------------

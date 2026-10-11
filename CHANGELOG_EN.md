@@ -13,6 +13,15 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.8 — not yet released
 
+**Fixed: covers in the OBS overlay were gone unless they were named `.art`.**
+
+- **The reported case:** "the cover is not shown, whatever ROM I start" — grid there, frame there, image empty. Your own guess was the right one: *"or is it because we moved all the covers away from .art to PNG and JPG in the C module?"*
+- **That was exactly it.** The stream server had a **second, re-built cover lookup**, and it only knew `.art`. The frontend has long read JPEG and PNG too (plus `gamelist.xml` and the external database). Anyone who had switched got `no art` — no large cover and, since Build 259, an empty frame beside the achievement wall. **The bug is older than Build 259; the wall only made it visible.**
+- **The server now asks the same place the frontend asks.** There is no second lookup any more — being a second one is precisely why it drifted.
+- **JPEG and PNG go out unchanged.** The browser handles both; decoding them and re-packing as PNG would be work for nothing, and noticeable work on the DE10-Nano. Only our `.art` is converted.
+- **Counter-checked, and that is what makes the probe worth anything:** the same test runs against the shipped v4.8 and is red there — JPEG and PNG come back as 404, `.art` as an image. Exactly your symptom.
+
+
 **Multi-disc games take one line in the list.**
 
 - "Final Fantasy VII (Disc 1)", "(Disc 2)", "(Disc 3)" are now **one line: "Final Fantasy VII"**. On launch the frontend asks **"Which disc?"** — the same chooser as the core question, and it comes first.

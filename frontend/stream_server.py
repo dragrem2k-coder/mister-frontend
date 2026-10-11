@@ -20,7 +20,8 @@
 #   GET  /state       -> aktueller State als JSON (Initial-Load)
 #   GET  /config      -> aktuelle Config als JSON
 #   POST /config      -> Config speichern (JSON-Body)
-#   GET  /art?sys=..&name=..  -> Cover als PNG (aus lokaler .art)
+#   GET  /art?sys=..&name=..  -> Cover (JPEG/PNG unveraendert,
+#                                unser .art gewandelt als PNG)
 # ----------------------------------------------------------------------------
 
 import json
@@ -95,6 +96,25 @@ DEFAULT_CONFIG = {
     "obs_game_scene": "",
     "obs_frontend_scene": "",
 }
+
+
+_cover_datei_fn = []          # [] = noch nicht versucht, [None] = kein fe.art
+
+
+def _cover_datei_holen():
+    """fe.art.cover_datei - einmal gesucht, dann gemerkt.
+
+    Faul und nicht oben als Import: stream_server.py laeuft im selben
+    Prozess wie das Frontend (dort ist fe.art laengst geladen), soll
+    sich aber auch eigenstaendig starten lassen, ohne das ganze
+    Frontend mitzuziehen."""
+    if not _cover_datei_fn:
+        try:
+            from fe.art import cover_datei
+            _cover_datei_fn.append(cover_datei)
+        except Exception:                                # noqa: BLE001
+            _cover_datei_fn.append(None)
+    return _cover_datei_fn[0]
 
 
 class StreamServer:
@@ -458,9 +478,37 @@ class StreamServer:
         return idx
 
     def _find_art(self, syskey, name):
-        """Cover-Datei suchen - genau wie das Frontend: erst der HD-Ordner
-        (art_hd), dann der Standard (art); in jedem erst exakter Name,
-        sonst tolerant (fuehrende "NNN "-Nummer ignoriert)."""
+        """Cover-Datei suchen.
+
+        BUGFIX BUILD 260 (Nutzer-Rueckmeldung: "das cover wird nicht
+        angezeigt, egal welche rom ich starte", und die Vermutung, die
+        sich als richtig herausstellte: "oder liegt es daran, dass wir
+        die Covers alle von .art weg in c-modul als png und jpg
+        geaendert haben?").
+
+        GENAU DARAN LAG ES. Hier stand eine ZWEITE, nachgebaute
+        Cover-Suche, und die kannte nur ".art". Das Frontend liest seit
+        laengerem auch JPEG und PNG (feste Reihenfolge .art, JPEG, PNG -
+        siehe _art_index() in fe/art.py), dazu die gamelist.xml und die
+        fremde Datenbank. Wer seine Cover als .png/.jpg liegen hat,
+        bekam vom Server "no art": kein grosses Cover im Overlay und,
+        seit Build 259, ein leerer Rahmen an der Erfolgswand.
+
+        Eine nachgebaute Suche geht irgendwann immer auseinander.
+        Gefragt wird deshalb jetzt fe/art.py - DIESELBE Stelle, die auch
+        das Frontend selbst fragt (cover_datei(), mit unseren Ordnern als
+        Parameter, damit Tests in temporaeren Verzeichnissen laufen).
+
+        Der alte .art-Weg bleibt NUR als Rueckfall, falls fe/art.py
+        nicht importierbar ist (eigenstaendiger Betrieb des Servers).
+        Findet fe/art.py nichts, gibt es auch nichts - der Rueckfall
+        kann weniger, nicht mehr."""
+        hole = _cover_datei_holen()
+        if hole is not None:
+            try:
+                return hole(syskey, name, self._art_bases)
+            except Exception:                            # noqa: BLE001
+                return None
         for base in self._art_bases:
             exact = os.path.join(base, syskey, name + ".art")
             if os.path.exists(exact):
@@ -470,8 +518,38 @@ class StreamServer:
                 return os.path.join(base, syskey, fn)
         return None
 
-    def _art_png(self, syskey, name):
+    # Groesste Datei, die wir unveraendert durchreichen. Ein Cover ist
+    # ein paar hundert Kilobyte; alles jenseits davon ist kein Cover,
+    # und der Server soll kein Weg sein, beliebige Dateien zu ziehen.
+    MAX_COVER_BYTES = 16 * 1024 * 1024
+
+    def _art_antwort(self, syskey, name):
+        """(Inhaltstyp, Bytes) fuer /art - oder None.
+
+        JPEG UND PNG GEHEN UNVERAENDERT RAUS. Der Browser kann beides
+        selbst; sie erst zu entpacken und als PNG neu zu verpacken waere
+        Arbeit fuer nichts - und bei einem grossen HD-Cover auf dem
+        DE10-Nano spuerbare Arbeit. Nur unser eigenes .art-Format muss
+        gewandelt werden, das kennt sonst niemand."""
         path = self._find_art(syskey, name)
+        if not path:
+            return None
+        endung = path.rsplit(".", 1)[-1].lower() if "." in path else ""
+        if endung in ("jpg", "jpeg", "png"):
+            try:
+                if os.path.getsize(path) > self.MAX_COVER_BYTES:
+                    return None
+                with open(path, "rb") as f:
+                    roh = f.read(self.MAX_COVER_BYTES)
+            except OSError:
+                return None
+            return ("image/jpeg" if endung != "png" else "image/png", roh)
+        png = self._art_png(path)
+        return ("image/png", png) if png else None
+
+    def _art_png(self, path):
+        """Unser .art-Format (ART1) als PNG. Erwartet den fertigen Pfad -
+        gesucht wird in _find_art()."""
         if not path:
             return None
         try:
@@ -583,9 +661,10 @@ class StreamServer:
                     q = parse_qs(u.query)
                     sysk = unquote((q.get("sys") or [""])[0])
                     name = unquote((q.get("name") or [""])[0])
-                    png = srv._art_png(sysk, name) if sysk and name else None
-                    if png:
-                        self._send(200, "image/png", png)
+                    antwort = (srv._art_antwort(sysk, name)
+                               if sysk and name else None)
+                    if antwort:
+                        self._send(200, antwort[0], antwort[1])
                     else:
                         self._send(404, "text/plain", b"no art")
                 elif p == "/badge":

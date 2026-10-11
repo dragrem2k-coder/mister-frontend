@@ -169,6 +169,7 @@ python3 tools/regression_test.py \
 | `test_tastenlegende.py` | Test (Pass/Fail) | Die Tastenlegende unten rechts: AM ECHTEN BILD geprueft (zwei Aufbauten im Vergleich) - auf HDMI da, auf CRT nicht, weicht jeder Meldung, und der Teil-Neuaufbau raeumt sie mit frei |
 | `test_romwacht.py` | Test (Pass/Fail) | Der ROM-Waechter: meldet jede Aenderung genau EINMAL, behaelt den alten Stand bis zum Nachlesen, liest NICHTS von selbst nach - und ein Blick kostet GEZAEHLT hoechstens zwei Zugriffe je System |
 | `test_multidisc.py` | Test (Pass/Fail) | Mehrteilige Spiele: aus neun Zeilen werden sechs, zwei Fassungen bleiben zwei, ein einzelnes '(Disc 1)' behaelt seinen Namen, Disc 2 steht vor Disc 10 - und die Auswahl beim Starten kostet genau EIN os.listdir() |
+| `test_overlay_cover.py` | Test (Pass/Fail) | Die Cover im Overlay: AM ECHTEN SERVER ueber echte HTTP-Abrufe - JPEG und PNG kommen Byte fuer Byte unveraendert an, unser .art gewandelt als PNG, HD vor Standard, und es gibt nur noch EINE Cover-Suche |
 | `diag_ungeprueft.py` | Diagnose (immer Rueckgabewert 0) | Welche Funktionen betritt KEIN Test - gemessen mit sys.setprofile, nicht ueber Namen im Testtext |
 | `_spur.py` | Hilfsmodul | Laesst eine einzelne Testdatei unter sys.setprofile laufen und schreibt jede betretene Funktion mit |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
@@ -4160,3 +4161,68 @@ machen waere ein neuer Fehler.
 
 **Danach: 32 Sekunden statt ueber 600**, und schneller wird dabei jeder
 Test, der Frontends baut.
+
+## test_overlay_cover.py (Build 260)
+
+Nutzer-Rueckmeldung: „das cover wird nicht angezeigt! egal welche rom
+ich starte" - das Raster der Erfolgswand war da, der Rahmen fuers Cover
+war da, und er war leer.
+
+**Drei falsche Faehrten, und die Reihenfolge ist der lehrreiche Teil:**
+
+1. „Die Vorgabe steht auf aus." Nein - der Rahmen war sichtbar, also
+   griff die Positionsklasse und der Schalter stand richtig.
+2. „OBS hat die alte Seite im Cache." Nein, aus demselben Grund.
+3. „Der Zustand hat kein `syskey`" (Favoriten und Zuletzt gespielt
+   setzen ihn absichtlich leer). Plausibel - und **falsch**. Der Nutzer
+   hat gegengeprueft und aus einer echten Systemkategorie gestartet:
+   auch kein Cover. Ohne diese Gegenprobe haette ich den falschen Bau
+   gemacht.
+
+**Das Bild hat es entschieden.** Ein **leerer, aber sichtbarer** Rahmen
+heisst, dass gar kein `src` gesetzt wurde - bei einem fehlgeschlagenen
+Abruf haette `onerror` ihn ganz ausgeblendet. Und der Nutzer hatte die
+richtige Vermutung: „oder liegt es daran, dass wir die Covers alle von
+.art weg in c-modul als png und jpg geaendert haben?"
+
+**Genau daran lag es, und der Fehler ist aelter als Build 259.**
+`stream_server.py` hatte eine **zweite, nachgebaute Cover-Suche**, die
+ausschliesslich Dateien auf `.art` einsammelte. Das Frontend liest
+laengst auch JPEG und PNG (feste Reihenfolge `.art`, JPEG, PNG - siehe
+`_art_index()`), dazu die `gamelist.xml` und die fremde Datenbank. Wer
+umgestellt hatte, bekam `no art`. Build 259 hat den Fehler nicht
+gemacht, nur sichtbar.
+
+**Geprueft wird am echten Server ueber echte HTTP-Abrufe**, nicht an
+Funktionsaufrufen: was beim Browser ankommt, ist die Zusage.
+
+* **JPEG und PNG kommen Byte fuer Byte unveraendert an.** Der
+  Bytevergleich prueft das schaerfer als ein Bildvergleich - und er
+  haelt zugleich fest, dass **nicht** umgepackt wird. Der Browser kann
+  beides selbst; entpacken und als PNG neu verpacken waere Arbeit fuer
+  nichts, auf dem DE10-Nano spuerbare.
+* **Unser `.art` wird weiterhin gewandelt** und kommt als echtes PNG an
+  (Signatur geprueft) - und eben **nicht** als Rohdatei, denn ART1
+  kennt ausser uns niemand.
+* **Ein nummeriertes JPEG** (`012 Spiel D.jpg`, angefragt als
+  `Spiel D`) wird gefunden. Das war fuer die alte Suche doppelt
+  unsichtbar: falsche Endung **und** der `NNN `-Vorsatz.
+* **HD vor Standard**, mit demselben Namen in beiden Ordnern geprueft.
+* **Eine Sammlung ganz ohne `.art`** liefert trotzdem Cover - genau der
+  gemeldete Fall, in einem Satz.
+
+**Und die Gegenprobe, die die Diagnose erst belegt:** derselbe Test
+laeuft gegen den **ausgelieferten** Baum von v4.8
+(`FRONTEND_PY=.../v48/frontend/frontend.py`) und ist dort rot - JPEG
+und PNG kommen als **404**, `.art` als Bild. Das ist Punkt fuer Punkt
+das Fehlerbild des Nutzers. Ein Test, der auch auf dem kaputten Stand
+gruen ist, prueft nichts; dieselbe Vorsicht wie bei der Probe gegen
+Build 254.
+
+**Die Zusage, die bleiben soll**, steht als eigener Abschnitt im Test:
+es gibt nur **eine** Cover-Suche. `_find_art()` fragt `fe/art.py`
+(`cover_datei()`, mit den Ordnern des Servers als Parameter, damit
+Tests in temporaeren Verzeichnissen laufen), der alte `.art`-Weg steht
+nur noch als Rueckfall dahinter, und `cover_datei()` benutzt die
+vorhandene Rangfolge aus `_art_path_in()`, statt sie ein drittes Mal
+nachzubauen.

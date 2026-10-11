@@ -13,6 +13,15 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.8 — noch nicht veröffentlicht
 
+**Berichtigt: die Cover im OBS-Overlay waren weg, wenn sie nicht `.art` heißen.**
+
+- **Der gemeldete Fall:** „das Cover wird nicht angezeigt, egal welche ROM ich starte" — Raster da, Rahmen da, Bild leer. Deine eigene Vermutung war die richtige: *„oder liegt es daran, dass wir die Covers alle von .art weg in C-Modul als PNG und JPG geändert haben?"*
+- **Genau daran lag es.** Der Stream-Server hatte eine **zweite, nachgebaute Cover-Suche**, und die kannte nur `.art`. Das Frontend liest längst auch JPEG und PNG (dazu `gamelist.xml` und die fremde Datenbank). Wer umgestellt hatte, bekam `no art` — kein großes Cover und, seit Build 259, ein leerer Rahmen an der Erfolgswand. **Der Fehler ist älter als Build 259; die Wand hat ihn nur sichtbar gemacht.**
+- **Jetzt fragt der Server dieselbe Stelle wie das Frontend.** Eine zweite Suche gibt es nicht mehr — sie ist ja genau deshalb auseinandergegangen.
+- **JPEG und PNG gehen unverändert raus.** Der Browser kann beides selbst; sie zu entpacken und als PNG neu zu verpacken wäre Arbeit für nichts, auf dem DE10-Nano spürbare. Nur unser `.art` wird gewandelt.
+- **Gegengeprüft, und das ist der Teil, der die Probe wertvoll macht:** derselbe Test läuft gegen die ausgelieferte v4.8 und ist dort rot — JPEG und PNG kommen als 404 zurück, `.art` als Bild. Genau dein Fehlerbild.
+
+
 **Mehrteilige Spiele stehen als ein Eintrag in der Liste.**
 
 - „Final Fantasy VII (Disc 1)", „(Disc 2)", „(Disc 3)" sind jetzt **eine Zeile: „Final Fantasy VII"**. Beim Starten fragt das Frontend **„Welche Disc?"** — dieselbe Auswahl wie bei der Core-Frage, und sie kommt davor.

@@ -1672,6 +1672,19 @@ rendered directly in the browser and put on screen by OBS. Each
 individual display can be turned on/off separately via the backend
 interface.
 
+**Covers in the overlay (fixed in Build 260):** The overlay shows the
+same covers as the frontend — in **every** format the frontend itself
+reads: our `.art`, **JPEG** and **PNG**, plus the images from a
+`gamelist.xml` and from the external artwork database.
+
+Up to Build 259 the stream server had its **own, re-built lookup**, and
+that one only knew `.art`. Anyone who had moved their covers to
+JPEG/PNG got no image at all in the overlay — neither the large card
+nor (since Build 259) the cover beside the achievement wall. It now
+asks the same place the frontend asks; there is no second lookup any
+more. JPEG and PNG go to the browser **unchanged**, only our `.art` is
+converted to PNG.
+
 **RA achievements in real time:** If a RetroAchievements achievement is
 unlocked while playing, the overlay shows it directly - icon, title,
 description, points, faded in after 7 seconds and gone again
