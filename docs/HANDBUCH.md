@@ -180,6 +180,9 @@ Nachlesen (`CHANGELOG.md`).
    - 8p. Mitwirkende
    - 8q. Autostart an/aus
    - 8r. Ansichten: Liste, Raster, Galerie
+   - 8r-2. Das Kontextmenü
+   - 8r-3. Vier Kleinigkeiten an der Liste
+   - 8r-4. Einträge ausblenden
    - 8s. ROMs in ZIP-Archiven
    - 8t. Spielbeschreibungen
    - 8u. Cover beim Scrollen
@@ -1623,6 +1626,84 @@ Ansicht, sondern ein Fehler.
 
 ---
 
+## 8r-2. Das Kontextmenü (Build 256)
+
+**X am Pad, F1 auf der Tastatur** öffnet eine Liste mit dem, was an
+dieser Stelle gerade geht:
+
+- Als Favorit merken / Favorit entfernen
+- Als durchgespielt merken
+- Diesen Eintrag ausblenden
+- Suchen, Filter, zu Buchstabe springen
+- Ansicht wechseln
+- Zufälliges Spiel, zufälliger Favorit
+
+**Warum es das gibt:** das Frontend kann all das längst — nur verteilt
+über F6, F7, F8, F10, F11, Tab und vier Select-Kombinationen. Wer ein
+Pad in der Hand hat und keine Anleitung gelesen hat, findet davon fast
+nichts. Das Menü ist keine neue Fähigkeit, nur eine Liste.
+
+**Warum gerade X und F1:** beide tun im Spiel schon dasselbe —
+*zurück ins Frontend*. **Im Frontend** waren beide bisher ohne
+Funktion. Die Regel ist damit auf Pad und Tastatur dieselbe und in
+einem Satz zu merken: **im Spiel zurück ins Frontend, im Frontend das
+Menü.** An deinem Rückweg aus einem laufenden Spiel ändert sich
+nichts.
+
+Der Inhalt richtet sich danach, was markiert ist: bei einem Ordner
+steht kein „Als Favorit merken" da, auf der Hauptseite kein Filter.
+
+**Zu Buchstabe springen** zeigt nur die Buchstaben, die in dieser
+Liste wirklich vorkommen — alles andere (Zahlen, Klammern) steht unter
+„#". Auf der Tastatur brauchst du das nicht, dort drückst du den
+Buchstaben einfach; der Eintrag ist für das Pad da.
+
+## 8r-3. Vier Kleinigkeiten an der Liste (Build 256)
+
+Alle vier stehen im Systemmenü unter *Anzeige & Sound*, direkt unter
+den beiden Ansichten.
+
+**Scrollgeschwindigkeit** — 0,5x bis 2x. Der Wert ist ein **Faktor**,
+keine feste Schrittzahl: das Frontend misst seit Build 93 selbst, wie
+lange ein Bildaufbau dauert, und richtet die Wiederholrate danach.
+Langsamer geht deshalb immer. **Schneller geht nur bis zu dem, was
+dein Gerät wirklich zeichnen kann** — und das ist Absicht. Fordert man
+mehr Wiederholungen an, als das Bild hergibt, wird die Liste nicht
+schneller; der Überschuss staut sich und sie läuft nach dem Loslassen
+weiter. Genau das war der Fehler, den Build 93 behoben hat.
+
+**Ordner: zuerst oder hinter den Spielen.** Vorgabe ist „zuerst", wie
+bisher. Wer in einem System hauptsächlich Spiele hat, scrollt sonst
+jedesmal an den Ordnern vorbei.
+
+**Favoriten zuerst** sammelt die Favoriten eines Ordners an dessen
+Anfang. Vorgabe aus — wer seine Liste alphabetisch kennt, soll sie
+nicht umsortiert vorfinden.
+
+**Spielzahl am Ordner** — „Hacks [412]", durch alle Unterordner
+durchgezählt. Vorgabe an. Sie beantwortet „lohnt es sich, da
+reinzugehen?", ohne dass du hineingehen musst. Nur in der
+Listenansicht: im Raster und in der Galerie steht nur *ein* Name unter
+dem Bild, dort wäre es keine Übersicht.
+
+## 8r-4. Einträge ausblenden (Build 256)
+
+Im Kontextmenü: **Diesen Eintrag ausblenden**. Geht für einzelne
+Spiele und für ganze Ordner; auf der Hauptseite blendet derselbe
+Eintrag die ganze Kategorie aus (und schreibt dafür in dieselbe
+Einstellung wie *Hauptseite einrichten* — nicht in eine zweite).
+
+**Auf der Karte wird nichts angefasst.** Ausblenden ist eine
+Anzeigesache, kein Löschen. Es entsteht genau eine Datei,
+`/media/fat/frontend/versteckt.json`; wer sie löscht, hat alles
+wieder.
+
+Die Übersicht steht im Systemmenü unter *Ausgeblendete Einträge* —
+dort siehst du, was weg ist, kannst einzelne zurückholen oder alles
+auf einmal. Ohne diesen Bildschirm wäre das Ausblenden eine Falle: wer
+den falschen Eintrag erwischt, müsste sonst wissen, dass es die Datei
+gibt.
+
 ## 8s. ROMs in ZIP-Archiven
 
 Liegen ROMs in ZIP-Archiven, werden sie ganz normal gelistet. Ein
@@ -2210,6 +2291,11 @@ umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
 | Lochmaske | `masken` |
 | Ansicht Spieleliste | `ansicht` |
 | Ansicht Hauptseite | `ansicht_haupt` |
+| Scrollgeschwindigkeit (0,5x bis 2x) | `scroll_tempo` |
+| Ordner: zuerst / hinter den Spielen | `ordner_zuerst` |
+| Favoriten zuerst: AN/AUS | `favoriten_zuerst` |
+| Spielzahl am Ordner: AN/AUS | `ordner_zahlen` |
+| Ausgeblendete Einträge zeigen | `versteckt` |
 | Rand seitlich / oben-unten | `overscan_x`, `overscan_y` |
 | Fremdes Artwork/Daten: AN/AUS | `fremdquellen` |
 | Menü-Auflösung: voll / halb / viertel (nur HDMI) | `fb_size` |

@@ -11,6 +11,54 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ---
 
+## After v4.8 — not yet released
+
+**One button that shows what is possible — and four small things about
+the list.**
+
+- **The context menu**: **F1** on the keyboard, **X** on the pad.
+  Favourite, completed, hide, search, filter, jump to letter, switch
+  view, random game, random favourite. **None of it is new** — it was
+  just spread across F6, F7, F8, F10, F11, Tab and four Select
+  combinations. With a pad in your hand and no manual read, you found
+  almost none of it.
+- **Why those two keys:** in a *game* both have long done the same
+  thing — back to the frontend — and *inside* the frontend both did
+  nothing. So the rule fits in one sentence: **in a game, back to the
+  frontend; in the frontend, the menu.** Your way out of a running game
+  is unchanged, and the test checks exactly that.
+- **What it shows depends on what is highlighted.** A folder gets no
+  "Mark as favourite", the main page gets no filter, and without
+  favourites there is no "Random favourite". A menu that shows half its
+  lines only to grey them out is one disappointment per line.
+- **Hide entries**: single games, whole folders, and on the main page a
+  whole category. **Nothing on the card is touched** — one file appears,
+  and an overview in the system menu brings it all back. For categories
+  it writes into the *same* setting as "Arrange the home page", not a
+  second one.
+- **Scroll speed as a number** (0.5x to 2x). The value is a **factor**
+  on what is measured, not a fixed number of steps: slower always works,
+  **faster only up to what your device can really draw**. That is not
+  caution but the lesson of Build 93 — asking for more repeats than the
+  picture can deliver does not make the list faster, the surplus piles
+  up and it keeps running after you let go.
+- **Folders before or after the games**, **favourites first**, and the
+  **game count on folders** ("Hacks [412]", counted through every
+  subfolder). The count is list view only — in the grid there is only
+  *one* name under the picture anyway.
+- The ideas for this round came from a look at **Degauss**. The code did
+  not: that project is under a non-free licence, and nothing is copied
+  here.
+
+And a lesson that is now the same for the sixth time: **three checks in
+this build found in a comment what they were looking for in the code.**
+One counted a fresh comment as a fourth core resolution, one tripped
+over the very explanation of why *no* game is launched there, and one
+hung on a spelling rather than on the promise. `nur_code()` has existed
+for this since Build 211 — the note is now there too.
+
+---
+
 ## v4.8 — the main page in your order, RetroAchievements in the stream, and a lot of measured speed
 
 The longest gap between two releases in this project — over seventy

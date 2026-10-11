@@ -220,7 +220,14 @@ def nur_code(quelltext):
 
     Wer PRUEFEN will, dass etwas im Code steht, nimmt das hier. Wer
     pruefen will, dass eine Begruendung festgehalten ist, nimmt den
-    vollen Text - beides ist erwuenscht, nur nicht durcheinander."""
+    vollen Text - beides ist erwuenscht, nur nicht durcheinander.
+
+    NACHTRAG BUILD 256: es war nicht der fuenfte Fall, sondern laengst
+    nicht der letzte. In Build 251 blieb test_zaparoo.py am eigenen
+    Docstring haengen, und in Build 256 zaehlte test_cores.py einen
+    frischen Kommentar als vierte Aufloesung mit. Wer hier eine
+    Textsuche ueber frontend.py schreibt, nimmt nur_code() - oder
+    erklaert im Test, warum der volle Text diesmal richtig ist."""
     raus = []
     im_docstring = False
     for zeile in quelltext.split("\n"):

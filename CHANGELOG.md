@@ -11,6 +11,56 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ---
 
+## Nach v4.8 — noch nicht veröffentlicht
+
+**Ein Knopf, der zeigt, was gerade geht — und vier Kleinigkeiten an der
+Liste.**
+
+- **Das Kontextmenü**: **F1** auf der Tastatur, **X** am Pad. Favorit,
+  durchgespielt, ausblenden, suchen, filtern, zu Buchstabe springen,
+  Ansicht wechseln, Zufallsspiel, zufälliger Favorit. **Nichts davon ist
+  neu** — es war nur über F6, F7, F8, F10, F11, Tab und vier
+  Select-Kombinationen verteilt. Wer ein Pad in der Hand hat und keine
+  Anleitung gelesen hat, fand davon fast nichts.
+- **Warum gerade diese zwei Tasten:** beide tun im *Spiel* längst
+  dasselbe — zurück ins Frontend —, und *im* Frontend waren beide ohne
+  Funktion. Die Regel passt damit in einen Satz: **im Spiel zurück ins
+  Frontend, im Frontend das Menü.** An deinem Rückweg aus einem
+  laufenden Spiel ändert sich nichts; das prüft der Test ausdrücklich.
+- **Der Inhalt richtet sich nach dem, was markiert ist.** Bei einem
+  Ordner steht kein „Als Favorit merken", auf der Hauptseite kein
+  Filter, und ohne Favoriten kein „Zufälliger Favorit". Ein Menü, das
+  die Hälfte seiner Zeilen nur zum Ausgrauen zeigt, ist eine
+  Enttäuschung pro Zeile.
+- **Einträge ausblenden**: einzelne Spiele, ganze Ordner, auf der
+  Hauptseite auch eine Kategorie. **Auf der Karte wird nichts
+  angefasst** — es entsteht eine Datei, und eine Übersicht im
+  Systemmenü holt alles zurück. Für Kategorien schreibt es in *dieselbe*
+  Einstellung wie „Hauptseite einrichten", nicht in eine zweite.
+- **Scrollgeschwindigkeit als Zahl** (0,5x bis 2x). Der Wert ist ein
+  **Faktor** auf das, was gemessen wird, keine feste Schrittzahl:
+  langsamer geht immer, **schneller nur bis zu dem, was dein Gerät
+  wirklich zeichnen kann**. Das ist kein Vorbehalt, sondern die Lehre
+  aus Build 93 — fordert man mehr Wiederholungen an, als das Bild
+  hergibt, wird die Liste nicht schneller, der Überschuss staut sich
+  und sie läuft nach dem Loslassen weiter.
+- **Ordner vor oder hinter den Spielen**, **Favoriten zuerst**, und die
+  **Spielzahl am Ordner** („Hacks [412]", durch alle Unterordner
+  gezählt). Die Zahl steht nur in der Listenansicht — im Raster steht
+  ohnehin nur *ein* Name unter dem Bild.
+- Die Ideen für diese Runde kommen aus einem Blick auf **Degauss**. Der
+  Code nicht: das Projekt steht unter einer unfreien Lizenz, und
+  abgeschrieben wird hier nichts.
+
+Und eine Lehre, die inzwischen zum sechsten Mal dieselbe ist: **drei
+Prüfungen in diesem Build fanden im Kommentar, was sie im Code suchten.**
+Eine zählte einen frischen Kommentar als vierte Core-Auflösung mit, eine
+stolperte über die Begründung, warum dort *kein* Spiel gestartet wird,
+und eine hing an einer Schreibweise statt an der Zusage. Dafür gibt es
+seit Build 211 `nur_code()` — der Hinweis steht jetzt auch dort.
+
+---
+
 ## v4.8 — die Hauptseite nach deiner Ordnung, RetroAchievements im Stream, und viel gemessene Geschwindigkeit
 
 Der längste Abstand zwischen zwei Veröffentlichungen in diesem Projekt —

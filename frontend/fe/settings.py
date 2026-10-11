@@ -2051,3 +2051,145 @@ def ansicht_weiter():
     except ValueError:
         idx = 0
     return ansicht_schreiben(ANSICHTEN[(idx + 1) % len(ANSICHTEN)])
+
+
+# ---------------------------------------------------------------------------
+# BUILD 256: vier Kleinigkeiten an der Liste, nach einem Blick auf Degauss.
+#
+# Alle vier sind dort vorhanden und haben sich als nuetzlich erwiesen;
+# der Code ist NICHT uebernommen (Degauss steht unter PolyForm
+# Noncommercial, das ist keine freie Lizenz) - nur die Idee.
+# ---------------------------------------------------------------------------
+
+# 1. SCROLLGESCHWINDIGKEIT ALS ZAHL.
+#
+# Bisher gab es dafuer keinen Schalter: das Wiederhol-Intervall ergibt
+# sich seit Build 93 aus der GEMESSENEN Zeichendauer (siehe
+# _repeat_floor() in fe/input.py). Das ist gut, aber es ist nicht fuer
+# jeden das richtige Tempo - der eine will durch 3000 Spiele fliegen,
+# der andere will lesen koennen, woran er vorbeikommt.
+#
+# DIESE EINSTELLUNG IST EIN FAKTOR AUF DEN GEMESSENEN BODEN, keine
+# feste Schrittzahl, und das ist der entscheidende Unterschied:
+# langsamer geht immer, schneller nur bis zu dem, was das Geraet
+# tatsaechlich zeichnen kann. Genau daran ist Build 93 gescheitert -
+# wer mehr Wiederholungen anfordert, als das Bild hergibt, bekommt
+# keine schnellere Liste, sondern eine Warteschlange, die nach dem
+# Loslassen noch weiterlaeuft. Das fuehlt sich nicht nach "schnell" an,
+# sondern nach kaputt.
+SCROLL_TEMPO_FILE = "/media/fat/frontend/scroll_tempo"
+SCROLL_TEMPO_STUFEN = (0.5, 0.75, 1.0, 1.5, 2.0)
+SCROLL_TEMPO_STD = 1.0
+
+
+def load_scroll_tempo():
+    """Faktor auf die Scrollgeschwindigkeit; 1.0 = wie gemessen."""
+    def _lesen():
+        try:
+            with open(SCROLL_TEMPO_FILE) as f:
+                val = float(f.read().strip())
+        except (OSError, ValueError):
+            return SCROLL_TEMPO_STD
+        # Eine von Hand verstellte Datei darf die Bedienung nicht
+        # unbrauchbar machen - deshalb nur bekannte Stufen.
+        return val if val in SCROLL_TEMPO_STUFEN else SCROLL_TEMPO_STD
+    return _hole(("scroll_tempo", SCROLL_TEMPO_FILE), _lesen)
+
+
+@_nach_aenderung
+def cycle_scroll_tempo():
+    """Naechste Stufe (umlaufend). Liefert den neuen Wert."""
+    jetzt = load_scroll_tempo()
+    try:
+        idx = SCROLL_TEMPO_STUFEN.index(jetzt)
+    except ValueError:
+        idx = -1
+    neu = SCROLL_TEMPO_STUFEN[(idx + 1) % len(SCROLL_TEMPO_STUFEN)]
+    try:
+        d = os.path.dirname(SCROLL_TEMPO_FILE)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        with open(SCROLL_TEMPO_FILE, "w") as f:
+            f.write("%g" % neu)
+    except OSError:
+        pass
+    return neu
+
+
+# 2. ORDNER VOR ODER NACH DEN SPIELEN.
+#
+# Bisher standen Ordner immer oben (fest verdrahtet in
+# _display_items()). Wer in einem System hauptsaechlich Spiele hat und
+# die Ordner nur gelegentlich braucht, scrollt jedesmal daran vorbei.
+# Vorgabe bleibt "zuerst" - niemand, der nichts einstellt, merkt etwas.
+ORDNER_HINTEN_FLAG = "/media/fat/frontend/ordner_hinten"
+
+
+def ordner_zuerst():
+    return not _hole(("ordner_hinten", ORDNER_HINTEN_FLAG),
+                     lambda: os.path.exists(ORDNER_HINTEN_FLAG))
+
+
+@_nach_aenderung
+def toggle_ordner_zuerst():
+    _flag_setzen(ORDNER_HINTEN_FLAG, ordner_zuerst())
+    return ordner_zuerst()
+
+
+# 3. FAVORITEN ZUERST.
+#
+# Sammelt die Favoriten eines Ordners an dessen Anfang. Vorgabe AUS:
+# wer seine Liste alphabetisch kennt, soll sie nicht umsortiert
+# vorfinden, nur weil er irgendwann ein Herz vergeben hat.
+FAVORITEN_ZUERST_FLAG = "/media/fat/frontend/favoriten_zuerst"
+
+
+def favoriten_zuerst():
+    return _hole(("favoriten_zuerst", FAVORITEN_ZUERST_FLAG),
+                 lambda: os.path.exists(FAVORITEN_ZUERST_FLAG))
+
+
+@_nach_aenderung
+def toggle_favoriten_zuerst():
+    _flag_setzen(FAVORITEN_ZUERST_FLAG, not favoriten_zuerst())
+    return favoriten_zuerst()
+
+
+# 4. SPIELZAHL AM ORDNER.
+#
+# "Hacks [412]" statt "Hacks". Durch Unterordner durchgezaehlt, denn
+# die Zahl an der obersten Ebene ist sonst nichtssagend. Vorgabe AN:
+# die Zahl nimmt keinen Platz weg, der vorher belegt war, und
+# beantwortet die Frage "lohnt es sich, da reinzugehen?" ohne einen
+# einzigen Tastendruck.
+ORDNER_ZAHLEN_AUS_FLAG = "/media/fat/frontend/ordner_zahlen_aus"
+
+
+def ordner_zahlen_an():
+    return not _hole(("ordner_zahlen_aus", ORDNER_ZAHLEN_AUS_FLAG),
+                     lambda: os.path.exists(ORDNER_ZAHLEN_AUS_FLAG))
+
+
+@_nach_aenderung
+def toggle_ordner_zahlen():
+    _flag_setzen(ORDNER_ZAHLEN_AUS_FLAG, ordner_zahlen_an())
+    return ordner_zahlen_an()
+
+
+def _flag_setzen(pfad, anlegen):
+    """Flagdatei anlegen oder entfernen - dasselbe Muster wie bei
+    toggle_feinheiten() weiter oben, nur einmal statt viermal
+    hingeschrieben."""
+    if anlegen:
+        try:
+            d = os.path.dirname(pfad)
+            if d:
+                os.makedirs(d, exist_ok=True)
+            open(pfad, "w").close()
+        except OSError:
+            pass
+    else:
+        try:
+            os.remove(pfad)
+        except OSError:
+            pass

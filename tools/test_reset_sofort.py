@@ -242,11 +242,31 @@ check("F10 ist kein Ausstieg mehr (sondern die Ansicht)",
 # Und F9 gehoert MiSTer - siehe enter_console_mode() in frontend.py.
 check("F9 bleibt unbelegt",
       I.KEYMAP.get(I.KEY_F9) is None, str(I.KEYMAP.get(I.KEY_F9)))
-# F1 taucht bewusst NICHT in der KEYMAP auf: die evdev-Ebene ist
-# waehrend eines laufenden Cores gesperrt (genau der Grund, warum F10
-# dort nie ankam). F1 laeuft ausschliesslich ueber die HID-Ebene.
-check("F1 (evdev 59) steht bewusst NICHT in der KEYMAP",
-      59 not in I.KEYMAP, str(I.KEYMAP.get(59)))
+# F1 UND DIE KEYMAP - geaendert in Build 256, aus demselben Grund
+# wie bei F10 oben in Build 124.
+#
+# Hier stand "F1 steht bewusst NICHT in der KEYMAP", mit der
+# Begruendung: die evdev-Ebene ist waehrend eines laufenden Cores
+# gesperrt (genau der Grund, warum F10 dort nie ankam), F1 laeuft
+# ausschliesslich ueber die HID-Ebene.
+#
+# Diese Begruendung stimmt weiterhin - und genau sie ist der Grund,
+# warum ein Eintrag hier UNGEFAEHRLICH ist: was waehrend eines Cores
+# nicht ankommt, kann den Ausstieg auch nicht stoeren. Seit Build 256
+# oeffnet F1 deshalb IM FRONTEND das Kontextmenue, waehrend der
+# Ausstieg aus dem Spiel unveraendert ueber die HID-Ebene laeuft
+# (die Pruefungen darueber).
+#
+# Geprueft wird jetzt also die BEDEUTUNG und nicht mehr die blosse
+# Abwesenheit - sonst waere dieser Test ein Verbot, die Taste je
+# wieder fuer irgendetwas zu benutzen. Was er verhindern soll, ist
+# ein Ausstieg ueber die evdev-Ebene, und das tut er weiterhin.
+check("F1 ist in der KEYMAP kein Ausstieg",
+      I.KEYMAP.get(59) in (None, "back_fe"), str(I.KEYMAP.get(59)))
+check("und der Ausstieg aus dem Spiel laeuft weiter ueber HID",
+      HR._hid_report_has_f1_key(bericht(0x3A)),
+      "0x3A ist F1 auf der HID-Ebene - DAS ist der Weg, auf dem der "
+      "Ausstieg ankommt")
 input_py = open(os.path.join(_FRONTEND_DIR, "fe", "input.py"),
                 encoding="utf-8").read()
 check("und die evdev-Abfrage ist weg",

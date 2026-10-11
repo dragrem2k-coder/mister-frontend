@@ -175,6 +175,9 @@ history to read up on (`CHANGELOG.md`).
    - 8o. CRT test pattern
    - 8p. Contributors
    - 8r. Views: list, grid, gallery
+   - 8r-2. The context menu
+   - 8r-3. Four small things about the list
+   - 8r-4. Hiding entries
    - 8s. ROMs inside ZIP archives
    - 8t. Game descriptions
    - 8u. Covers while scrolling
@@ -1341,6 +1344,81 @@ be a view, it would be a bug.
 
 ---
 
+## 8r-2. The context menu (Build 256)
+
+**X on the pad, F1 on the keyboard** opens a list of what is possible
+right here:
+
+- Mark as favourite / remove from favourites
+- Mark as completed
+- Hide this entry
+- Search, filter, jump to letter
+- Switch view
+- Random game, random favourite
+
+**Why it exists:** the frontend has been able to do all of this for a
+long time — just spread across F6, F7, F8, F10, F11, Tab and four
+Select combinations. With a pad in your hand and no manual read, you
+find almost none of it. The menu is not a new ability, just a list.
+
+**Why X and F1 of all keys:** in a game both already do the same
+thing — *back to the frontend*. **Inside the frontend** both did
+nothing at all. So the rule is the same on pad and keyboard, and fits
+in one sentence: **in a game, back to the frontend; in the frontend,
+the menu.** Your way out of a running game is unchanged.
+
+What the menu shows depends on what is highlighted: a folder gets no
+"Mark as favourite", the main page gets no filter.
+
+**Jump to letter** only offers the letters that actually occur in this
+list — anything else (digits, brackets) sits under "#". On a keyboard
+you do not need it, you just press the letter; the entry is there for
+the pad.
+
+## 8r-3. Four small things about the list (Build 256)
+
+All four live in the system menu under *Display & Sound*, right below
+the two view settings.
+
+**Scroll speed** — 0.5x to 2x. The value is a **factor**, not a fixed
+number of steps: since Build 93 the frontend measures how long a frame
+actually takes and sets the repeat rate from that. So slower always
+works. **Faster only works up to what your device can really draw** —
+and that is deliberate. Asking for more repeats than the picture can
+deliver does not make the list faster; the surplus piles up and the
+list keeps running after you let go. That is exactly the bug Build 93
+fixed.
+
+**Folders: first or after the games.** Default is "first", as before.
+If a system is mostly games, you otherwise scroll past the folders
+every single time.
+
+**Favourites first** gathers a folder's favourites at its top. Off by
+default — if you know your list alphabetically, it should not be
+reordered on you.
+
+**Game count on folders** — "Hacks [412]", counted through every
+subfolder. On by default. It answers "is it worth going in?" without
+going in. List view only: in grid and gallery there is only *one* name
+under the picture, where it would not be an overview.
+
+## 8r-4. Hiding entries (Build 256)
+
+From the context menu: **Hide this entry**. Works for single games and
+for whole folders; on the main page the same entry hides the whole
+category (and writes into the same setting as *Arrange the home page*
+— not into a second one).
+
+**Nothing on the card is touched.** Hiding is a display matter, not a
+deletion. Exactly one file appears,
+`/media/fat/frontend/versteckt.json`; delete it and everything is
+back.
+
+The overview is in the system menu under *Hidden entries* — there you
+see what is gone, bring back single ones or all of them at once.
+Without that screen hiding would be a trap: pick the wrong entry and
+you would have to know the file exists.
+
 ## 8s. ROMs inside ZIP archives
 
 If your ROMs live inside ZIP archives, they are listed normally. An
@@ -1870,6 +1948,11 @@ conversely nobody ends up in a menu that cannot do anything).
 | Shadow mask | `masken` |
 | Game list view | `ansicht` |
 | Main page view | `ansicht_haupt` |
+| Scroll speed (0.5x to 2x) | `scroll_tempo` |
+| Folders: first / after the games | `ordner_zuerst` |
+| Favourites first: ON/OFF | `favoriten_zuerst` |
+| Game count on folders: ON/OFF | `ordner_zahlen` |
+| Show hidden entries | `versteckt` |
 | Side / top-bottom margin | `overscan_x`, `overscan_y` |
 | Foreign artwork/data: ON/OFF | `fremdquellen` |
 | Menu resolution: full / half / quarter (HDMI only) | `fb_size` |

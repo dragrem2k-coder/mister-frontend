@@ -65,6 +65,7 @@ KEY_F4 = 62
 KEY_F7 = 65
 KEY_F6 = 64
 KEY_F8, KEY_F9, KEY_F10, KEY_F11, KEY_F12 = 66, 67, 68, 87, 88
+KEY_F1 = 59
 # Gamepad-Buttons (Linux-Standardcodes)
 BTN_A, BTN_B, BTN_X, BTN_Y = 304, 305, 307, 308
 KEY_Y = 21                   # Scancode an der QWERTY-"Y"-Position (evdev
@@ -178,6 +179,20 @@ KEYMAP = {
     # frueher schon einmal (als "back_fe") und wurde in Build 77
     # entfernt, weil es WAEHREND EINES LAUFENDEN CORES nie ankommen
     # konnte - im Frontend selbst ist das kein Thema.
+    # NEU (Build 256): F1 oeffnet im Frontend das Kontextmenue.
+    #
+    # DIESELBE AKTION WIE PAD-X ("back_fe"), und das ist kein
+    # Zufall: X ist innerhalb des Frontends seit jeher tot (die
+    # Aktion kommt an, niemand behandelt sie) und wirkt nur,
+    # WAEHREND ein Core laeuft. F1 tut im Spiel genau dasselbe -
+    # aber ueber einen voellig anderen Weg: wait_game_exit() liest
+    # dort rohe HID-Berichte (siehe _hid_report_has_f1_key()) und
+    # fragt diese Tabelle gar nicht. Hier etwas einzutragen kann
+    # den Ausstieg aus einem Spiel deshalb nicht beeintraechtigen.
+    #
+    # Die Regel ist damit auf Pad und Tastatur dieselbe: im Spiel
+    # zurueck ins Frontend, im Frontend das Menue.
+    KEY_F1: "back_fe",
     KEY_F12: "osd", KEY_F9: None, KEY_F10: "ansicht", KEY_F11: "random",
     KEY_F8: "favorite", BTN_TL2: "favorite", BTN_TR2: "favorite",
     AXIS_L2: "favorite", AXIS_R2: "favorite",
@@ -754,9 +769,46 @@ class InputManager:
             basis, minimum = REPEAT_FLOOR, REPEAT_FLOOR_MIN
         gemessen = self._zeichenzeit.get(REPEAT_AXIS.get(act))
         if gemessen is None:
-            return basis
-        return min(REPEAT_FLOOR_MAX,
-                   max(minimum, gemessen * REPEAT_MESS_RESERVE))
+            boden = basis
+        else:
+            boden = min(REPEAT_FLOOR_MAX,
+                        max(minimum, gemessen * REPEAT_MESS_RESERVE))
+        return self._tempo_anwenden(boden, gemessen, minimum)
+
+    def _tempo_anwenden(self, boden, gemessen, minimum):
+        """Die eingestellte Scrollgeschwindigkeit (Build 256) auf den
+        berechneten Boden anwenden.
+
+        DER FAKTOR WIRKT NUR NACH UNTEN FREI. Langsamer geht immer -
+        wer lesen will, woran er vorbeifaehrt, bekommt das sofort.
+        Schneller geht nur bis zu dem, was das Geraet TATSAECHLICH
+        zeichnet: der gemessene Wert bleibt die harte Grenze.
+
+        Das ist keine Vorsicht, sondern die Lehre aus Build 93. Wer
+        mehr Wiederholungen anfordert, als das Bild hergibt, bekommt
+        keine schnellere Liste - der Ueberschuss staut sich, die Liste
+        laeuft nach dem Loslassen weiter, und genau das nimmt man als
+        "Lag" wahr. Ein Regler, der auf Stufe 2.0 die Bedienung
+        schlechter macht als auf 1.0, waere ein Regler, den man besser
+        nicht gebaut haette.
+
+        Die Einstellung wird bei JEDEM Wiederholschritt gelesen - ueber
+        denselben kurzlebigen Zwischenspeicher wie alle anderen
+        (fe/zwischenspeicher.py). Ohne das muesste eine Aenderung im
+        Menue hierher durchgereicht werden, und genau solche Drähte
+        reisst spaeter jemand ab."""
+        try:
+            from fe.settings import load_scroll_tempo
+            faktor = float(load_scroll_tempo())
+        except Exception:                                # noqa: BLE001
+            return boden
+        if faktor <= 0 or faktor == 1.0:
+            return boden
+        neu = boden / faktor
+        if gemessen is not None:
+            # Nie schneller als die gemessene Lieferzeit.
+            neu = max(neu, gemessen)
+        return min(REPEAT_FLOOR_MAX, max(minimum, neu))
 
     def _select_gehalten(self):
         """Wird Select JETZT noch gehalten? Siehe SELECT_MAX_HOLD.

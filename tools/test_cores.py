@@ -189,10 +189,20 @@ print("Test 8: der Startweg benutzt das auch wirklich")
 # ---------------------------------------------------------------------------
 quelle = io.open(os.path.join(_REPO, "frontend", "frontend.py"),
                  encoding="utf-8").read()
-check("das Modul ist eingebunden", "import fe.cores as CORES" in quelle)
+# OHNE KOMMENTARE GEZAEHLT (Build 256). Diese Pruefung sagt etwas
+# ueber den CODE - wie oft dort aufgeloest wird -, und ein Kommentar,
+# der "CORES.aufloesen()" erwaehnt, hat damit nichts zu tun. Genau das
+# ist in Build 256 passiert: ein neuer Kommentar im Kontextmenue-Zweig
+# nennt die Funktion als Begruendung, und die Zahl sprang von 3 auf 4.
+# nur_code() aus test_beenden.py gibt es fuer genau diesen Fall.
+sys.path.insert(0, _HIER)
+from test_beenden import nur_code                          # noqa: E402
+
+code = nur_code(quelle)
+check("das Modul ist eingebunden", "import fe.cores as CORES" in code)
 check("es gibt genau drei Aufloesungen im Startweg",
-      quelle.count("CORES.aufloesen(") == 3,
-      "%d" % quelle.count("CORES.aufloesen("))
+      code.count("CORES.aufloesen(") == 3,
+      "%d (ohne Kommentare gezaehlt)" % code.count("CORES.aufloesen("))
 # Der RA-Core muss Vorrang behalten - er ist ja gerade ausdruecklich
 # gewaehlt worden.
 for stelle in ("rbf, setname = ra_choice\n                        else:\n"

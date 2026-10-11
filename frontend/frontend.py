@@ -325,6 +325,11 @@ from fe.settings import (
     schrift_schreiben, schrift_aus_ini, SCHRIFT_EIGEN, SCHRIFT_OSD,
     maske_lesen, maske_schreiben, maske_an, toggle_maske, maske_pfad,
     feinheiten_an, toggle_feinheiten,
+    # Build 256: die vier Kleinigkeiten an der Liste.
+    load_scroll_tempo, cycle_scroll_tempo,
+    ordner_zuerst, toggle_ordner_zuerst,
+    favoriten_zuerst, toggle_favoriten_zuerst,
+    ordner_zahlen_an, toggle_ordner_zahlen,
     hintergrund_lesen, hintergrund_schreiben, hintergrund_an,
     toggle_hintergrund, hintergrund_dim_lesen,
     hintergrund_dim_schreiben,
@@ -1431,6 +1436,7 @@ if flaechen_c_enabled():
 # steht im Kopf von fe/prewarm.py.
 import fe.filter as FILTER
 import fe.hauptseite as HS
+import fe.versteckt as VERSTECKT
 import fe.corestand as CSTAND
 import fe.zaparoo as ZAP
 from fe.prewarm import PREWARMER, auftraege_bauen, Doppelkern
@@ -3114,6 +3120,11 @@ class Frontend:
                               for fname in folder_names]
             cached = folder_entries + node["items"]
             node["_display_items_cache"] = cached
+        # NEU (Build 256): Ausblenden, Ordnerstellung, Favoriten zuerst.
+        # Aus demselben Grund wie der Filter darunter NACH dem
+        # Knoten-Cache und in einem eigenen Merker - es sind
+        # Anzeigezustaende, und der Knoten-Cache gehoert dem Baum.
+        cached = self._liste_anpassen(cached)
         # NEU (Build 142): der Listenfilter. Bewusst NACH dem
         # Knoten-Cache und in einen EIGENEN Merker - der Knoten-Cache
         # gehoert dem Baum und ueberlebt Kategoriewechsel, der Filter
@@ -3130,6 +3141,330 @@ class Frontend:
         gefiltert = FILTER.anwenden(cached, self._filter_meta, self._filter)
         self._filter_cache = (schluessel, gefiltert)
         return gefiltert
+
+    def kontextmenue(self):
+        """Das Kontextmenue (Build 256) - X am Pad, F1 auf der Tastatur.
+
+        WARUM ES DAS GIBT. Das Frontend kann all das hier schon, nur
+        verteilt ueber F6, F7, F8, F10, F11, Tab und vier
+        Select-Kombinationen. Wer ein Pad in der Hand hat und keine
+        Anleitung gelesen hat, findet davon fast nichts. Ein Knopf,
+        der zeigt, was gerade geht, kostet keine neue Faehigkeit - nur
+        eine Liste. (Die Idee ist von Degauss, der Code nicht; das
+        Projekt steht unter einer unfreien Lizenz.)
+
+        WARUM X UND F1. Beide sind INNERHALB des Frontends bisher tot:
+        X ist "back_fe" ("zurueck ins Frontend") und wirkt nur,
+        WAEHREND ein Core laeuft - in der Liste kommt die Aktion zwar
+        an, wird aber von niemandem behandelt. F1 tut im Spiel
+        dasselbe, laeuft dort aber ueber einen ganz anderen Weg (rohe
+        HID-Auswertung in wait_game_exit(), siehe
+        _hid_report_has_f1_key()) und war in der KEYMAP ueberhaupt
+        nicht vergeben. Die Regel ist damit auf beiden Geraeten
+        dieselbe und in einem Satz zu merken: **im Spiel zurueck ins
+        Frontend, im Frontend das Menue.** Es wird keine einzige
+        bestehende Taste umgewidmet.
+
+        WAS ZURUECKKOMMT, ist der Name einer VORHANDENEN Aktion. Die
+        Hauptschleife fuehrt sie danach so aus, als waere die Taste
+        gedrueckt worden (siehe next_action()). Nichts von dem, was
+        hier steht, fuehrt die Arbeit selbst aus - sonst gaebe es
+        zwei Wege zum selben Ziel, und einer davon wuerde eines Tages
+        nicht mitgepflegt.
+
+        DER INHALT RICHTET SICH NACH DEM, WAS MARKIERT IST. Ein
+        Eintrag, der auf einen Ordner nicht passt (Favorit,
+        durchgespielt), steht dort auch nicht - ein Menue, das die
+        Haelfte seiner Zeilen nur zum Ausgrauen zeigt, ist eine
+        Enttaeuschung pro Zeile."""
+        eintraege = []          # (Beschriftung, Aktion)
+        if self.page == 1:
+            items = self._display_items()
+            markiert = items[self.item_i] if items else None
+            kind = markiert[1] if markiert else None
+            if kind == "game":
+                fav = markiert[0] in getattr(self, "_favorites_set", ())
+                eintraege.append(
+                    (t("ctx_fav_aus") if fav else t("ctx_fav_an"),
+                     "favorite"))
+                done = markiert[0] in getattr(self, "_completed_set", ())
+                eintraege.append(
+                    (t("ctx_done_aus") if done else t("ctx_done_an"),
+                     "completed"))
+            if markiert is not None:
+                eintraege.append((t("ctx_verstecken"), "verstecken"))
+            eintraege.append((t("ctx_suche"), "search"))
+            eintraege.append((t("ctx_filter"), "filter"))
+            eintraege.append((t("ctx_buchstabe"), "buchstabe"))
+        eintraege.append((t("ctx_ansicht"), "ansicht"))
+        eintraege.append((t("ctx_zufall"), "random"))
+        if getattr(self, "_favorites_set", None):
+            eintraege.append((t("ctx_zufall_fav"), "zufall_fav"))
+        if self.page == 0:
+            # Dieselbe Aktion wie in der Liste, nur eine andere
+            # Beschriftung: _kontext_verstecken() entscheidet anhand
+            # der Seite, ob in fe/versteckt.py oder in die Hauptseite
+            # geschrieben wird. Ein eigener Name haette eine eigene
+            # Behandlung gebraucht - und die hatte ich im ersten
+            # Entwurf prompt vergessen; der Test hat es gefunden.
+            eintraege.append((t("ctx_hauptseite"), "verstecken"))
+        if not eintraege:
+            return None
+        wahl = self._wizard_choice(t("ctx_titel"),
+                                   [e[0] for e in eintraege],
+                                   hint_key="choice_hint_plain")
+        self._force_full_redraw = True
+        if wahl is None:
+            return None
+        return eintraege[wahl][1]
+
+    def versteckte_zeigen(self):
+        """Die Uebersicht der ausgeblendeten Eintraege (Build 256).
+
+        OHNE DIESEN BILDSCHIRM WAERE DAS AUSBLENDEN EINE FALLE. Wer
+        im Kontextmenue versehentlich den falschen Eintrag erwischt,
+        muesste sonst wissen, dass es
+        /media/fat/frontend/versteckt.json gibt - und an die Karte.
+        Hier steht, was weg ist, und ein Druck holt es zurueck."""
+        while True:
+            eintraege = VERSTECKT.liste()
+            if not eintraege:
+                self._wizard_info(t("versteckt_titel"),
+                                  [t("versteckt_leer")])
+                self._force_full_redraw = True
+                return
+            zeilen = []
+            for syskey, label in eintraege:
+                if label == "":
+                    zeilen.append(t("versteckt_system",
+                                    system_display_name(syskey) or syskey))
+                elif syskey:
+                    zeilen.append("%s - %s" % (syskey, label))
+                else:
+                    zeilen.append(label)
+            wahl = self._wizard_choice(
+                t("versteckt_titel"),
+                zeilen + [t("versteckt_alle", len(eintraege)),
+                          t("versteckt_zurueck")],
+                hint_key="choice_hint_plain")
+            self._force_full_redraw = True
+            if wahl is None or wahl == len(zeilen) + 1:
+                return
+            if wahl == len(zeilen):
+                VERSTECKT.alles_zeigen()
+                self._anzeige_geaendert()
+                continue
+            syskey, label = eintraege[wahl]
+            VERSTECKT.umschalten(syskey, label)
+            self._anzeige_geaendert()
+
+    def buchstaben_springen(self):
+        """Zu einem Anfangsbuchstaben springen, ueber eine Auswahl
+        (Build 256).
+
+        Auf der Tastatur gibt es das laengst: Taste druecken, fertig.
+        Am Pad gab es dafuer gar nichts - und genau fuer das Pad ist
+        dieser Eintrag da.
+
+        GEZEIGT WERDEN NUR DIE BUCHSTABEN, DIE WIRKLICH VORKOMMEN. Ein
+        volles A-Z zwingt den Nutzer, mit dem Steuerkreuz an Zeilen
+        vorbeizufahren, hinter denen nichts steht; bei einer Liste mit
+        sieben Anfangsbuchstaben ist das sechsmal so viel Weg wie
+        noetig. Alles, was nicht Buchstabe ist (Zahlen, Klammern),
+        wird zu "#" zusammengefasst - sonst stuenden dort zwanzig
+        Zeilen mit je einem Zeichen."""
+        if self.page == 0:
+            namen = [c[0] for c in self.cats]
+        else:
+            namen = [it[0] for it in self._display_items()]
+        if not namen:
+            return False
+        zeichen = []
+        for n in namen:
+            z = (n[:1] or "#").upper()
+            if not z.isalpha():
+                z = "#"
+            if z not in zeichen:
+                zeichen.append(z)
+        zeichen.sort()
+        wahl = self._wizard_choice(t("ctx_buchstabe"), zeichen,
+                                   hint_key="choice_hint_plain")
+        self._force_full_redraw = True
+        if wahl is None:
+            return False
+        ziel = zeichen[wahl]
+        if ziel == "#":
+            # jump_to_letter() kennt kein "#" - der erste Eintrag, der
+            # nicht mit einem Buchstaben beginnt, ist hier das, was
+            # gemeint ist.
+            for i, n in enumerate(namen):
+                if not (n[:1] or "#").isalpha():
+                    neu = i
+                    break
+            else:
+                return False
+        else:
+            neu = jump_to_letter(namen,
+                                 self.cat_i if self.page == 0 else self.item_i,
+                                 ziel)
+        if self.page == 0:
+            self.cat_i = neu
+        else:
+            self.item_i = neu
+            self.marquee_reset()
+        return True
+
+    def _kontext_verstecken(self):
+        """Den markierten Eintrag ausblenden (Build 256).
+
+        Auf Seite 1 geht das ueber fe/versteckt.py. Auf Seite 0 NICHT:
+        dort gibt es dafuer seit Build 250 schon die Hauptseite
+        (fe/hauptseite.py), und zwei Dateien, die dieselbe Frage
+        beantworten, laufen frueher oder spaeter auseinander. Das
+        Kontextmenue schreibt deshalb in die vorhandene Einstellung
+        statt eine zweite anzulegen."""
+        if self.page == 0:
+            name = self.cats[self.cat_i][0] if self.cats else None
+            syskey = self.cats[self.cat_i][2] if self.cats else None
+            if not name:
+                return None
+            sch = HS.schluessel(name, syskey,
+                                getattr(self, "_gemerkte_namen", ()))
+            if sch == HS.SYSTEM:
+                # "System" bleibt immer, und zwar genau hier schon:
+                # fe/hauptseite.py wirft es beim Speichern ohnehin
+                # wieder heraus - eine Meldung ist ehrlicher als ein
+                # stilles Nichtstun.
+                return t("ctx_system_bleibt")
+            aus, folge = HS.laden()
+            aus = set(aus)
+            aus.add(sch)
+            HS.speichern(aus, folge)
+            self.build_categories()
+            self.cat_i = min(self.cat_i, max(0, len(self.cats) - 1))
+            return t("ctx_versteckt_ok", name)
+        items = self._display_items()
+        if not items:
+            return None
+        label, kind, arg = items[self.item_i]
+        syskey = self.cats[self.cat_i][2] if self.cats else None
+        name = arg if kind == "folder" else label
+        VERSTECKT.umschalten(syskey, name)
+        self._anzeige_geaendert()
+        # Die Liste ist jetzt kuerzer - der Index darf nicht hinter
+        # ihrem Ende stehenbleiben.
+        rest = len(self._display_items())
+        self.item_i = min(self.item_i, max(0, rest - 1))
+        self.scroll = min(self.scroll, max(0, rest - 1))
+        self.marquee_reset()
+        return t("ctx_versteckt_ok",
+                 name[:-1] if name.endswith("/") else name)
+
+    def _liste_anpassen(self, basis):
+        """Die drei Anzeige-Einstellungen aus Build 256 auf die fertig
+        sortierte Liste eines Knotens anwenden: ausgeblendete Eintraege
+        raus, Ordner nach hinten, Favoriten nach vorn.
+
+        DER SCHNELLE WEG IST DER UNVERAENDERTE. Wer nichts einstellt -
+        und das sind alle, bis sie etwas einstellen - bekommt hier
+        `basis` unveraendert zurueck, dasselbe Listenobjekt wie bisher.
+        Kein Kopieren, kein Sortieren, kein Merker. Das ist wichtig,
+        weil diese Methode im Zeichenweg liegt: _display_items() wird
+        bei jedem Bildaufbau mehrfach gerufen.
+
+        DER MERKER liegt bewusst NICHT am Knoten (siehe den Kommentar
+        beim Filter darunter): der Knoten-Cache gehoert dem Baum und
+        ueberlebt einen Kategoriewechsel, das hier ist Anzeigezustand.
+        Im Schluessel steckt `self._anzeige_stand` - ein Zaehler, den
+        jeder Favoriten- und jeder Ausblend-Wechsel hochzaehlt. Ohne
+        ihn bliebe eine gerade umgeschaltete Kachel stehen, bis die
+        Liste aus einem anderen Grund neu gebaut wird; mit ihm ist
+        jede Aenderung sofort zu sehen, ohne dass irgendwo eine
+        Invalidierung vergessen werden kann."""
+        aus_an = not VERSTECKT.leer()
+        ordner_hinten = not ordner_zuerst()
+        favs_vorn = favoriten_zuerst() and bool(
+            getattr(self, "_favorites_set", None))
+        if not (aus_an or ordner_hinten or favs_vorn):
+            return basis
+        syskey = self.cats[self.cat_i][2] if self.cats else None
+        schluessel = (id(basis), len(basis), aus_an, ordner_hinten,
+                      favs_vorn, getattr(self, "_anzeige_stand", 0))
+        merker = getattr(self, "_anzeige_cache", None)
+        if merker is not None and merker[0] == schluessel:
+            return merker[1]
+        raus = basis
+        if aus_an:
+            daten = VERSTECKT.laden()
+            # Fuer Ordner zaehlt der reine Ordnername (item[2]), nicht
+            # die Beschriftung mit dem "/" - sonst haette derselbe
+            # Ordner zwei Kennungen, je nachdem wer fragt.
+            raus = [it for it in raus
+                    if not VERSTECKT.ist_versteckt(
+                        syskey, it[2] if it[1] == "folder" else it[0], daten)]
+        if ordner_hinten:
+            ordner = [it for it in raus if it[1] == "folder"]
+            if ordner:
+                raus = [it for it in raus if it[1] != "folder"] + ordner
+        if favs_vorn:
+            favs = self._favorites_set
+            # STABIL sortiert: innerhalb der beiden Gruppen bleibt die
+            # bisherige Reihenfolge erhalten. Ein echtes sorted() mit
+            # Namensschluessel wuerde die Ordner mit umsortieren und
+            # damit die Einstellung darueber wieder aufheben.
+            vorn = [it for it in raus if it[1] == "game" and it[0] in favs]
+            if vorn:
+                raus = vorn + [it for it in raus
+                               if not (it[1] == "game" and it[0] in favs)]
+        if raus is basis:
+            raus = basis
+        self._anzeige_cache = (schluessel, raus)
+        return raus
+
+    def _anzeige_geaendert(self):
+        """Den Zaehler hochdrehen, an dem der Merker in
+        _liste_anpassen() haengt. Von jeder Stelle zu rufen, die
+        Favoriten oder Ausblendungen aendert."""
+        self._anzeige_stand = getattr(self, "_anzeige_stand", 0) + 1
+        self._anzeige_cache = None
+
+    def _ordner_zahlen(self, node=None):
+        """{Ordnername: Zahl der Spiele darin, durch alle Unterordner
+        gezaehlt} fuer den aktuellen Knoten.
+
+        AM KNOTEN GEMERKT, und das ist hier keine Bequemlichkeit,
+        sondern Bedingung: gezaehlt wird ein ganzer Teilbaum, und
+        gefragt wird beim Zeichnen JEDER sichtbaren Ordnerzeile. Ohne
+        Merker waere das bei einem Ordner mit 30.000 Eintraegen ein
+        vollstaendiger Baumdurchlauf pro Bild.
+
+        Der Merker darf am Knoten liegen - er haengt nur am Baum, nicht
+        an einer Einstellung (dieselbe Begruendung wie beim
+        _display_items_cache darueber, und anders als bei
+        _liste_anpassen()). Ein neu gebauter Baum hat ihn automatisch
+        nicht."""
+        node = self._current_node() if node is None else node
+        zahlen = node.get("_ordner_zahlen_cache")
+        if zahlen is not None:
+            return zahlen
+
+        def zaehlen(n):
+            summe = len(n.get("items", ()))
+            for sub in n.get("folders", {}).values():
+                summe += zaehlen(sub)
+            return summe
+
+        zahlen = {}
+        for fname, sub in node.get("folders", {}).items():
+            try:
+                zahlen[fname] = zaehlen(sub)
+            except RecursionError:
+                # Ein Baum, der so tief ist, dass Python aussteigt, ist
+                # ein Fall fuer den Symlink-Schutz beim Einlesen und
+                # nicht fuer die Beschriftung einer Zeile.
+                zahlen[fname] = 0
+        node["_ordner_zahlen_cache"] = zahlen
+        return zahlen
 
     def _filter_meta(self, label):
         """Die Spieledaten zu einem Eintrag - fuer den Filter.
@@ -9339,6 +9674,27 @@ class Frontend:
         # bei stream_overlay.html im Aenderungsprotokoll).
         if item_kind == "folder" and full.endswith("/"):
             full = full[:-1]
+            # NEU (Build 256): die Zahl der Spiele darin, durch alle
+            # Unterordner gezaehlt - "Hacks [412]". Sie beantwortet
+            # "lohnt es sich, da reinzugehen?" ohne einen einzigen
+            # Tastendruck.
+            #
+            # NUR HIER, in der Listenansicht: dort wird der Name als
+            # Text gelesen, und dort ist der "/" ohnehin schon
+            # abgeschnitten. Im Raster und in der Galerie steht nur
+            # EIN Name unter dem Bild - dort waere die Zahl eine
+            # Angabe zu einem Eintrag, den man gerade ansieht, und
+            # nicht die Uebersicht, um die es hier geht.
+            #
+            # Die Zahl kommt aus einem Merker am Knoten (siehe
+            # _ordner_zahlen()); hier wird nichts gezaehlt.
+            if ordner_zahlen_an():
+                try:
+                    n = self._ordner_zahlen().get(v["items"][idx][2])
+                except Exception:                        # noqa: BLE001
+                    n = None
+                if n:
+                    full = "%s [%d]" % (full, n)
         # Markierung nur bei echten Spielen, per Namen im bereits
         # geladenen Speicher-Cache nachgeschlagen (kein Datei-Zugriff
         # hier - das waere bei haeufigem Neuzeichnen ein echtes
@@ -9982,7 +10338,21 @@ class Frontend:
         """Wie read_action, treibt aber nebenbei die Laufschrift(en) UND
         die Musikwiedergabe (naechster Song bei Bedarf) an. Blockiert
         nie unbegrenzt, damit Musik und Laufschrift auch ohne
-        Tasteneingabe rechtzeitig weiterlaufen."""
+        Tasteneingabe rechtzeitig weiterlaufen.
+
+        NEU (Build 256): eine vorgemerkte Aktion wird vor der Tastatur
+        bedient. Das ist der Weg, auf dem das Kontextmenue seine
+        Auswahl zurueckgibt - es liefert den NAMEN einer bestehenden
+        Aktion ("favorite", "ansicht", "search", ...), und die
+        Hauptschleife behandelt sie dann genau so, als waere die Taste
+        gedrueckt worden. Dadurch braucht das Menue keine einzige
+        Zeile der vorhandenen Behandlung zu wiederholen - und es kann
+        auch nichts auseinanderlaufen, wenn eine davon sich spaeter
+        aendert."""
+        vorgemerkt = getattr(self, "_vorgemerkte_aktion", None)
+        if vorgemerkt is not None:
+            self._vorgemerkte_aktion = None
+            return vorgemerkt
         while True:
             self._sync_track_marquee()
             # Grobe, aber ausreichende Breitenschaetzung fuer die
@@ -20232,6 +20602,40 @@ class Frontend:
                 elif act == "osd":
                     self.open_osd()
                     continue
+                elif act == "back_fe":
+                    # NEU (Build 256): das Kontextmenue. "back_fe" (X
+                    # am Pad, neu auch F1) wirkt sonst nur WAEHREND
+                    # eines laufenden Cores - hier in der Liste kam
+                    # die Aktion bisher an und niemand behandelte sie.
+                    move_streak = page_streak = 0
+                    gewaehlt = self.kontextmenue()
+                    if gewaehlt is None:
+                        self.draw()
+                        continue
+                    if gewaehlt == "verstecken":
+                        meldung = self._kontext_verstecken()
+                        self.draw(message=meldung)
+                        continue
+                    if gewaehlt == "buchstabe":
+                        self.buchstaben_springen()
+                        self.draw()
+                        continue
+                    if gewaehlt == "zufall_fav":
+                        # KEIN eigener Startweg: derselbe Zweig wie
+                        # F11, nur mit einer kleineren Auswahl. Der
+                        # Start eines Spiels haengt an der RA-Core-
+                        # Frage, an CORES.aufloesen(), an
+                        # record_recent() und an write_mgl() - das ein
+                        # zweites Mal hinzuschreiben hiesse, es ein
+                        # zweites Mal pflegen zu muessen.
+                        self._zufall_nur_favoriten = True
+                        self._vorgemerkte_aktion = "random"
+                        continue
+                    # Alles Uebrige ist eine vorhandene Aktion: einmal
+                    # vormerken, und die Schleife behandelt sie in der
+                    # naechsten Runde wie einen Tastendruck.
+                    self._vorgemerkte_aktion = gewaehlt
+                    continue
                 elif act == "music_next":
                     self.music.next_track()
                     self.draw()   # Anzeige des neuen Songs sofort aktualisieren
@@ -20336,6 +20740,19 @@ class Frontend:
                     # getroffene System eine hat.
                     move_streak = page_streak = 0
                     pool = self._attract_games_pool()
+                    # Build 256: "Zufaelliger Favorit" aus dem
+                    # Kontextmenue laeuft durch denselben Zweig, nur
+                    # mit einer kleineren Auswahl. Faellt die Auswahl
+                    # leer aus (Favoriten, die es im Pool nicht gibt),
+                    # wird NICHT heimlich irgendein Spiel gestartet -
+                    # dann passiert nichts und es steht eine Zeile da.
+                    if getattr(self, "_zufall_nur_favoriten", False):
+                        self._zufall_nur_favoriten = False
+                        favs = getattr(self, "_favorites_set", set())
+                        pool = [p for p in pool if p[0] in favs]
+                        if not pool:
+                            self.draw(message=t("ctx_zufall_fav_leer"))
+                            continue
                     if pool:
                         name, syskey, rand_arg = random.choice(pool)
                         ra_core = find_ra_core(syskey)
@@ -20392,6 +20809,10 @@ class Frontend:
                                 self._favorites_set.add(label)
                             else:
                                 self._favorites_set.discard(label)
+                            # Build 256: "Favoriten zuerst" haengt an
+                            # dieser Menge - ohne den Zaehler bliebe
+                            # die Zeile stehen, wo sie war.
+                            self._anzeige_geaendert()
                             self._sync_favorites_category()
                             erfolg = self._check_achievement_popup()
                             if erfolg:
@@ -20800,6 +21221,27 @@ class Frontend:
                         elif kind == "attract_delay":
                             cycle_attract_delay()
                             self._attract_delay_check_next = 0.0   # sofort neu einlesen
+                            self._refresh_system_category()
+                        elif kind == "scroll_tempo":
+                            # Build 256. Gelesen wird der Wert bei
+                            # jedem Wiederholschritt neu (siehe
+                            # _tempo_anwenden() in fe/input.py) - hier
+                            # ist nichts weiterzureichen.
+                            cycle_scroll_tempo()
+                            self._refresh_system_category()
+                        elif kind == "ordner_zuerst":
+                            toggle_ordner_zuerst()
+                            self._anzeige_geaendert()
+                            self._refresh_system_category()
+                        elif kind == "favoriten_zuerst":
+                            toggle_favoriten_zuerst()
+                            self._anzeige_geaendert()
+                            self._refresh_system_category()
+                        elif kind == "ordner_zahlen":
+                            toggle_ordner_zahlen()
+                            self._refresh_system_category()
+                        elif kind == "versteckt":
+                            self.versteckte_zeigen()
                             self._refresh_system_category()
                         elif kind == "ziehung_spannung":
                             # Build 246. Wird bei jedem Betreten von

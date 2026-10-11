@@ -29,6 +29,8 @@ from fe.settings import (
     attract_enabled, crt_menu_active, curated_only_active,
     dragend_logo_enabled, format_attract_delay, load_attract_delay,
     load_ziehung_spannung,
+    load_scroll_tempo, ordner_zuerst, favoriten_zuerst,
+    ordner_zahlen_an,
     screen_mirror_enabled, stream_overlay_enabled,
     fast_scroll_enabled, cover_sofort_enabled, arbeitskopien_enabled,
     overscan_lesen, fremdquellen_enabled,
@@ -168,6 +170,24 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     # ausdruecklich als "aus" geschrieben und nicht als "0,0 s": der
     # Unterschied ist keine Dauer, sondern ein abgeschaltetes Feature.
     _zieh_ms = load_ziehung_spannung()
+    # Build 256: die vier Kleinigkeiten an der Liste. Jede
+    # Beschriftung nennt ihren Wert - dasselbe Muster wie bei der
+    # Ziehung darunter, damit man nichts durchprobieren muss.
+    _tempo = load_scroll_tempo()
+    scroll_tempo_label = t("sys_scroll_tempo",
+                           ("%gx" % _tempo).replace(".", ","))
+    ordner_label = t("sys_ordner_zuerst" if ordner_zuerst()
+                     else "sys_ordner_hinten")
+    favzuerst_label = t("sys_favoriten_zuerst_an" if favoriten_zuerst()
+                        else "sys_favoriten_zuerst_aus")
+    ordnerzahl_label = t("sys_ordner_zahlen_an" if ordner_zahlen_an()
+                         else "sys_ordner_zahlen_aus")
+    try:
+        from fe.versteckt import anzahl as _versteckt_anzahl
+        _versteckt_n = _versteckt_anzahl()
+    except Exception:                                    # noqa: BLE001
+        _versteckt_n = 0
+    versteckt_label = t("sys_versteckt", _versteckt_n)
     ziehung_label = t("sys_ziehung_spannung",
                       t("sys_ziehung_aus") if _zieh_ms <= 0
                       else "%.1fs" % (_zieh_ms / 1000.0))
@@ -427,6 +447,14 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         (t("sys_ansicht", t("ansicht_" + _ansicht)), "ansicht", None),
         (t("sys_ansicht_haupt", t("ansicht_" + _ansicht_haupt)),
          "ansicht_haupt", None),
+        # NEU (Build 256): vier Kleinigkeiten an der Liste, direkt
+        # unter den beiden Ansichten - es ist dieselbe Frage ("wie
+        # sieht meine Liste aus?"), nur feiner.
+        (scroll_tempo_label, "scroll_tempo", None),
+        (ordner_label, "ordner_zuerst", None),
+        (favzuerst_label, "favoriten_zuerst", None),
+        (ordnerzahl_label, "ordner_zahlen", None),
+        (versteckt_label, "versteckt", None),
         (t("sys_overscan_x", _ovx), "overscan_x", None),
         (t("sys_overscan_y", _ovy), "overscan_y", None),
         # NEU (Build 115): fremde Artwork-/Datenquelle unter

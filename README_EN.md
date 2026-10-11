@@ -82,12 +82,15 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | | |
 |---|---|
 | **Three views** | List, grid, gallery — for the game list *and* the main page, switchable per category (F10 / Select+Y) |
+| **List polish** | Scroll speed as a number (0.5x to 2x, never faster than your device can draw), folders before or after the games, favourites first, game count on folders (“Hacks [412]”) |
 | **Large grid tiles** | Ten tiles of 270×361 instead of twenty-one of 176×235. Back to the small grid with `touch /media/fat/frontend/raster_klein` |
 | **Cover art & game info** | Your own set under `art/`, plus the database under `/media/fat/docs` if you have it. A download script is included |
 | **Game descriptions** | Shown next to the cover in gallery view |
 | **Filters** | By genre, year, player count and developer (Tab / Select+L2+R2), remembered per category — under an automatic or **your own name** |
 | **Arrange the home page** | Decide the order and visibility of the categories yourself. “System” always stays, last |
 | **Search** | Type to narrow the list instantly |
+| **Context menu** | **F1**, or **X** on the pad, shows what is possible right here — favourite, completed, hide, search, filter, jump to letter, view, random. All of it existed already, just spread over seven different keys |
+| **Hide entries** | Take single games, whole folders or a category out of the display. Nothing on the card is touched, and an overview brings it all back |
 | **List cleanup** | Boot files, beta/proto/hack tags and duplicate regions drop out during the scan — the best region wins. Plus an optional “only games with a database match” |
 | **`gamelist.xml`** | If you curated your ROM folder with Skraper, the file is read: year, genre, players, publisher, description, cover. No setting needed, and your own data always wins |
 | **Favourites & collections** | Your own lists across all systems — **including the favourites you marked in the MiSTer OSD** (one list, two sources; nothing is written to your favourites file) |
@@ -163,6 +166,7 @@ All of it in detail: **[Manual](docs/MANUAL_EN.md)**.
 | Key | Pad | |
 |---|---|---|
 | Arrow keys | D-pad | Navigate |
+| **F1** | **X** | **Context menu** — what is possible right here |
 | Enter | A / Start | Select, enter folder |
 | Esc | B / Select | Back |
 | F2 or `/` | Select + A | Search |
@@ -172,7 +176,7 @@ All of it in detail: **[Manual](docs/MANUAL_EN.md)**.
 | F10 | Select + Y | Switch view |
 | F11 | — | Launch a random game |
 | F12 | Guide / Mode | Open the MiSTer OSD |
-| **F1** *(in a game)* | — | Back to the frontend. Esc does the same but must be held for ~0.6 s |
+| **F1** *(in a game)* | **X** | Back to the frontend. Esc does the same but must be held for ~0.6 s |
 
 **F9 is deliberately left free.** MiSTer uses it itself to switch
 between console and graphics mode — the frontend even injects it. The

@@ -164,6 +164,8 @@ python3 tools/regression_test.py \
 | `test_erfolg_wand.py` | Test (Pass/Fail) | Die Erfolgs-Wand: geprueft GEGEN DEN ECHTEN SERVER ueber eine SSE-Verbindung - nur bei Aenderung gesendet, Wand im Begruessungspaket, Icons gedrosselt vorgeholt, der Ausschnitt laeuft durch und faehrt zur frisch freigeschalteten Kachel |
 | `test_ra_spielnummer.py` | Test (Pass/Fail) | Die RA-Spielnummer auch OHNE Fortschrittsliste: Reihenfolge, dauerhaft gemerkter Katalog, .tmp-Schreiben, keine zweite Zuordnungstabelle - und die Aufloesung laeuft IM Faden, nicht vor dem Spielstart |
 | `test_systemkategorie_auffrischen.py` | Test (Pass/Fail) | _refresh_system_category() trifft 'System' und keine andere Kategorie mit syskey=None, ruft keinen Neuaufbau, und die Beschriftung folgt der Einstellung |
+| `test_listen_kleinzeug.py` | Test (Pass/Fail) | Die vier Kleinigkeiten aus Build 256: der schnelle Weg bleibt unveraendert, der Merker haengt am Zaehler, die Ordnerzahl wird gemerkt statt gezaehlt - und das Scroll-Tempo wird NIE schneller als die gemessene Zeichendauer |
+| `test_kontextmenue.py` | Test (Pass/Fail) | Das Kontextmenue: X bleibt 'back_fe', der Ausstieg aus dem Spiel laeuft weiter ueber rohe HID-Auswertung, das Menue liefert nur NAMEN vorhandener Aktionen, und der Inhalt richtet sich nach dem Markierten |
 | `diag_ungeprueft.py` | Diagnose (immer Rueckgabewert 0) | Welche Funktionen betritt KEIN Test - gemessen mit sys.setprofile, nicht ueber Namen im Testtext |
 | `_spur.py` | Hilfsmodul | Laesst eine einzelne Testdatei unter sys.setprofile laufen und schreibt jede betretene Funktion mit |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
@@ -3778,3 +3780,96 @@ Ordnung. Gewartet wird jetzt auf den Zaehler
 (`warten_bis(lambda: pw.gerechnet >= 1)`) statt sofort zu fragen -
 dieselbe Regel wie seit Build 249: an einer gezaehlten Zahl haengen,
 nicht an einem Zeitpunkt.
+
+## test_listen_kleinzeug.py (Build 256)
+
+Die vier Kleinigkeiten an der Liste - Scrollgeschwindigkeit als Zahl,
+Ordner vor oder hinter den Spielen, Favoriten zuerst, Spielzahl am
+Ordner - dazu das Ausblenden einzelner Eintraege.
+
+Die Ideen stammen aus einem Blick auf Degauss, **der Code nicht**:
+Degauss steht unter PolyForm Noncommercial 1.0.0, und das ist keine
+freie Lizenz.
+
+**Die wichtigste Pruefung ist die ueber das Scroll-Tempo**, und sie
+haelt die Lehre aus Build 93 fest. Der eingestellte Wert ist ein
+FAKTOR auf den gemessenen Boden, keine feste Schrittzahl: langsamer
+geht immer, schneller nur bis zu dem, was das Geraet tatsaechlich
+zeichnet. Fordert man mehr Wiederholungen an, als das Bild hergibt,
+wird die Liste nicht schneller - der Ueberschuss staut sich und sie
+laeuft nach dem Loslassen weiter. Der Test rechnet jede Stufe gegen
+eine angenommene Zeichendauer von 100 ms durch und verlangt, dass
+keine davon darunter faellt. Ein Regler, der auf Stufe 2x die
+Bedienung schlechter macht als auf 1x, waere ein Regler, den man
+besser nicht gebaut haette.
+
+**Der schnelle Weg muss der unveraenderte bleiben.**
+`_liste_anpassen()` liegt im Zeichenweg. Wer nichts einstellt - und
+das sind alle, bis sie etwas einstellen - muss DASSELBE Listenobjekt
+zurueckbekommen, nicht eine Kopie. Der Test prueft auf Identitaet
+(`is`), nicht auf Gleichheit.
+
+**Der Merker haengt an einem Zaehler** (`_anzeige_stand`), den jeder
+Favoriten- und jeder Ausblend-Wechsel hochdreht. Ohne ihn bliebe die
+Liste stehen, wie sie war - und zwar still. Geprueft wird beides:
+dass zweimal Fragen nur einmal rechnet, UND dass eine Aenderung
+durchkommt.
+
+**Die Ordnerzahl wird gemerkt, nicht gezaehlt.** Sie wird beim
+Zeichnen JEDER sichtbaren Ordnerzeile gebraucht; ohne Merker am Knoten
+waere das bei einem Ordner mit 30.000 Eintraegen ein vollstaendiger
+Baumdurchlauf pro Bild.
+
+**Beim Ausblenden wird nichts geloescht.** Der Test sucht in
+`fe/versteckt.py` ausdruecklich nach `os.remove`, `unlink` und
+`rmtree` - und besteht darauf, dass keines davon vorkommt.
+
+**Ein eigener Fehler beim Schreiben:** die Pruefung "das Tempo laeuft
+durch alle Stufen" endete im ersten Entwurf auf `or True` und war
+damit keine Pruefung, sondern eine Zeile, die immer gruen ist.
+Gefunden beim Durchlesen des eigenen Tests, nicht beim Ausfuehren.
+
+## test_kontextmenue.py (Build 256)
+
+X am Pad, F1 auf der Tastatur: eine Liste mit dem, was an dieser
+Stelle gerade geht.
+
+**Die erste Pruefung ist die, die wehtun wuerde:** X bleibt
+`back_fe`. Das ist die Aktion, mit der man WAEHREND eines Cores ins
+Frontend zurueckkommt - wer sie fuer das Menue umbenennt, nimmt dem
+Nutzer den Rueckweg aus dem Spiel. Die Aktion bleibt also, was sie
+ist, und wird nur dort behandelt, wo sie bisher ins Leere lief.
+Ebenso geprueft: der Ausstieg per F1 im Spiel laeuft ueber ROHE
+HID-Auswertung (`_hid_report_has_f1_key()`) und nicht ueber die
+KEYMAP - deshalb kann der neue Eintrag dort nichts kaputtmachen.
+
+**Das Menue macht die Arbeit nicht selbst.** Es liefert den NAMEN
+einer vorhandenen Aktion zurueck, und die Hauptschleife fuehrt sie
+aus, als waere die Taste gedrueckt worden. Der Test geht jeden
+zurueckgegebenen Namen durch und verlangt, dass die Hauptschleife ihn
+behandelt. Genau das hat den ersten Entwurf ueberfuehrt: "Diese
+Kategorie ausblenden" lieferte `"hauptseite"` - einen Namen, den
+niemand behandelt. Im Menue waere nichts passiert, und es haette
+niemand gemerkt.
+
+**Der Inhalt richtet sich nach dem Markierten.** Bei einem Ordner
+steht kein "Als Favorit merken", auf der Hauptseite kein Filter, und
+ohne Favoriten kein "Zufaelliger Favorit". Geprueft wird das gegen
+eine Attrappe, die `_wizard_choice()` ersetzt und nur mitschreibt,
+welche Zeilen angeboten wurden.
+
+**Ausblenden legt keine zweite Wahrheit an.** Fuer Kategorien gibt es
+seit Build 250 die Hauptseite; das Kontextmenue schreibt dorthin
+statt in eine eigene Datei.
+
+**Zwei eigene Fehler beim Schreiben**, beide altbekannt:
+
+* Die Pruefung "wird in der Hauptschleife behandelt" suchte nur nach
+  `act == "..."`. Die Suche wird aber ueber
+  `act in ("search", "search_pad")` behandelt - die Pruefung hing an
+  einer Schreibweise statt an der Zusage.
+* Die Pruefung "der Zweig startet selbst kein Spiel" fand
+  `write_mgl()` - im KOMMENTAR desselben Zweigs, der erklaert, warum
+  dort nichts gestartet wird. Jetzt werden die Kommentarzeilen vorher
+  entfernt. Derselbe Fall wie in `test_zaparoo.py` und, im selben
+  Build, in `test_cores.py` (siehe `nur_code()` in `test_beenden.py`).

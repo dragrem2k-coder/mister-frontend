@@ -84,12 +84,15 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | | |
 |---|---|
 | **Drei Ansichten** | Liste, Raster, Galerie — für Spieleliste *und* Hauptseite, je Kategorie umschaltbar (F10 / Select+Y) |
+| **Listen-Feinschliff** | Scrollgeschwindigkeit als Zahl (0,5x bis 2x, nie schneller als dein Gerät zeichnen kann), Ordner vor oder hinter den Spielen, Favoriten zuerst, Spielzahl am Ordner („Hacks [412]“) |
 | **Große Rasterkacheln** | Zehn Kacheln à 270×361 statt einundzwanzig à 176×235. Zurück zum kleinen Raster mit `touch /media/fat/frontend/raster_klein` |
 | **Boxart & Spielinfos** | Eigene Sammlung unter `art/`, dazu die Datenbank unter `/media/fat/docs`, falls vorhanden. Download-Skript liegt bei |
 | **Spielbeschreibungen** | Deutscher Text neben dem Cover in der Galerie |
 | **Filter** | Nach Genre, Jahr, Spielerzahl und Entwickler (Tab / Select+L2+R2), je Kategorie merkbar — mit automatischem oder **eigenem Namen** |
 | **Hauptseite einrichten** | Reihenfolge und Sichtbarkeit der Kategorien selbst bestimmen. „System“ bleibt immer, zuletzt |
 | **Suche** | Tippen filtert die Liste sofort |
+| **Kontextmenü** | **F1** oder **X** am Pad zeigt, was hier gerade geht — Favorit, durchgespielt, ausblenden, suchen, filtern, zu Buchstabe springen, Ansicht, Zufall. Alles davon gab es schon, nur über sieben verschiedene Tasten verteilt |
+| **Einträge ausblenden** | Einzelne Spiele, ganze Ordner oder eine Kategorie aus der Anzeige nehmen. Auf der Karte wird nichts angefasst, und eine Übersicht holt alles zurück |
 | **Listen-Bereinigung** | Boot-Dateien, Beta/Proto/Hack-Tags und doppelte Regionen fallen beim Einlesen weg — beste Region gewinnt. Dazu auf Wunsch „nur Spiele mit Datenbank-Treffer“ |
 | **`gamelist.xml`** | Hast du dein ROM-Verzeichnis mit Skraper gepflegt, wird die Datei gelesen: Jahr, Genre, Spielerzahl, Hersteller, Beschreibung, Cover. Ohne Einstellung, und deine eigenen Daten haben immer Vorrang |
 | **Favoriten & Sammlungen** | Eigene Listen quer über alle Systeme — **einschließlich der Favoriten, die du im MiSTer-OSD markiert hast** (eine Liste, zwei Quellen; in deine Favoritendatei wird nichts geschrieben) |
@@ -165,6 +168,7 @@ Alles ausführlich: **[Handbuch](docs/HANDBUCH.md)**.
 | Taste | Pad | |
 |---|---|---|
 | Pfeiltasten | D-Pad | Navigieren |
+| **F1** | **X** | **Kontextmenü** — was hier gerade geht |
 | Enter | A / Start | Auswählen, Ordner betreten |
 | Esc | B / Select | Zurück |
 | F2 oder `/` | Select + A | Suche |
@@ -174,7 +178,7 @@ Alles ausführlich: **[Handbuch](docs/HANDBUCH.md)**.
 | F10 | Select + Y | Ansicht umschalten |
 | F11 | — | Zufälliges Spiel starten |
 | F12 | Guide / Mode | MiSTer-OSD öffnen |
-| **F1** *(im Spiel)* | — | Zurück ins Frontend. Esc tut dasselbe, muss aber ~0,6 s gehalten werden |
+| **F1** *(im Spiel)* | **X** | Zurück ins Frontend. Esc tut dasselbe, muss aber ~0,6 s gehalten werden |
 
 **F9 ist absichtlich frei.** MiSTer benutzt sie selbst für den Wechsel
 zwischen Konsole und Grafikmodus — das Frontend spielt sie sogar selbst
