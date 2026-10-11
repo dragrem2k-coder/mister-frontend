@@ -19389,20 +19389,38 @@ class Frontend:
         playtime_str = None
         ra_str = None
         is_favorite = False
+        # BUGFIX BUILD 261 (Nutzer-Rueckmeldung: "aus den Kategorien geht
+        # es jetzt super, wenn ich die Spiele aber aus Zuletzt gespielt,
+        # Weiterspielen, Zufalls-Zock, RA-Erfolgsjaeger, Sammlungen
+        # starte, werden keine Cover mit angezeigt").
+        #
+        # Diese Kategorien MISCHEN Systeme, die Kategorie selbst hat
+        # deshalb keinen Systemkey (syskey=None). Hier stand bisher
+        # ueberall der KATEGORIE-Key - also leer -, und damit fehlte im
+        # Overlay nicht nur das Cover, sondern auch Genre, Jahr und der
+        # RA-Fortschritt.
+        #
+        # Das Frontend selbst hat fuer genau diesen Fall seit Build 122
+        # _item_syskey(): der Eintrag TRAEGT seinen Systemkey mit
+        # (item[2][2]). Benutzt wird hier dieselbe Funktion und keine
+        # zweite Regel - dieselbe Lehre wie in Build 260, wo eine
+        # nachgebaute Cover-Suche genau deshalb auseinandergelaufen war.
+        item_syskey = self._item_syskey(sel_item, syskey) if sel_item \
+            else syskey
         if sel_item:
             item_kind = sel_item[1]
             lookup_name = sel_item[2] if item_kind == "folder" else sel
-            if syskey == "ARCADE":
+            if item_syskey == "ARCADE":
                 meta = mra_meta(sel_item[2]) if item_kind == "core" else {}
             else:
-                meta = get_meta(syskey, lookup_name) if syskey else {}
+                meta = get_meta(item_syskey, lookup_name) if item_syskey else {}
             genre = meta.get("genre")
             year = meta.get("year")
             if hasattr(self, "_playtime_cache"):
                 entry = self._playtime_cache.get(sel)
                 playtime_str = format_playtime(entry.get("seconds")) if entry else None
             if hasattr(self, "_ra_lookup") and self._ra_lookup:
-                ra = lookup_ra_progress(self._ra_lookup, sel, syskey)
+                ra = lookup_ra_progress(self._ra_lookup, sel, item_syskey)
                 if ra:
                     ra_str = "%d/%d" % ra
             is_favorite = item_kind == "game" and hasattr(self, "_favorites_set") \
@@ -19411,7 +19429,10 @@ class Frontend:
         return {
             "category": name,
             "system": name,                 # lesbarer Name fuers Badge
-            "syskey": syskey or "",         # Key fuer die Cover-URL (/art)
+            # Der Key des EINTRAGS, nicht der Kategorie - siehe
+            # _item_syskey() oben. Bei einer normalen Systemkategorie
+            # ist das derselbe Wert.
+            "syskey": item_syskey or "",    # Key fuer die Cover-URL (/art)
             "name": display_name(sel),
             "art_name": sel,                # echter Dateiname fuers Cover
             "index": self.item_i,

@@ -13,6 +13,15 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.8 — noch nicht veröffentlicht
 
+**Nachgereicht: Cover auch aus „Zuletzt gespielt", „Weiterspielen", Zufalls-Zock, RA-Erfolgsjäger und Sammlungen.**
+
+- **Der gemeldete Fall:** „aus den Kategorien geht es jetzt super, wenn ich die Spiele aber aus Zuletzt gespielt, Weiterspielen, Zufalls-Zock, RA-Erfolgsjäger, Sammlungen starte, werden keine Covers mit angezeigt."
+- **Zweite Ursache, nicht dieselbe.** Build 260 war die Cover-*Suche* (der Server fand die Datei nicht). Hier geht es darum, dass dem Server gar nicht gesagt wurde, in **welchem System** er suchen soll: diese fünf Kategorien mischen Systeme und haben selbst keinen Systemschlüssel — und genau den hat das Overlay gemeldet, also einen leeren.
+- **Jetzt kommt der Schlüssel vom Eintrag**, der ihn ohnehin mitträgt. Benutzt wird dafür `_item_syskey()`, also **dieselbe** Funktion, mit der auch der Zeichenweg im Frontend das Cover eines gemischten Eintrags findet — keine zweite Regel, dieselbe Lehre wie in Build 260.
+- **Mit zurück kommen Genre, Jahr und der RA-Fortschritt**, die dort aus demselben Grund gefehlt haben.
+- **Gegengeprüft:** der neue Test ist gegen die ausgelieferte v4.8 rot und meldet dort genau das leere Feld.
+
+
 **Berichtigt: die Cover im OBS-Overlay waren weg, wenn sie nicht `.art` heißen.**
 
 - **Der gemeldete Fall:** „das Cover wird nicht angezeigt, egal welche ROM ich starte" — Raster da, Rahmen da, Bild leer. Deine eigene Vermutung war die richtige: *„oder liegt es daran, dass wir die Covers alle von .art weg in C-Modul als PNG und JPG geändert haben?"*

@@ -1685,6 +1685,13 @@ asks the same place the frontend asks; there is no second lookup any
 more. JPEG and PNG go to the browser **unchanged**, only our `.art` is
 converted to PNG.
 
+**And since Build 261 from the mixed categories too.** *Recently
+played*, *Continue playing*, *Random pick*, *RA hunter* and
+*Collections* hold games from several systems; the overlay used to
+report the *category's* system key — and there it is empty. It now
+comes from the **entry itself**, which brings back not only the cover
+but genre, year and RA progress as well.
+
 **RA achievements in real time:** If a RetroAchievements achievement is
 unlocked while playing, the overlay shows it directly - icon, title,
 description, points, faded in after 7 seconds and gone again

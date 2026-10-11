@@ -170,6 +170,7 @@ python3 tools/regression_test.py \
 | `test_romwacht.py` | Test (Pass/Fail) | Der ROM-Waechter: meldet jede Aenderung genau EINMAL, behaelt den alten Stand bis zum Nachlesen, liest NICHTS von selbst nach - und ein Blick kostet GEZAEHLT hoechstens zwei Zugriffe je System |
 | `test_multidisc.py` | Test (Pass/Fail) | Mehrteilige Spiele: aus neun Zeilen werden sechs, zwei Fassungen bleiben zwei, ein einzelnes '(Disc 1)' behaelt seinen Namen, Disc 2 steht vor Disc 10 - und die Auswahl beim Starten kostet genau EIN os.listdir() |
 | `test_overlay_cover.py` | Test (Pass/Fail) | Die Cover im Overlay: AM ECHTEN SERVER ueber echte HTTP-Abrufe - JPEG und PNG kommen Byte fuer Byte unveraendert an, unser .art gewandelt als PNG, HD vor Standard, und es gibt nur noch EINE Cover-Suche |
+| `test_overlay_zustand.py` | Test (Pass/Fail) | stream_state(): in gemischten Kategorien (Zuletzt gespielt, Sammlungen, ...) kommt der Systemkey vom EINTRAG und nicht von der Kategorie - sonst fehlen Cover, Genre, Jahr und RA-Fortschritt |
 | `diag_ungeprueft.py` | Diagnose (immer Rueckgabewert 0) | Welche Funktionen betritt KEIN Test - gemessen mit sys.setprofile, nicht ueber Namen im Testtext |
 | `_spur.py` | Hilfsmodul | Laesst eine einzelne Testdatei unter sys.setprofile laufen und schreibt jede betretene Funktion mit |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
@@ -4226,3 +4227,63 @@ Tests in temporaeren Verzeichnissen laufen), der alte `.art`-Weg steht
 nur noch als Rueckfall dahinter, und `cover_datei()` benutzt die
 vorhandene Rangfolge aus `_art_path_in()`, statt sie ein drittes Mal
 nachzubauen.
+
+## test_overlay_zustand.py (Build 261)
+
+Nutzer-Rueckmeldung, direkt nach Build 260: „aus den Kategorien geht es
+jetzt super, wenn ich die Spiele aber aus Zuletzt gespielt,
+Weiterspielen, Zufalls-Zock, RA-Erfolgsjaeger, Sammlungen starte, werden
+keine Covers mit angezeigt."
+
+**Zwei Builds, zwei verschiedene Ursachen** - und das ist der Grund,
+warum dieser Test neben `test_overlay_cover.py` steht und nicht darin:
+
+* **Build 260:** der Server fand die **Datei** nicht (eigene Suche, nur
+  `.art`). Das traf *alle* Kategorien.
+* **Build 261:** dem Server wird gar nicht gesagt, in **welchem System**
+  er suchen soll. Das trifft nur die *gemischten* Kategorien.
+
+Diese fuenf Kategorien mischen Systeme; die Kategorie selbst hat deshalb
+keinen Systemkey (`syskey=None`), und `stream_state()` hat genau diesen
+weitergereicht. Gefehlt haben damit nicht nur die Cover, sondern auch
+**Genre, Jahr und der RA-Fortschritt** - alle drei haengen an derselben
+Variablen.
+
+**Bemerkenswert an diesem Fund: ich hatte bei Build 260 auf genau diese
+Ursache getippt**, und der Nutzer hat sie mit einer Gegenprobe
+widerlegt („aus einer echten Systemkategorie starten - auch kein
+Cover"). Die Vermutung war nicht falsch, sie war **verdeckt**: solange
+der Server ueberhaupt keine JPEG/PNG fand, war der Systemkey egal.
+Deshalb war es richtig, der Gegenprobe zu folgen - und deshalb bleiben
+beide Tests stehen, jeder fuer seine Ursache.
+
+**Keine zweite Regel:** benutzt wird `_item_syskey()`, dieselbe
+Funktion, mit der auch der Zeichenweg seit Build 122 das Cover eines
+gemischten Eintrags findet (der Eintrag traegt seinen Systemkey an
+`item[2][2]` mit). Genau die Lehre aus Build 260, eine Zeile spaeter
+angewandt.
+
+**Geprueft wird** an einer echten `Frontend()`-Instanz: eine normale
+Systemkategorie bleibt unveraendert, eine gemischte liefert fuer drei
+Eintraege drei verschiedene Keys (SNES, MEGADRIVE, MEGACD), ohne
+Auswahl und bei einem Ordner faellt es sauber auf den Kategorie-Key
+zurueck - und zum Schluss, dass der Kategorie-Key fuer Cover, Metadaten
+und RA-Fortschritt **nirgends mehr** benutzt wird.
+
+**Gegenprobe:** gegen den ausgelieferten Baum von v4.8 ist der Test rot
+und meldet dort genau das leere Feld.
+
+### Nachtrag Build 261 zu test_thumb_jpeg.py: eine Stoppuhr raus
+
+Test 9 hiess „und es ist wirklich schneller" und verlangte
+`t_jpg < t_art`. In der Suite ist er **umgekippt** (gemessen 1,36 gegen
+1,49 ms, also Faktor 1,1 - das ist Rauschen, kein Befund), allein lief
+er gruen. Ein Test, der vom Zufall abhaengt, sagt nichts und kostet
+trotzdem jedes Mal eine Untersuchung.
+
+Die **Dauer gehoert auf den MiSTer** (docs/MESSUNG.md), nicht auf einen
+geteilten Rechner unter Last - dieselbe Regel wie seit Build 249.
+Geprueft wird jetzt, was auf jedem Rechner gleich ausfaellt: die Datei
+ist deutlich kleiner, und es sind **gezaehlt** weniger Bytes zu lesen
+(39.035 gegen 114.671). Die Zeiten stehen weiterhin im Protokoll - als
+Auskunft, nicht als Zusage.

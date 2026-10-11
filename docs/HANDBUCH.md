@@ -1984,6 +1984,13 @@ jetzt dieselbe Stelle, die auch das Frontend fragt; eine zweite Suche
 gibt es nicht mehr. JPEG und PNG gehen dabei **unverändert** an den
 Browser, nur unser `.art` wird in PNG gewandelt.
 
+**Und seit Build 261 auch aus den gemischten Kategorien.** *Zuletzt
+gespielt*, *Weiterspielen*, *Zufalls-Zock*, *RA-Erfolgsjäger* und
+*Sammlungen* enthalten Spiele aus verschiedenen Systemen; das Overlay
+hat bisher den Systemschlüssel der *Kategorie* gemeldet — und der ist
+dort leer. Jetzt kommt er vom **Eintrag selbst**, womit nicht nur das
+Cover erscheint, sondern auch Genre, Jahr und der RA-Fortschritt.
+
 **RA-Erfolge in Echtzeit:** Wird während des Spielens ein
 RetroAchievements-Erfolg freigeschaltet, zeigt das Overlay das direkt
 an - Icon, Titel, Beschreibung, Punkte, oben rechts eingeblendet, nach

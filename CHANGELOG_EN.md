@@ -13,6 +13,15 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.8 — not yet released
 
+**Added: covers from "Recently played", "Continue playing", Random pick, RA hunter and Collections too.**
+
+- **The reported case:** "from the categories it works great now, but when I start games from Recently played, Continue playing, Random pick, RA hunter, Collections, no covers are shown."
+- **A second cause, not the same one.** Build 260 was the cover *lookup* (the server could not find the file). This one is about the server never being told **which system** to look in: these five categories mix systems and have no system key of their own — and that is exactly the one the overlay reported, so an empty one.
+- **The key now comes from the entry**, which carries it anyway. It uses `_item_syskey()`, the **same** function the frontend's own drawing path uses to find the cover of a mixed entry — no second rule, the same lesson as in Build 260.
+- **Genre, year and RA progress come back with it**; they were missing there for the same reason.
+- **Counter-checked:** the new test is red against the shipped v4.8 and reports exactly the empty field there.
+
+
 **Fixed: covers in the OBS overlay were gone unless they were named `.art`.**
 
 - **The reported case:** "the cover is not shown, whatever ROM I start" — grid there, frame there, image empty. Your own guess was the right one: *"or is it because we moved all the covers away from .art to PNG and JPG in the C module?"*

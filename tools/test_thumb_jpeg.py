@@ -345,7 +345,7 @@ check("die Datei wird in einem Zug gelesen",
       "im Profil standen 3 x read() mit zusammen 66 ms")
 
 print()
-print("Test 9: und es ist wirklich schneller")
+print("Test 9: kleiner - und der Grund dafuer")
 # ---------------------------------------------------------------------------
 basis, quelle = aufbau()
 try:
@@ -380,10 +380,24 @@ try:
 
     print("       ART1: %.2f ms, %d KB" % (t_art, art_bytes // 1024))
     print("       JPG1: %.2f ms, %d KB" % (t_jpg, jpg_bytes // 1024))
-    check("JPG ist schneller zu lesen", t_jpg < t_art,
-          "Faktor %.1f" % (t_art / t_jpg if t_jpg else 0))
-    check("und die Datei deutlich kleiner", jpg_bytes * 2 < art_bytes,
+    # BERICHTIGT IN BUILD 261: hier stand "check(t_jpg < t_art)", und
+    # das war eine STOPPUHR auf einem geteilten Rechner. Unter Last der
+    # Suite ist der Test umgekippt (gemessen 1,36 gegen 1,49 ms, also
+    # Faktor 1,1 - das ist Rauschen, kein Befund), allein lief er gruen.
+    # Ein Test, der vom Zufall abhaengt, sagt nichts und kostet
+    # trotzdem jedes Mal eine Untersuchung.
+    #
+    # Die Dauer gehoert auf den MiSTer gemessen (docs/MESSUNG.md),
+    # nicht hier - dieselbe Regel wie seit Build 249. Geprueft wird
+    # deshalb, was auf JEDEM Rechner gleich ausfaellt und zugleich der
+    # eigentliche GRUND fuer JPEG ist: die Datei ist viel kleiner, und
+    # ein JPEG laesst sich VERKLEINERT dekodieren, unser ART1 nicht.
+    # Die Zeiten stehen weiter oben - als Auskunft, nicht als Zusage.
+    check("die Datei ist deutlich kleiner", jpg_bytes * 2 < art_bytes,
           "%d gegen %d KB" % (jpg_bytes // 1024, art_bytes // 1024))
+    check("und es sind weniger Bytes zu lesen", jpg_bytes < art_bytes,
+          "%d gegen %d Bytes - gezaehlt, nicht gestoppt"
+          % (jpg_bytes, art_bytes))
 finally:
     shutil.rmtree(basis, ignore_errors=True)
 
