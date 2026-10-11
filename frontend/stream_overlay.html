@@ -188,6 +188,33 @@
     pointer-events:none;
   }
   #ra-wall.on{display:flex}
+  /* DAS COVER DES LAUFENDEN SPIELS (Build 259, Nutzerwunsch).
+     Es liegt IM selben Kasten wie das Raster, nicht daneben: zwei
+     Kaesten, die zusammengehoeren und sich bei jeder Aenderung
+     einzeln verschieben, sehen nach zwei Dingen aus.
+     Die Richtung entscheidet die Position - oben/unten ist eine
+     Spalte, links/rechts eine Reihe. */
+  #ra-wall-inner{display:flex;flex-direction:column;
+    gap:calc(8px*var(--scale));min-width:0}
+  #ra-wall-cover{display:none;flex:none;object-fit:contain;
+    width:calc(110px*var(--scale));height:calc(154px*var(--scale));
+    border-radius:calc(8px*var(--scale));background:#1a1e27;
+    border:1px solid rgba(255,255,255,.10);
+    align-self:center}
+  #ra-wall.cover-oben,
+  #ra-wall.cover-unten{flex-direction:column}
+  #ra-wall.cover-links{flex-direction:row}
+  #ra-wall.cover-rechts{flex-direction:row-reverse}
+  #ra-wall.cover-unten{flex-direction:column-reverse}
+  #ra-wall.cover-oben #ra-wall-cover,
+  #ra-wall.cover-unten #ra-wall-cover,
+  #ra-wall.cover-links #ra-wall-cover,
+  #ra-wall.cover-rechts #ra-wall-cover{display:block}
+  /* Liegt das Cover daneben, stehen Kopfzeile und Raster oben buendig
+     mit seiner Oberkante - mittig zentriert saehe bei einer hohen
+     Wand aus, als haetten die beiden nichts miteinander zu tun. */
+  #ra-wall.cover-links,
+  #ra-wall.cover-rechts{align-items:flex-start}
   #ra-wall.solid{background:var(--bg)}
   /* Eigene Ecke, unabhaengig von der Auswahl-Karte - sonst liegen sie
      uebereinander, und welche oben ist, haengt von der Reihenfolge im
@@ -317,12 +344,15 @@
     </div>
   </div>
   <div id="ra-wall">
-    <div id="ra-wall-head">
-      <b id="ra-wall-count">0 / 0</b>
-      <span class="pts" id="ra-wall-points"></span>
+    <img id="ra-wall-cover" alt="">
+    <div id="ra-wall-inner">
+      <div id="ra-wall-head">
+        <b id="ra-wall-count">0 / 0</b>
+        <span class="pts" id="ra-wall-points"></span>
+      </div>
+      <div id="ra-wall-bar"><i id="ra-wall-fill"></i></div>
+      <div id="ra-wall-view"><div id="ra-wall-grid"></div></div>
     </div>
-    <div id="ra-wall-bar"><i id="ra-wall-fill"></i></div>
-    <div id="ra-wall-view"><div id="ra-wall-grid"></div></div>
   </div>
   <div id="achievement-toast">
     <img id="achievement-badge" class="badge hidden" alt="">
@@ -631,6 +661,46 @@ function wandZuKachel(node){
 let wandStand = null;     // Badge-Name -> an/aus, Stand von eben
 let wandAufbau = null;    // Badge-Name -> Element
 
+// DAS COVER DES LAUFENDEN SPIELS AN DER WAND (Build 259).
+//
+// Es kommt von derselben Stelle wie das Cover auf der Auswahl-Karte
+// (/art?sys=..&name=..) und aus demselben Zustand - waehrend ein Spiel
+// laeuft, ist der zuletzt gemeldete Zustand genau dieses Spiel. Es gibt
+// also keine zweite Datenquelle und keinen zusaetzlichen Abruf im
+// Frontend.
+//
+// GEWECHSELT WIRD NUR, WENN SICH DIE ADRESSE AENDERT. Ohne diese
+// Pruefung setzte jeder Abruf der Erfolge (alle 25 Sekunden) dasselbe
+// src neu - der Browser laedt dann erneut, und das Bild blitzt kurz
+// weg. Derselbe Gedanke wie beim Raster, das nur bei einem ANDEREN
+// Spiel neu gebaut wird.
+let wandCoverUrl = null;
+
+function wandCover(pos){
+  const bild = $('ra-wall-cover');
+  if(!bild) return;
+  if(pos === 'aus' || !lastState || !lastState.syskey){
+    wandCoverUrl = null;
+    bild.removeAttribute('src');
+    return;
+  }
+  const name = lastState.art_name || lastState.name;
+  if(!name || name.slice(-1) === '/'){     // Ordner haben kein Cover
+    wandCoverUrl = null;
+    bild.removeAttribute('src');
+    return;
+  }
+  const url = '/art?sys=' + encodeURIComponent(lastState.syskey) +
+              '&name=' + encodeURIComponent(name);
+  if(url === wandCoverUrl) return;
+  wandCoverUrl = url;
+  // Ein Cover, das es nicht gibt, soll kein zerbrochenes Bild zeigen -
+  // dieselbe Behandlung wie bei den Erfolgs-Icons.
+  bild.onerror = () => { bild.style.visibility = 'hidden'; };
+  bild.onload = () => { bild.style.visibility = ''; };
+  bild.src = url;
+}
+
 function renderWall(daten){
   const wall = $('ra-wall');
   if(!daten || cfg.show_ra_wall !== true){
@@ -714,8 +784,11 @@ function renderWall(daten){
   // misst ein Element, das noch auf display:none steht, als 0. Die
   // Reihenfolge dieser drei Absaetze ist deshalb kein Zufall, und der
   // Test haelt sie fest.
+  const coverPos = cfg.ra_wall_cover || 'aus';
   wall.className = 'wall-' + (cfg.ra_wall_corner || 'top-right') +
-                   (cfg.transparent === false ? ' solid' : '') + ' on';
+                   (cfg.transparent === false ? ' solid' : '') +
+                   (coverPos !== 'aus' ? ' cover-' + coverPos : '') + ' on';
+  wandCover(coverPos);
 
   // 0 heisst "alles zeigen"; sonst wird auf so viele Zeilen begrenzt
   // und der Rest laeuft durch (siehe wandFensterSetzen()).
@@ -838,6 +911,12 @@ function applyState(s){
   } else np.classList.add('hidden');
 
   card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash');
+  // Build 259: das Cover an der Erfolgs-Wand haengt am ZUSTAND,
+  // nicht an den Erfolgen. Ohne diesen Aufruf wuerde es erst
+  // beim naechsten Erfolgs-Abruf nachziehen - und in welcher
+  // Reihenfolge 'state' und 'achievements' ankommen, ist nicht
+  // zugesichert.
+  wandCover(cfg.ra_wall_cover || 'aus');
 }
 
 function connect(){

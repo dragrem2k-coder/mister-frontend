@@ -20,6 +20,7 @@ startbar waren.
 import os
 import sys
 import threading
+import time
 import importlib.util
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -189,12 +190,45 @@ def _zwischenspeicher_leeren():
         pass
 
 
+# Wieviel echte Wartezeit beim Bauen uebersprungen wurde - gezaehlt,
+# damit es nachpruefbar ist und nicht nur behauptet.
+SCHLAF_UEBERSPRUNGEN = [0.0, 0]
+
+
+def _nicht_schlafen(dauer=0.0):
+    SCHLAF_UEBERSPRUNGEN[0] += float(dauer or 0.0)
+    SCHLAF_UEBERSPRUNGEN[1] += 1
+
+
 def make_frontend(page=1, titles=None):
     """Echte Frontend()-Instanz mit einer festen, kuenstlichen
     Spieleliste - damit die Tests unabhaengig davon laufen, welche ROMs
-    auf dem Testrechner liegen."""
+    auf dem Testrechner liegen.
+
+    BEIM BAUEN WIRD NICHT WIRKLICH GEWARTET. Frontend() schaltet die
+    Konsole um und laesst dem Kernel dafuer Zeit (time.sleep); gemessen
+    waren das 2,50 von 2,57 Sekunden je Instanz - 97 Prozent reines
+    Warten, die eigentliche Arbeit sind 0,07 Sekunden. Vor einer
+    Attrappe von Framebuffer gibt es aber keine Konsole, auf die man
+    warten muesste.
+
+    Das war kein Schoenheitsfehler: tools/test_hauptseite_spuren.py
+    baut Dutzende Instanzen und lief damit ueber die 600-Sekunden-Grenze
+    der Suite - rot mit RC=124, ohne dass an einer Zusage etwas falsch
+    war. GEGENGEPRUEFT, bevor die Ursache festgeschrieben wurde: auf dem
+    ausgelieferten Baum von v4.8 kostet eine Instanz genau dieselben
+    2,55 Sekunden, der Bau 259 hat daran also nichts geaendert.
+
+    Uebersprungen wird NUR waehrend des Bauens. Was ein Test selbst
+    wartet - etwa auf einen Hintergrundfaden - bleibt echtes Warten;
+    daraus eine Leerschleife zu machen waere ein neuer Fehler."""
     _zwischenspeicher_leeren()
-    fe = fm.Frontend()
+    _echt = time.sleep
+    time.sleep = _nicht_schlafen
+    try:
+        fe = fm.Frontend()
+    finally:
+        time.sleep = _echt
     fe._last_input_time = NOW[0] - 10.0
     if page == 1:
         fe.page = 1

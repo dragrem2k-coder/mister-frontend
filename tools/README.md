@@ -168,6 +168,7 @@ python3 tools/regression_test.py \
 | `test_kontextmenue.py` | Test (Pass/Fail) | Das Kontextmenue: X bleibt 'back_fe', der Ausstieg aus dem Spiel laeuft weiter ueber rohe HID-Auswertung, das Menue liefert nur NAMEN vorhandener Aktionen, und der Inhalt richtet sich nach dem Markierten |
 | `test_tastenlegende.py` | Test (Pass/Fail) | Die Tastenlegende unten rechts: AM ECHTEN BILD geprueft (zwei Aufbauten im Vergleich) - auf HDMI da, auf CRT nicht, weicht jeder Meldung, und der Teil-Neuaufbau raeumt sie mit frei |
 | `test_romwacht.py` | Test (Pass/Fail) | Der ROM-Waechter: meldet jede Aenderung genau EINMAL, behaelt den alten Stand bis zum Nachlesen, liest NICHTS von selbst nach - und ein Blick kostet GEZAEHLT hoechstens zwei Zugriffe je System |
+| `test_multidisc.py` | Test (Pass/Fail) | Mehrteilige Spiele: aus neun Zeilen werden sechs, zwei Fassungen bleiben zwei, ein einzelnes '(Disc 1)' behaelt seinen Namen, Disc 2 steht vor Disc 10 - und die Auswahl beim Starten kostet genau EIN os.listdir() |
 | `diag_ungeprueft.py` | Diagnose (immer Rueckgabewert 0) | Welche Funktionen betritt KEIN Test - gemessen mit sys.setprofile, nicht ueber Namen im Testtext |
 | `_spur.py` | Hilfsmodul | Laesst eine einzelne Testdatei unter sys.setprofile laufen und schreibt jede betretene Funktion mit |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
@@ -3985,3 +3986,177 @@ geaendert hatte. Geschnitten wird jetzt bis zum Anfang der
 umgebenden Funktion. Derselbe Fehler wie in Build 251 bei
 `test_mister_integration.py`: eine Pruefung haengt an dem, was sie
 behauptet, nicht an einer Zeichenzahl.
+
+## test_multidisc.py (Build 259)
+
+Nutzerwunsch: „Multidisk machen". Bei PSX, Sega CD und Saturn besteht
+manches Spiel aus mehreren Discs; sie standen als drei Zeilen in der
+Liste.
+
+**Was NICHT gebaut wurde, und warum das keine Bequemlichkeit ist:**
+`.m3u`-Playlisten. MiSTer unterstuetzt sie nicht - eine MGL verweist
+immer auf genau eine Datei, im MiSTer-Forum nennt ein Core-Entwickler
+eine m3u-Umsetzung selbst „fairly awkward given how things work now",
+und Nutzer berichten, dass m3u-Dateien beim Laden einer CD gar nicht
+auswaehlbar sind. Zusammenfassen und beim Start fragen ist deshalb
+nicht der zweitbeste Weg, sondern der einzige. **Nachgesehen, nicht
+geraten** - dieselbe Regel wie bei den Kernel-Fragen.
+
+**Test 1: die Namenshilfen.** `disc_marker()`, `disc_basis()` und
+`disc_rang()` in `fe/naming.py`. Der Rang ist ein Tupel, und das ist
+der Punkt: `(0, Zahl)` bei einer Nummer, `(1, Text)` bei einem
+Buchstaben, `(2, "")` ohne Marker. Haette man nach dem Text sortiert,
+stuende **Disc 10 vor Disc 2** - der klassische Fehler, und bei
+Spielen mit zehn Discs ist er echt.
+
+**Test 2: das Buendeln beim Einlesen.** `_discs_buendeln()` haengt in
+`_dedupe_items()`, also an der Stelle, die schon Dubletten
+zusammenfuehrt - kein zweiter Durchgang ueber die Liste. Geprueft wird
+mit einem echten Bestand: neun Zeilen werden sechs. Und die drei
+Grenzen, die den Unterschied zwischen „hilfreich" und „kaputt"
+ausmachen:
+
+* **mindestens zwei Teile.** Ein alleinstehendes „Spiel (Disc 1)"
+  behaelt seinen Namen, denn die Beschriftung entscheidet, welches
+  Cover gefunden wird - aus einem Eintrag einen anderen Namen zu
+  machen, wuerde ein Bild kosten und nichts sparen.
+* **derselbe Ordner.** Gleiche Namen in verschiedenen Ablagen sind
+  zwei Sammlungen.
+* **derselbe Restname.** „Spiel (USA) (Disc 1)" und „Spiel (Europe)
+  (Disc 1)" sind zwei **Fassungen**. Wuerde man sie buendeln,
+  verschwaende eine davon aus der Liste - ein Datenverlust fuer den
+  Nutzer, nicht eine Vereinfachung.
+* **nicht in einem Archiv.** Das ist die vierte Bedingung und die
+  unauffaelligste: Teile in einer .zip duerfen NICHT gebuendelt werden.
+  Beim Starten wird mit `os.listdir()` nach den Geschwistern gesucht,
+  und ein Pfad durch ein Archiv hat kein Verzeichnis - die Frage „Welche
+  Disc?" kaeme also nie, und die uebrigen Teile waeren aus der Liste
+  verschwunden **und** nicht startbar. Lieber drei sichtbare Zeilen als
+  eine Zeile und zwei unerreichbare Spiele.
+
+  Im Gegenzug kennt `fe/launch.py` jetzt **gar keinen** Archiv-Sonderfall
+  mehr: der vorhandene `OSError`-Griff um `os.listdir()` traegt ihn - und
+  deckt zugleich den Ordner ab, den gerade jemand weggezogen hat.
+  `test_zip.py` besteht darauf, dass in dieser Datei das Wort fuer die
+  Archivendung nirgends vorkommt; diese Zusage steht wieder.
+
+Die Zeile, die uebrig bleibt, ist der **erste Teil nach `disc_rang`**,
+und ihr `arg` bleibt unangetastet: wer nicht gefragt werden will
+(Schalter aus), startet weiterhin genau die Datei, die er immer
+gestartet hat.
+
+**Test 3: der Schalter steckt im Fingerabdruck.** `__multidisc__` in
+`_games_signature()` und `SCAN_LOGIC_VERSION = 6`. Ohne das wuerde ein
+Umschalten erst beim naechsten ROM-Wechsel wirken - und der Nutzer
+haette eine Einstellung, die scheinbar nichts tut. Dieselbe Mechanik
+wie bei `__einzelordner__` und `__rom_filter__`.
+
+**Test 4: die Auswahl beim Starten.** `disc_geschwister()` in
+`fe/launch.py`. **Gezaehlt, nicht gestoppt:** genau **ein**
+`os.listdir()` je Start, und auch das nur, wenn der Name ueberhaupt
+einen Marker traegt - bei einem SNES-ROM wird der Ordner nie gelesen.
+Nicht angefasst werden Pfade in ZIP-Archiven (`.zip/` im Pfad): dort
+gibt es kein Verzeichnis zum Lesen.
+
+**Test 5: die Anbindung im Startweg.** Die Frage kommt **vor** der
+Core-Frage. Das ist keine Geschmacksfrage: welcher Core gefragt wird,
+haengt an der Datei-Endung, und die Endung ist bei allen Discs
+dieselbe - zuerst die Disc, dann der Core, und die Reihenfolge ist im
+Test festgehalten. Abbruch mit B fuehrt zurueck in die Liste, nicht in
+einen Start.
+
+**Test 6: Schalter, Texte, Menuepunkt.** Vorgabe **AN**, abschaltbar
+unter *Wartung*, beide Sprachen, und der Hinweis „wirkt beim naechsten
+Einlesen" steht dort - weil der Schalter eben im Fingerabdruck steckt
+und nicht sofort sichtbar wird.
+
+### Nachtrag Build 259 zu test_erfolg_wand.py
+
+**Test 10: das Cover des laufenden Spiels an der Wand.**
+
+Nutzerwunsch: „ein Cover vom Spiel das gerade gespielt wird mit beim
+Raster angezeigt, aber mit Auswahl Moeglichkeit wo ich es anzeigen
+lasse." Also `ra_wall_cover` mit *aus / oben / unten / links /
+rechts*, Vorgabe **aus**.
+
+**Die wichtigste Zusage ist nicht, dass das Bild erscheint - sondern
+dass es nicht blinkt.** Die Erfolgsabfrage laeuft alle 25 Sekunden und
+zeichnet die Wand jedes Mal neu. Wuerde dabei jedes Mal `src` gesetzt,
+laedt der Browser das Bild erneut und es blitzt weg. `wandCover()`
+vergleicht deshalb gegen die **gemerkte Adresse** und kehrt bei
+Gleichheit sofort um; geprueft wird genau diese Zeile.
+
+**Zwei weitere Punkte, die im Stub-DOM nachgewiesen werden:**
+
+* Das Bild sitzt **im** Kasten der Wand, neben dem neuen
+  `#ra-wall-inner` - zwei Kaesten, die zusammengehoeren und sich
+  einzeln verschieben lassen, sehen nach zwei Dingen aus.
+* Gezeichnet wird es auch aus `applyState()`, nicht nur aus
+  `renderWall()`: in welcher Reihenfolge `state` und `achievements`
+  ankommen, ist nicht zugesichert, und bei einem Spiel ohne Erfolge
+  kommt `achievements` vielleicht gar nicht.
+
+Die Bildquelle ist **dieselbe** wie die der Spieleliste
+(`/art?sys=&name=`) - keine zweite Datenquelle und kein zusaetzlicher
+Abruf. Ein Ordner bekommt kein Cover, und ein fehlendes Cover zeigt
+dank `onerror` kein zerbrochenes Bild.
+
+### Nachtrag Build 259 zu test_einzelordner.py
+
+**Der Test wurde rot, und er hatte recht damit** - nur nicht so, wie es
+aussah. Seine Grenze 1 lautete: „zwei Discs bleiben ein Ordner, denn
+das ist eine echte Auswahl, und die darf nicht verschwinden." Mit dem
+Buendeln werden aus den zwei .cue EIN Eintrag, der Ordner enthaelt
+danach ein Spiel - und loest sich auf. Die Zusage war also gebrochen.
+
+**Die Auswahl ist aber nicht verschwunden, sie ist UMGEZOGEN:** vom
+Oeffnen eines Ordners in die Frage „Welche Disc?" beim Starten. Und das
+Ergebnis ist das bessere - eine Zeile in der Liste statt eines Ordners
+mit zwei Zeilen, und das Cover erscheint sofort. Genau der Fall, aus dem
+Build 156 ueberhaupt entstanden ist („cover erscheint nur wenn ich in
+denn ordner vom spiel reingehe").
+
+Geprueft wird deshalb jetzt **beides**: ohne das Buendeln bleibt der
+Disc-Ordner stehen (die alte Begruendung gilt unveraendert), mit dem
+Buendeln loest er sich auf, die Zeile startet Disc 1 - und der Ordner
+mit zwei **verschiedenen** Spielen bleibt in beiden Stellungen ein
+Ordner. Eine Pruefung haengt an dem, was sie behauptet.
+
+**Dabei fiel eine Flatterhaftigkeit auf, die es vorher schon gab:**
+`baum()` schaltete ein Flag um und las sofort danach - der
+Zwischenspeicher haelt Flag-Werte aber eine halbe Sekunde fest. Dass
+das bisher gut ging, lag daran, dass zwischen zwei Aufrufen genug Zeit
+lag, also an Glueck. `baum()` verwirft ihn jetzt ausdruecklich.
+Derselbe Fehler wie beim Vorauslader-Test.
+
+### Nachtrag Build 259 zu _harness.py: 97 Prozent Warten
+
+`test_hauptseite_spuren.py` kam in der Suite mit **RC=124** zurueck -
+der 600-Sekunden-Riegel, nicht eine gebrochene Zusage. Allein lief er
+ebenfalls ueber zehn Minuten.
+
+**Gemessen, nicht geraten:** von **2,57 Sekunden** je
+`Frontend()`-Instanz sind **2,50 reines `time.sleep`** - sechs Aufrufe
+zu je 0,42 Sekunden. `Frontend()` schaltet die Konsole um und laesst
+dem Kernel dafuer Zeit. Die eigentliche Arbeit sind 0,07 Sekunden. Der
+Test baut Dutzende Instanzen, also wartet er fast die ganze Laufzeit.
+
+**Gegengeprueft, bevor die Ursache festgeschrieben wurde** - dieselbe
+Vorsicht wie bei der Probe gegen das ausgelieferte Build 254: auf dem
+ausgelieferten Baum von **v4.8** kostet eine Instanz genau dieselben
+**2,55 Sekunden**. Build 259 hat daran nichts geaendert; der Test lag
+immer schon an der Grenze und ist ihr diesmal zum Opfer gefallen. Ohne
+diese Gegenprobe haette hier „Build 259 macht die Tests langsamer"
+gestanden - falsch, und in die falsche Richtung gearbeitet.
+
+**Die Behebung gehoert in den Pruefstand, nicht ins Programm.** Vor
+einer Framebuffer-Attrappe gibt es keine Konsole, auf die man warten
+muesste. `make_frontend()` ersetzt `time.sleep` **nur waehrend des
+Bauens** und **zaehlt**, was es ueberspringt
+(`SCHLAF_UEBERSPRUNGEN`) - gezaehlt statt behauptet, wie beim
+Zeichenweg. Was ein Test **selbst** wartet, etwa auf einen
+Hintergrundfaden, bleibt echtes Warten; daraus eine Leerschleife zu
+machen waere ein neuer Fehler.
+
+**Danach: 32 Sekunden statt ueber 600**, und schneller wird dabei jeder
+Test, der Frontends baut.

@@ -13,6 +13,23 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.8 — not yet released
 
+**Multi-disc games take one line in the list.**
+
+- "Final Fantasy VII (Disc 1)", "(Disc 2)", "(Disc 3)" are now **one line: "Final Fantasy VII"**. On launch the frontend asks **"Which disc?"** — the same chooser as the core question, and it comes first.
+- **Only what belongs together is bundled:** at least two parts, the same folder, the same remaining name. "Game (USA) (Disc 1)" and "Game (Europe) (Disc 1)" stay two entries — those are two versions, not two discs. And a lone "Game (Disc 1)" keeps its name, because the label decides which cover is found.
+- **The order is right beyond nine, too:** disc 2 comes before disc 10.
+- **No `.m3u` playlists — because MiSTer does not support them.** An MGL always points at exactly one file; in the MiSTer forum a core developer calls an m3u implementation "fairly awkward given how things work now". Bundling and asking at launch is therefore not the second-best way but the only one.
+- **A side effect that is a gain:** a folder holding only the discs of *one* game (the rule on PSX) contains one game after bundling — and **now dissolves as well**. Instead of a folder you have to step into, the game stands in the list with its cover. Exactly the case Build 156 came from. Folders with two *different* games stay folders.
+- **Mid-game swapping is still the core's job** through MiSTer's own OSD; no frontend can change that.
+- Switchable under *Maintenance → Bundle multi-disc games* (on by default). The setting is part of the game list's fingerprint, so it takes effect at the next read.
+
+**In the OBS overlay: the running game's cover next to the achievement wall.**
+
+- New in the backend: **wall cover** with the choice *off / top / bottom / left / right*. It is the same image the game list shows, placed on that side of the tile wall.
+- **It does not blink.** The achievement poll runs every 25 seconds and redraws the wall each time — but the image is only reloaded when its **address** has changed, that is, on a game change.
+- It is stored like every overlay setting in `stream_config.json`, so it survives a restart.
+
+
 **The ROM watch: new ROMs are noticed while the frontend runs.**
 
 - **The problem:** you add a ROM over WinSCP or MiSTer Companion — and the frontend notices nothing until you re-read the whole game list.

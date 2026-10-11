@@ -334,6 +334,8 @@ from fe.settings import (
     tastenlegende_an, toggle_tastenlegende,
     # Build 258: der ROM-Waechter.
     romwacht_an, toggle_romwacht,
+    # Build 259: mehrteilige Spiele buendeln.
+    multidisc_buendeln, toggle_multidisc,
     hintergrund_lesen, hintergrund_schreiben, hintergrund_an,
     toggle_hintergrund, hintergrund_dim_lesen,
     hintergrund_dim_schreiben,
@@ -1463,7 +1465,8 @@ from fe.scan import (
     scan_games,
 )
 
-from fe.launch import write_mgl, scan_scripts, current_core, launch_core, MGL_TMP
+from fe.launch import (write_mgl, scan_scripts, current_core, launch_core,
+                       disc_geschwister, MGL_TMP)
 
 def _has_network():
     """Prueft, ob irgendein Netzwerk-Interface eine Adresse hat -
@@ -21094,6 +21097,26 @@ class Frontend:
                             continue
                         elif kind == "game":
                             rom, ext, syskey, rbf, (dl, ft, ix) = arg
+                            # NEU (Build 259): mehrteiliges Spiel? Dann
+                            # fragen, welche Disc. Die Liste wird ERST
+                            # HIER gesucht (ein os.listdir, und nur bei
+                            # einem Namen mit Disc-Marker) - beim
+                            # Einlesen muesste der Cache sie mittragen.
+                            #
+                            # VOR der Core-Frage: wer die Auswahl
+                            # abbricht, soll nicht erst noch den Core
+                            # gewaehlt haben.
+                            _discs = disc_geschwister(rom)
+                            if _discs:
+                                _w = self._wizard_choice(
+                                    t("disc_titel"),
+                                    [m for m, _p in _discs],
+                                    hint_key="choice_hint_plain")
+                                self._force_full_redraw = True
+                                if _w is None:
+                                    self.draw()
+                                    continue
+                                rom = _discs[_w][1]
                             ra_core = find_ra_core(syskey) if syskey else None
                             # Nutzerwunsch (nach Rueckmeldung praezisiert:
                             # "es wird das Spiel wieder geladen ohne
@@ -21432,6 +21455,15 @@ class Frontend:
                             toggle_favoriten_zuerst()
                             self._anzeige_geaendert()
                             self._refresh_system_category()
+                        elif kind == "multidisc":
+                            # Der Schalter steckt im Fingerabdruck -
+                            # die Liste wird also beim naechsten
+                            # Einlesen neu geformt. Ein Hinweis
+                            # darauf gehoert dazu, sonst sieht es
+                            # aus, als taete der Schalter nichts.
+                            toggle_multidisc()
+                            self._refresh_system_category()
+                            self.draw(t("multidisc_hinweis"))
                         elif kind == "romwacht":
                             toggle_romwacht()
                             self._refresh_system_category()

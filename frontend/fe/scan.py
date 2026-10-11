@@ -22,8 +22,10 @@ from fe.log import LOG
 from fe.systems import (GAME_SYSTEMS, OPTIONAL_GAME_SYSTEMS,
                         optional_core_file)
 from fe.naming import IGNORE_ROM_BASENAMES, JUNK_TAGS, REGION_PRIORITY, nice_name, _is_junk, _is_japan_only
+from fe.naming import disc_basis, disc_marker, disc_rang
 from fe.game_state import _folder_items
 from fe.settings import rom_filter_enabled, einzelordner_aufloesen
+from fe.settings import multidisc_buendeln
 import fe.paths
 
 BASE = "/media/fat"
@@ -399,7 +401,7 @@ def scan_cores(skip_dir=None, force=False):
 # Release) von Hand hochgezaehlt wird - fliesst mit in die Signatur
 # ein, macht den Cache dadurch automatisch ungueltig, sobald sich die
 # Auswertung selbst geaendert hat, ganz unabhaengig von Datei-mtimes.
-SCAN_LOGIC_VERSION = 5   # 1 = Basis, 2 = "(unl)"/"(pirate)" nicht mehr Junk,
+SCAN_LOGIC_VERSION = 6   # 1 = Basis, 2 = "(unl)"/"(pirate)" nicht mehr Junk,
                          # 3 = OPTIONAL_GAME_SYSTEMS (SNES_Tracker-Core),
                          # 4 = SMW Hacks (games/SNES/SMW_HACKS),
                          # 5 = Einzelspiel-Ordner aufloesen (Build 156)
@@ -530,6 +532,10 @@ def _games_signature():
     # Build 156: derselbe Grund - der Schalter formt den Baum beim
     # Einlesen, nicht beim Anzeigen.
     sig.append(("__einzelordner__", 1 if einzelordner_aufloesen() else 0))
+    # Build 259: derselbe Grund - das Buendeln formt den Baum beim
+    # EINLESEN, nicht beim Anzeigen. Ohne diesen Eintrag taete der
+    # Schalter bis zum naechsten ohnehin faelligen Neuscan nichts.
+    sig.append(("__multidisc__", 1 if multidisc_buendeln() else 0))
     for sk in per_syskey:
         per_syskey[sk].sort(key=lambda t: (t[0], t[1] is None, t[1]))
     return sig, per_syskey
@@ -1455,9 +1461,92 @@ def _dedupe_items(raw_items):
     Code bestehen (werden an anderer Stelle noch fuer die Boxart-/
     Info-Zuordnung gebraucht), wirken sich hier aber nicht mehr
     aus."""
-    items = list(raw_items)
+    items = _discs_buendeln(list(raw_items))
     items.sort(key=lambda t: t[0].lower())
     return items
+
+
+def _discs_buendeln(items):
+    """Mehrteilige Spiele zu EINEM Eintrag zusammenfassen (Build 259).
+
+    "Final Fantasy VII (Disc 1/2/3)" sind drei Zeilen fuer ein Spiel.
+    Uebrig bleibt eine, beschriftet mit dem gemeinsamen Namen; welche
+    Disc gestartet wird, fragt das Frontend beim Starten (siehe
+    disc_geschwister() in fe/launch.py).
+
+    WARUM NICHT UEBER .m3u: MiSTer unterstuetzt die nicht, eine MGL
+    verweist immer auf genau eine Datei. Siehe den Kommentarblock bei
+    disc_basis() in fe/naming.py.
+
+    DREI BEDINGUNGEN, DAMIT ZUSAMMENGEFASST WIRD - und jede verhindert
+    einen Fall, in dem das Zusammenfassen etwas kaputtmachen wuerde:
+
+    1. MINDESTENS ZWEI TEILE. Ein einzelnes "Spiel (Disc 1)" bleibt
+       wie es ist. Den Marker bei einem Einzelstueck wegzuschneiden
+       waere eine Umbenennung ohne Nutzen - und die Beschriftung
+       entscheidet, welches Cover gefunden wird.
+    2. DERSELBE ORDNER. Die Teile eines Spiels liegen beieinander.
+       Zwei gleichnamige Discs aus verschiedenen Ordnern sind zwei
+       verschiedene Sammlungen (etwa eine eigene "Favoriten"-Ablage),
+       und die zusammenzuziehen liesse eine davon verschwinden.
+    3. DERSELBE RESTNAME. disc_basis() nimmt NUR den Disc-Marker weg;
+       Regions- und Versions-Tags bleiben stehen. "Spiel (USA)
+       (Disc 1)" und "Spiel (Europe) (Disc 1)" sind zwei Fassungen und
+       bleiben zwei Eintraege - genau die Unterscheidung, die
+       _dedupe_items() oben seinerzeit absichtlich wiederhergestellt
+       hat.
+
+    4. NICHT IN EINEM ARCHIV. Die Teile eines Spiels koennen in einer
+       .zip liegen; buendeln duerfen wir sie dort NICHT. Beim Starten
+       wird nach den Geschwistern mit os.listdir() gesucht, und ein
+       Pfad durch ein Archiv hat kein Verzeichnis - die Frage "Welche
+       Disc?" kaeme also nie, und die uebrigen Teile waeren aus der
+       Liste verschwunden UND nicht startbar. Lieber drei sichtbare
+       Zeilen als eine Zeile und zwei unerreichbare Spiele.
+
+    DER ERSTE TEIL GEWINNT, und zwar nach disc_rang(): "Disc 2" vor
+    "Disc 10" (ein reines sorted() ueber die Namen setzte die 10 nach
+    vorn). Sein arg bleibt unveraendert - damit funktionieren Start,
+    Cover, Spielzeit und RetroAchievements ohne jede weitere
+    Anpassung, auch wenn der Nutzer die Auswahl nie benutzt."""
+    if not multidisc_buendeln():
+        return items
+    gruppen = {}
+    reihenfolge = []
+    for it in items:
+        label, kind = it[0], it[1]
+        if kind != "game" or not disc_marker(label):
+            reihenfolge.append(("einzeln", it))
+            continue
+        try:
+            pfad = it[2][0]
+        except (IndexError, TypeError):
+            reihenfolge.append(("einzeln", it))
+            continue
+        if ".zip/" in str(pfad).replace("\\", "/").lower():
+            # Bedingung 4: in einem Archiv waeren die anderen Teile
+            # danach weder sichtbar noch startbar.
+            reihenfolge.append(("einzeln", it))
+            continue
+        ordner = os.path.dirname(pfad)
+        schluessel = (ordner, disc_basis(label).lower())
+        if schluessel not in gruppen:
+            gruppen[schluessel] = []
+            reihenfolge.append(("gruppe", schluessel))
+        gruppen[schluessel].append(it)
+    raus = []
+    for art, wert in reihenfolge:
+        if art == "einzeln":
+            raus.append(wert)
+            continue
+        teile = gruppen[wert]
+        if len(teile) < 2:
+            raus.append(teile[0])
+            continue
+        teile.sort(key=lambda t: disc_rang(t[0]))
+        erster = teile[0]
+        raus.append((disc_basis(erster[0]), erster[1], erster[2]))
+    return raus
 
 def _einzelspiel(node):
     """Das eine Spiel eines Knotens, der NUR dieses eine Spiel und

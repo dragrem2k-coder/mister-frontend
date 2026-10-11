@@ -100,6 +100,7 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | **Zuletzt gespielt** | Eigene Kategorie, sortiert nach letztem Start |
 | **ZIP-Archive** | ROMs in Archiven werden gefunden und gestartet, ohne je etwas zu entpacken |
 | **Ordner mit einem Spiel** | Werden aufgelöst — wichtig bei PSX, Mega CD und Saturn, wo jedes Spiel in einem eigenen Ordner liegt |
+| **Mehrteilige Spiele** | „Spiel (Disc 1/2/3)“ wird **ein** Eintrag; beim Starten fragt das Frontend, welche Disc. Nur bei mindestens zwei Teilen im selben Ordner mit demselben Restnamen — zwei Fassungen bleiben zwei Einträge |
 | **ROMs auf NAS/USB** | Netzlaufwerke und USB-Nummern über 5 werden dynamisch gefunden |
 | **NFC-Tags** | Zaparoo wird erkannt und gestartet; das Frontend nennt dir den Befehl für den Tag. In Zaparoos Ordner wird nichts geschrieben |
 | **Speicher-Wächter** | Stick eingesteckt? Das Frontend sagt es — und liest auf Wunsch **nur das Geänderte** nach statt alles |
@@ -145,7 +146,7 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | **Sprache** | Deutsch / Englisch, jederzeit umschaltbar |
 | **Eigene Tastenbelegung** | Tastatur und Joypad frei belegbar |
 | **Autostart** | An/aus, jederzeit im Menü |
-| **Stream-Overlay für OBS** | Zeigt Spiel, Cover und Musiktitel im Browser; jede Zeile einzeln abschaltbar, Spieltitel inbegriffen. Die **Erfolgs-Einblendung** zeigt neue RA-Erfolge sofort — mit Warteschlange, zählenden Punkten und eigener Ecke. Dazu die **Erfolgs-Wand**: alle Erfolge des laufenden Spiels als Raster, die frisch freigeschaltete Kachel blitzt auf, und auf Wunsch läuft sie in einem festen Ausschnitt durch |
+| **Stream-Overlay für OBS** | Zeigt Spiel, Cover und Musiktitel im Browser; jede Zeile einzeln abschaltbar, Spieltitel inbegriffen. Die **Erfolgs-Einblendung** zeigt neue RA-Erfolge sofort — mit Warteschlange, zählenden Punkten und eigener Ecke. Dazu die **Erfolgs-Wand**: alle Erfolge des laufenden Spiels als Raster, die frisch freigeschaltete Kachel blitzt auf, und auf Wunsch läuft sie in einem festen Ausschnitt durch. Daneben kann das **Cover des laufenden Spiels** stehen — oben, unten, links oder rechts |
 | **Bildschirmspiegel** | Auf CRT unterwegs? `:8080/mirror` zeigt den Frontend-Bildschirm im Browser — Handy, zweiter Monitor, Stream. Das laufende Spiel kommt vom FPGA und ist darin nicht zu sehen |
 | **Uhrzeit** | MiSTer hat keine Batterieuhr; das Frontend holt die Zeit per SNTP, die Zeitzone stellst du einmal in halben Stunden ein |
 | **Miniaturen vorbereiten** | Cover einmalig vorberechnen, damit nichts mehr nachlädt |

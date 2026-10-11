@@ -218,3 +218,61 @@ IGNORE_ROM_BASENAMES = {"boot", "boot1", "boot2", "mister-boot", "mister-demo"}
 def nice_name(dirname):
     raw = dirname.lstrip("_")
     return NICE_NAMES.get(raw, raw.replace("_", " "))
+
+
+# ---------------------------------------------------------------------------
+# MEHRTEILIGE SPIELE (Build 259)
+#
+# NUTZERWUNSCH: "bei PSX, Sega CD oder Saturn bestehen viele Spiele aus
+# mehreren Discs. Wenn diese alle in einem Ordner liegen, blaeht das die
+# Spieleliste auf. Das Frontend soll sie zu einem Eintrag
+# zusammenfassen und beim Starten fragen, welche Disc."
+#
+# WAS NICHT GEHT, und das gehoert an den Anfang: .m3u-Playlisten.
+# MiSTer unterstuetzt sie nicht - nachgelesen im MiSTer-Forum, dort
+# sagt es ein Core-Entwickler selbst ("trying to implement m3us would
+# be fairly awkward given how things work now"), und Nutzer berichten,
+# dass m3u-Dateien beim Laden einer CD gar nicht erst auswaehlbar sind.
+# Eine MGL verweist immer auf GENAU EINE Datei. Zusammenfassen und beim
+# Start fragen ist deshalb nicht der zweitbeste Weg, sondern der
+# einzige richtige.
+#
+# DER MARKER IST DERSELBE wie oben (_DISC) - es gibt keine zweite
+# Erkennung fuer dieselbe Sache.
+
+def disc_marker(name):
+    """Der Datentraeger-Marker eines Namens ("(Disc 2)") oder ""."""
+    m = _DISC.search(name or "")
+    return m.group(0).strip() if m else ""
+
+
+def disc_basis(name):
+    """Der Name OHNE den Datentraeger-Marker - der gemeinsame Nenner
+    aller Teile eines Spiels.
+
+    Nur der Marker faellt weg, sonst nichts: Regions- und
+    Versions-Tags bleiben stehen. "Spiel (USA) (Disc 1)" und
+    "Spiel (Europe) (Disc 1)" sind zwei verschiedene Fassungen und
+    duerfen NICHT zusammenfallen - genau diese Unterscheidung hat
+    _dedupe_items() seinerzeit absichtlich wiederhergestellt."""
+    if not name:
+        return name
+    ohne = _DISC.sub(" ", name)
+    return re.sub(r"\s{2,}", " ", ohne).strip()
+
+
+# Reihenfolge fuer die Auswahl: Zahlen zuerst nach Wert, Buchstaben
+# danach alphabetisch ("Side A" vor "Side B", "Disc 2" vor "Disc 10").
+# Ein reines sorted() ueber die Namen setzte "Disc 10" vor "Disc 2".
+_DISC_NUM = re.compile(r"([0-9]+)")
+
+
+def disc_rang(name):
+    """Sortierschluessel eines Teils - (0, Zahl) oder (1, Text)."""
+    marker = disc_marker(name)
+    if not marker:
+        return (2, "")
+    m = _DISC_NUM.search(marker)
+    if m:
+        return (0, int(m.group(1)))
+    return (1, marker.lower())

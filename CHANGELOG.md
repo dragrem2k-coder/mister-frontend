@@ -13,6 +13,23 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.8 — noch nicht veröffentlicht
 
+**Mehrteilige Spiele stehen als ein Eintrag in der Liste.**
+
+- „Final Fantasy VII (Disc 1)", „(Disc 2)", „(Disc 3)" sind jetzt **eine Zeile: „Final Fantasy VII"**. Beim Starten fragt das Frontend **„Welche Disc?"** — dieselbe Auswahl wie bei der Core-Frage, und sie kommt davor.
+- **Zusammengefasst wird nur, was zusammengehört:** mindestens zwei Teile, derselbe Ordner, derselbe Restname. „Spiel (USA) (Disc 1)" und „Spiel (Europe) (Disc 1)" bleiben zwei Einträge — das sind zwei Fassungen, keine zwei Discs. Und ein alleinstehendes „Spiel (Disc 1)" behält seinen Namen, denn die Beschriftung entscheidet, welches Cover gefunden wird.
+- **Die Reihenfolge stimmt auch jenseits von neun:** Disc 2 steht vor Disc 10.
+- **Keine `.m3u`-Playlisten — weil MiSTer sie nicht unterstützt.** Eine MGL verweist immer auf genau eine Datei; im MiSTer-Forum nennt ein Core-Entwickler eine m3u-Umsetzung selbst „fairly awkward given how things work now". Zusammenfassen und beim Start fragen ist deshalb nicht der zweitbeste Weg, sondern der einzige.
+- **Ein Nebeneffekt, der ein Gewinn ist:** ein Ordner, in dem nur die Discs *eines* Spiels liegen (bei PSX die Regel), enthält nach dem Bündeln ein Spiel — und **löst sich jetzt mit auf**. Statt eines Ordners, in den man erst hineingehen muss, steht das Spiel direkt in der Liste, mit Cover. Genau der Fall, aus dem Build 156 entstanden ist. Ordner mit zwei *verschiedenen* Spielen bleiben Ordner.
+- **Mitten im Spiel wechselt weiterhin der Core** über MiSTers eigenes OSD; daran kann ein Frontend nichts ändern.
+- Abschaltbar unter *Wartung → Mehrteilige Spiele bündeln* (Vorgabe an). Die Einstellung steckt im Fingerabdruck der Spieleliste, wirkt also beim nächsten Einlesen.
+
+**Im OBS-Overlay: das Cover des laufenden Spiels neben der Erfolgswand.**
+
+- Im Backend neu: **Wand-Cover** mit der Auswahl *aus / oben / unten / links / rechts*. Das Bild ist dasselbe, das die Spieleliste zeigt, und sitzt in der gewählten Richtung an der Kachelwand.
+- **Es blinkt nicht.** Die Erfolgsabfrage läuft alle 25 Sekunden und zeichnet die Wand jedes Mal neu — das Bild wird aber nur dann neu geladen, wenn sich die **Adresse** geändert hat, also beim Spielwechsel.
+- Gespeichert wird es wie alle Overlay-Einstellungen in `stream_config.json`, bleibt also über einen Neustart hinweg stehen.
+
+
 **Der ROM-Wächter: neue ROMs fallen jetzt im laufenden Betrieb auf.**
 
 - **Das Problem:** du legst per WinSCP oder MiSTer Companion ein ROM dazu — und das Frontend merkt nichts davon, bis du die ganze Spieleliste neu einliest.

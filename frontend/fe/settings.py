@@ -2234,3 +2234,27 @@ def romwacht_an():
 def toggle_romwacht():
     _flag_setzen(ROMWACHT_AUS_FLAG, romwacht_an())
     return romwacht_an()
+
+
+# BUILD 259: mehrteilige Spiele zu EINEM Eintrag zusammenfassen.
+#
+# "Final Fantasy VII (Disc 1/2/3)" sind drei Zeilen fuer ein Spiel. Bei
+# PSX, Sega CD und Saturn summiert sich das.
+#
+# Vorgabe AN - es ist dieselbe Sorte Aufraeumen wie das Zusammenfassen
+# doppelter Regionen beim Einlesen, und niemand sucht ein Spiel unter
+# "Disc 2". Wer die Teile einzeln sehen will, schaltet es ab; die
+# Einstellung steckt im Fingerabdruck, die Liste wird also sofort neu
+# aufgebaut.
+MULTIDISC_AUS_FLAG = "/media/fat/frontend/multidisc_aus"
+
+
+def multidisc_buendeln():
+    return not _hole(("multidisc_aus", MULTIDISC_AUS_FLAG),
+                     lambda: os.path.exists(MULTIDISC_AUS_FLAG))
+
+
+@_nach_aenderung
+def toggle_multidisc():
+    _flag_setzen(MULTIDISC_AUS_FLAG, multidisc_buendeln())
+    return multidisc_buendeln()

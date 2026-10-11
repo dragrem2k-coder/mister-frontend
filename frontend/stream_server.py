@@ -72,6 +72,10 @@ DEFAULT_CONFIG = {
     # Scrollen). Sonst wird das Raster auf diese Hoehe begrenzt
     # und laeuft langsam durch.
     "ra_wall_rows": 0,
+    # Build 259 (Nutzerwunsch): das Cover des laufenden Spiels beim
+    # Raster. "aus" oder eine der vier Seiten - er wollte
+    # ausdruecklich waehlen koennen, wo.
+    "ra_wall_cover": "aus",      # aus|oben|unten|links|rechts
     "show_favorite": True,       # Favoriten-Stern neben dem Titel
     "scale": 100,                # Prozent
     "corner": "bottom-left",     # bottom-left|bottom-right|top-left|top-right

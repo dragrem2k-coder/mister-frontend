@@ -186,6 +186,7 @@ Nachlesen (`CHANGELOG.md`).
    - 8r-4. Einträge ausblenden
    - 8r-5. Die Tastenlegende
    - 8s. ROMs in ZIP-Archiven
+   - 8s-2. Mehrteilige Spiele
    - 8t. Spielbeschreibungen
    - 8u. Cover beim Scrollen
 9. Sprache umschalten
@@ -1803,6 +1804,46 @@ Drei Dinge bewusst so:
 
 ---
 
+## 8s-2. Mehrteilige Spiele (Build 259)
+
+Bei PSX, Sega CD und Saturn besteht manches Spiel aus mehreren Discs.
+Liegen sie in einem Ordner, standen sie bisher als drei Zeilen in der
+Liste.
+
+**Jetzt ist es eine.** „Final Fantasy VII (Disc 1/2/3)" wird zu
+**„Final Fantasy VII"**, und beim Starten fragt das Frontend
+**„Welche Disc?"**.
+
+Zusammengefasst wird nur, was wirklich zusammengehört:
+
+- **mindestens zwei Teile** — ein alleinstehendes „Spiel (Disc 1)"
+  behält seinen Namen, denn die Beschriftung entscheidet, welches
+  Cover gefunden wird;
+- **derselbe Ordner** — gleiche Namen in verschiedenen Ablagen sind
+  zwei verschiedene Sammlungen;
+- **derselbe Restname** — „Spiel (USA) (Disc 1)" und „Spiel (Europe)
+  (Disc 1)" sind zwei *Fassungen* und bleiben zwei Einträge.
+
+Die Reihenfolge stimmt auch bei mehr als neun Teilen: **Disc 2 steht
+vor Disc 10**.
+
+**Warum keine `.m3u`-Playlisten?** Weil MiSTer sie nicht unterstützt.
+Eine MGL verweist immer auf genau eine Datei; im MiSTer-Forum sagt ein
+Core-Entwickler selbst, eine m3u-Umsetzung wäre „fairly awkward given
+how things work now", und Nutzer berichten, dass m3u-Dateien beim
+Laden einer CD gar nicht erst auswählbar sind. Zusammenfassen und beim
+Start fragen ist deshalb nicht der zweitbeste Weg, sondern der
+einzige.
+
+**Mitten im Spiel die Disc wechseln** kann das Frontend nicht — das
+macht der Core über MiSTers eigenes OSD. Ein Tipp aus dem Forum, der
+dabei hilft: liegen die Teile im selben Ordner, muss die MegaCD-Core
+beim Wechsel das BIOS nicht neu laden.
+
+Abschalten im Systemmenü unter *Wartung → Mehrteilige Spiele bündeln*.
+Die Einstellung steckt im Fingerabdruck der Spieleliste, wirkt also
+beim nächsten Einlesen.
+
 ## 8t. Spielbeschreibungen (seit Build 139)
 
 In der **Galerie** steht rechts neben dem Cover seit Build 139 eine
@@ -2366,6 +2407,7 @@ umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
 | Scrollgeschwindigkeit (0,5x bis 2x) | `scroll_tempo` |
 | Tastenlegende: AN/AUS | `tastenlegende` |
 | ROM-Wächter: AN/AUS | `romwacht` |
+| Mehrteilige Spiele bündeln: AN/AUS | `multidisc` |
 | Ordner: zuerst / hinter den Spielen | `ordner_zuerst` |
 | Favoriten zuerst: AN/AUS | `favoriten_zuerst` |
 | Spielzahl am Ordner: AN/AUS | `ordner_zahlen` |

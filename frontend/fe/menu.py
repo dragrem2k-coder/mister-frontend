@@ -33,6 +33,7 @@ from fe.settings import (
     ordner_zahlen_an,
     tastenlegende_an,
     romwacht_an,
+    multidisc_buendeln,
     screen_mirror_enabled, stream_overlay_enabled,
     fast_scroll_enabled, cover_sofort_enabled, arbeitskopien_enabled,
     overscan_lesen, fremdquellen_enabled,
@@ -184,6 +185,8 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
                         else "sys_favoriten_zuerst_aus")
     ordnerzahl_label = t("sys_ordner_zahlen_an" if ordner_zahlen_an()
                          else "sys_ordner_zahlen_aus")
+    multidisc_label = t("sys_multidisc_an" if multidisc_buendeln()
+                        else "sys_multidisc_aus")
     romwacht_label = t("sys_romwacht_an" if romwacht_an()
                        else "sys_romwacht_aus")
     legende_label = t("sys_tastenlegende_an" if tastenlegende_an()
@@ -577,6 +580,7 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             # nicht bei den Anzeige-Punkten - es geht um das
             # Einlesen der Spieleliste, nicht um das Aussehen.
             (romwacht_label, "romwacht", None),
+            (multidisc_label, "multidisc", None),
             *_nachscan_eintraege,
             (t("sys_rescan"), "rescan", None),
             # NEU (Build 88, Nutzerwunsch: "Boxarts nachladen sowie

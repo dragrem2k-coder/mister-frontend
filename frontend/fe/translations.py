@@ -681,6 +681,15 @@ TRANSLATIONS = {
     # NEU (Build 246): Dauer der Ziehung in Zufalls-Zock. Steht bei
     # "Verhalten & Optionen" neben der Attract-Verzögerung - beides
     # sind Zeiten, die bestimmen, wie sich das Frontend anfühlt.
+    # Build 259: mehrteilige Spiele.
+    "disc_titel": {"en": "Which disc?", "de": "Welche Disc?"},
+    "sys_multidisc_an": {"en": "Bundle multi-disc games: ON",
+                         "de": "Mehrteilige Spiele b\u00fcndeln: AN"},
+    "sys_multidisc_aus": {"en": "Bundle multi-disc games: OFF",
+                          "de": "Mehrteilige Spiele b\u00fcndeln: AUS"},
+    "multidisc_hinweis": {
+        "en": "Takes effect at the next read of the game list",
+        "de": "Wirkt beim n\u00e4chsten Einlesen der Spieleliste"},
     # Build 258: der ROM-Waechter.
     "rom_geaendert": {
         "en": "ROMs changed (%s) - System -> re-read what changed",

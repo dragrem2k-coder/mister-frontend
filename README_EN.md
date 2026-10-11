@@ -98,6 +98,7 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | **Recently played** | Its own category, sorted by last launch |
 | **ZIP archives** | ROMs inside archives are found and launched without ever extracting anything |
 | **Single-game folders** | Dissolved automatically — matters for PSX, Mega CD and Saturn, where each game sits in its own folder |
+| **Multi-disc games** | “Game (Disc 1/2/3)” becomes **one** entry; on launch the frontend asks which disc. Only with at least two parts in the same folder under the same remaining name — two versions stay two entries |
 | **ROMs on NAS/USB** | Network shares and USB numbers above 5 are discovered dynamically |
 | **NFC tags** | Zaparoo is detected and launched; the frontend tells you the command for the tag. Nothing is written into Zaparoo's folder |
 | **Storage watch** | Plugged a stick in? The frontend says so — and on request reads back **only what changed** instead of everything |
@@ -143,7 +144,7 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | **Language** | German / English, switchable at any time |
 | **Custom key mapping** | Keyboard and gamepad freely assignable |
 | **Autostart** | On/off from the menu |
-| **Stream overlay for OBS** | Shows game, cover and music track in a browser source; every row can be switched off individually, the game title included. The **achievement popup** shows new RA achievements at once — with a queue, counting points and a corner of its own. Plus the **achievement wall**: every achievement of the running game as a grid, the tile you just unlocked flashes, and it can scroll through a fixed window |
+| **Stream overlay for OBS** | Shows game, cover and music track in a browser source; every row can be switched off individually, the game title included. The **achievement popup** shows new RA achievements at once — with a queue, counting points and a corner of its own. Plus the **achievement wall**: every achievement of the running game as a grid, the tile you just unlocked flashes, and it can scroll through a fixed window. Next to it you can place the **running game's cover** — top, bottom, left or right |
 | **Screen mirror** | On CRT? `:8080/mirror` shows the frontend screen in a browser — phone, second monitor, stream. The running game comes from the FPGA and is not part of it |
 | **Clock** | MiSTer has no battery clock; the frontend fetches the time over SNTP, and you set the time zone once in half-hour steps |
 | **Prepare thumbnails** | Pre-compute covers once so nothing loads in later |

@@ -181,6 +181,7 @@ history to read up on (`CHANGELOG.md`).
    - 8r-4. Hiding entries
    - 8r-5. The button legend
    - 8s. ROMs inside ZIP archives
+   - 8s-2. Multi-disc games
    - 8t. Game descriptions
    - 8u. Covers while scrolling
 9. Switching language
@@ -1514,6 +1515,43 @@ Three deliberate decisions:
 
 ---
 
+## 8s-2. Multi-disc games (Build 259)
+
+On PSX, Sega CD and Saturn some games span several discs. With all of
+them in one folder, they used to take three lines in the list.
+
+**Now they take one.** "Final Fantasy VII (Disc 1/2/3)" becomes
+**"Final Fantasy VII"**, and on launch the frontend asks **"Which
+disc?"**.
+
+Only what really belongs together is bundled:
+
+- **at least two parts** — a lone "Game (Disc 1)" keeps its name,
+  because the label decides which cover is found;
+- **the same folder** — identical names in different places are two
+  different collections;
+- **the same remaining name** — "Game (USA) (Disc 1)" and "Game
+  (Europe) (Disc 1)" are two *versions* and stay two entries.
+
+The order is right beyond nine parts too: **Disc 2 comes before Disc
+10**.
+
+**Why no `.m3u` playlists?** Because MiSTer does not support them. An
+MGL always points at exactly one file; in the MiSTer forum a core
+developer says an m3u implementation would be "fairly awkward given
+how things work now", and users report that m3u files cannot even be
+selected when loading a CD. Bundling and asking at launch is therefore
+not the second-best way but the only one.
+
+**Swapping a disc mid-game** is not something the frontend can do —
+the core handles that through MiSTer's own OSD. One tip from the
+forum that helps: with the parts in the same folder, the MegaCD core
+does not have to reload the BIOS when switching.
+
+Switch it off under *Maintenance → Bundle multi-disc games*. The
+setting is part of the game list's fingerprint, so it takes effect at
+the next read.
+
 ## 8t. Game descriptions (since Build 139)
 
 In the **gallery**, a short description of the game now sits to the
@@ -2020,6 +2058,7 @@ conversely nobody ends up in a menu that cannot do anything).
 | Scroll speed (0.5x to 2x) | `scroll_tempo` |
 | Button legend: ON/OFF | `tastenlegende` |
 | Watch for ROM changes: ON/OFF | `romwacht` |
+| Bundle multi-disc games: ON/OFF | `multidisc` |
 | Folders: first / after the games | `ordner_zuerst` |
 | Favourites first: ON/OFF | `favoriten_zuerst` |
 | Game count on folders: ON/OFF | `ordner_zahlen` |

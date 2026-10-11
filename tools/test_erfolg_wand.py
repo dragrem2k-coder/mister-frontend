@@ -770,6 +770,65 @@ check("ein haengender Nachversuch wird beim Ausblenden abgeraeumt",
       "cancelAnimationFrame(wandFensterLauf)"
       in _JS.split("function wandScrollStoppen(){")[1][:400])
 
+# ---------------------------------------------------------------------------
+print()
+print("Test 10: das Cover des laufenden Spiels an der Wand (Build 259)")
+# ---------------------------------------------------------------------------
+# Nutzerwunsch: "ein Cover vom Spiel das gerade gespielt wird mit beim
+# Raster angezeigt, aber mit Auswahl wo ich es anzeigen lasse."
+check("es gibt die Einstellung", "ra_wall_cover" in _DC2)
+check("und die Vorgabe ist AUS", _DC2.get("ra_wall_cover") == "aus",
+      "die Wand belegt ohnehin Platz - ein Cover dazu ist eine "
+      "bewusste Entscheidung")
+check("das Bild steckt IM Kasten der Wand, nicht daneben",
+      '<img id="ra-wall-cover"' in _OV
+      and _OV.index('<img id="ra-wall-cover"')
+      > _OV.index('<div id="ra-wall">'),
+      "zwei Kaesten, die zusammengehoeren und sich einzeln "
+      "verschieben, sehen nach zwei Dingen aus")
+check("Kopfzeile, Balken und Raster liegen in einem eigenen Block",
+      '<div id="ra-wall-inner">' in _OV,
+      "ohne ihn liesse sich das Cover nicht daneben stellen")
+for _pos in ("oben", "unten", "links", "rechts"):
+    check("Position '%s' hat eine Regel" % _pos,
+          ("#ra-wall.cover-%s" % _pos) in _CSS)
+check("ohne Position bleibt das Bild unsichtbar",
+      "#ra-wall-cover{display:none" in _CSS,
+      "die Klasse schaltet es ein, nicht das Fehlen der Klasse es aus")
+check("oben/unten ist eine Spalte, links/rechts eine Reihe",
+      "#ra-wall.cover-links{flex-direction:row}" in _CSS
+      and "#ra-wall.cover-unten{flex-direction:column-reverse}" in _CSS)
+
+# DIE WICHTIGSTE ZUSAGE: kein Neuladen bei jedem Abruf.
+_wc = _JS[_JS.index("function wandCover(pos){"):]
+_wc = _wc[:_wc.index("\nfunction ", 10)]
+check("das Cover kommt von derselben Stelle wie das der Karte",
+      "'/art?sys='" in _wc,
+      "keine zweite Datenquelle, kein zusaetzlicher Abruf")
+check("und aus dem gemeldeten Zustand", "lastState" in _wc)
+check("gewechselt wird nur bei einer ANDEREN Adresse",
+      "if(url === wandCoverUrl) return;" in _wc,
+      "sonst setzt jeder Erfolgs-Abruf (alle 25 s) dasselbe src neu, "
+      "der Browser laedt erneut und das Bild blitzt weg")
+check("ein Ordner bekommt kein Cover", "slice(-1) === '/'" in _wc)
+check("ein fehlendes Cover zeigt kein zerbrochenes Bild",
+      "onerror" in _wc)
+check("es haengt auch am Zustand, nicht nur an den Erfolgen",
+      "wandCover(cfg.ra_wall_cover || 'aus');"
+      in _JS.split("function applyState(s){")[1].split("\nfunction ")[0],
+      "in welcher Reihenfolge 'state' und 'achievements' ankommen, "
+      "ist nicht zugesichert")
+
+_speicher4 = _AD.split("  return {")[1].split("};")[0]
+check("im Backend: Feldliste",
+      '"ra_wall_cover"' in _AD.split("const F = [")[1].split("]")[0])
+check("im Backend: geladen", '$("ra_wall_cover").value' in _AD)
+check("im Backend: gespeichert", "ra_wall_cover:" in _speicher4)
+check("im Backend: fuenf Moeglichkeiten zur Wahl",
+      _AD.split('id="ra_wall_cover"')[1].split("</select>")[0].count(
+          "<option") == 5,
+      "aus und vier Seiten")
+
 shutil.rmtree(_TMP, ignore_errors=True)
 print()
 if fails:

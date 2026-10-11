@@ -18,6 +18,22 @@ DIE DREI GRENZEN, DIE HIER ZAEHLEN - und warum sie so liegen:
 
   1. ZWEI Spiele im Ordner bleiben ein Ordner. Das ist eine echte
      Auswahl (Disc 1 / Disc 2), und die darf nicht verschwinden.
+
+     NACHTRAG BUILD 259: bei den Discs ist genau das eingetreten, und
+     zwar richtig. Das Buendeln mehrteiliger Spiele macht aus den zwei
+     .cue EINEN Eintrag; der Ordner enthaelt danach ein Spiel und loest
+     sich auf. Die Auswahl ist damit nicht weg, sie ist UMGEZOGEN - vom
+     Oeffnen eines Ordners in die Frage "Welche Disc?" beim Starten
+     (tools/test_multidisc.py, Tests 4 und 5). Das ist das bessere
+     Ergebnis: eine Zeile in der Liste statt eines Ordners mit zwei
+     Zeilen, und das Cover erscheint sofort - genau der Grund, aus dem
+     Build 156 ueberhaupt entstanden ist.
+
+     Geprueft wird deshalb jetzt BEIDES: mit dem Buendeln loest sich
+     der Disc-Ordner auf, OHNE das Buendeln bleibt er stehen. Die
+     Begruendung von Grenze 1 gilt unveraendert fuer alles andere -
+     zwei verschiedene Spiele in einem Ordner sind weiterhin ein
+     Ordner.
   2. Ein Spiel UND ein Unterordner bleibt ein Ordner. Sonst waere der
      Unterordner unerreichbar.
   3. Die .bin-Dateien zaehlen nicht mit. Kein System fuehrt ".bin" als
@@ -44,6 +60,7 @@ import fe.settings as S                                # noqa: E402
 import fe.scan as SC                                   # noqa: E402
 import fe.translations as T                            # noqa: E402
 import fe.naming as N                                  # noqa: E402
+import fe.zwischenspeicher as Z                        # noqa: E402
 import fe.art as A                                     # noqa: E402
 
 fails = []
@@ -58,6 +75,7 @@ def check(label, cond, extra=""):
 
 TMP = tempfile.mkdtemp(prefix="einzelordner_")
 S.EINZELORDNER_AUS_FLAG = os.path.join(TMP, "einzelordner_aus")
+S.MULTIDISC_AUS_FLAG = os.path.join(TMP, "multidisc_aus")
 
 # Eine PSX-Sammlung, genau so aufgebaut wie die des Nutzers.
 PSX = os.path.join(TMP, "PSX")
@@ -93,14 +111,31 @@ anlegen(
 )
 
 
-def baum(einzeln):
-    if einzeln:
+def _schalter(pfad, an):
+    if an:
         try:
-            os.remove(S.EINZELORDNER_AUS_FLAG)
+            os.remove(pfad)
         except OSError:
             pass
     else:
-        open(S.EINZELORDNER_AUS_FLAG, "w").close()
+        open(pfad, "w").close()
+
+
+def baum(einzeln, multidisc=False):
+    """Der Baum zu einer Schalterstellung.
+
+    "multidisc" ist hier VORGABE AUS, obwohl die Vorgabe im Frontend AN
+    ist: die Tests 2 bis 5 pruefen die Ein-Spiel-Regel, und die zeigt
+    sich nur ohne das Buendeln in Reinform. Test 4 schaltet es eigens
+    ein und haelt den Unterschied fest.
+
+    Und der Zwischenspeicher wird verworfen, weil er Flag-Werte eine
+    halbe Sekunde lang festhaelt. Bisher ging das hier nur gut, weil
+    zwischen zwei Aufrufen genug Zeit lag - also aus Glueck, nicht aus
+    Zusage. Derselbe Fehler wie beim Vorauslader-Test."""
+    _schalter(S.EINZELORDNER_AUS_FLAG, einzeln)
+    _schalter(S.MULTIDISC_AUS_FLAG, multidisc)
+    Z.vergessen()
     return SC._scan_folder_tree(PSX, "PSX", "PSX", EXTMAP)
 
 
@@ -155,10 +190,26 @@ check("die aufgeloesten Ordner sind weg",
 print()
 print("Test 4: die drei Grenzen halten")
 # ---------------------------------------------------------------------------
-check("zwei Discs bleiben ein Ordner",
+check("zwei Discs bleiben ein Ordner, solange nicht gebuendelt wird",
       "Final Fantasy VII (USA)" in ordner(neu), str(ordner(neu)))
 check("ein Spiel PLUS Unterordner bleibt ein Ordner",
       "Sammlung" in ordner(neu))
+
+# Build 259: mit dem Buendeln sind die zwei .cue EIN Eintrag, der Ordner
+# enthaelt danach ein Spiel - und loest sich auf. Die Auswahl ist nicht
+# verschwunden, sie wird beim Starten gestellt (test_multidisc.py).
+mit = baum(True, multidisc=True)
+check("gebuendelt loest sich der Disc-Ordner auf",
+      "Final Fantasy VII (USA)" not in ordner(mit), str(ordner(mit)))
+check("und steht als EINE Zeile in der Liste",
+      namen(mit).count("Final Fantasy VII (USA)") == 1, str(namen(mit)))
+check("die Zeile startet die erste Disc",
+      any(i[0] == "Final Fantasy VII (USA)"
+          and i[2][0].endswith("(Disc 1).cue") for i in mit["items"]),
+      str([i[2][0] for i in mit["items"]]))
+check("der gemischte Ordner bleibt auch dann ein Ordner",
+      "Sammlung" in ordner(mit),
+      "zwei verschiedene Spiele sind keine zwei Discs")
 # Aufgeloest wird von UNTEN nach oben: der Unterordner "Extra" enthaelt
 # selbst genau ein Spiel und faellt zuerst weg. "Sammlung" hat danach
 # zwei Spiele - und bleibt deshalb voellig richtig ein Ordner. Beim

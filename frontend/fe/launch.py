@@ -54,3 +54,54 @@ def current_core():
 def launch_core(path):
     with open(MISTER_CMD, "w") as f:
         f.write("load_core " + path)
+
+
+# ---------------------------------------------------------------------------
+# MEHRTEILIGE SPIELE (Build 259)
+# ---------------------------------------------------------------------------
+def disc_geschwister(rom_pfad):
+    """Alle Teile eines mehrteiligen Spiels - [(Marker, Pfad), ...],
+    nach Disc-Nummer sortiert. Leere Liste, wenn es nur einen gibt.
+
+    GESUCHT WIRD ERST BEIM STARTEN und nicht beim Einlesen. Das ist
+    Absicht und spart die groesste Klippe: der Scan-Cache muesste
+    sonst eine zusaetzliche Struktur mittragen, und bei einem
+    zwischengespeicherten System waere sie nicht da. So kostet es
+    EINEN os.listdir() - und nur bei einem Spiel, dessen Name
+    ueberhaupt einen Disc-Marker traegt.
+
+    KEIN SONDERFALL FUER ARCHIVE, und das ist der Grund, warum hier
+    kein einziges Mal "Archiv" steht: ein Pfad, der durch eine
+    Archivdatei laeuft, hat kein Verzeichnis zum Auflisten - os.listdir
+    scheitert, und der Griff unten liefert eine leere Liste. Derselbe
+    Griff deckt auch den Ordner ab, den gerade jemand weggezogen hat.
+    Der ganze Startweg kommt ohne Archiv-Sonderbehandlung aus (ein Test
+    besteht darauf, dass in dieser Datei das Wort fuer die Archivendung
+    nirgends vorkommt), und das soll so bleiben. Zusammengefasst werden
+    Teile in einem Archiv ohnehin nicht - siehe _discs_buendeln() in
+    fe/scan.py."""
+    from fe.naming import disc_basis, disc_marker, disc_rang
+    if not rom_pfad:
+        return []
+    name = os.path.basename(rom_pfad)
+    stamm, endung = os.path.splitext(name)
+    if not disc_marker(stamm):
+        return []
+    ordner = os.path.dirname(rom_pfad)
+    basis = disc_basis(stamm).lower()
+    try:
+        eintraege = os.listdir(ordner)
+    except OSError:
+        return []
+    raus = []
+    for e in eintraege:
+        st, en = os.path.splitext(e)
+        if en.lower() != endung.lower():
+            continue
+        if not disc_marker(st) or disc_basis(st).lower() != basis:
+            continue
+        raus.append((disc_marker(st), os.path.join(ordner, e), st))
+    if len(raus) < 2:
+        return []
+    raus.sort(key=lambda t: disc_rang(t[2]))
+    return [(m, p) for m, p, _st in raus]

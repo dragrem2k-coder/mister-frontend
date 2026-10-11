@@ -107,6 +107,16 @@
            heisst "alle Zeilen", sonst laeuft das Raster langsam durch. -->
       <div class="row"><label>Wand: sichtbare Zeilen <span id="rowsval">alle</span></label>
         <input type="range" id="ra_wall_rows" min="0" max="20" step="1"></div>
+      <!-- Build 259: das Cover des laufenden Spiels beim
+           Raster. "aus" steht zuerst - es ist die Vorgabe. -->
+      <div class="row"><label>Wand: Cover des Spiels</label>
+        <select id="ra_wall_cover">
+          <option value="aus">aus</option>
+          <option value="oben">oben</option>
+          <option value="unten">unten</option>
+          <option value="links">links</option>
+          <option value="rechts">rechts</option>
+        </select></div>
       <div class="hint">Die Wand erscheint nur, waehrend ein Spiel mit
         RetroAchievements laeuft. Beim allerersten Mal holt das Frontend
         die Erfolgs-Icons im Hintergrund nach - danach liegen sie auf der
@@ -155,6 +165,7 @@ const F = ["title","accent","bg","transparent","show_boxart","show_system",
            "show_favorite","corner","scale",
            "show_name",
            "show_ra_wall","ra_wall_corner","ra_wall_cols","ra_wall_rows",
+           "ra_wall_cover",
            "obs_control_enabled","obs_host","obs_port","obs_password",
            "obs_game_scene","obs_frontend_scene"];
 const $ = id => document.getElementById(id);
@@ -182,6 +193,7 @@ function fillForm(c){
   $("ra_wall_cols").value = c.ra_wall_cols||12;
   $("colsval").textContent = c.ra_wall_cols||12;
   $("ra_wall_rows").value = c.ra_wall_rows||0;
+  $("ra_wall_cover").value = c.ra_wall_cover||"aus";
   $("rowsval").textContent = (c.ra_wall_rows||0) ? c.ra_wall_rows : "alle";
   $("show_favorite").checked = c.show_favorite!==false;
   $("corner").value = c.corner||"bottom-left";
@@ -211,6 +223,7 @@ function collect(){
     ra_wall_corner:$("ra_wall_corner").value,
     ra_wall_cols:parseInt($("ra_wall_cols").value,10)||12,
     ra_wall_rows:parseInt($("ra_wall_rows").value,10)||0,
+    ra_wall_cover:$("ra_wall_cover").value,
     scale:parseInt($("scale").value,10),
     obs_control_enabled:$("obs_control_enabled").checked,
     obs_host:$("obs_host").value,
