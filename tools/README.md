@@ -166,6 +166,7 @@ python3 tools/regression_test.py \
 | `test_systemkategorie_auffrischen.py` | Test (Pass/Fail) | _refresh_system_category() trifft 'System' und keine andere Kategorie mit syskey=None, ruft keinen Neuaufbau, und die Beschriftung folgt der Einstellung |
 | `test_listen_kleinzeug.py` | Test (Pass/Fail) | Die vier Kleinigkeiten aus Build 256: der schnelle Weg bleibt unveraendert, der Merker haengt am Zaehler, die Ordnerzahl wird gemerkt statt gezaehlt - und das Scroll-Tempo wird NIE schneller als die gemessene Zeichendauer |
 | `test_kontextmenue.py` | Test (Pass/Fail) | Das Kontextmenue: X bleibt 'back_fe', der Ausstieg aus dem Spiel laeuft weiter ueber rohe HID-Auswertung, das Menue liefert nur NAMEN vorhandener Aktionen, und der Inhalt richtet sich nach dem Markierten |
+| `test_tastenlegende.py` | Test (Pass/Fail) | Die Tastenlegende unten rechts: AM ECHTEN BILD geprueft (zwei Aufbauten im Vergleich) - auf HDMI da, auf CRT nicht, weicht jeder Meldung, und der Teil-Neuaufbau raeumt sie mit frei |
 | `diag_ungeprueft.py` | Diagnose (immer Rueckgabewert 0) | Welche Funktionen betritt KEIN Test - gemessen mit sys.setprofile, nicht ueber Namen im Testtext |
 | `_spur.py` | Hilfsmodul | Laesst eine einzelne Testdatei unter sys.setprofile laufen und schreibt jede betretene Funktion mit |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
@@ -3873,3 +3874,51 @@ statt in eine eigene Datei.
   dort nichts gestartet wird. Jetzt werden die Kommentarzeilen vorher
   entfernt. Derselbe Fall wie in `test_zaparoo.py` und, im selben
   Build, in `test_cores.py` (siehe `nur_code()` in `test_beenden.py`).
+
+## test_tastenlegende.py (Build 257)
+
+Die Zeile unten rechts: `A:Oeffnen  B:Zurueck  X:Menue  Y:Musik`.
+
+**Geprueft wird AM ECHTEN BILD, nicht an einer Farbe.** Der Test
+zeichnet die Hauptseite zweimal - einmal mit, einmal ohne Legende -
+und vergleicht die beiden Puffer. Unterscheiden sie sich, war sie da.
+Das kommt ohne jede Annahme ueber Theme-Farben aus (die haengen am
+gewaehlten Farbschema) und ist dieselbe Technik, mit der in diesem
+Projekt schon die schnellen Zeichenwege geprueft werden.
+
+**Die beiden Faelle pruefen sich gegenseitig.** Auf 1920x1080 MUESSEN
+sich die Bilder unterscheiden, auf 320x240 duerfen sie es NICHT. Waere
+die Umleitung der Flagdatei in den Spielbereich wirkungslos, waere
+nicht nur der CRT-Fall gruen, sondern auch der HDMI-Fall rot - ein
+stiller Fehlschlag ist damit ausgeschlossen.
+
+**Drei Zusagen, die leicht verlorengehen:**
+
+* **Auf CRT erscheint sie nicht.** Dort ist die Zeile 320 Punkte
+  breit, davon gehen Uhr und Netzwerksymbol ab. Geprueft wird dabei
+  nicht die Betriebsart, sondern der freie Platz - eine feste
+  HDMI-Abfrage waere bei halber Menue-Aufloesung schon wieder falsch.
+* **Sie weicht jeder Meldung.** Die Statusmeldung laeuft mittig ueber
+  dieselbe Zeile. Der Test zeichnet einmal mit einer langen Meldung
+  und verlangt, dass die Legende dann fehlt - und danach wieder da
+  ist.
+* **Der Teil-Neuaufbau raeumt sie mit frei.** Die Hauptseite raeumt
+  auf dem schnellen Weg nur eine schmale Spur um Uhr und Symbol frei.
+  Steht die Legende daneben und nicht mit drin, bleibt ihr alter Text
+  stehen, sobald sie abgeschaltet wird. Geprueft wird, dass die Spur
+  ihre Breite mitrechnet - und zwar mit DERSELBEN Schriftstufe wie das
+  Zeichnen; eine andere Stufe hiesse eine andere Breite und damit eine
+  Spur, die daneben liegt.
+
+**Und einer, der nicht geprueft, sondern festgehalten wird:** warum
+die Legende in der SPIELELISTE fehlt. Dort traegt dieselbe Zeile schon
+die Songtitel-Laufschrift und die Statusmeldungen, und die beiden sind
+sich bereits einmal in die Quere gekommen. Der Test besteht darauf,
+dass diese Begruendung im Quelltext steht - eine Entscheidung, die
+niemand mehr begruenden kann, wird irgendwann versehentlich
+rueckgaengig gemacht.
+
+**Nicht nur geprueft, sondern angesehen:** die Zeile wurde zusaetzlich
+mit `tools/screenshots_bauen.py` gerendert und das Bild betrachtet.
+Ein Test sagt "da ist etwas anders"; ob es auch gut aussieht, sagt nur
+ein Blick.

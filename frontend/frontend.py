@@ -330,6 +330,8 @@ from fe.settings import (
     ordner_zuerst, toggle_ordner_zuerst,
     favoriten_zuerst, toggle_favoriten_zuerst,
     ordner_zahlen_an, toggle_ordner_zahlen,
+    # Build 257: die Tastenlegende.
+    tastenlegende_an, toggle_tastenlegende,
     hintergrund_lesen, hintergrund_schreiben, hintergrund_an,
     toggle_hintergrund, hintergrund_dim_lesen,
     hintergrund_dim_schreiben,
@@ -5642,9 +5644,22 @@ class Frontend:
             _sym_w = 11 * s + 6 * s
             _spuren["__kopf__"] = (_kopf_x, oy,
                                    max(0, (W - ox) - _kopf_x), 20 * s)
-            _spuren["__status__"] = (max(0, W - ox - _uhr_w - _sym_w),
+            # Build 257: die Tastenlegende steht LINKS neben Symbol und
+            # Uhr und gehoert damit in dieselbe Spur. Ohne das wuerde
+            # sie beim Teil-Neuaufbau nicht freigeraeumt - und sobald
+            # sie sich einmal aendert (oder abgeschaltet wird), bliebe
+            # der alte Text stehen. Gerechnet wird mit derselben Stufe
+            # wie beim Zeichnen (s-1, mindestens 1).
+            _leg_w = 0
+            if tastenlegende_an() and W >= self.LEGENDE_MIN_BREITE:
+                _leg_txt = "  ".join("%s:%s" % p
+                                     for p in self._tastenlegende())
+                _leg_w = (len(_leg_txt) * 8 * max(1, s - 1)
+                          + self.LEGENDE_ABSTAND * s)
+            _st_w = _uhr_w + _sym_w + _leg_w
+            _spuren["__status__"] = (max(0, W - ox - _st_w),
                                      H - oy - 13 * s,
-                                     _uhr_w + _sym_w, 13 * s)
+                                     _st_w, 13 * s)
             if _spuren:
                 self._restore_spuren(list(_spuren.values()))
         fb.text(ox, oy, "MiSTer", 3 * s, C_TITLE, C_BG)
@@ -5733,7 +5748,7 @@ class Frontend:
             msg_scale = self._fit_scale(message, W - 2 * ox, s)
             msg_w = len(message) * 8 * msg_scale
             fb.text((W - msg_w) // 2, H - oy - 13 * s, message, msg_scale, C_DIM, C_BG)
-        self._draw_status_bar(L)
+        self._draw_status_bar(L, message)
         self._draw_search_overlay()
         if flip:
             # PERFORMANCE-FIX (Nutzer-Rueckmeldung: "im Hauptmenü wenn ich
@@ -7454,10 +7469,50 @@ class Frontend:
             self._fusszeile_zeichnen(ox, footer_y, s)
             fb.flip_rows(footer_y, h, skip_vsync=self._vsync_ueberspringen(h))
 
-    def _draw_status_bar(self, L):
+    # DIE TASTENLEGENDE (Build 257, Nutzerwunsch: "neben der Uhrzeit und
+    # WLAN-Symbol die Tastenerklaerung einblenden").
+    #
+    # NUR AUF HDMI, und das stand schon im Wunsch: auf CRT ist die Zeile
+    # 320 Punkte breit, davon gehen Uhr und Symbol ab - was bliebe,
+    # reicht fuer "A:Oe" und nicht fuer eine Erklaerung. Geprueft wird
+    # aber NICHT nur die Betriebsart, sondern ob es wirklich passt:
+    # eine feste Abfrage auf "HDMI" waere bei halber Aufloesung
+    # (fb_size) schon wieder falsch.
+    LEGENDE_MIN_BREITE = 400      # darunter gibt es die Zeile nicht
+    LEGENDE_ABSTAND = 12          # Punkte zwischen Legende und Symbol
+
+    def _tastenlegende(self):
+        """Die Paare (Taste, Bedeutung) - genau die vier, nach denen
+        gefragt wurde.
+
+        SIE STEHT NUR AUF DER HAUPTSEITE, weil nur dort die Zeile mit
+        Uhr und Netzwerksymbol existiert. In der SPIELELISTE bekommt
+        sie bewusst keinen Platz: dieselbe Zeile (footer_y) traegt dort
+        schon die Songtitel-Laufschrift UND die Statusmeldungen, und
+        die beiden sind sich bereits einmal in die Quere gekommen
+        (siehe _popup_message_until weiter oben - die Laufschrift
+        ueberschrieb bis zu 12,5-mal je Sekunde eine gerade gezeigte
+        Erfolgsmeldung). Ein drittes Schreiberlein auf derselben Zeile
+        waere derselbe Fehler noch einmal, nur mit mehr Beteiligten.
+
+        "A: Oeffnen" stimmt deshalb immer: auf der Hauptseite oeffnet A
+        eine Kategorie. Waere die Legende eines Tages auch in der
+        Liste zu sehen, muesste hier zwischen "Starten" (Spiel) und
+        "Oeffnen" (Ordner) unterschieden werden - eine Legende, die
+        "Oeffnen" sagt, wo gestartet wird, waere schlimmer als keine.
+        """
+        return ((t("legende_a"), t("legende_oeffnen")),
+                (t("legende_b"), t("legende_zurueck")),
+                (t("legende_x"), t("legende_menue")),
+                (t("legende_y"), t("legende_musik")))
+
+    def _draw_status_bar(self, L, message=None):
         """Netzwerksymbol (nur wenn verbunden) + Uhrzeit unten rechts
         im Hauptmenue - auf derselben Zeile wie eine etwaige Status-
-        meldung (die steht links), damit sich nichts ueberschneidet."""
+        meldung (die steht links), damit sich nichts ueberschneidet.
+
+        Seit Build 257 steht links davon die Tastenlegende, wenn der
+        Platz dafuer da ist."""
         fb = self.fb
         W, H = fb.width, fb.height
         s, ox, oy = L["s"], L["ox"], L["oy"]
@@ -7468,6 +7523,7 @@ class Frontend:
         x = W - ox - clock_w
         fb.text(x, y, clock_text, s, C_DIM, C_BG)
 
+        links = x
         if self._network_connected():
             # Drei aufsteigende Saeulen (Signalstaerke-Optik) - rein
             # statusanzeigend ("Netzwerk vorhanden"), kein echter
@@ -7480,6 +7536,58 @@ class Frontend:
             for i, bh in enumerate((4 * s, 7 * s, 10 * s)):
                 bx = icon_x + i * (bar_w + gap)
                 fb.rect(bx, base_y - bh, bar_w, bh, C_DIM)
+            links = icon_x
+        self._draw_tastenlegende(L, y, links, message)
+
+    def _draw_tastenlegende(self, L, y, rechts, message=None):
+        """Die Tastenlegende links neben Symbol und Uhr (Build 257).
+
+        DREI GRUENDE, AUS DENEN SIE AUCH MAL NICHT ERSCHEINT - und
+        alle drei sind Absicht:
+
+        1. ZU SCHMAL. Auf CRT (320 Punkte) bleibt neben Uhr und Symbol
+           kein Platz fuer vier Paare. Gemessen wird der tatsaechlich
+           freie Raum, nicht die Betriebsart: bei halber Aufloesung
+           (fb_size) waere eine feste HDMI-Abfrage schon wieder
+           falsch.
+        2. EINE MELDUNG STEHT DA. Die laeuft mittig ueber die ganze
+           Zeile und ist in dem Moment das Wichtigere - eine Legende,
+           die in eine Meldung hineinschreibt, macht beides unlesbar.
+           Sie kommt von allein wieder, sobald die Meldung weg ist.
+        3. DER NUTZER WILL SIE NICHT. Schalter im Systemmenue.
+
+        GEZEICHNET WIRD IN EINER kleineren Stufe als der Rest der
+        Zeile (s-1, mindestens 1): es sind acht kurze Woerter auf
+        einer Zeile, die sonst nur zwei Zahlen traegt. In voller
+        Groesse passt das auf 1080p zwar, wirkt aber wie eine zweite
+        Ueberschrift."""
+        if not tastenlegende_an():
+            return
+        fb = self.fb
+        W = fb.width
+        s, ox = L["s"], L["ox"]
+        if W < self.LEGENDE_MIN_BREITE:
+            return
+        ls = max(1, s - 1)
+        # Schreibweise wie im Wunsch: "A:Oeffnen  B:Zurueck". Der
+        # Doppelpunkt bindet Taste und Bedeutung sichtbar zusammen -
+        # mit Leerzeichen dazwischen zerfaellt die Zeile in acht
+        # gleichwertige Woerter.
+        text = "  ".join("%s:%s" % (taste, bedeutung)
+                         for taste, bedeutung in self._tastenlegende())
+        breite = len(text) * 8 * ls
+        frei_ab = ox
+        if message:
+            # Die Meldung steht mittig ueber die ganze Breite - ihr
+            # rechter Rand ist die Grenze, ab der hier nichts mehr
+            # hingehoert.
+            msg_scale = self._fit_scale(message, W - 2 * ox, s)
+            msg_w = len(message) * 8 * msg_scale
+            frei_ab = max(frei_ab, (W - msg_w) // 2 + msg_w + 8 * s)
+        x = rechts - self.LEGENDE_ABSTAND * s - breite
+        if x < frei_ab:
+            return
+        fb.text(x, y, text, ls, C_DIM, C_BG)
 
     def _draw_cat_artbox(self, L, karte_erhalten=False):
         """Zeigt rechts neben der Kategorienliste ein Logo/Cover fuer
@@ -9175,7 +9283,7 @@ class Frontend:
             msg_w = len(message) * 8 * msg_scale
             fb.text((W - msg_w) // 2, H - oy - 13 * s, message, msg_scale,
                     C_DIM, C_BG)
-        self._draw_status_bar(self.layout_cats())
+        self._draw_status_bar(self.layout_cats(), message)
         self._draw_search_overlay()
 
     def _draw_cats_galerie(self, message, flip):
@@ -21236,6 +21344,9 @@ class Frontend:
                         elif kind == "favoriten_zuerst":
                             toggle_favoriten_zuerst()
                             self._anzeige_geaendert()
+                            self._refresh_system_category()
+                        elif kind == "tastenlegende":
+                            toggle_tastenlegende()
                             self._refresh_system_category()
                         elif kind == "ordner_zahlen":
                             toggle_ordner_zahlen()

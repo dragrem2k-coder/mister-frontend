@@ -90,6 +90,7 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | **Arrange the home page** | Decide the order and visibility of the categories yourself. “System” always stays, last |
 | **Search** | Type to narrow the list instantly |
 | **Context menu** | **F1**, or **X** on the pad, shows what is possible right here — favourite, completed, hide, search, filter, jump to letter, view, random. All of it existed already, just spread over seven different keys |
+| **Button legend** | Bottom right, next to the clock and network symbol: “A:Open  B:Back  X:Menu  Y:Music”. Main page, HDMI, and it yields to any message |
 | **Hide entries** | Take single games, whole folders or a category out of the display. Nothing on the card is touched, and an overview brings it all back |
 | **List cleanup** | Boot files, beta/proto/hack tags and duplicate regions drop out during the scan — the best region wins. Plus an optional “only games with a database match” |
 | **`gamelist.xml`** | If you curated your ROM folder with Skraper, the file is read: year, genre, players, publisher, description, cover. No setting needed, and your own data always wins |

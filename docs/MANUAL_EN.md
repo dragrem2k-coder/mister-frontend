@@ -178,6 +178,7 @@ history to read up on (`CHANGELOG.md`).
    - 8r-2. The context menu
    - 8r-3. Four small things about the list
    - 8r-4. Hiding entries
+   - 8r-5. The button legend
    - 8s. ROMs inside ZIP archives
    - 8t. Game descriptions
    - 8u. Covers while scrolling
@@ -1419,6 +1420,33 @@ see what is gone, bring back single ones or all of them at once.
 Without that screen hiding would be a trap: pick the wrong entry and
 you would have to know the file exists.
 
+## 8r-5. The button legend (Build 257)
+
+Bottom right, next to the network symbol and the clock, you now get
+
+```
+A:Open  B:Back  X:Menu  Y:Music
+```
+
+**Main page only**, because that is the only screen with this line. In
+the game list the same line already carries the song-title marquee and
+the status messages — a third text on it would repeat a mistake this
+project already made there (the marquee overwrote a freshly shown
+achievement message up to twelve times a second).
+
+**HDMI only.** On a CRT the line is 320 pixels wide, and the clock and
+symbol take their share — what is left fits "A:Op". What is checked is
+not the display mode but the space actually free: at half menu
+resolution it disappears by itself when things get tight.
+
+**It yields to a message.** When a status message appears at the
+bottom, the legend goes away for as long as the message is there — and
+comes back on its own afterwards.
+
+Switch it off in the system menu under *Display & Sound → Button
+legend*. On by default: it is there for the people who do not yet know
+which button does what.
+
 ## 8s. ROMs inside ZIP archives
 
 If your ROMs live inside ZIP archives, they are listed normally. An
@@ -1949,6 +1977,7 @@ conversely nobody ends up in a menu that cannot do anything).
 | Game list view | `ansicht` |
 | Main page view | `ansicht_haupt` |
 | Scroll speed (0.5x to 2x) | `scroll_tempo` |
+| Button legend: ON/OFF | `tastenlegende` |
 | Folders: first / after the games | `ordner_zuerst` |
 | Favourites first: ON/OFF | `favoriten_zuerst` |
 | Game count on folders: ON/OFF | `ordner_zahlen` |

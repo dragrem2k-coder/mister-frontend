@@ -2193,3 +2193,24 @@ def _flag_setzen(pfad, anlegen):
             os.remove(pfad)
         except OSError:
             pass
+
+
+# BUILD 257: die Tastenlegende unten neben Uhr und Netzwerksymbol.
+#
+# Vorgabe AN - sie ist genau fuer die da, die noch nicht wissen, welche
+# Taste was tut, und wer sie nicht braucht, schaltet sie einmal ab. Auf
+# CRT erscheint sie ohnehin nicht (dort fehlt der Platz, siehe
+# _draw_tastenlegende() in frontend.py); der Schalter ist fuer alle da,
+# die sie auf HDMI nicht sehen wollen.
+TASTENLEGENDE_AUS_FLAG = "/media/fat/frontend/tastenlegende_aus"
+
+
+def tastenlegende_an():
+    return not _hole(("tastenlegende_aus", TASTENLEGENDE_AUS_FLAG),
+                     lambda: os.path.exists(TASTENLEGENDE_AUS_FLAG))
+
+
+@_nach_aenderung
+def toggle_tastenlegende():
+    _flag_setzen(TASTENLEGENDE_AUS_FLAG, tastenlegende_an())
+    return tastenlegende_an()

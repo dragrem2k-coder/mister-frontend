@@ -92,6 +92,7 @@ Ohne Internet am MiSTer, per SSH, oder von Hand: siehe
 | **Hauptseite einrichten** | Reihenfolge und Sichtbarkeit der Kategorien selbst bestimmen. „System“ bleibt immer, zuletzt |
 | **Suche** | Tippen filtert die Liste sofort |
 | **Kontextmenü** | **F1** oder **X** am Pad zeigt, was hier gerade geht — Favorit, durchgespielt, ausblenden, suchen, filtern, zu Buchstabe springen, Ansicht, Zufall. Alles davon gab es schon, nur über sieben verschiedene Tasten verteilt |
+| **Tastenlegende** | Unten rechts neben Uhr und Netzwerksymbol: „A:Öffnen  B:Zurück  X:Menü  Y:Musik“. Auf der Hauptseite, auf HDMI, und sie weicht jeder Meldung |
 | **Einträge ausblenden** | Einzelne Spiele, ganze Ordner oder eine Kategorie aus der Anzeige nehmen. Auf der Karte wird nichts angefasst, und eine Übersicht holt alles zurück |
 | **Listen-Bereinigung** | Boot-Dateien, Beta/Proto/Hack-Tags und doppelte Regionen fallen beim Einlesen weg — beste Region gewinnt. Dazu auf Wunsch „nur Spiele mit Datenbank-Treffer“ |
 | **`gamelist.xml`** | Hast du dein ROM-Verzeichnis mit Skraper gepflegt, wird die Datei gelesen: Jahr, Genre, Spielerzahl, Hersteller, Beschreibung, Cover. Ohne Einstellung, und deine eigenen Daten haben immer Vorrang |

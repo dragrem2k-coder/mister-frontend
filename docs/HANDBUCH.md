@@ -183,6 +183,7 @@ Nachlesen (`CHANGELOG.md`).
    - 8r-2. Das Kontextmenü
    - 8r-3. Vier Kleinigkeiten an der Liste
    - 8r-4. Einträge ausblenden
+   - 8r-5. Die Tastenlegende
    - 8s. ROMs in ZIP-Archiven
    - 8t. Spielbeschreibungen
    - 8u. Cover beim Scrollen
@@ -1704,6 +1705,35 @@ auf einmal. Ohne diesen Bildschirm wäre das Ausblenden eine Falle: wer
 den falschen Eintrag erwischt, müsste sonst wissen, dass es die Datei
 gibt.
 
+## 8r-5. Die Tastenlegende (Build 257)
+
+Unten rechts, neben Netzwerksymbol und Uhr, steht jetzt
+
+```
+A:Öffnen  B:Zurück  X:Menü  Y:Musik
+```
+
+**Nur auf der Hauptseite**, denn nur dort gibt es diese Zeile. In der
+Spieleliste trägt dieselbe Zeile schon die Songtitel-Laufschrift und
+die Statusmeldungen — ein dritter Text darauf wäre ein Fehler, den
+dieses Projekt dort schon einmal gemacht hat (die Laufschrift
+überschrieb bis zu zwölfmal je Sekunde eine gerade gezeigte
+Erfolgsmeldung).
+
+**Nur auf HDMI.** Auf einer Röhre ist die Zeile 320 Punkte breit,
+davon gehen Uhr und Symbol ab — was bliebe, reicht für „A:Öf". Geprüft
+wird dabei nicht die Betriebsart, sondern der tatsächlich freie Platz:
+auch bei halber Menü-Auflösung verschwindet sie von allein, wenn es
+eng wird.
+
+**Sie weicht einer Meldung.** Erscheint unten eine Statusmeldung,
+verschwindet die Legende, solange die Meldung steht — und kommt danach
+von allein zurück.
+
+Abschalten im Systemmenü unter *Anzeige & Sound → Tastenlegende*.
+Vorgabe an: sie ist für die da, die noch nicht wissen, welche Taste
+was tut.
+
 ## 8s. ROMs in ZIP-Archiven
 
 Liegen ROMs in ZIP-Archiven, werden sie ganz normal gelistet. Ein
@@ -2292,6 +2322,7 @@ umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
 | Ansicht Spieleliste | `ansicht` |
 | Ansicht Hauptseite | `ansicht_haupt` |
 | Scrollgeschwindigkeit (0,5x bis 2x) | `scroll_tempo` |
+| Tastenlegende: AN/AUS | `tastenlegende` |
 | Ordner: zuerst / hinter den Spielen | `ordner_zuerst` |
 | Favoriten zuerst: AN/AUS | `favoriten_zuerst` |
 | Spielzahl am Ordner: AN/AUS | `ordner_zahlen` |

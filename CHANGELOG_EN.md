@@ -13,6 +13,13 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.8 — not yet released
 
+**The button legend, bottom right.**
+
+- Next to the network symbol and the clock you now get **"A:Open  B:Back  X:Menu  Y:Music"**. Switchable in the system menu, on by default.
+- **HDMI only** — on a CRT the line is 320 pixels wide and the clock and symbol take their share. What is checked is not the display mode but the **space actually free**: a fixed HDMI test would be wrong again at half menu resolution.
+- **It yields to any message.** When a status message is shown at the bottom the legend goes away and comes back on its own — two texts on top of each other are two unreadable texts.
+- **And it is not in the game list**, useful as it would be there: that line already carries the song-title marquee *and* the status messages, and those two have collided before (the marquee overwrote an achievement message up to twelve times a second). A third writer on the same line would be the same mistake again.
+
 **One button that shows what is possible — and four small things about
 the list.**
 

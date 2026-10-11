@@ -13,6 +13,13 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.8 — noch nicht veröffentlicht
 
+**Die Tastenlegende unten rechts.**
+
+- Neben Netzwerksymbol und Uhr steht jetzt **„A:Öffnen  B:Zurück  X:Menü  Y:Musik"**. Abschaltbar im Systemmenü, Vorgabe an.
+- **Nur auf HDMI** — auf einer Röhre ist die Zeile 320 Punkte breit, davon gehen Uhr und Symbol ab. Geprüft wird dabei nicht die Betriebsart, sondern der **tatsächlich freie Platz**: eine feste HDMI-Abfrage wäre bei halber Menü-Auflösung schon wieder falsch.
+- **Sie weicht jeder Meldung.** Steht unten eine Statusmeldung, verschwindet die Legende und kommt danach von allein zurück — zwei Texte übereinander sind zwei unlesbare Texte.
+- **Und sie steht nicht in der Spieleliste**, obwohl sie dort nützlich wäre: diese Zeile trägt dort schon die Songtitel-Laufschrift *und* die Statusmeldungen, und die beiden sind sich bereits einmal in die Quere gekommen (die Laufschrift überschrieb eine Erfolgsmeldung bis zu zwölfmal je Sekunde). Ein dritter Schreiber auf derselben Zeile wäre derselbe Fehler noch einmal.
+
 **Ein Knopf, der zeigt, was gerade geht — und vier Kleinigkeiten an der
 Liste.**
 

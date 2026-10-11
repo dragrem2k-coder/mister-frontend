@@ -31,6 +31,7 @@ from fe.settings import (
     load_ziehung_spannung,
     load_scroll_tempo, ordner_zuerst, favoriten_zuerst,
     ordner_zahlen_an,
+    tastenlegende_an,
     screen_mirror_enabled, stream_overlay_enabled,
     fast_scroll_enabled, cover_sofort_enabled, arbeitskopien_enabled,
     overscan_lesen, fremdquellen_enabled,
@@ -182,6 +183,8 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
                         else "sys_favoriten_zuerst_aus")
     ordnerzahl_label = t("sys_ordner_zahlen_an" if ordner_zahlen_an()
                          else "sys_ordner_zahlen_aus")
+    legende_label = t("sys_tastenlegende_an" if tastenlegende_an()
+                      else "sys_tastenlegende_aus")
     try:
         from fe.versteckt import anzahl as _versteckt_anzahl
         _versteckt_n = _versteckt_anzahl()
@@ -454,6 +457,7 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         (ordner_label, "ordner_zuerst", None),
         (favzuerst_label, "favoriten_zuerst", None),
         (ordnerzahl_label, "ordner_zahlen", None),
+        (legende_label, "tastenlegende", None),
         (versteckt_label, "versteckt", None),
         (t("sys_overscan_x", _ovx), "overscan_x", None),
         (t("sys_overscan_y", _ovy), "overscan_y", None),

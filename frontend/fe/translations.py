@@ -681,6 +681,19 @@ TRANSLATIONS = {
     # NEU (Build 246): Dauer der Ziehung in Zufalls-Zock. Steht bei
     # "Verhalten & Optionen" neben der Attract-Verzögerung - beides
     # sind Zeiten, die bestimmen, wie sich das Frontend anfühlt.
+    # Build 257: die Tastenlegende unten rechts.
+    "legende_a": {"en": "A", "de": "A"},
+    "legende_b": {"en": "B", "de": "B"},
+    "legende_x": {"en": "X", "de": "X"},
+    "legende_y": {"en": "Y", "de": "Y"},
+    "legende_oeffnen": {"en": "Open", "de": "\u00d6ffnen"},
+    "legende_zurueck": {"en": "Back", "de": "Zur\u00fcck"},
+    "legende_menue": {"en": "Menu", "de": "Men\u00fc"},
+    "legende_musik": {"en": "Music", "de": "Musik"},
+    "sys_tastenlegende_an": {"en": "Button legend: ON",
+                             "de": "Tastenlegende: AN"},
+    "sys_tastenlegende_aus": {"en": "Button legend: OFF",
+                              "de": "Tastenlegende: AUS"},
     # Build 256: das Kontextmenue und die vier Kleinigkeiten.
     "ctx_titel": {"en": "What would you like to do?",
                   "de": "Was möchtest du tun?"},
