@@ -172,6 +172,7 @@ python3 tools/regression_test.py \
 | `test_overlay_cover.py` | Test (Pass/Fail) | Die Cover im Overlay: AM ECHTEN SERVER ueber echte HTTP-Abrufe - JPEG und PNG kommen Byte fuer Byte unveraendert an, unser .art gewandelt als PNG, HD vor Standard, und es gibt nur noch EINE Cover-Suche |
 | `test_overlay_zustand.py` | Test (Pass/Fail) | stream_state(): in gemischten Kategorien (Zuletzt gespielt, Sammlungen, ...) kommt der Systemkey vom EINTRAG und nicht von der Kategorie - sonst fehlen Cover, Genre, Jahr und RA-Fortschritt |
 | `test_demo_schirme.py` | Test (Pass/Fail) | Die Vorfuehrung zeigt die ECHTEN Bildschirme: die gescriptete Hand am Pad scrollt, hoert puenktlich auf, weicht jeder echten Taste - und die zehn Bildschirme der Tabelle gibt es wirklich und werden wirklich gerufen |
+| `test_anleitung.py` | Test (Pass/Fail) | Die Spielanleitung: gefunden wird im UNTERORDNER und mit unscharfem Namen, der Artwork-Ordner wird NICHT betreten, einmal je System gesucht, und ohne Betrachter gibt es den Menuepunkt gar nicht |
 | `diag_ungeprueft.py` | Diagnose (immer Rueckgabewert 0) | Welche Funktionen betritt KEIN Test - gemessen mit sys.setprofile, nicht ueber Namen im Testtext |
 | `_spur.py` | Hilfsmodul | Laesst eine einzelne Testdatei unter sys.setprofile laufen und schreibt jede betretene Funktion mit |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
@@ -4356,3 +4357,63 @@ Zum Schluss druckt der Test die **Zeiteinteilung** aller 23 Stationen
 auf 240 Sekunden und besteht darauf, dass keine unter vier Sekunden
 faellt - mit zehn Stationen mehr ist das die Zahl, die als erste
 kippt.
+
+## test_anleitung.py (Build 263)
+
+Nutzerwunsch: „waere es ja schoen, wenn man im Frontend durch die
+Spiele scrollt und per Tastendruck sich die Anleitung dazu ansehen
+koennte."
+
+**Was VOR dem Bauen auf dem Geraet geprueft wurde** - an dieser Stelle
+haette man sich dreimal vertun koennen, und jedes Mal haette es einen
+ganzen Build gekostet:
+
+1. **Gibt es einen Betrachter?** Ja: `/media/fat/linux/pdfviewer` ist
+   ein **jfbview 0.6.1** (`jfbview [OPTIONS] FILE`), daneben `glow`
+   fuer Markdown. Beide kommen mit `update_all`.
+2. **Laeuft er auf diesem Kernel?** Ja - von Hand gestartet, das Bild
+   kam, und die Shell kehrte erst nach `q` zurueck. Dass das Bild nach
+   einer Sekunde verschwand, war unser eigenes Frontend, das darueber
+   zeichnete.
+3. **Wo liegen die Dateien?** Nicht im Core-Ordner, sondern in einem
+   **Unterordner**: `/media/fat/docs/SMS/SMS Manuals/Ace of Aces.pdf`,
+   206 Stueck; neben den ROMs nichts. Haette ich flach nachgesehen
+   statt zu suchen, haette das Frontend bei jedem Spiel „keine
+   Anleitung" gesagt.
+
+Geprueft wird an einem **echten Verzeichnisbaum**, genauso gebaut wie
+der des Nutzers - samt Artwork-Ordner daneben, denn der ist der Grund
+fuer die wichtigste Zusage:
+
+* **Der Artwork-Ordner wird NICHT betreten.** Dort liegen bei einer
+  gepflegten Sammlung Tausende Dateien; sie bei jeder Suche mitzulesen
+  waere genau die Sorte Fehler, die in v1.32 den rekursiven
+  Fingerabdruck gekostet hat. Der Test zaehlt die betretenen Ordner
+  mit - gezaehlt, nicht vermutet.
+* **Einmal je System gesucht**, danach gemerkt: zehn Abfragen kosten
+  keinen weiteren Durchlauf, nach `vergessen()` wird wieder gesucht.
+* **Die Core-README ist keine Spielanleitung.** In jedem Core-Ordner
+  liegt eine `README.md`; gaebe es einen Rueckfall auf „irgendetwas im
+  Ordner", bekaeme JEDES Spiel eine Anleitung - und zwar die falsche.
+* **Ohne installierten Betrachter gibt es keinen Befehl** und keinen
+  Menuepunkt. Der Punkt haengt an BEIDEM, Datei UND Betrachter.
+* **In `/media/fat/docs` wird nichts geschrieben:** der Test besteht
+  darauf, dass in `fe/anleitung.py` kein `open(`, `os.remove`,
+  `os.rename`, `os.makedirs` und kein `shutil.` vorkommt.
+
+**Und die Anbindung im Frontend**, die man leicht falsch macht:
+angezeigt wird ueber `_auf_konsole()` (sonst zeichnet das Frontend nach
+einer Sekunde darueber - genau das hat der Nutzer gesehen), **ohne**
+eigenen Zeichenweg, **ohne** „Taste druecken" hinterher (der Betrachter
+wartet selbst auf `q`), und der Systemkey kommt vom **Eintrag** und
+nicht von der Kategorie - genau dieser Fehler hat in Build 261 die
+Cover im Overlay gekostet.
+
+### Nachtrag zu run_script(): ein Konsolenweg, zwei Aufrufer
+
+`run_script()` hat seinen heiklen Teil abgegeben: Konsolenwechsel,
+steuerndes Terminal, Umleitung auf tty1, Musik anhalten, Rueckkehr ins
+Frontend stehen jetzt in `_auf_konsole()`. Zwei Fassungen davon waeren
+genau die Sorte Nachbau, die uns in Build 260 eingeholt hat; der Test
+besteht deshalb darauf, dass es die Funktion **einmal** gibt und
+**zweimal** gerufen wird.

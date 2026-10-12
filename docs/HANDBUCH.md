@@ -187,6 +187,7 @@ Nachlesen (`CHANGELOG.md`).
    - 8r-5. Die Tastenlegende
    - 8s. ROMs in ZIP-Archiven
    - 8s-2. Mehrteilige Spiele
+   - 8s-3. Die Anleitung zum Spiel
    - 8t. Spielbeschreibungen
    - 8u. Cover beim Scrollen
 9. Sprache umschalten
@@ -1843,6 +1844,50 @@ beim Wechsel das BIOS nicht neu laden.
 Abschalten im Systemmenü unter *Wartung → Mehrteilige Spiele bündeln*.
 Die Einstellung steckt im Fingerabdruck der Spieleliste, wirkt also
 beim nächsten Einlesen.
+
+## 8s-3. Die Anleitung zum Spiel (Build 263)
+
+Steht in der Spieleliste ein Spiel, zu dem eine Anleitung auf der
+Karte liegt, bietet das **Kontextmenü** (X am Pad, F1 auf der Tastatur)
+ganz oben **Anleitung anzeigen** an. Der Punkt erscheint **nur dann** —
+ein Eintrag, der bei neun von zehn Spielen „keine Anleitung vorhanden"
+sagt, wäre schlimmer als keiner.
+
+**Wir bringen keinen eigenen Betrachter mit.** Angezeigt wird mit dem
+Programm, das MiSTers eigene Help-Funktion benutzt:
+
+```
+/media/fat/linux/pdfviewer   (PDF, ein jfbview)
+/media/fat/linux/glow        (Markdown und Text)
+```
+
+Beide kommen mit `update_all` (Filter „linux"). Fehlt der Betrachter,
+erscheint der Punkt gar nicht erst.
+
+**Wo die Dateien liegen:** `/media/fat/docs/<Core>/…`, gern in einem
+Unterordner, so wie die MiSTer-Sammlungen es machen:
+
+```
+/media/fat/docs/SMS/SMS Manuals/Ace of Aces.pdf
+```
+
+Gesucht wird im Core-Ordner und bis zu drei Ebenen darunter; der
+**Artwork-Ordner wird dabei ausgelassen** (dort liegen tausende Bilder
+und keine Anleitung). Der Name muss nicht genau stimmen — „Ace of
+Aces.pdf" wird auch zu „Ace of Aces (Europe).sms" gefunden, mit
+demselben unscharfen Vergleich wie bei den Covern.
+
+**Geschrieben wird in `/media/fat/docs` nichts.** Der Ordner gehört uns
+nicht.
+
+**Beim Lesen gibt das Frontend den Bildschirm ab** und holt ihn danach
+zurück — derselbe Weg wie bei einem Skript. Im Betrachter blättern die
+Pfeiltasten, **`q` beendet** ihn.
+
+**Was nicht geht:** die Anleitung über das *laufende* Spiel legen.
+Während ein Core läuft, kommt das Bild vom FPGA, und der
+Linux-Framebuffer, in den wir zeichnen, ist gar nicht zu sehen. Dafür
+bleibt **F12 → Help** der Weg, den MiSTer vorgesehen hat.
 
 ## 8t. Spielbeschreibungen (seit Build 139)
 

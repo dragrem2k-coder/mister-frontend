@@ -117,7 +117,11 @@ exec(compile(_quelle, "<kontextmenue>", "exec"), _um)
 class Attrappe(object):
     kontextmenue = _um["kontextmenue"]
 
-    def __init__(self, page, items, fav=(), done=()):
+    def __init__(self, page, items, fav=(), done=(), anleitung=None):
+        # Build 263: der Anleitungs-Punkt haengt daran, ob es fuer
+        # diesen Eintrag WIRKLICH eine Datei gibt (und einen
+        # Betrachter dafuer) - hier als fertige Antwort hereingereicht.
+        self.anleitung = anleitung
         self.page = page
         self._items = list(items)
         self.item_i = 0
@@ -128,6 +132,9 @@ class Attrappe(object):
 
     def _display_items(self):
         return self._items
+
+    def _anleitung_zum_eintrag(self, _item):
+        return self.anleitung
 
     def _wizard_choice(self, titel, optionen, **kw):
         self.gezeigt = list(optionen)
@@ -143,6 +150,24 @@ check("bei einem Spiel steht 'Als Favorit merken' drin",
       TR.t("ctx_fav_an") in a.gezeigt, str(a.gezeigt))
 check("und 'Als durchgespielt merken'",
       TR.t("ctx_done_an") in a.gezeigt)
+
+check("ohne Anleitung steht KEIN Anleitungs-Punkt drin",
+      TR.t("ctx_anleitung") not in a.gezeigt,
+      "ein Punkt, der bei neun von zehn Spielen nichts tut, ist "
+      "schlimmer als keiner")
+
+a_anl = Attrappe(1, [SPIEL], anleitung="/media/fat/docs/SNES/x.pdf")
+a_anl.kontextmenue()
+check("gibt es eine, steht sie drin",
+      TR.t("ctx_anleitung") in a_anl.gezeigt, str(a_anl.gezeigt))
+check("und zwar ganz oben",
+      a_anl.gezeigt[0] == TR.t("ctx_anleitung"), str(a_anl.gezeigt[:2]))
+o_anl = Attrappe(1, [ORDNER], anleitung="/media/fat/docs/SNES/x.pdf")
+o_anl.kontextmenue()
+check("bei einem ORDNER gibt es sie nie",
+      TR.t("ctx_anleitung") not in o_anl.gezeigt,
+      "der Punkt haengt am kind == 'game', nicht nur an der Datei - "
+      "%s" % o_anl.gezeigt)
 
 b = Attrappe(1, [SPIEL], fav={"Super Mario World"},
              done={"Super Mario World"})
@@ -197,7 +222,11 @@ namen = set(re.findall(r'eintraege\.append\(\s*\([^,]+,\s*"([a-z_]+)"\)',
                        _quelle))
 namen |= set(re.findall(r'"([a-z_]+)"\)\)', _quelle))
 namen = {n for n in namen if not n.startswith("ctx_")}
-EIGENE = {"verstecken", "buchstabe", "zufall_fav"}
+EIGENE = {"verstecken", "buchstabe", "zufall_fav", "anleitung"}
+# "anleitung" (Build 263) steht hier und nicht oben, weil es KEINE
+# Tastenaktion ist: es gibt keine freie F-Taste mehr, der Punkt
+# lebt ausschliesslich im Kontextmenue und hat dort seinen
+# eigenen Zweig.
 # BEIDE FORMEN ZAEHLEN. Der erste Entwurf suchte nur nach
 # 'act == "..."' und war bei "search" rot - das wird ueber
 # 'act in ("search", "search_pad")' behandelt. Eine Pruefung, die an

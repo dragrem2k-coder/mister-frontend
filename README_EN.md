@@ -99,6 +99,7 @@ No internet on the MiSTer, or prefer SSH or a manual install? See
 | **ZIP archives** | ROMs inside archives are found and launched without ever extracting anything |
 | **Single-game folders** | Dissolved automatically — matters for PSX, Mega CD and Saturn, where each game sits in its own folder |
 | **Multi-disc games** | “Game (Disc 1/2/3)” becomes **one** entry; on launch the frontend asks which disc. Only with at least two parts in the same folder under the same remaining name — two versions stay two entries |
+| **Game manuals** | If a manual (PDF, text, Markdown) sits under `/media/fat/docs/<core>/`, the context menu offers **Show manual** — displayed with MiSTer's own viewer. The entry only appears when there really is one |
 | **ROMs on NAS/USB** | Network shares and USB numbers above 5 are discovered dynamically |
 | **NFC tags** | Zaparoo is detected and launched; the frontend tells you the command for the tag. Nothing is written into Zaparoo's folder |
 | **Storage watch** | Plugged a stick in? The frontend says so — and on request reads back **only what changed** instead of everything |

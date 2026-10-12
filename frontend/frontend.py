@@ -1465,6 +1465,7 @@ from fe.scan import (
     scan_games,
 )
 
+import fe.anleitung as ANLEITUNG
 from fe.launch import (write_mgl, scan_scripts, current_core, launch_core,
                        disc_geschwister, MGL_TMP)
 
@@ -2510,6 +2511,11 @@ class Frontend:
             # Gleicher Grund wie bei der anderen Neueinlese-Stelle
             # (Build 212, siehe _quelldaten() in fe/art.py).
             quelldaten_vergessen()
+            # Build 263, derselbe Zeitpunkt und derselbe Grund: wer
+            # Spiele nachlegt, legt oft auch Anleitungen dazu. Der
+            # gemerkte Stand je System muss dann weg, sonst findet das
+            # Frontend die neue Datei erst beim naechsten Start.
+            ANLEITUNG.vergessen()
             self._warmlauf_fertig_fuer = None
         self._speicher.merken()
         # Build 258: derselbe Zeitpunkt, derselbe Grund - sonst
@@ -3200,6 +3206,65 @@ class Frontend:
         self._filter_cache = (schluessel, gefiltert)
         return gefiltert
 
+    def _anleitung_zum_eintrag(self, item):
+        """Der Pfad zur Anleitung dieses Eintrags - oder None.
+
+        Der Systemkey kommt vom EINTRAG und nicht von der Kategorie
+        (_item_syskey): in "Zuletzt gespielt" und den Sammlungen sind
+        Systeme gemischt. Genau dieser Fehler hat in Build 261 die
+        Cover im Overlay gekostet - zweimal muss man ihn nicht
+        machen."""
+        if not item or item[1] != "game":
+            return None
+        try:
+            _name, _node, kat_syskey = self.cats[self.cat_i]
+        except (IndexError, TypeError):
+            kat_syskey = None
+        syskey = self._item_syskey(item, kat_syskey)
+        try:
+            pfad = ANLEITUNG.anleitung_finden(syskey, item[0])
+        except Exception:                                # noqa: BLE001
+            return None
+        if pfad and ANLEITUNG.betrachter_fuer(pfad):
+            return pfad
+        return None
+
+    def anleitung_zeigen(self):
+        """Die Anleitung zum markierten Spiel anzeigen (Build 263).
+
+        NUTZERWUNSCH: "waere es ja schoen, wenn man im Frontend durch
+        die Spiele scrollt und per Tastendruck sich die Anleitung dazu
+        ansehen koennte."
+
+        WIR ZEICHNEN SIE NICHT SELBST. Angezeigt wird mit dem
+        Betrachter, den MiSTers eigene Help-Funktion benutzt
+        (/media/fat/linux/pdfviewer, ein jfbview) - er zeichnet in
+        denselben Linux-Framebuffer. Ein eigener PDF-Zeichenweg waere
+        ein zweiter neben einem vorhandenen, der nachweislich
+        funktioniert; siehe fe/anleitung.py.
+
+        Der Bildschirm geht ueber _auf_konsole() hinueber und kommt
+        danach zurueck - derselbe Weg wie bei einem Skript. Ohne ihn
+        zeichnet das Frontend nach einer Sekunde darueber; genau das
+        hat der Nutzer beim Pruefen gesehen."""
+        items = self._display_items()
+        markiert = items[self.item_i] if items and 0 <= self.item_i < len(items) else None
+        pfad = self._anleitung_zum_eintrag(markiert)
+        if not pfad:
+            self.draw(message=t("anleitung_keine"))
+            return
+        befehl = ANLEITUNG.befehl(pfad)
+        if not befehl:
+            self.draw(message=t("anleitung_kein_betrachter"))
+            return
+        LOG("Anleitung: %s" % " ".join(befehl))
+        # Nur Bildschirm leeren, KEIN "Taste druecken" hinterher: der
+        # Betrachter wartet selbst auf "q", eine zweite Rueckfrage
+        # danach waere ein Schritt zuviel.
+        inner = 'printf "\033[2J\033[H"; "$@"'
+        self._auf_konsole(["/bin/bash", "-c", inner, "anleitung"] + befehl,
+                          list(befehl), pfad)
+
     def kontextmenue(self):
         """Das Kontextmenue (Build 256) - X am Pad, F1 auf der Tastatur.
 
@@ -3240,6 +3305,12 @@ class Frontend:
             items = self._display_items()
             markiert = items[self.item_i] if items else None
             kind = markiert[1] if markiert else None
+            if kind == "game" and self._anleitung_zum_eintrag(markiert):
+                # GANZ OBEN, und nur wenn es sie WIRKLICH gibt: ein
+                # Punkt, der bei neun von zehn Spielen "keine Anleitung
+                # vorhanden" sagt, ist schlimmer als keiner. Geprueft
+                # wird beides - Datei da UND Betrachter installiert.
+                eintraege.append((t("ctx_anleitung"), "anleitung"))
             if kind == "game":
                 fav = markiert[0] in getattr(self, "_favorites_set", ())
                 eintraege.append(
@@ -13582,6 +13653,35 @@ class Frontend:
         ist das dadurch nicht sauber. run_core()/back_to_frontend()
         machen diesen Wechsel bereits an vergleichbarer Stelle -
         run_script() hatte ihn bisher NICHT."""
+        inner = ('printf "\\033[2J\\033[H"; '
+                 'bash "$0" "$@"; _ec=$?; '
+                 'printf "\\n-- Script beendet (Code %s) - Taste druecken --\\n" "$_ec"; '
+                 'read -rsn1')
+        wrapped = ["/bin/bash", "-c", inner, path] + (list(args) if args else [])
+        raw     = ["/bin/bash", path] + (list(args) if args else [])
+        self._auf_konsole(wrapped, raw, path)
+
+    def _auf_konsole(self, wrapped, raw, name=""):
+        """Ein fremdes Programm auf der echten Konsole laufen lassen und
+        danach den Bildschirm zurueckholen.
+
+        HERAUSGELOEST AUS run_script() (Build 263), weil es einen
+        ZWEITEN Aufrufer bekommen hat: den Anleitungs-Betrachter. Der
+        ganze heikle Teil steht damit weiterhin an genau EINER Stelle -
+        Konsolenwechsel, steuerndes Terminal, Umleitung auf tty1, Musik
+        anhalten, Rueckkehr ins Frontend. Zwei Fassungen davon waeren
+        genau die Sorte Nachbau, die uns in Build 260 eingeholt hat.
+
+        DASS ES DIESEN WEG BRAUCHT, hat der Nutzer beim Pruefen selbst
+        gesehen: pdfviewer von Hand gestartet, Bild da - und nach einer
+        Sekunde wieder das Frontend, weil das Frontend weiterlief und
+        darueber zeichnete. Genau derselbe Fehler, der in run_script()
+        schon einmal behoben wurde ("ohne diesen Wechsel bleibt unser
+        eigener Framebuffer ueber der Text-Konsole liegen").
+
+        "wrapped" ist der Weg mit tty1 als steuerndem Terminal, "raw"
+        der Rueckfall ohne. "name" steht nur im Protokoll.
+        """
         self.music.pause_for_core()
         self.enter_console_mode()
         self.set_cursor_blink(True)
@@ -13600,11 +13700,11 @@ class Frontend:
         # unterscheidbar, OB dieser Fall ueberhaupt eintritt.
         try:
             tty = open("/dev/tty1", "r+b", buffering=0)
-            LOG("run_script: /dev/tty1 erfolgreich geoeffnet fuer %s" % path)
+            LOG("_auf_konsole: /dev/tty1 erfolgreich geoeffnet fuer %s" % name)
         except OSError as e:
             tty = None
-            LOG("run_script: /dev/tty1 KONNTE NICHT geoeffnet werden (%s) - "
-                "Skript laeuft ohne explizite Ein-/Ausgabe-Umleitung, "
+            LOG("_auf_konsole: /dev/tty1 KONNTE NICHT geoeffnet werden (%s) - "
+                "Programm laeuft ohne explizite Ein-/Ausgabe-Umleitung, "
                 "vermutlich NICHT sichtbar auf dem Bildschirm!" % e)
         # UEBERNOMMENER VORSCHLAG (TheRealSutefan): tty1 zum STEUERNDEN
         # Terminal des Scripts machen (neuer Session-Leader + TIOCSCTTY).
@@ -13624,26 +13724,20 @@ class Frontend:
         # zeigt zusaetzlich den Exit-Code, unabhaengig davon, ob das
         # Frontend-Eingabesystem waehrend des Konsolenmodus zuverlaessig
         # mitliest. Deutscher Text statt des bisherigen englischen.
-        inner = ('printf "\\033[2J\\033[H"; '
-                 'bash "$0" "$@"; _ec=$?; '
-                 'printf "\\n-- Script beendet (Code %s) - Taste druecken --\\n" "$_ec"; '
-                 'read -rsn1')
-        wrapped = ["/bin/bash", "-c", inner, path] + (list(args) if args else [])
-        raw     = ["/bin/bash", path] + (list(args) if args else [])
-        # Bildschirm dem Script ueberlassen
+        # Bildschirm dem Programm ueberlassen
         try:
             if tty:
-                LOG("run_script: starte mit tty1-Umleitung: %s" % wrapped)
+                LOG("_auf_konsole: starte mit tty1-Umleitung: %s" % wrapped)
                 rc = subprocess.call(wrapped, preexec_fn=_ctty,
                                      stdin=tty, stdout=tty, stderr=tty,
                                      env=dict(os.environ, TERM="linux",
                                               HOME="/root"))
             else:
-                LOG("run_script: starte OHNE tty1-Umleitung (Fallback): %s" % raw)
+                LOG("_auf_konsole: starte OHNE tty1-Umleitung (Fallback): %s" % raw)
                 rc = subprocess.call(raw)
-            LOG("run_script: %s beendet, Ruecksprungwert=%s" % (path, rc))
+            LOG("_auf_konsole: %s beendet, Ruecksprungwert=%s" % (name, rc))
         except Exception as e:
-            LOG("run_script: Fehler bei %s: %s" % (path, e))
+            LOG("_auf_konsole: Fehler bei %s: %s" % (name, e))
         finally:
             if tty:
                 try:
@@ -20830,6 +20924,9 @@ class Frontend:
                     gewaehlt = self.kontextmenue()
                     if gewaehlt is None:
                         self.draw()
+                        continue
+                    if gewaehlt == "anleitung":
+                        self.anleitung_zeigen()
                         continue
                     if gewaehlt == "verstecken":
                         meldung = self._kontext_verstecken()

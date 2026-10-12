@@ -722,6 +722,13 @@ TRANSLATIONS = {
                     "de": "Als durchgespielt merken"},
     "ctx_done_aus": {"en": "No longer completed",
                      "de": "Nicht mehr durchgespielt"},
+    "ctx_anleitung": {"en": "Show manual",
+                      "de": "Anleitung anzeigen"},
+    "anleitung_keine": {"en": "No manual for this game",
+                        "de": "Keine Anleitung zu diesem Spiel"},
+    "anleitung_kein_betrachter": {
+        "en": "Viewer missing - install it with update_all (\"linux\")",
+        "de": "Betrachter fehlt - mit update_all nachladen (\u201elinux\u201c)"},
     "ctx_verstecken": {"en": "Hide this entry",
                        "de": "Diesen Eintrag ausblenden"},
     "ctx_versteckt_ok": {"en": "Hidden: %s",

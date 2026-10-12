@@ -13,6 +13,18 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.8 — noch nicht veröffentlicht
 
+**Die Anleitung zum Spiel — direkt aus der Liste.**
+
+- **Dein Wunsch:** „wenn man im Frontend durch die Spiele scrollt und per Tastendruck sich die Anleitung dazu ansehen könnte."
+- **Jetzt im Kontextmenü** (X am Pad): ganz oben *Anleitung anzeigen* — aber **nur, wenn es für dieses Spiel wirklich eine gibt** und der Betrachter installiert ist. Ein Punkt, der bei neun von zehn Spielen nichts tut, wäre schlimmer als keiner.
+- **Wir bringen keinen eigenen PDF-Betrachter mit.** Angezeigt wird mit dem Programm, das MiSTers eigene Help-Funktion benutzt (`/media/fat/linux/pdfviewer`, ein jfbview; für Text und Markdown `glow`). Beide zeichnen in denselben Linux-Framebuffer wie wir, beide kommen mit `update_all`.
+- **Vor dem Bauen auf dem Gerät geprüft**, und das hat drei Irrtümer verhindert: dass der Betrachter da ist, dass er mit dem Kernel zurechtkommt — und dass die Anleitungen **in einem Unterordner** liegen (`/media/fat/docs/SMS/SMS Manuals/…`) statt direkt im Core-Ordner. Flach nachgesehen hätte das Frontend bei jedem Spiel „keine Anleitung" gesagt.
+- **Der Artwork-Ordner wird beim Suchen ausgelassen** — dort liegen tausende Bilder und keine Anleitung. Gesucht wird einmal je System, danach gemerkt; nach einem Neueinlesen wieder.
+- **Der Name muss nicht genau stimmen:** „Ace of Aces.pdf" wird auch zu „Ace of Aces (Europe).sms" gefunden, mit demselben unscharfen Vergleich wie bei den Covern.
+- **In `/media/fat/docs` wird nichts geschrieben** — der Ordner gehört uns nicht.
+- **Über das laufende Spiel geht es nicht.** Während ein Core läuft, kommt das Bild vom FPGA, und unser Framebuffer ist gar nicht zu sehen; dafür bleibt F12 → Help. Dass das Bild beim Probelauf nach einer Sekunde verschwand, war unser eigenes Frontend — genau dagegen gibt der neue Weg den Bildschirm sauber ab und holt ihn zurück.
+
+
 **Die Vorführung zeigt jetzt die echten Bildschirme — vier Minuten.**
 
 - **Dein Wunsch:** „einmal durch das Frontend scrollen, Ansichten zeigen und alle Features einmal zeigen — nicht nur per Text einblenden."

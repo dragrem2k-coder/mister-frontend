@@ -182,6 +182,7 @@ history to read up on (`CHANGELOG.md`).
    - 8r-5. The button legend
    - 8s. ROMs inside ZIP archives
    - 8s-2. Multi-disc games
+   - 8s-3. The game's manual
    - 8t. Game descriptions
    - 8u. Covers while scrolling
 9. Switching language
@@ -1551,6 +1552,47 @@ does not have to reload the BIOS when switching.
 Switch it off under *Maintenance → Bundle multi-disc games*. The
 setting is part of the game list's fingerprint, so it takes effect at
 the next read.
+
+## 8s-3. The game's manual (Build 263)
+
+When the selected game has a manual on the card, the **context menu**
+(X on the pad, F1 on the keyboard) offers **Show manual** at the very
+top. The entry appears **only then** — one that says „no manual" for
+nine games out of ten would be worse than none.
+
+**We do not ship a viewer of our own.** It is displayed with the
+program MiSTer's own Help function uses:
+
+```
+/media/fat/linux/pdfviewer   (PDF, a jfbview)
+/media/fat/linux/glow        (Markdown and text)
+```
+
+Both come with `update_all` (the "linux" filter). Without the viewer
+the entry does not appear at all.
+
+**Where the files live:** `/media/fat/docs/<core>/…`, a subfolder is
+fine, the way the MiSTer collections do it:
+
+```
+/media/fat/docs/SMS/SMS Manuals/Ace of Aces.pdf
+```
+
+The search covers the core folder and up to three levels below it, and
+**skips the Artwork folder** (thousands of images, no manuals). The
+name need not match exactly — „Ace of Aces.pdf" is found for „Ace of
+Aces (Europe).sms", with the same fuzzy comparison as the covers.
+
+**Nothing is written into `/media/fat/docs`.** That folder is not ours.
+
+**While reading, the frontend hands over the screen** and takes it back
+afterwards — the same path a script takes. In the viewer the arrow keys
+page, **`q` quits**.
+
+**What is not possible:** showing the manual *over* the running game.
+While a core runs the picture comes from the FPGA, and the Linux
+framebuffer we draw into is not on screen at all. For that, **F12 →
+Help** remains the way MiSTer provides.
 
 ## 8t. Game descriptions (since Build 139)
 

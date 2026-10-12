@@ -13,6 +13,18 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.8 — not yet released
 
+**The game's manual — straight from the list.**
+
+- **Your wish:** "while scrolling through the games in the frontend, being able to look at the manual with one key press."
+- **Now in the context menu** (X on the pad): *Show manual* at the very top — but **only when there really is one** for that game and the viewer is installed. An entry that does nothing for nine games out of ten would be worse than none.
+- **We ship no PDF viewer of our own.** It is displayed with the program MiSTer's own Help function uses (`/media/fat/linux/pdfviewer`, a jfbview; `glow` for text and Markdown). Both draw into the same Linux framebuffer we do, and both come with `update_all`.
+- **Checked on the device before building**, which prevented three mistakes: that the viewer is there, that it copes with the kernel — and that the manuals live **in a subfolder** (`/media/fat/docs/SMS/SMS Manuals/…`) rather than in the core folder itself. A flat lookup would have said "no manual" for every game.
+- **The Artwork folder is skipped** while searching — thousands of images, no manuals. The search runs once per system and is then remembered; after a rescan it runs again.
+- **The name need not match exactly:** "Ace of Aces.pdf" is found for "Ace of Aces (Europe).sms", with the same fuzzy comparison as the covers.
+- **Nothing is written into `/media/fat/docs`** — that folder is not ours.
+- **Over the running game it cannot work.** While a core runs the picture comes from the FPGA and our framebuffer is not on screen; F12 → Help remains for that. The picture vanishing after one second during the trial run was our own frontend — exactly what the new path prevents by handing the screen over and taking it back.
+
+
 **The guided tour now shows the real screens — four minutes.**
 
 - **Your wish:** "scroll through the frontend once, show the views and every feature once — not just faded in as text."
