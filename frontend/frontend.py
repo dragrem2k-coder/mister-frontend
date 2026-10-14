@@ -1578,6 +1578,9 @@ class Frontend:
         # Absicherung sitzt jetzt in _konsole_sichern().
         self._f9_wiederholt = 0
         self._f9_aufraeumen_ab = None
+        # Build 264: beim naechsten Nachfassen NICHT erst nachsehen,
+        # sondern in jedem Fall wischen. Siehe _konsole_aufraeumen().
+        self._f9_blind = False
         # Build 212: wann die naechste Portion "zuletzt benutzt"-Marken
         # geschrieben wird. Siehe marken_nachziehen() in fe/art.py.
         self._marken_naechste = 0.0
@@ -13746,6 +13749,20 @@ class Frontend:
                     pass
         self.music.resume_after_core()
         self.back_to_frontend()
+        # NACH EINEM KONSOLENPROGRAMM WIRD IN JEDEM FALL GEWISCHT
+        # (Build 264) - und spaeter als sonst. back_to_frontend() hat
+        # eben ein F9 eingespeist, und jedes eingespeiste F9 weckt den
+        # Login-Prozess; bis der seinen Gruss schreibt, vergeht mehr als
+        # die 1,2 Sekunden, die fuer ein Skript reichen (dort haelt ihn
+        # ausserdem das "Taste druecken" auf). Die Begruendung fuers
+        # blinde Wischen steht in _konsole_aufraeumen().
+        self._f9_grund = name or "Konsolenprogramm"
+        self._f9_blind = True
+        self._f9_aufraeumen_ab = time.monotonic() + self.NACHFASSEN_KONSOLE
+
+    # Wie lange nach einem KONSOLENPROGRAMM gewartet wird, bevor
+    # gewischt wird - mehr als NACHFASSEN_SEK.
+    NACHFASSEN_KONSOLE = 2.5
 
     def draw_core_choice_screen(self, syskey, display_name, default_ra=False):
         """Zwei-Optionen-Auswahl (Normal-Core / RA-Core), gezeigt beim
@@ -18946,6 +18963,38 @@ class Frontend:
         # als Flackern gesehen.
         grund = self._f9_grund
         self._f9_grund = "eingespeist"
+        blind = self._f9_blind
+        self._f9_blind = False
+        if blind:
+            # OHNE NACHSEHEN WISCHEN (Build 264).
+            #
+            # NUTZER-RUECKMELDUNG: "wenn ich dann eine anleitung oeffne
+            # bleib ich ab und zu im login prompt haengen und kann das
+            # frontend also mister einmal neu starten" - geholfen hat
+            # F10, also ein VOLLER Neuaufbau.
+            #
+            # DAS LOG HAT DEN FALL ENTSCHIEDEN: der Betrachter endete
+            # sauber (Ruecksprungwert 0), back_to_frontend() lief,
+            # draw_page_items zeichnete, die Tastendruecke kamen an -
+            # das Frontend lief also die ganze Zeit. Nur stand der
+            # Login-Gruss im Bild und blieb dort stehen.
+            #
+            # WARUM DAS NACHFASSEN IHN NICHT FAND: die Pruefung unten
+            # vergleicht die OBERSTEN 40 BILDZEILEN. Nach einem
+            # Konsolenprogramm steht der Cursor aber nicht mehr oben
+            # links - der Gruss landet irgendwo in der Mitte, und dort
+            # sieht niemand hin. Dieses Fenster ist seit Build 157 so
+            # eng, weil ein Neuaufbau bei JEDEM Blick das Flackern aus
+            # Build 151 zurueckbraechte.
+            #
+            # HIER IST DIE ABWAEGUNG EINE ANDERE: wir WISSEN, dass
+            # gerade ein fremdes Programm auf der Konsole war - es muss
+            # geschrieben haben. Nachsehen hiesse dann, eine sichere
+            # Antwort durch eine unvollstaendige Messung zu ersetzen.
+            # Der Preis ist ein einziger Neuaufbau nach dem Lesen einer
+            # Anleitung; den sieht niemand als Flackern.
+            self._konsole_wischen("nach Konsolenprogramm (%s)" % grund)
+            return
         try:
             hoehe = min(40, self.fb.height)
             n = hoehe * self.fb.stride

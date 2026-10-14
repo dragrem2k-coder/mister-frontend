@@ -173,6 +173,7 @@ python3 tools/regression_test.py \
 | `test_overlay_zustand.py` | Test (Pass/Fail) | stream_state(): in gemischten Kategorien (Zuletzt gespielt, Sammlungen, ...) kommt der Systemkey vom EINTRAG und nicht von der Kategorie - sonst fehlen Cover, Genre, Jahr und RA-Fortschritt |
 | `test_demo_schirme.py` | Test (Pass/Fail) | Die Vorfuehrung zeigt die ECHTEN Bildschirme: die gescriptete Hand am Pad scrollt, hoert puenktlich auf, weicht jeder echten Taste - und die zehn Bildschirme der Tabelle gibt es wirklich und werden wirklich gerufen |
 | `test_anleitung.py` | Test (Pass/Fail) | Die Spielanleitung: gefunden wird im UNTERORDNER und mit unscharfem Namen, der Artwork-Ordner wird NICHT betreten, einmal je System gesucht, und ohne Betrachter gibt es den Menuepunkt gar nicht |
+| `test_konsole_nachfassen.py` | Test (Pass/Fail) | Nach einem Konsolenprogramm wird OHNE Nachsehen gewischt - mit Gegenprobe, dass es in allen anderen Faellen beim alten Verhalten bleibt |
 | `diag_ungeprueft.py` | Diagnose (immer Rueckgabewert 0) | Welche Funktionen betritt KEIN Test - gemessen mit sys.setprofile, nicht ueber Namen im Testtext |
 | `_spur.py` | Hilfsmodul | Laesst eine einzelne Testdatei unter sys.setprofile laufen und schreibt jede betretene Funktion mit |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
@@ -4417,3 +4418,54 @@ Frontend stehen jetzt in `_auf_konsole()`. Zwei Fassungen davon waeren
 genau die Sorte Nachbau, die uns in Build 260 eingeholt hat; der Test
 besteht deshalb darauf, dass es die Funktion **einmal** gibt und
 **zweimal** gerufen wird.
+
+## test_konsole_nachfassen.py (Build 264)
+
+Nutzer-Rueckmeldung zu Build 263: „wenn ich dann eine anleitung oeffne
+bleib ich ab und zu im login prompt haengen und kann das frontend also
+mister einmal neu starten." Geholfen hat **F10** - ein voller
+Neuaufbau.
+
+**Das Log des Geraets hat den Fall entschieden**, und zwar gegen zwei
+naheliegende Vermutungen (abgestuerzt? blockiert?):
+
+```
+13:46:38  _auf_konsole: ... beendet, Ruecksprungwert=0
+13:46:39  enter_console_mode (F9) / grab(True)
+13:46:39  PERF draw_page_items: 59 ms
+13:46:40  aktion: right (Seite 1)
+```
+
+Der Betrachter endete **sauber**, `back_to_frontend()` lief, das
+Frontend **zeichnete**, und die Tastendruecke kamen an. Es lief die
+ganze Zeit - der Login-Gruss stand nur im Bild und blieb dort.
+
+**Warum das vorhandene Nachfassen ihn nicht fand:**
+`_konsole_aufraeumen()` vergleicht die **obersten 40 Bildzeilen** und
+tut nichts, wenn dort nichts Fremdes steht. Nach einem
+Konsolenprogramm steht der Cursor aber nicht mehr oben links; der
+Gruss landet irgendwo in der Mitte. Diese enge Pruefung ist seit Build
+157 Absicht - ein Neuaufbau bei JEDEM Blick waere das Flackern aus
+Build 151.
+
+**Die Abwaegung ist nach einem Konsolenprogramm eine andere**, und
+genau das haelt der Test fest: dort **wissen** wir, dass geschrieben
+wurde. Nachsehen hiesse, eine sichere Antwort durch eine
+unvollstaendige Messung zu ersetzen.
+
+**Mit Gegenprobe**, denn ohne sie waere es eine Verschlimmbesserung:
+
+* **Test 1** stellt dieselbe Lage her (beide Puffer gleich, oben steht
+  nichts) **ohne** Konsolenprogramm - und verlangt, dass **nicht**
+  aufgebaut wird. Sonst waere das Flackern aus Build 151 zurueck.
+* **Test 2** dieselbe Lage **mit** - und verlangt, dass gewischt wird.
+* Dazu: der Blindflug gilt **einmal** (danach wieder aus), **nicht vor
+  dem Termin** (erst muss der Gruss da sein, sonst wischt man vor ihm
+  her), und er wird an **genau einer Stelle** gesetzt.
+* Der Termin ist mit 2,5 s **laenger** als die 1,2 s fuer ein Skript:
+  ein Skript endet in einer Shell, die weiterlaeuft; ein Betrachter
+  gibt die Konsole zurueck, und erst danach meldet sich der
+  Login-Prozess.
+* Und die alte Pruefung steht **weiterhin da** - fuer das F9 beim
+  Start und das F9 des Nutzers, wo gar nicht feststeht, ob jemand
+  geschrieben hat.

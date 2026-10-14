@@ -13,6 +13,16 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.8 — noch nicht veröffentlicht
 
+**Berichtigt: nach dem Lesen einer Anleitung blieb der Login-Gruß stehen.**
+
+- **Gemeldet:** „wenn ich dann eine Anleitung öffne, bleib ich ab und zu im Login-Prompt hängen" — geholfen hat **F10**, also ein voller Neuaufbau.
+- **Das Log hat den Fall entschieden, und zwar gegen zwei naheliegende Vermutungen:** der Betrachter endete sauber (Rücksprungwert 0), das Frontend kehrte zurück, **zeichnete** (`draw_page_items: 59 ms`) und nahm die nächsten Tastendrücke an. Es war weder abgestürzt noch blockiert — der Gruß stand nur im Bild und blieb dort.
+- **Warum das vorhandene Nachfassen ihn nicht fand:** es vergleicht die **obersten 40 Bildzeilen**. Nach einem Konsolenprogramm steht der Cursor aber nicht mehr oben links; der Gruß landet irgendwo in der Mitte — und dort sieht niemand hin. Diese enge Prüfung ist seit Build 157 Absicht, sonst käme das Flackern aus Build 151 zurück.
+- **Jetzt wird nach einem Konsolenprogramm ohne Nachsehen gewischt.** Die Abwägung ist dort eine andere: wir *wissen*, dass gerade ein fremdes Programm auf der Konsole war. Nachsehen hieße, eine sichere Antwort durch eine unvollständige Messung zu ersetzen. Der Preis ist ein einziger Neuaufbau nach dem Lesen — den sieht niemand als Flackern.
+- **Und etwas später als sonst** (2,5 statt 1,2 Sekunden): ein Skript endet in einer Shell, die weiterläuft; ein Betrachter gibt die Konsole zurück, und *erst danach* meldet sich der Login-Prozess.
+- **Für alle anderen Fälle bleibt die alte Prüfung unverändert** — beim F9 beim Start und beim F9 des Nutzers steht ja gar nicht fest, ob jemand geschrieben hat.
+
+
 **Die Anleitung zum Spiel — direkt aus der Liste.**
 
 - **Dein Wunsch:** „wenn man im Frontend durch die Spiele scrollt und per Tastendruck sich die Anleitung dazu ansehen könnte."

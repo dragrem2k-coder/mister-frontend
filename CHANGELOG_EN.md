@@ -13,6 +13,16 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.8 — not yet released
 
+**Fixed: the login greeting stayed on screen after reading a manual.**
+
+- **Reported:** "when I open a manual I sometimes get stuck at the login prompt" — what helped was **F10**, that is, a full rebuild.
+- **The log decided the case, against two obvious guesses:** the viewer exited cleanly (return code 0), the frontend came back, **drew** (`draw_page_items: 59 ms`) and accepted the next key presses. It had neither crashed nor blocked — the greeting was simply in the picture and stayed there.
+- **Why the existing follow-up missed it:** it compares the **top 40 pixel rows**. After a console program the cursor is no longer at the top left; the greeting lands somewhere in the middle — and nobody looks there. That narrow check has been deliberate since Build 157, otherwise the flicker from Build 151 returns.
+- **Now the console is wiped without looking after a console program.** The trade-off is different there: we *know* a foreign program was just on the console. Looking would mean replacing a certain answer with an incomplete measurement. The price is one rebuild after reading — nobody sees that as flicker.
+- **And a little later than usual** (2.5 instead of 1.2 seconds): a script ends in a shell that keeps running; a viewer hands the console back, and only *then* does the login process speak up.
+- **For every other case the old check is unchanged** — with the F9 at startup and the user's own F9 it is not established that anyone wrote at all.
+
+
 **The game's manual — straight from the list.**
 
 - **Your wish:** "while scrolling through the games in the frontend, being able to look at the manual with one key press."

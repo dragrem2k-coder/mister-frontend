@@ -1882,7 +1882,16 @@ nicht.
 
 **Beim Lesen gibt das Frontend den Bildschirm ab** und holt ihn danach
 zurück — derselbe Weg wie bei einem Skript. Im Betrachter blättern die
-Pfeiltasten, **`q` beendet** ihn.
+Pfeiltasten, **`q` beendet** ihn. Danach wird die Textkonsole
+**in jedem Fall** einmal gewischt und die Seite neu aufgebaut (Build
+264): ein Konsolenprogramm hat mit Sicherheit dort hineingeschrieben,
+und der Login-Gruß landet nicht zwingend oben, wo die übliche Prüfung
+hinsieht.
+
+**Falls das Kontextmenü auf deinem Pad nicht aufgeht:** die Taste dafür
+heißt intern *Zurück ins Frontend* und lässt sich unter *Eingabe &
+Sprache → Tasten belegen* frei vergeben. Pads melden den X-Knopf nicht
+alle unter demselben Code.
 
 **Was nicht geht:** die Anleitung über das *laufende* Spiel legen.
 Während ein Core läuft, kommt das Bild vom FPGA, und der

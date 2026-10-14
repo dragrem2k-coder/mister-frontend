@@ -1587,7 +1587,15 @@ Aces (Europe).sms", with the same fuzzy comparison as the covers.
 
 **While reading, the frontend hands over the screen** and takes it back
 afterwards — the same path a script takes. In the viewer the arrow keys
-page, **`q` quits**.
+page, **`q` quits**. Afterwards the text console is wiped **in any
+case** and the page rebuilt (Build 264): a console program has
+certainly written there, and the login greeting does not necessarily
+land at the top where the usual check looks.
+
+**If the context menu does not open on your pad:** its key is called
+*Back to frontend* internally and can be assigned freely under *Input &
+language → Configure buttons*. Not all pads report the X button under
+the same code.
 
 **What is not possible:** showing the manual *over* the running game.
 While a core runs the picture comes from the FPGA, and the Linux
