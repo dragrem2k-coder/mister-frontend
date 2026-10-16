@@ -37,12 +37,25 @@ WAS DIESE PROBE DAZU BEITRAEGT
      Vorauslese (prefetch) sagt. Genau dort liegen bei dieser CPU
      (Cyclone V, Cortex-A9) die ueblichen 20-30 Prozent.
 
-Es wird NICHTS geaendert und nichts auf die Karte geschrieben. Das
-Frontend muss dafuer NICHT beendet werden - gemessen wird nur gerechnet
-(am besten trotzdem ohne laufendes Spiel, damit die CPU frei ist).
+Es wird NICHTS geaendert und nichts auf die Karte geschrieben.
+
+DAS FRONTEND MUSS VORHER BEENDET WERDEN - und dieser Satz stand hier
+erst falsch drin ("muss nicht"). Der Nutzer hat die Probe einmal mit
+laufendem Frontend gestartet (loadavg 0,59), und dieselbe Maschine,
+derselbe Kernel, dieselbe Datei lieferte:
+
+    7,9 MB in RAM kopieren      37,67 ms  ohne Frontend
+                                42,02 ms  mit Frontend   (+12 %)
+    1 MB packen                 45,89 ms  /  51,21 ms    (+12 %)
+
+ZWOELF PROZENT STREUUNG SIND MEHR, als der Unterschied, nach dem hier
+gesucht wird. Eine Messung mit laufendem Frontend ist damit nicht
+unpraezise, sondern unbrauchbar - sie kann einen Kernel-Unterschied
+vortaeuschen und einen echten verdecken.
 
 BENUTZUNG
 
+    kill $(cat /tmp/frontend.lock) ; sleep 2
     python3 /media/fat/frontend/cpu_tempo_probe.py
 
 Die Ausgabe landet zusaetzlich in /tmp/dragend_cpu_probe.txt.
