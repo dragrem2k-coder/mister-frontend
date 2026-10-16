@@ -1687,9 +1687,12 @@ class InputManager:
             finally:
                 fcntl.fcntl(d.fd, fcntl.F_SETFL, fl)
 
-    def inject(self, keycode):
+    def inject(self, keycode, pause=None):
         """Tasten-Event einspeisen (bevorzugt ueber die Tastatur).
         Funktioniert nur bei geloestem Grab.
+
+        "pause" ist die Haltedauer je Richtung; None heisst
+        INJECT_PAUSE (siehe die Begruendung dort).
 
         BUGFIX (Nutzer-Rueckmeldung): auf MiSTer-Setups mit einem
         Sony/PlayStation-artigen Controller wurde bisher IMMER dessen
@@ -1712,6 +1715,7 @@ class InputManager:
             LOG("inject(%d): KEIN Zielgeraet!" % keycode)
             return
         LOG("inject(%d) -> %s" % (keycode, target.path))
+        halt = self.INJECT_PAUSE if pause is None else pause
         for value in (1, 0):
             ev  = struct.pack(EVENT_FMT, 0, 0, EV_KEY, keycode, value)
             syn = struct.pack(EVENT_FMT, 0, 0, EV_SYN, 0, 0)
@@ -1719,7 +1723,29 @@ class InputManager:
                 os.write(target.fd, ev + syn)
             except OSError:
                 pass
-            time.sleep(0.05)
+            if halt > 0:
+                time.sleep(halt)
+
+    # WIE LANGE EINE EINGESPEISTE TASTE GEDRUECKT BLEIBT.
+    #
+    # Die 0,05 s stehen hier seit dem F9-Einspeisen, und fuer F9
+    # bleiben sie auch: dort wartet MiSTers Main darauf, die Taste in
+    # seiner eigenen Abfrage zu SEHEN, und ein zu kurzer Druck ist
+    # genau der Fehler, der in den Builds 146-152 gejagt wurde ("ein
+    # einzelnes F9 sitzt auf diesem Geraet nicht immer").
+    #
+    # GEZAEHLT, NICHT GESCHAETZT: die Schleife schlaeft ZWEIMAL, nach
+    # dem Druecken und nach dem Loslassen. Ein eingespeister
+    # Tastendruck kostet damit 0,1 s - und wer in einer Anleitung
+    # blaettert, bezahlt das je Seite (Build 269,
+    # Nutzer-Rueckmeldung: "l und r Taste funktioniert, aber alles
+    # sehr langsam").
+    #
+    # Fuer eine Taste, die an ein LINUX-PROGRAMM geht, braucht es das
+    # Warten nicht: dort liest der Kernel das Ereignis sofort und
+    # legt das Zeichen in die Konsole. Deshalb ist die Pause jetzt ein
+    # Parameter, und nur der Anleitungs-Betrachter macht sie kurz.
+    INJECT_PAUSE = 0.05
 
     def close(self):
         for d in self.devices.values():

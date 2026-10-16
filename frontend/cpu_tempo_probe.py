@@ -66,6 +66,8 @@ NAMEN = {
     "memcpy1": "1 MB in RAM kopieren",
     "memcpy8": "7,9 MB in RAM kopieren",
     "zlib": "1 MB packen, Stufe 1",
+    "stride_r": "verstreut lesen, jede 64. Stelle",
+    "stride_w": "verstreut schreiben, jede 64.",
 }
 
 _zeilen = []
@@ -167,6 +169,34 @@ def rechnen():
         zlib.compress(packbar[:1024 * 1024], 1)
 
     ergebnis["zlib"] = messen(_zlib)
+
+    # 6. VERSTREUTER ZUGRIFF - die Zeile, die in der ersten Fassung
+    #    dieser Probe gefehlt hat, und die Zeile, auf die es ankommt.
+    #
+    #    Der A/B-Vergleich mit Bench 9 (Build 268 auf beiden Kerneln)
+    #    hat die Arbeit sortiert: reine Rechenschleifen gleich,
+    #    SEQUENZIELLES Kopieren gleich - aber Nearest-Verkleinern
+    #    (+17 %), PNG dekodieren (+14 %) und der Start (+16 %) auf
+    #    dem neuen Kernel teurer. Allen dreien ist gemeinsam, dass
+    #    sie NICHT der Reihe nach durch den Speicher gehen.
+    #
+    #    Hier wird genau das nachgestellt: jede 64. Stelle eines
+    #    ganzen Bildes anfassen - eine Cache-Zeile je Schritt, also
+    #    reiner Fehlzugriff, und nichts, was eine Vorauslese
+    #    erraten kann. Die Kopie selbst macht Python in C, der
+    #    Interpreter steht also nicht im Weg.
+    mv = memoryview(ziel8)
+
+    def _stride_lesen():
+        mv[::64].tobytes()
+
+    ergebnis["stride_r"] = messen(_stride_lesen)
+    kurz = bytes(len(mv[::64]))
+
+    def _stride_schreiben():
+        mv[::64] = kurz
+
+    ergebnis["stride_w"] = messen(_stride_schreiben)
     return ergebnis
 
 
@@ -180,7 +210,7 @@ def main():
     kopf("2. Rechnen - nichts davon beruehrt Bildschirm oder Karte")
     e = rechnen()
     for schluessel in ("schleife", "float", "translate", "memcpy1",
-                       "memcpy8", "zlib"):
+                       "memcpy8", "zlib", "stride_r", "stride_w"):
         wert = e.get(schluessel)
         if not wert:
             continue
@@ -260,9 +290,14 @@ def main():
     sag("Frontend nichts zu holen - dann gehoert der Befund ins")
     sag("MiSTer-Forum, mit diesen Zahlen.")
     sag()
-    sag("Sind die Schleifen gleich und nur die Speicher-Zeilen langsamer,")
-    sag("ist es der L2-Cache bzw. seine Vorauslese - dann sagt Abschnitt")
-    sag("4 im Vergleich, welche Einstellung sich geaendert hat.")
+    sag("Sind die Schleifen und die sequenziellen Kopien gleich und nur")
+    sag("die VERSTREUTEN Zeilen langsamer, ist es der L2-Cache bzw. seine")
+    sag("Vorauslese - dann sagt Abschnitt 4 im Vergleich, welche")
+    sag("Einstellung sich geaendert hat. Genau dieser Fall ist nach dem")
+    sag("Bench-Vergleich der wahrscheinliche: dort waren sequenzielles")
+    sag("Kopieren und Flip gleich, aber Nearest-Verkleinern (+17 %), PNG")
+    sag("dekodieren (+14 %) und der Start (+16 %) teurer - alle drei")
+    sag("gehen nicht der Reihe nach durch den Speicher.")
     sag()
     sag("Diese Ausgabe bitte komplett zurueckschicken.")
 

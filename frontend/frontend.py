@@ -13740,7 +13740,7 @@ class Frontend:
                     puls = None
             # Mit Puls engmaschiger, damit ein Tastendruck nicht
             # fuehlbar nachhinkt; ohne Puls wie bisher.
-            time.sleep(0.05 if puls is not None else 0.2)
+            time.sleep(self.PULS_TAKT if puls is not None else 0.2)
         LOG("_auf_konsole: %s %s - wird beendet" % (name, grund))
         try:
             proc.terminate()
@@ -14087,6 +14087,41 @@ class Frontend:
     # zwischen "haengt" und "dauert einen Moment".
     ANLEITUNG_RAUS_FRIST = 3.0
 
+    # WAS EIN BLAETTERN KOSTET (Build 269)
+    # ------------------------------------------------------------------
+    # NUTZER-RUECKMELDUNG zu Build 268: "l und r Taste funktioniert
+    # doch, aber alles sehr langsam unter dem neuen Kernel, das lief
+    # beim alten besser - also laeuft das alles, nur halt deutlich
+    # langsamer."
+    #
+    # ZWEI POSTEN, und nur einer davon gehoert uns:
+    #
+    #   1. DER BETRACHTER selbst. Eine eingescannte Seite auf
+    #      1920x1080 zu rechnen ist genau die Art Arbeit, die auf
+    #      6.18 gemessen 14-17 % mehr kostet (Nearest 578x770,
+    #      PNG dekodieren - siehe die A/B-Messung mit Build 268 auf
+    #      beiden Kerneln). Daran koennen wir nichts aendern.
+    #
+    #   2. UNSER EINSPEISEN, und das ist bezifferbar: inject()
+    #      schlaeft ZWEIMAL je Taste (nach dem Druecken und nach dem
+    #      Loslassen), bisher 0,05 s - also 0,1 s je Blaettern, dazu
+    #      bis zu einem Taktschlag Wartezeit im Puls. Das waren
+    #      0,15 s, bevor der Betrachter ueberhaupt anfing.
+    #
+    # Die 0,05 s sind fuer F9 richtig (dort muss MiSTers Main die
+    # Taste in seiner eigenen Abfrage sehen, siehe INJECT_PAUSE in
+    # fe/input.py). Fuer eine Taste, die an ein Linux-Programm geht,
+    # nicht: der Kernel liest das Ereignis sofort. 4 ms sind reichlich
+    # und bleiben deutlich ueber dem, was ein Tastendruck physisch
+    # dauert.
+    ANLEITUNG_TASTEN_PAUSE = 0.004
+
+    # Wie oft waehrend eines Betrachters nach dem Pad gesehen wird.
+    # Der Blick selbst ist ein select() mit Zeitlimit 0 und kostet
+    # nichts - 0,02 s heisst also nur, dass ein Tastendruck
+    # hoechstens 20 ms wartet, bevor er weitergegeben wird.
+    PULS_TAKT = 0.02
+
     _anleitung_raus_seit = None
 
     def _anleitung_pult(self, proc):
@@ -14109,7 +14144,7 @@ class Frontend:
                 self._anleitung_raus_seit = time.monotonic()
                 LOG("Anleitung: Ausstieg gewuenscht - Escape an den "
                     "Betrachter")
-                self.inp.inject(KEY_ESC)
+                self.inp.inject(KEY_ESC, pause=self.ANLEITUNG_TASTEN_PAUSE)
             else:
                 # Zweiter Druck: der Nutzer hat gewartet und will
                 # raus. Jetzt wird nicht mehr gefragt.
@@ -14119,7 +14154,7 @@ class Frontend:
         elif act:
             code = self.ANLEITUNG_TASTEN.get(act)
             if code:
-                self.inp.inject(code)
+                self.inp.inject(code, pause=self.ANLEITUNG_TASTEN_PAUSE)
         if (self._anleitung_raus_seit is not None
                 and time.monotonic() - self._anleitung_raus_seit
                 > self.ANLEITUNG_RAUS_FRIST):

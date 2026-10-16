@@ -1599,7 +1599,9 @@ afterwards — the same path a script takes.
 | **B** | Esc or `q` | close |
 
 The pad is read **by the frontend itself** and translated into those
-keys. Before, it depended on MiSTer's own pad translation, which did
+keys — since build 269 with a **4 ms** hold instead of 50, i.e. 92 ms
+faster per page (before that, paging with the pad felt noticeably more
+sluggish than with the keyboard, and that was exactly why). Before, it depended on MiSTer's own pad translation, which did
 not always kick in — one user could only page after pressing the space
 bar once. The keyboard stays free and works directly, as always.
 

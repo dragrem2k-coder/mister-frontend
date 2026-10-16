@@ -4615,3 +4615,33 @@ Abschnitt JOYSTICK: „btn1 - enter", „L - pageup", „R - pagedn"). Dort
 steht auch, *dass* MiSTer die Knoepfe in Tasten uebersetzt - die
 Erklaerung fuer „ich kann erst blaettern, wenn ich einmal die
 Leertaste gedrueckt habe".
+
+### Nachtrag Build 269: die Gegenprobe des Nutzers hat die Zahl gefunden
+
+**Zwei Saetze, eine Diagnose.** Erst: „l und r Taste funktioniert doch,
+aber alles sehr langsam unter dem neuen Kernel." Dann: **„mit der
+Tastatur hab ich gerade getestet, da laeuft es besser."**
+
+Das ist eine **Gegenprobe mit eingebauter Kontrolle**, und sie schliesst
+in einem Satz zwei Verdaechtige aus: die Tastatur geht DIREKT an den
+Betrachter, das Pad ueber unseren Weg. Laeuft die Tastatur schnell,
+dann ist weder der Betrachter noch der Kernel langsam - dann sind wir
+es. Genau diese Sorte Rueckmeldung ist wertvoller als ein Protokoll:
+sie vergleicht zwei Wege auf derselben Maschine zur selben Minute.
+
+**Und der Posten war bezifferbar, ohne eine einzige Messung:**
+`inject()` schlaeft ZWEIMAL je Taste. Zweimal 0,05 s sind 0,1 s je
+Blaettern - das steht im Quelltext und nicht in einer Uhr.
+
+**Geprueft wird es deshalb auch durch ZAEHLEN.** Der Test ersetzt
+`time.sleep` durch einen Zaehler und addiert, wie lange `inject()` zu
+schlafen VERLANGT: 0,100 s fuer F9, 0,008 s fuer ein Blaettern. Eine
+Stoppuhr waere hier wieder in die eingefrorene Uhr des Pruefstands
+gelaufen (siehe den Nachtrag zu Build 267) - der Zaehler kann das
+nicht.
+
+**Die Vorgabe bleibt bei 0,05 s**, und der Test haelt das fest: F9 muss
+von MiSTers Main in dessen EIGENER Abfrage gesehen werden, das war die
+Jagd der Builds 146-152. Ein dritter Einspeise-Fall faellt ebenfalls
+auf - der Test zaehlt alle `inject()`-Aufrufe im Frontend und verlangt,
+dass jeder einer der beiden bedachten Faelle ist.

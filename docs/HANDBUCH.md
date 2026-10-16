@@ -1894,7 +1894,9 @@ zurück — derselbe Weg wie bei einem Skript.
 | **B** | Esc oder `q` | schließen |
 
 Das Pad wird dabei **vom Frontend selbst** gelesen und in diese Tasten
-übersetzt. Vorher hing es an MiSTers eigener Pad-Übersetzung, und die
+übersetzt — seit Build 269 mit **4 ms** Haltedauer statt 50, also 92 ms
+schneller je Seite (vorher war das Blättern am Pad fühlbar träger als
+an der Tastatur, und genau daran lag es). Vorher hing es an MiSTers eigener Pad-Übersetzung, und die
 sprang nicht immer an — ein Nutzer konnte erst blättern, nachdem er
 einmal die Leertaste gedrückt hatte. Die Tastatur bleibt frei und wirkt
 wie immer direkt.

@@ -13,6 +13,16 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.8 — noch nicht veröffentlicht
 
+**Schneller: ein Blättern in der Anleitung kostet keine Zehntelsekunde mehr.**
+
+- **Gemeldet:** „L und R Taste funktioniert doch, aber alles sehr langsam unter dem neuen Kernel" — und dann der entscheidende Nachtrag: **„mit der Tastatur hab ich gerade getestet, da läuft es besser."**
+- **Das ist die Messung, die es entscheidet.** Die Tastatur geht *direkt* an den Betrachter, das Pad über unseren Weg. Ist die Tastatur schnell und das Pad nicht, dann ist nicht der Betrachter langsam und nicht der Kernel — **dann sind wir es.**
+- **Und es ist bezifferbar, gezählt statt geschätzt:** eine eingespeiste Taste wurde zweimal 0,05 s gehalten (nach dem Drücken und nach dem Loslassen), also **0,1 s je Blättern**, dazu bis zu 0,05 s Wartezeit, bis unser Blick aufs Pad überhaupt kam.
+- **Die 0,05 s sind für F9 richtig und bleiben dort:** MiSTers Main muss die Taste in seiner *eigenen* Abfrage sehen — das war die Fehlersuche der Builds 146–152. Für eine Taste, die an ein Linux-Programm geht, braucht es das nicht; der Kernel liest das Ereignis sofort.
+- **Jetzt: 4 ms je Richtung statt 50.** Gespart **92 ms je Seite**, dazu der Blick aufs Pad alle 20 ms statt alle 50. Geprüft wird das **durch Zählen**, nicht mit einer Stoppuhr — der Prüfstand friert die Uhr ein, und ein Zeittest an einer stehenden Uhr prüft das Gegenteil dessen, was er behauptet.
+- **Was bleibt:** der Betrachter selbst rechnet eine eingescannte Seite auf 1920×1080, und das ist auf dem neuen Kernel gemessen 14–17 % teurer. Daran ändert das nichts.
+
+
 **Berichtigt, dritter Anlauf — diesmal mit Messwerten vom Gerät: die Anleitung bekommt eine eigene Konsole, und das Pad eine eigene Hand.**
 
 - **Gemeldet:** „läuft ein wenig besser … wenn ich dann durchscrolle durch die Anleitung reagiert nach ein paar Sekunden nicht mehr, wirkt wie eingefroren, abgestürzt … ich kann erst mit dem Joypad blättern wenn ich einmal auf der Tastatur die Leertaste gedrückt habe."

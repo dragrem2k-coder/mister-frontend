@@ -378,7 +378,7 @@ try:
           "read_action(timeout=0)" in _pu,
           "sonst stuende der Betrachter bei jedem Blick still")
     check("B/Esc schickt Escape an den Betrachter",
-          "self.inp.inject(KEY_ESC)" in _pu and "ANLEITUNG_RAUS" in _pu,
+          "self.inp.inject(KEY_ESC" in _pu and "ANLEITUNG_RAUS" in _pu,
           "'btn2 - escape -- quit'")
     check("und wenn der nicht aufhoert, beenden WIR ihn",
           "ANLEITUNG_RAUS_FRIST" in _pu and "return True" in _pu,
@@ -422,6 +422,66 @@ try:
                   encoding="utf-8").read().count(
                       '"keyboard" in d.name.lower()') == 1,
           "zwei Fassungen davon waeren der Nachbau aus Build 260")
+
+    # -----------------------------------------------------------------
+    print()
+    print("Test 11: ein Blaettern kostet keine Zehntelsekunde (Build 269)")
+    # -----------------------------------------------------------------
+    # NUTZER-RUECKMELDUNG zu Build 268: "l und r Taste funktioniert
+    # doch, aber alles sehr langsam unter dem neuen Kernel."
+    #
+    # GEZAEHLT, NICHT GESTOPPT - und zwar aus einem Grund, der in
+    # diesem Projekt schon dreimal wehgetan hat: der Pruefstand friert
+    # time.monotonic() ein (siehe tools/_harness.py), eine Stoppuhr
+    # wuerde hier also das Gegenteil dessen messen, was sie behauptet.
+    # Gezaehlt wird deshalb, WIE LANGE inject() zu schlafen VERLANGT -
+    # und das ist die Zahl, um die es geht.
+    geschlafen = []
+    _echt_sleep = FI.time.sleep
+    FI.time.sleep = lambda s: geschlafen.append(s)
+    _r, _w = os.pipe()
+    try:
+        class _SchreibDev(_FakeDev):
+            def __init__(self):
+                _FakeDev.__init__(self, "/dev/input/event0",
+                                  "Logitech USB Keyboard", True)
+                self.fd = _w
+
+        mgr.devices = {"/dev/input/event0": _SchreibDev()}
+        mgr.inject(FI.KEY_F9)
+        f9 = sum(geschlafen)
+        del geschlafen[:]
+        mgr.inject(FI.KEY_PAGEDOWN, pause=0.004)
+        blaettern = sum(geschlafen)
+    finally:
+        FI.time.sleep = _echt_sleep
+        os.close(_r)
+        os.close(_w)
+    check("F9 haelt die Taste weiter 0,05 s je Richtung",
+          abs(f9 - 0.1) < 1e-9, "%.3f s" % f9,)
+    check("ein Blaettern dagegen nur Millisekunden",
+          abs(blaettern - 0.008) < 1e-9, "%.3f s statt %.3f s - "
+          "gespart %.0f ms je Seite" % (blaettern, f9,
+                                        (f9 - blaettern) * 1000))
+    check("und die Vorgabe bleibt die alte",
+          FI.InputManager.INJECT_PAUSE == 0.05,
+          "F9 ist der Grund: MiSTers Main muss die Taste in seiner "
+          "eigenen Abfrage SEHEN - das war die Jagd der Builds 146-152")
+    _fe2 = io.open(os.path.join(_FRONTEND_DIR, "frontend.py"),
+                   encoding="utf-8").read()
+    check("die Anleitung speist mit der kurzen Pause ein",
+          _fe2.count("pause=self.ANLEITUNG_TASTEN_PAUSE") == 2,
+          "beide Stellen: die Blaettertaste und das Escape")
+    # Jeder Einspeise-Aufruf im Frontend ist entweder die Anleitung
+    # (kurze Pause) oder ein F9/F12 (alte Pause). Ein dritter Fall
+    # waere eine Taste, deren Haltedauer niemand bedacht hat.
+    _aufrufe = [z.strip() for z in _fe2.splitlines()
+                if "self.inp.inject(" in z]
+    check("jeder Einspeise-Aufruf ist einer der beiden Faelle",
+          all(("pause=self.ANLEITUNG_TASTEN_PAUSE" in z
+               or "inject(KEY_F9)" in z or "inject(KEY_F12)" in z)
+              for z in _aufrufe) and len(_aufrufe) == 6,
+          "%d Aufrufe: %s" % (len(_aufrufe), _aufrufe))
 finally:
     shutil.rmtree(TMP, ignore_errors=True)
 

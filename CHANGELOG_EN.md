@@ -13,6 +13,16 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.8 — not yet released
 
+**Faster: paging in a manual no longer costs a tenth of a second.**
+
+- **Reported:** "L and R do work, but everything is very slow on the new kernel" — then the decisive addition: **"I just tested with the keyboard, it runs better there."**
+- **That is the measurement that settles it.** The keyboard goes *straight* to the viewer, the pad goes through our path. If the keyboard is fast and the pad is not, then it is neither the viewer nor the kernel — **it is us.**
+- **And it is countable, not estimated:** an injected key was held twice for 0.05 s (after press and after release), i.e. **0.1 s per page turn**, plus up to 0.05 s before our look at the pad even came round.
+- **The 0.05 s are right for F9 and stay there:** MiSTer's Main has to see that key in its *own* polling — that was the hunt of builds 146–152. A key that goes to a Linux program does not need it; the kernel reads the event immediately.
+- **Now: 4 ms per direction instead of 50.** That saves **92 ms per page**, plus the look at the pad every 20 ms instead of every 50. Verified **by counting**, not with a stopwatch — the harness freezes the clock, and a timing test on a stopped clock proves the opposite of what it claims.
+- **What remains:** the viewer itself rasterizes a scanned page at 1920×1080, and that is a measured 14–17 % more expensive on the new kernel. This does not change that.
+
+
 **Fixed, third attempt — this time with numbers from the device: the manual gets its own console, and the pad gets our own hand.**
 
 - **Reported:** "runs a little better … but when I scroll through the manual it stops responding after a few seconds, looks frozen, crashed … I can only page with the joypad after pressing the space bar on the keyboard once."
