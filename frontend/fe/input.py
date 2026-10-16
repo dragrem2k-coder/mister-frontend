@@ -48,6 +48,13 @@ KEY_TAB = 15
 # jeder anderen ungenutzten Buchstabentaste.
 KEY_SPACE = 57
 KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT = 103, 108, 105, 106
+# NICHT IN DER KEYMAP, sondern zum EINSPEISEN (Build 268): der
+# Anleitungs-Betrachter blaettert mit Bild-auf/Bild-ab, und das
+# Frontend speist diese Tasten fuer das Pad selbst ein (siehe
+# ANLEITUNG_TASTEN in frontend.py). Sie stehen hier, weil alle
+# Tastencodes hier stehen - zwei Zahlen an einer zweiten Stelle waere
+# genau die Sorte Doppelwissen, die uns schon einmal eingeholt hat.
+KEY_PAGEUP, KEY_PAGEDOWN = 104, 109
 # NEUES FEATURE (Nutzerwunsch: "waere F2 im Frontend noch frei? wuerde
 # gerne die Volltextsuche mit der Taste einbauen"): F2 war bislang
 # tatsaechlich komplett unbelegt (siehe Kommentar bei KEY_F5 weiter
@@ -625,6 +632,8 @@ class InputManager:
     def __init__(self):
         self.devices = {}
         self.want_grab = False
+        # Geraetepfad, der vom Grab ausgenommen bleibt - siehe grab().
+        self.grab_ausnahme = None
         self.last_scan = 0.0
         self.held = None          # (key_id, aktion, naechste_zeit, intervall)
         # Letzte TATSAECHLICHE Wiederholung (nicht: letzter Tastendruck) -
@@ -710,7 +719,10 @@ class InputManager:
             if path not in self.devices:
                 try:
                     d = Device(path, name, is_kbd)
-                    d.grab(self.want_grab)
+                    # Die Ausnahme aus grab(..., ausser=...) gilt auch
+                    # fuer ein Geraet, das erst jetzt auftaucht.
+                    d.grab(self.want_grab
+                           and path != getattr(self, "grab_ausnahme", None))
                     self.devices[path] = d
                     LOG("Geraet: %s '%s' kbd=%s achsen=%s"
                         % (path, name, is_kbd, sorted(d.axis)))
@@ -728,11 +740,42 @@ class InputManager:
         if not self._select_down:
             self._select_kombiniert = False
 
-    def grab(self, on):
-        LOG("grab(%s)" % on)
+    def grab(self, on, ausser=None):
+        """Eingabegeraete exklusiv uebernehmen - oder freigeben.
+
+        "ausser" ist ein Geraetepfad, der AUSGENOMMEN bleibt (Build
+        268). Gebraucht wird das genau einmal: waehrend der Anleitung
+        gehoert das Pad uns (damit wir die Blaettertasten selbst
+        einspeisen koennen und MiSTer die Knoepfe nicht sieht), die
+        TASTATUR aber nicht - in ein gegriffenes Geraet eingespeiste
+        Tasten bekommt nur der Greifer selbst, und das waeren dann
+        wir statt des Betrachters.
+
+        Die Ausnahme wird gemerkt, weil rescan() neu aufgetauchte
+        Geraete nach want_grab greift - ohne das Merken waere die
+        Ausnahme beim naechsten Hotplug-Blick wieder weg."""
+        LOG("grab(%s%s)" % (on, (" ausser %s" % ausser) if ausser else ""))
         self.want_grab = on
+        self.grab_ausnahme = ausser if on else None
         for d in self.devices.values():
-            d.grab(on)
+            d.grab(on and d.path != ausser)
+
+    def inject_ziel(self):
+        """Das Geraet, in das inject() schreiben wuerde - oder None.
+
+        HERAUSGELOEST (Build 268), damit der Aufrufer VORHER weiss,
+        welches Geraet frei bleiben muss. Die Suche steht damit
+        weiterhin an genau EINER Stelle; zwei Fassungen davon waeren
+        genau der Nachbau, der in Build 260 die Cover gekostet hat."""
+        for d in self.devices.values():
+            if "keyboard" in d.name.lower():
+                return d
+        for d in self.devices.values():
+            if d.is_kbd:
+                return d
+        if self.devices:
+            return next(iter(self.devices.values()))
+        return None
 
     def seiten_aktionen_setzen(self, aktionen):
         """Welche Richtungen gerade eine ganze Seite bewegen (Build 136).
@@ -1664,18 +1707,7 @@ class InputManager:
         suchen, das "keyboard" im NAMEN traegt (deutlich zuverlaessigeres
         Signal als der generische Kernel-Handler) - nur wenn keins
         gefunden wird, auf die bisherige is_kbd-Heuristik zurueckfallen."""
-        target = None
-        for d in self.devices.values():
-            if "keyboard" in d.name.lower():
-                target = d
-                break
-        if target is None:
-            for d in self.devices.values():
-                if d.is_kbd:
-                    target = d
-                    break
-        if target is None and self.devices:
-            target = next(iter(self.devices.values()))
+        target = self.inject_ziel()
         if target is None:
             LOG("inject(%d): KEIN Zielgeraet!" % keycode)
             return

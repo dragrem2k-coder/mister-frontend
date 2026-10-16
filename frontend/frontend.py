@@ -1263,7 +1263,8 @@ from fe.input import (
     Device, EV_ABS, EV_KEY, EV_SYN, InputManager, KEYMAP,
     KEYMAP_CUSTOM_FILE, KEY_BACKSPACE, KEY_DOWN, KEY_ENTER, KEY_ESC, KEY_F10,
     KEY_F11, KEY_F12, KEY_F6, KEY_F7, KEY_F8, KEY_F9,
-    KEY_LEFT, KEY_RIGHT, KEY_SLASH, KEY_UP, KEY_Y, LETTER_KEYS,
+    KEY_LEFT, KEY_PAGEDOWN, KEY_PAGEUP, KEY_RIGHT, KEY_SLASH, KEY_TAB,
+    KEY_UP, KEY_Y, LETTER_KEYS,
     REPEAT_ACTIONS, REPEAT_DELAY, REPEAT_INTERVAL, scan_devices,
     SWAP_OK_BACK_FILE, swap_ok_back_enabled, save_swap_ok_back,
 )
@@ -3275,9 +3276,15 @@ class Frontend:
         # Betrachter wartet selbst auf "q", eine zweite Rueckfrage
         # danach waere ein Schritt zuviel.
         inner = 'printf "\033[2J\033[H"; "$@"'
+        # EIGENE KONSOLE UND EIGENE HAND AM PAD (Build 268) - die
+        # Begruendung fuer beides steht ausfuehrlich bei
+        # _auf_konsole(). Kurz: auf tty1 liest ein Login-Prozess mit,
+        # und das Pad kommt nur ueber MiSTers Uebersetzung an. Beides
+        # ist jetzt unsere Sache.
         self._auf_konsole(["/bin/bash", "-c", inner, "anleitung"] + befehl,
                           list(befehl), pfad, grafik=True,
-                          grenze=self.ANLEITUNG_MAX_SEK)
+                          grenze=self.ANLEITUNG_MAX_SEK,
+                          eigene_konsole=True, puls=self._anleitung_pult)
 
     def kontextmenue(self):
         """Das Kontextmenue (Build 256) - X am Pad, F1 auf der Tastatur.
@@ -13675,9 +13682,19 @@ class Frontend:
         raw     = ["/bin/bash", path] + (list(args) if args else [])
         self._auf_konsole(wrapped, raw, path)
 
-    def _warten_auf(self, proc, grenze, name=""):
+    def _warten_auf(self, proc, grenze, name="", puls=None):
         """Auf ein Konsolenprogramm warten - hoechstens "grenze"
         Sekunden, 0 heisst unbegrenzt.
+
+        "puls" (Build 268) wird in jeder Runde aufgerufen, solange das
+        Programm laeuft - damit das Frontend waehrend eines
+        Betrachters nicht taub ist, sondern das Pad weiterliest und
+        die Blaettertasten einspeist (siehe _anleitung_pult()). Gibt
+        der Puls True zurueck, wird das Programm beendet wie nach
+        Ablauf der Grenze; der Nutzer hat damit IMMER einen Ausweg,
+        auch wenn das fremde Programm selbst nicht mehr reagiert.
+        Ohne Puls bleibt alles wie in Build 267 - ein Skript wird
+        nicht ueberwacht.
 
         WARUM ES DIE GRENZE GIBT (Build 267). NUTZERMELDUNG: "wenn ich
         jetzt durch eine Anleitung blaettere, haengt sich das Frontend
@@ -13700,18 +13717,31 @@ class Frontend:
         fe/anleitung.py angegangen (Seitenspeicher). Das hier ist das
         Sicherheitsnetz darunter - damit aus einem haengenden fremden
         Programm nie wieder ein haengendes Frontend wird."""
-        if not grenze or grenze <= 0:
+        if (not grenze or grenze <= 0) and puls is None:
             return proc.wait()
-        ende = time.monotonic() + grenze
+        ende = time.monotonic() + grenze if grenze and grenze > 0 else None
+        grund = "laeuft seit %.0f s" % (grenze or 0)
         while True:
             rc = proc.poll()
             if rc is not None:
                 return rc
-            if time.monotonic() >= ende:
+            if ende is not None and time.monotonic() >= ende:
                 break
-            time.sleep(0.2)
-        LOG("_auf_konsole: %s laeuft seit %.0f s - wird beendet"
-            % (name, grenze))
+            if puls is not None:
+                try:
+                    if puls(proc):
+                        grund = "Ausstieg vom Nutzer"
+                        break
+                except Exception as e:                   # noqa: BLE001
+                    # Ein Fehler im Puls darf den Betrachter nicht
+                    # beenden - dann lieber taub weiterlaufen als die
+                    # Seite unter dem Leser wegziehen.
+                    LOG("_auf_konsole: Puls fehlgeschlagen (%s)" % e)
+                    puls = None
+            # Mit Puls engmaschiger, damit ein Tastendruck nicht
+            # fuehlbar nachhinkt; ohne Puls wie bisher.
+            time.sleep(0.05 if puls is not None else 0.2)
+        LOG("_auf_konsole: %s %s - wird beendet" % (name, grund))
         try:
             proc.terminate()
             for _ in range(25):              # fuenf Sekunden Gnadenfrist
@@ -13731,8 +13761,106 @@ class Frontend:
     # ist nach einer Viertelstunde entweder fertig oder haengt.
     ANLEITUNG_MAX_SEK = 900.0
 
+    # EINE EIGENE KONSOLE FUER DEN BETRACHTER (Build 268)
+    # ==================================================================
+    # NUTZERMELDUNG mit Build 267 drauf: "wenn ich dann durchscrolle
+    # durch die Anleitung, reagiert nach ein paar Sekunden nicht mehr,
+    # wirkt wie eingefroren. Ich kann erst mit dem Joypad blaettern,
+    # wenn ich einmal auf der Tastatur die Leertaste gedrueckt habe."
+    #
+    # DAZU DIE MESSWERTE VOM GERAET, die zwei Vermutungen beenden:
+    #
+    #     free -m   ->  492 total, 272 used, 208 available
+    #     dmesg     ->  letzter Eintrag bei Sekunde 174 (ext4 remount)
+    #
+    # Also KEIN Speichermangel (kein OOM-Killer, 208 MB frei) und kein
+    # Treiberereignis - die Ursache aus Build 267 (Seitenspeicher) ist
+    # damit widerlegt. --cache_size=1 bleibt trotzdem drin: es steht so
+    # in der Hilfe des Programms und kostet nichts.
+    #
+    # WAS STATTDESSEN DAGEGENSPRICHT, DASS DER BETRACHTER ABSTUERZT:
+    # auf tty1 sitzt ein Login-Prozess. Dass er dort sitzt, ist seit
+    # Build 150 belegt ("jedes eingespeiste F9 weckt den Login-
+    # Prozess") und steht in back_to_frontend() woertlich. Build 266
+    # hat ihn UNSICHTBAR gemacht (Grafikmodus), aber nicht stumm: er
+    # LIEST weiter von /dev/tty1 - derselben Konsole, von der auch der
+    # Betrachter liest. Zwei Leser an einer Konsole teilen sich die
+    # Tastendruecke; wer welchen bekommt, ist Zufall. Genau so sieht
+    # die Meldung aus: nach ein paar Sekunden (wenn der Gruss kommt)
+    # kommen die Tasten nicht mehr an, und das Bild steht - weil der
+    # Betrachter nicht abgestuerzt ist, sondern wartet.
+    #
+    # DIE ABHILFE IST DIE, DIE JEDER FENSTERSERVER BENUTZT: eine
+    # eigene virtuelle Konsole. Auf tty3 sitzt kein getty, dort ist
+    # der Betrachter der EINZIGE Leser. Hin per VT_ACTIVATE, zurueck
+    # im finally - und wenn irgendetwas davon nicht geht, laeuft alles
+    # wie bisher auf tty1 weiter.
+    #
+    # EIN SKRIPT BLEIBT AUF tty1. Dort ist der Login-Prozess kein
+    # Problem (das Skript endet von selbst und wartet auf eine Taste),
+    # und wer ein Skript startet, will dessen Ausgabe dort sehen, wo
+    # er sie immer gesehen hat.
+    ANLEITUNG_VT = 3
+    VT_ACTIVATE = 0x5606
+    VT_WAITACTIVE = 0x5607
+
+    # Wer die eigene Konsole nicht will: dieselbe Linie wie beim
+    # Grafikmodus und bei der Konsolen-Mechanik.
+    EIGENE_KONSOLE_AUS_FLAG = "/media/fat/frontend/anleitung_tty1"
+
+    def _konsole_oeffnen(self, eigene):
+        """Die Konsole fuer ein fremdes Programm oeffnen.
+
+        Liefert (tty, vt): "vt" ist 0, wenn es die gewohnte tty1 ist -
+        dann ist auch nichts zurueckzuschalten. Jeder Fehlschlag
+        endet auf tty1; eine Anleitung, die nicht aufgeht, waere
+        schlimmer als ein Login-Gruss."""
+        if eigene and not os.path.exists(self.EIGENE_KONSOLE_AUS_FLAG):
+            vt = self.ANLEITUNG_VT
+            try:
+                tty = open("/dev/tty%d" % vt, "r+b", buffering=0)
+            except OSError as e:
+                LOG("_auf_konsole: /dev/tty%d nicht da (%s) - weiter auf "
+                    "tty1" % (vt, e))
+            else:
+                try:
+                    fcntl.ioctl(tty.fileno(), self.VT_ACTIVATE, vt)
+                    fcntl.ioctl(tty.fileno(), self.VT_WAITACTIVE, vt)
+                    LOG("_auf_konsole: eigene Konsole tty%d - dort liest "
+                        "kein Login-Prozess mit" % vt)
+                    return tty, vt
+                except OSError as e:
+                    LOG("_auf_konsole: Wechsel auf tty%d nicht moeglich "
+                        "(%s) - weiter auf tty1" % (vt, e))
+                    try:
+                        tty.close()
+                    except OSError:
+                        pass
+        try:
+            tty = open("/dev/tty1", "r+b", buffering=0)
+            LOG("_auf_konsole: /dev/tty1 erfolgreich geoeffnet")
+            return tty, 0
+        except OSError as e:
+            LOG("_auf_konsole: /dev/tty1 KONNTE NICHT geoeffnet werden (%s) - "
+                "Programm laeuft ohne explizite Ein-/Ausgabe-Umleitung, "
+                "vermutlich NICHT sichtbar auf dem Bildschirm!" % e)
+            return None, 0
+
+    def _zurueck_auf_tty1(self, tty, vt):
+        """Nach einer eigenen Konsole wieder auf tty1 - IMMER, auch
+        nach einem Absturz des Programms. Eine Konsole, auf der
+        niemand mehr einloggen kann, waere schlimmer als das
+        Problem."""
+        if not vt or tty is None:
+            return
+        try:
+            fcntl.ioctl(tty.fileno(), self.VT_ACTIVATE, 1)
+            fcntl.ioctl(tty.fileno(), self.VT_WAITACTIVE, 1)
+        except OSError as e:
+            LOG("_auf_konsole: Rueckwechsel auf tty1 fehlgeschlagen (%s)" % e)
+
     def _auf_konsole(self, wrapped, raw, name="", grafik=False,
-                     grenze=0.0):
+                     grenze=0.0, eigene_konsole=False, puls=None):
         """Ein fremdes Programm auf der echten Konsole laufen lassen und
         danach den Bildschirm zurueckholen.
 
@@ -13754,9 +13882,15 @@ class Frontend:
         der Rueckfall ohne. "name" steht nur im Protokoll.
         """
         self.music.pause_for_core()
+        # ERST DIE KONSOLE, DANN DAS F9 (Build 268, und die Reihenfolge
+        # ist der halbe Fix): enter_console_mode() speist ein F9 ein,
+        # und JEDES eingespeiste F9 weckt den Login-Prozess - aber nur
+        # auf der Konsole, die gerade vorne ist. Wechseln wir VORHER,
+        # landet die Taste auf tty3, wo niemand darauf wartet.
+        tty, vt = self._konsole_oeffnen(eigene_konsole)
         self.enter_console_mode()
         self.set_cursor_blink(True)
-        # NEUE DIAGNOSE (Nutzer-Rueckmeldung: "wenn ich ein Script starte,
+        # ALTE DIAGNOSE (Nutzer-Rueckmeldung: "wenn ich ein Script starte,
         # wechselt das Frontend in den Konsolenmodus und dann passiert
         # nichts weiter") - bislang wurde ein fehlgeschlagenes Oeffnen
         # von /dev/tty1 KOMPLETT still abgefangen (tty=None), und der
@@ -13768,15 +13902,9 @@ class Frontend:
         # gemeldete Symptom erklaeren: der Bildschirm wechselt (passiert
         # bedingungslos VOR diesem try/except), aber das Script selbst
         # landet sichtbar nirgends. Ohne Log-Zeile war bisher nicht mal
-        # unterscheidbar, OB dieser Fall ueberhaupt eintritt.
-        try:
-            tty = open("/dev/tty1", "r+b", buffering=0)
-            LOG("_auf_konsole: /dev/tty1 erfolgreich geoeffnet fuer %s" % name)
-        except OSError as e:
-            tty = None
-            LOG("_auf_konsole: /dev/tty1 KONNTE NICHT geoeffnet werden (%s) - "
-                "Programm laeuft ohne explizite Ein-/Ausgabe-Umleitung, "
-                "vermutlich NICHT sichtbar auf dem Bildschirm!" % e)
+        # unterscheidbar, OB dieser Fall ueberhaupt eintritt. Seit
+        # Build 268 steht das Oeffnen in _konsole_oeffnen(), die Log-
+        # Zeilen dort sagen weiterhin genau das.
         # UEBERNOMMENER VORSCHLAG (TheRealSutefan): tty1 zum STEUERNDEN
         # Terminal des Scripts machen (neuer Session-Leader + TIOCSCTTY).
         # Erst dann laufen dialog/whiptail und alles, was /dev/tty
@@ -13807,23 +13935,99 @@ class Frontend:
             except OSError as e:
                 LOG("_auf_konsole: Grafikmodus nicht moeglich (%s) - "
                     "weiter wie bisher" % e)
+        # WAS NOCH IN DER WARTESCHLANGE DER KONSOLE STEHT, FLIEGT WEG
+        # (Build 268) - allen voran das eben eingespeiste F9. Sonst
+        # bekommt der Betrachter es als allererste Taste und blaettert
+        # weiter, bevor der Leser etwas gesehen hat.
+        if tty:
+            try:
+                termios.tcflush(tty.fileno(), termios.TCIFLUSH)
+            except (OSError, termios.error):
+                pass
+        # DIE HAND BLEIBT AM PAD (Build 268)
+        # --------------------------------------------------------------
+        # NUTZERMELDUNG: "ich kann erst mit dem Joypad blaettern durch
+        # die Anleitung, wenn ich einmal auf der Tastatur die Leertaste
+        # gedrueckt habe."
+        #
+        # DER GRUND STEHT IN MISTERS EIGENER DOKUMENTATION ZUM
+        # BETRACHTER (MiSTer-devel/PDFViewer_MiSTer, Abschnitt
+        # "JOYSTICK"): das Pad wird dort NICHT als Pad gelesen,
+        # sondern von MiSTer in Tastendruecke uebersetzt -
+        #
+        #     btn1 - enter  -- next page      L - pageup  -- prev page
+        #     btn2 - escape -- quit           R - pagedn  -- next page
+        #     btn3 - space  -- down           btn4 - tab  -- index view
+        #
+        # und woertlich: "This adds escape, and enter to the
+        # keymapping for the viewer. This will allow it to work well
+        # with the joystick emulation." Diese Uebersetzung macht
+        # MiSTers Main, nicht der Betrachter - und wann Main sie
+        # anschaltet, haben wir nicht in der Hand. Genau das ist die
+        # Leertaste in der Meldung.
+        #
+        # ALSO MACHEN WIR ES SELBST. Das Frontend liest das Pad
+        # sowieso (es ist dasselbe InputManager-Objekt wie in der
+        # Liste) und kann Tasten einspeisen - das tut es seit Build
+        # 150 bei jedem F9. Wir nehmen also das Pad GEGRIFFEN (dann
+        # sieht MiSTer die Knoepfe nicht und kann nichts anderes
+        # damit anfangen), lassen die TASTATUR frei - in ein
+        # gegriffenes Geraet eingespeiste Tasten bekaeme nur der
+        # Greifer, also wir selbst - und speisen die Tasten aus der
+        # Tabelle oben ein.
+        #
+        # DER WICHTIGSTE TEIL IST DER AUSSTIEG: B/Esc schickt Escape
+        # an den Betrachter, und wenn der nicht mehr reagiert,
+        # beenden wir ihn nach drei Sekunden selbst. Ein zweiter
+        # Druck macht es sofort. Niemand muss mehr das Geraet neu
+        # starten, um aus einer Anleitung herauszukommen.
+        pad_an = False
+        if puls is not None:
+            ziel = None
+            try:
+                ziel = self.inp.inject_ziel()
+            except Exception as e:                       # noqa: BLE001
+                LOG("_auf_konsole: Einspeise-Ziel nicht ermittelbar (%s)" % e)
+            if ziel is not None and "keyboard" in (ziel.name or "").lower():
+                self._anleitung_raus_seit = None
+                self.inp.grab(True, ausser=ziel.path)
+                pad_an = True
+                LOG("_auf_konsole: das Pad gehoert dem Frontend, Tasten "
+                    "gehen ueber %s ('%s') an den Betrachter"
+                    % (ziel.path, ziel.name))
+            else:
+                # OHNE eindeutige Tastatur waere das Einspeise-Ziel
+                # moeglicherweise das Pad selbst - gegriffen kaeme die
+                # Taste dann bei uns an und nicht beim Betrachter.
+                # Dann bleibt es bei MiSTers Uebersetzung.
+                LOG("_auf_konsole: kein eindeutiges Tastatur-Geraet zum "
+                    "Einspeisen (%s) - das Pad bleibt bei MiSTer"
+                    % (ziel.name if ziel is not None else "kein Geraet"))
+                puls = None
         # Bildschirm dem Programm ueberlassen
         try:
             if tty:
-                LOG("_auf_konsole: starte mit tty1-Umleitung: %s" % wrapped)
+                LOG("_auf_konsole: starte mit tty%d-Umleitung: %s"
+                    % (vt or 1, wrapped))
                 rc = self._warten_auf(
                     subprocess.Popen(wrapped, preexec_fn=_ctty,
                                      stdin=tty, stdout=tty, stderr=tty,
                                      env=dict(os.environ, TERM="linux",
                                               HOME="/root")),
-                    grenze, name)
+                    grenze, name, puls)
             else:
                 LOG("_auf_konsole: starte OHNE tty1-Umleitung (Fallback): %s" % raw)
-                rc = self._warten_auf(subprocess.Popen(raw), grenze, name)
+                rc = self._warten_auf(subprocess.Popen(raw), grenze, name,
+                                      puls)
             LOG("_auf_konsole: %s beendet, Ruecksprungwert=%s" % (name, rc))
         except Exception as e:
             LOG("_auf_konsole: Fehler bei %s: %s" % (name, e))
         finally:
+            if pad_an:
+                # Der Griff wird gleich von back_to_frontend() neu
+                # gesetzt; hier geht es nur darum, die Ausnahme fuer
+                # die Tastatur nicht stehen zu lassen.
+                self.inp.grab(False)
             if grafik_an:
                 # IMMER zurueck, auch nach einem Absturz des Programms.
                 try:
@@ -13831,6 +14035,7 @@ class Frontend:
                 except OSError as e:
                     LOG("_auf_konsole: Textmodus liess sich nicht "
                         "wiederherstellen (%s)" % e)
+            self._zurueck_auf_tty1(tty, vt)
             if tty:
                 try:
                     tty.close()
@@ -13852,6 +14057,74 @@ class Frontend:
     # Wie lange nach einem KONSOLENPROGRAMM gewartet wird, bevor
     # gewischt wird - mehr als NACHFASSEN_SEK.
     NACHFASSEN_KONSOLE = 2.5
+
+    # WELCHE PAD-AKTION WELCHE TASTE SCHICKT (Build 268).
+    #
+    # Die Zuordnung ist NICHT erfunden, sondern die aus MiSTers
+    # eigener Dokumentation zum Betrachter (siehe den langen Block in
+    # _auf_konsole()): Bild-auf/Bild-ab blaettert, die Pfeiltasten
+    # scrollen, Enter blaettert vor, Tab zeigt das Inhaltsverzeichnis,
+    # Escape beendet.
+    #
+    # Links/rechts blaettert, weil am Pad die Schultertasten L und R
+    # genau diese beiden Aktionen liefern (BTN_TL/BTN_TR -> "left"/
+    # "right", siehe KEYMAP) - und weil MiSTers eigene Zuordnung L und
+    # R ebenfalls aufs Blaettern legt. Hoch/runter scrollt innerhalb
+    # der Seite.
+    ANLEITUNG_TASTEN = {
+        "up": KEY_UP, "down": KEY_DOWN,
+        "left": KEY_PAGEUP, "right": KEY_PAGEDOWN,
+        "ok": KEY_ENTER, "filter": KEY_TAB,
+    }
+
+    # Was den Betrachter beenden soll: B am Pad, Esc auf der Tastatur,
+    # X/F1. Alle drei sind in der Liste "zurueck" - das ist hier
+    # dasselbe Versprechen.
+    ANLEITUNG_RAUS = ("back", "exit", "back_fe")
+
+    # Wie lange der Betrachter nach einem Escape noch Zeit hat, selbst
+    # aufzuhoeren. Danach beenden wir ihn - das ist der Unterschied
+    # zwischen "haengt" und "dauert einen Moment".
+    ANLEITUNG_RAUS_FRIST = 3.0
+
+    _anleitung_raus_seit = None
+
+    def _anleitung_pult(self, proc):
+        """Einmal nach dem Pad sehen, waehrend die Anleitung offen ist.
+
+        Wird von _warten_auf() in jeder Runde gerufen (alle 0,05 s).
+        Rueckgabe True heisst: den Betrachter jetzt beenden.
+
+        read_action(timeout=0) ist ein echter Blick ohne Warten (siehe
+        den Kommentar dort) - und es ist dasselbe Lesen wie in der
+        Liste, mit Wiederholung beim Halten. Deshalb scrollt ein
+        gehaltenes Hoch/Runter in der Anleitung genauso weiter wie in
+        der Spieleliste."""
+        # Ein Fehler hier wird NICHT abgefangen: _warten_auf() schaltet
+        # den Puls dann ab und laesst den Betrachter weiterlaufen -
+        # eine Log-Zeile statt derselben Zeile zwanzigmal je Sekunde.
+        act = self.inp.read_action(timeout=0)
+        if act in self.ANLEITUNG_RAUS:
+            if self._anleitung_raus_seit is None:
+                self._anleitung_raus_seit = time.monotonic()
+                LOG("Anleitung: Ausstieg gewuenscht - Escape an den "
+                    "Betrachter")
+                self.inp.inject(KEY_ESC)
+            else:
+                # Zweiter Druck: der Nutzer hat gewartet und will
+                # raus. Jetzt wird nicht mehr gefragt.
+                LOG("Anleitung: zweiter Ausstieg - der Betrachter wird "
+                    "beendet")
+                return True
+        elif act:
+            code = self.ANLEITUNG_TASTEN.get(act)
+            if code:
+                self.inp.inject(code)
+        if (self._anleitung_raus_seit is not None
+                and time.monotonic() - self._anleitung_raus_seit
+                > self.ANLEITUNG_RAUS_FRIST):
+            return True
+        return False
 
     # DIE TEXTKONSOLE WAEHREND EINES BILDPROGRAMMS STILLEGEN
     # (Build 266).

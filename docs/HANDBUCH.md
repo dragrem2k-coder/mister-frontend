@@ -1881,8 +1881,27 @@ demselben unscharfen Vergleich wie bei den Covern.
 nicht.
 
 **Beim Lesen gibt das Frontend den Bildschirm ab** und holt ihn danach
-zurück — derselbe Weg wie bei einem Skript. Im Betrachter blättern die
-Pfeiltasten, **`q` beendet** ihn.
+zurück — derselbe Weg wie bei einem Skript.
+
+**Die Tasten im Betrachter (Build 268):**
+
+| Pad | Tastatur | Wirkung |
+|---|---|---|
+| **L / R** oder links/rechts | Bild auf / Bild ab | eine Seite |
+| hoch / runter | ↑ / ↓ | innerhalb der Seite scrollen |
+| **A** | Enter | eine Seite vor |
+| Tab-Knopf (Filter) | Tab | Inhaltsverzeichnis |
+| **B** | Esc oder `q` | schließen |
+
+Das Pad wird dabei **vom Frontend selbst** gelesen und in diese Tasten
+übersetzt. Vorher hing es an MiSTers eigener Pad-Übersetzung, und die
+sprang nicht immer an — ein Nutzer konnte erst blättern, nachdem er
+einmal die Leertaste gedrückt hatte. Die Tastatur bleibt frei und wirkt
+wie immer direkt.
+
+**Reagiert der Betrachter nicht mehr, kommst du trotzdem heraus:** **B**
+schickt ihm Escape, und wenn er darauf nicht reagiert, beendet ihn das
+Frontend nach drei Sekunden selbst. Ein zweiter Druck macht es sofort.
 
 **Zwei Vorsichtsmaßnahmen (Build 267):** der Betrachter bekommt
 `--cache_size=1` mit, behält also immer nur **eine** Seite im Speicher
@@ -1904,6 +1923,19 @@ Mechanik, die X11 benutzt): der Kernel malt dann keinen Text mehr in
 den Bildspeicher. Danach geht es zurück in den Textmodus, auch wenn der
 Betrachter abstürzt. Wer das nicht will, legt
 `/media/fat/frontend/anleitung_textmodus` an.
+
+**Und die Anleitung bekommt eine eigene Konsole (Build 268).** Auf
+`tty1` sitzt ein Login-Prozess. Build 266 hat ihn unsichtbar gemacht,
+aber nicht stumm: er **liest weiter von derselben Konsole wie der
+Betrachter**. Zwei Leser teilen sich die Tastendrücke — bei einem
+Nutzer kamen nach ein paar Sekunden keine Tasten mehr beim Betrachter
+an (das Bild stand), bei einem anderen erschienen die Pfeiltasten als
+`^[[A ^[[B` *auf* dem PDF, weil sie der andere Leser mitgeschrieben
+hat. Die Anleitung läuft deshalb auf **`tty3`**, wo kein Login-Prozess
+sitzt — dieselbe Lösung, die jeder Fenster-Server benutzt. Zurück geht
+es in jedem Fall; klappt der Wechsel nicht, läuft alles wie bisher auf
+`tty1`. Wer das nicht will, legt
+`/media/fat/frontend/anleitung_tty1` an.
 
 **Falls das Kontextmenü auf deinem Pad nicht aufgeht:** die Taste dafür
 heißt intern *Zurück ins Frontend* und lässt sich unter *Eingabe &

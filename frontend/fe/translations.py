@@ -724,8 +724,17 @@ TRANSLATIONS = {
                      "de": "Nicht mehr durchgespielt"},
     "ctx_anleitung": {"en": "Show manual",
                       "de": "Anleitung anzeigen"},
-    "anleitung_oeffnet": {"en": "Opening manual ...",
-                          "de": "Anleitung wird ge\u00f6ffnet \u2026"},
+    # Die Tastenhilfe steht ABSICHTLICH in dieser Meldung (Build 268):
+    # sie ist das Letzte, was im Frontend zu sehen ist, bevor der
+    # Betrachter den Bildschirm uebernimmt - und danach gibt es
+    # niemanden mehr, der sie zeigen koennte.
+    "anleitung_oeffnet": {"en": "Opening manual ...  L/R or left/right: "
+                                "page \u00b7 up/down: scroll \u00b7 B or "
+                                "Esc: close",
+                          "de": "Anleitung wird ge\u00f6ffnet \u2026  "
+                                "L/R oder links/rechts: bl\u00e4ttern \u00b7 "
+                                "hoch/runter: scrollen \u00b7 B oder Esc: "
+                                "schlie\u00dfen"},
     "anleitung_keine": {"en": "No manual for this game",
                         "de": "Keine Anleitung zu diesem Spiel"},
     "anleitung_kein_betrachter": {

@@ -1586,8 +1586,26 @@ Aces (Europe).sms", with the same fuzzy comparison as the covers.
 **Nothing is written into `/media/fat/docs`.** That folder is not ours.
 
 **While reading, the frontend hands over the screen** and takes it back
-afterwards — the same path a script takes. In the viewer the arrow keys
-page, **`q` quits**.
+afterwards — the same path a script takes.
+
+**The keys in the viewer (build 268):**
+
+| Pad | Keyboard | Effect |
+|---|---|---|
+| **L / R** or left/right | Page Up / Page Down | one page |
+| up / down | ↑ / ↓ | scroll within the page |
+| **A** | Enter | one page forward |
+| Tab button (filter) | Tab | table of contents |
+| **B** | Esc or `q` | close |
+
+The pad is read **by the frontend itself** and translated into those
+keys. Before, it depended on MiSTer's own pad translation, which did
+not always kick in — one user could only page after pressing the space
+bar once. The keyboard stays free and works directly, as always.
+
+**If the viewer stops responding, you still get out:** **B** sends it
+Escape, and if it does not react the frontend ends it itself after
+three seconds. A second press does it immediately.
 
 **Two precautions (Build 267):** the viewer is given `--cache_size=1`,
 so it keeps only **one** page in memory — on a device with 1 GB and
@@ -1607,6 +1625,18 @@ duration (the same mechanism X11 uses): the kernel then paints no text
 into the framebuffer. Afterwards it returns to text mode, even if the
 viewer crashes. Anyone who does not want this creates
 `/media/fat/frontend/anleitung_textmodus`.
+
+**And the manual gets its own console (build 268).** A login process
+sits on `tty1`. Build 266 made it invisible, but not silent: it **keeps
+reading from the same console as the viewer**. Two readers share the
+keystrokes — for one user no keys reached the viewer after a few
+seconds (the picture stood still), for another the arrow keys appeared
+as `^[[A ^[[B` *on top of* the PDF, because the other reader echoed
+them. The manual therefore runs on **`tty3`**, where no login process
+sits — the same solution every window server uses. It switches back in
+every case; if the switch fails, everything runs on `tty1` as before.
+Anyone who does not want this creates
+`/media/fat/frontend/anleitung_tty1`.
 
 **If the context menu does not open on your pad:** its key is called
 *Back to frontend* internally and can be assigned freely under *Input &

@@ -13,6 +13,17 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.8 — not yet released
 
+**Fixed, third attempt — this time with numbers from the device: the manual gets its own console, and the pad gets our own hand.**
+
+- **Reported:** "runs a little better … but when I scroll through the manual it stops responding after a few seconds, looks frozen, crashed … I can only page with the joypad after pressing the space bar on the keyboard once."
+- **The numbers refute my cause from build 267.** `free -m`: 492 MB total, 272 used, **208 available**. `dmesg`: last entry at second 174. So **no** OOM killer, **no** driver event — it was not a memory shortage. (`--cache_size=1` stays in anyway: the program's own help recommends it and it costs nothing.)
+- **What is really going on:** a login process sits on `/dev/tty1`. That it sits there has been established since build 150 — "every injected F9 wakes the login process". Build 266 made it *invisible*, but not silent: it **keeps reading from the same console as the viewer**. Two readers share the keystrokes; who gets which is chance. That is exactly what the report looks like — after a few seconds (when the greeting arrives) keys stop arriving and the picture stands still, because the viewer has not crashed, it is waiting.
+- **The manual now gets its own virtual console** (`tty3`), where no login process sits — the same solution every window server uses. Switched before the injected F9, switched back in every case, and if any of it fails everything runs on `tty1` as before. Escape hatch: create `/media/fat/frontend/anleitung_tty1`.
+- **And the pad belongs to us now.** MiSTer's own documentation for the viewer shows the pad is not read there at all: MiSTer translates the buttons into **keys** ("btn1 - enter", "btn2 - escape", "L - pageup", "R - pagedn"). When MiSTer switches that on is not ours to decide — *that* is the space bar in your report. So the frontend does it itself: pad grabbed, keys injected. **L/R or left/right pages, up/down scrolls, A pages forward, Tab shows the table of contents.** The keyboard stays free and works directly, as always.
+- **The most important part is the way out:** **B** (or Esc) sends Escape to the viewer — if it does not react, **we** end it after three seconds, a second press immediately. Nobody has to restart the device to get out of a manual any more.
+- **To be honest about it:** that the login process takes the keys away is well founded, but not measured. The way out works regardless — which is exactly why it is there.
+
+
 **Fixed: while paging, the viewer stopped after a few pages — and took the frontend with it.**
 
 - **Reported:** "when I page through a manual, the frontend hangs after a few pages, no input responds any more."

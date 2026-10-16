@@ -13,6 +13,17 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.8 — noch nicht veröffentlicht
 
+**Berichtigt, dritter Anlauf — diesmal mit Messwerten vom Gerät: die Anleitung bekommt eine eigene Konsole, und das Pad eine eigene Hand.**
+
+- **Gemeldet:** „läuft ein wenig besser … wenn ich dann durchscrolle durch die Anleitung reagiert nach ein paar Sekunden nicht mehr, wirkt wie eingefroren, abgestürzt … ich kann erst mit dem Joypad blättern wenn ich einmal auf der Tastatur die Leertaste gedrückt habe."
+- **Die Messwerte widerlegen meine Ursache aus Build 267.** `free -m`: 492 MB gesamt, 272 benutzt, **208 verfügbar**. `dmesg`: letzter Eintrag bei Sekunde 174. Also **kein** OOM-Killer, **kein** Treiberereignis — es war kein Speichermangel. (`--cache_size=1` bleibt trotzdem drin: es steht so in der Hilfe des Programms und kostet nichts.)
+- **Was wirklich dahintersteckt:** auf `/dev/tty1` sitzt ein Login-Prozess. Dass er dort sitzt, ist seit Build 150 belegt — „jedes eingespeiste F9 weckt den Login-Prozess". Build 266 hat ihn *unsichtbar* gemacht, aber nicht stumm: er **liest weiter von derselben Konsole wie der Betrachter**. Zwei Leser teilen sich die Tastendrücke; wer welchen bekommt, ist Zufall. Genau so sieht die Meldung aus — nach ein paar Sekunden (wenn der Gruß kommt) kommen die Tasten nicht mehr an, und das Bild steht, weil der Betrachter nicht abgestürzt ist, sondern wartet.
+- **Jetzt bekommt die Anleitung eine eigene virtuelle Konsole** (`tty3`), auf der kein Login-Prozess sitzt — dieselbe Lösung, die jeder Fenster-Server benutzt. Hin vor dem eingespeisten F9, zurück in jedem Fall, und wenn irgendetwas davon nicht geht, läuft alles wie bisher auf `tty1`. Notausgang: `/media/fat/frontend/anleitung_tty1` anlegen.
+- **Und das Pad gehört jetzt uns.** MiSTers eigene Dokumentation zum Betrachter zeigt, dass das Pad dort gar nicht gelesen wird: MiSTer übersetzt die Knöpfe in **Tasten** („btn1 - enter", „btn2 - escape", „L - pageup", „R - pagedn"). Wann MiSTer das anschaltet, haben wir nicht in der Hand — *das* ist die Leertaste in deiner Meldung. Also macht es das Frontend selbst: Pad gegriffen, Tasten eingespeist. **L/R oder links/rechts blättert, hoch/runter scrollt, A blättert vor, Tab zeigt das Inhaltsverzeichnis.** Die Tastatur bleibt frei und wirkt wie immer direkt.
+- **Der wichtigste Teil ist der Ausstieg:** **B** (oder Esc) schickt Escape an den Betrachter — reagiert der nicht, beenden **wir** ihn nach drei Sekunden, ein zweiter Druck sofort. Niemand muss mehr das Gerät neu starten, um aus einer Anleitung herauszukommen.
+- **Ehrlich dazu:** dass der Login-Prozess die Tasten wegnimmt, ist gut begründet, aber nicht gemessen. Der Ausstieg funktioniert unabhängig davon — und genau dafür ist er da.
+
+
 **Berichtigt: beim Blättern blieb der Betrachter nach ein paar Seiten stehen — und das Frontend mit ihm.**
 
 - **Gemeldet:** „wenn ich jetzt durch eine Anleitung blättere, hängt sich das Frontend nach ein paar Seiten auf, keine Eingabe reagiert mehr."

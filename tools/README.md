@@ -172,8 +172,8 @@ python3 tools/regression_test.py \
 | `test_overlay_cover.py` | Test (Pass/Fail) | Die Cover im Overlay: AM ECHTEN SERVER ueber echte HTTP-Abrufe - JPEG und PNG kommen Byte fuer Byte unveraendert an, unser .art gewandelt als PNG, HD vor Standard, und es gibt nur noch EINE Cover-Suche |
 | `test_overlay_zustand.py` | Test (Pass/Fail) | stream_state(): in gemischten Kategorien (Zuletzt gespielt, Sammlungen, ...) kommt der Systemkey vom EINTRAG und nicht von der Kategorie - sonst fehlen Cover, Genre, Jahr und RA-Fortschritt |
 | `test_demo_schirme.py` | Test (Pass/Fail) | Die Vorfuehrung zeigt die ECHTEN Bildschirme: die gescriptete Hand am Pad scrollt, hoert puenktlich auf, weicht jeder echten Taste - und die zehn Bildschirme der Tabelle gibt es wirklich und werden wirklich gerufen |
-| `test_anleitung.py` | Test (Pass/Fail) | Die Spielanleitung: gefunden wird im UNTERORDNER und mit unscharfem Namen, der Artwork-Ordner wird NICHT betreten, einmal je System gesucht, und ohne Betrachter gibt es den Menuepunkt gar nicht |
-| `test_konsole_nachfassen.py` | Test (Pass/Fail) | Nach einem Konsolenprogramm wird OHNE Nachsehen gewischt - mit Gegenprobe, dass es in allen anderen Faellen beim alten Verhalten bleibt |
+| `test_anleitung.py` | Test (Pass/Fail) | Die Spielanleitung: gefunden wird im UNTERORDNER und mit unscharfem Namen, der Artwork-Ordner wird NICHT betreten, einmal je System gesucht, und ohne Betrachter gibt es den Menuepunkt gar nicht; dazu die eigene Konsole (tty3, Wechsel VOR dem F9) und die Hand am Pad (Tastentabelle aus MiSTers eigener Doku, Grab mit Ausnahme an echten Objekten) |
+| `test_konsole_nachfassen.py` | Test (Pass/Fail) | Nach einem Konsolenprogramm wird OHNE Nachsehen gewischt - mit Gegenprobe, dass es in allen anderen Faellen beim alten Verhalten bleibt; dazu an ECHTEN Prozessen: die Grenze beendet ein haengendes Programm, und der Puls (Build 268) macht das Frontend waehrend eines Betrachters wieder ansprechbar |
 | `test_overlay_leer.py` | Test (Pass/Fail) | Der leere Kasten im Overlay: AM ECHTEN SKRIPT im Stub-DOM - er verschwindet nur, wenn WIRKLICH nichts sichtbar ist, und die Liste der Teile wird mit dem Markup verglichen |
 | `diag_ungeprueft.py` | Diagnose (immer Rueckgabewert 0) | Welche Funktionen betritt KEIN Test - gemessen mit sys.setprofile, nicht ueber Namen im Testtext |
 | `_spur.py` | Hilfsmodul | Laesst eine einzelne Testdatei unter sys.setprofile laufen und schreibt jede betretene Funktion mit |
@@ -4558,3 +4558,60 @@ Gegenteil dessen, was er behauptet.**
 Dieselbe Falle hat in Build 249 eine Stoppuhr gekostet und in Build
 261 noch einmal - sie ist hier zum dritten Mal aufgetaucht, diesmal
 andersherum.
+
+### Nachtrag Build 268: wenn die Messwerte die eigene Ursache widerlegen
+
+**Build 267 hat eine Ursache benannt, die es nicht war.** Ich hatte um
+`dmesg | tail -40` und `free -m` gebeten, um den Seitenspeicher zu
+bestaetigen. Gekommen ist das Gegenteil:
+
+```
+Mem:  492 total, 272 used, 208 available
+dmesg: letzter Eintrag bei Sekunde 174 (ext4 remount)
+```
+
+**Kein OOM-Killer, kein Treiberereignis, 208 MB frei.** Die Vermutung
+aus 267 ist damit erledigt - und das ist genau der Grund, warum in der
+Begruendung dort „dass es der Speicher IST, ist noch nicht gemessen"
+stand. Eine Einstellung, die unabhaengig davon richtig ist, bleibt
+drin; eine *Erklaerung*, die eine Messung widerlegt, nicht.
+
+**Die zweite Nutzermeldung hat die richtige Ursache dann bewiesen**,
+und zwar sichtbar: „wenn ich eine Anleitung oeffne, kommen die
+Eingaben auf den Bildschirm und werden so angezeigt, z.B. `^[[B^[[b`".
+Das ist ein **Echo** - also liest ein ZWEITER Prozess dieselbe Konsole
+und schreibt die Tasten mit. Der Betrachter bekommt sie dann nur noch
+teilweise und steht. Kein Absturz, kein Speicher: ein geteiltes
+Terminal.
+
+Daraus zwei Zusagen, die jetzt geprueft werden:
+
+- **Die eigene Konsole** (`tty3`) - gewechselt wird **vor** dem
+  eingespeisten F9, weil ein F9 nur den Login-Prozess der *vorderen*
+  Konsole weckt. Der Test prueft diese **Reihenfolge**, nicht nur das
+  Vorhandensein: an der falschen Stelle waere der Wechsel wirkungslos.
+- **Der Puls** - `_warten_auf()` ruft waehrend des Betrachters alle
+  0,05 s einen Rueckruf, der das Pad liest und die Blaettertasten
+  einspeist. Geprueft mit **echten Prozessen**: ein Puls, der beim
+  dritten Blick aussteigt, beendet ein `sleep 30` in 0,3 s; ein Puls,
+  der eine Ausnahme wirft, laesst ein `sleep 0.4` sauber zu Ende
+  laufen (ein Fehler im Puls darf die Seite nicht unter dem Leser
+  wegziehen).
+
+**Und der Grab mit Ausnahme an echten Objekten.** `grab(True,
+ausser=...)` nimmt das Pad und laesst die Tastatur frei - in ein
+gegriffenes Geraet eingespeiste Tasten bekommt nur der Greifer, also
+wir selbst. Der Test baut dafuer zwei Geraete-Attrappen und prueft
+auch, dass die Ausnahme **gemerkt** wird: `rescan()` greift neu
+aufgetauchte Geraete nach `want_grab`, und ohne das Merken waere die
+Ausnahme beim naechsten Hotplug-Blick weg. Das ist die Sorte Fehler,
+die auf dem Pruefstand nie auftritt und auf dem Geraet nach drei
+Sekunden.
+
+**Nachgesehen statt vermutet, zum zweiten Mal in diesem Build:** die
+Pad-Tastenzuordnung ist nicht erfunden, sondern aus MiSTers eigener
+Dokumentation zum Betrachter (`MiSTer-devel/PDFViewer_MiSTer`,
+Abschnitt JOYSTICK: „btn1 - enter", „L - pageup", „R - pagedn"). Dort
+steht auch, *dass* MiSTer die Knoepfe in Tasten uebersetzt - die
+Erklaerung fuer „ich kann erst blaettern, wenn ich einmal die
+Leertaste gedrueckt habe".

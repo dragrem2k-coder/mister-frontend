@@ -219,6 +219,53 @@ try:
     check("und es wird nicht bis zur Grenze gewartet",
           _zeit.perf_counter() - _t1 < 5.0,
           "%.1f s statt 30" % (_zeit.perf_counter() - _t1))
+
+    # -----------------------------------------------------------------
+    print()
+    print("Test 8: der Puls - das Frontend ist waehrend des Betrachters "
+          "nicht taub (Build 268)")
+    # -----------------------------------------------------------------
+    # NUTZERMELDUNG mit Build 267 drauf: "wenn ich durchscrolle,
+    # reagiert nach ein paar Sekunden nicht mehr, wirkt wie
+    # eingefroren" - und das Frontend WAR taub: es sass in
+    # proc.wait(). Jetzt sieht es in jeder Runde nach dem Pad, speist
+    # die Blaettertasten ein, und kann den Betrachter beenden, wenn
+    # der Nutzer raus will. Das ist der Teil, der unabhaengig von
+    # jeder Ursachenvermutung funktioniert.
+    _runden = []
+
+    def _puls_raus(_p):
+        _runden.append(1)
+        return len(_runden) >= 3            # beim dritten Blick: raus
+
+    _p3 = subprocess.Popen(["sleep", "30"])
+    _t2 = _zeit.perf_counter()
+    _rc3 = FE._warten_auf(_p3, 0, "probe", _puls_raus)
+    check("ein Puls beendet das Warten, auch OHNE Grenze",
+          _rc3 is not None and _p3.poll() is not None,
+          "Rueckgabewert %s" % _rc3)
+    check("und zwar sofort, nicht nach 30 Sekunden",
+          _zeit.perf_counter() - _t2 < 5.0,
+          "%.2f s" % (_zeit.perf_counter() - _t2))
+    check("der Puls wurde wirklich mehrfach gerufen", len(_runden) == 3,
+          "%d Runden" % len(_runden))
+
+    def _puls_kaputt(_p):
+        raise RuntimeError("kaputt")
+
+    _p4 = subprocess.Popen(["sleep", "0.4"])
+    _rc4 = FE._warten_auf(_p4, 0, "probe", _puls_kaputt)
+    check("ein FEHLER im Puls beendet den Betrachter NICHT",
+          _rc4 == 0,
+          "lieber taub weiterlaufen als die Seite unter dem Leser "
+          "wegziehen (Rueckgabewert %s)" % _rc4)
+
+    _p5 = subprocess.Popen(["sleep", "0.3"])
+    _rc5 = FE._warten_auf(_p5, 0, "skript")
+    check("ohne Puls und ohne Grenze wird weiterhin bis zum Ende "
+          "gewartet", _rc5 == 0,
+          "ein Skript SOLL zu Ende laufen duerfen (Rueckgabewert %s)"
+          % _rc5)
 finally:
     H.fm.time = _gefroren
 

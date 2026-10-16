@@ -266,9 +266,10 @@ try:
           "nicht abgestuerzt, es wartete ohne Ende")
     _wa = _fe[_fe.index("    def _warten_auf(self, proc, grenze"):]
     _wa = _wa[:_wa.index("\n    def ", 10)]
-    check("ohne Grenze wird weiterhin unbegrenzt gewartet",
-          "if not grenze or grenze <= 0:" in _wa and "proc.wait()" in _wa,
-          "ein Skript SOLL zu Ende laufen duerfen")
+    check("ohne Grenze und ohne Puls wird unbegrenzt gewartet",
+          "and puls is None:" in _wa and "return proc.wait()" in _wa,
+          "ein Skript SOLL zu Ende laufen duerfen - geprueft wird das "
+          "mit einem echten Prozess in tools/test_konsole_nachfassen.py")
     check("erst freundlich, dann bestimmt",
           _wa.index("proc.terminate()") < _wa.index("proc.kill()"))
     check("nach einem Neueinlesen wird der Stand verworfen",
@@ -279,6 +280,148 @@ try:
           and _fe.count("self._auf_konsole(") == 2,
           "run_script() und die Anleitung - zwei Aufrufer, eine "
           "Stelle")
+
+    # -----------------------------------------------------------------
+    print()
+    print("Test 9: eine EIGENE Konsole fuer den Betrachter (Build 268)")
+    # -----------------------------------------------------------------
+    # NUTZERMELDUNG mit Build 267 drauf: "wenn ich dann durchscrolle
+    # durch die Anleitung, reagiert nach ein paar Sekunden nicht mehr,
+    # wirkt wie eingefroren."
+    #
+    # DIE MESSWERTE VOM GERAET HABEN DIE URSACHE AUS 267 WIDERLEGT:
+    # free -m zeigt 208 MB verfuegbar, dmesg endet bei Sekunde 174 -
+    # kein OOM-Killer, kein Treiberereignis. Es ist also kein
+    # Speichermangel.
+    #
+    # WAS BLEIBT: auf tty1 sitzt ein Login-Prozess (belegt seit Build
+    # 150, steht in back_to_frontend() woertlich). Build 266 hat ihn
+    # unsichtbar gemacht, aber nicht stumm - er LIEST weiter von
+    # derselben Konsole wie der Betrachter. Zwei Leser teilen sich die
+    # Tasten; der Betrachter bekommt nur noch einen Teil davon und
+    # steht.
+    _ak = _fe[_fe.index("    def _auf_konsole(self, wrapped, raw, name="):]
+    _ak = _ak[:_ak.index("\n    def ", 10)]
+    check("die Anleitung bekommt eine eigene Konsole",
+          "eigene_konsole=True" in _az)
+    check("ein Skript dagegen NICHT",
+          "eigene_konsole" not in _fe[_fe.index("    def run_script(self, path"):]
+          [:_fe[_fe.index("    def run_script(self, path"):].index("\n    def ", 10)],
+          "dort ist der Login-Prozess kein Problem, und die Ausgabe "
+          "gehoert dorthin, wo sie immer war")
+    check("gewechselt wird mit VT_ACTIVATE", "self.VT_ACTIVATE" in _fe)
+    check("und VOR dem eingespeisten F9",
+          _ak.index("self._konsole_oeffnen(")
+          < _ak.index("self.enter_console_mode()"),
+          "jedes eingespeiste F9 weckt den Login-Prozess - aber nur "
+          "auf der Konsole, die vorne ist")
+    _ko = _fe[_fe.index("    def _konsole_oeffnen(self, eigene):"):]
+    _ko = _ko[:_ko.index("\n    def ", 10)]
+    check("jeder Fehlschlag endet auf tty1",
+          _ko.count("/dev/tty1") >= 1 and _ko.count("except OSError") >= 3,
+          "eine Anleitung, die nicht aufgeht, waere schlimmer als ein "
+          "Login-Gruss")
+    check("zurueckgeschaltet wird im finally",
+          _ak.index("finally:") < _ak.index("self._zurueck_auf_tty1("),
+          "eine Konsole, auf der niemand mehr einloggen kann, waere "
+          "schlimmer als das Problem")
+    check("und es gibt einen Notausgang",
+          "EIGENE_KONSOLE_AUS_FLAG" in _fe and "anleitung_tty1" in _fe,
+          "dieselbe Linie wie beim Grafikmodus und bei der "
+          "Konsolen-Mechanik")
+    check("vor dem Start wird die Warteschlange geleert",
+          "termios.TCIFLUSH" in _ak,
+          "sonst liest der Betrachter das eben eingespeiste F9 als "
+          "erste Taste")
+
+    # -----------------------------------------------------------------
+    print()
+    print("Test 10: die Hand am Pad (Build 268)")
+    # -----------------------------------------------------------------
+    # NUTZERMELDUNG: "ich kann erst mit dem Joypad blaettern, wenn ich
+    # einmal auf der Tastatur die Leertaste gedrueckt habe."
+    #
+    # WARUM: das Pad wird vom Betrachter gar nicht gelesen. MiSTers
+    # eigene Dokumentation zum Betrachter (PDFViewer_MiSTer,
+    # "JOYSTICK") zeigt, dass MiSTer die Knoepfe in TASTEN uebersetzt
+    # - "btn1 - enter", "btn2 - escape", "L - pageup", "R - pagedn" -
+    # und woertlich: "This will allow it to work well with the
+    # joystick emulation." Wann MiSTer das anschaltet, haben wir nicht
+    # in der Hand. Also machen wir es selbst.
+    sys.path.insert(0, _HIER)
+    import fe.input as FI                                 # noqa: E402
+
+    T = None
+    for _zeile in _fe.splitlines():
+        if _zeile.strip().startswith("ANLEITUNG_TASTEN"):
+            T = True
+    check("es gibt eine Tastentabelle", T is True)
+    _at = _fe[_fe.index("    ANLEITUNG_TASTEN = {"):]
+    _at = _at[:_at.index("}") + 1]
+    check("links/rechts blaettert (Bild-auf/Bild-ab)",
+          "\"left\": KEY_PAGEUP" in _at and "\"right\": KEY_PAGEDOWN" in _at,
+          "genau MiSTers eigene Zuordnung fuer L und R - und am Pad "
+          "liefern die Schultertasten diese beiden Aktionen")
+    check("hoch/runter scrollt",
+          "\"up\": KEY_UP" in _at and "\"down\": KEY_DOWN" in _at)
+    check("A blaettert vor (Enter)", "\"ok\": KEY_ENTER" in _at,
+          "'btn1 - enter -- next page' - diese Taste hat MiSTer dem "
+          "Betrachter eigens dafuer beigebracht")
+    check("die Codes sind die echten Linux-Codes",
+          (FI.KEY_PAGEUP, FI.KEY_PAGEDOWN, FI.KEY_ENTER, FI.KEY_ESC)
+          == (104, 109, 28, 1),
+          "%s" % ((FI.KEY_PAGEUP, FI.KEY_PAGEDOWN, FI.KEY_ENTER,
+                   FI.KEY_ESC),))
+    _pu = _fe[_fe.index("    def _anleitung_pult(self, proc):"):]
+    _pu = _pu[:_pu.index("\n    def ", 10)]
+    check("gelesen wird ohne zu warten",
+          "read_action(timeout=0)" in _pu,
+          "sonst stuende der Betrachter bei jedem Blick still")
+    check("B/Esc schickt Escape an den Betrachter",
+          "self.inp.inject(KEY_ESC)" in _pu and "ANLEITUNG_RAUS" in _pu,
+          "'btn2 - escape -- quit'")
+    check("und wenn der nicht aufhoert, beenden WIR ihn",
+          "ANLEITUNG_RAUS_FRIST" in _pu and "return True" in _pu,
+          "das ist der Teil, der garantiert funktioniert - niemand "
+          "muss mehr das Geraet neu starten")
+
+    # Der Grab mit Ausnahme - an echten Objekten, nicht an einer
+    # Textstelle. Die Ausnahme ist der Kern: in ein GEGRIFFENES
+    # Geraet eingespeiste Tasten bekommt nur der Greifer, also wir
+    # selbst - der Betrachter saehe nichts.
+    class _FakeDev(object):
+        def __init__(self, path, name, is_kbd):
+            self.path, self.name, self.is_kbd = path, name, is_kbd
+            self.grabbed = False
+
+        def grab(self, on):
+            self.grabbed = on
+
+    mgr = FI.InputManager.__new__(FI.InputManager)
+    mgr.want_grab = False
+    mgr.grab_ausnahme = None
+    tast = _FakeDev("/dev/input/event0", "Logitech USB Keyboard", True)
+    pad = _FakeDev("/dev/input/event4", "Microsoft X-Box 360 pad", False)
+    mgr.devices = {tast.path: tast, pad.path: pad}
+    check("das Einspeise-Ziel ist die Tastatur",
+          mgr.inject_ziel() is tast, mgr.inject_ziel().name)
+    mgr.grab(True, ausser=tast.path)
+    check("das Pad gehoert uns", pad.grabbed is True)
+    check("die Tastatur bleibt frei", tast.grabbed is False,
+          "sonst bekaeme NUR das Frontend die eingespeiste Taste")
+    check("und die Ausnahme ist gemerkt",
+          mgr.grab_ausnahme == tast.path,
+          "rescan() greift neu aufgetauchte Geraete nach want_grab - "
+          "ohne das Merken waere die Ausnahme beim naechsten "
+          "Hotplug-Blick weg")
+    mgr.grab(True)
+    check("ein normaler Grab nimmt alles und loescht die Ausnahme",
+          tast.grabbed and pad.grabbed and mgr.grab_ausnahme is None)
+    check("die Suche nach dem Ziel steht an genau EINER Stelle",
+          io.open(os.path.join(_FRONTEND_DIR, "fe", "input.py"),
+                  encoding="utf-8").read().count(
+                      '"keyboard" in d.name.lower()') == 1,
+          "zwei Fassungen davon waeren der Nachbau aus Build 260")
 finally:
     shutil.rmtree(TMP, ignore_errors=True)
 
