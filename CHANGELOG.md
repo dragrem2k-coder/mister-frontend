@@ -13,6 +13,15 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.8 — noch nicht veröffentlicht
 
+**Im OBS-Overlay: ein leerer Kasten verschwindet jetzt ganz — und zwei Schalter mehr.**
+
+- **Dein Wunsch:** „wenn ich nix beim Overlay sehen will, soll auch kein Kasten mehr angezeigt werden."
+- **Genau das.** Ist in der Karte nichts mehr zu sehen, verschwindet sie samt Rahmen, Schatten und Farbkante. Ein Kasten ohne Inhalt ist im Stream ein Fleck ohne Aussage.
+- **Entschieden wird nach dem, was WIRKLICH sichtbar ist**, nicht danach, wie die Schalter stehen: ein Feld kann auch deshalb leer sein, weil es zu diesem Spiel keine Angabe gibt (kein Cover, kein Genre, keine Spielzeit). Nur so stimmt die Antwort auch bei halb gesetzten Schaltern.
+- **Zwei neue Schalter:** die **Überschrift** lässt sich abschalten, und das **Jahr** hat jetzt einen eigenen — vorher hing es am Genre, wer nur das Jahr wollte, hatte Pech.
+- **Die Anleitung meldet sich sofort.** „Anleitung wird geöffnet …" steht auf dem Schirm, bevor der Betrachter lädt. Schneller geht es nicht — nach dem eingespeisten F9 wartet das Frontend bewusst 0,4 Sekunden, und danach muss der Betrachter erst das PDF aufschlagen. Was fehlte, war keine Geschwindigkeit, sondern eine Rückmeldung.
+
+
 **Berichtigt: nach dem Lesen einer Anleitung blieb der Login-Gruß stehen.**
 
 - **Gemeldet:** „wenn ich dann eine Anleitung öffne, bleib ich ab und zu im Login-Prompt hängen" — geholfen hat **F10**, also ein voller Neuaufbau.

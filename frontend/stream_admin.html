@@ -70,8 +70,12 @@
         <label class="sw"><input type="checkbox" id="show_list"><span class="sl"></span></label></div>
       <div class="row"><label>Now-Playing (Musik)</label>
         <label class="sw"><input type="checkbox" id="show_nowplaying"><span class="sl"></span></label></div>
-      <div class="row"><label>Genre/Jahr</label>
+      <div class="row"><label>&Uuml;berschrift</label>
+        <label class="sw"><input type="checkbox" id="show_brand"><span class="sl"></span></label></div>
+      <div class="row"><label>Genre</label>
         <label class="sw"><input type="checkbox" id="show_genre"><span class="sl"></span></label></div>
+      <div class="row"><label>Jahr</label>
+        <label class="sw"><input type="checkbox" id="show_year"><span class="sl"></span></label></div>
       <div class="row"><label>Spielzeit</label>
         <label class="sw"><input type="checkbox" id="show_playtime"><span class="sl"></span></label></div>
       <div class="row"><label>RetroAchievements</label>
@@ -160,7 +164,8 @@
   </div>
 <script>
 const F = ["title","accent","bg","transparent","show_boxart","show_system",
-           "show_list","show_nowplaying","show_genre","show_playtime",
+           "show_list","show_nowplaying","show_genre","show_year",
+           "show_brand","show_playtime",
            "show_ra","show_ra_badges","ach_corner",
            "show_favorite","corner","scale",
            "show_name",
@@ -182,6 +187,8 @@ function fillForm(c){
   $("show_list").checked = c.show_list!==false;
   $("show_nowplaying").checked = c.show_nowplaying!==false;
   $("show_genre").checked = c.show_genre!==false;
+  $("show_year").checked = c.show_year!==false;
+  $("show_brand").checked = c.show_brand!==false;
   $("show_playtime").checked = c.show_playtime!==false;
   $("show_ra").checked = c.show_ra!==false;
   $("show_name").checked = c.show_name!==false;
@@ -214,7 +221,10 @@ function collect(){
     show_boxart:$("show_boxart").checked,
     show_system:$("show_system").checked, show_list:$("show_list").checked,
     show_nowplaying:$("show_nowplaying").checked,
-    show_genre:$("show_genre").checked, show_playtime:$("show_playtime").checked,
+    show_genre:$("show_genre").checked,
+    show_year:$("show_year").checked,
+    show_brand:$("show_brand").checked,
+    show_playtime:$("show_playtime").checked,
     show_ra:$("show_ra").checked, show_ra_badges:$("show_ra_badges").checked,
     ach_corner:$("ach_corner").value,
     show_favorite:$("show_favorite").checked,

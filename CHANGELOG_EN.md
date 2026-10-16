@@ -13,6 +13,15 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.8 — not yet released
 
+**In the OBS overlay: an empty card now disappears entirely — plus two more switches.**
+
+- **Your wish:** "if I want to see nothing in the overlay, no box should be shown either."
+- **Exactly that.** When nothing in the card is visible any more, it goes away including border, shadow and accent edge. A box without content is a smudge without a statement.
+- **The decision is made on what is REALLY visible**, not on how the switches stand: a field can be empty because the game has no such data (no cover, no genre, no playtime). Only that way is the answer right with half-set switches too.
+- **Two new switches:** the **heading** can be turned off, and the **year** has its own now — it used to hang off the genre, so anyone who only wanted the year was out of luck.
+- **The manual answers immediately.** "Opening manual …" is on screen before the viewer loads. It cannot be faster — after the injected F9 the frontend deliberately waits 0.4 seconds, and the viewer then has to open the PDF. What was missing was not speed but an answer.
+
+
 **Fixed: the login greeting stayed on screen after reading a manual.**
 
 - **Reported:** "when I open a manual I sometimes get stuck at the login prompt" — what helped was **F10**, that is, a full rebuild.

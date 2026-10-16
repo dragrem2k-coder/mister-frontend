@@ -724,6 +724,8 @@ TRANSLATIONS = {
                      "de": "Nicht mehr durchgespielt"},
     "ctx_anleitung": {"en": "Show manual",
                       "de": "Anleitung anzeigen"},
+    "anleitung_oeffnet": {"en": "Opening manual ...",
+                          "de": "Anleitung wird ge\u00f6ffnet \u2026"},
     "anleitung_keine": {"en": "No manual for this game",
                         "de": "Keine Anleitung zu diesem Spiel"},
     "anleitung_kein_betrachter": {

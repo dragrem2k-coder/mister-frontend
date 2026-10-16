@@ -1742,6 +1742,14 @@ report the *category's* system key — and there it is empty. It now
 comes from the **entry itself**, which brings back not only the cover
 but genre, year and RA progress as well.
 
+**Every element switchable individually — and an empty card
+disappears (Build 265).** Cover, heading, system, game title, genre,
+year, playtime, RetroAchievements, the neighbour list and the music
+track each have their own switch. If **nothing** is left to show, the
+card itself is no longer drawn — no border, no shadow, no smudge. The
+decision is made on what is *really* visible: a field can be empty
+because the game has no such data.
+
 **RA achievements in real time:** If a RetroAchievements achievement is
 unlocked while playing, the overlay shows it directly - icon, title,
 description, points, faded in after 7 seconds and gone again

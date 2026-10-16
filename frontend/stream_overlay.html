@@ -26,6 +26,11 @@
     max-width:min(46vw,calc(560px*var(--scale)));
   }
   .card.solid{background:var(--bg)}
+  /* Build 265, Nutzerwunsch: "wenn ich nix beim overlay sehen will,
+     soll auch kein kasten mehr angezeigt werden". Ein Kasten mit
+     Rahmen, Schatten und Farbkante, in dem nichts steht, ist im
+     Stream ein Fleck ohne Aussage. */
+  .card.leer{display:none}
   .corner-bottom-left{left:calc(40px*var(--scale));bottom:calc(40px*var(--scale))}
   .corner-bottom-right{right:calc(40px*var(--scale));bottom:calc(40px*var(--scale))}
   .corner-top-left{left:calc(40px*var(--scale));top:calc(40px*var(--scale))}
@@ -819,7 +824,9 @@ function applyConfig(c){
   const card = $('card');
   card.className = 'card corner-' + (cfg.corner||'bottom-left') +
                   (cfg.transparent===false ? ' solid' : '');
-  $('brand').textContent = cfg.title || '';
+  // Build 265: auch die Ueberschrift laesst sich abschalten.
+  $('brand').textContent = cfg.show_brand === false
+                           ? '' : (cfg.title || '');
   // Die Ecke des Erfolgs-Toasts (Build 255). Bewusst ueber classList
   // und NICHT ueber className: auf demselben Element sitzt 'show',
   // und ein className-Zuweisen mitten in einer laufenden Einblendung
@@ -838,6 +845,26 @@ function applyConfig(c){
   // Sekunden spaeter, und im Backend saehe es nach einem kaputten
   // Schalter aus.
   renderWall(lastWall);
+}
+
+// Die Teile, die im Kasten Inhalt tragen koennen. Die Liste steht
+// hier und nicht verstreut im Code, damit ein Test sie mit dem
+// vergleichen kann, was wirklich im Kasten steht - sonst faellt beim
+// naechsten neuen Element niemandem auf, dass es hier fehlt.
+const KARTEN_TEILE = ['boxart', 'brand', 'sys', 'title', 'facts',
+                      'list', 'np'];
+
+function kartenLeer(){
+  return !KARTEN_TEILE.some(id => {
+    const el = $(id);
+    if(!el) return false;
+    if(el.classList.contains('hidden')) return false;
+    // Der Spieltitel wird ueber style.display ausgeblendet (Build
+    // 254), nicht ueber die Klasse - beides muss zaehlen.
+    if(el.style.display === 'none') return false;
+    if(id === 'boxart') return !!el.getAttribute('src');
+    return el.textContent.trim().length > 0;
+  });
 }
 
 function applyState(s){
@@ -887,7 +914,9 @@ function applyState(s){
     else el.classList.add('hidden');
   };
   setFact('fact_genre', cfg.show_genre!==false && !!s.genre, s.genre);
-  setFact('fact_year', cfg.show_genre!==false && !!s.year, s.year);
+  // Build 265: eigener Schalter. Vorher hing das Jahr am Genre -
+  // wer nur das Jahr wollte, hatte Pech.
+  setFact('fact_year', cfg.show_year!==false && !!s.year, s.year);
   setFact('fact_playtime', cfg.show_playtime!==false && !!s.playtime, '\u23F1 ' + s.playtime);
   setFact('fact_ra', cfg.show_ra!==false && !!s.ra_progress, '\u2B50 ' + s.ra_progress);
   facts.classList.toggle('hidden', !anyFact);
@@ -910,7 +939,19 @@ function applyState(s){
     np.classList.remove('hidden');
   } else np.classList.add('hidden');
 
-  card.classList.remove('flash'); void card.offsetWidth; card.classList.add('flash');
+  // Build 265: steht nichts mehr im Kasten, verschwindet der Kasten.
+  //
+  // GEPRUEFT WIRD, WAS WIRKLICH SICHTBAR IST, nicht welche Schalter
+  // stehen: ein Element kann auch deshalb leer sein, weil es zu
+  // diesem Spiel keine Angabe gibt (kein Cover, kein Genre, keine
+  // Spielzeit). Beides zusammen entscheidet, und nur so stimmt die
+  // Antwort auch bei halb gesetzten Schaltern.
+  const leer = kartenLeer();
+  card.classList.toggle('leer', leer);
+  if(!leer){
+    card.classList.remove('flash'); void card.offsetWidth;
+    card.classList.add('flash');
+  }
   // Build 259: das Cover an der Erfolgs-Wand haengt am ZUSTAND,
   // nicht an den Erfolgen. Ohne diesen Aufruf wuerde es erst
   // beim naechsten Erfolgs-Abruf nachziehen - und in welcher

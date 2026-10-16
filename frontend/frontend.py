@@ -3260,6 +3260,16 @@ class Frontend:
         if not befehl:
             self.draw(message=t("anleitung_kein_betrachter"))
             return
+        # ERST EINE ANTWORT, DANN DIE ARBEIT (Build 265, Nutzer:
+        # "Anleitung anzeigen dauert immer etwas bis es reagiert, ist
+        # bloede").
+        #
+        # Schneller geht es nicht: enter_console_mode() wartet nach dem
+        # eingespeisten F9 bewusst 0,4 Sekunden, und danach muss der
+        # Betrachter erst das PDF aufschlagen. Was fehlte, war nicht
+        # Tempo, sondern eine RUECKMELDUNG - ein Knopf, der nichts tut,
+        # fuehlt sich kaputt an, auch wenn er arbeitet.
+        self.draw(message=t("anleitung_oeffnet"))
         LOG("Anleitung: %s" % " ".join(befehl))
         # Nur Bildschirm leeren, KEIN "Taste druecken" hinterher: der
         # Betrachter wartet selbst auf "q", eine zweite Rueckfrage

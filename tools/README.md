@@ -174,6 +174,7 @@ python3 tools/regression_test.py \
 | `test_demo_schirme.py` | Test (Pass/Fail) | Die Vorfuehrung zeigt die ECHTEN Bildschirme: die gescriptete Hand am Pad scrollt, hoert puenktlich auf, weicht jeder echten Taste - und die zehn Bildschirme der Tabelle gibt es wirklich und werden wirklich gerufen |
 | `test_anleitung.py` | Test (Pass/Fail) | Die Spielanleitung: gefunden wird im UNTERORDNER und mit unscharfem Namen, der Artwork-Ordner wird NICHT betreten, einmal je System gesucht, und ohne Betrachter gibt es den Menuepunkt gar nicht |
 | `test_konsole_nachfassen.py` | Test (Pass/Fail) | Nach einem Konsolenprogramm wird OHNE Nachsehen gewischt - mit Gegenprobe, dass es in allen anderen Faellen beim alten Verhalten bleibt |
+| `test_overlay_leer.py` | Test (Pass/Fail) | Der leere Kasten im Overlay: AM ECHTEN SKRIPT im Stub-DOM - er verschwindet nur, wenn WIRKLICH nichts sichtbar ist, und die Liste der Teile wird mit dem Markup verglichen |
 | `diag_ungeprueft.py` | Diagnose (immer Rueckgabewert 0) | Welche Funktionen betritt KEIN Test - gemessen mit sys.setprofile, nicht ueber Namen im Testtext |
 | `_spur.py` | Hilfsmodul | Laesst eine einzelne Testdatei unter sys.setprofile laufen und schreibt jede betretene Funktion mit |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
@@ -4469,3 +4470,39 @@ unvollstaendige Messung zu ersetzen.
 * Und die alte Pruefung steht **weiterhin da** - fuer das F9 beim
   Start und das F9 des Nutzers, wo gar nicht feststeht, ob jemand
   geschrieben hat.
+
+## test_overlay_leer.py (Build 265)
+
+Nutzerwunsch: „ich haette gerne im backend das man alle einstellungen
+an und aus schaltbar macht, sodass wenn ich nix beim overlay sehen will
+auch kein kasten mehr angezeigt wird."
+
+**Drei Dinge gehen dabei leicht schief**, und gegen jedes steht hier
+eine Pruefung:
+
+1. **Nur die Schalter anzusehen waere falsch.** Ein Feld kann auch
+   deshalb leer sein, weil es zu diesem Spiel keine Angabe gibt - kein
+   Cover, kein Genre, keine Spielzeit. Geprueft wird deshalb, was
+   wirklich SICHTBAR ist; der Test stellt eigens den Fall her
+   „alle Schalter AN, aber nichts da".
+2. **Den Spieltitel vergessen.** Er wird seit Build 254 ueber
+   `style.display` ausgeblendet, nicht ueber die Klasse `hidden`. Wer
+   nur auf die Klasse sieht, haelt ihn fuer sichtbar - und der Kasten
+   bleibt ewig stehen.
+3. **Die Liste der Teile veralten lassen.** Kommt ein neues Element in
+   den Kasten und steht nicht in `KARTEN_TEILE`, zaehlt es nicht mit,
+   und der Kasten verschwaende, obwohl noch etwas drinsteht. Test 1
+   vergleicht die Liste deshalb **mit dem Markup** und nennt fuer jedes
+   ausgenommene Element den Grund.
+
+**Geprueft wird am echten Skript** in einem Stub-DOM unter node -
+dieselbe Machart wie bei der Erfolgs-Wand (Build 255).
+
+**Und eine Lehre ueber Attrappen:** beim ersten Anlauf war der Test rot
+bei „ein einziger sichtbarer Titel genuegt". Der Fehler lag NICHT im
+Overlay, sondern in der Attrappe: `textContent` liefert im Browser den
+Text des Elements **und aller Kinder**, und `#title` enthaelt Stern und
+Titeltext als eigene Spans. Die Attrappe bildet diese Regel jetzt nach
+(und die Verschachtelung dazu). Eine Attrappe, die eine Browser-Regel
+anders handhabt als der Browser, findet Fehler, die es nicht gibt - und
+uebersieht die, die es gibt.

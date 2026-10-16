@@ -2045,6 +2045,15 @@ hat bisher den Systemschlüssel der *Kategorie* gemeldet — und der ist
 dort leer. Jetzt kommt er vom **Eintrag selbst**, womit nicht nur das
 Cover erscheint, sondern auch Genre, Jahr und der RA-Fortschritt.
 
+**Jede Anzeige einzeln abschaltbar — und bei Leere verschwindet der
+Kasten (Build 265).** Cover, Überschrift, System, Spieltitel, Genre,
+Jahr, Spielzeit, RetroAchievements, Nachbarliste und Musiktitel haben
+je einen eigenen Schalter. Ist danach **nichts** mehr zu sehen, wird
+auch die Karte selbst nicht mehr gezeichnet — kein Rahmen, kein
+Schatten, kein Fleck im Bild. Entschieden wird dabei nach dem, was
+*wirklich* sichtbar ist: ein Feld kann auch leer sein, weil es zu
+diesem Spiel keine Angabe gibt.
+
 **RA-Erfolge in Echtzeit:** Wird während des Spielens ein
 RetroAchievements-Erfolg freigeschaltet, zeigt das Overlay das direkt
 an - Icon, Titel, Beschreibung, Punkte, oben rechts eingeblendet, nach
