@@ -1888,6 +1888,15 @@ Pfeiltasten, **`q` beendet** ihn. Danach wird die Textkonsole
 und der Login-Gruß landet nicht zwingend oben, wo die übliche Prüfung
 hinsieht.
 
+**Und während gelesen wird, schweigt die Textkonsole (Build 266).** Der
+Login-Gruß kam bei einem Nutzer *mitten im Lesen* über das PDF — dagegen
+hilft kein Nachwischen, man würde das PDF mitwischen. Die Konsole wird
+deshalb für die Dauer in den **Grafikmodus** geschaltet (dieselbe
+Mechanik, die X11 benutzt): der Kernel malt dann keinen Text mehr in
+den Bildspeicher. Danach geht es zurück in den Textmodus, auch wenn der
+Betrachter abstürzt. Wer das nicht will, legt
+`/media/fat/frontend/anleitung_textmodus` an.
+
 **Falls das Kontextmenü auf deinem Pad nicht aufgeht:** die Taste dafür
 heißt intern *Zurück ins Frontend* und lässt sich unter *Eingabe &
 Sprache → Tasten belegen* frei vergeben. Pads melden den X-Knopf nicht

@@ -1592,6 +1592,15 @@ case** and the page rebuilt (Build 264): a console program has
 certainly written there, and the login greeting does not necessarily
 land at the top where the usual check looks.
 
+**And while you read, the text console stays silent (Build 266).** For
+one user the login greeting appeared *in the middle of reading*, on top
+of the PDF — no amount of wiping helps there, you would wipe the PDF
+with it. The console is therefore put into **graphics mode** for the
+duration (the same mechanism X11 uses): the kernel then paints no text
+into the framebuffer. Afterwards it returns to text mode, even if the
+viewer crashes. Anyone who does not want this creates
+`/media/fat/frontend/anleitung_textmodus`.
+
 **If the context menu does not open on your pad:** its key is called
 *Back to frontend* internally and can be assigned freely under *Input &
 language → Configure buttons*. Not all pads report the X button under

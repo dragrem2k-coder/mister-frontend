@@ -3276,7 +3276,7 @@ class Frontend:
         # danach waere ein Schritt zuviel.
         inner = 'printf "\033[2J\033[H"; "$@"'
         self._auf_konsole(["/bin/bash", "-c", inner, "anleitung"] + befehl,
-                          list(befehl), pfad)
+                          list(befehl), pfad, grafik=True)
 
     def kontextmenue(self):
         """Das Kontextmenue (Build 256) - X am Pad, F1 auf der Tastatur.
@@ -13674,7 +13674,7 @@ class Frontend:
         raw     = ["/bin/bash", path] + (list(args) if args else [])
         self._auf_konsole(wrapped, raw, path)
 
-    def _auf_konsole(self, wrapped, raw, name=""):
+    def _auf_konsole(self, wrapped, raw, name="", grafik=False):
         """Ein fremdes Programm auf der echten Konsole laufen lassen und
         danach den Bildschirm zurueckholen.
 
@@ -13737,6 +13737,18 @@ class Frontend:
         # zeigt zusaetzlich den Exit-Code, unabhaengig davon, ob das
         # Frontend-Eingabesystem waehrend des Konsolenmodus zuverlaessig
         # mitliest. Deutscher Text statt des bisherigen englischen.
+        # DIE TEXTKONSOLE STILLEGEN, wenn das Programm selbst ein Bild
+        # malt - siehe KD_GRAPHICS oben.
+        grafik_an = False
+        if grafik and tty and not os.path.exists(self.GRAFIKMODUS_AUS_FLAG):
+            try:
+                fcntl.ioctl(tty.fileno(), self.KDSETMODE, self.KD_GRAPHICS)
+                grafik_an = True
+                LOG("_auf_konsole: Textkonsole im Grafikmodus - der "
+                    "Login-Gruss kann nicht mehr ins Bild schreiben")
+            except OSError as e:
+                LOG("_auf_konsole: Grafikmodus nicht moeglich (%s) - "
+                    "weiter wie bisher" % e)
         # Bildschirm dem Programm ueberlassen
         try:
             if tty:
@@ -13752,6 +13764,13 @@ class Frontend:
         except Exception as e:
             LOG("_auf_konsole: Fehler bei %s: %s" % (name, e))
         finally:
+            if grafik_an:
+                # IMMER zurueck, auch nach einem Absturz des Programms.
+                try:
+                    fcntl.ioctl(tty.fileno(), self.KDSETMODE, self.KD_TEXT)
+                except OSError as e:
+                    LOG("_auf_konsole: Textmodus liess sich nicht "
+                        "wiederherstellen (%s)" % e)
             if tty:
                 try:
                     tty.close()
@@ -13773,6 +13792,44 @@ class Frontend:
     # Wie lange nach einem KONSOLENPROGRAMM gewartet wird, bevor
     # gewischt wird - mehr als NACHFASSEN_SEK.
     NACHFASSEN_KONSOLE = 2.5
+
+    # DIE TEXTKONSOLE WAEHREND EINES BILDPROGRAMMS STILLEGEN
+    # (Build 266).
+    #
+    # NUTZER-RUECKMELDUNG, nachdem Build 264 drauf war: "nach ein paar
+    # Sekunden, wenn ich mir die Anleitung ansehe, kommt der Login-
+    # Prompt." Also WAEHREND des Lesens, nicht danach - und damit
+    # konnte das Nachfassen aus 264 es gar nicht richten: das raeumt
+    # auf, wenn der Betrachter schon beendet ist.
+    #
+    # WAS PASSIERT: back_to_frontend()/enter_console_mode() speisen ein
+    # F9 ein, das den Login-Prozess weckt (bekannt seit Build 150).
+    # Der schreibt seinen Gruss nach /dev/tty1, und die Textkonsole
+    # malt ihn in DENSELBEN Bildspeicher, in den der Betrachter sein
+    # PDF zeichnet. Wegwischen kann man ihn dort nicht - man wuerde
+    # das PDF mitwischen.
+    #
+    # DIE ABHILFE IST DIE, DIE X11 SEIT JEHER BENUTZT: die Konsole in
+    # den Grafikmodus schalten (KDSETMODE/KD_GRAPHICS). Dann malt der
+    # Kernel KEINEN Text mehr in den Bildspeicher - der Gruss landet
+    # im Textpuffer und bleibt unsichtbar. Der Betrachter schreibt
+    # ohnehin direkt in /dev/fb0 und merkt davon nichts.
+    #
+    # NUR FUER BILDPROGRAMME, nicht fuer Skripte: ein Skript SOLL
+    # seine Ausgabe zeigen, im Grafikmodus waere der Bildschirm
+    # schwarz. Deshalb der Schalter am Aufruf und nicht hier.
+    #
+    # ZURUECK GEHT ES IM finally - und zwar auch dann, wenn der
+    # Betrachter abstuerzt. Eine Konsole, die im Grafikmodus
+    # haengenbleibt, waere schlimmer als das Problem.
+    KDSETMODE = 0x4B3A
+    KD_TEXT = 0x00
+    KD_GRAPHICS = 0x01
+
+    # Wer den Grafikmodus nicht will (oder bei wem er Aerger macht),
+    # legt diese Datei an - dieselbe Linie wie beim Schalter fuer die
+    # Konsolen-Mechanik.
+    GRAFIKMODUS_AUS_FLAG = "/media/fat/frontend/anleitung_textmodus"
 
     def draw_core_choice_screen(self, syskey, display_name, default_ra=False):
         """Zwei-Optionen-Auswahl (Normal-Core / RA-Core), gezeigt beim

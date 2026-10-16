@@ -13,6 +13,16 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.8 — not yet released
 
+**Fixed, second attempt: the login greeting arrived IN THE MIDDLE of reading.**
+
+- **Reported with Builds 264 and 265 already installed:** "after a few seconds, while I am looking at the manual, the login prompt appears."
+- **That proves my fix from 264 was at the wrong end.** It cleans up *after* the viewer has finished — but here the greeting appears *while* reading. Cleaning up could never catch it.
+- **What actually happens:** the injected F9 wakes the login process (known since Build 150). It writes to `/dev/tty1`, and the text console paints it into **the same framebuffer** the viewer draws its PDF into. Wiping is no help — you would wipe the PDF with it.
+- **Now the console stays silent while you read:** it is put into **graphics mode**, the same mechanism X11 has always used. The kernel then paints no text into the framebuffer at all; the greeting lands in the text buffer and stays invisible. The viewer writes straight into the framebuffer and notices nothing.
+- **Only for image programs, not for scripts** — a script is *supposed* to show its output; in graphics mode the screen would be black.
+- **It always goes back**, even if the viewer crashes: a console stuck in graphics mode would be worse than the problem. Escape hatch if it causes trouble on some device: create `/media/fat/frontend/anleitung_textmodus`.
+
+
 **In the OBS overlay: an empty card now disappears entirely — plus two more switches.**
 
 - **Your wish:** "if I want to see nothing in the overlay, no box should be shown either."

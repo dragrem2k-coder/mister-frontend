@@ -13,6 +13,16 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.8 — noch nicht veröffentlicht
 
+**Berichtigt, zweiter Anlauf: der Login-Gruß kam MITTEN im Lesen.**
+
+- **Gemeldet, mit Build 264 und 265 bereits drauf:** „nach ein paar Sekunden, wenn ich mir die Anleitung ansehe, kommt der Login-Prompt."
+- **Damit war meine Behebung aus 264 nachweislich am falschen Ende.** Die räumt auf, *nachdem* der Betrachter beendet ist — hier erscheint der Gruß aber *während* des Lesens. Aufräumen konnte das nie treffen.
+- **Was wirklich passiert:** das eingespeiste F9 weckt den Login-Prozess (bekannt seit Build 150). Der schreibt nach `/dev/tty1`, und die Textkonsole malt ihn in **denselben Bildspeicher**, in den der Betrachter sein PDF zeichnet. Wegwischen geht nicht — man würde das PDF mitwischen.
+- **Jetzt schweigt die Konsole, solange gelesen wird:** sie wird in den **Grafikmodus** geschaltet, dieselbe Mechanik, die X11 seit jeher benutzt. Der Kernel malt dann gar keinen Text mehr in den Bildspeicher; der Gruß landet im Textpuffer und bleibt unsichtbar. Der Betrachter schreibt ohnehin direkt in den Bildspeicher und merkt davon nichts.
+- **Nur für Bildprogramme, nicht für Skripte** — ein Skript *soll* seine Ausgabe zeigen, im Grafikmodus wäre der Bildschirm schwarz.
+- **Zurück geht es in jedem Fall**, auch wenn der Betrachter abstürzt: eine Konsole, die im Grafikmodus hängenbleibt, wäre schlimmer als das Problem. Notausgang, falls es auf einem Gerät Ärger macht: `/media/fat/frontend/anleitung_textmodus` anlegen.
+
+
 **Im OBS-Overlay: ein leerer Kasten verschwindet jetzt ganz — und zwei Schalter mehr.**
 
 - **Dein Wunsch:** „wenn ich nix beim Overlay sehen will, soll auch kein Kasten mehr angezeigt werden."

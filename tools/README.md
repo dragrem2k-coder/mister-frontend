@@ -4506,3 +4506,26 @@ Titeltext als eigene Spans. Die Attrappe bildet diese Regel jetzt nach
 (und die Verschachtelung dazu). Eine Attrappe, die eine Browser-Regel
 anders handhabt als der Browser, findet Fehler, die es nicht gibt - und
 uebersieht die, die es gibt.
+
+### Nachtrag Build 266 zu test_konsole_nachfassen.py
+
+**Meine Behebung aus Build 264 war am falschen Ende**, und der Nutzer
+hat es mit einem Satz belegt: „nach ein paar Sekunden, wenn ich mir die
+Anleitung ansehe, kommt der Login-Prompt" - mit 264 und 265 bereits
+drauf. Also **waehrend** des Lesens. Ein Nachfassen, das erst nach dem
+Betrachter laeuft, konnte das nie treffen.
+
+**Die Ursache sass eine Ebene tiefer:** das eingespeiste F9 weckt den
+Login-Prozess, der schreibt nach `/dev/tty1`, und die **Textkonsole**
+malt ihn in denselben Bildspeicher, in den der Betrachter zeichnet.
+Wegwischen hilft nicht - man wischt das PDF mit.
+
+**Die Abhilfe ist die, die X11 seit jeher benutzt:**
+`KDSETMODE`/`KD_GRAPHICS` auf tty1, solange das Bildprogramm laeuft.
+Der Kernel malt dann keinen Text mehr in den Bildspeicher.
+
+Geprueft wird: der Schalter steht **am Aufruf** (die Anleitung ruft mit
+Grafikmodus, ein **Skript nicht** - dessen Ausgabe soll man ja sehen),
+der Modus wird **im finally** zurueckgenommen (eine Konsole, die im
+Grafikmodus haengenbleibt, waere schlimmer als das Problem), und es
+gibt einen **Notausgang** als Datei.

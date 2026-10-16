@@ -109,7 +109,7 @@ print()
 print("Test 4: _auf_konsole() stellt den Termin")
 # ---------------------------------------------------------------------------
 _q = io.open(H.FRONTEND_PY, encoding="utf-8").read()
-_ak = _q[_q.index("    def _auf_konsole(self, wrapped, raw, name=\"\"):"):]
+_ak = _q[_q.index("    def _auf_konsole(self, wrapped, raw, name="):]
 _ak = _ak[:_ak.index("\n    def ", 10)]
 check("es kehrt ueber back_to_frontend() zurueck",
       "self.back_to_frontend()" in _ak)
@@ -142,6 +142,38 @@ check("die 40-Zeilen-Pruefung steht noch da",
 check("und der Blindflug steht DAVOR",
       _ka.index("if blind:") < _ka.index("hoehe = min(40"),
       "sonst kaeme er nie dran")
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 6: waehrend eines Bildprogramms schweigt die Textkonsole")
+# ---------------------------------------------------------------------------
+# NUTZER-RUECKMELDUNG, NACHDEM Build 264 drauf war: "nach ein paar
+# Sekunden, wenn ich mir die Anleitung ansehe, kommt der Login-Prompt."
+# Also WAEHREND des Lesens - und damit konnte das Nachfassen aus 264
+# es gar nicht richten, das raeumt erst auf, wenn der Betrachter
+# beendet ist.
+check("es gibt den Grafikmodus-Schalter am Konsolenweg",
+      "def _auf_konsole(self, wrapped, raw, name=\"\", grafik=False):" in _q)
+check("er benutzt KDSETMODE/KD_GRAPHICS",
+      "self.KDSETMODE, self.KD_GRAPHICS" in _ak,
+      "dieselbe Mechanik, mit der X11 die Textkonsole stilllegt - der "
+      "Kernel malt dann keinen Text mehr in den Bildspeicher")
+check("und nimmt ihn im finally wieder zurueck",
+      "self.KDSETMODE, self.KD_TEXT" in _ak
+      and _ak.index("finally:") < _ak.index("self.KDSETMODE, self.KD_TEXT"),
+      "eine Konsole, die im Grafikmodus haengenbleibt, waere "
+      "schlimmer als das Problem")
+check("die Anleitung ruft MIT Grafikmodus",
+      "grafik=True" in _q[_q.index("    def anleitung_zeigen(self):"):]
+      [:_q[_q.index("    def anleitung_zeigen(self):"):].index("\n    def ", 10)])
+check("ein Skript dagegen NICHT",
+      "grafik" not in _q[_q.index("    def run_script(self, path"):]
+      [:_q[_q.index("    def run_script(self, path"):].index("\n    def ", 10)],
+      "ein Skript SOLL seine Ausgabe zeigen - im Grafikmodus waere "
+      "der Bildschirm schwarz")
+check("und es gibt einen Notausgang",
+      "GRAFIKMODUS_AUS_FLAG" in _q and "anleitung_textmodus" in _q,
+      "dieselbe Linie wie beim Schalter fuer die Konsolen-Mechanik")
 
 print()
 if fails:
