@@ -1174,6 +1174,54 @@ check("die Bench-Nummer ist fuer Build 245 mitgewachsen",
 
 # ---------------------------------------------------------------------------
 print()
+print("Build 270: 'ungeklaert' bekommt eine Richtung")
+# ---------------------------------------------------------------------------
+# DIE NOTIZ ZU BENCH 8 VOM 04.10. VERLANGT GENAU DAS: "Naechster
+# Schritt ist nicht optimieren, sondern messen." karte_mit_schatten
+# steht mit 12,15 ms (alter Kernel) bzw. 12,55 ms (neuer) da, das
+# Modell erklaert 3,64 - rund 8,5 ms sind unbenannt, in JEDEM Schritt,
+# auf BEIDEN Kerneln.
+#
+# "Ungeklaert" sagt aber nicht, WO, und die beiden Moeglichkeiten
+# fuehren zu entgegengesetzten Abhilfen: steckt die Zeit in der
+# Vorbereitung in Python, hilft weniger Vorbereiten; steckt sie in C
+# bei dreihundert Streifen, hilft Zusammenfassen. Eine Zahl, die
+# beides offenlaesst, kann man nicht benutzen.
+check("der C-Fueller-Haken nimmt jetzt auch die ZEIT",
+      "e[3] += time.monotonic() - _t" in _q,
+      "ohne sie bleibt 'ungeklaert' eine Luecke ohne Richtung")
+check("und er nimmt sie im finally",
+      _q.split("_t = time.monotonic()")[1].split("\n\n")[0].count(
+          "finally:") >= 1,
+      "ein Fehler im Fueller darf die Messung nicht stumm machen")
+check("die Zahl der Rechtecke wird mitgezaehlt",
+      "e[4] += len(_rl)" in _q,
+      "'je Rechteck' ist die Zahl, die zwischen Flaeche und Aufruf "
+      "unterscheidet - siehe Abschnitt I.3")
+check("das Konto hat dafuer fuenf Faecher",
+      "innen.setdefault(wer, [0, 0, 0, 0.0, 0])" in _q,
+      "ein Fach zuwenig waere ein IndexError mitten in der Messung")
+check("der Bericht teilt die Luecke auf",
+      "AUFGETEILT (Build 270)" in _q
+      and "im C-Fueller selbst" in _q
+      and "davor in Python (vorbereiten)" in _q)
+check("Python ist die DIFFERENZ, nicht eine zweite Messung",
+      "(gms - _c_ms)" in _q,
+      "eine zweite Messstelle waere ein zweiter Weg zum selben Wert - "
+      "genau die Sorte Nachbau, die Build 260 gekostet hat")
+check("und es steht da, was aus welchem Fall folgt",
+      "steht die Zeit in PYTHON" in _q and "Zusammenfassen" in _q,
+      "eine Zahl ohne die Folgerung daneben wird beim naechsten Mal "
+      "wieder nur angesehen")
+check("die Kosten des Hakens selbst sind benannt",
+      "zwei Uhrabfragen" in _q,
+      "bei dreihundert Aufrufen je Schritt waere der Haken der "
+      "Messwert - dann muss die Zahl der Aufrufe daneben stehen")
+check("die Bench-Nummer ist fuer Build 270 mitgewachsen",
+      B.BENCH_VERSION >= 10, str(B.BENCH_VERSION))
+
+# ---------------------------------------------------------------------------
+print()
 print("Build 247: die Schreib-Warteschlange im Bericht")
 # ---------------------------------------------------------------------------
 check("der kalte Fall nennt den Stand der Schlange",

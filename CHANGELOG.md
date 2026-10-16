@@ -13,6 +13,16 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.8 — noch nicht veröffentlicht
 
+**Am Messwerkzeug: der größte unbenannte Posten bekommt eine Richtung.**
+
+- **Nichts, was man beim Spielen merkt** — aber die Voraussetzung dafür, dass das nächste Mal etwas schneller wird, statt nur anders.
+- **Die Lage:** `karte_mit_schatten` steht in der Listenansicht mit 12,15 ms (alter Kernel) bzw. 12,55 ms (neuer), das Kostenmodell erklärt davon **3,64 ms**. Rund **8,5 ms sind unbenannt, in jedem Scrollschritt, auf beiden Kerneln** — und das unverändert seit dem Bericht vom 04.10.
+- **„Ungeklärt" sagt aber nicht, WO**, und die zwei Möglichkeiten führen zu **entgegengesetzten** Abhilfen: steckt die Zeit in der Vorbereitung in Python (die Zeilenschleife über die Eckenzeilen, das Bündeln, der Tupelbau), hilft nur weniger Vorbereiten; steckt sie im C-Aufruf bei einigen hundert Streifen von je einer Zeile, hilft Zusammenfassen. Eine Zahl, die beides offenlässt, kann man nicht benutzen.
+- **`--bench` teilt sie jetzt auf:** Zeit **im C-Füller selbst**, Zahl der Rechtecke, **je Rechteck**, und „davor in Python" als **Differenz** zur gemessenen Gesamtzeit — keine zweite Messstelle, also auch kein zweiter Weg zum selben Wert.
+- Gemessen wird an der Stelle, an der es entsteht: der C-Füller war für Zeilen und Punkte **ohnehin schon eingehakt**, er nimmt jetzt zusätzlich Zeit und Anzahl.
+- **Ehrlich dazu:** der Haken kostet je C-Aufruf zwei Uhrabfragen. Bei drei Aufrufen je Schritt ist das nichts, bei dreihundert wäre es der Messwert — deshalb steht die Zahl der Aufrufe im Bericht direkt daneben. Bench-Nummer 9 → **10**.
+
+
 **Schneller: ein Blättern in der Anleitung kostet keine Zehntelsekunde mehr.**
 
 - **Gemeldet:** „L und R Taste funktioniert doch, aber alles sehr langsam unter dem neuen Kernel" — und dann der entscheidende Nachtrag: **„mit der Tastatur hab ich gerade getestet, da läuft es besser."**

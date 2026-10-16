@@ -53,7 +53,7 @@ import zlib
 # aussehen - wer eine 1 und eine 2 nebeneinanderlegt, sieht sofort, dass
 # in der einen ein Abschnitt fehlt. Die Abschnitte A bis G haben sich
 # dabei nicht geaendert, ihre Zahlen bleiben also vergleichbar.
-BENCH_VERSION = 9
+BENCH_VERSION = 10
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -2830,7 +2830,42 @@ def _abschnitt_k(b, fe, S, A):
     DIE ZAHL DER AUFRUFE IST DIE UEBERTRAGBARE GROESSE. Abschnitt I.3
     misst eine 60x40-Flaeche mit 0,489 ms in C und eine 697x3 mit
     0,318 ms - beides winzige Flaechen. Das ist nicht die Flaeche, das
-    ist der Aufruf."""
+    ist der Aufruf.
+
+    UND SEIT BUILD 270 WIRD DIE LUECKE AUFGETEILT - das ist der
+    naechste Schritt, den die Notiz zu Bench 8 vom 04.10. ausdruecklich
+    verlangt hat: "Naechster Schritt ist nicht optimieren, sondern
+    messen."
+
+    Die Lage: im A/B-Lauf mit Build 268 steht karte_mit_schatten in der
+    Listenansicht mit 12,15 ms (alter Kernel) bzw. 12,55 ms (neuer),
+    das Modell erklaert 3,64 ms - rund 8,5 ms sind unbenannt, in JEDEM
+    Schritt, auf BEIDEN Kerneln. Das ist der groesste unbenannte Posten
+    im ganzen Bericht, und er ist seit Bench 8 unveraendert da.
+
+    "Ungeklaert" sagt aber nicht, WO. Zwei Moeglichkeiten, und sie
+    fuehren zu genau entgegengesetzten Abhilfen:
+
+      * Die Zeit steckt in der VORBEREITUNG in Python - die
+        Zeilenschleife ueber die Eckenzeilen (einzug() je Zeile), das
+        Buendeln, der Bau des Tupels fuer C. Dann hilft nur, weniger
+        vorzubereiten; eine kleinere Flaeche aendert nichts.
+      * Die Zeit steckt IM C-Aufruf, und zwar in der ZAHL der
+        Rechtecke - bei einer Karte mit Radius 96 sind das einige
+        hundert Streifen von je einer Zeile. Dann hilft
+        Zusammenfassen.
+
+    Gemessen wird das an genau der Stelle, an der es entsteht: der
+    C-Fueller ist ohnehin schon eingehakt (er liefert Zeilen und
+    Punkte), und dieser Haken nimmt jetzt zusaetzlich die Zeit und die
+    Zahl der Rechtecke. Die Differenz zur gemessenen Gesamtzeit des
+    aeussersten Aufrufs IST die Python-Vorbereitung - ohne Schaetzung
+    und ohne eine zweite Messstelle.
+
+    EHRLICH DAZU: der Haken kostet je C-Aufruf zwei Uhrabfragen. Bei
+    drei Aufrufen je Schritt ist das vernachlaessigbar, bei dreihundert
+    waere es der Messwert selbst - deshalb steht die Zahl der Aufrufe
+    im Bericht direkt daneben."""
     b("")
     b("-" * 62)
     b(" K  Welche Fuellaufrufe macht ein Scrollschritt? (Build 241,"
@@ -2950,11 +2985,19 @@ def _abschnitt_k(b, fe, S, A):
                 _rl = tuple(rechtecke)
             except Exception:                            # noqa: BLE001
                 _rl = ()
-            e = innen.setdefault(wer, [0, 0, 0])
+            e = innen.setdefault(wer, [0, 0, 0, 0.0, 0])
             e[0] += 1
             e[1] += sum(int(r[3]) for r in _rl)
             e[2] += sum(int(r[2]) * int(r[3]) for r in _rl)
-            return echt_fueller(buf, stride, hoehe_, grenze, _rl)
+            e[4] += len(_rl)
+            # DIE ZEIT IM C-FUELLER SELBST (Build 270). Siehe den
+            # Docstring: ohne diese Zahl ist "ungeklaert" eine Luecke
+            # ohne Richtung.
+            _t = time.monotonic()
+            try:
+                return echt_fueller(buf, stride, hoehe_, grenze, _rl)
+            finally:
+                e[3] += time.monotonic() - _t
         return echt_fueller(buf, stride, hoehe_, grenze, rechtecke)
 
     def _durchgang(ansicht, titel):
@@ -3017,6 +3060,8 @@ def _abschnitt_k(b, fe, S, A):
                 _n_c = e[0] / float(schritte)
                 _zl = e[1] / float(schritte)
                 _pk = e[2] / float(schritte)
+                _c_ms = e[3] * 1000.0 / schritte
+                _rechtecke = e[4] / float(schritte)
                 _modell = _zl * MS_JE_ZEILE + (_pk * 4.0 / 1048576.0) * MS_JE_MB
                 b("        %.1f C-Aufrufe, %.0f Zeilen, %.0f Punkte"
                   " (%.2f MB)" % (_n_c, _zl, _pk, _pk * 4.0 / 1048576.0))
@@ -3027,6 +3072,34 @@ def _abschnitt_k(b, fe, S, A):
                   "      %6.2f ms" % gms)
                 b("        ungeklaert                              "
                   "      %6.2f ms" % (gms - _modell))
+                # WO DIE LUECKE LIEGT (Build 270) - die eigentliche
+                # Auskunft. Siehe den Docstring: "zaehlen, nicht
+                # optimieren".
+                b("        AUFGETEILT (Build 270):")
+                b("          im C-Fueller selbst                   "
+                  "    %6.2f ms   (%.1f Rechtecke in %.1f Aufrufen)"
+                  % (_c_ms, _rechtecke, _n_c))
+                b("          davor in Python (vorbereiten)         "
+                  "    %6.2f ms" % (gms - _c_ms))
+                if _rechtecke > 0:
+                    b("          je Rechteck im C-Fueller              "
+                      "    %6.3f ms" % (_c_ms / _rechtecke))
+                b("          ungeklaert INNERHALB von C            "
+                  "    %6.2f ms" % (_c_ms - _modell))
+                if _c_ms < _modell:
+                    b("          (negativ heisst: das Schreiben selbst ist")
+                    b("           billiger als das Modell - dann steckt die")
+                    b("           Zeit in der Vorbereitung, nicht im Fuellen)")
+                b("        Zu lesen als: steht die Zeit in PYTHON, ist die")
+                b("        Vorbereitung der Posten (die Zeilenschleife, das")
+                b("        Buendeln, der Tupelbau) - dann hilft weniger")
+                b("        Vorbereiten und keine kleinere Flaeche. Steht sie")
+                b("        in C und 'je Rechteck' ist gross, sind es die")
+                b("        vielen kleinen Rechtecke - dann hilft")
+                b("        Zusammenfassen. Der Haken selbst kostet je")
+                b("        C-Aufruf zwei Uhrabfragen; bei %.1f Aufrufen je"
+                  % _n_c)
+                b("        Schritt ist das der Fehlerbalken dieser Zeilen.")
                 if gms < _modell:
                     # Sonst liest sich eine negative Zahl wie ein
                     # Fehler. Das Modell sind Messwerte des DE10-Nano;

@@ -13,6 +13,16 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.8 — not yet released
 
+**On the measuring tool: the largest unnamed item gets a direction.**
+
+- **Nothing you notice while playing** — but the precondition for the next change making something faster rather than merely different.
+- **The situation:** `karte_mit_schatten` costs 12.15 ms in the list view (old kernel) resp. 12.55 ms (new one); the cost model explains **3.64 ms** of that. About **8.5 ms are unnamed, in every scroll step, on both kernels** — unchanged since the report of 4 Oct.
+- **"Unexplained" does not say WHERE**, and the two possibilities call for **opposite** remedies: if the time is in the Python preparation (the loop over the corner rows, the bundling, building the tuple), only preparing less helps; if it is inside the C call with several hundred one-row strips, merging helps. A number that leaves both open cannot be used.
+- **`--bench` now splits it:** time **inside the C filler**, number of rectangles, **per rectangle**, and "before that, in Python" as the **difference** to the measured total — no second measuring point, hence no second path to the same value.
+- It is measured where it happens: the C filler was **already hooked** for rows and points, it now also takes time and count.
+- **To be honest about it:** the hook costs two clock reads per C call. At three calls per step that is nothing; at three hundred it would *be* the measurement — which is why the number of calls is printed right next to it. Bench number 9 → **10**.
+
+
 **Faster: paging in a manual no longer costs a tenth of a second.**
 
 - **Reported:** "L and R do work, but everything is very slow on the new kernel" — then the decisive addition: **"I just tested with the keyboard, it runs better there."**

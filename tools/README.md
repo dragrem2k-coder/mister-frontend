@@ -4616,6 +4616,38 @@ steht auch, *dass* MiSTer die Knoepfe in Tasten uebersetzt - die
 Erklaerung fuer „ich kann erst blaettern, wenn ich einmal die
 Leertaste gedrueckt habe".
 
+### Nachtrag Build 270: eine Luecke mit Richtung
+
+**Die Notiz zu Bench 8 vom 04.10. hat das selbst verlangt:** „Naechster
+Schritt ist nicht optimieren, sondern messen." Seitdem steht
+`karte_mit_schatten` unveraendert mit rund 8,5 ms ungeklaert je
+Scrollschritt da - gemessen 12,15 ms (alter Kernel) bzw. 12,55 ms
+(neuer), Modell 3,64 ms.
+
+**Warum eine solche Zahl unbrauchbar ist, solange sie keine Richtung
+hat:** die beiden moeglichen Ursachen verlangen das GEGENTEIL
+voneinander.
+
+| steckt die Zeit in … | dann hilft … | und dann ist falsch … |
+|---|---|---|
+| der Vorbereitung in Python (Zeilenschleife, Buendeln, Tupelbau) | weniger vorbereiten | eine kleinere Flaeche |
+| dem C-Aufruf, bei hunderten Ein-Zeilen-Streifen | zusammenfassen | weniger vorbereiten |
+
+Wer ohne diese Unterscheidung optimiert, hat eine Muenze geworfen.
+
+**Gemessen wird an der Stelle, die es ohnehin schon gibt.** Der
+C-Fueller war fuer Zeilen und Punkte bereits eingehakt; er nimmt jetzt
+zusaetzlich die ZEIT und die ZAHL DER RECHTECKE. Die Python-Zeit ist
+die **Differenz** zur gemessenen Gesamtzeit des aeussersten Aufrufs -
+ausdruecklich keine zweite Messstelle, denn zwei Wege zum selben Wert
+sind genau die Sorte Nachbau, die Build 260 gekostet hat.
+
+**Und die Kosten des Messens stehen im Bericht.** Zwei Uhrabfragen je
+C-Aufruf sind bei drei Aufrufen je Schritt nichts und bei dreihundert
+der Messwert selbst - deshalb steht die Zahl der Aufrufe daneben. Ein
+Messgeraet, das seinen eigenen Fehlerbalken verschweigt, hat in diesem
+Projekt schon zweimal ein Build gekostet (178 und 241/242).
+
 ### Nachtrag Build 269: die Gegenprobe des Nutzers hat die Zahl gefunden
 
 **Zwei Saetze, eine Diagnose.** Erst: „l und r Taste funktioniert doch,
