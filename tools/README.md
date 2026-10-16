@@ -4529,3 +4529,32 @@ Grafikmodus, ein **Skript nicht** - dessen Ausgabe soll man ja sehen),
 der Modus wird **im finally** zurueckgenommen (eine Konsole, die im
 Grafikmodus haengenbleibt, waere schlimmer als das Problem), und es
 gibt einen **Notausgang** als Datei.
+
+### Nachtrag Build 267: die Grenze und eine eingefrorene Uhr
+
+**Der Fund stand im Protokoll des Nutzers, nicht im Code:** letzte
+Zeile der Start des Betrachters, danach nichts - kein Rueckgabewert,
+kein Fehler. Also kein Absturz, sondern ein Warten ohne Ende.
+`subprocess.call()` kommt eben erst zurueck, wenn das Programm fertig
+ist; fuer ein Skript ist das richtig, fuer einen Betrachter nicht.
+
+`_warten_auf()` hat deshalb eine Grenze (fuer Betrachter 15 Minuten,
+fuer Skripte keine), beendet erst mit SIGTERM und dann mit SIGKILL -
+und der Aufrufer raeumt wie gehabt im `finally` auf.
+
+**Geprueft wird das mit einem ECHTEN Prozess** (`sleep 30` gegen eine
+Grenze von 0,6 s), nicht an einer Textstelle.
+
+**Und dabei die Lehre des Tages ueber Uhren:** beim ersten Anlauf
+meldete der Test „0,0 s bei einer Grenze von 0,6 s" - und *diese Zahl
+war die eingefrorene Uhr des Pruefstands*, nicht die Wirklichkeit.
+`tools/_harness.py` friert `time.monotonic()` ein, und zwar im
+`time`-Modul selbst; ein `import time as _zeit` bekommt denselben
+eingefrorenen Wert. Gemessen wird deshalb mit `perf_counter()`, und
+die getestete Funktion bekommt fuer die Dauer des Tests eine Uhr, die
+wirklich laeuft. **Ein Zeittest an einer stehenden Uhr prueft das
+Gegenteil dessen, was er behauptet.**
+
+Dieselbe Falle hat in Build 249 eine Stoppuhr gekostet und in Build
+261 noch einmal - sie ist hier zum dritten Mal aufgetaucht, diesmal
+andersherum.

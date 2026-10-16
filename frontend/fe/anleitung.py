@@ -186,15 +186,37 @@ def betrachter_fuer(pfad):
 def befehl(pfad):
     """Die vollstaendige Befehlszeile - oder None.
 
-    "--zoom_to_width" ist die einzige Einstellung, die wir mitgeben:
-    eine Anleitungsseite ist hochkant, der Bildschirm quer. Ohne sie
-    startet jfbview in Originalgroesse, und man sieht die obere linke
-    Ecke einer Seite."""
+    ZWEI EINSTELLUNGEN, und beide haben einen Grund.
+
+    "--zoom_to_width": eine Anleitungsseite ist hochkant, der
+    Bildschirm quer. Ohne sie startet jfbview in Originalgroesse, und
+    man sieht die obere linke Ecke einer Seite.
+
+    "--cache_size=1" (Build 267): NUTZERMELDUNG "wenn ich jetzt durch
+    eine Anleitung blaettere, haengt sich das Frontend nach ein paar
+    Seiten auf". Das Protokoll zeigt den Betrachter gestartet und
+    danach NICHTS mehr - kein Rueckgabewert, also kein Absturz,
+    sondern ein Prozess, der nicht mehr fertig wird.
+
+    "Nach ein paar Seiten" ist dabei der entscheidende Hinweis: das
+    Einzige, was mit jeder Seite WAECHST, ist der Seitenspeicher.
+    jfbviews eigene Hilfe schreibt dazu woertlich: "Cache at most N
+    pages. If you have an older machine with limited RAM, or if you
+    are loading huge documents ... you might want to set this to a
+    smaller number." Ein DE10-Nano mit 1 GB und eingescannten
+    Anleitungen auf 1920x1080 ist genau diese Maschine. Mit 1 bleibt
+    der Verbrauch flach; der Preis ist, dass eine zurueckgeblaetterte
+    Seite neu gezeichnet wird.
+
+    GERATEN IST DARAN NICHTS AUSSER DER URSACHE: dass es der Speicher
+    IST, ist noch nicht gemessen (dafuer braucht es dmesg/free vom
+    Geraet). Die Einstellung ist aber unabhaengig davon richtig - sie
+    steht so in der Hilfe des Programms."""
     prog = betrachter_fuer(pfad)
     if not prog:
         return None
     if prog == PDF_BETRACHTER:
-        return [prog, "--zoom_to_width", pfad]
+        return [prog, "--zoom_to_width", "--cache_size=1", pfad]
     return [prog, "-p", pfad]
 
 

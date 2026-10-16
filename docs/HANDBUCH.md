@@ -1882,7 +1882,15 @@ nicht.
 
 **Beim Lesen gibt das Frontend den Bildschirm ab** und holt ihn danach
 zurück — derselbe Weg wie bei einem Skript. Im Betrachter blättern die
-Pfeiltasten, **`q` beendet** ihn. Danach wird die Textkonsole
+Pfeiltasten, **`q` beendet** ihn.
+
+**Zwei Vorsichtsmaßnahmen (Build 267):** der Betrachter bekommt
+`--cache_size=1` mit, behält also immer nur **eine** Seite im Speicher
+— auf einem Gerät mit 1 GB und eingescannten Anleitungen ist das der
+Unterschied zwischen „blättert" und „bleibt stehen". Und das Frontend
+wartet höchstens **15 Minuten** auf ihn; danach wird der Betrachter
+beendet und die Seite neu aufgebaut, damit aus einem hängenden fremden
+Programm nie ein hängendes Frontend wird. Danach wird die Textkonsole
 **in jedem Fall** einmal gewischt und die Seite neu aufgebaut (Build
 264): ein Konsolenprogramm hat mit Sicherheit dort hineingeschrieben,
 und der Login-Gruß landet nicht zwingend oben, wo die übliche Prüfung

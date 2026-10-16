@@ -196,6 +196,12 @@ try:
     check("mit --zoom_to_width", b and "--zoom_to_width" in b,
           "eine Anleitungsseite ist hochkant, der Bildschirm quer - "
           "ohne das sieht man die obere linke Ecke")
+    check("mit begrenztem Seitenspeicher",
+          b and "--cache_size=1" in b,
+          "Build 267: 'nach ein paar Seiten haengt sich das Frontend "
+          "auf' - das Einzige, was je Seite WAECHST, ist der "
+          "Seitenspeicher; jfbviews eigene Hilfe empfiehlt genau das "
+          "fuer Maschinen mit wenig RAM")
     check("und die Datei als letztes Argument", b and b[-1] == SMS_ACE)
     check("fuer eine Textdatei kommt glow",
           A.befehl(SNES_TXT)[0] == A.TEXT_BETRACHTER)
@@ -254,6 +260,17 @@ try:
           "im Overlay gekostet")
     check("und ein Ordner bekommt nie eine Anleitung",
           'item[1] != "game"' in _ae)
+    check("der Betrachter darf nicht ewig haengen",
+          "grenze=self.ANLEITUNG_MAX_SEK" in _az,
+          "das Protokoll endete mitten im Aufruf - das Frontend war "
+          "nicht abgestuerzt, es wartete ohne Ende")
+    _wa = _fe[_fe.index("    def _warten_auf(self, proc, grenze"):]
+    _wa = _wa[:_wa.index("\n    def ", 10)]
+    check("ohne Grenze wird weiterhin unbegrenzt gewartet",
+          "if not grenze or grenze <= 0:" in _wa and "proc.wait()" in _wa,
+          "ein Skript SOLL zu Ende laufen duerfen")
+    check("erst freundlich, dann bestimmt",
+          _wa.index("proc.terminate()") < _wa.index("proc.kill()"))
     check("nach einem Neueinlesen wird der Stand verworfen",
           "ANLEITUNG.vergessen()" in _fe,
           "wer Spiele nachlegt, legt oft auch Anleitungen dazu")

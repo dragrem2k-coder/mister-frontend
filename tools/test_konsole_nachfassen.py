@@ -153,7 +153,10 @@ print("Test 6: waehrend eines Bildprogramms schweigt die Textkonsole")
 # es gar nicht richten, das raeumt erst auf, wenn der Betrachter
 # beendet ist.
 check("es gibt den Grafikmodus-Schalter am Konsolenweg",
-      "def _auf_konsole(self, wrapped, raw, name=\"\", grafik=False):" in _q)
+      "grafik=False" in _q.split("def _auf_konsole(")[1][:160],
+      "an der Unterschrift, nicht an einer Schreibweise - die Zeile "
+      "ist in Build 267 umgebrochen und haette den Test sonst "
+      "gekippt, ohne dass sich an der Zusage etwas aendert")
 check("er benutzt KDSETMODE/KD_GRAPHICS",
       "self.KDSETMODE, self.KD_GRAPHICS" in _ak,
       "dieselbe Mechanik, mit der X11 die Textkonsole stilllegt - der "
@@ -174,6 +177,50 @@ check("ein Skript dagegen NICHT",
 check("und es gibt einen Notausgang",
       "GRAFIKMODUS_AUS_FLAG" in _q and "anleitung_textmodus" in _q,
       "dieselbe Linie wie beim Schalter fuer die Konsolen-Mechanik")
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 7: ein haengendes Programm wird wirklich beendet")
+# ---------------------------------------------------------------------------
+# Hier wird nicht im Quelltext gelesen, sondern ein echter Prozess
+# gestartet, der von selbst nicht zurueckkommt - genau die Lage aus
+# der Nutzermeldung ("haengt sich auf, keine Eingabe reagiert mehr",
+# und im Protokoll steht kein Rueckgabewert).
+import subprocess                                        # noqa: E402
+import time as _zeit                                     # noqa: E402
+
+# MIT ECHTER UHR. Der Pruefstand friert time.monotonic() ein (siehe
+# tools/_harness.py) - mit stehender Uhr wuerde die Grenze NIE
+# erreicht, und der Test pruefte das Gegenteil dessen, was er
+# behauptet. Beim ersten Anlauf ist mir genau das passiert: er meldete
+# "0,0 s bei einer Grenze von 0,6 s", und diese Zahl war die
+# eingefrorene Uhr, nicht die Wirklichkeit.
+# perf_counter() laeuft weiter - monotonic() ist der eingefrorene.
+_echte_zeit = type("t", (), {"monotonic": staticmethod(_zeit.perf_counter),
+                             "sleep": staticmethod(_zeit.sleep)})()
+_gefroren = H.fm.time
+H.fm.time = _echte_zeit
+try:
+    _p = subprocess.Popen(["sleep", "30"])
+    _t0 = _zeit.perf_counter()
+    _rc = FE._warten_auf(_p, 0.6, "probe")
+    _dauer = _zeit.perf_counter() - _t0
+    check("es kommt zurueck, statt zu warten", _rc is not None)
+    check("und zwar kurz nach der Grenze", 0.5 <= _dauer < 6.0,
+          "%.1f s bei einer Grenze von 0,6 s" % _dauer)
+    check("der Prozess lebt nicht weiter", _p.poll() is not None,
+          "sonst bliebe er am Bildschirm haengen")
+
+    _p2 = subprocess.Popen(["sleep", "0.2"])
+    _t1 = _zeit.perf_counter()
+    _rc2 = FE._warten_auf(_p2, 30.0, "kurz")
+    check("ein Programm, das von selbst endet, wird NICHT abgewuergt",
+          _rc2 == 0, "Rueckgabewert %s" % _rc2)
+    check("und es wird nicht bis zur Grenze gewartet",
+          _zeit.perf_counter() - _t1 < 5.0,
+          "%.1f s statt 30" % (_zeit.perf_counter() - _t1))
+finally:
+    H.fm.time = _gefroren
 
 print()
 if fails:

@@ -13,6 +13,15 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.8 — not yet released
 
+**Fixed: while paging, the viewer stopped after a few pages — and took the frontend with it.**
+
+- **Reported:** "when I page through a manual, the frontend hangs after a few pages, no input responds any more."
+- **The log was unambiguous:** the last line is the viewer starting, then **nothing** — no return code, no error. So the frontend had not crashed, it was **waiting without end**: the call only returns when the program is finished.
+- **"After a few pages" is the decisive hint.** The only thing that *grows* with each page is the viewer's page cache. Jfbview's own help says: *"Cache at most N pages. If you have an older machine with limited RAM, or if you are loading huge documents … you might want to set this to a smaller number."* A DE10-Nano with 1 GB and scanned manuals at 1920×1080 is exactly that machine. The viewer now gets **`--cache_size=1`**.
+- **Plus a safety net, independent of the cause:** the frontend waits at most **15 minutes**, then terminates the viewer — politely first, firmly after — and rebuilds the page. For **scripts** the limit deliberately does not apply; they are supposed to run to the end.
+- **To be honest about it:** that memory *is* the cause has not been measured yet. The setting is right regardless, and the limit is right anyway.
+
+
 **Fixed, second attempt: the login greeting arrived IN THE MIDDLE of reading.**
 
 - **Reported with Builds 264 and 265 already installed:** "after a few seconds, while I am looking at the manual, the login prompt appears."

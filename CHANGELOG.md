@@ -13,6 +13,15 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.8 — noch nicht veröffentlicht
 
+**Berichtigt: beim Blättern blieb der Betrachter nach ein paar Seiten stehen — und das Frontend mit ihm.**
+
+- **Gemeldet:** „wenn ich jetzt durch eine Anleitung blättere, hängt sich das Frontend nach ein paar Seiten auf, keine Eingabe reagiert mehr."
+- **Das Protokoll war eindeutig:** letzte Zeile ist der Start des Betrachters, danach **nichts** — kein Rückgabewert, kein Fehler. Das Frontend war also nicht abgestürzt, es **wartete ohne Ende**: der Aufruf kommt erst zurück, wenn das Programm fertig ist.
+- **„Nach ein paar Seiten" ist der entscheidende Hinweis.** Das Einzige, was mit jeder Seite *wächst*, ist der Seitenspeicher des Betrachters. Jfbviews eigene Hilfe sagt dazu: *„Cache at most N pages. If you have an older machine with limited RAM, or if you are loading huge documents … you might want to set this to a smaller number."* Ein DE10-Nano mit 1 GB und eingescannten Anleitungen auf 1920×1080 ist genau diese Maschine. Der Betrachter bekommt jetzt **`--cache_size=1`**.
+- **Dazu ein Sicherheitsnetz, unabhängig von der Ursache:** das Frontend wartet höchstens **15 Minuten**, dann beendet es den Betrachter — erst freundlich, dann bestimmt — und baut die Seite neu auf. Für **Skripte** gilt die Grenze ausdrücklich nicht; die sollen zu Ende laufen dürfen.
+- **Ehrlich dazu:** dass es *der Speicher* ist, ist noch nicht gemessen. Die Einstellung ist aber unabhängig davon richtig, und die Grenze ist es ohnehin.
+
+
 **Berichtigt, zweiter Anlauf: der Login-Gruß kam MITTEN im Lesen.**
 
 - **Gemeldet, mit Build 264 und 265 bereits drauf:** „nach ein paar Sekunden, wenn ich mir die Anleitung ansehe, kommt der Login-Prompt."

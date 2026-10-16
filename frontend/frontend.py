@@ -3276,7 +3276,8 @@ class Frontend:
         # danach waere ein Schritt zuviel.
         inner = 'printf "\033[2J\033[H"; "$@"'
         self._auf_konsole(["/bin/bash", "-c", inner, "anleitung"] + befehl,
-                          list(befehl), pfad, grafik=True)
+                          list(befehl), pfad, grafik=True,
+                          grenze=self.ANLEITUNG_MAX_SEK)
 
     def kontextmenue(self):
         """Das Kontextmenue (Build 256) - X am Pad, F1 auf der Tastatur.
@@ -13674,7 +13675,64 @@ class Frontend:
         raw     = ["/bin/bash", path] + (list(args) if args else [])
         self._auf_konsole(wrapped, raw, path)
 
-    def _auf_konsole(self, wrapped, raw, name="", grafik=False):
+    def _warten_auf(self, proc, grenze, name=""):
+        """Auf ein Konsolenprogramm warten - hoechstens "grenze"
+        Sekunden, 0 heisst unbegrenzt.
+
+        WARUM ES DIE GRENZE GIBT (Build 267). NUTZERMELDUNG: "wenn ich
+        jetzt durch eine Anleitung blaettere, haengt sich das Frontend
+        nach ein paar Seiten auf, keine Eingabe reagiert mehr." Das
+        Protokoll endet mitten im Aufruf - kein Rueckgabewert, kein
+        Fehler. Das Frontend war also nicht abgestuerzt, es WARTETE,
+        und zwar ohne Ende: subprocess.call() kommt erst zurueck, wenn
+        das Programm fertig ist.
+
+        Das ist fuer ein Skript richtig (es soll zu Ende laufen
+        duerfen), fuer einen Betrachter aber nicht: dort sitzt ein
+        Mensch vor einem Bild, das sich nicht mehr bewegt, und hat
+        keinen Weg zurueck. Nach der Grenze wird deshalb erst
+        freundlich (SIGTERM) und dann bestimmt (SIGKILL) beendet - und
+        der Aufrufer raeumt wie immer im finally auf, schaltet die
+        Textkonsole zurueck und baut die Seite neu auf.
+
+        EINE GRENZE IST KEINE BEHEBUNG, und sie ist auch nicht als
+        solche gedacht: die eigentliche Ursache wird in
+        fe/anleitung.py angegangen (Seitenspeicher). Das hier ist das
+        Sicherheitsnetz darunter - damit aus einem haengenden fremden
+        Programm nie wieder ein haengendes Frontend wird."""
+        if not grenze or grenze <= 0:
+            return proc.wait()
+        ende = time.monotonic() + grenze
+        while True:
+            rc = proc.poll()
+            if rc is not None:
+                return rc
+            if time.monotonic() >= ende:
+                break
+            time.sleep(0.2)
+        LOG("_auf_konsole: %s laeuft seit %.0f s - wird beendet"
+            % (name, grenze))
+        try:
+            proc.terminate()
+            for _ in range(25):              # fuenf Sekunden Gnadenfrist
+                if proc.poll() is not None:
+                    return proc.returncode
+                time.sleep(0.2)
+            proc.kill()
+        except Exception as e:               # noqa: BLE001
+            LOG("_auf_konsole: Beenden fehlgeschlagen (%s)" % e)
+        try:
+            return proc.wait()
+        except Exception:                    # noqa: BLE001
+            return -1
+
+    # Wie lange ein BETRACHTER hoechstens laufen darf. Ein Skript hat
+    # keine Grenze (es soll zu Ende laufen); wer eine Anleitung liest,
+    # ist nach einer Viertelstunde entweder fertig oder haengt.
+    ANLEITUNG_MAX_SEK = 900.0
+
+    def _auf_konsole(self, wrapped, raw, name="", grafik=False,
+                     grenze=0.0):
         """Ein fremdes Programm auf der echten Konsole laufen lassen und
         danach den Bildschirm zurueckholen.
 
@@ -13753,13 +13811,15 @@ class Frontend:
         try:
             if tty:
                 LOG("_auf_konsole: starte mit tty1-Umleitung: %s" % wrapped)
-                rc = subprocess.call(wrapped, preexec_fn=_ctty,
+                rc = self._warten_auf(
+                    subprocess.Popen(wrapped, preexec_fn=_ctty,
                                      stdin=tty, stdout=tty, stderr=tty,
                                      env=dict(os.environ, TERM="linux",
-                                              HOME="/root"))
+                                              HOME="/root")),
+                    grenze, name)
             else:
                 LOG("_auf_konsole: starte OHNE tty1-Umleitung (Fallback): %s" % raw)
-                rc = subprocess.call(raw)
+                rc = self._warten_auf(subprocess.Popen(raw), grenze, name)
             LOG("_auf_konsole: %s beendet, Ruecksprungwert=%s" % (name, rc))
         except Exception as e:
             LOG("_auf_konsole: Fehler bei %s: %s" % (name, e))

@@ -1587,7 +1587,14 @@ Aces (Europe).sms", with the same fuzzy comparison as the covers.
 
 **While reading, the frontend hands over the screen** and takes it back
 afterwards — the same path a script takes. In the viewer the arrow keys
-page, **`q` quits**. Afterwards the text console is wiped **in any
+page, **`q` quits**.
+
+**Two precautions (Build 267):** the viewer is given `--cache_size=1`,
+so it keeps only **one** page in memory — on a device with 1 GB and
+scanned manuals that is the difference between "pages turn" and "it
+stops". And the frontend waits at most **15 minutes** for it; after
+that the viewer is terminated and the page rebuilt, so that a hanging
+foreign program never becomes a hanging frontend. Afterwards the text console is wiped **in any
 case** and the page rebuilt (Build 264): a console program has
 certainly written there, and the login greeting does not necessarily
 land at the top where the usual check looks.
