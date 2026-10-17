@@ -152,7 +152,6 @@ check("_repeat_floor('left') liefert die Seiten-Untergrenze",
       abs(im._repeat_floor("left") - I.REPEAT_FLOOR_PAGE) < 1e-9)
 check("_repeat_floor('down') liefert die Zeilen-Untergrenze",
       abs(im._repeat_floor("down") - I.REPEAT_FLOOR) < 1e-9)
-
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))
@@ -200,6 +199,108 @@ _roh._zeichenzeit = {}
 check("ohne das Feld gilt die Vorgabe",
       _roh._repeat_floor("left") == I.REPEAT_FLOOR_PAGE
       and _roh._repeat_floor("up") == I.REPEAT_FLOOR)
+
+
+# ---------------------------------------------------------------------------
+print()
+print("Build 276: eine FAELLIGE Wiederholung wird nicht mehr ausgehungert")
+# ---------------------------------------------------------------------------
+# NUTZERMELDUNG: "das Scrollen bei gedrueckter Taste ist totaler Mist,
+# lagt ohne Ende und stockt" - bei 291 ms Latenz im Mittel und KEINER
+# einzigen RUCKLER-Zeile. Wir waren also nicht beschaeftigt, sondern
+# nicht abrufbar.
+#
+# URSACHE: read_action() hat die Warteschlange bevorzugt ("erst leeren,
+# dann Repeat"). Eine gehaltene Taste erzeugt aber dauernd Ereignisse,
+# die GAR KEINE AKTION sind - die Auto-Wiederholung der Tastatur
+# (value==2, in _translate() bewusst verworfen), dazu EV_MSC und
+# EV_SYN, bei einem Pad die unveraenderten Achsen. Jedes davon schickte
+# die Schleife zurueck an den Anfang, ohne den faelligen Schritt
+# auszuliefern.
+#
+# GEPRUEFT WIRD MIT ECHTEN DATEIDESKRIPTOREN, nicht mit einer Attrappe
+# von select(): die Frage ist ja genau, was die Schleife tut, wenn
+# select() dauerhaft "da ist was" sagt. Eine Pipe voller EV_SYN ist
+# dafuer der ehrlichste Pruefstand - sie liefert echte Bytes, und
+# _translate() macht daraus zu Recht keine Aktion.
+import struct as _struct                                     # noqa: E402
+
+
+class _FakeDev(object):
+    def __init__(self, fd, pfad):
+        self.fd = fd
+        self.path = pfad
+        self.axis = {}
+        self.axis_state = {}
+
+
+def _bau_mit_stroem(anzahl):
+    """InputManager mit einer Pipe, in der <anzahl> EV_SYN liegen."""
+    r, w = os.pipe()
+    roh = _struct.pack(I.EVENT_FMT, 0, 0, I.EV_SYN, 0, 0)
+    os.write(w, roh * anzahl)
+    os.close(w)                 # Leser sieht die Bytes, dann EOF
+    m = I.InputManager.__new__(I.InputManager)
+    m.devices = {"/dev/input/event9": _FakeDev(r, "/dev/input/event9")}
+    m.want_grab = False
+    m.last_scan = time.monotonic()      # kein rescan() in diesem Test
+    m.held = None
+    m._last_repeat_time = 0.0
+    m._last_repeat_act = None
+    m._last_repeat_iv = I.REPEAT_INTERVAL
+    m._last_input_mtime = None
+    m._zeichenzeit = {}
+    m.seiten_aktionen = set()
+    return m, r
+
+
+# 400 aktionslose Ereignisse: so lange sagt select() ununterbrochen
+# "da ist was". Die Wiederholung ist seit einer Zehntelsekunde faellig.
+im2, _fd = _bau_mit_stroem(400)
+im2.held = (KID_DOWN, "down", time.monotonic() - 0.10, I.REPEAT_FLOOR)
+_t0 = time.perf_counter()
+_act = im2.read_action(timeout=1.0)
+_dauer = time.perf_counter() - _t0
+os.close(_fd)
+check("der faellige Schritt kommt, trotz Dauerstrom aus dem Geraet",
+      _act == "down", repr(_act) + " nach %.0f ms" % (_dauer * 1000))
+check("und er kommt sofort, nicht erst nach der Frist",
+      _dauer < 0.5, "%.0f ms von 1000 ms Frist" % (_dauer * 1000))
+check("gezaehlt wird, wie oft die alte Regel ihn aufgehalten haette",
+      getattr(im2, "repeat_durchgelassen", 0) >= 1,
+      "%d x - ohne diese Zahl liesse sich die Ursache nicht belegen"
+      % getattr(im2, "repeat_durchgelassen", 0))
+
+# Die Gegenprobe: ohne faellige Wiederholung bleibt es beim alten
+# Verhalten - aktionslose Ereignisse werden geleert und liefern nichts.
+im3, _fd3 = _bau_mit_stroem(50)
+im3.held = None
+check("ohne faelligen Schritt liefert ein Dauerstrom weiter nichts",
+      im3.read_action(timeout=0.2) is None)
+os.close(_fd3)
+
+# UND DAS LOSLASSEN DARF NIE VERLOREN GEHEN - das war der Grund fuer
+# die alte Regel, und daran aendert sich nichts: ein echtes Ereignis
+# wird in derselben Runde uebersetzt und hat weiter Vorrang vor der
+# Wiederholung.
+_r4, _w4 = os.pipe()
+os.write(_w4, _struct.pack(I.EVENT_FMT, 0, 0, I.EV_KEY, 103, 1))
+os.close(_w4)
+im4 = I.InputManager.__new__(I.InputManager)
+im4.devices = {"/dev/input/event9": _FakeDev(_r4, "/dev/input/event9")}
+im4.want_grab = False
+im4.last_scan = time.monotonic()
+im4.held = (KID_DOWN, "down", time.monotonic() - 0.10, I.REPEAT_FLOOR)
+im4._last_repeat_time = 0.0
+im4._last_repeat_act = None
+im4._last_repeat_iv = I.REPEAT_INTERVAL
+im4._last_input_mtime = None
+im4._zeichenzeit = {}
+im4.seiten_aktionen = set()
+check("ein ECHTES Ereignis hat weiter Vorrang vor der Wiederholung",
+      im4.read_action(timeout=0.5) == "up",
+      "sonst koennte ein Loslassen hinter einem Schritt verschwinden")
+os.close(_r4)
 
 print()
 if fails:

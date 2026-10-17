@@ -13,6 +13,19 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **Scrolling with a key held down: cause found.** If a step took longer
+  than 150 ms, the gap to the next one counted as a *standstill* — and
+  then the reloader, the warm-up, the marquee and the pulse all ran
+  between two steps. That made the next step later still, widening the
+  gap, and the thing fed itself. Measured: 291 ms per step on average
+  (worst 1157 ms), and the visible part was the sysart lagging behind
+  when left/right was held. While a key is physically held there is now
+  no standstill (build 276).
+- **The startup breakdown did the arithmetic wrong.** Build 275 treated
+  "davon …" as a sub-item contained in the line above; it isn't — every
+  mark is its own slice of time. Two real findings fell out of that: 815
+  ms sat under the wrong name (two marks were in the wrong order), and
+  the music start had no mark at all (build 276).
 - **The bench now says where the three seconds of startup go.**
   Section A reported a single number ("start until categories ready
   2998 ms"), and that cannot answer "can the start be made faster?".

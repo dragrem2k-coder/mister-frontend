@@ -254,6 +254,101 @@ check("die Ruhezeit steht als benannte Konstante da",
       "%.1f s - laenger als jede Scroll-Wiederholung, kurz genug, dass "
       "die Daten gleich nach dem Loslassen stehen" % FE.RA_NEUBAU_RUHE)
 
+# ---------------------------------------------------------------------------
+print()
+print("Build 276: eine gehaltene Taste ist kein Stillstand")
+import time as _t276                                       # noqa: E402
+time = _t276
+# ---------------------------------------------------------------------------
+# NUTZERMELDUNG: "das Scrollen bei gedrueckter Taste ist totaler Mist,
+# lagt ohne Ende und stockt" - und dazu, aus demselben Protokoll, 291 ms
+# Latenz im Mittel bei NULL Ruckler-Zeilen.
+#
+# URSACHE: "wird gerade navigiert?" hing allein an der Uhr (letzte
+# Eingabe < 150 ms her). Kommen die Schritte selbst langsamer als
+# 150 ms, gilt jeder Zwischenraum als Stillstand - und dann laufen
+# Nachlader, Warmlauf, Laufschrift und Puls GENAU ZWISCHEN zwei
+# Schritten. Der naechste Schritt kommt dadurch noch spaeter, der
+# Zwischenraum wird groesser, und die Sache treibt sich selbst.
+#
+# Deshalb steht hier KEINE Zeitmessung, sondern die eine Zusage, auf
+# die es ankommt: solange die Taste gehalten wird, ist kein Stillstand.
+f276 = H.make_frontend(page=1)
+
+
+class _InpGehalten(object):
+    held = (("/dev/input/event0", "key", 108), "down", 0.0, 0.08)
+    _last_repeat_time = 0.0
+
+
+class _InpLos(object):
+    held = None
+    _last_repeat_time = 0.0
+
+
+# Der letzte Schritt liegt deutlich laenger zurueck als das Fenster -
+# nach der alten Regel waere das ein Stillstand.
+f276._last_input_time = time.monotonic() - 1.0
+
+f276.inp = _InpLos()
+check("ohne gehaltene Taste gilt ein alter Schritt als Stillstand",
+      f276._nav_active() is False,
+      "sonst liefen Nachlader und Laufschrift nie - der Schutz darf "
+      "nicht zum Dauerzustand werden")
+
+f276.inp = _InpGehalten()
+check("mit gehaltener Taste NICHT",
+      f276._nav_active() is True,
+      "das ist die Rueckkopplung: Schritt spaet -> 'Stillstand' -> "
+      "Nachlader -> Schritt noch spaeter")
+
+# Und der frische Schritt zaehlt weiter wie bisher, ganz ohne Taste.
+f276.inp = _InpLos()
+f276._last_input_time = time.monotonic()
+check("ein frischer Schritt zaehlt weiter allein ueber die Uhr",
+      f276._nav_active() is True)
+
+# Eine Attrappe OHNE das Feld darf nicht darueber fallen - in den
+# uebrigen Tests dieser Datei ist self.inp genau so eine.
+class _InpRoh(object):
+    pass
+
+
+f276.inp = _InpRoh()
+f276._last_input_time = time.monotonic() - 1.0
+check("eine Eingabe-Attrappe ohne das Feld stuerzt nicht ab",
+      f276._nav_active() is False,
+      "dieselbe Vorsicht wie bei _hausarbeit_jetzt()")
+
+# DER COVER-AUFSCHUB HAENGT AN DERSELBEN RUECKKOPPLUNG, und genau ihn
+# hat der Nutzer SEHEN koennen: "wenn ich dort nach links oder rechts
+# gedrueckt halte, ziehen die Sysart nach, als wenn die nachgeladen
+# werden."
+f276.inp = _InpGehalten()
+f276.inp._last_repeat_time = time.monotonic() - 1.0
+check("die Scroll-Serie gilt weiter, solange gehalten wird",
+      f276._scroll_serie_aktiv() is True,
+      "sonst wird mitten im Halten wieder in voller Groesse gerechnet")
+f276.inp = _InpLos()
+f276.inp._last_repeat_time = time.monotonic() - 1.0
+check("und geht nach dem Loslassen aus",
+      f276._scroll_serie_aktiv() is False,
+      "was aufgeschoben wurde, holt der Nachlader im Leerlauf nach - "
+      "der Aufschub darf nicht haengen bleiben")
+f276.inp = _InpGehalten()
+f276.inp._last_repeat_time = 0.0
+check("ohne laufenden Scrollvorgang bleibt er aus",
+      f276._scroll_serie_aktiv() is False,
+      "ein einzelner bedachter Tastendruck soll das Cover sofort "
+      "bekommen, auch wenn die Taste noch unten ist")
+
+# EINE STELLE, EINE ANTWORT: der Leerlaufzweig rechnete das Fenster
+# bisher ein zweites Mal selbst nach. Zwei Kopien derselben Regel sind
+# genau der Grund, warum diese eine Stelle jahrelang uebersehen wurde.
+check("der Leerlaufzweig fragt dieselbe Stelle",
+      "nav_active = self._nav_active()" in _q,
+      "vorher stand dort eine zweite Kopie der Zeitrechnung")
+
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))

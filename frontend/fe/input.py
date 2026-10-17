@@ -669,6 +669,11 @@ class InputManager:
     # in den Tests sie hat, ohne sie nachbauen zu muessen - die Lehre
     # aus Build 181.
     eingabe_zeit = 0.0
+    # BUILD 276: wie oft eine FAELLIGE Wiederholung trotz eintreffender
+    # (aktionsloser) Ereignisse ausgeliefert wurde - also wie oft die
+    # alte Regel sie aufgehalten haette. Klassenvorgabe aus demselben
+    # Grund wie oben.
+    repeat_durchgelassen = 0
 
     def zeichenzeit_melden(self, act, dauer):
         """Build 93: das Frontend meldet nach jeder verarbeiteten Aktion,
@@ -1179,7 +1184,60 @@ class InputManager:
                         self.eingabe_zeit = time.monotonic()
                         return act
                 if got_event:
-                    continue      # erst die Warteschlange leeren, dann Repeat
+                    # EINE AUSNAHME (Build 276) - und sie ist die
+                    # Ursache fuer "bei gehaltener Taste lagt es ohne
+                    # Ende".
+                    #
+                    # Die Regel "erst die Warteschlange leeren" ist
+                    # richtig: ein LOSLASSEN darf nie hinter einer
+                    # Wiederholung verloren gehen. Sie hat aber einen
+                    # Fall uebersehen - eine gehaltene Taste erzeugt
+                    # EREIGNISSE, DIE KEINE AKTION SIND:
+                    #
+                    #   - die Auto-Wiederholung der Tastatur selbst
+                    #     (EV_KEY mit value==2) wird in _translate()
+                    #     bewusst verworfen (siehe dort bei
+                    #     REPEAT_ACTIONS), kommt aber weiter an;
+                    #   - dazu je Wiederholung EV_MSC und EV_SYN;
+                    #   - bei einem Pad die Achsen-Ereignisse, deren
+                    #     Richtung sich nicht geaendert hat.
+                    #
+                    # Jedes davon setzt got_event und schickt die
+                    # Schleife ueber "continue" an den Anfang - OHNE
+                    # die faellige Wiederholung auszuloesen. Solange
+                    # der Strom nicht abreisst, kommt unser eigener
+                    # Schritt also NICHT, obwohl sein Termin laengst
+                    # da ist. Genau das ist der Unterschied zwischen
+                    # "schnell hintereinander druecken" (kurze Buendel,
+                    # dann Stille - die Wiederholung kommt dran) und
+                    # "gedrueckt halten" (Dauerstrom - sie kommt nicht
+                    # dran).
+                    #
+                    # UND ES ERKLAERT, WARUM KEINE RUCKLER-ZEILE
+                    # DAZU IM PROTOKOLL STAND: wir waren nicht
+                    # beschaeftigt, wir waren zu spaet. Verarbeitung
+                    # und Zeichnen blieben unter der Schwelle, waehrend
+                    # LATENZ (Termin -> fertiges Bild) im Mittel 291 ms
+                    # meldete.
+                    #
+                    # Die Ausnahme kostet nichts und nimmt der Regel
+                    # nichts: ein faelliger Schritt wird jetzt
+                    # ausgeliefert, und das Loslassen liegt beim
+                    # naechsten Durchlauf unveraendert in der
+                    # Warteschlange. Schlimmster Fall ist EIN Schritt
+                    # zuviel - gegen einen Stillstand von
+                    # Zehntelsekunden ist das kein Preis.
+                    if not (self.held is not None
+                            and time.monotonic() >= self.held[2]):
+                        continue
+                    # Nur zaehlen, nicht schreiben: wie oft die alte
+                    # Regel eine faellige Wiederholung aufgehalten
+                    # haette. Ohne diese Zahl liesse sich hinterher
+                    # nicht belegen, dass DAS die Ursache war - und
+                    # eine Behebung ohne Beleg ist eine Vermutung mit
+                    # Diff (die Lehre aus Build 270).
+                    self.repeat_durchgelassen = \
+                        getattr(self, "repeat_durchgelassen", 0) + 1
             if self.held is not None and time.monotonic() >= self.held[2]:
                 kid, act, _faellig, iv = self.held
                 # Untergrenze bewusst bei 0.08s (12.5/s) statt zuvor 0.05s

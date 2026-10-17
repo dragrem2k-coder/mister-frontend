@@ -170,10 +170,30 @@ quelle = io.open(os.path.join(_REPO, "frontend", "frontend.py"),
 check("die Hauptschleife merkt sich die Eingabezeit der vorigen Aktion",
       "_eingabe_prev = getattr(self.inp, \"eingabe_zeit\", 0.0)" in quelle)
 check("und bucht sie gegen den Zeitpunkt, an dem das Bild stand",
-      "self._latenz_buchen(_act_prev, _eingabe_prev, _rt0)" in quelle)
+      "self._latenz_buchen(_act_prev, _eingabe_prev, _rt0," in quelle)
 check("ohne eine zusaetzliche Zeitabfrage",
       "_rt0 = time.monotonic()" in quelle,
       "beide Zeitstempel lagen ohnehin vor")
+
+# BUILD 276: eine Latenz OHNE Aufteilung sagt nicht, was zu tun ist.
+#
+# Das Protokoll des Nutzers meldete 291 ms im Mittel und keine einzige
+# RUCKLER-Zeile. Zwei voellig verschiedene Ursachen ergeben diese Zahl,
+# und sie brauchen entgegengesetzte Behebungen: "zu spaet dran"
+# (Termin -> Beginn) verlangt einen Blick in den Eingabe- und
+# Leerlaufweg, "Arbeit" (Beginn -> fertiges Bild) ins Zeichnen.
+check("die Latenz wird aufgeteilt in 'zu spaet dran' und 'Arbeit'",
+      "LATENZ-AUFTEILUNG" in quelle
+      and "_latenz_spaet" in quelle and "_latenz_arbeit" in quelle,
+      "ohne die Trennung ist nicht zu sagen, ob wir langsam oder nur "
+      "nicht abrufbar waren")
+check("und die Grenze ist der Beginn der Verarbeitung",
+      "begonnen=_rt_prev" in quelle,
+      "derselbe Zeitstempel, aus dem schon zeichenzeit_melden() "
+      "gefuettert wird - keine zusaetzliche Zeitabfrage")
+check("dazu steht da, wie oft ein faelliger Schritt durchgelassen wurde",
+      "repeat_durchgelassen" in quelle,
+      "sonst liesse sich die Ursache hinterher nicht belegen")
 
 # ---------------------------------------------------------------------------
 print()

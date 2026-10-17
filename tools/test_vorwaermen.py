@@ -254,14 +254,18 @@ check("ohne gemerkte Filter wird gar kein Thread gestartet",
 check("die Filterschleife wartet vorher auf den Thread",
       "_auf_vorwaermen_warten()" in methode("build_categories"))
 
-# Reihenfolge im Start: erst den Thread anwerfen, dann die Marke,
-# dann erst die Spieleliste - nur so hat er die Scan-Zeit fuer sich.
+# Reihenfolge im Start: erst den Thread anwerfen, dann erst die
+# Spieleliste - nur so hat er die Scan-Zeit fuer sich. DAS ist die
+# Zusage; wo die Messmarken dazwischen stehen, ist Sache des Benchs
+# (Build 276 hat sie getauscht, weil die Vorwaermer-Marke sonst die
+# Zeit von Musik und RA-Abruf mittrug - ein Test, der an der Position
+# EINER Marke haengt, geht daran kaputt, ohne dass sich an der Sache
+# etwas aendert).
 i_start = quelltext.index("self._metadaten_vorwaermen_starten()")
-i_marke = quelltext.index('self._startmarke("Musik, RA-Abruf angestossen")')
 i_bauen = quelltext.index("self.build_categories()\n        "
                           'self._startmarke("Spieleliste eingelesen")')
 check("der Thread startet VOR dem Einlesen der Spieleliste",
-      i_start < i_marke < i_bauen)
+      i_start < i_bauen)
 
 shutil.rmtree(_tmp, ignore_errors=True)
 

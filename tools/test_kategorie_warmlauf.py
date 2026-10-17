@@ -206,9 +206,11 @@ print("Test 5: er laeuft nur im Stillstand")
 # ---------------------------------------------------------------------------
 _stelle = QF.split("self._warmlauf_tick()")[0]
 check("der Aufruf haengt hinter nav_active",
-      "nav_active = (time.monotonic() - self._last_input_time" in _stelle
+      "nav_active = self._nav_active()" in _stelle
       and "if not any_dialog and not nav_active:" in _stelle[-400:],
-      "sonst arbeitete er mitten im Scrollen")
+      "sonst arbeitete er mitten im Scrollen - seit Build 276 wird die "
+      "Frage an EINER Stelle beantwortet, und eine gehaltene Taste "
+      "zaehlt dort mit")
 check("und nicht im Zeichenweg",
       "_warmlauf_tick" not in QF.split("def draw_list_row")[1]
       .split("\n    def ")[0])

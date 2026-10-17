@@ -13,6 +13,21 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Scrollen bei gehaltener Taste: die Ursache ist gefunden.** Lief ein
+  Schritt länger als 150 ms, galt der Abstand zum nächsten als
+  *Stillstand* — und dann liefen Nachlader, Warmlauf, Laufschrift und
+  Puls genau zwischen zwei Schritten. Der nächste Schritt kam dadurch
+  noch später, der Abstand wurde größer, und die Sache trieb sich
+  selbst. Gemessen waren 291 ms je Schritt im Mittel (schlechtester
+  1157 ms), und das Sichtbare daran war das Nachziehen der Sysart beim
+  Halten von links/rechts. Solange eine Taste gedrückt ist, ist jetzt
+  kein Stillstand (Build 276).
+- **Die Startaufteilung war falsch gerechnet.** Build 275 hat „davon …"
+  als Unterposten behandelt, also als in der Zeile darüber enthalten —
+  das ist es nicht, jede Marke ist ein eigenes Stück Zeit. Dazu zwei
+  echte Funde, die dabei herauskamen: 815 ms standen auf dem falschen
+  Namen (die Reihenfolge zweier Marken war vertauscht), und der
+  Musikstart lief ganz ohne Marke (Build 276).
 - **Der Bench sagt jetzt, wohin die drei Sekunden des Starts gehen.**
   Abschnitt A nannte eine einzige Zahl („Start bis Kategorien bereit
   2998 ms"), und damit ist die Frage „kann der Start schneller werden?"

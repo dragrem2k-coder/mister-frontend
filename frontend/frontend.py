@@ -1772,9 +1772,21 @@ class Frontend:
                         self._ra_retry_next = time.monotonic() + 30.0
             threading.Thread(target=_initial_ra_fetch, daemon=True).start()
 
+        # REIHENFOLGE KORRIGIERT (Build 276). Vorher stand die Marke
+        # "davon Metadaten-Vorwaermer angestossen" VOR der Marke
+        # "Musik, RA-Abruf angestossen" - und weil jede Marke die Zeit
+        # seit der VORIGEN misst, hat die erste dann alles getragen,
+        # was ueber Musik und RA-Abruf dazwischenlag, und die zweite
+        # stand bei null. Im Bericht des Nutzers sah das so aus:
+        #
+        #   davon Metadaten-Vorwaermer angestossen   815 ms   28 %
+        #   Musik, RA-Abruf angestossen                2 ms    0 %
+        #
+        # 815 ms auf den falschen Namen. Jetzt trennt die erste Marke
+        # bei Musik/RA ab, und die zweite misst den Vorwaermer selbst.
+        self._startmarke("Musik, RA-Abruf angestossen")
         self._metadaten_vorwaermen_starten()
         self._startmarke("davon Metadaten-Vorwaermer angestossen")
-        self._startmarke("Musik, RA-Abruf angestossen")
         self.build_categories()
         self._startmarke("Spieleliste eingelesen")
 
@@ -2353,14 +2365,25 @@ class Frontend:
         self._search_picker = False
         self._picker_i = 0
         self._startmarke("Rest des Aufbaus")
+        # DIE LETZTE MARKE GEHOERT HINTER DEN MUSIKSTART (Build 276).
+        #
+        # Vorher wurde die Liste HIER dicht gemacht - und music.tick()
+        # lief danach, also ausserhalb jeder Marke. Im Bericht des
+        # Nutzers fehlten 850 der 2908 ms, und die Gegenprobe hat genau
+        # das gemeldet ("hier fehlt eine Marke"). Der Musikstart ist
+        # der einzige nennenswerte Posten, der nach "Rest des Aufbaus"
+        # noch kommt - und wenn er wirklich eine Dreiviertelsekunde
+        # kostet, ist das der groesste Einzelposten des Starts
+        # ueberhaupt. Erst messen, dann angehen.
+        if self.music.available():
+            self.music.tick()      # start playback right away
+            self._startmarke("Musik gestartet")
         # AB HIER SIND ES KEINE STARTZEITEN MEHR (Build 275).
         # build_categories() laeuft spaeter wieder (frische RA-Daten,
         # Neueinlesen); dessen Marken gehoeren ins Protokoll, aber
         # nicht in die Aufteilung des STARTS. Siehe _startmarke().
         self._startposten_fertig = list(self._startposten)
         self._startposten = None
-        if self.music.available():
-            self.music.tick()      # start playback right away
 
     def _item_syskey(self, item, fallback):
         """Bevorzugt den im Eintrag SELBST gespeicherten Systemkey -
@@ -4311,7 +4334,23 @@ class Frontend:
         letzte = getattr(inp, "_last_repeat_time", 0.0) or 0.0
         if letzte <= 0.0:
             return False
-        return (time.monotonic() - letzte) < FAST_SCROLL_WINDOW
+        if (time.monotonic() - letzte) < FAST_SCROLL_WINDOW:
+            return True
+        # BUILD 276: und solange die Taste noch GEHALTEN wird, auch
+        # dann, wenn der letzte Schritt laenger zurueckliegt. Sonst
+        # schaltet der Aufschub mitten im Halten ab, das naechste Cover
+        # wird in voller Groesse gerechnet, der Schritt danach kommt
+        # noch spaeter - und der Aufschub bleibt aus. Genau das hat der
+        # Nutzer gesehen: "wenn ich dort nach links oder rechts
+        # gedrueckt halte, ziehen die Sysart nach, als wenn die
+        # nachgeladen werden." Die vollstaendige Begruendung dieser
+        # Rueckkopplung steht bei _nav_active().
+        #
+        # Die Bedingung bleibt streng: _last_repeat_time muss gesetzt
+        # sein (oben geprueft), es muss also ein nachweislich LAUFENDER
+        # Scrollvorgang sein. Ein einzelner bedachter Tastendruck faellt
+        # weiter nicht darunter, auch wenn er gerade gehalten wird.
+        return getattr(inp, "held", None) is not None
 
     def _artbox_auslassen(self):
         """Darf die Artbox der HAUPTSEITE fuer diesen Schritt ausgelassen
@@ -6371,12 +6410,53 @@ class Frontend:
             self._kat_spur[y] = (ox, y, _tw, 8 * s)
 
     def _nav_active(self):
-        """True, solange gerade aktiv navigiert wird (letzte Eingabe liegt
-        weniger als FAST_SCROLL_WINDOW zurueck) - dieselbe Zeitspanne, die
-        auch die Laufschrift-/Puls-Ticks beim Scrollen aussetzen laesst.
+        """True, solange gerade aktiv navigiert wird - dieselbe Zeitspanne,
+        die auch die Laufschrift-/Puls-Ticks beim Scrollen aussetzen laesst.
         Genutzt, um regelmaessige Hintergrund-Pruefungen aus dem
-        Scroll-Moment herauszuhalten."""
-        return (time.monotonic() - self._last_input_time) < FAST_SCROLL_WINDOW
+        Scroll-Moment herauszuhalten.
+
+        BUILD 276: EINE GEHALTENE TASTE ZAEHLT AUCH, und das war die
+        Ursache fuer "das Scrollen bei gedrueckter Taste lagt ohne Ende
+        und stockt".
+
+        Bis hierher hing die Antwort allein an der Uhr: liegt der letzte
+        Schritt laenger als 150 ms zurueck, gilt es als Stillstand. Das
+        ist genau dann falsch, wenn die Schritte selbst langsamer als
+        150 ms kommen - und dann ist es nicht nur falsch, sondern es
+        TREIBT SICH SELBST:
+
+          Schritt kommt spaet  ->  Abstand > 150 ms  ->  "Stillstand"
+          ->  Nachlader, Warmlauf, Laufschrift, Puls laufen los
+          ->  der naechste Schritt kommt noch spaeter  ->  von vorn
+
+        Im Protokoll des Nutzers sah das so aus: im Mittel 291 ms je
+        Schritt, schlechtester 1157 ms - und KEINE EINZIGE
+        RUCKLER-Zeile. Beides passt zusammen, denn diese Arbeit liegt
+        in next_action() und ist aus "busy" ausdruecklich
+        herausgerechnet ("dessen Wartezeit ist normal und kein
+        Ruckler"). Die Messung war an der Stelle blind, an der die Zeit
+        lag - dieselbe Sorte Luecke wie in Abschnitt K vor Build 270.
+        Gesehen hat der Nutzer es trotzdem, und er hat es genau
+        beschrieben: "in der Galerie-Ansicht, wenn ich dort nach links
+        oder rechts gedrueckt halte, ziehen die Sysart nach, als wenn
+        die nachgeladen werden". Das ist der Nachlader, der zwischen
+        zwei Schritten laeuft.
+
+        Build 273 hat die Hausarbeit aus dem ZEICHNEN genommen - daher
+        meldet "haus" seither 0. Die Hausarbeit im LEERLAUFZWEIG hat
+        damals niemand angesehen; es ist ein zweiter Satz derselben
+        Sorte Arbeit an einer zweiten Stelle.
+
+        Die Abhilfe braucht keine Uhr: solange die Taste physisch
+        gedrueckt ist (self.inp.held), ist kein Stillstand - egal wie
+        lange der letzte Schritt gebraucht hat. Dieselbe Auskunft, die
+        _hausarbeit_jetzt() seit Build 273 benutzt, also kein zweiter
+        Weg zu derselben Frage."""
+        if (time.monotonic() - self._last_input_time) < FAST_SCROLL_WINDOW:
+            return True
+        # getattr: in den Tests kann self.inp eine Attrappe ohne dieses
+        # Feld sein - dann gilt wie bisher allein die Uhr.
+        return getattr(getattr(self, "inp", None), "held", None) is not None
 
     def _network_connected(self):
         """Zwischengespeicherter Netzwerkstatus, alle 5 Sekunden neu
@@ -11101,8 +11181,13 @@ class Frontend:
                 # bei normaler, langsamer Navigation (mehr als 150ms
                 # zwischen zwei Schritten) greift der Schutz gar nicht,
                 # dort bleibt alles exakt wie bisher.
-                nav_active = (time.monotonic() - self._last_input_time
-                              < FAST_SCROLL_WINDOW)
+                # BUILD 276: dieselbe Frage wird jetzt an EINER Stelle
+                # beantwortet (_nav_active()) statt hier ein zweites
+                # Mal nachgerechnet. Dort steht auch, warum eine
+                # gehaltene Taste mitzaehlen MUSS - diese Zeile war der
+                # Auslöser der Rueckkopplung, die das Scrollen bei
+                # gehaltener Taste stocken liess.
+                nav_active = self._nav_active()
                 # DIE NAMENSVERZEICHNISSE IM RUHEMOMENT VORBEREITEN
                 # (Build 239, auf Meldung vom Geraet: "wenn ich in die
                 # kategorie weiterspielen gehe haengt er am anfang ganz
@@ -19162,7 +19247,7 @@ class Frontend:
         for name in self.PERF_POSTEN:
             setattr(self, name, 0)
 
-    def _latenz_buchen(self, act, eingabe_zeit, fertig):
+    def _latenz_buchen(self, act, eingabe_zeit, fertig, begonnen=None):
         """Wie lange von der Eingabe bis zum fertigen Bild.
 
         WOZU (Build 192). Bisher gab es zwei Zahlen: wie lange ein
@@ -19192,6 +19277,37 @@ class Frontend:
             return            # Uhrensprung, oder ein Spiel lief dazwischen
         self._latenz_n = getattr(self, "_latenz_n", 0) + 1
         self._latenz_summe = getattr(self, "_latenz_summe", 0.0) + d
+        # BUILD 276: DIE AUFTEILUNG DER LATENZ - zu spaet dran oder zu
+        # langsam?
+        #
+        # Nutzermeldung: "das Scrollen bei gedrueckter Taste ist totaler
+        # Mist, lagt ohne Ende und stockt". Sein Protokoll meldete im
+        # Mittel 291 ms je Schritt und KEINE EINZIGE RUCKLER-Zeile -
+        # Verarbeitung und Zeichnen blieben also unter 80 ms, waehrend
+        # der Weg von "Termin" bis "Bild steht" dreihundert dauerte.
+        #
+        # Zwei voellig verschiedene Ursachen ergeben dieselbe Zahl, und
+        # sie brauchen entgegengesetzte Behebungen:
+        #
+        #   ZU SPAET DRAN  Termin -> Beginn der Verarbeitung. Wir haben
+        #                  nichts getan, waren aber nicht abrufbar.
+        #                  Dann hilft nur ein Blick in den Eingabeweg,
+        #                  und kein schnelleres Zeichnen.
+        #   ARBEIT         Beginn -> fertiges Bild. Das ist die Zahl,
+        #                  die Abschnitt J des Benchs misst.
+        #
+        # Gebucht wieder ohne eine einzige zusaetzliche Zeitabfrage:
+        # der Beginn ist derselbe Zeitstempel, aus dem schon
+        # zeichenzeit_melden() gefuettert wird.
+        if begonnen:
+            s = begonnen - eingabe_zeit
+            if s < 0:
+                s = 0.0
+            a = fertig - begonnen
+            if a < 0:
+                a = 0.0
+            self._latenz_spaet = getattr(self, "_latenz_spaet", 0.0) + s
+            self._latenz_arbeit = getattr(self, "_latenz_arbeit", 0.0) + a
         if d > getattr(self, "_latenz_max", 0.0):
             self._latenz_max = d
             self._latenz_max_act = act
@@ -19254,6 +19370,19 @@ class Frontend:
             % (n, self._latenz_summe / n * 1000,
                self._latenz_max * 1000,
                getattr(self, "_latenz_max_act", "?")))
+        # BUILD 276: und wohin diese Millisekunden gehen. Siehe oben -
+        # "zu spaet dran" und "Arbeit" verlangen entgegengesetzte
+        # Behebungen, und ohne die Trennung ist nicht zu sagen, welche.
+        _sp = getattr(self, "_latenz_spaet", 0.0)
+        _ar = getattr(self, "_latenz_arbeit", 0.0)
+        if _sp or _ar:
+            _durch = getattr(self.inp, "repeat_durchgelassen", 0)
+            LOG("LATENZ-AUFTEILUNG: zu spaet dran %.0f ms, Arbeit "
+                "%.0f ms je Schritt (%d x faellige Wiederholung "
+                "durchgelassen)"
+                % (_sp / n * 1000, _ar / n * 1000, _durch))
+        self._latenz_spaet = 0.0
+        self._latenz_arbeit = 0.0
         # BUILD 197: die Aufschluesselung, siehe oben. Sortiert nach dem
         # MITTEL, nicht nach dem Hoechstwert - gesucht ist, was staendig
         # zu lange braucht, nicht der einmalige Ausreisser (den nennt
@@ -20993,7 +21122,12 @@ class Frontend:
                     # von ihrer Entstehung bis zu dem Moment, in dem
                     # ihr Bild fertig auf dem Schirm steht. Siehe
                     # _latenz_buchen().
-                    self._latenz_buchen(_act_prev, _eingabe_prev, _rt0)
+                    # BUILD 276: _rt_prev ist der Augenblick, in dem die
+                    # Verarbeitung der vorigen Aktion BEGONNEN hat -
+                    # also genau die Grenze zwischen "zu spaet dran"
+                    # und "Arbeit". Er liegt ohnehin vor, siehe oben.
+                    self._latenz_buchen(_act_prev, _eingabe_prev, _rt0,
+                                        begonnen=_rt_prev)
                 _rt_prev = time.monotonic()
                 _act_prev = act
                 _eingabe_prev = getattr(self.inp, "eingabe_zeit", 0.0)

@@ -1299,21 +1299,49 @@ check("ein fehlendes Feld stoert den Start nicht",
       "eine Messung darf den Start nie verhindern - dieselbe Zusage "
       "wie beim LOG daneben")
 check("Abschnitt A gibt die Aufteilung aus",
-      "AUFGETEILT (Build 275)" in _q and "_startposten_fertig" in _q)
-check("Unterposten werden eingerueckt, nicht mitgezaehlt",
+      "AUFGETEILT (Build 275/276)" in _q and "_startposten_fertig" in _q)
+
+# RICHTIGSTELLUNG (Build 276). Build 275 hat "davon ..." als
+# UNTERposten gerechnet, also als in der Zeile darueber enthalten. Der
+# erste Bericht vom Geraet hat das widerlegt:
+#
+#   Framebuffer und Eingaben offen               85 ms
+#        Metadaten-Vorwaermer angestossen       815 ms
+#   Summe der Oberposten                        226 ms
+#   nicht zugeordnet                           2682 ms
+#
+# 815 ms koennen nicht in 85 ms stecken. _startmarke() rechnet "jetzt
+# minus letzte Marke" und setzt die letzte Marke neu - die Stuecke
+# liegen also lueckenlos hintereinander und schneiden sich nie.
+check("jede Marke ist ein eigenes Stueck Zeit",
+      "summe = sum(d for _n, d in posten)" in _q
+      and "Summe aller Stuecke" in _q,
+      "eine Verschachtelung der ZEIT gibt es nicht - 'davon' ist eine "
+      "Benennung, keine Klammer")
+check("Unterposten werden weiter eingerueckt",
       'name.startswith("davon ")' in _q,
-      "'davon ...' heisst seit Build 158 UNTERposten - zweimal "
-      "gezaehlt waere die Summe doppelt")
+      "lesbar bleibt die Zugehoerigkeit, gerechnet wird mit allen")
 check("und es gibt die Gegenprobe auf die eigene Rechnung",
-      "Summe der Oberposten" in _q and "hier fehlt eine Marke" in _q,
+      "hier fehlt eine Marke" in _q,
       "eine Aufschluesselung, die nicht aufgeht, schickt einen an die "
       "falsche Stelle - die Lehre aus Build 193")
+check("die Marken des Starts stehen in der richtigen Reihenfolge",
+      _fq.index('_startmarke("Musik, RA-Abruf angestossen")')
+      < _fq.index('_startmarke("davon Metadaten-Vorwaermer'),
+      "vorher trug die Vorwaermer-Marke die Zeit von Musik und "
+      "RA-Abruf mit - 815 ms auf dem falschen Namen")
+check("und der Musikstart hat eine eigene",
+      '_startmarke("Musik gestartet")' in _fq
+      and _fq.index('_startmarke("Musik gestartet")')
+      < _fq.index("self._startposten_fertig = list"),
+      "er lief bisher NACH dem Dichtmachen der Liste - das waren die "
+      "850 ms, die der Gegenprobe gefehlt haben")
 check("ohne Aufteilung sagt der Bericht genau das",
       "keine Aufteilung vorhanden" in _q,
       "eine aeltere Fassung hat die Liste nicht - das ist eine "
       "Auskunft und kein Absturz")
-check("die Bench-Nummer ist fuer Build 275 mitgewachsen",
-      B.BENCH_VERSION >= 12, str(B.BENCH_VERSION))
+check("die Bench-Nummer ist fuer Build 275/276 mitgewachsen",
+      B.BENCH_VERSION >= 13, str(B.BENCH_VERSION))
 
 # ---------------------------------------------------------------------------
 print()

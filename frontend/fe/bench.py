@@ -53,7 +53,7 @@ import zlib
 # aussehen - wer eine 1 und eine 2 nebeneinanderlegt, sieht sofort, dass
 # in der einen ein Abschnitt fehlt. Die Abschnitte A bis G haben sich
 # dabei nicht geaendert, ihre Zahlen bleiben also vergleichbar.
-BENCH_VERSION = 12
+BENCH_VERSION = 13
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -441,36 +441,57 @@ def _abschnitt_a(b, fe, spiele, startdauer):
     # einer Liste, und sie stehen in dem Bericht, der verglichen und
     # verschickt wird.
     #
-    # "davon ..." sind UNTERposten des darueberliegenden Abschnitts
-    # (so heissen sie im Quelltext seit Build 158) - sie sind in der
-    # Summe also bereits enthalten und werden eingerueckt, statt
-    # mitgezaehlt zu werden.
+    # JEDE MARKE IST EIN EIGENES STUECK ZEIT (Richtigstellung Build 276)
+    # ------------------------------------------------------------------
+    # Build 275 hat "davon ..." als UNTERposten gerechnet, also als in
+    # der Zeile darueber schon enthalten. Das ist falsch, und der erste
+    # Bericht vom Geraet hat es sofort gezeigt:
+    #
+    #   Framebuffer und Eingaben offen               85 ms     3 %
+    #        Metadaten-Vorwaermer angestossen       815 ms    28 %
+    #   ...
+    #   Summe der Oberposten                        226 ms     8 %
+    #   nicht zugeordnet                           2682 ms
+    #
+    # 815 ms koennen nicht in 85 ms enthalten sein. _startmarke()
+    # rechnet "jetzt minus letzte Marke" und setzt die letzte Marke neu
+    # - die Stuecke sind also LUECKENLOS HINTEREINANDER und schneiden
+    # sich nie. "davon" ist eine Benennung, die sagt, zu welchem
+    # Abschnitt ein Schritt gehoert; eine Verschachtelung der ZEIT ist
+    # es nicht. Eingerueckt wird weiter, gerechnet wird mit allen.
+    #
+    # LEHRE: eine Gegenprobe prueft die Rechnung, nicht die Annahme,
+    # auf der sie steht. Sie hat hier korrekt "es geht nicht auf"
+    # gemeldet - und wer sie nicht liest, haette aus "nicht zugeordnet
+    # 2682 ms" geschlossen, der Start bestehe fast nur aus Unbekanntem.
     posten = list(getattr(fe, "_startposten_fertig", None) or ())
     if not posten:
         b("   (keine Aufteilung vorhanden - aeltere Fassung oder der")
         b("    Start lief ohne Marken)")
         return
     b("")
-    b("   AUFGETEILT (Build 275) - 'davon' ist ein Unterposten der")
-    b("   Zeile darueber und in ihr schon enthalten:")
+    b("   AUFGETEILT (Build 275/276) - jede Zeile ist ein eigenes")
+    b("   Stueck Zeit; 'davon' sagt nur, zu welchem Abschnitt ein")
+    b("   Schritt gehoert, und ist NICHT in der Zeile darueber")
+    b("   enthalten:")
     for name, dauer in posten:
         unter = name.startswith("davon ")
         anteil = (dauer / startdauer * 100.0) if startdauer > 0 else 0.0
         b("%s%-*s %8.0f ms  %4.0f %%"
           % ("        " if unter else "   ", 33 if unter else 38,
              name[6:] if unter else name, dauer * 1000.0, anteil))
-    # Die Gegenprobe auf die eigene Rechnung: die OBERposten muessen
-    # die Startdauer ergeben. Gehen sie nicht auf, fehlt eine Marke -
-    # und dann ist genau das die Auskunft (die Lehre aus Build 193,
-    # "eine Aufschluesselung, die nicht aufgeht, schickt einen an die
-    # falsche Stelle").
-    oben = sum(d for n, d in posten if not n.startswith("davon "))
+    # Die Gegenprobe auf die eigene Rechnung: ALLE Stuecke zusammen
+    # muessen die Startdauer ergeben. Gehen sie nicht auf, fehlt eine
+    # Marke - und dann ist genau das die Auskunft (die Lehre aus Build
+    # 193, "eine Aufschluesselung, die nicht aufgeht, schickt einen an
+    # die falsche Stelle").
+    summe = sum(d for _n, d in posten)
     b("   %-38s %8.0f ms  %4.0f %%"
-      % ("Summe der Oberposten", oben * 1000.0,
-         (oben / startdauer * 100.0) if startdauer > 0 else 0.0))
-    if startdauer - oben > 0.05:
+      % ("Summe aller Stuecke", summe * 1000.0,
+         (summe / startdauer * 100.0) if startdauer > 0 else 0.0))
+    if startdauer - summe > 0.05:
         b("   %-38s %8.0f ms   <- hier fehlt eine Marke"
-          % ("nicht zugeordnet", (startdauer - oben) * 1000.0))
+          % ("nicht zugeordnet", (startdauer - summe) * 1000.0))
 
 
 def _groesste_kategorie(fe):

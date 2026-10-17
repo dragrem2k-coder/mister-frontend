@@ -4618,6 +4618,142 @@ steht auch, *dass* MiSTer die Knoepfe in Tasten uebersetzt - die
 Erklaerung fuer „ich kann erst blaettern, wenn ich einmal die
 Leertaste gedrueckt habe".
 
+### Nachtrag Build 276: der Stillstand, der keiner war
+
+**Die Meldung:** „das Scrollen bei gedrueckter Taste ist totaler Mist,
+lagt ohne Ende und stockt". Dazu sein Protokoll:
+
+```
+LATENZ-BILANZ: 49 Schritte, Mittel 291 ms, schlechtester 1157 ms (down)
+```
+
+**Und keine einzige RUCKLER-Zeile.** Genau dieses Paar ist der Befund:
+291 ms von „Termin" bis „Bild steht", aber Verarbeitung und Zeichnen
+unter der Schwelle von 80 ms. Wir waren nicht beschaeftigt - wir waren
+nicht abrufbar.
+
+**Die Messung war an der Stelle blind, an der die Zeit lag.** `_busy`
+rechnet das Fenster `_rt1 -> _rt2` ausdruecklich heraus, mit der
+Begruendung „dessen Wartezeit ist normal und kein Ruckler" - und genau
+dort, in `next_action()`, liegt der Leerlaufzweig. Das ist dieselbe
+Sorte Luecke wie in Abschnitt K vor Build 270, nur umgekehrt: nicht ein
+unbenannter Posten, sondern ein absichtlich ausgeschlossener.
+
+**Gesehen hat der Nutzer es trotzdem, und er hat es genau beschrieben:**
+
+> „galerie ansicht hauptseite wenn ich dort nach links oder rechts
+> gedrueckt halte ziehen die sysart nach als wenn die nachgeladen
+> werden"
+
+Das IST der Nachlader. Er laeuft zwischen zwei Schritten.
+
+**Die Rueckkopplung:**
+
+```
+Schritt kommt spaet  ->  Abstand > 150 ms  ->  gilt als "Stillstand"
+->  Nachlader, Warmlauf, Laufschrift, Puls laufen los
+->  der naechste Schritt kommt noch spaeter  ->  von vorn
+```
+
+`_nav_active()` hing allein an der Uhr: letzte Eingabe weniger als
+`FAST_SCROLL_WINDOW` (150 ms) her. Diese Annahme ist richtig, solange
+die Schritte schneller als 150 ms kommen - und sie kippt genau dann,
+wenn es ohnehin schon klemmt. Ein Schutz, der bei Ueberlast als erster
+aufgibt, macht die Ueberlast groesser.
+
+**Die Abhilfe braucht keine Uhr:** solange die Taste physisch gedrueckt
+ist (`self.inp.held`), ist kein Stillstand - egal wie lange der letzte
+Schritt gebraucht hat. Dieselbe Auskunft, die `_hausarbeit_jetzt()`
+seit Build 273 benutzt, also kein zweiter Weg zu derselben Frage.
+Dasselbe gilt fuer `_scroll_serie_aktiv()`: dort schaltete sich mitten
+im Halten der Cover-Aufschub ab, das naechste Cover wurde in voller
+Groesse gerechnet - und damit war der Schritt danach noch spaeter.
+
+**Warum Build 273 das nicht erwischt hat.** 273 hat die Hausarbeit aus
+dem ZEICHNEN genommen, und deshalb meldet `haus` seither 0. Die
+Hausarbeit im LEERLAUFZWEIG ist ein zweiter Satz derselben Sorte Arbeit
+an einer zweiten Stelle, und die hat damals niemand angesehen.
+
+> **Lehre: wenn eine Behebung die gemeldete Zahl auf null bringt und
+> das Gefuehl bleibt, ist es eine zweite Stelle und nicht dieselbe.**
+
+**Und die Frage wird jetzt an EINER Stelle beantwortet.** Der
+Leerlaufzweig rechnete das Fenster ein zweites Mal selbst nach
+(`nav_active = (time.monotonic() - self._last_input_time < ...)`).
+Zwei Kopien derselben Regel sind der Grund, warum diese eine Stelle so
+lange uebersehen wurde.
+
+**Dazu eine neue Zeile, damit das naechste Mal kein Lesen von Quelltext
+nötig ist:**
+
+```
+LATENZ-AUFTEILUNG: zu spaet dran 231 ms, Arbeit 60 ms je Schritt (0 x ...)
+```
+
+„Zu spaet dran" und „Arbeit" verlangen entgegengesetzte Behebungen -
+die eine fuehrt in den Eingabe- und Leerlaufweg, die andere ins
+Zeichnen. Beide Zeitstempel lagen ohnehin vor; die Zeile kostet keine
+zusaetzliche Uhrabfrage.
+
+**Eine Haertung dazu, ohne Beweis als Ursache.** `read_action()` hat
+die Warteschlange bevorzugt („erst leeren, dann Repeat"). Eine
+gehaltene Taste erzeugt aber Ereignisse, die keine Aktion sind - die
+Auto-Wiederholung der Tastatur (value==2, bewusst verworfen), EV_MSC,
+EV_SYN, bei einem Pad die unveraenderten Achsen. Jedes davon schickte
+die Schleife zurueck an den Anfang, ohne den faelligen Schritt
+auszuliefern. Bei einem lueckenlosen Strom haelt das die Wiederholung
+beliebig lange auf. **Ob das auf dem Geraet tatsaechlich passiert, ist
+offen** - der Zaehler `repeat_durchgelassen` in der neuen Zeile sagt
+es beim naechsten Protokoll. Behoben ist es trotzdem, weil es nichts
+kostet: ein faelliger Schritt wird jetzt ausgeliefert, und das
+Loslassen liegt beim naechsten Durchlauf unveraendert in der
+Warteschlange.
+
+### Nachtrag Build 276 (zweiter Teil): meine eigene Rechnung war falsch
+
+**Build 275 hat „davon ..." als UNTERposten gerechnet** - also als in
+der Zeile darueber schon enthalten. Der erste Bericht vom Geraet hat
+das in drei Zeilen widerlegt:
+
+```
+   Framebuffer und Eingaben offen               85 ms     3 %
+        Metadaten-Vorwaermer angestossen       815 ms    28 %
+   Summe der Oberposten                        226 ms     8 %
+   nicht zugeordnet                           2682 ms   <- hier fehlt eine Marke
+```
+
+815 ms koennen nicht in 85 ms stecken. `_startmarke()` rechnet „jetzt
+minus letzte Marke" und setzt die letzte Marke neu - die Stuecke liegen
+**lueckenlos hintereinander und schneiden sich nie**. „davon" ist eine
+Benennung, die sagt, zu welchem Abschnitt ein Schritt gehoert; eine
+Verschachtelung der ZEIT ist es nicht. Ich habe die Namenskonvention
+fuer eine Struktur gehalten.
+
+> **Lehre: eine Gegenprobe prueft die Rechnung, nicht die Annahme, auf
+> der sie steht.** Sie hat hier korrekt „es geht nicht auf" gemeldet -
+> und wer nur die Zahl liest, haette aus „nicht zugeordnet 2682 ms"
+> geschlossen, der Start bestehe fast nur aus Unbekanntem.
+
+**Zwei echte Funde sind dabei herausgefallen, beide aus Build 158:**
+
+- **815 ms standen auf dem falschen Namen.** Die Marke „davon
+  Metadaten-Vorwaermer angestossen" stand VOR der Marke „Musik,
+  RA-Abruf angestossen" - und weil jede Marke die Zeit seit der vorigen
+  misst, trug die erste alles, was dazwischenlag, und die zweite stand
+  bei 2 ms. Reihenfolge getauscht.
+- **Der Musikstart hatte gar keine Marke.** `music.tick()` lief nach
+  dem Dichtmachen der Liste. Das sind die 850 ms, die der Gegenprobe
+  gefehlt haben - und wenn es wirklich eine Dreiviertelsekunde ist, ist
+  es der groesste Einzelposten des Starts.
+
+**Drei Tests sind an meinen eigenen Aenderungen rot geworden** - und
+alle drei hingen an einer Textposition statt an einer Zusage
+(`test_vorwaermen` an der Position einer Messmarke,
+`test_kategorie_warmlauf` an der ausgeschriebenen Zeitrechnung,
+`test_latenz` an der Argumentliste eines Aufrufs). Dieselbe Falle hat
+Build 267, 272 und 275 je einen Anlauf gekostet. Alle drei pruefen
+jetzt die Sache.
+
 ### Nachtrag Build 275: die Aufteilung lag schon da, nur am falschen Ort
 
 **Die Frage war „kann der Startvorgang schneller werden?", und
