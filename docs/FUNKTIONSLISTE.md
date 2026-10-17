@@ -366,6 +366,98 @@ Das Frontend bringt seine eigene Hilfe mit, unter
 
 ---
 
+## 8. Die grossen Funktionen, einzeln benannt
+
+Das Systemmenue oben zeigt die SCHALTER. Was dahinter steckt,
+steht hier - jeweils in den Worten, mit denen die Funktion im
+Quelltext selbst beschrieben ist.
+
+- **achievements** - Eigenes Erfolgssystem ("Easter Egg System"): versteckte, ereignis- basierte Erfolge (Nachteule, Marathon, Wochenend-Krieger, Comeback, Vielseitig), Profil-Statistiken, Frontend-Level, geheime Codes (Konami-artige Tastenfolgen ...
+- **anleitung** - Die Spielanleitung zum markierten Eintrag (Build 263)
+- **audio** - Audio: Lautstaerke-Verwaltung, Navigations-Soundeffekte (selbst erzeugte WAVs), MusicPlayer (MP3 + Rainwave-Internetradio)
+- **cores** - Core-Verwaltung: welcher Core startet ein System? (Build 174)
+- **corestand** - Was hat update_all geaendert? (Build 250) Idee aus dem Vergleich mit Degauss: dort sieht man nach einem Update, was neu ist
+- **filter** - Listenfilter nach Genre, Jahr, Spielerzahl und Entwickler (Build 142)
+- **game_state** - Persistenter Spielstatus pro Nutzer: Durchgespielt-Markierung, "Zuletzt gespielt", Favoriten, zuletzt tatsaechlich verwendete Core- Wahl pro Spiel
+- **hauptseite** - Die Hauptseite selbst bestimmen - Reihenfolge und Sichtbarkeit der Kategorien (Build 250)
+- **hintergrund** - Ein eigenes Hintergrundbild statt der einfarbigen Flaeche (Build 235)
+- **masken** - MiSTers eigene Shadow Masks - gelesen, nicht mitgeliefert (Build 226)
+- **mister_favs** - MiSTers
+- **obs_websocket** - Minimaler OBS-WebSocket-v5-Client (reine Python-Standardbibliothek, kein "websockets"-Paket verfuegbar auf dem MiSTer) - fuer genau
+- **playtime** - Spielzeit-Tracking, Tagebuch, Jahresrueckblick, Meilensteine
+- **prewarm** - Cover-Miniaturen im Leerlauf vorberechnen
+- **ra_settings** - RetroAchievements-Einstellungen der MiSTer-Hauptanwendung lesen und schreiben (Build 95)
+- **reset_trigger** - Reset im laufenden Core ueber F5 - Nutzerwunsch, gilt fuer
+- **retroachievements** - RetroAchievements-Integration (optional - komplett unsichtbar, solange nicht eingerichtet): Konfiguration, Fortschritts-/Erfolgs-Abruf per RA-Web-API, Erfolgs-Cache, Name/System-Zuordnung zwischen unseren Spielenamen und RAs ...
+- **romwacht** - Der ROM-Waechter (Build 258)
+- **schriften** - MiSTers eigene OSD-Schriften, in Ordnern durchblaettert (Build 228)
+- **seasonal** - Saisonale Deko (Easter Egg): kleine, rein optische Jahreszeiten- Anzeige am 24.12./31.12
+- **versteckt** - Ausgeblendete Eintraege (Build 256)
+- **zaparoo** - Zaparoo (NFC-Tags) - erkennen, starten, und den ZapScript-Befehl nennen (Build 251)
+- **stream_server** - Web-Overlay und Einstellungs-Hintergrund fuer OBS
+
+### Das Overlay fuer OBS und den Browser
+
+Ist *Stream-Overlay* eingeschaltet, laeuft im Frontend ein
+kleiner Webserver. Vom gleichen Netz aus erreichbar unter
+`http://<IP-des-MiSTer>:8080` - in OBS als **Browserquelle**
+einzutragen, nicht als Fenster-Aufnahme.
+
+| Pfad | Wofuer |
+|---|---|
+| `/` | dasselbe wie /overlay |
+| `/overlay` | die Einblendung fuer OBS (Cover, Titel, Erfolge) |
+| `/admin` | die Bedienseite - hier wird eingestellt, welche Felder erscheinen |
+| `/state` | der aktuelle Stand als JSON (fuer eigene Basteleien) |
+| `/config` | die Einstellungen des Overlays, lesen und schreiben |
+| `/art` | das Cover des markierten oder laufenden Spiels |
+| `/badge` | ein Erfolgs-Abzeichen als Bild |
+| `/events` | laufende Meldungen, damit die Seite sich ohne Neuladen aktualisiert |
+| `/screen.png` | ein Abbild des Frontend-Bildschirms |
+| `/mirror` | die Spiegelseite - das Frontend im Browser mitsehen |
+
+Dazu kommt der **OBS-Szenenwechsel** (`obs_websocket`): das
+Frontend kann OBS per WebSocket sagen, wann es von der
+Frontend-Szene auf die Capture-Karten-Szene umschalten soll -
+also beim Start eines Spiels und beim Zurueckkehren. Das weiss
+nur das Frontend zuverlaessig.
+
+### Und das Innenleben
+
+Diese Module haben keine eigene Einstellung - sie stehen hier,
+damit die Liste vollstaendig ist und niemand sie vergeblich im
+Menue sucht.
+
+- `art` - Boxart-Verwaltung: eigener PNG-Decoder (fuer RA-Erfolgs-Icons), ArtCache (Cover/Logos im eigenen .art-Format), Metadaten-Cache
+- `bench` - Bench-Modus (Build 177): eine feste, wiederholbare Messung. python3 /media/fat/frontend/frontend.py --bench
+- `bildlib` - Bilder dekodieren ueber die Systembibliotheken des MiSTer
+- `dateibaum` - Einen Ordner Ebene fuer Ebene durchblaettern (Build 228)
+- `demo` - --demo: drei Minuten, die alles einmal zeigen (Build 233)
+- `framebuffer` - Framebuffer - reine Zeichen-Grundfunktionen, ausgelagert aus frontend.py (Modularisierung, Git-Branch 'modular-refactor')
+- `hidraw` - Notausstieg waehrend eines laufenden Cores (F1 sofort oder Esc laenger halten, ueber die rohe HID-Ebene): MiSTer sperrt die normale evdev-Ebene exklusiv, sobald ein Core laeuft - die rohe HID-Ebene (/dev/hidrawX) bleibt bei ...
+- `input` - Eingabe: Tastatur + Gamepads parallel, mit Hotplug und exklusivem Grab
+- `launch` - Core-Start-Hilfsfunktionen: MGL-Startdatei erzeugen (write_mgl), Scripts-Ordner auflisten (scan_scripts), aktuell laufenden Core abfragen/wechseln (current_core/launch_core)
+- `log` - Logging - ausgelagert aus frontend.py (Modularisierung, Git-Branch 'modular-refactor')
+- `menu` - Aufbau der 'System'-Kategorie als Baumknoten mit thematischen Unterordnern (system_items())
+- `mister_system` - MiSTer-Systemnahes: update_all und der Speicher-Wächter (Build 213)
+- `nachladen` - Fertige Miniaturen von der Karte in den Arbeitsspeicher holen
+- `naming` - Namens-/Anzeige-Hilfsfunktionen fuer den Scan: Klammer-Tags entfernen (display_name), Regions-/Dedupe-Schluessel (region_rank/canonical_key), Junk-/Japan-only-/Boot-Datei-Erkennung, freundliche Ordnernamen
+- `paths` - GAMES_BASES als eigenstaendiges Modul - vermeidet einen Zirkelbezug zwischen frontend.py und fe/wot.py bzw. fe/scan.py (Modularisierung, Git-Branch 'modular-refactor')
+- `prewarm_worker` - Arbeitsprozess fuer den Cover-Vorauslader (Build 102)
+- `ra_core` - RA-Core-Erkennung (sage2050s "MiSTer_RetroAchievements"-Werkzeug - legt RA-faehige Core-Varianten in einen separaten Ordner an)
+- `scan` - Kern des ROM-Scans: Cores durchsuchen, Ordnerbaeume aufbauen, Cache-Verwaltung (Pickle), USB-/Netzwerk-Bereitschaft abwarten
+- `search` - Direktsprung/Volltextsuche in Listen: einzelner Anfangsbuchstabe (jump_to_letter, klassischer Dateibrowser-Stil) und echte Volltext- suche irgendwo im Namen (jump_to_substring, Nutzerwunsch: "bei vielen ROMs ist das besser")
+- `settings` - Verstreute kleine Ein/Aus-Einstellungen: eigenes Boot-Logo, Setup- Assistent-Erledigt-Markierung, CRT-Menue-Modus (MiSTer.ini), kuratierte Filterung (nur Spiele mit Metadaten anzeigen), Attract-Modus (Verzoegerung/Ein-Aus)
+- `show` - --show: was drin ist, wie es eingestellt ist, wie schnell es laeuft
+- `single_instance` - Single-Instance-Lock: verhindert, dass zwei Instanzen gleichzeitig /dev/fb0 mappen und die Eingabegeraete grabben
+- `systems` - Spielesystem-Definitionen: GAME_SYSTEMS/OPTIONAL_GAME_SYSTEMS (Anzeige- name, Systemkey, ROM-Ordner, Core-RBF, Dateiendungen-Zuordnung) sowie system_display_name()
+- `timekeeping` - NTP-Zeitsynchronisierung beim Start (MiSTers eigene Uhr steht beim Booten nahe Null) + Zeitzonen-Verschiebung fuer die Anzeige
+- `translations` - Uebersetzungen (Deutsch/Englisch) - ausgelagert aus frontend.py als ersten Schritt der schrittweisen Modularisierung (siehe Git-Branch 'modular-refactor')
+- `update_check` - Update-Benachrichtigung: prueft die VERSION-Datei auf GitHub, haelt den Ein/Aus-Zustand und den zuletzt gemeldeten Stand fest
+- `zwischenspeicher` - Kurzlebiger Zwischenspeicher fuer Einstellungen (Build 135)
+
+---
+
 ## Was in dieser Liste NICHT steht
 
 Damit auch das klar ist:

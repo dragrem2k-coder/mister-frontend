@@ -13,6 +13,13 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **The function list now names the functions themselves, not just
+  the switches.** A menu entry is not the same as a feature: "Stream
+  overlay: on" does not say what the overlay is. Added: all 23
+  features in the words they are described with in the source, the
+  internals listed separately, and a section of its own for the **OBS
+  overlay** including its port and all ten addresses — read from the
+  source, not copied. Now 10 pages (build 284).
 - **New: a complete list of every function and setting** —
   `docs/FUNKTIONSLISTE.md` and `docs/Dragend_Funktionsliste.pdf` (8
   pages, German). It is **generated, not written**: the system menu

@@ -4618,6 +4618,58 @@ steht auch, *dass* MiSTer die Knoepfe in Tasten uebersetzt - die
 Erklaerung fuer „ich kann erst blaettern, wenn ich einmal die
 Leertaste gedrueckt habe".
 
+### Nachtrag Build 284: ein Menuepunkt ist nicht dasselbe wie eine Funktion
+
+> „Hast du auch die Features bedacht, obs ect, was es noch so alles
+> kann?"
+
+**Berechtigt, und ich hatte es nicht bedacht.** Build 283 hat das
+MENUE aufgezaehlt - vollstaendig, mit Gegenprobe, und trotzdem an der
+Frage vorbei. Denn das OBS-Overlay steht im Menue als EINE Zeile:
+
+```
+Stream-Overlay: an -> ausschalten
+```
+
+Was es ist, dass dahinter ein Webserver laeuft, dass man in OBS eine
+**Browserquelle** eintragen muss und keine Fensteraufnahme, unter
+welcher Adresse - davon stand nichts darin. Dasselbe gilt fuer
+Zaparoo, den ROM-Waechter, das Erfolgssystem, Zaparoo, das Tagebuch.
+
+> **Lehre: eine Liste der Bedienelemente ist keine Liste der
+> Funktionen.** Wer "alles" will, will beides - und die Gegenprobe aus
+> 283 hat das nicht gemerkt, weil sie nur prueft, dass die MENUE-Liste
+> stimmt. Eine Pruefung kann nur falsch werden an dem, was sie
+> ueberhaupt ansieht.
+
+**Die Quelle ist diesmal der Beschreibungstext der Module selbst** -
+geschrieben von dem, der sie gebaut hat, und damit naeher an der
+Wahrheit als alles, was ich hinterher formuliere. Genommen wird der
+erste Satz; zwei Module laufen ohne Punkt in eine Codeliste weiter
+(`cores`, `art`) und werden vor der ersten Grossbuchstaben-Kopfzeile
+abgeschnitten.
+
+**`stream_server.py` hatte gar keinen** - dort stand "(ohne
+Beschreibung)". Ein unbenanntes Modul ist in einer Funktionsliste eine
+Luecke, also hat es jetzt einen; der ausfuehrliche Erklaerblock
+darueber bleibt unveraendert.
+
+**DIE EINTEILUNG IST FEST UND NICHT GERATEN.** Ob ein Modul eine
+Funktion fuer den Nutzer ist oder Innenleben, steht nicht im Namen.
+`INNENLEBEN` ist deshalb eine ausgeschriebene Menge im Erzeuger - und
+der Test prueft, dass **jedes** Modul in genau einer Haelfte landet.
+Ein neues Modul macht die Suite rot, bis jemand entscheidet, wohin es
+gehoert. Das ist Absicht: eine Liste, aus der neue Funktionen lautlos
+herausfallen, waere genau die, die nicht gewollt war.
+
+**Port und Adressen kommen aus dem Quelltext**, nicht aus dem
+Gedaechtnis: `STREAM_PORT` aus `frontend.py`, die zehn Pfade aus den
+Vergleichen in `stream_server.py`. Eine Dokumentation, die einen Port
+NENNT, muss ihn vom Code haben - sonst schickt sie jemanden auf eine
+falsche Adresse. Der Test prueft zusaetzlich, dass **jeder** gefundene
+Pfad in der Tabelle erklaert ist; ein Pfad ohne Erklaerung ist eine
+Zeile, die man nachschlagen muss.
+
 ### Nachtrag Build 283: eine Liste, die sich selbst prueft
 
 > „dann haette ich einmal gerne eine liste mit allen funktionen und

@@ -1,4 +1,17 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Web-Overlay und Einstellungs-Hintergrund fuer OBS.
+
+Ein kleiner Webserver im Frontend, der eine Einblendung fuer OBS
+ausliefert (Cover, Titel, System, laufender Titel, Erfolge) - dazu
+eine Bedienseite, einen Spiegel des Frontend-Bildschirms und den
+aktuellen Stand als JSON.
+
+Der Beschreibungstext steht hier, weil tools/liste_erzeugen.py ihn
+in die Funktionsliste uebernimmt (Build 284) - vorher stand dort
+"(ohne Beschreibung)", und ein unbenanntes Modul ist in einer
+Funktionsliste eine Luecke. Die ausfuehrliche Begruendung steht
+unveraendert im Block darunter."""
 # ----------------------------------------------------------------------------
 # stream_server.py  -  Web-Overlay + Config-Backend fuer OBS
 # ----------------------------------------------------------------------------

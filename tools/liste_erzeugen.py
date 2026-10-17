@@ -290,6 +290,108 @@ def hilfe_themen():
 
 
 # ---------------------------------------------------------------------------
+# 7. DIE GROSSEN FUNKTIONEN - aus den Modulen selbst
+# ---------------------------------------------------------------------------
+# NACHFRAGE DES NUTZERS: "Hast du auch die Features bedacht, OBS etc,
+# was es noch so alles kann?"
+#
+# Berechtigt. Die Liste zaehlte das MENUE auf - und Dinge wie das
+# OBS-Overlay, Zaparoo oder der ROM-Waechter stehen dort als EINE Zeile
+# ("Stream-Overlay: an"), ohne dass irgendwo steht, was sie eigentlich
+# sind. Ein Menuepunkt ist nicht dasselbe wie eine Funktion.
+#
+# Die Quelle dafuer sind die Module selbst: jedes hat einen
+# Beschreibungstext an seinem Anfang, und der ist von demjenigen
+# geschrieben, der es gebaut hat. Genommen wird der erste Satz.
+#
+# WARUM EINE FESTE EINTEILUNG UND KEINE HEURISTIK: ob ein Modul eine
+# Funktion fuer den Nutzer ist oder Innenleben, kann man nicht aus dem
+# Namen raten. Die Einteilung steht deshalb hier - und
+# tools/test_funktionsliste.py prueft, dass JEDES Modul darin
+# vorkommt. Ein neues Modul macht die Suite rot, bis jemand
+# entscheidet, in welche Haelfte es gehoert. Das ist Absicht: eine
+# Liste, aus der neue Funktionen lautlos herausfallen, ist genau die,
+# die wir nicht wollten.
+INNENLEBEN = {
+    "art", "bildlib", "dateibaum", "framebuffer", "input", "launch",
+    "log", "nachladen", "naming", "paths", "prewarm_worker", "scan",
+    "search", "settings", "single_instance", "systems",
+    "translations", "zwischenspeicher", "menu", "bench", "show",
+    "demo", "hidraw", "ra_core", "mister_system", "timekeeping",
+    "update_check",
+}
+
+
+def module_beschreibung():
+    """(Modulname, erster Satz) fuer alle Module - zweigeteilt.
+
+    Rueckgabe: (funktionen, innenleben), beide als Liste von Paaren."""
+    import ast
+    import glob
+    funktionen, innen = [], []
+    pfade = sorted(glob.glob(os.path.join(_FE, "fe", "*.py")))
+    pfade.append(os.path.join(_FE, "stream_server.py"))
+    for pfad in pfade:
+        name = os.path.basename(pfad)[:-3]
+        if name == "__init__":
+            continue
+        try:
+            doc = ast.get_docstring(
+                ast.parse(io.open(pfad, encoding="utf-8").read())) or ""
+        except (SyntaxError, OSError):
+            doc = ""
+        satz = " ".join(doc.split())
+        # Der erste Satz, aber nicht mitten in einer Abkuerzung
+        # abgeschnitten: getrennt wird an ". " vor einem Grossbuchstaben.
+        teil = re.split(r"\.\s+(?=[A-ZÄÖÜ])", satz, 1)[0].rstrip(".")
+        # Zwei Beschreibungen laufen ohne Punkt in eine Aufzaehlung
+        # oder einen Dateinamen-Block weiter (cores, art). Ein
+        # Nachschlagewerk braucht dort einen Satz und keine halbe
+        # Codeliste - also vor der ersten Grossbuchstaben-Kopfzeile
+        # abschneiden und notfalls hart kappen.
+        teil = re.split(r"\s+(?=[A-ZÄÖÜ]{4,}\s)", teil, 1)[0]
+        if len(teil) > 230:
+            teil = teil[:227].rsplit(" ", 1)[0] + " ..."
+        if not teil:
+            teil = "(ohne Beschreibung)"
+        (innen if name in INNENLEBEN else funktionen).append(
+            (name, teil))
+    return funktionen, innen
+
+
+def alle_module():
+    """Alle Modulnamen - fuer die Vollstaendigkeitspruefung im Test."""
+    f, i = module_beschreibung()
+    return [n for n, _ in f] + [n for n, _ in i]
+
+
+# ---------------------------------------------------------------------------
+# 8. DAS OVERLAY FUER OBS - Port und Pfade aus dem Quelltext
+# ---------------------------------------------------------------------------
+def overlay_pfade():
+    """(Port, [Pfade]) des eingebauten Webservers.
+
+    Beides aus dem Quelltext gelesen und nicht abgeschrieben: der Port
+    steht in frontend.py, die Pfade in stream_server.py. Eine
+    Dokumentation, die einen Port NENNT, muss ihn vom Code haben -
+    sonst schickt sie jemanden auf eine falsche Adresse."""
+    port = None
+    m = re.search(r"^STREAM_PORT\s*=\s*(\d+)", _FRONTEND_PY, re.M)
+    if m:
+        port = int(m.group(1))
+    srv = io.open(os.path.join(_FE, "stream_server.py"),
+                  encoding="utf-8").read()
+    pfade = []
+    for m in re.finditer(r'p (?:==|!=) "(/[a-z0-9_.]*)"', srv):
+        if m.group(1) not in pfade:
+            pfade.append(m.group(1))
+    for m in re.finditer(r'u\.path (?:==|!=) "(/[a-z0-9_.]*)"', srv):
+        if m.group(1) not in pfade:
+            pfade.append(m.group(1))
+    return port, pfade
+
+
+# ---------------------------------------------------------------------------
 # DIE GEGENPROBE
 # ---------------------------------------------------------------------------
 def gegenprobe(gruppen, text):
@@ -496,6 +598,66 @@ def bauen():
         a("")
         a("---")
         a("")
+    # DIE GROSSEN FUNKTIONEN (Nachfrage des Nutzers: "Hast du auch
+    # die Features bedacht, OBS etc?"). Ein Menuepunkt ist nicht
+    # dasselbe wie eine Funktion - "Stream-Overlay: an" sagt nicht,
+    # was das Overlay ist.
+    _funk, _innen = module_beschreibung()
+    a("## 8. Die grossen Funktionen, einzeln benannt")
+    a("")
+    a("Das Systemmenue oben zeigt die SCHALTER. Was dahinter steckt,")
+    a("steht hier - jeweils in den Worten, mit denen die Funktion im")
+    a("Quelltext selbst beschrieben ist.")
+    a("")
+    for name, satz in _funk:
+        a("- **%s** - %s" % (name, satz))
+    a("")
+    a("### Das Overlay fuer OBS und den Browser")
+    a("")
+    _port, _pfade = overlay_pfade()
+    a("Ist *Stream-Overlay* eingeschaltet, laeuft im Frontend ein")
+    a("kleiner Webserver. Vom gleichen Netz aus erreichbar unter")
+    a("`http://<IP-des-MiSTer>:%s` - in OBS als **Browserquelle**"
+      % (_port if _port else "?"))
+    a("einzutragen, nicht als Fenster-Aufnahme.")
+    a("")
+    a("| Pfad | Wofuer |")
+    a("|---|---|")
+    _wofuer = {
+        "/": "dasselbe wie /overlay",
+        "/overlay": "die Einblendung fuer OBS (Cover, Titel, Erfolge)",
+        "/admin": "die Bedienseite - hier wird eingestellt, welche "
+                  "Felder erscheinen",
+        "/state": "der aktuelle Stand als JSON (fuer eigene Basteleien)",
+        "/config": "die Einstellungen des Overlays, lesen und schreiben",
+        "/art": "das Cover des markierten oder laufenden Spiels",
+        "/badge": "ein Erfolgs-Abzeichen als Bild",
+        "/events": "laufende Meldungen, damit die Seite sich ohne "
+                   "Neuladen aktualisiert",
+        "/screen.png": "ein Abbild des Frontend-Bildschirms",
+        "/mirror": "die Spiegelseite - das Frontend im Browser "
+                   "mitsehen",
+    }
+    for pf in _pfade:
+        a("| `%s` | %s |" % (pf, _wofuer.get(pf, "")))
+    a("")
+    a("Dazu kommt der **OBS-Szenenwechsel** (`obs_websocket`): das")
+    a("Frontend kann OBS per WebSocket sagen, wann es von der")
+    a("Frontend-Szene auf die Capture-Karten-Szene umschalten soll -")
+    a("also beim Start eines Spiels und beim Zurueckkehren. Das weiss")
+    a("nur das Frontend zuverlaessig.")
+    a("")
+    a("### Und das Innenleben")
+    a("")
+    a("Diese Module haben keine eigene Einstellung - sie stehen hier,")
+    a("damit die Liste vollstaendig ist und niemand sie vergeblich im")
+    a("Menue sucht.")
+    a("")
+    for name, satz in _innen:
+        a("- `%s` - %s" % (name, satz))
+    a("")
+    a("---")
+    a("")
     a("## Was in dieser Liste NICHT steht")
     a("")
     a("Damit auch das klar ist:")

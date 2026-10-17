@@ -117,6 +117,62 @@ else:
           "python3 tools/liste_erzeugen.py")
 
 print()
+print("Teil 5: die grossen Funktionen (Build 284)")
+# NACHFRAGE DES NUTZERS: "Hast du auch die Features bedacht, OBS etc,
+# was es noch so alles kann?" - berechtigt. Die erste Fassung zaehlte
+# das MENUE auf, und das OBS-Overlay steht dort als eine Zeile
+# ("Stream-Overlay: an"), ohne dass irgendwo steht, was es ist.
+#
+# EIN MENUEPUNKT IST NICHT DASSELBE WIE EINE FUNKTION.
+_funk, _innen = L.module_beschreibung()
+check("die Funktionen sind einzeln benannt",
+      len(_funk) >= 20, "%d" % len(_funk))
+check("und das Innenleben getrennt davon",
+      len(_innen) >= 20, "%d" % len(_innen))
+check("kein Modul ohne Beschreibung",
+      not [n for n, t in _funk + _innen if "ohne Beschreibung" in t],
+      "ein unbenanntes Modul ist in einer Funktionsliste eine Luecke")
+
+# DIE WICHTIGSTE PRUEFUNG DIESES TEILS: die Einteilung in Funktion und
+# Innenleben steht als feste Liste im Erzeuger, weil man sie nicht aus
+# dem Namen raten kann. Damit daraus keine Falle wird, muss JEDES Modul
+# in genau einer Haelfte landen - ein neues Modul macht die Suite rot,
+# bis jemand entscheidet, wohin es gehoert. Eine Liste, aus der neue
+# Funktionen lautlos herausfallen, waere genau die, die nicht gewollt
+# war.
+import glob as _glob
+import os as _os
+_auf_platte = {_os.path.basename(p)[:-3]
+               for p in _glob.glob(_os.path.join(_REPO, "frontend",
+                                                 "fe", "*.py"))
+               if not p.endswith("__init__.py")}
+_auf_platte.add("stream_server")
+_in_liste = set(L.alle_module())
+check("jedes Modul kommt in der Liste vor",
+      not (_auf_platte - _in_liste),
+      "fehlt: " + ", ".join(sorted(_auf_platte - _in_liste)))
+check("und keines doppelt oder erfunden",
+      not (_in_liste - _auf_platte),
+      "zuviel: " + ", ".join(sorted(_in_liste - _auf_platte)))
+
+print()
+print("Teil 6: das Overlay fuer OBS")
+_port, _pfade = L.overlay_pfade()
+check("der Port kommt aus dem Quelltext",
+      _port == 8080, repr(_port) + " - eine Doku, die einen Port NENNT, "
+      "muss ihn vom Code haben")
+check("und die Pfade auch",
+      "/overlay" in _pfade and "/admin" in _pfade
+      and "/mirror" in _pfade,
+      "%d Pfade: %s" % (len(_pfade), ", ".join(_pfade)))
+check("jeder Pfad ist erklaert",
+      all(("| `%s` |" % pf) in text for pf in _pfade),
+      "ein Pfad ohne Erklaerung ist eine Zeile, die man nachschlagen "
+      "muss")
+check("und der OBS-Szenenwechsel ist genannt",
+      "obs_websocket" in text and "Capture-Karten-Szene" in text)
+
+print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))
     for x in fails:

@@ -13,6 +13,14 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Die Funktionsliste nennt jetzt auch die Funktionen selbst, nicht
+  nur die Schalter.** Ein Menüpunkt ist nicht dasselbe wie eine
+  Funktion: „Stream-Overlay: an" sagt nicht, was das Overlay ist. Neu
+  dazu: alle 23 Funktionen in den Worten, mit denen sie im Quelltext
+  beschrieben sind, das Innenleben getrennt davon, und ein eigener
+  Abschnitt zum **OBS-Overlay** samt Port und allen zehn Adressen —
+  aus dem Quelltext gelesen, nicht abgeschrieben. Jetzt 10 Seiten
+  (Build 284).
 - **Neu: eine vollständige Liste aller Funktionen und
   Einstellungen** — `docs/FUNKTIONSLISTE.md` und
   `docs/Dragend_Funktionsliste.pdf` (8 Seiten). Sie ist **erzeugt, nicht
