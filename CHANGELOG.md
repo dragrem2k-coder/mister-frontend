@@ -13,6 +13,13 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Der Ausstieg sagt jetzt, was er hinterlässt.** Eine Zeile
+  `EXIT-BILANZ` im Protokoll nennt die aktive Konsole, den Modus von
+  tty1, ob noch ein Griff auf den Eingaben liegt, ob der Vorauslader
+  beendet ist und ob der Bildspeicher zu ist — dazu, wie sie zu lesen
+  ist. Hintergrund: dass MiSTer nach dem Beenden manchmal keine
+  Scripts startet, hatte in Build 278 eine Ursache, aber nicht nur
+  die eine (Build 281).
 - **Behoben: nach Build 278 ließ sich die Anleitung nicht mehr
   schließen.** Der neue Rückweg auf tty1 benutzte `VT_WAITACTIVE` —
   einen Aufruf, der *unbegrenzt* wartet, bis die Konsole vorne liegt.

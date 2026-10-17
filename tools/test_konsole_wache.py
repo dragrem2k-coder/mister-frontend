@@ -487,6 +487,61 @@ check("die Reihenfolge von Build 145 gilt weiter: Bildschirm zuerst",
       ausstieg.index("self.fb.close()")
       < ausstieg.index("_f12_bis_das_osd_kommt"))
 
+# ---------------------------------------------------------------------------
+print()
+print("Build 281: der Ausstieg sagt, was er hinterlaesst")
+# ---------------------------------------------------------------------------
+# NUTZERMELDUNG, mehrfach: "wenn ich aus dem frontend raus gehe also
+# komplett verlasse und dann im osd menü ein script starten will geht
+# garnichts mehr, dann muss ich denn mister neu starten."
+#
+# Build 278 hat EINE Ursache gefunden (die Konsole lag noch auf tty3)
+# und behoben - es war nicht die letzte. An diesem Punkt habe ich
+# dreimal geraten und dreimal falsch. Deshalb KEIN vierter Versuch ins
+# Blaue, sondern die Auskunft, die bisher fehlte: eine Zeile, die genau
+# die Dinge nennt, die wir uns vom System geholt haben, und in welchem
+# Zustand wir sie zuruecklassen.
+#
+# LEHRE, aus Build 270 und 273: eine Zahl ohne Richtung kostet einen
+# Muenzwurf, und ein Messpunkt, der heute nichts findet, ist nicht
+# umsonst.
+check("der Ausstieg zieht eine Bilanz",
+      "self._exit_bilanz()" in block,
+      "ohne sie muesste der Nutzer im kaputten Zustand Befehle "
+      "abtippen")
+check("und zwar als LETZTES",
+      block.rindex("_exit_bilanz") > block.rindex("music.shutdown"),
+      "erst aufraeumen, dann berichten - sonst steht im Bericht ein "
+      "Zustand, der noch nicht der endgueltige ist")
+
+_bil = quelle.split("def _exit_bilanz")[1].split("\n    def ")[0]
+for _was, _warum in (
+        ("VT=", "liegt nicht tty1 vorne, sieht niemand das Script"),
+        ("tty1=", "steht die Konsole im Grafikmodus, zeigt sie keinen "
+                  "Text"),
+        ("Griff=", "ein liegengebliebener Griff auf die Eingaben war "
+                   "der Fehler aus Build 163 - und er sieht von "
+                   "aussen genauso aus"),
+        ("Vorauslader=", "ein eigener Prozess seit Build 102; laeuft "
+                         "er weiter, schreibt noch jemand von uns auf "
+                         "die Karte"),
+        ("Framebuffer=", "ein offener Bildspeicher liegt ueber "
+                         "MiSTers Bild")):
+    check("die Bilanz nennt " + _was, _was in _bil, _warum)
+
+check("und sie sagt, wie sie zu lesen ist",
+      "zu lesen als" in _bil,
+      "eine Zahl ohne die Folgerung daneben wird beim naechsten Mal "
+      "wieder nur angesehen (Lehre aus Build 270)")
+check("jeder Posten ist einzeln abgesichert",
+      _bil.count("except Exception") >= 5,
+      "eine Bilanz darf den Ausstieg unter keinen Umstaenden "
+      "aufhalten - sie ist das Letzte, was laeuft")
+check("abgefragt, nicht gesetzt",
+      "KDGETMODE" in _bil and "KDSETMODE" not in _bil,
+      "eine Bilanz, die den Zustand aendert, den sie meldet, ist "
+      "keine Bilanz")
+
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))

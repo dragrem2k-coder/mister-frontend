@@ -23385,6 +23385,95 @@ class Frontend:
         if self.stream:
             self.stream.stop()
         self.music.shutdown()
+        self._exit_bilanz()
+
+    # Konsolenmodus ABFRAGEN (Gegenstueck zu KDSETMODE). Fuer die
+    # Bilanz - gesetzt wird damit nichts.
+    KDGETMODE = 0x4B3B
+
+    def _exit_bilanz(self):
+        """Was dieser Ausstieg hinterlaesst - in EINER Zeile.
+
+        WARUM DIESE ZEILE EXISTIERT (Build 281). Der Nutzer meldet
+        seit mehreren Builds dasselbe: "wenn ich aus dem frontend raus
+        gehe also komplett verlasse und dann im osd menü ein script
+        starten will geht garnichts mehr, dann muss ich denn mister neu
+        starten". Build 278 hat dabei EINE Ursache gefunden und
+        behoben - die Konsole lag noch auf tty3 - und es war nicht die
+        letzte.
+
+        An diesem Punkt habe ich dreimal geraten und dreimal falsch.
+        Die Lehre daraus steht seit Build 273 im Projekt (ein
+        Messpunkt, der heute nichts findet, ist nicht umsonst) und
+        seit 270 (eine Zahl ohne Richtung kostet einen Muenzwurf).
+        Also KEIN vierter Versuch ins Blaue, sondern die Auskunft, die
+        bisher fehlte.
+
+        Sie nennt genau die Dinge, die wir uns vom System geholt
+        haben, und in welchem Zustand wir sie zuruecklassen. Wenn der
+        Script-Start das naechste Mal nicht geht, steht die Antwort
+        vorher im Protokoll - ohne dass jemand im kaputten Zustand
+        Befehle abtippen muss.
+
+        Alles einzeln abgesichert: eine Bilanz darf den Ausstieg unter
+        keinen Umstaenden aufhalten. Sie ist das Letzte, was laeuft."""
+        teile = []
+        try:
+            teile.append("VT=%s" % self._aktive_vt())
+        except Exception:                                # noqa: BLE001
+            teile.append("VT=?")
+        # Der Konsolenmodus von tty1. Steht hier KD_GRAPHICS, zeigt
+        # die Konsole keinen Text - ein Script aus MiSTers OSD laeuft
+        # dann unsichtbar (siehe textkonsole_grafik_an()).
+        try:
+            import array
+            puffer = array.array("h", [0])
+            with open(self.TTY1_PFAD, "wb", buffering=0) as t:
+                fcntl.ioctl(t.fileno(), self.KDGETMODE, puffer, True)
+            teile.append("tty1=%s"
+                         % ("GRAFIK" if puffer[0] == self.KD_GRAPHICS
+                            else "TEXT"))
+        except Exception:                                # noqa: BLE001
+            teile.append("tty1=?")
+        # Haelt noch jemand von uns ein Eingabegeraet fest? Ein
+        # liegengebliebener Griff war der Fehler aus Build 163, und
+        # genau er sieht von aussen so aus wie die aktuelle Meldung.
+        try:
+            offen = len(getattr(self.inp, "devices", {}) or {})
+            teile.append("Eingaben offen=%d" % offen)
+            teile.append("Griff=%s"
+                         % ("ja" if getattr(self.inp, "want_grab", False)
+                            else "nein"))
+        except Exception:                                # noqa: BLE001
+            teile.append("Eingaben=?")
+        # Laeuft noch ein Kind von uns? Der Vorauslader ist ein
+        # eigener Prozess (Build 102).
+        try:
+            # Der Vorauslader ist seit Build 102 ein eigener Prozess
+            # (fe/prewarm.py, Feld _proc). Steht hier etwas, schreibt
+            # noch jemand von uns auf die SD-Karte.
+            teile.append("Vorauslader=%s"
+                         % ("laeuft noch"
+                            if getattr(PREWARMER, "_proc", None) is not None
+                            else "beendet"))
+        except Exception:                                # noqa: BLE001
+            teile.append("Vorauslader=?")
+        try:
+            # Nach fb.close() ist _mem_fd None und mm geschlossen -
+            # beides wird dort auf None gesetzt bzw. geschlossen.
+            teile.append("Framebuffer=%s"
+                         % ("zu"
+                            if getattr(self.fb, "_mem_fd", None) is None
+                            else "offen"))
+        except Exception:                                # noqa: BLE001
+            teile.append("Framebuffer=?")
+        try:
+            LOG("EXIT-BILANZ: " + ", ".join(teile))
+            LOG("EXIT-BILANZ: zu lesen als - VT muss 1 sein, tty1 muss "
+                "TEXT sein, Griff muss nein sein. Weicht eines ab, "
+                "kann MiSTer von seinem OSD aus keine Scripts starten.")
+        except Exception:                                # noqa: BLE001
+            pass
 
     # Pause zwischen dem F12 und dem Schliessen der Eingaben - dieselbe
     # Zeit, die enter_console_mode() seit jeher nach seiner Injektion

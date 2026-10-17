@@ -4618,6 +4618,66 @@ steht auch, *dass* MiSTer die Knoepfe in Tasten uebersetzt - die
 Erklaerung fuer „ich kann erst blaettern, wenn ich einmal die
 Leertaste gedrueckt habe".
 
+### Nachtrag Build 281: kein vierter Versuch ins Blaue
+
+> „das einzige was nicht geht ist wenn ich aus dem frontend raus gehe
+> also komplett verlasse und dann im osd menü ein script starten will
+> geht garnichts mehr dann muss ich denn mister neu starten!"
+
+**Build 278 hat EINE Ursache gefunden und behoben** - die Konsole lag
+noch auf tty3, und das war kein Fehlalarm: der Befund stand in seinem
+eigenen `cat /sys/class/tty/tty0/active`. **Es war nur nicht die
+letzte.**
+
+**An dieser Stelle habe ich heute dreimal geraten.** Erst der
+Speicher (267), dann der Kernel (die zuruckgezogene
+15-Prozent-Behauptung), dann der Konsolenwechsel (278, richtig aber
+unvollstaendig). Dazu drei Builds in Folge, in denen ich eine eigene
+Behebung nachbessern musste (276 -> 277, 278 -> 280).
+
+Der gemeinsame Zug ist nicht fehlendes Wissen. Es ist, dass ich **in
+einen Zustand hineingeraten habe, den ich nicht sehen kann** - und dann
+die wahrscheinlichste Erklaerung genommen habe, statt erst
+hinzusehen.
+
+> **Lehre: wo man dreimal geraten hat, baut man eine Anzeige und
+> keinen vierten Versuch.** Das Gegenstueck steht im Nachtrag zu 270
+> (eine Zahl ohne Richtung kostet einen Muenzwurf) und zu 273 (ein
+> Messpunkt, der heute nichts findet, ist nicht umsonst - der
+> Hausarbeits-Zaehler lag Monate still und hat dann in einer Zeile
+> einen Build entschieden).
+
+**Die `EXIT-BILANZ` nennt genau die Dinge, die wir uns vom System
+geholt haben, und in welchem Zustand wir sie zurueckgeben:**
+
+```
+EXIT-BILANZ: VT=1, tty1=TEXT, Eingaben offen=3, Griff=nein,
+             Vorauslader=beendet, Framebuffer=zu
+EXIT-BILANZ: zu lesen als - VT muss 1 sein, tty1 muss TEXT sein,
+             Griff muss nein sein. Weicht eines ab, kann MiSTer von
+             seinem OSD aus keine Scripts starten.
+```
+
+Jeder Posten hat eine Begruendung, und jede steht als Pruefung da:
+
+- **VT** - liegt nicht tty1 vorne, sieht niemand das Script (278).
+- **tty1** - steht die Konsole im Grafikmodus, zeigt sie keinen Text
+  (279).
+- **Griff** - ein liegengebliebener Griff auf die Eingaben war der
+  Fehler aus Build 163, und er sieht von aussen genauso aus wie diese
+  Meldung.
+- **Vorauslader** - ein eigener Prozess seit Build 102; laeuft er
+  weiter, schreibt noch jemand von uns auf die Karte.
+- **Framebuffer** - ein offener Bildspeicher liegt ueber MiSTers Bild
+  (165).
+
+**Drei Eigenschaften, die eine Bilanz haben muss**, und alle drei sind
+geprueft: sie laeuft als LETZTES (sonst berichtet sie einen Zustand,
+der noch nicht der endgueltige ist), jeder Posten ist einzeln
+abgesichert (sie darf den Ausstieg unter keinen Umstaenden aufhalten),
+und sie FRAGT ab statt zu setzen - `KDGETMODE`, nicht `KDSETMODE`. Eine
+Bilanz, die den Zustand aendert, den sie meldet, ist keine Bilanz.
+
 ### Nachtrag Build 280: ein blockierender Aufruf im Aufraeumweg
 
 > „wenn ich jetzt die anleitung schliessen will reagiert nichts mehr!

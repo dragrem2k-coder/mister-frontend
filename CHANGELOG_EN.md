@@ -13,6 +13,13 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **The exit path now says what it leaves behind.** One
+  `EXIT-BILANZ` line in the log names the active console, tty1's mode,
+  whether a grab is still held on the input devices, whether the
+  prewarmer has ended and whether the framebuffer is closed — plus how
+  to read it. Background: MiSTer sometimes not starting scripts after
+  the frontend quits had one cause in build 278, but not only that one
+  (build 281).
 - **Fixed: after build 278 the manual could no longer be closed.** The
   new route back to tty1 used `VT_WAITACTIVE` — a call that waits
   *indefinitely* until the console is in front. If the owner of the old
