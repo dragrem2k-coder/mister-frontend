@@ -13,6 +13,24 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **Fixed: after build 278 the manual could no longer be closed.** The
+  new route back to tty1 used `VT_WAITACTIVE` — a call that waits
+  *indefinitely* until the console is in front. If the owner of the old
+  console refuses the switch, and a program in graphics mode may do
+  exactly that, it never returns: the frontend stalled in the middle of
+  cleaning up. The wait is now done by hand, with a hard limit of one
+  second (build 280).
+- **The login greeting can no longer write into the picture.** Until
+  now every countermeasure was a request to the text console: don't
+  blank, don't blink, don't show a cursor — plus a reader afterwards
+  that checked whether it had complied. tty1 is now in graphics mode
+  while the frontend owns the screen, and there the text console draws
+  nothing at all. The manual viewer has done exactly this since v4.9 —
+  it was simply never done for our own screen. Handing the console to
+  a script turns it off (a script has to be visible) and back on
+  afterwards; it is restored in three places, and there is a switch
+  (`/media/fat/frontend/textkonsole_grafik_aus`) in case the screen
+  stays black (build 279).
 - **Fixed: MiSTer would not start any scripts after the frontend
   quit.** After a game manual had been opened, the manual's console
   (tty3) stayed in front instead of switching back to tty1 — and

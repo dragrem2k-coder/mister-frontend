@@ -406,7 +406,10 @@ print("Test 14: es gibt eine Reissleine fuer ein haengendes Aufraeumen")
 check("der Wachhund wird gestellt", "_notausgang_stellen()" in block)
 check("und zwar als ALLERERSTES im finally",
       block.index("_notausgang_stellen()") < pos_frei)
-wach = quelle.split("def _notausgang_stellen")[1][:1800]
+# Kein Fenster aus Zeichenzahl: der Rumpf bis zur naechsten Methode.
+# Ein festes Fenster wird mit jeder Ergaenzung zu klein - diese Falle
+# hat Build 267, 272, 275 und 279 je einen Anlauf gekostet.
+wach = quelle.split("def _notausgang_stellen")[1].split("\n    def ")[0]
 check("er beendet den Prozess hart", "os._exit(0)" in wach)
 check("gibt vorher die Sperrdatei frei", "release_single_instance" in wach,
       "sonst blockiert sie den naechsten Start")

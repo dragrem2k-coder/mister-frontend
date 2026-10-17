@@ -1183,9 +1183,49 @@ class InputManager:
                 # sind blockierend geoeffnet (os.O_RDWR, siehe
                 # rescan()), ein Leseversuch auf Verdacht wuerde also
                 # haengen bleiben.
+                # NUR WENN ES ETWAS ZU SCHUETZEN GIBT (Build 280)
+                # ----------------------------------------------------
+                # Build 277 hat IMMER geleert - auch dann, wenn gar
+                # keine Wiederholung aussteht. Das hat den
+                # Anleitungs-Betrachter lahmgelegt: "wenn ich jetzt die
+                # anleitung schliessen will reagiert nichts mehr! das
+                # ging vorher!"
+                #
+                # Warum: _anleitung_pult() macht alle 20 ms EINEN Blick
+                # ohne Warten (read_action(timeout=0)), und ein solcher
+                # Blick hat per Bauart genau EINE Runde (siehe
+                # erste_runde oben). Build 277 verbrauchte diese eine
+                # Runde darauf, bis zu LEEREN_MAX Ereignisse
+                # wegzuraeumen - und sein Pad ist ein Nintendo Pro
+                # Controller, der laut seinem dmesg ein ZWEITES
+                # Eingabegeraet mitbringt:
+                #
+                #   input: Nintendo ... Pro Controller (IMU) as ...
+                #
+                # Die Lagesensoren senden dauernd, und keines ihrer
+                # Ereignisse ist eine Aktion. Der Blick lief damit ins
+                # Leeren, und der Tastendruck zum Schliessen kam nie
+                # an.
+                #
+                # DAS LEEREN SCHUETZT GENAU EINE SACHE: dass ein
+                # Loslassen nicht hinter einer faelligen Wiederholung
+                # liegenbleibt (Build 277). Steht keine Wiederholung
+                # aus, gibt es nichts zu schuetzen - dann gilt
+                # unveraendert, was vor 277 galt: ein Ereignis je
+                # Geraet, dann zurueck an den Anfang.
+                #
+                # Lehre: eine Behebung gehoert in den Fall, den sie
+                # behebt. Build 277 war richtig und an der falschen
+                # Stelle allgemein.
                 got_event = False
                 runden = 0
-                while r and runden < self.LEEREN_MAX:
+                # UND NIE BEI EINEM BLICK OHNE WARTEN. timeout=0
+                # heisst "sieh einmal nach, ohne zu warten", und ein
+                # solcher Blick hat per Bauart genau eine Runde. Wer
+                # sie aufs Leeren verwendet, hat nicht nachgesehen -
+                # genau das hat den Anleitungs-Betrachter lahmgelegt.
+                leeren = (self.held is not None and timeout != 0)
+                while r and runden < (self.LEEREN_MAX if leeren else 1):
                     runden += 1
                     for fd in r:
                         dev = fds[fd]
@@ -1217,7 +1257,13 @@ class InputManager:
                             # und sind sofort dran.
                             self.eingabe_zeit = time.monotonic()
                             return act
-                    # Noch etwas da? Dann weiterleeren.
+                    # Noch etwas da? Dann weiterleeren - aber nur, wenn
+                    # ueberhaupt geleert wird (Build 280). Ohne
+                    # ausstehende Wiederholung ist dieser zweite
+                    # select() reine Arbeit ohne Zweck, und bei einem
+                    # Pad mit Lagesensoren kommt er nie zur Ruhe.
+                    if not leeren:
+                        break
                     try:
                         r, _, _ = select.select(list(fds), [], [], 0)
                     except OSError:

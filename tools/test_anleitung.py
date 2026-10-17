@@ -586,6 +586,66 @@ try:
 finally:
     shutil.rmtree(_tmpvt, ignore_errors=True)
 
+# ---------------------------------------------------------------------------
+print()
+print("Build 280: der Rueckweg darf nicht warten koennen")
+# ---------------------------------------------------------------------------
+# NUTZERMELDUNG ZU BUILD 278: "wenn ich jetzt die anleitung schliessen
+# will reagiert nichts mehr! das ging vorher!" - und zwar "nachdem ich
+# build 278 installiert hab".
+#
+# URSACHE: _vt_erzwingen() rief VT_WAITACTIVE. Der ioctl WARTET, bis
+# die Konsole vorne liegt, und zwar unbegrenzt. Verweigert der Besitzer
+# der alten Konsole den Wechsel - und ein Programm im Grafikmodus darf
+# das -, kommt er nie zurueck. Das Frontend stand mitten im Aufraeumen.
+#
+# LEHRE: ein blockierender Aufruf im Aufraeumweg ist ein Haenger mit
+# Anlauf. Build 247 hat dasselbe fuer den Zeichenweg gelernt.
+_fe5 = io.open(os.path.join(_FRONTEND_DIR, "frontend.py"),
+               encoding="utf-8").read()
+_erzw = _fe5.split("def _vt_erzwingen")[1].split("\n    def ")[0]
+# Geprueft wird die VERWENDUNG (self.VT_WAITACTIVE), nicht das Wort:
+# die Begruendung im Docstring nennt es ausdruecklich, und ein Test,
+# der am Wort haengt, verbietet die Erklaerung.
+check("_vt_erzwingen() wartet NICHT per ioctl",
+      "self.VT_WAITACTIVE" not in _erzw,
+      "ein unbegrenzt wartender Aufruf im Aufraeumweg haelt das ganze "
+      "Frontend an")
+check("es wartet selbst, mit harter Grenze",
+      "VT_WECHSEL_FRIST" in _erzw and "VT_WECHSEL_TAKT" in _erzw,
+      "ein Wechsel, der nicht stattfindet, kostet dann eine Sekunde "
+      "und eine Zeile im Protokoll - nicht das Geraet")
+
+_fe6 = H.make_frontend(page=0)
+_tmp2 = tempfile.mkdtemp(prefix="vt2_")
+try:
+    _d = os.path.join(_tmp2, "active")
+    io.open(_d, "w").write("tty3\n")
+    _fe6.AKTIVE_VT_DATEI = _d
+    _fe6.VT_WECHSEL_FRIST = 0.15
+    _fe6.VT_WECHSEL_TAKT = 0.01
+    # NICHT die echte Konsole des Pruefrechners anfassen.
+    _fe6.TTY0_PFAD = os.path.join(_tmp2, "kein_tty0")
+    io.open(_fe6.TTY0_PFAD, "w").write("")
+    # Der ioctl scheitert auf einer gewoehnlichen Datei (ENOTTY).
+    # Das fuehrt zu False, und zwar SOFORT und ohne Warten.
+    import time as _t280
+    _t0 = _t280.perf_counter()
+    _ok = _fe6._vt_erzwingen(1)
+    _dauer = _t280.perf_counter() - _t0
+    check("ein misslungener Wechsel kehrt zurueck, statt zu haengen",
+          _ok is False and _dauer < 2.0,
+          "%.2f s" % _dauer)
+    # Und wenn das Ziel schon vorne liegt, passiert nichts und es
+    # dauert nichts.
+    io.open(_d, "w").write("tty1\n")
+    _t0 = _t280.perf_counter()
+    check("liegt das Ziel schon vorne, ist es sofort True",
+          _fe6._vt_erzwingen(1) is True
+          and (_t280.perf_counter() - _t0) < 0.5)
+finally:
+    shutil.rmtree(_tmp2, ignore_errors=True)
+
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))

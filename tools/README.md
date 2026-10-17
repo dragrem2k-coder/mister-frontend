@@ -4618,6 +4618,135 @@ steht auch, *dass* MiSTer die Knoepfe in Tasten uebersetzt - die
 Erklaerung fuer „ich kann erst blaettern, wenn ich einmal die
 Leertaste gedrueckt habe".
 
+### Nachtrag Build 280: ein blockierender Aufruf im Aufraeumweg
+
+> „wenn ich jetzt die anleitung schliessen will reagiert nichts mehr!
+> das ging vorher!" - „nachdem ich build 278 installiert hab"
+
+**Build 278 enthielt genau eine Quelldatei, und der Fehler stand in
+meiner neuen Funktion.** `_vt_erzwingen()` rief `VT_WAITACTIVE`. Dieser
+ioctl **wartet**, bis die Konsole vorne liegt - unbegrenzt. Verweigert
+der Besitzer der alten Konsole den Wechsel, und ein Programm im
+Grafikmodus darf das, kommt er nie zurueck. Das Frontend stand mitten
+im Aufraeumen, nachdem der Betrachter beendet war.
+
+Der Tastendruck zum Schliessen hat also funktioniert. Danach kam
+nichts mehr.
+
+> **Lehre: ein blockierender Aufruf im Aufraeumweg ist ein Haenger mit
+> Anlauf.** Build 247 hat genau das fuer den Zeichenweg gelernt
+> („ein blockierender Aufruf und drei Posten"), und die Lehre stand
+> schon im Protokoll. Beim Aufraeumweg habe ich sie nicht angewendet -
+> obwohl dort seit Build 163 ein ganzer Wachhund existiert, WEIL
+> Aufraeumen haengen kann.
+
+**Gewartet wird jetzt selbst**, in Schritten von 20 ms und mit einer
+harten Grenze von einer Sekunde, ueber die Auskunft des Kernels
+(`/sys/class/tty/tty0/active`). Ein Wechsel, der nicht stattfindet,
+kostet damit eine Sekunde und eine Zeile im Protokoll - und nicht das
+Geraet. `VT_ACTIVATE` bleibt, das wartet nicht.
+
+**Der Pruefstand fasst keine echte Konsole mehr an.** Der erste Entwurf
+dieses Tests lief in `/dev/tty0` des Entwicklungsrechners und blieb
+dort zwei Minuten haengen - also genau derselbe Fehler, einen Stock
+hoeher. Pfad und Datei sind jetzt Konstanten (`TTY0_PFAD`,
+`AKTIVE_VT_DATEI`), und der Test zeigt auf eigene Dateien. Geprueft
+wird: `self.VT_WAITACTIVE` kommt im Rumpf nicht vor, es gibt eine
+benannte Frist, ein misslungener Wechsel kehrt in unter zwei Sekunden
+zurueck, und ein schon erreichtes Ziel kostet nichts.
+
+**Dazu eine zweite Einengung, von der ich NICHT behaupte, dass sie
+dieser Fehler war.** Build 277 leert die Eingabe-Warteschlange, damit
+ein Loslassen nicht hinter einer faelligen Wiederholung liegenbleibt -
+und tat das IMMER. `_anleitung_pult()` macht aber alle 20 ms einen
+Blick ohne Warten (`read_action(timeout=0)`), und ein solcher Blick hat
+per Bauart genau eine Runde. Wer sie aufs Leeren verwendet, hat nicht
+nachgesehen. Besonders heikel bei seinem Pad: sein dmesg zeigt ein
+ZWEITES Eingabegeraet,
+
+```
+input: Nintendo Co., Ltd. Pro Controller (IMU) as ...
+```
+
+dessen Lagesensoren dauernd senden, ohne dass eines davon eine Aktion
+ist. Geleert wird jetzt nur noch, wenn eine Wiederholung aussteht und
+der Aufruf nicht ein Blick ohne Warten ist.
+
+> **Lehre: eine Behebung gehoert in den Fall, den sie behebt.** Build
+> 277 war richtig und an der falschen Stelle allgemein.
+
+### Nachtrag Build 279: alle bisherigen Mittel waren Bitten
+
+**Zum vierten Mal dieselbe Meldung:**
+
+> „was mir immer noch auffällt das nach ein paar sekunden mit dem neuen
+> kernel immer nochmal der login prompt aufblitzt"
+
+**Und zum vierten Mal haette ich nachsehen koennen, was wir dagegen
+schon haben.** Die Liste der Gegenmittel ist lang: Cursor aus (158),
+Abdunklung aus und kein VESA-Abschalten (160), die Kopfzeilen
+regelmaessig neu schreiben (199), der Rueckleser als Wache (157), die
+Konsole stillhalten (266). Sie haben eine Gemeinsamkeit:
+
+> **Es sind alles BITTEN.** Wir sagen der Textkonsole, was sie tun
+> soll, und sehen hinterher nach, ob sie sich daran gehalten hat. Der
+> Rueckleser ist genau deshalb entstanden.
+
+**Das Mittel, das keine Bitte ist, lag die ganze Zeit im eigenen
+Quelltext.** `_auf_konsole()` legt die Konsole seit Build 263 in den
+Grafikmodus, bevor der Anleitungs-Betrachter malt - mit diesem
+Kommentar daneben:
+
+```
+"_auf_konsole: Textkonsole im Grafikmodus - der Login-Gruss kann
+ nicht mehr ins Bild schreiben"
+```
+
+Dort hat es funktioniert. **Fuer den eigenen Bildschirm haben wir es
+nie gemacht.** Das ist dasselbe Muster wie in Build 273 (ein Zaehler
+aus dem Jahr davor hatte die Antwort schon) und 275 (die Aufteilung lag
+im Protokoll): dreimal hintereinander lag das, was ich bauen wollte,
+bereits im Projekt - nur an einer anderen Stelle.
+
+**Der Grafikmodus nimmt der Konsole die Moeglichkeit**, auf tty1 zu
+zeichnen. Kein Aufwachen, kein Neuzeichnen, kein Login-Gruss. Und der
+Rueckleser bleibt als Wache stehen: wenn danach weiter „Dauerwache, N
+Bildpunkte" im Protokoll steht, war es etwas anderes, und wir wissen es
+ohne Rueckfrage.
+
+**DAS RISIKO IST BENANNT UND EINGEHEGT.** Bleibt der Grafikmodus
+stehen, zeigt tty1 keinen Text mehr - ein Script aus MiSTers OSD liefe
+unsichtbar, also genau der Fehler aus Build 278, eine Ebene tiefer.
+Deshalb:
+
+- **Drei Rueckstellungen**, und keine deckt die der anderen mit ab: der
+  normale Ausstieg (`_beenden`, vor `fb.close()`), der harte Abbruch
+  (der Wachhund endet per `os._exit()`, dort laeuft `_beenden` nie) und
+  das `finally` in `main()` fuer einen Absturz mitten im Betrieb.
+- **Bei der Uebergabe an ein fremdes Programm geht er aus** und danach
+  wieder an - und das Wiederherstellen kommt NACH dem
+  Konsolenwechsel, sonst legten wir die Konsole still, die noch
+  jemand anderem gehoert.
+- **Ein Schalter als Notbremse**
+  (`/media/fat/frontend/textkonsole_grafik_aus`). Eine Datei und kein
+  Menuepunkt, weil der Fall, in dem man ihn braucht, der ist, dass der
+  Bildschirm schwarz bleibt - dann kommt niemand ins Menue.
+- **Misslingt das Zurueckstellen, nennt das Protokoll die Folge im
+  Klartext** und gleich den Dateinamen des Schalters dazu. Ein stilles
+  Scheitern hat denselben Fehler in Build 278 wochenlang verdeckt.
+
+**Zwei Feinheiten in den Zustaenden**, und beide stehen als Pruefung
+da: scheitert das ANschalten, gilt der Modus als aus (eine Behauptung
+ueber einen Zustand, den wir nicht herstellen konnten, waere schlimmer
+als kein Versuch); scheitert das ZURUECKstellen, bleibt der Merker
+stehen, damit ein spaeterer Versuch es noch einmal probiert.
+
+**Die Naht fuer den Test** (`_kdsetmode`) fasst Pfad und ioctl
+zusammen, damit der Erfolgsfall ohne echte Konsole pruefbar ist. Dazu
+die Gegenprobe, dass der echte Weg auf einer gewoehnlichen Datei
+fehlschlaegt - sonst waere `_kdsetmode` nur ein Merker, und der Test
+pruefte sich selbst (die Lehre aus Build 271 und 274).
+
 ### Nachtrag Build 278: ein ioctl, der nicht wirft, ist kein Beweis
 
 **Die Meldung klang nach einem Raetsel:**

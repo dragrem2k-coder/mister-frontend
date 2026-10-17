@@ -13,6 +13,25 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Behoben: nach Build 278 ließ sich die Anleitung nicht mehr
+  schließen.** Der neue Rückweg auf tty1 benutzte `VT_WAITACTIVE` —
+  einen Aufruf, der *unbegrenzt* wartet, bis die Konsole vorne liegt.
+  Verweigert der Besitzer der alten Konsole den Wechsel, und ein
+  Programm im Grafikmodus darf das, kommt er nie zurück: das Frontend
+  stand mitten im Aufräumen. Gewartet wird jetzt selbst, mit einer
+  harten Grenze von einer Sekunde (Build 280).
+- **Der Login-Gruß kann nicht mehr ins Bild schreiben.** Bisher waren
+  alle Gegenmittel Bitten an die Textkonsole: nicht abdunkeln, nicht
+  blinken, keinen Cursor zeigen — und hinterher ein Rückleser, der
+  nachsah, ob sie sich daran gehalten hat. Jetzt liegt tty1 im
+  Grafikmodus, solange das Frontend das Bild malt; dort zeichnet die
+  Textkonsole gar nichts mehr. Genau das macht der
+  Anleitungs-Betrachter seit v4.9 schon — für den eigenen Bildschirm
+  war es nie gemacht. Bei der Übergabe an ein Script geht der
+  Grafikmodus aus (ein Script muss man sehen können) und danach wieder
+  an; zurückgestellt wird an drei Stellen, und es gibt einen Schalter
+  (`/media/fat/frontend/textkonsole_grafik_aus`) für den Fall, dass
+  der Bildschirm schwarz bleibt (Build 279).
 - **Behoben: nach dem Beenden startete MiSTer keine Scripts mehr.**
   Nach einer geöffneten Spielanleitung blieb die Anleitungs-Konsole
   (tty3) vorne, statt auf tty1 zurückzuschalten — und MiSTers Scripts

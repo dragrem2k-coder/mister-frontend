@@ -1615,6 +1615,10 @@ class Frontend:
         self.set_cursor_blink(False)
         self.konsole_cursor_aus()   # Build 158: der Strich links oben
         self.konsole_ruhig_stellen()  # Build 160: und die Abdunklung
+        # Build 279: und jetzt das Mittel, das keine Bitte ist. Siehe
+        # textkonsole_grafik_an() - alles darueber sagt der Konsole,
+        # was sie tun soll; das hier nimmt ihr die Moeglichkeit.
+        self.textkonsole_grafik_an()
         self.inp.grab(True)
         self.fb.clear((16, 18, 24))
         self.fb.flip()
@@ -14063,6 +14067,15 @@ class Frontend:
     # Auskunft, die beim Rueckwechsel bisher gefehlt hat (Build 278).
     AKTIVE_VT_DATEI = "/sys/class/tty/tty0/active"
 
+    # Wie lange auf einen Konsolenwechsel gewartet wird, und in
+    # welchen Schritten nachgesehen wird (Build 280). Selbst
+    # warten statt VT_WAITACTIVE - siehe _vt_erzwingen().
+    # Der Pfad als Konstante, damit der Pruefstand nicht die
+    # Konsole des Rechners anfasst, auf dem er laeuft.
+    TTY0_PFAD = "/dev/tty0"
+    VT_WECHSEL_FRIST = 1.0
+    VT_WECHSEL_TAKT = 0.02
+
     def _aktive_vt(self):
         """Nummer der gerade aktiven Konsole - oder None.
 
@@ -14089,18 +14102,41 @@ class Frontend:
         die gerade vorne ist". Wenn der erste Weg nicht greift, bringt
         ein zweiter Aufruf auf demselben Griff nichts.
 
-        Gibt True zurueck, wenn danach nachweislich <ziel> vorne ist."""
+        Gibt True zurueck, wenn danach nachweislich <ziel> vorne ist.
+
+        KEIN VT_WAITACTIVE HIER (Build 280). Der Nutzer hat nach Build
+        278 gemeldet: "wenn ich jetzt die anleitung schliessen will
+        reagiert nichts mehr! das ging vorher!" - und das ist dieser
+        Aufruf. VT_WAITACTIVE WARTET, bis die Konsole vorne liegt, und
+        zwar unbegrenzt. Verweigert der Besitzer der alten Konsole den
+        Wechsel - und ein Programm im Grafikmodus darf das -, kommt
+        der ioctl nie zurueck, und das Frontend steht.
+
+        Gewartet wird deshalb selbst, mit einer harten Grenze und
+        ueber die Auskunft des Kernels. Ein Wechsel, der nicht
+        stattfindet, kostet dann eine Sekunde und eine Zeile im
+        Protokoll - und nicht das Geraet.
+
+        LEHRE: ein blockierender Aufruf im Aufraeumweg ist ein
+        Haenger mit Anlauf. Dieselbe Sorte Fehler wie in Build 247
+        (ein blockierender Aufruf im Zeichenweg) - und dort stand sie
+        schon im Protokoll."""
         if self._aktive_vt() == ziel:
             return True
         try:
-            with open("/dev/tty0", "wb", buffering=0) as t0:
+            with open(self.TTY0_PFAD, "wb", buffering=0) as t0:
                 fcntl.ioctl(t0.fileno(), self.VT_ACTIVATE, ziel)
-                fcntl.ioctl(t0.fileno(), self.VT_WAITACTIVE, ziel)
         except OSError as e:
             LOG("VT: Wechsel auf tty%d ueber /dev/tty0 fehlgeschlagen "
                 "(%s)" % (ziel, e))
             return False
-        return self._aktive_vt() == ziel
+        ende = time.monotonic() + self.VT_WECHSEL_FRIST
+        while True:
+            if self._aktive_vt() == ziel:
+                return True
+            if time.monotonic() >= ende:
+                return False
+            time.sleep(self.VT_WECHSEL_TAKT)
 
     def _zurueck_auf_tty1(self, tty, vt):
         """Nach einer eigenen Konsole wieder auf tty1 - IMMER, auch
@@ -14171,6 +14207,19 @@ class Frontend:
         der Rueckfall ohne. "name" steht nur im Protokoll.
         """
         self.music.pause_for_core()
+        # DIE TEXTKONSOLE WIEDER REDEN LASSEN (Build 279)
+        #
+        # Wir legen tty1 beim Start in den Grafikmodus, damit der
+        # Login-Gruss nicht mehr in unser Bild schreiben kann (siehe
+        # textkonsole_grafik_an()). Genau diese Konsole uebergeben wir
+        # hier aber an ein fremdes Programm - und ein Script, dessen
+        # Ausgabe niemand SEHEN kann, ist nutzlos. Also zurueck in den
+        # Textmodus, und im finally dieser Methode wieder hin.
+        #
+        # Das Flag in textkonsole_grafik_an()/-aus() macht beides
+        # idempotent: war nichts gesetzt, passiert hier nichts.
+        _grafik_war = Frontend._tty1_grafik
+        self.textkonsole_grafik_aus()
         # ERST DIE KONSOLE, DANN DAS F9 (Build 268, und die Reihenfolge
         # ist der halbe Fix): enter_console_mode() speist ein F9 ein,
         # und JEDES eingespeiste F9 weckt den Login-Prozess - aber nur
@@ -14330,6 +14379,12 @@ class Frontend:
                     tty.close()
                 except OSError:
                     pass
+            # Build 279: und unseren eigenen Grafikmodus wieder
+            # herstellen, falls er vorher an war. NACH dem
+            # Konsolenwechsel - erst gehoert tty1 wieder uns, dann
+            # legen wir sie still.
+            if _grafik_war:
+                self.textkonsole_grafik_an()
         self.music.resume_after_core()
         self.back_to_frontend()
         # NACH EINEM KONSOLENPROGRAMM WIRD IN JEDEM FALL GEWISCHT
@@ -20169,6 +20224,100 @@ class Frontend:
                                 b"\033[?25l",     # Cursor aus (Build 158)
                                 "ruhig stellen")
 
+    # Wurde tty1 von UNS in den Grafikmodus gelegt? Nur dann wird
+    # zurueckgestellt - wer nichts gesetzt hat, stellt nichts zurueck.
+    _tty1_grafik = False
+
+    # Schalter dagegen. Eine Datei und kein Menuepunkt, weil der Fall,
+    # in dem man ihn braucht, der ist, dass der Bildschirm schwarz
+    # bleibt - dann kommt niemand mehr ins Menue.
+    TEXTKONSOLE_GRAFIK_AUS_FLAG = \
+        "/media/fat/frontend/textkonsole_grafik_aus"
+
+    # Der Pfad und der ioctl in EINER Hand - damit der Test den
+    # Erfolgsfall pruefen kann, ohne eine echte Konsole zu brauchen.
+    # Der Fehlerfall braucht diese Naht nicht; ein ioctl auf eine
+    # gewoehnliche Datei scheitert von selbst.
+    TTY1_PFAD = "/dev/tty1"
+
+    @classmethod
+    def _kdsetmode(cls, modus):
+        """KDSETMODE auf tty1 setzen. Wirft OSError wie der ioctl."""
+        with open(cls.TTY1_PFAD, "wb", buffering=0) as t:
+            fcntl.ioctl(t.fileno(), cls.KDSETMODE, modus)
+
+    @classmethod
+    def textkonsole_grafik_an(cls):
+        """tty1 in den Grafikmodus legen, solange WIR das Bild malen.
+
+        DER LOGIN-GRUSS, VIERTER ANLAUF (Build 279).
+
+        Build 160 hat die Bildschirmschonung der Konsole abgeschaltet
+        (ESC [9;0]) - das war die beste Erklaerung fuer vier
+        Beobachtungen und hat es auf 5.15 auch stillgelegt. Auf 6.18
+        meldet der Nutzer weiter: "was mir immer noch auffällt das nach
+        ein paar sekunden mit dem neuen kernel immer nochmal der login
+        prompt aufblitzt."
+
+        Alle bisherigen Mittel sind BITTEN: wir sagen der Konsole, sie
+        solle nicht abdunkeln, nicht blinken, keinen Cursor zeigen -
+        und schreiben hinterher mit dem Rueckleser nach, ob sie sich
+        daran gehalten hat. Der Grafikmodus ist keine Bitte. Er sagt
+        dem Kernel, dass auf dieser Konsole ein Programm selbst malt,
+        und danach zeichnet die Textkonsole dort NICHTS mehr - auch
+        nicht beim Aufwachen, auch nicht den Login-Gruss.
+
+        DAS IST KEIN NEUER WEG IM PROJEKT: genau das macht
+        _auf_konsole() seit Build 263 fuer den Anleitungs-Betrachter,
+        mit demselben ioctl und derselben Begruendung im Protokoll
+        ("der Login-Gruss kann nicht mehr ins Bild schreiben"). Dort
+        hat es funktioniert. Fuer den EIGENEN Bildschirm haben wir es
+        nie gemacht.
+
+        WAS DABEI SCHIEFGEHEN KANN, und deshalb steht es hier und
+        nicht beilaeufig: bleibt der Grafikmodus stehen, zeigt tty1
+        keinen Text mehr. Ein Script, das aus MiSTers OSD startet,
+        laeuft dann unsichtbar - also genau der Fehler, den Build 278
+        behoben hat. Deshalb gibt es drei Rueckstellungen (Ausstieg,
+        Notausgang, das finally in main) und einen Schalter."""
+        if cls._tty1_grafik:
+            return
+        if os.path.exists(cls.TEXTKONSOLE_GRAFIK_AUS_FLAG):
+            LOG("Textkonsole: Grafikmodus per Schalter abgeschaltet - "
+                "der Login-Gruss kann wieder ins Bild schreiben")
+            return
+        try:
+            cls._kdsetmode(cls.KD_GRAPHICS)
+        except OSError as e:
+            LOG("Textkonsole: Grafikmodus nicht moeglich (%s) - weiter "
+                "wie bisher" % e)
+            return
+        cls._tty1_grafik = True
+        LOG("Textkonsole: tty1 im Grafikmodus - der Login-Gruss kann "
+            "nicht mehr ins Bild schreiben")
+
+    @classmethod
+    def textkonsole_grafik_aus(cls):
+        """tty1 wieder in den Textmodus - das Gegenstueck.
+
+        IMMER aufrufbar, auch wenn nichts gesetzt war: dann tut es
+        nichts. Zweimaliger Aufruf ist harmlos."""
+        if not cls._tty1_grafik:
+            return
+        try:
+            cls._kdsetmode(cls.KD_TEXT)
+            cls._tty1_grafik = False
+            LOG("Textkonsole: tty1 wieder im Textmodus")
+        except OSError as e:
+            # Das Flag bleibt stehen, damit ein spaeterer Versuch es
+            # noch einmal probiert. Lieber zweimal zurueckstellen als
+            # einmal zu wenig.
+            LOG("Textkonsole: Textmodus liess sich NICHT "
+                "wiederherstellen (%s) - Scripts aus MiSTers OSD "
+                "koennten unsichtbar laufen. Gegenmittel: Datei %s "
+                "anlegen und das Frontend neu starten"
+                % (e, cls.TEXTKONSOLE_GRAFIK_AUS_FLAG))
+
     @staticmethod
     def konsole_cursor_aus():
         """Den Textcursor von tty1 ausblenden.
@@ -23209,6 +23358,10 @@ class Frontend:
         self.set_cursor_blink(True)
         self.konsole_cursor_an()          # Build 158
         self.konsole_schonung_zurueck()   # Build 162
+        # Build 279: und den Grafikmodus. Bliebe er stehen, zeigte
+        # tty1 keinen Text mehr - ein Script aus MiSTers OSD liefe
+        # unsichtbar, also genau der Fehler aus Build 278.
+        self.textkonsole_grafik_aus()
         # Der Bildschirm gehoert ab hier MiSTer. Muss VOR dem F12
         # passieren - siehe Build 165.
         try:
@@ -23577,6 +23730,17 @@ class Frontend:
             time.sleep(self.HERUNTERFAHREN_MAX)
             LOG("Exit: Aufraeumen haengt seit %.0fs - harter Abbruch"
                 % self.HERUNTERFAHREN_MAX)
+            # Build 279: der Grafikmodus der Textkonsole MUSS auch beim
+            # harten Abbruch weg. Bleibt er stehen, zeigt tty1 keinen
+            # Text mehr, und ein Script aus MiSTers OSD laeuft
+            # unsichtbar - dieselbe Lage wie bei der falsch liegenden
+            # Konsole aus Build 278, nur eine Ebene tiefer. Vor
+            # release_single_instance(), weil das hier die Sache des
+            # Nutzers ist und jenes unsere.
+            try:
+                Frontend.textkonsole_grafik_aus()
+            except Exception:                        # noqa: BLE001
+                pass
             try:
                 release_single_instance()
             except Exception:                        # noqa: BLE001
@@ -24028,4 +24192,12 @@ if __name__ == "__main__":
             pass
         raise
     finally:
+        # Build 279: die dritte und letzte Rueckstellung des
+        # Grafikmodus. Dieses finally greift auch bei einem Absturz
+        # mitten im Betrieb, also dort, wo _beenden() nie laeuft. Die
+        # Methode tut nichts, wenn nichts gesetzt war.
+        try:
+            Frontend.textkonsole_grafik_aus()
+        except Exception:                                # noqa: BLE001
+            pass
         release_single_instance()
