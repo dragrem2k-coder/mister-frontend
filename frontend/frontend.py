@@ -14020,6 +14020,10 @@ class Frontend:
     ANLEITUNG_VT = 3
     VT_ACTIVATE = 0x5606
     VT_WAITACTIVE = 0x5607
+    # Eine nicht mehr gebrauchte Konsole wieder freigeben (Build 282).
+    # Geht nur, wenn sie NICHT vorne liegt - deshalb immer erst
+    # umschalten, dann freigeben.
+    VT_DISALLOCATE = 0x5608
 
     # Wer die eigene Konsole nicht will: dieselbe Linie wie beim
     # Grafikmodus und bei der Konsolen-Mechanik.
@@ -23385,7 +23389,64 @@ class Frontend:
         if self.stream:
             self.stream.stop()
         self.music.shutdown()
+        # DIE KONSOLE ZULETZT, NICHT ZUERST (Build 282)
+        #
+        # Die EXIT-BILANZ aus Build 281 hat die Frage beantwortet, an
+        # der ich dreimal geraten hatte:
+        #
+        #   EXIT-BILANZ: VT=3, tty1=TEXT, Eingaben offen=0,
+        #                Griff=nein, Vorauslader=beendet,
+        #                Framebuffer=zu
+        #
+        # Fuenf von sechs Posten in Ordnung - und die Konsole liegt am
+        # ENDE des Ausstiegs immer noch auf tty3. Build 278 stellt sie
+        # ganz oben in dieser Methode zurueck; dazwischen liegen
+        # fb.close(), das F12 und das Beenden der Kinder. Wer sie
+        # danach wieder nach vorne holt, weiss ich nicht - unser
+        # eigener Code tut es nicht mehr.
+        #
+        # ES IST AUCH NICHT NOETIG, DAS ZU WISSEN: der Ausstieg hat
+        # eine letzte Gelegenheit, und die gehoert dem Zustand, den
+        # MiSTer danach braucht. Also noch einmal, als Letztes, und
+        # diesmal steht das Ergebnis in der Bilanz direkt darunter.
+        #
+        # Dass Build 166 sagt "nach dem F12 tty1 nicht mehr anfassen",
+        # steht dem nicht entgegen: dort geht es um das SCHREIBEN auf
+        # tty1 (der Login-Gruss). Ein Konsolenwechsel schreibt nichts.
+        self._konsole_zuletzt_zurueck()
         self._exit_bilanz()
+
+    def _konsole_zuletzt_zurueck(self):
+        """tty1 nach vorne holen - als allerletzte Handlung.
+
+        Und danach die Anleitungs-Konsole FREIGEBEN. Eine Konsole, die
+        allokiert bleibt, ist der Zustand, aus dem dieser Fehler
+        ueberhaupt entstehen konnte; freigeben geht nur, wenn sie nicht
+        vorne liegt, also in dieser Reihenfolge. Misslingt es, ist das
+        kein Fehler - es heisst nur, dass jemand sie noch benutzt."""
+        try:
+            aktiv = self._aktive_vt()
+            if aktiv is not None and aktiv != 1:
+                LOG("Exit (zuletzt): tty%s liegt vorne - zweiter "
+                    "Anlauf auf tty1" % aktiv)
+                if self._vt_erzwingen(1):
+                    LOG("Exit (zuletzt): tty1 liegt jetzt vorne")
+                else:
+                    LOG("Exit (zuletzt): tty1 liess sich NICHT nach "
+                        "vorne bringen")
+            if self._aktive_vt() == 1:
+                try:
+                    with open(self.TTY0_PFAD, "wb", buffering=0) as t0:
+                        fcntl.ioctl(t0.fileno(), self.VT_DISALLOCATE,
+                                    self.ANLEITUNG_VT)
+                    LOG("Exit (zuletzt): tty%d freigegeben"
+                        % self.ANLEITUNG_VT)
+                except OSError as e:
+                    LOG("Exit (zuletzt): tty%d nicht freigegeben (%s) "
+                        "- benutzt sie noch jemand?"
+                        % (self.ANLEITUNG_VT, e))
+        except Exception:                                # noqa: BLE001
+            LOG("Exit (zuletzt):\n" + traceback.format_exc())
 
     # Konsolenmodus ABFRAGEN (Gegenstueck zu KDSETMODE). Fuer die
     # Bilanz - gesetzt wird damit nichts.
