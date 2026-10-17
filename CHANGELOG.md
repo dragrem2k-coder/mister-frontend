@@ -13,6 +13,23 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.8 — noch nicht veröffentlicht
 
+**Behoben: beim GEHALTENEN Tastendruck stockte das Scrollen — und es war nicht das Zeichnen.**
+
+- **Gefragt:** „wenn ich schnell hintereinander hoch oder runter drücke, geht das Scrollen eigentlich. Wenn ich aber gedrückt halte, scrollt der ganz laggig und stockend. Warum ist das so?"
+- **Die Antwort stand in zwei Zeilen deines Protokolls:**
+
+  ```
+  RUCKLER: 1646 ms busy (stream=1 haus=1572 zeichnen=71 rest=3)
+  LATENZ-JE-AKTION: down/S0 133x Mittel 166 (max 2889)
+  ```
+
+  **1572 von 1646 Millisekunden in der „Hausarbeit"** — bei 71 ms Zeichnen. Im Mittel 166 ms je Schritt statt der gut 40, die ein Schritt kostet.
+- **Und das erklärt auch, warum nur beim Halten:** die Hausarbeit (RA-Daten einarbeiten, Netzabfrage wiederholen, Uhr abgleichen, Kategorien neu bauen, spät eingehängte Laufwerke suchen) läuft **vor jedem Bild**. Drückst du einzeln, fällt sie in die Pause zwischen zwei Tastendrücken und niemand wartet auf sie. Hältst du die Taste, sitzt sie zwischen je zwei Schritten.
+- **Jetzt fällt sie aus, solange eine Taste gehalten wird** — mit einer Obergrenze von **zwei Sekunden**, damit sie ausfällt und nicht verschwindet. Alle fünf Aufgaben prüfen ohnehin ihre eigene Uhr; ein paar hundert Millisekunden später ist bei keiner ein Problem.
+- **Die Laufschrift des Musiktitels läuft weiter** — sie ist das einzige Sichtbare an der Hausarbeit, und ein Titel, der beim Scrollen stehenbleibt, wäre ein neuer Fehler anstelle des alten.
+- **Und jeder der fünf Posten wird jetzt einzeln gemessen:** war eine Runde teurer als 80 ms, schreibt sie ihre Aufteilung ins Protokoll (`HAUSARBEIT: 1572 ms - mount=1500, uhr=60 …`). „haus=1572" sagte bisher nicht, **welche** der fünf — und das sind vier sehr verschiedene Verdächtige. **Diese Zeile brauche ich beim nächsten Mal**, dann wird die teure Aufgabe selbst billiger gemacht.
+
+
 **`--bench` holt sich erst den Bildschirm — und sagt, gegen wen gemessen wurde.**
 
 - **Gemeldet:** „wenn ich das Frontend beende und dann per PowerShell die Bench starte, bleibt das Bild im OSD-Menü. Beim alten Kernel habe ich den Bench immer mitlaufen sehen."

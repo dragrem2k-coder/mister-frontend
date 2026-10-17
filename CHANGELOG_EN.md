@@ -13,6 +13,23 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.8 — not yet released
 
+**Fixed: scrolling stuttered while a key was HELD — and it was not the drawing.**
+
+- **Asked:** "pressing up or down quickly in sequence, scrolling is fine. But if I hold it down, it scrolls really laggy and stuttering. Why is that?"
+- **The answer was in two lines of your log:**
+
+  ```
+  RUCKLER: 1646 ms busy (stream=1 haus=1572 zeichnen=71 rest=3)
+  LATENZ-JE-AKTION: down/S0 133x Mittel 166 (max 2889)
+  ```
+
+  **1572 of 1646 milliseconds in the "housekeeping"** — against 71 ms of drawing. On average 166 ms per step instead of the 40-odd a step costs.
+- **And that explains why only when holding:** the housekeeping (applying RA data, retrying the network query, syncing the clock, rebuilding categories, looking for late-mounted drives) runs **before every frame**. Pressing individually, it falls into the pause between two presses and nobody waits for it. Holding the key, it sits between every two steps.
+- **It is now skipped while a key is held** — with a **two second** ceiling, so it is postponed, not abolished. All five tasks check their own clock anyway; a few hundred milliseconds later is a problem for none of them.
+- **The music title's marquee keeps running** — it is the only visible part of the housekeeping, and a title frozen while scrolling would be a new fault in place of the old one.
+- **And each of the five items is now measured separately:** if a round cost more than 80 ms, it writes its breakdown to the log (`HAUSARBEIT: 1572 ms - mount=1500, uhr=60 …`). "haus=1572" did not say **which** of the five — and those are four very different suspects. **I need that line next time**, then the expensive task itself gets made cheaper.
+
+
 **`--bench` takes the screen first — and says whom it measured against.**
 
 - **Reported:** "when I quit the frontend and then start the bench from PowerShell, the picture stays in the OSD menu. On the old kernel I always saw the bench running."

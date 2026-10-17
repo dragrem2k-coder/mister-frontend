@@ -175,6 +175,7 @@ python3 tools/regression_test.py \
 | `test_anleitung.py` | Test (Pass/Fail) | Die Spielanleitung: gefunden wird im UNTERORDNER und mit unscharfem Namen, der Artwork-Ordner wird NICHT betreten, einmal je System gesucht, und ohne Betrachter gibt es den Menuepunkt gar nicht; dazu die eigene Konsole (tty3, Wechsel VOR dem F9) und die Hand am Pad (Tastentabelle aus MiSTers eigener Doku, Grab mit Ausnahme an echten Objekten) |
 | `test_konsole_nachfassen.py` | Test (Pass/Fail) | Nach einem Konsolenprogramm wird OHNE Nachsehen gewischt - mit Gegenprobe, dass es in allen anderen Faellen beim alten Verhalten bleibt; dazu an ECHTEN Prozessen: die Grenze beendet ein haengendes Programm, und der Puls (Build 268) macht das Frontend waehrend eines Betrachters wieder ansprechbar |
 | `test_overlay_leer.py` | Test (Pass/Fail) | Der leere Kasten im Overlay: AM ECHTEN SKRIPT im Stub-DOM - er verschwindet nur, wenn WIRKLICH nichts sichtbar ist, und die Liste der Teile wird mit dem Markup verglichen |
+| `test_hausarbeit.py` | Test (Pass/Fail) | Die Hausarbeit vor dem Zeichnen: bei GEHALTENER Taste faellt sie aus (aber hoechstens zwei Sekunden lang), die Laufschrift laeuft trotzdem, jeder der fuenf Posten wird einzeln gemessen, und eine teure Runde nennt den Namen des teuren Postens |
 | `test_form_cache.py` | Test (Pass/Fail) | Die gemerkte FORM einer Rundung: 44 Formen x 3 Varianten bitgenau mit und ohne Cache, mit und ohne C, alle vier Bildraender, dieselbe Form an verschiedenen Stellen - und Test 0 prueft, dass der Cache im Betrieb ueberhaupt an ist |
 | `diag_ungeprueft.py` | Diagnose (immer Rueckgabewert 0) | Welche Funktionen betritt KEIN Test - gemessen mit sys.setprofile, nicht ueber Namen im Testtext |
 | `_spur.py` | Hilfsmodul | Laesst eine einzelne Testdatei unter sys.setprofile laufen und schreibt jede betretene Funktion mit |
@@ -4616,6 +4617,46 @@ Abschnitt JOYSTICK: „btn1 - enter", „L - pageup", „R - pagedn"). Dort
 steht auch, *dass* MiSTer die Knoepfe in Tasten uebersetzt - die
 Erklaerung fuer „ich kann erst blaettern, wenn ich einmal die
 Leertaste gedrueckt habe".
+
+### Nachtrag Build 273: der Zaehler aus dem Jahr davor hat geliefert
+
+**Die beste Messung dieses Builds habe ich nicht gemacht** - sie stand
+schon im Code. In `draw()` lag seit einer frueheren Nutzermeldung
+("wenn ich nach unten gedrueckt halte, stockt es nach ein paar
+Sekunden einmal kurz") ein Zaehler um die sechs Hausarbeits-Aufrufe,
+mit genau dieser Begruendung daneben: *"lange billig, dann einmal
+teuer - passt auf die Beschreibung, war aber bisher in KEINER Messung
+enthalten."*
+
+Jetzt hat er geliefert:
+
+```
+RUCKLER: 1646 ms busy (stream=1 haus=1572 zeichnen=71 rest=3)
+LATENZ-JE-AKTION: down/S0 133x Mittel 166 (max 2889)
+```
+
+**1572 von 1646 ms in der Hausarbeit, 71 ms im Zeichnen.** Und damit
+war auch die Frage "warum nur beim HALTEN?" beantwortet: die Hausarbeit
+laeuft vor JEDEM Bild - beim einzelnen Druecken faellt sie in die
+Pause, beim Halten zwischen je zwei Schritte.
+
+**LEHRE: ein Messpunkt, der heute nichts findet, ist nicht umsonst.**
+Dieser hat ueber Monate `haus=0` gemeldet und dann in einer einzigen
+Zeile einen Build entschieden. Das Gegenstueck dazu steht im Nachtrag
+zu Build 270: eine Zahl, die keine Richtung hat, kostet einen
+Muenzwurf.
+
+**Was der Test festhaelt**, und der dritte Punkt ist der wichtigste:
+
+- bei gehaltener Taste laufen die fuenf Aufgaben nicht,
+- die **Laufschrift** laeuft trotzdem (sie ist das einzige Sichtbare),
+- **die Obergrenze greift**: nach `HAUSARBEIT_PAUSE_MAX` laufen sie
+  auch bei gehaltener Taste wieder. Wer sie dauerhaft abschaltet, baut
+  aus einem Ruckler einen Ausfall - RA-Daten, Uhr und spaet
+  eingehaengte Laufwerke haben alle einen Grund.
+- eine teure Runde nennt den **Namen** des teuren Postens (geprueft mit
+  einer kuenstlich 300 ms langen Aufgabe und abgefangenem LOG), eine
+  billige schweigt.
 
 ### Nachtrag Build 272: der Bench hat gegen ein beschaeftigtes MiSTer gemessen
 

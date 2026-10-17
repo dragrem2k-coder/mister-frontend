@@ -5070,6 +5070,36 @@ class Frontend:
         self._layout_items_cache[key] = result
         return result
 
+    # Wie lange die Hausarbeit hoechstens ausfallen darf, auch wenn
+    # ununterbrochen gescrollt wird. Zwei Sekunden sind kuerzer als
+    # jede der fuenf Aufgaben an eigener Wartezeit mitbringt - sie
+    # verliert also nichts, sie kommt nur spaeter dran.
+    HAUSARBEIT_PAUSE_MAX = 2.0
+
+    # Ab dieser Dauer schreibt eine Runde Hausarbeit ihre Aufteilung
+    # ins Protokoll. 80 ms sind mehr als ein ganzer Scrollschritt
+    # kostet - was darueber liegt, ist der Posten, den man sehen will.
+    HAUSARBEIT_LOG_MS = 80.0
+
+    _haus_letzte = 0.0
+    _haus_ausgelassen = 0
+
+    def _hausarbeit_jetzt(self, jetzt):
+        """Darf die Hausarbeit JETZT laufen (Build 273)?
+
+        Nein, solange eine Taste GEHALTEN wird - dann wartet der
+        Nutzer auf das naechste Bild, und die Hausarbeit ist das
+        Einzige dazwischen, das niemand bestellt hat. Ja wieder, wenn
+        sie sonst laenger als HAUSARBEIT_PAUSE_MAX ausfallen wuerde.
+
+        getattr auf "held": der InputManager kann aus einer aelteren
+        Fassung stammen oder im Pruefstand ohne __init__ entstanden
+        sein - und eine fehlende Eigenschaft darf nicht dazu fuehren,
+        dass die Hausarbeit gar nicht mehr laeuft."""
+        if getattr(self.inp, "held", None) is None:
+            return True
+        return (jetzt - self._haus_letzte) >= self.HAUSARBEIT_PAUSE_MAX
+
     def draw(self, message=None, prominent=False, prominent_duration=5.0):
         # MESSPUNKT (Nutzer-Rueckmeldung: "wenn ich nach unten gedrueckt
         # halte, stockt es nach ein paar Sekunden einmal kurz - im
@@ -5084,14 +5114,69 @@ class Frontend:
         # Zeichnen. Ohne diesen Zaehler laesst sich nicht unterscheiden,
         # ob das Stocken vom Zeichnen kommt oder von der Hausarbeit
         # davor. Kostet zwei Zeitabfragen pro Bild.
+        #
+        # UND SEIT BUILD 273 IST DER ZAEHLER EINGELOEST. Das Protokoll
+        # des Nutzers, waehrend er nach unten GEHALTEN hat:
+        #
+        #   RUCKLER: 1646 ms busy (stream=1 haus=1572 zeichnen=71 rest=3)
+        #   LATENZ-JE-AKTION: down/S0 133x Mittel 166 (max 2889)
+        #
+        # 1572 von 1646 Millisekunden in der Hausarbeit, bei 71 ms
+        # Zeichnen. Damit ist die Frage "warum stockt es nur beim
+        # HALTEN?" beantwortet: die Hausarbeit laeuft vor JEDEM Bild.
+        # Drueckt man einzeln, faellt sie in die Pause zwischen zwei
+        # Tastendruecken und niemand wartet auf sie. Haelt man die
+        # Taste, sitzt sie zwischen je zwei Schritten - und dann wartet
+        # man auf sie.
+        #
+        # ZWEI AENDERUNGEN, beide klein:
+        #
+        #   1. JEDER DER FUENF POSTEN WIRD EINZELN GEMESSEN, und war
+        #      eine Runde spuerbar teuer, schreibt sie ihre Aufteilung
+        #      ins Log. "haus=1572" sagte bisher nicht, WELCHE der
+        #      Aufgaben - und das sind eine Netzabfrage, ein
+        #      Uhrzeit-Abgleich, ein Kategorie-Neubau und eine
+        #      Netzlaufwerk-Suche, also vier sehr verschiedene
+        #      Verdaechtige.
+        #   2. WAEHREND EINE TASTE GEHALTEN WIRD, FAELLT SIE AUS.
+        #      Alle fuenf sind Aufgaben, die "ab und zu" laufen und
+        #      ihre eigene Uhr pruefen; ein paar hundert Millisekunden
+        #      spaeter ist bei keiner ein Problem. Damit sie aber nicht
+        #      ewig ausfallen kann, gilt eine Obergrenze
+        #      (HAUSARBEIT_PAUSE_MAX) - danach laeuft sie auch bei
+        #      gehaltener Taste.
+        #
+        # DIE LAUFSCHRIFT BLEIBT IMMER AN: sie ist das einzige
+        # Sichtbare an der Hausarbeit (der Musiktitel wandert), und ein
+        # Titel, der beim Scrollen stehenbleibt, waere ein neuer Fehler
+        # anstelle des alten.
         _th = time.monotonic()
-        self._maybe_apply_pending_ra_data()
         self._sync_track_marquee()
-        self._maybe_retry_ra()
-        self._maybe_retry_clock()
-        self._maybe_rebuild_ra_categories()
-        self._maybe_rescan_for_late_mount()
-        self._perf_house = time.monotonic() - _th
+        if self._hausarbeit_jetzt(_th):
+            _teile = []
+            for _hname, _hfn in (
+                    ("ra_daten", self._maybe_apply_pending_ra_data),
+                    ("ra_wieder", self._maybe_retry_ra),
+                    ("uhr", self._maybe_retry_clock),
+                    ("ra_kategorien", self._maybe_rebuild_ra_categories),
+                    ("mount", self._maybe_rescan_for_late_mount)):
+                _ht = time.monotonic()
+                _hfn()
+                _teile.append((_hname, time.monotonic() - _ht))
+            self._haus_letzte = time.monotonic()
+            self._perf_house = self._haus_letzte - _th
+            if self._perf_house * 1000.0 >= self.HAUSARBEIT_LOG_MS:
+                LOG("HAUSARBEIT: %.0f ms - %s (%d x ausgelassen, weil "
+                    "eine Taste gehalten wurde)"
+                    % (self._perf_house * 1000.0,
+                       ", ".join("%s=%.0f" % (_n, _t * 1000.0)
+                                 for _n, _t in sorted(_teile,
+                                                      key=lambda e: -e[1])
+                                 if _t * 1000.0 >= 1.0) or "alles unter 1 ms",
+                       self._haus_ausgelassen))
+        else:
+            self._haus_ausgelassen += 1
+            self._perf_house = time.monotonic() - _th
         self._seiten_aktionen_melden()
         if message and prominent:
             # NEUES FEATURE (siehe Kommentar bei self._prominent_message
