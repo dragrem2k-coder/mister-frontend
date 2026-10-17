@@ -13,6 +13,22 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Neu: eine vollständige Liste aller Funktionen und
+  Einstellungen** — `docs/FUNKTIONSLISTE.md` und
+  `docs/Dragend_Funktionsliste.pdf` (8 Seiten). Sie ist **erzeugt, nicht
+  geschrieben**: das Systemmenü kommt aus genau dem Code, der die
+  Einträge im Betrieb baut, Tasten, Schalterdateien und
+  Aufruf-Optionen sind aus dem Quelltext gelesen. Eine Gegenprobe in
+  beide Richtungen stellt sicher, dass kein Eintrag fehlt und keiner
+  darin steht, den es nicht gibt — und sie läuft in der Testsuite mit,
+  damit die Liste nicht lautlos veraltet (Build 283).
+- **Die Konsole wird beim Beenden jetzt als Letztes zurückgestellt.**
+  Die neue Bilanz hat gezeigt, dass tty3 am *Ende* des Ausstiegs immer
+  noch vorne lag — obwohl sie ganz oben zurückgestellt wird.
+  Dazwischen liegen das Schließen des Bildspeichers, das F12 und das
+  Beenden der Hintergrundprozesse. Jetzt ist der Konsolenwechsel die
+  letzte Handlung, und danach wird die Anleitungs-Konsole freigegeben
+  (Build 282).
 - **Der Ausstieg sagt jetzt, was er hinterlässt.** Eine Zeile
   `EXIT-BILANZ` im Protokoll nennt die aktive Konsole, den Modus von
   tty1, ob noch ein Griff auf den Eingaben liegt, ob der Vorauslader

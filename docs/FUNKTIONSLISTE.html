@@ -1,0 +1,579 @@
+<!doctype html><html lang=de><meta charset=utf-8><title>Dragend - Funktionsliste</title><style>
+@page { size: A4; margin: 16mm 14mm; }
+body { font-family: "DejaVu Sans", Arial, sans-serif; font-size: 9.5pt;
+       line-height: 1.45; color: #1a1d24; margin: 0; }
+h1 { font-size: 20pt; margin: 0 0 2mm; color: #0e1726; }
+h1 + p { color: #5a6472; font-size: 11pt; margin-top: 0; }
+h2 { font-size: 13pt; margin: 7mm 0 2mm; padding-bottom: 1mm;
+     border-bottom: 1.5px solid #c9d2de; color: #0e1726;
+     page-break-after: avoid; }
+h3 { font-size: 10.5pt; margin: 4.5mm 0 1.5mm; color: #2b3b4e;
+     page-break-after: avoid; }
+ul { margin: 0 0 2mm; padding-left: 5mm; }
+li { margin: 0.4mm 0; }
+code { font-family: "DejaVu Sans Mono", monospace; font-size: 8.6pt;
+       background: #f1f4f8; padding: 0.3mm 1mm; border-radius: 2px; }
+pre { background: #f1f4f8; padding: 2mm 3mm; border-radius: 3px;
+      font-size: 8.4pt; white-space: pre-wrap; }
+pre code { background: none; padding: 0; }
+table { border-collapse: collapse; width: 100%; margin: 0 0 3mm;
+        font-size: 8.8pt; }
+th, td { border: 1px solid #d4dbe5; padding: 1.2mm 2mm;
+         text-align: left; vertical-align: top; }
+th { background: #eef2f7; font-weight: 600; }
+hr { border: none; border-top: 1px solid #e2e7ee; margin: 5mm 0; }
+strong { color: #0e1726; }
+</style><h1>Dragend - was das Frontend alles kann</h1>
+<p>Vollstaendige Liste aller Funktionen und Einstellungen.</p>
+<p><strong>Diese Datei ist erzeugt, nicht geschrieben.</strong> Das Systemmenue
+unten kommt aus <code>fe.menu.system_items()</code> - also aus genau dem
+Code, der die Eintraege im Betrieb baut. Tasten, Schalterdateien
+und Aufruf-Optionen sind aus dem Quelltext gelesen. Zum Schluss
+laeuft eine Gegenprobe in beide Richtungen: fehlt ein Eintrag
+oder steht einer zuviel darin, wird die Datei nicht geschrieben.</p>
+<p>Neu erzeugen: <code>python3 tools/liste_erzeugen.py</code></p>
+<hr />
+<h2>1. Die drei Ansichten</h2>
+<p>Jede Liste kann in drei Ansichten angezeigt werden; umgeschaltet
+wird mit <strong>F10</strong> oder ueber das Kontextmenue (<em>Ansicht
+wechseln</em>).</p>
+<table>
+<thead>
+<tr>
+<th>Ansicht</th>
+<th>Was man sieht</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Liste</strong></td>
+<td>eine Zeile je Eintrag, rechts die Boxart des markierten Spiels</td>
+</tr>
+<tr>
+<td><strong>Raster</strong></td>
+<td>Kacheln mit Cover, mehrere Spalten</td>
+</tr>
+<tr>
+<td><strong>Galerie</strong></td>
+<td>grosse Cover, eines im Mittelpunkt</td>
+</tr>
+</tbody>
+</table>
+<p>Dazu zwei Seiten: die <strong>Hauptseite</strong> mit den Kategorien und die
+<strong>Spieleliste</strong> innerhalb einer Kategorie. Beide haben ihre
+eigene Ansichts-Einstellung.</p>
+<hr />
+<h2>2. Das Systemmenue, Gruppe fuer Gruppe</h2>
+<p>Die Eintraege stehen in der Reihenfolge, in der sie im Menue
+erscheinen. Texte mit <code>-&gt;</code> sagen, was ein Druck darauf tut;
+Texte mit Zahlen oder Namen zeigen den aktuellen Stand und
+schalten weiter.</p>
+<h3>RetroAchievements (2 Eintraege)</h3>
+<ul>
+<li><code>RetroAchievements: nicht eingerichtet</code></li>
+<li><code>Popups &amp; Anzeige: RA in MiSTer selbst nicht eingerichtet</code></li>
+</ul>
+<p>Ist RetroAchievements eingerichtet, stehen hier
+zusaetzlich:</p>
+<ul>
+<li><code>RetroAchievements: &lt;Benutzername&gt; (neu laden)</code></li>
+<li><code>RetroAchievements: AN -&gt; ausschalten (Fortschritt/Abzeichen/Listen pausieren, RA-fähige Cores starten weiterhin normal)</code></li>
+<li><code>Popups &amp; Anzeige (MiSTer-RA-Einstellungen)</code></li>
+</ul>
+<p>Und in <strong>MiSTer selbst</strong> (nicht im Frontend) muessen
+Benutzername und Passwort in
+<code>/media/fat/retroachievements.cfg</code> stehen - das
+Frontend liest diese Datei, legt sie aber nie an und
+aendert darin hoechstens die eine Zeile, um die es
+gerade geht.</p>
+<h3>Statistiken &amp; Erfolge (6 Eintraege)</h3>
+<ul>
+<li><code>Top 10: meistgespielt</code></li>
+<li><code>Top 10: meistgestartet</code></li>
+<li><code>Meine Erfolge</code></li>
+<li><code>Mein Trophäenraum</code></li>
+<li><code>Jahresrückblick</code></li>
+<li><code>Spieltagebuch</code></li>
+</ul>
+<h3>Anzeige &amp; Sound (33 Eintraege)</h3>
+<ul>
+<li><code>Menü-Video: HDMI -&gt; auf CRT wechseln (Neustart)</code></li>
+<li><code>Farbschema: Dunkel (Standard) -&gt; nächstes</code></li>
+<li><code>Aktuelle Farben als eigenes Schema speichern</code></li>
+<li><code>Eigenes Farbschema bearbeiten</code></li>
+<li><code>Navigations-Soundeffekte: AN -&gt; ausschalten</code></li>
+<li><code>Boot-Logo: Dragend -&gt; auf neutral wechseln</code></li>
+<li><code>Schnelles Scrollen: AUS -&gt; einschalten (etwas Bildriss-Risiko gegen kürzere Scroll-Verzögerung)</code></li>
+<li><code>Cover beim Scrollen: AUS -&gt; einschalten (Liste zeigt das Cover sofort, wie die Galerie)</code></li>
+<li><code>Cover verkleinern: weich (gemittelt) -&gt; scharf (Pixel-Look, auf der Roehre oft besser)</code></li>
+<li><code>Schrift: eigene</code></li>
+<li><code>Feinheiten: AN -&gt; ausschalten (Scrollbalken, Akzentbalken, Trennlinie)</code></li>
+<li><code>Hintergrundbild: keines gewaehlt</code></li>
+<li><code>Lochmaske: keine gewaehlt</code></li>
+<li><code>Ansicht Spieleliste: Liste -&gt; weiter (F10, am Pad Select+Y, schaltet sofort um)</code></li>
+<li><code>Ansicht Hauptseite: Liste -&gt; weiter (F10 auf der Hauptseite)</code></li>
+<li><code>Scrollgeschwindigkeit: 1x -&gt; nächste</code></li>
+<li><code>Ordner: zuerst</code></li>
+<li><code>Favoriten zuerst: AUS</code></li>
+<li><code>Spielzahl am Ordner: AN</code></li>
+<li><code>Tastenlegende: AN</code></li>
+<li><code>Ausgeblendete Einträge (0) -&gt; zeigen</code></li>
+<li><code>Rand seitlich: 7 % -&gt; weiter (für Röhren, die links/rechts abschneiden)</code></li>
+<li><code>Rand oben/unten: 5 % -&gt; weiter (für Röhren, die oben/unten abschneiden)</code></li>
+<li><code>Fremdes Artwork/Daten: AN -&gt; ausschalten (füllt Lücken aus der MiSTer-docs-Datenbank, ersetzt nie eigenes)</code></li>
+<li><code>Menü-Auflösung: voll -&gt; auf halb stellen (schnelleres HDMI, weicheres Bild, nach Neustart)</code></li>
+<li><code>Markierungs-Schimmer: AN -&gt; ausschalten (feste statt animierte Hervorhebung)</code></li>
+<li><code>Equalizer-Balken: AN -&gt; ausschalten (testen ob es beim HDMI-Scrollen hilft)</code></li>
+<li><code>Musik-Titel-Laufschrift: AN -&gt; ausschalten (fest statt scrollend)</code></li>
+<li><code>Stream-Overlay: AUS -&gt; einschalten (wirkt nach Neustart)</code></li>
+<li><code>Bildschirmspiegel: AUS -&gt; einschalten (braucht Stream-Overlay, wirkt nach Neustart)</code></li>
+<li><code>Musik: an -&gt; ausschalten</code></li>
+<li><code>Musik-Quelle: MP3</code></li>
+<li><code>Lautstärke: 100%</code></li>
+</ul>
+<h3>Optionen (16 Eintraege)</h3>
+<ul>
+<li><code>CRT-Testbild</code></li>
+<li><code>Miniaturen vorbereiten (einmalig, dauert einige Minuten)</code></li>
+<li><code>Miniaturen-Auftrag für PC schreiben</code></li>
+<li><code>Kuratierte Liste (nur DB-Treffer): AUS -&gt; einschalten</code></li>
+<li><code>Beta/Proto/Demo und Nur-Japan ausblenden: AUS -&gt; einschalten (aufgeräumtere Liste, dafür fehlen Dateien)</code></li>
+<li><code>Ordner mit nur einem Spiel: als Spiel anzeigen -&gt; als Ordner belassen</code></li>
+<li><code>Hauptseite: Kategorien sortieren und ausblenden</code></li>
+<li><code>Zaparoo (NFC-Tags) ist nicht installiert</code></li>
+<li><code>Cores: Fassung je System waehlen</code></li>
+<li><code>update_all ist nicht installiert - beim MiSTer-Projekt holen und nach Scripts/ legen</code></li>
+<li><code>Attract-Modus (Bildschirmschoner): AN -&gt; ausschalten</code></li>
+<li><code>Attract-Modus Verzögerung: 1.5min -&gt; nächste</code></li>
+<li><code>Ziehung Spannung: 2.0s -&gt; nächste</code></li>
+<li><code>Zeitzone: UTC -&gt; nächste</code></li>
+<li><code>Beim Start auf NAS/Netzwerk warten: AUS -&gt; einschalten (automatisch erkannt)</code></li>
+<li><code>Autostart: AUS -&gt; einschalten (Frontend startet zusammen mit dem MiSTer)</code></li>
+</ul>
+<h3>Eingabe &amp; Sprache (4 Eintraege)</h3>
+<ul>
+<li><code>Sprache: Deutsch -&gt; auf Englisch wechseln</code></li>
+<li><code>Tastenbelegung anpassen</code></li>
+<li><code>Auf Standardbelegung zurücksetzen</code></li>
+<li><code>Bestätigen/Abbrechen vertauschen: AUS -&gt; einschalten</code></li>
+</ul>
+<h3>Info (5 Eintraege)</h3>
+<ul>
+<li><code>Hilfe / Übersicht</code></li>
+<li><code>Einrichtung erneut starten</code></li>
+<li><code>Geheimnisse</code></li>
+<li><code>Mitwirkende</code></li>
+<li><code>Auf Updates prüfen: AN -&gt; ausschalten</code></li>
+</ul>
+<h3>Wartung (11 Eintraege)</h3>
+<ul>
+<li><code>MiSTer-OSD öffnen (Settings/Buttons)</code></li>
+<li><code>ROM-Wächter: AN</code></li>
+<li><code>Mehrteilige Spiele bündeln: AN</code></li>
+<li><code>Spieleliste neu einlesen</code></li>
+<li><code>Miniaturen-Zwischenspeicher leeren (CRT / HDMI)</code></li>
+<li><code>JPEG-Arbeitskopien: AUS -&gt; einschalten (legt beim Miniaturen-Vorbereiten je PNG-Cover eine .jpg daneben)</code></li>
+<li><code>Boxarts nachladen (braucht Netz, dauert etwas)</code></li>
+<li><code>Spieledaten nachladen (braucht Netz, dauert etwas)</code></li>
+<li><code>Anzeige neu aufbauen</code></li>
+<li><code>MiSTer neu starten</code></li>
+<li><code>Frontend beenden</code></li>
+</ul>
+<h3>Dazu drei Gruppen, die vom Geraet abhaengen</h3>
+<p>Sie stehen nicht oben, weil ihr Inhalt von der SD-Karte kommt
+und nicht vom Frontend:</p>
+<ul>
+<li><strong>Cores</strong> - alle gefundenen FPGA-Kerne, nach Art gruppiert</li>
+<li><strong>Standalone</strong> - eigenstaendige Programme, nach ihren Ordnern</li>
+<li><strong>Scripts</strong> - alles aus <code>/media/fat/Scripts</code></li>
+</ul>
+<hr />
+<h2>3. Das Kontextmenue</h2>
+<p>Oeffnet sich mit <strong>Y</strong> (oder der Menue-Taste) auf einem Eintrag.
+Was darin steht, haengt davon ab, worauf man steht - ein Spiel,
+ein Ordner oder eine Kategorie.</p>
+<ul>
+<li>Anleitung anzeigen</li>
+<li>Favorit entfernen</li>
+<li>Als Favorit merken</li>
+<li>Nicht mehr durchgespielt</li>
+<li>Als durchgespielt merken</li>
+<li>Diesen Eintrag ausblenden</li>
+<li>Suchen</li>
+<li>Filter</li>
+<li>Zu Buchstabe springen</li>
+<li>Ansicht wechseln</li>
+<li>Zufälliges Spiel</li>
+<li>Zufälliger Favorit</li>
+<li>Diese Kategorie ausblenden</li>
+</ul>
+<hr />
+<h2>4. Die Tastenbelegung</h2>
+<p>Das ist die Belegung, wie sie im Quelltext steht. Jede davon
+laesst sich im Menue unter <em>Eingabe &amp; Sprache</em> -&gt; 
+<em>Tastenbelegung anpassen</em> aendern.</p>
+<table>
+<thead>
+<tr>
+<th>Taste</th>
+<th>Aktion</th>
+<th>Was sie tut</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>KEY_F10</code></td>
+<td>ansicht</td>
+<td>Ansicht wechseln (Liste / Raster / Galerie)</td>
+</tr>
+<tr>
+<td><code>BTN_B</code></td>
+<td>back</td>
+<td>zurueck</td>
+</tr>
+<tr>
+<td><code>KEY_F1</code></td>
+<td>back_fe</td>
+<td>zum Frontend zurueck (waehrend ein Spiel laeuft)</td>
+</tr>
+<tr>
+<td><code>BTN_X</code></td>
+<td>back_fe</td>
+<td>zum Frontend zurueck (waehrend ein Spiel laeuft)</td>
+</tr>
+<tr>
+<td><code>KEY_F7</code></td>
+<td>completed</td>
+<td>als durchgespielt markieren</td>
+</tr>
+<tr>
+<td><code>KEY_DOWN</code></td>
+<td>down</td>
+<td>eine Zeile nach unten</td>
+</tr>
+<tr>
+<td><code>BTN_DPAD_DOWN</code></td>
+<td>down</td>
+<td>eine Zeile nach unten</td>
+</tr>
+<tr>
+<td><code>KEY_ESC</code></td>
+<td>exit</td>
+<td>zurueck (Esc)</td>
+</tr>
+<tr>
+<td><code>KEY_F8</code></td>
+<td>favorite</td>
+<td>als Favorit markieren</td>
+</tr>
+<tr>
+<td><code>BTN_TL2</code></td>
+<td>favorite</td>
+<td>als Favorit markieren</td>
+</tr>
+<tr>
+<td><code>BTN_TR2</code></td>
+<td>favorite</td>
+<td>als Favorit markieren</td>
+</tr>
+<tr>
+<td><code>AXIS_L2</code></td>
+<td>favorite</td>
+<td>als Favorit markieren</td>
+</tr>
+<tr>
+<td><code>AXIS_R2</code></td>
+<td>favorite</td>
+<td>als Favorit markieren</td>
+</tr>
+<tr>
+<td><code>KEY_TAB</code></td>
+<td>filter</td>
+<td>Filter</td>
+</tr>
+<tr>
+<td><code>KEY_LEFT</code></td>
+<td>left</td>
+<td>eine Seite zurueck (im Hauptmenue: Kategorie zurueck)</td>
+</tr>
+<tr>
+<td><code>BTN_TL</code></td>
+<td>left</td>
+<td>eine Seite zurueck (im Hauptmenue: Kategorie zurueck)</td>
+</tr>
+<tr>
+<td><code>BTN_DPAD_LEFT</code></td>
+<td>left</td>
+<td>eine Seite zurueck (im Hauptmenue: Kategorie zurueck)</td>
+</tr>
+<tr>
+<td><code>KEY_F4</code></td>
+<td>list_end</td>
+<td>an das Ende der Liste</td>
+</tr>
+<tr>
+<td><code>KEY_F3</code></td>
+<td>list_start</td>
+<td>an den Anfang der Liste</td>
+</tr>
+<tr>
+<td><code>BTN_Y</code></td>
+<td>music_next</td>
+<td>naechster Titel</td>
+</tr>
+<tr>
+<td><code>KEY_F5</code></td>
+<td>music_next</td>
+<td>naechster Titel</td>
+</tr>
+<tr>
+<td><code>KEY_NEXTSONG</code></td>
+<td>music_next</td>
+<td>naechster Titel</td>
+</tr>
+<tr>
+<td><code>KEY_ENTER</code></td>
+<td>ok</td>
+<td>oeffnen / starten / bestaetigen</td>
+</tr>
+<tr>
+<td><code>BTN_A</code></td>
+<td>ok</td>
+<td>oeffnen / starten / bestaetigen</td>
+</tr>
+<tr>
+<td><code>BTN_START</code></td>
+<td>ok</td>
+<td>oeffnen / starten / bestaetigen</td>
+</tr>
+<tr>
+<td><code>KEY_F12</code></td>
+<td>osd</td>
+<td>MiSTers eigenes OSD oeffnen</td>
+</tr>
+<tr>
+<td><code>BTN_MODE</code></td>
+<td>osd</td>
+<td>MiSTers eigenes OSD oeffnen</td>
+</tr>
+<tr>
+<td><code>KEY_F6</code></td>
+<td>ra_showcase</td>
+<td>die Erfolge zum Spiel zeigen</td>
+</tr>
+<tr>
+<td><code>KEY_F11</code></td>
+<td>random</td>
+<td>zufaelliges Spiel</td>
+</tr>
+<tr>
+<td><code>KEY_RIGHT</code></td>
+<td>right</td>
+<td>eine Seite vor (im Hauptmenue: Kategorie vor)</td>
+</tr>
+<tr>
+<td><code>BTN_TR</code></td>
+<td>right</td>
+<td>eine Seite vor (im Hauptmenue: Kategorie vor)</td>
+</tr>
+<tr>
+<td><code>BTN_DPAD_RIGHT</code></td>
+<td>right</td>
+<td>eine Seite vor (im Hauptmenue: Kategorie vor)</td>
+</tr>
+<tr>
+<td><code>KEY_SLASH</code></td>
+<td>search</td>
+<td>Suche</td>
+</tr>
+<tr>
+<td><code>KEY_F2</code></td>
+<td>search</td>
+<td>Suche</td>
+</tr>
+<tr>
+<td><code>KEY_BACKSPACE</code></td>
+<td>search_backspace</td>
+<td>in der Suche ein Zeichen zurueck</td>
+</tr>
+<tr>
+<td><code>BTN_SELECT</code></td>
+<td>select</td>
+<td>Select (allein: zurueck; gehalten: Kombinationen)</td>
+</tr>
+<tr>
+<td><code>KEY_UP</code></td>
+<td>up</td>
+<td>eine Zeile nach oben</td>
+</tr>
+<tr>
+<td><code>BTN_DPAD_UP</code></td>
+<td>up</td>
+<td>eine Zeile nach oben</td>
+</tr>
+<tr>
+<td><code>A - Z, Leertaste</code></td>
+<td>letter:...</td>
+<td>springt zum Buchstaben; in der Suche wird getippt (27 Tasten)</td>
+</tr>
+</tbody>
+</table>
+<h3>Select gehalten</h3>
+<table>
+<thead>
+<tr>
+<th>Kombination</th>
+<th>Aktion</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Select + back_fe</td>
+<td>ra_showcase</td>
+</tr>
+<tr>
+<td>Select + favorite</td>
+<td>filter</td>
+</tr>
+<tr>
+<td>Select + Links</td>
+<td>list_start</td>
+</tr>
+<tr>
+<td>Select + music_next</td>
+<td>ansicht</td>
+</tr>
+<tr>
+<td>Select + ok</td>
+<td>search_pad</td>
+</tr>
+<tr>
+<td>Select + Rechts</td>
+<td>list_end</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>5. Schalterdateien</h2>
+<p>Diese Schalter legt man von Hand an oder loescht sie wieder -
+sie stehen in keinem Menue. Genau dafuer sind sie da: der Fall,
+in dem man sie braucht, ist meist der, in dem man nicht ins
+Menue kommt.</p>
+<pre><code>touch   /media/fat/frontend/&lt;name&gt;     # anlegen = einschalten
+rm      /media/fat/frontend/&lt;name&gt;     # loeschen = ausschalten
+</code></pre>
+<ul>
+<li><code>anleitung_textmodus</code></li>
+<li><code>anleitung_tty1</code></li>
+<li><code>arbeitskopien_enabled</code></li>
+<li><code>artbox_aufschub_aus</code></li>
+<li><code>attract_disabled</code></li>
+<li><code>cover_sofort_enabled</code></li>
+<li><code>crt_menu_by_frontend</code></li>
+<li><code>crt_menu_pending_confirm</code></li>
+<li><code>curated_only</code></li>
+<li><code>dragend_logo_disabled</code></li>
+<li><code>einzelordner_aus</code></li>
+<li><code>eq_effect_disabled</code></li>
+<li><code>fast_scroll_enabled</code></li>
+<li><code>favoriten_zuerst</code></li>
+<li><code>feinheiten_aus</code></li>
+<li><code>flaechen_c_aus</code></li>
+<li><code>fremdquellen_aus</code></li>
+<li><code>hintergrund_aus</code></li>
+<li><code>konsole_mechanik_an</code></li>
+<li><code>konsole_mechanik_aus</code></li>
+<li><code>maske_aus</code></li>
+<li><code>multidisc_aus</code></li>
+<li><code>ordner_hinten</code></li>
+<li><code>ordner_zahlen_aus</code></li>
+<li><code>profile</code></li>
+<li><code>pulse_effect_disabled</code></li>
+<li><code>raster_klein</code></li>
+<li><code>rechteck_flip_aus</code></li>
+<li><code>rom_filter</code></li>
+<li><code>romwacht_aus</code></li>
+<li><code>screen_mirror_enabled</code></li>
+<li><code>setup_wizard_done</code></li>
+<li><code>stream_enabled</code></li>
+<li><code>tastenlegende_aus</code></li>
+<li><code>textkonsole_grafik_aus</code></li>
+<li><code>track_marquee_disabled</code></li>
+<li><code>verkleinern_scharf</code></li>
+</ul>
+<p>Namen auf <code>_aus</code> schalten etwas AB, wenn die Datei existiert.</p>
+<h3>Und diese Dateien halten einen Wert oder Inhalt</h3>
+<p>Sie werden vom Menue geschrieben und stehen hier nur zur
+Vollstaendigkeit. Von Hand anzulegen bringt nichts - eine leere
+Datei ist ein Zustand, den das Menue nie herstellt. Loeschen
+setzt die Einstellung dagegen gefahrlos auf die Vorgabe zurueck.</p>
+<ul>
+<li><code>ansicht</code></li>
+<li><code>ansicht_haupt</code></li>
+<li><code>attract_delay</code></li>
+<li><code>bootanim</code></li>
+<li><code>flip_haeppchen</code></li>
+<li><code>flip_rueckleser</code></li>
+<li><code>hintergrund</code></li>
+<li><code>hintergrund_dim</code></li>
+<li><code>maske</code></li>
+<li><code>overscan</code></li>
+<li><code>schrift</code></li>
+<li><code>scroll_tempo</code></li>
+<li><code>theme</code></li>
+<li><code>ziehung_spannung</code></li>
+</ul>
+<hr />
+<h2>6. Aufruf-Optionen</h2>
+<pre><code>python3 /media/fat/frontend/frontend.py &lt;option&gt;
+</code></pre>
+<ul>
+<li><code>--bench</code></li>
+<li><code>--demo</code></li>
+<li><code>--help</code></li>
+<li><code>--show</code></li>
+</ul>
+<hr />
+<h2>7. Die eingebaute Uebersicht</h2>
+<p>Das Frontend bringt seine eigene Hilfe mit, unter
+<em>System -&gt; Info -&gt; Hilfe / Uebersicht</em>. Was dort steht:</p>
+<ul>
+<li><strong>/ oder F2 (Tastatur), Select+A (Pad)</strong> - Spieleliste durchsuchen, springt zum ersten Treffer. Hoch/runter blättert durch die Treffer, der Balken zählt sie mit (3/17). Vom Pad aus erscheint ein Buchstabenraster auf dem Bildschirm (A wählt, B zurück, das Feld OK beendet)</li>
+<li><strong>Buchstabentaste (Tastatur)</strong> - Springt zum nächsten Eintrag mit diesem Buchstaben</li>
+<li><strong>Esc (Tastatur, ca. 0,6s halten)</strong> - Ebenfalls zurück ins Menü - Esc behält die Haltezeit, weil viele Spiele Esc selbst für ihr eigenes Pausenmenü benutzen</li>
+<li><strong>F1 (Tastatur)</strong> - Sofort zurück ins Menü</li>
+<li><strong>F10 / Select+Y (Pad)</strong> - Ansicht wechseln: Liste, Raster, Galerie (auch Hauptseite)</li>
+<li><strong>F11 (nur Tastatur)</strong> - Zufälliges Spiel über alle Systeme starten</li>
+<li><strong>F12 / Mode-Taste (Pad)</strong> - MiSTer-OSD öffnen (Joystick-Definition, Einstellungen)</li>
+<li><strong>F3 / F4 (Tastatur), Select+L / Select+R (Pad)</strong> - An den Anfang / ans Ende der Liste springen</li>
+<li><strong>F5 (Tastatur)</strong> - Laufenden Core zurücksetzen, ohne ihn neu zu laden (experimentell, RA-Fortschritt bleibt erhalten)</li>
+<li><strong>F6 (Tastatur), Select+X (Pad)</strong> - RA-Erfolgs-Vitrine für das markierte Spiel</li>
+<li><strong>F7 (nur Tastatur)</strong> - Durchgespielt-Status umschalten</li>
+<li><strong>F8 / L2 oder R2</strong> - Favorit umschalten</li>
+<li><strong>Geheimnisse</strong> - Verstecktes, das du selbst entdecken kannst</li>
+<li><strong>Mitwirkende</strong> - Wer das gebaut hat</li>
+<li><strong>OK / A</strong> - Auswählen, Kategorie/Ordner betreten</li>
+<li><strong>Pfeiltasten</strong> - Bewegen</li>
+<li><strong>RA-Erfolgsjäger</strong> - Offene Erfolge in deiner Bibliothek</li>
+<li><strong>Sammlungen</strong> - Automatische Gruppierungen</li>
+<li><strong>Select (Pad)</strong> - Zeigt die Kombinationen an; GEHALTEN ist Select der Umschalter für Select+A, Select+X und Select+L/R (zurück geht B)</li>
+<li><strong>Start + Select (Pad, ca. 0,8s halten)</strong> - Funktioniert nur, wenn MiSTer den Controller nicht sperrt - bei den bisher getesteten Pads tut es das. Verlässlich ist der Ausstieg über die Tastatur.</li>
+<li><strong>Statistiken &amp; Erfolge</strong> - Top-10-Listen, Trophäenraum, Jahresrückblick, Spieltagebuch</li>
+<li><strong>Wartung</strong> - Boxarts und Spieledaten nachträglich laden, Spieleliste neu einlesen, MiSTer-OSD öffnen</li>
+<li><strong>Weiterspielen</strong> - Dein zuletzt offenes Spiel</li>
+<li><strong>Y (Pad) / F5 (Tastatur)</strong> - Nächster Musiktitel (nur im Menü)</li>
+<li><strong>Zurück / B</strong> - Eine Ebene zurück, ganz oben: Beenden-Dialog</li>
+</ul>
+<hr />
+<h2>Was in dieser Liste NICHT steht</h2>
+<p>Damit auch das klar ist:</p>
+<ul>
+<li><strong>Was auf der Karte liegt</strong> - Cores, Scripts, Standalone-
+  Programme, Spiele, Cover. Das Frontend zeigt, was es findet.</li>
+<li><strong>Die Einstellungen von MiSTer selbst</strong> (<code>MiSTer.ini</code>,
+  Tastenbelegung der Kerne, Video). Das Frontend fasst dort
+  genau eine Stelle an: den <code>[Menu]</code>-Block fuer den CRT-Modus,
+  und das nur, wenn man es im Menue verlangt.</li>
+<li><strong>Was im Hintergrund laeuft</strong> und keine Einstellung hat -
+  Miniaturen, Vorauslader, der ROM-Waechter.</li>
+</ul></html>

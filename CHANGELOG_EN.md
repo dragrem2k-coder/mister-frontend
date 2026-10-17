@@ -13,6 +13,20 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **New: a complete list of every function and setting** —
+  `docs/FUNKTIONSLISTE.md` and `docs/Dragend_Funktionsliste.pdf` (8
+  pages, German). It is **generated, not written**: the system menu
+  comes from exactly the code that builds the entries at runtime, and
+  keys, switch files and command-line options are read from the
+  source. A cross-check in both directions makes sure no entry is
+  missing and none is listed that does not exist — and it runs as part
+  of the test suite, so the list cannot go stale silently (build 283).
+- **The console is now restored as the very last step on exit.** The
+  new balance line showed that tty3 was still in front at the *end* of
+  the exit path — even though it is restored at the top of it. In
+  between sit the framebuffer close, the F12 and the shutdown of the
+  background processes. The console switch is now the last action, and
+  the manual's console is released afterwards (build 282).
 - **The exit path now says what it leaves behind.** One
   `EXIT-BILANZ` line in the log names the active console, tty1's mode,
   whether a grab is still held on the input devices, whether the

@@ -23,6 +23,24 @@ for p in anleitung_source:Dragend_Anleitung \
 done
 ```
 
+## Die Funktionsliste ist der fünfte Fall — und läuft anders
+
+`Dragend_Funktionsliste.pdf` hat **keine** handgeschriebene HTML-Quelle.
+Sie wird aus dem Quelltext erzeugt, in zwei Schritten:
+
+```bash
+python3 tools/liste_erzeugen.py     # -> docs/FUNKTIONSLISTE.md + .html
+
+chromium --headless --disable-gpu --no-sandbox --no-pdf-header-footer \
+    --print-to-pdf="docs/Dragend_Funktionsliste.pdf" \
+    "file://$PWD/docs/FUNKTIONSLISTE.html"
+```
+
+**Beide Fassungen kommen aus derselben Quelle**, damit Markdown und PDF
+nicht auseinanderlaufen können. Änderungen gehören in
+`tools/liste_erzeugen.py` — eine Änderung in der `.md` oder `.html` ist
+beim nächsten Lauf weg, und `tools/test_funktionsliste.py` merkt es.
+
 ## Die vier Dateien hängen zusammen
 
 `installation_source.html` bringt die Gestaltung **nicht** selbst mit —

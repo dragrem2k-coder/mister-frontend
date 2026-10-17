@@ -4618,6 +4618,126 @@ steht auch, *dass* MiSTer die Knoepfe in Tasten uebersetzt - die
 Erklaerung fuer „ich kann erst blaettern, wenn ich einmal die
 Leertaste gedrueckt habe".
 
+### Nachtrag Build 283: eine Liste, die sich selbst prueft
+
+> „dann haette ich einmal gerne eine liste mit allen funktionen und
+> einstellmoeglichkeiten was das frontend alles kann! wirklich alles!
+> fehlerfrei!"
+
+**„Fehlerfrei" war die Bedingung, und sie entscheidet die Bauart.** Von
+Hand geschrieben waere die Liste am Tag ihrer Fertigstellung schon
+knapp daneben und drei Builds spaeter falsch - lautlos, denn eine
+Dokumentation beschwert sich nicht. Das Frontend hat 647 Textbausteine,
+davon 147 fuer das Systemmenue, dazu 110 Einstellungsfunktionen und 51
+Dateien unter `/media/fat/frontend`.
+
+**Also erzeugt, aus dem laufenden Code:**
+
+- Das **Systemmenue** kommt vom ECHTEN Erzeuger,
+  `fe.menu.system_items()` - also von genau dem, der im Betrieb die
+  Eintraege baut. Nicht nachgebaut, nicht abgeschrieben. Das ist
+  derselbe Grundsatz, der in Build 260 teuer war: zwei Wege zu
+  derselben Auskunft laufen auseinander.
+- **Kontextmenue, Tasten, Schalterdateien, Aufruf-Optionen** sind aus
+  dem Quelltext gelesen.
+- Die **eingebaute Hilfe** ist selbst eine Funktionsliste und wird
+  mitgenommen.
+
+**DIE GEGENPROBE GEHT IN BEIDE RICHTUNGEN**, und das ist der Teil, der
+die Liste traegt:
+
+1. Jeder Eintrag, den der Erzeuger liefert, muss in der Liste stehen -
+   sonst fehlt etwas.
+2. Jede Menuezeile der Liste muss vom Erzeuger kommen - sonst steht
+   etwas drin, das es nicht gibt, und **das ist schlimmer als eine
+   Luecke, weil man danach sucht.**
+
+Geht eines davon nicht auf, bricht das Werkzeug ab und schreibt keine
+Datei. Und `tools/test_funktionsliste.py` laesst denselben Lauf in der
+Suite mitlaufen: wer einen Menuepunkt hinzufuegt und die Liste nicht
+neu erzeugt, bekommt eine rote Suite statt einer stillen
+Falschaussage.
+
+**Drei Dinge hat das Bauen selbst korrigiert**, und alle drei waren
+Heuristiken, die am falschen Ort angewendet wurden:
+
+- Die erste Fassung der zweiten Richtung meldete **24 richtige Zeilen
+  als ueberfluessig** - sie durchsuchte das ganze Dokument, und
+  Schalterdateien stehen in derselben Schreibweise wie Menuepunkte.
+  Eine Gegenprobe mit Falschalarm wird abgeschaltet und ist dann
+  keine mehr. Jetzt gilt die zweite Richtung nur im Menue-Abschnitt.
+- Schalter und Wertdateien zu trennen ist keine Kosmetik: bei einem
+  **Schalter** zaehlt, OB die Datei da ist, bei einem **Wert** steht er
+  DRIN. Wer einen Wert von Hand anlegt, erzeugt eine leere Datei -
+  einen Zustand, den das Menue nie herstellt. Die Unterscheidung
+  braucht die Konstante, nicht die Zeile: im ersten Lauf fanden sich
+  **null** Schalter, weil die Pfade in Konstanten stehen und woanders
+  benutzt werden.
+- Und fuenf weitere rutschten in die falsche Spalte, weil ihre
+  Konstante ueber eine Fortsetzungszeile (`= \\`) geschrieben ist.
+
+**Was die Liste ueber sich selbst sagt**, steht ebenfalls als Pruefung
+da: dass sie erzeugt ist, wie man sie neu erzeugt, welcher Teil vom
+Zustand des Geraets abhaengt (bei eingerichteten RetroAchievements
+stehen dort mehr Eintraege, und dieses Werkzeug laeuft nicht auf dem
+MiSTer) - und was NICHT darin steht. Cores, Scripts und Spiele kommen
+von der Karte; eine Liste, die das verschweigt, verspricht zu viel.
+
+**Die PDF kommt aus derselben Quelle** wie die Markdown-Fassung
+(`docs/PDF_ERZEUGEN.md`, fuenfter Fall). Zwei Fassungen aus einer
+Quelle koennen nicht auseinanderlaufen - und genau davor warnt dieselbe
+Datei schon fuer die vier Handbuch-PDFs.
+
+### Nachtrag Build 282: die Bilanz hat in einer Zeile geliefert
+
+**Build 281 hat nichts behoben und die Frage beantwortet:**
+
+```
+EXIT-BILANZ: VT=3, tty1=TEXT, Eingaben offen=0, Griff=nein,
+             Vorauslader=beendet, Framebuffer=zu
+```
+
+**Fuenf von sechs Posten in Ordnung.** Kein liegengebliebener Griff,
+keine Textkonsole im Grafikmodus, kein weiterlaufender Vorauslader,
+kein offener Bildspeicher - und die Konsole liegt am **Ende** des
+Ausstiegs immer noch auf tty3.
+
+Das ist der Befund, auf den es ankommt, denn Build 278 stellt sie
+**ganz oben in `_beenden()`** zurueck. Dazwischen liegen
+`fb.close()`, das F12 und das Beenden der Kinder. Entweder hat der
+erste Anlauf nicht gegriffen, oder etwas holt tty3 danach wieder nach
+vorne.
+
+> **Und das muss ich nicht wissen.** Der Ausstieg hat eine LETZTE
+> Gelegenheit, und die gehoert dem Zustand, den MiSTer danach braucht.
+> **Lehre: wer etwas zurueckgibt, gibt es als Letztes zurueck -
+> alles dazwischen kann es wieder nehmen.**
+
+Das ist dieselbe Ueberlegung wie bei Build 165 (der Framebuffer muss
+VOR dem F12 frei sein) und 163 (der Griff auf die Eingaben frueh
+loesen), nur am anderen Ende: manche Dinge gehoeren nach vorne,
+manche nach hinten, und die Konsole gehoert nach hinten.
+
+**Der erste Anlauf bleibt stehen.** Falls MiSTer den Zustand schon vor
+dem F12 braucht, ist er dort richtig; der zweite ist das Netz. Und das
+Ergebnis steht jetzt in der Bilanz direkt darunter - der Versuch
+protokolliert sich selbst.
+
+**Dazu wird die Anleitungs-Konsole freigegeben** (`VT_DISALLOCATE`),
+und zwar erst, wenn tty1 nachweislich vorne liegt: freigeben geht nur
+bei einer Konsole, die nicht vorne liegt, sonst scheitert es mit
+EBUSY. Misslingt es, ist das kein Fehler, sondern eine Auskunft
+("benutzt sie noch jemand?") - und genau die waere beim naechsten Mal
+der naechste Faden.
+
+**Was dieser Build NICHT behauptet:** dass damit die Ursache gefunden
+ist. Gefunden ist der ZUSTAND. Ob der erste Anlauf scheitert oder
+jemand zurueckschaltet, sagen beim naechsten Durchgang die beiden
+Zeilen "Exit:" und "Exit (zuletzt):" - und wenn tty1 am Ende vorne
+liegt und Scripts trotzdem nicht starten, liegt es nicht an unserem
+Aufraeumen. Dann ist die Bilanz sechsmal gruen, und das ist auch eine
+Antwort.
+
 ### Nachtrag Build 281: kein vierter Versuch ins Blaue
 
 > „das einzige was nicht geht ist wenn ich aus dem frontend raus gehe
