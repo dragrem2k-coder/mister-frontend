@@ -4618,6 +4618,71 @@ steht auch, *dass* MiSTer die Knoepfe in Tasten uebersetzt - die
 Erklaerung fuer „ich kann erst blaettern, wenn ich einmal die
 Leertaste gedrueckt habe".
 
+### Nachtrag Build 285: wenn ein Zustand nicht zu reparieren ist, darf er nicht entstehen
+
+**Drei Protokolle, drei Stufen - und erst das dritte hat die Sache
+entschieden:**
+
+```
+281   EXIT-BILANZ: VT=3, tty1=TEXT, Griff=nein, ... (alles andere gut)
+282   Exit (zuletzt): tty3 liegt vorne - zweiter Anlauf auf tty1
+282   Exit (zuletzt): tty1 liess sich NICHT nach vorne bringen
+```
+
+**Der Wechsel wird VERWEIGERT.** Das kann der Kernel tun, wenn der
+Besitzer der vorne liegenden Konsole den Wechsel abnicken muss
+(`VT_SETMODE`/`VT_PROCESS`) und nicht antwortet. Und in genau diesem
+Augenblick gehoert die Maschine wieder MiSTers Main - unmittelbar
+davor steht im Protokoll:
+
+```
+Exit: load_core /media/fat/menu.rbf ueber /dev/MiSTer_cmd
+Exit: MiSTer bei 98% - das Menue ist da
+```
+
+**Gegen eine Verweigerung kommt kein weiterer Versuch an.** Ein dritter
+Anlauf, noch spaeter, mit noch mehr Geduld - das waere die vierte Runde
+Nachfassen an derselben Stelle gewesen.
+
+> **Lehre: wenn ein Zustand nicht mehr zu reparieren ist, darf er nicht
+> entstehen.** Statt dem Wechsel nachzuhelfen, wird der Konsole die
+> Gelegenheit genommen: **eine Konsole, die es nicht gibt, kann niemand
+> nach vorne holen.**
+
+Das ist dasselbe Muster wie Build 268. Dort war die Antwort auf "der
+Login-Prozess frisst die Tasten des Betrachters" nicht, ihm die Tasten
+wieder abzujagen, sondern dem Betrachter eine EIGENE Konsole zu geben.
+Zweimal dieselbe Form: nicht gegen einen fremden Besitzer ankaempfen,
+sondern die Ueberschneidung aufloesen.
+
+**Freigegeben wird jetzt an zwei Stellen** (dieselbe Methode, kein
+zweiter Weg):
+
+- **sobald die Anleitung zu ist** - nicht erst beim Beenden. Solange
+  tty3 existiert, kann MiSTer sie sich jederzeit nehmen.
+- **beim Beenden VOR dem F12** - gleich darauf laedt MiSTer seinen
+  Menue-Core neu und greift sich eine Konsole. Was es nicht gibt, kann
+  es nicht nehmen.
+
+Der Versuch aus Build 282 am Ende des Ausstiegs **bleibt als Netz**,
+falls der fruehe Versuch nicht griff. Freigeben geht nur bei einer
+Konsole, die nicht vorne liegt, also wird gar nicht erst versucht,
+wenn tty1 nicht vorne ist - und ein Misslingen ist eine Auskunft
+("benutzt sie noch jemand?"), kein Fehler.
+
+**Zwei meiner Pruefungen waren falsch, nicht der Code:** eine suchte
+einen Text, der im Quelltext ueber zwei Zeilen umbrochen ist - ein Test,
+der an einem Zeilenumbruch scheitert, prueft die Formatierung. Die
+andere suchte das Netz im Rumpf von `_beenden`, wo nur der AUFRUF
+steht. Beide pruefen jetzt die Sache.
+
+**Und eine Falle, die ich selbst gebaut habe:** die Builds 283 und 284
+waren reine Dokumentations-Pakete ohne `frontend.py`. Wer 282
+uebersprungen hat, bekam die Behebung nie - und 283/284 konnten sie
+auch nicht nachliefern, weil sie die Datei gar nicht enthielten. Vier
+Pakete hintereinander, von denen zwei kein Programm enthalten, gehoeren
+dazugesagt.
+
 ### Nachtrag Build 284: ein Menuepunkt ist nicht dasselbe wie eine Funktion
 
 > „Hast du auch die Features bedacht, obs ect, was es noch so alles

@@ -13,6 +13,14 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Die Anleitungs-Konsole wird jetzt sofort wieder abgegeben.** Das
+  Protokoll hat gezeigt, dass der Wechsel zurück auf tty1 beim Beenden
+  **verweigert** wird — und zwar genau nachdem MiSTer seinen Menü-Core
+  neu geladen hat. Gegen eine Verweigerung kommt kein weiterer Versuch
+  an, also wird der Konsole die Gelegenheit genommen: sie wird
+  freigegeben, sobald die Anleitung zu ist, und beim Beenden **vor**
+  dem Umschalten auf MiSTer. Eine Konsole, die es nicht gibt, kann
+  niemand nach vorne holen (Build 285).
 - **Die Funktionsliste nennt jetzt auch die Funktionen selbst, nicht
   nur die Schalter.** Ein Menüpunkt ist nicht dasselbe wie eine
   Funktion: „Stream-Overlay: an" sagt nicht, was das Overlay ist. Neu

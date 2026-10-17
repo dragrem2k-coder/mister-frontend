@@ -542,6 +542,86 @@ check("abgefragt, nicht gesetzt",
       "eine Bilanz, die den Zustand aendert, den sie meldet, ist "
       "keine Bilanz")
 
+# ---------------------------------------------------------------------------
+print()
+print("Build 282: die Konsole zuletzt, nicht zuerst")
+# ---------------------------------------------------------------------------
+# DIE BILANZ AUS BUILD 281 HAT GELIEFERT:
+#
+#   EXIT-BILANZ: VT=3, tty1=TEXT, Eingaben offen=0, Griff=nein,
+#                Vorauslader=beendet, Framebuffer=zu
+#
+# Fuenf von sechs Posten in Ordnung - und die Konsole liegt am ENDE des
+# Ausstiegs immer noch auf tty3, obwohl Build 278 sie ganz oben in
+# _beenden() zurueckstellt. Wer sie dazwischen wieder nach vorne holt,
+# ist unbekannt; unser eigener Code tut es nicht mehr.
+#
+# Das muss man auch nicht wissen: der Ausstieg hat eine LETZTE
+# Gelegenheit, und die gehoert dem Zustand, den MiSTer danach braucht.
+#
+# LEHRE: wer etwas zurueckgibt, gibt es als Letztes zurueck. Alles
+# dazwischen kann es wieder nehmen.
+check("die Konsole wird ZULETZT zurueckgestellt",
+      "self._konsole_zuletzt_zurueck()" in block,
+      "der erste Anlauf steht ganz oben in _beenden() - dazwischen "
+      "liegen fb.close(), das F12 und das Beenden der Kinder")
+check("und zwar unmittelbar vor der Bilanz",
+      block.rindex("_konsole_zuletzt_zurueck")
+      < block.rindex("_exit_bilanz"),
+      "so steht das Ergebnis des Versuchs in der Zeile darunter")
+check("der erste Anlauf bleibt",
+      block.count("_vt_erzwingen") >= 1
+      and "_vt = self._aktive_vt()" in block,
+      "vor dem F12 ist der richtige Zeitpunkt, falls MiSTer den "
+      "Zustand schon dort braucht - der zweite ist das Netz")
+
+_zul = quelle.split("def _konsole_zuletzt_zurueck")[1].split("\n    def ")[0]
+_frei = quelle.split("def _anleitungs_vt_freigeben")[1].split("\n    def ")[0]
+check("die Anleitungs-Konsole wird freigegeben",
+      "VT_DISALLOCATE" in _frei
+      and "_anleitungs_vt_freigeben()" in _zul,
+      "eine Konsole, die allokiert bleibt, ist der Zustand, aus dem "
+      "dieser Fehler entstehen konnte")
+check("aber nur, wenn tty1 nachweislich vorne liegt",
+      _frei.index("_aktive_vt() != 1") < _frei.index("VT_DISALLOCATE"),
+      "freigeben geht nur, wenn sie nicht vorne liegt - sonst "
+      "scheitert es mit EBUSY")
+# Der Text ist im Quelltext ueber zwei Zeilen umbrochen - geprueft
+# wird deshalb das Stueck, das in einer Zeile steht. Ein Test, der
+# an einem Zeilenumbruch scheitert, prueft die Formatierung.
+check("ein Misslingen ist kein Fehler, sondern eine Auskunft",
+      "benutzt sie noch" in _frei)
+
+# BUILD 285: und sie wird frueh freigegeben, nicht erst zum Schluss.
+#
+# Das Protokoll von Build 282 hat gezeigt, dass der zweite Anlauf
+# VERWEIGERT wird ("tty1 liess sich NICHT nach vorne bringen"), und
+# zwar unmittelbar nachdem MiSTer seinen Menue-Core neu geladen hat.
+# Gegen eine Verweigerung kommt kein weiterer Versuch an.
+#
+# LEHRE: wenn ein Zustand nicht mehr zu reparieren ist, darf er nicht
+# entstehen.
+check("sie wird schon nach der Anleitung freigegeben",
+      "_anleitungs_vt_freigeben()" in
+      quelle.split("def _zurueck_auf_tty1")[1].split("\n    def ")[0],
+      "nicht erst beim Beenden - solange sie existiert, kann MiSTer "
+      "sie sich nehmen")
+check("und im Ausstieg VOR dem F12",
+      block.index("_anleitungs_vt_freigeben")
+      < block.index("_f12_bis_das_osd_kommt"),
+      "gleich darauf laedt MiSTer seinen Menue-Core neu und greift "
+      "sich eine Konsole - was es nicht gibt, kann es nicht nehmen")
+check("der Versuch zum Schluss bleibt als Netz",
+      block.index("_konsole_zuletzt_zurueck")
+      > block.index("_f12_bis_das_osd_kommt")
+      and "_anleitungs_vt_freigeben()" in _zul,
+      "falls der fruehe Versuch nicht griff - dieselbe Methode, kein "
+      "zweiter Weg")
+check("und der ganze Block kann den Ausstieg nicht aufhalten",
+      "except Exception" in _zul,
+      "er laeuft hinter allem anderen - was hier wirft, haette sonst "
+      "nichts mehr, das es auffaengt")
+
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))

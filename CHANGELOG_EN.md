@@ -13,6 +13,13 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **The manual's console is now released immediately.** The log showed
+  that the switch back to tty1 on exit is **refused** — right after
+  MiSTer reloads its menu core. No further attempt can beat a refusal,
+  so the opportunity is removed instead: the console is released as
+  soon as the manual is closed, and on exit **before** handing over to
+  MiSTer. A console that does not exist cannot be brought to the front
+  (build 285).
 - **The function list now names the functions themselves, not just
   the switches.** A menu entry is not the same as a feature: "Stream
   overlay: on" does not say what the overlay is. Added: all 23

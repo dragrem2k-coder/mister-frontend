@@ -14177,16 +14177,72 @@ class Frontend:
         except OSError as e:
             LOG("_auf_konsole: Rueckwechsel auf tty1 fehlgeschlagen (%s)" % e)
         aktiv = self._aktive_vt()
-        if aktiv == 1 or aktiv is None:
+        if aktiv not in (1, None):
+            LOG("VT: nach dem Rueckwechsel liegt tty%s vorne, nicht "
+                "tty1 - zweiter Weg ueber /dev/tty0" % aktiv)
+            if self._vt_erzwingen(1):
+                LOG("VT: tty1 liegt jetzt vorne")
+            else:
+                LOG("VT: tty1 liess sich NICHT nach vorne bringen - "
+                    "MiSTer kann von seinem OSD aus keine Scripts "
+                    "starten, bis das behoben ist")
+        # UND JETZT WEG DAMIT (Build 285)
+        #
+        # Die Konsole der Anleitung wird hier freigegeben, nicht erst
+        # beim Beenden. Grund steht in _anleitungs_vt_freigeben():
+        # solange sie existiert, kann sich MiSTer sie nehmen.
+        self._anleitungs_vt_freigeben()
+
+    def _anleitungs_vt_freigeben(self):
+        """Die Anleitungs-Konsole wieder abgeben.
+
+        WARUM SO FRUEH UND NICHT ERST BEIM BEENDEN (Build 285).
+
+        Der Weg dahin, in drei Protokollen des Nutzers:
+
+          281  Die Bilanz sagte: am ENDE des Ausstiegs liegt tty3
+               vorne, und alles andere ist in Ordnung.
+          282  Also ein zweiter Anlauf als letzte Handlung - und
+               seine Antwort war eindeutig:
+
+                 Exit (zuletzt): tty3 liegt vorne - zweiter Anlauf
+                 Exit (zuletzt): tty1 liess sich NICHT nach vorne
+                                 bringen
+
+        DER WECHSEL WIRD VERWEIGERT. Das kann der Kernel tun, wenn
+        der Besitzer der vorne liegenden Konsole den Wechsel abnickt
+        (VT_SETMODE/VT_PROCESS) und nicht antwortet - und in dem
+        Augenblick gehoert die Maschine wieder MiSTers Main, das
+        unmittelbar davor seinen Menue-Core neu geladen hat
+        ("load_core /media/fat/menu.rbf ueber /dev/MiSTer_cmd").
+
+        Gegen eine Verweigerung kommt kein weiterer Versuch an. Also
+        wird der Konsole die Gelegenheit genommen, statt dem Wechsel
+        nachzuhelfen: EINE KONSOLE, DIE ES NICHT GIBT, KANN NIEMAND
+        NACH VORNE HOLEN. Freigegeben wird deshalb, sobald die
+        Anleitung zu ist - nicht erst, wenn MiSTer schon zugegriffen
+        hat.
+
+        LEHRE: wenn ein Zustand nicht mehr zu reparieren ist, darf er
+        nicht entstehen. Dasselbe Muster wie in Build 268 (statt dem
+        Login-Prozess die Tasten wieder abzujagen, bekommt der
+        Betrachter eine eigene Konsole) - und zweimal besser als eine
+        dritte Runde Nachfassen.
+
+        Freigeben geht nur, wenn die Konsole nicht vorne liegt; steht
+        tty1 nicht vorne, wird es deshalb nicht einmal versucht.
+        Misslingt es, ist das kein Fehler, sondern eine Auskunft."""
+        if self._aktive_vt() != 1:
             return
-        LOG("VT: nach dem Rueckwechsel liegt tty%s vorne, nicht tty1 - "
-            "zweiter Weg ueber /dev/tty0" % aktiv)
-        if self._vt_erzwingen(1):
-            LOG("VT: tty1 liegt jetzt vorne")
-        else:
-            LOG("VT: tty1 liess sich NICHT nach vorne bringen - MiSTer "
-                "kann von seinem OSD aus keine Scripts starten, bis das "
-                "behoben ist")
+        try:
+            with open(self.TTY0_PFAD, "wb", buffering=0) as t0:
+                fcntl.ioctl(t0.fileno(), self.VT_DISALLOCATE,
+                            self.ANLEITUNG_VT)
+            LOG("VT: tty%d freigegeben - MiSTer kann sie nicht mehr "
+                "nach vorne holen" % self.ANLEITUNG_VT)
+        except OSError as e:
+            LOG("VT: tty%d nicht freigegeben (%s) - benutzt sie noch "
+                "jemand?" % (self.ANLEITUNG_VT, e))
 
     def _auf_konsole(self, wrapped, raw, name="", grafik=False,
                      grenze=0.0, eigene_konsole=False, puls=None):
@@ -23356,6 +23412,12 @@ class Frontend:
                 LOG("Exit: tty1 liess sich NICHT nach vorne bringen - "
                     "MiSTer wird von seinem OSD aus keine Scripts "
                     "starten koennen")
+        # UND VOR DEM F12 FREIGEBEN (Build 285). Gleich darauf laedt
+        # MiSTer seinen Menue-Core neu und greift sich dabei eine
+        # Konsole; was es nicht gibt, kann es nicht nehmen. Siehe
+        # _anleitungs_vt_freigeben() - dort steht, warum ein zweiter
+        # Anlauf danach nicht hilft.
+        self._anleitungs_vt_freigeben()
         # Die Konsole ZUERST wiederherstellen - solange unser Bild
         # noch oben liegt und ein Schreibvorgang auf tty1 nichts
         # umwerfen kann. Danach ist damit Schluss.
@@ -23434,17 +23496,11 @@ class Frontend:
                 else:
                     LOG("Exit (zuletzt): tty1 liess sich NICHT nach "
                         "vorne bringen")
-            if self._aktive_vt() == 1:
-                try:
-                    with open(self.TTY0_PFAD, "wb", buffering=0) as t0:
-                        fcntl.ioctl(t0.fileno(), self.VT_DISALLOCATE,
-                                    self.ANLEITUNG_VT)
-                    LOG("Exit (zuletzt): tty%d freigegeben"
-                        % self.ANLEITUNG_VT)
-                except OSError as e:
-                    LOG("Exit (zuletzt): tty%d nicht freigegeben (%s) "
-                        "- benutzt sie noch jemand?"
-                        % (self.ANLEITUNG_VT, e))
+            # Und noch einmal freigeben, falls der fruehe Versuch
+            # (vor dem F12) nicht gegriffen hat. Dieselbe Methode,
+            # kein zweiter Weg - sie prueft selbst, ob tty1 vorne
+            # liegt, und meldet das Ergebnis.
+            self._anleitungs_vt_freigeben()
         except Exception:                                # noqa: BLE001
             LOG("Exit (zuletzt):\n" + traceback.format_exc())
 
