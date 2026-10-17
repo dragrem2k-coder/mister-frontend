@@ -100,6 +100,12 @@ def _fake_fb_init(self, bpp=32):
     self.mm = bytearray(self.size)
     self.buf = bytearray(self.size)
     self._rowcache = {}
+    # Build 271: die gemerkten FORMEN. Muss hier stehen, weil diese
+    # Attrappe die Feldliste des echten __init__ nachbildet - fehlt
+    # das Feld, laeuft die ganze Suite mit abgeschaltetem Formcache
+    # und prueft den Weg nie, der auf dem Geraet laeuft.
+    # tools/test_form_cache.py schlaegt in genau diesem Fall an.
+    self._formcache = {}
     self._rectcache = {}
     self._glyphcache = {}
     self._textcache = {}

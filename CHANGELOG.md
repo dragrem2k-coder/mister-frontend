@@ -13,6 +13,16 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.8 — noch nicht veröffentlicht
 
+**Schneller scrollen: die Form einer Karte wird nur noch einmal gerechnet.**
+
+- **Die Messung aus Build 270 hat die Richtung vorgegeben**, und sie war eindeutig: von den 13,04 ms, die `karte_mit_schatten` in der Listenansicht kostet, liegen **5,83 ms im C-Füller und 7,21 ms davor in Python**. Die 7,2 ms sind die Zeilenschleifen über die Eckenzeilen — bei Radius 96 rund 300 Durchläufe je Karte, und zwar **zweimal** (Schatten und Karte) —, das Bündeln und der Bau des Tupels für C.
+- **Diese Form hängt nicht an der Position.** Sie hängt an Breite, Höhe, Radius, Versatz und der ausgesparten Spanne — und das sind beim Scrollen immer dieselben. Gemerkt wird jetzt die gebündelte Streifenliste **relativ zur linken obveren Ecke**; der Aufrufer rechnet seine Position dazu (eine Listenkomprehension über rund 50 Tupel statt 300 Schleifendurchläufe).
+- **Gezählt, was das spart:** zwanzig Karten kosten jetzt **zwei** Formaufbauten statt vierzig.
+- **Bitgenau nachgewiesen, nicht überlegt** (`tools/test_form_cache.py`): 44 Formen × 3 Varianten, jede zweimal gezeichnet — einmal mit Cache, einmal ohne — und Byte für Byte verglichen, **mit und ohne C**. Darunter ausdrücklich alle vier Bildränder, halb aus dem Bild hängende Karten, Radius 0 und 1, und dieselbe Form an **verschiedenen** Stellen (der eigentliche Fallstrick: würde die Position mitgemerkt, zeichnete die zweite Karte an der Stelle der ersten).
+- **Auf dem Entwicklungsrechner 1,30×** (0,279 → 0,215 ms je Karte). Dort ist der Python-Anteil klein; auf dem Gerät sind es 55 % der Zeit, deshalb sollte es dort deutlich mehr sein — und **genau das sagt der nächste `--bench`**: die Zeile „davor in Python" aus Build 270 ist die Zahl, die fallen muss.
+- **Ein Schalter ist nicht nötig, aber vorhanden:** wer `self._formcache` auf `None` setzt, rechnet wie vorher — so vergleicht der Test beide Wege.
+
+
 **Am Messwerkzeug: der größte unbenannte Posten bekommt eine Richtung.**
 
 - **Nichts, was man beim Spielen merkt** — aber die Voraussetzung dafür, dass das nächste Mal etwas schneller wird, statt nur anders.

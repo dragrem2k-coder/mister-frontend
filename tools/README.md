@@ -175,6 +175,7 @@ python3 tools/regression_test.py \
 | `test_anleitung.py` | Test (Pass/Fail) | Die Spielanleitung: gefunden wird im UNTERORDNER und mit unscharfem Namen, der Artwork-Ordner wird NICHT betreten, einmal je System gesucht, und ohne Betrachter gibt es den Menuepunkt gar nicht; dazu die eigene Konsole (tty3, Wechsel VOR dem F9) und die Hand am Pad (Tastentabelle aus MiSTers eigener Doku, Grab mit Ausnahme an echten Objekten) |
 | `test_konsole_nachfassen.py` | Test (Pass/Fail) | Nach einem Konsolenprogramm wird OHNE Nachsehen gewischt - mit Gegenprobe, dass es in allen anderen Faellen beim alten Verhalten bleibt; dazu an ECHTEN Prozessen: die Grenze beendet ein haengendes Programm, und der Puls (Build 268) macht das Frontend waehrend eines Betrachters wieder ansprechbar |
 | `test_overlay_leer.py` | Test (Pass/Fail) | Der leere Kasten im Overlay: AM ECHTEN SKRIPT im Stub-DOM - er verschwindet nur, wenn WIRKLICH nichts sichtbar ist, und die Liste der Teile wird mit dem Markup verglichen |
+| `test_form_cache.py` | Test (Pass/Fail) | Die gemerkte FORM einer Rundung: 44 Formen x 3 Varianten bitgenau mit und ohne Cache, mit und ohne C, alle vier Bildraender, dieselbe Form an verschiedenen Stellen - und Test 0 prueft, dass der Cache im Betrieb ueberhaupt an ist |
 | `diag_ungeprueft.py` | Diagnose (immer Rueckgabewert 0) | Welche Funktionen betritt KEIN Test - gemessen mit sys.setprofile, nicht ueber Namen im Testtext |
 | `_spur.py` | Hilfsmodul | Laesst eine einzelne Testdatei unter sys.setprofile laufen und schreibt jede betretene Funktion mit |
 | `_harness.py` | Hilfsmodul | Framebuffer-Attrappe + kuenstliche Uhr fuer die Zeichen-Tests |
@@ -4615,6 +4616,55 @@ Abschnitt JOYSTICK: „btn1 - enter", „L - pageup", „R - pagedn"). Dort
 steht auch, *dass* MiSTer die Knoepfe in Tasten uebersetzt - die
 Erklaerung fuer „ich kann erst blaettern, wenn ich einmal die
 Leertaste gedrueckt habe".
+
+### Build 271: test_form_cache.py - und ein Test, der sich nicht selbst gruen machen darf
+
+**Die Lehre dieses Builds steht in Test 0**, und sie ist mir beim
+Suite-Lauf um die Ohren geflogen.
+
+Die gemerkte Form hat eine Vorgabe auf **Klassenebene: None** ("nicht
+merken"). Das ist richtig, weil ein ueber `__new__` gebautes
+Framebuffer-Objekt sonst mitten im Zeichnen mit einem `AttributeError`
+aussteigt - genau das ist im ersten Lauf in **29 Tests** passiert.
+
+**Die Vorgabe hat dann aber eine zweite Wirkung**, und die ist
+heimtueckisch: `tools/_harness.py` bildet die Feldliste des echten
+`__init__` nach. Fehlt das Feld dort, laeuft die **ganze Suite** mit
+abgeschaltetem Cache - und jeder Test ist gruen, weil nichts falsch
+gerechnet wird. Es wird nur nichts gemerkt. Auf dem Geraet waere der
+Build eine Nullnummer gewesen, und kein Test haette es gesagt.
+
+Schlimmer noch: `test_form_cache.py` setzt `fb._formcache` selbst,
+weil es beide Wege vergleichen muss. **Dieser Test konnte sich also
+selbst gruen machen.** Deshalb steht jetzt als **Test 0** die einzige
+Pruefung, die das nicht kann:
+
+```python
+check("das Feld ist ein Wortverzeichnis, kein None",
+      isinstance(fb._formcache, dict), ...)
+```
+
+**Regel daraus:** wenn ein Test eine Einstellung selbst setzt, um
+beide Zustaende zu pruefen, braucht er eine Pruefung VORHER, dass der
+Zustand im Betrieb ueberhaupt der erwartete ist.
+
+**Was der Test sonst prueft**, und das ist die eigentliche Zusage: 44
+Formen x 3 Varianten, jede zweimal gezeichnet (mit und ohne Cache) und
+**Byte fuer Byte** verglichen, **mit und ohne C** - der relative
+Streifen geht in beide Wege, ein Fehler im Umrechnen traefe beide, ein
+Fehler in der Reihenfolge nur einen. Darunter ausdruecklich:
+
+- alle vier **Bildraender** und halb aus dem Bild haengende Karten
+  (dort beschneiden `rect_rounded()` und `gestalt()` die Masse, und
+  genau deshalb darf die Form nur an den BESCHNITTENEN Massen haengen),
+- dieselbe Form an **verschiedenen Stellen** - wuerde die Position
+  mitgemerkt, zeichnete die zweite Karte an der Stelle der ersten, und
+  ein Vergleich, der jede Form einzeln prueft, saehe das nicht,
+- jede Groesse, die die Form aendert, **einzeln** gegen den Schluessel
+  gehalten (Breite, Hoehe, Radius, Versatz),
+- und dass zwanzig Karten nur **zwei** Formaufbauten kosten - gezaehlt
+  am `_zeilen_buendeln()`-Aufruf, nicht gestoppt (die Lehre aus 267
+  und 269).
 
 ### Nachtrag Build 270: eine Luecke mit Richtung
 

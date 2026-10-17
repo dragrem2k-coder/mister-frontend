@@ -13,6 +13,16 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.8 — not yet released
 
+**Faster scrolling: a card's shape is computed only once.**
+
+- **The measurement from build 270 set the direction**, and it was unambiguous: of the 13.04 ms `karte_mit_schatten` costs in the list view, **5.83 ms are inside the C filler and 7.21 ms before it, in Python**. Those 7.2 ms are the loops over the corner rows — at radius 96 some 300 iterations per card, and **twice** (shadow and card) —, the bundling, and building the tuple for C.
+- **That shape does not depend on the position.** It depends on width, height, radius, offset and the skipped span — and while scrolling those never change. What is remembered now is the bundled strip list **relative to the top-left corner**; the caller adds its position (a list comprehension over some 50 tuples instead of 300 loop iterations).
+- **Counted what it saves:** twenty cards now cost **two** shape builds instead of forty.
+- **Proven bit-exact, not reasoned** (`tools/test_form_cache.py`): 44 shapes × 3 variants, each drawn twice — once with the cache, once without — and compared byte for byte, **with and without C**. Explicitly including all four screen edges, cards hanging half off-screen, radius 0 and 1, and the same shape at **different** positions (the real trap: if the position were remembered too, the second card would draw at the first one's place).
+- **1.30× on the development machine** (0.279 → 0.215 ms per card). The Python share is small there; on the device it is 55 % of the time, so it should be worth considerably more — and **the next `--bench` says exactly that**: the "before that, in Python" line from build 270 is the number that has to drop.
+- **A switch is not needed but exists:** setting `self._formcache` to `None` computes as before — that is how the test compares both paths.
+
+
 **On the measuring tool: the largest unnamed item gets a direction.**
 
 - **Nothing you notice while playing** — but the precondition for the next change making something faster rather than merely different.

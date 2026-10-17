@@ -307,6 +307,23 @@ class Framebuffer:
             raise last_error
         self._map()
         self._rowcache = {}
+        # DIE FORM EINER RUNDUNG, EINMAL GERECHNET (Build 271).
+        #
+        # Nicht die Bildpunkte - die liegen in _rectcache - sondern die
+        # LISTE DER STREIFEN, aus denen eine abgerundete Ecke besteht.
+        # Sie haengt nur an Breite, Hoehe, Radius, Versatz und der
+        # ausgesparten Spanne, NICHT an der Position und nicht an der
+        # Farbe; gespeichert wird deshalb relativ zur linken obveren
+        # Ecke, und der Aufrufer rechnet seine Position dazu.
+        #
+        # WARUM, und es ist gemessen (Bench 10, Abschnitt K, Liste/
+        # liste mit Cover): karte_mit_schatten kostet 13,04 ms, davon
+        # 5,83 ms im C-Fueller und 7,21 ms DAVOR in Python. Diese 7,2 ms
+        # sind die Zeilenschleifen ueber die Eckenzeilen (bei Radius 96
+        # rund 300 Durchlaeufe je Karte, zweimal - Schatten und Karte),
+        # das Buendeln und der Bau des Tupels. Dieselbe Karte an
+        # derselben Stelle, in jedem Scrollschritt neu.
+        self._formcache = {}
         self._rectcache = {}   # eigener Cache fuer rect() (siehe dort) -
                                 # getrennt von _rowcache, damit dessen
                                 # Obergrenze nicht die selten wechselnden,
@@ -1513,6 +1530,47 @@ class Framebuffer:
                 buf[off:off + need] = row
                 off += stride
 
+    # VORGABE AUF KLASSENEBENE, und das ist kein Schoenheitsfehler:
+    # ein Framebuffer-Objekt kann ohne den Oeffnungsweg entstehen
+    # (Pruefstaende bauen eines ueber __new__, und eine aeltere
+    # Fassung hat das Feld nicht). None heisst "nicht merken" - dann
+    # rechnet jeder Aufruf wie vor Build 271, statt mit einem
+    # AttributeError mitten im Zeichnen auszusteigen. Genau das ist
+    # beim ersten Suite-Lauf von Build 271 passiert, in 29 Tests.
+    _formcache = None
+
+    def _form_merken(self, schluessel, bauen):
+        """Die FORM einer Rundung einmal rechnen und dann merken
+        (Build 271).
+
+        "bauen" liefert die gebuendelte Streifenliste RELATIV zur
+        linken oberen Ecke. Dass das zulaessig ist, haengt an einer
+        Zusage, die beide Aufrufer vorher herstellen: die Form liegt
+        VOLLSTAENDIG im Bild. rect_rounded() beschneidet dafuer x, y,
+        w und h gleich am Anfang, rect_rounded_schatten() tut dasselbe
+        in gestalt() fuer beide Kaesten. Danach kann keine Zeile und
+        keine Spalte mehr aus dem Bild fallen - und genau deshalb
+        haengt die Form nur noch an den Massen, nicht an der Position.
+
+        Wer das aendert, muss diesen Cache anfassen: eine Form, die am
+        Bildrand anders aussieht als in der Mitte, waere unter
+        demselben Schluessel falsch gemerkt. Dagegen prueft
+        tools/test_form_cache.py ausdruecklich die Raender.
+
+        Der Schalter dazu ist ein None: wer self._formcache auf None
+        setzt, rechnet jedes Mal neu - so vergleicht der Test beide
+        Wege bitgenau gegeneinander."""
+        cache = self._formcache
+        if cache is None:
+            return bauen()
+        fertig = cache.get(schluessel)
+        if fertig is None:
+            if len(cache) > ROWCACHE_MAX_ENTRIES:
+                cache.clear()
+            fertig = bauen()
+            cache[schluessel] = fertig
+        return fertig
+
     @staticmethod
     def _zeilen_buendeln(zeilen):
         """Senkrecht aneinandergrenzende Zeilen gleicher Startspalte und
@@ -2057,28 +2115,44 @@ class Framebuffer:
                                                               sh))
         else:
             _bereich = range(sh)
-        for j in _bereich:
-            zy = sy + j
-            if zy < 0 or zy >= self.height:
-                continue
-            if ohne is not None and ohne[0] <= zy < ohne[1]:
-                continue
-            e = einzug(schatten, j)
-            s0, s1 = sx + e, sx + sw - e
-            if s1 <= s0:
-                continue
-            ce = einzug(karte, zy - (karte[1] if karte else 0))
-            if karte is None or ce is None:
-                zeile(zy, s0, s1)
-                continue
-            cx, _cy, cw = karte[0], karte[1], karte[2]
-            zeile(zy, s0, min(s1, cx + ce))
-            zeile(zy, max(s0, cx + cw - ce), s1)
+
+        # EINMAL RECHNEN, DANN MERKEN (Build 271) - siehe
+        # _form_merken(). Gebaut wird relativ zu (sx, sy): gestalt()
+        # hat beide Kaesten schon ins Bild beschnitten, also kann hier
+        # keine Zeile und keine Spalte mehr herausfallen, und die Form
+        # haengt nur noch an den Massen.
+        def _streifen_bauen():
+            for j in _bereich:
+                zy = sy + j
+                if ohne is not None and ohne[0] <= zy < ohne[1]:
+                    continue
+                e = einzug(schatten, j)
+                s0, s1 = sx + e, sx + sw - e
+                if s1 <= s0:
+                    continue
+                ce = einzug(karte, zy - (karte[1] if karte else 0))
+                if karte is None or ce is None:
+                    zeile(zy, s0, s1)
+                    continue
+                cx, _cy, cw = karte[0], karte[1], karte[2]
+                zeile(zy, s0, min(s1, cx + ce))
+                zeile(zy, max(s0, cx + cw - ce), s1)
+            return [(zx - sx, zy_ - sy, zw, zh)
+                    for (zx, zy_, zw, zh) in self._zeilen_buendeln(
+                        _gesammelt)]
+
+        _rel = self._form_merken(
+            ("rund+schatten", sw, sh, sr, versatz,
+             None if karte is None else (karte[0] - sx, karte[1] - sy,
+                                         karte[2], karte[3], karte[4]),
+             None if ohne is None else (ohne[0] - sy, ohne[1] - sy)),
+            _streifen_bauen)
+        _gesammelt = [(sx + zx, sy + zy_, zw, zh)
+                      for (zx, zy_, zw, zh) in _rel]
 
         # Und jetzt alles auf einmal. Der Rueckfall schreibt genau das,
         # was zeile() vorher direkt geschrieben hat.
         if _gesammelt:
-            _gesammelt = self._zeilen_buendeln(_gesammelt)
             fueller = self.flaechen_fueller
             erledigt = False
             if self._nach_c_viele(sum(z[3] for z in _gesammelt),
@@ -2167,19 +2241,30 @@ class Framebuffer:
         # Gesammelt wird in derselben Reihenfolge, in der die Schleife
         # sonst schreibt - das Ergebnis ist bitgenau dasselbe, denn die
         # Zeilen ueberlappen sich nicht.
-        ecken = []
-        for i, indent in enumerate(indents):
-            rw = w - 2 * indent
-            if rw <= 0:
-                continue
-            yy_top = y + i
-            yy_bot = y + h - 1 - i
-            if 0 <= yy_top < self.height and not _ausgespart(yy_top):
-                ecken.append((x + indent, yy_top, rw, 1))
-            if (yy_bot != yy_top and 0 <= yy_bot < self.height
-                    and not _ausgespart(yy_bot)):
-                ecken.append((x + indent, yy_bot, rw, 1))
-        ecken = self._zeilen_buendeln(ecken)
+        # EINMAL RECHNEN, DANN MERKEN (Build 271) - siehe
+        # _form_merken(). Gebaut wird relativ zu (x, y); die Pruefung
+        # auf den Bildrand ist hier nicht mehr noetig, weil x, y, w
+        # und h oben schon beschnitten wurden: y >= 0 und y + h <=
+        # self.height, also liegt jede Zeile zwischen y und y+h-1 im
+        # Bild. Genau diese Zusage traegt den Cache.
+        def _ecken_bauen():
+            roh = []
+            for i, indent in enumerate(indents):
+                rw = w - 2 * indent
+                if rw <= 0:
+                    continue
+                dy_bot = h - 1 - i
+                if not _ausgespart(y + i):
+                    roh.append((indent, i, rw, 1))
+                if dy_bot != i and not _ausgespart(y + dy_bot):
+                    roh.append((indent, dy_bot, rw, 1))
+            return self._zeilen_buendeln(roh)
+
+        ecken = [(x + ex, y + ey, ew, eh) for (ex, ey, ew, eh)
+                 in self._form_merken(
+                     ("rund", w, h, radius,
+                      None if ohne is None else (ohne[0] - y, ohne[1] - y)),
+                     _ecken_bauen)]
         fueller = self.flaechen_fueller
         erledigt = False
         if ecken and self._nach_c_viele(sum(e[3] for e in ecken),
