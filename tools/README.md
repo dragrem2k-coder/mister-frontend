@@ -4618,6 +4618,60 @@ steht auch, *dass* MiSTer die Knoepfe in Tasten uebersetzt - die
 Erklaerung fuer „ich kann erst blaettern, wenn ich einmal die
 Leertaste gedrueckt habe".
 
+### Nachtrag Build 275: die Aufteilung lag schon da, nur am falschen Ort
+
+**Die Frage war „kann der Startvorgang schneller werden?", und
+Abschnitt A des Benchs sagte dazu eine Zahl:**
+
+```
+   Start bis Kategorien bereit                2998 ms
+```
+
+Eine Zahl ohne Aufteilung schickt einen an die falsche Stelle - das war
+schon die Lehre aus Build 270 (die ungeklaerten Millisekunden in
+Abschnitt K). Also dieselbe Behandlung: aufteilen, dann den groessten
+Posten angehen.
+
+**Nur: diesmal musste die Aufteilung nicht gebaut werden.** Fuenfzehn
+`_startmarke()`-Aufrufe liegen im Startweg, seit **Build 158**, mit
+genau dieser Begruendung im Quelltext („der Scan ist der groesste
+Einzelposten des Starts ... ohne getrennte Zahl weiss man nicht,
+welchen Fall man gerade misst"). Geschrieben wurden sie ins
+**Protokoll** - also dorthin, wo man sie nur findet, wenn man weiss,
+dass es sie gibt. Im Bericht, der verglichen und verschickt wird, stand
+sie nicht.
+
+Das ist der Zwillingsbruder des Befunds aus Build 273: dort hatte ein
+Zaehler aus dem Jahr davor die Antwort schon fertig. **Zweimal
+hintereinander war die Messung, die ich bauen wollte, bereits
+vorhanden** - und zweimal lag sie an einer Stelle, an der niemand
+hinsieht. Fuer die Messstellen heisst das: wer eine Zahl ermittelt,
+muss sie auch dorthin bringen, wo sie gelesen wird.
+
+**Zwei Dinge, die die Aufteilung richtig machen muessen:**
+
+- **„davon ..." ist ein UNTERposten** (so heissen sie im Quelltext seit
+  158) und in der Zeile darueber bereits enthalten. Mitgezaehlt waere
+  die Summe doppelt, also werden sie eingerueckt.
+- **Nur der erste Aufbau zaehlt.** `build_categories()` laeuft spaeter
+  wieder (RA-Daten, Neueinlesen), und dann sind die Marken keine
+  STARTzeiten mehr. Die Liste wird am Startende dicht gemacht
+  (`_startposten_fertig`, `_startposten = None`); spaetere Aufbauten
+  stehen weiterhin im Protokoll, wo sie hingehoeren.
+
+**Und eine Gegenprobe auf die eigene Rechnung:** die Summe der
+Oberposten muss die Startdauer ergeben. Geht sie nicht auf, steht
+`nicht zugeordnet ... <- hier fehlt eine Marke` darunter. Eine
+Aufschluesselung, die nicht aufgeht, schickt einen genauso an die
+falsche Stelle wie keine (Build 193).
+
+**Der Test haengt nicht an einer Zeichenposition.** Der erste Entwurf
+suchte `except AttributeError` in den ersten 1800 Zeichen nach `def
+_startmarke` - und wurde rot, weil die Begruendung darueber laenger ist
+als das Fenster. Geprueft wird jetzt der Rumpf bis zur naechsten
+Methode. Dieselbe Falle hat Build 267 und Build 272 je einen Anlauf
+gekostet.
+
 ### Nachtrag Build 274: der Name war die halbe Behebung
 
 **Build 273 hat gefragt, das Geraet hat geantwortet, und zwar in einer

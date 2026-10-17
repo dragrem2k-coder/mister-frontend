@@ -13,7 +13,14 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
-*(hier sammelt sich, was nach der Veröffentlichung dazukommt)*
+- **Der Bench sagt jetzt, wohin die drei Sekunden des Starts gehen.**
+  Abschnitt A nannte eine einzige Zahl („Start bis Kategorien bereit
+  2998 ms"), und damit ist die Frage „kann der Start schneller werden?"
+  nicht zu beantworten. Die Aufteilung gab es längst — fünfzehn
+  Zwischenzeiten liegen seit v3.x im Startweg —, sie landete nur im
+  Protokoll und nicht im Bericht. Jetzt steht sie im Bericht, mit
+  Prozentanteil, eingerückten Unterposten und einer Gegenprobe, die
+  anzeigt, wenn eine Marke fehlt (Build 275).
 
 ---
 

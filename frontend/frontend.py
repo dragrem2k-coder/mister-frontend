@@ -1536,6 +1536,9 @@ class Frontend:
         # und beantwortet die Frage beim naechsten Boot von selbst.
         self._t_start = time.monotonic()
         self._t_letzte_marke = self._t_start
+        # Die Aufteilung des Starts, siehe _startmarke(). None heisst
+        # "nicht mehr sammeln" - das setzt das Startende.
+        self._startposten = []
         self.fb = Framebuffer()
         # Build 223: die eingestellte Schrift, bevor das erste Zeichen
         # faellt. Steht hier und nicht in Framebuffer(): das Modul
@@ -2350,6 +2353,12 @@ class Frontend:
         self._search_picker = False
         self._picker_i = 0
         self._startmarke("Rest des Aufbaus")
+        # AB HIER SIND ES KEINE STARTZEITEN MEHR (Build 275).
+        # build_categories() laeuft spaeter wieder (frische RA-Daten,
+        # Neueinlesen); dessen Marken gehoeren ins Protokoll, aber
+        # nicht in die Aufteilung des STARTS. Siehe _startmarke().
+        self._startposten_fertig = list(self._startposten)
+        self._startposten = None
         if self.music.available():
             self.music.tick()      # start playback right away
 
@@ -20025,12 +20034,40 @@ class Frontend:
         subtrahieren zu muessen; nur den Abschnitt zu loggen hiesse,
         aufaddieren zu muessen. Beides macht man genau einmal falsch."""
         jetzt = time.monotonic()
+        dauer = jetzt - self._t_letzte_marke
         try:
             LOG("START %-34s %6.0f ms   (gesamt %5.2f s)"
-                % (was, (jetzt - self._t_letzte_marke) * 1000.0,
-                   jetzt - self._t_start))
+                % (was, dauer * 1000.0, jetzt - self._t_start))
         except Exception:                            # noqa: BLE001
             pass                      # darf den Start nie stoeren
+        # UND IN EINE LISTE, NICHT NUR INS LOG (Build 275)
+        # --------------------------------------------------------------
+        # NUTZERFRAGE: "eventuell den Startvorgang noch beschleunigen
+        # koennen?" - und Abschnitt A des Benchs sagt dazu bisher nur
+        # eine Zahl: "Start bis Kategorien bereit 2998 ms".
+        #
+        # DIE AUFTEILUNG GAB ES SCHON, aber nur im Protokoll: fuenfzehn
+        # dieser Marken liegen im Startweg, seit Build 158 mit genau
+        # dieser Begruendung ("der Scan ist der groesste Einzelposten
+        # des Starts ... ohne getrennte Zahl weiss man nicht, welchen
+        # Fall man gerade misst"). Wer sie sehen wollte, musste im Log
+        # danach suchen - und im Bericht, der verglichen und
+        # verschickt wird, stand sie nicht.
+        #
+        # Das ist dieselbe Lehre wie in Build 270: eine Zahl ohne
+        # Aufteilung schickt einen an die falsche Stelle. Hier war die
+        # Aufteilung schon da und nur nicht am Ziel.
+        #
+        # NUR DER ERSTE AUFBAU: build_categories() laeuft auch spaeter
+        # wieder (RA-Daten, Neueinlesen), und dann sind die Marken
+        # keine STARTzeiten mehr. Die Liste ist deshalb nach dem
+        # Startende dicht - spaetere Aufbauten stehen weiterhin im
+        # Protokoll, wo sie hingehoeren.
+        try:
+            if self._startposten is not None:
+                self._startposten.append((was, dauer))
+        except AttributeError:
+            pass
         self._t_letzte_marke = jetzt
 
     @staticmethod

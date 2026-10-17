@@ -53,7 +53,7 @@ import zlib
 # aussehen - wer eine 1 und eine 2 nebeneinanderlegt, sieht sofort, dass
 # in der einen ein Abschnitt fehlt. Die Abschnitte A bis G haben sich
 # dabei nicht geaendert, ihre Zahlen bleiben also vergleichbar.
-BENCH_VERSION = 11
+BENCH_VERSION = 12
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -428,6 +428,49 @@ def _abschnitt_a(b, fe, spiele, startdauer):
                                  startdauer * 1000.0 / spiele))
     else:
         b("   (kein Bestand erkannt - je-Spiel-Wert entfaellt)")
+    # WOHIN DIE SEKUNDEN GEHEN (Build 275)
+    # ------------------------------------------------------------------
+    # NUTZERFRAGE: "eventuell den Startvorgang noch beschleunigen
+    # koennen?" Mit einer einzigen Zahl ist das nicht zu beantworten -
+    # dieselbe Lage wie bei den ungeklaerten Millisekunden in
+    # Abschnitt K vor Build 270.
+    #
+    # DIE AUFTEILUNG GAB ES SCHON, nur nicht hier: fuenfzehn Marken
+    # liegen im Startweg (seit Build 158), geschrieben wurden sie bisher
+    # nur ins Protokoll. Jetzt sammelt _startmarke() sie zusaetzlich in
+    # einer Liste, und sie stehen in dem Bericht, der verglichen und
+    # verschickt wird.
+    #
+    # "davon ..." sind UNTERposten des darueberliegenden Abschnitts
+    # (so heissen sie im Quelltext seit Build 158) - sie sind in der
+    # Summe also bereits enthalten und werden eingerueckt, statt
+    # mitgezaehlt zu werden.
+    posten = list(getattr(fe, "_startposten_fertig", None) or ())
+    if not posten:
+        b("   (keine Aufteilung vorhanden - aeltere Fassung oder der")
+        b("    Start lief ohne Marken)")
+        return
+    b("")
+    b("   AUFGETEILT (Build 275) - 'davon' ist ein Unterposten der")
+    b("   Zeile darueber und in ihr schon enthalten:")
+    for name, dauer in posten:
+        unter = name.startswith("davon ")
+        anteil = (dauer / startdauer * 100.0) if startdauer > 0 else 0.0
+        b("%s%-*s %8.0f ms  %4.0f %%"
+          % ("        " if unter else "   ", 33 if unter else 38,
+             name[6:] if unter else name, dauer * 1000.0, anteil))
+    # Die Gegenprobe auf die eigene Rechnung: die OBERposten muessen
+    # die Startdauer ergeben. Gehen sie nicht auf, fehlt eine Marke -
+    # und dann ist genau das die Auskunft (die Lehre aus Build 193,
+    # "eine Aufschluesselung, die nicht aufgeht, schickt einen an die
+    # falsche Stelle").
+    oben = sum(d for n, d in posten if not n.startswith("davon "))
+    b("   %-38s %8.0f ms  %4.0f %%"
+      % ("Summe der Oberposten", oben * 1000.0,
+         (oben / startdauer * 100.0) if startdauer > 0 else 0.0))
+    if startdauer - oben > 0.05:
+        b("   %-38s %8.0f ms   <- hier fehlt eine Marke"
+          % ("nicht zugeordnet", (startdauer - oben) * 1000.0))
 
 
 def _groesste_kategorie(fe):

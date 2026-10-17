@@ -1267,6 +1267,56 @@ check("die Bench-Nummer ist fuer Build 272 mitgewachsen",
 
 # ---------------------------------------------------------------------------
 print()
+print("Build 275: Abschnitt A sagt, WOHIN die Sekunden gehen")
+# ---------------------------------------------------------------------------
+# NUTZERFRAGE: "eventuell den Startvorgang noch beschleunigen koennen?"
+# Abschnitt A sagte dazu eine einzige Zahl ("Start bis Kategorien
+# bereit 2998 ms") - und das ist dieselbe Lage wie bei den
+# ungeklaerten Millisekunden in Abschnitt K vor Build 270: eine Zahl
+# ohne Aufteilung schickt einen an die falsche Stelle.
+#
+# DIE AUFTEILUNG GAB ES SCHON, nur nicht im Bericht: fuenfzehn
+# _startmarke()-Aufrufe liegen im Startweg, seit Build 158 mit genau
+# dieser Begruendung. Geschrieben wurden sie ins Protokoll - also
+# dorthin, wo sie beim Vergleich zweier Berichte niemand sieht.
+check("die Marken werden gesammelt, nicht nur geloggt",
+      "self._startposten.append((was, dauer))" in _fq,
+      "fuenfzehn Marken lagen schon im Startweg - sie kamen nur nie "
+      "im Bericht an")
+check("und nur die des STARTS",
+      "self._startposten = None" in _fq
+      and "_startposten_fertig" in _fq,
+      "build_categories() laeuft spaeter wieder (RA-Daten, "
+      "Neueinlesen) - dessen Marken sind keine Startzeiten")
+# Kein Fenster aus Zeichenzahl: die Begruendung ueber dem Anhaengen
+# ist lang, und ein zu enges Fenster liesse den Test an einer
+# Umformulierung scheitern statt an der Sache (Lehre aus 267 und 272).
+# Geprueft wird der Rumpf von _startmarke bis zur naechsten Methode.
+_marke_rumpf = _fq.split("def _startmarke", 1)[1].split("\n    def ", 1)[0]
+check("ein fehlendes Feld stoert den Start nicht",
+      "except AttributeError" in _marke_rumpf
+      and "self._startposten.append" in _marke_rumpf,
+      "eine Messung darf den Start nie verhindern - dieselbe Zusage "
+      "wie beim LOG daneben")
+check("Abschnitt A gibt die Aufteilung aus",
+      "AUFGETEILT (Build 275)" in _q and "_startposten_fertig" in _q)
+check("Unterposten werden eingerueckt, nicht mitgezaehlt",
+      'name.startswith("davon ")' in _q,
+      "'davon ...' heisst seit Build 158 UNTERposten - zweimal "
+      "gezaehlt waere die Summe doppelt")
+check("und es gibt die Gegenprobe auf die eigene Rechnung",
+      "Summe der Oberposten" in _q and "hier fehlt eine Marke" in _q,
+      "eine Aufschluesselung, die nicht aufgeht, schickt einen an die "
+      "falsche Stelle - die Lehre aus Build 193")
+check("ohne Aufteilung sagt der Bericht genau das",
+      "keine Aufteilung vorhanden" in _q,
+      "eine aeltere Fassung hat die Liste nicht - das ist eine "
+      "Auskunft und kein Absturz")
+check("die Bench-Nummer ist fuer Build 275 mitgewachsen",
+      B.BENCH_VERSION >= 12, str(B.BENCH_VERSION))
+
+# ---------------------------------------------------------------------------
+print()
 print("Build 247: die Schreib-Warteschlange im Bericht")
 # ---------------------------------------------------------------------------
 check("der kalte Fall nennt den Stand der Schlange",

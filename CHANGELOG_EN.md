@@ -13,7 +13,14 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
-*(whatever comes after the release collects here)*
+- **The bench now says where the three seconds of startup go.**
+  Section A reported a single number ("start until categories ready
+  2998 ms"), and that cannot answer "can the start be made faster?".
+  The breakdown had existed for a long time — fifteen intermediate
+  marks sit along the startup path since v3.x — but it only went to the
+  log, never to the report. Now it is in the report, with percentages,
+  indented sub-items and a cross-check that says so when a mark is
+  missing (build 275).
 
 ---
 
