@@ -13,6 +13,14 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Behoben: nach dem Beenden startete MiSTer keine Scripts mehr.**
+  Nach einer geöffneten Spielanleitung blieb die Anleitungs-Konsole
+  (tty3) vorne, statt auf tty1 zurückzuschalten — und MiSTers Scripts
+  laufen auf tty1. Sie starteten also, aber niemand sah oder bediente
+  sie; von außen sah das aus wie „nichts passiert mehr", und es half
+  nur ein Kaltstart. Der Rückwechsel sieht jetzt nach, ob er gegriffen
+  hat, nimmt sonst einen zweiten Weg — und der Ausstieg stellt die
+  Konsole in jedem Fall zurück (Build 278).
 - **Behoben: die Liste scrollte nach dem Loslassen von alleine weiter.**
   Ein Fehler aus Build 276 — dort kam der fällige Schritt durch, sobald
   *ein* Ereignis gelesen war, und jede Runde liest nur eines je Gerät.

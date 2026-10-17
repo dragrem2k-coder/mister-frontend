@@ -485,6 +485,107 @@ try:
 finally:
     shutil.rmtree(TMP, ignore_errors=True)
 
+# ---------------------------------------------------------------------------
+print()
+print("Build 278: liegt tty1 danach wirklich wieder vorne?")
+sys.path.insert(0, _HIER)
+import _harness as H                                      # noqa: E402
+# ---------------------------------------------------------------------------
+# NUTZERMELDUNG: "wenn das frontend länger läuft und ich beende es und
+# gehe ins osd zurück und möchte dann aus dem osd ein script ausführen
+# zum beispiel frontend_install.sh oder sonst eins passiert nichts mehr,
+# mister muss ich dann einmal kalt neustarten."
+#
+# DIE DIAGNOSE WAR EINE ZEILE:
+#
+#     # cat /sys/class/tty/tty0/active
+#     tty3
+#
+# tty3 ist UNSERE Anleitungs-Konsole (ANLEITUNG_VT). Sie lag noch
+# vorne, waehrend das Frontend lief - der Rueckwechsel hatte also nicht
+# gegriffen, und zwar OHNE eine einzige Fehlermeldung. MiSTers Scripts
+# laufen auf tty1; liegt eine andere Konsole vorne, startet das Script
+# zwar, aber niemand sieht und bedient es.
+#
+# LEHRE, und es ist dieselbe wie bei den eingespeisten F9/F12 (Build
+# 169/184): ein ioctl, der nicht wirft, ist kein Beweis, dass etwas
+# passiert ist. Angefordert ist nicht angekommen.
+_fe3 = io.open(os.path.join(_FRONTEND_DIR, "frontend.py"),
+               encoding="utf-8").read()
+
+check("es gibt eine Stelle, die den Kernel FRAGT, welche VT vorne ist",
+      "/sys/class/tty/tty0/active" in _fe3 and "def _aktive_vt" in _fe3,
+      "vorher wurde nur angefordert und gehofft")
+check("der Rueckweg sieht danach nach",
+      "def _zurueck_auf_tty1" in _fe3
+      and "aktiv = self._aktive_vt()" in
+          _fe3.split("def _zurueck_auf_tty1")[1][:2500])
+check("und hat einen ZWEITEN Weg, nicht denselben zweimal",
+      '"/dev/tty0"' in _fe3 and "def _vt_erzwingen" in _fe3,
+      "der erste Aufruf geht an den Griff der eigenen Konsole, der "
+      "zweite an /dev/tty0 - ein Wiederholen auf demselben Griff "
+      "haette nichts gebracht")
+check("der AUSSTIEG stellt die Konsole zurueck",
+      "_vt = self._aktive_vt()" in _fe3.split("def _beenden")[1][:3000],
+      "das ist die letzte Stelle, an der wir es richtigstellen koennen "
+      "- danach gehoert die Maschine MiSTer")
+check("und zwar VOR dem F12",
+      _fe3.split("def _beenden")[1].index("_vt = self._aktive_vt()")
+      < _fe3.split("def _beenden")[1].index("_f12_bis_das_osd_kommt"),
+      "nach dem F12 wird die Konsole nicht mehr angefasst (Build 166)")
+check("misslingt es, steht es im Protokoll",
+      "keine Scripts" in _fe3,
+      "ein stilles Scheitern hat diesen Fehler vier Wochen "
+      "unentdeckt gelassen")
+
+# UND JETZT DAS VERHALTEN, nicht der Text.
+_fe4 = H.make_frontend(page=0)
+_tmpvt = tempfile.mkdtemp(prefix="vt_")
+try:
+    _datei = os.path.join(_tmpvt, "active")
+    io.open(_datei, "w").write("tty3\n")
+    _fe4.AKTIVE_VT_DATEI = _datei
+    check("'tty3' wird als 3 gelesen", _fe4._aktive_vt() == 3)
+    io.open(_datei, "w").write("tty1\n")
+    check("'tty1' als 1", _fe4._aktive_vt() == 1)
+    io.open(_datei, "w").write("\n")
+    check("Unsinn ergibt None, keine Ausnahme",
+          _fe4._aktive_vt() is None,
+          "eine fehlende oder fremde Datei darf den Ausstieg nicht "
+          "aufhalten")
+    os.remove(_datei)
+    check("eine fehlende Datei ebenfalls", _fe4._aktive_vt() is None)
+
+    # Der Rueckweg: der ioctl auf eine gewoehnliche Datei scheitert
+    # (ENOTTY) - genau der Fall "angefordert, nicht angekommen". Danach
+    # MUSS der zweite Weg versucht werden.
+    io.open(_datei, "w").write("tty3\n")
+    _versuche = []
+    _fe4._vt_erzwingen = lambda ziel=1: (_versuche.append(ziel) or True)
+    _attrappe = io.open(os.path.join(_tmpvt, "nicht_tty"), "w+b")
+    _fe4._zurueck_auf_tty1(_attrappe, 3)
+    _attrappe.close()
+    check("liegt danach nicht tty1 vorne, wird der zweite Weg gegangen",
+          _versuche == [1], repr(_versuche))
+
+    # Und wenn tty1 vorne liegt, passiert NICHTS weiter - kein
+    # unnoetiger Konsolenwechsel auf einem gesunden Geraet.
+    io.open(_datei, "w").write("tty1\n")
+    _versuche[:] = []
+    _attrappe = io.open(os.path.join(_tmpvt, "nicht_tty"), "w+b")
+    _fe4._zurueck_auf_tty1(_attrappe, 3)
+    _attrappe.close()
+    check("liegt tty1 schon vorne, wird nichts erzwungen",
+          _versuche == [], repr(_versuche))
+
+    # Ohne eigene Konsole (vt=0) wird gar nicht gewechselt - das war
+    # schon vorher so und bleibt.
+    _versuche[:] = []
+    _fe4._zurueck_auf_tty1(None, 0)
+    check("ohne eigene Konsole bleibt alles unberuehrt", _versuche == [])
+finally:
+    shutil.rmtree(_tmpvt, ignore_errors=True)
+
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))

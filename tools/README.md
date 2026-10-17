@@ -4618,6 +4618,66 @@ steht auch, *dass* MiSTer die Knoepfe in Tasten uebersetzt - die
 Erklaerung fuer „ich kann erst blaettern, wenn ich einmal die
 Leertaste gedrueckt habe".
 
+### Nachtrag Build 278: ein ioctl, der nicht wirft, ist kein Beweis
+
+**Die Meldung klang nach einem Raetsel:**
+
+> „wenn das frontend länger läuft und ich beende es und gehe ins osd
+> zurück und möchte dann aus dem osd ein script ausführen zum beispiel
+> frontend_install.sh oder sonst eins passiert nichts mehr, mister muss
+> ich dann einmal kalt neustarten"
+
+**Die Diagnose war eine Zeile:**
+
+```
+# cat /sys/class/tty/tty0/active
+tty3
+```
+
+tty3 ist **unsere** Anleitungs-Konsole (`ANLEITUNG_VT`). Sie lag noch
+vorne, waehrend das Frontend lief. MiSTers Scripts laufen auf tty1 -
+sie starten also, aber niemand sieht und bedient sie. Von aussen ist
+das nicht von „haengt" zu unterscheiden.
+
+**Und es war still.** `_zurueck_auf_tty1()` ruft `VT_ACTIVATE` und
+`VT_WAITACTIVE` auf dem Griff der eigenen Konsole und protokolliert nur
+den Fehlerfall. Geworfen hat nichts. Dass nichts geworfen hat, heisst
+aber nicht, dass der Wechsel stattgefunden hat.
+
+> **Lehre: angefordert ist nicht angekommen** - dieselbe, die Build 169
+> fuer das F12 und Build 184 fuer das F9 gekostet hat. Beide Male war
+> die Behebung, hinterher NACHZUSEHEN. Dass ich diese Lehre beim
+> Konsolenwechsel nicht angewendet habe, obwohl `_f12_bis_das_osd_
+> kommt()` dreissig Zeilen weiter genau das tut, ist der eigentliche
+> Fehler.
+
+**Drei Dinge jetzt:**
+
+- **`_aktive_vt()` fragt den Kernel**, statt zu glauben, was wir
+  angefordert haben.
+- **Ein ZWEITER Weg**, nicht derselbe zweimal: der erste Aufruf geht an
+  den Griff der eigenen Konsole, `_vt_erzwingen()` an `/dev/tty0` -
+  also an „die Konsole, die gerade vorne ist". Ein Wiederholen auf
+  demselben Griff haette nichts gebracht.
+- **Der Ausstieg stellt es in jedem Fall richtig**, vor dem F12 (nach
+  dem F12 wird die Konsole nicht mehr angefasst, Build 166). Das ist
+  die letzte Stelle, an der wir es koennen - danach gehoert die
+  Maschine MiSTer. Dieselbe Begruendung wie beim Griff auf die
+  Eingaben (Build 163): was wir uns geholt haben, geben wir zurueck,
+  und zwar nachweislich.
+
+Misslingt es trotzdem, steht es im Protokoll - mit der Folge im
+Klartext („MiSTer kann von seinem OSD aus keine Scripts starten").
+Ein stilles Scheitern hat diesen Fehler ueberhaupt erst so lange
+unentdeckt gelassen.
+
+**Der Verhaltenstest** zeigt auf eine untergeschobene Datei statt auf
+`/sys` und laesst den ersten ioctl absichtlich scheitern (ENOTTY auf
+eine gewoehnliche Datei) - das ist genau der Fall „angefordert, nicht
+angekommen". Danach muss der zweite Weg kommen. Dazu die Gegenprobe:
+liegt tty1 schon vorne, wird **nichts** erzwungen; auf einem gesunden
+Geraet soll kein ueberfluessiger Konsolenwechsel passieren.
+
 ### Nachtrag Build 277: die Zusage, die ich in 276 gebrochen habe
 
 **Die Rueckmeldung kam mit demselben Protokoll, das die Behebung

@@ -14059,11 +14059,76 @@ class Frontend:
                 "vermutlich NICHT sichtbar auf dem Bildschirm!" % e)
             return None, 0
 
+    # Wo der Kernel sagt, WELCHE Konsole gerade vorne ist. Die eine
+    # Auskunft, die beim Rueckwechsel bisher gefehlt hat (Build 278).
+    AKTIVE_VT_DATEI = "/sys/class/tty/tty0/active"
+
+    def _aktive_vt(self):
+        """Nummer der gerade aktiven Konsole - oder None.
+
+        Liest, was der Kernel sagt, statt zu glauben, was wir
+        angefordert haben. Genau dieser Unterschied hat Build 278
+        ausgeloest."""
+        try:
+            with open(self.AKTIVE_VT_DATEI) as f:
+                name = f.read().strip()
+        except OSError:
+            return None
+        ziffern = "".join(c for c in name if c.isdigit())
+        try:
+            return int(ziffern)
+        except ValueError:
+            return None
+
+    def _vt_erzwingen(self, ziel=1):
+        """Die aktive Konsole auf <ziel> bringen, ueber /dev/tty0.
+
+        ZWEITER WEG, und mit Absicht ein anderer als in
+        _zurueck_auf_tty1(): dort geht der Aufruf an den Dateigriff
+        der EIGENEN Konsole, hier an /dev/tty0 - also an "die Konsole,
+        die gerade vorne ist". Wenn der erste Weg nicht greift, bringt
+        ein zweiter Aufruf auf demselben Griff nichts.
+
+        Gibt True zurueck, wenn danach nachweislich <ziel> vorne ist."""
+        if self._aktive_vt() == ziel:
+            return True
+        try:
+            with open("/dev/tty0", "wb", buffering=0) as t0:
+                fcntl.ioctl(t0.fileno(), self.VT_ACTIVATE, ziel)
+                fcntl.ioctl(t0.fileno(), self.VT_WAITACTIVE, ziel)
+        except OSError as e:
+            LOG("VT: Wechsel auf tty%d ueber /dev/tty0 fehlgeschlagen "
+                "(%s)" % (ziel, e))
+            return False
+        return self._aktive_vt() == ziel
+
     def _zurueck_auf_tty1(self, tty, vt):
         """Nach einer eigenen Konsole wieder auf tty1 - IMMER, auch
         nach einem Absturz des Programms. Eine Konsole, auf der
         niemand mehr einloggen kann, waere schlimmer als das
-        Problem."""
+        Problem.
+
+        BUILD 278: UND DANACH NACHSEHEN, OB ES GEKLAPPT HAT.
+
+        Der Nutzer hat gemeldet: "wenn das frontend länger läuft und
+        ich beende es und gehe ins osd zurück und möchte dann aus dem
+        osd ein script ausführen ... passiert nichts mehr, mister muss
+        ich dann einmal kalt neustarten". Die Diagnose war eine Zeile:
+
+            # cat /sys/class/tty/tty0/active
+            tty3
+
+        tty3 ist UNSERE Anleitungs-Konsole. Sie war noch vorne,
+        waehrend das Frontend lief - der Rueckwechsel hatte also nicht
+        gegriffen, und zwar ohne eine einzige Fehlermeldung. MiSTers
+        Scripts laufen auf tty1; liegt eine andere Konsole vorne,
+        passiert fuer den Zuschauer nichts.
+
+        Dass der ioctl nicht geworfen hat, heisst nicht, dass der
+        Wechsel stattgefunden hat - das ist dieselbe Lehre wie bei den
+        eingespeisten F9/F12 (Build 184/169): angefordert ist nicht
+        angekommen. Also wird nachgesehen, und wenn es nicht gegriffen
+        hat, geht es ueber den zweiten Weg (/dev/tty0)."""
         if not vt or tty is None:
             return
         try:
@@ -14071,6 +14136,17 @@ class Frontend:
             fcntl.ioctl(tty.fileno(), self.VT_WAITACTIVE, 1)
         except OSError as e:
             LOG("_auf_konsole: Rueckwechsel auf tty1 fehlgeschlagen (%s)" % e)
+        aktiv = self._aktive_vt()
+        if aktiv == 1 or aktiv is None:
+            return
+        LOG("VT: nach dem Rueckwechsel liegt tty%s vorne, nicht tty1 - "
+            "zweiter Weg ueber /dev/tty0" % aktiv)
+        if self._vt_erzwingen(1):
+            LOG("VT: tty1 liegt jetzt vorne")
+        else:
+            LOG("VT: tty1 liess sich NICHT nach vorne bringen - MiSTer "
+                "kann von seinem OSD aus keine Scripts starten, bis das "
+                "behoben ist")
 
     def _auf_konsole(self, wrapped, raw, name="", grafik=False,
                      grenze=0.0, eigene_konsole=False, puls=None):
@@ -23095,6 +23171,38 @@ class Frontend:
         self._notausgang_stellen()
         LOG("Exit: gebe Eingaben und Bildschirm frei")
         self.inp.grab(False)
+        # DIE KONSOLE MUSS VORNE LIEGEN, SONST IST MISTER STUMM
+        # (Build 278)
+        #
+        # Nutzermeldung: "wenn das frontend länger läuft und ich beende
+        # es und gehe ins osd zurück und möchte dann aus dem osd ein
+        # script ausführen ... passiert nichts mehr, mister muss ich
+        # dann einmal kalt neustarten." Die Diagnose auf seinem Geraet
+        # war eine einzige Zeile:
+        #
+        #     # cat /sys/class/tty/tty0/active
+        #     tty3
+        #
+        # tty3 ist UNSERE Anleitungs-Konsole (ANLEITUNG_VT). Sie lag
+        # noch vorne, waehrend das Frontend lief. MiSTers Scripts
+        # laufen auf tty1 - liegt eine andere Konsole vorne, startet
+        # das Script zwar, aber niemand sieht und bedient es. Von
+        # aussen sieht das aus wie "nichts passiert mehr".
+        #
+        # HIER und nicht nur im Rueckweg der Anleitung: der Ausstieg
+        # ist die letzte Stelle, an der wir es noch richtigstellen
+        # koennen. Danach gehoert die Maschine MiSTer. Dieselbe
+        # Begruendung wie beim Griff auf die Eingaben zwei Zeilen
+        # darueber (Build 163) - was wir uns geholt haben, geben wir
+        # zurueck, und zwar nachweislich und nicht hoffentlich.
+        _vt = self._aktive_vt()
+        if _vt is not None and _vt != 1:
+            LOG("Exit: tty%s liegt vorne, nicht tty1 - wird "
+                "zurueckgestellt" % _vt)
+            if not self._vt_erzwingen(1):
+                LOG("Exit: tty1 liess sich NICHT nach vorne bringen - "
+                    "MiSTer wird von seinem OSD aus keine Scripts "
+                    "starten koennen")
         # Die Konsole ZUERST wiederherstellen - solange unser Bild
         # noch oben liegt und ein Schreibvorgang auf tty1 nichts
         # umwerfen kann. Danach ist damit Schluss.

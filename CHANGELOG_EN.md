@@ -13,6 +13,14 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **Fixed: MiSTer would not start any scripts after the frontend
+  quit.** After a game manual had been opened, the manual's console
+  (tty3) stayed in front instead of switching back to tty1 — and
+  MiSTer's scripts run on tty1. They did start, but nobody could see or
+  operate them; from the outside it looked like "nothing happens any
+  more", and only a cold boot helped. The switch back now checks
+  whether it took effect, takes a second route if not — and the exit
+  path restores the console in any case (build 278).
 - **Fixed: the list kept scrolling on its own after the key was
   released.** A bug from build 276 — there, a due step was let through
   as soon as *one* event had been read, and each round reads only one
