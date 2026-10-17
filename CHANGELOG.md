@@ -13,6 +13,15 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.8 — noch nicht veröffentlicht
 
+**`--bench` holt sich erst den Bildschirm — und sagt, gegen wen gemessen wurde.**
+
+- **Gemeldet:** „wenn ich das Frontend beende und dann per PowerShell die Bench starte, bleibt das Bild im OSD-Menü. Beim alten Kernel habe ich den Bench immer mitlaufen sehen."
+- **Der Grund stand seit Build 184/185 im eigenen Code:** ein einzelnes F9 *sitzt* auf Kernel 6.18 nicht. Was es sitzen lässt, sind die Nachfasser in der **Hauptschleife** — und die erreicht der Bench nie, weil er direkt nach dem Start läuft und danach beendet.
+- **Und das ist kein Schönheitsfehler, sondern ein Messfehler.** Zeichnet MiSTer sein eigenes Menü, läuft es mit **90–100 % Last**; liegt unser Bild oben, schläft es bei **1–2 %**. Auf einem Gerät mit **zwei** Kernen ist das der Unterschied zwischen „die Maschine für sich" und „die Hälfte davon". Genau dieser Unterschied steckt möglicherweise in den 15 %, die zwischen den Berichten vom alten und vom neuen Kernel lagen — auf 5.15 saß das erste F9, auf 6.18 nicht.
+- **Jetzt holt der Bench sich den Bildschirm zuerst** (mit derselben Funktion wie die Boot-Animation, kein zweiter Weg) — man sieht ihn also wieder mitlaufen — **und misst MiSTers Last**. Der Berichtskopf sagt danach ausdrücklich „MiSTer schläft (1 %)" oder „MiSTer BESCHÄFTIGT (98 %) — alle Zahlen unten sind dagegen gemessen und nicht mit einem ruhigen Lauf vergleichbar".
+- Klappt das Holen nicht, läuft der Bench trotzdem: eine Messung, die wegen des Bildschirms gar nicht stattfindet, wäre schlimmer als eine unsichtbare. Bench-Nummer 10 → **11**.
+
+
 **Schneller scrollen: die Form einer Karte wird nur noch einmal gerechnet.**
 
 - **Die Messung aus Build 270 hat die Richtung vorgegeben**, und sie war eindeutig: von den 13,04 ms, die `karte_mit_schatten` in der Listenansicht kostet, liegen **5,83 ms im C-Füller und 7,21 ms davor in Python**. Die 7,2 ms sind die Zeilenschleifen über die Eckenzeilen — bei Radius 96 rund 300 Durchläufe je Karte, und zwar **zweimal** (Schatten und Karte) —, das Bündeln und der Bau des Tupels für C.

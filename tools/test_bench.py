@@ -317,7 +317,12 @@ check("und die liegt in /tmp, nicht auf der Karte",
 # Ohne das bliebe nach dem Bench ein schwarzer Schirm mit Cursor
 # stehen, statt zurueck ins MiSTer-Menue zu gehen - genau der
 # Fehler aus Build 163/165/166, nur an einer neuen Stelle.
-_nach_bench = quelle.split('"--bench" in sys.argv')[1][:2500]
+# Das Fenster war 2500 Zeichen gross und hat in Build 272 nicht mehr
+# gereicht, weil davor ein Begruendungsblock dazukam - dieselbe Sorte
+# Fehler wie in Build 267 bei der Grafikmodus-Pruefung: ein Test, der
+# an einer TEXTSTELLE haengt statt an einer Zusage, kippt beim
+# Umformulieren. Jetzt gross genug fuer den ganzen Zweig.
+_nach_bench = quelle.split('"--bench" in sys.argv')[1][:6000]
 check("danach wird sauber beendet (Bildschirm zurueck an MiSTer)",
       "_fe._beenden()" in _nach_bench)
 check("und der Prozess endet dort, statt in run() weiterzulaufen",
@@ -1219,6 +1224,46 @@ check("die Kosten des Hakens selbst sind benannt",
       "Messwert - dann muss die Zahl der Aufrufe daneben stehen")
 check("die Bench-Nummer ist fuer Build 270 mitgewachsen",
       B.BENCH_VERSION >= 10, str(B.BENCH_VERSION))
+
+# ---------------------------------------------------------------------------
+print()
+print("Build 272: gegen WEN wurde gemessen?")
+# ---------------------------------------------------------------------------
+# NUTZERMELDUNG: "wenn ich das Frontend beende und dann per PowerShell
+# die Bench starte, bleibt das Bild im OSD-Menue. Beim alten Kernel
+# habe ich den Bench immer mitlaufen sehen."
+#
+# Der Grund steht seit Build 184/185 im Code: ein einzelnes F9 aus
+# Frontend.__init__() sitzt auf 6.18 nicht, und die Nachfasser laufen
+# aus der Hauptschleife - die der Bench nie erreicht.
+#
+# UND DAS IST EIN MESSFEHLER, NICHT NUR KOSMETIK: zeichnet MiSTer sein
+# eigenes Menue, laeuft es mit 90-100 % Last (kernel_probe.py); liegt
+# unser Bild oben, schlaeft es bei 1-2 %. Auf zwei Kernen ist das der
+# Unterschied zwischen der ganzen Maschine und der Haelfte.
+_fq = io.open(os.path.join(_REPO, "frontend", "frontend.py"),
+              encoding="utf-8").read()
+check("der Bench holt sich erst den Bildschirm",
+      "_fe._auf_eigenes_bild_warten()" in _fq,
+      "dieselbe Funktion wie die Boot-Animation - kein zweiter Weg")
+check("und zwar VOR dem Messen",
+      _fq.index("_fe._auf_eigenes_bild_warten()")
+      < _fq.index("_text = BENCH.lauf("))
+check("MiSTers Last wird gemessen und weitergegeben",
+      "_fe._anzeige_messen()" in _fq and "mister_last=_last" in _fq)
+check("der Kopf nimmt sie an", "mister_last=None" in _q
+      and "_kopf(b, fe, A, fm, mister_last)" in _q)
+check("und sagt es, wenn gegen ein beschaeftigtes MiSTer gemessen wurde",
+      "BESCHAEFTIGT" in _q and "nicht mit einem ruhigen Lauf" in _q,
+      "ein Bericht ohne diese Zeile ist nicht vergleichbar - und genau "
+      "dieser Unterschied steckt moeglicherweise in den 15 % zwischen "
+      "altem und neuem Kernel")
+check("ein Fehlschlag haelt den Bench NICHT auf",
+      "Bench: Bildschirm holen fehlgeschlagen" in _fq,
+      "eine Messung, die wegen des Bildschirms gar nicht laeuft, waere "
+      "schlimmer als eine unsichtbare")
+check("die Bench-Nummer ist fuer Build 272 mitgewachsen",
+      B.BENCH_VERSION >= 11, str(B.BENCH_VERSION))
 
 # ---------------------------------------------------------------------------
 print()

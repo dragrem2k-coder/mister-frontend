@@ -53,7 +53,7 @@ import zlib
 # aussehen - wer eine 1 und eine 2 nebeneinanderlegt, sieht sofort, dass
 # in der einen ein Abschnitt fehlt. Die Abschnitte A bis G haben sich
 # dabei nicht geaendert, ihre Zahlen bleiben also vergleichbar.
-BENCH_VERSION = 10
+BENCH_VERSION = 11
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -279,7 +279,7 @@ def testbild_art1(pix, w, h, stufe):
 # ---------------------------------------------------------------------
 # Abschnitte
 # ---------------------------------------------------------------------
-def _kopf(b, fe, A, fm):
+def _kopf(b, fe, A, fm, mister_last=None):
     b("=" * 62)
     b("Dragend Bench %d" % BENCH_VERSION)
     b("=" * 62)
@@ -320,6 +320,32 @@ def _kopf(b, fe, A, fm):
     except Exception:                                    # noqa: BLE001
         pass
     b("Bestand    : %d Spiele in %d Kategorien" % (spiele, systeme))
+    # GEGEN WEN WURDE GEMESSEN (Build 272)
+    # ------------------------------------------------------------------
+    # Zeichnet MiSTer sein eigenes Menue, laeuft es mit rund 90-100 %
+    # Last; liegt unser Bild oben, schlaeft es bei 1-2 % (gemessen in
+    # kernel_probe.py, und es ist das Signal aus Build 152). Auf einem
+    # Geraet mit ZWEI Kernen ist das der Unterschied zwischen "die
+    # Maschine fuer sich" und "die Haelfte davon".
+    #
+    # Diese Zeile steht hier, weil ein Bericht ohne sie nicht
+    # vergleichbar ist - und weil genau dieser Unterschied zwischen
+    # den Berichten vom alten und vom neuen Kernel moeglicherweise
+    # mitgemessen wurde: auf 5.15 sass das erste F9 aus
+    # Frontend.__init__(), auf 6.18 nicht.
+    if mister_last is None:
+        b("MiSTer     : nicht gemessen - unbekannt, gegen WEN hier "
+          "gemessen wird")
+    elif mister_last < 25.0:
+        b("MiSTer     : schlaeft (%.0f %% Last) - unser Bild liegt oben, "
+          "die Maschine gehoert dem Bench" % mister_last)
+    else:
+        b("MiSTer     : BESCHAEFTIGT (%.0f %% Last) - es zeichnet sein "
+          "eigenes Menue und" % mister_last)
+        b("             nimmt sich dabei einen Kern. ALLE Zahlen unten "
+          "sind dagegen")
+        b("             gemessen und nicht mit einem ruhigen Lauf "
+          "vergleichbar.")
     # DIE PROFILIERUNG MUSS HIER STEHEN, und zwar laut (Build 224).
     #
     # WAS PASSIERT IST: auf dem Geraet des Nutzers lag seit einer
@@ -3163,13 +3189,13 @@ def _abschnitt_k(b, fe, S, A):
     b("   Zeit in der Flaeche, und dann zaehlt die Aussparung.")
 
 
-def lauf(fe, fm, A, S, startdauer=None, log=None):
+def lauf(fe, fm, A, S, startdauer=None, log=None, mister_last=None):
     """Den kompletten Bench fahren und den Bericht als Text
     zurueckgeben. Bekommt alles, was er braucht, uebergeben - dieses
     Modul importiert das Frontend nicht, sonst haette man zwei
     Ladewege fuer dieselbe Datei."""
     b = Bericht(log)
-    spiele = _kopf(b, fe, A, fm)
+    spiele = _kopf(b, fe, A, fm, mister_last)
     _abschnitt_a(b, fe, spiele, startdauer)
     try:
         hd = getattr(fe, "fb", None) is not None and fe.fb.height >= 720

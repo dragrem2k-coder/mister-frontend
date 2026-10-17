@@ -4617,6 +4617,41 @@ steht auch, *dass* MiSTer die Knoepfe in Tasten uebersetzt - die
 Erklaerung fuer „ich kann erst blaettern, wenn ich einmal die
 Leertaste gedrueckt habe".
 
+### Nachtrag Build 272: der Bench hat gegen ein beschaeftigtes MiSTer gemessen
+
+**Die Nutzermeldung klang nach Kosmetik** - "beim alten Kernel hab ich
+den Bench immer mitlaufen sehen, beim neuen bleibt das Bild im
+OSD-Menue" - und war ein **Messfehler**.
+
+Zeichnet MiSTer sein eigenes Menue, laeuft es mit 90-100 % Last
+(gemessen in `kernel_probe.py`); liegt unser Bild oben, schlaeft es bei
+1-2 %. Auf **zwei** Kernen ist das der Unterschied zwischen der ganzen
+Maschine und der Haelfte. Der Bench hat auf 6.18 also die ganze Zeit
+gegen einen Konkurrenten gemessen - und auf 5.15 nicht, weil dort das
+erste F9 aus `Frontend.__init__()` noch sass.
+
+**Das ist moeglicherweise ein Teil der 15 %, die ich dem Kernel
+zugeschrieben habe.** Der A/B-Vergleich mit demselben Build bleibt
+gueltig, aber er war auf der einen Seite gegen ein schlafendes und auf
+der anderen gegen ein beschaeftigtes MiSTer gemessen.
+
+**Daraus zwei Zusagen im Bericht selbst**, nicht in einer Notiz:
+
+1. Der Bench holt sich den Bildschirm **vor** dem Messen - mit
+   `_auf_eigenes_bild_warten()`, derselben Funktion wie die
+   Boot-Animation.
+2. Der Kopf nennt **MiSTers Last** und sagt bei einem beschaeftigten
+   MiSTer ausdruecklich, dass die Zahlen darunter nicht mit einem
+   ruhigen Lauf vergleichbar sind.
+
+**Und eine alte Pruefung ist dabei gekippt, zu Recht:** sie suchte
+`_fe._beenden()` in den ersten **2500 Zeichen** nach dem
+`--bench`-Zweig, und davor stand jetzt ein Begruendungsblock.
+Dieselbe Sorte Fehler wie in Build 267 bei der Grafikmodus-Pruefung:
+**ein Test, der an einer Textstelle haengt statt an einer Zusage, kippt
+beim Umformulieren.** Das Fenster ist jetzt gross genug fuer den ganzen
+Zweig.
+
 ### Build 271: test_form_cache.py - und ein Test, der sich nicht selbst gruen machen darf
 
 **Die Lehre dieses Builds steht in Test 0**, und sie ist mir beim

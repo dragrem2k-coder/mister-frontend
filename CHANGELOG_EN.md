@@ -13,6 +13,15 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.8 — not yet released
 
+**`--bench` takes the screen first — and says whom it measured against.**
+
+- **Reported:** "when I quit the frontend and then start the bench from PowerShell, the picture stays in the OSD menu. On the old kernel I always saw the bench running."
+- **The reason had been in our own code since builds 184/185:** a single F9 does not *stick* on kernel 6.18. What makes it stick are the follow-ups in the **main loop** — which the bench never reaches, since it runs right after startup and exits afterwards.
+- **And that is not cosmetic, it is a measurement error.** When MiSTer draws its own menu it runs at **90–100 % load**; when our picture is on top it sleeps at **1–2 %**. On a device with **two** cores that is the difference between having the machine and having half of it. That difference may well be part of the 15 % between the old-kernel and new-kernel reports — on 5.15 the first F9 stuck, on 6.18 it did not.
+- **The bench now takes the screen first** (with the same function the boot animation uses, no second path) — so you can watch it again — **and measures MiSTer's load**. The report header then states plainly "MiSTer sleeps (1 %)" or "MiSTer BUSY (98 %) — every number below was measured against that and is not comparable to a quiet run".
+- If taking the screen fails, the bench runs anyway: a measurement that does not happen because of the screen would be worse than an invisible one. Bench number 10 → **11**.
+
+
 **Faster scrolling: a card's shape is computed only once.**
 
 - **The measurement from build 270 set the direction**, and it was unambiguous: of the 13.04 ms `karte_mit_schatten` costs in the list view, **5.83 ms are inside the C filler and 7.21 ms before it, in Python**. Those 7.2 ms are the loops over the corner rows — at radius 96 some 300 iterations per card, and **twice** (shadow and card) —, the bundling, and building the tuple for C.

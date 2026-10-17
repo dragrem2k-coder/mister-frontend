@@ -23482,11 +23482,48 @@ if __name__ == "__main__":
             # sys.modules["fe.art"] und nicht ART: ART ist der
             # ArtCache, also eine Instanz, das Bench braucht aber das
             # MODUL (original_lesen, _verkleinern..., art_path).
+            # ERST DEN BILDSCHIRM HOLEN, DANN MESSEN (Build 272).
+            #
+            # NUTZERMELDUNG: "wenn ich das Frontend beende und dann per
+            # PowerShell die Bench starte, bleibt das Bild im
+            # OSD-Menue. Beim alten Kernel habe ich den Bench immer
+            # mitlaufen sehen."
+            #
+            # DER GRUND STEHT SEIT BUILD 184/185 IM CODE: ein einzelnes
+            # F9 aus Frontend.__init__() SITZT auf 6.18 nicht. Was es
+            # sitzen laesst, sind die Nachfasser in
+            # _konsole_sichern(), und die laufen aus der
+            # HAUPTSCHLEIFE - die der Bench nie erreicht, weil er
+            # direkt nach Frontend() laeuft und danach beendet.
+            #
+            # UND DAS IST NICHT NUR KOSMETIK, sondern ein Messfehler:
+            # zeichnet MiSTer sein eigenes Menue, laeuft es mit rund
+            # 90-100 % Last (gemessen in kernel_probe.py); liegt unser
+            # Bild oben, schlaeft es bei 1-2 %. Ein Bench, der gegen
+            # ein beschaeftigtes MiSTer laeuft, misst auf einem Geraet
+            # mit ZWEI Kernen etwas anderes als einer, der die Maschine
+            # fuer sich hat. Genau dieser Unterschied steckt
+            # moeglicherweise in den 15 %, die zwischen den Berichten
+            # vom alten und vom neuen Kernel lagen - auf 5.15 sass das
+            # erste F9, auf 6.18 nicht.
+            #
+            # Benutzt wird dieselbe Funktion wie bei der
+            # Boot-Animation, kein zweiter Weg.
+            try:
+                _fe._auf_eigenes_bild_warten()
+            except Exception as _e:                      # noqa: BLE001
+                LOG("Bench: Bildschirm holen fehlgeschlagen (%s)" % _e)
+            _last = None
+            try:
+                _last = _fe._anzeige_messen()
+            except Exception:                            # noqa: BLE001
+                pass
             import fe.bench as BENCH
             _text = BENCH.lauf(_fe, sys.modules[__name__],
                                sys.modules["fe.art"],
                                sys.modules["fe.settings"],
-                               startdauer=_startdauer, log=LOG)
+                               startdauer=_startdauer, log=LOG,
+                               mister_last=_last)
             try:
                 with open(BENCH_AUSGABE, "w") as _f:
                     _f.write(_text)
