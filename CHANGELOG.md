@@ -11,7 +11,47 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ---
 
-## Nach v4.8 — noch nicht veröffentlicht
+## Nach v4.9 — noch nicht veröffentlicht
+
+*(hier sammelt sich, was nach der Veröffentlichung dazukommt)*
+
+---
+
+## v4.9 — die Spielanleitung im Frontend, mehrteilige Spiele, und Scrollen nach Zahlen
+
+Neunzehn Einträge seit v4.8 (nachgezählt), Builds 256 bis 274. Was man
+davon merkt, in sechs Zeilen:
+
+- **Die Anleitung zum Spiel, direkt aus der Liste.** Liegt unter
+  `/media/fat/docs` eine PDF- oder Textanleitung, zeigt das
+  Kontextmenü **Anleitung anzeigen** — gelesen wird mit MiSTers eigenem
+  Betrachter, auf einer **eigenen Konsole**, mit dem **Pad** (L/R
+  blättert) und einem Ausstieg, der auch dann funktioniert, wenn der
+  Betrachter nicht mehr will.
+- **Mehrteilige Spiele stehen als ein Eintrag in der Liste** — „Disc 1,
+  2, 3" wird ein Spiel, und beim Starten fragt das Frontend, welcher
+  Teil es sein soll.
+- **Das OBS-Overlay wird ruhiger:** das **Cover des laufenden Spiels**
+  neben der Erfolgswand, ein **leerer Kasten verschwindet ganz** statt
+  als Fleck stehenzubleiben, und jedes Feld lässt sich einzeln
+  abschalten.
+- **Scrollen, nach Zahlen und nicht nach Gefühl:** die Form einer Karte
+  wird nur noch **einmal** gerechnet (statt in jedem Schritt), die
+  **Hausarbeit** ist aus dem Zeichenweg heraus, und der
+  Kategorie-Neubau (gemessen 1,6 bis 5 Sekunden!) wartet jetzt auf
+  Ruhe.
+- **Der ROM-Wächter:** neue ROMs fallen im laufenden Betrieb auf, ohne
+  dass irgendetwas von selbst nachgelesen wird.
+- **Die Vorführung (`--demo`) zeigt die echten Bildschirme**, vier
+  Minuten lang — und unten rechts steht jetzt eine **Tastenlegende**.
+
+**Was dabei über das Messen gelernt wurde**, weil es diese
+Veröffentlichung geprägt hat: eine Zahl ohne Richtung kostet einen
+Münzwurf (Build 270), ein Messpunkt, der heute nichts findet, ist nicht
+umsonst (273), und ein Bench, der gegen ein beschäftigtes MiSTer läuft,
+misst etwas anderes als einer, der die Maschine für sich hat (272). Drei
+eigene Behauptungen über den neuen Kernel sind daran gestorben.
+
 
 **Behoben: 1,6 Sekunden Stillstand mitten im Scrollen — der Neubau der Kategorien.**
 

@@ -1,4 +1,4 @@
-# Dragend — MiSTer Custom Frontend v4.8
+# Dragend — MiSTer Custom Frontend v4.9
 
 **Von Dragrem2K**, mit Beiträgen von **TheRealSuTefan**, **Dfense** und
 **Dennsen**.
@@ -27,31 +27,30 @@ Standard-Python, keine einzige zusätzliche Abhängigkeit auf dem MiSTer.
 
 ---
 
-## Neu in v4.8
+## Neu in v4.9
 
-Der längste Abstand zwischen zwei Veröffentlichungen in diesem Projekt.
-Das Wichtigste in sechs Zeilen — alles Weitere im
-[Changelog](CHANGELOG.md):
+Neunzehn Einträge seit v4.8, Builds 256 bis 274. Das Wichtigste in
+sechs Zeilen — alles Weitere im [Changelog](CHANGELOG.md):
 
-- **Die Hauptseite gehört dir.** Reihenfolge und Sichtbarkeit der
-  Kategorien bestimmst du selbst, Filter dürfen einen **eigenen Namen**
-  tragen.
-- **Scrollen ist spürbar flüssiger** — ein Fünftel der Bytes auf den
-  Schirm, Flächen, Rahmen, Text und Cover nach C verlagert, der
-  Spitzenverbrauch beim Neueinlesen von 55 auf 24 MB. Jede Zahl auf dem
-  Gerät nachgemessen.
-- **Das Stream-Overlay ist erwachsen geworden:** die
-  **Erfolgs-Einblendung** ist ein Moment statt einer Benachrichtigung,
-  und daneben steht die **Erfolgs-Wand** — alle Erfolge des laufenden
-  Spiels als Raster, die frisch freigeschaltete Kachel blitzt auf.
-- **MiSTer wird mitbenutzt statt nachgebaut:** seine eigenen Favoriten,
-  seine `.pf`-Schriften, seine Lochmasken, `update_all` aus dem Menü,
-  der Core-Bericht „was ist neu", NFC-Tags über Zaparoo.
-- **Sichtbare Politur:** eigene Hintergrundbilder, Hochkant (TATE),
-  Theme-Editor, die Ziehung mit Ton, `--demo` als Vorführung und
-  `--show` als Bericht.
-- **Der Bildwächter** holt das Bild zurück, wenn MiSTer unter Kernel
-  6.18 den Bildspeicher neu einrichtet.
+- **Die Anleitung zum Spiel, direkt aus der Liste.** Liegt unter
+  `/media/fat/docs` eine PDF- oder Textanleitung, bietet das
+  Kontextmenü **Anleitung anzeigen** — gelesen wird mit MiSTers eigenem
+  Betrachter, auf einer eigenen Konsole, mit dem **Pad** (L/R
+  blättert), und der Ausstieg funktioniert auch dann, wenn der
+  Betrachter nicht mehr will.
+- **Mehrteilige Spiele stehen als ein Eintrag in der Liste** — „Disc 1,
+  2, 3" wird ein Spiel, und beim Starten fragt das Frontend, welcher
+  Teil es sein soll.
+- **Das OBS-Overlay wird ruhiger:** das Cover des laufenden Spiels
+  neben der Erfolgswand, ein leerer Kasten verschwindet ganz, und jedes
+  Feld lässt sich einzeln abschalten.
+- **Scrollen nach Zahlen:** die Form einer Karte wird nur noch einmal
+  gerechnet, die Hausarbeit ist aus dem Zeichenweg heraus, und der
+  Kategorie-Neubau (gemessen 1,6 bis 5 Sekunden) wartet auf Ruhe.
+- **Der ROM-Wächter:** neue ROMs fallen im laufenden Betrieb auf, ohne
+  dass von selbst nachgelesen wird.
+- **Die Vorführung (`--demo`) zeigt die echten Bildschirme**, vier
+  Minuten lang — und unten rechts steht eine Tastenlegende.
 
 ---
 

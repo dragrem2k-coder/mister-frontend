@@ -11,7 +11,45 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ---
 
-## After v4.8 — not yet released
+## After v4.9 — not yet released
+
+*(whatever comes after the release collects here)*
+
+---
+
+## v4.9 — game manuals in the frontend, multi-disc games, and scrolling by numbers
+
+Nineteen entries since v4.8 (counted), builds 256 to 274. What you
+actually notice, in six lines:
+
+- **The manual for a game, straight from the list.** If a PDF or text
+  manual sits under `/media/fat/docs`, the context menu offers **Show
+  manual** — read with MiSTer's own viewer, on a **console of its own**,
+  with the **pad** (L/R pages) and a way out that works even when the
+  viewer no longer does.
+- **Multi-disc games appear as one entry in the list** — "Disc 1, 2, 3"
+  becomes one game, and on launch the frontend asks which part you
+  want.
+- **The OBS overlay gets quieter:** the **running game's cover** next to
+  the achievement wall, an **empty card disappears entirely** instead of
+  sitting there as a blob, and every field can be switched off on its
+  own.
+- **Scrolling, by numbers rather than by feel:** a card's shape is
+  computed **once** instead of every step, the **housekeeping** is out
+  of the drawing path, and the category rebuild (measured at 1.6 to 5
+  seconds!) now waits for quiet.
+- **The ROM watch:** new ROMs get noticed while the frontend runs,
+  without anything being re-read on its own.
+- **The demo (`--demo`) now shows the real screens**, for four minutes —
+  and a **key legend** sits in the bottom right.
+
+**What was learned about measuring along the way**, because it shaped
+this release: a number without a direction costs a coin flip (build
+270), a measuring point that finds nothing today is not wasted (273),
+and a bench running against a busy MiSTer measures something else than
+one that has the machine to itself (272). Three of my own claims about
+the new kernel died of that.
+
 
 **Fixed: 1.6 seconds of standstill in the middle of scrolling — the category rebuild.**
 

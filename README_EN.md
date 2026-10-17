@@ -1,4 +1,4 @@
-# Dragend — MiSTer Custom Frontend v4.8
+# Dragend — MiSTer Custom Frontend v4.9
 
 **By Dragrem2K**, with contributions from **TheRealSuTefan**, **Dfense**
 and **Dennsen**.
@@ -27,28 +27,29 @@ Plain standard Python — not a single extra dependency on the MiSTer.
 
 ---
 
-## New in v4.8
+## New in v4.9
 
-The longest gap between two releases in this project. The essentials in
-six lines — everything else is in the [changelog](CHANGELOG_EN.md):
+Nineteen entries since v4.8, builds 256 to 274. The essentials in six
+lines — everything else is in the [changelog](CHANGELOG_EN.md):
 
-- **The main page is yours.** You decide the order and the visibility of
-  the categories, and filters may carry a **name of your own**.
-- **Scrolling is noticeably smoother** — a fifth of the bytes onto the
-  screen, areas, frames, text and covers moved to C, peak memory during
-  a rescan down from 55 to 24 MB. Every number measured on the device.
-- **The stream overlay grew up:** the **achievement popup** is a moment
-  rather than a notification, and beside it stands the **achievement
-  wall** — every achievement of the running game as a grid, and the tile
-  you just unlocked flashes.
-- **MiSTer is used, not reimplemented:** its own favourites, its `.pf`
-  fonts, its shadow masks, `update_all` from the menu, the core report
-  "what's new", NFC tags via Zaparoo.
-- **Visible polish:** your own background images, portrait mode (TATE),
-  a theme editor, the draw with sound, `--demo` as a guided tour and
-  `--show` as a report.
-- **The screen watchdog** pulls the picture back when MiSTer rebuilds the
-  framebuffer under kernel 6.18.
+- **The manual for a game, straight from the list.** If a PDF or text
+  manual sits under `/media/fat/docs`, the context menu offers **Show
+  manual** — read with MiSTer's own viewer, on a console of its own,
+  with the **pad** (L/R pages), and the way out works even when the
+  viewer no longer does.
+- **Multi-disc games appear as one entry in the list** — "Disc 1, 2, 3"
+  becomes one game, and on launch the frontend asks which part you
+  want.
+- **The OBS overlay gets quieter:** the running game's cover next to
+  the achievement wall, an empty card disappears entirely, and every
+  field can be switched off on its own.
+- **Scrolling by numbers:** a card's shape is computed once instead of
+  every step, the housekeeping is out of the drawing path, and the
+  category rebuild (measured at 1.6 to 5 seconds) waits for quiet.
+- **The ROM watch:** new ROMs get noticed while the frontend runs,
+  without anything being re-read on its own.
+- **The demo (`--demo`) shows the real screens**, for four minutes —
+  and a key legend sits in the bottom right.
 
 ---
 
