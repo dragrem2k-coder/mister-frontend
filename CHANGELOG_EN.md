@@ -13,6 +13,12 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **Fixed: the list kept scrolling on its own after the key was
+  released.** A bug from build 276 — there, a due step was let through
+  as soon as *one* event had been read, and each round reads only one
+  per device. A held key delivers bundles, though, and the release sits
+  at the back of one. The queue is now drained completely before the
+  repeat is served (build 277).
 - **Scrolling with a key held down: cause found.** If a step took longer
   than 150 ms, the gap to the next one counted as a *standstill* — and
   then the reloader, the warm-up, the marquee and the pulse all ran

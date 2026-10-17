@@ -302,6 +302,79 @@ check("ein ECHTES Ereignis hat weiter Vorrang vor der Wiederholung",
       "sonst koennte ein Loslassen hinter einem Schritt verschwinden")
 os.close(_r4)
 
+# ---------------------------------------------------------------------------
+print()
+print("Build 277: das Loslassen darf nicht hinter dem Buendel liegenbleiben")
+# ---------------------------------------------------------------------------
+# NUTZERMELDUNG ZU BUILD 276: "wenn ich nach unten gedrueckt halte und
+# dann nach 2-3 Sekunden loslasse, scrollt er von alleine weiter, bis
+# ich eine andere Richtung druecke."
+#
+# URSACHE: 276 hat den faelligen Schritt durchgelassen, SOBALD ein
+# Ereignis gelesen war - und jede Runde liest nur EIN Ereignis je
+# Geraet. Eine gehaltene Taste liefert aber Buendel (EV_MSC, EV_KEY mit
+# value==2, EV_SYN), und das Loslassen steht hinten darin. Wer nach dem
+# ersten Ereignis abbiegt, laesst den Rest liegen - und damit die
+# Wiederholung ewig stehen.
+#
+# DAS IST DER TEST, DER IN 276 GEFEHLT HAT. Er haengt an der Zusage,
+# nicht an der Mechanik: nach einer Abfrage, in deren Warteschlange ein
+# Loslassen lag, darf nichts mehr gehalten sein.
+_r5, _w5 = os.pipe()
+for _ev in ((I.EV_SYN, 0, 0),              # Buendel der Auto-Wiederholung
+            (I.EV_KEY, 108, 2),            # ... in _translate() verworfen
+            (I.EV_SYN, 0, 0),
+            (I.EV_KEY, 108, 0)):           # UND DANN DAS LOSLASSEN
+    os.write(_w5, _struct.pack(I.EVENT_FMT, 0, 0, *_ev))
+os.close(_w5)
+im5 = I.InputManager.__new__(I.InputManager)
+im5.devices = {"/dev/input/event9": _FakeDev(_r5, "/dev/input/event9")}
+im5.want_grab = False
+im5.last_scan = time.monotonic()
+im5.held = (("/dev/input/event9", "key", 108), "down", time.monotonic() - 0.10, I.REPEAT_FLOOR)
+im5._last_repeat_time = 0.0
+im5._last_repeat_act = None
+im5._last_repeat_iv = I.REPEAT_INTERVAL
+im5._last_input_mtime = None
+im5._zeichenzeit = {}
+im5.seiten_aktionen = set()
+_ergebnis = im5.read_action(timeout=0.2)
+os.close(_r5)
+check("nach dem Loslassen wird nichts mehr gehalten",
+      im5.held is None,
+      "sonst scrollt die Liste von alleine weiter - genau die "
+      "Rueckmeldung zu Build 276")
+check("und es kommt kein Schritt mehr aus der Wiederholung",
+      _ergebnis is None, repr(_ergebnis))
+
+# Die Gegenprobe zu beidem: liegt KEIN Loslassen im Buendel, kommt der
+# faellige Schritt weiterhin sofort. Die Behebung darf die Behebung aus
+# 276 nicht zuruecknehmen.
+_r6, _w6 = os.pipe()
+for _ev in ((I.EV_SYN, 0, 0), (I.EV_KEY, 108, 2), (I.EV_SYN, 0, 0)):
+    os.write(_w6, _struct.pack(I.EVENT_FMT, 0, 0, *_ev))
+os.close(_w6)
+im6 = I.InputManager.__new__(I.InputManager)
+im6.devices = {"/dev/input/event9": _FakeDev(_r6, "/dev/input/event9")}
+im6.want_grab = False
+im6.last_scan = time.monotonic()
+im6.held = (("/dev/input/event9", "key", 108), "down", time.monotonic() - 0.10, I.REPEAT_FLOOR)
+im6._last_repeat_time = 0.0
+im6._last_repeat_act = None
+im6._last_repeat_iv = I.REPEAT_INTERVAL
+im6._last_input_mtime = None
+im6._zeichenzeit = {}
+im6.seiten_aktionen = set()
+check("ohne Loslassen im Buendel kommt der Schritt weiter sofort",
+      im6.read_action(timeout=0.5) == "down",
+      "die Behebung aus Build 276 bleibt in Kraft")
+os.close(_r6)
+
+check("die Leer-Obergrenze steht als benannte Konstante da",
+      I.InputManager.LEEREN_MAX >= 8,
+      "%d Runden - weit mehr als jedes Buendel, und eine harte Grenze "
+      "gegen einen Strom, der nie abreisst" % I.InputManager.LEEREN_MAX)
+
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))

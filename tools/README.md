@@ -4618,6 +4618,58 @@ steht auch, *dass* MiSTer die Knoepfe in Tasten uebersetzt - die
 Erklaerung fuer „ich kann erst blaettern, wenn ich einmal die
 Leertaste gedrueckt habe".
 
+### Nachtrag Build 277: die Zusage, die ich in 276 gebrochen habe
+
+**Die Rueckmeldung kam mit demselben Protokoll, das die Behebung
+belegte:**
+
+> „läuft deutlich schneller, aber wenn ich nach unten gedrückt halte und
+> dann nach 2-3 sekunden los lasse scrollt er von alleine weiter bis ich
+> eine andere richtung drücke"
+
+```
+LATENZ-AUFTEILUNG: zu spaet dran 4 ms, Arbeit 37 ms je Schritt (2897 x ...)
+```
+
+**Beides stimmt gleichzeitig.** „Zu spaet dran" ist von 231 ms auf 4 ms
+gefallen - und der Zaehler sagt, dass der Dauerstrom echt war (2897
+Durchlaesse). Nur habe ich dafuer die Zusage gebrochen, auf der die
+alte Regel beruhte: **ein Loslassen darf nie hinter einer Wiederholung
+verloren gehen.**
+
+**Der Fehler ist eine Zeile Arithmetik, die ich nicht gemacht habe.**
+Jede Runde liest **EIN** Ereignis je Geraet. Build 276 bog ab, sobald
+got_event gesetzt war. Ein Tastendruck liefert aber ein Buendel:
+
+```
+EV_MSC (Scancode)  EV_KEY (value=0, DAS LOSLASSEN)  EV_SYN
+```
+
+Wer nach dem ersten abbiegt, laesst die anderen liegen - und damit
+`held` stehen. Die Liste scrollt weiter, bis eine andere Richtung
+`_hold()` ueberschreibt. Genau das hat er beschrieben.
+
+**Behoben, indem beides gilt:** die Warteschlange wird mit
+`select(timeout=0)` vollstaendig geleert (die Geraete sind blockierend
+geoeffnet, ein Leseversuch auf Verdacht wuerde haengen), und **erst
+danach** kommt die Wiederholung dran. Dann kann kein Loslassen mehr
+dahinterliegen. Gegen einen Strom, der nie abreisst, steht
+`LEEREN_MAX = 64` - weit mehr als jedes Buendel.
+
+**Der Test, der in 276 gefehlt hat**, steht jetzt in
+`tools/test_input_repeat.py`: vier Ereignisse in eine Pipe, das
+Loslassen an letzter Stelle, Wiederholung faellig - danach darf nichts
+mehr gehalten sein. Gegengeprueft mit `LEEREN_MAX = 1`, also mit dem
+Verhalten von 276: dort bleibt gehalten, und der Schritt kommt. Der
+Test faengt den Fehler also wirklich.
+
+> **Lehre: wer eine Regel aufweicht, muss ihre Begruendung
+> nachrechnen.** Die Begruendung stand als Kommentar direkt daneben
+> („Geraete-Events haben IMMER Vorrang vor Halte-Wiederholungen, damit
+> ein Loslassen nie verloren geht"). Ich habe sie gelesen, zitiert -
+> und dann nicht geprueft, ob mein „schlimmster Fall ist EIN Schritt
+> zuviel" ueberhaupt stimmt. Er stimmte nicht.
+
 ### Nachtrag Build 276: der Stillstand, der keiner war
 
 **Die Meldung:** „das Scrollen bei gedrueckter Taste ist totaler Mist,

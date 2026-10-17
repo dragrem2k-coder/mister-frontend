@@ -13,6 +13,12 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Behoben: die Liste scrollte nach dem Loslassen von alleine weiter.**
+  Ein Fehler aus Build 276 — dort kam der fällige Schritt durch, sobald
+  *ein* Ereignis gelesen war, und jede Runde liest nur eines je Gerät.
+  Eine gehaltene Taste liefert aber Bündel, und das Loslassen steht
+  hinten darin. Jetzt wird die Warteschlange erst vollständig geleert
+  und dann die Wiederholung bedient (Build 277).
 - **Scrollen bei gehaltener Taste: die Ursache ist gefunden.** Lief ein
   Schritt länger als 150 ms, galt der Abstand zum nächsten als
   *Stillstand* — und dann liefen Nachlader, Warmlauf, Laufschrift und

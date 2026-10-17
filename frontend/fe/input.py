@@ -674,6 +674,12 @@ class InputManager:
     # alte Regel sie aufgehalten haette. Klassenvorgabe aus demselben
     # Grund wie oben.
     repeat_durchgelassen = 0
+    # BUILD 277: wie viele Leer-Runden eine Abfrage hoechstens macht,
+    # bevor ein faelliger Schritt Vorrang bekommt. Jede Runde liest ein
+    # Ereignis je Geraet; ein Tasten-Buendel umfasst drei (EV_MSC,
+    # EV_KEY, EV_SYN). 64 ist also weit mehr als jedes Buendel - und
+    # eine harte Grenze gegen einen Strom, der nie abreisst.
+    LEEREN_MAX = 64
 
     def zeichenzeit_melden(self, act, dauer):
         """Build 93: das Frontend meldet nach jeder verarbeiteten Aktion,
@@ -1154,90 +1160,96 @@ class InputManager:
                 except OSError:
                     self.rescan()
                     continue
+                # DIE WARTESCHLANGE WIRKLICH LEEREN (Build 277)
+                # ----------------------------------------------------
+                # Build 276 hat den faelligen Schritt durchgelassen,
+                # SOBALD ein Ereignis gelesen wurde - und damit die
+                # Zusage gebrochen, auf der die alte Regel beruhte:
+                # "ein Loslassen darf nie hinter einer Wiederholung
+                # verloren gehen". Die Folge hat der Nutzer sofort
+                # gemeldet: "wenn ich nach unten gedrueckt halte und
+                # dann nach 2-3 Sekunden loslasse, scrollt er von
+                # alleine weiter, bis ich eine andere Richtung
+                # druecke."
+                #
+                # Jede Runde liest nur EIN Ereignis je Geraet. Eine
+                # gehaltene Taste liefert aber Buendel (EV_MSC,
+                # EV_KEY mit value==2, EV_SYN), und das Loslassen
+                # steht hinten darin. Wer nach dem ersten Ereignis
+                # abbiegt, laesst den Rest liegen.
+                #
+                # Also beides: erst leeren, dann die Wiederholung.
+                # Geleert wird mit select(timeout=0) - die Geraete
+                # sind blockierend geoeffnet (os.O_RDWR, siehe
+                # rescan()), ein Leseversuch auf Verdacht wuerde also
+                # haengen bleiben.
                 got_event = False
-                for fd in r:
-                    dev = fds[fd]
+                runden = 0
+                while r and runden < self.LEEREN_MAX:
+                    runden += 1
+                    for fd in r:
+                        dev = fds[fd]
+                        try:
+                            data = os.read(fd, EVENT_SIZE)
+                        except OSError:      # Geraet abgezogen
+                            self.rescan()
+                            continue
+                        if len(data) < EVENT_SIZE:
+                            continue
+                        got_event = True
+                        _, _, etype, code, value = \
+                            struct.unpack(EVENT_FMT, data)
+                        act = self._translate(dev, etype, code, value)
+                        if act:
+                            # BUILD 192: wann diese Aktion entstanden
+                            # ist. Siehe eingabe_zeit - das ist die
+                            # eine Zahl, die bisher fehlte, um Latenz
+                            # ueberhaupt messen zu koennen.
+                            #
+                            # Bewusst time.monotonic() und NICHT der
+                            # Zeitstempel aus dem evdev-Ereignis: der
+                            # laeuft auf CLOCK_REALTIME, und auf dem
+                            # MiSTer springt die Uhr beim ersten
+                            # NTP-Abgleich um Stunden. Eine Messung,
+                            # die davon abhaengt, misst irgendwann
+                            # Unsinn. Der Unterschied ist
+                            # bedeutungslos: wir haengen in select()
+                            # und sind sofort dran.
+                            self.eingabe_zeit = time.monotonic()
+                            return act
+                    # Noch etwas da? Dann weiterleeren.
                     try:
-                        data = os.read(fd, EVENT_SIZE)
-                    except OSError:          # Geraet abgezogen
-                        self.rescan()
+                        r, _, _ = select.select(list(fds), [], [], 0)
+                    except OSError:
+                        r = []
+                # JETZT ist die Warteschlange leer (oder der Strom
+                # reisst nicht ab - siehe LEEREN_MAX). Erst hier darf
+                # die Wiederholung dran, und nur hier kann kein
+                # Loslassen mehr dahinter liegen.
+                _faellig_jetzt = (self.held is not None
+                                  and time.monotonic() >= self.held[2])
+                if r:
+                    # DER DAUERSTROM (Build 276/277). Eine gehaltene
+                    # Taste erzeugt Ereignisse, die KEINE Aktion sind:
+                    # die Auto-Wiederholung der Tastatur (EV_KEY mit
+                    # value==2, in _translate() bewusst verworfen),
+                    # EV_MSC, EV_SYN, beim Pad die unveraenderten
+                    # Achsen. Reisst der Strom nicht ab, waere die
+                    # faellige Wiederholung beliebig lange aufgehalten
+                    # - und genau das war "bei gehaltener Taste lagt es
+                    # ohne Ende" (im Mittel 291 ms je Schritt, dabei
+                    # keine einzige RUCKLER-Zeile: wir waren nicht
+                    # beschaeftigt, wir waren zu spaet).
+                    #
+                    # Nach LEEREN_MAX Runden liegt mehr vor, als jedes
+                    # Buendel umfasst. Dann zaehlt der Schritt mehr als
+                    # die Reihenfolge.
+                    if not _faellig_jetzt:
                         continue
-                    if len(data) < EVENT_SIZE:
-                        continue
-                    got_event = True
-                    _, _, etype, code, value = struct.unpack(EVENT_FMT, data)
-                    act = self._translate(dev, etype, code, value)
-                    if act:
-                        # BUILD 192: wann diese Aktion entstanden ist.
-                        # Siehe eingabe_zeit - das ist die eine Zahl,
-                        # die bisher fehlte, um Latenz ueberhaupt
-                        # messen zu koennen.
-                        #
-                        # Bewusst time.monotonic() und NICHT der
-                        # Zeitstempel aus dem evdev-Ereignis: der laeuft
-                        # auf CLOCK_REALTIME, und auf dem MiSTer springt
-                        # die Uhr beim ersten NTP-Abgleich um Stunden.
-                        # Eine Messung, die davon abhaengt, misst
-                        # irgendwann Unsinn. Der Unterschied ist
-                        # bedeutungslos: wir haengen in select() und
-                        # sind sofort dran.
-                        self.eingabe_zeit = time.monotonic()
-                        return act
-                if got_event:
-                    # EINE AUSNAHME (Build 276) - und sie ist die
-                    # Ursache fuer "bei gehaltener Taste lagt es ohne
-                    # Ende".
-                    #
-                    # Die Regel "erst die Warteschlange leeren" ist
-                    # richtig: ein LOSLASSEN darf nie hinter einer
-                    # Wiederholung verloren gehen. Sie hat aber einen
-                    # Fall uebersehen - eine gehaltene Taste erzeugt
-                    # EREIGNISSE, DIE KEINE AKTION SIND:
-                    #
-                    #   - die Auto-Wiederholung der Tastatur selbst
-                    #     (EV_KEY mit value==2) wird in _translate()
-                    #     bewusst verworfen (siehe dort bei
-                    #     REPEAT_ACTIONS), kommt aber weiter an;
-                    #   - dazu je Wiederholung EV_MSC und EV_SYN;
-                    #   - bei einem Pad die Achsen-Ereignisse, deren
-                    #     Richtung sich nicht geaendert hat.
-                    #
-                    # Jedes davon setzt got_event und schickt die
-                    # Schleife ueber "continue" an den Anfang - OHNE
-                    # die faellige Wiederholung auszuloesen. Solange
-                    # der Strom nicht abreisst, kommt unser eigener
-                    # Schritt also NICHT, obwohl sein Termin laengst
-                    # da ist. Genau das ist der Unterschied zwischen
-                    # "schnell hintereinander druecken" (kurze Buendel,
-                    # dann Stille - die Wiederholung kommt dran) und
-                    # "gedrueckt halten" (Dauerstrom - sie kommt nicht
-                    # dran).
-                    #
-                    # UND ES ERKLAERT, WARUM KEINE RUCKLER-ZEILE
-                    # DAZU IM PROTOKOLL STAND: wir waren nicht
-                    # beschaeftigt, wir waren zu spaet. Verarbeitung
-                    # und Zeichnen blieben unter der Schwelle, waehrend
-                    # LATENZ (Termin -> fertiges Bild) im Mittel 291 ms
-                    # meldete.
-                    #
-                    # Die Ausnahme kostet nichts und nimmt der Regel
-                    # nichts: ein faelliger Schritt wird jetzt
-                    # ausgeliefert, und das Loslassen liegt beim
-                    # naechsten Durchlauf unveraendert in der
-                    # Warteschlange. Schlimmster Fall ist EIN Schritt
-                    # zuviel - gegen einen Stillstand von
-                    # Zehntelsekunden ist das kein Preis.
-                    if not (self.held is not None
-                            and time.monotonic() >= self.held[2]):
-                        continue
-                    # Nur zaehlen, nicht schreiben: wie oft die alte
-                    # Regel eine faellige Wiederholung aufgehalten
-                    # haette. Ohne diese Zahl liesse sich hinterher
-                    # nicht belegen, dass DAS die Ursache war - und
-                    # eine Behebung ohne Beleg ist eine Vermutung mit
-                    # Diff (die Lehre aus Build 270).
                     self.repeat_durchgelassen = \
                         getattr(self, "repeat_durchgelassen", 0) + 1
+                elif got_event and not _faellig_jetzt:
+                    continue
             if self.held is not None and time.monotonic() >= self.held[2]:
                 kid, act, _faellig, iv = self.held
                 # Untergrenze bewusst bei 0.08s (12.5/s) statt zuvor 0.05s
