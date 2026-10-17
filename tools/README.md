@@ -4618,6 +4618,35 @@ steht auch, *dass* MiSTer die Knoepfe in Tasten uebersetzt - die
 Erklaerung fuer „ich kann erst blaettern, wenn ich einmal die
 Leertaste gedrueckt habe".
 
+### Nachtrag Build 274: der Name war die halbe Behebung
+
+**Build 273 hat gefragt, das Geraet hat geantwortet, und zwar in einer
+Zeile:**
+
+```
+HAUSARBEIT: 1630 ms - ra_kategorien=1627, mount=3 (6 x ausgelassen, ...)
+```
+
+Von den fuenf Verdaechtigen war es der **Kategorie-Neubau** - 1627 von
+1630 ms. Nicht die Netzabfrage, nicht die Uhr, nicht die
+Laufwerkssuche. Ohne die Aufteilung aus 273 haette ich alle vier
+nachgesehen; mit ihr war es ein Blick.
+
+**Und die Behebung ist kleiner als die Messung dafuer war:** der Neubau
+verlangt jetzt Ruhe (`RA_NEUBAU_RUHE`, eine Sekunde ohne Tastendruck).
+Er ist eine Nachholarbeit - dass die Kategorien eine Sekunde spaeter
+stimmen, merkt niemand.
+
+**Geprueft wird dabei die ECHTE Methode, nicht die Attrappe** aus den
+Tests 1-6 derselben Datei: die Haken werden vorher per `delattr`
+entfernt. Ein Test, der seine eigene Attrappe prueft, ist der
+Zwillingsbruder des Tests, der sich selbst gruen macht (siehe Build
+271).
+
+**Die wichtigste der sechs Pruefungen:** das Flag bleibt stehen,
+solange der Neubau nicht gelaufen ist. Wer eine Nachholarbeit
+verschiebt, muss dafuer sorgen, dass sie nicht verschwindet.
+
 ### Nachtrag Build 273: der Zaehler aus dem Jahr davor hat geliefert
 
 **Die beste Messung dieses Builds habe ich nicht gemacht** - sie stand

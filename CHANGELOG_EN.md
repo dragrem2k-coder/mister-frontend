@@ -13,6 +13,19 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.8 — not yet released
 
+**Fixed: 1.6 seconds of standstill in the middle of scrolling — the category rebuild.**
+
+- **The line from build 273 delivered**, straight from the device:
+
+  ```
+  HAUSARBEIT: 1630 ms - ra_kategorien=1627, mount=3 (6 x skipped because a key was held)
+  ```
+
+  **1627 of 1630 milliseconds are the category rebuild** — not the network query, not the clock, not the drive scan. The rebuild walks 31,000 games in 25 categories, and it ran **inside the drawing path**: exactly when someone is waiting for the next frame.
+- **Why it runs at all:** the RA data arrives in the background, after which the categories ("RA achievement hunter") no longer match — so they are rebuilt. That is right; only the moment was wrong.
+- **It now demands quiet:** only after **one second** without a key press. Nobody notices the categories being right a second later; everybody notices the picture standing still for 1.6 seconds. The same line as the prewarmer since build 73 ("as soon as input resumes it drops its list instantly").
+- **Nothing is lost:** the flag stays set until the rebuild has actually run — guaranteed at the next quiet moment. And inside a category (page 1) there is still no rebuild, as before.
+
 **Fixed: scrolling stuttered while a key was HELD — and it was not the drawing.**
 
 - **Asked:** "pressing up or down quickly in sequence, scrolling is fine. But if I hold it down, it scrolls really laggy and stuttering. Why is that?"

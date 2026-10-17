@@ -200,6 +200,60 @@ check("ein fehlendes 'held' schaltet die Hausarbeit NICHT ab",
       "ohne __init__) wuerde sonst dafuer sorgen, dass die Hausarbeit "
       "gar nicht mehr laeuft")
 
+# ---------------------------------------------------------------------------
+print()
+print("Test 7: der teure Posten selbst - Kategorien nur bei RUHE neu bauen")
+# ---------------------------------------------------------------------------
+# DIE ZEILE AUS BUILD 273 HAT GELIEFERT, vom Geraet:
+#
+#   HAUSARBEIT: 1630 ms - ra_kategorien=1627, mount=3
+#
+# 1627 von 1630 ms sind der Neubau der Kategorien ueber 31.000 Spiele -
+# und der lief mitten im Zeichenweg. Ab Build 274 verlangt er RUHE.
+# Geprueft wird hier die ECHTE Methode, nicht die Attrappe von oben.
+for _n in AUFGABEN:
+    try:
+        delattr(FE, _n)          # Haken weg, echte Methode zurueck
+    except AttributeError:
+        pass
+neubauten = []
+FE._rebuild_categories_preserving_selection = (
+    lambda *a, **k: neubauten.append(1))
+FE.inp.held = None
+FE.page = 0
+FE._ra_categories_dirty = True
+FE._last_input_time = H.NOW[0]          # gerade eben gedrueckt
+FE._maybe_rebuild_ra_categories()
+check("waehrend gescrollt wird: KEIN Neubau", not neubauten,
+      "1,6 Sekunden Stillstand mitten im Zeichenweg")
+check("und das Flag bleibt stehen - verloren geht nichts",
+      FE._ra_categories_dirty is True)
+
+H.NOW[0] += FE.RA_NEUBAU_RUHE + 0.1
+FE._maybe_rebuild_ra_categories()
+check("nach der Ruhe wird nachgeholt", len(neubauten) == 1,
+      "%d" % len(neubauten))
+check("und das Flag ist verbraucht",
+      FE._ra_categories_dirty is False)
+
+del neubauten[:]
+FE._ra_categories_dirty = True
+FE.page = 1
+FE._last_input_time = H.NOW[0] - 10.0   # lange Ruhe
+FE._maybe_rebuild_ra_categories()
+check("in einer Kategorie (Seite 1) weiterhin nicht", not neubauten,
+      "die Zusage von vorher gilt unveraendert - ein Neubau mitten in "
+      "einer Kategorie passt nicht zu Ordnerpfad und Scrollstand")
+FE.page = 0
+del neubauten[:]
+FE._ra_categories_dirty = False
+FE._maybe_rebuild_ra_categories()
+check("ohne frische Daten passiert gar nichts", not neubauten)
+check("die Ruhezeit steht als benannte Konstante da",
+      0.3 <= FE.RA_NEUBAU_RUHE <= 3.0,
+      "%.1f s - laenger als jede Scroll-Wiederholung, kurz genug, dass "
+      "die Daten gleich nach dem Loslassen stehen" % FE.RA_NEUBAU_RUHE)
+
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))

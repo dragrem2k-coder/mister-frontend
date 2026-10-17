@@ -13,6 +13,19 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.8 — noch nicht veröffentlicht
 
+**Behoben: 1,6 Sekunden Stillstand mitten im Scrollen — der Neubau der Kategorien.**
+
+- **Die Zeile aus Build 273 hat geliefert**, direkt vom Gerät:
+
+  ```
+  HAUSARBEIT: 1630 ms - ra_kategorien=1627, mount=3 (6 x ausgelassen, weil eine Taste gehalten wurde)
+  ```
+
+  **1627 von 1630 Millisekunden sind der Neubau der Kategorien** — nicht die Netzabfrage, nicht die Uhr, nicht die Laufwerkssuche. Der Neubau läuft über 31.000 Spiele in 25 Kategorien, und er lief **mitten im Zeichenweg**: genau dann, wenn jemand auf das nächste Bild wartet.
+- **Warum er überhaupt läuft:** die RA-Daten kommen im Hintergrund an, und danach stimmen die Kategorien („RA-Erfolgsjäger") nicht mehr — also werden sie nachgebaut. Das ist richtig, nur der Zeitpunkt war falsch.
+- **Jetzt verlangt er Ruhe:** erst wenn **eine Sekunde** nichts gedrückt wurde. Ob die Kategorien eine Sekunde später stimmen, merkt niemand; dass das Bild 1,6 Sekunden steht, merkt jeder. Dieselbe Linie wie beim Vorauslader seit Build 73 („sobald wieder bedient wird, lässt er seine Liste augenblicklich fallen").
+- **Verloren geht nichts:** das Flag bleibt stehen, bis der Neubau wirklich gelaufen ist — garantiert beim nächsten ruhigen Moment. Und in einer Kategorie (Seite 1) wird weiterhin nicht neu gebaut, das war schon vorher so.
+
 **Behoben: beim GEHALTENEN Tastendruck stockte das Scrollen — und es war nicht das Zeichnen.**
 
 - **Gefragt:** „wenn ich schnell hintereinander hoch oder runter drücke, geht das Scrollen eigentlich. Wenn ich aber gedrückt halte, scrollt der ganz laggig und stockend. Warum ist das so?"

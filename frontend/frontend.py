@@ -6522,6 +6522,13 @@ class Frontend:
         else:
             self.cat_i = 0
 
+    # Wie lange nichts gedrueckt worden sein muss, bevor die
+    # Kategorien neu gebaut werden (Build 274). Eine Sekunde ist
+    # laenger als jede Wiederholung beim Scrollen - haelt man eine
+    # Taste, ist also Ruhe, bis man sie loslaesst - und kurz genug,
+    # dass die frischen RA-Daten gleich nach dem Loslassen stehen.
+    RA_NEUBAU_RUHE = 1.0
+
     def _maybe_rebuild_ra_categories(self):
         """Periodisch (aus draw()) geprueft: holt einen von
         _maybe_apply_pending_ra_data()/_maybe_retry_ra() hinterlegten
@@ -6538,6 +6545,33 @@ class Frontend:
         if not getattr(self, "_ra_categories_dirty", False):
             return
         if self.page != 0:
+            return
+        # ERST WENN DIE HAND VOM PAD IST (Build 274)
+        # --------------------------------------------------------------
+        # GEMESSEN AUF DEM GERAET, und zwar von der Zeile, die Build
+        # 273 dafuer gebaut hat:
+        #
+        #   HAUSARBEIT: 1630 ms - ra_kategorien=1627, mount=3
+        #
+        # 1627 von 1630 Millisekunden sind DIESER Aufruf. Der Neubau
+        # laeuft ueber 31.000 Spiele in 25 Kategorien, und er lief
+        # bisher mitten im Zeichenweg - also genau dann, wenn jemand
+        # auf das naechste Bild wartet. Eine Sekunde und sechs Zehntel
+        # Stillstand ist nichts, was sich "nebenbei" nachholen laesst.
+        #
+        # DIE BEDINGUNG IST DESHALB NICHT MEHR NUR "Seite 0", SONDERN
+        # AUCH "RUHE". Der Neubau ist eine Nachholarbeit: die RA-Daten
+        # kommen im Hintergrund an, und ob die Kategorien eine Sekunde
+        # spaeter stimmen, merkt niemand - dass das Bild eine Sekunde
+        # steht, merkt jeder. Dieselbe Linie wie beim Vorauslader seit
+        # Build 73 ("sobald wieder bedient wird, laesst er seine Liste
+        # augenblicklich fallen").
+        #
+        # VERLOREN GEHT DABEI NICHTS: das Flag bleibt stehen, bis der
+        # Neubau wirklich gelaufen ist - garantiert beim naechsten
+        # ruhigen Moment auf Seite 0, so wie es der Kommentar oben
+        # schon fuer den Seitenwechsel zusagt.
+        if (time.monotonic() - self._last_input_time) < self.RA_NEUBAU_RUHE:
             return
         self._ra_categories_dirty = False
         self._rebuild_categories_preserving_selection()
