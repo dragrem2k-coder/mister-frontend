@@ -566,11 +566,46 @@ def _kill_stray_mpg123():
     gewartet; wer danach immer noch da ist, bekommt SIGKILL. Da es
     sich um PIDs eines FREMDEN, bereits abgetrennten Prozesses
     handelt (kein eigener Popen-Handle vorhanden), geht das nur per
-    /proc-Polling, nicht per Popen.wait()."""
+    /proc-Polling, nicht per Popen.wait().
+
+    GEAENDERT (BUILD 291): DAS WARTEN FINDET NICHT MEHR HIER STATT.
+
+    Diese Funktion lief als erste Anweisung in MusicPlayer.__init__(),
+    und __init__() wird aus dem Konstruktor des Frontends aufgerufen -
+    also im Startweg, vor dem ersten Bild. Lag ein verwaister Prozess
+    herum, hielt dieses Warten den Start um bis zu 1,1 Sekunden auf
+    (20 x 50 ms plus 100 ms Gnadenfrist), und der Bildschirm blieb so
+    lange dunkel. Verwaiste Prozesse gibt es ausgerechnet dann, wenn
+    das Frontend gerade NEU GESTARTET wurde - also im haeufigsten Fall.
+
+    DER GRUND FUER DAS WARTEN BLEIBT GUELTIG und ist zweimal gemeldet
+    worden ("eben nach einem normalen Neustart vom Frontend stotterte
+    die Musik wieder"): zwei mpg123 gleichzeitig auf derselben
+    Audioausgabe. Nur wird jetzt an der RICHTIGEN Stelle gewartet.
+
+    Die Frist galt bisher ab hier bis zum eigenen mpg123-Start. Diese
+    beiden Zeitpunkte sind aber nicht derselbe: __init__() startet
+    keinen mpg123, das tut erst _start_current_impl(), und dazwischen
+    liegt der gesamte restliche Aufbau des Frontends. Die Garantie
+    lautet "nicht starten, solange ein Fremder lebt" - sie gehoert
+    deshalb VOR DEN START, nicht hinter den Abschuss.
+
+    Also: SIGTERM bleibt hier (ein /proc-Durchgang und ein Signal je
+    Treffer, messbar nichts). Die Opfer werden gemerkt, und
+    _fremde_weg() - aufgerufen von _start_current() - laesst den
+    eigenen Start erst durch, wenn keiner mehr lebt. Das Pruefen ist
+    NICHT-BLOCKIEREND: lebt noch einer, tut dieser Durchgang nichts
+    und der naechste versucht es wieder. Genau das Muster, das tick()
+    fuer die Sperre schon benutzt (siehe dort). Nach Ablauf der Frist
+    gibt es SIGKILL wie vorher.
+
+    UNTERM STRICH kommt die Gnadenfrist meistens gar nicht mehr zum
+    Tragen: bis das Frontend fertig aufgebaut ist, ist der alte
+    Prozess auf sein SIGTERM hin laengst von allein weg."""
     try:
         pids = [p for p in os.listdir("/proc") if p.isdigit()]
     except OSError:
-        return
+        return []
     my_pid = os.getpid()
     victims = []
     for pid_s in pids:
@@ -591,24 +626,18 @@ def _kill_stray_mpg123():
             victims.append(pid)
         except OSError:
             pass
-    if not victims:
-        return
-    for _ in range(20):   # bis zu 20 x 50ms = ~1s
-        victims = [pid for pid in victims if _proc_still_running(pid)]
-        if not victims:
-            return
-        time.sleep(0.05)
-    for pid in victims:
-        try:
-            os.kill(pid, signal.SIGKILL)
-            LOG("MusicPlayer: mpg123-Prozess (PID %d) reagierte nicht auf "
-                "SIGTERM - SIGKILL erzwungen" % pid)
-        except OSError:
-            pass
-    # Kurze Gnadenfrist, damit der Kernel/ALSA das Audio-Geraet auch
-    # tatsaechlich wieder freigibt, bevor gleich im Anschluss der
-    # eigene mpg123-Prozess darauf zugreift.
-    time.sleep(0.1)
+    # BUILD 291: hier endete die Funktion frueher nicht - hier begann
+    # das Warten. Jetzt gibt sie die Opfer zurueck, und gewartet wird
+    # in _fremde_weg(), unmittelbar vor dem eigenen mpg123-Start.
+    return victims
+
+
+# BUILD 291: die beiden Zeiten, die vorher als time.sleep() im
+# Startweg standen. Unveraendert in der Dauer - nur nicht mehr
+# blockierend abgesessen, sondern als Frist gegen time.monotonic()
+# geprueft.
+FREMD_FRIST = 1.0    # vorher 20 x 50 ms: so lange darf ein SIGTERM wirken
+FREMD_GNADE = 0.1    # vorher time.sleep(0.1): ALSA das Geraet freigeben lassen
 
 class MusicPlayer:
     """Plays MP3s from MUSIC_DIR in random order in the background.
@@ -620,9 +649,16 @@ class MusicPlayer:
     MAX_TRACK_SECONDS = 20 * 60   # Sicherheitsnetz, siehe tick()
 
     def __init__(self):
-        _kill_stray_mpg123()   # siehe Funktionskommentar oben - erst
-                                # aufraeumen, dann erst self.proc unten
-                                # ueberhaupt einen eigenen Prozess starten
+        # BUILD 291: der Abschuss bleibt hier (billig), das WARTEN
+        # darauf nicht mehr - siehe den Kommentar in
+        # _kill_stray_mpg123() und _fremde_weg() weiter unten. Die
+        # Opfer merken wir uns; durchgelassen wird der eigene Start
+        # erst, wenn keiner mehr lebt.
+        self._fremde_mpg123 = _kill_stray_mpg123() or []
+        self._fremde_frist = time.monotonic() + FREMD_FRIST \
+            if self._fremde_mpg123 else 0.0
+        self._fremde_frei_ab = 0.0
+        self._fremde_gemeldet = False
         self.enabled = self._load_enabled()
         self.source, _radio_sid = self._load_source()   # "mp3" oder "radio" + sid
         self.radio = rainwave.RainwaveRadio(sid=_radio_sid, log=LOG) \
@@ -789,8 +825,88 @@ class MusicPlayer:
         with self._proc_lock:
             if self._shutdown:
                 return
+            # BUILD 291: das Tor, hinter dem vorher ein time.sleep() im
+            # Startweg stand. Siehe _fremde_weg().
+            if not self._fremde_weg():
+                return
             self._kill_proc()
             self._start_current_impl()
+
+    def _fremde_weg(self):
+        """Darf JETZT ein eigener mpg123 starten? (Build 291)
+
+        Nicht-blockierend. Beantwortet die eine Frage, um die es beim
+        Abschuss verwaister Prozesse ueberhaupt geht: lebt noch einer,
+        der dieselbe Audioausgabe belegt?
+
+        VORHER wurde diese Frage durch Warten beantwortet, und zwar in
+        MusicPlayer.__init__() - also im Startweg des Frontends, bis zu
+        1,1 Sekunden lang, mit dunklem Bildschirm. Die Frage gehoert
+        aber nicht dorthin, sondern genau hierher: vor den eigenen
+        Start. Zwischen Abschuss und erstem eigenen mpg123 liegt der
+        gesamte restliche Aufbau des Frontends; in der Zeit ist ein
+        Prozess, der ein SIGTERM bekommen hat, normalerweise von allein
+        weg, und diese Funktion sagt beim ersten Aufruf schlicht ja.
+
+        DREI AUSGAENGE:
+
+        1. Es lebt noch einer und die Frist laeuft -> False. Der
+           Aufrufer macht diesmal nichts. tick() kommt sehr bald
+           wieder (es laeuft am Ende jedes Hauptlauf-Durchgangs),
+           also kostet ein False nur diesen einen Durchgang. Dasselbe
+           Muster benutzt tick() bereits fuer die Sperre - "ist sie
+           gerade belegt, macht tick() diesmal einfach nichts und
+           versucht es beim naechsten Durchlauf erneut".
+        2. Es lebt noch einer und die Frist ist abgelaufen -> SIGKILL,
+           wie vorher, danach die Gnadenfrist.
+        3. Keiner lebt mehr -> die Gnadenfrist fuer ALSA laeuft noch
+           einmal einen Durchgang (FREMD_GNADE), dann True.
+
+        WARUM DIE GNADENFRIST NICHT WEGFAELLT: sie hat denselben Grund
+        wie das Warten selbst (der Kernel muss das Audio-Geraet
+        wirklich freigeben, bevor der naechste darauf zugreift). Nur
+        wird sie jetzt abgewartet, indem ein Durchgang nichts tut,
+        nicht indem der Hauptlauf schlaeft.
+
+        DIE SPERRE HAELT DER AUFRUFER. Diese Funktion wird nur aus
+        _start_current() heraus aufgerufen, dort unter self._proc_lock -
+        die Felder werden also nicht von zwei Threads gleichzeitig
+        verstellt."""
+        jetzt = time.monotonic()
+        if self._fremde_mpg123:
+            noch = [pid for pid in self._fremde_mpg123
+                    if _proc_still_running(pid)]
+            if noch and jetzt >= self._fremde_frist:
+                for pid in noch:
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                        LOG("MusicPlayer: mpg123-Prozess (PID %d) reagierte "
+                            "nicht auf SIGTERM - SIGKILL erzwungen" % pid)
+                    except OSError:
+                        pass
+                noch = []
+            self._fremde_mpg123 = noch
+            if noch:
+                if not self._fremde_gemeldet:
+                    # EINMAL melden, nicht je Durchgang: tick() laeuft
+                    # sehr haeufig, und eine Zeile je Durchgang waere
+                    # genau die Art Protokoll, die man danach nicht
+                    # mehr lesen kann.
+                    self._fremde_gemeldet = True
+                    LOG("MusicPlayer: eigener Start wartet noch auf %d "
+                        "verwaiste(n) mpg123-Prozess(e) - laeuft von "
+                        "selbst weiter, sobald sie weg sind"
+                        % len(noch))
+                return False
+            # Eben verschwunden (oder gerade erlegt): jetzt noch die
+            # Gnadenfrist, und zwar ab diesem Moment.
+            self._fremde_frei_ab = jetzt + FREMD_GNADE
+            return False
+        if self._fremde_frei_ab:
+            if jetzt < self._fremde_frei_ab:
+                return False
+            self._fremde_frei_ab = 0.0
+        return True
 
     def _start_current_impl(self):
         if self.source == "radio":

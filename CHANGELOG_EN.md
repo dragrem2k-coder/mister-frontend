@@ -13,6 +13,26 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **Startup no longer waits for the music.** The last step before the
+  first picture used to be starting the music — a measured 942 ms, the
+  single largest item of the whole startup, and with radio as the
+  source there is a network request behind it. The screen stayed dark
+  for most of a second for something you cannot see. The music start
+  now runs alongside: the music begins at the same moment as before,
+  the menu just arrives sooner (build 291).
+- **Startup no longer waits for leftover music processes either.** A
+  leftover `mpg123` is killed at startup — and we waited up to 1.1
+  seconds for it before anything was on screen. Leftover processes
+  happen precisely after a restart of the frontend, i.e. in the most
+  common case. The wait now happens right before our own music start,
+  without holding up anything else. The protection against doubled
+  music is unchanged (build 291).
+- **The startup report in the benchmark now says where the time goes.**
+  There were 220 lines between two marks without a single one in
+  between — so one item of 820 ms carried time that was not its own.
+  Four new marks (watchers, console, first picture, music player)
+  split it up. Fixes nothing, but shows what to tackle next
+  (build 291).
 - **Fixed: no keystroke reached `update_all` (or any script with a
   menu).** The menu was visible, the keys had no effect — exactly the
   symptom the manual had in v4.9: a login process reads along on tty1

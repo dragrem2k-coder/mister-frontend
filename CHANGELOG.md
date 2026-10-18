@@ -13,6 +13,27 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Der Start wartet nicht mehr auf die Musik.** Bisher war der letzte
+  Schritt vor dem ersten Bild der Musikstart — gemessene 942 ms, der
+  größte Einzelposten des ganzen Starts, und bei Radio als Quelle
+  hängt daran eine Netzabfrage. Der Bildschirm blieb knapp eine
+  Sekunde dunkel für etwas, das man nicht sieht. Der Musikstart läuft
+  jetzt nebenher: die Musik beginnt zum gleichen Zeitpunkt wie vorher,
+  nur das Menü ist eher da (Build 291).
+- **Der Start wartet auch nicht mehr auf alte Musikprozesse.** Beim
+  Start wird ein übriggebliebener `mpg123` abgeschossen — und darauf
+  wurde bis zu 1,1 Sekunden gewartet, bevor überhaupt etwas zu sehen
+  war. Übriggebliebene Prozesse gibt es ausgerechnet nach einem
+  Neustart des Frontends, also im häufigsten Fall. Gewartet wird jetzt
+  erst unmittelbar vor dem eigenen Musikstart, und ohne den Rest
+  anzuhalten. Der Schutz gegen doppelte Musik bleibt unverändert
+  (Build 291).
+- **Der Startbericht im Prüfstand sagt jetzt, wohin die Zeit geht.**
+  Zwischen zwei Marken lagen 220 Zeilen ohne eine einzige weitere —
+  ein Posten von 820 ms trug damit Zeit, die ihm nicht gehörte. Vier
+  neue Marken (Wächter, Konsole, erstes Bild, Musikspieler) teilen das
+  auf. Behebt nichts, zeigt aber, was als Nächstes dran ist
+  (Build 291).
 - **Behoben: in `update_all` (und anderen Skripten mit Menü) kam keine
   Taste an.** Das Menü war sichtbar, die Tasten ohne Wirkung — und das
   ist genau das Symptom, das die Anleitung in v4.9 hatte: auf tty1

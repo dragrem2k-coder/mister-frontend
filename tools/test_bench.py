@@ -1330,9 +1330,18 @@ check("die Marken des Starts stehen in der richtigen Reihenfolge",
       < _fq.index('_startmarke("davon Metadaten-Vorwaermer'),
       "vorher trug die Vorwaermer-Marke die Zeit von Musik und "
       "RA-Abruf mit - 815 ms auf dem falschen Namen")
+# UMBENANNT IN BUILD 291, nicht abgeschwaecht. Die Zusage dieser
+# Pruefung ist "der Musikposten liegt noch INNERHALB der Liste",
+# und die gilt unveraendert - es waren die 850 ms, die der Gegenprobe
+# gefehlt haben. Nur heisst die Marke jetzt "Musikstart angestossen"
+# statt "Musik gestartet", weil Build 291 den blockierenden
+# music.tick() in einen Faden verlegt hat: gemessen wird seither das
+# Lostreten, nicht das Starten. Ein Name, der mehr behauptet, als er
+# messen kann, hat in diesem Projekt schon zweimal einen Fehlschluss
+# gekostet (Build 276, und der 820-ms-Posten in Build 291).
 check("und der Musikstart hat eine eigene",
-      '_startmarke("Musik gestartet")' in _fq
-      and _fq.index('_startmarke("Musik gestartet")')
+      '_startmarke("Musikstart angestossen")' in _fq
+      and _fq.index('_startmarke("Musikstart angestossen")')
       < _fq.index("self._startposten_fertig = list"),
       "er lief bisher NACH dem Dichtmachen der Liste - das waren die "
       "850 ms, die der Gegenprobe gefehlt haben")

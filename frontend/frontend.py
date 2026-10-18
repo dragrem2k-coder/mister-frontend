@@ -1598,6 +1598,32 @@ class Frontend:
         # geaendert hat. Beide melden und lesen NICHT von selbst
         # nach.
         self._romwacht = ROMWACHT.RomWaechter()
+        # BUILD 291: VIER MARKEN IN EINE SCHEIBE, DIE 220 ZEILEN LANG
+        # KEINE HATTE.
+        #
+        # In Bench 13 stand hier:
+        #
+        #   Musik, RA-Abruf angestossen   820 ms   28 %
+        #
+        # Der Name war eine Behauptung. Gemessen hat diese Marke alles
+        # seit "Framebuffer und Eingaben offen" - also die beiden
+        # Waechter, die Uebernahme der Konsole, das erste Wischen des
+        # Bildschirms UND die Anlage des Musikspielers, und erst
+        # danach den RA-Faden, der ohnehin nur angestossen wird und
+        # nichts kostet. 820 ms auf einen Namen, der zwei Posten nennt,
+        # von denen einer nichts kostet.
+        #
+        # DAS IST DERSELBE FEHLER WIE IN BUILD 276, nur eine Ebene
+        # tiefer: dort trug eine Marke 815 ms, die ihr nicht gehoerten,
+        # weil die Reihenfolge falsch war. Hier traegt eine Marke
+        # 820 ms, die ihr nicht gehoeren, weil die Marken FEHLEN. Eine
+        # Marke misst die Zeit seit der vorigen - wo keine steht,
+        # sammelt die naechste alles ein.
+        #
+        # Keine dieser vier Marken behebt etwas. Sie sagen nur, wen man
+        # angehen muss. Beim letzten Mal hat genau das zwei echte
+        # Fehler sichtbar gemacht, die vorher niemand gesucht haette.
+        self._startmarke("Waechter angelegt")
         # Build 207: das F9 des NUTZERS. Siehe _f9_nutzer_behandeln().
         self._f9_nutzer_letzte = 0.0
         self._f9_grund = "eingespeist"
@@ -1620,9 +1646,28 @@ class Frontend:
         # was sie tun soll; das hier nimmt ihr die Moeglichkeit.
         self.textkonsole_grafik_an()
         self.inp.grab(True)
+        # Build 291: die Konsole ist uebernommen - fuenf Aufrufe, von
+        # denen jeder einzelne mit der Konsole oder den Eingabegeraeten
+        # redet. Hier getrennt, weil ein Ruck an dieser Stelle etwas
+        # voellig anderes bedeutet als ein Ruck beim Bildschirmwischen.
+        self._startmarke("Konsole uebernommen")
         self.fb.clear((16, 18, 24))
         self.fb.flip()
+        # Build 291: das erste Wischen. Eigene Marke, weil clear() beim
+        # ALLERERSTEN Mal fuer eine Farbe die zeilenweise Vignette
+        # rechnet (~370 ms in der Sandbox, siehe den Kommentar in
+        # run()) - genau deshalb waermt run() zwei Farben vor. Ob diese
+        # hier (16,18,24) davon erfasst ist, sagt uns jetzt der Bench
+        # statt meiner Vermutung.
+        self._startmarke("Erstes Bild gewischt")
         self.music = MusicPlayer()
+        # Build 291: die Anlage des Musikspielers. Der schiesst als
+        # Erstes verwaiste mpg123-Prozesse ab und hat darauf bis zu
+        # 1,1 s gewartet - siehe _kill_stray_mpg123() in fe/audio.py,
+        # wo dieses Warten in Build 291 vom Startweg genommen wurde.
+        # Die Marke bleibt, damit die Wirkung dieser Aenderung beim
+        # naechsten Bench nachzulesen ist und nicht geglaubt werden muss.
+        self._startmarke("Musikspieler angelegt")
 
         # DIAGNOSE (Nutzer-Rueckmeldung: "habe nach dem Update immer
         # noch das alte Zufalls-Zock-Bild") - inzwischen als Ursache
@@ -2379,9 +2424,61 @@ class Frontend:
         # noch kommt - und wenn er wirklich eine Dreiviertelsekunde
         # kostet, ist das der groesste Einzelposten des Starts
         # ueberhaupt. Erst messen, dann angehen.
+        # BUILD 291: DER GROESSTE EINZELPOSTEN DES STARTS, UND ER HAELT
+        # DEN BILDSCHIRM AUF.
+        #
+        # "Erst messen, dann angehen" steht zwei Zeilen weiter oben,
+        # von mir, aus Build 276. Jetzt ist gemessen: 942 ms. Das ist
+        # der groesste Einzelposten des ganzen Starts - und er stand
+        # als LETZTES in __init__(), also unmittelbar vor dem ersten
+        # draw() in run(). Der Bildschirm bleibt diese knappe Sekunde
+        # dunkel, und zwar fuer etwas, das man nicht sieht.
+        #
+        # WO DIE 942 ms HERKOMMEN, steht in fe/audio.py: tick() ruft
+        # _start_current() -> _start_current_impl(), und das baut bei
+        # MP3 erst die Wiedergabeliste (Ordner einlesen) und startet
+        # dann mpg123; bei RADIO holt es vorher stream_url() - eine
+        # NETZABFRAGE. Bei Radio als Quelle wartet der Start also auf
+        # einen fremden Server, bevor das erste Bild kommt.
+        #
+        # ENTFERNT WIRD DER AUFRUF NICHT - verlegt wird er in einen
+        # Faden. Der Unterschied ist wichtig:
+        #
+        #   Entfernen hiesse, die Musik beginnt erst beim ersten tick()
+        #   aus dem Hauptlauf. Das WAERE ein Verhaltenswechsel: beim
+        #   ersten Start nach einem MiSTer-Neustart laeuft vor dem
+        #   Menue noch die Boot-Animation, und waehrend der ist heute
+        #   Musik zu hoeren.
+        #
+        #   Im Faden beginnt die Musik zum GLEICHEN Zeitpunkt wie
+        #   heute. Nur wartet der Start nicht mehr darauf.
+        #
+        # DASS DAS ERLAUBT IST, IST KEINE ANNAHME: fe/audio.py ist
+        # genau dafuer gebaut. _proc_lock ist ein RLock, ausdruecklich
+        # damit Hintergrund-Threads und tick() sich nicht verkeilen,
+        # und cycle_volume()/next_track()/cycle_source() stossen mpg123
+        # schon heute aus Threads an - aus demselben Grund wie hier
+        # ("damit ein haengender Netzwerk-Stream nicht die Eingabe
+        # blockiert", steht dort woertlich).
+        #
+        # ZWEI ABSICHERUNGEN, DIE SCHON DA SIND UND JETZT TRAGEN:
+        # (1) tick() holt die Sperre NICHT-BLOCKIEREND. Laeuft unser
+        #     Faden noch, wenn der Hauptlauf das erste Mal tickt, tut
+        #     dieser tick() schlicht nichts und versucht es gleich
+        #     wieder - das ist das dort vorgesehene Verhalten, kein
+        #     Umweg.
+        # (2) _start_current() prueft self._shutdown unter der Sperre.
+        #     Ein Faden, der beim Beenden noch unterwegs ist, kann also
+        #     keinen mpg123 hinterlassen, der das Frontend ueberlebt -
+        #     genau der Fall, fuer den dieses Flag angelegt wurde.
         if self.music.available():
-            self.music.tick()      # start playback right away
-            self._startmarke("Musik gestartet")
+            threading.Thread(target=self.music.tick, daemon=True).start()
+            # Die Marke heisst jetzt "angestossen", nicht "gestartet".
+            # Sie misst, was sie misst: das Lostreten des Fadens. Ein
+            # Name, der mehr behauptet als er messen kann, hat uns in
+            # Build 276 und oben in dieser Datei je einen Fehlschluss
+            # gekostet.
+            self._startmarke("Musikstart angestossen")
         # AB HIER SIND ES KEINE STARTZEITEN MEHR (Build 275).
         # build_categories() laeuft spaeter wieder (frische RA-Daten,
         # Neueinlesen); dessen Marken gehoeren ins Protokoll, aber

@@ -5818,3 +5818,129 @@ von MiSTers Main in dessen EIGENER Abfrage gesehen werden, das war die
 Jagd der Builds 146-152. Ein dritter Einspeise-Fall faellt ebenfalls
 auf - der Test zaehlt alle `inject()`-Aufrufe im Frontend und verlangt,
 dass jeder einer der beiden bedachten Faelle ist.
+
+---
+
+## Nachtrag Build 291: der Name einer Marke ist keine Messung
+
+Bench 13 hat den Start zerlegt und drei grosse Posten genannt. Zwei von
+ihnen hielten nicht, was ihr Name versprach — und das auf zwei
+verschiedene Weisen, die man auseinanderhalten muss.
+
+### Der erste: ein Name, der zu viel traegt
+
+```
+Musik, RA-Abruf angestossen   820 ms   28 %
+```
+
+Der RA-Abruf laeuft seit Build 187 in einem Faden und kostet nichts.
+Der Musikspieler wird angelegt. Soweit der Name. Gemessen hat diese
+Marke aber **alles seit der vorigen** — und dazwischen lagen **220
+Zeilen ohne eine einzige weitere Marke**: zwei Waechter, die Uebernahme
+der Konsole mit fuenf Aufrufen, das erste Wischen des Bildschirms, und
+erst dann der Musikspieler.
+
+Eine Marke misst die Zeit seit der vorigen. **Wo keine steht, sammelt
+die naechste alles ein.** Das ist derselbe Fehler wie in Build 276, nur
+eine Ebene tiefer: dort trug eine Marke 815 ms, die ihr nicht
+gehoerten, weil die REIHENFOLGE falsch war. Hier trug eine Marke 820 ms,
+die ihr nicht gehoerten, weil die Marken **fehlten**.
+
+Vier neue Marken teilen die Scheibe auf. Sie beheben nichts. Beim
+letzten Mal hat genau das zwei echte Fehler sichtbar gemacht, die
+vorher niemand gesucht haette.
+
+### Der zweite: ein Name, der mehr behauptet, als er messen kann
+
+```
+Musik gestartet   942 ms
+```
+
+Das war ehrlich gemessen und der groesste Einzelposten des ganzen
+Starts. Dahinter steckte ein **blockierender** `music.tick()` als
+letzte Anweisung in `__init__()`, also unmittelbar vor dem ersten
+`draw()`. Bei Radio als Quelle haengt daran eine Netzabfrage: der Start
+wartete auf einen fremden Server, bevor das erste Bild kam.
+
+**Verlegt, nicht entfernt.** Der Unterschied ist wichtig: wuerde man den
+Aufruf streichen, begaenne die Musik erst beim ersten `tick()` aus dem
+Hauptlauf — und beim ersten Start nach einem MiSTer-Neustart laeuft
+davor noch die Boot-Animation, waehrend der heute Musik zu hoeren ist.
+Im Faden beginnt die Musik zum **gleichen Zeitpunkt** wie vorher, nur
+wartet der Start nicht mehr darauf.
+
+Dass das erlaubt ist, ist keine Annahme: `fe/audio.py` ist dafuer
+gebaut. `_proc_lock` ist ein RLock ausdruecklich fuer Hintergrund-
+Threads, `tick()` holt die Sperre nicht-blockierend, und
+`_start_current()` prueft `self._shutdown` unter der Sperre — der
+Kontrollpunkt, der verhindert, dass ein spaeter Faden einen mpg123
+hinterlaesst.
+
+Die Marke heisst jetzt **"Musikstart angestossen"**. Sie misst, was sie
+messen kann.
+
+### Und noch ein Warten, das an der falschen Stelle stand
+
+In den 820 ms steckte `MusicPlayer()`, und dessen **erste** Anweisung
+ist `_kill_stray_mpg123()` — die schiesst einen uebriggebliebenen
+mpg123 ab und hat **bis zu 1,1 Sekunden** darauf gewartet. Uebrig-
+gebliebene Prozesse gibt es ausgerechnet dann, wenn das Frontend
+gerade neu gestartet wurde: im haeufigsten Fall.
+
+Der Grund fuer das Warten bleibt gueltig und ist zweimal gemeldet
+worden ("eben nach einem normalen Neustart vom Frontend stotterte die
+Musik wieder"): zwei mpg123 gleichzeitig auf derselben Audioausgabe.
+**Nur war die Frist am falschen Punkt festgemacht.** Sie galt ab dem
+Abschuss — dabei lautet die Zusage "nicht starten, solange ein Fremder
+lebt", und `__init__()` startet gar keinen mpg123. Das tut erst
+`_start_current_impl()`, und dazwischen liegt der gesamte restliche
+Aufbau des Frontends.
+
+Also: SIGTERM bleibt in `__init__()` (ein /proc-Durchgang, messbar
+nichts). Das Warten wird zu einem **nicht-blockierenden Tor** in
+`_start_current()`: lebt noch ein Opfer, tut dieser Durchgang nichts
+und der naechste versucht es wieder — dasselbe Muster, das `tick()` fuer
+die Sperre schon benutzt. Nach Ablauf der Frist SIGKILL wie vorher.
+Unterm Strich kommt die Gnadenfrist meistens gar nicht mehr zum Tragen:
+bis der Aufbau durch ist, ist der alte Prozess laengst von allein weg.
+
+**Die Dauern sind unveraendert** (`FREMD_FRIST = 1.0`,
+`FREMD_GNADE = 0.1`), und `tools/test_startweg.py` haelt beide Zahlen
+fest. Wer sie aendert, soll das bewusst tun.
+
+### Der Testhelfer hat drei Fassungen gebraucht — und alle drei Fehler
+### kannten wir schon
+
+`tools/test_startweg.py` schneidet den Koerper einer Funktion heraus,
+um darin zu pruefen. Beim Schreiben ging das dreimal schief, und jedes
+Mal war es ein Fehler, der in diesem Projekt schon einmal vorkam:
+
+1. **Zeichenfenster** (`quelle[i:i+1800]`) — wird zu klein, sobald
+   jemand einen Kommentar ergaenzt. Hatten wir in `test_bench` und
+   `test_konsole_wache`.
+2. **Schnitt bis zum naechsten `"\n    def "`** — setzt voraus, dass es
+   eine METHODE ist. `_kill_stray_mpg123()` ist eine Modulfunktion; der
+   naechste vierfach eingerueckte `def` steht erst in der naechsten
+   Klasse, der Schnitt lief also weit ueber das Ende hinaus und fand
+   fremden Code.
+3. **Schnitt bis zum naechsten `def`/`class` auf gleicher
+   Einrueckung** — sieht richtig aus, nimmt aber mit, was zwischen zwei
+   Modulfunktionen steht. Hier waren das die beiden neuen Konstanten,
+   und in deren **Kommentaren** steht `time.sleep` — also genau der
+   Begriff, auf den die Pruefung schaut. Dieselbe Falle wie in
+   `test_anleitung`: ein Wort, das auch in der ERKLAERUNG vorkommt.
+
+Die vierte Fassung nimmt `ast`. Der kennt die echten Grenzen, und sie
+gibt nur Code zurueck, keine Kommentarzeilen. **Eine Pruefung auf "hier
+wird nicht geschlafen" soll den Code lesen, nicht die Prosa darueber.**
+
+### Und die Torlogik wird ausgefuehrt, nicht gelesen
+
+Teil 4 des Tests ruft `_fremde_weg()` wirklich auf — mit einer Attrappe
+statt eines echten `MusicPlayer` (dessen `__init__` wuerde `/proc`
+durchgehen und Signale verschicken; ein Test hat auf einem fremden
+Rechner nichts abzuschiessen) und mit ersetztem `_proc_still_running`
+und `os.kill`. Geprueft werden alle vier Ausgaenge, und die eigentliche
+Zusage dieses Builds wird **gemessen**: die Pruefung muss unter 50 ms
+zurueckkommen, auch wenn ein Opfer noch lebt. Vorher sass dort ein
+`time.sleep()` von bis zu 1,1 s.
