@@ -13,6 +13,14 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **Fixed: after a manual had been opened, the console stayed on
+  tty3.** From the very first moment — not only on exit, and not
+  because of MiSTer. The viewer (jfbview) takes over console
+  switching, and the kernel only releases that mode when the *last*
+  file handle on the console is closed — and we still held it, so the
+  kernel was asking a long-dead process for permission. The mode is
+  now reset, then the handle closed, **then** the switch happens
+  (build 286).
 - **The manual's console is now released immediately.** The log showed
   that the switch back to tty1 on exit is **refused** — right after
   MiSTer reloads its menu core. No further attempt can beat a refusal,

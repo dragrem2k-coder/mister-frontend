@@ -646,6 +646,79 @@ try:
 finally:
     shutil.rmtree(_tmp2, ignore_errors=True)
 
+# ---------------------------------------------------------------------------
+print()
+print("Build 286: erst loslassen, dann umschalten")
+# ---------------------------------------------------------------------------
+# DAS PROTOKOLL DES NUTZERS HAT ES IN ZWEI ZEILEN ENTSCHIEDEN, und
+# zwar UNMITTELBAR nach dem Schliessen der Anleitung - lange bevor
+# MiSTer irgendetwas neu laedt:
+#
+#   09:01:45  VT: nach dem Rueckwechsel liegt tty3 vorne, nicht tty1
+#   09:01:46  VT: tty1 liess sich NICHT nach vorne bringen
+#
+# MISTER IST UNSCHULDIG. Wir kommen von tty3 gar nicht mehr weg, und
+# das ab dem ersten Augenblick. Vier Builds (278, 282, 285 und die
+# Diagnose dazwischen) haben in die falsche Richtung gesehen, weil
+# der einzige Beweis bis dahin aus dem AUSSTIEG kam - und dort steht
+# MiSTers load_core direkt daneben. Die Zeile von 09:01 gab es erst,
+# seit Build 285 auch den Rueckweg der Anleitung protokolliert.
+#
+# URSACHE: ein Programm, das selbst auf eine Konsole malt, uebernimmt
+# den Konsolenwechsel per VT_SETMODE/VT_PROCESS - der Kernel fragt es
+# dann vor jedem Wechsel um Erlaubnis. Genau das macht jfbview.
+# Beendet wird er von uns, aber der Kernel setzt diese Betriebsart
+# erst zurueck, wenn der LETZTE Dateizeiger auf die Konsole zugeht -
+# und den hielten wir noch. Der Kernel fragte einen toten Prozess und
+# bekam keine Antwort.
+#
+# LEHRE: wer eine fremde Betriebsart erbt, muss sie zuruecksetzen -
+# und das geht nur, solange man den Griff noch hat.
+_fe7 = io.open(os.path.join(_FRONTEND_DIR, "frontend.py"),
+               encoding="utf-8").read()
+_fin = _fe7.split("def _auf_konsole")[1].split("\n    def ")[0]
+_fin = _fin[_fin.index("        finally:"):]
+
+check("die Betriebsart der Konsole wird zurueckgestellt",
+      "VT_SETMODE" in _fin and "VT_AUTO" in _fin,
+      "VT_AUTO heisst: der Kernel schaltet selbst und fragt niemanden")
+check("und zwar BEVOR der Dateizeiger zugeht",
+      _fin.index("VT_SETMODE") < _fin.index("tty.close()"),
+      "danach gibt es keinen Griff mehr, mit dem man es koennte")
+check("umgeschaltet wird erst NACH dem Schliessen",
+      _fin.index("tty.close()")
+      < _fin.index("self._zurueck_auf_tty1"),
+      "genau diese Reihenfolge war der Fehler - solange der "
+      "Dateizeiger offen ist, haelt der Kernel die geerbte "
+      "Betriebsart")
+check("und ohne Dateizeiger, weil er weg ist",
+      "self._zurueck_auf_tty1(None, vt)" in _fin)
+
+# Und der Rueckweg muss damit umgehen koennen.
+_zur = _fe7.split("def _zurueck_auf_tty1")[1].split("\n    def ")[0]
+check("der Rueckweg kommt ohne Dateizeiger aus",
+      "if not vt:" in _zur and "if tty is not None:" in _zur,
+      "vorher stieg er bei tty=None sofort aus - dann waere nach dem "
+      "Schliessen gar nichts mehr passiert")
+
+_fe8 = H.make_frontend(page=0)
+_tmp3 = tempfile.mkdtemp(prefix="vt3_")
+try:
+    _d3 = os.path.join(_tmp3, "active")
+    io.open(_d3, "w").write("tty3\n")
+    _fe8.AKTIVE_VT_DATEI = _d3
+    _versuche3 = []
+    _fe8._vt_erzwingen = lambda ziel=1: (_versuche3.append(ziel) or True)
+    _fe8._anleitungs_vt_freigeben = lambda: _versuche3.append("frei")
+    _fe8._zurueck_auf_tty1(None, 3)
+    check("ohne Dateizeiger wird trotzdem umgeschaltet und freigegeben",
+          _versuche3 == [1, "frei"], repr(_versuche3))
+    _versuche3[:] = []
+    _fe8._zurueck_auf_tty1(None, 0)
+    check("ohne eigene Konsole weiterhin nichts", _versuche3 == [])
+finally:
+    shutil.rmtree(_tmp3, ignore_errors=True)
+
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))

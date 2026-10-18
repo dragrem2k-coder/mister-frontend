@@ -13,6 +13,15 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Behoben: nach einer geöffneten Anleitung blieb die Konsole auf
+  tty3 stehen.** Und zwar ab dem ersten Augenblick — nicht erst beim
+  Beenden, und nicht wegen MiSTer. Der Betrachter (jfbview) übernimmt
+  den Konsolenwechsel, und der Kernel gibt diese Betriebsart erst
+  wieder her, wenn der *letzte* Dateizeiger auf die Konsole zugeht —
+  den hielten wir aber noch, also fragte der Kernel einen längst
+  beendeten Prozess um Erlaubnis. Jetzt wird die Betriebsart
+  zurückgestellt, dann der Dateizeiger geschlossen, **dann**
+  umgeschaltet (Build 286).
 - **Die Anleitungs-Konsole wird jetzt sofort wieder abgegeben.** Das
   Protokoll hat gezeigt, dass der Wechsel zurück auf tty1 beim Beenden
   **verweigert** wird — und zwar genau nachdem MiSTer seinen Menü-Core

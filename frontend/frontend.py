@@ -14024,6 +14024,12 @@ class Frontend:
     # Geht nur, wenn sie NICHT vorne liegt - deshalb immer erst
     # umschalten, dann freigeben.
     VT_DISALLOCATE = 0x5608
+    # Die Betriebsart einer Konsole setzen. VT_AUTO heisst "der Kernel
+    # schaltet selbst"; VT_PROCESS heisst "ein Programm wird vorher
+    # gefragt" - und ein Programm, das nicht mehr lebt, antwortet nie
+    # (Build 286).
+    VT_SETMODE = 0x5602
+    VT_AUTO = 0x00
 
     # Wer die eigene Konsole nicht will: dieselbe Linie wie beim
     # Grafikmodus und bei der Konsolen-Mechanik.
@@ -14169,13 +14175,19 @@ class Frontend:
         eingespeisten F9/F12 (Build 184/169): angefordert ist nicht
         angekommen. Also wird nachgesehen, und wenn es nicht gegriffen
         hat, geht es ueber den zweiten Weg (/dev/tty0)."""
-        if not vt or tty is None:
+        if not vt:
             return
-        try:
-            fcntl.ioctl(tty.fileno(), self.VT_ACTIVATE, 1)
-            fcntl.ioctl(tty.fileno(), self.VT_WAITACTIVE, 1)
-        except OSError as e:
-            LOG("_auf_konsole: Rueckwechsel auf tty1 fehlgeschlagen (%s)" % e)
+        # OHNE Dateizeiger ist in Ordnung und seit Build 286 der
+        # Normalfall: er wird vorher absichtlich geschlossen, damit
+        # der Kernel die geerbte Betriebsart der Konsole loslaesst.
+        # Dann bleibt der Weg ueber /dev/tty0 weiter unten.
+        if tty is not None:
+            try:
+                fcntl.ioctl(tty.fileno(), self.VT_ACTIVATE, 1)
+                fcntl.ioctl(tty.fileno(), self.VT_WAITACTIVE, 1)
+            except OSError as e:
+                LOG("_auf_konsole: Rueckwechsel auf tty1 "
+                    "fehlgeschlagen (%s)" % e)
         aktiv = self._aktive_vt()
         if aktiv not in (1, None):
             LOG("VT: nach dem Rueckwechsel liegt tty%s vorne, nicht "
@@ -14433,12 +14445,61 @@ class Frontend:
                 except OSError as e:
                     LOG("_auf_konsole: Textmodus liess sich nicht "
                         "wiederherstellen (%s)" % e)
-            self._zurueck_auf_tty1(tty, vt)
+            # ERST LOSLASSEN, DANN UMSCHALTEN (Build 286)
+            #
+            # Die Reihenfolge hier war der ganze Fehler. Das Protokoll
+            # des Nutzers sagt es in zwei Zeilen, und zwar UNMITTELBAR
+            # nach dem Schliessen der Anleitung - lange bevor MiSTer
+            # irgendetwas neu laedt:
+            #
+            #   VT: nach dem Rueckwechsel liegt tty3 vorne, nicht tty1
+            #   VT: tty1 liess sich NICHT nach vorne bringen
+            #
+            # MISTER IST ALSO UNSCHULDIG. Wir kommen von tty3 gar
+            # nicht mehr weg, und das ab dem ersten Augenblick.
+            #
+            # WARUM: ein Programm, das selbst auf eine Konsole malt,
+            # uebernimmt den Konsolenwechsel per VT_SETMODE/VT_PROCESS
+            # - der Kernel fragt es dann vor jedem Wechsel um
+            # Erlaubnis. Genau das macht jfbview (MiSTers
+            # Betrachter). Beendet wird er von uns, aber der Kernel
+            # setzt diese Betriebsart erst zurueck, wenn der LETZTE
+            # Dateizeiger auf die Konsole zugeht - und den hielten
+            # wir noch. Der Kernel fragte also einen toten Prozess um
+            # Erlaubnis und bekam keine.
+            #
+            # Deshalb in dieser Reihenfolge:
+            #   1. die Betriebsart selbst auf VT_AUTO stellen, solange
+            #      wir den Dateizeiger noch haben,
+            #   2. den Dateizeiger schliessen,
+            #   3. dann umschalten.
+            #
+            # LEHRE: wer eine fremde Betriebsart erbt, muss sie
+            # zuruecksetzen - und das geht nur, solange man den Griff
+            # noch hat. Dieselbe Sorte Fehler wie in Build 282, nur
+            # umgekehrt: dort war der Konsolenwechsel zu FRUEH, hier
+            # zu SPAET.
+            if tty and vt:
+                try:
+                    # struct vt_mode: mode, waitv, relsig, acqsig,
+                    # frsig - alles auf null heisst VT_AUTO, also
+                    # "der Kernel schaltet selbst".
+                    fcntl.ioctl(tty.fileno(), self.VT_SETMODE,
+                                struct.pack("BBhhh", self.VT_AUTO,
+                                            0, 0, 0, 0))
+                    LOG("VT: tty%s wieder auf selbsttaetiges "
+                        "Umschalten gestellt" % vt)
+                except OSError as e:
+                    LOG("VT: Betriebsart von tty%s nicht "
+                        "zurueckgestellt (%s)" % (vt, e))
             if tty:
                 try:
                     tty.close()
                 except OSError:
                     pass
+            # Umgeschaltet wird jetzt OHNE Dateizeiger - der ist
+            # eben zugegangen, und genau das war der Zweck.
+            self._zurueck_auf_tty1(None, vt)
             # Build 279: und unseren eigenen Grafikmodus wieder
             # herstellen, falls er vorher an war. NACH dem
             # Konsolenwechsel - erst gehoert tty1 wieder uns, dann

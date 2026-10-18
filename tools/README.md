@@ -4618,6 +4618,65 @@ steht auch, *dass* MiSTer die Knoepfe in Tasten uebersetzt - die
 Erklaerung fuer „ich kann erst blaettern, wenn ich einmal die
 Leertaste gedrueckt habe".
 
+### Nachtrag Build 286: zwei Zeilen, die vier Builds umgeworfen haben
+
+```
+09:01:45  VT: nach dem Rueckwechsel liegt tty3 vorne, nicht tty1
+09:01:46  VT: tty1 liess sich NICHT nach vorne bringen
+```
+
+**Das ist UNMITTELBAR nach dem Schliessen der Anleitung** - um 09:01,
+und der Ausstieg war erst um 09:02:56. **MiSTer ist unschuldig.** Wir
+kommen von tty3 gar nicht mehr weg, und das ab dem ersten Augenblick.
+
+**Vier Builds haben in die falsche Richtung gesehen** (278, 282, 285
+und die Diagnose dazwischen), und zwar aus einem Grund, der in der
+Messung liegt: der einzige Beweis kam bis dahin aus dem AUSSTIEG - und
+dort steht MiSTers `load_core` direkt daneben. Zwei Dinge im selben
+Augenblick, und ich habe das falsche fuer die Ursache genommen.
+
+> **Lehre: wenn zwei Ereignisse zusammenfallen, muss man das eine ohne
+> das andere sehen koennen.** Die Zeile von 09:01 gab es erst, seit
+> Build 285 auch den Rueckweg der ANLEITUNG protokolliert - also seit
+> dieselbe Sache an einer Stelle ohne MiSTer sichtbar wurde. Das ist
+> dieselbe Lehre wie Build 272, nur fuer ein Protokoll statt fuer
+> einen Bench: wer gegen zwei Dinge gleichzeitig misst, misst keines.
+
+**Die Ursache, und sie ist eine Reihenfolge:** ein Programm, das selbst
+auf eine Konsole malt, uebernimmt den Konsolenwechsel per
+`VT_SETMODE`/`VT_PROCESS` - der Kernel fragt es dann vor JEDEM Wechsel
+um Erlaubnis. Genau das macht jfbview, MiSTers Betrachter. Beendet wird
+er von uns, aber **der Kernel setzt diese Betriebsart erst zurueck,
+wenn der LETZTE Dateizeiger auf die Konsole zugeht** - und den hielten
+wir noch, weil `_zurueck_auf_tty1()` VOR `tty.close()` stand.
+
+Der Kernel fragte also einen toten Prozess um Erlaubnis und bekam
+keine. Kein Wunder, dass kein zweiter, dritter oder spaeterer Versuch
+geholfen hat: der Griff war in allen offen.
+
+**Jetzt in dieser Reihenfolge:**
+
+1. Betriebsart auf `VT_AUTO` stellen - solange wir den Griff noch
+   haben, denn danach geht es nicht mehr.
+2. Den Dateizeiger schliessen.
+3. Dann umschalten (ohne Griff, also ueber `/dev/tty0`).
+4. Und erst dann freigeben (Build 285 bleibt).
+
+> **Lehre: wer eine fremde Betriebsart erbt, muss sie zuruecksetzen -
+> und das geht nur, solange man den Griff noch hat.** Dieselbe Sorte
+> Fehler wie in Build 282, nur umgekehrt: dort war der Konsolenwechsel
+> zu FRUEH, hier zu SPAET.
+
+**`_zurueck_auf_tty1()` musste dafuer ohne Dateizeiger auskommen** -
+vorher stieg es bei `tty=None` sofort aus, und dann waere nach dem
+Schliessen gar nichts mehr passiert.
+
+**Und ein Befehl von mir war zu kurz.** `grep ... | tail -14` hat genau
+die Zeile abgeschnitten, auf die es ankam: die drei F12-Versuche
+belegen allein neun Zeilen. Zwei Runden Nachfragen gingen dafuer
+drauf. Ein Diagnosebefehl, den man selbst nicht an echten Daten
+ausprobiert hat, ist eine Vermutung mit Pipe.
+
 ### Nachtrag Build 285: wenn ein Zustand nicht zu reparieren ist, darf er nicht entstehen
 
 **Drei Protokolle, drei Stufen - und erst das dritte hat die Sache
