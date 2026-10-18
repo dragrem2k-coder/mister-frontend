@@ -1,6 +1,36 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Der Startweg wartet auf nichts, was man nicht sieht (Build 291).
+"""Der Startweg wartet auf nichts, was man nicht sieht (Build 291/292).
+
+BUILD 292 kam aus dem Bench, den Build 291 moeglich gemacht hat. Die
+vier neuen Marken haben sofort geliefert:
+
+    Konsole uebernommen        609 ms   29 %
+    Erstes Bild gewischt       182 ms    9 %
+
+Beides war vorher in einem Posten namens "Musik, RA-Abruf angestossen"
+versteckt. Und beides war behebbar:
+
+- Die 609 ms waren REINES SCHLAFEN: 0,1 s vor der F9-Injektion,
+  zweimal 0,05 s in inject() selbst, 0,4 s danach. Die 0,4 s bleiben
+  (MiSTers Main muss die Taste sehen, bevor wir die Eingabegeraete
+  wieder an uns nehmen - die Jagd der Builds 146-152), aber sie
+  werden jetzt GENUTZT statt abgesessen.
+- Die 182 ms waren der Vignetten-Hintergrund, und Build 291 hatte in
+  den Quelltext geschrieben, der Bench solle sagen, ob die Vorwaermung
+  in run() diese Farbe erfasst. Antwort: nein - und beim Nachsehen
+  auch, warum nicht. Dort stand (16, 18, 24) als Zahlentripel, und
+  C_BG IST (16, 18, 24). Dieselbe Farbe, zweimal verschieden
+  geschrieben; die Vorwaermung lief NACH diesem clear() und war immer
+  nur ein Treffer im Zwischenspeicher. Diese Rechnung fuellt jetzt die
+  F9-Frist.
+- Dabei fiel auf, dass run() auch SCHWARZ vorwaermt - rund 180 ms und
+  7,9 MB, die liegenbleiben -, obwohl Schwarz nur gebraucht wird, wenn
+  gleich eine Boot-Animation laeuft. Die laeuft einmal je
+  MiSTer-Start. Bei jedem spaeteren Start des Frontends wurde eine
+  Farbe vorgewaermt, die niemand benutzt.
+
+Die urspruengliche Aufgabe von Build 291 steht darunter.
 
 WORUM ES GEHT
 
@@ -150,10 +180,10 @@ check("der Hauptlauf ruft tick() weiterhin selbst",
 print()
 
 # ---------------------------------------------------------------- 2
-print("Test 2: die vier neuen Marken, und zwar in der Reihenfolge des Codes")
+print("Test 2: die Markenkette, und zwar in der Reihenfolge des Codes")
 
 NEU = ("Waechter angelegt", "Konsole uebernommen",
-       "Erstes Bild gewischt", "Musikspieler angelegt")
+       "Erstes Bild gezeigt", "Musikspieler angelegt")
 for name in NEU:
     check("Marke '%s'" % name, '_startmarke("%s")' % name in fe_src)
 
@@ -161,24 +191,35 @@ for name in NEU:
 # misst die Zeit seit der VORIGEN. Steht sie an der falschen Stelle,
 # traegt sie fremde Millisekunden und zeigt woanders null an. Geprueft
 # wird deshalb die Reihenfolge im Quelltext, nicht nur das Vorkommen.
-kette = ("Framebuffer und Eingaben offen", "Waechter angelegt",
-         "Konsole uebernommen", "Erstes Bild gewischt",
-         "Musikspieler angelegt", "Musik, RA-Abruf angestossen",
-         "Spieleliste eingelesen", "Rest des Aufbaus",
-         "Musikstart angestossen")
+# ERWEITERT IN BUILD 292 um die Marken, die dort dazugekommen sind.
+# Die Kette ist die eigentliche Zusage dieses Tests: sie haelt die
+# Reihenfolge fest, in der der Start durch seine Abschnitte laeuft.
+kette = ("Vorlauf bis in den Konstruktor",
+         "Framebuffer und Eingaben offen", "Waechter angelegt",
+         "F9 eingespeist", "Erstes Bild gerechnet",
+         "Restfrist fuer MiSTer abgewartet", "Konsole uebernommen",
+         "Erstes Bild gezeigt", "Musikspieler angelegt",
+         "Musik, RA-Abruf angestossen", "Spieleliste eingelesen",
+         "Rest des Aufbaus", "Musikstart angestossen")
 stellen = [fe_src.find('_startmarke("%s")' % n) for n in kette]
-check("alle neun Marken der Kette gefunden", all(s > 0 for s in stellen))
+check("alle %d Marken der Kette gefunden" % len(kette),
+      all(s > 0 for s in stellen))
 check("und sie stehen in dieser Reihenfolge im Quelltext",
       stellen == sorted(stellen),
       " -> ".join(n for _s, n in sorted(zip(stellen, kette))))
 
-# Die beiden neuen Marken um das erste Bild muessen das clear()/flip()
-# wirklich einschliessen - sonst messen sie etwas anderes als ihr Name.
+# Jede Marke muss das einschliessen, was ihr Name sagt - sonst misst
+# sie etwas anderes, und genau daran ist Bench 13 haengengeblieben.
+i_f9 = fe_src.find('_startmarke("F9 eingespeist")')
+i_gerechnet = fe_src.find('_startmarke("Erstes Bild gerechnet")')
 i_konsole = fe_src.find('_startmarke("Konsole uebernommen")')
-i_bild = fe_src.find('_startmarke("Erstes Bild gewischt")')
-i_clear = fe_src.find("self.fb.clear((16, 18, 24))")
-check("clear()/flip() liegen zwischen den beiden Marken",
-      i_konsole < i_clear < i_bild)
+i_gezeigt = fe_src.find('_startmarke("Erstes Bild gezeigt")')
+i_clear = fe_src.find("self.fb.clear(C_BG)")
+i_flip = fe_src.find("self.fb.flip()", i_konsole)
+check("das clear() liegt in der Scheibe 'Erstes Bild gerechnet'",
+      i_f9 < i_clear < i_gerechnet)
+check("das flip() liegt in der Scheibe 'Erstes Bild gezeigt'",
+      i_konsole < i_flip < i_gezeigt)
 
 print()
 
@@ -308,8 +349,147 @@ for was, wo, txt in (
         ("die fehlenden Marken", fe_src, "KEINE HATTE"),
         ("das verlegte Warten", audio_src, "BUILD 291"),
         ("warum das Warten noetig BLEIBT", audio_src,
-         "zwei mpg123 gleichzeitig auf derselben")):
+         "zwei mpg123 gleichzeitig auf derselben"),
+        ("die genutzte F9-Frist", fe_src, "BUILD 292"),
+        ("warum an der Frist nicht geschraubt wird", fe_src,
+         "Jagd der Builds 146-152"),
+        ("die doppelt geschriebene Farbe", fe_src,
+         "C_BG IST (16, 18, 24)")):
     check("%s ist erklaert" % was, txt in wo)
+
+print()
+
+# ---------------------------------------------------------------- 7
+print("Test 7: die F9-Frist wird genutzt, nicht verkuerzt (Build 292)")
+
+ecm = koerper(fe_src, "enter_console_mode", klasse="Frontend")
+check("enter_console_mode ist gefunden", bool(ecm))
+check("die 0,4 s stehen nicht mehr als nackte Zahl darin",
+      "time.sleep(0.4)" not in ecm)
+check("die Zeit hat jetzt einen Namen",
+      "F9_NACHLAUF_SEK = 0.4" in fe_src
+      and "self.F9_NACHLAUF_SEK" in ecm)
+# DIE ZWILLINGE MUESSEN GLEICH BLEIBEN. EXIT_NACH_F12_SEK ist seit
+# Build 162 ausdruecklich "dieselbe Zeit, die enter_console_mode()
+# seit jeher nach seiner Injektion wartet". Zwei Zahlen mit einer
+# Begruendung sind genau die Sorte Paar, bei der spaeter nur eine
+# geaendert wird.
+check("und sie ist dieselbe wie auf dem Ausstiegsweg",
+      "EXIT_NACH_F12_SEK = 0.4" in fe_src,
+      "Build 162: dieselbe Zeit in der Gegenrichtung")
+check("die Frist wird gesetzt", "self._f9_frist = time.monotonic()" in ecm)
+check("gewartet wird nur, wenn der Aufrufer es will",
+      "def enter_console_mode(self, nachlauf=True)" in fe_src
+      and "if nachlauf:" in ecm,
+      "Vorgabe True - alle bisherigen Aufrufer merken nichts")
+
+# Die anderen beiden Aufrufer duerfen NICHT umgestellt sein: nur der
+# Startweg hat etwas Nuetzliches zu tun, das in die Frist passt.
+check("nur EIN Aufrufer verzichtet auf das Warten",
+      fe_src.count("enter_console_mode(nachlauf=False)") == 1,
+      "%d x" % fe_src.count("enter_console_mode(nachlauf=False)"))
+
+init_fe = koerper(fe_src, "__init__", klasse="Frontend")
+# DAS IST DIE TRAGENDE ZUSAGE DIESES BUILDS, und sie ist die eine,
+# die man nicht verletzen darf: MiSTers Main muss das F9 gesehen
+# haben, BEVOR wir die Eingabegeraete wieder an uns nehmen. Das war
+# die Jagd der Builds 146-152. Verschoben werden darf nur eine
+# Rechnung im eigenen Puffer - nie der Griff und nie die
+# Konsolen-Aufrufe.
+i_warten = init_fe.find("self._f9_nachlauf_abwarten()")
+check("der Startweg wartet die Restfrist selbst ab", i_warten > 0)
+for was, nadel in (("set_cursor_blink", "self.set_cursor_blink(False)"),
+                   ("konsole_cursor_aus", "self.konsole_cursor_aus()"),
+                   ("konsole_ruhig_stellen", "self.konsole_ruhig_stellen()"),
+                   ("textkonsole_grafik_an", "self.textkonsole_grafik_an()"),
+                   ("der Griff auf die Eingaben", "self.inp.grab(True)"),
+                   ("das erste sichtbare Bild", "self.fb.flip()")):
+    i = init_fe.find(nadel)
+    check("%s steht HINTER der vollen Frist" % was,
+          i > i_warten > 0, "sonst sieht MiSTer das F9 nicht")
+# Und das Einzige, was davor darf, ist die Rechnung.
+check("nur das clear() nutzt die Frist",
+      0 < init_fe.find("self.fb.clear(C_BG)") < i_warten,
+      "reine Rechnung im eigenen Puffer, nichts davon ist zu sehen")
+
+print()
+
+# ---------------------------------------------------------------- 8
+print("Test 8: und das Abwarten wird AUSGEFUEHRT")
+
+# GEZAEHLT, NICHT GEMESSEN. Der Pruefstand friert time.monotonic ein
+# (siehe _harness.py: fm.time.monotonic = lambda: NOW[0]) - eine
+# Stoppuhr liefe hier in genau die eingefrorene Uhr, die uns in
+# Build 267 schon einmal ein falsches Ergebnis gegeben hat. Also
+# wird time.sleep durch einen Zaehler ersetzt und gefragt, wie lange
+# die Funktion zu schlafen VERLANGT. Dasselbe Verfahren wie beim
+# inject()-Test.
+import _harness as H                                      # noqa: E402
+
+geschlafen = []
+_echt_sleep = H.fm.time.sleep
+H.fm.time.sleep = lambda s: geschlafen.append(s)
+try:
+    jetzt = H.fm.time.monotonic()
+    abwarten = H.fm.Frontend._f9_nachlauf_abwarten
+
+    class F9Attrappe(object):
+        pass
+
+    # 8a) Frist laeuft noch: genau der REST wird abgesessen, nicht
+    #     die ganzen 0,4 s.
+    a = F9Attrappe()
+    a._f9_frist = jetzt + 0.25
+    abwarten(a)
+    check("bei offener Frist wird nur der Rest gewartet",
+          len(geschlafen) == 1 and abs(geschlafen[0] - 0.25) < 1e-6,
+          geschlafen)
+
+    # 8b) Frist abgelaufen: gar nicht schlafen. Das ist der Fall, den
+    #     Build 292 herbeifuehren will - die Arbeit dazwischen hat
+    #     gereicht.
+    geschlafen[:] = []
+    a = F9Attrappe()
+    a._f9_frist = jetzt - 0.01
+    abwarten(a)
+    check("bei abgelaufener Frist wird NICHT gewartet",
+          geschlafen == [], geschlafen)
+
+    # 8c) Ohne Frist (nie gesetzt) darf es nicht krachen und nicht
+    #     warten - getattr mit Vorgabe 0.0.
+    geschlafen[:] = []
+    abwarten(F9Attrappe())
+    check("ohne gesetzte Frist passiert nichts", geschlafen == [])
+finally:
+    H.fm.time.sleep = _echt_sleep
+
+# Und die Summe, die der Startweg dadurch spart: vorher 0,4 s blind,
+# jetzt 0,4 s minus der Rechnung. Die Rechnung lag auf dem Geraet des
+# Nutzers bei 182 ms - also rund 0,2 s statt 0,4 s.
+check("die Zeit selbst ist unveraendert 0,4 s",
+      abs(H.fm.Frontend.F9_NACHLAUF_SEK - 0.4) < 1e-9,
+      str(H.fm.Frontend.F9_NACHLAUF_SEK))
+check("und beide Richtungen halten dieselbe ein",
+      H.fm.Frontend.F9_NACHLAUF_SEK
+      == H.fm.Frontend.EXIT_NACH_F12_SEK,
+      "Eintritt F9 / Austritt F12 - Build 162")
+
+print()
+
+# ---------------------------------------------------------------- 9
+print("Test 9: das Vorwaermen von Schwarz haengt an der Animation")
+
+run_k = koerper(fe_src, "run", klasse="Frontend")
+check("run() ist gefunden", bool(run_k))
+check("Schwarz wird nur noch bedingt vorgewaermt",
+      "if not os.path.exists(BOOTANIM_PLAYED_MARKER):" in run_k
+      and "self.fb.clear((0, 0, 0))" in run_k)
+# C_BG bleibt stehen - als Absicherung, falls __init__ seinen Wisch
+# verliert. Es darf aber nicht in denselben if-Zweig geraten.
+i_cbg = run_k.find("self.fb.clear(C_BG)")
+i_if = run_k.find("if not os.path.exists(BOOTANIM_PLAYED_MARKER):")
+check("C_BG wird weiterhin unbedingt gewaermt", 0 < i_cbg < i_if,
+      "Absicherung, falls __init__ seinen Wisch eines Tages verliert")
 
 print()
 if fails:

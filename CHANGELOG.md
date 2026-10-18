@@ -13,6 +13,23 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Der Start nutzt die Wartezeit auf MiSTer, statt sie abzusitzen.**
+  Nach dem Umschalten in den Konsolenmodus (F9) muss MiSTer die Taste
+  erst entgegennehmen — dafür wird 0,4 s gewartet, und das bleibt so.
+  Nur wurde in dieser Zeit bisher gar nichts getan. Jetzt rechnet das
+  Frontend währenddessen seinen Hintergrund (gemessene 182 ms), so dass
+  von der Wartezeit nur noch der Rest übrig ist. Die Zusage gegenüber
+  MiSTer ändert sich nicht: die vollen 0,4 s laufen weiter ab, bevor
+  die Eingabegeräte wieder übernommen werden (Build 292).
+- **Schwarz wird nur noch vorgewärmt, wenn gleich eine Boot-Animation
+  läuft.** Das kostete rund 180 ms bei jedem Start und belegte dauerhaft
+  7,9 MB — für eine Farbe, die ohne Animation niemand benutzt. Die
+  Animation läuft einmal je MiSTer-Start; bei jedem späteren Start des
+  Frontends war das verschenkt (Build 292).
+- **Der Startbericht lässt nichts mehr übrig.** Die Gegenprobe meldete
+  104 ms „nicht zugeordnet". Die liegen vor dem eigentlichen Start und
+  haben jetzt eine eigene Zeile, statt als Rest zu erscheinen
+  (Build 292).
 - **Der Start wartet nicht mehr auf die Musik.** Bisher war der letzte
   Schritt vor dem ersten Bild der Musikstart — gemessene 942 ms, der
   größte Einzelposten des ganzen Starts, und bei Radio als Quelle

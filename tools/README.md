@@ -5944,3 +5944,135 @@ und `os.kill`. Geprueft werden alle vier Ausgaenge, und die eigentliche
 Zusage dieses Builds wird **gemessen**: die Pruefung muss unter 50 ms
 zurueckkommen, auch wenn ein Opfer noch lebt. Vorher sass dort ein
 `time.sleep()` von bis zu 1,1 s.
+
+---
+
+## Nachtrag Build 292: die Marken haben beim ersten Lauf geliefert
+
+Build 291 hat vier Marken in eine Scheibe gelegt, die 220 Zeilen lang
+keine hatte, und dazu geschrieben: "Keine dieser vier Marken behebt
+etwas. Sie sagen nur, wen man angehen muss." Der erste Bench danach:
+
+```
+Konsole uebernommen        609 ms   29 %
+Erstes Bild gewischt       182 ms    9 %
+Musikspieler angelegt       26 ms    1 %
+Musik, RA-Abruf angestossen  4 ms    0 %
+```
+
+**Die Rechnung geht auf:** 609 + 182 + 26 + 4 = 821 ms, und der alte
+Sammelposten stand bei 820 ms. Die Scheibe war also richtig aufgeteilt
+und nichts verlorengegangen — und in ihr standen zwei Posten, die
+vorher niemand gesucht haette, weil sie keinen Namen hatten.
+
+### 609 ms, und davon null gerechnet
+
+```python
+def enter_console_mode(self):
+    self.inp.grab(False)
+    time.sleep(0.1)
+    self.inp.inject(KEY_F9)   # inject() schlaeft selbst 2 x 0,05
+    time.sleep(0.4)
+```
+
+0,1 + 0,1 + 0,4 = 600 ms Soll, 609 ms gemessen. **Der groesste Posten
+nach `scan_games()` war reines Schlafen.**
+
+An der Zeit selbst wird nicht geschraubt, und das ist wichtig: MiSTers
+Main liest die eingespeiste Taste aus denselben Eingabegeraeten, die
+wir unmittelbar danach wieder an uns nehmen (`inp.grab(True)`). Sieht
+Main das F9 nicht, schaltet es nicht um, und sein Wallpaper uebermalt
+unser Bild. Das war die Jagd der Builds 146-152.
+
+**Die Zusage lautet aber "0,4 s zwischen F9 und Griff" — nicht "0,4 s
+untaetig".** Also wird die Frist jetzt gesetzt statt abgesessen
+(`F9_NACHLAUF_SEK`, mit Namen, wie ihr Zwilling `EXIT_NACH_F12_SEK`
+auf dem Ausstiegsweg seit Build 162), der Startweg rechnet darin seinen
+Vignetten-Hintergrund, und `_f9_nachlauf_abwarten()` sitzt nur noch den
+Rest ab. **Verschoben wird ausschliesslich eine Rechnung im eigenen
+Puffer**; die vier Konsolen-Aufrufe, der Griff und das `flip()` stehen
+weiter hinter der vollen Frist — und der Test prueft genau das, Zeile
+fuer Zeile.
+
+Dasselbe Muster wie `_fremde_weg()` in Build 291: eine blinde
+Wartezeit wird zu einer Frist, die dort geprueft wird, wo sie wirklich
+gebraucht ist.
+
+### 182 ms, und die Antwort auf eine Frage, die im Quelltext stand
+
+In Build 291 stand bei dieser Marke woertlich: "Ob diese hier
+(16,18,24) davon erfasst ist, sagt uns jetzt der Bench statt meiner
+Vermutung." Antwort: **nein**, die Farbe war kalt.
+
+Und beim Nachsehen auch, warum. `run()` waermt `C_BG` vor, mit einem
+langen Kommentar darueber, dass der Ruck sich hinter der Boot-Animation
+verstecken soll. Nur:
+
+```python
+C_BG = (16, 18, 24)      # frontend.py, Zeile 560
+self.fb.clear((16, 18, 24))   # in __init__
+self.fb.clear(C_BG)           # in run(), "zum Vorwaermen"
+```
+
+**Dieselbe Farbe, zweimal verschieden geschrieben.** Der Wisch in
+`__init__` lief zuerst und hat die Rechnung bezahlt; die "Vorwaermung"
+in `run()` war seit jeher ein Treffer im Zwischenspeicher und hat nie
+etwas vorgewaermt. Zwei Builds lang nicht aufgefallen, weil ein
+Zahlentripel und eine Konstante sich beim Lesen nicht aehnlich sehen.
+
+**Lehre: eine Farbe, die einen Namen hat, wird mit ihrem Namen
+geschrieben.** Nicht aus Stilgruenden — sondern weil ein Zwilling, den
+man nicht als Zwilling erkennt, nicht gefunden wird.
+
+### Und ein drittes Vorwaermen, das niemand braucht
+
+Beim Nachsehen fiel die Nachbarzeile auf: `clear((0, 0, 0))`. Schwarz
+ist eine ECHTE zweite Farbe, also rund 180 ms Rechnung und 7,9 MB, die
+im Zwischenspeicher liegenbleiben. Gebraucht wird Schwarz aber nur von
+`_draw_default_boot_icon()` — und die Animation laeuft **einmal je
+MiSTer-Start**, ihr Marker liegt in `/tmp`.
+
+Bei jedem spaeteren Start des Frontends wurde also eine Farbe
+vorgewaermt, die anschliessend niemand benutzt. Das ist das Gegenteil
+des Zwecks dieser Stelle: der Ruck sollte sich hinter der Animation
+verstecken, und ohne Animation gibt es nichts, wohinter er sich
+verstecken koennte. Jetzt haengt das Waermen am Marker.
+
+(Der Max-Level-Effekt wischt ebenfalls schwarz und laeuft ohne Marker.
+Der zahlt die Rechnung dann selbst, zu seinem eigenen Zeitpunkt —
+unterm Strich dieselbe Zeit wie heute, nur nicht mehr fuer alle
+anderen.)
+
+### Die 104 ms, die ich nicht erklaeren kann
+
+Die Gegenprobe meldete "nicht zugeordnet 104 ms <- hier fehlt eine
+Marke". Abschnitt A rechnet die Marken gegen `self._t_start` (erste
+Anweisung in `__init__`), die Gesamtzahl aber gegen `_t_boot`
+unmittelbar vor `Frontend()`. Zwischen diesen beiden Zeilen steht im
+Quelltext **nur der Aufruf selbst**.
+
+Ich kann die 104 ms also durch Lesen nicht erklaeren — und deshalb
+wird gemessen und nicht vermutet. Die erste Marke heisst jetzt
+"Vorlauf bis in den Konstruktor" und zeigt diese Zeit getrennt.
+Bleibt sie bei 104 ms, steckt sie nachweislich VOR `__init__`, und die
+naechste Frage ist, was dort passiert. **Genau dafuer ist die
+Gegenprobe da: sie hat etwas gefunden, das ich nicht erwartet habe.**
+
+### Ein SyntaxError, der jeden Test auf einmal rot gemacht hat
+
+`_T_BOOT` sollte aus `main()` gesetzt werden, also schrieb ich
+`global _T_BOOT`. Ergebnis:
+
+```
+SyntaxError: name '_T_BOOT' is assigned to before global declaration
+```
+
+Und zwar in **jedem** Test gleichzeitig, beim Import. Der Grund: dieser
+Block laeuft gar nicht in einer Funktion, sondern auf Modulebene unter
+dem `if __name__`-Zweig. Dort IST eine Zuweisung die Modulvariable,
+und `global` ist nicht nur unnoetig, sondern ein Fehler, weil `_T_BOOT`
+oben schon zugewiesen wurde.
+
+Das Gute daran: so ein Fehler faellt beim ersten Testlauf auf, nicht
+auf dem Geraet. Die Reihenfolge "aendern, Suite, dann packen" hat
+genau dafuer ihren Sinn.

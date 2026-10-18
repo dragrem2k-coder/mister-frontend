@@ -1512,6 +1512,14 @@ from fe.search import (jump_to_letter, treffer_suchen,
 # FRONTEND
 # ----------------------------------------------------------------------------
 
+# BUILD 292: der Zeitpunkt unmittelbar VOR Frontend() - gesetzt in
+# main(), gelesen von __init__. 0.0 heisst "nicht gesetzt" (z.B. im
+# Pruefstand, der Frontend() direkt baut); dann verhaelt sich die
+# Marken-Kette wie vorher. Siehe den Kommentar bei _t_boot in main()
+# und die erste Marke in __init__.
+_T_BOOT = 0.0
+
+
 class Frontend:
     """
     Seit v1.8 zweiseitig:
@@ -1539,6 +1547,15 @@ class Frontend:
         # Die Aufteilung des Starts, siehe _startmarke(). None heisst
         # "nicht mehr sammeln" - das setzt das Startende.
         self._startposten = []
+        # BUILD 292: die Zeit VOR dem Konstruktor bekommt eine eigene
+        # Zeile, statt als "nicht zugeordnet" uebrigzubleiben. Nur
+        # wenn main() den Zeitpunkt gesetzt hat und er plausibel in
+        # der Vergangenheit liegt - der Pruefstand baut Frontend()
+        # direkt, dort gibt es kein main() und die Kette bleibt, wie
+        # sie war.
+        if 0.0 < _T_BOOT <= self._t_start:
+            self._t_letzte_marke = _T_BOOT
+            self._startmarke("Vorlauf bis in den Konstruktor")
         self.fb = Framebuffer()
         # Build 223: die eingestellte Schrift, bevor das erste Zeichen
         # faellt. Steht hier und nicht in Framebuffer(): das Modul
@@ -1637,7 +1654,33 @@ class Frontend:
             self._clk_tck = os.sysconf("SC_CLK_TCK") or 100
         except (ValueError, OSError):
             self._clk_tck = 100
-        self.enter_console_mode()
+        # BUILD 292: F9 raus, aber NICHT hier warten. Siehe
+        # _f9_nachlauf_abwarten() - die Frist wird gesetzt, und die
+        # 182 ms Vignetten-Rechnung von fb.clear() fuellen sie.
+        self.enter_console_mode(nachlauf=False)
+        self._startmarke("F9 eingespeist")
+        # VORGEZOGEN (Build 292): stand bis hierher hinter den
+        # Konsolen-Aufrufen. clear() baut den Vignetten-Hintergrund fuer
+        # diese Farbe EINMAL und legt ihn in den Zwischenspeicher
+        # (_rowcache) - gemessene 182 ms auf dem Geraet des Nutzers,
+        # reine Rechnung im eigenen Puffer. Auf dem Bildschirm landet
+        # davon nichts: das macht erst das flip() weiter unten, und das
+        # steht nach wie vor hinter der vollen Frist.
+        #
+        # UND DIE FARBE HEISST JETZT, WIE SIE HEISST: hier stand
+        # (16, 18, 24) als Zahlentripel, und C_BG IST (16, 18, 24).
+        # Das war also seit jeher dieselbe Farbe, nur nicht als solche
+        # erkennbar - mit der Folge, dass die Vorwaermung in run()
+        # ("self.fb.clear(C_BG)") in Wahrheit schon immer ein Treffer
+        # im Zwischenspeicher war und nichts vorgewaermt hat. Siehe
+        # dort.
+        self.fb.clear(C_BG)
+        self._startmarke("Erstes Bild gerechnet")
+        # Und JETZT der Rest der Frist - auf dem Geraet des Nutzers
+        # sollten davon rund 0,2 s uebrig sein statt 0,4 s. Die naechste
+        # Zeile im Bench sagt, ob das stimmt.
+        self._f9_nachlauf_abwarten()
+        self._startmarke("Restfrist fuer MiSTer abgewartet")
         self.set_cursor_blink(False)
         self.konsole_cursor_aus()   # Build 158: der Strich links oben
         self.konsole_ruhig_stellen()  # Build 160: und die Abdunklung
@@ -1651,15 +1694,24 @@ class Frontend:
         # redet. Hier getrennt, weil ein Ruck an dieser Stelle etwas
         # voellig anderes bedeutet als ein Ruck beim Bildschirmwischen.
         self._startmarke("Konsole uebernommen")
-        self.fb.clear((16, 18, 24))
+        # BUILD 291 HAT GEFRAGT, BENCH 13 HAT GEANTWORTET.
+        #
+        # Hier stand "fb.clear((16, 18, 24))" mit der Frage, ob die
+        # Vorwaermung in run() diese Farbe erfasst. Der Bench des
+        # Nutzers wies den Posten mit 182 ms aus - also NEIN, sie war
+        # kalt. Und beim Nachsehen auch, warum nicht: run() waermt
+        # C_BG, und C_BG IST (16, 18, 24). Dieselbe Farbe, zweimal
+        # verschieden geschrieben. Die Vorwaermung lief also nach
+        # diesem clear() und war ein Treffer im Zwischenspeicher - sie
+        # hat nie etwas vorgewaermt, sondern immer nur bestaetigt, dass
+        # der Start die Rechnung schon bezahlt hatte.
+        #
+        # Die Rechnung steht jetzt oben, in der F9-Frist (siehe
+        # _f9_nachlauf_abwarten()). Hier bleibt nur das flip() - das
+        # ERSTE sichtbare Bild, und das gehoert hinter die Frist und
+        # hinter den Griff auf die Eingabegeraete, genau wie vorher.
         self.fb.flip()
-        # Build 291: das erste Wischen. Eigene Marke, weil clear() beim
-        # ALLERERSTEN Mal fuer eine Farbe die zeilenweise Vignette
-        # rechnet (~370 ms in der Sandbox, siehe den Kommentar in
-        # run()) - genau deshalb waermt run() zwei Farben vor. Ob diese
-        # hier (16,18,24) davon erfasst ist, sagt uns jetzt der Bench
-        # statt meiner Vermutung.
-        self._startmarke("Erstes Bild gewischt")
+        self._startmarke("Erstes Bild gezeigt")
         self.music = MusicPlayer()
         # Build 291: die Anlage des Musikspielers. Der schiesst als
         # Erstes verwaiste mpg123-Prozesse ab und hat darauf bis zu
@@ -20330,15 +20382,77 @@ class Frontend:
             LOG("Konsolenmodus: Aufraeumen fehlgeschlagen:\n"
                 + traceback.format_exc())
 
-    def enter_console_mode(self):
+    # BUILD 292: die Wartezeit nach dem F9 bekommt einen Namen.
+    #
+    # Sie steht seit Build 148 als nackte 0.4 im Quelltext, und die
+    # Gegenrichtung hat ihre eigene Zahl mit Begruendung
+    # (EXIT_NACH_F12_SEK, Build 162: "dieselbe Zeit, die
+    # enter_console_mode() seit jeher nach seiner Injektion wartet").
+    # Zwei Stellen, eine Zahl, einmal benannt und einmal nicht - das
+    # ist die Sorte Zwilling, bei der spaeter nur einer geaendert wird.
+    #
+    # WOFUER DIE ZEIT DA IST: MiSTers Main liest die eingespeiste Taste
+    # aus denselben Eingabegeraeten, die wir gleich danach wieder an
+    # uns nehmen (inp.grab(True)). Bekommt Main das F9 vorher nicht zu
+    # sehen, schaltet es nicht in den Konsolenmodus, und sein Wallpaper
+    # uebermalt unser Bild. Das war die Jagd der Builds 146-152; an
+    # dieser Zusage wird nicht geschraubt.
+    F9_NACHLAUF_SEK = 0.4
+
+    def enter_console_mode(self, nachlauf=True):
         """MiSTer per F9 in den Konsolenmodus schalten - sonst uebermalt
         das MiSTer-Wallpaper unseren Framebuffer permanent.
-        Muss bei GELOESTEM Grab passieren, damit MiSTer die Taste sieht."""
+        Muss bei GELOESTEM Grab passieren, damit MiSTer die Taste sieht.
+
+        BUILD 292: mit nachlauf=False wird die Frist nur GESETZT, nicht
+        abgesessen - der Aufrufer ruft dann selbst
+        _f9_nachlauf_abwarten(), und kann vorher etwas Nuetzliches tun.
+        Siehe dort; der Startweg ist der einzige Aufrufer, der das
+        nutzt. Alle anderen bekommen unveraendert das alte Verhalten,
+        weil der Vorgabewert True ist."""
         LOG("enter_console_mode (F9)")
         self.inp.grab(False)
         time.sleep(0.1)
         self.inp.inject(KEY_F9)
-        time.sleep(0.4)
+        self._f9_frist = time.monotonic() + self.F9_NACHLAUF_SEK
+        if nachlauf:
+            self._f9_nachlauf_abwarten()
+
+    def _f9_nachlauf_abwarten(self):
+        """Den REST der Frist aus enter_console_mode() absitzen.
+
+        BUILD 292. Vorher stand an dieser Stelle ein nacktes
+        time.sleep(0.4), und zwar im Startweg: Abschnitt A des Benchs
+        wies den Posten 'Konsole uebernommen' mit 609 ms aus - 29 % des
+        ganzen Starts. Nachgerechnet war das kein Rechnen, sondern
+        ausschliesslich Schlafen: 0,1 s vor der Injektion, zweimal
+        0,05 s in inject() selbst, 0,4 s danach. 600 ms Soll, 609 ms
+        gemessen.
+
+        DIE ZEIT BLEIBT, DIE UNTAETIGKEIT NICHT. Die Zusage lautet
+        "zwischen dem F9 und dem Wiederergreifen der Eingabegeraete
+        liegen 0,4 s" - sie sagt nicht, dass wir in dieser Zeit nichts
+        tun duerfen. Der Startweg rechnet deshalb jetzt WAEHREND der
+        Frist den Vignetten-Hintergrund (fb.clear(C_BG), gemessene
+        182 ms, reine Rechnung im eigenen Puffer) und sitzt danach nur
+        noch ab, was von den 0,4 s uebrig ist.
+
+        WAS SICH NICHT VERSCHIEBT, und das ist der Punkt: die vier
+        Konsolen-Aufrufe und inp.grab(True) stehen weiter HINTER der
+        vollen Frist. Verschoben wird nur eine Rechnung, die weder die
+        Konsole noch die Eingabegeraete anfasst und deren Ergebnis erst
+        beim flip() sichtbar wird - und das flip() kommt nach wie vor
+        zuletzt.
+
+        Dasselbe Muster wie _fremde_weg() in fe/audio.py (Build 291):
+        eine blinde Wartezeit wird zu einer Frist, die dort geprueft
+        wird, wo sie wirklich gebraucht ist."""
+        rest = getattr(self, "_f9_frist", 0.0) - time.monotonic()
+        if rest > 0:
+            time.sleep(rest)
+        else:
+            LOG("F9-Nachlauf: Frist war schon abgelaufen, nichts "
+                "gewartet (die Arbeit dazwischen hat gereicht)")
 
     def back_to_frontend(self):
         self.enter_console_mode()
@@ -21469,9 +21583,40 @@ class Frontend:
         # (0,0,0), einer ANDEREN Farbe als C_BG - ohne separates
         # Vorwaermen haette genau dieselbe Art Ruckler dort erneut
         # zugeschlagen, direkt am Anfang der neuen Animation.
+        # RICHTIGGESTELLT (BUILD 292). Zwei Befunde, einer je Zeile:
+        #
+        # 1. clear(C_BG) HAT HIER NIE ETWAS VORGEWAERMT. __init__()
+        #    wischt den Bildschirm schon vorher mit derselben Farbe -
+        #    dort stand sie als Zahlentripel (16, 18, 24), und C_BG IST
+        #    (16, 18, 24). Dieselbe Farbe, zweimal verschieden
+        #    geschrieben, und deshalb zwei Builds lang nicht als
+        #    Zwilling erkannt. Die Zeile ist ein Treffer im
+        #    Zwischenspeicher und bleibt nur als Absicherung stehen,
+        #    falls __init__() seinen Wisch eines Tages verliert: dann
+        #    waermt sie wirklich vor, und zwar immer noch vor der
+        #    Animation.
+        #
+        # 2. clear((0,0,0)) IST ECHTE ARBEIT - rund 180 ms und 7,9 MB,
+        #    die dauerhaft im Zwischenspeicher liegen bleiben. Schwarz
+        #    braucht aber NUR, wer gleich eine Animation sieht
+        #    (_draw_default_boot_icon() zeichnet darauf). Die laeuft
+        #    einmal je MiSTer-Start; der Marker dafuer liegt in /tmp.
+        #    Bei jedem spaeteren Start des Frontends - also im
+        #    haeufigsten Fall - wurde hier eine Farbe vorgewaermt, die
+        #    anschliessend niemand benutzt. Das ist das Gegenteil des
+        #    Zwecks dieser Stelle: der Ruck sollte sich hinter der
+        #    Animation verstecken, und ohne Animation gibt es nichts,
+        #    wohinter er sich verstecken koennte.
+        #
+        #    Der Max-Level-Effekt (_show_max_level_boot_effect()) wischt
+        #    ebenfalls schwarz und laeuft ohne Marker - der zahlt die
+        #    Rechnung dann selbst, zu seinem eigenen Zeitpunkt. Das ist
+        #    unterm Strich dieselbe Zeit wie heute, nur nicht mehr fuer
+        #    alle anderen.
         try:
             self.fb.clear(C_BG)
-            self.fb.clear((0, 0, 0))
+            if not os.path.exists(BOOTANIM_PLAYED_MARKER):
+                self.fb.clear((0, 0, 0))
         except Exception:
             pass   # rein vorsorglich - selbst ein Fehlschlag hier darf
                    # den eigentlichen Start nicht verhindern
@@ -24523,6 +24668,26 @@ if __name__ == "__main__":
     # Hardware tatsaechlich dauert - jede weitere Optimierung waere ohne
     # diese Zahl nur Raten. Jetzt einmalig pro Start geloggt.
     _t_boot = time.monotonic()
+    # BUILD 292: dieselbe Zahl auch dort, wo die Startmarken sie sehen.
+    #
+    # Abschnitt A rechnet die Marken gegen self._t_start (erste
+    # Anweisung in __init__), die Gesamtzahl aber gegen _t_boot hier.
+    # Im Bench des Nutzers blieben dadurch 104 ms uebrig, und die
+    # Gegenprobe hat genau das gemeldet ("hier fehlt eine Marke").
+    #
+    # ICH KANN DIESE 104 ms NICHT DURCH LESEN ERKLAEREN: zwischen
+    # dieser Zeile und der ersten Anweisung von __init__() steht nur
+    # der Aufruf selbst. Also wird gemessen statt vermutet - genau
+    # dafuer ist die Gegenprobe da. Die erste Marke heisst deshalb
+    # "Vorlauf bis in den Konstruktor" und zeigt diese Zeit getrennt;
+    # bleibt sie bei 104 ms, steckt sie nachweislich VOR __init__ und
+    # die naechste Frage ist, was dort passiert.
+    # Kein "global" davor: dieser Block laeuft bereits auf Modulebene
+    # (unter dem if __name__-Zweig), eine Zuweisung hier IST die
+    # Modulvariable. Mit "global" gaebe es einen SyntaxError, weil
+    # _T_BOOT oben schon zugewiesen wurde - und der faellt beim Import
+    # auf, also in jedem einzelnen Test.
+    _T_BOOT = _t_boot
     try:
         _fe = Frontend()
         _startdauer = time.monotonic() - _t_boot

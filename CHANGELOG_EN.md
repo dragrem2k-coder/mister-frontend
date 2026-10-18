@@ -13,6 +13,22 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **Startup now uses the wait on MiSTer instead of sitting it out.**
+  After switching to console mode (F9), MiSTer has to pick the key up
+  first — we wait 0.4 s for that, and that stays. It is just that
+  nothing was done during it. The frontend now computes its background
+  in the meantime (a measured 182 ms), so only the remainder of the
+  wait is left. The promise to MiSTer is unchanged: the full 0.4 s
+  still elapses before the input devices are taken back (build 292).
+- **Black is only pre-warmed when a boot animation is about to play.**
+  That cost about 180 ms on every start and permanently held 7.9 MB —
+  for a color nobody uses without the animation. The animation runs
+  once per MiSTer start; on every later start of the frontend it was
+  wasted (build 292).
+- **The startup report no longer leaves a remainder.** The cross-check
+  reported 104 ms as "unattributed". Those lie before the startup
+  proper and now have a line of their own instead of showing up as a
+  leftover (build 292).
 - **Startup no longer waits for the music.** The last step before the
   first picture used to be starting the music — a measured 942 ms, the
   single largest item of the whole startup, and with radio as the
