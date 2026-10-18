@@ -13,6 +13,13 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Anleitungen werden jetzt in allen Ordnern eines Systems gesucht,
+  nicht nur in einem.** Die Mega Drive heißt intern `Genesis`, ihr
+  ROM-Ordner aber `MegaDrive` — wer seine Anleitungen unter
+  `docs/megadrive/` ablegt, bekam bisher keine. Gesucht wird jetzt in
+  allen Namen, die ein System hat (sie stehen schon in der
+  Systemtabelle), groß/klein egal; der Ordner mit dem internen Namen
+  behält den Vortritt. Betrifft 30 Systeme (Build 289).
 - **Behoben: nach einer geöffneten Anleitung blieb die Konsole auf
   tty3 stehen.** Der Kernel lehnt einen Konsolenwechsel ausdrücklich
   ab, wenn die vorne liegende Konsole **gleichzeitig** im Grafikmodus

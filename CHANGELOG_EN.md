@@ -13,6 +13,13 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **Manuals are now looked for in every folder a system has, not just
+  one.** The Mega Drive is called `Genesis` internally, but its ROM
+  folder is `MegaDrive` — anyone keeping their manuals in
+  `docs/megadrive/` got none. All of a system's names are now searched
+  (they are already in the system table), case-insensitively; the
+  folder named after the internal key keeps priority. Affects 30
+  systems (build 289).
 - **Fixed: after a manual had been opened, the console stayed on
   tty3.** The kernel explicitly refuses a console switch when the
   console in front is **both** in graphics mode and on automatic

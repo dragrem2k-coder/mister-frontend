@@ -783,6 +783,106 @@ try:
 finally:
     shutil.rmtree(_tmp3, ignore_errors=True)
 
+# ---------------------------------------------------------------------------
+print()
+print("Build 289: die Mega Drive heisst auch MegaDrive")
+# ---------------------------------------------------------------------------
+# NUTZERMELDUNG: "bei den megadrive roms fehlen die anleitungen, kann
+# es sein dass falsch in den docs ordner nachgeschaut wird? die liegen
+# jetzt unter fat/docs/megadrive/Manuals, es gibt aber auch noch den
+# ordner fat/docs/Genesis"
+#
+# Genau so ist es. Gesucht wurde nur in <DOCS_BASE>/<Systemschluessel>,
+# und der heisst bei der Mega Drive "Genesis" (fe/systems.py). Seine
+# Anleitungen liegen aber in "megadrive" - benannt nach dem ROM-ORDNER
+# und nicht nach unserem internen Schluessel. Beides ist vernuenftig;
+# nur unsere Suche kannte den halben Namensraum.
+#
+# LEHRE: ein interner Schluessel ist kein Ordnername. Wo ein Nutzer
+# Ordner anlegt, muss jeder Name gelten, den er bei uns SIEHT - und
+# die stehen schon in der Systemtabelle.
+_tmp4 = tempfile.mkdtemp(prefix="docs_md_")
+_alt_base = A.DOCS_BASE
+try:
+    A.DOCS_BASE = os.path.join(_tmp4, "docs")
+
+    def _lege(*teile):
+        pfad = os.path.join(A.DOCS_BASE, *teile)
+        os.makedirs(os.path.dirname(pfad), exist_ok=True)
+        io.open(pfad, "w").write("x")
+        return pfad
+
+    # Genau seine Lage: der Ordner mit dem ROM-Namen, kleingeschrieben,
+    # mit einem Manuals-Unterordner - und daneben ein leerer
+    # Genesis-Ordner.
+    _soll = _lege("megadrive", "Manuals", "Sonic The Hedgehog.pdf")
+    os.makedirs(os.path.join(A.DOCS_BASE, "Genesis"), exist_ok=True)
+    A.vergessen()
+    check("die Anleitung wird im ROM-Ordner gefunden",
+          A.anleitung_finden("Genesis", "Sonic The Hedgehog (USA)")
+          == _soll,
+          "der Systemschluessel ist 'Genesis', der Ordner heisst "
+          "'megadrive' - kleingeschrieben")
+    # hat_anleitung() verlangt zusaetzlich einen BETRACHTER - den gibt
+    # es nur auf dem MiSTer (/media/fat/linux/pdfviewer), nicht auf dem
+    # Pruefstand. Geprueft wird deshalb, dass es an genau dem und
+    # nicht am Finden scheitert; sonst prueft dieser Test die
+    # Ausstattung des Pruefrechners.
+    check("hat_anleitung() haengt nur noch am Betrachter",
+          A.betrachter_fuer(_soll) is None
+          and A.hat_anleitung("Genesis", "Sonic The Hedgehog (USA)")
+          is False,
+          "auf dem Geraet liegt der Betrachter da, hier nicht")
+
+    # Der Systemschluessel-Ordner behaelt den Vortritt: wer dort etwas
+    # ablegt, soll es auch bekommen. Sonst waere das eine stille
+    # Verschlechterung fuer alle, bei denen es bisher ging.
+    _vorn = _lege("Genesis", "Sonic The Hedgehog.pdf")
+    A.vergessen()
+    check("der Ordner mit dem Systemschluessel hat Vortritt",
+          A.anleitung_finden("Genesis", "Sonic The Hedgehog (USA)")
+          == _vorn,
+          "bisheriges Verhalten - niemand soll durch diesen Build "
+          "etwas verlieren")
+
+    # Ein System mit nur EINEM Namen verhaelt sich unveraendert.
+    _snes = _lege("SNES", "Super Mario World.pdf")
+    A.vergessen()
+    check("ein System mit einem Namen bleibt, wie es war",
+          A.anleitung_finden("SNES", "Super Mario World (Europe)")
+          == _snes)
+
+    # Und ein Ordner, den es nicht gibt, darf nichts kosten.
+    A.vergessen()
+    check("ein unbekanntes System liefert nichts, ohne Fehler",
+          A.anleitung_finden("GarNichts", "Irgendwas") is None)
+
+    _ordner = A._docs_ordner("Genesis")
+    check("beide Ordner werden benutzt, der Schluessel zuerst",
+          len(_ordner) == 2
+          and _ordner[0].endswith("Genesis")
+          and _ordner[1].endswith("megadrive"),
+          repr([os.path.basename(o) for o in _ordner]))
+    check("und nur Ordner, die es wirklich gibt",
+          all(os.path.isdir(o) for o in _ordner))
+
+    # DIE NAMEN KOMMEN AUS DER SYSTEMTABELLE, nicht aus einer zweiten
+    # Liste - zwei Tabellen fuer dieselbe Zuordnung laufen auseinander
+    # (die Lehre aus Build 260).
+    _q289 = io.open(os.path.join(_FRONTEND_DIR, "fe", "anleitung.py"),
+                    encoding="utf-8").read()
+    check("die Ordnernamen stammen aus fe/systems.py",
+          "SYSTEMS.alle_systeme()" in _q289,
+          "keine zweite Liste pflegen")
+    check("verglichen wird kleingeschrieben",
+          "name.lower()" in _q289,
+          "auf einer FAT-Karte ist 'megadrive' dasselbe wie "
+          "'MegaDrive', in os.path.join nicht")
+finally:
+    A.DOCS_BASE = _alt_base
+    A.vergessen()
+    shutil.rmtree(_tmp4, ignore_errors=True)
+
 print()
 if fails:
     print("FEHLGESCHLAGEN: %d" % len(fails))

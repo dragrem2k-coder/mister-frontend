@@ -4618,6 +4618,57 @@ steht auch, *dass* MiSTer die Knoepfe in Tasten uebersetzt - die
 Erklaerung fuer „ich kann erst blaettern, wenn ich einmal die
 Leertaste gedrueckt habe".
 
+### Nachtrag Build 289: ein interner Schluessel ist kein Ordnername
+
+> „bei denn megadrive roms fehlen die anleitungen, kann es sein das
+> falsch in denn docs ordner nachgeschaut wird? die liege jetzt unter
+> fat/docs/megadrive/Manuals es gibt aber auch noch denn ordner
+> fat/docs/Genesis"
+
+**Die Frage war schon die Antwort.** Gesucht wurde in
+`<DOCS_BASE>/<Systemschluessel>`, und der heisst bei der Mega Drive
+**"Genesis"** (`fe/systems.py`). Seine Anleitungen liegen in
+**"megadrive"** - benannt nach dem ROM-ORDNER und nicht nach unserem
+internen Schluessel. Beides ist vernuenftig; nur unsere Suche kannte
+den halben Namensraum.
+
+> **Lehre: ein interner Schluessel ist kein Ordnername.** Wo ein
+> Nutzer selbst Ordner anlegt, muss jeder Name gelten, den er bei uns
+> SIEHT - und die stehen schon in der Systemtabelle.
+
+**Die Namen kommen aus `SYSTEMS.alle_systeme()`**, nicht aus einer
+zweiten Liste. Jeder Eintrag bringt neben dem Schluessel die Liste
+seiner ROM-Ordner mit (`["MegaDrive", "Genesis"]`). Zwei Tabellen fuer
+dieselbe Zuordnung laufen auseinander - die Lehre aus Build 260.
+
+**Kleingeschrieben verglichen**, denn sein Ordner heisst "megadrive"
+und die Tabelle sagt "MegaDrive". Auf einer FAT-Karte ist das
+dasselbe, in `os.path.join` nicht. Gelesen wird `os.listdir(DOCS_BASE)`
+einmal, und nur Ordner, die es WIRKLICH gibt, werden durchsucht.
+
+**Es betrifft 30 Systeme** - meist nur Gross/Kleinschreibung
+("VirtualBoy" neben "VIRTUALBOY"), bei einigen zwei echte Ordner.
+
+**Und eine Sache ist bewusst in Kauf genommen:** vier Systeme teilen
+sich einen Ordner mit einem anderen (FDS mit NES, SG-1000 mit Coleco
+und SMS, Atari 2600 mit ATARI7800, WonderSwan Color mit WonderSwan).
+Dort kann ein Spiel mit demselben Namen theoretisch die Anleitung des
+Nachbarn bekommen. Wer FDS-ROMs in `games/NES` hat, hat die Anleitung
+aber mit grosser Wahrscheinlichkeit daneben gelegt, und zwei Spiele
+verschiedener Systeme mit identischem Namen UND Anleitung sind selten.
+Ein Treffer am falschen Nachbarn ist ausserdem leichter zu bemerken
+als eine Anleitung, die gar nicht erscheint - und der
+Schluessel-Ordner behaelt den Vortritt, man kann es also
+uebersteuern. Das steht als Begruendung im Quelltext, nicht nur hier.
+
+**Zwei meiner Pruefungen waren falsch, nicht der Code:** eine uebergab
+den ROM-Namen MIT Endung (`anleitung_finden` erwartet ihn ohne - wie
+alle anderen Pruefungen derselben Datei es auch machen), die andere
+erwartete von `hat_anleitung()` ein Ja, obwohl die Funktion
+zusaetzlich einen BETRACHTER verlangt und den gibt es nur auf dem
+MiSTer. Jetzt prueft sie, dass es an genau dem scheitert und nicht am
+Finden - sonst pruefte der Test die Ausstattung des Pruefrechners.
+
 ### Nachtrag Build 288: die Bedingung stand im Kernel, und ich habe sie nicht gelesen
 
 **Build 287 hat die Wechsel-Betriebsart zurueckgesetzt - es stand sogar

@@ -57,6 +57,7 @@ nicht - dieselbe Linie wie bei den Covern seit Build 115.
 import os
 
 from fe.art import DOCS_BASE, DOCS_UNTERORDNER, vergleichsname
+import fe.systems as SYSTEMS
 
 # Die beiden Betrachter, die MiSTers Help-Funktion selbst benutzt.
 PDF_BETRACHTER = "/media/fat/linux/pdfviewer"
@@ -84,6 +85,124 @@ def _ist_anleitung(dateiname):
     return endung in ENDUNGEN
 
 
+def _eine_wurzel(idx, wurzel, rest):
+    """Einen Ordner durchsuchen und die Treffer in idx eintragen.
+
+    HERAUSGELOEST (Build 289), weil es jetzt mehrere Wurzeln gibt -
+    eine Schleife um eine Schleife mit try/except darin waere an
+    dieser Stelle nur noch schwer zu lesen. Zurueck kommt, wie viele
+    Anleitungen gezaehlt wurden; <rest> ist, wieviele noch erlaubt
+    sind."""
+    gezaehlt = 0
+    try:
+        for ordner, unterordner, dateien in os.walk(wurzel):
+            tiefenrest = ordner[len(wurzel):].strip(os.sep)
+            tiefe = len([t for t in tiefenrest.split(os.sep) if t])
+            if tiefe >= MAX_TIEFE:
+                del unterordner[:]
+            # Artwork und seine Geschwister gar nicht erst betreten.
+            unterordner[:] = [u for u in unterordner
+                              if u.lower() not in OHNE]
+            for fn in dateien:
+                if not _ist_anleitung(fn):
+                    continue
+                gezaehlt += 1
+                if gezaehlt > rest:
+                    break
+                # setdefault: der erste Treffer gewinnt, und die
+                # Reihenfolge von ENDUNGEN entscheidet nur innerhalb
+                # desselben Durchlaufs - deshalb spaeter noch einmal
+                # ausdruecklich nach Rang sortiert.
+                _eintragen(idx, os.path.splitext(fn)[0],
+                           os.path.join(ordner, fn))
+            if gezaehlt > rest:
+                break
+    except OSError:
+        pass
+    return gezaehlt
+
+
+def _docs_ordner(syskey):
+    """Alle Ordner unter DOCS_BASE, die zu diesem System gehoeren.
+
+    WARUM MEHR ALS EINER (Build 289). Nutzermeldung: "bei den
+    megadrive roms fehlen die anleitungen, kann es sein dass falsch in
+    den docs ordner nachgeschaut wird? die liegen jetzt unter
+    fat/docs/megadrive/Manuals, es gibt aber auch noch den ordner
+    fat/docs/Genesis".
+
+    Genau so ist es. Gesucht wurde nur in <DOCS_BASE>/<Systemschluessel>,
+    und der heisst bei der Mega Drive "Genesis" (siehe
+    fe/systems.py). Seine Anleitungen liegen aber in "megadrive" -
+    benannt nach dem ROM-ORDNER, nicht nach unserem internen
+    Schluessel. Beides ist vernuenftig; nur unsere Suche kannte den
+    halben Namensraum.
+
+    DIE NAMEN STEHEN SCHON IN DER SYSTEMTABELLE: jeder Eintrag bringt
+    neben dem Schluessel die Liste seiner ROM-Ordner mit ("MegaDrive",
+    "Genesis"). Die wird hier benutzt, statt eine zweite Liste zu
+    pflegen - zwei Tabellen fuer dieselbe Zuordnung laufen
+    auseinander (die Lehre aus Build 260).
+
+    UND KLEINGESCHRIEBEN VERGLICHEN: sein Ordner heisst "megadrive",
+    die Tabelle sagt "MegaDrive". Auf einer FAT-Karte ist das
+    dasselbe, in os.path.join nicht.
+
+    Zurueck kommen nur Ordner, die es WIRKLICH gibt, in fester
+    Reihenfolge: der Systemschluessel zuerst (bisheriges Verhalten,
+    damit sich fuer niemanden etwas verschlechtert), dann die
+    ROM-Ordner.
+
+    WAS DAS FUER DREISSIG SYSTEME HEISST: so viele haben mehr als
+    einen Namen - meist nur gross/klein geschrieben ("VirtualBoy" neben
+    "VIRTUALBOY"), bei einigen aber zwei echte Ordner. Vier TEILEN
+    sich einen Ordner mit einem anderen System: FDS mit NES, SG-1000
+    mit Coleco und SMS, Atari 2600 mit ATARI7800, WonderSwan Color mit
+    WonderSwan. Dort kann ein Spiel mit demselben Namen theoretisch
+    die Anleitung des Nachbarn bekommen.
+
+    DAS IST BEWUSST IN KAUF GENOMMEN, und zwar aus einem Grund: wer
+    seine FDS-ROMs in games/NES liegen hat, hat die Anleitung mit
+    grosser Wahrscheinlichkeit daneben gelegt - und zwei Spiele
+    verschiedener Systeme mit identischem Namen UND Anleitung sind
+    selten. Ein Treffer am falschen Nachbarn ist ausserdem leichter zu
+    bemerken und zu beheben als eine Anleitung, die gar nicht
+    erscheint; der Ordner mit dem Systemschluessel behaelt den
+    Vortritt, man kann es also jederzeit uebersteuern.
+
+    Ein Name MIT Schraegstrich (z.B. "SNES/SMW_HACKS") taucht in
+    os.listdir(DOCS_BASE) nie auf und faellt damit von selbst weg -
+    das ist richtig so, denn gemeint ist dort ein Unterordner der
+    ROM-Ablage und keine Doku-Wurzel."""
+    if not syskey:
+        return []
+    namen = [syskey]
+    try:
+        for eintrag in SYSTEMS.alle_systeme():
+            if eintrag[1] != syskey:
+                continue
+            for ordner in (eintrag[2] or ()):
+                if ordner and ordner not in namen:
+                    namen.append(ordner)
+    except Exception:                                    # noqa: BLE001
+        pass
+    # Was liegt wirklich da? Einmal lesen, kleingeschrieben vergleichen.
+    vorhanden = {}
+    try:
+        for name in os.listdir(DOCS_BASE):
+            vorhanden.setdefault(name.lower(), name)
+    except OSError:
+        return []
+    treffer = []
+    for name in namen:
+        echt = vorhanden.get(name.lower())
+        if echt:
+            pfad = os.path.join(DOCS_BASE, echt)
+            if pfad not in treffer and os.path.isdir(pfad):
+                treffer.append(pfad)
+    return treffer
+
+
 def _index(syskey):
     """{Vergleichsname: Pfad} fuer ein System - einmal gesucht, dann
     gemerkt.
@@ -99,34 +218,16 @@ def _index(syskey):
     if fertig is not None:
         return fertig
     idx = {}
-    wurzel = os.path.join(DOCS_BASE, syskey)
+    # MEHRERE WURZELN (Build 289) - siehe _docs_ordner(). Die
+    # Zaehlgrenze MAX_DATEIEN gilt weiter fuer ALLE zusammen: sie ist
+    # da, damit eine ungewoehnlich bestueckte Karte das Frontend nicht
+    # aufhaelt, und das aendert sich nicht dadurch, dass die Dateien
+    # auf zwei Ordner verteilt sind.
     gezaehlt = 0
-    try:
-        for ordner, unterordner, dateien in os.walk(wurzel):
-            rest = ordner[len(wurzel):].strip(os.sep)
-            tiefe = len([t for t in rest.split(os.sep) if t])
-            if tiefe >= MAX_TIEFE:
-                del unterordner[:]
-            # Artwork und seine Geschwister gar nicht erst betreten.
-            unterordner[:] = [u for u in unterordner
-                              if u.lower() not in OHNE]
-            for fn in dateien:
-                if not _ist_anleitung(fn):
-                    continue
-                gezaehlt += 1
-                if gezaehlt > MAX_DATEIEN:
-                    break
-                stamm = os.path.splitext(fn)[0]
-                pfad = os.path.join(ordner, fn)
-                # setdefault: der erste Treffer gewinnt, und die
-                # Reihenfolge von ENDUNGEN entscheidet nur innerhalb
-                # desselben Durchlaufs - deshalb unten noch einmal
-                # ausdruecklich nach Rang sortiert.
-                _eintragen(idx, stamm, pfad)
-            if gezaehlt > MAX_DATEIEN:
-                break
-    except OSError:
-        pass
+    for wurzel in _docs_ordner(syskey):
+        gezaehlt += _eine_wurzel(idx, wurzel, MAX_DATEIEN - gezaehlt)
+        if gezaehlt >= MAX_DATEIEN:
+            break
     _index_speicher[syskey] = idx
     return idx
 
