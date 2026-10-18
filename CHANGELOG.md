@@ -14,7 +14,15 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 ## Nach v4.9 — noch nicht veröffentlicht
 
 - **Behoben: nach einer geöffneten Anleitung blieb die Konsole auf
-  tty3 stehen.** Der Betrachter (jfbview) übernimmt den
+  tty3 stehen.** Der Kernel lehnt einen Konsolenwechsel ausdrücklich
+  ab, wenn die vorne liegende Konsole **gleichzeitig** im Grafikmodus
+  und auf selbsttätigem Umschalten steht — und genau das lag vor: der
+  Grafikmodus für den Betrachter wurde über unseren eigenen
+  Dateizeiger zurückgestellt, und der war mit dem Betrachter
+  aufgelegt worden (`Errno 5`). Jetzt wird die Konsole nach dem
+  Schließen **frisch geöffnet** und dort *beides* zurückgestellt —
+  Textmodus und Umschaltverhalten —, und erst dann gewechselt, über
+  zwei verschiedene Wege (Build 286–288). Der Betrachter (jfbview) übernimmt den
   Konsolenwechsel, und solange diese Betriebsart nicht zurückgesetzt
   ist, fragt der Kernel vor jedem Wechsel einen längst beendeten
   Prozess um Erlaubnis — und bekommt keine. Zurücksetzen geht

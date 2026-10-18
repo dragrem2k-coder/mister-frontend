@@ -4618,6 +4618,61 @@ steht auch, *dass* MiSTer die Knoepfe in Tasten uebersetzt - die
 Erklaerung fuer „ich kann erst blaettern, wenn ich einmal die
 Leertaste gedrueckt habe".
 
+### Nachtrag Build 288: die Bedingung stand im Kernel, und ich habe sie nicht gelesen
+
+**Build 287 hat die Wechsel-Betriebsart zurueckgesetzt - es stand sogar
+im Protokoll, dass es geklappt hat:**
+
+```
+VT: tty3 wieder auf selbsttaetiges Umschalten gestellt (frischer Griff)
+VT: tty1 liess sich NICHT nach vorne bringen
+```
+
+**Und genau dieses Paar ist der Beweis.** Der ioctl hat nicht geworfen -
+sonst stuende die Zeile "VT: Wechsel auf tty1 fehlgeschlagen (...)" mit
+dem Fehler darin da. Er ist angenommen worden, und die Konsole hat sich
+trotzdem nicht bewegt.
+
+**Dafuer gibt es im Linux-Kernel genau eine Stelle**, `set_console()`:
+
+```c
+if (!vc_cons_allocated(nr) || vt_dont_switch ||
+    (vc->vt_mode.mode == VT_AUTO && vc->vc_mode == KD_GRAPHICS))
+        return -EINVAL;
+```
+
+Die vorne liegende Konsole darf **nicht gleichzeitig** selbsttaetig
+UND im Grafikmodus sein. Und genau diese Kombination habe ich mit
+Build 287 selbst hergestellt:
+
+- **Build 279** legt die Konsole des Betrachters in den Grafikmodus,
+  damit der Login-Gruss nicht ins Bild schreibt.
+- Zurueckgestellt wurde er oben in `_auf_konsole()` ueber **denselben
+  aufgelegten Dateizeiger**, der schon fuer alles andere EIO geliefert
+  hat. Also blieb tty3 im Grafikmodus.
+- **Build 287** hat dann mit `VT_AUTO` die zweite Haelfte der
+  Bedingung gesetzt - und damit aus "wird verweigert, weil ein toter
+  Prozess gefragt wird" ein "wird verweigert, weil beides zusammen
+  nicht erlaubt ist" gemacht. Von aussen dieselbe Zeile.
+
+> **Lehre: wer zwei Zustaende setzt, muss zwei zuruecksetzen.** Und:
+> wer gegen eine Verweigerung des Kernels arbeitet, muss die
+> Bedingung LESEN, statt Varianten zu probieren. Sie stand die ganze
+> Zeit in `set_console()`, zwoelf Zeichen lang.
+
+**Jetzt wird auf dem frischen Griff BEIDES zurueckgestellt**, der
+Textmodus zuerst (sonst steht zwischendurch genau die abgelehnte
+Kombination da), und **jeder der beiden Schritte wird einzeln
+gemeldet** - scheitert einer, steht im Protokoll welcher. Sonst sucht
+man beim naechsten Mal wieder beide.
+
+**Und ein Test musste geschaerft werden:** er verglich die Reihenfolge
+anhand der WOERTER `KD_TEXT` und `VT_SETMODE` - und stiess dabei auf
+den Beschreibungstext darueber, der `VT_SETMODE` ausdruecklich nennt.
+Verglichen werden jetzt die Aufrufe (`self.KDSETMODE`,
+`self.VT_SETMODE`). Ein Test, der auf die Begruendung stoesst, prueft
+die Begruendung.
+
 ### Nachtrag Build 287: ein Dateizeiger ist kein Zugriffsrecht
 
 **Build 286 hat die Betriebsart zurueckgesetzt - und das Protokoll

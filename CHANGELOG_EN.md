@@ -14,7 +14,14 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 ## After v4.9 — not yet released
 
 - **Fixed: after a manual had been opened, the console stayed on
-  tty3.** The viewer (jfbview) takes over console switching, and until
+  tty3.** The kernel explicitly refuses a console switch when the
+  console in front is **both** in graphics mode and on automatic
+  switching — which is exactly what happened: graphics mode for the
+  viewer was reset through our own file handle, and that had been hung
+  up along with the viewer (`Errno 5`). The console is now **opened
+  afresh** after closing and *both* states are reset there — text mode
+  and switching behaviour — and only then the switch happens, over two
+  different routes (builds 286–288). The viewer (jfbview) takes over console switching, and until
   that mode is reset the kernel asks a long-dead process for
   permission before every switch — and gets none. Resetting it does
   not work through our own file handle, though: it was the viewer's

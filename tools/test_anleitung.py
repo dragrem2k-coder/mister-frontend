@@ -708,6 +708,42 @@ check("der frische Griff zeigt auf dieselbe Konsole",
       "TTY_PFAD_MUSTER % vt" in _mod,
       "nicht /dev/tty0 - zurueckgesetzt wird die Betriebsart GENAU "
       "dieser Konsole")
+
+# BUILD 288: UND DER TEXTMODUS GEHOERT DAZU.
+#
+# Build 287 hat nur die Wechsel-Betriebsart zurueckgesetzt, und der
+# Wechsel wurde weiter verweigert. Der Grund steht im Kernel, in
+# set_console():
+#
+#   if (!vc_cons_allocated(nr) || vt_dont_switch ||
+#       (vc->vt_mode.mode == VT_AUTO && vc->vc_mode == KD_GRAPHICS))
+#           return -EINVAL;
+#
+# Die vorne liegende Konsole darf NICHT gleichzeitig selbsttaetig und
+# im Grafikmodus sein. Genau das lag vor: Build 279 legt die Konsole
+# fuer den Betrachter in den Grafikmodus, und zurueckgestellt wurde er
+# ueber denselben aufgelegten Dateizeiger, der schon fuer alles andere
+# EIO geliefert hat. Build 287 hat mit VT_AUTO dann ausgerechnet die
+# zweite Haelfte der Bedingung hergestellt.
+#
+# LEHRE: wer zwei Zustaende setzt, muss zwei zuruecksetzen. Und wer
+# eine Bedingung des Kernels umgehen will, muss sie lesen - sie stand
+# die ganze Zeit in set_console().
+check("der Textmodus wird dort ebenfalls wiederhergestellt",
+      "KDSETMODE" in _mod and "KD_TEXT" in _mod,
+      "Grafikmodus UND selbsttaetiges Umschalten zusammen lehnt der "
+      "Kernel in set_console() ausdruecklich ab (-EINVAL)")
+# Verglichen werden die AUFRUFE, nicht die Woerter: der
+# Beschreibungstext darueber nennt VT_SETMODE ausdruecklich, und ein
+# Test, der darauf stoesst, prueft die Begruendung statt des Codes.
+check("und zwar VOR der Wechsel-Betriebsart",
+      _mod.index("self.KDSETMODE") < _mod.index("self.VT_SETMODE"),
+      "sonst steht zwischendurch genau die Kombination da, die "
+      "abgelehnt wird")
+check("jeder der beiden Schritte wird einzeln gemeldet",
+      _mod.count("except OSError") >= 3,
+      "scheitert einer, muss im Protokoll stehen WELCHER - sonst "
+      "sucht man beim naechsten Mal wieder beide")
 check("umgeschaltet wird danach",
       _fin.index("_vt_modus_freigeben")
       < _fin.index("self._zurueck_auf_tty1"),

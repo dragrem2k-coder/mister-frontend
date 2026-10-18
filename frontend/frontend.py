@@ -14239,20 +14239,59 @@ class Frontend:
         Wechsel um Erlaubnis. Ist es tot, antwortet es nie, und der
         Wechsel wird verweigert. VT_AUTO heisst wieder: der Kernel
         schaltet selbst und fragt niemanden."""
+        _wie = []
         try:
             with open(self.TTY_PFAD_MUSTER % vt, "wb",
                       buffering=0) as t:
-                # struct vt_mode: mode, waitv, relsig, acqsig, frsig -
-                # alles null ausser dem Modus.
-                fcntl.ioctl(t.fileno(), self.VT_SETMODE,
-                            struct.pack("BBhhh", self.VT_AUTO,
-                                        0, 0, 0, 0))
-            LOG("VT: tty%d wieder auf selbsttaetiges Umschalten "
-                "gestellt (frischer Griff)" % vt)
-            return True
+                # 1. ZURUECK IN DEN TEXTMODUS (Build 288).
+                #
+                # DAS WAR DER FEHLENDE TEIL. Der Linux-Kernel lehnt
+                # einen Konsolenwechsel in set_console() ausdruecklich
+                # ab, wenn die Konsole, die VORNE liegt, in
+                # selbsttaetiger Betriebsart UND im Grafikmodus ist:
+                #
+                #   if (!vc_cons_allocated(nr) || vt_dont_switch ||
+                #       (vc->vt_mode.mode == VT_AUTO &&
+                #        vc->vc_mode == KD_GRAPHICS))
+                #           return -EINVAL;
+                #
+                # Genau dieser Fall lag vor. Build 279 legt die
+                # Konsole fuer den Betrachter in den Grafikmodus
+                # (damit der Login-Gruss nicht ins Bild schreibt), und
+                # zurueckgestellt wurde er oben in _auf_konsole() ueber
+                # DENSELBEN aufgelegten Dateizeiger, der schon fuer
+                # alles andere EIO geliefert hat. Also blieb tty3 im
+                # Grafikmodus - und Build 287 hat mit VT_AUTO
+                # ausgerechnet die zweite Haelfte der Bedingung
+                # hergestellt.
+                #
+                # Deshalb beides hier, auf dem frischen Griff, und der
+                # Textmodus ZUERST.
+                try:
+                    fcntl.ioctl(t.fileno(), self.KDSETMODE,
+                                self.KD_TEXT)
+                    _wie.append("Textmodus")
+                except OSError as e:
+                    _wie.append("Textmodus FEHLER %s" % e)
+                # 2. Und die Wechsel-Betriebsart: VT_AUTO heisst "der
+                # Kernel schaltet selbst und fragt niemanden". Ohne
+                # das wartet er auf die Erlaubnis eines Programms, das
+                # nicht mehr lebt (Build 287).
+                try:
+                    # struct vt_mode: mode, waitv, relsig, acqsig,
+                    # frsig - alles null ausser dem Modus.
+                    fcntl.ioctl(t.fileno(), self.VT_SETMODE,
+                                struct.pack("BBhhh", self.VT_AUTO,
+                                            0, 0, 0, 0))
+                    _wie.append("selbsttaetiges Umschalten")
+                except OSError as e:
+                    _wie.append("Umschalten FEHLER %s" % e)
+            LOG("VT: tty%d zurueckgestellt (frischer Griff): %s"
+                % (vt, ", ".join(_wie)))
+            return "FEHLER" not in " ".join(_wie)
         except OSError as e:
-            LOG("VT: Betriebsart von tty%d nicht zurueckgestellt "
-                "(%s)" % (vt, e))
+            LOG("VT: tty%d liess sich nicht oeffnen (%s) - Betriebsart "
+                "bleibt, wie sie ist" % (vt, e))
             return False
 
     def _anleitungs_vt_freigeben(self):
