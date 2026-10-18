@@ -107,12 +107,41 @@ _kalt()
 _setzen(fe, SYSTEME)
 fe.page = 0
 fe.cat_i = 0
-vorher = len(ART._docs_index_cache)
+def _systeme_im_cache():
+    """Wie viele SYSTEME im Docs-Zwischenspeicher stehen - nicht wie
+    viele Eintraege.
+
+    GEAENDERT IN BUILD 294, und zwar am Messwert, nicht an der Zusage.
+    Hier stand len(ART._docs_index_cache), und das war bis dahin
+    dasselbe: ein Eintrag je System. Seit Build 294 hat jedes System
+    DREI Indizes (Cover, Bildschirmfoto, Titelbild - siehe
+    DOCS_BILDARTEN), der Schluessel ist fuer "boxart" der nackte
+    syskey und sonst das Paar (syskey, art).
+
+    Die Zusage dieses Tests ist unveraendert: HOECHSTENS EIN SYSTEM je
+    Ruhemoment, sonst die GIL-Falle aus Build 107. Gezaehlt werden
+    deshalb jetzt Systeme. Haette ich stattdessen die erwartete Zahl
+    von 1 auf 3 hochgesetzt, waere der Test bei der naechsten Bildart
+    wieder rot geworden - und zwar ohne dass sich an dem, was er
+    sichern soll, etwas geaendert haette."""
+    return len({k[0] if isinstance(k, tuple) else k
+                for k in ART._docs_index_cache})
+
+
+vorher = _systeme_im_cache()
 check("ein Tick arbeitet", fe._warmlauf_tick() is True)
 check("und baut genau ein System",
-      len(ART._docs_index_cache) - vorher == 1,
+      _systeme_im_cache() - vorher == 1,
       "%d dazugekommen - mehr waere die GIL-Falle aus Build 107"
-      % (len(ART._docs_index_cache) - vorher))
+      % (_systeme_im_cache() - vorher))
+# Build 294: und alle drei Bildarten dieses einen Systems, denn genau
+# dafuer ist dieser Warmlauf da. Fehlte eine, wuerde sie im
+# ZEICHENWEG gebaut - und dort kostet ein Verzeichnisdurchlauf auf dem
+# Geraet rund 167 ms.
+check("und von diesem System alle drei Bildarten",
+      all(ART._docs_index_fertig(SYSTEME[0], a)
+          for a in ART.DOCS_BILDARTEN),
+      str(sorted(map(str, ART._docs_index_cache))))
 
 ticks = 1
 while fe._warmlauf_tick():
@@ -120,8 +149,9 @@ while fe._warmlauf_tick():
     if ticks > 50:
         break
 check("nach zwoelf Ticks ist Schluss", ticks == 12, "%d Ticks" % ticks)
-check("alle zwoelf sind gebaut", len(ART._docs_index_cache) == 12,
-      "%d" % len(ART._docs_index_cache))
+check("alle zwoelf sind gebaut", _systeme_im_cache() == 12,
+      "%d Systeme, %d Eintraege"
+      % (_systeme_im_cache(), len(ART._docs_index_cache)))
 check("danach steht nichts mehr an", fe._warmlauf_systeme() == [])
 
 # ---------------------------------------------------------------------------

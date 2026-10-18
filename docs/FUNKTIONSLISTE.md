@@ -195,15 +195,15 @@ laesst sich im Menue unter *Eingabe & Sprache* ->
 | `BTN_B` | back | zurueck |
 | `KEY_F1` | back_fe | zum Frontend zurueck (waehrend ein Spiel laeuft) |
 | `BTN_X` | back_fe | zum Frontend zurueck (waehrend ein Spiel laeuft) |
+| `BTN_TR2` | bildart | Bild wechseln: Cover, Bildschirmfoto, Titelbild (nur vorhandene) |
+| `AXIS_R2` | bildart | Bild wechseln: Cover, Bildschirmfoto, Titelbild (nur vorhandene) |
 | `KEY_F7` | completed | als durchgespielt markieren |
 | `KEY_DOWN` | down | eine Zeile nach unten |
 | `BTN_DPAD_DOWN` | down | eine Zeile nach unten |
 | `KEY_ESC` | exit | zurueck (Esc) |
 | `KEY_F8` | favorite | als Favorit markieren |
 | `BTN_TL2` | favorite | als Favorit markieren |
-| `BTN_TR2` | favorite | als Favorit markieren |
 | `AXIS_L2` | favorite | als Favorit markieren |
-| `AXIS_R2` | favorite | als Favorit markieren |
 | `KEY_TAB` | filter | Filter |
 | `KEY_LEFT` | left | eine Seite zurueck (im Hauptmenue: Kategorie zurueck) |
 | `BTN_TL` | left | eine Seite zurueck (im Hauptmenue: Kategorie zurueck) |
@@ -236,6 +236,7 @@ laesst sich im Menue unter *Eingabe & Sprache* ->
 | Kombination | Aktion |
 |---|---|
 | Select + back_fe | ra_showcase |
+| Select + bildart | filter |
 | Select + favorite | filter |
 | Select + Links | list_start |
 | Select + music_next | ansicht |
@@ -349,11 +350,12 @@ Das Frontend bringt seine eigene Hilfe mit, unter
 - **F5 (Tastatur)** - Laufenden Core zurücksetzen, ohne ihn neu zu laden (experimentell, RA-Fortschritt bleibt erhalten)
 - **F6 (Tastatur), Select+X (Pad)** - RA-Erfolgs-Vitrine für das markierte Spiel
 - **F7 (nur Tastatur)** - Durchgespielt-Status umschalten
-- **F8 / L2 oder R2** - Favorit umschalten
+- **F8 / L2** - Favorit umschalten
 - **Geheimnisse** - Verstecktes, das du selbst entdecken kannst
 - **Mitwirkende** - Wer das gebaut hat
 - **OK / A** - Auswählen, Kategorie/Ordner betreten
 - **Pfeiltasten** - Bewegen
+- **R2 (Pad)** - Bild wechseln: Cover, Bildschirmfoto, Titelbild (nur was vorhanden ist)
 - **RA-Erfolgsjäger** - Offene Erfolge in deiner Bibliothek
 - **Sammlungen** - Automatische Gruppierungen
 - **Select (Pad)** - Zeigt die Kombinationen an; GEHALTEN ist Select der Umschalter für Select+A, Select+X und Select+L/R (zurück geht B)

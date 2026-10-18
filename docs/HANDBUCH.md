@@ -152,6 +152,7 @@ Nachlesen (`CHANGELOG.md`).
    - 8b. Optische Verfeinerungen
    - 8d. Attract-Modus / Bildschirmschoner
    - 8e. Favoriten
+   - 8e-2. Drei Bildarten: Cover, Bildschirmfoto, Titelbild
    - 8f. Uhrzeit-Synchronisierung
    - 8f-2. ROMs auf einem NAS/Netzlaufwerk
    - 8g. Themes/Farbschemata
@@ -437,7 +438,8 @@ geprüft, ohne echten Netzwerkverkehr zu erzeugen.
 | X-Button (Pad)                     | Aus dem OSD zurück ins Frontend |
 | Y-Button (Pad) / F5 oder Medientaste "nächster Titel" (Tastatur) | Nächster Song (manueller Musik-Wechsel) |
 | F11                                 | Zufälliges Spiel/Kategorie ("weiß nicht was ich spielen soll") |
-| F8 / L2- oder R2-Taste               | Favorit umschalten (nur bei Spiele-Einträgen) |
+| F8 / L2-Taste                       | Favorit umschalten (nur bei Spiele-Einträgen) |
+| R2-Taste (Pad)                      | Bild wechseln: Cover -> Bildschirmfoto -> Titelbild, nur was vorhanden ist (Abschnitt 8e-2, seit Build 294) |
 | F7                                  | Durchgespielt-Status umschalten (nur bei Spiele-Einträgen) |
 | **F10** (Tastatur) / **Select halten + Y** (Pad) | Ansicht umschalten: Liste -> Raster -> Galerie (Abschnitt 8r). Gilt nur für das gerade Sichtbare und speichert nichts |
 | **F3 / F4** (Tastatur) / **Select halten + L / R** (Pad) | An den Listenanfang bzw. ans Listenende springen (seit Build 114) |
@@ -910,16 +912,51 @@ vor).
 
 Eigene, bewusst kuratierte Auswahl - unabhängig von "Zuletzt
 gespielt" (das füllt sich automatisch, Favoriten nur durch dich
-selbst). F8 (Tastatur) bzw. **L2 oder R2** (Gamepad) schaltet den
+selbst). F8 (Tastatur) bzw. **L2** (Gamepad) schaltet den
 Favoritenstatus des gerade markierten Spiels um - funktioniert nur bei
 echten Spiele-Einträgen, nicht bei Ordnern, Scripts oder Cores.
 Favorisierte Spiele zeigen ein kleines "*" vor dem Namen.
 
-L2/R2 funktionieren dabei unabhängig davon, ob dein Pad sie als
+**Seit Build 294 ist R2 nicht mehr derselbe Schalter.** Vorher taten L2
+und R2 genau dasselbe; R2 wechselt jetzt die Bildart (Abschnitt 8e-2).
+Der Favorit sitzt weiter auf L2 und auf F8.
+
+L2 funktioniert dabei unabhängig davon, ob dein Pad die Taste als
 eigene Taste oder als analogen Trigger sendet (bei vielen
 Xbox-artigen Controllern üblich) - beides wird erkannt. L1/R1 bleiben
 unverändert fürs Blättern zuständig, lassen sich aber genau wie jede
 andere Taste über den Assistenten (Abschnitt 10) umbelegen.
+
+## 8e-2. Drei Bildarten: Cover, Bildschirmfoto, Titelbild
+
+MiSTers `update_all` bietet unter *Settings → Extra Content → Game
+Artwork DBs* nicht nur Cover an, sondern auch **Screenshots** und
+**Title Screens**. Wer sie heruntergeladen hat, findet sie unter
+`/media/fat/docs/<System>/Screenshots` bzw. `.../Titles`.
+
+Beim markierten Spiel wechselt **R2** zwischen diesen Bildern durch -
+und zwar nur zwischen denen, die es für dieses Spiel wirklich gibt.
+Gibt es nur ein Bild, sagt das Frontend das und ändert nichts.
+
+Unten links auf dem Cover steht dann ein kleiner Vermerk wie
+`R2 1/3` - die erste Zahl ist das gerade gezeigte Bild, die zweite,
+wie viele es gibt. **Der Vermerk erscheint nur, wenn es wirklich
+etwas zu wechseln gibt**; bei Spielen mit nur einem Bild bleibt die
+Ecke leer.
+
+Zwei Dinge dazu, die Absicht sind:
+
+- **Ein Bildschirmfoto landet nie von selbst an der Stelle eines
+  Covers.** Die Vorgabe ist immer das Cover; die anderen Bilder
+  kommen nur, wenn du R2 drückst.
+- **Die Umschaltung hält nicht über einen Neustart.** Sie ist ein
+  Hinsehen, keine Einstellung - was man versehentlich drückt, soll
+  nicht dauerhaft die Verpackung ersetzen.
+
+Eigenes Artwork behält überall Vorrang: die Reihenfolge bleibt
+eigener `art/`-Ordner → `gamelist.xml` → fremde Datenbank. Die beiden
+neuen Bildarten kommen ausschließlich aus der fremden Datenbank -
+dort liegen sie.
 
 Erscheint als eigene Kategorie "Favoriten" direkt nach "Zuletzt
 gespielt" und verschwindet automatisch wieder, sobald keine Favoriten
@@ -1371,7 +1408,7 @@ Beschreibung, Spielzeit, RetroAchievements, alles greift.
 
 **In MiSTers Favoritendatei wird nichts geschrieben.** Entfernst du
 einen Favoriten im OSD, ist er auch hier weg. Deine eigenen Favoriten
-(F8 / L2 / R2) liegen weiter in der Datei des Frontends.
+(F8 / L2) liegen weiter in der Datei des Frontends.
 
 ---
 

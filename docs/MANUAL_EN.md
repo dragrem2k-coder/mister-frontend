@@ -147,6 +147,7 @@ history to read up on (`CHANGELOG.md`).
    - 8c. Recently played, loading progress
    - 8d. Attract mode / screensaver
    - 8e. Favorites
+   - 8e-2. Three picture kinds: cover, screenshot, title screen
    - 8f. Clock synchronization
    - 8f-2. ROMs on a NAS/network drive
    - 8g. Themes/color schemes
@@ -394,7 +395,8 @@ real network traffic.
 | X button (pad)                     | From the OSD back to the frontend |
 | Y button (pad) / F5 or media "next track" key (keyboard) | Next song (manual music change) |
 | F11                                 | Random game/category ("don't know what to play") |
-| F8 / L2 or R2 button                | Toggle favorite (game entries only) |
+| F8 / L2 button                      | Toggle favorite (game entries only) |
+| R2 button (pad)                     | Switch picture: cover -> screenshot -> title screen, only what exists (section 8e-2, since build 294) |
 | F7                                  | Toggle completed status (game entries only) |
 | 3x Select in a row (pad)           | Quit confirmation (like ESC) |
 | In a running game: **F1** on the keyboard | Straight back to the frontend, no hold time and no detour through the MiSTer OSD |
@@ -737,15 +739,50 @@ systems are affected (Recently played/Scripts/System are left out).
 
 Your own, deliberately curated selection - independent of "Recently
 played" (which fills up automatically; favorites only through you). F8
-(keyboard) or **L2 or R2** (gamepad) toggles the favorite status of the
+(keyboard) or **L2** (gamepad) toggles the favorite status of the
 currently highlighted game - works only on actual game entries, not on
 folders, scripts or cores. Favorited games show a small "*" before the
 name.
 
-L2/R2 work regardless of whether your pad sends them as a dedicated
+**Since build 294, R2 is no longer the same switch.** Before, L2 and R2
+did exactly the same thing; R2 now switches the picture kind (section
+8e-2). The favorite stays on L2 and on F8.
+
+L2 works regardless of whether your pad sends it as a dedicated
 button or as an analog trigger (common on many Xbox-style controllers) -
 both are recognized. L1/R1 remain responsible for paging, but can be
 remapped just like any other button via the assistant (section 10).
+
+## 8e-2. Three picture kinds: cover, screenshot, title screen
+
+MiSTer's `update_all` offers not only covers under *Settings → Extra
+Content → Game Artwork DBs*, but **Screenshots** and **Title Screens**
+too. If you have downloaded them, they live under
+`/media/fat/docs/<system>/Screenshots` and `.../Titles`.
+
+For the highlighted game, **R2** cycles through those pictures - and
+only through the ones that actually exist for that game. If there is
+only one, the frontend says so and changes nothing.
+
+A small note then appears in the bottom left of the cover, such as
+`R2 1/3` - the first number is the picture currently shown, the second
+how many there are. **The note only appears when there is really
+something to switch**; for games with a single picture the corner
+stays empty.
+
+Two things about this are deliberate:
+
+- **A screenshot never ends up in place of a cover on its own.** The
+  default is always the cover; the other pictures appear only when you
+  press R2.
+- **The switch does not survive a restart.** It is a way of looking,
+  not a setting - what you press by accident should not permanently
+  replace the packaging.
+
+Your own artwork keeps priority everywhere: the order remains your own
+`art/` folder → `gamelist.xml` → external database. The two new
+picture kinds come exclusively from the external database - that is
+where they live.
 
 Appears as its own "Favorites" category directly after "Recently played"
 and disappears again automatically once no favorites remain.

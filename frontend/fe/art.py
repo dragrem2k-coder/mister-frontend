@@ -100,8 +100,73 @@ FREMD_ZUSATZ_WURZELN = (
 # Boxarts: Named_Snaps und Named_Titles sind Bildschirmfotos, und ein
 # Bildschirmfoto an der Stelle einer Verpackung waere eine unangenehme
 # Ueberraschung. Wer sie will, legt sie in einen der obigen Ordner.
+#
+# DIESER SATZ GILT WEITER (Build 294), und er ist der Grund fuer den
+# ganzen Aufbau darunter: ein Bildschirmfoto landet NIEMALS an der
+# Stelle einer Verpackung. Es kommt nur dann, wenn der Nutzer es mit
+# R2 ausdruecklich anfordert - siehe DOCS_BILDARTEN.
 DOCS_UNTERORDNER = ("Artwork", "Named_Boxarts", "Boxarts", "boxart",
                     "Covers", "covers", "")
+
+# ======================================================================
+# DIE DREI BILDARTEN (Build 294)
+# ======================================================================
+#
+# NUTZERWUNSCH: "mister update_all stellt ja in denn settings unter
+# punkt 6 extra content, dann punkt 3. game artwork dbs dort die
+# jeweiligen boxarts, screenshots, title screens zur verfuegung wenn
+# man diese runterlaedt. hast du eine gute idee zusaetzlich zu denn
+# boxarts die wir eh schon verwenden die anderen beiden noch mit ins
+# frontend in denn ansichten mit einzubinden?"
+#
+# DIE ORDNERNAMEN SIND GEMESSEN, NICHT GERATEN. Ich hatte nach der
+# libretro-Konvention "Named_Snaps" und "Named_Titles" vermutet und
+# deshalb vor dem Bauen um ein ls gebeten. Auf seinem Geraet steht:
+#
+#     /media/fat/docs/SNES/    -> Artwork  Manuals  README.md
+#                                 Screenshots  Titles
+#     /media/fat/docs/Genesis/ -> Artwork  Screenshots  Titles
+#
+# Also "Screenshots" und "Titles". Die Struktur war wie erwartet
+# (Geschwister neben "Artwork", das wir schon kennen), die Namen waren
+# es nicht - auf Verdacht gebaut haette gar nichts gefunden. Die
+# Named_*-Namen bleiben trotzdem in den Listen: sie kosten einen
+# fehlschlagenden Systemaufruf und helfen jedem, der seine Bilder aus
+# der libretro-Welt mitgebracht hat.
+#
+# WAS HIER NICHT PASSIERT: die Rangfolge der Cover-Suche wird NICHT
+# angefasst. Eigenes Artwork gewinnt weiter, dann die gamelist, dann
+# die fremde Datenbank (siehe _art_path_in()). Die zweite und dritte
+# Bildart kommen AUSSCHLIESSLICH aus der fremden Datenbank - dort
+# liegen sie, und nur dort. Damit kann diese Aenderung an der
+# bestehenden Suche nichts kaputt machen: wer R2 nie drueckt, merkt
+# ueberhaupt nichts.
+DOCS_BILDARTEN = ("boxart", "snap", "titel")
+
+# Je Bildart die Unterordner, in denen sie liegen kann - dieselbe
+# Bedeutung wie DOCS_UNTERORDNER, nur getrennt. Die Reihenfolge ist
+# die Suchreihenfolge, und der erste Fund gewinnt.
+#
+# Fuer "boxart" steht hier bewusst DIESELBE Liste wie oben und nicht
+# eine Kopie: zwei Listen, die dasselbe bedeuten, gehen irgendwann
+# auseinander, und dann sucht der Zeichenweg woanders als der
+# Vorauslader.
+DOCS_UNTERORDNER_JE_ART = {
+    "boxart": DOCS_UNTERORDNER,
+    "snap":   ("Screenshots", "Named_Snaps", "Snaps", "snaps",
+               "screenshots", "snap"),
+    "titel":  ("Titles", "Named_Titles", "titles", "Titelbilder",
+               "title"),
+}
+
+# Wie die Arten im Bild benannt werden. Steht hier und nicht in
+# frontend.py, damit Fundstelle und Beschriftung nicht auseinander
+# laufen koennen.
+DOCS_BILDART_NAME = {
+    "boxart": "Cover",
+    "snap":   "Bildschirmfoto",
+    "titel":  "Titelbild",
+}
 
 # Rueckwaertskompatibel: einzelner Unterordner, wie ihn Build 115
 # kannte. Bleibt erhalten, weil Tests und aeltere Fassungen ihn
@@ -4420,17 +4485,34 @@ def _docs_ordner_alle(syskey):
     return treffer
 
 
-def _docs_index(syskey):
+def _docs_index(syskey, bildart="boxart"):
     """{ROM-Name ohne Endung: voller Bildpfad} fuer ein System.
 
     Aufgebaut nach demselben Muster wie _art_index(): ein os.listdir()
     je System, beim ersten Fehltreffer, danach gecacht. Zusaetzlich
     wird - wie dort - die Fassung ohne fuehrende "NNN "-Nummer als
     Luecke nachgetragen, damit kuratierte Sammlungen ihre Cover
-    wiederfinden."""
+    wiederfinden.
+
+    BILDART (Build 294): "boxart", "snap" oder "titel". Je Art ein
+    EIGENER Index unter einem eigenen Schluessel - und das ist keine
+    Formalie: stuenden Cover und Bildschirmfotos in demselben Index,
+    wuerde der erste Fund gewinnen, und welcher das ist, haengt an der
+    Ordnerreihenfolge. Dann bekaeme man Bildschirmfotos an der Stelle
+    von Verpackungen, genau das, was der Kommentar bei
+    DOCS_UNTERORDNER seit Build 115 ausschliesst.
+
+    Der Schluessel bleibt fuer "boxart" der nackte syskey - sonst
+    waeren alle bestehenden Zwischenspeicher-Eintraege und die Tests,
+    die sie zaehlen (tools/test_kategorie_warmlauf.py), auf einen
+    Schlag ungueltig."""
     if not syskey:
         return {}
-    idx = _docs_index_cache.get(syskey)
+    unter = DOCS_UNTERORDNER_JE_ART.get(bildart)
+    if unter is None:
+        return {}
+    schluessel = syskey if bildart == "boxart" else (syskey, bildart)
+    idx = _docs_index_cache.get(schluessel)
     if idx is not None:
         return idx
     idx = {}
@@ -4443,8 +4525,9 @@ def _docs_index(syskey):
     # gecacht. Ordner, die es nicht gibt, kosten einen fehlschlagenden
     # Systemaufruf.
     for basis in _docs_ordner_alle(syskey):
-        for unter in DOCS_UNTERORDNER:
-            ordner = os.path.join(basis, unter) if unter else basis
+        for unterordner in unter:
+            ordner = os.path.join(basis, unterordner) if unterordner \
+                else basis
             try:
                 namen = [fn for fn in os.listdir(ordner)
                          if fn.rsplit(".", 1)[-1].lower()
@@ -4457,7 +4540,7 @@ def _docs_index(syskey):
                 idx.setdefault(fn.rsplit(".", 1)[0], os.path.join(ordner, fn))
             _index_ergaenzen(idx, namen,
                              lambda fn, _o=ordner: os.path.join(_o, fn))
-    _docs_index_cache[syskey] = idx
+    _docs_index_cache[schluessel] = idx
     return idx
 
 
@@ -4489,7 +4572,13 @@ def index_warm_offen(syskeys):
         if not sk or sk in gesehen:
             continue
         gesehen.add(sk)
-        if (sk in _docs_index_cache
+        # BUILD 294: fertig ist ein System erst, wenn ALLE DREI
+        # Bildarten stehen. Ohne diese Erweiterung waere ein System
+        # mit gebautem Cover-Index als "fertig" gezaehlt worden, und
+        # die beiden neuen Indizes haette der Warmlauf nie angefasst -
+        # womit sie im Zeichenweg gebaut worden waeren, also genau
+        # dort, wo sie nicht hingehoeren (siehe index_warmlaufen()).
+        if (all(_docs_index_fertig(sk, art) for art in DOCS_BILDARTEN)
                 and all((w, sk) in _art_index_cache
                         for w in INDEX_WARM_WURZELN)):
             continue
@@ -4541,7 +4630,32 @@ def index_warmlaufen(syskeys, hoechstens=1):
         try:
             for wurzel in INDEX_WARM_WURZELN:
                 _art_index(wurzel, sk)
-            _docs_index(sk)
+            # BUILD 294: ALLE DREI BILDARTEN, und zwar HIER und nicht
+            # im Zeichenweg.
+            #
+            # Jeder dieser Aufbauten ist ein os.listdir je Ordner, und
+            # ein Durchlauf ueber einen Bilderordner kostet auf dem
+            # Geraet des Nutzers rund 167 ms (Abschnitt H des Benchs).
+            # Wuerde der Vermerk "R2 1/3" seine Liste beim ZEICHNEN
+            # holen, kostete das Betreten jedes Systems zwei solche
+            # Durchlaeufe auf EINEM Bild - ein Ruckler von rund einer
+            # Drittelsekunde, genau dort, wo der Nutzer gerade
+            # hinschaut.
+            #
+            # DAS IST DER FEHLER AUS BUILD 107, nur an einer neuen
+            # Stelle: "warum ist nach einem Neustart das Hauptmenue so
+            # traege?" war Arbeit, die lief, wo sie nicht laufen
+            # durfte. Dieser Warmlauf ist genau dafuer gebaut - er
+            # laeuft nur, wenn keine Taste kommt, und hoechstens ein
+            # System je Ruhemoment (siehe den Docstring oben).
+            #
+            # Dass es jetzt drei Aufbauten je System sind statt einem,
+            # aendert daran nichts: "hoechstens 1" zaehlt Systeme,
+            # nicht Verzeichnisse, und wer die beiden neuen Ordner
+            # nicht hat, zahlt je Art einen fehlschlagenden
+            # Systemaufruf.
+            for art in DOCS_BILDARTEN:
+                _docs_index(sk, art)
         except Exception:                                # noqa: BLE001
             # Ein Warmlauf darf NIE etwas kaputtmachen, was ohne ihn
             # funktioniert haette - er ist reine Vorarbeit.
@@ -4561,6 +4675,89 @@ def docs_cover(syskey, rom_basename):
         return None
     idx = _docs_index(syskey)
     return idx.get(rom_basename) or idx.get(vergleichsname(rom_basename))
+
+
+def _docs_index_fertig(syskey, bildart="boxart"):
+    """Steht der Index dieser Bildart schon im Zwischenspeicher?
+    (Build 294)
+
+    EINE STELLE FUER DIE SCHLUESSELRECHNUNG. Der Schluessel ist fuer
+    "boxart" der nackte syskey und sonst das Paar (syskey, bildart) -
+    das steht in _docs_index() und darf nicht ein zweites Mal
+    ausgeschrieben werden, sonst suchen Warmlauf und Aufbau an
+    verschiedenen Stellen und der Warmlauf laeuft fuer immer."""
+    if not syskey:
+        return True
+    schluessel = syskey if bildart == "boxart" else (syskey, bildart)
+    return schluessel in _docs_index_cache
+
+
+def docs_bildart(syskey, rom_basename, bildart):
+    """Pfad zu Bildschirmfoto oder Titelbild eines Spiels, sonst None.
+
+    BUILD 294. Derselbe Weg wie docs_cover(), nur in den Ordnern der
+    gewuenschten Bildart - inklusive des unscharfen Vergleichs, und
+    zwar aus demselben Grund: die Datenbank ist No-Intro benannt, die
+    ROMs des Nutzers sind es nicht zwangslaeufig.
+
+    "boxart" fuehrt bewusst durch DIESELBE Funktion und liefert
+    dasselbe wie docs_cover(). Eine zweite Fassung fuer den Normalfall
+    waere ein Zwilling, der irgendwann auseinanderlaeuft."""
+    if not syskey or not rom_basename or not bildart:
+        return None
+    idx = _docs_index(syskey, bildart)
+    if not idx:
+        return None
+    return idx.get(rom_basename) or idx.get(vergleichsname(rom_basename))
+
+
+def docs_bildarten(syskey, rom_basename, nur_fertig=False):
+    """Welche Bildarten es fuer DIESES Spiel wirklich gibt - als Tupel
+    in der Reihenfolge von DOCS_BILDARTEN (Build 294).
+
+    nur_fertig=True liefert None, solange noch nicht alle Indizes im
+    Zwischenspeicher stehen - "weiss ich noch nicht", nicht "gibt es
+    nicht". DAS IST FUER DEN ZEICHENWEG GEBAUT: ein Aufbau kostet je
+    Ordner ein os.listdir, und ein Durchlauf ueber einen Bilderordner
+    liegt auf dem Geraet des Nutzers bei rund 167 ms (Abschnitt H des
+    Benchs). Zwei davon auf einem Bild waeren beim Betreten jedes
+    Systems ein Ruckler von einer Drittelsekunde - der Fehler aus
+    Build 107 an neuer Stelle. Der Vermerk im Bild erscheint deshalb
+    erst, wenn der Warmlauf (index_warmlaufen()) durch ist; das ist
+    ein Ruhemoment, also praktisch sofort.
+
+    Beim TASTENDRUCK wird dagegen mit nur_fertig=False gefragt und
+    notfalls gewartet: wer R2 drueckt, hat ausdruecklich danach
+    gefragt, und einmalig ein Drittel einer Sekunde ist dort
+    vertretbar - anders als bei jedem Systemwechsel.
+
+    DAS IST DIE FUNKTION, DIE DEN HINWEIS IM BILD ENTSCHEIDET: steht
+    hier nur eine Art, gibt es nichts zum Durchwechseln, und dann
+    erscheint auch kein Vermerk. Ein Hinweis auf eine Taste, die
+    nichts tut, ist schlimmer als kein Hinweis - das stand schon beim
+    Kommentar zur Tastenlegende ("eine Legende, die 'Oeffnen' sagt, wo
+    gestartet wird, waere schlimmer als keine").
+
+    "boxart" ist IMMER dabei, wenn ueberhaupt ein Cover existiert -
+    und ob eines existiert, entscheidet nicht diese Funktion: ein
+    Cover kann auch aus unserem eigenen art/-Ordner oder aus der
+    gamelist kommen, wovon die fremde Datenbank nichts weiss. Dafuer
+    ist der Aufrufer zustaendig, der das sowieso schon wissen muss
+    (siehe cover_quelle() in frontend.py). Hier steht nur, was die
+    DATENBANK hergibt.
+
+    KOSTEN: je Art ein Blick in einen bereits gebauten Index, beim
+    ersten Mal je Art ein os.listdir() je Ordner. Das laeuft NICHT im
+    Zeichenweg je Bild, sondern nur fuer das MARKIERTE Spiel - siehe
+    den Aufrufer."""
+    if nur_fertig and not all(_docs_index_fertig(syskey, art)
+                              for art in DOCS_BILDARTEN):
+        return None
+    da = []
+    for art in DOCS_BILDARTEN:
+        if docs_bildart(syskey, rom_basename, art):
+            da.append(art)
+    return tuple(da)
 
 
 def _docs_infos(syskey):

@@ -145,6 +145,9 @@ AKTION_TEXT = {
     "search": "Suche",
     "ansicht": "Ansicht wechseln (Liste / Raster / Galerie)",
     "favorite": "als Favorit markieren",
+    # Build 294: die drei Bildarten aus der Artwork-Datenbank.
+    "bildart": "Bild wechseln: Cover, Bildschirmfoto, Titelbild "
+               "(nur vorhandene)",
     "music": "Musik an/aus",
     "music_next": "naechster Titel",
     "volume_up": "lauter",

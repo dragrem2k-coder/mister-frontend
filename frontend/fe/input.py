@@ -201,8 +201,30 @@ KEYMAP = {
     # zurueck ins Frontend, im Frontend das Menue.
     KEY_F1: "back_fe",
     KEY_F12: "osd", KEY_F9: None, KEY_F10: "ansicht", KEY_F11: "random",
-    KEY_F8: "favorite", BTN_TL2: "favorite", BTN_TR2: "favorite",
-    AXIS_L2: "favorite", AXIS_R2: "favorite",
+    # BUILD 294: R2 IST JETZT DIE BILDART, L2 BLEIBT DER FAVORIT.
+    #
+    # NUTZERFRAGE: "aktuell nutzen wir ja L2 und r2 um spiele zu
+    # Favoriten hinzuzufuegen, koennten wir dann r2 nutzen um die
+    # Bilder durchzuwechseln?"
+    #
+    # DAS KOSTET NICHTS, und das war beim Nachsehen die Ueberraschung:
+    # hier stand
+    #
+    #     KEY_F8: "favorite", BTN_TL2: "favorite", BTN_TR2: "favorite",
+    #     AXIS_L2: "favorite", AXIS_R2: "favorite",
+    #
+    # R2 war also nur ein ZWILLING von L2 und keine eigene Funktion.
+    # Es freizugeben nimmt niemandem etwas weg - der Favoritenschalter
+    # bleibt auf L2 (und auf F8).
+    #
+    # BEIDE ZEILEN MUESSEN WANDERN, und das ist die Falle: BTN_TR2 ist
+    # R2 als Knopf, AXIS_R2 ist R2 als Analogtrigger (Xbox-artige
+    # Pads, siehe _absinfo() und die Schwellwert-Erkennung weiter
+    # unten). Aenderte man nur eine, verhielte sich ein Pad mit
+    # Analogtriggern anders als eines mit Knoepfen - ein Fehler, den
+    # niemand bei sich nachstellen kann, weil er am Pad haengt.
+    KEY_F8: "favorite", BTN_TL2: "favorite", AXIS_L2: "favorite",
+    BTN_TR2: "bildart", AXIS_R2: "bildart",
     KEY_F7: "completed",
     # NEUES FEATURE (Nutzerwunsch: Volltextsuche statt nur Anfangs-
     # buchstaben-Sprung, "bei vielen ROMs ist das besser") - "/" ist die
@@ -561,7 +583,17 @@ SELECT_COMBOS = {
     # der Favoritenschalter - dieselbe Ueberlegung wie bei "music_next"
     # oben: der Schluessel ist die Grundaktion der Taste, nicht ihre
     # Beschriftung.
-    "favorite": "filter",       # Select + L2/R2 -> Filter
+    "favorite": "filter",       # Select + L2 -> Filter
+    # BUILD 294: und Select + R2 ebenfalls, unveraendert.
+    #
+    # Diese Tabelle ist nach der GRUNDAKTION der Taste geschluesselt,
+    # nicht nach ihrer Beschriftung (siehe "music_next" oben). R2s
+    # Grundaktion heisst seit Build 294 "bildart" - ohne diesen
+    # Eintrag waere Select+R2 also STILL aus dem Filter
+    # herausgefallen, und zwar ohne Fehlermeldung. Genau die Sorte
+    # Nebenwirkung, die man erst Wochen spaeter als Nutzermeldung
+    # wiedersieht.
+    "bildart": "filter",        # Select + R2 -> Filter, wie bisher
 }
 # Select ALLEIN soll weiterhin wie Zurueck wirken (und den bestehenden
 # Dreifach-Select-Kurzbefehl fuers Beenden ausloesen). Damit sich beides

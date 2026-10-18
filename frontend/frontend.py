@@ -1273,6 +1273,11 @@ from fe.art import (
     decode_png, BadgeCache, ArtCache, _art_path_in, _art_index,
     art_path, mra_meta, get_meta, metadaten_vorwaermen, ART, ART_BASE,
     docs_caches_leeren, docs_cover, docs_meta, docs_synopsis,
+    # BUILD 294: die drei Bildarten. Direkt als Funktionen und NICHT
+    # ueber ART - ART ist die ArtCache-INSTANZ (siehe "ART = ArtCache()"
+    # in fe/art.py), nicht das Modul. "ART.docs_bildart(...)" sieht
+    # richtig aus und waere auf dem Geraet ein AttributeError gewesen.
+    docs_bildart, docs_bildarten, DOCS_BILDARTEN, DOCS_BILDART_NAME,
     ART_HD, SYSART_BASE, META_BASE, BADGE_DIR,
     RA_BADGE_URL, BADGES, _category_art_key,
     prewarm_thumb, prewarm_thumb_mehrfach, thumb_cache_has,
@@ -11933,7 +11938,47 @@ class Frontend:
         Ergebnis von get_scaled(): das liefert auch dann None, wenn beim
         Scrollen bewusst uebersprungen wurde (siehe _defer_uncached in
         fe/art.py). Ein Rueckfall an dieser Stelle waere genau der
-        Ruckler, den das Ueberspringen verhindern soll."""
+        Ruckler, den das Ueberspringen verhindern soll.
+
+        BUILD 294: UND HIER, GANZ VORN, DIE BILDART.
+
+        Es gibt drei Bildarten (Cover, Bildschirmfoto, Titelbild -
+        siehe DOCS_BILDARTEN in fe/art.py), und der Nutzer schaltet
+        sie mit R2 je Spiel um. Dass das AN DIESER EINEN STELLE
+        geschieht, ist der ganze Trick: der Docstring oben nennt sie
+        selbst "eine Stelle fuer alle sechs Zeichenwege", und
+        cover_pfad_und_kasten() sagt dazu "beides muss mit
+        draw_art_panel() uebereinstimmen, sonst landen die Miniaturen
+        unter einem Schluessel, den nie jemand abfragt". Genau deshalb
+        wird hier gehakt und nicht im Zeichenweg: Vorauslader,
+        Miniaturen-Zwischenspeicher und Bild sehen damit
+        zwangslaeufig dasselbe.
+
+        DER ZWISCHENSPEICHER BRAUCHT DAFUER KEINE ZEILE: sein
+        Schluessel ist der PFAD plus die Kastengroesse, und ein
+        Bildschirmfoto liegt in einem anderen Ordner als das Cover.
+        Zwei Arten koennen sich also nicht gegenseitig
+        ueberschreiben.
+
+        NUR IM SPEICHER, NICHT AUF DER KARTE: self._bildart_je_spiel
+        ueberlebt absichtlich keinen Neustart. Eine umgeschaltete
+        Bildart ist ein Hinsehen, keine Einstellung - und was man
+        versehentlich drueckt, soll nicht dauerhaft die Verpackung
+        durch ein Bildschirmfoto ersetzen.
+
+        Findet die Datenbank fuer die gewaehlte Art nichts, faellt es
+        stillschweigend auf den normalen Weg zurueck. Das ist kein
+        erwarteter Fall - umschalten kann man nur auf Arten, die es
+        gibt (siehe docs_bildarten()) -, aber zwischen Umschalten
+        und Zeichnen kann eine Karte ausgeworfen werden, und dann ist
+        ein Cover besser als ein Platzhalter."""
+        art = getattr(self, "_bildart_je_spiel", None)
+        if art:
+            gewaehlt = art.get((syskey, name))
+            if gewaehlt and gewaehlt != "boxart":
+                anders = docs_bildart(syskey, name, gewaehlt)
+                if anders:
+                    return anders
         if self.fb.height >= 720:
             return _art_path_in(ART_HD, syskey, name)
         sd = art_path(syskey, name)
@@ -11946,6 +11991,103 @@ class Frontend:
         # nichts am bisherigen Verhalten aendert (Platzhalter, und der
         # Vorauslader traegt denselben Schluessel wie der Zeichenpfad).
         return sd
+
+    # ------------------------------------------------------------------
+    # DIE BILDART DES MARKIERTEN SPIELS (Build 294)
+    # ------------------------------------------------------------------
+    #
+    # Je Spiel gemerkt, NUR IM SPEICHER. Siehe cover_quelle() - eine
+    # umgeschaltete Bildart ist ein Hinsehen, keine Einstellung.
+    _bildart_je_spiel = None
+
+    def _bildart_schluessel(self, label, arg, cat_syskey=None):
+        """Derselbe Schluessel, mit dem cover_quelle() fragt.
+
+        DAS IST DER GANZE PUNKT DIESER FUNKTION: cover_quelle(syskey,
+        name) bekommt genau dieses Paar, und cover_pfad_und_kasten()
+        bildet es aus _item_syskey() und item[0]. Stuende die Rechnung
+        hier ein zweites Mal ausgeschrieben, wuerde sie irgendwann
+        auseinanderlaufen - und dann merkt sich das Frontend eine
+        Bildart unter einem Schluessel, den der Zeichenweg nie
+        abfragt. Genau dieser Fehler ist in diesem Projekt schon
+        passiert (siehe den Docstring von cover_pfad_und_kasten:
+        "sonst landen die Miniaturen unter einem Schluessel, den nie
+        jemand abfragt")."""
+        if cat_syskey is None:
+            try:
+                cat_syskey = self.cats[self.cat_i][2]
+            except (IndexError, TypeError, AttributeError):
+                cat_syskey = None
+        syskey = self._item_syskey((label, "game", arg), cat_syskey)
+        return (syskey, label)
+
+    def bildart_weiter(self, label, arg):
+        """Zur naechsten VORHANDENEN Bildart des Spiels wechseln.
+
+        BUILD 294. Gewechselt wird nur zwischen Arten, die es fuer
+        dieses Spiel wirklich gibt (docs_bildarten()). Gibt es nur
+        eine, sagt das Frontend das und tut nichts weiter - eine Taste,
+        die ohne Erklaerung nichts tut, ist ein Fehlerbericht in
+        Wartestellung.
+
+        BEWUSST OHNE DAUERHAFTES SPEICHERN, siehe cover_quelle().
+        """
+        syskey, name = self._bildart_schluessel(label, arg)
+        arten = docs_bildarten(syskey, name)
+        if self._bildart_je_spiel is None:
+            self._bildart_je_spiel = {}
+        jetzt = self._bildart_je_spiel.get((syskey, name), "boxart")
+        # DIE FREMDE DATENBANK WEISS NICHT ALLES: ein Cover kann auch
+        # aus unserem art/-Ordner oder aus der gamelist kommen (siehe
+        # _art_path_in()). Steht "boxart" nicht in der Liste, gibt es
+        # das Cover trotzdem - es kommt eben von woanders.
+        if "boxart" not in arten:
+            arten = ("boxart",) + arten
+        if len(arten) < 2:
+            self.draw(message=t("bildart_nur_eine"))
+            return
+        try:
+            i = arten.index(jetzt)
+        except ValueError:
+            i = 0
+        neu = arten[(i + 1) % len(arten)]
+        if neu == "boxart":
+            self._bildart_je_spiel.pop((syskey, name), None)
+        else:
+            self._bildart_je_spiel[(syskey, name)] = neu
+        LOG("Bildart: %s -> %s (%s / %s)" % (jetzt, neu, syskey, name))
+        # Der Zwischenspeicher der Anzeige muss den Wechsel sehen -
+        # sonst bleibt das alte Bild stehen, bis man eine Zeile weiter
+        # und wieder zurueck geht.
+        self._anzeige_geaendert()
+        self.draw(message="%s (%d/%d)"
+                  % (DOCS_BILDART_NAME.get(neu, neu),
+                     arten.index(neu) + 1, len(arten)))
+
+    def bildart_stand(self, label, arg, cat_syskey=None):
+        """(aktuelle Art, Nummer, Anzahl) fuer den Vermerk im Bild -
+        oder None, wenn es nichts zum Wechseln gibt (Build 294).
+
+        Gibt es nur eine Art, kommt None, und dann zeichnet der
+        Aufrufer auch keinen Vermerk. Ein Hinweis auf eine Taste, die
+        nichts tut, ist schlimmer als kein Hinweis - dieselbe
+        Ueberlegung wie bei der Tastenlegende in Build 257."""
+        syskey, name = self._bildart_schluessel(label, arg, cat_syskey)
+        # nur_fertig=True: im Zeichenweg wird NICHT auf einen
+        # Verzeichnisdurchlauf gewartet. None heisst "weiss ich noch
+        # nicht" - dann gibt es diesmal keinen Vermerk, und beim
+        # naechsten Bild nach dem Warmlauf ist er da.
+        arten = docs_bildarten(syskey, name, nur_fertig=True)
+        if arten is None:
+            return None
+        if "boxart" not in arten:
+            arten = ("boxart",) + arten
+        if len(arten) < 2:
+            return None
+        jetzt = (self._bildart_je_spiel or {}).get((syskey, name), "boxart")
+        if jetzt not in arten:
+            jetzt = "boxart"
+        return (jetzt, arten.index(jetzt) + 1, len(arten))
 
     def cover_pfad_und_kasten(self, item, cat_syskey, geo):
         """(Cover-Pfad, Kastenbreite, Kastenhoehe) fuer EINEN Eintrag -
@@ -13513,6 +13655,49 @@ class Frontend:
                 gold = (210, 175, 70)
                 fb.rect_rounded(bx, by, badge_w, badge_h, gold)
                 fb.text(bx + 3 * s, by + 2 * s, "100%", s, (10, 10, 14), gold)
+            # DER VERMERK ZUR BILDART (Build 294).
+            #
+            # NUTZERWUNSCH: "Mit kleiner Info das wenn sie vorhanden
+            # sind man sie mit r2 durchwechseln kann?"
+            #
+            # WARUM AUF DEM COVER UND NICHT IN DIE FUSSZEILE: die
+            # Tastenlegende aus Build 257 steht ausdruecklich NUR auf
+            # der Hauptseite, und der Grund steht dort - in der
+            # Spieleliste traegt dieselbe Zeile schon die
+            # Songtitel-Laufschrift UND die Statusmeldungen, und die
+            # beiden sind sich bereits einmal in die Quere gekommen
+            # ("die Laufschrift ueberschrieb bis zu 12,5-mal je
+            # Sekunde eine gerade gezeigte Erfolgsmeldung"). Ein
+            # drittes Schreiberlein auf derselben Zeile waere derselbe
+            # Fehler noch einmal.
+            #
+            # UNTEN LINKS, weil oben rechts das 100%-Abzeichen sitzt.
+            # Zwei kleine Kaesten an derselben Ecke waeren genau die
+            # Sorte Ueberlappung, die man erst auf dem Geraet sieht.
+            #
+            # NUR WENN ES WIRKLICH WAS ZU WECHSELN GIBT:
+            # bildart_stand() gibt None zurueck, wenn dieses Spiel nur
+            # eine Bildart hat - und auch, solange der Warmlauf die
+            # Verzeichnisse noch nicht gelesen hat (siehe
+            # docs_bildarten(nur_fertig=True); hier darf kein
+            # os.listdir passieren). Ein Hinweis auf eine Taste, die
+            # nichts tut, ist schlimmer als kein Hinweis.
+            #
+            # ZWEI AUFRUFE, nicht mehr: ein rect_rounded und ein text,
+            # dieselbe Bauweise wie das Abzeichen darueber. Abschnitt K
+            # des Benchs zaehlt die Fuellaufrufe je Schritt mit, der
+            # Zuwachs ist dort also nachlesbar und nicht behauptet.
+            _bst = (self.bildart_stand(name, item[2], syskey)
+                    if item[1] == "game" else None)
+            if _bst:
+                _ba_txt = "R2 %d/%d" % (_bst[1], _bst[2])
+                _ba_w = len(_ba_txt) * 8 * s + 6 * s
+                _ba_h = 12 * s
+                _ba_x = ax + 2 * s
+                _ba_y = ay + ah - _ba_h - 2 * s
+                fb.rect_rounded(_ba_x, _ba_y, _ba_w, _ba_h, C_PANEL)
+                fb.text(_ba_x + 3 * s, _ba_y + 2 * s, _ba_txt, s,
+                        C_DIM, C_PANEL)
             art_bottom = ay + ah
         else:
             # ENTFERNT (Build 87, Nutzerentscheidung: "grossen
@@ -18664,6 +18849,10 @@ class Frontend:
             ("item", "help_nav_select"),
             ("header", "help_section_list"), ("item", "help_list_showcase"),
             ("item", "help_list_completed"), ("item", "help_list_favorite"),
+            # Build 294: direkt hinter dem Favoriten - es ist die
+            # Schultertaste nebenan, und wer das eine sucht, findet so
+            # das andere mit.
+            ("item", "help_list_bildart"),
             ("item", "help_list_random"), ("item", "help_list_ansicht"),
             ("header", "help_section_menu"), ("item", "help_menu_continue"),
             ("item", "help_menu_collections"), ("item", "help_menu_hunter"),
@@ -22637,6 +22826,21 @@ class Frontend:
                                 self.draw(message=(
                                 t("favorite_added") if now_fav
                                 else t("favorite_removed")))
+                            continue
+                elif act == "bildart":
+                    # BUILD 294: R2 wechselt die Bildart des
+                    # markierten Spiels durch - Cover, Bildschirmfoto,
+                    # Titelbild, und nur die, die es wirklich gibt.
+                    #
+                    # NUR BEI EINEM ECHTEN SPIEL, wie bei "favorite":
+                    # fuer Ordner, Cores, Scripts und Systemeintraege
+                    # gibt es in der Datenbank nichts, und ein
+                    # Durchwechseln von einer Art waere eine Taste,
+                    # die scheinbar klemmt.
+                    if self.page == 1 and items:
+                        label, kind, arg = items[self.item_i]
+                        if kind == "game":
+                            self.bildart_weiter(label, arg)
                             continue
                 elif act == "completed":
                     # Durchgespielt-Status umschalten - genau wie bei

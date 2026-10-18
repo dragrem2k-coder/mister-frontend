@@ -13,6 +13,22 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Neu: Bildschirmfotos und Titelbilder, mit R2 durchwechseln.**
+  MiSTers `update_all` bietet unter *Settings → Extra Content → Game
+  Artwork DBs* nicht nur Cover, sondern auch Screenshots und Title
+  Screens. Beim markierten Spiel wechselt **R2** zwischen diesen
+  Bildern durch — nur zwischen denen, die es für dieses Spiel wirklich
+  gibt. Unten links auf dem Cover steht dann ein kleiner Vermerk wie
+  `R2 1/3`; gibt es nur ein Bild, erscheint er nicht und R2 sagt das
+  auch. Ein Bildschirmfoto landet **nie von selbst** an der Stelle
+  eines Covers, und die Umschaltung hält absichtlich nicht über einen
+  Neustart — sie ist ein Hinsehen, keine Einstellung. Eigenes Artwork
+  behält überall Vorrang (Build 294).
+- **R2 ist dafür nicht mehr der Favoritenschalter — L2 ist es
+  weiterhin.** Das kostet nichts: L2 und R2 taten vorher genau
+  dasselbe, R2 war nur ein Zwilling. F8 auf der Tastatur bleibt
+  ebenfalls der Favorit, und Select+L2 wie Select+R2 öffnen weiter den
+  Filter (Build 294).
 - **Beim Scrollen wird jetzt das Cover zuerst weggeschrieben, das du
   gerade gesehen hast.** Bisher arbeitete das Frontend die
   Schreib-Warteschlange von vorn ab — also das Cover von vor zwanzig

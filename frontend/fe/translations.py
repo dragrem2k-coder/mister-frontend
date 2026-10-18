@@ -277,8 +277,21 @@ TRANSLATIONS = {
                                 "de": "F7 (nur Tastatur)"},
     "help_list_completed_desc": {"en": "Toggle completed status",
                                  "de": "Durchgespielt-Status umschalten"},
-    "help_list_favorite_key": {"en": "F8 / L2 or R2", "de": "F8 / L2 oder R2"},
+    # GEAENDERT (Build 294): R2 ist nicht mehr der Zwilling von L2.
+    # Beide hiessen "favorite"; R2 wechselt jetzt die Bildart. Dieser
+    # Text stand hier als "F8 / L2 oder R2" - eine Hilfe, die eine
+    # Taste nennt, die etwas anderes tut, ist schlimmer als keine.
+    "help_list_favorite_key": {"en": "F8 / L2", "de": "F8 / L2"},
     "help_list_favorite_desc": {"en": "Toggle favorite", "de": "Favorit umschalten"},
+    # NEU (Build 294): die drei Bildarten. Steht direkt neben dem
+    # Favoriten, weil es dieselbe Schultertaste nebenan ist - wer das
+    # eine sucht, findet so das andere mit.
+    "help_list_bildart_key": {"en": "R2 (pad)", "de": "R2 (Pad)"},
+    "help_list_bildart_desc": {
+        "en": "Switch picture: cover, screenshot, title screen "
+              "(only what exists)",
+        "de": "Bild wechseln: Cover, Bildschirmfoto, Titelbild "
+              "(nur was vorhanden ist)"},
     # NEU (Build 122): die Ansichts-Umschaltung gehoert genau hierhin -
     # "In der Spieleliste" ist die einzige Stelle, an der sie wirkt.
     "help_list_ansicht_key": {"en": "F10 / Select+Y (pad)",
@@ -1407,6 +1420,14 @@ TRANSLATIONS = {
     "favorites_cat": {"en": "Favorites", "de": "Favoriten"},
     "favorite_added": {"en": "Added to favorites", "de": "Zu Favoriten hinzugefügt"},
     "favorite_removed": {"en": "Removed from favorites", "de": "Aus Favoriten entfernt"},
+    # Build 294: die drei Bildarten (R2). Die NAMEN der Arten stehen
+    # bewusst in fe/art.py bei DOCS_BILDART_NAME, direkt neben den
+    # Ordnern, in denen sie gefunden werden - zwei Orte fuer dieselbe
+    # Sache waeren zwei Orte, an denen man eine Art vergessen kann.
+    # Hier steht nur, was das Frontend sagt, wenn es nichts zu
+    # wechseln gibt.
+    "bildart_nur_eine": {"en": "Only one picture for this game",
+                         "de": "Nur ein Bild zu diesem Spiel"},
     "completed_added": {"en": "Marked as completed", "de": "Als durchgespielt markiert"},
     "completed_removed": {"en": "Completed mark removed", "de": "Durchgespielt-Markierung entfernt"},
     "sys_rescan":      {"en": "Rescan game list", "de": "Spieleliste neu einlesen"},

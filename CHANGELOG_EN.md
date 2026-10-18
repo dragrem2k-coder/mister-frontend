@@ -13,6 +13,20 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **New: screenshots and title screens, cycled with R2.** MiSTer's
+  `update_all` offers not only covers under *Settings → Extra Content →
+  Game Artwork DBs*, but screenshots and title screens too. For the
+  highlighted game, **R2** cycles through those pictures — only through
+  the ones that actually exist for that game. A small note such as
+  `R2 1/3` then appears in the bottom left of the cover; if there is
+  only one picture it does not appear and R2 says so. A screenshot
+  **never** ends up in place of a cover on its own, and the switch
+  deliberately does not survive a restart — it is a way of looking, not
+  a setting. Your own artwork keeps priority everywhere (build 294).
+- **R2 is therefore no longer the favorite button — L2 still is.** That
+  costs nothing: L2 and R2 previously did exactly the same thing, R2
+  was just a twin. F8 on the keyboard remains the favorite too, and
+  Select+L2 as well as Select+R2 still open the filter (build 294).
 - **While scrolling, the cover you just saw is now written out first.**
   The frontend used to work its write queue from the front — the cover
   from twenty steps ago — while the one from the last step waited at

@@ -6178,3 +6178,117 @@ eingestellt, der Test sieht in die Schlange hinein, und erst dann darf
 der Faden weiter. Dieselbe Technik, mit der Test 2 seit Build 247 die
 Byte-Grenze prueft — sie stand schon da, ich hatte sie nur nicht
 benutzt.
+
+---
+
+## Nachtrag Build 294: gefragt statt geraten, und drei alte Fallen
+
+### Das ls war die halbe Arbeit
+
+Vor dem Bauen habe ich um eine Verzeichnisauflistung gebeten, weil ich
+die Ordnernamen nach der libretro-Konvention als `Named_Snaps` und
+`Named_Titles` vermutet hatte. Auf dem Geraet steht:
+
+```
+/media/fat/docs/SNES/    -> Artwork  Manuals  README.md  Screenshots  Titles
+/media/fat/docs/Genesis/ -> Artwork  Screenshots  Titles
+```
+
+**Die Struktur war wie erwartet, die Namen nicht.** Auf Verdacht gebaut
+haette gar nichts gefunden - und das waere ein Fehler gewesen, der sich
+nur auf dem Geraet zeigt, nicht in einem Test, den ich selbst
+aufgesetzt habe. Die `Named_*`-Namen bleiben trotzdem in den Listen: sie
+kosten je Art einen fehlschlagenden Systemaufruf und helfen jedem, der
+seine Bilder aus jener Welt mitgebracht hat.
+
+### R2 war ein Zwilling, und das war der ganze Gewinn
+
+In der Tastentabelle stand:
+
+```python
+KEY_F8: "favorite", BTN_TL2: "favorite", BTN_TR2: "favorite",
+AXIS_L2: "favorite", AXIS_R2: "favorite",
+```
+
+R2 war also **keine eigene Funktion**, sondern dieselbe wie L2. Es
+freizugeben nimmt niemandem etwas weg.
+
+Zwei Fallen dabei, und beide stehen jetzt als Pruefung fest:
+
+1. **BEIDE Zeilen muessen wandern.** `BTN_TR2` ist R2 als Knopf,
+   `AXIS_R2` ist R2 als Analogtrigger. Aenderte man nur eine,
+   verhielte sich ein Xbox-artiges Pad anders als sein Pro
+   Controller - ein Fehler, den niemand bei sich nachstellen kann,
+   weil er am Pad haengt.
+2. **Select+R2 waere still aus dem Filter gefallen.** Die
+   Kombinationstabelle ist nach der GRUNDAKTION geschluesselt, nicht
+   nach der Beschriftung. R2s Grundaktion heisst jetzt "bildart", also
+   braucht sie einen eigenen Eintrag `"bildart": "filter"` - sonst
+   haette Select+R2 ohne Fehlermeldung aufgehoert zu funktionieren.
+
+### Gehakt wird an EINER Stelle, und die gab es schon
+
+`cover_quelle()` nennt sich im eigenen Docstring "eine Stelle fuer alle
+sechs Zeichenwege", und `cover_pfad_und_kasten()` sagt dazu: "beides
+muss mit draw_art_panel() uebereinstimmen, sonst landen die Miniaturen
+unter einem Schluessel, den nie jemand abfragt."
+
+Genau deshalb sitzt die Bildart dort und nicht im Zeichenweg:
+Vorauslader, Miniaturen-Zwischenspeicher und Bild sehen damit
+zwangslaeufig dasselbe. Und der Zwischenspeicher brauchte dafuer keine
+Zeile - sein Schluessel ist der PFAD plus die Kastengroesse, und ein
+Bildschirmfoto liegt in einem anderen Ordner als das Cover.
+
+### Der Vermerk haette einen Ruckler gekostet
+
+`bildart_stand()` muss wissen, welche Arten es fuer das markierte Spiel
+gibt. Naiv gefragt heisst das zwei zusaetzliche
+Verzeichnisdurchlaeufe - und einer kostet auf dem Geraet rund **167 ms**
+(Abschnitt H des Benchs). Beim Betreten jedes Systems waere das eine
+Drittelsekunde Ruckler auf genau dem Bild, auf das der Nutzer schaut.
+
+**Das ist der Fehler aus Build 107 an neuer Stelle** ("warum ist nach
+einem Neustart das Hauptmenue so traege?" war Arbeit, die lief, wo sie
+nicht laufen durfte). Die Behebung war schon gebaut: `index_warmlaufen()`
+laeuft im Ruhemoment, hoechstens ein System je Tick. Es baut jetzt alle
+drei Arten, `index_warm_offen()` zaehlt ein System erst dann als fertig,
+und der Zeichenweg fragt mit `nur_fertig=True` - das liefert **None**
+("weiss ich noch nicht"), nie ein os.listdir.
+
+`None` und `()` sind dabei bewusst verschieden: `()` heisst "gibt es
+nicht", `None` heisst "noch nicht nachgesehen". Eine Funktion, die
+beides mit demselben Wert beantwortet, zwingt den Aufrufer zum Raten.
+
+### Drei alte Fallen, alle wieder zugeschlagen
+
+**1. Eine Pruefung, die ein Wort sucht, findet es auch in der
+Erklaerung.** Zum dritten Mal in diesem Projekt. `test_bildarten`
+pruefte `'BTN_TR2: "favorite"' not in quelle` - und fand es, weil ich im
+Kommentar daneben aufgeschrieben hatte, was VORHER dastand. Dasselbe mit
+`ART.docs_bildart`, dem falschen Griff, den ich als Warnung notiert
+hatte. Der Test hat jetzt ein `nur_code()`, das Kommentarzeilen
+entfernt, und in dessen Docstring stehen alle drei Faelle.
+
+**2. `ART` ist nicht das Modul.** In `fe/art.py` steht
+`ART = ArtCache()` - ART ist die INSTANZ. `ART.docs_bildart(...)` sieht
+vollkommen richtig aus und waere auf dem Geraet ein AttributeError
+gewesen. Aufgefallen beim Nachsehen, nicht beim Schreiben. Zwei
+Docstrings in frontend.py behaupteten dasselbe und sind mitkorrigiert -
+eine falsche Dokumentation ist eine Falle fuer den naechsten Leser.
+
+**3. Ein Test, der Eintraege zaehlt, wo er Systeme meint.**
+`test_kategorie_warmlauf` prueft "hoechstens EIN System je Ruhemoment,
+sonst die GIL-Falle aus Build 107" - und zaehlte dafuer
+`len(_docs_index_cache)`. Bis Build 294 war das dasselbe: ein Eintrag je
+System. Mit drei Bildarten sind es drei.
+
+Die Versuchung war, die erwartete Zahl von 1 auf 3 zu setzen. **Das
+waere falsch gewesen**: beim naechsten Bildart waere der Test wieder rot
+geworden, ohne dass sich an dem, was er sichert, etwas geaendert haette.
+Gezaehlt werden jetzt Systeme. Die Zusage steht unveraendert, der
+Messwert passt wieder zu ihr.
+
+(Und auf den Fix folgte sofort mein eigener Fehler: `SYSTEME[0][2]` -
+`SYSTEME` ist eine Liste von STRINGS, nicht von Kategorie-Tupeln, also
+war das der Buchstabe "N" aus "SNES". Dieselbe Verwechslung, nur in
+klein.)
