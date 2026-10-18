@@ -53,7 +53,16 @@ import zlib
 # aussehen - wer eine 1 und eine 2 nebeneinanderlegt, sieht sofort, dass
 # in der einen ein Abschnitt fehlt. Die Abschnitte A bis G haben sich
 # dabei nicht geaendert, ihre Zahlen bleiben also vergleichbar.
-BENCH_VERSION = 13
+#
+# 14 ab Build 293: Abschnitt B weist beim Schlangenstand eine neue Zahl
+# aus ("zusammengefasst") und sagt, dass der NEUESTE Auftrag zuerst
+# abgearbeitet wird. Die ZEITEN in B sind damit weiter vergleichbar -
+# die Reihenfolge in der Schlange aendert aber, WELCHE Cover auf der
+# Karte landen, und ein Bericht 13 neben einem Bericht 14 muss das
+# sehen lassen. Genau dafuer ist diese Nummer da: Berichte, die
+# vergleichbar AUSSEHEN, aber unter verschiedenen Regeln entstanden
+# sind, sind die unangenehmste Sorte Messfehler.
+BENCH_VERSION = 14
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -795,10 +804,30 @@ def _abschnitt_b(b, fe, S, spiele, A=None):
                                   " (%.1f MB), %d erledigt,"
                                   " %d verworfen"
                                   % (_w, _wb / 1048576.0, _er, _vw))
-                                b("        EIN Arbeitsfaden - vorher"
-                                  " einer JE COVER, und das hat auf")
-                                b("        zwei Kernen beide belegt"
-                                  " (Build 247).")
+                                # BUILD 293: getrennt ausgewiesen, und
+                                # zwar bewusst NICHT bei 'verworfen'.
+                                # Ein zusammengefasster Auftrag ist
+                                # gespartes Packen - wer ihn zu den
+                                # Verlusten zaehlt, liest die Lage
+                                # schlechter, als sie ist. Mit
+                                # getattr, damit eine aeltere
+                                # fe/art.py den Bench nicht umbringt.
+                                _zu = getattr(A, "thumb_schreib_zusatz",
+                                              None)
+                                if _zu is not None:
+                                    _dp = _zu()[0]
+                                    b("        davon %d mal denselben"
+                                      " Auftrag zusammengefasst"
+                                      " (gespartes Packen,"
+                                      " kein Verlust)" % _dp)
+                                b("        Abgearbeitet wird der"
+                                  " NEUESTE zuerst (Build 293) - wer"
+                                  " eben zu")
+                                b("        sehen war, wird eher wieder"
+                                  " gebraucht. EIN Arbeitsfaden,")
+                                b("        vorher einer JE COVER, und"
+                                  " das hat auf zwei Kernen")
+                                b("        beide belegt (Build 247).")
                             except Exception:            # noqa: BLE001
                                 pass
                 if karte is not None:

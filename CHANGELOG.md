@@ -13,6 +13,19 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Beim Scrollen wird jetzt das Cover zuerst weggeschrieben, das du
+  gerade gesehen hast.** Bisher arbeitete das Frontend die
+  Schreib-Warteschlange von vorn ab — also das Cover von vor zwanzig
+  Schritten, während das vom letzten Schritt hinten wartete und oft
+  wieder herausfiel, bevor es dran war. Es wird weiter verworfen, wenn
+  schneller gescrollt als geschrieben wird (das kann die SD-Karte
+  nicht schneller), aber jetzt bleiben die Cover in der Nähe dessen,
+  wo du gerade stehst — und die sind beim Zurückscrollen sofort da
+  (Build 293).
+- **Dasselbe Cover wird nicht mehr zweimal gepackt.** Wer hin- und
+  herscrollt, sah dasselbe Bild zweimal, und es wurde zweimal
+  gerechnet und geschrieben. Jetzt fasst das Frontend
+  gleichlautende Aufträge zusammen (Build 293).
 - **Der Start nutzt die Wartezeit auf MiSTer, statt sie abzusitzen.**
   Nach dem Umschalten in den Konsolenmodus (F9) muss MiSTer die Taste
   erst entgegennehmen — dafür wird 0,4 s gewartet, und das bleibt so.

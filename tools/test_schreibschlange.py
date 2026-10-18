@@ -90,6 +90,13 @@ def _leeren():
     with A._schreib_lock:
         del A._schreib_queue[:]
         A._schreib_bytes = 0
+        # Build 293: der Index gehoert mit zurueckgesetzt. Bliebe er
+        # stehen, wuerde ein spaeterer gleichlautender Auftrag auf
+        # einen Eintrag zeigen, der nicht mehr in der Liste steht -
+        # abgefangen ist das im Quelltext, aber ein Testaufbau soll
+        # keinen Zustand hinterlassen, den der naechste Test erst
+        # aushalten muss.
+        A._schreib_index.clear()
 
 
 def _bild(nr, kb):
@@ -117,8 +124,150 @@ check("hoechstens EIN Schreibvorgang gleichzeitig", m.hoechstens == 1,
       "gemessen: %d - vorher war es einer JE COVER" % m.hoechstens)
 check("alle zehn sind geschrieben", len(m.reihenfolge) == 10,
       "%d von 10" % len(m.reihenfolge))
-check("und zwar in der Reihenfolge, in der sie kamen",
-      m.reihenfolge == ["/art/%03d.png" % i for i in range(10)])
+# UMGEDREHT IN BUILD 293, und das ist eine Verhaltensaenderung mit
+# Grund, keine Abschwaechung. Hier stand:
+#
+#     check("und zwar in der Reihenfolge, in der sie kamen",
+#           m.reihenfolge == ["/art/%03d.png" % i for i in range(10)])
+#
+# Build 247 hat die Grenze mit dem Satz gebaut, "was gerade auf dem
+# Schirm war, ist wahrscheinlicher gleich wieder gebraucht als etwas
+# von vor zwanzig Schritten" - und diesen Gedanken nur beim VERWERFEN
+# angewandt. Abgearbeitet wurde weiter von vorn, also der aelteste
+# zuerst. Beim Schnellscrollen packte der Faden damit mit Hunderten
+# von Millisekunden ausgerechnet das Cover, das am wenigsten
+# wahrscheinlich noch gebraucht wird, waehrend das vom letzten
+# Schritt hinten wartete und selbst wieder hinausfiel.
+#
+# Im Bench des Nutzers (Build 292) sah das so aus:
+#   Spieleliste galerie: 58 wartend (19.0 MB), 291 erledigt, 87 verworfen
+#
+# Jetzt nimmt der Faden den NEUESTEN. Die Zusage dieses Tests ist
+# damit nicht "Ankunftsreihenfolge", sondern "Nuetzlichkeits-
+# reihenfolge" - und die ist genauso pruefbar.
+#
+# HIER WIRD NUR NOCH GEPRUEFT, DASS ES NICHT DIE ANKUNFTSREIHENFOLGE
+# IST - und das hat einen Grund, der selbst eine Lehre ist: in diesem
+# Test laeuft der Faden MIT, waehrend eingestellt wird. Er nimmt den
+# ersten Auftrag, sobald einer da ist, und was dann als Naechstes
+# obenliegt, haengt davon ab, wie viele in der Zwischenzeit
+# dazugekommen sind. Das ist ein Rennen, und eine exakte
+# Reihenfolge daran festzuschreiben waere ein Test, der manchmal
+# gruen ist. (Genau das ist mir beim Schreiben dieses Builds
+# passiert: "genau umgekehrt" ging rot, und zwar zu Recht.)
+#
+# Die exakte Reihenfolge prueft deshalb Test 1b weiter unten, mit
+# festgehaltenem Faden - dieselbe Technik, mit der Test 2 die
+# Byte-Grenze prueft.
+check("und NICHT in der Reihenfolge, in der sie kamen",
+      m.reihenfolge != ["/art/%03d.png" % i for i in range(10)],
+      str(m.reihenfolge))
+# Und die Gegenprobe zur Befuerchtung, die dabei naheliegt: der
+# aelteste verhungert NICHT. Hoert das Scrollen auf, kommt nichts
+# mehr dazu, und die Schlange laeuft komplett leer.
+check("niemand verhungert - es sind trotzdem alle zehn",
+      sorted(m.reihenfolge) == sorted("/art/%03d.png" % i
+                                      for i in range(10)))
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 1b: der NEUESTE ist zuerst dran - mit festgehaltenem Faden")
+# ---------------------------------------------------------------------------
+# Kein Rennen: der erste Auftrag haelt den Faden zwei Sekunden fest,
+# in der Zeit werden fuenf weitere eingestellt, und erst danach darf
+# er weiterarbeiten. Was dann herauskommt, ist die ECHTE Reihenfolge
+# der Schlange und haengt an keiner Uhr.
+m1b = _Mitschrift(0.0)
+_halt = threading.Event()
+
+
+def _put_mit_halt(path, w, h, tw, th, pix):
+    if path == "/art/900.png":
+        _halt.wait(5.0)      # der Haltegriff, nicht die Messung
+    m1b.put(path, w, h, tw, th, pix)
+
+
+A._thumb_cache_put = _put_mit_halt
+A._thumb_cache_put_marke = m1b.marke
+try:
+    _leeren()
+    A._thumb_cache_put_async("/art/900.png", 578, 770, 578, 770,
+                             b"\x00" * 1024)
+    time.sleep(0.2)          # dem Faden Zeit, den Haltegriff zu nehmen
+    for i in range(1, 6):
+        A._thumb_cache_put_async(*_bild(i, 16))
+    with A._schreib_lock:
+        wartend = [a[1] for a in A._schreib_queue]
+    _halt.set()
+    A.thumb_schreib_abwarten(20.0)
+    time.sleep(0.3)
+finally:
+    _halt.set()
+    A._thumb_cache_put = _echt_put
+    A._thumb_cache_put_marke = _echt_marke
+
+check("alle fuenf standen wirklich gleichzeitig in der Schlange",
+      wartend == ["/art/%03d.png" % i for i in range(1, 6)],
+      str(wartend))
+check("abgearbeitet wird von hinten - der NEUESTE zuerst",
+      m1b.reihenfolge[1:] == ["/art/%03d.png" % i
+                              for i in range(5, 0, -1)],
+      str(m1b.reihenfolge))
+check("und der Haltegriff war der erste, wie bestellt",
+      m1b.reihenfolge[:1] == ["/art/900.png"], str(m1b.reihenfolge[:1]))
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 1c: derselbe Auftrag zweimal wird EINMAL gepackt")
+# ---------------------------------------------------------------------------
+# Wer hin- und herscrollt, sieht dasselbe Cover zweimal. Bei 833 ms je
+# Packvorgang (Abschnitt C des Benchs) ist doppeltes Packen keine
+# Kleinigkeit.
+m1c = _Mitschrift(0.0)
+_halt2 = threading.Event()
+
+
+def _put_mit_halt2(path, w, h, tw, th, pix):
+    if path == "/art/900.png":
+        _halt2.wait(5.0)
+    m1c.put(path, w, h, tw, th, pix)
+
+
+A._thumb_cache_put = _put_mit_halt2
+A._thumb_cache_put_marke = m1c.marke
+try:
+    _leeren()
+    with A._schreib_lock:
+        A._schreib_index.clear()
+        A._schreib_doppelt = 0
+    A._thumb_cache_put_async("/art/900.png", 578, 770, 578, 770,
+                             b"\x00" * 1024)
+    time.sleep(0.2)
+    A._thumb_cache_put_async(*_bild(7, 16))
+    A._thumb_cache_put_async(*_bild(8, 16))
+    A._thumb_cache_put_async(*_bild(7, 16))    # derselbe noch einmal
+    with A._schreib_lock:
+        drin1c = [a[1] for a in A._schreib_queue]
+        doppelt = A._schreib_doppelt
+    _halt2.set()
+    A.thumb_schreib_abwarten(20.0)
+    time.sleep(0.3)
+finally:
+    _halt2.set()
+    A._thumb_cache_put = _echt_put
+    A._thumb_cache_put_marke = _echt_marke
+
+check("der doppelte steht nur EINMAL in der Schlange",
+      drin1c.count("/art/007.png") == 1, str(drin1c))
+check("und zwar an der NEUEN Stelle, hinten",
+      drin1c == ["/art/008.png", "/art/007.png"], str(drin1c))
+check("das Zusammenfassen wird gezaehlt", doppelt == 1, str(doppelt))
+check("gepackt wurde er auch nur einmal",
+      m1c.reihenfolge.count("/art/007.png") == 1, str(m1c.reihenfolge))
+check("und die Zahl ist abfragbar, getrennt von 'verworfen'",
+      isinstance(A.thumb_schreib_zusatz(), tuple)
+      and len(A.thumb_schreib_zusatz()) >= 1,
+      str(A.thumb_schreib_zusatz()))
 
 # ---------------------------------------------------------------------------
 print()
@@ -178,9 +327,15 @@ finally:
     A._thumb_cache_put = _echt_put
     A._thumb_cache_put_marke = _echt_marke
 
-check("die Reihenfolge von Marke und Bild bleibt",
-      m3.reihenfolge == ["/art/001.png", ("marke", "/art/002.png"),
-                         "/art/003.png"],
+# EBENFALLS UMGEDREHT IN BUILD 293 (siehe Test 1). Die Zusage dieses
+# Tests war und bleibt: Marken und Bilder liegen in EINER Schlange und
+# werden von EINEM Faden abgearbeitet, ohne sich zu ueberholen. Dass
+# die Reihenfolge jetzt die umgekehrte ist, aendert daran nichts - und
+# gerade weil hier beide Arten gemischt sind, ist dies die Stelle, an
+# der auffiele, wenn eine Art anders behandelt wuerde als die andere.
+check("Marke und Bild in EINER Schlange, neueste zuerst",
+      m3.reihenfolge == ["/art/003.png", ("marke", "/art/002.png"),
+                         "/art/001.png"],
       str(m3.reihenfolge))
 check("eine Marke zaehlt nicht gegen die Byte-Grenze",
       A._auftrag_bytes(("marke", "/x", 1, 2)) == 0)

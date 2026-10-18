@@ -6076,3 +6076,105 @@ oben schon zugewiesen wurde.
 Das Gute daran: so ein Fehler faellt beim ersten Testlauf auf, nicht
 auf dem Geraet. Die Reihenfolge "aendern, Suite, dann packen" hat
 genau dafuer ihren Sinn.
+
+---
+
+## Nachtrag Build 293: der richtige Gedanke, nur halb angewandt
+
+Der Bench von Build 292 hat die Schlange beziffert:
+
+```
+Spieleliste galerie: 58 wartend (19.0 MB), 291 erledigt, 87 verworfen
+Spieleliste raster : 65 wartend (21.1 MB), 183 erledigt, 20 verworfen
+Spieleliste liste  : 12 wartend (13.8 MB), 142 erledigt, 15 verworfen
+```
+
+Die Byte-Grenze aus Build 247 tut also ihre Arbeit — der Speicher laeuft
+nicht voll. Aber 87 von 378 Eintraegen wurden weggeworfen, und jeder
+davon ist ein Cover, das **gerechnet und dann nicht aufbewahrt** wurde.
+
+Beim Nachlesen stand im Kopfkommentar von Build 247 genau der richtige
+Gedanke:
+
+> Platz machen: der AELTESTE geht, nicht der neue. Was gerade auf dem
+> Schirm war, ist wahrscheinlicher gleich wieder gebraucht als etwas
+> von vor zwanzig Schritten.
+
+**Angewandt wurde er nur beim Verwerfen, nicht beim Arbeiten.** Der
+Arbeitsfaden nahm `pop(0)` — also vorn, den aeltesten. Herausgefallen
+ist vorn, abgearbeitet wurde vorn.
+
+Beim Schnellscrollen durch neues Gebiet heisst das: der Faden packt mit
+Hunderten von Millisekunden ausgerechnet das Cover, das am wenigsten
+wahrscheinlich noch gebraucht wird, waehrend das vom letzten Schritt
+hinten wartet und selbst wieder hinausfaellt, bevor es dran war.
+
+**Jetzt nimmt der Faden den NEUESTEN.** Dasselbe Argument, nur
+konsequent. Und die naheliegende Befuerchtung — der aelteste verhungert
+— geht nicht auf: hoert das Scrollen auf, kommt nichts mehr dazu, und
+die Schlange laeuft komplett leer. Die Reihenfolge geht nach
+Nuetzlichkeit statt nach Ankunft, das ist alles.
+
+### Und derselbe Auftrag stand mehrfach drin
+
+Wer hin- und herscrollt, sieht dasselbe Cover zweimal. Bisher wurde es
+zweimal eingestellt und **zweimal gepackt** — bei 833 ms je
+Packvorgang (Abschnitt C) kein Rundungsfehler. Jetzt ersetzt ein neuer
+Auftrag den gleichlautenden alten, und zwar an der NEUEN Stelle: er ist
+eben wieder gebraucht worden, also gehoert er nach hinten.
+
+Der Schluessel ist `auftrag[:6]` — Art, Pfad und die vier Masse, also
+alles ausser den Bildpunkten. Die gehoeren **nicht** hinein: bei
+gleichem Pfad und Mass sind sie ohnehin gleich, und 1,78 MB je
+Einstellung zu vergleichen waere im Zeichenweg genau die Art Kosten,
+die diese Schlange vermeiden soll.
+
+### Was diese Aenderung NICHT tut
+
+Sie macht die Karte nicht schneller. Verworfen wird weiter, wenn
+schneller gescrollt als geschrieben wird — das ist eine Eigenschaft der
+SD-Karte. Was sich aendert, ist **welche** Cover aufbewahrt werden: die
+in der Naehe dessen, wo der Nutzer gerade steht, statt der zufaelligen
+Mitte.
+
+### Zwei Zahlen statt einer
+
+Ein Eintrag, der hinausfaellt, **ohne** je gepackt worden zu sein, hat
+nichts gekostet. Ein zusammengefasster Auftrag ist **gespartes**
+Packen. Beides zu "verworfen" zu addieren liest sich schlechter, als die
+Lage ist — und daran ist in diesem Projekt schon einmal eine
+Entscheidung danebengegangen (Build 270: eine Zahl ohne Aufteilung
+schickt einen an die falsche Stelle).
+
+`thumb_schreib_stand()` bleibt deshalb bei seinen vier Zahlen — die
+Form steht in `tools/test_schreibschlange.py`, und eine Schnittstelle
+zu aendern, nur um eine Zahl mehr zu melden, ist den Aufwand nicht
+wert. Die neue Zahl kommt aus `thumb_schreib_zusatz()`, als Tupel,
+damit eine zweite spaeter dazukommen kann, ohne die Aufrufer
+anzufassen.
+
+`BENCH_VERSION` geht auf **14**: die Zeiten in Abschnitt B bleiben
+vergleichbar, aber die Reihenfolge in der Schlange aendert, WELCHE
+Cover auf der Karte landen. Ein Bericht 13 neben einem Bericht 14 muss
+das sehen lassen — Berichte, die vergleichbar AUSSEHEN, aber unter
+verschiedenen Regeln entstanden sind, sind die unangenehmste Sorte
+Messfehler.
+
+### Mein Test war zu streng, und das war richtig so
+
+`test_schreibschlange.py` Test 1 stellt zehn Auftraege ein, waehrend
+der Faden mitlaeuft. Meine erste Fassung verlangte "genau umgekehrt"
+und ging rot — zu Recht: der Faden nimmt den ersten Auftrag, sobald
+einer da ist, und was dann obenliegt, haengt davon ab, wie viele in der
+Zwischenzeit dazugekommen sind. **Das ist ein Rennen.** Eine exakte
+Reihenfolge daran festzuschreiben waere ein Test, der manchmal gruen
+ist, und das ist schlimmer als keiner.
+
+Test 1 prueft jetzt nur noch, dass es **nicht** die
+Ankunftsreihenfolge ist. Die exakte Reihenfolge prueft der neue
+Test 1b, und zwar deterministisch: der erste Auftrag haelt den Faden
+an einem `threading.Event` fest, in der Zeit werden fuenf weitere
+eingestellt, der Test sieht in die Schlange hinein, und erst dann darf
+der Faden weiter. Dieselbe Technik, mit der Test 2 seit Build 247 die
+Byte-Grenze prueft — sie stand schon da, ich hatte sie nur nicht
+benutzt.

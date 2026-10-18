@@ -2153,14 +2153,97 @@ def _thumb_cache_put(path, w, h, tw, th, pix):
 # genauso (daemon=True), und es ist aus demselben Grund in Ordnung.
 SCHREIB_QUEUE_MAX_BYTES = 24 * 1024 * 1024
 
+# ======================================================================
+# BUILD 293: WER ZUERST DRAN IST, UND WAS GAR NICHT ERST GEPACKT WIRD
+# ======================================================================
+#
+# DER BEFUND aus Bench 13 (Build 292, Geraet des Nutzers):
+#
+#     Spieleliste galerie: 58 wartend (19.0 MB), 291 erledigt, 87 verworfen
+#     Spieleliste raster : 65 wartend (21.1 MB), 183 erledigt, 20 verworfen
+#     Spieleliste liste  : 12 wartend (13.8 MB), 142 erledigt, 15 verworfen
+#
+# Die Grenze tut also ihre Arbeit (der Speicher laeuft nicht voll), aber
+# 87 von 378 Eintraegen wurden weggeworfen - jeder davon ein Cover, das
+# gerechnet und dann nicht aufbewahrt wurde, also beim naechsten
+# Vorbeiscrollen wieder gerechnet werden muss.
+#
+# ZWEI DINGE WAREN DARAN FALSCH, und beide erst zu sehen, seit die
+# Zahlen dastehen:
+#
+# 1. DER ARBEITSFADEN NAHM DEN AELTESTEN AUFTRAG. Build 247 hat die
+#    Grenze mit dem richtigen Gedanken gebaut - "was gerade auf dem
+#    Schirm war, ist wahrscheinlicher gleich wieder gebraucht als etwas
+#    von vor zwanzig Schritten" - und ihn dann nur beim VERWERFEN
+#    angewandt, nicht beim ARBEITEN. Herausgefallen ist vorn der
+#    aelteste, abgearbeitet wurde aber ebenfalls vorn der aelteste.
+#
+#    Beim Schnellscrollen durch neues Gebiet heisst das: der Faden packt
+#    mit Hunderten von Millisekunden gerade das Cover, das am
+#    wenigsten wahrscheinlich noch gebraucht wird, waehrend das vom
+#    letzten Schritt hinten wartet und selbst wieder hinausfaellt,
+#    bevor es dran war. Genau dieselbe Ueberlegung, nur konsequent:
+#    DER FADEN NIMMT JETZT DEN NEUESTEN (siehe _schreib_arbeiter()).
+#
+#    Das heisst nicht, dass der aelteste verhungert: hoert das Scrollen
+#    auf, kommen keine neuen dazu, und die Schlange laeuft komplett
+#    leer. Es heisst nur, dass die Reihenfolge nach Nuetzlichkeit geht
+#    statt nach Ankunft.
+#
+# 2. DERSELBE AUFTRAG KONNTE MEHRFACH IN DER SCHLANGE STEHEN. Wer
+#    hin- und herscrollt, sieht dasselbe Cover zweimal, und bisher
+#    wurde es zweimal eingestellt und zweimal gepackt - bei 833 ms je
+#    Packvorgang (Abschnitt C) ist das kein Rundungsfehler. Jetzt
+#    ersetzt ein neuer Auftrag den gleichlautenden alten
+#    (_schreib_index), und zwar an der NEUEN Stelle: er ist eben
+#    wieder gebraucht worden.
+#
+# WAS DIESE AENDERUNG NICHT TUT: sie macht die Karte nicht schneller.
+# Verworfen wird weiter, wenn schneller gescrollt als geschrieben wird -
+# das ist eine Eigenschaft der SD-Karte. Was sich aendert, ist WELCHE
+# Cover aufbewahrt werden: die in der Naehe dessen, wo der Nutzer gerade
+# steht, statt der zufaelligen Mitte.
+#
+# UND DESHALB WIRD AB JETZT GETRENNT GEZAEHLT: ein Eintrag, der
+# hinausfaellt, OHNE je gepackt worden zu sein, hat nichts gekostet -
+# er ist gespartes Packen, kein Verlust. Eine einzige Zahl "verworfen"
+# wirft beides zusammen und liest sich deshalb schlechter, als es ist.
+# Siehe thumb_schreib_stand() und thumb_schreib_zusatz().
+
 _schreib_lock = threading.Condition()
 _schreib_queue = []            # [("bild"|"marke", ...)], aeltestes vorn
 _schreib_bytes = 0
 _schreib_faden = None
+# Build 293: Schluessel -> Auftrag, fuer das Zusammenfassen gleicher
+# Auftraege. Haelt genau die Eintraege, die auch in _schreib_queue
+# stehen - jede Stelle, die aus der Liste nimmt, nimmt auch hier heraus.
+_schreib_index = {}
 # Buchfuehrung fuer das Bench und fuer thumb_schreib_stand(). Ohne sie
 # waere "die Schlange verwirft" eine Behauptung ohne Zahl.
 _schreib_erledigt = 0
 _schreib_verworfen = 0
+# Build 293: wie oft ein gleichlautender Auftrag einen schon wartenden
+# ersetzt hat. Das ist GESPARTES Packen und gehoert nicht zu
+# "verworfen".
+_schreib_doppelt = 0
+
+
+def _auftrag_schluessel(auftrag):
+    """Woran zwei Auftraege als derselbe erkannt werden (Build 293).
+
+    Fuer ein Bild sind das Art, Pfad und die vier Masse - also alles
+    ausser den Bildpunkten selbst. Zwei Auftraege mit demselben
+    Schluessel wuerden exakt dieselbe Datei schreiben; der zweite ist
+    reine Doppelarbeit.
+
+    Die Bildpunkte gehoeren NICHT in den Schluessel: sie sind bei
+    gleichem Pfad und gleichem Mass ohnehin gleich, und ein Vergleich
+    von 1,78 MB je Einstellung waere im Zeichenweg genau die Art
+    Kosten, die diese Schlange vermeiden soll.
+
+    Eine Marke hat keine Bildpunkte, da ist der ganze Auftrag der
+    Schluessel."""
+    return auftrag[:6] if auftrag[0] == "bild" else auftrag
 
 
 def _auftrag_bytes(auftrag):
@@ -2177,16 +2260,23 @@ def _auftrag_bytes(auftrag):
 
 
 def _schreib_arbeiter():
-    """Der EINE Arbeitsfaden. Nimmt den aeltesten Auftrag und fuehrt
+    """Der EINE Arbeitsfaden. Nimmt den NEUESTEN Auftrag und fuehrt
     ihn aus - ausserhalb des Locks, denn das Packen und Schreiben
     dauert auf diesem Geraet Hunderte von Millisekunden, und solange
-    darf der Zeichenweg nicht am Einstellen gehindert werden."""
+    darf der Zeichenweg nicht am Einstellen gehindert werden.
+
+    DEN NEUESTEN, NICHT DEN AELTESTEN (Build 293). Hier stand pop(0).
+    Die Begruendung steht oben beim Kopfkommentar der Schlange: Build
+    247 hat den richtigen Gedanken beim Verwerfen angewandt und beim
+    Arbeiten nicht. Wer gleich wieder gebraucht wird, ist der, den der
+    Nutzer eben gesehen hat - nicht der von vor zwanzig Schritten."""
     global _schreib_bytes, _schreib_erledigt
     while True:
         with _schreib_lock:
             while not _schreib_queue:
                 _schreib_lock.wait()
-            auftrag = _schreib_queue.pop(0)
+            auftrag = _schreib_queue.pop()
+            _schreib_index.pop(_auftrag_schluessel(auftrag), None)
             _schreib_bytes -= _auftrag_bytes(auftrag)
         try:
             if auftrag[0] == "bild":
@@ -2208,22 +2298,45 @@ def _schreib_einstellen(auftrag):
     ZEICHENWEG und muss deshalb billig sein: ein Anhaengen, ein
     notify, fertig."""
     global _schreib_faden, _schreib_bytes, _schreib_verworfen
+    global _schreib_doppelt
     groesse = _auftrag_bytes(auftrag)
+    schluessel = _auftrag_schluessel(auftrag)
     with _schreib_lock:
         if _schreib_faden is None:
             _schreib_faden = threading.Thread(
                 target=_schreib_arbeiter, daemon=True,
                 name="dragend-thumbschreiber")
             _schreib_faden.start()
+        # BUILD 293: STEHT DERSELBE AUFTRAG SCHON DRIN, ERSETZT ER SICH
+        # SELBST - und zwar an der NEUEN Stelle, also hinten. Wer
+        # hin- und herscrollt, hat dasselbe Cover zweimal gesehen; es
+        # zweimal zu packen kostet bei 833 ms je Packvorgang (siehe
+        # Abschnitt C des Benchs) echte Zeit. Dass er nach hinten
+        # wandert, ist kein Nebeneffekt, sondern der Punkt: er ist eben
+        # wieder gebraucht worden.
+        alt_gleich = _schreib_index.pop(schluessel, None)
+        if alt_gleich is not None:
+            try:
+                _schreib_queue.remove(alt_gleich)
+            except ValueError:
+                # Der Faden hat ihn in diesem Moment schon genommen.
+                # Dann ist nichts zu entfernen, und der neue Auftrag
+                # ist der einzige - kein Grund, hier etwas zu richten.
+                pass
+            else:
+                _schreib_bytes -= _auftrag_bytes(alt_gleich)
+                _schreib_doppelt += 1
         # Platz machen: der AELTESTE geht, nicht der neue. Was gerade
         # auf dem Schirm war, ist wahrscheinlicher gleich wieder
         # gebraucht als etwas von vor zwanzig Schritten.
         while (_schreib_bytes + groesse > SCHREIB_QUEUE_MAX_BYTES
                and _schreib_queue):
             alt = _schreib_queue.pop(0)
+            _schreib_index.pop(_auftrag_schluessel(alt), None)
             _schreib_bytes -= _auftrag_bytes(alt)
             _schreib_verworfen += 1
         _schreib_queue.append(auftrag)
+        _schreib_index[schluessel] = auftrag
         _schreib_bytes += groesse
         _schreib_lock.notify()
 
@@ -2234,10 +2347,34 @@ def thumb_schreib_stand():
     Fuer das Bench und fuer die Fehlersuche. 'verworfen' ist die Zahl,
     auf die es ankommt: steht sie dauerhaft hoch, ist die Karte
     langsamer als das Scrollen, und dann werden Cover mehrfach
-    gerechnet."""
+    gerechnet.
+
+    BLEIBT BEI VIER ZAHLEN (Build 293). Die neue Buchfuehrung haengt
+    nicht hier dran, sondern in thumb_schreib_zusatz() - diese Form
+    ist in tools/test_schreibschlange.py festgehalten, und eine
+    Schnittstelle zu aendern, nur um eine Zahl mehr zu melden, waere
+    der Aufwand nicht wert."""
     with _schreib_lock:
         return (len(_schreib_queue), _schreib_bytes,
                 _schreib_erledigt, _schreib_verworfen)
+
+
+def thumb_schreib_zusatz():
+    """(zusammengefasst,) - was Build 293 zusaetzlich zaehlt.
+
+    'zusammengefasst' ist die Zahl der Auftraege, die einen schon
+    wartenden gleichlautenden ERSETZT haben. Das ist gespartes Packen,
+    nicht verlorene Arbeit - deshalb steht sie bewusst NICHT bei
+    'verworfen' in thumb_schreib_stand(). Eine einzige Zahl fuer
+    beides liest sich schlechter, als die Lage ist, und genau daran
+    ist in diesem Projekt schon einmal eine Entscheidung
+    danebengegangen (Build 270: eine Zahl ohne Aufteilung schickt
+    einen an die falsche Stelle).
+
+    Als Tupel und nicht als Zahl, damit eine zweite Groesse spaeter
+    dazukommen kann, ohne die Aufrufer anzufassen."""
+    with _schreib_lock:
+        return (_schreib_doppelt,)
 
 
 def thumb_schreib_abwarten(timeout=10.0):

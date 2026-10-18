@@ -13,6 +13,17 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **While scrolling, the cover you just saw is now written out first.**
+  The frontend used to work its write queue from the front — the cover
+  from twenty steps ago — while the one from the last step waited at
+  the back and often fell out before its turn. Entries are still
+  dropped when you scroll faster than the card can write (nothing can
+  make the SD card faster), but now the covers near where you actually
+  are survive — and those are the ones that are instantly there when
+  you scroll back (build 293).
+- **The same cover is no longer packed twice.** Scrolling back and
+  forth showed the same image twice, and it was computed and written
+  twice. Identical jobs are now merged (build 293).
 - **Startup now uses the wait on MiSTer instead of sitting it out.**
   After switching to console mode (F9), MiSTer has to pick the key up
   first — we wait 0.4 s for that, and that stays. It is just that
