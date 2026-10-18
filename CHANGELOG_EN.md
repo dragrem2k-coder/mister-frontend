@@ -14,7 +14,14 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 ## After v4.9 — not yet released
 
 - **Fixed: after a manual had been opened, the console stayed on
-  tty3.** From the very first moment — not only on exit, and not
+  tty3.** The viewer (jfbview) takes over console switching, and until
+  that mode is reset the kernel asks a long-dead process for
+  permission before every switch — and gets none. Resetting it does
+  not work through our own file handle, though: it was the viewer's
+  controlling terminal and was hung up along with it (`Errno 5`). The
+  console is now **opened afresh** after closing, the mode reset
+  there, and only then the switch happens — over two different routes
+  in case one is refused (build 286/287). From the very first moment — not only on exit, and not
   because of MiSTer. The viewer (jfbview) takes over console
   switching, and the kernel only releases that mode when the *last*
   file handle on the console is closed — and we still held it, so the

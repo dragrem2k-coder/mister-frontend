@@ -14083,6 +14083,11 @@ class Frontend:
     # Der Pfad als Konstante, damit der Pruefstand nicht die
     # Konsole des Rechners anfasst, auf dem er laeuft.
     TTY0_PFAD = "/dev/tty0"
+    # Und das Muster fuer eine EINZELNE Konsole. Auch das als
+    # Konstante, damit der Pruefstand nicht die Konsolen des Rechners
+    # anfasst, auf dem er laeuft - der erste Entwurf des Tests zu
+    # Build 287 hat genau das getan und blieb haengen.
+    TTY_PFAD_MUSTER = "/dev/tty%d"
     VT_WECHSEL_FRIST = 1.0
     VT_WECHSEL_TAKT = 0.02
 
@@ -14133,12 +14138,25 @@ class Frontend:
         schon im Protokoll."""
         if self._aktive_vt() == ziel:
             return True
-        try:
-            with open(self.TTY0_PFAD, "wb", buffering=0) as t0:
-                fcntl.ioctl(t0.fileno(), self.VT_ACTIVATE, ziel)
-        except OSError as e:
-            LOG("VT: Wechsel auf tty%d ueber /dev/tty0 fehlgeschlagen "
-                "(%s)" % (ziel, e))
+        # ZWEI GRIFFE, NICHT EINER (Build 287). /dev/tty0 ist "die
+        # Konsole, die gerade vorne ist" - und wenn gerade eine
+        # kaputte vorne liegt, kann auch sie den Dienst verweigern.
+        # /dev/tty<ziel> ist der Griff auf das ZIEL und damit ein
+        # ganz anderer Weg; genau so macht es chvt.
+        _fehler = []
+        _geschafft = False
+        for _pfad in (self.TTY0_PFAD,
+                      self.TTY_PFAD_MUSTER % ziel):
+            try:
+                with open(_pfad, "wb", buffering=0) as t0:
+                    fcntl.ioctl(t0.fileno(), self.VT_ACTIVATE, ziel)
+                _geschafft = True
+                break
+            except OSError as e:
+                _fehler.append("%s: %s" % (_pfad, e))
+        if not _geschafft:
+            LOG("VT: Wechsel auf tty%d fehlgeschlagen (%s)"
+                % (ziel, "; ".join(_fehler)))
             return False
         ende = time.monotonic() + self.VT_WECHSEL_FRIST
         while True:
@@ -14204,6 +14222,38 @@ class Frontend:
         # beim Beenden. Grund steht in _anleitungs_vt_freigeben():
         # solange sie existiert, kann sich MiSTer sie nehmen.
         self._anleitungs_vt_freigeben()
+
+    def _vt_modus_freigeben(self, vt):
+        """Die geerbte Betriebsart einer Konsole zuruecksetzen -
+        ueber einen FRISCH geoeffneten Dateizeiger.
+
+        WARUM FRISCH (Build 287): der Betrachter hatte diese Konsole
+        als steuerndes Terminal. Als er endete, hat der Kernel sie
+        aufgelegt, und unser alter Griff antwortet seitdem mit EIO -
+        so stand es im Protokoll des Nutzers. Ueber ihn ist nichts
+        mehr zu machen.
+
+        WAS ZURUECKGESETZT WIRD: ein Programm, das selbst auf eine
+        Konsole malt, uebernimmt den Konsolenwechsel per
+        VT_SETMODE/VT_PROCESS - der Kernel fragt es dann vor jedem
+        Wechsel um Erlaubnis. Ist es tot, antwortet es nie, und der
+        Wechsel wird verweigert. VT_AUTO heisst wieder: der Kernel
+        schaltet selbst und fragt niemanden."""
+        try:
+            with open(self.TTY_PFAD_MUSTER % vt, "wb",
+                      buffering=0) as t:
+                # struct vt_mode: mode, waitv, relsig, acqsig, frsig -
+                # alles null ausser dem Modus.
+                fcntl.ioctl(t.fileno(), self.VT_SETMODE,
+                            struct.pack("BBhhh", self.VT_AUTO,
+                                        0, 0, 0, 0))
+            LOG("VT: tty%d wieder auf selbsttaetiges Umschalten "
+                "gestellt (frischer Griff)" % vt)
+            return True
+        except OSError as e:
+            LOG("VT: Betriebsart von tty%d nicht zurueckgestellt "
+                "(%s)" % (vt, e))
+            return False
 
     def _anleitungs_vt_freigeben(self):
         """Die Anleitungs-Konsole wieder abgeben.
@@ -14479,26 +14529,36 @@ class Frontend:
             # noch hat. Dieselbe Sorte Fehler wie in Build 282, nur
             # umgekehrt: dort war der Konsolenwechsel zu FRUEH, hier
             # zu SPAET.
-            if tty and vt:
-                try:
-                    # struct vt_mode: mode, waitv, relsig, acqsig,
-                    # frsig - alles auf null heisst VT_AUTO, also
-                    # "der Kernel schaltet selbst".
-                    fcntl.ioctl(tty.fileno(), self.VT_SETMODE,
-                                struct.pack("BBhhh", self.VT_AUTO,
-                                            0, 0, 0, 0))
-                    LOG("VT: tty%s wieder auf selbsttaetiges "
-                        "Umschalten gestellt" % vt)
-                except OSError as e:
-                    LOG("VT: Betriebsart von tty%s nicht "
-                        "zurueckgestellt (%s)" % (vt, e))
             if tty:
                 try:
                     tty.close()
                 except OSError:
                     pass
-            # Umgeschaltet wird jetzt OHNE Dateizeiger - der ist
-            # eben zugegangen, und genau das war der Zweck.
+            # MIT EINEM FRISCHEN DATEIZEIGER (Build 287)
+            #
+            # Build 286 hat es ueber den ALTEN versucht, und das
+            # Protokoll hat geantwortet:
+            #
+            #   VT: Betriebsart von tty3 nicht zurueckgestellt
+            #       ([Errno 5] Input/output error)
+            #
+            # EIO heisst: dieser Dateizeiger ist tot. Die Konsole war
+            # das steuernde Terminal des Betrachters (TIOCSCTTY weiter
+            # oben); als der endete, hat der Kernel sie aufgelegt, und
+            # danach beantwortet unser Griff keinen einzigen ioctl
+            # mehr. Ueber ihn ist nichts zu retten - weder der
+            # Rueckwechsel (286) noch die Betriebsart.
+            #
+            # Ein FRISCH geoeffnetes /dev/tty3 ist dagegen ein
+            # gesunder Griff auf dieselbe Konsole. Darueber laesst
+            # sich die geerbte Betriebsart zuruecksetzen, und erst
+            # danach kann der Wechsel ueberhaupt gelingen.
+            #
+            # LEHRE: ein Dateizeiger ist kein Zugriffsrecht. Wer
+            # einen hat, der nicht mehr antwortet, braucht einen
+            # neuen und keinen weiteren Versuch mit dem alten.
+            if vt:
+                self._vt_modus_freigeben(vt)
             self._zurueck_auf_tty1(None, vt)
             # Build 279: und unseren eigenen Grafikmodus wieder
             # herstellen, falls er vorher an war. NACH dem

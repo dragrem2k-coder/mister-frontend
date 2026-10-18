@@ -4618,6 +4618,47 @@ steht auch, *dass* MiSTer die Knoepfe in Tasten uebersetzt - die
 Erklaerung fuer „ich kann erst blaettern, wenn ich einmal die
 Leertaste gedrueckt habe".
 
+### Nachtrag Build 287: ein Dateizeiger ist kein Zugriffsrecht
+
+**Build 286 hat die Betriebsart zurueckgesetzt - und das Protokoll
+antwortete:**
+
+```
+VT: Betriebsart von tty3 nicht zurueckgestellt ([Errno 5] Input/output error)
+```
+
+**EIO heisst: dieser Griff ist tot.** Die Konsole war das steuernde
+Terminal des Betrachters (`TIOCSCTTY` in `_auf_konsole`); als der
+endete, hat der Kernel sie **aufgelegt**. Seitdem beantwortet unser
+Dateizeiger keinen einzigen ioctl mehr - weder den Rueckwechsel (286)
+noch das Zuruecksetzen der Betriebsart.
+
+> **Lehre: ein Dateizeiger ist kein Zugriffsrecht.** Wer einen hat, der
+> nicht mehr antwortet, braucht einen NEUEN und keinen weiteren
+> Versuch mit dem alten. In 282 habe ich spaeter nachgefasst, in 285
+> frueher, in 286 in anderer Reihenfolge - dreimal mit demselben
+> toten Griff.
+
+**Ein frisch geoeffnetes `/dev/tty3` ist dagegen ein gesunder Griff auf
+dieselbe Konsole.** Darueber laesst sich `VT_SETMODE`/`VT_AUTO` setzen,
+und erst danach kann der Wechsel ueberhaupt gelingen.
+
+**Dazu hat der Wechsel jetzt zwei Griffe statt einem.** `/dev/tty0` ist
+"die Konsole, die gerade vorne ist" - liegt dort eine kaputte, kann
+auch sie den Dienst verweigern. `/dev/tty<ziel>` ist der Griff auf das
+ZIEL und damit ein ganz anderer Weg; genau so macht es `chvt`.
+Scheitern beide, nennt das Protokoll beide Fehler.
+
+**Und mein Test hat sich selbst gefesselt.** Der erste Entwurf liess
+`_vt_erzwingen()` auf die ECHTE `/dev/tty1` des Entwicklungsrechners
+los und blieb haengen - dieselbe Falle wie in Build 280, wo es
+`/dev/tty0` war. Jetzt ist auch das Muster fuer eine einzelne Konsole
+eine Konstante (`TTY_PFAD_MUSTER`), und die Tests zeigen auf eigene
+Dateien.
+
+> Zum zweiten Mal in dieser Reihe: **ein Test, der echte Geraete
+> anfasst, ist kein Test, sondern ein Eingriff.**
+
 ### Nachtrag Build 286: zwei Zeilen, die vier Builds umgeworfen haben
 
 ```

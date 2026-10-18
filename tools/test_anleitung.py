@@ -627,6 +627,8 @@ try:
     # NICHT die echte Konsole des Pruefrechners anfassen.
     _fe6.TTY0_PFAD = os.path.join(_tmp2, "kein_tty0")
     io.open(_fe6.TTY0_PFAD, "w").write("")
+    _fe6.TTY_PFAD_MUSTER = os.path.join(_tmp2, "kein_tty%d")
+    io.open(_fe6.TTY_PFAD_MUSTER % 1, "w").write("")
     # Der ioctl scheitert auf einer gewoehnlichen Datei (ENOTTY).
     # Das fuehrt zu False, und zwar SOFORT und ohne Warten.
     import time as _t280
@@ -648,7 +650,7 @@ finally:
 
 # ---------------------------------------------------------------------------
 print()
-print("Build 286: erst loslassen, dann umschalten")
+print("Build 286/287: erst loslassen, dann mit frischem Griff")
 # ---------------------------------------------------------------------------
 # DAS PROTOKOLL DES NUTZERS HAT ES IN ZWEI ZEILEN ENTSCHIEDEN, und
 # zwar UNMITTELBAR nach dem Schliessen der Anleitung - lange bevor
@@ -679,18 +681,44 @@ _fe7 = io.open(os.path.join(_FRONTEND_DIR, "frontend.py"),
 _fin = _fe7.split("def _auf_konsole")[1].split("\n    def ")[0]
 _fin = _fin[_fin.index("        finally:"):]
 
-check("die Betriebsart der Konsole wird zurueckgestellt",
-      "VT_SETMODE" in _fin and "VT_AUTO" in _fin,
-      "VT_AUTO heisst: der Kernel schaltet selbst und fragt niemanden")
-check("und zwar BEVOR der Dateizeiger zugeht",
-      _fin.index("VT_SETMODE") < _fin.index("tty.close()"),
-      "danach gibt es keinen Griff mehr, mit dem man es koennte")
-check("umgeschaltet wird erst NACH dem Schliessen",
-      _fin.index("tty.close()")
-      < _fin.index("self._zurueck_auf_tty1"),
-      "genau diese Reihenfolge war der Fehler - solange der "
-      "Dateizeiger offen ist, haelt der Kernel die geerbte "
+# RICHTIGSTELLUNG (Build 287). Build 286 hat die Betriebsart ueber den
+# ALTEN Dateizeiger zurueckgestellt - und das Protokoll antwortete:
+#
+#   VT: Betriebsart von tty3 nicht zurueckgestellt
+#       ([Errno 5] Input/output error)
+#
+# EIO heisst: dieser Griff ist tot. Die Konsole war das steuernde
+# Terminal des Betrachters (TIOCSCTTY); als der endete, hat der Kernel
+# sie aufgelegt. Ueber diesen Griff ist nichts mehr zu machen - weder
+# der Rueckwechsel noch die Betriebsart.
+#
+# LEHRE: ein Dateizeiger ist kein Zugriffsrecht. Wer einen hat, der
+# nicht mehr antwortet, braucht einen NEUEN und keinen weiteren
+# Versuch mit dem alten.
+check("die Betriebsart wird ueber einen FRISCHEN Griff zurueckgestellt",
+      "_vt_modus_freigeben(vt)" in _fin
+      and "VT_SETMODE" in _fe7 and "VT_AUTO" in _fe7,
+      "der alte Griff ist aufgelegt und antwortet mit EIO")
+check("und erst NACH dem Schliessen des alten",
+      _fin.index("tty.close()") < _fin.index("_vt_modus_freigeben"),
+      "solange der alte offen ist, haelt der Kernel die geerbte "
       "Betriebsart")
+_mod = _fe7.split("def _vt_modus_freigeben")[1].split("\n    def ")[0]
+check("der frische Griff zeigt auf dieselbe Konsole",
+      "TTY_PFAD_MUSTER % vt" in _mod,
+      "nicht /dev/tty0 - zurueckgesetzt wird die Betriebsart GENAU "
+      "dieser Konsole")
+check("umgeschaltet wird danach",
+      _fin.index("_vt_modus_freigeben")
+      < _fin.index("self._zurueck_auf_tty1"),
+      "vorher wuerde der Wechsel weiter verweigert")
+_erz = _fe7.split("def _vt_erzwingen")[1].split("\n    def ")[0]
+check("und der Wechsel hat zwei Griffe, nicht einen",
+      "self.TTY0_PFAD" in _erz
+      and "self.TTY_PFAD_MUSTER % ziel" in _erz,
+      "/dev/tty0 ist die Konsole, die gerade vorne ist - liegt dort "
+      "eine kaputte, verweigert auch sie; /dev/tty<ziel> ist ein "
+      "anderer Weg, so macht es chvt")
 check("und ohne Dateizeiger, weil er weg ist",
       "self._zurueck_auf_tty1(None, vt)" in _fin)
 

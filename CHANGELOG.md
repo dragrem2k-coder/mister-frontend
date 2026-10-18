@@ -14,7 +14,16 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 ## Nach v4.9 — noch nicht veröffentlicht
 
 - **Behoben: nach einer geöffneten Anleitung blieb die Konsole auf
-  tty3 stehen.** Und zwar ab dem ersten Augenblick — nicht erst beim
+  tty3 stehen.** Der Betrachter (jfbview) übernimmt den
+  Konsolenwechsel, und solange diese Betriebsart nicht zurückgesetzt
+  ist, fragt der Kernel vor jedem Wechsel einen längst beendeten
+  Prozess um Erlaubnis — und bekommt keine. Zurücksetzen geht
+  allerdings nicht über unseren eigenen Dateizeiger: der war das
+  steuernde Terminal des Betrachters und ist mit ihm aufgelegt worden
+  (`Errno 5`). Jetzt wird die Konsole nach dem Schließen **frisch
+  geöffnet**, die Betriebsart dort zurückgesetzt, und erst dann
+  umgeschaltet — über zwei verschiedene Wege, falls einer verweigert
+  (Build 286/287). Und zwar ab dem ersten Augenblick — nicht erst beim
   Beenden, und nicht wegen MiSTer. Der Betrachter (jfbview) übernimmt
   den Konsolenwechsel, und der Kernel gibt diese Betriebsart erst
   wieder her, wenn der *letzte* Dateizeiger auf die Konsole zugeht —
