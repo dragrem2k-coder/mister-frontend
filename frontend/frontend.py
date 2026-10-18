@@ -13897,7 +13897,43 @@ class Frontend:
                  'read -rsn1')
         wrapped = ["/bin/bash", "-c", inner, path] + (list(args) if args else [])
         raw     = ["/bin/bash", path] + (list(args) if args else [])
-        self._auf_konsole(wrapped, raw, path)
+        # EIGENE KONSOLE AUCH FUER SCRIPTS (Build 290)
+        #
+        # NUTZERMELDUNG: "wenn ich aus dem frontend unter system
+        # optionen das update_all starte kann ich wenn es dann laeuft
+        # nicht mehr hin und her navigieren, als wuerde es
+        # abstuerzen!" - und auf die Nachfrage: "menue sichtbar,
+        # tasten ohne wirkung".
+        #
+        # Sichtbar heisst: die Ausgabe kommt an. Ohne Wirkung heisst:
+        # die Eingabe nicht. Und DIESES Symptom hatten wir schon
+        # einmal, Wort fuer Wort - bei der Anleitung, Build 268:
+        #
+        #   "auf tty1 liest ein Login-Prozess mit und frisst die
+        #    Tasten"
+        #
+        # Die inittab des Nutzers bestaetigt es: 'agetty --nohostname
+        # -L tty1 linux'. Zwei Leser an einer Konsole, und wer zuerst
+        # liest, bekommt die Taste. Fuer ein Script, das nur laeuft und
+        # Text ausgibt, fiel das nie auf; update_all hat ein MENUE,
+        # und dort merkt man es sofort.
+        #
+        # Die Behebung von damals gilt wortgleich, sie war nur nie auf
+        # Scripts angewendet: eine eigene Konsole, auf der kein
+        # Login-Prozess sitzt. Moeglich ist das erst jetzt gefahrlos -
+        # der Rueckweg von einer eigenen Konsole hat die Builds 278
+        # bis 288 gebraucht.
+        #
+        # LEHRE: wenn ein Symptom wortgleich wiederkehrt, war die
+        # Behebung zu eng gefasst - nicht falsch. Build 268 hat die
+        # Ursache richtig benannt und nur einen der beiden Aufrufer
+        # bedient.
+        #
+        # Der Schalter EIGENE_KONSOLE_AUS_FLAG gilt hier mit: wer
+        # ihn gesetzt hat, bleibt bei tty1 - fuer Anleitung UND
+        # Scripts, an EINER Stelle entschieden
+        # (_konsole_oeffnen()).
+        self._auf_konsole(wrapped, raw, path, eigene_konsole=True)
 
     def _warten_auf(self, proc, grenze, name="", puls=None):
         """Auf ein Konsolenprogramm warten - hoechstens "grenze"

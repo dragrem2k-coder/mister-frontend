@@ -13,6 +13,13 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Behoben: in `update_all` (und anderen Skripten mit Menü) kam keine
+  Taste an.** Das Menü war sichtbar, die Tasten ohne Wirkung — und das
+  ist genau das Symptom, das die Anleitung in v4.9 hatte: auf tty1
+  liest ein Login-Prozess mit und frisst die Tasten. Skripte bekommen
+  jetzt dieselbe eigene Konsole wie die Anleitung. Wer damit Probleme
+  hat, kommt mit `/media/fat/frontend/anleitung_tty1` zurück auf tty1
+  — der Schalter gilt für beides (Build 290).
 - **Anleitungen werden jetzt in allen Ordnern eines Systems gesucht,
   nicht nur in einem.** Die Mega Drive heißt intern `Genesis`, ihr
   ROM-Ordner aber `MegaDrive` — wer seine Anleitungen unter

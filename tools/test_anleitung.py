@@ -304,11 +304,28 @@ try:
     _ak = _ak[:_ak.index("\n    def ", 10)]
     check("die Anleitung bekommt eine eigene Konsole",
           "eigene_konsole=True" in _az)
-    check("ein Skript dagegen NICHT",
-          "eigene_konsole" not in _fe[_fe.index("    def run_script(self, path"):]
+    # RICHTIGGESTELLT (Build 290). Hier stand bis dahin die
+    # Behauptung, ein Skript brauche KEINE eigene Konsole: "dort ist
+    # der Login-Prozess kein Problem". Das war eine Annahme, und sie
+    # war falsch.
+    #
+    # Der Nutzer hat sie widerlegt: "wenn ich update_all starte kann
+    # ich nicht mehr hin und her navigieren" - "menue sichtbar,
+    # tasten ohne wirkung". Genau das Symptom, das Build 268 fuer die
+    # Anleitung beschrieben hat, Wort fuer Wort.
+    #
+    # Fuer ein Skript, das nur laeuft und Text ausgibt, fiel es nie
+    # auf. update_all hat ein MENUE - und dort merkt man es sofort.
+    #
+    # LEHRE: wenn ein Symptom wortgleich wiederkehrt, war die Behebung
+    # zu ENG gefasst, nicht falsch. Build 268 hat die Ursache richtig
+    # benannt und nur einen der beiden Aufrufer bedient.
+    check("ein Skript bekommt sie seit Build 290 auch",
+          "eigene_konsole=True" in
+          _fe[_fe.index("    def run_script(self, path"):]
           [:_fe[_fe.index("    def run_script(self, path"):].index("\n    def ", 10)],
-          "dort ist der Login-Prozess kein Problem, und die Ausgabe "
-          "gehoert dorthin, wo sie immer war")
+          "zwei Leser an einer Konsole - wer zuerst liest, bekommt "
+          "die Taste")
     check("gewechselt wird mit VT_ACTIVATE", "self.VT_ACTIVATE" in _fe)
     check("und VOR dem eingespeisten F9",
           _ak.index("self._konsole_oeffnen(")
@@ -882,6 +899,48 @@ finally:
     A.DOCS_BASE = _alt_base
     A.vergessen()
     shutil.rmtree(_tmp4, ignore_errors=True)
+
+# ---------------------------------------------------------------------------
+print()
+print("Build 290: auch ein Script braucht eine eigene Konsole")
+# ---------------------------------------------------------------------------
+# NUTZERMELDUNG: "wenn ich aus dem frontend unter system optionen das
+# update_all starte kann ich wenn es dann laeuft nicht mehr hin und her
+# navigieren, als wuerde es abstuerzen!" - und auf die Nachfrage:
+# "menue sichtbar tasten ohne wirkung".
+#
+# SICHTBAR heisst: die Ausgabe kommt an. OHNE WIRKUNG heisst: die
+# Eingabe nicht. Dieses Symptom hatten wir schon einmal, Wort fuer
+# Wort - bei der Anleitung, Build 268: "auf tty1 liest ein
+# Login-Prozess mit und frisst die Tasten". Die inittab des Nutzers
+# bestaetigt es ('agetty --nohostname -L tty1 linux').
+#
+# Fuer ein Script, das nur laeuft und Text ausgibt, fiel das nie auf;
+# update_all hat ein MENUE, und dort merkt man es sofort.
+#
+# LEHRE: wenn ein Symptom wortgleich wiederkehrt, war die Behebung zu
+# ENG gefasst - nicht falsch. Build 268 hat die Ursache richtig
+# benannt und nur einen der beiden Aufrufer bedient.
+_fe9 = io.open(os.path.join(_FRONTEND_DIR, "frontend.py"),
+               encoding="utf-8").read()
+_rs = _fe9.split("def run_script")[1].split("\n    def ")[0]
+check("run_script() verlangt eine eigene Konsole",
+      "eigene_konsole=True" in _rs,
+      "auf tty1 liest ein Login-Prozess mit - dieselbe Ursache wie "
+      "bei der Anleitung (Build 268)")
+check("und die Anleitung weiterhin auch",
+      "eigene_konsole=True" in
+      _fe9.split("def anleitung_zeigen")[1].split("\n    def ")[0]
+      if "def anleitung_zeigen" in _fe9 else True)
+check("entschieden wird an EINER Stelle",
+      "_konsole_oeffnen" in _fe9
+      and _fe9.count("EIGENE_KONSOLE_AUS_FLAG") >= 2,
+      "der Abschalt-Schalter gilt damit fuer Anleitung UND Scripts, "
+      "ohne ihn zweimal zu pruefen")
+check("der Schalter bleibt die Notbremse",
+      "EIGENE_KONSOLE_AUS_FLAG" in
+      _fe9.split("def _konsole_oeffnen")[1].split("\n    def ")[0],
+      "wer damit Probleme hat, kommt mit einer Datei zurueck auf tty1")
 
 print()
 if fails:

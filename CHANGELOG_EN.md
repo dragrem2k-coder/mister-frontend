@@ -13,6 +13,13 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **Fixed: no keystroke reached `update_all` (or any script with a
+  menu).** The menu was visible, the keys had no effect — exactly the
+  symptom the manual had in v4.9: a login process reads along on tty1
+  and eats the keys. Scripts now get the same console of their own
+  that the manual gets. Anyone who has trouble with it can go back to
+  tty1 with `/media/fat/frontend/anleitung_tty1` — the switch covers
+  both (build 290).
 - **Manuals are now looked for in every folder a system has, not just
   one.** The Mega Drive is called `Genesis` internally, but its ROM
   folder is `MegaDrive` — anyone keeping their manuals in

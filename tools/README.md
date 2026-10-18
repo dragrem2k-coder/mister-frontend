@@ -4618,6 +4618,58 @@ steht auch, *dass* MiSTer die Knoepfe in Tasten uebersetzt - die
 Erklaerung fuer „ich kann erst blaettern, wenn ich einmal die
 Leertaste gedrueckt habe".
 
+### Nachtrag Build 290: ein wortgleiches Symptom ist dieselbe Ursache
+
+> „wenn ich aus dem frontend unter system optionen das update_all
+> starte kann ich wenn es dann laeuft nicht mehr hin und her
+> navigieren, als wuerde es abstuerzen!"
+
+Auf die Nachfrage - und die eine Frage hat diesen Build entschieden:
+
+> „menue sichtbar tasten ohne wirkung"
+
+**Sichtbar heisst: die Ausgabe kommt an. Ohne Wirkung heisst: die
+Eingabe nicht.** Und dieses Symptom stand schon einmal im Projekt,
+Wort fuer Wort - im Nachtrag zu Build 268:
+
+> „auf tty1 liest ein Login-Prozess mit und frisst die Tasten"
+
+Seine `inittab` bestaetigt es: `agetty --nohostname -L tty1 linux`.
+Zwei Leser an einer Konsole, und wer zuerst liest, bekommt die Taste.
+
+**Fuer ein Skript, das nur laeuft und Text ausgibt, fiel das nie auf.**
+`update_all` hat ein MENUE - und dort merkt man es sofort.
+
+**In `tools/test_anleitung.py` stand die Gegenbehauptung als
+Pruefung:**
+
+```
+check("ein Skript dagegen NICHT",
+      "eigene_konsole" not in ...,
+      "dort ist der Login-Prozess kein Problem, und die Ausgabe
+       gehoert dorthin, wo sie immer war")
+```
+
+Das war eine **Annahme in Testform**. Sie hat nichts gesichert, sondern
+nur festgeschrieben, was ich damals geglaubt habe - und zwei
+Veroeffentlichungen lang verhindert, dass jemand es anders macht.
+
+> **Lehre: wenn ein Symptom wortgleich wiederkehrt, war die Behebung zu
+> ENG gefasst - nicht falsch.** Build 268 hat die Ursache richtig
+> benannt und nur EINEN der beiden Aufrufer bedient. Und: eine
+> Pruefung, die ein Nicht-Verhalten festschreibt, braucht einen
+> Grund, der gemessen ist - sonst zementiert sie eine Vermutung.
+
+**Moeglich war das erst jetzt**, und das ist kein Zufall: der Rueckweg
+von einer eigenen Konsole hat die Builds 278 bis 288 gebraucht. Haette
+ich Scripts schon in 268 umgestellt, waere die ganze tty3-Geschichte
+doppelt so oft aufgetreten - bei jedem Skript statt nur bei jeder
+Anleitung.
+
+**Entschieden wird an EINER Stelle** (`_konsole_oeffnen()`), also gilt
+der Abschalt-Schalter `anleitung_tty1` ab jetzt fuer Anleitung UND
+Scripts, ohne ihn zweimal zu pruefen.
+
 ### Nachtrag Build 289: ein interner Schluessel ist kein Ordnername
 
 > „bei denn megadrive roms fehlen die anleitungen, kann es sein das
