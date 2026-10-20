@@ -13,6 +13,20 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Behoben: in den ersten Sekunden nach dem Start hakte die
+  Pad-Eingabe.** Die Vorarbeit, die das Frontend im Stillstand macht
+  (Bilderordner einlesen), hat seit Build 294 drei Verzeichnisse auf
+  einmal gelesen statt einem — auf der SD-Karte eine halbe Sekunde, und
+  ein begonnener Durchgang läuft durch. Dazu kam: gelesen wurde pro
+  System erst alles, bevor das nächste System dran war — dabei hält nur
+  der **Cover**-Index das Zeichnen auf, Bildschirmfoto und Titelbild
+  braucht allein der kleine `R2 1/3`-Vermerk, der später kommen darf.
+  Jetzt sind erst alle Cover dran, die Extras danach und einzeln. Ein
+  Durchgang kostet wieder so wenig wie vor Build 294 (Build 295).
+- **Die Vorarbeit schreibt jetzt ins Protokoll, was sie tut.** Vorher
+  stand dort gar nichts — eine Suche im Log nach „Warmlauf" kam leer
+  zurück, und damit war nicht zu sehen, ob sie überhaupt lief
+  (Build 295).
 - **Neu: Bildschirmfotos und Titelbilder, mit R2 durchwechseln.**
   MiSTers `update_all` bietet unter *Settings → Extra Content → Game
   Artwork DBs* nicht nur Cover, sondern auch Screenshots und Title

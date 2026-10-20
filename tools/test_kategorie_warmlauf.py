@@ -134,21 +134,73 @@ check("und baut genau ein System",
       _systeme_im_cache() - vorher == 1,
       "%d dazugekommen - mehr waere die GIL-Falle aus Build 107"
       % (_systeme_im_cache() - vorher))
-# Build 294: und alle drei Bildarten dieses einen Systems, denn genau
-# dafuer ist dieser Warmlauf da. Fehlte eine, wuerde sie im
-# ZEICHENWEG gebaut - und dort kostet ein Verzeichnisdurchlauf auf dem
-# Geraet rund 167 ms.
-check("und von diesem System alle drei Bildarten",
-      all(ART._docs_index_fertig(SYSTEME[0], a)
-          for a in ART.DOCS_BILDARTEN),
-      str(sorted(map(str, ART._docs_index_cache))))
+# UMGESTELLT IN BUILD 295, und das ist der Kern dieses Builds.
+#
+# Hier stand nach Build 294:
+#
+#     check("und von diesem System alle drei Bildarten", ...)
+#
+# Das war die Zusage, die der Nutzer als Fehler gemeldet hat: "wenn
+# ich das frontend starte reagiert fuer ein paar sekunden die joypad
+# eingabe manchmal nicht oder klemmt oder lagt ein wenig".
+#
+# Build 294 baute alle drei Arten in EINEM Tick. Ein
+# Verzeichnisdurchlauf kostet auf dem Geraet rund 167 ms - drei davon
+# sind eine halbe Sekunde, in der eine Taste wartet, denn ein
+# begonnener Tick laeuft durch. Schlimmer noch: der ZEICHENWEG
+# blockiert nur auf dem COVER-Index; Foto und Titelbild braucht allein
+# der Vermerk "R2 1/3", der ausdruecklich spaeter kommen darf. Das
+# Cover des ZWEITEN Systems war damit erst nach dreimal so viel
+# Vorarbeit da - ich hatte das Mittel gegen den Ruckler dreimal
+# langsamer gemacht.
+#
+# JETZT: ein Tick baut die blockierende Gruppe EINES Systems (genau
+# das, was vor Build 294 ein Tick war), die Extras kommen in eigenen
+# Ticks danach.
+check("und zwar dessen COVER-Index, denn nur der haelt das Zeichnen auf",
+      ART._docs_index_fertig(SYSTEME[0], "boxart"))
+check("die Extras kommen NICHT im selben Tick",
+      not ART._docs_index_fertig(SYSTEME[0], "snap")
+      and not ART._docs_index_fertig(SYSTEME[0], "titel"),
+      "drei Durchlaeufe in einem Tick sind eine halbe Sekunde, "
+      "in der eine Taste wartet")
+# UND DIE REIHENFOLGE UEBER DIE SYSTEME: erst alle Cover, dann die
+# Extras. Das ist die eigentliche Behebung - gepruefter Ablauf, nicht
+# nur eine kleinere Portion.
+for _ in range(len(SYSTEME) - 1):
+    fe._warmlauf_tick()
+check("nach einem Tick je System sind ALLE Cover da",
+      all(ART._docs_index_fertig(s, "boxart") for s in SYSTEME),
+      "genau so frueh wie vor Build 294")
+check("und noch kein einziges Extra",
+      not any(ART._docs_index_fertig(s, a)
+              for s in SYSTEME for a in ("snap", "titel")),
+      "der Vermerk darf warten, das Cover nicht")
 
-ticks = 1
+# GEAENDERT IN BUILD 295 - am Messwert, nicht an der Zusage. Hier
+# stand "nach zwoelf Ticks ist Schluss", also ein Tick je System.
+# Seit Build 295 ist ein Tick ein STUECK ARBEIT: zwoelf Cover plus
+# zwoelfmal zwei Extras, zusammen 36. Das ist der Preis dafuer, dass
+# ein einzelner Tick wieder so billig ist wie vor Build 294 - und
+# genau das war die Behebung.
+#
+# Gezaehlt wird deshalb von KALT, nicht ab hier: oben sind schon
+# zwoelf Ticks gelaufen, und eine Zahl, die davon abhaengt, wie viele
+# Pruefungen vorher stehen, ist beim naechsten Einschub falsch.
+_kalt()
+_setzen(fe, SYSTEME)
+fe.page = 0
+fe.cat_i = 0
+ticks = 0
 while fe._warmlauf_tick():
     ticks += 1
-    if ticks > 50:
+    if ticks > 100:
         break
-check("nach zwoelf Ticks ist Schluss", ticks == 12, "%d Ticks" % ticks)
+erwartet = len(SYSTEME) * len(ART.DOCS_BILDARTEN)
+check("er endet, und zwar nach genau so vielen Ticks wie Arbeit",
+      ticks == erwartet,
+      "%d Ticks, erwartet %d (%d Systeme x %d Bildarten)"
+      % (ticks, erwartet, len(SYSTEME), len(ART.DOCS_BILDARTEN)))
 check("alle zwoelf sind gebaut", _systeme_im_cache() == 12,
       "%d Systeme, %d Eintraege"
       % (_systeme_im_cache(), len(ART._docs_index_cache)))
@@ -193,7 +245,8 @@ for ansicht in ("raster", "galerie"):
     _setzen(fe, SYSTEME)
     fe.page = 0
     fe.cat_i = 0
-    for _ in range(30):
+    # Abgeleitet, nicht fest verdrahtet - siehe Test 4 (Build 295).
+    for _ in range(len(SYSTEME) * len(ART.DOCS_BILDARTEN) + 5):
         if not fe._warmlauf_tick():
             break
     warm = _betreten_zaehlen(ansicht)
@@ -215,7 +268,13 @@ _kalt()
 _setzen(fe, SYSTEME)
 fe.page = 0
 fe.cat_i = 0
-for _ in range(30):
+# ABGELEITET, NICHT FEST VERDRAHTET (Build 295). Hier stand
+# range(30), was fuer zwoelf Systeme mit einer Bildart reichte. Mit
+# drei Bildarten sind 36 Ticks noetig, und die Schleife war vorher
+# fertig - die Pruefung darunter ging rot, obwohl am Warmlauf nichts
+# falsch war. Eine Obergrenze, die sich aus der Arbeit ergibt, kann
+# bei der naechsten Bildart nicht wieder danebenliegen.
+for _ in range(len(SYSTEME) * len(ART.DOCS_BILDARTEN) + 5):
     if not fe._warmlauf_tick():
         break
 check("erst ist alles warm", fe._warmlauf_systeme() == [])

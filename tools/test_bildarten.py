@@ -247,15 +247,38 @@ try:
               "%d x os.listdir - auf dem Geraet rund 167 ms je Stueck"
               % gezaehlt[0])
         # Jetzt der Warmlauf, so wie ihn das Frontend im Ruhemoment
-        # aufruft.
+        # aufruft: EIN Stueck Arbeit je Aufruf.
         A.index_warmlaufen(["SNES"], hoechstens=1)
         nach_warm = gezaehlt[0]
         check("der Warmlauf liest die Verzeichnisse", nach_warm > 0,
               "%d x" % nach_warm)
-        check("und baut alle drei Arten",
+        # GEAENDERT IN BUILD 295. Hier stand "und baut alle drei
+        # Arten" nach EINEM Aufruf - und genau das war der Fehler, den
+        # der Nutzer gemeldet hat ("klemmt oder lagt ein wenig"): drei
+        # Verzeichnisdurchlaeufe in einem Durchgang sind auf dem Geraet
+        # eine halbe Sekunde, und ein begonnener Durchgang laeuft
+        # durch. Der erste baut jetzt nur das COVER, denn nur das haelt
+        # den Zeichenweg auf.
+        check("der erste Durchgang baut das Cover",
+              A._docs_index_fertig("SNES", "boxart"))
+        check("und NICHT gleich die Extras mit",
+              not A._docs_index_fertig("SNES", "snap")
+              and not A._docs_index_fertig("SNES", "titel"),
+              "die haelt nur der Vermerk 'R2 1/3' auf, und der "
+              "darf warten")
+        # Die Extras kommen in eigenen Durchgaengen nach. Gezaehlt
+        # wird, bis nichts mehr ansteht - eine feste Zahl waere bei
+        # der naechsten Bildart wieder falsch.
+        runden = 1
+        while A.index_warmlaufen(["SNES"], hoechstens=1) > 0:
+            runden += 1
+            if runden > 20:
+                break
+        check("und die Extras in eigenen Durchgaengen danach",
               all(A._docs_index_fertig("SNES", a)
                   for a in A.DOCS_BILDARTEN),
-              "fehlte eine, wuerde sie im Zeichenweg gebaut")
+              "%d Durchgaenge fuer ein System mit %d Bildarten"
+              % (runden, len(A.DOCS_BILDARTEN)))
         gezaehlt[0] = 0
         fertig = A.docs_bildarten("SNES", "Super Mario World (USA)",
                                   nur_fertig=True)

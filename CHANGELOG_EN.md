@@ -13,6 +13,19 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **Fixed: pad input stuttered during the first seconds after start.**
+  The preparatory work the frontend does while idle (reading picture
+  folders) had been reading three directories at once instead of one
+  since build 294 — half a second on the SD card, and a run once
+  started goes through to the end. On top of that, it finished a whole
+  system before moving to the next — but only the **cover** index holds
+  up drawing; the screenshot and title index are needed solely by the
+  small `R2 1/3` note, which is allowed to arrive later. Now all covers
+  come first, the extras afterwards and one at a time. A single run
+  costs as little as it did before build 294 (build 295).
+- **The preparatory work now logs what it does.** Previously it logged
+  nothing at all — searching the log for "Warmlauf" came back empty, so
+  there was no way to see whether it had run (build 295).
 - **New: screenshots and title screens, cycled with R2.** MiSTer's
   `update_all` offers not only covers under *Settings → Extra Content →
   Game Artwork DBs*, but screenshots and title screens too. For the

@@ -4622,45 +4622,87 @@ def index_warmlaufen(syskeys, hoechstens=1):
     ihr stehenzubleiben, wartet weiter - nur eben nicht mehr fuer alle
     Systeme, sondern fuer die, die bis dahin nicht fertig wurden. Wer
     einen Moment stehenbleibt (und das tut man, wenn man eine Kategorie
-    aussucht), wartet gar nicht mehr."""
+    aussucht), wartet gar nicht mehr.
+
+    BUILD 295 - ZWEI DURCHGAENGE, UND WARUM DAS NOETIG WURDE.
+
+    Build 294 hat hier alle drei Bildarten je System gebaut, in einem
+    Stueck, mit dem Kommentar "'hoechstens 1' zaehlt Systeme, nicht
+    Verzeichnisse". Das war richtig gezaehlt und trotzdem falsch, und
+    der Nutzer hat es gemeldet: "wenn ich das frontend starte reagiert
+    fuer ein paar sekunden die joypad eingabe manchmal nicht oder
+    klemmt oder lagt ein wenig".
+
+    ZWEI FEHLER IN EINEM:
+
+    1. EIN TICK WURDE DREIMAL SO TEUER. Ein Verzeichnisdurchlauf
+       kostet auf dem Geraet rund 167 ms; drei davon in einem Tick
+       sind eine halbe Sekunde, in der eine Taste wartet. Der Tick
+       laeuft zwar nur im Stillstand - aber ein BEGONNENER Tick laeuft
+       durch.
+
+    2. UND, DAS IST DER SCHLIMMERE: DIE REIHENFOLGE WAR FALSCH. Der
+       ZEICHENWEG blockiert ausschliesslich auf dem COVER-Index (ueber
+       docs_cover() in _art_path_in()). Bildschirmfoto und Titelbild
+       braucht nur der kleine Vermerk "R2 1/3", und der darf
+       ausdruecklich spaeter kommen (docs_bildarten(nur_fertig=True)
+       liefert dafuer None statt zu warten).
+
+       Vorher: Tick 1 = SNES-Cover, Tick 2 = Genesis-Cover, ...
+       Nach 294: Tick 1 = SNES Cover+Foto+Titel, Tick 2 = Genesis ...
+
+       Das Cover des ZWEITEN Systems war damit erst nach dreimal so
+       viel Vorarbeit da. Ich habe also genau das Mittel, das den
+       Ruckler verhindert, dreimal langsamer gemacht - waehrend die
+       Arbeit, die es verhindern soll, unveraendert blieb.
+
+    JETZT: erst die blockierende Gruppe fuer ALLE offenen Systeme
+    (unsere eigenen Artindizes plus das Cover - genau das, was vor
+    Build 294 ein Tick war), danach in eigenen Ticks die Extras. Ein
+    Tick kostet damit wieder so viel wie vor 294, und das Cover jedes
+    Systems ist so frueh da wie vor 294.
+
+    GEZAEHLT WIRD JETZT ARBEIT, NICHT SYSTEME: 'hoechstens' meint ein
+    Stueck Vorarbeit. Fuer die blockierende Gruppe ist das genau ein
+    System (wie vorher), fuer die Extras genau ein Verzeichnis.
+    """
+    offen = index_warm_offen(syskeys)
+    if not offen:
+        return 0
     gebaut = 0
-    for sk in index_warm_offen(syskeys):
+    # DURCHGANG 1: was den Zeichenweg aufhaelt.
+    for sk in offen:
         if gebaut >= hoechstens:
-            break
+            return gebaut
+        if (_docs_index_fertig(sk, "boxart")
+                and all((w, sk) in _art_index_cache
+                        for w in INDEX_WARM_WURZELN)):
+            continue
         try:
             for wurzel in INDEX_WARM_WURZELN:
                 _art_index(wurzel, sk)
-            # BUILD 294: ALLE DREI BILDARTEN, und zwar HIER und nicht
-            # im Zeichenweg.
-            #
-            # Jeder dieser Aufbauten ist ein os.listdir je Ordner, und
-            # ein Durchlauf ueber einen Bilderordner kostet auf dem
-            # Geraet des Nutzers rund 167 ms (Abschnitt H des Benchs).
-            # Wuerde der Vermerk "R2 1/3" seine Liste beim ZEICHNEN
-            # holen, kostete das Betreten jedes Systems zwei solche
-            # Durchlaeufe auf EINEM Bild - ein Ruckler von rund einer
-            # Drittelsekunde, genau dort, wo der Nutzer gerade
-            # hinschaut.
-            #
-            # DAS IST DER FEHLER AUS BUILD 107, nur an einer neuen
-            # Stelle: "warum ist nach einem Neustart das Hauptmenue so
-            # traege?" war Arbeit, die lief, wo sie nicht laufen
-            # durfte. Dieser Warmlauf ist genau dafuer gebaut - er
-            # laeuft nur, wenn keine Taste kommt, und hoechstens ein
-            # System je Ruhemoment (siehe den Docstring oben).
-            #
-            # Dass es jetzt drei Aufbauten je System sind statt einem,
-            # aendert daran nichts: "hoechstens 1" zaehlt Systeme,
-            # nicht Verzeichnisse, und wer die beiden neuen Ordner
-            # nicht hat, zahlt je Art einen fehlschlagenden
-            # Systemaufruf.
-            for art in DOCS_BILDARTEN:
-                _docs_index(sk, art)
+            _docs_index(sk, "boxart")
         except Exception:                                # noqa: BLE001
             # Ein Warmlauf darf NIE etwas kaputtmachen, was ohne ihn
             # funktioniert haette - er ist reine Vorarbeit.
             pass
         gebaut += 1
+        LOG("Warmlauf: %s Cover-Index gebaut" % sk)
+    # DURCHGANG 2: was nur der Vermerk braucht, einzeln.
+    for art in DOCS_BILDARTEN:
+        if art == "boxart":
+            continue
+        for sk in offen:
+            if gebaut >= hoechstens:
+                return gebaut
+            if _docs_index_fertig(sk, art):
+                continue
+            try:
+                _docs_index(sk, art)
+            except Exception:                            # noqa: BLE001
+                pass
+            gebaut += 1
+            LOG("Warmlauf: %s %s-Index gebaut" % (sk, art))
     return gebaut
 
 

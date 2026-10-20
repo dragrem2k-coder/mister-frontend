@@ -6292,3 +6292,144 @@ Messwert passt wieder zu ihr.
 `SYSTEME` ist eine Liste von STRINGS, nicht von Kategorie-Tupeln, also
 war das der Buchstabe "N" aus "SNES". Dieselbe Verwechslung, nur in
 klein.)
+
+---
+
+## Nachtrag Build 295: die fehlende Logzeile war kein Beweis
+
+Nutzermeldung: *"wenn ich das frontend starte reagiert fuer ein paar
+sekunden die joypad eingabe manchmal nicht oder klemmt oder lagt ein
+wenig, koennte man das noch in griff bekommen? oder stockt das weil
+gerade im hintergrund zuviel laeuft beim start vom frontend?"*
+
+Ich habe um einen Logauszug gebeten:
+
+```
+grep -E "Neuaufbau|RA-Kategorien|Warmlauf|LATENZ" /tmp/frontend.log
+```
+
+Zurueck kamen **ausschliesslich LATENZ-Zeilen**. Kein "Warmlauf", kein
+"Neuaufbau".
+
+### Fast waere das die falsche Schlussfolgerung geworden
+
+Die naheliegende Lesart ist "dann lief der Warmlauf eben nicht". Vor
+dieser Lesart habe ich nachgesehen, ob er ueberhaupt etwas schreibt -
+**und er schrieb nichts.** `index_warmlaufen()` hatte keine einzige
+LOG-Zeile. Die fehlende Zeile war also kein Beweis fuer irgendwas.
+
+**Das ist dieselbe Falle wie der `grep | tail -14` aus Build 285**, nur
+von der anderen Seite: dort hat ein abgeschnittenes Protokoll die
+entscheidende Zeile verschluckt, hier gab es sie nie. Eine Abfrage, von
+der man nicht weiss, ob die gesuchte Zeile ueberhaupt existiert, kann
+nichts widerlegen.
+
+Deshalb loggt der Warmlauf jetzt je gebauten Index eine Zeile. Je
+(System, Bildart) genau einmal je Sitzung - `index_warm_offen()`
+filtert fertige heraus.
+
+### Was die LATENZ-Zeilen dann wirklich gesagt haben
+
+```
+15:43:54  LATENZ: ok   brauchte  369 ms
+15:43:57  LATENZ: down brauchte 2359 ms
+15:43:57  LATENZ: down brauchte  225 ms
+...
+LATENZ-JE-AKTION: ok/S1 1x Mittel 369 | down/S1 18x Mittel 284 (max 2359)
+                | up/S1 19x Mittel 69 | down/S0 39x Mittel 38
+```
+
+Zwei Befunde, und beide stehen in der Aufteilung, nicht im Mittelwert:
+
+**1. Der Ausreisser von 2,36 s steht DIREKT HINTER einem `ok` in S1** -
+also unmittelbar nach dem Betreten einer Kategorie. Das ist genau der
+Fall, den der Warmlauf verhindern soll, und dessen Preis im Test
+beziffert ist ("raster: kalt kostet Durchlaeufe 10 - auf dem Geraet rund
+1.7 s").
+
+**2. `down/S1` kostet im Mittel 284 ms, `up/S1` nur 69 ms.** Diese
+Asymmetrie ist die ganze Auskunft: runter geht in neues Gebiet (Cover
+kalt), rauf in bereits Gesehenes (warm). Der Bench nennt dieselben
+Zahlen - `Spieleliste liste` kalt 201 ms, warm 66 ms. Das ist also kein
+Fehler, sondern der bekannte Preis des ersten Dekodierens, und Build 293
+konnte nur aendern, WELCHE Cover bleiben, nicht wie teuer das erste ist.
+
+Damit war der Verdacht klar: der Warmlauf kommt nicht schnell genug
+voraus. Und beim Nachlesen stand die Ursache in meinem eigenen
+Build 294.
+
+### Mein Fehler aus 294, in zwei Teilen
+
+```python
+for sk in index_warm_offen(syskeys):
+    if gebaut >= hoechstens: break
+    for wurzel in INDEX_WARM_WURZELN: _art_index(wurzel, sk)
+    for art in DOCS_BILDARTEN: _docs_index(sk, art)   # <- Build 294
+    gebaut += 1
+```
+
+Dazu hatte ich geschrieben: *"Dass es jetzt drei Aufbauten je System
+sind statt einem, aendert daran nichts: 'hoechstens 1' zaehlt Systeme,
+nicht Verzeichnisse."* Richtig gezaehlt - und trotzdem falsch.
+
+**Teil 1: ein Tick wurde dreimal so teuer.** Ein Verzeichnisdurchlauf
+kostet rund 167 ms, drei sind eine halbe Sekunde. Der Tick laeuft nur
+im Stillstand, aber ein BEGONNENER Tick laeuft durch. Das ist das
+gemeldete "lagt ein wenig".
+
+**Teil 2, und das ist der schwerere: die Reihenfolge war falsch.** Der
+Zeichenweg blockiert ausschliesslich auf dem **Cover**-Index (ueber
+`docs_cover()` in `_art_path_in()`). Bildschirmfoto und Titelbild
+braucht allein der Vermerk `R2 1/3`, und der darf ausdruecklich spaeter
+kommen - `docs_bildarten(nur_fertig=True)` liefert dafuer `None`,
+anstatt zu warten. Das habe ich in Build 294 selbst so gebaut.
+
+    vorher:    Tick 1 = SNES-Cover    | Tick 2 = Genesis-Cover | ...
+    Build 294: Tick 1 = SNES Cover+Foto+Titel | Tick 2 = Genesis ...
+
+Das Cover des **zweiten** Systems war damit erst nach dreimal so viel
+Vorarbeit da. **Ich habe das Mittel gegen den Ruckler dreimal langsamer
+gemacht, waehrend die Arbeit, die es verhindern soll, unveraendert
+blieb.**
+
+### Die Behebung: zwei Durchgaenge
+
+Erst die blockierende Gruppe (unsere `art/`- und `art_hd/`-Indizes plus
+das Cover - genau das, was vor Build 294 EIN Tick war) fuer alle offenen
+Systeme. Danach, in eigenen Ticks, die Extras einzeln.
+
+Gemessen am Nachbau mit drei Systemen:
+
+```
+Tick | Cover fertig fuer        | Extras
+  1  | SNES                     | 0
+  2  | SNES,Genesis             | 0
+  3  | SNES,Genesis,NES         | 0
+  4..9| (alle)                  | 1..6
+```
+
+Alle Cover nach drei Ticks - **so frueh wie vor Build 294**, und ein
+Tick kostet wieder so wenig wie damals.
+
+`hoechstens` zaehlt jetzt **Arbeit**, nicht Systeme: fuer die
+blockierende Gruppe ein System, fuer die Extras ein Verzeichnis.
+
+### Drei fest verdrahtete Zahlen im Test, alle derselbe Fehler
+
+`test_kategorie_warmlauf` hatte drei Zahlen, die an "ein Tick = ein
+System" hingen:
+
+- `"nach zwoelf Ticks ist Schluss"` → jetzt
+  `len(SYSTEME) * len(DOCS_BILDARTEN)`, also 36, und **von kalt
+  gezaehlt** statt ab der Stelle im Test: eine Zahl, die davon
+  abhaengt, wie viele Pruefungen vorher stehen, ist beim naechsten
+  Einschub falsch.
+- zweimal `range(30)` als Obergrenze → jetzt abgeleitet. Die eine
+  Stelle lief vorher leer, und die Pruefung darunter ging rot, obwohl
+  am Warmlauf nichts falsch war.
+
+**Die Zusagen sind alle unveraendert geblieben.** Geaendert wurden nur
+die Messwerte, und zwar so, dass sie sich bei der naechsten Bildart von
+selbst mitrechnen. Eine Zahl im Test, die man bei jeder Erweiterung
+hochsetzen muss, ist eine Zahl, die irgendwann einfach hochgesetzt wird,
+ohne dass jemand prueft, ob die Zusage noch gilt.
