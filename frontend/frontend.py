@@ -332,8 +332,9 @@ from fe.settings import (
     ordner_zahlen_an, toggle_ordner_zahlen,
     # Build 257: die Tastenlegende.
     tastenlegende_an, toggle_tastenlegende,
-    # Build 258: der ROM-Waechter.
+    # Build 258: der ROM-Waechter. Build 296: und sein Nachlesen.
     romwacht_an, toggle_romwacht,
+    romwacht_auto_an, toggle_romwacht_auto,
     # Build 259: mehrteilige Spiele buendeln.
     multidisc_buendeln, toggle_multidisc,
     hintergrund_lesen, hintergrund_schreiben, hintergrund_an,
@@ -1620,6 +1621,14 @@ class Frontend:
         # geaendert hat. Beide melden und lesen NICHT von selbst
         # nach.
         self._romwacht = ROMWACHT.RomWaechter()
+        # Build 296: was der Waechter gemeldet hat und noch nicht
+        # nachgelesen ist, plus der Zeitpunkt, ab dem sich nichts mehr
+        # geaendert hat. Siehe _rom_nachscan_pruefen(). Hier gesetzt
+        # und nicht per getattr erschlichen: ein Zustand, den die
+        # Hausarbeit bei JEDEM Bild liest, soll von Anfang an
+        # existieren.
+        self._rom_auto_offen = None
+        self._rom_auto_ruhig_ab = None
         # BUILD 291: VIER MARKEN IN EINE SCHEIBE, DIE 220 ZEILEN LANG
         # KEINE HATTE.
         #
@@ -5365,6 +5374,13 @@ class Frontend:
                     ("ra_wieder", self._maybe_retry_ra),
                     ("uhr", self._maybe_retry_clock),
                     ("ra_kategorien", self._maybe_rebuild_ra_categories),
+                    # Build 296: das automatische Nachlesen nach dem
+                    # ROM-Waechter. Gehoert hierher und nicht in den
+                    # Ruhemoment-Zweig: _hausarbeit_jetzt() laesst
+                    # diese Liste aus, solange eine Taste GEHALTEN
+                    # wird (Build 273/276), und genau das ist die
+                    # Zusage, die ein Neuaufbau braucht.
+                    ("rom_auto", self._rom_nachscan_pruefen),
                     ("mount", self._maybe_rescan_for_late_mount)):
                 _ht = time.monotonic()
                 _hfn()
@@ -6775,6 +6791,126 @@ class Frontend:
     # Taste, ist also Ruhe, bis man sie loslaesst - und kurz genug,
     # dass die frischen RA-Daten gleich nach dem Loslassen stehen.
     RA_NEUBAU_RUHE = 1.0
+
+    # ------------------------------------------------------------------
+    # DAS AUTOMATISCHE NACHLESEN NACH DEM ROM-WAECHTER (Build 296)
+    # ------------------------------------------------------------------
+    #
+    # Wie lange seit dem ersten Blick OHNE weitere Aenderung vergangen
+    # sein muss. Der Waechter sieht alle 20 s nach (ROMWACHT_TAKT),
+    # dieser Wert liegt also bewusst darunter: er ist keine zweite
+    # Wartezeit, sondern eine Sicherheit, dass wirklich ein ganzer
+    # Blick ohne Aenderung dazwischenlag.
+    ROM_AUTO_BERUHIGUNG = 3.0
+    # Und wie lange die Eingabe ruhig sein muss. Zwei Sekunden statt
+    # der einen von RA_NEUBAU_RUHE: der Neuaufbau ist hier nichts, was
+    # jemand erwartet, also darf er ruhig etwas mehr Abstand halten.
+    ROM_AUTO_RUHE = 2.0
+
+    def _rom_nachscan_pruefen(self):
+        """Hat der ROM-Waechter etwas gemeldet, das jetzt gefahrlos
+        nachgelesen werden kann? Dann tun.
+
+        BUILD 296, NUTZERWUNSCH: "kannst du bitte noch einrichten das
+        wenn ich neue roms drauf kopiere, sagt mir der rom waechter ja
+        bescheid, das auch automatisch aktualisiert wird? ist bloede es
+        immer per hand erst durchlaufen zu lassen fuer das jeweilige
+        system wo was neu gekommen ist!"
+
+        BUILD 258 HAT DAS AUSDRUECKLICH NICHT GETAN, mit dieser
+        Begruendung im Modulkopf von fe/romwacht.py: "Das dauert bei
+        einer grossen Sammlung Sekunden bis Minuten, und mitten im
+        Scrollen waere es ein sichtbarer Haenger. Es ist ausserdem
+        eine Entscheidung des Nutzers und keine des Programms."
+
+        DER ERSTE TEIL WAR ZU VORSICHTIG, und das laesst sich am Code
+        nachlesen: scan_games() vergleicht seit Build 248 den
+        Fingerabdruck JE SYSTEM und liest alles Unveraenderte aus dem
+        Zwischenspeicher. Nachgelesen wird also das eine geaenderte
+        System - genau das, was der Nutzer heute von Hand anstoesst.
+        "Sekunden bis Minuten" beschreibt den Preis eines VOLLEN
+        Neuscans; der ist hier nicht gemeint.
+
+        DER ZWEITE TEIL BLEIBT RICHTIG - deshalb der Schalter
+        romwacht_auto_an(), Vorgabe AN, weil danach gefragt wurde.
+
+        VIER BEDINGUNGEN, und jede hat einen eigenen Grund:
+
+        1. ERST, WENN SICH NICHTS MEHR AENDERT. Das ist die
+           wichtigste, und sie ist nicht die naheliegende. Wer ROMs
+           ueber WinSCP oder das Netz kopiert, aendert den Ordner
+           WAEHREND des Kopierens immer weiter - ein sofortiges
+           Nachlesen liest dann in einen halb fertigen Ordner hinein
+           und muesste es gleich wieder tun. Der Waechter setzt
+           deshalb erst dann eine Frist, wenn ein ganzer Blick KEINE
+           weitere Aenderung mehr gesehen hat (siehe den Zweig, der
+           _rom_auto_ruhig_ab setzt).
+        2. NUR AUF SEITE 0. Dieselbe Regel wie beim RA-Neuaufbau
+           (siehe _maybe_rebuild_ra_categories): steht der Nutzer in
+           einer Kategorie, womoeglich tief in Ordnern, passt der
+           Pfad nach einem Neuaufbau nicht mehr zum Baum.
+        3. NUR BEI RUHIGER EINGABE. Der Neuaufbau ist nicht billig,
+           und niemand hat ihn in diesem Moment angefordert.
+        4. NUR MIT POSITIONSERHALT. Die Menueaktion "nachscan" setzt
+           cat_i/item_i/page/nav_path auf null zurueck - das ist beim
+           bewussten Auslosen richtig, bei einem automatischen Vorgang
+           waere es ein Sprung aus dem Nichts. Deshalb laeuft hier
+           _rebuild_categories_preserving_selection() und NICHT die
+           Menueaktion.
+
+        GEMELDET WIRD UEBER _popup_message, NICHT UEBER self.draw():
+        diese Funktion laeuft aus der Hausarbeit heraus, die ihrerseits
+        aus draw() kommt - ein draw() von hier waere ein Aufruf in sich
+        selbst.
+        """
+        grund = getattr(self, "_rom_auto_offen", None)
+        if not grund:
+            return
+        if not (romwacht_an() and romwacht_auto_an()):
+            # Abgeschaltet, waehrend etwas vorgemerkt war: liegen
+            # lassen waere ein Nachlesen, das Wochen spaeter aus dem
+            # Nichts kommt, wenn der Schalter wieder angeht.
+            self._rom_auto_offen = None
+            self._rom_auto_ruhig_ab = None
+            return
+        if self.page != 0:
+            return
+        ab = getattr(self, "_rom_auto_ruhig_ab", None)
+        if ab is None:
+            return                      # es aendert sich noch etwas
+        jetzt = time.monotonic()
+        if (jetzt - ab) < self.ROM_AUTO_BERUHIGUNG:
+            return
+        if (jetzt - self._last_input_time) < self.ROM_AUTO_RUHE:
+            return
+        self._rom_auto_offen = None
+        self._rom_auto_ruhig_ab = None
+        self._nachscan_grund = None
+        self._nachscan_rom = False
+        LOG("ROM-Waechter: lese %s automatisch nach" % grund)
+        t0 = time.monotonic()
+        try:
+            self._rebuild_categories_preserving_selection()
+        except Exception:                                # noqa: BLE001
+            # Ein automatischer Vorgang darf nichts umbringen, was
+            # ohne ihn lief. Der Menuepunkt bleibt ja.
+            LOG("ROM-Waechter: automatisches Nachlesen fehlgeschlagen:\n"
+                + traceback.format_exc())
+            return
+        # NEU MERKEN, sonst meldet der Waechter dieselbe Aenderung
+        # beim naechsten Blick wieder - siehe pruefen() in
+        # fe/romwacht.py ("Erst ein erneutes merken() macht den Weg
+        # frei").
+        try:
+            self._romwacht.merken(self._beobachtete_ordner())
+        except Exception:                                # noqa: BLE001
+            pass
+        dauer = time.monotonic() - t0
+        LOG("ROM-Waechter: automatisches Nachlesen fertig (%s, %.0f ms)"
+            % (grund, dauer * 1000.0))
+        self._force_full_redraw = True
+        self._popup_message = t("rom_nachgelesen") % grund
+        self._popup_message_until = jetzt + 2.0
 
     def _maybe_rebuild_ra_categories(self):
         """Periodisch (aus draw()) geprueft: holt einen von
@@ -11556,7 +11692,39 @@ class Frontend:
                         self._nachscan_rom = True
                         self._refresh_system_category()
                         self._force_full_redraw = True
-                        self.draw(t("rom_geaendert") % _rw, prominent=True)
+                        # BUILD 296: die Aenderung wird jetzt GEMERKT,
+                        # nicht nur gemeldet. Nachgelesen wird sie
+                        # spaeter und unter Bedingungen - siehe
+                        # _rom_nachscan_pruefen(). Hier steht
+                        # bewusst nur das Merken: dieser Zweig laeuft
+                        # im Ruhemoment des Hauptlaufs, und ein
+                        # Neuaufbau an dieser Stelle waere genau der
+                        # "sichtbare Haenger", gegen den Build 258
+                        # argumentiert hat.
+                        self._rom_auto_offen = _rw
+                        self._rom_auto_ruhig_ab = None
+                        # ZWEI FASSUNGEN DER MELDUNG (Build 296): die
+                        # alte sagt, was der Nutzer TUN soll ("System
+                        # -> nur Geaendertes nachlesen"). Ist das
+                        # Nachlesen automatisch, waere dieselbe Zeile
+                        # eine Anweisung zu etwas, das von selbst
+                        # passiert - und er wuerde es zusaetzlich von
+                        # Hand anstossen.
+                        self.draw((t("rom_geaendert_auto")
+                                   if romwacht_auto_an()
+                                   else t("rom_geaendert")) % _rw,
+                                  prominent=True)
+                    elif getattr(self, "_rom_auto_offen", None):
+                        # KEINE weitere Aenderung in diesem Blick -
+                        # also ist der Kopiervorgang vermutlich durch.
+                        # Erst JETZT beginnt die Beruhigungsfrist.
+                        # Siehe _rom_nachscan_pruefen() fuer das
+                        # Warum.
+                        if self._rom_auto_ruhig_ab is None:
+                            self._rom_auto_ruhig_ab = time.monotonic()
+                            LOG("ROM-Waechter: keine weitere Aenderung "
+                                "- Nachlesen vorgemerkt (%s)"
+                                % self._rom_auto_offen)
                 self._boot_watch()   # Diagnose: Anzeige-Zustand nach dem Boot
                 # Build 167: alle drei nur noch, wenn die Mechanik
                 # eingeschaltet ist - siehe konsole_mechanik(). Ohne
@@ -23285,6 +23453,19 @@ class Frontend:
                             self.draw(t("multidisc_hinweis"))
                         elif kind == "romwacht":
                             toggle_romwacht()
+                            self._refresh_system_category()
+                        elif kind == "romwacht_auto":
+                            # Build 296. Beim Abschalten auch das
+                            # Vorgemerkte verwerfen - sonst kaeme das
+                            # Nachlesen beim naechsten Einschalten aus
+                            # dem Nichts. (Dasselbe prueft
+                            # _rom_nachscan_pruefen() noch einmal,
+                            # fuer den Fall, dass der Schalter von
+                            # aussen per Datei gesetzt wird.)
+                            toggle_romwacht_auto()
+                            if not romwacht_auto_an():
+                                self._rom_auto_offen = None
+                                self._rom_auto_ruhig_ab = None
                             self._refresh_system_category()
                         elif kind == "tastenlegende":
                             toggle_tastenlegende()

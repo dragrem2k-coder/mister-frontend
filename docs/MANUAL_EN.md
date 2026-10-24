@@ -1032,10 +1032,44 @@ anything about the ROM folders has changed. If something did, a message
 appears, and the system menu under *Maintenance* then offers **"Rescan
 only what changed (SNES)"** — the same entry the storage watch uses.
 
-**Nothing is re-read on its own.** With a large collection that takes
-seconds to minutes, and in the middle of scrolling it would be a
-visible stall. It is also your decision, not the program's — the same
-line as the storage watch.
+**And since build 296 it re-reads by itself.** Until then you had to
+trigger the menu entry yourself. The reason it did not is below under
+"Why it used not to be automatic"; half of it was over-cautious.
+
+Re-reading only happens when it is safe — four conditions, each with
+its own reason:
+
+1. **Only once nothing is changing any more.** This is the important
+   one and not the obvious one: copying over WinSCP or the network
+   keeps changing the folder *while* it copies. Re-reading at once
+   would mean reading a half-finished folder. The timer only starts
+   once a whole watch pass (20 s) sees no further change.
+2. **Only with input quiet.** Hold a key or scroll, and nothing
+   happens.
+3. **Only on the main page.** If you are inside a category, possibly
+   deep in folders, it is caught up as soon as you are back on top.
+4. **Without losing your position.** The menu entry deliberately
+   jumps back to the start — the automatic re-read remembers the
+   selected category and finds it again.
+
+**Switchable** in the system menu under *Maintenance*, right below the
+watch: **"Re-read ROM changes automatically: ON/OFF"**. The entry only
+appears while the watch itself is on.
+
+### Why it used not to be automatic
+
+The source said: *"With a large collection that takes seconds to
+minutes, and in the middle of scrolling it would be a visible stall. It
+is also a decision of the user and not of the program."*
+
+The first part was over-cautious: it is **not** the whole collection
+that gets re-read. Since build 248 the read compares a fingerprint per
+system and takes everything unchanged from the cache — so it costs
+exactly the one changed system, the same as the menu entry. The
+"seconds to minutes" describe a full rescan, which is not what happens
+here.
+
+The second part stands — hence the switch.
 
 **What it sees and what it does not.** The watch looks at
 
@@ -2221,6 +2255,7 @@ conversely nobody ends up in a menu that cannot do anything).
 | Scroll speed (0.5x to 2x) | `scroll_tempo` |
 | Button legend: ON/OFF | `tastenlegende` |
 | Watch for ROM changes: ON/OFF | `romwacht` |
+| Re-read ROM changes automatically: ON/OFF | `romwacht_auto` |
 | Bundle multi-disc games: ON/OFF | `multidisc` |
 | Folders: first / after the games | `ordner_zuerst` |
 | Favourites first: ON/OFF | `favoriten_zuerst` |

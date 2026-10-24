@@ -209,12 +209,60 @@ print("Test 4: die Anbindung im Frontend")
 # ---------------------------------------------------------------------------
 check("der Waechter wird neben dem Speicher-Waechter angelegt",
       "self._romwacht = ROMWACHT.RomWaechter()" in _FE)
+# GEAENDERT IN BUILD 296 - am Messwert, nicht an der Zusage.
+#
+# Hier stand ein Vergleich auf GLEICHHEIT mit der Zahl der
+# self._speicher.merken()-Aufrufe. Das war ein billiger Stellvertreter,
+# der zufaellig aufging: ueberall, wo neu eingelesen wird, standen
+# beide Waechter zusammen.
+#
+# Build 296 hat eine Stelle dazugebracht, an der NUR der ROM-Waechter
+# gemerkt werden muss: das automatische Nachlesen
+# (_rom_nachscan_pruefen). Der Speicher-Waechter hat dort nichts zu
+# tun - es ging ja nicht um einen Datentraeger.
+#
+# Die Zusage lautet "kein Einlesen ohne neuen Fingerabdruck", und die
+# gilt unveraendert. Gemessen wird sie jetzt als "mindestens so oft wie
+# der Speicher-Waechter" PLUS der ausdrueckliche Nachweis an der neuen
+# Stelle. Haette ich die erwartete Zahl einfach von 2 auf 3 gesetzt,
+# waere der Test beim naechsten Aufrufer wieder rot geworden, ohne dass
+# sich an dem, was er sichert, etwas geaendert haette.
+_n_rom = _FE.count("self._romwacht.merken(")
+_n_sp = _FE.count("self._speicher.merken()")
 check("und nach JEDEM Einlesen auf den neuen Stand gesetzt",
-      _FE.count("self._romwacht.merken(") == _FE.count("self._speicher.merken()"),
+      _n_rom >= _n_sp,
       "%d gegen %d - sonst meldet er die gerade eingelesene Aenderung "
-      "gleich noch einmal"
-      % (_FE.count("self._romwacht.merken("),
-         _FE.count("self._speicher.merken()")))
+      "gleich noch einmal" % (_n_rom, _n_sp))
+# Und die neue Stelle namentlich. Ohne diese Zeile waere das ">="
+# oben eine Abschwaechung statt einer Praezisierung: es wuerde auch
+# dann gruen bleiben, wenn das automatische Nachlesen das Merken
+# vergessen haette.
+#
+# PER ast, NICHT PER ZEICHENFENSTER. Die erste Fassung dieser Zeile
+# nahm _FE.split(...)[1][:4000] - und der gesuchte Aufruf steht bei
+# Zeichen 4689. Rot, obwohl der Code richtig war.
+#
+# DAS IST IN DIESEM PROJEKT DER VIERTE FALL DIESER ART (test_bench,
+# test_konsole_wache, test_startweg, hier). Die Antwort ist nie eine
+# groessere Zahl: ein Fenster wird beim naechsten Kommentar wieder zu
+# klein. ast kennt die echten Grenzen.
+import ast as _ast                                        # noqa: E402
+
+
+def _methodenkoerper(quelle, name):
+    baum = _ast.parse(quelle)
+    zeilen = quelle.split("\n")
+    for knoten in _ast.walk(baum):
+        if isinstance(knoten, _ast.FunctionDef) and knoten.name == name:
+            return "\n".join(zeilen[knoten.lineno - 1:knoten.end_lineno])
+    return ""
+
+
+_auto = _methodenkoerper(_FE, "_rom_nachscan_pruefen")
+check("auch das automatische Nachlesen merkt sich den neuen Stand",
+      bool(_auto) and "self._romwacht.merken(" in _auto,
+      "sonst liest es bei jedem Blick erneut nach - dieselbe "
+      "Aenderung, endlos")
 
 # Gefragt wird NUR im Ruhemoment - also in demselben Block wie der
 # Speicher-Waechter.

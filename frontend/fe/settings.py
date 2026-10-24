@@ -2236,6 +2236,49 @@ def toggle_romwacht():
     return romwacht_an()
 
 
+# BUILD 296: und jetzt liest er auch von selbst nach.
+#
+# NUTZERWUNSCH: "kannst du bitte noch einrichten das wenn ich neue roms
+# drauf kopiere, sagt mir der rom waechter ja bescheid, das auch
+# automatisch aktualisiert wird? ist bloede es immer per hand erst
+# durchlaufen zu lassen fuer das jeweilige system wo was neu gekommen
+# ist!"
+#
+# BUILD 258 HAT DAS AUSDRUECKLICH NICHT GETAN, und die Begruendung
+# stand woertlich im Modulkopf: "Das dauert bei einer grossen Sammlung
+# Sekunden bis Minuten, und mitten im Scrollen waere es ein sichtbarer
+# Haenger. Es ist ausserdem eine Entscheidung des Nutzers und keine
+# des Programms."
+#
+# DER ERSTE TEIL DAVON WAR SCHON DAMALS ZU VORSICHTIG. Nachgelesen
+# wird NICHT die ganze Sammlung: scan_games() vergleicht seit Build 248
+# den Fingerabdruck je System und liest alles Unveraenderte aus dem
+# Zwischenspeicher. Es kostet also EIN System - genau das, was der
+# Nutzer heute von Hand anstoesst. Der Satz beschreibt den Preis eines
+# vollen Neuscans, und der ist hier nicht gemeint.
+#
+# DER ZWEITE TEIL BLEIBT RICHTIG, und deshalb gibt es diesen Schalter:
+# es ist seine Entscheidung. Vorgabe AN, weil er danach gefragt hat.
+#
+# "mitten im Scrollen" ist ebenfalls geregelt, siehe
+# _rom_nachscan_faellig() in frontend.py: nachgelesen wird nur bei
+# Ruhe, nur auf Seite 0, und erst wenn sich seit dem letzten Blick
+# NICHTS MEHR geaendert hat - sonst liest man mitten in einen
+# laufenden Kopiervorgang hinein.
+ROMWACHT_AUTO_AUS_FLAG = "/media/fat/frontend/romwacht_auto_aus"
+
+
+def romwacht_auto_an():
+    return not _hole(("romwacht_auto_aus", ROMWACHT_AUTO_AUS_FLAG),
+                     lambda: os.path.exists(ROMWACHT_AUTO_AUS_FLAG))
+
+
+@_nach_aenderung
+def toggle_romwacht_auto():
+    _flag_setzen(ROMWACHT_AUTO_AUS_FLAG, romwacht_auto_an())
+    return romwacht_auto_an()
+
+
 # BUILD 259: mehrteilige Spiele zu EINEM Eintrag zusammenfassen.
 #
 # "Final Fantasy VII (Disc 1/2/3)" sind drei Zeilen fuer ein Spiel. Bei

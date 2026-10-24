@@ -136,10 +136,11 @@ gerade geht.
 - `Mitwirkende`
 - `Auf Updates prüfen: AN -> ausschalten`
 
-### Wartung (11 Eintraege)
+### Wartung (12 Eintraege)
 
 - `MiSTer-OSD öffnen (Settings/Buttons)`
 - `ROM-Wächter: AN`
+- `ROM-Änderungen automatisch nachlesen: AN`
 - `Mehrteilige Spiele bündeln: AN`
 - `Spieleliste neu einlesen`
 - `Miniaturen-Zwischenspeicher leeren (CRT / HDMI)`
@@ -287,6 +288,7 @@ rm      /media/fat/frontend/<name>     # loeschen = ausschalten
 - `rechteck_flip_aus`
 - `rom_filter`
 - `romwacht_aus`
+- `romwacht_auto_aus`
 - `screen_mirror_enabled`
 - `setup_wizard_done`
 - `stream_enabled`

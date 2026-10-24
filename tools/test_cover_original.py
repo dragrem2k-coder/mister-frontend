@@ -189,7 +189,32 @@ else:
                 open(_weg, "wb").write(_inhalt)
                 A._art_index_cache.clear()
             # Und sie muessen sich auch lesen lassen.
+            #
+            # DAS JPEG NUR, WENN ES EINEN JPEG-LESER GIBT (Build 296).
+            # Zwanzig Zeilen weiter oben ueberspringt dieser Test schon
+            # die Schreiber-Pruefungen, wenn die Bibliothek fehlt
+            # ("kein JPEG-Schreiber vorhanden - uebersprungen") - die
+            # LESER-Seite tat das nicht und verlangte trotzdem, dass
+            # sich eine .jpg dekodieren laesst.
+            #
+            # Auf dem MiSTer und auf jedem Entwicklungsrechner mit
+            # libturbojpeg lief das durch, in einem frisch
+            # aufgesetzten Arbeitsstand ohne die Bibliothek nicht -
+            # und dann meldet der Test einen Fehler, den es im Code
+            # nicht gibt. Ein Test darf nicht pruefen, was er selbst
+            # nicht herstellen kann.
+            #
+            # ABGESCHWAECHT WIRD DAMIT NICHTS: wo die Bibliothek da
+            # ist, laeuft die Pruefung wie vorher. Das PNG wird
+            # weiterhin IMMER geprueft, denn dafuer hat das Frontend
+            # einen eigenen Dekoder (siehe decode_png in fe/art.py).
+            _jpeg_leser = (MB._bildlib is not None
+                           and MB._bildlib.verfuegbar())
             for rom in ("Spiel (USA)", "Zweites (USA)"):
+                if rom.endswith("Zweites (USA)") and not _jpeg_leser:
+                    print("       (kein JPEG-Leser vorhanden - "
+                          "%s uebersprungen)" % rom)
+                    continue
                 p = A._art_path_in(tmp, "SNES", rom)
                 bild = A.ArtCache().get(p, 300, 350)
                 check("%-16s laesst sich dekodieren" % rom,

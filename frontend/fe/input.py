@@ -661,6 +661,62 @@ def scan_devices():
 class InputManager:
     RESCAN_EVERY = 3.0            # Sekunden - fuer Hotplug neuer Pads
 
+    # BUILD 296: SOLANGE KEIN PAD DA IST, WIRD OEFTER NACHGESEHEN.
+    #
+    # NUTZERMELDUNG: "ausserdem ist mir aufgefallen das mein joypad
+    # 8bitdo manchmal erst Recht spaet nach einen Neustart oder
+    # Kaltstart reagiert oder lagt".
+    #
+    # DER GRUND STECKT IN DER ZAHL DARUEBER. Nach einem Kaltstart
+    # braucht ein Funk-Pad (Dongle anmelden, Verbindung aushandeln)
+    # laenger als unser Start - der ist seit Build 292 bei knapp zwei
+    # Sekunden. Taucht das Pad danach auf, sieht es erst der naechste
+    # Blick, und der kommt bis zu RESCAN_EVERY = 3 Sekunden spaeter.
+    # Genau das ist das gemeldete "erst recht spaet": man drueckt, und
+    # eine Weile passiert nichts.
+    #
+    # WARUM DAS BILLIG IST, und deshalb ohne Messung vertretbar: ein
+    # Blick ist EIN os.stat auf /dev/input. Das teure Teil
+    # (scan_devices() liest und zerlegt /proc/bus/input/devices) laeuft
+    # nur, wenn sich die mtime des Ordners geaendert hat - also genau
+    # dann, wenn wirklich ein Geraet dazugekommen oder weggefallen ist.
+    # Der kurze Takt kostet damit zwei zusaetzliche stat()-Aufrufe je
+    # Sekunde, und zwar NUR, solange kein Pad offen ist.
+    #
+    # UND ER ENDET VON SELBST: sobald ein Pad da ist, gilt wieder der
+    # normale Takt. Wer gar kein Pad benutzt (reine Tastatur), zahlt
+    # dauerhaft diese zwei stat()-Aufrufe - gemessen an einem
+    # Verzeichnisdurchlauf von 167 ms (Abschnitt H des Benchs) ist das
+    # nichts, und die Alternative waere eine Frist, nach der das
+    # Frontend aufhoert, nach dem Pad zu suchen. Die waere genau dann
+    # falsch, wenn jemand sein Pad nach einer Minute einschaltet.
+    RESCAN_OHNE_PAD = 0.4
+
+    def _rescan_takt(self):
+        """Wie lange bis zum naechsten Hotplug-Blick (Build 296).
+
+        Kurz, solange KEIN Pad offen ist - siehe RESCAN_OHNE_PAD.
+
+        getattr MIT VORGABE True, und die Richtung ist bewusst
+        gewaehlt: in Betrieb liegen hier ausschliesslich Device-Objekte,
+        die is_kbd immer haben. Ein Attrappen-Geraet aus einem Test hat
+        es moeglicherweise nicht - die erste Fassung dieser Funktion
+        hat tools/test_input_repeat.py mit einem AttributeError
+        abgeschossen, und zwar MITTEN IM EINGABEWEG. Ein Absturz dort
+        ist das Schlimmste, was diese Funktion anrichten kann; sie
+        entscheidet ja nur ueber eine Wartezeit.
+
+        Unbekannt gilt deshalb als "keine Tastatur-Ausnahme, also kein
+        Pad" - dann bleibt der kurze Takt. Das kostet im schlimmsten
+        Fall zwei stat()-Aufrufe je Sekunde zuviel und kann nie dazu
+        fuehren, dass ein Pad uebersehen wird. Die andere Richtung
+        (unbekannt = Pad) wuerde die Suche vorzeitig beenden, und
+        genau das soll hier nicht passieren."""
+        for d in self.devices.values():
+            if not getattr(d, "is_kbd", True):
+                return self.RESCAN_EVERY
+        return self.RESCAN_OHNE_PAD
+
     def __init__(self):
         self.devices = {}
         self.want_grab = False
@@ -1170,10 +1226,10 @@ class InputManager:
             if deadline is not None and now >= deadline and not erste_runde:
                 return None
             erste_runde = False
-            if now - self.last_scan > self.RESCAN_EVERY:
+            if now - self.last_scan > self._rescan_takt():
                 self.rescan()
             due = self.held is not None and now >= self.held[2]
-            wait = 0.0 if due else self.RESCAN_EVERY
+            wait = 0.0 if due else self._rescan_takt()
             if not due:
                 if deadline is not None:
                     wait = min(wait, max(0.0, deadline - now))
@@ -1382,9 +1438,9 @@ class InputManager:
         deadline = None if timeout is None else time.monotonic() + timeout
         while True:
             now = time.monotonic()
-            if now - self.last_scan > self.RESCAN_EVERY:
+            if now - self.last_scan > self._rescan_takt():
                 self.rescan()
-            wait = self.RESCAN_EVERY
+            wait = self._rescan_takt()
             if deadline is not None:
                 wait = min(wait, max(0.0, deadline - now))
             fds = {d.fd: d for d in self.devices.values()}
@@ -1610,7 +1666,7 @@ class InputManager:
         try:
             while True:
                 now = time.monotonic()
-                if now - self.last_scan > self.RESCAN_EVERY:
+                if now - self.last_scan > self._rescan_takt():
                     self.rescan()
                     down = {k for k in down if k[0] in self.devices}
                 if now - last_core_check > 0.7:

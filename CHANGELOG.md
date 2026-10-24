@@ -13,6 +13,28 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Neu: neu kopierte ROMs werden von selbst nachgelesen.** Der
+  ROM-Wächter hat bisher nur Bescheid gesagt — nachlesen musste man im
+  Systemmenü selbst. Jetzt macht er es automatisch, und zwar nur dann,
+  wenn es gefahrlos ist: **erst wenn sich nichts mehr ändert** (wer
+  über das Netz kopiert, verändert den Ordner ja noch — sonst würde in
+  einen halb fertigen Ordner gelesen), bei ruhiger Eingabe, nur auf der
+  Hauptseite, und **ohne die Position zu verlieren**. Gelesen wird nur
+  das geänderte System, nicht die ganze Sammlung. Abschaltbar im
+  Systemmenü direkt unter dem Wächter (Build 296).
+- **Das Pad wird nach einem Kaltstart schneller gefunden.** Ein
+  Funk-Pad braucht länger zum Anmelden als das Frontend zum Starten;
+  tauchte es danach auf, sah es erst der nächste Blick — bis zu drei
+  Sekunden später. Solange noch **kein** Pad da ist, wird jetzt alle
+  0,4 s nachgesehen; sobald eines da ist, wieder im normalen Takt. Der
+  Blick selbst ist ein einzelner Dateisystem-Aufruf (Build 296).
+- **Behoben: eine Prüfung im Prüfstand war seit Build 275 rot.** Sie
+  verbot pauschal jeden Aufruf mit „konsole_" nach dem Beenden-Signal
+  und traf damit ab Build 281 auch das Zurückschalten der Konsole —
+  also genau das, was seit Build 288 dafür sorgt, dass MiSTer aus
+  seinem OSD wieder Scripts startet. Verboten sind jetzt die
+  *schreibenden* Aufrufe, einzeln benannt (Build 296).
+
 - **Behoben: in den ersten Sekunden nach dem Start hakte die
   Pad-Eingabe.** Die Vorarbeit, die das Frontend im Stillstand macht
   (Bilderordner einlesen), hat seit Build 294 drei Verzeichnisse auf

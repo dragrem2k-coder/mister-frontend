@@ -1269,10 +1269,48 @@ Meldung, und im Systemmenü unter *Wartung* steht dann **„Nur das
 Geänderte nachlesen (SNES)"** — derselbe Punkt, den auch der
 Speicher-Wächter benutzt.
 
-**Es wird nichts von selbst nachgelesen.** Das dauert bei einer großen
-Sammlung Sekunden bis Minuten, und mitten im Scrollen wäre es ein
-sichtbarer Hänger. Es ist außerdem deine Entscheidung und nicht die des
-Programms — dieselbe Linie wie beim Speicher-Wächter.
+**Und seit Build 296 liest es auch von selbst nach.** Bis dahin musstest
+du den Menüpunkt selbst anstoßen. Der Grund dafür steht unten unter
+„Warum es früher nicht automatisch ging"; er war zur Hälfte zu
+vorsichtig.
+
+Nachgelesen wird nur, wenn es gefahrlos ist — vier Bedingungen, jede
+mit eigenem Grund:
+
+1. **Erst wenn sich nichts mehr ändert.** Das ist die wichtigste und
+   nicht die naheliegende: wer über WinSCP oder das Netz kopiert,
+   verändert den Ordner *während* des Kopierens immer weiter. Sofort
+   nachzulesen hieße, in einen halb fertigen Ordner zu lesen. Erst
+   wenn ein ganzer Wächterblick (20 s) keine weitere Änderung mehr
+   sieht, beginnt die Frist.
+2. **Nur bei ruhiger Eingabe.** Hältst du eine Taste oder scrollst,
+   passiert nichts.
+3. **Nur auf der Hauptseite.** Stehst du in einer Kategorie,
+   womöglich tief in Ordnern, wird es nachgeholt, sobald du wieder
+   oben bist.
+4. **Ohne deine Position zu verlieren.** Der Menüpunkt springt bewusst
+   an den Anfang zurück — das automatische Nachlesen merkt sich die
+   ausgewählte Kategorie und findet sie wieder.
+
+**Abschaltbar** im Systemmenü unter *Wartung* direkt unter dem
+Wächter: **„ROM-Änderungen automatisch nachlesen: AN/AUS"**. Der Punkt
+erscheint nur, wenn der Wächter selbst an ist.
+
+### Warum es früher nicht automatisch ging
+
+Im Quelltext stand dazu: *„Das dauert bei einer großen Sammlung
+Sekunden bis Minuten, und mitten im Scrollen wäre es ein sichtbarer
+Hänger. Es ist außerdem eine Entscheidung des Nutzers und keine des
+Programms."*
+
+Der erste Teil war zu vorsichtig: nachgelesen wird **nicht** die ganze
+Sammlung. Seit Build 248 vergleicht das Einlesen den Fingerabdruck je
+System und holt alles Unveränderte aus dem Zwischenspeicher — es kostet
+also genau das eine geänderte System, dasselbe wie der Menüpunkt. Die
+„Sekunden bis Minuten" beschreiben einen vollen Neuscan, und der ist
+hier nicht gemeint.
+
+Der zweite Teil bleibt richtig — deshalb der Schalter.
 
 **Was erkannt wird und was nicht.** Der Wächter sieht
 
@@ -2578,6 +2616,7 @@ umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
 | Scrollgeschwindigkeit (0,5x bis 2x) | `scroll_tempo` |
 | Tastenlegende: AN/AUS | `tastenlegende` |
 | ROM-Wächter: AN/AUS | `romwacht` |
+| ROM-Änderungen automatisch nachlesen: AN/AUS | `romwacht_auto` |
 | Mehrteilige Spiele bündeln: AN/AUS | `multidisc` |
 | Ordner: zuerst / hinter den Spielen | `ordner_zuerst` |
 | Favoriten zuerst: AN/AUS | `favoriten_zuerst` |

@@ -232,6 +232,17 @@ class _FakeDev(object):
         self.path = pfad
         self.axis = {}
         self.axis_state = {}
+        # Build 296: eine Attrappe soll aussehen wie das Echte. Dieses
+        # Feld fehlte, und _rescan_takt() (Build 296) hat die Attrappe
+        # damit mit einem AttributeError abgeschossen - mitten im
+        # Eingabeweg. Die Funktion faengt das jetzt zwar ab, aber ein
+        # unvollstaendiges Nachbau-Objekt bleibt eine Falle fuer die
+        # naechste Erweiterung: dort stand der Fehler des Codes, hier
+        # steht der Fehler des Tests.
+        #
+        # False, nicht True: dieses Geraet SPIELT ein Pad, deshalb
+        # liegen im Test Tastenereignisse darin.
+        self.is_kbd = False
 
 
 def _bau_mit_stroem(anzahl):

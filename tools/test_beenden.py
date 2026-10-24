@@ -159,10 +159,44 @@ if None not in (p_clear, p_fbclose, p_f12, p_konsole, p_schonung, p_blink):
     danach = code[p_f12:]
     check("nach dem F12 wird nicht mehr gezeichnet",
           "fb.clear" not in danach and "fb.flip" not in danach)
+    # PRAEZISIERT (Build 296) - und dieser Test war im Repo seit
+    # Build 275 ROT, ohne dass es jemandem aufgefallen ist.
+    #
+    # Hier stand ein pauschales Verbot der Zeichenkette "konsole_".
+    # Das traf ab Build 281/282 auch self._konsole_zuletzt_zurueck(),
+    # und das ist kein Schreiben, sondern das ZURUECKSCHALTEN der
+    # Konsole - genau das, was Build 288 gebaut hat, damit MiSTer von
+    # seinem OSD aus wieder Scripts starten kann. Es MUSS nach dem F12
+    # stehen.
+    #
+    # Die Regel aus Build 165/166 lautet "was nach dem F12 noch
+    # SCHREIBT, holt MiSTer die Anzeige wieder weg". Verboten sind
+    # also die schreibenden Aufrufe, und die werden jetzt einzeln
+    # genannt. Ein Verbot per Teilzeichenkette trifft irgendwann etwas
+    # Erlaubtes, das denselben Namensanfang hat - und dann ist der
+    # Test rot, obwohl der Code richtig ist.
+    #
+    # WARUM ES SO LANGE ROT WAR: diese Datei wurde zuletzt mit
+    # Build 275 ausgeliefert. Ich hatte sie zwischendurch im
+    # Arbeitsstand bereits korrigiert, aber in keinem Paket
+    # mitgeschickt - also hat die Korrektur das Repo nie erreicht.
+    # Ein geaenderter Test gehoert ins ZIP, genauso wie geaenderter
+    # Code.
+    _schreibend = ("tty1_schreiben", "konsole_cursor_aus",
+                   "konsole_ruhig_stellen", "konsole_schonung_setzen",
+                   "set_cursor_blink", "textkonsole_grafik_aus")
+    _gefunden = [w for w in _schreibend if w in danach]
     check("nach dem F12 wird nicht mehr auf die Konsole geschrieben",
-          "tty1_schreiben" not in danach
-          and "konsole_" not in danach
-          and "set_cursor_blink" not in danach)
+          not _gefunden, ", ".join(_gefunden) or "keiner der "
+          "schreibenden Aufrufe")
+    # Und die Gegenprobe zur Praezisierung: das Zurueckschalten MUSS
+    # dort stehen. Ohne diese Zeile waere das neue Verbot eine
+    # Abschwaechung statt einer Praezisierung.
+    check("das Zurueckschalten der Konsole steht dagegen SEHR WOHL "
+          "nach dem F12",
+          "_konsole_zuletzt_zurueck" in danach,
+          "Build 288 - sonst startet MiSTer aus seinem OSD keine "
+          "Scripts mehr")
 
 print()
 print("Test 2: was Build 162/163 gebracht hat, bleibt")

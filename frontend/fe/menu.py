@@ -33,6 +33,7 @@ from fe.settings import (
     ordner_zahlen_an,
     tastenlegende_an,
     romwacht_an,
+    romwacht_auto_an,
     multidisc_buendeln,
     screen_mirror_enabled, stream_overlay_enabled,
     fast_scroll_enabled, cover_sofort_enabled, arbeitskopien_enabled,
@@ -189,6 +190,12 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
                         else "sys_multidisc_aus")
     romwacht_label = t("sys_romwacht_an" if romwacht_an()
                        else "sys_romwacht_aus")
+    # Build 296: das automatische Nachlesen. Eigener Schalter DIREKT
+    # unter dem Waechter - er ist dessen Folge, nicht sein Ersatz, und
+    # wer den Waechter abschaltet, braucht diesen Punkt gar nicht
+    # (siehe unten: er erscheint nur, wenn der Waechter an ist).
+    romwacht_auto_label = t("sys_romwacht_auto_an" if romwacht_auto_an()
+                            else "sys_romwacht_auto_aus")
     legende_label = t("sys_tastenlegende_an" if tastenlegende_an()
                       else "sys_tastenlegende_aus")
     try:
@@ -580,6 +587,13 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             # nicht bei den Anzeige-Punkten - es geht um das
             # Einlesen der Spieleliste, nicht um das Aussehen.
             (romwacht_label, "romwacht", None),
+            # NUR WENN DER WAECHTER AN IST: ein Schalter fuer das
+            # Nachlesen von Aenderungen, die niemand sucht, waere ein
+            # Menuepunkt ohne Wirkung - und ein Menuepunkt, der nichts
+            # tut, ist in diesem Projekt schon einmal als Fehler
+            # gemeldet worden (Build 284).
+            *([(romwacht_auto_label, "romwacht_auto", None)]
+              if romwacht_an() else []),
             (multidisc_label, "multidisc", None),
             *_nachscan_eintraege,
             (t("sys_rescan"), "rescan", None),

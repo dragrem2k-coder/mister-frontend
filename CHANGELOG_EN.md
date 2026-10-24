@@ -13,6 +13,27 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **New: newly copied ROMs are re-read automatically.** The ROM watcher
+  used to only tell you — re-reading was a manual step in the system
+  menu. It now does it by itself, and only when that is safe: **only
+  once nothing is changing any more** (copying over the network keeps
+  changing the folder — otherwise a half-finished folder would be
+  read), with input quiet, only on the main page, and **without losing
+  your position**. Only the changed system is read, not the whole
+  collection. Can be switched off in the system menu right below the
+  watcher (build 296).
+- **The pad is found faster after a cold start.** A wireless pad takes
+  longer to pair than the frontend takes to start; if it appeared
+  afterwards, only the next look saw it — up to three seconds later.
+  While **no** pad is present, the frontend now looks every 0.4 s; once
+  one is there, the normal interval applies again. The look itself is a
+  single filesystem call (build 296).
+- **Fixed: one check in the test suite had been red since build 275.**
+  It banned any call containing "konsole_" after the exit signal, which
+  from build 281 on also hit switching the console back — exactly what
+  has made MiSTer start scripts from its OSD again since build 288. The
+  ban now names the *writing* calls individually (build 296).
+
 - **Fixed: pad input stuttered during the first seconds after start.**
   The preparatory work the frontend does while idle (reading picture
   folders) had been reading three directories at once instead of one

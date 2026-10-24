@@ -60,6 +60,32 @@ import _harness as H                                     # noqa: E402
 
 sys.path.insert(0, os.path.join(_REPO, "frontend"))
 import fe.art as A                                       # noqa: E402
+import fe.bildlib as BL                                  # noqa: E402
+
+# OHNE JPEG-SCHREIBER IST HIER NICHTS ZU PRUEFEN (Build 296).
+#
+# Dieser Test dreht sich vollstaendig um den JPEG-Weg der Miniaturen.
+# Fehlt libturbojpeg, schreibt _thumb_cache_put() das eigene
+# ART-Format - richtig so, das ist der vorgesehene Rueckfall -, und
+# alle neun Pruefungen hier melden einen Fehler, den es im Code nicht
+# gibt.
+#
+# AUFGEFALLEN IST DAS IN BUILD 296, als der Arbeitsstand neu
+# aufgesetzt werden musste: auf dem MiSTer und auf jedem
+# Entwicklungsrechner mit der Bibliothek lief der Test durch, in einem
+# frischen Container ohne sie nicht.
+#
+# EIN TEST DARF NICHT PRUEFEN, WAS ER SELBST NICHT HERSTELLEN KANN.
+# Abgeschwaecht wird dadurch nichts: wo die Bibliothek da ist, laeuft
+# alles wie vorher. Und dass es den Rueckfall gibt, prueft
+# tools/test_cover_original.py an seiner eigenen Stelle.
+if not BL.schreiben_verfuegbar():
+    print("Miniaturen als JPEG (Build 129)")
+    print()
+    print("  -- UEBERSPRUNGEN: kein JPEG-Schreiber vorhanden")
+    print("     (libturbojpeg fehlt in dieser Umgebung; auf dem")
+    print("      MiSTer ist sie da, dort laeuft der Test vollstaendig)")
+    sys.exit(0)
 
 fails = []
 

@@ -711,6 +711,25 @@ TRANSLATIONS = {
                         "de": "ROM-W\u00e4chter: AN"},
     "sys_romwacht_aus": {"en": "Watch for ROM changes: OFF",
                          "de": "ROM-W\u00e4chter: AUS"},
+    # BUILD 296: das automatische Nachlesen.
+    #
+    # ZWEI FASSUNGEN DER MELDUNG, und das ist kein Schmuck: die alte
+    # sagt "System -> nur Geaendertes nachlesen", also was der Nutzer
+    # TUN soll. Ist das Nachlesen automatisch, waere dieselbe Zeile
+    # eine Anweisung zu etwas, das von selbst passiert - und der
+    # Nutzer wuerde es zusaetzlich von Hand anstossen.
+    "rom_geaendert_auto": {
+        "en": "ROMs changed (%s) - reading what changed in a moment",
+        "de": "ROMs ge\u00e4ndert (%s) - wird gleich nachgelesen"},
+    "rom_nachgelesen": {
+        "en": "ROMs re-read (%s)",
+        "de": "ROMs nachgelesen (%s)"},
+    "sys_romwacht_auto_an": {
+        "en": "Re-read ROM changes automatically: ON",
+        "de": "ROM-\u00c4nderungen automatisch nachlesen: AN"},
+    "sys_romwacht_auto_aus": {
+        "en": "Re-read ROM changes automatically: OFF",
+        "de": "ROM-\u00c4nderungen automatisch nachlesen: AUS"},
     # Build 257: die Tastenlegende unten rechts.
     "legende_a": {"en": "A", "de": "A"},
     "legende_b": {"en": "B", "de": "B"},

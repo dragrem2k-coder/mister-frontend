@@ -6433,3 +6433,132 @@ die Messwerte, und zwar so, dass sie sich bei der naechsten Bildart von
 selbst mitrechnen. Eine Zahl im Test, die man bei jeder Erweiterung
 hochsetzen muss, ist eine Zahl, die irgendwann einfach hochgesetzt wird,
 ohne dass jemand prueft, ob die Zusage noch gilt.
+
+---
+
+## Nachtrag Build 296: ein Nicht-Verhalten mit halb gueltigem Grund
+
+Nutzerwunsch: *"kannst du bitte noch einrichten das wenn ich neue roms
+drauf kopiere, sagt mir der rom waechter ja bescheid, das auch
+automatisch aktualisiert wird? ist bloede es immer per hand erst
+durchlaufen zu lassen fuer das jeweilige system wo was neu gekommen
+ist!"*
+
+Build 258 hat das **ausdruecklich nicht** getan, und der Grund stand
+woertlich im Modulkopf von `fe/romwacht.py`:
+
+> Das dauert bei einer grossen Sammlung Sekunden bis Minuten, und
+> mitten im Scrollen waere es ein sichtbarer Haenger. Es ist ausserdem
+> eine Entscheidung des Nutzers und keine des Programms.
+
+**Das ist die Sorte Satz, bei der man nachrechnen muss, statt ihn zu
+glauben oder zu verwerfen.** Er besteht aus drei Behauptungen, und sie
+haben nicht denselben Wert:
+
+1. *"Sekunden bis Minuten"* - **war zu vorsichtig, nachweisbar.**
+   `scan_games()` vergleicht seit Build 248 den Fingerabdruck JE SYSTEM
+   und liest alles Unveraenderte aus dem Zwischenspeicher. Nachgelesen
+   wird das eine geaenderte System, also genau das, was der Nutzer
+   heute von Hand anstoesst. Der Satz beschreibt den Preis eines
+   VOLLEN Neuscans - und der ist hier nicht gemeint. Build 258 hat
+   seine eigene Verbesserung aus Build 248 gegen sich selbst zitiert.
+2. *"mitten im Scrollen ein sichtbarer Haenger"* - **bleibt richtig,
+   ist aber eine Bedingung und kein Verbot.** Genau dafuer gibt es die
+   vier Bedingungen unten.
+3. *"eine Entscheidung des Nutzers"* - **bleibt richtig.** Deshalb ein
+   Schalter, Vorgabe AN, weil er danach gefragt hat.
+
+**Lehre: ein dokumentiertes Nicht-Verhalten ist kein Gesetz, aber auch
+kein Versehen.** Es lohnt, die Begruendung in ihre Teile zu zerlegen -
+hier war einer messbar ueberholt, zwei galten weiter, und daraus ergab
+sich das Design von selbst.
+
+### Die wichtigste Bedingung ist nicht die naheliegende
+
+Naheliegend waere "nicht beim Scrollen". Das Entscheidende ist aber ein
+anderes: **wer ueber WinSCP oder das Netz kopiert, veraendert den
+Ordner WAEHREND des Kopierens immer weiter.** Sofort nachzulesen hiesse,
+in einen halb fertigen Ordner zu lesen - und es gleich wieder tun zu
+muessen.
+
+Der Waechter setzt deshalb erst dann eine Frist, wenn ein ganzer Blick
+(ROMWACHT_TAKT = 20 s) **keine weitere Aenderung** mehr gesehen hat.
+Praktisch: ~20-25 s nach der letzten Datei steht die Liste.
+
+Die anderen drei: ruhige Eingabe, nur Seite 0, und
+`_rebuild_categories_preserving_selection()` statt der Menueaktion -
+die setzt `cat_i`/`item_i`/`page`/`nav_path` auf null, was beim
+bewussten Ausloesen richtig und bei einem automatischen Vorgang ein
+Sprung aus dem Nichts waere. Dieselbe Ruecksicht wie beim RA-Neuaufbau
+in Build 274.
+
+Der Aufruf steht in der **Hausarbeit-Liste**, nicht im
+Ruhemoment-Zweig: `_hausarbeit_jetzt()` laesst die Liste aus, solange
+eine Taste GEHALTEN wird (Build 273/276), und das ist genau die
+Zusage, die ein Neuaufbau braucht.
+
+### Zwei Fassungen der Meldung
+
+Die alte lautet "ROMs geaendert (SNES) - System -> nur Geaendertes
+nachlesen", sagt also, was der Nutzer TUN soll. Bei automatischem
+Nachlesen waere dieselbe Zeile eine Anweisung zu etwas, das von selbst
+passiert - und er wuerde es zusaetzlich von Hand anstossen. Also haengt
+der Text am Schalter.
+
+### Das Pad: die Zahl stand schon da
+
+Nutzermeldung: *"ausserdem ist mir aufgefallen das mein joypad 8bitdo
+manchmal erst Recht spaet nach einen Neustart oder Kaltstart reagiert
+oder lagt"*.
+
+`RESCAN_EVERY = 3.0` - so lange dauert es hoechstens, bis ein neu
+aufgetauchtes Geraet gesehen wird. Ein Funk-Pad braucht zum Anmelden
+laenger als unser Start (seit Build 292 knapp zwei Sekunden), taucht
+also DANACH auf, und dann wartet man bis zu drei Sekunden.
+
+**Warum der kurze Takt billig ist:** ein Blick ist EIN `os.stat` auf
+`/dev/input`. Das teure Teil (`scan_devices()` liest und zerlegt
+`/proc/bus/input/devices`) laeuft nur, wenn sich die mtime des Ordners
+geaendert hat - also genau dann, wenn wirklich ein Geraet dazukam.
+`RESCAN_OHNE_PAD = 0.4` kostet damit zwei zusaetzliche stat()-Aufrufe
+je Sekunde, und zwar nur, solange kein Pad offen ist. Danach greift
+wieder der normale Takt; der kurze endet von selbst.
+
+Eine FRIST ("nach 30 s aufhoeren zu suchen") waere die naheliegende
+Sparmassnahme und genau dann falsch, wenn jemand sein Pad nach einer
+Minute einschaltet. Wer gar kein Pad benutzt, zahlt dauerhaft zwei
+stat()-Aufrufe je Sekunde - gemessen an einem Verzeichnisdurchlauf von
+167 ms ist das nichts.
+
+### Und ein Fund, der nichts mit dem Wunsch zu tun hatte
+
+Beim ersten Suite-Lauf in diesem Arbeitsstand war `test_beenden.py`
+rot - **und zwar auch ohne meine Aenderungen.** Die Gegenprobe gegen
+den unveraenderten Klon hat das bestaetigt.
+
+Die Prueffung verbot pauschal die Zeichenkette `konsole_` nach dem
+F12 ("was nach dem F12 noch schreibt, holt MiSTer die Anzeige wieder
+weg", Build 165/166). Ab Build 281/282 steht dort aber
+`self._konsole_zuletzt_zurueck()` - und das ist kein Schreiben, sondern
+das ZURUECKSCHALTEN der Konsole, also genau das, was seit Build 288
+dafuer sorgt, dass MiSTer aus seinem OSD wieder Scripts startet. Es
+MUSS dort stehen.
+
+**Ein Verbot per Teilzeichenkette trifft irgendwann etwas Erlaubtes mit
+demselben Namensanfang.** Verboten sind jetzt die schreibenden Aufrufe,
+einzeln genannt - und daneben steht die Gegenprobe, dass das
+Zurueckschalten dort SEHR WOHL vorkommen muss. Ohne die waere die
+Praezisierung eine Abschwaechung.
+
+**Der eigentliche Befund ist aber ein anderer, und er betrifft die
+Auslieferung:** `tools/test_beenden.py` wurde zuletzt mit **Build 275**
+ausgeliefert. Ich hatte die Datei zwischendurch im Arbeitsstand
+korrigiert, sie aber in keinem Paket mitgeschickt - also hat die
+Korrektur das Repo nie erreicht, und die Suite war dort rund fuenfzehn
+Builds lang rot, ohne dass es auffiel. Mein Arbeitsstand war gruen, das
+Repo nicht.
+
+**Ein geaenderter Test gehoert ins ZIP, genauso wie geaenderter Code.**
+Und wenn der Arbeitsstand verloren geht (dieser hier wurde neu
+aufgesetzt und musste aus dem Repo geklont werden), ist das Repo die
+einzige Wahrheit - dann faellt so etwas auf, aber erst dann.
