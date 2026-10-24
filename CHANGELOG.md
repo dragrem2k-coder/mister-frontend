@@ -13,6 +13,25 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Behoben: schnell hoch und dann schnell runter scrollen hakte und
+  zog nach.** Die Wiederholrate ist an die gemessene Zeichendauer
+  gekoppelt — nur teilten **hoch und runter sich einen Messwert**,
+  obwohl sie systematisch unterschiedlich teuer sind: hoch geht in
+  schon Gesehenes (Cover warm, ~69 ms), runter in neues Gebiet (Cover
+  kalt, ~284 ms). Nach schnellem Hochscrollen fragte das Frontend
+  weiter alle ~80 ms, während ein Schritt nach unten wirklich 284 ms
+  brauchte — rund viermal mehr Aufträge als lieferbar, die sich
+  stauten. Jetzt wird **je Richtung getrennt gemessen** (Build 297).
+- **Und eine Verlangsamung wird schneller bemerkt.** Der gleitende
+  Mittelwert brauchte acht Schritte, um zu merken, dass es teurer
+  geworden ist — genau diese acht Schritte waren die Überlastung. Wird
+  es langsamer, zählt der neue Wert jetzt vierfach stärker; wird es
+  schneller, bleibt es gemächlich wie bisher. Begründung: zu langsam
+  zu fragen merkt niemand, zu schnell zu fragen war der Fehler. Ein
+  einzelner Ausreißer nagelt den Takt trotzdem nicht fest — er bewegt
+  ihn um die halbe Strecke und wird von den nächsten Schritten wieder
+  eingesammelt (Build 297).
+
 - **Neu: neu kopierte ROMs werden von selbst nachgelesen.** Der
   ROM-Wächter hat bisher nur Bescheid gesagt — nachlesen musste man im
   Systemmenü selbst. Jetzt macht er es automatisch, und zwar nur dann,

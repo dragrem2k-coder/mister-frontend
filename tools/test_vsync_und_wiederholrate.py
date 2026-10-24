@@ -191,7 +191,11 @@ print("Test 10: Notbremse nach oben")
 # Eine einzelne sehr langsame Phase darf die Bedienung nicht auf
 # Kriechtempo festnageln.
 im = I.InputManager.__new__(I.InputManager)
-im._zeichenzeit = {"y": 5.0}       # absurd, von Hand gesetzt
+# GEAENDERT IN BUILD 297: geschluesselt wird mit der AKTION, nicht
+# mehr mit der Achse - "up" und "down" hatten sich einen Messwert
+# geteilt, obwohl sie um Faktor 4 verschieden teuer sind (siehe
+# zeichenzeit_melden()). Hier stand {"y": 5.0}.
+im._zeichenzeit = {"down": 5.0}    # absurd, von Hand gesetzt
 check("Boden gedeckelt auf REPEAT_FLOOR_MAX",
       abs(im._repeat_floor("down") - I.REPEAT_FLOOR_MAX) < 1e-9)
 
@@ -220,9 +224,80 @@ for _ in range(40):
 vorher = im._repeat_floor("down")
 im.zeichenzeit_melden("down", 0.300)       # ein einzelner Ausreisser
 nachher = im._repeat_floor("down")
-check("ein Ausreisser aendert den Boden um weniger als 50 %",
-      nachher < vorher * 1.5,
-      "(%.0f ms -> %.0f ms)" % (vorher * 1000, nachher * 1000))
+# NEU GEFASST IN BUILD 297, und das ist eine echte Verhaltensaenderung
+# mit Grund - keine Abschwaechung, aber auch kein Gratis-Gewinn.
+#
+# HIER STAND: "ein Ausreisser aendert den Boden um weniger als 50 %"
+# (nachher < vorher * 1.5). Die Sorge dahinter ist richtig und war der
+# Grund fuer das traege Fenster: ein einzelnes langsam geladenes Cover
+# darf die Wiederholrate nicht festnageln.
+#
+# NUR WAR DIESELBE TRAEGHEIT AUCH DIE URSACHE DES FEHLERS, den der
+# Nutzer gemeldet hat: eine ANHALTENDE Verlangsamung (rauf 69 ms ->
+# runter 284 ms) brauchte acht Schritte, bis der Boden sie bemerkte -
+# acht Schritte, in denen viermal mehr angefordert wurde als lieferbar.
+# "hackt oder reagiert nicht und zieht dann nach".
+#
+# Build 297 reagiert auf Verlangsamung deshalb mit Fenster 2 statt 8
+# (siehe REPEAT_MESS_FENSTER_HOCH). Damit bewegt EIN Ausreisser den
+# Boden um die halbe Strecke statt um ein Achtel - die alte Grenze von
+# 50 % ist nicht mehr zu halten.
+#
+# DIE ZUSAGE WIRD DESHALB NEU FORMULIERT, in zwei Teilen, und
+# zusammen sind sie strenger als vorher: der Ausreisser darf den Boden
+# NICHT auf seinen eigenen Wert ziehen, UND er muss nach wenigen
+# billigen Schritten wieder eingesammelt sein. Das Zweite hat die alte
+# Fassung ueberhaupt nicht geprueft - sie war in BEIDE Richtungen
+# traege, ein Ausreisser wirkte also lange nach.
+check("ein Ausreisser zieht den Boden NICHT auf seinen eigenen Wert",
+      nachher < 0.300 * I.REPEAT_MESS_RESERVE * 0.75,
+      "(%.0f ms -> %.0f ms; der Ausreisser selbst waere %.0f ms)"
+      % (vorher * 1000, nachher * 1000,
+         0.300 * I.REPEAT_MESS_RESERVE * 1000))
+# UND DIE ERHOLUNG, und zwar als STRUKTUR statt als Einzelwert
+# gemessen: jeder billige Schritt muss den Boden senken. Das ist die
+# Zusage, die wirklich zaehlt - sie schliesst eine Ratsche aus, bei der
+# ein Ausreisser dauerhaft nachwirkt. Eine einzelne Zahl ("nach vier
+# Schritten unter X") haette ich hier beim ersten Versuch zu streng
+# angesetzt (gemessen sind es 178 -> 109 ms nach vier Schritten, nicht
+# 80), und dann prueft der Test meine Schaetzung statt der Mechanik.
+_lauf = [im._repeat_floor("down")]
+for _ in range(8):
+    im.zeichenzeit_melden("down", 0.010)
+    _lauf.append(im._repeat_floor("down"))
+check("jeder billige Schritt senkt den Boden wieder",
+      all(b < a for a, b in zip(_lauf, _lauf[1:])),
+      " -> ".join("%.0f" % (b * 1000) for b in _lauf) + " ms")
+check("nach acht billigen Schritten wieder in der Naehe von vorher",
+      _lauf[-1] < vorher * 2.0,
+      "(%.0f ms, vorher waren es %.0f ms)"
+      % (_lauf[-1] * 1000, vorher * 1000))
+
+print("Test 12b: eine ANHALTENDE Verlangsamung wird schnell erfasst")
+# DAS IST DER FEHLER AUS BUILD 297, und er ist die Gegenseite von
+# Test 12: was ein Ausreisser nicht duerfen soll, muss ein echter
+# Trend sofort koennen.
+#
+# Seine Zahlen, aus dem LATENZ-Protokoll: rauf 69 ms, runter 284 ms.
+im = I.InputManager.__new__(I.InputManager)
+im._zeichenzeit = {}
+for _ in range(12):
+    im.zeichenzeit_melden("up", 0.069)
+check("nach schnellem Hochscrollen ist der Boden niedrig",
+      im._repeat_floor("up") < 0.090,
+      "%.0f ms" % (im._repeat_floor("up") * 1000))
+# ERSTER Schritt nach unten: noch kein eigener Messwert, also die
+# Schaetzung ueber den Achsenpartner - genau einmal zu optimistisch.
+im.zeichenzeit_melden("down", 0.284)
+_noetig = 0.284 * I.REPEAT_MESS_RESERVE
+check("nach EINEM Schritt nach unten stimmt der Boden",
+      im._repeat_floor("down") >= _noetig * 0.95,
+      "%.0f ms (noetig %.0f ms) - vorher brauchte das acht Schritte"
+      % (im._repeat_floor("down") * 1000, _noetig * 1000))
+check("und hoch bleibt unberuehrt schnell",
+      im._repeat_floor("up") < 0.090,
+      "%.0f ms - getrennte Messung je Richtung ist der Kern von "
+      "Build 297" % (im._repeat_floor("up") * 1000))
 
 print("Test 13: das Frontend meldet die Zeit auch wirklich")
 # Ohne diesen Aufruf waere die ganze Mechanik totes Holz. Geprueft am

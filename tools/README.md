@@ -6562,3 +6562,102 @@ Repo nicht.
 Und wenn der Arbeitsstand verloren geht (dieser hier wurde neu
 aufgesetzt und musste aus dem Repo geklont werden), ist das Repo die
 einzige Wahrheit - dann faellt so etwas auf, aber erst dann.
+
+---
+
+## Nachtrag Build 297: eine Zahl fuer zwei verschieden teure Richtungen
+
+Nutzerfrage: *"woran liegt das wenn ich in denn menues schnell nach
+oben druecke mehrmals hintereinander und dann wieder nach unten druecke
+mehrmals hintereinander das die eingabe dann manchmal hackt oder nicht
+reagiert und dann nachzieht?"*
+
+**Die Antwort stand in seinem eigenen Protokoll von vor zwei Builds**,
+und sie war die ganze Zeit zu sehen:
+
+```
+up/S1   19x Mittel  69 ms
+down/S1 18x Mittel 284 ms   (max 2359)
+```
+
+Faktor 4, und kein Zufall: **rauf** geht in schon Gesehenes (Cover
+warm), **runter** in neues Gebiet (Cover kalt). Der Bench nennt
+dieselben Zahlen - `Spieleliste liste` 66 ms warm, 201 ms kalt.
+
+Die Wiederholrate ist seit Build 93 an die gemessene Zeichendauer
+gekoppelt. Nur stand in `_repeat_floor()`:
+
+```python
+gemessen = self._zeichenzeit.get(REPEAT_AXIS.get(act))
+REPEAT_AXIS = {"up": "y", "down": "y", ...}
+```
+
+**Hoch und runter teilten sich einen Messwert.** Nach schnellem
+Hochscrollen stand der Boden bei 69 x 1,15 = rund 80 ms; ein Schritt
+nach unten kostet aber 284 ms. Das Frontend forderte also viermal mehr
+an, als es zeichnen kann - und weil Build 276 eine FAELLIGE
+Wiederholung ausdruecklich durchlaesst, auch wenn frische Ereignisse
+warten, wurden alle abgearbeitet. Genau das gemeldete "hackt, reagiert
+nicht, zieht nach".
+
+**Dass seine Beschreibung genau EINE Richtungsfolge nennt, war der
+entscheidende Hinweis.** Andersherum - erst runter, dann rauf - faellt
+es nicht auf: dann steht der Boden hoch und man fragt LANGSAMER als
+moeglich. Ein Fehler, der nur in einer Richtung auftritt, zeigt damit
+auf eine Groesse, die beide Richtungen in einen Topf wirft.
+
+### Die zweite Haelfte, und warum der Test sie erzwungen hat
+
+Die getrennte Messung behebt den Wechsel - aber nicht den ERSTEN
+Wechsel (da ist die neue Richtung noch nicht gemessen) und nicht eine
+kalte Strecke innerhalb einer Richtung. Dafuer muss der Mittelwert
+schneller reagieren.
+
+Meine erste Fassung war: Verlangsamung SOFORT uebernehmen (Fenster 1).
+`tools/test_vsync_und_wiederholrate.py` hat das zu Recht abgelehnt -
+Test 12 sichert seit Build 93 zu:
+
+> ein einzelnes langsam geladenes Cover darf die Wiederholrate nicht
+> sofort halbieren
+
+**Der Einwand gilt.** Beim Scrollen laesst das Frontend die
+Cover-Spalte zwar aus, aber ein einzelner teurer Schritt kommt
+trotzdem vor - etwa wenn das sichtbare Fenster ueber seinen Rand hinaus
+muss. Ein Ausreisser darf den Takt nicht festnageln.
+
+**Fenster 2 ist der Kompromiss, und er ist nachgerechnet:**
+
+| Fall | vorher (Fenster 8) | jetzt (Fenster 2 nach oben) |
+|---|---|---|
+| anhaltend 69 -> 284 ms | nach 8 Schritten erfasst | nach **1** Schritt erfasst |
+| einzelner Ausreisser 10 -> 300 ms | Boden 40 -> 50 ms | Boden 40 -> 178 ms, nicht 345 |
+| Erholung danach | traege in beide Richtungen | 178 -> 109 (4 Schritte) -> 69 (8) -> 45 (12) |
+
+Die Asymmetrie hat einen Grund, der sich aufschreiben laesst:
+
+* zu **langsam** fragen -> man drueckt eben noch einmal, faellt kaum auf
+* zu **schnell** fragen -> Stau, Haenger, Nachziehen = der gemeldete Fehler
+
+Bei einer Groesse, deren beide Fehlerrichtungen so verschieden weh tun,
+ist ein symmetrischer Mittelwert die falsche Form.
+
+### Was die alte Zusage ersetzt hat
+
+Test 12 hiess "ein Ausreisser aendert den Boden um weniger als 50 %" -
+das ist mit Fenster 2 nicht zu halten (40 -> 178 ms). **Umgeschrieben,
+nicht gestrichen**, und in zwei Teile, die zusammen STRENGER sind als
+vorher:
+
+1. der Ausreisser darf den Boden nicht auf seinen eigenen Wert ziehen
+2. **jeder** billige Schritt danach muss ihn wieder senken
+
+Der zweite Teil ist der eigentliche Gewinn: er schliesst eine Ratsche
+aus. Die alte Fassung war in BEIDE Richtungen traege und hat die
+Erholung ueberhaupt nicht geprueft.
+
+**Und eine Lehre zum Testen selbst:** meine erste Erholungs-Pruefung
+lautete "nach vier billigen Schritten unter 80 ms" - gemessen sind es
+109 ms. Damit haette der Test meine SCHAETZUNG geprueft, nicht die
+Mechanik. Jetzt prueft er die STRUKTUR (monoton fallend) und nennt die
+gemessene Reihe im Fehlertext. Eine Zusage, die man als Eigenschaft
+formulieren kann, sollte nicht als geratene Zahl dastehen.

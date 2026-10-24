@@ -1504,6 +1504,22 @@ deliver does not make the list faster; the surplus piles up and the
 list keeps running after you let go. That is exactly the bug Build 93
 fixed.
 
+**Measured per direction since build 297.** Up and down cost
+systematically different amounts: upwards goes into rows you have just
+seen (covers are in memory), downwards into new territory (covers have
+to be computed first). Measured on the device: about 69 ms against
+284 ms — a factor of 4. Until build 296 both directions shared **one**
+measurement; scrolling quickly up and then quickly down asked for four
+times more than could be delivered — input stuttered and caught up
+late. Each direction now has its own value.
+
+On top of that the frontend notices a **slowdown faster** than a
+speed-up: when a step becomes more expensive, the new value counts four
+times as strongly. The reason is simple — asking too slowly goes
+largely unnoticed, you just press again; asking too fast is the pile-up
+above. A single outlier still does not nail the rate down: it moves it
+halfway, and the following steps pull it back.
+
 **Folders: first or after the games.** Default is "first", as before.
 If a system is mostly games, you otherwise scroll past the folders
 every single time.

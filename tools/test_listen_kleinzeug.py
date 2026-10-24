@@ -117,7 +117,12 @@ mgr._zeichenzeit = {}
 mgr.seiten_aktionen = INP.PAGE_ACTIONS
 
 GEMESSEN = 0.10          # das Geraet braucht 100 ms je Bild
-mgr._zeichenzeit = {INP.REPEAT_AXIS.get("down"): GEMESSEN}
+# GEAENDERT IN BUILD 297: geschluesselt wird mit der AKTION, nicht
+# mehr mit der Achse. Hier stand REPEAT_AXIS.get("down"), also "y" -
+# und damit teilten sich "up" und "down" einen Messwert, obwohl runter
+# viermal so teuer ist wie rauf (gemessen: 284 gegen 69 ms). Siehe
+# zeichenzeit_melden() in fe/input.py.
+mgr._zeichenzeit = {"down": GEMESSEN}
 
 S.cycle_scroll_tempo()   # irgendeine Stufe
 for ziel in S.SCROLL_TEMPO_STUFEN:

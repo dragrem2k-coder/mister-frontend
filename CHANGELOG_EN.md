@@ -13,6 +13,24 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **Fixed: scrolling fast up and then fast down stuttered and caught
+  up late.** The repeat rate is tied to the measured draw time — but
+  **up and down shared one measurement**, although they cost
+  systematically different amounts: up goes into already-seen
+  territory (covers warm, ~69 ms), down into new territory (covers
+  cold, ~284 ms). After scrolling up quickly the frontend kept asking
+  every ~80 ms while a step down really needed 284 ms — about four
+  times more requests than could be served, and they queued up. Each
+  direction is now **measured separately** (build 297).
+- **And a slowdown is noticed sooner.** The running average needed
+  eight steps to realize things had become more expensive — and those
+  eight steps were exactly the overload. When it gets slower, the new
+  value now counts four times as strongly; when it gets faster, it
+  stays as gradual as before. The reason: asking too slowly goes
+  unnoticed, asking too fast was the bug. A single outlier still does
+  not nail the rate down — it moves it halfway and the next steps
+  pull it back (build 297).
+
 - **New: newly copied ROMs are re-read automatically.** The ROM watcher
   used to only tell you — re-reading was a manual step in the system
   menu. It now does it by itself, and only when that is safe: **only

@@ -1792,6 +1792,24 @@ mehr Wiederholungen an, als das Bild hergibt, wird die Liste nicht
 schneller; der Überschuss staut sich und sie läuft nach dem Loslassen
 weiter. Genau das war der Fehler, den Build 93 behoben hat.
 
+**Gemessen wird je Richtung getrennt (seit Build 297).** Hoch und
+runter kosten systematisch unterschiedlich viel: nach oben geht es in
+Zeilen, die du gerade gesehen hast (Cover liegen im Speicher), nach
+unten in neues Gebiet (Cover müssen erst gerechnet werden). Gemessen
+auf dem Gerät: rund 69 ms gegen 284 ms — Faktor 4. Bis Build 296
+teilten sich beide Richtungen **einen** Messwert; wer schnell hoch und
+dann schnell runter gescrollt hat, forderte unten viermal mehr an, als
+lieferbar war — die Eingabe hakte und zog nach. Jetzt hat jede
+Richtung ihren eigenen Wert.
+
+Dazu merkt das Frontend eine **Verlangsamung schneller** als eine
+Beschleunigung: wird ein Schritt teurer, zählt der neue Wert
+vierfach stärker. Der Grund ist einfach — zu langsam zu fragen fällt
+kaum auf, man drückt eben noch einmal; zu schnell zu fragen ist der
+Stau von oben. Ein einzelner Ausrutscher nagelt den Takt trotzdem
+nicht fest: er bewegt ihn um die halbe Strecke, und die nächsten
+Schritte holen ihn zurück.
+
 **Ordner: zuerst oder hinter den Spielen.** Vorgabe ist „zuerst", wie
 bisher. Wer in einem System hauptsächlich Spiele hat, scrollt sonst
 jedesmal an den Ordnern vorbei.

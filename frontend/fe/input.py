@@ -509,6 +509,38 @@ REPEAT_FLOOR_PAGE = 0.25   # links/rechts: eine ganze Seite pro Schritt
 # Untergrenze, und die Messung kann links/rechts nur noch VERLANGSAMEN
 # (falls ein Seitenaufbau laenger dauert als 0.25 s), nie beschleunigen.
 REPEAT_MESS_FENSTER = 8
+# BUILD 297: ein ZWEITES, kuerzeres Fenster fuer den Fall, dass das
+# Zeichnen TEURER geworden ist.
+#
+# WARUM ZWEI FENSTER. Der laufende Mittelwert mit Fenster 8 braucht
+# rund acht Schritte, um eine Verlangsamung zu bemerken - und genau
+# diese acht Schritte sind die Ueberlastung, die der Nutzer als "hackt,
+# reagiert nicht, zieht nach" gemeldet hat. In der Zeit fragt das
+# Frontend weiter im alten, schnellen Takt, obwohl ein Schritt
+# inzwischen ein Mehrfaches kostet.
+#
+# DIE BEIDEN FEHLERRICHTUNGEN TUN UNTERSCHIEDLICH WEH, und das ist der
+# ganze Grund fuer die Asymmetrie:
+#   zu LANGSAM fragen  -> man drueckt eben noch einmal, faellt kaum auf
+#   zu SCHNELL fragen  -> Stau, Haenger, Nachziehen = der gemeldete Fehler
+# Bei einer Groesse, deren Fehler so verschieden wiegen, ist ein
+# symmetrischer Mittelwert die falsche Form.
+#
+# WARUM NICHT SOFORT (Fenster 1). Das war die erste Fassung, und
+# tools/test_vsync_und_wiederholrate.py hat sie zu Recht abgelehnt:
+# Test 12 sichert seit Build 93 zu, dass "ein einzelnes langsam
+# geladenes Cover die Wiederholrate nicht sofort halbiert". Dieser
+# Einwand gilt - beim Scrollen laesst das Frontend die Cover-Spalte
+# zwar aus (siehe _nav_active), aber ein einzelner teurer Schritt
+# kommt trotzdem vor, etwa wenn das sichtbare Fenster ueber seinen
+# Rand hinaus muss. Ein Ausreisser darf den Takt nicht festnageln.
+#
+# ZWEI ist der Kompromiss, und er ist nachgerechnet: eine ANHALTENDE
+# Verlangsamung von 69 auf 284 ms ist nach drei Schritten erfasst
+# (statt acht), ein EINZELNER Ausreisser bewegt den Boden nur um die
+# halbe Strecke und wird vom naechsten billigen Schritt wieder
+# eingesammelt.
+REPEAT_MESS_FENSTER_HOCH = 2
 REPEAT_MESS_RESERVE = 1.15
 REPEAT_FLOOR_MAX    = 0.50
 REPEAT_FLOOR_MIN    = 0.04
@@ -780,9 +812,70 @@ class InputManager:
         gestartetes Spiel): solche Meldungen werden verworfen, statt das
         Mittel zu vergiften. Die Obergrenze ist REPEAT_FLOOR_MAX - alles
         darueber wuerde ohnehin abgeschnitten und traegt nichts bei,
-        wuerde das Mittel aber lange nachwirkend verzerren."""
-        achse = REPEAT_AXIS.get(act)
-        if achse is None:
+        wuerde das Mittel aber lange nachwirkend verzerren.
+
+        BUILD 297 - ZWEI AENDERUNGEN, EINE URSACHE.
+
+        NUTZERMELDUNG: "woran liegt das wenn ich in denn menues schnell
+        nach oben drueucke mehrmals hintereinander und dann wieder nach
+        unten drueucke mehrmals hintereinander das die eingabe dann
+        manchmal hackt oder nicht reagiert und dann nachzieht?"
+
+        1. GESCHLUESSELT WIRD MIT DER AKTION, NICHT MIT DER ACHSE.
+           Hier stand REPEAT_AXIS.get(act), und REPEAT_AXIS ordnet
+           "up" UND "down" derselben Achse "y" zu. Beide Richtungen
+           haben sich damit EINEN Messwert geteilt - obwohl sie
+           systematisch verschieden teuer sind. Aus seinem
+           LATENZ-Protokoll:
+
+               up/S1   19x Mittel  69 ms
+               down/S1 18x Mittel 284 ms
+
+           Rauf geht in schon Gesehenes (Cover warm), runter in neues
+           Gebiet (Cover kalt) - der Bench nennt dieselben Zahlen
+           (Spieleliste liste: 66 ms warm, 201 ms kalt). Faktor 4, und
+           kein Zufall.
+
+           Nach schnellem Hochscrollen stand der Boden damit bei
+           69 x 1.15 = rund 80 ms. Beim Wechsel nach unten kostet ein
+           Schritt aber 284 ms: das Frontend bekam VIERMAL mehr
+           Auftraege, als es zeichnen kann. Die stauen sich, und weil
+           Build 276 eine faellige Wiederholung ausdruecklich
+           durchlaesst (auch wenn frische Ereignisse warten), werden
+           sie alle abgearbeitet - genau das gemeldete "hakt, reagiert
+           nicht, zieht nach".
+
+           Andersrum faellt es kaum auf: erst runter (teuer, Boden
+           hoch), dann rauf (billig) heisst langsamer fragen als
+           moeglich. Dass seine Beschreibung genau die eine Richtung
+           nennt, war der entscheidende Hinweis.
+
+        2. DER MITTELWERT REAGIERT JETZT UNSYMMETRISCH.
+           "alt + (dauer - alt) / 8" braucht rund acht Schritte, um
+           eine Verlangsamung zu bemerken - und GENAU DIESE ACHT
+           SCHRITTE sind die Ueberlastung. Die Trennung aus Punkt 1
+           behebt den Richtungswechsel, aber nicht den ersten Wechsel
+           ueberhaupt (da ist die neue Richtung noch nicht gemessen)
+           und nicht eine kalte Strecke innerhalb einer Richtung.
+
+           Wird ein Schritt TEURER, gilt der neue Wert deshalb
+           SOFORT. Wird er billiger, weiter gemaechlich ueber das
+           Fenster.
+
+           DIE ASYMMETRIE IST ABSICHT UND HAT EINEN GRUND: zu langsam
+           zu fragen merkt niemand - man druckt dann eben noch einmal.
+           Zu schnell zu fragen ist der gemeldete Fehler. Bei einer
+           Groesse, deren beide Fehlerrichtungen so verschieden weh
+           tun, ist ein symmetrischer Mittelwert die falsche Form.
+
+           EIN AUSREISSER KANN DAS NICHT KAPERN: Werte ueber
+           REPEAT_FLOOR_MAX werden weiter verworfen (siehe unten), und
+           der Boden ist ohnehin auf REPEAT_FLOOR_MAX gedeckelt. Im
+           schlimmsten Fall fragt das Frontend also eine halbe Sekunde
+           lang nur zweimal - und holt sich das Tempo ueber das
+           Fenster zurueck.
+        """
+        if REPEAT_AXIS.get(act) is None:
             return
         try:
             dauer = float(dauer)
@@ -790,11 +883,13 @@ class InputManager:
             return
         if not (0.0 < dauer <= REPEAT_FLOOR_MAX):
             return
-        alt = self._zeichenzeit.get(achse)
+        alt = self._zeichenzeit.get(act)
         if alt is None:
-            self._zeichenzeit[achse] = dauer
+            self._zeichenzeit[act] = dauer
         else:
-            self._zeichenzeit[achse] = alt + (dauer - alt) / REPEAT_MESS_FENSTER
+            fenster = (REPEAT_MESS_FENSTER_HOCH if dauer > alt
+                       else REPEAT_MESS_FENSTER)
+            self._zeichenzeit[act] = alt + (dauer - alt) / fenster
 
     def rescan(self, force=False):
         # Billiger Schnellcheck: aendert sich /dev/input ueberhaupt? Neue
@@ -909,7 +1004,27 @@ class InputManager:
             basis = minimum = REPEAT_FLOOR_PAGE
         else:
             basis, minimum = REPEAT_FLOOR, REPEAT_FLOOR_MIN
-        gemessen = self._zeichenzeit.get(REPEAT_AXIS.get(act))
+        # BUILD 297: der eigene Messwert dieser Richtung. Siehe die
+        # lange Begruendung in zeichenzeit_melden() - hier stand
+        # REPEAT_AXIS.get(act), womit "up" und "down" sich einen Wert
+        # geteilt haben, obwohl sie um Faktor 4 verschieden teuer sind.
+        gemessen = self._zeichenzeit.get(act)
+        if gemessen is None:
+            # NOCH NICHT GEMESSEN: der Partner derselben Achse ist die
+            # bessere Schaetzung als der feste Grundwert - er beschreibt
+            # dieselbe Liste, dieselben Zeilen, nur die andere
+            # Richtung. Gebraucht wird das genau einmal je Richtung und
+            # Sitzung; ab der ersten echten Messung zaehlt der eigene
+            # Wert, und weil eine Verlangsamung sofort uebernommen wird
+            # (siehe dort), ist eine zu optimistische Schaetzung nach
+            # einem Schritt korrigiert.
+            partner = REPEAT_AXIS.get(act)
+            if partner is not None:
+                for anderer, achse in REPEAT_AXIS.items():
+                    if achse == partner and anderer != act:
+                        gemessen = self._zeichenzeit.get(anderer)
+                        if gemessen is not None:
+                            break
         if gemessen is None:
             boden = basis
         else:
