@@ -13,6 +13,33 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Behoben: beim Scrollen durch die Galerie wurde die Spielbeschreibung
+  bei jedem Schritt neu gesetzt.** Sie ist der Grund, warum die
+  Textspalte in voller Höhe freigeräumt werden musste — rund 650 der
+  1201 Bildzeilen eines Schritts. Jetzt bleibt sie **während des
+  Scrollens weg** und erscheint, sobald man loslässt. Gemessen am
+  Mechanismus: **1,96 MB weniger Kopierarbeit je Schritt** (53 %), auf
+  dem Gerät also rund 5 ms, plus die 3 ms fürs Zeichnen. Gleiches
+  Verfahren wie bei den Covern seit Build 244 — gleicher Schalter,
+  gleicher Nachlader, kein zweiter Mechanismus (Build 300).
+- **Richtigstellung zu Build 299.** Die dort genannte Beschleunigung der
+  Karten-Vorlage (Faktor 2,2–3,7) war **im Container gemessen** und gilt
+  auf dem MiSTer so nicht: in der Galerie bringt sie etwas, in der Liste
+  nichts. Der DE10-Nano ist bandbreitengebunden, der Container nicht.
+  Die Vorlage bleibt — sie macht den weichen Schatten erst möglich —,
+  aber die Tempo-Zusage war für die Liste falsch (Build 300).
+- **Behoben: Build 299 hat den ersten Aufbau der Galerie verlangsamt**
+  (131 → 249 ms im Mittel, bester Lauf aber nur 100 → 119: ein
+  Einmalposten). Ursache war der weiche Schatten mit bis zu zwölf
+  Stufen beim Vorrechnen. Jetzt vier — sichtbar genauso weich, ein
+  Viertel der Baukosten (Build 300).
+- **Neu im Bench: Abschnitt L — „Wie lange wartet ein Tastendruck?"**
+  Gemessen wird das Fenster zwischen zwei Blicken auf die
+  Eingabegeräte, der Preis eines Blicks, die offenen Geräte mit Art und
+  Achsenzahl, und ob die angeforderte Wiederholrate zu dem passt, was
+  gezeichnet werden kann. Damit ist das Joypad-Thema messbar statt
+  gefühlt (Build 300).
+
 - **Behoben: seitwärts scrollen in Raster und Galerie ruckelte.** In
   diesen beiden Ansichten bewegt links/rechts um **einen** Eintrag —
   und genau dieser Schritt kostete laut Bench 32 ms (Raster) bzw. 50 ms

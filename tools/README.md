@@ -6956,3 +6956,145 @@ Jetzt zwei Teile, die zusammen strenger sind:
    in der Karte selbst kein einziges Byte.
 
 Ueber den ORT der Abweichung hat die alte Fassung gar nichts gesagt.
+
+---
+
+## Nachtrag Build 300: der groesste Posten war ein Text, den niemand liest
+
+> "irgendwie kommt es mir so vor als wenn der zuviel nachladen oder
+> berechnen muss komisch beim scrollen nach rechts und links ist
+> gefuehlt nicht viel besser geworden! bitte fehlerfrei!!!!"
+
+### Zuerst: Build 299 gehoert richtiggestellt
+
+Dort stand "Faktor 2,2 bis 3,7" fuer die Kartenvorlage. **Gemessen im
+Container.** Sein Geraetebericht sagt:
+
+| | vor 299 | mit 299 |
+|---|---|---|
+| `karte_mit_schatten` Liste 769x945 | 8,93 ms | 8,75 ms |
+| `karte_mit_schatten` Galerie 378x492 | 4,79 ms | 3,04 ms |
+
+Also in der Galerie etwas, in der Liste **nichts**. Der Grund steht im
+selben Bericht, in H.1 und I.2: der DE10-Nano kostet 2,58 ms je MB im
+RAM und 2,64 ms je MB fuer die C-Rechteckkopie - er ist
+**bandbreitengebunden**. Im Container gewinnt man Aufruf-Overhead, auf
+dem Geraet zaehlen Bytes. Eine Kopie ist nicht billiger als ein
+Fuellen, wenn beides an derselben Speicherbandbreite haengt.
+
+Das ist exakt die Falle, die in diesem Projekt mehrfach ausgeschrieben
+steht - im Docstring von Abschnitt J sogar woertlich: *"Die haben mich
+zweimal zu einer falschen Vermutung verleitet, und beide Male stand die
+Zahl auf dem Entwicklungsrechner."* Beim dritten Mal war ich es.
+
+Die Vorlage bleibt, denn sie ist in der Galerie messbar besser und
+macht den weichen Schatten ueberhaupt erst moeglich. Die **Zusage** war
+falsch, nicht der Code.
+
+### Was 299 ausserdem verschlechtert hat
+
+`Spieleliste galerie voller Aufbau` stieg von 131 auf 249 ms - der
+**beste** Lauf aber nur von 100 auf 119. Eine Luecke zwischen Mittel
+und Bestwert heisst **Einmalposten**, und das war der Bau der Vorlage:
+`KARTE_SCHATTEN_STUFEN_MAX` stand auf 12, bei Versatz 9 also neun volle
+Aufrufe von `rect_rounded_schatten()`.
+
+Jetzt 4 - Ringe von 9, 7, 5 und 3 Punkten. Was man bei vier Stufen
+nicht mehr unterscheiden kann, braucht keine neun.
+
+**Die Lehre zum Lesen eines Berichts:** Mittel und Bestwert
+auseinander heisst "etwas passiert nicht jedes Mal". Diese Zahl steht
+seit Build 177 im Bench, und sie hat den Fehler gemeldet, bevor
+irgendjemand hingesehen hat.
+
+### Und der eigentliche Fund stand die ganze Zeit in Abschnitt J
+
+Ein Seitwaertsschritt in der Galerie kostet 48,69 ms. Die beiden
+groessten Posten:
+
+    restore  14,33 ms   ueber 1201 BILDZEILEN
+    flip      8,71 ms   ueber 2,6 MB
+
+Von diesen 1201 Zeilen gehoeren rund 650 der **Textspalte** - und die
+muss nur deshalb in dieser Hoehe freigeraeumt werden, weil die
+**Spielbeschreibung** bis dort hinunter reicht. Dazu der Posten
+`beschr` mit 3,08 ms fuers Zeichnen.
+
+Zusammen rund ein Fuenftel des Schritts fuer einen Text, den beim
+Durchfliegen niemand liest.
+
+### Behoben mit dem Muster, das es schon gab
+
+Build 244 ueberspringt Cover waehrend der Navigation und holt sie nach
+dem Loslassen. Genau das jetzt fuer die Beschreibung - **derselbe**
+Schalter (`ART._defer_uncached`), **derselbe** Nachlader
+(`ART._deferred_something`). Kein zweiter Mechanismus fuer dieselbe
+Frage; ein zweiter waere einer, der irgendwann anders antwortet.
+
+Und der Restore schrumpft **von selbst**, ohne eine einzige neue Zahl:
+oben wird nur bis `_galerie_text_unten` freigeraeumt, und das wird beim
+Zeichnen fortgeschrieben. Bleibt die Beschreibung weg, endet die Spalte
+bei den Datenzeilen.
+
+Gemessen am Mechanismus: **455.560 gegen 969.100 Punkte je Schritt**,
+also 53 Prozent weniger und 1,96 MB. Bei 2,58 ms je MB sind das rund
+5 ms, plus die 3,08 ms fuers Zeichnen.
+
+### Drei Fehler in meinem eigenen Test, und alle drei waren alte
+
+1. **Zwei Spiele mit verschieden vielen Infozeilen verglichen** und
+   "12 Prozent weniger" gemeldet. Das war Rauschen: der Pruefstand hat
+   ueberhaupt keine Spielbeschreibungen, es gab nichts zu beobachten.
+   Jetzt setzt der Test eine Attrappe mit festem Unterrand - dieselbe
+   Lehre wie in Build 299, wo beide Vergleichspuffer schwarz begannen.
+2. **`A._deferred_something` statt `ART._deferred_something`.** `ART`
+   ist die INSTANZ (`ArtCache()`), `import fe.art as A` das Modul -
+   zwei verschiedene Objekte. Derselbe Irrtum wie in Build 294
+   (`ART.docs_bildart()`).
+3. **`ART._defer_uncached` von Hand gesetzt**, obwohl
+   `draw_page_items()` es aus `_last_input_time` neu rechnet. Der Test
+   muss den Zustand HERSTELLEN statt ihn zu umgehen - und dass er das
+   nicht konnte, ist eine gute Eigenschaft des Codes: eine einzige
+   Quelle.
+
+Alle drei haben beim Bauen angeschlagen. Das ist der Zweck.
+
+### Neu: Abschnitt L - wie lange wartet ein Tastendruck?
+
+Zum Eingabeweg hatte der Bench **keine einzige Zahl**, und am Joypad
+wurde dreimal nachgefragt. Gemessen wird **ohne Tastendruck** - beim
+Bench sitzt niemand am Pad -, naemlich das FENSTER zwischen zwei
+Blicken auf die Eingabegeraete. Ein Druck, der direkt nach einem Blick
+ankommt, wartet genau so lange. Das ist die Obergrenze, sie ist
+reproduzierbar, und sie haengt an keiner Hand.
+
+Dazu: der Preis eines Blicks ohne Warten, die offenen Eingabegeraete
+mit Art und Achsenzahl (bei einem 8bitdo ist die erste Frage, ob es
+sich als EIN Geraet meldet oder als mehrere), und Teil 3 - die
+gemessenen Schrittdauern werden durch die **echte**
+Wiederholraten-Rechnung geschickt (`zeichenzeit_melden` /
+`_repeat_floor`, Zustand danach zurueckgestellt) statt die Formel ein
+zweites Mal hinzuschreiben. Dort steht dann "reicht: ja" oder
+"reicht: NEIN", und letzteres ist der Fehler aus Build 297.
+
+### Zur Frage "lohnt C++?" - gerechnet, nicht geschaetzt
+
+| Ansicht | Schritt | schon in C | Python-Anteil |
+|---|---|---|---|
+| Liste liste | 46,20 ms | 34,76 ms (75 %) | 11,44 ms (25 %) |
+| Liste raster | 30,40 ms | 20,01 ms (66 %) | 10,39 ms (34 %) |
+| Liste galerie | 48,69 ms | 33,36 ms (69 %) | 15,33 ms (31 %) |
+
+`restore`, `flip`, `text` und `karten` laufen bereits ueber libdragend.
+Faellt der ganze Python-Anteil weg - unrealistisch, Schleifen und
+Logik bleiben -, dann kommt die Liste auf 34,76 ms, das Raster auf
+20,01 und die Galerie auf 33,36. **Ein Bild dauert 16,6 ms: es passt in
+keinem Fall danach hinein.**
+
+Der Rest ist Speicherbandbreite und das Warten auf den Bildwechsel, und
+beides aendert keine Sprache. Ein Neubau wuerde 1,3 MB Python, 160
+gruene Tests und jede dokumentierte Messung wegwerfen fuer etwas, das
+die Grenze nicht verschiebt.
+
+Die Antwort ist **nein**, und der Weg heisst: **weniger Bytes je
+Schritt.** Genau das tut dieser Build.

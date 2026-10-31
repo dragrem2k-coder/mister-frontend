@@ -2076,7 +2076,21 @@ class Framebuffer:
 
     # Wieviele Stufen hoechstens. Mehr als der Versatz breit ist gibt
     # es nicht - jede Stufe ist eine Bildzeile beziehungsweise -spalte.
-    KARTE_SCHATTEN_STUFEN_MAX = 12
+    #
+    # GESENKT IN BUILD 300, von 12 auf 4, und das ist keine Kosmetik.
+    # Jede Stufe ist ein VOLLER Aufruf von rect_rounded_schatten() beim
+    # Bau der Vorlage. Mit Versatz 9 (3 * Skala auf 1080p) waren das
+    # neun Aufrufe, und im Geraetebericht vom 31.10. ist genau das zu
+    # sehen: 'Spieleliste galerie voller Aufbau' stieg von 131 auf 249
+    # ms, waehrend der beste Lauf nur von 100 auf 119 ms ging. Eine
+    # Luecke zwischen Mittel und Bestwert heisst Einmalposten - hier
+    # der Bau der Vorlage.
+    #
+    # VIER STUFEN SEHEN WEITER WEICH AUS, weil der Verlauf ueber
+    # wenige Bildpunkte laeuft: bei Versatz 9 sind das Ringe von 9, 7,
+    # 5 und 3 Punkten Breite. Was man bei vier Stufen nicht mehr
+    # unterscheiden kann, braucht keine neun.
+    KARTE_SCHATTEN_STUFEN_MAX = 4
 
     @staticmethod
     def _mischen(a, b, anteil):

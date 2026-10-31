@@ -13,6 +13,32 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **Fixed: scrolling through the gallery redrew the game description on
+  every step.** It is the reason the text column had to be cleared at
+  full height — about 650 of the 1201 screen rows of one step. It now
+  **stays away while scrolling** and appears as soon as you let go.
+  Measured on the mechanism: **1.96 MB less copying per step** (53 %),
+  so roughly 5 ms on the device, plus the 3 ms for drawing it. Same
+  approach as the covers since build 244 — same switch, same reloader,
+  no second mechanism (build 300).
+- **Correction to build 299.** The speed-up of the card template quoted
+  there (a factor of 2.2–3.7) was **measured in the container** and does
+  not hold on the MiSTer: it helps in the gallery, not in the list. The
+  DE10-Nano is memory-bandwidth-bound, the container is not. The
+  template stays — it is what makes the soft shadow possible — but the
+  speed claim was wrong for the list (build 300).
+- **Fixed: build 299 slowed down the gallery's first build** (131 → 249
+  ms on average, but the best run only 100 → 119: a one-off cost). The
+  cause was the soft shadow with up to twelve steps while pre-computing.
+  Now four — visibly just as soft, a quarter of the build cost
+  (build 300).
+- **New in the bench: section L — "How long does a key press wait?"**
+  It measures the window between two looks at the input devices, the
+  cost of one look, the open devices with their kind and axis count, and
+  whether the requested repeat rate matches what can actually be drawn.
+  That makes the joypad question measurable instead of a feeling
+  (build 300).
+
 - **Fixed: scrolling sideways in grid and gallery stuttered.** In those
   two views, left/right moves by **one** entry — and that step cost 32 ms
   (grid) and 50 ms (gallery) according to the bench. A frame lasts

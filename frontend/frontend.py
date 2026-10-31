@@ -9731,8 +9731,48 @@ class Frontend:
         # Spielbeschreibung - siehe _beschreibung_zeichnen(). Ein
         # kleiner Absatz davor, damit sie nicht wie eine weitere
         # Datenzeile aussieht.
-        _b_unten = self._beschreibung_zeichnen(
-            tx, iy + 4 * s, geo["leiste_y"] - 4 * s, tb, item, item_syskey, s)
+        #
+        # BUILD 300: WAEHREND AKTIVER NAVIGATION BLEIBT SIE WEG.
+        #
+        # BEFUND DES NUTZERS: "irgendwie kommt es mir so vor als wenn
+        # der zuviel nachladen oder berechnen muss komisch beim
+        # scrollen nach rechts und links ist gefuehlt nicht viel besser
+        # geworden".
+        #
+        # Er hat recht, und der Bericht sagt genau, warum. In der
+        # Galerie kostet ein Seitwaertsschritt 48,69 ms (Abschnitt J),
+        # und die beiden groessten Posten sind restore mit 14,33 ms
+        # ueber 1201 Bildzeilen und flip mit 8,71 ms. Von diesen 1201
+        # Zeilen gehoeren rund 650 der TEXTSPALTE - und die muss nur
+        # deshalb in dieser Hoehe freigeraeumt werden, weil die
+        # Beschreibung bis dort hinunter reicht. Dazu kommt der Posten
+        # 'beschr' mit 3,08 ms fuer das Zeichnen selbst.
+        #
+        # Zusammen sind das rund ein Fuenftel des Schritts fuer einen
+        # Text, den beim Durchfliegen niemand liest.
+        #
+        # GENAU DASSELBE MUSTER WIE BEI DEN COVERN (Build 244): was
+        # waehrend der Navigation zu teuer ist, wird uebersprungen und
+        # nach dem Loslassen nachgeholt. Der Schalter ist derselbe
+        # (ART._defer_uncached, gesetzt in _sync_cover_defer()), und
+        # der Nachlader ist derselbe (ART._deferred_something, siehe
+        # dort) - KEIN zweiter Mechanismus fuer dieselbe Frage.
+        #
+        # UND DER RESTORE SCHRUMPFT VON SELBST: oben wird nur bis
+        # _galerie_text_unten freigeraeumt, und das wird hier
+        # fortgeschrieben. Bleibt die Beschreibung weg, endet die
+        # Spalte bei den Datenzeilen - der naechste Schritt raeumt
+        # also nur noch diese Hoehe frei. Es gibt nichts zu rechnen
+        # und keine zweite Zahl zu pflegen.
+        if ART._defer_uncached:
+            # Vermerken, dass etwas fehlt - sonst sieht der Nutzer die
+            # Beschreibung erst beim naechsten Tastendruck wieder.
+            ART._deferred_something = True
+            _b_unten = None
+        else:
+            _b_unten = self._beschreibung_zeichnen(
+                tx, iy + 4 * s, geo["leiste_y"] - 4 * s, tb, item,
+                item_syskey, s)
         # Das untere Ende der Textspalte fuer den NAECHSTEN Schritt
         # festhalten - siehe die Begruendung beim Freiraeumen oben. Ohne
         # Beschreibung endet die Spalte bei den Datenzeilen (iy), mit

@@ -2135,6 +2135,23 @@ werden **Deutsch und Englisch**; fehlt der deutsche Text zu einem
 Spiel, springt der englische ein. Nachgemessen an der SNES-Tabelle:
 **1.785 von 1.802** Spielen haben eine Beschreibung.
 
+### Beim Scrollen bleibt sie weg (Build 300)
+
+Sobald du dich durch die Galerie bewegst, wird die Beschreibung
+**übersprungen** — sie erscheint, sobald du loslässt (nach etwa einer
+Sechstelsekunde, demselben Moment, in dem auch nachgeladene Cover
+auftauchen).
+
+Das ist kein Sparen am falschen Ende, sondern der größte Einzelposten
+des Scrollschritts: die Beschreibung reicht bis weit nach unten, und
+deshalb musste die ganze Textspalte bei **jedem** Schritt freigeräumt
+werden — rund 650 der 1201 Bildzeilen. Gemessen sind das **1,96 MB
+Kopierarbeit je Schritt**, auf dem Gerät etwa 5 ms, plus 3 ms fürs
+Zeichnen des Textes selbst.
+
+Dasselbe Verfahren wie bei den Covern seit Build 134: was während der
+Bewegung zu teuer ist, kommt danach.
+
 Vorbereiten muss man dafür **nichts**. Es ist Text, kein Bild — kein
 Dekodieren, keine Miniatur, kein Zwischenspeicher. Die Tabelle eines
 Systems wird beim ersten Hinschauen einmal gelesen und liegt danach im

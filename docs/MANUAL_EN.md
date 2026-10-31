@@ -1827,6 +1827,22 @@ It comes from the same artwork database as the covers: next to
 game, the English one steps in. Measured against the SNES table:
 **1,785 of 1,802** games have a description.
 
+### It stays away while scrolling (build 300)
+
+As soon as you move through the gallery, the description is **skipped**
+— it appears the moment you let go (after about a sixth of a second,
+the same moment deferred covers show up).
+
+This is not cutting the wrong corner, it is the single biggest item of a
+scroll step: the description reaches far down the column, which is why
+the whole text column had to be cleared on **every** step — about 650
+of the 1201 screen rows. Measured, that is **1.96 MB of copying per
+step**, roughly 5 ms on the device, plus 3 ms for drawing the text
+itself.
+
+Same approach as the covers since build 134: whatever is too expensive
+while moving happens afterwards.
+
 Nothing has to be prepared. It is text, not an image — no decoding, no
 thumbnail, no cache. A system's table is read once the first time you
 look at it and stays in memory afterwards.

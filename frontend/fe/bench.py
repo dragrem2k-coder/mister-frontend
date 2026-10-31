@@ -62,7 +62,11 @@ import zlib
 # sehen lassen. Genau dafuer ist diese Nummer da: Berichte, die
 # vergleichbar AUSSEHEN, aber unter verschiedenen Regeln entstanden
 # sind, sind die unangenehmste Sorte Messfehler.
-BENCH_VERSION = 14
+# 15 ab Build 300: Abschnitt L (Eingabelatenz) ist neu, und Abschnitt
+# K liest sich anders, weil karte_mit_schatten() seit Build 299 ueber
+# die Vorlage laeuft und dort KEIN Flaechenfueller mehr gerufen wird.
+# Wer zwei Berichte vergleicht, muss das sehen koennen.
+BENCH_VERSION = 15
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -2886,6 +2890,241 @@ def _abschnitt_j(b, fe, S, A, fm):
     b("   fehlt weiterhin ein Posten - dann ist die naechste Aufgabe,")
     b("   ihn zu finden, und nicht, irgendwas zu beschleunigen.")
 
+def _abschnitt_l(b, fe, S, A, fm):
+    """WIE LANGE WARTET EIN TASTENDRUCK? (Build 300)
+
+    DER ANLASS, und er steht dreimal im Postfach: "mein joypad 8bitdo
+    reagiert manchmal erst recht spaet", "das mit dem joypad noch
+    angehen", "egal ob ich per bluetooth receiver angeschlossen habe
+    oder direkt per usb kabel am mister".
+
+    Dass es an BEIDEN Anschlusswegen auftritt, schliesst die
+    Funkstrecke aus. Was bleibt, ist der Eingabeweg im Frontend - und
+    ueber den hat dieser Bench bis heute KEINE EINZIGE ZAHL gesagt.
+    Genau deshalb steht hier ein Abschnitt und kein Umbau: an einem
+    Weg zu schrauben, von dem man nichts gemessen hat, ist in diesem
+    Projekt schon zweimal schiefgegangen (Abschnitt E erzaehlt die
+    Geschichte, und Build 299 hat sie wiederholt - dort stand eine
+    Messung vom Entwicklungsrechner gegen die Wirklichkeit auf dem
+    Geraet, und die Wirklichkeit hat gewonnen).
+
+    GEMESSEN WIRD OHNE TASTENDRUCK, und das ist der Trick an diesem
+    Abschnitt: niemand sitzt beim Bench am Pad. Gemessen wird deshalb
+    nicht die Reaktion, sondern das FENSTER, in dem keine Reaktion
+    moeglich ist - die Zeit zwischen zwei Blicken auf die
+    Eingabegeraete. Ein Druck, der genau nach einem Blick ankommt,
+    wartet genau diese Zeit. Das ist die Obergrenze, sie ist
+    reproduzierbar, und sie haengt an keiner Hand.
+
+    DREI TEILE:
+      1) was ein Blick selbst kostet, wenn nichts anliegt
+      2) wie lange das Fenster zwischen zwei Blicken ist, je Ansicht
+      3) welche Wiederholrate das Frontend daraus ableitet - und ob
+         sie zu dem passt, was es zeichnen kann (das war der Fehler
+         aus Build 297, nur damals fuer eine Richtung)
+    """
+    b("")
+    b("-" * 62)
+    b(" L  Wie lange wartet ein Tastendruck? (Build 300)")
+    b("-" * 62)
+    inp = getattr(fe, "inp", None)
+    if inp is None:
+        b("   -- keine Eingabe geoeffnet")
+        return
+
+    # --- 0) WELCHE GERAETE sind ueberhaupt offen? -------------------
+    #
+    # Steht zuerst, weil es die Frage beantwortet, die bei einem
+    # 8bitdo zuerst kommt: meldet es sich als EIN Geraet oder als
+    # mehrere? Ein Pad, das zusaetzlich als Tastatur erscheint, wird
+    # zweimal abgefragt - und die Rueckmeldung "reagiert manchmal
+    # spaet" sieht bei zwei Quellen anders aus als bei einer.
+    geraete = list(getattr(inp, "devs", []) or [])
+    b("   Offene Eingabegeraete                     %d" % len(geraete))
+    for d in geraete[:8]:
+        art = "Tastatur" if getattr(d, "is_kbd", True) else "Pad"
+        achsen = len(getattr(d, "axis", {}) or {})
+        b("     %-8s %-28s %d Achsen"
+          % (art, os.path.basename(str(getattr(d, "path", "?")))[:28],
+             achsen))
+    if len(geraete) > 8:
+        b("     ... und %d weitere" % (len(geraete) - 8))
+
+    # --- 1) was ein BLICK kostet, wenn nichts anliegt ---------------
+    #
+    # read_action(timeout=0) ist der Blick ohne Warten. Kostet er
+    # selbst schon viel, waere das ein Posten im Scrollschritt - und
+    # dann waere die Abhilfe eine andere als bei einem langen Fenster.
+    N = 200
+    t0 = time.perf_counter()
+    for _ in range(N):
+        try:
+            inp.read_action(timeout=0)
+        except Exception:                                # noqa: BLE001
+            b("   ein Blick ohne Warten                 -- nicht messbar")
+            N = 0
+            break
+    if N:
+        je_blick = (time.perf_counter() - t0) / N * 1000.0
+        b("   ein Blick ohne Warten                  %8.3f ms" % je_blick)
+        b("     (%d Messungen; das ist der Preis des HINSEHENS," % N)
+        b("      nicht die Wartezeit - die steht unter 2)")
+
+    # --- 2) das FENSTER zwischen zwei Blicken -----------------------
+    #
+    # Hier wird ein echter Scrollschritt gefahren und dabei gezaehlt,
+    # wie viel Zeit zwischen zwei read_action-Aufrufen verstreicht.
+    # Gemessen wird mit einem Haken an read_action, nicht mit einer
+    # Zahl im Betrieb: der Bench darf umhaengen, das Frontend soll
+    # nichts davon merken.
+    b("")
+    b("   2) Fenster ohne Blick auf das Pad - je Ansicht")
+    b("      Ein Druck, der direkt nach einem Blick ankommt, wartet")
+    b("      so lange. Das ist die Obergrenze, nicht der Mittelwert.")
+    echt_read = inp.read_action
+    letzter = [0.0]
+    luecken = []
+    je_ansicht = {}             # Ansicht -> (Mittel, Groesstes) in ms
+
+    def _haken(timeout=None, _e=echt_read):
+        jetzt = time.perf_counter()
+        if letzter[0]:
+            luecken.append((jetzt - letzter[0]) * 1000.0)
+        try:
+            return _e(timeout=timeout)
+        finally:
+            letzter[0] = time.perf_counter()
+
+    kat_i, kat_n, kat_name = _groesste_kategorie(fe)
+    try:
+        inp.read_action = _haken
+        for seite, name in ((0, "Haupt"), (1, "Liste")):
+            fe.page = seite
+            if seite == 1:
+                if kat_i is None:
+                    continue
+                fe.cat_i = kat_i
+                fe.nav_path = []
+            for ansicht in S.ANSICHTEN:
+                try:
+                    if seite == 0:
+                        fe.ansicht_haupt_setzen(ansicht)
+                    else:
+                        fe.ansicht_setzen(ansicht)
+                except Exception:                        # noqa: BLE001
+                    continue
+                _schritt = schritt_funktion(fe, seite)
+                del luecken[:]
+                letzter[0] = 0.0
+                try:
+                    # Warmlaufen, dann messen - dieselbe Reihenfolge
+                    # wie in Abschnitt J, und aus demselben Grund.
+                    for i in range(10):
+                        _schritt(i)
+                        inp.read_action(timeout=0)
+                    del luecken[:]
+                    letzter[0] = 0.0
+                    for i in range(30):
+                        _schritt(i)
+                        inp.read_action(timeout=0)
+                except Exception as e:                   # noqa: BLE001
+                    b("      %-20s -- uebersprungen (%s)"
+                      % (name + " " + ansicht, type(e).__name__))
+                    continue
+                if not luecken:
+                    continue
+                mittel = sum(luecken) / len(luecken)
+                je_ansicht[name + " " + ansicht] = (mittel, max(luecken))
+                b("      %-20s Mittel %6.2f ms, groesstes %6.2f ms"
+                  % (name + " " + ansicht, mittel, max(luecken)))
+    finally:
+        inp.read_action = echt_read
+
+    # --- 3) passt die Wiederholrate zu dem, was gezeichnet wird? ----
+    #
+    # DAS WAR DER FEHLER AUS BUILD 297, und er ist dieselbe Sorte:
+    # das Frontend fragt in einem Takt nach, den es nicht zeichnen
+    # kann, und die faelligen Wiederholungen stauen sich. Damals
+    # teilten sich hoch und runter EINEN Messwert; seither hat jede
+    # Richtung ihren eigenen. Hier steht, was dabei herauskommt -
+    # und nebeneinander, was ein Schritt wirklich kostet.
+    b("")
+    b("   3) angeforderte Wiederholrate gegen gemessene Zeichendauer")
+    # DIE ECHTE RECHNUNG, NICHT EINE NACHGEBAUTE. Beim Bench drueckt
+    # niemand eine Taste, also hat _zeichenzeit noch nichts gesehen.
+    # Statt die Formel hier ein zweites Mal hinzuschreiben (der Fehler,
+    # den dieses Projekt in Build 298 fuenfmal bei Testhelfern gemacht
+    # hat), werden die GEMESSENEN Schrittdauern aus Teil 2 durch
+    # zeichenzeit_melden() geschickt und danach _repeat_floor() gefragt.
+    # Der Zustand wird hinterher zurueckgestellt - der Bench darf
+    # umhaengen, der Betrieb soll nichts davon merken.
+    _sichern = dict(getattr(inp, "_zeichenzeit", {}) or {})
+    if je_ansicht and hasattr(inp, "zeichenzeit_melden"):
+        b("      (aus den Schrittdauern von Teil 2 gerechnet - beim")
+        b("       Bench drueckt niemand, also wird eingespeist)")
+        for ans in sorted(je_ansicht):
+            mittel_ms = je_ansicht[ans][0]
+            try:
+                inp._zeichenzeit = {}
+                # Mehrfach melden, damit der gleitende Mittelwert
+                # ankommt - genau so, wie es beim Halten passiert.
+                for _ in range(max(1, int(getattr(fm, "REPEAT_MESS_FENSTER",
+                                                  8) or 8))):
+                    inp.zeichenzeit_melden("right", mittel_ms / 1000.0)
+                boden = inp._repeat_floor("right") * 1000.0
+            except Exception:                            # noqa: BLE001
+                continue
+            passt = "ja" if boden >= mittel_ms else "NEIN"
+            b("      %-20s Schritt %6.2f ms -> Boden %6.2f ms   "
+              "reicht: %s" % (ans, mittel_ms, boden, passt))
+        b("      'reicht: NEIN' heisst: das Frontend fordert mehr")
+        b("      Schritte an, als es zeichnen kann - die faelligen")
+        b("      Wiederholungen stauen sich dann. Genau das war der")
+        b("      Fehler aus Build 297, damals fuer eine Richtung.")
+    try:
+        inp._zeichenzeit = _sichern
+    except Exception:                                    # noqa: BLE001
+        pass
+    b("")
+    gemessen = dict(_sichern)
+    if not gemessen:
+        b("      aus dem Betrieb gemessen: noch nichts (kein Scrollen "
+          "per Taste seit dem Start)")
+    else:
+        for act in sorted(gemessen):
+            dauer = gemessen[act] * 1000.0
+            try:
+                boden = inp._repeat_floor(act) * 1000.0
+            except Exception:                            # noqa: BLE001
+                boden = float("nan")
+            b("      %-6s gemessen %6.2f ms, Boden %6.2f ms"
+              % (act, dauer, boden))
+        b("      Zu lesen als: der Boden MUSS ueber der gemessenen")
+        b("      Dauer liegen, sonst wird mehr angefordert als")
+        b("      lieferbar ist - genau das war Build 297.")
+    for nam in ("REPEAT_DELAY", "REPEAT_INTERVAL", "REPEAT_FLOOR",
+                "REPEAT_MESS_FENSTER", "REPEAT_MESS_FENSTER_HOCH",
+                "LEEREN_MAX"):
+        wert = getattr(fm, nam, None)
+        if wert is None:
+            try:
+                import fe.input as _fi
+                wert = getattr(_fi, nam, None)
+            except Exception:                            # noqa: BLE001
+                wert = None
+        if wert is not None:
+            b("      %-26s %s" % (nam, wert))
+
+    b("")
+    b("   ZU LESEN ALS: liegt das groesste Fenster aus 2) deutlich")
+    b("   ueber einer Bildperiode (16,6 ms laut H.3), dann ist das")
+    b("   die Zeit, die ein Druck im schlechtesten Fall wartet - und")
+    b("   zwar unabhaengig vom Pad, vom Kabel und vom Funk. Abhilfe")
+    b("   ist dann entweder ein billigerer Schritt (Abschnitt J sagt,")
+    b("   wo) oder das Lesen in einem eigenen Faden. Was von beidem,")
+    b("   entscheidet diese Zahl - nicht ein Gefuehl.")
+
+
 def _abschnitt_k(b, fe, S, A):
     """Welche Fuellaufrufe macht ein Scrollschritt - und wieviele?
     (Build 241)
@@ -3336,6 +3575,12 @@ def lauf(fe, fm, A, S, startdauer=None, log=None, mister_last=None):
             _abschnitt_k(b, fe, S, A)
     except Exception as e:                               # noqa: BLE001
         b("   ABSCHNITT K ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
+    try:
+        hd4 = getattr(fe, "fb", None) is not None and fe.fb.height >= 720
+        with _Messbedingungen(A, fm, fe, hd4):
+            _abschnitt_l(b, fe, S, A, fm)
+    except Exception as e:                               # noqa: BLE001
+        b("   ABSCHNITT L ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
     b("")
     b("=" * 62)
     b("Ende. Nichts auf der Karte wurde veraendert.")
