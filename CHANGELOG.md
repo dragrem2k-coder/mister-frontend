@@ -13,6 +13,56 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Behoben: die Scrollgeschwindigkeit war über weite Strecken ohne
+  Wirkung.** Unter der gemessenen Zeit lag eine starre Untergrenze von
+  40 ms, und die hat jede Stufe über 1,0 überall dort wieder
+  eingesammelt, wo ein Schritt billiger als 40 ms ist. Aus dem Bericht
+  eines Nutzers mit Stufe **2,0**, Abschnitt L: *Liste raster — Schritt
+  20,32 ms, nötig 23,37 ms, **Boden 40,00 ms***; im Hauptmenü dasselbe
+  Bild. **25 Schritte je Sekunde, wo 43 lieferbar waren.** Besonders
+  bitter: je billiger ein Schritt über die Builds wurde, desto mehr
+  verschwand hinter dieser Grenze — die Verbesserungen der Builds 296
+  bis 301 waren messbar da und beim Scrollen trotzdem nicht zu spüren.
+  Jetzt ist die gemessene Zeit (plus Reserve) die Untergrenze, nach
+  unten begrenzt nur noch die Bildrate. Auf seinem Gerät im Raster
+  **+71 % Schritte je Sekunde**, im Hauptmenü +63 %. **Bei Stufe 1,0
+  ändert sich nichts**, und links/rechts in der Liste bleibt bei
+  250 ms — dort ist nicht das Gerät die Grenze, sondern das Lesen
+  (Build 302).
+- **Behoben: ein einzelner teurer Schritt hat den Takt für eine halbe
+  Sekunde verrissen.** Maßgeblich war ein gleitender Mittelwert — und
+  ein Mittelwert ist hier die falsche Größe: gesucht ist nicht der
+  Durchschnitt, sondern die Frist, in der ein Schritt *fast immer*
+  fertig ist. Ein Durchschnitt ist per Definition in der Hälfte der
+  Fälle zu knapp; die 15 % Reserve darauf sollten das ausbügeln, aber
+  seine Spanne ist Faktor drei (Mittel 20,32 ms, größtes 60,43 ms).
+  Dazu zog seit Build 297 ein **einzelner** Ausreißer das Mittel um
+  die halbe Strecke mit: nachgerechnet **23,37 → 46,43 ms (+99 %) und
+  30 billige Schritte zurück**. Jetzt zählt der zweitgrößte der
+  letzten acht Messungen. Ein Ausreißer bewegt damit **gar nichts**
+  mehr (vorher +99 %), zwei bewegen sehr wohl, und eine anhaltende
+  Verlangsamung ist nach **zwei** Schritten erfasst statt nach drei
+  (Build 297) oder acht (Build 93). **Beide Zusagen zugleich waren mit
+  einem Mittelwert nicht zu haben** — dort sind „reagiert schnell" und
+  „lässt sich nicht kapern" dieselbe Schraube in zwei Richtungen
+  (Build 302).
+- **Hinweis zur Ehrlichkeit:** die beiden Punkte gehören zusammen, und
+  zwar zwingend. Je näher der Boden an der echten Lieferzeit liegt,
+  desto mehr fällt ein Pendeln auf — der erste Punkt allein hätte das
+  Scrollen **ungleichmäßiger** gemacht, nicht besser. Und was dieser
+  Build *nicht* behauptet: dass ein Schritt billiger geworden wäre. Er
+  ist es nicht; er war auch vorher nicht teurer als früher (Build 216:
+  67 ms je Rasterschritt, jetzt 20 ms). Es ging die ganze Zeit um die
+  Frage, wann gefragt wird — nicht wie lange gezeichnet wird
+  (Build 302).
+- **Bench 17.** Abschnitt L speist jetzt die **echten** gemessenen
+  Lücken in die Rechnung, nicht achtmal den Mittelwert — ein achtmal
+  wiederholter Mittelwert hat per Bauart keine Streuung und hätte
+  genau die Größe verschwiegen, um die es geht. Neue Spalte **Frist**
+  neben **Mittel**: liegen sie zusammen, läuft es ruhig; ist die Frist
+  viel größer, ist mindestens jeder vierte Schritt teuer, und das
+  kommt dann von etwas, das nebenher läuft (Build 302).
+
 - **Behoben: das Frontend hat während des Scrollens wirklich
   nachgerechnet.** Der Arbeitsfaden, der Cover-Miniaturen packt und auf
   die Karte schreibt, hat **nie geprüft, ob du gerade scrollst**. Eine

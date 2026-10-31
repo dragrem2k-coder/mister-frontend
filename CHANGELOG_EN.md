@@ -13,6 +13,50 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **Fixed: the scroll speed setting had no effect over wide stretches.**
+  Below the measured time sat a rigid 40 ms lower bound, and it took
+  back every step above 1.0 wherever a step is cheaper than 40 ms. From
+  a user's report at setting **2.0**, section L: *grid list — step
+  20.32 ms, needed 23.37 ms, **floor 40.00 ms***; the same picture in
+  the main menu. **25 steps per second where 43 were deliverable.** The
+  bitter part: the cheaper a step got across builds, the more vanished
+  behind that bound — the improvements of builds 296 to 301 were
+  measurably there and still not felt while scrolling. Now the measured
+  time (plus reserve) is the lower bound, limited downwards only by the
+  frame rate. On his device that is **+71 % steps per second** in the
+  grid, +63 % in the main menu. **At 1.0 nothing changes**, and
+  left/right in the list stays at 250 ms — there the limit is reading,
+  not the device (build 302).
+- **Fixed: a single expensive step wrecked the rhythm for half a
+  second.** What counted was a rolling average — and an average is the
+  wrong quantity here: what is wanted is not the mean but the deadline
+  by which a step is *almost always* done. A mean is by definition too
+  tight half the time; the 15 % reserve on top was meant to cover that,
+  but his spread is a factor of three (mean 20.32 ms, largest
+  60.43 ms). On top of that, since build 297 a **single** outlier
+  dragged the average halfway along: computed, **23.37 → 46.43 ms
+  (+99 %) and 30 cheap steps to recover**. Now the second largest of
+  the last eight measurements counts. An outlier moves **nothing at
+  all** (previously +99 %), two do move it, and a lasting slowdown is
+  picked up after **two** steps instead of three (build 297) or eight
+  (build 93). **Both guarantees at once were not available with an
+  average** — there, "reacts fast" and "cannot be hijacked" are the
+  same screw turned in two directions (build 302).
+- **A note on honesty:** the two points belong together, necessarily.
+  The closer the floor sits to the real delivery time, the more any
+  oscillation shows — the first point alone would have made scrolling
+  **more** uneven, not better. And what this build does *not* claim:
+  that a step got cheaper. It did not; nor was it more expensive than
+  before (build 216: 67 ms per grid step, now 20 ms). This was about
+  when input is polled, not how long drawing takes (build 302).
+- **Bench 17.** Section L now feeds the **real** measured gaps into the
+  calculation instead of the mean eight times — a mean repeated eight
+  times has no spread by construction and would have hidden exactly the
+  quantity at issue. New **deadline** column next to **mean**: if they
+  sit together, things run calmly; if the deadline is much larger, at
+  least every fourth step is expensive, and that comes from something
+  running alongside (build 302).
+
 - **Fixed: the frontend really was recomputing while you scrolled.** The
   worker thread that packs cover thumbnails and writes them to the card
   **never checked whether you were scrolling**. One thumbnail costs up

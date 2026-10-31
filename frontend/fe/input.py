@@ -15,7 +15,7 @@ dasselbe Dict-Objekt im Speicher, eine Mutation von der einen Seite
 ist sofort auch von der anderen sichtbar.
 """
 import os, sys, struct, fcntl, time, select, threading, json, re, glob
-from collections import defaultdict
+from collections import defaultdict, deque
 from fe.log import LOG
 from fe.launch import current_core
 from fe.hidraw import (_find_keyboard_hidraws, _hid_report_has_exit_key,
@@ -541,9 +541,120 @@ REPEAT_MESS_FENSTER = 8
 # halbe Strecke und wird vom naechsten billigen Schritt wieder
 # eingesammelt.
 REPEAT_MESS_FENSTER_HOCH = 2
+# BUILD 302: die beiden Fenster oben sind ERSETZT. Sie bleiben als
+# Konstanten stehen, weil der lange Text darueber die Begruendung
+# traegt und weil REPEAT_MESS_FENSTER weiterhin die Laenge des
+# Messfensters ist - nur die Rechnung dahinter ist eine andere.
+#
+# WARUM EIN MITTELWERT HIER DIE FALSCHE GROESSE WAR, und zwar ganz
+# gleich, mit welchem Fenster.
+#
+# Gesucht ist kein Durchschnitt, sondern eine FRIST: "in welcher Zeit
+# ist ein Schritt FAST IMMER fertig?" Ein Mittelwert beantwortet eine
+# andere Frage, und seine Antwort ist per Definition in der Haelfte der
+# Faelle zu knapp. Der Zuschlag REPEAT_MESS_RESERVE war der Versuch,
+# das mit 15 Prozent auszubuegeln. Aus seinem Bericht (Abschnitt L,
+# Bench 16, Liste raster): Mittel 20,32 ms, groesstes 60,43 ms. Die
+# Spanne ist Faktor DREI - da buegelt kein Zuschlag von 15 Prozent
+# etwas gerade.
+#
+# UND DAS FENSTER MACHTE ES SCHLIMMER, NICHT BESSER. Mit
+# REPEAT_MESS_FENSTER_HOCH = 2 zieht ein EINZELNER teurer Schritt das
+# Mittel um die halbe Strecke mit. Nachgerechnet mit genau seinen zwei
+# Zahlen, bei Scrollgeschwindigkeit 2.0:
+#
+#   Ruhe 23,37 ms -> ein Ausreisser -> 46,43 ms (+99 %)
+#   und 30 billige Schritte, bis es wieder bei 23,37 ist
+#
+# Der Abfrageabstand VERDOPPELT sich also durch einen einzigen teuren
+# Schritt und braucht eine halbe Sekunde zurueck. Genau so fuehlt sich
+# "ungleichmaessig" an - und es ist kein Nebeneffekt von Build 302,
+# sondern war vorher genauso da, nur von der starren 40-ms-Grenze
+# verdeckt (bei Tempo 1.0: 40,00 -> 46,43 ms, +16 %).
+#
+# DIE FORM, DIE BEIDES KANN. Statt eines gleitenden Mittels werden die
+# letzten REPEAT_MESS_FENSTER Messungen aufgehoben, und massgeblich ist
+# der ZWEITGROESSTE Wert darin (REPEAT_MESS_AUSREISSER = 1). Das ist
+# ein hohes Quantil, also tatsaechlich eine Frist, und es erfuellt die
+# beiden Zusagen, um die seit Build 93 und Build 297 gerungen wird,
+# ohne sie gegeneinander abzuwaegen:
+#
+#   EIN Ausreisser unter acht Messungen ist der GROESSTE Wert und
+#   damit nicht massgeblich -> er bewegt den Boden GAR NICHT, nicht
+#   nur "um weniger als die Haelfte". Das ist strenger als die alte
+#   Zusage aus Test 12, und es gibt nichts mehr zu erholen.
+#
+#   Eine ANHALTENDE Verlangsamung liefert beim ZWEITEN teuren Schritt
+#   einen zweitgroessten teuren Wert -> erfasst nach zwei Schritten.
+#   Das ist so schnell wie Fenster 2 und schneller als die drei
+#   Schritte, die Build 297 erreicht hat.
+#
+# Beides zugleich war mit einem Mittelwert nicht zu haben: dort ist
+# "reagiert schnell" und "laesst sich von einem Ausreisser nicht
+# kapern" dieselbe Stellschraube in zwei Richtungen. Mit einem
+# Quantil sind es zwei verschiedene Dinge - wie oft etwas teuer ist,
+# und wie teuer.
+REPEAT_MESS_AUSREISSER = 1
 REPEAT_MESS_RESERVE = 1.15
 REPEAT_FLOOR_MAX    = 0.50
 REPEAT_FLOOR_MIN    = 0.04
+# BUILD 302: die absolute Untergrenze, wenn der Nutzer AUSDRUECKLICH
+# schneller gestellt hat UND eine Messung vorliegt.
+#
+# WARUM ES DIESE ZWEITE, TIEFERE GRENZE BRAUCHT. REPEAT_FLOOR_MIN steht
+# seit Build 93 bei 40 ms, und die Begruendung darueber ist ehrlich:
+# 25 Schritte/s sind sehr flott, und darunter enthaelt eine Messung mehr
+# Rauschen als Signal. Beides stimmt - fuer die Vorgabe. Als harte
+# Grenze macht es die Scrollgeschwindigkeit aber in genau dem Fall tot,
+# fuer den sie gebaut wurde: ist ein Schritt BILLIGER als 40 ms, zieht
+# die letzte Zeile von _tempo_anwenden() das Ergebnis wieder auf 40 ms
+# hoch, und die Stufe 2.0 bewirkt nichts.
+#
+# NACHGERECHNET AN SEINEM BERICHT (Abschnitt L, Build 301, Scroll-
+# geschwindigkeit 2.00):
+#
+#   Liste raster  (rechts)  Schritt 20,32 ms  noetig 23,37  Boden 40,00
+#   Haupt raster  (rechts)  Schritt 21,38 ms  noetig 24,59  Boden 40,00
+#   Haupt liste   (runter)  Schritt 21,81 ms  noetig 25,09  Boden 40,00
+#
+# Dreimal "noetig" deutlich unter "Boden" - das Geraet zeichnet in
+# 20 ms, gefragt wird alle 40 ms. 25 Schritte je Sekunde, wo 43
+# lieferbar waeren. Seine Meldung lautet woertlich "scrollt immer noch
+# so scheisse", und das ist hier kein Gefuehl, sondern diese Tabelle.
+#
+# WARUM EINE BILDPERIODE DIE RICHTIGE GRENZE IST, und nicht einfach
+# "gar keine". Mehr als ein Schritt je ausgegebenem Bild ist nicht
+# DARSTELLBAR - der zweite Schritt waere fertig, bevor der erste je zu
+# sehen war. Das ist keine Vorsicht und kein Geschmack, sondern die
+# Ausgaberate: 60 Hz sind 16,6 ms. Eine Grenze, die man begruenden
+# kann, ist einer runden Zahl immer vorzuziehen.
+#
+# IN DER PRAXIS BINDET SIE NIE. Die hoechste Stufe ist 2.0 (siehe
+# SCROLL_TEMPO_STUFEN), und wirksam bleibt gemessen * REPEAT_MESS_RESERVE
+# als harte Grenze - bei seinen Zahlen 23,37 bis 45,50 ms, also ueberall
+# weit ueber 16,6. Die Konstante ist der Sicherheitsgurt fuer eine
+# absurd kleine Messung, nicht der neue Arbeitspunkt.
+REPEAT_FLOOR_BILD   = 1.0 / 60.0
+def _zeit_aus_proben(proben):
+    """Build 302: aus den letzten Messungen die FRIST machen, in der ein
+    Schritt fast immer fertig ist - nicht den Durchschnitt.
+
+    Massgeblich ist der (REPEAT_MESS_AUSREISSER+1)-groesste Wert, bei
+    der Vorgabe 1 also der zweitgroesste. Die lange Begruendung steht
+    bei REPEAT_MESS_AUSREISSER.
+
+    SOLANGE ES ZU WENIGE MESSUNGEN GIBT, gilt der GROESSTE Wert, und
+    das ist die vorsichtige Seite: bei zwei Messungen waere der
+    "zweitgroesste" die kleinere von beiden, und eine echte
+    Verlangsamung beim zweiten Schritt wuerde uebersehen - genau der
+    Fehler, den Build 297 behoben hat (Test 12b: "nach EINEM Schritt
+    nach unten stimmt der Boden"). Zu langsam zu fragen merkt niemand,
+    zu schnell zu fragen ist der gemeldete Fehler."""
+    if len(proben) <= REPEAT_MESS_AUSREISSER + 1:
+        return max(proben)
+    return sorted(proben, reverse=True)[REPEAT_MESS_AUSREISSER]
+
+
 # Zuordnung Aktion -> Achse: nur ein Wechsel INNERHALB derselben Achse
 # gilt als Richtungswechsel (hoch<->runter, links<->rechts).
 REPEAT_AXIS = {"up": "y", "down": "y", "left": "x", "right": "x"}
@@ -782,6 +893,9 @@ class InputManager:
         # noch nichts gemessen, dann gelten die festen Boeden. Siehe
         # zeichenzeit_melden()/_repeat_floor().
         self._zeichenzeit = {}
+        # BUILD 302: je Aktion die letzten Messungen, siehe
+        # zeichenzeit_melden() und REPEAT_MESS_AUSREISSER.
+        self._zeichenproben = {}
         self.rescan(force=True)
 
     # BUILD 192: wann die zuletzt gelieferte Aktion entstanden ist
@@ -883,13 +997,22 @@ class InputManager:
             return
         if not (0.0 < dauer <= REPEAT_FLOOR_MAX):
             return
-        alt = self._zeichenzeit.get(act)
-        if alt is None:
-            self._zeichenzeit[act] = dauer
-        else:
-            fenster = (REPEAT_MESS_FENSTER_HOCH if dauer > alt
-                       else REPEAT_MESS_FENSTER)
-            self._zeichenzeit[act] = alt + (dauer - alt) / fenster
+        # BUILD 302: die letzten REPEAT_MESS_FENSTER Messungen aufheben
+        # und daraus ein hohes Quantil bilden, statt ein gleitendes
+        # Mittel fortzuschreiben. Die ganze Begruendung steht oben bei
+        # REPEAT_MESS_AUSREISSER.
+        #
+        # getattr mit Rueckfall, aus demselben Grund wie bei
+        # seiten_aktionen in _repeat_floor(): mehrere Tests bauen einen
+        # InputManager ueber __new__, also ohne __init__.
+        proben = getattr(self, "_zeichenproben", None)
+        if proben is None:
+            proben = self._zeichenproben = {}
+        reihe = proben.get(act)
+        if reihe is None:
+            reihe = proben[act] = deque(maxlen=REPEAT_MESS_FENSTER)
+        reihe.append(dauer)
+        self._zeichenzeit[act] = _zeit_aus_proben(reihe)
 
     def rescan(self, force=False):
         # Billiger Schnellcheck: aendert sich /dev/input ueberhaupt? Neue
@@ -1000,7 +1123,8 @@ class InputManager:
         # bei einem Objekt aus einer aelteren Fassung auftreten. Ohne
         # den Rueckfall waere die Wiederholrate dann gar nicht mehr
         # berechenbar.
-        if act in getattr(self, "seiten_aktionen", PAGE_ACTIONS):
+        seite = act in getattr(self, "seiten_aktionen", PAGE_ACTIONS)
+        if seite:
             basis = minimum = REPEAT_FLOOR_PAGE
         else:
             basis, minimum = REPEAT_FLOOR, REPEAT_FLOOR_MIN
@@ -1030,9 +1154,9 @@ class InputManager:
         else:
             boden = min(REPEAT_FLOOR_MAX,
                         max(minimum, gemessen * REPEAT_MESS_RESERVE))
-        return self._tempo_anwenden(boden, gemessen, minimum)
+        return self._tempo_anwenden(boden, gemessen, minimum, seite)
 
-    def _tempo_anwenden(self, boden, gemessen, minimum):
+    def _tempo_anwenden(self, boden, gemessen, minimum, seite=False):
         """Die eingestellte Scrollgeschwindigkeit (Build 256) auf den
         berechneten Boden anwenden.
 
@@ -1040,6 +1164,14 @@ class InputManager:
         wer lesen will, woran er vorbeifaehrt, bekommt das sofort.
         Schneller geht nur bis zu dem, was das Geraet TATSAECHLICH
         zeichnet: der gemessene Wert bleibt die harte Grenze.
+
+        BUILD 302: und nur bis dahin, nicht bis zu einem Vorsichtswert
+        daneben. Bis hierher stand am Ende max(minimum, ...) mit
+        minimum = REPEAT_FLOOR_MIN = 40 ms, was die eingestellte
+        Geschwindigkeit ueberall dort aufhob, wo ein Schritt billiger
+        als 40 ms ist - auf seinem Geraet in drei von sechs Ansichten.
+        Die lange Rechnung dazu steht unten an der Stelle selbst und
+        bei REPEAT_FLOOR_BILD.
 
         Das ist keine Vorsicht, sondern die Lehre aus Build 93. Wer
         mehr Wiederholungen anfordert, als das Bild hergibt, bekommt
@@ -1091,6 +1223,39 @@ class InputManager:
             # Mittelwert ist eine Schaetzung, und ohne Zuschlag liegt
             # man in der Haelfte der Faelle darunter.
             neu = max(neu, gemessen * REPEAT_MESS_RESERVE)
+            # BUILD 302: und genau hier wurde die Einstellung wieder
+            # eingesammelt. Die Zeile darunter lautete
+            #
+            #     return min(REPEAT_FLOOR_MAX, max(minimum, neu))
+            #
+            # mit minimum = REPEAT_FLOOR_MIN = 40 ms. Ein Rasterschritt
+            # kostet auf seinem Geraet 20 ms, die Lieferzeit mit Reserve
+            # ist 23,37 ms - und max(40, 23,37) ist 40. Die Stufe 2.0
+            # hat also NICHTS getan, und zwar umso weniger, je
+            # schneller das Zeichnen wurde. Die Builds 296 bis 301 haben
+            # den Schritt von 26 auf 20 ms gedrueckt; jede dieser
+            # Verbesserungen verschwand hinter dieser Zeile.
+            #
+            # DIE ZWEI MINIMA SIND NICHT DASSELBE, und das ist der Kern:
+            #   links/rechts in der Liste (seite=True) -> 250 ms, und
+            #     das ist eine MENSCHLICHE Grenze. Wer mehr als vier
+            #     ganze Seiten je Sekunde springt, kann nicht mehr
+            #     lesen, wo er gelandet ist. Schnellere Hardware aendert
+            #     daran nichts, also bleibt sie unangetastet - siehe den
+            #     Kommentar bei REPEAT_MESS_FENSTER.
+            #   eine Zeile / eine Spalte (seite=False) -> 40 ms, und das
+            #     ist nur ein Rausch-Schutz fuer die Vorgabe. Liegt eine
+            #     Messung vor und hat der Nutzer ausdruecklich schneller
+            #     gestellt, ist die Messung die bessere Auskunft als
+            #     dieser Vorsichtswert.
+            #
+            # Die Messung bleibt die harte Grenze (die Zeile darueber).
+            # Ersetzt wird nur der Vorsichtswert, und auch das nur bei
+            # faktor > 1.0 - bei 1.0 und darunter aendert sich hier
+            # nichts, worauf tools/test_vsync_und_wiederholrate.py und
+            # tools/test_listen_kleinzeug.py weiter bestehen.
+            if faktor > 1.0 and not seite:
+                minimum = min(minimum, REPEAT_FLOOR_BILD)
         return min(REPEAT_FLOOR_MAX, max(minimum, neu))
 
     def _select_gehalten(self):

@@ -71,7 +71,7 @@ import zlib
 # Zustand der zuletzt gesetzten Ansicht) und hat einen Teil 4 fuer die
 # Hintergrundarbeit. Zwei Berichte mit derselben Nummer muessen
 # vergleichbar sein - also neue Nummer.
-BENCH_VERSION = 16
+BENCH_VERSION = 17
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -2930,7 +2930,7 @@ def _abschnitt_l(b, fe, S, A, fm):
     """
     b("")
     b("-" * 62)
-    b(" L  Wie lange wartet ein Tastendruck? (Build 300, 301)")
+    b(" L  Wie lange wartet ein Tastendruck? (Build 300, 301, 302)")
     b("-" * 62)
     import fe.input as _FI
     inp = getattr(fe, "inp", None)
@@ -3065,19 +3065,50 @@ def _abschnitt_l(b, fe, S, A, fm):
                     try:
                         _vorher_zz = dict(getattr(inp, "_zeichenzeit",
                                                   {}) or {})
+                        # BUILD 302: auch die Proben sichern und
+                        # leeren. Seit Build 302 haelt die Eingabe die
+                        # letzten Messungen je Aktion auf (siehe
+                        # REPEAT_MESS_AUSREISSER in fe/input.py). Ohne
+                        # das Leeren wuerden die Werte der VORIGEN
+                        # Ansicht mitzaehlen, und die Tabelle wuerde
+                        # Zahlen zeigen, die zu keiner Ansicht gehoeren
+                        # - derselbe Fehler wie der aus Build 301 eine
+                        # Zeile darueber, nur eine Ebene tiefer.
+                        _vorher_zp = dict(getattr(inp, "_zeichenproben",
+                                                  {}) or {})
                         inp._zeichenzeit = {}
-                        for _ in range(max(1, int(
-                                getattr(_FI, "REPEAT_MESS_FENSTER", 8)
-                                or 8))):
-                            inp.zeichenzeit_melden(act, mittel / 1000.0)
+                        inp._zeichenproben = {}
+                        # BUILD 302: DIE ECHTEN LUECKEN EINSPEISEN,
+                        # nicht den Mittelwert achtmal.
+                        #
+                        # Bis Build 301 stand hier der Mittelwert, so
+                        # oft wiederholt, wie das Fenster lang ist. Das
+                        # war richtig, solange der Boden an einem
+                        # Mittelwert hing - er haette bei echten Werten
+                        # dasselbe ergeben. Seit Build 302 haengt er an
+                        # einem hohen Quantil ueber die letzten
+                        # Messungen, und ein achtmal wiederholter
+                        # Mittelwert hat per Bauart KEINE Streuung: der
+                        # Bericht wuerde also genau die Groesse
+                        # verschweigen, um die es geht. Eingespeist
+                        # werden deshalb die letzten tatsaechlich
+                        # gemessenen Luecken, in ihrer Reihenfolge.
+                        _fenster = max(1, int(
+                            getattr(_FI, "REPEAT_MESS_FENSTER", 8) or 8))
+                        for _l in luecken[-_fenster:]:
+                            inp.zeichenzeit_melden(act, _l / 1000.0)
+                        frist = (getattr(inp, "_zeichenzeit", {})
+                                 or {}).get(act)
+                        frist = mittel if frist is None else frist * 1000.0
                         boden = inp._repeat_floor(act) * 1000.0
-                        noetig = mittel * getattr(
+                        noetig = frist * getattr(
                             _FI, "REPEAT_MESS_RESERVE", 1.15)
                         inp._zeichenzeit = _vorher_zz
+                        inp._zeichenproben = _vorher_zp
                     except Exception:                    # noqa: BLE001
                         boden = noetig = None
                 je_ansicht[name + " " + ansicht] = (
-                    mittel, max(luecken), act, boden, noetig)
+                    mittel, max(luecken), act, boden, noetig, frist)
                 b("      %-20s Mittel %6.2f ms, groesstes %6.2f ms"
                   % (name + " " + ansicht, mittel, max(luecken)))
     finally:
@@ -3114,33 +3145,56 @@ def _abschnitt_l(b, fe, S, A, fm):
       % (getattr(_FI, "REPEAT_FLOOR", 0) * 1000,
          getattr(_FI, "REPEAT_FLOOR_PAGE", 0) * 1000,
          getattr(_FI, "REPEAT_FLOOR_MIN", 0) * 1000))
+    b("      Minimum bei hoeherem Tempo (Build 302): %.1f ms"
+      % (getattr(_FI, "REPEAT_FLOOR_BILD", 0) * 1000))
+    b("      Messfenster / geduldete Ausreisser: %d / %d"
+      % (getattr(_FI, "REPEAT_MESS_FENSTER", 0),
+         getattr(_FI, "REPEAT_MESS_AUSREISSER", 0)))
     b("")
     if je_ansicht:
-        b("      %-22s %9s %9s %9s %7s %9s"
-          % ("Ansicht (Aktion)", "Schritt", "noetig", "Boden", "reicht",
-             "groesstes"))
+        b("      %-22s %9s %9s %9s %9s %7s %9s"
+          % ("Ansicht (Aktion)", "Mittel", "Frist", "noetig", "Boden",
+             "reicht", "groesstes"))
         for ans in sorted(je_ansicht):
-            mittel_ms, groesstes_ms, act, boden, noetig = je_ansicht[ans]
+            (mittel_ms, groesstes_ms, act, boden, noetig,
+             frist_ms) = je_ansicht[ans]
             if boden is None:
                 b("      %-22s -- nicht berechenbar" % (ans,))
                 continue
             passt = "ja" if boden + 1e-9 >= noetig else "NEIN"
-            b("      %-22s %6.2f ms %6.2f ms %6.2f ms %7s %6.2f ms"
-              % (ans + " (" + act + ")", mittel_ms, noetig, boden,
-                 passt, groesstes_ms))
+            b("      %-22s %6.2f ms %6.2f ms %6.2f ms %6.2f ms %7s "
+              "%6.2f ms"
+              % (ans + " (" + act + ")", mittel_ms, frist_ms, noetig,
+                 boden, passt, groesstes_ms))
         b("")
-        b("      'noetig' ist Schritt x Reserve. Liegt der Boden")
-        b("      DARUNTER, fordert das Frontend mehr an, als es im")
-        b("      Mittel zeichnen kann - und weil die Haelfte aller")
-        b("      Schritte langsamer als das Mittel ist, staut sich")
-        b("      das. Genau dieser Fehler stand bis Build 300 in")
-        b("      _tempo_anwenden(): dort war die harte Grenze der")
-        b("      NACKTE Messwert, die Reserve also weg.")
+        b("      'Mittel' ist der Durchschnitt der gemessenen")
+        b("      Schritte, 'Frist' der Wert, den die Eingabe daraus")
+        b("      macht: seit Build 302 der zweitgroesste der letzten")
+        b("      acht Messungen statt des Mittels. 'noetig' ist")
+        b("      Frist x Reserve, 'Boden' der tatsaechlich")
+        b("      angeforderte Abstand.")
         b("")
-        b("      Und selbst mit Reserve deckt der Boden nur das")
-        b("      MITTEL ab. Ist 'groesstes' mehr als doppelt so gross,")
-        b("      kommen die Ausreisser nicht aus der Wiederholrate,")
-        b("      sondern von etwas, das NEBENHER laeuft - siehe Teil 4.")
+        b("      LIEGT DER BODEN UNTER 'noetig', fordert das Frontend")
+        b("      mehr an, als es zeichnen kann, und die faelligen")
+        b("      Wiederholungen stauen sich. Genau dieser Fehler stand")
+        b("      bis Build 300 in _tempo_anwenden().")
+        b("")
+        b("      LIEGT DER BODEN DEUTLICH DARUEBER, ist es der")
+        b("      umgekehrte Fehler: es koennte schneller, tut es aber")
+        b("      nicht. Bis Build 301 zog REPEAT_FLOOR_MIN jeden Boden")
+        b("      auf 40 ms hoch, womit die eingestellte")
+        b("      Scrollgeschwindigkeit ueberall wirkungslos war, wo ein")
+        b("      Schritt billiger als 40 ms ist.")
+        b("")
+        b("      'Frist' GEGEN 'Mittel' ist das Mass fuer die")
+        b("      Gleichmaessigkeit. Liegen sie zusammen, laufen die")
+        b("      Schritte ruhig. Ist die Frist viel groesser, ist")
+        b("      mindestens jeder vierte Schritt teuer - das kommt")
+        b("      dann nicht aus der Wiederholrate, sondern von etwas,")
+        b("      das NEBENHER laeuft (siehe Teil 4). Und 'groesstes'")
+        b("      ueber der Frist ist der NORMALFALL und kein Fehler:")
+        b("      genau einen Ausreisser je Fenster soll die Frist")
+        b("      ausblenden.")
     # --- 4) wer laeuft NEBENHER? -----------------------------------
     #
     # BUILD 301, und das ist der Teil, der den gemeldeten Befund

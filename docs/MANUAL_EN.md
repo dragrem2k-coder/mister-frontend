@@ -1582,6 +1582,38 @@ deliver does not make the list faster; the surplus piles up and the
 list keeps running after you let go. That is exactly the bug Build 93
 fixed.
 
+**Since build 302 the setting actually does something (it did not
+always).** Underneath the measurement sat a rigid 40 ms lower bound,
+and it cancelled every step above 1.0 wherever a step is **cheaper
+than 40 ms**. On one measured device that was the case in three of six
+views: a grid step costs 20 ms there, yet input was polled only every
+40 — **25 steps per second where 43 were deliverable**. The faster the
+drawing got across builds, the more of it vanished behind that bound.
+Now the measured time is the lower bound, not a cautious value beside
+it; on the same device that is **+71 % steps per second** in the grid
+at 2x. The only remaining limit downwards is the frame rate: more than
+one step per displayed frame could not be seen anyway.
+
+**At 1x nothing changes.** If you set nothing, you notice nothing —
+the change applies only to 1.5x and 2x, that is, to the case where you
+explicitly asked for faster.
+
+**Left/right in the list stays at 250 ms, even at 2x.** There a whole
+page jumps, and the limit is not the device but you: anyone paging
+more than four times a second can no longer read where they landed.
+Faster hardware changes nothing about that.
+
+**And the rhythm got steadier (build 302).** What mattered so far was
+a rolling average. An average is the wrong quantity for this question:
+what is wanted is not the mean but the deadline by which a step is
+*almost always* done — a mean is by definition too tight half the
+time. Worse, a **single** expensive step dragged the average halfway
+with it: measured, that doubled the polling interval (23 → 46 ms) and
+took 30 cheap steps to recover. That is exactly what feels uneven. Now
+the **second largest of the last eight measurements** counts: a single
+outlier moves nothing at all, two do, and a real, lasting slowdown is
+picked up after **two** steps — faster than before.
+
 **Measured per direction since build 297.** Up and down cost
 systematically different amounts: upwards goes into rows you have just
 seen (covers are in memory), downwards into new territory (covers have

@@ -254,6 +254,35 @@ check("ein Ausreisser zieht den Boden NICHT auf seinen eigenen Wert",
       "(%.0f ms -> %.0f ms; der Ausreisser selbst waere %.0f ms)"
       % (vorher * 1000, nachher * 1000,
          0.300 * I.REPEAT_MESS_RESERVE * 1000))
+# NEU GEFASST IN BUILD 302 - UND ZWAR STRENGER, nicht schwaecher.
+#
+# HIER STAND: "jeder billige Schritt senkt den Boden wieder", geprueft
+# als STRENG fallende Folge ueber acht Schritte. Diese Zusage war
+# richtig gedacht - sie schliesst eine Ratsche aus, bei der ein
+# Ausreisser dauerhaft nachwirkt. Sie setzte aber voraus, dass der
+# Ausreisser den Boden ueberhaupt erst ANHEBT, denn nur dann gibt es
+# etwas zu senken.
+#
+# SEIT BUILD 302 HEBT ER IHN NICHT MEHR AN. Massgeblich ist nicht mehr
+# ein gleitendes Mittel, sondern der zweitgroesste der letzten acht
+# Messungen (siehe REPEAT_MESS_AUSREISSER in fe/input.py) - und ein
+# EINZELNER Ausreisser ist der groesste, also nicht massgeblich. Die
+# alte Pruefung lief damit auf "40 -> 40 -> 40 -> ..." und meldete
+# genau die Verbesserung als Fehler. Dieselbe Lage wie bei
+# tools/test_cover_panel.py in Build 299, und dieselbe Antwort:
+# strenger fassen, nicht loeschen.
+#
+# DIE NEUE FASSUNG SAGT DIREKT, WAS DIE ALTE UMSTAENDLICH ABSICHERTE:
+#   1. der Ausreisser bewegt den Boden GAR NICHT (nicht nur "um
+#      weniger als die halbe Strecke"), und
+#   2. es gibt keine Ratsche - nach billigen Schritten ist der Boden
+#      nicht hoeher als vorher.
+# Zusammen sind das die beiden Zusagen aus Build 93 und Build 297,
+# ohne den Kompromiss, der sie bisher gegeneinander ausgespielt hat.
+check("ein Ausreisser bewegt den Boden GAR NICHT",
+      abs(nachher - vorher) < 1e-9,
+      "(%.2f ms -> %.2f ms - der zweitgroesste von acht Messungen "
+      "ist der Ausreisser nicht)" % (vorher * 1000, nachher * 1000))
 # UND DIE ERHOLUNG, und zwar als STRUKTUR statt als Einzelwert
 # gemessen: jeder billige Schritt muss den Boden senken. Das ist die
 # Zusage, die wirklich zaehlt - sie schliesst eine Ratsche aus, bei der
@@ -265,13 +294,37 @@ _lauf = [im._repeat_floor("down")]
 for _ in range(8):
     im.zeichenzeit_melden("down", 0.010)
     _lauf.append(im._repeat_floor("down"))
-check("jeder billige Schritt senkt den Boden wieder",
-      all(b < a for a, b in zip(_lauf, _lauf[1:])),
+check("keine Ratsche: kein billiger Schritt hebt den Boden",
+      all(b <= a + 1e-9 for a, b in zip(_lauf, _lauf[1:])),
       " -> ".join("%.0f" % (b * 1000) for b in _lauf) + " ms")
-check("nach acht billigen Schritten wieder in der Naehe von vorher",
-      _lauf[-1] < vorher * 2.0,
-      "(%.0f ms, vorher waren es %.0f ms)"
+check("nach acht billigen Schritten wieder genau wie vorher",
+      abs(_lauf[-1] - vorher) < 1e-9,
+      "(%.2f ms, vorher waren es %.2f ms)"
       % (_lauf[-1] * 1000, vorher * 1000))
+
+print("Test 12c: ZWEI teure von acht ist kein Ausreisser mehr")
+# DIE GEGENPROBE ZU TEST 12, und ohne sie waere Test 12 mit einer
+# Mechanik zu bestehen, die Messungen einfach IGNORIERT: "bewegt den
+# Boden gar nicht" ist auch wahr, wenn nichts je etwas bewegt.
+#
+# Genau EINEN Ausreisser je Fenster soll die Frist ausblenden - den
+# zweiten nicht mehr. Das ist die Grenze, die REPEAT_MESS_AUSREISSER
+# setzt, und sie gehoert geprueft, nicht nur behauptet.
+im = I.InputManager.__new__(I.InputManager)
+im._zeichenzeit = {}
+for _ in range(16):
+    im.zeichenzeit_melden("down", 0.010)
+_ruhe = im._repeat_floor("down")
+im.zeichenzeit_melden("down", 0.300)
+_einer = im._repeat_floor("down")
+im.zeichenzeit_melden("down", 0.300)
+_zweiter = im._repeat_floor("down")
+check("der erste teure Schritt bleibt ohne Wirkung",
+      abs(_einer - _ruhe) < 1e-9, "%.2f ms" % (_einer * 1000))
+check("der zweite teure Schritt wirkt sofort",
+      _zweiter > _ruhe * 2.0,
+      "%.0f ms statt %.0f ms - zwei von acht sind 25 %%, und das ist "
+      "ein Zustand, kein Ausreisser" % (_zweiter * 1000, _ruhe * 1000))
 
 print("Test 12b: eine ANHALTENDE Verlangsamung wird schnell erfasst")
 # DAS IST DER FEHLER AUS BUILD 297, und er ist die Gegenseite von

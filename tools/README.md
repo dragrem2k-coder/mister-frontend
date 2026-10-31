@@ -7250,3 +7250,169 @@ loslegen.
 `test_version_einheitlich.py` war rot: mein Update-Text hatte 228
 Zeichen, das Popup fasst auf HDMI 216. Der Rest waere dem Nutzer mitten
 im Satz abgeschnitten worden. Dafuer ist der Test da.
+
+---
+
+## Nachtrag Build 302 - der Regler war tot, und der Takt pendelte
+
+**Befund des Nutzers, zum vierten Mal in Folge:** *"scrollt immer noch
+so scheisse !!!!! wie gesagt das war vor einigen builds viel besser !!
+echt mist gebaut wurde da!!"*
+
+**Er hat recht - aber nicht aus dem Grund, den die Builds 298 bis 301
+vermutet haben.** Erster Schritt war deshalb, die eigene Vermutung zu
+widerlegen statt sie weiterzuverfolgen. Aus den Projektunterlagen:
+
+| | damals | Bench 16 |
+|---|---|---|
+| Rasterschritt (Build 216) | 67,00 ms | 20,32 ms |
+| Haupt galerie (Build 236) | 41,89 ms | 28,78 ms |
+| Haupt galerie (Build 237) | 34,15 ms | 28,78 ms |
+
+Das Zeichnen ist in **jedem** Vergleich schneller geworden. Es war nie
+das Zeichnen. Es war die Frage, **wann ueberhaupt gefragt wird** - und
+dort lagen zwei Fehler.
+
+### Fehler 1: eine starre Grenze hat die Einstellung aufgehoben
+
+Aus seinem Abschnitt L, bei Scrollgeschwindigkeit **2.00**:
+
+```
+Liste raster  (right)  Schritt 20,32 ms  noetig 23,37 ms  Boden 40,00 ms
+Haupt raster  (right)  Schritt 21,38 ms  noetig 24,59 ms  Boden 40,00 ms
+Haupt liste   (down)   Schritt 21,81 ms  noetig 25,09 ms  Boden 40,00 ms
+```
+
+Dreimal "noetig" weit unter "Boden". Ursache ist die letzte Zeile von
+`_tempo_anwenden()`:
+
+```python
+return min(REPEAT_FLOOR_MAX, max(minimum, neu))
+```
+
+mit `minimum = REPEAT_FLOOR_MIN = 0.04`. `max(40, 23,37)` ist 40 - der
+Faktor 2.0 wurde vollstaendig eingesammelt. **Und zwar umso wirksamer,
+je billiger das Zeichnen wurde:** die Verbesserungen der Builds 296 bis
+301 waren messbar da und verschwanden hinter dieser Zeile.
+
+**Die Pruefung vorweg, dass es keine neue Regression ist:** `git log`
+zeigt `REPEAT_FLOOR_MIN = 0.04` und die Schlusszeilen von
+`_tempo_anwenden()` identisch bei den Builds 275, 276, 294 und 295.
+Der tote Regler ist **alt**. Was neu ist, ist nur, wie stark er stoert
+- weil das Zeichnen inzwischen so viel billiger ist.
+
+**Die beiden Minima sind nicht dasselbe**, und das ist der Kern der
+Behebung:
+
+* `REPEAT_FLOOR_PAGE` (250 ms) ist eine **menschliche** Grenze. Wer
+  mehr als vier ganze Seiten je Sekunde springt, kann nicht mehr
+  lesen, wo er gelandet ist. Unangetastet.
+* `REPEAT_FLOOR_MIN` (40 ms) ist nur ein **Rausch-Schutz** fuer die
+  Vorgabe. Liegt eine Messung vor **und** hat der Nutzer ausdruecklich
+  schneller gestellt, ist die Messung die bessere Auskunft.
+
+Die neue Untergrenze ist `REPEAT_FLOOR_BILD = 1/60` - eine
+Bildperiode. Nicht aus Geschmack: mehr als ein Schritt je ausgegebenem
+Bild ist **nicht darstellbar**. Eine Grenze, die man begruenden kann,
+ist einer runden Zahl immer vorzuziehen. In der Praxis bindet sie nie;
+wirksam bleibt `gemessen * REPEAT_MESS_RESERVE`.
+
+### Fehler 2: ein Mittelwert ist fuer eine Frist die falsche Groesse
+
+**Das fiel erst beim Nachrechnen der eigenen Behebung auf**, und es
+haette Fehler 1 allein zu einem Rueckschritt gemacht:
+
+```
+Tempo 1.0: Ruhe 40,00 ms -> ein Ausreisser 46,43 ms ( +16 %), zurueck nach  3
+Tempo 2.0: Ruhe 23,37 ms -> ein Ausreisser 46,43 ms ( +99 %), zurueck nach 30
+```
+
+Je naeher der Boden an der Lieferzeit liegt, desto mehr faellt ein
+Pendeln auf. Mit Fehler 1 behoben und sonst nichts haette **ein
+einziger** teurer Schritt den Abfrageabstand verdoppelt und eine halbe
+Sekunde gebraucht - genau das gemeldete "ungleichmaessig".
+
+Gesucht ist kein Durchschnitt, sondern eine **Frist**: in welcher Zeit
+ist ein Schritt *fast immer* fertig? Ein Mittelwert beantwortet eine
+andere Frage, und seine Antwort ist per Definition in der Haelfte der
+Faelle zu knapp. `REPEAT_MESS_RESERVE` (15 %) war der Versuch, das
+auszubuegeln - bei einer Spanne von Faktor drei (20,32 gegen 60,43 ms)
+buegelt das nichts gerade.
+
+Seit Build 302 werden die letzten `REPEAT_MESS_FENSTER` Messungen
+aufgehoben, und massgeblich ist der **zweitgroesste** darin
+(`REPEAT_MESS_AUSREISSER = 1`). Damit sind beide Zusagen zugleich zu
+haben, um die seit Build 93 und 297 gerungen wird:
+
+| | Build 93 | Build 297 | Build 302 |
+|---|---|---|---|
+| ein Ausreisser hebt den Boden um | 1/8 der Strecke | 1/2 der Strecke | **gar nicht** |
+| anhaltende Verlangsamung erfasst nach | 8 Schritten | 3 Schritten | **2 Schritten** |
+
+Mit einem Mittelwert war das nicht zu haben: dort sind "reagiert
+schnell" und "laesst sich nicht kapern" **dieselbe Schraube in zwei
+Richtungen**. Mit einem Quantil sind es zwei verschiedene Dinge - wie
+oft etwas teuer ist, und wie teuer.
+
+**Der ehrliche Preis**, und er steht auch im Changelog: bei einer
+Verlangsamung INNERHALB einer Richtung reagiert die neue Form einen
+Schritt spaeter als Fenster 2 (Schritt 2 statt teilweise schon
+Schritt 1). Das ist keine Nachlaessigkeit, sondern unvermeidlich: aus
+**einer** Messung laesst sich ein Ausreisser nicht von einem Trendbeginn
+unterscheiden. Die zweite Messung ist der frueheste ehrliche Zeitpunkt.
+Ein Schritt zu schnell gefragt kostet eine Wiederholung in der
+Warteschlange, die der Leerlauf aus den Builds 277/280 abraeumt; das
+Pendeln kostete 30 Schritte.
+
+### Was der Test gefunden hat
+
+`test_vsync_und_wiederholrate.py` Test 12 wurde rot - mit der Ausgabe
+`40 -> 40 -> 40 -> ... ms`. Die Zusage lautete *"jeder billige Schritt
+senkt den Boden wieder"*, geprueft als **streng fallende** Folge. Sie
+setzte voraus, dass der Ausreisser den Boden ueberhaupt erst anhebt.
+Seit Build 302 tut er das nicht mehr - der Test meldete also die
+Verbesserung als Fehler.
+
+Dieselbe Lage wie `test_cover_panel.py` in Build 299, und dieselbe
+Antwort: **strenger fassen, nicht loeschen.** Aus einer Zusage wurden
+drei:
+
+1. ein Ausreisser bewegt den Boden **gar nicht** (vorher: "um weniger
+   als die halbe Strecke"),
+2. keine Ratsche - kein billiger Schritt hebt ihn,
+3. **neu, Test 12c:** der **zweite** teure Schritt wirkt sofort.
+
+Punkt 3 ist die Gegenprobe, ohne die Punkt 1 auch durch eine Mechanik
+zu bestehen waere, die Messungen schlicht ignoriert. "Bewegt nichts"
+ist auch wahr, wenn nie etwas etwas bewegt.
+
+### Und am Bench dieselbe Sorte Fehler wie in Build 301
+
+Abschnitt L speiste bisher den **Mittelwert** achtmal in
+`zeichenzeit_melden()`. Das war richtig, solange der Boden an einem
+Mittelwert hing - bei echten Werten waere dasselbe herausgekommen. Seit
+Build 302 haengt er an einem Quantil, und **ein achtmal wiederholter
+Mittelwert hat per Bauart keine Streuung**: der Bericht haette genau die
+Groesse verschwiegen, um die es geht.
+
+Jetzt gehen die tatsaechlich gemessenen Luecken hinein, in ihrer
+Reihenfolge, und die Tabelle zeigt **Frist** neben **Mittel**. Liegen
+sie zusammen, laeuft es ruhig; ist die Frist viel groesser, ist
+mindestens jeder vierte Schritt teuer - und das kommt dann nicht aus
+der Wiederholrate, sondern von etwas, das nebenher laeuft.
+
+Dazu muss der Bench beim Umhaengen auch `_zeichenproben` sichern und
+leeren, sonst zaehlen die Werte der **vorigen** Ansicht mit. Das ist
+wortgleich der Fehler, den Build 301 eine Ebene darueber behoben hat.
+
+### Neue und geaenderte Pruefungen
+
+* **neu** `tools/test_scrolltempo_wirkt.py` - 20 Pruefungen, alle mit
+  **seinen** Messwerten aus Abschnitt L statt mit erfundenen: die
+  Einstellung wirkt; sie wirkt nie zu weit (6 Ansichten x 5 Stufen
+  gegen Frist x Reserve und gegen die Bildperiode); die Seitengrenze
+  bleibt; bei 1.0 kommt bitgenau der Wert von Build 301; der Regler hat
+  keinen Knick; ein Ausreisser bewegt nichts, zwei schon; und am
+  Quelltext, dass die Grenzen dort stehen, wo sie wirken.
+* **geaendert** `tools/test_vsync_und_wiederholrate.py` - Test 12 neu
+  gefasst, Test 12c neu.

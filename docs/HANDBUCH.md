@@ -1873,6 +1873,41 @@ mehr Wiederholungen an, als das Bild hergibt, wird die Liste nicht
 schneller; der Überschuss staut sich und sie läuft nach dem Loslassen
 weiter. Genau das war der Fehler, den Build 93 behoben hat.
 
+**Die Einstellung wirkt seit Build 302 wirklich (vorher nicht immer).**
+Unter der Messung lag eine starre Untergrenze von 40 ms, und die hat
+jede Stufe über 1,0 überall dort aufgehoben, wo ein Schritt **billiger
+als 40 ms** ist. Auf einem gemessenen Gerät war das in drei von sechs
+Ansichten der Fall: ein Rasterschritt kostet dort 20 ms, gefragt wurde
+trotzdem nur alle 40 — **25 Schritte je Sekunde, wo 43 lieferbar
+waren**. Je schneller das Zeichnen über die Builds wurde, desto mehr
+verschwand hinter dieser Grenze. Jetzt ist die gemessene Zeit die
+Untergrenze, nicht ein Vorsichtswert daneben; auf demselben Gerät sind
+das im Raster **+71 % Schritte je Sekunde** bei Stufe 2x. Nach unten
+begrenzt nur noch die Bildrate: mehr als ein Schritt je ausgegebenem
+Bild wäre ohnehin nicht zu sehen.
+
+**Bei 1x ändert sich dadurch nichts.** Wer nichts einstellt, merkt
+nichts — die Änderung gilt nur für die Stufen 1,5x und 2x, also für
+den Fall, dass du ausdrücklich schneller gestellt hast.
+
+**Links/rechts in der Liste bleibt bei 250 ms, auch bei 2x.** Dort
+springt eine ganze Seite, und die Grenze ist nicht das Gerät, sondern
+du: wer mehr als vier Seiten je Sekunde weiterspringt, kann nicht mehr
+lesen, wo er gelandet ist. Schnellere Hardware ändert daran nichts.
+
+**Und der Takt ist ruhiger geworden (Build 302).** Maßgeblich war
+bisher ein gleitender Mittelwert. Ein Mittelwert ist für diese Frage
+die falsche Größe: gesucht ist nicht der Durchschnitt, sondern die
+Frist, in der ein Schritt *fast immer* fertig ist — ein Durchschnitt
+ist per Definition in der Hälfte der Fälle zu knapp. Schlimmer noch
+zog ein **einzelner** teurer Schritt den Mittelwert um die halbe
+Strecke mit: gemessen verdoppelte das den Abfrageabstand (23 → 46 ms)
+und brauchte 30 billige Schritte zurück. Genau das fühlt sich
+ungleichmäßig an. Jetzt zählt der **zweitgrößte der letzten acht
+Messungen**: ein einzelner Ausreißer bewegt gar nichts mehr, zwei
+schon, und eine echte, anhaltende Verlangsamung ist nach **zwei**
+Schritten erfasst — schneller als vorher.
+
 **Gemessen wird je Richtung getrennt (seit Build 297).** Hoch und
 runter kosten systematisch unterschiedlich viel: nach oben geht es in
 Zeilen, die du gerade gesehen hast (Cover liegen im Speicher), nach
