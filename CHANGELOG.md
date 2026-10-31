@@ -13,6 +13,63 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Der Start ist schneller: das Einlesen läuft jetzt während einer
+  Wartezeit, in der vorher nichts geschah.** Aus dem Bericht eines
+  Nutzers: `F9 eingespeist 218 ms` und `Restfrist für MiSTer
+  abgewartet 247 ms` — **465 ms reines Schlafen**, und gleich daneben
+  `davon scan_games() 538 ms`, der größte Einzelposten des ganzen
+  Starts (1825 ms). Dasselbe Muster wie Build 292, eine Etage höher:
+  *die Zeit bleibt, die Untätigkeit nicht.* Das Einlesen wird jetzt
+  angestoßen, **bevor** das F9 rausgeht, und läuft in diesen 465 ms
+  mit — Schlafen gibt die Sperre frei, und das Gerät hat zwei Kerne.
+  **Die ganze Vorsicht steckt in einer Einschränkung:** der Vorlauf
+  nimmt nur den schnellen Weg (Fingerabdruck passt → Liste aus dem
+  Zwischenspeicher) und gibt beim ersten Zweifel auf. Das Warten auf
+  USB oder eine Netzwerkfreigabe und der Fortschrittsbalken bleiben
+  beim normalen Weg, denn die **zeichnen** — und aus einem Faden zu
+  zeichnen, während gerade die Konsole übernommen wird und das erste
+  Bild noch nicht steht, wäre die Sorte Fehler, die man nicht mehr
+  findet. Der Bericht nennt, wie viel die Wartezeit wirklich getragen
+  hat; steht dort eine große Restzeit, hat es *nicht* funktioniert
+  (Build 303).
+- **Zwei eigene Messungen haben nichts gemessen — behoben.** Das ist
+  der ehrliche Teil dieses Builds:
+  - `Pausen des Schreib-Arbeiters 0` stand in zwei Berichten
+    hintereinander, und der Text darunter sagte selbst, warum: beim
+    Messen hält niemand eine Taste. Zwei Builds lang war damit
+    unbekannt, ob die Pause aus Build 301 im Betrieb etwas tut. Jetzt
+    wird der Hergang nachgestellt — erst langsam blättern (der Arbeiter
+    bekommt Aufträge), dann die Taste halten — und der Bericht deutet
+    das Ergebnis in drei Fällen, weil „0 Pausen" dreierlei heißen kann.
+  - `KEIN C-Aufruf — das Füllen läuft hier in Python` stand beim
+    größten Posten eines Listen-Schritts, und das war **falsch**, nicht
+    leer: die Messung hing am C-Füller, die Karte wird seit Build 299
+    aber aus einer Vorlage **kopiert**, also durch den Zeilenkopierer —
+    und der war nicht eingehängt. Nachgezählt greift die Vorlage in 7
+    von 7 Fällen. Eine Messung, die die Hälfte der Wege nicht kennt,
+    liefert keinen leeren Wert, sondern eine falsche Auskunft
+    (Build 303).
+- **Was dabei herauskam, und was bewusst *nicht* gebaut wurde.** Die
+  Karte der Listenansicht bewegt **2,83 MB je Schritt**; mit seinem
+  eigenen Wert (2,55 ms je MB) sind das 7,28 ms vorhergesagt gegen
+  7,85 gemessen — **sie hängt an der Speicherbandbreite**, nicht an
+  einem langsamen Weg. Damit gibt es genau einen Hebel: weniger Byte.
+  Die Aussparung aus Build 234/244 entscheidet **60 bis 82 Prozent**
+  davon. Ob sie beim Scrollen mitgegeben wird, ist im Container nicht
+  zu entscheiden — der Prüfstand hat keine Cover. Und weil die richtige
+  Abhilfe mit genau dieser Zahl in beide Richtungen kippt (bei voller
+  Karte spart Füllen ~2,4 ms, bei greifender Aussparung ist Kopieren
+  0,6 ms besser), wird hier **nicht geraten**. Der Bericht nennt sie
+  jetzt; danach wird gebaut (Build 303).
+- **Bench 18.** Abschnitt J nennt die **Bytes** je Schritt für
+  restore, blit, karten und flip — bisher standen dort Zeilen für die
+  einen und Megabyte für die anderen, drei Posten in zwei Maßeinheiten
+  und ohne Summe. Jetzt in einer Einheit, mit dem Preis des Geräts
+  daneben und mit „= x Bildschirme je Schritt". Dazu eine neue
+  Konstante, die der Grund ist, warum die Rechnung vorher nicht
+  aufging: Füllen schreibt N Byte (2,1 ms/MB), Kopieren liest N *und*
+  schreibt N (2,55 ms/MB) (Build 303).
+
 - **Behoben: die Scrollgeschwindigkeit war über weite Strecken ohne
   Wirkung.** Unter der gemessenen Zeit lag eine starre Untergrenze von
   40 ms, und die hat jede Stufe über 1,0 überall dort wieder

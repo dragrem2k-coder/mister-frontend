@@ -16,7 +16,7 @@ Einfrier-Falle) - modul-qualifizierter Zugriff, nicht per direktem
 Import. _wait_for_network_ready() haelt fe.paths.GAMES_BASES bei
 jeder Neuermittlung synchron.
 """
-import os, glob, re, struct, time, pickle, socket
+import os, glob, re, struct, time, pickle, socket, threading
 import threading as _threading
 from fe.log import LOG
 from fe.systems import (GAME_SYSTEMS, OPTIONAL_GAME_SYSTEMS,
@@ -1122,6 +1122,114 @@ def _wait_for_network_ready(max_wait=45.0, poll=0.5):
         time.sleep(poll)
     fe.paths.GAMES_BASES = fe.paths._discover_games_bases()
 
+# ---------------------------------------------------------------------------
+# BUILD 303: DAS EINLESEN WAEHREND DER F9-FRIST ERLEDIGEN
+# ---------------------------------------------------------------------------
+# DER BEFUND, aus Abschnitt A seines Berichts (Bench 17):
+#
+#     F9 eingespeist                   218 ms   12 %
+#     Erstes Bild gerechnet            153 ms    8 %
+#     Restfrist fuer MiSTer abgewartet 247 ms   14 %
+#     davon scan_games()               538 ms   29 %
+#     Start bis Kategorien bereit     1825 ms
+#
+# 218 + 247 = 465 ms, in denen das Frontend NICHTS tut. Es sind
+# time.sleep()-Aufrufe: 0,1 s vor der F9-Injektion, zweimal 0,05 s
+# darin, und der Rest der 0,4-Sekunden-Frist danach. Daneben steht der
+# groesste Einzelposten des ganzen Starts mit 538 ms.
+#
+# DAS IST GENAU DAS MUSTER AUS BUILD 292, eine Etage hoeher. Dort
+# wanderte die Vignetten-Rechnung (153 ms) in die Frist; die Zusage
+# lautet "zwischen dem F9 und dem Wiederergreifen der Eingabegeraete
+# liegen 0,4 s" und sagt nicht, dass wir dabei untaetig sein muessen.
+# Hier wandert das Einlesen hinein - und weil Schlafen die GIL
+# freigibt, laeuft der Faden in diesen 465 ms wirklich.
+#
+# WARUM NUR DER SCHNELLE WEG, und das ist die ganze Vorsicht dieses
+# Stuecks: scan_games() hat zwei Gesichter. Passt der Fingerabdruck,
+# ist es reine Dateiarbeit - Signatur bilden, Kopf lesen, Baeume
+# entpacken. Passt er nicht, WARTET es auf USB oder NAS und ZEICHNET
+# dabei (warte_cb, progress_cb). Zeichnen aus einem Faden, waehrend der
+# Hauptfaden die Konsole uebernimmt und das erste Bild noch nicht steht,
+# waere genau die Sorte Fehler, die man nicht mehr findet.
+#
+# Deshalb gibt dieser Vorlauf beim ersten Zweifel AUF: stimmt die
+# Signatur nicht, liefert er nichts und veraendert nichts, und der
+# normale Aufruf macht alles wie bisher - mit seinen Rueckmeldungen,
+# seinem Warten, seinem Fortschrittsbalken.
+#
+# UND ER BEHAUPTET NICHTS. Wie lange der Hauptfaden am Ende noch auf
+# ihn warten musste, wird gemessen (vorladen_stand()) und steht im
+# Startprotokoll. Steht dort eine grosse Zahl, hat die Ueberlappung
+# nicht funktioniert - dann ist das zu sehen und nicht zu glauben.
+_VORLADEN = {"faden": None, "ergebnis": None, "warten": 0.0,
+             "dauer": 0.0, "grund": "nicht angestossen"}
+
+
+def scan_games_vorladen():
+    """Das Einlesen in einem Faden anstossen - nur der schnelle Weg.
+
+    Mehrfachaufrufe sind harmlos: der zweite sieht den Faden und tut
+    nichts."""
+    if _VORLADEN["faden"] is not None:
+        return
+    _VORLADEN["ergebnis"] = None
+    _VORLADEN["grund"] = "laeuft"
+
+    def _arbeit():
+        t0 = time.monotonic()
+        try:
+            sig, _per = _games_signature()
+            cached_sig, _cper, data = _cache_kopf_lesen()
+            if cached_sig != sig:
+                # DER LANGSAME WEG GEHOERT NICHT HIERHER - siehe oben.
+                _VORLADEN["grund"] = "Fingerabdruck passt nicht"
+                return
+            cats = _cache_systeme_lesen(data)
+            _VORLADEN["ergebnis"] = (sig, cats)
+            _VORLADEN["grund"] = "aus dem Cache vorgeladen"
+        except (OSError, ValueError, KeyError, IndexError, TypeError,
+                pickle.UnpicklingError, EOFError, AttributeError) as e:
+            # GENAU DIE LISTE, die scan_games() selbst auffaengt - ein
+            # beschaedigter Cache darf den Start nicht kosten, und der
+            # normale Aufruf behandelt ihn gleich danach richtig.
+            _VORLADEN["grund"] = "abgebrochen (%s)" % type(e).__name__
+        finally:
+            _VORLADEN["dauer"] = time.monotonic() - t0
+
+    faden = threading.Thread(target=_arbeit, name="scan-vorladen",
+                             daemon=True)
+    _VORLADEN["faden"] = faden
+    faden.start()
+
+
+def _vorgeladenes_holen():
+    """Auf den Vorlauf warten und sein Ergebnis nehmen (oder None).
+
+    Gewartet wird AUCH, wenn das Ergebnis gar nicht gebraucht wird
+    (force=True): _games_signature() schreibt eine Modulvariable, und
+    zwei Schreiber zur gleichen Zeit sind eine Frage, die man sich
+    nicht stellen muss, wenn man einmal wartet."""
+    faden = _VORLADEN["faden"]
+    if faden is None:
+        return None
+    t0 = time.monotonic()
+    faden.join()
+    _VORLADEN["warten"] = time.monotonic() - t0
+    _VORLADEN["faden"] = None
+    erg = _VORLADEN["ergebnis"]
+    _VORLADEN["ergebnis"] = None
+    return erg
+
+
+def vorladen_stand():
+    """(Grund, Dauer des Vorlaufs, Restwartezeit des Hauptfadens).
+
+    Die dritte Zahl ist die ehrliche: sie sagt, wieviel von dem
+    Einlesen die Frist NICHT geschluckt hat."""
+    return (_VORLADEN["grund"], _VORLADEN["dauer"], _VORLADEN["warten"])
+
+
 def scan_games(force=False, progress_cb=None, warte_cb=None):
     """ROM-Listen laden - aus dem Cache, wenn er noch passt.
     progress_cb(i, total, name): wird NUR beim tatsaechlichen Scannen
@@ -1151,6 +1259,17 @@ def scan_games(force=False, progress_cb=None, warte_cb=None):
     _games_signature()): es wird weiterhin NUR die oberste Ebene
     geprueft, kein tieferer Ordnerbaum zusaetzlich durchlaufen, um
     diese Entscheidung zu treffen."""
+    # BUILD 303: hat der Vorlauf waehrend der F9-Frist schon alles
+    # erledigt, ist hier Schluss. Siehe scan_games_vorladen().
+    _vorgeladen = _vorgeladenes_holen()
+    if _vorgeladen is not None and not force:
+        _vsig, _vcats = _vorgeladen
+        _grund, _dauer, _warten = vorladen_stand()
+        LOG("Spieleliste vorgeladen (%d Systeme) - der Vorlauf brauchte "
+            "%.0f ms, davon musste der Start noch %.0f ms abwarten"
+            % (len(_vcats), _dauer * 1000.0, _warten * 1000.0))
+        ordner_merken(_vsig)
+        return _vcats
     sig, per_syskey = _games_signature()
     cached_sig = None
     cached_per_syskey = None

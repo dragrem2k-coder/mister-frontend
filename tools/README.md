@@ -7416,3 +7416,215 @@ wortgleich der Fehler, den Build 301 eine Ebene darueber behoben hat.
   Quelltext, dass die Grenzen dort stehen, wo sie wirken.
 * **geaendert** `tools/test_vsync_und_wiederholrate.py` - Test 12 neu
   gefasst, Test 12c neu.
+
+---
+
+## Nachtrag Build 303 - zwei Messungen, die nichts gemessen haben
+
+Der Nutzer hat nach Build 302 drei Punkte ausgewaehlt: *Galerie und
+Liste schneller*, *beweisen, dass die Pause wirkt*, *Start
+beschleunigen*. Der zweite und der dritte sind erledigt. Beim ersten
+hat sich beim Nachsehen herausgestellt, dass **zwei meiner eigenen
+Messungen in die Irre fuehren** - und das ist der eigentliche Inhalt
+dieses Nachtrags.
+
+### Fehler 1: "KEIN C-Aufruf" war falsch, nicht leer
+
+In seinem Bericht steht bei dem groessten Posten eines
+Listen-Schritts:
+
+```
+karte_mit_schatten  769x945  1.00 x  7.853 ms
+   davon im groessten Posten (karte_mit_schatten):
+     KEIN C-Aufruf - das Fuellen laeuft hier in
+     Python, und dann erklaert die Flaeche nichts.
+```
+
+Daraus habe ich zuerst geschlossen, die Kartenvorlage aus Build 299
+greife nicht. **Nachgezaehlt im Container trifft sie 7 von 7 Mal.**
+
+Der Haken von Abschnitt K sitzt am C-**Fueller**
+(`flaechen_fueller`). Seit Build 299 wird die Karte aber aus einer
+Vorlage **kopiert** - sie geht durch den **Zeilenkopierer**, und der
+war nicht eingehakt.
+
+> Eine Messung, die die Haelfte der Wege nicht kennt, liefert keinen
+> leeren Wert, sondern eine falsche Auskunft.
+
+Und auf die hin haette man an der richtigen Stelle das Falsche getan:
+die Vorlage "reparieren", die laengst funktioniert. Behoben - der
+Zeilenkopierer ist jetzt genauso eingehakt, und bei einem Posten, der
+dort hineingeht, steht die Zahl der Aufrufe, der Zeilen und der
+**Megabyte**.
+
+### Was dabei an echter Auskunft herauskam
+
+```
+Karte 769x945 = 2.77 MB voll
+  ohne Aussparung                      2.83 MB  ->  7.28 ms
+  mit Cover-Aussparung 578x770         1.13 MB  ->  2.91 ms
+  mit Kasten-Aussparung (Build 244)    0.52 MB  ->  1.34 ms
+```
+
+Umgerechnet mit **seinem** Wert (H.1: 2,55 ms je MB im RAM). Gemessen
+hat sein Geraet 7,85 ms - das Modell sagt 7,28. **Die Karte haengt an
+der Speicherbandbreite**, nicht an einem langsamen Weg. Damit gibt es
+genau einen Hebel, und es ist derselbe, der bei der C++-Frage
+herauskam: *weniger Byte*.
+
+Die Aussparung entscheidet dabei **60 bis 82 Prozent** der
+Kartenbytes. Ob sie beim Scrollen mitgegeben wird, haengt an `_kurz`
+in `frontend.py` - und **das ist im Container nicht zu entscheiden**:
+der Pruefstand hat keine Cover, also gibt der Aufrufer die Aussparung
+dort zu Recht nie mit (gezaehlt: 0 von 6).
+
+**Also nicht gebaut.** Zwei Wege liegen bereit - das Band in C
+fuellen statt kopieren (ein Fuellen bewegt N Byte, eine Kopie 2N), und
+die Aussparung oefter mitgeben. Welcher gewinnt, kippt mit genau
+dieser Zahl: bei voller Karte spart das Fuellen rund 2,4 ms, bei
+greifender Aussparung ist die Kopie um 0,6 ms besser. **Eine
+Aenderung, die je nach einer unbekannten Zahl in beide Richtungen
+wirkt, wird nicht geraten** - das war Build 300, und der Nutzer hat
+dafuer deutliche Worte gefunden. Abschnitt K nennt jetzt "mit
+Aussparung gerufen x von y mal"; der naechste Bericht entscheidet es.
+
+### Fehler 2: eine Zahl, die in jedem Fall 0 ist
+
+```
+4) Hintergrundarbeit waehrend der Eingabe (Build 301)
+   Pausen des Schreib-Arbeiters        0
+```
+
+Zweimal hintereinander, in Bench 16 und 17. Der Text darunter sagte
+sogar selbst, warum: *"Beim Bench haelt niemand eine Taste, also ist 0
+hier der NORMALFALL"*. Zwei Builds lang war damit unbekannt, ob die
+Pause aus Build 301 im Betrieb ueberhaupt etwas tut.
+
+> Eine Zahl, die in jedem Fall 0 ist, ist keine Messung.
+
+Jetzt wird der Hergang nachgestellt, in dieser Reihenfolge:
+
+1. **langsam blaettern** - der Arbeiter bekommt Auftraege,
+2. **Taste halten** - er muss pausieren.
+
+Die zweite Haelfte allein zeigte nichts: waehrend des Scrollens werden
+noch nicht gerechnete Cover uebersprungen (Build 244), es kommen also
+keine neuen Auftraege dazu. Genau darum muss die Schlange **vorher**
+gefuellt werden - das war beim ersten Entwurf nicht so, und er zeigte
+weiter 0.
+
+Der Zustand wird **hergestellt, nicht umgangen**: gesetzt wird
+`_last_input_time`, woraus der Zeichenweg `_defer_uncached` selbst neu
+rechnet. Ein von Hand gesetzter Schalter hat in Build 300 schon einmal
+einen Test gruen gemacht, der nichts prueft.
+
+Und der Bericht deutet das Ergebnis selbst - in drei Faellen, weil
+"0 Pausen" drei verschiedene Dinge heissen kann: leere Schlange (kein
+Befund), Pausen gezaehlt (Beweis), oder Auftraege da und trotzdem
+keine Pause (dann ist Build 301 wirkungslos und `_navigation_aktiv()`
+ist nachzusehen).
+
+### Der Start: 465 ms, in denen nichts geschah
+
+```
+F9 eingespeist                   218 ms   12 %
+Restfrist fuer MiSTer abgewartet 247 ms   14 %
+davon scan_games()               538 ms   29 %
+Start bis Kategorien bereit     1825 ms
+```
+
+218 + 247 = **465 ms reines Schlafen** - `time.sleep()` vor und nach
+der F9-Injektion. Gleich daneben der groesste Einzelposten des ganzen
+Starts. Dasselbe Muster wie Build 292, eine Etage hoeher:
+
+> Die Zeit bleibt, die Untaetigkeit nicht.
+
+`scan_games_vorladen()` stoesst das Einlesen in einem Faden an, bevor
+das F9 rausgeht. Schlafen gibt die GIL frei, also laeuft der Faden in
+diesen 465 ms wirklich - und das Geraet hat zwei Kerne.
+
+**Die ganze Vorsicht steckt in einer Einschraenkung:** `scan_games()`
+hat zwei Gesichter. Passt der Fingerabdruck, ist es reine Dateiarbeit.
+Passt er nicht, **wartet** es auf USB oder NAS und **zeichnet** dabei
+(`warte_cb`, `progress_cb`). Zeichnen aus einem Faden, waehrend der
+Hauptfaden gerade die Konsole uebernimmt und das erste Bild noch nicht
+steht, waere die Sorte Fehler, die man nicht mehr findet.
+
+Der Vorlauf nimmt deshalb **nur** den schnellen Weg und gibt beim
+ersten Zweifel auf: stimmt die Signatur nicht, liefert er nichts und
+veraendert nichts. Das ist nicht als Kommentar zugesagt, sondern als
+**Struktur geprueft** - `tools/test_vorlauf_spieleliste.py` liest den
+Syntaxbaum von `scan_games_vorladen()` und vergleicht alle
+aufgerufenen Namen gegen eine Liste. Wer dort spaeter ein Warten oder
+ein Zeichnen hineinschreibt, macht den Test rot.
+
+**Und er behauptet nichts.** Gemessen wird, wie lange der Hauptfaden am
+Ende doch noch warten musste; Abschnitt A nennt die drei Zahlen. Steht
+dort eine grosse Restwartezeit, hat die Ueberlappung **nicht**
+funktioniert - das soll zu sehen sein und nicht geglaubt werden
+muessen. Nach Build 300 ist das keine Hoeflichkeit mehr.
+
+### Noch eine Lehre zum Pruefstand
+
+Die erste Fassung von Test 6 liess den Vorlauf "lange brauchen", mit
+`time.sleep(0.12)`. Gemessen wurden **0 ms**: `tools/_harness.py`
+friert `time.monotonic` global ein **und** macht `time.sleep()` zu
+einem Nichts. In Build 301 hat dieselbe Eigenschaft einen Test endlos
+haengen lassen.
+
+Ein Wettrennen waere die falsche Antwort gewesen - ob der Faden beim
+Abholen noch laeuft, entschiede sonst die Zufaelligkeit der
+Umschaltung, und ein Test, der manchmal gruen ist, prueft nichts. Also
+tritt an die Stelle des Fadens eine Attrappe, deren `join()` die Uhr
+weiterstellt. Damit ist genau das geprueft, was zaehlt: dass die
+Messung das Abholen **umschliesst**.
+
+### Abschnitt J nennt jetzt Bytes
+
+Fuer die C++-Frage wurde an seinen Zahlen nachgerechnet, dass
+`restore`, `flip`, `text` und `karten` schon durch libdragend laufen -
+66 bis 75 Prozent eines Schritts. Uebrig bleibt dann ein Hebel:
+weniger Byte. Nur stand im Bericht bei `restore` und `karten` die Zahl
+der **Zeilen** und beim Flip die der **Megabyte** - drei Posten, zwei
+Masseinheiten, keine Summe.
+
+Jetzt stehen sie in derselben Einheit, mit dem Preis dieses Geraets
+daneben, und dazu "= x Bildschirme je Schritt". Der groesste Posten
+dieser Zeile ist die naechste Aufgabe, belegt statt geraten.
+
+Dafuer gibt es eine neue Konstante, und sie ist der Grund, warum die
+Rechnung vorher nicht aufging:
+
+```python
+MS_JE_MB     = 2.1    # Fuellen - geschrieben werden N Byte
+MS_JE_MB_KOPIE = 2.55 # Kopieren - gelesen N, geschrieben N, also 2N
+```
+
+Mit dem Fuell-Preis gerechnet kaeme eine Kopie um ein Fuenftel zu
+billig heraus. Solche stillen Verwechslungen machen aus einem Modell
+eine Ausrede.
+
+### Neue und geaenderte Pruefungen
+
+* **neu** `tools/test_vorlauf_spieleliste.py` - 25 Pruefungen: der
+  Vorlauf kann den langsamen Weg nicht nehmen (als Syntaxbaum
+  geprueft), liefert bei passendem Fingerabdruck, gibt sonst auf,
+  ueberlebt einen Fehler, wird von `force=True` ignoriert, laeuft als
+  daemon, misst seine Restwartezeit, und im Startweg steht der Anstoss
+  vor der Frist.
+* **geaendert** `tools/test_nachscan.py` - der Test war rot, und zwar
+  aus einem Grund, der nichts mit seinem Gegenstand zu tun hatte: er
+  schnitt den Quelltext mit `split("def scan_games")` auf, und
+  `scan_games_vorladen()` steht davor. Drei Pruefungen wurden rot, ohne
+  dass an `scan_games()` eine Zeile anders war. Jetzt ueber
+  `koerper()` aus `tools/_quelle.py` - namensgenau statt auf den
+  Namensanfang.
+
+  **Die Falle bleibt anderswo gestellt:** durchgezaehlt stehen in den
+  Pruefungen **65** solche Textschnitte auf einen Funktionsnamen. Heute
+  ist keiner davon mehrdeutig (nachgesehen: `_abschnitt_b` gegen
+  `_abschnitt_bestand` liegen in verschiedenen Dateien), aber jeder
+  neue Name, der auf einem alten aufbaut, kann einen davon umwerfen -
+  oder, schlimmer, ihn gruen lassen und dabei die falsche Funktion
+  pruefen. Das ist wortgleich der Befund aus Build 298. Wer einen
+  dieser Tests ohnehin anfasst, stellt ihn bitte auf `koerper()` um.

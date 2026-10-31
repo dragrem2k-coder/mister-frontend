@@ -718,6 +718,16 @@ Active automatically, no setup needed:
 - Before an actual scan, the frontend waits briefly (up to 4 seconds) in
   case USB drives are only just mounting after a cold start - prevents a
   scan started too early from mistakenly finding fewer games.
+- **Startup now reads the list during a wait (build 303).** Right
+  after starting, the frontend switches to its own screen via F9 and
+  then has to give the MiSTer a short deadline. Measured, that was
+  465 ms in which simply nothing happened — while right afterwards
+  reading the game list was the single largest item of the whole
+  startup at 538 ms. Reading now runs during that deadline. **Only the
+  fast case**: if the list is unchanged, it comes from the cache. If a
+  real rescan is needed, or a USB drive is not mounted yet, the
+  frontend does everything as before, with progress bar and waiting —
+  that belongs on screen, not in a background thread.
 
 ## 8b. Visual refinements
 

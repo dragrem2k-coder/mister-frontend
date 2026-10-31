@@ -888,6 +888,18 @@ Automatisch aktiv, keine Einrichtung nötig:
   Sekunden), falls USB-Laufwerke gerade erst nach einem Kaltstart
   einhängen - verhindert, dass ein zu früh gestarteter Scan
   fälschlich weniger Spiele findet.
+- **Der Start liest die Liste jetzt während einer Wartezeit ein
+  (Build 303).** Direkt nach dem Start schaltet das Frontend per F9 auf
+  seinen eigenen Bildschirm um und muss dem MiSTer danach eine kurze
+  Frist lassen. Gemessen waren das 465 ms, in denen schlicht nichts
+  geschah - während gleich danach das Einlesen der Spieleliste mit
+  538 ms der größte Einzelposten des ganzen Starts war. Das Einlesen
+  läuft jetzt während dieser Frist mit. **Nur der schnelle Fall**: ist
+  die Liste unverändert, kommt sie aus dem Zwischenspeicher. Muss
+  wirklich neu gescannt werden oder hängt ein USB-Laufwerk noch nicht,
+  macht das Frontend alles wie bisher, mit Fortschrittsbalken und
+  Warten - das gehört auf den Bildschirm und nicht in einen
+  Hintergrundfaden.
 
 ## 8b. Optische Verfeinerungen
 

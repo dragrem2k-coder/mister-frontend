@@ -1479,7 +1479,7 @@ from fe.scan import (
     _scan_games_disk, _sig_expects_usb, _wait_for_network_ready, _wait_for_usb_stable,
     letzter_scan_hatte_nas, ordner_sind_dazugekommen,
     _wrap_flat, network_wait_enabled, save_network_wait, scan_cores,
-    scan_games,
+    scan_games, scan_games_vorladen, vorladen_stand,
 )
 
 import fe.anleitung as ANLEITUNG
@@ -1678,6 +1678,27 @@ class Frontend:
             self._clk_tck = os.sysconf("SC_CLK_TCK") or 100
         except (ValueError, OSError):
             self._clk_tck = 100
+        # BUILD 303: DAS EINLESEN JETZT ANSTOSSEN, NICHT SPAETER.
+        #
+        # Aus Abschnitt A seines Berichts (Bench 17): 218 ms fuer das
+        # Einspeisen des F9 und 247 ms Restfrist sind reines Schlafen -
+        # 465 ms, in denen nichts geschieht. Gleich daneben steht
+        # "davon scan_games() 538 ms", der groesste Einzelposten des
+        # ganzen Starts.
+        #
+        # Der Vorlauf nimmt NUR den schnellen Weg (Fingerabdruck passt
+        # -> Cache lesen) und gibt bei jedem Zweifel auf; das Warten auf
+        # USB/NAS und der Fortschrittsbalken bleiben beim normalen
+        # Aufruf, weil sie ZEICHNEN - und aus einem Faden zu zeichnen,
+        # waehrend hier gerade die Konsole uebernommen wird und das
+        # erste Bild noch nicht steht, waere die Sorte Fehler, die man
+        # nicht mehr findet. Die ganze Begruendung steht bei
+        # scan_games_vorladen() in fe/scan.py.
+        #
+        # HIER UND NICHT FRUEHER: davor liegt der Framebuffer-Aufbau,
+        # und dort ist der Faden nur Konkurrenz um die GIL. Ab hier
+        # schlaeft der Hauptfaden, und Schlafen gibt die GIL frei.
+        scan_games_vorladen()
         # BUILD 292: F9 raus, aber NICHT hier warten. Siehe
         # _f9_nachlauf_abwarten() - die Frist wird gesetzt, und die
         # 182 ms Vignetten-Rechnung von fb.clear() fuellen sie.
@@ -2744,6 +2765,17 @@ class Frontend:
         # weiss man nicht, welchen man gerade misst.
         if hasattr(self, "_t_letzte_marke"):
             self._startmarke("davon scan_games()")
+            # BUILD 303: und daneben, was der Vorlauf davon getragen
+            # hat. Steht bei "noch abgewartet" eine grosse Zahl, hat
+            # die Ueberlappung NICHT funktioniert - das soll zu sehen
+            # sein und nicht geglaubt werden muessen.
+            try:
+                _vg, _vd, _vw = vorladen_stand()
+                LOG("Vorlauf der Spieleliste: %s, gelaufen %.0f ms, "
+                    "noch abgewartet %.0f ms"
+                    % (_vg, _vd * 1000.0, _vw * 1000.0))
+            except Exception:                            # noqa: BLE001
+                pass
         # "Weiterspielen" (Nutzerwunsch): ganz oben ein einzelner,
         # hervorgehobener Vorschlag - das zuletzt gespielte Spiel, das
         # noch NICHT als durchgespielt markiert ist. Faellt weg, wenn

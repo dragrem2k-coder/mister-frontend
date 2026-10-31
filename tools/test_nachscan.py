@@ -49,6 +49,7 @@ import _harness as H                                        # noqa: E402
 import fe.mister_system as MSYS                             # noqa: E402
 import fe.menu as MENU                                      # noqa: E402
 import fe.scan as SCAN                                      # noqa: E402
+from _quelle import koerper, nur_code                       # noqa: E402
 import fe.translations as TR                                # noqa: E402
 
 fm = H.fm
@@ -180,9 +181,20 @@ print("Test 5: der inkrementelle Zweig existiert und wird nicht umgangen")
 # ---------------------------------------------------------------------------
 _sq = io.open(os.path.join(_REPO, "frontend", "fe", "scan.py"),
               encoding="utf-8").read()
-_sc = "\n".join(z for z in _sq.split("\n")
-                if not z.strip().startswith("#"))
-_sg = _sc.split("def scan_games")[1].split("\ndef ")[0]
+# GEAENDERT IN BUILD 303, und der Test hat den Grund selbst gefunden.
+#
+# Hier stand _sc.split("def scan_games")[1] - ein Textschnitt auf den
+# NAMENSANFANG. Build 303 hat scan_games_vorladen() eingefuehrt, und
+# die Funktion steht VOR scan_games(): der Schnitt griff danach ihren
+# Rumpf ab, und drei Pruefungen wurden rot, ohne dass an scan_games()
+# eine Zeile anders war.
+#
+# Genau dafuer gibt es seit Build 298 tools/_quelle.py: koerper() holt
+# die Funktion ueber den Syntaxbaum, also NAMENSGENAU, und nur_code()
+# nimmt Kommentare UND Docstrings heraus. Ein Textschnitt auf einen
+# Namen ist ein Vergleich, der auf den naechsten gleich anfangenden
+# Namen wartet.
+_sg = nur_code(koerper(_sq, "scan_games"))
 check("scan_games() vergleicht je System",
       "changed_syskeys" in _sg,
       "die Mechanik aus Build 248 - sie war nur ungenutzt")

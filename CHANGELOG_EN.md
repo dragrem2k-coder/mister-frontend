@@ -13,6 +13,58 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **Startup is faster: reading the game list now runs during a wait in
+  which nothing used to happen.** From a user's report: `F9 injected
+  218 ms` and `remainder of the MiSTer deadline waited out 247 ms` —
+  **465 ms of pure sleeping**, and right next to it `of which
+  scan_games() 538 ms`, the single largest item of the whole 1825 ms
+  startup. Same pattern as build 292, one floor up: *the time stays,
+  the idleness does not.* Reading is now kicked off **before** the F9
+  goes out and runs during those 465 ms — sleeping releases the lock,
+  and the device has two cores. **All the caution sits in one
+  restriction:** the prefetch only takes the fast path (fingerprint
+  matches → list from the cache) and gives up at the first doubt.
+  Waiting for USB or a network share and the progress bar stay on the
+  normal path, because they **draw** — and drawing from a thread while
+  the console is being taken over and the first frame is not up yet
+  would be the kind of bug you never find again. The report states how
+  much of it the wait actually carried; a large remainder there means
+  it did *not* work (build 303).
+- **Two of my own measurements measured nothing — fixed.** This is the
+  honest part of this build:
+  - `Write worker pauses 0` appeared in two consecutive reports, and
+    the text below it said why: nobody holds a key while benchmarking.
+    For two builds it was therefore unknown whether build 301's pause
+    does anything in practice. The sequence is now reproduced — first
+    page slowly (the worker gets jobs), then hold the key — and the
+    report reads the result in three cases, because "0 pauses" can
+    mean three different things.
+  - `NO C call — the filling runs in Python here` appeared on the
+    largest item of a list step, and that was **wrong**, not empty:
+    the measurement hooked the C filler, but since build 299 the card
+    is **copied** from a template, i.e. through the row copier — which
+    was not hooked. Counted out, the template hits in 7 of 7 cases. A
+    measurement that does not know half the paths does not return an
+    empty value, it returns a false one (build 303).
+- **What came out of it, and what was deliberately *not* built.** The
+  list view's card moves **2.83 MB per step**; with his own figure
+  (2.55 ms per MB) that is 7.28 ms predicted against 7.85 measured —
+  **it is bound by memory bandwidth**, not by a slow path. So there is
+  exactly one lever: fewer bytes. The cutout from builds 234/244
+  decides **60 to 82 percent** of it. Whether it is passed while
+  scrolling cannot be settled in the container — the test harness has
+  no covers. And because the right remedy flips direction with that
+  very number (on a full card, filling saves ~2.4 ms; with the cutout
+  active, copying is 0.6 ms better), nothing is **guessed** here. The
+  report now states it; the fix follows from that (build 303).
+- **Bench 18.** Section J states the **bytes** per step for restore,
+  blit, cards and flip — until now it printed rows for some and
+  megabytes for others: three items, two units, no total. Now in one
+  unit, with the device's price beside it and with "= x screens per
+  step". Plus a new constant that is the reason the arithmetic did not
+  add up before: filling writes N bytes (2.1 ms/MB), copying reads N
+  *and* writes N (2.55 ms/MB) (build 303).
+
 - **Fixed: the scroll speed setting had no effect over wide stretches.**
   Below the measured time sat a rigid 40 ms lower bound, and it took
   back every step above 1.0 wherever a step is cheaper than 40 ms. From

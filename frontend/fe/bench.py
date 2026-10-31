@@ -71,7 +71,7 @@ import zlib
 # Zustand der zuletzt gesetzten Ansicht) und hat einen Teil 4 fuer die
 # Hintergrundarbeit. Zwei Berichte mit derselben Nummer muessen
 # vergleichbar sein - also neue Nummer.
-BENCH_VERSION = 17
+BENCH_VERSION = 18
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -112,6 +112,21 @@ SCHRITTE = 60
 # Messung, und die Luecke wird nie allein berichtet.
 MS_JE_ZEILE = 0.000576
 MS_JE_MB = 2.1
+# BUILD 303: UND DER PREIS EINER KOPIE, der ein anderer ist.
+#
+# MS_JE_MB oben ist der Preis des FUELLENS - geschrieben werden N Byte.
+# Eine Kopie bewegt 2N: sie liest N und schreibt N. Aus Abschnitt H.1
+# seines Berichts (Bench 17), RAM gegen RAM:
+#
+#     1.0 MB   2.399 ms   2.40 je MB
+#     4.0 MB  10.218 ms   2.55 je MB
+#     7.9 MB  20.310 ms   2.57 je MB
+#
+# Gebraucht wird das seit Build 299: die Karte wird aus einer Vorlage
+# KOPIERT, nicht gefuellt. Mit dem Fuell-Preis gerechnet kaeme sie um
+# ein Fuenftel zu billig heraus, und genau solche stillen Verwechslungen
+# machen aus einem Modell eine Ausrede.
+MS_JE_MB_KOPIE = 2.55
 
 
 # ---------------------------------------------------------------------
@@ -510,6 +525,30 @@ def _abschnitt_a(b, fe, spiele, startdauer):
     if startdauer - summe > 0.05:
         b("   %-38s %8.0f ms   <- hier fehlt eine Marke"
           % ("nicht zugeordnet", (startdauer - summe) * 1000.0))
+    # BUILD 303: HAT DER VORLAUF DER SPIELELISTE GETRAGEN?
+    #
+    # Die Marke "davon scan_games()" allein sagt es nicht: wird sie
+    # klein, kann das am Vorlauf liegen oder an einem warmen
+    # Dateisystem. Die dritte Zahl entscheidet es - sie ist die Zeit,
+    # die der Hauptfaden am Ende doch noch auf den Faden warten musste.
+    # Null heisst: die F9-Frist hat das Einlesen vollstaendig
+    # geschluckt. Eine grosse Zahl heisst: es hat NICHT ueberlappt, und
+    # dann ist das zu sehen und nicht zu glauben.
+    try:
+        from fe.scan import vorladen_stand as _vst
+        _vg, _vd, _vw = _vst()
+        b("")
+        b("   VORLAUF DER SPIELELISTE (Build 303)")
+        b("   %-38s %s" % ("Ergebnis", _vg))
+        b("   %-38s %8.0f ms" % ("Vorlauf gelaufen", _vd * 1000.0))
+        b("   %-38s %8.0f ms" % ("davon der Start noch abgewartet",
+                                 _vw * 1000.0))
+        if _vg == "aus dem Cache vorgeladen":
+            b("   -> %.0f der %.0f ms hat die F9-Frist getragen (%.0f %%)"
+              % ((_vd - _vw) * 1000.0, _vd * 1000.0,
+                 ((_vd - _vw) / _vd * 100.0) if _vd > 0 else 0.0))
+    except Exception:                                    # noqa: BLE001
+        pass
 
 
 def _groesste_kategorie(fe):
@@ -2505,7 +2544,10 @@ def _abschnitt_j(b, fe, S, A, fm):
         _wer.clear()
         for k in ("restore_zeilen", "blit_zeilen", "flip_bytes",
                   "text_zeichen", "text_in_beschr_ms", "in_beschr",
-                  "in_karte", "karten_innen"):
+                  "in_karte", "karten_innen",
+                  # BUILD 303: BYTES, NICHT NUR ZEILEN. Siehe die
+                  # Begruendung bei der Byte-Zeile der Ausgabe.
+                  "restore_bytes", "blit_bytes", "karten_bytes"):
             konto[k] = 0.0
 
     def h_restore(self, x, y, w, h):
@@ -2514,6 +2556,7 @@ def _abschnitt_j(b, fe, S, A, fm):
         konto["restore_ms"] += time.monotonic() - t0
         konto["restore_n"] += 1
         konto["restore_zeilen"] += max(0, h)
+        konto["restore_bytes"] += max(0, w) * max(0, h) * 4
         return r
 
     def h_blit(self, x, y, w, h, pix):
@@ -2522,6 +2565,7 @@ def _abschnitt_j(b, fe, S, A, fm):
         konto["blit_ms"] += time.monotonic() - t0
         konto["blit_n"] += 1
         konto["blit_zeilen"] += max(0, h)
+        konto["blit_bytes"] += max(0, w) * max(0, h) * 4
         return r
 
     def h_rect(rechtecke, skip_vsync=False):
@@ -2596,6 +2640,14 @@ def _abschnitt_j(b, fe, S, A, fm):
                 konto["in_karte"] -= 1
             konto["karten_ms"] += time.monotonic() - t0
             konto["karten_n"] += 1
+            # BUILD 303: die Flaeche der Karte. Seit Build 299 wird sie
+            # aus einer Vorlage KOPIERT - und eine Kopie bewegt 2N
+            # Byte, ein Fuellen nur N. Ohne diese Zahl ist nicht zu
+            # sehen, ob der Posten an der Bandbreite haengt.
+            try:
+                konto["karten_bytes"] += int(a[2]) * int(a[3]) * 4
+            except Exception:                            # noqa: BLE001
+                pass
             return r
         return haken
 
@@ -2862,6 +2914,39 @@ def _abschnitt_j(b, fe, S, A, fm):
                      konto["blit_zeilen"] / schritte,
                      konto["flip_n"] / schritte,
                      konto["flip_bytes"] / schritte / 1048576.0))
+                # BUILD 303: UND DIE BYTES, WEIL DIE ANTWORT DORT LIEGT.
+                #
+                # Fuer die C++-Frage wurde an seinen Zahlen
+                # nachgerechnet, dass restore, flip, text und karten
+                # schon durch libdragend laufen - 66 bis 75 Prozent
+                # eines Schritts. Uebrig bleibt dann nur ein Hebel:
+                # WENIGER BYTE. Nur stand im Bericht bisher bei
+                # restore und karten die Zahl der ZEILEN und beim Flip
+                # die der Megabyte - drei Posten, zwei Masseinheiten,
+                # und keine Summe.
+                #
+                # Hier stehen sie in derselben Einheit, mit dem Preis
+                # DIESES Geraets daneben. Der groesste Posten dieser
+                # Zeile ist die naechste Aufgabe, und zwar belegt
+                # statt geraten.
+                _mb_r = konto["restore_bytes"] / schritte / 1048576.0
+                _mb_b = konto["blit_bytes"] / schritte / 1048576.0
+                _mb_k = konto["karten_bytes"] / schritte / 1048576.0
+                _mb_f = konto["flip_bytes"] / schritte / 1048576.0
+                b("     BYTES je Schritt: restore %.2f  blit %.2f  "
+                  "karten %.2f  flip %.2f MB"
+                  % (_mb_r, _mb_b, _mb_k, _mb_f))
+                b("     zusammen %.2f MB bei %.2f MB Bildschirm"
+                  " (= %.1f Bildschirme je Schritt)"
+                  % (_mb_r + _mb_b + _mb_k + _mb_f,
+                     fbo.size / 1048576.0,
+                     (_mb_r + _mb_b + _mb_k + _mb_f)
+                     / max(0.01, fbo.size / 1048576.0)))
+                b("     Modell: %.2f ms (Kopien zu %.2f, Flip zu %.2f"
+                  " ms/MB)"
+                  % ((_mb_r + _mb_b + _mb_k) * MS_JE_MB_KOPIE
+                     + _mb_f * MS_JE_MB,
+                     MS_JE_MB_KOPIE, MS_JE_MB))
                 b("              text %d/%dZeichen  karten %d(+%d innen)"
                   "  beschr %d"
                   % (konto["text_n"] / schritte,
@@ -2930,7 +3015,7 @@ def _abschnitt_l(b, fe, S, A, fm):
     """
     b("")
     b("-" * 62)
-    b(" L  Wie lange wartet ein Tastendruck? (Build 300, 301, 302)")
+    b(" L  Wie lange wartet ein Tastendruck? (Build 300-303)")
     b("-" * 62)
     import fe.input as _FI
     inp = getattr(fe, "inp", None)
@@ -3206,20 +3291,89 @@ def _abschnitt_l(b, fe, S, A, fm):
     # aus. Seit Build 301 pausiert der Arbeiter, solange eine Taste
     # gehalten wird - hier steht, ob er das wirklich getan hat.
     b("")
-    b("   4) Hintergrundarbeit waehrend der Eingabe (Build 301)")
+    b("   4) Hintergrundarbeit waehrend der Eingabe (Build 301, 302, 303)")
+    # BUILD 303: DIE TASTE WIRD JETZT GEHALTEN.
+    #
+    # In den Berichten 16 und 17 stand hier zweimal "Pausen des
+    # Schreib-Arbeiters 0", und das war keine Auskunft: beim Bench
+    # drueckt niemand, also kann die Pause aus Build 301 gar nicht
+    # greifen. Zwei Builds lang war damit unbekannt, ob die Pause im
+    # Betrieb ueberhaupt etwas tut - und eine Zahl, die in jedem Fall
+    # 0 ist, ist keine Messung.
+    #
+    # NACHGESTELLT WIRD DER ECHTE HERGANG, in dieser Reihenfolge:
+    #   1. langsam blaettern -> der Arbeiter bekommt Auftraege,
+    #   2. Taste halten      -> er muss pausieren.
+    # Die zweite Haelfte allein wuerde nichts zeigen: waehrend des
+    # Scrollens werden noch nicht gerechnete Cover uebersprungen
+    # (Build 244), es kommen also keine neuen Auftraege dazu. Genau
+    # darum muss die Schlange VORHER gefuellt werden.
+    #
+    # UND DER ZUSTAND WIRD HERGESTELLT, NICHT UMGANGEN: gesetzt wird
+    # _last_input_time, woraus der Zeichenweg _defer_uncached selbst
+    # neu rechnet. Ein von Hand gesetzter Schalter haette in Build 300
+    # schon einmal einen Test gruen gemacht, der nichts prueft.
     try:
-        anzahl, dauer = A.schreib_pausen_stand()
-        b("      Pausen des Schreib-Arbeiters        %d" % anzahl)
-        b("      davon Wartezeit insgesamt       %8.2f s" % dauer)
-        b("      Pausentakt / Obergrenze         %5.0f ms / %.1f s"
-          % (getattr(A, "SCHREIB_PAUSE_TAKT", 0) * 1000.0,
-             getattr(A, "SCHREIB_PAUSE_MAX", 0)))
-        b("      Zu lesen als: steht hier 0, hat der Arbeiter nie")
-        b("      pausiert - entweder war nichts zu schreiben, oder")
-        b("      die Pause greift nicht. Beim Bench haelt niemand")
-        b("      eine Taste, also ist 0 hier der NORMALFALL; die")
-        b("      Zahl ist fuer den Betrieb gedacht (das Protokoll")
-        b("      unter /tmp/frontend.log nennt sie beim Beenden).")
+        _p_vor = A.schreib_pausen_stand()
+        _st = getattr(A, "thumb_schreib_stand", None)
+        _q_vor = _st()[0] if _st is not None else -1
+        _schritt4 = None
+        try:
+            fe.page = 1 if kat_i is not None else 0
+            if kat_i is not None:
+                fe.cat_i = kat_i
+                fe.nav_path = []
+            fe.ansicht_setzen("liste") if fe.page == 1 \
+                else fe.ansicht_haupt_setzen("liste")
+            _schritt4 = schritt_funktion(fe, fe.page)
+        except Exception:                                # noqa: BLE001
+            _schritt4 = None
+        if _schritt4 is None:
+            b("      -- kein Schritt herstellbar, uebersprungen")
+        else:
+            # 1) Schlange fuellen - OHNE gehaltene Taste.
+            fe._last_input_time = 0.0
+            for _i in range(14):
+                _schritt4(_i)
+            _q_gefuellt = _st()[0] if _st is not None else -1
+            # 2) Und jetzt halten.
+            _p_mitte = A.schreib_pausen_stand()
+            for _i in range(40):
+                fe._last_input_time = time.monotonic()
+                _schritt4(_i)
+            _p_nach = A.schreib_pausen_stand()
+            b("      Auftraege in der Schlange vorher    %d" % _q_vor)
+            b("      nach 14 Schritten ohne Taste        %d" % _q_gefuellt)
+            b("      Pausen VOR dem Halten               %d" % _p_mitte[0])
+            b("      Pausen NACH 40 gehaltenen Schritten %d"
+              % _p_nach[0])
+            b("      dabei gewartet                  %8.3f s"
+              % (_p_nach[1] - _p_mitte[1]))
+            b("      Pausentakt / Obergrenze         %5.0f ms / %.1f s"
+              % (getattr(A, "SCHREIB_PAUSE_TAKT", 0) * 1000.0,
+                 getattr(A, "SCHREIB_PAUSE_MAX", 0)))
+            b("")
+            _neu = _p_nach[0] - _p_mitte[0]
+            if _q_gefuellt <= 0 and _neu == 0:
+                b("      ZU LESEN ALS: die Schlange war leer, es gab")
+                b("      also nichts zu pausieren. Das ist kein Befund")
+                b("      ueber die Pause - bei einer Sammlung, deren")
+                b("      Miniaturen alle schon geschrieben sind, hat")
+                b("      der Arbeiter im Alltag nichts zu tun, und")
+                b("      dann kann Build 301 auch nichts verbessern.")
+            elif _neu > 0:
+                b("      ZU LESEN ALS: die Pause GREIFT - der Arbeiter")
+                b("      hat %d mal angehalten, waehrend gescrollt" % _neu)
+                b("      wurde. Das ist der Beweis, der in den")
+                b("      Berichten 16 und 17 gefehlt hat.")
+            else:
+                b("      ZU LESEN ALS: es lagen %d Auftraege an und der"
+                  % _q_gefuellt)
+                b("      Arbeiter hat trotzdem NICHT pausiert. Dann")
+                b("      greift die Pause nicht, und Build 301 ist an")
+                b("      dieser Stelle wirkungslos - nachzusehen waere")
+                b("      _navigation_aktiv() in fe/art.py.")
+        _ = _p_vor
     except Exception as e:                               # noqa: BLE001
         b("      -- nicht abfragbar (%s)" % type(e).__name__)
 
@@ -3413,6 +3567,10 @@ def _abschnitt_k(b, fe, S, A):
     # ihn nur zu benennen.
     aktuell = [None]
     innen = {}
+    # BUILD 303: Bytes durch den Zeilenkopierer, je aeusserem Aufruf.
+    kopiert = {}
+    # BUILD 303: je Kartenmass, wie oft mit Aussparung gerufen.
+    aussparung = {}
 
     def _haken(name, echt):
         def ersatz(*a, **k):
@@ -3425,6 +3583,24 @@ def _abschnitt_k(b, fe, S, A):
                     masse = "%dx%d" % (int(a[2]), int(a[3]))
             except Exception:                            # noqa: BLE001
                 masse = "?"
+            # BUILD 303: WURDE DIE AUSSPARUNG MITGEGEBEN?
+            #
+            # DIE OFFENE FRAGE DIESES BUILDS, und im Container nicht zu
+            # beantworten: dort gibt es keine Cover, also gibt der
+            # Aufrufer die Aussparung zu Recht nie mit. Auf dem Geraet
+            # entscheidet sie ueber 60 bis 82 Prozent der Kartenbytes
+            # (nachgerechnet: 2,83 MB voll, 1,13 MB mit Cover-
+            # Aussparung, 0,52 MB mit der Kasten-Aussparung aus
+            # Build 244). Ohne diese Zahl bleibt die naechste
+            # Verbesserung geraten.
+            if name == "karte_mit_schatten":
+                _asp = k.get("aussparen") if k else None
+                if _asp is None and len(a) >= 9:
+                    _asp = a[8]
+                _e = aussparung.setdefault(masse, [0, 0])
+                _e[0] += 1
+                if _asp:
+                    _e[1] += 1
             t0 = time.monotonic()
             tiefe[0] += 1
             aktuell[0] = (name, masse)
@@ -3466,6 +3642,33 @@ def _abschnitt_k(b, fe, S, A):
                 e[3] += time.monotonic() - _t
         return echt_fueller(buf, stride, hoehe_, grenze, rechtecke)
 
+    # BUILD 303: UND DER ZEILENKOPIERER, aus einem Grund, der zwei
+    # Berichte lang in die Irre gefuehrt hat.
+    #
+    # Der Haken oben sitzt am C-FUELLER. Seit Build 299 kopiert
+    # karte_mit_schatten() die Karte aber aus einer Vorlage, statt sie
+    # zu fuellen - sie geht also durch den ZEILENKOPIERER, und der war
+    # hier nicht eingehakt. Im Bericht stand deshalb bei dem groessten
+    # Posten "KEIN C-Aufruf - das Fuellen laeuft hier in Python", und
+    # das war schlicht FALSCH: es laeuft in C, nur durch die andere
+    # Tuer. Nachgezaehlt im Container trifft die Vorlage in 7 von 7
+    # Faellen.
+    #
+    # Eine Messung, die die Haelfte der Wege nicht kennt, erzeugt
+    # keinen leeren Wert, sondern eine falsche Auskunft - und auf die
+    # hin haette man an der richtigen Stelle das Falsche getan.
+    echt_kopierer = getattr(fbo, "zeilen_kopierer", None)
+
+    def _haken_kopierer(ziel, zstride, quelle, qstride, zx, zy, bb, hh):
+        wer = aktuell[0]
+        if wer is not None:
+            e = kopiert.setdefault(wer, [0, 0, 0])
+            e[0] += 1
+            e[1] += int(hh)
+            e[2] += int(bb) * int(hh)
+        return echt_kopierer(ziel, zstride, quelle, qstride, zx, zy,
+                             bb, hh)
+
     def _durchgang(ansicht, titel):
         """Eine Ansicht einmal durchmessen und berichten. Gibt False
         zurueck, wenn die Ansicht uebersprungen wurde."""
@@ -3484,11 +3687,15 @@ def _abschnitt_k(b, fe, S, A):
             return False
         konto.clear()
         innen.clear()
+        kopiert.clear()
+        aussparung.clear()
         aktuell[0] = None
         for n, _e in echte:
             setattr(fbo, n, _haken(n, getattr(fbo, n)))
         if echt_fueller is not None:
             fbo.flaechen_fueller = _haken_fueller
+        if echt_kopierer is not None:
+            fbo.zeilen_kopierer = staticmethod(_haken_kopierer)
         try:
             t0 = time.monotonic()
             for i in range(schritte):
@@ -3499,6 +3706,8 @@ def _abschnitt_k(b, fe, S, A):
                 setattr(fbo, n, _e)
             if echt_fueller is not None:
                 fbo.flaechen_fueller = echt_fueller
+            if echt_kopierer is not None:
+                fbo.zeilen_kopierer = staticmethod(echt_kopierer)
             aktuell[0] = None
         aufrufe = sum(e[0] for e in konto.values()) / float(schritte)
         summe = sum(e[1] for e in konto.values()) * 1000.0 / schritte
@@ -3518,9 +3727,52 @@ def _abschnitt_k(b, fe, S, A):
             (gname, gmasse), (gn, gsek) = geordnet[0]
             e = innen.get((gname, gmasse))
             gms = gsek * 1000.0 / schritte
+            k = kopiert.get((gname, gmasse))
             b("      davon im groessten Posten (%s):" % gname)
-            if not e or not e[0]:
-                b("        KEIN C-Aufruf - das Fuellen laeuft hier in")
+            if k and k[0]:
+                # BUILD 303: DER WEG UEBER DIE VORLAGE (Build 299).
+                _kn = k[0] / float(schritte)
+                _kz = k[1] / float(schritte)
+                _kb = k[2] / float(schritte)
+                b("        C-ZEILENKOPIERER: %.1f Aufrufe, %.0f Zeilen,"
+                  % (_kn, _kz))
+                b("        %.2f MB je Schritt (Kartenvorlage, Build 299)"
+                  % (_kb / 1048576.0))
+                _mod_k = (_kb / 1048576.0 * MS_JE_MB_KOPIE
+                          + _kz * MS_JE_ZEILE)
+                b("        Modell daraus (%.2f ms/MB Kopie)       %6.2f ms"
+                  % (MS_JE_MB_KOPIE, _mod_k))
+                b("        gemessen                               %6.2f ms"
+                  % gms)
+                b("        ungeklaert                             %6.2f ms"
+                  % (gms - _mod_k))
+                b("        ZU LESEN ALS: eine Kopie bewegt 2N Byte (sie")
+                b("        liest N und schreibt N), ein Fuellen nur N.")
+                b("        Liegt 'gemessen' beim Modell, ist die Karte")
+                b("        an der Speicherbandbreite - dann hilft kein")
+                b("        schnellerer Weg, nur WENIGER BYTE, also die")
+                b("        Aussparung (Build 234/244):")
+                _as = aussparung.get(gmasse)
+                if _as and _as[0]:
+                    b("        mit Aussparung gerufen       %d von %d mal"
+                      % (_as[1], _as[0]))
+                    if not _as[1]:
+                        b("        KEINE EINZIGE - dann wird die ganze")
+                        b("        Karte kopiert, obwohl drei Viertel")
+                        b("        davon gleich uebermalt werden. Das")
+                        b("        waere der naechste Hebel, und zwar")
+                        b("        bei _kurz / _luecke in frontend.py.")
+                    elif _as[1] < _as[0]:
+                        b("        Teilweise also - nachzusehen waere,")
+                        b("        warum _kurz nicht in jedem Schritt")
+                        b("        gilt (full_redraw_gen in _stand?).")
+                    else:
+                        b("        In JEDEM Schritt - die Aussparung")
+                        b("        greift, und die Bytes oben sind")
+                        b("        schon die gesparten.")
+            elif not e or not e[0]:
+                b("        KEIN C-Aufruf - weder Fueller noch")
+                b("        Zeilenkopierer. Das Fuellen laeuft hier in")
                 b("        Python, und dann erklaert die Flaeche nichts.")
             else:
                 _n_c = e[0] / float(schritte)
