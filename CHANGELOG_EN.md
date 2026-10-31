@@ -13,6 +13,34 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **Fixed: scrolling stuttered at games without box art — always at the
+  same ones.** Since build 222 the frontend remembers which covers do
+  *not* exist, otherwise every scroll step asks for the same missing
+  files again. That memory was **thrown away blindly every 30 seconds**
+  — without anything having changed on disk. After that, every entry
+  without a cover cost three file accesses again. Now it first **checks
+  whether the artwork folders actually changed** (folder modification
+  time) and only clears then. A cover copied in later still shows up by
+  itself — in fact more reliably than before, because the name indexes
+  are now re-read as well (build 298).
+- **Fixed: a second leak in the same place.** The cover cache's
+  emergency brake discarded **everything** at 6000 entries, hits
+  included. With 30,965 games that means: scrolling through a large
+  system regularly wiped the whole cache, and afterwards every entry
+  was cold again. The limit is now 16,000 (measured 3.3 MB) and only
+  the **oldest quarter** is dropped (build 298).
+- **New: hacks without their own cover show the original game's cover.**
+  No database has box art for "Brutal Mario", but it has some for Super
+  Mario World. A system may therefore name a **base game** — shipped
+  for *SMW Hacks* and the *SNES ALTTP Tracker*, extensible via
+  `/media/fat/frontend/cover_basis.txt`. Inheriting only happens where
+  an entry exists: a normal SNES game without a cover **never** gets
+  another game's picture. An own cover always wins. Can be turned off
+  in the system menu right below the foreign sources. Side effect: all
+  hacks share one cover path, so **one** thumbnail is computed for the
+  whole folder instead of none — that folder now scrolls faster than
+  before (build 298).
+
 - **Fixed: scrolling fast up and then fast down stuttered and caught
   up late.** The repeat rate is tied to the measured draw time — but
   **up and down shared one measurement**, although they cost

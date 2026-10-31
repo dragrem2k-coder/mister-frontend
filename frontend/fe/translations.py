@@ -867,6 +867,20 @@ TRANSLATIONS = {
               "from /media/fat/docs, if installed)",
         "de": "Fremdes Artwork/Daten: AUS -> einschalten (Cover und Spieledaten "
               "aus /media/fat/docs, falls vorhanden)"},
+    # BUILD 298: geerbte Cover. Der Text nennt den Hack-Fall, weil
+    # genau der der Anlass war - und er sagt, dass es eine ANNAHME ist
+    # und kein Fund. Wer in der Galerie eine Wand aus demselben Bild
+    # sieht, soll am Menuepunkt ablesen koennen, woher das kommt.
+    "sys_cover_basis_an": {
+        "en": "Inherit cover from the base game: ON -> turn off (hacks "
+              "without their own cover show the original's)",
+        "de": "Cover vom Basis-Spiel erben: AN -> ausschalten (Hacks ohne "
+              "eigenes Cover zeigen das des Originals)"},
+    "sys_cover_basis_aus": {
+        "en": "Inherit cover from the base game: OFF -> turn on (e.g. all "
+              "SMW hacks show the Super Mario World cover)",
+        "de": "Cover vom Basis-Spiel erben: AUS -> einschalten (z. B. alle "
+              "SMW-Hacks zeigen das Cover von Super Mario World)"},
     # NEU (Build 122): Ansicht der Spieleliste. Der Menuepunkt zeigt,
     # was gerade eingestellt ist, und schaltet eine Stufe weiter - genau
     # wie der Bildrand darueber. Die Taste steht mit im Text, sonst

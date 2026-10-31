@@ -341,6 +341,7 @@ from fe.settings import (
     toggle_hintergrund, hintergrund_dim_lesen,
     hintergrund_dim_schreiben,
     fremdquellen_enabled, toggle_fremdquellen,
+    cover_basis_an, toggle_cover_basis,
     FAST_SCROLL_WINDOW, pulse_effect_enabled, toggle_pulse_effect,
     CRT_CONFIRM_TIMEOUT, crt_pending_confirm, mark_crt_pending_confirm,
     clear_crt_pending_confirm, eq_effect_enabled, toggle_eq_effect,
@@ -1294,6 +1295,7 @@ from fe.art import (
     texte_zeichnen as _c_texte_zeichnen,
     fremd_zaehlen as _c_fremd_zaehlen,
     quelldaten_vergessen, negativ_vergessen, negativ_faellig,
+    negativ_pruefen, artwork_geaendert,
     index_warmlaufen, index_warm_offen,
     marken_nachziehen,
     verkleinern_modus_vergessen,
@@ -5540,8 +5542,18 @@ class Frontend:
         # NEGATIV_TAKT Sekunden; die Begruendung steht bei
         # negativ_faellig() in fe/art.py. Der Arbeitsprozess raeumt sein
         # eigenes Nein ohnehin selbst weg, wenn er geliefert hat.
-        if _vorher and not ART._defer_uncached and negativ_faellig():
-            negativ_vergessen()
+        #
+        # GEAENDERT (Build 298), auf denselben Befund noch einmal:
+        # "immer wenn ich durch scrolle das es genau an diesen ohne
+        # cover immer etwas hakt". Alle 30 Sekunden war noch immer zu
+        # oft, denn geraeumt wurde BLIND - ohne dass sich an einer
+        # Datei etwas geaendert haben musste. negativ_pruefen() sieht
+        # jetzt erst nach (Aenderungszeit der indizierten Artwork-
+        # Ordner) und raeumt nur dann. Die drei Schritte und die Grenze
+        # dieses Verfahrens stehen dort; hier bleibt nur noch die
+        # FLANKE stehen, und die ist unveraendert der richtige Ort.
+        if _vorher and not ART._defer_uncached:
+            negativ_pruefen()
 
     # Wieviele Eintraege einer Kategorie werden nach Systemen
     # abgetastet? 60 ist die Zahl, bei der eine gemischte Kategorie ihre
@@ -23741,6 +23753,24 @@ class Frontend:
                             # Spieledaten-Tabellen haengen alle daran.
                             toggle_fremdquellen()
                             docs_caches_leeren()
+                            ART.cache.clear()
+                            ART.order[:] = []
+                            self._refresh_system_category()
+                        elif kind == "cover_basis":
+                            # BUILD 298: geerbte Cover an oder aus.
+                            # DIESELBEN Zwischenspeicher wie oben, und
+                            # aus demselben Grund: der Schalterwert, das
+                            # gefundene Basis-Cover und die bereits
+                            # gerechneten Miniaturen haengen alle daran.
+                            # Ohne das Leeren bliebe die alte Wand aus
+                            # Platzhaltern (oder aus Mario-Covern)
+                            # stehen, bis man die Kategorie wechselt -
+                            # also genau der Fehler "der Schalter tut
+                            # nichts", der in diesem Projekt schon
+                            # gemeldet wurde (Build 284).
+                            toggle_cover_basis()
+                            docs_caches_leeren()
+                            quelldaten_vergessen()
                             ART.cache.clear()
                             ART.order[:] = []
                             self._refresh_system_category()

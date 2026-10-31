@@ -6661,3 +6661,156 @@ lautete "nach vier billigen Schritten unter 80 ms" - gemessen sind es
 Mechanik. Jetzt prueft er die STRUKTUR (monoton fallend) und nennt die
 gemessene Reihe im Fehlertext. Eine Zusage, die man als Eigenschaft
 formulieren kann, sollte nicht als geratene Zahl dastehen.
+
+---
+
+## Nachtrag Build 298: derselbe Befund zum dritten Mal
+
+> "mir fehlen immer noch einige boxarts zu vielen spielen, kann man da
+> noch was aendern? ich meine immer wenn ich durch scrolle das es genau
+> an diesen ohne cover immer etwas hakt."
+
+**Build 222, Build 229, jetzt 298 — dreimal dieselbe Beschwerde.** Das
+war der eigentliche Hinweis. Wenn ein Befund dreimal wiederkommt,
+nachdem man ihn zweimal "gedrosselt" hat, ist nicht die Drosselung zu
+schwach, sondern die Richtung falsch.
+
+### Befund 1: geraeumt wurde ohne Anlass
+
+Build 222 merkt sich, welche Cover **fehlen** — sonst fragt jeder
+Scrollschritt dieselben Dateien erneut (gemessen auf dem Geraet: 20
+Zugriffe und 13,44 ms **je Schritt**). Build 229 hat das Wegwerfen
+dieses Merkers auf `NEGATIV_TAKT = 30 s` gedrosselt, aber nicht
+abgeschafft: alle 30 Sekunden flog beim Stillstand **jedes** Nein weg,
+und zwar **blind** — ohne dass sich an einer Datei etwas geaendert haben
+musste.
+
+Der Grund fuer das Wegwerfen war ein einziger: jemand koennte waehrend
+des Betriebs Artwork auf die Karte kopieren. Das ist aber keine Sache
+des Glaubens, sondern **eine Messung**: ein Ordner, in dem eine Datei
+dazukommt, aendert seine Aenderungszeit.
+
+`negativ_pruefen()` macht daraus drei Schritte, jeder in einer eigenen
+Funktion:
+
+1. `negativ_faellig()` — ist der Takt um? (reine Frage, unveraendert)
+2. `artwork_geaendert()` — gibt es ueberhaupt einen Grund?
+3. `negativ_vergessen()` — raeumen. Raeumt **immer**, wenn gerufen.
+
+Der Takt wird in **jedem** Fall gestempelt, auch wenn nichts geraeumt
+wird. Sonst waere Schritt 1 dauerhaft faellig und Schritt 2 liefe bei
+jedem Stillstand — also rund hundert `os.stat` statt einmal in dreissig
+Sekunden (Bench G: ein warmes `os.stat` kostet 0,20 ms).
+
+**Und es raeumt jetzt MEHR als vorher.** `docs_caches_leeren()` kommt
+dazu, denn ein neu hinzugekommenes Cover steht in keinem
+Namensverzeichnis. Ohne diesen Schritt war das vergessene Nein
+wirkungslos — `_art_path_in()` antwortete weiter aus dem alten
+Verzeichnis. Das war bis Build 297 so, nur hat es niemand gemerkt, weil
+ohnehin alle 30 Sekunden alles weggeworfen wurde. Ein Fehler, der von
+einem zweiten Fehler verdeckt wird, faellt erst auf, wenn man den
+zweiten behebt.
+
+### Befund 2: die Notbremse war eine Abbruchbremse
+
+```python
+if len(_quell_stat) >= _QUELL_STAT_MAX:   # stand auf 6000
+    _quell_stat.clear()                   # ALLES, Treffer eingeschlossen
+```
+
+Der Nutzer hat **30.965 Spiele**. In einem System mit mehr als 6000
+Eintraegen lief beim Durchscrollen also regelmaessig der ganze
+Zwischenspeicher aus Build 212 ins Leere, und danach war jeder Eintrag
+wieder kalt — **ohne** dass sich an einer Datei etwas geaendert hatte.
+
+Jetzt 16000, und es fliegt nur das **aelteste Viertel**. Python behaelt
+die Einfuegereihenfolge, und beim Scrollen ist die Reihenfolge des
+Einfuegens die Reihenfolge des Vorbeikommens. Keine echte LRU (ein
+Treffer wandert nicht nach hinten, weil `_quelldaten()` bei einem
+Treffer sofort zurueckkommt) — und sie muss keine sein: gegen das
+gemeldete Problem reicht es, dass nicht mehr alles auf einmal
+verschwindet.
+
+**Die Grenze ist GEMESSEN, nicht geschaetzt** (`sys.getsizeof` ueber
+Schluessel und Werte, mit echten Pfadlaengen): 219 Byte je Treffer, 111
+je Nein. 16000 Treffer sind 3,3 MB. Der alte Docstring nannte fuer 6000
+"im Bereich von einem Megabyte" — die Zahl stimmte, nur die Grenze war
+zu niedrig angesetzt.
+
+Dazu ein Deckel fuer `_thumb_fehlt`: die Menge war **unbegrenzt** und
+lebte nur davon, dass alle 30 Sekunden geleert wurde. Da das Leeren
+jetzt ausbleiben kann, waere aus dem behobenen Ruckler sonst ein
+Speicherleck geworden. Wer eine Lebensdauer verlaengert, muss die
+Obergrenze mitbringen.
+
+### Befund 3: das Cover gab es schon, nur unter anderem Namen
+
+Die SMW-Hacks liegen unter `games/SNES/SMW_HACKS/` und bilden ein
+eigenes System. Fuer "Brutal Mario" gibt es in keiner Datenbank eine
+Verpackung — fuer Super Mario World schon.
+
+**Was ausdruecklich NICHT gebaut wurde:** den Originalnamen aus dem
+Hack-Namen **raten**. Den unscharfen Vergleich dafuer gibt es sogar
+schon (`vergleichsname()`, Build 117), und bei "Super Mario World
+(Hack)" wuerde er treffen. Bei "Brutal Mario" trifft er nichts, und bei
+"Zelda - Parallel Worlds" wuerde er mit einer weiteren Abschneide-Regel
+das falsche Zelda finden. **Eine Regel, die in den haeufigen Faellen
+nichts bringt und in den seltenen ein falsches Bild anhaengt, ist keine
+gute Regel.**
+
+Stattdessen eine **Angabe**: ein System darf ein Basis-Spiel benennen
+(`COVER_BASIS`, erweiterbar ueber `/media/fat/frontend/cover_basis.txt`,
+die nie angelegt wird). Geerbt wird nur dort, wo ein Eintrag steht, und
+erst **nach** allen vier echten Quellen.
+
+**Der eigentliche Gewinn ist ein Nebeneffekt:** alle Hacks zeigen
+denselben Pfad, und der Schluessel des Miniaturen-Zwischenspeichers ist
+der Pfad plus die Kastengroesse. Also **eine** gerechnete Miniatur fuer
+den ganzen Ordner statt keiner — der Hack-Ordner scrollt dadurch
+schneller als vorher, nicht langsamer. Test 7 in
+`tools/test_cover_basis.py` sichert die Voraussetzung dafuer: gesucht
+wird einmal je System, nicht je Eintrag (erster Aufruf 1 Zugriff, die
+naechsten 39 keinen).
+
+### Und die teuerste Lehre dieser Runde: drei kaputte Testhelfer
+
+Mein `nur_code()` in `test_cover_basis.py` suchte das **Schlusszeichen**
+eines Docstrings am Zeilenanfang. In diesem Projekt steht es fast immer
+hinter dem letzten Satz (`... voll ist."""`), also blieb die Funktion
+bis zum Dateiende im Docstring und gab **leeren Code** zurueck. Sechs
+Pruefungen schlugen an, obwohl der Code in Ordnung war.
+
+Beim Nachsehen fand sich derselbe Fehlertyp in zwei aelteren Tests:
+
+| Test | Fehler | Folge |
+|---|---|---|
+| test_bildarten (294) | streift `#`-Zeilen ab, Docstrings nicht | gruen aus falschem Grund |
+| test_rom_auto (296) | dieselbe Fassung, kopiert | gruen aus falschem Grund |
+| test_cover_basis (298) | Schlusszeichen am Zeilenanfang gesucht | **rot** aus falschem Grund |
+
+**Fuenf nachgebaute Fassungen, drei davon kaputt.** Beide Richtungen
+sind gleich wertlos: ein Test, der aus dem falschen Grund gruen ist,
+sichert nichts — einer, der aus dem falschen Grund rot ist, kostet eine
+Stunde Suche an der falschen Stelle.
+
+Die Lehre ist nicht "besser aufpassen", sondern **eine** Fassung statt
+fuenf. Sie steht jetzt in `tools/_quelle.py`, fragt `ast` statt nach
+Textmerkmalen zu suchen, und `_harness.py` reicht sie weiter. Ein
+eigenes Modul, weil das Geruest beim Import das ganze Frontend laedt —
+Tests, die nur Quelltext lesen, sollen das nicht brauchen.
+
+Dasselbe Argument stand im Projekt uebrigens schon ausgeschrieben, im
+Docstring von `cover_datei()` in `fe/art.py`:
+
+> Eine zweite, nachgebaute Suche GEHT IRGENDWANN IMMER AUSEINANDER.
+
+Das galt dort fuer die Cover-Suche des Stream-Servers. Es gilt genauso
+fuer Testhelfer, und ich habe es fuenfmal nicht beachtet.
+
+### Was die Suite diesmal gefunden hat
+
+`test_doku_menue.py` und `test_funktionsliste.py` waren rot, und zwar
+genau auf die zwei Doku-Schritte, die noch offen waren: der neue
+Menuepunkt fehlte in beiden Handbuechern und in der erzeugten
+Funktionsliste. Dafuer sind sie da — die Doku-Tests sind die einzige
+Stelle, an der ein vergessener Handbuchsatz ueberhaupt auffaellt.

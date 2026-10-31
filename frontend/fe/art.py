@@ -14,6 +14,7 @@ Verwendungsstellen unveraendert weiterlaufen.
 """
 import os, re, struct, zlib, json, time, urllib.request, hashlib, threading
 import operator
+import itertools
 from fe.log import LOG
 from fe.translations import t
 
@@ -874,10 +875,83 @@ _NICHTS = object()
 # jedem Schritt ein open() ins Leere laufen.
 _thumb_fehlt = set()
 
+# BUILD 298: AUCH DAS NEIN BRAUCHT EINE OBERGRENZE.
+#
+# Bis hierher war diese Menge unbegrenzt - und das ging nur gut, weil
+# negativ_vergessen() sie alle 30 Sekunden komplett geleert hat. Genau
+# das wird mit diesem Build an eine Messung gebunden (siehe
+# artwork_geaendert()), also kann die Leerung beliebig lange ausbleiben.
+# Ohne Deckel waere aus einem behobenen Ruckler ein Speicherleck
+# geworden: wer durch 31.000 Eintraege blaettert, legt fuer jeden ohne
+# Cover einen Pfad ab.
+_THUMB_FEHLT_MAX = 16000
+
 # Groesse und Aenderungszeit der QUELLBILDER, einmal je Pfad und
 # Sitzung geholt. Siehe _quelldaten().
 _quell_stat = {}
-_QUELL_STAT_MAX = 6000
+
+# BUILD 298: GROESSER, UND VOR ALLEM NICHT MEHR ALLES AUF EINMAL.
+#
+# BEFUND DES NUTZERS: "mir fehlen immer noch einige boxarts zu vielen
+# spielen ... ich meine immer wenn ich durch scrolle das es genau an
+# diesen ohne cover immer etwas hakt."
+#
+# Die alte Notbremse lautete `if len(_quell_stat) >= _QUELL_STAT_MAX:
+# _quell_stat.clear()` - bei 6000 Eintraegen wurde ALLES verworfen,
+# Treffer eingeschlossen. Der Nutzer hat 30.965 Spiele; in einem System
+# mit mehr als 6000 Eintraegen lief beim Durchscrollen also regelmaessig
+# der ganze Zwischenspeicher aus Build 212 ins Leere, und danach war
+# jeder Eintrag wieder kalt. Das ist genau der beschriebene Ruckler, und
+# er trat auf, OHNE dass sich an den Dateien etwas geaendert hatte.
+#
+# ZWEI AENDERUNGEN, und die zweite ist die wichtige:
+#   (1) Die Grenze steigt auf 16000, deckt also ein grosses Einzelsystem
+#       ab. Gemessen (sys.getsizeof ueber Schluessel und Werte, 20000
+#       Eintraege mit echten Pfadlaengen): 219 Byte je Treffer, 111 Byte
+#       je Nein. 16000 Treffer sind damit 3,3 MB - die alte Grenze war
+#       mit 6000 rund 1,3 MB, und der Docstring unten nannte dafuer
+#       "im Bereich von einem Megabyte". Die Zahl stimmte also, nur die
+#       Grenze war zu niedrig angesetzt.
+#   (2) Ist sie erreicht, fliegt nur noch das AELTESTE Viertel. Python
+#       behaelt die Einfuegereihenfolge, und beim Scrollen ist die
+#       Reihenfolge des Einfuegens die Reihenfolge des Vorbeikommens -
+#       was am laengsten zurueckliegt, wird am ehesten nicht mehr
+#       gebraucht. Das ist keine echte LRU (ein Treffer wandert nicht
+#       nach hinten, weil _quelldaten() bei einem Treffer sofort
+#       zurueckkommt), und es muss keine sein: gegen das gemeldete
+#       Problem reicht es, dass nicht mehr alles auf einmal verschwindet.
+_QUELL_STAT_MAX = 16000
+_QUELL_STAT_RAUS = _QUELL_STAT_MAX // 4
+
+
+def _platz_schaffen():
+    """Das aelteste Viertel der Quelldaten verwerfen (Build 298).
+
+    Steht als eigene Funktion da, weil _quelldaten() sie an ZWEI Stellen
+    braucht (vor dem Ablegen eines Neins und vor dem Ablegen eines
+    Treffers) und beide dasselbe tun muessen. Vorher stand an beiden
+    Stellen ein clear(), und zwei Stellen mit derselben Regel laufen
+    irgendwann auseinander."""
+    if len(_quell_stat) < _QUELL_STAT_MAX:
+        return
+    for pfad in list(itertools.islice(_quell_stat, _QUELL_STAT_RAUS)):
+        _quell_stat.pop(pfad, None)
+
+
+def _nein_platz_schaffen():
+    """Dasselbe fuer die Menge der fehlenden Cache-Dateien.
+
+    EIN UNTERSCHIED, UND DER GEHOERT BENANNT: eine Menge hat keine
+    Reihenfolge, also ist hier nicht das AELTESTE Viertel gemeint,
+    sondern ein beliebiges. Das ist vertretbar, weil dieser Deckel eine
+    Notbremse ist und keine Strategie - ein zu frueh vergessenes Nein
+    kostet einen Dateizugriff, kein falsches Bild. Eine geordnete
+    Fassung waere ein Wortbuch statt einer Menge, und das wuerde jede
+    Aufrufstelle anfassen, ohne dass dafuer etwas gemessen waere."""
+    if len(_thumb_fehlt) < _THUMB_FEHLT_MAX:
+        return
+    for cpath in list(itertools.islice(_thumb_fehlt, _THUMB_FEHLT_MAX // 4)):
+        _thumb_fehlt.discard(cpath)
 
 
 def _quelldaten(path):
@@ -903,10 +977,15 @@ def _quelldaten(path):
     Neueinlese-Pfad ruft es (siehe Aufrufstelle in frontend.py).
 
     Die Obergrenze ist eine Notbremse gegen den Fall "jemand blaettert
-    durch 97000 Eintraege": ist sie erreicht, wird der Zwischenspeicher
-    geleert und neu gefuellt, statt unbegrenzt zu wachsen. Ein Eintrag
-    ist ein kurzer Pfad plus zwei Zahlen, 6000 davon liegen im Bereich
-    von einem Megabyte."""
+    durch 97000 Eintraege". Ein Eintrag ist ein kurzer Pfad plus zwei
+    Zahlen - gemessen 219 Byte, bei 16000 Eintraegen also 3,3 MB.
+
+    GEAENDERT IN BUILD 298: ist sie erreicht, fliegt nur das AELTESTE
+    VIERTEL, nicht mehr der ganze Zwischenspeicher. Die Begruendung
+    steht bei _QUELL_STAT_MAX, und sie kommt aus einem Nutzerbefund -
+    die alte Fassung hat beim Scrollen durch ein grosses System
+    regelmaessig alles auf kalt zurueckgesetzt, obwohl sich an keiner
+    Datei etwas geaendert hatte."""
     daten = _quell_stat.get(path)
     if daten is not None:
         return None if daten is _NICHTS else daten
@@ -927,12 +1006,10 @@ def _quelldaten(path):
         # _sync_cover_defer in frontend.py). Wer waehrend des Scrollens
         # ein Cover auf die Karte kopiert, sieht es also nach dem
         # Loslassen - nicht erst nach einem Neustart.
-        if len(_quell_stat) >= _QUELL_STAT_MAX:
-            _quell_stat.clear()
+        _platz_schaffen()
         _quell_stat[path] = _NICHTS
         return None
-    if len(_quell_stat) >= _QUELL_STAT_MAX:
-        _quell_stat.clear()
+    _platz_schaffen()
     daten = (st.st_size, st.st_mtime)
     _quell_stat[path] = daten
     return daten
@@ -941,9 +1018,20 @@ def _quelldaten(path):
 def quelldaten_vergessen():
     """Den Zwischenspeicher der Quelldaten verwerfen - nach einem
     Neueinlesen der Spieleliste, damit ausgetauschte Cover wieder
-    erkannt werden. Siehe _quelldaten()."""
+    erkannt werden. Siehe _quelldaten().
+
+    BUILD 298: UND ALLES, WAS SEITHER AN DIESER STELLE HAENGT. Das ist
+    der Weg, den die Anleitung fuer "ich habe Artwork getauscht"
+    nennt - also muss er wirklich alles wegraeumen, sonst zeigt er auf
+    eine Grenze, die er nicht hat. Die beobachteten Ordner werden
+    mitgeleert: ihre Aenderungszeiten traegt der naechste
+    Verzeichnisbau frisch ein, und bis dahin ist nichts zu melden."""
+    global _cover_basis_eigen
     _quell_stat.clear()
     _thumb_fehlt.clear()
+    _basis_cover_cache.clear()
+    _index_ordner.clear()
+    _cover_basis_eigen = None
 
 
 # WIE OFT das Nein hoechstens weggeworfen wird (Build 229).
@@ -997,6 +1085,130 @@ def negativ_vergessen(jetzt=None):
     for _p in [k for k, v in _quell_stat.items() if v is _NICHTS]:
         _quell_stat.pop(_p, None)
     _thumb_fehlt.clear()
+
+
+# ---------------------------------------------------------------------------
+# BUILD 298: DAS NEIN WIRD NUR NOCH WEGGEWORFEN, WENN SICH WIRKLICH
+# ETWAS GEAENDERT HAT
+# ---------------------------------------------------------------------------
+#
+# DER BEFUND, aus demselben Nutzerbericht wie _QUELL_STAT_MAX: "immer
+# wenn ich durch scrolle das es genau an diesen ohne cover immer etwas
+# hakt". Build 229 hatte das Wegwerfen auf NEGATIV_TAKT = 30 s
+# gedrosselt, aber nicht abgeschafft: alle 30 Sekunden flog beim
+# Stillstand jedes gemerkte Nein weg, und der naechste Durchlauf durch
+# eine Liste ohne Cover kostete wieder drei Dateizugriffe JE EINTRAG.
+#
+# Der Grund fuer das Wegwerfen war ein EINZIGER (der zweite aus Build
+# 229, der erste ist seit damals anders geloest): jemand koennte
+# waehrend des Betriebs Artwork auf die Karte kopieren. Das ist aber
+# keine Sache des Glaubens, sondern eine Messung - ein Ordner, in dem
+# eine Datei dazukommt, aendert seine Aenderungszeit. Also wird
+# nachgesehen statt vergessen.
+#
+# WAS DAS KOSTET: ein os.stat je Ordner, den wir tatsaechlich indiziert
+# haben, hoechstens alle NEGATIV_TAKT Sekunden, und nur im Stillstand.
+# Laut Bench-Abschnitt G kostet ein warmes os.stat 0,20 ms; bei 25
+# Systemen mit drei Bildarten plus zwei eigenen Cover-Ordnern sind das
+# gut 100 Abfragen, also rund 20 ms - einmal in 30 Sekunden, waehrend
+# niemand eine Taste haelt. Dafuer entfaellt der Ruckler, der bisher
+# alle 30 Sekunden beim Weiterscrollen wieder anfing.
+#
+# DIE GRENZE GEHOERT OFFEN BENANNT: die Aenderungszeit eines ORDNERS
+# aendert sich, wenn ein Eintrag dazukommt, verschwindet oder umbenannt
+# wird - NICHT, wenn eine vorhandene Datei an Ort und Stelle
+# ueberschrieben wird. Wer ein schlechtes Cover durch ein besseres
+# gleichen Namens ersetzt, sieht es also nicht von allein. Dafuer gibt
+# es "Spieleliste neu einlesen" (ruft quelldaten_vergessen()) und
+# "Zwischenspeicher leeren" - beide Wege raeumen wie bisher alles weg.
+# Dieselbe Grenze hat der Zwischenspeicher aus Build 212 ohnehin schon
+# (siehe _quelldaten(): "faellt ein Austausch innerhalb derselben
+# Sitzung nicht mehr auf"), hier kommt also keine neue dazu.
+
+# Ordner, aus denen ein Namensverzeichnis gebaut wurde -> ihre
+# Aenderungszeit zu diesem Zeitpunkt. None heisst "gab es damals
+# nicht", und das ist der interessanteste Fall: wer die fremde
+# Datenbank erst nachtraeglich installiert, hat vorher einen Ordner
+# ohne Aenderungszeit.
+_index_ordner = {}
+_INDEX_ORDNER_MAX = 400
+
+
+def _ordner_mtime(ordner):
+    """Aenderungszeit eines Ordners, oder None wenn es ihn nicht gibt."""
+    try:
+        return os.stat(ordner).st_mtime
+    except OSError:
+        return None
+
+
+def _ordner_merken(ordner):
+    """Diesen Ordner ab jetzt im Blick behalten (Build 298).
+
+    Gerufen beim Bau eines Namensverzeichnisses, also genau einmal je
+    Ordner und Sitzung - nicht im Zeichenweg.
+
+    Die Obergrenze ist eine Notbremse wie bei _quell_stat: 400 Ordner
+    sind mehr, als es Systeme mal Bildarten gibt. Ist sie erreicht,
+    wird NICHTS mehr dazugenommen, statt etwas zu verwerfen - ein
+    vergessener Ordner wuerde eine Aenderung uebersehen, ein nicht
+    aufgenommener fuehrt nur dazu, dass dieser eine Ordner nicht
+    beobachtet wird. Von zwei unvollstaendigen Antworten ist die
+    vorhersagbare die bessere."""
+    if ordner in _index_ordner or len(_index_ordner) >= _INDEX_ORDNER_MAX:
+        return
+    _index_ordner[ordner] = _ordner_mtime(ordner)
+
+
+def artwork_geaendert():
+    """Hat sich in einem der beobachteten Artwork-Ordner etwas getan?
+
+    Beantwortet die Frage UND zieht die Merker nach - denn eine
+    Aenderung, die zweimal gemeldet wird, waere zweimal ein
+    Aufraeumen. Das ist derselbe Grund, aus dem negativ_faellig()
+    seinen Takt stempelt.
+
+    Ohne beobachtete Ordner (noch kein Verzeichnis gebaut) ist die
+    Antwort False: es gibt dann auch kein Nein, das sich lohnen
+    wuerde."""
+    geaendert = False
+    for ordner, alt in list(_index_ordner.items()):
+        neu = _ordner_mtime(ordner)
+        if neu != alt:
+            _index_ordner[ordner] = neu
+            geaendert = True
+    return geaendert
+
+
+def negativ_pruefen(jetzt=None):
+    """Im Stillstand zu rufen. Sagt, ob geraeumt wurde (Build 298).
+
+    DREI SCHRITTE, UND JEDER GEHOERT EINER FUNKTION:
+      1. negativ_faellig() - ist der Takt um? (reine Frage)
+      2. artwork_geaendert() - gibt es ueberhaupt einen Grund?
+      3. negativ_vergessen() - raeumen. Raeumt IMMER, wenn gerufen.
+
+    Der Takt wird in JEDEM Fall gestempelt, auch wenn nichts geraeumt
+    wird. Sonst waere Schritt 1 dauerhaft faellig und Schritt 2 liefe
+    bei jedem Stillstand - also die hundert os.stat statt einmal in
+    dreissig Sekunden.
+
+    WIRD GERAEUMT, DANN AUCH DIE NAMENSVERZEICHNISSE: ein neu
+    hinzugekommenes Cover steht in keinem von ihnen, und ohne diesen
+    Schritt waere das vergessene Nein wirkungslos - _art_path_in()
+    haette weiter aus dem alten Verzeichnis geantwortet. Genau das war
+    bis Build 297 der Fall, nur hat es niemand gemerkt, weil ohnehin
+    alle 30 Sekunden alles weggeworfen wurde."""
+    if not negativ_faellig(jetzt):
+        return False
+    global _NEGATIV_ZULETZT
+    _NEGATIV_ZULETZT = time.monotonic() if jetzt is None else jetzt
+    if not artwork_geaendert():
+        return False
+    LOG("Artwork-Ordner haben sich geaendert - Verzeichnisse neu")
+    docs_caches_leeren()
+    negativ_vergessen(jetzt)
+    return True
 
 # VERSION DES SKALIERVERFAHRENS - Teil des Cache-Schluessels.
 #
@@ -1968,6 +2180,7 @@ def _thumb_cache_get(path, w, h, nachziehen_erlaubt=False, nein_gilt=True):
         with open(cpath, "rb") as f:
             rohdaten = f.read()
     except FileNotFoundError:
+        _nein_platz_schaffen()                           # Build 298
         _thumb_fehlt.add(cpath)
         return None
     except OSError:
@@ -4244,16 +4457,193 @@ def _art_index(base_dir, syskey):
             _index_ergaenzen(idx, names + fremde, lambda fn: fn)
         except OSError:
             pass
+        # BUILD 298: der Ordner wird vermerkt, AUCH wenn das listdir
+        # fehlgeschlagen ist. Siehe _ordner_merken() - ein Ordner, den
+        # es noch nicht gibt, ist der interessanteste Fall.
+        _ordner_merken(os.path.join(base_dir, syskey))
         _art_index_cache[key] = idx
     return idx
 
-def _art_path_in(base_dir, syskey, rom_basename):
+# ---------------------------------------------------------------------------
+# BUILD 298: DAS COVER DES ORIGINALSPIELS ERBEN
+# ---------------------------------------------------------------------------
+#
+# BEFUND DES NUTZERS: "mir fehlen immer noch einige boxarts zu vielen
+# spielen, kann man da noch was aendern?"
+#
+# Fuer einen Teil seiner Sammlung kann man, und zwar ohne irgendetwas
+# herunterzuladen. Seine SMW-Hacks liegen laut der Einrichtungs-
+# anleitung unter /media/fat/games/SNES/SMW_HACKS/ und bilden ein
+# eigenes System. Die fremde Datenbank unter /media/fat/docs kennt
+# dieses System nicht - und selbst wenn sie es kennte, stehen dort
+# keine Cover fuer "Brutal Mario" oder "Kaizo Mario World". Fuer JEDEN
+# dieser Hacks gibt es also einen Platzhalter, und genau an diesen
+# Eintraegen hakt das Scrollen.
+#
+# WAS NICHT GEMACHT WIRD, UND WARUM: der naechstliegende Gedanke ist,
+# den Originalnamen aus dem Hack-Namen zu RATEN - Klammern abschneiden,
+# Untertitel weglassen, "(Hack)" entfernen. Den unscharfen Vergleich
+# dafuer gibt es sogar schon (vergleichsname(), Build 117), und er
+# wuerde bei "Super Mario World (Hack)" auch treffen. Bei "Brutal
+# Mario" trifft er nichts, und bei "Zelda - Parallel Worlds" wuerde er
+# mit einer weiteren Abschneide-Regel das falsche Zelda finden. Eine
+# Regel, die in den haeufigen Faellen nichts bringt und in den seltenen
+# ein falsches Bild anhaengt, ist keine gute Regel.
+#
+# WAS GEMACHT WIRD: ein System darf ein BASIS-SPIEL benennen. Findet
+# ein Eintrag dieses Systems auf keinem der bisherigen vier Wege ein
+# Cover, bekommt er das des Basis-Spiels. Das ist keine Rateregel
+# sondern eine Angabe, sie gilt genau fuer die Systeme, die sie
+# eintragen, und sie kann kein fremdes Bild an ein normales SNES-Spiel
+# haengen.
+#
+# NEBENWIRKUNG, UND ES IST DIE ERFREULICHE: alle Hacks zeigen damit
+# DENSELBEN Pfad. Der Schluessel des Miniaturen-Zwischenspeichers ist
+# der Pfad plus die Kastengroesse (siehe _thumb_cache_key()), also
+# wird fuer den ganzen Ordner genau eine Miniatur gerechnet und
+# geschrieben statt keiner - und das Durchscrollen des Hack-Ordners
+# wird nicht teurer, sondern billiger als heute: statt dreier
+# fehlschlagender Dateizugriffe je Eintrag ein Treffer im RAM.
+COVER_BASIS = {
+    # Mehrere Kandidaten, weil die Schreibweise der Datenbank nicht
+    # feststeht: No-Intro schreibt den Artikel hinten ("Legend of
+    # Zelda, The - ..."), viele Sammlungen vorne. Der erste Treffer
+    # gewinnt, und vergleichsname() faengt den Rest (Region, Klammern).
+    "SMW_HACKS": ("Super Mario World",),
+    "SNES_ALTTP_TRACKER": ("Legend of Zelda, The - A Link to the Past",
+                           "The Legend of Zelda - A Link to the Past"),
+}
+
+# Eigene Zuordnungen des Nutzers, eine je Zeile:
+#
+#     SYSKEY = Spielname
+#     SYSKEY = Erster Kandidat | Zweiter Kandidat
+#
+# "#" beginnt einen Kommentar. WIRD NIE ANGELEGT, nur gelesen - wer die
+# Datei nicht hat, merkt von der ganzen Sache nichts (ein
+# fehlschlagendes open() beim ersten Bedarf, danach gemerkt).
+COVER_BASIS_DATEI = "/media/fat/frontend/cover_basis.txt"
+_cover_basis_eigen = None
+
+
+def _cover_basis_eigene():
+    """Die Tabelle des Nutzers - einmal je Sitzung gelesen."""
+    global _cover_basis_eigen
+    if _cover_basis_eigen is not None:
+        return _cover_basis_eigen
+    tabelle = {}
+    try:
+        with open(COVER_BASIS_DATEI, encoding="utf-8",
+                  errors="replace") as f:
+            for zeile in f:
+                zeile = zeile.split("#", 1)[0].strip()
+                if not zeile or "=" not in zeile:
+                    continue
+                sk, rest = zeile.split("=", 1)
+                namen = tuple(n.strip() for n in rest.split("|") if n.strip())
+                if sk.strip() and namen:
+                    tabelle[sk.strip()] = namen
+    except OSError:
+        pass
+    except Exception as e:                               # noqa: BLE001
+        # Eine kaputte Zeile darf den Zeichenweg nicht umbringen -
+        # dann lieber keine eigenen Zuordnungen.
+        LOG("cover_basis.txt nicht lesbar: %s" % e)
+    _cover_basis_eigen = tabelle
+    return tabelle
+
+
+_basis_an = None
+
+
+def cover_basis_an():
+    """Darf geerbt werden? Schalter im Systemmenue, Vorgabe AN.
+
+    Verzoegert geholt UND gemerkt, aus demselben Grund wie bei
+    fremdquellen_enabled(): fe/settings.py importiert seinerseits aus
+    dieser Datei, und eine Dateiabfrage je Eintrag waere genau die
+    Sorte stiller Kosten, gegen die die Builds 104 bis 110 angegangen
+    sind. Ein Schalterwechsel ruft docs_caches_leeren()."""
+    global _basis_an
+    if _basis_an is None:
+        try:
+            from fe.settings import cover_basis_an as _schalter
+            _basis_an = bool(_schalter())
+        except Exception:                                # noqa: BLE001
+            _basis_an = True
+    return _basis_an
+
+
+def cover_basis_namen(syskey):
+    """Die Kandidaten fuer das Basis-Spiel eines Systems, sonst ().
+
+    Die Tabelle des Nutzers gewinnt - dieselbe Rangfolge wie ueberall
+    sonst in dieser Datei (eigenes Artwork vor gamelist vor fremder
+    Datenbank): was der Nutzer selbst eingetragen hat, wiegt schwerer
+    als was wir mitliefern.
+
+    DIE ABFRAGE DES SYSTEMS KOMMT VOR DER DES SCHALTERS, und das ist
+    kein Zufall: fuer die weitaus meisten Systeme steht hier nichts,
+    und dann soll auch nichts weiter passieren."""
+    if not syskey:
+        return ()
+    namen = _cover_basis_eigene().get(syskey) or COVER_BASIS.get(syskey) or ()
+    if namen and not cover_basis_an():
+        return ()
+    return namen
+
+
+# (base_dir, syskey) -> Pfad des Basis-Covers, oder _NICHTS.
+#
+# OHNE DIESEN ZWISCHENSPEICHER WAERE DIE SACHE EIN RUECKSCHRITT: die
+# Suche endet mit einem os.path.exists(), und sie liefe fuer JEDEN
+# Eintrag ohne eigenes Cover bei JEDEM Zeichnen. Gesucht wird aber
+# immer dasselbe Spiel, also genuegt ein Eintrag je System.
+_basis_cover_cache = {}
+
+
+def _basis_cover(base_dir, syskey, rom_basename):
+    """Das Cover des Basis-Spiels - oder None (Build 298).
+
+    erben=False beim Rueckruf in _art_path_in() ist kein Detail,
+    sondern die Abbruchbedingung: ohne ihn wuerde die Suche nach dem
+    Basis-Spiel wieder beim Basis-Spiel landen und sich selbst
+    aufrufen, bis der Stapel voll ist."""
+    namen = cover_basis_namen(syskey)
+    if not namen:
+        return None
+    schluessel = (base_dir, syskey)
+    gemerkt = _basis_cover_cache.get(schluessel)
+    if gemerkt is not None:
+        pfad = None if gemerkt is _NICHTS else gemerkt
+    else:
+        pfad = None
+        for name in namen:
+            kandidat = _art_path_in(base_dir, syskey, name, erben=False)
+            if kandidat and os.path.exists(kandidat):
+                pfad = kandidat
+                break
+        _basis_cover_cache[schluessel] = pfad if pfad else _NICHTS
+    if not pfad:
+        return None
+    # DAS BASIS-SPIEL SELBST bekommt sein Cover auf dem normalen Weg -
+    # sonst stuende hier eine Schleife ohne Not, und bei einem
+    # Namensgleichstand ein Pfad, der auf sich selbst zeigt.
+    if rom_basename in namen:
+        return None
+    return pfad
+
+
+def _art_path_in(base_dir, syskey, rom_basename, erben=True):
     """Cover-Pfad innerhalb eines bestimmten Basisordners (ART_BASE
     oder ART_HD) - erst der exakte Name, sonst wird eine fuehrende
     "NNN "-Nummer im tatsaechlichen Dateinamen ignoriert (siehe
     _art_index()). Liefert IMMER einen Pfad zurueck (auch wenn er
     nicht existiert) - der Aufrufer prueft ohnehin schon selbst auf
-    Existenz, hier nur der BESSERE Pfad-Kandidat."""
+    Existenz, hier nur der BESSERE Pfad-Kandidat.
+
+    erben=False schaltet das Basis-Spiel aus Build 298 ab und wird
+    genau einmal gebraucht: von _basis_cover() selbst, siehe dort."""
     # Siehe _art_index(): ohne Systemkey (oder ohne Namen) gibt es
     # keinen Cover-Ordner. Frueher lief das in einen TypeError, der bis
     # aus run() herausflog - siehe dortigen Kommentar.
@@ -4294,6 +4684,13 @@ def _art_path_in(base_dir, syskey, rom_basename):
         fremd = docs_cover(syskey, rom_basename)
         if fremd:
             return fremd
+    # BUILD 298: ZULETZT das Basis-Spiel - nach allen vier echten
+    # Quellen. Die Reihenfolge ist der Sicherheitsgurt: ein Hack, der
+    # ein eigenes Cover hat, behaelt es.
+    if erben:
+        basis = _basis_cover(base_dir, syskey, rom_basename)
+        if basis:
+            return basis
     return os.path.join(base_dir, syskey, rom_basename + ".art")
 
 def art_path(syskey, rom_basename):
@@ -4528,6 +4925,7 @@ def _docs_index(syskey, bildart="boxart"):
         for unterordner in unter:
             ordner = os.path.join(basis, unterordner) if unterordner \
                 else basis
+            _ordner_merken(ordner)                       # Build 298
             try:
                 namen = [fn for fn in os.listdir(ordner)
                          if fn.rsplit(".", 1)[-1].lower()
@@ -5072,9 +5470,10 @@ def docs_synopsis(syskey, rom_basename, sprache="en"):
 
 def docs_caches_leeren():
     """Nach einem erneuten Einlesen oder einem Schalterwechsel."""
-    global _docs_ordner_cache, _fremd_an
+    global _docs_ordner_cache, _fremd_an, _basis_an
     _docs_ordner_cache = None
     _fremd_an = None
+    _basis_an = None                                     # Build 298
     _docs_index_cache.clear()
     _docs_info_cache.clear()
     _docs_info_knapp.clear()
@@ -5087,6 +5486,10 @@ def docs_caches_leeren():
     # passiert einmal im Jahr, und die Alternative waere, sich diese
     # Feinheit dauerhaft merken zu muessen.
     _art_index_cache.clear()
+    # BUILD 298: und das gefundene Basis-Cover. Es steckt in denselben
+    # Verzeichnissen - bliebe es stehen, zeigte der Hack-Ordner auf
+    # eine Datei, die es vielleicht nicht mehr gibt.
+    _basis_cover_cache.clear()
 
 def _category_art_key(name, syskey):
     """Kuenstlicher Schluessel NUR fuer die Sysart-Suche

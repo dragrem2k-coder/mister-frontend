@@ -2279,6 +2279,33 @@ def toggle_romwacht_auto():
     return romwacht_auto_an()
 
 
+# BUILD 298: das Cover des Basis-Spiels erben.
+#
+# BEFUND DES NUTZERS: "mir fehlen immer noch einige boxarts zu vielen
+# spielen, kann man da noch was aendern?" Fuer eigene Sammlungen wie
+# SMW_HACKS kann man: es gibt kein Cover fuer "Brutal Mario", aber eines
+# fuer Super Mario World. Die Tabelle und die ganze Begruendung stehen
+# bei COVER_BASIS in fe/art.py.
+#
+# VORGABE AN, und dieser Schalter ist der Grund, warum das vertretbar
+# ist: ein geerbtes Cover ist eine ANNAHME, nicht ein Fund. In der
+# Galerie steht dann eine Wand aus demselben Bild, und wer das nicht
+# will, soll es nicht erst erklaert bekommen muessen. Abschalten laesst
+# die Platzhalter zurueckkommen - also genau den Stand von Build 297.
+COVER_BASIS_AUS_FLAG = "/media/fat/frontend/cover_basis_aus"
+
+
+def cover_basis_an():
+    return not _hole(("cover_basis_aus", COVER_BASIS_AUS_FLAG),
+                     lambda: os.path.exists(COVER_BASIS_AUS_FLAG))
+
+
+@_nach_aenderung
+def toggle_cover_basis():
+    _flag_setzen(COVER_BASIS_AUS_FLAG, cover_basis_an())
+    return cover_basis_an()
+
+
 # BUILD 259: mehrteilige Spiele zu EINEM Eintrag zusammenfassen.
 #
 # "Final Fantasy VII (Disc 1/2/3)" sind drei Zeilen fuer ein Spiel. Bei

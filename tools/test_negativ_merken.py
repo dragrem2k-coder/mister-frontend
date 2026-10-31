@@ -36,6 +36,7 @@ Ausfuehren:
 import os
 import sys
 import tempfile
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _harness as H          # noqa: E402,F401  (setzt den Pfad)
@@ -170,15 +171,25 @@ print("Test 5: der Stillstand ist angeschlossen")
 # deshalb steht hier, dass die FLANKE gemeint ist (von "blaettert" nach
 # "steht"), und nicht etwa jeder Durchlauf.
 quelle = open(H.FRONTEND_PY, encoding="utf-8", errors="replace").read()
-check("frontend.py ruft negativ_vergessen()",
-      "negativ_vergessen()" in quelle)
-_stelle = quelle[max(0, quelle.find("negativ_vergessen()") - 900):
-                 quelle.find("negativ_vergessen()") + 40]
+# GEAENDERT IN BUILD 298: an der Flanke steht jetzt negativ_pruefen(),
+# und das Raeumen selbst liegt dahinter (Takt, dann Grund, dann
+# raeumen - siehe Test 9). Geprueft wird weiterhin die FLANKE, denn die
+# ist der Ort, der sich nicht verschieben darf.
+_code = H.nur_code(quelle)
+check("frontend.py ruft negativ_pruefen()", "negativ_pruefen()" in _code)
+_stelle = _code[max(0, _code.find("negativ_pruefen()") - 400):
+                _code.find("negativ_pruefen()") + 40]
 check("und zwar an der Flanke, nicht bei jedem Aufbau",
       "_vorher and not ART._defer_uncached" in _stelle,
       "sonst waere das Merken wirkungslos")
 check("die Funktion wird auch importiert",
-      "negativ_vergessen," in quelle or "negativ_vergessen " in quelle)
+      "negativ_pruefen," in _code or "negativ_pruefen " in _code)
+# UND DAS BLINDE RAEUMEN IST WIRKLICH WEG. Ohne diese Pruefung koennte
+# der alte Aufruf irgendwann daneben wieder auftauchen, und dann waere
+# die ganze Arbeit von Build 298 still wirkungslos.
+check("der Zeichenweg raeumt nicht mehr selbst",
+      "negativ_vergessen()" not in _code,
+      "das Raeumen gehoert hinter die Pruefung, nicht davor")
 
 # ---------------------------------------------------------------------------
 print()
@@ -302,10 +313,144 @@ check("der Warteblock raeumt weiterhin SOFORT",
       [1][:600],
       "wer liefert, raeumt selbst auf - unabhaengig vom Takt")
 
-_f2 = open(H.FRONTEND_PY, encoding="utf-8", errors="replace").read()
 check("und der Stillstand fragt vorher nach",
-      "and negativ_faellig():" in _f2,
+      "if not negativ_faellig(jetzt):" in H.nur_code(
+          H.koerper(_a, "negativ_pruefen")),
       "nicht mehr an jeder Flanke")
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 9: geraeumt wird nur mit GRUND (Build 298)")
+# ---------------------------------------------------------------------------
+# DERSELBE BEFUND ZUM DRITTEN MAL: "immer wenn ich durch scrolle das es
+# genau an diesen ohne cover immer etwas hakt." Build 229 hat das
+# Wegwerfen auf 30 Sekunden gedrosselt, aber es blieb BLIND - alle 30
+# Sekunden flog jedes Nein weg, ohne dass sich an einer Datei etwas
+# geaendert haben musste, und der naechste Durchlauf durch eine Liste
+# ohne Cover kostete wieder drei Zugriffe JE EINTRAG.
+#
+# Der Grund fuer das Wegwerfen war ein einziger: jemand koennte
+# waehrend des Betriebs Artwork auf die Karte kopieren. Das ist aber
+# keine Sache des Glaubens, sondern eine Messung - ein Ordner, in dem
+# eine Datei dazukommt, aendert seine Aenderungszeit.
+A._index_ordner.clear()
+A._NEGATIV_ZULETZT = -1e9
+A._thumb_fehlt.add("/irgendwo/fehlt.bin")
+check("faellig, aber ohne beobachtete Ordner: nichts",
+      A.negativ_pruefen(1000.0) is False)
+check("das Nein steht noch", "/irgendwo/fehlt.bin" in A._thumb_fehlt,
+      "genau das war der Fehler: geraeumt wurde ohne Anlass")
+check("und der Takt ist trotzdem gestempelt",
+      A.negativ_faellig(1000.0) is False,
+      "sonst liefen die os.stat bei JEDEM Stillstand statt alle %g s"
+      % A.NEGATIV_TAKT)
+
+with tempfile.TemporaryDirectory() as tmp:
+    ordner = os.path.join(tmp, "Artwork")
+    os.makedirs(ordner)
+    A._index_ordner.clear()
+    A._ordner_merken(ordner)
+    check("unveraendert: keine Meldung", A.artwork_geaendert() is False)
+    time.sleep(0.02)                     # mtime-Aufloesung abwarten
+    with open(os.path.join(ordner, "neues_cover.png"), "wb") as f:
+        f.write(b"x")
+    check("eine neue Datei im Ordner: Meldung",
+          A.artwork_geaendert() is True)
+    check("und danach wieder Ruhe", A.artwork_geaendert() is False,
+          "eine zweimal gemeldete Aenderung waere zweimal ein Aufraeumen")
+
+    # Ein Ordner, den es beim Merken noch gar nicht gab - wer die
+    # fremde Datenbank erst nachtraeglich installiert, ist genau
+    # dieser Fall, und er ist der interessanteste.
+    A._index_ordner.clear()
+    spaeter = os.path.join(tmp, "Titles")
+    A._ordner_merken(spaeter)
+    check("ein fehlender Ordner wird mit None gemerkt",
+          A._index_ordner[spaeter] is None)
+    os.makedirs(spaeter)
+    check("sein Auftauchen zaehlt als Aenderung",
+          A.artwork_geaendert() is True)
+
+    # Und erst Takt UND Grund raeumen wirklich.
+    A._index_ordner.clear()
+    A._ordner_merken(ordner)
+    A._NEGATIV_ZULETZT = 1000.0
+    A._thumb_fehlt.add("/irgendwo/fehlt.bin")
+    time.sleep(0.02)
+    with open(os.path.join(ordner, "noch_eines.png"), "wb") as f:
+        f.write(b"x")
+    check("vor dem Takt wird trotz Aenderung nicht geraeumt",
+          A.negativ_pruefen(1000.0 + A.NEGATIV_TAKT - 0.1) is False)
+    check("mit Takt UND Aenderung schon",
+          A.negativ_pruefen(1000.0 + A.NEGATIV_TAKT) is True)
+    check("und dann ist das Nein weg",
+          "/irgendwo/fehlt.bin" not in A._thumb_fehlt,
+          "aus 'zu oft' darf nicht 'nie' werden")
+
+# DIE NAMENSVERZEICHNISSE MUESSEN MIT FALLEN. Ein neu hinzugekommenes
+# Cover steht in keinem von ihnen - ohne diesen Schritt waere das
+# vergessene Nein wirkungslos, weil _art_path_in() weiter aus dem alten
+# Verzeichnis antwortet.
+check("ein Raeumen leert auch die Namensverzeichnisse",
+      "docs_caches_leeren()" in H.nur_code(H.koerper(_a, "negativ_pruefen")),
+      "sonst findet das vergessene Nein dasselbe alte Verzeichnis")
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 10: die Notbremse verwirft nicht mehr alles (Build 298)")
+# ---------------------------------------------------------------------------
+# BEFUND: der Nutzer hat 30.965 Spiele. Die alte Notbremse lautete
+# `if len(_quell_stat) >= _QUELL_STAT_MAX: _quell_stat.clear()`, und
+# _QUELL_STAT_MAX stand auf 6000 - in einem System mit mehr Eintraegen
+# wurde beim Durchscrollen also regelmaessig ALLES verworfen, Treffer
+# eingeschlossen, und danach war jeder Eintrag wieder kalt. Das ist der
+# gemeldete Ruckler, und er trat auf, OHNE dass sich etwas geaendert
+# hatte.
+#
+# Die Zahlen werden NICHT hartcodiert: geprueft wird die Form (es
+# bleibt etwas stehen, das Aelteste geht, das Neueste bleibt), nicht
+# ein geratener Wert. Dieselbe Lehre wie in Build 297.
+A._quell_stat.clear()
+for _i in range(A._QUELL_STAT_MAX):
+    A._quell_stat["/x/%06d" % _i] = (1, 2.0)
+A._platz_schaffen()
+check("es bleibt etwas stehen", len(A._quell_stat) > 0,
+      "%d von %d - vorher waren es null"
+      % (len(A._quell_stat), A._QUELL_STAT_MAX))
+check("naemlich genau der Rest ohne das aelteste Viertel",
+      len(A._quell_stat) == A._QUELL_STAT_MAX - A._QUELL_STAT_RAUS,
+      "%d" % len(A._quell_stat))
+check("der aelteste Eintrag ist weg", "/x/000000" not in A._quell_stat)
+check("der neueste steht noch",
+      "/x/%06d" % (A._QUELL_STAT_MAX - 1) in A._quell_stat,
+      "beim Scrollen ist das Neueste das, was man gerade sieht")
+check("und die Grenze deckt ein grosses System ab",
+      A._QUELL_STAT_MAX >= 16000,
+      "%d - gemessen 219 Byte je Eintrag, also %.1f MB"
+      % (A._QUELL_STAT_MAX, A._QUELL_STAT_MAX * 219 / 1048576.0))
+A._quell_stat.clear()
+
+# UND DAS NEIN BRAUCHT JETZT SELBST EINEN DECKEL: bis Build 297 war die
+# Menge unbegrenzt und wurde alle 30 Sekunden geleert. Da das Leeren
+# jetzt ausbleiben kann, waere aus einem behobenen Ruckler sonst ein
+# Speicherleck geworden.
+check("auch das Nein hat eine Obergrenze",
+      isinstance(getattr(A, "_THUMB_FEHLT_MAX", None), int)
+      and A._THUMB_FEHLT_MAX > 0,
+      "%r" % getattr(A, "_THUMB_FEHLT_MAX", None))
+A._thumb_fehlt.clear()
+for _i in range(A._THUMB_FEHLT_MAX):
+    A._thumb_fehlt.add("/y/%06d" % _i)
+A._nein_platz_schaffen()
+check("und sie greift", len(A._thumb_fehlt) < A._THUMB_FEHLT_MAX,
+      "%d" % len(A._thumb_fehlt))
+check("ohne alles zu verwerfen", len(A._thumb_fehlt) > 0,
+      "%d" % len(A._thumb_fehlt))
+A._thumb_fehlt.clear()
+check("der Deckel haengt im Schreibweg des Neins",
+      "_nein_platz_schaffen()" in H.nur_code(
+          H.koerper(_a, "_thumb_cache_get")),
+      "ein Deckel, den niemand ruft, ist keiner")
 
 print()
 if fails:

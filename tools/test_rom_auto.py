@@ -82,10 +82,13 @@ def koerper(quelle, name, klasse=None):
     return ""
 
 
-def nur_code(quelle):
-    """Die Datei ohne Kommentarzeilen - siehe test_bildarten.py."""
-    return "\n".join(z for z in quelle.split("\n")
-                     if not z.lstrip().startswith("#"))
+# BUILD 298: die Fassung wohnt jetzt in _harness.py - EINE statt
+# fuenf nachgebauten, und sie streift auch die DOCSTRINGS ab.
+# Diese hier tat das nicht, womit jede Pruefung, deren Begriff
+# auch in einer Begruendung steht, aus dem falschen Grund gruen
+# war. Die ganze Vorgeschichte steht im Docstring von
+# tools/_quelle.py.
+from _quelle import nur_code                              # noqa: E402
 
 
 FE_PY = os.path.join(_REPO, "frontend", "frontend.py")

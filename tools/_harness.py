@@ -179,6 +179,14 @@ TITLES = [
 ]
 
 
+# QUELLTEXT LESEN (Build 298): die beiden Funktionen wohnen in
+# tools/_quelle.py, damit Tests, die NUR Quelltext lesen, nicht das
+# ganze Frontend laden muessen. Hier weitergereicht fuer die Tests, die
+# das Geruest ohnehin importieren. Die Vorgeschichte - fuenf Fehler
+# derselben Sorte - steht dort im Modul-Docstring.
+from _quelle import koerper, nur_code                     # noqa: E402,F401
+
+
 def _zwischenspeicher_leeren():
     """Den Einstellungs-Zwischenspeicher (Build 135) verwerfen.
 

@@ -573,6 +573,25 @@ Nebenbei kommen aus denselben Ordnern auch **Jahr, Genre, Entwickler
 und Spieleranzahl** (`gameinfo.tsv`) sowie seit Build 139 die
 **Spielbeschreibungen** (siehe Abschnitt 8t).
 
+### Artwork nachträglich hinkopieren (Build 298)
+
+Das Frontend merkt sich, welche Cover es **nicht** gibt — sonst würde
+jeder Scrollschritt dieselben fehlenden Dateien erneut suchen, und
+genau das war als Hakeln an coverlosen Spielen gemeldet. Damit ein
+nachträglich hinzugekommenes Cover trotzdem auftaucht, sieht das
+Frontend im Stillstand nach, ob sich in den Artwork-Ordnern etwas
+getan hat, und liest nur dann neu ein. Höchstens alle 30 Sekunden,
+nie während du eine Taste hältst.
+
+In der Praxis: **Cover hinkopieren, Hände vom Pad, nach ein paar
+Sekunden ist es da.**
+
+**Eine Grenze gehört dazu:** erkannt wird, wenn eine Datei *dazukommt,
+verschwindet oder umbenannt wird*. Wird eine vorhandene Datei an Ort
+und Stelle durch eine bessere **gleichen Namens** ersetzt, ändert sich
+die Änderungszeit des Ordners nicht — dann hilft *System → Wartung →
+„Spieleliste neu einlesen"* oder ein Neustart.
+
 ### „Miniaturen vorbereiten" — was es tut und wann es sich lohnt
 
 Zu finden unter *System → Wartung → „Miniaturen vorbereiten"*.
@@ -1235,10 +1254,55 @@ keine Einstellung.
 1. deine eigenen Daten (`/media/fat/frontend/meta/<SYSTEM>.json`)
 2. die `gamelist.xml`
 3. die fremde Datenbank unter `/media/fat/docs`
+4. **das Cover des Basis-Spiels** (Build 298, nur beim Cover — siehe
+   den nächsten Abschnitt)
 
 Gefüllt wird **feldweise**: eine Quelle ergänzt nur, was die vorige
 nicht hatte, und ersetzt nie. Beim Cover genauso — dein eigenes
 Artwork kommt immer zuerst.
+
+### Cover vom Basis-Spiel erben (Build 298)
+
+Für „Brutal Mario" gibt es in keiner Artwork-Datenbank eine Verpackung.
+Für *Super Mario World* schon — und ein SMW-Hack ist nun einmal Super
+Mario World. Ein System darf deshalb ein **Basis-Spiel** benennen:
+findet ein Eintrag auf keinem der drei Wege oben ein Cover, bekommt er
+das des Basis-Spiels.
+
+Mitgeliefert ist das für zwei Systeme:
+
+| System | Basis-Spiel |
+|---|---|
+| SMW Hacks | Super Mario World |
+| SNES ALTTP Tracker | The Legend of Zelda – A Link to the Past |
+
+**Eigene Zuordnungen** kommen in `/media/fat/frontend/cover_basis.txt`,
+eine je Zeile. Die Datei wird nur gelesen und **nie angelegt** — wer
+sie nicht hat, merkt von der ganzen Sache nichts:
+
+```
+# Systemschluessel = Spielname
+SONIC_HACKS = Sonic the Hedgehog
+# Mehrere Kandidaten mit "|", der erste Treffer gewinnt. Praktisch,
+# weil Datenbanken den Artikel mal vorn und mal hinten schreiben:
+ZELDA_HACKS = Legend of Zelda, The | The Legend of Zelda
+```
+
+**Was ausdrücklich nicht passiert:** aus dem Hack-Namen wird nicht auf
+das Original *geraten*. Geerbt wird nur in Systemen, für die ein
+Eintrag existiert — ein normales SNES-Spiel ohne Cover bekommt also
+**nie** das Bild eines anderen Spiels. Ein eigenes Cover gewinnt
+immer: lege `art_hd/SMW_HACKS/Brutal Mario.png` an und der Hack zeigt
+seins.
+
+**Nebenbei wird das Scrollen dort schneller.** Alle Hacks zeigen
+denselben Cover-Pfad, und die Miniatur wird je Pfad gerechnet — also
+einmal für den ganzen Ordner statt gar nicht. Vorher kostete jeder
+Eintrag drei vergebliche Dateizugriffe.
+
+**Abschalten:** *System → Anzeige & Sound → „Cover vom Basis-Spiel
+erben"*, direkt unter den Fremdquellen. Aus heißt: Platzhalter wie
+vorher.
 
 Abschalten, falls du sie nicht willst:
 `touch /media/fat/frontend/gamelist_aus` — kein Update nötig.
@@ -2642,6 +2706,7 @@ umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
 | Ausgeblendete Einträge zeigen | `versteckt` |
 | Rand seitlich / oben-unten | `overscan_x`, `overscan_y` |
 | Fremdes Artwork/Daten: AN/AUS | `fremdquellen` |
+| Cover vom Basis-Spiel erben: AN/AUS | `cover_basis` |
 | Menü-Auflösung: voll / halb / viertel (nur HDMI) | `fb_size` |
 | Markierungs-Schimmer: AN/AUS | `pulse_effect` |
 | Equalizer-Balken: AN/AUS | `eq_effect` |

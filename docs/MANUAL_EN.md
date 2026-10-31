@@ -520,6 +520,24 @@ The same folders also provide **year, genre, developer and player
 count** (`gameinfo.tsv`) and, since Build 139, the **game
 descriptions** (see section 8t).
 
+### Adding artwork while the frontend runs (build 298)
+
+The frontend remembers which covers do **not** exist — otherwise every
+scroll step would search for the same missing files again, and that is
+exactly what was reported as stuttering at games without a cover. So
+that a cover added later still shows up, the frontend checks at a
+standstill whether anything changed in the artwork folders, and only
+then re-reads. At most every 30 seconds, never while you hold a button.
+
+In practice: **copy the cover in, hands off the pad, a few seconds
+later it is there.**
+
+**One limit belongs with that:** what gets detected is a file being
+*added, removed or renamed*. If an existing file is replaced in place
+by a better one with the **same name**, the folder's modification time
+does not change — then use *System → Maintenance → "Re-read game
+list"* or restart.
+
 ### "Prepare thumbnails" — what it does and when it is worth it
 
 Found under *System → Maintenance → "Prepare thumbnails"*.
@@ -1010,10 +1028,53 @@ it is read. No tool, no download, no setting.
 1. your own data (`/media/fat/frontend/meta/<SYSTEM>.json`)
 2. the `gamelist.xml`
 3. the foreign database under `/media/fat/docs`
+4. **the base game's cover** (build 298, covers only — see the next
+   section)
 
 Filling happens **field by field**: a source only adds what the previous
 one did not have, and never replaces. Same for covers — your own artwork
 always comes first.
+
+### Inheriting the base game's cover (build 298)
+
+No artwork database has box art for "Brutal Mario". For *Super Mario
+World* it does — and an SMW hack is Super Mario World, after all. A
+system may therefore name a **base game**: if an entry finds no cover
+on any of the three routes above, it gets the base game's.
+
+Two systems ship with this:
+
+| System | Base game |
+|---|---|
+| SMW Hacks | Super Mario World |
+| SNES ALTTP Tracker | The Legend of Zelda – A Link to the Past |
+
+**Your own mappings** go into `/media/fat/frontend/cover_basis.txt`,
+one per line. The file is only ever read and **never created** — if you
+do not have it, none of this happens:
+
+```
+# system key = game name
+SONIC_HACKS = Sonic the Hedgehog
+# Several candidates with "|", first hit wins. Useful because
+# databases put the article sometimes first, sometimes last:
+ZELDA_HACKS = Legend of Zelda, The | The Legend of Zelda
+```
+
+**What explicitly does not happen:** the original is not *guessed* from
+the hack's name. Inheriting only happens in systems that have an entry,
+so a normal SNES game without a cover **never** gets another game's
+picture. An own cover always wins: drop in
+`art_hd/SMW_HACKS/Brutal Mario.png` and the hack shows its own.
+
+**As a side effect, scrolling there gets faster.** All hacks point at
+the same cover path, and the thumbnail is computed per path — so once
+for the whole folder instead of not at all. Before, every entry cost
+three futile file accesses.
+
+**To switch off:** *System → Display & sound → "Inherit cover from the
+base game"*, right below the foreign sources. Off means placeholders,
+as before.
 
 To switch it off: `touch /media/fat/frontend/gamelist_aus` — no update
 needed.
@@ -2279,6 +2340,7 @@ conversely nobody ends up in a menu that cannot do anything).
 | Show hidden entries | `versteckt` |
 | Side / top-bottom margin | `overscan_x`, `overscan_y` |
 | Foreign artwork/data: ON/OFF | `fremdquellen` |
+| Inherit cover from the base game: ON/OFF | `cover_basis` |
 | Menu resolution: full / half / quarter (HDMI only) | `fb_size` |
 | Selection shimmer: ON/OFF | `pulse_effect` |
 | Equalizer bars: ON/OFF | `eq_effect` |

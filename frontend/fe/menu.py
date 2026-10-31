@@ -34,6 +34,7 @@ from fe.settings import (
     tastenlegende_an,
     romwacht_an,
     romwacht_auto_an,
+    cover_basis_an,
     multidisc_buendeln,
     screen_mirror_enabled, stream_overlay_enabled,
     fast_scroll_enabled, cover_sofort_enabled, arbeitskopien_enabled,
@@ -196,6 +197,10 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     # (siehe unten: er erscheint nur, wenn der Waechter an ist).
     romwacht_auto_label = t("sys_romwacht_auto_an" if romwacht_auto_an()
                             else "sys_romwacht_auto_aus")
+    # Build 298: geerbte Cover fuer eigene Sammlungen (SMW-Hacks und
+    # dergleichen). Siehe COVER_BASIS in fe/art.py.
+    cover_basis_label = t("sys_cover_basis_an" if cover_basis_an()
+                          else "sys_cover_basis_aus")
     legende_label = t("sys_tastenlegende_an" if tastenlegende_an()
                       else "sys_tastenlegende_aus")
     try:
@@ -489,6 +494,12 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         # erscheint oder "kein Artwork".
         (t("sys_fremdquellen_on") if fremdquellen_enabled()
          else t("sys_fremdquellen_off"), "fremdquellen", None),
+        # BUILD 298: das Cover des Basis-Spiels erben. Steht DIREKT
+        # unter den Fremdquellen, weil es dieselbe Frage beantwortet -
+        # erscheint bei diesem Spiel ein Cover oder "kein Artwork" -
+        # und weil es der letzte Weg ist, der nach allen anderen
+        # probiert wird (siehe _art_path_in() in fe/art.py).
+        (cover_basis_label, "cover_basis", None),
     ]
     if not crt:
         display_items.append((fb_size_label, "fb_size", None))

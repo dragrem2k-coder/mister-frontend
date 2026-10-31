@@ -74,26 +74,13 @@ fe_src = open(FE_PY, encoding="utf-8").read()
 inp_src = open(INP_PY, encoding="utf-8").read()
 
 
-def nur_code(quelle):
-    """Dieselbe Datei ohne Kommentarzeilen.
-
-    ZUM DRITTEN MAL IN DIESEM PROJEKT, und jedes Mal hat es mich eine
-    rote Zeile gekostet: eine Pruefung, die nach einem Begriff sucht,
-    findet ihn auch in der ERKLAERUNG daneben.
-
-    - test_anleitung: ein Wort, das auch im Kommentar stand
-    - test_startweg (Build 291): "time.sleep" im Kommentar der
-      Konstanten unter der Funktion
-    - hier (Build 294): ich habe im Kommentar aufgeschrieben, was
-      VORHER dastand ('BTN_TR2: "favorite"') und was ein falscher
-      Griff gewesen waere ("ART.docs_bildart") - und beides dann
-      gefunden.
-
-    Der Kommentar ist richtig und soll stehenbleiben; er erklaert
-    genau das, was die Pruefung sichert. Also muss die Pruefung den
-    Code lesen und nicht die Prosa darueber."""
-    return "\n".join(z for z in quelle.split("\n")
-                     if not z.lstrip().startswith("#"))
+# BUILD 298: die Fassung wohnt jetzt in _harness.py - EINE statt
+# fuenf nachgebauten, und sie streift auch die DOCSTRINGS ab.
+# Diese hier tat das nicht, womit jede Pruefung, deren Begriff
+# auch in einer Begruendung steht, aus dem falschen Grund gruen
+# war. Die ganze Vorgeschichte steht im Docstring von
+# tools/_quelle.py.
+from _quelle import nur_code                              # noqa: E402
 
 
 fe_code = nur_code(fe_src)

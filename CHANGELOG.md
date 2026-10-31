@@ -13,6 +13,37 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Behoben: das Scrollen hakte an Spielen ohne Boxart — und zwar immer
+  wieder an denselben.** Das Frontend merkt sich seit Build 222, welche
+  Cover es *nicht* gibt, sonst fragt jeder Scrollschritt dieselben
+  fehlenden Dateien erneut. Dieser Merker wurde aber **alle 30 Sekunden
+  blind weggeworfen** — ohne dass sich an einer Datei etwas geändert
+  haben musste. Danach kostete jeder Eintrag ohne Cover wieder drei
+  Dateizugriffe. Jetzt wird erst **nachgesehen, ob sich in den
+  Artwork-Ordnern wirklich etwas getan hat** (Änderungszeit der
+  Ordner), und nur dann geräumt. Ein nachträglich hinkopiertes Cover
+  taucht weiterhin von allein auf — inzwischen sogar zuverlässiger als
+  vorher, weil jetzt auch die Namensverzeichnisse neu gelesen werden
+  (Build 298).
+- **Behoben: ein zweites Leck an derselben Stelle.** Die Notbremse des
+  Cover-Zwischenspeichers hat bei 6000 Einträgen **alles** verworfen,
+  Treffer eingeschlossen. Bei 30.965 Spielen heißt das: beim
+  Durchscrollen eines großen Systems wurde regelmäßig der ganze
+  Zwischenspeicher geleert und danach war jeder Eintrag wieder kalt.
+  Jetzt liegt die Grenze bei 16.000 (gemessen 3,3 MB) und es fliegt nur
+  noch das **älteste Viertel** (Build 298).
+- **Neu: Hacks ohne eigenes Cover zeigen das Cover des Originalspiels.**
+  Für „Brutal Mario" gibt es in keiner Datenbank eine Verpackung, für
+  Super Mario World schon. Ein System darf deshalb ein **Basis-Spiel**
+  benennen — mitgeliefert für *SMW Hacks* und den *SNES ALTTP Tracker*,
+  erweiterbar über `/media/fat/frontend/cover_basis.txt`. Es wird nur
+  dort geerbt, wo ein Eintrag steht: ein normales SNES-Spiel ohne Cover
+  bekommt **nie** das Bild eines anderen Spiels. Ein eigenes Cover
+  gewinnt immer. Abschaltbar im Systemmenü direkt unter den
+  Fremdquellen. Nebeneffekt: alle Hacks teilen einen Cover-Pfad, also
+  wird für den ganzen Ordner **eine** Miniatur gerechnet statt keiner —
+  der Hack-Ordner scrollt dadurch schneller als vorher (Build 298).
+
 - **Behoben: schnell hoch und dann schnell runter scrollen hakte und
   zog nach.** Die Wiederholrate ist an die gemessene Zeichendauer
   gekoppelt — nur teilten **hoch und runter sich einen Messwert**,

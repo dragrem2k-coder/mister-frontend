@@ -66,7 +66,7 @@ gerade geht.
 - `Jahresrückblick`
 - `Spieltagebuch`
 
-### Anzeige & Sound (33 Eintraege)
+### Anzeige & Sound (34 Eintraege)
 
 - `Menü-Video: HDMI -> auf CRT wechseln (Neustart)`
 - `Farbschema: Dunkel (Standard) -> nächstes`
@@ -92,6 +92,7 @@ gerade geht.
 - `Rand seitlich: 7 % -> weiter (für Röhren, die links/rechts abschneiden)`
 - `Rand oben/unten: 5 % -> weiter (für Röhren, die oben/unten abschneiden)`
 - `Fremdes Artwork/Daten: AN -> ausschalten (füllt Lücken aus der MiSTer-docs-Datenbank, ersetzt nie eigenes)`
+- `Cover vom Basis-Spiel erben: AN -> ausschalten (Hacks ohne eigenes Cover zeigen das des Originals)`
 - `Menü-Auflösung: voll -> auf halb stellen (schnelleres HDMI, weicheres Bild, nach Neustart)`
 - `Markierungs-Schimmer: AN -> ausschalten (feste statt animierte Hervorhebung)`
 - `Equalizer-Balken: AN -> ausschalten (testen ob es beim HDMI-Scrollen hilft)`
@@ -263,6 +264,7 @@ rm      /media/fat/frontend/<name>     # loeschen = ausschalten
 - `arbeitskopien_enabled`
 - `artbox_aufschub_aus`
 - `attract_disabled`
+- `cover_basis_aus`
 - `cover_sofort_enabled`
 - `crt_menu_by_frontend`
 - `crt_menu_pending_confirm`
