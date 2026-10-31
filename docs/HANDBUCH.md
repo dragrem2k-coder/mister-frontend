@@ -898,9 +898,26 @@ Automatisch aktiv, keine Einrichtung nötig:
 - **Pulsierende Markierung**: dezentes, bewusst langsames
   Aufhellen/Abdunkeln der Auswahl.
 - **Glow-Effekt** um die Markierung, **Schlagschatten** unter dem
-  Boxart-Cover.
+  Boxart-Cover — seit Build 299 ein **weicher Verlauf** statt einer
+  Fläche mit harter Kante (siehe unten).
 - **Equalizer-Balken** neben der Now-Playing-Anzeige, solange Musik
   läuft (rein animiert, keine echte Lautstärke-Messung).
+
+### Der weiche Schatten (Build 299)
+
+Er kam zusammen mit einer Tempo-Änderung, und das ist kein Zufall: die
+Karte unter dem Cover wurde bei **jedem** Scrollschritt aus 47
+Rechtecken neu zusammengesetzt, obwohl sie immer gleich aussieht. Jetzt
+wird sie **einmal je Größe vorgerechnet** und danach nur noch kopiert.
+
+Und *weil* sie nur einmal entsteht, darf der Schatten ein echter
+Verlauf sein: ein Verlauf kostet im Scrollweg nichts mehr als eine
+Fläche. Vorher wäre er undenkbar gewesen — er hätte die 47 Rechtecke
+vervielfacht. **Design und Tempo waren hier dieselbe Arbeit.**
+
+Nichts einzustellen, nichts abzuschalten. Ohne `libdragend` (oder mit
+abgeschaltetem C-Teil) fällt automatisch der alte Weg mit der harten
+Kante ein — das Bild ist dann das von Build 298.
 
 Falls dir das zu unruhig ist: die pulsierende Markierung und die
 Equalizer-Balken lassen sich jeweils einzeln über System -> Anzeige &

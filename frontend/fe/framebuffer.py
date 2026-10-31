@@ -324,6 +324,10 @@ class Framebuffer:
         # das Buendeln und der Bau des Tupels. Dieselbe Karte an
         # derselben Stelle, in jedem Scrollschritt neu.
         self._formcache = {}
+        # Build 299: fertig gerechnete Karten samt Schatten, je
+        # Groesse und Farbpaar eine. Siehe _karte_vorlage().
+        self._kartenvorlagen = {}
+        self._kartenvorlagen_bytes = 0
         self._rectcache = {}   # eigener Cache fuer rect() (siehe dort) -
                                 # getrennt von _rowcache, damit dessen
                                 # Obergrenze nicht die selten wechselnden,
@@ -1816,7 +1820,8 @@ class Framebuffer:
         return tuple(teile)
 
     def karte_mit_schatten(self, x, y, w, h, versatz, karte_rgb,
-                           schatten_rgb, radius=None, aussparen=None):
+                           schatten_rgb, radius=None, aussparen=None,
+                           hintergrund_rgb=None):
         """Einen abgerundeten Kasten MIT Schlagschatten zeichnen -
         bitgenau dasselbe Ergebnis wie
 
@@ -1884,6 +1889,18 @@ class Framebuffer:
         if (x >= 0 and y >= 0 and x + w + versatz <= self.width
                 and y + h + versatz <= self.height and h - r > versatz + r):
             band = (y + versatz + r, y + h - r)
+
+        # BUILD 299: DIE GANZE KARTE AUS EINER VORLAGE KOPIEREN.
+        #
+        # Dieselbe Bedingung wie beim Band oben, und zwar aus demselben
+        # Grund: eine am Bildrand beschnittene Karte hat eine andere
+        # Form (gestalt() in rect_rounded_schatten() beschneidet vor dem
+        # Runden). Eine Vorlage kennt nur die freistehende Form, also
+        # kommt sie nur dann in Frage.
+        if band is not None and self._karte_aus_vorlage(
+                x, y, w, h, versatz, karte_rgb, schatten_rgb, r,
+                aussparen, band, hintergrund_rgb):
+            return
 
         self.rect_rounded_schatten(x, y, w, h, versatz, schatten_rgb,
                                    radius, ohne=band)
@@ -1982,6 +1999,336 @@ class Framebuffer:
         for (tx, ty, tw, th) in karten_teile:
             self.rect(tx, ty, tw, th, karte_rgb)
         self.rect(x + w, band[0], versatz, band[1] - band[0], schatten_rgb)
+
+    # ------------------------------------------------------------------
+    # BUILD 299: DIE KARTE ALS VORLAGE
+    # ------------------------------------------------------------------
+    #
+    # BEFUND DES NUTZERS: "in raster und galerie ist das seitliche
+    # scrollen etwas am ruckeln hakt! was da los?"
+    #
+    # Der Bench sagt es genau. In Raster und Galerie ist links/rechts
+    # EIN Eintrag - und genau diesen Schritt misst Abschnitt J (die
+    # Bewegung steht dort als item_i = i % n). Seine Zahlen sind also
+    # die Seitwaertsbewegung:
+    #
+    #     Raster   32,13 ms   ~2 Bilder   (Bildperiode 16,6 ms)
+    #     Galerie  49,93 ms   ~3 Bilder
+    #
+    # In der Galerie ist "karten" mit 10,64 ms der zweitgroesste Posten,
+    # und Abschnitt K sagt, woraus er besteht: karte_mit_schatten()
+    # zeichnet dort 47 RECHTECKE in 3 Aufrufen, davon 2,67 ms reine
+    # Python-Vorbereitung und 2,04 ms "ungeklaert innerhalb von C". Die
+    # Leseanweisung von K dazu lautet woertlich: bei vielen kleinen
+    # Rechtecken hilft ZUSAMMENFASSEN und nicht eine kleinere Flaeche.
+    #
+    # UND DIE KARTE SIEHT IMMER GLEICH AUS. Dieselbe Groesse, dieselben
+    # zwei Farben, derselbe Radius - 47 Rechtecke je Schritt fuer ein
+    # Bild, das sich nie aendert. Also einmal rechnen und danach
+    # kopieren.
+    #
+    # DAS MUSTER GIBT ES IM PROJEKT SCHON: der Hintergrund liegt als
+    # Vorlage in fb._rowcache, und _restore_spuren() kopiert daraus
+    # (Build 155). Hier dasselbe eine Ebene hoeher.
+    #
+    # WARUM DAS UEBERHAUPT GEHT: die Rundung ist reine Geometrie. Weder
+    # rect_rounded() noch rect_rounded_schatten() lesen den Untergrund -
+    # sie fuellen mit einer Farbe. Was die Form bestimmt, sind w, h,
+    # versatz, der Radius und die Beschneidung am Bildrand. Die ersten
+    # vier stehen im Schluessel, die fuenfte schliesst der Aufrufer aus
+    # (nur bei freistehender Karte, siehe dort).
+    #
+    # DIE VORLAGE WIRD MIT DEMSELBEN ZEICHENCODE GEBAUT und nicht mit
+    # nachgerechneter Geometrie. Das ist die wichtigste Entscheidung
+    # hier: stuende die Form ein zweites Mal ausgeschrieben, waere das
+    # genau der Fehler, den rect_rounded_schatten() in seinem eigenen
+    # Docstring beschreibt ("Statt die sichtbare Form von Hand als zwei
+    # Streifen nachzubauen - naheliegend, aber an den vier gerundeten
+    # Ecken nicht exakt"). Gebaut wird, indem der Framebuffer fuer die
+    # Dauer des Renderns auf den Vorlagenpuffer zeigt.
+    # Wie flaechen_fueller und text_zeichner: von frontend.py gesetzt.
+    # fe/framebuffer.py darf NICHTS aus fe/art.py importieren - die
+    # Abhaengigkeit laeuft in diesem Projekt nur in eine Richtung.
+    zeilen_kopierer = None
+
+    # Klassenvorgabe NUR als Vorgabe - die Instanz legt sich ihr
+    # eigenes Wortbuch an (siehe _karte_vorlage). Ein gemeinsames dict
+    # hier waere ein Zwischenspeicher ueber alle Framebuffer hinweg,
+    # und davon gibt es im Bench mehrere nebeneinander.
+    _kartenvorlagen = None
+    _kartenvorlagen_bytes = 0
+    KARTE_VORLAGE_MAX = 4
+    KARTE_VORLAGE_BYTES = 12 * 1024 * 1024
+
+    # BUILD 299: DER WEICHE SCHATTEN.
+    #
+    # Er ist der Grund, warum die Vorlage nicht nur schneller, sondern
+    # auch schoener ist: ein Verlauf kostet je Schritt NICHTS mehr als
+    # eine Flaeche, weil beides einmal gerechnet und danach nur noch
+    # kopiert wird. Vorher war ein weicher Schatten undenkbar - er
+    # haette die 47 Rechtecke je Schritt auf ein Vielfaches gebracht.
+    #
+    # ABGESCHALTET ist er ohne hintergrund_rgb, und das ist keine
+    # Bequemlichkeit: ein Schatten verlaeuft NACH AUSSEN HIN zum
+    # Hintergrund, und wer den nicht kennt, kann nur raten. Geraten
+    # waere hier ein Rand in der falschen Farbe um jede Karte.
+    KARTE_SCHATTEN_WEICH = True
+
+    # Wieviele Stufen hoechstens. Mehr als der Versatz breit ist gibt
+    # es nicht - jede Stufe ist eine Bildzeile beziehungsweise -spalte.
+    KARTE_SCHATTEN_STUFEN_MAX = 12
+
+    @staticmethod
+    def _mischen(a, b, anteil):
+        """Farbe a nach b, anteil 0.0 = a, 1.0 = b."""
+        if anteil <= 0.0:
+            return a
+        if anteil >= 1.0:
+            return b
+        return tuple(int(round(a[i] + (b[i] - a[i]) * anteil))
+                     for i in range(3))
+
+    def _schattenstufen(self, versatz, schatten_rgb, hintergrund_rgb):
+        """Die Ringe des Schattens - von AUSSEN (hell) nach INNEN
+        (dunkel).
+
+        KEINE NEUE GEOMETRIE, und das ist der ganze Trick. Gezeichnet
+        wird mit demselben rect_rounded_schatten() wie bisher, nur
+        mehrfach mit abnehmendem Versatz: jeder Aufruf malt den
+        SICHTBAREN Teil eines Schattens, also genau den L-foermigen
+        Ring, den der naechstkleinere noch nicht bedeckt. Von hell nach
+        dunkel gezeichnet, ueberschreibt der dunklere Ring jeweils den
+        Teil naeher an der Karte - heraus kommt ein Verlauf, ohne dass
+        die Form ein zweites Mal beschrieben waere.
+
+        Genau davor warnt rect_rounded_schatten() in seinem eigenen
+        Docstring: "Statt die sichtbare Form von Hand als zwei Streifen
+        nachzubauen - naheliegend, aber an den vier gerundeten Ecken
+        nicht exakt".
+
+        Ohne weichen Schatten (oder ohne bekannten Hintergrund) kommt
+        genau eine Stufe zurueck, und dann ist das Ergebnis bitgenau
+        das von Build 298."""
+        if (not self.KARTE_SCHATTEN_WEICH or hintergrund_rgb is None
+                or versatz < 2):
+            return ((versatz, schatten_rgb),)
+        stufen = min(versatz, self.KARTE_SCHATTEN_STUFEN_MAX)
+        raus = []
+        for i in range(stufen):
+            # i = 0 ist der aeusserste, breiteste Ring und der hellste.
+            breite = versatz - (versatz * i) // stufen
+            # Der aeusserste Ring liegt dicht am Hintergrund, der
+            # innerste behaelt die volle Schattenfarbe - sonst waere
+            # der Schatten insgesamt heller als vorher und die
+            # Aenderung waere nicht "weicher", sondern "weniger".
+            anteil = (stufen - 1 - i) / float(stufen)
+            raus.append((breite, self._mischen(schatten_rgb,
+                                               hintergrund_rgb, anteil)))
+        # Von aussen nach innen, damit der dunklere Ring den helleren
+        # ueberschreibt und nicht umgekehrt.
+        raus.sort(key=lambda s: -s[0])
+        return tuple(raus)
+
+    def _karte_vorlage(self, x, y, w, h, versatz, karte_rgb,
+                       schatten_rgb, r, hintergrund_rgb=None):
+        """Karte samt Schatten einmal rendern und behalten.
+
+        Rueckgabe: der Eintrag, oder None wenn es nicht geht. Der
+        Eintrag ist ein dict, damit die zerlegten Teile (siehe
+        _karte_aus_vorlage) mit hineinwachsen koennen."""
+        if self.zeilen_kopierer is None:
+            return None
+        # ERST BEIM BEDARF ANLEGEN, und das ist kein Stilmittel: dieser
+        # Framebuffer wird nicht nur ueber __init__ gebaut. Der
+        # Pruefstand (tools/_harness.py) hat seine eigene Init-Fassung,
+        # und die kennt neue Felder nicht. Die erste Fassung von Build
+        # 299 hat sie nur in __init__ angelegt - Ergebnis waren ELF rote
+        # Tests mit AttributeError, und zwar zu Recht: ein Feld, das von
+        # einer bestimmten Init-Fassung abhaengt, ist eine zweite Stelle,
+        # die mitgepflegt werden muss. Hier haengt es an nichts.
+        if getattr(self, "_kartenvorlagen", None) is None:
+            self._kartenvorlagen = {}
+            self._kartenvorlagen_bytes = 0
+        # OHNE BEKANNTEN HINTERGRUND KEINE VORLAGE, und das ist der
+        # Fund, der diesen Build zweimal umgeschrieben hat.
+        #
+        # Die Vorlage ist ein Rechteck, die Karte mit ihrem Schatten
+        # aber nicht: an den vier gerundeten Ecken und im Winkel oben
+        # links (der Versatz) bleiben LUECKEN, in denen im Bild der
+        # HINTERGRUND steht. Die erste Fassung hat das ganze Rechteck
+        # kopiert - und damit Nullen in diese Luecken geschrieben, also
+        # schwarze Zacken um jede Karte.
+        #
+        # AUFGEFALLEN IST ES NICHT IN MEINEM EIGENEN DIAGNOSEWERKZEUG,
+        # und das ist die eigentliche Lehre: dort begannen BEIDE
+        # Vergleichspuffer schwarz, die Luecken stimmten also zufaellig
+        # ueberein. Gefunden hat es tools/test_cover_panel.py, weil der
+        # vorher den Hintergrund fuellt. Ein Vergleich gegen einen
+        # leeren Puffer prueft weniger, als er zu pruefen verspricht.
+        #
+        # Geloest wird es, indem der ECHTE Hintergrund an genau dieser
+        # Stelle in die Vorlage kommt, bevor Schatten und Karte darauf
+        # gezeichnet werden - dieselbe Vorlage, aus der auch
+        # _restore_spuren() seinen Hintergrund holt. Damit sind die
+        # Luecken bitgenau richtig, Vignette eingeschlossen, statt
+        # "fast richtig".
+        #
+        # Und deshalb gehoeren POSITION und Hintergrundkennung in den
+        # Schluessel: die Vignette ist ortsabhaengig, und ein neues
+        # Hintergrundbild macht jede Vorlage ungueltig. Je Ansicht gibt
+        # es genau eine Position, der Zwischenspeicher bleibt also
+        # klein.
+        if hintergrund_rgb is None:
+            return None
+        hg = self._rowcache.get(self.bg_key(hintergrund_rgb))
+        if hg is None:
+            return None
+        schluessel = (x, y, w, h, versatz, karte_rgb, schatten_rgb, r,
+                      hintergrund_rgb, self.hintergrund_kennung,
+                      self.KARTE_SCHATTEN_WEICH)
+        eintrag = self._kartenvorlagen.get(schluessel)
+        if eintrag is not None:
+            return eintrag
+        vb, vh = w + versatz, h + versatz
+        vstride = vb * 4
+        groesse = vstride * vh
+        if groesse <= 0 or groesse > self.KARTE_VORLAGE_BYTES:
+            return None
+        # DIE OBERGRENZE RAEUMT GANZ, nicht anteilig: eine Vorlage ist
+        # mehrere Megabyte, und es gibt je Ansicht genau eine Groesse.
+        # Wird die Grenze erreicht, hat sich die Geometrie geaendert
+        # (Aufloesung, Ansicht) - dann sind die alten ohnehin tot.
+        if (len(self._kartenvorlagen) >= self.KARTE_VORLAGE_MAX
+                or self._kartenvorlagen_bytes + groesse
+                > self.KARTE_VORLAGE_BYTES):
+            self._kartenvorlagen.clear()
+            self._kartenvorlagen_bytes = 0
+        puffer = bytearray(groesse)
+        # Der echte Hintergrund an dieser Stelle - EIN C-Aufruf, aus
+        # derselben Vorlage, die auch _restore_spuren() benutzt.
+        quell_off = y * self.stride + x * 4
+        if not self.zeilen_kopierer(puffer, vstride,
+                                    memoryview(hg)[quell_off:],
+                                    self.stride, 0, 0, vb * 4, vh):
+            return None
+        # DER TAUSCH. Er laeuft nur auf dem Zeichenfaden (der
+        # Schreib-Arbeiter und der Musikfaden fassen fb.buf nicht an),
+        # und try/finally stellt in jedem Fall zurueck - auch wenn das
+        # Rendern eine Ausnahme wirft. _mv_buf muss mit, sonst zeigt
+        # eine gemerkte memoryview danach auf den falschen Puffer; die
+        # Flip-Wege bauen sie bei None von selbst neu auf.
+        alt = (self.buf, self.stride, self.width, self.height,
+               self._mv_buf)
+        try:
+            self.buf, self.stride = puffer, vstride
+            self.width, self.height = vb, vh
+            self._mv_buf = None
+            for (stufe, farbe) in self._schattenstufen(versatz,
+                                                       schatten_rgb,
+                                                       hintergrund_rgb):
+                self.rect_rounded_schatten(0, 0, w, h, stufe, farbe, r)
+            self.rect_rounded(0, 0, w, h, karte_rgb, r)
+        except Exception:                                # noqa: BLE001
+            return None
+        finally:
+            (self.buf, self.stride, self.width, self.height,
+             self._mv_buf) = alt
+        eintrag = {"puffer": puffer, "stride": vstride, "b": vb, "h": vh,
+                   "teile": {}}
+        self._kartenvorlagen[schluessel] = eintrag
+        self._kartenvorlagen_bytes += groesse
+        return eintrag
+
+    def _karte_teile(self, eintrag, w, versatz, band_hoehe, lueck_rel):
+        """Die Kopierstuecke der Vorlage - gemerkt je Aussparung.
+
+        WARUM GEMERKT: zeilen_kopieren() faengt in der Quelle immer bei
+        Null an, ein Teilstueck braucht also eine memoryview mit
+        Versatz. Die Zeiger auf solche Puffer werden in fe/art.py nach
+        id() gemerkt (_ZEIGER), und eine bei JEDEM Schritt neu
+        geschnittene memoryview hat jedes Mal eine neue id - der
+        Zwischenspeicher dort waere dauernd voll und wuerde sich
+        laufend leeren. Die Zerlegung ist aber stabil: die Cover-Box
+        einer Ansicht steht fest. Also einmal schneiden und behalten."""
+        gemerkt = eintrag["teile"].get(lueck_rel)
+        if gemerkt is not None:
+            return gemerkt
+        if len(eintrag["teile"]) > 16:
+            eintrag["teile"].clear()
+        vb, vh = eintrag["b"], eintrag["h"]
+        if lueck_rel is None:
+            kaesten = [(0, 0, vb, vh)]
+        else:
+            lx, ly, lw, lh = lueck_rel
+            # Oben, links, rechts, unten - dieselbe Zerlegung wie im
+            # bisherigen Weg, nur in Vorlagen-Koordinaten und ueber die
+            # ganze Karte statt nur ueber das Band.
+            kaesten = []
+            if ly > 0:
+                kaesten.append((0, 0, vb, ly))
+            if lx > 0:
+                kaesten.append((0, ly, lx, lh))
+            if lx + lw < vb:
+                kaesten.append((lx + lw, ly, vb - lx - lw, lh))
+            if ly + lh < vh:
+                kaesten.append((0, ly + lh, vb, vh - ly - lh))
+        stride = eintrag["stride"]
+        sicht = memoryview(eintrag["puffer"])
+        teile = []
+        for (tx, ty, tw, th) in kaesten:
+            if tw <= 0 or th <= 0:
+                continue
+            off = ty * stride + tx * 4
+            teile.append((sicht[off:], tx, ty, tw * 4, th))
+        eintrag["teile"][lueck_rel] = teile
+        return teile
+
+    def _karte_aus_vorlage(self, x, y, w, h, versatz, karte_rgb,
+                           schatten_rgb, r, aussparen, band,
+                           hintergrund_rgb=None):
+        """Die Karte aus der Vorlage kopieren. True, wenn erledigt.
+
+        Die Aussparung wird GENAUSO beschnitten wie im bisherigen Weg
+        (auf das Band der geraden Mittelzeilen). Geometrisch waere das
+        hier nicht mehr noetig - eine Kopie kennt keine Rundung -, aber
+        sie weiter gleich zu behandeln ist der Grund, warum
+        tools/diag_kartenvorlage.py beide Wege byteweise vergleichen
+        kann. Eine Abweichung im Bild soll von EINER Entscheidung
+        kommen (dem weichen Schatten), nicht von zweien."""
+        eintrag = self._karte_vorlage(x, y, w, h, versatz, karte_rgb,
+                                      schatten_rgb, r, hintergrund_rgb)
+        if eintrag is None:
+            return False
+        lueck_rel = None
+        if aussparen:
+            _ax, _ay, _aw, _ah = (int(v) for v in aussparen)
+            _x1 = max(_ax, x)
+            _y1 = max(_ay, band[0])
+            _x2 = min(_ax + _aw, x + w)
+            _y2 = min(_ay + _ah, band[1])
+            if _aw > 0 and _ah > 0 and _x2 > _x1 and _y2 > _y1:
+                lueck_rel = (_x1 - x, _y1 - y, _x2 - _x1, _y2 - _y1)
+        teile = self._karte_teile(eintrag, w, versatz,
+                                  band[1] - band[0], lueck_rel)
+        if not teile:
+            return False
+        stride = eintrag["stride"]
+        buf, dst_stride = self.buf, self.stride
+        for (quelle, tx, ty, breite_byte, hoehe) in teile:
+            if not self.zeilen_kopierer(buf, dst_stride, quelle, stride,
+                                        x + tx, y + ty, breite_byte,
+                                        hoehe):
+                # MITTENDRIN GESCHEITERT: der Aufrufer darf jetzt NICHT
+                # den alten Weg nehmen und auch nicht einfach
+                # weitermachen - ein Teil der Karte steht schon. Also
+                # den Rest noch aus der Vorlage holen und True melden;
+                # schlaegt auch das fehl, ist libdragend weg, und dann
+                # ist alles langsam, nicht nur das hier.
+                for (q2, tx2, ty2, b2, h2) in teile:
+                    self.zeilen_kopierer(buf, dst_stride, q2, stride,
+                                         x + tx2, y + ty2, b2, h2)
+                return True
+        return True
 
     def rect_rounded_schatten(self, x, y, w, h, versatz, rgb,
                               radius=None, ohne=None):
@@ -2197,7 +2544,34 @@ class Framebuffer:
             radius = max(1, min(w, h) // 8)
         radius = max(0, min(radius, w // 2, h // 2))
         if radius <= 0:
-            self.rect(x, y, w, h, rgb)
+            # BEHOBEN IN BUILD 299: hier stand nur self.rect(...), und
+            # damit war "ohne" bei Radius 0 WIRKUNGSLOS - die Zusage
+            # "diese Bildzeilen nicht anfassen" galt also nur fuer
+            # gerundete Kaesten.
+            #
+            # Aufgefallen ist es nicht beim Lesen, sondern weil
+            # tools/diag_kartenvorlage.py beide Zeichenwege byteweise
+            # verglichen hat: im Fall "Radius 0 mit Aussparung" gingen
+            # sie auseinander, und der alte Weg war der falsche. Er
+            # malte die ganze Karte und danach die Streifen darum noch
+            # einmal - sichtbar war das nie (dieselbe Farbe), bezahlt
+            # wurde es trotzdem, und die Aussparung aus Build 234 war
+            # an dieser Stelle umsonst.
+            #
+            # Dass es niemandem auffiel, hat einen Grund: radius=None
+            # rechnet immer mindestens 1 heraus (siehe oben), eine
+            # ausdrueckliche 0 kommt im Betrieb praktisch nicht vor. Ein
+            # Fehler, der nur im unbenutzten Fall auftritt, ist
+            # trotzdem einer - und er haette beim naechsten Aufrufer
+            # zugeschlagen, der eine 0 uebergibt.
+            if ohne is None:
+                self.rect(x, y, w, h, rgb)
+                return
+            ya, yb = ohne
+            if ya > y:
+                self.rect(x, y, w, min(ya, y + h) - y, rgb)
+            if yb < y + h:
+                self.rect(x, max(yb, y), w, y + h - max(yb, y), rgb)
             return
         indents = self._rounded_indents(radius)
         # PERFORMANCE-FIX (Nutzerwunsch: "noch mehr Performance rausholen,

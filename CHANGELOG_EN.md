@@ -13,6 +13,27 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **Fixed: scrolling sideways in grid and gallery stuttered.** In those
+  two views, left/right moves by **one** entry — and that step cost 32 ms
+  (grid) and 50 ms (gallery) according to the bench. A frame lasts
+  16.6 ms, so a step did not fit into one. It shows most in the gallery,
+  where left/right is the only fine movement. The biggest item we could
+  do anything about was the **card under the cover**: it was rebuilt from
+  **47 rectangles** on every step, even though it always looks the same.
+  It is now **pre-computed once per size** and only copied afterwards —
+  measured in the container, a factor of 2.2 (list) to 3.7 (gallery)
+  (build 299).
+- **New: the cards' drop shadow is a soft gradient.** Previously a flat
+  area with a hard edge. This is **the other side of the same change**:
+  a gradient costs nothing more than a flat area in the scroll path,
+  because both are computed once and only copied afterwards. Before, it
+  would have been unthinkable — it would have multiplied those 47
+  rectangles (build 299).
+- **Fixed (old and invisible): at radius 0 the card ignored the cut-out**,
+  so it filled the area under the cover and immediately painted over it.
+  It was never visible (same colour) but it was paid for every time.
+  Found by comparing the two drawing paths byte for byte (build 299).
+
 - **Fixed: scrolling stuttered at games without box art — always at the
   same ones.** Since build 222 the frontend remembers which covers do
   *not* exist, otherwise every scroll step asks for the same missing

@@ -728,9 +728,26 @@ Active automatically, no setup needed:
 - **Pulsing highlight**: a subtle, deliberately slow brightening/dimming
   of the selection.
 - **Glow effect** around the highlight, **drop shadow** under the boxart
-  cover.
+  cover — since build 299 a **soft gradient** instead of a flat area
+  with a hard edge (see below).
 - **Equalizer bars** next to the now-playing display while music is
   playing (purely animated, not a real volume measurement).
+
+### The soft shadow (build 299)
+
+It arrived together with a speed change, and that is no coincidence: the
+card under the cover was rebuilt from 47 rectangles on **every** scroll
+step, even though it always looks the same. It is now **pre-computed
+once per size** and only copied afterwards.
+
+And *because* it is built only once, the shadow can be a real gradient:
+a gradient costs nothing more than a flat area in the scroll path.
+Before, it would have been unthinkable — it would have multiplied those
+47 rectangles. **Design and speed were the same work here.**
+
+Nothing to configure, nothing to switch off. Without `libdragend` (or
+with the C part disabled) the old path with the hard edge takes over
+automatically — the image is then the one from build 298.
 
 If that's too busy for you: the pulsing highlight and the equalizer bars
 can each be turned off individually via System -> Display & sound (handy

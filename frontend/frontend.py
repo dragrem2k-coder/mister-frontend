@@ -1446,6 +1446,14 @@ if flaechen_c_enabled():
 if flaechen_c_enabled():
     Framebuffer.text_zeichner = staticmethod(_c_texte_zeichnen)
 
+# NEU (Build 299): der Zeilenkopierer fuer die Kartenvorlage. Haengt am
+# SELBEN Schalter wie die beiden darueber, aus demselben Grund - wer C
+# abschaltet, will es ganz abgeschaltet haben. Ohne ihn faellt
+# karte_mit_schatten() auf den Weg von Build 234 zurueck; das Bild ist
+# dasselbe, nur ohne den weichen Schatten.
+if flaechen_c_enabled():
+    Framebuffer.zeilen_kopierer = staticmethod(_c_zeilen_kopieren)
+
 # NEU (Build 73): Cover-Miniaturen im Leerlauf vorberechnen. Die
 # ausfuehrliche Begruendung samt der beiden ehrlichen Einschraenkungen
 # steht im Kopf von fe/prewarm.py.
@@ -8339,7 +8347,7 @@ class Frontend:
                 fb.karte_mit_schatten(ax - kpad, ay - kpad,
                                       aw + 2 * kpad, ah + 2 * kpad,
                                       3 * s, C_PANEL, fb._darken(C_BG, 0.55),
-                                      4 * s)
+                                      4 * s, hintergrund_rgb=C_BG)
             self._artbox_karte = karte
             self.blit(ax, ay, aw, ah, pix)
         else:
@@ -9645,7 +9653,8 @@ class Frontend:
                                  gh + 2 * pad + 8 * s)
         fb.karte_mit_schatten(gx - pad, oben - pad, gb + 2 * pad,
                               gh + 2 * pad, 3 * s, C_PANEL,
-                              fb._darken(C_BG, 0.55), 4 * s)
+                              fb._darken(C_BG, 0.55), 4 * s,
+                              hintergrund_rgb=C_BG)
         art, verzoegert = self._ansicht_cover(item, syskey, gb, gh)
         if art:
             aw, ah, pix = art
@@ -9998,7 +10007,8 @@ class Frontend:
                                  gh + 2 * pad + 8 * s)
         fb.karte_mit_schatten(gx - pad, oben - pad, gb + 2 * pad,
                               gh + 2 * pad, 3 * s, C_PANEL,
-                              fb._darken(C_BG, 0.55), 4 * s)
+                              fb._darken(C_BG, 0.55), 4 * s,
+                              hintergrund_rgb=C_BG)
         art, verzoegert = self._kat_logo(self.cat_i, gb, gh)
         if art:
             aw, ah, pix = art
@@ -13700,7 +13710,8 @@ class Frontend:
                               shadow_off, C_PANEL, fb._darken(C_BG, 0.55),
                               card_radius,
                               aussparen=(_kasten_luecke if _kurz
-                                         else _luecke))
+                                         else _luecke),
+                              hintergrund_rgb=C_BG)
         # WAS DIESER AUFBAU WIRKLICH ANGEFASST HAT (Build 249).
         #
         # DER BEFUND, und er ist der groesste Posten, den der Bericht

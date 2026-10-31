@@ -6814,3 +6814,145 @@ genau auf die zwei Doku-Schritte, die noch offen waren: der neue
 Menuepunkt fehlte in beiden Handbuechern und in der erzeugten
 Funktionsliste. Dafuer sind sie da — die Doku-Tests sind die einzige
 Stelle, an der ein vergessener Handbuchsatz ueberhaupt auffaellt.
+
+---
+
+## Nachtrag Build 299: einmal rechnen statt siebenundvierzigmal
+
+> "in raster und galerie ist das seitliche scrollen etwas am ruckeln
+> hakt! was da los? und ein paar design vorschlaege bitte!"
+
+### Die Diagnose brauchte keine neue Messung
+
+In Raster und Galerie bewegt links/rechts um EINEN Eintrag (siehe
+`_schritte()` in frontend.py) - und genau diesen Schritt misst
+Abschnitt J des Benchs, denn die Bewegung steht dort als
+`item_i = i % n`. Seine Zahlen SIND also die Seitwaertsbewegung:
+
+| Ansicht | je Schritt | bei 16,6 ms Bildperiode |
+|---|---|---|
+| Raster seitwaerts | 32,13 ms | ~2 Bilder |
+| Galerie seitwaerts | 49,93 ms | ~3 Bilder |
+
+Es ruckelt nicht, weil etwas kaputt ist - ein Schritt passt nicht in
+ein Bild. Und in der Galerie faellt es am meisten auf, weil
+links/rechts dort die EINZIGE feine Bewegung ist (hoch/runter blaettert
+seitenweise).
+
+**Die Lehre fuer die Fehlersuche:** die Zahl lag seit Build 216 im
+Bericht, nur hatte niemand gefragt, WELCHE Richtung Abschnitt J
+eigentlich messt. Erst der Blick in `schritt_funktion()` hat das
+geklaert. Ein Messwert ohne die Frage, auf die er antwortet, ist ein
+halber Messwert.
+
+### Die Karte wurde 47-mal zusammengesetzt
+
+Abschnitt K sagt fuer die Galerie: `karte_mit_schatten()` zeichnet **47
+Rechtecke in 3 Aufrufen**, davon 2,67 ms reine Python-Vorbereitung. Und
+die Leseanweisung von K lautet woertlich: *bei vielen kleinen Rechtecken
+hilft Zusammenfassen und nicht eine kleinere Flaeche.*
+
+Die Karte sieht dabei **immer gleich aus**. Also einmal rechnen und
+danach kopieren. Das Muster gab es schon: der Hintergrund liegt als
+Vorlage in `fb._rowcache`, und `_restore_spuren()` kopiert daraus
+(Build 155) - hier dasselbe eine Ebene hoeher.
+
+Kopiert wird mit `zeilen_kopieren()` aus libdragend. Die kann getrennte
+Schrittweiten fuer Quelle und Ziel und war schon da: **keine neue
+C-Funktion, kein Neubauen von libdragend auf dem Geraet.** Das war die
+erste Frage ueberhaupt, bevor eine Zeile entstand.
+
+Die Vorlage entsteht mit **demselben Zeichencode**, nicht mit
+nachgerechneter Geometrie - der Framebuffer zeigt fuer die Dauer des
+Renderns auf den Vorlagenpuffer (try/finally). Stuende die Form ein
+zweites Mal ausgeschrieben, waere das genau der Fehler, den
+`rect_rounded_schatten()` in seinem eigenen Docstring beschreibt:
+"Statt die sichtbare Form von Hand als zwei Streifen nachzubauen -
+naheliegend, aber an den vier gerundeten Ecken nicht exakt".
+
+Gemessen im Container, mit Aussparung (also so, wie der Zeichenweg es
+tut): Liste 0,215 -> 0,097 ms (Faktor 2,2), Galerie 0,143 -> 0,039 ms
+(Faktor 3,7). Die Vorlage selbst kostet 3,15 ms, **einmal je Groesse**.
+Auf dem ARM wird das Verhaeltnis anders ausfallen (memcpy gegen
+Flaechenfuellen), deshalb steht hier der Container-Wert und kein
+Versprechen.
+
+### Der weiche Schatten ist die Kehrseite derselben Aenderung
+
+Ein Verlauf kostet im Scrollweg **nichts** mehr als eine Flaeche, weil
+beides einmal gerechnet und danach nur kopiert wird. Vorher war er
+undenkbar - er haette die 47 Rechtecke vervielfacht. Design und Tempo
+waren hier dieselbe Arbeit.
+
+Gebaut **ohne neue Geometrie**: `rect_rounded_schatten()` wird mehrfach
+mit abnehmendem Versatz gerufen. Jeder Aufruf malt den SICHTBAREN Ring,
+und von hell nach dunkel gezeichnet ueberschreibt der dunklere den
+helleren. Gemessen am Querschnitt rechts der Karte: (9,10,13) an der
+Karte bis (16,18,22) aussen, Hintergrund (18,19,24) - monoton und ohne
+Absatz.
+
+### Zwei Fehler, die die Suite gefunden hat
+
+**Erstens: Felder nur in `__init__`.** Der Pruefstand hat eine EIGENE
+Init-Fassung (`tools/_harness.py`), und die kennt neue Felder nicht.
+Ergebnis: **elf** rote Tests mit `AttributeError`. Jetzt wird beim
+Bedarf angelegt, damit das Feld an keiner bestimmten Init-Fassung
+haengt. Dieselbe Sorte Fehler wie in Build 271 (`_formcache` fehlte in
+der Attrappe), nur andersherum.
+
+**Zweitens, und das ist der wichtige: die Vorlage ist ein Rechteck, die
+Karte mit Schatten nicht.** An den vier gerundeten Ecken und im
+Versatz-Winkel oben links bleiben LUECKEN, in denen im Bild der
+Hintergrund steht. Die erste Fassung kopierte das ganze Rechteck und
+schrieb damit Nullen hinein - **schwarze Zacken um jede Karte**.
+
+Und jetzt der Teil, der weh tut: **mein eigenes Diagnosewerkzeug hat
+das nicht gefunden.** Dort begannen BEIDE Vergleichspuffer schwarz, die
+Luecken stimmten also zufaellig ueberein. Gefunden hat es
+`tools/test_cover_panel.py`, weil der vorher `clear()` ruft.
+
+> Ein Vergleich gegen einen leeren Puffer prueft weniger, als er zu
+> pruefen verspricht.
+
+Das ist die Lehre dieses Builds, und sie reiht sich an die von Build
+298 (fuenf nachgebaute Testhelfer, drei davon kaputt): ein Test ist
+kein Beweis, solange sein AUSGANGSZUSTAND nicht zur Frage passt. Der
+Helfer heisst jetzt in beiden Dateien gleich, baut den Framebuffer
+ueber den Weg des Pruefstands und fuellt den Hintergrund - und sein
+Docstring sagt, warum.
+
+Behoben ist der Fehler selbst, indem der **echte** Hintergrund an genau
+dieser Stelle in die Vorlage kommt, aus derselben Vorlage, aus der
+`_restore_spuren()` ihn holt. Damit sind die Luecken bitgenau richtig,
+Vignette eingeschlossen, statt "fast richtig". Deshalb stehen POSITION
+und `hintergrund_kennung` im Schluessel - und deshalb gibt es **ohne
+bekannten Hintergrund gar keine Vorlage**: lieber der alte Zeichenweg
+als geratene Luecken.
+
+### Nebenbei ein alter, unsichtbarer Fehler
+
+`rect_rounded()` hat bei Radius 0 das `ohne` ignoriert - dort stand nur
+`self.rect(...)`. Die Zusage "diese Bildzeilen nicht anfassen" galt
+also nur fuer gerundete Kaesten, und die Aussparung aus Build 234 war
+dort umsonst: die ganze Karte wurde gefuellt und die Streifen darum
+noch einmal. Sichtbar war das nie (dieselbe Farbe), bezahlt wurde es
+trotzdem.
+
+Dass es niemandem auffiel, hat einen Grund: `radius=None` rechnet immer
+mindestens 1 heraus, eine ausdrueckliche 0 kommt im Betrieb praktisch
+nicht vor. Ein Fehler, der nur im unbenutzten Fall auftritt, ist
+trotzdem einer.
+
+### Umgeschrieben, nicht gestrichen
+
+`test_cover_panel.py` sicherte "Panel bitgenau wie vorher". Das meldet
+eine **gewollte** Aenderung als Fehler. Eine Zusage, die das tut, ist
+wertlos - eine, die man einfach streicht, war die Arbeit nicht wert.
+Jetzt zwei Teile, die zusammen strenger sind:
+
+1. ohne weichen Schatten bitgenau wie vorher (sichert weiterhin das
+   Zusammenfassen aus Build 97/98),
+2. mit weichem Schatten darf sich **nur der Schattenbereich** aendern -
+   in der Karte selbst kein einziges Byte.
+
+Ueber den ORT der Abweichung hat die alte Fassung gar nichts gesagt.

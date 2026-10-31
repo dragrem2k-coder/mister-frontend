@@ -13,6 +13,29 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Behoben: seitwärts scrollen in Raster und Galerie ruckelte.** In
+  diesen beiden Ansichten bewegt links/rechts um **einen** Eintrag —
+  und genau dieser Schritt kostete laut Bench 32 ms (Raster) bzw. 50 ms
+  (Galerie). Ein Bild dauert 16,6 ms, ein Schritt passte also nicht in
+  eines hinein. In der Galerie fällt es am meisten auf, weil
+  links/rechts dort die einzige feine Bewegung ist. Der größte
+  beeinflussbare Posten war die **Karte unter dem Cover**: sie wurde bei
+  jedem Schritt aus **47 Rechtecken** neu zusammengesetzt, obwohl sie
+  immer gleich aussieht. Jetzt wird sie **einmal je Größe vorgerechnet**
+  und danach nur noch kopiert — im Container gemessen Faktor 2,2 (Liste)
+  bis 3,7 (Galerie) (Build 299).
+- **Neu: der Schatten der Karten ist ein weicher Verlauf.** Vorher eine
+  Fläche mit harter Kante. Das ist **die Kehrseite derselben
+  Änderung**: ein Verlauf kostet im Scrollweg nichts mehr als eine
+  Fläche, weil beides einmal gerechnet und danach nur kopiert wird.
+  Vorher wäre er undenkbar gewesen — er hätte die 47 Rechtecke
+  vervielfacht (Build 299).
+- **Behoben (alt und unsichtbar): bei Radius 0 hat die Karte die
+  Aussparung ignoriert**, also den Bereich unter dem Cover gefüllt und
+  sofort wieder übermalt. Zu sehen war das nie (dieselbe Farbe),
+  bezahlt wurde es trotzdem. Gefunden beim byteweisen Vergleich der
+  beiden Zeichenwege (Build 299).
+
 - **Behoben: das Scrollen hakte an Spielen ohne Boxart — und zwar immer
   wieder an denselben.** Das Frontend merkt sich seit Build 222, welche
   Cover es *nicht* gibt, sonst fragt jeder Scrollschritt dieselben

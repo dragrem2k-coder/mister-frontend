@@ -143,9 +143,25 @@ for w, h, name in ((320, 240, "CRT"), (1920, 1080, "HDMI")):
         check("%s/%s: zusammengefasst bitgenau gleich" % (name, label),
               d == 0, "(%d abweichende Bytes)" % d)
 
-print("Test 3: das komplette Cover-Panel sieht unveraendert aus")
+print("Test 3: das komplette Cover-Panel - was gleich bleibt, und was nicht")
 # Nicht nur der Schatten fuer sich, sondern der echte Aufruf aus
 # draw_art_panel() mit allem drum herum.
+#
+# UMGESCHRIEBEN IN BUILD 299, und zwar in zwei Teile. Die alte Zusage
+# hiess "Panel bitgenau wie vorher" und bezog sich auf das
+# Zusammenfassen von Karte und Schatten (Build 97/98): das durfte das
+# Bild nicht veraendern. Build 299 veraendert es aber ABSICHTLICH - der
+# Schatten ist jetzt ein Verlauf statt einer Flaeche.
+#
+# Eine Zusage, die eine gewollte Aenderung als Fehler meldet, ist
+# wertlos; eine, die man einfach streicht, war die Arbeit nicht wert.
+# Also beides getrennt:
+#
+#   (a) OHNE weichen Schatten muss das Panel bitgenau das von vorher
+#       sein - das sichert weiterhin das Zusammenfassen.
+#   (b) MIT weichem Schatten darf sich NUR der Schattenbereich
+#       aendern. Das ist strenger als die alte Fassung, denn die hat
+#       ueber den Ort der Abweichung gar nichts gesagt.
 for w, h, name in ((320, 240, "CRT"), (1920, 1080, "HDMI")):
     f = frontend(w, h)
     L = f.layout_items(True)
@@ -156,6 +172,9 @@ for w, h, name in ((320, 240, "CRT"), (1920, 1080, "HDMI")):
     item = f.view["items"][f.item_i]
     sk = f._item_syskey(item, f.view.get("syskey"))
 
+    # (a) Erst der Vergleich OHNE weichen Schatten.
+    _weich = fm.Framebuffer.KARTE_SCHATTEN_WEICH
+    fm.Framebuffer.KARTE_SCHATTEN_WEICH = False
     f.draw_art_panel(art_x0, art_w, oy, art_h, sk, item, s)
     neu = bytes(f.fb.buf)
 
@@ -164,7 +183,14 @@ for w, h, name in ((320, 240, "CRT"), (1920, 1080, "HDMI")):
     echt = f.fb.karte_mit_schatten
 
     def alter_weg(x, y, kw, kh, versatz, karte_rgb, schatten_rgb,
-                  radius=None, aussparen=None, _fb=f.fb):
+                  radius=None, aussparen=None, hintergrund_rgb=None,
+                  _fb=f.fb):
+        # hintergrund_rgb kam mit Build 299 dazu (die Kartenvorlage
+        # und der weiche Schatten brauchen ihn). Diese Nachstellung
+        # ignoriert ihn absichtlich - sie soll ja den ALTEN Weg zeigen.
+        # Ohne den Parameter in der Liste bricht der Aufruf mit
+        # TypeError ab, und genau das hat die Suite gemeldet.
+        #
         # So sah es vor Build 97/98 aus: volles Schattenrechteck,
         # danach die Karte darueber. Die Aussparung aus Build 234
         # kennt dieser Weg nicht - er fuellt voll, und genau darum
@@ -177,9 +203,45 @@ for w, h, name in ((320, 240, "CRT"), (1920, 1080, "HDMI")):
     f.draw_art_panel(art_x0, art_w, oy, art_h, sk, item, s)
     alt = bytes(f.fb.buf)
     f.fb.karte_mit_schatten = echt
+    fm.Framebuffer.KARTE_SCHATTEN_WEICH = _weich
     d = sum(1 for a, b in zip(alt, neu) if a != b)
-    check("%s: Panel bitgenau wie vorher" % name, d == 0,
+    check("%s: ohne weichen Schatten bitgenau wie vorher" % name, d == 0,
           "(%d abweichende Bytes)" % d)
+
+    # (b) Und jetzt MIT weichem Schatten: die Abweichung muss im
+    # Schattenbereich bleiben. Geprueft wird der ORT, nicht eine
+    # geratene Zahl - wo genau die Stufen liegen, gehoert nicht in
+    # diesen Test (das sichert tools/test_kartenvorlage.py).
+    f.draw_art_panel(art_x0, art_w, oy, art_h, sk, item, s)
+    weich = bytes(f.fb.buf)
+    stride = f.fb.stride
+    abweichend = [i for i, (a, b) in enumerate(zip(neu, weich)) if a != b]
+    if not abweichend:
+        # Kein Unterschied heisst: der weiche Schatten ist nicht
+        # angekommen. Ohne libdragend ist das richtig (dann gibt es
+        # keine Vorlage), sonst ein Befund.
+        check("%s: weicher Schatten kommt an" % name,
+              f.fb.zeilen_kopierer is None,
+              "kein Unterschied zum flachen Schatten")
+    else:
+        # Der Schatten sitzt rechts und unterhalb der Karte, also
+        # ausserhalb von deren Flaeche. Die Karte selbst darf sich
+        # nicht geaendert haben - dort liegt gleich das Cover.
+        shadow_off = 3 * s
+        x0 = art_x0
+        y0 = oy
+        innen = 0
+        for i in abweichend:
+            zeile, spalte = i // stride, (i % stride) // 4
+            if (x0 <= spalte < x0 + art_w - shadow_off
+                    and y0 <= zeile < y0 + art_h - shadow_off):
+                innen += 1
+        check("%s: nur der Schattenbereich aendert sich" % name,
+              innen == 0,
+              "%d von %d Abweichungen liegen IN der Karte"
+              % (innen, len(abweichend)))
+        check("%s: und es aendert sich wirklich etwas" % name,
+              len(abweichend) > 0, "%d Bytes" % len(abweichend))
 
 print("Test 4: und es spart messbar Arbeit (gezaehlt, nicht gestoppt)")
 # Kein Selbstzweck: die Aenderung hat nur dann einen Sinn, wenn sie
