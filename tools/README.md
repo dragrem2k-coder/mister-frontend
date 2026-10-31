@@ -7098,3 +7098,155 @@ die Grenze nicht verschiebt.
 
 Die Antwort ist **nein**, und der Weg heisst: **weniger Bytes je
 Schritt.** Genau das tut dieser Build.
+
+---
+
+## Nachtrag Build 301: es rechnet tatsaechlich nach
+
+> "ja irgendwie baust du misst das scrollen seitlich im raster und der
+> galerie war vor einigen builds deutlich besser !! das ist scheisse
+> !!! fuehlt sich an als wuerde das frontend immer neu berechnen oder
+> nachrechnen was auch immer !!!"
+
+Er hat in **beidem** recht, und Abschnitt L aus Build 300 liefert zum
+ersten Mal die Zahlen dafuer.
+
+### Ursache 1: es rechnet wirklich nach, auf dem zweiten Kern
+
+Der Schreib-Arbeiter hat **nie geprueft**, ob gerade gescrollt wird.
+Aus seinem Bericht vom 31.10.:
+
+| Quelle | Zahl |
+|---|---|
+| Abschnitt C | Miniatur packen und schreiben **709,73 ms** |
+| Abschnitt B | "Miniaturen packen und schreiben 202,7 ms (21 x)" |
+| Abschnitt J | `_schreib_arbeiter > _thumb_cache_put` **mitten im Scrollschritt** |
+| Abschnitt H.1 | 2,69 ms je MB - und die Bandbreite ist geteilt |
+
+Das Geraet hat zwei Kerne. Was Abschnitt L daraus macht:
+
+| Ansicht | Mittel | groesstes |
+|---|---|---|
+| Liste raster | 22,67 ms | **68,08 ms** |
+| Liste galerie | 36,10 ms | **72,94 ms** |
+| Haupt liste | 31,95 ms | **107,08 ms** |
+
+**Das Mittel ist in Ordnung, die Ausreisser sind es nicht.** Zwei bis
+drei Mal so gross - und genau so fuehlt sich das an: ungleichmaessig,
+nicht langsam. Der Zeiger bewegt sich in unregelmaessigen Spruengen.
+
+Behoben: der Arbeiter pausiert, solange `ART._defer_uncached` gilt -
+**derselbe** Schalter wie bei den Covern (Build 244) und der
+Beschreibung (Build 300). Kein zweiter Merker; einer, der irgendwann
+anders antwortet, waere der naechste Fehler.
+
+Drei Details, die nicht beliebig sind:
+
+* **Gewartet wird mit Zeitschranke** (`SCHREIB_PAUSE_TAKT = 50 ms`).
+  Das ENDE des Scrollens ist kein Ereignis, das dort ankommt - es ist
+  das Ausbleiben weiterer Tastendruecke. Ein `wait()` ohne Timeout
+  wuerde bis zum naechsten eingestellten Auftrag verschlafen.
+* **Obergrenze `SCHREIB_PAUSE_MAX = 3 s`.** Wer eine Taste minutenlang
+  haelt, soll das Schreiben nicht fuer immer aufhalten.
+* **Nach der Pause wird die Schlange erneut geprueft.** Sie kann
+  waehrenddessen geleert worden sein - sonst ein `IndexError`, der nur
+  beim Scrollen auftritt und deshalb in keinem Test auffaellt.
+
+**Und es kostet nichts:** waehrend des Scrollens werden noch nicht
+gerechnete Cover ohnehin uebersprungen. Der Arbeiter arbeitet fuer
+SPAETER - also kann er auch spaeter arbeiten. Nebenbei ist es Punkt 1
+der Prioritaetenliste des Nutzers, woertlich: *"Keine
+Hintergrundaufgaben waehrend aktiver Eingabe, wenn sie die Bedienung
+bremsen."*
+
+### Ursache 2: der Boden fiel auf den nackten Mittelwert
+
+`_tempo_anwenden()` hatte als harte Grenze `max(neu, gemessen)` - den
+Messwert **ohne** die Reserve aus Build 93. Nachgerechnet:
+
+| gemessen | Boden roh (x 1,15) | ausgegeben |
+|---|---|---|
+| 39,75 ms | 45,71 ms | **40,00 ms** |
+| 46,32 ms | 53,27 ms | **46,32 ms** |
+
+Die zweite Zeile ist der ganze Fehler: gefragt alle 46,32 ms, und genau
+46,32 ms dauert ein Schritt **im Mittel**. Die Haelfte aller Schritte
+ist langsamer als das Mittel - jeder davon staut sich.
+
+Dieselbe Sorte Fehler wie Build 297, nur eine Etage tiefer: dort
+teilten zwei Richtungen einen Messwert, hier wurde der Messwert ohne
+Zuschlag benutzt. Beides laeuft auf "mehr anfordern als lieferbar"
+hinaus.
+
+### Und so erklaert sich "vor einigen Builds war es besser"
+
+Build 297 hat `REPEAT_MESS_FENSTER_HOCH = 2` eingebaut: eine
+Verlangsamung zaehlt nach zwei statt acht Schritten. Nachgerechnet mit
+seinen Zahlen (Mittel 22,67 ms, Ausreisser 68,08 ms):
+
+| | Messwert | Boden |
+|---|---|---|
+| ruhiger Lauf | 22,67 ms | 40,00 ms |
+| nach EINEM Ausreisser | 45,38 ms | **52,18 ms** |
+| 3 billige Schritte spaeter | 37,88 ms | 43,56 ms |
+| 6 billige Schritte spaeter | 32,86 ms | 40,00 ms |
+
+Ein einzelner Ausreisser hebt den Boden um ein Drittel und braucht
+**sechs** billige Schritte zum Zurueckkommen. Weil der Schreib-Arbeiter
+solche Ausreisser mehrmals je Sekunde erzeugt hat, **pendelte der Boden
+dauernd** zwischen 40 und 52 ms.
+
+Vor Build 297 (Fenster 8) wurden dieselben Ausreisser verschluckt und
+fielen nicht auf. **Die beiden Aenderungen haben sich gegenseitig
+verstaerkt** - 297 war richtig, hatte aber eine Voraussetzung, die
+nicht erfuellt war: dass Ausreisser selten sind.
+
+Die Abhilfe ist deshalb, die **Ausreisser** wegzunehmen und nicht die
+Reaktion wieder traege zu machen. Fenster 2 bleibt; ohne Ausreisser
+feuert es nie.
+
+### Abschnitt L nachrechenbar gemacht - und zwei eigene Fehler dabei
+
+In Build 300 stand bei **allen sechs** Ansichten 40,00 ms. Das ist aus
+zwei voellig verschiedenen Gruenden moeglich (das Minimum greift - oder
+es gab gar keinen Messwert und 80 ms wurden durch den Tempo-Faktor 2
+geteilt), und welcher zutraf, liess sich nicht zurueckrechnen.
+
+> Ein Wert, den man nicht zurueckrechnen kann, ist keine Messung.
+
+Jetzt stehen Scrollgeschwindigkeit, Reserve, alle drei Boeden und je
+Ansicht Schritt/noetig/Boden/reicht/groesstes da, dazu ein Teil 4 fuer
+die Pausen des Arbeiters. Beim Umbau fanden sich zwei Fehler in meinem
+eigenen Abschnitt:
+
+1. **Der Boden wurde NACH der Messschleife gerechnet.** Dort stand dann
+   der Eingabe-Zustand der ZULETZT gesetzten Ansicht. Sichtbar daran,
+   dass "Haupt liste (down)" einen Boden von 250 ms bekam - den
+   Seiten-Boden -, obwohl hoch/runter in der Liste eine einzelne Zeile
+   bewegt. Jetzt wird er IN der Schleife gerechnet, wo der Zustand von
+   selbst stimmt: `_schritt()` hat gerade gezeichnet, und der
+   Zeichenweg meldet der Eingabe dabei die Seitenaktionen.
+2. **Gemessen wurde immer mit `right`**, obwohl links/rechts in der
+   LISTE eine Seitenaktion ist. Jetzt wird die Aktion aus
+   `seiten_aktionen` abgeleitet.
+
+Ein Zustand, den man nachbauen muss, ist ein Zustand, den man falsch
+nachbaut.
+
+### Eine Lehre zum Pruefstand selbst
+
+`tools/_harness.py` friert `time.monotonic` **global** ein, und der
+Schreib-Arbeiter liest dieselbe Uhr. Meine Pausen-Obergrenze lief im
+Test also nie ab - der erste Lauf hing endlos, ohne eine Zeile
+Ausgabe. Kein Fehler im Code, eine Eigenschaft des Pruefstands.
+
+Der Test stellt die Uhr jetzt ausdruecklich weiter und prueft damit
+gleich mit, dass die Obergrenze ueberhaupt an der Uhr haengt: das
+Scrollen laeuft dabei WEITER, und der Arbeiter muss trotzdem
+loslegen.
+
+### Was die Suite gefunden hat
+
+`test_version_einheitlich.py` war rot: mein Update-Text hatte 228
+Zeichen, das Popup fasst auf HDMI 216. Der Rest waere dem Nutzer mitten
+im Satz abgeschnitten worden. Dafuer ist der Test da.

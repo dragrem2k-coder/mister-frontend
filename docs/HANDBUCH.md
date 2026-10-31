@@ -2135,6 +2135,25 @@ werden **Deutsch und Englisch**; fehlt der deutsche Text zu einem
 Spiel, springt der englische ein. Nachgemessen an der SNES-Tabelle:
 **1.785 von 1.802** Spielen haben eine Beschreibung.
 
+### Während des Scrollens ruht auch das Schreiben (Build 301)
+
+Dasselbe gilt für den Arbeitsfaden, der Cover-Miniaturen packt und auf
+die Karte schreibt: **solange du eine Taste hältst, pausiert er.**
+
+Das war der größte Einzelposten für das *ungleichmäßige* Gefühl beim
+Scrollen. Eine Miniatur zu packen und zu schreiben kostet auf dem
+Gerät bis zu **709 ms**, und der MiSTer hat zwei Kerne, die sich eine
+Speicherbandbreite teilen. Gemessen (Bench-Abschnitt L): ein
+Seitwärtsschritt im Raster dauert im Mittel 22,67 ms — im schlechtesten
+Fall aber **68,08 ms**. Nicht langsam, sondern unregelmäßig. Genau das
+nimmt man als „er rechnet dauernd nach" wahr.
+
+Verloren geht dabei nichts: während des Scrollens werden noch nicht
+gerechnete Cover ohnehin übersprungen, der Faden arbeitet also für
+**später** — und das kann er auch später tun. Nach dem Loslassen macht
+er sofort weiter. Hältst du eine Taste minutenlang, legt er nach drei
+Sekunden trotzdem los; ganz aufhalten soll ihn das nicht.
+
 ### Beim Scrollen bleibt sie weg (Build 300)
 
 Sobald du dich durch die Galerie bewegst, wird die Beschreibung

@@ -2490,6 +2490,80 @@ SCHREIB_QUEUE_MAX_BYTES = 24 * 1024 * 1024
 
 _schreib_lock = threading.Condition()
 _schreib_queue = []            # [("bild"|"marke", ...)], aeltestes vorn
+
+# ---------------------------------------------------------------------------
+# BUILD 301: KEINE HINTERGRUNDARBEIT WAEHREND AKTIVER EINGABE
+# ---------------------------------------------------------------------------
+#
+# DAS IST PUNKT 1 DER PRIORITAETENLISTE DES NUTZERS, woertlich: "Keine
+# Hintergrundaufgaben waehrend aktiver Eingabe, wenn sie die Bedienung
+# bremsen." Und es ist die Erklaerung fuer den Befund, den er dreimal
+# beschrieben hat: "fuehlt sich an als wuerde das Frontend immer neu
+# berechnen oder nachrechnen".
+#
+# DIE ZAHLEN, alle aus seinem Bericht vom 31.10. (Build 300):
+#
+#   Abschnitt C:  Miniatur packen und schreiben     709,73 ms
+#   Abschnitt B:  "Miniaturen packen und schreiben  202,7 ms (21 x)"
+#   Abschnitt J:  "_schreib_arbeiter > _thumb_cache_put" taucht MITTEN
+#                 im Scrollschritt auf, mit 0,13 bis 0,31 ms je Schritt
+#   Abschnitt L:  Raster Mittel 22,67 ms, GROESSTES 68,08 ms
+#                 Galerie Mittel 36,10 ms, groesstes 72,94 ms
+#
+# Das Mittel ist in Ordnung, die Ausreisser sind es nicht - zwei bis
+# drei Mal so gross. Und genau so fuehlt sich das an: der Zeiger
+# bewegt sich ungleichmaessig, nicht langsam. Der Bench sagt auch, WER
+# die Ausreisser macht: dieses Geraet hat ZWEI Kerne, und auf dem
+# zweiten packt und schreibt der Arbeiter Miniaturen - Hunderte von
+# Millisekunden, die um dieselbe Speicherbandbreite konkurrieren
+# (Abschnitt H.1: 2,69 ms je MB, und die ist geteilt).
+#
+# WARUM DAS PAUSIEREN NICHTS KOSTET: waehrend des Scrollens werden
+# noch nicht gerechnete Cover ohnehin uebersprungen (Build 244,
+# _defer_uncached). Was der Arbeiter gerade schreibt, braucht das
+# aktuelle Bild also nicht - er arbeitet fuer SPAETER. Dann kann er
+# auch spaeter arbeiten, naemlich sobald die Hand still haelt.
+#
+# EINE EINZIGE QUELLE: gefragt wird dasselbe _defer_uncached, das auch
+# die Cover (Build 244) und die Beschreibung (Build 300) steuert. Ein
+# eigener Merker waere einer, der irgendwann anders antwortet.
+_aktive_instanz = [None]
+
+# Wie oft der pausierte Arbeiter nachsieht, ob er weitermachen darf.
+# 50 ms sind kurz genug, dass nach dem Loslassen nichts merkbar
+# liegenbleibt (der Nachlader kommt ohnehin erst nach COVER_SETTLE =
+# 150 ms), und lang genug, dass ein wartender Faden nichts kostet.
+SCHREIB_PAUSE_TAKT = 0.05
+
+# Obergrenze fuer das Pausieren. SIE IST DER SICHERHEITSGURT: wer eine
+# Taste minutenlang gedrueckt haelt, soll nicht dazu fuehren, dass
+# ueberhaupt nichts mehr geschrieben wird - irgendwann ist eine
+# geschriebene Miniatur wichtiger als ein voellig ruckelfreier
+# Schritt. Nach dieser Zeit arbeitet er weiter, auch wenn noch
+# gescrollt wird.
+SCHREIB_PAUSE_MAX = 3.0
+
+# Nur zum Nachsehen (Bench/Tests): wie oft und wie lange pausiert
+# wurde. Eine Zahl, die man nicht abfragen kann, ist eine Behauptung.
+_schreib_pausen = 0
+_schreib_pause_zeit = 0.0
+
+
+def _navigation_aktiv():
+    """Haelt der Nutzer gerade eine Taste? (Build 301)
+
+    Liest das Feld der EINEN ArtCache-Instanz - siehe die
+    Rueckreferenz in __init__. Ohne Instanz (frueher Start, Tests)
+    lautet die Antwort False: lieber arbeiten als untaetig warten."""
+    inst = _aktive_instanz[0]
+    if inst is None:
+        return False
+    return bool(getattr(inst, "_defer_uncached", False))
+
+
+def schreib_pausen_stand():
+    """(Anzahl, Sekunden) der Pausen des Schreib-Arbeiters."""
+    return _schreib_pausen, _schreib_pause_zeit
 _schreib_bytes = 0
 _schreib_faden = None
 # Build 293: Schluessel -> Auftrag, fuer das Zusammenfassen gleicher
@@ -2549,10 +2623,35 @@ def _schreib_arbeiter():
     Arbeiten nicht. Wer gleich wieder gebraucht wird, ist der, den der
     Nutzer eben gesehen hat - nicht der von vor zwanzig Schritten."""
     global _schreib_bytes, _schreib_erledigt
+    global _schreib_pausen, _schreib_pause_zeit
     while True:
         with _schreib_lock:
             while not _schreib_queue:
                 _schreib_lock.wait()
+            # BUILD 301: nicht waehrend der Nutzer scrollt. Die lange
+            # Begruendung samt Messwerten steht bei _aktive_instanz.
+            #
+            # GEWARTET WIRD MIT TIMEOUT, nicht auf eine Benachrichtigung:
+            # das Ende des Scrollens ist kein Ereignis, das hier
+            # ankommt - es ist schlicht das Ausbleiben weiterer
+            # Tastendruecke. Ein wait() ohne Timeout wuerde erst beim
+            # naechsten eingestellten Auftrag aufwachen, und das kann
+            # nach dem Loslassen lange dauern.
+            if _navigation_aktiv():
+                _pause_start = time.monotonic()
+                while (_navigation_aktiv() and _schreib_queue
+                       and time.monotonic() - _pause_start
+                       < SCHREIB_PAUSE_MAX):
+                    _schreib_lock.wait(SCHREIB_PAUSE_TAKT)
+                _schreib_pausen += 1
+                _schreib_pause_zeit += time.monotonic() - _pause_start
+            # WAEHREND DER PAUSE KANN DIE SCHLANGE LEER GEWORDEN SEIN -
+            # thumb_schreib_leeren() und das Zusammenfassen gleicher
+            # Auftraege laufen weiter. Ohne diese Pruefung waere das
+            # ein IndexError, und zwar einer, der nur beim Scrollen
+            # auftritt und deshalb in keinem Test auffaellt.
+            if not _schreib_queue:
+                continue
             auftrag = _schreib_queue.pop()
             _schreib_index.pop(_auftrag_schluessel(auftrag), None)
             _schreib_bytes -= _auftrag_bytes(auftrag)
@@ -2992,6 +3091,13 @@ class ArtCache:
         self._defer_uncached = False # beim schnellen Scrollen: noch nicht
                                      # dekodierte Cover ueberspringen (siehe
                                      # get_scaled()/COVER_SETTLE)
+        # BUILD 301: der Schreib-Arbeiter muss dasselbe wissen, und er
+        # ist eine Modulfunktion ohne Zugriff auf diese Instanz.
+        # Deshalb hier eine Rueckreferenz - und ausdruecklich KEIN
+        # zweites Flag: ein zweiter Merker fuer dieselbe Frage ist
+        # einer, der irgendwann anders antwortet. Siehe
+        # _navigation_aktiv().
+        _aktive_instanz[0] = self
         # NEU (Build 105): ein KALTES Cover im Stillstand nicht mehr hier
         # im Zeichen-Thread rechnen, sondern an den Arbeitsprozess auf dem
         # zweiten CPU-Kern geben und eine Runde spaeter nachzeichnen.

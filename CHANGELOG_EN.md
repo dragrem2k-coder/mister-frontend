@@ -13,6 +13,34 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **Fixed: the frontend really was recomputing while you scrolled.** The
+  worker thread that packs cover thumbnails and writes them to the card
+  **never checked whether you were scrolling**. One thumbnail costs up
+  to **709 ms** on the device, and the MiSTer has two cores sharing one
+  memory bandwidth. The result, per the bench: a sideways step in the
+  grid takes **22.67 ms on average but 68.08 ms at worst** — three
+  times. Not slow, but **uneven**, and that is exactly how it feels.
+  The worker now pauses while a key is held and resumes when you let
+  go. That costs nothing: covers not yet computed are skipped while
+  scrolling anyway — the worker works for later (build 301).
+- **Fixed: the repeat rate asked exactly at the average step time.**
+  With a scroll speed above 1.0 the 15 % safety reserve was discarded:
+  a measured 46.32 ms produced a floor of 46.32 ms. Since half of all
+  steps are slower than the average, every one of those piled up. The
+  reserve now always applies (build 301).
+- **And that explains "it was better a few builds ago".** Build 297 made
+  a slowdown count after two steps instead of eight — well meant.
+  Together with the worker's outliers that meant: a single 68 ms step
+  raised the floor from 40 to 52 ms, and it took **six** cheap steps to
+  come back. With several outliers per second the floor oscillated
+  permanently. What got fixed is the **cause** (the outliers), not the
+  reaction (build 301).
+- **Bench section L can now be recomputed.** Before, all six views
+  showed 40.00 ms — a value that can arise for two different reasons.
+  It now prints the scroll speed, the reserve, all floors, and per view
+  step/needed/floor/sufficient/worst, plus the worker's pauses
+  (build 301).
+
 - **Fixed: scrolling through the gallery redrew the game description on
   every step.** It is the reason the text column had to be cleared at
   full height — about 650 of the 1201 screen rows of one step. It now

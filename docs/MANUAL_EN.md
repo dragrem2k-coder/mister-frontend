@@ -1827,6 +1827,23 @@ It comes from the same artwork database as the covers: next to
 game, the English one steps in. Measured against the SNES table:
 **1,785 of 1,802** games have a description.
 
+### Writing rests while you scroll, too (build 301)
+
+The same goes for the worker thread that packs cover thumbnails and
+writes them to the card: **while you hold a key, it pauses.**
+
+That was the single biggest contributor to the *uneven* feel of
+scrolling. Packing and writing one thumbnail costs up to **709 ms** on
+the device, and the MiSTer has two cores sharing one memory bandwidth.
+Measured (bench section L): a sideways step in the grid takes 22.67 ms
+on average — but **68.08 ms** at worst. Not slow, but irregular. That
+is exactly what comes across as "it keeps recomputing".
+
+Nothing is lost: covers not yet computed are skipped while scrolling
+anyway, so the thread is working for **later** — and later is fine. It
+resumes the moment you let go. If you hold a key for minutes it starts
+after three seconds regardless; it should not be held up forever.
+
 ### It stays away while scrolling (build 300)
 
 As soon as you move through the gallery, the description is **skipped**

@@ -66,7 +66,12 @@ import zlib
 # K liest sich anders, weil karte_mit_schatten() seit Build 299 ueber
 # die Vorlage laeuft und dort KEIN Flaechenfueller mehr gerufen wird.
 # Wer zwei Berichte vergleicht, muss das sehen koennen.
-BENCH_VERSION = 15
+# 16 ab Build 301: Abschnitt L hat eine Spalte mehr (noetig/reicht),
+# rechnet den Boden jetzt IN der Messschleife (vorher stand dort der
+# Zustand der zuletzt gesetzten Ansicht) und hat einen Teil 4 fuer die
+# Hintergrundarbeit. Zwei Berichte mit derselben Nummer muessen
+# vergleichbar sein - also neue Nummer.
+BENCH_VERSION = 16
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -2925,8 +2930,9 @@ def _abschnitt_l(b, fe, S, A, fm):
     """
     b("")
     b("-" * 62)
-    b(" L  Wie lange wartet ein Tastendruck? (Build 300)")
+    b(" L  Wie lange wartet ein Tastendruck? (Build 300, 301)")
     b("-" * 62)
+    import fe.input as _FI
     inp = getattr(fe, "inp", None)
     if inp is None:
         b("   -- keine Eingabe geoeffnet")
@@ -3034,7 +3040,44 @@ def _abschnitt_l(b, fe, S, A, fm):
                 if not luecken:
                     continue
                 mittel = sum(luecken) / len(luecken)
-                je_ansicht[name + " " + ansicht] = (mittel, max(luecken))
+                # DEN BODEN HIER RECHNEN, NICHT SPAETER.
+                #
+                # BUILD 301: die erste Fassung hat das in Teil 3
+                # nachgeholt - und dort stand dann der Eingabe-Zustand
+                # der ZULETZT gesetzten Ansicht, nicht der jeweils
+                # berichteten. Im Bericht sah man das daran, dass
+                # "Haupt liste (down)" einen Boden von 250 ms bekam,
+                # also den Seiten-Boden, obwohl hoch/runter in der
+                # Liste eine einzelne Zeile bewegt.
+                #
+                # Hier stimmt er von selbst: _schritt() hat gerade
+                # gezeichnet, und der Zeichenweg meldet der Eingabe
+                # dabei, welche Richtungen eine ganze Seite bewegen
+                # (_seiten_aktionen_melden()). Ein Zustand, den man
+                # nachbauen muss, ist ein Zustand, den man falsch
+                # nachbaut.
+                seiten = set(getattr(inp, "seiten_aktionen", ()) or ())
+                # Die Aktion, die EINEN Eintrag bewegt: im Raster und
+                # in der Galerie links/rechts, in der Liste hoch/runter.
+                act = "right" if "right" not in seiten else "down"
+                boden = noetig = None
+                if hasattr(inp, "zeichenzeit_melden"):
+                    try:
+                        _vorher_zz = dict(getattr(inp, "_zeichenzeit",
+                                                  {}) or {})
+                        inp._zeichenzeit = {}
+                        for _ in range(max(1, int(
+                                getattr(_FI, "REPEAT_MESS_FENSTER", 8)
+                                or 8))):
+                            inp.zeichenzeit_melden(act, mittel / 1000.0)
+                        boden = inp._repeat_floor(act) * 1000.0
+                        noetig = mittel * getattr(
+                            _FI, "REPEAT_MESS_RESERVE", 1.15)
+                        inp._zeichenzeit = _vorher_zz
+                    except Exception:                    # noqa: BLE001
+                        boden = noetig = None
+                je_ansicht[name + " " + ansicht] = (
+                    mittel, max(luecken), act, boden, noetig)
                 b("      %-20s Mittel %6.2f ms, groesstes %6.2f ms"
                   % (name + " " + ansicht, mittel, max(luecken)))
     finally:
@@ -3059,61 +3102,72 @@ def _abschnitt_l(b, fe, S, A, fm):
     # Der Zustand wird hinterher zurueckgestellt - der Bench darf
     # umhaengen, der Betrieb soll nichts davon merken.
     _sichern = dict(getattr(inp, "_zeichenzeit", {}) or {})
-    if je_ansicht and hasattr(inp, "zeichenzeit_melden"):
-        b("      (aus den Schrittdauern von Teil 2 gerechnet - beim")
-        b("       Bench drueckt niemand, also wird eingespeist)")
-        for ans in sorted(je_ansicht):
-            mittel_ms = je_ansicht[ans][0]
-            try:
-                inp._zeichenzeit = {}
-                # Mehrfach melden, damit der gleitende Mittelwert
-                # ankommt - genau so, wie es beim Halten passiert.
-                for _ in range(max(1, int(getattr(fm, "REPEAT_MESS_FENSTER",
-                                                  8) or 8))):
-                    inp.zeichenzeit_melden("right", mittel_ms / 1000.0)
-                boden = inp._repeat_floor("right") * 1000.0
-            except Exception:                            # noqa: BLE001
-                continue
-            passt = "ja" if boden >= mittel_ms else "NEIN"
-            b("      %-20s Schritt %6.2f ms -> Boden %6.2f ms   "
-              "reicht: %s" % (ans, mittel_ms, boden, passt))
-        b("      'reicht: NEIN' heisst: das Frontend fordert mehr")
-        b("      Schritte an, als es zeichnen kann - die faelligen")
-        b("      Wiederholungen stauen sich dann. Genau das war der")
-        b("      Fehler aus Build 297, damals fuer eine Richtung.")
     try:
-        inp._zeichenzeit = _sichern
+        from fe.settings import load_scroll_tempo as _tempo
+        faktor = float(_tempo())
     except Exception:                                    # noqa: BLE001
-        pass
+        faktor = 1.0
+    b("      Scrollgeschwindigkeit (Build 256): %.2f" % faktor)
+    b("      Reserve (REPEAT_MESS_RESERVE):     %.2f"
+      % getattr(_FI, "REPEAT_MESS_RESERVE", 1.15))
+    b("      Boeden: normal %.0f ms, Seite %.0f ms, Minimum %.0f ms"
+      % (getattr(_FI, "REPEAT_FLOOR", 0) * 1000,
+         getattr(_FI, "REPEAT_FLOOR_PAGE", 0) * 1000,
+         getattr(_FI, "REPEAT_FLOOR_MIN", 0) * 1000))
     b("")
-    gemessen = dict(_sichern)
-    if not gemessen:
-        b("      aus dem Betrieb gemessen: noch nichts (kein Scrollen "
-          "per Taste seit dem Start)")
-    else:
-        for act in sorted(gemessen):
-            dauer = gemessen[act] * 1000.0
-            try:
-                boden = inp._repeat_floor(act) * 1000.0
-            except Exception:                            # noqa: BLE001
-                boden = float("nan")
-            b("      %-6s gemessen %6.2f ms, Boden %6.2f ms"
-              % (act, dauer, boden))
-        b("      Zu lesen als: der Boden MUSS ueber der gemessenen")
-        b("      Dauer liegen, sonst wird mehr angefordert als")
-        b("      lieferbar ist - genau das war Build 297.")
-    for nam in ("REPEAT_DELAY", "REPEAT_INTERVAL", "REPEAT_FLOOR",
-                "REPEAT_MESS_FENSTER", "REPEAT_MESS_FENSTER_HOCH",
-                "LEEREN_MAX"):
-        wert = getattr(fm, nam, None)
-        if wert is None:
-            try:
-                import fe.input as _fi
-                wert = getattr(_fi, nam, None)
-            except Exception:                            # noqa: BLE001
-                wert = None
-        if wert is not None:
-            b("      %-26s %s" % (nam, wert))
+    if je_ansicht:
+        b("      %-22s %9s %9s %9s %7s %9s"
+          % ("Ansicht (Aktion)", "Schritt", "noetig", "Boden", "reicht",
+             "groesstes"))
+        for ans in sorted(je_ansicht):
+            mittel_ms, groesstes_ms, act, boden, noetig = je_ansicht[ans]
+            if boden is None:
+                b("      %-22s -- nicht berechenbar" % (ans,))
+                continue
+            passt = "ja" if boden + 1e-9 >= noetig else "NEIN"
+            b("      %-22s %6.2f ms %6.2f ms %6.2f ms %7s %6.2f ms"
+              % (ans + " (" + act + ")", mittel_ms, noetig, boden,
+                 passt, groesstes_ms))
+        b("")
+        b("      'noetig' ist Schritt x Reserve. Liegt der Boden")
+        b("      DARUNTER, fordert das Frontend mehr an, als es im")
+        b("      Mittel zeichnen kann - und weil die Haelfte aller")
+        b("      Schritte langsamer als das Mittel ist, staut sich")
+        b("      das. Genau dieser Fehler stand bis Build 300 in")
+        b("      _tempo_anwenden(): dort war die harte Grenze der")
+        b("      NACKTE Messwert, die Reserve also weg.")
+        b("")
+        b("      Und selbst mit Reserve deckt der Boden nur das")
+        b("      MITTEL ab. Ist 'groesstes' mehr als doppelt so gross,")
+        b("      kommen die Ausreisser nicht aus der Wiederholrate,")
+        b("      sondern von etwas, das NEBENHER laeuft - siehe Teil 4.")
+    # --- 4) wer laeuft NEBENHER? -----------------------------------
+    #
+    # BUILD 301, und das ist der Teil, der den gemeldeten Befund
+    # erklaert: "fuehlt sich an als wuerde das Frontend immer neu
+    # berechnen oder nachrechnen". Es rechnet auch - auf dem zweiten
+    # Kern. Abschnitt C nennt 709 ms fuer EINE Miniatur, Abschnitt B
+    # 202,7 ms je Durchgang, und Abschnitt J weist
+    # "_schreib_arbeiter > _thumb_cache_put" mitten im Scrollschritt
+    # aus. Seit Build 301 pausiert der Arbeiter, solange eine Taste
+    # gehalten wird - hier steht, ob er das wirklich getan hat.
+    b("")
+    b("   4) Hintergrundarbeit waehrend der Eingabe (Build 301)")
+    try:
+        anzahl, dauer = A.schreib_pausen_stand()
+        b("      Pausen des Schreib-Arbeiters        %d" % anzahl)
+        b("      davon Wartezeit insgesamt       %8.2f s" % dauer)
+        b("      Pausentakt / Obergrenze         %5.0f ms / %.1f s"
+          % (getattr(A, "SCHREIB_PAUSE_TAKT", 0) * 1000.0,
+             getattr(A, "SCHREIB_PAUSE_MAX", 0)))
+        b("      Zu lesen als: steht hier 0, hat der Arbeiter nie")
+        b("      pausiert - entweder war nichts zu schreiben, oder")
+        b("      die Pause greift nicht. Beim Bench haelt niemand")
+        b("      eine Taste, also ist 0 hier der NORMALFALL; die")
+        b("      Zahl ist fuer den Betrieb gedacht (das Protokoll")
+        b("      unter /tmp/frontend.log nennt sie beim Beenden).")
+    except Exception as e:                               # noqa: BLE001
+        b("      -- nicht abfragbar (%s)" % type(e).__name__)
 
     b("")
     b("   ZU LESEN ALS: liegt das groesste Fenster aus 2) deutlich")

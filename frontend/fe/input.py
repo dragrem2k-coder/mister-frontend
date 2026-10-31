@@ -1063,8 +1063,34 @@ class InputManager:
             return boden
         neu = boden / faktor
         if gemessen is not None:
-            # Nie schneller als die gemessene Lieferzeit.
-            neu = max(neu, gemessen)
+            # BEHOBEN IN BUILD 301: hier stand max(neu, gemessen) - also
+            # der NACKTE Messwert als harte Grenze. Damit war die
+            # Reserve aus Build 93 bei jeder Scrollgeschwindigkeit ueber
+            # 1,0 weg, und das Frontend fragte genau im Takt des
+            # DURCHSCHNITTS.
+            #
+            # NACHGERECHNET an den Zahlen seines Berichts vom 31.10.:
+            #
+            #   gemessen 39,75 ms -> Boden roh 45,71 ms -> ausgegeben 40,00
+            #   gemessen 46,32 ms -> Boden roh 53,27 ms -> ausgegeben 46,32
+            #
+            # Die zweite Zeile ist der ganze Fehler: gefragt wurde alle
+            # 46,32 ms, und genau 46,32 ms dauert ein Schritt IM MITTEL.
+            # Die Haelfte aller Schritte ist langsamer als das Mittel -
+            # jeder davon staut sich. Abschnitt L desselben Berichts
+            # nennt die Spanne: Galerie Mittel 36,10 ms, groesstes
+            # 72,94 ms.
+            #
+            # Dieselbe Sorte Fehler wie in Build 297, nur eine Etage
+            # tiefer: dort teilten zwei Richtungen einen Messwert, hier
+            # wird der Messwert ohne Reserve benutzt. Beides laeuft auf
+            # "mehr anfordern als lieferbar" hinaus, und das ist das
+            # gemeldete "hakt und zieht nach".
+            #
+            # Die Reserve gehoert ZUR Lieferzeit, nicht obendrauf: der
+            # Mittelwert ist eine Schaetzung, und ohne Zuschlag liegt
+            # man in der Haelfte der Faelle darunter.
+            neu = max(neu, gemessen * REPEAT_MESS_RESERVE)
         return min(REPEAT_FLOOR_MAX, max(minimum, neu))
 
     def _select_gehalten(self):

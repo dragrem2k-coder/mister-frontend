@@ -13,6 +13,38 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Behoben: das Frontend hat während des Scrollens wirklich
+  nachgerechnet.** Der Arbeitsfaden, der Cover-Miniaturen packt und auf
+  die Karte schreibt, hat **nie geprüft, ob du gerade scrollst**. Eine
+  Miniatur kostet auf dem Gerät bis zu **709 ms**, und der MiSTer hat
+  zwei Kerne, die sich eine Speicherbandbreite teilen. Ergebnis laut
+  Bench: im Raster dauert ein Seitwärtsschritt **im Mittel 22,67 ms,
+  im schlechtesten Fall aber 68,08 ms** — dreifach. Nicht langsam,
+  sondern **ungleichmäßig**, und genau so fühlt es sich an. Jetzt
+  pausiert der Arbeiter, solange eine Taste gehalten wird, und arbeitet
+  beim Loslassen weiter. Das kostet nichts: während des Scrollens
+  werden noch nicht gerechnete Cover ohnehin übersprungen — er arbeitet
+  für später (Build 301).
+- **Behoben: die Wiederholrate fragte genau im Takt des Durchschnitts.**
+  Bei einer Scrollgeschwindigkeit über 1,0 wurde die
+  Sicherheitsreserve von 15 % weggeworfen: aus „gemessen 46,32 ms"
+  wurde ein Boden von ebenfalls 46,32 ms. Da die Hälfte aller Schritte
+  langsamer als der Durchschnitt ist, staute sich jeder davon. Die
+  Reserve gilt jetzt immer (Build 301).
+- **Und damit erklärt sich „vor einigen Builds war es besser".** Build
+  297 hatte eingebaut, dass eine Verlangsamung schon nach zwei statt
+  acht Schritten zählt — gut gemeint. Zusammen mit den Ausreißern des
+  Arbeiters bedeutete das: ein einzelner 68-ms-Schritt hob den Boden
+  von 40 auf 52 ms, und es brauchte **sechs** billige Schritte bis
+  zurück. Bei mehreren Ausreißern pro Sekunde pendelte der Boden
+  dauernd. Behoben wurde die **Ursache** (die Ausreißer), nicht die
+  Reaktion (Build 301).
+- **Bench-Abschnitt L ist jetzt nachrechenbar.** Vorher stand bei allen
+  sechs Ansichten 40,00 ms — ein Wert, der aus zwei verschiedenen
+  Gründen entstehen kann. Jetzt stehen Scrollgeschwindigkeit, Reserve,
+  alle Böden, je Ansicht Schritt/nötig/Boden/reicht/größtes und die
+  Pausen des Arbeiters da (Build 301).
+
 - **Behoben: beim Scrollen durch die Galerie wurde die Spielbeschreibung
   bei jedem Schritt neu gesetzt.** Sie ist der Grund, warum die
   Textspalte in voller Höhe freigeräumt werden musste — rund 650 der
