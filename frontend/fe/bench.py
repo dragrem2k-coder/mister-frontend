@@ -2547,7 +2547,8 @@ def _abschnitt_j(b, fe, S, A, fm):
                   "in_karte", "karten_innen",
                   # BUILD 303: BYTES, NICHT NUR ZEILEN. Siehe die
                   # Begruendung bei der Byte-Zeile der Ausgabe.
-                  "restore_bytes", "blit_bytes", "karten_bytes"):
+                  "restore_bytes", "blit_bytes", "karten_flaeche",
+                  "karten_kopiert"):
             konto[k] = 0.0
 
     def h_restore(self, x, y, w, h):
@@ -2567,6 +2568,17 @@ def _abschnitt_j(b, fe, S, A, fm):
         konto["blit_zeilen"] += max(0, h)
         konto["blit_bytes"] += max(0, w) * max(0, h) * 4
         return r
+
+    echt_kopierer_j = getattr(fbo, "zeilen_kopierer", None)
+    _kop_vorher_j = {}
+    if "zeilen_kopierer" in getattr(fbo, "__dict__", {}):
+        _kop_vorher_j["zeilen_kopierer"] = fbo.__dict__["zeilen_kopierer"]
+
+    def h_kopierer(ziel, zstride, quelle, qstride, zx, zy, bb, hh):
+        if konto["in_karte"]:
+            konto["karten_kopiert"] += int(bb) * int(hh)
+        return echt_kopierer_j(ziel, zstride, quelle, qstride, zx, zy,
+                               bb, hh)
 
     def h_rect(rechtecke, skip_vsync=False):
         rechtecke = list(rechtecke)
@@ -2640,12 +2652,27 @@ def _abschnitt_j(b, fe, S, A, fm):
                 konto["in_karte"] -= 1
             konto["karten_ms"] += time.monotonic() - t0
             konto["karten_n"] += 1
-            # BUILD 303: die Flaeche der Karte. Seit Build 299 wird sie
-            # aus einer Vorlage KOPIERT - und eine Kopie bewegt 2N
-            # Byte, ein Fuellen nur N. Ohne diese Zahl ist nicht zu
-            # sehen, ob der Posten an der Bandbreite haengt.
+            # BUILD 304: DIE NOMINALE FLAECHE, und nur die.
+            #
+            # In Build 303 hiess dieser Zaehler "karten_bytes" und
+            # stand in der Byte-Zeile des Berichts neben restore, blit
+            # und flip - als waere es dieselbe Groesse. Ist es nicht:
+            # hier steht w*h*4, also die Flaeche, die die Karte
+            # EINNIMMT. Was wirklich bewegt wird, ist weniger, sobald
+            # die Aussparung greift (Build 234/244) - und genau diese
+            # Frage sollte die Zeile beantworten.
+            #
+            # Im Bericht vom 31.10. stand fuer 'Liste liste' karten
+            # 2,94 MB. Daraus war NICHT zu lesen, ob die Aussparung
+            # greift: 2,94 MB ist die Flaeche, und die ist dieselbe,
+            # ob gespart wird oder nicht. Eine Zahl, die bei beiden
+            # Antworten gleich aussieht, beantwortet die Frage nicht.
+            #
+            # Daneben steht deshalb jetzt "karten_kopiert" - die
+            # Bytes, die der Zeilenkopierer im Auftrag der Karte
+            # wirklich bewegt hat (siehe h_kopierer).
             try:
-                konto["karten_bytes"] += int(a[2]) * int(a[3]) * 4
+                konto["karten_flaeche"] += int(a[2]) * int(a[3]) * 4
             except Exception:                            # noqa: BLE001
                 pass
             return r
@@ -2757,6 +2784,12 @@ def _abschnitt_j(b, fe, S, A, fm):
     b("")
     K._restore_row_bg = h_restore
     K.blit = h_blit
+    # BUILD 304: der Zeilenkopierer, aber nur solange die Karte laeuft.
+    # konto["in_karte"] sagt das schon (Build 241), hier wird es nur
+    # gelesen. OHNE staticmethod() - das ist der Fehler aus Build 303,
+    # siehe Abschnitt K.
+    if echt_kopierer_j is not None:
+        fbo.zeilen_kopierer = h_kopierer
     if echt_rect is not None:
         fbo.flip_rechtecke = h_rect
     fbo.flip_rows = h_rows
@@ -2931,7 +2964,8 @@ def _abschnitt_j(b, fe, S, A, fm):
                 # statt geraten.
                 _mb_r = konto["restore_bytes"] / schritte / 1048576.0
                 _mb_b = konto["blit_bytes"] / schritte / 1048576.0
-                _mb_k = konto["karten_bytes"] / schritte / 1048576.0
+                _mb_k = konto["karten_kopiert"] / schritte / 1048576.0
+                _mb_kf = konto["karten_flaeche"] / schritte / 1048576.0
                 _mb_f = konto["flip_bytes"] / schritte / 1048576.0
                 b("     BYTES je Schritt: restore %.2f  blit %.2f  "
                   "karten %.2f  flip %.2f MB"
@@ -2947,6 +2981,38 @@ def _abschnitt_j(b, fe, S, A, fm):
                   % ((_mb_r + _mb_b + _mb_k) * MS_JE_MB_KOPIE
                      + _mb_f * MS_JE_MB,
                      MS_JE_MB_KOPIE, MS_JE_MB))
+                # BUILD 304: FLAECHE GEGEN WIRKLICH KOPIERT.
+                #
+                # DREI FAELLE, UND SIE BEDEUTEN VERSCHIEDENES - die
+                # erste Fassung dieser Zeile hat zwei davon
+                # verwechselt und bei 0 kopierten Byte "100 % gespart"
+                # geschrieben. Gespart war da nichts: die Vorlage war
+                # gar nicht im Spiel.
+                if _mb_kf > 0.01:
+                    b("     Karten: %.2f MB Flaeche, %.2f MB wirklich"
+                      " kopiert" % (_mb_kf, _mb_k))
+                    if _mb_k < _mb_kf * 0.05:
+                        b("     -> die KARTENVORLAGE (Build 299) kommt")
+                        b("        hier nicht zum Einsatz - die Karte")
+                        b("        wird gefuellt, nicht kopiert. Ein")
+                        b("        Fuellen bewegt N Byte, eine Kopie 2N,")
+                        b("        also ist das NICHT schlechter; es")
+                        b("        heisst nur, dass der Hebel hier")
+                        b("        woanders liegt (Abschnitt K sagt, wo).")
+                    elif _mb_k >= _mb_kf * 0.90:
+                        b("     -> die Vorlage kopiert, und die")
+                        b("        AUSSPARUNG greift NICHT: es werden")
+                        b("        rund so viele Byte bewegt, wie die")
+                        b("        Karte gross ist. Drei Viertel davon")
+                        b("        werden gleich darauf uebermalt -")
+                        b("        nachzusehen waere _kurz und _luecke")
+                        b("        in frontend.py. DAS ist dann der")
+                        b("        groesste einzelne Hebel.")
+                    else:
+                        b("     -> die Vorlage kopiert, und die")
+                        b("        Aussparung greift: %.0f %% der"
+                          % ((1.0 - _mb_k / _mb_kf) * 100.0))
+                        b("        Flaeche werden nicht bewegt.")
                 b("              text %d/%dZeichen  karten %d(+%d innen)"
                   "  beschr %d"
                   % (konto["text_n"] / schritte,
@@ -2957,6 +3023,14 @@ def _abschnitt_j(b, fe, S, A, fm):
     finally:
         K._restore_row_bg = echt_restore
         K.blit = echt_blit
+        if echt_kopierer_j is not None:
+            if "zeilen_kopierer" in _kop_vorher_j:
+                fbo.zeilen_kopierer = _kop_vorher_j["zeilen_kopierer"]
+            else:
+                try:
+                    del fbo.zeilen_kopierer
+                except AttributeError:
+                    pass
         if echt_rect is not None:
             fbo.flip_rechtecke = echt_rect
         fbo.flip_rows = echt_rows
@@ -3694,8 +3768,37 @@ def _abschnitt_k(b, fe, S, A):
             setattr(fbo, n, _haken(n, getattr(fbo, n)))
         if echt_fueller is not None:
             fbo.flaechen_fueller = _haken_fueller
+        # Was vorher IN DER INSTANZ stand (meist nichts) - siehe das
+        # Zurueckstellen unten.
+        _kop_vorher = {}
+        if "zeilen_kopierer" in getattr(fbo, "__dict__", {}):
+            _kop_vorher["zeilen_kopierer"] = fbo.__dict__["zeilen_kopierer"]
         if echt_kopierer is not None:
-            fbo.zeilen_kopierer = staticmethod(_haken_kopierer)
+            # OHNE staticmethod(), UND DAS IST DER FEHLER AUS DEM
+            # BERICHT VOM 31.10. (Build 303, erste Fassung).
+            #
+            # Hier stand staticmethod(_haken_kopierer). Gesetzt wird
+            # aber auf eine INSTANZ, nicht auf die Klasse - und das
+            # Deskriptor-Protokoll, das ein staticmethod-Objekt wieder
+            # zur Funktion macht, laeuft nur bei einem Zugriff ueber
+            # die KLASSE. Im Instanz-Verzeichnis liegt danach das
+            # staticmethod-Objekt selbst.
+            #
+            # AB PYTHON 3.10 IST SO EIN OBJEKT AUFRUFBAR, DAVOR NICHT.
+            # Der Container rechnet mit 3.13, das Geraet mit 3.9.6 -
+            # hier lief es durch, dort stand im Bericht:
+            #
+            #     ABSCHNITT K ABGEBROCHEN: TypeError:
+            #     'staticmethod' object is not callable
+            #
+            # und weil der Wiederherstell-Zweig unten denselben Fehler
+            # machte, blieb die Instanz fuer den REST des Laufs kaputt:
+            # vier von sechs Ansichten in Abschnitt L fielen mit aus.
+            #
+            # Eine Instanz braucht die Funktion blank. Sie wird dort
+            # nicht gebunden, weil das Deskriptor-Protokoll fuer
+            # Eintraege im Instanz-Verzeichnis gar nicht gilt.
+            fbo.zeilen_kopierer = _haken_kopierer
         try:
             t0 = time.monotonic()
             for i in range(schritte):
@@ -3707,7 +3810,19 @@ def _abschnitt_k(b, fe, S, A):
             if echt_fueller is not None:
                 fbo.flaechen_fueller = echt_fueller
             if echt_kopierer is not None:
-                fbo.zeilen_kopierer = staticmethod(echt_kopierer)
+                # ZURUECKSTELLEN HEISST WEGNEHMEN, nicht ueberschreiben:
+                # war es vorher ein Klassenattribut (der Normalfall -
+                # frontend.py setzt es dort), dann soll danach wieder
+                # die Klasse antworten und nicht eine Kopie in der
+                # Instanz. Ein Eintrag im Instanz-Verzeichnis
+                # ueberdeckt die Klasse fuer immer.
+                if "zeilen_kopierer" in _kop_vorher:
+                    fbo.zeilen_kopierer = _kop_vorher["zeilen_kopierer"]
+                else:
+                    try:
+                        del fbo.zeilen_kopierer
+                    except AttributeError:
+                        pass
             aktuell[0] = None
         aufrufe = sum(e[0] for e in konto.values()) / float(schritte)
         summe = sum(e[1] for e in konto.values()) * 1000.0 / schritte

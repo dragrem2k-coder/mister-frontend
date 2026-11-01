@@ -7628,3 +7628,124 @@ eine Ausrede.
   oder, schlimmer, ihn gruen lassen und dabei die falsche Funktion
   pruefen. Das ist wortgleich der Befund aus Build 298. Wer einen
   dieser Tests ohnehin anfasst, stellt ihn bitte auf `koerper()` um.
+
+---
+
+## Nachtrag Build 304 - der Container ist nicht das Geraet
+
+Im Bericht des Nutzers zu Build 303 stand:
+
+```
+ABSCHNITT K ABGEBROCHEN: TypeError: 'staticmethod' object is not callable
+```
+
+Und weil der Wiederherstell-Zweig denselben Fehler machte, blieb die
+Framebuffer-Instanz fuer den **Rest des Laufs** kaputt: vier von sechs
+Ansichten in Abschnitt L fielen mit aus, und Teil 4 - der Beweis, um
+den es in Build 303 ueberhaupt ging - meldete "nicht abfragbar". **Mein
+Fehler, in meiner eigenen neuen Zeile.**
+
+### Was falsch war
+
+```python
+fbo.zeilen_kopierer = staticmethod(_haken_kopierer)   # FALSCH
+fbo.zeilen_kopierer = _haken_kopierer                 # richtig
+```
+
+`staticmethod` ist ein **Deskriptor**, und das Protokoll, das daraus
+wieder eine Funktion macht, laeuft nur bei einem Zugriff ueber die
+**Klasse**. Gesetzt wurde hier auf eine **Instanz** - danach liegt das
+staticmethod-Objekt selbst im Instanz-Verzeichnis.
+
+Die fuenf echten Stellen im Projekt machen es richtig und sehen alle
+so aus:
+
+```python
+Framebuffer.zeilen_kopierer = staticmethod(_c_zeilen_kopieren)
+```
+
+Dazu kam ein zweiter Fehler im Aufraeumen: zurueckgestellt wurde
+wieder **auf die Instanz**, womit ein Eintrag im Instanz-Verzeichnis
+die Klasse dauerhaft ueberdeckte. Jetzt wird der Eintrag **weggenommen**
+(`del`), wenn vorher keiner da war.
+
+### Warum der Test das nicht gefunden hat
+
+`tools/test_bench.py` enthaelt die richtige Pruefung, und zwar schon
+lange:
+
+```python
+check("kein Abschnitt ist abgebrochen", "ABGEBROCHEN" not in text)
+```
+
+Sie war **gruen**. Der Grund:
+
+| | |
+|---|---|
+| Geraet des Nutzers | **Python 3.9.6** (der Bench schreibt es in den Kopf) |
+| Entwicklungscontainer | **Python 3.13** |
+
+**Ab Python 3.10 ist ein staticmethod-Objekt aufrufbar, davor nicht.**
+
+> Ein Test ist nur so gut wie die Maschine, auf der er laeuft.
+
+Das ist dieselbe Sorte Befund wie Build 298 ("gruen aus dem falschen
+Grund"), nur eine Ebene tiefer: dort war die Pruefung falsch gebaut,
+hier ist die **Umgebung** eine andere. Und es ist derselbe Fehler wie
+Build 300, nur in einer anderen Richtung - dort war eine
+Container-MESSUNG kein Beweis fuer das Geraet, hier ist ein
+Container-LAUF keiner.
+
+### Das Tor dagegen: tools/test_python39.py
+
+Vier Pruefungen, und die erste traegt die Hauptlast:
+
+1. **Jede** Datei unter `frontend/` und `tools/` wird mit
+   `ast.parse(quelle, feature_version=(3, 9))` gelesen. Damit lehnt
+   **Python selbst** ab, was es in 3.9 nicht gab - `match/case`,
+   `except*`, und was spaeter dazukommt. Keine Liste, die ich pflegen
+   muss. Durchgezaehlt: 254 Dateien.
+2. Kein `staticmethod(...)` wird an etwas anderes als ein
+   **Klassen**attribut zugewiesen - genau der Fehler oben, und er ist
+   **keine Syntax**, faellt also durch Tor 1.
+3. Eine kurze, benannte Liste von Funktionen, die es in 3.9 noch nicht
+   gab (`itertools.pairwise`, `int.bit_count`, `zip(strict=...)`,
+   `enum.StrEnum`, `itertools.batched`, ...). Bewusst **kurz**:
+   Vollstaendigkeit waere nicht zu pflegen, und eine Liste, die man
+   fuer vollstaendig haelt, ist schlimmer als eine, von der man weiss,
+   dass sie es nicht ist.
+4. Der Bench schreibt die Python-Fassung weiter in den Kopf - **ohne
+   diese Zeile waere der Befund nicht zu finden gewesen.**
+
+**Und die Gegenprobe ist gelaufen:** der Fehler wurde wieder
+eingebaut, der Test wurde rot und nannte Datei und Zeile. Ein Test,
+der nicht fehlschlagen kann, beweist nichts.
+
+### Noch ein eigener Fehler, beim Nachdenken gefunden
+
+Die Byte-Zeile aus Build 303 nannte fuer `Liste liste`
+`karten 2.94 MB`. Daraus wollte ich lesen, ob die Aussparung greift -
+**und das war nicht zu lesen.** Gezaehlt wurde `w * h * 4`, also die
+Flaeche, die die Karte **einnimmt**. Die ist dieselbe, ob gespart wird
+oder nicht.
+
+> Eine Zahl, die bei beiden Antworten gleich aussieht, beantwortet die
+> Frage nicht.
+
+Jetzt stehen beide da - Flaeche und die Bytes, die der Zeilenkopierer
+im Auftrag der Karte wirklich bewegt hat. Und die Deutung unterscheidet
+**drei** Faelle, denn die erste Fassung hat zwei davon verwechselt und
+bei 0 kopierten Byte "100 % gespart" geschrieben:
+
+| kopiert | heisst |
+|---|---|
+| ~0 | die Vorlage ist gar nicht im Spiel - die Karte wird **gefuellt**. Nicht schlechter (ein Fuellen bewegt N Byte, eine Kopie 2N), nur ein anderer Hebel. |
+| ~Flaeche | die Vorlage kopiert, die **Aussparung greift nicht** - das ist dann der groesste einzelne Hebel. |
+| deutlich darunter | die Aussparung greift, und der Bericht nennt die Quote. |
+
+### Neue und geaenderte Pruefungen
+
+* **neu** `tools/test_python39.py` - siehe oben.
+* **geaendert** `frontend/fe/bench.py` - der Haken ohne
+  `staticmethod()`, das Aufraeumen mit `del`, und Abschnitt J mit
+  Flaeche **und** kopierten Byte.

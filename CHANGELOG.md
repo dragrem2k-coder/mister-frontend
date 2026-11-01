@@ -13,6 +13,45 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Behoben: ein Fehler von mir hat zwei Mess-Abschnitte des Benchs
+  umgeworfen.** Im Bericht stand `ABSCHNITT K ABGEBROCHEN: TypeError:
+  'staticmethod' object is not callable` — und weil der
+  Wiederherstell-Zweig denselben Fehler machte, blieb die Zeichenfläche
+  für den **Rest des Laufs** kaputt: vier von sechs Ansichten in
+  Abschnitt L fielen mit aus, und Teil 4 — der Beweis, um den es in
+  Build 303 ging — meldete „nicht abfragbar". Ursache: ich habe eine
+  Hilfsfunktion als `staticmethod` auf eine **Instanz** gesetzt statt
+  blank; das Protokoll, das daraus wieder eine Funktion macht, läuft
+  nur über die Klasse. Behoben, und das Zurückstellen nimmt den
+  Eintrag jetzt **weg** statt ihn zu überschreiben (Build 304).
+- **Und warum mein Test das nicht gefunden hat.** `test_bench.py`
+  enthält die richtige Prüfung („kein Abschnitt ist abgebrochen") und
+  war **grün**. Der Grund liegt nicht im Test: das Gerät rechnet mit
+  **Python 3.9.6**, der Entwicklungscontainer mit **3.13** — und ab
+  3.10 ist so ein Objekt aufrufbar. *Ein Test ist nur so gut wie die
+  Maschine, auf der er läuft.* Dagegen gibt es jetzt ein Tor: jede der
+  254 Python-Dateien wird gegen die Sprachfassung **3.9** gelesen, kein
+  `staticmethod` darf auf etwas anderes als eine Klasse gesetzt werden,
+  und eine kurze benannte Liste von Funktionen, die es in 3.9 noch
+  nicht gab, ist gesperrt. Die Gegenprobe ist gelaufen — mit dem
+  wieder eingebauten Fehler wird der Test rot und nennt Datei und
+  Zeile (Build 304).
+- **Noch ein eigener Fehler, beim Nachdenken gefunden.** Die neue
+  Byte-Zeile nannte für die Listenansicht `karten 2,94 MB` — und daraus
+  war die Frage, um die es ging, *nicht* zu beantworten: gezählt wurde
+  die Fläche, die die Karte einnimmt, und die ist dieselbe, ob gespart
+  wird oder nicht. Eine Zahl, die bei beiden Antworten gleich aussieht,
+  beantwortet die Frage nicht. Jetzt stehen Fläche **und** die wirklich
+  bewegten Bytes da, und der Bericht unterscheidet drei Fälle — denn
+  die erste Fassung hat bei 0 bewegten Bytes „100 % gespart"
+  geschrieben, und gespart war da nichts (Build 304).
+- **Der Start ist messbar schneller geworden.** Zur Kontrolle, aus
+  seinem Bericht: **1825 → 1498 ms** (−18 %), und der Vorlauf sagt es
+  selbst: *„Vorlauf gelaufen 533 ms, davon der Start noch abgewartet
+  0 ms — 533 der 533 ms hat die F9-Frist getragen (100 %)"*. Das
+  Einlesen der Spieleliste fiel von 538 auf 185 ms (Build 303,
+  bestätigt am Gerät).
+
 - **Der Start ist schneller: das Einlesen läuft jetzt während einer
   Wartezeit, in der vorher nichts geschah.** Aus dem Bericht eines
   Nutzers: `F9 eingespeist 218 ms` und `Restfrist für MiSTer

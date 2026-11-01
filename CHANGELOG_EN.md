@@ -13,6 +13,41 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **Fixed: a mistake of mine knocked out two measurement sections of
+  the bench.** The report read `SECTION K ABORTED: TypeError:
+  'staticmethod' object is not callable` — and because the restore
+  branch made the same mistake, the drawing surface stayed broken for
+  the **rest of the run**: four of six views in section L went down
+  with it, and part 4 — the very proof build 303 was about — reported
+  "not queryable". Cause: I assigned a helper as a `staticmethod` to an
+  **instance** instead of plain; the protocol that turns it back into a
+  function only runs via the class. Fixed, and the restore now
+  **removes** the entry instead of overwriting it (build 304).
+- **And why my test did not catch it.** `test_bench.py` contains the
+  right check ("no section was aborted") and it was **green**. The
+  reason is not in the test: the device runs **Python 3.9.6**, the
+  development container **3.13** — and from 3.10 on such an object is
+  callable. *A test is only as good as the machine it runs on.* There
+  is a gate against it now: each of the 254 Python files is parsed
+  against language version **3.9**, no `staticmethod` may be assigned
+  to anything but a class, and a short named list of functions that did
+  not exist in 3.9 is blocked. The counter-check was run — with the bug
+  put back, the test goes red and names file and line (build 304).
+- **Another mistake of my own, found by thinking it through.** The new
+  byte line reported `cards 2.94 MB` for the list view — and the
+  question at issue could *not* be answered from it: what was counted
+  was the area the card occupies, which is the same whether or not
+  anything is saved. A number that looks the same under both answers
+  does not answer the question. Area **and** actually moved bytes are
+  both printed now, and the report distinguishes three cases — because
+  the first version wrote "100 % saved" at 0 bytes moved, and nothing
+  was saved there (build 304).
+- **Startup got measurably faster.** For the record, from his report:
+  **1825 → 1498 ms** (−18 %), and the prefetch states it itself:
+  *"prefetch ran 533 ms, of which startup still waited 0 ms — 533 of
+  533 ms were carried by the F9 deadline (100 %)"*. Reading the game
+  list dropped from 538 to 185 ms (build 303, confirmed on the device).
+
 - **Startup is faster: reading the game list now runs during a wait in
   which nothing used to happen.** From a user's report: `F9 injected
   218 ms` and `remainder of the MiSTer deadline waited out 247 ms` —
