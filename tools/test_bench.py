@@ -112,6 +112,57 @@ check("kein Abschnitt ist abgebrochen",
 check("keine FEHLER-Zeile im Bericht",
       "FEHLER" not in text,
       [z for z in text.splitlines() if "FEHLER" in z][:2])
+check("kein Abschnitt wurde wegen eines TypeError uebersprungen",
+      "(TypeError)" not in text,
+      [z for z in text.splitlines() if "(TypeError)" in z][:2])
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 1b: der Bench haengt seine Haken sauber wieder aus")
+# ---------------------------------------------------------------------------
+# DER FEHLER AUS BUILD 303/304, UND ER WAR TEUER. Abschnitt K hat
+# einen Haken auf den Zeilenkopierer gesetzt und ihn FALSCH
+# zurueckgestellt - danach war die Framebuffer-Instanz fuer den REST
+# des Laufs kaputt: vier von sechs Ansichten in Abschnitt L fielen mit
+# aus, und Teil 4 meldete "nicht abfragbar".
+#
+# Dass der Bench einen Abschnitt verliert, ist verkraftbar (so ist er
+# gebaut). Dass er dabei das MESSOBJEKT beschaedigt, ist es nicht -
+# und genau das sieht man am Bericht nicht, weil die folgenden
+# Abschnitte nur "uebersprungen" melden.
+#
+# GEPRUEFT WIRD DESHALB AM OBJEKT, nicht am Text: nach dem Lauf muss
+# jede eingehakte Stelle wieder die Originalfunktion sein, und eine
+# Karte muss sich noch zeichnen lassen.
+from fe.framebuffer import Framebuffer as _FBK                # noqa: E402
+_ORIG = {}
+for _n in ("_karte_vorlage", "_karte_teile", "_karte_aus_vorlage",
+           "karte_mit_schatten", "blit", "_restore_row_bg"):
+    _ORIG[_n] = getattr(_FBK, _n, None) or getattr(
+        type(H.make_frontend(page=0)), _n, None)
+_fe_nach = H.make_frontend(page=0)
+_text2 = lauf(_fe_nach)
+_haengen = []
+for _n in ("_karte_vorlage", "_karte_teile", "_karte_aus_vorlage",
+           "karte_mit_schatten"):
+    _jetzt = getattr(_FBK, _n, None)
+    if _ORIG.get(_n) is not None and _jetzt is not _ORIG[_n]:
+        _haengen.append(_n)
+check("keine Hilfsfunktion der Karte bleibt eingehakt", not _haengen,
+      "%r" % (_haengen,) if _haengen else
+      "geprueft am Objekt, nicht am Bericht")
+check("der Zeilenkopierer liegt wieder bei der Klasse",
+      "zeilen_kopierer" not in getattr(_fe_nach.fb, "__dict__", {}),
+      "ein Eintrag im Instanz-Verzeichnis ueberdeckt die Klasse fuer "
+      "immer - genau das war der zweite Teil des Fehlers aus Build 303")
+# UND DIE GEGENPROBE AM VERHALTEN: eine Karte muss sich zeichnen
+# lassen, und zwar durch die Vorlage (Build 299). Nur so faellt auch
+# ein Haken auf, der zwar "gleich aussieht", aber nicht mehr tut.
+_fe_nach.fb.clear((16, 18, 24))
+_vor_eintrag = _fe_nach.fb._karte_vorlage(
+    100, 100, 378, 492, 9, (32, 36, 46), (8, 9, 12), 12, (16, 18, 24))
+check("und die Kartenvorlage arbeitet noch", _vor_eintrag is not None,
+      "sonst waere sie still ausgefallen und die Karte nur langsamer")
 
 # ---------------------------------------------------------------------------
 print()

@@ -13,6 +13,44 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Behoben: die Galerie hat die Cover-Aussparung nie benutzt — null
+  von zwanzig Schritten.** Abschnitt K lief in Bench 18 zum ersten Mal
+  vollständig und sagt es wörtlich: *„mit Aussparung gerufen 0 von 20
+  mal"*. Und die Ursache ist kein Grund, sondern eine **Reihenfolge**:
+  die Karte wurde gezeichnet, und *danach* wurde das Cover geholt. Wer
+  noch nicht weiß, wo das Cover hinkommt, kann seine Fläche nicht
+  aussparen. Genau diesen Tausch hat **Build 234** für die
+  Boxart-Spalte schon gemacht — in der Galerie blieb er aus, und weil
+  die Aussparung dort nie griff, ist auch nie aufgefallen, dass sie
+  fehlt. Jetzt in beiden Galerien (Spiele und Kategorien) behoben:
+  gemessen **0,51 MB weniger je Karte = 1,31 ms** auf seinem Gerät, und
+  die Ersparnis ist genau die Cover-Fläche — nicht mehr. **Das Bild ist
+  bitgenau dasselbe**, verglichen über 8.294.400 Byte, nicht behauptet
+  (Build 305).
+- **Richtigstellung zu Build 303.** Dort stand, die Karte hänge an der
+  Speicherbandbreite und es gäbe nur einen Hebel: weniger Byte. Für die
+  **Listenansicht** ist das falsch. Dort greift die Aussparung in
+  *jedem* Schritt (20 von 20), und dann erklären die Bytes nur **38 %**
+  der Kosten: 9,63 ms gemessen gegen 3,65 ms, die die 1,06 MB erklären.
+  Richtig war die Vermutung nur für den Fall ohne Aussparung — und den
+  hat derselbe Abschnitt gleich daneben gefunden (Build 305).
+- **Bench 19.** Abschnitt K zerlegt die fehlenden 6 ms mit demselben
+  Werkzeug, mit dem Build 270 schon einmal eine solche Lücke geklärt
+  hat: Zeit im Anlegen der Kartenvorlage (und **wie oft** sie neu
+  gebaut statt gefunden wird), Zeit im Zerteilen, und der Rest in
+  Python. Der erste Verdächtige ist das Zerteilen — es wird nach der
+  Cover-Größe zwischengespeichert, und die wechselt von Spiel zu Spiel.
+  **Nicht geraten, nicht gebaut**: der nächste Bericht sagt, welcher
+  der drei es ist (Build 305).
+- **Und zwei Prüfungen gegen den Fehler aus Build 304.** Dass der Bench
+  einen Abschnitt verliert, ist verkraftbar — so ist er gebaut. Dass er
+  dabei das Messobjekt beschädigt, ist es nicht, und genau das sieht man
+  am Bericht nicht: die folgenden Abschnitte melden nur „übersprungen".
+  Geprüft wird jetzt **am Objekt statt am Text** — nach dem Lauf muss
+  jede eingehängte Hilfsfunktion wieder die Originalfunktion sein, und
+  eine Karte muss sich noch zeichnen lassen. Gegenprobe gelaufen: mit
+  dem wieder eingebauten Fehler wird die Prüfung rot (Build 305).
+
 - **Behoben: ein Fehler von mir hat zwei Mess-Abschnitte des Benchs
   umgeworfen.** Im Bericht stand `ABSCHNITT K ABGEBROCHEN: TypeError:
   'staticmethod' object is not callable` — und weil der

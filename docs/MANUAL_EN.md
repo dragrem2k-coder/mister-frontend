@@ -1613,6 +1613,18 @@ page jumps, and the limit is not the device but you: anyone paging
 more than four times a second can no longer read where they landed.
 Faster hardware changes nothing about that.
 
+**Since build 305 the gallery leaves out the cover's area.** Behind
+every cover sits a card with a shadow, and until now it was filled
+completely — including where the cover covers it again a moment later.
+That was not a mistake in the arithmetic but an order: the card was
+drawn *before* it was known where the cover goes. For the large boxart
+column that swap had been made back in build 234; in the gallery it
+never was — and because the saving never applied there, nobody ever
+noticed it was missing. Measured, that is **0.5 MB less per card**, or
+about 1.3 ms per step on one measured device. The image is byte-for-byte
+identical; that is not established by reasoning but by a comparison
+across 8,294,400 pixels.
+
 **And the rhythm got steadier (build 302).** What mattered so far was
 a rolling average. An average is the wrong quantity for this question:
 what is wanted is not the mean but the deadline by which a step is

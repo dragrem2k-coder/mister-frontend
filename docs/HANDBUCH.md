@@ -1907,6 +1907,19 @@ springt eine ganze Seite, und die Grenze ist nicht das Gerät, sondern
 du: wer mehr als vier Seiten je Sekunde weiterspringt, kann nicht mehr
 lesen, wo er gelandet ist. Schnellere Hardware ändert daran nichts.
 
+**Die Galerie spart seit Build 305 die Cover-Fläche aus.** Hinter
+jedem Cover liegt eine Karte mit Schatten, und die wurde bisher ganz
+gefüllt — auch dort, wo das Cover sie im nächsten Atemzug wieder
+überdeckt. Das war kein Versehen in der Rechnung, sondern eine
+Reihenfolge: die Karte wurde gezeichnet, *bevor* feststand, wo das
+Cover hinkommt. Für die große Boxart-Spalte war das schon seit
+Build 234 getauscht, in der Galerie nicht — und weil die Ersparnis
+dort nie griff, ist auch nie aufgefallen, dass sie fehlt. Gemessen
+sind das **0,5 MB weniger je Karte**, auf einem gemessenen Gerät rund
+1,3 ms je Schritt. Das Bild ist dabei bitgenau dasselbe; nachgewiesen
+wird das nicht durch Nachdenken, sondern durch einen Vergleich über
+8.294.400 Bildpunkte.
+
 **Und der Takt ist ruhiger geworden (Build 302).** Maßgeblich war
 bisher ein gleitender Mittelwert. Ein Mittelwert ist für diese Frage
 die falsche Größe: gesucht ist nicht der Durchschnitt, sondern die

@@ -9683,11 +9683,53 @@ class Frontend:
             self._restore_row_bg(gx - pad - 4 * s, oben - pad - 4 * s,
                                  gb + 2 * pad + 8 * s,
                                  gh + 2 * pad + 8 * s)
+        # BUILD 305: DAS COVER ZUERST HOLEN, DANN DIE KARTE ZEICHNEN.
+        #
+        # DER BEFUND KOMMT AUS ABSCHNITT K seines Berichts vom 01.11.
+        # (Bench 18, Build 304), und er ist dort schwarz auf weiss:
+        #
+        #     Liste galerie  karte_mit_schatten 378x492   3.630 ms
+        #       C-ZEILENKOPIERER: 1.0 Aufrufe, 501 Zeilen, 0.74 MB
+        #       mit Aussparung gerufen       0 von 20 mal
+        #
+        # NULL VON ZWANZIG. Die Galerie hat die Aussparung aus
+        # Build 234/238 nie benutzt - und zwar nicht aus einem Grund,
+        # sondern aus einer REIHENFOLGE: die Karte wurde gezeichnet,
+        # und DANACH wurde das Cover geholt. Wer noch nicht weiss, wo
+        # das Cover hinkommt, kann seine Flaeche nicht aussparen.
+        #
+        # Genau diesen Tausch hat Build 234 fuer die Boxart-Spalte
+        # schon gemacht; dort steht im Quelltext "VERSCHOBEN (Build
+        # 234): die Karte wird erst gezeichnet, wenn feststeht, WO das
+        # Cover hinkommt". In der Galerie blieb er aus, und weil die
+        # Aussparung dort nie griff, ist es auch niemandem aufgefallen.
+        #
+        # AUSGESPART WIRD NUR, WAS SICHER VERDECKT WIRD - dieselbe
+        # Bedingung wie in der Boxart-Spalte: das Cover liegt im
+        # Speicher, und self.blit() schreibt genau dieses Rechteck
+        # ganz. blit() kuerzt die Zeilenzahl, wenn die Quelle zu kurz
+        # ist; dann bliebe hier ein Streifen Hintergrund stehen.
+        # Im Zweifel wird voll gefuellt, wie bisher.
+        #
+        # Die beiden Akzentbalken darueber und darunter liegen
+        # AUSSERHALB des Cover-Rechtecks und werden nach der Karte
+        # gezeichnet - sie sind von der Aussparung nicht beruehrt.
+        art, verzoegert = self._ansicht_cover(item, syskey, gb, gh)
+        _g_luecke = None
+        if art:
+            _aw0, _ah0, _pix0 = art
+            _ax0 = gx + max(0, (gb - _aw0) // 2)
+            _ay0 = oben + max(0, (gh - _ah0) // 2)
+            if (_aw0 > 0 and _ah0 > 0
+                    and len(_pix0) >= (_ah0 - 1) * _aw0 * 4 + _aw0 * 4
+                    and _ax0 + _aw0 <= fb.width
+                    and _ay0 + _ah0 <= fb.height):
+                _g_luecke = (_ax0, _ay0, _aw0, _ah0)
         fb.karte_mit_schatten(gx - pad, oben - pad, gb + 2 * pad,
                               gh + 2 * pad, 3 * s, C_PANEL,
                               fb._darken(C_BG, 0.55), 4 * s,
+                              aussparen=_g_luecke,
                               hintergrund_rgb=C_BG)
-        art, verzoegert = self._ansicht_cover(item, syskey, gb, gh)
         if art:
             aw, ah, pix = art
             ax = gx + max(0, (gb - aw) // 2)
@@ -10077,11 +10119,25 @@ class Frontend:
             self._restore_row_bg(gx - pad - 4 * s, oben - pad - 4 * s,
                                  gb + 2 * pad + 8 * s,
                                  gh + 2 * pad + 8 * s)
+        # BUILD 305: dasselbe wie bei den Spielen eine Funktion
+        # darueber - Cover zuerst holen, dann die Karte mit der
+        # Aussparung zeichnen. Die lange Begruendung steht dort.
+        art, verzoegert = self._kat_logo(self.cat_i, gb, gh)
+        _g_luecke = None
+        if art:
+            _aw0, _ah0, _pix0 = art
+            _ax0 = gx + max(0, (gb - _aw0) // 2)
+            _ay0 = oben + max(0, (gh - _ah0) // 2)
+            if (_aw0 > 0 and _ah0 > 0
+                    and len(_pix0) >= (_ah0 - 1) * _aw0 * 4 + _aw0 * 4
+                    and _ax0 + _aw0 <= fb.width
+                    and _ay0 + _ah0 <= fb.height):
+                _g_luecke = (_ax0, _ay0, _aw0, _ah0)
         fb.karte_mit_schatten(gx - pad, oben - pad, gb + 2 * pad,
                               gh + 2 * pad, 3 * s, C_PANEL,
                               fb._darken(C_BG, 0.55), 4 * s,
+                              aussparen=_g_luecke,
                               hintergrund_rgb=C_BG)
-        art, verzoegert = self._kat_logo(self.cat_i, gb, gh)
         if art:
             aw, ah, pix = art
             ax = gx + max(0, (gb - aw) // 2)

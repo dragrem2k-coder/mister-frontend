@@ -7749,3 +7749,181 @@ bei 0 kopierten Byte "100 % gespart" geschrieben:
 * **geaendert** `frontend/fe/bench.py` - der Haken ohne
   `staticmethod()`, das Aufraeumen mit `del`, und Abschnitt J mit
   Flaeche **und** kopierten Byte.
+
+---
+
+## Nachtrag Build 305 - null von zwanzig
+
+Abschnitt K lief in Bench 18 zum ersten Mal mit eingehaktem
+Zeilenkopierer, und er hat zwei Dinge gesagt, die beide Builds vorher
+nur vermutet hatten.
+
+### Was Build 303 vermutet hat, und was davon falsch war
+
+Build 303 schrieb: *"die Karte haengt an der Speicherbandbreite, nicht
+an einem langsamen Weg. Damit gibt es genau einen Hebel: weniger
+Byte."* Aus seinem Bericht:
+
+```
+Liste liste    karte_mit_schatten 769x945            9.628 ms
+  C-ZEILENKOPIERER: 4.0 Aufrufe, 1626 Zeilen, 1.06 MB
+  Modell daraus (2.55 ms/MB Kopie)                   3.65 ms
+  gemessen                                           9.63 ms
+  ungeklaert                                         5.98 ms
+  mit Aussparung gerufen       20 von 20 mal
+```
+
+**Die Aussparung greift in der Liste in JEDEM Schritt** - und dann
+erklaeren die Bytes nur **38 Prozent** der Kosten. Die Vermutung aus
+Build 303 war fuer die Listenansicht also falsch; dort liegt der
+Hebel nicht bei den Byte.
+
+Richtig war sie fuer den Fall OHNE Aussparung - und genau den hat
+derselbe Abschnitt gleich daneben gefunden.
+
+### Null von zwanzig
+
+```
+Liste galerie  karte_mit_schatten 378x492            3.630 ms
+  C-ZEILENKOPIERER: 1.0 Aufrufe, 501 Zeilen, 0.74 MB
+  mit Aussparung gerufen       0 von 20 mal
+```
+
+Und dasselbe in `Haupt galerie` (Abschnitt J: *"die AUSSPARUNG greift
+NICHT"*). **Die Galerie hat die Aussparung aus Build 234/238 nie
+benutzt** - und zwar nicht aus einem Grund, sondern aus einer
+**Reihenfolge**:
+
+```python
+fb.karte_mit_schatten(...)                    # erst die Karte
+art, verzoegert = self._ansicht_cover(...)    # dann das Cover holen
+```
+
+Wer noch nicht weiss, wo das Cover hinkommt, kann seine Flaeche nicht
+aussparen. Genau diesen Tausch hat **Build 234** fuer die
+Boxart-Spalte schon gemacht; im Quelltext steht dort bis heute
+*"VERSCHOBEN (Build 234): die Karte wird erst gezeichnet, wenn
+feststeht, WO das Cover hinkommt"*. In der Galerie blieb er aus.
+
+> Weil die Aussparung dort nie griff, ist auch nie aufgefallen, dass
+> sie fehlt.
+
+Behoben in beiden Galerien (Spiele und Kategorien). Gemessen in
+Bytes, umgerechnet mit **seinem** Wert (2,55 ms je MB):
+
+```
+mit Aussparung    0.97 MB
+ohne Aussparung   1.48 MB
+gespart           0.51 MB  = 1.31 ms je Karte auf seinem Geraet
+```
+
+Die Ersparnis ist **genau die Cover-Flaeche** (537.600 Byte) - nicht
+mehr, nicht weniger. Mehr auszusparen als verdeckt wird, waere der
+Fehler.
+
+### Der Nachweis ist ein Byte-Vergleich, keine Behauptung
+
+`tools/test_galerie_aussparung.py` zeichnet dieselbe Galerieseite
+zweimal - einmal mit, einmal mit erzwungen abgeschalteter Aussparung -
+und vergleicht **8.294.400 Byte**. Sie sind gleich.
+
+Das ist die ganze Zusage der Aussparung, und dieses Projekt hat
+dreimal Reste in Ecken gejagt, die kleiner waren als ein Streifen: in
+Build 299 waren es **69 Byte** an einer unteren Kartenecke, und
+gefunden hat sie genau so ein Vergleich.
+
+**Der Test schiebt ein Cover unter**, und das ist der Grund, warum die
+Untersuchung in Build 303 noch gescheitert ist (*"im Container nicht
+zu entscheiden"*): `tools/_harness.py` hat keine Artwork-Dateien, also
+liefert `_ansicht_cover()` dort nichts, also wird die Aussparung gar
+nicht berechnet - und zwei Laeufe ohne Cover vergliechen zweimal
+denselben Weg. Das erzeugte Cover hat **wechselnde Farbwerte**, damit
+ein nicht uebermalter Streifen auffaellt und nicht zufaellig die Farbe
+der Karte darunter traegt.
+
+Dazu Test 4, und der ist der wichtigere Teil: **ohne Cover wird nicht
+ausgespart.** Das ist der Scroll-Fall - wird das Cover uebersprungen
+(Build 244), steht in dem Kasten nichts, was die Karte verdecken
+wuerde.
+
+### Und die sechs Millisekunden, die noch fehlen
+
+Fuer die Listenansicht bleibt der Befund offen: 9,63 ms gemessen,
+3,65 ms durch Bytes erklaert. Abschnitt K zerlegt das jetzt mit
+**demselben Werkzeug wie Build 270**, der bei `rect_viele` genau diese
+Frage geklaert hat (*"im C-Fueller selbst"* gegen *"davor in
+Python"*). Eingehakt sind die zwei Stellen, an denen die Vorlage
+arbeitet:
+
+* `_karte_vorlage()` - anlegen **oder** im Zwischenspeicher finden.
+  Gezaehlt wird der Neubau daran, dass der Vorlagenspeicher gewachsen
+  ist, nicht an einer Uhr. Ein Neubau rendert die ganze Karte samt
+  Schattenringen; passiert das auch nur jeden zwanzigsten Schritt,
+  steht es im Mittel.
+* `_karte_teile()` - die bis zu vier Scheiben je Aussparung,
+  zwischengespeichert nach `lueck_rel`. **Die Cover-Groesse wechselt
+  von Spiel zu Spiel**, also kann dieser Speicher bei jedem Schritt
+  daneben liegen. Das ist der erste Verdaechtige.
+
+Und darunter "Rest in Python". Ist der der groesste Posten, hilft kein
+kleineres Rechteck - dann ist die Vorbereitung teuer.
+
+**Nicht geraten, nicht gebaut.** Der naechste Bericht sagt, welcher
+der drei es ist.
+
+### Was im Container nicht zu pruefen war - und was stattdessen geprueft wurde
+
+Im Bench des Containers kommt die Kartenvorlage nicht zum Einsatz (der
+Hintergrund liegt dort nicht im `_rowcache`), die neue Aufteilung
+zeigt also nichts. Nach Build 304 wollte ich das nicht ungeprueft
+ausliefern.
+
+Geprueft wurde deshalb das, was dort zu pruefen ist - und zwar durch
+**Aufrufen**, nicht durch Nachdenken: die Haken werden mit 9
+Argumenten korrekt gebunden, und nach dem Aushaengen arbeitet
+`_karte_vorlage()` weiter.
+
+### Die Regel von beiden Seiten
+
+Beim Schreiben des neuen Tests lief mir der **umgekehrte** Fehler aus
+Build 304 in die Hand:
+
+```
+TypeError: _kop() takes 8 positional arguments but 9 were given
+```
+
+| | |
+|---|---|
+| Build 304 | `staticmethod` auf eine **Instanz** -> auf Python 3.9 nicht aufrufbar |
+| Build 305 | **ohne** `staticmethod` auf die **Klasse** -> Python schiebt `self` davor |
+
+Dieselbe Regel, zweimal verfehlt: das Deskriptor-Protokoll laeuft bei
+**Klassen**zugriffen, nicht bei Instanzzugriffen. Auf der Klasse MUSS
+`staticmethod` stehen, auf einer Instanz DARF es nicht.
+
+### Und ein Tor gegen den Build-304-Fehler
+
+`tools/test_bench.py` hat zwei Pruefungen dazubekommen, und sie
+sichern das, was am **Bericht** nicht zu sehen ist:
+
+1. kein Abschnitt wurde wegen eines `TypeError` uebersprungen - im
+   Bericht vom 31.10. standen genau so vier Ansichten,
+2. **Test 1b, geprueft am Objekt statt am Text:** nach dem Lauf muss
+   jede eingehakte Hilfsfunktion wieder die Originalfunktion sein, im
+   Instanz-Verzeichnis darf kein `zeilen_kopierer` liegen, und eine
+   Karte muss sich noch ueber die Vorlage zeichnen lassen.
+
+Dass der Bench einen Abschnitt verliert, ist verkraftbar - so ist er
+gebaut. Dass er dabei das **Messobjekt beschaedigt**, ist es nicht,
+und genau das sieht man am Bericht nicht: die folgenden Abschnitte
+melden nur "uebersprungen".
+
+**Gegenprobe gelaufen:** der Fehler aus Build 303 wurde wieder
+eingebaut, Test 1b wurde rot.
+
+### Neue und geaenderte Pruefungen
+
+* **neu** `tools/test_galerie_aussparung.py` - 11 Pruefungen, darunter
+  der Byte-Vergleich ueber 8.294.400 Byte.
+* **geaendert** `tools/test_bench.py` - Test 1b und die
+  TypeError-Zeile.

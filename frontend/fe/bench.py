@@ -71,7 +71,7 @@ import zlib
 # Zustand der zuletzt gesetzten Ansicht) und hat einen Teil 4 fuer die
 # Hintergrundarbeit. Zwei Berichte mit derselben Nummer muessen
 # vergleichbar sein - also neue Nummer.
-BENCH_VERSION = 18
+BENCH_VERSION = 19
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -3645,6 +3645,9 @@ def _abschnitt_k(b, fe, S, A):
     kopiert = {}
     # BUILD 303: je Kartenmass, wie oft mit Aussparung gerufen.
     aussparung = {}
+    # BUILD 305: die Innereien der Kartenvorlage - Bau gegen Treffer.
+    vorlage = {}
+    teile = {}
 
     def _haken(name, echt):
         def ersatz(*a, **k):
@@ -3743,6 +3746,67 @@ def _abschnitt_k(b, fe, S, A):
         return echt_kopierer(ziel, zstride, quelle, qstride, zx, zy,
                              bb, hh)
 
+    # BUILD 305: WO STECKEN DIE SECHS MILLISEKUNDEN?
+    #
+    # Aus Abschnitt K seines Berichts vom 01.11. (Bench 18):
+    #
+    #     karte_mit_schatten 769x945                 9.628 ms
+    #       C-ZEILENKOPIERER: 4.0 Aufrufe, 1626 Zeilen, 1.06 MB
+    #       Modell daraus (2.55 ms/MB Kopie)         3.65 ms
+    #       gemessen                                 9.63 ms
+    #       ungeklaert                               5.98 ms
+    #       mit Aussparung gerufen       20 von 20 mal
+    #
+    # DAS WIDERLEGT, WAS BUILD 303 VERMUTET HAT. Dort stand "die Karte
+    # haengt an der Speicherbandbreite" - mit greifender Aussparung
+    # erklaeren die Bytes aber nur 38 Prozent. Die restlichen 6 ms
+    # sind etwas anderes, und ohne sie zu benennen waere jede weitere
+    # Aenderung geraten.
+    #
+    # DASSELBE WERKZEUG WIE BUILD 270, der bei rect_viele genau diese
+    # Frage geklaert hat ("im C-Fueller selbst" gegen "davor in
+    # Python"). Eingehakt werden die zwei Stellen, an denen die
+    # Vorlage arbeitet:
+    #   _karte_vorlage - anlegen ODER im Zwischenspeicher finden. Ein
+    #     Neubau rendert die ganze Karte samt Schattenringen; passiert
+    #     das auch nur jeden zwanzigsten Schritt, steht es im Mittel.
+    #   _karte_teile   - die bis zu vier Scheiben je Aussparung,
+    #     zwischengespeichert nach lueck_rel. Die Cover-Groesse
+    #     wechselt von Spiel zu Spiel, also kann dieser Speicher bei
+    #     JEDEM Schritt daneben liegen.
+    #
+    # Gezaehlt wird der NEUBAU daran, dass der Vorlagenspeicher
+    # gewachsen ist - nicht an einer Uhr und nicht an einer Vermutung.
+    echt_vorlage = getattr(fbo.__class__, "_karte_vorlage", None)
+    echt_teile = getattr(fbo.__class__, "_karte_teile", None)
+
+    def _haken_vorlage(self, *a, **k):
+        wer = aktuell[0]
+        if wer is None:
+            return echt_vorlage(self, *a, **k)
+        _vor = len(getattr(self, "_kartenvorlagen", None) or ())
+        _t = time.monotonic()
+        try:
+            return echt_vorlage(self, *a, **k)
+        finally:
+            e = vorlage.setdefault(wer, [0, 0, 0.0])
+            e[0] += 1
+            if len(getattr(self, "_kartenvorlagen", None) or ()) > _vor:
+                e[1] += 1
+            e[2] += time.monotonic() - _t
+
+    def _haken_teile(self, *a, **k):
+        wer = aktuell[0]
+        if wer is None:
+            return echt_teile(self, *a, **k)
+        _t = time.monotonic()
+        try:
+            return echt_teile(self, *a, **k)
+        finally:
+            e = teile.setdefault(wer, [0, 0.0])
+            e[0] += 1
+            e[1] += time.monotonic() - _t
+
     def _durchgang(ansicht, titel):
         """Eine Ansicht einmal durchmessen und berichten. Gibt False
         zurueck, wenn die Ansicht uebersprungen wurde."""
@@ -3763,6 +3827,8 @@ def _abschnitt_k(b, fe, S, A):
         innen.clear()
         kopiert.clear()
         aussparung.clear()
+        vorlage.clear()
+        teile.clear()
         aktuell[0] = None
         for n, _e in echte:
             setattr(fbo, n, _haken(n, getattr(fbo, n)))
@@ -3809,6 +3875,10 @@ def _abschnitt_k(b, fe, S, A):
                 setattr(fbo, n, _e)
             if echt_fueller is not None:
                 fbo.flaechen_fueller = echt_fueller
+            if echt_vorlage is not None:
+                fbo.__class__._karte_vorlage = echt_vorlage
+            if echt_teile is not None:
+                fbo.__class__._karte_teile = echt_teile
             if echt_kopierer is not None:
                 # ZURUECKSTELLEN HEISST WEGNEHMEN, nicht ueberschreiben:
                 # war es vorher ein Klassenattribut (der Normalfall -
@@ -3867,6 +3937,39 @@ def _abschnitt_k(b, fe, S, A):
                 b("        an der Speicherbandbreite - dann hilft kein")
                 b("        schnellerer Weg, nur WENIGER BYTE, also die")
                 b("        Aussparung (Build 234/244):")
+                # BUILD 305: DIE AUFTEILUNG DER UNGEKLAERTEN ZEIT.
+                _v = vorlage.get((gname, gmasse))
+                _t = teile.get((gname, gmasse))
+                _kop_ms = None
+                if _v or _t:
+                    b("        AUFGETEILT (Build 305):")
+                    _v_ms = (_v[2] * 1000.0 / schritte) if _v else 0.0
+                    _t_ms = (_t[1] * 1000.0 / schritte) if _t else 0.0
+                    if _v:
+                        b("          Vorlage: %.1f Aufrufe, davon %.2f NEU"
+                          % (_v[0] / float(schritte),
+                             _v[1] / float(schritte)))
+                        b("          Zeit in _karte_vorlage()      %6.2f ms"
+                          % _v_ms)
+                        if _v[1] >= _v[0] * 0.5:
+                            b("          -> die Vorlage wird fast JEDEN")
+                            b("             Schritt neu gebaut. Dann ist")
+                            b("             der Zwischenspeicher die")
+                            b("             Ursache, nicht die Kopie;")
+                            b("             nachzusehen waere der")
+                            b("             Schluessel in _karte_vorlage().")
+                    if _t:
+                        b("          Zeit in _karte_teile()        %6.2f ms"
+                          % _t_ms)
+                    _rest_py = gms - _mod_k - _v_ms - _t_ms
+                    b("          Rest in Python                %6.2f ms"
+                      % _rest_py)
+                    b("          Zu lesen als: ist 'Rest in Python' der")
+                    b("          groesste Posten, hilft kein kleineres")
+                    b("          Rechteck - dann ist die VORBEREITUNG")
+                    b("          teuer (Schluessel bauen, Scheiben")
+                    b("          schneiden, Schleife). Dieselbe")
+                    b("          Unterscheidung wie in Build 270.")
                 _as = aussparung.get(gmasse)
                 if _as and _as[0]:
                     b("        mit Aussparung gerufen       %d von %d mal"

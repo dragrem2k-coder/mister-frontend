@@ -13,6 +13,42 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **Fixed: the gallery never used the cover cutout — zero of twenty
+  steps.** Section K ran in full for the first time in bench 18 and
+  says it verbatim: *"called with cutout 0 of 20 times"*. And the cause
+  is not a reason but an **order**: the card was drawn, and the cover
+  was fetched *afterwards*. If you do not yet know where the cover
+  goes, you cannot leave out its area. **Build 234** already made
+  exactly that swap for the boxart column — in the gallery it never
+  happened, and because the cutout never applied there, nobody ever
+  noticed it was missing. Now fixed in both galleries (games and
+  categories): measured **0.51 MB less per card = 1.31 ms** on his
+  device, and the saving is exactly the cover's area — no more. **The
+  image is byte-for-byte identical**, compared across 8,294,400 bytes,
+  not asserted (build 305).
+- **Correction to build 303.** It said the card is bound by memory
+  bandwidth and there is only one lever: fewer bytes. For the **list
+  view** that is wrong. There the cutout applies in *every* step (20 of
+  20), and then the bytes explain only **38 %** of the cost: 9.63 ms
+  measured against 3.65 ms explained by the 1.06 MB. The guess was
+  right only for the case without the cutout — and section K found that
+  one right next to it (build 305).
+- **Bench 19.** Section K breaks down the missing 6 ms with the same
+  tool that already settled such a gap in build 270: time spent
+  creating the card template (and **how often** it is rebuilt instead
+  of found), time spent slicing it, and the remainder in Python. The
+  first suspect is the slicing — it is cached by cover size, and that
+  changes from game to game. **Not guessed, not built**: the next
+  report says which of the three it is (build 305).
+- **And two checks against the build 304 bug.** The bench losing a
+  section is survivable — it is built that way. Damaging the thing it
+  measures is not, and that is exactly what the report does not show:
+  the following sections merely say "skipped". The check now looks **at
+  the object instead of the text** — after the run every hooked helper
+  must be the original function again, and a card must still draw.
+  Counter-check run: with the bug put back, the check goes red
+  (build 305).
+
 - **Fixed: a mistake of mine knocked out two measurement sections of
   the bench.** The report read `SECTION K ABORTED: TypeError:
   'staticmethod' object is not callable` — and because the restore
