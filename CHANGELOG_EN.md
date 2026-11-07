@@ -13,6 +13,50 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **Fixed: input events are now read in bundles.** Until now the
+  frontend fetched **exactly one event per system call**. But a held key
+  delivers bundles, and a pad with motion sensors sends constantly —
+  the source has said so verbatim since build 280: *"the motion sensors
+  send constantly, and none of their events is an action."* Each one
+  cost its own system call, **on the very thread that also draws**:
+  after a 55 ms step a whole pile is waiting, and it had to be fetched
+  one piece at a time before the real keypress behind it became
+  visible. Now one call fetches up to 64 events — measured: **one**
+  system call for eleven events instead of eleven. It is exactly the
+  technique `flush()` has used elsewhere for a long time (build 306).
+- **And what must not get lost in the process.** If an action is found
+  in the middle of a bundle, the **remainder is kept** and looked at
+  *first* next time — before any waiting and before any due repeat.
+  Otherwise a key release behind a keypress would fall away, which is
+  verbatim the bug from build 276: *"if I hold down and then let go
+  after 2-3 seconds, it keeps scrolling by itself."* Three guarantees
+  hang on this, all three tested (build 306).
+- **Two of my own measurements have been lying for months — fixed.**
+  - `Open input devices 0` appeared in **every** report. The bench read
+    a field that never existed (`devs` instead of `devices`), and
+    `getattr()` dutifully returns the empty default. Worse than the
+    wrong number: part 1 of the same section measures "one look without
+    waiting" — and with no device the code takes the branch for *no*
+    device at all. So what was measured was the empty path, not the
+    cost of looking at his pads. In precisely the section meant to
+    explain input latency.
+  - The build 305 hook was **dead code**: everything present, just
+    never installed — my build script had applied a `str.replace()` to
+    a pattern that no longer existed, and that silently does nothing.
+    Hence the missing breakdown of the 7.08 ms. Now `test_bench.py`
+    checks that **every** hook is also assigned — fifteen checked
+    (build 306).
+- **New in the bench (19): how chatty are the devices?** Part 1b counts
+  how many raw events arrive per second with **nobody** pressing
+  anything — per device and in total, plus the conversion "at a 55 ms
+  step, N are waiting on average". **This is the number that decides
+  the next step:** if it is zero, the delay comes from step duration
+  alone; if it is large, the event stream never stops, and then input
+  needs a **thread of its own**. That is deliberately *not* built yet —
+  it is the largest intervention into the most fragile part of the
+  project, and the number that would justify it did not exist until
+  today (build 306).
+
 - **Fixed: the gallery never used the cover cutout — zero of twenty
   steps.** Section K ran in full for the first time in bench 18 and
   says it verbatim: *"called with cutout 0 of 20 times"*. And the cause

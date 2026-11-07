@@ -7927,3 +7927,150 @@ eingebaut, Test 1b wurde rot.
   der Byte-Vergleich ueber 8.294.400 Byte.
 * **geaendert** `tools/test_bench.py` - Test 1b und die
   TypeError-Zeile.
+
+---
+
+## Nachtrag Build 306 - zwei Messungen, die seit Monaten gelogen haben
+
+Nutzermeldung vom 07.11., und sie ist praezise:
+
+> "in jeder listenansicht wenn ich hoch und runter scrolle und dann mal
+> eine richtung oben oder unten gedrueckt halte und dann nach oben
+> gedrueckt halte reagiert manchmal die eingabe ueberhaupt nicht! oder
+> sehr langsam und dauert lange"
+
+Abschnitt L soll genau das erklaeren. Er konnte es nicht, und zwar aus
+zwei Gruenden, die beide meine sind.
+
+### Fehler 1: `Offene Eingabegeraete 0` - in jedem Bericht
+
+```python
+geraete = list(getattr(inp, "devs", []) or [])     # FALSCH
+```
+
+Ein Feld namens `devs` hat `fe/input.py` **nie** gehabt. `read_action()`
+arbeitet mit `self.devices` (ein dict, angelegt in `__init__`).
+`getattr()` liefert dann die Vorgabe - eine leere Liste.
+
+> `getattr()` mit Vorgabe ist dafuer gebaut, eine aeltere Fassung zu
+> ueberleben. Dabei verschweigt es einen Tippfehler.
+
+**Und es war nicht nur eine falsche Zahl.** Teil 1 desselben Abschnitts
+misst "ein Blick ohne Warten" - und ohne ein einziges Geraet nimmt
+`read_action()` den Zweig
+
+```python
+if not fds:
+    time.sleep(...)
+```
+
+Gemessen wurde also der Preis des **leeren** Wegs, nicht der Preis, auf
+seine Pads zu sehen. In genau dem Abschnitt, der die
+Eingabe-Verzoegerung erklaeren soll. Dieselbe Sorte wie der tote Haken
+unten: der Wert sah nach "nichts zu berichten" aus, war aber "nicht
+gemessen".
+
+### Fehler 2: der Build-305-Haken war toter Code
+
+Im Bericht fehlte bei `karte_mit_schatten` die Zeile "AUFGETEILT
+(Build 305)" - die 7,08 ms blieben unerklaert. Im Code war **alles** da:
+die Hakenfunktionen, die Konten, das Zurueckstellen, die Ausgabe. Nur
+**eingehaengt** wurde nichts.
+
+Der Grund stand nicht im Code, sondern in meinem Bauskript: ein
+`str.replace()` auf ein Muster, das es nach Build 304 nicht mehr gab
+(der lange Kommentar lag inzwischen zwischen `if` und Zuweisung). **Und
+`str.replace()` tut dann stillschweigend nichts.** An dieser einen
+Stelle hatte ich kein `assert` gesetzt - an den anderen sieben schon.
+
+**Das Tor dagegen, und es haette genau das gefunden:**
+`tools/test_bench.py` Test 1c prueft jetzt am Syntaxbaum, dass jede
+Funktion, deren Name mit `_haken` oder `h_` beginnt, auch irgendwo
+**zugewiesen** wird. Ein Haken, der nur definiert ist, kann nicht
+wirken. Gegenprobe gelaufen: mit den entfernten Einhaenge-Zeilen meldet
+der Test `toter Haken: ['_haken_teile', '_haken_vorlage']`.
+
+Fuenfzehn Haken geprueft, alle in Ordnung.
+
+### Was jetzt wirklich gebaut wurde: buendelweise lesen
+
+`read_action()` las **genau ein Ereignis je `os.read()`**. Eine
+gehaltene Taste liefert aber Buendel (`EV_MSC`, `EV_KEY` mit
+`value==2`, `EV_SYN`), und ein Pad mit Lagesensoren sendet dauernd -
+der Kommentar bei Build 280 nennt das Geraet, an dem es zuerst
+auffiel:
+
+> "Die Lagesensoren senden dauernd, und keines ihrer Ereignisse ist
+> eine Aktion."
+
+Jedes dieser Ereignisse kostete einen eigenen Systemaufruf, **und zwar
+auf dem Faden, der auch zeichnet**. Bei einem Schritt von 55 ms liegt
+beim naechsten Hinsehen ein ganzer Stapel vor, und der musste Stueck
+fuer Stueck abgeholt werden, bevor der echte Tastendruck dahinter
+sichtbar wurde.
+
+Jetzt holt ein Aufruf bis zu `EREIGNIS_BUENDEL` (64) Ereignisse -
+dieselbe Zahl und dieselbe Begruendung, die `flush()` in dieser Datei
+seit langem benutzt (`os.read(d.fd, EVENT_SIZE * 64)`). Gemessen im
+Test: **ein** Systemaufruf fuer elf Ereignisse statt elf.
+
+### Und was dabei nicht verloren gehen darf
+
+Wird mitten im Buendel eine Aktion gefunden, muss der **Rest
+aufgehoben** werden. Sonst faellt ein Loslassen hinter einem
+Tastendruck weg - wortgleich der Fehler aus Build 276, den der Nutzer
+damals sofort gemeldet hat:
+
+> "wenn ich nach unten gedrueckt halte und dann nach 2-3 Sekunden
+> loslasse, scrollt er von alleine weiter"
+
+Dafuer gibt es `_ereignis_rest` und `_aus_rest()`. Drei Zusagen haengen
+daran, und alle drei sind geprueft:
+
+1. der Rest bleibt stehen (`popleft()`, nie `clear()`),
+2. er wird **vor** dem naechsten `select()` abgearbeitet - er ist
+   aelter als alles, was jetzt ankommen koennte, und kann ein
+   Loslassen enthalten, das `self.held` raeumen muss, **bevor** die
+   Wiederholung geprueft wird,
+3. `flush()` leert ihn mit. Ein Buendelrest, der ein `flush()`
+   ueberlebt, waere ein Tastendruck aus der Zeit VOR dem Spiel, der
+   danach ploetzlich wirkt.
+
+### Was NICHT gebaut wurde, und warum
+
+Der eigene **Lesefaden** fuer die Eingabe. Abschnitt L nennt ihn
+selbst als Abhilfe, und er ist wahrscheinlich die richtige Antwort -
+aber er ist der groesste Eingriff in das fragilste Stueck dieses
+Projekts (Builds 276, 277, 280, 297, 301, 302 haben alle hier
+gearbeitet), und die Zahl, die ihn begruenden muesste, **hat es bisher
+nicht gegeben**: `Offene Eingabegeraete 0`.
+
+Deshalb der neue **Teil 1b**: wieviele rohe Ereignisse je Sekunde
+ankommen, **ohne** dass jemand eine Taste drueckt, je Geraet und
+zusammen. Dazu die Umrechnung "bei einem Schritt von 55 ms liegen im
+Schnitt N Ereignisse vor" und der Vergleich mit `LEEREN_MAX`.
+
+* Ist die Zahl **null**, schweigen die Geraete, das Leeren kostet
+  nichts, und die Verzoegerung kommt allein aus der Schrittdauer.
+* Ist sie **gross**, reisst der Strom nicht ab, und dann ist der
+  Lesefaden nicht Geschmack, sondern notwendig.
+
+Der naechste Bericht entscheidet das. Eine Umstellung der Eingabe auf
+einen zweiten Faden auf Verdacht waere genau Build 300 noch einmal.
+
+### Zwei Lehren fuers Bauen
+
+1. **Jedes `str.replace()` in einem Bauskript braucht ein `assert`.**
+   Ohne eines ist ein nicht passendes Muster kein Fehler, sondern
+   Schweigen.
+2. **`getattr(x, "name", vorgabe)` verschweigt Tippfehler.** Wo die
+   Vorgabe plausibel aussieht (eine leere Liste, eine Null), sieht
+   niemand den Unterschied zwischen "nicht da" und "nichts da".
+
+### Neue und geaenderte Pruefungen
+
+* **neu** `tools/test_eingabe_buendel.py` - 14 Pruefungen: ein Buendel
+  kostet einen Systemaufruf, die Reihenfolge bleibt, der Rest geht
+  nicht verloren, ein Loslassen im Buendel raeumt `self.held`, der
+  Puffer wird vor dem Lesen abgearbeitet, `flush()` leert ihn.
+* **geaendert** `tools/test_bench.py` - Test 1c gegen toten Haken.

@@ -41,6 +41,7 @@ import gc
 import os
 import platform
 import shutil
+import select as _select      # Build 306, Abschnitt L.1b
 import struct
 import sys
 import tempfile
@@ -3104,7 +3105,31 @@ def _abschnitt_l(b, fe, S, A, fm):
     # mehrere? Ein Pad, das zusaetzlich als Tastatur erscheint, wird
     # zweimal abgefragt - und die Rueckmeldung "reagiert manchmal
     # spaet" sieht bei zwei Quellen anders aus als bei einer.
-    geraete = list(getattr(inp, "devs", []) or [])
+    # BUILD 306: DAS FELD HEISST devices, NICHT devs.
+    #
+    # Hier stand getattr(inp, "devs", []) - ein Feld, das es in
+    # fe/input.py nie gegeben hat. getattr() liefert dann die Vorgabe,
+    # also eine leere Liste, und der Bericht schrieb in JEDEM Lauf
+    # "Offene Eingabegeraete 0". Nachgesehen: read_action() arbeitet
+    # mit self.devices (ein dict), angelegt in __init__ als
+    # "self.devices = {}".
+    #
+    # DAS WAR NICHT NUR EINE FALSCHE ZAHL. Teil 1 dieses Abschnitts
+    # misst "ein Blick ohne Warten" - und ohne ein einziges Geraet
+    # nimmt read_action() den Zweig "if not fds: time.sleep(...)".
+    # Gemessen wurde also der Preis des LEEREN Wegs, nicht der Preis,
+    # auf seine Pads zu sehen. Genau in dem Abschnitt, der die
+    # Eingabe-Verzoegerung erklaeren soll.
+    #
+    # Dieselbe Sorte wie der tote Haken aus Build 305: der Wert sah
+    # nach "nichts zu berichten" aus, war aber "nicht gemessen".
+    # getattr() mit Vorgabe ist dafuer gebaut, eine aeltere Fassung zu
+    # ueberleben - und verschweigt dabei einen Tippfehler.
+    _dv = getattr(inp, "devices", None)
+    if isinstance(_dv, dict):
+        geraete = list(_dv.values())
+    else:
+        geraete = list(_dv or [])
     b("   Offene Eingabegeraete                     %d" % len(geraete))
     for d in geraete[:8]:
         art = "Tastatur" if getattr(d, "is_kbd", True) else "Pad"
@@ -3114,6 +3139,88 @@ def _abschnitt_l(b, fe, S, A, fm):
              achsen))
     if len(geraete) > 8:
         b("     ... und %d weitere" % (len(geraete) - 8))
+
+    # --- 1b) WIE GESPRAECHIG SIND DIE GERAETE? (Build 306) ----------
+    #
+    # DIE ZAHL, DIE SEINEN BEFUND ENTSCHEIDET. Nutzermeldung vom
+    # 07.11.: "wenn ich hoch und runter scrolle und dann mal eine
+    # richtung gedrueckt halte und dann nach oben gedrueckt halte
+    # reagiert manchmal die eingabe ueberhaupt nicht! oder sehr
+    # langsam und dauert lange".
+    #
+    # WARUM DAS HIERHER GEHOERT. read_action() muss die Warteschlange
+    # LEEREN, bevor sie eine faellige Wiederholung durchlaesst - sonst
+    # geht ein Loslassen dahinter verloren (Build 277). Geleert wird
+    # bis zu LEEREN_MAX mal, und zwar auf DEM FADEN, DER AUCH ZEICHNET.
+    #
+    # Reisst der Strom nie ab, laeuft diese Schleife immer wieder:
+    # select() kehrt sofort zurueck, weil etwas anliegt, und keines
+    # dieser Ereignisse ist eine Aktion. Der Kommentar bei Build 280
+    # nennt das Geraet, an dem das zuerst auffiel - einen Nintendo Pro
+    # Controller, der ein zweites Eingabegeraet fuer seine Lagesensoren
+    # mitbringt: "Die Lagesensoren senden dauernd, und keines ihrer
+    # Ereignisse ist eine Aktion."
+    #
+    # Gezaehlt wird deshalb, wieviele ROHE Ereignisse je Sekunde
+    # ankommen, OHNE dass jemand eine Taste drueckt. Ist die Zahl
+    # klein, ist der Verdacht erledigt. Ist sie gross, ist der eigene
+    # Lesefaden nicht Geschmack, sondern notwendig.
+    #
+    # Verbraucht werden die Ereignisse gefahrlos: beim Bench drueckt
+    # niemand, und das Frontend wartet.
+    b("")
+    b("   1b) Wie gespraechig sind die Geraete? (Build 306)")
+    if not geraete:
+        b("      -- kein Geraet offen, nichts zu zaehlen")
+    else:
+        _mess_s = 0.30
+        _zahl = {}
+        _t_end = time.monotonic() + _mess_s
+        _fds = {}
+        for d in geraete:
+            try:
+                _fds[d.fd] = d
+            except Exception:                            # noqa: BLE001
+                pass
+        _EV = 24                     # sizeof(struct input_event), 32 bit
+        try:
+            while time.monotonic() < _t_end and _fds:
+                _r, _, _ = _select.select(list(_fds), [], [], 0.01)
+                for _fd in _r:
+                    try:
+                        _data = os.read(_fd, _EV * 64)
+                    except OSError:
+                        continue
+                    _zahl[_fd] = _zahl.get(_fd, 0) + max(1, len(_data) // _EV)
+        except Exception as e:                           # noqa: BLE001
+            b("      -- nicht messbar (%s)" % type(e).__name__)
+        _summe = 0
+        for _fd, d in _fds.items():
+            _n = _zahl.get(_fd, 0)
+            _summe += _n
+            b("      %-28s %6d Ereignisse = %7.0f je Sekunde"
+              % (os.path.basename(str(getattr(d, "path", "?")))[:28],
+                 _n, _n / _mess_s))
+        b("      %-28s %6d            = %7.0f je Sekunde"
+          % ("zusammen", _summe, _summe / _mess_s))
+        b("")
+        if _summe == 0:
+            b("      ZU LESEN ALS: die Geraete schweigen, wenn niemand")
+            b("      drueckt. Dann kostet das Leeren nichts, und der")
+            b("      Verdacht auf einen Dauerstrom ist ausgeraeumt -")
+            b("      die Verzoegerung kommt dann allein aus der")
+            b("      Schrittdauer (Abschnitt J).")
+        else:
+            _je_schritt = _summe / _mess_s * 0.055
+            b("      ZU LESEN ALS: bei einem Schritt von 55 ms liegen")
+            b("      im Schnitt %.0f Ereignisse vor, wenn der" % _je_schritt)
+            b("      Zeichenfaden das naechste Mal hinsieht. Jedes")
+            b("      davon muss er lesen und verwerfen, BEVOR er den")
+            b("      echten Tastendruck findet - und das auf dem")
+            b("      Faden, der auch zeichnet. Liegt die Zahl ueber")
+            b("      LEEREN_MAX (%d), reisst der Strom nicht ab, und"
+              % getattr(_FI, "LEEREN_MAX", 64))
+            b("      dann ist ein eigener Lesefaden die Abhilfe.")
 
     # --- 1) was ein BLICK kostet, wenn nichts anliegt ---------------
     #
@@ -3834,6 +3941,30 @@ def _abschnitt_k(b, fe, S, A):
             setattr(fbo, n, _haken(n, getattr(fbo, n)))
         if echt_fueller is not None:
             fbo.flaechen_fueller = _haken_fueller
+        # BUILD 306: UND DIE ZWEI HAKEN AUS BUILD 305, die dort NIE
+        # EINGEHAENGT WURDEN.
+        #
+        # Im Bericht vom 07.11. fehlte bei karte_mit_schatten die Zeile
+        # "AUFGETEILT (Build 305)" - die 7,08 ms blieben unerklaert.
+        # Der Grund stand nicht im Code, sondern in meinem Bauskript:
+        # dort ersetzte ein str.replace() ein Muster, das es nach
+        # Build 304 nicht mehr gab (der lange Kommentar lag inzwischen
+        # zwischen 'if' und Zuweisung). str.replace() tut dann
+        # STILLSCHWEIGEND NICHTS, und ich hatte an genau dieser Stelle
+        # kein assert gesetzt.
+        #
+        # Die Folge: _haken_vorlage und _haken_teile waren definiert,
+        # das Zurueckstellen unten war da - nur eingehaengt wurde
+        # nichts. Toter Code, und die Messung sah aus wie "nichts zu
+        # berichten" statt wie "nicht gemessen".
+        #
+        # AUF DER KLASSE, mit self - das sind Methoden, kein
+        # staticmethod (siehe die andere Seite dieses Fehlers bei
+        # zeilen_kopierer unten und in Build 304/305).
+        if echt_vorlage is not None:
+            fbo.__class__._karte_vorlage = _haken_vorlage
+        if echt_teile is not None:
+            fbo.__class__._karte_teile = _haken_teile
         # Was vorher IN DER INSTANZ stand (meist nichts) - siehe das
         # Zurueckstellen unten.
         _kop_vorher = {}

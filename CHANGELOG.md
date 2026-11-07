@@ -13,6 +13,54 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Behoben: die Eingabe wird jetzt bündelweise gelesen.** Bis hierher
+  holte das Frontend **genau ein Ereignis je Systemaufruf**. Eine
+  gehaltene Taste liefert aber Bündel, und ein Pad mit Lagesensoren
+  sendet dauernd — im Quelltext steht das seit Build 280 sogar
+  wörtlich: *„Die Lagesensoren senden dauernd, und keines ihrer
+  Ereignisse ist eine Aktion."* Jedes davon kostete einen eigenen
+  Systemaufruf, **und zwar auf dem Faden, der auch zeichnet**: nach
+  einem Schritt von 55 ms liegt ein ganzer Stapel vor, und der musste
+  Stück für Stück abgeholt werden, bevor der echte Tastendruck dahinter
+  sichtbar wurde. Jetzt holt ein Aufruf bis zu 64 Ereignisse —
+  gemessen: **ein** Systemaufruf für elf Ereignisse statt elf. Das ist
+  genau das Verfahren, das `flush()` an anderer Stelle seit langem
+  benutzt (Build 306).
+- **Und was dabei nicht verloren gehen darf.** Wird mitten im Bündel
+  eine Aktion gefunden, bleibt der **Rest aufgehoben** und wird beim
+  nächsten Mal *zuerst* angesehen — vor jedem Warten und vor jeder
+  fälligen Wiederholung. Sonst fiele ein Loslassen hinter einem
+  Tastendruck weg, und das ist wortgleich der Fehler aus Build 276:
+  *„wenn ich nach unten gedrückt halte und dann nach 2-3 Sekunden
+  loslasse, scrollt er von alleine weiter."* Drei Zusagen hängen daran,
+  alle drei geprüft — der Rest bleibt stehen, er kommt vor dem
+  Nachsehen, und ein `flush()` leert ihn mit (Build 306).
+- **Zwei eigene Messungen haben seit Monaten gelogen — behoben.**
+  - `Offene Eingabegeräte 0` stand in **jedem** Bericht. Der Bench las
+    ein Feld, das es nie gegeben hat (`devs` statt `devices`), und
+    `getattr()` liefert dann brav die leere Vorgabe. Schlimmer als die
+    falsche Zahl: Teil 1 desselben Abschnitts misst „ein Blick ohne
+    Warten" — und ohne Gerät nimmt der Code den Zweig für *gar kein*
+    Gerät. Gemessen wurde also der leere Weg, nicht der Preis, auf die
+    Pads zu sehen. In genau dem Abschnitt, der die Eingabe-Verzögerung
+    erklären soll.
+  - Der Haken aus Build 305 war **toter Code**: alles vorhanden, nur
+    nie eingehängt — mein Bauskript hatte ein `str.replace()` auf ein
+    Muster angewendet, das es nicht mehr gab, und das tut
+    stillschweigend nichts. Deshalb fehlte die Aufschlüsselung der
+    7,08 ms. Jetzt prüft `test_bench.py`, dass **jeder** Haken auch
+    zugewiesen wird — fünfzehn geprüft (Build 306).
+- **Neu im Bench (19): wie gesprächig sind die Geräte?** Teil 1b zählt,
+  wie viele rohe Ereignisse je Sekunde ankommen, **ohne** dass jemand
+  drückt — je Gerät und zusammen, plus die Umrechnung „bei einem
+  Schritt von 55 ms liegen im Schnitt N vor". **Das ist die Zahl, die
+  über den nächsten Schritt entscheidet:** ist sie null, kommt die
+  Verzögerung allein aus der Schrittdauer; ist sie groß, reißt der
+  Ereignisstrom nicht ab, und dann braucht die Eingabe einen **eigenen
+  Faden**. Der ist bewusst *noch nicht* gebaut — er ist der größte
+  Eingriff in das fragilste Stück des Projekts, und die Zahl, die ihn
+  begründen müsste, gab es bis heute nicht (Build 306).
+
 - **Behoben: die Galerie hat die Cover-Aussparung nie benutzt — null
   von zwanzig Schritten.** Abschnitt K lief in Bench 18 zum ersten Mal
   vollständig und sagt es wörtlich: *„mit Aussparung gerufen 0 von 20

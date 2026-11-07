@@ -635,6 +635,37 @@ REPEAT_FLOOR_MIN    = 0.04
 # weit ueber 16,6. Die Konstante ist der Sicherheitsgurt fuer eine
 # absurd kleine Messung, nicht der neue Arbeitspunkt.
 REPEAT_FLOOR_BILD   = 1.0 / 60.0
+# BUILD 306: wieviele Ereignisse ein Leseaufruf hoechstens holt.
+#
+# DER BEFUND. Nutzermeldung vom 07.11.: "wenn ich hoch und runter
+# scrolle und dann mal eine richtung gedrueckt halte und dann nach oben
+# gedrueckt halte reagiert manchmal die eingabe ueberhaupt nicht! oder
+# sehr langsam und dauert lange".
+#
+# read_action() las bisher GENAU EIN Ereignis je os.read(). Eine
+# gehaltene Taste liefert aber Buendel (EV_MSC, EV_KEY mit value==2,
+# EV_SYN), und ein Pad mit Lagesensoren sendet dauernd - der
+# Kommentar bei Build 280 nennt genau das Geraet, an dem es zuerst
+# auffiel: "Die Lagesensoren senden dauernd, und keines ihrer
+# Ereignisse ist eine Aktion."
+#
+# Jedes dieser Ereignisse kostete also einen eigenen Systemaufruf, UND
+# ZWAR AUF DEM FADEN, DER AUCH ZEICHNET. Bei einem Schritt von 55 ms
+# liegt beim naechsten Hinsehen ein ganzer Stapel vor, und der musste
+# Stueck fuer Stueck abgeholt werden, bevor der echte Tastendruck
+# dahinter sichtbar wurde.
+#
+# EIN BUENDEL IN EINEM AUFRUF. evdev liefert bei einem groesseren
+# Puffer so viele vollstaendige Ereignisse, wie anliegen - flush()
+# macht das in dieser Datei seit langem genauso ("os.read(d.fd,
+# EVENT_SIZE * 64)"). 64 ist dieselbe Zahl und dieselbe Begruendung.
+#
+# WAS DABEI NICHT VERLOREN GEHEN DARF: wird mitten im Buendel eine
+# Aktion gefunden, muss der REST aufgehoben werden - sonst faellt ein
+# Loslassen hinter einem Tastendruck weg, und genau das war der Fehler
+# aus Build 276, den Build 277 behoben hat. Dafuer gibt es
+# _ereignis_rest, und der wird VOR dem naechsten select() abgearbeitet.
+EREIGNIS_BUENDEL = 64
 def _zeit_aus_proben(proben):
     """Build 302: aus den letzten Messungen die FRIST machen, in der ein
     Schritt fast immer fertig ist - nicht den Durchschnitt.
@@ -893,6 +924,9 @@ class InputManager:
         # noch nichts gemessen, dann gelten die festen Boeden. Siehe
         # zeichenzeit_melden()/_repeat_floor().
         self._zeichenzeit = {}
+        # BUILD 306: aufgehobene Ereignisse eines Buendels, siehe
+        # EREIGNIS_BUENDEL und _aus_rest().
+        self._ereignis_rest = deque()
         # BUILD 302: je Aktion die letzten Messungen, siehe
         # zeichenzeit_melden() und REPEAT_MESS_AUSREISSER.
         self._zeichenproben = {}
@@ -1470,6 +1504,34 @@ class InputManager:
             return act
         return None
 
+    def _aus_rest(self):
+        """Aufgehobene Ereignisse abarbeiten, bis eine Aktion kommt.
+
+        BUILD 306. Rueckgabe: die Aktion, oder None wenn der Puffer
+        leer ist, ohne dass eine Aktion darin stand.
+
+        WICHTIG - DER PUFFER WIRD VOR DEM NAECHSTEN select() GELEERT.
+        Ein Buendel kann ein Loslassen und danach einen neuen
+        Tastendruck enthalten. Wer beim Tastendruck zurueckkehrt und
+        den Rest liegenlaesst, verliert das Loslassen - das war der
+        Fehler aus Build 276, den Build 277 behoben hat. Hier bleibt
+        der Rest stehen und wird beim naechsten Aufruf zuerst
+        angesehen, also vor jeder faelligen Wiederholung.
+
+        Dass _translate() dabei Nebenwirkungen hat (es setzt und
+        loescht self.held), ist Absicht und der Grund fuer die
+        Reihenfolge: ein Loslassen im Puffer muss self.held raeumen,
+        BEVOR die Wiederholung geprueft wird."""
+        rest = getattr(self, "_ereignis_rest", None)
+        if not rest:
+            return None
+        while rest:
+            dev, _s, _us, etype, code, value = rest.popleft()
+            act = self._translate(dev, etype, code, value)
+            if act:
+                return act
+        return None
+
     def read_action(self, timeout=None):
         """Blockierend (oder mit Timeout) auf die naechste logische
         Aktion warten. Geraete-Events haben IMMER Vorrang vor Halte-
@@ -1532,6 +1594,18 @@ class InputManager:
             if deadline is not None and now >= deadline and not erste_runde:
                 return None
             erste_runde = False
+            # BUILD 306: ERST DER AUFGEHOBENE REST, DANN ALLES ANDERE.
+            #
+            # Steht hier noch etwas aus einem Buendel, ist es AELTER
+            # als alles, was select() jetzt liefern koennte - und es
+            # kann ein Loslassen sein, das self.held raeumen muss,
+            # bevor die Wiederholung unten geprueft wird. Ein Puffer,
+            # der erst nach dem Warten angesehen wird, ist ein Puffer,
+            # der die Reihenfolge verdreht.
+            _r_act = self._aus_rest()
+            if _r_act:
+                self.eingabe_zeit = time.monotonic()
+                return _r_act
             if now - self.last_scan > self._rescan_takt():
                 self.rescan()
             due = self.held is not None and now >= self.held[2]
@@ -1624,16 +1698,38 @@ class InputManager:
                     for fd in r:
                         dev = fds[fd]
                         try:
-                            data = os.read(fd, EVENT_SIZE)
+                            # BUILD 306: EIN BUENDEL IN EINEM AUFRUF.
+                            # Hier stand os.read(fd, EVENT_SIZE), also
+                            # genau ein Ereignis je Systemaufruf. Die
+                            # ganze Begruendung steht bei
+                            # EREIGNIS_BUENDEL.
+                            data = os.read(fd, EVENT_SIZE
+                                           * EREIGNIS_BUENDEL)
                         except OSError:      # Geraet abgezogen
                             self.rescan()
                             continue
                         if len(data) < EVENT_SIZE:
                             continue
                         got_event = True
-                        _, _, etype, code, value = \
-                            struct.unpack(EVENT_FMT, data)
-                        act = self._translate(dev, etype, code, value)
+                        # ALLE vollstaendigen Ereignisse aufheben, in
+                        # Ankunftsreihenfolge. Ein unvollstaendiger
+                        # Rest am Ende kann nicht auftreten - evdev
+                        # liefert nur ganze Ereignisse -, aber die
+                        # Schranke kostet nichts und macht die
+                        # Zusage sichtbar.
+                        # getattr mit Anlegen, aus demselben Grund
+                        # wie bei seiten_aktionen in _repeat_floor():
+                        # mehrere Tests bauen einen InputManager ueber
+                        # __new__, also ohne __init__.
+                        _rest = getattr(self, "_ereignis_rest", None)
+                        if _rest is None:
+                            _rest = self._ereignis_rest = deque()
+                        for _off in range(0, len(data) - EVENT_SIZE + 1,
+                                          EVENT_SIZE):
+                            _rest.append(
+                                (dev,) + struct.unpack_from(EVENT_FMT,
+                                                            data, _off))
+                        act = self._aus_rest()
                         if act:
                             # BUILD 192: wann diese Aktion entstanden
                             # ist. Siehe eingabe_zeit - das ist die
@@ -2186,6 +2282,17 @@ class InputManager:
                     pass
 
     def flush(self):
+        # BUILD 306: DEN AUFGEHOBENEN REST MITLEEREN.
+        #
+        # flush() heisst "alles wegwerfen, was noch anliegt" - es wird
+        # unter anderem beim Zurueckkommen aus einem Spiel gerufen
+        # (back_to_frontend). Ein Buendelrest, der das ueberlebt,
+        # waere ein Tastendruck aus der Zeit VOR dem Spiel, der
+        # danach ploetzlich wirkt. Genau die Sorte Rest, die dieses
+        # Projekt mehrfach gejagt hat.
+        _rest = getattr(self, "_ereignis_rest", None)
+        if _rest is not None:
+            _rest.clear()
         for d in self.devices.values():
             fl = fcntl.fcntl(d.fd, fcntl.F_GETFL)
             fcntl.fcntl(d.fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)

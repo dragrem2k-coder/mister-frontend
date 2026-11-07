@@ -166,6 +166,50 @@ check("und die Kartenvorlage arbeitet noch", _vor_eintrag is not None,
 
 # ---------------------------------------------------------------------------
 print()
+print("Test 1c: kein Haken ist toter Code")
+# ---------------------------------------------------------------------------
+# DER FEHLER AUS BUILD 305, und er war unsichtbar.
+#
+# Im Bericht vom 07.11. fehlte bei karte_mit_schatten die Zeile
+# "AUFGETEILT (Build 305)". Im Code war alles da: die Hakenfunktionen
+# _haken_vorlage und _haken_teile, die Konten, das Zurueckstellen, die
+# Ausgabe. Nur EINGEHAENGT wurde nichts - mein Bauskript hatte ein
+# str.replace() auf ein Muster angewendet, das es nach Build 304 nicht
+# mehr gab, und str.replace() tut dann STILLSCHWEIGEND NICHTS.
+#
+# Die Messung sah damit aus wie "nichts zu berichten" statt wie "nicht
+# gemessen" - und das ist der Unterschied, um den sich die letzten
+# fuenf Builds gedreht haben.
+#
+# GEPRUEFT WIRD DIE EINE EIGENSCHAFT, die den Fehler ausmacht: eine
+# Hakenfunktion, die nirgends ZUGEWIESEN wird, kann nicht wirken. Das
+# ist am Syntaxbaum zu sehen und braucht kein laufendes Geraet.
+import ast as _ast                                           # noqa: E402
+_bq = io.open(os.path.join(_REPO, "frontend", "fe", "bench.py"),
+              encoding="utf-8").read()
+_bt = _ast.parse(_bq)
+_definiert = set()
+for _k in _ast.walk(_bt):
+    if isinstance(_k, _ast.FunctionDef) and (
+            _k.name.startswith("_haken") or _k.name.startswith("h_")):
+        _definiert.add(_k.name)
+_zugewiesen = set()
+for _k in _ast.walk(_bt):
+    if not isinstance(_k, (_ast.Assign, _ast.Call)):
+        continue
+    for _n in _ast.walk(_k):
+        if isinstance(_n, _ast.Name):
+            _zugewiesen.add(_n.id)
+_tot = sorted(n for n in _definiert
+              if n not in _zugewiesen
+              or _bq.count(n) < 2)
+check("jeder Haken wird auch eingehaengt", not _tot,
+      "toter Haken: %r" % (_tot,) if _tot else
+      "%d Haken geprueft: %s" % (len(_definiert),
+                                 ", ".join(sorted(_definiert))))
+
+# ---------------------------------------------------------------------------
+print()
 print("Test 2: die Kopfdaten sagen, WORAUF gemessen wurde")
 # ---------------------------------------------------------------------------
 # Ohne die ist eine Zahl wertlos - genau das war das Problem an den
