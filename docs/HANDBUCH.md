@@ -1907,6 +1907,22 @@ springt eine ganze Seite, und die Grenze ist nicht das Gerät, sondern
 du: wer mehr als vier Seiten je Sekunde weiterspringt, kann nicht mehr
 lesen, wo er gelandet ist. Schnellere Hardware ändert daran nichts.
 
+**Schnelles Tippen wird seit Build 307 zusammengefasst.** Drückst du
+zehnmal kurz hintereinander hoch, kommen diese zehn Drücker schneller
+an, als eine Zeile gezeichnet werden kann (gemessen rund 47 ms je
+Schritt). Bisher wurden sie danach **einzeln** abgearbeitet — die Liste
+wanderte noch eine halbe Sekunde von selbst weiter, und drücktest du in
+der Zeit die andere Richtung, lag die *dahinter*. Jetzt springt das
+Frontend die zehn Einträge in **einem** Schritt. Du landest genau dort,
+wo du vorher auch gelandet wärst — nur sofort, und die andere Richtung
+ist unmittelbar dran.
+
+**Verschluckt wird dabei nichts.** Liegt hinter den gleichen Schritten
+etwas anderes — die andere Richtung, ein OK, ein Zurück —, kommt das als
+Nächstes dran, noch vor jeder Wiederholung. Und zwei OKs hintereinander
+bleiben **zwei** Entscheidungen; zusammengefasst werden nur die vier
+Richtungen.
+
 **Die Galerie spart seit Build 305 die Cover-Fläche aus.** Hinter
 jedem Cover liegt eine Karte mit Schatten, und die wurde bisher ganz
 gefüllt — auch dort, wo das Cover sie im nächsten Atemzug wieder

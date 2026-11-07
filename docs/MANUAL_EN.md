@@ -1613,6 +1613,20 @@ page jumps, and the limit is not the device but you: anyone paging
 more than four times a second can no longer read where they landed.
 Faster hardware changes nothing about that.
 
+**Since build 307 fast tapping is collapsed.** If you tap up ten times
+in quick succession, those ten taps arrive faster than a row can be
+drawn (measured at about 47 ms per step). Until now they were worked off
+**one at a time** — the list kept drifting for about half a second, and
+if you pressed the other direction in the meantime, that one sat
+*behind* them. Now the frontend jumps those ten entries in **one** step.
+You end up exactly where you would have ended up before — only straight
+away, and the other direction takes effect immediately.
+
+**Nothing is swallowed in the process.** If something else sits behind
+the identical steps — the other direction, an OK, a back —, that comes
+next, ahead of any repeat. And two OKs in a row stay **two** decisions;
+only the four directions are ever collapsed.
+
 **Since build 305 the gallery leaves out the cover's area.** Behind
 every cover sits a card with a shadow, and until now it was filled
 completely — including where the cover covers it again a moment later.

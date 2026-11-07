@@ -13,6 +13,43 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Behoben: zehn kurze Drücker werden jetzt zu einem Sprung.**
+  Nutzerbefund: *„wenn ich 10 mal kurz hintereinander hoch drücke und
+  dann wieder nach unten drücke bleibt er auch ab und zu hängen."* Ein
+  Listenschritt kostet gemessen **46,57 ms** — zehn Drücker in wenigen
+  Zehntelsekunden kommen also schneller an, als sie gezeichnet werden.
+  Sie sammelten sich und wurden danach **einzeln** abgearbeitet: rund
+  eine halbe Sekunde Nachlauf, in der die Liste von selbst
+  weiterwandert — und die andere Richtung lag *hinter* den restlichen
+  neun. **Zusammenfassen ist dabei kein Wegwerfen:** wer zehnmal
+  drückt, will zehn Einträge weiter und bekommt sie, nur in *einem*
+  Schritt. Statt elf Zeichenschritten bis zur anderen Richtung sind es
+  **zwei** (Build 307).
+- **Und was dabei nicht passieren darf.** Liegt hinter den gleichen
+  Schritten etwas anderes — die andere Richtung, ein OK, ein Zurück —,
+  wird es **zurückgelegt** und beim nächsten Mal als *Erstes*
+  geliefert, vor jeder fälligen Wiederholung. Zwei OKs hintereinander
+  sind **zwei Entscheidungen** und werden nie zusammengefasst. Und ohne
+  Stau kostet die Prüfung nichts: gelesen wird nur aus dem schon
+  vorhandenen Puffer — kein Gerätezugriff, keine Wartezeit. Dass die
+  Endposition dieselbe bleibt, ist nachgerechnet: für Listen bis 31.199
+  Einträge, alle Schrittweiten, beide Richtungen (Build 307).
+- **Der Verdacht aus Build 306 ist ausgeräumt — und das war die
+  Messung wert.** Der neue Teil 1b meldet für alle drei Geräte **0
+  Ereignisse je Sekunde**: sie schweigen, wenn niemand drückt. Es gibt
+  keinen Dauerstrom, und der eigene Lesefaden für die Eingabe ist
+  damit *nicht* die Antwort. Er wäre der größte Eingriff in das
+  fragilste Stück des Projekts gewesen — und zwar für nichts. *Eine
+  Messung, die eine Vermutung widerlegt, ist genauso wertvoll wie eine,
+  die sie bestätigt* (Build 307).
+- **Die seit drei Builds offenen 7 ms sind benannt.** Der Haken aus
+  Build 305 hat beim ersten Lauf geliefert: von den 7,84 ms der großen
+  Karte erklären die Bytes 3,65 ms, die Vorlage wird **nie** neu gebaut
+  (0,09 ms), das Zerteilen kostet 0,16 ms — und **3,95 ms liegen in
+  Python um die Kopien herum**. Nicht die Fläche, nicht die
+  Speicherbandbreite, nicht der Zwischenspeicher: die *Vorbereitung*.
+  Das ist der nächste Hebel (Build 307).
+
 - **Behoben: die Eingabe wird jetzt bündelweise gelesen.** Bis hierher
   holte das Frontend **genau ein Ereignis je Systemaufruf**. Eine
   gehaltene Taste liefert aber Bündel, und ein Pad mit Lagesensoren

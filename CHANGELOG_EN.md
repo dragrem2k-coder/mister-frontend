@@ -13,6 +13,40 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **Fixed: ten quick taps now become one jump.** User report: *"if I
+  press up 10 times quickly and then press down again, it sometimes
+  gets stuck."* A list step costs a measured **46.57 ms** — so ten taps
+  within a few tenths of a second arrive faster than they can be drawn.
+  They piled up and were then worked off **one at a time**: about half
+  a second of drift in which the list keeps moving by itself — and the
+  other direction sat *behind* the remaining nine. **Collapsing is not
+  discarding:** someone who taps ten times wants to move ten entries
+  and gets them, just in *one* step. Instead of eleven draw steps until
+  the other direction takes effect, it is now **two** (build 307).
+- **And what must not happen in the process.** If something else sits
+  behind the identical steps — the other direction, an OK, a back —, it
+  is **put back** and delivered *first* next time, ahead of any due
+  repeat. Two OKs in a row are **two decisions** and are never
+  collapsed. And with nothing queued the check costs nothing: it reads
+  only from the buffer already in hand — no device access, no waiting.
+  That the final position stays identical is computed, not asserted:
+  for lists up to 31,199 entries, every step width, both directions
+  (build 307).
+- **The suspicion from build 306 is cleared — and the measurement was
+  worth it.** The new part 1b reports **0 events per second** for all
+  three devices: they are silent when nobody presses anything. There is
+  no continuous stream, so a dedicated input thread is *not* the
+  answer. It would have been the largest intervention into the most
+  fragile part of the project — for nothing. *A measurement that
+  refutes a guess is worth just as much as one that confirms it*
+  (build 307).
+- **The 7 ms open since three builds are now named.** The build 305
+  hook delivered on its first run: of the big card's 7.84 ms the bytes
+  explain 3.65 ms, the template is **never** rebuilt (0.09 ms), slicing
+  costs 0.16 ms — and **3.95 ms sit in Python around the copies**. Not
+  the area, not memory bandwidth, not the cache: the *preparation*.
+  That is the next lever (build 307).
+
 - **Fixed: input events are now read in bundles.** Until now the
   frontend fetched **exactly one event per system call**. But a held key
   delivers bundles, and a pad with motion sensors sends constantly —

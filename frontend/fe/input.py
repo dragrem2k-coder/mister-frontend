@@ -666,6 +666,35 @@ REPEAT_FLOOR_BILD   = 1.0 / 60.0
 # aus Build 276, den Build 277 behoben hat. Dafuer gibt es
 # _ereignis_rest, und der wird VOR dem naechsten select() abgearbeitet.
 EREIGNIS_BUENDEL = 64
+# BUILD 307: wieviele gestaute Navigationsschritte hoechstens zu EINEM
+# Sprung zusammengefasst werden.
+#
+# DER BEFUND, Nutzermeldung vom 08.11.: "wenn ich 10 mal kurz
+# hintereinander hoch druecke und dann wieder nach unten druecke bleibt
+# er auch ab und zu haengen !! fuehlt sich bloed an".
+#
+# DAS IST EIN ANDERER FEHLER ALS DAS HALTEN, und die Messung sagt das
+# auch: Abschnitt L 1b weist fuer alle drei Geraete 0 Ereignisse je
+# Sekunde aus - es gibt keinen Dauerstrom. Was es gibt, ist ein STAU.
+#
+# Zehn kurze Drucker sind zehn Tastendruecke in wenigen Zehntelsekunden.
+# Ein Listenschritt kostet laut Abschnitt J 46,57 ms. Die Druecke kommen
+# also schneller an, als sie gezeichnet werden - sie sammeln sich im
+# Puffer, und danach wird jeder einzeln abgearbeitet: rund eine halbe
+# Sekunde Nachlauf, in der die Liste von selbst weiterwandert. Und
+# drueckt er in dieser Zeit die andere Richtung, liegt die HINTER den
+# neun restlichen. Das ist das "bleibt haengen".
+#
+# ZUSAMMENFASSEN IST HIER NICHT EIN WEGWERFEN. Wer zehnmal drueckt,
+# will zehn Eintraege weiter - er bekommt sie, nur in EINEM Schritt
+# statt in zehn. Die Endposition ist bitgenau dieselbe, gezeichnet wird
+# einmal statt zehnmal, und die andere Richtung ist sofort dran.
+#
+# Die Obergrenze ist die Puffergroesse: mehr als EREIGNIS_BUENDEL
+# Ereignisse holt ein Leseaufruf nicht, und ein Tastendruck sind
+# mindestens zwei (Druecken und Loslassen). Mehr als die Haelfte kann
+# also nie anliegen.
+NAV_ZUSAMMEN_MAX = EREIGNIS_BUENDEL // 2
 def _zeit_aus_proben(proben):
     """Build 302: aus den letzten Messungen die FRIST machen, in der ein
     Schritt fast immer fertig ist - nicht den Durchschnitt.
@@ -927,6 +956,9 @@ class InputManager:
         # BUILD 306: aufgehobene Ereignisse eines Buendels, siehe
         # EREIGNIS_BUENDEL und _aus_rest().
         self._ereignis_rest = deque()
+        # BUILD 307: eine Aktion, die beim Zusammenfassen zuviel
+        # gelesen wurde und beim naechsten Aufruf zuerst dran ist.
+        self._vorgelegt = None
         # BUILD 302: je Aktion die letzten Messungen, siehe
         # zeichenzeit_melden() und REPEAT_MESS_AUSREISSER.
         self._zeichenproben = {}
@@ -1532,6 +1564,46 @@ class InputManager:
                 return act
         return None
 
+    def gestaute_schritte(self, act, maximal=None):
+        """Wieviele GLEICHE Navigationsschritte liegen noch im Puffer?
+
+        BUILD 307. Rueckgabe: die Zahl der ZUSAETZLICHEN Schritte (0,
+        wenn nichts gestaut ist). Der Aufrufer bewegt dann um
+        1 + diese Zahl Eintraege und zeichnet EINMAL.
+
+        KOSTET NICHTS, WENN NICHTS GESTAUT IST: gelesen wird
+        ausschliesslich aus dem schon vorhandenen Puffer
+        (_ereignis_rest), nie vom Geraet. Kein select(), kein
+        os.read(), keine Wartezeit. Im Normalfall - ein Druck, ein
+        Schritt - ist der Puffer leer und diese Funktion kehrt sofort
+        mit 0 zurueck.
+
+        EINE ANDERE AKTION WIRD ZURUECKGELEGT, nicht verschluckt.
+        Liegt hinter den gleichen Schritten etwas anderes (die andere
+        Richtung, ein OK, ein Zurueck), landet es in _vorgelegt und
+        read_action() liefert es beim naechsten Aufruf als Erstes. Ein
+        verschluckter Tastendruck waere ein schlimmerer Fehler als der,
+        den dieser Build behebt.
+
+        NUR NAVIGATION. Zwei OKs hintereinander sind zwei
+        Entscheidungen und duerfen nicht zu einer werden; REPEAT_AXIS
+        enthaelt genau die vier Richtungen und ist deshalb die
+        richtige Liste."""
+        if act not in REPEAT_AXIS:
+            return 0
+        if maximal is None:
+            maximal = NAV_ZUSAMMEN_MAX
+        n = 0
+        while n < maximal:
+            weiter = self._aus_rest()
+            if weiter is None:
+                break
+            if weiter != act:
+                self._vorgelegt = weiter
+                break
+            n += 1
+        return n
+
     def read_action(self, timeout=None):
         """Blockierend (oder mit Timeout) auf die naechste logische
         Aktion warten. Geraete-Events haben IMMER Vorrang vor Halte-
@@ -1564,6 +1636,14 @@ class InputManager:
         umgehen. Selbst eine dauerhaft fehlschlagende select()-Abfrage
         kann die Funktion jetzt nicht mehr laenger als die angeforderte
         Zeit blockieren."""
+        # BUILD 307: eine beim Zusammenfassen zuviel gelesene Aktion
+        # ist die AELTESTE, die es gibt - sie geht allem vor, auch
+        # einer faelligen Wiederholung. Siehe gestaute_schritte().
+        _vor = getattr(self, "_vorgelegt", None)
+        if _vor is not None:
+            self._vorgelegt = None
+            self.eingabe_zeit = time.monotonic()
+            return _vor
         deadline = None if timeout is None else time.monotonic() + timeout
         # BUGFIX (Nutzer-Rueckmeldung: "ausserdem kann ich durch
         # Tastendruck nicht abbrechen, oder er reagiert gar nicht" -
@@ -2293,6 +2373,10 @@ class InputManager:
         _rest = getattr(self, "_ereignis_rest", None)
         if _rest is not None:
             _rest.clear()
+        # BUILD 307: und die zurueckgelegte Aktion, aus demselben
+        # Grund - sie waere sonst ein Tastendruck aus der Zeit vor dem
+        # Spiel.
+        self._vorgelegt = None
         for d in self.devices.values():
             fl = fcntl.fcntl(d.fd, fcntl.F_GETFL)
             fcntl.fcntl(d.fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)

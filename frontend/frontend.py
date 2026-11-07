@@ -22983,33 +22983,49 @@ class Frontend:
                         self.draw(message=t("ansicht_umgeschaltet",
                                             t("ansicht_" + neu)))
                     continue
-                elif act == "up":
-                    # Rundum-Navigation: vom ersten Eintrag nach oben
-                    # geht's zum letzten - erspart langes Zurueckscrollen.
-                    self._last_scroll_dir = -1
+                elif act in ("up", "down", "left", "right"):
+                    # BUILD 307: GESTAUTE SCHRITTE IN EINEM SPRUNG.
+                    #
+                    # Nutzermeldung vom 08.11.: "wenn ich 10 mal kurz
+                    # hintereinander hoch druecke und dann wieder nach
+                    # unten druecke bleibt er auch ab und zu haengen".
+                    #
+                    # Ein Listenschritt kostet laut Abschnitt J
+                    # 46,57 ms. Zehn Druecker in wenigen
+                    # Zehntelsekunden kommen also schneller an, als sie
+                    # gezeichnet werden - und wurden danach EINZELN
+                    # abgearbeitet. Eine halbe Sekunde Nachlauf, und
+                    # die andere Richtung lag dahinter.
+                    #
+                    # Zusammenfassen ist kein Wegwerfen: wer zehnmal
+                    # drueckt, will zehn Eintraege weiter und bekommt
+                    # sie - nur in EINEM Schritt. Die Endposition ist
+                    # dieselbe, gezeichnet wird einmal, und die andere
+                    # Richtung ist sofort dran. Siehe
+                    # gestaute_schritte() in fe/input.py; liegt nichts
+                    # an (der Normalfall), kostet der Aufruf nichts.
+                    #
+                    # Die vier Zweige standen hier einzeln und
+                    # unterschieden sich nur in Vorzeichen und
+                    # Schrittweite. Zusammengelegt, damit der Faktor
+                    # nicht an vier Stellen gepflegt werden muss - das
+                    # ist die Sorte Dopplung, aus der in diesem Projekt
+                    # schon mehrfach ein halb angewandter Fix wurde
+                    # (Build 293).
+                    _n = 1 + self.inp.gestaute_schritte(act)
+                    _hoch_runter = act in ("up", "down")
+                    _rueck = act in ("up", "left")
+                    if _hoch_runter:
+                        self._last_scroll_dir = -1 if _rueck else 1
+                    _weite = ((kat_hoch_runter if _hoch_runter
+                               else kat_links_rechts) if self.page == 0
+                              else (hoch_runter if _hoch_runter
+                                    else links_rechts))
+                    _schritt = _weite * _n * (-1 if _rueck else 1)
                     if self.page == 0:
-                        self.cat_i = (self.cat_i - kat_hoch_runter) % len(self.cats)
+                        self.cat_i = (self.cat_i + _schritt) % len(self.cats)
                     elif items:
-                        self.item_i = (self.item_i - hoch_runter) % len(items)
-                        self.marquee_reset()
-                elif act == "down":
-                    self._last_scroll_dir = 1
-                    if self.page == 0:
-                        self.cat_i = (self.cat_i + kat_hoch_runter) % len(self.cats)
-                    elif items:
-                        self.item_i = (self.item_i + hoch_runter) % len(items)
-                        self.marquee_reset()
-                elif act == "left":
-                    if self.page == 0:
-                        self.cat_i = (self.cat_i - kat_links_rechts) % len(self.cats)
-                    elif items:
-                        self.item_i = (self.item_i - links_rechts) % len(items)
-                        self.marquee_reset()
-                elif act == "right":
-                    if self.page == 0:
-                        self.cat_i = (self.cat_i + kat_links_rechts) % len(self.cats)
-                    elif items:
-                        self.item_i = (self.item_i + links_rechts) % len(items)
+                        self.item_i = (self.item_i + _schritt) % len(items)
                         self.marquee_reset()
                 elif act in ("list_start", "list_end"):
                     # NEUES FEATURE (Build 114, aus IDEEN_Bedienbarkeit

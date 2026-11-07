@@ -8074,3 +8074,138 @@ einen zweiten Faden auf Verdacht waere genau Build 300 noch einmal.
   nicht verloren, ein Loslassen im Buendel raeumt `self.held`, der
   Puffer wird vor dem Lesen abgearbeitet, `flush()` leert ihn.
 * **geaendert** `tools/test_bench.py` - Test 1c gegen toten Haken.
+
+---
+
+## Nachtrag Build 307 - zehn Druecker, ein Sprung
+
+Nutzermeldung vom 08.11.:
+
+> "wenn ich 10 mal kurz hintereinander hoch druecke und dann wieder
+> nach unten druecke bleibt er auch ab und zu haengen !! fuehlt sich
+> bloed an"
+
+### Erst: der Verdacht aus Build 306 ist ausgeraeumt
+
+Teil 1b hat beim ersten Lauf geliefert, und zwar ein klares Nein:
+
+```
+event0    0 Ereignisse =  0 je Sekunde
+event1    0 Ereignisse =  0 je Sekunde
+event2    0 Ereignisse =  0 je Sekunde
+```
+
+**Seine Geraete schweigen, wenn niemand druckt.** Es gibt keinen
+Dauerstrom, das Leeren kostet nichts, und der **eigene Lesefaden ist
+nicht die Antwort** - jedenfalls nicht aus dem Grund, den ich vermutet
+hatte. Gut, dass er nicht auf Verdacht gebaut wurde; das waere der
+groesste Eingriff ins fragilste Stueck des Projekts gewesen, und zwar
+fuer nichts.
+
+> Eine Messung, die eine Vermutung widerlegt, ist genauso wertvoll wie
+> eine, die sie bestaetigt. Teuer ist nur die, die man nicht gemacht
+> hat.
+
+### Was es stattdessen ist: ein STAU
+
+Ein Listenschritt kostet laut Abschnitt J **46,57 ms**. Zehn Druecker
+in wenigen Zehntelsekunden kommen also schneller an, als sie gezeichnet
+werden. Sie sammeln sich im Puffer - und wurden danach **einzeln**
+abgearbeitet:
+
+* rund **eine halbe Sekunde Nachlauf**, in der die Liste von selbst
+  weiterwandert,
+* und drueckt er in dieser Zeit die andere Richtung, liegt die
+  **hinter** den restlichen neun.
+
+Das ist das "bleibt haengen". Und es ist ein anderer Fehler als das
+Halten: beim Halten regelt der Wiederhol-Boden den Takt (Build 302),
+beim Tippen regelt ihn gar nichts.
+
+### Zusammenfassen ist kein Wegwerfen
+
+Wer zehnmal drueckt, **will** zehn Eintraege weiter. Er bekommt sie -
+nur in **einem** Schritt statt in zehn:
+
+| | vorher | jetzt |
+|---|---|---|
+| Zeichenschritte fuer 10 Druecker | 10 | **1** |
+| bis die andere Richtung wirkt | 11 Schritte (~510 ms) | **2 Schritte** |
+| Endposition | 10 Eintraege weiter | **dieselbe** |
+
+Dass die Endposition dieselbe ist, wird nicht behauptet, sondern
+gerechnet: `tools/test_gestaute_schritte.py` Test 7 vergleicht
+`n`-mal Einzelschritt gegen **einen** Schritt der `n`-fachen Weite,
+fuer Listen bis 31.199 Eintraege, alle Schrittweiten, beide Richtungen.
+Rundum-Navigation per Modulo macht daraus genau denselben Eintrag.
+
+### Drei Zusagen, an denen es haengt
+
+1. **Nichts wird verschluckt.** Liegt hinter den gleichen Schritten
+   etwas anderes - die andere Richtung, ein OK, ein Zurueck -, landet
+   es in `_vorgelegt`, und `read_action()` liefert es beim naechsten
+   Aufruf **als Erstes**, vor jeder faelligen Wiederholung. Es ist ja
+   die aelteste Aktion, die es gibt. Ein verschluckter Tastendruck
+   waere ein schlimmerer Fehler als der, den dieser Build behebt.
+2. **Nur Navigation.** Zwei OKs hintereinander sind **zwei
+   Entscheidungen** und duerfen nicht zu einer werden - bei "ok" waere
+   das ein Spielstart, der nicht kommt, oder ein Dialog, der zweimal
+   bestaetigt wird. Die Liste dafuer ist `REPEAT_AXIS`, und die
+   enthaelt genau die vier Richtungen.
+3. **Ohne Stau kostet es nichts.** `gestaute_schritte()` liest
+   ausschliesslich aus dem schon vorhandenen Puffer - **kein
+   `select()`, kein `os.read()`**, keine Wartezeit. Im Normalfall (ein
+   Druck, ein Schritt) ist der Puffer leer und die Funktion kehrt
+   sofort mit 0 zurueck. Geprueft: Test 4 verbietet beide Zugriffe
+   und laeuft durch.
+
+Dass es moeglich ist, **nur** aus dem Puffer zu zaehlen, ist uebrigens
+der Verdienst von Build 306: davor holte ein Leseaufruf genau ein
+Ereignis, die zehn Druecker lagen also noch im Kernel. Jetzt holt ein
+Aufruf bis zu 64, und zehn Druecker (rund 20 Ereignisse) liegen
+danach vollstaendig bei uns. **Die beiden Builds greifen ineinander.**
+
+### Vier Zweige wurden einer
+
+Der Navigationsblock in `frontend.py` hatte vier Zweige
+(`up`/`down`/`left`/`right`), die sich nur in **Vorzeichen** und
+**Schrittweite** unterschieden. Der Faktor haette also an vier Stellen
+gestanden.
+
+Das ist genau die Dopplung, aus der in **Build 293** ein halb
+angewandter Fix wurde. Zusammengelegt zu einem Zweig mit `_rueck` und
+`_weite`; der Test prueft am Quelltext, dass es **einer** ist.
+
+### Und ein letzter Fund aus Abschnitt K
+
+Der Haken aus Build 305 hat jetzt geliefert, und die Antwort auf die
+seit drei Builds offenen 7 ms steht da:
+
+```
+karte_mit_schatten 769x945              7.84 ms gemessen
+  Bytes erklaeren                       3.65 ms
+  Vorlage: 1.0 Aufrufe, davon 0.00 NEU  0.09 ms
+  Zeit in _karte_teile()                0.16 ms
+  Rest in Python                        3.95 ms
+```
+
+**Die Vorlage wird nie neu gebaut, das Zerteilen kostet nichts.** Die
+vier Millisekunden liegen in **Python um die Kopien herum**. Damit ist
+der naechste Hebel benannt - und es ist nicht die Flaeche, nicht die
+Bandbreite und nicht der Zwischenspeicher, sondern die Vorbereitung.
+Dieselbe Unterscheidung, die Build 270 bei `rect_viele` getroffen hat.
+
+Dazu ein zweiter Fund, der noch nicht verstanden ist: `rect_viele` mit
+denselben 4 Rechtecken und denselben 740 Zeilen kostet im Durchgang
+**mit** Cover 4,345 ms und im Durchgang **ohne** 1,000 ms - Faktor 4,3
+bei identischem Auftrag. Das ist keine Kosten-, sondern eine
+Konkurrenzzahl: im ersten Durchgang arbeitet der Miniaturen-Schreiber,
+im zweiten nicht.
+
+### Neue Pruefungen
+
+* **neu** `tools/test_gestaute_schritte.py` - 15 Pruefungen: zehn
+  werden einer, die andere Richtung wird zurueckgelegt und kommt
+  sofort, nicht-Navigation bleibt unangetastet, ohne Stau kein
+  Geraetezugriff, die Obergrenze greift, `flush()` raeumt mit, die
+  Endposition ist nachgerechnet, und die vier Zweige sind einer.
