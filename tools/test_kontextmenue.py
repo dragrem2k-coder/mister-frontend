@@ -117,11 +117,17 @@ exec(compile(_quelle, "<kontextmenue>", "exec"), _um)
 class Attrappe(object):
     kontextmenue = _um["kontextmenue"]
 
-    def __init__(self, page, items, fav=(), done=(), anleitung=None):
+    def __init__(self, page, items, fav=(), done=(), anleitung=None,
+                 fassungen=()):
         # Build 263: der Anleitungs-Punkt haengt daran, ob es fuer
         # diesen Eintrag WIRKLICH eine Datei gibt (und einen
         # Betrachter dafuer) - hier als fertige Antwort hereingereicht.
         self.anleitung = anleitung
+        # Build 310: die Core-Wahl je Spiel haengt genauso daran, ob
+        # es WIRKLICH etwas zu waehlen gibt - liegt nur eine Fassung
+        # auf der Karte, soll der Punkt gar nicht erscheinen. Auch
+        # hier als fertige Antwort hereingereicht.
+        self.fassungen = list(fassungen)
         self.page = page
         self._items = list(items)
         self.item_i = 0
@@ -136,6 +142,9 @@ class Attrappe(object):
     def _anleitung_zum_eintrag(self, _item):
         return self.anleitung
 
+    def _core_fassungen_zum_eintrag(self, _item):
+        return self.fassungen
+
     def _wizard_choice(self, titel, optionen, **kw):
         self.gezeigt = list(optionen)
         return None          # Abbruch - uns interessiert nur die Liste
@@ -143,11 +152,36 @@ class Attrappe(object):
 
 SPIEL = ("Super Mario World", "game", None)
 ORDNER = ("Hacks/", "folder", "Hacks")
+VIER = ["_Computer/NeXT_20260914_moves_fc",
+        "_Computer/NeXT_20260912_recording_adc_fix",
+        "_Computer/NeXT_20260911_scsi_dma_csr_fix",
+        "_Computer/NeXT_20260908"]
 
 a = Attrappe(1, [SPIEL])
 a.kontextmenue()
 check("bei einem Spiel steht 'Als Favorit merken' drin",
       TR.t("ctx_fav_an") in a.gezeigt, str(a.gezeigt))
+# BUILD 310: die Core-Wahl je Spiel, und sie folgt derselben Regel wie
+# die Anleitung darueber - ein Punkt, der einen leeren Bildschirm
+# oeffnet, ist einer zu viel.
+check("ohne mehrere Fassungen steht die Core-Wahl NICHT drin",
+      TR.t("ctx_core_spiel") not in a.gezeigt, str(a.gezeigt))
+a_core = Attrappe(1, [SPIEL], fassungen=VIER)
+a_core.kontextmenue()
+check("mit vier Fassungen steht sie drin",
+      TR.t("ctx_core_spiel") in a_core.gezeigt, str(a_core.gezeigt))
+check("und zwar VOR dem Favoriten",
+      (TR.t("ctx_core_spiel") in a_core.gezeigt
+       and TR.t("ctx_fav_an") in a_core.gezeigt
+       and a_core.gezeigt.index(TR.t("ctx_core_spiel"))
+       < a_core.gezeigt.index(TR.t("ctx_fav_an"))),
+      "die seltene, bewusste Entscheidung gehoert nach oben, nicht "
+      "unter die taeglichen Schalter")
+o_core = Attrappe(1, [ORDNER], fassungen=VIER)
+o_core.kontextmenue()
+check("bei einem Ordner steht sie nicht drin",
+      TR.t("ctx_core_spiel") not in o_core.gezeigt,
+      str(o_core.gezeigt))
 check("und 'Als durchgespielt merken'",
       TR.t("ctx_done_an") in a.gezeigt)
 
@@ -222,7 +256,11 @@ namen = set(re.findall(r'eintraege\.append\(\s*\([^,]+,\s*"([a-z_]+)"\)',
                        _quelle))
 namen |= set(re.findall(r'"([a-z_]+)"\)\)', _quelle))
 namen = {n for n in namen if not n.startswith("ctx_")}
-EIGENE = {"verstecken", "buchstabe", "zufall_fav", "anleitung"}
+EIGENE = {"verstecken", "buchstabe", "zufall_fav", "anleitung",
+          "core_spiel"}
+# "core_spiel" (Build 310) steht aus demselben Grund hier wie
+# "anleitung": es gibt keine freie Taste mehr, der Punkt lebt
+# ausschliesslich im Kontextmenue und hat dort seinen eigenen Zweig.
 # "anleitung" (Build 263) steht hier und nicht oben, weil es KEINE
 # Tastenaktion ist: es gibt keine freie F-Taste mehr, der Punkt
 # lebt ausschliesslich im Kontextmenue und hat dort seinen

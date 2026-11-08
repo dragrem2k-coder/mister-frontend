@@ -1326,6 +1326,30 @@ TRANSLATIONS = {
         "en": "Cores: choose a version per system",
         "de": "Cores: Fassung je System waehlen"},
     "cores_titel": {"en": "Cores", "de": "Cores"},
+    # Build 310: eine Core-Fassung fuer GENAU EIN Spiel. Siehe
+    # core_spiel_bildschirm() in frontend.py und den Kopf von
+    # fe/cores.py - der Schluessel ist der ROM-Pfad, nicht der Name.
+    "ctx_core_spiel": {
+        "en": "Core build for this game...",
+        "de": "Core-Fassung fuer dieses Spiel..."},
+    "corespiel_titel": {
+        "en": "Core build for: %s",
+        "de": "Core-Fassung fuer: %s"},
+    "corespiel_auto": {
+        "en": "automatic (system choice) - %s",
+        "de": "automatisch (Wahl des Systems) - %s"},
+    "corespiel_leer": {
+        "en": "Only one build of this core is on the card.",
+        "de": "Von diesem Core liegt nur eine Fassung auf der Karte."},
+    "corespiel_gesetzt": {
+        "en": "This game now starts with %s",
+        "de": "Dieses Spiel startet jetzt mit %s"},
+    "corespiel_auto_gesetzt": {
+        "en": "This game follows the system choice again",
+        "de": "Dieses Spiel folgt wieder der Wahl des Systems"},
+    "corespiel_fehler": {
+        "en": "The choice could not be saved",
+        "de": "Die Wahl konnte nicht gespeichert werden"},
     # Build 309: die Core-Uebersicht. Siehe
     # core_uebersicht_bildschirm() in frontend.py - was dort NICHT
     # steht ("Update verfuegbar"), steht auch hier nicht.

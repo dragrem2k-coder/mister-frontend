@@ -213,3 +213,126 @@ def uebersicht(systeme):
         if alle:
             raus.append((name, syskey, rbf, alle))
     return raus
+
+
+# ===========================================================================
+# BUILD 310: EINE FASSUNG FUER GENAU EIN SPIEL
+# ===========================================================================
+#
+# NUTZERWUNSCH vom 08.11., und er steht in seiner Prioritaetenliste
+# ausdruecklich als der wichtigste Punkt des wichtigsten Bereichs:
+#
+#     "Besonders wichtig: Core-Auswahl pro Spiel, damit beispielsweise
+#      ein bestimmtes Spiel mit einer anderen Core-Version gestartet
+#      werden kann."
+#
+# WARUM DAS NICHT DASSELBE IST WIE DIE WAHL JE SYSTEM. Der Kopf dieser
+# Datei nennt den Fall, aus dem das Modul ueberhaupt entstanden ist:
+# beim NeXT-Core liegen vier Fassungen nebeneinander, mit sprechenden
+# Namen wie "scsi_dma_csr_fix". Wer die eine braucht, die SEINEN Fehler
+# behebt, musste bisher das ganze System darauf umstellen - und damit
+# auch alle anderen Spiele, bei denen genau diese Fassung vielleicht
+# etwas anderes kaputtmacht. Die Wahl je System bleibt die richtige
+# Antwort fuer den Normalfall; die Wahl je Spiel ist die Antwort fuer
+# die Ausnahme.
+#
+# DER SCHLUESSEL IST DER ROM-PFAD, nicht der Anzeigename. Zwei Spiele
+# koennen in zwei Systemen gleich heissen ("Pac-Man" gibt es auf jeder
+# Maschine), und der Anzeigename haengt ausserdem an den
+# Namensregeln aus fe/naming.py - aendert der Nutzer dort etwas,
+# zeigte eine namensbasierte Wahl ins Leere, ohne dass es jemand
+# merkt. Der Pfad ist eindeutig und aendert sich nur, wenn die Datei
+# wirklich umzieht; dann faellt die Wahl sauber auf die Systemwahl
+# zurueck, und das ist das richtige Verhalten.
+#
+# DIE SICHERHEITSREGEL AUS aufloesen() GILT UNVERAENDERT: eine
+# gemerkte Fassung gilt nur, solange ihre Datei da ist. Sie steht
+# nicht zweimal hier - aufloesen_spiel() ruft aufloesen(), statt die
+# Pruefung nachzubauen.
+
+SPIEL_WAHL_DATEI = "/media/fat/frontend/core_wahl_spiel.json"
+
+
+def spiel_wahl_laden(pfad=None):
+    """Die gemerkten Auswahlen je Spiel: {ROM-Pfad: mgl-Name}.
+
+    Eine kaputte Datei heisst "keine Auswahl", nicht "Absturz" -
+    dieselbe Haltung wie bei wahl_laden()."""
+    try:
+        with open(pfad or SPIEL_WAHL_DATEI, "r", encoding="utf-8") as fh:
+            daten = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(daten, dict):
+        return {}
+    return {str(k): str(v) for k, v in daten.items()
+            if isinstance(v, str) and v}
+
+
+def spiel_wahl_speichern(wahl, pfad=None):
+    """Ueber .tmp und os.replace() - wie wahl_speichern(), und aus
+    demselben Grund: eine halb geschriebene Datei betrifft den
+    Core-Start."""
+    ziel = pfad or SPIEL_WAHL_DATEI
+    ordner = os.path.dirname(ziel)
+    if ordner:
+        try:
+            os.makedirs(ordner, exist_ok=True)
+        except OSError:
+            pass
+    tmp = ziel + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump({k: v for k, v in wahl.items() if v}, fh,
+                  indent=1, sort_keys=True)
+    os.replace(tmp, ziel)
+    return True
+
+
+def spiel_wahl_setzen(spielpfad, mgl_name, pfad=None):
+    """Eine Auswahl fuer EIN Spiel merken - oder mit None loeschen."""
+    if not spielpfad:
+        return spiel_wahl_laden(pfad)
+    wahl = spiel_wahl_laden(pfad)
+    if mgl_name:
+        wahl[str(spielpfad)] = mgl_name
+    else:
+        wahl.pop(str(spielpfad), None)
+    spiel_wahl_speichern(wahl, pfad)
+    return wahl
+
+
+def spiel_wahl_holen(spielpfad, pfad=None):
+    """Was ist fuer dieses Spiel gemerkt? None heisst "nichts".
+
+    Gibt den gemerkten Namen auch dann zurueck, wenn die Datei nicht
+    mehr existiert - das braucht der Auswahlbildschirm, um "gewaehlt,
+    aber fehlt" anzeigen zu koennen. Der STARTWEG nimmt dagegen
+    aufloesen_spiel(), und die prueft."""
+    if not spielpfad:
+        return None
+    return spiel_wahl_laden(pfad).get(str(spielpfad))
+
+
+def aufloesen_spiel(spielpfad, syskey, standard_rbf, pfad=None,
+                    spiel_datei=None):
+    """WELCHER CORE STARTET DIESES SPIEL? (Build 310)
+
+    Die Reihenfolge, und sie ist die ganze Funktion:
+
+      1. die Wahl fuer GENAU DIESES SPIEL - wenn ihre Datei noch da ist
+      2. sonst alles, was aufloesen() sagt (Systemwahl, dann Standard)
+
+    Punkt 2 ruft aufloesen() und baut es NICHT nach. Die
+    Sicherheitsregel - eine gemerkte Auswahl gilt nur, solange die
+    Datei existiert - steht damit weiterhin an genau einer Stelle;
+    eine zweite Fassung waere eine zweite Gelegenheit, sie zu
+    vergessen (in Build 298 ist genau das fuenfmal passiert).
+
+    Der RA-Core hat auch weiterhin Vorrang vor allem hier: er wird im
+    Startweg VOR dieser Funktion entschieden, weil er ausdruecklich
+    gewaehlt wurde."""
+    if spielpfad:
+        gewaehlt = spiel_wahl_laden(spiel_datei).get(str(spielpfad))
+        if gewaehlt and core_existiert(gewaehlt):
+            return gewaehlt
+    return aufloesen(syskey, standard_rbf, pfad)

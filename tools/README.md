@@ -8446,3 +8446,130 @@ beim Betreten ausgewertet.
   `os.unlink`, `os.rmdir`) und startet keinen Core; und jeder
   `t()`-Schluessel der Seite existiert in **de und en**, mit der
   richtigen Zahl von Platzhaltern.
+
+## Nachtrag Build 310 - eine Fassung fuer genau ein Spiel
+
+Aus seiner Prioritaetenliste vom 08.11., als wichtigster Punkt des
+wichtigsten Bereichs markiert:
+
+> *„Besonders wichtig: Core-Auswahl pro Spiel, damit beispielsweise ein
+> bestimmtes Spiel mit einer anderen Core-Version gestartet werden
+> kann."*
+
+### Warum das nicht dasselbe ist wie die Wahl je System
+
+Der Kopf von `fe/cores.py` nennt den Fall, aus dem das Modul ueberhaupt
+entstanden ist: beim NeXT-Core liegen vier Fassungen nebeneinander, mit
+sprechenden Namen wie `scsi_dma_csr_fix`. Wer die eine braucht, die
+SEINEN Fehler behebt, musste bisher **das ganze System** darauf
+umstellen - und damit auch alle anderen Spiele, bei denen genau diese
+Fassung vielleicht etwas anderes kaputtmacht.
+
+Die Wahl je System bleibt die Antwort fuer den Normalfall; die Wahl je
+Spiel ist die Antwort fuer die Ausnahme.
+
+### Der Schluessel ist der ROM-Pfad, nicht der Anzeigename
+
+Zwei Spiele koennen in zwei Systemen gleich heissen ("Pac-Man" gibt es
+auf jeder Maschine), und der Anzeigename haengt ausserdem an den
+Namensregeln aus `fe/naming.py` - aendert der Nutzer dort etwas, zeigte
+eine namensbasierte Wahl ins Leere, **ohne dass es jemand merkt**.
+
+Der Pfad ist eindeutig und aendert sich nur, wenn die Datei wirklich
+umzieht; dann faellt die Wahl sauber auf die Systemwahl zurueck, und
+das ist das richtige Verhalten.
+
+### Die Reihenfolge, und sie steht nur einmal da
+
+```
+aufloesen_spiel(rom, syskey, standard)
+  1. die Wahl fuer GENAU DIESES SPIEL - wenn ihre Datei noch da ist
+  2. sonst: return aufloesen(syskey, standard)
+```
+
+Punkt 2 **ruft** `aufloesen()` und baut es nicht nach. Die
+Sicherheitsregel des Moduls - *eine gemerkte Auswahl gilt nur, solange
+die Datei existiert* - steht damit weiterhin an genau einer Stelle. Der
+Test zaehlt `core_existiert(` im Koerper von `aufloesen_spiel()` und
+verlangt **genau eins**: das zweite waere die nachgebaute Pruefung.
+
+Der RA-Core hat unveraendert Vorrang vor allem: er wird im Startweg
+VOR dieser Funktion entschieden, weil er ausdruecklich gewaehlt wurde.
+
+### Drei Startwege, und der Test zaehlt sie
+
+`CORES.aufloesen()` stand an **drei** Stellen in `frontend.py`:
+normaler Spielstart, Zufallsstart (F11) und Zufalls-Zock. Alle drei
+sind umgestellt. Der Test zaehlt die Aufrufe:
+
+* `CORES.aufloesen_spiel(` → genau **3**
+* `CORES.aufloesen(` → genau **1** (der Auswahlbildschirm, der zeigt,
+  was „automatisch" bedeutet)
+
+> Bliebe im Startweg ein alter Aufruf stehen, wuerde die Wahl je Spiel
+> dort **stillschweigend** nicht gelten - genau der halb angewandte Fix
+> aus Build 293.
+
+### Der Menuepunkt erscheint nur, wenn es etwas zu waehlen gibt
+
+Im Kontextmenue (X am Pad, F1), ganz oben bei der Anleitung und
+**ueber** den taeglichen Schaltern: die seltene, bewusste Entscheidung
+gehoert nach oben. Und er erscheint nur, wenn **mehr als eine** Fassung
+des Cores auf der Karte liegt - dieselbe Regel wie bei der Anleitung
+und bei `cores_bildschirm()`:
+
+> *„Ein Menue, das die Haelfte seiner Zeilen nur zum Ausgrauen zeigt,
+> ist eine Enttaeuschung pro Zeile."*
+
+Gewaehlt wird mit `_wizard_choice()`, also mit demselben Zeichenweg wie
+das Kontextmenue, aus dem man gerade kommt. Die erste Zeile ist immer
+`automatisch` und **nennt, was dann gilt** - ohne diese Angabe waere
+der Weg zurueck eine Rateaufgabe. Ein `*` markiert, was gerade gilt.
+
+### Eine Falle, in die der Test selbst getappt ist
+
+Die Pruefung „genau ein `CORES.aufloesen(` uebrig" war rot und fand
+zwei - der zweite stand in einem **Kommentar** in `run()`. Der Kommentar
+war ausserdem veraltet und wurde mitkorrigiert, aber die Lehre ist die
+andere: gezaehlt wird jetzt auf `nur_code(quelle)`, nicht auf dem rohen
+Text. Ein Test, der Kommentare mitzaehlt, prueft die Schreibweise und
+nicht die Zusage.
+
+### Und dieselbe Falle ein zweites Mal, nur andersherum
+
+`tools/test_cores.py` hatte die Zusage „der RA-Core behaelt Vorrang"
+als **zwei fest eingetippte Quelltext-Schnipsel samt Einrueckung**
+gesichert. Die sind zerbrochen, obwohl die Zusage unveraendert gilt -
+der Aufruf ist durch den laengeren Namen nur umgebrochen worden.
+
+Geprueft wird jetzt am **Baum**: jedes `if ra_choice:` wird gesucht und
+gefragt, ob in seinem `else`-Zweig aufgeloest wird. Das haelt jede
+Umformatierung aus und faellt trotzdem, wenn jemand den Vorrang
+wegnimmt.
+
+> Zum wievielten Mal in dieser Reihe: eine Pruefung, die an EINER
+> Schreibweise haengt, prueft die Schreibweise und nicht die Zusage.
+
+### Neue und geaenderte Pruefungen
+
+* **neu** `tools/test_core_wahl_spiel.py` - 41 Pruefungen an einem
+  gebauten Kartenbaum mit den **echten** vier NeXT-Dateinamen aus dem
+  Kopf von `fe/cores.py`: ohne Wahl je Spiel aendert sich **gar
+  nichts** (gegen `aufloesen()` geprueft, mit und ohne Systemwahl); die
+  Wahl je Spiel schlaegt die Systemwahl, und das Nachbarspiel bleibt
+  unberuehrt; die Sicherheitsregel greift (Datei weg → Rueckfall, Wahl
+  bleibt **gemerkt**, Datei zurueck → gilt wieder); kaputtes JSON, eine
+  Liste statt eines Dicts und Werte, die keine Namen sind, geben „keine
+  Wahl" statt eines Absturzes; geschrieben wird ueber `.tmp` +
+  `os.replace()` und es bleibt kein `.tmp` liegen; die drei Startwege
+  sind umgestellt; der Menuepunkt erscheint nur bei mehreren Fassungen
+  und nie bei Ordnern, `None` oder einem Eintrag ohne `rbf`; und jeder
+  Text existiert in beiden Sprachen.
+* **geaendert** `tools/test_cores.py` - zaehlt jetzt **drei**
+  `CORES.aufloesen_spiel(` und **genau eine** `CORES.aufloesen(` (den
+  Auswahlbildschirm), und prueft den RA-Vorrang per Baumsuche statt
+  per Textschnipsel.
+* **geaendert** `tools/test_kontextmenue.py` - die Attrappe kennt jetzt
+  `_core_fassungen_zum_eintrag()`, und drei neue Pruefungen: ohne
+  mehrere Fassungen steht der Punkt **nicht** drin, mit vier schon, und
+  dann **vor** dem Favoriten; bei einem Ordner nie.

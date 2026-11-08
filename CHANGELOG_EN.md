@@ -13,6 +13,21 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **New: a core build for *one specific* game.** The context menu (X on
+  the pad, F1) now has "Core build for this game…" at the top whenever
+  more than one build of that core is on the card. A single game can
+  then launch with a different build **without switching the whole
+  system over** — exactly the case the core selection came from: the
+  NeXT core ships four builds side by side, with names like
+  `scsi_dma_csr_fix`. The first line is always "automatic" and names
+  what would apply instead; a `*` marks what applies now (build 310).
+- **And the safety rule holds here too.** A remembered build only
+  applies while its file exists — if `update_all` clears it away, the
+  launch falls back to the system choice instead of pointing nowhere.
+  The choice stays **remembered**: if the file comes back, it applies
+  again. It is keyed by ROM path, not display name — two games can
+  share a name, but not a path (build 310).
+
 - **New: core overview in the system menu — what is installed, and how
   old is it?** A read-only page listing *every* installed core with its
   version and its age in days, sortable by age, name or folder (OK

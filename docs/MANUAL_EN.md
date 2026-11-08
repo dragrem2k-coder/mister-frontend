@@ -1553,12 +1553,16 @@ be a view, it would be a bug.
 **X on the pad, F1 on the keyboard** opens a list of what is possible
 right here:
 
+- Manual for this game (when there is one)
+- **Core build for this game…** (when there is more than one)
 - Mark as favourite / remove from favourites
 - Mark as completed
 - Hide this entry
 - Search, filter, jump to letter
 - Switch view
 - Random game, random favourite
+
+**Core build for this game (build 310).** When several builds of a core are on the card — the NeXT core ships four, with names like `scsi_dma_csr_fix` — this launches **one single game** with a different build, without switching the whole system over. The first line is always *automatic* and names what would apply instead; a `*` marks what applies now. It is remembered by the game's file path, not its name. If `update_all` clears the chosen build away, the game launches with the system choice again — the choice stays remembered and applies again once the file is back. The entry only appears when there is something to choose.
 
 **Why it exists:** the frontend has been able to do all of this for a
 long time — just spread across F6, F7, F8, F10, F11, Tab and four

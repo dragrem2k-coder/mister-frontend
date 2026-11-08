@@ -3573,6 +3573,15 @@ class Frontend:
                 # vorhanden" sagt, ist schlimmer als keiner. Geprueft
                 # wird beides - Datei da UND Betrachter installiert.
                 eintraege.append((t("ctx_anleitung"), "anleitung"))
+            if kind == "game" and self._core_fassungen_zum_eintrag(markiert):
+                # NUR WENN ES WIRKLICH ETWAS ZU WAEHLEN GIBT (Build
+                # 310). Liegt nur eine Fassung des Cores auf der
+                # Karte - der Normalfall nach einem aufgeraeumten
+                # update_all -, waere dieser Punkt eine Zeile, die
+                # einen Bildschirm oeffnet, auf dem nichts steht.
+                # Dieselbe Regel wie bei der Anleitung drei Zeilen
+                # weiter oben und bei cores_bildschirm().
+                eintraege.append((t("ctx_core_spiel"), "core_spiel"))
             if kind == "game":
                 fav = markiert[0] in getattr(self, "_favorites_set", ())
                 eintraege.append(
@@ -3608,6 +3617,106 @@ class Frontend:
         if wahl is None:
             return None
         return eintraege[wahl][1]
+
+    def _core_fassungen_zum_eintrag(self, item):
+        """Welche Core-Fassungen kommen fuer DIESES Spiel in Frage?
+        (Build 310)
+
+        Leere Liste heisst "nichts zu waehlen", und genau darauf
+        haengt der Menuepunkt: liegt nur EINE Fassung auf der Karte -
+        der Normalfall nach einem aufgeraeumten update_all -, soll er
+        gar nicht erst erscheinen. Dieselbe Regel wie bei der
+        Anleitung im Kontextmenue und bei cores_bildschirm():
+
+            "Ein Menue, das die Haelfte seiner Zeilen nur zum
+             Ausgrauen zeigt, ist eine Enttaeuschung pro Zeile."
+
+        Alles in einem try: der Eintrag kommt aus der Spieleliste, und
+        deren Form ist an mehreren Stellen gewachsen. Ein Kontextmenue
+        darf daran nicht sterben - im Zweifel fehlt eine Zeile, und
+        das merkt niemand."""
+        try:
+            if not item or len(item) < 3 or item[1] != "game":
+                return []
+            arg = item[2]
+            rbf = arg[3] if arg and len(arg) > 3 else None
+            if not rbf:
+                return []
+            alle = CORES.fassungen(rbf)
+            return alle if len(alle) > 1 else []
+        except Exception:                                # noqa: BLE001
+            return []
+
+    def core_spiel_bildschirm(self):
+        """Eine Core-Fassung fuer GENAU DIESES Spiel (Build 310).
+
+        NUTZERWUNSCH vom 08.11., in seiner Prioritaetenliste als der
+        wichtigste Punkt des wichtigsten Bereichs markiert:
+
+            "Besonders wichtig: Core-Auswahl pro Spiel, damit
+             beispielsweise ein bestimmtes Spiel mit einer anderen
+             Core-Version gestartet werden kann."
+
+        KEIN EIGENER BILDSCHIRM, SONDERN DIE VORHANDENE AUSWAHL.
+        _wizard_choice() zeichnet bereits eine Liste mit Titel,
+        Blaettern und Abbruch - und zwar genau so, wie das
+        Kontextmenue aussieht, aus dem man gerade kommt. Einen
+        zweiten Zeichenweg dafuer zu bauen hiesse, ihn auch ein
+        zweites Mal zu pflegen (und er saehe beim ersten Themenwechsel
+        anders aus als alles andere).
+
+        DIE ERSTE ZEILE IST IMMER "automatisch" und nennt, was dann
+        gilt. Ohne diese Angabe waere der Weg zurueck eine Rateaufgabe:
+        man sieht zwar, dass man etwas gewaehlt hat, aber nicht, wovon
+        man abgewichen ist."""
+        items = self._display_items()
+        markiert = items[self.item_i] if items else None
+        fassungen = self._core_fassungen_zum_eintrag(markiert)
+        if not fassungen:
+            self._force_full_redraw = True
+            self.draw(message=t("corespiel_leer"))
+            return
+        label = markiert[0]
+        arg = markiert[2]
+        rom, syskey, rbf = arg[0], arg[2], arg[3]
+        jetzt = CORES.spiel_wahl_holen(rom)
+        # Was gilt, wenn man "automatisch" nimmt? Dieselbe Funktion,
+        # die der Startweg fragt - keine nachgebaute Reihenfolge.
+        auto = CORES.aufloesen(syskey, rbf)
+        kette = [None] + list(fassungen)
+        zeilen = []
+        for eintrag in kette:
+            if eintrag is None:
+                text = t("corespiel_auto", str(auto).rsplit("/", 1)[-1])
+            else:
+                text = str(eintrag).rsplit("/", 1)[-1]
+                if not CORES.core_existiert(eintrag):
+                    # Kann vorkommen, waehrend update_all laeuft.
+                    text += "  " + t("cores_fehlt")
+            if eintrag == jetzt or (eintrag is None and not jetzt):
+                # Der Haken sagt, was JETZT gilt - und er ist der
+                # einzige Weg, das zu sehen: _wizard_choice() kennt
+                # keine Vorauswahl.
+                text = "* " + text
+            zeilen.append(text)
+        wahl = self._wizard_choice(t("corespiel_titel", label), zeilen,
+                                   hint_key="choice_hint_plain")
+        self._force_full_redraw = True
+        if wahl is None:
+            self.draw()
+            return
+        neu = kette[wahl]
+        try:
+            CORES.spiel_wahl_setzen(rom, neu)
+        except Exception:                                # noqa: BLE001
+            LOG("spiel_wahl_setzen CRASH:\n" + traceback.format_exc())
+            self.draw(message=t("corespiel_fehler"))
+            return
+        if neu:
+            self.draw(message=t("corespiel_gesetzt",
+                                str(neu).rsplit("/", 1)[-1]))
+        else:
+            self.draw(message=t("corespiel_auto_gesetzt"))
 
     def versteckte_zeigen(self):
         """Die Uebersicht der ausgeblendeten Eintraege (Build 256).
@@ -16109,7 +16218,10 @@ class Frontend:
                             # Build 174: auch hier die gewaehlte
                             # Fassung, falls es eine gibt - siehe
                             # fe/cores.py.
-                            launch_rbf = CORES.aufloesen(sysdef[1], sysdef[3])
+                            # Build 310: erst die Wahl fuer GENAU
+                            # dieses Spiel, dann die des Systems.
+                            launch_rbf = CORES.aufloesen_spiel(
+                                rom_path, sysdef[1], sysdef[3])
                             setname = None
                             LOG("Zufalls-Zock: kein RA-Core fuer %s, Standard-Core - %s"
                                 % (system, title))
@@ -23133,6 +23245,15 @@ class Frontend:
                         meldung = self._kontext_verstecken()
                         self.draw(message=meldung)
                         continue
+                    if gewaehlt == "core_spiel":
+                        try:
+                            self.core_spiel_bildschirm()
+                        except Exception:                # noqa: BLE001
+                            LOG("core_spiel_bildschirm CRASH:\n"
+                                + traceback.format_exc())
+                            self._force_full_redraw = True
+                            self.draw()
+                        continue
                     if gewaehlt == "buchstabe":
                         self.buchstaben_springen()
                         self.draw()
@@ -23141,7 +23262,7 @@ class Frontend:
                         # KEIN eigener Startweg: derselbe Zweig wie
                         # F11, nur mit einer kleineren Auswahl. Der
                         # Start eines Spiels haengt an der RA-Core-
-                        # Frage, an CORES.aufloesen(), an
+                        # Frage, an CORES.aufloesen_spiel(), an
                         # record_recent() und an write_mgl() - das ein
                         # zweites Mal hinzuschreiben hiesse, es ein
                         # zweites Mal pflegen zu muessen.
@@ -23321,7 +23442,9 @@ class Frontend:
                         if ra_choice:
                             rbf, setname = ra_choice
                         else:
-                            rbf = CORES.aufloesen(syskey, rbf)
+                            # Build 310: erst die Wahl fuer GENAU
+                            # dieses Spiel, dann die des Systems.
+                            rbf = CORES.aufloesen_spiel(rom, syskey, rbf)
                         LOG("Zufallsstart (F11): %s (%s)%s"
                             % (name, syskey, " [RA-Core]" if ra_choice else ""))
                         record_recent(name, rand_arg)
@@ -23541,7 +23664,15 @@ class Frontend:
                             if ra_choice:
                                 rbf, setname = ra_choice
                             else:
-                                rbf = CORES.aufloesen(syskey, rbf)
+                                # Build 310: erst die Wahl fuer GENAU
+                                # dieses Spiel, dann die des Systems.
+                                # rom ist hier schon die ggf. in der
+                                # Disc-Auswahl gewechselte Datei - und
+                                # das ist richtig so: wer Disc 2 mit
+                                # einer anderen Fassung startet, meint
+                                # Disc 2.
+                                rbf = CORES.aufloesen_spiel(
+                                    rom, syskey, rbf)
                             LOG("Spielstart: %s (%s)%s" % (label, syskey,
                                 " [RA-Core]" if ra_choice else ""))
                             record_recent(label, arg)

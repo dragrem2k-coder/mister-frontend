@@ -171,6 +171,7 @@ Was darin steht, haengt davon ab, worauf man steht - ein Spiel,
 ein Ordner oder eine Kategorie.
 
 - Anleitung anzeigen
+- Core-Fassung fuer dieses Spiel...
 - Favorit entfernen
 - Als Favorit merken
 - Nicht mehr durchgespielt

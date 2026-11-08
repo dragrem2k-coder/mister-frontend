@@ -13,6 +13,23 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Neu: eine Core-Fassung für *genau ein* Spiel.** Im Kontextmenü (X
+  am Pad, F1) steht jetzt ganz oben „Core-Fassung für dieses Spiel…",
+  sobald mehr als eine Fassung des Cores auf der Karte liegt. Damit
+  startet ein einzelnes Spiel mit einer anderen Fassung, **ohne das
+  ganze System umzustellen** — genau der Fall, aus dem die Core-Wahl
+  ursprünglich entstanden ist: beim NeXT-Core liegen vier Fassungen
+  nebeneinander, mit Namen wie `scsi_dma_csr_fix`. Die erste Zeile ist
+  immer „automatisch" und nennt, was dann gelten würde; ein `*` zeigt,
+  was gerade gilt (Build 310).
+- **Und die Sicherheitsregel gilt auch hier.** Eine gemerkte Fassung
+  gilt nur, solange ihre Datei da ist — räumt `update_all` sie weg,
+  fällt der Start sauber auf die Systemwahl zurück, statt ins Leere zu
+  zeigen. Die Wahl bleibt dabei **gemerkt**: kommt die Datei wieder,
+  gilt sie wieder. Gemerkt wird am ROM-Pfad, nicht am Anzeigenamen —
+  zwei Spiele können gleich heißen, aber nicht am selben Pfad liegen
+  (Build 310).
+
 - **Neu: Core-Übersicht im Systemmenü — was liegt drauf, und wie alt
   ist es?** Eine Leseseite mit *allen* installierten Cores, ihrer
   Fassung und ihrem Alter in Tagen, sortierbar nach Alter, Name oder

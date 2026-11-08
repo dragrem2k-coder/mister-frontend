@@ -1845,12 +1845,25 @@ Ansicht, sondern ein Fehler.
 **X am Pad, F1 auf der Tastatur** öffnet eine Liste mit dem, was an
 dieser Stelle gerade geht:
 
+- Anleitung zum Spiel (wenn es eine gibt)
+- **Core-Fassung für dieses Spiel…** (wenn es mehr als eine gibt)
 - Als Favorit merken / Favorit entfernen
 - Als durchgespielt merken
 - Diesen Eintrag ausblenden
 - Suchen, Filter, zu Buchstabe springen
 - Ansicht wechseln
 - Zufälliges Spiel, zufälliger Favorit
+
+**Core-Fassung für dieses Spiel (Build 310).** Liegen mehrere Fassungen
+eines Cores auf der Karte — beim NeXT-Core sind es vier, mit Namen wie
+`scsi_dma_csr_fix` —, startest du hier **ein einzelnes Spiel** mit
+einer anderen Fassung, ohne das ganze System umzustellen. Die erste
+Zeile ist immer *automatisch* und nennt, was dann gelten würde; ein
+`*` zeigt, was gerade gilt. Gemerkt wird am Dateipfad des Spiels, nicht
+am Namen. Räumt `update_all` die gewählte Fassung weg, startet das
+Spiel wieder mit der Systemwahl — die Wahl bleibt aber gemerkt und gilt
+wieder, sobald die Datei zurück ist. Der Punkt erscheint nur, wenn es
+wirklich etwas zu wählen gibt.
 
 **Warum es das gibt:** das Frontend kann all das längst — nur verteilt
 über F6, F7, F8, F10, F11, Tab und vier Select-Kombinationen. Wer ein

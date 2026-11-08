@@ -200,16 +200,53 @@ from test_beenden import nur_code                          # noqa: E402
 
 code = nur_code(quelle)
 check("das Modul ist eingebunden", "import fe.cores as CORES" in code)
+# BUILD 310: DIE DREI AUFLOESUNGEN HEISSEN JETZT aufloesen_spiel().
+# Die Zusage ist dieselbe geblieben und nur eine Stufe genauer
+# geworden: erst die Wahl fuer GENAU DIESES SPIEL, dann die des
+# Systems, dann der Standard. Bliebe im Startweg ein alter Aufruf
+# stehen, wuerde die Wahl je Spiel dort stillschweigend nicht gelten -
+# genau der halb angewandte Fix aus Build 293. Deshalb werden BEIDE
+# Zahlen geprueft.
 check("es gibt genau drei Aufloesungen im Startweg",
-      code.count("CORES.aufloesen(") == 3,
-      "%d (ohne Kommentare gezaehlt)" % code.count("CORES.aufloesen("))
+      code.count("CORES.aufloesen_spiel(") == 3,
+      "%d (ohne Kommentare gezaehlt)"
+      % code.count("CORES.aufloesen_spiel("))
+check("und genau eine Systemaufloesung daneben",
+      code.count("CORES.aufloesen(") == 1,
+      "%d - das ist der Auswahlbildschirm aus Build 310, der zeigt, "
+      "was 'automatisch' bedeutet" % code.count("CORES.aufloesen("))
+
 # Der RA-Core muss Vorrang behalten - er ist ja gerade ausdruecklich
 # gewaehlt worden.
-for stelle in ("rbf, setname = ra_choice\n                        else:\n"
-               "                            rbf = CORES.aufloesen(syskey, rbf)",
-               "rbf, setname = ra_choice\n                            else:\n"
-               "                                rbf = CORES.aufloesen(syskey, rbf)"):
-    check("der RA-Core behaelt Vorrang", stelle in quelle)
+#
+# GEPRUEFT WIRD AM BAUM, NICHT AM TEXT (Build 310). Hier standen zwei
+# fest eingetippte Quelltext-Schnipsel samt Einrueckung, und die sind
+# an einem umgebrochenen Aufruf zerbrochen, obwohl die Zusage
+# unveraendert galt. Gesucht wird jetzt: jedes "if ra_choice:" und die
+# Frage, ob in seinem else-Zweig aufgeloest wird.
+import ast as _ast                                        # noqa: E402
+
+_ra_zweige = 0
+_ra_ok = 0
+for _n in _ast.walk(_ast.parse(quelle)):
+    if not isinstance(_n, _ast.If):
+        continue
+    if not (isinstance(_n.test, _ast.Name) and _n.test.id == "ra_choice"):
+        continue
+    _ra_zweige += 1
+    _rufe = [_c for _c in _ast.walk(_ast.Module(body=_n.orelse,
+                                                type_ignores=[]))
+             if isinstance(_c, _ast.Call)
+             and isinstance(_c.func, _ast.Attribute)
+             and _c.func.attr == "aufloesen_spiel"]
+    if _rufe:
+        _ra_ok += 1
+check("es gibt die beiden RA-Zweige noch", _ra_zweige == 2,
+      "%d" % _ra_zweige)
+check("der RA-Core behaelt Vorrang", _ra_ok == _ra_zweige,
+      "%d von %d else-Zweigen loesen auf - der RA-Core wird VORHER "
+      "entschieden und darf nicht ueberschrieben werden"
+      % (_ra_ok, _ra_zweige))
 check("es gibt einen Menuepunkt", '"cores"' in io.open(
     os.path.join(_REPO, "frontend", "fe", "menu.py"),
     encoding="utf-8").read())
