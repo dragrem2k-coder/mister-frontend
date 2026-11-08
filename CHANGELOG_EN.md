@@ -13,6 +13,25 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **Fixed: two views mixed together while scrolling the main page.**
+  Reported as "both views overlap", and more precisely "when I scroll
+  down the list view and it starts again at the top". The light draw
+  path of the classic category list asked only about the **view**, not
+  about the **style** introduced in build 314 — with the view on
+  "list" and the style on "tile wall" it considered itself
+  responsible, painted two list rows into the middle of the tile wall
+  and reported "done". The new test now walks all the way round
+  through all four styles with real key steps and compares every frame
+  (build 315).
+- **New: the netplay core as a third choice.** Where you used to pick
+  between the standard core and the RetroAchievements core, the
+  netplay version now appears too — if one is on the card. The screen
+  also appears when there is *only* a netplay version and no RA core
+  at all. Recognised: `SNES_netplay.rbf`,
+  `SNES_Netplay_20260220.rbf`, `SNES_20260110_netplay.rbf`, and the
+  same inside a folder with "netplay" in its name (build 315).
+- **New: three more console photos** — 32X, Virtual Boy and a
+  computer. That makes 20 (build 315).
 - **New: three new main pages (designs 7, 8 and 9), HDMI only.**
   Switchable in the system menu under *Main page* — four values on one
   switch, the default stays "classic" (build 314):

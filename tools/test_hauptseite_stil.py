@@ -550,6 +550,64 @@ for wert in S.HAUPT_STILE:
     check("Stilname haupt_stil_%s existiert" % wert,
           ("haupt_stil_" + wert) in TR.TRANSLATIONS)
 
+# ---------------------------------------------------------------------------
+print()
+print("Test 12: ECHTE Tastenschritte, einmal rundherum")
+# ---------------------------------------------------------------------------
+# NACHGEREICHT IN BUILD 315, und zwar wegen eines Fehlers, den Test 5
+# NICHT gefunden hat: er ruft draw_page_cats() direkt, die Taste aber
+# geht zuerst durch _draw_navigate_cats(). Und dieser leichte Pfad
+# fragte nur nach der ANSICHT, nicht nach dem STIL - bei Ansicht
+# "liste" und Stil "kachelwand" hielt er sich fuer zustaendig, malte
+# zwei klassische Listenzeilen mitten in die Kachelwand und meldete
+# "erledigt".
+#
+# Gemeldet wurde das so: "wenn ich die ansicht wechsel baut sich die
+# alte dahinter auf und es gibt ein durcheinander, beide ansichten
+# ueberschneiden sich" - und praeziser: "wenn ich quasi in der listen
+# ansicht auf der hauptseiten nach unten durchscrolle und es oben
+# wieder anfaengt".
+#
+# Deshalb hier der ganze Weg, so wie die Taste ihn nimmt, einmal
+# komplett rundherum samt Umlauf von der letzten auf die erste
+# Kategorie.
+
+
+def rundherum(stil, w=1920, h=1080):
+    f = seite(w, h, stil)
+    f.draw_page_cats(flip=False)
+    n = len(f.cats)
+    schlecht = []
+    for _ in range(n + 2):
+        alt = f.cat_i
+        f.cat_i = (f.cat_i + 1) % n       # genau das tut nav_anwenden()
+        if not f._draw_navigate_cats(alt):
+            f.draw_page_cats(flip=False)
+        ist = bytes(f.fb.buf)
+        g = seite(w, h, stil)
+        g.cat_i = f.cat_i
+        g.cat_scroll = f.cat_scroll
+        g._pulse_t0 = f._pulse_t0
+        g.fb.mark_full_redraw()
+        g.draw_page_cats(flip=False)
+        if not gleich(ist, g.fb.buf):
+            schlecht.append((f.cat_i, abweichung(ist, g.fb.buf)[0]))
+    check("%-11s %d Tastenschritte bitgenau" % (stil, n + 2),
+          not schlecht,
+          "" if not schlecht else "%d Schritte daneben, erster bei "
+          "cat_i=%d mit %d Bildpunkten"
+          % (len(schlecht), schlecht[0][0], schlecht[0][1]))
+
+
+for _stil in ("klassisch", "kachelwand", "dashboard", "karussell"):
+    rundherum(_stil)
+
+check("der leichte Pfad fragt nach dem STIL, nicht nur nach der Ansicht",
+      "_haupt_stil()" in nur_code(
+          koerper(_QF, "_draw_navigate_cats_impl", "Frontend")),
+      "wer eine neue Entscheidungsebene einzieht, muss JEDE Stelle "
+      "nachziehen, die die alte abfragt (Build 284)")
+
 shutil.rmtree(TMP, ignore_errors=True)
 
 print()

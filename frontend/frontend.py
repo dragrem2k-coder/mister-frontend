@@ -3321,13 +3321,21 @@ class Frontend:
         # bisher, keine zusaetzliche Abfrage fuer alle anderen.
         if sk:
             ra_core = find_ra_core(sk)
-            if ra_core:
-                use_ra = self.draw_core_choice_screen(sk, name)
-                if use_ra is None:
+            # Build 315: die Netplay-Fassung als dritte Moeglichkeit -
+            # sein Wunsch, "da wo ich zwischen standard core oder
+            # Retroachievements core auswaehle". Der Bildschirm
+            # erscheint jetzt auch, wenn es NUR eine Netplay-Fassung
+            # gibt und gar keinen RA-Core.
+            netplay_core = self.find_netplay_core(sk)
+            if ra_core or netplay_core:
+                wahl = self.draw_core_choice_screen(
+                    sk, name, ra_core=ra_core, netplay_core=netplay_core)
+                if wahl is None:
                     return   # ESC/back - Kategorie NICHT betreten, Seite 0 bleibt
                 if not hasattr(self, "_ra_core_choice"):
                     self._ra_core_choice = {}
-                self._ra_core_choice[sk] = ra_core if use_ra else None
+                self._ra_core_choice[sk] = self._core_wahl_tupel(
+                    wahl, ra_core, netplay_core)
         self.page = 1
         self.nav_path = []
         self._nav_position_stack = []
@@ -7757,6 +7765,28 @@ class Frontend:
         # Galerie der Hauptseite bauen ihren eigenen schnellen Weg
         # (siehe _draw_cats_raster()).
         if self.aktuelle_ansicht_haupt() != "liste":
+            return False
+        # BUILD 315 - BEHOBENER FEHLER AUS BUILD 314, gemeldet mit
+        # "wenn ich die ansicht wechsel baut sich die alte dahinter
+        # auf und es gibt ein durcheinander, beide ansichten
+        # ueberschneiden sich".
+        #
+        # Die Zeile darueber fragt nach der ANSICHT. Seit Build 314
+        # gibt es darueber aber noch den STIL, und der gewinnt (siehe
+        # _draw_page_cats_impl()): steht die Ansicht auf "liste" und
+        # der Stil auf "kachelwand", zeichnet der Stil - dieser
+        # leichte Pfad hielt sich trotzdem fuer zustaendig, malte
+        # zwei klassische Listenzeilen mitten in die Kachelwand und
+        # meldete "erledigt". Genau das Durcheinander, das er
+        # beschrieben hat.
+        #
+        # Die Lehre ist dieselbe wie in Build 284: wer eine neue
+        # Entscheidungsebene einzieht, muss JEDE Stelle nachziehen,
+        # die die alte abfragt - nicht nur die, die man gerade
+        # bearbeitet. Der Test prueft das jetzt mechanisch, indem er
+        # mit echten Tastenschritten durch alle vier Stile laeuft und
+        # das Bild gegen einen vollen Aufbau haelt.
+        if self._haupt_stil() != "klassisch":
             return False
         # Siehe _overlay_active() - gleiche Begruendung wie bei
         # _draw_navigate_items_impl().
@@ -16877,14 +16907,106 @@ class Frontend:
     # Konsolen-Mechanik.
     GRAFIKMODUS_AUS_FLAG = "/media/fat/frontend/anleitung_textmodus"
 
-    def draw_core_choice_screen(self, syskey, display_name, default_ra=False):
-        """Zwei-Optionen-Auswahl (Normal-Core / RA-Core), gezeigt beim
-        Betreten eines Systems, fuer das find_ra_core() eine RA-
-        faehige Core-Variante gefunden hat. Hoch/Runter wechselt die
-        Auswahl, OK bestaetigt. Liefert True fuer RA-Core, False fuer
-        normal (jeweils ueber OK bestaetigt), oder None bei ESC/back -
+    @staticmethod
+    def _core_wahl_tupel(wahl, ra_core, netplay_core):
+        """Aus dem Namen, den draw_core_choice_screen() liefert, das
+        (rbf, setname)-Tupel machen - oder None fuer den Standard.
+
+        EINE Stelle dafuer, und zwar weil es DREI Aufrufer gibt
+        (Kategorie betreten, Zufallsstart, Spielstart). Dieselbe
+        Zuordnung dreimal zu tippen ist genau die Sorte Verdopplung,
+        die in diesem Haus schon viermal auseinandergelaufen ist."""
+        if wahl == "ra":
+            return ra_core
+        if wahl == "netplay":
+            return netplay_core
+        return None
+
+    @staticmethod
+    def _core_wahl_log(gewaehlt, ra_core, netplay_core):
+        """Was im Protokoll hinter dem Spielnamen steht.
+
+        Bisher stand dort " [RA-Core]", sobald ueberhaupt etwas
+        gewaehlt war. Mit drei Moeglichkeiten waere das falsch - ein
+        Netplay-Start stuende als RA-Start im Protokoll, und genau
+        solche Zeilen fuehren bei der naechsten Fehlersuche in die
+        Irre."""
+        if not gewaehlt:
+            return ""
+        if netplay_core and gewaehlt == netplay_core:
+            return " [Netplay-Core]"
+        if ra_core and gewaehlt == ra_core:
+            return " [RA-Core]"
+        return " [%s]" % (gewaehlt[0],)
+
+    def _system_rbf(self, syskey):
+        """Der Standard-Core eines Systems ("_Console/SNES") - einmal
+        nachgeschlagen und gemerkt.
+
+        Die Tabelle ist eine Liste von Tupeln, kein Verzeichnis; sie
+        bei jeder Core-Frage zu durchlaufen waere billig, aber die
+        Frage kommt beim Betreten JEDER Kategorie."""
+        merk = getattr(self, "_syskey_rbf_cache", None)
+        if merk is None:
+            merk = {}
+            for eintrag in list(GAME_SYSTEMS) + list(OPTIONAL_GAME_SYSTEMS):
+                merk.setdefault(eintrag[1], eintrag[3])
+            self._syskey_rbf_cache = merk
+        return merk.get(syskey)
+
+    def find_netplay_core(self, syskey, standard_rbf=None):
+        """(mgl_name, setname) der Netplay-Fassung - oder None.
+
+        Dieselbe Form wie find_ra_core(), und das ist der ganze Grund
+        fuer diese Funktion: ab hier laeuft die Netplay-Fassung durch
+        genau dieselben Leitungen wie der RA-Core - die gemerkte Wahl
+        je System, die persistierte Wahl je Spiel, write_mgl(). Kein
+        zweiter Startweg.
+
+        SETNAME BLEIBT None, und das ist bewusst. Der RA-Core braucht
+        ihn, weil sage2050s Werkzeug seine Cores in einen eigenen
+        Ordner legt und MiSTer sie sonst nicht als getrennte Variante
+        behandelt (per echter Installation verifiziert, siehe
+        fe/ra_core.py). Fuer die Netplay-Fassung ist das NICHT
+        verifiziert - einen setname zu erfinden, hiesse zu raten, und
+        geraten wuerde hier an der Stelle, an der ein Spiel startet
+        oder eben nicht. Ohne setname laeuft sie wie jeder andere
+        Core auch."""
+        rbf = standard_rbf or self._system_rbf(syskey)
+        if not rbf:
+            return None
+        try:
+            treffer = CORES.finde_netplay(rbf)
+        except Exception:                                # noqa: BLE001
+            return None
+        return (treffer, None) if treffer else None
+
+    def draw_core_choice_screen(self, syskey, display_name, default_ra=False,
+                                ra_core=None, netplay_core=None,
+                                vorwahl=None):
+        """Core-Auswahl beim Betreten eines Systems: Normal-Core,
+        RA-Core und - seit Build 315 - Netplay-Core. Hoch/Runter
+        wechselt die Auswahl, OK bestaetigt.
+
+        LIEFERT SEIT BUILD 315 EINEN NAMEN statt eines Wahrheitswerts:
+        "normal", "ra" oder "netplay" - oder None bei ESC/back, und
         NUR dann bricht der Aufrufer das Betreten der Kategorie
         komplett ab (siehe _enter_category()).
+
+        Der Wechsel von True/False auf einen Namen ist kein
+        Geschmack: mit drei Moeglichkeiten gibt es keinen
+        Wahrheitswert mehr, und ein stillschweigend weiter
+        benutztes "if use_ra:" waere bei der dritten Option
+        wahr geworden, ohne dass jemand es bemerkt haette. Lieber
+        ein Rueckgabewert, bei dem der alte Umgang damit gar nicht
+        erst durchlaeuft.
+
+        WELCHE OPTIONEN ERSCHEINEN, entscheidet, was tatsaechlich auf
+        der Karte liegt: "normal" immer, "RA" wenn find_ra_core()
+        etwas findet, "Netplay" wenn find_netplay_core() etwas
+        findet. Ein Menuepunkt fuer eine Datei, die es nicht gibt,
+        ist eine Falle - genau diese Regel gilt in diesem Haus seit
+        Build 284 ("ein Menuepunkt ist keine Funktion").
 
         BUGFIX (Nutzer-Rueckmeldung): ESC lieferte bisher IMMER False
         zurueck ("normaler Core") - der Aufrufer konnte das nicht von
@@ -16914,8 +17036,21 @@ class Frontend:
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
         accent = accent_for(syskey)
-        choice = 1 if default_ra else 0   # 0 = normaler Core, 1 = RA-Core
-        options = [t("core_choice_normal"), t("core_choice_ra")]
+        if ra_core is None:
+            ra_core = find_ra_core(syskey)
+        arten = [("normal", t("core_choice_normal"))]
+        if ra_core:
+            arten.append(("ra", t("core_choice_ra")))
+        if netplay_core:
+            arten.append(("netplay", t("core_choice_netplay")))
+        if vorwahl is None:
+            vorwahl = "ra" if default_ra else "normal"
+        choice = 0
+        for i, (art, _lab) in enumerate(arten):
+            if art == vorwahl:
+                choice = i
+                break
+        options = [lab for _art, lab in arten]
         while True:
             fb.clear(C_BG)
             title = t("core_choice_title", display_name)
@@ -16933,10 +17068,16 @@ class Frontend:
             self._hinweis_unten(hint, sc)
             fb.flip()
             act = self.inp.read_action()
-            if act in ("up", "down", "left", "right"):
-                choice = 1 - choice
+            if act in ("up", "left"):
+                # Build 315: mit drei Moeglichkeiten ist "1 - choice"
+                # keine Umschaltung mehr, sondern ein Sprung an den
+                # Anfang. Hoch und Runter gehen jetzt wirklich hoch
+                # und runter, umlaufend wie ueberall sonst.
+                choice = (choice - 1) % len(arten)
+            elif act in ("down", "right"):
+                choice = (choice + 1) % len(arten)
             elif act == "ok":
-                return choice == 1
+                return arten[choice][0]
             elif act in ("back", "exit"):
                 return None   # Abbruch - Kategorie wird NICHT betreten
 
@@ -24811,10 +24952,19 @@ class Frontend:
                             continue
                     if pool:
                         name, syskey, rand_arg = random.choice(pool)
+                        rom, ext, _sk, rbf, (dl, ft, ix) = rand_arg
                         ra_core = find_ra_core(syskey)
+                        # Build 315: die Netplay-Fassung als dritte
+                        # Moeglichkeit. Der Standard-Core steht hier
+                        # schon im Eintrag, deshalb wird er
+                        # mitgegeben - eine zweite Nachschlagerei in
+                        # der Systemtabelle waere umsonst.
+                        netplay_core = self.find_netplay_core(syskey, rbf)
                         ra_choice = None
-                        if ra_core:
-                            use_ra = self.draw_core_choice_screen(syskey, name)
+                        if ra_core or netplay_core:
+                            use_ra = self.draw_core_choice_screen(
+                                syskey, name, ra_core=ra_core,
+                                netplay_core=netplay_core)
                             if use_ra is None:
                                 # BUGFIX (Nutzer-Rueckmeldung: nach F11 +
                                 # "Zurueck" am Core-Auswahlbildschirm baute
@@ -24833,8 +24983,8 @@ class Frontend:
                                 # explizit draw(), DANN abbrechen.
                                 self.draw()
                                 continue   # ESC/back - Zufallsstart abgebrochen
-                            ra_choice = ra_core if use_ra else None
-                        rom, ext, _sk, rbf, (dl, ft, ix) = rand_arg
+                            ra_choice = self._core_wahl_tupel(
+                                use_ra, ra_core, netplay_core)
                         setname = None
                         # Build 174: liegt fuer dieses System eine
                         # gewaehlte Core-Fassung vor, gilt sie - aber
@@ -24850,7 +25000,9 @@ class Frontend:
                             # dieses Spiel, dann die des Systems.
                             rbf = CORES.aufloesen_spiel(rom, syskey, rbf)
                         LOG("Zufallsstart (F11): %s (%s)%s"
-                            % (name, syskey, " [RA-Core]" if ra_choice else ""))
+                            % (name, syskey,
+                               self._core_wahl_log(ra_choice, ra_core,
+                                                   netplay_core)))
                         record_recent(name, rand_arg)
                         mgl = write_mgl(rbf, rom, dl, ft, ix, setname=setname)
                         self.run_core(mgl, label=name, syskey=syskey)
@@ -24993,6 +25145,10 @@ class Frontend:
                                     continue
                                 rom = _discs[_w][1]
                             ra_core = find_ra_core(syskey) if syskey else None
+                            # Build 315: die Netplay-Fassung als dritte
+                            # Moeglichkeit, an genau derselben Stelle.
+                            netplay_core = (self.find_netplay_core(syskey, rbf)
+                                            if syskey else None)
                             # Nutzerwunsch (nach Rueckmeldung praezisiert:
                             # "es wird das Spiel wieder geladen ohne
                             # Abfrage welcher Core benutzt werden soll" -
@@ -25013,15 +25169,35 @@ class Frontend:
                             # Ein-System-Kategorien sinnvoll) nicht greift.
                             always_ask_core = self.cats[self.cat_i][0] in (
                                 t("favorites_cat"), t("recent_cat"), t("continue_cat"))
-                            if always_ask_core and ra_core:
+                            if always_ask_core and (ra_core or netplay_core):
                                 # Vorauswahl auf der zuletzt fuer GENAU
                                 # DIESES Spiel tatsaechlich verwendeten
                                 # Core-Variante (siehe Bugfix-Kommentar
                                 # in draw_core_choice_screen()) - gefragt
                                 # wird trotzdem weiterhin jedes Mal.
-                                default_ra = load_last_core_choice(label) is not None
+                                # Build 315: die Vorauswahl steht jetzt
+                                # auf der zuletzt tatsaechlich
+                                # benutzten Fassung - auch wenn das die
+                                # Netplay-Fassung war. Mit
+                                # default_ra=True allein waere jeder
+                                # Netplay-Start beim naechsten Mal als
+                                # RA-Start vorausgewaehlt gewesen.
+                                _zuletzt = load_last_core_choice(label)
+                                if _zuletzt and netplay_core \
+                                        and tuple(_zuletzt) == tuple(
+                                            netplay_core):
+                                    _vorwahl = "netplay"
+                                elif _zuletzt and ra_core \
+                                        and tuple(_zuletzt) == tuple(ra_core):
+                                    _vorwahl = "ra"
+                                elif _zuletzt:
+                                    _vorwahl = "ra"
+                                else:
+                                    _vorwahl = "normal"
                                 use_ra = self.draw_core_choice_screen(
-                                    syskey, label, default_ra=default_ra)
+                                    syskey, label, ra_core=ra_core,
+                                    netplay_core=netplay_core,
+                                    vorwahl=_vorwahl)
                                 if use_ra is None:
                                     # Siehe F11-Bugfix (gleicher Grund):
                                     # draw_core_choice_screen() zeichnet
@@ -25030,7 +25206,8 @@ class Frontend:
                                     # Auswahlbildschirm haengen.
                                     self.draw()
                                     continue
-                                ra_choice = ra_core if use_ra else None
+                                ra_choice = self._core_wahl_tupel(
+                                    use_ra, ra_core, netplay_core)
                             else:
                                 # RA-Core-Wahl anwenden, falls beim Betreten
                                 # dieser (normalen Ein-System-)Kategorie
@@ -25057,7 +25234,12 @@ class Frontend:
                                 ra_dict = getattr(self, "_ra_core_choice", {})
                                 if syskey in ra_dict:
                                     ra_choice = ra_dict[syskey]
-                                elif ra_core:
+                                elif ra_core or netplay_core:
+                                    # Build 315: auch dann die
+                                    # gemerkte Wahl holen, wenn es NUR
+                                    # eine Netplay-Fassung gibt - sonst
+                                    # haette ausgerechnet das neue
+                                    # Angebot kein Gedaechtnis.
                                     ra_choice = load_last_core_choice(label)
                                 else:
                                     ra_choice = None
@@ -25077,8 +25259,10 @@ class Frontend:
                                 # Disc 2.
                                 rbf = CORES.aufloesen_spiel(
                                     rom, syskey, rbf)
-                            LOG("Spielstart: %s (%s)%s" % (label, syskey,
-                                " [RA-Core]" if ra_choice else ""))
+                            LOG("Spielstart: %s (%s)%s"
+                                % (label, syskey,
+                                   self._core_wahl_log(ra_choice, ra_core,
+                                                       netplay_core)))
                             record_recent(label, arg)
                             record_core_choice(label, ra_choice)
                             mgl = write_mgl(rbf, rom, dl, ft, ix, setname=setname)

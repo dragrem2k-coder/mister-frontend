@@ -13,6 +13,26 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Behoben: beim Scrollen auf der Hauptseite mischten sich zwei
+  Ansichten.** Gemeldet als *„beide ansichten überschneiden sich"* und
+  genauer *„wenn ich in der Listenansicht nach unten durchscrolle und
+  es oben wieder anfängt"*. Der leichte Zeichenweg der klassischen
+  Kategorienliste fragte nur nach der **Ansicht**, nicht nach dem
+  **Stil** aus Build 314 — bei Ansicht „Liste" und Stil „Kachelwand"
+  hielt er sich für zuständig, malte zwei Listenzeilen mitten in die
+  Kachelwand und meldete „erledigt". Der neue Test läuft jetzt mit
+  echten Tastenschritten einmal rundherum durch alle vier Stile und
+  vergleicht jedes Bild (Build 315).
+- **Neu: der Netplay-Core als dritte Möglichkeit.** Dort, wo bisher
+  zwischen Standard-Core und RetroAchievements-Core gewählt wurde,
+  steht jetzt auch die Netplay-Fassung — sofern eine auf der Karte
+  liegt. Der Bildschirm erscheint auch, wenn es *nur* eine
+  Netplay-Fassung und gar keinen RA-Core gibt. Erkannt werden
+  `SNES_netplay.rbf`, `SNES_Netplay_20260220.rbf`,
+  `SNES_20260110_netplay.rbf` und dasselbe in einem eigenen Ordner mit
+  „netplay" im Namen (Build 315).
+- **Neu: drei weitere Gerätefotos** — 32X, Virtual Boy und ein
+  Computer. Damit sind es 20 (Build 315).
 - **Neu: drei neue Hauptseiten (Entwürfe 7, 8 und 9), nur HDMI.**
   Umschaltbar im Systemmenü unter *Hauptseite* — vier Werte an einem
   Schalter, Vorgabe bleibt „klassisch" (Build 314):

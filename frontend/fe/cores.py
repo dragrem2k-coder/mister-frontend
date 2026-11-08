@@ -127,6 +127,129 @@ def fassungen(rel):
     return sorted(treffer, reverse=True)
 
 
+# ----------------------------------------------------------------------
+# BUILD 315: NETPLAY-FASSUNGEN
+#
+# NUTZERWUNSCH: "ausserdem haette ich gerne das core die mit
+# _netplay.rbf auf dem mister sind mit im core auswahlmenue mit
+# angezeigt werden! als dritte option!" - und auf die Rueckfrage, wo:
+# "da wo ich zwischen standard core oder Retroachievements core
+# auswaehle".
+#
+# WARUM SIE BISHER NIRGENDS AUFTAUCHTEN, und das ist kein Versehen:
+# fassungen() verlangt, dass auf den Core-Namen ein Unterstrich und
+# dann eine ZIFFER folgt. Diese Regel verhindert die Praefix-Falle -
+# ohne sie wuerde eine Auswahl fuer "_Console/SNES" stillschweigend
+# den SNES_Tracker-Core einsammeln. "SNES_netplay_20260101" faellt
+# durch dieselbe Regel heraus, weil nach dem Unterstrich ein "n"
+# steht.
+#
+# Die Regel bleibt, wie sie ist. Stattdessen wird die Netplay-Fassung
+# AUSDRUECKLICH gesucht - eine zweite, eng umrissene Frage statt einer
+# aufgeweichten ersten.
+#
+# TOLERANT IM NAMEN, ENG IM AUFBAU. Wie die Dateien auf seinem Geraet
+# genau heissen, weiss ich nicht ("Bau es tolerant, ich pruefe
+# danach"). Erkannt wird deshalb jede dieser Schreibweisen:
+#
+#     _Console/SNES_netplay.rbf
+#     _Console/SNES_Netplay_20260101.rbf
+#     _Console/SNES_20260101_netplay.rbf
+#     _Netplay/SNES_netplay_20260101.rbf
+#
+# aber NICHT "SNESNetplay.rbf" (ohne Unterstrich koennte das auch ein
+# ganz anderer Core sein) und nicht "SNES_Tracker_...". Die
+# Praefix-Falle bleibt also zu.
+NETPLAY_MARKE = "netplay"
+
+
+def ist_netplay(name):
+    """Traegt dieser Dateiname die Netplay-Marke?"""
+    return NETPLAY_MARKE in (name or "").lower()
+
+
+def _netplay_ordner(eigener):
+    """Wo nach Netplay-Fassungen gesucht wird: im Ordner des Cores
+    selbst und in jedem Ordner unter /media/fat, dessen NAME die
+    Netplay-Marke traegt.
+
+    Der zweite Teil ist die Vorsorge dafuer, dass das Werkzeug seine
+    Cores in einen eigenen Ordner legt - so wie es sage2050s
+    RA-Werkzeug mit _RA_Cores/Cores tut (siehe fe/ra_core.py). Welchen
+    Namen er waehlt, ist dann egal, solange "netplay" darin vorkommt."""
+    ordner = [eigener] if eigener else []
+    try:
+        for n in sorted(os.listdir(BASE)):
+            if not ist_netplay(n):
+                continue
+            voll = os.path.join(BASE, n)
+            if not os.path.isdir(voll):
+                continue
+            if voll not in ordner:
+                ordner.append(voll)
+            # Eine Ebene tiefer mitnehmen - _RA_Cores/Cores zeigt, dass
+            # solche Werkzeuge gern noch einen Unterordner anlegen.
+            try:
+                for u in sorted(os.listdir(voll)):
+                    tiefer = os.path.join(voll, u)
+                    if os.path.isdir(tiefer) and tiefer not in ordner:
+                        ordner.append(tiefer)
+            except OSError:
+                pass
+    except OSError:
+        pass
+    return ordner
+
+
+def netplay_fassungen(rel):
+    """Alle Netplay-Fassungen zu diesem Core-Namen - neueste zuerst.
+
+    Geliefert werden .mgl-taugliche Namen (ohne .rbf, mit Ordner
+    relativ zu /media/fat) - genau das, was in eine .mgl geschrieben
+    werden kann, also dasselbe Format wie bei fassungen()."""
+    if not rel:
+        return []
+    voll = _rbf_pfad(rel)
+    name = os.path.basename(voll)
+    treffer = []
+    for ordner in _netplay_ordner(os.path.dirname(voll)):
+        try:
+            dateien = sorted(os.listdir(ordner))
+        except OSError:
+            continue
+        rel_ordner = os.path.relpath(ordner, BASE).replace(os.sep, "/")
+        for datei in dateien:
+            if not datei.lower().endswith(".rbf"):
+                continue
+            rest = datei[:-4]
+            if not rest.startswith(name):
+                continue
+            schwanz = rest[len(name):]
+            # Entweder genau der Name (dann muss der ORDNER die Marke
+            # tragen) oder ein Unterstrich und irgendwo darin die
+            # Marke. Ohne den Unterstrich koennte "SNESNetplay" ein
+            # voellig anderer Core sein - dieselbe Vorsicht wie bei
+            # der Praefix-Falle in core_existiert().
+            if schwanz:
+                if not (schwanz.startswith("_") and ist_netplay(schwanz)):
+                    continue
+            elif not ist_netplay(rel_ordner):
+                continue
+            treffer.append(rel_ordner + "/" + rest if rel_ordner != "."
+                           else rest)
+    # Neueste zuerst - das Datum steckt im Namen, absteigend
+    # alphabetisch ist damit auch absteigend chronologisch. Doppelte
+    # koennen entstehen, wenn der eigene Ordner selbst die Marke
+    # traegt; sie fliegen hier raus.
+    return sorted(set(treffer), reverse=True)
+
+
+def finde_netplay(rel):
+    """Die neueste Netplay-Fassung zu diesem Core - oder None."""
+    treffer = netplay_fassungen(rel)
+    return treffer[0] if treffer else None
+
+
 def wahl_laden(pfad=None):
     """Die gemerkten Auswahlen: {Systemschluessel: mgl-Name}.
 

@@ -9083,7 +9083,7 @@ grosse Karte zuletzt. Wer zuletzt zeichnet, gewinnt.
   das Bild wird vor der Karte geholt und die Aussparung an genau
   einer Stelle gerechnet; der Fotosatz wird bevorzugt und faellt bei
   jedem der acht Namen ohne Foto auf das Abzeichen zurueck, waehrend
-  `_kat_kachel_zeichnen()` **gar nicht** nach Fotos fragt; die 17
+  `_kat_kachel_zeichnen()` **gar nicht** nach Fotos fragt; die
   `.art`-Dateien sind entpackbar, alle 420x320 und haben C_PANEL in
   der Ecke; der Verteiler steht genau einmal und vor dem der Ansicht.
 * **geaendert** `tools/test_galerie_flow.py` - drei Bildvergleiche
@@ -9098,3 +9098,162 @@ grosse Karte zuletzt. Wer zuletzt zeichnet, gewinnt.
   Einstellung und nicht ueber eine Attrappe.
 * **neu** `PC-Tools/sysart_foto_convert.py` - das Werkzeug zum
   Nachliefern eigener Geraetefotos.
+
+## Nachtrag Build 315 - der Netplay-Core, drei Fotos und ein Durcheinander
+
+### Der gemeldete Fehler: zwei Ansichten uebereinander
+
+Nutzer-Rueckmeldung zu Build 314, in zwei Schritten praezisiert:
+
+> *„wenn ich die ansicht wechsel baut sich die alte dahinter auf und
+> es gibt ein durcheinander beide ansichten ueberschneiden sich dann"*
+>
+> *„wenn ich quasi in der listen ansicht auf der hauptseiten nach
+> unten durchscrolle und es oben wieder anfaengt"*
+
+**Die Ursache stand in `_draw_navigate_cats_impl()`**, dem leichten
+Zeichenweg der klassischen Kategorienliste. Er beginnt mit:
+
+```python
+if self.aktuelle_ansicht_haupt() != "liste":
+    return False
+```
+
+Das war bis Build 313 vollstaendig. Seit Build 314 gibt es ueber der
+Ansicht aber noch den **Stil**, und der gewinnt (siehe
+`_draw_page_cats_impl()`). Steht die Ansicht auf „liste" und der Stil
+auf „kachelwand", zeichnet der Stil - dieser Pfad hielt sich trotzdem
+fuer zustaendig, malte zwei klassische Listenzeilen mitten in die
+Kachelwand und meldete „erledigt", womit der Stil gar nicht mehr zum
+Zug kam.
+
+> Die Lehre ist dieselbe wie in Build 284: wer eine neue
+> Entscheidungsebene einzieht, muss JEDE Stelle nachziehen, die die
+> alte abfragt - nicht nur die, die man gerade bearbeitet.
+
+**Warum der Test aus Build 314 das nicht gefunden hat**, und das ist
+der eigentlich lehrreiche Teil: er ruft `draw_page_cats()` direkt
+auf. Die Taste geht aber zuerst durch `_draw_navigate_cats()`. Ein
+Test, der den Zeichenweg von unten anstoesst, prueft nie, ob ihn
+ueberhaupt jemand erreicht.
+
+Test 12 laeuft deshalb jetzt genau so, wie die Taste es tut
+(`nav_anwenden` + `_draw_navigate_cats`, sonst voller Aufbau), einmal
+komplett rundherum samt Umlauf von der letzten auf die erste
+Kategorie, fuer alle vier Stile, und vergleicht jedes einzelne Bild
+mit einem vollen Aufbau.
+
+> **Werkzeugfalle am Rande:** zwei Laeufe dieses Vergleichs meldeten
+> Abweichungen, die keine waren - Python hatte den alten Bytecode aus
+> `__pycache__/` benutzt. Vor einem Bildvergleich nach einer Aenderung
+> an `frontend.py` gehoert ein `find . -name __pycache__ -prune -exec
+> rm -rf {} +` davor, sonst misst man die vorletzte Fassung.
+
+### Der Netplay-Core als dritte Moeglichkeit
+
+Nutzerwunsch: *„ausserdem haette ich gerne das core die mit
+_netplay.rbf auf dem mister sind mit im core auswahlmenue mit
+angezeigt werden! als dritte option!"* - und auf die Rueckfrage, wo:
+*„da wo ich zwischen standard core oder Retroachievements core
+auswaehle"*.
+
+**Warum sie bisher nirgends auftauchten**, und das ist kein Versehen:
+`fassungen()` in `fe/cores.py` verlangt, dass auf den Core-Namen ein
+Unterstrich und dann eine ZIFFER folgt. Diese Regel haelt die
+Praefix-Falle zu - ohne sie wuerde eine Auswahl fuer `_Console/SNES`
+stillschweigend den `SNES_Tracker`-Core einsammeln.
+`SNES_netplay_20260101` faellt durch dieselbe Regel heraus, weil nach
+dem Unterstrich ein „n" steht.
+
+Die Regel bleibt. Stattdessen wird die Netplay-Fassung
+**ausdruecklich** gesucht - eine zweite, eng umrissene Frage statt
+einer aufgeweichten ersten.
+
+**Tolerant im Namen, eng im Aufbau.** Wie die Dateien auf seinem
+Geraet heissen, weiss ich nicht (seine Antwort: „Bau es tolerant, ich
+pruefe danach"). Erkannt wird der Core-Name, ein Unterstrich und
+irgendwo danach „netplay" - oder der Core-Name allein in einem
+Ordner, dessen Name „netplay" enthaelt, eine Ebene tief wie bei
+`_RA_Cores/Cores`. Nicht erkannt wird `SNESNetplay.rbf` ohne
+Trennzeichen.
+
+**Kein erfundener `setname`.** Der RA-Core braucht ihn, weil
+sage2050s Werkzeug seine Cores in einen eigenen Ordner legt und
+MiSTer sie sonst nicht als getrennte Variante behandelt - das ist an
+einer echten Installation verifiziert. Fuer die Netplay-Fassung ist
+es das NICHT. Einen zu erfinden hiesse, ausgerechnet an der Stelle zu
+raten, an der ein Spiel startet oder eben nicht.
+
+**Der Rueckgabewert wechselt von Wahrheitswert auf Namen.**
+`draw_core_choice_screen()` lieferte bisher True/False/None. Mit drei
+Moeglichkeiten gibt es keinen Wahrheitswert mehr - und ein
+stillschweigend stehengebliebenes `if use_ra:` waere bei der dritten
+Option **wahr** geworden, ohne dass es jemand bemerkt haette. Jetzt
+kommen `"normal"`, `"ra"`, `"netplay"` oder `None` zurueck, und der
+Test prueft ausdruecklich, dass im ganzen Quelltext kein
+`ra_core if use_ra else None` mehr steht.
+
+Abgebildet wird die Antwort an **einer** Stelle
+(`_core_wahl_tupel()`), gerufen von allen drei Aufrufern - Kategorie
+betreten, Zufallsstart, Spielstart. Dieselbe Zuordnung dreimal zu
+tippen ist genau die Sorte Verdopplung, die hier schon viermal
+auseinandergelaufen ist.
+
+### Drei weitere Fotos - und ein drittes Werkzeug im Konverter
+
+32X und Virtual Boy liefen glatt durch. Der Computer ist ein
+**3D-Rendering** und brachte ein Problem mit, das kein Studiofoto
+hat: das Geraet steht auf einer hellgrauen Flaeche und wirft einen
+weichen Schatten darauf.
+
+Mehr Toleranz hilft dort nicht, und das ist nachgemessen: bei 75
+reisst es Loecher in den Bildschirm, bei 95 in die Tastenkappen, bei
+115 in die Maus. Das Gehaeuse ist genauso grau wie der Schatten, nur
+heller.
+
+Ueber die **Saettigung** sind sie zu trennen:
+
+| | Farbe | Saettigung |
+|---|---|---|
+| Hintergrund | (207,207,207) | 0 |
+| Schatten | (169,169,169) | 0 |
+| Gehaeuse | (137,138,122) | 16 |
+| Monitorrand | (204,225,226) | 22 |
+| Monitor oben | (137,140,131) | 9 |
+| dunkle Kante | (40,41,36) | 5 |
+
+Grund und Schatten sind exakt neutral, das Geraet ist es nirgends.
+`neutral_entfernen()` (Schalter `--neutral`) entfernt deshalb grosse
+zusammenhaengende Flaechen mit Saettigung <= 2 - mit derselben
+Groessenbedingung wie die Lochsuche, weil einzelne Bildpunkte des
+Geraets durch JPEG-Rauschen zufaellig neutral werden koennen.
+
+> Ein **verworfener Versuch**, der hier stehen bleibt, damit ihn
+> niemand wiederholt: eine Flutfuellung mit Schritt-Toleranz (jeder
+> Punkt gegen seinen NACHBARN statt gegen die Startfarbe), die den
+> weichen Verlauf hinunterlaeuft. Sie lief auch das Gehaeuse hinauf -
+> dessen Kanten sind in diesem Rendering weicher, als die Idee
+> voraussetzt. Der Code ist wieder raus; eine Option, von der ich
+> weiss, dass sie schlechte Bilder macht, ist schlechter als keine.
+
+Dicht am Gehaeuse bleibt ein kleiner Rest Schatten stehen: dort faerbt
+das zurueckgeworfene Licht ihn beige, und beige ist nicht neutral. In
+Kachelgroesse faellt er nicht auf.
+
+### Neue Pruefungen
+
+* **neu** `tools/test_netplay_core.py` - `netplay_fassungen()` findet
+  alle plausiblen Schreibweisen (eigener Ordner UND ein Ordner mit
+  „netplay" im Namen, auch eine Ebene tief); die Praefix-Falle bleibt
+  zu (weder `SNES_Tracker` noch `SNESNetplay`); `finde_netplay()`
+  liefert die neueste; **Gegenprobe, dass `fassungen()` unveraendert
+  ist** - haette ich die alte Regel aufgeweicht statt eine zweite
+  Frage danebenzustellen, waere der Tracker jetzt eine Fassung von
+  SNES; `find_netplay_core()` liefert `(name, None)`; der
+  Auswahlbildschirm liefert einen Namen, zeigt genau die Optionen,
+  die es wirklich gibt, laeuft umlaufend und liefert bei „zurueck"
+  weiterhin `None` und nicht `"normal"`; alle drei Aufrufer fragen
+  bei RA **oder** Netplay; und ohne Netplay-Datei aendert sich gar
+  nichts.
+* **geaendert** `tools/test_hauptseite_stil.py` - Test 12 (siehe
+  oben): echte Tastenschritte einmal rundherum durch alle vier Stile.

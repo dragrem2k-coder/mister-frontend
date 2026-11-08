@@ -108,7 +108,7 @@ Die drei neuen Hauptseiten — **Kachelwand**, **Dashboard** und
 /media/fat/frontend/sysart_foto/<Systemkey>.art
 ```
 
-und erst dann aus `sysart/`. Mitgeliefert werden 17 freigestellte
+und erst dann aus `sysart/`. Mitgeliefert werden 20 freigestellte
 Konsolenfotos; alles andere fällt automatisch auf das Abzeichen
 zurück, und die drei klassischen Ansichten (Liste, Raster, Galerie)
 bleiben ganz bei den Abzeichen.

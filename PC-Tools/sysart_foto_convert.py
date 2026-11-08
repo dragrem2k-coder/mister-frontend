@@ -32,7 +32,7 @@ DREI ENTSCHEIDUNGEN, DIE MAN SONST NACHTRAEGLICH BEREUT
 --------------------------------------------------------
 1. 420x320 - QUER, UND ZWAR WEIL DIE VORLAGEN QUER SIND.
    Die Abzeichen unter sysart/ sind hochkant 320x420, weil ein Kreis
-   mit Text darunter hochkant ist. Von den 17 Fotos liegen 14 quer
+   mit Text darunter hochkant ist. Von den 20 Fotos liegen 16 quer
    (Konsole mit Controller daneben) und nur drei hochkant (Game Boy,
    Game Boy Color, Automat). Nachgerechnet am Kachelfeld der
    Kachelwand bei 1920x1080 (260x182 Punkte): eine 4:3-Kachel fuellt
@@ -214,14 +214,28 @@ def loecher_schliessen(img, toleranz=52, mindest_anteil=0.0045, bg=None):
                 and abs(c[0] - bg[0]) + abs(c[1] - bg[1])
                 + abs(c[2] - bg[2]) <= toleranz)
 
+    return _grosse_flaechen_entfernen(img, passt, mindest)
+
+
+def _grosse_flaechen_entfernen(img, passt, mindest):
+    """Alle zusammenhaengenden Flaechen ab einer Mindestgroesse
+    entfernen, auf die 'passt' zutrifft.
+
+    DIE FLAECHE WIRD ERST EINGESAMMELT UND DANN ENTSCHIEDEN - wer
+    beim Laufen schon loescht, kann hinterher nicht mehr zurueck,
+    wenn sich herausstellt, dass sie zu klein war.
+
+    Gemeinsamer Unterbau von loecher_schliessen() und
+    neutral_entfernen(): beide suchen dasselbe (grosse
+    zusammenhaengende Flaechen), nur mit einer anderen Frage an den
+    einzelnen Bildpunkt."""
+    w, h = img.size
+    px = img.load()
     gesehen = bytearray(w * h)
     for sy in range(h):
         for sx in range(w):
             if gesehen[sy * w + sx] or not passt(px[sx, sy]):
                 continue
-            # Eine Flaeche einsammeln, DANN entscheiden - wer beim
-            # Laufen schon loescht, kann hinterher nicht mehr
-            # zurueck.
             flaeche = []
             q = deque([(sx, sy)])
             gesehen[sy * w + sx] = 1
@@ -242,6 +256,55 @@ def loecher_schliessen(img, toleranz=52, mindest_anteil=0.0045, bg=None):
                 for x, y in flaeche:
                     px[x, y] = (0, 0, 0, 0)
     return img
+
+
+def neutral_entfernen(img, saettigung_max=2, mindest_anteil=0.0045):
+    """Grosse, voellig FARBLOSE Flaechen entfernen - gegen den weichen
+    Schatten gerenderter Vorlagen.
+
+    DAS PROBLEM, nachgemessen an der einen Vorlage, bei der es
+    auftrat (ein 3D-Rendering eines beigen Roehrenrechners): das
+    Geraet steht dort auf einer hellgrauen Flaeche und wirft einen
+    weichen Schatten darauf. Der laeuft ueber hunderte Bildpunkte
+    ins Dunkle, eine Flutfuellung gegen die Startfarbe bleibt an
+    seinem Rand stehen, und auf der Karte steht danach ein grauer
+    Schmierfleck neben dem Rechner.
+
+    UEBER DIE HELLIGKEIT IST ER NICHT ZU FASSEN. Nachgemessen bei
+    Toleranz 75 reisst es Loecher in den Bildschirm, bei 95 in die
+    Tastenkappen, bei 115 in die Maus: das Gehaeuse ist genauso grau
+    wie der Schatten, nur heller, und die Bereiche ueberlappen sich.
+
+    UEBER DIE SAETTIGUNG SCHON, und das ist der ganze Trick:
+
+        Hintergrund   (207,207,207)   Saettigung  0
+        Schatten      (169,169,169)   Saettigung  0
+        Gehaeuse      (137,138,122)   Saettigung 16
+        Monitorrand   (204,225,226)   Saettigung 22
+        Monitor oben  (137,140,131)   Saettigung  9
+        dunkle Kante  ( 40, 41, 36)   Saettigung  5
+
+    Grund und Schatten sind EXAKT neutral, das Geraet ist es nirgends
+    (beige/gruenlich). Zwischen 2 und 5 ist Platz; die Vorgabe steht
+    auf 2.
+
+    Die Groessenbedingung bleibt trotzdem: einzelne Bildpunkte des
+    Geraets koennen durch JPEG-Rauschen zufaellig neutral werden.
+    Einzeln sind sie winzig, der Schatten ist es nie.
+
+    Nicht die Vorgabe, sondern ein Schalter (--neutral): ein
+    Studiofoto auf weissem Grund braucht das nicht, und dort waere es
+    nur ein zusaetzliches Risiko."""
+    img = img.convert("RGBA")
+    w, h = img.size
+    mindest = max(16, int(w * h * mindest_anteil))
+
+    def passt(c):
+        return (c[3] > 0
+                and max(c[0], c[1], c[2]) - min(c[0], c[1], c[2])
+                <= saettigung_max)
+
+    return _grosse_flaechen_entfernen(img, passt, mindest)
 
 
 def zuschneiden(img):
@@ -309,13 +372,16 @@ def verkleinern(img, kante=ARBEITS_KANTE):
                        max(1, int(img.height * f))), Image.LANCZOS)
 
 
-def ein_foto(quelle, toleranz=52, rand=RAND, mindest_anteil=0.0045):
+def ein_foto(quelle, toleranz=52, rand=RAND, mindest_anteil=0.0045,
+             neutral=False):
     bild = verkleinern(Image.open(quelle).convert("RGB")).convert("RGBA")
     # Die Grundfarbe VOR dem Fluten bestimmen - danach sind die Ecken
     # durchsichtig und geben sie nicht mehr her. Siehe grundfarbe().
     bg = grundfarbe(bild)
     bild = hintergrund_fluten(bild, toleranz, bg)
     bild = loecher_schliessen(bild, toleranz, mindest_anteil, bg)
+    if neutral:
+        bild = neutral_entfernen(bild, mindest_anteil=mindest_anteil)
     bild = zuschneiden(bild)
     return einpassen(bild, rand=rand)
 
@@ -333,6 +399,10 @@ def main(argv=None):
                    help="Farbabstand fuer die Flutfuellung (Vorgabe 52)")
     p.add_argument("--rand", type=int, default=RAND,
                    help="Luft zum Kachelrand in Bildpunkten")
+    p.add_argument("--neutral", action="store_true",
+                   help="grosse voellig farblose Flaechen entfernen - "
+                        "gegen den weichen Schatten gerenderter "
+                        "Vorlagen (siehe neutral_entfernen())")
     p.add_argument("--loecher-anteil", type=float, default=0.0045,
                    dest="loecher_anteil",
                    help="ab welchem Flaechenanteil ein eingeschlossener "
@@ -354,7 +424,8 @@ def main(argv=None):
         else:
             name = os.path.splitext(os.path.basename(eing))[0]
             pfad = eing
-        bild = ein_foto(pfad, a.toleranz, a.rand, a.loecher_anteil)
+        bild = ein_foto(pfad, a.toleranz, a.rand, a.loecher_anteil,
+                        a.neutral)
         ziel = os.path.join(a.ziel, "%s.art" % name)
         b, h, n = schreiben(bild, ziel)
         print("%-22s %dx%d  %6.1f KB" % (name + ".art", b, h, n / 1024.0))

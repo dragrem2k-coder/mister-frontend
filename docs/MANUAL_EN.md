@@ -1394,6 +1394,32 @@ plausible names per system. If the choice doesn't appear for a system
 even though you have a RA core installed for it, let me know, and we'll
 add the matching name variant.
 
+### The netplay core as a third choice (build 315)
+
+If a **netplay version** of a core is on the card, it appears as a
+third line in the same prompt. The screen also appears when there is
+*only* a netplay version and no RA core at all. Recognised:
+
+```
+_Console/SNES_netplay.rbf
+_Console/SNES_Netplay_20260220.rbf
+_Console/SNES_20260110_netplay.rbf
+_Netplay/Cores/SNES_netplay_20260401.rbf
+```
+
+So: the core name, an underscore, and "netplay" somewhere after it -
+or the core name alone inside a folder whose name contains "netplay".
+`SNESNetplay.rbf` without a separator is **not** recognised: without
+the underscore that could be an entirely different core, and the same
+caution keeps the `SNES_Tracker` core out of the SNES choice.
+
+**Honestly:** unlike the RA core there is **no** `setname` in the
+.mgl here. For the RA core it is verified against a real
+installation; for the netplay version it is not, and inventing one
+would mean guessing at exactly the point where a game either starts
+or does not. Without `setname` it runs like any other core. If your
+netplay cores need their own configuration, let me know.
+
 **RA achievement hunter:** Its own category in the main menu (directly
 before "Scripts") - shows all games in your collection that have RA
 achievements but where you haven't unlocked anything yet. Sorted by
@@ -1535,9 +1561,10 @@ of the bench once the style is set. Nothing is guessed here.
 
 **The console photos:** the three new styles take the category picture
 from `/media/fat/frontend/sysart_foto` first and only then from
-`sysart`. 17 photos ship with it (NES, SNES, Super Game Boy, Game Boy,
-GBC, GBA, N64, Mega Drive, Mega CD, Master System, PlayStation,
-Saturn, TurboGrafx-16, Neo Geo, Atari 2600, arcade, external drive).
+`sysart`. 20 photos ship with it (NES, SNES, Super Game Boy, Game Boy,
+GBC, GBA, N64, Virtual Boy, Mega Drive, Mega CD, 32X, Master System,
+PlayStation, Saturn, TurboGrafx-16, Neo Geo, Atari 2600, arcade,
+computer, external drive).
 Categories without a photo — favourites, continue, Game Gear … — keep
 their badge, and the three classic views stay on the badges entirely.
 `PC-Tools/sysart_foto_convert.py` converts your own photos into the

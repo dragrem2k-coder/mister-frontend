@@ -1370,6 +1370,11 @@ TRANSLATIONS = {
     "dash_anteil": {
         "en": "share of the largest category",
         "de": "Anteil an der größten Kategorie"},
+    # Build 315: die Netplay-Fassung als dritte Moeglichkeit in der
+    # Core-Auswahl. Siehe draw_core_choice_screen() in frontend.py und
+    # netplay_fassungen() in fe/cores.py.
+    "core_choice_netplay": {
+        "en": "Netplay core", "de": "Netplay-Core"},
     # Build 312: die Core-Auswahl zeigt jetzt ALLE Systeme und laesst
     # sich filtern. Siehe cores_bildschirm() in frontend.py.
     "cores_ra": {"en": "[RA]", "de": "[RA]"},

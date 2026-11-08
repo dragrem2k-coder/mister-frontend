@@ -1644,6 +1644,35 @@ plausible Namen durch. Taucht die Auswahl bei einem System nicht auf,
 obwohl du einen RA-Core dafür installiert hast, sag Bescheid, dann
 ergänzen wir die passende Namensvariante.
 
+### Netplay-Core als dritte Möglichkeit (Build 315)
+
+Liegt auf der Karte eine **Netplay-Fassung** eines Cores, steht sie in
+derselben Abfrage als dritte Zeile. Der Bildschirm erscheint auch
+dann, wenn es *nur* eine Netplay-Fassung und gar keinen RA-Core gibt.
+Erkannt werden:
+
+```
+_Console/SNES_netplay.rbf
+_Console/SNES_Netplay_20260220.rbf
+_Console/SNES_20260110_netplay.rbf
+_Netplay/Cores/SNES_netplay_20260401.rbf
+```
+
+also: der Core-Name, ein Unterstrich, und irgendwo danach „netplay" —
+oder der Core-Name allein in einem Ordner, dessen Name „netplay"
+enthält. **Nicht** erkannt wird `SNESNetplay.rbf` ohne Trennzeichen:
+ohne Unterstrich könnte das ein ganz anderer Core sein, und dieselbe
+Vorsicht hält auch den `SNES_Tracker`-Core aus der SNES-Auswahl
+heraus.
+
+**Ehrlich dazu:** anders als beim RA-Core gibt es hier **keinen**
+`setname` in der .mgl. Beim RA-Core ist der an einer echten
+Installation verifiziert; für die Netplay-Fassung ist er das nicht,
+und einen zu erfinden hieße, ausgerechnet an der Stelle zu raten, an
+der ein Spiel startet oder eben nicht. Ohne `setname` läuft sie wie
+jeder andere Core auch. Falls deine Netplay-Cores eine eigene
+Konfiguration brauchen, sag Bescheid.
+
 **RA-Erfolgsjäger:** Eigene Kategorie im Hauptmenü (direkt vor
 "Scripts") - zeigt alle Spiele in deiner Sammlung, die RA-Erfolge
 haben, bei denen du aber noch nichts freigeschaltet hast. Nach System
@@ -1837,10 +1866,10 @@ Geschätzt wird hier nichts.
 
 **Die Gerätefotos:** die drei neuen Stile zeigen als Kategoriebild
 zuerst ein Foto aus `/media/fat/frontend/sysart_foto` und erst dann
-das Abzeichen aus `sysart`. Mitgeliefert werden 17 Fotos (NES, SNES,
-Super Game Boy, Game Boy, GBC, GBA, N64, Mega Drive, Mega CD, Master
-System, PlayStation, Saturn, TurboGrafx-16, Neo Geo, Atari 2600,
-Arcade, externes Laufwerk). Kategorien ohne Foto — Favoriten,
+das Abzeichen aus `sysart`. Mitgeliefert werden 20 Fotos (NES, SNES,
+Super Game Boy, Game Boy, GBC, GBA, N64, Virtual Boy, Mega Drive, Mega
+CD, 32X, Master System, PlayStation, Saturn, TurboGrafx-16, Neo Geo,
+Atari 2600, Arcade, Computer, externes Laufwerk). Kategorien ohne Foto — Favoriten,
 Weiterspielen, Game Gear … — behalten ihr Abzeichen, und die drei
 klassischen Ansichten bleiben ganz bei den Abzeichen. Eigene Fotos
 legt `PC-Tools/sysart_foto_convert.py` im richtigen Format ab; siehe

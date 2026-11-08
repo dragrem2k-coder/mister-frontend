@@ -37,7 +37,7 @@ SYSART_BASE = "/media/fat/frontend/sysart"
 # Dateien, aus drei Gruenden:
 #   1. Er hat die Fotos ausdruecklich "fuer das neue" gewuenscht; die
 #      drei klassischen Ansichten sollen bleiben, wie sie sind.
-#   2. Es gibt 17 Fotos und 60 Abzeichen. Ein Satz, der nur zu einem
+#   2. Es gibt 20 Fotos und 60 Abzeichen. Ein Satz, der nur zu einem
 #      Viertel bestueckt ist, darf den vollstaendigen nicht ueberdecken
 #      - er wird ihm vorangestellt, mit Rueckfall.
 #   3. Eigene Dateien des Nutzers unter sysart/ blieben sonst beim
