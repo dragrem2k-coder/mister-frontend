@@ -17700,12 +17700,31 @@ class Frontend:
         Derselbe modale Aufbau wie beim Filter und beim
         Farbschema-Editor - siehe dort.
 
-        GEZEIGT WERDEN NUR SYSTEME MIT MEHR ALS EINER FASSUNG. Eine
-        Liste mit fuenfzig Zeilen, bei denen ueberall "automatisch"
-        steht, waere keine Verwaltung, sondern eine Tapete. Wer nur
-        einen Core je System hat - der Normalfall nach einem
-        aufgeraeumten update_all - bekommt eine ehrliche Meldung
-        statt eines leeren Fensters.
+        BIS BUILD 311 STANDEN HIER NUR SYSTEME MIT MEHR ALS EINER
+        FASSUNG, mit der Begruendung: "eine Liste mit fuenfzig Zeilen,
+        bei denen ueberall 'automatisch' steht, waere keine
+        Verwaltung, sondern eine Tapete".
+
+        DAS WAR RICHTIG UND IST ES NICHT MEHR. Sein Wunsch vom 08.11.
+        nennt zwei Dinge, die auf dieser Seite fehlten: "Fehlende oder
+        inkompatible Cores erkennen" und "RetroAchievements-Versionen
+        beruecksichtigen". Beides ist keine Wahl, sondern eine
+        AUSKUNFT - und eine Auskunft ueber etwas, das fehlt, kann man
+        nicht geben, indem man es weglaesst.
+
+        DIE TAPETE WIRD STATTDESSEN FILTERBAR (Build 312). Die Taste
+        "Filter" schaltet zwischen drei Listen um:
+
+            alle        - jedes System, auch die ohne Core
+            waehlbar    - nur die mit mehr als einer Fassung
+                          (genau die alte Liste)
+            ohne Core   - die Luecken
+
+        Gestartet wird mit "waehlbar", wenn es dort etwas gibt: wer
+        die Seite zum Waehlen oeffnet, soll nicht erst filtern
+        muessen. Gibt es nichts zu waehlen, steht "alle" - dann ist
+        die Seite eine Uebersicht, und zwar eine, die nicht mehr
+        leer ist.
 
         Die eigentliche Arbeit steckt in fe/cores.py, samt der Regel,
         die das Ganze ungefaehrlich macht: eine gewaehlte Fassung
@@ -17716,18 +17735,43 @@ class Frontend:
         ox = W * OVERSCAN_X // 100
         oy = H * OVERSCAN_Y // 100
 
-        alle = CORES.uebersicht(list(GAME_SYSTEMS) + list(OPTIONAL_GAME_SYSTEMS))
-        mehrere = [e for e in alle if len(e[3]) > 1]
-        if not mehrere:
+        _systeme = list(GAME_SYSTEMS) + list(OPTIONAL_GAME_SYSTEMS)
+        alle = CORES.uebersicht(_systeme, auch_ohne=True)
+        if not alle:
             self._force_full_redraw = True
             self.draw(message=t("cores_leer"))
             return
+        mehrere = [e for e in alle if len(e[3]) > 1]
+        ohne = [e for e in alle if not e[3]]
+        # DIE RA-FASSUNGEN EINMAL NACHSEHEN, nicht je Bild. Jeder
+        # Aufruf von ra_fassung() ist ein os.path.exists() auf die
+        # Karte, und die Schleife unten zeichnet zwanzig Zeilen
+        # sechzig Mal in der Minute. Genau diese Sorte Dateizugriff im
+        # Zeichenweg hat Abschnitt G des Bench gemessen.
+        _ra = {}
+        for _e in alle:
+            try:
+                _ra[_e[1]] = bool(CORES.ra_fassung(_e[1]))
+            except Exception:                            # noqa: BLE001
+                _ra[_e[1]] = False
+        listen = (("alle", alle), ("waehlbar", mehrere), ("ohne", ohne))
+        # Mit "waehlbar" anfangen, wenn es dort etwas gibt - siehe
+        # Erklaerung oben.
+        filter_i = 1 if mehrere else 0
 
         wahl = CORES.wahl_laden()
         zeile = 0
         geaendert = False
 
         while True:
+            _art, liste = listen[filter_i]
+            if not liste:
+                # Eine leere Liste ist kein Fehler, sondern eine
+                # Auskunft ("keine Luecken") - und sie darf nicht in
+                # eine Division durch Null laufen.
+                liste = alle
+                _art = "alle"
+            zeile = max(0, min(zeile, len(liste) - 1))
             fb.clear(C_BG)
             fb.text(ox, oy, t("cores_titel"), 2 * s, C_TITLE)
             y = oy + 30 * s
@@ -17735,18 +17779,35 @@ class Frontend:
             # Nur so viele Zeilen zeigen, wie hinpassen - der Rest
             # scrollt mit der Auswahl mit.
             platz = max(1, (H - oy - y - 26 * s) // (17 * s))
-            erste = max(0, min(zeile - platz // 2, len(mehrere) - platz))
-            for i in range(erste, min(erste + platz, len(mehrere))):
-                name, syskey, standard, fassungen = mehrere[i]
+            erste = max(0, min(zeile - platz // 2, len(liste) - platz))
+            erste = max(0, erste)
+            for i in range(erste, min(erste + platz, len(liste))):
+                name, syskey, standard, fassungen = liste[i]
                 markiert = (i == zeile)
                 if markiert:
                     fb.rect_rounded(ox - 2 * s, y - 3 * s, breite + 4 * s,
                                     15 * s, C_PANEL)
-                fb.text(ox + 2 * s, y, name, s,
+                # DAS RA-ZEICHEN STEHT AM NAMEN, NICHT BEIM WERT.
+                # "RetroAchievements-Versionen beruecksichtigen" aus
+                # seiner Liste heisst hier: SEHEN, zu welchen Systemen
+                # es eine gibt. Gewaehlt wird sie nach wie vor nicht
+                # hier - der RA-Core wird beim Start entschieden und
+                # hat dort Vorrang (siehe fe/ra_core.py).
+                _nm = name + ("  " + t("cores_ra") if _ra.get(syskey)
+                              else "")
+                fb.text(ox + 2 * s, y, _nm, s,
                         C_TITLE if markiert else C_TEXT)
                 gewaehlt = wahl.get(syskey)
-                if not gewaehlt:
-                    wert = t("cores_automatisch")
+                if not fassungen:
+                    # DIE LUECKE, UND SIE IST DER PUNKT DES BUILDS:
+                    # zu diesem System gibt es ueberhaupt keinen Core
+                    # auf der Karte. Nicht "automatisch" - das waere
+                    # die Zusage, dass schon irgendetwas startet.
+                    wert = t("cores_kein_core")
+                    farbe = accent_for(None)
+                elif not gewaehlt:
+                    wert = (t("cores_automatisch") if len(fassungen) > 1
+                            else fassungen[0].rsplit("/", 1)[-1])
                     farbe = C_DIM
                 elif not CORES.core_existiert(gewaehlt):
                     wert = t("cores_fehlt")
@@ -17754,7 +17815,11 @@ class Frontend:
                 else:
                     wert = gewaehlt.rsplit("/", 1)[-1]
                     farbe = accent_for(None)
-                if markiert:
+                # Die Pfeile nur dort, wo es auch etwas zu blaettern
+                # gibt. Ein "< >" an einer Zeile, die sich nicht
+                # aendern laesst, ist ein Versprechen, das die Taste
+                # nicht haelt.
+                if markiert and len(fassungen) > 1:
                     wert = "< %s >" % wert
                 # Von rechts abschneiden, nicht von links: der Anfang
                 # eines Core-Namens ist immer gleich, das Datum am
@@ -17767,7 +17832,9 @@ class Frontend:
                 y += 17 * s
 
             fb.text(ox, H - oy - 26 * s,
-                    t("cores_anzahl", len(mehrere[zeile][3])), s, C_DIM)
+                    t("cores_fuss", t("cores_filter_" + _art),
+                      len(liste), len(alle), len(mehrere), len(ohne)),
+                    s, C_DIM)
             _maxc = max(10, (W - 2 * ox) // (8 * s))
             for _i, _z in enumerate(self._wrap(t("cores_hinweis"),
                                                _maxc, max_lines=2)):
@@ -17778,11 +17845,23 @@ class Frontend:
             if akt is None:
                 continue
             if akt == "up":
-                zeile = (zeile - 1) % len(mehrere)
+                zeile = (zeile - 1) % len(liste)
             elif akt == "down":
-                zeile = (zeile + 1) % len(mehrere)
+                zeile = (zeile + 1) % len(liste)
+            elif akt == "filter":
+                # DIE FILTERTASTE FILTERT - derselbe Griff wie in der
+                # Spieleliste. Eine eigene Taste dafuer gibt es nicht
+                # mehr, und "ok" waere hier belegt: es verlaesst die
+                # Seite.
+                filter_i = (filter_i + 1) % len(listen)
+                zeile = 0
             elif akt in ("left", "right"):
-                _name, syskey, _standard, fassungen = mehrere[zeile]
+                _name, syskey, _standard, fassungen = liste[zeile]
+                if len(fassungen) < 2:
+                    # Nichts zu waehlen - dann auch nichts aendern
+                    # und vor allem nichts "merken", was hinterher
+                    # als Abweichung gespeichert wuerde.
+                    continue
                 # Die Kette ist "automatisch" plus alle Fassungen -
                 # so kommt man auf demselben Weg wieder zurueck, auf
                 # dem man hineingeraten ist.

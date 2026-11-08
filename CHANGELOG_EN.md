@@ -13,6 +13,20 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **The core selection now shows everything — and can be filtered.**
+  It used to list only systems with *several* builds; anyone wanting
+  to know which system has **no core at all** on the card never found
+  out. The **filter button** now cycles three lists: *all*, *several
+  builds* (the old list) and *without core*. The footer counts along:
+  "48 of 48 systems — 7 with several builds, 12 without core"
+  (build 312).
+- **And what the row gained.** A gap now reads **"no core on the
+  card"** instead of "automatic" — which would promise that something
+  starts anyway. Systems with a RetroAchievements build are marked
+  **[RA]**. With exactly one build its file name is shown instead of
+  "automatic", and the `< >` arrows only appear where there is
+  actually something to cycle through (build 312).
+
 - **New: the info page — one per game.** It sits at the top of the
   context menu (X on the pad, F1): the cover large on the left, title,
   system, year, genre and player count in the system colour on the

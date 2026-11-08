@@ -1326,6 +1326,20 @@ TRANSLATIONS = {
         "en": "Cores: choose a version per system",
         "de": "Cores: Fassung je System waehlen"},
     "cores_titel": {"en": "Cores", "de": "Cores"},
+    # Build 312: die Core-Auswahl zeigt jetzt ALLE Systeme und laesst
+    # sich filtern. Siehe cores_bildschirm() in frontend.py.
+    "cores_ra": {"en": "[RA]", "de": "[RA]"},
+    "cores_kein_core": {
+        "en": "no core on the card", "de": "kein Core auf der Karte"},
+    "cores_filter_alle": {"en": "all", "de": "alle"},
+    "cores_filter_waehlbar": {
+        "en": "several builds", "de": "mehrere Fassungen"},
+    "cores_filter_ohne": {"en": "without core", "de": "ohne Core"},
+    "cores_fuss": {
+        "en": "%s: %d of %d systems  -  %d with several builds, "
+              "%d without core",
+        "de": "%s: %d von %d Systemen  -  %d mit mehreren Fassungen, "
+              "%d ohne Core"},
     # Build 311: der Steckbrief eines Spiels. Siehe
     # spiel_info_bildschirm() in frontend.py - keine neue Quelle, nur
     # eine Seite, die zusammenlegt, was ohnehin da ist.
@@ -1430,10 +1444,11 @@ TRANSLATIONS = {
                     "de": "gewaehlte Fassung fehlt - automatisch"},
     "cores_anzahl": {"en": "%d versions", "de": "%d Fassungen"},
     "cores_hinweis": {
-        "en": "Left/Right: pick a version - ESC: back. A chosen version "
-              "only applies while its file exists.",
-        "de": "Links/Rechts: Fassung waehlen - ESC: zurueck. Eine "
-              "gewaehlte Fassung gilt nur, solange ihre Datei da ist."},
+        "en": "Left/Right: pick a build - Filter: switch list - ESC: "
+              "back. A chosen build only applies while its file exists.",
+        "de": "Links/Rechts: Fassung waehlen - Filter: Liste "
+              "umschalten - ESC: zurueck. Eine gewaehlte Fassung gilt "
+              "nur, solange ihre Datei da ist."},
     "cores_gespeichert": {"en": "Core selection saved.",
                           "de": "Core-Auswahl gespeichert."},
     "sys_einzelordner_on": {

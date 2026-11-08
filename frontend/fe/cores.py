@@ -199,20 +199,70 @@ def aufloesen(syskey, standard_rbf, pfad=None):
     return standard_rbf
 
 
-def uebersicht(systeme):
+def uebersicht(systeme, auch_ohne=False):
     """Was ist da? [(Anzeigename, syskey, standard, [Fassungen])]
 
-    systeme ist die Liste aus fe/systems.py. Geliefert werden nur
-    Systeme, von denen UEBERHAUPT ein Core auf der Karte liegt -
-    eine Liste mit fuenfzig Eintraegen, von denen zwei existieren,
-    waere keine Uebersicht."""
+    systeme ist die Liste aus fe/systems.py.
+
+    OHNE auch_ohne werden nur Systeme geliefert, von denen UEBERHAUPT
+    ein Core auf der Karte liegt - das war bis Build 311 die einzige
+    Betriebsart, und sie ist fuer die Wahl der Fassung richtig: eine
+    Liste mit fuenfzig Eintraegen, von denen zwei existieren, waere
+    keine Uebersicht.
+
+    MIT auch_ohne (Build 312) kommen die anderen mit, und zwar mit
+    einer LEEREN Fassungsliste. Sein Wunsch vom 08.11.: "Fehlende oder
+    inkompatible Cores erkennen" - und das geht nur, wenn die
+    Uebersicht die Luecken auch zeigt. Welche der beiden Betriebsarten
+    gilt, entscheidet der Aufrufer; eine Liste, die mal so und mal so
+    aussieht, waere an beiden Stellen falsch."""
     raus = []
     for eintrag in systeme:
         name, syskey, _ordner, rbf = eintrag[0], eintrag[1], eintrag[2], eintrag[3]
         alle = fassungen(rbf)
-        if alle:
+        if alle or auch_ohne:
             raus.append((name, syskey, rbf, alle))
     return raus
+
+
+def ra_fassung(syskey):
+    """Die RA-faehige Fassung dieses Systems, oder None.
+
+    GEFRAGT WIRD fe/ra_core.py, NICHT NACHGEBAUT. Dort steht die
+    Namensliste von sage2050s Werkzeug samt der ehrlichen Anmerkung,
+    dass sie fuer manche Systeme geraten ist - und dort steht auch die
+    Regel "der erste tatsaechlich EXISTIERENDE Treffer gewinnt". Diese
+    Liste hier ein zweites Mal zu fuehren hiesse, sie beim naechsten
+    neuen System an zwei Stellen zu pflegen.
+
+    Der Import steht ABSICHTLICH in der Funktion: fe/ra_core.py ist
+    eigenstaendig (nur os), aber fe/cores.py wird sehr frueh geladen,
+    und eine Abhaengigkeit, die nur eine Anzeige braucht, gehoert
+    nicht in den Startweg."""
+    if not syskey:
+        return None
+    try:
+        import fe.ra_core as _RA
+        treffer = _RA.find_ra_core(syskey)
+    except Exception:                                    # noqa: BLE001
+        return None
+    return treffer[0] if treffer else None
+
+
+def bestand_cores(systeme):
+    """Die Kopfzahlen der Core-Verwaltung (Build 312).
+
+    {"systeme", "mit_core", "mehrere", "ohne", "ra"}
+
+    `ohne` ist die Zahl, die seinen Wunsch beantwortet: zu so vielen
+    Systemen liegt KEIN Core auf der Karte."""
+    alle = uebersicht(systeme, auch_ohne=True)
+    mit = [e for e in alle if e[3]]
+    return {"systeme": len(alle),
+            "mit_core": len(mit),
+            "mehrere": len([e for e in mit if len(e[3]) > 1]),
+            "ohne": len(alle) - len(mit),
+            "ra": len([e for e in alle if ra_fassung(e[1])])}
 
 
 # ===========================================================================

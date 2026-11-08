@@ -8699,3 +8699,102 @@ alter Aufruf stehen, stuende dort eine 2.
   ihrer vorhandenen Funktion; der Menuepunkt steht **vor** Anleitung,
   Favorit, durchgespielt und Ausblenden; und jeder Text existiert in
   beiden Sprachen, mit genau der richtigen Zahl von Platzhaltern.
+
+## Nachtrag Build 312 - die Core-Auswahl zeigt alles
+
+Seine Prioritaet 1 vom 08.11., zwei Punkte, die auf dieser Seite
+fehlten:
+
+> *„Fehlende oder inkompatible Cores erkennen."*
+> *„RetroAchievements-, Unstable- und Turbo-Versionen
+> beruecksichtigen."*
+
+### Die alte Begruendung war richtig und ist es nicht mehr
+
+Im Quelltext stand seit Build 174:
+
+> *„Eine Liste mit fuenfzig Zeilen, bei denen ueberall 'automatisch'
+> steht, waere keine Verwaltung, sondern eine Tapete."*
+
+Das gilt fuer die **Wahl**. Fuer eine **Auskunft** gilt das Gegenteil:
+was fehlt, kann man nicht zeigen, indem man es weglaesst. Beides
+zugleich geht nur mit einem Filter.
+
+### Drei Listen, eine Taste
+
+| Filter | zeigt |
+|---|---|
+| `alle` | jedes System, auch die ohne Core |
+| `waehlbar` | nur die mit mehr als einer Fassung (**genau** die alte Liste) |
+| `ohne Core` | die Luecken |
+
+Umgeschaltet wird mit der **Filtertaste** (F6 / Select+L2) - derselbe
+Griff wie in der Spieleliste. Eine eigene Taste gibt es nicht mehr,
+und `ok` war belegt: es verlaesst die Seite.
+
+Gestartet wird mit `waehlbar`, **wenn es dort etwas gibt**: wer die
+Seite zum Waehlen oeffnet, soll nicht erst filtern muessen. Sonst
+steht `alle` - dann ist die Seite eine Uebersicht statt einer leeren
+Meldung.
+
+### Was neu in der Zeile steht
+
+* **`kein Core auf der Karte`** statt „automatisch". Der Unterschied
+  ist keine Formulierung: „automatisch" ist die Zusage, dass schon
+  irgendetwas startet.
+* **`[RA]`** hinter dem Systemnamen, wenn eine RA-faehige Fassung
+  vorliegt. Gewaehlt wird sie hier NICHT - der RA-Core wird beim
+  Start entschieden und hat dort Vorrang (siehe `fe/ra_core.py`).
+* **Bei genau einer Fassung** steht jetzt deren Dateiname statt
+  „automatisch" - es gibt ja nichts zu entscheiden.
+* **Die Pfeile `< >` nur dort, wo es etwas zu blaettern gibt.** Ein
+  `< >` an einer Zeile, die sich nicht aendern laesst, ist ein
+  Versprechen, das die Taste nicht haelt.
+* **Die Fusszeile zaehlt**: `alle: 48 von 48 Systemen - 7 mit
+  mehreren Fassungen, 12 ohne Core`.
+
+### Zu „Unstable und Turbo": ehrlich geraten waere geraten
+
+Im ganzen Projekt gibt es **keinen** Begriff fuer Unstable- oder
+Turbo-Cores, und ich habe keinen Ordnernamen dafuer erfunden. Was es
+gibt, reicht aber fuer den Zweck: `fassungen()` findet **jede** Datei,
+die auf den Core-Namen plus Datum passt - also auch
+`SNES_20260914_turbo.rbf`. Solche Varianten tauchen damit von selbst
+in der Auswahl auf, sobald sie auf der Karte liegen. Liegen sie
+woanders, sagt diese Seite nichts darueber, statt etwas Falsches zu
+sagen.
+
+### Zwei Dinge aus dem Quelltext, die der Test festhaelt
+
+1. **`uebersicht()` verhaelt sich ohne das neue Kennzeichen genau wie
+   vorher.** Es hat einen zweiten Aufrufer (`fe/show.py`), und der
+   soll die Luecken nicht sehen. Welche Betriebsart gilt, entscheidet
+   der Aufrufer; eine Liste, die mal so und mal so aussieht, waere an
+   beiden Stellen falsch.
+2. **Die RA-Fassungen werden EINMAL nachgesehen, nicht je Bild.** Jeder
+   Aufruf ist ein `os.path.exists()` auf die Karte, und die Schleife
+   zeichnet zwanzig Zeilen sechzig Mal in der Minute - genau die Sorte
+   Dateizugriff im Zeichenweg, die Abschnitt G des Bench gemessen hat.
+   Der Test prueft am Quelltext, dass die Tabelle **vor** der
+   Zeichenschleife gebaut wird.
+
+Und `ra_fassung()` fragt `fe/ra_core.py`, statt dessen Namensliste
+nachzubauen - die ist dort samt der ehrlichen Anmerkung
+dokumentiert, dass sie fuer manche Systeme geraten ist. Zweimal
+gefuehrt hiesse zweimal gepflegt.
+
+### Neue Pruefungen
+
+* **neu** `tools/test_core_verwaltung.py` - 31 Pruefungen an einem
+  gebauten Kartenbaum: `uebersicht()` ohne Kennzeichen unveraendert,
+  mit Kennzeichen kommen die Luecken dazu (mit **leerer**
+  Fassungsliste, aber mit Standardnamen - sonst koennte die Seite
+  nicht sagen, WELCHE Datei fehlt); `ra_fassung()` liefert nichts
+  ohne den Ordner, den Pfad aus `fe/ra_core.py` mit ihm, und baut
+  dessen Namensliste nicht nach; `bestand_cores()` zaehlt Systeme,
+  Luecken, Mehrfachfassungen und RA; die Seite zeichnet auf vier
+  Groessen **mit Filterwechseln**, und sieben Wechsel hintereinander
+  laufen nicht aus den verschieden langen Listen; links/rechts auf
+  einer Zeile ohne Wahl aendert nichts und speichert vor allem
+  nichts; und jeder Text existiert in beiden Sprachen, inklusive der
+  drei zusammengesetzten Filternamen.

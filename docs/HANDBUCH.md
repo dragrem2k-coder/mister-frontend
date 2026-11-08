@@ -1549,7 +1549,7 @@ Zwei Punkte unter *Optionen*:
 
 | Menüpunkt | Aktion | Was er tut |
 |---|---|---|
-| Cores: Fassung je System wählen | `cores` | Liegen mehrere Fassungen eines Cores auf der Karte, wählst du hier je System die, die gestartet wird — mit links/rechts. „automatisch" nimmt die neueste. Fehlt die gewählte Datei, weil `update_all` sie weggeräumt hat, sagt die Zeile das und es wird automatisch gewählt |
+| Cores: Fassung je System wählen | `cores` | Liegen mehrere Fassungen eines Cores auf der Karte, wählst du hier je System die, die gestartet wird — mit links/rechts. „automatisch" nimmt die neueste. Fehlt die gewählte Datei, weil `update_all` sie weggeräumt hat, sagt die Zeile das und es wird automatisch gewählt. **Seit Build 312 zeigt die Seite alle Systeme**, und die **Filtertaste** (F6 / Select+L2) schaltet zwischen *alle*, *mehrere Fassungen* und *ohne Core* um. Eine Lücke heißt „kein Core auf der Karte"; hinter Systemen mit RetroAchievements-Fassung steht **[RA]** |
 | Core-Übersicht (was liegt drauf, wie alt) | `core_uebersicht` | Eine **Leseseite mit allen** installierten Cores: Ordner, Name, Fassung und Alter in Tagen. **OK** wechselt die Sortierung (Alter / Name / Ordner), links/rechts blättert seitenweise. Alles älter als ein Jahr ist farbig hervorgehoben. Das Datum kommt aus dem Dateinamen auf **deiner** Karte — die Seite sagt bewusst **nichts** darüber, was es im Netz gibt (siehe unten) |
 | update_all ausführen (Cores und Firmware) | `update_all` | Startet das **vorhandene** Skript — nachgebaut wird nichts. Die Beschriftung nennt den letzten Lauf („vor 23 Tagen"), damit die Frage „brauche ich das jetzt?" ohne Nachsehen zu beantworten ist. Ist `update_all` nicht installiert, sagt die Zeile das |
 

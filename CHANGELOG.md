@@ -13,6 +13,21 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Die Core-Auswahl zeigt jetzt alles — und lässt sich filtern.**
+  Bisher standen dort nur Systeme mit *mehreren* Fassungen; wer wissen
+  wollte, zu welchem System überhaupt **kein Core** auf der Karte
+  liegt, erfuhr es nicht. Jetzt schaltet die **Filtertaste** zwischen
+  drei Listen um: *alle*, *mehrere Fassungen* (die alte Liste) und
+  *ohne Core*. Die Fußzeile zählt mit: „48 von 48 Systemen — 7 mit
+  mehreren Fassungen, 12 ohne Core" (Build 312).
+- **Und was in der Zeile dazugekommen ist.** Eine Lücke heißt jetzt
+  **„kein Core auf der Karte"** statt „automatisch" — das wäre die
+  Zusage, dass schon irgendetwas startet. Hinter Systemen mit einer
+  RetroAchievements-Fassung steht **[RA]**. Bei genau einer Fassung
+  steht deren Dateiname statt „automatisch", und die Pfeile `< >`
+  erscheinen nur dort, wo es wirklich etwas zu blättern gibt
+  (Build 312).
+
 - **Neu: der Steckbrief — eine eigene Infoseite je Spiel.** Im
   Kontextmenü (X am Pad, F1) steht sie ganz oben: links das Cover
   groß, rechts Titel, System, Jahr, Genre und Spielerzahl in der
