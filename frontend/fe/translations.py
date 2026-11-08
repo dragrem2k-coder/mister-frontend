@@ -1343,27 +1343,15 @@ TRANSLATIONS = {
               "gallery stays",
         "de": "Coverflow braucht ein HDMI-Bild - auf der Roehre bleibt "
               "die klassische Galerie"},
-    # Build 314: der Stil der HAUPTSEITE (seine Entwuerfe 7, 8 und 9).
-    # Siehe _draw_cats_kachelwand()/_draw_cats_dashboard()/
-    # _draw_cats_karussell() in frontend.py und HAUPT_STILE in
-    # fe/settings.py.
-    "sys_haupt_stil": {
-        "en": "Main page: %s", "de": "Hauptseite: %s"},
-    "haupt_stil_klassisch": {
-        "en": "classic", "de": "klassisch"},
-    "haupt_stil_kachelwand": {
-        "en": "tile wall (HDMI only)", "de": "Kachelwand (nur HDMI)"},
-    "haupt_stil_dashboard": {
-        "en": "dashboard (HDMI only)", "de": "Dashboard (nur HDMI)"},
-    "haupt_stil_karussell": {
-        "en": "carousel (HDMI only)", "de": "Karussell (nur HDMI)"},
-    "haupt_stil_gesetzt": {
-        "en": "Main page: %s", "de": "Hauptseite: %s"},
-    "haupt_stil_nur_hdmi": {
-        "en": "The new main pages need an HDMI picture - on a CRT the "
-              "classic one stays",
-        "de": "Die neuen Hauptseiten brauchen ein HDMI-Bild - auf der "
-              "Roehre bleibt die klassische"},
+    # Build 316: die drei neuen Hauptseiten sind ANSICHTEN geworden
+    # (siehe ANSICHTEN_HAUPT in fe/settings.py) - die Namen stehen
+    # deshalb bei den Ansichten, nicht bei einem eigenen Schalter.
+    "ansicht_kachelwand": {
+        "en": "tile wall (HDMI)", "de": "Kachelwand (HDMI)"},
+    "ansicht_dashboard": {
+        "en": "dashboard (HDMI)", "de": "Dashboard (HDMI)"},
+    "ansicht_karussell": {
+        "en": "carousel (HDMI)", "de": "Karussell (HDMI)"},
     "dash_eintraege": {"en": "entries", "de": "Einträge"},
     "dash_ordner": {"en": "folders", "de": "Ordner"},
     "dash_favoriten": {"en": "favorites", "de": "Favoriten"},

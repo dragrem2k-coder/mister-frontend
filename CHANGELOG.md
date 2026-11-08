@@ -33,9 +33,16 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
   „netplay" im Namen (Build 315).
 - **Neu: drei weitere Gerätefotos** — 32X, Virtual Boy und ein
   Computer. Damit sind es 20 (Build 315).
-- **Neu: drei neue Hauptseiten (Entwürfe 7, 8 und 9), nur HDMI.**
-  Umschaltbar im Systemmenü unter *Hauptseite* — vier Werte an einem
-  Schalter, Vorgabe bleibt „klassisch" (Build 314):
+- **Behoben: der Game-Boy-Netplay-Core tauchte nicht auf.** Der
+  Vergleich war buchstabengenau, der Core heißt in der Systemtabelle
+  `Gameboy` und die Datei auf der Karte `gameboy_netplay` — bei NES
+  oder SNES fiel das nicht auf, weil beide Schreibweisen dort
+  übereinstimmen (Build 316).
+- **Neu: die Hauptseite hat sechs Ansichten statt drei.** An **einem**
+  Schalter (*System → Anzeige & Sound → „Ansicht Hauptseite"*, oder
+  F10): Liste, Raster, Galerie — und neu **Kachelwand**, **Dashboard**
+  und **Karussell**. Die drei neuen brauchen ein HDMI-Bild; auf einer
+  Röhre überspringt die Taste sie (Builds 314/316).
   - **Kachelwand** — alle Kategorien als beschriftete Karten, 6×3 auf
     1080p. Unter jedem Bild der Name, die Eintragszahl und ein Balken,
     der zeigt, wie groß die Kategorie im Verhältnis zur größten ist.
@@ -44,10 +51,18 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
     Zahlenkästen (Einträge, Ordner, Favoriten) und derselbe Balken.
   - **Karussell** — die gewählte Kategorie groß in der Mitte, die
     Nachbarn links und rechts kleiner, umlaufend wie die Tasten.
+- **Behoben: ein Schalter zu viel.** Build 314 hatte die drei neuen
+  Ansichten als eigenen Punkt *über* die Ansicht gesetzt — zwei
+  Schalter, von denen einer den anderen stumm aussticht. Das ergab
+  zwei gemeldete Fehler: „beide Ansichten überschneiden sich" und
+  „bleibt in der Listenansicht, aber die Steuerung ist wie beim
+  Raster". Jetzt sind es sechs Werte an einem Schalter; eine in
+  Build 314/315 gesetzte Einstellung wird beim ersten Start einmalig
+  übernommen (Build 316).
 - **Neu: Gerätefotos als Kategoriebild.** 17 freigestellte
   Konsolenfotos unter `frontend/sysart_foto`, benutzt von den drei
-  neuen Hauptseiten. Kategorien ohne Foto — Favoriten, Weiterspielen,
-  Game Gear … — behalten ihr Abzeichen; die drei klassischen Ansichten
+  neuen Ansichten. Kategorien ohne Foto — Favoriten, Weiterspielen,
+  Game Gear … — behalten ihr Abzeichen; Liste, Raster und Galerie
   bleiben unverändert bei den Abzeichen. Eigene Fotos liefert
   `PC-Tools/sysart_foto_convert.py` nach (Build 314).
 - **Behoben: ein hauchdünner Strich am Coverflow.** Der Bildvergleich,

@@ -478,20 +478,27 @@ def main():
     _S.galerie_stil_schreiben("klassisch")
     H._zwischenspeicher_leeren()
 
-    print("  Die drei neuen Hauptseiten (Build 314):")
-    # Auch hier ueber die ECHTE Einstellung und nicht ueber eine
-    # Attrappe an _haupt_stil() - sonst wuerde das Bild einen Weg
-    # zeigen, den das Frontend so nie nimmt (samt HDMI-Schwelle).
-    _S.HAUPT_STIL_FILE = os.path.join(_TMP, "haupt_stil.txt")
-    for stil, name in (("kachelwand", "preview_13_haupt_kachelwand.png"),
-                       ("dashboard", "preview_14_haupt_dashboard.png"),
-                       ("karussell", "preview_15_haupt_karussell.png")):
-        _S.haupt_stil_schreiben(stil)
+    print("  Die drei neuen Hauptseiten-Ansichten (Build 314/316):")
+    # Ueber die ECHTE Einstellung und nicht ueber eine Attrappe -
+    # sonst wuerde das Bild einen Weg zeigen, den das Frontend so nie
+    # nimmt (samt HDMI-Schwelle).
+    #
+    # BUILD 316: ueber ansicht_haupt_setzen() und nicht mehr ueber
+    # einen eigenen Stil-Schalter - den gibt es nicht mehr. Haette
+    # diese Stelle weiter haupt_stil_schreiben() gerufen, waeren hier
+    # ab sofort dreimal dasselbe Bild der Liste herausgekommen, und
+    # die Vorschaubilder haetten etwas behauptet, was es nicht gibt.
+    _S.ANSICHT_HAUPT_FILE = os.path.join(_TMP, "ansicht_haupt.txt")
+    for ansicht, name in (("kachelwand", "preview_13_haupt_kachelwand.png"),
+                          ("dashboard", "preview_14_haupt_dashboard.png"),
+                          ("karussell", "preview_15_haupt_karussell.png")):
+        _S.ansicht_haupt_schreiben(ansicht)
         H._zwischenspeicher_leeren()
         f = hauptseite(1920, 1080)
+        f._ansicht_haupt = None
         f.draw()
         speichern(f.fb, name)
-    _S.haupt_stil_schreiben("klassisch")
+    _S.ansicht_haupt_schreiben("liste")
     H._zwischenspeicher_leeren()
 
     print("  Steckbrief (Build 311):")

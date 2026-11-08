@@ -1533,42 +1533,43 @@ neighbour strip, so the strip mostly stands still and one step redraws
 it has, the measured style stays. Expect 55–65 ms per step instead of
 45.8, and the repeat rate adapts by itself since build 302.
 
-### Since build 314 the main page also has four styles
+### The main page has six views
 
-*System -> Display & Sound -> "Main page"*. A style is a **complete**
-main page, not an arrangement inside one, so it sits above the view:
-with the switch on anything other than "classic" it decides, and
-"Main page view" no longer has any effect.
+Since build 316 all six sit on **one** switch — *System -> Display &
+Sound -> "Main page view"*, or **F10** (**Select+Y** on the pad):
 
-| Style | Look |
+| View | Look |
 |---|---|
-| **classic** | as before — list, grid or gallery according to "Main page view". The default |
-| **tile wall** | every category as a labelled card (6×3 at 1080p): picture, name, entry count and a bar showing how large the category is relative to the largest one |
-| **dashboard** | the category list with counts on the left, a panel for the selected category on the right: the console large, the name, three number boxes (entries, folders, favourites) and the same bar |
-| **carousel** | the selected category large in the centre, its neighbours smaller left and right, name and counts centred below. It wraps around — after the last category comes the first again, exactly as the buttons behave |
+| **List** | as before: a text list with the selected category's badge on the right. The default |
+| **Grid** | every badge as a tile, 8x3 on HDMI - the whole category list without a single page turn |
+| **Gallery** | large badge on the left, counts on the right, the neighbours as a strip below |
+| **Tile wall** *(HDMI)* | every category as a labelled card (6x3 at 1080p): console photo, name, entry count and a bar showing how large the category is relative to the largest one |
+| **Dashboard** *(HDMI)* | the category list with counts on the left, a panel for the selected category on the right: the console large, the name, three number boxes (entries, folders, favourites) and the same bar |
+| **Carousel** *(HDMI)* | the selected category large in the centre, its neighbours smaller left and right, name and counts centred below. It wraps around - after the last category comes the first again, exactly as the buttons behave |
 
-**All three new styles are HDMI only.** On a CRT it stays "classic"
-even with the switch set — six labelled tiles would be six smudges
-with three characters underneath at 320×240. The value is still
-saved; it applies next time on the TV, and the message when switching
-says so.
+**The three marked *(HDMI)* do not exist on a CRT.** Six labelled
+tiles would be six smudges with three characters underneath at
+320x240. The key simply skips them there - a key that does nothing
+three times in a row feels broken.
 
-**Why "classic" stays the default:** the same reason as for the
-gallery style. The three new styles draw more per step — the tile wall
-a label per tile, the dashboard a whole panel, the carousel five cards
-instead of one. What that costs on the device is measured by section J
-of the bench once the style is set. Nothing is guessed here.
+**Why this is one switch and not two:** in build 314 the three new
+views sat on their own entry, "Main page style", above the view, and
+silently overruled it. That produced two bugs, both reported - "both
+views overlap" and "it stays in list view but the controls behave
+like the grid". One question, one answer, one place where it is
+answered. Anyone who already set a style in build 314/315 has it
+carried over once at the next start.
 
-**The console photos:** the three new styles take the category picture
+**The console photos:** the three new views take the category picture
 from `/media/fat/frontend/sysart_foto` first and only then from
-`sysart`. 20 photos ship with it (NES, SNES, Super Game Boy, Game Boy,
-GBC, GBA, N64, Virtual Boy, Mega Drive, Mega CD, 32X, Master System,
-PlayStation, Saturn, TurboGrafx-16, Neo Geo, Atari 2600, arcade,
-computer, external drive).
-Categories without a photo — favourites, continue, Game Gear … — keep
-their badge, and the three classic views stay on the badges entirely.
-`PC-Tools/sysart_foto_convert.py` converts your own photos into the
-right format; see `docs/LOGOS_NACHLIEFERN.md`.
+`sysart`. 20 photos ship with it (NES, SNES, Super Game Boy, Game
+Boy, GBC, GBA, N64, Virtual Boy, Mega Drive, Mega CD, 32X, Master
+System, PlayStation, Saturn, TurboGrafx-16, Neo Geo, Atari 2600,
+arcade, computer, external drive). Categories without a photo -
+favourites, continue, Game Gear ... - keep their badge, and list,
+grid and gallery stay on the badges entirely.
+`PC-Tools/sysart_foto_convert.py` converts your own photos; see
+`docs/LOGOS_NACHLIEFERN.md`.
 
 **There are two ways to switch, and they deliberately do different
 things:**
@@ -2544,7 +2545,6 @@ conversely nobody ends up in a menu that cannot do anything).
 | Shadow mask | `masken` |
 | Game list view | `ansicht` |
 | Gallery style (classic / coverflow) | `galerie_stil` |
-| Main page (classic / tile wall / dashboard / carousel) | `haupt_stil` |
 | Main page view | `ansicht_haupt` |
 | Scroll speed (0.5x to 2x) | `scroll_tempo` |
 | Button legend: ON/OFF | `tastenlegende` |

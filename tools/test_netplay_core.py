@@ -97,6 +97,13 @@ lege("_Console", "NES_20260101.rbf")           # ein anderes System
 lege("_Netplay", "Cores", "N64_netplay_20260401.rbf")
 lege("_Console", "N64_20260101.rbf")
 lege("_Console", "GBA_20260101.rbf")           # ganz ohne Netplay
+# DER FALL AUS SEINER RUECKMELDUNG ("warum wird der gameboy_netplay
+# core nicht mit aufgelistet, die anderen gehen"): in der
+# Systemtabelle heisst der Core "_Console/Gameboy", die Datei auf der
+# Karte "gameboy_netplay" - andere Schreibweise. Bei NES oder SNES
+# faellt das nicht auf, weil beide dort zufaellig uebereinstimmen.
+lege("_Console", "Gameboy_20260101.rbf")
+lege("_Console", "gameboy_netplay.rbf")
 
 # ---------------------------------------------------------------------------
 print("Test 1: gefunden wird, was Netplay ist")
@@ -130,6 +137,29 @@ check("und 'SNESNetplay' ohne Unterstrich auch nicht",
 check("ein anderes System faengt nichts davon ab",
       CORES.netplay_fassungen("_Console/NES") == [],
       "%r" % (CORES.netplay_fassungen("_Console/NES"),))
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 2b: Gross- und Kleinschreibung zaehlt nicht")
+# ---------------------------------------------------------------------------
+# SEINE RUECKMELDUNG ZU BUILD 315: "warum wird der gameboy_netplay
+# core nicht mit aufgelistet die anderen gehen". Der Core heisst in
+# der Systemtabelle "_Console/Gameboy", die Datei auf der Karte
+# "gameboy_netplay" - buchstabengenau verglichen faellt sie durch.
+# Dass es bei NES, SNES und N64 ging, machte den Fehler erst recht
+# schwer zu sehen: dort stimmen beide Schreibweisen zufaellig
+# ueberein.
+gb = CORES.netplay_fassungen("_Console/Gameboy")
+check("gameboy_netplay wird zu _Console/Gameboy gefunden",
+      gb == ["_Console/gameboy_netplay"], "%r" % (gb,))
+check("und der NAME bleibt, wie die Datei heisst",
+      gb and gb[0].endswith("gameboy_netplay"),
+      "in die .mgl gehoert der echte Dateiname, nicht eine "
+      "zurechtgebogene Schreibweise")
+check("die Praefix-Falle bleibt trotzdem zu",
+      not any("Tracker" in n for n in snes),
+      "kleiner geschrieben ist 'SNES_Tracker' immer noch nicht "
+      "'SNES_netplay'")
 
 # ---------------------------------------------------------------------------
 print()

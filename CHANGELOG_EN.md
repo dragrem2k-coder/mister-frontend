@@ -32,19 +32,27 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
   same inside a folder with "netplay" in its name (build 315).
 - **New: three more console photos** — 32X, Virtual Boy and a
   computer. That makes 20 (build 315).
-- **New: three new main pages (designs 7, 8 and 9), HDMI only.**
-  Switchable in the system menu under *Main page* — four values on one
-  switch, the default stays "classic" (build 314):
-  - **Tile wall** — every category as a labelled card, 6×3 at 1080p.
+- **New: the main page has six views instead of three.** On **one**
+  switch (*System -> Display & Sound -> "Main page view"*, or F10):
+  list, grid, gallery - and the new **tile wall**, **dashboard** and
+  **carousel**. The three new ones need an HDMI picture; on a CRT the
+  key skips them (builds 314/316).
+  - **Tile wall** - every category as a labelled card, 6x3 at 1080p.
     Below each picture the name, the entry count and a bar showing how
     large the category is relative to the largest one.
-  - **Dashboard** — the category list with counts on the left, a panel
+  - **Dashboard** - the category list with counts on the left, a panel
     for the selected category on the right: the console large, the
     name, three number boxes (entries, folders, favourites) and the
     same bar.
-  - **Carousel** — the selected category large in the centre, its
+  - **Carousel** - the selected category large in the centre, its
     neighbours smaller to the left and right, wrapping around just
     like the buttons do.
+- **Fixed: one switch too many.** Build 314 put the three new views on
+  their own entry *above* the view - two switches, one silently
+  overruling the other. That produced two reported bugs: "both views
+  overlap" and "it stays in list view but the controls behave like the
+  grid". Now there are six values on one switch, and a setting made in
+  build 314/315 is carried over once at the next start (build 316).
 - **New: console photos as the category picture.** 17 cut-out console
   photos under `frontend/sysart_foto`, used by the three new main
   pages. Categories without a photo — favourites, continue, Game Gear

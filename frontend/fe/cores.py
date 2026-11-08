@@ -206,11 +206,28 @@ def netplay_fassungen(rel):
 
     Geliefert werden .mgl-taugliche Namen (ohne .rbf, mit Ordner
     relativ zu /media/fat) - genau das, was in eine .mgl geschrieben
-    werden kann, also dasselbe Format wie bei fassungen()."""
+    werden kann, also dasselbe Format wie bei fassungen().
+
+    DER VERGLEICH IGNORIERT GROSS- UND KLEINSCHREIBUNG, und das ist
+    ein behobener Fehler aus Build 315 - gemeldet mit "warum wird der
+    gameboy_netplay core nicht mit aufgelistet, die anderen gehen".
+
+    In der Systemtabelle heisst der Core "_Console/Gameboy" (grosses
+    G, kleines b), die Datei auf seiner Karte aber "gameboy_netplay".
+    Buchstabengenau verglichen faellt sie durch. Bei NES, SNES oder
+    N64 faellt das nicht auf, weil dort beide Schreibweisen zufaellig
+    uebereinstimmen - ein Fehler, der sich also ausgerechnet bei
+    EINEM System zeigt und bei allen anderen nicht.
+
+    Die Praefix-Falle bleibt davon unberuehrt: es muss weiterhin ein
+    Unterstrich folgen und "netplay" darin vorkommen. Gross- und
+    Kleinschreibung zu ignorieren macht aus "SNES" nicht
+    "SNES_Tracker"."""
     if not rel:
         return []
     voll = _rbf_pfad(rel)
     name = os.path.basename(voll)
+    name_klein = name.lower()
     treffer = []
     for ordner in _netplay_ordner(os.path.dirname(voll)):
         try:
@@ -222,7 +239,7 @@ def netplay_fassungen(rel):
             if not datei.lower().endswith(".rbf"):
                 continue
             rest = datei[:-4]
-            if not rest.startswith(name):
+            if not rest.lower().startswith(name_klein):
                 continue
             schwanz = rest[len(name):]
             # Entweder genau der Name (dann muss der ORDNER die Marke

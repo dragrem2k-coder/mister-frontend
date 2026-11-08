@@ -1852,20 +1852,89 @@ def ansicht_schreiben(wert):
 ANSICHT_HAUPT_FILE = "/media/fat/frontend/ansicht_haupt"
 
 
+# BUILD 316: SECHS ANSICHTEN STATT DREI PLUS DREI STILE.
+#
+# NUTZER-RUECKMELDUNG, die das ausgeloest hat: "also in der alten
+# ansicht geht alles, ich kann auf der hauptseite durch die ansichten
+# wechseln, laeuft alles wunderbar. wenn ich dann neuen wechseln [...]
+# da ist irgendwas durcheinander, er wechselt wohl, bleibt aber in der
+# listen ansicht, aber steuerung ist dann zum beispiel wie beim
+# raster". Und auf die Frage, wie er es lieber haette: "Eine Liste aus
+# sechs".
+#
+# ER HAT RECHT, UND ZWAR GRUNDSAETZLICH. Build 314 hat die drei neuen
+# Entwuerfe als eigenen Schalter ueber die Ansicht gelegt - zwei
+# Einstellungen, von denen eine die andere aussticht. Das hat genau
+# zwei Dinge gekostet:
+#
+#   1. Die Ansicht tat stumm nichts mehr, sobald ein Stil stand. Eine
+#      Einstellung, die stumm nichts tut, haelt man fuer kaputt - der
+#      Satz steht seit Build 313 im Haus und galt hier gegen mich.
+#   2. Es gab ZWEI Quellen fuer "wie sieht die Hauptseite aus", und
+#      prompt liefen sie auseinander: das Bild kam von der einen, die
+#      Navigation (cats_visible) von der anderen. Genau das hat er
+#      gesehen - Listenbild, Rastersteuerung.
+#
+# Eine Liste aus sechs Werten kann das per Bauart nicht. Es gibt
+# wieder EINE Frage mit EINER Antwort, und wer sie beantwortet, hat
+# alles beantwortet.
+#
+# Die Spieleliste behaelt ihre drei (ANSICHTEN) - dort gibt es die
+# drei neuen Entwuerfe gar nicht.
+ANSICHTEN_HAUPT = ("liste", "raster", "galerie",
+                   "kachelwand", "dashboard", "karussell")
+# Welche davon ein HDMI-Bild brauchen. Auf einer Roehre waeren sechs
+# beschriftete Kacheln sechs Flecken mit drei Zeichen darunter - seine
+# Vorgabe war von Anfang an "gilt nur fuer hdmi, crt modus bleibt so".
+ANSICHTEN_HAUPT_NUR_HD = ("kachelwand", "dashboard", "karussell")
+
+
 def ansicht_haupt_lesen():
-    """Die eingestellte Vorgabe-Ansicht der HAUPTSEITE (Kategorien)."""
+    """Die eingestellte Vorgabe-Ansicht der HAUPTSEITE (Kategorien).
+
+    Sechs moegliche Werte seit Build 316 - siehe ANSICHTEN_HAUPT."""
     def _lesen():
         try:
             wert = open(ANSICHT_HAUPT_FILE).read().strip().lower()
         except OSError:
             return "liste"
-        return wert if wert in ANSICHTEN else "liste"
+        return wert if wert in ANSICHTEN_HAUPT else "liste"
     return _hole(("ansicht_haupt", ANSICHT_HAUPT_FILE), _lesen)
+
+
+def haupt_stil_uebernehmen():
+    """EINMALIGE Uebernahme des Schalters aus Build 314.
+
+    Wer in Build 314/315 "Hauptseite: Kachelwand" eingestellt hatte,
+    soll nach dem Update nicht wieder vor der Liste sitzen und sich
+    fragen, wo sein Bild hin ist. Steht in haupt_stil.txt etwas
+    anderes als "klassisch", wird es in die Ansicht uebernommen und
+    die alte Datei auf "klassisch" zurueckgesetzt - danach passiert
+    hier nichts mehr.
+
+    KEIN LOESCHEN DER ALTEN DATEI: eine Datei zu entfernen, die ein
+    Nutzer vielleicht selbst angelegt hat, ist eine Entscheidung, die
+    ein Update nicht treffen muss. Sie zurueckzusetzen genuegt, und
+    man sieht hinterher noch, dass sie da war."""
+    try:
+        alt = open(HAUPT_STIL_FILE).read().strip().lower()
+    except OSError:
+        return None
+    if alt not in ANSICHTEN_HAUPT_NUR_HD:
+        return None
+    ansicht_haupt_schreiben(alt)
+    try:
+        with open(HAUPT_STIL_FILE, "w") as f:
+            f.write("klassisch")
+    except OSError as e:
+        LOG("haupt_stil_uebernehmen: %s" % e)
+    LOG("Build 316: Hauptseiten-Stil %r in die Ansicht uebernommen" % alt)
+    return alt
 
 
 @_nach_aenderung
 def ansicht_haupt_schreiben(wert):
-    if wert not in ANSICHTEN:
+    if wert not in ANSICHTEN_HAUPT:
         wert = "liste"
     try:
         d = os.path.dirname(ANSICHT_HAUPT_FILE)

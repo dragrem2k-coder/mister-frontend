@@ -321,11 +321,10 @@ from fe.settings import (
     overscan_lesen, overscan_weiter,
     ANSICHTEN, ansicht_lesen, ansicht_schreiben,
     ansicht_haupt_lesen, ansicht_haupt_schreiben,
+    # Build 316: die Hauptseite hat sechs Ansichten, nicht drei.
+    ANSICHTEN_HAUPT, ANSICHTEN_HAUPT_NUR_HD, haupt_stil_uebernehmen,
     GALERIE_STILE, galerie_stil_lesen, galerie_stil_schreiben,
     galerie_stil_weiter,
-    # Build 314: der Stil der Hauptseite (seine Entwuerfe 7, 8 und 9).
-    HAUPT_STILE, haupt_stil_lesen, haupt_stil_schreiben,
-    haupt_stil_weiter,
     schrift_lesen, schrift_pfad,
     schrift_schreiben, schrift_aus_ini, SCHRIFT_EIGEN, SCHRIFT_OSD,
     maske_lesen, maske_schreiben, maske_an, toggle_maske, maske_pfad,
@@ -1598,6 +1597,22 @@ class Frontend:
             LOG("Hintergrundbild:\n" + traceback.format_exc())
         # Build 236: die Feinheiten einmal lesen - siehe FEIN.
         feinheiten_uebernehmen()
+        # BUILD 316: wer in Build 314/315 "Hauptseite: Kachelwand"
+        # eingestellt hatte, soll nach dem Update nicht wieder vor der
+        # Liste sitzen und sich fragen, wo sein Bild hin ist. Die
+        # Uebernahme laeuft genau einmal - danach steht in
+        # haupt_stil.txt "klassisch" und sie tut nichts mehr (siehe
+        # haupt_stil_uebernehmen() in fe/settings.py).
+        #
+        # HIER UND NICHT SPAETER, weil das erste Bild schon die
+        # richtige Ansicht zeigen soll. Und in einem try, weil eine
+        # Uebernahme, die schiefgeht, den Start nicht aufhalten darf:
+        # im schlimmsten Fall steht die Liste da, und das ist ein
+        # Schoenheitsfehler, kein kaputtes Frontend.
+        try:
+            haupt_stil_uebernehmen()
+        except Exception:                                # noqa: BLE001
+            LOG("haupt_stil_uebernehmen:\n" + traceback.format_exc())
         self.inp = InputManager()
         self._startmarke("Framebuffer und Eingaben offen")
         # WICHTIG: Erst auf unseren eigenen Bildschirm umschalten (F9),
@@ -5058,12 +5073,53 @@ class Frontend:
         Sitzung (die Taste) und die Vorgabe aus der Datei (das Menue),
         mehr braucht es nicht."""
         gemerkt = getattr(self, "_ansicht_haupt", None)
-        if gemerkt in ANSICHTEN:
-            return gemerkt
-        return ansicht_haupt_lesen()
+        wert = gemerkt if gemerkt in ANSICHTEN_HAUPT else ansicht_haupt_lesen()
+        return self._ansicht_haupt_hd(wert)
+
+    def _ansicht_haupt_hd(self, wert):
+        """Die HD-Regel, und zwar an GENAU EINER Stelle (Build 316).
+
+        Kachelwand, Dashboard und Karussell brauchen ein HDMI-Bild -
+        seine Vorgabe von Anfang an ("gilt nur fuer hdmi crt modus
+        bleibt so"). Auf einer Roehre liefert diese Funktion dafuer
+        "liste", und weil JEDER Zeichenweg und JEDE Navigation ihre
+        Ansicht hier holt, gibt es dort auch nichts anderes zu sehen
+        oder zu steuern.
+
+        GENAU DAS WAR DER FEHLER AUS BUILD 314: dort war die Regel
+        eine zweite Entscheidungsebene neben der Ansicht, und prompt
+        kam das Bild von der einen und die Navigation von der
+        anderen - "bleibt aber in der listen ansicht, aber steuerung
+        ist dann zum beispiel wie beim raster"."""
+        try:
+            if wert in ANSICHTEN_HAUPT_NUR_HD and self.fb.height < 720:
+                return "liste"
+        except Exception:                                # noqa: BLE001
+            return "liste"
+        return wert
+
+    def _ansicht_haupt_weiter(self, von=None):
+        """Die naechste Ansicht der Hauptseite - und auf einer Roehre
+        werden die drei HD-Ansichten dabei UEBERSPRUNGEN.
+
+        Nicht aus Bequemlichkeit: eine Taste, die dreimal hintereinander
+        nichts sichtbar tut, haelt man fuer kaputt. Dasselbe gilt fuer
+        den Menuepunkt, der dann dreimal einen Namen anzeigt, hinter
+        dem nichts steht. Geschrieben wird also nur, was auf DIESEM
+        Bild auch etwas bewirkt."""
+        jetzt = von if von is not None else self.aktuelle_ansicht_haupt()
+        try:
+            hd = self.fb.height >= 720
+        except Exception:                                # noqa: BLE001
+            hd = False
+        moeglich = [a for a in ANSICHTEN_HAUPT
+                    if hd or a not in ANSICHTEN_HAUPT_NUR_HD]
+        if jetzt not in moeglich:
+            return moeglich[0]
+        return moeglich[(moeglich.index(jetzt) + 1) % len(moeglich)]
 
     def ansicht_haupt_setzen(self, wert, merken=False):
-        if wert not in ANSICHTEN:
+        if wert not in ANSICHTEN_HAUPT:
             wert = "liste"
         self._ansicht_haupt = wert
         if merken:
@@ -5074,6 +5130,15 @@ class Frontend:
         self._pgc_fast_key = None
         self._kat_raster_fast_key = None
         self._kat_galerie_fast_key = None
+        # Build 316: die drei neuen Ansichten haben eigene
+        # Zwischenspeicher, und die muessen hier genauso fallen.
+        # Bliebe auch nur einer stehen, zeichnete er beim naechsten
+        # Wechsel zurueck seinen schnellen Pfad in ein fremdes Bild -
+        # derselbe Fehler, den er als "beide ansichten ueberschneiden
+        # sich" gemeldet hat.
+        self._kat_wand_fast_key = None
+        self._kat_dash_fast_key = None
+        self._kat_kar_fast_key = None
         self._force_full_redraw = True
         self.fb.mark_full_redraw()
         return wert
@@ -5135,10 +5200,7 @@ class Frontend:
         umzuschalten ist. Gespeichert wird NICHTS: die Taste ist zum
         Ausprobieren da, die Vorgabe stellt man im Menue."""
         if getattr(self, "page", 0) == 0:
-            jetzt = self.aktuelle_ansicht_haupt()
-            idx = ANSICHTEN.index(jetzt) if jetzt in ANSICHTEN else 0
-            return self.ansicht_haupt_setzen(
-                ANSICHTEN[(idx + 1) % len(ANSICHTEN)])
+            return self.ansicht_haupt_setzen(self._ansicht_haupt_weiter())
         if getattr(self, "page", 0) != 1:
             return None
         items = self._display_items()
@@ -6429,15 +6491,16 @@ class Frontend:
         # Der Einsprung steht hier, weil erst ab dieser Zeile das
         # Layout feststeht - und weil der Cover-Schutz darueber fuer
         # alle drei Ansichten gleichermassen gilt.
+        # BUILD 316: EINE Frage, EINE Antwort. Bis Build 315 stand
+        # hier ein zweiter Schalter ueber der Ansicht, und prompt kam
+        # das Bild von der einen Quelle und die Navigation von der
+        # anderen ("bleibt aber in der listen ansicht, aber steuerung
+        # ist dann zum beispiel wie beim raster"). Jetzt sind die
+        # sechs Ansichten eine Liste, und aktuelle_ansicht_haupt()
+        # beantwortet alles - samt der HD-Regel, siehe dort.
         _ansicht = self.aktuelle_ansicht_haupt()
-        # BUILD 314: die drei neuen Stile (seine Entwuerfe 7-9) stehen
-        # VOR der Ansicht, und zwar weil sie eine komplette Hauptseite
-        # sind und nicht eine Anordnung innerhalb einer. Wer beides
-        # kombinieren wollte, braeuchte zwoelf Bilder statt vier.
-        # Auf CRT liefert _haupt_stil() immer "klassisch" - siehe dort.
-        _stil = self._haupt_stil()
-        if _stil != "klassisch" and self._draw_cats_stil(
-                _stil, message, flip):
+        if _ansicht in ANSICHTEN_HAUPT_NUR_HD and self._draw_cats_stil(
+                _ansicht, message, flip):
             return
         if _ansicht != "liste" and self._draw_cats_kacheln(
                 _ansicht, message, flip):
@@ -7761,32 +7824,18 @@ class Frontend:
         _tnav = time.monotonic()
         if self.page != 0:
             return False
-        # Build 124: der leichte Pfad kennt nur Zeilen. Raster und
-        # Galerie der Hauptseite bauen ihren eigenen schnellen Weg
+        # Build 124: der leichte Pfad kennt nur Zeilen. Alle anderen
+        # Ansichten der Hauptseite bauen ihren eigenen schnellen Weg
         # (siehe _draw_cats_raster()).
+        #
+        # BUILD 316: diese EINE Zeile deckt jetzt auch Kachelwand,
+        # Dashboard und Karussell ab - sie sind Ansichten geworden
+        # statt eines zweiten Schalters darueber. In Build 314/315
+        # musste hier eine zweite Abfrage stehen, und genau ihr
+        # Fehlen war der gemeldete Fehler ("beide ansichten
+        # ueberschneiden sich"). Eine Frage, die man nicht stellen
+        # muss, kann man auch nicht vergessen.
         if self.aktuelle_ansicht_haupt() != "liste":
-            return False
-        # BUILD 315 - BEHOBENER FEHLER AUS BUILD 314, gemeldet mit
-        # "wenn ich die ansicht wechsel baut sich die alte dahinter
-        # auf und es gibt ein durcheinander, beide ansichten
-        # ueberschneiden sich".
-        #
-        # Die Zeile darueber fragt nach der ANSICHT. Seit Build 314
-        # gibt es darueber aber noch den STIL, und der gewinnt (siehe
-        # _draw_page_cats_impl()): steht die Ansicht auf "liste" und
-        # der Stil auf "kachelwand", zeichnet der Stil - dieser
-        # leichte Pfad hielt sich trotzdem fuer zustaendig, malte
-        # zwei klassische Listenzeilen mitten in die Kachelwand und
-        # meldete "erledigt". Genau das Durcheinander, das er
-        # beschrieben hat.
-        #
-        # Die Lehre ist dieselbe wie in Build 284: wer eine neue
-        # Entscheidungsebene einzieht, muss JEDE Stelle nachziehen,
-        # die die alte abfragt - nicht nur die, die man gerade
-        # bearbeitet. Der Test prueft das jetzt mechanisch, indem er
-        # mit echten Tastenschritten durch alle vier Stile laeuft und
-        # das Bild gegen einen vollen Aufbau haelt.
-        if self._haupt_stil() != "klassisch":
             return False
         # Siehe _overlay_active() - gleiche Begruendung wie bei
         # _draw_navigate_items_impl().
@@ -11033,29 +11082,6 @@ class Frontend:
     # _kat_fusszeile(). Kein zweiter Mechanismus fuer dieselbe Sache -
     # dieselbe Regel wie bei Build 313.
     # ==================================================================
-    def _haupt_stil(self):
-        """Welcher Stil zeichnet die Hauptseite? (Build 314)
-
-        ZWEI BEDINGUNGEN, genau wie beim Coverflow in Build 313:
-
-          1. der Stil steht im Systemmenue auf etwas anderem als
-             "klassisch" (Vorgabe bleibt "klassisch" - siehe
-             HAUPT_STILE in fe/settings.py, dort steht der Grund),
-          2. es ist ein HDMI-Bild. "gilt nur fuer hdmi crt modus
-             bleibt so !!" war seine Vorgabe, und sie ist die
-             richtige: auf 320x240 waeren sechs beschriftete Kacheln
-             sechs Flecken mit drei Zeichen darunter.
-
-        Dieselbe Schwelle wie ueberall im Haus (fb.height >= 720) -
-        eine zweite Zahl dafuer waere eine zweite Gelegenheit,
-        auseinanderzulaufen."""
-        try:
-            if self.fb.height < 720:
-                return "klassisch"
-            return haupt_stil_lesen()
-        except Exception:                                # noqa: BLE001
-            return "klassisch"
-
     def _draw_cats_stil(self, stil, message, flip):
         """Verteiler fuer die drei neuen Hauptseiten."""
         if not self.cats:
@@ -25811,22 +25837,6 @@ class Frontend:
                             self._force_full_redraw = True
                             self.draw(_txt)
                             continue
-                        elif kind == "haupt_stil":
-                            # Build 314: der Stil der Hauptseite, seine
-                            # Entwuerfe 7, 8 und 9. Gleiche Behandlung
-                            # wie beim Galerie-Stil: der Wert wird
-                            # IMMER geschrieben, auch auf einer Roehre,
-                            # und die Meldung sagt dazu, dass hier
-                            # nichts davon zu sehen sein wird.
-                            _neu = haupt_stil_weiter()
-                            _txt = t("haupt_stil_gesetzt",
-                                     t("haupt_stil_" + _neu))
-                            if (_neu != "klassisch"
-                                    and self.fb.height < 720):
-                                _txt = t("haupt_stil_nur_hdmi")
-                            self._force_full_redraw = True
-                            self.draw(_txt)
-                            continue
                         elif kind == "ansicht":
                             # NEU (Build 122): Vorgabe-Ansicht der
                             # Spieleliste eine Stufe weiter. Anders als
@@ -25851,11 +25861,9 @@ class Frontend:
                             # Datei - siehe ANSICHT_HAUPT_FILE in
                             # fe/settings.py fuer die Begruendung,
                             # warum das nicht derselbe Wert ist.
-                            _jetzt = ansicht_haupt_lesen()
-                            _idx = (ANSICHTEN.index(_jetzt)
-                                    if _jetzt in ANSICHTEN else 0)
                             self.ansicht_haupt_setzen(
-                                ANSICHTEN[(_idx + 1) % len(ANSICHTEN)],
+                                self._ansicht_haupt_weiter(
+                                    ansicht_haupt_lesen()),
                                 merken=True)
                             self._refresh_system_category()
                         elif kind == "fremdquellen":

@@ -9257,3 +9257,121 @@ Kachelgroesse faellt er nicht auf.
   nichts.
 * **geaendert** `tools/test_hauptseite_stil.py` - Test 12 (siehe
   oben): echte Tastenschritte einmal rundherum durch alle vier Stile.
+
+## Nachtrag Build 316 - ein Schalter statt zwei
+
+Build 314 hat die drei neuen Hauptseiten gebaut und dabei einen
+Entwurfsfehler gemacht, der zwei Fehlermeldungen nach sich zog:
+
+> *„wenn ich die ansicht wechsel baut sich die alte dahinter auf und
+> es gibt ein durcheinander beide ansichten ueberschneiden sich dann"*
+>
+> *„bleibt aber in der listen ansicht, aber steuerung ist dann zum
+> beispiel wie beim raster"*
+
+**Beide haben dieselbe Wurzel: zwei Schalter fuer eine Frage.** Die
+Hauptseite hatte eine Ansicht (Liste/Raster/Galerie), und Build 314
+stellte einen zweiten Schalter („Hauptseiten-Stil") DARUEBER. Wer
+gewinnt, entschied von da an jede Stelle im Code fuer sich - und
+prompt kam das Bild von der einen Quelle und die Navigation von der
+anderen.
+
+Build 315 hat das Symptom behandelt (eine Abfrage im leichten
+Zeichenweg nachgezogen). Build 316 behandelt die Ursache:
+
+```python
+ANSICHTEN_HAUPT = ("liste", "raster", "galerie",
+                   "kachelwand", "dashboard", "karussell")
+ANSICHTEN_HAUPT_NUR_HD = ("kachelwand", "dashboard", "karussell")
+```
+
+**Eine Frage, eine Antwort, eine Stelle.** `aktuelle_ansicht_haupt()`
+beantwortet sie, `_ansicht_haupt_hd()` haelt die HDMI-Regel an genau
+einem Ort, und jeder Zeichenweg und jede Navigation holen sie dort.
+Der zweite Schalter ist weg: kein Menuepunkt, kein Zweig, kein
+`_haupt_stil()`.
+
+> Die Lehre, und sie ist aelter als dieser Build: eine neue
+> Entscheidungsebene neben einer vorhandenen ist fast immer die
+> falsche Antwort. Wenn sich zwei Schalter widersprechen koennen,
+> werden sie es tun - und zwar an der Stelle, an die man gerade nicht
+> gedacht hat.
+
+### Die Taste ueberspringt, was nichts tut
+
+Auf einer Roehre liefert `_ansicht_haupt_weiter()` nur die drei
+klassischen Ansichten. Nicht aus Bequemlichkeit: eine Taste, die
+dreimal hintereinander nichts sichtbar tut, haelt man fuer kaputt -
+und ein Menuepunkt, der dreimal einen Namen anzeigt, hinter dem
+nichts steht, erst recht.
+
+### Die Uebernahme
+
+Wer in Build 314/315 „Hauptseite: Kachelwand" eingestellt hatte, soll
+nach dem Update nicht wieder vor der Liste sitzen.
+`haupt_stil_uebernehmen()` traegt den alten Wert einmalig in die
+Ansicht und setzt `haupt_stil.txt` auf „klassisch" - danach tut sie
+nichts mehr. Die alte Datei wird NICHT geloescht: eine Datei zu
+entfernen, die ein Nutzer vielleicht selbst angelegt hat, ist eine
+Entscheidung, die ein Update nicht treffen muss.
+
+> Beim Durchsehen des Builds fiel auf, dass die Funktion zwar
+> geschrieben und importiert, aber **nirgends gerufen** war. Sie
+> steht jetzt im Konstruktor, direkt neben
+> `feinheiten_uebernehmen()`, und in einem `try` - eine Uebernahme,
+> die schiefgeht, darf den Start nicht aufhalten. Der Test prueft
+> ausdruecklich, dass sie gerufen wird: eine Uebernahme, die niemand
+> ruft, ist eine Zeile Doku und sonst nichts.
+
+### Der Game-Boy-Netplay-Core
+
+> *„und warum wird der gameboy_netplay core nicht mit aufgelistet die
+> anderen gehen"*
+
+Weil der Vergleich buchstabengenau war. In der Systemtabelle heisst
+der Core `_Console/Gameboy` (grosses G, kleines b), die Datei auf der
+Karte `gameboy_netplay`. Bei NES, SNES und N64 stimmen beide
+Schreibweisen zufaellig ueberein - **der Fehler zeigte sich also
+ausgerechnet bei einem einzigen System und bei allen anderen nicht**,
+und genau das macht ihn so schwer zu sehen.
+
+Der Vergleich ignoriert jetzt Gross- und Kleinschreibung. Die
+Praefix-Falle bleibt zu: es muss weiterhin ein Unterstrich folgen und
+„netplay" darin vorkommen, denn kleiner geschrieben ist
+`SNES_Tracker` immer noch nicht `SNES_netplay`. In die .mgl geht der
+echte Dateiname, nicht eine zurechtgebogene Schreibweise.
+
+### Zwei Werkzeugfallen, die Messungen verfaelscht haben
+
+1. **`__pycache__`.** Zwei Laeufe des Bildvergleichs meldeten
+   Abweichungen, die keine waren - Python benutzte den alten Bytecode.
+   Nach einer Aenderung an `frontend.py` gehoert
+   `find . -name __pycache__ -prune -exec rm -rf {} +` vor jeden
+   Bildvergleich.
+2. **Der Bildspeicher verdraengt.** `ArtCache.LIMIT` steht auf 60
+   Bildern; der Test baut 28 Kategorien in sechs Ansichten mit je
+   eigenen Kastengroessen. Der Zwischenspeicher ist modulweit und
+   wird von beiden Seiten des Vergleichs geteilt: die eine Seite hat
+   ein Bild noch, die andere nicht mehr - und dann vergleicht man ein
+   fertiges Bild mit einem Platzhalter und haelt den Unterschied fuer
+   einen Zeichenfehler. Bis zu 500.000 „abweichende" Bildpunkte, alle
+   unecht. Der Test hebt das Limit deshalb fuer seine Dauer an; dass
+   die Verdraengung funktioniert, prueft ein anderer Test.
+
+### Neue Pruefungen
+
+* **neu geschrieben** `tools/test_hauptseite_stil.py` - jetzt gegen
+  sechs Ansichten statt zwei Schalter: die Liste und die HD-Teilmenge
+  stimmen, Vorgabe und Rueckfall stimmen; es gibt **keinen zweiten
+  Schalter mehr** (kein Menuepunkt, kein Zweig, kein `_haupt_stil()`);
+  die HD-Regel steht an genau einer Stelle und die Taste ueberspringt
+  auf der Roehre die drei HD-Ansichten; ein Ansichtswechsel wirft
+  **alle sechs** Zwischenspeicher weg; alle sechs zeichnen auf vier
+  Groessen und mit einer einzigen Kategorie; der schnelle Pfad ist
+  bitgenau; **echte Tastenschritte einmal rundherum** fuer alle sechs;
+  die Uebernahme laeuft, laeuft nur einmal und wird beim Start
+  wirklich gerufen; und die alten `haupt_stil_*`-Textschluessel sind
+  raus.
+* **geaendert** `tools/test_netplay_core.py` - der Game-Boy-Fall mit
+  abweichender Schreibweise, samt Gegenprobe, dass die Praefix-Falle
+  zubleibt.

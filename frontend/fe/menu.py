@@ -417,11 +417,6 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
                                 t("galerie_stil_" + _gstil()))
     except Exception:                                    # noqa: BLE001
         _galerie_stil_label = t("sys_galerie_stil", "?")
-    try:
-        from fe.settings import haupt_stil_lesen as _hstil
-        _haupt_stil_label = t("sys_haupt_stil", t("haupt_stil_" + _hstil()))
-    except Exception:                                    # noqa: BLE001
-        _haupt_stil_label = t("sys_haupt_stil", "?")
     _ansicht = ansicht_lesen()
     _ansicht_haupt = ansicht_haupt_lesen()
     autostart_label = t("sys_autostart_on") if autostart_enabled() \
@@ -492,11 +487,6 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         (_galerie_stil_label, "galerie_stil", None),
         (t("sys_ansicht_haupt", t("ansicht_" + _ansicht_haupt)),
          "ansicht_haupt", None),
-        # Build 314: der Stil der Hauptseite (seine Entwuerfe 7, 8 und
-        # 9). Direkt unter der Ansicht der Hauptseite - es geht um
-        # dieselbe Seite, nur eine Stufe tiefer, genau wie beim
-        # Galerie-Stil ueber den beiden Ansichten.
-        (_haupt_stil_label, "haupt_stil", None),
         # NEU (Build 256): vier Kleinigkeiten an der Liste, direkt
         # unter den beiden Ansichten - es ist dieselbe Frage ("wie
         # sieht meine Liste aus?"), nur feiner.
