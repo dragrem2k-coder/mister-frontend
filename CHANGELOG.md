@@ -13,6 +13,22 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Neu: die Galerie im Coverflow (Entwurf 6), nur HDMI.** Das
+  gewählte Cover groß in der Mitte, die beiden Nachbarn links und
+  rechts kleiner, Titel, Daten und Beschreibung mittig darunter — die
+  erste Datenzeile in der Systemfarbe. Umschaltbar im Systemmenü unter
+  *Galerie-Stil*; auf einer Röhre bleibt die klassische Galerie, auch
+  wenn der Schalter steht (Build 313).
+- **Warum es ein Schalter ist und keine Ablösung.** Die klassische
+  Galerie blättert ihre Nachbarleiste, sie steht also die meiste Zeit
+  still und ein Schritt zeichnet **ein** Bild neu (Build 125). Ein
+  Coverflow kann das nicht: dort rückt jedes Cover eine Stelle weiter
+  und wechselt die Größe — **fünf** Bilder statt einem. Was das auf
+  dem Gerät kostet, misst der Bench; bis dahin bleibt die Vorgabe
+  „klassisch". Ehrlich geschätzt: statt 45,8 ms eher 55–65 ms je
+  Schritt, und die Wiederholrate zieht seit Build 302 von selbst nach
+  (Build 313).
+
 - **Die Core-Auswahl zeigt jetzt alles — und lässt sich filtern.**
   Bisher standen dort nur Systeme mit *mehreren* Fassungen; wer wissen
   wollte, zu welchem System überhaupt **kein Core** auf der Karte

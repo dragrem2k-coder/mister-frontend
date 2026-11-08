@@ -321,6 +321,8 @@ from fe.settings import (
     overscan_lesen, overscan_weiter,
     ANSICHTEN, ansicht_lesen, ansicht_schreiben,
     ansicht_haupt_lesen, ansicht_haupt_schreiben,
+    GALERIE_STILE, galerie_stil_lesen, galerie_stil_schreiben,
+    galerie_stil_weiter,
     schrift_lesen, schrift_pfad,
     schrift_schreiben, schrift_aus_ini, SCHRIFT_EIGEN, SCHRIFT_OSD,
     maske_lesen, maske_schreiben, maske_an, toggle_maske, maske_pfad,
@@ -9919,9 +9921,250 @@ class Frontend:
     # freigeraeumt. Siehe _draw_items_galerie().
     _galerie_text_unten = None
 
+    def _galerie_flow(self):
+        """Laeuft die Galerie im Coverflow-Stil? (Build 313)
+
+        ZWEI BEDINGUNGEN, und beide hat er gesetzt:
+
+          1. der Stil steht auf "flow" (Systemmenue, Vorgabe bleibt
+             "klassisch" - siehe fe/settings.py, dort steht auch der
+             Grund),
+          2. es ist ein HDMI-Bild. "nur fuer hdmi modus" war seine
+             ausdrueckliche Vorgabe, und sie ist auch die richtige:
+             fuenf Cover nebeneinander waeren auf 320x240 fuenf
+             Flecken.
+
+        Dieselbe Schwelle wie ueberall im Haus (fb.height >= 720,
+        siehe _ansicht_cover() und die _Messbedingungen im Bench) -
+        eine zweite Zahl dafuer waere eine zweite Gelegenheit,
+        auseinanderzulaufen."""
+        try:
+            return (self.fb.height >= 720
+                    and galerie_stil_lesen() == "flow")
+        except Exception:                                # noqa: BLE001
+            return False
+
+    def galerie_flow_geometrie(self, L):
+        """Die Masse des Coverflows (Build 313).
+
+        EINE REIHE AUS FUENF COVERN, nicht sieben: jedes zusaetzliche
+        Paar kostet bei jedem Schritt eine Kopie hin und eine zurueck.
+        Fuenf tragen die Ansicht (man sieht, dass es weitergeht), und
+        was darueber hinausgeht, waere Zierde zum vollen Preis.
+
+        Die Reihe bekommt 58 % der Hoehe, der Text darunter den Rest -
+        genug fuer Titel, Datenzeile und zwei bis drei Zeilen
+        Beschreibung."""
+        fb = self.fb
+        s = L["s"]
+        oben = L["list_y"] + ART_CARD_PAD * s
+        unten = L["footer_y"] - 6 * s
+        platz = max(20 * s, unten - oben)
+        reihe_h = max(24 * s, platz * 58 // 100)
+        # 3:4 wie ueberall - und die Breite darf die Reihe nicht
+        # sprengen: fuenf Cover plus vier Luecken muessen quer passen.
+        mh = reihe_h
+        mb = max(12 * s, mh * 3 // 4)
+        luecke = max(4 * s, mb // 12)
+        gesamt = mb + 2 * (int(mb * 0.72) + luecke) \
+            + 2 * (int(mb * 0.52) + luecke)
+        if gesamt > fb.width - 2 * L["ox"]:
+            # Lieber schmaler als abgeschnitten. Dasselbe Vorgehen wie
+            # bei der Leiste der klassischen Galerie.
+            faktor = (fb.width - 2 * L["ox"]) / float(max(1, gesamt))
+            mb = max(12 * s, int(mb * faktor))
+            mh = max(16 * s, mb * 4 // 3)
+            luecke = max(3 * s, mb // 12)
+        n1b, n1h = int(mb * 0.72), int(mh * 0.72)
+        n2b, n2h = int(mb * 0.52), int(mh * 0.52)
+        mx = (fb.width - mb) // 2
+        # Senkrecht mittig zur grossen Karte - so steht die Reihe auf
+        # einer Linie und nicht auf einer Treppe.
+        mitte_y = oben + mh // 2
+        plaetze = [
+            (-2, mx - luecke - n1b - luecke - n2b,
+             mitte_y - n2h // 2, n2b, n2h),
+            (-1, mx - luecke - n1b, mitte_y - n1h // 2, n1b, n1h),
+            (0, mx, oben, mb, mh),
+            (1, mx + mb + luecke, mitte_y - n1h // 2, n1b, n1h),
+            (2, mx + mb + luecke + n1b + luecke,
+             mitte_y - n2h // 2, n2b, n2h),
+        ]
+        return {"s": s, "ox": L["ox"], "oben": oben, "unten": unten,
+                "reihe_h": mh, "mitte_b": mb, "mitte_h": mh,
+                "plaetze": plaetze, "text_y": oben + mh + 10 * s}
+
+    def _draw_items_galerie_flow(self, items, syskey, L, message, flip):
+        """Ansicht D im Coverflow (Build 313, sein Entwurf 6).
+
+        DAS GEWAEHLTE COVER GROSS IN DER MITTE, die beiden Nachbarn
+        links und rechts kleiner, und darunter mittig Titel, Daten und
+        Beschreibung.
+
+        WAS HIER ANDERS IST ALS IN DER KLASSISCHEN GALERIE, und es ist
+        der Grund fuer den Schalter: dort BLAETTERT die Nachbarleiste,
+        steht also die meiste Zeit still, und ein Schritt zeichnet ein
+        einziges Bild neu (Build 125). Hier rueckt bei jedem Schritt
+        JEDES Cover eine Stelle weiter und wechselt dabei die Groesse -
+        fuenf Bilder statt einem. Das ist die Ansicht, die er
+        ausgesucht hat, und es ist ehrlich gesagt die teurere.
+
+        FREIGERAEUMT WIRD JE COVER, NICHT ALS BAND. Ein Band ueber die
+        ganze Breite waere bei 1920x1080 rund 6,4 MB je Schritt; die
+        fuenf Rechtecke zusammen sind knapp ein Drittel davon. Dieselbe
+        Rechnung wie bei den Rechtecken in Build 215.
+
+        WAS WAEHREND DES SCROLLENS WEGBLEIBT, bleibt auch hier weg:
+        nicht gerechnete Cover werden uebersprungen (Build 244) und die
+        Beschreibung ausgelassen (Build 300) - derselbe Schalter,
+        derselbe Nachlader, kein zweiter Mechanismus."""
+        fb = self.fb
+        geo = self.galerie_flow_geometrie(L)
+        s, ox = geo["s"], geo["ox"]
+        total = len(items)
+        # Links/rechts springt eine Reihe weit - das ist der
+        # Ausschnitt, den man ueberblickt.
+        self.items_visible = max(1, len(geo["plaetze"]))
+        self.scroll = self.item_i
+
+        fast_key = (self.cat_i, tuple(self.nav_path), total, fb.width,
+                    fb.height, "flow")
+        schnell = (getattr(self, "_flow_fast_key", None) == fast_key
+                   and getattr(self, "_flow_fast_gen", -1)
+                   == fb.full_redraw_gen
+                   and not self._force_full_redraw
+                   and not self._overlay_active())
+        if not schnell:
+            fb.clear(C_BG)
+            self._raster_kopf(L, items, total)
+            self._flow_fast_key = fast_key
+        else:
+            self._flip_spuren = []
+        self._flow_fast_gen = fb.full_redraw_gen
+
+        item = items[self.item_i]
+        item_syskey = self._item_syskey(item, syskey)
+        akzent = accent_for(item_syskey)
+        pad = ART_CARD_PAD * s
+
+        for versatz, x, y, bb, hh in geo["plaetze"]:
+            idx = self.item_i + versatz
+            mitte = (versatz == 0)
+            rand = pad + 4 * s if mitte else 3 * s
+            if schnell:
+                self._restore_row_bg(x - rand, y - rand,
+                                     bb + 2 * rand, hh + 2 * rand)
+            if idx < 0 or idx >= total:
+                continue
+            nachbar = items[idx]
+            # ERST DAS COVER HOLEN, DANN DIE KARTE ZEICHNEN - die
+            # Reihenfolge aus Build 305. Wer noch nicht weiss, wo das
+            # Cover hinkommt, kann seine Flaeche nicht aussparen.
+            art, verzoegert = self._ansicht_cover(nachbar, syskey, bb, hh)
+            luecke = None
+            if art:
+                aw, ah, pix = art
+                ax = x + max(0, (bb - aw) // 2)
+                ay = y + max(0, (hh - ah) // 2)
+                if (aw > 0 and ah > 0
+                        and len(pix) >= (ah - 1) * aw * 4 + aw * 4
+                        and ax + aw <= fb.width and ay + ah <= fb.height):
+                    luecke = (ax, ay, aw, ah)
+            if mitte:
+                fb.karte_mit_schatten(x - pad, y - pad, bb + 2 * pad,
+                                      hh + 2 * pad, 3 * s, C_PANEL,
+                                      fb._darken(C_BG, 0.55), 4 * s,
+                                      aussparen=luecke,
+                                      hintergrund_rgb=C_BG)
+                self._kachel_rahmen(x, y, bb, hh, akzent, s)
+            if art:
+                aw, ah, pix = art
+                self.blit(x + max(0, (bb - aw) // 2),
+                          y + max(0, (hh - ah) // 2), aw, ah, pix)
+            elif not verzoegert:
+                self._kachel_platzhalter(x, y, bb, hh, nachbar[0], s, mitte)
+
+        # ---- Titel, Daten und Beschreibung: mittig darunter --------
+        # EINE SCHMALE SPALTE, MITTIG - nicht die volle Breite. Die
+        # Datenzeilen und der Titel werden hier von Hand zentriert,
+        # die Beschreibung zeichnet _beschreibung_zeichnen() aber
+        # linksbuendig in das uebergebene Rechteck. Bei voller Breite
+        # klebte sie deshalb am linken Rand, waehrend alles darueber
+        # mittig stand - im ersten Probebild sofort zu sehen. 60
+        # Zeichen sind ausserdem die Breite, bei der ein Absatz noch
+        # angenehm zu lesen ist.
+        tb = min(fb.width - 2 * ox, 60 * 8 * s)
+        tx = (fb.width - tb) // 2
+        ty = geo["text_y"]
+        maxc = max(8, tb // (8 * s))
+        if schnell:
+            _unten = getattr(self, "_flow_text_unten", None)
+            if _unten is None:
+                _unten = geo["unten"]
+            _unten = min(geo["unten"], _unten + s)
+            self._restore_row_bg(tx, ty - 2 * s, tb,
+                                 max(0, _unten - (ty - 2 * s)))
+
+        def _mittig(text, scale, farbe, yy):
+            br = len(text) * 8 * scale
+            fb.text(max(ox, (fb.width - br) // 2), yy, text, scale, farbe)
+
+        titel = item[0]
+        t_scale = 2 * s
+        t_maxc = max(4, tb // (8 * t_scale))
+        _mittig(titel[:t_maxc], t_scale, C_TITLE, ty)
+        iy = ty + 26 * s
+        zeilen, _ra = self._spiel_infozeilen(item, item_syskey, maxc)
+        if zeilen:
+            # DIE ERSTE DATENZEILE IN DER SYSTEMFARBE - genau der eine
+            # farbige Strich, von dem sein Entwurf lebt. Mehr Farbe
+            # waere Dekoration, und Dekoration kostet hier Bildpunkte.
+            _mittig(zeilen[0][:maxc], s, akzent, iy)
+            iy += 14 * s
+            for ln in zeilen[1:]:
+                if iy + 9 * s > geo["unten"]:
+                    break
+                _mittig(ln[:maxc], s, C_TEXT, iy)
+                iy += 12 * s
+        if ART._defer_uncached:
+            ART._deferred_something = True
+            _b_unten = None
+        else:
+            # EIN EIGENES, SCHMALERES RECHTECK FUER DEN ABSATZ.
+            # _beschreibung_zeichnen() rechnet mit der KLEINEREN
+            # Schriftstufe (skala = s-1), aus 60 Zeichen werden dort
+            # also 90 - und damit lief der Absatz quer durchs Bild,
+            # waehrend Titel und Daten mittig standen. Freigeraeumt
+            # wird weiterhin die ganze Spalte (tb), gezeichnet nur in
+            # diesem Block; er liegt innerhalb und faellt damit nicht
+            # aus dem Aufgeraeumten heraus.
+            _bskala = s - 1 if s > 1 else 1
+            _bb = min(tb, 56 * 8 * _bskala)
+            _bx = max(ox, (fb.width - _bb) // 2)
+            _b_unten = self._beschreibung_zeichnen(
+                _bx, iy + 4 * s, geo["unten"], _bb, item, item_syskey, s)
+        self._flow_text_unten = max(iy, _b_unten or 0)
+
+        self._fusszeile_zeichnen(ox, L["footer_y"], s, message)
+        self._draw_search_overlay()
+        self._force_full_redraw = False
+        _spuren = self._flip_spuren
+        self._flip_spuren = None
+        if flip:
+            if not (not self._search_mode
+                    and self._rechtecke_flippen(_spuren)):
+                fb.flip(skip_vsync=self._vsync_ueberspringen(None))
+
     def _draw_items_galerie(self, items, syskey, L, message, flip):
         """Ansicht D: ein grosses Cover links, die Spieldaten rechts,
         die Nachbarn als Leiste darunter.
+
+        BUILD 313: STEHT DER STIL AUF "flow", uebernimmt
+        _draw_items_galerie_flow() - sein Entwurf 6. Der Verteiler
+        steht hier und nicht beim Aufrufer, damit es genau EINE Stelle
+        gibt, an der "Galerie" entschieden wird; der Rest des Hauses
+        (Ansichtswechsel, Bench, Vorschau, Vorwaermer) merkt davon
+        nichts.
 
         SEIT BUILD 125 GIBT ES HIER EINEN SCHNELLEN PFAD - und der ist
         erst durch die seitenweise Leiste (siehe unten) moeglich
@@ -9936,6 +10179,9 @@ class Frontend:
 
         Was das spart: den Vollbild-clear() (auf 1080p 8,3 MB) und elf
         Kachel-Blits (rund 0,9 MB) pro Tastendruck."""
+        if self._galerie_flow():
+            return self._draw_items_galerie_flow(items, syskey, L,
+                                                 message, flip)
         fb = self.fb
         geo = self.galerie_geometrie(L)
         s, ox = geo["s"], geo["ox"]
@@ -24530,6 +24776,24 @@ class Frontend:
                             # (siehe _art_panel_aktualisieren()).
                             toggle_cover_sofort()
                             self._refresh_system_category()
+                        elif kind == "galerie_stil":
+                            # Build 313: der Stil der Galerie, sein
+                            # Entwurf 6. Der Wert wird IMMER
+                            # geschrieben, auch auf einer Roehre - er
+                            # gilt ja fuers naechste Mal am Fernseher.
+                            # Die Meldung sagt dann aber dazu, dass
+                            # hier nichts davon zu sehen sein wird;
+                            # eine Einstellung, die stumm nichts tut,
+                            # haelt man fuer kaputt.
+                            _neu = galerie_stil_weiter()
+                            _txt = t("galerie_stil_gesetzt",
+                                     t("galerie_stil_" + _neu))
+                            if (_neu == "flow"
+                                    and self.fb.height < 720):
+                                _txt = t("galerie_stil_nur_hdmi")
+                            self._force_full_redraw = True
+                            self.draw(_txt)
+                            continue
                         elif kind == "ansicht":
                             # NEU (Build 122): Vorgabe-Ansicht der
                             # Spieleliste eine Stufe weiter. Anders als

@@ -458,6 +458,21 @@ def main():
         except Exception as e:                           # noqa: BLE001
             print("    (%s uebersprungen: %s)" % (ruf, e))
 
+    print("  Galerie im Coverflow (Build 313):")
+    # Der Stil wird ueber die ECHTE Einstellung gesetzt, nicht ueber
+    # eine Attrappe an _galerie_flow(): so laeuft genau der Weg, den
+    # das Frontend auch nimmt - samt der HDMI-Schwelle.
+    import fe.settings as _S
+    _S.GALERIE_STIL_FILE = os.path.join(_TMP, "galerie_stil.txt")
+    _S.galerie_stil_schreiben("flow")
+    H._zwischenspeicher_leeren()
+    f = spieleliste(1920, 1080)
+    f.ansicht_setzen("galerie")
+    f.draw()
+    speichern(f.fb, "preview_12_galerie_flow.png")
+    _S.galerie_stil_schreiben("klassisch")
+    H._zwischenspeicher_leeren()
+
     print("  Steckbrief (Build 311):")
     # Dieselbe Tasten-Attrappe wie beim Trophaeenraum: die Seite
     # zeichnet und wartet dann auf eine Taste. Gezeichnet ist sie zu

@@ -66,7 +66,7 @@ gerade geht.
 - `Jahresrückblick`
 - `Spieltagebuch`
 
-### Anzeige & Sound (34 Eintraege)
+### Anzeige & Sound (35 Eintraege)
 
 - `Menü-Video: HDMI -> auf CRT wechseln (Neustart)`
 - `Farbschema: Dunkel (Standard) -> nächstes`
@@ -82,6 +82,7 @@ gerade geht.
 - `Hintergrundbild: keines gewaehlt`
 - `Lochmaske: keine gewaehlt`
 - `Ansicht Spieleliste: Liste -> weiter (F10, am Pad Select+Y, schaltet sofort um)`
+- `Galerie-Stil: klassisch (Cover links, Daten rechts)`
 - `Ansicht Hauptseite: Liste -> weiter (F10 auf der Hauptseite)`
 - `Scrollgeschwindigkeit: 1x -> nächste`
 - `Ordner: zuerst`

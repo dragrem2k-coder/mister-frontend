@@ -13,6 +13,21 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **New: the gallery as a coverflow (design 6), HDMI only.** The
+  selected cover large in the centre, its two neighbours smaller to
+  the left and right, with title, data and description centred below —
+  the first data line in the system colour. Switchable in the system
+  menu under *Gallery style*; on a CRT the classic gallery stays, even
+  with the switch set (build 313).
+- **Why it is a switch and not a replacement.** The classic gallery
+  pages its neighbour strip, so the strip mostly stands still and one
+  step redraws **one** image (build 125). A coverflow cannot do that:
+  every cover moves one slot and changes size — **five** images
+  instead of one. What that costs on the device is for the bench to
+  measure; until then the default stays "classic". Honest estimate:
+  55–65 ms per step instead of 45.8, and the repeat rate adapts by
+  itself since build 302 (build 313).
+
 - **The core selection now shows everything — and can be filtered.**
   It used to list only systems with *several* builds; anyone wanting
   to know which system has **no core at all** on the card never found

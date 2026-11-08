@@ -1662,6 +1662,78 @@ def toggle_curated_only():
 ANSICHT_FILE = "/media/fat/frontend/ansicht"
 ANSICHTEN = ("liste", "raster", "galerie")
 
+# ---------------------------------------------------------------------------
+# BUILD 313: DER STIL DER GALERIE
+# ---------------------------------------------------------------------------
+#
+# NUTZERWUNSCH vom 08.11.: nach drei Entwuerfen fuer Liste, Kachel und
+# Galerie hat er sich fuer "Entwurf 6" entschieden - eine Galerie im
+# Coverflow: das gewaehlte Cover gross in der Mitte, die Nachbarn
+# links und rechts kleiner, Titel und Daten mittig darunter.
+#
+# WARUM ES EIN SCHALTER IST UND KEINE ABLOESUNG, und das ist eine
+# Messfrage, keine Geschmacksfrage. Die heutige Galerie hat seit Build
+# 125 einen schnellen Pfad, und der steht und faellt mit einem Satz
+# aus ihrem Quelltext:
+#
+#     "Seitenweise bleibt die Leiste die meiste Zeit STEHEN - dann ist
+#      nur das grosse Cover neu, also EIN Bild statt zwoelf."
+#
+# Ein Coverflow kann das per Bauart nicht: dort rueckt bei jedem
+# Schritt JEDES Cover eine Stelle weiter und wechselt dabei die
+# Groesse. Statt einem Bild sind es fuenf. Was das auf SEINEM Geraet
+# kostet, weiss niemand - der Bench misst beide Stile, sobald einer
+# eingestellt ist, und erst danach gehoert entschieden, welcher die
+# Vorgabe wird.
+#
+# NUR AUF HDMI, und das hat er ausdruecklich so gewuenscht ("nur fuer
+# hdmi modus"). Auf einer Roehre bleibt die Galerie, wie sie ist -
+# dort waeren fuenf Cover nebeneinander ohnehin fuenf Flecken.
+GALERIE_STILE = ("klassisch", "flow")
+GALERIE_STIL_FILE = "/media/fat/frontend/galerie_stil.txt"
+
+
+def galerie_stil_lesen():
+    """Welcher Galerie-Stil ist eingestellt? Vorgabe "klassisch".
+
+    Ein unbekannter oder kaputter Inhalt faellt auf "klassisch"
+    zurueck - dieselbe Regel wie bei ansicht_lesen(), und hier mit
+    einem zweiten Grund: "klassisch" ist der gemessene Stil."""
+    def _lesen():
+        try:
+            wert = open(GALERIE_STIL_FILE).read().strip().lower()
+        except OSError:
+            return "klassisch"
+        return wert if wert in GALERIE_STILE else "klassisch"
+    # Ueber den kurzlebigen Zwischenspeicher, aus demselben Grund wie
+    # bei ansicht_lesen(): gefragt wird bei JEDEM Bild.
+    return _hole(("galerie_stil", GALERIE_STIL_FILE), _lesen)
+
+
+@_nach_aenderung
+def galerie_stil_schreiben(wert):
+    if wert not in GALERIE_STILE:
+        wert = "klassisch"
+    try:
+        d = os.path.dirname(GALERIE_STIL_FILE)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        with open(GALERIE_STIL_FILE, "w") as f:
+            f.write(wert)
+    except OSError as e:
+        LOG("galerie_stil_schreiben: %s" % e)
+    return wert
+
+
+def galerie_stil_weiter():
+    """Zum naechsten Stil - fuer den Menuepunkt."""
+    jetzt = galerie_stil_lesen()
+    try:
+        i = GALERIE_STILE.index(jetzt)
+    except ValueError:
+        i = 0
+    return galerie_stil_schreiben(GALERIE_STILE[(i + 1) % len(GALERIE_STILE)])
+
 
 def ansicht_lesen():
     """Die eingestellte Vorgabe-Ansicht der Spieleliste.

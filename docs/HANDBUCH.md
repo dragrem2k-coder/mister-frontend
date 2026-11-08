@@ -1791,6 +1791,22 @@ Spieleliste **und** Hauptseite gibt es in drei Ansichten:
 | **Raster** | nur Bilder, dicht gepackt; der Name des markierten Eintrags steht unten | du viel auf einen Blick sehen willst. Auf HDMI 28 Spiele bzw. **alle** Kategorien ohne einen einzigen Blätterschritt |
 | **Galerie** | ein großes Bild, Daten daneben, die Nachbarn als Leiste darunter | du Details sehen willst, ohne den Überblick über die Nachbarn zu verlieren |
 
+**Die Galerie hat seit Build 313 zwei Stile** (*System -> Anzeige &
+Sound -> „Galerie-Stil"*):
+
+| Stil | Aussehen |
+|---|---|
+| **klassisch** | ein großes Bild links, die Daten rechts, die Nachbarn als Leiste darunter — der gemessene Stil, und die Vorgabe |
+| **Coverflow** | das gewählte Cover groß in der Mitte, die beiden Nachbarn links und rechts kleiner, Titel, Daten und Beschreibung mittig darunter. **Nur auf HDMI** — auf einer Röhre bleibt es bei „klassisch", auch wenn der Schalter steht |
+
+**Warum Coverflow nicht die Vorgabe ist:** die klassische Galerie
+blättert ihre Nachbarleiste, sie steht also die meiste Zeit still, und
+ein Schritt zeichnet **ein** Bild neu. Der Coverflow rückt bei jedem
+Schritt *jedes* Cover eine Stelle weiter — **fünf** Bilder statt
+einem. Gemessen ist das noch nicht; solange bleibt der Stil stehen,
+der gemessen ist. Zu erwarten sind statt 45,8 ms eher 55–65 ms je
+Schritt, und die Wiederholrate passt sich seit Build 302 von selbst an.
+
 **Umgeschaltet wird auf zwei Wegen, die absichtlich nicht dasselbe
 tun:**
 
@@ -2852,6 +2868,7 @@ umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
 | Hintergrundbild | `hintergrund` |
 | Lochmaske | `masken` |
 | Ansicht Spieleliste | `ansicht` |
+| Galerie-Stil (klassisch / Coverflow) | `galerie_stil` |
 | Ansicht Hauptseite | `ansicht_haupt` |
 | Scrollgeschwindigkeit (0,5x bis 2x) | `scroll_tempo` |
 | Tastenlegende: AN/AUS | `tastenlegende` |

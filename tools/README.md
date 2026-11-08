@@ -8798,3 +8798,128 @@ gefuehrt hiesse zweimal gepflegt.
   einer Zeile ohne Wahl aendert nichts und speichert vor allem
   nichts; und jeder Text existiert in beiden Sprachen, inklusive der
   drei zusammengesetzten Filternamen.
+
+## Nachtrag Build 313 - die Galerie im Coverflow (sein Entwurf 6)
+
+Nach drei Entwuerfen fuer Liste, Kachel und Galerie hat er sich
+entschieden: **Entwurf 6**. Das gewaehlte Cover gross in der Mitte,
+die Nachbarn links und rechts kleiner, Titel und Daten mittig
+darunter. Und ausdruecklich: *„nur fuer hdmi modus"*.
+
+### Warum es ein SCHALTER ist und keine Abloesung
+
+Das ist eine Messfrage, keine Geschmacksfrage. Die klassische Galerie
+hat seit Build 125 einen schnellen Pfad, und der steht und faellt mit
+einem Satz aus ihrem eigenen Quelltext:
+
+> *„Seitenweise bleibt die Leiste die meiste Zeit STEHEN - dann ist
+> nur das grosse Cover neu, also EIN Bild statt zwoelf."*
+
+**Ein Coverflow kann das per Bauart nicht.** Dort rueckt bei jedem
+Schritt JEDES Cover eine Stelle weiter und wechselt dabei die
+Groesse. Statt einem Bild sind es fuenf.
+
+Was das auf SEINEM Geraet kostet, weiss niemand - Abschnitt J des
+Bench misst, was eingestellt ist. Die Vorgabe bleibt deshalb
+**klassisch**, bis eine Zahl von seinem Geraet vorliegt. Dann
+entscheidet die Zahl, nicht ich.
+
+Zur Einordnung, was zu erwarten ist: `Liste galerie` kostet heute
+45,78 ms je Schritt (Bench 20). Fuenf Cover statt einem, ein
+groesserer Flip-Bereich und fuenf statt zwei Restores lassen rund
+55-65 ms erwarten. Die Wiederholrate zieht seit Build 302 von selbst
+nach - sie wird also langsamer, nicht ruckelig.
+
+### Fuenf Plaetze, nicht sieben
+
+Jedes zusaetzliche Paar kostet bei jedem Schritt eine Kopie hin und
+eine zurueck. Fuenf tragen die Ansicht (man sieht, dass es
+weitergeht); was darueber hinausgeht, waere Zierde zum vollen Preis.
+
+Freigeraeumt wird **je Cover**, nicht als Band. Ein Band ueber die
+ganze Breite waere bei 1080p rund 6,4 MB je Schritt; die fuenf
+Rechtecke zusammen sind knapp ein Drittel davon - dieselbe Rechnung
+wie bei den Rechtecken in Build 215.
+
+### Was NICHT aus dem Entwurf uebernommen wurde, und warum
+
+Im Bild stand das gewaehlte Cover zusaetzlich **riesig und
+abgedunkelt als Hintergrund**. Das sieht gut aus und ist nicht
+bezahlbar: der Hintergrund haengt dort am SPIEL, nicht an der
+Kategorie - er muesste also bei jedem Schritt neu gebaut werden.
+Vollbild sind 7,9 MB, rund 16 ms je Schritt, und das Abdunkeln kommt
+oben drauf.
+
+Alles, was im zwischengespeicherten Hintergrund liegt, kostet **null**
+- aber nur, solange es sich nicht je Schritt aendert. Genau daran
+scheitert dieser eine Teil des Entwurfs. Er ist weggelassen statt
+halb gebaut.
+
+Ebenso weggelassen: das **Abdunkeln der Nachbarn**. Es gibt im
+Framebuffer keinen billigen Weg, ein fertiges Bild beim Blitten
+abzudunkeln - das waere Arbeit je Bildpunkt. Der Groessenunterschied
+traegt die Ansicht auch so.
+
+### Kein zweiter Weg fuer etwas, das es schon gibt
+
+Der Coverflow benutzt `_ansicht_cover()`, `_beschreibung_zeichnen()`,
+`_spiel_infozeilen()`, `_kachel_platzhalter()`, `_raster_kopf()`,
+`_fusszeile_zeichnen()`, `_restore_row_bg()` und
+`_rechtecke_flippen()` - und denselben Uebersprung-Schalter
+(`ART._defer_uncached`) samt demselben Nachlader. Der Test prueft
+jeden dieser acht Aufrufe einzeln.
+
+Und die Reihenfolge aus **Build 305** gilt auch hier: erst das Cover
+holen, dann die Karte zeichnen - wer noch nicht weiss, wo das Cover
+hinkommt, kann seine Flaeche nicht aussparen.
+
+### Zwei Dinge, die erst das erste Bild gezeigt hat
+
+1. **Die Beschreibung lief quer durchs Bild**, waehrend Titel und
+   Daten mittig standen. Grund: `_beschreibung_zeichnen()` rechnet mit
+   der KLEINEREN Schriftstufe (`skala = s - 1`), aus 60 Zeichen werden
+   dort also 90. Sie bekommt jetzt ein eigenes, schmaleres Rechteck
+   innerhalb der freigeraeumten Spalte.
+2. **Die Textspalte war zu breit.** 150 Zeichen waren als Obergrenze
+   gedacht und wurden zur Breite - gekuerzt auf 60.
+
+`tools/screenshots_bauen.py` erzeugt die Ansicht jetzt als
+`preview_12_galerie_flow.png`, ueber die **echte** Einstellung
+gesetzt und nicht ueber eine Attrappe: so laeuft genau der Weg, den
+das Frontend auch nimmt, samt HDMI-Schwelle.
+
+### Und eine Zahl, die zwei Galerien zusammengezaehlt hat
+
+`test_hochkant2.py` verlangte, dass `geo["text_y"]` in frontend.py
+**genau zweimal** vorkommt - einmal gesetzt, einmal gelesen. Die
+Zusage dahinter: *die Galerie rechnet ihre Masse nicht selbst nach,
+sie liest sie aus der Geometrie.* Die galt, solange es EINE Galerie
+gab. Jetzt gibt es zwei, jede mit ihrer eigenen Geometrie - und eine
+Zahl ueber die ganze Datei zaehlt beide zusammen und meldet rot,
+obwohl beide sich richtig verhalten.
+
+Geprueft wird jetzt **im Koerper** der jeweiligen Methode, und zwar
+fuer beide Galerien einzeln. Dazu zwei neue Zusagen: keine von beiden
+rechnet `text_y` oder `gross_x` selbst, und der Coverflow hat seine
+EIGENE Geometrie, statt die fremde zu biegen.
+
+> Dieselbe Lehre wie in Build 310: eine Zahl prueft nur dann etwas,
+> wenn sie die Zusage trifft und nicht die Gelegenheit.
+
+### Neue Pruefungen
+
+* **geaendert** `tools/test_hochkant2.py` - siehe oben.
+* **neu** `tools/test_galerie_flow.py` - 46 Pruefungen: die Vorgabe
+  ist „klassisch" und kaputte Werte fallen darauf zurueck (auch
+  Nullbytes in der Datei); der Coverflow laeuft auf 1920x1080,
+  1280x720 und hochkant, aber NICHT auf 320x240 und 640x480 - und die
+  Schwelle 720 ist dieselbe wie im Rest des Hauses; die Reihe hat
+  fuenf Plaetze, die Mitte ist Platz 0 und der groesste, die
+  Nachbarpaare sind symmetrisch, alles liegt im Bild und der Text
+  beginnt unter der Reihe; die Ansicht zeichnet auf vier Groessen
+  **vier Schritte hintereinander**, also auch ueber den schnellen
+  Pfad und an beiden Raendern der Liste (wo Nachbarn fehlen); der
+  klassische Weg zeichnet unveraendert weiter; alle acht geteilten
+  Aufrufe sind da; das Cover wird vor der Karte geholt; der Verteiler
+  steht **genau einmal** und ganz oben; und Menuepunkt, Zweig und alle
+  fuenf Texte existieren in beiden Sprachen.

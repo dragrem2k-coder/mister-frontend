@@ -366,11 +366,34 @@ check("es gibt genau eine Definition von art_spalte_h",
 check("und vier Aufrufe (die vier Zeichen- und Vorbereitungswege)",
       quelle.count("art_spalte_h(") == 5,
       "%d" % (quelle.count("art_spalte_h(") - 1))
-check("die Galerie liest Text und Cover aus der Geometrie",
-      quelle.count('geo["text_y"]') == 2
-      and quelle.count('geo["gross_x"]') == 2,
-      "text_y %d, gross_x %d" % (quelle.count('geo["text_y"]'),
-                                 quelle.count('geo["gross_x"]')))
+# BUILD 313: GEZAEHLT WIRD IM KOERPER, NICHT IN DER GANZEN DATEI.
+# Die Zusage war immer "die Galerie rechnet ihre Masse nicht selbst
+# nach, sie liest sie aus der Geometrie" - und die galt, solange es
+# EINE Galerie gab. Seit dem Coverflow gibt es zwei, jede mit ihrer
+# eigenen Geometrie; eine Zahl ueber die ganze Datei zaehlt dann
+# beide zusammen und meldet rot, obwohl beide sich richtig verhalten.
+#
+# Dieselbe Lehre wie in Build 310 bei CORES.aufloesen(: eine Zahl
+# prueft nur dann etwas, wenn sie die Zusage trifft und nicht die
+# Gelegenheit.
+from _quelle import koerper, nur_code                      # noqa: E402
+
+_klassisch = nur_code(koerper(quelle, "_draw_items_galerie", "Frontend"))
+_flow = nur_code(koerper(quelle, "_draw_items_galerie_flow", "Frontend"))
+check("die klassische Galerie liest Text und Cover aus der Geometrie",
+      _klassisch.count('geo["text_y"]') == 1
+      and _klassisch.count('geo["gross_x"]') == 1,
+      "text_y %d, gross_x %d" % (_klassisch.count('geo["text_y"]'),
+                                 _klassisch.count('geo["gross_x"]')))
+check("und rechnet nichts davon selbst nach",
+      "gross_x =" not in _klassisch and "text_y =" not in _klassisch)
+check("der Coverflow ebenso",
+      bool(_flow.strip()) and _flow.count('geo["text_y"]') == 1
+      and "text_y =" not in _flow,
+      "text_y %d" % _flow.count('geo["text_y"]'))
+check("und er hat seine EIGENE Geometrie, statt die fremde zu biegen",
+      quelle.count("def galerie_flow_geometrie(") == 1
+      and "self.galerie_geometrie(" not in _flow)
 
 print()
 if fails:

@@ -1326,6 +1326,23 @@ TRANSLATIONS = {
         "en": "Cores: choose a version per system",
         "de": "Cores: Fassung je System waehlen"},
     "cores_titel": {"en": "Cores", "de": "Cores"},
+    # Build 313: der Stil der Galerie. Siehe
+    # _draw_items_galerie_flow() in frontend.py und GALERIE_STILE in
+    # fe/settings.py - dort steht, warum es ein Schalter ist.
+    "sys_galerie_stil": {
+        "en": "Gallery style: %s", "de": "Galerie-Stil: %s"},
+    "galerie_stil_klassisch": {
+        "en": "classic (cover left, data right)",
+        "de": "klassisch (Cover links, Daten rechts)"},
+    "galerie_stil_flow": {
+        "en": "coverflow (HDMI only)", "de": "Coverflow (nur HDMI)"},
+    "galerie_stil_gesetzt": {
+        "en": "Gallery style: %s", "de": "Galerie-Stil: %s"},
+    "galerie_stil_nur_hdmi": {
+        "en": "Coverflow needs an HDMI picture - on a CRT the classic "
+              "gallery stays",
+        "de": "Coverflow braucht ein HDMI-Bild - auf der Roehre bleibt "
+              "die klassische Galerie"},
     # Build 312: die Core-Auswahl zeigt jetzt ALLE Systeme und laesst
     # sich filtern. Siehe cores_bildschirm() in frontend.py.
     "cores_ra": {"en": "[RA]", "de": "[RA]"},

@@ -411,6 +411,12 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
     einzelordner_label = t("sys_einzelordner_on") if einzelordner_aufloesen() \
         else t("sys_einzelordner_off")
     _ovx, _ovy = overscan_lesen()
+    try:
+        from fe.settings import galerie_stil_lesen as _gstil
+        _galerie_stil_label = t("sys_galerie_stil",
+                                t("galerie_stil_" + _gstil()))
+    except Exception:                                    # noqa: BLE001
+        _galerie_stil_label = t("sys_galerie_stil", "?")
     _ansicht = ansicht_lesen()
     _ansicht_haupt = ansicht_haupt_lesen()
     autostart_label = t("sys_autostart_on") if autostart_enabled() \
@@ -475,6 +481,10 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
         # ueber dem Bildrand - beides sind Punkte, bei denen man sieht,
         # was passiert, sobald man sie drueckt.
         (t("sys_ansicht", t("ansicht_" + _ansicht)), "ansicht", None),
+        # Build 313: der Stil der Galerie (sein Entwurf 6). Direkt
+        # unter den beiden Ansichten - es geht um dieselbe Frage, nur
+        # eine Stufe tiefer.
+        (_galerie_stil_label, "galerie_stil", None),
         (t("sys_ansicht_haupt", t("ansicht_" + _ansicht_haupt)),
          "ansicht_haupt", None),
         # NEU (Build 256): vier Kleinigkeiten an der Liste, direkt
