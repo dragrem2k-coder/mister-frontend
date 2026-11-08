@@ -323,6 +323,9 @@ from fe.settings import (
     ansicht_haupt_lesen, ansicht_haupt_schreiben,
     GALERIE_STILE, galerie_stil_lesen, galerie_stil_schreiben,
     galerie_stil_weiter,
+    # Build 314: der Stil der Hauptseite (seine Entwuerfe 7, 8 und 9).
+    HAUPT_STILE, haupt_stil_lesen, haupt_stil_schreiben,
+    haupt_stil_weiter,
     schrift_lesen, schrift_pfad,
     schrift_schreiben, schrift_aus_ini, SCHRIFT_EIGEN, SCHRIFT_OSD,
     maske_lesen, maske_schreiben, maske_an, toggle_maske, maske_pfad,
@@ -1282,7 +1285,7 @@ from fe.art import (
     # in fe/art.py), nicht das Modul. "ART.docs_bildart(...)" sieht
     # richtig aus und waere auf dem Geraet ein AttributeError gewesen.
     docs_bildart, docs_bildarten, DOCS_BILDARTEN, DOCS_BILDART_NAME,
-    ART_HD, SYSART_BASE, META_BASE, BADGE_DIR,
+    ART_HD, SYSART_BASE, SYSART_FOTO_BASE, META_BASE, BADGE_DIR,
     RA_BADGE_URL, BADGES, _category_art_key,
     prewarm_thumb, prewarm_thumb_mehrfach, thumb_cache_has,
     _thumb_cache_key, THUMB_CACHE_BASE, THUMB_ALGO_VERSION,
@@ -6419,6 +6422,15 @@ class Frontend:
         # Layout feststeht - und weil der Cover-Schutz darueber fuer
         # alle drei Ansichten gleichermassen gilt.
         _ansicht = self.aktuelle_ansicht_haupt()
+        # BUILD 314: die drei neuen Stile (seine Entwuerfe 7-9) stehen
+        # VOR der Ansicht, und zwar weil sie eine komplette Hauptseite
+        # sind und nicht eine Anordnung innerhalb einer. Wer beides
+        # kombinieren wollte, braeuchte zwoelf Bilder statt vier.
+        # Auf CRT liefert _haupt_stil() immer "klassisch" - siehe dort.
+        _stil = self._haupt_stil()
+        if _stil != "klassisch" and self._draw_cats_stil(
+                _stil, message, flip):
+            return
         if _ansicht != "liste" and self._draw_cats_kacheln(
                 _ansicht, message, flip):
             return
@@ -10047,13 +10059,46 @@ class Frontend:
         akzent = accent_for(item_syskey)
         pad = ART_CARD_PAD * s
 
-        for versatz, x, y, bb, hh in geo["plaetze"]:
-            idx = self.item_i + versatz
-            mitte = (versatz == 0)
-            rand = pad + 4 * s if mitte else 3 * s
-            if schnell:
+        tb = min(fb.width - 2 * ox, 60 * 8 * s)
+        tx = (fb.width - tb) // 2
+        ty = geo["text_y"]
+
+        # ===== ERST ALLES FREIRAEUMEN, DANN ALLES ZEICHNEN =====
+        #
+        # NACHTRAEGLICH KORRIGIERT IN BUILD 314, und gefunden nicht
+        # durch Hinsehen, sondern durch den Bildvergleich, den der
+        # neue Test des Karussells mitbringt: 5.014 abweichende
+        # Bildpunkte gegenueber einem vollen Aufbau. Build 313 hat je
+        # Platz freigeraeumt und sofort gezeichnet, und damit radiert
+        #
+        #   * der Nachbar RECHTS (er kommt nach der Mitte dran) neun
+        #     Spalten aus dem Schlagschatten der grossen Karte,
+        #   * und das Freiraeumen der Textspalte drei Zeilen darunter
+        #     ebenfalls.
+        #
+        # Sichtbar war das als hauchduenner heller Strich an zwei
+        # Kanten der grossen Karte - zu wenig, um es im Standbild zu
+        # bemerken, und genau deshalb gibt es den Vergleich.
+        #
+        # Zwei Durchlaeufe loesen es ohne neue Rechnung: wer zuletzt
+        # zeichnet, gewinnt, und das soll die grosse Karte sein.
+        if schnell:
+            for versatz, x, y, bb, hh in geo["plaetze"]:
+                rand = pad + 4 * s if versatz == 0 else 3 * s
                 self._restore_row_bg(x - rand, y - rand,
                                      bb + 2 * rand, hh + 2 * rand)
+            _unten = getattr(self, "_flow_text_unten", None)
+            if _unten is None:
+                _unten = geo["unten"]
+            _unten = min(geo["unten"], _unten + s)
+            self._restore_row_bg(tx, ty - 2 * s, tb,
+                                 max(0, _unten - (ty - 2 * s)))
+
+        # Die Mitte zuletzt - siehe oben.
+        for versatz, x, y, bb, hh in sorted(
+                geo["plaetze"], key=lambda p: 1 if p[0] == 0 else 0):
+            idx = self.item_i + versatz
+            mitte = (versatz == 0)
             if idx < 0 or idx >= total:
                 continue
             nachbar = items[idx]
@@ -10093,17 +10138,11 @@ class Frontend:
         # mittig stand - im ersten Probebild sofort zu sehen. 60
         # Zeichen sind ausserdem die Breite, bei der ein Absatz noch
         # angenehm zu lesen ist.
-        tb = min(fb.width - 2 * ox, 60 * 8 * s)
-        tx = (fb.width - tb) // 2
-        ty = geo["text_y"]
+        #
+        # tb/tx/ty stehen weiter oben: freigeraeumt wird zusammen mit
+        # den Karten, in einem Durchlauf vor allem Zeichnen (Build
+        # 314, siehe dort).
         maxc = max(8, tb // (8 * s))
-        if schnell:
-            _unten = getattr(self, "_flow_text_unten", None)
-            if _unten is None:
-                _unten = geo["unten"]
-            _unten = min(geo["unten"], _unten + s)
-            self._restore_row_bg(tx, ty - 2 * s, tb,
-                                 max(0, _unten - (ty - 2 * s)))
 
         def _mittig(text, scale, farbe, yy):
             br = len(text) * 8 * scale
@@ -10524,18 +10563,53 @@ class Frontend:
     # Bilder. Was hier anders ist, ist genau eine Sache: das Bild kommt
     # aus SYSART_BASE statt aus dem Cover-Ordner.
     # ------------------------------------------------------------------
-    def _kat_logo(self, i, bw, bh):
+    def _sysart_foto_namen(self):
+        """Welche Kategorien haben ein Geraetefoto? (Build 314)
+
+        EINMAL GELESEN UND GEMERKT, und das ist der ganze Trick: ohne
+        diese Liste muesste der Zeichenweg fuer JEDE Kachel in JEDEM
+        Bild nachsehen, ob die Datei existiert - auf einer SD-Karte
+        ein Zugriff je Kachel und Schritt. Das war in Build 135 schon
+        einmal der Grund fuer Haenger beim Scrollen (siehe
+        ansicht_lesen() in fe/settings.py).
+
+        Der Ordner aendert sich zur Laufzeit nicht: er kommt mit dem
+        Update. Wer von Hand etwas hineinlegt, sieht es nach dem
+        naechsten Start - das ist bei sysart/ genauso."""
+        namen = getattr(self, "_sysart_foto_cache", None)
+        if namen is None:
+            namen = set()
+            try:
+                for n in os.listdir(SYSART_FOTO_BASE):
+                    if n.endswith(".art"):
+                        namen.add(n[:-4])
+            except OSError:
+                pass
+            self._sysart_foto_cache = namen
+        return namen
+
+    def _kat_logo(self, i, bw, bh, foto=False):
         """(Bild, nur_verzoegert) fuer das Abzeichen einer Kategorie.
 
         Dieselbe Unterscheidung wie bei _ansicht_cover(): der Cache
         UEBERSPRINGT waehrend schnellen Scrollens und liefert dann
         dasselbe None wie bei "gibt es nicht". Wer das verwechselt,
-        malt einen Platzhalter, der gleich wieder verschwindet."""
+        malt einen Platzhalter, der gleich wieder verschwindet.
+
+        BUILD 314, foto=True: zuerst im Fotosatz nachsehen, sonst das
+        Abzeichen. Gefragt wird ueber _sysart_foto_namen() und NICHT
+        ueber einen zweiten get_scaled()-Versuch - der liefert bei
+        einer fehlenden Datei dasselbe None wie beim uebersprungenen
+        Bild, und aus diesen beiden Faellen dasselbe zu schliessen ist
+        genau der Fehler, vor dem der Absatz darueber warnt."""
         name, _node, syskey = self.cats[i]
         art_key = _category_art_key(name, syskey)
         if not art_key:
             return None, False
-        pfad = os.path.join(SYSART_BASE, "%s.art" % art_key)
+        basis = SYSART_BASE
+        if foto and art_key in self._sysart_foto_namen():
+            basis = SYSART_FOTO_BASE
+        pfad = os.path.join(basis, "%s.art" % art_key)
         vorher = getattr(ART, "_defer_count", 0)
         art = ART.get_scaled(pfad, bw, bh, auslagern_ok=True)
         return art, (art is None
@@ -10906,6 +10980,765 @@ class Frontend:
         else:
             self._draw_cats_raster(message, flip)
         return True
+
+    # ==================================================================
+    # BUILD 314: DREI STILE FUER DIE HAUPTSEITE (seine Entwuerfe 7-9)
+    #
+    # NUTZERWUNSCH, woertlich: "alle drei machen unter menue mit
+    # schalter zum hin und herwechseln, koenntest du bitte diese als
+    # systemarts / boxarts dann verwenden? fuer das neue?"
+    #
+    # DREI WEGE UND NICHT EINER MIT SCHALTERN DRIN: die drei Entwuerfe
+    # teilen keine Geometrie. Die Kachelwand ist ein Raster mit
+    # Beschriftung, das Dashboard eine Liste neben einer Tafel, das
+    # Karussell eine Reihe aus fuenf Karten. Ein gemeinsamer
+    # Zeichenweg mit drei Verzweigungen waere an jeder Stelle "wenn
+    # Stil X, dann anders" - und genau so entsteht Code, den niemand
+    # mehr anfassen will.
+    #
+    # WAS SIE SICH SEHR WOHL TEILEN, und der Test prueft jeden
+    # einzelnen Aufruf: _kat_logo(), _kat_zahlen(), _kat_infozeilen(),
+    # _kachel_rahmen(), _kachel_platzhalter(), _kachel_feld(),
+    # _restore_row_bg(), _rechtecke_flippen(), _kat_kopf() und
+    # _kat_fusszeile(). Kein zweiter Mechanismus fuer dieselbe Sache -
+    # dieselbe Regel wie bei Build 313.
+    # ==================================================================
+    def _haupt_stil(self):
+        """Welcher Stil zeichnet die Hauptseite? (Build 314)
+
+        ZWEI BEDINGUNGEN, genau wie beim Coverflow in Build 313:
+
+          1. der Stil steht im Systemmenue auf etwas anderem als
+             "klassisch" (Vorgabe bleibt "klassisch" - siehe
+             HAUPT_STILE in fe/settings.py, dort steht der Grund),
+          2. es ist ein HDMI-Bild. "gilt nur fuer hdmi crt modus
+             bleibt so !!" war seine Vorgabe, und sie ist die
+             richtige: auf 320x240 waeren sechs beschriftete Kacheln
+             sechs Flecken mit drei Zeichen darunter.
+
+        Dieselbe Schwelle wie ueberall im Haus (fb.height >= 720) -
+        eine zweite Zahl dafuer waere eine zweite Gelegenheit,
+        auseinanderzulaufen."""
+        try:
+            if self.fb.height < 720:
+                return "klassisch"
+            return haupt_stil_lesen()
+        except Exception:                                # noqa: BLE001
+            return "klassisch"
+
+    def _draw_cats_stil(self, stil, message, flip):
+        """Verteiler fuer die drei neuen Hauptseiten."""
+        if not self.cats:
+            return False
+        if self.cat_i >= len(self.cats):
+            self.cat_i = 0
+        if stil == "kachelwand":
+            self._draw_cats_kachelwand(message, flip)
+        elif stil == "dashboard":
+            self._draw_cats_dashboard(message, flip)
+        elif stil == "karussell":
+            self._draw_cats_karussell(message, flip)
+        else:
+            return False
+        return True
+
+    def _kat_zahlen(self, i):
+        """(Eintraege, Unterordner, Favoriten) einer Kategorie.
+
+        EINMAL GEZAEHLT UND GEMERKT. _kat_infozeilen() zaehlt bei
+        jedem Aufruf neu - das ist dort richtig, weil es nur die EINE
+        markierte Kategorie betrifft. Die Kachelwand braucht die Zahl
+        aber an JEDER Kachel, und ohne Gedaechtnis waere das bei einem
+        vollen Aufbau ein Durchlauf ueber die gesamte Sammlung (auf
+        seinem Geraet 31.426 Eintraege) - also genau die Sorte
+        Aufwand, die wir uns in den letzten Builds abgewoehnt haben.
+
+        Der Merkzettel faellt, sobald sich die Kategorienliste oder
+        die Favoriten aendern; das ist die Signatur in der ersten
+        Zeile. Eine Signatur und kein "beim Neuaufbau loeschen":
+        _force_full_redraw hat mit dem Inhalt nichts zu tun, der
+        Zaehler waere danach grundlos wieder kalt."""
+        sig = (len(self.cats),
+               self.cats[0][0] if self.cats else "",
+               len(getattr(self, "_favorites_set", ()) or ()))
+        merk = getattr(self, "_kat_zahlen_cache", None)
+        if merk is None or merk.get("_sig") != sig:
+            merk = {"_sig": sig}
+            self._kat_zahlen_cache = merk
+        wert = merk.get(i)
+        if wert is None:
+            _name, node, _syskey = self.cats[i]
+            favs_set = getattr(self, "_favorites_set", None)
+            eintraege = 0
+            favs = 0
+            for it in node.get("items", ()):
+                if it[1] in ("game", "core"):
+                    eintraege += 1
+                    if favs_set is not None and it[0] in favs_set:
+                        favs += 1
+            wert = (eintraege, len(node.get("folders", ())), favs)
+            merk[i] = wert
+        return wert
+
+    def _kat_groesste(self):
+        """Die Eintragszahl der groessten Kategorie - der Massstab fuer
+        die Balken auf der Kachelwand.
+
+        Ein Balken ohne Bezugsgroesse ist Dekoration. Mit ihr sagt er
+        etwas, das sonst nirgends auf der Hauptseite steht: wie sich
+        die Kategorien zueinander verhalten.
+
+        EINMAL ueber alles, dann gemerkt - und es ist derselbe
+        Merkzettel wie bei _kat_zahlen(), faellt also mit derselben
+        Signatur. Beim allerersten Aufbau der Kachelwand kostet das
+        einen Durchlauf ueber die ganze Sammlung; danach nichts
+        mehr."""
+        self._kat_zahlen(0)
+        merk = self._kat_zahlen_cache
+        wert = merk.get("_groesste")
+        if wert is None:
+            wert = 1
+            for i in range(len(self.cats)):
+                wert = max(wert, self._kat_zahlen(i)[0])
+            merk["_groesste"] = wert
+        return wert
+
+    def _kat_bild_luecke(self, art, x, y, kasten_b, kasten_h):
+        """Das Rechteck, das ein Kategoriebild spaeter ueberdeckt - oder
+        None.
+
+        Dieselbe Rechnung wie im Coverflow (Build 313), und aus
+        demselben Grund an EINER Stelle: sie entscheidet, welche
+        Flaeche karte_mit_schatten() aussparen darf. Wer sie zweimal
+        tippt, hat sie beim naechsten Mal nur einmal korrigiert.
+
+        Die Pruefung auf die Pufferlaenge ist kein Zierat: ein
+        halbfertiges Bild wuerde hier eine Flaeche reservieren, die
+        anschliessend niemand fuellt - ein Loch in der Karte."""
+        if not art:
+            return None
+        aw, ah, pix = art
+        if aw <= 0 or ah <= 0:
+            return None
+        ax = x + max(0, (kasten_b - aw) // 2)
+        ay = y + max(0, (kasten_h - ah) // 2)
+        if len(pix) < (ah - 1) * aw * 4 + aw * 4:
+            return None
+        if ax + aw > self.fb.width or ay + ah > self.fb.height:
+            return None
+        return (ax, ay, aw, ah)
+
+    # ------------------------------------------------------------------
+    # ENTWURF 7: DIE KACHELWAND
+    # ------------------------------------------------------------------
+    def kachelwand_geometrie(self, L):
+        """Die Masse der Kachelwand.
+
+        SECHS SPALTEN UND DREI REIHEN auf 1920x1080 - abgeleitet und
+        nicht eingetippt: eine Kachel bekommt 90*s Breite und 85*s
+        Hoehe als Mindestmass, daraus ergeben sich die Spalten und
+        Reihen fuer jede Aufloesung von selbst. Bei 1280x720 (s=2)
+        kommen dieselben 6x3 heraus, bei 2560x1440 (s=4) ebenfalls -
+        das Bild sieht ueberall gleich aus, nur groesser.
+
+        DIE BESCHRIFTUNG LAEUFT EINE SCHRIFTSTUFE KLEINER (s-1). Bei
+        s=3 sind das 16 statt 24 Bildpunkte je Zeichen, und damit
+        passen 17 Zeichen auf eine Kachel statt 11. "Game Boy Advance"
+        hat 16. Derselbe Kniff wie in _beschreibung_zeichnen()."""
+        fb = self.fb
+        s, ox = L["s"], L["ox"]
+        tn = max(1, s - 1)
+        oben = L["list_y"] + 3 * s
+        unten = L["footer_y"] - 4 * s
+        breite = fb.width - 2 * ox
+        hoehe = max(24 * s, unten - oben)
+        abstand = 8 * s
+        spalten = max(2, min(8, breite // (90 * s)))
+        zeilen = max(1, min(4, hoehe // (85 * s)))
+        kachel_b = (breite - (spalten - 1) * abstand) // spalten
+        kachel_h = (hoehe - (zeilen - 1) * abstand) // zeilen
+        pad = 4 * s
+        bar_h = max(2, 2 * tn)
+        # Namenszeile, Eintragszeile, Balken - plus Luft darunter.
+        text_h = 26 * tn + bar_h + 4 * tn
+        bild_b = max(8 * s, kachel_b - 2 * pad)
+        bild_h = max(8 * s, kachel_h - text_h - 2 * pad)
+        gesamt_b = spalten * kachel_b + (spalten - 1) * abstand
+        wand_ox = ox + max(0, (breite - gesamt_b) // 2)
+        return {"s": s, "tn": tn, "ox": wand_ox, "rand_ox": ox,
+                "oben": oben, "unten": unten, "abstand": abstand,
+                "spalten": spalten, "zeilen": zeilen,
+                "kachel_b": kachel_b, "kachel_h": kachel_h,
+                "pad": pad, "bild_b": bild_b, "bild_h": bild_h,
+                "bar_h": bar_h, "text_h": text_h}
+
+    def _wand_kachel_zeichnen(self, geo, platz, i, markiert, freiraeumen):
+        """Eine Kachel der Kachelwand: Karte, Bild, Name, Zahl, Balken.
+
+        ERST DAS BILD HOLEN, DANN DIE KARTE ZEICHNEN - die Reihenfolge
+        aus Build 305. Wer noch nicht weiss, wo das Bild hinkommt,
+        kann seine Flaeche nicht aussparen, und dann wird sie zweimal
+        gefuellt."""
+        fb = self.fb
+        s, tn = geo["s"], geo["tn"]
+        pad = geo["pad"]
+        fx, fy, fw, fh = self._kachel_feld(geo, platz)
+        if freiraeumen:
+            self._restore_row_bg(fx, fy, fw, fh)
+        kx, ky = fx + 3 * s, fy + 3 * s
+        kb, kh = geo["kachel_b"], geo["kachel_h"]
+        bb, bh = geo["bild_b"], geo["bild_h"]
+        bx, by = kx + pad, ky + pad
+        name, _node, syskey = self.cats[i]
+        art, verzoegert = self._kat_logo(i, bb, bh, foto=True)
+        luecke = self._kat_bild_luecke(art, bx, by, bb, bh)
+        fb.karte_mit_schatten(kx, ky, kb, kh, 2 * s, C_PANEL,
+                              fb._darken(C_BG, 0.55), 3 * s,
+                              aussparen=luecke, hintergrund_rgb=C_BG)
+        if markiert:
+            self._kachel_rahmen(kx, ky, kb, kh, accent_for(syskey), s)
+        if art:
+            aw, ah, pix = art
+            self.blit(bx + max(0, (bb - aw) // 2),
+                      by + max(0, (bh - ah) // 2), aw, ah, pix)
+        elif not verzoegert:
+            self._kachel_platzhalter(bx, by, bb, bh, name, s, markiert)
+        # --- Beschriftung. bg=C_PANEL ist Pflicht und nicht Geschmack:
+        # fb.text() ohne bg nimmt C_BG an und malt sich einen dunklen
+        # Kasten hinter die Woerter - auf einer Karte sind das
+        # schwarze Balken. Genau dieser Fehler stand in Build 311 im
+        # ersten Probebild.
+        voll = kb - 2 * pad
+        ty = ky + pad + bh + 3 * tn
+        maxc = max(3, voll // (8 * tn))
+        label = name if len(name) <= maxc else name[:max(1, maxc - 1)] + "~"
+        fb.text(kx + pad, ty, label, tn,
+                C_TITLE if markiert else C_TEXT, C_PANEL)
+        eintraege = self._kat_zahlen(i)[0]
+        zahl = t("entries", eintraege)
+        fb.text(kx + pad, ty + 13 * tn, zahl[:maxc], tn, C_DIM, C_PANEL)
+        # --- Der Balken: Anteil an der groessten Kategorie. Siehe
+        # _kat_groesste() - er sagt etwas, das sonst nirgends steht.
+        by2 = ty + 26 * tn
+        fb.rect(kx + pad, by2, voll, geo["bar_h"],
+                fb._darken(C_ACCENT2, 0.55))
+        anteil = voll * eintraege // max(1, self._kat_groesste())
+        anteil = max(geo["bar_h"], min(voll, anteil))
+        if eintraege:
+            fb.rect(kx + pad, by2, anteil, geo["bar_h"],
+                    accent_for(syskey) if markiert else C_ACCENT2)
+
+    def _draw_cats_kachelwand(self, message, flip):
+        """Stil 1 der Hauptseite: sein Entwurf 7.
+
+        Aufgebaut wie _draw_cats_raster() und mit demselben schnellen
+        Pfad: bleibt die Seite stehen und wandert nur die Markierung,
+        werden GENAU ZWEI Kacheln neu gezeichnet. Der Unterschied zum
+        Raster ist, was auf einer Kachel steht - dort nichts, hier
+        Name, Zahl und Balken.
+
+        WAS DAS KOSTET, steht in keiner Messung, die es schon gibt:
+        eine Kachel traegt hier drei zusaetzliche Dinge, und der
+        Hintergrund hinter ihnen ist eine Karte statt der leeren
+        Flaeche. Abschnitt J des Bench misst, was eingestellt ist -
+        deshalb bleibt "klassisch" die Vorgabe, bis eine Zahl
+        vorliegt."""
+        fb = self.fb
+        KL = self.kat_layout()
+        geo = self.kachelwand_geometrie(KL)
+        proseite = max(1, geo["spalten"] * geo["zeilen"])
+        self.cats_visible = proseite
+        self._kat_raster_spalten = geo["spalten"]
+        gesamt = len(self.cats)
+
+        seite = self.cat_i // proseite
+        self.cat_scroll = seite * proseite
+        ende = min(self.cat_scroll + proseite, gesamt)
+        platz_neu = self.cat_i - self.cat_scroll
+
+        fast_key = (gesamt, fb.width, fb.height, self.cat_scroll,
+                    geo["spalten"], geo["zeilen"], "wand")
+        schnell = (getattr(self, "_kat_wand_fast_key", None) == fast_key
+                   and getattr(self, "_kat_wand_fast_gen", -1)
+                   == fb.full_redraw_gen
+                   and not self._force_full_redraw
+                   and not self._overlay_active())
+        alt = getattr(self, "_kat_wand_markiert", None)
+
+        if schnell and alt is not None and 0 <= alt < proseite:
+            self._flip_spuren = []
+            if alt != platz_neu and self.cat_scroll + alt < gesamt:
+                self._wand_kachel_zeichnen(geo, alt, self.cat_scroll + alt,
+                                           False, True)
+            self._wand_kachel_zeichnen(geo, platz_neu, self.cat_i, True,
+                                       True)
+        else:
+            fb.clear(C_BG)
+            self._kat_kopf(KL)
+            for platz in range(ende - self.cat_scroll):
+                self._wand_kachel_zeichnen(geo, platz,
+                                           self.cat_scroll + platz,
+                                           platz == platz_neu, False)
+            self._kat_wand_fast_key = fast_key
+        self._kat_wand_fast_gen = fb.full_redraw_gen
+        self._kat_wand_markiert = platz_neu
+        self._force_full_redraw = False
+
+        self._kat_fusszeile(KL, message)
+        _spuren = self._flip_spuren
+        self._flip_spuren = None
+        if flip:
+            if not (schnell and not self._search_mode
+                    and self._rechtecke_flippen(_spuren)):
+                fb.flip(skip_vsync=self._vsync_ueberspringen(None))
+
+    # ------------------------------------------------------------------
+    # ENTWURF 8: DAS DASHBOARD
+    # ------------------------------------------------------------------
+    def dashboard_geometrie(self, L):
+        """Die Masse des Dashboards: Liste links, Tafel rechts.
+
+        DIE LISTE BEKOMMT 30 % DER BREITE, mindestens aber so viel,
+        dass 20 Zeichen hineinpassen - sonst steht dort "Game Boy
+        Adv~" und die Spalte hat ihren Zweck verfehlt. Gedeckelt auf
+        die halbe Breite, damit die Tafel bei schmalen Bildern nicht
+        zur Briefmarke wird.
+
+        ZWEI FELDER, DIE SICH JE SCHRITT AENDERN, und sie stehen
+        bewusst HIER und nicht im Zeichenweg: das Bild und der Text
+        darunter. Die Karte selbst aendert sich nicht und wird auf dem
+        schnellen Pfad auch nicht angefasst. Wer die Rechtecke im
+        Zeichenweg zusammensucht, rechnet dieselbe Flaeche an zwei
+        Orten - in diesem Haus bereits viermal schiefgegangen (Build
+        80/122/125/128)."""
+        fb = self.fb
+        s, ox = L["s"], L["ox"]
+        tn = max(1, s - 1)
+        oben = L["list_y"] + 3 * s
+        unten = L["footer_y"] - 4 * s
+        breite = fb.width - 2 * ox
+        hoehe = max(24 * s, unten - oben)
+        lw = max(20 * 8 * s, breite * 30 // 100)
+        lw = min(lw, breite // 2)
+        zh = 14 * s
+        zeilen = max(1, hoehe // zh)
+        px = ox + lw + 10 * s
+        pw = max(20 * s, fb.width - ox - px)
+        ph = hoehe
+        pad = 8 * s
+        # DAS BILD BEKOMMT, WAS DER TEXT UEBRIG LAESST - und nicht
+        # umgekehrt. Beim ersten Probebild stand hier ein fester
+        # Anteil (42 %), und darunter blieb ein Drittel der Tafel
+        # schlicht leer: die Zahlen brauchen eben nur so viel Platz,
+        # wie sie brauchen. Jetzt wird der Textblock ausgerechnet und
+        # der Rest ist das Bild.
+        titel_h = 10 * (2 * s) + 7 * s
+        kasten_h = 26 * s
+        anteil_h = 10 * tn + 3 * tn + 6 * s
+        text_soll = titel_h + kasten_h + 8 * s + anteil_h
+        bild_b = max(10 * s, pw - 2 * pad)
+        bild_h = max(10 * s, ph - 2 * pad - text_soll)
+        text_y = oben + pad + bild_h + 4 * s
+        text_h = max(8 * s, oben + ph - pad - text_y)
+        return {"s": s, "tn": tn, "ox": ox, "oben": oben, "unten": unten,
+                "lw": lw, "zh": zh, "zeilen": zeilen,
+                "px": px, "py": oben, "pw": pw, "ph": ph, "pad": pad,
+                "bild_x": px + pad, "bild_y": oben + pad,
+                "bild_b": bild_b, "bild_h": bild_h,
+                "kasten_h": kasten_h,
+                "text_x": px + pad, "text_y": text_y,
+                "text_b": pw - 2 * pad, "text_h": text_h,
+                "felder": ((px + pad, oben + pad, bild_b, bild_h),
+                           (px + pad, text_y, pw - 2 * pad, text_h))}
+
+    def _dash_zeile_zeichnen(self, geo, platz, i, markiert, freiraeumen):
+        """Eine Zeile der linken Spalte."""
+        fb = self.fb
+        s, tn = geo["s"], geo["tn"]
+        x = geo["ox"]
+        y = geo["oben"] + platz * geo["zh"]
+        lw, zh = geo["lw"], geo["zh"]
+        if freiraeumen:
+            self._restore_row_bg(x, y, lw, zh)
+        name, _node, syskey = self.cats[i]
+        if markiert:
+            fb.rect_rounded(x, y, lw, zh - 2 * s, C_PANEL, 3 * s)
+            fb.rect(x, y, 2 * s, zh - 2 * s, accent_for(syskey))
+            grund, farbe = C_PANEL, C_TITLE
+        else:
+            grund, farbe = C_BG, C_TEXT
+        eintraege = self._kat_zahlen(i)[0]
+        zahl = "%d" % eintraege
+        zb = len(zahl) * 8 * tn
+        maxc = max(3, (lw - 8 * s - zb - 4 * s) // (8 * s))
+        label = name if len(name) <= maxc else name[:max(1, maxc - 1)] + "~"
+        fb.text(x + 6 * s, y + (zh - 2 * s - 8 * s) // 2, label, s,
+                farbe, grund)
+        fb.text(x + lw - 4 * s - zb, y + (zh - 2 * s - 8 * tn) // 2,
+                zahl, tn, C_DIM if not markiert else C_TEXT, grund)
+
+    def _dash_tafel_zeichnen(self, geo, schnell):
+        """Die Tafel rechts: grosses Bild, Name, drei Zahlen, Balken."""
+        fb = self.fb
+        s, tn = geo["s"], geo["tn"]
+        i = self.cat_i
+        name, _node, syskey = self.cats[i]
+        akzent = accent_for(syskey)
+        if schnell:
+            # Nur die beiden Felder, nicht die ganze Karte - siehe
+            # dashboard_geometrie(). Erst den Hintergrund holen (das
+            # schreibt das Rechteck fuer den Flip mit), dann die
+            # Kartenfarbe wieder darueber.
+            for fx, fy, fw, fh in geo["felder"]:
+                self._restore_row_bg(fx, fy, fw, fh)
+                fb.rect(fx, fy, fw, fh, C_PANEL)
+        bb, bh = geo["bild_b"], geo["bild_h"]
+        bx, by = geo["bild_x"], geo["bild_y"]
+        art, verzoegert = self._kat_logo(i, bb, bh, foto=True)
+        if not schnell:
+            luecke = self._kat_bild_luecke(art, bx, by, bb, bh)
+            fb.karte_mit_schatten(geo["px"], geo["py"], geo["pw"],
+                                  geo["ph"], 3 * s, C_PANEL,
+                                  fb._darken(C_BG, 0.55), 4 * s,
+                                  aussparen=luecke, hintergrund_rgb=C_BG)
+        if art:
+            aw, ah, pix = art
+            self.blit(bx + max(0, (bb - aw) // 2),
+                      by + max(0, (bh - ah) // 2), aw, ah, pix)
+        elif not verzoegert:
+            self._kachel_platzhalter(bx, by, bb, bh, name, s, True)
+        # --- Name gross, darunter die Zahlen.
+        tx, ty, tb = geo["text_x"], geo["text_y"], geo["text_b"]
+        skala = self._fit_scale(name, tb, 2 * s)
+        fb.text(tx, ty, name, skala, C_TITLE, C_PANEL)
+        ty += 10 * skala + 6 * s
+        eintraege, ordner, favs = self._kat_zahlen(i)
+        # DREI KAESTEN: Eintraege, Unterordner, Favoriten. Genau die
+        # drei Zahlen, die _kat_infozeilen() ohnehin schon kennt - nur
+        # gross statt als Zeile. Eine vierte Zahl haette einen vierten
+        # Durchlauf durch die Eintraege gekostet.
+        kaesten = (("%d" % eintraege, t("dash_eintraege")),
+                   ("%d" % ordner, t("dash_ordner")),
+                   ("%d" % favs, t("dash_favoriten")))
+        abst = 6 * s
+        kb = max(8 * s, (tb - 2 * abst) // 3)
+        kh = geo["kasten_h"]
+        # DER KASTEN IST DUNKLER ALS DIE KARTE, nicht heller: _darken()
+        # kann nur dunkler, und ein zweiter Farbwert allein fuer drei
+        # Kaesten waere eine Farbe mehr im Haus, die beim naechsten
+        # Thema vergessen wird.
+        kasten_rgb = fb._darken(C_PANEL, 0.72)
+        if ty + kh <= geo["oben"] + geo["ph"] - geo["pad"]:
+            for k, (wert, was) in enumerate(kaesten):
+                kx = tx + k * (kb + abst)
+                fb.rect_rounded(kx, ty, kb, kh, kasten_rgb, 3 * s)
+                fb.rect(kx, ty, kb, 2 * s,
+                        akzent if k == 0 else fb._darken(akzent, 0.5))
+                fb.text(kx + 5 * s, ty + 5 * s,
+                        wert[:max(1, kb // (8 * s))], s, C_TITLE,
+                        kasten_rgb)
+                fb.text(kx + 5 * s, ty + 5 * s + 11 * s,
+                        was[:max(1, kb // (8 * tn))], tn, C_DIM,
+                        kasten_rgb)
+            ty += kh + 8 * s
+        # --- Balken: Anteil an der groessten Kategorie.
+        #
+        # MIT BESCHRIFTUNG, und das ist keine Zierde: im ersten
+        # Probebild stand hier ein nackter Strich ueber die volle
+        # Breite, und ein nackter Strich sieht aus wie eine
+        # Trennlinie, nicht wie eine Angabe.
+        #
+        # KEINE INFOZEILEN DARUNTER. _kat_infozeilen() liefert genau
+        # die drei Zahlen, die oben schon in den Kaesten stehen -
+        # zweimal dasselbe auf derselben Tafel, einmal gross und
+        # einmal klein. Ebenfalls erst im Bild zu sehen gewesen.
+        bar_h = max(2, 3 * tn)
+        unten_grenze = geo["oben"] + geo["ph"] - geo["pad"]
+        if ty + 10 * tn + bar_h <= unten_grenze:
+            maxc = max(8, tb // (8 * tn))
+            fb.text(tx, ty, t("dash_anteil")[:maxc], tn, C_DIM, C_PANEL)
+            ty += 10 * tn
+            fb.rect(tx, ty, tb, bar_h, fb._darken(C_ACCENT2, 0.55))
+            anteil = tb * eintraege // max(1, self._kat_groesste())
+            if eintraege:
+                fb.rect(tx, ty, max(bar_h, min(tb, anteil)), bar_h, akzent)
+
+    def _draw_cats_dashboard(self, message, flip):
+        """Stil 2 der Hauptseite: sein Entwurf 8.
+
+        Links die Liste, rechts die Tafel zur markierten Kategorie.
+
+        DER TEUERSTE DER DREI, und das soll hier stehen und nicht
+        verschwiegen werden: bei jedem Schritt wechselt die ganze
+        Tafel den Inhalt. Freigeraeumt werden deshalb die beiden
+        Felder aus dashboard_geometrie() - bei 1920x1080 zusammen rund
+        3,5 MB je Schritt. Zum Vergleich: die klassische Liste der
+        Hauptseite kommt mit einem Bruchteil aus und kostet nach Bench
+        20 20,80 ms. Was die Tafel daraus macht, misst Abschnitt J,
+        sobald der Stil eingestellt ist - geschaetzt wird hier
+        nichts."""
+        fb = self.fb
+        KL = self.kat_layout()
+        geo = self.dashboard_geometrie(KL)
+        zeilen = geo["zeilen"]
+        gesamt = len(self.cats)
+        self.cats_visible = zeilen
+        if self.cat_i < self.cat_scroll:
+            self.cat_scroll = self.cat_i
+        elif self.cat_i >= self.cat_scroll + zeilen:
+            self.cat_scroll = self.cat_i - zeilen + 1
+        self.cat_scroll = max(0, min(self.cat_scroll,
+                                     max(0, gesamt - zeilen)))
+
+        fast_key = (gesamt, fb.width, fb.height, self.cat_scroll, zeilen,
+                    "dash")
+        schnell = (getattr(self, "_kat_dash_fast_key", None) == fast_key
+                   and getattr(self, "_kat_dash_fast_gen", -1)
+                   == fb.full_redraw_gen
+                   and not self._force_full_redraw
+                   and not self._overlay_active())
+        alt = getattr(self, "_kat_dash_markiert", None)
+        platz_neu = self.cat_i - self.cat_scroll
+
+        if schnell:
+            self._flip_spuren = []
+            if alt is not None and alt != platz_neu and 0 <= alt < zeilen:
+                self._dash_zeile_zeichnen(geo, alt, self.cat_scroll + alt,
+                                          False, True)
+            self._dash_zeile_zeichnen(geo, platz_neu, self.cat_i, True, True)
+        else:
+            fb.clear(C_BG)
+            self._kat_kopf(KL)
+            for platz in range(min(zeilen, gesamt - self.cat_scroll)):
+                self._dash_zeile_zeichnen(geo, platz,
+                                          self.cat_scroll + platz,
+                                          platz == platz_neu, False)
+            self._kat_dash_fast_key = fast_key
+        self._dash_tafel_zeichnen(geo, schnell)
+        self._kat_dash_fast_gen = fb.full_redraw_gen
+        self._kat_dash_markiert = platz_neu
+        self._force_full_redraw = False
+
+        self._kat_fusszeile(KL, message)
+        _spuren = self._flip_spuren
+        self._flip_spuren = None
+        if flip:
+            if not (schnell and not self._search_mode
+                    and self._rechtecke_flippen(_spuren)):
+                fb.flip(skip_vsync=self._vsync_ueberspringen(None))
+
+    # ------------------------------------------------------------------
+    # ENTWURF 9: DAS KARUSSELL
+    # ------------------------------------------------------------------
+    def karussell_geometrie(self, L):
+        """Die Masse des Karussells - fuenf Karten, nicht sieben.
+
+        Dieselbe Rechnung wie galerie_flow_geometrie() in Build 313
+        und dieselbe Begruendung: jedes zusaetzliche Paar kostet bei
+        jedem Schritt eine Kopie hin und eine zurueck. QUER statt
+        hochkant ist der einzige Unterschied, und er kommt aus den
+        Bildern: ein Geraetefoto liegt quer (4:3), ein Spielcover
+        steht hochkant (3:4)."""
+        fb = self.fb
+        s, ox = L["s"], L["ox"]
+        oben = L["list_y"] + ART_CARD_PAD * s
+        unten = L["footer_y"] - 6 * s
+        platz = max(20 * s, unten - oben)
+        mh = max(20 * s, platz * 52 // 100)
+        mb = max(16 * s, mh * 4 // 3)
+        luecke = max(4 * s, mb // 14)
+        gesamt = (mb + 2 * (int(mb * 0.72) + luecke)
+                  + 2 * (int(mb * 0.52) + luecke))
+        if gesamt > fb.width - 2 * ox:
+            # Lieber schmaler als abgeschnitten - wie im Coverflow.
+            faktor = (fb.width - 2 * ox) / float(max(1, gesamt))
+            mb = max(16 * s, int(mb * faktor))
+            mh = max(12 * s, mb * 3 // 4)
+            luecke = max(3 * s, mb // 14)
+        n1b, n1h = int(mb * 0.72), int(mh * 0.72)
+        n2b, n2h = int(mb * 0.52), int(mh * 0.52)
+        mx = (fb.width - mb) // 2
+        # SENKRECHT MITTIG, und das war im ersten Probebild falsch:
+        # die Reihe stand oben, der Text darunter, und die untere
+        # Haelfte des Bildes war leer. Der Grund ist, dass die BREITE
+        # die Karten begrenzt, nicht die Hoehe - fuenf Karten
+        # nebeneinander passen quer eben nur bis zu einer gewissen
+        # Groesse, und der senkrechte Platz bleibt danach uebrig. Der
+        # ganze Block wird deshalb in dem, was da ist, zentriert.
+        block_h = mh + 10 * s + 20 * s + 14 * s + 12 * s
+        oben += max(0, (platz - block_h) // 2)
+        mitte_y = oben + mh // 2
+        plaetze = [
+            (-2, mx - luecke - n1b - luecke - n2b,
+             mitte_y - n2h // 2, n2b, n2h),
+            (-1, mx - luecke - n1b, mitte_y - n1h // 2, n1b, n1h),
+            (0, mx, oben, mb, mh),
+            (1, mx + mb + luecke, mitte_y - n1h // 2, n1b, n1h),
+            (2, mx + mb + luecke + n1b + luecke,
+             mitte_y - n2h // 2, n2b, n2h),
+        ]
+        return {"s": s, "ox": ox, "oben": oben, "unten": unten,
+                "mitte_b": mb, "mitte_h": mh, "plaetze": plaetze,
+                "text_y": oben + mh + 10 * s}
+
+    def _draw_cats_karussell(self, message, flip):
+        """Stil 3 der Hauptseite: sein Entwurf 9.
+
+        Die gewaehlte Kategorie gross in der Mitte, die Nachbarn
+        links und rechts kleiner, darunter mittig Name und Zahlen.
+
+        ES WIRD UMLAUFEND GERECHNET (Modulo), und das ist kein Zierat:
+        in einem Karussell gibt es kein "da ist nichts mehr". Die
+        Kategorienavigation laeuft seit jeher umlaufend (siehe
+        nav_anwenden()), also stimmt das Bild mit dem ueberein, was
+        die Taste tut.
+
+        FREIGERAEUMT WIRD JE KARTE, NICHT ALS BAND - dieselbe Rechnung
+        wie im Coverflow: ein Band ueber die ganze Breite waere bei
+        1920x1080 rund 6,4 MB je Schritt, die fuenf Rechtecke zusammen
+        knapp ein Drittel davon."""
+        fb = self.fb
+        KL = self.kat_layout()
+        geo = self.karussell_geometrie(KL)
+        s, ox = geo["s"], geo["ox"]
+        gesamt = len(self.cats)
+        self.cats_visible = max(1, len(geo["plaetze"]))
+        self.cat_scroll = self.cat_i
+
+        fast_key = (gesamt, fb.width, fb.height, "karussell")
+        schnell = (getattr(self, "_kat_kar_fast_key", None) == fast_key
+                   and getattr(self, "_kat_kar_fast_gen", -1)
+                   == fb.full_redraw_gen
+                   and not self._force_full_redraw
+                   and not self._overlay_active())
+        if not schnell:
+            fb.clear(C_BG)
+            self._kat_kopf(KL)
+            self._kat_kar_fast_key = fast_key
+        else:
+            self._flip_spuren = []
+        self._kat_kar_fast_gen = fb.full_redraw_gen
+        self._force_full_redraw = False
+
+        name, node, syskey = self.cats[self.cat_i]
+        akzent = accent_for(syskey)
+        pad = ART_CARD_PAD * s
+        tn = max(1, s - 1)
+        tb = min(fb.width - 2 * ox, 60 * 8 * s)
+        tx = (fb.width - tb) // 2
+        ty = geo["text_y"]
+
+        # ===== ERST ALLES FREIRAEUMEN, DANN ALLES ZEICHNEN =====
+        #
+        # UND DAS IST KEINE SCHOENHEIT, SONDERN EIN BEHOBENER FEHLER.
+        # Der erste Entwurf hat je Platz freigeraeumt und sofort
+        # gezeichnet. Der Bildvergleich gegen den vollen Aufbau zeigte
+        # darauf 3.486 abweichende Bildpunkte, und zwar an genau zwei
+        # Stellen:
+        #
+        #   * fuenf Spalten rechts neben der grossen Karte - der
+        #     Nachbar rechts wird NACH ihr bearbeitet und sein
+        #     Freiraeumen reicht fuenf Punkte in ihren Schlagschatten
+        #     hinein,
+        #   * drei Zeilen unter ihr - das Freiraeumen der Textspalte
+        #     beginnt zwei Punkte ueber dem Text und damit ebenfalls
+        #     im Schatten.
+        #
+        # Man koennte die Luecken vergroessern, bis sich nichts mehr
+        # beruehrt; dann haengt das Bild aber an einer Rechnung, die
+        # beim naechsten Seitenverhaeltnis wieder knapp wird. Zwei
+        # Durchlaeufe loesen es ein fuer alle Mal: wer zuletzt
+        # zeichnet, gewinnt - und das soll die grosse Karte sein.
+        if schnell:
+            for versatz, x, y, bb, hh in geo["plaetze"]:
+                mitte = (versatz == 0)
+                rand = pad + 4 * s if mitte else 3 * s
+                # UNTEN MEHR ALS OBEN BEI DEN NACHBARN: unter ihnen
+                # steht ihr Name, und der liegt ausserhalb des
+                # Kartenrandes. Mit dem symmetrischen Rand blieben
+                # beim Weiterschalten die alten Namen stehen -
+                # derselbe Fehler wie in Build 125 und 128, nur an
+                # einer neuen Stelle.
+                unten_h = (hh + 2 * rand if mitte
+                           else hh + rand + 13 * tn)
+                self._restore_row_bg(x - rand, y - rand,
+                                     bb + 2 * rand, unten_h)
+            self._restore_row_bg(tx, ty - 2 * s, tb,
+                                 max(0, geo["unten"] - (ty - 2 * s)))
+
+        # Die Mitte zuletzt - siehe oben.
+        reihenfolge = sorted(geo["plaetze"],
+                             key=lambda p: 1 if p[0] == 0 else 0)
+        for versatz, x, y, bb, hh in reihenfolge:
+            mitte = (versatz == 0)
+            idx = (self.cat_i + versatz) % gesamt
+            nname, _nnode, nsyskey = self.cats[idx]
+            # Erst das Bild holen, dann die Karte - Build 305.
+            art, verzoegert = self._kat_logo(idx, bb, hh, foto=True)
+            luecke = self._kat_bild_luecke(art, x, y, bb, hh)
+            if mitte:
+                fb.karte_mit_schatten(x - pad, y - pad, bb + 2 * pad,
+                                      hh + 2 * pad, 3 * s, C_PANEL,
+                                      fb._darken(C_BG, 0.55), 4 * s,
+                                      aussparen=luecke,
+                                      hintergrund_rgb=C_BG)
+                self._kachel_rahmen(x, y, bb, hh, akzent, s)
+            else:
+                # AUCH DIE NACHBARN BEKOMMEN EINE KARTE, und das ist
+                # kein Geschmack: der Grund der Bilder IST C_PANEL
+                # (siehe PC-Tools/sysart_foto_convert.py). Ohne Karte
+                # steht dort ein hartes C_PANEL-Rechteck auf dem
+                # dunklen Hintergrund - im ersten Probebild als
+                # abgeschnittener Kasten zu sehen. Eine abgerundete
+                # Flaeche kostet eine Fuellung und macht daraus eine
+                # Karte. Ohne Schatten, denn der gehoert der Mitte.
+                fb.rect_rounded(x - 2 * s, y - 2 * s, bb + 4 * s,
+                                hh + 4 * s, C_PANEL, 3 * s)
+            if art:
+                aw, ah, pix = art
+                self.blit(x + max(0, (bb - aw) // 2),
+                          y + max(0, (hh - ah) // 2), aw, ah, pix)
+            elif not verzoegert:
+                self._kachel_platzhalter(x, y, bb, hh, nname, s, mitte)
+            if not mitte:
+                # Der Name der Nachbarn klein darunter - sonst sieht
+                # man zwar, dass es weitergeht, aber nicht wohin.
+                maxc = max(3, bb // (8 * tn))
+                kurz = (nname if len(nname) <= maxc
+                        else nname[:max(1, maxc - 1)] + "~")
+                br = len(kurz) * 8 * tn
+                fb.text(x + max(0, (bb - br) // 2), y + hh + 3 * s,
+                        kurz, tn, C_DIM)
+
+        # ---- Name und Zahlen mittig darunter ----------------------
+        # Freigeraeumt wurde oben, zusammen mit den Karten - siehe
+        # dort, warum in zwei Durchlaeufen.
+        maxc = max(8, tb // (8 * s))
+
+        def _mittig(text, scale, farbe, yy):
+            br = len(text) * 8 * scale
+            fb.text(max(ox, (fb.width - br) // 2), yy, text, scale, farbe)
+
+        t_scale = self._fit_scale(name, tb, 2 * s)
+        _mittig(name[:max(4, tb // (8 * t_scale))], t_scale, C_TITLE, ty)
+        iy = ty + 12 * t_scale
+        zeilen = self._kat_infozeilen(node, syskey, maxc)
+        if zeilen:
+            _mittig(zeilen[0][:maxc], s, akzent, iy)
+            iy += 14 * s
+            for ln in zeilen[1:]:
+                if iy + 9 * s > geo["unten"]:
+                    break
+                _mittig(ln[:maxc], s, C_TEXT, iy)
+                iy += 12 * s
+
+        self._kat_fusszeile(KL, message)
+        _spuren = self._flip_spuren
+        self._flip_spuren = None
+        if flip:
+            if not (schnell and not self._search_mode
+                    and self._rechtecke_flippen(_spuren)):
+                fb.flip(skip_vsync=self._vsync_ueberspringen(None))
 
     def draw_confirm_dialog(self, msg=None, labels=None, max_lines=2):
         """Beenden-Bestaetigung (Standardaufruf ohne Argumente):
@@ -24791,6 +25624,22 @@ class Frontend:
                             if (_neu == "flow"
                                     and self.fb.height < 720):
                                 _txt = t("galerie_stil_nur_hdmi")
+                            self._force_full_redraw = True
+                            self.draw(_txt)
+                            continue
+                        elif kind == "haupt_stil":
+                            # Build 314: der Stil der Hauptseite, seine
+                            # Entwuerfe 7, 8 und 9. Gleiche Behandlung
+                            # wie beim Galerie-Stil: der Wert wird
+                            # IMMER geschrieben, auch auf einer Roehre,
+                            # und die Meldung sagt dazu, dass hier
+                            # nichts davon zu sehen sein wird.
+                            _neu = haupt_stil_weiter()
+                            _txt = t("haupt_stil_gesetzt",
+                                     t("haupt_stil_" + _neu))
+                            if (_neu != "klassisch"
+                                    and self.fb.height < 720):
+                                _txt = t("haupt_stil_nur_hdmi")
                             self._force_full_redraw = True
                             self.draw(_txt)
                             continue

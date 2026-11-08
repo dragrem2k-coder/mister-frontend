@@ -13,6 +13,29 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Neu: drei neue Hauptseiten (Entwürfe 7, 8 und 9), nur HDMI.**
+  Umschaltbar im Systemmenü unter *Hauptseite* — vier Werte an einem
+  Schalter, Vorgabe bleibt „klassisch" (Build 314):
+  - **Kachelwand** — alle Kategorien als beschriftete Karten, 6×3 auf
+    1080p. Unter jedem Bild der Name, die Eintragszahl und ein Balken,
+    der zeigt, wie groß die Kategorie im Verhältnis zur größten ist.
+  - **Dashboard** — links die Kategorienliste mit Zahlen, rechts eine
+    Tafel zur markierten Kategorie: das Gerät groß, der Name, drei
+    Zahlenkästen (Einträge, Ordner, Favoriten) und derselbe Balken.
+  - **Karussell** — die gewählte Kategorie groß in der Mitte, die
+    Nachbarn links und rechts kleiner, umlaufend wie die Tasten.
+- **Neu: Gerätefotos als Kategoriebild.** 17 freigestellte
+  Konsolenfotos unter `frontend/sysart_foto`, benutzt von den drei
+  neuen Hauptseiten. Kategorien ohne Foto — Favoriten, Weiterspielen,
+  Game Gear … — behalten ihr Abzeichen; die drei klassischen Ansichten
+  bleiben unverändert bei den Abzeichen. Eigene Fotos liefert
+  `PC-Tools/sysart_foto_convert.py` nach (Build 314).
+- **Behoben: ein hauchdünner Strich am Coverflow.** Der Bildvergleich,
+  den der Test des neuen Karussells mitbringt, fand im Coverflow aus
+  Build 313 **5.014** stehengebliebene Bildpunkte: der rechte Nachbar
+  und die Textspalte räumten nach der großen Karte frei und reichten
+  dabei in ihren Schlagschatten. Jetzt wird erst alles freigeräumt und
+  dann gezeichnet, die große Karte zuletzt (Build 314).
 - **Neu: die Galerie im Coverflow (Entwurf 6), nur HDMI.** Das
   gewählte Cover groß in der Mitte, die beiden Nachbarn links und
   rechts kleiner, Titel, Daten und Beschreibung mittig darunter — die

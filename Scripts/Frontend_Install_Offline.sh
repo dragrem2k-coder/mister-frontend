@@ -335,6 +335,32 @@ if [ -d "$SRC/frontend/sysart" ]; then
     say "  $NEW neu, $REPLACED aktualisiert, $KEPT vorhandene behalten"
 fi
 
+# BUILD 314: der zweite Satz Kategoriebilder - Geraetefotos statt
+# Abzeichen, benutzt von den drei neuen Hauptseiten (Kachelwand,
+# Dashboard, Karussell).
+#
+# EIGENER ORDNER UND EIGENER SCHRITT, bewusst OHNE die einmalige
+# Komplett-Ersetzung von oben: der Ordner ist neu, es kann dort also
+# gar nichts Altes liegen, das ueberschrieben werden muesste. Damit
+# gilt von Anfang an die Regel, die bei sysart erst muehsam
+# nachgereicht werden musste - "nur fehlende ergaenzen", eigene
+# Bilder bleiben.
+if [ -d "$SRC/frontend/sysart_foto" ]; then
+    step "Geraetefotos (sysart_foto)"
+    mkdir -p "$FRONTEND_DIR/sysart_foto"
+    NEW=0; KEPT=0
+    for f in "$SRC/frontend/sysart_foto/"*.art; do
+        [ -e "$f" ] || continue
+        base="$(basename "$f")"
+        if [ -f "$FRONTEND_DIR/sysart_foto/$base" ]; then
+            KEPT=$((KEPT+1))
+        else
+            cp -f "$f" "$FRONTEND_DIR/sysart_foto/" && NEW=$((NEW+1))
+        fi
+    done
+    say "  $NEW neu, $KEPT vorhandene behalten"
+fi
+
 # SFX-Quelldateien (echte Klaenge statt prozedural erzeugter Toene,
 # z.B. achievement.wav): gleiches "nur fehlende ergaenzen"-Prinzip.
 if [ -d "$SRC/frontend/sfx_source" ]; then

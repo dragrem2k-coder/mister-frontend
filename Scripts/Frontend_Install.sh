@@ -296,6 +296,20 @@ if [ -d "$SRC_DIR/frontend/sysart" ]; then
         fi
     done
 fi
+# BUILD 314: der zweite Satz Kategoriebilder - Geraetefotos statt
+# Abzeichen, benutzt von den drei neuen Hauptseiten (Kachelwand,
+# Dashboard, Karussell).
+#
+# NUR FEHLENDE ERGAENZEN, und diesmal ohne die einmalige
+# Komplett-Ersetzung daneben: der Ordner ist neu, es kann dort nichts
+# Altes liegen, das ueberschrieben werden muesste. Die Falle von Build
+# 100 (42 Logos kamen nie an, weil gleichnamige schon dalagen) kann
+# hier also gar nicht erst zuschnappen - und wer eigene Fotos
+# hineinlegt, behaelt sie ab dem ersten Lauf.
+if [ -d "$SRC_DIR/frontend/sysart_foto" ]; then
+    mkdir -p "$FRONTEND_DIR/sysart_foto"
+    cp -rn "$SRC_DIR/frontend/sysart_foto/." "$FRONTEND_DIR/sysart_foto/" 2>/dev/null || true
+fi
 if [ -d "$SRC_DIR/frontend/sfx_source" ]; then
     mkdir -p "$FRONTEND_DIR/sfx_source"
     cp -rn "$SRC_DIR/frontend/sfx_source/." "$FRONTEND_DIR/sfx_source/" 2>/dev/null || true

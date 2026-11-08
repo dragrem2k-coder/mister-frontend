@@ -13,6 +13,31 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **New: three new main pages (designs 7, 8 and 9), HDMI only.**
+  Switchable in the system menu under *Main page* — four values on one
+  switch, the default stays "classic" (build 314):
+  - **Tile wall** — every category as a labelled card, 6×3 at 1080p.
+    Below each picture the name, the entry count and a bar showing how
+    large the category is relative to the largest one.
+  - **Dashboard** — the category list with counts on the left, a panel
+    for the selected category on the right: the console large, the
+    name, three number boxes (entries, folders, favourites) and the
+    same bar.
+  - **Carousel** — the selected category large in the centre, its
+    neighbours smaller to the left and right, wrapping around just
+    like the buttons do.
+- **New: console photos as the category picture.** 17 cut-out console
+  photos under `frontend/sysart_foto`, used by the three new main
+  pages. Categories without a photo — favourites, continue, Game Gear
+  … — keep their badge; the three classic views stay on the badges.
+  `PC-Tools/sysart_foto_convert.py` converts your own photos (build
+  314).
+- **Fixed: a hairline at the edge of the coverflow.** The pixel
+  comparison that ships with the new carousel's test found **5,014**
+  stale pixels in the build-313 coverflow: the right-hand neighbour
+  and the text column cleared their areas *after* the large card and
+  reached into its drop shadow. Now everything is cleared first and
+  drawn afterwards, the large card last (build 314).
 - **New: the gallery as a coverflow (design 6), HDMI only.** The
   selected cover large in the centre, its two neighbours smaller to
   the left and right, with title, data and description centred below —

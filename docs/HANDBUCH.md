@@ -1807,6 +1807,45 @@ einem. Gemessen ist das noch nicht; solange bleibt der Stil stehen,
 der gemessen ist. Zu erwarten sind statt 45,8 ms eher 55–65 ms je
 Schritt, und die Wiederholrate passt sich seit Build 302 von selbst an.
 
+### Die Hauptseite hat seit Build 314 außerdem vier Stile
+
+*System -> Anzeige & Sound -> „Hauptseite"*. Ein Stil ist eine
+**komplette** Hauptseite und keine Anordnung innerhalb einer — er
+steht deshalb über der Ansicht: steht der Schalter auf etwas anderem
+als „klassisch", entscheidet er, und die Einstellung „Ansicht
+Hauptseite" hat keine Wirkung mehr.
+
+| Stil | Aussehen |
+|---|---|
+| **klassisch** | wie bisher — Liste, Raster oder Galerie nach „Ansicht Hauptseite". Die Vorgabe |
+| **Kachelwand** | alle Kategorien als beschriftete Karten (6×3 auf 1080p): Bild, Name, Eintragszahl und ein Balken, der zeigt, wie groß die Kategorie im Verhältnis zur größten ist |
+| **Dashboard** | links die Kategorienliste mit Zahlen, rechts eine Tafel zur markierten Kategorie: das Gerät groß, der Name, drei Zahlenkästen (Einträge, Ordner, Favoriten) und derselbe Balken |
+| **Karussell** | die gewählte Kategorie groß in der Mitte, die Nachbarn links und rechts kleiner, darunter mittig Name und Zahlen. Umlaufend — hinter der letzten Kategorie kommt wieder die erste, genau wie die Tasten es tun |
+
+**Alle drei neuen Stile gelten nur auf HDMI.** Auf einer Röhre bleibt
+es bei „klassisch", auch wenn der Schalter steht — sechs beschriftete
+Kacheln wären auf 320×240 sechs Flecken mit drei Zeichen darunter. Der
+Wert wird trotzdem gespeichert; er gilt beim nächsten Mal am
+Fernseher, und die Meldung beim Umschalten sagt das auch.
+
+**Warum „klassisch" die Vorgabe bleibt:** aus demselben Grund wie beim
+Galerie-Stil. Die drei neuen Stile zeichnen je Schritt mehr — die
+Kachelwand eine Beschriftung je Kachel, das Dashboard eine ganze
+Tafel, das Karussell fünf Karten statt einer. Was das auf dem Gerät
+kostet, misst Abschnitt J des Bench, sobald der Stil eingestellt ist.
+Geschätzt wird hier nichts.
+
+**Die Gerätefotos:** die drei neuen Stile zeigen als Kategoriebild
+zuerst ein Foto aus `/media/fat/frontend/sysart_foto` und erst dann
+das Abzeichen aus `sysart`. Mitgeliefert werden 17 Fotos (NES, SNES,
+Super Game Boy, Game Boy, GBC, GBA, N64, Mega Drive, Mega CD, Master
+System, PlayStation, Saturn, TurboGrafx-16, Neo Geo, Atari 2600,
+Arcade, externes Laufwerk). Kategorien ohne Foto — Favoriten,
+Weiterspielen, Game Gear … — behalten ihr Abzeichen, und die drei
+klassischen Ansichten bleiben ganz bei den Abzeichen. Eigene Fotos
+legt `PC-Tools/sysart_foto_convert.py` im richtigen Format ab; siehe
+`docs/LOGOS_NACHLIEFERN.md`.
+
 **Umgeschaltet wird auf zwei Wegen, die absichtlich nicht dasselbe
 tun:**
 
@@ -2870,6 +2909,7 @@ umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
 | Ansicht Spieleliste | `ansicht` |
 | Galerie-Stil (klassisch / Coverflow) | `galerie_stil` |
 | Ansicht Hauptseite | `ansicht_haupt` |
+| Hauptseite (klassisch / Kachelwand / Dashboard / Karussell) | `haupt_stil` |
 | Scrollgeschwindigkeit (0,5x bis 2x) | `scroll_tempo` |
 | Tastenlegende: AN/AUS | `tastenlegende` |
 | ROM-Wächter: AN/AUS | `romwacht` |

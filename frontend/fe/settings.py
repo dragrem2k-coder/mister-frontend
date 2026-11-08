@@ -1735,6 +1735,77 @@ def galerie_stil_weiter():
     return galerie_stil_schreiben(GALERIE_STILE[(i + 1) % len(GALERIE_STILE)])
 
 
+# ----------------------------------------------------------------------
+# BUILD 314: der Stil der HAUPTSEITE (seine Entwuerfe 7, 8 und 9)
+#
+# NUTZERWUNSCH, woertlich: "alle drei machen unter menue mit schalter
+# zum hin und herwechseln". Also kein Entweder-oder und keine
+# Abloesung, sondern vier Werte an einem Schalter.
+#
+# WARUM EIN STIL UND KEINE VIERTE ANSICHT, und das ist der Punkt, an
+# dem man sich sonst eine Dauerbaustelle einhandelt: die Hauptseite hat
+# bereits DREI Ansichten (Liste, Raster, Galerie - ANSICHT_HAUPT_FILE),
+# und die beantworten eine andere Frage, naemlich "wie dicht stehen die
+# Kategorien". Seine drei Entwuerfe beantworten "wie sieht eine
+# Kategorie aus". Beides in eine Liste zu werfen, haette sieben
+# Zustaende ergeben, von denen sechs erklaert werden muessen.
+#
+# "klassisch" IST DIE VORGABE, und zwar aus demselben Grund wie bei
+# GALERIE_STILE: es ist der gemessene Zustand. Die drei neuen Stile
+# zeichnen mehr je Schritt (die Kachelwand eine Beschriftung je Kachel,
+# das Dashboard eine ganze Tafel, das Karussell fuenf Karten statt
+# einer). Was das auf SEINEM Geraet kostet, steht in keiner Messung,
+# die es schon gibt - Abschnitt J des Bench misst, was eingestellt ist.
+#
+# NUR AUF HDMI. Dieselbe Vorgabe wie bei der Galerie ("gilt nur fuer
+# hdmi crt modus bleibt so !!"), und dieselbe Schwelle: fb.height >=
+# 720. Der Wert wird trotzdem immer geschrieben - er gilt ja fuers
+# naechste Mal am Fernseher.
+HAUPT_STILE = ("klassisch", "kachelwand", "dashboard", "karussell")
+HAUPT_STIL_FILE = "/media/fat/frontend/haupt_stil.txt"
+
+
+def haupt_stil_lesen():
+    """Welcher Hauptseiten-Stil ist eingestellt? Vorgabe "klassisch".
+
+    Unbekannter oder kaputter Inhalt faellt auf "klassisch" zurueck -
+    dieselbe Regel wie bei galerie_stil_lesen()."""
+    def _lesen():
+        try:
+            wert = open(HAUPT_STIL_FILE).read().strip().lower()
+        except OSError:
+            return "klassisch"
+        return wert if wert in HAUPT_STILE else "klassisch"
+    # Ueber den kurzlebigen Zwischenspeicher: gefragt wird bei JEDEM
+    # Bild der Hauptseite.
+    return _hole(("haupt_stil", HAUPT_STIL_FILE), _lesen)
+
+
+@_nach_aenderung
+def haupt_stil_schreiben(wert):
+    if wert not in HAUPT_STILE:
+        wert = "klassisch"
+    try:
+        d = os.path.dirname(HAUPT_STIL_FILE)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        with open(HAUPT_STIL_FILE, "w") as f:
+            f.write(wert)
+    except OSError as e:
+        LOG("haupt_stil_schreiben: %s" % e)
+    return wert
+
+
+def haupt_stil_weiter():
+    """Zum naechsten Stil - fuer den Menuepunkt."""
+    jetzt = haupt_stil_lesen()
+    try:
+        i = HAUPT_STILE.index(jetzt)
+    except ValueError:
+        i = 0
+    return haupt_stil_schreiben(HAUPT_STILE[(i + 1) % len(HAUPT_STILE)])
+
+
 def ansicht_lesen():
     """Die eingestellte Vorgabe-Ansicht der Spieleliste.
 

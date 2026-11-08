@@ -32,6 +32,19 @@ except Exception:       # pragma: no cover - nur auf kaputten Installationen
 ART_BASE    = "/media/fat/frontend/art"
 ART_HD      = "/media/fat/frontend/art_hd"
 SYSART_BASE = "/media/fat/frontend/sysart"
+# BUILD 314: der zweite Satz Kategoriebilder - Geraetefotos statt
+# Abzeichen. Ein EIGENER ORDNER und keine Ersetzung der vorhandenen
+# Dateien, aus drei Gruenden:
+#   1. Er hat die Fotos ausdruecklich "fuer das neue" gewuenscht; die
+#      drei klassischen Ansichten sollen bleiben, wie sie sind.
+#   2. Es gibt 17 Fotos und 60 Abzeichen. Ein Satz, der nur zu einem
+#      Viertel bestueckt ist, darf den vollstaendigen nicht ueberdecken
+#      - er wird ihm vorangestellt, mit Rueckfall.
+#   3. Eigene Dateien des Nutzers unter sysart/ blieben sonst beim
+#      naechsten Update auf der Strecke.
+# Erzeugt von PC-Tools/sysart_foto_convert.py, gleiches Mass wie die
+# Abzeichen (320x420) und gleicher Grund (C_PANEL).
+SYSART_FOTO_BASE = "/media/fat/frontend/sysart_foto"
 META_BASE   = "/media/fat/frontend/meta"
 
 # FREMDE QUELLE (Build 115): die Handbuch-/Artwork-Datenbank, die viele
@@ -3023,7 +3036,8 @@ def _thumb_cache_evict_if_needed():
         % (to_remove, len(entries), THUMB_CACHE_MAX_FILES))
 
 def _ist_kategorie_logo(pfad):
-    """Gehoert dieses Bild zu einer Kategorie (SYSART_BASE)?
+    """Gehoert dieses Bild zu einer Kategorie (SYSART_BASE oder, seit
+    Build 314, SYSART_FOTO_BASE)?
 
     Wird bei JEDER Verdraengung im RAM-Bildspeicher gefragt (siehe
     _scaled_cache_put()) - deshalb bewusst ein reiner
@@ -3031,9 +3045,17 @@ def _ist_kategorie_logo(pfad):
     Aufruf frisch gelesen: Tests und der CRT/HDMI-Wechsel biegen die
     Konstante um, ein einmal gemerkter Wert waere danach falsch.
 
+    Der Fotosatz MUSS hier mitgezaehlt werden: die Schonung im
+    RAM-Bildspeicher gilt den Kategoriebildern, weil es von ihnen
+    wenige gibt und sie bei jedem Bild der Hauptseite gebraucht
+    werden. Fuer ein Foto gilt das genauso wie fuer ein Abzeichen -
+    haette es hier gefehlt, waere ausgerechnet der neue Satz als
+    erstes aus dem Speicher geflogen.
+
     Siehe die ausfuehrliche Begruendung bei _scaled_cache_put()."""
     return bool(pfad) and isinstance(pfad, str) \
-        and pfad.startswith(SYSART_BASE)
+        and (pfad.startswith(SYSART_BASE)
+             or pfad.startswith(SYSART_FOTO_BASE))
 
 
 class ArtCache:

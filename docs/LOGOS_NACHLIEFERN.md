@@ -97,3 +97,49 @@ umrahmt das Logo und färbt die Auswahl in der Liste.
 TurboGrafx16-Core und erscheinen deshalb in der Kategorie
 **TurboGrafx16** (siehe `fe/systems.py`) — eine eigene Kategorie gibt es
 dafür nicht.
+
+## Gerätefotos statt Abzeichen (Build 314)
+
+Die drei neuen Hauptseiten — **Kachelwand**, **Dashboard** und
+**Karussell**, umschaltbar unter *System → Anzeige & Sound →
+„Hauptseite"* — holen ihr Kategoriebild **zuerst** aus
+
+```
+/media/fat/frontend/sysart_foto/<Systemkey>.art
+```
+
+und erst dann aus `sysart/`. Mitgeliefert werden 17 freigestellte
+Konsolenfotos; alles andere fällt automatisch auf das Abzeichen
+zurück, und die drei klassischen Ansichten (Liste, Raster, Galerie)
+bleiben ganz bei den Abzeichen.
+
+### Eigene Fotos nachliefern
+
+```
+python3 PC-Tools/sysart_foto_convert.py \
+    NES=fotos/nes.jpg SNES=fotos/snes.jpg \
+    --ziel frontend/sysart_foto --vorschau /tmp/kontakt.png
+```
+
+Der Name links vom `=` ist derselbe Systemkey wie bei den Abzeichen
+(die Tabelle weiter oben). Das Werkzeug nimmt den Studiohintergrund
+weg, stellt das Gerät frei und setzt es mittig in eine Kachel von
+**420×320** Punkten mit dem Grund **C_PANEL (28,32,44)**.
+
+Drei Dinge, die man wissen sollte:
+
+- **Quer, nicht hochkant.** Die Abzeichen sind 320×420, die Fotos
+  420×320 — eine Konsole mit Controller daneben liegt quer, und im
+  Kachelfeld der Kachelwand füllt eine 4:3-Kachel 239 statt 139
+  Punkte Breite. Hochkantige Vorlagen (Game Boy, Automat) stehen
+  einfach mit Luft links und rechts; die ist C_PANEL und damit auf
+  der Karte unsichtbar.
+- **Kein Alphakanal.** Das Frontend blittet `.art` undurchsichtig und
+  sieht Transparenz gar nicht an. Was im Bild steht, steht auf dem
+  Schirm — deshalb der feste Grund.
+- **Weiss auf weissem Grund.** Die Flutfüllung kommt nur vom Bildrand
+  her; Weiss, das vom Motiv eingeschlossen ist (ein Controllerkabel,
+  das eine Schleife bildet), bleibt sonst als Fleck stehen. Dafür
+  gibt es die Lochsuche. Bleibt bei einem eigenen Foto trotzdem etwas
+  stehen oder wird zu viel entfernt, hilft `--loecher-anteil`
+  (Vorgabe 0.0045) oder `--toleranz` (Vorgabe 52).

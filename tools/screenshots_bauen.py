@@ -183,6 +183,11 @@ def cover_vorbereiten():
     os.makedirs(A.THUMB_CACHE_DIR, exist_ok=True)
     fm.SYSART_BASE = os.path.join(_REPO, "frontend", "sysart")
     A.SYSART_BASE = fm.SYSART_BASE
+    # Build 314: der Fotosatz der neuen Hauptseiten. Ohne diese zwei
+    # Zeilen zeigt das Bild die Abzeichen und behauptet damit etwas
+    # anderes, als auf dem Geraet zu sehen ist.
+    fm.SYSART_FOTO_BASE = os.path.join(_REPO, "frontend", "sysart_foto")
+    A.SYSART_FOTO_BASE = fm.SYSART_FOTO_BASE
 
 
 # Spieldaten als Platzhalter. Ohne sie steht in der Infospalte nur der
@@ -471,6 +476,22 @@ def main():
     f.draw()
     speichern(f.fb, "preview_12_galerie_flow.png")
     _S.galerie_stil_schreiben("klassisch")
+    H._zwischenspeicher_leeren()
+
+    print("  Die drei neuen Hauptseiten (Build 314):")
+    # Auch hier ueber die ECHTE Einstellung und nicht ueber eine
+    # Attrappe an _haupt_stil() - sonst wuerde das Bild einen Weg
+    # zeigen, den das Frontend so nie nimmt (samt HDMI-Schwelle).
+    _S.HAUPT_STIL_FILE = os.path.join(_TMP, "haupt_stil.txt")
+    for stil, name in (("kachelwand", "preview_13_haupt_kachelwand.png"),
+                       ("dashboard", "preview_14_haupt_dashboard.png"),
+                       ("karussell", "preview_15_haupt_karussell.png")):
+        _S.haupt_stil_schreiben(stil)
+        H._zwischenspeicher_leeren()
+        f = hauptseite(1920, 1080)
+        f.draw()
+        speichern(f.fb, name)
+    _S.haupt_stil_schreiben("klassisch")
     H._zwischenspeicher_leeren()
 
     print("  Steckbrief (Build 311):")

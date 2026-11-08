@@ -8923,3 +8923,178 @@ EIGENE Geometrie, statt die fremde zu biegen.
   Aufrufe sind da; das Cover wird vor der Karte geholt; der Verteiler
   steht **genau einmal** und ganz oben; und Menuepunkt, Zweig und alle
   fuenf Texte existieren in beiden Sprachen.
+
+## Nachtrag Build 314 - drei Hauptseiten und ein Satz Geraetefotos
+
+Nutzerwunsch, woertlich: *„alle drei machen unter menue mit schalter
+zum hin und herwechseln, koenntest du bitte diese als systemarts /
+boxarts dann verwenden? fuer das neue?"* - dazu 18 Fotos von
+Konsolen.
+
+Also: **Kachelwand** (Entwurf 7), **Dashboard** (Entwurf 8) und
+**Karussell** (Entwurf 9) als vier Werte an einem Schalter, nur auf
+HDMI, und die Geraetefotos als Kategoriebild.
+
+### Drei Wege und nicht einer mit Schaltern drin
+
+Die drei Entwuerfe teilen keine Geometrie. Die Kachelwand ist ein
+Raster mit Beschriftung, das Dashboard eine Liste neben einer Tafel,
+das Karussell eine Reihe aus fuenf Karten. Ein gemeinsamer
+Zeichenweg mit drei Verzweigungen waere an jeder Stelle „wenn Stil X,
+dann anders" - und genau so entsteht Code, den niemand mehr anfasst.
+
+Was sie sich sehr wohl teilen, und der Test prueft jeden Aufruf
+einzeln: `_kat_logo()`, `_kat_zahlen()`, `_kat_infozeilen()`,
+`_kachel_rahmen()`, `_kachel_platzhalter()`, `_kachel_feld()`,
+`_kat_bild_luecke()`, `_restore_row_bg()`, `_rechtecke_flippen()`,
+`_kat_kopf()` und `_kat_fusszeile()`.
+
+### Der Stil steht UEBER der Ansicht
+
+Die Hauptseite hatte bereits drei Ansichten (Liste, Raster, Galerie).
+Die beantworten „wie dicht stehen die Kategorien"; die drei Entwuerfe
+beantworten „wie sieht eine Kategorie aus". Beides zu kombinieren
+haette zwoelf Bilder ergeben, von denen elf erklaert werden muessten.
+Der Verteiler steht deshalb vor dem der Ansicht - steht der Schalter,
+entscheidet er allein.
+
+### Warum „klassisch" die Vorgabe bleibt
+
+Dieselbe Begruendung wie bei Build 313, und sie ist eine Messfrage:
+die drei neuen Stile zeichnen je Schritt mehr - die Kachelwand eine
+Beschriftung je Kachel, das Dashboard eine ganze Tafel, das Karussell
+fuenf Karten statt einer. Abschnitt J des Bench misst, was
+eingestellt ist. Hier steht deshalb **keine geschaetzte Millisekunde**
+fuer die Stile, nur die Flaechen, die nachgerechnet sind: das
+Dashboard raeumt je Schritt seine beiden Felder frei, bei 1920x1080
+zusammen rund 3,5 MB; das Karussell fuenf Karten plus Textspalte.
+
+### Der Fotosatz: 420x320 quer, Grund C_PANEL
+
+Die Abzeichen unter `sysart/` sind hochkant 320x420, weil ein Kreis
+mit Text darunter hochkant ist. Von den Fotos liegen 14 von 17 quer.
+Nachgerechnet am Kachelfeld der Kachelwand bei 1920x1080 (260x182
+Punkte): eine 4:3-Kachel fuellt davon 239 Punkte Breite, eine
+3:4-Kachel nur 139 - der Unterschied zwischen „Konsole" und
+„Briefmarke". Der Fotosatz liegt deshalb in einem **eigenen Ordner**
+(`frontend/sysart_foto`) und laesst `sysart/` unberuehrt; die drei
+klassischen Ansichten rechnen dort unveraendert mit hochkant 3:4.
+
+Der Grund der Fotos ist C_PANEL (28,32,44) und nicht Transparenz: der
+Alphakanal in `.art` ist durchgehend 0 und wird vom Frontend gar
+nicht angesehen. Genau denselben Weg geht `sysart_abzeichen.py` seit
+Build 99 - deshalb passen Foto und Abzeichen auf derselben Karte
+nebeneinander, ohne dass man den Wechsel sieht.
+
+**Nicht uebernommen wurde ein Foto:** der beige Roehren-Computer
+traegt ein sichtbares Wasserzeichen („Adobe Stock | #113176138"). Ein
+lizenzpflichtiges Stockfoto gehoert nicht in ein oeffentliches
+MIT-Repository, also bleibt `COMPUTER` beim Abzeichen.
+
+### Die Lochsuche im Konverter - und die Zahlen dahinter
+
+Bei Master System, Mega Drive, TurboGrafx, PlayStation, N64 und
+Saturn liegt das Controllerkabel in einer Schleife auf dem Tisch. Das
+Weiss INNERHALB dieser Schleife ist vom Bildrand aus nicht
+erreichbar - eine Flutfuellung kommt dort nie an, und auf der
+fertigen Kachel stand ein weisser Fleck neben dem Geraet.
+
+Alles Weisse zu entfernen geht nicht: Lichter auf dem Gehaeuse sind
+auch fast weiss. Entschieden wird deshalb nach **Flaeche**, und die
+Grenze ist gemessen und nicht geraten (Anteil der groessten
+eingeschlossenen hellen Flaeche je Bild):
+
+| entfernen (Hintergrund) | | behalten (Glanz/Kunststoff) | |
+|---|---|---|---|
+| SMS | 5,80 % | Neo Geo | 0,31 % |
+| Genesis | 2,38 % | GBC | 0,14 % |
+| TGFX16 | 2,27 % | Arcade | 0,02 % |
+| PSX | 1,23 % | SNES | 0,02 % |
+| N64 | 1,21 % | alle uebrigen | < 0,01 % |
+| Saturn | 0,66 % | | |
+
+Zwischen 0,31 % und 0,66 % liegt der Faktor zwei; die Vorgabe von
+0,45 % steht in der Mitte und laesst sich mit `--loecher-anteil`
+verstellen.
+
+> Beim ersten Anlauf lief die Lochsuche wirkungslos durch: sie holte
+> sich die Hintergrundfarbe selbst aus den vier Ecken - nur sind die
+> zu dem Zeitpunkt laengst durchsichtig, die Liste war leer, und die
+> Funktion stieg sofort wieder aus. Der Kontaktbogen sah danach aus
+> wie vorher. Die Farbe wird jetzt EINMAL am Anfang bestimmt und
+> weitergereicht.
+
+### Ein Fehler aus Build 313, gefunden durch den neuen Test
+
+Der Bildvergleich gegen einen vollen Aufbau ist das staerkste
+Werkzeug in diesem Haus, und das neue Karussell hat ihn mitgebracht.
+Er fand dort **3.486** stehengebliebene Bildpunkte - und als ich ihn
+danach einmal am **Coverflow aus Build 313** laufen liess, waren es
+**5.014**.
+
+Dieselbe Ursache in beiden: je Platz freiraeumen und sofort zeichnen.
+Dann radiert der Nachbar rechts (er kommt nach der Mitte dran) neun
+Spalten aus dem Schlagschatten der grossen Karte, und das
+Freiraeumen der Textspalte drei Zeilen darunter ebenfalls. Sichtbar
+war das als hauchduenner heller Strich an zwei Kanten - zu wenig, um
+es im Standbild zu bemerken.
+
+Man koennte die Luecken vergroessern, bis sich nichts mehr beruehrt;
+dann haengt das Bild an einer Rechnung, die beim naechsten
+Seitenverhaeltnis wieder knapp wird. **Zwei Durchlaeufe** loesen es
+ein fuer alle Mal: erst alles freiraeumen, dann alles zeichnen, die
+grosse Karte zuletzt. Wer zuletzt zeichnet, gewinnt.
+
+### Was erst das Bild gezeigt hat
+
+1. **Das Dashboard hatte ein leeres Drittel.** Das Bild bekam einen
+   festen Anteil (42 % der Tafelhoehe), und darunter brauchten die
+   Zahlen eben nur so viel Platz, wie sie brauchen. Jetzt wird der
+   Textblock ausgerechnet und das Bild bekommt den Rest.
+2. **Unter den drei Zahlenkaesten standen dieselben drei Zahlen noch
+   einmal klein** - `_kat_infozeilen()` liefert genau Eintraege,
+   Ordner und Favoriten. Die Zeilen sind raus.
+3. **Ein nackter Strich ueber die volle Breite** sieht aus wie eine
+   Trennlinie, nicht wie eine Angabe. Der Balken hat jetzt eine
+   Beschriftung.
+4. **Das Karussell hing oben und die untere Bildhaelfte war leer.**
+   Der Grund: die BREITE begrenzt die Karten, nicht die Hoehe - fuenf
+   nebeneinander passen quer nur bis zu einer gewissen Groesse, der
+   senkrechte Platz bleibt uebrig. Der ganze Block wird jetzt in dem,
+   was da ist, zentriert.
+5. **Die Nachbarn im Karussell waren harte Rechtecke.** Der Grund der
+   Bilder IST C_PANEL - ohne Karte darunter steht da ein
+   abgeschnittener Kasten auf dunklem Grund. Eine abgerundete Flaeche
+   kostet eine Fuellung und macht daraus eine Karte.
+
+### Neue Pruefungen
+
+* **neu** `tools/test_hauptseite_stil.py` - unter anderem: die Vorgabe
+  ist „klassisch", kaputte Werte fallen darauf zurueck und der
+  Schalter laeuft durch alle vier; die drei Stile laufen auf
+  1920x1080, 1280x720, hochkant und 2560x1440, aber NICHT auf 320x240
+  und 640x480 - mit derselben Schwelle 720 wie im Rest des Hauses;
+  die Geometrien liegen im Bild, Liste und Tafel ueberlappen nicht,
+  die Felder liegen in der Tafel, die Karussellkarten sind
+  symmetrisch und liegen **quer**; alle drei zeichnen vier Schritte
+  hintereinander auf vier Groessen und auch mit einer **einzigen**
+  Kategorie; **der schnelle Pfad ist bitgenau wie ein voller Aufbau**
+  (18 Vergleiche); keiner der drei zaehlt selbst durch die Eintraege;
+  das Bild wird vor der Karte geholt und die Aussparung an genau
+  einer Stelle gerechnet; der Fotosatz wird bevorzugt und faellt bei
+  jedem der acht Namen ohne Foto auf das Abzeichen zurueck, waehrend
+  `_kat_kachel_zeichnen()` **gar nicht** nach Fotos fragt; die 17
+  `.art`-Dateien sind entpackbar, alle 420x320 und haben C_PANEL in
+  der Ecke; der Verteiler steht genau einmal und vor dem der Ansicht.
+* **geaendert** `tools/test_galerie_flow.py` - drei Bildvergleiche
+  gegen den vollen Aufbau (die den Fehler oben gefunden haben) plus
+  die Zusage, dass in zwei Durchlaeufen gearbeitet wird und die
+  grosse Karte zuletzt kommt. Erst hashen, dann zaehlen: der Puffer
+  ist acht Megabyte, und ihn im gruenen Fall Punkt fuer Punkt in
+  Python zu vergleichen dauerte laenger als der ganze uebrige Test.
+* **geaendert** `tools/screenshots_bauen.py` - drei neue Szenen
+  (`preview_13_haupt_kachelwand.png`, `preview_14_haupt_dashboard.png`,
+  `preview_15_haupt_karussell.png`), gesetzt ueber die **echte**
+  Einstellung und nicht ueber eine Attrappe.
+* **neu** `PC-Tools/sysart_foto_convert.py` - das Werkzeug zum
+  Nachliefern eigener Geraetefotos.

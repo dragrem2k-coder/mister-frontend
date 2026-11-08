@@ -37,6 +37,7 @@ WAS DIESER TEST SICHERT:
 Ausfuehren:
     python3 tools/test_galerie_flow.py
 """
+import hashlib
 import os
 import re
 import shutil
@@ -268,6 +269,67 @@ for k in ("sys_galerie_stil", "galerie_stil_gesetzt"):
     for sp in ("de", "en"):
         check("%s/%s hat genau einen Platzhalter" % (k, sp),
               len(re.findall(r"%[sd]", TR.TRANSLATIONS[k][sp])) == 1)
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 9: der schnelle Pfad ist bitgenau wie ein voller Aufbau")
+# ---------------------------------------------------------------------------
+# NACHGEREICHT IN BUILD 314, und nicht aus Ordnungsliebe: derselbe
+# Vergleich am neuen Karussell der Hauptseite hat dort 3.486
+# stehengebliebene Bildpunkte gefunden - und als ich ihn danach
+# einmal hier laufen liess, waren es 5.014. Der Coverflow hatte den
+# Fehler seit Build 313 und niemand hat ihn gesehen: ein
+# hauchduenner heller Strich an zwei Kanten der grossen Karte, weil
+# der Nachbar rechts und die Textspalte nach ihr freigeraeumt haben
+# und dabei in ihren Schlagschatten reichten.
+#
+# Ein Standbild zeigt so etwas nicht. Dieser Vergleich schon.
+
+
+def _pixelvergleich(schritte, richtung):
+    f = frontend(1920, 1080, "flow")
+    f.ansicht_setzen("galerie")
+    f.draw()                       # voller Aufbau
+    f.draw()                       # ab hier der schnelle Weg
+    n = len(f._display_items())
+    for _ in range(schritte):
+        f.item_i = (f.item_i + richtung) % n
+        f.draw()
+    schnell = bytes(f.fb.buf)
+
+    g = frontend(1920, 1080, "flow")
+    g.ansicht_setzen("galerie")
+    g.item_i = f.item_i
+    g.scroll = f.scroll
+    # _pulse_t0 ist ein Wert JE INSTANZ - ohne diese Zeile vergleicht
+    # man zwei Phasen desselben Schimmerns (siehe
+    # test_hauptseite_spuren.py).
+    g._pulse_t0 = f._pulse_t0
+    g.fb.mark_full_redraw()
+    g.draw()
+    voll = bytes(g.fb.buf)
+    # ERST HASHEN, DANN ZAEHLEN. Der Puffer ist bei 1920x1080 acht
+    # Megabyte; ihn Punkt fuer Punkt in Python zu vergleichen dauert
+    # im gruenen Fall laenger als der ganze uebrige Test. Gezaehlt
+    # wird nur, wenn es etwas zu zaehlen gibt.
+    if (hashlib.sha256(schnell).hexdigest()
+            == hashlib.sha256(voll).hexdigest()):
+        check("Coverflow %+d x%d: bitgenau" % (richtung, schritte), True)
+        return
+    anders = sum(1 for i in range(0, len(schnell), 4)
+                 if schnell[i:i + 3] != voll[i:i + 3])
+    check("Coverflow %+d x%d: bitgenau" % (richtung, schritte),
+          False, "%d Bildpunkte" % anders)
+
+
+for _sch, _ri in ((3, 1), (7, 1), (4, -1)):
+    _pixelvergleich(_sch, _ri)
+check("freigeraeumt wird in einem eigenen Durchlauf VOR dem Zeichnen",
+      _FLOW.index("self._restore_row_bg(") < _FLOW.index("sorted("),
+      "wer je Platz raeumt und sofort zeichnet, radiert dem Nachbarn "
+      "den Schatten weg")
+check("und die grosse Karte wird zuletzt gezeichnet",
+      "sorted(" in _FLOW and "versatz == 0" in _FLOW)
 
 shutil.rmtree(TMP, ignore_errors=True)
 
