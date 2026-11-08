@@ -8573,3 +8573,129 @@ wegnimmt.
   `_core_fassungen_zum_eintrag()`, und drei neue Pruefungen: ohne
   mehrere Fassungen steht der Punkt **nicht** drin, mit vier schon, und
   dann **vor** dem Favoriten; bei einem Ordner nie.
+
+## Nachtrag Build 311 - der Steckbrief
+
+Seine Prioritaet 4 vom 08.11., und sein ausgewaehlter Entwurf:
+
+> *„Jedes Spiel sollte eine eigene Informationsseite bekommen: Cover,
+> Spielbeschreibung und technische Daten, Erscheinungsjahr,
+> Entwickler, Spielerzahl, Spielzeit und zuletzt gespielt,
+> Anleitung."* — und dazu: *„design entwurf 3 find ich super!"*
+
+### Warum das in EINEN Build passt
+
+**Jede einzelne Zutat war schon da.** Gefehlt hat nur eine Seite, die
+sie nebeneinander legt:
+
+| Angabe | Quelle | seit |
+|---|---|---|
+| Cover | `_ansicht_cover()` | Build 89/180 |
+| Jahr, Genre, Entwickler, Spieler | `get_meta()` | Build 115/142 |
+| Beschreibung | `docs_synopsis()` | Build 141 |
+| Spielzeit und Starts | `load_playtime()` | v1.79 |
+| Anleitung vorhanden? | `_anleitung_zum_eintrag()` | Build 263 |
+| welcher Core startet | `CORES.aufloesen_spiel()` | Build 310 |
+| Entwickler (developer ODER manufacturer) | `FILTER.entwickler_von()` | Build 251 |
+| grobe Gattung statt Rohwert | `FILTER.genre_kurz()` | Build 142 |
+
+**Keine einzige neue Quelle**, kein Netz, kein Scraper. Der Test
+verbietet am Quelltext `open(`, `urllib`, `requests`, `socket`,
+`fetch_`, `subprocess` und jedes Schreiben: eine Infoseite, die etwas
+nachlaedt, waere eine Seite, die beim Oeffnen haengt.
+
+Was es zu einem Spiel nicht gibt, steht gar nicht erst da. Eine Zeile
+„Entwickler: unbekannt" ist schlechter als keine Zeile.
+
+### Aufbau nach Entwurf 3
+
+Oben ein Band mit dem Cover links und Titel, Kopfzeile und
+Beschreibung rechts; darunter die Fakten. Das Band ist EIN Rechteck -
+es kostet einmal und wird nicht gescrollt. Die einzige Farbe auf der
+Seite ist die Systemfarbe (`accent_for()`): Kopfzeile und Trennlinie.
+
+Eine **Leseseite ohne Blaettern**: eine beliebige Taste geht zurueck.
+Was nicht hinpasst, kuerzt `_wrap()` sichtbar ab.
+
+### Vier Dinge, die erst das erste Bild gezeigt hat
+
+Gebaut, gerendert, angesehen, korrigiert - `tools/screenshots_bauen.py`
+erzeugt die Seite jetzt als `preview_11_spiel_info.png` (1080p) und
+`preview_crt_4_spiel_info.png` (320x240).
+
+1. **Der Textcache malt seinen eigenen Kasten.** `fb.text()` ohne
+   `bg` setzt `C_BG` voraus - auf dem Band standen lauter dunkle
+   Rechtecke hinter den Woertern. Behoben mit `bg=C_PANEL`.
+2. **Die erste Spalte lief voll statt sich zu teilen.** Bei acht
+   Fakten stand alles links untereinander und die halbe Seite war
+   leer.
+3. **Auf 320x240 ueberlappten die beiden Spalten.** Eine halbe Zeile
+   ist dort zu schmal fuer Beschriftung UND Wert; „Rollenspiel" lief
+   in „System" hinein. Jetzt: zwei Spalten nur, wenn eine halbe Zeile
+   Beschriftung plus zwoelf Zeichen traegt - sonst eine. Und die
+   Beschriftungsspalte ist so breit wie die laengste Beschriftung,
+   nicht 13 Zeichen auf Verdacht.
+4. **Die Kopfzeile wurde mitten im Wort abgeschnitten** („SNES - 1995
+   - Rollen"). Jetzt werden nur so viele Teile aufgenommen, wie ganz
+   hineinpassen - ein halbes Wort ist schlechter als ein
+   weggelassenes. Und die Beschreibung bekommt die Tilde aus
+   `_beschreibung_zeichnen()`, wenn sie wegen `max_lines` endet.
+
+> Vier Befunde, die kein Test gefunden haette und jedes Auge sofort
+> sieht. Ein Bildschirm gehoert angesehen, bevor er ausgeliefert wird -
+> dafuer gibt es `screenshots_bauen.py`, und dafuer ist der Steckbrief
+> jetzt dort eingetragen.
+
+### Eine Falle im Test selbst: `get(` endet auf `t(`
+
+Die Pruefung „jeder benutzte Text existiert in beiden Sprachen" suchte
+mit `t\("..."` - und fand damit auch jedes `meta.get("genre")`,
+`zeit.get("seconds")` und `get("launches")`. Der Test verlangte
+danach Uebersetzungen fuer „genre" und „seconds" und war rot, obwohl
+nichts fehlte.
+
+Behoben mit einer Wortgrenze (`(?<![A-Za-z0-9_])t\(`) - und in
+`test_core_uebersicht.py` und `test_core_wahl_spiel.py` gleich mit,
+wo dasselbe Muster stand und nur zufaellig nichts getroffen hat.
+
+> Ein Muster ohne Wortgrenze prueft etwas anderes, als es zu pruefen
+> vorgibt.
+
+### Und eine feste Zahl, die zu fest war
+
+`test_cores.py` und `test_core_wahl_spiel.py` verlangten **genau
+drei** `CORES.aufloesen_spiel(` - die drei Startwege aus Build 310.
+Der Steckbrief zeigt, welche Fassung dieses Spiel starten wuerde, und
+fragt dafuer dieselbe Funktion. Damit waren es vier, und beide Tests
+waren rot, obwohl die Zusage unveraendert galt.
+
+Jetzt: **mindestens** drei Aufloesungen je Spiel (Anzeigestellen
+duerfen dazukommen), aber weiterhin **genau eine** `CORES.aufloesen(`
+im ganzen Frontend, und die muss im Auswahlbildschirm stehen. Das ist
+die eigentliche Zusage, und sie bleibt scharf: bliebe im Startweg ein
+alter Aufruf stehen, stuende dort eine 2.
+
+> Eine Zahl prueft nur dann etwas, wenn sie die Zusage trifft und
+> nicht die Gelegenheit.
+
+### Neue Pruefungen
+
+* **geaendert** `tools/test_cores.py` und
+  `tools/test_core_wahl_spiel.py` - siehe oben.
+* **geaendert** `tools/test_kontextmenue.py` - die Zeile "und zwar
+  ganz oben" prueft nicht mehr den Platz eins der Anleitung, sondern
+  die REIHENFOLGE: Steckbrief, dann Anleitung, dann die taeglichen
+  Schalter. Die Zusage war nie "die Anleitung ist die erste Zeile",
+  sondern "sie steht vor den taeglichen Schaltern". Dazu drei neue
+  Pruefungen und `spiel_info` in der Liste der Punkte mit eigenem
+  Zweig.
+* **neu** `tools/test_spiel_info.py` - 41 Pruefungen: die Seite
+  zeichnet auf **fuenf** Groessen ohne Fehler (320x240, 640x480,
+  1920x1080, hochkant 1080x1920 und sehr schmal 256x224); sie
+  zeichnet auch fuer ein Spiel, zu dem es **gar nichts** gibt, und
+  fuer einen sehr langen Titel; ein Ordner bekommt eine Meldung statt
+  einer leeren Seite; am Quelltext ist **kein** Nachladen und **kein**
+  Schreiben erlaubt; jede der neun Angaben kommt nachweislich aus
+  ihrer vorhandenen Funktion; der Menuepunkt steht **vor** Anleitung,
+  Favorit, durchgespielt und Ausblenden; und jeder Text existiert in
+  beiden Sprachen, mit genau der richtigen Zahl von Platzhaltern.

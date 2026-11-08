@@ -1553,6 +1553,7 @@ be a view, it would be a bug.
 **X on the pad, F1 on the keyboard** opens a list of what is possible
 right here:
 
+- **Game info** — the info page (see below)
 - Manual for this game (when there is one)
 - **Core build for this game…** (when there is more than one)
 - Mark as favourite / remove from favourites
@@ -1561,6 +1562,19 @@ right here:
 - Search, filter, jump to letter
 - Switch view
 - Random game, random favourite
+
+**Game info — the info page (build 311).** A page of its own for every
+game: the cover large on the left, title, system, year, genre and
+player count in the system colour on the right, with the description
+below. Underneath: developer, play time, launches, the system, **the
+core build that starts this game**, the file name and the markers
+(favourite, completed, manual available). Any button goes back.
+
+All of it was already there and simply never stood together on one
+page: the game data comes from the same source as the filter, the
+description from the same one as the gallery. **Anything a game has no
+data for gets no line at all** — "Developer: unknown" is worse than
+nothing. The page loads nothing and changes nothing.
 
 **Core build for this game (build 310).** When several builds of a core are on the card — the NeXT core ships four, with names like `scsi_dma_csr_fix` — this launches **one single game** with a different build, without switching the whole system over. The first line is always *automatic* and names what would apply instead; a `*` marks what applies now. It is remembered by the game's file path, not its name. If `update_all` clears the chosen build away, the game launches with the system choice again — the choice stays remembered and applies again once the file is back. The entry only appears when there is something to choose.
 

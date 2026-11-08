@@ -250,15 +250,23 @@ _qf = open(_FP, encoding="utf-8", errors="replace").read()
 _code = nur_code(_qf)
 _mit = len(re.findall(r"CORES\.aufloesen_spiel\(", _code))
 _ohne = len(re.findall(r"CORES\.aufloesen\(", _code))
-check("drei Aufrufe von aufloesen_spiel()", _mit == 3, "%d" % _mit)
-check("und genau einer von aufloesen() - der Auswahlbildschirm",
-      _ohne == 1,
-      "%d. Bliebe im STARTWEG noch ein alter Aufruf stehen, wuerde die "
-      "Wahl je Spiel dort stillschweigend nicht gelten - genau der "
-      "halb angewandte Fix aus Build 293" % _ohne)
+# MINDESTENS drei, nicht genau drei. Die drei Startwege sind die
+# Zusage; ANZEIGESTELLEN duerfen dazukommen, und mit Build 311 ist
+# genau das passiert: der Steckbrief zeigt, welche Fassung dieses
+# Spiel starten wuerde, und fragt dafuer dieselbe Funktion. Eine feste
+# Zahl haette dort rot gemeldet, obwohl die Zusage galt.
+check("mindestens drei Aufrufe von aufloesen_spiel()", _mit >= 3,
+      "%d" % _mit)
+# DAS IST DIE EIGENTLICHE ZUSAGE, und sie bleibt scharf: die
+# Systemaufloesung darf NUR im Auswahlbildschirm vorkommen. Bliebe im
+# Startweg ein alter Aufruf stehen, wuerde die Wahl je Spiel dort
+# stillschweigend nicht gelten - genau der halb angewandte Fix aus
+# Build 293. Dann stuende hier 2.
 _bs = nur_code(koerper(_qf, "core_spiel_bildschirm", "Frontend"))
-check("der Auswahlbildschirm ist der eine Aufrufer",
-      "CORES.aufloesen(" in _bs,
+check("genau eine Systemaufloesung im ganzen Frontend", _ohne == 1,
+      "%d" % _ohne)
+check("und die steht im Auswahlbildschirm",
+      _bs.count("CORES.aufloesen(") == 1,
       "er zeigt, was 'automatisch' bedeutet - und fragt dafuer "
       "dieselbe Funktion wie der Startweg")
 
@@ -304,7 +312,7 @@ check("und der Zweig behandelt die Wahl",
 print()
 print("Test 10: jeder benutzte Text existiert in beiden Sprachen")
 # ---------------------------------------------------------------------------
-_benutzt = sorted(set(re.findall(r't\(\s*"([a-z0-9_]+)"', _bs))
+_benutzt = sorted(set(re.findall(r'(?<![A-Za-z0-9_])t\(\s*"([a-z0-9_]+)"', _bs))
                   | {"ctx_core_spiel"})
 check("die Seite benutzt ueberhaupt Texte", len(_benutzt) >= 5,
       "%d: %r" % (len(_benutzt), _benutzt))

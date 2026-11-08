@@ -3567,6 +3567,12 @@ class Frontend:
             items = self._display_items()
             markiert = items[self.item_i] if items else None
             kind = markiert[1] if markiert else None
+            if kind == "game":
+                # GANZ OBEN, und ohne Bedingung: der Steckbrief
+                # funktioniert bei jedem Spiel. Was es zu einem Spiel
+                # nicht gibt, steht dort gar nicht erst - eine leere
+                # Zeile waere schlimmer als eine fehlende (Build 311).
+                eintraege.append((t("ctx_spiel_info"), "spiel_info"))
             if kind == "game" and self._anleitung_zum_eintrag(markiert):
                 # GANZ OBEN, und nur wenn es sie WIRKLICH gibt: ein
                 # Punkt, der bei neun von zehn Spielen "keine Anleitung
@@ -3617,6 +3623,237 @@ class Frontend:
         if wahl is None:
             return None
         return eintraege[wahl][1]
+
+    def spiel_info_bildschirm(self):
+        """Der Steckbrief eines Spiels (Build 311).
+
+        NUTZERWUNSCH vom 08.11., Prioritaet 4 seiner Liste - und sein
+        ausgewaehlter Entwurf 3 ("Hero") ist genau diese Seite:
+
+            "Jedes Spiel sollte eine eigene Informationsseite
+             bekommen: Cover, Spielbeschreibung und technische Daten,
+             Erscheinungsjahr, Entwickler, Spielerzahl, Spielzeit und
+             zuletzt gespielt, Anleitung."
+
+        JEDE EINZELNE ZUTAT WAR SCHON DA, und das ist der Grund, warum
+        diese Seite ueberhaupt in einen Build passt: das Cover liefert
+        _ansicht_cover(), die Daten get_meta() (Build 115/142), die
+        Beschreibung docs_synopsis() (Build 141), die Spielzeit
+        load_playtime(), die Anleitung _anleitung_zum_eintrag() (Build
+        263) und die startende Core-Fassung aufloesen_spiel() (Build
+        310). Gefehlt hat NUR eine Seite, die sie nebeneinander legt.
+
+        KEINE EINZIGE NEUE QUELLE, kein Netz, kein Scraper. Was hier
+        leer bleibt, ist auch anderswo leer - und bleibt dann
+        weg, statt als "unbekannt" eine Zeile zu belegen.
+
+        AUFBAU NACH ENTWURF 3: oben ein Band mit dem Cover links und
+        Titel, Kopfzeile und Beschreibung rechts, darunter die Fakten
+        in zwei Spalten. Das Band ist ein einziges Rechteck - es
+        kostet einmal und wird nicht gescrollt.
+
+        EINE LESESEITE OHNE BLAETTERN. Was nicht hinpasst, kuerzt
+        _wrap() sichtbar ab (Tilde). Eine Seite, die man scrollen
+        muss, waere ein zweiter Bedienweg fuer etwas, das man im
+        Vorbeigehen ansieht."""
+        items = self._display_items()
+        markiert = items[self.item_i] if items else None
+        if not markiert or markiert[1] != "game":
+            self._force_full_redraw = True
+            self.draw(message=t("info_kein_spiel"))
+            return
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        ox = max(4, W * OVERSCAN_X // 100)
+        oy = max(4, H * OVERSCAN_Y // 100)
+        kat_syskey = self.cats[self.cat_i][2] if self.cats else None
+        syskey = self._item_syskey(markiert, kat_syskey)
+        label = markiert[0]
+        arg = markiert[2] if len(markiert) > 2 else None
+        rom = arg[0] if arg else ""
+        rbf = arg[3] if arg and len(arg) > 3 else ""
+        akzent = accent_for(syskey)
+
+        # --- alles einsammeln, BEVOR gezeichnet wird ---------------
+        # Erst rechnen, dann malen: ein Lesefehler mitten im Bild
+        # haette eine halb gezeichnete Seite hinterlassen.
+        try:
+            meta = get_meta(syskey, label) or {}
+        except Exception:                                # noqa: BLE001
+            meta = {}
+        try:
+            text = docs_synopsis(syskey, label, current_lang()) or ""
+        except Exception:                                # noqa: BLE001
+            text = ""
+        try:
+            zeit = (load_playtime() or {}).get(label) or {}
+        except Exception:                                # noqa: BLE001
+            zeit = {}
+        sekunden = int(zeit.get("seconds") or 0)
+        starts = int(zeit.get("launches") or 0)
+        try:
+            core = CORES.aufloesen_spiel(rom, syskey, rbf) or rbf
+        except Exception:                                # noqa: BLE001
+            core = rbf
+        fav = label in getattr(self, "_favorites_set", ())
+        done = label in getattr(self, "_completed_set", ())
+        try:
+            anleitung = bool(self._anleitung_zum_eintrag(markiert))
+        except Exception:                                # noqa: BLE001
+            anleitung = False
+
+        fakten = []            # (Beschriftung, Wert)
+        _jahr = str(meta.get("year") or "").strip()
+        if _jahr:
+            fakten.append((t("info_jahr"), _jahr))
+        _genre = str(meta.get("genre") or "").strip()
+        if _genre:
+            fakten.append((t("info_genre"), FILTER.genre_kurz(_genre)))
+        _dev = FILTER.entwickler_von(meta)
+        if _dev:
+            fakten.append((t("info_entwickler"), _dev))
+        _spieler = str(meta.get("players") or "").strip()
+        if _spieler:
+            fakten.append((t("info_spieler"), _spieler))
+        if sekunden > 0 or starts > 0:
+            fakten.append((t("info_spielzeit"),
+                           _format_seconds_short(sekunden)))
+            fakten.append((t("info_starts"), str(starts)))
+        fakten.append((t("info_system"),
+                       system_display_name(syskey) if syskey
+                       else t("info_unbekannt")))
+        if core:
+            fakten.append((t("info_core"), str(core).rsplit("/", 1)[-1]))
+        if rom:
+            fakten.append((t("info_datei"), os.path.basename(rom)))
+        _marken = []
+        if fav:
+            _marken.append(t("info_favorit"))
+        if done:
+            _marken.append(t("info_durchgespielt"))
+        if anleitung:
+            _marken.append(t("info_anleitung"))
+        if _marken:
+            fakten.append((t("info_marken"), "  ".join(_marken)))
+
+        # --- zeichnen ----------------------------------------------
+        fb.clear(C_BG)
+        band_h = max(40 * s, (H - 2 * oy) * 48 // 100)
+        fb.rect(0, 0, W, oy + band_h, C_PANEL)
+        # Eine Akzentlinie als Abschluss des Bandes: ein Rechteck,
+        # 3 Punkte hoch. Sie traegt die Systemfarbe und ist das
+        # einzige farbige Element der Seite - mehr waere Dekoration.
+        fb.rect(0, oy + band_h, W, max(2, s), akzent)
+
+        cov_b = max(24 * s, (W - 2 * ox) * 26 // 100)
+        cov_h = max(24 * s, band_h - 6 * s)
+        cx, cy = ox, oy + 3 * s
+        art, _verz = self._ansicht_cover(markiert, kat_syskey, cov_b, cov_h)
+        if art:
+            aw, ah, pix = art
+            ax = cx + max(0, (cov_b - aw) // 2)
+            ay = cy + max(0, (cov_h - ah) // 2)
+            self.blit(ax, ay, aw, ah, pix)
+        else:
+            self._kachel_platzhalter(cx, cy, cov_b, cov_h, label, s, False)
+
+        tx = cx + cov_b + 6 * s
+        tb = max(8 * 8 * s, W - ox - tx)
+        ty = cy
+        # Titel zweizeilig - lange Namen sind in dieser Sammlung die
+        # Regel ("Donkey Kong Country 2 - Diddy's Kong Quest").
+        for zeile in self._wrap(label, max(8, tb // (8 * 2 * s)),
+                                max_lines=2):
+            fb.text(tx, ty, zeile, 2 * s, C_TITLE, C_PANEL)
+            ty += 18 * s
+        kopf = [x for x in (system_display_name(syskey) if syskey else "",
+                            _jahr, FILTER.genre_kurz(_genre) if _genre
+                            else "",
+                            (t("info_spieler_kurz", _spieler)
+                             if _spieler else ""))
+                if x]
+        if kopf:
+            # NUR SO VIELE TEILE, WIE GANZ HINPASSEN. Abgeschnitten
+            # stand auf der Roehre "SNES - 1995 - Rollen" - ein halbes
+            # Wort ist schlechter als ein weggelassenes.
+            _max_z = max(8, tb // (8 * s))
+            _zeile = ""
+            for _teil in kopf:
+                _probe = (_zeile + "  -  " + _teil) if _zeile else _teil
+                if len(_probe) > _max_z:
+                    break
+                _zeile = _probe
+            if _zeile:
+                fb.text(tx, ty, _zeile, s, akzent, C_PANEL)
+                ty += 14 * s
+        if text:
+            maxc = max(12, tb // (8 * s))
+            platz = max(0, (oy + band_h - 4 * s - ty) // (11 * s))
+            if platz >= 2:
+                _zeilen = self._wrap(text, maxc, max_lines=platz)
+                # ABGESCHNITTEN SICHTBAR MACHEN - dieselbe Behandlung
+                # wie in _beschreibung_zeichnen(): _wrap() haengt seine
+                # Tilde nur an, wenn die LETZTE Zeile zu lang war.
+                # Bricht es wegen max_lines mittendrin ab, endet der
+                # Text stillschweigend auf einem beliebigen Wort, und
+                # man haelt ihn fuer vollstaendig. Auf der Roehre stand
+                # beim ersten Bild "... um eine Katastrophe" und fertig.
+                if _zeilen and len(" ".join(_zeilen)) < len(text):
+                    _letzte = _zeilen[-1]
+                    if not _letzte.endswith("~"):
+                        if len(_letzte) + 1 > maxc:
+                            _letzte = _letzte[:max(1, maxc - 1)]
+                        _zeilen[-1] = _letzte + "~"
+                for zeile in _zeilen:
+                    # MIT HINTERGRUND. Der Textcache malt sonst seinen
+                    # eigenen Kasten in C_BG unter jede Zeile - auf dem
+                    # Band sind das lauter dunkle Rechtecke hinter den
+                    # Woertern. Beim ersten Bild genau so passiert.
+                    fb.text(tx, ty, zeile, s, C_TEXT, C_PANEL)
+                    ty += 11 * s
+
+        # --- die Fakten, zwei Spalten ------------------------------
+        fy = oy + band_h + 6 * s
+        zeilen_h = 14 * s
+        passt = max(1, (H - oy - fy) // zeilen_h)
+        # DIE BESCHRIFTUNGSSPALTE IST SO BREIT WIE DIE LAENGSTE
+        # BESCHRIFTUNG, nicht 13 Zeichen auf Verdacht. Auf der Roehre
+        # blieben davon fuenf Zeichen fuer den Wert uebrig, und
+        # "Rollenspiel" lief in die zweite Spalte hinein.
+        lab_b = (max(len(n) for n, _w in fakten) + 2) * 8 * s
+        voll = W - 2 * ox
+        # ZWEI SPALTEN NUR, WENN SIE AUCH ZWEI SIND. Auf 320x240 ist
+        # eine halbe Zeile zu schmal fuer Beschriftung UND Wert -
+        # dort steht alles untereinander, und das ist richtig so.
+        spalten = 2 if (voll // 2) >= lab_b + 12 * 8 * s else 1
+        sp_b = voll // spalten
+        # AUFTEILEN, NICHT VOLLLAUFEN LASSEN. Die erste Fassung fuellte
+        # Spalte eins bis zum unteren Rand - bei acht Fakten stand
+        # alles links untereinander und die halbe Seite war leer.
+        if spalten == 1 or len(fakten) <= 6:
+            platz_zeilen = passt
+        else:
+            platz_zeilen = max(1, min(passt, (len(fakten) + 1) // 2))
+        for i, (name, wert) in enumerate(fakten):
+            spalte = i // platz_zeilen
+            if spalte > spalten - 1:
+                break
+            x = ox + spalte * sp_b
+            y = fy + (i % platz_zeilen) * zeilen_h
+            if y + zeilen_h > H - oy:
+                break
+            fb.text(x, y, name, s, C_DIM)
+            _max = max(4, (sp_b - lab_b - 8 * s) // (8 * s))
+            fb.text(x + lab_b, y, str(wert)[:_max], s, C_TEXT)
+        fb.flip()
+
+        while True:
+            akt = self.inp.read_action(timeout=1.0)
+            if akt is not None:
+                break
+        self._force_full_redraw = True
+        self.draw()
 
     def _core_fassungen_zum_eintrag(self, item):
         """Welche Core-Fassungen kommen fuer DIESES Spiel in Frage?
@@ -23244,6 +23481,15 @@ class Frontend:
                     if gewaehlt == "verstecken":
                         meldung = self._kontext_verstecken()
                         self.draw(message=meldung)
+                        continue
+                    if gewaehlt == "spiel_info":
+                        try:
+                            self.spiel_info_bildschirm()
+                        except Exception:                # noqa: BLE001
+                            LOG("spiel_info_bildschirm CRASH:\n"
+                                + traceback.format_exc())
+                            self._force_full_redraw = True
+                            self.draw()
                         continue
                     if gewaehlt == "core_spiel":
                         try:

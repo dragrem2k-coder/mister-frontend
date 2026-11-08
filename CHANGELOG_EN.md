@@ -13,6 +13,19 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **New: the info page — one per game.** It sits at the top of the
+  context menu (X on the pad, F1): the cover large on the left, title,
+  system, year, genre and player count in the system colour on the
+  right, with the description below; underneath, developer, play time,
+  launches, the core build that starts this game, and whether a manual
+  exists. Any button goes back. **Not a single new source** — all of it
+  was already there, it just never stood together on one page
+  (build 311).
+- **And what is not on it.** Anything a game has no data for gets no
+  line at all: "Developer: unknown" is worse than nothing. The page
+  loads nothing and writes nothing — it only reads what is already in
+  memory (build 311).
+
 - **New: a core build for *one specific* game.** The context menu (X on
   the pad, F1) now has "Core build for this game…" at the top whenever
   more than one build of that core is on the card. A single game can

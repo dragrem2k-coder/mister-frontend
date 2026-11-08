@@ -13,6 +13,19 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Neu: der Steckbrief — eine eigene Infoseite je Spiel.** Im
+  Kontextmenü (X am Pad, F1) steht sie ganz oben: links das Cover
+  groß, rechts Titel, System, Jahr, Genre und Spielerzahl in der
+  Systemfarbe und darunter die Beschreibung; unten Entwickler,
+  Spielzeit, Starts, die Core-Fassung, die dieses Spiel startet, und
+  ob es eine Anleitung gibt. Eine beliebige Taste geht zurück.
+  **Keine einzige neue Quelle** — alles davon war längst da und stand
+  nur nie zusammen auf einer Seite (Build 311).
+- **Und was dort nicht steht.** Was es zu einem Spiel nicht gibt,
+  bekommt auch keine Zeile: „Entwickler: unbekannt" ist schlechter als
+  gar nichts. Die Seite lädt nichts nach und schreibt nichts — sie
+  liest nur, was ohnehin im Speicher liegt (Build 311).
+
 - **Neu: eine Core-Fassung für *genau ein* Spiel.** Im Kontextmenü (X
   am Pad, F1) steht jetzt ganz oben „Core-Fassung für dieses Spiel…",
   sobald mehr als eine Fassung des Cores auf der Karte liegt. Damit

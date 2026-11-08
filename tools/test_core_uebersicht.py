@@ -276,7 +276,7 @@ print("Test 8: jeder benutzte Text existiert in beiden Sprachen")
 # ---------------------------------------------------------------------------
 # Eine fehlende Uebersetzung faellt sonst erst auf dem Fernseher auf -
 # und dort steht dann der Schluessel selbst.
-_benutzt = sorted(set(re.findall(r't\(\s*"([a-z0-9_]+)"', _meth)))
+_benutzt = sorted(set(re.findall(r'(?<![A-Za-z0-9_])t\(\s*"([a-z0-9_]+)"', _meth)))
 check("die Seite benutzt ueberhaupt Texte", len(_benutzt) >= 6,
       "%d: %r" % (len(_benutzt), _benutzt))
 _fehlt = [k for k in _benutzt if k not in TR.TRANSLATIONS]

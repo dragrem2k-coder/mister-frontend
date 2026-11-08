@@ -207,14 +207,19 @@ check("das Modul ist eingebunden", "import fe.cores as CORES" in code)
 # stehen, wuerde die Wahl je Spiel dort stillschweigend nicht gelten -
 # genau der halb angewandte Fix aus Build 293. Deshalb werden BEIDE
 # Zahlen geprueft.
-check("es gibt genau drei Aufloesungen im Startweg",
-      code.count("CORES.aufloesen_spiel(") == 3,
+# MINDESTENS drei, nicht genau drei: die drei Startwege sind die
+# Zusage, Anzeigestellen duerfen dazukommen. Build 311 hat genau das
+# getan (der Steckbrief zeigt die startende Fassung), und eine feste
+# Zahl war daraufhin rot, obwohl die Zusage galt.
+check("es gibt mindestens drei Aufloesungen im Startweg",
+      code.count("CORES.aufloesen_spiel(") >= 3,
       "%d (ohne Kommentare gezaehlt)"
       % code.count("CORES.aufloesen_spiel("))
 check("und genau eine Systemaufloesung daneben",
       code.count("CORES.aufloesen(") == 1,
       "%d - das ist der Auswahlbildschirm aus Build 310, der zeigt, "
-      "was 'automatisch' bedeutet" % code.count("CORES.aufloesen("))
+      "was 'automatisch' bedeutet. Mehr hiesse: irgendwo wird noch "
+      "ohne die Wahl je Spiel aufgeloest" % code.count("CORES.aufloesen("))
 
 # Der RA-Core muss Vorrang behalten - er ist ja gerade ausdruecklich
 # gewaehlt worden.

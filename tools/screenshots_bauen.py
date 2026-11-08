@@ -458,6 +458,25 @@ def main():
         except Exception as e:                           # noqa: BLE001
             print("    (%s uebersprungen: %s)" % (ruf, e))
 
+    print("  Steckbrief (Build 311):")
+    # Dieselbe Tasten-Attrappe wie beim Trophaeenraum: die Seite
+    # zeichnet und wartet dann auf eine Taste. Gezeichnet ist sie zu
+    # dem Zeitpunkt bereits (fb.flip() steht davor).
+    for name, breite, hoehe in (("preview_11_spiel_info.png", 1920, 1080),
+                                ("preview_crt_4_spiel_info.png", 320, 240)):
+        f = spieleliste(breite, hoehe)
+        f.inp.read_action = lambda *a, **k: "ok"
+        # UND draw() STILLLEGEN. Anders als der Trophaeenraum zeichnet
+        # der Steckbrief beim Verlassen die Liste wieder - im Puffer
+        # stuende sonst genau das, was man NICHT sehen will. Beim
+        # ersten Anlauf war das Bild die Spieleliste.
+        f.draw = lambda *a, **k: None
+        try:
+            f.spiel_info_bildschirm()
+            speichern(f.fb, name)
+        except Exception as e:                           # noqa: BLE001
+            print("    (uebersprungen: %s)" % e)
+
     print("  CRT 320x240 - dort entscheidet sich, ob eine Ansicht taugt:")
     for ansicht, name in (("liste", "preview_crt_1_liste.png"),
                           ("raster", "preview_crt_2_raster.png"),

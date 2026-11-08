@@ -1326,6 +1326,29 @@ TRANSLATIONS = {
         "en": "Cores: choose a version per system",
         "de": "Cores: Fassung je System waehlen"},
     "cores_titel": {"en": "Cores", "de": "Cores"},
+    # Build 311: der Steckbrief eines Spiels. Siehe
+    # spiel_info_bildschirm() in frontend.py - keine neue Quelle, nur
+    # eine Seite, die zusammenlegt, was ohnehin da ist.
+    "ctx_spiel_info": {
+        "en": "Game info", "de": "Spiel-Infos"},
+    "info_kein_spiel": {
+        "en": "Only games have an info page",
+        "de": "Eine Infoseite gibt es nur zu Spielen"},
+    "info_jahr": {"en": "Year", "de": "Jahr"},
+    "info_genre": {"en": "Genre", "de": "Genre"},
+    "info_entwickler": {"en": "Developer", "de": "Entwickler"},
+    "info_spieler": {"en": "Players", "de": "Spieler"},
+    "info_spieler_kurz": {"en": "%s players", "de": "%s Spieler"},
+    "info_spielzeit": {"en": "Play time", "de": "Spielzeit"},
+    "info_starts": {"en": "Launches", "de": "Starts"},
+    "info_system": {"en": "System", "de": "System"},
+    "info_core": {"en": "Starts with", "de": "Startet mit"},
+    "info_datei": {"en": "File", "de": "Datei"},
+    "info_marken": {"en": "Marked", "de": "Markiert"},
+    "info_favorit": {"en": "favourite", "de": "Favorit"},
+    "info_durchgespielt": {"en": "completed", "de": "durchgespielt"},
+    "info_anleitung": {"en": "manual", "de": "Anleitung"},
+    "info_unbekannt": {"en": "unknown", "de": "unbekannt"},
     # Build 310: eine Core-Fassung fuer GENAU EIN Spiel. Siehe
     # core_spiel_bildschirm() in frontend.py und den Kopf von
     # fe/cores.py - der Schluessel ist der ROM-Pfad, nicht der Name.

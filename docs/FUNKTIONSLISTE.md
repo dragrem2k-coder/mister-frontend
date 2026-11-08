@@ -170,6 +170,7 @@ Oeffnet sich mit **Y** (oder der Menue-Taste) auf einem Eintrag.
 Was darin steht, haengt davon ab, worauf man steht - ein Spiel,
 ein Ordner oder eine Kategorie.
 
+- Spiel-Infos
 - Anleitung anzeigen
 - Core-Fassung fuer dieses Spiel...
 - Favorit entfernen

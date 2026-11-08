@@ -1845,6 +1845,7 @@ Ansicht, sondern ein Fehler.
 **X am Pad, F1 auf der Tastatur** öffnet eine Liste mit dem, was an
 dieser Stelle gerade geht:
 
+- **Spiel-Infos** — der Steckbrief (siehe unten)
 - Anleitung zum Spiel (wenn es eine gibt)
 - **Core-Fassung für dieses Spiel…** (wenn es mehr als eine gibt)
 - Als Favorit merken / Favorit entfernen
@@ -1853,6 +1854,20 @@ dieser Stelle gerade geht:
 - Suchen, Filter, zu Buchstabe springen
 - Ansicht wechseln
 - Zufälliges Spiel, zufälliger Favorit
+
+**Spiel-Infos — der Steckbrief (Build 311).** Eine eigene Seite zu
+jedem Spiel: links das Cover groß, rechts Titel, System, Jahr, Genre
+und Spielerzahl in der Systemfarbe, darunter die Beschreibung. Unten
+Entwickler, Spielzeit, Starts, das System, **die Core-Fassung, die
+dieses Spiel startet**, der Dateiname und die Markierungen (Favorit,
+durchgespielt, Anleitung vorhanden). Eine beliebige Taste geht zurück.
+
+Alles davon war schon da und stand nur nie zusammen auf einer Seite:
+die Spieldaten kommen aus derselben Quelle wie der Filter, die
+Beschreibung aus derselben wie in der Galerie. **Was es zu einem Spiel
+nicht gibt, bekommt auch keine Zeile** — „Entwickler: unbekannt" ist
+schlechter als gar nichts. Die Seite lädt nichts nach und ändert
+nichts.
 
 **Core-Fassung für dieses Spiel (Build 310).** Liegen mehrere Fassungen
 eines Cores auf der Karte — beim NeXT-Core sind es vier, mit Namen wie

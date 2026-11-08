@@ -22,8 +22,10 @@ Plain standard Python — not a single extra dependency on the MiSTer.
   <img src="screenshots/preview_10_liste_galerie.png" width="280" alt="Gallery view">
   &nbsp;
   <img src="screenshots/preview_5_trophaeenraum.png" width="280" alt="Trophy room">
+  &nbsp;
+  <img src="screenshots/preview_11_spiel_info.png" width="280" alt="Game info page">
 </p>
-<p align="center"><sub>List, grid, gallery — and the trophy room. Every image rendered straight from the program code (<code>tools/screenshots_bauen.py</code>); cover art and save data are placeholders.</sub></p>
+<p align="center"><sub>List, grid, gallery, trophy room — and a game’s info page. Every image rendered straight from the program code (<code>tools/screenshots_bauen.py</code>); cover art and save data are placeholders.</sub></p>
 
 ---
 

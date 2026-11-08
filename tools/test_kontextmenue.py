@@ -194,8 +194,23 @@ a_anl = Attrappe(1, [SPIEL], anleitung="/media/fat/docs/SNES/x.pdf")
 a_anl.kontextmenue()
 check("gibt es eine, steht sie drin",
       TR.t("ctx_anleitung") in a_anl.gezeigt, str(a_anl.gezeigt))
-check("und zwar ganz oben",
-      a_anl.gezeigt[0] == TR.t("ctx_anleitung"), str(a_anl.gezeigt[:2]))
+# BUILD 311: GANZ OBEN STEHT JETZT DER STECKBRIEF, und die Anleitung
+# direkt darunter. Die Zusage dieser Zeile war nie "die Anleitung ist
+# die erste Zeile", sondern "sie steht VOR den taeglichen Schaltern" -
+# ein Punkt, der bei neun von zehn Spielen fehlt, soll oben auffallen,
+# wenn es ihn gibt. Geprueft wird deshalb die Reihenfolge und nicht
+# der Platz eins.
+check("sie steht direkt unter dem Steckbrief",
+      a_anl.gezeigt.index(TR.t("ctx_anleitung"))
+      == a_anl.gezeigt.index(TR.t("ctx_spiel_info")) + 1,
+      str(a_anl.gezeigt[:3]))
+check("und vor dem Favoriten",
+      a_anl.gezeigt.index(TR.t("ctx_anleitung"))
+      < a_anl.gezeigt.index(TR.t("ctx_fav_an")),
+      str(a_anl.gezeigt[:4]))
+check("der Steckbrief ist der erste Punkt",
+      a_anl.gezeigt[0] == TR.t("ctx_spiel_info"),
+      str(a_anl.gezeigt[:2]))
 o_anl = Attrappe(1, [ORDNER], anleitung="/media/fat/docs/SNES/x.pdf")
 o_anl.kontextmenue()
 check("bei einem ORDNER gibt es sie nie",
@@ -257,10 +272,11 @@ namen = set(re.findall(r'eintraege\.append\(\s*\([^,]+,\s*"([a-z_]+)"\)',
 namen |= set(re.findall(r'"([a-z_]+)"\)\)', _quelle))
 namen = {n for n in namen if not n.startswith("ctx_")}
 EIGENE = {"verstecken", "buchstabe", "zufall_fav", "anleitung",
-          "core_spiel"}
-# "core_spiel" (Build 310) steht aus demselben Grund hier wie
-# "anleitung": es gibt keine freie Taste mehr, der Punkt lebt
-# ausschliesslich im Kontextmenue und hat dort seinen eigenen Zweig.
+          "core_spiel", "spiel_info"}
+# "core_spiel" (Build 310) und "spiel_info" (Build 311) stehen aus
+# demselben Grund hier wie "anleitung": es gibt keine freie Taste
+# mehr, beide leben ausschliesslich im Kontextmenue und haben dort
+# ihren eigenen Zweig.
 # "anleitung" (Build 263) steht hier und nicht oben, weil es KEINE
 # Tastenaktion ist: es gibt keine freie F-Taste mehr, der Punkt
 # lebt ausschliesslich im Kontextmenue und hat dort seinen

@@ -22,8 +22,10 @@ Standard-Python, keine einzige zusätzliche Abhängigkeit auf dem MiSTer.
   <img src="screenshots/preview_10_liste_galerie.png" width="280" alt="Galerieansicht">
   &nbsp;
   <img src="screenshots/preview_5_trophaeenraum.png" width="280" alt="Trophaeenraum">
+  &nbsp;
+  <img src="screenshots/preview_11_spiel_info.png" width="280" alt="Spiel-Steckbrief">
 </p>
-<p align="center"><sub>Liste, Raster, Galerie — und der Trophäenraum. Alle Bilder direkt aus dem Programmcode gerendert (<code>tools/screenshots_bauen.py</code>), Boxart und Spielstände sind Platzhalter.</sub></p>
+<p align="center"><sub>Liste, Raster, Galerie, Trophäenraum — und der Steckbrief eines Spiels. Alle Bilder direkt aus dem Programmcode gerendert (<code>tools/screenshots_bauen.py</code>), Boxart und Spielstände sind Platzhalter.</sub></p>
 
 ---
 
