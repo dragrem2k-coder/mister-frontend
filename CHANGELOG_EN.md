@@ -13,6 +13,28 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **New: core overview in the system menu — what is installed, and how
+  old is it?** A read-only page listing *every* installed core with its
+  version and its age in days, sortable by age, name or folder (OK
+  switches). Anything older than a year is highlighted — because that
+  is the question you open this page with. It sits right below the core
+  selection: there you pick a version, here you see which ones you have
+  at all (build 309).
+- **And what was deliberately *not* built.** Showing "update available"
+  would mean evaluating the MiSTer downloader's databases and
+  re-implementing its version logic — exactly the second source of
+  truth the frontend has ruled out since build 174. A display that says
+  "update available" and is wrong is worse than none. The overview
+  therefore reads **only the file names on your own card**, and says so
+  on the page (build 309).
+- **Bench 20 confirmed build 307 on the device.** The new section M
+  delivered on its first run: on a direction change mid-burst it
+  previously took up to **424 ms** for the other direction to take
+  effect — now **81 ms**. Six alternating rounds with 39 key presses:
+  39 draw steps in 1394.6 ms before, **8 in 296.7 ms** now. And across
+  all 18 runs the distance travelled matched the key count exactly:
+  **not a single press was lost** (build 308, measured with bench 20).
+
 - **The bench now presses keys itself — and measures where the stalls
   come from.** User request: *"I want you to build key presses into the
   bench and scroll the list view 5-8 times down, 5-8 times up,

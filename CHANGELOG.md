@@ -13,6 +13,29 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Neu: Core-Übersicht im Systemmenü — was liegt drauf, und wie alt
+  ist es?** Eine Leseseite mit *allen* installierten Cores, ihrer
+  Fassung und ihrem Alter in Tagen, sortierbar nach Alter, Name oder
+  Ordner (OK wechselt). Alles, was älter als ein Jahr ist, wird farbig
+  hervorgehoben — denn das ist die Frage, mit der man diese Seite
+  öffnet. Sie steht direkt unter der Core-Wahl: dort wählt man eine
+  Fassung, hier sieht man, welche man überhaupt hat (Build 309).
+- **Und was dabei bewusst *nicht* gebaut wurde.** „Updates verfügbar"
+  anzuzeigen hieße, die Datenbanken des MiSTer-Downloaders auszuwerten
+  und ihre Versionslogik nachzubauen — genau die zweite Quelle der
+  Wahrheit, die das Frontend seit Build 174 ausschließt. Eine Anzeige,
+  die „Update verfügbar" sagt und daneben liegt, ist schlechter als
+  keine. Die Übersicht liest deshalb **nur die Dateinamen auf der
+  eigenen Karte** und sagt das auf der Seite auch dazu (Build 309).
+- **Bench 20 hat Build 307 am Gerät bestätigt.** Der neue Abschnitt M
+  hat beim ersten Lauf geliefert: beim Richtungswechsel im Stoß
+  dauerte es vorher bis zu **424 ms**, bis die andere Richtung wirkte
+  — jetzt **81 ms**. Sechs Runden mit 39 Tastendrücken: vorher 39
+  Zeichenschritte in 1394,6 ms, jetzt **8 in 296,7 ms**. Und in allen
+  18 Durchgängen stimmte der zurückgelegte Weg auf den Eintrag genau:
+  **kein einziger Tastendruck ist verlorengegangen** (Build 308,
+  gemessen mit Bench 20).
+
 - **Der Bench drückt jetzt selbst — und misst, wo die Hänger
   herkommen.** Nutzerwunsch: *„ich möchte das du in bench
   tastendrücke mit einbaust und damit die listenansicht durchscrollst

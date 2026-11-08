@@ -553,6 +553,11 @@ def system_items(music_enabled=None, music_source="mp3", music_station="",
             (zaparoo_label, "zaparoo", None),
             *_core_neu_eintraege,
             (t("sys_cores"), "cores", None),
+            # Build 309: der volle Bestand mit Alter. Direkt unter der
+            # Core-Wahl, denn es ist dieselbe Frage von der anderen
+            # Seite: dort waehlt man eine Fassung, hier sieht man,
+            # welche man ueberhaupt hat und wie alt sie sind.
+            (t("sys_core_uebersicht"), "core_uebersicht", None),
             # Build 213: update_all starten. Direkt neben der
             # Core-Wahl, denn das ist derselbe Themenbereich - hier
             # waehlt man eine Fassung, dort holt man neue. Die

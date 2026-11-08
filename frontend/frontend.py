@@ -17020,6 +17020,153 @@ class Frontend:
         self._force_full_redraw = True
         self.draw()
 
+    def core_uebersicht_bildschirm(self):
+        """Welche Cores liegen auf der Karte - und wie alt sind sie?
+        (Build 309)
+
+        NUTZERWUNSCH vom 08.11., aus einer Liste von sieben Punkten:
+        "Verbesserungen bei Core-Auswahl und Core-Verwaltung" und
+        "Core Updates mit Anzeige verfuegbarer Aktualisierungen".
+
+        DER ZWEITE WUNSCH IST NICHT EHRLICH ZU BAUEN, und das steht
+        seit Build 250 im Kopf von fe/corestand.py, mit der
+        Begruendung aus fe/cores.py: dafuer muesste das Frontend die
+        Datenbanken des MiSTer-Downloaders auswerten und ihre
+        Versionslogik nachbauen - genau die zweite Quelle der
+        Wahrheit, die fe/cores.py ausschliesst. Eine Anzeige, die
+        "Update verfuegbar" sagt und daneben liegt, ist schlechter als
+        keine.
+
+        WAS SEHR WOHL GEHT, ist die Frage, die praktisch
+        dahintersteckt: WELCHE MEINER CORES SIND ALT? Die Antwort
+        steht in den Dateinamen auf seiner eigenen Karte, und ein Core
+        von 2021 neben lauter Cores von 2026 sagt genug.
+
+        WARUM DIESE SEITE NEBEN cores_bildschirm() STEHT und nicht
+        darin: die alte Seite zeigt ABSICHTLICH nur Systeme mit
+        MEHREREN Fassungen ("eine Liste mit fuenfzig Zeilen, bei denen
+        ueberall 'automatisch' steht, waere keine Verwaltung, sondern
+        eine Tapete"). Diese hier will das Gegenteil - den vollen
+        Bestand. Zwei Fragen, zwei Seiten; sie in eine zu quetschen
+        haette beide verschlechtert.
+
+        Eine reine Leseseite: hoch/runter blaettert, links/rechts
+        seitenweise, OK wechselt die Sortierung, alles andere geht
+        zurueck. Geaendert wird nichts - deshalb gibt es auch nichts
+        zu speichern."""
+        fb = self.fb
+        W, H = fb.width, fb.height
+        s = _skala(W, H)
+        ox, oy = 12 * s, 10 * s
+        try:
+            alle = CSTAND.uebersicht()
+        except Exception:                                # noqa: BLE001
+            LOG("core_uebersicht CRASH:\n" + traceback.format_exc())
+            alle = []
+        if not alle:
+            self._force_full_redraw = True
+            self.draw(message=t("coreueb_leer"))
+            return
+        kopf = CSTAND.bestand(alle)
+        # Die Ordner in der Reihenfolge, in der fe/cores.py sie sucht -
+        # nicht alphabetisch. Wer die Karte kennt, erwartet sie so.
+        _ordner_text = "  ".join(
+            "%s %d" % (o, kopf["ordner"][o])
+            for o in CORES.CORE_ORDNER if kopf["ordner"].get(o))
+
+        def _datum_text(d):
+            return "%04d-%02d-%02d" % d if d else t("coreueb_ohne_datum")
+
+        def _alter_text(tage):
+            if tage is None:
+                return ""
+            if tage <= 0:
+                return t("heute")
+            return t("vor_tagen", tage)
+
+        # DIE DREI SCHLUESSEL STEHEN AUSGESCHRIEBEN DA, und das ist
+        # kein Zufall: hier stand zuerst t("coreueb_sort_" + art), und
+        # ein so zusammengesetzter Schluessel ist von aussen nicht
+        # auffindbar. tools/test_core_uebersicht.py prueft, dass jeder
+        # benutzte Text in beiden Sprachen existiert - und genau diese
+        # drei haette es nie gesehen. Eine fehlende Uebersetzung faellt
+        # sonst erst auf dem Fernseher auf, und dort steht dann der
+        # Schluessel selbst.
+        arten = (("alter", t("coreueb_sort_alter")),
+                 ("name", t("coreueb_sort_name")),
+                 ("ordner", t("coreueb_sort_ordner")))
+        art_i = 0
+        erste = 0
+        zeilen = CSTAND.sortiert(alle, arten[art_i][0])
+        while True:
+            fb.clear(C_BG)
+            fb.text(ox, oy, t("coreueb_titel"), 2 * s, C_TITLE)
+            fb.text(ox, oy + 20 * s,
+                    t("coreueb_bestand", kopf["gesamt"]), s, C_TEXT)
+            if _ordner_text:
+                fb.text(ox, oy + 31 * s, _ordner_text, s, C_DIM)
+            y = oy + 48 * s
+            platz = max(1, (H - oy - y - 26 * s) // (14 * s))
+            erste = max(0, min(erste, max(0, len(zeilen) - platz)))
+            for i in range(erste, min(erste + platz, len(zeilen))):
+                e = zeilen[i]
+                # DIE FARBE IST DIE AUSKUNFT. Ein Core, der aelter als
+                # ein Jahr ist, faellt auf - und genau das ist der
+                # Grund, warum jemand diese Seite oeffnet. Ohne Datum
+                # bleibt er stumpf: unbekannt ist nicht alt.
+                _alt = e["alter"]
+                if _alt is None:
+                    _farbe = C_DIM
+                elif _alt >= 365:
+                    _farbe = accent_for(None)
+                else:
+                    _farbe = C_TEXT
+                fb.text(ox, y, e["ordner"], s, C_DIM)
+                fb.text(ox + 11 * 8 * s, y, e["kopf"], s, _farbe)
+                _rechts = "%s  %s" % (_datum_text(e["datum"]),
+                                      _alter_text(_alt))
+                _rw = len(_rechts) * 8 * s
+                fb.text(max(ox, W - ox - _rw - 2 * s), y, _rechts, s,
+                        _farbe if _alt is not None and _alt >= 365
+                        else C_DIM)
+                y += 14 * s
+
+            _von = min(erste + 1, len(zeilen))
+            fb.text(ox, H - oy - 26 * s,
+                    t("coreueb_fuss", _von,
+                      min(erste + platz, len(zeilen)), len(zeilen),
+                      arten[art_i][1]), s, C_DIM)
+            _maxc = max(10, (W - 2 * ox) // (8 * s))
+            for _i, _z in enumerate(self._wrap(t("coreueb_hinweis"),
+                                               _maxc, max_lines=2)):
+                fb.text(ox, H - oy - 13 * s + _i * 11 * s, _z, s, C_DIM)
+            fb.flip()
+
+            akt = self.inp.read_action(timeout=1.0)
+            if akt is None:
+                continue
+            if akt == "up":
+                erste = max(0, erste - 1)
+            elif akt == "down":
+                erste = min(max(0, len(zeilen) - platz), erste + 1)
+            elif akt == "left":
+                erste = max(0, erste - platz)
+            elif akt == "right":
+                erste = min(max(0, len(zeilen) - platz), erste + platz)
+            elif akt == "ok":
+                # NEU SORTIEREN HEISST GANZ NACH OBEN. Den Index zu
+                # behalten waere schlimmer als nutzlos: nach dem
+                # Wechsel steht dort ein voellig anderer Core, und man
+                # sucht erst einmal, wo man gelandet ist.
+                art_i = (art_i + 1) % len(arten)
+                zeilen = CSTAND.sortiert(alle, arten[art_i][0])
+                erste = 0
+            else:
+                break
+
+        self._force_full_redraw = True
+        self.draw()
+
     def hauptseite_bildschirm(self):
         """Die Hauptseite einrichten: Reihenfolge und Sichtbarkeit der
         Kategorien (Build 250).
@@ -23832,6 +23979,18 @@ class Frontend:
                                 self.cores_bildschirm()
                             except Exception:            # noqa: BLE001
                                 LOG("cores_bildschirm CRASH:\n"
+                                    + traceback.format_exc())
+                                self._force_full_redraw = True
+                                self.draw()
+                        elif kind == "core_uebersicht":
+                            # Build 309: der volle Bestand mit Alter.
+                            # Eigener Punkt neben "cores", weil der
+                            # nur Systeme mit MEHREREN Fassungen
+                            # zeigt - siehe dort.
+                            try:
+                                self.core_uebersicht_bildschirm()
+                            except Exception:            # noqa: BLE001
+                                LOG("core_uebersicht_bildschirm CRASH:\n"
                                     + traceback.format_exc())
                                 self._force_full_redraw = True
                                 self.draw()

@@ -103,7 +103,7 @@ gerade geht.
 - `Musik-Quelle: MP3`
 - `Lautstärke: 100%`
 
-### Optionen (16 Eintraege)
+### Optionen (17 Eintraege)
 
 - `CRT-Testbild`
 - `Miniaturen vorbereiten (einmalig, dauert einige Minuten)`
@@ -114,6 +114,7 @@ gerade geht.
 - `Hauptseite: Kategorien sortieren und ausblenden`
 - `Zaparoo (NFC-Tags) ist nicht installiert`
 - `Cores: Fassung je System waehlen`
+- `Core-Uebersicht (was liegt drauf, wie alt)`
 - `update_all ist nicht installiert - beim MiSTer-Projekt holen und nach Scripts/ legen`
 - `Attract-Modus (Bildschirmschoner): AN -> ausschalten`
 - `Attract-Modus Verzögerung: 1.5min -> nächste`

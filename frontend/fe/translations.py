@@ -1326,6 +1326,35 @@ TRANSLATIONS = {
         "en": "Cores: choose a version per system",
         "de": "Cores: Fassung je System waehlen"},
     "cores_titel": {"en": "Cores", "de": "Cores"},
+    # Build 309: die Core-Uebersicht. Siehe
+    # core_uebersicht_bildschirm() in frontend.py - was dort NICHT
+    # steht ("Update verfuegbar"), steht auch hier nicht.
+    "sys_core_uebersicht": {
+        "en": "Core overview (what is installed, how old)",
+        "de": "Core-Uebersicht (was liegt drauf, wie alt)"},
+    "coreueb_titel": {"en": "Core overview", "de": "Core-Uebersicht"},
+    "coreueb_bestand": {
+        "en": "%d cores on the card",
+        "de": "%d Cores auf der Karte"},
+    "coreueb_leer": {
+        "en": "No cores found in the core folders.",
+        "de": "In den Core-Ordnern liegt kein einziger Core."},
+    "coreueb_ohne_datum": {"en": "no date", "de": "ohne Datum"},
+    "coreueb_sort_alter": {"en": "by age", "de": "nach Alter"},
+    "coreueb_sort_name": {"en": "by name", "de": "nach Name"},
+    "coreueb_sort_ordner": {"en": "by folder", "de": "nach Ordner"},
+    "coreueb_fuss": {
+        "en": "%d-%d of %d  -  sorted %s",
+        "de": "%d-%d von %d  -  sortiert %s"},
+    "coreueb_hinweis": {
+        "en": "OK switches the sorting, left/right pages, any other "
+              "button goes back. The date comes from the file name on "
+              "your card - this page says nothing about what is "
+              "available online.",
+        "de": "OK wechselt die Sortierung, links/rechts blaettert "
+              "seitenweise, jede andere Taste geht zurueck. Das Datum "
+              "steht im Dateinamen auf deiner Karte - diese Seite sagt "
+              "nichts darueber, was es im Netz gibt."},
     "heute": {"en": "today", "de": "heute"},
     "vor_tagen": {"en": "%d days ago", "de": "vor %d Tagen"},
     "sys_update_all": {

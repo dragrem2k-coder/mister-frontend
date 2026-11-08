@@ -265,3 +265,143 @@ def nachsehen(wurzel=None, stand_pfad=None, bericht_pfad=None):
     if not leer(bericht):
         bericht_schreiben(bericht, bericht_pfad)
     return bericht
+
+
+# ===========================================================================
+# BUILD 309: WAS LIEGT UEBERHAUPT AUF DER KARTE - UND WIE ALT IST ES?
+# ===========================================================================
+#
+# NUTZERWUNSCH vom 08.11., aus einer Liste von sieben Punkten:
+# "Verbesserungen bei Core-Auswahl und Core-Verwaltung" und "Core
+# Updates mit Anzeige verfuegbarer Aktualisierungen".
+#
+# DER ZWEITE PUNKT IST NICHT EHRLICH ZU BAUEN, und das steht seit Build
+# 250 im Kopf dieser Datei - mit der Begruendung aus fe/cores.py:
+#
+#     "dafuer muesste das Frontend die Datenbanken des
+#      MiSTer-Downloaders selbst auswerten und ihre Versionslogik
+#      nachbauen - genau die zweite Quelle der Wahrheit, die
+#      fe/cores.py ausschliesst."
+#
+# WAS SEHR WOHL GEHT, ist die Frage, die praktisch dahintersteckt:
+# WELCHE MEINER CORES SIND ALT? Darauf antwortet dieser Abschnitt, und
+# zwar aus genau einer Quelle - den Dateinamen auf seiner eigenen
+# Karte. Das ist keine Behauptung ueber das, was es draussen gibt,
+# sondern eine Beobachtung an unserem eigenen Dateisystem; dieselbe
+# Linie, auf der schon vergleich() steht.
+#
+# Ein Core von 2021 neben lauter Cores von 2026 sagt genug: entweder
+# wird er nicht mehr gepflegt, oder update_all hat ihn nie angefasst.
+# Beides will man wissen, und fuer beides braucht es kein Netz.
+
+# Acht Ziffern am ANFANG der Fassung. Bewusst nur am Anfang: MiSTer
+# haengt hinter das Datum gelegentlich einen sprechenden Zusatz
+# ("20260912_recording_adc_fix", siehe den Kopf von fe/cores.py), und
+# der gehoert nicht zum Datum.
+_FASSUNG_DATUM = re.compile(r"^(\d{8})")
+
+
+def fassung_datum(fassung):
+    """("20260912_recording_adc_fix") -> (2026, 9, 12), sonst None.
+
+    GEPRUEFT WIRD DER WERT, NICHT NUR DIE FORM. Acht Ziffern sind
+    schnell beisammen - "SNES_12345678.rbf" waere formal eines und
+    ergaebe das Jahr 1234. Ein Core mit so einem Namen bekommt deshalb
+    None, und None heisst ueberall in diesem Modul "unbekannt" und
+    NICHT "sehr alt". Der Unterschied entscheidet, ob eine Liste
+    "aelteste zuerst" ihn an die Spitze setzt - und dort gehoert er
+    nicht hin, denn ueber ihn ist nichts bekannt."""
+    m = _FASSUNG_DATUM.match(str(fassung or ""))
+    if not m:
+        return None
+    roh = m.group(1)
+    jahr, monat, tag = int(roh[:4]), int(roh[4:6]), int(roh[6:8])
+    if not (2000 <= jahr <= 2099 and 1 <= monat <= 12 and 1 <= tag <= 31):
+        return None
+    return (jahr, monat, tag)
+
+
+def alter_tage(datum, jetzt=None):
+    """Wie viele Tage ist dieses Datum her? None bleibt None.
+
+    EIN NEGATIVES ALTER IST MOEGLICH und wird nicht abgeschnitten: der
+    MiSTer hat ohne Netz keine richtige Uhr, und nach einem Kaltstart
+    ohne NTP kann ein Core "aus der Zukunft" sein. Das stillschweigend
+    auf 0 zu klemmen hiesse, eine falsche Uhr als richtig auszugeben -
+    die Anzeige soll dann lieber auffallen."""
+    if not datum:
+        return None
+    try:
+        dann = time.mktime((int(datum[0]), int(datum[1]), int(datum[2]),
+                            12, 0, 0, 0, 1, -1))
+    except (OverflowError, ValueError):
+        return None
+    heute = time.time() if jetzt is None else float(jetzt)
+    return int((heute - dann) // 86400)
+
+
+def uebersicht(wurzel=None, ordner=None, jetzt=None):
+    """Alle installierten Cores mit Fassung und Alter.
+
+    Liefert eine Liste von Dicts - bewusst Dicts und keine Tupel: die
+    Bildschirmseite liest hier sechs Felder, und ein Tupel mit sechs
+    Stellen ist genau die Sorte, bei der spaeter jemand zwei
+    vertauscht (in Build 301 hat ein nachgebauter Zustand aus demselben
+    Grund die falsche Ansicht berichtet).
+
+        {"rel", "ordner", "kopf", "fassung", "datum", "alter"}
+    """
+    raus = []
+    for rel in cores_jetzt(wurzel, ordner):
+        ordn, _trenn, dateiname = rel.partition("/")
+        kopf, fassung = kopf_und_fassung(dateiname)
+        datum = fassung_datum(fassung)
+        raus.append({"rel": rel, "ordner": ordn, "kopf": kopf,
+                     "fassung": fassung, "datum": datum,
+                     "alter": alter_tage(datum, jetzt)})
+    return raus
+
+
+def sortiert(eintraege, nach="alter"):
+    """Die Uebersicht ordnen - 'alter', 'name' oder 'ordner'.
+
+    BEI 'alter' STEHEN DIE AELTESTEN OBEN, denn das ist die Frage, die
+    jemand an so eine Liste hat. Cores OHNE Datum stehen HINTEN: sie
+    sind nicht unendlich alt, sondern unbekannt, und eine Unbekannte
+    gehoert nicht an die Spitze einer Liste, die "das hier ist das
+    aelteste" behauptet.
+
+    Innerhalb gleicher Schluessel wird immer nach `rel` sortiert -
+    damit ist die Reihenfolge bei jedem Aufruf dieselbe. Eine Liste,
+    die bei gleichen Werten wackelt, laesst den Zeiger beim naechsten
+    Zeichnen auf einen anderen Eintrag zeigen."""
+    liste = list(eintraege or ())
+    if nach == "name":
+        return sorted(liste, key=lambda e: (e["kopf"].lower(), e["rel"]))
+    if nach == "ordner":
+        return sorted(liste, key=lambda e: (e["ordner"].lower(),
+                                            e["kopf"].lower(), e["rel"]))
+    return sorted(liste, key=lambda e: (e["datum"] is None,
+                                        e["datum"] or (0, 0, 0),
+                                        e["rel"]))
+
+
+def bestand(eintraege):
+    """Die Kopfzeile der Uebersicht, als Dict.
+
+        {"gesamt", "mit_datum", "ordner": {Name: Anzahl},
+         "aeltestes", "neuestes"}
+
+    `aeltestes`/`neuestes` sind Daten oder None - None heisst "kein
+    einziger Core mit lesbarem Datum", nicht "keine Cores"."""
+    liste = list(eintraege or ())
+    je_ordner = {}
+    daten = []
+    for e in liste:
+        je_ordner[e["ordner"]] = je_ordner.get(e["ordner"], 0) + 1
+        if e["datum"]:
+            daten.append(e["datum"])
+    return {"gesamt": len(liste), "mit_datum": len(daten),
+            "ordner": je_ordner,
+            "aeltestes": min(daten) if daten else None,
+            "neuestes": max(daten) if daten else None}

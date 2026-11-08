@@ -1550,6 +1550,7 @@ Zwei Punkte unter *Optionen*:
 | Menüpunkt | Aktion | Was er tut |
 |---|---|---|
 | Cores: Fassung je System wählen | `cores` | Liegen mehrere Fassungen eines Cores auf der Karte, wählst du hier je System die, die gestartet wird — mit links/rechts. „automatisch" nimmt die neueste. Fehlt die gewählte Datei, weil `update_all` sie weggeräumt hat, sagt die Zeile das und es wird automatisch gewählt |
+| Core-Übersicht (was liegt drauf, wie alt) | `core_uebersicht` | Eine **Leseseite mit allen** installierten Cores: Ordner, Name, Fassung und Alter in Tagen. **OK** wechselt die Sortierung (Alter / Name / Ordner), links/rechts blättert seitenweise. Alles älter als ein Jahr ist farbig hervorgehoben. Das Datum kommt aus dem Dateinamen auf **deiner** Karte — die Seite sagt bewusst **nichts** darüber, was es im Netz gibt (siehe unten) |
 | update_all ausführen (Cores und Firmware) | `update_all` | Startet das **vorhandene** Skript — nachgebaut wird nichts. Die Beschriftung nennt den letzten Lauf („vor 23 Tagen"), damit die Frage „brauche ich das jetzt?" ohne Nachsehen zu beantworten ist. Ist `update_all` nicht installiert, sagt die Zeile das |
 
 **Eine Netzabfrage „gibt es Core-Updates?" gibt es bewusst nicht.**
@@ -2858,6 +2859,7 @@ umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
 | Zaparoo (NFC-Tags) | `zaparoo` |
 | Core-Updates: was ist neu (N) — nur wenn es einen Bericht gibt | `core_neu` |
 | Cores: Fassung je System wählen | `cores` |
+| Core-Übersicht (was liegt drauf, wie alt) | `core_uebersicht` |
 | update_all ausführen (Cores und Firmware) | `update_all` |
 | Nur das Geänderte nachlesen — nur nach einer Speicher-Änderung | `nachscan` |
 | Attract-Modus (Bildschirmschoner): AN/AUS, Verzögerung | `attract`, `attract_delay` |

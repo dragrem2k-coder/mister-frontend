@@ -1291,6 +1291,7 @@ Two entries under *Options*:
 
 | Entry | Action | What it does |
 |---|---|---|
+| Core overview (what is installed, how old) | `core_uebersicht` | A **read-only page listing every** installed core: folder, name, build and age in days. **OK** switches the sorting (age / name / folder), left/right pages. Anything older than a year is highlighted. The date comes from the file name on **your** card — the page deliberately says **nothing** about what is available online |
 | Cores: choose the build per system | `cores` | If several builds of a core are on the card, you pick per system which one is launched — with left/right. "automatic" takes the newest. If the chosen file is missing because `update_all` cleared it away, the line says so and the choice falls back to automatic |
 | Run update_all (cores and firmware) | `update_all` | Launches the **existing** script — nothing is reimplemented. The label names the last run ("23 days ago") so that "do I need this now?" can be answered without looking. If `update_all` is not installed, the line says that |
 
@@ -2481,6 +2482,7 @@ conversely nobody ends up in a menu that cannot do anything).
 | Zaparoo (NFC tags) | `zaparoo` |
 | Core updates: what's new (N) — only when a report exists | `core_neu` |
 | Cores: choose the build per system | `cores` |
+| Core overview (what is installed, how old) | `core_uebersicht` |
 | Run update_all (cores and firmware) | `update_all` |
 | Re-read only what changed — only after a storage change | `nachscan` |
 | Attract mode (screensaver): ON/OFF, delay | `attract`, `attract_delay` |

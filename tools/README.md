@@ -8333,3 +8333,116 @@ Quelltext da ist.
   setzen); `finally` stellt `devices`, `rescan`, `held`, `_vorgelegt`,
   `_zeichenzeit` und `last_scan` zurueck; und Abschnitt M greift kein
   Eingabegeraet.
+
+## Nachtrag Build 309 - die Core-Uebersicht, und was NICHT gebaut wurde
+
+Aus seiner Wunschliste vom 08.11.:
+
+> *„Verbesserungen bei Core-Auswahl und Core-Verwaltung. Core Updates
+> mit Anzeige verfuegbarer Aktualisierungen."*
+
+### Der zweite Wunsch wurde NICHT gebaut, und zwar aus unserem eigenen Quelltext heraus
+
+Im Kopf von `fe/corestand.py` steht seit Build 250, mit Verweis auf
+`fe/cores.py` und `fe/mister_system.py`:
+
+> *„dafuer muesste das Frontend die Datenbanken des MiSTer-Downloaders
+> selbst auswerten und ihre Versionslogik nachbauen - genau die zweite
+> Quelle der Wahrheit, die `fe/cores.py` ausschliesst."*
+
+Daran aendert ein Wunsch nichts. Eine Anzeige, die „Update verfuegbar"
+sagt und daneben liegt, ist schlechter als keine - und sie laege
+irgendwann daneben, weil sie an einem fremden Dateiformat haengt, das
+niemand fuer uns stabil haelt.
+
+**Das gehoert gesagt und nicht umgangen.** Build 294 heisst „gefragt
+statt geraten"; hier war die Antwort schon aufgeschrieben, man musste
+sie nur lesen, bevor man baut.
+
+### Was stattdessen gebaut wurde: die Frage dahinter
+
+Praktisch will man von „welche Updates gibt es" eines wissen: **welche
+meiner Cores sind alt?** Und das steht in den Dateinamen auf seiner
+eigenen Karte - keine zweite Quelle, keine Netzabfrage, kein fremdes
+Format.
+
+Ein Core von 2021 neben lauter Cores von 2026 sagt genug: entweder
+wird er nicht mehr gepflegt, oder `update_all` hat ihn nie angefasst.
+Beides will man wissen.
+
+### Neu in `fe/corestand.py`
+
+| Funktion | liefert |
+|---|---|
+| `fassung_datum(f)` | `("20260912_scsi_fix")` → `(2026, 9, 12)`, sonst `None` |
+| `alter_tage(d, jetzt)` | Tage, `None` bleibt `None`, negativ erlaubt |
+| `uebersicht(...)` | je Core ein Dict: rel, ordner, kopf, fassung, datum, alter |
+| `sortiert(l, nach)` | `alter` / `name` / `ordner` |
+| `bestand(l)` | gesamt, mit_datum, je Ordner, aeltestes, neuestes |
+
+**Drei Entscheidungen, die im Quelltext begruendet stehen:**
+
+1. **Acht Ziffern sind nicht automatisch ein Datum.** `12345678` waere
+   formal eines und ergaebe das Jahr 1234. Geprueft wird der Wert
+   (2000–2099, Monat 1–12, Tag 1–31); was durchfaellt, bekommt `None`.
+2. **`None` heisst ueberall „unbekannt" und nie „sehr alt".** Deshalb
+   stehen undatierte Cores bei „nach Alter" **hinten**, nicht vorn -
+   eine Unbekannte gehoert nicht an die Spitze einer Liste, die
+   behauptet „das hier ist das aelteste".
+3. **Ein negatives Alter wird nicht auf 0 geklemmt.** Der MiSTer hat
+   ohne Netz keine richtige Uhr; ein Core „aus der Zukunft" soll
+   auffallen und nicht stillschweigend als heute durchgehen.
+
+Dazu, wie ueberall in diesem Modul: die Praefix-Falle aus
+`fe/cores.py` gilt - `SNES` und `SNES_Tracker` sind zwei Cores.
+
+### Warum eine EIGENE Seite neben `cores_bildschirm()`
+
+Die alte Seite zeigt **absichtlich** nur Systeme mit *mehreren*
+Fassungen; im Quelltext steht warum:
+
+> *„Eine Liste mit fuenfzig Zeilen, bei denen ueberall 'automatisch'
+> steht, waere keine Verwaltung, sondern eine Tapete."*
+
+Die neue will genau das Gegenteil - den vollen Bestand. Zwei Fragen,
+zwei Seiten; sie in eine zu quetschen haette beide verschlechtert. Im
+Systemmenue stehen sie direkt untereinander.
+
+Die Seite ist eine **reine Leseseite**: hoch/runter blaettert,
+links/rechts seitenweise, **OK wechselt die Sortierung**, alles andere
+geht zurueck. Ein Core aelter als ein Jahr bekommt die Akzentfarbe -
+die Farbe ist die Auskunft.
+
+### Ein Fund beim Testen: der zusammengesetzte Schluessel
+
+Erst stand in der Seite `t("coreueb_sort_" + art)`. Der Test prueft,
+dass **jeder benutzte Text in beiden Sprachen existiert** - und
+genau diese drei Schluessel haette er nie gesehen, weil im Quelltext
+nur das Praefix steht. Eine fehlende Uebersetzung faellt sonst erst
+auf dem Fernseher auf, und dort steht dann der Schluessel selbst.
+
+Jetzt stehen die drei `t()`-Aufrufe ausgeschrieben da und werden einmal
+beim Betreten ausgewertet.
+
+> Lehre, zum wiederholten Mal in anderer Form: was ein Test nicht
+> SEHEN kann, prueft er auch nicht. Ein zusammengesetzter Name ist von
+> aussen unsichtbar.
+
+### Neue Pruefungen
+
+* **neu** `tools/test_core_uebersicht.py` - 48 Pruefungen: acht Ziffern
+  sind nicht automatisch ein Datum (Jahr, Monat und Tag einzeln
+  geprueft, Ziffern mittendrin zaehlen nicht); `None` bleibt `None`;
+  ein Datum aus der Zukunft gibt ein negatives Alter; an einem
+  gebauten Kartenbaum mit sieben `.rbf` und drei Ordnern stimmen
+  Ordner, Kopf, Fassung, Datum und Alter, die Praefix-Falle haelt und
+  eine `.txt` zaehlt nicht mit; „nach Alter" stellt die Aeltesten oben
+  und die Undatierten unten; die Reihenfolge ist bei gleichem Datum
+  **stabil** (Gegenprobe mit umgedrehter Eingabe); eine unbekannte
+  Sortierart faellt auf „alter" zurueck; der Bestand zaehlt auch ohne
+  ein einziges Datum richtig; Menuepunkt, Zweig und Methode sind
+  verdrahtet; die Seite enthaelt **keinen** Schreibbefehl (`open(`,
+  `os.remove`, `os.rename`, `os.replace`, `os.makedirs`, `shutil.`,
+  `os.unlink`, `os.rmdir`) und startet keinen Core; und jeder
+  `t()`-Schluessel der Seite existiert in **de und en**, mit der
+  richtigen Zahl von Platzhaltern.
