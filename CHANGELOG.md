@@ -13,6 +13,25 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Der Bench drückt jetzt selbst — und misst, wo die Hänger
+  herkommen.** Nutzerwunsch: *„ich möchte das du in bench
+  tastendrücke mit einbaust und damit die listenansicht durchscrollst
+  5-8 mal runter 5-8 mal hoch im wechsel."* Der neue **Abschnitt M**
+  tut genau das. Entscheidend ist dabei, *wie*: die Tastendrücke gehen
+  durch eine Röhre, die sich für das Frontend wie ein echtes
+  Eingabegerät verhält — `select()`, das Bündel-Lesen, die Übersetzung
+  und das Zusammenfassen laufen **unverändert**. Gemessen wird dadurch
+  das Frontend und nicht eine Attrappe. Jeder Durchgang läuft zweimal,
+  einmal mit und einmal ohne das Zusammenfassen aus Build 307 — damit
+  steht auf seinem Gerät ein **A/B-Vergleich** statt einer Behauptung
+  (Build 308).
+- **Und eine Bilanz, die vor jeder Geschwindigkeit kommt.** Abschnitt M
+  rechnet nach jedem Stoß nach, ob der Zeiger genau so weit gewandert
+  ist, wie Tasten gedrückt wurden, ob der Puffer leer ist und ob noch
+  etwas vorliegt. Ein verschluckter Tastendruck wäre ein schlimmerer
+  Fehler als der, den Build 307 behoben hat — und im Alltag kaum zu
+  bemerken, weil man nicht mitzählt (Build 308).
+
 - **Behoben: zehn kurze Drücker werden jetzt zu einem Sprung.**
   Nutzerbefund: *„wenn ich 10 mal kurz hintereinander hoch drücke und
   dann wieder nach unten drücke bleibt er auch ab und zu hängen."* Ein

@@ -42,6 +42,7 @@ import os
 import platform
 import shutil
 import select as _select      # Build 306, Abschnitt L.1b
+from collections import deque as _deque   # Build 308, Abschnitt M
 import struct
 import sys
 import tempfile
@@ -72,7 +73,7 @@ import zlib
 # Zustand der zuletzt gesetzten Ansicht) und hat einen Teil 4 fuer die
 # Hintergrundarbeit. Zwei Berichte mit derselben Nummer muessen
 # vergleichbar sein - also neue Nummer.
-BENCH_VERSION = 19
+BENCH_VERSION = 20
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -2399,12 +2400,12 @@ def schritt_funktion(fe, seite):
     Die Reihenfolge ist die aus run(): erst den leichten Pfad
     versuchen, und nur wenn der ablehnt, den vollen Aufbau. Fuer Raster
     und Galerie lehnt er immer ab (er kennt nur Zeilen)."""
+    zeichnen = zeichen_funktion(fe, seite)
     if seite == 0:
         def _schritt(i):
             alt = fe.cat_i
             fe.cat_i = i % max(1, len(fe.cats))
-            if not fe._draw_navigate_cats(alt):
-                fe.draw()
+            zeichnen(alt)
     else:
         def _schritt(i):
             # Dieselbe Quelle wie in Abschnitt B - eine zweite waere
@@ -2415,9 +2416,33 @@ def schritt_funktion(fe, seite):
                 n = 0
             alt = fe.item_i
             fe.item_i = i % max(1, n)
+            zeichnen(alt)
+    return _schritt
+
+
+def zeichen_funktion(fe, seite):
+    """NUR das Zeichnen nach einem Indexwechsel - ohne den Index zu setzen.
+
+    HERAUSGELOEST (Build 308) aus schritt_funktion(). Abschnitt M
+    braucht genau diese Haelfte: dort setzt NICHT der Bench den Index,
+    sondern nav_anwenden() im Frontend - also derselbe Weg, den ein
+    Tastendruck nimmt. Gezeichnet werden muss danach trotzdem, und zwar
+    in derselben Reihenfolge wie in run(): erst der leichte Pfad, und
+    nur wenn der ablehnt, der volle Aufbau.
+
+    Haette Abschnitt M diese zwei Zeilen selbst hingeschrieben, waere
+    es die dritte Fassung desselben Zeichenschritts gewesen - genau die
+    Dopplung, an der Abschnitt J in Build 218 schon einmal gescheitert
+    ist (gemessen wurde der volle Neuaufbau statt des leichten Pfads)."""
+    if seite == 0:
+        def _zeichnen(alt):
+            if not fe._draw_navigate_cats(alt):
+                fe.draw()
+    else:
+        def _zeichnen(alt):
             if not fe._draw_navigate_items(alt):
                 fe.draw()
-    return _schritt
+    return _zeichnen
 
 
 def fenster_spanne(fe, seite):
@@ -4230,6 +4255,369 @@ def _abschnitt_k(b, fe, S, A):
     b("   Zeit in der Flaeche, und dann zaehlt die Aussparung.")
 
 
+class _PadAttrappe:
+    """Ein Eingabegeraet, dessen Ereignisse aus einer Roehre kommen.
+
+    WARUM EINE ROEHRE UND KEIN SCHALTER (Build 308). Der Nutzer will
+    Tastendruecke im Bench - "ich moechte das du in bench tastendruecke
+    mit einbaust und damit die listen ansicht durchscrollst". Die
+    naheliegende Loesung waere, dem Frontend die Aktion "down" direkt in
+    die Hand zu druecken. Damit waere aber genau der Weg uebersprungen,
+    der gemessen werden soll: select(), das Buendel-Lesen aus Build 306,
+    _translate(), der aufgehobene Rest, gestaute_schritte() aus Build
+    307 und die Wiederhol-Rechnung. Gemessen wuerde die Attrappe und
+    nicht das Frontend - derselbe Fehler, den Build 300 mit einem von
+    Hand gesetzten Schalter schon einmal gemacht hat, und zu dem in
+    Abschnitt L.4 der Satz steht: "ein Zustand, den man nachbauen muss,
+    ist ein Zustand, den man falsch nachbaut".
+
+    EINE os.pipe() IST EIN DATEIDESKRIPTOR WIE /dev/input/eventN:
+    select() wartet darauf, os.read() liest daraus, und ganze
+    input_event-Strukturen hineinzuschreiben ist genau das, was der
+    Kernel beim echten Pad tut. Ab fe/input.py aendert sich deshalb
+    NICHTS - keine Zeile im Eingabeweg weiss, dass sie beim Bench
+    laeuft. Das ist der ganze Trick, und er ist der Grund, warum dieser
+    Abschnitt etwas beweist.
+
+    GEPACKT WIRD MIT _FI.EVENT_FMT, NICHT MIT EINER EIGENEN ZAHL. Der
+    Bericht hat in Abschnitt L.1b eine fest eingetippte 24 stehen, und
+    das geht dort gut aus, weil nur gezaehlt wird. Hier werden die
+    Bytes von input.py AUSGEPACKT - eine zweite Formatangabe waere eine
+    zweite Gelegenheit auseinanderzulaufen, und zwar lautlos: ein um
+    vier Bytes verschobenes Feld liefert immer noch Zahlen.
+
+    KEIN uinput, und das ist Absicht: dafuer braucht man /dev/uinput und
+    Rechte, das Geraet taucht systemweit auf, und MiSTer selbst liest
+    mit. Eine Roehre existiert nur in diesem Prozess und ist nach dem
+    Abschnitt wieder weg."""
+
+    def __init__(self, fmt, name="bench-pad"):
+        self._fmt = fmt
+        self._lese, self._schreib = os.pipe()
+        self.fd = self._lese
+        self.path = "/dev/input/" + name
+        self.name = name
+        self.is_kbd = True
+        self.grabbed = False
+        self.axis = {}
+        self.axis_state = {}
+        self.geschrieben = 0
+
+    def grab(self, on):
+        # Ein echtes grab() waere hier nicht nur sinnlos, sondern
+        # schaedlich: EVIOCGRAB auf einer Roehre scheitert, und ein
+        # grab auf seinen ECHTEN Pads haette der Bench nicht zu
+        # vergeben. Also absichtlich folgenlos.
+        self.grabbed = on
+
+    def _roh(self, etype, code, value):
+        os.write(self._schreib,
+                 struct.pack(self._fmt, 0, 0, etype, code, value))
+        self.geschrieben += 1
+
+    def druck(self, code, ev_key=1, ev_syn=0):
+        """Ein kurzer Tastendruck: drucken, melden, loslassen, melden.
+
+        Genau diese vier Ereignisse schickt eine Tastatur auch, und die
+        Reihenfolge ist wichtig: das Loslassen raeumt self.held, sonst
+        liefe nach dem Stoss eine Wiederholung weiter und die Messung
+        haette eine zweite Ursache."""
+        self._roh(ev_key, code, 1)
+        self._roh(ev_syn, 0, 0)
+        self._roh(ev_key, code, 0)
+        self._roh(ev_syn, 0, 0)
+
+    def close(self):
+        for fd in (self._lese, self._schreib):
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+
+def _abschnitt_m(b, fe, S, A, fm):
+    """WAS PASSIERT BEI ZEHN DRUECKERN? (Build 308)
+
+    DER ANLASS, und er steht zweimal im Postfach. Am 08.11.: "wenn ich
+    10 mal kurz hintereinander hoch druecke und dann wieder nach unten
+    druecke bleibt er auch ab und zu haengen". Und danach, als
+    Auftrag: "ich moechte das du in bench tastendruecke mit einbaust
+    und damit die listen ansicht durchscrollst 5-8 mal runter 5-8 mal
+    hoch im wechsel damit du merkst im bench wo die haenger her
+    kommen".
+
+    WAS DER BENCH BIS HEUTE NICHT GEMESSEN HAT. Abschnitt J misst, was
+    ein ZEICHENSCHRITT kostet - er setzt den Index selbst und zeichnet.
+    Abschnitt L misst das FENSTER zwischen zwei Blicken auf das Pad.
+    Beide sind richtig, und beide ueberspringen genau die Stelle, an
+    der sein Befund entsteht: was passiert, wenn mehrere Druecker
+    ankommen, waehrend noch gezeichnet wird. Build 307 hat dort etwas
+    geaendert, und der Beweis dafuer stand bisher nur im Container
+    (tools/test_gestaute_schritte.py), nicht auf seinem Geraet.
+
+    DREI TEILE:
+      1) ein Stoss in EINE Richtung, 5 bis 8 Druecker
+      2) der Richtungswechsel im Stoss - das gemeldete "haengt"
+      3) die Bilanz: ist auch nur ein Druecker verlorengegangen?
+
+    JEDER TEIL LAEUFT ZWEIMAL, und das ist der Kern dieses Abschnitts:
+    einmal mit dem Zusammenfassen aus Build 307 und einmal ohne. Ohne
+    diesen A/B-Vergleich waere "Build 307 wirkt" eine Behauptung; mit
+    ihm stehen zwei Zahlen nebeneinander, gemessen auf seinem Geraet,
+    an seiner Sammlung, in derselben Minute."""
+    b("")
+    b("-" * 62)
+    b(" M  Tastendruecke nachgestellt - 5 bis 8 im Wechsel (Build 308)")
+    b("-" * 62)
+    import fe.input as _FI
+    inp = getattr(fe, "inp", None)
+    if inp is None:
+        b("   -- keine Eingabe geoeffnet")
+        return
+    if not hasattr(fe, "nav_anwenden"):
+        # Wenn diese Zeile im Bericht steht, ist der Abschnitt gegen
+        # eine aeltere frontend.py gelaufen. Dann lieber gar keine Zahl
+        # als eine aus einem nachgebauten Weg.
+        b("   -- nav_anwenden() fehlt (frontend.py aelter als Build 308)")
+        return
+    kat_i, kat_n, kat_name = _groesste_kategorie(fe)
+    if kat_i is None:
+        b("   -- keine Kategorie mit Eintraegen")
+        return
+    try:
+        fe.page = 1
+        fe.cat_i = kat_i
+        fe.nav_path = []
+        fe.ansicht_setzen("liste")
+        items = fe._display_items()
+    except Exception as e:                               # noqa: BLE001
+        b("   -- Listenansicht nicht herstellbar (%s: %s)"
+          % (type(e).__name__, e))
+        return
+    n_items = len(items)
+    if n_items < 20:
+        b("   -- nur %d Eintraege, zu wenig fuer einen Stoss" % n_items)
+        return
+    b("   Kategorie %s, Ansicht liste, %d Eintraege"
+      % (str(kat_name)[:24], n_items))
+    # DIE SCHRITTWEITE IST 1, UND DAS IST KEINE ANNAHME. In der
+    # Spieleliste gilt laut _schritte() in frontend.py "liste:
+    # hoch/runter = ein Schritt", und move_step steht dort seit Build
+    # 123 fest auf 1 (der Turbo-Sprung betrifft nur links/rechts).
+    # Deshalb kann dieser Abschnitt die Weite 1 uebergeben, ohne den
+    # Zustand der Hauptschleife nachzubauen.
+    WEITE = 1
+    zeichnen = zeichen_funktion(fe, 1)
+    pad = _PadAttrappe(_FI.EVENT_FMT)
+    CODE = {"down": _FI.KEY_DOWN, "up": _FI.KEY_UP}
+    # ALLES SICHERN, WAS ANGEFASST WIRD. Der Bench darf umhaengen, der
+    # Betrieb soll nichts davon merken - dieselbe Regel wie in
+    # Abschnitt L bei _zeichenzeit.
+    _s_devices = inp.devices
+    _s_rescan = inp.rescan
+    _s_held = inp.held
+    _s_rest = getattr(inp, "_ereignis_rest", None)
+    _s_vor = getattr(inp, "_vorgelegt", None)
+    _s_zz = dict(getattr(inp, "_zeichenzeit", {}) or {})
+    _s_zp = dict(getattr(inp, "_zeichenproben", {}) or {})
+    _s_lrt = getattr(inp, "_last_repeat_time", 0.0)
+    _s_lra = getattr(inp, "_last_repeat_act", None)
+    _s_scan = getattr(inp, "last_scan", 0.0)
+    _s_item = fe.item_i
+    bilanz = []            # je Durchgang: (soll, ist) Wegstrecke
+    rest_ende = vor_ende = None
+
+    def _nichts_tun(force=False):
+        # rescan() wuerde die Attrappe aus inp.devices werfen und die
+        # echten Pads wieder eintragen - mitten im Stoss. read_action()
+        # ruft es alle paar Sekunden von selbst auf.
+        return None
+
+    def _stoss(folge, zusammen):
+        """Einen Stoss in die Roehre schreiben und abarbeiten.
+
+        folge ist eine Liste von (Richtung, Anzahl). ALLES wird VOR dem
+        ersten read_action() geschrieben - genau so kommt es bei ihm an,
+        wenn er schneller drueckt als ein Schritt dauert (46,57 ms laut
+        Abschnitt J). Danach wird abgearbeitet, bis nichts mehr kommt.
+
+        Rueckgabe: (Aktionen, Dauer_ms, soll, ist)
+        """
+        inp.held = None
+        inp._ereignis_rest = _deque()
+        inp._vorgelegt = None
+        inp._zeichenzeit = {}
+        inp._zeichenproben = {}
+        inp._last_repeat_act = None
+        fe.item_i = n_items // 2      # Mitte, damit nichts umlaeuft
+        for _w in range(6):           # warmlaufen, wie in Abschnitt J
+            alt = fe.item_i
+            fe.item_i = (fe.item_i + 1) % n_items
+            zeichnen(alt)
+        start_i = fe.item_i
+        soll = 0
+        for richtung, k in folge:
+            for _ in range(k):
+                pad.druck(CODE[richtung])
+            soll += k * (-1 if richtung == "up" else 1)
+        aktionen = []
+        t0 = time.perf_counter()
+        while True:
+            act = inp.read_action(timeout=0.0)
+            if act is None:
+                break
+            if act not in ("up", "down", "left", "right"):
+                continue
+            alt = fe.item_i
+            n = fe.nav_anwenden(act, items, WEITE, zusammen=zusammen)
+            zeichnen(alt)
+            aktionen.append((act, n, (time.perf_counter() - t0) * 1000.0))
+        dauer = (time.perf_counter() - t0) * 1000.0
+        ist = (fe.item_i - start_i + n_items) % n_items
+        bilanz.append(((soll + n_items) % n_items, ist))
+        return aktionen, dauer, (soll + n_items) % n_items, ist
+
+    def _zeile(titel, aktionen, dauer):
+        gedrueckt = sum(n for _a, n, _t in aktionen)
+        erste = aktionen[0][0] if aktionen else "-"
+        wechsel = "-"
+        for _a, _n, _t in aktionen:
+            if _a != erste:
+                wechsel = "%6.1f" % _t
+                break
+        b("      %-30s %5d %7d %9.1f %9s"
+          % (titel, gedrueckt, len(aktionen), dauer, wechsel))
+
+    try:
+        inp.devices = {pad.path: pad}
+        inp.rescan = _nichts_tun
+        inp.last_scan = time.monotonic()
+
+        # --- 1) ein Stoss in EINE Richtung -------------------------
+        b("")
+        b("   1) ein Stoss in eine Richtung")
+        b("      %-30s %5s %7s %9s %9s"
+          % ("Durchgang", "Tasten", "Zeichnen", "gesamt ms", "Wechsel"))
+        for k in (5, 6, 7, 8):
+            for zusammen, wie in ((False, "einzeln"), (True, "Build 307")):
+                akt, dauer, soll, ist = _stoss([("down", k)], zusammen)
+                _zeile("%dx runter, %s" % (k, wie), akt, dauer)
+
+        # --- 2) der Richtungswechsel im Stoss ----------------------
+        #
+        # DAS IST DER GEMELDETE FALL, und die Reihenfolge ist genau
+        # seine: erst mehrfach in eine Richtung, dann in die andere -
+        # und zwar BEVOR die erste Richtung abgearbeitet ist. Die
+        # Spalte "Wechsel" sagt, nach wievielen Millisekunden die neue
+        # Richtung ueberhaupt gewirkt hat. Das ist das Mass fuer
+        # "bleibt haengen".
+        b("")
+        b("   2) Richtungswechsel im Stoss - das gemeldete 'haengt'")
+        b("      %-30s %5s %7s %9s %9s"
+          % ("Durchgang", "Tasten", "Zeichnen", "gesamt ms", "Wechsel"))
+        for k1, k2 in ((8, 5), (5, 8), (8, 8), (6, 7)):
+            for zusammen, wie in ((False, "einzeln"), (True, "Build 307")):
+                akt, dauer, soll, ist = _stoss(
+                    [("down", k1), ("up", k2)], zusammen)
+                _zeile("%dx runter %dx hoch, %s" % (k1, k2, wie),
+                       akt, dauer)
+
+        # --- 3) im Wechsel, mehrere Runden -------------------------
+        b("")
+        b("   3) sechs Runden im Wechsel (5,8,6,7,8,5)")
+        for zusammen, wie in ((False, "einzeln"), (True, "Build 307")):
+            folge = []
+            for i, k in enumerate((5, 8, 6, 7, 8, 5)):
+                folge.append(("down" if i % 2 == 0 else "up", k))
+            akt, dauer, soll, ist = _stoss(folge, zusammen)
+            b("      %-30s %5d Tasten, %d Zeichenschritte, %.1f ms"
+              % (wie, sum(n for _a, n, _t in akt), len(akt), dauer))
+
+        rest_ende = len(getattr(inp, "_ereignis_rest", ()) or ())
+        vor_ende = getattr(inp, "_vorgelegt", None)
+    except Exception as e:                               # noqa: BLE001
+        b("   -- abgebrochen: %s: %s" % (type(e).__name__, e))
+    finally:
+        inp.devices = _s_devices
+        inp.rescan = _s_rescan
+        inp.held = _s_held
+        if _s_rest is not None:
+            inp._ereignis_rest = _s_rest
+            try:
+                inp._ereignis_rest.clear()
+            except Exception:                            # noqa: BLE001
+                pass
+        inp._vorgelegt = _s_vor
+        inp._zeichenzeit = _s_zz
+        inp._zeichenproben = _s_zp
+        inp._last_repeat_time = _s_lrt
+        inp._last_repeat_act = _s_lra
+        inp.last_scan = _s_scan
+        fe.item_i = min(_s_item, max(0, n_items - 1))
+        pad.close()
+        # WAS WAEHREND DES ABSCHNITTS AUF SEINEN PADS PASSIERT IST,
+        # WIRD WEGGEWORFEN. Solange die Roehre das einzige Geraet war,
+        # hat niemand seine echten Pads gelesen - alles, was er in der
+        # Zeit gedrueckt hat, liegt danach im Kernel und wuerde beim
+        # ersten Blick danach auf einen Schlag losgehen. Ein Bench
+        # laeuft Minuten; das waere ein Zeiger, der von selbst
+        # davonspringt. flush() raeumt auch _ereignis_rest und
+        # _vorgelegt mit - beides ist hier erwuenscht.
+        try:
+            inp.flush()
+        except Exception:                                # noqa: BLE001
+            pass
+
+    # --- Bilanz: ist ein Druecker verlorengegangen? ----------------
+    #
+    # DIE WICHTIGSTE ZAHL DES ABSCHNITTS, und nicht die schnellste.
+    # Zusammenfassen darf nichts wegwerfen: wer achtmal drueckt, will
+    # acht Eintraege weiter. Ein verschluckter Tastendruck waere ein
+    # schlimmerer Fehler als der, den Build 307 behoben hat - und er
+    # waere im Alltag kaum zu bemerken, weil man nicht mitzaehlt.
+    b("")
+    b("   Bilanz: Soll-Weg gegen Ist-Weg")
+    if not bilanz:
+        b("      -- keine Durchgaenge gelaufen")
+    else:
+        schief = [(s, i) for s, i in bilanz if s != i]
+        b("      Durchgaenge                         %d" % len(bilanz))
+        b("      davon mit abweichendem Weg          %d" % len(schief))
+        b("      Rest im Puffer am Ende              %s"
+          % ("%d" % rest_ende if rest_ende is not None else "?"))
+        b("      vorgelegte Aktion am Ende           %s"
+          % ("keine" if vor_ende is None else str(vor_ende)))
+        b("")
+        if not schief and not rest_ende and vor_ende is None:
+            b("      ZU LESEN ALS: jeder Druecker hat gezaehlt, der")
+            b("      Puffer ist leer, und es liegt keine Aktion mehr")
+            b("      vor. Zusammenfassen hat also nichts weggeworfen -")
+            b("      nur weniger oft gezeichnet.")
+        elif schief:
+            b("      ZU LESEN ALS: in %d Durchgaengen stimmt der Weg"
+              % len(schief))
+            b("      NICHT. Dann faehrt Build 307 den Zeiger woandershin")
+            b("      als die Finger wollten, und das ist ein Fehler, der")
+            b("      vor jeder Geschwindigkeit kommt. Erste Zahlen:")
+            for s, i in schief[:4]:
+                b("        soll %d, ist %d" % (s, i))
+        else:
+            b("      ZU LESEN ALS: der Weg stimmt, aber es liegt noch")
+            b("      etwas im Puffer (%s) oder vorgelegt (%s). Beides"
+              % (rest_ende, vor_ende))
+            b("      ist nach einem abgearbeiteten Stoss unerwartet.")
+
+    b("")
+    b("   ZU LESEN ALS: 'Zeichnen' ist die Zahl, auf die es ankommt -")
+    b("   jeder Zeichenschritt kostet in dieser Ansicht laut Abschnitt")
+    b("   J rund 46,6 ms, und solange gezeichnet wird, reagiert nichts.")
+    b("   'Wechsel' sagt, wann die zweite Richtung gewirkt hat. Liegt")
+    b("   'einzeln' dort deutlich hoeher als 'Build 307', ist genau das")
+    b("   das gemeldete Haengen - und dann ist es behoben. Liegen beide")
+    b("   gleich hoch, kommt es aus dem Zeichnen selbst, und die")
+    b("   Abhilfe steht in Abschnitt K (3,95 ms Python je Karte).")
+
+
 def lauf(fe, fm, A, S, startdauer=None, log=None, mister_last=None):
     """Den kompletten Bench fahren und den Bericht als Text
     zurueckgeben. Bekommt alles, was er braucht, uebergeben - dieses
@@ -4290,6 +4678,12 @@ def lauf(fe, fm, A, S, startdauer=None, log=None, mister_last=None):
             _abschnitt_l(b, fe, S, A, fm)
     except Exception as e:                               # noqa: BLE001
         b("   ABSCHNITT L ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
+    try:
+        hd5 = getattr(fe, "fb", None) is not None and fe.fb.height >= 720
+        with _Messbedingungen(A, fm, fe, hd5):
+            _abschnitt_m(b, fe, S, A, fm)
+    except Exception as e:                               # noqa: BLE001
+        b("   ABSCHNITT M ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
     b("")
     b("=" * 62)
     b("Ende. Nichts auf der Karte wurde veraendert.")

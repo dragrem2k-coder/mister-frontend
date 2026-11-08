@@ -13,6 +13,24 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **The bench now presses keys itself — and measures where the stalls
+  come from.** User request: *"I want you to build key presses into the
+  bench and scroll the list view 5-8 times down, 5-8 times up,
+  alternating."* The new **section M** does exactly that. What matters
+  is *how*: the presses go through a pipe that behaves like a real
+  input device as far as the frontend is concerned — `select()`, the
+  bundled read, the translation and the collapsing all run
+  **unchanged**. What gets measured is the frontend, not a stand-in.
+  Every run happens twice, once with and once without the collapsing
+  from build 307 — so his device produces an **A/B comparison** instead
+  of a claim (build 308).
+- **Plus a balance check that comes before any speed number.** After
+  each burst, section M verifies that the cursor moved exactly as far
+  as keys were pressed, that the buffer is empty and that nothing is
+  still pending. A swallowed key press would be a worse fault than the
+  one build 307 fixed — and nearly invisible in daily use, because
+  nobody counts (build 308).
+
 - **Fixed: ten quick taps now become one jump.** User report: *"if I
   press up 10 times quickly and then press down again, it sometimes
   gets stuck."* A list step costs a measured **46.57 ms** — so ten taps

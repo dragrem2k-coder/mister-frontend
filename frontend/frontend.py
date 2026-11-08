@@ -22065,6 +22065,55 @@ class Frontend:
         except OSError:
             pass
 
+    def nav_anwenden(self, act, items, weite, zusammen=True):
+        """EINEN Navigationsschritt anwenden - und gestaute mitnehmen.
+
+        HERAUSGELOEST (Build 308), und zwar aus genau einem Grund: der
+        Bench soll denselben Weg fahren wie die Bedienung.
+
+        Bis Build 307 stand diese Rechnung mitten in run(), in einem
+        Zweig, den nur die Hauptschleife erreicht. Der Bench hat
+        deshalb nie gemessen, was beim Druecken passiert, sondern immer
+        nur, was ein ZEICHENSCHRITT kostet (Abschnitt J setzt den Index
+        selbst und zeichnet). Genau die Luecke hat der Nutzer am
+        08.11. benannt: "ich moechte das du in bench tastendruecke mit
+        einbaust und damit die listen ansicht durchscrollst".
+
+        Eine zweite Fassung im Bench waere die falsche Antwort gewesen.
+        Dieses Projekt hat in Build 298 fuenfmal denselben Fehler
+        gemacht - eine Formel im Test nachgebaut, die im Betrieb anders
+        aussah -, und in Build 231 wurde schritt_funktion() aus
+        demselben Grund herausgeloest: zwei Fassungen desselben
+        Schritts sind zwei Gelegenheiten auseinanderzulaufen.
+
+        zusammen=False schaltet das Zusammenfassen aus Build 307 ab.
+        Das braucht NUR der Bench, und zwar fuer den A/B-Vergleich am
+        Geraet: ohne diesen Schalter waere "Build 307 wirkt" eine
+        Behauptung, mit ihm sind es zwei Zahlen nebeneinander.
+
+        Rueckgabe: wieviele Druecker dieser eine Schritt abgedeckt hat.
+        """
+        n = 1
+        if zusammen:
+            n += self.inp.gestaute_schritte(act)
+        hoch_runter = act in ("up", "down")
+        rueck = act in ("up", "left")
+        if hoch_runter:
+            self._last_scroll_dir = -1 if rueck else 1
+        schritt = weite * n * (-1 if rueck else 1)
+        if self.page == 0:
+            # Die Schranke auf len(self.cats) ist neu (vorher stand hier
+            # das Modulo ohne Pruefung). Ohne Kategorien war das ein
+            # ZeroDivisionError mitten in der Hauptschleife - ein Fall,
+            # der nicht vorkommen soll, aber als Absturz die
+            # schlechteste aller Antworten hat.
+            if self.cats:
+                self.cat_i = (self.cat_i + schritt) % len(self.cats)
+        elif items:
+            self.item_i = (self.item_i + schritt) % len(items)
+            self.marquee_reset()
+        return n
+
     def run(self):
         # enter_console_mode()/set_cursor_blink()/inp.grab() passieren
         # jetzt schon in __init__(), VOR dem Scan - siehe Kommentar dort.
@@ -23012,21 +23061,19 @@ class Frontend:
                     # ist die Sorte Dopplung, aus der in diesem Projekt
                     # schon mehrfach ein halb angewandter Fix wurde
                     # (Build 293).
-                    _n = 1 + self.inp.gestaute_schritte(act)
+                    # BUILD 308: DIE RECHNUNG STEHT JETZT IN
+                    # nav_anwenden(). Hier bleibt nur die Schrittweite,
+                    # weil sie aus Zustand der Hauptschleife kommt
+                    # (page_streak fuer den Turbo-Sprung, siehe
+                    # _schritte() oben). Der Grund fuer die Verlegung
+                    # steht bei der Methode selbst: der Bench soll
+                    # denselben Weg fahren und nicht einen zweiten.
                     _hoch_runter = act in ("up", "down")
-                    _rueck = act in ("up", "left")
-                    if _hoch_runter:
-                        self._last_scroll_dir = -1 if _rueck else 1
                     _weite = ((kat_hoch_runter if _hoch_runter
                                else kat_links_rechts) if self.page == 0
                               else (hoch_runter if _hoch_runter
                                     else links_rechts))
-                    _schritt = _weite * _n * (-1 if _rueck else 1)
-                    if self.page == 0:
-                        self.cat_i = (self.cat_i + _schritt) % len(self.cats)
-                    elif items:
-                        self.item_i = (self.item_i + _schritt) % len(items)
-                        self.marquee_reset()
+                    self.nav_anwenden(act, items, _weite)
                 elif act in ("list_start", "list_end"):
                     # NEUES FEATURE (Build 114, aus IDEEN_Bedienbarkeit
                     # Punkt 3): an den Anfang / ans Ende. Bei 3500

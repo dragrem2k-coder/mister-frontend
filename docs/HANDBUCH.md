@@ -2752,7 +2752,7 @@ Das Frontend wird normalerweise ohne Optionen gestartet (Autostart oder
 | Option | Was sie tut |
 |---|---|
 | `--show` | Sagt, **was drin ist, wie es eingestellt ist und wie schnell es läuft** — auf dem Bildschirm und zusätzlich als Datei in `/tmp/dragend_show.txt`. Der schnellste Weg, einen Zustand zu melden, ohne per SSH zu suchen |
-| `--bench` | Eine **feste, wiederholbare Messung** über alle Zeichenwege; Bericht auf dem Bildschirm und in `/tmp/dragend_bench.txt`. Fasst bewusst **nichts** auf der SD-Karte an |
+| `--bench` | Eine **feste, wiederholbare Messung** über alle Zeichenwege; Bericht auf dem Bildschirm und in `/tmp/dragend_bench.txt`. Seit Build 308 **drückt der Bench auch selbst** (Abschnitt M): 5 bis 8 Tastendrücke hoch/runter im Wechsel, über denselben Eingabeweg wie ein echtes Pad — damit steht schwarz auf weiß, was beim schnellen Tippen passiert. Fasst bewusst **nichts** auf der SD-Karte an |
 | `--demo` | **Vier Minuten Vorführung**, von allein durchgespielt: die drei Ansichten auf Hauptseite und Spieleliste, die fünf Einstellungsgruppen — und seit Build 262 die **echten Bildschirme**: Suche, Kontextmenü, Zufalls-Zock mit Ziehung, Trophäenraum, Meilensteine, Top 10, Jahresrückblick, Tagebuch, Hilfe und das CRT-Testbild. Jede Taste bricht ab |
 | `--help` | Diese Liste. Die Prüfung steht **vor** allem anderen: wer sich vertippt, bekommt drei Zeilen und sonst nichts — kein halber Start, keine Sperre, die liegenbleibt |
 

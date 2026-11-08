@@ -8209,3 +8209,127 @@ im zweiten nicht.
   sofort, nicht-Navigation bleibt unangetastet, ohne Stau kein
   Geraetezugriff, die Obergrenze greift, `flush()` raeumt mit, die
   Endposition ist nachgerechnet, und die vier Zweige sind einer.
+
+## Nachtrag Build 308 - der Bench drueckt jetzt selbst
+
+Nutzerauftrag vom 08.11.:
+
+> *"ich moechte das du in bench tastendruecke mit einbaust und damit
+> die listen ansicht durchscrollst 5-8 mal runter 5-8 mal hoch im
+> wechsel damit du merkst im bench wo die haenger her kommen"*
+
+### Die Luecke, die er benannt hat
+
+Der Bench hatte nach 19 Fassungen immer noch keine einzige Zahl
+darueber, **was beim Druecken passiert**:
+
+* **Abschnitt J** setzt den Index selbst und zeichnet - er misst, was
+  ein ZEICHENSCHRITT kostet (46,57 ms in der Liste).
+* **Abschnitt L** misst das FENSTER zwischen zwei Blicken auf das Pad.
+
+Beide sind richtig, und beide ueberspringen genau die Stelle, an der
+sein Befund entsteht: was passiert, wenn **mehrere Druecker ankommen,
+waehrend noch gezeichnet wird**. Build 307 hat dort etwas geaendert,
+und der Beweis dafuer stand bisher nur im Container
+(`tools/test_gestaute_schritte.py`), nicht auf seinem Geraet.
+
+### Die Falle bei so einem Abschnitt heisst Attrappe
+
+Die naheliegende Loesung waere, dem Frontend die Aktion `"down"` direkt
+in die Hand zu druecken. Damit waere aber genau der Weg uebersprungen,
+der gemessen werden soll: `select()`, das Buendel-Lesen aus Build 306,
+`_translate()`, der aufgehobene Rest, `gestaute_schritte()` aus Build
+307 und die Wiederhol-Rechnung. **Gemessen wuerde die Attrappe, nicht
+das Frontend** - derselbe Fehler, den Build 300 mit einem von Hand
+gesetzten Schalter schon einmal gemacht hat.
+
+> *Ein Zustand, den man nachbauen muss, ist ein Zustand, den man
+> falsch nachbaut.* (Abschnitt L.4)
+
+### Deshalb eine Roehre
+
+`_PadAttrappe` legt eine `os.pipe()` an. Die ist ein Dateideskriptor
+wie `/dev/input/eventN`: `select()` wartet darauf, `os.read()` liest
+daraus, und ganze `input_event`-Strukturen hineinzuschreiben ist genau
+das, was der Kernel beim echten Pad tut. **Ab `fe/input.py` aendert
+sich nichts** - keine Zeile im Eingabeweg weiss, dass sie beim Bench
+laeuft.
+
+Gepackt wird mit `_FI.EVENT_FMT`, nicht mit einer eigenen Zahl.
+Abschnitt L.1b hat eine fest eingetippte `24` stehen, und das geht
+dort gut aus, weil nur gezaehlt wird. Hier werden die Bytes von
+`input.py` **ausgepackt** - eine zweite Formatangabe waere eine zweite
+Gelegenheit auseinanderzulaufen, und zwar lautlos: ein um vier Bytes
+verschobenes Feld liefert immer noch Zahlen.
+
+Kein `uinput`, und das ist Absicht: dafuer braucht man `/dev/uinput`
+und Rechte, das Geraet taucht systemweit auf, und MiSTer selbst liest
+mit. Eine Roehre existiert nur in diesem Prozess.
+
+### Zwei Herausloesungen, damit nichts doppelt steht
+
+| neu | aus | warum |
+|---|---|---|
+| `Frontend.nav_anwenden()` | dem Navigationszweig in `run()` | der Bench soll denselben Weg fahren, nicht einen zweiten |
+| `bench.zeichen_funktion()` | `schritt_funktion()` | Abschnitt M braucht nur die Zeichen-Haelfte |
+
+`nav_anwenden()` hat einen Schalter `zusammen=False`. Den braucht
+**nur** der Bench, und zwar fuer den A/B-Vergleich am Geraet: ohne ihn
+waere "Build 307 wirkt" eine Behauptung, mit ihm sind es zwei Zahlen
+nebeneinander, gemessen an seiner Sammlung, in derselben Minute.
+
+In `run()` steht jetzt nur noch die **Schrittweite**, weil die aus dem
+Zustand der Hauptschleife kommt (`page_streak` fuer den Turbo-Sprung).
+Der Test prueft am Quelltext, dass `gestaute_schritte(` dort **nicht
+mehr** vorkommt - sonst stuende der Faktor an zwei Stellen, genau die
+Dopplung, aus der in Build 293 ein halb angewandter Fix wurde.
+
+### Was Abschnitt M berichtet
+
+1. **ein Stoss in eine Richtung**, 5/6/7/8 Druecker, je einmal
+   einzeln und einmal mit Build 307
+2. **der Richtungswechsel im Stoss** (8+5, 5+8, 8+8, 6+7) - mit der
+   Spalte *Wechsel*: nach wievielen Millisekunden hat die zweite
+   Richtung gewirkt. Das ist das Mass fuer "bleibt haengen".
+3. **sechs Runden im Wechsel** (5,8,6,7,8,5)
+4. **die Bilanz**: Soll-Weg gegen Ist-Weg, Rest im Puffer, vorgelegte
+   Aktion. Die wichtigste Zahl des Abschnitts und nicht die
+   schnellste - ein verschluckter Tastendruck waere ein schlimmerer
+   Fehler als der, den Build 307 behoben hat, und im Alltag kaum zu
+   bemerken, weil man nicht mitzaehlt.
+
+`BENCH_VERSION` ist jetzt **20**.
+
+### Eine Falle, in die dieser Test selbst getappt ist
+
+Die erste Fassung von `test_bench_tastendruck.py` holte den Quelltext
+der Klasse mit `koerper(_quelle, "_PadAttrappe")`. **`koerper()` findet
+Funktionen, keine Klassen** - bei einem Klassennamen liefert es `""`.
+Die Pruefung *"keine eigene Byte-Zahl im Pack-Weg"* lief damit gegen
+eine leere Zeichenkette und war **immer wahr**: ein Test, der nicht
+fallen kann.
+
+Gefunden hat ihn die Gegenprobe daneben, die `"struct.pack(self._fmt"`
+verlangte und rot wurde. Jetzt werden die beiden Methoden einzeln mit
+`klasse=` geholt, und der Test prueft **zuerst**, dass ueberhaupt
+Quelltext da ist.
+
+> Dieselbe Lehre zum wievielten Mal: ein Test, der nicht fallen kann,
+> beweist nichts. Die Gegenprobe ist kein Zusatz, sie ist der Test.
+
+### Neue Pruefungen
+
+* **neu** `tools/test_bench_tastendruck.py` - 40 Pruefungen, und zwar
+  durch die **echte** `read_action()` hindurch, mit echtem `select()`
+  auf einem echten Dateideskriptor: acht Druecker ergeben eine Aktion
+  mit n=8; 8 runter + 5 hoch in einem Stoss ergeben **zwei** Aktionen;
+  die Gegenprobe ohne Zusammenfassen ergibt **13**; `nav_anwenden()`
+  rechnet in beide Richtungen, rundum und mit Seitenweite richtig;
+  `zusammen=False` schaltet wirklich ab; die Endposition ist fuer
+  Listen bis 31.199 Eintraege nachgerechnet; `run()` rechnet nicht
+  mehr selbst; `schritt_funktion()` zeichnet nicht mehr selbst; die
+  Abarbeitungs-Schleife in Abschnitt M setzt den Index **nicht** (per
+  Baumsuche, nicht per Textvergleich - das Warmlaufen davor darf ihn
+  setzen); `finally` stellt `devices`, `rescan`, `held`, `_vorgelegt`,
+  `_zeichenzeit` und `last_scan` zurueck; und Abschnitt M greift kein
+  Eingabegeraet.

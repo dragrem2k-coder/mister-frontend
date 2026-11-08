@@ -28,6 +28,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _harness as H          # noqa: E402
 
+from _quelle import koerper, nur_code                     # noqa: E402
 import fe.show as SHOW        # noqa: E402
 import fe.bench as BENCH      # noqa: E402
 import fe.menu as MENU        # noqa: E402
@@ -203,13 +204,33 @@ check("niemand baut den Schritt noch ein zweites Mal",
 
 # Der leichte Pfad muss wirklich zuerst versucht werden - das war der
 # Fehler von Build 218.
-_sf = qb.split("def schritt_funktion")[1].split("\ndef ")[0]
+#
+# BUILD 308: DAS ZEICHNEN IST UMGEZOGEN, DIE ZUSAGE NICHT.
+# schritt_funktion() setzt den Index und ruft zeichen_funktion(); die
+# zwei Zeilen mit dem leichten Pfad stehen seither dort, weil
+# Abschnitt M nur diese Haelfte braucht (dort setzt nav_anwenden() im
+# Frontend den Index, nicht der Bench). Geprueft wird deshalb an der
+# neuen Stelle - und zusaetzlich, dass schritt_funktion() wirklich
+# dorthin geht statt selbst zu zeichnen.
+#
+# Und mit koerper() statt split(): der Textschnitt hier ist genau in
+# dem Moment gerissen, in dem eine neue Funktion zwischen die alten
+# geriet. Dieselbe Falle wie bei test_nachscan.py in Build 303.
+_sf = nur_code(koerper(qb, "schritt_funktion"))
+_zf = nur_code(koerper(qb, "zeichen_funktion"))
+check("schritt_funktion() zeichnet nicht mehr selbst",
+      "zeichen_funktion(" in _sf
+      and "_draw_navigate_cats" not in _sf
+      and "_draw_navigate_items" not in _sf,
+      "sonst stuende der Zeichenschritt zweimal da")
 check("erst der leichte Pfad, dann der volle Aufbau",
-      _sf.index("_draw_navigate_cats") < _sf.index("fe.draw()"),
+      bool(_zf) and _zf.index("_draw_navigate_cats") < _zf.index("fe.draw()"),
       "sonst wird der volle Neuaufbau gemessen")
+check("beide Ansichten kennen den leichten Pfad",
+      "_draw_navigate_cats" in _zf and "_draw_navigate_items" in _zf)
 check("und die Fensterspanne haelt zwei Zeilen Rand",
       "max(2, min(fenster - 2, gesamt - 1))"
-      in qb.split("def fenster_spanne")[1].split("\ndef ")[0],
+      in nur_code(koerper(qb, "fenster_spanne")),
       "der leichte Pfad verlangt ALTE und NEUE Zeile im Fenster")
 
 # ---------------------------------------------------------------------------
