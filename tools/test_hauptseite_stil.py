@@ -78,10 +78,21 @@ A.SYSART_FOTO_BASE = fm.SYSART_FOTO_BASE = FOTOS
 # hereingefallen (bis zu 500.000 "abweichende" Bildpunkte, alle
 # unecht).
 #
-# Dass die Verdraengung funktioniert, prueft tools/test_art_cache.py -
-# hier geht es um die Geometrie und das Freiraeumen, und dafuer
-# muessen beide Seiten dieselben Bilder sehen.
+# Dass die Verdraengung funktioniert, prueft ein eigener Test - hier
+# geht es um die Geometrie und das Freiraeumen, und dafuer muessen
+# beide Seiten dieselben Bilder sehen.
+#
+# ES SIND VIER SCHRAUBEN UND NICHT EINE, und das habe ich erst beim
+# zweiten Anlauf gemerkt: nur LIMIT hochzusetzen half nichts, weil
+# seit Build 74 zusaetzlich ein SPEICHER-Budget verdraengt
+# (ORIGINAL_BUDGET/SCALED_BUDGET). Welche Bilder dabei herausfliegen,
+# haengt an der Reihenfolge - und genau das macht den Vergleich
+# unzuverlaessig, bis alle vier offen sind.
 A.ART.LIMIT = 100000
+A.ART.ORIGINAL_MIN = 100000
+A.ART.ORIGINAL_BUDGET = 8 * 1024 * 1024 * 1024
+A.ART.SCALED_MIN = 100000
+A.ART.SCALED_BUDGET = 8 * 1024 * 1024 * 1024
 
 _QF = open(os.path.join(_REPO, "frontend", "frontend.py"),
            encoding="utf-8", errors="replace").read()
@@ -588,8 +599,9 @@ for name, quelle in (("Kachelwand", _WAND + _WKACHEL),
                         ("self._restore_row_bg(", "das Freiraeumen")):
         check("%-11s %-28s -> %s" % (name, ruf, wofuer), ruf in quelle)
     check("%s: die Zahlen kommen aus einem vorhandenen Helfer" % name,
-          "self._kat_zahlen(" in quelle
-          or "self._kat_infozeilen(" in quelle)
+          any(h in quelle for h in ("self._kat_eintraege(",
+                                    "self._kat_favoriten(",
+                                    "self._kat_infozeilen(")))
     check("%s: und zaehlt NICHT selbst" % name,
           'node.get("items"' not in quelle
           and '.get("items", ())' not in quelle,
@@ -657,6 +669,129 @@ for k in list(TR.TRANSLATIONS):
     if k.startswith("haupt_stil_") or k == "sys_haupt_stil":
         check("der alte Schluessel %s ist raus" % k, False,
               "er beschriebe einen Schalter, den es nicht mehr gibt")
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 14: die Steuerung folgt der Form, nicht der Gewohnheit")
+# ---------------------------------------------------------------------------
+# GEMELDET ZU BUILD 316: "liste mit hoch runter passt, raster galerie
+# und karussell muss mit links rechts steuerbar sein, hier greift wohl
+# noch die steuerung aus der listen ansicht".
+#
+# Die Zuordnung stand als Verschachtelung mitten in run() und war von
+# keinem Test erreichbar - genau deshalb ist niemandem aufgefallen,
+# dass die drei neuen Ansichten darin gar nicht vorkamen. Seit Build
+# 317 ist es eine Methode, und hier wird sie gerufen.
+f = seite(1920, 1080, "liste")
+f._kat_raster_spalten = 6
+MOVE, PAGE = 1, 9
+erwartet = {
+    "liste":      (MOVE, PAGE),   # senkrecht
+    "dashboard":  (MOVE, PAGE),   # senkrecht
+    "raster":     (6, MOVE),      # Flaeche: hoch/runter eine REIHE
+    "kachelwand": (6, MOVE),      # Flaeche
+    "galerie":    (PAGE, MOVE),   # waagerecht: links/rechts ein Nachbar
+    "karussell":  (PAGE, MOVE),   # waagerecht
+}
+for ansicht in ALLE:
+    ist = f.nav_schritte(ansicht, "_kat_raster_spalten", MOVE, PAGE)
+    soll = erwartet[ansicht]
+    check("%-11s hoch/runter=%s  links/rechts=%s"
+          % (ansicht, soll[0], soll[1]), ist == soll, "%r" % (ist,))
+check("keine der sechs faellt mehr stillschweigend in den Rueckfall",
+      all(f.nav_schritte(a, "_kat_raster_spalten", MOVE, PAGE)
+          != (MOVE, PAGE) for a in ("raster", "kachelwand", "galerie",
+                                    "karussell")),
+      "die Liste und das Dashboard SOLLEN dort landen, die vier "
+      "anderen nicht")
+check("run() benutzt dieselbe Methode und keine eigene Rechnung",
+      len(re.findall(r"self\.nav_schritte\(", _ROH)) == 2
+      and "def _schritte(" not in _ROH,
+      "zwei Fassungen desselben Schritts sind zwei Gelegenheiten "
+      "auseinanderzulaufen")
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 15: gezaehlt wird rekursiv - und einmal fuer alle")
+# ---------------------------------------------------------------------------
+# GEMELDET ZU BUILD 316, zwei Saetze, eine Ursache:
+#   "warum werden mir bei snes und anderen kategorien 0 eintraege
+#    angezeigt obwohl ordner und roms in den kategorien drin sind"
+#   "und ab und zu ein paar haenger beim scrollen"
+# Gezaehlt wurden nur die Eintraege DIREKT im Knoten (also 0, wenn die
+# ROMs in Unterordnern liegen), und zwar je Kategorie beim ersten
+# Sichtbarwerden - also mitten im Tastendruck.
+
+
+def baum(name, direkt, unter, je):
+    node = {"folders": {},
+            "items": [(name + "_d%d" % i, "game", None)
+                      for i in range(direkt)]}
+    for u in range(unter):
+        node["folders"]["U%d" % u] = {
+            "folders": {},
+            "items": [(name + "_u%d_%d" % (u, i), "game", None)
+                      for i in range(je)]}
+    return (name, node, name)
+
+
+f = seite(1920, 1080, "kachelwand")
+f.cats = [baum("SNES", 0, 3, 400),      # ALLES in Unterordnern
+          baum("NES", 12, 2, 100),      # gemischt
+          baum("GBA", 50, 0, 0),        # nur direkt
+          baum("LEER", 0, 0, 0)]        # wirklich leer
+f._favorites_set = {"SNES_u0_1", "SNES_u0_2", "NES_d3", "GBA_d7"}
+f._kat_zahlen_cache = None
+for i, (n, soll) in enumerate((("SNES", 1200), ("NES", 212),
+                               ("GBA", 50), ("LEER", 0))):
+    ist = f._kat_eintraege(i)
+    check("%-5s zaehlt %d Eintraege" % (n, soll), ist == soll,
+          "%r - Unterordner zaehlen mit" % (ist,))
+check("die groesste ist die groesste", f._kat_groesste() == 1200,
+      "%r" % (f._kat_groesste(),))
+check("und eine leere Sammlung ergibt trotzdem keine Null als Teiler",
+      f._kat_groesste() >= 1,
+      "der Balken teilt dadurch - eine Null waere ein Absturz")
+
+# ALLE auf einmal, nicht je Kategorie beim Sichtbarwerden: nach EINEM
+# Aufruf muessen alle Zahlen dastehen. Das ist die Zusage gegen die
+# Haenger.
+f._kat_zahlen_cache = None
+f._kat_eintraege(0)
+check("ein Aufruf fuellt die Tabelle fuer ALLE Kategorien",
+      len(f._kat_zahlen_cache["zahlen"]) == len(f.cats),
+      "sonst kommt bei jeder neuen Kachelseite ein Durchlauf mitten "
+      "im Tastendruck dazu")
+check("die Favoriten stehen NICHT darin",
+      f._kat_zahlen_cache["favoriten"] == {},
+      "das ist der teure Teil - er wird nur fuer die markierte "
+      "Kategorie des Dashboards gebraucht")
+for i, soll in ((0, 2), (1, 1), (2, 1), (3, 0)):
+    check("Favoriten in Kategorie %d: %d" % (i, soll),
+          f._kat_favoriten(i) == soll, "%r" % (f._kat_favoriten(i),))
+check("auch Favoriten werden rekursiv gezaehlt",
+      f._kat_favoriten(0) == 2,
+      "zwei der drei SNES-Favoriten liegen in einem Unterordner")
+check("und einmal gezaehlt, bleiben sie gemerkt",
+      0 in f._kat_zahlen_cache["favoriten"])
+_alt = f._kat_zahlen_cache
+f.cats = f.cats[:2]
+f._kat_eintraege(0)
+check("eine geaenderte Kategorienliste wirft die Tabelle weg",
+      f._kat_zahlen_cache is not _alt
+      and len(f._kat_zahlen_cache["zahlen"]) == 2)
+
+check("die Kachelwand holt nur die Eintragszahl",
+      "_kat_eintraege(" in _WKACHEL and "_kat_favoriten(" not in _WKACHEL,
+      "haette sie die Favoriten mitgezaehlt, waere der Haenger "
+      "geblieben - nur an einer anderen Stelle")
+check("und das Dashboard holt die Favoriten nur fuer die markierte",
+      "_kat_favoriten(" in _TAFEL and "_kat_favoriten(" not in _ZEILE)
+check("gezaehlt wird mit dem Zaehler des Hauses",
+      "_count_tree_items(" in nur_code(
+          koerper(_QF, "_kat_zaehlwerk", "Frontend")),
+      "dieselbe Zahl, die auch der Einrichtungsassistent nennt - "
+      "zwei Zaehlweisen waeren zwei Wahrheiten")
 
 shutil.rmtree(TMP, ignore_errors=True)
 

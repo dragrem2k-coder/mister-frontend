@@ -1589,10 +1589,15 @@ things:**
 | List | one entry | one page |
 | Grid | a whole **row** | one neighbour |
 | Gallery | one **page** | one neighbour |
+| Tile wall *(main page)* | a whole **row** | one neighbour |
+| Dashboard *(main page)* | one entry | one page |
+| Carousel *(main page)* | one **page** | one neighbour |
 
-In the gallery the neighbours sit side by side, so left/right is what
-moves you one along. Up/down are not dead there: they page the
-neighbour strip, which is exactly what left/right do in the list.
+In the gallery and the carousel the neighbours sit side by side, so
+left/right is what moves you one along. Up/down are not dead there:
+they page one further, which is exactly what left/right do in the
+list. The tile wall is a surface like the grid, the dashboard a list
+like the list.
 
 **A folder-only level always stays a list.** Folders practically never
 have a cover of their own; a grid of nothing but placeholders would not

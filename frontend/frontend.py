@@ -11076,7 +11076,7 @@ class Frontend:
     # mehr anfassen will.
     #
     # WAS SIE SICH SEHR WOHL TEILEN, und der Test prueft jeden
-    # einzelnen Aufruf: _kat_logo(), _kat_zahlen(), _kat_infozeilen(),
+    # einzelnen Aufruf: _kat_logo(), _kat_eintraege(), _kat_infozeilen(),
     # _kachel_rahmen(), _kachel_platzhalter(), _kachel_feld(),
     # _restore_row_bg(), _rechtecke_flippen(), _kat_kopf() und
     # _kat_fusszeile(). Kein zweiter Mechanismus fuer dieselbe Sache -
@@ -11098,65 +11098,99 @@ class Frontend:
             return False
         return True
 
-    def _kat_zahlen(self, i):
-        """(Eintraege, Unterordner, Favoriten) einer Kategorie.
+    def _kat_zaehlwerk(self):
+        """Die Eintragszahl JEDER Kategorie - in einem Zug gezaehlt.
 
-        EINMAL GEZAEHLT UND GEMERKT. _kat_infozeilen() zaehlt bei
-        jedem Aufruf neu - das ist dort richtig, weil es nur die EINE
-        markierte Kategorie betrifft. Die Kachelwand braucht die Zahl
-        aber an JEDER Kachel, und ohne Gedaechtnis waere das bei einem
-        vollen Aufbau ein Durchlauf ueber die gesamte Sammlung (auf
-        seinem Geraet 31.426 Eintraege) - also genau die Sorte
-        Aufwand, die wir uns in den letzten Builds abgewoehnt haben.
+        ZWEI GEMELDETE FEHLER AUF EINMAL, beide aus Build 314, und
+        beide hatten dieselbe Wurzel: hier wurde falsch und zu spaet
+        gezaehlt.
 
-        Der Merkzettel faellt, sobald sich die Kategorienliste oder
-        die Favoriten aendern; das ist die Signatur in der ersten
-        Zeile. Eine Signatur und kein "beim Neuaufbau loeschen":
-        _force_full_redraw hat mit dem Inhalt nichts zu tun, der
-        Zaehler waere danach grundlos wieder kalt."""
-        sig = (len(self.cats),
-               self.cats[0][0] if self.cats else "",
-               len(getattr(self, "_favorites_set", ()) or ()))
+          * "warum werden mir bei snes und anderen kategorien 0
+            eintraege angezeigt obwohl ordner und roms in den
+            kategorien drin sind" - gezaehlt wurden nur die Eintraege
+            DIREKT im Knoten. Wer seine ROMs in Unterordnern liegen
+            hat, bekam eine Null. _count_tree_items() zaehlt
+            rekursiv, und genau die Zahl steht auch sonst ueberall im
+            Haus.
+          * "und ab und zu ein paar haenger beim scrollen" - gezaehlt
+            wurde JE KATEGORIE beim ersten Sichtbarwerden, also
+            mitten im Tastendruck. Jede neue Kachelseite brachte
+            einen neuen Durchlauf mit.
+
+        EINMAL FUER ALLE, UND ZWAR WEIL ES NICHTS KOSTET. Nachgemessen
+        an einem Baum von der Groesse seiner Sammlung (25 Kategorien,
+        32.500 Eintraege, je acht Unterordner):
+
+            rekursiv ueber alle 25 auf einmal   0,041 ms
+            je Eintrag gefiltert (bisher)       0,365 ms
+
+        Der rekursive Weg ist nicht nur richtiger, sondern auch
+        neunmal billiger - er zaehlt mit len() je Knoten statt mit
+        einer Python-Schleife je Eintrag. Es gibt also keinen Grund
+        mehr, das stueckweise zu tun.
+
+        Der Merkzettel faellt, sobald sich die Kategorienliste
+        aendert. Die Favoriten stehen bewusst NICHT in der Signatur:
+        sie werden hier nicht gezaehlt (siehe _kat_favoriten()), und
+        eine Signatur, die auf etwas reagiert, das sie gar nicht
+        betrifft, wirft den Zaehler grundlos weg."""
+        sig = (len(self.cats), self.cats[0][0] if self.cats else "")
         merk = getattr(self, "_kat_zahlen_cache", None)
         if merk is None or merk.get("_sig") != sig:
-            merk = {"_sig": sig}
+            zahlen = [_count_tree_items(node)
+                      if isinstance(node, dict) else 0
+                      for _n, node, _sk in self.cats]
+            merk = {"_sig": sig, "zahlen": zahlen,
+                    "groesste": max(zahlen) if zahlen else 1,
+                    "favoriten": {}}
             self._kat_zahlen_cache = merk
-        wert = merk.get(i)
-        if wert is None:
-            _name, node, _syskey = self.cats[i]
-            favs_set = getattr(self, "_favorites_set", None)
-            eintraege = 0
-            favs = 0
-            for it in node.get("items", ()):
-                if it[1] in ("game", "core"):
-                    eintraege += 1
-                    if favs_set is not None and it[0] in favs_set:
-                        favs += 1
-            wert = (eintraege, len(node.get("folders", ())), favs)
-            merk[i] = wert
-        return wert
+        return merk
+
+    def _kat_eintraege(self, i):
+        """Wieviele Eintraege stecken in dieser Kategorie? Rekursiv."""
+        zahlen = self._kat_zaehlwerk()["zahlen"]
+        return zahlen[i] if 0 <= i < len(zahlen) else 0
 
     def _kat_groesste(self):
         """Die Eintragszahl der groessten Kategorie - der Massstab fuer
-        die Balken auf der Kachelwand.
+        die Balken.
 
         Ein Balken ohne Bezugsgroesse ist Dekoration. Mit ihr sagt er
         etwas, das sonst nirgends auf der Hauptseite steht: wie sich
-        die Kategorien zueinander verhalten.
+        die Kategorien zueinander verhalten."""
+        return max(1, self._kat_zaehlwerk()["groesste"])
 
-        EINMAL ueber alles, dann gemerkt - und es ist derselbe
-        Merkzettel wie bei _kat_zahlen(), faellt also mit derselben
-        Signatur. Beim allerersten Aufbau der Kachelwand kostet das
-        einen Durchlauf ueber die ganze Sammlung; danach nichts
-        mehr."""
-        self._kat_zahlen(0)
-        merk = self._kat_zahlen_cache
-        wert = merk.get("_groesste")
+    def _kat_favoriten(self, i):
+        """Wieviele Favoriten stecken in dieser Kategorie?
+
+        GETRENNT VON _kat_eintraege(), und das ist der Punkt: das
+        hier ist der TEUERE Teil - es muss jeden Eintrag einzeln
+        gegen die Favoritenmenge halten, rekursiv. Gebraucht wird es
+        aber nur an EINER Stelle, naemlich in einem der drei
+        Zahlenkaesten des Dashboards, und dort immer nur fuer die
+        markierte Kategorie.
+
+        Haette die Kachelwand das mitgezaehlt, waere der Haenger beim
+        Scrollen geblieben - nur an einer anderen Stelle. Gemerkt
+        wird je Kategorie; wer hin und her geht, zahlt einmal."""
+        merk = self._kat_zaehlwerk()
+        wert = merk["favoriten"].get(i)
         if wert is None:
-            wert = 1
-            for i in range(len(self.cats)):
-                wert = max(wert, self._kat_zahlen(i)[0])
-            merk["_groesste"] = wert
+            favs = getattr(self, "_favorites_set", None)
+            if not favs or not (0 <= i < len(self.cats)):
+                wert = 0
+            else:
+                def _zaehlen(node):
+                    n = 0
+                    for it in node.get("items", ()):
+                        if it[0] in favs:
+                            n += 1
+                    for sub in node.get("folders", {}).values():
+                        n += _zaehlen(sub)
+                    return n
+                _name, node, _sk = self.cats[i]
+                wert = _zaehlen(node) if isinstance(node, dict) else 0
+            merk["favoriten"][i] = wert
         return wert
 
     def _kat_bild_luecke(self, art, x, y, kasten_b, kasten_h):
@@ -11270,7 +11304,7 @@ class Frontend:
         label = name if len(name) <= maxc else name[:max(1, maxc - 1)] + "~"
         fb.text(kx + pad, ty, label, tn,
                 C_TITLE if markiert else C_TEXT, C_PANEL)
-        eintraege = self._kat_zahlen(i)[0]
+        eintraege = self._kat_eintraege(i)
         zahl = t("entries", eintraege)
         fb.text(kx + pad, ty + 13 * tn, zahl[:maxc], tn, C_DIM, C_PANEL)
         # --- Der Balken: Anteil an der groessten Kategorie. Siehe
@@ -11423,7 +11457,7 @@ class Frontend:
             grund, farbe = C_PANEL, C_TITLE
         else:
             grund, farbe = C_BG, C_TEXT
-        eintraege = self._kat_zahlen(i)[0]
+        eintraege = self._kat_eintraege(i)
         zahl = "%d" % eintraege
         zb = len(zahl) * 8 * tn
         maxc = max(3, (lw - 8 * s - zb - 4 * s) // (8 * s))
@@ -11468,7 +11502,12 @@ class Frontend:
         skala = self._fit_scale(name, tb, 2 * s)
         fb.text(tx, ty, name, skala, C_TITLE, C_PANEL)
         ty += 10 * skala + 6 * s
-        eintraege, ordner, favs = self._kat_zahlen(i)
+        # Build 317: die Eintragszahl kommt aus dem Zaehlwerk (alle
+        # auf einmal, rekursiv), die Favoriten einzeln und nur hier -
+        # siehe _kat_favoriten(), das ist der teure Teil.
+        eintraege = self._kat_eintraege(i)
+        ordner = len(self.cats[i][1].get("folders", ()) or ())
+        favs = self._kat_favoriten(i)
         # DREI KAESTEN: Eintraege, Unterordner, Favoriten. Genau die
         # drei Zahlen, die _kat_infozeilen() ohnehin schon kennt - nur
         # gross statt als Zeile. Eine vierte Zahl haette einen vierten
@@ -23886,6 +23925,44 @@ class Frontend:
         except OSError:
             pass
 
+    def nav_schritte(self, ansicht, spalten_merker, move_step, page_step):
+        """(hoch_runter, links_rechts) - wie weit ein Tastendruck
+        springt. Rueckgabe sind zwei Schrittweiten fuer
+        nav_anwenden().
+
+        DIE RICHTUNGSTASTEN FOLGEN DEM, WAS MAN SIEHT - das ist die
+        ganze Regel, und sie stammt aus einer Rueckmeldung zu Build
+        127: "wenn ich mit den neuen Ansichten durch die Menues
+        scrolle, druecke ich oben und unten, um nach rechts und links
+        zu gehen - das ist Mist".
+
+            senkrecht   (Liste, Dashboard)
+                hoch/runter = ein Schritt, links/rechts = eine Seite
+            Flaeche     (Raster, Kachelwand)
+                hoch/runter = eine REIHE, links/rechts = ein Nachbar
+            waagerecht  (Galerie, Karussell)
+                links/rechts = ein Nachbar, hoch/runter = eine Seite
+
+        HERAUSGELOEST IN BUILD 317, und nicht aus Ordnungsliebe: das
+        hier stand als Verschachtelung mitten in run() und war damit
+        von keinem Test erreichbar. Genau deshalb ist es niemandem
+        aufgefallen, dass die drei neuen Ansichten aus Build 314 gar
+        nicht darin vorkamen - sie fielen in den Rueckfall und
+        liessen sich wie eine Liste steuern. Gemeldet mit: "liste mit
+        hoch runter passt, raster galerie und karussell muss mit
+        links rechts steuerbar sein, hier greift wohl noch die
+        steuerung aus der listen ansicht".
+
+        Das Dashboard steht bewusst NICHT in den beiden Listen: seine
+        Kategorien liegen untereinander, dort ist der Rueckfall genau
+        richtig. Es einzutragen, nur damit es erwaehnt ist, waere
+        eine Zeile, die nichts tut."""
+        if ansicht in ("raster", "kachelwand"):
+            return max(1, getattr(self, spalten_merker, 1)), move_step
+        if ansicht in ("galerie", "karussell"):
+            return page_step, move_step
+        return move_step, page_step
+
     def nav_anwenden(self, act, items, weite, zusammen=True):
         """EINEN Navigationsschritt anwenden - und gestaute mitnehmen.
 
@@ -24747,20 +24824,33 @@ class Frontend:
                 # blaettern die Leiste weiter, also genau das, was in
                 # der Liste links/rechts tun. Vertauscht, weil die
                 # Ansicht vertauscht ist.
-                def _schritte(ansicht, spalten_merker):
-                    if ansicht == "raster":
-                        return (max(1, getattr(self, spalten_merker, 1)),
-                                move_step)
-                    if ansicht == "galerie":
-                        return page_step, move_step
-                    return move_step, page_step
-
-                hoch_runter, links_rechts = _schritte(
+                # BUILD 317: die drei neuen Hauptseiten-Ansichten
+                # gehoeren in dieselbe Tabelle, und zwar weil sie
+                # sonst in den Rueckfall fallen und sich wie die
+                # LISTE steuern lassen - gemeldet mit "liste mit hoch
+                # runter passt, raster galerie und karussell muss mit
+                # links rechts steuerbar sein, hier greift wohl noch
+                # die steuerung aus der listen ansicht".
+                #
+                # Dieselbe Regel wie oben, nur auf die neuen Formen
+                # angewandt - die Richtungstasten folgen dem, was man
+                # SIEHT:
+                #
+                #   Kachelwand  Flaeche     wie das Raster
+                #   Dashboard   senkrecht   wie die Liste
+                #   Karussell   waagerecht  wie die Galerie
+                #
+                # Das Dashboard steht bewusst NICHT in der Tabelle:
+                # seine Kategorien liegen untereinander, dort ist der
+                # Rueckfall genau richtig. Es einzutragen, nur damit
+                # es erwaehnt ist, waere eine Zeile, die nichts tut.
+                hoch_runter, links_rechts = self.nav_schritte(
                     self.aktuelle_ansicht() if self.page == 1 else "liste",
-                    "_raster_spalten")
-                kat_hoch_runter, kat_links_rechts = _schritte(
+                    "_raster_spalten", move_step, page_step)
+                kat_hoch_runter, kat_links_rechts = self.nav_schritte(
                     self.aktuelle_ansicht_haupt() if self.page == 0
-                    else "liste", "_kat_raster_spalten")
+                    else "liste", "_kat_raster_spalten",
+                    move_step, page_step)
 
                 if act == "select":
                     # GEAENDERT (Build 90, Nutzervorschlag: "dadurch dass

@@ -13,6 +13,24 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v4.9 — noch nicht veröffentlicht
 
+- **Behoben: die neuen Hauptseiten ließen sich wie eine Liste
+  steuern.** Kachelwand, Dashboard und Karussell fehlten in der
+  Zuordnung der Richtungstasten und fielen in den Rückfall. Jetzt
+  folgt die Steuerung der Form: die **Kachelwand** wie das Raster
+  (hoch/runter eine ganze Reihe, links/rechts ein Nachbar), das
+  **Karussell** wie die Galerie (links/rechts ein Nachbar), das
+  **Dashboard** wie die Liste (Build 317).
+- **Behoben: „0 Einträge" bei Kategorien mit Unterordnern.** Gezählt
+  wurden nur die Einträge direkt im Knoten — wer seine ROMs in
+  Unterordnern liegen hat, bekam eine Null. Jetzt wird rekursiv
+  gezählt, mit derselben Zahl, die auch der Einrichtungsassistent
+  nennt (Build 317).
+- **Behoben: Hänger beim Scrollen auf der Kachelwand.** Gezählt wurde
+  je Kategorie beim ersten Sichtbarwerden, also mitten im
+  Tastendruck. Jetzt einmal für alle in einem Zug — und das ist
+  nachgemessen **neunmal billiger** als vorher: 0,041 ms statt 0,365
+  ms für eine Sammlung von 32.500 Einträgen (Build 317).
+
 - **Behoben: beim Scrollen auf der Hauptseite mischten sich zwei
   Ansichten.** Gemeldet als *„beide ansichten überschneiden sich"* und
   genauer *„wenn ich in der Listenansicht nach unten durchscrolle und

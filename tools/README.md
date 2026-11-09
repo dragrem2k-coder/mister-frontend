@@ -9375,3 +9375,113 @@ echte Dateiname, nicht eine zurechtgebogene Schreibweise.
 * **geaendert** `tools/test_netplay_core.py` - der Game-Boy-Fall mit
   abweichender Schreibweise, samt Gegenprobe, dass die Praefix-Falle
   zubleibt.
+
+## Nachtrag Build 317 - drei Meldungen, zwei Ursachen
+
+Zu Build 316 kamen drei Saetze:
+
+> *„liste mit hoch runter passt, raster galerie und karussell muss mit
+> links rechts steuerbar sein, hier greift wohl noch die steuerung aus
+> der listen ansicht"*
+>
+> *„warum werden mir bei snes und anderen kategorien 0 eintraege
+> angezeigt obwohl ordner und roms in den kategorien drin sind"*
+>
+> *„und ab und zu ein paar haenger beim scrollen"*
+
+Der erste ist eine eigene Ursache. Der zweite und der dritte sind
+**dieselbe**.
+
+### Die Steuerung: eine Zuordnung, die kein Test erreichen konnte
+
+Die Schrittweiten standen als Verschachtelung `def _schritte(...)`
+mitten in `run()`. Von aussen nicht aufrufbar - und
+`tools/test_ansichten.py` hat sich deshalb seit Build 127 mit einem
+Taschenspielertrick beholfen: die Funktion per Zeichenkettensuche aus
+dem Quelltext schneiden, mit `exec()` neu bauen und DIE pruefen.
+
+Das hat funktioniert und war trotzdem falsch:
+
+> **Ein Test, der den Quelltext nachbaut, prueft seine eigene
+> Nachbildung mit.**
+
+Und es hatte Folgen. Build 314 brachte drei neue Ansichten, die in
+dieser Zuordnung schlicht fehlten - sie fielen in den Rueckfall und
+liessen sich wie eine Liste steuern. Gemeldet hat es der Nutzer, nicht
+der Test.
+
+Jetzt ist es eine Methode, `nav_schritte()`, und beide Seiten der
+Hauptschleife rufen sie. Die Zuordnung folgt weiter dem, was man
+SIEHT:
+
+| Form | Ansichten | hoch/runter | links/rechts |
+|---|---|---|---|
+| senkrecht | Liste, **Dashboard** | ein Schritt | eine Seite |
+| Flaeche | Raster, **Kachelwand** | eine REIHE | ein Nachbar |
+| waagerecht | Galerie, **Karussell** | eine Seite | ein Nachbar |
+
+Das Dashboard steht bewusst in der ersten Zeile und nicht in einer
+eigenen: seine Kategorien liegen untereinander, dort ist der
+Rueckfall genau richtig. Es einzutragen, nur damit es erwaehnt ist,
+waere eine Zeile, die nichts tut.
+
+### Die Null und die Haenger: dieselbe Zeile
+
+`_kat_zahlen()` aus Build 314 zaehlte die Eintraege **direkt im
+Knoten** - und zwar **je Kategorie beim ersten Sichtbarwerden**.
+
+  * Wer seine ROMs in Unterordnern liegen hat (also die meisten),
+    bekam eine Null. Die Unterordner wurden nicht mitgezaehlt.
+  * Und gezaehlt wurde mitten im Tastendruck, beim ersten Erscheinen
+    einer Kachel. Jede neue Kachelseite brachte einen neuen Durchlauf
+    mit - das waren die Haenger.
+
+Beides faellt mit derselben Aenderung weg. Nachgemessen an einem Baum
+von der Groesse seiner Sammlung (25 Kategorien, 32.500 Eintraege, je
+acht Unterordner):
+
+| | Zeit |
+|---|---|
+| rekursiv ueber **alle 25 auf einmal** (`_count_tree_items`) | **0,041 ms** |
+| je Eintrag gefiltert, eine Kategorie nach der anderen (bisher) | 0,365 ms |
+
+Der rekursive Weg ist nicht nur richtiger, sondern **neunmal
+billiger**: er zaehlt mit `len()` je Knoten statt mit einer
+Python-Schleife je Eintrag. Es gab also nie einen Grund, das
+stueckweise zu tun - der alte Code hat teuer bezahlt und dafuer die
+falsche Zahl bekommen.
+
+`_kat_zaehlwerk()` fuellt die Tabelle jetzt in einem Zug, und es ist
+dieselbe Zahl, die auch der Einrichtungsassistent nennt - zwei
+Zaehlweisen waeren zwei Wahrheiten.
+
+**Die Favoriten bleiben getrennt** (`_kat_favoriten()`). Das ist der
+teure Teil: jeder Eintrag muss einzeln gegen die Favoritenmenge
+gehalten werden. Gebraucht wird er nur in EINEM der drei Zahlenkaesten
+des Dashboards, und dort nur fuer die markierte Kategorie. Haette die
+Kachelwand ihn mitgezaehlt, waere der Haenger geblieben - nur an einer
+anderen Stelle.
+
+### Die vierte Schraube am Bildspeicher
+
+Der Bildvergleich in `test_hauptseite_stil.py` meldete erneut
+Abweichungen, die keine waren. In Build 316 stand dazu, man muesse
+`ArtCache.LIMIT` anheben - das war **nur die halbe Wahrheit**: seit
+Build 74 verdraengt zusaetzlich ein SPEICHER-Budget
+(`ORIGINAL_BUDGET`/`SCALED_BUDGET`, je mit eigener Mindestanzahl).
+Welche Bilder dabei herausfliegen, haengt an der Reihenfolge, und
+damit vergleicht man ein fertiges Bild mit einem Platzhalter. Es sind
+vier Schrauben, nicht eine.
+
+### Neue Pruefungen
+
+* **geaendert** `tools/test_ansichten.py` - Test 6 ruft jetzt
+  `nav_schritte()` statt einer aus dem Quelltext geschnittenen
+  Nachbildung, und prueft alle sechs Ansichten einzeln samt der
+  Zusage, dass `run()` nicht selbst rechnet.
+* **geaendert** `tools/test_hauptseite_stil.py` - zwei neue
+  Abschnitte: die Steuerung aller sechs Ansichten, und die Zaehlung
+  (Unterordner zaehlen mit; ein Aufruf fuellt die Tabelle fuer ALLE
+  Kategorien; die Favoriten stehen NICHT darin und werden rekursiv
+  und nur fuer die markierte Kategorie gezaehlt; eine geaenderte
+  Kategorienliste wirft die Tabelle weg).

@@ -218,21 +218,27 @@ print("Test 6: die Richtungstasten folgen der Anordnung (Build 127)")
 #
 # Ein Zeichenketten-Vergleich kann das nicht finden - er prueft, dass
 # etwas dasteht, nicht was es bedeutet. Deshalb wird die echte
-# Zuordnung jetzt AUSGEFUEHRT: _schritte() wird aus dem Quelltext
-# herausgeloest und mit einer Attrappe aufgerufen.
-import textwrap                                          # noqa: E402
+# Zuordnung AUSGEFUEHRT.
+#
+# GEAENDERT IN BUILD 317: bis dahin stand hier ein kleiner
+# Taschenspielertrick - _schritte() war eine Verschachtelung mitten in
+# run(), also von aussen nicht erreichbar, und dieser Test hat sie per
+# Zeichenkettensuche aus dem Quelltext geschnitten und mit exec() neu
+# gebaut. Das hat funktioniert und war trotzdem falsch: ein Test, der
+# den Quelltext nachbaut, prueft seine eigene Nachbildung mit.
+#
+# Und es hatte Folgen. Build 314 hat drei neue Ansichten eingefuehrt,
+# die in dieser Zuordnung schlicht fehlten - sie fielen in den
+# Rueckfall und liessen sich wie eine Liste steuern. Gemeldet hat es
+# der Nutzer, nicht der Test: "liste mit hoch runter passt, raster
+# galerie und karussell muss mit links rechts steuerbar sein".
+#
+# Jetzt ist es eine Methode (nav_schritte), und hier wird genau die
+# gerufen, die auch run() ruft.
+
 
 quelle = open(os.path.join(_REPO, "frontend", "frontend.py"),
               encoding="utf-8", errors="replace").read()
-_ab = quelle.index("def _schritte(")
-_ab = quelle.rindex("\n", 0, _ab) + 1
-_bis = quelle.index("hoch_runter, links_rechts = _schritte(", _ab)
-_bis = quelle.rindex("\n", 0, _bis) + 1
-_block = textwrap.dedent(quelle[_ab:_bis])
-_ns = {}
-exec("def _bauen(self, move_step, page_step):\n"                # noqa: S102
-     + textwrap.indent(_block, "    ")
-     + "    return _schritte\n", _ns)
 
 
 class _Attrappe(object):
@@ -241,7 +247,12 @@ class _Attrappe(object):
 
 
 MOVE, PAGE = 1, 9
-_schritte = _ns["_bauen"](_Attrappe(), MOVE, PAGE)
+
+
+def _schritte(ansicht, merker):
+    return H.fm.Frontend.nav_schritte(_Attrappe(), ansicht, merker,
+                                      MOVE, PAGE)
+
 
 check("Liste: hoch/runter ein Schritt, links/rechts eine Seite",
       _schritte("liste", "_raster_spalten") == (MOVE, PAGE),
@@ -262,10 +273,30 @@ check("Galerie und Liste sind NICHT gleich verdrahtet",
 # Und das Gegenstueck: in der Galerie sind hoch/runter nicht tot.
 check("in der Galerie blaettern hoch/runter die Leiste",
       _schritte("galerie", "_raster_spalten")[0] == PAGE)
+# BUILD 317: die drei Hauptseiten-Ansichten aus Build 314 gehoeren in
+# dieselbe Zuordnung. Dass sie fehlten, hat der Nutzer gemeldet und
+# nicht dieser Test - weil er bis dahin eine Nachbildung geprueft hat.
+check("Kachelwand ist eine Flaeche wie das Raster",
+      _schritte("kachelwand", "_kat_raster_spalten") == (5, MOVE),
+      repr(_schritte("kachelwand", "_kat_raster_spalten")))
+check("Karussell liegt waagerecht wie die Galerie",
+      _schritte("karussell", "_kat_raster_spalten") == (PAGE, MOVE),
+      repr(_schritte("karussell", "_kat_raster_spalten")))
+check("Dashboard ist eine Liste - und soll es auch sein",
+      _schritte("dashboard", "_kat_raster_spalten") == (MOVE, PAGE),
+      "seine Kategorien liegen untereinander")
+check("keine der neuen faellt stillschweigend auf Listen-Steuerung",
+      all(_schritte(a, "_kat_raster_spalten") != (MOVE, PAGE)
+          for a in ("kachelwand", "karussell")))
 
 check("beide Seiten fragen ihre eigene Ansicht ab",
       "self.aktuelle_ansicht() if self.page == 1" in quelle
       and "self.aktuelle_ansicht_haupt() if self.page == 0" in quelle)
+check("und run() rechnet nicht selbst, sondern ruft nav_schritte()",
+      quelle.count("self.nav_schritte(") == 2
+      and "def _schritte(" not in quelle,
+      "zwei Fassungen desselben Schritts sind zwei Gelegenheiten "
+      "auseinanderzulaufen")
 
 H.set_screen(1920, 1080)
 f = H.make_frontend(page=1)
@@ -535,8 +566,8 @@ check("und ein eigener Menuepunkt", '"ansicht_haupt", None' in quelle_menu)
 # die Hauptseite ihre EIGENE Spaltenzahl benutzt und nicht die der
 # Spieleliste.
 check("die Hauptseite hat eine eigene Spaltenzahl",
-      "kat_hoch_runter, kat_links_rechts = _schritte(" in quelle
-      and '"_kat_raster_spalten")' in quelle)
+      "kat_hoch_runter, kat_links_rechts = self.nav_schritte(" in quelle
+      and '"_kat_raster_spalten",' in quelle)
 
 print()
 print("Test 14: die Galerie braucht ZWEI Kastengroessen (Build 125)")

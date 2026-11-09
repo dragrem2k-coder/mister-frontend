@@ -13,6 +13,22 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v4.9 — not yet released
 
+- **Fixed: the new main pages were steered like a list.** Tile wall,
+  dashboard and carousel were missing from the direction-key mapping
+  and fell through to the default. The controls now follow the shape:
+  the **tile wall** like the grid (up/down a whole row, left/right one
+  neighbour), the **carousel** like the gallery (left/right one
+  neighbour), the **dashboard** like the list (build 317).
+- **Fixed: "0 entries" for categories with subfolders.** Only the
+  entries directly in the node were counted - anyone keeping their
+  ROMs in subfolders got a zero. Counting is now recursive, using the
+  same number the setup wizard reports (build 317).
+- **Fixed: hitches while scrolling the tile wall.** Counting happened
+  per category the first time it became visible, i.e. in the middle
+  of a key press. Now it happens once for all of them - and that is
+  measured to be **nine times cheaper**: 0.041 ms instead of 0.365 ms
+  for a collection of 32,500 entries (build 317).
+
 - **Fixed: two views mixed together while scrolling the main page.**
   Reported as "both views overlap", and more precisely "when I scroll
   down the list view and it starts again at the top". The light draw

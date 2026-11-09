@@ -1895,11 +1895,15 @@ tun:**
 | Liste | ein Eintrag | eine Seite |
 | Raster | eine ganze **Reihe** | ein Nachbar |
 | Galerie | eine **Seite** | ein Nachbar |
+| Kachelwand *(Hauptseite)* | eine ganze **Reihe** | ein Nachbar |
+| Dashboard *(Hauptseite)* | ein Eintrag | eine Seite |
+| Karussell *(Hauptseite)* | eine **Seite** | ein Nachbar |
 
-In der Galerie liegen die Nachbarn waagerecht nebeneinander - also geht
-man mit links/rechts einen weiter. Hoch/runter sind dort nicht tot: sie
-blättern die Nachbarleiste eine Seite weiter, also genau das, was in
-der Liste links/rechts tun.
+In der Galerie und im Karussell liegen die Nachbarn waagerecht
+nebeneinander - also geht man mit links/rechts einen weiter.
+Hoch/runter sind dort nicht tot: sie blättern eine Seite weiter, also
+genau das, was in der Liste links/rechts tun. Die Kachelwand ist eine
+Fläche wie das Raster, das Dashboard eine Liste wie die Liste.
 
 **Eine reine Ordnerauswahl bleibt immer Liste.** Ordner haben praktisch
 nie ein eigenes Cover; ein Raster aus lauter Platzhaltern wäre keine
