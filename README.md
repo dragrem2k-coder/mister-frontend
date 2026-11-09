@@ -1,4 +1,4 @@
-# Dragend — MiSTer Custom Frontend v4.9
+# Dragend — MiSTer Custom Frontend v5.0
 
 **Von Dragrem2K**, mit Beiträgen von **TheRealSuTefan**, **Dfense** und
 **Dennsen**.
@@ -29,32 +29,29 @@ Standard-Python, keine einzige zusätzliche Abhängigkeit auf dem MiSTer.
 
 ---
 
-## Neu in v4.9
+## Neu in v5.0
 
-Neunzehn Einträge seit v4.8, Builds 256 bis 274. Das Wichtigste in
-sechs Zeilen — alles Weitere im [Changelog](CHANGELOG.md):
+Vierundvierzig Builds seit v4.9 (275–318). Das Wichtigste in sechs
+Zeilen — alles Weitere im [Changelog](CHANGELOG.md):
 
-- **Die Anleitung zum Spiel, direkt aus der Liste.** Liegt unter
-  `/media/fat/docs` eine PDF- oder Textanleitung, bietet das
-  Kontextmenü **Anleitung anzeigen** — gelesen wird mit MiSTers eigenem
-  Betrachter, auf einer eigenen Konsole, mit dem **Pad** (L/R
-  blättert), und der Ausstieg funktioniert auch dann, wenn der
-  Betrachter nicht mehr will.
-- **Mehrteilige Spiele stehen als ein Eintrag in der Liste** — „Disc 1,
-  2, 3" wird ein Spiel, und beim Starten fragt das Frontend, welcher
-  Teil es sein soll.
-- **Das OBS-Overlay wird ruhiger:** das Cover des laufenden Spiels
-  neben der Erfolgswand, ein leerer Kasten verschwindet ganz, und jedes
-  Feld lässt sich einzeln abschalten.
-- **Scrollen nach Zahlen:** die Form einer Karte wird nur noch einmal
-  gerechnet, die Hausarbeit ist aus dem Zeichenweg heraus, und der
-  Kategorie-Neubau (gemessen 1,6 bis 5 Sekunden) wartet auf Ruhe.
-- **Der ROM-Wächter:** neue ROMs fallen im laufenden Betrieb auf, ohne
-  dass von selbst nachgelesen wird.
-- **Die Vorführung (`--demo`) zeigt die echten Bildschirme**, vier
-  Minuten lang — und unten rechts steht eine Tastenlegende.
-
----
+- **Die Hauptseite hat sechs Ansichten** statt drei: zu Liste, Raster
+  und Galerie kommen **Kachelwand**, **Dashboard** und **Karussell**
+  (nur HDMI). Dazu **20 freigestellte Gerätefotos** als Kategoriebild —
+  Kategorien ohne Foto behalten ihr Abzeichen.
+- **Die Spieleliste hat vier:** der **Coverflow** steht jetzt
+  gleichberechtigt neben der klassischen Galerie — das gewählte Cover
+  groß in der Mitte, die Nachbarn kleiner daneben.
+- **Der Steckbrief eines Spiels** (Kontextmenü → *Infos*): Cover,
+  Daten, Spielzeit und Beschreibung auf einer Seite.
+- **Core-Verwaltung:** eine Übersicht aller installierten Cores mit
+  Alter, eine Core-Fassung **pro Spiel**, und beim Start die Wahl
+  zwischen Standard-, RetroAchievements- und **Netplay**-Core.
+- **Gehaltene Tasten stauen sich nicht mehr:** zehn Drücker werden ein
+  Sprung. Ein Richtungswechsel brauchte vorher bis zu 424 ms, jetzt
+  81 ms — am Gerät gemessen (Bench, Abschnitt M).
+- **Der Bench drückt selbst.** Abschnitt M spielt echte Tastendrücke
+  durch den echten Eingabeweg, statt den Index zu setzen und zu
+  zeichnen — gemessen wird damit, was beim Drücken passiert.
 
 ## Installieren: eine Datei, ein Klick
 

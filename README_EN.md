@@ -1,4 +1,4 @@
-# Dragend — MiSTer Custom Frontend v4.9
+# Dragend — MiSTer Custom Frontend v5.0
 
 **By Dragrem2K**, with contributions from **TheRealSuTefan**, **Dfense**
 and **Dennsen**.
@@ -29,31 +29,29 @@ Plain standard Python — not a single extra dependency on the MiSTer.
 
 ---
 
-## New in v4.9
+## New in v5.0
 
-Nineteen entries since v4.8, builds 256 to 274. The essentials in six
-lines — everything else is in the [changelog](CHANGELOG_EN.md):
+Forty-four builds since v4.9 (275-318). The essentials in six lines -
+everything else is in the [changelog](CHANGELOG_EN.md):
 
-- **The manual for a game, straight from the list.** If a PDF or text
-  manual sits under `/media/fat/docs`, the context menu offers **Show
-  manual** — read with MiSTer's own viewer, on a console of its own,
-  with the **pad** (L/R pages), and the way out works even when the
-  viewer no longer does.
-- **Multi-disc games appear as one entry in the list** — "Disc 1, 2, 3"
-  becomes one game, and on launch the frontend asks which part you
-  want.
-- **The OBS overlay gets quieter:** the running game's cover next to
-  the achievement wall, an empty card disappears entirely, and every
-  field can be switched off on its own.
-- **Scrolling by numbers:** a card's shape is computed once instead of
-  every step, the housekeeping is out of the drawing path, and the
-  category rebuild (measured at 1.6 to 5 seconds) waits for quiet.
-- **The ROM watch:** new ROMs get noticed while the frontend runs,
-  without anything being re-read on its own.
-- **The demo (`--demo`) shows the real screens**, for four minutes —
-  and a key legend sits in the bottom right.
-
----
+- **The main page has six views** instead of three: list, grid and
+  gallery are joined by **tile wall**, **dashboard** and **carousel**
+  (HDMI only). Plus **20 cut-out console photos** as the category
+  picture - categories without a photo keep their badge.
+- **The game list has four:** the **coverflow** now sits alongside the
+  classic gallery as an equal - the selected cover large in the
+  centre, its neighbours smaller beside it.
+- **A game's info page** (context menu -> *Info*): cover, data,
+  playtime and description on one screen.
+- **Core management:** an overview of every installed core with its
+  age, a core version **per game**, and a choice between the standard,
+  the RetroAchievements and the **netplay** core at launch.
+- **Held keys no longer pile up:** ten presses become one jump. A
+  change of direction used to take up to 424 ms, now 81 ms - measured
+  on the device (bench, section M).
+- **The bench presses the keys itself.** Section M feeds real key
+  presses through the real input path instead of setting the index and
+  drawing - so what it measures is what happens when you press.
 
 ## Install: one file, one click
 

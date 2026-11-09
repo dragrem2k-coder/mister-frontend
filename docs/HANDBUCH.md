@@ -1810,31 +1810,37 @@ Die Datei findest du über die Netzwerkfreigabe unter
 direkt im Ordner `linux`. Es ist eine ganz normale Textdatei; die
 Autostart-Zeile heißt `frontend_boot.sh &`.
 
-## 8r. Ansichten: Liste, Raster, Galerie
+## 8r. Ansichten
 
-Spieleliste **und** Hauptseite gibt es in drei Ansichten:
+Die **Spieleliste** hat vier Ansichten, die **Hauptseite** sechs.
+Beide an je einem Schalter (*System -> Anzeige & Sound*), beide auch
+mit **F10** (am Pad **Select+Y**).
+
+### Die Spieleliste
 
 | | zeigt | gut wenn |
 |---|---|---|
 | **Liste** | Textliste plus ein großes Bild daneben | du lange Titel vollständig lesen willst - und die einzige Ansicht, die auch ganz ohne Cover noch etwas anzeigt |
-| **Raster** | nur Bilder, dicht gepackt; der Name des markierten Eintrags steht unten | du viel auf einen Blick sehen willst. Auf HDMI 28 Spiele bzw. **alle** Kategorien ohne einen einzigen Blätterschritt |
-| **Galerie** | ein großes Bild, Daten daneben, die Nachbarn als Leiste darunter | du Details sehen willst, ohne den Überblick über die Nachbarn zu verlieren |
+| **Raster** | nur Bilder, dicht gepackt; der Name des markierten Eintrags steht unten | du viel auf einen Blick sehen willst: auf HDMI 28 Spiele ohne einen einzigen Blätterschritt |
+| **Galerie** | ein großes Bild links, Daten rechts, die Nachbarn als Leiste darunter | du Details sehen willst, ohne den Überblick über die Nachbarn zu verlieren |
+| **Coverflow** *(HDMI)* | das gewählte Cover groß in der Mitte, die beiden Nachbarn links und rechts kleiner, Titel, Daten und Beschreibung mittig darunter | du lieber blätterst als liest |
 
-**Die Galerie hat seit Build 313 zwei Stile** (*System -> Anzeige &
-Sound -> „Galerie-Stil"*):
+**Coverflow gibt es auf einer Röhre nicht** — fünf Cover nebeneinander
+wären auf 320×240 fünf Flecken. Die Taste überspringt ihn dort, und
+wer ihn eingestellt hat, bekommt die klassische Galerie zu sehen.
 
-| Stil | Aussehen |
-|---|---|
-| **klassisch** | ein großes Bild links, die Daten rechts, die Nachbarn als Leiste darunter — der gemessene Stil, und die Vorgabe |
-| **Coverflow** | das gewählte Cover groß in der Mitte, die beiden Nachbarn links und rechts kleiner, Titel, Daten und Beschreibung mittig darunter. **Nur auf HDMI** — auf einer Röhre bleibt es bei „klassisch", auch wenn der Schalter steht |
+**Er ist teurer als die klassische Galerie, und das ist der Grund,
+warum er nicht die Vorgabe ist:** die klassische blättert ihre
+Nachbarleiste, steht also die meiste Zeit still, und ein Schritt
+zeichnet **ein** Bild neu. Der Coverflow rückt bei jedem Schritt
+*jedes* Cover eine Stelle weiter — **fünf** Bilder statt einem. Die
+Wiederholrate passt sich seit Build 302 von selbst an: es wird
+langsamer, nicht ruckelig.
 
-**Warum Coverflow nicht die Vorgabe ist:** die klassische Galerie
-blättert ihre Nachbarleiste, sie steht also die meiste Zeit still, und
-ein Schritt zeichnet **ein** Bild neu. Der Coverflow rückt bei jedem
-Schritt *jedes* Cover eine Stelle weiter — **fünf** Bilder statt
-einem. Gemessen ist das noch nicht; solange bleibt der Stil stehen,
-der gemessen ist. Zu erwarten sind statt 45,8 ms eher 55–65 ms je
-Schritt, und die Wiederholrate passt sich seit Build 302 von selbst an.
+> Bis Build 317 hing der Coverflow an einem zweiten Schalter
+> („Galerie-Stil"). Seit Build 318 ist er eine Ansicht wie die
+> anderen; eine alte Einstellung wird beim ersten Start einmalig
+> übernommen.
 
 ### Die Hauptseite hat sechs Ansichten
 
@@ -2941,8 +2947,7 @@ umgekehrt läuft niemand in ein Menü, das nichts bewirken kann).
 | Feinheiten: AN/AUS (Scrollbalken, Akzentbalken, Trennlinie) | `feinheiten` |
 | Hintergrundbild | `hintergrund` |
 | Lochmaske | `masken` |
-| Ansicht Spieleliste | `ansicht` |
-| Galerie-Stil (klassisch / Coverflow) | `galerie_stil` |
+| Ansicht Spieleliste (Liste / Raster / Galerie / Coverflow) | `ansicht` |
 | Ansicht Hauptseite (Liste / Raster / Galerie / Kachelwand / Dashboard / Karussell) | `ansicht_haupt` |
 | Scrollgeschwindigkeit (0,5x bis 2x) | `scroll_tempo` |
 | Tastenlegende: AN/AUS | `tastenlegende` |

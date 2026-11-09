@@ -11,7 +11,20 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ---
 
-## After v4.9 — not yet released
+## v5.0 — six main-page views, console photos, core management, and a bench that presses the keys itself
+
+- **New: the coverflow is a view of its own in the game list.** It
+  used to hang on a second switch (*Gallery style*) - now **list,
+  grid, gallery and coverflow** sit on one switch as equals, which
+  also makes the classic gallery plainly reachable again. On a CRT the
+  key skips the coverflow; a setting made in build 313 is carried over
+  once at the next start (build 318).
+- **Fixed: left/right was capped in the new views.** The repeat rate
+  has a slow floor for page jumps (four steps per second). Tile wall,
+  dashboard and carousel were missing from the table that says which
+  direction moves a page - so they counted as a page jump, even though
+  left/right is the cheapest move there is in those views. That table
+  now exists only **once** (build 318).
 
 - **Fixed: the new main pages were steered like a list.** Tile wall,
   dashboard and carousel were missing from the direction-key mapping

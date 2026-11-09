@@ -138,6 +138,41 @@ print()
 TMP = tempfile.mkdtemp(prefix="hauptansicht_")
 S.ANSICHT_HAUPT_FILE = os.path.join(TMP, "ansicht_haupt.txt")
 S.HAUPT_STIL_FILE = os.path.join(TMP, "haupt_stil.txt")
+# EIN EIGENER MINIATUR-ZWISCHENSPEICHER, und das ist kein Aufraeumen,
+# sondern die dritte und letzte Ursache der "unechten Abweichungen":
+# dieser Test lief ALLEIN gruen und im Pruefstand rot. Der Unterschied
+# ist der Ordner auf der Platte, in den die Miniaturen geschrieben
+# werden - er ist modulweit und bleibt zwischen zwei Tests stehen.
+# Geschrieben wird ausserdem von einem HINTERGRUNDFADEN; was die eine
+# Seite des Bildvergleichs dort schon findet und die andere noch
+# nicht, entscheidet dann der Zufall. Mit einem eigenen, leeren Ordner
+# je Lauf ist das ausgeschlossen.
+# UMGEBOGEN WIRD DIE BASIS, NICHT DER ORDNER - und das ist der Haken,
+# an dem der erste Versuch haengengeblieben ist: thumb_cache_modus()
+# rechnet THUMB_CACHE_DIR bei jedem Aufloesungswechsel neu aus
+# (THUMB_CACHE_BASE + "hd"/"sd"), und dieser Test wechselt die
+# Aufloesung staendig. Eine Zuweisung an THUMB_CACHE_DIR allein ist
+# nach dem naechsten set_screen() wieder weg.
+# DEN SCHIMMER ABSCHALTEN - und DAS ist die Ursache, hinter der ich in
+# Build 316 und 317 zweimal das falsche Symptom behandelt habe.
+#
+# _pulse_factor() rechnet "time.monotonic() - self._pulse_t0",
+# sinusfoermig mit einer Sekunde Periode. Beide Seiten des Vergleichs
+# bekommen denselben _pulse_t0 - aber nicht dieselbe Uhrzeit: die Uhr
+# des Pruefstands wird im Lauf weitergestellt, und zwischen dem
+# letzten Schritt der einen Seite und dem Aufbau der anderen liegt
+# dann eine andere PHASE. Das Ergebnis ist ein Farbwert, der um
+# genau eins danebenliegt (28,32,44 gegen 29,33,45) - und je laenger
+# der Test schon laeuft, desto mehr Faelle trifft es. Genau deshalb
+# lief er allein gruen und im Pruefstand rot.
+#
+# Dass der Schimmer selbst funktioniert, prueft tools/test_pulse.py.
+S.PULSE_EFFECT_DISABLED_FLAG = os.path.join(TMP, "kein_puls")
+open(S.PULSE_EFFECT_DISABLED_FLAG, "w").close()
+H._zwischenspeicher_leeren()
+A.THUMB_CACHE_BASE = os.path.join(TMP, "thumbs")
+A.THUMB_CACHE_DIR = os.path.join(A.THUMB_CACHE_BASE, "hd")
+os.makedirs(A.THUMB_CACHE_DIR, exist_ok=True)
 
 NEU = ("kachelwand", "dashboard", "karussell")
 ALLE = ("liste", "raster", "galerie") + NEU
@@ -160,6 +195,41 @@ def seite(w, h, ansicht, anzahl=None):
     H.set_screen(w, h)
     f = H.make_frontend(page=0)
     f._ansicht_haupt = None
+    # DEN COVER-SCHUTZ ABSCHALTEN, sonst misst dieser Test sich selbst
+    # kaputt. _sync_cover_defer() setzt ART._defer_uncached auf
+    # "time.monotonic() - _last_input_time < COVER_SETTLE"; im
+    # Pruefstand steht die Uhr, also ist die Differenz 0 und der Schutz
+    # IMMER an - dann zeigt jede Seite nur die Bilder, die zufaellig
+    # schon im Speicher liegen. Beide Seiten des Vergleichs teilen sich
+    # diesen Speicher, und schon vergleicht man ein fertiges Bild mit
+    # einem Platzhalter. Mit _last_input_time = 0 ist die Differenz
+    # riesig, der Schutz aus, und beide Seiten laden dasselbe.
+    # Dass der Schutz selbst funktioniert, pruefen die Tests aus
+    # Build 244/300.
+    f._last_input_time = 0
+    # DAS AUSLAGERN ABSCHALTEN - und das ist die FUENFTE und letzte
+    # Ursache der "unechten Abweichungen", und die einzige, die nicht
+    # an der Uhr haengt, sondern an einem FADEN.
+    #
+    # _kat_logo() fragt mit auslagern_ok=True. Hat der Bildspeicher das
+    # Bild noch nicht in dieser Kastengroesse, gibt er es an den
+    # Vorauslader ab, liefert None und der Zeichenweg malt den
+    # Platzhalter - absichtlich so, denn auf dem Geraet kommt das Bild
+    # eine Runde spaeter nach. Im Bildvergleich heisst das: die erste
+    # Seite malt Platzhalter, bis der Faden fertig ist, die zweite
+    # findet das Bild schon im Speicher und malt es. 44.192 Bildpunkte
+    # Unterschied, Platzhalterfarbe gegen Foto - und kein einziger
+    # davon ein Zeichenfehler. WER gewinnt, entscheidet allein, wie
+    # schnell der Faden an diesem Tag war; genau deshalb war der Befund
+    # von Lauf zu Lauf ein anderer.
+    #
+    # Mit auslagern = None rechnet get_scaled() selbst, sofort, und
+    # beide Seiten sehen dasselbe. Gesetzt wird es in Frontend.__init__
+    # (ART.auslagern = PREWARMER.dringend), also muss es NACH jedem
+    # make_frontend() wieder heraus.
+    # Dass das Auslagern selbst funktioniert, pruefen die Tests aus
+    # Build 105.
+    A.ART.auslagern = None
     namen = KEYS if anzahl is None else KEYS[:anzahl]
     # Der Systemkey MUSS gesetzt sein - sonst liefert
     # _category_art_key() None und geprueft wuerde der Platzhalter
@@ -705,8 +775,11 @@ check("keine der sechs faellt mehr stillschweigend in den Rueckfall",
       "die Liste und das Dashboard SOLLEN dort landen, die vier "
       "anderen nicht")
 check("run() benutzt dieselbe Methode und keine eigene Rechnung",
-      len(re.findall(r"self\.nav_schritte\(", _ROH)) == 2
+      len(re.findall(r"self\.nav_schritte\(", _ROH)) == 3
       and "def _schritte(" not in _ROH,
+      # drei: zweimal in run() (Spieleliste und Hauptseite) und
+      # einmal in _seiten_aktionen_melden() - genau der Punkt von
+      # Build 318, siehe Test 17.
       "zwei Fassungen desselben Schritts sind zwei Gelegenheiten "
       "auseinanderzulaufen")
 
@@ -792,6 +865,171 @@ check("gezaehlt wird mit dem Zaehler des Hauses",
           koerper(_QF, "_kat_zaehlwerk", "Frontend")),
       "dieselbe Zahl, die auch der Einrichtungsassistent nennt - "
       "zwei Zaehlweisen waeren zwei Wahrheiten")
+
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 16: der Coverflow ist eine Ansicht, kein zweiter Schalter")
+# ---------------------------------------------------------------------------
+# NUTZERWUNSCH ZU BUILD 317: "koennen wir zusaetzlich die alte galerie
+# ansicht auch noch wieder dazuholen?" - beide gab es, nur hing der
+# Coverflow an einem ZWEITEN Schalter ueber der Ansicht. Dieselbe
+# Verdopplung wie auf der Hauptseite in Build 314, dieselbe Aufloesung
+# wie in Build 316.
+check("ANSICHTEN hat vier Werte",
+      S.ANSICHTEN == ("liste", "raster", "galerie", "coverflow"),
+      "%r" % (S.ANSICHTEN,))
+check("und der Coverflow braucht HDMI",
+      S.ANSICHTEN_NUR_HD == ("coverflow",), "%r" % (S.ANSICHTEN_NUR_HD,))
+check("die alten drei stehen vorn",
+      S.ANSICHTEN[:3] == ("liste", "raster", "galerie"),
+      "wer die Reihenfolge aendert, aendert fuer jeden Bestandsnutzer, "
+      "was die Taste tut")
+check("kein Menuepunkt 'galerie_stil' mehr", '"galerie_stil"' not in _qm)
+check("und kein Zweig dafuer", 'kind == "galerie_stil"' not in _ROH)
+check("frontend.py kennt kein _galerie_flow() mehr",
+      "def _galerie_flow" not in _ROH
+      and "self._galerie_flow(" not in _ROH,
+      "die Entscheidung faellt in aktuelle_ansicht()")
+check("der Verteiler kennt den Coverflow",
+      '"coverflow"' in nur_code(koerper(_QF, "_draw_items_kacheln",
+                                        "Frontend")))
+check("und _draw_items_galerie entscheidet nichts mehr",
+      "_draw_items_galerie_flow(" not in nur_code(
+          koerper(_QF, "_draw_items_galerie", "Frontend")),
+      "eine zweite Entscheidungsebene unterhalb der Ansicht ist genau "
+      "die Form, die auf der Hauptseite schiefgegangen ist")
+for k in ("ansicht_liste", "ansicht_raster", "ansicht_galerie",
+          "ansicht_coverflow"):
+    e = TR.TRANSLATIONS.get(k)
+    check("Text %-20s in beiden Sprachen" % k,
+          bool(e) and bool(e.get("de")) and bool(e.get("en")),
+          "" if e else "fehlt ganz")
+for k in list(TR.TRANSLATIONS):
+    if k.startswith("galerie_stil_") or k == "sys_galerie_stil":
+        check("der alte Schluessel %s ist raus" % k, False)
+
+# Die HD-Regel und die Taste
+_tmp2 = tempfile.mkdtemp(prefix="ansicht_")
+S.ANSICHT_FILE = os.path.join(_tmp2, "ansicht")
+S.GALERIE_STIL_FILE = os.path.join(_tmp2, "galerie_stil.txt")
+
+
+def liste(w, h, ansicht):
+    S.ansicht_schreiben(ansicht)
+    H._zwischenspeicher_leeren()
+    H.set_screen(w, h)
+    g = H.make_frontend(page=1)
+    g._ansicht_je_kat = {}
+    g._last_input_time = 0          # siehe seite(), gleicher Grund
+    A.ART.auslagern = None          # siehe seite(), gleicher Grund
+    return g
+
+
+for b, h, ansicht, erwartet in ((1920, 1080, "coverflow", "coverflow"),
+                                (1280, 720, "coverflow", "coverflow"),
+                                (320, 240, "coverflow", "galerie"),
+                                (640, 480, "coverflow", "galerie"),
+                                (320, 240, "raster", "raster")):
+    g = liste(b, h, ansicht)
+    ist = g.aktuelle_ansicht()
+    check("%4dx%-4d  %-10s -> %s" % (b, h, ansicht, erwartet),
+          ist == erwartet, "" if ist == erwartet else "%r" % ist)
+check("auf der Roehre faellt er auf die GALERIE zurueck, nicht auf die "
+      "Liste", liste(320, 240, "coverflow").aktuelle_ansicht() == "galerie",
+      "wer den Coverflow eingestellt hat, will eine Galerie sehen")
+g = liste(1920, 1080, "liste")
+check("auf HDMI laeuft die Taste durch alle vier",
+      [g._ansicht_weiter(x) for x in S.ANSICHTEN]
+      == ["raster", "galerie", "coverflow", "liste"],
+      "%r" % ([g._ansicht_weiter(x) for x in S.ANSICHTEN],))
+g = liste(320, 240, "liste")
+check("auf der Roehre ueberspringt sie den Coverflow",
+      [g._ansicht_weiter(x) for x in S.ANSICHTEN]
+      == ["raster", "galerie", "liste", "liste"],
+      "%r" % ([g._ansicht_weiter(x) for x in S.ANSICHTEN],))
+
+# Die Uebernahme aus Build 313
+S.ansicht_schreiben("liste")
+with open(S.GALERIE_STIL_FILE, "w") as fh:
+    fh.write("flow")
+H._zwischenspeicher_leeren()
+check("die Uebernahme traegt 'flow' in die Ansicht",
+      S.galerie_stil_uebernehmen() == "coverflow")
+check("und die Ansicht steht danach darauf",
+      S.ansicht_lesen() == "coverflow", "%r" % (S.ansicht_lesen(),))
+check("die alte Datei steht auf klassisch",
+      open(S.GALERIE_STIL_FILE).read().strip() == "klassisch")
+S.ansicht_schreiben("liste")
+H._zwischenspeicher_leeren()
+check("ein zweiter Lauf tut nichts mehr",
+      S.galerie_stil_uebernehmen() is None
+      and S.ansicht_lesen() == "liste")
+check("sie wird beim Start WIRKLICH gerufen",
+      "galerie_stil_uebernehmen()" in nur_code(
+          koerper(_QF, "__init__", "Frontend")),
+      "eine Uebernahme, die niemand ruft, ist eine Zeile Doku")
+
+# ---------------------------------------------------------------------------
+print()
+print("Test 17: das Tempo kommt aus DERSELBEN Tabelle wie die Schrittweite")
+# ---------------------------------------------------------------------------
+# GEMELDET ZU BUILD 317: "in denn neuen ansichten koennte das scrollen
+# nach links und rechts noch schneller gehen so wie in denn alten
+# ansichten auch".
+#
+# Die Wiederholrate kennt einen langsamen Boden fuer Seitenspruenge
+# (REPEAT_FLOOR_PAGE, vier Schritte je Sekunde). Welche Richtung eine
+# Seite bewegt, stand in einer ZWEITEN Tabelle - mit dem Kommentar
+# "die Zuordnung ist dieselbe wie bei _schritte()". War sie dann
+# nicht: die drei neuen Ansichten fehlten dort und galten als
+# Seitensprung, obwohl links/rechts bei ihnen die billigste Bewegung
+# ueberhaupt ist.
+_MELD = nur_code(koerper(_QF, "_seiten_aktionen_melden", "Frontend"))
+check("die Meldung FRAGT nav_schritte(), statt nachzubauen",
+      "self.nav_schritte(" in _MELD,
+      "zwei Tabellen fuer dieselbe Frage sind zwei Gelegenheiten "
+      "auseinanderzulaufen - und sie SIND auseinandergelaufen")
+check("und baut keine eigene Liste mehr",
+      '"raster"' not in _MELD and '"galerie"' not in _MELD)
+
+
+class _Eingabe(object):
+    def __init__(self):
+        self.seiten = None
+
+    def seiten_aktionen_setzen(self, aktionen):
+        self.seiten = tuple(sorted(aktionen))
+
+
+def seiten_fuer(ansicht, haupt):
+    g = seite(1920, 1080, "liste") if haupt else liste(1920, 1080, "liste")
+    g.inp = _Eingabe()
+    g._kat_raster_spalten = 6
+    g._raster_spalten = 7
+    if haupt:
+        g.page = 0
+        g._ansicht_haupt = ansicht
+    else:
+        g.page = 1
+        g._ansicht_je_kat = {g._ansicht_schluessel(): ansicht}
+    g._seiten_aktionen_melden()
+    return g.inp.seiten
+
+
+ERWARTET_HAUPT = {
+    "liste": ("left", "right"), "dashboard": ("left", "right"),
+    "raster": (), "kachelwand": (),
+    "galerie": ("down", "up"), "karussell": ("down", "up"),
+}
+for ansicht, soll in sorted(ERWARTET_HAUPT.items()):
+    ist = seiten_fuer(ansicht, True)
+    check("Hauptseite %-11s Seitenaktionen %r" % (ansicht, soll),
+          ist == soll, "%r" % (ist,))
+check("in Kachelwand und Karussell ist links/rechts NICHT gedeckelt",
+      "left" not in (seiten_fuer("kachelwand", True) or ())
+      and "left" not in (seiten_fuer("karussell", True) or ()),
+      "genau das war der gemeldete Fehler")
 
 shutil.rmtree(TMP, ignore_errors=True)
 

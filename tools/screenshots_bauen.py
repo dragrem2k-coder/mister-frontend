@@ -463,20 +463,21 @@ def main():
         except Exception as e:                           # noqa: BLE001
             print("    (%s uebersprungen: %s)" % (ruf, e))
 
-    print("  Galerie im Coverflow (Build 313):")
-    # Der Stil wird ueber die ECHTE Einstellung gesetzt, nicht ueber
-    # eine Attrappe an _galerie_flow(): so laeuft genau der Weg, den
-    # das Frontend auch nimmt - samt der HDMI-Schwelle.
+    print("  Coverflow (Build 313, eigene Ansicht seit 318):")
+    # Ueber die ECHTE Einstellung und nicht ueber eine Attrappe: so
+    # laeuft genau der Weg, den das Frontend auch nimmt - samt der
+    # HDMI-Schwelle.
+    #
+    # BUILD 318: ueber ansicht_setzen("coverflow"), nicht mehr ueber
+    # einen eigenen Stil-Schalter. Haette diese Stelle weiter
+    # galerie_stil_schreiben() gerufen, waere hier ab sofort die
+    # klassische Galerie herausgekommen, und das Bild haette etwas
+    # behauptet, was es nicht gibt.
     import fe.settings as _S
-    _S.GALERIE_STIL_FILE = os.path.join(_TMP, "galerie_stil.txt")
-    _S.galerie_stil_schreiben("flow")
-    H._zwischenspeicher_leeren()
     f = spieleliste(1920, 1080)
-    f.ansicht_setzen("galerie")
+    f.ansicht_setzen("coverflow")
     f.draw()
     speichern(f.fb, "preview_12_galerie_flow.png")
-    _S.galerie_stil_schreiben("klassisch")
-    H._zwischenspeicher_leeren()
 
     print("  Die drei neuen Hauptseiten-Ansichten (Build 314/316):")
     # Ueber die ECHTE Einstellung und nicht ueber eine Attrappe -

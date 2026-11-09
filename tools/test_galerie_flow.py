@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Die Galerie im Coverflow - sein Entwurf 6 (Build 313).
+"""Der Coverflow - sein Entwurf 6 (Build 313, Ansicht seit Build 318).
 
 NUTZERWUNSCH vom 08.11.: nach drei Entwuerfen fuer Liste, Kachel und
 Galerie hat er sich entschieden - "Entwurf 6". Das gewaehlte Cover
@@ -75,32 +75,50 @@ print()
 
 TMP = tempfile.mkdtemp(prefix="flow_")
 S.GALERIE_STIL_FILE = os.path.join(TMP, "galerie_stil.txt")
+S.ANSICHT_FILE = os.path.join(TMP, "ansicht")
 
 # ---------------------------------------------------------------------------
-print("Test 1: die Vorgabe ist 'klassisch'")
+print("Test 1: der Coverflow ist eine ANSICHT, kein zweiter Schalter")
 # ---------------------------------------------------------------------------
-check("ohne Datei: klassisch", S.galerie_stil_lesen() == "klassisch",
-      "%r - das ist der gemessene Stil" % (S.galerie_stil_lesen(),))
-S.galerie_stil_schreiben("flow")
+# BUILD 318. Bis dahin hing er an einem eigenen Schalter ueber der
+# Ansicht - dieselbe Verdopplung, die auf der Hauptseite in Build 314
+# schiefgegangen ist. Sein Wunsch war ausdruecklich, beide
+# nebeneinander zu haben: "koennen wir zusaetzlich die alte galerie
+# ansicht auch noch wieder dazuholen?"
+check("ANSICHTEN hat vier Werte",
+      S.ANSICHTEN == ("liste", "raster", "galerie", "coverflow"),
+      "%r" % (S.ANSICHTEN,))
+check("und der Coverflow braucht HDMI",
+      S.ANSICHTEN_NUR_HD == ("coverflow",))
+check("die klassische Galerie steht unveraendert daneben",
+      "galerie" in S.ANSICHTEN)
+S.ansicht_schreiben("coverflow")
+H._zwischenspeicher_leeren()
 check("geschrieben wird, was man setzt",
-      S.galerie_stil_lesen() == "flow")
-S.galerie_stil_schreiben("quatsch")
-check("ein unbekannter Wert faellt auf klassisch zurueck",
-      S.galerie_stil_lesen() == "klassisch",
-      "eine von Hand verstellte Datei darf das Frontend nicht in "
-      "einen Zustand bringen, aus dem man ohne Texteditor nicht mehr "
-      "herauskommt")
-with open(S.GALERIE_STIL_FILE, "w") as fh:
+      S.ansicht_lesen() == "coverflow")
+with open(S.ANSICHT_FILE, "w") as fh:
     fh.write("\x00kaputt\n")
-S._einstellungen_vergessen() if hasattr(S, "_einstellungen_vergessen") \
-    else None
 H._zwischenspeicher_leeren()
-check("auch Muell in der Datei", S.galerie_stil_lesen() == "klassisch")
-check("weiter() laeuft im Kreis",
-      [S.galerie_stil_weiter() for _ in range(3)]
-      == ["flow", "klassisch", "flow"])
-S.galerie_stil_schreiben("klassisch")
+check("Muell in der Datei faellt auf liste zurueck",
+      S.ansicht_lesen() == "liste")
+
+# Die einmalige Uebernahme aus Build 313
+S.ansicht_schreiben("liste")
+with open(S.GALERIE_STIL_FILE, "w") as fh:
+    fh.write("flow")
 H._zwischenspeicher_leeren()
+check("die Uebernahme traegt 'flow' in die Ansicht",
+      S.galerie_stil_uebernehmen() == "coverflow")
+check("und die Ansicht steht danach darauf",
+      S.ansicht_lesen() == "coverflow", "%r" % (S.ansicht_lesen(),))
+check("die alte Datei steht auf klassisch",
+      open(S.GALERIE_STIL_FILE).read().strip() == "klassisch")
+S.ansicht_schreiben("liste")
+H._zwischenspeicher_leeren()
+check("ein zweiter Lauf tut nichts mehr",
+      S.galerie_stil_uebernehmen() is None
+      and S.ansicht_lesen() == "liste",
+      "sonst holte sie den Nutzer bei jedem Start zurueck")
 
 # ---------------------------------------------------------------------------
 print()
@@ -113,37 +131,48 @@ class Tasten(object):
         return "back"
 
 
-def frontend(b, h, stil):
-    S.galerie_stil_schreiben(stil)
+def frontend(b, h, ansicht):
+    """Ein Frontend mit genau dieser ANSICHT - ueber die echte
+    Einstellung, nicht ueber eine Attrappe."""
+    S.ansicht_schreiben(ansicht if ansicht != "flow" else "coverflow")
     H._zwischenspeicher_leeren()
     H.SCREEN[:] = [b, h]
     f = H.make_frontend(page=1)
+    f._ansicht_je_kat = {}
+    # Den Cover-Schutz abschalten - im Pruefstand steht die Uhr, also
+    # waere er immer an und das Bild haengt am Zufall des
+    # Bildspeichers. Siehe tools/test_hauptseite_stil.py, dort steht
+    # die lange Fassung.
+    f._last_input_time = 0
     f.inp = Tasten()
     return f
 
 
-for b, h, stil, erwartet in ((1920, 1080, "flow", True),
-                             (1280, 720, "flow", True),
-                             (1080, 1920, "flow", True),
-                             (320, 240, "flow", False),
-                             (640, 480, "flow", False),
-                             (1920, 1080, "klassisch", False)):
-    f = frontend(b, h, stil)
-    check("%4dx%-4d  %-9s -> %s" % (b, h, stil,
-                                    "Coverflow" if erwartet else "klassisch"),
-          f._galerie_flow() is erwartet,
-          "" if f._galerie_flow() is erwartet else "%r" % f._galerie_flow())
+for b, h, ansicht, erwartet in ((1920, 1080, "coverflow", "coverflow"),
+                                (1280, 720, "coverflow", "coverflow"),
+                                (1080, 1920, "coverflow", "coverflow"),
+                                (320, 240, "coverflow", "galerie"),
+                                (640, 480, "coverflow", "galerie"),
+                                (1920, 1080, "galerie", "galerie")):
+    f = frontend(b, h, ansicht)
+    ist = f.aktuelle_ansicht()
+    check("%4dx%-4d  %-10s -> %s" % (b, h, ansicht, erwartet),
+          ist == erwartet, "" if ist == erwartet else "%r" % ist)
 check("die Schwelle ist dieselbe wie im Haus (720)",
-      "720" in nur_code(koerper(_QF, "_galerie_flow", "Frontend")),
+      "720" in nur_code(koerper(_QF, "_ansicht_hd", "Frontend")),
       "eine zweite Zahl waere eine zweite Gelegenheit, "
       "auseinanderzulaufen")
+check("auf der Roehre wird die klassische GALERIE gezeigt",
+      "galerie" in nur_code(koerper(_QF, "_ansicht_hd", "Frontend")),
+      "wer den Coverflow eingestellt hat, will eine Galerie sehen - "
+      "nicht die Liste")
 
 # ---------------------------------------------------------------------------
 print()
 print("Test 3: fuenf Plaetze, die Mitte am groessten, alles im Bild")
 # ---------------------------------------------------------------------------
 for b, h in ((1920, 1080), (1280, 720), (1080, 1920), (1920, 1200)):
-    f = frontend(b, h, "flow")
+    f = frontend(b, h, "coverflow")
     L = f.layout_items(True)
     geo = f.galerie_flow_geometrie(L)
     p = geo["plaetze"]
@@ -171,7 +200,7 @@ print("Test 4: die Ansicht zeichnet")
 # DER EIGENTLICHE BEWEIS. Gezeichnet wird mit dem ECHTEN Weg, samt
 # Kopfzeile, Karte, Fussleiste und Flip - nicht mit einer Nachbildung.
 for b, h in ((1920, 1080), (1280, 720), (1080, 1920), (1920, 1200)):
-    f = frontend(b, h, "flow")
+    f = frontend(b, h, "coverflow")
     try:
         f.draw()
         # Und ein zweites Mal: beim zweiten Bild greift der schnelle
@@ -191,7 +220,7 @@ for b, h in ((1920, 1080), (1280, 720), (1080, 1920), (1920, 1200)):
           ok, fehler)
 
 # Und die Gegenprobe: mit "klassisch" laeuft weiterhin der alte Weg.
-f = frontend(1920, 1080, "klassisch")
+f = frontend(1920, 1080, "galerie")
 try:
     f.draw()
     f.item_i = 3
@@ -236,39 +265,47 @@ check("samt Hintergrundfarbe", "hintergrund_rgb=" in _FLOW)
 print()
 print("Test 7: der Verteiler steht an genau einer Stelle")
 # ---------------------------------------------------------------------------
-check("_draw_items_galerie() verteilt", "_galerie_flow()" in _ALT
-      and "_draw_items_galerie_flow(" in _ALT)
-check("und zwar GANZ oben",
-      _ALT.index("_galerie_flow()") < _ALT.index("self.galerie_geometrie("),
-      "sonst rechnet der klassische Weg erst und wirft es dann weg")
-check("sonst entscheidet niemand ueber die Galerie",
+# BUILD 318: entschieden wird beim Ansichten-Verteiler, nicht mehr in
+# _draw_items_galerie(). Eine zweite Entscheidungsebene unterhalb der
+# Ansicht ist genau die Form, die auf der Hauptseite in Build 314
+# schiefgegangen ist.
+_VERT = nur_code(koerper(_QF, "_draw_items_kacheln", "Frontend"))
+check("der Ansichten-Verteiler kennt den Coverflow",
+      '"coverflow"' in _VERT and "_draw_items_galerie_flow(" in _VERT)
+check("und die klassische Galerie steht gleichberechtigt daneben",
+      '"galerie"' in _VERT and "_draw_items_galerie(" in _VERT)
+check("_draw_items_galerie() entscheidet NICHTS mehr",
+      "_draw_items_galerie_flow(" not in _ALT
+      and "_galerie_flow()" not in _ALT)
+check("sonst entscheidet niemand ueber den Coverflow",
       len(re.findall(r"_draw_items_galerie_flow\(", nur_code(_QF))) == 2,
       "einmal die Methode, einmal der Verteiler - mehr waere ein "
       "zweiter Weg hinein")
 
 # ---------------------------------------------------------------------------
 print()
-print("Test 8: Menuepunkt, Zweig und Texte")
+print("Test 8: der alte Schalter ist weg, der Name steht bei den Ansichten")
 # ---------------------------------------------------------------------------
 _qm = open(os.path.join(_REPO, "frontend", "fe", "menu.py"),
            encoding="utf-8").read()
-check("der Menuepunkt steht im Systemmenue", '"galerie_stil"' in _qm)
-check("und der Zweig behandelt ihn",
-      'kind == "galerie_stil"' in _QF and "galerie_stil_weiter()" in _QF)
-check("auf der Roehre sagt er, dass man nichts sehen wird",
-      "galerie_stil_nur_hdmi" in _QF,
-      "eine Einstellung, die stumm nichts tut, haelt man fuer kaputt")
-for k in ("sys_galerie_stil", "galerie_stil_klassisch",
-          "galerie_stil_flow", "galerie_stil_gesetzt",
-          "galerie_stil_nur_hdmi"):
+check("kein Menuepunkt 'galerie_stil' mehr", '"galerie_stil"' not in _qm,
+      "er steht jetzt in 'ansicht' mit drin")
+check("und kein Zweig dafuer", 'kind == "galerie_stil"' not in _QF)
+check("frontend.py kennt kein _galerie_flow() mehr",
+      "def _galerie_flow" not in _QF
+      and "self._galerie_flow(" not in _QF)
+check("der Menuepunkt fuer die Spieleliste ist genau einer",
+      _qm.count('"ansicht", None') == 1)
+for k in ("ansicht_liste", "ansicht_raster", "ansicht_galerie",
+          "ansicht_coverflow"):
     e = TR.TRANSLATIONS.get(k)
-    check("Text %-24s in beiden Sprachen" % k,
+    check("Text %-20s in beiden Sprachen" % k,
           bool(e) and bool(e.get("de")) and bool(e.get("en")),
           "" if e else "fehlt ganz")
-for k in ("sys_galerie_stil", "galerie_stil_gesetzt"):
-    for sp in ("de", "en"):
-        check("%s/%s hat genau einen Platzhalter" % (k, sp),
-              len(re.findall(r"%[sd]", TR.TRANSLATIONS[k][sp])) == 1)
+for k in list(TR.TRANSLATIONS):
+    if k.startswith("galerie_stil_") or k == "sys_galerie_stil":
+        check("der alte Schluessel %s ist raus" % k, False,
+              "er beschriebe einen Schalter, den es nicht mehr gibt")
 
 # ---------------------------------------------------------------------------
 print()
@@ -287,7 +324,7 @@ print("Test 9: der schnelle Pfad ist bitgenau wie ein voller Aufbau")
 
 
 def _pixelvergleich(schritte, richtung):
-    f = frontend(1920, 1080, "flow")
+    f = frontend(1920, 1080, "coverflow")
     f.ansicht_setzen("galerie")
     f.draw()                       # voller Aufbau
     f.draw()                       # ab hier der schnelle Weg
@@ -297,7 +334,7 @@ def _pixelvergleich(schritte, richtung):
         f.draw()
     schnell = bytes(f.fb.buf)
 
-    g = frontend(1920, 1080, "flow")
+    g = frontend(1920, 1080, "coverflow")
     g.ansicht_setzen("galerie")
     g.item_i = f.item_i
     g.scroll = f.scroll

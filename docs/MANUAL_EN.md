@@ -1508,30 +1508,35 @@ Any key returns to the menu.
 System menu -> "Contributors" - who built the frontend and who helped. A
 small thank-you, not a secret like the developer room from section 8n.
 
-## 8r. Views: list, grid, gallery
+## 8r. Views
 
-Both the game list **and** the main page come in three views:
+The **game list** has four views, the **main page** six. Each on its
+own switch (*System -> Display & Sound*), and both also on **F10**
+(**Select+Y** on the pad).
+
+### The game list
 
 | | shows | good when |
 |---|---|---|
 | **List** | a text list plus one large image beside it | you want to read long titles in full - and the only view that still shows something with no covers at all |
-| **Grid** | images only, densely packed; the name of the selected entry is shown below | you want to see a lot at a glance. On HDMI that is 28 games, or **every** category without a single page turn |
-| **Gallery** | one large image, data beside it, the neighbours as a strip below | you want detail without losing sight of what is next to it |
+| **Grid** | images only, densely packed; the name of the selected entry is shown below | you want to see a lot at a glance: 28 games on HDMI without a single page turn |
+| **Gallery** | one large image on the left, data on the right, the neighbours as a strip below | you want detail without losing sight of what is next to it |
+| **Coverflow** *(HDMI)* | the selected cover large in the centre, its two neighbours smaller left and right, with title, data and description centred below | you would rather browse than read |
 
-**Since build 313 the gallery has two styles** (*System -> Display &
-Sound -> "Gallery style"*):
+**There is no coverflow on a CRT** - five covers side by side would be
+five smudges at 320x240. The key skips it there, and anyone who has it
+set sees the classic gallery instead.
 
-| Style | Look |
-|---|---|
-| **classic** | one large image on the left, the data on the right, the neighbours as a strip below — the measured style, and the default |
-| **coverflow** | the selected cover large in the centre, its two neighbours smaller left and right, with title, data and description centred below. **HDMI only** — on a CRT it stays "classic" even with the switch set |
+**It costs more than the classic gallery, and that is why it is not
+the default:** the classic one pages its neighbour strip, so the strip
+mostly stands still and one step redraws **one** image. The coverflow
+moves *every* cover one slot per step - **five** images instead of
+one. The repeat rate has adapted by itself since build 302: it gets
+slower, not jerky.
 
-**Why coverflow is not the default:** the classic gallery pages its
-neighbour strip, so the strip mostly stands still and one step redraws
-**one** image. A coverflow moves *every* cover one slot per step —
-**five** images instead of one. That has not been measured yet; until
-it has, the measured style stays. Expect 55–65 ms per step instead of
-45.8, and the repeat rate adapts by itself since build 302.
+> Until build 317 the coverflow hung on a second switch ("gallery
+> style"). Since build 318 it is a view like any other; an old setting
+> is carried over once at the next start.
 
 ### The main page has six views
 
@@ -2548,8 +2553,7 @@ conversely nobody ends up in a menu that cannot do anything).
 | Fine details: ON/OFF (scrollbar, accent bars, divider) | `feinheiten` |
 | Background image | `hintergrund` |
 | Shadow mask | `masken` |
-| Game list view | `ansicht` |
-| Gallery style (classic / coverflow) | `galerie_stil` |
+| Game list view (list / grid / gallery / coverflow) | `ansicht` |
 | Main page view | `ansicht_haupt` |
 | Scroll speed (0.5x to 2x) | `scroll_tempo` |
 | Button legend: ON/OFF | `tastenlegende` |

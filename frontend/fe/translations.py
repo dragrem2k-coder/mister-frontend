@@ -1326,23 +1326,12 @@ TRANSLATIONS = {
         "en": "Cores: choose a version per system",
         "de": "Cores: Fassung je System waehlen"},
     "cores_titel": {"en": "Cores", "de": "Cores"},
-    # Build 313: der Stil der Galerie. Siehe
-    # _draw_items_galerie_flow() in frontend.py und GALERIE_STILE in
-    # fe/settings.py - dort steht, warum es ein Schalter ist.
-    "sys_galerie_stil": {
-        "en": "Gallery style: %s", "de": "Galerie-Stil: %s"},
-    "galerie_stil_klassisch": {
-        "en": "classic (cover left, data right)",
-        "de": "klassisch (Cover links, Daten rechts)"},
-    "galerie_stil_flow": {
-        "en": "coverflow (HDMI only)", "de": "Coverflow (nur HDMI)"},
-    "galerie_stil_gesetzt": {
-        "en": "Gallery style: %s", "de": "Galerie-Stil: %s"},
-    "galerie_stil_nur_hdmi": {
-        "en": "Coverflow needs an HDMI picture - on a CRT the classic "
-              "gallery stays",
-        "de": "Coverflow braucht ein HDMI-Bild - auf der Roehre bleibt "
-              "die klassische Galerie"},
+    # Build 318: der Coverflow ist eine eigene ANSICHT geworden -
+    # der Name steht deshalb bei den Ansichten und nicht mehr bei
+    # einem eigenen Schalter. Die Schluessel sys_galerie_stil und
+    # galerie_stil_* sind ersatzlos entfallen.
+    "ansicht_coverflow": {
+        "en": "coverflow (HDMI)", "de": "Coverflow (HDMI)"},
     # Build 316: die drei neuen Hauptseiten sind ANSICHTEN geworden
     # (siehe ANSICHTEN_HAUPT in fe/settings.py) - die Namen stehen
     # deshalb bei den Ansichten, nicht bei einem eigenen Schalter.

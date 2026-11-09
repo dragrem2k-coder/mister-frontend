@@ -9485,3 +9485,180 @@ vier Schrauben, nicht eine.
   Kategorien; die Favoriten stehen NICHT darin und werden rekursiv
   und nur fuer die markierte Kategorie gezaehlt; eine geaenderte
   Kategorienliste wirft die Tabelle weg).
+
+## Nachtrag Build 318 (v5.0) - der Coverflow wird eine Ansicht, und das Tempo kommt aus einer Tabelle
+
+Drei Dinge auf einmal, weil er es so wollte: *„alles in einem Rutsch
+bitte"*.
+
+### Dieselbe Verdopplung, zum dritten Mal
+
+> *„in denn neuen ansichten koennte das scrollen nach links und rechts
+> noch schneller gehen so wie in denn alten ansichten auch"*
+
+Die Wiederholrate kennt einen langsamen Boden fuer Seitenspruenge
+(`REPEAT_FLOOR_PAGE` = 0,25 s, also vier Schritte je Sekunde). Welche
+Richtung eine Seite bewegt, stand in `_seiten_aktionen_melden()` - und
+zwar als **zweite Tabelle**, mit dem Kommentar:
+
+> *„Die Zuordnung ist dieselbe wie bei _schritte() in der
+> Ereignisschleife, und das ist Absicht: es ist dieselbe Frage, einmal
+> fuer die Schrittweite und einmal fuer das Tempo."*
+
+War sie dann nicht. Build 314 brachte drei neue Ansichten, Build 317
+trug sie in die Schrittweiten ein - und **hier fehlten sie weiter**.
+Sie landeten im Rueckfall, galten damit als Seitensprung und waren auf
+vier Schritte je Sekunde gedeckelt, obwohl links/rechts bei ihnen die
+billigste Bewegung ueberhaupt ist.
+
+Jetzt wird `nav_schritte()` **gefragt** statt nachgebaut:
+
+```python
+_MOVE, _SEITE = 1, -1
+hoch_runter, links_rechts = self.nav_schritte(ansicht, merker, _MOVE, _SEITE)
+seiten = []
+if hoch_runter == _SEITE: seiten += ["up", "down"]
+if links_rechts == _SEITE: seiten += ["left", "right"]
+```
+
+Eine Richtung ist genau dann ein Seitensprung, wenn ihre Schrittweite
+die Seitenweite ist. Der Platzhalter fuer die Seite ist negativ, weil
+eine echte Spaltenzahl immer >= 1 ist - eine Verwechslung ist damit
+ausgeschlossen.
+
+> **Zum dritten Mal dieselbe Lehre** (Build 316 die Hauptseite, 317 die
+> Schrittweiten, 318 das Tempo): wenn zwei Stellen dieselbe Frage
+> beantworten, laufen sie auseinander. Nicht vielleicht - sicher.
+
+### Der Coverflow wird eine Ansicht
+
+> *„koennen wir zusaetzlich die alte galerie ansicht auch noch wieder
+> dazuholen?"*
+
+Beide gab es - nur hing der Coverflow an einem zweiten Schalter
+(*Galerie-Stil*) ueber der Ansicht. Dieselbe Form, die auf der
+Hauptseite schon zweimal schiefgegangen ist. Also dieselbe Aufloesung
+wie in Build 316:
+
+```python
+ANSICHTEN = ("liste", "raster", "galerie", "coverflow")
+ANSICHTEN_NUR_HD = ("coverflow",)
+```
+
+Der Schalter ist weg (kein Menuepunkt, kein Zweig, kein
+`_galerie_flow()`), der Verteiler sitzt dort, wo auch die anderen
+Ansichten entschieden werden, und `galerie_stil_uebernehmen()` traegt
+eine alte Einstellung einmalig nach.
+
+**Auf der Roehre faellt der Coverflow auf die GALERIE zurueck, nicht
+auf die Liste** - wer ihn eingestellt hat, will eine Galerie sehen.
+
+### Die unechten Abweichungen im Bildvergleich - bis zum Ende
+
+Der Bildvergleich zwischen schnellem Pfad und vollem Aufbau ist das
+schaerfste Werkzeug im Haus. Er misst aber nur dann das **Zeichnen**,
+wenn beide Seiten denselben **Zustand** sehen. Fuenf Dinge standen dem
+im Weg - drei davon neu in diesem Build, und zwei, die in Build 316 und
+317 als „die Ursache" notiert wurden, obwohl sie es nur mit waren:
+
+| # | Ursache | Loesung |
+|---|---------|---------|
+| 1 | alte Bytecode-Dateien (`__pycache__`) | vor dem Lauf loeschen |
+| 2 | Verdraengung im Bildspeicher - **vier** Schrauben | `LIMIT`, `ORIGINAL_BUDGET/MIN`, `SCALED_BUDGET/MIN` |
+| 3 | der Cover-Schutz | `f._last_input_time = 0` |
+| 4 | **der Schimmer** | `PULSE_EFFECT_DISABLED_FLAG` |
+| 5 | **das Auslagern** | `A.ART.auslagern = None` |
+
+**Zu 3 - der Cover-Schutz.** `_sync_cover_defer()` setzt
+
+```python
+ART._defer_uncached = (time.monotonic() - self._last_input_time < COVER_SETTLE)
+```
+
+Im Pruefstand steht die Uhr. Die Differenz ist also immer 0, der Schutz
+damit immer an - und dann zeigt eine Seite nur die Bilder, die
+zufaellig schon im Speicher liegen. Beide Seiten teilen sich diesen
+Speicher, und schon vergleicht man ein fertiges Bild mit einem
+Platzhalter. Dass der Schutz selbst funktioniert, pruefen die Tests aus
+Build 244/300.
+
+**Zu 4 - der Schimmer.** `_pulse_factor()` rechnet
+`0,90 + 0,10 * (0,5 + 0,5 * sin((time.monotonic() - _pulse_t0) * 2pi))`.
+Beide Seiten bekommen denselben `_pulse_t0` - aber nicht dieselbe
+**Phase**, denn die Uhr des Pruefstands wird im Lauf weitergestellt.
+Heraus kommt ein Farbwert, der um genau eins danebenliegt: **(28,32,44)
+gegen (29,33,45)**. Je laenger der Lauf schon dauert, desto mehr Faelle
+trifft es - und genau deshalb lief der Test **allein gruen und im
+Pruefstand rot**. Den Schalter dafuer gab es schon
+(`PULSE_EFFECT_DISABLED_FLAG`); gefunden wurde die Ursache, indem der
+Unterschied nicht gezaehlt, sondern **ausgedruckt** wurde:
+
+```
+DIAG schnell=b', \x1c'  voll=b'-!\x1d'
+```
+
+Zwei Bytefolgen, drei Kanaele, jeder um eins daneben. Eine Zahl
+(„11.369 Bildpunkte") haette das nie gezeigt.
+
+**Zu 5 - das Auslagern.** Die einzige Ursache, die nicht an der Uhr
+haengt, sondern an einem **Faden**. `_kat_logo()` fragt mit
+`auslagern_ok=True`; hat der Bildspeicher das Bild in dieser
+Kastengroesse noch nicht, gibt er es an den Vorauslader ab und liefert
+fuer diese Runde `None`. Der Zeichenweg malt dann **absichtlich** den
+Platzhalter - auf dem Geraet kommt das Bild eine Runde spaeter nach.
+Im Bildvergleich heisst das: die erste Seite malt Platzhalter, bis der
+Faden fertig ist, die zweite findet das Bild schon im Speicher und malt
+es. **44.192 Bildpunkte** Unterschied, Platzhalterfarbe gegen Foto - und
+kein einziger davon ein Zeichenfehler. WER gewinnt, entscheidet allein,
+wie schnell der Faden an diesem Tag war; genau deshalb war der Befund
+von Lauf zu Lauf ein anderer.
+
+```
+DIFF kachelwand 1920x1080 +1 x3: 44192 Punkte  y 198..326  x 215..1477
+   schnell RGB(28,32,44)  voll RGB(191,173,133)  x985
+```
+
+Links die Platzhalterfarbe, rechts ein Foto. Mit `ART.auslagern = None`
+rechnet `get_scaled()` selbst, sofort, und beide Seiten sehen dasselbe.
+Gesetzt wird es in `Frontend.__init__` (`ART.auslagern =
+PREWARMER.dringend`), also muss es **nach jedem `make_frontend()`**
+wieder heraus. Dass das Auslagern selbst funktioniert, pruefen die
+Tests aus Build 105.
+
+Erst danach waren alle 36 Vergleiche bitgenau und der Pruefstand
+**175 gruen, 0 rot**.
+
+> **Zwei Lehren.** Erstens: ein Unterschied in *Platzhalterfarbe* ist
+> eine Frage an den Zustand, kein Befund ueber das Zeichnen. Zweitens:
+> 15 -> 7 -> 0 Fehler in drei Schritten heisst nicht, dass der erste
+> Schritt falsch war - es heisst, dass mehrere Ursachen dasselbe
+> Symptom machen. Wer beim ersten Rueckgang aufhoert, hat eine Ursache
+> behoben und drei stehen gelassen, und genau das ist in Build 316 und
+> 317 passiert.
+
+### Was v5.0 sonst noch gebraucht hat
+
+* `FRONTEND_VERSION` auf `"5.0"` (die kanonische Quelle in
+  `fe/update_check.py`), Kopfzeile in `frontend.py`, beide READMEs.
+* Der Changelog-Block „Nach v4.9 - noch nicht veroeffentlicht" ist
+  jetzt der v5.0-Block.
+* Beide READMEs haben einen neuen Abschnitt „Neu in v5.0" statt des
+  alten v4.9-Abschnitts.
+* Die vier PDFs und die Funktionsliste neu erzeugt.
+
+### Neue Pruefungen
+
+* **geaendert** `tools/test_galerie_flow.py` - prueft jetzt die
+  ANSICHT statt des Schalters: vier Werte, HD-Regel mit Rueckfall auf
+  die GALERIE, die Taste ueberspringt den Coverflow auf der Roehre,
+  die Uebernahme laeuft genau einmal, der alte Schalter ist samt
+  Textschluesseln weg, und `_draw_items_galerie()` entscheidet nichts
+  mehr.
+* **geaendert** `tools/test_ansichten.py` - vier Ansichten statt drei,
+  und `nav_schritte()` wird jetzt an drei Stellen gerufen (zweimal
+  run(), einmal die Tempo-Meldung).
+* **geaendert** `tools/test_hauptseite_stil.py` - zwei neue
+  Abschnitte: der Coverflow als Ansicht samt Uebernahme, und die
+  Zusage, dass das Tempo aus derselben Tabelle kommt wie die
+  Schrittweite (inklusive der Gegenprobe, dass links/rechts in
+  Kachelwand und Karussell NICHT mehr gedeckelt ist).

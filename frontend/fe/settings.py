@@ -1660,7 +1660,18 @@ def toggle_curated_only():
 # Bewusst KEINE Zahl: wer die Datei aufmacht, soll lesen koennen, was
 # drinsteht.
 ANSICHT_FILE = "/media/fat/frontend/ansicht"
-ANSICHTEN = ("liste", "raster", "galerie")
+# BUILD 318: VIER Ansichten. Der Coverflow aus Build 313 hing bis
+# dahin an einem ZWEITEN Schalter ("Galerie-Stil") ueber der Ansicht -
+# genau die Verdopplung, die auf der Hauptseite in Build 314/316 schon
+# einmal schiefgegangen ist (zwei Schalter, von denen einer den
+# anderen stumm aussticht). Sein Wunsch: "koennen wir zusaetzlich die
+# alte galerie ansicht auch noch wieder dazuholen?" - also beide
+# nebeneinander, an einer Stelle waehlbar.
+ANSICHTEN = ("liste", "raster", "galerie", "coverflow")
+# Welche davon ein HDMI-Bild braucht. "nur fuer hdmi modus" war seine
+# Vorgabe fuer den Coverflow von Anfang an: fuenf Cover nebeneinander
+# waeren auf 320x240 fuenf Flecken.
+ANSICHTEN_NUR_HD = ("coverflow",)
 
 # ---------------------------------------------------------------------------
 # BUILD 313: DER STIL DER GALERIE
@@ -1733,6 +1744,35 @@ def galerie_stil_weiter():
     except ValueError:
         i = 0
     return galerie_stil_schreiben(GALERIE_STILE[(i + 1) % len(GALERIE_STILE)])
+
+
+def galerie_stil_uebernehmen():
+    """EINMALIGE Uebernahme des Schalters aus Build 313.
+
+    Wer "Galerie-Stil: Coverflow" eingestellt hatte, soll nach dem
+    Update nicht wieder vor der klassischen Galerie sitzen und sich
+    fragen, wo sein Coverflow hin ist. Steht in galerie_stil.txt
+    "flow", wird daraus die Ansicht "coverflow" und die alte Datei auf
+    "klassisch" zurueckgesetzt - danach passiert hier nichts mehr.
+
+    Dasselbe Vorgehen wie bei haupt_stil_uebernehmen() in Build 316,
+    bis hin zum NICHT-Loeschen der alten Datei: eine Datei zu
+    entfernen, die ein Nutzer vielleicht selbst angelegt hat, ist eine
+    Entscheidung, die ein Update nicht treffen muss."""
+    try:
+        alt = open(GALERIE_STIL_FILE).read().strip().lower()
+    except OSError:
+        return None
+    if alt != "flow":
+        return None
+    ansicht_schreiben("coverflow")
+    try:
+        with open(GALERIE_STIL_FILE, "w") as f:
+            f.write("klassisch")
+    except OSError as e:
+        LOG("galerie_stil_uebernehmen: %s" % e)
+    LOG("Build 318: Galerie-Stil 'flow' in die Ansicht uebernommen")
+    return "coverflow"
 
 
 # ----------------------------------------------------------------------

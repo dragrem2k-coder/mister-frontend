@@ -11,7 +11,22 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ---
 
-## Nach v4.9 — noch nicht veröffentlicht
+## v5.0 — sechs Ansichten auf der Hauptseite, Gerätefotos, Core-Verwaltung und ein Bench, der selbst drückt
+
+- **Neu: der Coverflow ist eine eigene Ansicht der Spieleliste.** Er
+  hing bisher an einem zweiten Schalter (*Galerie-Stil*) — jetzt
+  stehen **Liste, Raster, Galerie und Coverflow** gleichberechtigt an
+  einem Schalter, und die klassische Galerie ist damit ganz normal
+  wieder erreichbar. Auf einer Röhre überspringt die Taste den
+  Coverflow; eine in Build 313 gesetzte Einstellung wird beim ersten
+  Start einmalig übernommen (Build 318).
+- **Behoben: links/rechts war in den neuen Ansichten gedeckelt.** Die
+  Wiederholrate kennt einen langsamen Boden für Seitensprünge (vier
+  Schritte je Sekunde). Kachelwand, Dashboard und Karussell fehlten in
+  der Tabelle, die sagt, welche Richtung eine Seite bewegt — also
+  galten sie als Seitensprung, obwohl links/rechts dort die billigste
+  Bewegung überhaupt ist. Die Tabelle gibt es jetzt nur noch **einmal**
+  (Build 318).
 
 - **Behoben: die neuen Hauptseiten ließen sich wie eine Liste
   steuern.** Kachelwand, Dashboard und Karussell fehlten in der

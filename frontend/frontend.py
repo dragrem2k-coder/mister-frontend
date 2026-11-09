@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MiSTer Custom Frontend - v4.9
+MiSTer Custom Frontend - v5.0
 =======================================
 Reines Standard-Python, keine externen Abhaengigkeiten.
 
@@ -319,12 +319,13 @@ from fe.settings import (
     cover_sofort_enabled, toggle_cover_sofort, artbox_aufschub_aus,
     arbeitskopien_enabled, toggle_arbeitskopien,
     overscan_lesen, overscan_weiter,
-    ANSICHTEN, ansicht_lesen, ansicht_schreiben,
+    ANSICHTEN, ANSICHTEN_NUR_HD, ansicht_lesen, ansicht_schreiben,
     ansicht_haupt_lesen, ansicht_haupt_schreiben,
     # Build 316: die Hauptseite hat sechs Ansichten, nicht drei.
     ANSICHTEN_HAUPT, ANSICHTEN_HAUPT_NUR_HD, haupt_stil_uebernehmen,
-    GALERIE_STILE, galerie_stil_lesen, galerie_stil_schreiben,
-    galerie_stil_weiter,
+    # Build 318: der Coverflow ist eine ANSICHT geworden - vom alten
+    # Schalter bleibt nur die einmalige Uebernahme.
+    galerie_stil_uebernehmen,
     schrift_lesen, schrift_pfad,
     schrift_schreiben, schrift_aus_ini, SCHRIFT_EIGEN, SCHRIFT_OSD,
     maske_lesen, maske_schreiben, maske_an, toggle_maske, maske_pfad,
@@ -1613,6 +1614,13 @@ class Frontend:
             haupt_stil_uebernehmen()
         except Exception:                                # noqa: BLE001
             LOG("haupt_stil_uebernehmen:\n" + traceback.format_exc())
+        # BUILD 318, gleicher Gedanke fuer die Spieleliste: wer
+        # "Galerie-Stil: Coverflow" eingestellt hatte, findet ihn jetzt
+        # als eigene Ansicht wieder.
+        try:
+            galerie_stil_uebernehmen()
+        except Exception:                                # noqa: BLE001
+            LOG("galerie_stil_uebernehmen:\n" + traceback.format_exc())
         self.inp = InputManager()
         self._startmarke("Framebuffer und Eingaben offen")
         # WICHTIG: Erst auf unseren eigenen Bildschirm umschalten (F9),
@@ -5166,7 +5174,28 @@ class Frontend:
         gemerkt = getattr(self, "_ansicht_je_kat", None)
         if gemerkt is None:
             gemerkt = self._ansicht_je_kat = {}
-        return gemerkt.get(self._ansicht_schluessel(), ansicht_lesen())
+        return self._ansicht_hd(
+            gemerkt.get(self._ansicht_schluessel(), ansicht_lesen()))
+
+    def _ansicht_hd(self, wert):
+        """Die HD-Regel der SPIELELISTE, an genau einer Stelle (Build
+        318) - das Gegenstueck zu _ansicht_haupt_hd().
+
+        Der Coverflow braucht ein HDMI-Bild; auf einer Roehre liefert
+        diese Funktion dafuer "galerie". Nicht "liste": wer den
+        Coverflow eingestellt hat, will eine Galerie sehen, und die
+        klassische ist genau das, was dort hinpasst.
+
+        EINE Stelle, weil in Build 314 genau diese Regel als ZWEITE
+        Entscheidungsebene neben der Ansicht stand - und prompt kam
+        das Bild von der einen Quelle und die Navigation von der
+        anderen."""
+        try:
+            if wert in ANSICHTEN_NUR_HD and self.fb.height < 720:
+                return "galerie"
+        except Exception:                                # noqa: BLE001
+            return "liste"
+        return wert
 
     def ansicht_setzen(self, wert, merken=False):
         """Ansicht fuer die aktuelle Kategorie setzen. merken=True
@@ -5207,9 +5236,24 @@ class Frontend:
         _n, _r, syskey = self.cats[self.cat_i]
         if not self.hat_artspalte(items, syskey):
             return None
-        jetzt = self.aktuelle_ansicht(True)
-        idx = ANSICHTEN.index(jetzt) if jetzt in ANSICHTEN else 0
-        return self.ansicht_setzen(ANSICHTEN[(idx + 1) % len(ANSICHTEN)])
+        return self.ansicht_setzen(
+            self._ansicht_weiter(self.aktuelle_ansicht(True)))
+
+    def _ansicht_weiter(self, jetzt):
+        """Die naechste Ansicht der Spieleliste - auf einer Roehre
+        werden die HD-Ansichten UEBERSPRUNGEN.
+
+        Dieselbe Begruendung wie bei _ansicht_haupt_weiter(): eine
+        Taste, die nichts sichtbar tut, haelt man fuer kaputt."""
+        try:
+            hd = self.fb.height >= 720
+        except Exception:                                # noqa: BLE001
+            hd = False
+        moeglich = [a for a in ANSICHTEN
+                    if hd or a not in ANSICHTEN_NUR_HD]
+        if jetzt not in moeglich:
+            return moeglich[0]
+        return moeglich[(moeglich.index(jetzt) + 1) % len(moeglich)]
 
     # Spalten und Zeilen des Rasters. Bewusst feste Zahlen je
     # Aufloesungsklasse und nicht aus der Breite gerechnet: genau diese
@@ -10012,29 +10056,6 @@ class Frontend:
     # freigeraeumt. Siehe _draw_items_galerie().
     _galerie_text_unten = None
 
-    def _galerie_flow(self):
-        """Laeuft die Galerie im Coverflow-Stil? (Build 313)
-
-        ZWEI BEDINGUNGEN, und beide hat er gesetzt:
-
-          1. der Stil steht auf "flow" (Systemmenue, Vorgabe bleibt
-             "klassisch" - siehe fe/settings.py, dort steht auch der
-             Grund),
-          2. es ist ein HDMI-Bild. "nur fuer hdmi modus" war seine
-             ausdrueckliche Vorgabe, und sie ist auch die richtige:
-             fuenf Cover nebeneinander waeren auf 320x240 fuenf
-             Flecken.
-
-        Dieselbe Schwelle wie ueberall im Haus (fb.height >= 720,
-        siehe _ansicht_cover() und die _Messbedingungen im Bench) -
-        eine zweite Zahl dafuer waere eine zweite Gelegenheit,
-        auseinanderzulaufen."""
-        try:
-            return (self.fb.height >= 720
-                    and galerie_stil_lesen() == "flow")
-        except Exception:                                # noqa: BLE001
-            return False
-
     def galerie_flow_geometrie(self, L):
         """Die Masse des Coverflows (Build 313).
 
@@ -10277,12 +10298,11 @@ class Frontend:
         """Ansicht D: ein grosses Cover links, die Spieldaten rechts,
         die Nachbarn als Leiste darunter.
 
-        BUILD 313: STEHT DER STIL AUF "flow", uebernimmt
-        _draw_items_galerie_flow() - sein Entwurf 6. Der Verteiler
-        steht hier und nicht beim Aufrufer, damit es genau EINE Stelle
-        gibt, an der "Galerie" entschieden wird; der Rest des Hauses
-        (Ansichtswechsel, Bench, Vorschau, Vorwaermer) merkt davon
-        nichts.
+        BUILD 318: der Coverflow ist eine eigene Ansicht und wird
+        beim Verteiler entschieden (_draw_items_kacheln). Hier stand
+        bis dahin eine Abfrage ganz oben - also eine zweite
+        Entscheidungsebene unterhalb der Ansicht, und genau diese
+        Form ist auf der Hauptseite schon einmal schiefgegangen.
 
         SEIT BUILD 125 GIBT ES HIER EINEN SCHNELLEN PFAD - und der ist
         erst durch die seitenweise Leiste (siehe unten) moeglich
@@ -10297,9 +10317,6 @@ class Frontend:
 
         Was das spart: den Vollbild-clear() (auf 1080p 8,3 MB) und elf
         Kachel-Blits (rund 0,9 MB) pro Tastendruck."""
-        if self._galerie_flow():
-            return self._draw_items_galerie_flow(items, syskey, L,
-                                                 message, flip)
         fb = self.fb
         geo = self.galerie_geometrie(L)
         s, ox = geo["s"], geo["ox"]
@@ -10621,12 +10638,22 @@ class Frontend:
 
     def _draw_items_kacheln(self, ansicht, items, name, syskey, L, message,
                             flip):
-        """Verteiler fuer die beiden neuen Ansichten."""
+        """Verteiler fuer die Ansichten ausser der Liste.
+
+        BUILD 318: der Coverflow steht hier als eigener Zweig. Bis
+        dahin sass er als Abfrage GANZ OBEN in
+        _draw_items_galerie() - also eine zweite Entscheidungsebene
+        unterhalb der Ansicht, und genau diese Form ist auf der
+        Hauptseite in Build 314 schiefgegangen. Jetzt entscheidet die
+        Ansicht, und zwar hier, wo auch die anderen entschieden
+        werden."""
         if not items:
             return False
         if self.item_i >= len(items):
             self.item_i = 0
-        if ansicht == "galerie":
+        if ansicht == "coverflow":
+            self._draw_items_galerie_flow(items, syskey, L, message, flip)
+        elif ansicht == "galerie":
             self._draw_items_galerie(items, syskey, L, message, flip)
         else:
             self._draw_items_raster(items, syskey, L, message, flip)
@@ -13711,25 +13738,48 @@ class Frontend:
         Nutzer als "kann schneller passieren, wenn ich die Richtung
         gedrueckt halte" beschrieben hat.
 
-        Die Zuordnung ist dieselbe wie bei _schritte() in der
-        Ereignisschleife, und das ist Absicht: es ist dieselbe Frage,
-        einmal fuer die Schrittweite und einmal fuer das Tempo."""
+        DIESELBE QUELLE WIE DIE SCHRITTWEITE, und zwar seit Build
+        318 auch wirklich.
+
+        Hier stand bis dahin eine ZWEITE Tabelle, die dasselbe noch
+        einmal beantwortete - mit dem Kommentar "die Zuordnung ist
+        dieselbe wie bei _schritte(), und das ist Absicht". Genau das
+        war sie dann nicht mehr: Build 314 brachte drei neue
+        Ansichten, Build 317 trug sie in die Schrittweiten ein - und
+        hier fehlten sie weiter. Sie landeten im Rueckfall, galten
+        damit als Seitensprung und waren auf vier Schritte je Sekunde
+        gedeckelt (REPEAT_FLOOR_PAGE = 0,25 s), obwohl links/rechts
+        dort die billigste Bewegung ueberhaupt ist. Gemeldet mit: "in
+        denn neuen ansichten koennte das scrollen nach links und
+        rechts noch schneller gehen so wie in denn alten ansichten
+        auch".
+
+        Jetzt wird nav_schritte() GEFRAGT statt nachgebaut: eine
+        Richtung ist genau dann ein Seitensprung, wenn ihre
+        Schrittweite die Seitenweite ist. Zwei Platzhalter genuegen
+        dafuer, und die Tabelle kann nicht mehr auseinanderlaufen,
+        weil es nur noch eine gibt.
+
+        Der Platzhalter fuer die Seite ist bewusst negativ: eine
+        echte Spaltenzahl ist immer >= 1, eine Verwechslung also
+        ausgeschlossen."""
         if self.page == 0:
             ansicht = self.aktuelle_ansicht_haupt()
+            merker = "_kat_raster_spalten"
         elif self.page == 1:
             ansicht = self.aktuelle_ansicht()
+            merker = "_raster_spalten"
         else:
-            ansicht = "liste"
-        if ansicht == "raster":
-            # Beide Richtungen sind billig: links/rechts eine Kachel,
-            # hoch/runter eine Reihe - gezeichnet werden so oder so nur
-            # zwei Kacheln.
-            seiten = ()
-        elif ansicht == "galerie":
-            # Hier blaettern hoch/runter die Nachbarleiste.
-            seiten = ("up", "down")
-        else:
-            seiten = ("left", "right")
+            ansicht, merker = "liste", "_raster_spalten"
+        _MOVE, _SEITE = 1, -1
+        hoch_runter, links_rechts = self.nav_schritte(
+            ansicht, merker, _MOVE, _SEITE)
+        seiten = []
+        if hoch_runter == _SEITE:
+            seiten += ["up", "down"]
+        if links_rechts == _SEITE:
+            seiten += ["left", "right"]
+        seiten = tuple(seiten)
         try:
             self.inp.seiten_aktionen_setzen(seiten)
         except AttributeError:
@@ -23959,7 +24009,7 @@ class Frontend:
         eine Zeile, die nichts tut."""
         if ansicht in ("raster", "kachelwand"):
             return max(1, getattr(self, spalten_merker, 1)), move_step
-        if ansicht in ("galerie", "karussell"):
+        if ansicht in ("galerie", "karussell", "coverflow"):
             return page_step, move_step
         return move_step, page_step
 
@@ -25909,24 +25959,6 @@ class Frontend:
                             # (siehe _art_panel_aktualisieren()).
                             toggle_cover_sofort()
                             self._refresh_system_category()
-                        elif kind == "galerie_stil":
-                            # Build 313: der Stil der Galerie, sein
-                            # Entwurf 6. Der Wert wird IMMER
-                            # geschrieben, auch auf einer Roehre - er
-                            # gilt ja fuers naechste Mal am Fernseher.
-                            # Die Meldung sagt dann aber dazu, dass
-                            # hier nichts davon zu sehen sein wird;
-                            # eine Einstellung, die stumm nichts tut,
-                            # haelt man fuer kaputt.
-                            _neu = galerie_stil_weiter()
-                            _txt = t("galerie_stil_gesetzt",
-                                     t("galerie_stil_" + _neu))
-                            if (_neu == "flow"
-                                    and self.fb.height < 720):
-                                _txt = t("galerie_stil_nur_hdmi")
-                            self._force_full_redraw = True
-                            self.draw(_txt)
-                            continue
                         elif kind == "ansicht":
                             # NEU (Build 122): Vorgabe-Ansicht der
                             # Spieleliste eine Stufe weiter. Anders als

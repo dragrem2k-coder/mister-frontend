@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Prueft die drei Ansichten der Spieleliste (Build 122).
+"""Prueft die Ansichten der Spieleliste (Build 122, erweitert 318).
 
 Nutzerwunsch nach den Kachel-Entwuerfen: "B und D und das alte als
 Schalter einbauen", und zur Bedienung: "besser nur per Schalter unter
@@ -293,7 +293,7 @@ check("beide Seiten fragen ihre eigene Ansicht ab",
       "self.aktuelle_ansicht() if self.page == 1" in quelle
       and "self.aktuelle_ansicht_haupt() if self.page == 0" in quelle)
 check("und run() rechnet nicht selbst, sondern ruft nav_schritte()",
-      quelle.count("self.nav_schritte(") == 2
+      quelle.count("self.nav_schritte(") == 3
       and "def _schritte(" not in quelle,
       "zwei Fassungen desselben Schritts sind zwei Gelegenheiten "
       "auseinanderzulaufen")
@@ -334,7 +334,15 @@ check("und F9 bleibt MiSTer ueberlassen",
       I.KEYMAP.get(I.KEY_F9) is None, repr(I.KEYMAP.get(I.KEY_F9)))
 check("Select+Y ebenfalls",
       I.SELECT_COMBOS.get("music_next") == "ansicht")
-check("drei Ansichten", S.ANSICHTEN == ("liste", "raster", "galerie"))
+# BUILD 318: VIER Ansichten - der Coverflow haengt nicht mehr an einem
+# zweiten Schalter, sondern steht gleichberechtigt daneben.
+check("vier Ansichten",
+      S.ANSICHTEN == ("liste", "raster", "galerie", "coverflow"),
+      "%r" % (S.ANSICHTEN,))
+check("die alten drei stehen vorn",
+      S.ANSICHTEN[:3] == ("liste", "raster", "galerie"),
+      "wer die Reihenfolge aendert, aendert fuer jeden Bestandsnutzer, "
+      "was die Taste tut")
 check("unbekannter Dateiinhalt faellt auf Liste zurueck",
       S.ansicht_schreiben("unfug") == "liste")
 # Der Menuepunkt muss die Ansicht auch WIRKLICH anbieten - sonst
