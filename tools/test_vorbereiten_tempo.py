@@ -135,18 +135,30 @@ print("Test 1: die Zahl der Kastengroessen, und was sie kostet")
 # bleibt: eine fuenfte Groesse waere unbemerkt ein weiteres Viertel
 # Vorbereitungszeit, und genau das soll hier auffallen. Mit
 # raster_klein sind es weiterhin drei - auch das wird geprueft.
+# Die Vorgabe der Ansicht aus einer eigenen, leeren Datei - sonst
+# haengt die Zahl der Kaesten daran, was ein anderer Lauf dort
+# hinterlassen hat (mit "coverflow" als Vorgabe sind es sieben).
+import tempfile as _tempfile                               # noqa: E402
+from fe import settings as _S0                             # noqa: E402
+
+_S0.ANSICHT_FILE = os.path.join(_tempfile.mkdtemp(prefix="vtempo_"),
+                                "ansicht")
+H._zwischenspeicher_leeren()
 KAESTEN_SOLL = 4
 for breite, hoehe, wie in ((1920, 1080, "HDMI"), (320, 240, "CRT")):
     H.set_screen(breite, hoehe)
     for seite, wo in ((1, "Spieleliste"), (0, "Hauptseite")):
         f = H.make_frontend(page=seite)
-        geos = [f._art_panel_geometrie(erzwingen=True)]
-        for a in fm.ANSICHTEN:
-            if a == "liste":
-                continue
-            for g in f._ansicht_geometrien(a, erzwingen=True):
-                if g not in geos:
-                    geos.append(g)
+        # BUILD 319: die echte Funktion statt einer Abschrift ihrer
+        # Schleife. Hier stand "for a in fm.ANSICHTEN:
+        # _ansicht_geometrien(a)" - dieselbe Abschrift wie in
+        # tools/test_kopierpfade.py und tools/test_prewarm_absturz.py,
+        # und alle drei wurden rot, als der Coverflow seine drei
+        # Groessen bekam, obwohl der Menuepunkt sie gar nicht
+        # mitrechnet (siehe vorbereitungs_kaesten() in frontend.py).
+        # Dass es mit Coverflow als Vorgabe sieben sind, prueft
+        # tools/test_kopierpfade.py.
+        geos = f.vorbereitungs_kaesten()
         masse = [(g[1], g[2]) if g[0] == "fest" else (g[0], g[1])
                  for g in geos]
         check("%-4s %-12s %d Kaesten" % (wie, wo, KAESTEN_SOLL),
@@ -187,13 +199,7 @@ try:
     check("und zwar der kleinere von beiden",
           rk["cov_h"] <= natur_h,
           "Raster-Natur %d -> gemeinsam %d" % (natur_h, rk["cov_h"]))
-    geos_k = [fk._art_panel_geometrie(erzwingen=True)]
-    for a in fm.ANSICHTEN:
-        if a == "liste":
-            continue
-        for gg in fk._ansicht_geometrien(a, erzwingen=True):
-            if gg not in geos_k:
-                geos_k.append(gg)
+    geos_k = fk.vorbereitungs_kaesten()       # Build 319, siehe oben
     check("und es sind dann wieder drei Groessen", len(geos_k) == 3,
           "%d" % len(geos_k))
 finally:

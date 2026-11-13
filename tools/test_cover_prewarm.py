@@ -519,11 +519,21 @@ check("alle zeigen in den sysart-Ordner",
 # (Liste, Raster, Galerie), gibt es diese eine Groesse eben dreimal -
 # und alle drei muessen vorgewaermt werden, weil F10 ohne Speichern
 # umschaltet.
+#
+# BUILD 319: SO VIELE GROESSEN, WIE DIE ANSICHTEN KAESTEN HABEN - und
+# das ist eine mehr als Ansichten. Die Galerie zeichnet ZWEI (das
+# grosse Bild und die Leiste darunter); die Leiste stand seit Build
+# 124 in keiner Vorbereitungsliste, und diese Pruefung hat genau das
+# verlangt ("so viele wie Ansichten"). Gezaehlt wird jetzt gegen die
+# Funktion, die auch der Zeichenweg bedient - nicht gegen eine Zahl.
 _groessen = {(w, h) for _p, w, h in auftraege}
-check("es sind genau so viele Kastengroessen wie Ansichten",
-      len(_groessen) == len(A.ANSICHTEN) if hasattr(A, "ANSICHTEN")
-      else len(_groessen) == 3,
-      str(sorted(_groessen)))
+_soll_kaesten = set()
+for _a in ("liste", "raster", "galerie"):
+    for _b, _h, _foto in fe._kat_logo_kaesten(_a):
+        _soll_kaesten.add((_b, _h))
+check("es sind genau die Kastengroessen der drei klassischen Ansichten",
+      _groessen == _soll_kaesten and len(_soll_kaesten) == 4,
+      "%s gegen %s" % (sorted(_groessen), sorted(_soll_kaesten)))
 _je_groesse = {}
 for _p, w, h in auftraege:
     _je_groesse.setdefault((w, h), set()).add(_p)

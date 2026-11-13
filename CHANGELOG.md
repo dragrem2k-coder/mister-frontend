@@ -11,6 +11,62 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ---
 
+## Nach v5.0 — noch nicht veröffentlicht
+
+- **Schneller: der Coverflow bekommt seine Cover vorbereitet.** Jedes
+  Cover erscheint dort nacheinander in **drei Größen** — ferner
+  Nachbar, naher Nachbar, Mitte. Keine davon stand bisher in einer
+  Vorbereitungsliste: der Vorauslader kannte die Ansicht nicht und hat
+  stattdessen den Kasten der *Liste* gerechnet, nach dem im Coverflow
+  nie jemand fragt. Jetzt werden in jeder Ruhepause die nächsten
+  zwanzig Cover in allen drei Größen bereitgelegt (Build 319).
+- **Schneller: Kachelwand, Dashboard und Karussell.** Die drei neuen
+  Hauptseiten kamen im Vorauslader gar nicht vor — jedes Bild war beim
+  ersten Blick kalt, im Karussell bis zu drei je Schritt. Auf deinem
+  Gerät kostet ein kaltes Bild gemessen 11 ms Lesen plus Entpacken.
+  Dazu die Leiste der **Galerie** auf der Hauptseite, die seit Build
+  124 in keiner Liste stand. Vorbereitet werden weiter die drei
+  klassischen Ansichten und zusätzlich die, in der du stehst
+  (Build 319).
+- **Schneller: jeder Scrollschritt in jeder Ansicht mit Karte.** Für
+  jeden Sprung in die C-Bibliothek braucht das Frontend die Adresse
+  des Puffers und merkt sie sich — in einem Speicher mit sechs
+  Plätzen, der bei Überlauf *ganz* geleert wurde. Seit die Karte aus
+  einer Vorlage kopiert wird, braucht sie allein vier davon.
+  Nachgezählt: der Speicher wurde in **jedem** Schritt mindestens
+  einmal geleert, 7 bis 13 Zeiger je Schritt neu gebaut. Jetzt: null
+  (Build 319).
+- **Schneller: der Name eines Spiels wird je Schritt einmal
+  umgerechnet statt bis zu achtmal.** Findet sich ein Cover nicht
+  unter dem exakten Namen, wird ein Vergleichsname gebildet — für
+  Cover, Bildschirmfoto, Metadaten, Beschreibung und Anleitung jedes
+  Mal neu. Auf deinem Gerät kostet das gemessen 0,45 ms je Aufruf
+  (Build 319).
+- **Bench: jede Ansicht wird gemessen — und keine unter falschem
+  Namen.** Kachelwand, Dashboard, Karussell und Coverflow fehlten
+  bisher. Schlimmer: seit Build 318 hätte der Bericht eine Zeile
+  „Haupt coverflow" gezeigt, mit den Zahlen der *Liste*. Auf der Röhre
+  steht bei HD-Ansichten jetzt „nicht zu haben" statt einer Zahl
+  (Build 319).
+- **Bench: die Hänger bekommen eine eigene Zeile.** Bisher stand je
+  Ansicht ein Mittelwert, und ein Hänger ist genau das, was ein
+  Mittelwert wegrechnet. Jetzt: Median, schnellster und langsamster
+  Schritt, die Zahl der **Vollbild-Flips** und der neu gebauten
+  Zeiger. Die neue Zeile hat beim ersten Lauf gleich einen Fehler des
+  Bench selbst gezeigt: seit Build 219 war in jeder Zeile der
+  Spieleliste **ein voller Aufbau von dreißig Schritten** im
+  Mittelwert — rund drei Millisekunden, die kein Scrollschritt je
+  gekostet hat (Build 319).
+- **Bench: „Rest in Python" wird gemessen statt abgezogen.** Die Zeile
+  hieß so, war aber eine Differenz gegen ein Rechenmodell — die Zeit
+  im Kopierer selbst hat nie jemand genommen. Und zu „mit Aussparung
+  gerufen 16 von 20" steht jetzt der Grund daneben, gezählt: hat der
+  Cover-Kasten die Größe gewechselt, oder wurde der Puffer für
+  ungültig erklärt (Build 319).
+- **Handbuch:** der Verweis in Abschnitt 12.1 zeigte für die
+  Scaler-Grenze auf eine Notiz, in der dazu nichts steht — er zeigt
+  jetzt auf Abschnitt 8.
+
 ## v5.0 — sechs Ansichten auf der Hauptseite, Gerätefotos, Core-Verwaltung und ein Bench, der selbst drückt
 
 - **Neu: der Coverflow ist eine eigene Ansicht der Spieleliste.** Er

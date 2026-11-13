@@ -575,11 +575,21 @@ check("und zwar abgesichert",
 print()
 print("Test 10: der Fotosatz - Vorrang UND Rueckfall")
 # ---------------------------------------------------------------------------
-check("_kat_logo kennt den Fotosatz",
-      "SYSART_FOTO_BASE" in _LOGO and "foto" in _LOGO)
+# BUILD 319: die Regel "Foto, sonst Abzeichen" steht jetzt in
+# _kat_logo_pfad() - der Vorauslader stellt dieselbe Frage, und bis
+# dahin hat er sie sich selbst beantwortet (immer mit dem Abzeichen).
+# Geprueft wird deshalb die Stelle, an der die Regel WOHNT, und dass
+# _kat_logo() sie fragt statt sie zu wiederholen.
+_LOGOPFAD = nur_code(koerper(_QF, "_kat_logo_pfad", "Frontend"))
+check("_kat_logo_pfad kennt den Fotosatz",
+      "SYSART_FOTO_BASE" in _LOGOPFAD and "foto" in _LOGOPFAD)
 check("gefragt wird ueber die gemerkte Liste, nicht ueber einen "
-      "zweiten get_scaled-Versuch", "_sysart_foto_namen()" in _LOGO,
+      "zweiten get_scaled-Versuch", "_sysart_foto_namen()" in _LOGOPFAD,
       "ein fehlendes Bild und ein uebersprungenes liefern beide None")
+check("und _kat_logo fragt diese eine Stelle",
+      "_kat_logo_pfad(" in _LOGO and "SYSART_FOTO_BASE" not in _LOGO,
+      "zwei Stellen fuer dieselbe Regel waren schon beim Einbau "
+      "auseinander")
 
 f = seite(1920, 1080, "kachelwand")
 namen = f._sysart_foto_namen()

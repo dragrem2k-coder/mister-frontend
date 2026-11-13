@@ -231,22 +231,49 @@ check("und mit raster_klein teilen sie ihn wieder",
       _leiste_gleich_raster_bei_klein(),
       "der Rueckweg soll die Ersparnis von Build 128 zurueckbringen")
 
+# BUILD 319: DIE ECHTE FUNKTION FRAGEN, NICHT DIE SCHLEIFE NACHBAUEN.
+#
+# Hier stand "for a in fm.ANSICHTEN: _ansicht_geometrien(a)" - eine
+# Abschrift der Schleife aus _thumb_prewarm_durchlauf(). Sie wurde rot,
+# als der Coverflow seine drei Groessen bekam, obwohl der Menuepunkt
+# sie gar nicht mitrechnet: geprueft wurde die Abschrift, nicht der
+# Menuepunkt. Jetzt wird vorbereitungs_kaesten() gefragt, und die
+# Zusage steht praeziser da als vorher:
+#
+#   * ohne Coverflow als Vorgabe bleibt es bei VIER - die Rechnung
+#     oben (4 x 30270 = 121080 von 150000) gilt weiter,
+#   * mit Coverflow als Vorgabe sind es SIEBEN, und das ist dann die
+#     Entscheidung dessen, der ihn eingestellt hat,
+#   * auf der Roehre nie mehr als vier - dort gibt es keinen
+#     Coverflow.
+import fe.settings as _S                                  # noqa: E402
+import tempfile as _tempfile                              # noqa: E402
+
+_S.ANSICHT_FILE = os.path.join(_tempfile.mkdtemp(prefix="kopierpfade_"),
+                               "ansicht")
 KAESTEN_SOLL = 4
-for breite, hoehe, wie in ((1920, 1080, "HDMI"), (320, 240, "CRT")):
+for vorgabe, breite, hoehe, wie, soll in (
+        ("liste", 1920, 1080, "HDMI", KAESTEN_SOLL),
+        ("liste", 320, 240, "CRT", KAESTEN_SOLL),
+        ("galerie", 1920, 1080, "HDMI", KAESTEN_SOLL),
+        ("coverflow", 1920, 1080, "HDMI", KAESTEN_SOLL + 3),
+        ("coverflow", 320, 240, "CRT", KAESTEN_SOLL)):
+    _S.ansicht_schreiben(vorgabe)
+    H._zwischenspeicher_leeren()
     H.set_screen(breite, hoehe)
     ff = H.make_frontend(page=1)
-    geos = [ff._art_panel_geometrie(erzwingen=True)]
-    for a in fm.ANSICHTEN:
-        if a == "liste":
-            continue
-        for gg in ff._ansicht_geometrien(a, erzwingen=True):
-            if gg not in geos:
-                geos.append(gg)
+    geos = ff.vorbereitungs_kaesten()
     masse = [(x[1], x[2]) if x[0] == "fest" else (x[0], x[1]) for x in geos]
-    check("%-4s genau %d Kastengroessen, keine fuenfte"
-          % (wie, KAESTEN_SOLL), len(geos) == KAESTEN_SOLL, repr(masse))
-    check("%-4s und keine davon doppelt" % wie,
+    check("%-4s Vorgabe %-9s genau %d Kastengroessen, keine mehr"
+          % (wie, vorgabe, soll), len(geos) == soll, repr(masse))
+    check("%-4s Vorgabe %-9s und keine davon doppelt" % (wie, vorgabe),
           len(set(masse)) == len(masse), repr(masse))
+_S.ansicht_schreiben("liste")
+H._zwischenspeicher_leeren()
+check("der Menuepunkt ruft genau diese Funktion",
+      "geos = self.vorbereitungs_kaesten(geo)" in open(
+          H.FRONTEND_PY, encoding="utf-8", errors="replace").read(),
+      "sonst prueft dieser Test wieder nur eine Abschrift")
 
 # CRT bleibt unangetastet - dort sind die Kacheln ohnehin winzig, und
 # 5x3 war nie das Problem.

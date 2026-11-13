@@ -1594,8 +1594,50 @@ def _hochskalieren(pix, w, h, scale):
 # unschaedlich - es sind langlebige Puffer, und ihre Groesse haengt an
 # der Bildschirmaufloesung, die einen neuen Framebuffer baut. Die
 # Obergrenze raeumt den alten dann weg.
+# BUILD 319: DREI AENDERUNGEN AN DIESEM ZWISCHENSPEICHER, und alle drei
+# kommen aus EINER Zaehlung (tools/diag_zeiger.py):
+#
+#     Ansicht            Zeiger/Schritt   NEU angelegt   geleert
+#     Spieleliste Liste       21,5            7,2          1,20
+#     Spieleliste Galerie     27,1            7,5          1,25
+#     Hauptseite Kachelwand   29,0           13,5          2,25
+#     Spieleliste Raster      15,0            0,0          0,00
+#
+# Der Speicher wurde also in JEDEM Schritt mindestens einmal geleert,
+# und sieben bis dreizehn Zeiger wurden je Schritt neu gebaut - in
+# jeder Ansicht, die eine Karte mit Schatten zeichnet. Das Raster
+# zeichnet keine, und genau dort steht eine Null. Das ist kein
+# Messrauschen, das ist Abzaehlen, und es ist geraeteunabhaengig.
+#
+# DIE URSACHE WAR DIE OBERGRENZE, nicht der Gedanke. Sechs Plaetze
+# reichten in Build 221 fuer Bildspeicher, Hintergrundkopie, mmap und
+# den Zeichensatz. Seit Build 299 kopiert die Karte aus einer Vorlage, und
+# zwar in bis zu VIER Scheiben um das Cover herum - jede Scheibe eine
+# eigene memoryview, jede ein eigener Platz. Vier plus drei sind
+# sieben, und "voll" hiess hier: ALLES wegwerfen.
+#
+#   1. Die Karte braucht nur noch EINEN Platz: zeilen_kopieren() nimmt
+#      einen Versatz in die Quelle (quell_off), die Scheiben sind
+#      damit Zahlen und keine Objekte mehr (fe/framebuffer.py).
+#   2. Die Adresse steht als ZAHL im Eintrag, ohne ctypes.cast(). Der
+#      Umweg ueber cast() war der teure Teil: gemessen 1,81 gegen 0,46
+#      Mikrosekunden je neuem Zeiger. Eine Zahl nimmt c_void_p
+#      genauso an.
+#   3. bytes gehen DIREKT durch - c_void_p nimmt ein bytes-Objekt
+#      selbst an. Vorher: c_char_p() plus cast() bei JEDEM blit eines
+#      Covers, 1,00 gegen 0,04 Mikrosekunden.
+#
+# Die Obergrenze steigt von 6 auf 16. Geleert wird weiterhin GANZ und
+# nicht einzeln, und das ist Absicht: ein gemerkter Puffer bleibt am
+# Leben (siehe oben), und nur das Leeren gibt eine verworfene
+# Kartenvorlage oder einen alten Bildspeicher wieder frei. Mit einem
+# Platz je Vorlage wird die Grenze im Betrieb nicht mehr erreicht -
+# und ob das stimmt, zaehlt ZEIGER_STAND mit, den der Bench in
+# Abschnitt J je Ansicht ausweist.
 _ZEIGER = {}
-_ZEIGER_MAX = 6
+_ZEIGER_MAX = 16
+# [neu angelegt, geleert] - nur Zaehler, niemand entscheidet danach.
+ZEIGER_STAND = [0, 0]
 
 
 def _roh_zeiger(puffer):
@@ -1605,18 +1647,23 @@ def _roh_zeiger(puffer):
     C-Aufrufs am Leben bleiben, sonst gibt Python den Puffer frei
     waehrend C noch hineinschreibt. Deshalb wird er mit zurueckgegeben
     und nicht verworfen - eine Zeile, die harmlos aussieht und es nicht
-    ist."""
+    ist.
+
+    Der Zeiger ist seit Build 319 bei bytes das Objekt selbst und sonst
+    eine ZAHL (die Adresse). Beides nimmt ein c_void_p-Parameter an;
+    etwas anderes als c_void_p darf damit nicht gefuettert werden."""
     if isinstance(puffer, bytes):
-        halter = _ctypes.c_char_p(puffer)
-        return halter, _ctypes.cast(halter, _ctypes.c_void_p)
+        return puffer, puffer
     schluessel = id(puffer)
     eintrag = _ZEIGER.get(schluessel)
     if eintrag is not None and eintrag[0] is puffer:
         return eintrag[1], eintrag[2]
     halter = (_ctypes.c_char * len(puffer)).from_buffer(puffer)
-    eintrag = (puffer, halter, _ctypes.cast(halter, _ctypes.c_void_p))
+    eintrag = (puffer, halter, _ctypes.addressof(halter))
+    ZEIGER_STAND[0] += 1
     if len(_ZEIGER) >= _ZEIGER_MAX:
         _ZEIGER.clear()
+        ZEIGER_STAND[1] += 1
     _ZEIGER[schluessel] = eintrag
     return eintrag[1], eintrag[2]
 
@@ -1696,7 +1743,8 @@ def rechtecke_maske(src, dst, stride, hoehe, grenze, rechtecke, maske):
         return False
 
 
-def zeilen_kopieren(dst, dst_stride, src, src_stride, x, y, breite, hoehe):
+def zeilen_kopieren(dst, dst_stride, src, src_stride, x, y, breite, hoehe,
+                    quell_off=0):
     """Ein dicht gepacktes Bild (oder einen Textstreifen) zeilenweise in
     den Puffer kopieren - QUELLE UND ZIEL HABEN VERSCHIEDENE
     Schrittweiten.
@@ -1708,7 +1756,14 @@ def zeilen_kopieren(dst, dst_stride, src, src_stride, x, y, breite, hoehe):
 
     `breite` ist in BYTE, nicht in Bildpunkten. Rueckgabe True, wenn C
     es erledigt hat; bei False hat sich nichts veraendert und der
-    Aufrufer muss selbst kopieren."""
+    Aufrufer muss selbst kopieren.
+
+    quell_off (Build 319): ab welchem BYTE der Quelle gelesen wird.
+    Vorher musste, wer mitten aus einem Puffer kopieren wollte, eine
+    memoryview mit Versatz schneiden - und jede davon belegte einen
+    eigenen Platz im Zeigerspeicher (siehe _roh_zeiger). Die Grenze
+    der Quelle wird um denselben Betrag gekuerzt; C prueft sie wie
+    bisher und kopiert im Zweifel weniger Zeilen, nie mehr."""
     if _LIB is None or not _HAT_ZEILEN:
         return False
     if breite <= 0 or hoehe <= 0 or x < 0 or y < 0:
@@ -1716,8 +1771,18 @@ def zeilen_kopieren(dst, dst_stride, src, src_stride, x, y, breite, hoehe):
     try:
         _halt_d, zeiger_d = _roh_zeiger(dst)
         _halt_q, zeiger_q = _roh_zeiger(src)
+        grenze_q = len(src)
+        if quell_off:
+            if quell_off < 0 or quell_off >= grenze_q:
+                return False
+            if not isinstance(zeiger_q, int):
+                # bytes mit Versatz: selten, also der ausfuehrliche Weg.
+                _halt_q = _ctypes.c_char_p(src)
+                zeiger_q = _ctypes.cast(_halt_q, _ctypes.c_void_p).value
+            zeiger_q += quell_off
+            grenze_q -= quell_off
         return _LIB.zeilen_kopieren(zeiger_d, dst_stride, len(dst),
-                                    zeiger_q, src_stride, len(src),
+                                    zeiger_q, src_stride, grenze_q,
                                     x, y, breite, hoehe) == 0
     except Exception:                                    # noqa: BLE001
         LOG("libdragend: Zeilen kopieren fehlgeschlagen, nehme Python")
@@ -4479,6 +4544,51 @@ def vergleichsname(base):
     return "".join(aus)
 
 
+# BUILD 319: DERSELBE NAME, BIS ZU ACHTMAL JE SCROLLSCHRITT.
+#
+# vergleichsname() laeuft Zeichen fuer Zeichen in Python, und was das
+# auf dem Geraet kostet, steht weiter unten in diesem Modul schon
+# gemessen: 1787 Aufrufe fuer eine SNES-Tabelle = 803 ms, also 0,45 ms
+# JE AUFRUF. Beim EINLESEN ist das laengst faul gemacht (Build 141) -
+# beim NACHSCHLAGEN nicht, und dort wird fuer ein und dasselbe Spiel
+# mehrfach gefragt, sobald der exakte Name nichts findet:
+#
+#     _art_path_in()    das Cover im eigenen Ordner
+#     docs_cover()      das Cover in der fremden Datenbank
+#     docs_bildart()    Bildschirmfoto / Titelbild
+#     get_meta()        Jahr, Genre, Entwickler
+#     Beschreibung      je Sprache
+#     Anleitung         fe/anleitung.py
+#
+# In der Galerie kommt das Cover dazu dreimal je Schritt dran (das
+# grosse und zwei Kacheln der Leiste). Nachgezaehlt im Profil eines
+# Galerieschritts: 6 Aufrufe je Schritt allein fuer die Cover, 16 %
+# der Schrittzeit auf dem Entwicklungsrechner - im SCHLECHTESTEN Fall,
+# naemlich wenn kein einziges Cover unter dem exakten Namen liegt. Wer
+# seine ROMs wie die Datenbank benennt, trifft exakt und kommt hier
+# gar nicht vorbei.
+#
+# GEMERKT WIRD NUR HIER, auf der Nachschlage-Seite, und das ist
+# Absicht: der Index-Aufbau ruft die Funktion fuer zehntausende
+# VERSCHIEDENE Namen genau je einmal - dort braechte ein Merker nichts
+# ausser Speicher. Die Funktion ist rein (gleicher Name, gleiches
+# Ergebnis, fuer immer), also gibt es nichts, was veralten koennte.
+_VN_MERK = {}
+_VN_MERK_MAX = 4096
+
+
+def vergleichsname_gemerkt(base):
+    """vergleichsname() mit Gedaechtnis - fuer das NACHSCHLAGEN eines
+    Spiels, nicht fuer den Aufbau eines Index. Siehe den Block
+    darueber."""
+    v = _VN_MERK.get(base)
+    if v is None:
+        if len(_VN_MERK) >= _VN_MERK_MAX:
+            _VN_MERK.clear()
+        v = _VN_MERK[base] = vergleichsname(base)
+    return v
+
+
 def _index_ergaenzen(idx, namen, wert_fn):
     """Die zwei Ausweich-Schreibweisen als LUECKENFUELLER nachtragen:
     erst ohne fuehrende Nummer, dann der Vergleichsname.
@@ -4783,7 +4893,7 @@ def _art_path_in(base_dir, syskey, rom_basename, erben=True):
         # Build 117: zuletzt der unscharfe Vergleich - siehe
         # vergleichsname(). Erst hier, damit der exakte Name immer
         # gewinnt.
-        fn = idx.get(vergleichsname(rom_basename))
+        fn = idx.get(vergleichsname_gemerkt(rom_basename))
     if fn:
         return os.path.join(base_dir, syskey, fn)
     # NEU (Build 115): erst wenn es bei UNS nichts gibt, wird in der
@@ -5242,7 +5352,8 @@ def docs_cover(syskey, rom_basename):
     if not syskey or not rom_basename:
         return None
     idx = _docs_index(syskey)
-    return idx.get(rom_basename) or idx.get(vergleichsname(rom_basename))
+    return (idx.get(rom_basename)
+            or idx.get(vergleichsname_gemerkt(rom_basename)))
 
 
 def _docs_index_fertig(syskey, bildart="boxart"):
@@ -5276,7 +5387,8 @@ def docs_bildart(syskey, rom_basename, bildart):
     idx = _docs_index(syskey, bildart)
     if not idx:
         return None
-    return idx.get(rom_basename) or idx.get(vergleichsname(rom_basename))
+    return (idx.get(rom_basename)
+            or idx.get(vergleichsname_gemerkt(rom_basename)))
 
 
 def docs_bildarten(syskey, rom_basename, nur_fertig=False):
@@ -5437,7 +5549,8 @@ def docs_meta(syskey, rom_basename):
     treffer = daten.get(rom_basename)
     if treffer is None:
         treffer = _knapp_index(daten, _docs_info_knapp,
-                               syskey).get(vergleichsname(rom_basename))
+                               syskey).get(
+            vergleichsname_gemerkt(rom_basename))
     return treffer or {}
 
 
@@ -5588,7 +5701,7 @@ def docs_synopsis(syskey, rom_basename, sprache="en"):
         treffer = tabelle.get(rom_basename)
         if treffer is None:
             if knapp is None:
-                knapp = vergleichsname(rom_basename)
+                knapp = vergleichsname_gemerkt(rom_basename)
             treffer = _knapp_index(tabelle, _docs_syn_knapp,
                                    (syskey, spr)).get(knapp)
         if treffer:

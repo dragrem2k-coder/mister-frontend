@@ -565,6 +565,16 @@ computes each thumbnail the moment you first look at that game. With a
 small collection you will barely notice. With several thousand games
 and a wish for smooth browsing, let it run once overnight.
 
+**And the coverflow?** It needs every cover in **three** sizes
+(centre, near and far neighbour). Together with the other four that
+would be seven thumbnails per cover — with a large collection the run
+would sit at the cache limit (150,000 files) and end up evicting what
+it computed at the start. So the run includes the coverflow **only if
+it is the configured view** (*System → Display & Sound → "Game list view"*). If
+you only switch into it with the key you still get the covers: since
+build 319 the frontend prepares the next twenty in all three sizes
+during every idle pause.
+
 The cache can be cleared under *System → Maintenance → "Clear
 thumbnail cache"* — separately for CRT and HDMI.
 **If you use both CRT and HDMI, run both lines** - without the `hd` run,
@@ -1610,8 +1620,9 @@ be a view, it would be a bug.
 
 > **Tip:** After switching, run *System -> Options -> "Prepare
 > thumbnails"* - each view needs the images in a different size. The
-> menu item prepares all three views in one go, so you only need to run
-> it once (but once per video mode: CRT and HDMI have their own sizes).
+> menu item prepares list, grid and gallery in one go (and the
+> coverflow if it is the configured view), so you only need to run it
+> once (but once per video mode: CRT and HDMI have their own sizes).
 >
 > **How long it takes, and what drives it.** Three box sizes are
 > computed per cover, and the cost depends on the size of the *source
@@ -2297,8 +2308,8 @@ details: `notizen/STREAM_fuer_Dragrem.md`.
 
 Since CRT and HDMI can't run simultaneously in their respective native
 resolution for technical reasons (a genuine hardware limitation of the
-single scaler, not an oversight - see `notizen/STREAM_fuer_Dragrem.md` for
-details), this feature additionally exposes the current frontend
+single scaler, not an oversight - see section 8, "CRT screens"),
+this feature additionally exposes the current frontend
 screen as an image via the browser: `http://<MiSTer-IP>:8080/mirror`.
 Handy if you run on CRT and still want to see (or show viewers) how
 you're browsing the frontend.
@@ -2484,7 +2495,7 @@ The frontend is normally started without options (autostart, or
 | Option | What it does |
 |---|---|
 | `--show` | Says **what is installed, how it is configured and how fast it runs** — on screen and additionally as a file in `/tmp/dragend_show.txt`. The fastest way to report a state without hunting over SSH |
-| `--bench` | A **fixed, repeatable measurement** across all drawing paths; report on screen and in `/tmp/dragend_bench.txt`. Since build 308 the bench **presses keys itself** (section M): 5 to 8 taps up/down, alternating, through the very same input path a real pad uses — so what happens during fast tapping is on record. It deliberately touches **nothing** on the SD card |
+| `--bench` | A **fixed, repeatable measurement** across all drawing paths; report on screen and in `/tmp/dragend_bench.txt`. Since build 308 the bench **presses keys itself** (section M): 5 to 8 taps up/down, alternating, through the very same input path a real pad uses — so what happens during fast tapping is on record. Since build 319 it measures **every view** (six on the main page, four in the game list) and reports, next to the mean, the **median, the slowest step and the number of full-screen flips** per view — so a single hitch no longer vanishes in the average. It deliberately touches **nothing** on the SD card |
 | `--demo` | **Four minutes of guided tour**, played through by itself: the three views on the main page and the game list, the five settings groups — and since Build 262 the **real screens**: search, context menu, random pick with its draw, trophy room, milestones, top 10, year review, diary, help and the CRT test pattern. Any key aborts |
 | `--help` | This list. The check runs **before** everything else: a typo gets you three lines and nothing more — no half start, no lock left behind |
 

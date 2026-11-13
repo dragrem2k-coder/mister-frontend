@@ -107,10 +107,12 @@ _echt_kop = FBK.zeilen_kopierer
 # arguments but 9 were given"). Beides ist dieselbe Regel, nur von
 # zwei Seiten: das Deskriptor-Protokoll laeuft bei Klassenzugriffen,
 # nicht bei Instanzzugriffen.
-def _kop(ziel, zs, quelle, qs, zx, zy, bb, hh):
+def _kop(ziel, zs, quelle, qs, zx, zy, bb, hh, *rest):
+    # *rest (Build 319): der Kopierer nimmt seitdem einen Versatz in
+    # die Quelle - durchreichen, nicht aufzaehlen.
     if _in_karte[0]:
         stand["bytes"] += int(bb) * int(hh)
-    return _echt_kop(ziel, zs, quelle, qs, zx, zy, bb, hh)
+    return _echt_kop(ziel, zs, quelle, qs, zx, zy, bb, hh, *rest)
 
 
 def _mach_kms(aussparen_erlauben):

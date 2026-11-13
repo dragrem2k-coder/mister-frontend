@@ -56,7 +56,8 @@ nicht - dieselbe Linie wie bei den Covern seit Build 115.
 """
 import os
 
-from fe.art import DOCS_BASE, DOCS_UNTERORDNER, vergleichsname
+from fe.art import (DOCS_BASE, DOCS_UNTERORDNER, vergleichsname,
+                    vergleichsname_gemerkt)
 import fe.systems as SYSTEMS
 
 # Die beiden Betrachter, die MiSTers Help-Funktion selbst benutzt.
@@ -268,7 +269,7 @@ def anleitung_finden(syskey, rom_basename):
         return None
     treffer = idx.get(rom_basename)
     if treffer is None:
-        treffer = idx.get(vergleichsname(rom_basename))
+        treffer = idx.get(vergleichsname_gemerkt(rom_basename))
     if treffer and os.path.exists(treffer):
         return treffer
     return None

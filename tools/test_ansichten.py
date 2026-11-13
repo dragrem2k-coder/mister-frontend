@@ -528,12 +528,22 @@ try:
     f.kategorie_logo_auftraege()
 finally:
     fm.thumb_cache_schuetzen = _echt_schuetzen
-check("kategorie_logo_auftraege() deckt alle drei Ansichten ab",
-      len({(a[1], a[2]) for a in angefasst}) == 3,
+# BUILD 319: VIER GROESSEN, NICHT DREI. Hier stand "== 3", und das
+# war die Zusage von Build 124 - eine Groesse je Ansicht. Sie hat einen
+# Fehler festgeschrieben: die Galerie zeichnet ZWEI (das grosse Bild
+# und die Leiste darunter), und die Leiste stand deshalb in keiner
+# Vorbereitungsliste. Derselbe Befund, den Build 125 in der
+# Spieleliste behoben hat - auf der Hauptseite hat dieser Test ihn
+# seit Build 124 fuer richtig erklaert. Was wirklich
+# gezeichnet wird, prueft jetzt
+# tools/test_vorwaermen_alle_ansichten.py von der anderen Seite.
+check("kategorie_logo_auftraege() deckt alle drei Ansichten ab - mit "
+      "vier Groessen, die Galerie hat zwei",
+      len({(a[1], a[2]) for a in angefasst}) == 4,
       repr(sorted({(a[1], a[2]) for a in angefasst})))
 check("und jede Kategorie kommt in jeder Groesse genau einmal vor",
-      len(angefasst) == 3 * len(KAT), "%d von %d" % (len(angefasst),
-                                                     3 * len(KAT)))
+      len(angefasst) == 4 * len(KAT), "%d von %d" % (len(angefasst),
+                                                     4 * len(KAT)))
 
 print()
 print("Test 13: Bedienung und Tasten")
@@ -782,17 +792,22 @@ for _ansicht in ("liste", "raster", "galerie"):
     kasten = set((a[1], a[2]) for a in alle)
     check("%-8s liefert ueberhaupt Abzeichen" % _ansicht, len(alle) > 0,
           "%d" % len(alle))
-    check("%-8s alle in EINER Kastengroesse" % _ansicht, len(kasten) == 1,
+    # Build 319: so viele Groessen, wie die Ansicht Kaesten hat - die
+    # Galerie zwei (grosses Bild und Leiste), die anderen eine.
+    _soll = set((b_, h_) for b_, h_, _f in f._kat_logo_kaesten(_ansicht))
+    check("%-8s in so vielen Groessen, wie die Ansicht Kaesten hat (%d)"
+          % (_ansicht, 2 if _ansicht == "galerie" else 1),
+          len(kasten) == (2 if _ansicht == "galerie" else 1),
           repr(sorted(kasten)))
     # Der Kern: die Gegenliste ist eine OBERMENGE der Fehlliste. Waere
     # sie dieselbe, haette der Lader nach einem Neustart nichts zu tun.
     check("%-8s und enthaelt auch das, was schon auf der Karte liegt"
           % _ansicht, set(fehlt) <= set(alle),
           "%d fehlend, %d gesamt" % (len(fehlt), len(alle)))
-    check("%-8s in der Kastengroesse, die auch gezeichnet wird"
+    check("%-8s in den Kastengroessen, die auch gezeichnet werden"
           % _ansicht,
-          kasten == set([f._kat_logo_kasten(_ansicht)]),
-          "%r vs %r" % (sorted(kasten), f._kat_logo_kasten(_ansicht)))
+          kasten == _soll and f._kat_logo_kasten(_ansicht) in kasten,
+          "%r vs %r" % (sorted(kasten), sorted(_soll)))
 
 # Und der Anschluss: Start UND Leerlauf muessen den Lader fuettern.
 # Beim Start ist es wichtiger - dort laeuft die Startanimation, das ist

@@ -145,6 +145,10 @@ def _abschnitt_aussehen(b, fe, S, MENU, MASKEN, SCHRIFTEN):
         pass
     try:
         b("   Ansichten    : %s" % ", ".join(S.ANSICHTEN))
+        # Build 316/319: die Hauptseite hat ihre eigenen, und sie
+        # standen hier bisher nicht.
+        b("   Hauptseite   : %s"
+          % ", ".join(getattr(S, "ANSICHTEN_HAUPT", S.ANSICHTEN)))
     except Exception:                                    # noqa: BLE001
         pass
     # Masken und Schriften liegen auf SEINER Karte - wir liefern keine
@@ -246,12 +250,14 @@ def _tempo(b, fe, S, BENCH, schritte=20):
                     continue
                 fe.cat_i = kat_i
                 fe.nav_path = []
-            for ansicht in S.ANSICHTEN:
+            # Build 319: die Ansichten DIESER Seite, und nur die, die
+            # das Frontend auf diesem Bild auch wirklich zeigt - siehe
+            # BENCH.ansichten_der_seite().
+            for ansicht in BENCH.ansichten_der_seite(S, seite):
                 try:
-                    if seite == 0:
-                        fe.ansicht_haupt_setzen(ansicht)
-                    else:
-                        fe.ansicht_setzen(ansicht)
+                    if BENCH.ansicht_einstellen(fe, seite,
+                                                ansicht) != ansicht:
+                        continue
                 except Exception:                        # noqa: BLE001
                     continue
                 schritt = BENCH.schritt_funktion(fe, seite)

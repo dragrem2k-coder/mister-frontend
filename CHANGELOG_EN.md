@@ -11,6 +11,53 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ---
 
+## After v5.0 — not released yet
+
+- **Faster: the coverflow gets its covers prepared.** Every cover
+  appears there in **three sizes** in turn — far neighbour, near
+  neighbour, centre. None of them was ever on a preparation list: the
+  prewarmer did not know the view and computed the *list* box
+  instead, which the coverflow never asks for. Now each idle pause
+  prepares the next twenty covers in all three sizes (build 319).
+- **Faster: tile wall, dashboard and carousel.** The three new main
+  pages were missing from the prewarmer altogether — every image was
+  cold at first sight, up to three per step in the carousel. On your
+  device a cold image costs a measured 11 ms to read plus unpacking.
+  The same goes for the neighbour strip of the main-page **gallery**,
+  which had been on no list since build 124. The three classic views
+  are still all prepared, plus the one you are in (build 319).
+- **Faster: every scroll step in every view that draws a card.** For
+  each jump into the C library the frontend needs the buffer's
+  address and remembers it — in a store with six slots that was
+  emptied *completely* on overflow. Since the card is copied from a
+  template it needs four of them alone. Counted: the store was
+  emptied at least once in **every** step, with 7 to 13 pointers
+  rebuilt per step. Now: zero (build 319).
+- **Faster: a game's name is normalised once per step instead of up
+  to eight times.** If a cover is not found under the exact name, a
+  comparison name is built — anew each time for cover, screenshot,
+  metadata, description and manual. On your device that costs a
+  measured 0.45 ms per call (build 319).
+- **Bench: every view is measured — and none under the wrong name.**
+  Tile wall, dashboard, carousel and coverflow were missing. Worse:
+  since build 318 the report would have shown a line "Haupt
+  coverflow" carrying the numbers of the *list*. On a CRT, HD-only
+  views now say "not available" instead of a number (build 319).
+- **Bench: hitches get a line of their own.** There used to be one
+  mean per view, and a hitch is exactly what a mean averages away.
+  Now: median, fastest and slowest step, the number of **full-screen
+  flips** and of rebuilt pointers. On its first run the new line
+  exposed a flaw in the bench itself: since build 219 every game-list
+  line carried **one full rebuild in thirty steps** in its mean —
+  about three milliseconds no scroll step ever cost (build 319).
+- **Bench: "Rest in Python" is measured instead of subtracted.** The
+  line was called that but was a difference against a cost model —
+  nobody ever timed the copier itself. And next to "called with
+  cutout 16 of 20" the reason is now counted: did the cover box
+  change size, or was the buffer declared invalid (build 319).
+- **Manual:** the reference in section 12.1 pointed to a note that
+  says nothing about the scaler limit — it now points to section 8.
+
 ## v5.0 — six main-page views, console photos, core management, and a bench that presses the keys itself
 
 - **New: the coverflow is a view of its own in the game list.** It

@@ -10709,17 +10709,33 @@ class Frontend:
         Bild, und aus diesen beiden Faellen dasselbe zu schliessen ist
         genau der Fehler, vor dem der Absatz darueber warnt."""
         name, _node, syskey = self.cats[i]
-        art_key = _category_art_key(name, syskey)
-        if not art_key:
+        pfad = self._kat_logo_pfad(name, syskey, foto)
+        if not pfad:
             return None, False
-        basis = SYSART_BASE
-        if foto and art_key in self._sysart_foto_namen():
-            basis = SYSART_FOTO_BASE
-        pfad = os.path.join(basis, "%s.art" % art_key)
         vorher = getattr(ART, "_defer_count", 0)
         art = ART.get_scaled(pfad, bw, bh, auslagern_ok=True)
         return art, (art is None
                      and getattr(ART, "_defer_count", 0) != vorher)
+
+    def _kat_logo_pfad(self, name, syskey, foto=False):
+        """Die DATEI, aus der das Bild einer Kategorie kommt - oder
+        None, wenn sie keines hat.
+
+        HERAUSGELOEST (Build 319), weil der Vorauslader dieselbe Frage
+        stellt. Bis hierher stand die Regel "Foto, wenn es eines gibt,
+        sonst das Abzeichen" nur in _kat_logo() - und
+        kategorie_logo_auftraege() hat sich den Pfad selbst gebaut,
+        immer aus SYSART_BASE. Fuer die drei neuen Hauptseiten hiess
+        das: vorbereitet wurde das ABZEICHEN, gezeichnet wird das
+        FOTO. Zwei Stellen fuer dieselbe Frage, und sie waren schon
+        beim Einbau auseinander."""
+        art_key = _category_art_key(name, syskey)
+        if not art_key:
+            return None
+        basis = SYSART_BASE
+        if foto and art_key in self._sysart_foto_namen():
+            basis = SYSART_FOTO_BASE
+        return os.path.join(basis, "%s.art" % art_key)
 
     def _kat_kachel_zeichnen(self, geo, platz, i, markiert, freiraeumen):
         fb = self.fb
@@ -13676,6 +13692,17 @@ class Frontend:
             if g["gross_b"] <= 4 or g["gross_h"] <= 4:
                 return None
             return "fest", g["gross_b"], g["gross_h"], s
+        if ansicht == "coverflow":
+            # BUILD 319: DER COVERFLOW HAT EIGENE KAESTEN, und bis
+            # hierher kannte sie diese Funktion nicht. Er fiel in den
+            # Zweig darunter und bekam den Kasten der LISTENANSICHT -
+            # vorbereitet wurden also Miniaturen in einer Groesse,
+            # nach der im Coverflow nie jemand fragt. Genau die Falle
+            # aus Build 124, nur eine Ansicht spaeter.
+            g = self.galerie_flow_geometrie(L)
+            if g["mitte_b"] <= 4 or g["mitte_h"] <= 4:
+                return None
+            return "fest", g["mitte_b"], g["mitte_h"], s
         art_x0 = art_spalte_x0(L["list_right"], fb.height, s)
         art_w = (W - ox) - art_x0
         art_h = art_spalte_h(art_w, oy, L["footer_y"], s, W, fb.height)
@@ -13718,6 +13745,23 @@ class Frontend:
             klein = ("fest", g["klein_b"], g["klein_h"], g["s"])
             if klein[1] > 4 and klein[2] > 4 and klein not in raus:
                 raus.append(klein)
+        elif ansicht == "coverflow":
+            # BUILD 319: DREI GROESSEN, und keine davon stand bisher in
+            # irgendeiner Vorbereitungsliste. Jedes Cover erscheint im
+            # Coverflow nacheinander als ferner Nachbar, naher Nachbar
+            # und in der Mitte - ein Schritt fragt also bis zu drei
+            # Bilder an, die es so noch nie gab. Derselbe Befund wie
+            # in Build 125 bei der Leiste der Galerie, woertlich: "alle
+            # kalt, alle waehrend des Scrollens uebersprungen".
+            items = self._display_items()
+            _n, _r, syskey = self.cats[self.cat_i]
+            has_art = True if erzwingen else self.hat_artspalte(items, syskey)
+            g = self.galerie_flow_geometrie(self.layout_items(has_art))
+            for _v, _x, _y, bb, hh in sorted(g["plaetze"],
+                                             key=lambda p: abs(p[0])):
+                kasten = ("fest", bb, hh, g["s"])
+                if bb > 4 and hh > 4 and kasten not in raus:
+                    raus.append(kasten)
         return raus
 
     def _seiten_aktionen_melden(self):
@@ -14061,19 +14105,42 @@ class Frontend:
         # Vorbereitet wird fuer ALLE DREI - es sind rund zwei Dutzend
         # Bilder, die Rechnung dafuer ist in Millisekunden erledigt,
         # und die Taste schaltet ohne Speichern um.
-        alle = []
-        for _a in ANSICHTEN:
-            breite, box_h = self._kat_logo_kasten(_a, L)
-            if breite <= 0 or box_h <= 0:
-                continue
-            for name, _node, syskey in self.cats:
-                art_key = _category_art_key(name, syskey)
-                if not art_key:
-                    continue
-                pfad = os.path.join(SYSART_BASE, "%s.art" % art_key)
-                eintrag = (pfad, breite, box_h)
-                if eintrag not in alle:
-                    alle.append(eintrag)
+        #
+        # BUILD 319: UND FUER DIE ANSICHT, IN DER MAN GERADE STEHT.
+        #
+        # Hier stand "for _a in ANSICHTEN" - die Liste der
+        # SPIELELISTE. Solange beide Seiten dieselben drei Ansichten
+        # hatten, fiel das nicht auf. Seit Build 316 hat die Hauptseite
+        # sechs, und die drei neuen kamen in dieser Schleife nie vor:
+        # Kachelwand, Dashboard und Karussell wurden in KEINEM Build
+        # vorbereitet. Jedes Bild dort war beim ersten Blick kalt -
+        # und im Karussell sind das bis zu DREI je Schritt, weil jede
+        # Kategorie nacheinander in drei Groessen erscheint. Was ein
+        # kaltes Bild kostet, steht seit Build 74 gemessen in
+        # fe/art.py: 11,2 ms lesen, 1,3 ms entpacken, bis zu 26 ms.
+        #
+        # Die drei klassischen werden weiter ALLE vorbereitet (die
+        # Taste schaltet ohne Speichern um). Von den drei neuen nur
+        # die, in der man steht: das Karussell allein sind drei
+        # Groessen je Kategorie, und wer es nie benutzt, soll dafuer
+        # nichts rechnen. Beim Umschalten ist die naechste Ruhepause
+        # dran.
+        ansichten = [a for a in ANSICHTEN_HAUPT
+                     if a not in ANSICHTEN_HAUPT_NUR_HD]
+        try:
+            _jetzt = self.aktuelle_ansicht_haupt()
+        except Exception:                            # noqa: BLE001
+            _jetzt = "liste"
+        if _jetzt not in ansichten:
+            ansichten.append(_jetzt)
+        # Ein dict als geordnete Menge: bei sechs Kaesten mal dreissig
+        # Kategorien waere "if eintrag not in liste" ein Vergleich je
+        # schon vorhandenem Eintrag.
+        gesehen = {}
+        for _a in ansichten:
+            for eintrag in self._kat_logo_eintraege(_a, L):
+                gesehen[eintrag] = True
+        alle = list(gesehen)
         # Build 84: ALLE Logos vor der Verdraengung schuetzen, nicht nur
         # die noch fehlenden. Genau das war der zweite Teil eines
         # gemeldeten Fehlers - die Logos lagen im Zwischenspeicher,
@@ -14097,19 +14164,69 @@ class Frontend:
         'die Logos ploppen einzeln auf' (Build 127)."""
         if ansicht is None:
             ansicht = self.aktuelle_ansicht_haupt()
-        breite, hoehe = self._kat_logo_kasten(ansicht)
-        if breite <= 0 or hoehe <= 0:
-            return []
-        raus = []
-        for name, _node, syskey in self.cats:
-            art_key = _category_art_key(name, syskey)
-            if not art_key:
+        return self._kat_logo_eintraege(ansicht)
+
+    def _kat_logo_eintraege(self, ansicht, L=None):
+        """[(pfad, breite, hoehe), ...] - JEDES Bild, das diese Ansicht
+        der Hauptseite beim Zeichnen anfragt, in JEDER Groesse.
+
+        DIE ZUSAGE, und tools/test_vorwaermen_alle_ansichten.py prueft
+        sie von der anderen Seite: dort wird jede Ansicht mit dem
+        Zeiger auf jeder Kategorie gezeichnet und mitgeschrieben, was
+        der Bildspeicher gefragt wird. Jede dieser Fragen muss hier
+        stehen - und nichts hier, wonach nie jemand fragt."""
+        gesehen = {}
+        for breite, hoehe, foto in self._kat_logo_kaesten(ansicht, L):
+            if breite <= 0 or hoehe <= 0:
                 continue
-            pfad = os.path.join(SYSART_BASE, "%s.art" % art_key)
-            eintrag = (pfad, breite, hoehe)
-            if eintrag not in raus:
-                raus.append(eintrag)
-        return raus
+            for name, _node, syskey in self.cats:
+                pfad = self._kat_logo_pfad(name, syskey, foto)
+                if pfad:
+                    gesehen[(pfad, breite, hoehe)] = True
+        return list(gesehen)
+
+    def _kat_logo_kaesten(self, ansicht, L=None):
+        """[(breite, hoehe, foto), ...] - ALLE Kaesten, in denen eine
+        Ansicht der Hauptseite ein Kategoriebild zeigt.
+
+        BUILD 319. _kat_logo_kasten() darunter kennt genau EINEN
+        Kasten je Ansicht, und nur fuer Liste, Raster und Galerie. Das
+        reichte nie ganz und seit Build 314 gar nicht mehr:
+
+          Galerie      zwei Groessen - das grosse Bild UND die Leiste.
+                       Die Leiste stand seit Build 124 in keiner
+                       Vorbereitungsliste. Derselbe Fehler, den Build
+                       125 in der Spieleliste behoben hat ("die
+                       Boxarts sind trotz Miniaturen vorbereiten nicht
+                       sofort sichtbar") - auf der Hauptseite blieb er.
+          Kachelwand   ein Kasten, mit FOTO.
+          Dashboard    ein Kasten, mit Foto.
+          Karussell    DREI Kaesten, mit Foto: Mitte, naher Nachbar,
+                       ferner Nachbar.
+
+        Die Masse kommen aus denselben Geometrie-Funktionen, die auch
+        der Zeichenweg ruft - hier steht keine einzige Zahl."""
+        if ansicht == "galerie":
+            g = self.galerie_geometrie(self.kat_layout())
+            return [(g["gross_b"], g["gross_h"], False),
+                    (g["klein_b"], g["klein_h"], False)]
+        if ansicht == "kachelwand":
+            g = self.kachelwand_geometrie(self.kat_layout())
+            return [(g["bild_b"], g["bild_h"], True)]
+        if ansicht == "dashboard":
+            g = self.dashboard_geometrie(self.kat_layout())
+            return [(g["bild_b"], g["bild_h"], True)]
+        if ansicht == "karussell":
+            g = self.karussell_geometrie(self.kat_layout())
+            raus = []
+            # Die Mitte zuerst - sie ist das Bild, auf das man schaut.
+            for _v, _x, _y, bb, hh in sorted(
+                    g["plaetze"], key=lambda p: abs(p[0])):
+                if (bb, hh, True) not in raus:
+                    raus.append((bb, hh, True))
+            return raus
+        breite, hoehe = self._kat_logo_kasten(ansicht, L)
+        return [(breite, hoehe, False)]
 
     def _kat_logo_kasten(self, ansicht, L=None):
         """(breite, hoehe) des Kastens, in den ein Kategorie-Abzeichen
@@ -14307,6 +14424,68 @@ class Frontend:
         self.draw(message=(t("thumb_clear_done", entfernt) if entfernt
                            else t("thumb_clear_empty")))
 
+    def vorbereitungs_kaesten(self, geo=None):
+        """ALLE Kaesten, die "Miniaturen vorbereiten" rechnet - vorn
+        der der Listenansicht (er haengt am Eintrag, siehe
+        cover_box_size()), dahinter die festen Kaesten der anderen
+        Ansichten.
+
+        HERAUSGELOEST (Build 319), und der Grund ist derselbe wie bei
+        nav_schritte() in Build 317: tools/test_kopierpfade.py und
+        tools/test_prewarm_absturz.py hatten diese Schleife beide FUER
+        SICH NACHGEBAUT ("for a in ANSICHTEN: _ansicht_geometrien(a)").
+        Ein Test, der den Quelltext nachbaut, prueft seine eigene
+        Nachbildung - und beide wurden rot, als sich hier etwas
+        aenderte, das sie gar nicht pruefen wollten. Jetzt rufen sie
+        diese Methode.
+
+        geo ist der Kasten der Listenansicht; ohne Angabe wird er
+        geholt, wie die Spieleliste es taete."""
+        if geo is None:
+            geo = self._art_panel_geometrie("liste", erzwingen=True)
+        geos = [geo]
+        # BUILD 319: DER COVERFLOW NUR, WENN ER DIE VORGABE IST.
+        #
+        # Der Absatz oben sagt "alle Ansichten", und fuer Liste, Raster
+        # und Galerie bleibt es dabei. Der Coverflow braucht aber DREI
+        # Groessen je Spiel - zusammen mit den vier vorhandenen waeren
+        # das sieben Miniaturen je Cover. Der Zwischenspeicher fasst
+        # 150.000 Dateien (THUMB_CACHE_MAX_FILES); bei einer Sammlung
+        # mit gut 21.000 Covern laege der Durchlauf damit an der
+        # Grenze und wuerde am Ende verdraengen, was er am Anfang
+        # gerechnet hat. Ein Menuepunkt, der sich selbst die Arbeit
+        # wegnimmt, ist schlimmer als einer, der eine Ansicht
+        # auslaesst.
+        #
+        # Wer den Coverflow als Vorgabe eingestellt hat, bekommt ihn
+        # mit. Wer nur mit der Taste hineinschaltet, bekommt die
+        # Cover ueber den Vorauslader: der bereitet seit diesem Build
+        # in jeder Ruhepause die naechsten zwanzig in allen drei
+        # Groessen vor (siehe _ansicht_geometrien()).
+        _vorgabe = ansicht_lesen()
+        for _a in ANSICHTEN:
+            if _a == "liste":
+                continue
+            if _a in ANSICHTEN_NUR_HD and _a != _vorgabe:
+                continue
+            if self._ansicht_hd(_a) != _a:
+                # Auf diesem Bild gar nicht zu haben (Coverflow auf der
+                # Roehre) - dieselbe Regel, die auch die Taste fragt.
+                continue
+            # erzwingen=True: der Menuepunkt wird aus dem System-Menue
+            # heraus gerufen, und dort gibt es keine Cover-Spalte - ohne
+            # das kaeme hier fuer beide neuen Ansichten None zurueck und
+            # der ganze Absatz darueber waere wirkungslos.
+            #
+            # GEAENDERT (Build 125): _ansicht_geometrien() statt
+            # _art_panel_geometrie() - die Galerie braucht ZWEI Groessen,
+            # und die zweite (die Nachbarleiste) fehlte hier bisher.
+            for _g in self._ansicht_geometrien(_a, erzwingen=True):
+                if _g not in geos:
+                    geos.append(_g)
+
+        return geos
+
     def run_thumb_prewarm_all(self, nur_auftrag=False):
         """Menuepunkt "Miniaturen vorbereiten" - mit Sicherheitsnetz.
 
@@ -14394,7 +14573,17 @@ class Frontend:
         # Abbruch nachweislich nie funktioniert hat, konnte das nicht
         # auffallen.
         self.inp._cancel_repeat()
-        geo = self._art_panel_geometrie()
+        # BUILD 319: AUSDRUECKLICH DIE LISTE, nicht "die aktuelle
+        # Ansicht". Ohne Angabe fragt _art_panel_geometrie() die
+        # Ansicht der Kategorie, auf der der Zeiger gerade steht. Aus
+        # dem System-Menue heraus ist das immer die Liste (dort gibt es
+        # nur Ordner) - aber der Einrichtungsassistent ruft diesen
+        # Durchlauf ebenfalls, und steht dort zufaellig eine Kategorie
+        # mit Raster, Galerie oder Coverflow als Ansicht, waere "geo"
+        # deren Kasten gewesen. Die Schleife unten ueberspringt die
+        # Liste ("die steht ja schon vorn") - und der Kasten der
+        # Listenansicht waere in keinem Durchlauf vorgekommen.
+        geo = self._art_panel_geometrie("liste")
         if geo is None:
             # Sollte auf der Spieleliste nicht vorkommen - der Menuepunkt
             # wird aber aus dem System-Menue heraus aufgerufen, wo gerade
@@ -14441,21 +14630,10 @@ class Frontend:
         # Verkleinern kostet dort einen Bruchteil. Doppelte faellt weg,
         # weil der Schluessel Pfad+Kasten ist und ein set() dagegen
         # laeuft.
-        geos = [geo]
-        for _a in ANSICHTEN:
-            if _a == "liste":
-                continue
-            # erzwingen=True: der Menuepunkt wird aus dem System-Menue
-            # heraus gerufen, und dort gibt es keine Cover-Spalte - ohne
-            # das kaeme hier fuer beide neuen Ansichten None zurueck und
-            # der ganze Absatz darueber waere wirkungslos.
-            #
-            # GEAENDERT (Build 125): _ansicht_geometrien() statt
-            # _art_panel_geometrie() - die Galerie braucht ZWEI Groessen,
-            # und die zweite (die Nachbarleiste) fehlte hier bisher.
-            for _g in self._ansicht_geometrien(_a, erzwingen=True):
-                if _g not in geos:
-                    geos.append(_g)
+        # Welche Kaesten - das steht seit Build 319 in einer eigenen
+        # Methode, weil zwei Tests diese Schleife fuer sich nachgebaut
+        # hatten.
+        geos = self.vorbereitungs_kaesten(geo)
 
         # Die Kategorie-Logos der Hauptseite zuerst: es sind nur rund
         # zwanzig, aber die groessten Bilder im Frontend (900 px breit),

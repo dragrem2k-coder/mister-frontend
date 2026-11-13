@@ -622,6 +622,17 @@ Spiel zum ersten Mal ansiehst. Wer eine kleine Sammlung hat, merkt
 kaum einen Unterschied. Wer mehrere tausend Spiele hat und flüssig
 durchblättern will, lässt es einmal über Nacht laufen.
 
+**Und der Coverflow?** Er braucht jedes Cover in **drei** Größen
+(Mitte, naher und ferner Nachbar). Zusammen mit den vier anderen wären
+das sieben Miniaturen je Cover — bei einer großen Sammlung läge der
+Lauf damit an der Grenze des Zwischenspeichers (150.000 Dateien) und
+würde am Ende verdrängen, was er am Anfang gerechnet hat. Deshalb
+nimmt der Lauf den Coverflow **nur mit, wenn er als Ansicht
+eingestellt ist** (*System → Anzeige & Sound → „Ansicht Spieleliste"*). Wer nur mit der
+Taste hineinschaltet, bekommt die Cover trotzdem: seit Build 319
+bereitet das Frontend in jeder Ruhepause die nächsten zwanzig in allen
+drei Größen vor.
+
 Leeren lässt sich der Zwischenspeicher unter *System → Wartung →
 „Miniaturen-Zwischenspeicher leeren"* — getrennt für CRT und HDMI.
 
@@ -1917,8 +1928,9 @@ Ansicht, sondern ein Fehler.
 
 > **Tipp:** Nach dem Umschalten lohnt sich *System -> Optionen ->
 > "Miniaturen vorbereiten"* - die Bilder werden je Ansicht in einer
-> anderen Größe gebraucht. Der Menüpunkt rechnet alle drei Ansichten
-> mit vor, du musst ihn also nur einmal laufen lassen (aber einmal je
+> anderen Größe gebraucht. Der Menüpunkt rechnet Liste, Raster und
+> Galerie mit vor (den Coverflow dann, wenn er als Ansicht eingestellt
+> ist), du musst ihn also nur einmal laufen lassen (aber einmal je
 > Bildmodus: CRT und HDMI haben eigene Größen).
 >
 > **Wie lange das dauert, und wovon es abhängt.** Gerechnet werden drei
@@ -2664,8 +2676,8 @@ Authentifizierung. Technische Details: `notizen/STREAM_fuer_Dragrem.md`.
 
 Da CRT und HDMI aus technischen Gründen nicht gleichzeitig in
 jeweils nativer Auflösung laufen können (echte Hardware-Grenze des
-einzigen Scalers, keine übersehene Kleinigkeit - siehe
-`notizen/STREAM_fuer_Dragrem.md` für die Einzelheiten), zeigt dieses Feature
+einzigen Scalers, keine übersehene Kleinigkeit - siehe Abschnitt 8,
+"CRT-Bildschirme"), zeigt dieses Feature
 den aktuellen Frontend-Bildschirm zusätzlich als Bild über den Browser
 an: `http://<MiSTer-IP>:8080/mirror`. Praktisch, wenn du auf CRT läufst
 und trotzdem sehen möchtest (oder Zuschauern zeigen möchtest), wie du
@@ -2877,7 +2889,7 @@ Das Frontend wird normalerweise ohne Optionen gestartet (Autostart oder
 | Option | Was sie tut |
 |---|---|
 | `--show` | Sagt, **was drin ist, wie es eingestellt ist und wie schnell es läuft** — auf dem Bildschirm und zusätzlich als Datei in `/tmp/dragend_show.txt`. Der schnellste Weg, einen Zustand zu melden, ohne per SSH zu suchen |
-| `--bench` | Eine **feste, wiederholbare Messung** über alle Zeichenwege; Bericht auf dem Bildschirm und in `/tmp/dragend_bench.txt`. Seit Build 308 **drückt der Bench auch selbst** (Abschnitt M): 5 bis 8 Tastendrücke hoch/runter im Wechsel, über denselben Eingabeweg wie ein echtes Pad — damit steht schwarz auf weiß, was beim schnellen Tippen passiert. Fasst bewusst **nichts** auf der SD-Karte an |
+| `--bench` | Eine **feste, wiederholbare Messung** über alle Zeichenwege; Bericht auf dem Bildschirm und in `/tmp/dragend_bench.txt`. Seit Build 308 **drückt der Bench auch selbst** (Abschnitt M): 5 bis 8 Tastendrücke hoch/runter im Wechsel, über denselben Eingabeweg wie ein echtes Pad — damit steht schwarz auf weiß, was beim schnellen Tippen passiert. Seit Build 319 misst er **jede Ansicht** (sechs auf der Hauptseite, vier in der Spieleliste) und nennt je Ansicht neben dem Mittelwert auch **Median, langsamsten Schritt und die Zahl der Vollbild-Flips** — ein einzelner Hänger verschwindet damit nicht mehr im Durchschnitt. Fasst bewusst **nichts** auf der SD-Karte an |
 | `--demo` | **Vier Minuten Vorführung**, von allein durchgespielt: die drei Ansichten auf Hauptseite und Spieleliste, die fünf Einstellungsgruppen — und seit Build 262 die **echten Bildschirme**: Suche, Kontextmenü, Zufalls-Zock mit Ziehung, Trophäenraum, Meilensteine, Top 10, Jahresrückblick, Tagebuch, Hilfe und das CRT-Testbild. Jede Taste bricht ab |
 | `--help` | Diese Liste. Die Prüfung steht **vor** allem anderen: wer sich vertippt, bekommt drei Zeilen und sonst nichts — kein halber Start, keine Sperre, die liegenbleibt |
 

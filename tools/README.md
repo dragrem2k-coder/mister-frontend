@@ -9662,3 +9662,274 @@ Erst danach waren alle 36 Vergleiche bitgenau und der Pruefstand
   Zusage, dass das Tempo aus derselben Tabelle kommt wie die
   Schrittweite (inklusive der Gegenprobe, dass links/rechts in
   Kachelwand und Karussell NICHT mehr gedeckelt ist).
+
+## Nachtrag Build 319 - gezaehlt statt vermutet: vier Bremsen, und keine lag dort, wo sie stand
+
+> *„Ich moechte das es das beste frontend wird fuer denn Mister !
+> Schnell und lag frei !"*
+
+Der Auftrag war: die vier neuen Ansichten messen, die „5,25 ms Rest in
+Python" nach C verlagern, und klaeren, warum die Aussparung nur
+„16 von 20" mal greift. **Keiner der drei Punkte war das, was sein Name
+sagte** - und beim Nachsehen kamen zwei weitere dazu.
+
+### 1. „Rest in Python" war ein Name, keine Messung
+
+Im Bericht stand unter `karte_mit_schatten 769x945`:
+
+```
+gemessen                      9,23 ms
+Modell daraus (2,55 ms/MB)    ...
+Rest in Python                5,25 ms
+```
+
+Gerechnet wurde die Zeile als *gemessen minus Modell minus Vorlage
+minus Teile*. Das Modell ist ein Preis je Megabyte aus Abschnitt I.
+**Die Zeit im Kopierer selbst hat nie jemand genommen** - der Haken dort
+zaehlte Aufrufe, Zeilen und Bytes, aber keine Uhr. Was davon Python war
+und was C, liess sich aus der Zeile gar nicht ablesen; sie hiess nur
+so. Build 270 hat genau diese Luecke beim C-*Fueller* geschlossen, beim
+*Kopierer* blieb sie in Build 303 offen.
+
+Nachgemessen auf dem Entwicklungsrechner, mit der Uhr am Kopierer:
+
+```
+im Kopierer (Sprung nach C + Kopie)   51,1 us
+davor und danach in Python             6,7 us
+```
+
+Die Vorbereitung in Python ist ein Achtel. Dort war nichts zu holen -
+und „nach C verlagern" haette nichts gebracht. Der Haken nimmt jetzt
+die Zeit, und der Bericht nennt beide Zahlen getrennt.
+
+### 2. Was wirklich bremste: der Zeigerspeicher
+
+Jeder Sprung nach `libdragend` braucht die Adresse des Puffers.
+`fe/art.py::_roh_zeiger()` merkt sie sich seit Build 221 - mit **sechs
+Plaetzen**, und wenn der siebte kommt, wird **alles** weggeworfen. Seit
+Build 299 kopiert die Karte aus einer Vorlage, in bis zu **vier
+Scheiben** um das Cover herum, und jede Scheibe war eine eigene
+`memoryview`. Vier plus Bildspeicher, Hintergrundkopie und `mmap` sind
+sieben.
+
+`tools/diag_zeiger.py` zaehlt es je Scrollschritt:
+
+| Ansicht | Zeiger gefragt | NEU gebaut | geleert |
+|---|---|---|---|
+| Spieleliste Liste | 21,5 | **7,2** | 1,20 |
+| Spieleliste Galerie | 27,1 | **7,5** | 1,25 |
+| Spieleliste Coverflow | 33,0 | **7,5** | 1,25 |
+| Hauptseite Kachelwand | 29,0 | **13,5** | 2,25 |
+| Hauptseite Karussell | 43,0 | **7,5** | 1,25 |
+| Spieleliste Raster | 15,0 | 0,0 | 0,00 |
+
+In **jedem** Schritt mindestens einmal geleert - in jeder Ansicht, die
+eine Karte mit Schatten zeichnet. Das Raster zeichnet keine, und nur
+dort stand eine Null. **Das ist Abzaehlen, kein Stoppen; auf dem
+DE10-Nano kommt dieselbe Tabelle heraus.**
+
+Der Docstring von `_karte_teile()` hat die Gefahr sogar benannt („der
+Zwischenspeicher dort waere dauernd voll und wuerde sich laufend
+leeren") und sie mit dem *Merken* der Scheiben fuer erledigt gehalten.
+War sie nicht: auch gemerkte Scheiben sind vier Objekte.
+
+Drei Aenderungen:
+
+1. `zeilen_kopieren()` nimmt einen Versatz in die Quelle
+   (`quell_off`). Die Scheiben sind damit **Zahlen**; die Vorlage
+   belegt **einen** Platz, gleich wieviele Aussparungen es gibt.
+2. Die Adresse steht als Zahl im Eintrag, ohne `ctypes.cast()`. Der
+   Umweg war der teure Teil: **1,81 gegen 0,46 us** je neuem Zeiger.
+3. `bytes` gehen direkt durch - `c_void_p` nimmt sie selbst an.
+   Vorher `c_char_p()` plus `cast()` bei jedem Blit eines Covers:
+   **1,00 gegen 0,04 us**.
+
+Die Obergrenze steigt von 6 auf 16; geleert wird weiter **ganz** (nur
+das gibt eine verworfene Vorlage wieder frei). Danach steht in jeder
+Zeile der Tabelle oben eine Null.
+
+### 3. „16 von 20" - gezaehlt statt gefragt
+
+Unter der Zeile stand seit Build 303: *„nachzusehen waere, warum _kurz
+nicht in jedem Schritt gilt (full_redraw_gen in _stand?)"* - eine
+Vermutung mit Fragezeichen, fuenfzehn Builds lang. Auf dem
+Entwicklungsrechner sind es zwanzig von zwanzig, entscheiden laesst es
+sich also nur am Geraet.
+
+Zwei Dinge koennen den Stand des Panels aendern, und sie verlangen
+entgegengesetzte Abhilfen:
+
+* `fb.full_redraw_gen` - dann war der Schritt ein **voller Aufbau**,
+  und *das* ist der Haenger, nicht die Karte.
+* die **Geometrie des Cover-Kastens** - `cover_box_size()` rechnet die
+  Texthoehe zuerst und gibt dem Cover den Rest, in drei Stufen. Hat
+  ein Spiel sieben Infozeilen und das naechste keine, wechselt die
+  Stufe. Kein Fehler, sondern die Folge davon, dass die Spalte sich
+  dem Text anpasst.
+
+Abschnitt K zaehlt jetzt beides in denselben Schritten. Der Test stellt
+den zweiten Fall her (jedes fuenfte Spiel bekommt einen niedrigeren
+Kasten) und prueft, dass der Bericht ihn nennt: *6 von 10, Kasten 4 mal
+gewechselt, Puffer 0 mal* - vier Wechsel, vier fehlende kurze Wege.
+
+### 4. Der Bench hat drei Dinge falsch gemessen
+
+**Die neuen Ansichten gar nicht.** Vier Schleifen in `fe/bench.py` und
+eine in `fe/show.py` liefen fuer **beide** Seiten ueber `S.ANSICHTEN`.
+Seit Build 316 hat die Hauptseite eine eigene Liste mit sechs - die
+drei neuen kamen nie dran.
+
+**Die Liste unter falschem Namen.** Build 318 haengte `"coverflow"` an
+`S.ANSICHTEN`. Damit lief die Hauptseiten-Schleife ueber einen Wert,
+den die Hauptseite nicht kennt; `ansicht_haupt_setzen()` macht daraus
+stumm `"liste"`. Im naechsten Bericht haette **„Haupt coverflow"**
+gestanden, mit den Zahlen der Liste. *Mein eigener Fehler aus Build
+318, gefunden vor dem ersten Lauf am Geraet.*
+
+**Einen vollen Aufbau im Mittelwert.** Die neue Verteilung zeigte beim
+ersten Lauf in jeder Zeile der Spieleliste:
+
+```
+Vollbild-Flips: 1 von 30 Schritten
+```
+
+Das Warmlaufen endet bei Eintrag 29, der erste gemessene Schritt
+springt auf Eintrag 0 - das Fenster scrollt, der leichte Pfad lehnt
+ab. Einer von dreissig, in **jedem Bericht seit Build 219**: bei rund
+130 ms fuer einen vollen Aufbau gut drei Millisekunden auf jeder Zeile
+der Spieleliste, die kein Scrollschritt je gekostet hat. Abschnitt K
+macht es seit Build 239 richtig (`schritt(0)` vorweg); hier fehlte die
+Zeile.
+
+Dagegen jetzt:
+
+* `ansichten_der_seite(S, seite)` - **eine** Stelle, die alle fuenf
+  Schleifen fragen.
+* `ansicht_einstellen(fe, seite, ansicht)` - setzt und gibt zurueck,
+  was das Frontend danach **wirklich** zeichnet. Stimmt es nicht
+  (Roehre, unbekannter Wert), steht im Bericht „nicht zu haben" statt
+  einer Zahl.
+* Je Ansicht: Median, schnellster und langsamster Schritt,
+  **Vollbild-Flips**, Ausreisser, neu gebaute Zeiger.
+
+> **Warum die Verteilung.** Seine Meldung war nie „es ist im Schnitt
+> langsam", sondern *„ab und zu ein paar haenger beim scrollen"* - und
+> ein Haenger ist genau das, was ein Mittelwert wegrechnet. Zwanzig
+> Schritte zu 42 ms und sechzehn zu 25 plus vier zu 110 ergeben
+> dieselbe Zeile.
+
+### 5. Vorbereitet wurde, wonach niemand fragt
+
+Beim Nachsehen, wo die neuen Ansichten sonst noch fehlen:
+
+* **Der Coverflow** fragt jedes Cover in **drei Groessen** an (Mitte,
+  naher Nachbar, ferner Nachbar). `_art_panel_geometrie()` kannte die
+  Ansicht nicht und gab ihr den Kasten der **Liste**. Vorbereitet
+  wurden also Miniaturen in einer Groesse, nach der dort nie jemand
+  fragt - woertlich die Falle aus Build 124.
+* **Kachelwand, Dashboard, Karussell** kamen im Vorauslader der
+  Hauptseite nicht vor: `for _a in ANSICHTEN` - die Liste der
+  Spieleliste. Dazu baute `kategorie_logo_auftraege()` sich den Pfad
+  selbst, immer aus `sysart/`: vorbereitet worden waere das
+  **Abzeichen**, gezeichnet wird das **Foto**.
+* **Die Leiste der Galerie auf der Hauptseite** steht seit Build 124
+  in keiner Liste. Denselben Fehler hat Build 125 in der Spieleliste
+  behoben - `tools/test_ansichten.py` hat ihn auf der Hauptseite sogar
+  festgeschrieben („alle in EINER Kastengroesse").
+
+Was ein kaltes Bild kostet, steht seit Build 74 gemessen in
+`fe/art.py`: **11,2 ms lesen, 1,3 ms entpacken, bis 26 ms**. Im
+Karussell bis zu dreimal je Schritt.
+
+Jetzt:
+
+* `_kat_logo_pfad()` - **eine** Regel fuer „Foto, sonst Abzeichen",
+  gefragt vom Zeichenweg *und* vom Vorauslader.
+* `_kat_logo_kaesten(ansicht)` - alle Kaesten einer Ansicht, aus
+  denselben Geometrie-Funktionen wie der Zeichenweg.
+* `_ansicht_geometrien("coverflow")` - die drei Groessen.
+* Vorbereitet werden auf der Hauptseite die drei klassischen Ansichten
+  **und die, in der man steht**. Nicht alle sechs: das Karussell
+  allein sind drei Groessen je Kategorie.
+* **„Miniaturen vorbereiten" nimmt den Coverflow nur mit, wenn er die
+  Vorgabe ist.** Sieben Miniaturen je Cover laegen bei gut 21.000
+  Covern an der Grenze von 150.000 Dateien - der Lauf wuerde am Ende
+  verdraengen, was er am Anfang gerechnet hat.
+
+### 6. Und ein Name, der achtmal umgerechnet wurde
+
+`vergleichsname()` laeuft Zeichen fuer Zeichen in Python; auf dem
+Geraet gemessen **0,45 ms je Aufruf** (1787 Aufrufe = 803 ms, steht
+bei `_knapp_index`). Beim *Einlesen* ist das seit Build 141 faul - beim
+*Nachschlagen* nicht: findet der exakte Name nichts, fragen Cover,
+fremde Datenbank, Bildart, Metadaten, Beschreibung und Anleitung jede
+fuer sich. `vergleichsname_gemerkt()` merkt es sich, nur auf der
+Nachschlage-Seite (der Index-Aufbau sieht jeden Namen genau einmal).
+
+**Ehrlich dazu:** das spart die *Wiederholungen* innerhalb eines
+Schritts. Wer durch eine Liste laeuft, sieht in jedem Schritt einen
+neuen Namen - der wird weiterhin einmal gerechnet. Und es greift nur,
+wo der exakte Name nichts findet.
+
+### Was gemessen ist und was nicht
+
+Auf dem Entwicklungsrechner, Build 318 gegen 319, bester von sechs
+Laeufen, Cover untergeschoben:
+
+| Ansicht | 318 | 319 | |
+|---|---|---|---|
+| Liste Liste | 1309 us | 1230 us | -6 % |
+| Liste Raster | 629 us | 550 us | -13 % |
+| Liste Galerie | 868 us | 775 us | -11 % |
+| Liste Coverflow | 1169 us | 1060 us | -9 % |
+| Haupt Kachelwand | 528 us | 469 us | -11 % |
+| Haupt Galerie | 987 us | 946 us | -4 % |
+| uebrige vier | | | innerhalb der Streuung |
+
+**Die Streuung von Lauf zu Lauf liegt dort bei rund zehn Prozent** -
+diese Tabelle ist also ein Vorzeichen, keine Zahl fuers Geraet. Dort
+ist ein Scrollschritt zu zwei Dritteln Python und nicht Speicher; der
+Anteil der Zeiger duerfte groesser sein als hier, **gemessen ist das
+nicht**. Belastbar sind die Zaehlungen: 7 bis 13 Zeiger je Schritt
+gegen 0, bis zu acht Namensumrechnungen gegen eine, und im Coverflow
+drei kalte Cover je Schritt gegen keines.
+
+Der naechste Bench sagt es - und er hat jetzt die Zeilen dafuer.
+
+### Neue Pruefungen
+
+* **neu** `tools/test_zeigerspeicher.py` - der Zeigerspeicher (bytes
+  direkt, Zahl als Adresse, Obergrenze), `quell_off` bitgenau gegen die
+  geschnittene `memoryview` samt zu kurzer Quelle, die Karte mit
+  Aussparung gegen einen Kopierer in reinem Python, **die Zusage** (in
+  allen zehn Ansichten je Schritt 0 Zeiger neu, 0 mal geleert) mit
+  **Gegenprobe** (bei zwei Plaetzen schlaegt der Zaehler an),
+  `vergleichsname_gemerkt()`, und der Bench: jede Ansicht gemessen,
+  keine unter falschem Namen, kein Vollbild im Fenster, die Roehre.
+* **neu** `tools/test_vorwaermen_alle_ansichten.py` - fragt von der
+  **anderen** Seite: zeichnet jede Ansicht mit dem Zeiger auf jedem
+  Eintrag, schreibt mit, was der Bildspeicher gefragt wird, und haelt
+  das gegen die Vorbereitungsliste - in beide Richtungen. Gegen den
+  Stand von Build 318 gelaufen ist er **rot**: Galerie 28 fehlen,
+  Kachelwand 28, Dashboard 28, Karussell 84.
+* **neu** `tools/diag_zeiger.py` - die Tabelle aus Abschnitt 2.
+* **geaendert** `tools/test_ansichten.py` und
+  `tools/test_cover_prewarm.py` - fuenf Pruefungen haben die alte
+  Zusage festgeschrieben („eine Groesse je Ansicht"); die Galerie hat
+  zwei.
+* **geaendert** `tools/test_kopierpfade.py`,
+  `tools/test_prewarm_absturz.py`, `tools/test_vorbereiten_tempo.py` -
+  alle drei hatten die Schleife aus „Miniaturen vorbereiten" **fuer
+  sich nachgebaut** (`for a in ANSICHTEN: _ansicht_geometrien(a)`) und
+  wurden rot, als der Coverflow seine drei Groessen bekam - obwohl der
+  Menuepunkt sie gar nicht mitrechnet. Geprueft wurde die Abschrift,
+  nicht der Menuepunkt. Die Schleife steht jetzt als
+  `vorbereitungs_kaesten()` in `frontend.py`, und alle drei rufen
+  **die**. Dieselbe Lehre wie bei `nav_schritte()` in Build 317, nur
+  dreimal auf einmal: *ein Test, der den Quelltext nachbaut, prueft
+  seine eigene Nachbildung.*
+* **geaendert** `tools/test_hauptseite_stil.py` - die Regel „Foto,
+  sonst Abzeichen" wird dort geprueft, wo sie jetzt wohnt
+  (`_kat_logo_pfad()`).
+* **geaendert** `tools/test_galerie_aussparung.py` - der Haken am
+  Kopierer reicht neue Parameter durch.

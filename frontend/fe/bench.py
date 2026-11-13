@@ -658,13 +658,14 @@ def _abschnitt_b(b, fe, S, spiele, A=None):
             # Zeiger zufaellig liegen gelassen hat - siehe oben.
             fe.cat_i = kat_i
             fe.nav_path = []
-        for ansicht in S.ANSICHTEN:
+        for ansicht in ansichten_der_seite(S, seite):
             try:
-                if seite == 0:
-                    fe.ansicht_haupt_setzen(ansicht)
-                else:
-                    fe.ansicht_setzen(ansicht)
+                _wirklich = ansicht_einstellen(fe, seite, ansicht)
             except Exception:                            # noqa: BLE001
+                continue
+            if _wirklich != ansicht:
+                b("   %-12s %-10s -- auf diesem Bild nicht zu haben"
+                  " (gezeigt wuerde: %s)" % (name, ansicht, _wirklich))
                 continue
 
             def _voll():
@@ -2445,6 +2446,58 @@ def zeichen_funktion(fe, seite):
     return _zeichnen
 
 
+def ansichten_der_seite(S, seite):
+    """Welche Ansichten hat DIESE Seite?
+
+    BUILD 319, UND ES IST EIN EIGENER FEHLER AUS BUILD 318. Bis dahin
+    hatten Hauptseite und Spieleliste dieselben drei Ansichten, und
+    vier Schleifen in diesem Modul (dazu eine in fe/show.py) liefen
+    fuer beide Seiten ueber S.ANSICHTEN. Dann kam zweierlei:
+
+      * Build 316 gab der Hauptseite eine eigene Liste mit SECHS
+        Ansichten (ANSICHTEN_HAUPT). Die drei neuen standen in keiner
+        der Schleifen - gemessen wurden sie nie.
+      * Build 318 haengte "coverflow" an S.ANSICHTEN. Damit lief die
+        Hauptseiten-Schleife ueber einen Wert, den die Hauptseite gar
+        nicht kennt. ansicht_haupt_setzen() macht daraus stumm
+        "liste" - und im Bericht haette "Haupt coverflow" gestanden,
+        mit den Zahlen der Liste.
+
+    Eine Messung unter falschem Namen ist schlimmer als eine fehlende.
+    Genau dieselbe Sorte Fehler wie in Build 178 ("der bench landet
+    immer im supergameboy") und in Build 216 (dreimal dieselbe Zeile).
+
+    EINE Funktion, die alle fuenf Schleifen fragen - nicht fuenf
+    Abfragen, die jede fuer sich wissen muss, welche Liste gilt."""
+    if seite == 0:
+        return tuple(getattr(S, "ANSICHTEN_HAUPT", None) or S.ANSICHTEN)
+    return tuple(S.ANSICHTEN)
+
+
+def ansicht_einstellen(fe, seite, ansicht):
+    """Die Ansicht setzen - und zurueckgeben, was das Frontend danach
+    WIRKLICH zeichnet.
+
+    Das ist die zweite Haelfte derselben Absicherung: setzen allein
+    beweist nichts. Auf der Roehre faellt jede HD-Ansicht zurueck
+    (Kachelwand -> Liste, Coverflow -> Galerie), und ein unbekannter
+    Wert wird zu "liste". Wer nur setzt und dann misst, misst in
+    beiden Faellen etwas anderes, als er darueberschreibt.
+
+    Gefragt wird das Frontend selbst, mit derselben Funktion, die
+    auch der Zeichenweg fragt. Der Aufrufer vergleicht und ueberspringt
+    die Ansicht, wenn sie auf diesem Bild nicht zu haben ist."""
+    if seite == 0:
+        fe.ansicht_haupt_setzen(ansicht)
+        frage = getattr(fe, "aktuelle_ansicht_haupt", None)
+    else:
+        fe.ansicht_setzen(ansicht)
+        frage = getattr(fe, "aktuelle_ansicht", None)
+    if frage is None:
+        return ansicht
+    return frage()
+
+
 def fenster_spanne(fe, seite):
     """Wie weit darf der Zeiger pendeln, ohne das Fenster zu verlassen?
 
@@ -2574,7 +2627,9 @@ def _abschnitt_j(b, fe, S, A, fm):
                   # BUILD 303: BYTES, NICHT NUR ZEILEN. Siehe die
                   # Begruendung bei der Byte-Zeile der Ausgabe.
                   "restore_bytes", "blit_bytes", "karten_flaeche",
-                  "karten_kopiert"):
+                  "karten_kopiert",
+                  # BUILD 319: wie oft ging das VOLLBILD hinaus?
+                  "voll_n"):
             konto[k] = 0.0
 
     def h_restore(self, x, y, w, h):
@@ -2600,11 +2655,16 @@ def _abschnitt_j(b, fe, S, A, fm):
     if "zeilen_kopierer" in getattr(fbo, "__dict__", {}):
         _kop_vorher_j["zeilen_kopierer"] = fbo.__dict__["zeilen_kopierer"]
 
-    def h_kopierer(ziel, zstride, quelle, qstride, zx, zy, bb, hh):
+    def h_kopierer(ziel, zstride, quelle, qstride, zx, zy, bb, hh,
+                   *rest):
+        # *rest (Build 319): der Kopierer nimmt seitdem einen Versatz
+        # in die Quelle. Durchgereicht und nicht benannt - ein Haken,
+        # der die Parameter seines Originals aufzaehlt, bricht bei
+        # jedem neuen.
         if konto["in_karte"]:
             konto["karten_kopiert"] += int(bb) * int(hh)
         return echt_kopierer_j(ziel, zstride, quelle, qstride, zx, zy,
-                               bb, hh)
+                               bb, hh, *rest)
 
     def h_rect(rechtecke, skip_vsync=False):
         rechtecke = list(rechtecke)
@@ -2629,6 +2689,7 @@ def _abschnitt_j(b, fe, S, A, fm):
         konto["flip_ms"] += time.monotonic() - t0
         konto["flip_n"] += 1
         konto["flip_bytes"] += fbo.size
+        konto["voll_n"] += 1
         return r
 
     # --- und die Posten, die bisher im "Rest" verschwunden sind -------
@@ -2857,13 +2918,15 @@ def _abschnitt_j(b, fe, S, A, fm):
                     continue
                 fe.cat_i = kat_i
                 fe.nav_path = []
-            for ansicht in S.ANSICHTEN:
+            for ansicht in ansichten_der_seite(S, seite):
                 try:
-                    if seite == 0:
-                        fe.ansicht_haupt_setzen(ansicht)
-                    else:
-                        fe.ansicht_setzen(ansicht)
+                    _wirklich = ansicht_einstellen(fe, seite, ansicht)
                 except Exception:                        # noqa: BLE001
+                    continue
+                if _wirklich != ansicht:
+                    b("   %-20s -- auf diesem Bild nicht zu haben"
+                      " (gezeigt wuerde: %s)"
+                      % (name + " " + ansicht, _wirklich))
                     continue
 
                 # DER SCHRITT, WIE IHN DIE BEDIENUNG MACHT - und das
@@ -2919,12 +2982,69 @@ def _abschnitt_j(b, fe, S, A, fm):
                 # (J waehlte die Kategorie nicht): der Zustand, in dem
                 # gemessen wird, muss zur Frage passen.
                 _fenster = fenster_spanne(fe, seite)
+                # BUILD 319: ERST AN DEN ANFANG, DANN MESSEN - und das
+                # ist ein Fehler dieses Abschnitts, den die neue
+                # Verteilung beim ERSTEN Lauf selbst gezeigt hat:
+                #
+                #     Liste liste   Vollbild-Flips: 1 von 30 Schritten
+                #
+                # in jeder Ansicht der Spieleliste, auf jedem Rechner.
+                # Das Warmlaufen oben endet bei Eintrag schritte-1,
+                # also weit unterhalb des Fensters. Der ERSTE gemessene
+                # Schritt springt von dort auf Eintrag 0 - das Fenster
+                # muss scrollen, der leichte Pfad lehnt ab, und es
+                # laeuft ein voller Aufbau. Einer von dreissig, in
+                # JEDEM Bericht seit Build 219, und er stand unbemerkt
+                # im Mittelwert: bei rund 130 ms fuer einen vollen
+                # Aufbau sind das gut drei Millisekunden auf jeder
+                # Zeile der Spieleliste, die kein Scrollschritt je
+                # gekostet hat.
+                #
+                # Auf der Hauptseite fiel es nicht auf, weil dort
+                # weniger Kategorien stehen als Schritte laufen und
+                # der Zeiger ohnehin im Fenster landet.
+                #
+                # Abschnitt K macht es seit Build 239 richtig
+                # ("schritt(0) - erst zeichnen"). Hier fehlte die
+                # Zeile.
+                try:
+                    _schritt(0)
+                except Exception:                        # noqa: BLE001
+                    pass
                 _null()
                 _haus0 = getattr(fe, "_perf_house", 0.0)
+                # BUILD 319: JEDER SCHRITT EINZELN, nicht nur die Summe.
+                #
+                # Bis hierher stand im Bericht EINE Zahl je Ansicht,
+                # der Mittelwert. Seine Meldung war aber nie "es ist
+                # im Schnitt langsam", sondern "ab und zu ein paar
+                # haenger beim scrollen" - und ein Haenger ist genau
+                # das, was ein Mittelwert wegrechnet. Zwanzig Schritte
+                # zu 42 ms und sechzehn zu 25 plus vier zu 110 ergeben
+                # dieselbe Zeile.
+                #
+                # Dass es solche Schritte gibt, ist kein Verdacht ins
+                # Blaue: Abschnitt K meldet fuer die Liste bei
+                # gedrueckter Taste "mit Aussparung gerufen 16 von 20
+                # mal". Der kurze Weg haengt an fb.full_redraw_gen -
+                # vier Schritte, in denen er nicht gilt, sind vier
+                # Schritte, in denen etwas den Puffer fuer ungueltig
+                # erklaert hat. Auf dem Entwicklungsrechner sind es
+                # zwanzig von zwanzig; es passiert also nur am Geraet,
+                # und nur dort laesst es sich zaehlen.
+                #
+                # Zwei Uhrabfragen je Schritt - gegen 20 bis 50 ms ein
+                # Fehler in der dritten Nachkommastelle.
+                _zeiten = []
+                _zst = getattr(A, "ZEIGER_STAND", None)
+                _z0 = tuple(_zst) if _zst else (0, 0)
                 t0 = time.monotonic()
                 for i in range(schritte):
+                    _ts = time.monotonic()
                     _schritt(i % _fenster)
+                    _zeiten.append((time.monotonic() - _ts) * 1000.0)
                 ges = (time.monotonic() - t0) * 1000.0 / schritte
+                _z1 = tuple(_zst) if _zst else (0, 0)
                 je = 1000.0 / schritte
                 r = konto["restore_ms"] * je
                 bl = konto["blit_ms"] * je
@@ -2948,6 +3068,50 @@ def _abschnitt_j(b, fe, S, A, fm):
                 rest = max(0.0,
                            ges - r - bl - fl - tx - ka - be - ha - co - pa)
                 b("   %-18s  ges %8.2f ms" % (name + " " + ansicht, ges))
+                # BUILD 319: die Verteilung - siehe oben bei _zeiten.
+                _med = _median(_zeiten)
+                _lang = max(_zeiten) if _zeiten else 0.0
+                _kurzs = min(_zeiten) if _zeiten else 0.0
+                _vollb = int(konto["voll_n"])
+                b("     VERTEILUNG: Median %.2f   schnellster %.2f   "
+                  "langsamster %.2f ms" % (_med, _kurzs, _lang))
+                # Ein Ausreisser ist DOPPELT so lang wie ueblich UND
+                # mindestens zwei Millisekunden laenger. Die zweite
+                # Bedingung ist fuer schnelle Rechner da: bei Schritten
+                # von einer halben Millisekunde ist "doppelt so lang"
+                # das Rauschen der Uhr und kein Befund.
+                _aus = len([z for z in _zeiten
+                            if z > 2.0 * _med and z - _med > 2.0])
+                b("     Vollbild-Flips: %d von %d Schritten   "
+                  "Ausreisser (> 2x Median): %d"
+                  % (_vollb, schritte, _aus))
+                if _vollb:
+                    b("     -> DAS SIND HAENGER, UND SIE HABEN EINEN")
+                    b("        NAMEN. Ein Schritt mit Vollbild ist ein")
+                    b("        voller Aufbau: der schnelle Pfad hat")
+                    b("        abgelehnt. In einem Fenster, in dem nur")
+                    b("        der Zeiger pendelt, darf das nicht")
+                    b("        vorkommen - nachzusehen waere, wer")
+                    b("        fb.mark_full_redraw() ruft (frontend.log")
+                    b("        um diese Zeit).")
+                elif _aus:
+                    b("     -> einzelne Schritte dauern ein Vielfaches,")
+                    b("        OHNE dass ein Vollbild hinausging. Dann")
+                    b("        liegt es nicht am Zeichenweg, sondern an")
+                    b("        etwas daneben: Hintergrundarbeit, die")
+                    b("        Speicherbereinigung, ein Zugriff auf die")
+                    b("        Karte (siehe 'davon Karte' unten).")
+                if _zst:
+                    _zn = (_z1[0] - _z0[0]) / float(schritte)
+                    _zl = (_z1[1] - _z0[1]) / float(schritte)
+                    b("     Zeiger nach C: %.1f neu gebaut, %.2f mal"
+                      " geleert je Schritt" % (_zn, _zl))
+                    if _zn >= 1.0:
+                        b("     -> der Zeigerspeicher in fe/art.py")
+                        b("        haelt seine Eintraege nicht. Bis")
+                        b("        Build 318 waren das 7 bis 13 je")
+                        b("        Schritt; seit 319 muss hier 0.0")
+                        b("        stehen.")
                 b("     restore %6.2f   blit %6.2f   flip %6.2f"
                   % (r, bl, fl))
                 b("     text    %6.2f   karten %5.2f   beschr %5.2f"
@@ -3302,13 +3466,14 @@ def _abschnitt_l(b, fe, S, A, fm):
                     continue
                 fe.cat_i = kat_i
                 fe.nav_path = []
-            for ansicht in S.ANSICHTEN:
+            for ansicht in ansichten_der_seite(S, seite):
                 try:
-                    if seite == 0:
-                        fe.ansicht_haupt_setzen(ansicht)
-                    else:
-                        fe.ansicht_setzen(ansicht)
+                    _wirklich = ansicht_einstellen(fe, seite, ansicht)
                 except Exception:                        # noqa: BLE001
+                    continue
+                if _wirklich != ansicht:
+                    # Siehe ansichten_der_seite(): lieber keine Zeile
+                    # als eine unter falschem Namen.
                     continue
                 _schritt = schritt_funktion(fe, seite)
                 del luecken[:]
@@ -3868,15 +4033,38 @@ def _abschnitt_k(b, fe, S, A):
     # hin haette man an der richtigen Stelle das Falsche getan.
     echt_kopierer = getattr(fbo, "zeilen_kopierer", None)
 
-    def _haken_kopierer(ziel, zstride, quelle, qstride, zx, zy, bb, hh):
+    def _haken_kopierer(ziel, zstride, quelle, qstride, zx, zy, bb, hh,
+                        *rest):
         wer = aktuell[0]
         if wer is not None:
-            e = kopiert.setdefault(wer, [0, 0, 0])
+            e = kopiert.setdefault(wer, [0, 0, 0, 0.0])
             e[0] += 1
             e[1] += int(hh)
             e[2] += int(bb) * int(hh)
+            # BUILD 319: UND DIE ZEIT, die hier drei Builds lang
+            # gefehlt hat.
+            #
+            # Im Bericht stand "Rest in Python 5,25 ms" - und das war
+            # ein NAME, keine Messung. Gerechnet wurde er als
+            # "gemessen minus Modell minus Vorlage minus Teile", und
+            # das Modell ist ein Preis je Megabyte aus Abschnitt I. Die
+            # Zeit IM Kopierer selbst hat niemand genommen. Was davon
+            # Python war und was C, liess sich aus der Zeile also gar
+            # nicht ablesen - sie hiess nur so.
+            #
+            # Genau dieselbe Luecke hat Build 270 beim C-FUELLER
+            # geschlossen (e[3] dort), und genau deshalb konnte man
+            # damals sagen, wo die Zeit steckt. Beim Kopierer wurde es
+            # in Build 303 nicht mitgebaut. Der Name einer Marke ist
+            # keine Messung - das stand schon ueber Build 291.
+            _t = time.monotonic()
+            try:
+                return echt_kopierer(ziel, zstride, quelle, qstride,
+                                     zx, zy, bb, hh, *rest)
+            finally:
+                e[3] += time.monotonic() - _t
         return echt_kopierer(ziel, zstride, quelle, qstride, zx, zy,
-                             bb, hh)
+                             bb, hh, *rest)
 
     # BUILD 305: WO STECKEN DIE SECHS MILLISEKUNDEN?
     #
@@ -3939,11 +4127,75 @@ def _abschnitt_k(b, fe, S, A):
             e[0] += 1
             e[1] += time.monotonic() - _t
 
+    # BUILD 319: WARUM "16 VON 20"? - DIE ZWEI MOEGLICHEN GRUENDE,
+    # GEZAEHLT.
+    #
+    # Im Bericht vom 09.11. (Bench 20) steht fuer die Liste bei
+    # gedrueckter Taste "mit Aussparung gerufen 16 von 20 mal", und
+    # darunter seit Build 303 der Satz "nachzusehen waere, warum _kurz
+    # nicht in jedem Schritt gilt (full_redraw_gen in _stand?)". Das
+    # ist eine Vermutung mit Fragezeichen, und sie steht dort seit
+    # fuenfzehn Builds.
+    #
+    # _kurz in draw_art_panel() verlangt, dass der STAND des Panels
+    # derselbe ist wie im Schritt davor. Zwei Dinge koennen ihn
+    # aendern, und sie verlangen entgegengesetzte Abhilfen:
+    #
+    #   * fb.full_redraw_gen - irgendwer hat den Puffer fuer
+    #     ungueltig erklaert. Dann ist der Schritt ein voller Aufbau,
+    #     und DAS ist der Haenger, nicht die Karte.
+    #   * die GEOMETRIE des Cover-Kastens. cover_box_size() rechnet
+    #     die Texthoehe zuerst und gibt dem Cover den Rest, in drei
+    #     Stufen. Hat ein Spiel sieben Infozeilen und das naechste
+    #     keine, wechselt die Stufe - und der alte Kasten passt nicht
+    #     mehr. Das ist dann KEIN Fehler, sondern die Folge davon,
+    #     dass die Spalte sich dem Text anpasst.
+    #
+    # Auf dem Entwicklungsrechner sind es zwanzig von zwanzig: die
+    # Eintraege dort haben keine Metadaten, die Stufe wechselt nie.
+    # Entscheiden laesst es sich also nur am Geraet - und dort wird es
+    # jetzt gezaehlt statt vermutet.
+    echt_kasten = getattr(type(fe), "cover_box_size", None)
+    kasten = {"letzt": None, "wechsel": 0, "gen": None, "gen_wechsel": 0}
+
+    def _haken_kasten(self, *a, **k):
+        r = echt_kasten(self, *a, **k)
+        try:
+            jetzt = (r[0], r[1])
+            if kasten["letzt"] is not None and jetzt != kasten["letzt"]:
+                kasten["wechsel"] += 1
+            kasten["letzt"] = jetzt
+        except Exception:                                # noqa: BLE001
+            pass
+        return r
+
     def _durchgang(ansicht, titel):
         """Eine Ansicht einmal durchmessen und berichten. Gibt False
-        zurueck, wenn die Ansicht uebersprungen wurde."""
+        zurueck, wenn die Ansicht uebersprungen wurde.
+
+        Der Kastenzaehler (Build 319) haengt schon WAEHREND des
+        Warmlaufens: gezaehlt wird ein WECHSEL, und der erste
+        gemessene Schritt braucht dafuer einen Vorgaenger. Im ersten
+        Entwurf hing er erst danach - und der Test zaehlte drei
+        Wechsel bei vier fehlenden kurzen Wegen. Der vierte war der
+        Sprung vom letzten Warmlauf-Schritt auf den ersten gemessenen."""
+        kasten["letzt"] = None
+        if echt_kasten is not None:
+            # Auf der KLASSE, mit self - eine Methode, kein
+            # staticmethod.
+            type(fe).cover_box_size = _haken_kasten
         try:
-            fe.ansicht_setzen(ansicht)
+            return _durchgang_innen(ansicht, titel)
+        finally:
+            if echt_kasten is not None:
+                type(fe).cover_box_size = echt_kasten
+
+    def _durchgang_innen(ansicht, titel):
+        try:
+            if ansicht_einstellen(fe, 1, ansicht) != ansicht:
+                # Auf diesem Bild nicht zu haben (Coverflow auf der
+                # Roehre) - siehe ansichten_der_seite().
+                return False
         except Exception:                                # noqa: BLE001
             return False
         try:
@@ -3990,6 +4242,11 @@ def _abschnitt_k(b, fe, S, A):
             fbo.__class__._karte_vorlage = _haken_vorlage
         if echt_teile is not None:
             fbo.__class__._karte_teile = _haken_teile
+        # Build 319: ab hier zaehlen - der Haken selbst haengt schon
+        # seit dem Warmlaufen (siehe _durchgang).
+        kasten["wechsel"] = 0
+        kasten["gen_wechsel"] = 0
+        kasten["gen"] = getattr(fbo, "full_redraw_gen", None)
         # Was vorher IN DER INSTANZ stand (meist nichts) - siehe das
         # Zurueckstellen unten.
         _kop_vorher = {}
@@ -4025,6 +4282,12 @@ def _abschnitt_k(b, fe, S, A):
             t0 = time.monotonic()
             for i in range(schritte):
                 schritt(i % spanne)
+                # Build 319: hat DIESER Schritt den Puffer fuer
+                # ungueltig erklaert? Ein Vergleich je Schritt.
+                _g = getattr(fbo, "full_redraw_gen", None)
+                if _g != kasten["gen"]:
+                    kasten["gen_wechsel"] += 1
+                    kasten["gen"] = _g
             ges = (time.monotonic() - t0) * 1000.0 / schritte
         finally:
             for n, _e in echte:
@@ -4117,15 +4380,33 @@ def _abschnitt_k(b, fe, S, A):
                     if _t:
                         b("          Zeit in _karte_teile()        %6.2f ms"
                           % _t_ms)
-                    _rest_py = gms - _mod_k - _v_ms - _t_ms
-                    b("          Rest in Python                %6.2f ms"
-                      % _rest_py)
-                    b("          Zu lesen als: ist 'Rest in Python' der")
-                    b("          groesste Posten, hilft kein kleineres")
-                    b("          Rechteck - dann ist die VORBEREITUNG")
-                    b("          teuer (Schluessel bauen, Scheiben")
-                    b("          schneiden, Schleife). Dieselbe")
-                    b("          Unterscheidung wie in Build 270.")
+                    # BUILD 319: GEMESSEN STATT ABGEZOGEN. Bis hierher
+                    # stand an dieser Stelle "Rest in Python" als
+                    # Differenz gegen das MODELL - siehe den Haken am
+                    # Kopierer, warum das keine Auskunft war.
+                    _kop_ms = (k[3] * 1000.0 / schritte
+                               if len(k) > 3 else None)
+                    if _kop_ms is not None:
+                        b("          im Kopierer GEMESSEN (Sprung nach C"
+                          " + Kopie)  %6.2f ms" % _kop_ms)
+                        b("            davon ueber dem Modell      "
+                          "%6.2f ms" % (_kop_ms - _mod_k))
+                        _rest_py = gms - _kop_ms - _v_ms - _t_ms
+                        b("          Rest in Python (jetzt wirklich) "
+                          "%6.2f ms" % _rest_py)
+                        b("          Zu lesen als: 'im Kopierer' ist die")
+                        b("          Zeit von vor dem Sprung bis nach der")
+                        b("          Rueckkehr - Zeiger besorgen, Sprung,")
+                        b("          Kopie. Liegt sie weit ueber dem")
+                        b("          Modell, ist es der SPRUNG und nicht")
+                        b("          die Bytes (Abschnitt J zaehlt dazu")
+                        b("          die neu gebauten Zeiger). Nur was")
+                        b("          unter 'Rest in Python' steht, ist")
+                        b("          Vorbereitung.")
+                    else:
+                        _rest_py = gms - _mod_k - _v_ms - _t_ms
+                        b("          Rest (gegen das Modell)       %6.2f ms"
+                          % _rest_py)
                 _as = aussparung.get(gmasse)
                 if _as and _as[0]:
                     b("        mit Aussparung gerufen       %d von %d mal"
@@ -4137,9 +4418,34 @@ def _abschnitt_k(b, fe, S, A):
                         b("        waere der naechste Hebel, und zwar")
                         b("        bei _kurz / _luecke in frontend.py.")
                     elif _as[1] < _as[0]:
-                        b("        Teilweise also - nachzusehen waere,")
-                        b("        warum _kurz nicht in jedem Schritt")
-                        b("        gilt (full_redraw_gen in _stand?).")
+                        # BUILD 319: gezaehlt statt gefragt - siehe
+                        # den Block ueber _haken_kasten().
+                        b("        Teilweise also. WARUM, gezaehlt in")
+                        b("        denselben %d Schritten:" % schritte)
+                        b("          Cover-Kasten hat die Groesse"
+                          " gewechselt   %d mal" % kasten["wechsel"])
+                        b("          Puffer fuer ungueltig erklaert"
+                          "         %d mal" % kasten["gen_wechsel"])
+                        if kasten["gen_wechsel"]:
+                            b("        -> full_redraw_gen ist gestiegen:")
+                            b("           das waren VOLLE AUFBAUTEN mitten")
+                            b("           im Scrollen. Das ist der Haenger,")
+                            b("           nicht die Karte - Abschnitt J")
+                            b("           nennt dazu die Vollbild-Flips.")
+                        elif kasten["wechsel"]:
+                            b("        -> der Kasten wechselt die Stufe,")
+                            b("           weil die Spiele verschieden viel")
+                            b("           Text haben (cover_box_size gibt")
+                            b("           dem Cover den Rest). Kein Fehler -")
+                            b("           aber in diesen Schritten wird die")
+                            b("           ganze Karte kopiert. Abhilfe waere,")
+                            b("           beim Durchblaettern bei EINER")
+                            b("           Stufe zu bleiben.")
+                        else:
+                            b("        -> KEINES von beiden. Dann aendert")
+                            b("           sich etwas anderes in _stand")
+                            b("           (Farbe, Akzent) - nachzusehen in")
+                            b("           draw_art_panel().")
                     else:
                         b("        In JEDEM Schritt - die Aussparung")
                         b("        greift, und die Bytes oben sind")
@@ -4209,7 +4515,7 @@ def _abschnitt_k(b, fe, S, A):
         fe.page = 1
         fe.cat_i = kat_i
         fe.nav_path = []
-        for ansicht in S.ANSICHTEN:
+        for ansicht in ansichten_der_seite(S, 1):
             # Durchgang 1: mit Cover - wie seit Build 241.
             _traeger.get_scaled = _cover
             try:

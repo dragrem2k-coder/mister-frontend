@@ -2221,9 +2221,8 @@ class Framebuffer:
         # Der echte Hintergrund an dieser Stelle - EIN C-Aufruf, aus
         # derselben Vorlage, die auch _restore_spuren() benutzt.
         quell_off = y * self.stride + x * 4
-        if not self.zeilen_kopierer(puffer, vstride,
-                                    memoryview(hg)[quell_off:],
-                                    self.stride, 0, 0, vb * 4, vh):
+        if not self.zeilen_kopierer(puffer, vstride, hg, self.stride,
+                                    0, 0, vb * 4, vh, quell_off):
             return None
         # DER TAUSCH. Er laeuft nur auf dem Zeichenfaden (der
         # Schreib-Arbeiter und der Musikfaden fassen fb.buf nicht an),
@@ -2256,14 +2255,22 @@ class Framebuffer:
     def _karte_teile(self, eintrag, w, versatz, band_hoehe, lueck_rel):
         """Die Kopierstuecke der Vorlage - gemerkt je Aussparung.
 
-        WARUM GEMERKT: zeilen_kopieren() faengt in der Quelle immer bei
-        Null an, ein Teilstueck braucht also eine memoryview mit
-        Versatz. Die Zeiger auf solche Puffer werden in fe/art.py nach
-        id() gemerkt (_ZEIGER), und eine bei JEDEM Schritt neu
-        geschnittene memoryview hat jedes Mal eine neue id - der
+        Rueckgabe: Liste von (quell_off, tx, ty, breite_byte, hoehe).
+
+        BUILD 319: EIN VERSATZ STATT EINER memoryview. Bis hierher war
+        jedes Stueck eine eigene memoryview mit Versatz, weil
+        zeilen_kopieren() in der Quelle immer bei Null anfing. Der
+        Docstring an dieser Stelle hat die Gefahr sogar benannt ("der
         Zwischenspeicher dort waere dauernd voll und wuerde sich
-        laufend leeren. Die Zerlegung ist aber stabil: die Cover-Box
-        einer Ansicht steht fest. Also einmal schneiden und behalten."""
+        laufend leeren") und sie mit dem Merken der Scheiben fuer
+        erledigt gehalten. War sie nicht: auch GEMERKTE Scheiben sind
+        vier Objekte, der Zeigerspeicher in fe/art.py hatte sechs
+        Plaetze, und drei davon waren schon vergeben. Nachgezaehlt
+        wurde er in jedem einzelnen Schritt geleert (siehe dort).
+
+        Jetzt steht hier eine Zahl. Die Vorlage selbst ist EIN Puffer
+        und belegt EINEN Platz, gleich wieviele Scheiben und wieviele
+        verschiedene Aussparungen es gibt."""
         gemerkt = eintrag["teile"].get(lueck_rel)
         if gemerkt is not None:
             return gemerkt
@@ -2287,13 +2294,11 @@ class Framebuffer:
             if ly + lh < vh:
                 kaesten.append((0, ly + lh, vb, vh - ly - lh))
         stride = eintrag["stride"]
-        sicht = memoryview(eintrag["puffer"])
         teile = []
         for (tx, ty, tw, th) in kaesten:
             if tw <= 0 or th <= 0:
                 continue
-            off = ty * stride + tx * 4
-            teile.append((sicht[off:], tx, ty, tw * 4, th))
+            teile.append((ty * stride + tx * 4, tx, ty, tw * 4, th))
         eintrag["teile"][lueck_rel] = teile
         return teile
 
@@ -2327,20 +2332,21 @@ class Framebuffer:
         if not teile:
             return False
         stride = eintrag["stride"]
+        quelle = eintrag["puffer"]
         buf, dst_stride = self.buf, self.stride
-        for (quelle, tx, ty, breite_byte, hoehe) in teile:
+        for (off, tx, ty, breite_byte, hoehe) in teile:
             if not self.zeilen_kopierer(buf, dst_stride, quelle, stride,
                                         x + tx, y + ty, breite_byte,
-                                        hoehe):
+                                        hoehe, off):
                 # MITTENDRIN GESCHEITERT: der Aufrufer darf jetzt NICHT
                 # den alten Weg nehmen und auch nicht einfach
                 # weitermachen - ein Teil der Karte steht schon. Also
                 # den Rest noch aus der Vorlage holen und True melden;
                 # schlaegt auch das fehl, ist libdragend weg, und dann
                 # ist alles langsam, nicht nur das hier.
-                for (q2, tx2, ty2, b2, h2) in teile:
-                    self.zeilen_kopierer(buf, dst_stride, q2, stride,
-                                         x + tx2, y + ty2, b2, h2)
+                for (off2, tx2, ty2, b2, h2) in teile:
+                    self.zeilen_kopierer(buf, dst_stride, quelle, stride,
+                                         x + tx2, y + ty2, b2, h2, off2)
                 return True
         return True
 

@@ -258,10 +258,16 @@ ordner = [g for g in spiele if "sub" in g[0]]
 # Worauf es diesem Test ankommt, bleibt unveraendert: aus 100
 # Vorkommen desselben Spiels werden nicht 100 Berechnungen, sondern so
 # viele, wie es verschiedene KAESTEN gibt.
+# GEAENDERT (Build 319): die Erwartung kommt jetzt WIRKLICH aus
+# derselben Funktion. Bis hierher stand an dieser Stelle eine
+# Abschrift der Schleife aus _thumb_prewarm_durchlauf() ("for _a in
+# fm.ANSICHTEN ...") - der Absatz darueber hat "aus derselben Funktion
+# abgeleitet" versprochen und eine Ebene zu tief angesetzt. Als der
+# Coverflow seine drei Groessen bekam, erwartete die Abschrift sieben
+# Kaesten, waehrend der Menuepunkt (zu Recht) bei vier blieb.
 _erwartet = set()
-for _a in fm.ANSICHTEN:
-    for _g in f._ansicht_geometrien(_a, erzwingen=True):
-        _erwartet.add((_g[1], _g[2]) if _g[0] == "fest" else None)
+for _g in f.vorbereitungs_kaesten():
+    _erwartet.add((_g[1], _g[2]) if _g[0] == "fest" else None)
 _erwartet.discard(None)          # die Liste rechnet je Eintrag, s.u.
 _anzahl = len(_erwartet) + 1     # + die Listenansicht
 _spiel_ziele = [g for g in spiele if g not in ordner]
