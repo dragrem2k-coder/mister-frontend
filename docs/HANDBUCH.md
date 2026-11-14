@@ -628,10 +628,12 @@ das sieben Miniaturen je Cover — bei einer großen Sammlung läge der
 Lauf damit an der Grenze des Zwischenspeichers (150.000 Dateien) und
 würde am Ende verdrängen, was er am Anfang gerechnet hat. Deshalb
 nimmt der Lauf den Coverflow **nur mit, wenn er als Ansicht
-eingestellt ist** (*System → Anzeige & Sound → „Ansicht Spieleliste"*). Wer nur mit der
-Taste hineinschaltet, bekommt die Cover trotzdem: seit Build 319
-bereitet das Frontend in jeder Ruhepause die nächsten zwanzig in allen
-drei Größen vor.
+eingestellt ist** (*System → Anzeige & Sound → „Ansicht Spieleliste"*)
+**oder seit dem letzten Start in einer Kategorie benutzt wurde** (seit
+Build 322 — vorher zählte nur die Vorgabe). Wer ihn nie benutzt, zahlt
+dafür also keinen Platz. Unabhängig davon bereitet das Frontend seit
+Build 319 in jeder Ruhepause die nächsten zwanzig in allen drei Größen
+vor.
 
 Leeren lässt sich der Zwischenspeicher unter *System → Wartung →
 „Miniaturen-Zwischenspeicher leeren"* — getrennt für CRT und HDMI.
@@ -1930,7 +1932,7 @@ Ansicht, sondern ein Fehler.
 > "Miniaturen vorbereiten"* - die Bilder werden je Ansicht in einer
 > anderen Größe gebraucht. Der Menüpunkt rechnet Liste, Raster und
 > Galerie mit vor (den Coverflow dann, wenn er als Ansicht eingestellt
-> ist), du musst ihn also nur einmal laufen lassen (aber einmal je
+> ist oder seit dem Start benutzt wurde), du musst ihn also nur einmal laufen lassen (aber einmal je
 > Bildmodus: CRT und HDMI haben eigene Größen).
 >
 > **Wie lange das dauert, und wovon es abhängt.** Gerechnet werden drei
@@ -2480,6 +2482,15 @@ wirklichen Stand von Tasten und Steuerkreuz neu ab, statt hängen zu
 bleiben. Jeder solche Fall steht in `/tmp/frontend.log` („SYN_DROPPED"),
 und ein Druck, der merklich warten musste, ebenfalls („EINGABE-STAU",
 mit Sekunden seit dem Start).
+
+**Ein Wächter für das Pad (seit Build 322).** Das Log hat gezeigt, dass
+die Hauptschleife auch an anderen Stellen länger beschäftigt sein kann
+— beim Zeichnen, beim Betreten einer Kategorie. Damit dabei nichts
+verloren geht, sieht ein eigener Wächter alle 0,1 s nach und holt das
+Pad ab, wenn die Hauptschleife es gerade nicht tut. Ein Druck kann
+dann noch kurz warten, geht aber nicht mehr verloren. Außerdem bestellt
+das Frontend beim Kernel nur die Achsen, die es auswertet — das
+Rauschen des rechten Sticks kommt gar nicht mehr an.
 
 ## 11. Boot-Animation (Startvideo)
 

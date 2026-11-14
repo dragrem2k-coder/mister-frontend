@@ -73,6 +73,38 @@ CLOCK_MONOTONIC = 1
 SYN_REPORT, SYN_DROPPED = 0, 3
 # _IOC(_IOC_READ, 'E', 0x18, 96): der Tastenzustand, KEY_MAX+1 = 768 Bit.
 EVIOCGKEY_96 = 0x80604518
+
+# BUILD 322: DAS LOG VOM 14.11. HAT DEN SCHLUSS AUS BUILD 321 BESTAETIGT.
+#
+#   EINGABE: der Kernel hat ungelesene Ereignisse von /dev/input/event3
+#   'Nintendo Co., Ltd. Pro Controller' verworfen (SYN_DROPPED,
+#   1. Mal, 8.9 s nach dem Start)
+#
+# Sechsmal in 67 Sekunden, bei 8.9 / 19.5 / 33.1 / 35.4 / 51.8 / 66.8 s.
+# Und die EINGABE-STAU-Zeilen daneben sagen, dass die laengste
+# Leerlauf-Arbeit davor nur einen Teil der Zeit erklaert (742 ms
+# gewartet, Warmlauf 55 ms). Die Hauptschleife ist also an MEHR als
+# einer Stelle laenger als eine halbe Sekunde ohne Blick auf das Pad -
+# beim Zeichnen, beim Betreten einer Kategorie, beim Vorauslader. Jede
+# einzelne zu finden und zu kuerzen waere ein Wettlauf, den man nie
+# ganz gewinnt.
+#
+# DESHALB ZWEI DINGE, DIE UNABHAENGIG DAVON WIRKEN:
+#
+# 1. EVIOCSMASK. Abschnitt L.1b von Bench 22 sagt, woraus die 162
+#    Ereignisse je Sekunde des Pro Controllers bestehen: SYN 33, ABS X
+#    32, ABS Y 32, ABS RX 32, ABS RY 32. RX und RY sind der RECHTE
+#    Stick, und den fragt das Frontend nirgends ab (Device.axis kennt
+#    nur X, Y, die Kreuz-Achsen und die Trigger). Der Kernel kann sie
+#    fuer UNSEREN Dateigriff abbestellen; MiSTer selbst bekommt sie
+#    weiter. Damit ist der Strom um rund 40 % kleiner, und die Schlange
+#    haelt entsprechend laenger.
+#
+# 2. DER WAECHTER (siehe wache_starten()). Ein Faden, der alle 0,1 s
+#    nachsieht, ob die Hauptschleife das Pad seit 0,1 s nicht gelesen
+#    hat - und es dann selbst in den Puffer holt. Er wertet nichts aus:
+#    das tut weiter allein read_action(), in derselben Reihenfolge.
+EVIOCSMASK = 0x40104593             # _IOW('E', 0x93, struct input_mask)
 KEY_ESC, KEY_ENTER = 1, 28
 KEY_BACKSPACE = 14
 KEY_SLASH = 53
@@ -860,6 +892,58 @@ def _absinfo(fd, axis):
     _val, amin, amax, _f, _fl, _res = struct.unpack("6i", buf)
     return amin, amax
 
+def _achsen_maske_setzen(fd, achsen):
+    """Beim Kernel nur diese Achsen bestellen (EVIOCSMASK, Build 322).
+
+    struct input_mask { __u32 type; __u32 codes_size; __u64 codes_ptr; }
+    - codes_ptr zeigt auf eine Bitmaske der ERLAUBTEN Codes. Die Maske
+    gilt nur fuer diesen Dateigriff. Rueckgabe True, wenn der Kernel sie
+    angenommen hat; ein aelterer Kernel (vor 4.4) kennt den Aufruf nicht,
+    dann bleibt alles wie bisher."""
+    try:
+        import ctypes
+        bits = (ctypes.c_ubyte * 8)()        # ABS_CNT = 64 Bit
+        for code in achsen:
+            if 0 <= code < 64:
+                bits[code // 8] |= 1 << (code % 8)
+        maske = struct.pack("IIQ", EV_ABS, 8, ctypes.addressof(bits))
+        fcntl.ioctl(fd, EVIOCSMASK, maske)
+        return True
+    except (OSError, ValueError, ImportError):
+        return False
+
+
+def _mit_lesesperre(fn):
+    """Waehrend fn laeuft, liest der Waechter NICHT (Build 322).
+
+    Alles, was die Dateigriffe der Eingabegeraete liest oder den Puffer
+    durchgeht, laeuft unter derselben Sperre - der Waechter nimmt sie nur
+    ohne Warten (siehe _wache_schleife()). Damit liest immer genau EINER,
+    und die Reihenfolge im Puffer ist die Reihenfolge, in der gelesen
+    wurde. wait_game_exit() haelt sie waehrend des ganzen Spiels: dann
+    ruht der Waechter, und die Exit-Kombination bekommt jedes Ereignis.
+
+    Eine RLock: read_action() ruft rescan(), eingabe_anstehend() ruft
+    abholen() - derselbe Faden darf erneut hinein.
+
+    Ohne Sperre (InputManager ueber __new__ gebaut, wie in mehreren
+    Tests) laeuft fn einfach so."""
+    def innen(self, *a, **k):
+        sperre = getattr(self, "_lese_lock", None)
+        if sperre is None:
+            return fn(self, *a, **k)
+        with sperre:
+            try:
+                return fn(self, *a, **k)
+            finally:
+                if threading.current_thread() is threading.main_thread():
+                    self._zuletzt_gelesen = time.monotonic()
+    innen.__name__ = fn.__name__
+    innen.__doc__ = fn.__doc__
+    innen.__wrapped__ = fn
+    return innen
+
+
 class Device:
     def __init__(self, path, name, is_kbd):
         self.path = path
@@ -890,6 +974,10 @@ class Device:
         # verwerfen (Protokoll des Kernels), und wie oft es vorkam.
         self.nach_drop = False
         self.verworfen = 0
+        # Build 322: nur die Achsen, die wir auswerten - siehe EVIOCSMASK.
+        self.maske_gesetzt = False
+        if self.axis:
+            self.maske_gesetzt = _achsen_maske_setzen(self.fd, self.axis)
 
     def tasten_jetzt(self):
         """Die Codes aller Tasten, die JETZT gedrueckt sind (EVIOCGKEY).
@@ -1159,6 +1247,13 @@ class InputManager:
         # verworfen hat (Pfad -> Anzahl; Bench Abschnitt L).
         self._t_start = time.monotonic()
         self.syn_dropped = {}
+        # Build 322: der Waechter - siehe wache_starten().
+        self._lese_lock = threading.RLock()
+        self._zuletzt_gelesen = time.monotonic()
+        self._wache_faden = None
+        self._wache_ende = threading.Event()
+        self.wache_laeufe = 0
+        self.wache_geholt = 0
         self.rescan(force=True)
 
     # BUILD 192: wann die zuletzt gelieferte Aktion entstanden ist
@@ -1187,6 +1282,75 @@ class InputManager:
     # nur noch jede fuenfzigste. Gezaehlt wird immer.
     DROPPED_LOG_MAX = 20
 
+    # Wie oft der Waechter nachsieht (Sekunden). Bei den 162 Ereignissen
+    # je Sekunde aus Bench 22 (mit der Maske rund 100) und einer Schlange
+    # in der Groessenordnung von hundert Ereignissen reicht das mehrfach.
+    WACHE_TAKT = 0.1
+
+    def wache_starten(self, takt=None):
+        """Den Waechter starten (Build 322) - nur aus der Hauptschleife.
+
+        WARUM EIN FADEN UND NICHT NOCH MEHR STELLEN, DIE ABHOLEN: das Log
+        zeigt Wartezeiten, die keine einzelne Leerlauf-Arbeit erklaert.
+        Wer jede lange Stelle einzeln mit abholen() versieht, uebersieht
+        die naechste. Ein Faden sieht unabhaengig davon nach.
+
+        WARUM ER DEM ZEICHNEN NICHTS WEGNIMMT: er schlaeft fast immer.
+        Er wird nur aktiv, wenn die Hauptschleife das Pad 0,1 s lang nicht
+        gelesen hat, und dann liest er ein paar Dutzend Ereignisse - das
+        dauert auf dem Geraet einen Bruchteil einer Millisekunde.
+
+        WARUM ER NICHTS AUSWERTET: held, axis_state, die Wiederholung,
+        das Zusammenfassen aus Build 307 - all das gehoert read_action()
+        und laeuft auf dem Hauptfaden. Der Waechter legt nur in den
+        Puffer, und read_action() arbeitet den zuerst ab.
+
+        Der Bench startet ihn NICHT (er ruft run() nicht auf): Abschnitt
+        L.1b und M lesen die Geraete selbst, und zwei Leser wuerden sich
+        die Ereignisse teilen."""
+        if self._wache_faden is not None:
+            return
+        if getattr(self, "_lese_lock", None) is None:
+            return
+        self._wache_takt = takt or self.WACHE_TAKT
+        self._wache_ende.clear()
+        t = threading.Thread(target=self._wache_schleife,
+                             name="eingabe-waechter", daemon=True)
+        self._wache_faden = t
+        t.start()
+        LOG("Eingabe-Waechter gestartet (alle %.0f ms)"
+            % (self._wache_takt * 1000.0))
+
+    def wache_stoppen(self):
+        t, self._wache_faden = getattr(self, "_wache_faden", None), None
+        if t is None:
+            return
+        self._wache_ende.set()
+        t.join(timeout=1.0)
+
+    def _wache_schleife(self):
+        takt = self._wache_takt
+        while not self._wache_ende.wait(takt):
+            sperre = self._lese_lock
+            # OHNE WARTEN: haelt die Hauptschleife die Sperre, liest sie
+            # gerade selbst (oder ein Spiel laeuft, siehe
+            # _mit_lesesperre) - dann gibt es nichts zu tun.
+            if not sperre.acquire(blocking=False):
+                continue
+            try:
+                if time.monotonic() - self._zuletzt_gelesen < takt:
+                    continue
+                n = self.abholen()
+                if n:
+                    self.wache_laeufe += 1
+                    self.wache_geholt += n
+            except Exception:                            # noqa: BLE001
+                # Ein Waechter, der eine Ausnahme wirft, waere schlimmer
+                # als keiner - er stirbt dann still, und niemand merkt es.
+                pass
+            finally:
+                sperre.release()
+
     def _richtung_aus_wert(self, dev, code, value):
         """Die Stellung einer Achse als -1/0/1 (Trigger: 0/1).
 
@@ -1204,6 +1368,7 @@ class InputManager:
         rel = (value - amin) / span
         return -1 if rel < 0.30 else (1 if rel > 0.70 else 0)
 
+    @_mit_lesesperre
     def abholen(self, runden=8):
         """Alles, was im Kernel bereitliegt, in den eigenen Puffer holen
         - ohne es auszuwerten (Build 321, siehe oben bei EVIOCSCLOCKID).
@@ -1244,6 +1409,7 @@ class InputManager:
                     n += 1
         return n
 
+    @_mit_lesesperre
     def eingabe_anstehend(self):
         """Wartet eine Eingabe, die eine AKTION ergeben kann? (Build 321)
 
@@ -1471,6 +1637,7 @@ class InputManager:
         reihe.append(dauer)
         self._zeichenzeit[act] = _zeit_aus_proben(reihe)
 
+    @_mit_lesesperre
     def rescan(self, force=False):
         # Billiger Schnellcheck: aendert sich /dev/input ueberhaupt? Neue
         # oder entfernte Geraete aendern die mtime des Ordners. Solange
@@ -2011,6 +2178,7 @@ class InputManager:
             n += 1
         return n
 
+    @_mit_lesesperre
     def read_action(self, timeout=None):
         """Blockierend (oder mit Timeout) auf die naechste logische
         Aktion warten. Geraete-Events haben IMMER Vorrang vor Halte-
@@ -2323,6 +2491,7 @@ class InputManager:
             if deadline is not None and time.monotonic() >= deadline:
                 return None
 
+    @_mit_lesesperre
     def read_raw_key(self, timeout=None, allow_axis_skip=False):
         """Blockierend auf den naechsten PHYSISCHEN Tastendruck warten
         und dessen rohen evdev-Code liefern - ignoriert KEYMAP. Fuer den
@@ -2429,6 +2598,7 @@ class InputManager:
                               # _hid_report_has_reset_key() in
                               # fe/hidraw.py fuer den genauen Grund.
 
+    @_mit_lesesperre
     def wait_game_exit(self):
         """Waehrend ein Core laeuft: warten, bis MiSTer zurueck im
         Menue ist, Start+Select lange genug gehalten werden, ODER auf
@@ -2773,6 +2943,7 @@ class InputManager:
                 except OSError:
                     pass
 
+    @_mit_lesesperre
     def flush(self):
         # BUILD 306: DEN AUFGEHOBENEN REST MITLEEREN.
         #

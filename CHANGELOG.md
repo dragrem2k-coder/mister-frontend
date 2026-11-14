@@ -13,6 +13,33 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.0 — noch nicht veröffentlicht
 
+- **Behoben: das Pad verliert keine Eingaben mehr — auch nicht, wenn
+  das Frontend gerade beschäftigt ist.** Dein Log vom 14.11. hat es
+  bestätigt: der Kernel hat in 67 Sekunden sechsmal Eingaben des Pro
+  Controllers weggeworfen („SYN_DROPPED"), weil die Hauptschleife zu
+  lange nicht hingesehen hat — beim Zeichnen, beim Betreten einer
+  Kategorie, beim Vorauslader. Jetzt sieht ein eigener Wächter alle
+  0,1 s nach und holt das Pad in den Puffer, sobald die Hauptschleife
+  es 0,1 s lang nicht gelesen hat. Ausgewertet wird weiter nur in der
+  Hauptschleife, in derselben Reihenfolge. Während ein Spiel läuft,
+  ruht er (Build 322).
+- **Weniger Rauschen vom Pad.** Bench 22 zeigt, woraus die 162
+  Ereignisse je Sekunde des Pro Controllers in Ruhe bestehen: je ein
+  Viertel X, Y, RX und RY. RX/RY ist der rechte Stick, und den wertet
+  das Frontend nicht aus. Er wird beim Kernel jetzt für das Frontend
+  abbestellt (MiSTer selbst bekommt ihn weiter) — rund 40 % weniger
+  Ereignisse (Build 322).
+- **Schneller: der Vorauslader auf dem Hauptfaden.** Er hat jeden
+  Eintrag je Kastengröße zweimal angesehen (einmal für das Fehlende,
+  einmal für das Nachladen) — im Coverflow sechs Durchgänge. Dein Log:
+  „Vorauslader 462 ms". Jetzt einmal, und er hört auf, sobald du
+  drückst (Build 322).
+- **„Miniaturen vorbereiten" nimmt den Coverflow mit, wenn du ihn
+  benutzt.** Deine Frage war berechtigt: bisher nur, wenn er im Menü
+  als Vorgabe eingestellt war — wer ihn per Taste für eine Kategorie
+  einschaltete, bekam ihn nicht vorbereitet. Jetzt reicht es, ihn in
+  dieser Sitzung benutzt zu haben (Build 322).
+
 - **Behoben: in den ersten Sekunden nach dem Start verschluckte
   Tastendrücke.** Nach dem Start bereitet das Frontend die
   Cover-Verzeichnisse aller Systeme vor — im Leerlauf und in einem

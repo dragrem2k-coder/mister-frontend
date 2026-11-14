@@ -570,10 +570,11 @@ and a wish for smooth browsing, let it run once overnight.
 would be seven thumbnails per cover — with a large collection the run
 would sit at the cache limit (150,000 files) and end up evicting what
 it computed at the start. So the run includes the coverflow **only if
-it is the configured view** (*System → Display & Sound → "Game list view"*). If
-you only switch into it with the key you still get the covers: since
-build 319 the frontend prepares the next twenty in all three sizes
-during every idle pause.
+it is the configured view** (*System → Display & Sound → "Game list view"*)
+**or has been used in a category since the last start** (since build
+322 — before, only the default counted). If you never use it, it costs
+no space. Independently of that, since build 319 the frontend prepares
+the next twenty in all three sizes during every idle pause.
 
 The cache can be cleared under *System → Maintenance → "Clear
 thumbnail cache"* — separately for CRT and HDMI.
@@ -1621,7 +1622,8 @@ be a view, it would be a bug.
 > **Tip:** After switching, run *System -> Options -> "Prepare
 > thumbnails"* - each view needs the images in a different size. The
 > menu item prepares list, grid and gallery in one go (and the
-> coverflow if it is the configured view), so you only need to run it
+> coverflow if it is the configured view or has been used since the
+> start), so you only need to run it
 > once (but once per video mode: CRT and HDMI have their own sizes).
 >
 > **How long it takes, and what drives it.** Three box sizes are
@@ -2135,6 +2137,14 @@ the frontend re-reads the real state of buttons and d-pad instead of
 getting stuck. Every such case is written to `/tmp/frontend.log`
 ("SYN_DROPPED"), and so is every press that had to wait noticeably
 ("EINGABE-STAU", with seconds since startup).
+
+**A watcher for the pad (since build 322).** The log showed that the
+main loop can be busy at other places too — while drawing, while
+entering a category. So that nothing gets lost meanwhile, a dedicated
+watcher looks every 0.1 s and reads the pad whenever the main loop is
+not doing so. A press may still wait briefly, but it is no longer lost.
+In addition the frontend only subscribes to the axes it evaluates —
+the right stick's noise no longer arrives at all.
 
 ## 11. Boot animation (startup video)
 

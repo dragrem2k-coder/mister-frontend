@@ -13,6 +13,31 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.0 — not released yet
 
+- **Fixed: the pad no longer loses input — not even while the frontend
+  is busy.** Your log of 14 Nov confirmed it: within 67 seconds the
+  kernel threw away the Pro Controller's input six times
+  ("SYN_DROPPED"), because the main loop did not look for too long —
+  while drawing, entering a category, or in the preloader. Now a
+  watcher looks every 0.1 s and moves the pad's events into the buffer
+  as soon as the main loop has not read it for 0.1 s. Interpretation
+  still happens only in the main loop, in the same order. While a game
+  runs, it rests (build 322).
+- **Less noise from the pad.** Bench 22 shows what the Pro
+  Controller's 162 events per second at rest consist of: a quarter each
+  of X, Y, RX and RY. RX/RY is the right stick, which the frontend
+  never evaluates. It is now unsubscribed in the kernel for the
+  frontend (MiSTer itself still gets it) — about 40 % fewer events
+  (build 322).
+- **Faster: the preloader on the main thread.** It looked at every
+  entry twice per box size (once for what is missing, once for
+  reloading) — six passes in the coverflow. Your log: "Vorauslader
+  462 ms". Now once, and it stops as soon as you press (build 322).
+- **"Prepare thumbnails" includes the coverflow when you use it.** Your
+  question was justified: so far only when it was set as the default
+  in the menu — switching it on per category with the button did not
+  get it prepared. Now it is enough to have used it in this session
+  (build 322).
+
 - **Fixed: swallowed key presses in the first seconds after startup.**
   After startup the frontend prepares the cover directories of every
   system — in the idle loop and in a background thread. A piece of

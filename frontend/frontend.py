@@ -1475,7 +1475,8 @@ import fe.versteckt as VERSTECKT
 import fe.romwacht as ROMWACHT
 import fe.corestand as CSTAND
 import fe.zaparoo as ZAP
-from fe.prewarm import PREWARMER, auftraege_bauen, Doppelkern
+from fe.prewarm import (PREWARMER, auftraege_bauen, Doppelkern,
+                        auftraege_und_nachladen)
 from fe.nachladen import MiniaturLader
 
 # ----------------------------------------------------------------------------
@@ -14750,14 +14751,39 @@ class Frontend:
             # _draw_items_raster()) - zwei davon sind die aktuelle und
             # die naechste.
             _voraus = max(20, 2 * max(1, getattr(self, "items_visible", 28)))
+        # BUILD 322: EIN DURCHGANG JE KASTEN STATT ZWEI, UND
+        # UNTERBRECHBAR. Hier stand auftraege_bauen() je Kasten zweimal
+        # (fehlend / schon da), beide Male mit demselben kastenmass().
+        # Im Log vom 14.11.: "laengste Leerlauf-Arbeit davor: Vorauslader
+        # 462 ms" - auf dem Hauptfaden, und dahinter wartete ein Druck.
+        # Jetzt einmal je Eintrag, und alle acht Eintraege wird
+        # nachgesehen, ob jemand drueckt (_leerlauf_zwischendurch); dann
+        # wird mit dem uebergeben, was bis dahin feststeht.
         auftraege = []
+        nachladen = []
+        _abbruch = [False]
+
+        def _zw():
+            try:
+                self._leerlauf_zwischendurch()
+            except IndexUnterbrochen:
+                _abbruch[0] = True
+                raise
+
         for _g in geos:
-            auftraege.extend(auftraege_bauen(
+            if _abbruch[0]:
+                break
+            _fehlt, _da = auftraege_und_nachladen(
                 items, self.item_i,
                 lambda it, _gg=_g: self.cover_pfad_und_kasten(it,
                                                               cat_syskey, _gg),
                 vorwaerts=getattr(self, "_last_scroll_dir", 1) >= 0,
-                voraus=_voraus))
+                voraus=_voraus, zwischendurch=_zw)
+            auftraege.extend(_fehlt)
+            # Liegt auf der Karte - fehlt es nur im Arbeitsspeicher?
+            # Dasselbe wie ART.nur_im_ram_fehlt(), ohne die Karte ein
+            # zweites Mal zu fragen.
+            nachladen.extend(n for n in _da if not ART.im_ram(*n))
         # NEU (Build 125): die GEGENLISTE - alles, was schon auf der
         # Karte liegt, aber nicht im Arbeitsspeicher. Dafuer muss
         # niemand mehr rechnen, es fehlt nur Lesen und Auspacken; das
@@ -14768,16 +14794,6 @@ class Frontend:
         # NEUSTART wieder langsam anfuehlt, obwohl "Miniaturen
         # vorbereiten" laengst durchgelaufen ist: der Menuepunkt fuellt
         # die Karte, nicht den RAM.
-        nachladen = []
-        for _g in geos:
-            for _n in auftraege_bauen(
-                    items, self.item_i,
-                    lambda it, _gg=_g: self.cover_pfad_und_kasten(
-                        it, cat_syskey, _gg),
-                    vorwaerts=getattr(self, "_last_scroll_dir", 1) >= 0,
-                    voraus=_voraus, schon_da=True):
-                if ART.nur_im_ram_fehlt(*_n):
-                    nachladen.append(_n)
         if nachladen:
             self.lader.start()
             self.lader.uebergeben(nachladen)
@@ -14903,10 +14919,21 @@ class Frontend:
         # in jeder Ruhepause die naechsten zwanzig in allen drei
         # Groessen vor (siehe _ansicht_geometrien()).
         _vorgabe = ansicht_lesen()
+        # BUILD 322: ODER WENN ER IN DIESER SITZUNG BENUTZT WURDE.
+        # Nutzerfrage vom 14.11.: "kann es sein das bei denn miniaturen
+        # die neuen hdmi ansichten nicht mit vorbereitet werden?" - ja,
+        # genau so war es: wer den Coverflow mit der Taste fuer eine
+        # Kategorie einschaltet (statt im Menue als Vorgabe), bekam ihn
+        # vom Menuepunkt nicht vorbereitet. Der Grund oben (Platz im
+        # Zwischenspeicher) gilt weiter fuer jemanden, der den Coverflow
+        # nie benutzt. Wer ihn benutzt, will seine Cover darin sehen.
+        _benutzt = set((getattr(self, "_ansicht_je_kat", None)
+                        or {}).values())
         for _a in ANSICHTEN:
             if _a == "liste":
                 continue
-            if _a in ANSICHTEN_NUR_HD and _a != _vorgabe:
+            if (_a in ANSICHTEN_NUR_HD and _a != _vorgabe
+                    and _a not in _benutzt):
                 continue
             if self._ansicht_hd(_a) != _a:
                 # Auf diesem Bild gar nicht zu haben (Coverflow auf der
@@ -24834,6 +24861,15 @@ class Frontend:
             _rt_prev = None     # Ruckler-Detektor, siehe unten
             _act_prev = None
             _eingabe_prev = 0.0  # Build 192, siehe _latenz_buchen()
+            # BUILD 322: der Eingabe-Waechter - siehe wache_starten() in
+            # fe/input.py. Erst HIER und nicht im Konstruktor: der Bench
+            # baut ein Frontend, ruft run() aber nie auf, und liest die
+            # Geraete in Abschnitt L und M selbst.
+            try:
+                self.inp.wache_starten()
+            except Exception:                            # noqa: BLE001
+                LOG("Eingabe-Waechter nicht gestartet:\n"
+                    + traceback.format_exc())
             while True:
                 # Zustand VOR dem Blockieren veroeffentlichen - spiegelt
                 # die aktuell ANGEZEIGTE Auswahl (Ergebnis der vorigen
@@ -24891,13 +24927,22 @@ class Frontend:
                 _warte = getattr(self.inp, "eingabe_wartezeit", 0.0) or 0.0
                 if _warte >= self.EINGABE_STAU_SCHWELLE:
                     _lv = getattr(self, "_leerlauf_vorher", None)
+                    # Build 322: dazu die VORIGE Aktion. Im Log vom 14.11.
+                    # stand "down lag 742 ms ... laengste Leerlauf-Arbeit
+                    # davor: Warmlauf 55 ms" - die uebrigen 687 ms
+                    # standen nirgends. Sie liegen entweder in der
+                    # Verarbeitung der Aktion davor (Zeichnen, Kategorie
+                    # betreten) oder ausserhalb von beidem.
+                    _vv = getattr(self, "_verarbeitung_vorher", None)
                     LOG("EINGABE-STAU: %s lag %.0f ms ungelesen beim Kernel "
                         "(%.1f s nach dem Start; laengste Leerlauf-Arbeit "
-                        "davor: %s)"
+                        "davor: %s; vorige Aktion: %s)"
                         % (act, _warte * 1000.0,
                            time.monotonic() - self._t_start,
                            ("%s %.0f ms" % (_lv[0], _lv[1] * 1000.0))
-                           if _lv else "keine"))
+                           if _lv else "keine",
+                           ("%s %.0f ms" % (_vv[0], _vv[1] * 1000.0))
+                           if _vv else "keine"))
                 if _rt_prev is not None:
                     # Zeit vom Ende der VORIGEN Runde bis jetzt, also
                     # inklusive Verarbeitung + Zeichnen der vorigen
@@ -25027,6 +25072,9 @@ class Frontend:
                     self._latenz_buchen(_act_prev, _eingabe_prev, _rt0,
                                         begonnen=_rt_prev)
                 _rt_prev = time.monotonic()
+                # Build 322: fuer die EINGABE-STAU-Zeile der NAECHSTEN
+                # Aktion - wie lange diese hier gebraucht hat.
+                self._verarbeitung_vorher = (act, _rt_prev - _rt2)
                 _act_prev = act
                 _eingabe_prev = getattr(self.inp, "eingabe_zeit", 0.0)
                 # BUILD 193: die Posten der Aufschluesselung fuer die
@@ -26988,6 +27036,12 @@ class Frontend:
                     continue
                 self.draw()
         finally:
+            # Build 322: der Waechter zuerst - er soll nichts mehr
+            # lesen, waehrend die Eingaben freigegeben werden.
+            try:
+                self.inp.wache_stoppen()
+            except Exception:                            # noqa: BLE001
+                pass
             # ================================================
             # HERUNTERFAHREN (umgestellt in Build 163)
             # ================================================

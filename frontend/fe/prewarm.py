@@ -498,6 +498,63 @@ def auftraege_bauen(eintraege, mitte, kastenmass, vorwaerts=True,
     return auftraege
 
 
+def auftraege_und_nachladen(eintraege, mitte, kastenmass, vorwaerts=True,
+                            voraus=20, zurueck=6, zwischendurch=None):
+    """Beide Listen aus auftraege_bauen() in EINEM Durchgang (Build 322):
+    (was zu rechnen ist, was schon auf der Karte liegt).
+
+    WARUM: _prewarm_anstossen() in frontend.py hat auftraege_bauen()
+    je Kastengroesse ZWEIMAL gerufen - einmal fuer das Fehlende, einmal
+    mit schon_da=True fuer den Nachlade-Faden. Beide Male mit derselben
+    Reihenfolge, demselben kastenmass() (Cover-Pfad, Kastengroesse,
+    Schluessel der Miniatur - auf dem Geraet ein paar Millisekunden je
+    Eintrag) und demselben Blick auf die Karte. Im Coverflow sind das
+    drei Kastengroessen, also sechs Durchgaenge. Im Log vom 14.11. steht
+    dazu: "laengste Leerlauf-Arbeit davor: Vorauslader 462 ms" - auf dem
+    Hauptfaden, in einem Stueck.
+
+    Das Ergebnis ist dasselbe wie zwei Aufrufe von auftraege_bauen()
+    (tools/test_vorauslader_einmal.py prueft genau das); nur jeder
+    Eintrag wird einmal angesehen.
+
+    zwischendurch() wird alle acht Eintraege gerufen und darf
+    abbrechen (Ausnahme werfen) - dann kommt zurueck, was bis dahin
+    feststand."""
+    fehlen, da = [], []
+    if not eintraege:
+        return fehlen, da
+    n = len(eintraege)
+    d = 1 if vorwaerts else -1
+    reihenfolge = [mitte + i * d for i in range(1, voraus + 1)]
+    reihenfolge += [mitte - i * d for i in range(1, zurueck + 1)]
+    gesehen = set()
+    k = 0
+    for idx in reihenfolge:
+        if idx < 0 or idx >= n or idx in gesehen:
+            continue
+        gesehen.add(idx)
+        k += 1
+        if zwischendurch is not None and not k % 8:
+            try:
+                zwischendurch()
+            except Exception:                        # noqa: BLE001
+                break
+        try:
+            mass = kastenmass(eintraege[idx])
+        except Exception:                            # noqa: BLE001
+            continue
+        if not mass:
+            continue
+        pfad, bw, bh = mass
+        if not pfad or bw <= 0 or bh <= 0:
+            continue
+        if thumb_cache_has(pfad, bw, bh):
+            da.append((pfad, bw, bh))
+        else:
+            fehlen.append((pfad, bw, bh))
+    return fehlen, da
+
+
 class Doppelkern(object):
     """Ein zweiter Arbeitsprozess, ausschliesslich fuer "Miniaturen
     vorbereiten" (Build 128).

@@ -84,7 +84,12 @@ import zlib
 # und die Uhr der Zeitstempel, und L.4 zaehlt die Pausen ab ihrem
 # BEGINN. Die Zahlen in L.1b sind deshalb mit Bericht 21 nicht
 # vergleichbar.
-BENCH_VERSION = 22
+# 23 ab Build 322: die Eingabegeraete bestellen beim Kernel nur noch
+# die Achsen, die das Frontend auswertet (EVIOCSMASK) - beim Pro
+# Controller fallen RX und RY weg. L.1b zeigt deshalb rund 40 % weniger
+# Ereignisse, ohne dass sich am Pad etwas geaendert hat; L nennt die
+# Maske in einer eigenen Zeile.
+BENCH_VERSION = 23
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -3377,6 +3382,12 @@ def _abschnitt_l(b, fe, S, A, fm):
     _mono = sum(1 for d in geraete if getattr(d, "uhr_monoton", False))
     b("   Zeitstempel auf monotoner Uhr             %d von %d"
       % (_mono, len(geraete)))
+    # Build 322: hat der Kernel die ungenutzten Achsen abbestellt
+    # bekommen (EVIOCSMASK)? Nur Geraete mit Achsen zaehlen.
+    _mit_achsen = [d for d in geraete if getattr(d, "axis", None)]
+    b("   Nur genutzte Achsen bestellt (Maske)      %d von %d"
+      % (sum(1 for d in _mit_achsen if getattr(d, "maske_gesetzt", False)),
+         len(_mit_achsen)))
     _sd = dict(getattr(inp, "syn_dropped", None) or {})
     b("   Vom Kernel verworfen (SYN_DROPPED)        %d"
       % sum(_sd.values()))

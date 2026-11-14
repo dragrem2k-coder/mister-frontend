@@ -10376,3 +10376,126 @@ bei ihm wirklich verworfen hat, sagt ab diesem Build das Log
 * **geaendert** `tools/test_vorladen_richtung.py` - prueft den Aufruf
   `_art_index(ART_BASE, _syskey` ohne das neue dritte Argument
   festzuschreiben (die Zusage „im Faden" ist dieselbe).
+
+## Nachtrag Build 322 - der Waechter fuer das Pad
+
+**Stand:** 14.11.2026, `Dragend_Build_322.zip` (build_id
+`2026-11-14-322`). Bench-Fassung 23. C-Bibliothek unveraendert
+(Fassung 8).
+
+Er hat Bench 22 und das Log nach einem Kaltstart geschickt, dazu die
+Frage: *„kann es sein das bei denn miniaturen die neuen hdmi ansichten
+nicht mit vorbereitet werden?"*
+
+### Was das Log zeigt - der Schluss aus Build 321 ist bestaetigt
+
+```
+EINGABE: der Kernel hat ungelesene Ereignisse von /dev/input/event3
+'Nintendo Co., Ltd. Pro Controller' verworfen (SYN_DROPPED, 1. Mal,
+8.9 s nach dem Start)
+```
+
+Sechsmal in 67 Sekunden (8,9 / 19,5 / 33,1 / 35,4 / 51,8 / 66,8 s).
+Daneben:
+
+```
+EINGABE-STAU: down lag  742 ms ... laengste Leerlauf-Arbeit davor: Warmlauf 55 ms
+EINGABE-STAU: down lag  488 ms ... Vorauslader 462 ms
+EINGABE-STAU: back lag  591 ms ... Vorauslader 226 ms
+EINGABE-STAU: down lag 1408 ms ... Warmlauf 303 ms
+```
+
+Zwei Befunde: der Ueberlauf ist echt, und die laengste Leerlauf-Arbeit
+erklaert die Wartezeit nur zum Teil. Die Hauptschleife ist an mehreren
+Stellen laenger als eine halbe Sekunde ohne Blick auf das Pad.
+
+### Was Bench 22 zeigt
+
+* **L.4:** „Pausen NACH 40 gehaltenen Schritten 1", „Arbeiter pausiert
+  gerade: ja, seit 1904 ms". Die Pause aus Build 301 greift; die „0" in
+  Bericht 21 war der Messfehler, den Build 321 behoben hat.
+* **L.1b, jetzt richtig gezaehlt:** event3 = 162 Ereignisse je Sekunde
+  in Ruhe - SYN 33, ABS X 32, ABS Y 32, ABS RX 32, ABS RY 32. RX/RY ist
+  der rechte Stick.
+* **P:** Vorarbeit nach dem Start zusammen 7,8 s (ARCADE allein 2,2 s,
+  PSX 1,3 s); vergleichsname neu 0,043 statt 0,098 ms je Aufruf (Faktor
+  2,3), gleiches Ergebnis bei allen 2000 Namen. **Laengster Happen
+  452 ms** (Genesis) - das ist kein Python, sondern ein `os.listdir()`
+  auf einem kalten Ordner der fremden Datenbank: ein einzelner Aufruf,
+  der sich nicht zerteilen laesst.
+* **O:** 51 statt 78 ms je Schritt, 3 von 23 ohne Cover, im alten Tempo
+  1 von 23.
+
+### Was Build 322 aendert
+
+1. **Der Eingabe-Waechter** (`fe/input.py`: `wache_starten`,
+   `_wache_schleife`). Ein Faden, der alle 0,1 s nachsieht, ob die
+   Hauptschleife das Pad seit 0,1 s nicht gelesen hat, und es dann mit
+   `abholen()` in den Puffer holt. Er wertet nichts aus.
+   Alle Lesewege (`read_action`, `abholen`, `eingabe_anstehend`,
+   `rescan`, `read_raw_key`, `wait_game_exit`, `flush`) laufen unter
+   einer gemeinsamen Sperre (`_mit_lesesperre`, RLock); der Waechter
+   nimmt sie nur ohne Warten. Damit liest immer genau einer, und die
+   Reihenfolge im Puffer ist die Lesereihenfolge. `wait_game_exit()`
+   haelt die Sperre waehrend des ganzen Spiels - dann ruht der Waechter,
+   und die Exit-Kombination bekommt jedes Ereignis.
+   Gestartet in `run()` vor der Schleife, gestoppt als Erstes im
+   `finally`. Der Bench startet ihn nicht (er ruft `run()` nicht auf).
+   **Warum kein Signal (SIGALRM):** das waere ohne Sperre gegangen, aber
+   jeder blockierende Aufruf des Prozesses haette EINTR bekommen koennen
+   - und `wait_vsync()` in `fe/framebuffer.py` schaltet bei einem
+   einzigen `OSError` das Warten auf den Bildwechsel fuer immer ab.
+2. **EVIOCSMASK.** Jedes Geraet mit Achsen bestellt beim Kernel nur die
+   Achsen aus `Device.axis` (X, Y, HAT0X, HAT0Y, Z, RZ). Beim Pro
+   Controller fallen RX/RY weg - rund 40 % weniger Ereignisse. Gilt nur
+   fuer unseren Dateigriff; ein Kernel ohne den Aufruf aendert nichts.
+3. **Der Vorauslader auf dem Hauptfaden** (`_prewarm_anstossen`): ein
+   Durchgang je Kasten statt zwei (`auftraege_und_nachladen` in
+   `fe/prewarm.py`, dasselbe Ergebnis wie zwei Aufrufe von
+   `auftraege_bauen`), und alle acht Eintraege wird nachgesehen, ob eine
+   Eingabe ansteht.
+4. **EINGABE-STAU nennt jetzt auch die vorige Aktion** und wie lange sie
+   gebraucht hat - die Luecke aus „742 ms gewartet, Warmlauf 55 ms".
+5. **„Miniaturen vorbereiten" und der Coverflow** - seine Frage war
+   berechtigt: bisher nur, wenn er die Vorgabe war. Jetzt auch, wenn er
+   seit dem Start in einer Kategorie benutzt wurde
+   (`vorbereitungs_kaesten`). Wer ihn nie benutzt, zahlt weiter keinen
+   Platz im Zwischenspeicher. Die neuen Hauptseiten (Kachelwand,
+   Dashboard, Karussell) brauchen keine Spiele-Cover, nur die
+   Kategorie-Abzeichen - die bereitet der Vorauslader fuer die Ansicht
+   vor, die gerade eingestellt ist.
+
+### Ehrlich dazu
+
+* Der Waechter verhindert, dass Eingaben **verloren** gehen. Dass ein
+  Druck **wartet**, solange die Hauptschleife zeichnet, verhindert er
+  nicht - ausgewertet wird weiter nur dort. Wie lange das ist, sagt die
+  EINGABE-STAU-Zeile jetzt mit beiden Haelften.
+* `os.listdir()` auf kalten Ordnern (P: bis 452 ms) bleibt ein Stueck am
+  Stueck, wenn es auf dem Hauptfaden passiert. Mit dem Waechter geht
+  dabei nichts mehr verloren.
+
+### Worauf beim naechsten Log und Bench zu achten ist
+
+* `grep -E "SYN_DROPPED|EINGABE-STAU|Waechter|RUCKLER" /tmp/frontend.log`
+  nach einem Kaltstart: **SYN_DROPPED darf nicht mehr vorkommen.**
+  „Eingabe-Waechter gestartet" muss einmal dastehen.
+* Bench L: „Nur genutzte Achsen bestellt (Maske) 1 von 1" (ggf. mehr),
+  L.1b ohne ABS RX/RY.
+
+### Pruefungen
+
+* **neu** `tools/test_eingabe_waechter.py` - echter Faden, echte Pipes:
+  er holt ab, wenn die Hauptschleife anhaelt (Gegenprobe ohne
+  Waechter), wertet nichts aus, die Reihenfolge stimmt auch gemischt,
+  er liest nicht, solange jemand die Sperre haelt, nicht, wenn die
+  Hauptschleife regelmaessig liest; alle sieben Lesewege unter der
+  Sperre; Start/Stopp nur aus `run()`; EVIOCSMASK (Nummer aus der
+  Formel, Bitmaske genau X/Y/Z/RZ/HAT0X/HAT0Y, Fallback ohne Kernel).
+* **neu** `tools/test_vorauslader_einmal.py` - 400 Zufallslisten gegen
+  zwei Aufrufe von `auftraege_bauen`, je Eintrag einmal statt zweimal,
+  Abbruch liefert den Anfang, `_prewarm_anstossen` von der anderen
+  Seite (Liste und Coverflow), Coverflow in `vorbereitungs_kaesten`
+  nur wenn benutzt (Gegenprobe).
+* **geaendert** `tools/test_ansichten.py` - prueft die Gegenliste fuer
+  den Lader ohne das alte `schon_da=True` im Frontend festzuschreiben.

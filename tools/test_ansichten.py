@@ -764,8 +764,16 @@ quelle_pw = open(os.path.join(_REPO, "frontend", "fe", "prewarm.py"),
 check("auftraege_bauen() kann die Gegenliste",
       "schon_da=False" in quelle_pw
       and "thumb_cache_has(pfad, bw, bh) != schon_da" in quelle_pw)
+# Build 322: seit _prewarm_anstossen() beide Listen in EINEM Durchgang
+# holt (auftraege_und_nachladen in fe/prewarm.py), steht "schon_da=True"
+# dort nicht mehr - die Gegenliste ist dieselbe, nur ohne zweiten Blick
+# auf jeden Eintrag. tools/test_vorauslader_einmal.py prueft, dass sie
+# gleich ist.
 check("und das Frontend fuettert den Lader damit",
-      "schon_da=True" in quelle and "self.lader.uebergeben(" in quelle)
+      ("schon_da=True" in quelle
+       or ("auftraege_und_nachladen(" in quelle
+           and "def auftraege_und_nachladen(" in quelle_pw))
+      and "self.lader.uebergeben(" in quelle)
 check("jede Eingabe bricht ihn ab", "self.lader.abbrechen()" in quelle)
 check("und der Spielstart raeumt ihn ab",
       quelle.count("self.lader.beenden()") >= 2)
