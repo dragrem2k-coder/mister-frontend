@@ -2121,6 +2121,21 @@ slowed down. Which devices were skipped is written to
 section L. If a pad stops responding altogether after the update, it
 will be listed there — please report exactly that line.
 
+**No more swallowed key presses after startup (since build 321).** In
+the first seconds after startup the frontend prepares the cover
+directories of every system in the background. Up to build 320 a piece
+of that work, once started, ran to completion — a key press that fell
+into it had to wait, and nobody read the pad in the meantime. If a
+pad's queue in the kernel overflows during that time, the kernel throws
+away everything unread, presses and releases alike. That was "the
+first seconds feel frozen, inputs get skipped". Now the preparation
+pauses every few milliseconds and stops as soon as you press; the pad
+keeps being read meanwhile; and should the kernel still drop something,
+the frontend re-reads the real state of buttons and d-pad instead of
+getting stuck. Every such case is written to `/tmp/frontend.log`
+("SYN_DROPPED"), and so is every press that had to wait noticeably
+("EINGABE-STAU", with seconds since startup).
+
 ## 11. Boot animation (startup video)
 
 A small image sequence that is played once per MiSTer boot before the
@@ -2520,7 +2535,7 @@ The frontend is normally started without options (autostart, or
 | Option | What it does |
 |---|---|
 | `--show` | Says **what is installed, how it is configured and how fast it runs** — on screen and additionally as a file in `/tmp/dragend_show.txt`. The fastest way to report a state without hunting over SSH |
-| `--bench` | A **fixed, repeatable measurement** across all drawing paths; report on screen and in `/tmp/dragend_bench.txt`. Since build 308 the bench **presses keys itself** (section M): 5 to 8 taps up/down, alternating, through the very same input path a real pad uses — so what happens during fast tapping is on record. Since build 319 it measures **every view** (six on the main page, four in the game list) and reports, next to the mean, the **median, the slowest step and the number of full-screen flips** per view — so a single hitch no longer vanishes in the average. Since build 320 section L lists every input device **by name** (including skipped motion sensors), section N measures **garbage collection** and section O the **list view with covers while the key is held** — before versus now. It deliberately touches **nothing** on the SD card |
+| `--bench` | A **fixed, repeatable measurement** across all drawing paths; report on screen and in `/tmp/dragend_bench.txt`. Since build 308 the bench **presses keys itself** (section M): 5 to 8 taps up/down, alternating, through the very same input path a real pad uses — so what happens during fast tapping is on record. Since build 319 it measures **every view** (six on the main page, four in the game list) and reports, next to the mean, the **median, the slowest step and the number of full-screen flips** per view — so a single hitch no longer vanishes in the average. Since build 320 section L lists every input device **by name** (including skipped motion sensors), section N measures **garbage collection** and section O the **list view with covers while the key is held** — before versus now. Since build 321 section P measures the **preparation work after startup** (how long a press falling into it waits at most), and section L counts how often the kernel **dropped** input. It deliberately touches **nothing** on the SD card |
 | `--demo` | **Four minutes of guided tour**, played through by itself: the three views on the main page and the game list, the five settings groups — and since Build 262 the **real screens**: search, context menu, random pick with its draw, trophy room, milestones, top 10, year review, diary, help and the CRT test pattern. Any key aborts |
 | `--help` | This list. The check runs **before** everything else: a typo gets you three lines and nothing more — no half start, no lock left behind |
 

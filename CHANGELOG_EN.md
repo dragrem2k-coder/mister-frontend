@@ -13,6 +13,41 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.0 — not released yet
 
+- **Fixed: swallowed key presses in the first seconds after startup.**
+  After startup the frontend prepares the cover directories of every
+  system — in the idle loop and in a background thread. A piece of
+  that work, once started, ran to completion (by its own measurement
+  three directories at roughly 167 ms), and nobody read the pad in the
+  meantime. If the pad's queue in the kernel overflows during that
+  time, the kernel throws away *everything* unread — presses and
+  releases. If only the release of a direction got lost, the same
+  press afterwards did nothing at all until you let go once: the
+  "frozen" feeling. Three countermeasures: the preparation pauses every
+  128 names and stops as soon as you press; the pad keeps being read
+  during startup and long work; and if the kernel still drops something
+  (SYN_DROPPED), the frontend re-reads the real state of buttons, d-pad
+  and Select (build 321).
+- **New in the log: how long a press had to wait.** The pad's
+  timestamps now run on the same clock as the frontend, so it is known
+  how long a press sat unread in the kernel — a time no measurement
+  contained so far. From 150 ms there is an "EINGABE-STAU" line with
+  seconds since startup and the longest work before it. *The LATENZ
+  numbers in the log include this wait from now on and are not
+  comparable with older logs* (build 321).
+- **Leaner: the cover name comparison.** The function that maps
+  "(U) [!]" and "(USA)" to the same name ran character by character in
+  Python — for every file while building a directory. Now with regular
+  expressions; checked against the old version on 400,000 names, the
+  result is identical character for character (build 321).
+- **Bench 22: two measuring errors fixed, one section added.** L.1b
+  counted events with the size of a 64-bit machine (24 instead of 16
+  bytes) — a third too few; now correct, for one second and split by
+  type (which axis is noisy?). L.4 counted a pause of the writer thread
+  only at its *end* and read the counter in the middle of the pause —
+  hence the "0 pauses" in your report of 14 Nov. New: **P** measures
+  the preparation work after startup per system and how long a press
+  now waits at most; L counts SYN_DROPPED (build 321).
+
 - **Fixed: sluggish pad input — the motion sensor was being read.**
   Many pads show up on the MiSTer as *two* devices: the pad itself
   and its motion sensor. Your bench of 13 Nov shows exactly that: one

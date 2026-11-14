@@ -396,7 +396,12 @@ print("Test 8: Abschnitt M ist eingetragen und raeumt wieder auf")
 _lauf = nur_code(koerper(_quelle, "lauf"))
 check("lauf() ruft _abschnitt_m()", "_abschnitt_m(" in _lauf)
 check("mit eigenem Fangnetz", "ABSCHNITT M ABGEBROCHEN" in _lauf)
-check("BENCH_VERSION ist 21", FB.BENCH_VERSION == 21,
+# Build 321: "mindestens" statt "genau" - eine Gleichheit hier muss bei
+# jeder neuen Bench-Fassung von Hand nachgezogen werden, und eine Zahl,
+# die man jedes Mal hochsetzt, setzt man irgendwann ohne Nachdenken
+# hoch. Was dieser Test sichern will, ist, dass die Nummer mit Abschnitt
+# M mitgewachsen ist (Fassung 15 und spaeter).
+check("BENCH_VERSION ist mindestens 22", FB.BENCH_VERSION >= 22,
       "%d" % FB.BENCH_VERSION)
 # Der Zustand MUSS im finally zurueckgehen, nicht am Ende des
 # Erfolgswegs: bricht ein Durchgang ab, liefe das Frontend sonst mit

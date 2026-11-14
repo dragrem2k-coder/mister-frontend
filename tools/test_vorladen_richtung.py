@@ -191,8 +191,11 @@ check("stattdessen werden sie beim Start vorgemerkt",
 # Thread: os.listdir() wartet auf die SD-Karte und gibt die GIL dabei
 # frei. Ein Prozess braechte dort nichts - was warm wird, ist der
 # Verzeichnis-Cache des Betriebssystems, und den teilen sich alle.
+# Build 321: der Aufruf hat ein drittes Argument bekommen (der Faden
+# haelt mittendrin an, siehe _faden_innehalten). Geprueft wird deshalb
+# der Anfang des Aufrufs - die Zusage "im Thread" ist dieselbe.
 check("das Einlesen der Cover-Ordner bleibt im Thread",
-      "_art_index(ART_BASE, _syskey)" in QUELLE
+      "_art_index(ART_BASE, _syskey" in QUELLE
       and "threading.Thread(target=_prewarm_art_dirs" in QUELLE)
 # Und die erste sichtbare Kategorie bleibt synchron - ein
 # Hintergrund-Arbeiter verliert dieses Rennen nachweislich.

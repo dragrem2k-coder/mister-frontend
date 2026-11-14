@@ -2667,6 +2667,17 @@ SCHREIB_PAUSE_MAX = 3.0
 # wurde. Eine Zahl, die man nicht abfragen kann, ist eine Behauptung.
 _schreib_pausen = 0
 _schreib_pause_zeit = 0.0
+# BUILD 321: seit wann die LAUFENDE Pause dauert (None = keine).
+#
+# Bis Build 320 wurde eine Pause erst gezaehlt, wenn sie ENDETE. Der
+# Bench (Abschnitt L.4) haelt die Taste 40 Schritte lang - bei 38 ms je
+# Schritt sind das 1,5 Sekunden, und die Pause endet erst, wenn die
+# Taste los ist oder nach SCHREIB_PAUSE_MAX (3 s). Abgelesen wurde also
+# MITTEN in der Pause, und dort stand 0. Sein Bericht vom 14.11. sagte
+# deshalb "der Arbeiter hat trotzdem NICHT pausiert" - wahrscheinlich
+# zu Unrecht. Jetzt wird beim BEGINN gezaehlt, und die laufende Pause
+# ist abfragbar.
+_schreib_pause_seit = None
 
 
 def _navigation_aktiv():
@@ -2682,8 +2693,19 @@ def _navigation_aktiv():
 
 
 def schreib_pausen_stand():
-    """(Anzahl, Sekunden) der Pausen des Schreib-Arbeiters."""
+    """(Anzahl, Sekunden) der Pausen des Schreib-Arbeiters. Die Anzahl
+    zaehlt seit Build 321 BEGONNENE Pausen, die Sekunden nur beendete -
+    siehe _schreib_pause_seit."""
     return _schreib_pausen, _schreib_pause_zeit
+
+
+def schreib_pause_laeuft():
+    """Sekunden, die die laufende Pause schon dauert - oder None, wenn
+    der Arbeiter gerade nicht pausiert (Build 321)."""
+    seit = _schreib_pause_seit
+    if seit is None:
+        return None
+    return max(0.0, time.monotonic() - seit)
 _schreib_bytes = 0
 _schreib_faden = None
 # Build 293: Schluessel -> Auftrag, fuer das Zusammenfassen gleicher
@@ -2743,7 +2765,7 @@ def _schreib_arbeiter():
     Arbeiten nicht. Wer gleich wieder gebraucht wird, ist der, den der
     Nutzer eben gesehen hat - nicht der von vor zwanzig Schritten."""
     global _schreib_bytes, _schreib_erledigt
-    global _schreib_pausen, _schreib_pause_zeit
+    global _schreib_pausen, _schreib_pause_zeit, _schreib_pause_seit
     while True:
         with _schreib_lock:
             while not _schreib_queue:
@@ -2759,11 +2781,16 @@ def _schreib_arbeiter():
             # nach dem Loslassen lange dauern.
             if _navigation_aktiv():
                 _pause_start = time.monotonic()
-                while (_navigation_aktiv() and _schreib_queue
-                       and time.monotonic() - _pause_start
-                       < SCHREIB_PAUSE_MAX):
-                    _schreib_lock.wait(SCHREIB_PAUSE_TAKT)
+                # Build 321: beim BEGINN zaehlen - siehe _schreib_pause_seit.
                 _schreib_pausen += 1
+                _schreib_pause_seit = _pause_start
+                try:
+                    while (_navigation_aktiv() and _schreib_queue
+                           and time.monotonic() - _pause_start
+                           < SCHREIB_PAUSE_MAX):
+                        _schreib_lock.wait(SCHREIB_PAUSE_TAKT)
+                finally:
+                    _schreib_pause_seit = None
                 _schreib_pause_zeit += time.monotonic() - _pause_start
             # WAEHREND DER PAUSE KANN DIE SCHLANGE LEER GEWORDEN SEIN -
             # thumb_schreib_leeren() und das Zusammenfassen gleicher
@@ -4642,6 +4669,56 @@ def vergleichsname(base):
     Cover der falschen Region ist besser als gar keins. Voellig
     verschiedene Spiele treffen sich dabei nicht: "Super Mario 64"
     und "Super Mario World" bleiben verschieden."""
+    # BUILD 321: OHNE SCHLEIFE IN PYTHON. Hier stand eine Schleife ueber
+    # jedes einzelne Zeichen (sie steht unten als
+    # vergleichsname_zeichenweise() und ist der Massstab, gegen den
+    # tools/test_vergleichsname.py diese Fassung Zeichen fuer Zeichen
+    # prueft). Gerufen wird die Funktion beim Bau JEDES
+    # Namensverzeichnisses fuer JEDE Datei - und die werden in den
+    # ersten Sekunden nach dem Start gebaut, genau waehrend jemand das
+    # Menue zum ersten Mal bedient (siehe Build 107 und Build 321).
+    #
+    # Dieselbe Regel, nur von C-Code ausgefuehrt:
+    #   1. Klammerpaare von innen nach aussen herausnehmen - jede Art
+    #      schliesst jede Art, genau wie der Zaehler "tief" es tat.
+    #   2. Bleibt eine oeffnende Klammer ohne Gegenstueck, faellt alles
+    #      ab ihr weg (der Zaehler kam dort nie mehr auf null).
+    #   3. Nur Buchstaben und Ziffern, gross geschrieben. Bei reinem
+    #      ASCII ueber eine Loeschtabelle, sonst ueber str.isalnum -
+    #      dieselbe Pruefung, die die Schleife je Zeichen machte.
+    s = base
+    if "(" in s or "[" in s or "{" in s:
+        while True:
+            s = _VN_PAAR.sub("", s)
+            if "(" not in s and "[" not in s and "{" not in s:
+                break
+            m = _VN_AUF.search(s)
+            if _VN_ZU.search(s, m.start()) is None:
+                s = s[:m.start()]
+                break
+    if s.isascii():
+        return s.translate(_VN_ASCII_WEG).upper()
+    return "".join(filter(str.isalnum, s)).upper()
+
+
+# Zu vergleichsname() (Build 321): ein Klammerpaar OHNE weitere Klammer
+# darin, die erste oeffnende, irgendeine schliessende, und die
+# Loeschtabelle fuer alles in ASCII, was kein Buchstabe und keine Ziffer
+# ist.
+_VN_PAAR = re.compile(r"[(\[{][^(\[{)\]}]*[)\]}]")
+_VN_AUF = re.compile(r"[(\[{]")
+_VN_ZU = re.compile(r"[)\]}]")
+_VN_ASCII_WEG = {_i: None for _i in range(128) if not chr(_i).isalnum()}
+
+
+def vergleichsname_zeichenweise(base):
+    """Die Fassung von vergleichsname() bis Build 320 - Zeichen fuer
+    Zeichen in Python.
+
+    BLEIBT STEHEN ALS MASSSTAB, nicht als Ausweichweg: der Test
+    vergleicht die neue Fassung an Hunderttausenden Namen gegen diese,
+    und der Bench (Abschnitt P) misst auf dem Geraet, was der Wechsel
+    je Aufruf gebracht hat. Gerufen wird sie im Betrieb nirgends."""
     aus = []
     tief = 0
     for c in base:
@@ -4704,7 +4781,65 @@ def vergleichsname_gemerkt(base):
     return v
 
 
-def _index_ergaenzen(idx, namen, wert_fn):
+class IndexUnterbrochen(Exception):
+    """Ein Namensverzeichnis wurde mittendrin abgebrochen (Build 321).
+
+    Geworfen von dem zwischendurch-Aufruf, den _art_index(),
+    _docs_index() und index_warmlaufen() alle INDEX_HAPPEN Namen
+    machen. Das halbe Verzeichnis wird dann NICHT gespeichert - beim
+    naechsten Mal faengt es von vorn an. Ein halbes Verzeichnis im
+    Zwischenspeicher waere schlimmer als gar keins: es wuerde Cover
+    "nicht finden", die da sind, und zwar fuer den Rest der Sitzung."""
+
+
+# Alle wieviel Namen ein Namensverzeichnis innehaelt (Build 321). Auf
+# dem Geraet kostet ein Name im Aufbau grob 0,05 bis 0,2 ms - ein Happen
+# ist damit wenige bis gut zwanzig Millisekunden lang. So lange wartet
+# ein Tastendruck hoechstens, wenn er mitten in die Vorarbeit faellt;
+# vorher war es das ganze Verzeichnis (Build 295: "ein Durchlauf kostet
+# rund 167 ms", ein Tick drei davon).
+INDEX_HAPPEN = 128
+
+
+# Was ein Namensverzeichnis zwischendurch tut, wenn der Aufrufer NICHTS
+# uebergeben hat (Build 321) - von frontend.py gesetzt auf
+# InputManager.abholen. Das ist der Zeichenweg, der ein Verzeichnis
+# sofort braucht (erstes Betreten einer gemischten Kategorie: laut
+# index_warmlaufen() bis zu zehn Verzeichnisse, rund 1,7 s). Abbrechen
+# darf er nicht - aber das Pad abholen, damit der Kernel in dieser Zeit
+# nichts wegwirft. NUR auf dem Hauptfaden: abholen() fasst den Puffer
+# von read_action() an (siehe dort).
+INDEX_ABHOLER = [None]
+
+
+def _zwischendurch_oder_abholen(zwischendurch):
+    if zwischendurch is not None:
+        return zwischendurch
+    abholer = INDEX_ABHOLER[0]
+    if abholer is None:
+        return None
+    if threading.current_thread() is not threading.main_thread():
+        return None
+    return abholer
+
+
+def _happenweise(namen, zwischendurch):
+    """namen durchgehen und alle INDEX_HAPPEN Stueck zwischendurch()
+    rufen. Ohne zwischendurch genau die Liste selbst - der Zeichenweg,
+    der ein Verzeichnis SOFORT braucht, zahlt nichts dafuer."""
+    if zwischendurch is None:
+        return namen
+    return _happen_gen(namen, zwischendurch)
+
+
+def _happen_gen(namen, zwischendurch):
+    for i, n in enumerate(namen):
+        if i and not i % INDEX_HAPPEN:
+            zwischendurch()
+        yield n
+
+
+def _index_ergaenzen(idx, namen, wert_fn, zwischendurch=None):
     """Die zwei Ausweich-Schreibweisen als LUECKENFUELLER nachtragen:
     erst ohne fuehrende Nummer, dann der Vergleichsname.
 
@@ -4714,19 +4849,20 @@ def _index_ergaenzen(idx, namen, wert_fn):
     durch und mal trifft das eine, mal das andere Cover. Aus demselben
     Grund werden die Namen vorher sortiert: bei zwei Dateien, die
     denselben Vergleichsnamen ergeben, soll immer dieselbe gewinnen."""
-    for fn in sorted(namen):
+    sortiert = sorted(namen)
+    for fn in _happenweise(sortiert, zwischendurch):
         base = fn.rsplit(".", 1)[0]
         ohne = _ohne_fuehrende_nummer(base)
         if ohne != base and ohne not in idx:
             idx[ohne] = wert_fn(fn)
-    for fn in sorted(namen):
+    for fn in _happenweise(sortiert, zwischendurch):
         base = fn.rsplit(".", 1)[0]
         knapp = vergleichsname(base)
         if knapp and knapp not in idx:
             idx[knapp] = wert_fn(fn)
 
 
-def _art_index(base_dir, syskey):
+def _art_index(base_dir, syskey, zwischendurch=None):
     """Index fuer <base_dir>/<syskey>: Dateiname OHNE ".art" (exakt
     UND ohne fuehrende "NNN "-Nummer) -> tatsaechlicher Dateiname.
     Ermoeglicht sowohl den direkten Treffer als auch Cover aus
@@ -4770,6 +4906,7 @@ def _art_index(base_dir, syskey):
     key = (base_dir, syskey)
     idx = _art_index_cache.get(key)
     if idx is None:
+        zwischendurch = _zwischendurch_oder_abholen(zwischendurch)
         idx = {}
         try:
             # GEAENDERT (Build 119): auch PNG und JPG zaehlen als Cover.
@@ -4803,11 +4940,14 @@ def _art_index(base_dir, syskey):
             _png = sorted(fn for fn in alle
                           if fn.rsplit(".", 1)[-1].lower() == "png")
             fremde = _jpeg + _png
-            for fn in names:
+            if zwischendurch is not None:
+                zwischendurch()
+            for fn in _happenweise(names, zwischendurch):
                 idx[fn[:-4]] = fn
-            for fn in fremde:
+            for fn in _happenweise(fremde, zwischendurch):
                 idx.setdefault(fn.rsplit(".", 1)[0], fn)
-            _index_ergaenzen(idx, names + fremde, lambda fn: fn)
+            _index_ergaenzen(idx, names + fremde, lambda fn: fn,
+                             zwischendurch)
         except OSError:
             pass
         # BUILD 298: der Ordner wird vermerkt, AUCH wenn das listdir
@@ -5235,7 +5375,7 @@ def _docs_ordner_alle(syskey):
     return treffer
 
 
-def _docs_index(syskey, bildart="boxart"):
+def _docs_index(syskey, bildart="boxart", zwischendurch=None):
     """{ROM-Name ohne Endung: voller Bildpfad} fuer ein System.
 
     Aufgebaut nach demselben Muster wie _art_index(): ein os.listdir()
@@ -5265,6 +5405,7 @@ def _docs_index(syskey, bildart="boxart"):
     idx = _docs_index_cache.get(schluessel)
     if idx is not None:
         return idx
+    zwischendurch = _zwischendurch_oder_abholen(zwischendurch)
     idx = {}
     # ERWEITERT (Build 120): mehrere Wurzeln, mehrere Unterordner. Der
     # erste Fund gewinnt - deshalb ergaenzen weitere Pakete nur, was das
@@ -5287,10 +5428,13 @@ def _docs_index(syskey, bildart="boxart"):
                 continue
             if not namen:
                 continue
-            for fn in namen:
+            if zwischendurch is not None:
+                zwischendurch()
+            for fn in _happenweise(namen, zwischendurch):
                 idx.setdefault(fn.rsplit(".", 1)[0], os.path.join(ordner, fn))
             _index_ergaenzen(idx, namen,
-                             lambda fn, _o=ordner: os.path.join(_o, fn))
+                             lambda fn, _o=ordner: os.path.join(_o, fn),
+                             zwischendurch)
     _docs_index_cache[schluessel] = idx
     return idx
 
@@ -5337,7 +5481,7 @@ def index_warm_offen(syskeys):
     return offen
 
 
-def index_warmlaufen(syskeys, hoechstens=1):
+def index_warmlaufen(syskeys, hoechstens=1, zwischendurch=None):
     """Die Namensverzeichnisse fuer bis zu "hoechstens" Systeme JETZT
     aufbauen. Liefert die Zahl der tatsaechlich aufgebauten Systeme.
 
@@ -5416,6 +5560,24 @@ def index_warmlaufen(syskeys, hoechstens=1):
     GEZAEHLT WIRD JETZT ARBEIT, NICHT SYSTEME: 'hoechstens' meint ein
     Stueck Vorarbeit. Fuer die blockierende Gruppe ist das genau ein
     System (wie vorher), fuer die Extras genau ein Verzeichnis.
+
+    BUILD 321 - EIN BEGONNENER TICK LAEUFT NICHT MEHR DURCH.
+
+    Der Absatz darueber nennt die Grenze selbst: "Der Tick laeuft zwar
+    nur im Stillstand - aber ein BEGONNENER Tick laeuft durch." Drei
+    Verzeichnisse zu rund 167 ms sind eine halbe Sekunde. Faellt ein
+    Tastendruck hinein, wartet er so lange - und waehrenddessen liest
+    niemand das Pad, dessen Warteschlange im Kernel bei einem Pro
+    Controller nach gut einer Sekunde Rauschen ueberlaeuft (dann wirft
+    der Kernel ALLES Ungelesene weg, Druck und Loslassen eingeschlossen).
+    Das ist die Meldung vom 14.11.: "die ersten 10 sekunden das joypad
+    manchmal wie eingefroren ... eingaben uebersprungen".
+
+    zwischendurch wird alle INDEX_HAPPEN Namen gerufen. Die Hauptschleife
+    uebergibt dort eine Funktion, die das Pad abholt und bei einer
+    echten Eingabe IndexUnterbrochen wirft - dann endet der Tick sofort,
+    das halbe Verzeichnis wird verworfen und beim naechsten Ruhemoment
+    neu begonnen. Gezaehlt wird es dann NICHT als gebaut.
     """
     offen = index_warm_offen(syskeys)
     if not offen:
@@ -5429,16 +5591,24 @@ def index_warmlaufen(syskeys, hoechstens=1):
                 and all((w, sk) in _art_index_cache
                         for w in INDEX_WARM_WURZELN)):
             continue
+        _t0 = time.monotonic()
         try:
             for wurzel in INDEX_WARM_WURZELN:
-                _art_index(wurzel, sk)
-            _docs_index(sk, "boxart")
+                _art_index(wurzel, sk, zwischendurch)
+            _docs_index(sk, "boxart", zwischendurch)
+        except IndexUnterbrochen:
+            # Eine Taste kam - sofort zurueck, siehe Docstring.
+            return gebaut
         except Exception:                                # noqa: BLE001
             # Ein Warmlauf darf NIE etwas kaputtmachen, was ohne ihn
             # funktioniert haette - er ist reine Vorarbeit.
             pass
         gebaut += 1
-        LOG("Warmlauf: %s Cover-Index gebaut" % sk)
+        # Build 321: mit Dauer. Ohne sie stand im Log nur, DASS gebaut
+        # wurde - und genau die Frage "wie lange war das Pad dabei
+        # taub?" liess sich daraus nicht beantworten.
+        LOG("Warmlauf: %s Cover-Index gebaut (%.0f ms)"
+            % (sk, (time.monotonic() - _t0) * 1000.0))
     # DURCHGANG 2: was nur der Vermerk braucht, einzeln.
     for art in DOCS_BILDARTEN:
         if art == "boxart":
@@ -5448,12 +5618,16 @@ def index_warmlaufen(syskeys, hoechstens=1):
                 return gebaut
             if _docs_index_fertig(sk, art):
                 continue
+            _t0 = time.monotonic()
             try:
-                _docs_index(sk, art)
+                _docs_index(sk, art, zwischendurch)
+            except IndexUnterbrochen:
+                return gebaut
             except Exception:                            # noqa: BLE001
                 pass
             gebaut += 1
-            LOG("Warmlauf: %s %s-Index gebaut" % (sk, art))
+            LOG("Warmlauf: %s %s-Index gebaut (%.0f ms)"
+                % (sk, art, (time.monotonic() - _t0) * 1000.0))
     return gebaut
 
 

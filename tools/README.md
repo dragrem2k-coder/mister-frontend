@@ -10193,3 +10193,186 @@ die Runde gefallen sind.
 * **geaendert** `tools/test_bildlib.py` - Test 14: das JPEG-Auspacken
   gegen die alte Fassung, Byte fuer Byte, samt Gegenprobe (ein
   einziges falsches Deckkraft-Byte faellt auf).
+
+## Nachtrag Build 321 - die Schlange im Kernel, die keiner geleert hat
+
+**Stand:** 14.11.2026, `Dragend_Build_321.zip` (build_id
+`2026-11-14-321`). Bench-Fassung 22. C-Bibliothek unveraendert
+(Fassung 8).
+
+> *„was mich auch noch stoert, wenn ich denn mister anmache und das
+> frontend startet hab ich das gefuehl als wenn die ersten 10 sekunden
+> das joypad manchmal wie eingefroren ist ! und eingaben uebersprungen
+> oder nicht wahrgenommen werden! danach wirds dann besser"*
+
+Dazu kam sein Bench 21 (Build 320).
+
+### Was Bench 21 ueber Build 320 sagt
+
+* **Der Bewegungssensor ist bestaetigt, jetzt beim Namen:** Abschnitt L
+  listet `event4  Bewegungssensor  Nintendo Co., Ltd. Pro Controller
+  (IMU`. Der Schluss aus der Rate in Build 320 war richtig.
+* **Kachelwand:** voller Aufbau 243,56 -> 113,48 ms, je Schritt 29,26 ->
+  21,79 ms, karten 13,07 -> 5,90 ms, Zeiger neu 1,2 -> 0,0.
+* **Dashboard:** 43,55 -> 34,01 ms je Schritt, restore 12,49 -> 2,46 ms.
+* **Liste liste:** 111,98 -> 97,34 ms je Schritt, panel 65,48 -> 25,74 ms.
+* **Abschnitt O** (Taste gehalten, Cover an): wie bisher 65,84 ms /
+  Schritt, jetzt 45,49 ms (22 statt 15 Schritte je Sekunde), dabei
+  7 von 23 Schritten ohne Cover; im alten Tempo 1 von 23 - so wie
+  angekuendigt.
+* **Abschnitt N:** eine volle Speicherbereinigung kostet auf dem Geraet
+  **100 bis 120 ms** (eingefroren 0,01 ms) - aber in 120 Scrollschritten
+  lief keine einzige. Das Einfrieren ist also eine Absicherung, nicht
+  die Erklaerung fuer die Haenger beim Scrollen.
+* **Abschnitt L.4: wieder „0 Pausen".** Diesmal ein Messfehler, siehe
+  unten.
+
+### Die Ursache der Meldung - was belegt ist und was geschlossen
+
+**Belegt aus dem Code:**
+
+1. Jedes geoeffnete Eingabegeraet hat im Kernel eine Warteschlange
+   fester Groesse. Laeuft sie ueber, wirft der Kernel ALLES Ungelesene
+   weg und legt ein `SYN_DROPPED` hinein. `fe/input.py` hat das nicht
+   gekannt - es wurde wie ein gewoehnliches `EV_SYN` uebergangen.
+   Folgen: ein Druck ist weg („uebersprungen"); ist nur das LOSLASSEN
+   einer Richtung weg, steht `axis_state` weiter auf dieser Richtung,
+   und derselbe Druck danach ergibt KEINE Aktion, bis man einmal
+   loslaesst („eingefroren").
+2. Das Pad schickt auch in Ruhe einen stetigen Strom (Bench L.1b).
+3. In den ersten Sekunden baut das Frontend die Namensverzeichnisse der
+   Cover - im Leerlauf (`index_warmlaufen`) und im Faden
+   `_prewarm_art_dirs`. Der Docstring von `index_warmlaufen()` nannte
+   die Grenze selbst: *„ein BEGONNENER Tick laeuft durch"*, drei
+   Verzeichnisse zu rund 167 ms. In der Zeit liest niemand das Pad.
+4. Waehrend des Starts (1,75 s laut Bench A) sind die Geraete nach
+   93 ms offen, gelesen wird erst danach.
+5. `eingabe_zeit` wurde beim LESEN genommen, mit der Begruendung *„wir
+   haengen in select() und sind sofort dran"*. Die Zeit, die ein Druck
+   im Kernel lag, war deshalb in keiner Messung - weder in LATENZ noch
+   in RUCKLER (die rechnet die Zeit in `next_action()` ausdruecklich
+   heraus).
+
+**Geschlossen, nicht gemessen:** dass genau diese Kette die „ersten 10
+Sekunden" sind. Es ist die eine Erklaerung, die zu *„ersten Sekunden"*,
+*„uebersprungen"* und *„eingefroren"* gleichzeitig passt. Ob der Kernel
+bei ihm wirklich verworfen hat, sagt ab diesem Build das Log
+(`SYN_DROPPED`) und der Bench (Abschnitt L).
+
+### Was Build 321 aendert
+
+**`fe/input.py`**
+
+* `SYN_DROPPED` nach dem Protokoll des Kernels: alles bis zum naechsten
+  `SYN_REPORT` verwerfen, dann den wirklichen Zustand abfragen
+  (`EVIOCGKEY`, `EVIOCGABS`) und `held`, `axis_state` und die
+  Select-Taste danach richten. Es wird keine Aktion erfunden. Jedes
+  `SYN_DROPPED` steht im Log, mit Sekunden seit dem Start; gezaehlt je
+  Geraet (`syn_dropped`).
+* `EVIOCSCLOCKID` auf `CLOCK_MONOTONIC`: der Zeitstempel eines
+  Ereignisses liegt jetzt auf der Uhr von `time.monotonic()`.
+  `eingabe_zeit` ist der Zeitpunkt des DRUCKS, `eingabe_wartezeit` die
+  Zeit ungelesen beim Kernel. Unplausible Zeitstempel und Geraete ohne
+  monotone Uhr fallen auf „jetzt" zurueck.
+* `abholen()`: alles Verfuegbare in den eigenen Puffer, ohne
+  auszuwerten (nur vom Hauptfaden). `eingabe_anstehend()`: steht eine
+  Eingabe an, die eine Aktion ergeben kann? Rauschen eines Sticks zaehlt
+  nicht, Tasten, Richtungsaenderungen, `SYN_DROPPED` und eine vorgelegte
+  Aktion schon.
+* `_richtung_aus_wert()`: die Achsen-Schwellen standen dreimal im Modul
+  (zweimal in `_translate`, einmal in `read_raw_key`), jetzt einmal.
+
+**`fe/art.py`**
+
+* `_art_index`, `_docs_index`, `_index_ergaenzen` und
+  `index_warmlaufen` halten alle `INDEX_HAPPEN` = 128 Namen inne
+  (`zwischendurch`). Wirft das `IndexUnterbrochen`, wird das halbe
+  Verzeichnis NICHT gespeichert und der Tick endet sofort, ohne
+  „gebaut" zu zaehlen. Die Warmlauf-Zeilen im Log tragen jetzt die
+  Dauer.
+* `INDEX_ABHOLER`: ein Verzeichnis, das der Zeichenweg SOFORT braucht,
+  holt zwischendurch das Pad ab (nur auf dem Hauptfaden).
+* `vergleichsname()` ohne Schleife in Python. Die alte Fassung bleibt
+  als `vergleichsname_zeichenweise()` stehen, als Massstab fuer Test und
+  Bench. Im Container 1,9 -> 1,2 us je Aufruf - ein kleiner Posten;
+  was es auf dem Geraet ist, misst Abschnitt P.
+* Der Schreib-Arbeiter zaehlt eine Pause ab ihrem BEGINN;
+  `schreib_pause_laeuft()` sagt, ob gerade pausiert wird.
+
+**`frontend.py`**
+
+* `_warmlauf_tick` uebergibt `_leerlauf_zwischendurch` (abholen, bei
+  Eingabe abbrechen).
+* Der Faden `_prewarm_art_dirs` haelt auch MITTENDRIN an
+  (`_faden_innehalten`), solange bedient wird - hoechstens
+  `PREWARM_MAX_WARTEN` je Happen. Er fasst dabei die Eingabe nicht an.
+* Jede Startmarke (`_startmarke`) holt das Pad ab.
+* Neue Logzeile `EINGABE-STAU: <aktion> lag N ms ungelesen beim Kernel
+  (x s nach dem Start; laengste Leerlauf-Arbeit davor: ...)` ab 150 ms.
+  Dafuer bucht der Leerlauf Warmlauf, Nachzeichnen und Vorauslader.
+
+**`fe/bench.py` (Fassung 22)**
+
+* **L.1b zaehlte falsch:** `_EV = 24` ist die Groesse eines Ereignisses
+  auf einem 64-Bit-Rechner; auf dem DE10-Nano sind es 16 Byte. Gezaehlt
+  wurde ein Drittel zu wenig. Jetzt `EVENT_SIZE`, eine Sekunde statt
+  0,3, und aufgeteilt nach Art und Code.
+* **L.4 zaehlte falsch:** eine Pause wurde erst an ihrem Ende gezaehlt,
+  abgelesen wurde mitten in der Pause (40 Schritte zu 38 ms = 1,5 s,
+  die Pause endet erst nach dem Loslassen oder nach 3 s). Jetzt zaehlt
+  der Beginn, und „Arbeiter pausiert gerade" steht in einer eigenen
+  Zeile, dazu die Schlange nach dem Halten.
+* L nennt „Zeitstempel auf monotoner Uhr" und „Vom Kernel verworfen
+  (SYN_DROPPED)".
+* **Neu: Abschnitt P** - vergleichsname alt gegen neu (mit Pruefung auf
+  gleiches Ergebnis), jedes System kalt neu gebaut, je System die Zeit
+  und der laengste Happen, dazu die Summe der Vorarbeit.
+
+### Worauf beim naechsten Bench und Log zu achten ist
+
+* **Log nach einem Kaltstart** (direkt nach dem Einschalten ein paar
+  Sekunden bedienen, dann):
+  `grep -E "SYN_DROPPED|EINGABE-STAU|Warmlauf|START " /tmp/frontend.log`
+  Steht dort `SYN_DROPPED`, war der Ueberlauf die Ursache, und Build 321
+  faengt ihn jetzt ab. Stehen nur `EINGABE-STAU`-Zeilen, sagt die
+  Spalte „laengste Leerlauf-Arbeit davor", wer die Zeit hatte.
+* **Abschnitt P:** „teuerstes System am Stueck" ist die alte
+  Wartezeit, „laengster Happen" die neue.
+* **Abschnitt L.1b:** welche Achse rauscht. Kommt der Strom von einer
+  Achse, die das Frontend nicht braucht (RX/RY), koennte man ihn im
+  Kernel abbestellen (`EVIOCSMASK`) - das waere ein eigener Build.
+* **Abschnitt L.4:** „Pausen NACH 40 gehaltenen Schritten" muss jetzt
+  groesser als „VOR" sein, sofern Auftraege anlagen.
+
+### Nicht gemacht
+
+* **Ein eigener Lesefaden fuer das Pad.** Er wuerde den Ueberlauf in
+  jeder Lage verhindern, aber `read_action()` haengt an rund zehn Builds
+  Feinarbeit (276, 277, 280, 306, 307), und Abschnitt M prueft sie ueber
+  eine Roehre. Erst, wenn das Log trotz Build 321 `SYN_DROPPED` zeigt.
+* **EVIOCSMASK** - erst mit der Aufteilung aus L.1b.
+* **Die Galerie/Coverflow-Aussparung bei gehaltener Taste** (K: „mit
+  Aussparung 0 von 20") - naechster Hebel fuer das Scrollen, eigener
+  Build.
+
+### Pruefungen
+
+* **neu** `tools/test_eingabe_ueberlauf.py` - ueber echte Pipes:
+  verlorenes Loslassen (Gegenprobe ohne Abgleich: der zweite Druck
+  ergibt nichts), Verwerfen bis SYN_REPORT, gehaltene Taste, Select,
+  Zaehlen/Melden, `abholen()`, `eingabe_anstehend()` (Rauschen zaehlt
+  nicht), Wartezeit aus dem Zeitstempel, ioctl-Nummern aus der Formel
+  des Kernels, Schwellen an einer Stelle.
+* **neu** `tools/test_vergleichsname.py` - echte Schreibweisen,
+  verschachtelte und offene Klammern, 400.000 Zufallsnamen, Gegenprobe
+  mit einer falschen Fassung.
+* **neu** `tools/test_warmlauf_unterbrechbar.py` - Happen,
+  kein halbes Verzeichnis, Warmlauf bricht ab und baut danach, die
+  Hauptschleife reicht durch (mit Gegenprobe), Abholen nur im
+  Hauptfaden, Startmarken, Faden haelt an, Pause ab Beginn gezaehlt
+  (echter Arbeitsfaden), EINGABE-STAU.
+* **geaendert** `tools/test_bench_tastendruck.py` - Bench-Nummer
+  „mindestens 22" statt „genau 21".
+* **geaendert** `tools/test_vorladen_richtung.py` - prueft den Aufruf
+  `_art_index(ART_BASE, _syskey` ohne das neue dritte Argument
+  festzuschreiben (die Zusage „im Faden" ist dieselbe).

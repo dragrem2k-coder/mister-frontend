@@ -26,6 +26,53 @@ KEYMAP_CUSTOM_FILE = "/media/fat/frontend/keymap_custom.json"
 
 EVIOCGRAB = 0x40044590
 EV_SYN, EV_KEY, EV_ABS = 0, 1, 3
+
+# BUILD 321: DREI DINGE, DIE DER KERNEL KANN UND DIE WIR NICHT GENUTZT
+# HABEN. Anlass, in seinen Worten: "wenn ich denn mister anmache und das
+# frontend startet hab ich das gefuehl als wenn die ersten 10 sekunden
+# das joypad manchmal wie eingefroren ist ! und eingaben uebersprungen
+# oder nicht wahrgenommen werden! danach wirds dann besser".
+#
+# 1. SYN_DROPPED. Jedes geoeffnete Geraet hat im Kernel eine eigene
+#    Warteschlange fester Groesse - bei einem Pad wie dem Pro
+#    Controller in der Groessenordnung von hundert Ereignissen. Sein
+#    Bench vom 14.11. zeigt, dass das Pad auch in Ruhe sendet (Rauschen
+#    der Sticks). Liest eine Weile niemand, ist die Schlange voll - und
+#    dann wirft der Kernel ALLES Ungelesene weg, Druck und Loslassen
+#    eingeschlossen, und legt ein einzelnes SYN_DROPPED hinein. Das
+#    stand in fe/input.py nirgends: es wurde wie ein gewoehnliches
+#    EV_SYN uebergangen. Die Folgen sind genau "uebersprungen" (der
+#    Druck ist weg) und "eingefroren" (ist nur das LOSLASSEN einer
+#    Richtung weg, steht axis_state weiter auf dieser Richtung - dann
+#    ergibt derselbe Druck danach KEINE Aktion mehr, bis man einmal
+#    loslaesst).
+#
+#    Jetzt nach dem Protokoll des Kernels (Documentation/input/
+#    event-codes.rst): alles bis zum naechsten SYN_REPORT verwerfen,
+#    dann den WIRKLICHEN Zustand abfragen (EVIOCGKEY, EVIOCGABS) und
+#    held, axis_state und die Select-Taste danach richten. Jedes
+#    SYN_DROPPED steht im Log, mit Sekunden seit dem Start.
+#
+# 2. EVIOCSCLOCKID. Der Zeitstempel eines Ereignisses lief bisher auf
+#    CLOCK_REALTIME und war deshalb unbrauchbar (die Uhr springt beim
+#    ersten NTP-Abgleich um Stunden - siehe eingabe_zeit). Auf
+#    CLOCK_MONOTONIC gestellt ist er dieselbe Uhr wie time.monotonic(),
+#    und damit sagt er, wie lange ein Druck UNGELESEN beim Kernel lag.
+#    Genau diese Zeit war bisher in keiner Messung: eingabe_zeit wurde
+#    beim LESEN genommen, und die Begruendung dafuer ("wir haengen in
+#    select() und sind sofort dran") stimmt nur, solange die
+#    Hauptschleife nichts anderes tut.
+#
+# 3. abholen(). Was im Kernel liegt, kann jederzeit in unseren eigenen
+#    Puffer (_ereignis_rest) geholt werden - read_action() arbeitet den
+#    ohnehin zuerst ab. Lange Arbeiten auf dem Hauptfaden (Start,
+#    Namensverzeichnisse) holen deshalb zwischendurch ab, und die
+#    Schlange im Kernel laeuft nicht mehr ueber.
+EVIOCSCLOCKID = 0x400445a0          # _IOW('E', 0xa0, int)
+CLOCK_MONOTONIC = 1
+SYN_REPORT, SYN_DROPPED = 0, 3
+# _IOC(_IOC_READ, 'E', 0x18, 96): der Tastenzustand, KEY_MAX+1 = 768 Bit.
+EVIOCGKEY_96 = 0x80604518
 KEY_ESC, KEY_ENTER = 1, 28
 KEY_BACKSPACE = 14
 KEY_SLASH = 53
@@ -828,6 +875,35 @@ class Device:
                 self.axis_state[ax] = 0
             except OSError:
                 pass
+        # Build 321: Zeitstempel auf die Uhr von time.monotonic() - siehe
+        # EVIOCSCLOCKID oben. Gilt nur fuer UNSERE Sicht auf das Geraet
+        # (die Uhr haengt am geoeffneten Dateigriff, nicht am Geraet);
+        # MiSTer selbst merkt davon nichts.
+        self.uhr_monoton = False
+        try:
+            fcntl.ioctl(self.fd, EVIOCSCLOCKID,
+                        struct.pack("i", CLOCK_MONOTONIC))
+            self.uhr_monoton = True
+        except OSError:
+            pass
+        # Nach einem SYN_DROPPED bis zum naechsten SYN_REPORT alles
+        # verwerfen (Protokoll des Kernels), und wie oft es vorkam.
+        self.nach_drop = False
+        self.verworfen = 0
+
+    def tasten_jetzt(self):
+        """Die Codes aller Tasten, die JETZT gedrueckt sind (EVIOCGKEY).
+        Fuer den Abgleich nach einem SYN_DROPPED (Build 321)."""
+        buf = bytearray(96)
+        fcntl.ioctl(self.fd, EVIOCGKEY_96, buf)
+        return {i * 8 + bit for i, byte in enumerate(buf) if byte
+                for bit in range(8) if byte & (1 << bit)}
+
+    def achse_jetzt(self, axis):
+        """Der Wert, den diese Achse JETZT hat (EVIOCGABS)."""
+        buf = bytearray(24)
+        fcntl.ioctl(self.fd, 0x80184540 + axis, buf)
+        return struct.unpack("6i", buf)[0]
 
     def grab(self, on):
         try:
@@ -1078,6 +1154,11 @@ class InputManager:
         # BUILD 302: je Aktion die letzten Messungen, siehe
         # zeichenzeit_melden() und REPEAT_MESS_AUSREISSER.
         self._zeichenproben = {}
+        # Build 321: wann es losging (fuer "x s nach dem Start" in den
+        # Meldungen zu SYN_DROPPED) und wie oft der Kernel je Geraet
+        # verworfen hat (Pfad -> Anzahl; Bench Abschnitt L).
+        self._t_start = time.monotonic()
+        self.syn_dropped = {}
         self.rescan(force=True)
 
     # BUILD 192: wann die zuletzt gelieferte Aktion entstanden ist
@@ -1096,6 +1177,200 @@ class InputManager:
     # EV_KEY, EV_SYN). 64 ist also weit mehr als jedes Buendel - und
     # eine harte Grenze gegen einen Strom, der nie abreisst.
     LEEREN_MAX = 64
+    # Build 321: wie lange das Ereignis, aus dem die letzte Aktion
+    # entstand, UNGELESEN beim Kernel lag (Sekunden). 0.0, wenn das
+    # Geraet keine monotone Uhr hat oder die Aktion eine faellige
+    # Wiederholung war. Die Hauptschleife meldet grosse Werte als
+    # EINGABE-STAU.
+    eingabe_wartezeit = 0.0
+    # Hoechstens so viele SYN_DROPPED-Zeilen je Sitzung im Log; danach
+    # nur noch jede fuenfzigste. Gezaehlt wird immer.
+    DROPPED_LOG_MAX = 20
+
+    def _richtung_aus_wert(self, dev, code, value):
+        """Die Stellung einer Achse als -1/0/1 (Trigger: 0/1).
+
+        EINE Stelle fuer diese Rechnung (Build 321): _translate() braucht
+        sie fuer die Flanke, eingabe_anstehend() fuer die Frage "waere das
+        eine Aktion?", und der Abgleich nach SYN_DROPPED fuer den echten
+        Zustand. Drei Fassungen derselben Schwellen waeren drei
+        Gelegenheiten, auseinanderzulaufen."""
+        amin, amax = dev.axis[code]
+        span = max(1, amax - amin)
+        if code in (ABS_Z, ABS_RZ):
+            return 1 if (value - amin) / span > 0.5 else 0
+        if code in (ABS_HAT0X, ABS_HAT0Y):
+            return -1 if value < 0 else (1 if value > 0 else 0)
+        rel = (value - amin) / span
+        return -1 if rel < 0.30 else (1 if rel > 0.70 else 0)
+
+    def abholen(self, runden=8):
+        """Alles, was im Kernel bereitliegt, in den eigenen Puffer holen
+        - ohne es auszuwerten (Build 321, siehe oben bei EVIOCSCLOCKID).
+
+        NUR VOM HAUPTFADEN. _ereignis_rest gehoert read_action(); ein
+        zweiter Faden, der hier anhaengt, waehrend dort abgearbeitet
+        wird, waere ein Wettlauf um die Reihenfolge.
+
+        Rueckgabe: die Zahl der abgeholten Ereignisse."""
+        devs = getattr(self, "devices", None) or {}
+        fds = {}
+        for d in devs.values():
+            fd = getattr(d, "fd", None)
+            if isinstance(fd, int) and fd >= 0:
+                fds[fd] = d
+        if not fds:
+            return 0
+        rest = getattr(self, "_ereignis_rest", None)
+        if rest is None:
+            rest = self._ereignis_rest = deque()
+        n = 0
+        for _ in range(runden):
+            try:
+                r, _, _ = select.select(list(fds), [], [], 0)
+            except (OSError, ValueError):
+                return n
+            if not r:
+                break
+            for fd in r:
+                try:
+                    data = os.read(fd, EVENT_SIZE * EREIGNIS_BUENDEL)
+                except OSError:
+                    continue
+                for _off in range(0, len(data) - EVENT_SIZE + 1,
+                                  EVENT_SIZE):
+                    rest.append((fds[fd],)
+                                + struct.unpack_from(EVENT_FMT, data, _off))
+                    n += 1
+        return n
+
+    def eingabe_anstehend(self):
+        """Wartet eine Eingabe, die eine AKTION ergeben kann? (Build 321)
+
+        Fuer Arbeit im Leerlauf, die abbrechen soll, sobald jemand
+        drueckt (index_warmlaufen in fe/art.py). Holt dafuer ab (siehe
+        abholen()) und sieht im eigenen Puffer nach - OHNE etwas
+        auszuwerten: held und axis_state bleiben unberuehrt, das tut
+        erst read_action().
+
+        "Kann eine Aktion ergeben" ist bewusst grosszuegig: jede Taste,
+        die gedrueckt oder losgelassen wird, jede Achse, deren Stellung
+        sich gegenueber axis_state aendert, und jedes SYN_DROPPED. Das
+        blosse Rauschen eines Sticks (sein Bench: ein stetiger Strom in
+        Ruhe) zaehlt nicht - sonst braeche die Vorarbeit bei jedem Pad
+        nach dem ersten Happen ab und kaeme nie voran."""
+        if getattr(self, "_vorgelegt", None) is not None:
+            return True
+        self.abholen()
+        rest = getattr(self, "_ereignis_rest", None)
+        if not rest:
+            return False
+        for dev, _s, _us, etype, code, value in rest:
+            if etype == EV_KEY:
+                if value in (0, 1):
+                    return True
+            elif etype == EV_SYN:
+                if code == SYN_DROPPED:
+                    return True
+            elif etype == EV_ABS:
+                _ax = getattr(dev, "axis", None) or {}
+                if code in _ax and (self._richtung_aus_wert(dev, code, value)
+                                    != dev.axis_state.get(code, 0)):
+                    return True
+        return False
+
+    def _verworfen_beginnen(self, dev):
+        """Der Kernel hat Ereignisse dieses Geraets weggeworfen."""
+        try:
+            dev.nach_drop = True
+            dev.verworfen = getattr(dev, "verworfen", 0) + 1
+        except AttributeError:
+            pass
+        pfad = getattr(dev, "path", "?")
+        _sd = getattr(self, "syn_dropped", None)
+        if _sd is None:
+            _sd = self.syn_dropped = {}
+        _sd[pfad] = _sd.get(pfad, 0) + 1
+        gesamt = sum(_sd.values())
+        if gesamt <= self.DROPPED_LOG_MAX or gesamt % 50 == 0:
+            _t0 = getattr(self, "_t_start", None)
+            LOG("EINGABE: der Kernel hat ungelesene Ereignisse von %s '%s' "
+                "verworfen (SYN_DROPPED, %d. Mal%s) - die Schlange war "
+                "voll, weil zu lange niemand gelesen hat"
+                % (pfad, getattr(dev, "name", "?"), _sd[pfad],
+                   (", %.1f s nach dem Start" % (time.monotonic() - _t0))
+                   if _t0 is not None else ""))
+
+    def _neu_abgleichen(self, dev):
+        """Nach einem SYN_DROPPED den WIRKLICHEN Zustand uebernehmen.
+
+        Was zwischen Ueberlauf und SYN_REPORT war, ist verloren - ein
+        Druck, der in dieser Zeit kam UND schon wieder losgelassen ist,
+        laesst sich nicht wiederherstellen. Was sich wiederherstellen
+        laesst, ist der Zustand, und genau der ist die gefaehrliche
+        Haelfte:
+
+          * eine Richtung, deren LOSLASSEN verloren ging, stuende sonst
+            in axis_state weiter auf -1/1, und derselbe Druck danach
+            ergaebe keine Aktion ("eingefroren");
+          * eine Wiederholung (held), deren Loslassen verloren ging,
+            liefe von selbst weiter;
+          * eine Select-Taste, deren Loslassen verloren ging, machte aus
+            dem naechsten Druck eine Kombination.
+
+        Es wird KEINE Aktion erfunden. Eine Richtung, die jetzt noch
+        gehalten wird, steht danach in axis_state - beim Loslassen wird
+        sie sauber beendet, und der naechste Druck zaehlt wieder."""
+        try:
+            tasten = dev.tasten_jetzt()
+        except Exception:                                # noqa: BLE001
+            tasten = None
+        _ax = getattr(dev, "axis", None) or {}
+        for code in list(_ax):
+            try:
+                wert = dev.achse_jetzt(code)
+            except Exception:                            # noqa: BLE001
+                wert = None
+            dev.axis_state[code] = (0 if wert is None
+                                    else self._richtung_aus_wert(dev, code,
+                                                                 wert))
+        held = self.held
+        pfad = getattr(dev, "path", None)
+        if held is not None and held[0][0] == pfad:
+            art, code = held[0][1], held[0][2]
+            if art in ("k", "key"):
+                noch = tasten is not None and code in tasten
+            elif art == "a":
+                soll = -1 if held[1] in ("left", "up") else 1
+                noch = dev.axis_state.get(code, 0) == soll
+            elif art == "a2":
+                noch = dev.axis_state.get(code, 0) == 1
+            else:
+                noch = False
+            if not noch:
+                self.held = None
+        _sd = getattr(self, "_select_down", None) or {}
+        if pfad in _sd:
+            sel = [c for c, a in KEYMAP.items() if a == "select" and c >= 0]
+            if tasten is None or not any(c in tasten for c in sel):
+                _sd.pop(pfad, None)
+                self._select_kombiniert = False
+
+    def _zeit_der_eingabe(self):
+        """eingabe_zeit fuer die Aktion, die gerade aus dem Puffer kam:
+        der Zeitstempel des Kernels, wenn er auf der monotonen Uhr liegt
+        und plausibel ist, sonst jetzt. Setzt eingabe_wartezeit."""
+        jetzt = time.monotonic()
+        self.eingabe_wartezeit = 0.0
+        e = getattr(self, "_letztes_ereignis", None)
+        self._letztes_ereignis = None
+        if e is not None and getattr(e[0], "uhr_monoton", False):
+            ts = e[1] + e[2] / 1000000.0
+            warte = jetzt - ts
+            if 0.0 <= warte < 10.0:
+                self.eingabe_wartezeit = warte
+                return ts
+        return jetzt
 
     def zeichenzeit_melden(self, act, dauer):
         """Build 93: das Frontend meldet nach jeder verarbeiteten Aktion,
@@ -1620,10 +1895,7 @@ class InputManager:
             # AXIS_L2/AXIS_R2), inklusive derselben Wiederholungslogik
             # wie bei echten Tasten, falls die zugewiesene Aktion
             # wiederholbar ist (z.B. bei Belegung auf Navigation).
-            amin, amax = dev.axis[code]
-            span = max(1, amax - amin)
-            rel = (value - amin) / span
-            pressed = 1 if rel > 0.5 else 0
+            pressed = self._richtung_aus_wert(dev, code, value)
             if pressed == dev.axis_state.get(code, 0):
                 return None
             dev.axis_state[code] = pressed
@@ -1640,13 +1912,7 @@ class InputManager:
                 self._cancel_repeat()   # siehe dort - gleiche Begruendung
             return act
         if etype == EV_ABS and code in dev.axis:
-            amin, amax = dev.axis[code]
-            if code in (ABS_HAT0X, ABS_HAT0Y):
-                direction = -1 if value < 0 else (1 if value > 0 else 0)
-            else:
-                span = max(1, amax - amin)
-                rel = (value - amin) / span
-                direction = -1 if rel < 0.30 else (1 if rel > 0.70 else 0)
+            direction = self._richtung_aus_wert(dev, code, value)
             if direction == dev.axis_state.get(code, 0):
                 return None
             dev.axis_state[code] = direction
@@ -1685,8 +1951,23 @@ class InputManager:
             return None
         while rest:
             dev, _s, _us, etype, code, value = rest.popleft()
+            # BUILD 321: das Protokoll nach einem Ueberlauf - siehe
+            # SYN_DROPPED oben. Bis zum naechsten SYN_REPORT ist nichts
+            # verlaesslich, danach gilt der abgefragte Zustand.
+            if etype == EV_SYN:
+                if code == SYN_DROPPED:
+                    self._verworfen_beginnen(dev)
+                    continue
+                if code == SYN_REPORT and getattr(dev, "nach_drop", False):
+                    dev.nach_drop = False
+                    self._neu_abgleichen(dev)
+                    continue
+            if getattr(dev, "nach_drop", False):
+                continue
             act = self._translate(dev, etype, code, value)
             if act:
+                # Build 321: woher die Aktion kam, fuer eingabe_zeit.
+                self._letztes_ereignis = (dev, _s, _us)
                 return act
         return None
 
@@ -1769,6 +2050,7 @@ class InputManager:
         if _vor is not None:
             self._vorgelegt = None
             self.eingabe_zeit = time.monotonic()
+            self.eingabe_wartezeit = 0.0
             return _vor
         deadline = None if timeout is None else time.monotonic() + timeout
         # BUGFIX (Nutzer-Rueckmeldung: "ausserdem kann ich durch
@@ -1810,7 +2092,11 @@ class InputManager:
             # der die Reihenfolge verdreht.
             _r_act = self._aus_rest()
             if _r_act:
-                self.eingabe_zeit = time.monotonic()
+                # Build 321: der Zeitstempel des Kernels - siehe
+                # _zeit_der_eingabe(). Lag das Ereignis schon im Puffer,
+                # weil abholen() es geholt hat, zaehlt die Wartezeit
+                # trotzdem ab dem Druck.
+                self.eingabe_zeit = self._zeit_der_eingabe()
                 return _r_act
             if now - self.last_scan > self._rescan_takt():
                 self.rescan()
@@ -1951,7 +2237,14 @@ class InputManager:
                             # Unsinn. Der Unterschied ist
                             # bedeutungslos: wir haengen in select()
                             # und sind sofort dran.
-                            self.eingabe_zeit = time.monotonic()
+                            #
+                            # BUILD 321: "sofort dran" stimmt nur, wenn
+                            # die Hauptschleife gerade in select() hing.
+                            # Lief sie, lag der Druck im Kernel, und
+                            # diese Zeit fehlte in jeder Messung. Seit
+                            # EVIOCSCLOCKID ist der Zeitstempel des
+                            # Kernels monoton - siehe _zeit_der_eingabe().
+                            self.eingabe_zeit = self._zeit_der_eingabe()
                             return act
                     # Noch etwas da? Dann weiterleeren - aber nur, wenn
                     # ueberhaupt geleert wird (Build 280). Ohne
@@ -2025,6 +2318,7 @@ class InputManager:
                 # genau, wie weit wir hinter dem Takt liegen - und das
                 # ist die Groesse, die besser werden soll.
                 self.eingabe_zeit = _faellig
+                self.eingabe_wartezeit = 0.0     # Build 321: eine Wiederholung lag nirgends
                 return act
             if deadline is not None and time.monotonic() >= deadline:
                 return None
@@ -2080,20 +2374,12 @@ class InputManager:
                         # Aktion (nicht nur Navigation) darauf legen
                         # laesst. Schwellwert wie beim eigentlichen
                         # Ablesen im Hauptbetrieb (siehe _translate()).
-                        amin, amax = dev.axis[code]
-                        span = max(1, amax - amin)
-                        rel = (value - amin) / span
-                        if rel > 0.5:
+                        # Build 321: dieselbe Rechnung wie im Betrieb,
+                        # aus EINER Stelle - siehe _richtung_aus_wert().
+                        if self._richtung_aus_wert(dev, code, value) == 1:
                             return AXIS_L2 if code == ABS_Z else AXIS_R2
                     if allow_axis_skip and etype == EV_ABS and code in dev.axis:
-                        amin, amax = dev.axis[code]
-                        if code in (ABS_HAT0X, ABS_HAT0Y):
-                            direction = -1 if value < 0 else (1 if value > 0 else 0)
-                        else:
-                            span = max(1, amax - amin)
-                            rel = (value - amin) / span
-                            direction = -1 if rel < 0.30 else (1 if rel > 0.70 else 0)
-                        if direction != 0:
+                        if self._richtung_aus_wert(dev, code, value) != 0:
                             return "AXIS"
             if deadline is not None and time.monotonic() >= deadline:
                 return None

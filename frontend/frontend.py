@@ -1298,6 +1298,7 @@ from fe.art import (
     rechtecke_farben as _c_rechtecke_farben,
     zeilen_kopieren as _c_zeilen_kopieren,
     zeiger_leeren as _c_zeiger_leeren,
+    IndexUnterbrochen, INDEX_ABHOLER,
     rechtecke_maske as _c_rechtecke_maske,
     texte_zeichnen as _c_texte_zeichnen,
     fremd_zaehlen as _c_fremd_zaehlen,
@@ -1692,6 +1693,10 @@ class Frontend:
         except Exception:                                # noqa: BLE001
             LOG("galerie_stil_uebernehmen:\n" + traceback.format_exc())
         self.inp = InputManager()
+        # Build 321: ein Namensverzeichnis, das der Zeichenweg SOFORT
+        # braucht, holt zwischendurch das Pad ab - siehe INDEX_ABHOLER
+        # in fe/art.py.
+        INDEX_ABHOLER[0] = self.inp.abholen
         self._startmarke("Framebuffer und Eingaben offen")
         # WICHTIG: Erst auf unseren eigenen Bildschirm umschalten (F9),
         # DANACH erst den (potenziell langsamen) Scan starten - vorher
@@ -2286,8 +2291,31 @@ class Frontend:
                        and time.monotonic() - _wartet_seit
                        < PREWARM_MAX_WARTEN):
                     time.sleep(0.05)
-                _art_index(ART_BASE, _syskey)
-                _art_index(ART_HD, _syskey)
+                # BUILD 321: UND AUCH MITTENDRIN INNEHALTEN. Die Warte-
+                # schleife darueber prueft nur VOR einem Verzeichnis -
+                # ein begonnenes lief durch, und genau das ist die
+                # GIL-Last aus Build 107 ("das Scrollen ist total
+                # langsam, wird erst nach ein paar Sekunden besser"),
+                # nur in kleineren Stuecken. Jetzt haelt der Faden alle
+                # INDEX_HAPPEN Namen an, solange bedient wird. Er fasst
+                # dabei NICHTS von der Eingabe an (das darf nur der
+                # Hauptfaden), er schlaeft nur.
+                _art_index(ART_BASE, _syskey, _faden_innehalten)
+                _art_index(ART_HD, _syskey, _faden_innehalten)
+
+        def _faden_innehalten():
+            """Zwischen zwei Happen eines Namensverzeichnisses: warten,
+            solange jemand bedient - hoechstens PREWARM_MAX_WARTEN, damit
+            es auch bei Dauerscrollen vorangeht (siehe oben, "ABER NICHT
+            ENDLOS")."""
+            _seit = time.monotonic()
+            while time.monotonic() - _seit < PREWARM_MAX_WARTEN:
+                _inp = getattr(self, "inp", None)
+                if (time.monotonic() - self._last_input_time
+                        >= PREWARM_SETTLE
+                        and getattr(_inp, "held", None) is None):
+                    return
+                time.sleep(0.05)
         # MUSS vor dem Thread stehen: der liest _last_input_time gleich
         # in seiner ersten Zeile. Weiter unten wird der Wert ohnehin noch
         # einmal gesetzt - hier geht es nur darum, dass es ihn zu diesem
@@ -6219,7 +6247,43 @@ class Frontend:
         if not systeme:
             self._warmlauf_fertig_fuer = stelle
             return False
-        return index_warmlaufen(systeme, hoechstens=1) > 0
+        # Build 321: unterbrechbar - siehe _leerlauf_zwischendurch().
+        return index_warmlaufen(systeme, hoechstens=1,
+                                zwischendurch=self._leerlauf_zwischendurch
+                                ) > 0
+
+    def _leerlauf_buchen(self, was, t0):
+        """Die laengste Arbeit im Leerlauf seit der letzten Aktion merken
+        (Build 321). Steht spaeter in der EINGABE-STAU-Zeile: hat ein
+        Druck lange beim Kernel gelegen, sagt sie, was die Hauptschleife
+        in der Zeit getan hat."""
+        dauer = time.monotonic() - t0
+        alt = getattr(self, "_leerlauf_max", None)
+        if alt is None or dauer > alt[1]:
+            self._leerlauf_max = (was, dauer)
+
+    def _leerlauf_zwischendurch(self):
+        """Zwischen zwei Happen eines Namensverzeichnisses im Leerlauf
+        (Build 321): das Pad abholen und abbrechen, sobald eine echte
+        Eingabe ansteht.
+
+        Vorher lief ein begonnener Warmlauf-Tick durch - laut
+        index_warmlaufen() drei Verzeichnisse zu rund 167 ms. Eine
+        Taste, die hineinfiel, wartete so lange, und in der Zeit hat
+        niemand das Pad gelesen. Jetzt wartet sie hoechstens einen
+        Happen (INDEX_HAPPEN Namen), und das halbe Verzeichnis wird
+        verworfen und beim naechsten Ruhemoment neu begonnen."""
+        inp = getattr(self, "inp", None)
+        if inp is None:
+            return
+        try:
+            anstehend = inp.eingabe_anstehend()
+        except Exception:                                # noqa: BLE001
+            return
+        if anstehend:
+            self._warmlauf_unterbrochen = getattr(
+                self, "_warmlauf_unterbrochen", 0) + 1
+            raise IndexUnterbrochen()
 
     def _overlay_active(self):
         """True, solange eine Ueberlagerung ueber der normalen Seite
@@ -13076,6 +13140,11 @@ class Frontend:
                 self._prefetched_done = False
                 if need_mq:
                     self.marquee_reset()
+                # Build 321: was der Leerlauf VOR dieser Aktion am
+                # laengsten getan hat - fuer die EINGABE-STAU-Zeile in
+                # run(). Danach von vorn.
+                self._leerlauf_vorher = getattr(self, "_leerlauf_max", None)
+                self._leerlauf_max = None
                 return act
 
             # SICHERHEITSNETZ CRT-Wechsel (Nutzerwunsch: "wie soll er da
@@ -13394,7 +13463,9 @@ class Frontend:
                 # kann, und bricht sofort ab, sobald wieder gescrollt
                 # wird.
                 if not any_dialog and not nav_active:
+                    _lt0 = time.monotonic()
                     self._warmlauf_tick()
+                    self._leerlauf_buchen("Warmlauf", _lt0)
                 if need_mq and not any_dialog and not nav_active:
                     self.marquee_tick()
                 # Beim schnellen Scrollen uebersprungene Cover ~COVER_SETTLE
@@ -13458,7 +13529,9 @@ class Frontend:
                     # 900 px Breite die groessten Bilder im Frontend und
                     # damit die teuersten Erstberechnungen ("PERF cover:
                     # 722 ms (CONTINUE.art)" im Log des Nutzers).
+                    _lt0 = time.monotonic()
                     self._prewarm_anstossen()
+                    self._leerlauf_buchen("Vorauslader", _lt0)
                 # NEU (Build 105): auf ein ausgelagertes Cover warten.
                 #
                 # Der Nachlader unten zeichnet pro Stillstand genau
@@ -13489,12 +13562,14 @@ class Frontend:
                         and _nachzuholen
                         and time.monotonic() - self._last_input_time >= COVER_SETTLE):
                     ART._deferred_something = False
+                    _lt0 = time.monotonic()
                     self._nachzeichnen_vorbereiten()
                     if self.page == 1:
                         self.draw_page_items()
                     else:
                         self.draw_page_cats()
                     self._settled_redrawn = True
+                    self._leerlauf_buchen("Nachzeichnen", _lt0)
                 # ENTFERNT (Build 104): hier stand das Vorladen der
                 # Nachbar-Cover (_prefetch_neighbor_covers()) und, im
                 # selben Zweig, das Ansetzen des Vorausladers. Letzteres
@@ -22675,6 +22750,10 @@ class Frontend:
     # ueberhaupt erreichbar ist (Vollbild 13 ms plus Vsync-Warten) -
     # sonst stuende bei jedem Schritt eine Zeile.
     LATENZ_SCHWELLE = 0.150
+    # Build 321: ab wann ein Druck, der ungelesen beim Kernel lag, eine
+    # EINGABE-STAU-Zeile bekommt. Dieselbe Schwelle wie LATENZ - beide
+    # sagen "das hat man gemerkt".
+    EINGABE_STAU_SCHWELLE = 0.150
     LATENZ_BILANZ_TAKT = 30.0
 
     # Die Posten, aus denen sich die RUCKLER-Aufschluesselung
@@ -23822,6 +23901,21 @@ class Frontend:
                 % (was, dauer * 1000.0, jetzt - self._t_start))
         except Exception:                            # noqa: BLE001
             pass                      # darf den Start nie stoeren
+        # BUILD 321: BEI JEDER MARKE DAS PAD ABHOLEN. Der Start dauert
+        # auf seinem Geraet 1,75 s (Bench A), und gelesen wird das Pad
+        # erst danach - die Eingabegeraete sind aber schon nach 93 ms
+        # offen. Ein Pad, das in Ruhe ein stetiges Rauschen schickt,
+        # fuellt seine Schlange im Kernel in dieser Zeit, und dann wirft
+        # der Kernel alles weg (siehe SYN_DROPPED in fe/input.py) -
+        # also auch einen Druck, der waehrend des Startbilds kam. Das
+        # Abholen haengt es in unseren eigenen Puffer; ausgewertet wird
+        # es erst von read_action(), in der richtigen Reihenfolge.
+        _inp = getattr(self, "inp", None)
+        if _inp is not None:
+            try:
+                _inp.abholen()
+            except Exception:                        # noqa: BLE001
+                pass
         # UND IN EINE LISTE, NICHT NUR INS LOG (Build 275)
         # --------------------------------------------------------------
         # NUTZERFRAGE: "eventuell den Startvorgang noch beschleunigen
@@ -24785,6 +24879,25 @@ class Frontend:
                 _rt2 = time.monotonic()
                 LOG("aktion: %s (Seite %d, confirm=%s)"
                     % (act, self.page, self.confirm_quit))
+                # BUILD 321: WIE LANGE LAG DER DRUCK UNGELESEN BEIM
+                # KERNEL? Bisher in keiner Zeile - eingabe_zeit wurde
+                # beim Lesen genommen. Ueber der Schwelle steht hier, wie
+                # lange, wie viele Sekunden nach dem Start (die Meldung
+                # vom 14.11. nennt "die ersten 10 sekunden"), und was die
+                # Hauptschleife im Leerlauf davor am laengsten getan hat.
+                # Steht dort nichts, lag die Zeit im Zeichnen der
+                # vorigen Aktion (dann steht eine RUCKLER-Zeile davor)
+                # oder in einem anderen Faden.
+                _warte = getattr(self.inp, "eingabe_wartezeit", 0.0) or 0.0
+                if _warte >= self.EINGABE_STAU_SCHWELLE:
+                    _lv = getattr(self, "_leerlauf_vorher", None)
+                    LOG("EINGABE-STAU: %s lag %.0f ms ungelesen beim Kernel "
+                        "(%.1f s nach dem Start; laengste Leerlauf-Arbeit "
+                        "davor: %s)"
+                        % (act, _warte * 1000.0,
+                           time.monotonic() - self._t_start,
+                           ("%s %.0f ms" % (_lv[0], _lv[1] * 1000.0))
+                           if _lv else "keine"))
                 if _rt_prev is not None:
                     # Zeit vom Ende der VORIGEN Runde bis jetzt, also
                     # inklusive Verarbeitung + Zeichnen der vorigen

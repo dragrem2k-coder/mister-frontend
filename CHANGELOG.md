@@ -13,6 +13,41 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.0 — noch nicht veröffentlicht
 
+- **Behoben: in den ersten Sekunden nach dem Start verschluckte
+  Tastendrücke.** Nach dem Start bereitet das Frontend die
+  Cover-Verzeichnisse aller Systeme vor — im Leerlauf und in einem
+  Hintergrundfaden. Ein begonnenes Stück lief bisher durch (laut
+  eigener Messung drei Verzeichnisse zu rund 167 ms), und in dieser
+  Zeit las niemand das Pad. Läuft dabei die Warteschlange des Pads im
+  Kernel über, wirft der Kernel *alles* Ungelesene weg — Drücken und
+  Loslassen. Ging nur das Loslassen einer Richtung verloren, ergab
+  derselbe Druck danach gar nichts mehr, bis man einmal losließ: das
+  „wie eingefroren". Drei Dinge dagegen: die Vorarbeit hält alle 128
+  Namen inne und bricht ab, sobald du drückst; das Pad wird beim Start
+  und während langer Arbeiten weiter abgeholt; und verwirft der Kernel
+  trotzdem etwas (SYN_DROPPED), gleicht das Frontend den wirklichen
+  Stand von Tasten, Steuerkreuz und Select neu ab (Build 321).
+- **Neu im Log: wie lange ein Druck warten musste.** Die Zeitstempel
+  des Pads laufen jetzt auf derselben Uhr wie das Frontend. Damit steht
+  fest, wie lange ein Druck ungelesen beim Kernel lag — diese Zeit
+  fehlte bisher in jeder Messung. Ab 150 ms gibt es eine Zeile
+  „EINGABE-STAU" mit Sekunden seit dem Start und der längsten Arbeit
+  davor. *Die LATENZ-Zahlen im Log enthalten diese Wartezeit ab jetzt
+  und sind mit älteren Logs nicht vergleichbar* (Build 321).
+- **Kleiner: der Namensvergleich der Cover.** Die Funktion, die
+  „(U) [!]" und „(USA)" auf denselben Namen bringt, lief Zeichen für
+  Zeichen in Python — beim Aufbau eines Verzeichnisses für jede Datei.
+  Jetzt mit regulären Ausdrücken; geprüft an 400.000 Namen gegen die
+  alte Fassung, Ergebnis Zeichen für Zeichen gleich (Build 321).
+- **Bench 22: zwei Messfehler behoben, ein Abschnitt dazu.** L.1b hat
+  die Ereignisse mit der Größe eines 64-Bit-Rechners gezählt (24 statt
+  16 Byte) — ein Drittel zu wenig; jetzt richtig, eine Sekunde lang und
+  aufgeteilt nach Art (welche Achse rauscht?). L.4 hat eine Pause des
+  Schreibfadens erst an ihrem *Ende* gezählt und mitten in der Pause
+  abgelesen — daher die „0 Pausen" in deinem Bericht vom 14.11.
+  Neu: **P** misst die Vorarbeit nach dem Start je System und wie lange
+  ein Druck jetzt höchstens wartet; L zählt SYN_DROPPED (Build 321).
+
 - **Behoben: das Pad reagiert träge — der Bewegungssensor wurde
   mitgelesen.** Viele Pads melden sich am MiSTer als *zwei* Geräte:
   das Pad selbst und sein Bewegungssensor. Dein Bench vom 13.11. zeigt

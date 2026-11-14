@@ -78,7 +78,13 @@ import zlib
 # die Geraete beim Namen samt der uebersprungenen. Dazu aendern sich
 # zwei Zahlen aus sachlichem Grund: "Haupt kachelwand" und "Haupt
 # dashboard" in Abschnitt J (Vorlagen je Reihe, kein restore mehr).
-BENCH_VERSION = 21
+# 22 ab Build 321: Abschnitt P (Namensverzeichnisse nach dem Start) ist
+# neu, L.1b misst eine Sekunde statt 0,3 und zaehlt mit der richtigen
+# Ereignisgroesse (vorher ein Drittel zu wenig), L nennt SYN_DROPPED
+# und die Uhr der Zeitstempel, und L.4 zaehlt die Pausen ab ihrem
+# BEGINN. Die Zahlen in L.1b sind deshalb mit Bericht 21 nicht
+# vergleichbar.
+BENCH_VERSION = 22
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -3249,6 +3255,20 @@ def _abschnitt_j(b, fe, S, A, fm):
     b("   fehlt weiterhin ein Posten - dann ist die naechste Aufgabe,")
     b("   ihn zu finden, und nicht, irgendwas zu beschleunigen.")
 
+_EV_ARTEN = {0: "SYN", 1: "KEY", 2: "REL", 3: "ABS", 4: "MSC"}
+_EV_CODES = {(0, 0): "REPORT", (0, 3): "DROPPED",
+             (3, 0): "X", (3, 1): "Y", (3, 2): "Z", (3, 3): "RX",
+             (3, 4): "RY", (3, 5): "RZ", (3, 16): "HAT0X",
+             (3, 17): "HAT0Y", (4, 4): "SCAN", (4, 5): "TIMESTAMP",
+             (2, 0): "X", (2, 1): "Y", (2, 8): "WHEEL"}
+
+
+def _ereignis_name(typ, code):
+    """"ABS RX" statt "3/3" - fuer die Aufteilung in Abschnitt L.1b."""
+    return "%s %s" % (_EV_ARTEN.get(typ, str(typ)),
+                      _EV_CODES.get((typ, code), str(code)))
+
+
 def _abschnitt_l(b, fe, S, A, fm):
     """WIE LANGE WARTET EIN TASTENDRUCK? (Build 300)
 
@@ -3349,6 +3369,19 @@ def _abschnitt_l(b, fe, S, A, fm):
         _weg = list(getattr(_eingabe, "UEBERSPRUNGEN", ()))
     except Exception:                                    # noqa: BLE001
         _weg = None
+    # BUILD 321: zwei Zeilen zur Meldung "die ersten 10 sekunden das
+    # joypad manchmal wie eingefroren". Ob die Zeitstempel auf der Uhr
+    # von time.monotonic() liegen (sonst fehlt in LATENZ und
+    # EINGABE-STAU die Zeit, die ein Druck beim Kernel lag), und wie oft
+    # der Kernel seit dem Start Ereignisse weggeworfen hat.
+    _mono = sum(1 for d in geraete if getattr(d, "uhr_monoton", False))
+    b("   Zeitstempel auf monotoner Uhr             %d von %d"
+      % (_mono, len(geraete)))
+    _sd = dict(getattr(inp, "syn_dropped", None) or {})
+    b("   Vom Kernel verworfen (SYN_DROPPED)        %d"
+      % sum(_sd.values()))
+    for _pf, _n in sorted(_sd.items()):
+        b("     %-8s %d mal" % (os.path.basename(str(_pf))[:8], _n))
     if _weg is None:
         b("   Uebersprungene Geraete                    nicht lesbar")
     else:
@@ -3391,8 +3424,19 @@ def _abschnitt_l(b, fe, S, A, fm):
     if not geraete:
         b("      -- kein Geraet offen, nichts zu zaehlen")
     else:
-        _mess_s = 0.30
+        # BUILD 321: EINE SEKUNDE STATT 0,3, UND RICHTIG GEZAEHLT. Hier
+        # stand "_EV = 24  # sizeof(struct input_event), 32 bit" - das
+        # ist die Groesse auf einem 64-Bit-Rechner. Auf dem DE10-Nano
+        # (armv7l) ist ein Ereignis 16 Byte gross (fe/input.py rechnet
+        # es mit struct.calcsize aus). Gezaehlt wurde also ein Drittel
+        # zu wenig: aus "127 je Sekunde" im Bericht vom 14.11. werden
+        # rund 190, und die 5150 des Bewegungssensors am 13.11. waren
+        # eher 7700. Dazu jetzt die Aufteilung nach Art und Code - sie
+        # sagt, WOHER der Strom kommt, und ob man ihn im Kernel
+        # abbestellen koennte (EVIOCSMASK).
+        _mess_s = 1.0
         _zahl = {}
+        _arten = {}
         _t_end = time.monotonic() + _mess_s
         _fds = {}
         for d in geraete:
@@ -3400,7 +3444,7 @@ def _abschnitt_l(b, fe, S, A, fm):
                 _fds[d.fd] = d
             except Exception:                            # noqa: BLE001
                 pass
-        _EV = 24                     # sizeof(struct input_event), 32 bit
+        _EV = _FI.EVENT_SIZE
         try:
             while time.monotonic() < _t_end and _fds:
                 _r, _, _ = _select.select(list(_fds), [], [], 0.01)
@@ -3410,6 +3454,11 @@ def _abschnitt_l(b, fe, S, A, fm):
                     except OSError:
                         continue
                     _zahl[_fd] = _zahl.get(_fd, 0) + max(1, len(_data) // _EV)
+                    _je = _arten.setdefault(_fd, {})
+                    for _off in range(0, len(_data) - _EV + 1, _EV):
+                        _e = struct.unpack_from(_FI.EVENT_FMT, _data, _off)
+                        _k = (_e[2], _e[3])
+                        _je[_k] = _je.get(_k, 0) + 1
         except Exception as e:                           # noqa: BLE001
             b("      -- nicht messbar (%s)" % type(e).__name__)
         _summe = 0
@@ -3419,6 +3468,11 @@ def _abschnitt_l(b, fe, S, A, fm):
             b("      %-28s %6d Ereignisse = %7.0f je Sekunde"
               % (os.path.basename(str(getattr(d, "path", "?")))[:28],
                  _n, _n / _mess_s))
+            _je = _arten.get(_fd) or {}
+            for (_typ, _code), _m in sorted(_je.items(),
+                                            key=lambda kv: -kv[1])[:5]:
+                b("         %-22s %7.0f je Sekunde"
+                  % (_ereignis_name(_typ, _code), _m / _mess_s))
         b("      %-28s %6d            = %7.0f je Sekunde"
           % ("zusammen", _summe, _summe / _mess_s))
         b("")
@@ -3742,11 +3796,25 @@ def _abschnitt_l(b, fe, S, A, fm):
                 fe._last_input_time = time.monotonic()
                 _schritt4(_i)
             _p_nach = A.schreib_pausen_stand()
+            # BUILD 321: DIE LAUFENDE PAUSE MITZAEHLEN. Bis Build 320
+            # zaehlte fe/art.py eine Pause erst an ihrem ENDE - und die
+            # kommt erst nach dem Loslassen oder nach 3 Sekunden. 40
+            # Schritte zu 38 ms sind 1,5 Sekunden: abgelesen wurde
+            # mitten in der Pause, und dort stand 0 (Bericht vom
+            # 14.11.). Jetzt zaehlt der Beginn, und ob gerade pausiert
+            # wird, steht in einer eigenen Zeile.
+            _laeuft_fn = getattr(A, "schreib_pause_laeuft", None)
+            _laeuft = _laeuft_fn() if _laeuft_fn is not None else None
+            _q_nach = _st()[0] if _st is not None else -1
             b("      Auftraege in der Schlange vorher    %d" % _q_vor)
             b("      nach 14 Schritten ohne Taste        %d" % _q_gefuellt)
+            b("      nach 40 gehaltenen Schritten        %d" % _q_nach)
             b("      Pausen VOR dem Halten               %d" % _p_mitte[0])
             b("      Pausen NACH 40 gehaltenen Schritten %d"
               % _p_nach[0])
+            b("      Arbeiter pausiert gerade            %s"
+              % ("ja, seit %.0f ms" % (_laeuft * 1000.0)
+                 if _laeuft is not None else "nein"))
             b("      dabei gewartet                  %8.3f s"
               % (_p_nach[1] - _p_mitte[1]))
             b("      Pausentakt / Obergrenze         %5.0f ms / %.1f s"
@@ -3754,6 +3822,11 @@ def _abschnitt_l(b, fe, S, A, fm):
                  getattr(A, "SCHREIB_PAUSE_MAX", 0)))
             b("")
             _neu = _p_nach[0] - _p_mitte[0]
+            if _laeuft is not None and _neu == 0:
+                # Kann mit der Zaehlung ab Beginn eigentlich nicht mehr
+                # vorkommen - steht hier, damit eine aeltere art.py
+                # nicht wieder "pausiert nicht" meldet.
+                _neu = 1
             if _q_gefuellt <= 0 and _neu == 0:
                 b("      ZU LESEN ALS: die Schlange war leer, es gab")
                 b("      also nichts zu pausieren. Das ist kein Befund")
@@ -5334,6 +5407,154 @@ def _abschnitt_o(b, fe, S, A, fm):
         fe._last_input_time = _s_zeit
 
 
+def _abschnitt_p(b, fe, S, A, fm):
+    """Die Namensverzeichnisse: was nach dem Start im Hintergrund laeuft.
+
+    DER ANLASS (14.11.): "wenn ich denn mister anmache und das frontend
+    startet hab ich das gefuehl als wenn die ersten 10 sekunden das
+    joypad manchmal wie eingefroren ist ! und eingaben uebersprungen
+    oder nicht wahrgenommen werden! danach wirds dann besser".
+
+    Nach dem Start baut das Frontend fuer jedes System die
+    Namensverzeichnisse der Cover (fe/art.py: _art_index fuer ART_HD und
+    ART_BASE, _docs_index fuer die fremde Datenbank) - teils im Leerlauf
+    der Hauptschleife (index_warmlaufen), teils in einem Faden
+    (_prewarm_art_dirs). Beides ist zum grossen Teil reines Python, und
+    beides war bisher nicht unterbrechbar: ein begonnenes Verzeichnis
+    lief durch. Genau dieselbe Meldung gab es schon in Build 107 und
+    Build 295.
+
+    DREI TEILE:
+      1) vergleichsname() je Aufruf, alte gegen neue Fassung, an den
+         echten Dateinamen des groessten Cover-Ordners - und ob beide
+         dasselbe liefern,
+      2) jedes System kalt neu gebaut, mit der Zeit je System und dem
+         LAENGSTEN Stueck zwischen zwei Happen - so lange wartet ein
+         Druck jetzt hoechstens, wenn er in die Vorarbeit faellt,
+      3) die Summe: so viel Vorarbeit liegt nach jedem Start an."""
+    b("")
+    b("-" * 62)
+    b(" P  Namensverzeichnisse - die Vorarbeit nach dem Start (Build 321)")
+    b("-" * 62)
+    wurzeln = tuple(getattr(A, "INDEX_WARM_WURZELN", ()) or ())
+    if not wurzeln or not hasattr(A, "_art_index"):
+        b("   -- fe/art.py kennt die Namensverzeichnisse nicht")
+        return
+    systeme = []
+    for _n, _node, sk in getattr(fe, "cats", ()) or ():
+        if sk and sk not in systeme:
+            systeme.append(sk)
+    b("   Systeme mit eigenem Schluessel             %d" % len(systeme))
+    if not systeme:
+        return
+    # --- 1) vergleichsname alt gegen neu -------------------------------
+    groesster, namen = None, []
+    for sk in systeme:
+        for w in wurzeln:
+            try:
+                alle = os.listdir(os.path.join(w, sk))
+            except OSError:
+                continue
+            if len(alle) > len(namen):
+                groesster, namen = os.path.join(w, sk), alle
+    namen = [fn.rsplit(".", 1)[0] for fn in namen[:2000]]
+    alt_fn = getattr(A, "vergleichsname_zeichenweise", None)
+    if not namen or alt_fn is None:
+        b("   -- keine Cover-Dateien gefunden, Teil 1 entfaellt")
+    else:
+        def _je(fn):
+            t0 = time.perf_counter()
+            for n in namen:
+                fn(n)
+            return (time.perf_counter() - t0) / len(namen) * 1000.0
+        # Abwechselnd und je dreimal, der kleinste Wert zaehlt - sonst
+        # bezahlt die erste Fassung das Aufwaermen (im Container stand
+        # beim ersten Versuch "Faktor 0.8", abwechselnd gemessen 1.6).
+        ms_alt = ms_neu = None
+        for _ in range(3):
+            a_ = _je(alt_fn)
+            n_ = _je(A.vergleichsname)
+            ms_alt = a_ if ms_alt is None else min(ms_alt, a_)
+            ms_neu = n_ if ms_neu is None else min(ms_neu, n_)
+        abw = sum(1 for n in namen if alt_fn(n) != A.vergleichsname(n))
+        b("   1) vergleichsname, %d Namen aus %s"
+          % (len(namen), groesster[-34:]))
+        b("      zeichenweise (bis Build 320)       %8.4f ms je Aufruf"
+          % ms_alt)
+        b("      neu (Build 321)                    %8.4f ms je Aufruf"
+          % ms_neu)
+        b("      Faktor                             %8.1f"
+          % (ms_alt / ms_neu if ms_neu > 0 else 0.0))
+        b("      gleiches Ergebnis                  %s"
+          % ("ja, bei allen %d" % len(namen) if abw == 0
+             else "NEIN - %d Abweichungen, das waere ein Fehler" % abw))
+    # --- 2) jedes System kalt neu bauen --------------------------------
+    b("")
+    b("   2) jedes System kalt neu gebaut (Cover-Ordner beider Wurzeln")
+    b("      und das Cover der fremden Datenbank - genau ein Warmlauf-Tick)")
+    BUDGET = 25.0
+    t_ende = time.monotonic() + BUDGET
+    zeilen = []
+    luecke_max = [0.0]
+
+    def _bauen(sk):
+        marke = [time.perf_counter()]
+        groesste = [0.0]
+
+        def _zw():
+            jetzt = time.perf_counter()
+            if jetzt - marke[0] > groesste[0]:
+                groesste[0] = jetzt - marke[0]
+            marke[0] = jetzt
+        for w in wurzeln:
+            A._art_index_cache.pop((w, sk), None)
+        A._docs_index_cache.pop(sk, None)
+        t0 = time.perf_counter()
+        n = 0
+        for w in wurzeln:
+            n += len(A._art_index(w, sk, _zw))
+        n += len(A._docs_index(sk, "boxart", _zw))
+        _zw()
+        return (time.perf_counter() - t0) * 1000.0, n, groesste[0] * 1000.0
+
+    gemessen = 0
+    for sk in systeme:
+        if time.monotonic() > t_ende:
+            break
+        try:
+            ms, n, lk = _bauen(sk)
+        except Exception as e:                           # noqa: BLE001
+            b("      %-12s -- %s" % (sk[:12], type(e).__name__))
+            continue
+        gemessen += 1
+        zeilen.append((ms, sk, n, lk))
+        luecke_max[0] = max(luecke_max[0], lk)
+    zeilen.sort(reverse=True)
+    b("      %-12s %10s %10s %16s"
+      % ("System", "ms", "Eintraege", "laengster Happen"))
+    for ms, sk, n, lk in zeilen[:10]:
+        b("      %-12s %10.1f %10d %13.1f ms" % (sk[:12], ms, n, lk))
+    if len(zeilen) > 10:
+        b("      ... und %d weitere" % (len(zeilen) - 10))
+    summe = sum(z[0] for z in zeilen)
+    b("")
+    b("   3) gemessen %d von %d Systemen" % (gemessen, len(systeme)))
+    b("      Vorarbeit zusammen                 %8.0f ms" % summe)
+    b("      teuerstes System am Stueck         %8.0f ms"
+      % (zeilen[0][0] if zeilen else 0.0))
+    b("      laengster Happen ueberhaupt        %8.1f ms" % luecke_max[0])
+    b("")
+    b("   ZU LESEN ALS: 'teuerstes System am Stueck' ist, wie lange ein")
+    b("   Druck bis Build 320 hoechstens wartete, wenn er in einen")
+    b("   Warmlauf-Tick fiel - der lief durch. 'laengster Happen' ist")
+    b("   die Wartezeit seit Build 321: der Tick bricht beim naechsten")
+    b("   Happen ab. 'Vorarbeit zusammen' ist, wie viel davon nach jedem")
+    b("   Start im Leerlauf und im Faden ansteht - das sind die 'ersten")
+    b("   10 Sekunden'. Ob ein Druck dabei verloren ging, steht in")
+    b("   Abschnitt L ('Vom Kernel verworfen') und im Log")
+    b("   (EINGABE: ... SYN_DROPPED, EINGABE-STAU).")
+
+
 def lauf(fe, fm, A, S, startdauer=None, log=None, mister_last=None):
     """Den kompletten Bench fahren und den Bericht als Text
     zurueckgeben. Bekommt alles, was er braucht, uebergeben - dieses
@@ -5412,6 +5633,10 @@ def lauf(fe, fm, A, S, startdauer=None, log=None, mister_last=None):
             _abschnitt_o(b, fe, S, A, fm)
     except Exception as e:                               # noqa: BLE001
         b("   ABSCHNITT O ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
+    try:
+        _abschnitt_p(b, fe, S, A, fm)
+    except Exception as e:                               # noqa: BLE001
+        b("   ABSCHNITT P ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
     b("")
     b("=" * 62)
     b("Ende. Nichts auf der Karte wurde veraendert.")

@@ -2465,6 +2465,22 @@ uebersprungen") und im Bench, Abschnitt L. Reagiert ein Pad nach dem
 Update gar nicht mehr, steht es dort — dann bitte genau diese Zeile
 melden.
 
+**Kein verschluckter Tastendruck mehr nach dem Start (seit Build 321).**
+In den ersten Sekunden nach dem Start bereitet das Frontend im
+Hintergrund die Cover-Verzeichnisse aller Systeme vor. Bis Build 320
+lief so ein Stück Vorarbeit, einmal begonnen, durch — ein Tastendruck,
+der hineinfiel, wartete, und in der Zeit las niemand das Pad. Läuft die
+Warteschlange eines Pads im Kernel dabei über, wirft der Kernel alles
+Ungelesene weg, Drücken und Loslassen eingeschlossen. Genau das war
+„die ersten Sekunden wie eingefroren, Eingaben übersprungen". Jetzt hält
+die Vorarbeit alle paar Millisekunden inne und bricht ab, sobald du
+drückst; das Pad wird währenddessen weiter abgeholt; und sollte der
+Kernel trotzdem einmal etwas verwerfen, gleicht das Frontend den
+wirklichen Stand von Tasten und Steuerkreuz neu ab, statt hängen zu
+bleiben. Jeder solche Fall steht in `/tmp/frontend.log` („SYN_DROPPED"),
+und ein Druck, der merklich warten musste, ebenfalls („EINGABE-STAU",
+mit Sekunden seit dem Start).
+
 ## 11. Boot-Animation (Startvideo)
 
 Eine kleine Bildsequenz, die einmal pro MiSTer-Boot abgespielt wird,
@@ -2917,7 +2933,7 @@ Das Frontend wird normalerweise ohne Optionen gestartet (Autostart oder
 | Option | Was sie tut |
 |---|---|
 | `--show` | Sagt, **was drin ist, wie es eingestellt ist und wie schnell es läuft** — auf dem Bildschirm und zusätzlich als Datei in `/tmp/dragend_show.txt`. Der schnellste Weg, einen Zustand zu melden, ohne per SSH zu suchen |
-| `--bench` | Eine **feste, wiederholbare Messung** über alle Zeichenwege; Bericht auf dem Bildschirm und in `/tmp/dragend_bench.txt`. Seit Build 308 **drückt der Bench auch selbst** (Abschnitt M): 5 bis 8 Tastendrücke hoch/runter im Wechsel, über denselben Eingabeweg wie ein echtes Pad — damit steht schwarz auf weiß, was beim schnellen Tippen passiert. Seit Build 319 misst er **jede Ansicht** (sechs auf der Hauptseite, vier in der Spieleliste) und nennt je Ansicht neben dem Mittelwert auch **Median, langsamsten Schritt und die Zahl der Vollbild-Flips** — ein einzelner Hänger verschwindet damit nicht mehr im Durchschnitt. Seit Build 320 nennt Abschnitt L jedes Eingabegerät **beim Namen** (samt der übersprungenen Bewegungssensoren), Abschnitt N misst die **Speicherbereinigung** und Abschnitt O die **Listenansicht mit Cover bei gehaltener Taste** — vorher gegen jetzt. Fasst bewusst **nichts** auf der SD-Karte an |
+| `--bench` | Eine **feste, wiederholbare Messung** über alle Zeichenwege; Bericht auf dem Bildschirm und in `/tmp/dragend_bench.txt`. Seit Build 308 **drückt der Bench auch selbst** (Abschnitt M): 5 bis 8 Tastendrücke hoch/runter im Wechsel, über denselben Eingabeweg wie ein echtes Pad — damit steht schwarz auf weiß, was beim schnellen Tippen passiert. Seit Build 319 misst er **jede Ansicht** (sechs auf der Hauptseite, vier in der Spieleliste) und nennt je Ansicht neben dem Mittelwert auch **Median, langsamsten Schritt und die Zahl der Vollbild-Flips** — ein einzelner Hänger verschwindet damit nicht mehr im Durchschnitt. Seit Build 320 nennt Abschnitt L jedes Eingabegerät **beim Namen** (samt der übersprungenen Bewegungssensoren), Abschnitt N misst die **Speicherbereinigung** und Abschnitt O die **Listenansicht mit Cover bei gehaltener Taste** — vorher gegen jetzt. Seit Build 321 misst Abschnitt P die **Vorarbeit nach dem Start** (wie lange ein Druck hineinfallend höchstens wartet), und Abschnitt L zählt, wie oft der Kernel Eingaben **verworfen** hat. Fasst bewusst **nichts** auf der SD-Karte an |
 | `--demo` | **Vier Minuten Vorführung**, von allein durchgespielt: die drei Ansichten auf Hauptseite und Spieleliste, die fünf Einstellungsgruppen — und seit Build 262 die **echten Bildschirme**: Suche, Kontextmenü, Zufalls-Zock mit Ziehung, Trophäenraum, Meilensteine, Top 10, Jahresrückblick, Tagebuch, Hilfe und das CRT-Testbild. Jede Taste bricht ab |
 | `--help` | Diese Liste. Die Prüfung steht **vor** allem anderen: wer sich vertippt, bekommt drei Zeilen und sonst nichts — kein halber Start, keine Sperre, die liegenbleibt |
 
