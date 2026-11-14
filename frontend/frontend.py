@@ -134,6 +134,7 @@ def _fe_import_haken(typ, wert, spur):
 sys.excepthook = _fe_import_haken
 
 from fe.log import LOGFILE, LOG
+import gc
 from fe.zwischenspeicher import hole as _hole, vergessen as _einstellungen_vergessen
 
 from fe.single_instance import LOCKFILE, _pid_alive, acquire_single_instance, release_single_instance
@@ -1296,6 +1297,7 @@ from fe.art import (
     rechtecke_kopieren as _c_rechtecke_kopieren,
     rechtecke_farben as _c_rechtecke_farben,
     zeilen_kopieren as _c_zeilen_kopieren,
+    zeiger_leeren as _c_zeiger_leeren,
     rechtecke_maske as _c_rechtecke_maske,
     texte_zeichnen as _c_texte_zeichnen,
     fremd_zaehlen as _c_fremd_zaehlen,
@@ -1458,6 +1460,10 @@ if flaechen_c_enabled():
 # dasselbe, nur ohne den weichen Schatten.
 if flaechen_c_enabled():
     Framebuffer.zeilen_kopierer = staticmethod(_c_zeilen_kopieren)
+    # Build 320: wirft der Framebuffer seine Kartenvorlagen weg, sollen
+    # die gemerkten Zeiger auf sie nicht stehenbleiben - siehe
+    # zeiger_leerer in fe/framebuffer.py.
+    Framebuffer.zeiger_leerer = staticmethod(_c_zeiger_leeren)
 
 # NEU (Build 73): Cover-Miniaturen im Leerlauf vorberechnen. Die
 # ausfuehrliche Begruendung samt der beiden ehrlichen Einschraenkungen
@@ -1539,6 +1545,70 @@ from fe.search import (jump_to_letter, treffer_suchen,
 # Marken-Kette wie vorher. Siehe den Kommentar bei _t_boot in main()
 # und die erste Marke in __init__.
 _T_BOOT = 0.0
+
+
+
+# ---------------------------------------------------------------------------
+# BUILD 320: DIE SPEICHERBEREINIGUNG SOLL NICHT DIE SPIELELISTE ABLAUFEN
+# ---------------------------------------------------------------------------
+#
+# NUTZERMELDUNG: "ab und an gibt es immer noch haenger beim scrollen
+# egal in welche richtung".
+#
+# SEIN BENCH VOM 13.11. SAGT DAZU IN ABSCHNITT J:
+#
+#     Liste raster   Vollbild-Flips: 0   Ausreisser (> 2x Median): 1
+#     -> einzelne Schritte dauern ein Vielfaches, OHNE dass ein
+#        Vollbild hinausging. Dann liegt es nicht am Zeichenweg,
+#        sondern an etwas daneben.
+#
+# "Egal in welche Richtung" und "ohne Vollbild" passen auf genau eine
+# Sorte Arbeit: eine, die mit dem Zeichnen nichts zu tun hat und
+# trotzdem auf demselben Faden laeuft. Pythons Speicherbereinigung
+# ist so eine. Sie laeuft in drei Stufen; die dritte (die "volle
+# Sammlung") geht JEDES verwaltete Objekt des Programms ab - bei
+# 31.650 Spielen samt Ordnerbaum, Zwischenspeichern und 60.000 Zeilen
+# Programm sind das einige hunderttausend. Was das auf diesem Geraet
+# kostet, stand bis hierher nirgends: das Frontend hat die
+# Speicherbereinigung nie angefasst und nie gemessen.
+#
+# gc.freeze() (Python 3.7) nimmt alles, was JETZT existiert, aus der
+# Betrachtung heraus. Der Spielebaum, die Indizes, das Programm selbst
+# - alles, was nach dem Start steht und bis zum Beenden bleibt - wird
+# danach von keiner Sammlung mehr abgelaufen. Eine volle Sammlung
+# sieht dann nur noch, was seit dem Einfrieren dazugekommen ist.
+#
+# WAS DAS NICHT KOSTET: nichts wird freigegeben oder verschoben, es
+# ist ein Umhaengen zweier Listen. Und was eingefroren ist, wird
+# trotzdem ganz normal freigegeben, sobald niemand mehr darauf zeigt
+# (das macht die Referenzzaehlung, nicht die Bereinigung). Nur ein
+# eingefrorener KREIS aus Objekten bliebe liegen - beim Neueinlesen
+# der Spieleliste hoechstens ein paar Kilobyte.
+#
+# EHRLICH DAZU: dass die Haenger DAHER kommen, ist nicht gemessen. Es
+# ist die eine Ursache, die zu "egal in welche Richtung" passt und die
+# der Bench bisher nicht ausschliessen konnte. Abschnitt N misst es
+# jetzt auf dem Geraet (volle Sammlung ohne und mit Einfrieren), und
+# die RUCKLER-Zeile im Log nennt ab diesem Build, wie viele Sammlungen
+# in die Runde gefallen sind.
+def speicherbereinigung_einfrieren():
+    """Alles, was jetzt steht, aus der Speicherbereinigung nehmen.
+    Rueckgabe: Zahl der eingefrorenen Objekte, -1 wenn es nicht geht."""
+    try:
+        gc.freeze()
+        return gc.get_freeze_count()
+    except Exception:                                # noqa: BLE001
+        return -1
+
+
+def speicherbereinigung_stand():
+    """(Stufe 0, Stufe 1, Stufe 2) - wie oft jede Stufe bisher gelaufen
+    ist. Fuer die RUCKLER-Zeile; (0, 0, 0), wenn es nicht abfragbar ist."""
+    try:
+        st = gc.get_stats()
+        return tuple(int(x.get("collections", 0)) for x in st[:3])
+    except Exception:                                # noqa: BLE001
+        return (0, 0, 0)
 
 
 class Frontend:
@@ -2753,6 +2823,11 @@ class Frontend:
         return list(eigene) + dazu
 
     def build_categories(self, force_rescan=False):
+        # Build 320: nach diesem Aufbau steht ein neuer Spielebaum -
+        # der naechste Leerlauf friert ihn ein (siehe
+        # speicherbereinigung_einfrieren()). Nur vermerkt, nicht hier
+        # getan: diese Methode hat mehrere Ausgaenge.
+        self._gc_einfrieren_faellig = True
         # Zwischengespeicherte Attract-Modus-Spieleliste verwerfen -
         # nach einem Rescan koennten sich neue Spiele dazugesellt oder
         # welche entfernt worden sein.
@@ -7896,6 +7971,30 @@ class Frontend:
         if time.monotonic() < getattr(self, "_rainbow_cursor_until", 0):
             return False
 
+        # BUILD 320: DEN COVER-SCHUTZ AUCH HIER AUFFRISCHEN.
+        #
+        # _sync_cover_defer() sagt in seinem eigenen Docstring: "Jetzt
+        # wird der Wert dort gesetzt, wo er gebraucht wird - direkt zu
+        # Beginn der beiden Seitenaufbauten - und ist damit IMMER
+        # aktuell, egal ueber welchen Weg gezeichnet wurde." Das
+        # stimmte fuer zwei von vier Wegen. Die beiden LEICHTEN Pfade
+        # (dieser hier und sein Gegenstueck auf der anderen Seite)
+        # haben ihn nie gerufen - und in der Listenansicht sind sie
+        # der Weg, den JEDER Scrollschritt nimmt.
+        #
+        # WAS DAS HIESS, und der Bench vom 13.11. sagt es in Abschnitt
+        # L.4 woertlich: "es lagen 69 Auftraege an und der Arbeiter hat
+        # trotzdem NICHT pausiert ... nachzusehen waere
+        # _navigation_aktiv()". Die fragt genau diesen Schalter. Blieb
+        # er auf dem Stand des letzten Leerlaufs stehen (False), dann
+        #   * packte und schrieb der Arbeiter auf dem zweiten Kern
+        #     weiter Miniaturen, mitten im Scrollen (Build 301 war in
+        #     der Liste wirkungslos), und
+        #   * wurden noch nicht gerechnete Cover im Zeichenweg
+        #     gerechnet statt uebersprungen.
+        # Beides sind Haenger, die "ab und an" kommen: immer dann,
+        # wenn vor dem Druecken eine Pause war.
+        self._sync_cover_defer()
         fb = self.fb
         # Build 218: ab hier mitschreiben - siehe
         # _rechtecke_statt_band(). Das Sammeln endet unten am Flip.
@@ -8091,6 +8190,15 @@ class Frontend:
             return False
         if not (self.scroll <= new_item_i < self.scroll + visible):
             return False
+
+        # Build 320: den Cover-Schutz auffrischen - die Begruendung
+        # steht in _draw_navigate_cats_impl(), dem Gegenstueck auf der
+        # Hauptseite. Erst HIER, nachdem feststeht, dass dieser Pfad
+        # zeichnet: lehnt er ab, frischt der volle Aufbau selbst auf.
+        self._sync_cover_defer()
+        # Und was der Vorausleser inzwischen geholt hat, in den
+        # Speicher - siehe _vorauslesen().
+        self._lader_einsammeln()
 
         # Alte Position hatte ggf. einen ueber die eigene Zeile hinaus
         # reichenden Glow-Rand (war ja vorher markiert) - erst auf den
@@ -8458,6 +8566,12 @@ class Frontend:
         self._panel_bereiche = None
         self.draw_art_panel(art_x0, art_w, art_y0, art_h,
                             item_syskey, v["items"][item_i], s)
+        # Build 320: und die naechsten Cover schon einmal anmelden -
+        # siehe _vorauslesen(). NACH dem Zeichnen: der Faden soll den
+        # zweiten Kern haben, waehrend dieser hier flippt und auf die
+        # naechste Taste wartet.
+        if self.page == 1:
+            self._vorauslesen(v, syskey, item_i, art_w, art_h, s)
         _sp = self._flip_spuren
         if _sp is not None:
             _rand = 4 * s
@@ -8909,6 +9023,9 @@ class Frontend:
         # Cover-Schutz auf den aktuellen Stand bringen - siehe
         # _sync_cover_defer() fuer die ausfuehrliche Begruendung.
         self._sync_cover_defer()
+        # Build 320: was der Nachlade-Faden fertig hat, VOR dem Zeichnen
+        # eintragen - siehe _lader_einsammeln().
+        self._lader_einsammeln()
         fb = self.fb
         W, H = fb.width, fb.height
         name, _root_node, syskey = self.cats[self.cat_i]
@@ -9410,6 +9527,12 @@ class Frontend:
                                     item_syskey, items[self.item_i], s)
                 self._perf_art = (getattr(self, "_perf_art", 0)
                                   + (time.monotonic() - _ta))
+                # Build 320: die naechsten Cover anmelden. Derselbe
+                # Aufruf wie in _art_panel_aktualisieren() - beim Halten
+                # in einer langen Liste wandert das Fenster mit, und
+                # dann laeuft JEDER Schritt hier durch, nicht dort.
+                self._vorauslesen(self.view, syskey, self.item_i,
+                                  art_w, art_h, s)
 
         # ABSICHERUNG fuer den neuen schnellen Pfad oben: dieser Bereich
         # (Nachricht ODER Musiktitel) kann sich AUCH bei reinem Scrollen
@@ -11517,14 +11640,57 @@ class Frontend:
         i = self.cat_i
         name, _node, syskey = self.cats[i]
         akzent = accent_for(syskey)
+        bildfeld, textfeld = geo["felder"]
+
+        def _spur(feld):
+            # Das Rechteck fuer den Flip anmelden - von Hand, siehe
+            # unten, warum nicht mehr ueber _restore_row_bg().
+            _sp = self._flip_spuren
+            if _sp is None:
+                return
+            _r = self._spalten_rechteck(feld[0], feld[2], feld[1],
+                                        feld[1] + feld[3])
+            if _r:
+                _sp.append(_r)
+
         if schnell:
-            # Nur die beiden Felder, nicht die ganze Karte - siehe
-            # dashboard_geometrie(). Erst den Hintergrund holen (das
-            # schreibt das Rechteck fuer den Flip mit), dann die
-            # Kartenfarbe wieder darueber.
-            for fx, fy, fw, fh in geo["felder"]:
-                self._restore_row_bg(fx, fy, fw, fh)
-                fb.rect(fx, fy, fw, fh, C_PANEL)
+            # BUILD 320: ZWEI DINGE, UND BEIDE STEHEN IN SEINEM BENCH
+            # VOM 13.11. (Abschnitt J, "Haupt dashboard", 43,55 ms):
+            #
+            #     restore 12,49   karten 12,52   flip 7,30
+            #     BYTES je Schritt: restore 3,43  karten ...  flip 3,43 MB
+            #     Karten: 3,44 MB Flaeche, 0,00 MB wirklich kopiert
+            #
+            # 1. KEIN _restore_row_bg() MEHR. Hier wurde je Feld erst
+            #    der Hintergrund geholt und dann die Kartenfarbe
+            #    darueber gefuellt - der Kommentar an dieser Stelle hat
+            #    es offen gesagt: "das schreibt das Rechteck fuer den
+            #    Flip mit". 3,43 MB kopiert, nur um eine Zeile in eine
+            #    Liste zu bekommen, und sofort wieder ueberschrieben.
+            #    Die Zeile wird jetzt von Hand eingetragen (_spur),
+            #    wie es _draw_navigate_items_impl() seit Build 218 tut.
+            #
+            # 2. VOM BILDFELD NUR, WAS DARIN STAND. Das Feld ist auf
+            #    1080p 1079x517 gross (2,2 MB) - das Foto darin
+            #    hoechstens 420x320 (0,5 MB), denn hochgerechnet wird
+            #    nicht. Drei Viertel des Feldes sind also Kartenfarbe,
+            #    die sich nie aendert. Weggeraeumt wird jetzt genau
+            #    das Rechteck, das der vorige Schritt bemalt hat
+            #    (_dash_bild_alt) - derselbe Gedanke wie bei
+            #    _galerie_text_unten in Build 217: weg muss, was JETZT
+            #    noch dasteht, und das weiss der, der es hingemalt
+            #    hat.
+            #
+            #    Unbekannt (None) heisst: das ganze Feld, wie bisher.
+            _alt = getattr(self, "_dash_bild_alt", None)
+            if _alt is None:
+                _alt = bildfeld
+            if _alt[2] > 0 and _alt[3] > 0:
+                fb.rect(_alt[0], _alt[1], _alt[2], _alt[3], C_PANEL)
+                _spur(_alt)
+            fb.rect(textfeld[0], textfeld[1], textfeld[2], textfeld[3],
+                    C_PANEL)
+            _spur(textfeld)
         bb, bh = geo["bild_b"], geo["bild_h"]
         bx, by = geo["bild_x"], geo["bild_y"]
         art, verzoegert = self._kat_logo(i, bb, bh, foto=True)
@@ -11536,10 +11702,22 @@ class Frontend:
                                   aussparen=luecke, hintergrund_rgb=C_BG)
         if art:
             aw, ah, pix = art
-            self.blit(bx + max(0, (bb - aw) // 2),
-                      by + max(0, (bh - ah) // 2), aw, ah, pix)
+            _neu = (bx + max(0, (bb - aw) // 2),
+                    by + max(0, (bh - ah) // 2), aw, ah)
+            self.blit(_neu[0], _neu[1], aw, ah, pix)
         elif not verzoegert:
+            # Der Platzhalter fuellt den ganzen Kasten.
             self._kachel_platzhalter(bx, by, bb, bh, name, s, True)
+            _neu = bildfeld
+        else:
+            # Nichts gemalt - das Feld ist leer, und so merkt es sich
+            # der naechste Schritt auch.
+            _neu = (bx, by, 0, 0)
+        # Was JETZT im Bildfeld steht - fuer den naechsten Schritt.
+        self._dash_bild_alt = _neu
+        if schnell and _neu[2] > 0 and _neu[3] > 0:
+            # Das neue Bild kann ueber das alte hinausragen.
+            _spur(_neu)
         # --- Name gross, darunter die Zahlen.
         tx, ty, tb = geo["text_x"], geo["text_y"], geo["text_b"]
         skala = self._fit_scale(name, tb, 2 * s)
@@ -11608,13 +11786,14 @@ class Frontend:
 
         DER TEUERSTE DER DREI, und das soll hier stehen und nicht
         verschwiegen werden: bei jedem Schritt wechselt die ganze
-        Tafel den Inhalt. Freigeraeumt werden deshalb die beiden
-        Felder aus dashboard_geometrie() - bei 1920x1080 zusammen rund
-        3,5 MB je Schritt. Zum Vergleich: die klassische Liste der
-        Hauptseite kommt mit einem Bruchteil aus und kostet nach Bench
-        20 20,80 ms. Was die Tafel daraus macht, misst Abschnitt J,
-        sobald der Stil eingestellt ist - geschaetzt wird hier
-        nichts."""
+        Tafel den Inhalt. Bis Build 319 wurden dafuer die beiden
+        Felder aus dashboard_geometrie() ganz freigeraeumt - bei
+        1920x1080 zusammen rund 3,5 MB je Schritt, gemessen 43,55 ms
+        (Bench vom 13.11., Abschnitt J). Seit Build 320 wird vom
+        Bildfeld nur noch weggeraeumt, was der vorige Schritt bemalt
+        hat, und kein Hintergrund mehr geholt - siehe
+        _dash_tafel_zeichnen(). Was daraus wird, misst Abschnitt J;
+        geschaetzt wird hier nichts."""
         fb = self.fb
         KL = self.kat_layout()
         geo = self.dashboard_geometrie(KL)
@@ -13302,6 +13481,9 @@ class Frontend:
                         and ART.warte_pruefen()):
                     ART._deferred_something = True
                     self._settled_redrawn = False
+                # Build 320: ERST einsammeln, DANN nachzeichnen - siehe
+                # _lader_einsammeln().
+                self._lader_einsammeln()
                 _nachzuholen = getattr(ART, "_deferred_something", False)
                 if (not self._settled_redrawn and not any_dialog
                         and _nachzuholen
@@ -13339,6 +13521,12 @@ class Frontend:
                 # oefter als MARKEN_TAKT passiert es nicht. Ein grosser
                 # Rueckstand wird also abgetragen, ohne einen
                 # Schreibstoss zu erzeugen.
+                # Build 320: den frisch aufgebauten Bestand einfrieren -
+                # im Leerlauf, also wenn gerade niemand etwas will.
+                if getattr(self, "_gc_einfrieren_faellig", False):
+                    self._gc_einfrieren_faellig = False
+                    _n_eis = speicherbereinigung_einfrieren()
+                    LOG("GC: %d Objekte eingefroren" % _n_eis)
                 _jetzt_marken = time.monotonic()
                 if _jetzt_marken >= self._marken_naechste:
                     self._marken_naechste = _jetzt_marken + self.MARKEN_TAKT
@@ -14020,6 +14208,183 @@ class Frontend:
         if jetzt not in arten:
             jetzt = "boxart"
         return (jetzt, arten.index(jetzt) + 1, len(arten))
+
+    # ------------------------------------------------------------------
+    # BUILD 320: VORAUSLESEN IN SCROLLRICHTUNG
+    # ------------------------------------------------------------------
+    #
+    # NUTZERMELDUNG: "was mich auch noch ein wenig stoert ist das
+    # scrollen in der listen ansicht mit eingeschalteten cover wechsel
+    # das das nicht schneller laeuft".
+    #
+    # WAS BREMST, steht bei GROSSE_MINIATUR_BYTES in fe/art.py: das
+    # Cover der Listenansicht ist 2,7 MB gross, und es von der Karte zu
+    # holen kostet rund 90 ms - bis Build 319 im Zeichenweg, bei jedem
+    # Schritt.
+    #
+    # DIESES GERAET HAT ZWEI KERNE, und der zweite hat beim Scrollen
+    # nichts zu tun. Lesen und Auspacken geben die GIL frei (das ist
+    # der Grund, warum es fe/nachladen.py als FADEN gibt und nicht als
+    # Prozess). Also holt der Nachlade-Faden die Cover der NAECHSTEN
+    # Eintraege, waehrend der Hauptfaden den aktuellen zeichnet - und
+    # wenn der Zeiger dort ankommt, liegt das Bild im Arbeitsspeicher.
+    #
+    # WIE WEIT VORAUS, haengt am Tempo - und die Rechnung dazu hat der
+    # erste Anlauf falsch gemacht. Angemeldet wird am ENDE des
+    # Zeichnens von Eintrag i; der Eintrag i+1 wird gleich danach
+    # gezeichnet. Fuer i+1 bleibt dem Faden also gar keine Zeit, fuer
+    # i+2 ein Schrittabstand, fuer i+ab deren (ab - 1). In dieser Zeit
+    # muss er sein laufendes Bild beenden (wenn er gerade eines liest)
+    # und das neue holen. Also:
+    #
+    #     ab = 1 + aufgerundet(Bedarf / Schrittabstand)
+    #     Bedarf = Ladezeit, und das Anderthalbfache, wenn er gerade
+    #              liest
+    #
+    # Die Ladezeit misst der Faden selbst (MiniaturLader.letzte_dauer,
+    # dazu seine Pause zwischen zwei Bildern), geschaetzt wird nichts.
+    # Mit den Zahlen seines Bench (87 ms je Bild): bei 160 ms je
+    # Schritt zwei voraus, bei 60 ms vier. Nachgestellt und gemessen
+    # wird das in Abschnitt O des Bench und in
+    # tools/test_bench_cover_halten.py - mit dem echten Faden.
+    #
+    # HINTER den drei Zielen stehen die naeheren Eintraege und zuletzt
+    # der unter dem Zeiger. Hat der Faden Luft, holt er auch die -
+    # wird man langsamer oder bleibt stehen, liegen sie dann schon da.
+    # Hat er keine, kommt die naechste Liste, bevor er dort ankommt.
+    #
+    # EHRLICH DAZU: bei voller Wiederholrate schafft der zweite Kern
+    # nicht jedes Cover - er holt rund zehn je Sekunde, gescrollt wird
+    # mit bis zu zwanzig. Dann erscheint ein Teil; die anderen bleiben
+    # leer, bis man langsamer wird oder loslaesst. Vorher erschien
+    # jedes, bei gut vier Schritten je Sekunde. Was es auf dem Geraet
+    # wirklich ist, steht in Abschnitt O ("ohne Cover x von y").
+    #
+    # NUR MIT "COVER SOFORT". Ohne den Schalter wird die Boxart-Spalte
+    # waehrend des Scrollens gar nicht gezeichnet (Build 96) - dann
+    # waere jedes vorausgelesene Bild Arbeit fuer nichts, und Build
+    # 301 ("keine Hintergrundarbeit waehrend aktiver Eingabe") gilt
+    # dort unveraendert.
+    VORAUS_ZAHL = 3           # so viele Eintraege je Schritt anmelden
+    VORAUS_WEITESTER = 6      # weiter als so viele greift er nie vor
+
+    def _lader_einsammeln(self):
+        """Was der Nachlade-Faden fertig hat, in den Arbeitsspeicher.
+
+        Vorher stand das nur im Leerlauf-Zweig von next_action() - und
+        dort NACH dem Nachzeichnen. Ein Cover, das der Faden eben
+        geholt hatte, wurde also erst eingetragen, nachdem die Seite
+        es schon selbst von der Karte gelesen hatte."""
+        lader = getattr(self, "lader", None)
+        if lader is None:
+            return 0
+        n = 0
+        try:
+            for _p, _bw, _bh, _erg in lader.abholen():
+                if ART.nachgeladen_eintragen(_p, _bw, _bh, _erg):
+                    n += 1
+        except Exception:                            # noqa: BLE001
+            # Vorratshaltung - darf den Zeichenweg nie stoeren.
+            pass
+        return n
+
+    def _vorauslesen(self, v, syskey, item_i, art_w, art_h, s):
+        """Die Cover der naechsten Eintraege beim Nachlade-Faden
+        anmelden - siehe den Block darueber. Rueckgabe: die Liste der
+        angemeldeten (pfad, breite, hoehe), fuer den Test."""
+        if not cover_sofort_enabled():
+            return []
+        lader = getattr(self, "lader", None)
+        if lader is None:
+            return []
+        items = v.get("items") or ()
+        n = len(items)
+        if n < 2:
+            return []
+        richtung = 1 if getattr(self, "_last_scroll_dir", 1) >= 0 else -1
+        jetzt = time.monotonic()
+        abstand = jetzt - getattr(self, "_vl_zeit", 0.0)
+        self._vl_zeit = jetzt
+        # Was der Faden seit dem Zeichnen fertig bekommen hat, gleich
+        # eintragen - sonst wuerde es unten als "fehlt" noch einmal
+        # angemeldet.
+        self._lader_einsammeln()
+        lade = ((getattr(lader, "letzte_dauer", 0.0) or 0.1)
+                + (getattr(lader, "PAUSE", 0.0) or 0.0))
+        laeuft = getattr(lader, "in_arbeit", None)
+        if abstand <= 0.0 or abstand >= 1.0:
+            ab = 1
+        else:
+            bedarf = lade * (1.5 if laeuft is not None else 1.0)
+            ab = max(1, min(self.VORAUS_WEITESTER,
+                            1 + int(math.ceil(bedarf / abstand
+                                                  - 1e-6))))
+        # Erst die drei Ziele, dann die naeheren Eintraege rueckwaerts,
+        # zuletzt der unter dem Zeiger - siehe den Block ueber
+        # VORAUS_ZAHL. Stuende der Eintrag unter dem Zeiger vorn, laese
+        # der Faden immer genau das Bild, das eben schon leer
+        # gezeichnet wurde, waehrend das naechste wartet.
+        schritte = (list(range(ab, ab + self.VORAUS_ZAHL))
+                    + list(range(ab - 1, -1, -1)))
+        # Was der Faden gerade liest, nicht noch einmal anmelden
+        # (laeuft, oben abgefragt).
+        # GEMERKT JE EINTRAG, solange DIESE LISTE in DIESER Geometrie
+        # steht: Pfad und Kasten haengen am Eintrag (cover_box_size()
+        # rechnet den Text mit), und beim Halten fragen
+        # aufeinanderfolgende Schritte fast dieselben Eintraege.
+        #
+        # Der Merker haengt an der LISTE, nicht an self.view: das
+        # Wortbuch der Ansicht wird bei jedem vollen Aufbau neu
+        # angelegt, und beim Halten in einer langen Liste IST jeder
+        # Schritt ein voller Aufbau (das Fenster wandert mit). Die
+        # Liste selbst bleibt dieselbe - _display_items() haelt sie am
+        # Knoten fest. Verglichen wird mit "is", und der Merker haelt
+        # die Liste fest: so kann keine andere dieselbe Kennung erben.
+        #
+        # UND ER LEBT NUR EINEN LAUF LANG. Nach einer Pause (ab == 1
+        # wegen "lange her") faengt er neu an: in der Pause kann ein
+        # Cover dazugekommen oder der Infotext nachgeladen worden sein,
+        # und dann stimmt der Kasten nicht mehr - das Bild laege unter
+        # einem Schluessel, den niemand abfragt.
+        geo = (art_w, art_h, s)
+        _schl = (syskey, art_w, art_h, s)
+        _mk = getattr(self, "_vl_merk", None)
+        if (_mk is None or _mk[0] is not items or _mk[1] != _schl
+                or abstand <= 0.0 or abstand >= 1.0):
+            _mk = self._vl_merk = (items, _schl, {})
+        merk = _mk[2]
+        auftraege = []
+        for k in schritte:
+            idx = item_i + k * richtung
+            if idx < 0 or idx >= n:
+                continue
+            e = merk.get(idx)
+            if e is None:
+                try:
+                    pk = self.cover_pfad_und_kasten(items[idx], syskey, geo)
+                except Exception:                    # noqa: BLE001
+                    pk = None
+                if not (pk and pk[0]):
+                    pk = None
+                e = merk[idx] = [pk, False]
+            pk = e[0]
+            if pk is None:
+                continue
+            # "Liegt auf der Karte" wird nur als JA gemerkt. Ein Nein
+            # kann sich aendern - der Arbeitsprozess schreibt genau
+            # waehrenddessen Miniaturen -, und die Nachfrage ist billig
+            # (fe/art.py merkt sich ein Nein selbst, bis zum Stillstand).
+            if not e[1]:
+                if not thumb_cache_has(*pk):
+                    continue
+                e[1] = True
+            if ART.im_ram(*pk) or pk == laeuft:
+                continue
+            auftraege.append(pk)
+        if auftraege:
+            lader.start()
+            lader.uebergeben(auftraege)
+        return auftraege
 
     def cover_pfad_und_kasten(self, item, cat_syskey, geo):
         """(Cover-Pfad, Kastenbreite, Kastenhoehe) fuer EINEN Eintrag -
@@ -24478,6 +24843,20 @@ class Frontend:
                             _vsync_ms = self.fb.vsync_ms_und_zuruecksetzen()
                         except AttributeError:
                             _vsync_ms = 0.0
+                        # Build 320: wie viele Sammlungen der
+                        # Speicherbereinigung seit der vorigen
+                        # RUCKLER-Zeile gelaufen sind, je Stufe. Steht
+                        # bei "rest=" eine grosse Zahl und hier eine
+                        # Eins in der dritten Stelle, war es eine
+                        # volle Sammlung - siehe
+                        # speicherbereinigung_einfrieren().
+                        _gc_jetzt = speicherbereinigung_stand()
+                        _gc_alt = getattr(self, "_gc_stand_alt", _gc_jetzt)
+                        self._gc_stand_alt = _gc_jetzt
+                        LOG("RUCKLER-GC: Sammlungen seit der vorigen "
+                            "Zeile %d/%d/%d (Stufe 0/1/2)"
+                            % tuple(max(0, a_ - b_) for a_, b_
+                                    in zip(_gc_jetzt, _gc_alt)))
                         LOG("RUCKLER: %.0f ms busy (stream=%.0f haus=%.0f "
                             "zeichnen=%.0f rest=%.0f | davon bg=%.0f "
                             "restore=%.0f rows=%.0f art=%.0f flip=%.0f "

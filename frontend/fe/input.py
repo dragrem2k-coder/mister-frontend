@@ -843,13 +843,124 @@ class Device:
         except OSError:
             pass
 
+# ---------------------------------------------------------------------------
+# BUILD 320: EIN BEWEGUNGSSENSOR IST KEIN PAD
+# ---------------------------------------------------------------------------
+#
+# NUTZERMELDUNG: "ausserdem moechte ich das die joypad eingabe sofort
+# erkannt und angenommen wird".
+#
+# DER BEFUND STEHT SEIT BUILD 306 IN SEINEM EIGENEN BENCH, Abschnitt L,
+# und ich habe ihn vierzehn Builds lang als Auskunft gelesen statt als
+# Auftrag:
+#
+#     Pad      event3      96 Ereignisse =     320 je Sekunde
+#     Pad      event4    1545 Ereignisse =    5150 je Sekunde
+#
+#     "bei einem Schritt von 55 ms liegen im Schnitt 301 Ereignisse
+#      vor, wenn der Zeichenfaden das naechste Mal hinsieht. Jedes
+#      davon muss er lesen und verwerfen, BEVOR er den echten
+#      Tastendruck findet - und das auf dem Faden, der auch zeichnet."
+#
+# 5150 Ereignisse je Sekunde drueckt kein Mensch. So sieht ein
+# BEWEGUNGSSENSOR aus: ein 8BitDo im Switch-Modus meldet sich (wie ein
+# Switch Pro Controller, ein DualShock 4 oder ein DualSense) als ZWEI
+# Geraete - das Pad selbst und ein zweites namens "... IMU" bzw.
+# "... Motion Sensors" mit Beschleunigung und Drehrate auf sechs
+# Achsen, einige hundert Mal je Sekunde.
+#
+# EHRLICH DAZU: dass event4 genau das ist, ist ein SCHLUSS aus der
+# Rate und nicht nachgesehen - der Bench hat bis Build 319 den Namen
+# des Geraets nicht mit ausgegeben. Seit Build 320 tut er es, samt
+# der Liste dessen, was uebersprungen wurde. Steht dort nach diesem
+# Build weiterhin ein Geraet mit tausenden Ereignissen je Sekunde,
+# war der Schluss falsch, und der Name sagt dann, was es ist.
+#
+# scan_devices() hat bis hierher JEDES Eingabegeraet genommen, das
+# nicht MiSTers virtuelles ist. Der Sensor wurde also geoeffnet,
+# gegriffen und gelesen wie ein Pad:
+#
+#   * Im Leerlauf kam select() nie zur Ruhe - das Frontend hat
+#     ununterbrochen Sensorwerte gelesen und verworfen.
+#   * Bei gehaltener Taste raeumt read_action() bis zu LEEREN_MAX
+#     Runden zu je 64 Ereignissen ab. Was der Sensor in einem
+#     Zeichenschritt nachliefert, wurde in JEDEM Schritt einzeln durch
+#     struct.unpack und _translate() gezogen - in Python, auf dem
+#     Faden, der auch zeichnet. Abschnitt J des Bench merkt davon
+#     nichts (dort drueckt niemand), im Betrieb kam es auf jeden
+#     Schritt obendrauf.
+#   * Und die Achsen des Sensors heissen ABS_X und ABS_Y - genau wie
+#     die des Steuerkreuzes. Gedeutet wurden sie also als Stick. Dass
+#     daraus keine Geisterschritte wurden, liegt nur daran, dass die
+#     Erdbeschleunigung unter der Ausloeseschwelle bleibt.
+#
+# WORAN MAN IHN ERKENNT, und zwar ohne ein einziges Geraet beim Namen
+# zu kennen: der Kernel sagt es selbst. In /proc/bus/input/devices
+# steht fuer jedes Geraet eine Zeile "B: PROP=", und Bit 6
+# (INPUT_PROP_ACCELEROMETER) heisst woertlich "das ist ein
+# Beschleunigungssensor". Dazu die zweite, unabhaengige Eigenschaft:
+# ein Sensor hat KEINE EINZIGE TASTE - die Zeile "B: KEY=" fehlt ganz.
+# Ein Geraet ohne Tasten kann im Frontend nichts ausloesen, was man
+# nicht auch versehentlich durch Kippen ausloesen wuerde.
+#
+# DREI Merkmale schliessen aus, jedes fuer sich: das PROP-Bit, die
+# fehlende KEY-Zeile, und als drittes der NAME ("IMU", "Motion
+# Sensors", "Accelerometer", "Gyro"). Der Grund fuer die Dopplung:
+# aeltere Kernel-Treiber setzen das PROP-Bit nicht, und ein Treiber,
+# der dem Sensor versehentlich eine Taste mitgibt, haette sonst alle
+# drei Sicherungen auf einmal umgangen.
+#
+# TASTATUREN BLEIBEN IMMER - auch eine ohne erkennbare KEY-Zeile. Eine
+# uebersprungene Tastatur waere der schlimmste denkbare Ausgang dieser
+# Aenderung (kein F1, kein Esc), ein zuviel gelesenes Geraet der
+# harmloseste.
+INPUT_PROP_ACCELEROMETER = 6
+
+# Ganze Woerter, damit "Gyro" nicht in einem Herstellernamen anschlaegt.
+_SENSOR_NAME = re.compile(
+    r"(?i)(\bIMU\b|\bMotion Sensors?\b|\bAccelerometer\b|\bGyro(scope)?\b)")
+
+# Was uebersprungen wurde - nur zum Nachsehen (Log, Bench Abschnitt L).
+# [(pfad, name, grund), ...]
+UEBERSPRUNGEN = []
+
+
+def geraet_grund_zum_ueberspringen(block):
+    """Warum dieses Geraet NICHT geoeffnet wird - oder None.
+
+    block ist der Abschnitt eines Geraets aus /proc/bus/input/devices.
+    Eigene Funktion, damit sich die Regel an echten Abschnitten pruefen
+    laesst, ohne dass ein Geraet angeschlossen sein muss (siehe
+    tools/test_eingabegeraete.py)."""
+    if "kbd" in block:
+        return None
+    m = re.search(r"^B: PROP=([0-9a-fA-F ]+)$", block, re.M)
+    if m:
+        try:
+            # Mehrere Woerter gibt es nur bei mehr als 32/64 Bits; das
+            # niederwertigste steht hinten.
+            prop = int(m.group(1).split()[-1], 16)
+        except (ValueError, IndexError):
+            prop = 0
+        if prop & (1 << INPUT_PROP_ACCELEROMETER):
+            return "Bewegungssensor"
+    if not re.search(r"^B: KEY=", block, re.M):
+        return "keine Tasten"
+    n = re.search(r'^N: Name="([^"]*)"', block, re.M)
+    if n and _SENSOR_NAME.search(n.group(1)):
+        return "Bewegungssensor (Name)"
+    return None
+
+
 def scan_devices():
-    """Alle echten Input-Geraete finden (MiSTers virtuelles ueberspringen)."""
+    """Alle echten Input-Geraete finden (MiSTers virtuelles ueberspringen
+    - und seit Build 320 alles, was kein Pad und keine Tastatur ist)."""
     devs = []
     try:
         blocks = open("/proc/bus/input/devices").read().split("\n\n")
     except OSError:
         return devs
+    del UEBERSPRUNGEN[:]
     for b in blocks:
         if "event" not in b or "MiSTer virtual" in b:
             continue
@@ -858,7 +969,12 @@ def scan_devices():
         if not m:
             continue
         path = "/dev/input/event" + m.group(1)
-        devs.append((path, n.group(1) if n else "?", "kbd" in b))
+        name = n.group(1) if n else "?"
+        grund = geraet_grund_zum_ueberspringen(b)
+        if grund:
+            UEBERSPRUNGEN.append((path, name, grund))
+            continue
+        devs.append((path, name, "kbd" in b))
     return devs
 
 class InputManager:
@@ -1097,7 +1213,17 @@ class InputManager:
             return
         self._last_input_mtime = mt
         seen = set()
-        for path, name, is_kbd in scan_devices():
+        _gefunden = scan_devices()
+        # Build 320: einmal je Geraet ins Log, was NICHT geoeffnet wird
+        # - sonst sucht man im Zweifel ein Pad, das stumm bleibt.
+        _gemeldet = getattr(self, "_uebersprungen_gemeldet", None)
+        if _gemeldet is None:
+            _gemeldet = self._uebersprungen_gemeldet = set()
+        for _p, _n, _g in UEBERSPRUNGEN:
+            if _p not in _gemeldet:
+                _gemeldet.add(_p)
+                LOG("Geraet uebersprungen: %s '%s' (%s)" % (_p, _n, _g))
+        for path, name, is_kbd in _gefunden:
             seen.add(path)
             if path not in self.devices:
                 try:

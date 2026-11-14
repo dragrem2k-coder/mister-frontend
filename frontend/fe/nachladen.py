@@ -90,6 +90,16 @@ class MiniaturLader:
         # Nur fuer die Protokollzeile.
         self.geholt = 0
         self.nicht_da = 0
+        # Build 320: wie lange das letzte erfolgreiche Lesen gedauert
+        # hat (Sekunden). Der Vorausleser im Frontend rechnet daraus,
+        # wie weit er vorgreifen muss - siehe Frontend._vorauslesen().
+        self.letzte_dauer = 0.0
+        # Build 320: der Auftrag, der GERADE gelesen wird - oder None.
+        # Der Vorausleser im Hauptfaden fragt das ab, damit er
+        # denselben Auftrag nicht ein zweites Mal anmeldet: eine neue
+        # Liste bricht nur ab, was noch nicht begonnen wurde; das
+        # laufende Lesen geht zu Ende und landet in "fertig".
+        self.in_arbeit = None
 
     # -- Steuerung aus dem Hauptthread -----------------------------------
 
@@ -165,6 +175,8 @@ class MiniaturLader:
                             or self._generation != meine_generation):
                         break
                 pfad, bw, bh = auftrag
+                self.in_arbeit = (pfad, bw, bh)
+                _t0 = time.monotonic()
                 try:
                     ergebnis = self._lesen(pfad, bw, bh)
                 except Exception as e:                   # noqa: BLE001
@@ -176,7 +188,9 @@ class MiniaturLader:
                     self.nicht_da += 1
                 else:
                     self.geholt += 1
+                    self.letzte_dauer = time.monotonic() - _t0
                     self.fertig.put((pfad, bw, bh, ergebnis))
+                self.in_arbeit = None
                 time.sleep(self.PAUSE)
             with self._wecker:
                 if self._generation == meine_generation:

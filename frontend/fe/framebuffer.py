@@ -2057,8 +2057,39 @@ class Framebuffer:
     # und davon gibt es im Bench mehrere nebeneinander.
     _kartenvorlagen = None
     _kartenvorlagen_bytes = 0
-    KARTE_VORLAGE_MAX = 4
-    KARTE_VORLAGE_BYTES = 12 * 1024 * 1024
+    # BUILD 320: VON 4 AUF 48 STUECK, VON 12 AUF 24 MB.
+    #
+    # Vier Vorlagen reichten, solange jede Ansicht EINE Karte hatte.
+    # Die Kachelwand (Build 314) hat achtzehn - jede Kachel ist eine
+    # Karte mit Schatten, an einer eigenen Stelle. Mit vier Plaetzen
+    # hat sie ihre Vorlagen bei JEDEM Schritt verdraengt und neu
+    # gebaut, und sein Bench vom 13.11. zeigt es an drei Stellen:
+    #
+    #     Hauptseite kachelwand voller Aufbau   243,56 ms
+    #         (Raster, gleiche Kachelzahl:       77,84 ms)
+    #     Haupt kachelwand   karten 13,07 ms    je Schritt
+    #         Karten: 0,48 MB Flaeche, 0,52 MB wirklich kopiert
+    #     Zeiger nach C: 1,2 neu gebaut je Schritt
+    #
+    # Die dritte Zeile ist dieselbe Ursache von der anderen Seite:
+    # jede neu gebaute Vorlage ist ein neuer Puffer und damit ein
+    # neuer Zeiger. Abschnitt J hat darunter "der Zeigerspeicher haelt
+    # seine Eintraege nicht" geschrieben - das war die falsche
+    # Adresse, der Speicher hielt, die VORLAGEN nicht.
+    #
+    # Dazu kommt weiter unten in _karte_vorlage(): ohne eigenes
+    # Hintergrundbild haengt die Vorlage nicht mehr an x. Dann
+    # braucht die Kachelwand drei statt achtzehn - eine je Reihe.
+    # Diese Zahl hier ist fuer den Fall MIT Hintergrundbild, in dem
+    # es bei achtzehn bleibt.
+    KARTE_VORLAGE_MAX = 48
+    KARTE_VORLAGE_BYTES = 24 * 1024 * 1024
+    # Von frontend.py gesetzt wie zeilen_kopierer: wirft die gemerkten
+    # Zeiger in fe/art.py weg. Gerufen, wenn die Vorlagen geleert
+    # werden - der Zeigerspeicher haelt jeden gemerkten Puffer am
+    # Leben, und eine verworfene Vorlage bliebe sonst so lange im
+    # Speicher stehen, bis er zufaellig selbst ueberlaeuft.
+    zeiger_leerer = None
 
     # BUILD 299: DER WEICHE SCHATTEN.
     #
@@ -2197,9 +2228,39 @@ class Framebuffer:
         hg = self._rowcache.get(self.bg_key(hintergrund_rgb))
         if hg is None:
             return None
-        schluessel = (x, y, w, h, versatz, karte_rgb, schatten_rgb, r,
-                      hintergrund_rgb, self.hintergrund_kennung,
-                      self.KARTE_SCHATTEN_WEICH)
+        # BUILD 320: OHNE EIGENES HINTERGRUNDBILD HAENGT DIE VORLAGE
+        # NICHT AN x.
+        #
+        # Der Absatz darueber sagt "die Vignette ist ortsabhaengig" -
+        # das stimmt, aber nur in EINER Richtung. clear() baut den
+        # Hintergrund ohne Bild aus _vignette_row_variants(): jede
+        # Bildzeile ist in sich einfarbig, die Helligkeit wechselt nur
+        # von Zeile zu Zeile. Zwei Karten in derselben Reihe liegen
+        # also auf demselben Untergrund, und ihre Vorlagen sind Byte
+        # fuer Byte gleich.
+        #
+        # Fuer die Kachelwand sind das drei Vorlagen statt achtzehn -
+        # eine je Reihe. Gebaut wird eine Vorlage mit vier Schatten-
+        # ringen und einer gerundeten Karte, also rund zehn
+        # Millisekunden auf dem Geraet; fuenfzehn davon je vollem
+        # Aufbau entfallen.
+        #
+        # MIT eigenem Hintergrundbild (fb.hintergrund) gilt das nicht:
+        # ein Foto wechselt in beiden Richtungen. Dann bleibt x im
+        # Schluessel, wie bisher.
+        #
+        # UND NUR, WENN DIE KARTE GANZ IM BILD LIEGT. Rechts vom Bild
+        # kann der Puffer Fuellbytes haben (stride > width * 4); eine
+        # Karte, die dort hineinragt, liegt nicht mehr auf einer
+        # einfarbigen Zeile. Kommt im Frontend nicht vor - aber "kommt
+        # nicht vor" ist keine Bedingung, auf die sich ein
+        # Zwischenspeicher verlassen darf.
+        _ganz_im_bild = (x >= 0 and x + w + versatz <= self.width)
+        _x_im_schluessel = (None if (self.hintergrund is None
+                                     and _ganz_im_bild) else x)
+        schluessel = (_x_im_schluessel, y, w, h, versatz, karte_rgb,
+                      schatten_rgb, r, hintergrund_rgb,
+                      self.hintergrund_kennung, self.KARTE_SCHATTEN_WEICH)
         eintrag = self._kartenvorlagen.get(schluessel)
         if eintrag is not None:
             return eintrag
@@ -2217,6 +2278,14 @@ class Framebuffer:
                 > self.KARTE_VORLAGE_BYTES):
             self._kartenvorlagen.clear()
             self._kartenvorlagen_bytes = 0
+            # Build 320: und die gemerkten Zeiger auf sie gleich mit -
+            # siehe zeiger_leerer oben.
+            _leerer = self.zeiger_leerer
+            if _leerer is not None:
+                try:
+                    _leerer()
+                except Exception:                        # noqa: BLE001
+                    pass
         puffer = bytearray(groesse)
         # Der echte Hintergrund an dieser Stelle - EIN C-Aufruf, aus
         # derselben Vorlage, die auch _restore_spuren() benutzt.

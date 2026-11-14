@@ -396,7 +396,7 @@ print("Test 8: Abschnitt M ist eingetragen und raeumt wieder auf")
 _lauf = nur_code(koerper(_quelle, "lauf"))
 check("lauf() ruft _abschnitt_m()", "_abschnitt_m(" in _lauf)
 check("mit eigenem Fangnetz", "ABSCHNITT M ABGEBROCHEN" in _lauf)
-check("BENCH_VERSION ist 20", FB.BENCH_VERSION == 20,
+check("BENCH_VERSION ist 21", FB.BENCH_VERSION == 21,
       "%d" % FB.BENCH_VERSION)
 # Der Zustand MUSS im finally zurueckgehen, nicht am Ende des
 # Erfolgswegs: bricht ein Durchgang ab, liefe das Frontend sonst mit

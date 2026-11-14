@@ -13,6 +13,69 @@ English: [`CHANGELOG_EN.md`](CHANGELOG_EN.md)
 
 ## Nach v5.0 — noch nicht veröffentlicht
 
+- **Behoben: das Pad reagiert träge — der Bewegungssensor wurde
+  mitgelesen.** Viele Pads melden sich am MiSTer als *zwei* Geräte:
+  das Pad selbst und sein Bewegungssensor. Dein Bench vom 13.11. zeigt
+  genau das: ein Gerät mit 320 Meldungen je Sekunde, eines mit
+  **5150**. Das Frontend hat beide geöffnet und jede einzelne Meldung
+  gelesen und ausgewertet — auf demselben Faden, der zeichnet. Ein
+  Gerät ohne eine einzige Taste wird jetzt gar nicht erst geöffnet;
+  eine Tastatur bleibt in jedem Fall. Was übersprungen wurde, steht
+  einmal im Log und im Bench (Abschnitt L, mit Namen). *Dass es der
+  Sensor ist, ist aus der Rate geschlossen — der nächste Bench nennt
+  den Namen* (Build 320).
+- **Schneller: die Listenansicht mit „Cover beim Scrollen".** Das
+  Cover der Liste ist auf 1080p 2,7 MB groß, und es wurde bei jedem
+  Schritt im Zeichenweg von der Karte geholt — auf deinem Gerät
+  gemessen 87 ms, in denen nichts auf Tasten reagiert (159 statt
+  72 ms je Schritt). Jetzt liest der zweite Prozessorkern die Cover
+  der *nächsten* Einträge im Voraus, in Scrollrichtung, und der
+  Zeichenweg nimmt nur noch, was schon im Speicher liegt. Beim Tippen
+  ist jedes Cover da; bei voll gehaltener Taste schafft der zweite
+  Kern nicht jedes — dann bleibt die Spalte für einzelne Einträge
+  leer, bis du langsamer wirst oder loslässt. Wie viele es auf deinem
+  Gerät sind, misst der neue Abschnitt O im Bench (Build 320).
+- **Behoben: der Schreibfaden hat beim Scrollen nie pausiert.** Seit
+  Build 301 soll er anhalten, solange eine Taste gehalten wird. Dein
+  Bench sagt in Abschnitt L.4: 69 Aufträge, **0 Pausen**. Der Grund:
+  die beiden leichten Zeichenwege — genau die, die beim Scrollen
+  laufen — haben dem Bildspeicher nie gesagt, dass gerade navigiert
+  wird. Er hat es nur im Leerlauf und beim vollen Seitenaufbau
+  erfahren (Build 320).
+- **Schneller: die Kachelwand.** Jede der achtzehn Kacheln ist eine
+  Karte mit Schatten, und für jede wurde eine eigene Vorlage gebaut —
+  in einem Speicher mit vier Plätzen. Die Kachelwand hat ihre
+  Vorlagen also bei jedem Schritt verdrängt und neu gebaut (voller
+  Aufbau 244 ms, das Raster 78 ms). Jetzt
+  teilen sich die Kacheln einer Reihe eine Vorlage: drei statt
+  achtzehn, und im Schritt wird keine mehr neu gebaut (Build 320).
+- **Schneller: das Dashboard.** Bei jedem Schritt wurden 3,4 MB
+  Hintergrund geholt und sofort wieder übermalt — nur, damit das
+  Rechteck für den Bildwechsel in einer Liste stand. Und das ganze
+  Bildfeld wurde geleert, obwohl das Foto darin höchstens ein Viertel
+  davon belegt. Beides entfällt (Build 320).
+- **Vorsorge gegen Hänger: die Speicherbereinigung.** Pythons
+  Speicherbereinigung geht in ihrer größten Stufe jedes verwaltete
+  Objekt des Programms ab, mitten in irgendeinem Schritt. Der
+  stehende Bestand — Spielebaum, Indizes, das Programm selbst — wird
+  jetzt nach dem Start eingefroren und danach nicht mehr abgelaufen.
+  *Ehrlich dazu: dass deine Hänger daher kommen, ist nicht gemessen.*
+  Es ist die eine Ursache, die zu „egal in welche Richtung" passt und
+  die der Bench bisher nicht ausschließen konnte. Abschnitt N misst
+  es jetzt, und die RUCKLER-Zeile im Log nennt die Sammlungen
+  (Build 320).
+- **Bench: zwei neue Abschnitte, und die Geräte beim Namen.**
+  **N** misst die Speicherbereinigung ohne und mit Einfrieren, samt
+  jeder einzelnen Sammlung in 120 Scrollschritten. **O** hält die
+  Taste in der Listenansicht mit Cover und stellt drei Läufe
+  nebeneinander: wie bisher, jetzt, und jetzt im alten Tempo — mit
+  der Zahl der Schritte, in denen das Cover noch nicht da war.
+  Abschnitt L nennt jedes offene Eingabegerät beim Namen und listet
+  die übersprungenen (Build 320).
+- **Kleiner: Cover als JPEG werden sparsamer ausgepackt.** Beim
+  Auspacken wurde das fertige Bild dreimal zusätzlich durch den
+  Speicher geschoben — beim Cover der Listenansicht jedes Mal 2,7 MB.
+  Jetzt einmal. Das Ergebnis ist Byte für Byte dasselbe (Build 320).
 - **Schneller: der Coverflow bekommt seine Cover vorbereitet.** Jedes
   Cover erscheint dort nacheinander in **drei Größen** — ferner
   Nachbar, naher Nachbar, Mitte. Keine davon stand bisher in einer

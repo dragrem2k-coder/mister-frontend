@@ -350,11 +350,31 @@ def decode_jpeg(data, ziel_b=0, ziel_h=0):
         # Mit 0xFF vorgefuellt: TJPF_BGRX schreibt nur die ersten drei
         # Bytes je Bildpunkt, das vierte bleibt stehen - und ist damit
         # ohne weiteren Durchlauf die volle Deckkraft.
-        puffer = ctypes.create_string_buffer(b"\xff" * (breite * hoehe * 4))
+        #
+        # BUILD 320: ZWEI DURCHLAEUFE STATT VIER. Hier stand
+        #
+        #     puffer = create_string_buffer(b"\xff" * n)
+        #     ...
+        #     return breite, hoehe, puffer.raw[:n]
+        #
+        # Das sind, das Auspacken nicht mitgezaehlt, vier Gaenge ueber
+        # das ganze Bild: die Zeichenkette aus 0xFF anlegen, sie in den
+        # Puffer kopieren, den Puffer als bytes herausholen (.raw, ein
+        # Byte laenger als noetig) und davon noch einmal die ersten n
+        # abschneiden. Beim Cover der Listenansicht (733x909) sind das
+        # viermal 2,7 MB - und zwar MIT gehaltener GIL, also auch dann
+        # auf Kosten des Zeichnens, wenn der Nachlade-Faden liest.
+        #
+        # Jetzt: genau n Byte anlegen, einmal mit 0xFF fuellen, einmal
+        # herausholen. Das Ergebnis ist Byte fuer Byte dasselbe
+        # (tools/test_bildlib.py vergleicht gegen die alte Fassung).
+        n_byte = breite * hoehe * 4
+        puffer = (ctypes.c_char * n_byte)()
+        ctypes.memset(puffer, 0xFF, n_byte)
         if _LIB.tjDecompress2(griff, data, len(data), puffer,
                               breite, breite * 4, hoehe, TJPF_BGRX, 0) != 0:
             return None
-        return breite, hoehe, puffer.raw[:breite * hoehe * 4]
+        return breite, hoehe, ctypes.string_at(puffer, n_byte)
     except Exception:
         return None
     finally:

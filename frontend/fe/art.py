@@ -620,6 +620,19 @@ THUMB_JPEG_GUETE = 97
 # und trennt sie damit ohne Grenzfaelle.
 THUMB_JPEG_AB_BYTES = 64 * 1024
 
+# Ab welcher KASTENGROESSE (roh, in Byte) eine Miniatur waehrend der
+# Navigation nicht mehr im Zeichenweg gelesen wird (Build 320, siehe
+# _get_scaled_impl). Ein Megabyte: das Cover der Listenansicht liegt
+# mit 2,7 MB (1080p) bzw. 1,2 MB (720p) darueber, alles andere
+# darunter - die Kachel des Rasters hat 0,17 MB, das grosse Bild der
+# Galerie 0,62 MB, das Abzeichen der Hauptseite 0,96 MB. Gemessen
+# kostet das Megabyte rund 55 ms (Abschnitt C: 99 ms fuer 1,7 MB),
+# also mehr als drei Bilder.
+GROSSE_MINIATUR_BYTES = 1024 * 1024
+# Und ab welcher DATEIGROESSE die Datei auf der Karte als echte
+# Miniatur gilt. Die Marke "das Original passt" hat acht Byte.
+GROSSE_MINIATUR_DATEI_MIN = 8
+
 
 def _jpeg_moeglich():
     """Kann dieses Geraet JPEG schreiben? Verzoegert geholt, weil
@@ -1627,17 +1640,38 @@ def _hochskalieren(pix, w, h, scale):
 #      selbst an. Vorher: c_char_p() plus cast() bei JEDEM blit eines
 #      Covers, 1,00 gegen 0,04 Mikrosekunden.
 #
-# Die Obergrenze steigt von 6 auf 16. Geleert wird weiterhin GANZ und
+# Die Obergrenze steigt von 6 auf 16 (Build 320: auf 64, siehe unten).
+# Geleert wird weiterhin GANZ und
 # nicht einzeln, und das ist Absicht: ein gemerkter Puffer bleibt am
 # Leben (siehe oben), und nur das Leeren gibt eine verworfene
 # Kartenvorlage oder einen alten Bildspeicher wieder frei. Mit einem
 # Platz je Vorlage wird die Grenze im Betrieb nicht mehr erreicht -
 # und ob das stimmt, zaehlt ZEIGER_STAND mit, den der Bench in
 # Abschnitt J je Ansicht ausweist.
+#
+# BUILD 320: 16 REICHTEN NICHT, und zwar aus einem Grund, den Build 319
+# nicht sehen konnte. Die Kachelwand hat bis zu achtzehn Karten, mit
+# eigenem Hintergrundbild also achtzehn Vorlagen und achtzehn Zeiger.
+# Jetzt 64 - und damit die groessere Zahl nicht heisst "64 verworfene
+# Vorlagen bleiben im Speicher stehen", leert der Framebuffer diesen
+# Speicher mit, wenn er seine Vorlagen wegwirft (zeiger_leeren()).
 _ZEIGER = {}
-_ZEIGER_MAX = 16
+_ZEIGER_MAX = 64
 # [neu angelegt, geleert] - nur Zaehler, niemand entscheidet danach.
 ZEIGER_STAND = [0, 0]
+
+
+def zeiger_leeren():
+    """Alle gemerkten Zeiger wegwerfen (Build 320).
+
+    Gerufen vom Framebuffer, wenn er seine Kartenvorlagen leert: jeder
+    Eintrag hier haelt seinen Puffer am Leben, eine verworfene Vorlage
+    bliebe also stehen, bis dieser Speicher zufaellig selbst
+    ueberlaeuft. Das naechste _roh_zeiger() baut, was gebraucht wird,
+    neu - das sind dann eine Handvoll, nicht alle."""
+    if _ZEIGER:
+        _ZEIGER.clear()
+        ZEIGER_STAND[1] += 1
 
 
 def _roh_zeiger(puffer):
@@ -2271,7 +2305,15 @@ def _thumb_cache_get(path, w, h, nachziehen_erlaubt=False, nein_gilt=True):
         return ORIGINAL_PASST
     try:
         tw, th = struct.unpack("<HH", rohdaten[4:8])
-        nutzlast = rohdaten[8:]
+        # Build 320: ein Blick statt einer Kopie. rohdaten[8:] hat die
+        # ganze Datei noch einmal kopiert - bei einer Miniatur der
+        # Listenansicht ein gutes Megabyte, und zwar mit gehaltener
+        # GIL. zlib nimmt einen memoryview genauso; der JPEG-Weg
+        # bekommt weiter echte bytes.
+        if kopf == _KOPF_ART:
+            nutzlast = memoryview(rohdaten)[8:]
+        else:
+            nutzlast = rohdaten[8:]
         if kopf == _KOPF_JPG:
             erg = _jpeg_auspacken(nutzlast)
             if erg is None:
@@ -3609,6 +3651,12 @@ class ArtCache:
             if alt is not None:
                 self.scaled_bytes -= len(alt[2])
 
+    def im_ram(self, path, max_w, max_h):
+        """Liegt das Bild in dieser Kastengroesse schon im
+        Arbeitsspeicher? (Build 320, fuer den Vorausleser - der fragt
+        das je Schritt und soll dafuer nicht auf die Karte sehen.)"""
+        return (path, "box", max_w, max_h) in getattr(self, "scaled", {})
+
     def nur_im_ram_fehlt(self, path, max_w, max_h):
         """True, wenn die Miniatur auf der KARTE liegt, aber nicht im
         Arbeitsspeicher.
@@ -3682,6 +3730,59 @@ class ArtCache:
         box_key = (path, "box", max_w, max_h)
         if box_key in self.scaled:
             return self.scaled[box_key]
+        # BUILD 320: EINE GROSSE MINIATUR WIRD WAEHREND DER NAVIGATION
+        # NICHT IM ZEICHENWEG GELESEN.
+        #
+        # NUTZERMELDUNG: "was mich auch noch ein wenig stoert ist das
+        # scrollen in der listen ansicht mit eingeschalteten cover
+        # wechsel das das nicht schneller laeuft".
+        #
+        # Der Absatz darueber sagt: "Ein Treffer hier ist ein reiner
+        # kleiner Lesevorgang - schnell genug, um auch waehrend aktivem
+        # Scrollen sofort zurueckgegeben zu werden (keine
+        # Defer-Pruefung noetig)." Das stimmt fuer die Kacheln des
+        # Rasters. Fuer das Cover der LISTENANSICHT stimmt es nicht,
+        # und sein Bench vom 13.11. sagt es in zwei Zeilen:
+        #
+        #     Spieleliste liste   je Schritt Karte   159,28 ms
+        #     Spieleliste liste   je Schritt warm     72,42 ms
+        #
+        # 87 ms Unterschied. Dieses Cover ist 733x909 - 2,7 MB roh,
+        # und Abschnitt C misst fuer eine Miniatur von 1,7 MB schon
+        # 99 ms Lesen und Auspacken. Jeder Schritt wartete also auf
+        # die Karte, die Wiederholrate richtete sich danach (Abschnitt
+        # L.3: Boden 227 ms), und heraus kamen gut vier Schritte je
+        # Sekunde.
+        #
+        # JETZT: wird navigiert UND ist der Kasten gross UND liegt
+        # eine echte Miniatur auf der Karte, gibt es hier None - genau
+        # wie bei einem noch nicht gerechneten Cover. Geholt wird sie
+        # vom Nachlade-Faden auf dem zweiten Kern (Lesen und Auspacken
+        # geben die GIL frei), und zwar IM VORAUS, in Scrollrichtung -
+        # siehe Frontend._vorauslesen(). Nach dem Loslassen holt der
+        # Nachlader den Rest wie bisher.
+        #
+        # NUR MIT auslagern_ok. Das setzen genau die Zeichenwege, die
+        # mit "kommt gleich" umgehen koennen (Boxart-Spalte, Kacheln,
+        # Abzeichen). Wer ohne fragt, bekommt sein Bild wie bisher
+        # sofort - sonst stuende irgendwo ein leerer Kasten, den
+        # niemand nachfuellt.
+        #
+        # NICHT BEI DER MARKE "das Original passt" (Build 128). Die ist
+        # acht Byte gross und heisst: hier gibt es nichts zu lesen, das
+        # Original ist klein genug. Sie zu ueberspringen waere genau
+        # das Aufblitzen aus Build 92 - siehe den Absatz weiter unten.
+        # Deshalb wird nach der GROESSE der Datei gefragt, nicht nur
+        # danach, ob es sie gibt.
+        if (auslagern_ok and self._defer_uncached
+                and max_w * max_h * 4 >= GROSSE_MINIATUR_BYTES
+                and thumb_cache_groesse(path, max_w, max_h)
+                > GROSSE_MINIATUR_DATEI_MIN):
+            self._deferred_something = True
+            self._defer_count += 1
+            self.gross_aufgeschoben = getattr(
+                self, "gross_aufgeschoben", 0) + 1
+            return None
         # NEU (Nutzerwunsch: "Performance auf echter Hardware messen") -
         # ein Festplatten-Cache-TREFFER ist so schnell (im Sandbox-Test
         # ~5-7ms), dass er die PERF-Schwelle weiter unten (>25ms) nie
@@ -4025,6 +4126,20 @@ def thumb_cache_leeren(hd):
         % ("hd" if hd else "sd", entfernt,
            ", %d nicht loeschbar" % fehler if fehler else ""))
     return entfernt
+
+
+def thumb_cache_groesse(path, w, h):
+    """Groesse der Cache-Datei in Byte - oder -1, wenn es sie nicht
+    gibt (Build 320).
+
+    Unterschied zu thumb_cache_has(): dort reicht "es gibt sie". Hier
+    muss die Marke "das Original passt" (acht Byte) von einer echten
+    Miniatur zu unterscheiden sein, ohne die Datei zu oeffnen."""
+    try:
+        return os.stat(_thumb_cache_path(
+            _thumb_cache_key(path, w, h))).st_size
+    except OSError:
+        return -1
 
 
 def thumb_cache_has(path, w, h):
@@ -4467,7 +4582,7 @@ def _ohne_fuehrende_nummer(base):
     Neustart das Hauptmenue so traege? Das Scrollen ist total langsam,
     wird erst nach ein paar Sekunden besser").
 
-    Hier stand re.sub(r"^\d+\s+", "", base) - einmal JE COVER-DATEI, und
+    Hier stand re.sub(r"^\\d+\\s+", "", base) - einmal JE COVER-DATEI, und
     _art_index() laeuft beim Start ueber jeden Cover-Ordner jedes
     Systems, in ART_BASE UND ART_HD. Bei einer grossen Sammlung sind
     das schnell sechsstellig viele Aufrufe, und weil das reines Python
@@ -4484,7 +4599,7 @@ def _ohne_fuehrende_nummer(base):
     GLEICHWERTIGKEIT IST HIER NICHT VERHANDELBAR, denn ein Unterschied
     faellt nicht auf, er zeigt nur irgendwann das falsche Cover.
     isdecimal() ist deshalb bewusst gewaehlt und nicht das
-    naheliegendere isdigit(): \d im regulaeren Ausdruck trifft genau die
+    naheliegendere isdigit(): \\d im regulaeren Ausdruck trifft genau die
     Dezimalziffern, isdigit() zusaetzlich Dinge wie die hochgestellte
     Zwei. Nachgewiesen ueber alle 65536 Zeichen der Basic Multilingual
     Plane in vier Stellungen - null Abweichungen, siehe

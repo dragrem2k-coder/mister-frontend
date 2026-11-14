@@ -2418,6 +2418,23 @@ Eingeschaltet verhält sich die Liste wie die Galerie: ein Cover, das
 schon im Speicher liegt, erscheint sofort. Der Schalter wirkt ohne
 Neustart — einfach umlegen und eine große Liste durchscrollen.
 
+**Seit Build 320 wird vorausgelesen.** Das Cover der Liste ist groß
+(auf 1080p 2,7 MB), und es von der Karte zu holen dauert auf dem
+MiSTer knapp eine Zehntelsekunde. Bis Build 319 geschah das bei jedem
+Schritt im Zeichenweg — deshalb lief die Liste mit eingeschaltetem
+Schalter spürbar langsamer. Jetzt holt der zweite Prozessorkern die
+Cover der *nächsten* Einträge in Scrollrichtung, während der erste
+zeichnet:
+
+- **Beim Tippen** ist jedes Cover da, wenn der Zeiger ankommt.
+- **Bei voll gehaltener Taste** scrollt die Liste schneller, als der
+  zweite Kern lesen kann. Dann bleibt die Spalte für einzelne
+  Einträge leer; sobald du langsamer wirst oder loslässt, steht das
+  Cover da.
+
+Wie das Verhältnis auf deinem Gerät ist, misst `--bench` in
+Abschnitt O („ohne Cover x von y").
+
 ## 9. Sprache umschalten
 
 System -> "Language: English -> switch to German" (bzw. umgekehrt auf
@@ -2436,6 +2453,17 @@ Analogachse (die meisten tun das), wird das automatisch erkannt und
 bricht jederzeit ab, ohne die bisherige Belegung zu ändern. System ->
 "Reset to default buttons" setzt alles wieder auf die
 Werkseinstellung zurück.
+
+**Bewegungssensoren werden ignoriert (seit Build 320).** Viele Pads
+melden sich am MiSTer als zwei Geräte — das Pad und sein
+Bewegungssensor (im Namen meist „IMU" oder „Motion Sensors"). Der
+Sensor hat keine Tasten, schickt aber tausende Meldungen in der
+Sekunde. Das Frontend öffnet ihn nicht mehr; an der Bedienung ändert
+sich nichts, sie wird nur nicht mehr gebremst. Welche Geräte
+übersprungen wurden, steht in `/tmp/frontend.log` („Geraet
+uebersprungen") und im Bench, Abschnitt L. Reagiert ein Pad nach dem
+Update gar nicht mehr, steht es dort — dann bitte genau diese Zeile
+melden.
 
 ## 11. Boot-Animation (Startvideo)
 
@@ -2889,7 +2917,7 @@ Das Frontend wird normalerweise ohne Optionen gestartet (Autostart oder
 | Option | Was sie tut |
 |---|---|
 | `--show` | Sagt, **was drin ist, wie es eingestellt ist und wie schnell es läuft** — auf dem Bildschirm und zusätzlich als Datei in `/tmp/dragend_show.txt`. Der schnellste Weg, einen Zustand zu melden, ohne per SSH zu suchen |
-| `--bench` | Eine **feste, wiederholbare Messung** über alle Zeichenwege; Bericht auf dem Bildschirm und in `/tmp/dragend_bench.txt`. Seit Build 308 **drückt der Bench auch selbst** (Abschnitt M): 5 bis 8 Tastendrücke hoch/runter im Wechsel, über denselben Eingabeweg wie ein echtes Pad — damit steht schwarz auf weiß, was beim schnellen Tippen passiert. Seit Build 319 misst er **jede Ansicht** (sechs auf der Hauptseite, vier in der Spieleliste) und nennt je Ansicht neben dem Mittelwert auch **Median, langsamsten Schritt und die Zahl der Vollbild-Flips** — ein einzelner Hänger verschwindet damit nicht mehr im Durchschnitt. Fasst bewusst **nichts** auf der SD-Karte an |
+| `--bench` | Eine **feste, wiederholbare Messung** über alle Zeichenwege; Bericht auf dem Bildschirm und in `/tmp/dragend_bench.txt`. Seit Build 308 **drückt der Bench auch selbst** (Abschnitt M): 5 bis 8 Tastendrücke hoch/runter im Wechsel, über denselben Eingabeweg wie ein echtes Pad — damit steht schwarz auf weiß, was beim schnellen Tippen passiert. Seit Build 319 misst er **jede Ansicht** (sechs auf der Hauptseite, vier in der Spieleliste) und nennt je Ansicht neben dem Mittelwert auch **Median, langsamsten Schritt und die Zahl der Vollbild-Flips** — ein einzelner Hänger verschwindet damit nicht mehr im Durchschnitt. Seit Build 320 nennt Abschnitt L jedes Eingabegerät **beim Namen** (samt der übersprungenen Bewegungssensoren), Abschnitt N misst die **Speicherbereinigung** und Abschnitt O die **Listenansicht mit Cover bei gehaltener Taste** — vorher gegen jetzt. Fasst bewusst **nichts** auf der SD-Karte an |
 | `--demo` | **Vier Minuten Vorführung**, von allein durchgespielt: die drei Ansichten auf Hauptseite und Spieleliste, die fünf Einstellungsgruppen — und seit Build 262 die **echten Bildschirme**: Suche, Kontextmenü, Zufalls-Zock mit Ziehung, Trophäenraum, Meilensteine, Top 10, Jahresrückblick, Tagebuch, Hilfe und das CRT-Testbild. Jede Taste bricht ab |
 | `--help` | Diese Liste. Die Prüfung steht **vor** allem anderen: wer sich vertippt, bekommt drei Zeilen und sonst nichts — kein halber Start, keine Sperre, die liegenbleibt |
 

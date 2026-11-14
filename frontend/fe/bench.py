@@ -73,7 +73,12 @@ import zlib
 # Zustand der zuletzt gesetzten Ansicht) und hat einen Teil 4 fuer die
 # Hintergrundarbeit. Zwei Berichte mit derselben Nummer muessen
 # vergleichbar sein - also neue Nummer.
-BENCH_VERSION = 20
+# 21 ab Build 320: zwei neue Abschnitte (N Speicherbereinigung, O
+# Listenansicht mit Cover bei gehaltener Taste), und Abschnitt L nennt
+# die Geraete beim Namen samt der uebersprungenen. Dazu aendern sich
+# zwei Zahlen aus sachlichem Grund: "Haupt kachelwand" und "Haupt
+# dashboard" in Abschnitt J (Vorlagen je Reihe, kein restore mehr).
+BENCH_VERSION = 21
 
 # Feste Masse fuer die vergleichbaren Messungen. Bewusst KEINE
 # Ableitung aus der Aufloesung: sonst misst ein 1080p-Geraet etwas
@@ -3323,11 +3328,35 @@ def _abschnitt_l(b, fe, S, A, fm):
     for d in geraete[:8]:
         art = "Tastatur" if getattr(d, "is_kbd", True) else "Pad"
         achsen = len(getattr(d, "axis", {}) or {})
-        b("     %-8s %-28s %d Achsen"
-          % (art, os.path.basename(str(getattr(d, "path", "?")))[:28],
-             achsen))
+        # DER NAME (Build 320). Bisher stand hier nur "event4" - und
+        # an einem Dateinamen sieht man nicht, WAS das Geraet ist. Der
+        # Bench vom 13.11. hat event4 mit 5150 Meldungen/s gezeigt;
+        # dass das der Bewegungssensor des Pads ist, war ein SCHLUSS
+        # aus der Rate. Mit dem Namen steht es da.
+        b("     %-8s %-8s %d Achsen  %s"
+          % (art, os.path.basename(str(getattr(d, "path", "?")))[:8],
+             achsen, str(getattr(d, "name", "?"))[:38]))
     if len(geraete) > 8:
         b("     ... und %d weitere" % (len(geraete) - 8))
+    # WAS GAR NICHT ERST GEOEFFNET WURDE (Build 320). Ein Geraet ohne
+    # Tasten kann keine Eingabe liefern, aber sehr wohl tausende
+    # Meldungen in der Sekunde - und jede davon wurde auf dem Faden
+    # gelesen, der auch zeichnet. Steht hier ein Geraet, das ein Pad
+    # IST, dann hat der Filter in fe/input.py zu viel weggenommen -
+    # bitte genau diese Zeile zurueckmelden.
+    try:
+        from fe import input as _eingabe
+        _weg = list(getattr(_eingabe, "UEBERSPRUNGEN", ()))
+    except Exception:                                    # noqa: BLE001
+        _weg = None
+    if _weg is None:
+        b("   Uebersprungene Geraete                    nicht lesbar")
+    else:
+        b("   Uebersprungene Geraete                    %d" % len(_weg))
+        for _pf, _nm, _gr in _weg[:8]:
+            b("     %-8s %-24s %s"
+              % (os.path.basename(str(_pf))[:8], str(_gr)[:24],
+                 str(_nm)[:38]))
 
     # --- 1b) WIE GESPRAECHIG SIND DIE GERAETE? (Build 306) ----------
     #
@@ -4924,6 +4953,387 @@ def _abschnitt_m(b, fe, S, A, fm):
     b("   Abhilfe steht in Abschnitt K (3,95 ms Python je Karte).")
 
 
+def gc_lauf(arbeit):
+    """arbeit() ausfuehren und JEDE Speicherbereinigung darin stoppen.
+
+    Python ruft die Eintraege in gc.callbacks vor und nach jeder
+    Sammlung auf und nennt dabei die Stufe. Das ist die einzige Stelle,
+    an der man eine Sammlung von aussen sieht - sie laeuft sonst
+    mitten in irgendeiner Zeile, ohne Spur.
+
+    Rueckgabe: {"ms": Gesamtdauer von arbeit(),
+                "laeufe": [n0, n1, n2], "gc_ms": [ms0, ms1, ms2],
+                "laengste": (ms, Stufe) oder None}
+
+    Eigene Funktion, damit tools/test_gc_messung.py genau DIESEN Weg
+    pruefen kann und nicht einen nachgebauten."""
+    laeufe = [0, 0, 0]
+    gc_ms = [0.0, 0.0, 0.0]
+    laengste = [None]
+    start = [0.0]
+
+    def _melder(phase, info):
+        if phase == "start":
+            start[0] = time.perf_counter()
+            return
+        dauer = (time.perf_counter() - start[0]) * 1000.0
+        stufe = max(0, min(2, int(info.get("generation", 0))))
+        laeufe[stufe] += 1
+        gc_ms[stufe] += dauer
+        if laengste[0] is None or dauer > laengste[0][0]:
+            laengste[0] = (dauer, stufe)
+
+    gc.callbacks.append(_melder)
+    try:
+        t0 = time.perf_counter()
+        arbeit()
+        gesamt = (time.perf_counter() - t0) * 1000.0
+    finally:
+        try:
+            gc.callbacks.remove(_melder)
+        except ValueError:
+            pass
+    return {"ms": gesamt, "laeufe": laeufe, "gc_ms": gc_ms,
+            "laengste": laengste[0]}
+
+
+def _abschnitt_n(b, fe, S, A, fm):
+    """Was kostet Pythons Speicherbereinigung - und hilft das Einfrieren?
+
+    DER ANLASS (13.11.): "ab und an gibt es immer noch haenger beim
+    scrollen egal in welche richtung". Abschnitt J desselben Laufs
+    zeigt Ausreisser OHNE Vollbild - Schritte, die ein Vielfaches
+    dauern, obwohl der Zeichenweg derselbe war. Dann liegt es an etwas
+    NEBEN dem Zeichnen, das auf demselben Faden laeuft.
+
+    Die Speicherbereinigung ist so etwas, und sie stand bisher in
+    keinem Abschnitt. Build 320 friert den stehenden Bestand ein
+    (gc.freeze()), OHNE dass gemessen war, ob sie die Ursache ist.
+    Dieser Abschnitt holt die Messung nach, auf dem Geraet:
+
+      1) der Stand - wie viele Objekte, welche Schwellen
+      2) eine volle Sammlung, OHNE und MIT Einfrieren
+      3) derselbe Scroll-Lauf, OHNE und MIT Einfrieren - und jede
+         Sammlung darin einzeln gestoppt
+
+    WAS EIN URTEIL WAERE: steht bei 3) in der Zeile "ohne" eine
+    laengste Sammlung von vielen Millisekunden, dann war das ein
+    Haenger, und Build 320 hat ihn behoben. Steht dort fast nichts,
+    kommen die Haenger woanders her - und auch das ist dann gemessen
+    statt vermutet."""
+    b("")
+    b("-" * 62)
+    b(" N  Speicherbereinigung - ohne und mit Einfrieren (Build 320)")
+    b("-" * 62)
+    if not hasattr(gc, "freeze"):
+        b("   -- gc.freeze() fehlt (Python aelter als 3.7)")
+        return
+    kat_i, kat_n, kat_name = _groesste_kategorie(fe)
+    if kat_i is None:
+        b("   -- keine Kategorie mit Eintraegen")
+        return
+    vorher_eis = gc.get_freeze_count()
+    war_an = gc.isenabled()
+    b("   Speicherbereinigung                        %s"
+      % ("an" if war_an else "AUS"))
+    b("   Schwellen (Stufe 0/1/2)                    %s"
+      % "/".join(str(x) for x in gc.get_threshold()))
+    b("   Eingefroren beim Eintritt                  %d Objekte"
+      % vorher_eis)
+    _s_page, _s_cat, _s_item = fe.page, fe.cat_i, fe.item_i
+    _s_nav = list(getattr(fe, "nav_path", []) or [])
+    try:
+        fe.page = 1
+        fe.cat_i = kat_i
+        fe.nav_path = []
+        if ansicht_einstellen(fe, 1, "liste") != "liste":
+            b("   -- Listenansicht nicht herstellbar")
+            return
+        schritt = schritt_funktion(fe, 1)
+        spanne = fenster_spanne(fe, 1)
+        SCHRITTE = 120
+        # Warmlaufen, damit beide Laeufe dieselben Zwischenspeicher
+        # vorfinden - sonst baut der erste sie auf und der zweite
+        # nicht, und der Unterschied waere der Aufbau.
+        for _r in range(2):
+            for i in range(spanne):
+                schritt(i)
+        schritt(0)
+
+        def _scrollen():
+            for i in range(SCHRITTE):
+                schritt(i % spanne)
+
+        def _voll():
+            werte = []
+            for _i in range(3):
+                t0 = time.perf_counter()
+                gc.collect()
+                werte.append((time.perf_counter() - t0) * 1000.0)
+            return min(werte), _median(werte)
+
+        def _zeile(titel, erg):
+            lf, ms = erg["laeufe"], erg["gc_ms"]
+            lg = erg["laengste"]
+            b("     %-6s %7.2f ms/Schritt   Sammlungen %d/%d/%d   "
+              "darin %.2f ms"
+              % (titel, erg["ms"] / float(SCHRITTE), lf[0], lf[1], lf[2],
+                 sum(ms)))
+            if lg is None:
+                b("            keine einzige Sammlung in %d Schritten"
+                  % SCHRITTE)
+            else:
+                b("            laengste Sammlung %.2f ms (Stufe %d)"
+                  % (lg[0], lg[1]))
+
+        # --- OHNE: alles zurueck in die Betrachtung --------------------
+        gc.unfreeze()
+        gc.collect()
+        n_ohne = len(gc.get_objects())
+        voll_ohne = _voll()
+        lauf_ohne = gc_lauf(_scrollen)
+        # --- MIT: genau das, was das Frontend im Leerlauf tut ----------
+        gc.freeze()
+        n_eis = gc.get_freeze_count()
+        n_mit = len(gc.get_objects())
+        voll_mit = _voll()
+        lauf_mit = gc_lauf(_scrollen)
+
+        b("   Verwaltete Objekte                         %d" % n_ohne)
+        b("     davon nach dem Einfrieren noch im Blick  %d  (%d im Eis)"
+          % (n_mit, n_eis))
+        b("   Eine VOLLE Sammlung (kuerzeste / Median von 3)")
+        b("     ohne   %8.2f / %8.2f ms" % voll_ohne)
+        b("     mit    %8.2f / %8.2f ms" % voll_mit)
+        b("   %d Scrollschritte, Liste liste, %s"
+          % (SCHRITTE, str(kat_name)[:24]))
+        _zeile("ohne", lauf_ohne)
+        _zeile("mit", lauf_mit)
+        b("")
+        b("   ZU LESEN ALS: 'Sammlungen a/b/c' sind die drei Stufen -")
+        b("   nur die dritte (c) geht den ganzen Bestand ab und kostet")
+        b("   so viel wie 'volle Sammlung'. Steht in der Zeile 'ohne'")
+        b("   eine laengste Sammlung, die an einen Scrollschritt")
+        b("   heranreicht, dann war das ein Haenger, und die Zeile")
+        b("   'mit' zeigt, dass er weg ist. Steht in beiden Zeilen")
+        b("   fast nichts, kommt das Haengen NICHT aus der")
+        b("   Speicherbereinigung - dann bitte die RUCKLER-Zeilen aus")
+        b("   /tmp/frontend.log mitschicken.")
+    finally:
+        # Den Zustand so hinterlassen, wie er war: das Einfrieren
+        # gehoert dem Frontend (Leerlauf), nicht dem Bench.
+        try:
+            if vorher_eis == 0:
+                gc.unfreeze()
+        except Exception:                                # noqa: BLE001
+            pass
+        fe.page, fe.cat_i, fe.item_i = _s_page, _s_cat, _s_item
+        fe.nav_path = _s_nav
+
+
+def _abschnitt_o(b, fe, S, A, fm):
+    """Die Listenansicht mit Cover, Taste gehalten - vorher und jetzt.
+
+    DER ANLASS (13.11.): "was mich auch noch ein wenig stoert ist das
+    scrollen in der listen ansicht mit eingeschalteten cover wechsel
+    das das nicht schneller laeuft".
+
+    Abschnitt B desselben Laufs nennt die Ursache in zwei Zeilen
+    (je Schritt Karte 159,28 ms, warm 72,42 ms): das Cover wurde in
+    jedem Schritt im Zeichenweg von der Karte gelesen. Seit Build 320
+    liest es ein zweiter Faden im Voraus, und der Zeichenweg nimmt
+    nur noch, was schon im Speicher liegt.
+
+    WARUM EIN EIGENER ABSCHNITT. B, J und K messen alle im STILLSTAND
+    (dort ist der Cover-Schutz aus) - sie zeigen nach Build 320
+    dieselben Zahlen wie vorher, und das waere dann kein Beweis in
+    die eine oder die andere Richtung. Hier wird die Taste gehalten
+    (_last_input_time), der Faden laeuft wirklich, und gelesen wird
+    von der Karte.
+
+    DREI LAEUFE ueber dieselben Eintraege, jedes Mal mit leerem
+    Arbeitsspeicher:
+
+      wie bisher    ohne Vorausleser, das Cover wird im Zeichenweg
+                    gelesen - der Stand von Build 319
+      jetzt         so schnell es geht
+      jetzt, im     dieselben Schritte im Tempo von "wie bisher" -
+      alten Tempo   kommt bei gleichem Tempo jedes Cover an?
+
+    "ohne Cover" zaehlt die Schritte, in denen das Bild noch nicht im
+    Speicher lag und die Spalte deshalb leer blieb. Das ist der Preis
+    der Geschwindigkeit, und er steht hier, statt verschwiegen zu
+    werden."""
+    b("")
+    b("-" * 62)
+    b(" O  Listenansicht mit Cover, Taste gehalten (Build 320)")
+    b("-" * 62)
+    lader = getattr(fe, "lader", None)
+    if lader is None or not hasattr(fe, "_vorauslesen"):
+        b("   -- kein Vorausleser (frontend.py aelter als Build 320)")
+        return
+    kat_i, kat_n, kat_name = _groesste_kategorie(fe)
+    if kat_i is None:
+        b("   -- keine Kategorie mit Eintraegen")
+        return
+    EINTRAEGE = 24
+    _s_page, _s_cat, _s_item = fe.page, fe.cat_i, fe.item_i
+    _s_nav = list(getattr(fe, "nav_path", []) or [])
+    _s_zeit = getattr(fe, "_last_input_time", 0.0)
+    _s_sofort = getattr(fm, "cover_sofort_enabled", None)
+    _s_schwelle = getattr(A, "GROSSE_MINIATUR_BYTES", None)
+    if _s_sofort is None or _s_schwelle is None:
+        b("   -- fe/art.py oder frontend.py aelter als Build 320")
+        return
+    try:
+        fe.page = 1
+        fe.cat_i = kat_i
+        fe.nav_path = []
+        if ansicht_einstellen(fe, 1, "liste") != "liste":
+            b("   -- Listenansicht nicht herstellbar")
+            return
+        items = fe._display_items()
+        n = min(EINTRAEGE, len(items))
+        if n < 8:
+            b("   -- nur %d Eintraege, zu wenig" % n)
+            return
+        syskey = fe.cats[kat_i][2]
+        zeichnen = zeichen_funktion(fe, 1)
+        # Der Schalter "Cover sofort" gilt fuer diesen Abschnitt als
+        # AN - ohne ihn wird die Spalte beim Halten gar nicht
+        # gezeichnet, und es gaebe nichts zu messen. Die Datei auf der
+        # Karte bleibt unberuehrt.
+        fm.cover_sofort_enabled = lambda: True
+
+        def _gehe(i, gehalten):
+            alt = fe.item_i
+            fe.item_i = i
+            fe._last_scroll_dir = 1
+            fe._last_input_time = time.monotonic() if gehalten else 0.0
+            zeichnen(alt)
+
+        # 1) Die Miniaturen herstellen - im Stillstand, wie es der
+        #    Alltag vor dem ersten Scrollen auch tut - und warten, bis
+        #    sie geschrieben sind.
+        fe.item_i = 0
+        fe._last_input_time = 0.0
+        fe.draw()
+        for i in range(n):
+            _gehe(i, False)
+        _st = getattr(A, "thumb_schreib_stand", None)
+        _ende = time.monotonic() + 30.0
+        while _st is not None and time.monotonic() < _ende:
+            try:
+                if _st()[0] <= 0:
+                    break
+            except Exception:                            # noqa: BLE001
+                break
+            time.sleep(0.05)
+        time.sleep(0.2)
+
+        # 2) Fuer wie viele Eintraege gibt es etwas zu messen?
+        geo = fe._art_panel_geometrie("liste")
+        gross = 0
+        kasten = None
+        for i in range(n):
+            try:
+                pk = fe.cover_pfad_und_kasten(items[i], syskey, geo)
+            except Exception:                            # noqa: BLE001
+                pk = None
+            if not (pk and pk[0]):
+                continue
+            if (pk[1] * pk[2] * 4 >= _s_schwelle
+                    and A.thumb_cache_groesse(*pk)
+                    > A.GROSSE_MINIATUR_DATEI_MIN):
+                gross += 1
+                kasten = (pk[1], pk[2])
+        b("   Kategorie %s, %d Eintraege" % (str(kat_name)[:24], n))
+        b("   davon mit grosser Miniatur auf der Karte   %d" % gross)
+        if gross == 0 or kasten is None:
+            b("   -- nichts zu messen: kein Cover dieser Eintraege ist")
+            b("      gross genug (unter 1 MB, etwa auf der Roehre), oder")
+            b("      es gibt keine Cover. Dann aendert Build 320 hier")
+            b("      nichts, und es ist auch nichts langsam.")
+            return
+        b("   Cover-Kasten %dx%d, %.2f MB roh"
+          % (kasten[0], kasten[1], kasten[0] * kasten[1] * 4 / 1048576.0))
+
+        def _lauf(takt):
+            """(ms je Schritt, Schritte ohne Cover)"""
+            lader.abbrechen()
+            time.sleep(0.15)
+            while lader.abholen():
+                pass
+            A.ART.ram_leeren()
+            fe._vl_merk = None
+            fe.item_i = 0
+            fe._last_input_time = 0.0
+            fe._force_full_redraw = True
+            fe.draw()
+            auf0 = getattr(A.ART, "gross_aufgeschoben", 0)
+            t0 = time.perf_counter()
+            for i in range(1, n):
+                ts = time.perf_counter()
+                _gehe(i, True)
+                if takt:
+                    rest = takt - (time.perf_counter() - ts)
+                    if rest > 0:
+                        time.sleep(rest)
+            dauer = (time.perf_counter() - t0) * 1000.0 / float(n - 1)
+            return dauer, getattr(A.ART, "gross_aufgeschoben", 0) - auf0
+
+        # --- wie bisher: kein Vorausleser, lesen im Zeichenweg ---------
+        A.GROSSE_MINIATUR_BYTES = 1 << 60
+        fe._vorauslesen = lambda *_a, **_k: []
+        try:
+            alt_ms, alt_ohne = _lauf(0.0)
+        finally:
+            A.GROSSE_MINIATUR_BYTES = _s_schwelle
+            try:
+                del fe._vorauslesen
+            except AttributeError:
+                pass
+        # --- jetzt -----------------------------------------------------
+        neu_ms, neu_ohne = _lauf(0.0)
+        takt_ms, takt_ohne = _lauf(alt_ms / 1000.0)
+
+        def _zeile(titel, ms, ohne):
+            b("     %-22s %7.2f ms/Schritt  %5.1f Schritte/s   "
+              "ohne Cover %2d von %d"
+              % (titel, ms, 1000.0 / ms if ms > 0 else 0.0, ohne, n - 1))
+
+        b("   %d Schritte abwaerts, Arbeitsspeicher vorher geleert"
+          % (n - 1))
+        _zeile("wie bisher", alt_ms, alt_ohne)
+        _zeile("jetzt", neu_ms, neu_ohne)
+        _zeile("jetzt, im alten Tempo", takt_ms, takt_ohne)
+        b("   Letztes Lesen im Faden                     %.1f ms"
+          % (getattr(lader, "letzte_dauer", 0.0) * 1000.0))
+        b("")
+        b("   ZU LESEN ALS: 'wie bisher' gegen 'jetzt' ist der Gewinn")
+        b("   an Tempo. 'ohne Cover' bei 'jetzt' ist sein Preis: so")
+        b("   viele Schritte lang war das Bild noch nicht da. Die")
+        b("   dritte Zeile ist die Gegenrechnung - im alten Tempo")
+        b("   sollte dort 0 stehen (hoechstens der erste Schritt), dann")
+        b("   geht nichts verloren, was vorher zu sehen war. Steht dort")
+        b("   deutlich mehr, kommt der Faden nicht nach, und das waere")
+        b("   ein Fehler in Build 320.")
+        b("   Die Zahlen sind OHNE das Warten auf den Bildaufbau und")
+        b("   ohne die Wiederholrate der Taste - im Betrieb ist ein")
+        b("   Schritt deshalb laenger, und es kommen MEHR Cover an als")
+        b("   in der Zeile 'jetzt'.")
+    finally:
+        fm.cover_sofort_enabled = _s_sofort
+        A.GROSSE_MINIATUR_BYTES = _s_schwelle
+        try:
+            lader.abbrechen()
+        except Exception:                                # noqa: BLE001
+            pass
+        fe.page, fe.cat_i, fe.item_i = _s_page, _s_cat, _s_item
+        fe.nav_path = _s_nav
+        fe._last_input_time = _s_zeit
+
+
 def lauf(fe, fm, A, S, startdauer=None, log=None, mister_last=None):
     """Den kompletten Bench fahren und den Bericht als Text
     zurueckgeben. Bekommt alles, was er braucht, uebergeben - dieses
@@ -4990,6 +5400,18 @@ def lauf(fe, fm, A, S, startdauer=None, log=None, mister_last=None):
             _abschnitt_m(b, fe, S, A, fm)
     except Exception as e:                               # noqa: BLE001
         b("   ABSCHNITT M ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
+    try:
+        hd6 = getattr(fe, "fb", None) is not None and fe.fb.height >= 720
+        with _Messbedingungen(A, fm, fe, hd6):
+            _abschnitt_n(b, fe, S, A, fm)
+    except Exception as e:                               # noqa: BLE001
+        b("   ABSCHNITT N ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
+    try:
+        hd7 = getattr(fe, "fb", None) is not None and fe.fb.height >= 720
+        with _Messbedingungen(A, fm, fe, hd7):
+            _abschnitt_o(b, fe, S, A, fm)
+    except Exception as e:                               # noqa: BLE001
+        b("   ABSCHNITT O ABGEBROCHEN: %s: %s" % (type(e).__name__, e))
     b("")
     b("=" * 62)
     b("Ende. Nichts auf der Karte wurde veraendert.")

@@ -13,6 +13,64 @@ Deutsch: [`CHANGELOG.md`](CHANGELOG.md)
 
 ## After v5.0 — not released yet
 
+- **Fixed: sluggish pad input — the motion sensor was being read.**
+  Many pads show up on the MiSTer as *two* devices: the pad itself
+  and its motion sensor. Your bench of 13 Nov shows exactly that: one
+  device with 320 events per second, one with **5150**. The frontend
+  opened both and read and decoded every single event — on the very
+  thread that draws. A device without a single button is no longer
+  opened at all; a keyboard always stays. What was skipped is logged
+  once and listed in the bench (section L, by name). *That it is the
+  sensor is inferred from the rate — the next bench will name it*
+  (build 320).
+- **Faster: list view with "Cover while scrolling".** The list cover
+  is 2.7 MB at 1080p and was fetched from the card inside the drawing
+  path on every step — measured on your device at 87 ms during which
+  no key is handled (159 instead of 72 ms per step). Now the second
+  CPU core reads the covers of the *next* entries ahead of time, in
+  scroll direction, and the drawing path only takes what is already
+  in memory. When tapping, every cover is there; with the key fully
+  held the second core cannot fetch every one — the column then stays
+  empty for some entries until you slow down or let go. How many that
+  is on your device is measured by the new bench section O
+  (build 320).
+- **Fixed: the write thread never paused while scrolling.** Since
+  build 301 it is supposed to stop while a key is held. Your bench
+  says in section L.4: 69 jobs, **0 pauses**. The reason: the two
+  light drawing paths — the very ones that run while scrolling —
+  never told the image cache that navigation is going on. It only
+  learned about it when idle and on a full page rebuild (build 320).
+- **Faster: the tile wall.** Each of the eighteen tiles is a card
+  with a shadow, and each got a template of its own — in a store with
+  four slots. So the tile wall evicted and rebuilt its templates on
+  every step (full rebuild 244 ms; the grid 78 ms). Tiles in one row
+  now share a template: three instead of eighteen, and none is
+  rebuilt during a step (build 320).
+- **Faster: the dashboard.** Every step fetched 3.4 MB of background
+  and painted over it at once — only so that the rectangle for the
+  screen update ended up in a list. And the whole image field was
+  cleared although the photo covers a quarter of it at most. Both are
+  gone (build 320).
+- **Precaution against hitches: garbage collection.** In its largest
+  stage Python's garbage collector walks every managed object of the
+  program, in the middle of whatever step is running. The standing
+  stock — game tree, indexes, the program itself — is now frozen
+  after start-up and no longer walked. *To be honest: it is not
+  measured that your hitches come from there.* It is the one cause
+  that fits "no matter which direction" and that the bench could not
+  rule out so far. Section N measures it now, and the RUCKLER line in
+  the log names the collections (build 320).
+- **Bench: two new sections, and devices by name.** **N** measures
+  garbage collection without and with freezing, including every
+  single collection during 120 scroll steps. **O** holds the key in
+  list view with covers and puts three runs side by side: as before,
+  now, and now at the old pace — with the number of steps in which
+  the cover was not there yet. Section L names every open input
+  device and lists the skipped ones (build 320).
+- **Smaller: JPEG covers are unpacked more frugally.** While
+  unpacking, the finished image was pushed through memory three extra
+  times — 2.7 MB each time for the list view cover. Now once. The
+  result is byte for byte the same (build 320).
 - **Faster: the coverflow gets its covers prepared.** Every cover
   appears there in **three sizes** in turn — far neighbour, near
   neighbour, centre. None of them was ever on a preparation list: the

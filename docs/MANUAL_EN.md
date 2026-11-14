@@ -2079,6 +2079,21 @@ Turned on, the list behaves like the gallery: a cover that is already
 in memory appears immediately. The switch takes effect without a
 restart — just flip it and scroll through a large list.
 
+**Since build 320 covers are read ahead.** The list cover is large
+(2.7 MB at 1080p), and fetching it from the card takes just under a
+tenth of a second on the MiSTer. Up to build 319 that happened inside
+the drawing path on every step — which is why the list ran noticeably
+slower with the switch on. Now the second CPU core fetches the covers
+of the *next* entries in scroll direction while the first one draws:
+
+- **When tapping**, every cover is there when the cursor arrives.
+- **With the key fully held**, the list scrolls faster than the
+  second core can read. The column then stays empty for some entries;
+  as soon as you slow down or let go, the cover is there.
+
+What the ratio is on your device is measured by `--bench` in section
+O ("ohne Cover x von y" = without cover x of y).
+
 ## 9. Switching language
 
 System -> "Language: English -> switch to German" (or the other way
@@ -2095,6 +2110,16 @@ D-pad as an analog axis (most do), that is detected automatically and
 skipped, since that direction then already works natively. ESC cancels at
 any time without changing the existing mapping. System -> "Reset to
 default buttons" resets everything to the factory setting.
+
+**Motion sensors are ignored (since build 320).** Many pads show up
+on the MiSTer as two devices — the pad and its motion sensor (usually
+"IMU" or "Motion Sensors" in the name). The sensor has no buttons but
+sends thousands of events per second. The frontend no longer opens
+it; nothing changes in how you control things, it just is no longer
+slowed down. Which devices were skipped is written to
+`/tmp/frontend.log` ("Geraet uebersprungen") and listed in the bench,
+section L. If a pad stops responding altogether after the update, it
+will be listed there — please report exactly that line.
 
 ## 11. Boot animation (startup video)
 
@@ -2495,7 +2520,7 @@ The frontend is normally started without options (autostart, or
 | Option | What it does |
 |---|---|
 | `--show` | Says **what is installed, how it is configured and how fast it runs** — on screen and additionally as a file in `/tmp/dragend_show.txt`. The fastest way to report a state without hunting over SSH |
-| `--bench` | A **fixed, repeatable measurement** across all drawing paths; report on screen and in `/tmp/dragend_bench.txt`. Since build 308 the bench **presses keys itself** (section M): 5 to 8 taps up/down, alternating, through the very same input path a real pad uses — so what happens during fast tapping is on record. Since build 319 it measures **every view** (six on the main page, four in the game list) and reports, next to the mean, the **median, the slowest step and the number of full-screen flips** per view — so a single hitch no longer vanishes in the average. It deliberately touches **nothing** on the SD card |
+| `--bench` | A **fixed, repeatable measurement** across all drawing paths; report on screen and in `/tmp/dragend_bench.txt`. Since build 308 the bench **presses keys itself** (section M): 5 to 8 taps up/down, alternating, through the very same input path a real pad uses — so what happens during fast tapping is on record. Since build 319 it measures **every view** (six on the main page, four in the game list) and reports, next to the mean, the **median, the slowest step and the number of full-screen flips** per view — so a single hitch no longer vanishes in the average. Since build 320 section L lists every input device **by name** (including skipped motion sensors), section N measures **garbage collection** and section O the **list view with covers while the key is held** — before versus now. It deliberately touches **nothing** on the SD card |
 | `--demo` | **Four minutes of guided tour**, played through by itself: the three views on the main page and the game list, the five settings groups — and since Build 262 the **real screens**: search, context menu, random pick with its draw, trophy room, milestones, top 10, year review, diary, help and the CRT test pattern. Any key aborts |
 | `--help` | This list. The check runs **before** everything else: a typo gets you three lines and nothing more — no half start, no lock left behind |
 

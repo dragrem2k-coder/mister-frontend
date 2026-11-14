@@ -9933,3 +9933,263 @@ Der naechste Bench sagt es - und er hat jetzt die Zeilen dafuer.
   (`_kat_logo_pfad()`).
 * **geaendert** `tools/test_galerie_aussparung.py` - der Haken am
   Kopierer reicht neue Parameter durch.
+
+## Nachtrag Build 320 - der Sensor, der mitgelesen wurde, und das Cover, auf das jeder Schritt gewartet hat
+
+> *„hier der bench , ausserdem moechte ich das die joypad eingabe
+> sofort erkannt und angenommen wird ab und an gibt es immer noch
+> haenger beim scrollen egal in welche richtung das muss besser laufen
+> ! was mich auch noch ein wenig stoert ist das scrollen in der listen
+> ansicht mit eingeschalteten cover wechsel das das nicht schneller
+> laeuft !! dann noch einmal auf optimierungen oder fehler scannen !!"*
+
+Drei Meldungen und ein Bench (Build 319, 13.11., 31.650 Spiele,
+1920x1080). Jede der drei hat in diesem Bench eine Zeile, die sie
+erklaert - und zwei davon standen dort schon laenger.
+
+### 1. Die Pad-Eingabe: ein Geraet mit 5150 Meldungen je Sekunde
+
+Abschnitt L.1b listet zwei offene Geraete: `event3` mit 320 Meldungen
+je Sekunde, `event4` mit **5150**. `scan_devices()` hat bisher jedes
+Geraet aus `/proc/bus/input/devices` geoeffnet, das nicht MiSTers
+virtuelles war. Jede Meldung wird in `read_action()` gelesen, entpackt
+und uebersetzt - auf dem Faden, der auch zeichnet, in jedem Schritt
+und im Leerlauf.
+
+5150 je Sekunde passt auf den Bewegungssensor eines Pads (200
+Messungen je Sekunde, je Messung ein Buendel aus sechs Achsen,
+Zeitstempel und Abschluss). `hid-nintendo`, `hid-playstation` und
+`hid-sony` legen ihn als **eigenes** Geraet neben dem Pad an.
+**Das ist ein Schluss aus der Rate, keine Beobachtung** - der Name des
+Geraets stand im Bericht nicht.
+
+Jetzt (`fe/input.py::geraet_grund_zum_ueberspringen()`): ein Geraet
+wird nicht geoeffnet, wenn
+
+* das Kernel-Merkmal `INPUT_PROP_ACCELEROMETER` gesetzt ist, **oder**
+* es keine einzige Taste hat (keine Zeile `B: KEY=`), **oder**
+* sein Name ein Sensor-Wort als ganzes Wort traegt (IMU, Motion
+  Sensors, Accelerometer, Gyro).
+
+Drei Merkmale, jedes fuer sich: aeltere Treiber setzen das PROP-Bit
+nicht, und ein Treiber, der dem Sensor versehentlich eine Taste
+mitgibt, haette sonst alles umgangen. **Eine Tastatur bleibt immer** -
+sie wird vor jedem Ausschluss geprueft. Was uebersprungen wurde, steht
+einmal je Geraet im Log (`Geraet uebersprungen: ...`) und in
+Abschnitt L des Bench, **mit Namen** - damit aus dem Schluss beim
+naechsten Lauf eine Beobachtung wird.
+
+### 2. Die Haenger: der Schreibfaden hat nie pausiert
+
+Abschnitt L.4: *„69 Auftraege, 0 Pausen ... nachzusehen waere
+_navigation_aktiv()"*. Nachgesehen. `_navigation_aktiv()` liest
+`ART._defer_uncached`, und das setzt `_sync_cover_defer()` - gerufen am
+Anfang der beiden **vollen** Seitenaufbauten und im Leerlauf. Die zwei
+**leichten** Zeichenwege (`_draw_navigate_cats_impl`,
+`_draw_navigate_items_impl`) haben es nie gerufen. Das sind genau die
+Wege, die beim Scrollen laufen. Der Wert blieb also auf dem Stand des
+letzten Leerlaufs (False), und der Schreibfaden hat waehrend des
+Scrollens weiter Miniaturen gepackt und geschrieben.
+
+Beide rufen es jetzt. Dieselbe Sorte Fehler wie der, den der Docstring
+von `_sync_cover_defer()` selbst beschreibt („wurde an GENAU EINER
+Stelle gesetzt") - nur zwei Wege weiter.
+
+### 3. Die Listenansicht mit „Cover beim Scrollen"
+
+```
+Spieleliste liste   je Schritt Karte   159,28 ms
+Spieleliste liste   je Schritt warm     72,42 ms
+L.3  Boden Liste liste                 227 ms
+```
+
+87 ms Unterschied: das Cover (733x909, 2,7 MB roh) wurde in jedem
+Schritt im Zeichenweg von der Karte gelesen. In `_get_scaled_impl()`
+stand dazu: *„Ein Treffer hier ist ein reiner kleiner Lesevorgang -
+schnell genug, um auch waehrend aktivem Scrollen sofort zurueckgegeben
+zu werden"*. Fuer die Kacheln des Rasters stimmt das (0,17 MB). Fuer
+dieses Bild nicht.
+
+**Jetzt, in zwei Teilen:**
+
+* `fe/art.py`: wird navigiert **und** ist der Kasten mindestens 1 MB
+  gross **und** liegt eine echte Miniatur auf der Karte **und** hat
+  der Aufrufer `auslagern_ok` gesetzt, gibt es `None` - wie bei einem
+  noch nicht gerechneten Cover. Die Marke „das Original passt" (acht
+  Byte) ist ausgenommen: sie zu ueberspringen waere das Aufblitzen aus
+  Build 92.
+* `frontend.py::_vorauslesen()`: der Nachlade-Faden (`fe/nachladen.py`,
+  seit Build 125) holt die Cover der naechsten Eintraege in
+  Scrollrichtung. Lesen und Auspacken geben die GIL frei - das laeuft
+  auf dem zweiten Kern. Was er fertig hat, wird **vor** dem Zeichnen
+  eingetragen (`_lader_einsammeln()`).
+
+**Der Vorgriff - und ein Rechenfehler im ersten Anlauf.** Angemeldet
+wird am *Ende* des Zeichnens von Eintrag i, und i+1 wird gleich danach
+gezeichnet. Fuer i+1 bleibt dem Faden keine Zeit, fuer i+ab bleiben
+(ab - 1) Schrittabstaende. Der erste Anlauf rechnete
+`Ladezeit / Abstand + 1` und stellte den Eintrag unter dem Zeiger an
+den Anfang der Liste. Der neue Test durch den ganzen Weg
+(`tools/test_bench_cover_halten.py`, echter Faden, echte Dateien) hat
+gezeigt, was dabei herauskommt:
+
+```
+jetzt, so schnell es geht       ohne Cover 22 von 23
+```
+
+Der Faden las immer genau das Bild, das eben schon leer gezeichnet
+worden war. Jetzt: `ab = 1 + aufgerundet(Bedarf / Abstand)`, Bedarf ist
+die gemessene Ladezeit (anderthalbfach, wenn der Faden gerade liest),
+die Ziele stehen vorn, die naeheren Eintraege dahinter, der unter dem
+Zeiger zuletzt; was der Faden gerade liest, wird nicht noch einmal
+angemeldet. Derselbe Test danach:
+
+```
+wie bisher               66 ms/Schritt   ohne Cover  0 von 23
+jetzt                    33 ms/Schritt   ohne Cover  8 von 23
+jetzt, im alten Tempo    66 ms/Schritt   ohne Cover  2 von 23
+```
+
+**Das sind Zahlen vom Entwicklungsrechner mit nachgestelltem Geraet**
+(30 ms Aufschlag je Lesen und je Spalte) - sie zeigen, dass der Weg
+traegt, nicht, was auf dem DE10-Nano herauskommt. Dafuer gibt es
+Abschnitt O im Bench: derselbe Code, auf dem Geraet.
+
+**Die ehrliche Grenze:** der zweite Kern holt rund zehn Cover je
+Sekunde, gescrollt wird mit bis zu zwanzig Schritten. Bei voll
+gehaltener Taste bleibt die Spalte fuer einen Teil der Eintraege leer.
+
+Und `_vorauslesen()` wird aus **beiden** Zeichenwegen gerufen: beim
+Halten in einer langen Liste wandert das Fenster mit, und dann ist
+jeder Schritt ein voller Aufbau (`_draw_page_items_impl`), nicht der
+leichte Pfad. Der erste Anlauf hatte nur den leichten angeschlossen;
+gefunden hat es der Test, der prueft, ob der volle Aufbau ihn ruft.
+
+### 4. Die Kachelwand: achtzehn Karten, vier Plaetze
+
+```
+Hauptseite kachelwand   voller Aufbau 243,56 ms
+Haupt kachelwand        karten 13,07 ms, 1,2 Zeiger neu je Schritt
+```
+
+Jede Kachel ist eine Karte mit Schatten aus einer Vorlage (Build 299).
+Der Vorlagenspeicher hatte vier Plaetze und die Position im Schluessel.
+Abschnitt J schrieb dazu „der Zeigerspeicher haelt seine Eintraege
+nicht" - das war die falsche Adresse: der Zeigerspeicher hielt, die
+**Vorlagen** nicht, und jede neu gebaute Vorlage ist ein neuer Zeiger.
+
+* 48 Vorlagen / 24 MB statt 4 / 12 MB.
+* **Ohne eigenes Hintergrundbild haengt die Vorlage nicht mehr an x.**
+  `clear()` baut den Hintergrund dann aus `_vignette_row_variants()`:
+  jede Bildzeile ist in sich einfarbig. Zwei Karten in derselben Reihe
+  liegen auf demselben Untergrund. Die Kachelwand braucht drei
+  Vorlagen statt achtzehn. Mit Hintergrundbild bleibt x im Schluessel.
+* Werden die Vorlagen geleert, gehen die gemerkten Zeiger auf sie mit
+  (`zeiger_leerer`), sonst hielte der Zeigerspeicher sie am Leben.
+
+Die Voraussetzung („je Zeile einfarbig") prueft der Test **am Puffer**,
+nicht am Quelltext, und die Gegenprobe zeigt, dass Teilen mit
+Hintergrundbild ein falsches Bild gaebe.
+
+### 5. Das Dashboard: 3,43 MB geholt, um ein Rechteck zu notieren
+
+```
+Haupt dashboard   43,55 ms   restore 12,49   karten 12,52   flip 7,30
+```
+
+Im schnellen Weg wurden beide Felder der Tafel erst per
+`_restore_row_bg()` mit Hintergrund gefuellt und dann mit der
+Kartenfarbe uebermalt. Der Kommentar dort sagte es offen: *„das
+schreibt das Rechteck fuer den Flip mit"*. Das Rechteck wird jetzt von
+Hand eingetragen. Und vom Bildfeld (1079x517) wird nur weggeraeumt,
+was der vorige Schritt bemalt hat (`_dash_bild_alt`) - das Foto ist
+hoechstens 420x320.
+
+### 6. Die Speicherbereinigung - eingefroren, und NICHT als Ursache belegt
+
+Abschnitt J zeigt Ausreisser **ohne** Vollbild („Dann liegt es nicht am
+Zeichenweg, sondern an etwas daneben"). Pythons Speicherbereinigung
+laeuft auf dem Zeichenfaden und war bisher weder angefasst noch
+gemessen. Nach jedem Aufbau des Spielebaums friert der naechste
+Leerlauf den Bestand ein (`gc.freeze()`); eine volle Sammlung geht
+danach nur noch ab, was seither dazugekommen ist.
+
+**Dass die Haenger daher kommen, ist nicht gemessen.** Auf dem
+Entwicklungsrechner kostet eine volle Sammlung 3,3 ms bei rund 20.000
+Objekten (der Spielebaum selbst besteht groesstenteils aus Tupeln von
+Zeichenketten, die die Bereinigung gar nicht verwaltet). Was das auf
+dem Geraet ist und wie oft es beim Scrollen vorkommt, misst Abschnitt
+N - mit einem Haken an `gc.callbacks`, der jede einzelne Sammlung
+stoppt. Dazu nennt die RUCKLER-Zeile im Log, wie viele Sammlungen in
+die Runde gefallen sind.
+
+### 7. Der Bench (Fassung 21)
+
+* **L** nennt jedes offene Geraet beim Namen und listet die
+  uebersprungenen.
+* **N** Speicherbereinigung: Stand, volle Sammlung ohne und mit
+  Einfrieren, 120 Scrollschritte ohne und mit - jede Sammlung einzeln.
+* **O** Listenansicht mit Cover, Taste gehalten: drei Laeufe (wie
+  bisher / jetzt / jetzt im alten Tempo), je Lauf ms je Schritt und
+  „ohne Cover x von y". Noetig, weil B, J und K im Stillstand messen
+  und nach Build 320 dieselben Zahlen zeigen wie vorher.
+
+### 8. Kleineres
+
+* `_thumb_cache_get()`: die Nutzlast einer ART1-Miniatur ist ein
+  `memoryview` statt einer Kopie der ganzen Datei.
+* Zwei Docstrings in `fe/art.py` enthielten `\d` ohne rohe
+  Zeichenkette - unter Python 3.12+ eine Warnung beim Laden.
+* Der Zeigerspeicher fasst 64 statt 16.
+* **JPEG-Auspacken: zwei Gaenge ueber das Bild statt vier**
+  (`fe/bildlib.py::decode_jpeg()`). Dort stand
+  `create_string_buffer(b"\xff" * n)` und am Ende `puffer.raw[:n]` -
+  das Auspacken nicht mitgezaehlt viermal das ganze Bild, beim Cover
+  der Listenansicht viermal 2,7 MB, mit gehaltener GIL (also auch dann
+  auf Kosten des Zeichnens, wenn der Nachlade-Faden liest). Jetzt:
+  genau n Byte anlegen, einmal mit 0xFF fuellen, einmal herausholen.
+  Zuerst zurueckgestellt, weil es auf dem Entwicklungsrechner kein
+  `libturbojpeg` gab und die Aenderung ungeprueft aufs Geraet gegangen
+  waere; dann die Bibliothek nachinstalliert (dieselbe Fassung
+  0.2.0 wie auf dem MiSTer) und geprueft: **Byte fuer Byte dasselbe
+  Ergebnis** wie die alte Fassung, in drei Groessen. Gemessen auf dem
+  Entwicklungsrechner 6,40 -> 6,00 ms fuer 733x909 - ein kleiner
+  Posten, kein Durchbruch; was es auf dem Geraet ist, steht in
+  Abschnitt O mit drin.
+* Die x-unabhaengige Vorlage (Punkt 4) gilt nur fuer Karten, die
+  **ganz im Bild** liegen. Rechts vom Bild kann der Puffer Fuellbytes
+  haben; eine Karte, die dort hineinragt, behaelt x im Schluessel.
+
+### Nicht gemacht
+
+* **EVIOCSMASK**, um Achsenrauschen im Kernel zu filtern: erst, wenn
+  der naechste Bench zeigt, dass das verbleibende Geraet noch zu viel
+  schickt.
+* **Karussell**: der restore unter der mittleren Karte (13,38 ms) -
+  eigener Build.
+
+### Pruefungen
+
+* **neu** `tools/test_eingabegeraete.py` - die Regel an echten
+  Abschnitten aus `/proc/bus/input/devices`, die Tastatur bleibt
+  immer, `scan_devices()` und der `InputManager`, Gegenprobe.
+* **neu** `tools/test_vorauslesen.py` - leichte Wege frischen den
+  Schutz auf, die Regel fuer grosse Miniaturen mit jeder Bedingung
+  einzeln zurueckgenommen, die Marke, der Vorausleser (Richtung,
+  Vorgriff, Raender, Merker, laufender Auftrag), und **von der anderen
+  Seite**: was der Zeichenweg fuer den naechsten Eintrag anfragt, muss
+  das sein, was vorher als Erstes angemeldet wurde.
+* **neu** `tools/test_bench_cover_halten.py` - durch den ganzen Weg,
+  mit echtem Faden und echten Dateien; Gegenprobe mit einem Faden, der
+  nichts liefert (23 von 23 ohne Cover).
+* **neu** `tools/test_kartenvorlage_reihe.py` - Hintergrund je Zeile
+  einfarbig (am Puffer), eine Vorlage je Reihe bitgleich, mit
+  Hintergrundbild nicht geteilt (Gegenprobe), Grenzen, Kachelwand
+  baut im Schritt nichts neu (Gegenprobe), Dashboard holt keinen
+  Hintergrund mehr.
+* **neu** `tools/test_gc_messung.py` - Einfrieren an Objekten gezaehlt,
+  `gc_lauf()`, Abschnitt N raeumt auf.
+* **geaendert** `tools/test_bench_tastendruck.py` - die Bench-Nummer.
+* **geaendert** `tools/test_bildlib.py` - Test 14: das JPEG-Auspacken
+  gegen die alte Fassung, Byte fuer Byte, samt Gegenprobe (ein
+  einziges falsches Deckkraft-Byte faellt auf).

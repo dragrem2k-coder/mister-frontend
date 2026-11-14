@@ -510,6 +510,97 @@ check("Standard ist AN (nur eine Datei schaltet ab)",
       S.fremdquellen_enabled() is True)
 
 print()
+print("Test 14: JPEG auspacken - zwei Gaenge ueber das Bild statt vier "
+      "(Build 320)")
+# decode_jpeg() hat den Puffer bis Build 319 so behandelt:
+#
+#     puffer = create_string_buffer(b"\xff" * n)     zwei Gaenge
+#     ...
+#     return b, h, puffer.raw[:n]                    zwei Gaenge
+#
+# Beim Cover der Listenansicht (733x909) viermal 2,7 MB, mit gehaltener
+# GIL. Jetzt: n Byte anlegen, einmal fuellen, einmal herausholen.
+#
+# DIE ALTE FASSUNG STEHT HIER ALS MASSSTAB, nicht als Nachbau dessen,
+# was geprueft wird: verglichen wird das Ergebnis der NEUEN Funktion
+# gegen das der alten, Byte fuer Byte. Aendert die neue auch nur ein
+# Deckkraft-Byte, faellt das hier auf und nirgends sonst - im Bild
+# saehe man es erst, wenn irgendwo ueberblendet wird.
+if not (B.verfuegbar() and B.schreiben_verfuegbar()):
+    ungeprueft("JPEG-Auspacken bitgleich zur alten Fassung",
+               "libturbojpeg fehlt")
+else:
+    import ctypes                                       # noqa: E402
+    import hashlib                                      # noqa: E402
+
+    def _alt_auspacken(data, breite, hoehe):
+        griff = B._LIB.tjInitDecompress()
+        try:
+            n = breite * hoehe * 4
+            puffer = ctypes.create_string_buffer(b"\xff" * n)
+            if B._LIB.tjDecompress2(griff, data, len(data), puffer,
+                                    breite, breite * 4, hoehe,
+                                    B.TJPF_BGRX, 0) != 0:
+                return None
+            return puffer.raw[:n]
+        finally:
+            B._LIB.tjDestroy(griff)
+
+    def _muster(w, h):
+        pix = bytearray(w * h * 4)
+        for y in range(h):
+            for x in range(w):
+                o = (y * w + x) * 4
+                pix[o] = (x * 255) // max(1, w - 1)
+                pix[o + 1] = (y * 255) // max(1, h - 1)
+                pix[o + 2] = (x * 7 + y * 3) & 255
+                pix[o + 3] = 255
+        return bytes(pix)
+
+    # Drei Groessen: das Listen-Cover, eine ungerade Winzigkeit (die
+    # Raender der 8x8-Bloecke) und ein Querformat.
+    for (jw, jh) in ((733, 909), (17, 5), (320, 100)):
+        roh = _muster(jw, jh)
+        jpg = B.encode_jpeg(jw, jh, roh, 97)
+        check("%dx%d: laesst sich packen" % (jw, jh), bool(jpg))
+        if not jpg:
+            continue
+        neu = B.decode_jpeg(jpg)
+        alt = _alt_auspacken(jpg, jw, jh)
+        check("%dx%d: Masse stimmen" % (jw, jh),
+              neu is not None and neu[:2] == (jw, jh))
+        if neu is None or alt is None:
+            check("%dx%d: beide Fassungen liefern ein Bild" % (jw, jh),
+                  False)
+            continue
+        check("%dx%d: es sind bytes, genau n lang" % (jw, jh),
+              type(neu[2]) is bytes and len(neu[2]) == jw * jh * 4,
+              "%s, %d" % (type(neu[2]).__name__, len(neu[2])))
+        check("%dx%d: Byte fuer Byte wie die alte Fassung" % (jw, jh),
+              neu[2] == alt,
+              hashlib.md5(neu[2]).hexdigest()[:12])
+        check("%dx%d: jedes Deckkraft-Byte ist 0xFF" % (jw, jh),
+              set(neu[2][3::4]) == {255})
+    # GEGENPROBE: der Vergleich muss rot werden koennen. Ein Puffer,
+    # der NICHT vorgefuellt wurde, darf nicht zufaellig gleich sein -
+    # sonst bewiese "Byte fuer Byte gleich" nichts ueber das Fuellen.
+    _jpg = B.encode_jpeg(64, 48, _muster(64, 48), 97)
+    _ref = B.decode_jpeg(_jpg)
+    _falsch = bytearray(_ref[2])
+    _falsch[3] = 0
+    check("Gegenprobe: ein einziges falsches Deckkraft-Byte faellt auf",
+          bytes(_falsch) != _alt_auspacken(_jpg, 64, 48))
+    # Und verkleinert auspacken geht durch denselben Puffer.
+    _kl = B.decode_jpeg(B.encode_jpeg(733, 909, _muster(733, 909), 90),
+                        200, 200)
+    check("verkleinert: Laenge passt zu den gemeldeten Massen",
+          _kl is not None and len(_kl[2]) == _kl[0] * _kl[1] * 4
+          and _kl[0] < 733,
+          str(_kl[:2]) if _kl else "None")
+    # Muell bleibt Muell - kein Absturz, kein halber Puffer.
+    check("Muell ergibt None", B.decode_jpeg(b"\xff\xd8kein jpeg") is None)
+
+print()
 if offen:
     print("Nicht pruefbar auf diesem Rechner (%d):" % len(offen))
     for o in offen:
